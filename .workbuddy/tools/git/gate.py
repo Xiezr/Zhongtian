@@ -145,7 +145,10 @@ def main():
         return 2
     node_path = _find_node_path()
 
-    if full or needs_full(files):
+    if full:
+        plan = list(TESTS)
+        why = '--full 强制三件套全跑'
+    elif needs_full(files):
         plan = list(TESTS)
         why = '改动了代码（index.html 或 js/**）→ 三件套全跑'
     else:
