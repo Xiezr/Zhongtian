@@ -1247,7 +1247,7 @@ async function runTests(dom, URL) {
   G.ui.openBuildModal(idxJY);
   await sleep(60);
   const bm = document.querySelector('#modal-root');
-  check('军营弹窗含「军队 · 募兵」入口', bm.innerHTML.indexOf('军队 · 募兵') >= 0);
+  check('军营弹窗含「募兵 · 兵种」入口', bm.innerHTML.indexOf('募兵 · 兵种') >= 0);
   /* v24（需求 8）：入口带 data-idx（队列要挂到具体那座军营） */
   const entryBtn = bm.querySelector('[data-action="open-troops"][data-idx]');
   check('找到功能入口按钮（带军营下标）', !!entryBtn, entryBtn ? 'idx=' + entryBtn.dataset.idx : '未找到');
@@ -1926,7 +1926,7 @@ async function runTests(dom, URL) {
     await sleep(80);
     mh24 = document.querySelector('#modal-root').innerHTML;
     check('城外地块面板有「改建」入口', !!document.querySelector('#modal-root [data-action="ext-convert-ask"]'));
-    check('城外地块面板操作分区（含危险区）', mh24.indexOf('op-zone danger') >= 0);
+    check('城外地块面板操作分区（功能行 / 升级行 / 底栏）', mh24.indexOf('op-zone-t">功能') >= 0 && mh24.indexOf('op-zone-t">升级') >= 0 && mh24.indexOf('bldg-foot') >= 0);
     click(document.querySelector('#modal-root [data-action="ext-convert-ask"]'));
     await sleep(100);
     const cv24 = document.querySelector('#modal-root').innerHTML;
@@ -2981,7 +2981,7 @@ async function runTests(dom, URL) {
   check('军营面板有队列位说明', bd28.textContent.indexOf('队列位') >= 0);
   /* 面板里的「募兵」按钮要能进募兵界面 */
   const bt28 = bd28.querySelector('[data-action="open-troops"]');
-  check('军营面板有「军队 · 募兵」入口', !!bt28);
+  check('军营面板有「募兵 · 兵种」入口', !!bt28);
   click(bt28);
   await sleep(100);
   const tr28 = document.querySelector('#modal-root');

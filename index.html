@@ -1357,10 +1357,16 @@
   .op-hint { color: var(--text-dim); font-size: var(--fs-sub); }
   /* v28（需求 7）：拆毁（左）与移动/交换（右）分居两端、且都收小。
      两端分离是为了避免误点 —— 拆毁不可逆，紧挨着移动很容易点错。 */
-  .bldg-foot { display: flex; justify-content: space-between; align-items: center;
-    margin-top: 12px; padding-top: 8px; border-top: 1px dashed var(--line-strong); }
+  /* v68（弹窗统一）：与 m-foot 同规格（实线）—— 改前是 dashed，四套页脚里唯一的例外。
+     三格摆位保留 v28 的设计：危险（左）· 关闭（中，天然误点缓冲）· 管理（右）。 */
+  .bldg-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px;
+    margin-top: 12px; padding-top: 8px; border-top: 1px solid var(--line-strong); }
   .bldg-foot .btn.sm { font-size: var(--fs-cap); padding: 3px 9px; }
   .op-done { color: var(--text-dim); font-size: var(--fs-sub); }
+  /* v68（弹窗统一）：升级行专用 —— 费用靠左、按钮靠右（同一行对齐） */
+  .op-row-between { justify-content: space-between; }
+  .op-kv { color: var(--text-dim); font-size: var(--fs-sub); }
+  .op-kv b { color: var(--text-strong); font-weight: 700; }
   /* 弹窗内进度条（沿用格子的 .pbar 结构） */
   .modal .pbar { height: 6px; border-radius: 3px; background: rgba(var(--sh-rgb),.6); overflow: hidden; }
   .modal .pbar i { display: block; height: 100%; border-radius: 3px;

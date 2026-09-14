@@ -3101,19 +3101,24 @@
       '</div>';
   };
 
-  /* 功能建筑 → 功能入口（点建筑直达其功能；功能归属明确） */
+  /* 功能建筑 → 功能入口（点建筑直达其功能；功能归属明确）
+     v68（老板「操作项命名合理」）：统一命名规范 ——
+       · 格式：图标 + 用途短语；多功能面板写「用途A · 用途B」；
+       · **名字要覆盖面板的全部内容**（点了名不副实就是误导）——
+         例：官府入口原叫「征收」，面板里却有征调民力 / 本城特产 / 岁贡 / 改名，
+         已改「官府事务」；校场/军营/作坊去掉与建筑名重复的抬头词。 */
   var BLDG_FUNC = {
-    guanfu: { label: "💰 征收", act: "open-guanfu" },
-    junying: { label: "⚔️ 军队 · 募兵", act: "open-troops", withIdx: true },
-    xiaochang: { label: "🏹 校场 · 出征与伤兵", act: "open-xiaochang" },
+    guanfu: { label: "🏯 官府事务", act: "open-guanfu" },
+    junying: { label: "⚔️ 募兵 · 兵种", act: "open-troops", withIdx: true },
+    xiaochang: { label: "🏹 出征 · 伤兵", act: "open-xiaochang" },
     shuyuan: { label: "📜 科技 · 研究", act: "open-panel", view: "tech" },
-    kezhan: { label: "🍶 招募", act: "open-inn" },
-    zhaoxianguan: { label: "🎎 名录", act: "open-hostel" },
+    kezhan: { label: "🍶 招募将领", act: "open-inn" },
+    zhaoxianguan: { label: "🎎 将领名录", act: "open-hostel" },
     shichang: { label: "🏪 交易", act: "open-market" },
     cangku: { label: "🏚️ 仓储", act: "open-store" },
-    majiu: { label: "🐎 装备 · 坐骑", act: "open-panel", view: "equip" },
+    majiu: { label: "🐎 坐骑装备", act: "open-panel", view: "equip" },
     tiejiangpu: { label: "⚒️ 打造", act: "open-forge" },
-    gongjiangzuofang: { label: "🛠️ 器械与工事", act: "open-workshop", withIdx: true },
+    gongjiangzuofang: { label: "🛠️ 器械 · 箭塔", act: "open-workshop", withIdx: true },
     minfang: { label: "👥 人口统计", act: "open-panel", view: "stats" },
     chengqiang: { label: "🧱 城防统计", act: "open-panel", view: "stats" }
   };
@@ -3202,12 +3207,16 @@
         '<div class="pbar" style="width:70%;margin:0 auto 10px;"><i data-build-bar="city:' + idx + '" style="width:' + (pr16 ? pr16.pct : 0) + '%"></i></div>' +
         '<div style="text-align:center;color:var(--text-dim);font-size:var(--fs-sub);">后台施工中，倒计时每秒更新，<b style="color:var(--gold-light);">不影响下方操作</b></div>';
       var fn = isUpgrade ? BLDG_FUNC[cell.build.id] : null;
-      ui.openModal('<div class="gold-heading">🛠️ ' + (isUpgrade ? '升级中' : '建造中') + '</div>' +
-        '<div style="text-align:center;font-size:var(--fs-h2);font-weight:800;color:var(--gold-light);margin:8px 0;">' +
-          (pb2 ? pb2.name : '建筑') + (isUpgrade ? ('　Lv' + (cell.pending.targetLevel - 1) + ' → Lv' + cell.pending.targetLevel) : '') + '</div>' +
-        (isUpgrade
-          ? '<div style="text-align:center;font-size:40px;margin-bottom:4px;">' + GAME.icons.forBuilding(cell.build.id) + '</div>'
-          : '') +
+      /* v68（弹窗统一）：施工中弹窗与正常态**同构** ——
+         图标 +「名称 · Lv→Lv」+ 描述，危险操作进底栏（设计规范 §11）。 */
+      ui.openModal(
+        '<div style="text-align:center;margin-bottom:8px;"><span style="font-size:40px;">' +
+          GAME.icons.forBuilding(isUpgrade ? cell.build.id : cell.pending.buildId) + '</span></div>' +
+        '<div class="gold-heading">' + (pb2 ? pb2.name : '建筑') +
+          (isUpgrade ? (' · Lv' + (cell.pending.targetLevel - 1) + ' → Lv' + cell.pending.targetLevel) : '') + '</div>' +
+        '<div style="color:var(--text-dim);font-size:var(--fs-body);text-align:center;margin-bottom:12px;">' +
+          (isUpgrade ? '🛠️ 升级中 · 后台施工，倒计时每秒更新，不影响下方操作'
+                     : '🏗️ 建造中 · 倒计时每秒更新') + '</div>' +
         progBlock +
         (fn ? ('<div class="op-zone">' +
             '<div class="op-zone-t">功能（升级中照常可用）</div>' +
@@ -3215,13 +3224,11 @@
               (fn.withIdx ? ' data-idx="' + idx + '"' : '') + '>' + fn.label + '</button></div>' +
           '</div>')
           : '') +
-        '<div class="op-zone danger">' +
-          '<div class="op-zone-t">危险操作</div>' +
-          '<div class="op-row">' +
-            '<button class="btn red" data-action="cancel-build" data-kind="city" data-idx="' + idx + '">取消' + (isUpgrade ? '升级' : '建造') + '</button>' +
-            '<span class="op-hint">按剩余时间比例返还 80% 资源</span>' +
-          '</div></div>' +
-        '<div class="modal-foot"><button class="btn" data-action="close-modal">关闭</button></div>');
+        '<div class="bldg-foot">' +
+          '<button class="btn sm red" data-action="cancel-build" data-kind="city" data-idx="' + idx + '">取消' + (isUpgrade ? '升级' : '建造') + '</button>' +
+          '<button class="btn" data-action="close-modal">关闭</button>' +
+          '<span class="op-hint">按剩余时间比例返还 80% 资源</span>' +
+        '</div>');
       return;
     }
     if (cell.build) {
@@ -3282,27 +3289,31 @@
         '<div style="text-align:center;margin-bottom:8px;"><span style="font-size:40px;">' + b.icon + '</span></div>' +
         '<div class="gold-heading">' + b.name + ' · Lv' + cell.build.lvl + '</div>' +
         '<div style="color:var(--text-dim);font-size:var(--fs-body);text-align:center;margin-bottom:12px;">' + b.desc + '</div>' + extra +
-        '<div class="attr"><span class="k">升级费用</span><span class="v">' + costStr + '</span></div>' +
         (dRef ? '<div style="color:var(--text-dim);font-size:var(--fs-sub);text-align:center;margin-top:10px;">拆毁可返还累计投入的 50%：' + GAME.costString(dRef) + '</div>' : '') +
         barQueue +
-        /* v16：正向操作与拆毁类操作分区，避免误点。
-           v28（需求 7）：改前是两个带标题的 op-zone 各占一行 —— "危险操作"四个字
-           比按钮本身还显眼，两个按钮还互相挤。现在按用户要的摆位：
-           **拆毁在左下角、移动/交换在右下角，两者都收小**，中间留白避免误点。 */
+        /* v68（老板「弹窗统一」· 设计规范 §11）：建筑弹窗统一动线三段 ——
+           ① 功能行「用建筑」：进功能面板（金色主按钮）；
+           ② 升级行「建建筑」：费用与按钮**同行**（改前费用在上、按钮在下，隔着一整块信息区）；
+           ③ 底栏「管建筑」：危险（左）· 关闭（中，天然误点缓冲）· 管理（右）
+              —— v28「拆毁左下、移动右下、中间留白」的原摆位保留，关闭正好居中。 */
+        (function () { var f = BLDG_FUNC[b.id]; return f ? ('<div class="op-zone">' +
+            '<div class="op-zone-t">功能</div>' +
+            '<div class="op-row"><button class="btn gold" data-action="' + f.act + '"' + (f.view ? ' data-view="' + f.view + '"' : '') +
+              (f.withIdx ? ' data-idx="' + idx + '"' : '') + '>' + f.label + '</button></div>' +
+          '</div>') : ''; })() +
         '<div class="op-zone">' +
-          '<div class="op-zone-t">操作</div>' +
-          '<div class="op-row">' +
-            (function () { var f = BLDG_FUNC[b.id]; return f ? ('<button class="btn gold" data-action="' + f.act + '"' + (f.view ? ' data-view="' + f.view + '"' : '') +
-                (f.withIdx ? ' data-idx="' + idx + '"' : '') + '>' + f.label + '</button>') : ''; })() +
+          '<div class="op-zone-t">升级</div>' +
+          '<div class="op-row op-row-between">' +
+            '<span class="op-kv">费用 <b>' + costStr + '</b></span>' +
             (upCost ? '<button class="btn" data-action="confirm-upgrade" data-idx="' + idx + '">升级 → Lv' + (cell.build.lvl + 1) + '</button>' : '<span class="op-done">' + (preUp.ok ? '已达最高等级' : U.escape(preUp.short)) + '</span>') +
           '</div></div>' +
         '<div class="bldg-foot">' +
           '<button class="btn sm red" data-action="demolish-ask" data-kind="city" data-idx="' + idx + '"' +
             ' title="' + (dRef ? '返还累计投入的 50%：' + GAME.costString(dRef) : '不可恢复') + '（需二次确认）">拆毁</button>' +
+          '<button class="btn" data-action="close-modal">关闭</button>' +
           (b.id === 'guanfu' ? '<span></span>'
             : '<button class="btn sm" data-action="move-ask" data-idx="' + idx + '" title="与另一地块互换位置">🔄 移动 / 交换</button>') +
-        '</div>' +
-        '<div class="modal-foot"><button class="btn" data-action="close-modal">关闭</button></div>'
+        '</div>'
       );
     } else {
       /* 空地：选择建筑（弹窗式） */
@@ -3516,10 +3527,11 @@
           pct + '% · ' + U.durExact(left) + '</div>' +
         '<div style="text-align:center;color:var(--text-dim);font-size:var(--fs-body);">' +
           (lv > 0 ? ('Lv' + lv + ' → Lv' + q.targetLevel) : '初次修建') + '　倒计时实时更新…</div>' +
-        '<div class="modal-foot">' +
-          '<button class="btn red" data-action="cancel-build" data-kind="wall">取消施工</button>' +
-          '<button class="btn" data-action="close-modal">关闭</button></div>' +
-        '<div style="color:var(--text-dim);font-size:var(--fs-cap);text-align:center;margin-top:8px;">取消后按剩余时间比例返还 80% 资源</div>');
+        '<div class="bldg-foot">' +
+          '<button class="btn sm red" data-action="cancel-build" data-kind="wall">取消施工</button>' +
+          '<button class="btn" data-action="close-modal">关闭</button>' +
+          '<span class="op-hint">取消后按剩余时间比例返还 80% 资源</span>' +
+        '</div>');
       return;
     }
     var cost = GAME.wallCost(c);
@@ -3533,13 +3545,15 @@
         (lv > 0 ? eff(lv) : '无') + '</span></div>' +
       (lv > 0 && lv < GAME.buildCapOf(c, 'chengqiang')
         ? '<div class="attr"><span class="k">升至 Lv' + next + '</span><span class="v good">' + eff(next) + '</span></div>' : '') +
-      '<div class="attr"><span class="k">' + (lv > 0 ? '升级费用' : '修建费用') + '</span><span class="v">' +
-        (cost ? GAME.costString(cost) : '已满级') + '</span></div>' +
-
-      '<div class="modal-foot">' +
-        (lv < GAME.buildCapOf(c, 'chengqiang') && cost
-          ? '<button class="btn gold" data-action="wall-build">' + (lv > 0 ? '升级城墙' : '修建城墙') + '</button>' : '') +
-        '<button class="btn" data-action="close-modal">关闭</button></div>');
+      /* v68（设计规范 §11）：费用与按钮同行、关闭进底栏 —— 与建筑弹窗同骨架 */
+      '<div class="op-zone"><div class="op-zone-t">' + (lv > 0 ? '升级' : '修建') + '</div>' +
+        '<div class="op-row op-row-between">' +
+          '<span class="op-kv">费用 <b>' + (cost ? GAME.costString(cost) : '已满级') + '</b></span>' +
+          ((lv < GAME.buildCapOf(c, 'chengqiang') && cost)
+            ? '<button class="btn" data-action="wall-build">' + (lv > 0 ? '升级城墙' : '修建城墙') + '</button>'
+            : '<span class="op-done">已达最高等级</span>') +
+        '</div></div>' +
+      '<div class="bldg-foot"><span></span><button class="btn" data-action="close-modal">关闭</button><span></span></div>');
   };
 
   GAME.costString = function (cost) {
@@ -3618,20 +3632,21 @@
         prodLine = '<div class="attr"><span class="k">当前产出（施工中不停产）</span><span class="v good">' + phP + '/时</span></div>' +
           '<div class="attr"><span class="k">完工后 Lv' + (e.lv + 1) + '</span><span class="v">' + ebP.prod[e.lv] + '/时</span></div>';
       }
-      ui.openModal('<div class="gold-heading">🛠️ ' + (isUpE ? '升级中' : '建造中') + '</div>' +
-        '<div style="text-align:center;font-size:var(--fs-h2);font-weight:800;color:var(--gold-light);margin:8px 0;">' +
-          pendName + (isUpE ? ('　Lv' + e.lv + ' → Lv' + (e.lv + 1)) : '') + '</div>' +
+      ui.openModal(
+        '<div style="text-align:center;margin-bottom:8px;"><span style="font-size:40px;">' +
+          (GAME.icons.forExt(e.type) || (DATA.EXT_BUILDINGS[e.type] || {}).icon) + '</span></div>' +
+        '<div class="gold-heading">' + pendName + (isUpE ? (' · Lv' + e.lv + ' → Lv' + (e.lv + 1)) : '') + '</div>' +
+        '<div style="color:var(--text-dim);font-size:var(--fs-body);text-align:center;margin-bottom:12px;">' +
+          (isUpE ? '🛠️ 升级中 · 后台施工，倒计时每秒更新（施工中不停产）' : '🏗️ 建造中 · 倒计时每秒更新') + '</div>' +
         prodLine +
         '<div style="text-align:center;color:var(--green-ok);font-size:var(--fs-h1);font-weight:800;margin:8px 0;" data-modal-progress="ext:' + idx + '">' + (GAME.buildPct('ext', idx) || '…') + '</div>' +
         '<div class="pbar" style="width:70%;margin:0 auto 10px;"><i data-build-bar="ext:' + idx + '" style="width:' + (prE ? prE.pct : 0) + '%"></i></div>' +
         '<div style="text-align:center;color:var(--text-dim);font-size:var(--fs-sub);">后台施工中，倒计时每秒更新</div>' +
-        '<div class="op-zone danger">' +
-          '<div class="op-zone-t">危险操作</div>' +
-          '<div class="op-row">' +
-            '<button class="btn red" data-action="cancel-build" data-kind="ext" data-idx="' + idx + '">取消' + (isUpE ? '升级' : '建造') + '</button>' +
-            '<span class="op-hint">按剩余时间比例返还 80% 资源</span>' +
-          '</div></div>' +
-        '<div class="modal-foot"><button class="btn" data-action="close-modal">关闭</button></div>');
+        '<div class="bldg-foot">' +
+          '<button class="btn sm red" data-action="cancel-build" data-kind="ext" data-idx="' + idx + '">取消' + (isUpE ? '升级' : '建造') + '</button>' +
+          '<button class="btn" data-action="close-modal">关闭</button>' +
+          '<span class="op-hint">按剩余时间比例返还 80% 资源</span>' +
+        '</div>');
       return;
     }
     if (e.type) {
@@ -3644,21 +3659,23 @@
         '<div style="text-align:center;margin-bottom:8px;"><span style="font-size:40px;">' + eb.icon + '</span></div>' +
         '<div class="gold-heading">' + eb.name + ' · Lv' + e.lv + '</div>' +
         '<div class="attr"><span class="k">产量</span><span class="v good">' + prodH + '/时（' + (prodH / 3600 * GAME.timeScale() > 10 ? Math.round(prodH / 3600 * GAME.timeScale()) : (prodH / 3600 * GAME.timeScale()).toFixed(1)) + '/s）</span></div>' +
-        '<div class="attr"><span class="k">升级费用</span><span class="v">' + costStr + '</span></div>' +
         (eRef ? '<div style="color:var(--text-dim);font-size:var(--fs-sub);text-align:center;margin-top:10px;">拆毁可返还累计投入的 50%：' + GAME.costString(eRef) + '</div>' : '') +
+        /* v68（设计规范 §11）：与城内弹窗同一骨架 —— 功能行 / 升级行 / 底栏 */
         '<div class="op-zone">' +
-          '<div class="op-zone-t">操作</div>' +
-          '<div class="op-row">' +
+          '<div class="op-zone-t">功能</div>' +
+          '<div class="op-row"><button class="btn gold" data-action="ext-convert-ask" data-idx="' + idx + '">🔧 改建为其他资源建筑</button></div>' +
+        '</div>' +
+        '<div class="op-zone">' +
+          '<div class="op-zone-t">升级</div>' +
+          '<div class="op-row op-row-between">' +
+            '<span class="op-kv">费用 <b>' + costStr + '</b></span>' +
             (upCost ? '<button class="btn" data-action="ext-upgrade" data-idx="' + idx + '">升级 → Lv' + (e.lv + 1) + '</button>' : '<span class="op-done">已达最高等级</span>') +
-            '<button class="btn gold" data-action="ext-convert-ask" data-idx="' + idx + '">🔧 改建为其他资源建筑</button>' +
           '</div></div>' +
-        '<div class="op-zone danger">' +
-          '<div class="op-zone-t">危险操作</div>' +
-          '<div class="op-row">' +
-            (upCost ? '<button class="btn red" data-action="demolish-ask" data-kind="ext" data-idx="' + idx + '">拆毁</button>' : '') +
-            '<span class="op-hint">拆毁返还累计投入的 50%　需二次确认</span>' +
-          '</div></div>' +
-        '<div class="modal-foot"><button class="btn" data-action="close-modal">关闭</button></div>'
+        '<div class="bldg-foot">' +
+          (upCost ? '<button class="btn sm red" data-action="demolish-ask" data-kind="ext" data-idx="' + idx + '" title="返还累计投入的 50%（需二次确认）">拆毁</button>' : '<span></span>') +
+          '<button class="btn" data-action="close-modal">关闭</button>' +
+          '<span></span>' +
+        '</div>'
       );
       return;
     }
@@ -3679,7 +3696,7 @@
     ui.openModal(
       '<div class="gold-heading">🌾 选择资源建筑（' + used + '/' + cap + '块）</div>' +
       '<div class="troop-grid" style="grid-template-columns:repeat(2,1fr);">' + list + '</div>' +
-      '<div style="text-align:center;margin-top:14px;"><button class="btn" data-action="close-modal">取消</button></div>'
+      '<div class="m-foot"><button class="btn" data-action="close-modal">关闭</button></div>'
     );
   };
 

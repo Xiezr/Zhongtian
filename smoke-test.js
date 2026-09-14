@@ -1994,7 +1994,7 @@
     check('openPanel 生成的弹窗带关闭按钮', /data-action="close-modal"/.test(uiSrc24.slice(uiSrc24.indexOf('ui.openPanel = function'), uiSrc24.indexOf('ui.openPanel = function') + 1400)));
     /* v24（需求 8）：军营入口要带"哪一座军营"，否则队列不知道挂给谁 */
     check('军营入口指向募兵面板并带军营下标',
-      /junying: \{ label: "⚔️ 军队 · 募兵", act: "open-troops", withIdx: true \}/.test(uiSrc24));
+      /junying: \{ label: "⚔️ 募兵 · 兵种", act: "open-troops", withIdx: true \}/.test(uiSrc24));
     check('书院入口指向科技面板', /shuyuan: \{ label: "📜 科技 · 研究", act: "open-panel", view: "tech" \}/.test(uiSrc24));
     check('铁匠铺入口指向打造', /tiejiangpu: \{ label: "⚒️ 打造", act: "open-forge" \}/.test(uiSrc24));
     check('新增背包面板 openBag', /ui\.openBag = function/.test(uiSrc24));
@@ -3511,7 +3511,7 @@
     && (uS16.match(/ui\.openShell\(\{/g) || []).length >= 3,
     (uS16.match(/ui\.openShell\(\{/g) || []).length + ' 处');
   check('#12 操作分区样式', /\.op-zone \{/.test(hS16) && /\.op-zone\.danger \{/.test(hS16));
-  check('#12 建筑面板分「操作 / 危险操作」', /class="op-zone-t">操作</.test(uS16) && /class="op-zone-t">危险操作</.test(uS16));
+  check('#12 建筑面板动线三段（功能 / 升级 / 底栏）', /class="op-zone-t">功能</.test(uS16) && /class="op-zone-t">升级</.test(uS16) && /class="bldg-foot"/.test(uS16));
   check('#12 已移除重复的拆除按钮', !/data-action="confirm-demolish"/.test(uS16));
   check('#13 升级中写入 pending（防重复排队）', /if \(cell\.pending\) return \{ ok: false, msg: '该建筑正在施工中/.test(dS16));
   check('#13 升级完成清 pending', /cell\.build\.lvl = q\.targetLevel;[\s\S]{0,80}cell\.pending = null;/.test(stS16));
@@ -3598,8 +3598,8 @@
     && /ui\.openTroops = function/.test(uS16) && /_trainFilter === 'siege'/.test(uS16));
   /* v62（老板）：作坊入口扩成"器械与工事"（多了造箭塔），
      判据跟着改 —— 但仍要求它指向作坊自己的面板，而不是又塞回募兵里。 */
-  check('#14 工匠作坊入口为「器械与工事」', (function () {
-    return /gongjiangzuofang: \{ label: "🛠️ 器械与工事", act: "open-workshop"/.test(uS16)
+  check('#14 工匠作坊入口为「器械 · 箭塔」', (function () {
+    return /gongjiangzuofang: \{ label: "🛠️ 器械 · 箭塔", act: "open-workshop"/.test(uS16)
       && /ui\.openWorkshop = function/.test(uS16);
   })());
 
@@ -5087,7 +5087,7 @@
   check('行军视图含伤兵营', /woundedBlock\('view'\)/.test(uS34));
   check('行军队列弹窗含伤兵营', /woundedBlock\('marches'\)/.test(uS34));
   check('校场入口不再指向无效面板（原 open-panel/view=map 无对应分支）',
-    /xiaochang: \{ label: "🏹 校场 · 出征与伤兵", act: "open-xiaochang" \}/.test(uS34)
+    /xiaochang: \{ label: "🏹 出征 · 伤兵", act: "open-xiaochang" \}/.test(uS34)
     && !/act: "open-panel", view: "map"/.test(uS34));
   check('open-xiaochang 动作已注册',
     /case 'open-xiaochang': ui\.openXiaochang\(\);/.test(mS34) && /case 'xiaochang-exp':/.test(mS34));
@@ -5562,7 +5562,7 @@
 
   /* ---- 需求 4/5：征收入官府 ---- */
   console.log('  --- ④⑤ 官府征收与特产 ---');
-  check('官府建筑有征收入口', /guanfu: \{ label: "💰 征收", act: "open-guanfu" \}/.test(uS37)
+  check('官府入口覆盖面板全部内容（v68：不再叫「征收」）', /guanfu: \{ label: "🏯 官府事务", act: "open-guanfu" \}/.test(uS37)
     && /case 'open-guanfu'/.test(mS37));
   check('征收面板列出 5 大资源或州特产', /ui\.openGuanfu = function/.test(uS37)
     && /GAME\.levyPlan/.test(uS37));
@@ -9791,9 +9791,9 @@ console.log('\n===== 47. v62 工匠作坊造箭塔 =====');
   })());
 
   console.log('  --- 界面接线 ---');
-  check('结构：作坊入口指向"器械与工事"，建造动作已接线', (function () {
+  check('结构：作坊入口指向"器械 · 箭塔"，建造动作已接线', (function () {
     var code = stripComment(uS);
-    return /gongjiangzuofang: \{ label: "🛠️ 器械与工事", act: "open-workshop"/.test(code)
+    return /gongjiangzuofang: \{ label: "🛠️ 器械 · 箭塔", act: "open-workshop"/.test(code)
       && /ui\.openWorkshop = function/.test(code)
       && /case 'open-workshop'/.test(mS) && /case 'tower-build'/.test(mS)
       && /GAME\.buildTowers\(el\.dataset\.city/.test(mS);
@@ -11682,6 +11682,66 @@ console.log('\n===== 47. v62 工匠作坊造箭塔 =====');
     } finally {
       G.state = keep55;
     }
+  })();
+
+  /* ============================================================
+   * 56. v68：弹窗统一规范（老板「点击建筑出来的弹窗……尽量统一」）
+   * ------------------------------------------------------------
+   * 考察结论与规范见 docs/设计规范.md §11。本节守卫易回退点：
+   *   · 建筑详情弹窗（城内/城外/城墙）统一骨架与底栏
+   *   · 底栏三格：危险（左）· 关闭（中）· 管理（右）
+   *   · 升级费用与按钮同行（op-row-between）
+   *   · 页脚样式统一（bldg-foot 与 m-foot 同规格，不用 dashed）
+   *   · 操作命名：名字覆盖面板全部内容；多功能面板「用途A · 用途B」
+   * ============================================================ */
+  console.log('\n--- 第 56 节：弹窗统一规范 ---');
+  (function () {
+    var fs56 = function (f) { return require('fs').readFileSync(require('path').join(__dirname, 'js', f + '.js'), 'utf8'); };
+    var u56 = stripComment(fs56('ui'));
+    var h56 = require('fs').readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+
+    check('建筑详情弹窗统一用 bldg-foot 底栏（城内×2 / 城外×2 / 城墙×2）',
+      (u56.match(/class="bldg-foot"/g) || []).length >= 6,
+      (u56.match(/class="bldg-foot"/g) || []).length + ' 处');
+
+    check('★ 底栏三格：拆毁（左）· 关闭（中）· 移动（右）', (function () {
+      /* 首个 bldg-foot 是"施工中"的底栏（只有取消+关闭）——
+         取**含拆毁按钮**的那段（城内建筑分支）来验三格摆位 */
+      var i = u56.indexOf('data-action="demolish-ask" data-kind="city');
+      if (i < 0) return false;
+      var a = u56.lastIndexOf('class="bldg-foot"', i);
+      if (a < 0) return false;
+      var seg = u56.slice(a, i + 900);
+      return seg.indexOf('close-modal') >= 0 && seg.indexOf('move-ask') >= 0
+        && seg.indexOf('demolish-ask') < seg.indexOf('close-modal')
+        && seg.indexOf('close-modal') < seg.indexOf('move-ask');
+    })());
+
+    check('★ 升级行统一：费用与按钮同行（op-row-between 至少三处）',
+      (u56.match(/op-row op-row-between/g) || []).length >= 3,
+      (u56.match(/op-row op-row-between/g) || []).length + ' 处');
+
+    check('页脚样式统一：bldg-foot 与 m-foot 同规格（实线，不再 dashed）',
+      /\.bldg-foot \{[^}]*solid/.test(h56) && !/\.bldg-foot \{[^}]*dashed/.test(h56));
+
+    check('★ 操作命名：官府入口覆盖面板全部内容（不再叫「征收」）', (function () {
+      var m = u56.match(/guanfu: \{ label: "([^"]+)"/);
+      return !!m && m[1].indexOf('征收') < 0 && m[1].indexOf('官府') >= 0;
+    })());
+
+    check('操作命名：多功能面板用「用途A · 用途B」（军营 / 作坊）',
+      /junying: \{ label: "[^"]+ · [^"]+"/.test(u56)
+      && /gongjiangzuofang: \{ label: "[^"]+ · [^"]+"/.test(u56));
+
+    check('施工中弹窗与正常态同构（图标 + 名称 · Lv→Lv + 描述）',
+      /icons\.forBuilding\(isUpgrade \? cell\.build\.id : cell\.pending\.buildId\)/.test(u56)
+      && /升级中 · 后台施工/.test(u56));
+
+    check('e2e 依赖的文案保留（不影响下方操作 / 目标等级）',
+      /不影响下方操作/.test(u56) && /→ Lv' \+ cell\.pending\.targetLevel/.test(u56));
+
+    check('纯关窗语义不叫「取消」（城外空地已统一为「关闭」）',
+      /选择资源建筑[\s\S]{0,500}m-foot[\s\S]{0,120}关闭/.test(u56));
   })();
 
   console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');
