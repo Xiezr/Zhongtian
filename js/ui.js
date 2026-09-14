@@ -877,6 +877,26 @@
           '（每 ' + need + ' 小时各兵种逃 ' + Math.round((DATA.STARVE.mutinyPct || 0.2) * 100) + '%）。<br>' +
           '宜速运粮入城、增产粮草，或裁减军伍。</div>';
       })();
+      /* 定期来袭警示（第 2 期 · 防守）—— 与断粮警示**同一个 `.note-warn`**，
+         不新增 CSS、不新增板块，只在「已有排期」时渲染。
+         项目规矩：新机制上线，它的输出值要能被看见（否则玩家永远不知道
+         自己在被谁打、还有多久、守不守得住）。
+         ⚠️ 这里是 `GAME.invasionDueAt` 与 `GAME.defensePowerOf` 的**界面消费点**，
+            删掉这段 audit.js 会报死函数。 */
+      (function () {
+        if (!GAME.invasionDueAt || !GAME.defensePowerOf) return '';
+        var due = GAME.invasionDueAt(c);
+        if (!due) return '';
+        var now = (s.world && s.world.elapsed) || 0;
+        var leftH = Math.max(0, Math.round((due - now) / 3600));
+        var I = DATA.INVASION || {};
+        var bc = Math.min(I.warnBeaconMax || 3, GAME.buildingLevel(c, 'fenghuotai') || 0);
+        return '<div class="note-warn" style="margin-top:6px;text-align:left;">🔥 <b>烽火</b>，约 ' +
+          leftH + ' 游戏时后有兵马犯境。<br>本城守备力 <b>' +
+          U.fmt(GAME.defensePowerOf(c)) + '</b>' +
+          (bc > 0 ? '（烽火台 Lv' + bc + ' 提前预警）' : '（无烽火台，预警偏迟）') +
+          '　宜收拢兵力、修葺城墙。</div>';
+      })();
     box.innerHTML = html;
   };
 

@@ -570,6 +570,7 @@ ctx.drawImage(c, -s / 2, -s / 2, s, s);
 | 缺粮 | `mutinyOf`（哗变 20%/24h）· `starveStep`（在线离线共用） |
 | 城墙/施工 | `wallPendingOf`（城墙是否在队列） |
 | **v67 新增** | `cityRefsOf(cityId)`（**城池伴随数据登记表**）· `abandonCity(cityId)`（放弃城池单出口） |
+| **第 2 期新增（定期来袭）** | `invasionTick(gameHours)`（时间轮推进，**在线 tickOff 与离线 simulateBulk 共用**）· `invasionDueAt(city)` · `invasionIntervalSec()` · `armyPowerOf(city)`（单兵战力复用 `story.troopPower`）· `defensePowerOf(city)`（**城防的唯一战斗消费点**）· `invasionPowerOf(city,cycle)` · `invasionResolve(city)` · `invasionRoll(seed)`（可复现随机） |
 
 ⚠️ **不要写"出口包装"**（`genAtkVal(g) = genAttrs(g).atkVal`）—— audit 会报死函数。要出口就出**原子**。
 

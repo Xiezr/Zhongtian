@@ -990,6 +990,10 @@
   /* 聚合补算：不做逐秒循环，一次算完，避免长时间离线卡死 */
   GAME.simulateBulk = function (secReal) {
     var s = GAME.state, ts = GAME.timeScale();
+
+    /* 定期来袭：离线也要照打（**与在线同一个 invasionTick**）——
+       长时间离线会一次跨过多个周期，函数内部用 while 逐个结算。 */
+    GAME.invasionTick(ts / 3600 * secReal);
     /* 资源与耗粮：**逐城**结算（v60 · 需求 4，与在线 tickOnce 同一口径） */
     var offlineFeedTotal = 0, offLostTotal = 0;
     s.cities.forEach(function (ct) {
@@ -1534,6 +1538,9 @@
     var ts = GAME.timeScale();
     var dtReal = 1; // 现实秒
 
+    /* 定期来袭（第 2 期）—— 唯一出口 GAME.invasionTick，离线补算走同一个函数 */
+    GAME.invasionTick(GAME.timeScale() / 3600);
+
     /* 1) 资源产出：**逐城结算**（v60 · 需求 4）——
        每座城把自己的产量加进自己的库存、按自己的仓容封顶。
        改前是"全境产量加进一份共享库存"，于是切城时资源栏一个数字都不动。 */
@@ -1957,6 +1964,174 @@
     var prod = c && GAME.cityProdPerSec ? (GAME.cityProdPerSec(c).grain || 0) : 0;
     var R = GAME.res(c);
     return (R.grain || 0) <= 0 && GAME.foodPerSecOf(c) > prod;
+  };
+
+  /* ============================================================
+   * 定期来袭（第 2 期 · 防守）—— 全部唯一出口
+   * ------------------------------------------------------------
+   *   invasionTick(gameHours)   时间轮推进（**在线 tickOnce 与离线 simulateBulk 共用**）
+   *   invasionDueAt(city)       下次来袭时间（游戏秒；供界面读）
+   *   armyPowerOf(city)         本城兵力战力（单兵战力复用 story.troopPower，不另造出口）
+   *   defensePowerOf(city)      本城守备力 —— **城防在这里被真正消费**
+   *   invasionPowerOf(city)     本次来袭规模
+   *   invasionResolve(city)     结算
+   * 状态存在 `city.inv = { nextAt, warned }` —— 跨时间且会被修改，**必须入存档**。
+   * ============================================================ */
+
+  /* 资源中文名走 `GAME.resName`（domain.js 里已有，**唯一出口**）。
+     ⚠️ 这里不要再写一份 —— 同一个名字的定义只允许一处，
+        重复会被 audit 拦下（pre-commit 门禁会直接拒绝提交）。 */
+
+  /* 可复现随机：同一个 seed 永远同一个数（否则断言没法稳定，破坏测试也没法翻转） */
+  GAME.invasionRoll = function (seed) {
+    var h = 2166136261 >>> 0;
+    var str = String(seed);
+    for (var i = 0; i < str.length; i++) {
+      h ^= str.charCodeAt(i);
+      h = Math.imul(h, 16777619) >>> 0;
+    }
+    return (h % 100000) / 100000;
+  };
+
+  /* 本城兵力战力 —— 单兵战力复用 story.troopPower（**不另造第二个出口**） */
+  GAME.armyPowerOf = function (city) {
+    var tp = (GAME.story && GAME.story.troopPower) ? GAME.story.troopPower : null;
+    var total = 0;
+    var army = (city && city.army) || {};
+    for (var k in army) total += (tp ? tp(k) : 1) * (army[k] || 0);
+    return Math.round(total);
+  };
+
+  /* 本城守备力 = 兵力战力 ×（1 + 城防/defDivisor）
+     ⚠️ 这一行就是"让城墙/箭塔真正生效"的接口：`GAME.cityDefense` 已含
+     城墙等级 ×20、箭塔 homeDef、守将智谋、羁绊守御、满级专精 +25%。 */
+  GAME.defensePowerOf = function (city) {
+    if (!city) return 0;
+    var div = (DATA.INVASION && DATA.INVASION.defDivisor) || 480;
+    var wallPct = (GAME.cityDefense(city) || 0) / div;
+    return Math.round(GAME.armyPowerOf(city) * (1 + wallPct));
+  };
+
+  /* 来袭规模 = 玩家全境战力 × ratio（按城与周期取可复现的 ratio） */
+  GAME.invasionPowerOf = function (city, cycle) {
+    var s = GAME.state, I = DATA.INVASION || {};
+    var total = 0;
+    (s.cities || []).forEach(function (c) { total += GAME.armyPowerOf(c); });
+    var r0 = GAME.invasionRoll('inv|' + (city && city.id) + '|' + (cycle == null ? 0 : cycle));
+    var lo = (I.ratioMin == null ? 0.28 : I.ratioMin), hi = (I.ratioMax == null ? 0.45 : I.ratioMax);
+    return Math.max(1, Math.round(total * (lo + r0 * (hi - lo))));
+  };
+
+  /* 下次来袭时间（游戏秒）。首次进入解锁条件时排期，之后按间隔滚动。 */
+  GAME.invasionDueAt = function (city) {
+    var I = DATA.INVASION || {};
+    if (!city) return 0;
+    var s = GAME.state;
+    var need = I.unlockCities == null ? 2 : I.unlockCities;
+    if (!I.enabled || s.settings.invasion === false) return 0;
+    if ((s.cities || []).length < need) return 0;
+    if (!city.inv) return 0;
+    return city.inv.nextAt || 0;
+  };
+
+  /* 间隔（游戏秒）：城越多越紧，但不低于 minDays */
+  GAME.invasionIntervalSec = function () {
+    var I = DATA.INVASION || {};
+    var s = GAME.state;
+    var n = (s.cities || []).length;
+    var days = (I.baseDays || 4) - Math.max(0, n - 1) * (I.tightenPerCity || 0);
+    days = Math.max(I.minDays || 2, days);
+    return Math.round(days * 86400);
+  };
+
+  /* 结算：按 攻/守 比值算战损。返回明细供日志与断言读。 */
+  GAME.invasionResolve = function (city) {
+    var I = DATA.INVASION || {};
+    var now = (GAME.state.world && GAME.state.world.elapsed) || 0;
+    var cycle = Math.floor(now / 86400);
+    var atk = GAME.invasionPowerOf(city, cycle);
+    var def = GAME.defensePowerOf(city);
+    /* ratio ∈ (0,1)：越接近 0 说明守方越强 */
+    var ratio = atk / (atk + def || 1);
+    var held = ratio <= 0.5;
+    /* ⚠️ severity 的分支必须**与 out 同源**：先前把 severity 先写进 out、
+       再在下面按 held 重算，导致返回明细永远是被破口径（守住时恒 0），
+       而实际扣损用的是重算值 —— 返回值和真实行为对不上。
+       （这个缺陷是 smoke 第 53 节那条 ★ 断言抓出来的，不是看出来的。） */
+    var severity = held
+      ? ratio * 0.35                                  // 守住：也折损，但不是零代价（否则"堆兵"成无脑解）
+      : Math.max(0, (ratio - 0.5) * 2);               // 被破：ratio 刚过 0.5 时从 0 起
+    var L = I.loss || {};
+    var out = { atk: atk, def: def, ratio: ratio, held: held, severity: severity,
+      resLost: {}, troopsLost: 0, wallDrop: 0 };
+
+    var R = GAME.res(city);
+    for (var k in { grain: 1, wood: 1, stone: 1, iron: 1, gold: 1 }) {
+      var pct = severity * (L.resPct || 0.15);
+      var lost = Math.floor((R[k] || 0) * pct);
+      if (lost > 0) { R[k] -= lost; out.resLost[k] = lost; }
+    }
+    /* 损兵：按各兵种等比减少，向下取整（不出现负数） */
+    var tpct = severity * (L.troopPct || 0.10);
+    for (var t in (city.army || {})) {
+      var lose = Math.floor((city.army[t] || 0) * tpct);
+      if (lose > 0) { city.army[t] -= lose; out.troopsLost += lose; }
+    }
+    /* 城墙掉级：只有被破（severity 高）才掉，且不丢城 */
+    if (!held && severity > 0.5 && (L.wallDrop || 0) > 0) {
+      var wl = GAME.buildingLevel(city, 'chengqiang') || 0;
+      if (wl > 0) {
+        city.wallLv = wl - (L.wallDrop || 1);
+        out.wallDrop = L.wallDrop || 1;
+      }
+    }
+    var repDrop = Math.round(severity * (L.repDrop || 0));
+    if (repDrop > 0) { GAME.state.rep = Math.max(0, (GAME.state.rep || 0) - repDrop); out.repDrop = repDrop; }
+    return out;
+  };
+
+  /* 时间轮推进 —— **在线 tickOnce 与离线 simulateBulk 共用这一处**。
+     gameHours：本次推进经过的游戏小时数（离线补算会传一大段）。 */
+  GAME.invasionTick = function (gameHours) {
+    var s = GAME.state, I = DATA.INVASION || {};
+    if (!s || !I.enabled) return 0;
+    if (s.settings && s.settings.invasion === false) return 0;
+    var need = I.unlockCities == null ? 2 : I.unlockCities;
+    if ((s.cities || []).length < need) return 0;
+    var now = (s.world && s.world.elapsed) || 0;
+    var fired = 0;
+
+    s.cities.forEach(function (city) {
+      if (!city.inv) city.inv = { nextAt: now + GAME.invasionIntervalSec(), warned: false };
+      /* 离线可能一次跨过多个周期 —— 用 while 逐个结算，不许只判一次 */
+      var guard = 0;
+      while (city.inv.nextAt <= now && guard++ < 50) {
+        var detail = GAME.invasionResolve(city);
+        fired++;
+        var src = (I.sources || ['敌军'])[Math.floor(GAME.invasionRoll('src|' + city.id + '|' + city.inv.nextAt) * (I.sources || ['敌军']).length)];
+        var head = detail.held
+          ? '🛡 ' + city.name + ' 击退' + src + '（守备 ' + U.fmt(detail.def) + ' vs 来犯 ' + U.fmt(detail.atk) + '）'
+          : '⚔ ' + city.name + ' 被' + src + '攻破城门（守备 ' + U.fmt(detail.def) + ' vs 来犯 ' + U.fmt(detail.atk) + '）';
+        var bits = [];
+        for (var rk in detail.resLost) bits.push(GAME.resName(rk) + ' −' + U.fmt(detail.resLost[rk]));
+        if (detail.troopsLost) bits.push('损兵 ' + U.fmt(detail.troopsLost));
+        if (detail.wallDrop) bits.push('城墙 −' + detail.wallDrop + ' 级');
+        if (detail.repDrop) bits.push('声望 −' + detail.repDrop);
+        GAME.log(head + (bits.length ? '：' + bits.join('、') : ''));
+        city.inv.nextAt += GAME.invasionIntervalSec();
+        city.inv.warned = false;
+      }
+      /* 预警：到点前 warnHours（有烽火台再加）先报一次 */
+      var bc = Math.min(I.warnBeaconMax || 3, GAME.buildingLevel(city, 'fenghuotai') || 0);
+      var warnSec = ((I.warnHours || 12) + bc * (I.beaconBonusHours || 12)) * 3600;
+      if (!city.inv.warned && city.inv.nextAt - now <= warnSec && city.inv.nextAt > now) {
+        city.inv.warned = true;
+        var hrs = Math.max(1, Math.round((city.inv.nextAt - now) / 3600));
+        GAME.log('🔥 烽火：' + city.name + ' 约 ' + hrs + ' 游戏时后将有兵马犯境'
+          + (bc > 0 ? '（烽火台 Lv' + bc + ' 提前预警）' : '（无烽火台，预警较迟）'));
+      }
+    });
+    return fired;
   };
 
   /* 建造完成 */
