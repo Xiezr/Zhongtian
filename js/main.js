@@ -1373,6 +1373,14 @@
           GAME._lastBuildCount = bc;
           if (ui.view === 'city' || ui.view === 'ext') ui.renderView(ui.view);
         }
+        /* v69（老板「已完成的任务自动浮动到最上方」）：可领取数量一变，
+           正开着任务面板就立即重绘 —— 让"达标即置顶"是真·自动，
+           口径与导航徽标（syncBadges 每秒读同一汇总）保持一致。 */
+        var qr = GAME.questSummary().ready;
+        if (GAME._lastQuestReady !== qr) {
+          GAME._lastQuestReady = qr;
+          if (ui.view === 'tasks') ui.renderView('tasks');
+        }
         ui.renderLog();
         ui.renderSide();
         ui.syncHeader();
@@ -1391,6 +1399,7 @@
   function boot() {
     bindEvents();
     GAME._lastBuildCount = 0;
+    GAME._lastQuestReady = 0;   /* v69：可领取数变化时重绘任务面板的基准值 */
     var demo = /[?&]demo=1/.test(location.search);
     if (demo) {
       GAME._demo = true;

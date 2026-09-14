@@ -11869,6 +11869,10 @@ console.log('\n===== 47. v62 工匠作坊造箭塔 =====');
 
       check('帮助文案同步（置顶 + 直接领取入说明）',
         /已完成的任务自动置顶/.test(u57) && /同时在手上限/.test(u57));
+
+      check('主循环挂了「可领取数变化→重绘任务面板」的钩子（真·自动）',
+        /GAME\._lastQuestReady/.test(m57) && /ui\.view === 'tasks'/.test(m57)
+        && /GAME\._lastQuestReady = 0;/.test(m57));
     });
   })();
 

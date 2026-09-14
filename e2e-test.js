@@ -1392,6 +1392,25 @@ async function runTests(dom, URL) {
     }
   }
 
+  /* ⑥.6 「达标即置顶」是真·自动：改达标后**不碰视图**，等主循环自己浮上去 */
+  {
+    let rq58 = null;
+    for (const e58 of G.state.quests.pool) {
+      const d58 = G.randomQuestDef(e58.id);
+      if (d58 && !d58.abs && !G.randQuestReady(e58)) { rq58 = e58; break; }
+    }
+    check('夹具：还有一条未达标的随机任务（供实时置顶验证）', !!rq58);
+    if (rq58) {
+      G.ui.setView('tasks');
+      await sleep(80);
+      const had58 = !!vc.querySelector('[data-action="claim-rand-quest"][data-q="' + rq58.id + '"]');
+      rq58.base = -1e9;                    /* 达标 —— 不切视图、不手动重绘 */
+      await sleep(1500);                   /* 等主循环（1s 间隔）自己发现 */
+      const now58 = !!vc.querySelector('[data-action="claim-rand-quest"][data-q="' + rq58.id + '"]');
+      check('★ 达标后无需手动刷新，主循环自动把它浮上去', !had58 && now58);
+    }
+  }
+
   /* ⑦ 消息流（v16：已整合进公文，且写入存档） */
   for (let i = 0; i < 20; i++) G.log('验收提示 ' + i);
   G.ui._msgCh = 'sys';

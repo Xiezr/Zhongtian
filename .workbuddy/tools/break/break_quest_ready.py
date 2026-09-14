@@ -4,6 +4,7 @@
   A. 顶块不再渲染（return 里摘掉 readyBlock）→ "达标任务自动置顶"必红
   B. 行内「领取」按钮去掉 data-q（点了也领不到）→ "顶块每行右侧都有"必红
   C. 已达标项不再从原区块排除（重复占位）→ "不再在原区块重复出现"必红
+  D. 主循环钩子摘除（退回手动刷新）→ "主循环挂了…钩子"必红
 
 用法：python break_quest_ready.py
 """
@@ -18,6 +19,7 @@ ROOT = r'E:\Deepseekdb'
 J = lambda *a: os.path.join(ROOT, *a)
 SMOKE = J('smoke-test.js')
 UI = J('js', 'ui.js')
+MAIN = J('js', 'main.js')
 NODE = r'C:\Users\18811\.workbuddy\binaries\node\versions\22.22.2-3\node.exe'
 NODE_PATH = r'C:\Users\18811\.workbuddy\binaries\node\workspace\node_modules'
 
@@ -25,6 +27,7 @@ MUST_HAVE = [
     '达标任务自动置顶',
     '顶块每行右侧都有',
     '不再在原区块重复出现',
+    '主循环挂了',
 ]
 
 INJECTIONS = [
@@ -45,6 +48,16 @@ INJECTIONS = [
      '    var randWait = randItems.filter(notReady);',
      '    var randWait = randItems;   /* BREAKTEST */',
      '不再在原区块重复出现'),
+
+    ('D. 主循环不再挂「可领取数→重绘任务面板」钩子（退回手动刷新）',
+     MAIN,
+     "        var qr = GAME.questSummary().ready;\n"
+     "        if (GAME._lastQuestReady !== qr) {\n"
+     "          GAME._lastQuestReady = qr;\n"
+     "          if (ui.view === 'tasks') ui.renderView('tasks');\n"
+     "        }\n",
+     "        /* BREAKTEST: 主循环钩子摘除 */\n",
+     '主循环挂了'),
 ]
 
 
