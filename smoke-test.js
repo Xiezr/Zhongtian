@@ -2795,7 +2795,13 @@
   })());
   check('page 动作已注册', /case 'page': ui\.setPage/.test(mainSrc26));
   check('任务面板接入分页（成长 / 已完成）', /ui\.pageOf\('growth'/.test(uiS) && /ui\.pageOf\('done'/.test(uiS));
-  check('任务卡片按页切片（不再一次铺满 50 条）', /undone\.slice\(gp\.from, gp\.to\)/.test(uiS));
+  /* v69：「可领取」浮到顶块后，成长区按**剩余项**分页 ——
+     分页口径必须三处同源（pageOf / slice / pagerHTML 都吃 growthWait），
+     否则页码数与实际行数会对不上。 */
+  check('任务卡片按页切片（不再一次铺满 50 条）',
+    /growthWait\.slice\(gp\.from, gp\.to\)/.test(uiS)
+    && /ui\.pageOf\('growth', growthWait\.length, 10\)/.test(uiS)
+    && /ui\.pagerHTML\('growth', growthWait\.length, 10\)/.test(uiS));
 
   /* --- ⑤ 忠诚：只降不涨的旧机制已移除 --- */
   console.log('  --- 忠诚机制 ---');
@@ -11742,6 +11748,128 @@ console.log('\n===== 47. v62 工匠作坊造箭塔 =====');
 
     check('纯关窗语义不叫「取消」（城外空地已统一为「关闭」）',
       /选择资源建筑[\s\S]{0,500}m-foot[\s\S]{0,120}关闭/.test(u56));
+  })();
+
+  console.log('\n--- 第 57 节：可领取任务置顶 + 行内一键领取（v69） ---');
+  (function () {
+    var fs57 = function (f) { return require('fs').readFileSync(require('path').join(__dirname, 'js', f + '.js'), 'utf8'); };
+    var u57 = stripComment(fs57('ui'));
+    var m57 = stripComment(fs57('main'));
+    var h57 = require('fs').readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+
+    /* 本地造档 helper —— 第 49 节的 withState 定义在**它自己的 IIFE 内**，跨节不可见
+       （与 v68 的 govMax 同一类坑：段内 helper 不能跨段落作用域使用） */
+    var withState57 = function (name, fn) {
+      var keep = G.state;
+      try {
+        var st57 = G.newGame({ name: name });
+        G.state = st57;
+        if (G.map.generate) G.map.generate();
+        return fn(st57);
+      } finally { G.state = keep; }
+    };
+    withState57('任务置顶', function (st) {
+      G.ensureDailyQuests(true);
+      var pool = st.quests.pool;
+
+      /* 夹具：找一条非绝对值的随机任务（可用 base 打桩达标） */
+      var rq = null, rdef = null;
+      for (var i = 0; i < pool.length; i++) {
+        var d = G.randomQuestDef(pool[i].id);
+        if (d && !d.abs) { rq = pool[i]; rdef = d; break; }
+      }
+      check('夹具就绪：手上有一条非绝对值随机任务', !!rq, pool.length + ' 项在手');
+
+      /* 指标打桩：g01 民房 3 座（恰好达标）；g02 民房 6 座（未达标）；该随机任务恰好达标 */
+      var real = G.questMetric;
+      G.questMetric = function (m, sub) {
+        if (m === 'bldCount' && sub === 'minfang') return 3;
+        if (rdef && m === rdef.metric && (rdef.sub == null || sub === rdef.sub)) return rdef.goal + (rq.base || 0);
+        return 0;
+      };
+      try {
+        var html = G.ui.tasksHTML();
+        var iReady = html.indexOf('✅ 可领取奖励');
+        var iDone = html.indexOf('已完成</span>');
+        var iRand = html.indexOf('随机任务</span>');
+        var iGrowth = html.indexOf('成长任务 · 进行中');
+
+        check('★ 达标任务自动置顶（可领取块在「已完成」与各区块之上）',
+          iReady > 0 && iReady < iDone && iDone < iRand && iRand < iGrowth,
+          'ready@' + iReady + ' / done@' + iDone + ' / rand@' + iRand + ' / growth@' + iGrowth);
+
+        check('★ 顶块装的是达标项（g01 立锥之地 + 随机 ' + (rdef ? rdef.title : '—') + '）', (function () {
+          var blk = html.slice(iReady, iDone);
+          return blk.indexOf('立锥之地') >= 0 && (!rdef || blk.indexOf(rdef.title) >= 0)
+            && blk.indexOf('data-action="quest-detail"') >= 0;
+        })());
+
+        check('★ 顶块每行右侧都有「领取」按钮（按 kind 分派两个既有 action）',
+          html.indexOf('data-action="claim-quest" data-q="g01"') >= 0
+          && (!rq || html.indexOf('data-action="claim-rand-quest" data-q="' + rq.id + '"') >= 0)
+          && /<span class="q-row-act"><button class="btn gold sm"/.test(html));
+
+        check('★ 浮上去的项不再在原区块重复出现（一处占位）',
+          (html.match(/data-id="g01"/g) || []).length === 1
+          && (!rq || (html.match(new RegExp('data-id="' + rq.id + '"', 'g')) || []).length === 1));
+
+        check('未达标项不带领取按钮（g02 民居渐稠 无 data-q）',
+          html.indexOf('民居渐稠') >= 0 && html.indexOf('data-q="g02"') < 0);
+
+        check('顶块按钮数 == 汇总口径（单一口径，防两处算法漂移）', (function () {
+          var n = (html.match(/data-action="claim-(?:rand-)?quest" data-q=/g) || []).length;
+          return n === G.questSummary().ready;
+        })(), (html.match(/data-action="claim-(?:rand-)?quest" data-q=/g) || []).length + ' 按钮 / 汇总 ' + G.questSummary().ready + ' 项');
+
+        /* ---- 真领取：走业务函数（与按钮同一条链） ---- */
+        var r1 = rq ? G.claimRandomQuest(rq.id) : { ok: false };
+        check('★ 领取随机任务（离池 + 入流水）',
+          r1.ok === true
+          && !G.state.quests.pool.some(function (e) { return e.id === rq.id; })
+          && !!(G.state.quests.log[0] && G.state.quests.log[0].id === rq.id));
+
+        var r2 = G.claimQuest('g01');
+        check('★ 领取成长任务（标记已领取）', r2.ok === true && !!G.state.quests.done.g01);
+
+        var html2 = G.ui.tasksHTML();
+        check('★ 领取后自动从顶块与列表消失',
+          html2.indexOf('data-q="g01"') < 0
+          && html2.indexOf('data-kind="growth" data-id="g01"') < 0
+          && (!rq || (html2.indexOf('data-q="' + rq.id + '"') < 0
+            && html2.indexOf('data-kind="random" data-id="' + rq.id + '"') < 0)));
+
+        /* ---- 全部达标：原区块不重复渲染、空态指路顶块 ---- */
+        G.questMetric = function () { return 1e9; };
+        var html3 = G.ui.tasksHTML();
+        check('★ 全部达标时：原区块不重复行、空态指向顶块', (function () {
+          var n = (html3.match(/data-action="claim-(?:rand-)?quest" data-q=/g) || []).length;
+          return /本批 \d+ 项均已可领取/.test(html3)
+            && html3.indexOf('进行中的任务均已可领取') >= 0
+            && n === G.questSummary().ready;
+        })());
+
+        G.questMetric = function () { return 0; };
+        var html4 = G.ui.tasksHTML();
+        check('★ 无可领取时顶块整块隐藏（不留空壳）',
+          html4.indexOf('✅ 可领取奖励') < 0 && html4.indexOf('data-q=') < 0);
+      } finally {
+        G.questMetric = real;
+      }
+
+      /* ---- 源码层守卫 ---- */
+      check('顶块由唯一出口产出（readyItems 一处拼接：随机在前、成长在后）',
+        /var readyItems = randItems\.filter\(function \(o\) \{ return o\.ready; \}\)[\s\S]{0,80}\.concat\(growthItems\.filter/.test(u57));
+
+      check('行内按钮复用既有 action（不新造；main.js 两个 case 都在）',
+        /o\.kind === 'random' \? 'claim-rand-quest' : 'claim-quest'/.test(u57)
+        && /case 'claim-rand-quest'/.test(m57) && /case 'claim-quest'/.test(m57));
+
+      check('CSS：按钮右推 + 置顶标题着色',
+        /\.q-row-act \{[^}]*margin-left: auto/.test(h57) && /\.q-sec-ready \.q-sec-t/.test(h57));
+
+      check('帮助文案同步（置顶 + 直接领取入说明）',
+        /已完成的任务自动置顶/.test(u57) && /同时在手上限/.test(u57));
+    });
   })();
 
   console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');

@@ -1349,6 +1349,49 @@ async function runTests(dom, URL) {
   click(vc.querySelector('[data-action="toggle-done-quests"]'));
   await sleep(60);
 
+  /* ⑥.5 可领取任务置顶 + 行内一键领取（v69 老板） */
+  {
+    let rq57 = null, rdef57 = null;
+    for (const e57 of G.state.quests.pool) {          /* 首选：非绝对值且尚未达标 */
+      const d57 = G.randomQuestDef(e57.id);
+      if (d57 && !d57.abs && !G.randQuestReady(e57)) { rq57 = e57; rdef57 = d57; break; }
+    }
+    for (const e57 of G.state.quests.pool) {          /* 兜底：任意非绝对值 */
+      if (rq57) break;
+      const d57 = G.randomQuestDef(e57.id);
+      if (d57 && !d57.abs) { rq57 = e57; rdef57 = d57; }
+    }
+    check('夹具：手上有一条可打桩的随机任务', !!rq57, rq57 ? rq57.id : '（无）');
+    if (rq57) {
+      rq57.base = -1e9;                       /* 直接达标（base 只对增量型有意义） */
+      G.ui.setView('tasks');
+      await sleep(90);
+      /* 按 **rq57 自己的 id** 取按钮 —— 不取"第一个"：
+         此处已是发育过的档，别的任务可能本来就达标，它们的按钮会排在它前面，
+         "取第一个"会让断言随卡池随机波动（实测同一份代码两次运行一红一绿）。 */
+      const btn57 = vc.querySelector('[data-action="claim-rand-quest"][data-q="' + rq57.id + '"]');
+      const bib57 = btn57 ? btn57.closest('.q-list') : null;
+      const inTop57 = !!(bib57 && bib57.previousElementSibling
+        && bib57.previousElementSibling.classList.contains('q-sec-ready'));
+      check('★ 达标任务浮到顶块，右侧带「领取」按钮',
+        !!btn57 && inTop57 && btn57.textContent.indexOf('领取') >= 0);
+      if (btn57) {
+        const before57 = G.state.quests.pool.length;
+        const gold57 = G.state.res.gold;
+        click(btn57);
+        await sleep(160);
+        check('★ 点「领取」一步到位（不弹详情窗）',
+          document.querySelector('#modal-root').innerHTML.indexOf('任务背景') < 0);
+        check('★ 领取生效：离池 + 记流水 + 发奖',
+          G.state.quests.pool.length === before57 - 1
+          && G.state.quests.log.some((x) => x.id === rq57.id)
+          && G.state.res.gold >= gold57 + (rdef57.reward.gold || 0));
+        check('★ 领取后按钮随之消失（列表已刷新）',
+          !vc.querySelector('[data-action="claim-rand-quest"][data-q="' + rq57.id + '"]'));
+      }
+    }
+  }
+
   /* ⑦ 消息流（v16：已整合进公文，且写入存档） */
   for (let i = 0; i < 20; i++) G.log('验收提示 ' + i);
   G.ui._msgCh = 'sys';

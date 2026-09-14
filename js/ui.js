@@ -5913,37 +5913,75 @@
     var pool = s.quests.pool || [];
     var cap = (DATA.QUEST_DAILY && DATA.QUEST_DAILY.maxActive) || 5;
 
+    /* 列表行（点名称进详情） */
     var rowHtml = function (o) {
-      return '<div class="q-row' + (o.ready ? ' ready' : '') + '" data-action="quest-detail"'
+      return '<div class="q-row" data-action="quest-detail"'
         + ' data-kind="' + o.kind + '" data-id="' + o.id + '">'
         + '<span class="q-row-n">' + U.escape(o.title) + '</span>'
         + (o.tag ? '<span class="q-tag ' + (o.tagCls || '') + '">' + o.tag + '</span>' : '')
-        + '<span class="q-row-p">' + (o.ready ? '<b>可领取</b>' : (o.cur + ' / ' + o.goal)) + '</span>'
+        + '<span class="q-row-p">' + o.cur + ' / ' + o.goal + '</span>'
         + '</div>';
     };
+    /* v69（老板「已完成的任务自动浮动到最上方，右侧直接添加领取按钮」）：
+       达标任务浮到顶部「可领取奖励」块，行右侧直接挂「领取」——
+       一步领取，不必再进详情；行本身仍可点（想看背景 / 奖励明细照旧）。
+       按钮复用既有 action（claim-quest / claim-rand-quest），不新造出口。 */
+    var readyRowHtml = function (o) {
+      return '<div class="q-row ready" data-action="quest-detail"'
+        + ' data-kind="' + o.kind + '" data-id="' + o.id + '">'
+        + '<span class="q-row-n">' + U.escape(o.title) + '</span>'
+        + (o.tag ? '<span class="q-tag ' + (o.tagCls || '') + '">' + o.tag + '</span>' : '')
+        + '<span class="q-row-act"><button class="btn gold sm" data-action="'
+        + (o.kind === 'random' ? 'claim-rand-quest' : 'claim-quest')
+        + '" data-q="' + o.id + '">领取</button></span>'
+        + '</div>';
+    };
+    var notReady = function (o) { return !o.ready; };
 
     /* ① 随机任务（每日 5 项） */
-    var randRows = pool.map(function (entry) {
+    var randItems = pool.map(function (entry) {
       var def = GAME.randomQuestDef(entry.id);
-      if (!def) return '';
-      return rowHtml({
+      if (!def) return null;
+      return {
         kind: 'random', id: entry.id, title: def.title,
         tag: (DATA.QUEST_TYPES[def.type] || def.type), tagCls: 't-' + def.type,
         cur: GAME.randQuestAmount(entry), goal: def.goal, ready: GAME.randQuestReady(entry),
-      });
-    }).join('');
+      };
+    }).filter(function (o) { return !!o; });
 
-    /* ② 成长任务（进行中 · 分页） */
+    /* ② 成长任务（进行中） */
     var undone = (DATA.QUESTS || []).filter(function (q) { return !GAME.questDone(q); });
-    var gp = ui.pageOf('growth', undone.length, 10);
-    var growthRows = undone.slice(gp.from, gp.to).map(function (q) {
-      return rowHtml({
+    var growthItems = undone.map(function (q) {
+      return {
         kind: 'growth', id: q.id, title: q.title, tag: '成长', tagCls: 't-growth',
         cur: GAME.questAmount(q), goal: GAME.questGoal(q), ready: GAME.questReady(q),
-      });
-    }).join('') || '<div class="q-empty">成长任务已全部完成 —— 功业已成。</div>';
+      };
+    });
 
-    /* ③ 已完成（折叠 · 分页） */
+    /* ③ 可领取（自动置顶 · 唯一出口）：随机在前、成长在后（与下方区块同序）。
+       浮上去的项**不再**在各自区块重复出现 —— 一处占位，杜绝"同一件事看两遍"。 */
+    var readyItems = randItems.filter(function (o) { return o.ready; })
+      .concat(growthItems.filter(function (o) { return o.ready; }));
+    var readyBlock = readyItems.length
+      ? '<div class="q-sec q-sec-ready"><span class="q-sec-t">✅ 可领取奖励</span>'
+        + '<span class="q-sec-n">' + readyItems.length + ' 项</span></div>'
+        + '<div class="q-list">' + readyItems.map(readyRowHtml).join('') + '</div>'
+      : '';
+
+    /* ④ 随机任务（剩余 · 未达标） */
+    var randWait = randItems.filter(notReady);
+    var randRows = randWait.map(rowHtml).join('') || (randItems.length
+      ? '<div class="q-empty">本批 ' + randItems.length + ' 项均已可领取 —— 见上方「可领取奖励」。</div>'
+      : '<div class="q-empty">今日随机任务已全部完成，明日再来。</div>');
+
+    /* ⑤ 成长任务（剩余 · 未达标 · 分页） */
+    var growthWait = growthItems.filter(notReady);
+    var gp = ui.pageOf('growth', growthWait.length, 10);
+    var growthRows = growthWait.slice(gp.from, gp.to).map(rowHtml).join('') || (undone.length
+      ? '<div class="q-empty">进行中的任务均已可领取 —— 见上方「可领取奖励」。</div>'
+      : '<div class="q-empty">成长任务已全部完成 —— 功业已成。</div>');
+
+    /* ⑥ 已完成（折叠 · 分页） */
     var log = s.quests.log || [];
     var doneRows = (DATA.QUESTS || []).filter(function (q) { return GAME.questDone(q); })
       .map(function (q) { return { title: q.title, kind: '成长', cls: 't-growth', right: GAME.rewardString(q.reward) }; })
@@ -5957,11 +5995,14 @@
 
     return '<div class="ui-page">' +
       '<div class="gold-heading">📜 任务' +
-        ui.help('点任务名称查看详情（背景 / 需求 / 奖励 / 放弃）\n随机任务每日 5 项，同时在手上限 ' + cap + ' 项') +
+        ui.help('点任务名称查看详情（背景 / 需求 / 奖励 / 放弃）\n已完成的任务自动置顶，点右侧「领取」直接领奖\n随机任务每日 5 项，同时在手上限 ' + cap + ' 项') +
         '<span style="font-size:var(--fs-body);color:var(--text-dim);font-weight:400;">　可领取 ' + sum.ready + ' 项</span>' +
       '</div>' +
 
-      /* 区块顺序沿用 v16 #9 定下的「已完成 → 随机 → 成长」，
+      /* v69：可领取块在最顶 —— 有奖可领优先于历史记录 */
+      readyBlock +
+
+      /* 区块顺序沿用 v16 #9 定下的「已完成 → 随机 → 成长」（v69 起可领取块置其前），
          只是把每项从"卡片墙"压成一行名称（详情进弹窗）。 */
       '<div class="q-sec"><span class="q-sec-t">已完成</span>' +
         '<span class="q-sec-n">共 ' + doneRows.length + ' 项</span>' +
@@ -5971,13 +6012,13 @@
         : '') +
 
       '<div class="q-sec" style="margin-top:16px;"><span class="q-sec-t">随机任务</span>' +
-        '<span class="q-sec-n">当前 ' + pool.length + ' / ' + cap + ' 项</span>' +
+        '<span class="q-sec-n">待完成 ' + randWait.length + ' 项 · 当前 ' + pool.length + ' / ' + cap + ' 项</span>' +
         '<button class="btn sm" data-action="reroll-all-rand" style="margin-left:auto;">全部换新（' + U.fmt(GAME.randQuestRerollAllCost()) + '金）</button></div>' +
-      '<div class="q-list">' + (randRows || '<div class="q-empty">今日随机任务已全部完成，明日再来。</div>') + '</div>' +
+      '<div class="q-list">' + randRows + '</div>' +
 
       '<div class="q-sec" style="margin-top:16px;"><span class="q-sec-t">成长任务 · 进行中</span>' +
-        '<span class="q-sec-n">' + undone.length + ' 项待完成 / 共 ' + (DATA.QUESTS || []).length + ' 项</span></div>' +
-      '<div class="q-list">' + growthRows + '</div>' + ui.pagerHTML('growth', undone.length, 10) +
+        '<span class="q-sec-n">' + growthWait.length + ' 项待完成 / 共 ' + (DATA.QUESTS || []).length + ' 项</span></div>' +
+      '<div class="q-list">' + growthRows + '</div>' + ui.pagerHTML('growth', growthWait.length, 10) +
       '</div>';
   };
 
