@@ -231,8 +231,8 @@
   var s = G.state;
   check('存档版本 v3', s.version === 3);
   check('初始资源各2万', s.res.grain === 20000 && s.res.wood === 20000);
-  /* v40（需求 2）：老板要「8*6，6 行 8 列」→ 48 格，官府仍占右侧 4 格、余 44 可建 */
-  check('城内 48 格（8 列 × 6 行 · 官府占右侧4格）', s.cities[0].cells.length === 48 && s.cities[0].cells.filter(function (c) { return c.build && c.build.id === 'guanfu'; }).length === 4);
+  /* v40（需求 2）：老板要「8*6，6 行 8 列」→ 48 格；v68 起官府居中 4 格、余 44 可建 */
+  check('城内 48 格（8 列 × 6 行 · 官府居中4格）', s.cities[0].cells.length === 48 && s.cities[0].cells.filter(function (c) { return c.build && c.build.id === 'guanfu'; }).length === 4);
   check('可建格 44', s.cities[0].cells.filter(function (c) { return !c.official; }).length === 44);
   check('初始民房2座', s.cities[0].cells.filter(function (c) { return c.build && c.build.id === 'minfang'; }).length === 2);
   check('外城 12 块地(2田1木1石1铁占5)', extOf(s).length === 12 && extOf(s).filter(function (e) { return e.type === 'farm'; }).length === 2 && extOf(s).filter(function (e) { return e.type; }).length === 5);
@@ -2500,11 +2500,11 @@
     /GAME\.buildWall = function/.test(require('fs').readFileSync(require('path').join(__dirname, 'js', 'domain.js'), 'utf8'))
     && /GAME\.upgradeWall = function/.test(require('fs').readFileSync(require('path').join(__dirname, 'js', 'domain.js'), 'utf8'))
     && /ui\.openWallModal = function/.test(uiS));
-  check('官府 4 格位于城池右侧（col 6-7 × row 2-3）', (function () {
+  check('官府 4 格位于城池正中（col 3-4 × row 2-3，v68 老板）', (function () {
     var c = G.makeCity({ id: 'govpos', name: 'G' });
     var idx = [];
     c.cells.forEach(function (x, i) { if (x.official) idx.push(i); });
-    return idx.length === 4 && idx.every(function (i) { return [22, 23, 30, 31].indexOf(i) >= 0; });
+    return idx.length === 4 && idx.every(function (i) { return [19, 20, 27, 28].indexOf(i) >= 0; });
   })(), (function () {
     var c = G.makeCity({ id: 'govpos2', name: 'G' });
     var idx = []; c.cells.forEach(function (x, i) { if (x.official) idx.push(i); });
@@ -3467,10 +3467,10 @@
   check('#1 城墙可修建/升级/取消', typeof G.buildWall === 'function' && typeof G.upgradeWall === 'function'
     && /ui\.openWallModal = function/.test(uS16) && /cancel-build" data-kind="wall"/.test(uS16));
   check('#1 城墙施工完成写回 wallLv', /wc\.wallLv = q\.targetLevel/.test(stS16));
-  check('#2 官府 4 格位于城池右侧', (function () {
+  check('#2 官府 4 格位于城池正中', (function () {
     var c = G.makeCity({ id: 'w2', name: 'W' });
     var idx = []; c.cells.forEach(function (x, i) { if (x.official) idx.push(i); });
-    return idx.join(',') === '22,23,30,31';   /* v40：8 列坐标系下的右侧中部 */
+    return idx.join(',') === '19,20,27,28';   /* v68：8 列坐标系下的正中央 */
   })());
   check('#3 建筑图标居中于格内（不再悬浮）', (function () {
     var mh = hS16.match(/\.tile-art \{[^}]*\}/);
@@ -8921,21 +8921,22 @@ check('将领界面为 3×2 卡片墙 + 下方档案', (function () {
 
   console.log('  --- 需求 2：城内 8×6 并填满界面 ---');
   check('城池为 8 列 × 6 行', /col: 8, row: 6,/.test(ST));
-  check('官府 4 格落位随坐标系同步（col 6-7 × row 2-3）',
-    /var gfIdx = \[6 \+ 8 \* 2, 7 \+ 8 \* 2, 6 \+ 8 \* 3, 7 \+ 8 \* 3\]/.test(ST));
+  check('官府 4 格落位走唯一出口 GAME.govCellsOf（居中，v68 老板）',
+    /var gfIdx = GAME\.govCellsOf\(city\.col, city\.row\)/.test(ST)
+    && /GAME\.govCellsOf = function/.test(ST));
   check('fitTile 上限 96 → 160（否则 8 列时棋盘只占屏幕三分之二）',
     /opt\.max \|\| 160/.test(UI));
   check('旧档 6×6 → 8×6 扩容迁移存在', /v40 迁移：城内 6×6 → 8×6（48 格）/.test(ST)
     && /c\.cells\.length === 36/.test(ST));
   check('迁移时队列 gridIndex 一起重映射（漏了会让在建项指向错格）',
     /q\.gridIndex = Math\.floor\(q\.gridIndex \/ 6\) \* 8 \+ \(q\.gridIndex % 6\)/.test(ST));
-  check('实测：新开局 48 格 · 官府占右侧 4 格',
+  check('实测：新开局 48 格 · 官府居中 4 格',
     (function () {
       var c = G.makeCity({ id: 'v40chk', name: 'V' });
       var g = [];
       c.cells.forEach(function (x, i) { if (x.official) g.push(i); });
       return c.cells.length === 48 && c.col === 8 && c.row === 6
-        && g.join(',') === '22,23,30,31';
+        && g.join(',') === '19,20,27,28';
     })());
 })();
 
@@ -9453,15 +9454,17 @@ console.log('\n===== 46. v61 满配城池城内布局 =====');
     }
     return true;
   })());
-  check('实测：官府落位与玩家城**同一公式**（8×6 → col 6-7 × row 2-3）', (function () {
+  check('实测：官府落位与玩家城**同一出口**（8×6 → 棋盘正中 [19,20,27,28]）', (function () {
     var plan = G.cityPlanOf(8);
     var gf = plan.cells.map(function (c, i) { return (c.build && c.build.id === 'guanfu') ? i : -1; })
       .filter(function (i) { return i >= 0; });
-    return gf.join(',') === [6 + 8 * 2, 7 + 8 * 2, 6 + 8 * 3, 7 + 8 * 3].join(',');
+    return gf.join(',') === G.govCellsOf(plan.col, plan.row).join(',');
   })());
   check('实测：军营紧贴官府左邻一列（成对、挨着官府）', (function () {
     var plan = G.cityPlanOf(8);
-    var gCol = 8 - 2;   /* 官府左列 */
+    /* v68：官府居中后左列不能再写死 —— 按落位出口实算 */
+    var gfCols = G.govCellsOf(plan.col, plan.row).map(function (i) { return i % plan.col; });
+    var gCol = Math.min.apply(null, gfCols);   /* 官府最左列 */
     var bars = plan.cells.map(function (c, i) { return (c.build && c.build.id === 'junying') ? i : -1; })
       .filter(function (i) { return i >= 0; });
     return bars.length === 2 && bars.every(function (i) { return (i % plan.col) === gCol - 1; });
@@ -10650,17 +10653,15 @@ console.log('\n===== 47. v62 工匠作坊造箭塔 =====');
    * ⑥ 系统城统一 8×6 + 名城建筑满级
    * ============================================================ */
   console.log('  --- ⑥ 布局统一与名城满级 ---');
-  check('实测：官府仍在"靠右居中"（与 makeCity 同一套落位公式）', (function () {
+  check('实测：官府在"棋盘正中"（与 makeCity 同一出口 GAME.govCellsOf）', (function () {
     var bad = [];
     for (var lv = 1; lv <= 10; lv++) {
       var p = G.cityPlanOf(lv), gf = [];
       p.cells.forEach(function (c, i) { if (c.official) gf.push(i); });
-      var gc = p.col - 2, gr = Math.floor((p.row - 2) / 2);
-      var want = [gr * p.col + gc, gr * p.col + gc + 1, (gr + 1) * p.col + gc, (gr + 1) * p.col + gc + 1];
-      if (gf.join(',') !== want.join(',')) bad.push(lv);
+      if (gf.join(',') !== G.govCellsOf(p.col, p.row).join(',')) bad.push(lv);
     }
     return bad.length === 0;
-  })(), '官府 4 格恒为「右侧第 2 列起、垂直居中」');
+  })(), '官府 4 格恒为「第三行 4-5 与第四行 4-5」（正中央）');
   check('实测：城内**与城外**的建筑等级都等于该城上限', (function () {
     var npc = null;
     (G.state.map.cities || []).forEach(function (c) { if (!npc) npc = c; });
@@ -11602,6 +11603,84 @@ console.log('\n===== 47. v62 工匠作坊造箭塔 =====');
       })());
     } finally {
       G.state = keep54;
+    }
+  })();
+
+  /* ============================================================
+   * 55. v68：官府居中 + 旧档迁移（老板 2026-09-14）
+   * ------------------------------------------------------------
+   * 「官府在城内的地块居中放置，占第三行 4，5 和第四行 4，5 空格」
+   *   · 8×6：col 3-4 × row 2-3（0-based）→ 格号 [19,20,27,28]
+   *   · 落位唯一出口 GAME.govCellsOf；makeCity / cityPlanOf / 迁移 都走它
+   *   · 旧档（官府在右侧 [22,23,30,31]）自动迁移：中央占用者与旧位**对调**（不丢）
+   * ============================================================ */
+  console.log('\n--- 第 55 节：官府居中 + 旧档迁移 ---');
+  (function () {
+    var fs55 = function (f) { return require('fs').readFileSync(require('path').join(__dirname, 'js', f + '.js'), 'utf8'); };
+    var govIdxOf = function (c) {
+      var g = []; c.cells.forEach(function (x, i) { if (x.official) g.push(i); });
+      return g.join(',');
+    };
+    /* ① 玩家城居中 */
+    check('★ 玩家城官府居中（第三行 4-5 / 第四行 4-5 → [19,20,27,28]）',
+      govIdxOf(G.makeCity({ id: 'g55a', name: 'A' })) === '19,20,27,28',
+      govIdxOf(G.makeCity({ id: 'g55b', name: 'B' })));
+    /* ② 系统城（cityPlanOf）同一出口 */
+    check('★ 系统城官府同样居中（走同一出口）',
+      (function () {
+        var p = G.cityPlanOf(5);
+        var g = []; p.cells.forEach(function (x, i) { if (x.official) g.push(i); });
+        return g.join(',') === '19,20,27,28';
+      })());
+    /* ③ 出口唯一性 + 防回退 */
+    check('官府落位只有一个出口：govCellsOf 定义 1 处、makeCity/cityPlanOf 都接',
+      (function () {
+        var st = stripComment(fs55('state'));
+        return (st.match(/GAME\.govCellsOf\s*=\s*function/g) || []).length === 1
+          && (st.match(/GAME\.govCellsOf\(/g) || []).length >= 2;
+      })());
+    check('落位定义处不许写死旧格号（迁移识别旧档的 oldPos 除外）',
+      (function () {
+        var st55s = stripComment(fs55('state'));
+        var mk = codeOf(st55s, 'GAME.makeCity = function');
+        var cp = codeOf(st55s, 'GAME.cityPlanOf = function');
+        return mk.length > 100 && cp.length > 100
+          && !/6 \+ 8 \* 2/.test(mk) && !/6 \+ 8 \* 2/.test(cp)
+          /* 迁移必须仍认得旧格号 —— 老档靠它识别（这行是"合法保留"的锚） */
+          && /var oldPos = \[6 \+ 8 \* 2/.test(st55s);
+      })());
+    /* ④ 旧档迁移：右侧 → 居中；中央占用者对调；等级/在建/队列一起走 */
+    var keep55 = G.state;
+    try {
+      var st55 = G.newGame({ name: 'govmig' });
+      G.state = st55;
+      var c55 = st55.cities[0];
+      c55.cells.forEach(function (x) { x.official = false; x.build = null; x.pending = null; });
+      [22, 23, 30, 31].forEach(function (i) {
+        c55.cells[i].official = true; c55.cells[i].build = { id: 'guanfu', lvl: 5 };
+      });
+      c55.cells[19].build = { id: 'minfang', lvl: 3 };
+      c55.cells[20].build = { id: 'junying', lvl: 4 };
+      c55.cells[27].pending = { buildId: 'cangku', targetLevel: 1 };
+      st55.queues.build = [{ cityId: c55.id, gridIndex: 27, buildId: 'cangku', type: 'build', elapsed: 0, totalTime: 10 }];
+      var mig = G.adoptState(st55);
+      var mc = mig.cities[0];
+      check('★ 迁移：官府自动从右侧移到正中', govIdxOf(mc) === '19,20,27,28', govIdxOf(mc));
+      check('★ 迁移：官府等级保留（5 级不丢）',
+        !!(mc.cells[19].build && mc.cells[19].build.id === 'guanfu' && mc.cells[19].build.lvl === 5));
+      check('★ 迁移：中央的建筑与旧位对调（民房/军营不丢）',
+        !!(mc.cells[22].build && mc.cells[22].build.id === 'minfang' && mc.cells[22].build.lvl === 3
+          && mc.cells[23].build && mc.cells[23].build.id === 'junying' && mc.cells[23].build.lvl === 4));
+      check('★ 迁移：在建项与 pending 一起换位（队列索引重映射）',
+        mc.cells[27].pending === null && !!mc.cells[30].pending && mc.cells[30].pending.buildId === 'cangku'
+          && (mig.queues.build || []).some(function (q) { return q.gridIndex === 30 && q.buildId === 'cangku'; }));
+      /* ⑤ 幂等：已居中的档再读一次不折腾 */
+      var again = G.adoptState(mig);
+      check('★ 迁移幂等：已居中的档再读一次不变化',
+        govIdxOf(again.cities[0]) === '19,20,27,28'
+          && !!(again.cities[0].cells[22].build && again.cities[0].cells[22].build.id === 'minfang'));
+    } finally {
+      G.state = keep55;
     }
   })();
 

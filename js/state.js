@@ -194,10 +194,18 @@
     return st;
   };
 
-  /* ---------------- 新建玩家城（城内 8×6=48 格，官府占右侧4格，余44格可建）---------------
+  /* ---------------- 新建玩家城（城内 8×6=48 格，官府居中4格，余44格可建）---------------
      v40（需求 2）：老板要「8*6，6 行 8 列」并「尽量填充界面」——
      格子数据由 col/row 驱动（isoMetrics 早就是参数化的），
      所以这里改两个数、官府落位跟着移到新坐标系即可。 */
+  /* 官府 2×2 的落位（唯一出口 · v68 老板）：
+     城内棋盘**正中央** —— 8×6 时占「第三行 4、5 与第四行 4、5」。
+     makeCity / cityPlanOf（系统城）/ 旧档迁移三处都走它，别处不许再写死格号。 */
+  GAME.govCellsOf = function (col, row) {
+    var gc = Math.floor((col - 2) / 2), gr = Math.floor((row - 2) / 2);
+    return [gr * col + gc, gr * col + gc + 1, (gr + 1) * col + gc, (gr + 1) * col + gc + 1];
+  };
+
   GAME.makeCity = function (opts) {
     opts = opts || {};
     var city = {
@@ -228,9 +236,10 @@
     };
     var total = city.col * city.row;
     for (var i = 0; i < total; i++) city.cells.push({ build: null, pending: null });
-    /* 官府占 4 格：v16 移到城池**右侧**（col 4-5 × row 2-3），不再占正中央。
+    /* 官府占 4 格：v68（老板）移回**正中央** —— 8×6 时占「第三行 4、5 与第四行 4、5」。
+       落位公式的唯一出口是 GAME.govCellsOf（makeCity / cityPlanOf / 旧档迁移共用）。
        城墙另存 city.wallLv（不占格，见 GAME.buildingLevel 特判）。 */
-    var gfIdx = [6 + 8 * 2, 7 + 8 * 2, 6 + 8 * 3, 7 + 8 * 3];   /* col 6-7 × row 2-3（右侧中部） */
+    var gfIdx = GAME.govCellsOf(city.col, city.row);
     gfIdx.forEach(function (g) { city.cells[g].build = { id: 'guanfu', lvl: 1 }; city.cells[g].official = true; });
     /* 初始民房2座（其余格子玩家自建） */
     DATA.INITIAL_BUILDINGS.forEach(function (bid, idx) {
@@ -590,7 +599,7 @@
    *   兵营2个，其他建民房，位置也相对固定一下。城池的地块数量根据等级，数量你来定」
    *
    * 规则见 `DATA.CITY_PLAN` 的注释。要点：
-   *   · 官府 2×2，落位公式与 `GAME.makeCity` **完全一致**（右侧第 2 列起、垂直居中）；
+   *   · 官府 2×2 **居中**，落位走与 `GAME.makeCity` 相同的唯一出口 `GAME.govCellsOf`；
    *   · 军营成对（第一优先占位，紧挨官府），其余建筑各 1 座，剩下的全是民房；
    *   · 非官府格按"到官府中心的曼哈顿距离"升序取用 → 核心贴着官府、民房在最外圈，
    *     跨等级跨城池都同一条规则（这就是老板要的"位置相对固定"）。
@@ -615,9 +624,9 @@
     var cells = [];
     for (var k = 0; k < total; k++) cells.push({ build: null, pending: null });
 
-    /* ① 官府 2×2：右侧第 2 列起、垂直居中 —— 与 makeCity 的落位规则同一套 */
-    var gc = col - 2, gr = Math.max(0, Math.floor((row - 2) / 2));
-    var gf = [gr * col + gc, gr * col + gc + 1, (gr + 1) * col + gc, (gr + 1) * col + gc + 1];
+    /* ① 官府 2×2：**棋盘正中**（v68 老板）—— 走与 makeCity 同一出口 */
+    var gf = GAME.govCellsOf(col, row);
+    var gc = Math.floor((col - 2) / 2), gr = Math.floor((row - 2) / 2);
     gf.forEach(function (g) {
       cells[g] = { build: { id: 'guanfu', lvl: bl }, pending: null, official: true };
     });
@@ -630,8 +639,8 @@
     bar = bar.filter(function (i) { return i >= 0 && i < total && !cells[i].build; });
 
     /* ③ 其余格按"到**城池中心**的曼哈顿距离"升序取用（同距按格号）。
-       基准取城池中心而不是官府中心 —— 用官府中心排会把功能建筑全挤到右侧半边，
-       左边留一大片民房，"一边倒"不像一座城。 */
+       基准取城池中心（不取官府中心）—— "中心"跨棋盘尺寸是稳定参照；
+       v68 官府居中后两者结果接近，仍以城池中心为准。 */
     var cx = (col - 1) / 2, cy = (row - 1) / 2;
     var rest = [];
     for (var i = 0; i < total; i++) {
@@ -1265,7 +1274,7 @@
               to.build = fr.build; to.pending = fr.pending;
             }
           }
-          [6 + 8 * 2, 7 + 8 * 2, 6 + 8 * 3, 7 + 8 * 3].forEach(function (gi) {
+          GAME.govCellsOf(8, 6).forEach(function (gi) {
             n48[gi].official = true;
             n48[gi].build = { id: 'guanfu', lvl: gLv2 };
           });
@@ -1280,6 +1289,45 @@
         if (c.wallLv == null) c.wallLv = wLv;
         c.cells.forEach(function (x) {
           if (x.build && x.build.id === 'chengqiang') { x.build = null; x.pending = null; }
+        });
+      });
+      /* ---- v68 迁移：官府从"右侧中部"移到"棋盘正中"（老板 2026-09-14）----
+         对调式：中央 4 格上的占用者与旧官府位**一一对调** —— 玩家建筑不丢。
+         队列里引用这些格号的项（在建 gridIndex / 军营 bIdx）一起重映射，
+         漏了就是"在建项指向错格"（v40 迁移踩过的同一个坑）。 */
+      (st.cities || []).forEach(function (c) {
+        if (!c.cells || c.cells.length !== 48) return;
+        var oldPos = [6 + 8 * 2, 7 + 8 * 2, 6 + 8 * 3, 7 + 8 * 3];
+        var newPos = GAME.govCellsOf(c.col || 8, c.row || 6);
+        var has = [];
+        c.cells.forEach(function (x, i) { if (x.official) has.push(i); });
+        var atOld = has.length === 4 && has.every(function (i) { return oldPos.indexOf(i) >= 0; });
+        if (!atOld) return;
+        var gLv = 1;
+        has.forEach(function (i) {
+          if (c.cells[i].build && c.cells[i].build.id === 'guanfu') gLv = c.cells[i].build.lvl;
+        });
+        var remap = {};
+        oldPos.forEach(function (oi, n) {
+          var ni = newPos[n];
+          remap[ni] = oi;                       /* 中央格 → 旧官府位 */
+          var dis = c.cells[ni];                /* 中央格上的占用者（空/建筑/在建皆可） */
+          c.cells[oi].official = false;
+          c.cells[oi].build = dis.build || null;
+          c.cells[oi].pending = dis.pending || null;
+        });
+        newPos.forEach(function (ni) {
+          c.cells[ni].official = true;
+          c.cells[ni].build = { id: 'guanfu', lvl: gLv };
+          c.cells[ni].pending = null;
+        });
+        ((st.queues && st.queues.build) || []).forEach(function (q) {
+          if (q.cityId !== c.id || q.gridIndex == null) return;
+          if (remap[q.gridIndex] != null) q.gridIndex = remap[q.gridIndex];
+        });
+        ((st.queues && st.queues.train) || []).forEach(function (q) {
+          if (q.cityId !== c.id || q.bIdx == null) return;
+          if (remap[q.bIdx] != null) q.bIdx = remap[q.bIdx];
         });
       });
       /* 存档迁移：旧默认倍率 30× → 120×（真实数值下 30× 读秒过慢） */
