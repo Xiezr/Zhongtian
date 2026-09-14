@@ -17,6 +17,8 @@ assets/portraits/pd_src/
 # ─────────── 过程产物 ───────────
 # 一次性探针放这里，用完即清（约定见 docs/项目地图.md）
 .workbuddy/tmp/
+# WorkBuddy 内部自动生成的会话记忆/状态，非项目产物
+.workbuddy/memory/
 
 # ─────────── 系统垃圾 ───────────
 Thumbs.db
