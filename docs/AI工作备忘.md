@@ -147,6 +147,12 @@
   **可领取 → 已完成 → 随机 → 成长**，无可领取时整块隐藏；达标后**无需手动刷新**
   （主循环每秒比对可领取数，变了即重绘任务面板）。规范见 `设计规范.md` §12。
 
+- **城池坐标常显 + 君主标 + 头像池**（v70 老板五条）：城池属性栏写 `500×500 · (x, y)`，
+  自建城给 🎲（一键随机迁址）/ 📍（坐标切换），名城标「名城固定」——可迁判据**唯一**
+  （`GAME.canCityMoveTo`，界面与执行同源）。将领名单里君主挂 `.gcard-tag.lord` 标、**不给解雇按钮**；
+  创建界面头像走 `ui.avatarPool`（与将领同一套池子），idx 即 `portraitSeed`。
+  城池全称走 `GAME.cityFullName`（州·郡·县三层），野地城池标识带所在县。
+
 <!-- migrated:v46-pitfall-verify -->
 
 ---
@@ -578,6 +584,7 @@ ctx.drawImage(c, -s / 2, -s / 2, s, s);
 | 城墙/施工 | `wallPendingOf`（城墙是否在队列） |
 | **v67 新增** | `cityRefsOf(cityId)`（**城池伴随数据登记表**）· `abandonCity(cityId)`（放弃城池单出口） |
 | **第 2 期新增（定期来袭）** | `invasionTick(gameHours)`（时间轮推进，**在线 tickOff 与离线 simulateBulk 共用**）· `invasionDueAt(city)` · `invasionIntervalSec()` · `armyPowerOf(city)`（单兵战力复用 `story.troopPower`）· `defensePowerOf(city)`（**城防的唯一战斗消费点**）· `invasionPowerOf(city,cycle)` · `invasionResolve(city)` · `invasionRoll(seed)`（可复现随机） |
+| **v70 新增（地理/坐标/君主）** | `regionOf(x,y)`（州·郡·县唯一出口）· `cityFullName` / `fortLabelOf`（全称）· `junNameOf` / `countyNameOf`（后缀规范化）· `extPlanOf(lv)`（城外铺法，数量表 `EXT_PLAN_BY_LV`）· `COORD_MAX` / `coordText` / `isMovableCity` / `canCityMoveTo` / `moveCityTo` / `randomCityCoord` / `randomMoveCity`（坐标与迁址）· `pickStartPos`（出生坐标）· `isLordGeneral` / `lordGeneralOf` / `lordTraitsOf` / `makeLordGeneral`（君主将领） |
 
 ⚠️ **不要写"出口包装"**（`genAtkVal(g) = genAttrs(g).atkVal`）—— audit 会报死函数。要出口就出**原子**。
 

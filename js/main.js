@@ -20,6 +20,10 @@
       case 'create-start': ui.doCreate(); break;
       case 'create-continue': ui.doContinue(); break;
 
+      /* v70（老板需求 3/4）：城池坐标 —— 一键随机 / 坐标切换 */
+      case 'city-move-ask': ui.openCityMoveAsk(); break;
+      case 'city-move-do': GAME.doCityMove(); break;
+      case 'city-random': GAME.doRandomCityMove(); break;
       case 'view': ui.setView(el.dataset.view); break;
       case 'page': ui.setPage(el.dataset.key, Number(el.dataset.n)); break;
       /* v20：弹窗内翻页 —— 重绘**弹窗**而非中央视图 */
@@ -718,6 +722,28 @@
     if (r.ok) { ui.openGenEquip(genId); GAME.refreshAll(); }
   };
   /* 解雇（二次确认） */
+  /* v70（老板需求 3/4）：迁址（坐标切换）与一键随机 —— 唯一执行都走 GAME.moveCityTo */
+  GAME.doCityMove = function () {
+    var el1 = document.getElementById('move-x'), el2 = document.getElementById('move-y');
+    var cur = GAME.currentCity();
+    var id = ui._cityMoveId || (cur && cur.id);
+    var r = GAME.moveCityTo(id, el1 ? el1.value : NaN, el2 ? el2.value : NaN);
+    ui.toast(r.msg);
+    if (r.ok) {
+      ui.closeModal();
+      if (ui.view === 'map' && ui.renderMapCanvas) ui.renderMapCanvas();
+      GAME.refreshAll();
+    }
+  };
+  GAME.doRandomCityMove = function () {
+    var r = GAME.randomMoveCity();
+    ui.toast(r.msg);
+    if (r.ok) {
+      if (ui.view === 'map' && ui.renderMapCanvas) ui.renderMapCanvas();
+      GAME.refreshAll();
+    }
+  };
+
   GAME.doDismissGen = function (genId) {
     var r = GAME.dismissGeneral(genId);
     ui.toast(r.msg);

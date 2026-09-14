@@ -265,37 +265,52 @@
 
   /* ---------------- 新建游戏 ---------------- */
   GAME.newGame = function (rulerOpts) {
+    var mapSeed = U.now() % 100000;
+    /* v70（老板需求 5）：出生坐标按**所选州**落位（州治近旁的平原空地），
+       司隶以洛阳为锚；落不到才回退旧口径的固定点。出生城写明所属州 ——
+       展示、岁贡、州特产都读同一份归属。 */
+    var startPos = GAME.pickStartPos(rulerOpts.region, mapSeed);
     var city = GAME.makeCity({
       id: 'p1',
       name: rulerOpts.cityName || '新城池',
-      x: DATA.START_POS.x, y: DATA.START_POS.y,
+      x: startPos.x, y: startPos.y,
+      state: startPos.state,
       initialExt: true,          // 首城预置 2 田 1 木 1 石 1 铁
       res: U.deep(DATA.INITIAL_RES),   // v60：开局库存进首城（不再是全境共享的 s.res）
     });
     var gen = GAME.makeGeneral(DATA.INITIAL_GENERAL, 1, 'idle', city.id, true);
-    var mapSeed = U.now() % 100000;
+    /* v70：君主头像 seed **只摇一次**，ruler 与君主将领共用 ——
+       各摇一次就是两张脸（顶栏一个、将领页一个），正是"头像不一致"的根因。 */
+    var lordSeed = rulerOpts.portraitSeed != null
+      ? rulerOpts.portraitSeed
+      : Math.floor(Math.random() * 4294967296);
     GAME.state = {
       version: SAVE_VERSION,
       ruler: {
         name: rulerOpts.name || '无名君主',
         avatar: rulerOpts.avatar || '🧔',
         gender: rulerOpts.gender || 'male',
-        region: rulerOpts.region || 'random',
+        /* v70：记**解析后**的州（'random' 也记成抽到的那一州）——
+           创建界面的选择因此可复盘，出生城的归属与它一致 */
+        region: startPos.state || rulerOpts.region || 'random',
         /* v45（需求 2）：主角头像改为**从 20 张头像池里随机取一张**。
            不给固定值的话每局君主长同一张脸（池子是按名字 hash 取的），
            所以开局就摇一个种子存进存档 —— 之后每局固定、不再刷新就换脸。
            `rulerOpts.portraitSeed` 供测试注入确定值。 */
-        portraitSeed: rulerOpts.portraitSeed != null
-          ? rulerOpts.portraitSeed
-          : Math.floor(Math.random() * 4294967296),
+        portraitSeed: lordSeed,
       },
       /* v60：**state 上不再有 res 字段** —— 它由 attachRes 挂成访问器，
          指向当前城池的库存（`city.res`）。这里写字面量反而会盖掉 getter。 */
       cities: [city],
-      generals: [gen],
+      /* v70（老板）：君主本人也是一位将领 —— 排在末尾，不动既有索引口径
+         （`generals[0]` 仍是开局名将，测试与旧档迁移都按原样） */
+      generals: [gen, GAME.makeLordGeneral(rulerOpts, lordSeed, city.id)],
       queues: { build: [], train: [], tech: [] },
       marches: [],
-      map: { seed: mapSeed, cities: GAME.buildNpcCities(mapSeed), wilds: null },
+      /* v70：出生点随"所选州"走 —— 地图生成时的"出生圈强制平原"与据点安全半径
+         都读 `map.startPos`（见 map.js），旧档缺字段则回退 DATA.START_POS。 */
+      map: { seed: mapSeed, cities: GAME.buildNpcCities(mapSeed), wilds: null,
+        startPos: { x: startPos.x, y: startPos.y } },
       rep: 0,
       rank: 0,
       hearts: DATA.DEFAULT_SETTINGS.hearts,     // 民心
@@ -406,6 +421,108 @@
     };
     /* v22（需求 2）：招募即定下肖像 seed —— 存档只存这个整数，不存图片 */
     if (GAME.portraits) GAME.portraits.assign(g);
+    return g;
+  };
+
+  /* ============================================================
+   * 君主将领（v70 · 老板）—— 唯一出口
+   * ------------------------------------------------------------
+   * 老板原话：「增加一个角色将领（即玩家角色本身，具有将领的所有功能，
+   *   但是不可解雇，留可扩张框架，后续将设计普通将领不具备的功能）」
+   *
+   * 口径：
+   *   · 君主**就是一名将领**（进 `state.generals`，装备 / 出征 / 守将 / 派遣 /
+   *     经验……全部功能照用），靠 `isLord` 一位区分；
+   *   · 不可解雇（`GAME.dismissGeneral` 守卫）+ 不会因忠诚离去（两处离职判定守卫）；
+   *   · 头像 seed 与顶栏君主头像**同源**（`ruler.portraitSeed`）——
+   *     各摇一次就是两张脸，正是"创建界面头像与将领不一致"那一类问题的根因；
+   *   · 君主**专属功能**的扩张点是 `DATA.LORD_TRAITS`（档案里渲染成「君主特权」）。
+   * ============================================================ */
+  GAME.isLordGeneral = function (g) { return !!(g && g.isLord); };
+  /* 当前君主将领（无则 null —— 所有调用点都必须能接受 null） */
+  GAME.lordGeneralOf = function () {
+    var s = GAME.state, hit = null;
+    ((s && s.generals) || []).forEach(function (g) { if (!hit && GAME.isLordGeneral(g)) hit = g; });
+    return hit;
+  };
+  /* 君主专属能力清单（框架出口）：普通将领返回空数组 —— 界面据此整块不渲染 */
+  GAME.lordTraitsOf = function (g) {
+    return GAME.isLordGeneral(g) ? (DATA.LORD_TRAITS || []) : [];
+  };
+  /* ============================================================
+   * 出生坐标（v70 · 老板需求 5）—— 唯一出口
+   * ------------------------------------------------------------
+   * 老板：「城池归属应归属到州城所辖范围内，目前几个选项不太 OK」
+   * 口径：选了某个州 → 出生城落在**该州州治近旁**的确定性环带（半径 3~8 格），
+   *   并要求 `GAME.stateOfCity(落点)` 就是该州 —— "所辖范围"与就近认领是**同一判据**，
+   *   不另画一套边界（画了就是第二个出口）。
+   *   司隶无州城 → 锚点取都城洛阳（与 stateOfCity 的口径一致）。
+   * 约束：不压任何系统城（±2 缓冲）、不越界；由 (州名, 种子) 确定性生成 —— 同种子同落点。
+   * ============================================================ */
+  GAME.pickStartPos = function (stateName, seed) {
+    var states = DATA.START_STATES || [];
+    var rand = U.rng((Math.round(seed) || 1) >>> 0);
+    var name = String(stateName == null ? '' : stateName);
+    if (name !== 'random' && states.indexOf(name) < 0) name = 'random';
+    if (name === 'random') name = states[Math.floor(rand() * states.length)] || '司隶';
+    var anchor = null;
+    (DATA.NPC_CITIES || []).forEach(function (c) {
+      if (anchor) return;
+      if (c.type === 'zhou' && c.state === name) anchor = c;
+      if (!anchor && name === '司隶' && c.type === 'capital') anchor = c;
+    });
+    if (!anchor) anchor = { x: DATA.START_POS.x, y: DATA.START_POS.y };
+    var free = function (x, y) {
+      if (x < 3 || y < 3 || x > DATA.MAP_W - 4 || y > DATA.MAP_H - 4) return false;
+      var hit = false;
+      (DATA.NPC_CITIES || []).forEach(function (c) {
+        if (Math.abs(c.x - x) <= 2 && Math.abs(c.y - y) <= 2) hit = true;
+      });
+      if (hit) return false;
+      return GAME.stateOfCity({ x: x, y: y }) === name;
+    };
+    for (var i = 0; i < 240; i++) {
+      var ang = rand() * Math.PI * 2, rad = 3 + rand() * 5;
+      var x = Math.round(anchor.x + Math.cos(ang) * rad);
+      var y = Math.round(anchor.y + Math.sin(ang) * rad);
+      if (free(x, y)) return { x: x, y: y, state: name };
+    }
+    /* 兜底：环带扫不到就自锚点向外做确定性扫描（保证**必有**可用点） */
+    for (var r = 3; r <= 26; r++) {
+      for (var dx = -r; dx <= r; dx++) {
+        for (var dy = -r; dy <= r; dy++) {
+          if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+          var bx = anchor.x + dx, by = anchor.y + dy;
+          if (free(bx, by)) return { x: bx, y: by, state: name };
+        }
+      }
+    }
+    return { x: DATA.START_POS.x, y: DATA.START_POS.y, state: name };
+  };
+
+  GAME.makeLordGeneral = function (rulerOpts, seed, cityId) {
+    var L = DATA.LORD_GEN || {};
+    var r = rulerOpts || {};
+    var g = GAME.makeGeneral(r.name || '君主', L.level || 1, 'idle',
+      cityId || null, true, L.rankId, L.styleId);
+    g.id = 'lord';                     /* 稳定 id：'lord' 不匹配 /^(g|cd)\d+$/，不与 nextGenId 撞车 */
+    g.isLord = true;
+    g.name = r.name || g.name;
+    g.gender = r.gender || 'male';
+    g.portraitSeed = (seed != null) ? seed : GAME.portraits.seedOf(g);
+    g.loyalty = 100;                   /* 永不离去（离职判定另有两处守卫） */
+    g.salary = 0;                      /* 君主不领俸禄 */
+    /* 六维取资质区间的**中值**（不掷骰、不吃 Math.random）：
+       君主是玩家本人 —— 随机会让"老档迁移"读一次变一次，也无从比较两局；
+       中值 = 该资质的标准水平，可复算、可断言。 */
+    var rk = (DATA.GEN_RANK_BY_ID && DATA.GEN_RANK_BY_ID[L.rankId]) || DATA.GEN_RANK_BY_ID.liang;
+    var style = DATA.GEN_STYLES[0];
+    (DATA.GEN_STYLES || []).forEach(function (x) { if (x.id === L.styleId) style = x; });
+    var mid = Math.round((rk.base[0] + rk.base[1]) / 2);
+    g.tong = Math.round(mid * style.mul.tong);
+    g.nz = Math.round(mid * style.mul.nz);
+    g.yw = Math.round(mid * style.mul.yw);
+    g.zm = Math.round(mid * style.mul.zm);
     return g;
   };
 
@@ -711,6 +828,33 @@
     return { plan: plan, items: ord, minfang: civil, total: plan.total };
   };
 
+  /* ============================================================
+   * 城外满配的**铺法**（v70 · 老板）—— 唯一出口
+   * ------------------------------------------------------------
+   * 入参是"官府能管多少块地"（即 `EXT_CAP_BY_LV` 那一档），返回**逐块的地块类型**：
+   * 按 农田 → 伐木场 → 采石场 → 铁矿场 轮转铺满（同数量表 `DATA.EXT_PLAN_BY_LV`）。
+   * 轮转铺法的好处：任何等级下四类地都均匀分布在区块里，不会"前 20 块全是田"。
+   * 数量表本身只给**数量**，本函数负责把它变成**确定性的铺法** ——
+   * 两者都是纯函数，同等级永远同一结果（"位置排布有序且固定"）。
+   * ============================================================ */
+  GAME.extPlanOf = function (lv) {
+    /* ⚠️ 入参是**官府等级**（1 起），不是块数 —— 两者会撞车（12 级 ↔ 12 块），
+       所以只认一个口径；返回数组的**长度**就是这级的块数（= EXT_CAP_BY_LV 那一档）。 */
+    var n = Math.max(1, Math.min(DATA.MAX_LEVEL_ABS, Math.round(lv) || 1));
+    var counts = (DATA.EXT_PLAN_BY_LV || [])[n - 1] || [0, 0, 0, 0];
+    return buildList(counts);
+  };
+  /* 把 [农田,伐木,采石,铁矿] 的**数量**摊成**逐块类型**（轮转） */
+  function buildList(counts) {
+    var order = DATA.EXT_BUILD_ORDER || ['farm', 'forest', 'quarry', 'mine'];
+    var out = [], i, k;
+    var max = counts.reduce(function (a, b) { return Math.max(a, b); }, 0);
+    for (i = 0; i < max; i++) {
+      for (k = 0; k < order.length; k++) if (i < (counts[k] || 0)) out.push(order[k]);
+    }
+    return out;
+  }
+
   /* 「建筑全满、均 N 级」的影子城 —— 只用于算派生量（人口上限 / 产量），不参与玩法。
      v61：格子改由 `GAME.cityPlanOf` 统一生成（老板的布局规则），
      外城仍按官府等级拿满地块。
@@ -727,13 +871,15 @@
       return { build: c.build ? { id: c.build.id, lvl: c.build.lvl } : null,
         pending: null, official: !!c.official };
     });
-    var capT = DATA.EXT_CAP_BY_LV || [];
     /* 块数按**城等级**（= 该城的官府等级，官府随城长），
        但每块地的**等级**按建筑等级上限（v65 老板「城内外建筑也达到等级上限」）——
-       两者不是一回事：块数是"官府能管多少地"，等级是"这地开发到什么水平"。 */
-    var ecap = capT[Math.max(0, Math.min(lv - 1, capT.length - 1))] || 12;
-    var ext = [], kinds = ['farm', 'farm', 'forest', 'quarry', 'mine'];
-    for (var k = 0; k < ecap; k++) ext.push({ id: 'e' + (k + 1), type: kinds[k % kinds.length], lv: bl });
+       两者不是一回事：块数是"官府能管多少地"，等级是"这地开发到什么水平"。
+       v70：**种类与数量**改由数量表产出（唯一出口 `GAME.extPlanOf`，入参=等级）——
+       返回数组的长度就是这级的块数（与 `EXT_CAP_BY_LV` 那一档相等，一块不空）；
+       改前是 ['farm','farm','forest','quarry','mine'] 循环，数量比与官府等级无关。 */
+    var kinds = GAME.extPlanOf(lv);
+    var ext = [];
+    kinds.forEach(function (t, k) { ext.push({ id: 'e' + (k + 1), type: t, lv: bl }); });
     var sh = {
       id: city.id, name: city.name, x: city.x, y: city.y,
       level: lv, buildLv: bl, type: city.type, state: city.state,
@@ -1047,7 +1193,11 @@
         g.stamina = Math.min(mx, (g.stamina == null ? mx : g.stamina) + gc.staPerHour * hours);
         g.energy = Math.min(100, (g.energy == null ? 100 : g.energy) + gc.enePerHour * hours);
       });
-      s.generals = s.generals.filter(function (g) { return !(g.loyalty < lo.desertAt && Math.random() < lo.desertChancePerHour * hours); });
+      /* v70：君主不参与"忠诚离去"（老板「不可解雇」的另一半 —— 自己也不会走） */
+      s.generals = s.generals.filter(function (g) {
+        if (GAME.isLordGeneral(g)) return true;
+        return !(g.loyalty < lo.desertAt && Math.random() < lo.desertChancePerHour * hours);
+      });
     })();
     /* 队列：整段推进后统一判定完成 */
     var advance = function (q) { q.elapsed += secReal * ts; };
@@ -1330,6 +1480,18 @@
           if (remap[q.bIdx] != null) q.bIdx = remap[q.bIdx];
         });
       });
+      /* ---- v70 迁移：老档补一位「君主将领」（老板 2026-09-14）----
+         老档的名单里没有玩家本人 —— 补一位（头像 seed 与 ruler 同源、归属首城）。
+         新档（newGame 已建）命中 hasLord 时整段跳过，不会重复添人。 */
+      (function () {
+        var hasLord = false;
+        ((st.generals) || []).forEach(function (g) { if (g && g.isLord) hasLord = true; });
+        if (hasLord) return;
+        var seed = (st.ruler && st.ruler.portraitSeed != null) ? st.ruler.portraitSeed : undefined;
+        var home = (st.cities && st.cities[0]) ? st.cities[0].id : null;
+        st.generals = st.generals || [];
+        st.generals.push(GAME.makeLordGeneral(st.ruler || {}, seed, home));
+      })();
       /* 存档迁移：旧默认倍率 30× → 120×（真实数值下 30× 读秒过慢） */
       if (st.settings && st.settings.timeScale === 30) {
         st.settings.timeScale = 120;
@@ -1659,8 +1821,9 @@
       var staMx = GAME.staBaseMax(g);   /* v66：余量口径（装备体力常备不失） */
       g.stamina = Math.min(staMx, (g.stamina == null ? staMx : g.stamina) + gc.staPerHour * gameHours);
       g.energy = Math.min(100, (g.energy == null ? 100 : g.energy) + gc.enePerHour * gameHours);
-      /* 忠诚极低：有概率离去（名将更难留，但概率仍很低） */
-      if ((g.loyalty == null ? 70 : g.loyalty) < lo.desertAt) {
+      /* 忠诚极低：有概率离去（名将更难留，但概率仍很低）
+         v70：君主除外 —— 「不可解雇」的另一半是"自己不会走" */
+      if (!GAME.isLordGeneral(g) && (g.loyalty == null ? 70 : g.loyalty) < lo.desertAt) {
         var chance = lo.desertChancePerHour * gameHours * (g.hero ? 1.6 : 1);
         if (Math.random() < chance) { g._desert = true; deserters.push(g); }
       }

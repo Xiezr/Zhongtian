@@ -2337,7 +2337,12 @@
     }
     return tested >= 6 && diff > 0;
   })(), '次日等级确有变化');
-  check('出生点附近不生成据点', !G.map.hasFort(DATA.START_POS.x, DATA.START_POS.y));
+  check('出生点附近不生成据点', (function () {
+    /* v70（老板需求 5）：出生点随**所选州**走（不再是固定 275,225）——
+       读本局的实际出生点（旧档无字段则回退 DATA.START_POS） */
+    var sp = (G.state.map && G.state.map.startPos) || DATA.START_POS;
+    return !G.map.hasFort(sp.x, sp.y);
+  })());
   check('名城位置不生成据点', !(DATA.NPC_CITIES || []).some(function (c) { return G.map.hasFort(c.x, c.y); }));
   check('守军随等级递增', (function () {
     function sum(lv) { var g = G.map.fortGarrison(lv), t = 0; for (var k in g) t += g[k]; return t; }
@@ -2602,8 +2607,10 @@
   check('并州为唯一一阶州', DATA.STATE_SPECIALTY['并州'].tier === 1);
   check('州属显式字段优先', G.stateOfCity(nCity) === '荆州');
   check('自建城按坐标就近认领州属', (function () {
-    var st = G.stateOfCity(V14.cities[0]);     // 出生点 275,225 → 最近州城为洛阳(司隶)
-    return st === '司隶';
+    /* v70（老板需求 5）：出生州由创建界面选（不再恒为司隶）——
+       这里验"就近认领"这条**判据本身**：无 state 字段的坐标必须归最近州治 */
+    return G.stateOfCity({ x: 275, y: 225 }) === '司隶'      /* 洛阳(265,215) 近旁 */
+      && G.stateOfCity({ x: 435, y: 145 }) === '青州';       /* 临淄本城 */
   })(), G.stateOfCity(V14.cities[0]));
   check('specialtyOf 取到荆州蜀锦', G.specialtyOf(nCity).mat === 'shujin');
   check('未握州治时无加成', G.hasStateSeat('荆州') === false);
@@ -2709,7 +2716,9 @@
     st.generals.push(G.makeHero({ name: '测试乙', tong: 90, yw: 90, zm: 90, nz: 90 }));
     var seen = {}, dup = false;
     st.generals.forEach(function (g) { if (seen[g.id]) dup = true; seen[g.id] = true; });
-    return !dup && st.generals.length === 3;
+    /* v70：开局名单 = 初始名将 + **君主将领**（老板：玩家角色本人也是将领），
+       再加本用例推入的两位 → 4 人 */
+    return !dup && st.generals.length === 4;
   })());
 
   /* --- ② 募兵（「点训练提示参数错误」） --- */
@@ -2834,7 +2843,8 @@
     && !/max-height: 68vh/.test(cssBlock(htmlSrc25, '.gen-list {')));
   check('v45：将领行只留「姓名 + 资质」，不再有「装 x/12」与 Lv（v46：资质另起一行）',
     !/grow-eq/.test(uiS) && !/装 ' \+ eqN/.test(uiS) && !/class="grow-lv/.test(uiS)
-    && /class="grow-name"[\s\S]{0,260}rankBadge/.test(uiS)
+    /* v70：名字后多了「君主」标，窗口 260 → 420（本断言要的是「名字行紧跟资质」，不是定长） */
+    && /class="grow-name"[\s\S]{0,420}rankBadge/.test(uiS)
     /* v46（需求 1）：老板判"并排太拥挤" → 回到**上下两行**（姓名一行、资质一行） */
     && /\.grow-main \{ flex: 1; min-width: 0; display: flex; flex-direction: column/.test(htmlSrc25));
   /* v41（需求 2）：完整档案不再走弹窗 —— 右侧 gen-pane 本身就是完整档案 */
@@ -9392,7 +9402,8 @@ console.log('\n===== 46. v61 满配城池城内布局 =====');
   check('配置：CITY_PLAN 用统一的 8×6（不再按等级分档）+ 落位优先序',
     !!PLACE && PLACE.size[0] === 8 && PLACE.size[1] === 6
     && PLACE.sizeByLevel === undefined
-    && PLACE.maxLevel === 10 && PLACE.order.length === 14 && PLACE.filler === 'minfang');
+    /* v70（老板）：仓库 1 → 4 后，优先序 14 → 17 项 */
+    && PLACE.maxLevel === 10 && PLACE.order.length === 17 && PLACE.filler === 'minfang');
   check('实测：官府恰好 4 格（2×2 同体，与玩家城一致）', (function () {
     for (var lv = 1; lv <= 10; lv++) {
       var c = countOf(G.cityPlanOf(lv));
@@ -9412,7 +9423,8 @@ console.log('\n===== 46. v61 满配城池城内布局 =====');
     for (var lv = 1; lv <= 10; lv++) {
       var c = countOf(G.cityPlanOf(lv));
       for (var i = 0; i < want.length; i++) {
-        var need = (want[i] === 'junying') ? 2 : 1;
+        /* v70（老板）：军营 2 座、**仓库 4 座**，其余各 1 座 */
+        var need = (want[i] === 'junying') ? 2 : (want[i] === 'cangku') ? 4 : 1;
         if ((c[want[i]] || 0) !== need) return false;
       }
       /* 不许出现多余的建筑种类（比如把城墙也铺上格） */
@@ -9428,7 +9440,8 @@ console.log('\n===== 46. v61 满配城池城内布局 =====');
       var empty = plan.cells.filter(function (x) { return !x.build; }).length;
       /* 每格都有建筑 = 民房数 + 功能建筑数 + 官府 4 */
       if (empty !== 0 || sum !== plan.total) return false;
-      if (c.minfang !== plan.total - 4 - 14) return false;
+      /* 4 = 官府 4 格；17 = 功能建筑格数（v70：军营2 + 仓库4 + 其余 11）；余下全是民房 */
+      if (c.minfang !== plan.total - 4 - 17) return false;
     }
     return true;
   })());
@@ -9577,7 +9590,8 @@ console.log('\n===== 46. v61 满配城池城内布局 =====');
       /* v63：布局按**建筑等级**算（郡城 → 7+4=11），否则比的是另一座城 */
       var want = G.cityPlanOf(7, G.npcBuildLvOf(tgt)), c = countOf({ cells: nc.cells });
       return nc.cells.length === want.total && nc.col === want.col && nc.row === want.row
-        && c.junying === 2 && c.minfang === want.total - 18 && nc.wallLv === G.npcBuildLvOf(tgt);
+        && c.junying === 2 && c.cangku === 4 && c.minfang === want.total - 21
+        && nc.wallLv === G.npcBuildLvOf(tgt);
     } finally { G.state = keep; }
   })());
   check('结构：呈现只有一个出口（ui.planHTML），弹窗与出征面板共用', (function () {
@@ -9589,7 +9603,9 @@ console.log('\n===== 46. v61 满配城池城内布局 =====');
   })());
   check('实测：布局呈现含建筑名、民房数、地块与人口', (function () {
     var html = G.ui.planHTML(G.fortPlanOf({ x: 1, y: 1, level: 8, name: '青石营' }));
-    return html.indexOf('军营 ×2') >= 0 && html.indexOf('民房 ×30') >= 0
+    /* v70：仓库 1→4 之后，Lv8 满配的民房 30 → 27 */
+    return html.indexOf('军营 ×2') >= 0 && html.indexOf('仓库 ×4') >= 0
+      && html.indexOf('民房 ×27') >= 0
       && html.indexOf('8 × 6 = 48 格') >= 0 && html.indexOf('人口上限') >= 0;
   })());
   check('实测：野外城池弹窗与出征面板都渲染城内布局', (function () {
@@ -10408,7 +10424,9 @@ console.log('\n===== 47. v62 工匠作坊造箭塔 =====');
         var gc = G.genCityOf(g); return gc && gc.id === a.id;
       });
       var inA = G.generalsIn(a);
-      return listA.length === inA.length && inA.length === 1
+      /* v70：A 城 = 初始名将 + 君主（君主归属首城）→ 2 人；关键不变量是
+         "名单判据与 generalsIn 同一批"（前一个等号），人数只是它的具体值 */
+      return listA.length === inA.length && inA.length === 2
         && G.generalsIn(b).length === 1 && G.generalsIn(b)[0].name === 'B城将';
     });
   })());
@@ -11874,6 +11892,319 @@ console.log('\n===== 47. v62 工匠作坊造箭塔 =====');
         /GAME\._lastQuestReady/.test(m57) && /ui\.view === 'tasks'/.test(m57)
         && /GAME\._lastQuestReady = 0;/.test(m57));
     });
+  })();
+
+  console.log('\n--- 第 58 节：州郡县 · 满配数量表 · 坐标迁址 · 君主将领 · 出生州（v70） ---');
+  (function () {
+    var fs58 = function (f) { return require('fs').readFileSync(require('path').join(__dirname, 'js', f + '.js'), 'utf8'); };
+    var u58 = stripComment(fs58('ui'));
+    var d58 = stripComment(fs58('data'));
+    var dm58 = stripComment(fs58('domain'));
+    var h58 = require('fs').readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+    /* 本地造档 helper（其它节的 withState 在各自的 IIFE 里，跨节不可见） */
+    var withState58 = function (name, fn) {
+      var keep = G.state;
+      try {
+        var st = G.newGame({ name: name });
+        G.state = st;
+        if (G.map.generate) G.map.generate();
+        return fn(st);
+      } finally { G.state = keep; }
+    };
+
+    /* ================= ① 州 · 郡 · 县 ================= */
+    console.log('  --- ① 州郡县标识 ---');
+    check('行政区划只有一个出口（regionOf 定义 1 处 + 郡/县名规范化）',
+      (dm58.match(/GAME\.regionOf = function/g) || []).length === 1
+      && /GAME\.junNameOf = function/.test(dm58)
+      && /GAME\.countyNameOf = function/.test(dm58));
+
+    check('★ 每个县城都归属到一个郡（且同州）', (function () {
+      var bad = 0, n = 0;
+      (DATA.NPC_CITIES || []).forEach(function (c) {
+        if (c.type !== 'county') return;
+        n++;
+        var rg = G.regionOf(c.x, c.y);
+        if (!rg || !rg.jun || rg.state !== c.state) bad++;
+      });
+      return n >= 60 && bad === 0;
+    })());
+
+    check('★ 任意坐标都能归属到一个县（采样 40 点）', (function () {
+      for (var i = 0; i < 40; i++) {
+        var rg = G.regionOf((i * 97) % 500, (i * 53) % 500);
+        if (!rg || !rg.county || !rg.state) return false;
+      }
+      return true;
+    })());
+
+    check('★ 名城全称 = 州 · 郡 · 县（都城/州城/郡城/县城各一例）', (function () {
+      function byType(t) { var hit = null; DATA.NPC_CITIES.forEach(function (c) { if (!hit && c.type === t) hit = c; }); return hit; }
+      var cap = G.cityFullName(byType('capital'));
+      var zhou = G.cityFullName(byType('zhou'));
+      var jun = G.cityFullName(byType('jun'));
+      var cty = G.cityFullName(byType('county'));
+      return cap.split(' · ').length === 2 && zhou.split(' · ').length === 2
+        && jun.split(' · ').length === 2 && cty.split(' · ').length === 3
+        && /[郡国县道]$/.test(jun.split(' · ')[1]) && /县$/.test(cty.split(' · ')[2]);
+    })(), (function () {
+      var hit = null; DATA.NPC_CITIES.forEach(function (c) { if (!hit && c.type === 'county') hit = c; });
+      return G.cityFullName(hit);
+    })());
+
+    check('★ 野外城池标识带所在县（fortLabelOf）', (function () {
+      var lbl = G.fortLabelOf({ x: 120, y: 300, name: '青石营', level: 5 });
+      var rg = G.regionOf(120, 300);
+      return lbl.indexOf(G.countyNameOf(rg.county)) === 0 && lbl.indexOf('青石营') > 0;
+    })());
+
+    check('行政区划确定性（同坐标两次同结果）', (function () {
+      var a = G.regionOf(200, 200), b = G.regionOf(200, 200);
+      return a.county === b.county && a.jun === b.jun && a.state === b.state;
+    })());
+
+    /* ================= ② 满配：仓库 4 + 城外数量表 ================= */
+    console.log('  --- ② 满配数量（城内仓库 4 / 城外数量表）---');
+    check('★ 城外数量表逐档合计 == 上限表（1..MAX_LEVEL_ABS 全档）', (function () {
+      for (var lv = 1; lv <= (DATA.MAX_LEVEL_ABS || 24); lv++) {
+        var row = DATA.EXT_PLAN_BY_LV[lv - 1];
+        var sum = row.reduce(function (a, b) { return a + b; }, 0);
+        if (sum !== DATA.EXT_CAP_BY_LV[lv - 1]) return false;
+      }
+      return true;
+    })());
+
+    check('城外数量表：四类各 ≥2、逐档单调不降', (function () {
+      var prev = null;
+      for (var lv = 1; lv <= (DATA.MAX_LEVEL_ABS || 24); lv++) {
+        var row = DATA.EXT_PLAN_BY_LV[lv - 1];
+        if (row.some(function (n) { return n < 2; })) return false;
+        if (prev && !row.every(function (n, i) { return n >= prev[i]; })) return false;
+        prev = row;
+      }
+      return true;
+    })());
+
+    check('★ extPlanOf 铺法与数量表一致（轮转、长度 = 块数、顺序固定）', (function () {
+      var list = G.extPlanOf(6);
+      var cnt = {};
+      list.forEach(function (t) { cnt[t] = (cnt[t] || 0) + 1; });
+      var want = DATA.EXT_PLAN_BY_LV[5];
+      return list.length === DATA.EXT_CAP_BY_LV[5]
+        && cnt.farm === want[0] && cnt.forest === want[1]
+        && cnt.quarry === want[2] && cnt.mine === want[3]
+        && list[0] === 'farm' && list[1] === 'forest';
+    })());
+
+    check('★ 系统城的城外地块也走同一出口（影子城数量=数量表）', (function () {
+      return withState58('v70plan', function (st) {
+        var npc = null;
+        (st.map.cities || []).forEach(function (c) { if (!npc && c.level === 9) npc = c; });
+        if (!npc) return false;
+        var sh = G.npcCityShadow(npc);
+        var cnt = {};
+        sh.extGrid.forEach(function (e) { cnt[e.type] = (cnt[e.type] || 0) + 1; });
+        var want = DATA.EXT_PLAN_BY_LV[8];       /* 州城 Lv9 → 第 9 档 */
+        return sh.extGrid.length === DATA.EXT_CAP_BY_LV[8]
+          && cnt.farm === want[0] && cnt.mine === want[3];
+      });
+    })());
+
+    check('城内满配里仓库恰好 4 座（v70 老板）', (function () {
+      for (var lv = 1; lv <= 10; lv++) {
+        var c = 0;
+        G.cityPlanOf(lv).cells.forEach(function (x) { if (x.build && x.build.id === 'cangku') c++; });
+        if (c !== 4) return false;
+      }
+      return true;
+    })());
+
+    /* ================= ③ 坐标与迁址 ================= */
+    console.log('  --- ③ 城池坐标与迁址 ---');
+    check('坐标口径：500×500 → 0~499；coordText 形如 (x, y)',
+      G.COORD_MAX === 499 && G.coordText({ x: 3, y: 4 }) === '(3, 4)');
+
+    check('★ 可迁判据：自建城可迁 / 名城（含攻占来的）不可迁', (function () {
+      return G.isMovableCity({ type: 'self' }) === true
+        && G.isMovableCity({ type: 'county', origId: 'cty_9' }) === false
+        && G.isMovableCity({ type: 'jun' }) === false
+        && G.isMovableCity({ type: 'capital' }) === false;
+    })());
+
+    check('★ 迁址：旧格还平原、新格变城池、坐标落定', (function () {
+      return withState58('v70move', function (st) {
+        var c = st.cities[0];
+        var from = { x: c.x, y: c.y };
+        var dst = null;
+        for (var x = 5; x < 140 && !dst; x++) for (var y = 5; y < 140 && !dst; y++) {
+          if (G.canCityMoveTo(c, x, y).ok) dst = { x: x, y: y };
+        }
+        if (!dst) return false;
+        var r = G.moveCityTo(c.id, dst.x, dst.y);
+        return r.ok === true && c.x === dst.x && c.y === dst.y
+          && G.map.tile(dst.x, dst.y).terrain === 'city'
+          && G.map.tile(from.x, from.y).terrain === 'plain';
+      });
+    })());
+
+    check('★ 迁址拒绝：越界 / 原地 / 名城 / 非平原', (function () {
+      return withState58('v70deny', function (st) {
+        var c = st.cities[0];
+        var b1 = G.canCityMoveTo(c, -1, 5).ok === false;
+        var b2 = G.canCityMoveTo(c, 999, 5).ok === false;
+        var b3 = G.canCityMoveTo(c, c.x, c.y).ok === false;
+        var npc = (st.map.cities || [])[0];
+        var b4 = G.canCityMoveTo(c, npc.x, npc.y).ok === false;
+        var nonPlain = null;
+        for (var x = 0; x < 80 && !nonPlain; x++) for (var y = 0; y < 80 && !nonPlain; y++) {
+          var t = G.map.tile(x, y);
+          if (t && t.terrain !== 'plain' && t.terrain !== 'city') nonPlain = { x: x, y: y };
+        }
+        var b5 = !nonPlain || G.canCityMoveTo(c, nonPlain.x, nonPlain.y).ok === false;
+        return b1 && b2 && b3 && b4 && b5;
+      });
+    })());
+
+    check('★ 一键随机：落点必可迁（注入 rnd → 确定性）+ 真迁成功', (function () {
+      return withState58('v70rand', function (st) {
+        var c = st.cities[0];
+        var seq = 7;
+        var fake = function () { seq = (seq * 48271) % 2147483647; return seq / 2147483647; };
+        var pt = G.randomCityCoord(c, fake);
+        if (!pt || !G.canCityMoveTo(c, pt.x, pt.y).ok) return false;
+        var r = G.randomMoveCity(c.id);
+        return r.ok === true && G.isMovableCity(c);
+      });
+    })());
+
+    check('迁址写日志（可追溯）', /📍 迁址/.test(dm58) && /GAME\.log\('📍 迁址/.test(dm58));
+
+    /* ================= ④ 君主将领 ================= */
+    console.log('  --- ④ 君主将领（老板：玩家角色本人）---');
+    check('★ 新档名单含君主（id=lord / isLord / 同君名同脸同城）', (function () {
+      var st = G.newGame({ name: '君主测试', region: '司隶', portraitSeed: 7 });
+      var lord = null;
+      (st.generals || []).forEach(function (g) { if (g.isLord) lord = g; });
+      return !!lord && lord.id === 'lord' && lord.name === '君主测试'
+        && lord.portraitSeed === 7 && lord.loyalty === 100
+        && lord.cityId === st.cities[0].id
+        && st.generals[0].name === '赵子龙';       /* 既有索引口径不动 */
+    })());
+
+    check('★ 君主不可解雇（域层拒绝）', (function () {
+      return withState58('v70lord1', function (st) {
+        var lord = G.lordGeneralOf();
+        var r = G.dismissGeneral(lord.id);
+        return r.ok === false && (st.generals || []).some(function (g) { return g.isLord; });
+      });
+    })());
+
+    check('★ 君主永不离去（忠诚归零 + 骰子必然触发，仍在帐下；对照的普通将领已被带走）', (function () {
+      return withState58('v70lord2', function (st) {
+        var lord = G.lordGeneralOf();
+        lord.loyalty = 0;
+        var other = null;
+        st.generals.forEach(function (g) { if (!g.isLord && !other) other = g; });
+        if (other) other.loyalty = 0;
+        var real = Math.random;
+        Math.random = function () { return 0; };
+        try { for (var i = 0; i < 3; i++) G.tickOnce(); }
+        finally { Math.random = real; }
+        var lordsLeft = (st.generals || []).filter(function (g) { return g.isLord; }).length;
+        var othersLeft = (st.generals || []).filter(function (g) { return !g.isLord; }).length;
+        return lordsLeft === 1 && (other ? othersLeft === 0 : true);
+      });
+    })());
+
+    check('★ 君主特权框架：数据表 + 只给君主（普通将领为空）', (function () {
+      var lord = G.lordGeneralOf();
+      var normal = G.makeGeneral('普通将', 1, 'idle', null);
+      var tr = G.lordTraitsOf(lord);
+      return tr.length >= 1 && !!tr[0].name && !!tr[0].desc
+        && G.lordTraitsOf(normal).length === 0
+        && (DATA.LORD_TRAITS || []).length === tr.length;
+    })());
+
+    check('君主六维取资质中值（确定性，不掷骰）', (function () {
+      var a = G.makeLordGeneral({ name: '甲' }, 1, null);
+      var b = G.makeLordGeneral({ name: '乙' }, 2, null);
+      var rk = DATA.GEN_RANK_BY_ID[DATA.LORD_GEN.rankId];
+      var mid = Math.round((rk.base[0] + rk.base[1]) / 2);
+      return a.tong === mid && a.nz === mid && a.yw === mid && a.zm === mid && a.tong === b.tong;
+    })());
+
+    check('★ 老档迁移：无君主的档补一位（二次读档不重复添人）', (function () {
+      var keep = G.state;
+      try {
+        var st = G.newGame({ name: '迁移测试', region: '兖州', portraitSeed: 3 });
+        st.generals = st.generals.filter(function (g) { return !g.isLord; });
+        st.savedAt = U.now();
+        var out = G.adoptState(st);
+        var lords = (out.generals || []).filter(function (g) { return g.isLord; });
+        G.adoptState(out);
+        var again = (out.generals || []).filter(function (g) { return g.isLord; });
+        return lords.length === 1 && again.length === 1
+          && lords[0].name === '迁移测试' && lords[0].portraitSeed === 3;
+      } finally { G.state = keep; }
+    })());
+
+    check('解雇守卫在域层读唯一出口（isLordGeneral）',
+      /isLordGeneral/.test(codeOf(dm58, 'GAME.dismissGeneral = function')));
+
+    /* ================= ⑤ 创建：头像池 + 出生州 ================= */
+    console.log('  --- ⑤ 创建界面：头像同源 + 出生州 ---');
+    check('★ 创建头像 = 将领同一套池子（ui.avatarPool / paintCreateAvatar）',
+      /ui\.avatarPool = function/.test(u58) && /P\.POOL\[/.test(u58)
+      && /paintCreateAvatar/.test(u58) && /GAME\.portraits\.DIR/.test(u58));
+
+    check('★ 出生州：十三州逐个验证「落点归属 == 所选州」', (function () {
+      var list = DATA.START_STATES || [];
+      for (var i = 0; i < list.length; i++) {
+        var pt = G.pickStartPos(list[i], 1000 + i * 7);
+        if (!pt || pt.state !== list[i]) return false;
+        if (G.stateOfCity({ x: pt.x, y: pt.y }) !== list[i]) return false;
+      }
+      return list.length === 13;
+    })());
+
+    check('★ 出生点确定性（同种子同落点）', (function () {
+      var a = G.pickStartPos('凉州', 4242), b = G.pickStartPos('凉州', 4242);
+      return a.x === b.x && a.y === b.y && a.state === b.state;
+    })());
+
+    check('★ 出生点不压任何系统城（±2 缓冲）', (function () {
+      var list = DATA.START_STATES || [];
+      for (var i = 0; i < list.length; i++) {
+        var pt = G.pickStartPos(list[i], 77 + i);
+        var clash = false;
+        DATA.NPC_CITIES.forEach(function (c) {
+          if (Math.abs(c.x - pt.x) <= 2 && Math.abs(c.y - pt.y) <= 2) clash = true;
+        });
+        if (clash) return false;
+      }
+      return true;
+    })());
+
+    check('★ 新档出生城：坐标 / 归属 / 州三者一致 + map.startPos 同步', (function () {
+      var st = G.newGame({ name: '落位', region: '益州' });
+      var c = st.cities[0];
+      return c.state === '益州' && G.stateOfCity(c) === '益州'
+        && st.map.startPos && st.map.startPos.x === c.x && st.map.startPos.y === c.y;
+    })());
+
+    check('random 也会记成解析后的州', (function () {
+      var st = G.newGame({ name: '随机州', region: 'random' });
+      return (DATA.START_STATES || []).indexOf(st.ruler.region) >= 0;
+    })());
+
+    check('创建界面硬检查：13 州 chips + 随机；旧「北方/中原/江南」已撤',
+      (h58.match(/data-target="create-region"/g) || []).length === 14
+      && !/data-v="north"/.test(h58) && !/data-v="south"/.test(h58));
+
+    check('头像位改用画像（.avatar-big img 规则在位）',
+      /\.avatar-big img \{[^}]*object-fit: cover/.test(h58));
+
+    check('doCreate 把头像下标当 portraitSeed 传下去', /portraitSeed: avatarIdx/.test(u58));
   })();
 
   console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');

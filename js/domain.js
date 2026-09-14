@@ -1291,6 +1291,78 @@
     });
     return best ? best.state : null;
   };
+  /* ============================================================
+   * 行政区划「州 · 郡 · 县」—— 唯一出口（v70 · 老板）
+   * ------------------------------------------------------------
+   * 老板原话：「每个名城按州郡县标识（假设青州琅琊郡XX县）……
+   *   其他野地城池的标识应写上其所在县」
+   *
+   * 判据 = **就近归属**（确定性，无随机）：
+   *   · 县 = 最近的**县城**（65 座县城铺满全图，任何坐标都归一个县）；
+   *   · 郡 = 该县**本州内**最近的郡城（郡城的从属不随问询点漂移 —— 用县城的坐标算）；
+   *   · 州 = 该县数据里写死的 state。
+   * 两个坐标问同一个县 → 永远同一结果，可断言、可缓存。
+   * ============================================================ */
+  GAME.regionOf = function (x, y) {
+    var best = null, bd = Infinity;
+    (DATA.NPC_CITIES || []).forEach(function (c) {
+      if (c.type !== 'county') return;
+      var d = Math.abs(c.x - x) + Math.abs(c.y - y);
+      if (d < bd) { bd = d; best = c; }
+    });
+    if (!best) return null;
+    var jun = null, jd = Infinity;
+    (DATA.NPC_CITIES || []).forEach(function (c) {
+      if (c.type !== 'jun' || c.state !== best.state) return;
+      var d = Math.abs(c.x - best.x) + Math.abs(c.y - best.y);
+      if (d < jd) { jd = d; jun = c; }
+    });
+    return {
+      state: best.state, county: best.name, countyCity: best,
+      jun: jun ? jun.name : null, junCity: jun,
+    };
+  };
+  /* 行政名规范化：已带后缀（郡/国/县/道）的原样保留，否则补一个 —— 不造新名 */
+  GAME.junNameOf = function (raw) {
+    raw = String(raw == null ? '' : raw);
+    return /[郡国县道州]$/.test(raw) ? raw : raw + '郡';
+  };
+  GAME.countyNameOf = function (raw) {
+    raw = String(raw == null ? '' : raw);
+    return /[郡国县道]$/.test(raw) ? raw : raw + '县';
+  };
+  /* 城池全称（州 · 郡 · 县 链）。名城三级齐备；自建城给「州 · 城名」；
+     改过名的城用 origName 顶**行政层**（地名不随主公改名而变，参照 v45 的 origName 约定）。 */
+  GAME.cityFullName = function (city) {
+    if (!city) return '';
+    var st = city.state || GAME.stateOfCity(city);
+    var renamed = !!(city.origName && city.origName !== city.name);
+    var parts = [];
+    if (st) parts.push(st);
+    /* 县城：行政链到「郡」为止（县本身是末段的"名字"那一层） */
+    if (city.type === 'county') {
+      var rg = GAME.regionOf(city.x, city.y);
+      if (rg && rg.jun) parts.push(GAME.junNameOf(rg.jun));
+    }
+    /* 末段 = 这座城的名字：
+       未改名 → 按档位规范化（郡城补「郡」、县城补「县」）；
+       改过名 → **原样**用玩家起的名字（"汉寿"不该被写成"汉寿县"，
+       改名也必须立刻反映在侧栏 / 城池面板上 —— e2e 的「侧栏城池名同步」盯着这条）。 */
+    var name = city.name;
+    if (!renamed) {
+      if (city.type === 'jun') name = GAME.junNameOf(name);
+      else if (city.type === 'county') name = GAME.countyNameOf(name);
+    }
+    parts.push(name);
+    return parts.join(' · ');
+  };
+  /* 野外城池的标识（v70 老板「标识应写上其所在县」）：`乐安县 · 青石营` */
+  GAME.fortLabelOf = function (fort) {
+    if (!fort) return '';
+    var rg = GAME.regionOf(fort.x, fort.y);
+    return (rg && rg.county ? GAME.countyNameOf(rg.county) + ' · ' : '') + fort.name;
+  };
+
   GAME.specialtyOf = function (city) {
     var st = GAME.stateOfCity(city);
     return st ? (DATA.STATE_SPECIALTY[st] || null) : null;
@@ -2262,6 +2334,97 @@
   };
 
   /* ============================================================
+   * 城池坐标与迁址（v70 · 老板）
+   * ------------------------------------------------------------
+   * 老板三条：
+   *   ① 「城池的主界面提供其坐标（500×500），自动确认」；
+   *   ② 「一键随机当前城池坐标位置（除名城，名城固定）」；
+   *   ③ 「为玩家城池提供坐标切换，移动到某坐标时，替换原地块建筑」
+   *
+   * 口径（唯一出口，界面与业务共用 —— 界面置灰与真执行读同一份判据）：
+   *   · 可迁 = **自建城**（`type === 'self'`）。攻占来的名城/州郡县城带 origId，
+   *     它的坐标是"历史上就在那里"的地理事实 → 固定（老板："除名城，名城固定"）。
+   *   · 可迁入的坐标 = **平原**、界内（0~499）、且无任何占用
+   *     （我方城 / 系统城 / 野外城池 / 已占野地）。与「平原筑城」同一条地形约束 ——
+   *     自建城脚下必是平原，所以"旧地块还原"有确定答案：还回平原。
+   *   · 「替换原地块建筑」= 旧坐标那格归还地图（恢复地形），新坐标那格成为城池。
+   * ============================================================ */
+  GAME.COORD_MAX = (DATA.MAP_W || 500) - 1;
+  GAME.coordText = function (city) {
+    if (!city) return '—';
+    return '(' + city.x + ', ' + city.y + ')';
+  };
+  /* 可迁判据：自建城才可迁（名城 = 地理固定） */
+  GAME.isMovableCity = function (city) {
+    return !!(city && city.type === 'self');
+  };
+  /* 目标坐标是否可迁入 —— **唯一判据** */
+  GAME.canCityMoveTo = function (city, x, y) {
+    var s = GAME.state;
+    if (!s || !city) return { ok: false, msg: '城池不存在' };
+    if (!GAME.isMovableCity(city)) {
+      return { ok: false, msg: '名城地望固定 —— 只有自建城可以迁址' };
+    }
+    x = Math.round(Number(x)); y = Math.round(Number(y));
+    if (!isFinite(x) || !isFinite(y) || x < 0 || y < 0 || x > GAME.COORD_MAX || y > GAME.COORD_MAX) {
+      return { ok: false, msg: '坐标须在 0 ~ ' + GAME.COORD_MAX + ' 之间' };
+    }
+    if (city.x === x && city.y === y) return { ok: false, msg: '已在目标坐标上' };
+    var own = GAME.map.ownCityAt(x, y);
+    if (own) return { ok: false, msg: '该坐标已有我方城池「' + own.name + '」' };
+    var npc = GAME.map.npcAt(x, y);
+    if (npc) return { ok: false, msg: '该坐标为名城「' + npc.name + '」所据，不可占用' };
+    var fort = GAME.map.fortAt(x, y);
+    if (fort) return { ok: false, msg: '该坐标是野外城池「' + fort.name + '」，需先攻取' };
+    var w = GAME.map.wildAt(x, y);
+    if (w) return { ok: false, msg: '该坐标是已占野地，不可占用' };
+    var t = GAME.map.tile(x, y);
+    if (!t) return { ok: false, msg: '坐标越出地图' };
+    if (t.terrain !== 'plain') {
+      var tn = DATA.TERRAIN[t.terrain] ? DATA.TERRAIN[t.terrain].name : t.terrain;
+      return { ok: false, msg: '只有**平原**可以立城（' + tn + ' 不可）' };
+    }
+    return { ok: true };
+  };
+  /* 迁址（唯一执行）：旧格归还地图 → 新址脚下变城池 → 坐标落定 */
+  GAME.moveCityTo = function (cityId, x, y) {
+    var city = cityId ? GAME.cityById(cityId) : GAME.currentCity();
+    var chk = GAME.canCityMoveTo(city, x, y);
+    if (!chk.ok) return chk;
+    x = Math.round(Number(x)); y = Math.round(Number(y));
+    var from = { x: city.x, y: city.y };
+    /* ① 旧格归还：走「放弃城池」同一出口 restoreCityTile（自建城 → 还回平原） */
+    GAME.restoreCityTile(city);
+    /* ② 落新址 */
+    city.x = x; city.y = y;
+    var t = GAME.map.tile(x, y);
+    if (t) t.terrain = 'city';
+    GAME.log('📍 迁址：' + city.name + ' (' + from.x + ',' + from.y + ') → (' + x + ',' + y + ')');
+    return { ok: true, msg: '已迁至 (' + x + ', ' + y + ')', city: city, from: from };
+  };
+  /* 掷一个可迁坐标（纯函数：rnd 可注入 → 测试确定；默认 Math.random） */
+  GAME.randomCityCoord = function (city, rnd) {
+    var rand = rnd || Math.random;
+    var M = GAME.COORD_MAX;
+    for (var i = 0; i < 400; i++) {
+      var x = Math.floor(rand() * (M + 1)), y = Math.floor(rand() * (M + 1));
+      if (GAME.canCityMoveTo(city, x, y).ok) return { x: x, y: y };
+    }
+    return null;
+  };
+  /* 一键随机（老板："一键随机当前城池坐标位置"） */
+  GAME.randomMoveCity = function (cityId) {
+    var city = cityId ? GAME.cityById(cityId) : GAME.currentCity();
+    if (!city) return { ok: false, msg: '城池不存在' };
+    if (!GAME.isMovableCity(city)) return { ok: false, msg: '名城地望固定 —— 只有自建城可以迁址' };
+    var c = GAME.randomCityCoord(city);
+    if (!c) return { ok: false, msg: '地图上暂无可迁的平原空地' };
+    var r = GAME.moveCityTo(city.id, c.x, c.y);
+    if (r.ok) r.msg = '🎲 已随机迁至 (' + c.x + ', ' + c.y + ')';
+    return r;
+  };
+
+  /* ============================================================
    * 征收（v16 引入 · v24 需求 4/5 重构）
    * ------------------------------------------------------------
    * 旧版：按**全境**人口只换黄金，入口挂在左侧统计栏。
@@ -2558,6 +2721,8 @@
     var g = null, idx = -1;
     s.generals.forEach(function (x, i) { if (x.id === genId) { g = x; idx = i; } });
     if (!g) return { ok: false, msg: '将领不存在' };
+    /* v70（老板）：「不可解雇」—— 君主本人（框架与守卫同源：GAME.isLordGeneral） */
+    if (GAME.isLordGeneral(g)) return { ok: false, msg: '君主本人不可解雇' };
     if (g.status === 'march') return { ok: false, msg: g.name + ' 正在出征，不可解雇' };
     s.inventory = s.inventory || [];
     var back = 0;

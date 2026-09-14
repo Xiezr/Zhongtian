@@ -30,7 +30,9 @@
              但原范围是 ±5（11×11 = 121 格），在 500×500 地图上一眼看过去
              "周边全是平地"、显得地图很假 —— 现收紧到 ±2（5×5 = 25 格），
              只保证城池脚下与紧邻一圈可用，四周立刻恢复真实地形。 */
-          var sx = DATA.START_POS.x, sy = DATA.START_POS.y;
+          /* v70：出生点随"所选州"走（state.map.startPos）；旧档回退固定点 */
+          var sp0 = s.map.startPos || DATA.START_POS;
+          var sx = sp0.x, sy = sp0.y;
           if (Math.abs(x - sx) <= 2 && Math.abs(y - sy) <= 2) terrain = 'plain';
           row.push({ x: x, y: y, terrain: terrain });
         }
@@ -106,8 +108,8 @@
     if (!F || !s.map.grid) return false;
     var t = GAME.map.tile(x, y);
     if (!t || t.terrain === 'city') return false;
-    /* 离出生点与名城太近则不生成 */
-    var sp = DATA.START_POS;
+    /* 离出生点与名城太近则不生成（v70：出生点随所选州走） */
+    var sp = (s.map && s.map.startPos) || DATA.START_POS;
     if (Math.abs(x - sp.x) <= F.safeRadius && Math.abs(y - sp.y) <= F.safeRadius) return false;
     for (var i = 0; i < (s.map.cities || []).length; i++) {
       var c = s.map.cities[i];

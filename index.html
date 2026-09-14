@@ -80,6 +80,7 @@
     --amber: #e0a83c;
     --hero-tag: #e6b800;
     --beauty-tag: #e08ab0;   /* v29：美人标（原写死在 .gcard-tag.beauty 里） */
+    --lord-tag: #e0b23c;     /* v70：君主标（玩家角色本人） */
     --beauty: #e58aa8;
     --q1: #b9b4a8; --q2: #6fbf7a; --q3: #5aa0d8; --q4: #d8a83c;
     --rank-fan: #9c9c8c; --rank-liang: #5fbf6a; --rank-ying: #4a9be0; --rank-ming: #b06fd8;
@@ -1746,6 +1747,7 @@
     border: 1px solid currentColor; }
   .gcard-tag.hero { color: var(--hero-tag); }
   .gcard-tag.beauty { color: var(--beauty-tag); }
+  .gcard-tag.lord { color: var(--lord-tag); }
 
   /* ============ 属性条 ============ */
   .attr { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px dashed rgba(201,162,75,.15); font-size: var(--fs-body); }
@@ -1819,10 +1821,13 @@
 
   /* ============ 创建角色界面 ============ */
   .create-screen {
-    min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px;
+    /* v70：归属选项从 4 枚变 14 枚（十三州）后创建框会变高 ——
+       居中改用子元素的 `margin: auto`（`align-items: center` 在内容高过视口时
+       会把顶部裁掉），盒子超高时页面可滚动、不裁内容。 */
+    min-height: 100vh; display: flex; justify-content: center; padding: 20px;
   }
   .create-box {
-    width: 680px; max-width: 96vw; padding: 22px;
+    width: 680px; max-width: 96vw; padding: 22px; margin: auto;
   }
   .create-inner { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
   .avatar-select { text-align: center; }
@@ -1832,6 +1837,8 @@
     display: flex; align-items: center; justify-content: center; font-size: 84px;
     box-shadow: 0 8px 24px rgba(var(--sh-rgb),.5);
   }
+  /* v70（老板需求 5）：头像改用画像（与将领同一套池子），不再用 emoji */
+  .avatar-big img { width: 100%; height: 100%; object-fit: cover; border-radius: 7px; display: block; }
   .avatar-nav { display: flex; align-items: center; justify-content: center; gap: 16px; }
   .avatar-nav .arrow { font-size: 26px; color: var(--teal-light); cursor: pointer; padding: 6px 14px; user-select: none; }
   .avatar-nav .arrow:hover { color: var(--gold-light); }
@@ -2388,11 +2395,24 @@
           <div class="field"><label>城池归属</label>
             <!-- v22（需求 1）：下拉框改为点选按钮组；隐藏域保留原 id，读取端不用改 -->
             <input type="hidden" id="create-region" value="random">
-            <span class="chips" style="flex:1;">
+            <!-- v70（老板需求 5）：「城池归属应归属到州城所辖范围内，目前几个选项不太 OK」——
+                 旧的「北方/中原/江南」只是三句文案（从不影响落位）；现在给出**十三州**，
+                 选哪个州，出生城就落在该州州治近旁（GAME.pickStartPos，就近归属同一判据）。 -->
+            <span class="chips" style="flex:1;flex-wrap:wrap;">
               <span class="chip on" data-action="chip-set" data-v="random" data-target="create-region" data-after="region">随机</span>
-              <span class="chip" data-action="chip-set" data-v="north" data-target="create-region" data-after="region">北方平原</span>
-              <span class="chip" data-action="chip-set" data-v="central" data-target="create-region" data-after="region">中原腹地</span>
-              <span class="chip" data-action="chip-set" data-v="south" data-target="create-region" data-after="region">江南水乡</span>
+              <span class="chip" data-action="chip-set" data-v="司隶" data-target="create-region" data-after="region">司隶</span>
+              <span class="chip" data-action="chip-set" data-v="兖州" data-target="create-region" data-after="region">兖州</span>
+              <span class="chip" data-action="chip-set" data-v="豫州" data-target="create-region" data-after="region">豫州</span>
+              <span class="chip" data-action="chip-set" data-v="徐州" data-target="create-region" data-after="region">徐州</span>
+              <span class="chip" data-action="chip-set" data-v="青州" data-target="create-region" data-after="region">青州</span>
+              <span class="chip" data-action="chip-set" data-v="冀州" data-target="create-region" data-after="region">冀州</span>
+              <span class="chip" data-action="chip-set" data-v="幽州" data-target="create-region" data-after="region">幽州</span>
+              <span class="chip" data-action="chip-set" data-v="并州" data-target="create-region" data-after="region">并州</span>
+              <span class="chip" data-action="chip-set" data-v="凉州" data-target="create-region" data-after="region">凉州</span>
+              <span class="chip" data-action="chip-set" data-v="益州" data-target="create-region" data-after="region">益州</span>
+              <span class="chip" data-action="chip-set" data-v="荆州" data-target="create-region" data-after="region">荆州</span>
+              <span class="chip" data-action="chip-set" data-v="扬州" data-target="create-region" data-after="region">扬州</span>
+              <span class="chip" data-action="chip-set" data-v="交州" data-target="create-region" data-after="region">交州</span>
             </span>
           </div>
           <div class="summary-box" id="create-summary">

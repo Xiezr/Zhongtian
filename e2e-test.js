@@ -177,6 +177,18 @@ async function runTests(dom, URL) {
   check('无存档时「继续」按钮隐藏', !contBtn0 || contBtn0.classList.contains('hidden'));
   const startBtn = document.querySelector('[data-action="create-start"]') || document.querySelector('#create-start');
   check('找到开始按钮', !!startBtn);
+
+  /* v70（老板需求 5）：创建界面 —— 头像与将领同源（头像池）、归属改十三州 */
+  const regChips = document.querySelectorAll('#screen-create [data-target="create-region"]');
+  check('★ 归属选项 = 随机 + 十三州（14 枚）', regChips.length === 14, regChips.length + ' 枚');
+  check('★ 归属选项是州名（旧「北方/中原/江南」已撤）', (function () {
+    const vals = Array.from(regChips).map((el) => el.dataset.v);
+    return vals.indexOf('random') >= 0 && vals.indexOf('青州') >= 0 && vals.indexOf('north') < 0;
+  })());
+  const avImg = document.querySelector('#create-avatar img');
+  check('★ 头像预览走头像池（<img> 指向 assets/portraits/pool）',
+    !!avImg && /portraits\/pool\/[mf]\d\d\.webp/.test(avImg.getAttribute('src') || ''),
+    avImg ? avImg.getAttribute('src') : '（无）');
   const toastBefore = '';
   click(startBtn);
   await sleep(300);
@@ -185,6 +197,16 @@ async function runTests(dom, URL) {
   if (!G.state) return finish();
   const s = G.state;
   const city = s.cities[0];
+  /* v70（老板需求 5）：出生城归属所选州 + 君主将领入册 */
+  check('★ 出生城落在所选州（就近归属一致）', (function () {
+    const rg = s.ruler.region;
+    return (DATA.START_STATES || []).indexOf(rg) >= 0 && G.stateOfCity(city) === rg;
+  })(), s.ruler.region + ' @ ' + city.x + ',' + city.y);
+  check('★ 名单含君主将领（id=lord / 与君同名同脸）', (function () {
+    const lord = G.lordGeneralOf();
+    return !!lord && lord.id === 'lord' && lord.isLord === true
+      && lord.name === s.ruler.name && lord.portraitSeed === s.ruler.portraitSeed;
+  })());
   check('游戏界面已显示', !document.querySelector('#screen-game').classList.contains('hidden'));
 
   console.log('\n--- 5. 城内渲染 ---');
@@ -542,7 +564,10 @@ async function runTests(dom, URL) {
   /* v24（需求 6）：侧栏的「城外地块 0/12」一行已删 —— 城外棋盘本身就是这块数据 */
   check('新城外城为空地（0/12 块）', G.extUsed(conq18) === 0 && G.extCap(conq18) === 12,
     G.extUsed(conq18) + ' / ' + G.extCap(conq18));
-  check('侧栏城池属性含城名与坐标', attrs18.indexOf('江陵') >= 0 && /\[255,335\]/.test(attrs18));
+  /* v70（老板需求 3）：坐标格式由 [x,y] 改为「500×500 · (x, y)」（写明坐标体系） */
+  check('侧栏城池属性含城名与坐标',
+    attrs18.indexOf('江陵') >= 0 && attrs18.indexOf(G.coordText(conq18)) >= 0
+    && attrs18.indexOf('500×500') >= 0);
   /* v23（需求 5）：侧栏只反映当前城池，全境汇总移到底栏「统计」菜单 */
   /* v23/v24：侧栏只讲当前城池 —— 无全境汇总，也不再有城防·驻军 / 城外地块两行 */
   check('侧栏只反映当前城池（无全境汇总 / 无城防驻军 / 无城外地块）',
@@ -1590,12 +1615,16 @@ async function runTests(dom, URL) {
   check('全部卸下后槽位清空', Object.keys(gen22.equip).length === 0);
 
   /* ---- ⑥ 解雇二次确认 ---- */
-  /* 确保有 2 名将领（帐下至少留一位，故解雇需 ≥2） */
-  if (s.generals.length < 2) {
+  /* 确保有可解雇的将领。v70（老板）起名单里恒有一位**君主将领**且不可解雇 ——
+     所以这里挑"非君主"的那位（本用例要验的是"解雇能成功"，不是"能解雇君主"）。 */
+  let dismissable22 = s.generals.filter((g) => !g.isLord);
+  if (!dismissable22.length) {
     s.generals.push(G.makeGeneral('待解雇', 5, 'idle', s.cities[0].id, false));
+    dismissable22 = s.generals.filter((g) => !g.isLord);
   }
+  const victim22 = dismissable22[dismissable22.length - 1];
   const before22 = s.generals.length;
-  G.ui.openDismissConfirm(s.generals[s.generals.length - 1].id);
+  G.ui.openDismissConfirm(victim22.id);
   await sleep(80);
   const disHtml = document.querySelector('#modal-root').innerHTML;
   check('解雇确认弹窗提示装备归还', disHtml.indexOf('归还背包') >= 0);
@@ -3690,6 +3719,74 @@ if (svBtn) {
     check('导出文本可导回（同一份东西既能存文件也能粘贴）', false, '未找到存入按钮');
   }
 }
+  /* ---- v70（老板需求 3/4）：城池坐标 —— 显示 / 一键随机 / 坐标切换 ---- */
+  G.ui.setView('city');
+  await sleep(90);
+  check('★ 城池属性栏显示坐标（500×500）与两个入口', (function () {
+    const h = document.querySelector('#city-attrs').innerHTML;
+    const c0 = G.currentCity();
+    return h.indexOf('500×500') >= 0 && h.indexOf(G.coordText(c0)) >= 0
+      && h.indexOf('data-action="city-random"') >= 0 && h.indexOf('data-action="city-move-ask"') >= 0;
+  })());
+  {
+    const c70 = G.currentCity();
+    const from70 = { x: c70.x, y: c70.y };
+    click(document.querySelector('#city-attrs [data-action="city-random"]'));
+    await sleep(200);
+    check('★ 一键随机：坐标已变、旧格归还平原、新格是城池',
+      (c70.x !== from70.x || c70.y !== from70.y)
+      && G.map.tile(from70.x, from70.y).terrain === 'plain'
+      && G.map.tile(c70.x, c70.y).terrain === 'city',
+      '(' + from70.x + ',' + from70.y + ') → (' + c70.x + ',' + c70.y + ')');
+  }
+  {
+    const c71 = G.currentCity();
+    click(document.querySelector('#city-attrs [data-action="city-move-ask"]'));
+    await sleep(90);
+    const mh70 = document.querySelector('#modal-root').innerHTML;
+    check('★ 迁址弹窗：坐标输入 + 确认按钮（按弹窗规范）',
+      mh70.indexOf('迁往') >= 0 && mh70.indexOf('id="move-x"') >= 0
+      && mh70.indexOf('data-action="city-move-do"') >= 0 && mh70.indexOf('取消') >= 0);
+    let dst70 = null;
+    for (let x = 5; x < 160 && !dst70; x++) for (let y = 5; y < 160 && !dst70; y++) {
+      if (G.canCityMoveTo(c71, x, y).ok) dst70 = { x: x, y: y };
+    }
+    check('夹具：找到一处可迁坐标', !!dst70, dst70 ? dst70.x + ',' + dst70.y : '无');
+    if (dst70) {
+      document.querySelector('#move-x').value = dst70.x;
+      document.querySelector('#move-y').value = dst70.y;
+      click(document.querySelector('#modal-root [data-action="city-move-do"]'));
+      await sleep(200);
+      check('★ 手输坐标迁址生效（坐标更新 + 弹窗关闭）',
+        c71.x === dst70.x && c71.y === dst70.y
+        && document.querySelector('#modal-root').innerHTML.indexOf('迁往') < 0);
+    }
+  }
+  check('★ 名城固定（判据层：只有自建城可迁）',
+    G.isMovableCity({ type: 'self' }) === true && G.isMovableCity({ type: 'county' }) === false);
+
+  /* ---- v70（老板需求 1）：君主将领在将领页 ---- */
+  G.ui.setView('generals');
+  await sleep(140);
+  check('★ 将领页名单标出「君主」', vc.innerHTML.indexOf('gcard-tag lord') >= 0);
+  {
+    const lord70 = G.lordGeneralOf();
+    G.ui._genSel = lord70.id;
+    G.ui.renderView('generals');
+    await sleep(90);
+    check('★ 君主档案：无解雇按钮 + 有「君主特权」块',
+      vc.innerHTML.indexOf('data-action="dismiss-gen"') < 0
+      && vc.innerHTML.indexOf('君主特权') >= 0);
+    const normal70 = s.generals.filter((g) => !g.isLord)[0];
+    if (normal70) {
+      G.ui._genSel = normal70.id;
+      G.ui.renderView('generals');
+      await sleep(90);
+      check('★ 普通将领仍可解雇（入口只对君主隐藏）',
+        vc.innerHTML.indexOf('data-action="dismiss-gen"') >= 0);
+    }
+  }
+
   G.ui.setView('city');
   await sleep(60);
   return finish();

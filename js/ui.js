@@ -179,14 +179,43 @@
 
   /* ================= 创建角色 ================= */
   var avatarIdx = 0, gender = 'male';
+  /* v70（老板需求 5）：「头像与将领可选头像不一致」——
+     创建界面的头像改用**与将领同一套**的头像池（assets/portraits/pool），
+     idx 直接就是 portraitSeed（池内下标）→ 创建后君主的脸与顶栏 / 将领页**同一张**。
+     emoji 池（DATA.AVATARS）只留作池子不可用时的兜底。 */
+  ui.avatarPool = function () {
+    var P = GAME.portraits;
+    var list = (P && P.POOL && P.POOL[gender === 'female' ? 'f' : 'm']) || [];
+    return list;
+  };
+  ui.paintCreateAvatar = function () {
+    var el = $('#create-avatar');
+    if (!el) return;
+    var pool = ui.avatarPool();
+    avatarIdx = U.clamp(avatarIdx, 0, Math.max(0, pool.length - 1));
+    var file = pool[avatarIdx];
+    el.innerHTML = file
+      ? '<img src="' + GAME.portraits.DIR + 'pool/' + file + '" alt="头像">'
+      : '<span>🧔</span>';
+  };
   ui.setCreate = function () {
-    var list = DATA.AVATARS[gender];
-    avatarIdx = U.clamp(avatarIdx, 0, list.length - 1);
-    $('#create-avatar').textContent = list[avatarIdx];
+    ui.paintCreateAvatar();
+    /* v70（老板需求 5）：归属选项改成**十三州** —— 说明给「州治 + 特产 + 风土」，
+       出生城由 GAME.pickStartPos 落在该州州治近旁（不再是三句空文案）。 */
     var region = $('#create-region').value;
-    var txt = region === 'random' ? '（随机分配一处宝地，开疆拓土）' :
-      region === 'north' ? '（北方平原·易守难攻）' :
-      region === 'central' ? '（中原腹地·物产丰饶）' : '（江南水乡·富庶安宁）';
+    var txt;
+    if (region === 'random' || !DATA.STATE_SPECIALTY[region]) {
+      txt = '（随机择一州落籍 · 出生城落在该州州治近旁的平原）';
+    } else {
+      var sp = DATA.STATE_SPECIALTY[region];
+      var mat = DATA.MATERIAL_BY_ID[sp.mat];
+      var seat = null;
+      (DATA.NPC_CITIES || []).forEach(function (c) {
+        if (!seat && c.state === region && (c.type === 'zhou' || c.type === 'capital')) seat = c;
+      });
+      txt = '（' + region + ' · 州治' + (seat ? seat.name : '—') + ' · 特产' +
+        (mat ? mat.name : sp.mat) + '　' + sp.lore + '）';
+    }
     $('#create-map-preview').textContent = txt;
     /* 存档选择：有档则亮出「继续上次的游戏」并显示存档概要 */
     var btnC = $('#create-continue'), note = $('#create-save-note');
@@ -260,9 +289,9 @@
   };
 
   ui.avatarShift = function (dir) {
-    var list = DATA.AVATARS[gender];
-    avatarIdx = (avatarIdx + dir + list.length) % list.length;
-    $('#create-avatar').textContent = list[avatarIdx];
+    var n = ui.avatarPool().length || 1;
+    avatarIdx = (avatarIdx + dir + n) % n;
+    ui.paintCreateAvatar();
   };
   ui.setGender = function (g) {
     gender = g; avatarIdx = 0;
@@ -275,8 +304,15 @@
     var name = ($('#create-name').value || '').trim();
     if (!name) { ui.toast('请先输入君主名字'); return; }
     /* 已移除"玩家守则"勾选：本项目无需该门禁，首页直接提供存档选择 */
-    var avatar = DATA.AVATARS[gender][avatarIdx];
-    GAME.newGame({ name: name, avatar: avatar, gender: gender, region: $('#create-region').value });
+    var list = DATA.AVATARS[gender];
+    var avatar = list[avatarIdx % list.length];
+    /* v70（老板需求 5）：portraitSeed = 头像池下标（就是玩家挑的那张脸），
+       落位交给 newGame 按所选州算；avatar（emoji）保留为旧字段兜底。 */
+    GAME.newGame({
+      name: name, avatar: avatar, gender: gender,
+      region: $('#create-region').value,
+      portraitSeed: avatarIdx,
+    });
     GAME.map.generate();
     GAME.log('欢迎 ' + name + ' 踏上争霸之路！');
     GAME.saveGame();
@@ -795,7 +831,9 @@
   ui.cityLabelHTML = function (c) {
     if (!c) return '';
     var tn = GAME.cityTierName ? GAME.cityTierName(c) : '';
-    return U.escape(c.name) + (tn ? '<span class="city-tier">[' + tn + ']</span>' : '');
+    /* v70（老板）：地名走**全称**（州 · 郡 · 县，唯一出口 GAME.cityFullName）——
+       旧版只写城名，"这是哪一州的城"要靠玩家自己猜。 */
+    return U.escape(GAME.cityFullName(c)) + (tn ? '<span class="city-tier">[' + tn + ']</span>' : '');
   };
 
   /* ② 城池属性栏：民心/民怨/税率/黄金/人口 */
@@ -845,8 +883,16 @@
       '<div class="res-line" style="border-bottom:1px solid var(--sep-gold);padding-bottom:5px;margin-bottom:3px;">' +
         '<span class="lbl" style="color:var(--gold-light);font-weight:700;">🏯 ' +
           ui.cityLabelHTML(c) + '</span>' +
-        '<span class="val" style="font-weight:400;color:var(--text-dim);">[' + c.x + ',' + c.y + '] 官府Lv' +
-          (GAME.buildingLevel(c, 'guanfu') || 1) + '</span></div>' +
+        /* v70（老板）：「城池的主界面提供其坐标（500×500）… 一键随机… 坐标切换
+           （除名城，名城固定）」—— 坐标常显；自建城给 🎲/📍 两个入口，
+           名城（地理固定）只标注不可迁。两钮都走唯一出口 GAME.canCityMoveTo。 */
+        '<span class="val" style="font-weight:400;color:var(--text-dim);">' +
+          '500×500 · ' + GAME.coordText(c) + ' · 官府Lv' + (GAME.buildingLevel(c, 'guanfu') || 1) +
+          (GAME.isMovableCity(c)
+            ? ' <button class="btn sm" data-action="city-random" title="一键随机：迁到一处空闲平原">🎲</button>' +
+              '<button class="btn sm" data-action="city-move-ask" title="坐标切换：输入坐标迁址">📍</button>'
+            : ' <span style="opacity:.7">名城固定</span>') +
+        '</span></div>' +
       /* v26（需求 3）：天时已移到顶栏 —— 它是全局信息，不该占城池属性的位置 */
       /* v28（需求 3）：民心与民怨合并成一行「xx / xx」——
          两者本是同一枚硬币（民怨 = 100 − 民心），各占一行纯粹浪费侧栏高度。 */
@@ -1690,6 +1736,13 @@
       '<div class="attr"><span class="k">人口总和</span><span class="v">' +
         U.fmt(GAME.totalPop()) + ' / ' + U.fmt(totalPop) + '</span></div>' +
       '<div class="attr"><span class="k">将领总数</span><span class="v">' + s.generals.length + '（名将 ' + heroCount + '）</span></div>' +
+      /* v70（老板）：君主本人也是将领 —— 这行让"他在哪、在干什么、几级"一眼可查 */
+      (function () {
+        var lg = GAME.lordGeneralOf();
+        if (!lg) return '';
+        return '<div class="attr"><span class="k">君主领兵</span><span class="v">Lv' + lg.level +
+          ' · ' + ui.genStatusName(lg) + (lg.isLord ? '（不可解雇）' : '') + '</span></div>';
+      })() +
       '<div class="attr"><span class="k">状态</span><span class="v">正常</span></div>' +
       /* v25（需求 10）：爵位从独立菜单并入君主 —— 它本来就是"君主身份"，不是玩法模块 */
       ui.rankBlock() +
@@ -3842,6 +3895,7 @@
       '<span class="grow-face">' + ui.faceOf(g, 30) + '</span>' +
       '<span class="grow-main">' +
         '<b class="grow-name">' + U.escape(g.name) +
+          (GAME.isLordGeneral(g) ? '<span class="gcard-tag lord">君主</span>' : '') +
           (g.hero ? '<span class="gcard-tag hero">名将</span>' : '') +
           (g.beauty ? '<span class="gcard-tag beauty">美人</span>' : '') + '</b>' +
         '<span class="grow-sub">' + ui.rankBadge(g) +
@@ -3940,9 +3994,19 @@
         '<span class="gp-ops">' +
           '<button class="btn sm' + (g.status === 'guard' ? ' red' : ' gold') + '" data-action="assign-guard" data-gen="' + genId + '">' +
             (g.status === 'guard' ? '解除守将' : '任命守将') + '</button>' +
-          '<button class="btn sm" data-action="dismiss-gen" data-gen="' + genId + '">解雇</button>' +
+          /* v70（老板）：「不可解雇」—— 君主的档案里**不给解雇按钮**（守卫在域层，这里连入口都不给） */
+          (GAME.isLordGeneral(g) ? '' :
+            '<button class="btn sm" data-action="dismiss-gen" data-gen="' + genId + '">解雇</button>') +
         '</span>' +
       '</div>' +
+      /* v70（老板）：「留可扩张框架」—— 君主特权清单（数据源 DATA.LORD_TRAITS，
+         走 GAME.lordTraitsOf）。普通将领返回空数组 → 整块不渲染、不占高度。 */
+      (GAME.lordTraitsOf(g).length
+        ? '<div class="note" style="margin-top:4px;">👑 君主特权：' +
+            GAME.lordTraitsOf(g).map(function (t) {
+              return t.icon + ' <b>' + t.name + '</b> ' + t.desc;
+            }).join('　') + '</div>'
+        : '') +
       /* v46（需求 2）：档案拆成**三块**，位置固定下来 ——
          上＝汇总身份行（横贯全宽）；左下＝六维 / 状态 / 守将效果；右＝装备栏。
          分栏比例：左栏全是文字（表格自己会折行，窄一点无所谓），
@@ -4984,6 +5048,32 @@
   ui.cityTierName = function (type) {
     return DATA.CITY_TIER ? (DATA.CITY_TIER[type] || '自建城') : (type || '');
   };
+  /* v70（老板）：「为玩家城池提供坐标切换」—— 输入坐标迁址（唯一入口）。
+     判据与执行都在 GAME.canCityMoveTo / moveCityTo（界面不自己判一遍）。 */
+  ui.openCityMoveAsk = function (city) {
+    var c = city || GAME.currentCity();
+    if (!c) return;
+    ui._cityMoveId = c.id;
+    var movable = GAME.isMovableCity(c);
+    ui.openModal(
+      '<div class="gold-heading">📍 迁址 · ' + U.escape(c.name) + '</div>' +
+      '<div class="note">迁址后：**原坐标那格归还地图**，新坐标成为你的城池。' +
+        '只可迁到**平原**空地（界内 0 ~ ' + GAME.COORD_MAX + '）。名城地望固定，不可迁。</div>' +
+      '<div class="attr"><span class="k">当前坐标</span><span class="v">' +
+        GAME.coordText(c) + ' / 500×500</span></div>' +
+      (movable
+        ? '<div class="attr"><span class="k">迁往</span><span class="v">' +
+            'X <input type="number" id="move-x" class="qty-input" style="width:76px;" min="0" max="' +
+              GAME.COORD_MAX + '" value="' + c.x + '">　' +
+            'Y <input type="number" id="move-y" class="qty-input" style="width:76px;" min="0" max="' +
+              GAME.COORD_MAX + '" value="' + c.y + '"></span></div>'
+        : '<div class="note">这座城是名城 —— 地望固定，不可迁址。</div>') +
+      '<div class="modal-foot">' +
+        (movable ? '<button class="btn gold" data-action="city-move-do">确认迁址</button>' : '') +
+        '<button class="btn" data-action="close-modal">' + (movable ? '取消' : '关闭') + '</button></div>'
+    );
+  };
+
   ui.openCityPanel = function (city) {
     var s = GAME.state;
     city = city || GAME.currentCity();
@@ -5572,7 +5662,7 @@
        否则玩家点掠夺被拦下来会以为功能坏了（真正的拦截在 battle.prepare）。 */
     var raided = GAME.map.fortRaidedToday && GAME.map.fortRaidedToday(f.x, f.y);
     ui.openModal(
-      '<div class="gold-heading">🏕️ 野外城池 · ' + U.escape(f.name) + ' Lv' + f.level + '</div>' +
+      '<div class="gold-heading">🏕️ 野外城池 · ' + U.escape(GAME.fortLabelOf(f)) + ' Lv' + f.level + '</div>' +
       '<div style="text-align:center;color:var(--text-dim);font-size:var(--fs-body);margin-bottom:8px;">守军约 ' + gNum.toLocaleString() + ' 名 · 距主城 ' + dist + ' 格</div>' +
       ui.planHTML(plan) +
       '<div class="note">守军：' + parts.join('　') + '<br>' +
@@ -5673,7 +5763,10 @@
     }).join('');
     var cur = GAME.battle.modeOf(ui._expMode);
 
-    var html = '<div class="gold-heading">⚔️ ' + U.escape(t.name) + '</div>';
+    /* v70（老板）：出征目标写**全称** —— 名城给州·郡·县，野外城池带所在县 */
+    var _tTitle = (t.kind === 'fort' && t.fort) ? GAME.fortLabelOf(t.fort)
+      : (t.npc ? GAME.cityFullName(t.npc) : t.name);
+    var html = '<div class="gold-heading">⚔️ ' + U.escape(_tTitle) + '</div>';
     html += '<div class="exp-info">守军约 <b>' + gNum.toLocaleString() + '</b>　' +
       (t.kind === 'wild' ? ('地形加成' + (t.terrain ? '' : '')) : ('城防 <b>' + (t.def || 0) + '</b>')) + '</div>';
     /* ============================================================
