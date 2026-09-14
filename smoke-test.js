@@ -85,6 +85,17 @@
      extOf(state) 取该 state 首城的外城网格，让既有断言继续可用。 */
   function extOf(st) { return G.extGridOf(st.cities[0]); }
 
+  /* v68（逐步探索）：把城的官府设为"该城满级"（12 + 档位加成）——
+     让"建筑应能自由升满"的老测试段不受官府总闸影响。
+     总闸本身的验证在「第 54 节 · 建造前置」，那里用低级官府做对照。 */
+  function govMax(c) {
+    var cap = (DATA.BUILDINGS.guanfu.maxLevel || DATA.MAX_BLEVEL) + (GAME.cityBuildBonus(c) || 0);
+    ((c && c.cells) || []).forEach(function (x) {
+      if (x.build && x.build.id === 'guanfu') x.build.lvl = cap;
+    });
+    return c;
+  }
+
   /* ⚠️ 取某个函数的**完整函数体**，按结构取而不是按固定字符数截。
      位置型断言（`src.slice(i, i + 2200)`）已经连续三次假红，根因都是同一个：
      **函数里加注释/加分支会让它变长**，而窗口是写死的数字 ——
@@ -329,12 +340,13 @@
   var f1 = s.cities[0].cells.findIndex(function (c) { return !c.build && !c.pending && !c.official; });
   var f2 = s.cities[0].cells.findIndex(function (c, i) { return i > f1 && !c.build && !c.pending && !c.official; });
   check('建造槽位默认2个', G.buildSlots() === 2);
-  var q1 = G.buildAt(s.cities[0].id, f1, 'kezhan');
+  /* v68：本段只测队列机制 —— 建筑一律选**无前置**的；前置规则本身在「第 54 节」验证 */
+  var q1 = G.buildAt(s.cities[0].id, f1, 'junying');
   check('第1个建造发起成功', q1.ok === true, q1.msg);
-  var q2 = G.buildAt(s.cities[0].id, f2, 'zhaoxianguan');
+  var q2 = G.buildAt(s.cities[0].id, f2, 'cangku');
   check('第2个建造发起成功', q2.ok === true, q2.msg);
   var f3 = s.cities[0].cells.findIndex(function (c, i) { return i > f2 && !c.build && !c.pending && !c.official; });
-  var q3 = G.buildAt(s.cities[0].id, f3, 'honglusi');
+  var q3 = G.buildAt(s.cities[0].id, f3, 'cangku');
   check('第3个建造被队列上限拦截', q3.ok === false, q3.msg);
   check('队列中使用2个槽位', G.buildQueueUsed(s.cities[0].id) === 2);
   /* 取消建造：返还资源 + 清 pending + 出队 */
@@ -346,7 +358,7 @@
   check('取消后队列剩1个', s.queues.build.length === 1);
   check('取消返还资源', s.res.grain > grainBefore || s.res.wood > woodBefore, '粮+' + Math.round(s.res.grain - grainBefore) + ' 木+' + Math.round(s.res.wood - woodBefore));
   /* 取消后槽位释放，可再建 */
-  var q4 = G.buildAt(s.cities[0].id, f3, 'honglusi');
+  var q4 = G.buildAt(s.cities[0].id, f3, 'cangku');
   check('取消后槽位释放可再建', q4.ok === true, q4.msg);
   s.queues.build.length = 0;
   s.cities[0].cells.forEach(function (c) { c.pending = null; });
@@ -4300,6 +4312,7 @@
   check('城外地块升级仍展示当前产量', /当前产出（施工中不停产）/.test(uS31));
   check('实测：升级中军营仍可募兵', (function () {
     var s = G.state, c = s.cities[0];
+    govMax(c);   /* v68：官府拉满 —— 本段专注"升级中的军营"，不测总闸；防 if(!r.ok)return true 静默弱化 */
     s.res.grain = 1e8; s.res.wood = 1e8; s.res.stone = 1e8; s.res.iron = 1e8;
     var i = -1;
     for (var k = 0; k < c.cells.length; k++) { if (!c.official && !c.cells[k].build && !c.cells[k].pending) { i = k; break; } }
@@ -7400,7 +7413,7 @@ check('上限加成按名城档位（县2/郡4/州8/都12，自建城不加成�
 })());
 check('实测：五档城池的上限值（一律走唯一出口 buildCapOf）', (function () {
   var got = ['self', 'county', 'jun', 'zhou', 'capital'].map(function (t) {
-    return G.buildCapOf(G.makeCity({ id: 'v54_' + t, name: t, x: 1, y: 1, type: t }), 'minfang');
+    return G.buildCapOf(govMax(G.makeCity({ id: 'v54_' + t, name: t, x: 1, y: 1, type: t })), 'minfang');
   });
   return JSON.stringify(got) === JSON.stringify([12, 14, 16, 20, 24]);
 })(), '自建12 / 县14 / 郡16 / 州20 / 都24');
@@ -7414,6 +7427,8 @@ check('实测：都城真能越过 12 级继续升，自建城在 12 级止步�
   s.queues.build = [];
   var doCity = G.makeCity({ id: 'v54_do', name: 'v54都城', x: 500, y: 500, type: 'capital' });
   var selfCity = G.makeCity({ id: 'v54_self', name: 'v54自建', x: 501, y: 501, type: 'self' });
+  /* v68：官府拉满 —— 本段验证的是名城档位加成，不是官府总闸 */
+  govMax(doCity); govMax(selfCity);
   s.cities.push(doCity, selfCity);
   var freeIdx = function (c) {
     for (var i = 0; i < c.cells.length; i++) if (!c.cells[i].build && !c.cells[i].official) return i;
@@ -10249,6 +10264,7 @@ console.log('\n===== 47. v62 工匠作坊造箭塔 =====');
   check('实测：城墙满级后不再回到候选里（否则"全部满级"永远达不到）', (function () {
     return withState('v64wall3', function (st) {
       var c = st.cities[0];
+      govMax(c);   /* v68：官府拉满 —— "全部满级"指该城上限，而不是官府总闸 */
       c.wallLv = G.buildCapOf(c, 'chengqiang');
       /* 其余建筑也拉满 → 必须报"全部建筑已满级（含城墙）" */
       c.cells.forEach(function (x) { if (x.build && DATA.BUILDINGS[x.build.id]) x.build.lvl = DATA.BUILDINGS[x.build.id].maxLevel; });
@@ -11448,6 +11464,145 @@ console.log('\n===== 47. v62 工匠作坊造箭塔 =====');
       G.resName('grain') === '粮食' && G.resName('gold') === '黄金' && G.resName('nope') === 'nope');
 
     G.state = stBackup;
+  })();
+
+  /* ============================================================
+   * 54. 建造前置（v68 · 逐步探索）
+   * ------------------------------------------------------------
+   * 老板三条 + 补充规则，全部走 GAME.buildPrereqOf 单一出口：
+   *   ① 其他建筑等级不能超过官府（总闸：buildCapOf 与 prereq 同一判据）
+   *   ② 先客栈后招贤馆（招贤馆需客栈 Lv2）
+   *   ③ 铁匠铺 Lv3 才能建工匠作坊
+   *   ④~⑥ 校场/驿站/鸿胪寺/马厩
+   * 建造与升级同一把尺；新建按 1 级算（可多建建筑不被误判为升级）。
+   * ============================================================ */
+  console.log('\n--- 第 54 节：建造前置（逐步探索） ---');
+  (function () {
+    var keep54 = G.state;
+    var st54 = G.newGame({ name: 'gate54' });
+    G.state = st54;
+    if (G.map.generate) G.map.generate();
+    var rd54 = function (f) { return require('fs').readFileSync(require('path').join(__dirname, 'js', f + '.js'), 'utf8'); };
+    var c54 = st54.cities[0];
+    st54.res.grain = 5e8; st54.res.wood = 5e8; st54.res.stone = 5e8; st54.res.iron = 5e8; st54.res.gold = 5e8;
+    var free54 = function (except) {
+      /* except：本次要保留的格 —— 被前置拒掉的格仍是空位，不排除会重复取到同一格 */
+      for (var i = 0; i < c54.cells.length; i++) {
+        var x = c54.cells[i];
+        if (i === except) continue;
+        if (!x.official && !x.build && !x.pending) return i;
+      }
+      return -1;
+    };
+    var fin54 = function () {
+      var g = 0;
+      while (st54.queues.build.length && g++ < 40) {
+        var q = st54.queues.build[0]; q.elapsed = q.totalTime; G.applyBuildDone(q);
+        var ix = st54.queues.build.indexOf(q); if (ix >= 0) st54.queues.build.splice(ix, 1);
+      }
+    };
+    var setGov54 = function (lv) {
+      c54.cells.forEach(function (x) { if (x.build && x.build.id === 'guanfu') x.build.lvl = lv; });
+    };
+    var govIdx54 = c54.cells.findIndex(function (x) { return x.build && x.build.id === 'guanfu'; });
+
+    try {
+      /* ---- ① 官府总闸：等级 ≤ 官府 ---- */
+      var g1 = free54();
+      var b1 = G.buildAt(c54.id, g1, 'junying');
+      check('官府 Lv1 时：新建筑（1级）可建', b1.ok === true, b1.msg);
+      fin54();
+      var u1 = G.upgradeAt(c54.id, g1);
+      check('★ 官府 Lv1 时军营升 2 级被拦（总闸生效，提示指向官府）',
+        u1.ok === false && /官府/.test(u1.msg || ''), u1.msg);
+      var gu1 = G.upgradeAt(c54.id, govIdx54);
+      check('★ 官府自身不受总闸（它可以先升）', gu1.ok === true, gu1.msg);
+      fin54();
+      setGov54(2);
+      var u2 = G.upgradeAt(c54.id, g1);
+      check('★ 官府 Lv2 后军营可升 2 级（总闸打开）', u2.ok === true, u2.msg);
+      fin54();
+      setGov54(12);
+      var gu2 = G.upgradeAt(c54.id, govIdx54);
+      check('官府 12 级是它自己的硬顶（报「最高等级」而不是官府）',
+        gu2.ok === false && /最高等级/.test(gu2.msg || ''), gu2.msg);
+
+      /* ---- ② 先客栈后招贤馆 ---- */
+      var z1 = free54();
+      var p1 = G.buildAt(c54.id, z1, 'zhaoxianguan');
+      check('★ 无客栈时招贤馆被拦（先客栈后招贤馆）',
+        p1.ok === false && /客栈/.test(p1.msg || ''), p1.msg);
+      var k1 = free54(z1);
+      var p2 = G.buildAt(c54.id, k1, 'kezhan');
+      check('客栈本身可建（无前置）', p2.ok === true, p2.msg);
+      fin54();
+      var p3 = G.buildAt(c54.id, z1, 'zhaoxianguan');
+      check('客栈 Lv1 仍不够（需 Lv2）', p3.ok === false, p3.msg);
+      c54.cells[k1].build.lvl = 2;
+      var p4 = G.buildAt(c54.id, z1, 'zhaoxianguan');
+      check('★ 客栈到 Lv2 后招贤馆可建', p4.ok === true, p4.msg);
+      fin54();
+      /* 升级同受前置：把客栈压回 Lv1 */
+      c54.cells[k1].build.lvl = 1;
+      var p5 = G.upgradeAt(c54.id, z1);
+      check('★ 升级同受前置（客栈降级后招贤馆不能升）',
+        p5.ok === false && /客栈/.test(p5.msg || ''), p5.msg);
+      c54.cells[k1].build.lvl = 2;
+
+      /* ---- ③ 铁匠铺 → 工匠作坊 ---- */
+      var t1 = free54();
+      var q1g = G.buildAt(c54.id, t1, 'gongjiangzuofang');
+      check('★ 无铁匠铺时工匠作坊被拦', q1g.ok === false && /铁匠铺/.test(q1g.msg || ''), q1g.msg);
+      var t2 = free54(t1);
+      G.buildAt(c54.id, t2, 'tiejiangpu'); fin54();
+      c54.cells[t2].build.lvl = 2;
+      var q2g = G.buildAt(c54.id, t1, 'gongjiangzuofang');
+      check('铁匠铺 Lv2 仍不够（需 Lv3）', q2g.ok === false, q2g.msg);
+      c54.cells[t2].build.lvl = 3;
+      var q3g = G.buildAt(c54.id, t1, 'gongjiangzuofang');
+      check('★ 铁匠铺到 Lv3 后工匠作坊可建', q3g.ok === true, q3g.msg);
+      fin54();
+
+      /* ---- ④ 可多建建筑的新建不被误判为升级（真缺陷回归）---- */
+      var ck1 = free54();
+      var c1b = G.buildAt(c54.id, ck1, 'cangku');
+      check('仓库第 1 座可建', c1b.ok === true, c1b.msg);
+      fin54();
+      var ck2 = free54(ck1);
+      var c2b = G.buildAt(c54.id, ck2, 'cangku');
+      check('★ 仓库第 2 座可建（新建按 1 级算，不被误当升级）', c2b.ok === true, c2b.msg);
+      fin54();
+
+      /* ---- ⑤ 表与出口的收口 ---- */
+      check('前置表 6 条规则齐备', (function () {
+        var P = DATA.BUILD_PREREQ || {};
+        return P.zhaoxianguan && P.zhaoxianguan.kezhan === 2
+          && P.gongjiangzuofang && P.gongjiangzuofang.tiejiangpu === 3
+          && P.xiaochang && P.xiaochang.junying === 2
+          && P.yizhan && P.yizhan.shichang === 2
+          && P.honglusi && P.honglusi.kezhan === 3
+          && P.majiu && P.majiu.junying === 3;
+      })());
+      check('逐步探索只有一个出口：buildPrereqOf 定义 1 处、内核与 UI 都接',
+        (function () {
+          var d = stripComment(rd54('domain')), u = stripComment(rd54('ui'));
+          return (d.match(/GAME\.buildPrereqOf\s*=\s*function/g) || []).length === 1
+            && (d.match(/GAME\.buildPrereqOf\(/g) || []).length >= 2
+            && (u.match(/GAME\.buildPrereqOf\(/g) || []).length >= 2;
+        })());
+      check('无官府的城不受总闸（异常/测试构造不被误伤）', (function () {
+        var cx = G.makeCity({ id: 'nogov54', name: '无官府城', x: 1, y: 1, type: 'self' });
+        cx.cells.forEach(function (x) { if (x.build) x.build = null; });
+        var cap = G.buildCapOf(cx, 'minfang');
+        var pre = G.buildPrereqOf(cx, 'minfang', 3);
+        cx.cells[0].build = { id: 'minfang', lvl: 5 };
+        st54.cities.push(cx);
+        var up = G.upgradeAt(cx.id, 0);
+        return cap === DATA.MAX_BLEVEL && pre.ok === true && up.ok === true;
+      })());
+    } finally {
+      G.state = keep54;
+    }
   })();
 
   console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');

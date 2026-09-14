@@ -1729,6 +1729,9 @@ async function runTests(dom, URL) {
       }
     };
 
+    /* v68（逐步探索）：官府拉满 —— 本段专注"升级不锁功能"，不受官府总闸干扰 */
+    c24.cells.forEach((x) => { if (x.build && x.build.id === 'guanfu') x.build.lvl = 12; });
+
     /* ---- ① 升级是后台过程：升级中仍能打开功能面板 ---- */
     const junI = findEmpty24();
     G.buildAt(c24.id, junI, 'junying');

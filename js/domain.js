@@ -187,7 +187,50 @@
   GAME.buildCapOf = function (city, bid) {
     var b = bid ? (DATA.BUILDINGS[bid] || DATA.EXT_BUILDINGS[bid] || null) : null;
     var base = (b && b.maxLevel) || DATA.MAX_BLEVEL;
-    return base + GAME.cityBuildBonus(city);
+    var cap = base + GAME.cityBuildBonus(city);
+    /* v68 · 逐步探索：城内建筑（含城墙）等级不得超过官府等级。
+       - 官府自身、城外建筑、以及"没有官府的城"（异常数据/测试构造）不受此闸；
+       - 与 DATA.BUILD_PREREQ 分工：这里管**等级上限**，那里管**建造前置**。 */
+    if (bid && DATA.BUILDINGS[bid] && bid !== 'guanfu') {
+      var govLv = GAME.buildingLevel(city, 'guanfu');
+      if (govLv > 0) cap = Math.min(cap, govLv);
+    }
+    return cap;
+  };
+
+  /* 建造前置的唯一出口（v68 · 逐步探索）：
+       · 特殊前置：DATA.BUILD_PREREQ（先 X 后 Y）
+       · 官府总闸：只有当"升官府真能解锁"时才报官府（官府自身到顶则交给等级硬顶去报）
+     返回 { ok, list, short, msg } —— short 供卡片角标，msg 供提示条。 */
+  GAME.buildPrereqOf = function (city, bid, nextLv) {
+    var list = [];
+    if (!city || !bid) return { ok: true, list: list };
+    var req = DATA.BUILD_PREREQ && DATA.BUILD_PREREQ[bid];
+    if (req) {
+      for (var k in req) {
+        var cur = GAME.buildingLevel(city, k);
+        if (cur < req[k]) list.push({ bid: k, name: (DATA.BUILDINGS[k] || {}).name || k, need: req[k], cur: cur });
+      }
+    }
+    var b = DATA.BUILDINGS[bid];
+    if (b && bid !== 'guanfu') {
+      var govLv = GAME.buildingLevel(city, 'guanfu');
+      var govCap = (DATA.BUILDINGS.guanfu.maxLevel || DATA.MAX_BLEVEL) + GAME.cityBuildBonus(city);
+      /* nextLv：本次动作要到达的等级。
+         新建（buildAt）显式传 1 —— 可多建建筑（仓库/民房…）已有等级时，
+         不能用 buildingLevel+1，否则"新建第二座"会被当成"升到 N+1"误拦。
+         升级（upgradeAt）不传，默认 lvl+1。 */
+      var next = nextLv || (GAME.buildingLevel(city, bid) + 1);
+      /* govLv < govCap：官府还没到自己的顶，"再升官府"是真实可执行的下一步；
+         官府已到顶时不报 gate，让等级硬顶去报「已达最高等级」。 */
+      if (govLv > 0 && next > govLv && govLv < govCap) {
+        list.push({ bid: 'guanfu', name: '官府', need: Math.min(next, govCap), cur: govLv, gate: true });
+      }
+    }
+    if (!list.length) return { ok: true, list: list };
+    var parts = list.map(function (o) { return o.name + ' 需 Lv' + o.need + '（当前 Lv' + o.cur + '）'; });
+    var f = list[0];
+    return { ok: false, list: list, short: '需' + f.name + ' Lv' + f.need, msg: '前置未满足：' + parts.join('；') };
   };
 
   /* 该城是否已有城墙在建造队列里。
@@ -427,6 +470,9 @@
     if (UNIQUE_BUILDINGS[buildId] && GAME.buildingLevel(city, buildId) > 0) {
       return { ok: false, msg: b.name + ' 全城唯一（已建造）' };
     }
+    /* v68 · 逐步探索：建造前置（先 X 后 Y）—— 与升级共用同一判定，见 buildPrereqOf */
+    var pre = GAME.buildPrereqOf(city, buildId, 1);
+    if (!pre.ok) return pre;
     var slot = GAME.checkBuildSlot(city.id);
     if (!slot.ok) return slot;
     var cost = b.buildCost;
@@ -463,6 +509,10 @@
        且点开建筑看不到「升级中」（这正是「升级中看不到进度、无法取消」的根因） */
     if (cell.pending) return { ok: false, msg: '该建筑正在施工中（可点开查看进度或取消）' };
     var b = DATA.BUILDINGS[cell.build.id];
+    /* v68 · 逐步探索：前置（含官府总闸）优先于等级硬顶 ——
+       两者都不满足时，报"升官府可解锁"比报"已达最高等级"更接近玩家的下一步动作。 */
+    var pre = GAME.buildPrereqOf(city, cell.build.id);
+    if (!pre.ok) return pre;
     if (cell.build.lvl >= GAME.buildCapOf(city, cell.build.id)) return { ok: false, msg: '已达最高等级' };
     var slot = GAME.checkBuildSlot(city.id);
     if (!slot.ok) return slot;

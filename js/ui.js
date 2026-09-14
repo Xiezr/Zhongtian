@@ -3226,8 +3226,10 @@
     }
     if (cell.build) {
       var b = DATA.BUILDINGS[cell.build.id];
+      /* v68 · 逐步探索：卡在官府等级上时，'已满级' 会误导 —— 用前置检查给出准确原因 */
+      var preUp = GAME.buildPrereqOf(c, cell.build.id);
       var upCost = cell.build.lvl < GAME.buildCapOf(c, cell.build.id) ? b.levelCost(cell.build.lvl) : null;
-      var costStr = upCost ? GAME.costString(upCost) : '已满级';
+      var costStr = upCost ? GAME.costString(upCost) : (preUp.ok ? '已满级' : preUp.short);
       var dRef = GAME.demolishRefund(c, idx);
       var extra = '';
       if (b.id === 'minfang') extra = '<div class="attr"><span class="k">人口上限</span><span class="v good">' + b.pop[cell.build.lvl - 1] + '</span></div>';
@@ -3292,7 +3294,7 @@
           '<div class="op-row">' +
             (function () { var f = BLDG_FUNC[b.id]; return f ? ('<button class="btn gold" data-action="' + f.act + '"' + (f.view ? ' data-view="' + f.view + '"' : '') +
                 (f.withIdx ? ' data-idx="' + idx + '"' : '') + '>' + f.label + '</button>') : ''; })() +
-            (upCost ? '<button class="btn" data-action="confirm-upgrade" data-idx="' + idx + '">升级 → Lv' + (cell.build.lvl + 1) + '</button>' : '<span class="op-done">已达最高等级</span>') +
+            (upCost ? '<button class="btn" data-action="confirm-upgrade" data-idx="' + idx + '">升级 → Lv' + (cell.build.lvl + 1) + '</button>' : '<span class="op-done">' + (preUp.ok ? '已达最高等级' : U.escape(preUp.short)) + '</span>') +
           '</div></div>' +
         '<div class="bldg-foot">' +
           '<button class="btn sm red" data-action="demolish-ask" data-kind="city" data-idx="' + idx + '"' +
@@ -3322,6 +3324,9 @@
         if (!GAME.canAfford(b.buildCost)) { afford = ' disabled'; lockMsg = '材料不足'; tip += '｜材料不足'; }
         if (UNIQUE[bid] && GAME.buildingLevel(c, bid) > 0) { afford = ' disabled'; lockMsg = '已建造(唯一)'; tip += '｜本城已建有（唯一建筑）'; }
         if (bid === 'guanfu') { afford = ' disabled'; lockMsg = '官府初始自带'; tip += '｜官府初始自带'; }
+        /* v68 · 逐步探索：前置不满足 → 置灰并写明原因（"需客栈 Lv2"） */
+        var preB = GAME.buildPrereqOf(c, bid, 1);
+        if (!preB.ok) { afford = ' disabled'; lockMsg = preB.short; tip += '｜' + preB.msg; }
         var ic = GAME.icons.forBuilding(bid) || b.icon;
         return '<div class="troop-card bldg-pick' + afford + '" data-action="confirm-build" data-idx="' + idx +
           '" data-build="' + bid + '" style="cursor:pointer;" title="' + U.escape(tip) + '">' +
