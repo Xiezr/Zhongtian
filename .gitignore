@@ -1,0 +1,30 @@
+# .gitignore —— 什么不进版本库，判据见 docs/项目地图.md 第二节「素材拆解」
+#
+# 总原则：只跟踪「运行期需要的」+ 代码 + 文档 + 工具。
+# 运行期 = 双击 index.html 就能玩所需的全部文件，约 37MB。
+# 其余 200MB 里的绝大部分是原料，排除。
+
+# ─────────── 原料：非运行期，不可再生，请另用独立介质备份 ───────────
+# assets/icons/raw         33 个 / 约 38MB   AI 图集原图
+# assets/portraits/_raw    28 个 / 约 41MB   名将 AI 原图
+# assets/portraits/pd_src  29 个 / 约 3MB    公版画像（已备未启用）
+# 合计约 82MB。这些是生成素材的源，不是游戏运行需要的图。
+# ⚠️ AI 生成不可复现 —— 本仓库不保护它们，务必单独备份（3-2-1）。
+assets/icons/raw/
+assets/portraits/_raw/
+assets/portraits/pd_src/
+
+# ─────────── 过程产物 ───────────
+# 一次性探针放这里，用完即清（约定见 docs/项目地图.md）
+.workbuddy/tmp/
+
+# ─────────── 系统垃圾 ───────────
+Thumbs.db
+desktop.ini
+.DS_Store
+*~
+
+# ─────────── 运行期素材（明确保留，勿加进来）───────────
+# assets/icons/ui/          91 张，bitmaps.js 注册表就是这个目录的映射
+# assets/portraits/pool/    40 张，通用头像池
+# assets/portraits/hero_*.webp  30 张，名将回退层

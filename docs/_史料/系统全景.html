@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>复刻版 · 系统全景与缺陷图谱</title>
+<style>
+  :root{
+    --bg:#14161c; --panel:#1c1f27; --panel2:#23262e; --line:#333741;
+    --gold:#c9a24b; --gold-light:#e8c878; --gold-dark:#9a7430;
+    --txt:#e6e3dc; --dim:#9aa0ab;
+    --ok:#7bc96f; --warn:#e0a83c; --bad:#d9634a; --info:#6fb7e0;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; padding:26px 20px 60px;
+    font-family:"PingFang SC","Microsoft YaHei","Hiragino Sans GB",sans-serif;
+    background:radial-gradient(ellipse at 50% 0%, rgba(201,162,75,.10), transparent 55%),
+               linear-gradient(180deg,#14161c 0%, #171a21 60%, #12141a 100%);
+    color:var(--txt); min-height:100vh;
+  }
+  .wrap{max-width:1180px;margin:0 auto;}
+  h1{font-size:26px;margin:0 0 6px;color:var(--gold-light);letter-spacing:1px;}
+  .sub{color:var(--dim);font-size:13px;margin-bottom:22px;line-height:1.7;}
+  .verdict{
+    border:1px solid var(--gold-dark); border-radius:10px; padding:14px 18px;
+    background:linear-gradient(135deg, rgba(201,162,75,.13), rgba(201,162,75,.03));
+    margin-bottom:24px; line-height:1.85; font-size:14px;
+  }
+  .verdict b{color:var(--gold-light);}
+  h2{font-size:17px;color:var(--gold-light);margin:30px 0 12px;
+     border-left:3px solid var(--gold);padding-left:10px;letter-spacing:.5px;}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:12px;}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:13px 15px;}
+  .card .k{color:var(--dim);font-size:12px;margin-bottom:6px;}
+  .card .v{font-size:23px;font-weight:800;color:var(--gold-light);font-variant-numeric:tabular-nums;}
+  .card .n{color:var(--dim);font-size:11.5px;margin-top:4px;}
+  .card.good .v{color:var(--ok);} .card.bad .v{color:var(--bad);} .card.warn .v{color:var(--warn);}
+
+  table{width:100%;border-collapse:collapse;background:var(--panel);
+        border:1px solid var(--line);border-radius:9px;overflow:hidden;font-size:13px;}
+  th{background:var(--panel2);color:var(--dim);font-weight:600;font-size:12px;
+     text-align:left;padding:9px 11px;border-bottom:1px solid var(--line);white-space:nowrap;}
+  td{padding:9px 11px;border-bottom:1px solid rgba(51,55,65,.6);vertical-align:top;line-height:1.65;}
+  tr:last-child td{border-bottom:none;}
+  tr:hover td{background:rgba(255,255,255,.022);}
+  code{background:rgba(0,0,0,.4);padding:1px 5px;border-radius:3px;
+       font-family:Consolas,Monaco,monospace;font-size:12px;color:#cfd6e0;}
+
+  .tag{display:inline-block;padding:2px 8px;border-radius:11px;font-size:11px;
+       font-weight:700;white-space:nowrap;}
+  .t-p0{background:rgba(217,99,74,.2);color:#f08a72;border:1px solid rgba(217,99,74,.5);}
+  .t-p1{background:rgba(224,168,60,.18);color:#e8bc62;border:1px solid rgba(224,168,60,.45);}
+  .t-p2{background:rgba(111,183,224,.15);color:#8fc9ea;border:1px solid rgba(111,183,224,.4);}
+  .t-ok{background:rgba(123,201,111,.16);color:#9ad98f;border:1px solid rgba(123,201,111,.42);}
+  .t-off{background:rgba(154,160,171,.15);color:#a8aeb8;border:1px solid rgba(154,160,171,.35);}
+  .t-done{background:rgba(123,201,111,.2);color:#9ad98f;border:1px solid rgba(123,201,111,.55);}
+  .t-todo{background:rgba(224,168,60,.14);color:#e8bc62;border:1px solid rgba(224,168,60,.4);}
+
+  .bar{height:7px;border-radius:4px;background:rgba(0,0,0,.45);overflow:hidden;min-width:70px;}
+  .bar i{display:block;height:100%;border-radius:4px;}
+  .bar i.ok{background:linear-gradient(90deg,#7bc96f,#4fae5f);}
+  .bar i.mid{background:linear-gradient(90deg,#e0a83c,#c98a20);}
+  .bar i.low{background:linear-gradient(90deg,#d9634a,#b34531);}
+
+  .filterbar{display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;}
+  .filterbar button{
+    background:var(--panel);color:var(--dim);border:1px solid var(--line);
+    border-radius:6px;padding:5px 13px;font-size:12.5px;cursor:pointer;
+    font-family:inherit;transition:.15s;
+  }
+  .filterbar button:hover{color:var(--txt);border-color:var(--gold-dark);}
+  .filterbar button.on{background:rgba(201,162,75,.16);color:var(--gold-light);border-color:var(--gold);}
+
+  .promise{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+  .pbox{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:14px 16px;}
+  .pbox h3{margin:0 0 10px;font-size:14px;}
+  .pbox.dead{border-color:rgba(217,99,74,.4);} .pbox.dead h3{color:#f08a72;}
+  .pbox.live{border-color:rgba(123,201,111,.35);} .pbox.live h3{color:#9ad98f;}
+  .pbox ul{margin:0;padding-left:18px;line-height:1.95;font-size:13px;color:var(--txt);}
+  .pbox ul .cnt{color:var(--dim);font-size:12px;}
+
+  .road{margin-top:6px;}
+  .road .item{display:flex;gap:12px;align-items:flex-start;background:var(--panel);
+    border:1px solid var(--line);border-radius:8px;padding:11px 14px;margin-bottom:8px;}
+  .road .item .lv{flex:none;font-weight:800;font-size:12px;padding:3px 9px;border-radius:5px;}
+  .road .item p{margin:0;line-height:1.7;font-size:13px;}
+  .road .item .why{color:var(--dim);font-size:12px;margin-top:3px;display:block;}
+
+  .foot{margin-top:34px;padding-top:16px;border-top:1px solid var(--line);
+        color:var(--dim);font-size:12.5px;line-height:1.9;}
+  .foot code{color:var(--gold-light);}
+  @media(max-width:720px){.promise{grid-template-columns:1fr;}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>复刻版 · 系统全景与缺陷图谱</h1>
+  <div class="sub">
+    审计对象 <code>E:\Deepseekdb</code>（v16）　·　生成时间 2026-09-12 17:20<br>
+    方法：静态交叉引用分析 + 运行时探针 + 数值体检 + 存档往返实验
+  </div>
+
+  <div class="verdict">
+    <b>总评：骨架结实，问题集中在「内容承诺与机制实现之间的落差」。—— v17 已修复 P0 四项</b><br>
+    523 个函数无一重复定义，92 个界面按钮全部有处理器，两套测试 806 / 321 全绿 —— 工程质量良好。<br>
+    原四大缺陷已全部落地：<b>科技 24/24 生效</b>、<b>存档 55.9K → 3.2K 且数值改动对老档生效</b>、<b>断粮有后果</b>、<b>攻城伤害链接通</b>。<br>剩余为 3 座装饰建筑（依赖未开发的行军机制）、2 件道具、数值产能断层等 P2 项。
+  </div>
+
+  <h2>一、运行指标</h2>
+  <div class="cards">
+    <div class="card"><div class="k">代码规模</div><div class="v">11,545</div><div class="n">行 · 11 个 JS 模块</div></div>
+    <div class="card good"><div class="k">逻辑测试</div><div class="v">854</div><div class="n">smoke-test 全绿</div></div>
+    <div class="card good"><div class="k">交互测试</div><div class="v">321</div><div class="n">e2e 真实 DOM 全绿</div></div>
+    <div class="card"><div class="k">函数总数</div><div class="v">523</div><div class="n">0 重复定义</div></div>
+    <div class="card good"><div class="k">按钮绑定</div><div class="v">92</div><div class="n">全部有处理器</div></div>
+    <div class="card good"><div class="k">死函数</div><div class="v">0</div><div class="n">16 个已清理</div></div>
+    <div class="card good"><div class="k">科技有效率</div><div class="v">100%</div><div class="n">24 / 24 项生效</div></div>
+    <div class="card good"><div class="k">存档体积</div><div class="v">3.2K</div><div class="n">55.9K → 3.2K（−94%）</div></div>
+  </div>
+
+  <h2>二、系统完成度</h2>
+  <table>
+    <thead><tr><th style="width:150px">系统</th><th style="width:110px">完成度</th><th>说明</th></tr></thead>
+    <tbody id="sysbody"></tbody>
+  </table>
+
+  <h2>三、缺陷清单</h2>
+  <div class="filterbar" id="fbar">
+    <button class="on" data-f="all">全部 <span id="c-all"></span></button>
+    <button data-f="p0">P0 严重</button>
+    <button data-f="p1">P1 重要</button>
+    <button data-f="p2">P2 一般</button>
+    <button data-f="dead">死代码/清理</button>
+    <button data-f="done">✅ 已修</button>
+    <button data-f="todo">⏳ 待办</button>
+  </div>
+  <table>
+    <thead><tr><th style="width:62px">级别</th><th style="width:170px">问题</th><th style="width:34%">证据</th><th>建议</th></tr></thead>
+    <tbody id="body"></tbody>
+  </table>
+
+  <h2>四、空承诺 vs 已生效</h2>
+  <div class="promise">
+    <div class="pbox dead">
+      <h3>❌ 描述存在、机制不存在</h3>
+      <ul>
+        <li>科技 <b>17 项</b> <span class="cnt">打造/侦察/防护/负重/行军/抛射/驾驭/建筑/储存/补给/统帅/城防/维修/抢掠/合成/车轮/驯马</span></li>
+        <li>建筑 <b>3 座</b> <span class="cnt">驿站（行军提速）、烽火台（侦察分层）、联盟楼（联盟）</span></li>
+        <li>天气 <b>4 项</b> <span class="cnt">火攻 ×3 / 失效、偷袭 ×2、斥候受阻、行军速度</span></li>
+        <li>国策 <b>3 项</b> <span class="cnt">青龙攻城 +20%、景元攻城 +30%、延康声望 +20%</span></li>
+        <li>羁绊 <b>1 组</b> <span class="cnt">白衣渡江 · 攻城伤害 +35%</span></li>
+        <li>道具 <b>2 件</b> <span class="cnt">交易加速、急行军令</span></li>
+        <li>建筑描述 <b>1 处</b> <span class="cnt">官府「提升黄金容量」—— 字段 0 引用，描述未同步</span></li>
+      </ul>
+    </div>
+    <div class="pbox live">
+      <h3>✅ 承诺与机制一致</h3>
+      <ul>
+        <li>城建全链 <span class="cnt">建造 / 升级 / 取消 / 拆毁 / 队列上限 / 自动升级</span></li>
+        <li>资源闭环 <span class="cnt">外城地块 / 税收 / 仓库上限（黄金不受限）</span></li>
+        <li>出征三方式 <span class="cnt">侦查·掠夺·占领，掉落差异化，即时结算</span></li>
+        <li>野地体系 <span class="cnt">线性加成 / 采集 / 掠夺得资源·占领得地盘 / 等级每日变</span></li>
+        <li>名城体系 <span class="cnt">174 座 / 州特产 ×13 / 按现实日岁贡 / 离线补 30 日</span></li>
+        <li>将领体系 <span class="cnt">五档资质 / 装备 12 槽 / 套装 / 守将加成 / 忠诚</span></li>
+        <li>任务体系 <span class="cnt">成长 50 + 随机 36，指标驱动，每日 5 项</span></li>
+        <li>叙事层 <span class="cnt">历法 / 12 年号 / 11 组羁绊（除攻城）/ 奇遇 / 战力折算</span></li>
+        <li>存读档 <span class="cnt">双档结构 / 离线精确分段补算 / 5 分钟自动存档</span></li>
+        <li>资源供需方案 <span class="cnt">11 项缺口已全部闭环</span></li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>五、建议路线</h2>
+  <div class="road" id="road"></div>
+
+  <div class="foot">
+    <b>三件套验证（建议每次改动后执行）</b><br>
+    <code>node audit.js</code>　结构完整性：死函数 / 孤儿按钮 / 无效科技 / 零引用字段<br>
+    <code>node smoke-test.js</code>　逻辑正确性：806 项断言<br>
+    <code>node e2e-test.js</code>　真实 DOM 交互：321 项断言<br><br>
+    完整报告见 <code>docs/_史料/全面梳理报告.md</code>
+  </div>
+</div>
+
+<script>
+/* ---------- 系统完成度 ---------- */
+var SYSTEMS = [
+  ['城建（城内/城外/城墙）', 'ok', '含拆毁、取消、队列上限、自动升级'],
+  ['资源生产（4 资源+人口+税收）', 'ok', '仓库上限只管粮木石铁，黄金不受限'],
+  ['科技研究', 'ok', '24 / 24 生效（v17 补齐 17 项消费点）'],
+  ['造兵 / 募兵 / 器械分流', 'ok', '军营募常规兵，工匠作坊造器械'],
+  ['出征（侦查/掠夺/占领）', 'ok', '降落差异化，即时结算'],
+  ['战斗（回合制/先手/射程）', 'ok', '受天气、赛季、羁绊影响（部分通道未接）'],
+  ['野地（加成/采集/等级动态）', 'ok', '掠夺得资源、占领得地盘'],
+  ['名城（174 座/岁贡/州特产）', 'ok', '按现实日结算，离线补 30 日'],
+  ['野外据点', 'ok', '密度 1/12，等级每日变'],
+  ['将领（招募/资质/装备/忠诚）', 'ok', '忠诚只在战败时下降'],
+  ['装备（打造/图纸/套装）', 'ok', '图纸每件消耗 1 张'],
+  ['宝物 / 道具', 'mid', '10 / 12 生效 —— 交易加速、急行军令未实现'],
+  ['爵位晋升', 'ok', '22 级'],
+  ['任务（成长 50 + 随机 36）', 'ok', '指标驱动，每日 5 项，上限 5'],
+  ['叙事层（历法/赛季/羁绊/奇遇）', 'ok', '攻城链已接通，全部国策与羁绊生效'],
+  ['天气 / 季节', 'ok', '5 / 5 生效（v17 接入速度/偷袭/火攻/斥候）'],
+  ['存读档 / 离线补算', 'ok', '派生数据不入档；数值改动对老档生效'],
+  ['自动升级 / 自动研究', 'ok', '资源不足自动暂停'],
+  ['地图观察框 / 2.5D / 缩放', 'ok', '等距菱形，80–160%'],
+  ['公文（战报 + 消息流）', 'ok', '消息入档，保留 10 游戏天'],
+  ['计谋系统', 'off', '未开发 —— 全项目 0 处'],
+  ['官职三职位（城守/主将/军师）', 'off', '未开发'],
+  ['联盟', 'off', '建筑存在但无功能'],
+  ['行军时长 / 队列', 'off', '出征即时结算，s.marches 恒为空'],
+  ['结拜 / 婚姻 / 迁都 / 称帝', 'off', '未开发']
+];
+var PCT = { ok: 100, mid: 55, low: 25, off: 0 };
+var SYSHTML = SYSTEMS.map(function (s) {
+  var cls = s[1];
+  var label = cls === 'ok' ? '完整' : cls === 'mid' ? '部分失效' : cls === 'low' ? '大面积失效' : '未开发';
+  var tag = cls === 'ok' ? 't-ok' : cls === 'off' ? 't-off' : cls === 'mid' ? 't-p1' : 't-p0';
+  return '<tr><td>' + s[0] + '</td>' +
+    '<td><span class="tag ' + tag + '">' + label + '</span>' +
+    '<div class="bar" style="margin-top:5px"><i class="' + cls + '" style="width:' + PCT[cls] + '%"></i></div></td>' +
+    '<td>' + s[2] + '</td></tr>';
+}).join('');
+document.getElementById('sysbody').innerHTML = SYSHTML;
+
+/* ---------- 缺陷清单 ---------- */
+var BUGS = [
+  ['done', '✅ 数值改动对老档不生效', '改 <code>DATA.NPC_CITIES</code> 后读旧档仍是旧数据；存档副本与 <code>buildNpcCities()</code> 重建结果不一致',
+   '174 座 NPC 城整份入档（<code>map.cities</code> 53.9 KB / 全档 56 KB = <b>96%</b>），而守军全程从不被修改（纯派生）→ 存 <code>seed</code>，读档时重建'],
+  ['done', '✅ 科技 17/24 无任何效果', '<code>techBonus()</code> 仅以 <code>\'atk\'</code>、<code>\'train\'</code> 调用；<code>techMult()</code> 仅覆盖资源四类；无其他 <code>techLevel()</code> 读取点',
+   '按类型逐个接消费点（射程→<code>range</code>、统帅→带兵上限、城防→<code>cityDefense</code>、抢掠→掠夺倍率、补修→伤兵回收）。数值已在表里，只差接线 —— 投入产出比最高'],
+  ['todo', '⏳ 3 座建筑纯装饰', '驿站 / 烽火台 / 联盟楼除 UNIQUE 表与图标映射外 0 引用',
+   '行军队列补齐后驿站可生效；烽火台接侦察分层（8/9/10 级）；联盟楼暂标注「未开放」'],
+  ['done', '✅ 在线粮食可扣成无限负数', '20 万铁骑 + 粮 1000 → 5 tick 后 <code>粮 = -1,515,638</code>',
+   '<code>tickOnce</code> 无下限钳制，<code>offlineCatchup</code> 有 <code>if (grain &lt; 0) grain = 0</code> → 统一钳制，并补断粮后果（逃兵 / 禁止出征）'],
+  ['done', '✅ 胜利条件形同虚设', '<code>GAME.checkVictory()</code> 全项目仅定义处出现一次',
+   '攻占洛阳后应在 tick 或攻城结算中调用，给出统一弹窗与重新开局入口'],
+  ['done', '✅ 天气 4/5 空转', '<code>fire</code> / <code>ambush</code> / <code>scout</code> / <code>move</code> 均无读取点（仅 <code>archerRange</code> 在 battle.js 生效）',
+   '先接 <code>ambush</code>（偷袭倍率）与 <code>scout</code>（侦察成功判定）；<code>fire</code> 依赖计谋系统，可暂缓'],
+  ['done', '✅ 赛季国策与羁绊失效', '<code>boon.siege</code>（青龙/景元）、<code>boon.rep_gain</code>（延康）无消费点；<code>STORY.siegeMult()</code> 恒无调用',
+   '根因同一个：攻城伤害链整体缺失。接上 <code>siegeMult</code> 即可一次修复 3 国策 + 1 羁绊'],
+  ['todo', '⏳ 道具两项无实现', '交易加速落入兜底分支提示「暂不可用」；急行军令改写恒为空的 <code>s.marches</code>（静默失效）',
+   '补实现或从商城下架'],
+  ['todo', '⏳ 数值与产能断层', '官府 Lv10 满农田可养义兵约 5.3 万；攻洛阳需约 20 万混编（5 万义兵对洛阳胜率 0%）',
+   '多城可解但单城路线封死，早期易卡死 —— 建议提高外城地块产出或降低守军梯度'],
+  ['done', '✅ 数据字段与逻辑双份', '<code>extraLand</code> / <code>wildCap</code> / <code>goldCap</code> / <code>techLv</code> 四个字段 0 有效引用，真实逻辑硬编码在 domain.js',
+   '删除冗余字段或改为从 data 读取，消除「改 data 不生效」陷阱'],
+  ['done', '✅ 15 个死函数', '含 <code>GAME.doRefreshRandQuests</code>、<code>ui.setChannel</code>、<code>ui.setSide</code>（传递性）、<code>U.fmt2</code>、<code>GAME.map.distance</code> 等',
+   '其中 <code>checkVictory</code> 与 <code>STORY.siegeMult</code> 属功能缺口应「补」，其余删除'],
+  ['done', '✅ 11 个不可达 case 分支', '<code>atk-max</code> / <code>attack-confirm</code> / <code>wild-attack</code> / <code>wild-confirm</code> / <code>confirm-demolish</code> / <code>open-equip-panel</code> / <code>open-items-panel</code> / <code>open-forts</code> / <code>open-settings</code> / <code>load</code> / <code>side</code>',
+   '历次迭代残留（旧出征弹窗、旧拆毁流程、旧背包入口）→ 统一清理'],
+  ['todo', '⏳ 5 项工程卫生', '<code>check-refs.js</code>/<code>test-core.js</code>/<code>test-ui.js</code>/<code>garden.html</code>（已在 v67 清理）、嵌套目录 <code>2026-08-29-22-25-02/</code>',
+   '归档或删除；测试章节编号也需重排（smoke 缺第 3 节、两个 25.；e2e 重复 17–20 且 14/16 在末尾）']
+];
+function renderBugs(f) {
+  var rows = BUGS.filter(function (b) { return f === 'all' || b[0] === f; });
+  document.getElementById('body').innerHTML = rows.map(function (b) {
+    var tag = b[0] === 'p0' ? 't-p0' : b[0] === 'p1' ? 't-p1' : b[0] === 'p2' ? 't-p2'
+      : b[0] === 'done' ? 't-done' : b[0] === 'todo' ? 't-todo' : 't-off';
+    var lbl = b[0] === 'p0' ? 'P0' : b[0] === 'p1' ? 'P1' : b[0] === 'p2' ? 'P2'
+      : b[0] === 'done' ? '已修' : b[0] === 'todo' ? '待办' : '清理';
+    return '<tr><td><span class="tag ' + tag + '">' + lbl + '</span></td>' +
+      '<td><b>' + b[1] + '</b></td><td>' + b[2] + '</td><td>' + b[3] + '</td></tr>';
+  }).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--dim);padding:18px">该级别暂无条目</td></tr>';
+}
+document.getElementById('c-all').textContent = BUGS.length;
+document.getElementById('fbar').addEventListener('click', function (e) {
+  var b = e.target.closest('button'); if (!b) return;
+  [].forEach.call(this.querySelectorAll('button'), function (x) { x.classList.remove('on'); });
+  b.classList.add('on');
+  renderBugs(b.dataset.f);
+});
+renderBugs('all');
+
+/* ---------- 路线图 ---------- */
+var ROAD = [
+  ['✅', 't-done', '科技接线：17 项按类型接消费点', '已完成 —— 科技树 29% → 100% 可用'],
+  ['✅', 't-done', '存档瘦身：NPC 城改为读档重建', '已完成 —— 55.9 KB → 3.2 KB，数值改动对老档生效'],
+  ['✅', 't-done', '粮食钳制 + 断粮后果', '已完成 —— 钳制到 0 + 逃兵 + 禁止出征 + 侧栏警示'],
+  ['✅', 't-done', '攻城伤害链接上 siegeMult / siegeEra / bondBonus(\'siege\')', '已完成 —— 3 个赛季国策 + 1 组羁绊生效'],
+  ['✅', 't-done', '调用 checkVictory（攻占洛阳判定）', '已完成'],
+  ['✅', 't-done', '接上天气 move / ambush / scout / fire', '已完成 —— 天气 1/5 → 5/5 生效'],
+  ['P1', 't-p1', '三座装饰建筑：烽火台接侦察分层、驿站待行军机制、联盟楼标注未开放', '消除空承诺'],
+  ['P2', 't-p2', '道具 trade / march 补实现或下架', '消除静默失效'],
+  ['✅', 't-done', '数据字段去重（3 个字段）', '已完成 —— 并纠正界面上残留的「黄金容量」'],
+  ['✅', 't-done', '清理 11 个不可达分支 + 16 个死函数', '已完成 —— 并加了「核心 API 齐备」测试门禁'],
+  ['P3', 't-off', '未开发系统：计谋 / 官职三职位 / 联盟 / 行军 / 结拜', '补齐原版深度（工作量大）']
+];
+document.getElementById('road').innerHTML = ROAD.map(function (r) {
+  return '<div class="item"><span class="lv ' + r[1] + '">' + r[0] + '</span>' +
+    '<p>' + r[2] + '<span class="why">→ ' + r[3] + '</span></p></div>';
+}).join('');
+</script>
+</body>
+</html>

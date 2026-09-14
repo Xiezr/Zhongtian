@@ -1,0 +1,2546 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>热血三国·单机版</title>
+<style>
+  :root {
+    /* ============================================================
+     * 配色（v16 改进）
+     * 原为「深绿棕」底色（#14161c / #1c1f27），黄绿偏色重、对比刺眼，久看费眼。
+     * 改为**深墨蓝灰**基调：降饱和、去黄绿偏色，文字改中性浅灰，对比更柔和。
+     * 金色作为唯一的暖色点缀保留。
+     * ============================================================ */
+    --bg-dark: #1e222b;
+    --panel-bg: #272c37;
+    --wood: #574530;
+    --wood-light: #7d6450;
+    --wood-dark: #3a3028;
+    --gold: #cfa856;
+    /* v41（需求 4）：公文新战报提醒 —— 图标闪黄的底色与同色系深字 */
+    --alert-gold: #ffd84d; --alert-ink: #3a2c06;
+    --gold-light: #edd08a;
+    --gold-dark: #8a6a2c;
+    --parchment: #efe6cf;
+    --parchment-dark: #d9caa8;
+    --teal: #2f6b5a;
+    --teal-light: #3e8571;
+    --red: #8a2b1f;
+    --red-light: #b04a35;
+    --text: #eae7e0;
+    --text-dim: #a8a7af;
+    --text-dark: #2a2416;
+    --green-ok: #7bc96f;
+    --blue-info: #6fb7e0;
+
+    /* ============================================================
+     * 排版令牌（v21）——**全界面唯一字号来源**
+     * 历史问题：全站出现 22 种字号（9.5/10/10.5/11/11.5/12/12.5/13/
+     * 13.5/14/14.5/15/16/17/18/19/20/22/26/34/40/84），同级别界面
+     * 各写各的，同一层级的标题在「大界面 18px / 弹窗 16px / 地图 18px」
+     * 三处都不一样，看起来像三个人拼的。
+     *
+     * 现在收敛成 5 级，任何文本只允许引用下列变量：
+     *   L1 --fs-h1    界面主标题（地图名、君主名、首页）
+     *   L2 --fs-h2    界面标题（大界面 / 弹窗 / 地图 **同一规格**）
+     *   L3 --fs-h3    分区标题（用字重 + 金色区分层级，不靠字号堆叠）
+     *   L3 --fs-body  正文、表格、列表
+     *   L3 --fs-lead  按钮、需要强调的正文
+     *   L4 --fs-sub   次要信息（标签、单位、时间）
+     *   L5 --fs-cap   微标注（角标、计数、脚注）
+     * 图标/装饰字形（emoji 头像、"+"/"★" 等符号）不属排版层级，
+     * 仍按图形尺寸直接写 px，不受此表约束。
+     * ============================================================ */
+    --fs-h1: 20px;
+    --fs-h2: 16px;
+    --fs-h3: 13px;
+    --fs-body: 13px;
+    --fs-lead: 14px;
+    --fs-sub: 12px;
+    --fs-cap: 11px;
+
+    /* 间距阶梯（同一层级的留白必须取自同一档） */
+    --sp-1: 4px;  --sp-2: 6px;  --sp-3: 8px;
+    --sp-4: 10px; --sp-5: 14px; --sp-6: 18px;
+
+    /* 圆角阶梯 */
+    --r-sm: 4px; --r-md: 6px; --r-lg: 8px; --r-xl: 10px;
+
+    /* 层级分隔线：暗色界面用发丝级半透明白，不用不透明深灰 */
+    --line: rgba(var(--hl-rgb),.09);
+
+    /* ---- 语义色（v21）：散落的近似色收敛为命名变量，**色值不变** ----
+       用色规则：金色系=标题与强调 · 米白=名称与关键数值 · 中性灰=次要信息
+                 绿=正向/成功 · 红=危险/损失 · 琥珀=提醒 · 蓝=信息
+                 品质色(q1~q4)与资质色(rank-*)是**辨识用色板**，保持区分度 */
+    --text-strong: #f4ebd4;
+    --ink-on-gold: #2a2318;
+    --warn: #e6a400;
+    --amber: #e0a83c;
+    --hero-tag: #e6b800;
+    --beauty-tag: #e08ab0;   /* v29：美人标（原写死在 .gcard-tag.beauty 里） */
+    --beauty: #e58aa8;
+    --q1: #b9b4a8; --q2: #6fbf7a; --q3: #5aa0d8; --q4: #d8a83c;
+    --rank-fan: #9c9c8c; --rank-liang: #5fbf6a; --rank-ying: #4a9be0; --rank-ming: #b06fd8;
+    /* 任务分类标签色板（8 类集中一处） */
+    /* 黄册朱印 / 文字战场（v27）：两处新出现的颜色，同样走命名变量 */
+    --cinnabar: #a83a2c; --strip-troop: #d8b04e; --strip-gap: #3c4148;
+    --tag-growth: #d8b04e; --tag-military: #c9705a; --tag-war: #b8412f;
+    --tag-build: #7fa85a; --tag-govern: #d8c46a; --tag-forge: #c9a06a;
+
+
+    --line-strong: rgba(var(--hl-rgb),.15);
+    --sep-gold: rgba(var(--gold-rgb),.28);
+
+    /* ============================================================
+     * 主题层（v39 · 需求 1）—— 换肤的唯一开关
+     * ------------------------------------------------------------
+     * 下面这组是**结构性颜色**：页底 / 面板 / 卡片 / 内槽 / 木钮 / 叠层。
+     * 换主题只覆盖它们，业务 CSS、页面结构与 JS 一律不动。
+     * 三个基色三元组（--sh-rgb / --hl-rgb / --gold-rgb）用来让
+     * 「半透明黑阴影」与「半透明白描边」在浅色主题下整体换向 ——
+     * alpha 全部保持原样，只换基色，因此不必逐条重写阴影。
+     * ============================================================ */
+    --sh-rgb: 0,0,0;              /* 阴影/暗面基色 */
+    --hl-rgb: 255,255,255;        /* 高光/描边基色 */
+    --gold-rgb: 201,162,75;       /* 金色线条基色（浅底上要加深） */
+    --bg-2: #232833;              /* 页底渐变中段 */
+    --bg-3: #1a1e26;              /* 页底渐变末段 / 底部固定条 */
+    --surface-2: #343b49;         /* 卡片/格子顶（原 #262931） */
+    --surface-3: #292f3a;         /* 卡片/格子底（原 #1c1f26） */
+    --surface-2b: #3c4250;        /* 次级卡顶（原 #31343d） */
+    --surface-2c: #353b47;        /* 次级卡中（原 #2a2e37） */
+    --surface-3b: #262b34;        /* 网格底（原 #1e2129） */
+    --slab-1: #22262f;            /* 输入框/内槽/滚动条轨（原 #1a1c22） */
+    --slab-2: #2f333e;            /* 内槽亮档 */
+    --slab-3: #31353f;            /* 深卡（原 #23262e） */
+    --btn-face-1: #4a4a3c;        /* 木钮顶（原 #3a3a2c） */
+    --btn-face-2: #33363f;        /* 木钮底（原 #252832） */
+    --btn-hi-1: #5c5c4a;          /* 木钮悬停顶（原 #4c4c3a） */
+    --btn-hi-2: #414450;          /* 木钮悬停底（原 #33332a） */
+    --scrim: rgba(0,0,0,.62);     /* 弹窗遮罩 */
+
+    /* ---- 地面与野地色（v39 · 需求 2/3）----
+       地块不再逐格画渐变与花纹，改铺**纯色**；颜色随主题走：
+       深色主题配偏暗的草绿（亮草绿在暗底上过于跳），
+       浅色主题配浅草绿。野地四色就是老板点名的
+       「农田偏黄 / 伐木偏青绿 / 采石偏灰 / 铁矿偏棕黑」。 */
+    --ground: #8b9a78;            /* 城内地面（一整片） */
+    --ground-busy: #a09580;       /* 施工工地（土色） */
+    --ground-gov: #a59b80;        /* 官署格 */
+    --ground-sel: #9caa86;        /* 选中格 */
+    --res-farm: #c2b45e;          /* 农田 · 麦黄 */
+    --res-forest: #6b8a5c;        /* 林地 · 青绿 */
+    --res-quarry: #a8a495;        /* 采石 · 石灰 */
+    --res-mine: #8a7052;          /* 矿场 · 棕黑 */
+  }
+
+  /* ============================================================
+   * 主题四套（v39 · 需求 1）
+   * ------------------------------------------------------------
+   * 默认（:root）= 墨玉。下面三套按需覆盖。
+   * 选型依据「护眼、适宜长时间玩耍」：
+   *   · 素绢 / 青竹是**浅色系**，底色都不取纯白 —— 纯白反光强、
+   *     长看刺眼；改用米黄与青灰，并把正文降到中深褐，压低对比；
+   *   · 金/绿/蓝/品质色四组在浅底上全部加深，否则原值会「亮得发飘」；
+   *   · 阴影基色改褐灰、描边基色改深褐，避免白线在浅底上隐形。
+   * ============================================================ */
+  /* ---- 素绢：暖米黄浅色（长玩首选）---- */
+  html[data-theme="silk"] {
+    --bg-dark: #e6e2d8; --bg-2: #ded9cd; --bg-3: #d3cec4;
+    --panel-bg: #f4f1e9;
+    --surface-2: #fbfaf6; --surface-3: #efece4;
+    --surface-2b: #f8f6ef; --surface-2c: #f0ede5; --surface-3b: #e8e4da;
+    --slab-1: #e6e2d8; --slab-2: #ddd8cb; --slab-3: #e9e5db;
+    --btn-face-1: #d6c8a6; --btn-face-2: #c2b18c;
+    --btn-hi-1: #e2d5b4; --btn-hi-2: #cdbc98;
+    --wood: #ab8760; --wood-light: #c9a47c; --wood-dark: #7d6144;
+    --gold: #8a6516; --gold-light: #a1751a; --gold-dark: #6b4e10;
+    --text: #3b3325; --text-dim: #6b6353; --text-strong: #2b2418;
+    --green-ok: #3f8a3a; --blue-info: #2a6d9a; --warn: #a87400; --amber: #9a7018;
+    --red: #9a2f20; --red-light: #8a2b1f;
+    --parchment: #fbf7ec; --parchment-dark: #e6dcc4;
+    --q1: #8a857a; --q2: #3f7f48; --q3: #2f6f9a; --q4: #9a7018;
+    --rank-fan: #7a7a6c; --rank-liang: #3f8a45; --rank-ying: #2f6f9a; --rank-ming: #7a4a9a;
+    --cinnabar: #9a3428; --hero-tag: #a87400; --beauty-tag: #a04468; --beauty: #a04468;
+    --tag-growth: #9a7018; --tag-military: #a04a32; --tag-war: #9a3428;
+    --tag-build: #4f7a38; --tag-govern: #8a7418; --tag-forge: #95683a;
+    --strip-troop: #b08a2c; --strip-gap: #cdc4ae;
+    --sh-rgb: 96,79,50; --hl-rgb: 92,76,46; --gold-rgb: 138,101,22;
+    --scrim: rgba(78,64,40,.42);
+    --line: rgba(var(--hl-rgb),.16); --line-strong: rgba(var(--hl-rgb),.28);
+    --sep-gold: rgba(var(--gold-rgb),.30);
+    --ground: #c6cbb3; --ground-busy: #cdc3ae; --ground-gov: #cbc5b2; --ground-sel: #c8cfb8;
+    --res-farm: #ded08a; --res-forest: #9dba9c; --res-quarry: #c9c9c0; --res-mine: #b0a396;
+  }
+  /* ---- 青竹：浅青灰绿（低对比、偏冷）---- */
+  html[data-theme="bamboo"] {
+    --bg-dark: #dde4e2; --bg-2: #d5dedb; --bg-3: #cad4d1;
+    --panel-bg: #eaf0ee;
+    --surface-2: #f6faf9; --surface-3: #e7efed;
+    --surface-2b: #f0f6f5; --surface-2c: #e8f0ee; --surface-3b: #dfe8e6;
+    --slab-1: #dde5e3; --slab-2: #d3dcd9; --slab-3: #e1eae8;
+    --btn-face-1: #c2cfba; --btn-face-2: #adbba6;
+    --btn-hi-1: #cfdac7; --btn-hi-2: #b9c6b2;
+    --wood: #8e7a5a; --wood-light: #ab9673; --wood-dark: #6b5b40;
+    --gold: #7d6a1c; --gold-light: #947c1e; --gold-dark: #5f5010;
+    --text: #2c3830; --text-dim: #55605c; --text-strong: #1f2a22;
+    --green-ok: #357a3a; --blue-info: #26688f; --warn: #966c00; --amber: #8a6818;
+    --red: #8f2c1e; --red-light: #7d271b;
+    --parchment: #f7fbf6; --parchment-dark: #dde7dc;
+    --q1: #7d857f; --q2: #3a7a45; --q3: #2c6b95; --q4: #8f6a18;
+    --rank-fan: #71807a; --rank-liang: #3a8442; --rank-ying: #2c6b95; --rank-ming: #6f469a;
+    --cinnabar: #8f3226; --hero-tag: #966c00; --beauty-tag: #96436a; --beauty: #96436a;
+    --tag-growth: #8f6a18; --tag-military: #96472f; --tag-war: #8f3226;
+    --tag-build: #467334; --tag-govern: #7d6c14; --tag-forge: #8a6238;
+    --strip-troop: #9c7d2a; --strip-gap: #c2cdc0;
+    --sh-rgb: 74,92,76; --hl-rgb: 62,84,66; --gold-rgb: 125,106,28;
+    --scrim: rgba(58,74,60,.42);
+    --line: rgba(var(--hl-rgb),.18); --line-strong: rgba(var(--hl-rgb),.30);
+    --sep-gold: rgba(var(--gold-rgb),.32);
+    --ground: #c2ccbc; --ground-busy: #c9c4ad; --ground-gov: #c7c2ab; --ground-sel: #c6d0bf;
+    --res-farm: #d6cd8e; --res-forest: #93b295; --res-quarry: #c4c8c0; --res-mine: #a9a094;
+  }
+  /* ---- 夜阑：近黑（夜间 / 暗房）---- */
+  html[data-theme="night"] {
+    --bg-dark: #101319; --bg-2: #14181f; --bg-3: #0c0f14;
+    --panel-bg: #171b22;
+    --surface-2: #1f242c; --surface-3: #1a1e25;
+    --surface-2b: #23272f; --surface-2c: #1f232b; --surface-3b: #14171c;
+    --slab-1: #13161b; --slab-2: #1b1e25; --slab-3: #1b1e25;
+    --btn-face-1: #26261c; --btn-face-2: #1c1f26;
+    --btn-hi-1: #33332a; --btn-hi-2: #262931;
+    --wood: #3a2e22; --wood-light: #553f2c; --wood-dark: #241d18;
+    --gold: #c09640; --gold-light: #d8b878; --gold-dark: #7a5c24;
+    --text: #d8d5cd; --text-dim: #8f8e96; --text-strong: #e8dcbe;
+    --sh-rgb: 0,0,0; --hl-rgb: 200,205,220; --gold-rgb: 192,150,64;
+    --scrim: rgba(0,0,0,.72);
+    --line: rgba(var(--hl-rgb),.07); --line-strong: rgba(var(--hl-rgb),.12);
+    --sep-gold: rgba(var(--gold-rgb),.24);
+    --ground: #5c6b52; --ground-busy: #6a6352; --ground-gov: #68614f; --ground-sel: #68765c;
+    --res-farm: #9c934e; --res-forest: #50694f; --res-quarry: #8a8a82; --res-mine: #5a4a3a;
+  }
+  /* 浅色主题：柔化重投影 —— 深底上的 .5 黑影落到浅底会显得脏 */
+  html[data-theme="silk"] .wood-frame,
+  html[data-theme="bamboo"] .wood-frame,
+  html[data-theme="silk"] .inner-panel,
+  html[data-theme="bamboo"] .inner-panel,
+  html[data-theme="silk"] .set-card,
+  html[data-theme="bamboo"] .set-card,
+  html[data-theme="silk"] #modal-root > *,
+  html[data-theme="bamboo"] #modal-root > * {
+    box-shadow: 0 4px 14px rgba(var(--sh-rgb),.20);
+  }
+
+  /* v39-A2 */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+
+  body {
+    font-family: "PingFang SC", "Microsoft YaHei", "Hiragino Sans GB", "SimSun", serif;
+    background:
+      radial-gradient(ellipse at 50% 0%, rgba(201,162,75,.10), transparent 55%),
+      linear-gradient(180deg, var(--bg-dark) 0%, var(--bg-2) 60%, var(--bg-3) 100%);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  .hidden { display: none !important; }
+
+  /* ============ 通用面板 ============ */
+  .wood-frame {
+    background: linear-gradient(180deg, var(--wood) 0%, var(--wood-dark) 100%);
+    border-radius: 10px;
+    padding: 5px;
+    box-shadow: 0 10px 26px rgba(var(--sh-rgb),.5), inset 0 2px 3px rgba(var(--hl-rgb),.15);
+  }
+  .inner-panel {
+    background: var(--panel-bg);
+    border: 1px solid var(--gold-dark);
+    border-radius: 7px;
+    padding: 12px;
+    box-shadow: inset 0 0 30px rgba(var(--sh-rgb),.45);
+  }
+
+  /* ============ 界面标题（v21 统一）============
+     大界面 .gold-heading · 弹窗 .m-title · 地图 .map-title
+     三处**同一规格**：16px / 800 / 金色 / 字距 1px。
+     以前分别是 18px(字距4px) / 16px / 18px，同级别标题三种长相。 */
+  .gold-heading {
+    text-align: center;
+    color: var(--gold-light);
+    font-weight: 800;
+    font-size: var(--fs-h2);
+    letter-spacing: 1px;
+    padding: var(--sp-1) 0 var(--sp-4);
+    text-shadow: 0 2px 4px rgba(var(--sh-rgb),.6);
+    background:
+      linear-gradient(90deg, transparent, var(--sep-gold), transparent);
+  }
+
+  /* ============ 按钮 ============ */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 8px 16px;
+    font-size: var(--fs-lead);
+    font-weight: 700;
+    color: #fff;
+    background: linear-gradient(180deg, var(--teal-light), var(--teal));
+    border: 1px solid #1c4539;
+    border-radius: 6px;
+    cursor: pointer;
+    box-shadow: 0 3px 0 #15332a, inset 0 1px 0 rgba(var(--hl-rgb),.25);
+    transition: transform .1s, box-shadow .1s, filter .15s;
+    text-shadow: 0 1px 2px rgba(var(--sh-rgb),.4);
+    user-select: none;
+  }
+  .btn:hover { filter: brightness(1.12); }
+  .btn:active { transform: translateY(2px); box-shadow: 0 1px 0 #15332a; }
+  .btn.red { background: linear-gradient(180deg, var(--red-light), var(--red)); border-color: #5c1a10; box-shadow: 0 3px 0 #4a150c, inset 0 1px 0 rgba(var(--hl-rgb),.25); }
+  .btn.red:active { box-shadow: 0 1px 0 #4a150c; }
+  .btn.gold { background: linear-gradient(180deg, var(--gold-light), var(--gold)); border-color: var(--gold-dark); color: var(--ink-on-gold); box-shadow: 0 3px 0 var(--gold-dark), inset 0 1px 0 rgba(var(--hl-rgb),.5); text-shadow: none; }
+  .btn.gold:active { box-shadow: 0 1px 0 var(--gold-dark); }
+  .btn.dim { background: linear-gradient(180deg, #5a5648, #454236); border-color: #2f2c23; color: var(--text-dim); cursor: not-allowed; }
+  .btn.dim:hover { filter: none; }
+  .btn.sm { padding: 5px 10px; font-size: var(--fs-sub); border-radius: 5px; }
+  .btn.lg { padding: 12px 26px; font-size: var(--fs-h2); }
+
+  /* ============ 顶部标签栏 ============ */
+  .topnav {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 8px 12px;
+    /* v43：菜单栏配色改为**跟随主题** —— 原来这里写死 #24272f→#1b1e25（墨蓝），
+       换到素绢/青竹/夜阑主题时菜单栏还是深色，和整体脱节。 */
+    background: linear-gradient(180deg, var(--surface-3), var(--bg-dark));
+    border-bottom: 2px solid var(--gold-dark);
+    flex-wrap: wrap;
+  }
+  .topnav .tab {
+    padding: 6px 10px;
+    font-size: var(--fs-body);
+    font-weight: 700;
+    color: var(--text-dim);
+    /* v43：标签底色与描边同样改走主题变量（原为写死的暗黄褐 #333328→#23231a + #11110a）。
+       取 --surface-2b（比 topnav 底更亮一档）保持"凸起标签"的立体感。 */
+    background: linear-gradient(180deg, var(--surface-2b), var(--surface-3));
+    border: 1px solid var(--slab-1);
+    border-radius: 5px 5px 0 0;
+    cursor: pointer;
+    letter-spacing: 1px;
+    box-shadow: inset 0 1px 0 rgba(var(--hl-rgb),.06);
+    position: relative;
+    top: 2px;
+    transition: color .15s;
+  }
+  .topnav .tab:hover { color: var(--gold-light); }
+  /* v25（需求 10）：菜单图标（线描，跟随文字颜色） */
+  /* v27（需求 7）：菜单图标调小 —— 15px 配上 13px 正文，图标反而比字更抢眼。
+     降到 12px、透明度略降，只在 hover/选中的时候提亮，图标回到"陪衬"的位置。 */
+  .topnav .tab .ti { display: inline-flex; align-items: center; margin-right: 4px; }
+  .topnav .tab .nav-ico { width: 12px; height: 12px; display: block; opacity: .62; }
+  .topnav .tab:hover .nav-ico, .topnav .tab.active .nav-ico { opacity: 1; }
+  /* 菜单分组竖线（v19）：同类型相邻、不同类型分隔 */
+  .topnav .nav-sep {
+    width: 1px; height: 20px; margin: 0 6px; flex: none;
+    background: linear-gradient(180deg, rgba(var(--sh-rgb),0), var(--gold-dark), rgba(var(--sh-rgb),0));
+    opacity: .85;
+  }
+
+  /* 改建候选列表（v19 需求 8） */
+  .xc-list { display: flex; flex-direction: column; gap: 8px; }
+  .xc-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px;
+    background: rgba(var(--sh-rgb),.24); border: 1px solid var(--line); border-radius: 8px; }
+  .xc-row .xc-ico { width: 38px; height: 38px; flex: none; }
+  /* v37（需求 3）：同 .ia-art 的毛病 —— 只写 svg，位图匹配不到（装的是
+     forItem/forExt 的图标，两者都会走位图）。统一改 .ico。 */
+  .xc-row .xc-ico .ico { width: 38px; height: 38px; }
+  .xc-row .xc-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .xc-row .xc-info b { font-size: var(--fs-body); color: var(--parchment); }
+  .xc-row .xc-prod { font-size: var(--fs-sub); color: var(--green-ok); }
+  .xc-row .xc-cost { font-size: var(--fs-sub); color: var(--text-dim); }
+
+  /* 公文页公告盒（v19：原公告牌内容并入公文） */
+  .notice-box { border: 1px solid var(--line-strong); border-radius: 7px; padding: 8px 10px;
+    background: rgba(var(--sh-rgb),.22); }
+  .notice-box .nt-row { padding: 5px 0; border-bottom: 1px dashed rgba(201,162,75,.18); font-size: var(--fs-body); }
+  .notice-box .nt-row:last-child { border-bottom: 0; }
+  .notice-box .nt-row b { color: var(--parchment); }
+  .notice-box .nt-amt { float: right; color: var(--gold-light); font-variant-numeric: tabular-nums; }
+  /* v26（需求 3）：顶栏天时（不受菜单 hover/active 影响，只读） */
+  .nav-sky {
+    margin-left: auto; display: inline-flex; align-items: center; gap: 5px;
+    padding: 5px 10px; border-radius: 5px; white-space: nowrap;
+    font-size: var(--fs-sub); font-weight: 700; letter-spacing: 1px;
+    color: var(--gold-light); cursor: default;
+    background: linear-gradient(180deg, rgba(201,162,75,.14), rgba(var(--sh-rgb),.2));
+    border: 1px solid var(--line-strong);
+  }
+  .nav-sky .ns-k { color: var(--text-dim); font-weight: 400; letter-spacing: 0; }
+  .topnav .tab.active {
+    color: var(--gold-light);
+    background: linear-gradient(180deg, var(--btn-face-1), var(--btn-face-2));
+    border-color: var(--gold-dark);
+    border-bottom-color: transparent;
+    top: 2px;
+    text-shadow: 0 0 8px rgba(201,162,75,.4);
+  }
+  .topnav .badge {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    background: var(--red);
+    color: #fff;
+    font-size: var(--fs-cap);
+    padding: 1px 5px;
+    border-radius: 8px;
+    font-weight: 700;
+  }
+
+  /* ============ 主布局 ============
+     真正的规则在下方「布局：基准 1180×820」一段（v27 收口到一处）。
+     这里原先还有一份 `.main { grid-template-columns: 300px 1fr; align-items: start; }`，
+     它与新规则叠在一起，于是新规则没写的「对齐方式：起首」一直生效 ——
+     两栏因此不会一起拉伸，侧栏依然比中央短/长。已删除，只留一处定义。 */
+
+  /* ============ 布局：基准 1180×820，随视口自适应（v27 · 需求 8/9）============
+     改前有两处硬伤：
+       ① 页面宽度被写死在 1024 —— 屏幕再大也只有 1024 宽，两侧白白留白；
+       ② 中央视图写死 530px 高、侧栏却允许到 606px ——
+          **侧栏被允许比中央高 76px**，"左侧统计栏比右边城池页面长"因此成为必然（需求 8）。
+     现在：
+       · 页面撑满视口，主区用 flex 吃掉剩余高度，两栏**同高**（同一行、一起拉伸）；
+       · 中央滚动、侧栏也滚动，但侧栏内容已按 820 高度精简过，正常不出滚动条；
+       · 棋盘尺寸由 JS 按实测容器计算（见 ui.fitBoard）。
+     v43（老板要求「整体界面的像素值固定，不要因为浏览器边框变动」）：
+       · 侧栏宽度原来写的是 clamp(272px, 24vw, 320px) —— **随视口宽度浮动**，
+         窗口一改侧栏就变、中央区与棋盘跟着重算（这就是"像素值不固定"的根源）。
+         改为**固定 283px**，与 JS 的 ui.SIDE_W 严格对齐（283 正是 1180 宽下的原取值）。
+       · 两个可滚容器加 scrollbar-gutter: stable，滚动条出现/消失不再改变可用宽度。 */
+  html, body { height: 100%; }
+  #screen-game { height: 100%; display: flex; flex-direction: column; }
+  .topnav { flex: none; }
+  .main { flex: 1; min-height: 0; display: grid; grid-template-rows: 1fr;
+    align-items: stretch;   /* 两栏一起拉伸到整行高 —— 这就是"侧栏与中央同高" */
+    grid-template-columns: 283px 1fr; padding: 8px 10px; gap: 8px; }
+  .central { display: flex; flex-direction: column; min-height: 0; }
+  /* v43（老板要求）：**界面像素尺寸不因滚动条而变动**。
+     这两个容器自身可滚，内容一长就冒出滚动条、可用宽度少十几像素，
+     棋盘（按实测容器算尺寸）与两栏宽度跟着重排 —— 切个页面布局就跳一下。
+     scrollbar-gutter: stable 让滚动条轨道**常驻预留**，有没有滚动条宽度都一样。 */
+  html { scrollbar-gutter: stable; }
+  .view-box { flex: 1; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; }
+  .auth-side { min-height: 0; overflow-y: auto; scrollbar-gutter: stable; }
+
+  /* ============ 左侧：君主卡 ============ */
+  .lord-card {
+    background:
+      linear-gradient(180deg, rgba(var(--sh-rgb),.3), rgba(var(--sh-rgb),.1)),
+      var(--panel-bg);
+    border: 1px solid var(--gold-dark);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .lord-head {
+    display: flex;
+    gap: 10px;
+    padding: 10px;
+    background: linear-gradient(90deg, rgba(201,162,75,.22), transparent);
+    border-bottom: 1px solid var(--sep-gold);
+  }
+  .lord-avatar {
+    width: 64px; height: 64px;
+    border: 2px solid var(--gold);
+    border-radius: 6px;
+    background: #2b2b20;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 40px;
+    flex-shrink: 0;
+  }
+  .lord-meta { width: 100%; font-size: var(--fs-body); line-height: 1.7; }
+  .lord-meta .name { font-size: var(--fs-h2); font-weight: 800; color: var(--gold-light); }
+  /* v25（需求 9）：立绘 + 名称单独一行 */
+  .lord-name-row { text-align: center; margin: 4px 0 2px; }
+  .lord-portrait {
+    width: 68px; height: 68px; border-radius: 8px; overflow: hidden;
+    border: 1px solid var(--gold-dark); background: #0b0e12;
+    box-shadow: inset 0 0 0 1px rgba(var(--sh-rgb),.6), 0 2px 8px rgba(var(--sh-rgb),.45);
+  }
+  .lord-portrait svg { display: block; width: 100%; height: 100%; }
+  .lord-meta .row { display: flex; justify-content: space-between; }
+  .lord-meta .row span:first-child { color: var(--text-dim); }
+
+  /* ============ 侧栏三段式（君主/城池属性/资源）============ */
+  .side-btnrow {
+    display: flex; gap: 4px; padding: 6px 8px;
+    background: rgba(var(--sh-rgb),.25); border-bottom: 1px solid var(--sep-gold);
+  }
+  .side-btnrow .sbtn {
+    flex: 1; text-align: center; font-size: var(--fs-sub); font-weight: 700;
+    color: var(--gold-light); padding: 5px 0; letter-spacing: 1px;
+    background: linear-gradient(180deg,var(--btn-face-1),var(--btn-face-2));
+    border: 1px solid var(--gold-dark); border-radius: 4px; cursor: pointer;
+    box-shadow: inset 0 1px 0 rgba(var(--hl-rgb),.06);
+  }
+  .side-btnrow .sbtn:hover { filter: brightness(1.25); }
+  .side-block { border-bottom: 1px solid var(--sep-gold); }
+  .side-title {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 6px 10px; font-size: var(--fs-h3); font-weight: 700; letter-spacing: 1px;
+    color: var(--gold-light);
+    background: linear-gradient(90deg, rgba(201,162,75,.18), transparent);
+  }
+  .side-quick { display: flex; gap: 6px; align-items: center; font-weight: 400; color: var(--text-dim); }
+  .side-quick i { font-style: normal; cursor: pointer; opacity: .85; font-size: var(--fs-body); }
+  .side-quick i:hover { opacity: 1; transform: scale(1.15); }
+  /* v27（需求 1）：190px 会顶到滚动条（多城时还要塞一行切城芯片）；
+     放宽到 232px，正常内容放得下 —— 侧栏整体高度由视口决定，不会再溢出。
+     overflow 保留为兜底，不主动出现滚动条。 */
+  .side-body { padding: 8px 10px; max-height: 232px; overflow-y: auto; }
+
+  /* 资源行 "+" 快捷道具按钮 */
+  .plus-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 16px; height: 16px; margin-left: 5px; line-height: 1;
+    background: linear-gradient(180deg,#e8c878,#9a7430); color: var(--ink-on-gold);
+    border-radius: 3px; font-size: var(--fs-body); font-weight: 900; cursor: pointer;
+    box-shadow: 0 1px 2px rgba(var(--sh-rgb),.4);
+  }
+  .plus-btn:hover { filter: brightness(1.15); }
+
+  /* ============ 统计条目 ============ */
+  .res-line { display: flex; align-items: center; justify-content: space-between; padding: 5px 4px; border-bottom: 1px dashed rgba(201,162,75,.2); font-size: var(--fs-lead); }
+  .res-line .lbl { color: var(--text-dim); }
+  .res-line .val { font-weight: 700; font-variant-numeric: tabular-nums; display: inline-flex; align-items: baseline; gap: 4px; white-space: nowrap; }
+  /* 资源存量：整数千分位 + 小数（暗色小字）—— 让每秒的微小增长肉眼可见 */
+  .res-line .val .num-frac { font-size: var(--fs-cap); font-weight: 500; color: var(--text-dim); letter-spacing: .3px; }
+  /* 增速：按「/秒」显示，与画面刷新节奏一致 */
+  .res-line .val .num-rate { font-size: var(--fs-cap); font-weight: 600; color: var(--green-ok); }
+  .res-line .val .num-rate.zero { color: var(--text-dim); opacity: .55; }
+  .res-line .val .item-badge { color: var(--gold-light); font-size: var(--fs-cap); font-weight: 600; }
+  .res-line .val .cap { color: var(--text-dim); font-size: var(--fs-cap); font-weight: 500; }
+
+  /* ============ 史册面板 ============ */
+  .story-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+  .story-card {
+    background: linear-gradient(180deg, rgba(var(--sh-rgb),.28), rgba(var(--sh-rgb),.12));
+    border: 1px solid var(--gold-dark);
+    border-radius: 8px; padding: 10px 12px; margin-bottom: 10px;
+  }
+  .sky-big { font-size: var(--fs-h1); font-weight: 800; color: var(--gold-light); text-align: center; letter-spacing: 1px; margin: 6px 0 4px; }
+  .sky-sub { font-size: var(--fs-sub); color: var(--text-dim); text-align: center; line-height: 1.7; }
+  .sky-boon { font-size: var(--fs-sub); color: var(--green-ok); text-align: center; margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--sep-gold); }
+  .goal-line { display: flex; justify-content: space-between; align-items: baseline; font-size: var(--fs-lead); margin: 6px 0; }
+  .goal-line .good { color: var(--green-ok); font-weight: 700; }
+  .prog { height: 9px; background: rgba(var(--sh-rgb),.45); border: 1px solid var(--gold-dark); border-radius: 5px; overflow: hidden; }
+  .prog > i { display: block; height: 100%; background: linear-gradient(90deg, #9a7430, var(--gold-light)); transition: width .5s linear; }
+  .hint { font-size: var(--fs-sub); color: var(--text-dim); margin-top: 6px; line-height: 1.6; }
+  .chron-list { max-height: 420px; overflow-y: auto; padding-right: 4px; }
+  .chron-item { display: flex; gap: 9px; padding: 7px 8px; border-left: 3px solid #6b5a2c; background: rgba(var(--sh-rgb),.16); border-radius: 0 5px 5px 0; margin-bottom: 5px; }
+  .chron-item .chron-era { flex: 0 0 62px; font-size: var(--fs-sub); color: var(--gold); opacity: .9; }
+  .chron-item .chron-txt { font-size: var(--fs-sub); line-height: 1.65; color: var(--text); }
+  .chron-item.tag-milestone { border-left-color: var(--gold-light); }
+  .chron-item.tag-era { border-left-color: var(--rank-ming); background: rgba(156,106,214,.10); }
+  .chron-item.tag-encounter { border-left-color: var(--blue-info); background: rgba(63,169,201,.10); }
+  .chron-item.tag-annual { border-left-color: #4a5a3a; opacity: .82; }
+  /* ============ 客栈 / 市集 / 仓储 / 招贤馆 ============ */
+  .inn-list { max-height: 46vh; overflow-y: auto; padding-right: 4px; }
+  .inn-card { display: flex; align-items: center; gap: 10px; padding: 8px 10px; margin-bottom: 6px;
+    background: rgba(var(--sh-rgb),.2); border: 1px solid var(--gold-dark); border-radius: 7px; }
+  .inn-card.off { opacity: .55; }
+  .inn-avatar { font-size: 26px; width: 34px; text-align: center; }
+  .inn-info { flex: 1; min-width: 0; }
+  .inn-name { font-size: var(--fs-lead); font-weight: 700; color: var(--gold-light); }
+  .inn-attrs { font-size: var(--fs-sub); color: var(--text-dim); margin-top: 3px; letter-spacing: .3px; }
+  .inn-attrs b { color: var(--text); font-weight: 700; }
+  .inn-act { text-align: right; flex: 0 0 auto; }
+  .inn-cost { font-size: var(--fs-sub); color: var(--gold); margin-bottom: 4px; }
+  .inn-cost.short { color: var(--red-light); }
+  .tag-hero { font-size: var(--fs-cap); padding: 1px 5px; border-radius: 3px; background: var(--sep-gold); color: var(--gold-light); }
+  .tag-beauty { font-size: var(--fs-cap); padding: 1px 5px; border-radius: 3px; background: rgba(212,83,126,.22); color: var(--beauty); }
+  .note-warn { font-size: var(--fs-sub); color: var(--warn); background: rgba(230,164,0,.1); border: 1px solid rgba(230,164,0,.35);
+    border-radius: 6px; padding: 7px 10px; margin-bottom: 8px; text-align: center; line-height: 1.6; }
+  .mk-row { display: flex; align-items: center; gap: 8px; justify-content: center; margin: 8px 0; }
+  .mk-row select, .mk-row input { padding: 6px 8px; background: var(--slab-1); color: var(--text); border: 1px solid var(--gold-dark); border-radius: 4px; font-size: var(--fs-body); }
+  .mk-row input { width: 120px; text-align: center; }
+  .mk-arrow { color: var(--gold-light); font-weight: 700; }
+  .mk-hint { font-size: var(--fs-sub); color: var(--text-dim); }
+  .store-row { display: flex; align-items: center; padding: 7px 2px; border-bottom: 1px dashed rgba(201,162,75,.2); font-size: var(--fs-body); }
+  .store-row .lbl { flex: 0 0 76px; color: var(--text-dim); }
+  .store-row .val { flex: 0 0 auto; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .store-row .cap { color: var(--text-dim); font-size: var(--fs-cap); font-weight: 500; }
+  /* ============ v12：子标签 / 任务卡 / 背包网格 / 会话日志 ============ */
+  .panel-body { max-height: 62vh; overflow-y: auto; margin: 0 -4px; }
+  .panel-foot { text-align: center; margin-top: 14px; }
+  .bag-cell.dim { opacity: .45; }
+  .subtabs.hidden { display: none; }
+  .topnav .tab .tab-badge { display: inline-block; min-width: 16px; height: 16px; line-height: 16px; padding: 0 4px;
+    margin-left: 5px; border-radius: 8px; background: #b8412f; color: #fff; font-size: var(--fs-cap); font-weight: 700;
+    vertical-align: 1px; text-align: center; }
+  .topnav .tab .tab-badge.hidden { display: none; }
+  /* ============================================================
+   * v41（需求 4）：公文有新战报 → 菜单**图标底色闪黄**，1.5 秒一轮
+   * ------------------------------------------------------------
+   * 做法：图标本身是 `stroke="currentColor"`，所以把底色的"亮"和
+   * 图标的"暗"一起动 —— 只闪底色的话，暗色主题里浅色图标压在黄底上
+   * 会糊成一团，反而看不清。
+   * 只挂在图标上（不加 padding），避免菜单文字左右跳动。
+   * ============================================================ */
+  .topnav .tab.fresh .ti {
+    border-radius: 5px;
+    animation: docBlink 1.5s ease-in-out infinite;
+  }
+  @keyframes docBlink {
+    0%, 42%   { background: var(--alert-gold); color: var(--alert-ink); box-shadow: 0 0 9px 2px rgba(255,216,77,.75); }
+    58%, 100% { background: transparent; color: var(--text-dim); box-shadow: none; }
+  }
+  /* 降低动效的用户（系统偏好）保留静态黄底，不带闪烁 */
+  @media (prefers-reduced-motion: reduce) {
+    .topnav .tab.fresh .ti { animation: none; background: var(--alert-gold); color: var(--alert-ink); }
+  }
+  .subtabs { display: flex; gap: 4px; margin: 0 12px 6px; }
+  .subtabs .sub { padding: 5px 18px; font-size: var(--fs-body); font-weight: 700; letter-spacing: 2px; cursor: pointer;
+    color: var(--text-dim); background: rgba(var(--sh-rgb),.22); border: 1px solid var(--gold-dark); border-radius: 6px; }
+  .subtabs .sub.active { color: var(--ink-on-gold); background: linear-gradient(180deg, var(--gold-light), var(--gold)); border-color: var(--gold-light); }
+
+  /* 任务卡 */
+  .q-sec { display: flex; align-items: center; gap: 10px; margin: 14px 0 8px; padding-bottom: 5px;
+    border-bottom: 1px solid var(--sep-gold); }
+  .q-sec-t { font-size: var(--fs-h3); font-weight: 800; color: var(--gold-light); letter-spacing: 1px; }
+  .q-sec-n { font-size: var(--fs-sub); color: var(--text-dim); }
+  .q-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  /* ---- 任务清单（v25 · 需求 11）：只给名称与状态，详情进弹窗 ---- */
+  .q-list { display: flex; flex-direction: column; gap: 5px; }
+  .q-row {
+    display: flex; align-items: center; gap: 8px; padding: 8px 12px; cursor: pointer;
+    background: rgba(var(--sh-rgb),.22); border: 1px solid var(--line); border-radius: 7px;
+    border-left: 3px solid rgba(var(--hl-rgb),.10); transition: background .12s, border-color .12s;
+  }
+  .q-row:hover { background: rgba(232,206,136,.07); border-color: rgba(232,206,136,.45); }
+  .q-row.ready { border-left-color: var(--green-ok); }
+  .q-row-n { font-size: var(--fs-lead); font-weight: 700; color: var(--gold-light); }
+  .q-row-p { margin-left: auto; font-size: var(--fs-sub); color: var(--text-dim); font-variant-numeric: tabular-nums; }
+  .q-row-p b { color: var(--green-ok); }
+  /* 任务详情：固定版式 */
+  .q-det-hero { display: flex; align-items: center; gap: 8px; padding-bottom: 10px;
+    border-bottom: 1px solid var(--sep-gold); margin-bottom: 4px; }
+  .q-det-title { font-size: var(--fs-h2); font-weight: 800; color: var(--gold-light); }
+  .q-det-sec { font-size: var(--fs-h3); font-weight: 800; color: var(--gold-light);
+    margin: 12px 0 5px; letter-spacing: 1px; }
+  .q-det-sec::before { content: '◆'; font-size: var(--fs-cap); color: var(--gold); margin-right: 5px; }
+  .q-det-txt { font-size: var(--fs-body); line-height: 1.85; color: var(--text); }
+  .q-det-txt.good { color: var(--green-ok); font-weight: 700; }
+  .q-det-prog { color: var(--text-dim); font-size: var(--fs-sub); }
+  .q-det-tip { font-size: var(--fs-sub); color: var(--text-dim); line-height: 1.7; margin-top: 6px; }
+  @media (max-width: 900px) { .q-grid { grid-template-columns: 1fr; } }
+  .q-card { background: rgba(var(--sh-rgb),.24); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px;
+    transition: border-color .15s, box-shadow .15s; }
+  .q-card.q-ready { border-color: rgba(232,206,136,.7); box-shadow: 0 0 12px rgba(232,206,136,.15); }
+  .q-card.q-done { opacity: .55; }
+  .q-head { display: flex; align-items: center; gap: 7px; }
+  .q-title { font-size: var(--fs-lead); font-weight: 800; color: var(--gold-light); }
+  .q-tag { font-size: var(--fs-cap); font-weight: 700; padding: 1px 6px; border-radius: 4px; border: 1px solid currentColor; }
+  .q-tag.t-growth { color: var(--tag-growth); }
+  .q-tag.t-military { color: var(--tag-military); }
+  .q-tag.t-war { color: var(--tag-war); }
+  .q-tag.t-build { color: var(--tag-build); }
+  .q-tag.t-tech { color: var(--q3); }
+  .q-tag.t-govern { color: var(--tag-govern); }
+  .q-tag.t-talent { color: var(--rank-ming); }
+  .q-tag.t-forge { color: var(--tag-forge); }
+  .q-state { margin-left: auto; font-size: var(--fs-sub); font-weight: 700; color: var(--text-dim); }
+  .q-card.q-ready .q-state { color: var(--green-ok); }
+  .q-desc { font-size: var(--fs-sub); color: var(--text-dim); margin: 6px 0 0; line-height: 1.6; }
+  .q-bar { height: 5px; margin: 8px 0 5px; background: rgba(var(--sh-rgb),.5); border-radius: 3px; overflow: hidden; }
+  .q-bar i { display: block; height: 100%; background: linear-gradient(90deg, #6f8f3e, #c9d96a); border-radius: 3px;
+    transition: width .4s ease; }
+  .q-foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .q-reward { font-size: var(--fs-sub); color: var(--gold-light); }
+  .q-foot .btn { margin-left: auto; }
+  .q-empty { text-align: center; color: var(--text-dim); font-size: var(--fs-sub); padding: 18px; }
+  .q-done-box { background: rgba(var(--sh-rgb),.2); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px;
+    max-height: 320px; overflow-y: auto; }
+  .q-log-row { display: flex; align-items: center; gap: 8px; padding: 5px 2px; font-size: var(--fs-sub);
+    border-bottom: 1px dashed rgba(201,162,75,.16); }
+  .q-log-t { color: var(--text); font-weight: 600; }
+  .q-log-r { margin-left: auto; color: var(--gold-light); font-size: var(--fs-sub); }
+  .q-log-r.dim { color: var(--text-dim); }
+
+  /* 背包：每行 5 格 */
+  /* v39（需求 6）：5 列 → 4 列。老板要"跟商城同步搞成 4 行"，
+     一页 16 格正好 4 列 × 4 行（见 ui.BAG_PER_PAGE），格子也随加宽。
+     v51：**固定 4 列**（同商城，见上面的说明）；原 1150 那档降级已删。 */
+  .bag-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+  .bag-cell { position: relative; background: linear-gradient(180deg, var(--surface-2), var(--surface-3)); border: 1px solid var(--line);
+    border-radius: 8px; padding: 8px 6px 6px; display: flex; flex-direction: column; align-items: center; gap: 3px;
+    cursor: pointer; transition: transform .14s, border-color .14s, box-shadow .14s; }
+  .bag-cell:hover { transform: translateY(-3px); border-color: rgba(232,206,136,.7);
+    box-shadow: 0 8px 18px rgba(var(--sh-rgb),.5), 0 0 12px rgba(232,206,136,.2); }
+  .bag-cell .bag-ico { font-size: 26px; line-height: 1; filter: drop-shadow(0 2px 3px rgba(0,0,0,.6)); }
+  .bag-cell .bag-name { font-size: var(--fs-cap); font-weight: 700; color: var(--text-strong); text-align: center; line-height: 1.25; }
+  .bag-cell .bag-cnt { position: absolute; right: 4px; top: 3px; font-size: var(--fs-cap); font-weight: 800; color: var(--gold-light);
+    text-shadow: 0 1px 2px #000; }
+  .bag-cell .bag-q { position: absolute; left: 4px; top: 3px; font-size: var(--fs-cap); font-weight: 800; }
+  .bag-cell.q1 .bag-q { color: var(--q1); } .bag-cell.q2 .bag-q { color: var(--q2); }
+  .bag-cell.q3 .bag-q { color: var(--q3); } .bag-cell.q4 .bag-q { color: var(--q4); }
+  /* ============================================================
+   * 悬停浮层（v37 · 需求 2）：**全站唯一一层**
+   * ------------------------------------------------------------
+   * 改前三套各写各的，都只在自己那一小块里绝对定位：
+   *   · .bag-cell .bag-tip           居中于格子 → 边格越出面板；向上弹 → 首行越出可视区
+   *   · .rate-wrap[data-tip]::after   CSS content
+   *   · .help-chip[data-tip]::after   CSS content
+   * 三套同病：**z-index 60**（会被更高的层压住）、**位置写死**（越界没人管）。
+   * 改后：内容源留在原地但不再自己显示，显示统一交给 body 上的 .tip-layer
+   * （position:fixed + z-index 9000），位置由 JS 算并四面夹进视口。
+   * 一层、一套定位规则、一个层级 —— 不再有"某处浮层被压住/飞出屏幕"。
+   * ============================================================ */
+  /* ⚠ `tip-src` 是**所有内容源的通用标记**（ui.tipFor 就是按它取内容的）——
+     少了这条，凡是带 tip-src 但没有单独类名的浮层（如人形装备栏的 .eq-slot-tip）
+     会**直接把浮层正文渲染在卡片里**，把卡片撑高、布局全乱。 */
+  .tip-src { display: none; }
+  .bag-tip, .tcard-tip { display: none; }
+  .tip-layer {
+    position: fixed; left: 0; top: 0; z-index: 9000;
+    min-width: 150px; max-width: 300px; padding: 8px 10px; border-radius: 7px;
+    background: #12110c; border: 1px solid var(--gold-dark);
+    box-shadow: 0 12px 28px rgba(var(--sh-rgb),.75);
+    opacity: 0; visibility: hidden; transition: opacity .12s;
+    pointer-events: none; text-align: left; white-space: pre-line;
+  }
+  .tip-layer.on { opacity: 1; visibility: visible; }
+  .tip-layer .tip-t { font-size: var(--fs-sub); font-weight: 800; color: var(--gold-light); margin-bottom: 4px; }
+  .tip-layer .tip-l { font-size: var(--fs-sub); color: var(--text-dim); line-height: 1.65; }
+  .tip-layer .tip-a { font-size: var(--fs-sub); color: var(--green-ok); margin-top: 4px; line-height: 1.6; }
+  .bag-sec { display: flex; align-items: center; gap: 10px; margin: 12px 0 8px; padding-bottom: 4px;
+    border-bottom: 1px solid var(--sep-gold); font-size: var(--fs-h3); font-weight: 800; color: var(--gold-light); }
+  .bag-sec .n { font-size: var(--fs-sub); font-weight: 400; color: var(--text-dim); }
+  .mat-tag { display: inline-block; font-size: var(--fs-cap); padding: 1px 6px; border-radius: 4px;
+    background: rgba(201,162,75,.14); color: var(--gold-light); border: 1px solid rgba(201,162,75,.35); margin-right: 3px; }
+  .mat-tag.short { background: rgba(184,65,47,.18); color: var(--red-light); border-color: rgba(184,65,47,.5); }
+
+  /* ============================================================
+   * 地块（v20 重制：**正方形网格**）
+   * ------------------------------------------------------------
+   * 历史包袱：v16 用 2:1 菱形、v18 改用剪切平行四边形，两代都在
+   * 「把建筑立牌挂到倾斜地块上」这条路上打转 —— 图标比格子高、
+   * 靠 translateY 对齐，必然出现遮挡与错位。
+   *
+   * v20 直接放弃倾斜投影：地块就是**正方形**，元素盒与地块重合。
+   *   格心 = 元素盒的 50%/50%，建筑图标居中即正对格心，几何上不可能错位。
+   *   相邻格 x/y 各差 TILE_W/TILE_H，一行不对行内另一行，天然密铺且不重叠。
+   *
+   * 视觉依据（awesome-design-md / Linear 规范）：
+   *   · 暗色界面**不要用投影表达层级** —— 改用背景亮度分层
+   *   · 描边一律发丝级半透明白 rgba(var(--hl-rgb),.06~.10)，不用不透明深灰
+   *   · 凹陷感用 inset 阴影（规范里的 Inset 层级）
+   * ============================================================ */
+  .city-iso { display: flex; justify-content: center; align-items: flex-start;
+    padding: 6px 0 16px; overflow: auto; max-width: 100%; }
+  .iso-board { position: relative; flex: none; }
+  /* 显示比例控件 */
+  .zoom-bar { display: flex; align-items: center; justify-content: center; gap: 5px;
+    flex-wrap: wrap; margin: 2px 0 8px; }
+  .zoom-bar .zb-label { color: var(--text-dim); font-size: var(--fs-sub); margin-right: 4px; }
+  .zoom-bar .btn.sm { min-width: 50px; }
+
+  /* ---- 地块：正方形 ---- */
+  .iso-tile {
+    position: absolute;
+    cursor: pointer;
+    z-index: 2;
+    transition: z-index 0s;
+  }
+  /* ============================================================
+   * 地块（v39 · 需求 3）
+   * ------------------------------------------------------------
+   * 老板原话：「目前色块颜色还带花纹，太费眼睛了，能不能把底部色块去掉的？」
+   *
+   * 旧实现每格都是一块独立小图：草绿渐变 + 一层 48° 草叶斜纹 + 描边 + 内凹。
+   * 32 格并排 = 32 块带花纹的小色块，视觉噪声全在这里。
+   *
+   * 现在：
+   *   · 底色改**纯色**（不能用渐变 —— 渐变按格计算，相邻格之间会出现
+   *     色阶接缝，铺成一片地之后那圈缝比花纹还扎眼）；
+   *   · 去掉 border / box-shadow / 圆角，相邻格同色自然连成**一整片地面**；
+   *   · 空地不再填色，只在悬停时浮出一格极淡的提示；
+   *   · 悬停只提亮、不描边（描边正是刚去掉的东西）。
+   * ============================================================ */
+  .tile-face {
+    position: absolute; inset: 0;
+    background: var(--ground);
+    transition: background .14s, filter .14s;
+  }
+  /* 空地：不填色 —— 悬停才浮出一格淡色，提示"这里能点" */
+  .iso-tile.empty .tile-face { background: transparent; }
+  .iso-tile.empty:hover .tile-face { background: rgba(var(--hl-rgb),.07); }
+  /* 施工中：土色工地（"正在动"的地方，要显眼） */
+  .iso-tile.busy .tile-face { background: var(--ground-busy); }
+  /* 官署格：台基色（4 格合并的宫殿台基由 .gov-palace 单独画） */
+  .iso-tile.gov .tile-face { background: var(--ground-gov); }
+  /* ---- 城外资源地（v39 · 需求 2）：老板点名的四种色系 ---- */
+  .iso-tile.res-farm   .tile-face { background: var(--res-farm); }
+  .iso-tile.res-forest .tile-face { background: var(--res-forest); }
+  .iso-tile.res-quarry .tile-face { background: var(--res-quarry); }
+  .iso-tile.res-mine   .tile-face { background: var(--res-mine); }
+  /* 悬停：只提亮一格，不描边 */
+  .iso-tile:hover .tile-face { filter: brightness(1.10); }
+  .iso-tile:hover { z-index: 5; }
+  /* 选中：用内描边（不占布局、也不给普通格加边框） */
+  .iso-tile.sel .tile-face { box-shadow: inset 0 0 0 2px var(--gold-light); }
+  /* ============================================================
+   * v41（需求 1）→ v42（需求 1）：地块之间留**一道细缝**
+   * ------------------------------------------------------------
+   * 只缩 `.tile-face`（视觉层），不动 `.iso-tile` 的几何 ——
+   * 拾取按格坐标算、不读 DOM，所以留缝不影响点选。
+   * v42 两处调整：
+   *   ① 缝从 2px 收到 **1px**（老板：不要离太宽，区分即可）；
+   *   ② 从「只城外」改成**城内城外一视同仁** —— v41 时担心城内被切碎，
+   *      1px 实测下来只相当于一圈极淡的格线，反而让 48 格看得清边界。
+   * ============================================================ */
+  .iso-board .tile-face { inset: 1px; border-radius: 2px; }
+
+  /* ---- 建筑本体：**居中**在格内（不再上浮、不再投影） ---- */
+  .tile-art {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    pointer-events: none; z-index: 4;
+    /* v25（需求 6）：原先留 15px 给标签、图标只占 58% —— 看着"小得可怜"。
+       现在图标占满整格（标签条是绝对定位的浮层，本就压在图标下沿，
+       不必为它预留布局空间），图标只比地块小一点点。 */
+    padding: 3px 3px 8px;
+    /* v39：建筑"长高"的落点 —— 实际缩放加在图标上（见 ser-* 规则），
+       容器只做过渡，标签与进度条不受缩放影响。 */
+    transition: transform .18s ease-out;
+  }
+  .tile-art .ico {
+    width: 100%; height: 100%; display: block;
+    filter: none;                      /* 暗色界面禁用投影 */
+  }
+  /* v35：位图图标（AI 生成透明 PNG）—— 保持比例不拉伸。
+     位图自身即透明轮廓，因此不套承台（plate）也不套光晕（lightPass），
+     直接以图标轮廓摆在地块上（老板明确要求）。 */
+  img.ico-img { object-fit: contain; }
+
+  /* ============================================================
+   * 城内建筑按「系列」分色（v39 · 需求 2/3；v45 改为**素材固有色**）
+   * ------------------------------------------------------------
+   * ⚠️ 血泪教训（别再回退到 CSS 染色）：
+   *   v39~v43 用 `hue-rotate + saturate` 给统一的暖金位图染色，老板连续三轮
+   *   反馈"还是阴间"。逐族实机取样后拿到铁证 —— 七族渲染饱和度只有 10~21、
+   *   色相全挤在 29~171° 的灰绿带里，等于一片灰绿。根因是**CSS 滤镜的数学性质**：
+   *     · hue-rotate 是线性矩阵近似，对低饱和暖金位图误差极大（标称 180° 实测 147°）；
+   *     · saturate() 是保亮度矩阵，输入越接近灰、输出越不变 —— 正好把彩图洗成灰。
+   *   结论：**染色不能放在 CSS**。
+   *
+   * 现在的做法（v45）：色相/饱和度在**像素级 HSL** 里精确写入素材本身
+   *   （脚本 `.workbuddy/tmp/recolor_buildings.py`；原图备份 `assets/icons/ui/_gold_backup/`）
+   *     H → 直接置为系列目标色相（精确，无矩阵误差）
+   *     S → 按比例放大到目标均值（保留"白墙低饱和 / 彩绘高饱和"的相对结构）
+   *     L → **原样保留**，材质的明暗层次一点不丢
+   *   CSS 只负责落地投影，一个字都不再染色。
+   *   七族目标色：军事铁青 208° · 文教竹青 152° · 驿传赭黄 28° · 工商朱红 2°
+   *              仓廪绛褐 340° · 民居麦黄 70° · 官署暖金 42°
+   * `ser-<系列>` 类保留为**语义标记**（数据侧唯一来源 DATA.SERIES，供调试与
+   * 后续按系列扩展），当前不再驱动颜色。
+   * ============================================================ */
+  .iso-tile.built .tile-art img.ico-img { filter: drop-shadow(0 2px 3px rgba(0,0,0,.42)); }
+  /* 建筑"长高"：等级 → 缩放系数（`.tile-art` 上有 transition 承接动画）。
+     ⚠️ 这条规则曾被一次"整段替换"误删 —— 因为它在注释块与 ser-* 规则**之间**，
+     替换时的起止标记跨过了它。改这段 CSS 时务必确认它还在（smoke 有断言守着）。 */
+  .iso-tile.built .tile-art img.ico-img,
+  .iso-tile.built .tile-art svg.ico {
+    transform: scale(var(--lvs, 1));
+    transform-origin: 50% 86%;             /* 底部固定：向上"长高"而非整体放大 */
+    transition: transform .18s ease-out;
+  }
+  /* ---- 城外资源：图标与地块同色系呼应（需求 2 点名的田黄/林青绿/石灰/矿棕黑）----
+     v45：**只保留提亮**，去掉 `hue-rotate` / `saturate` —— 与城内建筑同一教训：
+     矩阵式滤镜在低饱和图上不可靠（上一版采石场 `saturate(.16)` 直接被洗成纯灰，
+     老板判定"阴间"）。资源图标本身就带正确固有色，CSS 只需把过暗的提亮即可。 */
+  .iso-tile.res-farm   .tile-art img.ico-img { filter: brightness(1.16) drop-shadow(0 2px 3px rgba(0,0,0,.42)); }
+  .iso-tile.res-forest .tile-art img.ico-img { filter: brightness(1.22) drop-shadow(0 2px 3px rgba(0,0,0,.42)); }
+  .iso-tile.res-quarry .tile-art img.ico-img { filter: brightness(1.20) contrast(1.05) drop-shadow(0 2px 3px rgba(0,0,0,.42)); }
+  .iso-tile.res-mine   .tile-art img.ico-img { filter: brightness(1.24) drop-shadow(0 2px 3px rgba(0,0,0,.42)); }
+  .tile-art img.ico-img { filter: drop-shadow(0 2px 3px rgba(0,0,0,.42)); }
+  /* 建筑脚下的暖光池：让图标"落在"格子上，而不是贴上去（需求 7 的美术层） */
+  .iso-tile.built .tile-art::before,
+  .iso-tile.busy .tile-art::before {
+    content: ''; position: absolute; left: 16%; right: 16%; bottom: 14%; height: 26%;
+    border-radius: 50%;
+    background: radial-gradient(50% 46% at 50% 62%, rgba(24,40,6,.30), rgba(24,40,6,0) 72%);
+    pointer-events: none;
+  }
+  .iso-tile.empty .tile-art { padding-bottom: 0; }
+  .iso-tile.empty .tile-art .ico { opacity: .38; width: 34%; height: 34%; }
+  /* 格内标签：名字 + 等级**同一行**（需求 1） */
+  .tile-label {
+    position: absolute; left: 5px; right: 5px; bottom: 4px;
+    display: flex; align-items: baseline; justify-content: center; gap: 4px;
+    padding: 1px 0; border-radius: 5px;
+    background: rgba(30,20,6,.52);
+    font-size: var(--fs-cap); font-weight: 600; line-height: 1.5;
+    white-space: nowrap; overflow: hidden;
+  }
+  .tile-label .nm { color: var(--text); overflow: hidden; text-overflow: ellipsis; }
+  .tile-label .lv {
+    flex: none; font-size: var(--fs-cap); font-weight: 700; font-variant-numeric: tabular-nums;
+    color: var(--gold-light);
+  }
+  .tile-label .lv.max { color: var(--green-ok); }
+  .iso-tile.empty .tile-label { display: none; }
+  /* 施工中：图标 + 居中进度 */
+  .tile-scaf { font-size: 26px; color: var(--gold-light); line-height: 1; }
+  .tile-pct {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%);
+    font-size: var(--fs-lead); font-weight: 700; color: var(--green-ok);
+    text-shadow: 0 1px 3px rgba(var(--sh-rgb),.85);
+  }
+  .tile-pbar {
+    position: absolute; left: 12%; right: 12%; bottom: 22px; height: 4px;
+    border-radius: 2px; background: rgba(var(--sh-rgb),.55); overflow: hidden;
+  }
+  .tile-pbar i { display: block; height: 100%; border-radius: 2px;
+    background: linear-gradient(90deg, #7ee08a, #4fbf6a); transition: width .4s linear; }
+  .tile-add { font-size: 22px; color: rgba(48,76,14,.66); line-height: 1; }
+
+  /* ---- 城墙（v25 · 需求 1）：围着棋盘一圈的**环**，与地块留出空隙 ----
+     墙上画的是城墙该有的东西（墙身 / 雉堞 / 压顶 / 四角角楼），
+     不再有任何文字标签 —— 需要操作时点这圈墙。 */
+  .iso-wall { position: absolute; left: 0; top: 0; pointer-events: none; z-index: 1; }
+  .iso-wall .wtower { transition: filter .15s; }
+  /* 点击热区：四条带只覆盖墙环，绝不侵入棋盘（不会抢地块的点击） */
+  .wall-hit { position: absolute; cursor: pointer; z-index: 6; border-radius: 3px; transition: background .15s; }
+  .wall-hit:hover { background: rgba(232,206,136,.10); }
+  /* 悬停墙体时给整圈墙一点提亮反馈（角楼是墙的"提手"） */
+  .iso-board:has(.wall-hit:hover) .iso-wall { filter: brightness(1.14); }
+
+  /* ============ 商城（v18：分类 + 固定网格 + 分页）============ */
+  .shop-cats { display: flex; flex-wrap: wrap; gap: 5px; margin: 4px 0 10px; }
+  .shop-cats .shop-cat {
+    cursor: pointer; font-size: var(--fs-sub); color: var(--text-dim);
+    padding: 3px 10px; border-radius: 12px; border: 1px solid var(--line-strong);
+    background: rgba(var(--sh-rgb),.22); white-space: nowrap;
+  }
+  .shop-cats .shop-cat i { font-style: normal; opacity: .55; margin-left: 3px; font-size: var(--fs-cap); }
+  .shop-cats .shop-cat:hover { color: var(--text); border-color: var(--gold-dark); }
+  .shop-cats .shop-cat.on { color: var(--gold-light); background: rgba(201,162,75,.16); border-color: var(--gold); }
+  /* ============================================================
+   * 物品行（v29 · 需求 14）：左贴图 · 右介绍 · 下方 数量 + 操作
+   * ------------------------------------------------------------
+   * 改前商城是"竖卡 + 一颗按钮"：一件物品要横着读三行小字；
+   * 背包更只有一枚小格子，说明全靠悬停浮层（平板没有 hover 就抓瞎）。
+   * 现在文字直接铺在右边、数量与操作固定在下沿，扫一眼就能做决定。
+   * ============================================================ */
+  /* v39（需求 5）：老板要「统一整成 4 列」，原先两列右侧空一大片。
+     4 列是"整行不截断"的选择：一页 16 个正好 4 行（见 ui.SHOP_PER_PAGE）。
+     v51：**固定 4 列**（老板：「商城和背包的宝物物品整 4 列」）。
+     原先有 1500 / 1150 / 760 三档降级断点 —— 老板的屏在 1366~1440，
+     正好落进 ≤1500 那一档，所以他看到的其实是 **3 列**。
+     降级看似"自适应"，实际是**同一份列表在不同窗口下长得不一样**，
+     跟本项目「界面像素尺寸必须固定」的约定也冲突。列数写死，窗口小就格子窄。 */
+  .shop-rows { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+  .item-row {
+    display: grid; grid-template-columns: 64px minmax(0, 1fr);
+    grid-template-rows: auto auto; gap: 4px 9px;
+    padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--r-lg);
+    background: linear-gradient(180deg, rgba(var(--sh-rgb),.26), rgba(var(--sh-rgb),.14));
+    box-shadow: inset 0 1px 0 rgba(var(--hl-rgb),.05);
+  }
+  .item-row:hover { border-color: rgba(232,206,136,.4); }
+  .item-row .ir-art { grid-row: 1 / 3; display: flex; align-items: center; justify-content: center; }
+  .item-row .ir-info { min-width: 0; }
+  .item-row .ir-name { font-size: var(--fs-lead); font-weight: 700; color: var(--text-strong);
+    display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .item-row .ir-tag { font-size: var(--fs-cap); font-weight: 400; color: var(--gold-light);
+    border: 1px solid var(--gold-dark); border-radius: 3px; padding: 0 5px; }
+  .item-row .ir-tag.set { color: var(--q3); border-color: var(--q3); }
+  .item-row .ir-meta { font-size: var(--fs-cap); color: var(--text-dim); margin-top: 3px; line-height: 1.5; }
+  .item-row .ir-meta b { color: var(--gold-light); }
+  .item-row .ir-desc { font-size: var(--fs-sub); margin-top: 4px; line-height: 1.5; color: var(--text-dim); }
+  .item-row .ir-foot { grid-column: 1 / 3; display: flex; align-items: center; gap: 8px;
+    flex-wrap: wrap; margin-top: 4px; padding-top: 6px; border-top: 1px solid var(--line); }
+  .item-row .ir-left { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; flex-wrap: wrap; }
+  .item-row .ir-right { display: flex; gap: 6px; }
+  .item-row .ir-total { color: var(--gold-light); font-weight: 700; font-size: var(--fs-sub);
+    font-variant-numeric: tabular-nums; }
+  .item-row .ir-desc .lack, .item-row .lack { color: var(--red-light); }
+
+  /* 数量输入框（带加减号） */
+  .qty-input { display: inline-flex; align-items: center; gap: 0;
+    border: 1px solid var(--gold-dark); border-radius: 5px; overflow: hidden; background: var(--slab-1); }
+  .qty-input .qi-btn {
+    background: linear-gradient(180deg, var(--btn-face-1), var(--btn-face-2)); color: var(--gold-light);
+    border: none; cursor: pointer; font-size: var(--fs-body); font-weight: 700;
+    width: 26px; height: 28px; line-height: 1;
+  }
+  .qty-input .qi-btn:hover { background: linear-gradient(180deg, var(--btn-hi-1), var(--btn-hi-2)); }
+  .qty-input .qi-btn.max { width: auto; padding: 0 8px; font-size: var(--fs-cap); }
+  .qty-input input {
+    width: 66px; height: 28px; border: none; border-left: 1px solid var(--line-strong);
+    border-right: 1px solid var(--line-strong);
+    background: var(--bg-3); color: var(--text); text-align: center;
+    font-size: var(--fs-sub); font-variant-numeric: tabular-nums;
+  }
+  .qty-input input:focus { outline: 1px solid var(--gold); }
+
+  /* 物品贴图承台：品阶底纹 + 内高光 + 品阶珠 */
+  .ia { position: relative; display: block; width: 68px; height: 68px; border-radius: 8px;
+    border: 1px solid var(--line-strong); background: linear-gradient(180deg, var(--surface-2c), #1a1d24);
+    box-shadow: inset 0 1px 0 rgba(var(--hl-rgb),.08), 0 3px 8px rgba(var(--sh-rgb),.45);
+    overflow: hidden; }
+  .ia.q1 { border-color: var(--q1); }
+  .ia.q2 { border-color: var(--q2); }
+  .ia.q3 { border-color: var(--q3); }
+  .ia.q4 { border-color: var(--q4); }
+  .ia.q1 { background: linear-gradient(180deg, rgba(154,154,140,.16), #1a1d24); }
+  .ia.q2 { background: linear-gradient(180deg, rgba(90,160,110,.20), #1a1d24); }
+  .ia.q3 { background: linear-gradient(180deg, rgba(74,140,200,.22), #1a1d24); }
+  .ia.q4 { background: linear-gradient(180deg, rgba(190,140,60,.26), #1a1d24); }
+  .ia .ia-art { position: absolute; inset: 6px; display: flex; align-items: center; justify-content: center; }
+  /* v37 修复（需求 3）：这里原先写的是 `svg` —— 全站其它 5 个图标容器
+     （.tile-art/.bag-ico/.eq-ico/.ticon/.rico）都写 `.ico`，只有这一处写标签名。
+     位图接管后 <img> 匹配不到规则 → 回退到**固有尺寸 1024px**，
+     被 .ia 的 overflow:hidden 裁到只剩中心一小块 —— 商城/宝物行的图标"大小不匹配"。
+     教训：图标容器一律用 `.ico` 类选择器，永远不要写标签名。 */
+  .ia .ia-art .ico { width: 100%; height: 100%; }
+  .ia .ia-gem { position: absolute; right: 4px; bottom: 4px; display: flex; gap: 2px; }
+  .ia .ia-gem i { width: 5px; height: 5px; border-radius: 50%; background: var(--gold);
+    box-shadow: 0 0 3px rgba(var(--sh-rgb),.8); }
+
+
+  /* ============ 出征三方式（v13） ============ */
+  .exp-info { text-align: center; font-size: var(--fs-body); color: var(--text-dim); margin-bottom: 10px; }
+  .exp-info b { color: var(--gold-light); font-size: var(--fs-lead); }
+  .exp-modes { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 10px; }
+  .exp-mode { background: linear-gradient(180deg, var(--surface-2), var(--surface-3)); border: 1px solid var(--line); border-radius: 9px;
+    padding: 9px 6px; text-align: center; cursor: pointer; transition: transform .14s, border-color .14s, box-shadow .14s;
+    display: flex; flex-direction: column; gap: 2px; align-items: center; }
+  .exp-mode:hover { transform: translateY(-2px); border-color: rgba(232,206,136,.6); }
+  .exp-mode.on { border-color: var(--gold); box-shadow: 0 0 12px rgba(232,206,136,.3);
+    background: linear-gradient(180deg, #3d3826, #26231a); }
+  .exp-mode .em-ico { font-size: 20px; line-height: 1.1; }
+  .exp-mode .em-name { font-size: var(--fs-body); font-weight: 800; color: var(--gold-light); letter-spacing: 1px; }
+  .exp-mode .em-cost { font-size: var(--fs-cap); color: var(--text-dim); }
+  /* v63：不可用的出征方式（野外城池的「掠夺」每日每处限一次）——
+     变灰、不再抬手、说明写在 em-cost 一行里。 */
+  .exp-mode.locked { opacity: .45; cursor: not-allowed; }
+  .exp-mode.locked:hover { transform: none; border-color: var(--line); }
+  .exp-mode.locked .em-cost { color: var(--red-light); }
+  .exp-body { max-height: 40vh; overflow-y: auto; padding-right: 4px; }
+
+  /* ============================================================
+   * 将领人形装备栏（v38 · 需求 2）
+   * ------------------------------------------------------------
+   * 改前是 4 列 12 格平铺卡片 —— 能换装但看不出"哪件穿在哪"。
+   * 改后：左边一个人形，12 个部位按身体位置贴上去；右边属性与套装进度。
+   * 槽位落点由 ui.DOLL_POS 给（JS 里一张表），CSS 只负责"怎么画那一格"。
+   * ============================================================ */
+  /* v60（需求 1）：`.eq-sum` 已删 —— 那行「统2751.5 勇2690.5…」是**带装总数**，
+     与左栏「状态」区的总体/攻击/防御重复；老板要求"装备提供的属性分行显示"，
+     所以留下的是 .eq-grow（见下）。 */
+  .eq-doll-wrap { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); gap: var(--sp-5); align-items: start; }
+  /* 人形框尺寸：300×380。
+     高度不是随便定的 —— 右栏 = 人形框 + 属性 + 套装 + 按钮，这里是唯一能压的项；
+     400px 会把档案顶到 840px、整页溢出 16px（多出一条页面滚动条）。
+     min-width 是**方槽不重叠的硬下限**：5 行 × 54px = 270px 高，
+     而框高 = 宽 × 19/15，所以宽度低于 230px 时行间距会被压到负数（实测 1024 视口下
+     框只有 167×212 → 19 对方槽重叠）。宁可让人形框顶出格子，也不能让方槽叠一起。
+     ⚠️ 高度变则 DOLL_POS 的百分比全部要重排（详见 js/ui.js 里那张表）。 */
+  .doll { position: relative; width: 100%; max-width: 300px; min-width: 230px;
+    margin: 0 auto; aspect-ratio: 15 / 19;
+    /* v46（需求 3）：人形框有了自己的底 —— 放大的将领抠图要有个"画框"才不像浮在空中。
+       层级：抠图（1）→ 人体剪影（2）→ 12 个方形槽位（3）。 */
+    background: radial-gradient(ellipse at 50% 26%, rgba(var(--hl-rgb),.06), transparent 70%), rgba(var(--sh-rgb),.24);
+    border: 1px solid var(--line); border-radius: var(--r-xl); }
+  /* v46（需求 3）：大号将领抠图，**浅色**显示（低透明 + 下缘渐隐，不许用滤镜染色） */
+  .doll-portrait { position: absolute; left: 0; right: 0; top: 0; bottom: 0; z-index: 1;
+    display: flex; align-items: flex-start; justify-content: center; pointer-events: none; }
+  .doll-portrait img, .doll-portrait svg { width: 100%; height: auto; display: block;
+    opacity: .32; border-radius: 0; }
+  /* 下缘渐隐 —— 半身像直接切断会像"贴上去的"，渐隐后才像底纹 */
+  .doll-portrait { -webkit-mask-image: linear-gradient(180deg, #000 46%, rgba(0,0,0,.35) 72%, transparent 96%);
+    mask-image: linear-gradient(180deg, #000 46%, rgba(0,0,0,.35) 72%, transparent 96%); }
+  .doll-fig-svg { position: absolute; left: 50%; top: 0; transform: translateX(-50%); width: 46%; height: 100%; z-index: 2; opacity: .62; }
+  .doll-side { min-width: 0; }
+  /* ---- 槽位基础样式（v13 起沿用，v38 漏过一次，务必保留）----
+     `.eq-ico .ico { width/height:100% }` 尤其关键：少了它，位图会按**固有尺寸
+     1024px** 渲染并把槽位撑到上千像素高（v38 实测 1090px）。 */
+  .eq-cell { position: relative; background: linear-gradient(180deg, var(--surface-2), var(--surface-3)); border: 1px solid var(--line);
+    border-radius: 8px; display: flex; flex-direction: column; align-items: center; gap: 2px;
+    cursor: pointer; transition: transform .14s, border-color .14s; }
+  .eq-cell:hover { transform: translateY(-2px); border-color: rgba(232,206,136,.7); }
+  .eq-cell.empty { opacity: .7; }
+  .eq-cell.q2 { border-color: rgba(95,191,106,.45); }
+  .eq-cell.q3 { border-color: rgba(90,160,216,.5); }
+  .eq-cell.q4 { border-color: rgba(216,168,60,.6); box-shadow: 0 0 10px rgba(216,168,60,.18); }
+  .eq-ico { display: flex; align-items: center; justify-content: center; }
+  .eq-ico .ico { width: 100%; height: 100%; }
+  .eq-name { font-weight: 700; color: var(--text-strong); text-align: center; line-height: 1.2; }
+  .eq-name.none { color: var(--text-dim); font-weight: 400; }
+  .eq-slotname { color: var(--text-dim); }
+  /* v46（需求 3）：槽位改**正方形**（60px 宽 → 54×54），比原来小一圈。
+     边长是算出来的：2×(边框 1 + 内边距 2) + 部位名 11 + 间隙 1 + 图标 22 + 间隙 1 + 装备名 11.6 ≈ 50.6，
+     取 54 留 3px 余量。改这串里任何一个数（字号 / 图标 / 内边距）都要回来核对总高 ——
+     槽位装不下会**静默变形**（flex 项被压缩到 0 高，不是报错，是看不见）。
+     注意选择器必须写成 `.doll-slot.eq-cell`：后面有一条共享卡片几何
+     `.q-card, .item-row, .eq-cell, … { padding: var(--sp-4) 即 10px; border-radius: var(--r-lg) }`，
+     它与 `.doll-slot` **同权重 (0,1,0) 且更靠后** —— 只写 `.doll-slot` 时 padding 会被盖成 10px，
+     槽内三行只剩 32px 可用（实测 clientH 52 / scrollH 57，装备名被压成 0 高）。
+     `.eq-inv` 角标同理：全站只有一条 `right/bottom` 规则却从来没有 `position: absolute`，
+     于是它一直当作普通流内元素占掉一整行（实测给 chest 多撑出 18px）。 */
+  .doll-slot.eq-cell { padding: 2px; border-radius: var(--r-md); }
+  .doll-slot { position: absolute; width: 54px; height: 54px; margin-left: -27px;
+    min-height: 0; gap: 1px; z-index: 3; }
+  /* ⚠ 这里**不能**加 overflow: hidden —— 背包存货角标（.eq-inv，right/bottom −3px）
+     本来就设计成压在边框外，裁了就看不出"这件还有几件可换"。 */
+  .doll-slot .eq-ico { width: 22px; height: 22px; margin-top: 0; }
+  .doll-slot .eq-slotname { position: static; font-size: var(--fs-cap); line-height: 1; letter-spacing: 0; }
+  /* 字号一律走令牌（七档），不写裸像素 —— 槽位窄，用最小档 + 省略号 */
+  .doll-slot .eq-name { font-size: var(--fs-cap); line-height: 1.05; max-width: 100%; overflow: hidden;
+    white-space: nowrap; text-overflow: ellipsis; }
+  .doll-slot.empty { background: rgba(20,22,28,.55); border-style: dashed; border-color: rgba(232,206,136,.30); }
+  .doll-slot.empty .eq-ico { opacity: .34; }
+  .doll-slot:hover { z-index: 3; }
+  /* v46 修正：这里以前只有 right/bottom，**没有 position: absolute** ——
+     角标于是当普通元素参与流内布局，每多一件背包存货就多占 18px 把槽位撑破。
+     实测：给 chest 撑到 scrollH 75（clientH 52）。 */
+  .doll-slot .eq-inv { position: absolute; right: -3px; bottom: -3px; line-height: 1.5;
+    font-size: var(--fs-cap); padding: 0 3px; border-radius: 6px;
+    background: rgba(201,162,75,.22); border: 1px solid rgba(201,162,75,.45); opacity: 1; }
+  .eq-gain { text-align: center; font-size: var(--fs-cap); color: var(--text-dim); margin-bottom: 8px; }
+  .eq-gain i { font-style: normal; color: var(--green-ok); margin: 0 3px; }
+  .eq-gain .none { opacity: .7; }
+  /* v60（需求 2）：装备提供的属性**逐行**显示（统帅 +775.5 / 勇武 +752.5 …）
+     —— 老板原话「右侧把装备提供的属性分行显示即可」。
+     数值一律右对齐，好一眼比出"哪一项是这件装备给的大头"。 */
+  .eq-grows { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px; }
+  .eq-grow { display: flex; justify-content: space-between; align-items: baseline;
+    font-size: var(--fs-cap); padding: 1px 6px; border-radius: 4px; background: var(--slab-1); }
+  .eq-grow .k { color: var(--text-dim); }
+  .eq-grow .v { color: var(--green-ok); font-weight: 700; font-variant-numeric: tabular-nums; }
+  /* 套装进度 */
+  .doll-set { border-top: 1px solid var(--sep-gold); padding-top: 8px; }
+  .ds-empty { font-size: var(--fs-sub); color: var(--text-dim); line-height: 1.8; }
+  .ds-empty b { color: var(--gold-light); }
+  .ds-block { margin-bottom: 9px; }
+  .ds-head { display: flex; align-items: baseline; gap: 7px; flex-wrap: wrap; margin-bottom: 3px; }
+  .ds-name { font-size: var(--fs-body); font-weight: 800; color: var(--hero-tag); }
+  .ds-n { font-size: var(--fs-cap); color: var(--text-dim); font-variant-numeric: tabular-nums; }
+  .ds-next { font-size: var(--fs-cap); color: var(--amber); margin-left: auto; }
+  .ds-next.done { color: var(--green-ok); }
+  .ds-tiers { display: flex; flex-direction: column; gap: 2px; }
+  .ds-tiers i { font-style: normal; font-size: var(--fs-cap); color: var(--text-dim); line-height: 1.55; opacity: .62; }
+  .ds-tiers i b { color: inherit; font-weight: 700; margin-right: 5px; }
+  .ds-tiers i.on { color: var(--green-ok); opacity: 1; }
+  /* v52：`.ds-list` / `.ds-chip` 随「其余套装」那段备注一起删（老板不要它）。
+     删渲染必须带走样式，否则就是"样式还在、结构早没了"的死样式。 */
+  @media (max-width: 820px) { .eq-doll-wrap { grid-template-columns: 1fr; } }
+
+  /* ---- 打造界面筛选条（v38 · 需求 3/4）---- */
+  /* v51：铁匠铺打造列表**独立列数（3 列）**，不再复用 `.shop-rows`。
+     理由：那是"整页视图"的 4 列（内容宽 1000+，每格 317~375px）；
+     打造面板是**弹窗**（内容宽 ~922px），4 列会把每格压到 198px，
+     卡片的部位/造价/材料三行全部折行 → 卡片反被撑到 265px 高，越挤越高。
+     3 列 → 每格约 300px，接近商城整页的舒适宽度，卡片更矮，一屏反而放得下更多。 */
+  .forge-rows { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+  .forge-filter { display: flex; align-items: center; gap: var(--sp-4); flex-wrap: wrap; margin-bottom: 4px; }
+  .forge-filter .ff-k { font-size: var(--fs-cap); color: var(--text-dim); letter-spacing: 1px; }
+  .forge-filter .shop-cats { margin: 0; }
+  .forge-set-note { margin-top: 12px; padding: 9px 11px; border-radius: var(--r-lg);
+    background: rgba(var(--sh-rgb),.24); border: 1px solid var(--line); }
+  .fsn-t { font-size: var(--fs-h3); font-weight: 800; color: var(--gold-light); margin-bottom: 6px; }
+  .fsn-row { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 3px; }
+  .fsn-name { font-size: var(--fs-sub); font-weight: 700; color: var(--hero-tag); min-width: 62px; }
+  .fsn-n { font-size: var(--fs-cap); color: var(--text-dim); }
+  .fsn-tiers { font-size: var(--fs-cap); color: var(--text-dim); line-height: 1.6; }
+  .fsn-tiers i { font-style: normal; margin-right: 9px; }
+  .fsn-tiers i::before { content: '·'; margin-right: 4px; color: var(--gold-dark); }
+
+  /* ============ 背包（v13 分类 / 排序 / 拆解） ============ */
+  .bag-sortbar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+    padding: 6px 10px; margin-bottom: 8px; background: rgba(var(--sh-rgb),.24);
+    border: 1px solid var(--gold-dark); border-radius: 7px; }
+  .bag-sortbar .lb { font-size: var(--fs-sub); color: var(--text-dim); margin-right: 2px; }
+  .bag-sortbar .chip { font-size: var(--fs-sub); padding: 3px 11px; border-radius: 11px; cursor: pointer;
+    color: var(--text-dim); background: rgba(var(--sh-rgb),.3); border: 1px solid var(--sep-gold);
+    transition: all .14s; }
+  .bag-sortbar .chip:hover { color: var(--gold-light); border-color: rgba(232,206,136,.6); }
+  .bag-sortbar .chip.on { color: var(--ink-on-gold); background: linear-gradient(180deg, #e8ce88, #c9a24b);
+    border-color: var(--gold-light); font-weight: 700; }
+  .bag-sortbar .bag-total { margin-left: auto; font-size: var(--fs-sub); color: var(--gold-light); font-weight: 700; }
+  /* v29（需求 4）：背包内容交给 .view-box 统一滚动 ——
+     旧版在这里又套了一层 52vh 的内部滚动条，翻页条还被推到内容最末尾，
+     于是"背包得先滚到底才能翻页"。现在翻页条已移到屏幕下方固定条，
+     内容区只需要一层滚动，也就不会再出现双滚动条。 */
+  .bag-body { padding-right: 4px; }
+  /* v39（需求 6）：图标 44 → 68px，与商城的 64px 靠拢；格子加宽后撑得住 */
+  .bag-cell .bag-ico { width: 68px; height: 68px; display: flex; align-items: center; justify-content: center; }
+  .bag-cell .bag-ico .ico { width: 100%; height: 100%; }
+  .bag-cell .bag-worn { position: absolute; left: 4px; bottom: 3px; min-width: 15px; height: 15px; line-height: 15px;
+    text-align: center; border-radius: 8px; background: rgba(95,191,106,.85); color: var(--ink-on-gold);
+    font-size: var(--fs-cap); font-weight: 800; padding: 0 3px; }
+  .pick-row { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; margin: 6px 0 4px; }
+  .pick-row .btn.sm { font-size: var(--fs-sub); padding: 5px 10px; }
+
+  /* 会话日志（保留至本次退出，可滚动） */
+  .bb-log { flex: 1; min-width: 0; max-height: 76px; overflow-y: auto; font-size: var(--fs-sub); line-height: 1.75;
+    padding-right: 6px; scrollbar-width: thin; }
+  .bb-log .bb-line { white-space: pre-wrap; word-break: break-all; }
+  .bb-log .bb-line.war { color: var(--red-light); }
+  .bb-log .bb-line.task { color: var(--tag-govern); }
+  .bb-log::-webkit-scrollbar { width: 7px; }
+  .bb-log::-webkit-scrollbar-thumb { background: rgba(201,162,75,.35); border-radius: 4px; }
+  .bb-log::-webkit-scrollbar-track { background: rgba(var(--sh-rgb),.25); }
+
+  /* ============ 将领资质徽章 / 打造 ============ */
+  .rank-badge { display: inline-block; font-size: var(--fs-cap); font-weight: 700; padding: 1px 6px; border-radius: 4px;
+    border: 1px solid currentColor; opacity: .95; letter-spacing: .3px; white-space: nowrap; }
+  .rank-badge.r-fan    { color: var(--rank-fan); background: rgba(156,156,140,.12); }
+  .rank-badge.r-liang  { color: var(--rank-liang); background: rgba(95,191,106,.13); }
+  .rank-badge.r-ying   { color: var(--rank-ying); background: rgba(74,155,224,.14); }
+  .rank-badge.r-ming   { color: var(--rank-ming); background: rgba(176,111,216,.15); box-shadow: 0 0 8px rgba(176,111,216,.25); }
+  .rank-badge.r-tian   { color: var(--amber); background: rgba(224,168,60,.16); box-shadow: 0 0 10px rgba(224,168,60,.35);
+    animation: rankPulse 2.4s ease-in-out infinite; }
+  @keyframes rankPulse { 0%,100% { box-shadow: 0 0 8px rgba(224,168,60,.25); } 50% { box-shadow: 0 0 16px rgba(224,168,60,.6); } }
+  .rk-box { margin-top: 10px; padding: 8px 10px; background: rgba(var(--sh-rgb),.24); border: 1px solid var(--gold-dark); border-radius: 7px; }
+  .rk-row { display: flex; align-items: center; gap: 8px; font-size: var(--fs-sub); color: var(--text-dim); padding: 3px 0; }
+  .rk-row .rk-base { flex: 0 0 118px; }
+  .rk-row .rk-grow { flex: 0 0 92px; color: var(--green-ok); }
+  .rk-row .rk-pct  { margin-left: auto; font-weight: 700; color: var(--gold-light); font-variant-numeric: tabular-nums; }
+  .forge-q { font-size: var(--fs-h3); font-weight: 700; color: var(--gold-light); margin: 10px 0 5px; padding-bottom: 3px;
+    border-bottom: 1px dashed var(--sep-gold); }
+  /* 野地资源合计 */
+  .wild-total { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: center; margin-top: 10px; padding: 8px 10px; background: rgba(var(--sh-rgb),.22); border: 1px solid var(--gold-dark); border-radius: 6px; }
+  .wild-res { font-size: var(--fs-body); color: var(--text-dim); }
+  .wild-res b { color: var(--green-ok); font-weight: 700; }
+  @media (max-width: 900px) { .story-grid { grid-template-columns: 1fr; } }
+
+  /* ============ 中央视图 ============ */
+  .view-box {
+    background: var(--panel-bg);
+    border: 1px solid var(--gold-dark);
+    border-radius: 8px;
+    /* v19：高度由上方「固定界面尺寸」规则统一给出（含小屏降档）。
+       此处**不得**再设 min-height —— 否则小屏降档到 436px 会被 560px 顶回去，
+       「固定尺寸」失效、整页又开始忽长忽短。 */
+    min-height: 0;
+    position: relative;
+    box-shadow: inset 0 0 40px rgba(var(--sh-rgb),.5);
+  }
+
+  /* ============ 城内建设 grid ============ */
+  .city-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 10px;
+    padding: 20px;
+  }
+  /* v20：旧 .build-cell 方块样式已删除（该标记自 v16 起不再渲染） */
+  /* 资源小图标（侧栏/资源行） */
+  .rico { display: inline-block; width: 17px; height: 17px; vertical-align: -3px; margin-right: 2px; }
+  .rico .ico { width: 17px; height: 17px; display: block; filter: drop-shadow(0 1px 1px rgba(0,0,0,.5)); }
+  /* 兵种卡图标 */
+  /* v37（需求 1）：成本行移到悬停后，图标从 52px 放大到 84px */
+  .troop-card .ticon .ico { width: 100%; height: 100%; max-width: 84px; max-height: 84px; }
+  .build-cell .pbar i {
+    display: block; height: 100%; width: 0;
+    background: linear-gradient(90deg, #7bc96f, #e8c878);
+    transition: width .5s linear;
+  }
+
+  /* ============ 地图 canvas 容器 ============ */
+  /* ---- 地图（v24 · 需求 2/3）：版面只留棋盘，导航与坐标收进右下角浮标 ---- */
+  /* v26（需求 4）：观察框改 12×8，画布变矮，浮标让位也随之收窄 */
+  .map-wrap { position: relative; padding: var(--sp-5); padding-bottom: 78px; }
+  .map-dock {
+    /* v45（需求 2）：由右下角改为**水平居中** —— 老板要求"导航条居中放置"。
+       ⚠️ 不能用 `left:50% + translateX(-50%)`：abspos 元素的 shrink-to-fit 是拿
+       **「从 left 到包含块右缘」** 当可用宽度算的，left:50% 等于只给了一半宽度 ——
+       浮标被挤窄 → 按钮里的字折行 → 整条从 44px 胖成 60px（实测踩过）。
+       正确写法是 left/right 都贴边 + margin:auto + width:fit-content：
+       可用宽度是整个包含块，再按内容自适应宽度并居中。 */
+    position: absolute; left: 0; right: 0; bottom: var(--sp-5);
+    margin: 0 auto;
+    width: fit-content;
+    /* v44（老板要求）：**整条压成一行** —— 原来「方向键 3×2 网格 ＋ 坐标竖排两行」
+       共占三行高度。现在方向键横排 + 视野区间 + 点选坐标 + 坐标输入同处一行。 */
+    display: flex; align-items: center; gap: 8px; padding: 7px 10px;
+    background: rgba(12,14,18,.88); border: 1px solid var(--line-strong);
+    border-radius: 8px; box-shadow: 0 4px 14px rgba(var(--sh-rgb),.5);
+    max-width: calc(100% - var(--sp-5) * 2);
+  }
+  .map-pad { display: grid; grid-template-columns: repeat(4, 28px); grid-template-rows: 26px; gap: 3px; }
+  .map-btn { background: linear-gradient(180deg,var(--btn-face-1),var(--btn-face-2)); color: var(--gold-light); border: 1px solid var(--gold-dark);
+    border-radius: 6px; cursor: pointer; font-size: var(--fs-body); font-weight: 700; line-height: 1;
+    box-shadow: 0 2px 4px rgba(var(--sh-rgb),.4), inset 0 1px 0 rgba(var(--hl-rgb),.1); }
+  .map-btn:hover { background: linear-gradient(180deg,var(--btn-hi-1),var(--btn-hi-2)); }
+  .map-btn:active { transform: translateY(1px); box-shadow: 0 1px 2px rgba(var(--sh-rgb),.5); }
+  /* v44：四个方向键改**单行**（◀ ▲ ▼ ▶），不再摆成十字占两行 */
+  .map-btn.left { grid-column: 1; }
+  .map-btn.up { grid-column: 2; }
+  .map-btn.down { grid-column: 3; }
+  .map-btn.right { grid-column: 4; }
+  .mk-sep { width: 1px; height: 20px; background: var(--line-strong); flex: none; }
+  #map-gx, #map-gy { width: 58px; padding: 4px 6px; background: var(--slab-1); color: var(--text);
+    border: 1px solid var(--gold-dark); border-radius: 4px; text-align: center;
+    font-size: var(--fs-sub); font-variant-numeric: tabular-nums; }
+  .mk-lbl { color: var(--text-dim); font-size: var(--fs-sub); }
+  .map-info { font-size: var(--fs-sub); color: var(--gold-light); font-weight: 700;
+    font-variant-numeric: tabular-nums; white-space: nowrap; }
+  /* 点选坐标用信息蓝，和"视野区间"（金）区分开 */
+  .map-info.mk-pick { color: var(--blue-info); }
+  #mapCanvas { display: block; margin: 0 auto; max-width: 100%; border: 3px solid var(--gold-dark); border-radius: 8px;
+    background: #84a050; box-shadow: 0 6px 18px rgba(var(--sh-rgb),.5), inset 0 0 0 1px rgba(var(--sh-rgb),.45); }
+  /* v27（需求 6）：数字输入框的原生上下箭头也去掉 —— 它同样是个"小下拉"，
+     在暗色界面里尤其突兀；数量增减交给面板上的「最大」「+/-」按钮，
+     或直接键盘输入。 */
+  input[type=number]::-webkit-outer-spin-button,
+  input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  input[type=number] { -moz-appearance: textfield; appearance: textfield; }
+
+  /* ============================================================
+   * 战斗场景（v27 · 需求 5）：文字战场条带
+   * ------------------------------------------------------------
+   * 一行就是一个回合：左端是我军、右端是敌军，中间的点是两军之间的
+   * 间距。字体用等宽字（monospace）—— 条带的对齐全靠它，
+   * 换成正文字体后每行长短会错开，战场就不成"网格"了。
+   * ============================================================ */
+  .bt-scene { background: rgba(var(--sh-rgb),.34); border: 1px solid var(--line-strong);
+    border-radius: 7px; padding: 8px 10px; margin: 4px 0 2px; overflow-x: auto; }
+  .bt-scene .bt-head { display: flex; justify-content: space-between; align-items: center;
+    font-size: var(--fs-cap); color: var(--text-dim); letter-spacing: 1px;
+    padding-bottom: 5px; margin-bottom: 6px; border-bottom: 1px dashed rgba(201,162,75,.22); }
+  .bt-scene .bt-head .bt-scale { color: var(--gold-light); }
+  .bt-row { display: flex; align-items: center; gap: 8px; line-height: 1.55; }
+  .bt-row .bt-r { flex: none; width: 20px; text-align: right; color: var(--text-dim);
+    font-size: var(--fs-cap); font-variant-numeric: tabular-nums; }
+  .bt-row .bt-strip { flex: none; font-family: ui-monospace, Consolas, 'Courier New', monospace;
+    font-size: var(--fs-cap); letter-spacing: 0; white-space: nowrap; }
+  .bt-row .bt-strip i { color: var(--strip-troop); font-style: normal; text-shadow: 0 0 5px rgba(216,176,78,.45); }
+  .bt-row .bt-strip u { color: var(--strip-gap); text-decoration: none; }
+  .bt-row .bt-n { flex: none; color: var(--parchment); font-size: var(--fs-cap);
+    font-variant-numeric: tabular-nums; }
+  .bt-row .bt-g { flex: none; color: var(--text-dim); font-size: var(--fs-cap);
+    font-variant-numeric: tabular-nums; }
+  .bt-gap { color: var(--text-dim); font-size: var(--fs-cap); padding-left: 28px; }
+  .bt-log { max-height: 168px; overflow-y: auto; }
+  .bt-log .bt-line { font-size: var(--fs-sub); color: var(--text-dim); line-height: 1.75;
+    padding: 2px 0; border-bottom: 1px dotted rgba(201,162,75,.12); }
+
+  /* ============ 表格 ============ */
+  .tbl { width: 100%; border-collapse: collapse; font-size: var(--fs-body); }
+  .tbl th {
+    background: linear-gradient(180deg, var(--surface-2b), var(--btn-face-2));
+    color: var(--gold-light); padding: 8px; font-weight: 700; letter-spacing: 1px;
+    border: 1px solid var(--line); text-align: left;
+  }
+  .tbl td { padding: 8px; border: 1px solid var(--line); background: rgba(var(--sh-rgb),.15); vertical-align: middle; }
+  .tbl tr:nth-child(even) td { background: rgba(var(--sh-rgb),.05); }
+  .tbl .ctr { text-align: center; }
+  .tbl .num { text-align: right; font-variant-numeric: tabular-nums; }
+
+  /* ============ 操作分区（v16） ============
+     正向操作与「拆毁/取消」类操作分区展示，避免误点与误操作 */
+  .op-zone { margin-top: 12px; padding: 10px 12px; border: 1px solid var(--line-strong);
+    border-radius: 8px; background: rgba(var(--hl-rgb),.02); }
+  .op-zone-t { color: var(--text-dim); font-size: var(--fs-sub); letter-spacing: 1px; margin-bottom: 8px; }
+  .op-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .op-zone.danger { border-color: rgba(176,74,53,.5); background: rgba(176,74,53,.07); }
+  .op-zone.danger .op-zone-t { color: var(--red-light); }
+  .op-hint { color: var(--text-dim); font-size: var(--fs-sub); }
+  /* v28（需求 7）：拆毁（左）与移动/交换（右）分居两端、且都收小。
+     两端分离是为了避免误点 —— 拆毁不可逆，紧挨着移动很容易点错。 */
+  .bldg-foot { display: flex; justify-content: space-between; align-items: center;
+    margin-top: 12px; padding-top: 8px; border-top: 1px dashed var(--line-strong); }
+  .bldg-foot .btn.sm { font-size: var(--fs-cap); padding: 3px 9px; }
+  .op-done { color: var(--text-dim); font-size: var(--fs-sub); }
+  /* 弹窗内进度条（沿用格子的 .pbar 结构） */
+  .modal .pbar { height: 6px; border-radius: 3px; background: rgba(var(--sh-rgb),.6); overflow: hidden; }
+  .modal .pbar i { display: block; height: 100%; border-radius: 3px;
+    background: linear-gradient(90deg, #7ee08a, #4fbf6a); transition: width .4s linear; }
+
+  /* ============ 侧栏驻军栏（v16）============
+     固定高度、固定位置；折叠状态默认展开 */
+  .garrison-bar { margin: 8px 10px 10px; border: 1px solid var(--line-strong); border-radius: 7px;
+    background: rgba(var(--sh-rgb),.24); overflow: hidden; }
+  .gb-head { display: flex; align-items: center; gap: 6px; padding: 6px 9px; cursor: pointer;
+    font-size: var(--fs-sub); color: var(--gold-light); font-weight: 700; }
+  .gb-head .gb-arrow { margin-left: auto; color: var(--text-dim); }
+  .gb-list { height: 132px; overflow-y: auto; padding: 0 9px 8px; }
+  .gb-row { /* v67（老板）：「分一下列」—— 数量与耗粮各自成列，中间发丝竖线 */
+    display: grid; grid-template-columns: 1fr 62px 74px; align-items: center; gap: 8px;
+    font-size: var(--fs-sub);
+    padding: 2px 0; border-bottom: 1px dashed var(--line); }
+  .gb-row .gb-n { flex: 1; color: var(--text); }
+  .gb-row .gb-c { color: var(--gold-light); font-variant-numeric: tabular-nums;
+    text-align: right; }
+  .gb-row .gb-f { color: var(--text-dim); font-size: var(--fs-cap);
+    text-align: right; border-left: 1px solid var(--line); padding-left: 8px; }
+  .gb-empty { height: 132px; display: flex; align-items: center; justify-content: center;
+    color: var(--text-dim); font-size: var(--fs-sub); }
+
+  /* ============ v20：布局 / 队列 / 对齐 / 浮层 ============ */
+
+  /* 全局 hidden（JS 用 classList.toggle 控制显隐） */
+  .hidden { display: none !important; }
+
+  /* 侧栏隐藏时主区独占整宽（需求 7：只有城池视图显示左侧统计栏） */
+  .main { transition: none; }
+  .main.solo { grid-template-columns: 1fr; }
+  .main.solo .auth-side { display: none; }
+
+  /* 建造/募兵队列：迷你进度条 + 百分比（v24 起用于「公文 · 队列」与募兵面板） */
+  .qbar {
+    display: inline-block; width: 42px; height: 4px; border-radius: 2px;
+    background: rgba(var(--sh-rgb),.5); overflow: hidden; vertical-align: middle;
+  }
+  .qbar i { display: block; height: 100%; border-radius: 2px;
+    background: linear-gradient(90deg, #7ee08a, #4fbf6a); transition: width .4s linear; }
+
+  /* 资源行三列对齐（需求 10）：名称 / 存量 / 产量 各自固定列，数字右对齐 */
+  .res-bar .res-line, #res-bar .res-line {
+    display: grid;
+    grid-template-columns: 56px 1fr auto;
+    align-items: center;
+    gap: 8px;
+    column-gap: 10px;
+  }
+  #res-bar .res-line .lbl { text-align: left; white-space: nowrap; }
+  /* v65（老板）：「规划一下显示得齐整一点」——
+     flex 布局下各行"金额"的右缘取决于它右边还有什么（增速 / 加号 / 宝物徽标），
+     于是**金额对不齐**（实测右缘 148 vs 169）。改成 grid：
+     金额独占第一格（定宽右对齐）→ 五行金额右缘必然一致。
+     宝物徽标改为绝对定位，免得它一出现又把金额挤左。 */
+  #res-bar .res-line .val {
+    /* v67（老板）：「总数和生产速度挨太近，分一下列」——
+       存量 | 增速 各自成列：列宽定死 + 列间距 8px + 增速列左侧一条发丝竖线。
+       实测（1440×900）：两列之间从 6px 拉到 8px + 8px 内边距 + 1px 竖线。 */
+    display: grid; grid-template-columns: 74px 72px 1.1em;
+    align-items: center; justify-content: end; column-gap: 8px;
+    min-width: 0; position: relative;
+  }
+  #res-bar .res-line .val .item-badge { position: absolute; right: -2px; top: -9px; }
+  #res-bar .res-line .amt {
+    font-variant-numeric: tabular-nums; text-align: right; justify-self: end;
+    /* v65（老板）：「规划一下显示得齐整一点」——
+       定宽 + 右对齐，各行的数字右缘对齐（小数点在视觉上成一列）。
+       v67：列宽 78 → 74（与增速列一起重排，见上面 .val 的注释）。 */
+    min-width: 74px;
+  }
+  #res-bar .res-line .amt .amt-u {
+    font-style: normal; font-size: var(--fs-cap); font-weight: 600;
+    color: var(--text-dim); margin-left: 1px;
+  }
+  #res-bar .res-line .rate-wrap {
+    flex: none;
+    /* v67（老板）：「分一下列」—— 增速列与存量列之间走一条发丝竖线 */
+    border-left: 1px solid var(--line);
+    padding-left: 8px;
+  }
+  /* v67：增速列自成一体 —— 左侧发丝竖线 + 内边距，宽度 62 → 72（容「+1,234.5/秒」） */
+#res-bar .num-rate { font-variant-numeric: tabular-nums; min-width: 72px; text-align: right; display: inline-block; }
+
+  /* ============================================================
+   * v25（需求 12/13）：说明从"常驻一行"改为「触发式」
+   *   · 悬停 → 浮层（桌面）
+   *   · 点一下 → 小弹窗（平板没有 hover，光有浮层等于没给）
+   * 用法：ui.help('说明文字')，直接拼在分区标题后面。
+   * ============================================================ */
+  .help-chip {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 15px; height: 15px; margin-left: 5px; border-radius: 50%;
+    border: 1px solid rgba(232,206,136,.42); color: var(--gold-light);
+    font-size: var(--fs-cap); font-weight: 700; line-height: 1;
+    cursor: help; opacity: .72; vertical-align: 1px;
+  }
+  .help-chip:hover { opacity: 1; border-color: var(--gold-light); background: rgba(232,206,136,.12); }
+  /* v37（需求 2）：悬停显示统一交给 .tip-layer（原先这里是 CSS ::after 浮层）。
+     data-tip 保留为**内容源**，由 ui.tipFor / ui.tipShow 读取。 */
+  /* 说明小弹窗 */
+  .help-body { font-size: var(--fs-body); line-height: 1.9; color: var(--text); white-space: pre-line; }
+
+  /* 产量构成明细（需求 11）：悬停显示，v37 起走统一的 .tip-layer */
+  .rate-wrap { cursor: help; }
+
+  /* ============================================================
+   * 底部固定导航条（v29 · 需求 3 / 4）
+   * ------------------------------------------------------------
+   * 「首页 / 上页 / 页码 / 下页 / 末页」这类翻页控件不再跟着内容跑：
+   *   · 固定高度 46px —— 有没有分页都不改变高度，页面不会因为翻页而抖一下；
+   *   · 没有分页时**留空**（只显示一行极淡的占位），位置照留；
+   *   · 内容区因此永远不必为了够到翻页按钮而滚动（旧版分页条在内容末尾，
+   *     一屏装不下就得先滚到底）。
+   * ============================================================ */
+  .bottombar {
+    flex: none; height: 46px; display: flex; align-items: center; justify-content: center;
+    padding: 0 12px; border-top: 1px solid var(--line-strong);
+    background: linear-gradient(180deg, rgba(var(--sh-rgb),.28), rgba(var(--sh-rgb),.55));
+  }
+  .bottombar .pager {
+    margin: 0; padding: 4px 10px; background: transparent; border: none;
+  }
+  .bottombar .bb-hint {
+    color: var(--text-dim); font-size: var(--fs-sub); opacity: .45; letter-spacing: .06em;
+  }
+
+  /* ============ 分页条（v14.1：长列表不再无限下拉） ============ */
+  .pager {
+    display: flex; align-items: center; justify-content: center; flex-wrap: wrap;
+    gap: 5px; margin: 12px 0 4px; padding: 8px 10px;
+    background: rgba(var(--sh-rgb), .22); border: 1px solid var(--line-strong); border-radius: 7px;
+  }
+  .pager .btn.sm { min-width: 32px; }
+  .pager .btn[disabled] { opacity: .35; cursor: not-allowed; }
+  .pager .pg-info { color: var(--text-dim); font-size: var(--fs-sub); margin-left: 8px; }
+
+  /* ============ 弹窗统一规范（v14.1） ============
+     统一尺寸档位 + 底部关闭 + 内部滚动，避免超屏与无限下拉 */
+  .modal { display: flex; flex-direction: column; }
+  .modal .inner-panel { flex: 1; min-height: 0; overflow-y: auto; }
+  .modal-foot {
+    display: flex; justify-content: center; gap: 8px;
+    padding-top: 10px; margin-top: 10px; border-top: 1px solid var(--line-strong);
+  }
+
+
+  /* ============ 将领属性详情（v14.1） ============ */
+  /* v26（需求 2）：将领详情改「左头像 · 右五维」两栏，原先的居中标题块不再使用 */
+  .gd-name { font-size: var(--fs-h2); font-weight: 800; color: var(--gold-light); }
+  .gd-sub { color: var(--text-dim); font-size: var(--fs-sub); margin-top: 4px; }
+  .gd-lore { color: #9c9078; font-size: var(--fs-sub); margin-top: 4px; font-style: italic; }
+  .gd-sec {
+    color: var(--gold-light); font-size: var(--fs-h3); font-weight: 700; letter-spacing: 1px;
+    margin: 12px 0 6px; padding-bottom: 4px; border-bottom: 1px dashed var(--line-strong);
+  }
+  .gd-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: var(--fs-body); margin: 5px 0; }
+  .gd-bar {
+    flex: 1; min-width: 90px; height: 7px; border-radius: 4px;
+    background: rgba(var(--sh-rgb), .45); overflow: hidden; border: 1px solid #2a2416;
+  }
+  .gd-bar i { display: block; height: 100%; border-radius: 4px; transition: width .3s; }
+  .gd-hint { color: var(--text-dim); font-size: var(--fs-sub); }
+  .gd-warn { color: var(--red-light, #e08a7a); font-size: var(--fs-sub); }
+  .gd-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+  .gd-chip {
+    font-size: var(--fs-sub); padding: 3px 8px; border-radius: 4px;
+    background: var(--slab-3); border: 1px solid var(--line-strong); color: var(--text-dim);
+  }
+  .gd-chip.on { color: var(--text); }
+  .gd-chip.on.q3 { border-color: rgba(176, 111, 216, .6); color: #d8b0f0; }
+  .gd-chip.on.q4 { border-color: rgba(224, 168, 60, .7); color: var(--gold-light); }
+  /* 将领姓名可点进详情 */
+  .tbl td .gen-link { color: var(--gold-light); cursor: pointer; text-decoration: underline dotted; }
+  .tbl td .gen-link:hover { color: #fff3cf; }
+
+  /* ============ 军队 / 兵种卡 ============ */
+  .troop-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .troop-card {
+    background: linear-gradient(180deg, var(--surface-2), var(--surface-3b));
+    border: 1px solid var(--gold-dark);
+    border-radius: 8px;
+    padding: 8px;
+    text-align: center;
+    cursor: pointer;
+    transition: transform .12s, border-color .12s;
+  }
+  .troop-card:hover { transform: translateY(-3px); }
+  .troop-card.disabled { opacity: .4; cursor: not-allowed; transform: none !important; }
+  .troop-card.selected { border-color: var(--green-ok); box-shadow: 0 0 0 2px rgba(123,201,111,.4); }
+  .troop-card .ticon { font-size: 34px; line-height: 1; }
+  /* v63（老板）：「在城内空地上选择建造的建筑类型时，把相应建筑的图标同步进去。
+     不用写消耗的资源，悬停显示即可」——
+     图标改成与棋盘同一套（位图/矢量两条路径），所以给图标一个**固定高度**，
+     否则两条路径的高度不同、卡片高矮不一。费用挪进 title，卡片只剩"图标 + 名称"。 */
+  .troop-card.bldg-pick .ticon {
+    height: 84px; display: flex; align-items: center; justify-content: center;
+  }
+  /* 图标按高度定尺、宽度自适应 —— 位图长宽比不一致时不会被拉变形 */
+  .troop-card.bldg-pick .ticon .ico { width: auto; height: 84px; max-width: 100%; object-fit: contain; }
+  .troop-card .tname { font-size: var(--fs-body); font-weight: 700; color: var(--parchment); margin-top: 4px; }
+  .troop-card .tstat { font-size: var(--fs-cap); color: var(--text-dim); margin-top: 3px; line-height: 1.5; }
+
+  /* ============ 将领卡片（v20 · 需求 3：分次呈现）============
+     旧版 .gen-card（.gavatar/.ginfo 结构，v11 遗留）已废弃并删除 ——
+     它与新结构同名不同形，残留会把新卡片样式顶掉。
+     v41（需求 2）：新结构（卡片墙）也已被「左清单 + 右档案」取代，见 .gen-split。 */
+  /* ============================================================
+     将领一览（v28 · 需求 2）：一屏 12 个栏位，**细条式**
+     ------------------------------------------------------------
+     旧的 .gen-grid 是 3 列卡片墙、每页 9 个：一屏装不下要看翻页，
+     每张卡片竖排五行、信息密度极低。现在一条将领只占一行。
+     v41 后 .gen-card 已彻底无引用（仅 .gcard-tag 仍用于名字旁的名将/美人标）——
+     但列表页不再引用它，避免两套样式互相顶掉（本项目踩过这个坑）。
+     ============================================================ */
+  /* ---- 下方档案 ---- */
+  .gdet { border: 1px solid var(--gold-dark); border-radius: 8px; padding: 12px;
+    background: rgba(var(--sh-rgb),.2); }
+  .gdet-head { display: flex; align-items: center; justify-content: space-between;
+    gap: 10px; flex-wrap: wrap; padding-bottom: 8px; margin-bottom: 10px;
+    border-bottom: 1px solid var(--sep-gold); }
+  .gdet-name { font-size: var(--fs-lead); font-weight: 700; }
+  .gdet-sub { margin-left: 10px; font-size: var(--fs-sub); font-weight: 400; color: var(--text-dim); }
+  .gdet-ops { display: flex; gap: 6px; }
+  .gdet-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 14px; }
+  @media (max-width: 860px) { .gdet-grid { grid-template-columns: 1fr; } }
+  .gdet-side { display: flex; flex-direction: column; gap: 7px; }
+  .gdet-row { display: flex; gap: 8px; font-size: var(--fs-sub); align-items: baseline; }
+  .gdet-row .k { flex: none; width: 62px; color: var(--text-dim); }
+  .gdet-row .v { flex: 1; min-width: 0; }
+  .gd-expbar.sm { display: inline-block; width: 72px; height: 5px; border-radius: 3px;
+    background: rgba(var(--sh-rgb),.45); border: 1px solid var(--line-strong); overflow: hidden;
+    vertical-align: middle; margin-right: 6px; }
+  .gd-expbar.sm i { display: block; height: 100%; background: linear-gradient(90deg, #7ee08a, #4fbf6a); }
+  /* ============================================================
+   * 将领界面（v41 · 需求 2）—— 左姓名清单 / 右完整档案
+   * ------------------------------------------------------------
+   * 老板原话：「将领左侧显示姓名清单，右侧显示详细属性和装备图（不需要再整一个
+   * 装备图的弹窗），把完整档案的全部信息也整合过来，不需要再整个单独弹窗」。
+   * 所以只有**一套**布局：左列清单 + 右列（档案 + 人形装备栏）。
+   * 原先的 .gen-wall / .gen-card 卡片墙、以及 v11 遗留的第二族 .gen-card
+   * 至此全部无人引用，一并删除（否则就是"样式还在、结构早没了"的死样式）。
+   * ============================================================ */
+  /* v52：`align-items: start` → `stretch` —— 让左清单能吃到"整行高度"（右栏档案通常更高），
+     这样清单一列内容少时不再被写死的高度撑空。右栏自己 `align-self: start`，
+     免得 `.gen-pane` 被拉伸后内部两栏也跟着变形。 */
+  .gen-split { display: grid; grid-template-columns: 264px minmax(0, 1fr); gap: 12px; align-items: stretch; }
+  .gen-split > .gen-pane { align-self: start; }
+  /* 断点按**视口宽**定，不是按内容区宽 —— 视图区实际宽度 = 视口 − 侧栏(~300px)。
+     1300px 视口 ≈ 内容区 1000px：再窄装备栏就放不下"人形 | 属性"两列，
+     属性挪到人形下方（人形能吃满整栏，方槽才不挤）。 */
+  @media (max-width: 1300px) {
+    .gp-doll { grid-template-columns: minmax(0, 1fr); }
+  }
+  @media (max-width: 1100px) {
+    .gen-split { grid-template-columns: 1fr; }      /* 左清单挪到档案上方，各占整宽 */
+  }
+  @media (max-width: 900px) {
+    .gen-split { grid-template-columns: 1fr; }
+    .gp-body { grid-template-columns: 1fr; }
+    .gp-doll { grid-template-columns: 1fr; }
+  }
+  /* ============================================================
+   * 左清单（v45 · 需求 1）：**整段可滚、不分页**
+   * ------------------------------------------------------------
+   * 老板要求：① 去掉「装 0/12」；② 只显示姓名与资质；③ 不再限制每页人数
+   *          —— 这里允许滚动（分页会把"我到底有几个将"切碎）。
+   * v46（需求 1）追加：资质**另起一行**。并排会因姓名长短不一让资质章左右跳动，
+   * 逐行扫的时候很晃眼；两行后每行 ~47px，12 席仍一屏放得下。
+   * ============================================================ */
+  .gen-list {
+    display: flex; flex-direction: column; gap: 4px;
+    /* v52（老板：「左边空间都没排满整什么下拉」）：
+       改前写死 `max-height: 68vh` + 常驻滚动开关 —— 于是**将领少的时候清单也被撑到 68vh**，
+       下面一大片空席位/空白，滚动条却还挂在那儿（实测 12 席恰好 = 596px = 68vh）。
+       "没排满"和"下拉"是同一个病根：**高度写死，而不是按内容走**。
+       改成 `max-height: 100%`（吃满可用高度、内容少就矮）+ 只在真超出时才出现滚动。
+       `scrollbar-gutter: stable` 保留 —— 否则内容增减会让清单宽度跳一下。 */
+    max-height: 100%; overflow-y: auto; scrollbar-gutter: stable; padding-right: 2px;
+  }
+  .gen-row {
+    display: flex; align-items: center; gap: 8px; padding: 4px 8px; cursor: pointer;
+    background: rgba(var(--sh-rgb),.22); border: 1px solid var(--line);
+    border-radius: var(--r-lg); transition: border-color .14s, background .14s;
+  }
+  .gen-row:hover { background: rgba(var(--hl-rgb),.07); border-color: rgba(232,206,136,.45); }
+  .gen-row.sel { border-color: var(--gold); background: rgba(var(--hl-rgb),.10);
+    box-shadow: inset 0 1px 0 rgba(var(--hl-rgb),.06); }
+  .gen-row.empty { border-style: dashed; background: rgba(var(--sh-rgb),.14); cursor: default; }
+  .gen-row.empty:hover { background: rgba(var(--sh-rgb),.14); border-color: var(--line); }
+  .grow-face { flex: none; width: 30px; height: 30px; display: flex; align-items: center;
+    justify-content: center; color: var(--text-dim); font-size: var(--fs-h3); }
+  .grow-face svg, .grow-face img { width: 30px; height: 30px; border-radius: var(--r-md); }
+  /* 两行布局（v46 需求 1）：**姓名一行、资质一行**。
+     上一版把二者并排，老板判为"太拥挤" —— 名单是逐行扫的，
+     并排会让姓名长短不一时资质章左右跳动，反而更难扫。 */
+  .grow-main { flex: 1; min-width: 0; display: flex; flex-direction: column;
+    align-items: flex-start; gap: 2px; }
+  .grow-name { font-size: var(--fs-sub); font-weight: 700; display: flex; align-items: center;
+    gap: 4px; white-space: nowrap; overflow: hidden; color: var(--text-strong); max-width: 100%; }
+  .grow-sub { display: flex; align-items: center; gap: 4px;
+    font-size: var(--fs-cap); color: var(--text-dim); }
+  .grow-sub .grow-loy { font-style: normal; color: var(--warn); font-weight: 700; }
+  .grow-st { flex: none; margin-left: auto; font-size: var(--fs-cap); color: var(--text-dim);
+    padding: 1px 6px; border-radius: 3px; border: 1px solid var(--line-strong); }
+  .grow-st.st-guard { color: var(--blue-info); border-color: rgba(74,155,224,.5); }
+  .grow-st.st-busy { color: var(--green-ok); border-color: rgba(95,191,106,.5); }
+  /* ---- 右侧：完整档案 ---- */
+  .gen-pane { min-width: 0; display: flex; flex-direction: column; gap: 3px;
+    background: rgba(var(--sh-rgb),.18); border: 1px solid var(--line);
+    border-radius: var(--r-lg); padding: 12px; }
+  .gp-head { display: flex; align-items: center; gap: 12px; padding-bottom: 10px;
+    border-bottom: 1px solid var(--sep-gold); }
+  /* ============================================================
+   * 右侧档案 = 三块（v46 · 需求 2）
+   * ------------------------------------------------------------
+   * 上＝汇总身份行（横贯全宽）；左下＝六维 / 经验 / 状态；右＝装备栏。
+   * 分栏比例：左栏全是文字（表格自己会折行），右栏要放人形 + 放大的将领抠图，
+   * 所以右栏给得多一点。窄屏（<900px）退回单列，否则两边都会被挤到不能用。
+   * ============================================================ */
+  .gp-body { display: grid; grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
+    gap: var(--sp-5); align-items: start; }
+  .gp-col-l, .gp-col-r { min-width: 0; display: flex; flex-direction: column; }
+  /* 每栏的第一个分区标题不再上留白 —— 上方的 gp-head 已经给了分隔线 */
+  .gp-col-l > .gp-sec:first-child, .gp-col-r > .gp-sec:first-child { margin-top: 6px; }
+  .gp-face { flex: none; width: 84px; height: 84px; display: flex; align-items: center; justify-content: center; }
+  .gp-face svg, .gp-face img { width: 84px; height: 84px; border-radius: var(--r-md); }
+  .gp-id { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+  .gp-name { font-size: var(--fs-h3); font-weight: 800; color: var(--gold-light);
+    display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .gp-sub { font-size: var(--fs-sub); color: var(--text-dim); }
+  /* v58（老板："守将和解雇可以放头像所在内容的右边"）：竖排两枚短按钮，
+     放在身份行内部右侧（不横排，否则会把经验条与数字挤窄）。 */
+  .gp-ops { flex: none; display: flex; flex-direction: column; align-items: stretch; gap: 5px; }
+  /* v54（老板："任命守将左边点"）：操作从身份行右侧移到**下方一行、左对齐**。
+     它不再在 .gp-head 里，所以这里要自己给上下间距。 */
+  /* v58：操作已移回 .gp-head 内部，这条"上一行是 gp-head 时"的间距不再需要 */
+  .gp-ops .btn { min-width: 92px; }
+  /* v54（老板："将领经验条放在顶上…整个加号"）：经验条进身份行，
+     右端一个「＋」开经验道具选择窗。 */
+  .gp-exprow { display: flex; align-items: center; gap: 8px; margin-top: 5px; }
+  /* v58（老板："经验条不要那么长"）：原来 flex:1 会撑满身份行右侧、像一条贯穿横线；
+     改成**固定宽度**，右侧留给"经验数字 / 还差多少 / ＋"。 */
+  .gp-exprow .gd-expbar { flex: none; width: 150px; }
+  .gp-exprow .gd-expleft { flex: none; color: var(--text-dim); font-size: var(--fs-sub);
+    font-variant-numeric: tabular-nums; }
+  /* 守将身份时，六维"作用"里那截实际加成的颜色（与普通说明区分开） */
+  .gd-u .gd-guard { color: var(--gold-light); }
+  /* v59：出征战术弹窗 —— 每个兵种一块（上一行动作、下一行目标） */
+  .tac-block { display: flex; flex-direction: column; gap: 4px; padding: 7px 9px;
+    border: 1px solid var(--line); border-radius: 8px; background: rgba(var(--sh-rgb),.16); }
+  .tac-block + .tac-block { margin-top: 7px; }
+  .tac-row { display: flex; align-items: flex-start; gap: 8px; flex-wrap: wrap; }
+  .tac-name { flex: none; min-width: 76px; font-size: var(--fs-sub); color: var(--parchment); }
+  .tac-k { flex: none; font-size: var(--fs-cap); color: var(--text-dim); line-height: 22px; }
+  .tac-row .chips { flex: 1; }
+  /* 出征弹窗里"调整战术"的小链接 */
+  .exp-tac-link { color: var(--gold-light); cursor: pointer; text-decoration: underline; margin-left: 6px; }
+  .gp-exprow .gd-exptext { flex: none; }
+  .gp-expadd { flex: none; min-width: 30px; padding: 1px 6px; line-height: 1.5; }
+  .gp-sec { margin-top: 12px; padding-bottom: 4px; font-size: var(--fs-h3); font-weight: 700;
+    color: var(--gold-light); letter-spacing: 1px; border-bottom: 1px solid var(--sep-gold); }
+  /* v46（需求 2）：装备栏独占右栏。内部仍是「人形 | 属性与套装」并排 ——
+     堆叠会让人形（380px）把整个档案顶到 870px，整页多出一条滚动条；
+     并排后高度由人形单独决定（≈400px），余量充足。 */
+  .gp-doll { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--sp-4);
+    align-items: start; margin-top: 8px; }
+  .gp-dollops { display: flex; gap: 6px; margin-top: 8px; }
+  .gp-dollops .btn { flex: 1; }
+  /* 仍在使用：名字旁的「名将 / 美人」小标 */
+  .gcard-tag { flex: none; font-size: var(--fs-cap); font-weight: 400; padding: 0 4px; border-radius: 3px;
+    border: 1px solid currentColor; }
+  .gcard-tag.hero { color: var(--hero-tag); }
+  .gcard-tag.beauty { color: var(--beauty-tag); }
+
+  /* ============ 属性条 ============ */
+  .attr { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px dashed rgba(201,162,75,.15); font-size: var(--fs-body); }
+  .attr .k { color: var(--text-dim); }
+  .attr .v { font-weight: 700; }
+  .attr .v.good { color: var(--green-ok); }
+
+  /* ============ 模态框 ============ */
+  .modal-mask {
+    position: fixed; inset: 0; background: rgba(var(--sh-rgb),.65);
+    display: flex; align-items: center; justify-content: center; z-index: 1000;
+    backdrop-filter: blur(2px);
+  }
+  /* v19：附属窗口**尺寸规范化** —— 四档固定尺寸，不随内容多少伸缩。
+     内容少则留白、内容多则内部滚动，连续打开多个面板时视觉稳定。
+     所有档位都受 vw/vh 上限约束，保证任何视口下都不会超出边界。 */
+  .modal {
+    width: 660px; height: 620px; max-width: 96vw; max-height: 86vh;
+    position: relative; overflow: hidden;
+  }
+  /* v25（需求 4）：弹窗宽度按平板收（1024 宽下 lg 不再贴边） */
+  .modal-sm { width: 440px; height: 420px; }
+  .modal-lg { width: 860px; max-width: 94vw; height: 600px; max-height: 88vh; }
+  /* v51：**xl 目前只有铁匠铺打造面板在用**（全站唯一），所以它的尺寸可以按打造面板的需要定。
+     老板要「稍微放大一点」——它现在装的是"3 列 × 2 行物品行 + 分页条"，
+     而卡片实测高 170px：2 行要 340px，加上筛选条(24)、分页条(46)、间隙(24) 共 434px 正文。
+     改前它只有 660px 高（矮屏还被降到 78vh = 599），正文只剩 432px —— **差 2px 就装不下两行**。
+     现在 700px，并用 `min()` 留出矮屏余量：768 高的屏给 88vh = 676，正文约 509。
+     `max-height: 90vh` 保留 ——「不超出视口」是硬约束，不能因为要看更多行就破。 */
+  .modal-xl { width: 960px; max-width: 94vw; height: min(700px, 88vh); max-height: 90vh; }
+  /* 视口不够高时自动降档（「不超界」是硬约束） */
+  @media (max-height: 860px) {
+    .modal, .modal-lg { height: 78vh; }
+    /* v51：88vh → 90vh（与 `.modal-xl` 的 max-height 对齐）。
+       768 高的屏上 88vh = 676 → 正文 509，而打造面板两行卡片的内容高 515：
+       **差 6px 就又出滚动条**。90vh = 691 → 正文 524，留出 9px 余量。
+       90vh 仍是"不超出视口"，硬约束没破（弹窗居中后上下各留 ~38px）。 */
+    .modal-xl { height: 90vh; }
+    .modal-sm { height: 62vh; }
+  }
+
+  /* ============ 弹窗统一格局（v19）============
+     .m-head 标题栏（固定）· .m-body 内容区（滚动）· .m-foot 操作栏（固定）
+     以往各弹窗自行拼装标题与关闭按钮，风格参差；现在一律走 ui.modalShell()。 */
+  .modal .inner-shell { display: flex; flex-direction: column; overflow: hidden; }
+  .m-head { flex: none; padding: 0 0 var(--sp-4); margin-bottom: var(--sp-4); border-bottom: 1px solid var(--line-strong); }
+  .m-title { display: block; text-align: center; font-size: var(--fs-h2); font-weight: 800;
+    color: var(--gold-light); letter-spacing: 1px;
+    padding: var(--sp-1) 0;
+    background: linear-gradient(90deg, transparent, rgba(201,162,75,.25), transparent); }
+  .m-sub { display: block; text-align: center; color: var(--text-dim); font-size: var(--fs-sub);
+    margin-top: 4px; line-height: 1.6; }
+  .m-body { flex: 1; min-height: 0; overflow-y: auto; padding-right: 2px; }
+  .m-foot { flex: none; display: flex; justify-content: center; align-items: center;
+    gap: 8px; flex-wrap: wrap; padding-top: 10px; margin-top: 10px; border-top: 1px solid var(--line-strong); }
+  /* 统一的分区小标题（各弹窗共用） */
+  .m-sec { color: var(--gold-light); font-weight: 700; font-size: var(--fs-h3); margin: 12px 0 6px; }
+  .m-sec:first-child { margin-top: 0; }
+  /* 弹窗内表格统一外框（避免贴边） */
+  .m-body .tbl { margin-top: 4px; }
+
+  /* ============ 提示条 toast ============ */
+  .toast {
+    position: fixed; left: 50%; bottom: 30px; transform: translateX(-50%) translateY(16px);
+    background: rgba(30,24,12,.95); color: var(--gold-light); border: 1px solid var(--gold-dark);
+    padding: 10px 24px; border-radius: 8px; font-size: var(--fs-lead); font-weight: 700;
+    opacity: 0; pointer-events: none; transition: opacity .25s, transform .25s; z-index: 2000;
+    box-shadow: 0 10px 30px rgba(var(--sh-rgb),.5);
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* ============ 创建角色界面 ============ */
+  .create-screen {
+    min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px;
+  }
+  .create-box {
+    width: 680px; max-width: 96vw; padding: 22px;
+  }
+  .create-inner { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .avatar-select { text-align: center; }
+  .avatar-big {
+    width: 130px; height: 130px; margin: 14px auto; border: 3px solid var(--gold);
+    border-radius: 10px; background: radial-gradient(circle at 50% 30%, #3a3a4a, #24242e);
+    display: flex; align-items: center; justify-content: center; font-size: 84px;
+    box-shadow: 0 8px 24px rgba(var(--sh-rgb),.5);
+  }
+  .avatar-nav { display: flex; align-items: center; justify-content: center; gap: 16px; }
+  .avatar-nav .arrow { font-size: 26px; color: var(--teal-light); cursor: pointer; padding: 6px 14px; user-select: none; }
+  .avatar-nav .arrow:hover { color: var(--gold-light); }
+  .gender-toggle { display: flex; gap: 10px; justify-content: center; margin-top: 10px; }
+  .gender-toggle .guse { padding: 4px 18px; border-radius: 5px; cursor: pointer; font-size: var(--fs-body); border: 1px solid var(--teal); }
+  .gender-toggle .guse.active { background: var(--teal); color: #fff; }
+
+  .create-form { display: flex; flex-direction: column; gap: 12px; }
+  .field { display: flex; align-items: center; gap: 10px; }
+  .field label { width: 70px; color: var(--gold-light); font-weight: 700; font-size: var(--fs-lead); white-space: nowrap; }
+  .field input[type=text] {
+    flex: 1; padding: 8px 10px; font-size: var(--fs-lead); color: var(--text);
+    background: var(--slab-1); border: 1px solid var(--gold-dark); border-radius: 4px;
+  }
+  .field select { flex: 1; padding: 8px; background: var(--slab-1); color: var(--text); border: 1px solid var(--gold-dark); border-radius: 4px; }
+  .summary-box { font-size: var(--fs-body); color: var(--text-dim); background: rgba(var(--sh-rgb),.25); border-radius: 6px; padding: 10px; line-height: 1.9; }
+  .agree { display: flex; align-items: center; gap: 8px; font-size: var(--fs-body); color: var(--text-dim); }
+  .agree input { accent-color: var(--teal); }
+  .create-actions { text-align: center; margin-top: 8px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+  .create-save-note { text-align: center; font-size: var(--fs-sub); color: var(--text-dim); margin-top: 10px; line-height: 1.8; }
+  .create-save-note .good { color: var(--green-ok); }
+  .chron-item.tag-offline { border-left-color: var(--blue-info); opacity: .9; }
+
+  /* ============ 聊天/信息流底部 ============ */
+  /* ============ 底部：左信息流 + 右功能入口（原版双栏）============ */
+  .bottom-bar {
+    margin: 0 12px 12px;
+    background: var(--panel-bg);
+    border: 1px solid var(--gold-dark);
+    border-radius: 8px;
+    padding: 8px 12px;
+    display: flex; gap: 12px; align-items: stretch;
+    font-size: var(--fs-sub); color: var(--text-dim);
+  }
+  .bb-left { flex: 1; display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+  .bb-channels { display: flex; gap: 6px; }
+  .bb-channels .ch {
+    cursor: pointer; color: var(--text-dim); padding: 1px 7px;
+    border-radius: 3px; border: 1px solid transparent; font-size: var(--fs-cap);
+  }
+  .bb-channels .ch.active { color: var(--gold-light); background: rgba(201,162,75,.18); border-color: rgba(201,162,75,.4); }
+  .bb-log { color: var(--green-ok); font-size: var(--fs-sub); line-height: 1.5; overflow: hidden; }
+  .bb-right { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
+  .bb-btn {
+    font-size: var(--fs-sub); font-weight: 700; color: var(--gold-light); white-space: nowrap;
+    padding: 5px 10px; cursor: pointer; border-radius: 4px;
+    background: linear-gradient(180deg,var(--btn-face-1),var(--btn-face-2));
+    border: 1px solid var(--gold-dark);
+    box-shadow: inset 0 1px 0 rgba(var(--hl-rgb),.06);
+  }
+  .bb-btn:hover { filter: brightness(1.25); }
+  .bottom-bar .sys { color: var(--green-ok); }
+
+  /* ============ 公文页消息流（v16：由底部栏整合而来）============ */
+  .msg-channels { display: flex; gap: 6px; margin-bottom: 6px; }
+  .msg-channels .ch {
+    cursor: pointer; color: var(--text-dim); padding: 2px 10px; font-size: var(--fs-sub);
+    border-radius: 4px; border: 1px solid var(--line-strong); background: rgba(var(--sh-rgb),.2);
+  }
+  .msg-channels .ch.active { color: var(--gold-light); background: rgba(201,162,75,.16); border-color: rgba(201,162,75,.45); }
+  /* v39（需求 4）：消息流去底色与边框 —— 原来是一个深色带边框的滚动框，
+     在"一堆框"里最显眼。现在只是一段可滚的文本流（仍保留滚动能力与全部消息），
+     高度 240 → 380：一屏看得更多，需要滚的时候也更少。 */
+  /* v43（老板要求）：**去掉 max-height 滚动**，改分页 ——
+     "下拉框"（滚动条）在项目里是明确要避免的交互。
+     之前靠 max-height 380px + overflow 装下几百条，现在每页 15 条、
+     页脚翻页，一屏看得完，也就不需要滚动条了。 */
+  .msg-log {
+    padding: 2px 4px 2px 0;
+    background: none; border: 0; border-radius: 0;
+    font-size: var(--fs-sub); line-height: 1.85;
+  }
+  .bb-line { color: var(--green-ok); }
+  .bb-line.war { color: var(--amber); }
+  .bb-line.task { color: var(--blue-info); }
+
+  /* v24（需求 9）：屏幕下方的队列播报条（.queue-bar / .queue-item）已整体删除 ——
+     队列状态改在「公文 · 队列」一节呈现，相关样式只保留上面那条 .qbar。 */
+
+  /* 滚动条 */
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: var(--slab-1); }
+  ::-webkit-scrollbar-thumb { background: var(--wood-light); border-radius: 5px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--gold-dark); }
+
+  @media (max-width: 900px) {
+    .main { grid-template-columns: 1fr; }
+    .auth-side { position: static; }
+    .city-grid { grid-template-columns: repeat(4, 1fr); }
+    .troop-grid { grid-template-columns: repeat(2, 1fr); }
+    .create-inner { grid-template-columns: 1fr; }
+    .topnav .tab { padding: 6px 9px; font-size: var(--fs-body); }
+  }
+
+  /* ============================================================
+   * v21 统一层
+   * ------------------------------------------------------------
+   * 三层界面（大界面 .view-box / 弹窗 .modal / 地图 .map-wrap）
+   * 共用同一套骨架与同一套文字层级：
+   *   层级：--fs-h2 界面标题 · --fs-h3 分区标题 · --fs-body 正文
+   *         --fs-lead 强调与按钮 · --fs-sub 次要 · --fs-cap 角标
+   *   用色：金色 = 标题与强调；浅灰 = 正文与数据；暗灰 = 次要信息
+   *         状态色 = 成功(绿)/危险(红)/提醒(琥珀)/信息(蓝)，仅表状态
+   *   边界：发丝描边 + 背景亮度表达层级（暗色界面不用投影）
+   * ============================================================ */
+
+  /* ---- 信息条：只承载事实与数据，不再写玩法说明（需求 5）---- */
+  .note {
+    font-size: var(--fs-sub);
+    color: var(--text-dim);
+    line-height: 1.75;
+    background: rgba(var(--sh-rgb), .20);
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    padding: var(--sp-3) var(--sp-4);
+    margin-top: var(--sp-3);
+  }
+  .note b { color: var(--parchment); font-weight: 700; }
+  .ui-sub { font-size: var(--fs-sub); color: var(--text-dim); line-height: 1.6; }
+  .nt-info { font-size: var(--fs-sub); color: var(--text-dim); line-height: 1.6; }
+
+  /* ---- 伤兵营（校场与行军共用，v21 需求 1）---- */
+  .wounded-box {
+    margin-top: var(--sp-4);
+    padding: var(--sp-4);
+    border: 1px solid rgba(201, 162, 75, .30);
+    border-radius: var(--r-lg);
+    background: linear-gradient(180deg, rgba(201, 162, 75, .10), rgba(var(--sh-rgb), .18));
+  }
+  .wounded-box .wb-head {
+    display: flex; align-items: baseline; justify-content: space-between;
+    margin-bottom: var(--sp-2);
+  }
+  .wounded-box .wb-t {
+    font-size: var(--fs-h3); font-weight: 800; color: var(--gold-light); letter-spacing: .5px;
+  }
+  .wounded-box .wb-n {
+    font-size: var(--fs-lead); font-weight: 800; color: var(--parchment);
+    font-variant-numeric: tabular-nums;
+  }
+  .wounded-box .attr { border-bottom: 0; padding: 2px 0; }
+  .wounded-box .wb-act { margin-top: var(--sp-3); text-align: center; }
+
+  /* ---- 页脚三套合一：.m-foot / .modal-foot / .panel-foot 同规格 ---- */
+  .m-foot, .modal-foot, .panel-foot {
+    display: flex; justify-content: center; align-items: center; flex-wrap: wrap;
+    gap: var(--sp-3); padding-top: var(--sp-4); margin-top: var(--sp-4);
+    border-top: 1px solid var(--line);
+  }
+
+  /* ---- 设置项卡片（5 处重复的 inline 写法抽成一处）---- */
+  .set-card {
+    background: rgba(var(--sh-rgb), .20);
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    padding: var(--sp-5);
+    margin-bottom: var(--sp-4);
+  }
+
+  /* ---- 卡片基线：同屏所有卡片同一几何（圆角/内边距）---- */
+  /* v41（需求 2）：.gen-card 已随将领卡片墙删除；将领行改用 .gen-row 自己的一组几何 */
+  .q-card, .item-row, .eq-cell, .bag-cell, .inn-card, .story-card, .xc-row {
+    border-radius: var(--r-lg);
+    padding: var(--sp-4);
+  }
+  /* 描边统一为发丝级；金色描边只保留给「可交互的兵种卡」等有语义处 */
+  .q-card, .item-row, .bag-cell, .eq-cell, .inn-card, .story-card, .xc-row {
+    border-color: var(--line);
+  }
+
+  /* ---- 标题外观共享：三层界面的标题字重/字色/字距只有一处定义 ---- */
+  .gold-heading, .m-title {
+    font-size: var(--fs-h2);
+    font-weight: 800;
+    color: var(--gold-light);
+    letter-spacing: 1px;
+    text-shadow: 0 2px 4px rgba(var(--sh-rgb), .6);
+  }
+  /* 三层界面的分区小标题同样只有一处定义 */
+  .q-sec-t, .bag-sec, .gd-sec, .forge-q, .m-sec, .side-title, .wb-t {
+    font-size: var(--fs-h3);
+    font-weight: 800;
+    color: var(--gold-light);
+    letter-spacing: .5px;
+  }
+
+  /* ---- 等级角标（v23 · 需求 2/3）：格内右上，只显示数字 ---- */
+  .tile-badge {
+    position: absolute; right: 4px; top: 3px;
+    min-width: 17px; height: 17px; line-height: 17px; padding: 0 4px;
+    border-radius: 9px; text-align: center;
+    font-size: var(--fs-cap); font-weight: 800; font-variant-numeric: tabular-nums;
+    color: var(--ink-on-gold);
+    background: linear-gradient(180deg, var(--gold-light), var(--gold));
+    box-shadow: 0 1px 3px rgba(var(--sh-rgb), .55);
+  }
+  .tile-badge.max { color: var(--ink-on-gold); background: linear-gradient(180deg, #a8e59a, var(--green-ok)); }
+  /* 名字留在底部（等级不再挤在这一行） */
+  .tile-label .lv { display: none; }
+
+  /* ---- 官府宫殿（v23 · 需求 4）：4 格融合成一座建筑 ---- */
+  .gov-palace { position: absolute; z-index: 3; cursor: pointer; transition: z-index 0s; }
+  .gov-palace .tile-face { inset: 2px; border-radius: 12px; }
+  .gov-palace .gov-art {
+    position: absolute; inset: 0; display: flex; align-items: flex-end; justify-content: center;
+    padding-bottom: 16px; pointer-events: none; z-index: 4;
+  }
+  .gov-palace .gov-svg { width: 86%; height: 86%; display: block; filter: none; }
+  /* v36：官府位图（AI 汉代宫殿）。2×2 格的外框是正方形，与 1024×1024 方图同比例，
+     contain 既不裁也不变形；底对齐 + 接地投影，让它"落"在台基上而非浮着。 */
+  .gov-palace .gov-img {
+    width: 100%; height: 100%; display: block;
+    object-fit: contain; object-position: center bottom;
+    filter: drop-shadow(0 3px 4px rgba(0,0,0,.42));
+  }
+  .gov-palace:hover .tile-face { filter: brightness(1.16); border-color: rgba(232, 206, 136, .55); }
+  .gov-palace:hover { z-index: 6; }
+  .gov-palace.busy .tile-face { background: linear-gradient(180deg, #2b2a22, #211f18); border-color: rgba(214, 178, 105, .34); }
+
+  /* ---- 统计页概览卡（v23 · 需求 5）---- */
+  /* ============================================================
+   * 竹简卷轴（v25 · 需求 14）：统计 / 公文 的美术底
+   * ------------------------------------------------------------
+   * 明确不用"数据座舱"式看板：那种一屏彩色卡片 + 圆角阴影，
+   * 放在三国题材里是两张皮。这里改用**竹简 + 朱印**：
+   *   · 竖向简纹（repeating-linear-gradient 画出片片竹简的缝）
+   *   · 上下两根卷轴木轴（伪元素，带两端轴头）
+   *   · 朱印作为标题标点，数值用朱笔/金笔大字
+   * ============================================================ */
+  /* ============================================================
+   * 官府黄册（v27 · 需求 7）：统计页的信息呈现
+   * ------------------------------------------------------------
+   * 原先是一排 8 个「卡片 + 竖排标签 + 大字数值」，本质还是数据座舱：
+   * 卡片之间有 8 处边框、8 处底色、8 处间距，眼睛没有落点，
+   * 竖排标签还要转头去读。改成一册账本：
+   *   · 分「甲 · 疆域 / 乙 · 军民 / 丙 · 在外」三段，每段内是
+   *     「项目 …… 数值」的引线行，数值右对齐、等宽数字；
+   *   · 只有墨线与朱点，没有卡片；信息密度提高，落点清晰。
+   * ============================================================ */
+  /* ============ 自动化（v29 · 需求 5） ============ */
+  .auto-switches { display: flex; gap: 10px; flex-wrap: wrap; margin: 10px 0; }
+  .auto-switches .btn { flex: 1 1 150px; }
+  .auto-switches .btn.auto-on {
+    background: linear-gradient(180deg, #3a5c3c, #26402a);
+    border-color: var(--green-ok); color: var(--text-strong);
+    box-shadow: 0 2px 6px rgba(var(--sh-rgb),.4), inset 0 1px 0 rgba(var(--hl-rgb),.12);
+  }
+  .auto-card { border: 1px solid var(--gold-dark); border-radius: 8px; padding: 12px;
+    margin-bottom: 12px; background: rgba(var(--sh-rgb),.2); }
+  .auto-card > .ac-title { color: var(--gold-light); font-weight: 700; margin-bottom: 8px;
+    display: flex; align-items: center; gap: 8px; }
+  .auto-line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 8px 0; }
+  .auto-line > .al-k { flex: none; width: 72px; color: var(--text-dim); font-size: var(--fs-sub); }
+  .auto-note { color: var(--text-dim); font-size: var(--fs-sub); line-height: 1.7; margin-top: 8px; }
+  .auto-state { margin-top: 8px; padding: 7px 10px; border-radius: 6px;
+    background: rgba(var(--sh-rgb),.28); border: 1px solid var(--line-strong);
+    font-size: var(--fs-sub); color: var(--text-dim); }
+
+  /* v29（需求 7）：全境汇总左右分列 —— 同类同侧 */
+  /* v29（需求 9）：城池名后的等级标注 [都城] / [州城] … */
+  .city-tier { color: var(--gold-light); opacity: .85; font-size: var(--fs-cap); font-weight: 400; margin-left: 2px; }
+
+  /* v54（老板："别一边长一边短，留空一大块"）：账册改成**单列**。
+     改前是 `1fr 1fr` 两列 —— 节标题横贯全宽，于是每节的行数是奇数时
+     最后一行只占左列、右列空着（甲·疆域 3 笔就正好这样），
+     行数少的时候还会整体一边长一边短。单列之后每笔独占一行：
+     **结构上不可能出现空格，也不可能歪**。 */
+  .ledger { display: grid; grid-template-columns: 1fr; margin: 2px 0 4px; }
+  .ledger-sec { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px;
+    margin: 10px 0 2px; font-size: var(--fs-sub); letter-spacing: 2px; color: var(--gold-light); font-weight: 700; }
+  .ledger-sec::before { content: ''; width: 5px; height: 5px; border-radius: 50%;
+    background: var(--cinnabar); box-shadow: 0 0 6px rgba(168,58,44,.7); flex: none; }
+  .ledger-sec::after { content: ''; flex: 1; height: 1px;
+    background: linear-gradient(90deg, var(--line-strong), transparent); }
+  .lg-row { display: flex; align-items: baseline; gap: 6px; padding: 3px 2px;
+    font-size: var(--fs-body); border-bottom: 1px dotted rgba(201,162,75,.14); }
+  .lg-row .lg-k { color: var(--text-dim); flex: none; }
+  .lg-row .lg-fill { flex: 1; min-width: 12px; border-bottom: 1px dotted rgba(201,162,75,.28);
+    transform: translateY(-3px); }
+  .lg-row .lg-v { color: var(--parchment); font-weight: 700;
+    font-variant-numeric: tabular-nums; flex: none; }
+  .lg-row .lg-v .lg-sub { color: var(--text-dim); font-weight: 400; font-size: var(--fs-sub); }
+  .lg-row.hero .lg-v { color: var(--gold-light); }
+
+  .scroll-page {
+    position: relative; padding: 0; border-radius: 4px;
+    background:
+      repeating-linear-gradient(90deg,
+        rgba(var(--sh-rgb),.30) 0 1px, rgba(var(--hl-rgb),.024) 1px 3px,
+        rgba(var(--sh-rgb),.11) 3px 4px, rgba(var(--sh-rgb),0) 4px 15px),
+      linear-gradient(180deg, #1d1c16 0%, #16161b 45%, #101116 100%);
+    border: 1px solid rgba(201,162,75,.20); border-top: none; border-bottom: none;
+    box-shadow: inset 0 0 60px rgba(var(--sh-rgb),.55), inset 0 1px 0 rgba(var(--hl-rgb),.03);
+    margin: 16px 0;
+  }
+  /* 上下卷轴木轴 */
+  .scroll-axis {
+    position: relative; height: 18px; margin: 0 -10px;
+    border-radius: 9px;
+    background: linear-gradient(180deg, #6b5330, #3c2c16 55%, #241a0c);
+    border: 1px solid rgba(var(--sh-rgb),.6);
+    box-shadow: 0 3px 10px rgba(var(--sh-rgb),.55), inset 0 1px 0 rgba(255,225,170,.22);
+  }
+  .scroll-axis::before, .scroll-axis::after {
+    content: ''; position: absolute; top: -3px; width: 16px; height: 22px; border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #a98a4e, #4a3618 62%, #221a0b);
+    border: 1px solid rgba(var(--sh-rgb),.55);
+  }
+  .scroll-axis::before { left: -12px; }
+  .scroll-axis::after { right: -12px; }
+  .scroll-body { padding: 14px 16px 16px; }
+
+  /* 标题：朱印 + 墨书 */
+  .scroll-title { display: flex; align-items: center; gap: 10px; margin-bottom: 12px;
+    padding-bottom: 10px; border-bottom: 1px solid rgba(201,162,75,.26); }
+  .scroll-title .seal {
+    flex: none; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(160deg, #9d3524, #6d2114); color: var(--parchment);
+    font-size: var(--fs-body); font-weight: 800; border-radius: 3px;
+    box-shadow: inset 0 0 0 1px rgba(255,220,180,.35), 0 2px 6px rgba(var(--sh-rgb),.5);
+  }
+  .scroll-title .tx { font-size: var(--fs-h2); font-weight: 800; color: var(--gold-light); letter-spacing: 2px; }
+  .scroll-title .rq { margin-left: auto; font-size: var(--fs-sub); color: var(--text-dim); }
+
+  /* 简牍：每个指标一枚窄简 —— 标签竖排、数值朱笔 */
+  /* 简牍分区标题（替代 emoji 小标） */
+  .seal-h {
+    display: flex; align-items: center; gap: 7px; margin: 16px 0 8px;
+    font-size: var(--fs-h3); font-weight: 800; color: var(--gold-light); letter-spacing: 1px;
+  }
+  .seal-h::before {
+    content: ''; flex: none; width: 7px; height: 14px; border-radius: 1px;
+    background: linear-gradient(180deg, #9d3524, #5f1c11);
+    box-shadow: 0 0 0 1px rgba(255,200,170,.18);
+  }
+  .seal-h::after { content: ''; flex: 1; height: 1px; background: linear-gradient(90deg, rgba(201,162,75,.30), transparent); }
+  .seal-h .cnt { font-size: var(--fs-sub); color: var(--text-dim); font-weight: 400; letter-spacing: 0; }
+
+  /* 驿报：战报做成"文书"行 */
+  /* v39（需求 4）：战报从"一条一个框"改为**列表行** ——
+     底色、边框、圆角全部去掉，只留一条底部分隔线；胜负改用行首一个小圆点区分。
+     整行可点（原先右侧的「查看」按钮也是一个个小框）。 */
+  .doc-bar { display: flex; align-items: center; gap: 10px; padding: 7px 8px 7px 2px;
+    border-bottom: 1px solid var(--line); cursor: pointer; transition: background .14s; }
+  .doc-bar:last-child { border-bottom: 0; }
+  .doc-bar::before { content: ''; flex: none; width: 6px; height: 6px; border-radius: 50%;
+    background: var(--cinnabar); box-shadow: 0 0 6px rgba(168,58,44,.55); }
+  .doc-bar.win::before { background: #4fbf6a; box-shadow: 0 0 6px rgba(79,191,106,.55); }
+  .doc-bar:hover { background: rgba(var(--hl-rgb),.05); }
+  .doc-bar .db-t { flex: 1; font-size: var(--fs-body); font-weight: 700; color: var(--gold-light); }
+  .doc-bar .db-d { font-size: var(--fs-sub); color: var(--text-dim); font-variant-numeric: tabular-nums; }
+  .doc-bar .db-go { flex: none; font-size: var(--fs-sub); color: var(--gold-light); opacity: .55; }
+  .doc-bar:hover .db-go { opacity: 1; }
+  /* 榜文（公告） */
+  .scroll-page .notice-box {
+    background: linear-gradient(180deg, rgba(232,206,136,.06), rgba(var(--sh-rgb),.26));
+    border: 1px solid rgba(201,162,75,.20); border-radius: 3px; padding: 10px 12px;
+  }
+  .scroll-page .tbl th { background: linear-gradient(180deg, rgba(107,83,48,.55), rgba(var(--sh-rgb),.3)); }
+  .scroll-page .tbl td { border-bottom: 1px dotted rgba(201,162,75,.16); }
+
+  /* ---- 野地管理（v23 · 需求 1）---- */
+  .wild-stat { background: rgba(var(--sh-rgb),.20); border: 1px solid var(--line); border-radius: var(--r-lg);
+    padding: var(--sp-3) var(--sp-4); margin-top: var(--sp-3); }
+  .modal-scroll { max-height: 46vh; overflow-y: auto; padding-right: 4px; }
+
+  /* ---- 点选按钮组（v22 · 需求 1：全站不用下拉框）----
+     下拉框要两次点击、展开层会盖住内容、在弹窗里还与外层滚动打架；
+     选项只有 4~5 个时它纯属杀鸡用牛刀。统一改为「点一下就选中」。 */
+  .chips { display: inline-flex; flex-wrap: wrap; gap: var(--sp-1); align-items: center; }
+  .chips .chip {
+    display: inline-flex; align-items: baseline; gap: 4px;
+    padding: 3px 10px; border-radius: 12px; cursor: pointer;
+    font-size: var(--fs-sub); color: var(--text-dim); white-space: nowrap;
+    background: rgba(var(--sh-rgb), .28); border: 1px solid var(--line-strong);
+    transition: color .14s, border-color .14s, background .14s;
+  }
+  .chips .chip:hover { color: var(--gold-light); border-color: var(--sep-gold); }
+  .chips .chip.on {
+    color: var(--ink-on-gold); font-weight: 700;
+    background: linear-gradient(180deg, var(--gold-light), var(--gold));
+    border-color: var(--gold-light);
+  }
+  .chips .chip-sub { font-size: var(--fs-cap); opacity: .6; font-weight: 400; }
+  .chips .chip.on .chip-sub { opacity: .8; }
+  .chips-xs .chip { padding: 1px 7px; font-size: var(--fs-cap); border-radius: 9px; }
+  /* v60（需求 4）：将领页的「本城 / 全境」范围切换 —— 与标题同行，不另占一行高度 */
+  .chips.gen-scope { width: auto; margin-left: var(--sp-2); vertical-align: middle; }
+  .chips.gen-scope .chip { padding: 1px 9px; font-size: var(--fs-cap); }
+  .chips.city-chips, .chips.res-chips, .chips.gen-chips { width: 100%; }
+  /* 将领可能几十位 → 点选列表给个高度上限，超出的滚动看 */
+  /* v27（需求 6）：将领选择原先是一条**只有 96px 高的滚动列表** ——
+     实际效果和下拉框一模一样（要滚才能看到后面的将领），
+     而且滚动条还挂在弹窗里（弹窗本来就要求不出现滚动条）。
+     将领上限 = 招贤馆等级（≤10 位），改成两列网格后全部一次呈现，不需要滚动。 */
+  .chips.gen-chips { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; padding: 1px; }
+  .chips.gen-chips .chip { justify-content: center; text-align: center; }
+  .chips.gen-chips.inline { width: auto; max-width: 100%; }
+  .mk-pick { flex-wrap: wrap; }
+  /* v61（老板）：满配城的城内布局块（野外城池 / 未占据名城共用）——
+     三行账册式排布，右列允许折行（14 项建筑名一行放不下）。 */
+  .plan-box { background: rgba(var(--sh-rgb), .20); border: 1px solid var(--line);
+    border-radius: var(--r-lg); padding: 6px 10px; margin: 6px 0; }
+  .plan-box .attr { margin: 2px 0; }
+  .plan-box .plan-v { text-align: right; max-width: 74%; line-height: 1.5; }
+  .plan-box .plan-dim { color: var(--text-dim); font-size: var(--fs-cap); }
+
+  /* ---- 将领肖像（v22 · 需求 2）---- */
+  .portrait-holder { display: inline-block; position: relative; line-height: 0; }
+  .portrait-holder img, .portrait-holder svg { display: block; border-radius: 10px; }
+  .portrait-svg { display: block; border-radius: 10px; }
+  /* v41（需求 2）：此处原为**第三族** .gen-card（v22 遗留，.gc-face/.gc-body 结构）。
+     三族同名样式叠了三版，是「同一处三种来源」的典型；将领改左右分栏后全部无人引用，
+     一并删除。 */
+  .gd-face { display: flex; justify-content: center; }
+  .inn-avatar { width: 42px; display: flex; align-items: center; justify-content: center; }
+
+  /* ---- 城池视图（v22 · 需求 3）：中央只留棋盘 ----
+     城池名 / 人口驻军 / 征收 / 显示比例 / 岁贡 全部下沉到左侧栏，
+     让「看的东西」占满中央、操作类控件待在侧栏。 */
+  .city-pure { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100%; }
+  .city-pure .city-iso { padding: 0; }
+
+  /* ============================================================
+   * v45（需求 2）：城池/城外界面**消除滚动条**
+   * ------------------------------------------------------------
+   * 实机实测：`#view-container` 竖向溢出 **11px**，于是这两个"整屏棋盘"的界面
+   * 永远挂着一条滚动条（老板说的"下拉框"）。
+   * 算法对不上账的原因：`ui.fitTile` 已按 16px 呼吸量收边，而 `.ui-page` 又叠了
+   * 上下各 `--sp-5`(14px) 的内边距 —— 28 − 16 = 12px，正好就是溢出的那 11~12px。
+   * 置 0 后棋盘正好落在可视高度内；16px 呼吸量足够，不会贴边。
+   * ============================================================ */
+  .ui-page.city-pure { padding: 0; }
+
+  /* 城池下拉框（v45 需求 3）：侧栏顶部换城。
+     为什么这里破例用原生 <select>：可选项（城池数）随进程不断增长，
+     点选 chips 在窄侧栏里会折成好几行、把城池属性的位置挤下去；
+     下拉框恒定一行，且能一次看全"我有哪些城"。 */
+  .city-switch { display: flex; align-items: center; gap: 6px; margin-bottom: 5px; }
+  /* v53：城池清单的**持久容器** —— 它只在"城池清单或当前城池变了"时才被重建，
+     其余时间主循环一个字节都不碰，原生下拉列表才不会被每秒重绘冲合。
+     单城时里面是空的，靠 :empty 收掉，不留空行。 */
+  .city-switch-host { padding: 7px 10px 0; }
+  .city-switch-host:empty { display: none; }
+  .city-switch .cs-lbl { color: var(--text-dim); font-size: var(--fs-sub); flex: none; }
+  .city-select {
+    flex: 1; min-width: 0;
+    padding: 4px 6px; border-radius: 5px; cursor: pointer;
+    background: var(--slab-1); color: var(--text); border: 1px solid var(--gold-dark);
+    font-size: var(--fs-sub); font-family: inherit;
+    text-overflow: ellipsis;
+  }
+  .city-select:hover { border-color: var(--gold-light); }
+  .city-select:focus { outline: none; border-color: var(--gold-light); box-shadow: 0 0 0 2px rgba(232, 206, 136, .18); }
+  /* 原名标注：名城改名后仍要能看出它本来是谁（州治/战报都按原名对齐） */
+  .cs-orig { color: var(--text-dim); font-size: var(--fs-cap); margin-left: 5px; }
+  .side-body .zoom-bar { margin: 0; justify-content: flex-start; }
+
+  /* ---- 页面容器：三种界面同一内边距节奏 ---- */
+  .ui-page { padding: var(--sp-5); }
+  .panel-body > .ui-page { padding: 0 !important; }
+
+  /* ============================================================
+   * 将领详情（v26 · 需求 2）：左头像 · 右五维
+   * ------------------------------------------------------------
+   * 头像固定 168px 在左，属性在右并排；五维表只给一个数值列，
+   * "作用"是固定文案（每点……），实时数值在「当前效果」行里。
+   * 经验条与经验道具行用于把商城买的练兵经验直接消耗在将领身上。
+   * ============================================================ */
+  .gd-hero { display: flex; gap: var(--sp-5); align-items: flex-start;
+    padding-bottom: var(--sp-4); border-bottom: 1px solid var(--line-strong); }
+  .gd-hero .gd-face { flex: none; width: 168px; height: 168px; }
+  .gd-hero .gd-face img, .gd-hero .gd-face svg { width: 168px; height: 168px; border-radius: 10px; display: block; }
+  .gd-side { flex: 1; min-width: 0; }
+  .gd-tag { font-size: var(--fs-cap); border-radius: 4px; padding: 0 4px; }
+  .gd-tag.hero { color: var(--hero-tag); border: 1px solid rgba(230,184,0,.5); }
+  .gd-tag.beauty { color: #d88ab8; border: 1px solid rgba(216,138,184,.5); }
+
+  /* v65（老板）：「统率这些属性名都成 2 行了，占空间」——
+     根因是**表格自动分配宽度**：作用列文字长 → 抢走空间 → 第一列被压到折行。
+     所以这里给第一列**固定宽 + nowrap**（名字短，一定放得下），
+     作用列吃剩余宽度；`table-layout:fixed` 保证列宽不再随内容抖动。 */
+  .gd-dims { margin-top: var(--sp-3); table-layout: fixed; width: 100%; }
+  .gd-dims th, .gd-dims td { padding: 3px 6px; }
+  .gd-dims th:first-child, .gd-dims td:first-child {
+    width: 52px; white-space: nowrap; padding-left: 8px;
+  }
+  /* ⚠️ `table-layout: fixed` 下列宽**只由第一行的 th 决定** ——
+     写在 td（.gd-v）上的 width 会被忽略（实测：td 写 62px，实际仍是均分的 253px）。
+     所以这里把宽度写回 th 上，作用列自动吃剩余宽度，永不折行。 */
+  .gd-dims th:nth-child(1) { width: 52px; }
+  .gd-dims th:nth-child(2) { width: 62px; }
+  .gd-dims .gd-v { font-weight: 800; font-size: var(--fs-lead);
+    color: var(--parchment); font-variant-numeric: tabular-nums; }
+  .gd-dims .gd-u { color: var(--text-dim); font-size: var(--fs-sub); line-height: 1.5; }
+
+  .gd-effect { display: flex; flex-wrap: wrap; gap: 5px 16px;
+    font-size: var(--fs-sub); color: var(--text-dim); }
+  .gd-effect b { color: var(--gold-light); font-variant-numeric: tabular-nums; margin-left: 3px; }
+
+  .gd-expbar { height: 10px; border-radius: 5px; background: rgba(var(--sh-rgb),.45);
+    border: 1px solid var(--line); overflow: hidden; }
+  .gd-expbar i { display: block; height: 100%; border-radius: 4px;
+    background: linear-gradient(90deg, #7ee08a, #4fbf6a); transition: width .3s; }
+  .gd-exptext { font-size: var(--fs-sub); color: var(--text-dim);
+    font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .gd-exptext b { color: var(--gold-light); }
+  /* ============ v67：存档管理面板 ============
+     7 个槽位一屏放完，**不出下拉条**（老板的硬规矩）。 */
+  .sv-list { border: 1px solid var(--line); border-radius: 6px; margin-top: 8px; }
+  .sv-row {
+    display: grid; grid-template-columns: 96px 1fr auto;
+    align-items: center; gap: 8px; padding: 6px 8px;
+    border-bottom: 1px solid var(--line);
+  }
+  .sv-row:last-child { border-bottom: none; }
+  .sv-row .sv-n { font-weight: 700; }
+  .sv-row .sv-s { color: var(--text-dim); font-size: var(--fs-sub); }
+  .sv-row .sv-b { display: flex; gap: 4px; }
+  .sv-empty { opacity: .5; }
+  .sv-imp { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); }
+  .sv-ta {
+    width: 100%; height: 72px; margin-top: 6px; box-sizing: border-box;
+    background: var(--surface-3); color: var(--text); font-size: var(--fs-cap);
+    border: 1px solid var(--line); border-radius: 5px; padding: 6px; resize: vertical;
+  }
+
+</style>
+</head>
+<body>
+
+<!-- 创建角色界面 -->
+<div class="create-screen" id="screen-create">
+  <div class="create-box wood-frame">
+    <div class="inner-panel">
+      <div class="gold-heading">创建城池</div>
+      <div class="create-inner">
+        <div>
+          <div class="avatar-select">
+            <div class="ui-sub" style="margin-bottom:6px;">选择头像</div>
+            <div class="avatar-big" id="create-avatar">🧔</div>
+            <div class="avatar-nav">
+              <div class="arrow" data-action="avatar-prev">◀</div>
+              <div class="arrow" data-action="avatar-next">▶</div>
+            </div>
+            <div class="gender-toggle">
+              <div class="guse active" data-gender="male" data-action="gender-set">男</div>
+              <div class="guse" data-gender="female" data-action="gender-set">女</div>
+            </div>
+          </div>
+        </div>
+        <div class="create-form">
+          <div class="field"><label>君主名字</label><input type="text" id="create-name" maxlength="12" placeholder="输入你的名字"></div>
+          <div class="field"><label>城池归属</label>
+            <!-- v22（需求 1）：下拉框改为点选按钮组；隐藏域保留原 id，读取端不用改 -->
+            <input type="hidden" id="create-region" value="random">
+            <span class="chips" style="flex:1;">
+              <span class="chip on" data-action="chip-set" data-v="random" data-target="create-region" data-after="region">随机</span>
+              <span class="chip" data-action="chip-set" data-v="north" data-target="create-region" data-after="region">北方平原</span>
+              <span class="chip" data-action="chip-set" data-v="central" data-target="create-region" data-after="region">中原腹地</span>
+              <span class="chip" data-action="chip-set" data-v="south" data-target="create-region" data-after="region">江南水乡</span>
+            </span>
+          </div>
+          <div class="summary-box" id="create-summary">
+            君主数：0 &nbsp; 城池数：0 &nbsp; 拥挤度：0%<br>
+            <span id="create-map-preview">（选择归属后随机生成初始城池位置）</span>
+          </div>
+          <div class="create-actions">
+            <button class="btn gold lg hidden" id="create-continue" data-action="create-continue">继续上次的游戏</button>
+            <button class="btn lg" id="create-start" data-action="create-start">开始新的征程</button>
+            <!-- v67：存档管理放**首页**，因为"换台机器要导入存档"正是从首页开始的 -->
+            <button class="btn" id="create-saves" data-action="open-saves">💾 存档管理</button>
+          </div>
+          <div class="create-save-note" id="create-save-note"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 主游戏界面 -->
+<div id="screen-game" class="hidden">
+  <!-- 顶部导航 -->
+  <!-- v19：菜单按**类型分组**，同类型相邻、不同类型以竖线分隔
+       ① 场景：城池 / 地图   ② 军事：将领 / 行军
+       ③ 成长：任务 / 商城 / 爵位   ④ 记录：史册 / 公文   ⑤ 系统：设置 / 存档 / 新游戏
+       原「公告」菜单已取消，内容并入「公文」 -->
+  <div class="topnav" id="topnav">
+    <!-- v25（需求 10）：① 每个菜单加手绘线描图标（JS 填 <i class="ti">）
+         ② 任务与统计相邻  ③「爵位」不再是独立菜单，并入「君主」
+         ④ 商城 / 背包由弹窗改为**整页视图**，与其他菜单一致 -->
+    <div class="tab active" data-view="city"><i class="ti" data-nav="city"></i>城池</div>
+    <div class="tab" data-view="ext"><i class="ti" data-nav="ext"></i>城外</div>
+    <div class="tab" data-view="map"><i class="ti" data-nav="map"></i>地图</div>
+    <span class="nav-sep"></span>
+    <div class="tab" data-view="generals"><i class="ti" data-nav="general"></i>将领</div>
+    <!-- v41（需求 3）：行军菜单**不再挂数值徽标** —— 老板指出「不要给在行军这个
+         菜单名上产生数值」。顶栏徽标的语义是"有事情等你处理"（如任务可领取）；
+         行军只是"部队在外面"，属状态不属待办。队列数在行军菜单里本来就有。 -->
+    <div class="tab" data-view="marches"><i class="ti" data-nav="march"></i>行军</div>
+    <span class="nav-sep"></span>
+    <div class="tab" data-view="tasks"><i class="ti" data-nav="quest"></i>任务<span class="tab-badge hidden" id="tab-badge-task"></span></div>
+    <div class="tab" data-view="stats"><i class="ti" data-nav="stats"></i>统计</div>
+    <span class="nav-sep"></span>
+    <div class="tab" data-view="shop"><i class="ti" data-nav="shop"></i>商城</div>
+    <div class="tab" data-view="bag"><i class="ti" data-nav="bag"></i>背包</div>
+    <span class="nav-sep"></span>
+    <div class="tab" data-view="story"><i class="ti" data-nav="story"></i>史册</div>
+    <div class="tab" data-view="reports"><i class="ti" data-nav="doc"></i>公文</div>
+    <span class="nav-sep"></span>
+    <!-- v29（需求 5）：①「自动」独立成菜单，就放在「设置」旁边 ——
+         自动升级/研究/出征是**一类**东西（让系统替你干活），挤在设置里既不好找、
+         也没空间放"将领 / 兵力 / 目标 / 等级 / 类型 / 频率"这些参数。
+         ② 顶栏的「存档 / 新游戏」删掉 —— 设置面板里本来就有同一对按钮，
+         顶栏再摆一份只是让右手边常年挂着两个危险按钮。 -->
+    <div class="tab" data-view="auto"><i class="ti" data-nav="auto"></i>自动</div>
+    <div class="tab" data-view="settings"><i class="ti" data-nav="settings"></i>设置</div>
+    <!-- v26（需求 3）：天时是**全局**信息（季节/天候/年号影响所有城池），
+         放在城池属性里不合逻辑；margin-left:auto 把它推到最右。 -->
+    <div class="nav-sky" id="nav-sky" title="天时（季节 / 天候 / 年号）"></div>
+  </div>
+
+  <div class="main">
+    <!-- 左侧：君主栏 + 城池属性栏 + 资源栏（原版三段式信息区） -->
+    <div class="auth-side">
+      <div class="lord-card">
+        <!-- ① 君主栏 -->
+        <!-- v25（需求 9）：头像换成程序化立绘（不再是 emoji）；君主名**单独一行**放在头像下方，
+             不再和头像挤在同一行；「城池 N 城」这类统计从这一栏删掉（统计页已有）。 -->
+        <div class="lord-head">
+          <div class="lord-portrait" id="lord-avatar"></div>
+          <div class="lord-name-row"><span class="name" id="lord-name">—</span></div>
+          <div class="lord-meta">
+            <div class="row"><span>官职</span><span id="lord-office">平民</span></div>
+            <div class="row"><span>声望</span><span id="lord-rep">0</span></div>
+            <div class="row"><span>爵位</span><span id="lord-rank">0</span></div>
+          </div>
+        </div>
+        <!-- v20（需求 6）：背包已移至顶栏；「任务」与顶栏重复，一并移除 -->
+        <div class="side-btnrow">
+          <div class="sbtn" data-action="open-lord">君主</div>
+        </div>
+
+        <!-- ② 城池属性栏 -->
+        <div class="side-block">
+          <div class="side-title">
+            <span>城池属性</span>
+            <span class="side-quick">
+              <i data-action="open-bldg-info" title="建筑信息">🏗️</i>
+              <i data-action="open-prod-info" title="资源生产">⚙️</i>
+              <i data-action="open-wilds" title="附属野地">🏕️</i>
+            </span>
+          </div>
+          <!-- v53：城池清单**单独成一个静态节点**，不再拼进 #city-attrs 的 html ——
+               主循环每秒重绘城池属性，若把这个下拉框一起换掉，展开的列表会立刻合上
+               （老板："点出来列表马上收回去了"）。它只在城池清单/当前城池变化时才重建。 -->
+          <div class="city-switch-host" id="city-switch-host"></div>
+          <div class="side-body" id="city-attrs"></div>
+        </div>
+
+        <!-- v27（需求 1）：原「城池操作」板块已删除 ——
+             征收在官府、显示比例在设置、岁贡在名城官府，这一栏只剩"切换城池"；
+             而切城已经并进「城池属性」顶部（多城时才出现），
+             单独占一个带标题的板块既浪费纵向空间、又让侧栏出现滚动条。 -->
+
+        <!-- ③ 资源栏（每项带 + 快捷道具） -->
+        <div class="side-block">
+          <div class="side-title"><span>资源</span><span class="side-quick" id="res-prod-hint"></span></div>
+          <div class="side-body" id="res-bar"></div>
+          <!-- v16：资源下方固定驻军栏 -->
+          <div class="garrison-bar" id="garrison-bar"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 中央 -->
+    <div class="central">
+      <!-- v26（需求 5）：城内 / 城外 已提升为顶栏菜单（城池=城内），
+           中央不再需要子页签那一行 —— 它正是把棋盘往下挤的那 30px。 -->
+      <div class="view-box" id="view-container"></div>
+    </div>
+  </div>
+
+  <!-- v29（需求 3/4）：底部固定导航条 —— 所有「首页/上页/页码/下页/末页」
+       统一在这里渲染（见 ui.pagerHTML / ui.paintBottom）。
+       它挂在 .main 之外，所以不会被内容滚动带着走；高度固定，翻页时页面不抖。 -->
+  <div class="bottombar" id="bottom-bar"></div>
+
+  <!-- v16：底部消息栏与功能按钮已移除：
+       消息 → 整合进「公文」菜单；商城/公告 → 移入顶栏；排行 → 取消；设置 → 顶栏已有 -->
+</div>
+
+<div class="toast" id="toast"></div>
+<!-- v37（需求 2）：悬停浮层挂载点。放在 body 末尾 + position:fixed + z-index 9000 ——
+     它是全站最高的一层，且不受任何容器 overflow/transform 影响（父级 transform
+     会把它变成局部层叠上下文并裁切，这正是旧浮层被压住/被裁的原因）。 -->
+<div id="tip-layer" class="tip-layer" aria-hidden="true"></div>
+<div id="modal-root"></div>
+
+<script src="js/data.js"></script>
+<script src="js/state.js"></script>
+<script src="js/questdata.js"></script>
+<script src="js/systems.js"></script>
+<script src="js/domain.js"></script>
+<script src="js/map.js"></script>
+<script src="js/battle.js"></script>
+<!-- v27（需求 5）：回合制文字战场。放在 battle.js 之后 —— simulate 由它接管 -->
+<script src="js/tactic.js"></script>
+<script src="js/icons.js"></script>
+<!-- v32（需求「采用网图」）：game-icons 开源图标素材层。必须在 icons.js 之后 ——
+     icons.js 内的取图函数用 typeof GICONS 延迟绑定，渲染时才真正查表。 -->
+<script src="js/gicons.js"></script>
+<!-- v35：AI 位图素材登记表（汉代风，最高优先级）。同样在 icons.js 之后 ——
+     取图函数用 typeof BITMAPS 延迟绑定；未登记的 id 自动回退矢量层。 -->
+<script src="js/bitmaps.js"></script>
+<script src="js/portraits.js"></script>
+<script src="js/story.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
