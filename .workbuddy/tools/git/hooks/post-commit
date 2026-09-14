@@ -1,0 +1,41 @@
+#!/bin/sh
+# Deepseekdb-managed-hook v1 —— 提交后自动推送到 GitHub
+#
+# 铁律：**绝不阻断 commit**。任何异常都 exit 0，推送失败只写日志。
+# 关闭     : GIT_NO_AUTOPUSH=1  或  git -c hooks.autopush=false commit ...
+# 让位     : git/sync.py 自己会推，它执行时置 GIT_SYNC_ACTIVE=1，本钩子自动跳过
+# 日志     : .workbuddy/tmp/autopush.log（该目录在 .gitignore 里，不会被提交）
+#
+# 本文件由 .workbuddy/tools/git/install_hooks.py 安装到 .git/hooks/，
+# 要改请改这里再重装，别直接改 .git/hooks 里的副本。
+
+[ "$GIT_NO_AUTOPUSH" = "1" ] && exit 0
+[ -n "$GIT_SYNC_ACTIVE" ] && exit 0
+[ "$(git config --bool --local hooks.autopush 2>/dev/null)" = "false" ] && exit 0
+
+ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+cd "$ROOT" 2>/dev/null || exit 0
+
+# 没配远端、或没有 ahead 的提交 → 无事可做
+git remote get-url origin >/dev/null 2>&1 || exit 0
+AHEAD=$(git rev-list --count '@{u}..HEAD' 2>/dev/null) || exit 0
+[ "$AHEAD" = "0" ] && exit 0
+
+mkdir -p "$ROOT/.workbuddy/tmp" 2>/dev/null || exit 0
+LOG="$ROOT/.workbuddy/tmp/autopush.log"
+
+# 后台推送，且把子进程的 stdio 全部改道到日志 —— 否则 git 会等这个管道关闭而卡住
+(
+  if [ -f "$LOG" ]; then
+    tail -n 400 "$LOG" > "$LOG.tmp" 2>/dev/null && mv -f "$LOG.tmp" "$LOG" 2>/dev/null
+  fi
+  echo "── $(date '+%F %T') 自动推送（ahead $AHEAD）──"
+  if command -v timeout >/dev/null 2>&1; then
+    timeout 300 git push origin HEAD --follow-tags 2>&1
+  else
+    git push origin HEAD --follow-tags 2>&1
+  fi
+  echo "   退出码 $?"
+) >> "$LOG" 2>&1 &
+
+exit 0

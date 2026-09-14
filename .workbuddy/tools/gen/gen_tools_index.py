@@ -36,11 +36,18 @@ DESC = {
             'MEMORY.md 必须 < 9600 字符（超出会被会话注入截断，尾部规则等于不存在）。'
             '`slim_memory_template.py` = 把超限整段 cut 到 `docs/` 的模板。'),
     'show': ('展示与校准', '给老板看的对照图 / 曲线校准 / 素材巡视。'),
+    'git': ('Git 同步与门禁',
+            '**收尾同步的唯一入口**。`sync.py` 默认干跑、`--apply` 才落盘（干跑先行是本项目铁律）；'
+            '`gate.py` 是三件套门禁的**唯一出口**（pre-commit 钩子与 sync 都调它）；'
+            '`install_hooks.py` 把 `hooks/` 里的钩子装进 `.git/hooks/`。'),
+    'git/hooks': ('Git 钩子本体',
+                  '存这里是为了**进版本库** —— `.git/hooks/` 不被 git 跟踪，换台机器克隆后必须跑 '
+                  '`install_hooks.py` 重装。⚠️ **行尾必须 LF**，CRLF 会让 `#!/bin/sh` 失效。'),
 }
 
 
 def first_comment(p):
-    """摘首行注释当用途；没有就留空（不许编）。"""
+    """摘首行注释或文档字符串当用途；没有就留空（不许编）。"""
     try:
         c = io.open(p, encoding='utf-8', errors='ignore').read(1500)
     except Exception:
@@ -55,6 +62,14 @@ def first_comment(p):
             t = re.sub(r'^[-=]{3,}\s*', '', t)
             if len(t) >= 4:
                 return t[:88] + ('…' if len(t) > 88 else '')
+        # 文档字符串（.py 常见写法）：取首行正文，避免这类文件在索引里没有描述
+        if s.startswith('"""') or s.startswith("'''"):
+            t = s[3:]
+            if t.endswith('"""') or t.endswith("'''"):
+                t = t[:-3]
+            t = t.strip()
+            if len(t) >= 4:
+                return t[:88] + ('…' if len(t) > 88 else '')
         if s and not s.startswith(('/*', '//', '#', '*', '"', "'", 'import', 'from', 'const', 'var', '$')):
             break
     return ''
@@ -62,7 +77,9 @@ def first_comment(p):
 
 groups = {}
 for r, ds, fs in os.walk(T):
-    rel = os.path.relpath(r, T)
+    # 归一化为正斜杠：否则 Windows 上子目录会变成 "git\hooks"，
+    # 既与 DESC 的键对不上（显示成「未归类」），索引里也会混着两种分隔符
+    rel = os.path.relpath(r, T).replace(os.sep, '/')
     for f in sorted(fs):
         if f == 'README_INDEX.md':
             continue
