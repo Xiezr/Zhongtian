@@ -307,8 +307,9 @@
       case 'train-boost': ui.openTrainBoost(Number(el.dataset.idx)); break;
       case 'do-train-boost': GAME.doBoostTrain(el.dataset.item, Number(el.dataset.idx)); break;
       case 'train-locked': ui.toast('尚不可训练：' + (el.dataset.why || '条件未满足') + '（升级军营/书院、占领对应州城可解锁）'); break;
-      /* v80（老板）：「步兵 / 骑兵」翻页（±10 退役，数量改直输 —— 见 troopsHTML） */
-      case 'train-tab': ui._trainTab = (el.dataset.page === 'cav') ? 'cav' : 'inf'; ui.renderTroopsModal(); break;
+      /* v80（老板）：「步兵 / 骑兵」翻页（±10 退役，数量改直输 —— 见 troopsHTML）；
+         v81（老板）：「做成3页，第一页为募兵队列」—— que / inf / cav 三页白名单 */
+      case 'train-tab': ui._trainTab = (['que', 'inf', 'cav'].indexOf(el.dataset.page) >= 0) ? el.dataset.page : 'que'; ui.renderTroopsModal(); break;
       case 'confirm-train': GAME.doTrain(el.dataset.troop); break;
 
       /* 将领 */

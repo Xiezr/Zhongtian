@@ -472,8 +472,9 @@
       var line = GAME.story ? GAME.story.skyLine() : '';
       sky.innerHTML = '<span class="ns-k">天时</span>' + U.escape(line || '—');
     }
+    /* v81（老板）：「官职这行放玩家名称」—— 官职行退役（游戏里没有官职体系），
+       君主名落在信息表首行；#lord-office 不再存在、也不再写。 */
     $('#lord-name').textContent = s.ruler.name;
-    $('#lord-office').textContent = (s.rank && DATA.RANK[s.rank]) ? DATA.RANK[s.rank].name : '平民';
     $('#lord-rep').textContent = U.fmt(s.rep);
     $('#lord-rank').textContent = (s.rank || 0);
   };
@@ -4016,17 +4017,23 @@
   ui._trainCount = 10;
   /* v16：募兵按建筑分流 —— 军营募常规兵、工匠作坊造器械（#14） */
   ui._trainFilter = 'normal';
-  /* v80（老板）：「页面分成步兵，骑兵两个界面，翻页」—— 募兵页当前分页（inf 步兵 / cav 骑兵） */
-  ui._trainTab = 'inf';
+  /* v80（老板）：「页面分成步兵，骑兵两个界面，翻页」；
+     v81（老板）：「做成3页，第一页为募兵队列」—— 分页改三页制：
+     que 募兵队列（首页） / inf 步兵 / cav 骑兵。 */
+  ui._trainTab = 'que';
   ui.troopsHTML = function () {
     var s = GAME.state, c = GAME.currentCity();
     if (!DATA.TROOPS[ui._trainSel]) ui._trainSel = 'yibing';   // 兜底：选中项必须存在
     /* v80（老板）：「页面分成步兵，骑兵两个界面，翻页」——
-       常备兵按 DATA.TROOPS[].cat 拆两页（inf 步兵 / cav 骑兵），ui._trainTab 记当前页；
-       器械页（工匠作坊）维持单列表。选中项若不在本页，自动落到本页首位。 */
+       常备兵按 DATA.TROOPS[].cat 拆页（inf 步兵 / cav 骑兵），ui._trainTab 记当前页；
+       器械页（工匠作坊）维持单列表。选中项若不在本页，自动落到本页首位。
+       v81（老板）：「做成3页，第一页为募兵队列，步兵骑兵底下就不要募兵队列了」——
+       三页制：que 募兵队列（首页，队列独占一页）/ inf 步兵 / cav 骑兵。 */
+    var isQueueTab = (ui._trainFilter !== 'siege' && ui._trainTab === 'que');
     var ids = Object.keys(DATA.TROOPS).filter(function (id) {
       var t = DATA.TROOPS[id];
       if (ui._trainFilter === 'siege') return !!t.craft;
+      if (isQueueTab) return false;                 /* 队列页不出兵种卡 */
       if (t.craft) return false;
       return (t.cat || 'inf') === ui._trainTab;
     });
@@ -4068,14 +4075,22 @@
     var barLine = bar ? ''
       : '<div class="q-empty">本城尚未建造' + (isSiege ? '工匠作坊，无法制造器械。' : '军营，无法募兵。') + '</div>';
     /* v80（老板）：「兵营招募·LV11这个不需要」—— 本函数里这行与弹窗标题重复，整行撤除
-       （弹窗标题已有「⚔️ 兵营招募」，只留一处）；「步兵 / 骑兵」两页切换按钮放最上、
-       「N / M 种」解锁计数也不要（同批撤除）。 */
-    return '<div class="ui-page">' +
-      (ui._trainFilter === 'siege' ? ''
-        : '<div class="train-tabs">' +
-            '<button class="btn sm' + (ui._trainTab === 'cav' ? '' : ' gold') + '" data-action="train-tab" data-page="inf">🗡 步兵</button>' +
-            '<button class="btn sm' + (ui._trainTab === 'cav' ? ' gold' : '') + '" data-action="train-tab" data-page="cav">🐎 骑兵</button>' +
-          '</div>') +
+       （弹窗标题已有「⚔️ 兵营招募」，只留一处）；「N / M 种」解锁计数也不要（同批撤除）。 */
+    var tabsHtml = ui._trainFilter === 'siege' ? ''
+      : '<div class="train-tabs">' +
+          '<button class="btn sm' + (ui._trainTab === 'que' ? ' gold' : '') + '" data-action="train-tab" data-page="que">📜 募兵队列</button>' +
+          '<button class="btn sm' + (ui._trainTab === 'inf' ? ' gold' : '') + '" data-action="train-tab" data-page="inf">🗡 步兵</button>' +
+          '<button class="btn sm' + (ui._trainTab === 'cav' ? ' gold' : '') + '" data-action="train-tab" data-page="cav">🐎 骑兵</button>' +
+        '</div>';
+    /* v81（老板）：队列独占「第一页」—— 步兵/骑兵页不再拖队列；
+       工匠作坊（器械）维持旧结构（底部队列），未在本次改动范围。 */
+    if (isQueueTab) {
+      return '<div class="ui-page">' + tabsHtml +
+        (bar ? ui.trainQueueBlock(bar, c, kind)
+             : '<div class="q-empty">本城尚未建造军营，无法募兵。</div>') +
+        '</div>';
+    }
+    return '<div class="ui-page">' + tabsHtml +
       barLine +
       '<div class="troop-grid">' + cards + '</div>' +
       '<div style="margin-top:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:center;background:rgba(var(--sh-rgb),.25);border-radius:8px;padding:12px;">' +
@@ -4096,7 +4111,7 @@
           : '<span class="ui-sub" style="color:var(--amber);">' + (isSiege ? '本作坊' : '本营') + '队列已满' +
             (bar && GAME.trainNextSlotLv(bar.lvl) ? '（Lv' + GAME.trainNextSlotLv(bar.lvl) + ' 解锁下一个等待位）' : '') + '</span>') +
       '</div>' +
-      (bar ? ui.trainQueueBlock(bar, c, kind) : '') +
+      (isSiege && bar ? ui.trainQueueBlock(bar, c, kind) : '') +
       '</div>';
   };
 

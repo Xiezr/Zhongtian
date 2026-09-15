@@ -5,17 +5,17 @@
 
 | 目录 | 个数 | 干什么 |
 |---|---|---|
-| `asset/` | 8 | 抠底必须连通域洪水填充（BFS）；**绝不用 CSS 滤镜染色**，一律像素级 HSL 重映射写进 PNG。 |
+| `asset/` | 9 | 抠底必须连通域洪水填充（BFS）；**绝不用 CSS 滤镜染色**，一律像素级 HSL 重映射写进 PNG。 |
 | `audit/` | 12 | 结构 / 颜色 / 落盘 / 引用 / 删除 的核对工具。`verify_v66_edits.py` = **落盘核验**模板；`audit_refs.py` = 搬迁前查引用点；`read_recycle.py` = 解析回收站 `$I` 元数据核实删了什么；`trash_paths.py` = 逐项+回查的删除模板。 |
 | `break/` | 17 | 逐类注入故障，确认断言**真的会红**（红不了的就是装饰）。铁律：先校验断言在文件里、注入后连"是否中断"一起看、收尾 md5 比对还原。 |
 | `gen/` | 4 | 素材/索引的**唯一来源**。`gen_bitmaps.js` 扫描 `assets/icons/ui/` 生成 `js/bitmaps.js`（勿手改产物）；`gen_tools_index.py` 生成本索引。 |
 | `git/` | 3 | **收尾同步的唯一入口**。`sync.py` 默认干跑、`--apply` 才落盘（干跑先行是本项目铁律）；`gate.py` 是三件套门禁的**唯一出口**（pre-commit 钩子与 sync 都调它）；`install_hooks.py` 把 `hooks/` 里的钩子装进 `.git/hooks/`。 |
 | `git/hooks/` | 2 | 存这里是为了**进版本库** —— `.git/hooks/` 不被 git 跟踪，换台机器克隆后必须跑 `install_hooks.py` 重装。⚠️ **行尾必须 LF**，CRLF 会让 `#!/bin/sh` 失效。 |
 | `mem/` | 10 | MEMORY.md 必须 < 9600 字符（超出会被会话注入截断，尾部规则等于不存在）。`slim_memory_template.py` = 把超限整段 cut 到 `docs/` 的模板。 |
-| `patch/` | 79 | **事实上的变更日志**：按断言名 `grep -rl "<断言名>" tools/patch/` 就能找到当初是哪次改的。"同一条消息里对同一文件的多次 Edit 会互相覆盖"，所以补丁一律脚本化并留档。 |
+| `patch/` | 83 | **事实上的变更日志**：按断言名 `grep -rl "<断言名>" tools/patch/` 就能找到当初是哪次改的。"同一条消息里对同一文件的多次 Edit 会互相覆盖"，所以补丁一律脚本化并留档。 |
 | `probe/` | 17 | jsdom 没有布局引擎 → 尺寸/重叠/溢出/折行只能在**真浏览器**量。`probe60_geom.js` 是可复用模板，`probe66_ui.js` 有"逐行折行"量法，`probe67_save3.js` 量存档体积与配额。 |
 | `show/` | 4 | 给老板看的对照图 / 曲线校准 / 素材巡视。 |
-| **合计** | **156** | |
+| **合计** | **161** | |
 
 ## asset/（素材处理）
 
@@ -25,6 +25,7 @@
 - `crop_pd3.py`（6KB）　— 裁切 v3（定稿）：**从上往下裁，只去掉顶部留白**。
 - `gallery31.js`（4KB）　— 图标画廊截图：把全部图标以 96px 网格渲染成单页，便于统一评估设计感
 - `gallery33.js`（6KB）　— v33 最终验收：99 图标几何验证（getBoundingClientRect，不受承台干扰）+ 总览图 + 城内统计
+- `make_portrait_refs.py`（4KB）　— 将领肖像 · 参考图套件生成。
 - `matte.js`（3KB）　— v35-b：AI 生成图的背景检测 + 抠底（四角采样 → 距离阈值 → alpha 归零）
 - `portrait_gallery.js`（2KB）　— 头像画廊：渲染多种资质+性别的程序化头像
 - `recolor_buildings.py`（8KB）　— 建筑图标「系列配色」v3。
@@ -190,6 +191,10 @@ MEMORY.md 必须 < 9600 字符（超出会被会话注入截断，尾部规则�
 - `patch_v80_docs.py`（11KB）　— v80 · 文档层：设计规范（§11.2/11.3 更新 + §16.4 + §21）/ AI工作备忘 §二十三 / 需求档案 v80。
 - `patch_v80_tests.py`（16KB）　— v80 · 测试层：smoke 三处翻转 + 两处守卫升级 + 新增 §65；e2e 一处翻转 + 新增 v80 段。
 - `patch_v80_ui.py`（16KB）　— v80 · UI 层：客栈固定表 / 建筑吸底操作区 / 兵营步兵骑兵分页与数量直输。
+- `patch_v81_docs.py`（5KB）　— v81 · 文档补丁：设计规范 §22 / AI工作备忘 §二十四 / 需求档案 v81。
+- `patch_v81_fix.py`（4KB）　— v81 · 修复补丁：五处 smoke 老测试给 troopsHTML() 先切步兵页。
+- `patch_v81_tests.py`（13KB）　— v81 · 测试补丁：smoke 两处守卫演进 + 新增 §66；e2e 六处跟进 + v81 新段。
+- `patch_v81_ui.py`（11KB）　— v81 · 主补丁：君主卡名称并入信息表首行 / 兵营三页制（队列 · 步兵 · 骑兵）。
 - `v26-j.py`（14KB）　— v26 批九：smoke 第 39 节 —— v26 五项需求的防回退断言
 
 ## probe/（探针（几何 / 界面 / 存档））

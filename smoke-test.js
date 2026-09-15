@@ -2750,7 +2750,10 @@
   check('不再把选中兵种挂在 GAME 上', G._trainSel === undefined);
   check('训练按钮的 data-troop 不是 undefined', (function () {
     var st = G.newGame({ name: '募兵' });
+    /* v81：兵种卡在步兵/骑兵页（首页是募兵队列）—— 先切页再渲染 */
+    var bkTab = G.ui._trainTab; G.ui._trainTab = 'inf';
     var html = G.ui.troopsHTML();
+    G.ui._trainTab = bkTab;
     return !!st && /data-troop="yibing"/.test(html) && !/data-troop="undefined"/.test(html);
   })());
   check('非法兵种给出明确提示（原为「参数错误」）', (function () {
@@ -3499,9 +3502,10 @@
   check('#7 未解锁兵种可点击查看原因', /unlocked \? 'select-train' : 'train-locked'/.test(uS16));
   check('#7 train-locked 动作已注册', /case 'train-locked'/.test(mS16));
   /* v80（老板）：「『N / M 种』解锁计数这种备注也不要」—— 计数行退役；判据换成兵种分页 */
-  check('#7 面板含本类兵种分页（v80：步兵 / 骑兵 两页，计数行退役）', (function () {
+  check('#7 面板含本类兵种分页（v80 两页 → v81 三页：队列 / 步兵 / 骑兵，计数行退役）', (function () {
     var th = codeOf(uS16, 'ui.troopsHTML = function');
-    return /data-action="train-tab"/.test(th) && /data-page="cav"/.test(th)
+    return /data-action="train-tab"/.test(th) && /data-page="que"/.test(th)
+      && /data-page="inf"/.test(th) && /data-page="cav"/.test(th)
       && th.indexOf('ids.filter') < 0;
   })());
 
@@ -4764,7 +4768,10 @@
       }
     }
     G.ui._trainFilter = 'normal';
+    /* v81：兵种卡在步兵/骑兵页（首页是募兵队列） */
+    var bkTab = G.ui._trainTab; G.ui._trainTab = 'inf';
     var html = G.ui.troopsHTML();
+    G.ui._trainTab = bkTab;
     return (html.match(/data-action="select-train"/g) || []).length >= 2;
   })());
   check('切换兵种会改变选中项（_trainSel 随点击变化）', (function () {
@@ -5031,7 +5038,11 @@
       }
     }
     G.ui._trainFilter = 'normal';
-    return (G.ui.troopsHTML().match(/data-action="select-train"/g) || []).length >= 2;
+    /* v81：兵种卡在步兵/骑兵页（首页是募兵队列） */
+    var bkTab = G.ui._trainTab; G.ui._trainTab = 'inf';
+    var hit = (G.ui.troopsHTML().match(/data-action="select-train"/g) || []).length >= 2;
+    G.ui._trainTab = bkTab;
+    return hit;
   })());
 
   /* ---- 需求 5/12 ---- */
@@ -6066,8 +6077,11 @@
   check('君主头像改走头像池（v45 需求 2；池空时自动退回程序化立绘）',
     /lord-portrait/.test(hS38) && /GAME\.portraits\.html\(rulerGen, 68\)/.test(uS38)
     && /portraitSeed: s\.ruler\.portraitSeed/.test(uS38));
-  check('君主名单独一行（与头像不同行）',
-    /lord-name-row/.test(hS38) && /\.lord-name-row \{ text-align: center/.test(hS38));
+  /* v81（老板）：「官职这行放玩家名称，现在的名称位置去掉」——
+     名称并入信息表首行（.mrow-name），官职行与旧名称列退役。 */
+  check('v81：君主名并入信息表首行（官职行与旧名称列退役）',
+    /class="row mrow-name"/.test(hS38) && /id="lord-name"/.test(hS38)
+    && !/lord-name-row/.test(hS38) && !/lord-office/.test(hS38));
   check('实测：syncHeader 把君主头像落到池中某一张（且不再写城池数）', (function () {
     G.ui.syncHeader();
     var av = global.document.querySelector('#lord-avatar');
@@ -6125,7 +6139,10 @@
   console.log('  --- ⓪ 兵种卡瘦身 / 浮层唯一层 / 图标尺寸 ----');
   /* 需求 1：募兵资源移入悬停、图标放大 */
   check('募兵兵种卡不再常驻募兵资源（移入悬停浮层）', (function () {
+    /* v81：兵种卡在步兵/骑兵页（首页是募兵队列） */
+    var bkTab = G.ui._trainTab; G.ui._trainTab = 'inf';
     var h = G.ui.troopsHTML();
+    G.ui._trainTab = bkTab;
     /* 逐卡判定（整页有 15 张卡，不是 1 张）：
        ① 卡面 .tstat 由 3 行降为 2 行（成本行腾给图标）
        ② 卡面不再出现"耗粮"（成本移入浮层，不是删掉）
@@ -6146,7 +6163,10 @@
   })());
   /* ---- 需求 2：浮层唯一层 + 落位夹进视口 ---- */
   check('实测：悬停内容含消耗/人口/耗粮/耗时', (function () {
+    /* v81：兵种卡在步兵/骑兵页（首页是募兵队列） */
+    var bkTab = G.ui._trainTab; G.ui._trainTab = 'inf';
     var h = G.ui.troopsHTML();
+    G.ui._trainTab = bkTab;
     var m = h.match(/<div class="tcard-tip tip-src">([\s\S]*?)<\/div><\/div>/);
     if (!m) return false;
     return /募兵消耗/.test(m[0]) && /人口 /.test(m[0]) && /耗粮 /.test(m[0]) && /单兵耗时/.test(m[0]);
@@ -13231,6 +13251,79 @@ console.log('\n===== 65. v80 三条（客栈 · 建筑底栏 · 兵营） ====='
     var fn = codeOf(uS, 'ui.openTroops = function');
     return (fn.match(/scrollTop/g) || []).length >= 4 && /#train-count/.test(fn);
   })());
+})();
+
+
+/* ============================================================
+ * ===== 66. v81：君主卡（名称并入信息表首行） / 兵营三页制（老板两条） =====
+ * ============================================================ */
+console.log('\n===== 66. v81 两条（君主卡 · 兵营三页） =====');
+(function () {
+  var rd = function (f) { return fsMod.readFileSync(pathMod.join(__dirname, 'js', f + '.js'), 'utf8'); };
+  var uRaw = rd('ui');
+  var uS = stripComment(uRaw);
+  var mS = stripComment(rd('main'));
+  var hS = fsMod.readFileSync(pathMod.join(__dirname, 'index.html'), 'utf8');
+
+  /* ---------- ① 君主卡 ---------- */
+  console.log('  --- ① 君主卡：名称并入信息表首行 ---');
+  check('v81：名称行在信息表内（.mrow-name），官职行与旧名称列退役',
+    /class="row mrow-name"/.test(hS) && /id="lord-name"/.test(hS)
+    && !/lord-name-row/.test(hS) && !/lord-office/.test(hS));
+  check('v81：CSS —— 名称行金色 / 头像不缩 / 信息表伸缩', (function () {
+    var b = cssBlock(hS, '.lord-meta .row.mrow-name span:first-child {');
+    var p = cssBlock(hS, '.lord-portrait {');
+    var m = cssBlock(hS, '.lord-meta {');
+    return /color: var\(--gold-light\)/.test(b) && /flex: 0 0 auto/.test(p) && /flex: 1 1 0/.test(m);
+  })());
+  check('v81：syncHeader 不再写 #lord-office（名称写入照旧）', (function () {
+    var fn = codeOf(uS, 'ui.syncHeader = function');
+    return fn.indexOf('lord-office') < 0 && /\$\('#lord-name'\)\.textContent = s\.ruler\.name/.test(fn);
+  })());
+  check('实测：syncHeader 后 #lord-name = 君主名', (function () {
+    G.ui.syncHeader();
+    var el = global.document.querySelector('#lord-name');
+    return !!el && el.textContent === G.state.ruler.name;
+  })());
+
+  /* ---------- ② 兵营三页 ---------- */
+  console.log('  --- ② 兵营三页：队列 / 步兵 / 骑兵 ---');
+  check('v81：分页初始态为 que（第一页 = 募兵队列）', /ui\._trainTab = 'que';/.test(uS));
+  check('v81：三页切换键与队列页分支齐备', (function () {
+    var th = codeOf(uS, 'ui.troopsHTML = function');
+    return /data-page="que"/.test(th) && /data-page="inf"/.test(th) && /data-page="cav"/.test(th)
+      && /isQueueTab/.test(th) && th.indexOf('ui.trainQueueBlock(bar, c, kind)') >= 0;
+  })());
+  check('v81：main.js 三页白名单分发',
+    /case 'train-tab': ui\._trainTab = \(\['que', 'inf', 'cav'\]\.indexOf\(el\.dataset\.page\) >= 0\)/.test(mS));
+  check('实测：队列页只出队列 / 步兵页只出卡面与控件', (function () {
+    var keep = G.state, keepCity = G.ui._cityId;
+    var keepTab = G.ui._trainTab, keepFilter = G.ui._trainFilter, keepBIdx = G.ui._trainBIdx;
+    var ok = false;
+    try {
+      var st = G.newGame({ name: 'v81' });
+      G.state = st;
+      var c = st.cities[0];
+      G.ui._cityId = c.id;
+      var ci = c.cells.findIndex(function (x) { return !x.build && !x.official; });
+      if (ci >= 0) c.cells[ci] = { build: { id: 'junying', lvl: 5 }, pending: null };
+      G.ui._trainFilter = 'normal';
+      G.ui._trainBIdx = null;
+      G.ui._trainTab = 'inf';
+      var inf = G.ui.troopsHTML();
+      G.ui._trainTab = 'que';
+      var que = G.ui.troopsHTML();
+      ok = inf.indexOf('本营募兵队列') < 0 && inf.indexOf('id="train-count"') >= 0
+        && inf.indexOf('troop-grid') >= 0
+        && que.indexOf('本营募兵队列') >= 0 && que.indexOf('id="train-count"') < 0
+        && que.indexOf('troop-grid') < 0;
+    } catch (e) { ok = false; }
+    finally {
+      G.ui._trainTab = keepTab; G.ui._trainFilter = keepFilter; G.ui._trainBIdx = keepBIdx;
+      G.state = keep; G.ui._cityId = keepCity;
+    }
+    return ok;
+  })(), '步兵页不带队列 / 队列页只带队列');
 })();
 
   console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');
