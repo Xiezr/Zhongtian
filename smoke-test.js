@@ -5353,8 +5353,10 @@
   check('侧栏「城池操作」板块已删除（切城并入城池属性）',
     !/ui\.renderCityTools/.test(uS35) && !/id="city-tools"/.test(hS35)
     && /city-switch/.test(uS35));
-  check('城池属性含身份行与城外地块',
-    /官府Lv' \+\s*\(GAME\.buildingLevel\(c, 'guanfu'\)/.test(uS35) && /城外地块/.test(uS35));
+  check('城池属性含身份行与城外地块', /* v71（老板）：身份行只留城池命名 —— 「官府Lv」随坐标一并撤下 */
+    /ui\.cityLabelHTML\(c, true\)/.test(uS35)
+    && !/官府Lv/.test(uS35.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, ''))
+    && /城外地块/.test(uS35));
   check('renderCityTools 与 #city-tools 已彻底移除',
     !/ui\.renderCityTools/.test(uS35) && !/id="city-tools"/.test(hS35));
   check('岁贡支持紧凑模式（侧栏内不再套大卡片）',
@@ -5585,8 +5587,8 @@
   check('特产三条收集途径写进面板（岁贡/征收/州治）',
     /① 州郡岁贡/.test(uS37) && /② 官府征收/.test(uS37) && /③ 州治加成/.test(uS37));
   /* v25（需求 3/5）：征收→官府、显示比例→设置、岁贡→名城官府，
-     侧栏不再有「城池操作」：切城并进城池属性（多城时才出现） */
-  check('城池清单在多城时给出**城池下拉框**、单城时不出现', (function () {
+     侧栏不再有「城池操作」：切城并进城池属性（v71：单城也出现） */
+  check('城池清单单城也给出**城池下拉框**（v71 老板：含州郡县 + 坐标）', (function () {
     var st = G.state, c = G.currentCity();
     var hostOf = function () { return (global.document.querySelector('#city-switch-host') || {}).innerHTML || ''; };
     var bodyOf = function () { return (global.document.querySelector('#city-attrs') || {}).innerHTML || ''; };
@@ -5600,9 +5602,13 @@
     G.ui.renderCityAttrs(c, st);
     var single = hostOf();
     /* v45（需求 3）：chips → 原生 <select>；且当前城必须是 selected 的那一项 */
+    /* v71（老板）：「即使只有一个城池，也保留下拉框，在这里可以显示州郡县坐标」——
+       单城不再收起；两侧选项都带坐标（州郡县全称在上，坐标在后）。 */
     return /<select class="city-select" data-action="switch-city"/.test(multi)
       && /<option value="[^"]+" selected>/.test(multi)
-      && !/<select/.test(single)
+      && /\(\d+, \d+\)/.test(multi)
+      && /<select class="city-select" data-action="switch-city"/.test(single)
+      && /\(\d+, \d+\)/.test(single)
       && sepOk;
   })());
   /* v53（老板：\"点出来列表马上收回去\"）：**下拉框不得被每秒重绘重建**。
@@ -6827,8 +6833,8 @@
   console.log('  --- ① 侧栏 ---');
   check('城池操作板块与 renderCityTools 已彻底移除',
     !/id="city-tools"/.test(hS40) && !/ui\.renderCityTools/.test(uS40));
-  check('切城芯片并进「城池属性」（多城才出现）', /city-switch/.test(uS40)
-    && /s\.cities \|\| \[\]\)\.length > 1/.test(uS40));
+  check('切城下拉框并进「城池属性」（v71 老板：单城也保留）', /city-switch/.test(uS40)
+    && !/if \(\(s\.cities \|\| \[\]\)\.length > 1\)/.test(uS40));
   check('侧栏各块内层高度放宽（不再动不动出滚动条）',
     /\.side-body \{[^}]*max-height: 232px/.test(hS40.replace(/\/\*[\s\S]*?\*\//g, '')));
 
@@ -8404,8 +8410,10 @@ check('已拥有的城池一律可改名，原名另存 origName', (function () 
 })());
 check('城池名走单一取值口（改名同步所有引用）', (function () {
   var u = require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8');
-  return /ui\.cityLabelHTML = function/.test(u) && (u.match(/ui\.cityLabelHTML\(/g) || []).length >= 3
-    && /GAME\.cityLabel\(x\)/.test(u);
+  return /ui\.cityLabelHTML = function \(c, short\)/.test(u) && (u.match(/ui\.cityLabelHTML\(/g) || []).length >= 3
+    && /GAME\.cityFullName\(x\)/.test(u)
+    /* v71（老板）：侧栏两处走短名（只显城池命名）；下拉框选项 = 全称 + 坐标 —— 防回退 */
+    && (u.match(/ui\.cityLabelHTML\(c, true\)/g) || []).length >= 2;
 })());
 
 /* ---- 需求 1/3/4：底部固定导航条 / 地图满屏 / 背包分页 ---- */
@@ -12078,6 +12086,18 @@ console.log('\n===== 47. v62 工匠作坊造箭塔 =====');
     })());
 
     check('迁址写日志（可追溯）', /📍 迁址/.test(dm58) && /GAME\.log\('📍 迁址/.test(dm58));
+
+    /* v71（老板）：「城池属性不要显示坐标和所在州，只显示城池命名即可」 */
+    check('★ 短名模式：不含州全称，含城名与档位标（侧栏两处走它）', (function () {
+      var c = { name: '江陵', type: 'jun', state: '荆州', x: 5, y: 5 };
+      var full = G.cityFullName(c);
+      var short = G.ui.cityLabelHTML(c, true);
+      var longName = G.ui.cityLabelHTML(c);
+      return full.indexOf(' · ') >= 0
+        && short.indexOf(full) < 0 && short.indexOf('江陵') >= 0
+        && short.indexOf('city-tier') >= 0
+        && longName.indexOf(full) >= 0;   /* 全称模式不受影响 */
+    })());
 
     /* ================= ④ 君主将领 ================= */
     console.log('  --- ④ 君主将领（老板：玩家角色本人）---');

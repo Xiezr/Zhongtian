@@ -564,10 +564,15 @@ async function runTests(dom, URL) {
   /* v24（需求 6）：侧栏的「城外地块 0/12」一行已删 —— 城外棋盘本身就是这块数据 */
   check('新城外城为空地（0/12 块）', G.extUsed(conq18) === 0 && G.extCap(conq18) === 12,
     G.extUsed(conq18) + ' / ' + G.extCap(conq18));
-  /* v70（老板需求 3）：坐标格式由 [x,y] 改为「500×500 · (x, y)」（写明坐标体系） */
-  check('侧栏城池属性含城名与坐标',
-    attrs18.indexOf('江陵') >= 0 && attrs18.indexOf(G.coordText(conq18)) >= 0
-    && attrs18.indexOf('500×500') >= 0);
+  /* v71（老板）：「城池属性不要显示坐标和所在州，只显示城池命名即可」——
+     本断言自 v70 翻转：只验城名在、坐标与州全称**不在** */
+  check('侧栏城池属性只显城名（不含坐标 / 不含州全称）',
+    attrs18.indexOf('江陵') >= 0
+    && attrs18.indexOf('500×500') < 0
+    && attrs18.indexOf(G.coordText(conq18)) < 0
+    && attrs18.indexOf('官府Lv') < 0
+    && (G.cityFullName(conq18).indexOf(' · ') < 0
+        || attrs18.indexOf(G.cityFullName(conq18)) < 0));
   /* v23（需求 5）：侧栏只反映当前城池，全境汇总移到底栏「统计」菜单 */
   /* v23/v24：侧栏只讲当前城池 —— 无全境汇总，也不再有城防·驻军 / 城外地块两行 */
   check('侧栏只反映当前城池（无全境汇总 / 无城防驻军 / 无城外地块）',
@@ -2784,16 +2789,24 @@ async function runTests(dom, URL) {
     const cur = G.currentCity();
     st.cities = [cur];                        // 造出"单城"
     G.ui.renderCityAttrs(cur, st);
-    const single = document.querySelectorAll('#city-switch-host select.city-select').length;
+    const selSingle = document.querySelector('#city-switch-host select.city-select');
+    const single = selSingle ? selSingle.options.length : 0;
+    const singleTxt = selSingle ? selSingle.options[0].textContent : '';
     st.cities = bak.concat([G.makeCity({ id: 'e2e_sw', name: '试切城', x: 320, y: 320 })]);
     G.ui.renderCityAttrs(cur, st);
     const sel = document.querySelector('#city-switch-host select.city-select');
     const multi = sel ? sel.options.length : 0;
+    const multiTxt = sel ? Array.from(sel.options).map(o => o.textContent).join('|') : '';
     st.cities = bak;
     G.ui.renderCityAttrs(cur, st);
-    check('单城时不出现城池下拉框', single === 0, single + ' 个');
+    /* v71（老板）：「即使只有一个城池，也保留下拉框，在这里可以显示州郡县坐标」 */
+    check('单城时也出现城池下拉框（选项 = 州郡县 + 坐标）',
+      single === 1 && singleTxt.indexOf('(') >= 0 && singleTxt.indexOf(G.coordText(cur)) >= 0, single + ' 个选项');
     /* v45（需求 3）：判据由"芯片个数"改为"下拉框选项数" —— 已有城池都是可选项 */
     check('多城时城池清单给出城池下拉框（已有城池均为选项）', multi >= 2, multi + ' 个选项');
+    /* v71（老板）：选项文案 = 州郡县全称 + 坐标（在哪建城，这里可鉴） */
+    check('下拉框选项含州郡县全称与坐标（v71：选址信息出口）',
+      multiTxt.indexOf(G.cityFullName(cur)) >= 0 && multiTxt.indexOf(G.coordText(cur)) >= 0, multiTxt.slice(0, 80));
     /* v53（老板："点出来列表马上收回去了"）：这条才是那个 bug 的直接判据 ——
        原生下拉列表挂在 <select> 元素上，元素被重绘换掉 = 列表立刻合上。
        造出多城 → 连点三次 renderCityAttrs（主循环每秒就这么干）→
@@ -3722,10 +3735,14 @@ if (svBtn) {
   /* ---- v70（老板需求 3/4）：城池坐标 —— 显示 / 一键随机 / 坐标切换 ---- */
   G.ui.setView('city');
   await sleep(90);
-  check('★ 城池属性栏显示坐标（500×500）与两个入口', (function () {
+  /* v71（老板）：只显示城池命名 —— 坐标文字已撤，迁址两入口保留 */
+  check('★ 城池属性栏只显城名（无坐标），两个迁址入口保留', (function () {
     const h = document.querySelector('#city-attrs').innerHTML;
     const c0 = G.currentCity();
-    return h.indexOf('500×500') >= 0 && h.indexOf(G.coordText(c0)) >= 0
+    const full = G.cityFullName(c0);
+    return h.indexOf(c0.name) >= 0
+      && h.indexOf('500×500') < 0 && h.indexOf(G.coordText(c0)) < 0
+      && (full.indexOf(' · ') < 0 || h.indexOf(full) < 0)
       && h.indexOf('data-action="city-random"') >= 0 && h.indexOf('data-action="city-move-ask"') >= 0;
   })());
   {

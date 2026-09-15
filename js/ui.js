@@ -828,12 +828,15 @@
 
   /* 城池名 + 等级标注（v29 · 需求 9）：
      [都城] / [州城] / [郡城] / [县城]，自建城不标（"自建城"三个字没有信息量）。 */
-  ui.cityLabelHTML = function (c) {
+  ui.cityLabelHTML = function (c, short) {
     if (!c) return '';
     var tn = GAME.cityTierName ? GAME.cityTierName(c) : '';
-    /* v70（老板）：地名走**全称**（州 · 郡 · 县，唯一出口 GAME.cityFullName）——
-       旧版只写城名，"这是哪一州的城"要靠玩家自己猜。 */
-    return U.escape(GAME.cityFullName(c)) + (tn ? '<span class="city-tier">[' + tn + ']</span>' : '');
+    /* v70（老板）：地名走**全称**（州 · 郡 · 县，唯一出口 GAME.cityFullName）。
+       v71（老板）：「城池属性不要显示坐标和所在州，只显示城池命名即可」——
+       窄处（侧栏）传 short=true 走**短名**：城名 + 档位标，与 GAME.cityLabel 同规则；
+       全称仍供统计表格 / 出征目标等需要"这是哪一州的城"的地方使用。 */
+    var name = short ? U.escape(c.name) : U.escape(GAME.cityFullName(c));
+    return name + (tn ? '<span class="city-tier">[' + tn + ']</span>' : '');
   };
 
   /* ② 城池属性栏：民心/民怨/税率/黄金/人口 */
@@ -849,16 +852,16 @@
        v45（需求 3）：由 chips 改为**原生下拉框** ——
        城池数会随进程不断增长，chips 在窄侧栏里折行会把城池属性挤下去；
        下拉框恒定一行，且"我有哪些城"一眼看全。 */
-    var switcher = '';
-    if ((s.cities || []).length > 1) {
-      switcher = '<div class="city-switch"><span class="cs-lbl">城池</span>' +
-        '<select class="city-select" data-action="switch-city" title="切换当前经营的城池">' +
-        s.cities.map(function (x) {
-          return '<option value="' + x.id + '"' + (x.id === c.id ? ' selected' : '') + '>' +
-            U.escape(GAME.cityLabel(x)) + '</option>';
-        }).join('') +
-        '</select></div>';
-    }
+    /* v71（老板）：「即使只有一个城池，也保留这个城池下拉框，在这里可以显示州郡县坐标」
+       —— 城池属性行瘦身后（只显城名），下拉框升格为「选址信息」的出口：
+       单城也照常渲染；选项文案 = 州郡县全称 + 坐标（在哪建城，一眼可鉴）。 */
+    var switcher = '<div class="city-switch"><span class="cs-lbl">城池</span>' +
+      '<select class="city-select" data-action="switch-city" title="切换当前经营的城池">' +
+      s.cities.map(function (x) {
+        return '<option value="' + x.id + '"' + (x.id === c.id ? ' selected' : '') + '>' +
+          U.escape(GAME.cityFullName(x)) + ' ' + U.escape(GAME.coordText(x)) + '</option>';
+      }).join('') +
+      '</select></div>';
     /* v53（老板："点出来列表马上收回去了"）：**城池清单必须与每秒重绘解耦**。
        主循环每秒调一次 renderSide → renderCityAttrs，改前 switcher 拼在下面的 html 里，
        `box.innerHTML = html` 会把 <select> 整块销毁重建 ——
@@ -868,7 +871,11 @@
        现在它走**自己的静态节点** #city-switch-host，只在
        "城池清单或当前城池变了"时才重建；城池属性正文照旧每帧重建（正文没有交互态）。 */
     var host = $('#city-switch-host');
-    var sig = (s.cities || []).map(function (x) { return x.id; }).join(',') + '|' + c.id;
+    /* v71（老板）：选项文案含城名 / 坐标 —— 签名跟着文案走，
+       改名、迁址后下一帧即刷新；否则下拉框会停在旧文案上。 */
+    var sig = (s.cities || []).map(function (x) {
+      return x.id + ':' + (x.name || '') + ':' + x.x + ',' + x.y;
+    }).join(',') + '|' + c.id;
     if (host) {
       if (ui._citySwSig !== sig) {         /* 没变 → 一个字节都不碰这个 select */
         ui._citySwSig = sig;
@@ -882,16 +889,17 @@
       /* v22（需求 3）：城池身份从棋盘上方下沉到这里 */
       '<div class="res-line" style="border-bottom:1px solid var(--sep-gold);padding-bottom:5px;margin-bottom:3px;">' +
         '<span class="lbl" style="color:var(--gold-light);font-weight:700;">🏯 ' +
-          ui.cityLabelHTML(c) + '</span>' +
-        /* v70（老板）：「城池的主界面提供其坐标（500×500）… 一键随机… 坐标切换
-           （除名城，名城固定）」—— 坐标常显；自建城给 🎲/📍 两个入口，
-           名城（地理固定）只标注不可迁。两钮都走唯一出口 GAME.canCityMoveTo。 */
+          ui.cityLabelHTML(c, true) + '</span>' +
+        /* v70（老板）：「城池的主界面提供其坐标……一键随机……坐标切换（除名城，名城固定）」。
+           v71（老板）：「城池属性不要显示坐标和所在州，只显示城池命名即可」——
+           坐标 / 官府 Lv 文字从本行撤下（迁址弹窗里仍能看到当前坐标）；
+           🎲/📍 两个**操作入口**保留（它们不是"显示"），名城仍只标注不可迁。
+           两钮都走唯一出口 GAME.canCityMoveTo。 */
         '<span class="val" style="font-weight:400;color:var(--text-dim);">' +
-          '500×500 · ' + GAME.coordText(c) + ' · 官府Lv' + (GAME.buildingLevel(c, 'guanfu') || 1) +
           (GAME.isMovableCity(c)
-            ? ' <button class="btn sm" data-action="city-random" title="一键随机：迁到一处空闲平原">🎲</button>' +
+            ? '<button class="btn sm" data-action="city-random" title="一键随机：迁到一处空闲平原">🎲</button>' +
               '<button class="btn sm" data-action="city-move-ask" title="坐标切换：输入坐标迁址">📍</button>'
-            : ' <span style="opacity:.7">名城固定</span>') +
+            : '<span style="opacity:.7">名城固定</span>') +
         '</span></div>' +
       /* v26（需求 3）：天时已移到顶栏 —— 它是全局信息，不该占城池属性的位置 */
       /* v28（需求 3）：民心与民怨合并成一行「xx / xx」——
@@ -1033,7 +1041,8 @@
       ' style="border-bottom:1px solid var(--sep-gold);padding-bottom:4px;margin-bottom:3px;">' +
       '<span class="lbl">本城</span>' +
       '<span class="val" style="color:var(--gold-light);font-weight:700;">' +
-        ui.cityLabelHTML(c) + '</span></div>';
+        /* v71（老板）：只显示城池命名 —— 本城表头同走短名 */
+        ui.cityLabelHTML(c, true) + '</span></div>';
     ['grain', 'wood', 'stone', 'iron', 'gold'].forEach(function (k) {
       var meta = null;
       DATA.RESOURCES.forEach(function (r) { if (r.key === k) meta = r; });
