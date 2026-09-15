@@ -892,7 +892,9 @@
        窄处（侧栏）传 short=true 走**短名**：城名 + 档位标，与 GAME.cityLabel 同规则；
        全称仍供统计表格 / 出征目标等需要"这是哪一州的城"的地方使用。 */
     var name = short ? U.escape(c.name) : U.escape(GAME.cityFullName(c));
-    return name + (tn ? '<span class="city-tier">[' + tn + ']</span>' : '');
+    /* v79（老板）：「主城名称后有【主城】标识」—— 全站走这一个出口 */
+    var mt = (GAME.isMainCity && GAME.isMainCity(c)) ? '<span class="city-tier mt">主城</span>' : '';
+    return name + (tn ? '<span class="city-tier">[' + tn + ']</span>' : '') + mt;
   };
 
   /* ② 城池属性栏：民心/民怨/税率/黄金/人口 */
@@ -915,7 +917,9 @@
       '<select class="city-select" data-action="switch-city" title="切换当前经营的城池">' +
       s.cities.map(function (x) {
         return '<option value="' + x.id + '"' + (x.id === c.id ? ' selected' : '') + '>' +
-          U.escape(GAME.cityFullName(x)) + ' ' + U.escape(GAME.coordText(x)) + '</option>';
+          U.escape(GAME.cityFullName(x))
+          + ((GAME.isMainCity && GAME.isMainCity(x)) ? '【主城】' : '')
+          + ' ' + U.escape(GAME.coordText(x)) + '</option>';
       }).join('') +
       '</select></div>';
     /* v53（老板："点出来列表马上收回去了"）：**城池清单必须与每秒重绘解耦**。
@@ -931,7 +935,7 @@
        改名、迁址后下一帧即刷新；否则下拉框会停在旧文案上。 */
     var sig = (s.cities || []).map(function (x) {
       return x.id + ':' + (x.name || '') + ':' + x.x + ',' + x.y;
-    }).join(',') + '|' + c.id;
+    }).join(',') + '|' + c.id + '|' + (s.mainCityId || '');   /* v79：主城变更也要刷新 */
     if (host) {
       if (ui._citySwSig !== sig) {         /* 没变 → 一个字节都不碰这个 select */
         ui._citySwSig = sig;
@@ -1421,24 +1425,25 @@
     return cells.map(function (c) { return { sec: sec, secHTML: secHTML, cell: c }; });
   };
 
-  /* ---------- 装备页 ---------- */
+  /* ---------- 装备页（v79：按**件**列格 —— 同名以 甲/乙/丙 序号 + 强化 +N 区分） ---------- */
   ui.bagEquipHTML = function (sort) {
-    var s = GAME.state, inv = s.inventory || [];
+    var s = GAME.state;
+    var inv = (s.inventory || []).filter(function (x) { return !!DATA.EQUIP[GAME.eqId(x)]; });
     if (!inv.length) return '<div class="q-empty">背包暂无装备。点城内「铁匠铺」打造，或攻占城池缴获。</div>';
-    /* 按 id 归并计数，同时标记是否已穿 */
-    var seen = {}, worn = {};
-    inv.forEach(function (id) { seen[id] = (seen[id] || 0) + 1; });
+    /* 已穿戴件号（角标/提示用） */
+    var wornByU = {};
     s.generals.forEach(function (g) {
-      for (var sl in (g.equip || {})) worn[g.equip[sl]] = g.name;
+      for (var sl in (g.equip || {})) {
+        var u = GAME.eqUidOf(g.equip[sl]);
+        if (u != null) wornByU[u] = g.name;
+      }
     });
-    var ids = Object.keys(seen);
-    /* 分组 */
+    /* 分组（按部位 / 按套装）—— 组内按件排 */
     var groups = {};
-    ids.forEach(function (id) {
-      var it = DATA.EQUIP[id];
-      if (!it) return;
+    inv.forEach(function (inst) {
+      var it = DATA.EQUIP[GAME.eqId(inst)];
       var key = (sort === 'set') ? (it.set ? ('set:' + it.set) : 'solo') : it.slot;
-      (groups[key] = groups[key] || []).push(id);
+      (groups[key] = groups[key] || []).push(inst);
     });
     var keys = Object.keys(groups);
     if (sort === 'slot') {
@@ -1449,29 +1454,33 @@
     var rows = [];
     keys.forEach(function (k) {
       var arr = groups[k];
-      arr.sort(function (x, y) { return ui.bagCmp('equip', sort, x, y); });
+      arr.sort(function (x, y) {
+        return ui.bagCmp('equip', sort, GAME.eqId(x), GAME.eqId(y))
+          || (GAME.eqEnhOf(y) - GAME.eqEnhOf(x));
+      });
       var title, sub;
       if (k.indexOf('set:') === 0) {
         var sn = DATA.SETS[k.slice(4)];
         title = (sn ? sn.name : k.slice(4)) + ' 套件';
-        sub = arr.length + ' 种';
+        sub = arr.length + ' 件';
       } else if (k === 'solo') {
-        title = '散件（无套装）'; sub = arr.length + ' 种';
+        title = '散件（无套装）'; sub = arr.length + ' 件';
       } else {
-        title = (DATA.EQUIP_SLOT_NAMES[k] || k); sub = arr.length + ' 种';
+        title = (DATA.EQUIP_SLOT_NAMES[k] || k); sub = arr.length + ' 件';
       }
-      var cells = arr.map(function (id) {
-        var it = DATA.EQUIP[id];
+      var cells = arr.map(function (inst) {
+        var id = GAME.eqId(inst), it = DATA.EQUIP[id];
         var setNm = it.set && DATA.SETS[it.set] ? DATA.SETS[it.set].name : '';
+        var u = GAME.eqUidOf(inst);
         return ui.bagCell({
           cls: 'q' + it.q, ico: GAME.icons.forEquip ? GAME.icons.forEquip(it.slot) : (DATA.EQUIP_SLOT_ICON[it.slot] || ''),
-          name: it.name, cnt: seen[id] > 1 ? seen[id] : '',
-          q: it.q, worn: worn[id] || '',
-          title: it.name + (setNm ? '（' + setNm + '）' : ''),
+          name: GAME.eqLabel(inst),
+          q: it.q, worn: wornByU[u] || '',
+          title: GAME.eqLabel(inst) + (setNm ? '（' + setNm + '）' : ''),
           lore: (DATA.EQUIP_SLOT_NAMES[it.slot] || it.slot) + ' · ' + (DATA.Q_NAME[it.q] || '')
             + ' · 估值 ' + U.fmt(GAME.itemValue(id)),
           attr: GAME.equipDesc(it),
-          act: 'open-bag-equip', key: id,
+          act: 'open-bag-equip', key: (u != null ? u : id),
         });
       });
       rows = rows.concat(ui.bagRows(
@@ -1633,19 +1642,23 @@
       '</div>';
   };
 
-  /* 装备详情（点背包格子） */
-  ui.openEquipDetail = function (itemId) {
+  /* 装备详情（点背包格子）—— v79：**单件视角**。
+     ref 可以是 件号（实例）/ 装备 id（旧入口兼容，取第一件）。 */
+  ui.openEquipDetail = function (ref) {
+    var inst = GAME.eqFind(ref);
+    var itemId = inst ? GAME.eqId(inst) : ref;
     var it = DATA.EQUIP[itemId];
     if (!it) { ui.toast('无此装备'); return; }
+    var lv = GAME.eqEnhOf(inst), sn = inst ? GAME.eqSerial(inst) : '';
+    var label = it.name + (lv ? ' +' + lv : '') + (sn ? '·' + sn : '');
     var setNm = it.set && DATA.SETS[it.set] ? DATA.SETS[it.set].name : null;
-    var html = '<div class="gold-heading">' + it.name + (setNm ? ' · ' + setNm : '') + '</div>';
+    var html = '<div class="gold-heading">' + U.escape(label) + (setNm ? ' · ' + setNm : '') + '</div>';
     html += '<div class="attr"><span class="k">部位</span><span class="v">' + (DATA.EQUIP_SLOT_NAMES[it.slot] || it.slot) + '</span></div>';
     html += '<div class="attr"><span class="k">品质</span><span class="v">' + (DATA.Q_NAME[it.q] || "") + ' ' + '★'.repeat(it.q) + '</span></div>';
-    /* v77：百炼强化等级（同种共享）——装备详情一眼可见 */
-    var eLv77 = GAME.enhOf ? GAME.enhOf(itemId) : 0;
-    if (eLv77) {
-      html += '<div class="attr"><span class="k">百炼</span><span class="v good">+' + eLv77 +
-        '（装备属性 +' + Math.round(eLv77 * ((DATA.ENHANCE || {}).perLv || 0.08) * 100) + '%）</span></div>';
+    /* v79：百炼等级**按件** —— 这一件自己升到几级就显示几级 */
+    if (lv) {
+      html += '<div class="attr"><span class="k">百炼</span><span class="v good">+' + lv +
+        '（装备属性 +' + Math.round(lv * ((DATA.ENHANCE || {}).perLv || 0.08) * 100) + '%，仅此件）</span></div>';
     }
     html += '<div class="attr"><span class="k">属性</span><span class="v good">' + GAME.equipDesc(it) + '</span></div>';
     if (setNm) {
@@ -1656,16 +1669,29 @@
     }
     html += '<div class="attr"><span class="k">估值</span><span class="v">' + U.fmt(GAME.itemValue(itemId)) + ' 金</span></div>';
     var s = GAME.state, inv = s.inventory || [];
-    var have = inv.filter(function (x) { return x === itemId; }).length;
+    var group = GAME.eqGroupOf(itemId);
+    var inInv = inst ? (inv.indexOf(inst) >= 0) : false;
     var wornBy = null;
-    s.generals.forEach(function (g) { if ((g.equip || {})[it.slot] === itemId) wornBy = g.name; });
-    if (have > 0) {
-      html += '<div class="attr"><span class="k">持有</span><span class="v">' + have + ' 件' + (wornBy ? '（' + U.escape(wornBy) + ' 已穿）' : '') + '</span></div>';
-      /* v78（老板需求 3）：「装备不要『穿给谁』这种」—— 名单式穿戴整块撤除；
-         穿戴统一在**将领侧**完成：将领档案点部位换装（openEqSlot），或「装备」页选将后点装备。
-         装备详情只留信息 / 强化 / 拆解（两个出口合一，界面不再重复一套选人逻辑）。 */
-      html += '<div class="note" style="margin-top:8px;">穿戴：到「将领」面板点对应部位换装（或「装备」页选将后点装备）。</div>';
-      /* 拆解 */
+    s.generals.forEach(function (g) {
+      for (var sl in (g.equip || {})) {
+        var v = g.equip[sl];
+        var hit = inst ? (v === inst) : (GAME.eqId(v) === itemId);
+        if (hit) wornBy = wornBy || g.name;
+      }
+    });
+    var gIdx = '';
+    if (sn && group.length > 1) {
+      var gi = -1;
+      for (var q = 0; q < group.length; q++) if (GAME.eqUidOf(group[q]) === GAME.eqUidOf(inst)) { gi = q + 1; break; }
+      gIdx = '（同种第 ' + gi + ' / ' + group.length + ' 件）';
+    }
+    html += '<div class="attr"><span class="k">持有</span><span class="v">' + group.length + ' 件' + gIdx +
+      (wornBy ? '（' + U.escape(wornBy) + ' 已穿）' : '') + '</span></div>';
+    /* v78（老板需求 3）：「装备不要『穿给谁』这种」—— 名单式穿戴整块撤除；
+       穿戴统一在**将领侧**完成：将领档案点部位换装（openEqSlot），或「装备」页选将后点装备。 */
+    html += '<div class="note" style="margin-top:8px;">穿戴：到「将领」面板点对应部位换装（或「装备」页选将后点装备）。</div>';
+    if (inInv) {
+      var key = GAME.eqUidOf(inst) != null ? GAME.eqUidOf(inst) : itemId;
       var mats = GAME.forgeMaterials(itemId), mtx = [];
       for (var mk in mats) {
         mtx.push((DATA.MATERIAL_BY_ID[mk] ? DATA.MATERIAL_BY_ID[mk].name : mk)
@@ -1674,9 +1700,11 @@
       html += '<div class="note" style="margin-top:12px;">拆解可回收 40% 打造材料：' + mtx.join('、') + '</div>';
       html += '<div style="text-align:center;margin-top:10px;">' +
         '<button class="btn sm gold" data-action="open-enhance" style="margin-right:6px;">⚒ 前往铁匠铺强化</button>' +
-        '<button class="btn red" data-action="salvage-equip" data-key="' + itemId + '">拆解回收</button></div>';
+        '<button class="btn red" data-action="salvage-equip" data-key="' + key + '">拆解回收</button></div>';
+    } else if (inst) {
+      html += '<div class="note">此件正穿在 ' + U.escape(wornBy || '将领') + ' 身上。可在「将领」面板卸下（强化等级随件保留）。</div>';
     } else {
-      html += '<div class="note">此件不在背包中（可能正穿在将领身上）。可在「将领」面板卸下。</div>';
+      html += '<div class="note">尚未拥有此装备（先打造或缴获）。</div>';
     }
     html += '<div class="panel-foot"><button class="btn" data-action="close-modal">关闭</button></div>';
     ui.openModal(html);
@@ -1833,7 +1861,8 @@
           (s.cities.length
             ? s.cities.map(function (c2) {
                 return '<div class="lord-city' + (c2.id === curCity.id ? ' cur' : '') + '">' +
-                  '<span class="ls-nm">🏯 ' + U.escape(c2.name) + '</span>' +
+                  '<span class="ls-nm">🏯 ' + U.escape(c2.name) +
+                    (GAME.isMainCity(c2) ? ' <span class="city-tier mt">主城</span>' : '') + '</span>' +
                   '<span class="ls-meta">' + (DATA.CITY_TIER[c2.type] || '自建城') +
                     ' · [' + c2.x + ',' + c2.y + '] · 人口上限 ' + U.fmt(GAME.maxPopOf(c2)) + '</span>' +
                   '<button class="btn sm gold" data-action="lord-city-enter" data-city="' + c2.id + '">进入</button>' +
@@ -1852,6 +1881,19 @@
                   U.escape(condTitle) + '">晋升：' + next.name + '</button>'
               : '<span style="color:var(--gold-light);">已登顶</span>') +
             '</td></tr>' +
+          /* v79（老板）：爵位加成 / 主城 / 神器 —— 三条新系统的入口与现况 */
+          '<tr><td class="k">爵位加成</td><td style="color:var(--green-ok);">' + GAME.rankBonusText() + '</td></tr>' +
+          '<tr><td class="k">主城</td><td>' + (function () {
+            var mc = GAME.mainCityOf();
+            return mc
+              ? ('🏯 ' + U.escape(mc.name) + ' <span class="ui-sub">（' + (DATA.CITY_TIER[mc.type] || '自建城') + ' · 驻跸加成中）</span>')
+              : '<span class="ui-sub">未设 —— 到目标城的官府点「设为主城」</span>';
+          })() + '</td></tr>' +
+          '<tr><td class="k">神器</td><td>供奉 ' + U.fmt(GAME.artPts()) + '　' +
+            (DATA.ARTIFACTS || []).map(function (a) {
+              return a.icon + a.name.slice(0, 2) + ' Lv' + GAME.artLevelOf(a.id);
+            }).join(' · ') +
+            '　<button class="btn sm gold" data-action="open-artifacts">查看</button></td></tr>' +
           '<tr><td class="k">声望</td><td style="color:var(--green-ok);">' + U.fmt(s.rep) + '</td></tr>' +
           '<tr><td class="k">人口总和</td><td>' + U.fmt(popNow) + ' / ' + U.fmt(totalPop) + '</td></tr>' +
           '<tr><td class="k">将领总和</td><td>' + s.generals.length + '（名将 ' + heroCount + '）</td></tr>' +
@@ -1864,6 +1906,51 @@
       '</div>',
       foot: '<div class="m-foot"><button class="btn" data-action="close-modal">关闭</button></div>'
     });
+  };
+
+    /* ============================================================
+   * 神器面板（v79 · 老板「神器加成（养成，主要依靠游戏时长和特殊活动逐渐提升），
+   * 神器界面在君主菜单中」）
+   * ------------------------------------------------------------
+   * 三件神器**共用一池供奉值**（s.artifacts.pts）：
+   *   · 游戏时长（主要）—— 主循环与离线补算各推一次（GAME.artTick）
+   *   · 特殊活动（加速）—— 攻占城池 / 爵位晋升大额入账（GAME.artGain）
+   * 等级 = 供奉值翻过的门槛数（DATA.ARTIFACT.pts）；加成走 GAME.artifactBonusNum。
+   * ============================================================ */
+  ui.openArtifacts = function () {
+    var pts = GAME.artPts();
+    var A = DATA.ARTIFACT || {};
+    var maxLv = A.maxLv || 10;
+    var lv = GAME.artLevelOf();
+    var next = lv < maxLv ? (A.pts || [])[lv] : null;
+    var pct = next ? Math.min(100, Math.floor(pts / next * 100)) : 100;
+    var rows = (DATA.ARTIFACTS || []).map(function (a) {
+      var l = GAME.artLevelOf(a.id);
+      return '<div class="art-row">' +
+        '<div class="art-ic">' + a.icon + '</div>' +
+        '<div class="art-main">' +
+          '<div class="art-nm">' + U.escape(a.name) + ' <span class="art-lv">Lv' + l + '</span>' +
+            ' <span class="ui-sub">' + U.escape(a.theme || '') + '</span></div>' +
+          '<div class="ui-sub">' + U.escape(a.desc || '') + '</div>' +
+          '<div class="ui-sub" style="color:var(--gold-light);">现效力：' + GAME.artEffText(a, l) + '</div>' +
+        '</div>' +
+        '<div class="art-side">满级 Lv' + maxLv + '</div>' +
+        '</div>';
+    }).join('');
+    var srcLine = '供奉来源：游戏时长 +' + (A.perGameHour || 0) + '/游戏小时（主）　·　攻占城池 '
+      + '（县 ' + ((A.capturePts || {}).county || 0) + ' / 郡 ' + ((A.capturePts || {}).jun || 0)
+      + ' / 州 ' + ((A.capturePts || {}).zhou || 0) + ' / 都城 ' + ((A.capturePts || {}).capital || 0)
+      + '）　·　爵位晋升 +' + (A.promotePts || 0);
+    ui.openModal('<div class="gold-heading">🏺 神器 · 供奉值 ' + U.fmt(pts) + '</div>' +
+      '<div class="ui-sub" style="text-align:center;">' + srcLine + '</div>' +
+      '<div class="pbar" style="margin:8px 0 2px;"><i style="width:' + pct + '%;"></i></div>' +
+      '<div class="ui-sub" style="text-align:center;">' +
+        (next ? ('距 Lv' + (lv + 1) + '：' + U.fmt(pts) + ' / ' + U.fmt(next)) : '已至最高 Lv' + lv) +
+      '</div>' +
+      rows +
+      '<div class="note">三件神器共用一池供奉值，随游戏时间自动积累（离线同口径），攻占城池与爵位晋升可大额加速。</div>' +
+      '<div class="modal-foot"><button class="btn" data-action="close-modal">关闭</button></div>',
+      { size: 'xl' });
   };
 
     /* ============================================================
@@ -2387,28 +2474,30 @@
       });
       return;
     }
-    var ids = GAME.enhList();
+    var list = GAME.enhList();
     var perLv = Math.round(((DATA.ENHANCE || {}).perLv || 0.08) * 100);
-    var rows = ids.map(function (id) {
-      var it = DATA.EQUIP[id], lv = GAME.enhOf(id), max = GAME.enhMax();
-      var cost = lv < max ? GAME.enhCost(id) : null;
+    var rows = list.map(function (inst) {
+      var id = GAME.eqId(inst);
+      var it = DATA.EQUIP[id], lv = GAME.enhOf(inst), max = GAME.enhMax();
+      var cost = lv < max ? GAME.enhCost(inst) : null;
       var okA = cost ? GAME.canAfford(cost) : false;
+      var key = GAME.eqUidOf(inst) != null ? GAME.eqUidOf(inst) : id;
       return '<div class="enh-row">' +
         '<span class="enh-art">' + ui.itemArt('equip', id, it.q) + '</span>' +
-        '<span class="enh-nm">' + U.escape(it.name) +
+        '<span class="enh-nm">' + U.escape(GAME.eqLabel(inst)) +
           (it.set && DATA.SETS[it.set] ? ' <span class="ui-sub">（' + U.escape(DATA.SETS[it.set].name) + '）</span>' : '') +
           '<span class="enh-tag">+' + lv + '</span>' +
           '<div class="enh-cost">' + (cost ? ('下一级 ' + GAME.costString(cost)) : ('已至 +' + max + '（满级）')) +
-            '　<span class="ui-sub">每级全属性 +' + perLv + '%（同种装备共享）</span></div></span>' +
+            '　<span class="ui-sub">每级全属性 +' + perLv + '%（按件记，同名各升各的）</span></div></span>' +
         (cost
-          ? '<button class="btn sm' + (okA ? ' gold' : '') + '" data-action="enhance-item" data-item="' + id + '"' +
+          ? '<button class="btn sm' + (okA ? ' gold' : '') + '" data-action="enhance-item" data-item="' + key + '"' +
               (okA ? '' : ' disabled') + '>强化 +' + (lv + 1) + '</button>'
           : '<span class="op-done">满级</span>') +
         '</div>';
     }).join('') || '<div class="q-empty">背包与穿戴中还没有可强化的装备（先在左侧打造几件）。</div>';
     ui.openShell({
       title: '⚒ 百炼强化',
-      sub: '同种装备共享强化等级（新打造的继承）　满级 +' + GAME.enhMax() + '　黄金 ' + U.numText(GAME.state.res.gold || 0, 0),
+      sub: '**按件**强化（同名以 甲/乙/丙 区分）　满级 +' + GAME.enhMax() + '　黄金 ' + U.numText(GAME.state.res.gold || 0, 0),
       size: 'lg',
       body: '<div class="enh-list">' + rows + '</div>',
       foot: '<div class="m-foot"><button class="btn" data-action="close-modal">关闭</button></div>'
@@ -3538,6 +3627,15 @@
        现在紧贴"本城"这一行，开面板即见。 */
     /* v65（老板"按建议执行"）：官府面板要装得进弹窗 ——
        head 的"附属野地上限 / 城外空地"合成一行（省 30px）。 */
+    /* v79（老板）：「每人可有 1 个主城，在官府界面中设置，主城名称后有【主城】标识」 */
+    var mainBtn = GAME.isMainCity(c)
+      ? ' <span class="city-tier mt">主城</span>'
+      : ' <button class="btn sm" data-action="set-main-city" title="' +
+          U.escape('主城吃驻跸加成：' + (DATA.MAIN_CITY.desc || '').replace('君主驻跸：', '')
+            + (GAME.mainCityOf()
+                ? '　（迁都需 ' + U.fmt(((DATA.MAIN_CITY || {}).moveCost || {}).gold || 0) + ' 金）'
+                : '　（首设免费）')) +
+        '">设为主城</button>';
     var head = '<div class="gold-heading">🏯 官府 · Lv' + lv + '</div>' +
       '<div class="attr"><span class="k">附属野地 / 城外空地</span><span class="v">' +
         lv + ' 处 / ' + GAME.extCap(c) + ' 块</span></div>' +
@@ -3546,7 +3644,7 @@
         ' <button class="btn sm' + (rn.ok ? '' : ' dim') + '" data-action="open-rename-city"' +
         (rn.ok ? '' : ' disabled') + ' title="' +
         U.escape(rn.ok ? '改名会同步到地图 / 侧栏 / 统计 / 战报抬头等所有引用处' : rn.msg) +
-        '">✎ 重命名</button>' +
+        '">✎ 重命名</button>' + mainBtn +
         '<span class="cs-orig">' +
           (rn.ok
             ? (c.origName && c.origName !== c.name ? '原名 ' + U.escape(c.origName) : '原名即今名，可随意改')
@@ -4259,7 +4357,7 @@
     html += '</div><div class="gp-col-r">';
     var inv = {};
     (s.inventory || []).forEach(function (x) {
-      var e = DATA.EQUIP[x]; if (e) inv[e.slot] = (inv[e.slot] || 0) + 1;
+      var e = DATA.EQUIP[GAME.eqId(x)]; if (e) inv[e.slot] = (inv[e.slot] || 0) + 1;
     });
     /* 「装备贡献」= 带装属性 − 裸装属性：同一套取值口，不多算一处。
        v60（需求 1/2）：老板要求「装备栏右侧有重复的总属性…右侧把装备提供的属性
@@ -4693,10 +4791,10 @@
       ' data-action="eq-slot" data-gen="' + genId + '" data-slot="' + slot + '" data-tip-el="1">' +
       '<span class="eq-slotname">' + slotName + '</span>' +
       '<span class="eq-ico">' + (GAME.icons.forEquip ? GAME.icons.forEquip(slot) : '') + '</span>' +
-      '<span class="eq-name' + (it ? '' : ' none') + '">' + (it ? U.escape(it.name) : '未着') + '</span>' +
+      '<span class="eq-name' + (it ? '' : ' none') + '">' + (id ? U.escape(GAME.eqLabel(id)) : '未着') + '</span>' +
       (invN ? '<span class="eq-inv">+' + invN + '</span>' : '') +
       /* 悬停走全站唯一的 #tip-layer（v37）—— 不在这里自己绝对定位 */
-      '<span class="eq-slot-tip tip-src"><div class="tip-t">' + slotName + (it ? ' · ' + U.escape(it.name) : '') + '</div>' +
+      '<span class="eq-slot-tip tip-src"><div class="tip-t">' + slotName + (it ? ' · ' + U.escape(GAME.eqLabel(id)) : '') + '</div>' +
         '<div class="tip-l">' + (it ? U.escape(GAME.equipDesc(it) || '') : '该部位未着，点击选择') + '</div>' +
         (setNm ? '<div class="tip-a">' + setNm + ' 套装件</div>' : '') +
         (invN ? '<div class="tip-a">背包另有 ' + invN + ' 件可换</div>' : '') +
@@ -4798,35 +4896,38 @@
     var s = GAME.state, g = null;
     s.generals.forEach(function (x) { if (x.id === genId) g = x; });
     if (!g) { ui.toast('将领不存在'); return; }
-    var curId = (g.equip || {})[slot];
-    var cur = curId ? DATA.EQUIP[curId] : null;
-    var cand = (s.inventory || []).filter(function (x) { return DATA.EQUIP[x] && DATA.EQUIP[x].slot === slot; });
-    /* 去重计数 */
-    var seen = {};
-    cand.forEach(function (id) { seen[id] = (seen[id] || 0) + 1; });
-    var ids = Object.keys(seen).sort(function (x, y) {
-      return GAME.systems.equipScore(DATA.EQUIP[y]) - GAME.systems.equipScore(DATA.EQUIP[x]);
+    var curInst = (g.equip || {})[slot];
+    var cur = curInst ? DATA.EQUIP[GAME.eqId(curInst)] : null;
+    var cand = (s.inventory || []).filter(function (x) {
+      var it = DATA.EQUIP[GAME.eqId(x)];
+      return it && it.slot === slot;
+    });
+    /* v79：候选是一次**件**（同名各列各的，带 +N 与 甲/乙/丙 序号） */
+    cand.sort(function (x, y) {
+      var ix = DATA.EQUIP[GAME.eqId(x)], iy = DATA.EQUIP[GAME.eqId(y)];
+      return (GAME.systems.equipScore(iy) - GAME.systems.equipScore(ix)) || (GAME.eqEnhOf(y) - GAME.eqEnhOf(x));
     });
     var html = '<div class="gold-heading">' + (DATA.EQUIP_SLOT_NAMES[slot] || slot) + ' · 更换</div>';
     html += '<div class="attr"><span class="k">当前</span><span class="v' + (cur ? ' good' : '') + '">'
-      + (cur ? U.escape(cur.name) + '（' + U.escape(GAME.equipDesc(cur)) + '）' : '未着') + '</span></div>';
+      + (cur ? U.escape(GAME.eqLabel(curInst)) + '（' + U.escape(GAME.equipDesc(cur)) + '）' : '未着') + '</span></div>';
     if (cur) {
       html += '<div style="text-align:center;margin:8px 0;"><button class="btn red" data-action="gen-unequip" data-gen="' + genId + '" data-slot="' + slot + '">卸下当前</button></div>';
     }
-    if (!ids.length) {
+    if (!cand.length) {
       html += '<div class="note">背包中没有该部位的装备。</div>';
     } else {
-      html += '<div class="bag-sec">背包可选 <span class="n">' + ids.length + ' 种</span></div>';
-      html += '<div class="bag-grid">' + ids.map(function (id) {
-        var it = DATA.EQUIP[id];
+      html += '<div class="bag-sec">背包可选 <span class="n">' + cand.length + ' 件</span></div>';
+      html += '<div class="bag-grid">' + cand.map(function (inst) {
+        var id = GAME.eqId(inst), it = DATA.EQUIP[id];
         var better = !cur || GAME.systems.equipScore(it) > GAME.systems.equipScore(cur);
+        var key = GAME.eqUidOf(inst) != null ? GAME.eqUidOf(inst) : id;
         return ui.bagCell({
           cls: 'q' + it.q, ico: GAME.icons.forEquip ? GAME.icons.forEquip(it.slot) : '',
-          name: it.name, cnt: seen[id] > 1 ? seen[id] : '', q: it.q,
-          title: it.name + (better ? '（优于当前）' : ''),
+          name: GAME.eqLabel(inst), q: it.q,
+          title: GAME.eqLabel(inst) + (better ? '（优于当前）' : ''),
           lore: (DATA.Q_NAME[it.q] || '') + ' · 估值 ' + U.fmt(GAME.itemValue(id)),
           attr: GAME.equipDesc(it),
-          act: 'gen-equip-item', key: id, gen: genId,
+          act: 'gen-equip-item', key: key, gen: genId,
         });
       }).join('') + '</div>';
     }
@@ -4855,21 +4956,22 @@
       perm: g.perm || {}, equip: {},
     });
     var slotRows = DATA.EQUIP_SLOTS.map(function (slot) {
-      var itemId = g.equip[slot];
-      var item = itemId ? DATA.EQUIP[itemId] : null;
+      var inst = g.equip[slot];
+      var item = inst ? DATA.EQUIP[GAME.eqId(inst)] : null;
       return '<div class="res-line"><span class="lbl">' + (DATA.EQUIP_SLOT_NAMES[slot] || slot) + '</span>' +
-        '<span class="val">' + (item ? item.name + (item.set ? ' <span style="color:var(--hero-tag);">[' + (DATA.SETS[item.set] ? DATA.SETS[item.set].name : item.set) + ']</span>' : '') +
+        '<span class="val">' + (item ? U.escape(GAME.eqLabel(inst)) + (item.set ? ' <span style="color:var(--hero-tag);">[' + (DATA.SETS[item.set] ? DATA.SETS[item.set].name : item.set) + ']</span>' : '') +
         (item.slot === 'weapon' && item.atk ? ' 攻' + item.atk : '') + (item.spd ? ' 速' + item.spd : '') : '—') + '</span>' +
         (item ? '<button class="btn sm red" data-action="unequip-item" data-gen="' + g.id + '" data-slot="' + slot + '" style="margin-left:6px;">卸</button>' : '') + '</div>';
     }).join('');
     /* v19：装备背包会随攻城/打造不断增长 → 接分页（每页 10） */
-    var invAll = (s.inventory || []).filter(function (itemId) { return !!DATA.EQUIP[itemId]; });
+    var invAll = (s.inventory || []).filter(function (x) { return !!DATA.EQUIP[GAME.eqId(x)]; });
     var pgE = ui.pageOf('equip', invAll.length, 10);
-    var inv = invAll.slice(pgE.from, pgE.to).map(function (itemId, i) {
-      var item = DATA.EQUIP[itemId];
+    var inv = invAll.slice(pgE.from, pgE.to).map(function (inst, i) {
+      var item = DATA.EQUIP[GAME.eqId(inst)];
       if (!item) return '';
-      return '<div class="troop-card" style="cursor:pointer;" data-action="equip-item" data-gen="' + g.id + '" data-item="' + itemId + '">' +
-        '<div class="tname">' + item.name + '</div>' +
+      var key = GAME.eqUidOf(inst) != null ? GAME.eqUidOf(inst) : GAME.eqId(inst);
+      return '<div class="troop-card" style="cursor:pointer;" data-action="equip-item" data-gen="' + g.id + '" data-item="' + key + '">' +
+        '<div class="tname">' + U.escape(GAME.eqLabel(inst)) + '</div>' +
         '<div class="tstat">' + (DATA.EQUIP_SLOT_NAMES[item.slot] || item.slot) + (item.set ? ' · ' + (DATA.SETS[item.set] ? DATA.SETS[item.set].name : item.set) : '') + '</div>' +
         '<div class="tstat">' + GAME.equipDesc(item) + '</div></div>';
     }).join('') || '<div style="color:var(--text-dim);font-size:var(--fs-sub);text-align:center;padding:10px;">背包暂无装备（占领名城/任务可获得）</div>';
@@ -4990,7 +5092,8 @@
         '<td class="num">' + U.fmt(r.gold) + '</td>' +
         '<td style="font-size:var(--fs-sub);">' + jewelStr + '</td>' +
         '<td class="num">' + U.fmt(r.salary) + '/h</td>' +
-        '<td class="num">' + U.fmt(r.shiyi) + '</td></tr>';
+        /* v79（老板「爵位加成」）：食邑列（一直是死数据）退役，改列真实加成 */
+        '<td style="font-size:var(--fs-sub);">' + GAME.rankBonusText(i) + '</td></tr>';
     }).join('');
     var promoteBtn = next ? '<button class="btn gold lg" data-action="promote"' + (chk && chk.ok ? '' : ' disabled') + '>晋升：' + next.name + '</button>' : '<div style="color:var(--gold-light);">已登顶「裂土封王」</div>';
     return '<div class="ui-page">' +
@@ -5002,7 +5105,8 @@
         '<div class="res-line"><span class="lbl">黄金</span><span class="val" style="color:' + ((s.res.gold || 0) >= next.gold ? 'var(--green-ok)' : 'inherit') + ';">' + U.fmt(s.res.gold || 0) + '/' + U.fmt(next.gold) + '</span></div>' +
         (chk && chk.msg && !chk.ok ? '<div style="color:var(--red-light);font-size:var(--fs-sub);margin-top:6px;">' + chk.msg + '</div>' : '') +
         '<div style="text-align:center;margin-top:12px;">' + promoteBtn + '</div></div>' : '') +
-      '<table class="tbl"><thead><tr><th>爵位</th><th>城池</th><th>声望</th><th>黄金</th><th>珠宝需求</th><th>俸禄</th><th>食邑</th></tr></thead><tbody>' + rows + '</tbody></table>' +
+      '<table class="tbl"><thead><tr><th>爵位</th><th>城池</th><th>声望</th><th>黄金</th><th>珠宝需求</th><th>俸禄</th><th>加成</th></tr></thead><tbody>' + rows + '</tbody></table>' +
+      '<div class="note">加成说明：产 = 全境产量 · 税 = 税收 · 储 = 仓储 · 造 = 同时建造 · 野 = 附属野地上限 · 席 = 每城将领席位。</div>' +
       '</div>';
   };
 

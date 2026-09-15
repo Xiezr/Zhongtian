@@ -1297,7 +1297,9 @@ async function runTests(dom, URL) {
     document.querySelector('#modal-root').innerHTML.length + ' 字符');
 
   /* ⑤ 背包：每行 5 格 + 悬停属性 */
-  G.state.inventory.push('cr_head_1', 'cr_head_1', 'cr_weapon_2', 'yt_sword', 'jueying', 'cr_arm_1');
+  /* v79：同名两件走 addEquip（实例）—— 序号（甲/乙）即"区分办法" */
+  G.addEquip('cr_head_1'); G.addEquip('cr_head_1');
+  G.state.inventory.push('cr_weapon_2', 'yt_sword', 'jueying', 'cr_arm_1');
   DATA.MATERIAL_IDS.forEach((m) => { G.state.items[m] = (G.state.items[m] || 0) + 9; });
   G.ui.openBag('equip');
   await sleep(80);
@@ -1309,8 +1311,9 @@ async function runTests(dom, URL) {
   const grid21 = bagH.querySelector('.bag-grid');
   check('网格为 5 列（CSS 声明）', !!grid21 && /repeat\(5, 1fr\)/.test(document.querySelector('style') ? document.documentElement.innerHTML : ''),
     grid21 ? grid21.className : 'n/a');
-  check('重复装备显示数量角标', /class="bag-cnt">×\d+/.test(bagH.innerHTML),
-    (bagH.innerHTML.match(/class="bag-cnt">(×\d+)/) || [,'无'])[1]);
+  check('v79：同名装备以序号区分（甲/乙 入名，替代数量角标）',
+    /·甲/.test(bagH.innerHTML) && /·乙/.test(bagH.innerHTML),
+    (bagH.innerHTML.match(/·[甲乙丙丁]/g) || []).join(' '));
   /* 材料页签 */
   click(bagH.querySelector('[data-action="bag-tab"][data-v="mat"]'));
   await sleep(80);
@@ -3993,6 +3996,68 @@ if (svBtn) {
       G.ui.closeModal();
       await sleep(80);
     }
+  }
+
+  /* ============================================================
+   * v79（老板四条）：爵位加成 / 主城 / 神器 / 装备单件化 —— 真实 DOM 走一遍
+   * ============================================================ */
+  console.log('\n--- v79. 爵位加成 · 主城 · 神器 · 单件强化（真实 DOM） ---');
+  {
+    /* ② 主城：官府里设 → 标识出现 */
+    const c79 = G.currentCity();
+    G.state.mainCityId = null;
+    G.ui.openGuanfu();
+    await sleep(150);
+    const setBtn79 = document.querySelector('#modal-root [data-action="set-main-city"]');
+    check('v79：官府有「设为主城」入口', !!setBtn79);
+    if (setBtn79) {
+      click(setBtn79);
+      await sleep(160);
+      check('v79：设定后主城标识出现（城名标注 / 城池下拉【主城】）',
+        G.isMainCity(c79) && G.ui.cityLabelHTML(c79, true).indexOf('主城') >= 0
+        && (!document.querySelector('.city-select')
+          || document.querySelector('.city-select').innerHTML.indexOf('【主城】') >= 0));
+      G.ui.closeModal();
+      await sleep(80);
+    }
+
+    /* ③ 神器：君主菜单入口 → 面板 */
+    G.ui.openLordInfo();
+    await sleep(160);
+    check('v79：君主面板有神器行与「查看」按钮',
+      document.querySelector('#modal-root').innerHTML.indexOf('data-action="open-artifacts"') >= 0);
+    const artBtn79 = document.querySelector('#modal-root [data-action="open-artifacts"]');
+    if (artBtn79) {
+      click(artBtn79);
+      await sleep(170);
+      const mh79 = document.querySelector('#modal-root').innerHTML;
+      check('v79：神器面板三件神器 + 供奉值 + 进度条 + 来源说明',
+        (mh79.match(/art-row/g) || []).length >= 3 && mh79.indexOf('供奉值') >= 0
+        && mh79.indexOf('pbar') >= 0 && mh79.indexOf('攻占城池') >= 0);
+      G.ui.closeModal();
+      await sleep(80);
+    }
+
+    /* ④ 装备单件化：同名两件各升各的 + 序号区分（强化面板按件） */
+    const city79 = G.currentCity();
+    if (G.forgeLevel() <= 0) {
+      const i79 = city79.cells.findIndex((x) => !x.build && !x.official);
+      if (i79 >= 0) city79.cells[i79].build = { id: 'tiejiangpu', lvl: 3 };
+    }
+    G.state.res.gold = 100000000; G.state.res.iron = 100000000; G.state.res.stone = 100000000;
+    const pA79 = G.addEquip('cr_weapon_1'), pB79 = G.addEquip('cr_weapon_1');
+    const enhA79 = G.enhance(pA79.u);
+    G.ui.openEnhance();
+    await sleep(190);
+    const enhHtml79 = document.querySelector('#modal-root').innerHTML;
+    check('v79：强化面板按件（同名各一行、标签带序号与 +N）',
+      enhA79.ok && enhHtml79.indexOf('按件') >= 0
+      && enhHtml79.indexOf('·甲') >= 0 && enhHtml79.indexOf('·乙') >= 0
+      && enhHtml79.indexOf('+1') >= 0);
+    G.ui.closeModal();
+    await sleep(80);
+    /* 收尾：两件试验品出包 */
+    [pA79, pB79].forEach((it) => { const i = G.state.inventory.indexOf(it); if (i >= 0) G.state.inventory.splice(i, 1); });
   }
 
   G.ui.setView('city');

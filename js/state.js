@@ -313,15 +313,19 @@
         startPos: { x: startPos.x, y: startPos.y } },
       rep: 0,
       rank: 0,
+      mainCityId: null,          // v79：主城（官府里设；驻跸加成 + 【主城】标识）
+      artifacts: { pts: 0 },     // v79：神器供奉值（时长自动 + 活动加速）
       hearts: DATA.DEFAULT_SETTINGS.hearts,     // 民心
       tax: DATA.DEFAULT_SETTINGS.tax,           // 税率 0~1
       workRate: { grain: 100, wood: 100, stone: 100, iron: 100 }, // 开工率（原版机制）
       settings: U.deep(DATA.DEFAULT_SETTINGS),
       techs: {},
       items: U.deep(DATA.INITIAL_ITEMS),        // 宝物背包 {itemId: count}
-      inventory: U.deep(DATA.INITIAL_EQUIP),    // 装备背包 [itemId]
+      /* v79（老板第 4 条）：装备**单件化** —— 背包存实例 { u, id, enh }：
+         u = 件号（同名以 甲/乙/丙 区分）· id = 装备谱 · enh = 该件百炼等级 */
+      inventory: (DATA.INITIAL_EQUIP || []).map(function (id, i) { return { u: i + 1, id: id, enh: 0 }; }),
+      nextEqU: (DATA.INITIAL_EQUIP || []).length,
       forged: [],                               // 已打造过的装备（图鉴用）
-      forgeEnh: {},                             // v77：装备百炼强化等级 {itemId: lv}
       salaryAt: 0,                              // v77：将领月俸上次结算锚点（游戏秒）
       wilds: [],                                // 已占领野地
       fortsRazed: {},                           // 今日已攻取的野外城池 { 'x,y': dayIndex }
@@ -762,6 +766,129 @@
   GAME.perkNum = function (city, key) {
     var p = GAME.perkOf(city);
     return (p && p[key]) || 0;
+  };
+
+  /* ============================================================
+   * v79 加成四层（爵位 / 主城 / 神器 + 名城档位）—— **唯一汇总出口**
+   * ------------------------------------------------------------
+   * 老板三条：「爵位加成」「主城加成」「神器加成」。
+   * 它们的落点是同一批经营量（产量/税收/仓储/席位/野地上限…），
+   * 所以**合并到一个函数**里相加 —— 消费点永远只调 cityBonusNum，
+   * 别处再拼第二个汇总就是本项目的经典失效模式（改了不生效）。
+   * ============================================================ */
+  /* ① 爵位加成：22 级曲线在 DATA.RANK_BONUS（与 DATA.RANK 同序） */
+  GAME.rankBonusOf = function (i) {
+    return (DATA.RANK_BONUS || [])[i == null ? ((GAME.state && GAME.state.rank) || 0) : i] || {};
+  };
+  GAME.rankBonusNum = function (key) {
+    var s = GAME.state;
+    return (GAME.rankBonusOf((s && s.rank) || 0)[key]) || 0;
+  };
+
+  /* ② 主城：每人 1 个（s.mainCityId；新档为空，官府里设） */
+  GAME.mainCityOf = function () {
+    var s = GAME.state;
+    if (!s || !s.mainCityId) return null;
+    return GAME.cityById(s.mainCityId);
+  };
+  GAME.isMainCity = function (city) {
+    var s = GAME.state;
+    return !!(s && city && s.mainCityId && city.id === s.mainCityId);
+  };
+  GAME.mainCityBonusNum = function (city, key) {
+    if (!GAME.isMainCity(city)) return 0;
+    return (DATA.MAIN_CITY.bonus || {})[key] || 0;
+  };
+  /* 设为主城（首设免费；已有主城时改设收 DATA.MAIN_CITY.moveCost） */
+  GAME.setMainCity = function (cityId) {
+    var s = GAME.state;
+    var city = cityId ? GAME.cityById(cityId) : GAME.currentCity();
+    if (!city) return { ok: false, msg: '城池不存在' };
+    if (GAME.isMainCity(city)) return { ok: false, msg: '「' + city.name + '」已是主城' };
+    var cost = GAME.mainCityOf() ? (DATA.MAIN_CITY.moveCost || {}) : null;
+    if (cost && cost.gold) {
+      if ((s.res.gold || 0) < cost.gold) {
+        return { ok: false, msg: '迁都需 ' + U.fmt(cost.gold) + ' 金（从府库扣）' };
+      }
+      s.res.gold -= cost.gold;
+    }
+    s.mainCityId = city.id;
+    GAME.log('🏯 定「' + city.name + '」为主城（' + (DATA.MAIN_CITY.desc || '') + '）');
+    return { ok: true, msg: '「' + city.name + '」定为主城' + (cost && cost.gold ? '（迁都花费 ' + U.fmt(cost.gold) + ' 金）' : '') };
+  };
+
+  /* ③ 神器：共用一个供奉值池（时长为主 + 活动加速），等级 = 翻过的门槛数 */
+  GAME.artStore = function () {
+    var s = GAME.state;
+    if (!s) return { pts: 0 };
+    if (!s.artifacts) s.artifacts = { pts: 0 };
+    return s.artifacts;
+  };
+  GAME.artPts = function () { return GAME.artStore().pts || 0; };
+  GAME.artLevelOf = function (artId) {
+    var pts = GAME.artPts(), T = (DATA.ARTIFACT && DATA.ARTIFACT.pts) || [], lv = 0;
+    for (var i = 0; i < T.length; i++) { if (pts >= T[i]) lv = i + 1; }
+    return Math.min(lv, (DATA.ARTIFACT && DATA.ARTIFACT.maxLv) || 10);
+  };
+  GAME.artGain = function (n, why) {
+    n = Math.round(n || 0);
+    if (n <= 0) return 0;
+    var st = GAME.artStore();
+    var lv0 = GAME.artLevelOf();
+    st.pts += n;
+    var lv1 = GAME.artLevelOf();
+    GAME.log('🏺 供奉 +' + U.fmt(n) + (why ? '（' + why + '）' : '') + '　当前 ' + U.fmt(st.pts));
+    if (lv1 > lv0) {
+      (DATA.ARTIFACTS || []).forEach(function (a) {
+        GAME.log('🏺 「' + a.name + '」升至 Lv' + lv1 + ' —— ' + ui77ArtEff(a, lv1));
+      });
+    }
+    return n;
+  };
+  /* 神器加成（唯一消费口）：Σ 每件神器 等级 × per[key] */
+  GAME.artifactBonusNum = function (key) {
+    var out = 0;
+    (DATA.ARTIFACTS || []).forEach(function (a) {
+      var lv = GAME.artLevelOf(a.id);
+      if (!a.per || !a.per[key]) return;
+      out += a.per[key] * lv;
+    });
+    return out;
+  };
+  /* 神器效果文案（日志与界面共用） */
+  function ui77ArtEff(a, lv) {
+    var parts = [];
+    for (var k in (a.per || {})) {
+      parts.push(({ prodPct: '产量', taxPct: '税收', storePct: '仓储', genExpPct: '将领经验', repPct: '声望获得' }[k] || k)
+        + ' +' + Math.round(a.per[k] * lv * 100) + '%');
+    }
+    return parts.join(' · ') || '—';
+  }
+  GAME.artEffText = ui77ArtEff;
+  /* 时长积累（在线主循环 / 离线补算共用；secGame = 游戏秒） */
+  GAME.artTick = function (secGame) {
+    if (!secGame || secGame <= 0) return;
+    var rate = (DATA.ARTIFACT && DATA.ARTIFACT.perGameHour) || 0;
+    if (!rate) return;
+    GAME.artGain(secGame / 3600 * rate, '');
+  };
+
+  /* 爵位加成文案（爵位表 / 君主面板共用） */
+  GAME.rankBonusText = function (i) {
+    var b = GAME.rankBonusOf(i);
+    var parts = [];
+    if (b.prodPct) parts.push('产+' + Math.round(b.prodPct * 100) + '%');
+    if (b.taxPct) parts.push('税+' + Math.round(b.taxPct * 100) + '%');
+    if (b.storePct) parts.push('储+' + Math.round(b.storePct * 100) + '%');
+    if (b.buildSlot) parts.push('造+' + b.buildSlot);
+    if (b.wildCap) parts.push('野+' + b.wildCap);
+    if (b.genCap) parts.push('席+' + b.genCap);
+    return parts.join(' ') || '—';
+  };
+  /* 汇总：名城档位 + 爵位 + 主城 + 神器（四层相加，唯一出口） */
+  GAME.cityBonusNum = function (city, key) {
+    return GAME.perkNum(city, key) + GAME.rankBonusNum(key)
+      + GAME.mainCityBonusNum(city, key) + GAME.artifactBonusNum(key);
   };
   /* 是不是"名城"（有档位加成的系统城）。v61：野外城池不算 —— 它有 CITY_PERK 档位
      （为了走同一套派生公式），但没有档位加成，不该在界面上被叫"名城"。 */
@@ -1293,6 +1420,7 @@
     GAME.advanceTrainQueues(secReal * ts);
     /* v73：秘境作物按同一段离线时长推进（挂机回来地里的东西也该熟了） */
     if (GAME.tickFarm) GAME.tickFarm(secReal * ts);
+    if (GAME.artTick) GAME.artTick(secReal * ts);   // v79：神器供奉（离线补算同口径）
     s.queues.tech.forEach(advance);
     var i;
     for (i = s.queues.build.length - 1; i >= 0; i--) {
@@ -1588,8 +1716,9 @@
       }
       /* 补字段（旧档可能缺） */
       if (!st.workRate) st.workRate = { grain: 100, wood: 100, stone: 100, iron: 100 };
-      /* v77 补字段：百炼强化表 / 月俸锚点（老档锚点=当前游戏时刻，首期 7 游戏日后到来） */
-      if (!st.forgeEnh) st.forgeEnh = {};
+      /* v79：装备单件化迁移（旧 id 串 → 实例；旧"按种"强化并入首件） */
+      if (GAME.migrateEquipModel) GAME.migrateEquipModel(st);
+      /* v77 补字段：月俸锚点（老档锚点=当前游戏时刻，首期 7 游戏日后到来） */
       if (st.salaryAt == null) st.salaryAt = (st.world && st.world.elapsed) || 0;
       /* 离线补算：按 savedAt 与当前时间推算，精确段+聚合段（详见 offlineCatchup） */
       var elapsed = Math.max(0, (U.now() - (st.savedAt || U.now())) / 1000);
@@ -1996,6 +2125,7 @@
     if (GAME.tickGathers) GAME.tickGathers(ts);
     /* v73：种田秘境生长 —— 与建造队列同口径（dtReal × ts） */
     if (GAME.tickFarm) GAME.tickFarm(dtReal * ts);
+    if (GAME.artTick) GAME.artTick(dtReal * ts);   // v79：神器供奉（在线主循环）
 
     /* 9f) 行军队列推进（抵达即结算 —— 见 battle.js GAME.march） */
     if (GAME.march && GAME.march.tick) GAME.march.tick();
@@ -2081,7 +2211,8 @@
     var s = GAME.state, ts = GAME.timeScale();
     var out = { grain: 0, wood: 0, stone: 0, iron: 0, gold: 0 };
     if (!city) return out;
-    var perkProd = 1 + GAME.perkNum(city, 'prodPct');
+    /* v79：「本城产量」加成 = 名城档位 + 爵位 + 主城 + 神器（唯一汇总口） */
+    var perkProd = 1 + GAME.cityBonusNum(city, 'prodPct');
     var base = GAME.prodBasePerHourOf(city);
     for (var r2 in base) {
       var m = 1;
@@ -2090,7 +2221,7 @@
     }
     var popCap = GAME.maxPopOf(city);
     /* v73（老板「限制黄金的获取」）：税收按 DATA.GOLD_GATE.tax 收紧 */
-    var taxGold = popCap * (s.hearts || 100) / 100 * (s.tax || 0) * (1 + GAME.perkNum(city, 'taxPct'))
+    var taxGold = popCap * (s.hearts || 100) / 100 * (s.tax || 0) * (1 + GAME.cityBonusNum(city, 'taxPct'))
       * (DATA.GOLD_GATE.tax || 1);
     var gm = 1;
     var itemM2 = GAME.prodBuffMult();

@@ -2155,6 +2155,17 @@
   /* v29（需求 7）：全境汇总左右分列 —— 同类同侧 */
   /* v29（需求 9）：城池名后的等级标注 [都城] / [州城] … */
   .city-tier { color: var(--gold-light); opacity: .85; font-size: var(--fs-cap); font-weight: 400; margin-left: 2px; }
+  /* v79：【主城】标识（与档位标同族、金色描边更亮） */
+  .city-tier.mt { color: var(--gold-light); opacity: 1; filter: brightness(1.3);
+    border: 1px solid var(--gold-light); border-radius: 4px; padding: 0 4px; margin-left: 5px; font-weight: 700; }
+  /* v79：神器面板（君主菜单 → 🏺 神器） */
+  .art-row { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; margin-top: 8px;
+    border: 1px solid var(--line-strong); border-radius: 8px; background: rgba(var(--sh-rgb), .22); }
+  .art-ic { font-size: 2.2em; line-height: 1.25; }   /* 走 em：守"裸像素字号"预算 */
+  .art-main { flex: 1; min-width: 0; }
+  .art-nm { color: var(--gold-light); font-weight: 700; margin-bottom: 2px; }
+  .art-lv { color: var(--green-ok); margin-left: 4px; }
+  .art-side { color: var(--text-dim); font-size: var(--fs-cap); white-space: nowrap; }
 
   /* v54（老板："别一边长一边短，留空一大块"）：账册改成**单列**。
      改前是 `1fr 1fr` 两列 —— 节标题横贯全宽，于是每节的行数是奇数时

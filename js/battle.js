@@ -400,7 +400,8 @@
     if (eq.length) GAME.log('缴获军械：' + eq.join('、'));
     s.cities.push(newCity);
     /* 声望（受赛季国策「人心思附」加成） */
-    var repGain = Math.round((npcCity.rep || 10) * (GAME.story && GAME.story.repMult ? GAME.story.repMult() : 1));
+    var repGain = Math.round((npcCity.rep || 10) * (GAME.story && GAME.story.repMult ? GAME.story.repMult() : 1)
+      * (1 + GAME.artifactBonusNum('repPct')));   /* v79：传国玉玺 —— 声望获得 +5%/级 */
     s.rep += repGain;
     /* 从 NPC 列表移除 */
     var idx = -1;
@@ -418,6 +419,10 @@
       result.expGain = expC.gain;
       result.expRaw = expC.raw;
       result.expCapped = expC.capped;
+    }
+    /* v79（神器 · 特殊活动）：开疆拓土 → 供奉值大额入账（按城档折算） */
+    if (GAME.artGain) {
+      GAME.artGain(((DATA.ARTIFACT || {}).capturePts || {})[npcCity.type] || 40, '开疆拓土 · ' + npcCity.name);
     }
     /* 名将必降：按州匹配历史名将 */
     var hero = GAME.battle.grantHero(npcCity, fromCity);
@@ -502,8 +507,7 @@
       DATA.HEROES.forEach(function (h) { if (h.city === npcCity.name) pool.push('jueying'); });
       var id = pool[Math.floor(Math.random() * pool.length)];
       if (DATA.EQUIP[id]) {
-        if (!s.inventory) s.inventory = [];
-        s.inventory.push(id);
+        GAME.addEquip(id);   /* v79：缴获入包走实例唯一出口 */
         got.push(DATA.EQUIP[id].name);
       }
     }
@@ -1061,7 +1065,8 @@
       /* 占领：据而有之 */
       if (mode.occupy) {
         if (t.kind === 'wild') {
-          var limit = GAME.buildingLevel(city, 'guanfu') || 1;
+          /* v79：附属野地上限 = 官府等级 + 爵位/主城加成（唯一汇总口） */
+          var limit = (GAME.buildingLevel(city, 'guanfu') || 1) + GAME.cityBonusNum(city, 'wildCap');
           if ((s.wilds || []).length >= limit) {
             GAME.log('野地数量已达上限（官府' + limit + '级），转为就地取材');
           } else {
@@ -1276,6 +1281,10 @@
      让经验从"背后悄悄涨的数字"变成看得见、可操作的东西。 */
   GAME.battle.gainExp = function (gen, amount, why) {
     amount = Math.max(0, Math.round(amount || 0));
+    /* v79：河图洛书 —— 将领经验 +6%/级（唯一消费口） */
+    if (amount > 0 && GAME.artifactBonusNum) {
+      amount = Math.round(amount * (1 + GAME.artifactBonusNum('genExpPct')));
+    }
     if (!gen || amount <= 0) return null;
     gen.exp = (gen.exp || 0) + amount;
     var r = GAME.checkLevelUp(gen);

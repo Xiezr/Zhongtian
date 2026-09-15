@@ -834,30 +834,50 @@
   /* ============================================================
    * 爵位（报告7.1 · 22级）
    * ============================================================ */
+  /* v79（老板「爵位加成，可看下能加成哪些数据」）：爵位的**第二层回报** ——
+     第一层是俸禄（gold/h），这一层挂真实经营加成。22 级逐级递增，曲线在这里生成：
+       产/税 +1%/级（封顶 +21%）· 仓储 +2%/级 · Lv8 起同时建造 +1（Lv16 起 +2）
+       · 每 3 级 +1 附属野地上限 · 每 4 级 每城将领席位 +1
+     消费统一走 GAME.cityBonusNum（与名城/主城/神器同池），不许各处自拼。
+     ⚠️ 原表的 shiyi（食邑）/ recruit（招募）两个字段从无消费点（纯显示占位），v79 一并清掉。 */
   DATA.RANK = [
-    { name: '平民', city: 1, rep: 0, gold: 0, jewel: {}, salary: 0, shiyi: 0, recruit: 10 },
-    { name: '公士', city: 2, rep: 1000, gold: 20000, jewel: { zhenzhu: 10, shanhu: 5 }, salary: 1000, shiyi: 1000, recruit: 20 },
-    { name: '上造', city: 3, rep: 2000, gold: 40000, jewel: { shanhu: 10, liuli: 5 }, salary: 2000, shiyi: 4000, recruit: 30 },
-    { name: '簪袅', city: 4, rep: 4000, gold: 60000, jewel: { liuli: 10, hupo: 5 }, salary: 5000, shiyi: 9000, recruit: 40 },
-    { name: '不更', city: 5, rep: 8000, gold: 80000, jewel: { hupo: 10, manao: 5 }, salary: 10000, shiyi: 16000, recruit: 50 },
-    { name: '大夫', city: 6, rep: 16000, gold: 100000, jewel: { manao: 10, shuijing: 5 }, salary: 20000, shiyi: 25000, recruit: 60 },
-    { name: '官大夫', city: 7, rep: 32000, gold: 200000, jewel: { shuijing: 10, feicui: 5 }, salary: 20000, shiyi: 36000, recruit: 70 },
-    { name: '公大夫', city: 8, rep: 64000, gold: 300000, jewel: { feicui: 10, yushi: 5 }, salary: 20000, shiyi: 49000, recruit: 80 },
-    { name: '公乘', city: 9, rep: 128000, gold: 400000, jewel: { yushi: 10, yemingzhu: 5 }, salary: 20000, shiyi: 64000, recruit: 90 },
-    { name: '五大夫', city: 10, rep: 256000, gold: 500000, jewel: { zhenzhu: 20, shanhu: 15, liuli: 10, hupo: 5 }, salary: 20000, shiyi: 81000, recruit: 100 },
-    { name: '左庶长', city: 11, rep: 512000, gold: 600000, jewel: { shanhu: 20, liuli: 15, hupo: 10, manao: 5 }, salary: 30000, shiyi: 100000, recruit: 0 },
-    { name: '右庶长', city: 12, rep: 1024000, gold: 800000, jewel: { liuli: 20, hupo: 15, manao: 10, shuijing: 5 }, salary: 30000, shiyi: 121000, recruit: 0 },
-    { name: '左更', city: 13, rep: 2048000, gold: 1000000, jewel: { hupo: 20, manao: 15, shuijing: 10, feicui: 5 }, salary: 50000, shiyi: 144000, recruit: 0 },
-    { name: '中更', city: 14, rep: 4096000, gold: 2000000, jewel: { manao: 20, shuijing: 15, feicui: 10, yushi: 5 }, salary: 50000, shiyi: 169000, recruit: 0 },
-    { name: '右更', city: 15, rep: 8192000, gold: 3000000, jewel: { shuijing: 20, feicui: 15, yushi: 10, yemingzhu: 5 }, salary: 50000, shiyi: 196000, recruit: 0 },
-    { name: '少上造', city: 16, rep: 16384000, gold: 4000000, jewel: { zhenzhu: 50, shanhu: 40, liuli: 30, hupo: 20, manao: 10 }, salary: 50000, shiyi: 225000, recruit: 0 },
-    { name: '大上造', city: 17, rep: 32768000, gold: 5000000, jewel: { shanhu: 50, liuli: 40, hupo: 30, manao: 20, shuijing: 10 }, salary: 50000, shiyi: 256000, recruit: 0 },
-    { name: '驷车庶长', city: 18, rep: 65536000, gold: 6000000, jewel: { liuli: 50, hupo: 40, manao: 30, shuijing: 20, feicui: 10 }, salary: 75000, shiyi: 289000, recruit: 0 },
-    { name: '大庶长', city: 19, rep: 131072000, gold: 7500000, jewel: { hupo: 50, manao: 40, shuijing: 30, feicui: 20, yushi: 10 }, salary: 75000, shiyi: 324000, recruit: 0 },
-    { name: '关内侯', city: 20, rep: 262144000, gold: 10000000, jewel: { manao: 50, shuijing: 40, feicui: 30, yushi: 20, yemingzhu: 10 }, salary: 100000, shiyi: 361000, recruit: 0 },
-    { name: '位列诸侯', city: 21, rep: 524288000, gold: 20000000, jewel: { zhenzhu: 100, liuli: 80, manao: 60, feicui: 40, yemingzhu: 20 }, salary: 100000, shiyi: 400000, recruit: 0 },
-    { name: '裂土封王', city: 22, rep: 1048576000, gold: 50000000, jewel: { shanhu: 100, hupo: 90, shuijing: 80, yushi: 70, yemingzhu: 50 }, salary: 200000, shiyi: 441000, recruit: 0 },
+    { name: '平民', city: 1, rep: 0, gold: 0, jewel: {}, salary: 0 },
+    { name: '公士', city: 2, rep: 1000, gold: 20000, jewel: { zhenzhu: 10, shanhu: 5 }, salary: 1000 },
+    { name: '上造', city: 3, rep: 2000, gold: 40000, jewel: { shanhu: 10, liuli: 5 }, salary: 2000 },
+    { name: '簪袅', city: 4, rep: 4000, gold: 60000, jewel: { liuli: 10, hupo: 5 }, salary: 5000 },
+    { name: '不更', city: 5, rep: 8000, gold: 80000, jewel: { hupo: 10, manao: 5 }, salary: 10000 },
+    { name: '大夫', city: 6, rep: 16000, gold: 100000, jewel: { manao: 10, shuijing: 5 }, salary: 20000 },
+    { name: '官大夫', city: 7, rep: 32000, gold: 200000, jewel: { shuijing: 10, feicui: 5 }, salary: 20000 },
+    { name: '公大夫', city: 8, rep: 64000, gold: 300000, jewel: { feicui: 10, yushi: 5 }, salary: 20000 },
+    { name: '公乘', city: 9, rep: 128000, gold: 400000, jewel: { yushi: 10, yemingzhu: 5 }, salary: 20000 },
+    { name: '五大夫', city: 10, rep: 256000, gold: 500000, jewel: { zhenzhu: 20, shanhu: 15, liuli: 10, hupo: 5 }, salary: 20000 },
+    { name: '左庶长', city: 11, rep: 512000, gold: 600000, jewel: { shanhu: 20, liuli: 15, hupo: 10, manao: 5 }, salary: 30000 },
+    { name: '右庶长', city: 12, rep: 1024000, gold: 800000, jewel: { liuli: 20, hupo: 15, manao: 10, shuijing: 5 }, salary: 30000 },
+    { name: '左更', city: 13, rep: 2048000, gold: 1000000, jewel: { hupo: 20, manao: 15, shuijing: 10, feicui: 5 }, salary: 50000 },
+    { name: '中更', city: 14, rep: 4096000, gold: 2000000, jewel: { manao: 20, shuijing: 15, feicui: 10, yushi: 5 }, salary: 50000 },
+    { name: '右更', city: 15, rep: 8192000, gold: 3000000, jewel: { shuijing: 20, feicui: 15, yushi: 10, yemingzhu: 5 }, salary: 50000 },
+    { name: '少上造', city: 16, rep: 16384000, gold: 4000000, jewel: { zhenzhu: 50, shanhu: 40, liuli: 30, hupo: 20, manao: 10 }, salary: 50000 },
+    { name: '大上造', city: 17, rep: 32768000, gold: 5000000, jewel: { shanhu: 50, liuli: 40, hupo: 30, manao: 20, shuijing: 10 }, salary: 50000 },
+    { name: '驷车庶长', city: 18, rep: 65536000, gold: 6000000, jewel: { liuli: 50, hupo: 40, manao: 30, shuijing: 20, feicui: 10 }, salary: 75000 },
+    { name: '大庶长', city: 19, rep: 131072000, gold: 7500000, jewel: { hupo: 50, manao: 40, shuijing: 30, feicui: 20, yushi: 10 }, salary: 75000 },
+    { name: '关内侯', city: 20, rep: 262144000, gold: 10000000, jewel: { manao: 50, shuijing: 40, feicui: 30, yushi: 20, yemingzhu: 10 }, salary: 100000 },
+    { name: '位列诸侯', city: 21, rep: 524288000, gold: 20000000, jewel: { zhenzhu: 100, liuli: 80, manao: 60, feicui: 40, yemingzhu: 20 }, salary: 100000 },
+    { name: '裂土封王', city: 22, rep: 1048576000, gold: 50000000, jewel: { shanhu: 100, hupo: 90, shuijing: 80, yushi: 70, yemingzhu: 50 }, salary: 200000 },
   ];
+  /* v79：爵位加成曲线 —— 与 DATA.RANK 同序、由表生成（改曲线只改这一段）：
+     产/税 +1%/级 · 储 +2%/级 · Lv8 起同时建造 +1（Lv16 起 +2）
+     · 每 3 级 +1 附属野地上限 · 每 4 级 每城将领席位 +1。
+     消费统一走 GAME.cityBonusNum（与名城/主城/神器同池）。 */
+  DATA.RANK_BONUS = DATA.RANK.map(function (r, i) {
+    return {
+      prodPct: +(i * 0.01).toFixed(2),
+      taxPct: +(i * 0.01).toFixed(2),
+      storePct: +(i * 0.02).toFixed(2),
+      buildSlot: i >= 16 ? 2 : (i >= 8 ? 1 : 0),
+      wildCap: Math.floor(i / 3),
+      genCap: Math.floor(i / 4),
+    };
+  });
 
   /* ============================================================
    * 地形（真实7种）+ 野地加成
@@ -1365,7 +1385,7 @@
   /* ============================================================
    * 铁匠铺 · 百炼强化（v77 · 老板「装备可进行强化」）
    * ------------------------------------------------------------
-   * 模型：强化等级记在**装备谱**上（s.forgeEnh[itemId] = 0..max）——
+   * 模型（v79 改）：强化等级记在**单件**上（inst.enh = 0..max，同名各升各的；见 GAME.enhance）——
    *   本项目装备是"同一图纸的量产件"（背包/穿戴都存 id、不存实例），
    *   因此强化按"种"累计：同种装备共享等级，日后新打造的也继承。
    * 效果：每级 全部装备属性 +perLv（在 genEquipBonus 里乘上去，唯一出口；
@@ -1765,6 +1785,38 @@
     fort:    { name: '野城', prodPct: 0, taxPct: 0, buildSlot: 0, storePct: 0, troopSlot: 0, npcResMul: 1.0,
       desc: '野外城池：无地利加成，全凭守军与工事自守。' },
   };
+  /* v79（老板）：主公驻跸之城 —— 「每人可有 1 个主城，在官府界面中设置」。
+     主城吃一层**驻跸加成**（下面是全部可加点）；标志走 ui.cityLabelHTML / 下拉框 / 君主列表。 */
+  DATA.MAIN_CITY = {
+    bonus: { prodPct: 0.15, taxPct: 0.10, storePct: 0.30, genCap: 1, wildCap: 1 },
+    moveCost: { gold: 100000 },   // 已有主城时改设收成本（首设免费）
+    desc: '君主驻跸：本城产量 +15%、税收 +10%、仓储 +30%、将领席位 +1、附属野地上限 +1',
+  };
+
+  /* v79（老板）：「神器加成（养成，主要依靠游戏时长和特殊活动逐渐提升），
+     神器界面在君主菜单中」——
+     三件神器共用一个**供奉值**池（s.artifacts.pts）：时长自动积累（主要），
+     特殊活动（攻占城池 / 爵位晋升）大额加速；等级 = 供奉值翻过的门槛数。
+     每级加成走 per（perLv），消费统一走 GAME.artifactBonusNum。 */
+  DATA.ARTIFACT = {
+    maxLv: 10,
+    pts: [60, 150, 300, 600, 1000, 1800, 3000, 5000, 8000, 12000],  // 升 Lv(i+1) 门槛
+    perGameHour: 3,                              // 游戏时长：每游戏小时 +3 供奉（主要来源）
+    capturePts: { fort: 20, county: 40, jun: 80, zhou: 200, capital: 500 },  // 攻占城池
+    promotePts: 300,                             // 爵位晋升一次
+  };
+  DATA.ARTIFACTS = [
+    { id: 'yuxi', name: '传国玉玺', icon: '👑', theme: '受命于天',
+      per: { taxPct: 0.02, repPct: 0.05 },
+      desc: '受命于天，既寿永昌。每级：税收 +2%、声望获得 +5%' },
+    { id: 'shending', name: '九州神鼎', icon: '🏺', theme: '定鼎九州',
+      per: { prodPct: 0.02, storePct: 0.03 },
+      desc: '禹铸九鼎，以镇九州。每级：全境产量 +2%、仓储 +3%' },
+    { id: 'hetu', name: '河图洛书', icon: '📜', theme: '天机演算',
+      per: { genExpPct: 0.06, storePct: 0.01 },
+      desc: '河出图，洛出书。每级：将领经验 +6%、仓储 +1%' },
+  ];
+
   /* 取某城的档位加成（唯一出口：别处不要再按 type 分支） */
   DATA.CITY_PERK_KEYS = ['prodPct', 'taxPct', 'buildSlot', 'storePct', 'troopSlot'];
 

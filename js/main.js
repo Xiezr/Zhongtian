@@ -110,6 +110,15 @@
 
       /* 原版三段式信息区 & 功能入口 */
       case 'open-lord': ui.openLordInfo(); break;
+      /* v79（老板）：主城（官府里设；首设免费、迁都收成本） / 神器面板（君主菜单） */
+      case 'set-main-city': {
+        var mc = GAME.currentCity();
+        var mr = GAME.setMainCity(mc ? mc.id : null);
+        ui.toast(mr.msg);
+        if (mr.ok) { GAME.refreshAll(); ui.openGuanfu(); }
+        break;
+      }
+      case 'open-artifacts': ui.openArtifacts(); break;
       /* v77（老板）：君主面板 —— 进入城池（直跳该城城内界面）/ 晋升 / 改名 */
       case 'lord-city-enter': (function () {
         ui.closeModal();

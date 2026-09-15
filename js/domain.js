@@ -276,7 +276,7 @@
        v60（需求 5）：**名城档位优势**再 +buildSlot（帝都 +1、州治 +1）——
        这是 perks 里"同时建造"那项的落地点（不加这句它就是死属性）。 */
     city = city || GAME.currentCity();
-    var base = 2 + GAME.mastery('buildSlot', null) + GAME.perkNum(city, 'buildSlot');
+    var base = 2 + GAME.mastery('buildSlot', null) + GAME.cityBonusNum(city, 'buildSlot');   /* v79：+ 爵位建造位 */
     if (s && s.buffs && s.buffs.buildQueue && s.buffs.buildQueue.until > U.now()) {
       base += (s.buffs.buildQueue.add || 0);   // 徭役令 +3
     }
@@ -1046,9 +1046,11 @@
    * 超编不会赶人走，但**不许再进人**（招募 / 派遣 / 归降之外一律拦）。 */
   GAME.genSlotsOf = function (city) {
     if (!city) return 0;
-    /* v28：招贤馆满级专精 —— 房间 +2 */
+    /* v28：招贤馆满级专精 —— 房间 +2
+       v79：+ 爵位 / 主城 的将领席位加成（cityBonusNum 汇总口） */
     return (GAME.buildingLevel(city, 'zhaoxianguan') || 0)
-      + (GAME.masteryOf(city, 'zhaoxianguan') ? 2 : 0);
+      + (GAME.masteryOf(city, 'zhaoxianguan') ? 2 : 0)
+      + GAME.cityBonusNum(city, 'genCap');
   };
   /* 某城现有将领 —— **与将领页名单同源**（两边都走 `genCityOf`）。
      判据不一致就会出现"名单上 6 人、却提示只剩 1 个空位"这类自相矛盾。
@@ -1089,7 +1091,7 @@
     var base = lv > 0 ? BASE_STORE * lv : BASE_STORE;
     return Math.round(base * (1 + techB('store'))
       * (1 + (GAME.masteryOf(city, 'cangku') ? 0.5 : 0))
-      * (1 + GAME.perkNum(city, 'storePct')));
+      * (1 + GAME.cityBonusNum(city, 'storePct')));   /* v79：+ 爵位/主城/神器 仓储 */
   };
 
   /* --------- 市场：商队数与交易折扣 --------- */
@@ -2661,14 +2663,128 @@
     return 10;
   };
 
-  /* --------- 装备拆解：回收部分打造材料 --------- */
-  GAME.salvageEquip = function (itemId) {
-    var s = GAME.state, it = DATA.EQUIP[itemId];
+  /* ============================================================
+   * v79（老板第 4 条）：「装备强化是针对单件装备的，同名装备搞个区分办法」
+   * ------------------------------------------------------------
+   * 装备从"种"升级为"件"：库存与穿戴里存**实例** { u, id, enh }——
+   *   u   = 件号（s.nextEqU 递增；同名按件号排序 → 甲/乙/丙… 序号）
+   *   id  = 装备谱 id（DATA.EQUIP 的键）
+   *   enh = 百炼等级（**按件**记，0..max）
+   * 兼容：旧的纯 id 字符串（老档 / 测试夹具）照读不误 ——
+   *   一律经 eqId / eqEnhOf 取值，读取方**不许**再直接下标。
+   * ============================================================ */
+  GAME.eqId = function (x) { return (x && typeof x === 'object') ? x.id : x; };
+  GAME.eqEnhOf = function (x) { return (x && typeof x === 'object' && x.enh) || 0; };
+  GAME.eqUidOf = function (x) { return (x && typeof x === 'object') ? x.u : null; };
+  GAME.eqMake = function (id, enh) {
+    var s = GAME.state;
+    s.nextEqU = (s.nextEqU || 0) + 1;
+    return { u: s.nextEqU, id: id, enh: Math.max(0, Math.min(GAME.enhMax(), enh || 0)) };
+  };
+  /* 入包（**唯一出口**：打造 / 缴获 / 卸下 / 归还 都走它） */
+  GAME.addEquip = function (id, enh) {
+    var s = GAME.state;
+    s.inventory = s.inventory || [];
+    var inst = GAME.eqMake(id, enh);
+    s.inventory.push(inst);
+    return inst;
+  };
+  /* 全部件（背包 + 穿戴） */
+  GAME.eqPieces = function () {
+    var s = GAME.state, out = [];
+    ((s && s.inventory) || []).forEach(function (x) { if (x) out.push(x); });
+    ((s && s.generals) || []).forEach(function (g) {
+      for (var sl in (g.equip || {})) if (g.equip[sl]) out.push(g.equip[sl]);
+    });
+    return out;
+  };
+  /* 找一件：件号（数字）→ 实例；实例 → 自身；装备 id → 第一件（背包优先） */
+  GAME.eqFind = function (ref) {
+    var s = GAME.state;
+    if (ref && typeof ref === 'object') return ref;
+    var inv = (s && s.inventory) || [], found = null, i;
+    var isNum = (typeof ref === 'number') || /^\d+$/.test(String(ref));
+    if (isNum) {
+      var u = Number(ref);
+      for (i = 0; i < inv.length; i++) if (inv[i] && inv[i].u === u) return inv[i];
+      ((s && s.generals) || []).forEach(function (g) {
+        for (var sl in (g.equip || {})) if (g.equip[sl] && g.equip[sl].u === u) found = found || g.equip[sl];
+      });
+      return found;
+    }
+    for (i = 0; i < inv.length; i++) if (GAME.eqId(inv[i]) === ref) return inv[i];
+    ((s && s.generals) || []).forEach(function (g) {
+      for (var sl in (g.equip || {})) if (GAME.eqId(g.equip[sl]) === ref) found = found || g.equip[sl];
+    });
+    return found;
+  };
+  /* 同名群（按件号升序）—— 序号（甲/乙/丙…）由此派生 */
+  GAME.eqGroupOf = function (id) {
+    return GAME.eqPieces().filter(function (x) { return GAME.eqId(x) === id; })
+      .sort(function (a, b) { return (GAME.eqUidOf(a) || 0) - (GAME.eqUidOf(b) || 0); });
+  };
+  GAME.eqSerial = function (x) {
+    var u = GAME.eqUidOf(x);
+    if (u == null) return '';
+    var g = GAME.eqGroupOf(GAME.eqId(x));
+    if (g.length < 2) return '';
+    var idx = -1;
+    for (var i = 0; i < g.length; i++) if (GAME.eqUidOf(g[i]) === u) { idx = i; break; }
+    if (idx < 0) return '';
+    var STEMS = '甲乙丙丁戊己庚辛壬癸';
+    return idx < STEMS.length ? STEMS.charAt(idx) : ('#' + (idx + 1));
+  };
+  GAME.eqName = function (x) {
+    var it = DATA.EQUIP[GAME.eqId(x)];
+    return it ? it.name : '（装备）';
+  };
+  /* 显示名 = 名 + 强化 + 同名序号（老板要的「区分办法」） */
+  GAME.eqLabel = function (x) {
+    var lv = GAME.eqEnhOf(x), sn = GAME.eqSerial(x);
+    return GAME.eqName(x) + (lv ? ' +' + lv : '') + (sn ? '·' + sn : '');
+  };
+  /* 存档迁移（唯一出口；loadGame 调用）：旧 id 串 → 实例；
+     旧"按种"强化（s.forgeEnh）并入该种**第一件**，其余从 0 起。 */
+  GAME.migrateEquipModel = function (s) {
+    if (!s || s._eqModel2) return s;
+    var legacyEnh = s.forgeEnh || {};
+    var mk = function (id, enh) {
+      s.nextEqU = (s.nextEqU || 0) + 1;
+      return { u: s.nextEqU, id: id, enh: enh || 0 };
+    };
+    var take = function (id) {
+      if (legacyEnh[id] > 0) { var e = legacyEnh[id]; delete legacyEnh[id]; return e; }
+      return 0;
+    };
+    if (Array.isArray(s.inventory)) {
+      s.inventory = s.inventory.map(function (x) {
+        if (x && typeof x === 'object') return x;
+        return mk(x, take(x));
+      });
+    }
+    (s.generals || []).forEach(function (g) {
+      if (!g || !g.equip) return;
+      for (var sl in g.equip) {
+        var v = g.equip[sl];
+        if (v && typeof v === 'object') continue;
+        g.equip[sl] = mk(v, take(v));
+      }
+    });
+    delete s.forgeEnh;
+    s._eqModel2 = 1;
+    return s;
+  };
+
+  /* --------- 装备拆解：回收部分打造材料（v79：按**件**拆） --------- */
+  GAME.salvageEquip = function (ref) {
+    var s = GAME.state;
+    var inst = GAME.eqFind(ref);
+    if (!inst) return { ok: false, msg: '背包中没有这件装备' };
+    var itemId = GAME.eqId(inst), it = DATA.EQUIP[itemId];
     if (!it) return { ok: false, msg: '无此装备' };
-    var idx = (s.inventory || []).indexOf(itemId);
-    if (idx < 0) return { ok: false, msg: '背包中没有这件装备' };
-    var wornBy = null;
-    s.generals.forEach(function (g) { if ((g.equip || {})[it.slot] === itemId) wornBy = g.name; });
+    var idx = (s.inventory || []).indexOf(inst);
+    if (idx < 0) return { ok: false, msg: '该件不在背包（正穿在将领身上，先卸下）' };
+    var label = GAME.eqLabel(inst);
     var mats = GAME.forgeMaterials(itemId), got = [];
     var due = { };
     for (var k in mats) {
@@ -2676,16 +2792,12 @@
       due[k] = n;
       got.push((DATA.MATERIAL_BY_ID[k] ? DATA.MATERIAL_BY_ID[k].name : k) + '×' + n);
     }
-    /* 拆解前先把该件从将领身上卸下（若在穿） */
-    if (wornBy) {
-      s.generals.forEach(function (g) { if ((g.equip || {})[it.slot] === itemId) delete g.equip[it.slot]; });
-    }
     s.items = s.items || {};
     for (var k2 in due) s.items[k2] = (s.items[k2] || 0) + due[k2];
     s.inventory.splice(idx, 1);
     GAME.statBump('salvaged', 1);
-    GAME.log('拆解 ' + it.name + '，回收 ' + got.join('、'));
-    return { ok: true, msg: '已拆解 ' + it.name + '，回收 ' + got.join('、'), got: got };
+    GAME.log('拆解 ' + label + '，回收 ' + got.join('、'));
+    return { ok: true, msg: '已拆解 ' + label + '，回收 ' + got.join('、'), got: got };
   };
 
   /* 配方解析（v13）：部位 → 系列组合；品质 → 品阶（1~4）
@@ -2788,8 +2900,7 @@
       s.items[bp.id] = (s.items[bp.id] || 0) - 1;
       if (s.items[bp.id] <= 0) delete s.items[bp.id];
     }
-    if (!s.inventory) s.inventory = [];
-    s.inventory.push(itemId);
+    GAME.addEquip(itemId);   /* v79：入包唯一出口（生成实例，件号递增） */
     s.forged = s.forged || [];
     if (s.forged.indexOf(itemId) < 0) s.forged.push(itemId);
     GAME.statBump('forgedCount', 1);
@@ -2798,23 +2909,21 @@
   };
 
   /* ============================================================
-   * 铁匠铺 · 百炼强化（v77）
+   * 铁匠铺 · 百炼强化（v77 立项 / v79 改**按件**）
    * ------------------------------------------------------------
-   * 强化等级按**装备种**记（s.forgeEnh[itemId]）—— 装备是量产件模型
-   * （背包存 id 不存实例），同种共享、新造的继承。
+   * 老板第 4 条：「装备强化是针对单件装备的，同名装备搞个区分办法」——
+   * 强化等级从 s.forgeEnh[itemId]（按种共享）迁到**实例** inst.enh（按件）：
+   * 同名多件各有各的等级，靠 +N 与 甲/乙/丙 序号区分（见 GAME.eqLabel）。
    * 效果并入 genEquipBonus（唯一出口），这里只管"能不能升、花多少"。
    * ============================================================ */
-  GAME.enhOf = function (itemId) {
-    var s = GAME.state;
-    return (s && s.forgeEnh && s.forgeEnh[itemId]) || 0;
-  };
+  GAME.enhOf = function (x) { return GAME.eqEnhOf(x); };   /* 实例/身份证 → 该件强化级 */
   GAME.enhMax = function () { return (DATA.ENHANCE && DATA.ENHANCE.max) || 10; };
   /* 下一级成本（唯一出口；UI 与扣费读同一份） */
-  GAME.enhCost = function (itemId) {
-    var it = DATA.EQUIP[itemId];
+  GAME.enhCost = function (x) {
+    var it = DATA.EQUIP[GAME.eqId(x)];
     if (!it) return null;
     var base = (DATA.FORGE.costByQ || {})[it.q] || DATA.FORGE.costByQ[1];
-    var lv = GAME.enhOf(itemId);
+    var lv = GAME.enhOf(x);
     var C = DATA.ENHANCE || {};
     return {
       gold: Math.round((base.gold || 0) * (C.goldMul || 0.35) * (lv + 1)),
@@ -2822,44 +2931,31 @@
       stone: Math.round((base.stone || 0) * (C.stoneMul || 0.22) * (lv + 1)),
     };
   };
-  /* 可强化清单：背包 + 已穿戴里的全部装备种（去重；品质高、已强化者在前） */
+  /* 可强化清单：背包 + 穿戴里的**全部件**（品质高、已强化者在前） */
   GAME.enhList = function () {
-    var s = GAME.state, seen = {}, ids = [];
-    ((s && s.inventory) || []).forEach(function (id) {
-      if (!seen[id] && DATA.EQUIP[id]) { seen[id] = 1; ids.push(id); }
+    var out = GAME.eqPieces().slice();
+    out.sort(function (a, b) {
+      return (DATA.EQUIP[GAME.eqId(b)].q - DATA.EQUIP[GAME.eqId(a)].q)
+        || (GAME.enhOf(b) - GAME.enhOf(a));
     });
-    ((s && s.generals) || []).forEach(function (g) {
-      for (var sl in (g.equip || {})) {
-        var id = g.equip[sl];
-        if (!seen[id] && DATA.EQUIP[id]) { seen[id] = 1; ids.push(id); }
-      }
-    });
-    ids.sort(function (a, b) {
-      return (DATA.EQUIP[b].q - DATA.EQUIP[a].q) || (GAME.enhOf(b) - GAME.enhOf(a));
-    });
-    return ids;
+    return out;
   };
-  GAME.enhance = function (itemId) {
-    var s = GAME.state, it = DATA.EQUIP[itemId];
+  GAME.enhance = function (ref) {
+    var s = GAME.state;
+    var inst = GAME.eqFind(ref);
+    if (!inst) return { ok: false, msg: '尚未拥有这件装备（先打造或缴获）' };
+    var itemId = GAME.eqId(inst), it = DATA.EQUIP[itemId];
     if (!it) return { ok: false, msg: '未知装备' };
     if (GAME.forgeLevel() <= 0) return { ok: false, msg: '需先建造铁匠铺' };
-    var lv = GAME.enhOf(itemId);
-    if (lv >= GAME.enhMax()) return { ok: false, msg: '「' + it.name + '」已至 +' + GAME.enhMax() + '（满级）' };
-    /* 至少得拥有这件（或在穿）—— 没拥有过的种类不给强化 */
-    var owned = ((s.inventory) || []).indexOf(itemId) >= 0;
-    if (!owned) {
-      ((s.generals) || []).forEach(function (g) {
-        for (var sl in (g.equip || {})) if (g.equip[sl] === itemId) owned = true;
-      });
-    }
-    if (!owned) return { ok: false, msg: '尚未拥有「' + it.name + '」（先打造或缴获）' };
-    var cost = GAME.enhCost(itemId);
+    var lv = GAME.enhOf(inst);
+    var label0 = GAME.eqLabel(inst);
+    if (lv >= GAME.enhMax()) return { ok: false, msg: '「' + label0 + '」已至 +' + GAME.enhMax() + '（满级）' };
+    var cost = GAME.enhCost(inst);
     if (!GAME.canAfford(cost)) return { ok: false, msg: '资材不足（需 ' + GAME.costString(cost) + '）' };
     GAME.payCost(cost);
-    s.forgeEnh = s.forgeEnh || {};
-    s.forgeEnh[itemId] = lv + 1;
-    GAME.log('铁匠铺百炼：' + it.name + ' → +' + (lv + 1));
-    return { ok: true, msg: '「' + it.name + '」强化 +' + (lv + 1)
+    if (inst && typeof inst === 'object') inst.enh = lv + 1;   /* 按件 +1 */
+    GAME.log('铁匠铺百炼：' + label0 + ' → +' + (lv + 1));
+    return { ok: true, msg: '「' + GAME.eqLabel(inst) + '」强化 +' + (lv + 1)
       + '（装备属性 +' + Math.round((lv + 1) * ((DATA.ENHANCE || {}).perLv || 0.08) * 100) + '%）' };
   };
 

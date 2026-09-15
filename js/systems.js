@@ -123,12 +123,13 @@
     /* 驯马技巧：坐骑装备属性 +5%/级 */
     var horseMul = 1 + S.techBonus('horse');
     for (var slot in g.equip) {
-      var item = DATA.EQUIP[g.equip[slot]];
+      var inst = g.equip[slot];
+      var item = DATA.EQUIP[GAME.eqId ? GAME.eqId(inst) : inst];
       if (!item) continue;
       var mul = (slot === 'mount') ? horseMul : 1;
-      /* v77 · 百炼强化：同种装备共享强化等级（s.forgeEnh），每级全属性 +perLv。
+      /* v79 · 百炼强化改**按件**：读这一件自己的 inst.enh（同名各件互不影响）。
          乘在「装备本身」这一层（套装加成不参与强化）——结算口径唯一在这里。 */
-      var enhLv = (GAME.enhOf ? GAME.enhOf(g.equip[slot]) : 0);
+      var enhLv = (GAME.eqEnhOf ? GAME.eqEnhOf(inst) : 0);
       if (enhLv) mul *= 1 + enhLv * ((DATA.ENHANCE && DATA.ENHANCE.perLv) || 0.08);
       b.tong += (item.tong || 0) * mul; b.nz += (item.nz || 0) * mul;
       b.yw += (item.yw || 0) * mul; b.zm += (item.zm || 0) * mul;
@@ -148,7 +149,7 @@
     if (!g || !g.equip) return out;
     var counts = {};
     for (var slot in g.equip) {
-      var item = DATA.EQUIP[g.equip[slot]];
+      var item = DATA.EQUIP[GAME.eqId ? GAME.eqId(g.equip[slot]) : g.equip[slot]];
       if (item && item.set) counts[item.set] = (counts[item.set] || 0) + 1;
     }
     for (var set in counts) {
@@ -180,7 +181,7 @@
   S.setProgressOf = function (g) {
     var out = [], counts = {};
     for (var slot in ((g && g.equip) || {})) {
-      var it = DATA.EQUIP[g.equip[slot]];
+      var it = DATA.EQUIP[GAME.eqId ? GAME.eqId(g.equip[slot]) : g.equip[slot]];
       if (it && it.set) counts[it.set] = (counts[it.set] || 0) + 1;
     }
     Object.keys(DATA.SETS).forEach(function (sk) {
@@ -199,29 +200,33 @@
   GAME.setProgressOf = S.setProgressOf;
   GAME.setPiecesOf = S.setPiecesOf;
 
-  S.canEquip = function (gen, itemId) {
-    var item = DATA.EQUIP[itemId];
+  /* v79：按**件**装备 —— ref 可以是件号 / 实例 / 装备 id（旧入口兼容） */
+  S.canEquip = function (gen, ref) {
+    var inst = GAME.eqFind(ref);
+    if (!inst) return { ok: false, msg: '背包中没有该装备' };
+    var item = DATA.EQUIP[GAME.eqId(inst)];
     if (!item) return { ok: false, msg: '未知装备' };
-    var inv = GAME.state.inventory || [];
-    if (inv.indexOf(itemId) < 0) return { ok: false, msg: '背包中没有该装备' };
+    if ((GAME.state.inventory || []).indexOf(inst) < 0) return { ok: false, msg: '该件不在背包' };
     /* 坐骑需马厩/马鞭等条件简化：等级不做硬约束 */
-    return { ok: true, item: item };
+    return { ok: true, item: item, inst: inst };
   };
 
-  S.equipItem = function (genId, itemId) {
+  S.equipItem = function (genId, ref) {
     var s = GAME.state, g = null;
     s.generals.forEach(function (x) { if (x.id === genId) g = x; });
     if (!g) return { ok: false, msg: '将领不存在' };
-    var chk = S.canEquip(g, itemId);
+    var chk = S.canEquip(g, ref);
     if (!chk.ok) return chk;
-    var item = chk.item;
-    /* 同槽位旧装备回背包 */
+    var item = chk.item, inst = chk.inst;
+    g.equip = g.equip || {};
+    /* 同槽位旧件回背包（原物原样，强化随件走） */
     if (g.equip[item.slot]) s.inventory.push(g.equip[item.slot]);
-    g.equip[item.slot] = itemId;
-    var idx = s.inventory.indexOf(itemId);
+    var idx = s.inventory.indexOf(inst);
     if (idx >= 0) s.inventory.splice(idx, 1);
-    GAME.log('装备 ' + item.name + ' 给 ' + g.name);
-    return { ok: true, msg: '已装备 ' + item.name };
+    g.equip[item.slot] = inst;
+    var label = GAME.eqLabel(inst);
+    GAME.log('装备 ' + label + ' 给 ' + g.name);
+    return { ok: true, msg: '已装备 ' + label };
   };
 
   /* 装备评分（同槽位比较优劣；套装件略有加成）
@@ -242,20 +247,20 @@
     s.inventory = s.inventory || [];
     var changed = [];
     DATA.EQUIP_SLOTS.forEach(function (slot) {
-      var curId = g.equip[slot] || null;
-      var bestId = curId, bestScore = S.equipScore(curId ? DATA.EQUIP[curId] : null);
-      s.inventory.forEach(function (id) {
-        var it = DATA.EQUIP[id];
+      var curInst = g.equip[slot] || null;
+      var bestInst = curInst, bestScore = S.equipScore(curInst ? DATA.EQUIP[GAME.eqId(curInst)] : null);
+      s.inventory.forEach(function (inst) {
+        var it = DATA.EQUIP[GAME.eqId(inst)];
         if (!it || it.slot !== slot) return;
         var sc = S.equipScore(it);
-        if (sc > bestScore) { bestScore = sc; bestId = id; }
+        if (sc > bestScore) { bestScore = sc; bestInst = inst; }
       });
-      if (bestId && bestId !== curId) {
-        if (curId) s.inventory.push(curId);
-        var idx = s.inventory.indexOf(bestId);
+      if (bestInst && bestInst !== curInst) {
+        if (curInst) s.inventory.push(curInst);
+        var idx = s.inventory.indexOf(bestInst);
         if (idx >= 0) s.inventory.splice(idx, 1);
-        g.equip[slot] = bestId;
-        changed.push(DATA.EQUIP[bestId].name);
+        g.equip[slot] = bestInst;
+        changed.push(GAME.eqLabel(bestInst));
       }
     });
     if (!changed.length) return { ok: true, msg: '已是最优配置（无可换之件）' };
@@ -284,11 +289,11 @@
     var s = GAME.state, g = null;
     s.generals.forEach(function (x) { if (x.id === genId) g = x; });
     if (!g || !g.equip[slot]) return { ok: false, msg: '该槽位无装备' };
-    s.inventory.push(g.equip[slot]);
-    var itemName = DATA.EQUIP[g.equip[slot]] ? DATA.EQUIP[g.equip[slot]].name : '';
+    var label = GAME.eqLabel(g.equip[slot]);
+    s.inventory.push(g.equip[slot]);   /* 原物原样回背包（强化随件走） */
     delete g.equip[slot];
-    GAME.log('卸下 ' + itemName);
-    return { ok: true, msg: '已卸下' };
+    GAME.log('卸下 ' + label);
+    return { ok: true, msg: '已卸下 ' + label };
   };
 
   /* ============================================================
@@ -699,6 +704,8 @@
       if (s.items[j] <= 0) delete s.items[j];
     }
     s.rank += 1;
+    /* v79（神器 · 特殊活动）：爵位晋升 → 供奉值大额入账 */
+    if (GAME.artGain) GAME.artGain(((DATA.ARTIFACT || {}).promotePts) || 0, '爵位晋升 · ' + DATA.RANK[s.rank].name);
     GAME.log('晋升爵位：' + DATA.RANK[s.rank].name);
     return { ok: true, msg: '晋升 ' + DATA.RANK[s.rank].name + '！俸禄 ' + U.fmt(DATA.RANK[s.rank].salary) + '/h' };
   };
