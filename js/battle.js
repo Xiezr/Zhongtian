@@ -608,6 +608,24 @@
     return { gain: gain, raw: raw, cap: cap, capped: raw > cap, value: val };
   };
 
+  /* v83（老板）：「形成经验惩罚机制」——
+     掠夺 / 占领**野地**时，按「每 12 级一个台阶」给经验打折（唯一出口）。
+     · expTierOf：将领等级 → 该吃满的野地等级（1~10；>120 封顶在 10 级野地）
+     · expPenaltyOf：野地等级 ≥ 台阶 → 1（吃满）；每差一档 ×decay，地板 minMul
+     野地 0 级按 1 级对待（尚未长成的野地不比 1 级更差）。 */
+  GAME.battle.expTierOf = function (genLevel) {
+    var P = DATA.EXP_PENALTY || { tier: 12, maxLv: 10 };
+    return Math.min(P.maxLv, Math.max(1, Math.ceil((genLevel || 1) / P.tier)));
+  };
+  GAME.battle.expPenaltyOf = function (genLevel, wildLevel) {
+    var P = DATA.EXP_PENALTY || { tier: 12, maxLv: 10, decay: 0.65, minMul: 0.03 };
+    var need = GAME.battle.expTierOf(genLevel);
+    var wl = Math.max(1, Math.round(wildLevel || 1));
+    if (wl >= need) return { mul: 1, need: need, wl: wl, gap: 0 };
+    var gap = need - wl;
+    return { mul: Math.max(P.minMul, Math.pow(P.decay, gap)), need: need, wl: wl, gap: gap };
+  };
+
   /* 目标解析：野地 / 城池 / 野外城池 */
   GAME.battle.resolveTarget = function (target) {
     var s = GAME.state;
@@ -1099,7 +1117,21 @@
          ⚠️ 口径从"野地等级 × 12"改成"**实际歼灭量**"——这是本质修正：
          原来的线性公式对二次增长的升级需求，到后期是 750~840 场一级（实测）。 */
       var expR = GAME.battle.battleExp(result.defLossBy, gen);
-      var exps = GAME.battle.gainExp(gen, expR.gain, mode.name + ' ' + t.name);
+      /* v83（老板）：「形成经验惩罚机制」——掠夺 / 占领野地时按台阶打折。
+         野地以外（城池 / 野外城池）不适用；打折后保底 1 点（不至于完全归零）。 */
+      if (t.kind === 'wild' && expR.gain > 0) {
+        var penR = GAME.battle.expPenaltyOf(gen.level, t.lv);
+        if (penR.mul < 1) {
+          result.expPenalty = {
+            mul: penR.mul, need: penR.need, wl: penR.wl, gap: penR.gap,
+            before: expR.gain, after: Math.max(1, Math.round(expR.gain * penR.mul)),
+          };
+          expR.gain = result.expPenalty.after;
+        }
+      }
+      var whyEx = mode.name + ' ' + t.name
+        + (result.expPenalty ? '（越级惩罚 ×' + Number(result.expPenalty.mul).toFixed(2) + '）' : '');
+      var exps = GAME.battle.gainExp(gen, expR.gain, whyEx);
       /* 战报里体现经验：否则玩家永远不知道打仗还会涨经验，"经验可操作"就无从谈起 */
       result.expGain = expR.gain;
       result.expInfo = exps;
@@ -1334,10 +1366,15 @@
     if (result.expInfo && gen) {
       var ei = result.expInfo;
       line4 = '<br>经验：' + gen.name + ' +' + U.numText(ei.gain, 0)
-        + (result.expCapped
-          ? '<span style="color:var(--text-dim);">（歼灭 ' + U.numText(result.expRaw || 0, 0)
-            + '，已达单场上限 ' + U.numText(ei.gain, 0) + '）</span>'
-          : (result.defValue ? '<span style="color:var(--text-dim);">（歼敌值 ' + U.numText(result.defValue, 0) + ' 资源）</span>' : ''))
+        /* v83（老板）：「形成经验惩罚机制」——越级打野地要把打折原因写明白，
+           否则玩家会以为经验算漏了（与"单场封顶"同一原则）。 */
+        + (result.expPenalty
+          ? '<span style="color:var(--text-dim);">（越级惩罚 ×' + Number(result.expPenalty.mul).toFixed(2)
+            + '：Lv' + gen.level + ' 宜打 ' + result.expPenalty.need + ' 级野地）</span>'
+          : (result.expCapped
+            ? '<span style="color:var(--text-dim);">（歼灭 ' + U.numText(result.expRaw || 0, 0)
+              + '，已达单场上限 ' + U.numText(ei.gain, 0) + '）</span>'
+            : (result.defValue ? '<span style="color:var(--text-dim);">（歼敌值 ' + U.numText(result.defValue, 0) + ' 资源）</span>' : '')))
         + '　Lv' + ei.level + '（' + U.numText(ei.exp, 0) + ' / ' + U.numText(ei.need, 0) + '）'
         + (ei.up > 0 ? '　<b style="color:var(--gold-light);">连升 ' + ei.up + ' 级！</b>' : '');
     } else if (result.expNone && gen) {

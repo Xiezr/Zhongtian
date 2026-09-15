@@ -4224,6 +4224,27 @@ if (svBtn) {
   })();
   await sleep(60);
 
+  /* ============================================================
+   * v83（老板）：野地经验惩罚 —— 台阶口径 / 战报注明
+   * ============================================================ */
+  console.log('\n--- v83. 经验惩罚（野地越级） ---');
+  check('v83：台阶 = 每 12 级一档（12→1 / 13→2 / 120→10 / 121+→10）', (function () {
+    return G.battle.expTierOf(12) === 1 && G.battle.expTierOf(13) === 2
+      && G.battle.expTierOf(120) === 10 && G.battle.expTierOf(200) === 10;
+  })());
+  check('v83：越级惩罚 ×0.65^gap（Lv73 打 1 级 → 0.65⁶）', (function () {
+    const p = G.battle.expPenaltyOf(73, 1);
+    return p.need === 7 && Math.abs(p.mul - Math.pow(0.65, 6)) < 1e-9;
+  })());
+  check('v83：战报注明越级惩罚与宜打等级', (function () {
+    const txt = G.battle.reportText('野地 Lv1', {}, { name: '测试将', level: 73 },
+      { winner: 'atk', rounds: 3, atkLoss: 1, atkRemain: 9, defLoss: 10, defRemain: 0,
+        expInfo: { gain: 8, level: 73, exp: 8, need: 99999, up: 0 },
+        expPenalty: { mul: 0.0754, need: 7, wl: 1, gap: 6, before: 106, after: 8 } });
+    return txt.indexOf('越级惩罚 ×') >= 0 && txt.indexOf('宜打 7 级野地') >= 0;
+  })());
+  await sleep(30);
+
   G.ui.setView('city');
   await sleep(60);
   return finish();

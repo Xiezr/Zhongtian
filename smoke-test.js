@@ -11886,11 +11886,20 @@ console.log('\n===== 47. v62 工匠作坊造箭塔 =====');
       G.ensureDailyQuests(true);
       var pool = st.quests.pool;
 
-      /* 夹具：找一条非绝对值的随机任务（可用 base 打桩达标） */
+      /* 夹具：找一条非绝对值的随机任务（可用 base 打桩达标）
+         v83 修复（存量 flake，2~3%）：跳过 bldCount/minfang 类（r18「广厦之谋」）——
+         打桩口按 (metric, sub) 拦截、无法对同一组指标返回两个值（g01/g02 已占用该指标），
+         抽中同类任务时下面四条断言会连锁假红。 */
       var rq = null, rdef = null;
       for (var i = 0; i < pool.length; i++) {
         var d = G.randomQuestDef(pool[i].id);
-        if (d && !d.abs) { rq = pool[i]; rdef = d; break; }
+        if (d && !d.abs && !(d.metric === 'bldCount' && d.sub === 'minfang')) { rq = pool[i]; rdef = d; break; }
+      }
+      if (!rq) {   /* 退化兜底：万一池里只剩同指标任务，退回旧口径（不再扩大范围） */
+        for (var i2 = 0; i2 < pool.length; i2++) {
+          var d2 = G.randomQuestDef(pool[i2].id);
+          if (d2 && !d2.abs) { rq = pool[i2]; rdef = d2; break; }
+        }
       }
       check('夹具就绪：手上有一条非绝对值随机任务', !!rq, pool.length + ' 项在手');
 
@@ -13351,6 +13360,91 @@ console.log('\n===== 66. v81 两条（君主卡 · 兵营三页） =====');
       /\.q-sec-t, \.q-det-sec, \.bag-sec[\s\S]{0,240}\.gp-sec, \.fsn-t, \.op-zone-t, \.ledger-sec, \.seal-h \{/.test(h82));
     check('④ 标题外观共享含 .q-det-title（三层标题一处定义）',
       /\.gold-heading, \.m-title, \.q-det-title \{[\s\S]{0,200}font-size: var\(--fs-h2\)/.test(h82));
+  })();
+
+  /* ============================================================
+   * 68. v83（老板）：野地经验惩罚机制（每 12 级一个台阶）
+   * ============================================================ */
+  console.log('\n===== 68. v83 经验惩罚（野地越级） =====');
+  (function () {
+    check('台阶：每 12 级一档（12→1 / 13→2 / 24→2 / 25→3 / 120→10 / 121+→10）', (function () {
+      var cases = [[1, 1], [12, 1], [13, 2], [24, 2], [25, 3], [73, 7], [120, 10], [121, 10], [200, 10]];
+      return cases.every(function (cc) { return G.battle.expTierOf(cc[0]) === cc[1]; });
+    })());
+    check('吃满：野地等级 ≥ 台阶 → 系数 1（不设超额加成）',
+      G.battle.expPenaltyOf(20, 2).mul === 1 && G.battle.expPenaltyOf(20, 9).mul === 1
+      && G.battle.expPenaltyOf(121, 10).mul === 1);
+    check('惩罚：每低一档 ×0.65（低1档 0.65 / 低6档 0.65⁶）', (function () {
+      var p1 = G.battle.expPenaltyOf(20, 1);
+      var p6 = G.battle.expPenaltyOf(73, 1);
+      return Math.abs(p1.mul - 0.65) < 1e-9 && Math.abs(p6.mul - Math.pow(0.65, 6)) < 1e-9
+        && p1.need === 2 && p6.need === 7 && p6.wl === 1;
+    })());
+    check('地板：极深越级不低于 0.03（不至于归零）',
+      Math.abs(G.battle.expPenaltyOf(200, 1).mul - 0.03) < 1e-9);
+    check('野地 0 级按 1 级对待（尚未长成不比 1 级更差）',
+      G.battle.expPenaltyOf(5, 0).mul === 1 && Math.abs(G.battle.expPenaltyOf(13, 0).mul - 0.65) < 1e-9);
+    check('数值全在 DATA.EXP_PENALTY（改一处即可调平衡）',
+      DATA.EXP_PENALTY.tier === 12 && DATA.EXP_PENALTY.maxLv === 10
+      && DATA.EXP_PENALTY.decay === 0.65 && DATA.EXP_PENALTY.minMul === 0.03);
+
+    check('结构：惩罚挂在野地出征结算口（唯一出口），非野地不适用', (function () {
+      var bs = stripComment(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'battle.js'), 'utf8'));
+      return /GAME\.battle\.expPenaltyOf = function/.test(bs)
+        && /GAME\.battle\.expTierOf = function/.test(bs)
+        && /t\.kind === 'wild' && expR\.gain > 0/.test(bs)
+        && /GAME\.battle\.expPenaltyOf\(gen\.level, t\.lv\)/.test(bs);
+    })());
+    check('战报注明越级惩罚（否则玩家以为经验算漏了）', (function () {
+      var txt = G.battle.reportText('野地 Lv1', {}, { name: '测试将', level: 73 },
+        { winner: 'atk', rounds: 3, atkLoss: 1, atkRemain: 9, defLoss: 10, defRemain: 0,
+          expInfo: { gain: 8, level: 73, exp: 8, need: 99999, up: 0 },
+          expPenalty: { mul: 0.0754, need: 7, wl: 1, gap: 6, before: 106, after: 8 } });
+      return txt.indexOf('越级惩罚 ×') >= 0 && txt.indexOf('宜打 7 级野地') >= 0;
+    })());
+
+    /* 实测：真实出征走完整链路 —— 打桩野地守军与等级（确定性，不赌地图随机） */
+    check('实测：低阶将吃满、高阶将越级打折（出征全链路）', withoutEncounter(function () {
+      return withFreshState('越级测试', function (st) {
+        var c = st.cities[0];
+        var spot = null;
+        for (var r = 1; r <= 12 && !spot; r++) {
+          for (var dy = -r; dy <= r && !spot; dy++) for (var dx = -r; dx <= r && !spot; dx++) {
+            var tl = G.map.tile(c.x + dx, c.y + dy);
+            if (tl && tl.terrain !== 'city') spot = { x: c.x + dx, y: c.y + dy };
+          }
+        }
+        if (!spot) return true;
+        var keepLv = G.map.wildLevelNow, keepDef = G.wildDefenseAt;
+        try {
+          /* 打桩：目标固定 Lv2 野地、守军 30 义兵（必胜；经验 = 30×230/1000×2 = 14） */
+          G.map.wildLevelNow = function () { return 2; };
+          G.wildDefenseAt = function () { return { army: { yibing: 30 }, gen: null, day: 0 }; };
+          var gen = st.generals[1] || st.generals[0];
+          st.res.grain = 1e8;
+
+          gen.level = 5; gen.exp = 0; gen.stamina = 100; gen.energy = 100;
+          c.army = { yibing: 300000 };
+          var rLow = G.battle.expedition({ kind: 'wild', x: spot.x, y: spot.y }, 'raid', { yibing: 300000 }, gen.id);
+          if (!rLow.ok || !rLow.result || rLow.result.winner !== 'atk' || !(rLow.result.expGain > 0)) return false;
+
+          gen.level = 48; gen.exp = 0; gen.stamina = 100; gen.energy = 100;   /* 48/12 = 4 档 */
+          c.army = { yibing: 300000 };
+          var rHigh = G.battle.expedition({ kind: 'wild', x: spot.x, y: spot.y }, 'raid', { yibing: 300000 }, gen.id);
+          if (!rHigh.ok || !rHigh.result || rHigh.result.winner !== 'atk') return false;
+
+          var pen = rHigh.result.expPenalty;
+          var wantMul = Math.pow(DATA.EXP_PENALTY.decay, 4 - 2);   /* 差 2 档 */
+          return !rLow.result.expPenalty
+            && !!pen && pen.need === 4 && pen.wl === 2 && pen.gap === 2
+            && Math.abs(pen.mul - wantMul) < 1e-9
+            && pen.after === rHigh.result.expGain
+            && rHigh.result.expGain < rLow.result.expGain;
+        } finally {
+          G.map.wildLevelNow = keepLv; G.wildDefenseAt = keepDef;
+        }
+      });
+    }), '低阶 14 / 高阶 14×0.65²');
   })();
 
   console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');
