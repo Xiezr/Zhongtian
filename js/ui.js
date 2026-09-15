@@ -3997,24 +3997,37 @@
     var defShow = Math.round(a.defPct * 1000) / 10;
 
     /* ---------- ① 顶部：汇总信息（身份行）+ 经验条 + 操作 ---------- */
+    /* v74（老板需求 3）：「将领的简介…太啰嗦：赵子龙 良材 ★★ 均衡 / 可当一郡之任」
+       —— 头部收成两行：
+         ① 姓名 + 资质★（悬停 = 等级上限 / 每级成长）+ 类型（均衡 / 猛将…）
+         ② 资质描述（截掉"等级上限 N。"那半句 —— 它已进悬停）
+       撤下：Lv 行、状态与城池、装备 n/12（装备数在右栏标题里）。
+       Lv 挪进经验行；状态非空闲时以小签挂在名字后（出征中 / 守将 这类需要一眼看到）。 */
+    var styleName74 = '';
+    (DATA.GEN_STYLES || []).forEach(function (x) { if (x.id === g.style) styleName74 = x.name; });
+    var rkDesc74 = String(rk.desc || '').replace(/等级上限 \d+。?/, '').trim();
+    var statusTag74 = (g.status && g.status !== 'idle')
+      ? '<span class="gp-stag">' + U.escape(ui.genStatusName(g)) +
+        (g.cityId && GAME.cityById(g.cityId) ? '·' + U.escape(GAME.cityById(g.cityId).name) : '') + '</span>'
+      : '';
     var html = '<div class="gen-pane">' +
       '<div class="gp-head">' +
         '<span class="gp-face">' + ui.faceOf(g, 84) + '</span>' +
         '<span class="gp-id">' +
-          '<b class="gp-name">' + ui.rankBadge(g) + ' ' + U.escape(g.name) +
+          '<b class="gp-name">' + U.escape(g.name) +
             (g.hero ? '<span class="gcard-tag hero">史实名将</span>' : '') +
-            (g.beauty ? '<span class="gcard-tag beauty">美人</span>' : '') + '</b>' +
-          '<span class="gp-sub">Lv' + g.level + ' / ' + capLv + '　·　' + rk.name + '　·　' +
-            ui.genStatusName(g) +
-            (g.cityId && GAME.cityById(g.cityId) ? '（' + U.escape(GAME.cityById(g.cityId).name) + '）' : '') +
-            '　·　装备 ' + eqCnt + '/12</span>' +
-          '<span class="gp-sub">' + U.escape(rk.desc || '') +
-            '　每级成长 <b>+' + rk.grow + '</b>' +
+            (g.beauty ? '<span class="gcard-tag beauty">美人</span>' : '') + statusTag74 + '</b>' +
+          '<span class="gp-sub">' +
+            '<span class="rank-badge r-' + rk.id + '" title="等级上限 ' + capLv +
+              '，每级属性成长 +' + rk.grow + '">' + rk.name + ' ' + '★'.repeat(rk.star) + '</span>' +
+            (styleName74 ? '<span class="gp-style">' + U.escape(styleName74) + '</span>' : '') +
+          '</span>' +
+          '<span class="gp-sub">' + U.escape(rkDesc74) +
             (atCap ? '　<span class="gd-warn">已达资质上限</span>' : '') + '</span>' +
           '<span class="gp-exprow">' +
             '<span class="gd-expbar" title="经验 ' + U.numText(g.exp || 0, 0) + ' / ' +
               U.numText(expNeed, 0) + '"><i style="width:' + pct + '%;"></i></span>' +
-            '<span class="gd-exptext">经验 <b>' + U.numText(g.exp || 0, 0) + '</b> / ' +
+            '<span class="gd-exptext">Lv<b>' + g.level + '</b>　经验 <b>' + U.numText(g.exp || 0, 0) + '</b> / ' +
               U.numText(expNeed, 0) + '　（' + pct + '%）</span>' +
             /* v66：到资质上限后按钮变暗并说明原因；**不禁用** ——
                点开能看到为什么不能吃经验（比"点了没反应"清楚）。 */
@@ -4060,24 +4073,32 @@
        再单列一块"守将效果"就是把同一份数据说两遍（本项目最经典的失效模式）。 */
     var gbNow = (g.status === 'guard' && GAME.guardBonus)
       ? GAME.guardBonus(GAME.cityById(g.cityId) || GAME.currentCity()) : null;
+    /* v74（老板需求 4/6）：
+       ①「每点作用也作为六维名称的鼠标悬停备注」—— 作用文案进名称格 title
+         （守将加成同进 title —— 它原本并排显示在作用列里）；
+       ②「就在原来每点作用这一列」放 **＋ 加点按钮**（六维都有：道具或自由点二选一）；
+       ③「不要这个备注」—— 下方 带兵 / 人口上限 / 本城产量 / 速度 四行整块撤除
+         （人口上限那半条随需求 1 一并下线；其余三行的数字在「状态」区与侧栏已有出口）。 */
+    var PLUS_STATS74 = ['tong', 'nz', 'yw', 'zm', 'spd', 'sta'];
     html += '<div class="gp-sec">六维</div>' +
-      /* v65：表头「作用（每点）」改「每点作用」—— 少两个字，"六维"列就宽一分 */
-      '<table class="tbl gd-dims"><thead><tr><th>六维</th><th class="ctr">数值</th><th>每点作用</th></tr></thead><tbody>' +
+      '<table class="tbl gd-dims"><thead><tr><th>六维</th><th class="ctr">数值</th><th class="ctr">加点</th></tr></thead><tbody>' +
         ui.GEN_DIMS.map(function (d) {
+          var tip74 = '每点作用：' + d.use;
           var extra = (gbNow && d.guardUse) ? d.guardUse(gbNow) : '';
-          return '<tr><td><b style="color:' + d.color + ';">' + d.n + '</b></td>' +
+          if (extra) tip74 += '\n' + extra;
+          var plus74 = (PLUS_STATS74.indexOf(d.k) >= 0)
+            ? '<button class="btn sm gd-plus" data-action="gen-stat-plus" data-gen="' + genId +
+              '" data-stat="' + d.k + '" title="' + U.escape('用自由属性点或道具提升' + d.n) + '">＋</button>'
+            : '';
+          return '<tr><td title="' + U.escape(tip74) + '"><b style="color:' + d.color + ';">' + d.n + '</b></td>' +
             '<td class="ctr gd-v">' + (a[d.val || d.k] || 0) + '</td>' +
-            '<td class="gd-u">' + d.use + extra + '</td></tr>';
+            '<td class="ctr gd-u gd-plus-c">' + plus74 + '</td></tr>';
         }).join('') +
-      '</tbody></table>' +
-      '<div class="gd-effect">' +
-        '<span>带兵 <b>' + U.fmt(a.tong * 100) + '</b></span>' +
-        '<span>人口上限 <b>+' + U.fmt(a.tong * (DATA.POP_PER_TONG || 1000)) + '</b></span>' +
-        /* v54：**全军攻击 / 全军防御从这里撤掉** —— 它们已经进「状态」区（攻击/防御两行），
-           同一组数字两个出口就是本项目最经典的失效模式（改一处忘一处）。 */
-        '<span>本城产量 <b>+' + a.nz + '%</b></span>' +
-        '<span>行军 / 战斗速度 <b>+' + (a.spd || 0) + '</b></span>' +
-      '</div>';
+        /* v74（老板需求 5）：「增加一行自由属性点，用于玩家自行决定加点」 */
+        '<tr class="gd-freep"><td colspan="3">自由属性点 <b class="fp-n">' +
+          Math.round(g.freePts || 0) + '</b><span class="gd-free-hint">升级获得（每级 = 成长值）　' +
+          '点右侧 ＋ 逐点分配，或用道具</span></td></tr>' +
+      '</tbody></table>';
 
     /* ---------- 状态（v54 · 老板） ----------
        ①「把总体，攻击，防御，体力（总体体力），精力放上，不要单独列装备的了」——
@@ -4452,7 +4473,9 @@
      文案短了但**意思不变**：每个数字都仍与代码里的常量一一对应，
      `smoke` 那条"常量与文案一致性"断言照旧守着。 */
   ui.GEN_DIMS = [
-    { k: 'tong', n: '统率', color: '#d8b04e', use: '带兵 +100 · 人口上限 +1000' },
+    /* v74（老板需求 1）：「带兵 +100 · 人口上限 +1000」里的**人口上限那半条已撤**
+       （人口只由民房决定）；作用文案现在走六维名称的悬停。 */
+    { k: 'tong', n: '统率', color: '#d8b04e', use: '带兵 +100' },
     /* v52（老板给定换算链）：属性不再"一点一趴"直接进乘区，
        而是先折算成攻防值，再按"每 10 点 = +1%"进全军。
        这里写的**就是代码里的同一组常量**（GAME.ATK_PER_YW / PCT_PER_ATK 等），
@@ -4462,7 +4485,7 @@
       /* v58：`guardUse` = 该将**现任守将**时这一维实际提供的加成（并进"作用"列）。
          映射取自 `GAME.guardBonus`：内政→产量/建造、勇武→征兵、智谋→研究/城防。 */
       guardUse: function (gb) {
-        return gb.train ? '<span class="gd-guard">守将 征兵 +' + Math.round(gb.train * 100) + '%</span>' : '';
+        return gb.train ? '守将加成：征兵 +' + Math.round(gb.train * 100) + '%' : '';
       } },
     { k: 'zm', n: '智谋', color: '#4a9be0',
       use: '防御值 +10 · 每 10 防值→全军防 +1%',
@@ -4470,14 +4493,14 @@
         var p2 = [];
         if (gb.research) p2.push('研究 +' + Math.round(gb.research * 100) + '%');
         if (gb.def) p2.push('城防 +' + Math.round(gb.def * 100) + '%');
-        return p2.length ? '<span class="gd-guard">守将 ' + p2.join(' ') + '</span>' : '';
+        return p2.length ? '守将加成：' + p2.join(' ') : '';
       } },
     { k: 'nz', n: '内政', color: '#7fa85a', use: '本城产量 +1%',
       guardUse: function (gb) {
         var p2 = [];
         if (gb.prod) p2.push('产量 +' + Math.round(gb.prod * 100) + '%');
         if (gb.build) p2.push('建造 +' + Math.round(gb.build * 100) + '%');
-        return p2.length ? '<span class="gd-guard">守将 ' + p2.join(' ') + '</span>' : '';
+        return p2.length ? '守将加成：' + p2.join(' ') : '';
       } },
     { k: 'spd', n: '速度', color: '#b06fd8', use: '全军速度 +1 · 每级另 +1' },
     /* v29（需求 11）：体力升为**第六维** —— 它不再只是"出征的资格值"，
@@ -5776,6 +5799,9 @@
     var t = GAME.battle.resolveTarget(target);
     if (!t.ok) { ui.toast(t.msg); return; }
     ui._expTarget = target;
+    /* v74：把**已解析的目标**存一份 —— 兵力总览/战力对比要用守军与城防，
+       同一份 resolveTarget 结果直接读，不再各算一遍（两个出口必漂移）。 */
+    ui._expRes = t;
     ui._expMode = ui._expMode || 'occupy';
     if (target.kind === 'city') ui._attackNpc = t.npc;
     var gNum = 0;
@@ -5834,8 +5860,13 @@
          出征前先让玩家看见它是什么成色 —— 数据来自 GAME.fortPlanOf（唯一出口）。 */
       html += ui.planHTML(t.plan);
     }
-    /* v18：行军预估（随兵力输入实时更新 —— 由最慢兵种决定，所以填兵后才准） */
+    /* v18：行军预估（随兵力输入实时更新 —— 由最慢兵种决定，所以填兵后才准）
+       v74（老板：完善出征界面）：紧跟两行 ——
+         · #exp-sum   兵力总览：共派遣 N 兵 · 耗粮 X/时
+         · #exp-power 战力对比：我方 vs 守军（估算，同一套 troopPower 口径） */
     html += '<div class="exp-info" id="exp-march"></div>';
+    html += '<div class="exp-info" id="exp-sum"></div>';
+    html += '<div class="exp-info" id="exp-power"></div>';
     /* v59：本次出征带的战术（在「校场 → 出征战术」里调）——
        写在这里是因为"我这次是不是让弓兵防御了"是出征前必须确认的一件事 */
     html += '<div class="exp-info">战术 <b>' + GAME.tacticSummary() + '</b>' +
@@ -5852,7 +5883,11 @@
           sub: function (g) { return '统' + GAME.genAttrs(g).tong + ' 体' + Math.round(GAME.staNow(g)) + ' 精' + Math.round(g.energy || 0); } })
       + '</div>';
     html += '<div class="exp-troops">';
-    html += '<div class="ui-sub" style="margin-bottom:6px;">派遣兵力</div>';
+    /* v74：全带 / 清空 —— 一格一格点「全」太慢；这两个按钮只改输入框的值，
+       统一走 updateExpMarch 的实时口径（不藏第二份状态）。 */
+    html += '<div class="ui-sub" style="margin-bottom:6px;display:flex;align-items:center;gap:8px;">派遣兵力' +
+      '<button class="btn sm" data-action="exp-fill-all">全带</button>' +
+      '<button class="btn sm" data-action="exp-clear-all">清空</button></div>';
     html += troopRows + '</div></div>';
     html += '<div style="text-align:center;margin-top:14px;display:flex;gap:8px;justify-content:center;">' +
       '<button class="btn gold" data-action="exp-confirm">' + cur.icon + ' ' + cur.name + '</button>' +
@@ -5893,6 +5928,102 @@
     box.innerHTML = '🛫 行军 <b>' + dist + '</b> 格　速度系数 <b>' + GAME.march.speedText(army, from, to, eGen) + '</b>　'
       + '预计 <b style="color:var(--gold-light)">' + U.durExact(real) + '</b>'
       + (fallback ? '<span style="opacity:.6;">（按城内现有兵种估算）</span>' : '');
+    /* v74（老板：完善出征界面）：兵力总览 + 战力对比（估算）。
+       战力走 STORY.troopPower（与来袭/家底评估同一出口）；
+       守军侧对城池/据点吃城防系数（与 defensePowerOf 同一个 defDivisor 常量）。 */
+    var sum73 = $('#exp-sum'), pow73 = $('#exp-power');
+    if (sum73 || pow73) {
+      var tp74 = (GAME.story && GAME.story.troopPower) ? GAME.story.troopPower : null;
+      var n74 = 0, feed74 = 0, mine74 = 0;
+      Object.keys(city.army || {}).forEach(function (id) {
+        var inp74 = document.getElementById('exp-' + id);
+        var v74 = inp74 ? Number(inp74.value) || 0 : 0;
+        var tr74 = DATA.TROOPS[id];
+        n74 += v74;
+        if (tr74) feed74 += v74 * (tr74.food || 0);
+        if (tp74) mine74 += v74 * tp74(id);
+      });
+      if (sum73) {
+        sum73.innerHTML = '👥 共派遣 <b>' + U.numText(n74, 0) + '</b> 兵　' +
+          '耗粮 <b>' + U.numText(feed74, 0) + '</b>/时' +
+          (fallback ? '<span style="opacity:.6;">（未填兵力，按现有兵种展示守军对比）</span>' : '');
+      }
+      if (pow73) {
+        var res74 = ui._expRes;
+        var def74 = 0;
+        if (res74 && tp74) {
+          var div74 = (DATA.INVASION && DATA.INVASION.defDivisor) || 480;
+          var wall74 = (res74.def || 0) / div74;
+          for (var k74 in (res74.garrison || {})) def74 += tp74(k74) * (res74.garrison[k74] || 0);
+          def74 = Math.round(def74 * (1 + wall74));
+        }
+        if (def74 > 0 && mine74 > 0) {
+          var ratio74 = mine74 / def74;
+          var lv74 = ratio74 >= 1.6 ? ['兵力充足', 'var(--green-ok)']
+            : ratio74 >= 1.0 ? ['势均力敌', 'var(--gold-light)']
+            : ratio74 >= 0.6 ? ['兵力偏少', 'var(--amber, #e0a83c)']
+            : ['兵力悬殊', 'var(--red-light)'];
+          pow73.innerHTML = '⚔️ 战力估算　我方 <b style="color:var(--blue-info)">' + U.numText(mine74, 0) +
+            '</b>　vs　守军 <b style="color:var(--red-light)">' + U.numText(def74, 0) + '</b>' +
+            '　<span style="color:' + lv74[1] + ';font-weight:700;">' + lv74[0] + '（' +
+            (Math.round(ratio74 * 100) / 100) + ' : 1）</span>' +
+            '<span style="opacity:.6;">　估算口径：兵种属性加权，守方含城防</span>';
+        } else {
+          pow73.innerHTML = '⚔️ 战力估算　' + (mine74 > 0 ? '守军兵力未知' : '填入兵力后显示对比');
+        }
+      }
+    }
+  };
+
+  /* ============================================================
+   * 加点弹窗（v74 · 老板需求 4/5）：自由属性点 或 道具，二选一
+   * ------------------------------------------------------------
+   * 入口 = 六维表「加点」列的 ＋ 按钮。六维都开放：
+   *   · 四项主属性 —— 自由点 g[stat]+1；道具走 systems.useItem（perm 型，沿用 50 上限）
+   *   · 速度 / 体力 —— 只有自由点（无对应道具；分别落到 spdAdd / staAdd，
+   *     由 genAttrs 与 staBaseMax 吃进），**只能加、不能减**（老板明示）。
+   * ============================================================ */
+  ui.STAT_NAMES74 = { tong: '统率', nz: '内政', yw: '勇武', zm: '智谋', spd: '速度', sta: '体力' };
+  ui.openStatPlus = function (genId, stat) {
+    var s = GAME.state, g = null;
+    (s.generals || []).forEach(function (x) { if (x.id === genId) g = x; });
+    if (!g) { ui.toast('将领不存在'); return; }
+    var nm = ui.STAT_NAMES74[stat] || stat;
+    var a = GAME.genAttrs(g);
+    var fp = Math.round(g.freePts || 0);
+    var curVal = (stat === 'spd') ? (a.spd || 0) : (stat === 'sta') ? (a.staMax || 0) : (a[stat] || 0);
+    var items = (DATA.ITEMS || []).filter(function (it) {
+      return it.type === 'perm' && it.attr === stat;
+    });
+    var rows = items.length ? items.map(function (it) {
+      var have = (s.items || {})[it.id] || 0;
+      var used = (g.perm || {})[it.attr] || 0;
+      var capped = used >= 50;
+      return '<div class="stat-row"><span class="sr-name">' + GAME.itemIcon(it) + ' ' + U.escape(it.name) +
+        ' <i class="gd-sub">×' + have + '</i></span>' +
+        '<span class="sr-sub">已用 ' + used + ' / 50</span>' +
+        '<button class="btn sm' + (have > 0 && !capped ? ' gold' : ' dim') + '" data-action="stat-plus-item"' +
+          ' data-gen="' + genId + '" data-stat="' + stat + '" data-item="' + it.id + '"' +
+          (have > 0 && !capped ? '' : ' disabled') +
+          ' title="' + (capped ? '该将领此项丹药已达上限 50'
+            : (have > 0 ? '使用 1 个：' + nm + ' +1（永久）' : '背包中没有该道具（商城有售）')) + '">＋1</button></div>';
+    }).join('') : '<div class="q-empty">此属性暂无对应道具（用自由属性点即可）。</div>';
+    ui.openShell({
+      title: '＋ ' + nm + ' · ' + U.escape(g.name),
+      sub: '自由属性点 ' + fp + '　·　' + nm + ' 现 ' + curVal +
+        ui.help('自由属性点：每升 1 级获得 = 资质成长值（凡品 +1 … 天授 +8）。\n' +
+          '只能加、不能减；四项主属性另有永久丹药（商城 · 丹药），每将每项上限 50。'),
+      size: 'sm',
+      body:
+        '<div class="ui-sub">自由属性点</div>' +
+        '<div class="stat-row"><span class="sr-name">🎯 消耗 1 点</span>' +
+          '<span class="sr-sub">剩 ' + fp + ' 点</span>' +
+          '<button class="btn sm' + (fp > 0 ? ' gold' : ' dim') + '" data-action="stat-plus-free"' +
+            ' data-gen="' + genId + '" data-stat="' + stat + '"' + (fp > 0 ? '' : ' disabled') +
+            ' title="' + (fp > 0 ? nm + ' +1（只增不减）' : '自由属性点不足：升级获得，每级 = 资质成长值') + '">＋1</button></div>' +
+        '<div class="ui-sub" style="margin-top:10px;">道具</div>' + rows,
+      foot: '<div class="m-foot"><button class="btn" data-action="close-modal">关闭</button></div>'
+    });
   };
 
   /* 切换出征方式（只更新界面，不重开弹窗） */

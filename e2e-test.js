@@ -619,21 +619,21 @@ async function runTests(dom, URL) {
         !!document.querySelector('#view-container .gp-head .gp-face')
         && !!document.querySelector('#view-container .gp-head .gp-id .gp-name')
         && !!document.querySelector('#view-container .gen-pane .gd-dims'));
-      check('六维表只有 数值/作用 两列（无「装备/丹」、无「合计」）', (function () {
+      check('六维表只有 数值/加点 两列（作用文案已进名称悬停；无「装备/丹」「合计」）', (function () {
         const head = document.querySelector('#view-container .gd-dims thead');
         if (!head) return false;
         const ths = Array.prototype.map.call(head.querySelectorAll('th'), (x) => x.textContent.trim());
-        /* v65：表头「作用（每点）」→「每点作用」（少两字，给"六维"列腾宽度） */
-        return ths.length === 3 && ths[1] === '数值' && ths[2] === '每点作用'
+        /* v74：作用列 → 加点列（每点作用改为六维名称的悬停备注） */
+        return ths.length === 3 && ths[1] === '数值' && ths[2] === '加点'
           && head.textContent.indexOf('装备/丹') < 0 && head.textContent.indexOf('合计') < 0;
       })());
-      check('第五维是速度、第六维是体力（v29 需求 11）', (function () {
+      check('第五维是速度、第六维是体力；末行是自由属性点（v74）', (function () {
         const rows = document.querySelectorAll('#view-container .gd-dims tbody tr');
-        if (rows.length !== 6) return false;
-        /* v65：作用文案压成短句（老板说作用列太长把属性名挤折行了） */
+        if (rows.length !== 7) return false;              /* 六维 + 自由属性点行 */
         return rows[4].textContent.indexOf('速度') >= 0
-          && rows[4].textContent.indexOf('全军速度 +1') >= 0
-          && rows[5].textContent.indexOf('体力') >= 0;
+          && rows[5].textContent.indexOf('体力') >= 0
+          && rows[6].textContent.indexOf('自由属性点') >= 0
+          && !!rows[4].querySelector('[data-action="gen-stat-plus"]');
       })());
       /* v41（需求 2）：人形装备栏内嵌在右侧档案里 */
       check('人形装备栏内嵌在右侧档案（12 槽，不开弹窗）',
@@ -2671,10 +2671,10 @@ async function runTests(dom, URL) {
     !!gd26.querySelector('.gp-head .gp-face') && !!gd26.querySelector('.gp-head .gp-id')
     && !!gd26.querySelector('.gd-dims'));
   /* v29（需求 11）：体力升为第六维 */
-  check('六维表 6 行、3 列（属性/数值/作用）', (function () {
+  check('六维表 7 行（六维 + 自由属性点）、3 列（属性/数值/加点）', (function () {
     const rows = gd26.querySelectorAll('.gd-dims tbody tr');
     const ths = gd26.querySelectorAll('.gd-dims thead th');
-    return rows.length === 6 && ths.length === 3;
+    return rows.length === 7 && ths.length === 3;
   })());
   check('经验进度条渲染出来了（且就在顶上身份行里）', !!gd26.querySelector('.gd-expbar i')
     && !!gd26.querySelector('.gp-head .gp-exprow'));

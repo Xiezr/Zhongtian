@@ -1249,7 +1249,8 @@
       gen.level += 1;
       step = GAME.applyLevelGrowth(gen);   // 资质决定每级成长（凡品+1 … 天授+8）
       need = GAME.expNeedOf(gen);
-      GAME.log('⭐ 将领 ' + gen.name + ' 升至 Lv' + gen.level + '（四维 +' + step + '）');
+      GAME.log('⭐ 将领 ' + gen.name + ' 升至 Lv' + gen.level +
+        '（自动加点 +' + step + ' · 自由点 +' + step + '）');
     }
     var capped = gen.level >= capLv;
     if (capped && from < capLv) {

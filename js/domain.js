@@ -97,12 +97,11 @@
     });
     /* v28：民房满级专精 —— 人口上限 +20% */
     cap = Math.round(cap * (1 + GAME.mastery('popPct', city)));
-    /* 守将统率的人口贡献（报告 9.2：统率 1 点 = 影响 100 军队 + 1000 人口）
-     * 此前只落地了「带兵 100」，人口这一半一直没实现 —— 守将因此缺少经营价值 */
-    if (!ignoreGuard && GAME.guardGeneralOf) {
-      var g = GAME.guardGeneralOf(city);
-      if (g) cap += Math.round(GAME.genAttrs(g).tong * (DATA.POP_PER_TONG || 1000));
-    }
+    /* v74（老板需求 1）：「取消将领对人口上限的加成」——
+       守将统率的人口贡献整段撤除（DATA.POP_PER_TONG 一并下线）。
+       人口上限从此**只**由民房（+ 满级专精）决定：一个来源，一眼可查。
+       （`ignoreGuard` 参数保留：历史调用点传 true 表示"不含守将加成"，
+        现在本来就没有该加成 —— 不删参数是为了不动那些调用点。） */
     return cap;
   };
 
@@ -3079,10 +3078,11 @@
       nz: Math.round((g.nz || 0) + b.nz),
       yw: Math.round((g.yw || 0) + b.yw),
       zm: Math.round((g.zm || 0) + b.zm),
-      /* 速度 = 出身脚力 + 等级成长 + 装备/套装/坐骑（全部相加，不做乘算）。
+      /* 速度 = 出身脚力 + 等级成长 + 装备/套装/坐骑 + 自由点（全部相加，不做乘算）。
          等级成长直接**派生**而不写进 g.speed：这样老存档不用迁移也能立刻对上，
-         也不会出现"升级时加一次、求和时又加一次"的双重计数。 */
-      spd: Math.round((g.speed || 0) + Math.max(0, (g.level || 1) - 1) + b.spd),
+         也不会出现"升级时加一次、求和时又加一次"的双重计数。
+         v74：自由点投放的 spdAdd 也走这条和（与装备同层，但来源清楚）。 */
+      spd: Math.round((g.speed || 0) + Math.max(0, (g.level || 1) - 1) + b.spd + (g.spdAdd || 0)),
       /* 装备/套装的攻防（单独留一份：UI 的"装备贡献"与旧存档兼容都要它） */
       atkEq: Math.round(b.atk),
       defEq: Math.round(b.def),
@@ -3182,7 +3182,9 @@
     var rk = GAME.rankOf ? GAME.rankOf(g) : null;
     var grow = (rk && rk.grow) || 1;
     var nz = g.nz || 0;
-    return S.base + Math.max(0, (g.level || 1) - 1) * grow * S.perLevel * (1 + nz / S.nzDiv);
+    /* v74：自由点投放的 staAdd 计入上限（与等级/资质/内政同层） */
+    return S.base + Math.max(0, (g.level || 1) - 1) * grow * S.perLevel * (1 + nz / S.nzDiv)
+      + (g.staAdd || 0);
   };
   /* 装备与套装贡献的体力（唯一出口：散件 sta + 套装件 sta + 套装档位 sta，
      三者已在 genEquipBonus 里合并成一个 b.sta） */

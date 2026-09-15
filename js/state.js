@@ -560,7 +560,16 @@
   /* 取将领资质定义（旧档无 rank 字段则按四维自动补判并写回） */
   GAME.rankOf = function (g) {
     if (!g) return DATA.GEN_RANKS[0];
-    if (g.rank && DATA.GEN_RANK_BY_ID[g.rank]) return DATA.GEN_RANK_BY_ID[g.rank];
+    if (g.rank && DATA.GEN_RANK_BY_ID[g.rank]) {
+      /* v74：自由属性点的懒初始化必须**两条路径都走到** ——
+         makeGeneral 一造出来就写好 rank，走的是这条提前返回；
+         漏了这里，所有"旧档/已生成"的将领永远拿不到补发。 */
+      var rkE = DATA.GEN_RANK_BY_ID[g.rank];
+      if (g.freePts == null) {
+        g.freePts = Math.max(0, ((g.level || 1) - 1)) * (rkE.grow || 1);
+      }
+      return rkE;
+    }
     var sum = (g.tong || 0) + (g.yw || 0) + (g.zm || 0) + (g.nz || 0);
     var rk = g.hero ? GAME.heroRank(sum) : (function () {
       /* 客栈旧档：按四维均值反推最接近的资质 */
@@ -572,6 +581,12 @@
     })();
     g.rank = rk.id;
     if (!g.style) g.style = 'balance';
+    /* v74（老板需求 5）：自由属性点字段的懒初始化（一次性）——
+       旧档将领**按已过等级补发**：每级 = 该资质成长值（与 applyLevelGrowth 同口径）。
+       标记方式就是字段本身（null = 还没初始化过；之后每升一级 += 成长值）。 */
+    if (g.freePts == null) {
+      g.freePts = Math.max(0, ((g.level || 1) - 1)) * (rk.grow || 1);
+    }
     return rk;
   };
 
@@ -631,7 +646,22 @@
   GAME.applyLevelGrowth = function (g) {
     var rk = GAME.rankOf(g);
     var step = rk.grow || 1;
-    g.tong += step; g.yw += step; g.zm += step; g.nz += step;
+    /* v74（老板需求 5）：「不同类型（均衡 / 猛将等）将领，升级自动加点不同。
+       根据资质，每级除了其成长之外，还有等于成长值的自由属性点」。
+       · 自动加点 = step × 类型权重 —— 权重**复用 DATA.GEN_STYLES 的 mul**
+         （造人时那套特性表，不再另造一份；归一化到总和 4，
+          均衡 1/1/1/1 与旧行为逐点一致，老档只受影响于新涨的等级）；
+       · 自由属性点 = step —— 玩家在六维表逐点分配（唯一出口 GAME.addFreePoint）。 */
+    var st74 = null;
+    (DATA.GEN_STYLES || []).forEach(function (x) { if (x.id === g.style) st74 = x; });
+    var m74 = (st74 && st74.mul) || { tong: 1, nz: 1, yw: 1, zm: 1 };
+    var sum74 = (m74.tong + m74.nz + m74.yw + m74.zm) || 4;
+    var f74 = 4 / sum74;
+    g.tong += step * m74.tong * f74;
+    g.yw += step * m74.yw * f74;
+    g.zm += step * m74.zm * f74;
+    g.nz += step * m74.nz * f74;
+    g.freePts = (g.freePts == null ? 0 : g.freePts) + step;
     g.attack = Math.round(g.attack + step * 0.4);
     g.defense = Math.round(g.defense + step * 0.4);
     /* v29（需求 11）：**不再写 g.hp**。
@@ -644,6 +674,26 @@
     return step;
   };
 
+
+  /* 自由属性点分配（v74 · 老板需求 5 · **唯一出口**）：
+     六维都能加（统率/内政/勇武/智谋/速度/体力），**只能加、不能减**。
+     四项主属性走 g[stat]+=1；速度 / 体力另有独立加法位（spdAdd / staAdd），
+     由 genAttrs 与 staBaseMax 各自吃进去 —— 属性本身保持"基础值"不被污染。 */
+  GAME.addFreePoint = function (g, stat) {
+    if (!g || ['tong', 'nz', 'yw', 'zm', 'spd', 'sta'].indexOf(stat) < 0) {
+      return { ok: false, msg: '该属性不支持加点' };
+    }
+    if ((g.freePts || 0) < 1) {
+      return { ok: false, msg: '自由属性点不足（升级获得：每级 = 资质成长值）' };
+    }
+    g.freePts -= 1;
+    var nm = { tong: '统率', nz: '内政', yw: '勇武', zm: '智谋', spd: '速度', sta: '体力' }[stat];
+    if (stat === 'spd') g.spdAdd = (g.spdAdd || 0) + 1;
+    else if (stat === 'sta') g.staAdd = (g.staAdd || 0) + 1;
+    else g[stat] = (g[stat] || 0) + 1;
+    GAME.log('🎯 ' + g.name + ' ' + nm + ' +1（自由点 -1，余 ' + g.freePts + '）');
+    return { ok: true, msg: g.name + ' ' + nm + ' +1（余 ' + g.freePts + ' 点）' };
+  };
 
   /* 生成 NPC 城 */
   GAME.buildNpcCities = function (seed) {

@@ -118,6 +118,27 @@
          v54（老板）：入口从"左栏平铺每种道具两三个按钮"改成**经验条右端的「＋」** ——
          点 ＋ 开选择窗，选道具、选用法，和赏赐同一套做法。 */
       case 'gen-exp-pick': ui.openExpPick(el.dataset.gen); break;
+      /* v74（老板需求 4/5）：六维「加点」＋ —— 自由属性点或道具 */
+      case 'gen-stat-plus': ui.openStatPlus(el.dataset.gen, el.dataset.stat); break;
+      case 'stat-plus-free': GAME.doStatPlusFree(el.dataset.gen, el.dataset.stat); break;
+      case 'stat-plus-item': GAME.doStatPlusItem(el.dataset.item, el.dataset.gen, el.dataset.stat); break;
+      /* v74（老板：完善出征界面）：全带 / 清空（只改输入框值，刷新仍走 updateExpMarch） */
+      case 'exp-fill-all': (function () {
+        var c74 = GAME.currentCity();
+        Object.keys((c74 && c74.army) || {}).forEach(function (id) {
+          var i74 = document.getElementById('exp-' + id);
+          if (i74) i74.value = i74.max;
+        });
+        ui.updateExpMarch();
+      })(); break;
+      case 'exp-clear-all': (function () {
+        var c74 = GAME.currentCity();
+        Object.keys((c74 && c74.army) || {}).forEach(function (id) {
+          var i74 = document.getElementById('exp-' + id);
+          if (i74) i74.value = 0;
+        });
+        ui.updateExpMarch();
+      })(); break;
       case 'exp-pick-item': ui.setExpItem(el.dataset.gen, el.dataset.item); break;
       case 'gen-exp-item': {
         var rgex = GAME.systems.gainExpByItem(el.dataset.item, el.dataset.gen, el.dataset.mode);
@@ -594,6 +615,21 @@
     var r = GAME.systems.useItem(itemId);
     ui.toast(r.msg);
     if (r.ok) { ui.closeModal(); GAME.refreshAll(); }
+  };
+  /* v74（老板需求 5）：自由属性点分配（唯一出口 GAME.addFreePoint）；分配后留在弹窗里刷新 */
+  GAME.doStatPlusFree = function (genId, stat) {
+    var s = GAME.state, g = null;
+    (s.generals || []).forEach(function (x) { if (x.id === genId) g = x; });
+    if (!g) { ui.toast('将领不存在'); return; }
+    var r = GAME.addFreePoint(g, stat);
+    ui.toast(r.msg);
+    if (r.ok) { GAME.refreshAll(); ui.openStatPlus(genId, stat); }
+  };
+  /* v74：用永久丹药加点（复用 useItem 的 perm 分支与 50 上限） */
+  GAME.doStatPlusItem = function (itemId, genId, stat) {
+    var r = GAME.systems.useItem(itemId, genId);
+    ui.toast(r.msg);
+    if (r.ok) { GAME.refreshAll(); ui.openStatPlus(genId, stat); }
   };
   /* 募兵加速（v28 · 需求 8）：消费宝物 → 缩短该营当前批次 */
   GAME.doBoostTrain = function (itemId, bIdx) {
