@@ -989,7 +989,7 @@
     GAME.statBump('wins', win ? 1 : 0);
     GAME.statBump(mode.occupy ? 'conquerAttempt' : 'raidCount', 1);
 
-    var gains = { res: null, mats: [], equip: [], hero: null, beauty: null };
+    var gains = { res: null, mats: [], equip: [], hero: null, beauty: null, seeds: [] };
 
     if (win) {
       /* v63（老板）：「野外城每天只能被掠夺一次」——**得手才计数**。
@@ -1049,6 +1049,14 @@
       /* 军械：掠夺亦可得图纸与成品 */
       var eq = GAME.battle.rollEquipLoot(t);
       if (eq.length) { gains.equip = eq; GAME.log('缴获军械：' + eq.join('、')); }
+
+      /* v78（老板需求 1）：种子 —— 出征获胜的缴获之一（种子另一主渠道是采集）。
+         城档折算见 DATA.SEED_DROP.cityLv；野地按自身等级。 */
+      var seedLv = (t.kind === 'wild')
+        ? (t.lv || 1)
+        : (((DATA.SEED_DROP || {}).cityLv || {})[t.dropType || 'county'] || (t.lv || 3));
+      var seedGot = GAME.grantSeedDrop(seedLv, DATA.SEED_DROP.battleMult, '缴获种子');
+      if (seedGot.length) gains.seeds = seedGot;
 
       /* 占领：据而有之 */
       if (mode.occupy) {

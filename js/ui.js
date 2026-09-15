@@ -1535,6 +1535,7 @@
       jewel: '珠宝（赏赐忠诚）', attr_buff: '符类', prod_buff: '生产', military_buff: '军事',
       boost: '加速', exp: '经验', stamina: '体力精力', perm: '永久丹药', mount_buff: '坐骑',
       rank_up: '灵草（提升资质）',
+      seed: '种子（种田秘境）',
     };
     var groups = {};
     Object.keys(items).forEach(function (id) {
@@ -1569,10 +1570,13 @@
           meta: '持有 <b>' + U.numText(have, 0) + '</b>' + (it.price ? '　估值 ' + U.fmt(it.price * 100) + ' 金' : ''),
           desc: '<span style="color:var(--gold-light);">' +
             U.escape(GAME.itemEffect(it) || '') + '</span>',
-          qtyHtml: ui.qtyInput(inputId, 1, 0, Math.max(1, have), true),
+          /* v78：种子不"使用"—— 按钮直接指路种田秘境；数量输入框对种子无意义，撤 */
+          qtyHtml: it.type === 'seed' ? '' : ui.qtyInput(inputId, 1, 0, Math.max(1, have), true),
           totalHtml: '',
-          actHtml: '<button class="btn gold" data-action="use-bag-item" data-key="' + it.id +
-            '" data-qty-from="' + inputId + '">使用</button>',
+          actHtml: it.type === 'seed'
+            ? '<button class="btn gold" data-action="open-farm">去播种</button>'
+            : '<button class="btn gold" data-action="use-bag-item" data-key="' + it.id +
+              '" data-qty-from="' + inputId + '">使用</button>',
         }));
       });
     });
@@ -1657,14 +1661,10 @@
     s.generals.forEach(function (g) { if ((g.equip || {})[it.slot] === itemId) wornBy = g.name; });
     if (have > 0) {
       html += '<div class="attr"><span class="k">持有</span><span class="v">' + have + ' 件' + (wornBy ? '（' + U.escape(wornBy) + ' 已穿）' : '') + '</span></div>';
-      /* 穿戴：可选将领 */
-      html += '<div class="gold-heading" style="font-size:var(--fs-lead);margin-top:12px;">穿给谁</div>';
-      html += '<div class="pick-row">' + s.generals.map(function (g) {
-        var cur = (g.equip || {})[it.slot];
-        var curIt = cur ? DATA.EQUIP[cur] : null;
-        return '<button class="btn sm' + (wornBy === g.name ? ' dim' : ' gold') + '" data-action="equip-to" data-key="' + itemId + '" data-gen="' + g.id + '">'
-          + U.escape(g.name) + (curIt ? '<span style="opacity:.7;">（现有' + U.escape(curIt.name) + '）</span>' : '') + '</button>';
-      }).join('') + '</div>';
+      /* v78（老板需求 3）：「装备不要『穿给谁』这种」—— 名单式穿戴整块撤除；
+         穿戴统一在**将领侧**完成：将领档案点部位换装（openEqSlot），或「装备」页选将后点装备。
+         装备详情只留信息 / 强化 / 拆解（两个出口合一，界面不再重复一套选人逻辑）。 */
+      html += '<div class="note" style="margin-top:8px;">穿戴：到「将领」面板点对应部位换装（或「装备」页选将后点装备）。</div>';
       /* 拆解 */
       var mats = GAME.forgeMaterials(itemId), mtx = [];
       for (var mk in mats) {
@@ -1756,7 +1756,12 @@
     if (!it) { ui.toast('无此宝物'); return; }
     var html = '<div class="gold-heading">' + GAME.itemIcon(it) + ' ' + it.name + '</div>';
     html += '<div class="attr"><span class="k">类别</span><span class="v">' + (it.type || '') + '</span></div>';
-    if (it.price) html += '<div class="attr"><span class="k">商城价</span><span class="v">' + U.fmt(it.price * 100) + ' 金</span></div>';
+    if (it.type === 'seed') {
+      /* v78（老板需求 1）：种子**不售** —— 来源写清楚（商城价一栏对种子没有意义） */
+      html += '<div class="attr"><span class="k">来源</span><span class="v good">采集归来 · 出征缴获（不售）</span></div>';
+    } else if (it.price) {
+      html += '<div class="attr"><span class="k">商城价</span><span class="v">' + U.fmt(it.price * 100) + ' 金</span></div>';
+    }
     html += '<div class="note">' + U.escape(GAME.itemEffect(it) || '无特别效果') + '</div>';
     html += '<div class="panel-foot"><button class="btn" data-action="close-modal">关闭</button></div>';
     ui.openModal(html);
@@ -1769,8 +1774,11 @@
       blueprint: '📜', prod_buff: '🌾', military_buff: '🎖️', boost: '⚡',
       exp: '📗', stamina: '🧪', perm: '💊', mount_buff: '🐎', attr_buff: '🔯',
       rank_up: '🌿',
+      /* v78：种子按品种给图标（与作物同款，一眼对上） */
+      seed: { seed_fan: '🌾', seed_yunling: '🌱', seed_xisui: '🍄', seed_hualong: '🪷', seed_tianshou: '🍑' },
     };
     if (it.type === 'jewel') return (m.jewel && m.jewel[it.id]) || '💠';
+    if (it.type === 'seed') return (m.seed && m.seed[it.id]) || '🌰';
     return (m[it.type] && typeof m[it.type] === 'string') ? m[it.type] : '💠';
   };
   /* 宝物效果文案 —— **唯一出口**（物品行、悬停浮层、详情弹窗都读它）
@@ -7091,24 +7099,39 @@
       return '<div class="farm-cell' + (st.state === 'ripe' ? ' ripe' : '') + '">' + body + act + '</div>';
     }).join('');
     return '<div class="gold-heading">🌾 种田秘境</div>' +
-      '<div class="ui-sub" style="text-align:center;">个人田庄 · 六块灵田　种下即扣黄金，生长走游戏时间</div>' +
+      '<div class="ui-sub" style="text-align:center;">个人田庄 · 六块灵田　种子由采集与征战获得，生长走游戏时间</div>' +
       '<div class="farm-grid">' + cells + '</div>' +
       (ripeN
         ? '<div class="op-row" style="justify-content:flex-end;">' +
             '<button class="btn gold" data-action="farm-harvest-all">一键收获（' + ripeN + '）</button></div>'
         : '') +
       '<div class="op-zone"><div class="op-zone-t">作物与去向</div>' +
+        /* v78（老板需求 1）：种子在手一览 —— 种子的唯一来源是采集与征战 */
+        '<div class="attr"><span class="k">在手种子</span><span class="v">' + (function () {
+          var items = GAME.state.items || {}, parts = [];
+          (DATA.SEED_DROP && DATA.SEED_DROP.table || []).forEach(function (row) {
+            var n = items[row.id] || 0;
+            if (n > 0) parts.push(row.name + '×' + n);
+          });
+          return parts.length ? parts.join('　') : '暂无 —— 派军采集 / 出征获胜可得';
+        })() + '</span></div>' +
         '<div class="attr"><span class="k">材料作物</span><span class="v">3 阶打造主料（镔铁 / 檀木 / 犀革 / 蛟筋 / 羊脂玉 / 蜀锦），有机率出 4 阶</span></div>' +
         '<div class="attr"><span class="k">灵草作物</span><span class="v">蕴灵草 / 洗髓芝 / 化龙参 / 天授果 —— 将领资质逐档提升</span></div>' +
         '<div class="attr"><span class="k">去向</span><span class="v">材料 → 铁匠铺打造；灵草 → 宝物背包 → 选将领使用</span></div>' +
       '</div>';
   };
-  /* 选种弹窗：列出全部作物（6 材料 + 4 灵草），种下即扣黄金 */
+  /* 选种弹窗：列出全部作物（6 材料 + 4 灵草），消耗对应**种子**（v78 · 不再花黄金） */
   ui.openFarmSeeds = function (idx) {
-    var city = GAME.currentCity();
-    var R = GAME.res(city);
+    var items = GAME.state.items = GAME.state.items || {};
+    var seedOf = function (c) {
+      var it = null;
+      (DATA.ITEMS || []).forEach(function (x) { if (x.id === c.seedItem) it = x; });
+      return it || { name: c.seedItem || '种子' };
+    };
     var rows = (DATA.FARM.crops || []).map(function (c) {
-      var afford = (R.gold || 0) >= c.seed;
+      var sd = seedOf(c);
+      var have = items[c.seedItem] || 0;
+      var afford = have >= 1;
       var yieldTxt;
       if (c.herb) {
         yieldTxt = '收 灵草 ×1（将领资质提升一档）';
@@ -7124,14 +7147,16 @@
           '<div class="farm-crop">' + c.name + '</div>' +
           '<div class="farm-sub">' + U.escape(c.desc) + '</div>' +
           '<div class="farm-sub">⏱ ' + c.hours + ' 游戏小时　' + yieldTxt + '</div>' +
+          /* v78：种子持有数一眼可见（缺种的人知道去哪儿找） */
+          '<div class="farm-sub">🌰 ' + U.escape(sd.name) + ' 持有 <b>' + have + '</b></div>' +
         '</div>' +
         '<button class="btn sm' + (afford ? ' gold' : '') + '" data-action="farm-plant" data-idx="' + idx +
           '" data-crop="' + c.id + '"' + (afford ? '' : ' disabled') + '>' +
-          (afford ? '种下 · ' + U.fmt(c.seed) + ' 金' : '金 ' + U.fmt(c.seed) + ' 不足') + '</button>' +
+          (afford ? '种下（' + U.escape(sd.name) + ' -1）' : '缺 ' + U.escape(sd.name)) + '</button>' +
       '</div>';
     }).join('');
     ui.openModal('<div class="gold-heading">🌱 第 ' + (idx + 1) + ' 块地 · 选种</div>' +
-      '<div class="ui-sub" style="text-align:center;">种下即扣黄金；成熟后回秘境面板收获。</div>' +
+      '<div class="ui-sub" style="text-align:center;">种子由将领活动获得（采集归来 / 出征缴获）；成熟后回秘境面板收获。</div>' +
       rows +
       '<div class="modal-foot"><button class="btn" data-action="close-modal">关闭</button></div>',
       { size: 'xl' });

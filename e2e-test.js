@@ -1588,7 +1588,8 @@ async function runTests(dom, URL) {
   G.ui.openEquipDetail('cr_weapon_1');
   await sleep(80);
   const eqHtml = document.querySelector('#modal-root').innerHTML;
-  check('装备详情含选将穿戴', eqHtml.indexOf('穿给谁') >= 0);
+  check('v78：装备详情不再有「穿给谁」（穿戴走将领侧）',
+    eqHtml.indexOf('穿给谁') < 0 && eqHtml.indexOf('到「将领」面板点对应部位') >= 0);
   check('装备详情含拆解入口', !!document.querySelector('#modal-root [data-action="salvage-equip"]'));
   click(document.querySelector('#modal-root [data-action="salvage-equip"]'));
   await sleep(90);
@@ -3904,6 +3905,10 @@ if (svBtn) {
   console.log('\n--- v73. 种田秘境 · 建筑弹窗底栏（真实 DOM） ---');
   {
     G.state.res.gold = 3000000;
+    /* v78：播种改种子制 —— 先发种子（材料 ×2 / 灵草 ×1），再走界面 */
+    G.state.items = G.state.items || {};
+    G.state.items['seed_fan'] = (G.state.items['seed_fan'] || 0) + 2;
+    G.state.items['seed_yunling'] = (G.state.items['seed_yunling'] || 0) + 1;
     G.ui.openGuanfu();
     await sleep(140);
     let mh73 = document.querySelector('#modal-root').innerHTML;
@@ -3921,6 +3926,8 @@ if (svBtn) {
       mh73 = document.querySelector('#modal-root').innerHTML;
       check('v73：选种弹窗列出 10 种作物（6 材料 + 4 灵草）',
         (mh73.match(/data-action="farm-plant"/g) || []).length === 10);
+      check('v78：选种行显示种子消耗（凡植种子 -1 / 不花黄金）',
+        mh73.indexOf('凡植种子') >= 0 && mh73.indexOf('-1）') >= 0 && mh73.indexOf('金 不足') < 0);
       const plantBtn73 = Array.from(document.querySelectorAll('#modal-root [data-action="farm-plant"]'))
         .find((b) => b.getAttribute('data-crop') === 'tieying');
       if (plantBtn73) {

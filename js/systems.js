@@ -379,6 +379,9 @@
       var ru7 = GAME.rankUpUse(g7, item);
       if (!ru7.ok) return ru7;
       ok = true; msg = ru7.msg;
+    } else if (item.type === 'seed') {
+      /* v78（老板需求 1）：种子**不直接使用** —— 播种在种田秘境里（官府 → 种田秘境） */
+      return { ok: false, msg: '种子要到种田秘境播种（官府 → 🌾 种田秘境）' };
     } else if (item.type === 'mount_buff') {
       var g6 = S._findGen(targetGenId);
       if (!g6) return { ok: false, msg: '请选择将领' };

@@ -205,7 +205,6 @@
       case 'bag-sort': ui.setBagSort(el.dataset.v); break;
       case 'open-mat-detail': ui.openMatDetail(el.dataset.key); break;
       case 'open-bp-detail': ui.openBpDetail(el.dataset.key); break;
-      case 'equip-to': GAME.doEquipTo(el.dataset.key, el.dataset.gen); break;
       case 'salvage-equip': GAME.doSalvage(el.dataset.key); break;
       case 'use-bag-item': {
         /* v29（需求 14）：使用数量取本行输入框 */
@@ -809,12 +808,8 @@
     if (r.ok) { ui.closeModal(); GAME.refreshAll(); }
   };
 
-  /* 穿给指定将领 */
-  GAME.doEquipTo = function (itemId, genId) {
-    var r = GAME.systems.equipItem(genId, itemId);
-    ui.toast(r.msg || (r.ok ? '已装备' : '装备失败'));
-    if (r.ok) { ui.openEquipDetail(itemId); GAME.refreshAll(); }
-  };
+  /* v78（老板需求 3）：doEquipTo 随「穿给谁」一起退役 ——
+     穿戴改由将领侧两个既有出口完成（将领档案点部位 / 装备页选将）。 */
   /* 拆解装备回收材料 */
   GAME.doSalvage = function (itemId) {
     var r = GAME.salvageEquip(itemId);

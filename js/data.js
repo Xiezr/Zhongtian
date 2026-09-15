@@ -804,6 +804,14 @@
     { id: 'xisuizhi', name: '洗髓芝', type: 'rank_up', from: 'liang', to: 'ying', price: 0, desc: '将领资质：良材 → 英杰（种田秘境产）' },
     { id: 'hualongshen', name: '化龙参', type: 'rank_up', from: 'ying', to: 'ming', price: 0, desc: '将领资质：英杰 → 名世（种田秘境产）' },
     { id: 'tianshouguo', name: '天授果', type: 'rank_up', from: 'ming', to: 'tian', price: 0, desc: '将领资质：名世 → 天授（种田秘境产）' },
+    /* v78（老板需求 1）：**种子** —— 种田秘境专用，**不花金币**，
+       只能从将领活动获得（采集归来 / 出征缴获；见 DATA.SEED_DROP 与 GAME.grantSeedDrop）。
+       凡植种子对应 6 种材料作物；四种灵种一一对应四档灵草。 */
+    { id: 'seed_fan',      name: '凡植种子', type: 'seed', price: 30,   desc: '寻常灵植之种：于种田秘境可种 6 种材料作物（来源：采集归来 / 出征缴获）' },
+    { id: 'seed_yunling',  name: '蕴灵种子', type: 'seed', price: 150,  desc: '蕴灵草之种：种成可助 凡品 将领洗出 良材 之资（来源：采集归来 / 出征缴获）' },
+    { id: 'seed_xisui',    name: '洗髓种子', type: 'seed', price: 450,  desc: '洗髓芝之种：种成可助 良材 将领跃入 英杰 之列（来源：中高级野地 / 名城缴获）' },
+    { id: 'seed_hualong',  name: '化龙种子', type: 'seed', price: 1200, desc: '化龙参之种：种成可助 英杰 将领跻身 名世（来源：高级野地 / 名城缴获）' },
+    { id: 'seed_tianshou', name: '天授种子', type: 'seed', price: 3600, desc: '天授果之种：种成可助 名世 将领问鼎 天授（来源：顶级野地 / 州城·帝都缴获）' },
     /* 坐骑 */
     { id: 'mabian', name: '马鞭', type: 'mount_buff', amount: 2, price: 20, desc: '将领速度+2（1h，需蓝坐骑）' },
     { id: 'hanxue_mabian', name: '汗血马鞭', type: 'mount_buff', amount: 5, price: 80, desc: '将领速度+5（1h，需紫坐骑）' },
@@ -1210,7 +1218,11 @@
        "天花板相差 4 倍"的真门槛。 */
     { id: 'fan', name: '凡品', color: '#9c9c8c', star: 1, w: 50, wg: -0.06, base: [30, 44], grow: 1, price: 1.0, lvCap: 60,
       desc: '寻常之才，可为县吏。等级上限 60。' },
-    { id: 'liang', name: '良材', color: '#5fbf6a', star: 2, w: 27, wg: 0.00, base: [46, 62], grow: 2, price: 1.8, lvCap: 100,
+    /* v78（老板需求 2 · 隐藏设定）：`ascend` = 灵草升档时四维**各加**的点数
+       （「低资质将领通过灵草提升资质时，能比直接招募获得额外提升」）——
+       取新档的成长值：良材 2 / 英杰 3 / 名世 5 / 天授 8，全链 +18/维。
+       机制刻意隐藏：界面不提示，只在属性里体现；数值集中在此，调平衡只改这里。 */
+    { id: 'liang', name: '良材', color: '#5fbf6a', star: 2, w: 27, wg: 0.00, base: [46, 62], grow: 2, price: 1.8, lvCap: 100, ascend: 2,
       desc: '可当一郡之任。等级上限 100。' },
     /* v66（老板）：「客栈天授级将领出现概率降低 10 倍，其他高资质降低 8、6 啥的」
        v73（老板）：「限制高资质将领的直接获取，概率再降 10 倍」——
@@ -1224,11 +1236,11 @@
        ⚠️ 光改 `w` 是**无效的** —— `GAME.rankWeights` 里原有一道 `Math.max(0.5, …)`
        下限，会把 0.2 直接抬回 0.5（降幅只剩 2.5 倍）。v66 把下限改成**按自身基准的 5%**
        （见 state.js），既拦住负权重、又不吃掉这两轮下调。 */
-    { id: 'ying', name: '英杰', color: '#4a9be0', star: 3, w: 0.25, wg: 0.09, base: [64, 84], grow: 3, price: 3.2, lvCap: 140,
+    { id: 'ying', name: '英杰', color: '#4a9be0', star: 3, w: 0.25, wg: 0.09, base: [64, 84], grow: 3, price: 3.2, lvCap: 140, ascend: 3,
       desc: '一方之良将，千军易得一将难求。等级上限 140。' },
-    { id: 'ming', name: '名世', color: '#b06fd8', star: 4, w: 0.075, wg: 0.17, base: [86, 106], grow: 5, price: 7.0, lvCap: 180,
+    { id: 'ming', name: '名世', color: '#b06fd8', star: 4, w: 0.075, wg: 0.17, base: [86, 106], grow: 5, price: 7.0, lvCap: 180, ascend: 5,
       desc: '当世罕有，可镇一方。等级上限 180。' },
-    { id: 'tian', name: '天授', color: '#e0a83c', star: 5, w: 0.02, wg: 0.28, base: [108, 140], grow: 8, price: 16.0, lvCap: 240,
+    { id: 'tian', name: '天授', color: '#e0a83c', star: 5, w: 0.02, wg: 0.28, base: [108, 140], grow: 8, price: 16.0, lvCap: 240, ascend: 8,
       desc: '天授之资，百年一出。等级上限 240。' },
   ];
 
@@ -1673,33 +1685,51 @@
    * 将这个作为高级别材料的获取途径）」
    *
    * 完整链条（一环不缺）：
-   *   黄金 → 秘境买种子 → 灵田播种 → 游戏时间生长 → 收获
+   *   种子（采集 / 征战所得，**不花黄金**）→ 灵田播种 → 游戏时间生长 → 收获
    *        ├─ 材料作物 → 3 阶主产（有机率出 4 阶）→ 铁匠铺打造高阶装备
    *        └─ 灵草作物 → 蕴灵草 / 洗髓芝 / 化龙参 / 天授果 → 将领资质逐档提升
    *
    * 数值全表化（加作物 = 加一行；调价 / 调时长只改本表）：
    *   · hours = **游戏小时**（吃时间倍率，与建造 / 研究同一把尺）
-   *   · seed  = 种子价（黄金）—— 黄金因此有了新用途（与需求 1 一拍即合）
+   *   · seedItem = 所需种子（v78：种子只能从将领活动获得 —— 采集归来 / 出征缴获，
+   *               见 GAME.grantSeedDrop 与 DATA.SEED_DROP；**不花黄金**）
    *   · mat   = 3 阶主产材料 + 产出区间 qty；rare / rareP = 4 阶副产与几率
    *   · herb  = 灵草作物：收 1 株对应灵草（道具 id 与作物 id 同名）
    * ============================================================ */
   DATA.FARM = {
     plots: 6,
     crops: [
-      { id: 'tieying',     name: '铁英树', icon: '🌳', hours: 6,  seed: 5000,   mat: 'bintie',  rare: 'yuntie',     rareP: 0.15, qty: [2, 4], desc: '根须吸铁成英，可炼镔铁；偶结陨铁' },
-      { id: 'tanxiangshu', name: '檀香树', icon: '🌲', hours: 6,  seed: 5000,   mat: 'tanmu',   rare: 'jianmu',     rareP: 0.15, qty: [2, 4], desc: '香气沉郁、坚重近铁，可伐檀木' },
-      { id: 'xipiteng',    name: '犀皮藤', icon: '🪴', hours: 6,  seed: 5000,   mat: 'xige',    rare: 'jiaoge',     rareP: 0.15, qty: [2, 4], desc: '藤皮七层如犀甲，可制犀革' },
-      { id: 'jiaojinteng', name: '蛟筋藤', icon: '🌿', hours: 6,  seed: 5000,   mat: 'jiaojin', rare: 'longjin',    rareP: 0.15, qty: [2, 4], desc: '藤筋韧可曳石，绞之为索' },
-      { id: 'yusuihua',    name: '玉髓花', icon: '🌸', hours: 6,  seed: 5000,   mat: 'yangzhi', rare: 'kunshan',    rareP: 0.15, qty: [2, 4], desc: '花凝玉髓，温润如脂' },
-      { id: 'yunjinsang',  name: '云锦桑', icon: '🍃', hours: 6,  seed: 5000,   mat: 'shujin',  rare: 'yunjin',     rareP: 0.15, qty: [2, 4], desc: '桑叶吐丝成锦，日光流转' },
-      { id: 'yunlingcao',  name: '蕴灵草', icon: '🌱', hours: 12, seed: 20000,  herb: 'yunlingcao',  desc: '灵气温养，助 凡品 将领洗出 良材 之资' },
-      { id: 'xisuizhi',    name: '洗髓芝', icon: '🍄', hours: 24, seed: 60000,  herb: 'xisuizhi',    desc: '洗髓伐骨，助 良材 将领跃入 英杰 之列' },
-      { id: 'hualongshen', name: '化龙参', icon: '🪷', hours: 36, seed: 150000, herb: 'hualongshen', desc: '鱼跃龙门之参，助 英杰 将领跻身 名世' },
-      { id: 'tianshouguo', name: '天授果', icon: '🍑', hours: 48, seed: 400000, herb: 'tianshouguo', desc: '百年一熟的天授之果，名世 亦可问鼎 天授' },
+      { id: 'tieying',     name: '铁英树', icon: '🌳', hours: 6,  seedItem: 'seed_fan', mat: 'bintie',  rare: 'yuntie',     rareP: 0.15, qty: [2, 4], desc: '根须吸铁成英，可炼镔铁；偶结陨铁' },
+      { id: 'tanxiangshu', name: '檀香树', icon: '🌲', hours: 6,  seedItem: 'seed_fan', mat: 'tanmu',   rare: 'jianmu',     rareP: 0.15, qty: [2, 4], desc: '香气沉郁、坚重近铁，可伐檀木' },
+      { id: 'xipiteng',    name: '犀皮藤', icon: '🪴', hours: 6,  seedItem: 'seed_fan', mat: 'xige',    rare: 'jiaoge',     rareP: 0.15, qty: [2, 4], desc: '藤皮七层如犀甲，可制犀革' },
+      { id: 'jiaojinteng', name: '蛟筋藤', icon: '🌿', hours: 6,  seedItem: 'seed_fan', mat: 'jiaojin', rare: 'longjin',    rareP: 0.15, qty: [2, 4], desc: '藤筋韧可曳石，绞之为索' },
+      { id: 'yusuihua',    name: '玉髓花', icon: '🌸', hours: 6,  seedItem: 'seed_fan', mat: 'yangzhi', rare: 'kunshan',    rareP: 0.15, qty: [2, 4], desc: '花凝玉髓，温润如脂' },
+      { id: 'yunjinsang',  name: '云锦桑', icon: '🍃', hours: 6,  seedItem: 'seed_fan', mat: 'shujin',  rare: 'yunjin',     rareP: 0.15, qty: [2, 4], desc: '桑叶吐丝成锦，日光流转' },
+      { id: 'yunlingcao',  name: '蕴灵草', icon: '🌱', hours: 12, seedItem: 'seed_yunling',  herb: 'yunlingcao',  desc: '灵气温养，助 凡品 将领洗出 良材 之资' },
+      { id: 'xisuizhi',    name: '洗髓芝', icon: '🍄', hours: 24, seedItem: 'seed_xisui',    herb: 'xisuizhi',    desc: '洗髓伐骨，助 良材 将领跃入 英杰 之列' },
+      { id: 'hualongshen', name: '化龙参', icon: '🪷', hours: 48, seedItem: 'seed_hualong', herb: 'hualongshen', desc: '鱼跃龙门之参，助 英杰 将领跻身 名世' },
+      { id: 'tianshouguo', name: '天授果', icon: '🍑', hours: 96, seedItem: 'seed_tianshou', herb: 'tianshouguo', desc: '百年一熟的天授之果，名世 亦可问鼎 天授' },
     ],
   };
   DATA.FARM_CROP_BY_ID = {};
   DATA.FARM.crops.forEach(function (c) { DATA.FARM_CROP_BY_ID[c.id] = c; });
+
+  /* v78（老板需求 1）：种子掉落表 —— **唯一出口** GAME.grantSeedDrop。
+     种子只能从将领活动获得（采集归来 / 出征获胜），**没有黄金购买口**。
+     每次结算按来源等级 lv（野地 1~10 级；城池按档折算 cityLv）掷下表：
+       p = base + perLv × lv；lv < minLv 不掉。
+     调平衡只改这张表（数据驱动，别处不许另起概率）。 */
+  DATA.SEED_DROP = {
+    battleMult: 0.85,   /* 战事结算的整体折扣（采集是主渠道） */
+    cityLv: { fort: 4, county: 3, jun: 5, zhou: 7, capital: 9 },
+    table: [
+      { id: 'seed_fan',      name: '凡植种子', minLv: 1, base: 0.45,  perLv: 0.030, qty: [1, 2] },
+      { id: 'seed_yunling',  name: '蕴灵种子', minLv: 1, base: 0.030, perLv: 0.013, qty: [1, 1] },
+      { id: 'seed_xisui',    name: '洗髓种子', minLv: 3, base: 0.010, perLv: 0.008, qty: [1, 1] },
+      { id: 'seed_hualong',  name: '化龙种子', minLv: 6, base: 0.006, perLv: 0.004, qty: [1, 1] },
+      { id: 'seed_tianshou', name: '天授种子', minLv: 8, base: 0.004, perLv: 0.003, qty: [1, 1] },
+    ],
+  };
 
   /* ============================================================
    * 名城专有（v60 · 需求 5）

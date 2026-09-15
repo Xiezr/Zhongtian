@@ -608,6 +608,19 @@
     }
     g.rank = item.to;
     var nr = DATA.GEN_RANK_BY_ID[item.to] || {};
+    /* v78（老板需求 2 · 隐藏设定）：「将领低资质通过蕴灵草等提升资质时，能比直接招募
+       获得额外提升」—— 灵草淬炼过的根基更实：每次升档，四维各 +新档 ascend。
+       数值见 DATA.GEN_RANKS[].ascend（良材2 / 英杰3 / 名世5 / 天授8，全链 +18/维）。
+       机制**刻意隐藏**：界面不加提示，只在属性与战力里体现（老板：不要太失衡）。
+       计数落 g.ascend（随存档走，供统计与将来展示）。 */
+    var asc78 = nr.ascend || 0;
+    if (asc78 > 0) {
+      g.tong = (g.tong || 0) + asc78;
+      g.yw = (g.yw || 0) + asc78;
+      g.zm = (g.zm || 0) + asc78;
+      g.nz = (g.nz || 0) + asc78;
+      g.ascend = (g.ascend || 0) + 1;
+    }
     return {
       ok: true,
       msg: '🧬 ' + g.name + ' 资质提升：' + cur.name + ' → ' + (nr.name || item.to) + '（' + item.name + '）',

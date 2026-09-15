@@ -2008,6 +2008,7 @@
     if (Math.random() < GAME.gatherTreasureChance(g, gen ? gen.level : 0)) {
       var pool = (DATA.ITEMS || []).filter(function (it) {
         return it.price > 0 && it.type !== 'material' && it.type !== 'blueprint'
+          && it.type !== 'seed'   /* v78：种子走 grantSeedDrop 专属口，不进宝物随机池 */
           && it.price <= G.treasureMaxPrice;
       });
       if (pool.length) {
@@ -2017,6 +2018,8 @@
         got = tr.name;
       }
     }
+    /* v78（老板需求 1）：种子 —— 采集归来的另一项收获（种子的主渠道） */
+    var seedGot = GAME.grantSeedDrop(g.level || 1, 1, '🌱 采集所得种子');
     /* 兵力与将领归还 */
     var city = GAME.cityById(g.cityId) || GAME.currentCity();
     if (city) { for (var a in g.army) city.army[a] = (city.army[a] || 0) + g.army[a]; }
@@ -2030,9 +2033,10 @@
     list.splice(idx, 1);
     var resName = '';
     DATA.RESOURCES.forEach(function (r) { if (r.key === y.res) resName = r.name; });
-    var msg = '采集收获：' + (resName || '无') + ' +' + U.fmt(y.amount) + (got ? '，另得宝物「' + got + '」' : '');
+    var msg = '采集收获：' + (resName || '无') + ' +' + U.fmt(y.amount) + (got ? '，另得宝物「' + got + '」' : '')
+      + (seedGot.length ? '，另得 ' + seedGot.join('、') : '');
     GAME.log('📦 ' + msg);
-    return { ok: true, msg: msg, res: y.res, amount: y.amount, treasure: got };
+    return { ok: true, msg: msg, res: y.res, amount: y.amount, treasure: got, seeds: seedGot };
   };
   /* 放弃采集（兵力返还、无任何收益 —— 原版规则） */
   GAME.abandonGather = function (id) {
@@ -3938,7 +3942,7 @@
   /* ============================================================
    * 种田秘境（v73 · 老板需求 3）：个人田庄 —— 种灵植，收高阶材料与资质灵草
    * ------------------------------------------------------------
-   * 链条：黄金买种 → 灵田播种 → 游戏时间生长 → 收获
+   * 链条：种子（采集 / 征战所得，v78 起不花黄金）→ 灵田播种 → 游戏时间生长 → 收获
    *      ├─ 材料作物 → 3 阶主产（有机率出 4 阶）→ 铁匠铺高阶打造
    *      └─ 灵草作物 → 蕴灵草 / 洗髓芝 / 化龙参 / 天授果 → 资质逐档提升
    * 数据全在 DATA.FARM（加作物 = 加一行）；生长吃**游戏时间**：
@@ -3966,21 +3970,26 @@
       pct: total ? Math.min(100, Math.floor((p.elapsed || 0) / total * 100)) : 100,
     };
   };
-  /* 播种 = 买种（黄金，从当前城扣）+ 落地。即买即种，不做种子库存 */
+  /* 播种 = 用**种子**落地（v78 · 老板需求 1：「种子只有通过将领其他活动获得，
+     而不是花金币」）。种子从采集归来 / 出征缴获里掷（GAME.grantSeedDrop），
+     不设黄金购买口；播种消耗 ×1。 */
   GAME.farmPlant = function (idx, cropId) {
     var f = GAME.farmOf();
     var c = GAME.farmCrop(cropId);
     if (!c) return { ok: false, msg: '未知作物' };
     if (idx < 0 || idx >= f.plots.length) return { ok: false, msg: '地块不存在' };
     if (f.plots[idx]) return { ok: false, msg: '这块地还占着' };
-    var city = GAME.currentCity();
-    if (!city) return { ok: false, msg: '无城池' };
-    var R = GAME.res(city);
-    if ((R.gold || 0) < c.seed) return { ok: false, msg: '黄金不足（种子需 ' + U.fmt(c.seed) + '）' };
-    R.gold -= c.seed;
+    var s = GAME.state, items = s.items = s.items || {};
+    var seedId = c.seedItem;
+    var seedName = farmItemName(seedId);
+    if (!seedId || (items[seedId] || 0) < 1) {
+      return { ok: false, msg: '缺「' + seedName + '」—— 种子从采集与征战中获得' };
+    }
+    items[seedId] -= 1;
+    if (items[seedId] <= 0) delete items[seedId];
     f.plots[idx] = { crop: cropId, elapsed: 0, totalTime: Math.round(c.hours * 3600) };
-    GAME.log('🌱 秘境播种：' + c.name + '（-' + U.fmt(c.seed) + ' 金）');
-    return { ok: true, msg: '播下 ' + c.name + '（-' + U.fmt(c.seed) + ' 金）' };
+    GAME.log('🌱 秘境播种：' + c.name + '（用 ' + seedName + '×1）');
+    return { ok: true, msg: '播下 ' + c.name + '（' + seedName + ' -1）' };
   };
   /* 生长推进（在线主循环 / 离线补算共用；secGame = 游戏秒） */
   GAME.tickFarm = function (secGame) {
@@ -3989,6 +3998,28 @@
     s.farm.plots.forEach(function (p) {
       if (p && p.elapsed < p.totalTime) p.elapsed = Math.min(p.totalTime, p.elapsed + secGame);
     });
+  };
+  /* v78（老板需求 1）：种子掉落 —— **唯一出口**（采集归来 / 出征获胜各调一次）。
+     sourceLv：野地 1~10 级；城池走 DATA.SEED_DROP.cityLv 折算（县城 3 … 都城 9）。
+     mult：战事 ×battleMult；采集 1。返回掉落文案数组，同时写进 s.items。 */
+  GAME.grantSeedDrop = function (sourceLv, mult, label) {
+    var tbl = DATA.SEED_DROP;
+    var s = GAME.state;
+    if (!tbl || !s || !tbl.table) return [];
+    s.items = s.items || {};
+    var lv = Math.max(1, Math.min(10, Math.round(sourceLv || 1)));
+    var m = (mult == null ? 1 : mult);
+    var got = [];
+    tbl.table.forEach(function (row) {
+      if (lv < row.minLv) return;
+      if (Math.random() >= (row.base + row.perLv * lv) * m) return;
+      var n = U.randInt(Math.random, row.qty[0], row.qty[1]);
+      if (n <= 0) return;
+      s.items[row.id] = (s.items[row.id] || 0) + n;
+      got.push(row.name + '×' + n);
+    });
+    if (got.length && label) GAME.log(label + '：' + got.join('、'));
+    return got;
   };
   /* 材料 / 道具名（材料在 MATERIAL_BY_ID、灵草在 ITEMS，两表各查一次） */
   function farmItemName(id) {
