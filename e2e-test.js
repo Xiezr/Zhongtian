@@ -1841,6 +1841,10 @@ async function runTests(dom, URL) {
     check('升级中面板保留功能入口（军营→募兵）',
       mh24.indexOf('募兵') >= 0 && !!document.querySelector('#modal-root [data-action="open-troops"]'));
     check('升级中面板可取消升级', !!document.querySelector('#modal-root [data-action="cancel-build"]'));
+    /* v72（老板报障「官府升级中点击被撑爆」）：图标必须带尺寸盒（.dlg-ico .ico）——
+       1024px 位图溢出在 jsdom 量不出，靠这条钉结构 + 真浏览器几何脚本兜底。 */
+    check('v72：升级中面板图标有尺寸盒（.dlg-ico .ico）',
+      !!document.querySelector('#modal-root .dlg-ico .ico'));
     check('升级中面板标注「不影响下方操作」', mh24.indexOf('不影响下方操作') >= 0);
     /* 真的点一下功能按钮 → 应打开募兵面板（证明不是装饰） */
     const fnBtn24 = document.querySelector('#modal-root [data-action="open-troops"]');

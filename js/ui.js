@@ -3271,9 +3271,15 @@
       var fn = isUpgrade ? BLDG_FUNC[cell.build.id] : null;
       /* v68（弹窗统一）：施工中弹窗与正常态**同构** ——
          图标 +「名称 · Lv→Lv」+ 描述，危险操作进底栏（设计规范 §11）。 */
+      /* v72（老板报障）：「官府升级中点击 → 界面内容很大，出现下拉框和左右拉框」——
+         图标收进尺寸盒 .dlg-ico：位图 <img class="ico"> 没有容器尺寸规则时按**固有尺寸
+         1024px** 渲染，把弹窗（660×620）撑成 1036×1349，上下 + 左右滚动条同时出现。
+         位图 / 矢量 / emoji 三种回退都收进盒内（.dlg-ico .ico { 1em }）。 */
+      var icB = GAME.icons.forBuilding(isUpgrade ? cell.build.id : cell.pending.buildId)
+        || (isUpgrade ? (DATA.BUILDINGS[cell.build.id] || {}).icon : (pb2 || {}).icon) || '';
       ui.openModal(
-        '<div style="text-align:center;margin-bottom:8px;"><span style="font-size:40px;">' +
-          GAME.icons.forBuilding(isUpgrade ? cell.build.id : cell.pending.buildId) + '</span></div>' +
+        '<div style="text-align:center;margin-bottom:8px;"><span class="dlg-ico" style="font-size:40px;">' +
+          icB + '</span></div>' +
         '<div class="gold-heading">' + (pb2 ? pb2.name : '建筑') +
           (isUpgrade ? (' · Lv' + (cell.pending.targetLevel - 1) + ' → Lv' + cell.pending.targetLevel) : '') + '</div>' +
         '<div style="color:var(--text-dim);font-size:var(--fs-body);text-align:center;margin-bottom:12px;">' +
@@ -3695,7 +3701,8 @@
           '<div class="attr"><span class="k">完工后 Lv' + (e.lv + 1) + '</span><span class="v">' + ebP.prod[e.lv] + '/时</span></div>';
       }
       ui.openModal(
-        '<div style="text-align:center;margin-bottom:8px;"><span style="font-size:40px;">' +
+        /* v72（老板报障）：同城内「升级中」—— 图标收进尺寸盒 .dlg-ico（位图防 1024px 固有尺寸撑爆） */
+        '<div style="text-align:center;margin-bottom:8px;"><span class="dlg-ico" style="font-size:40px;">' +
           (GAME.icons.forExt(e.type) || (DATA.EXT_BUILDINGS[e.type] || {}).icon) + '</span></div>' +
         '<div class="gold-heading">' + pendName + (isUpE ? (' · Lv' + e.lv + ' → Lv' + (e.lv + 1)) : '') + '</div>' +
         '<div style="color:var(--text-dim);font-size:var(--fs-body);text-align:center;margin-bottom:12px;">' +

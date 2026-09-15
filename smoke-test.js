@@ -10205,6 +10205,14 @@ console.log('\n===== 47. v62 工匠作坊造箭塔 =====');
   })());
   check('结构：图标有固定高度（位图/矢量两条路径才不会把卡片撑成高低不一）',
     /height: 84px/.test(cssBlock(hS, '.troop-card.bldg-pick .ticon')));
+  /* v72（老板报障）：两处「升级中」弹窗的图标必须收进 .dlg-ico 尺寸盒 ——
+     位图缺容器规则会按固有尺寸 1024px 把弹窗撑出上下+左右滚动条（几何实测 1036×1349）。 */
+  check('v72：升级中弹窗图标有尺寸盒（.dlg-ico，位图不再按 1024px 固有尺寸撑爆弹窗）', (function () {
+    return (uS.match(/class="dlg-ico"/g) || []).length >= 2
+      && /class="dlg-ico" style="font-size:40px;"/.test(uS)
+      && /width: 1em/.test(cssBlock(hS, '.dlg-ico .ico'))
+      && /height: 1em/.test(cssBlock(hS, '.dlg-ico .ico'));
+  })());
   /* 这两条是**几何探针**抓出来的真问题（jsdom 量不出高度，所以只能在这里钉结构）：
      ① 图标从 emoji 换成 84px 位图后，卡片变高 → lg 档（860×600）正文超出 18px
         → 弹窗内冒出滚动条（老板明令禁止）→ 提到 xl；

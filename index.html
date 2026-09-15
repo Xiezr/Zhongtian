@@ -1808,6 +1808,11 @@
   .m-sec:first-child { margin-top: 0; }
   /* 弹窗内表格统一外框（避免贴边） */
   .m-body .tbl { margin-top: 4px; }
+  /* 弹窗身份图标尺寸盒（v72 · 老板报障「官府升级中点击 → 内容很大、下拉+左右拉框」）：
+     位图 <img class="ico"> 缺容器尺寸规则时按**固有尺寸 1024px** 渲染，把弹窗撑爆。
+     口径与 .tile-art/.ticon 一致：容器负责尺寸：1em 跟随 span 的内联图标字号（"仅剩图标"的裸像素用法，见 smoke 审计）。 */
+  .dlg-ico { display: inline-block; line-height: 1; }
+  .dlg-ico .ico { width: 1em; height: 1em; display: inline-block; vertical-align: middle; }
 
   /* ============ 提示条 toast ============ */
   .toast {
