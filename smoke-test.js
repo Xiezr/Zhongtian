@@ -3569,7 +3569,10 @@
   check('#13 升级中写入 pending（防重复排队）', /if \(cell\.pending\) return \{ ok: false, msg: '该建筑正在施工中/.test(dS16));
   check('#13 升级完成清 pending', /cell\.build\.lvl = q\.targetLevel;[\s\S]{0,80}cell\.pending = null;/.test(stS16));
   check('#13 施工面板显示 当前→目标 且可取消', uS16.indexOf('→ Lv') > 0 && uS16.indexOf('isUp16') > 0 && /取消'/.test(uS16));
-  check('#16 君主面板城池列表区分档位', /DATA\.CITY_TIER/.test(rd16('data')) && /DATA\.CITY_TIER\[c\.type\]/.test(uS16));
+  /* v82（老板）：「不要显示（自建城）这种文字」——君主面板城池列表去档位括注（坐标与人口保留） */
+  check('#16 君主面板城池列表（v82：去档位括注）',
+    /ls-meta">\[' \+ c2\.x \+ ',' \+ c2\.y \+ '\] · 人口上限 '/.test(uS16)
+    && !/DATA\.CITY_TIER\[c2\.type\]/.test(uS16));
   /* v22（需求 1）：下拉框已全站移除 → 城池切换改为点选按钮组 */
   /* v77（老板）：君主面板改左右分栏（城池列表 + 进入按钮），v22 的 chips 退役；
      城池切换仍是下拉框一处（v45）。 */
@@ -3661,40 +3664,13 @@
   })());
 
   console.log('  --- P2 四项 ---');
-  check('P2-8 征收已实现（冷却 1 游戏小时）', typeof G.levy === 'function' && G.LEVY_CD === 3600);
-  /* v24（需求 4/5）：征收改为**按城** + 普通城池征 5 大资源 / 名城征州特产 */
-  check('P2-8 普通城池征收 5 大资源并由民心承担代价', (function () {
-    var st = G.state, c = st.cities[0];
-    c.type = 'self';
-    st.hearts = 100; c.lastLevy = null;   // null = 从未征收
-    var plan = G.levyPlan(c);
-    var before = {};
-    plan.resources.forEach(function (x) { before[x.key] = st.res[x.key] || 0; });
-    var r = G.levy(c.id);
-    if (!r.ok) return false;
-    var okAll = plan.resources.every(function (x) { return (st.res[x.key] || 0) > before[x.key]; });
-    return plan.resources.length === 5 && okAll && st.hearts < 100;
-  })());
-  check('P2-8 名城征收州特产材料（进背包不进资源）', (function () {
-    var st = G.state, c = st.cities[0];
-    var bk = { type: c.type, state: c.state, lastLevy: c.lastLevy };
-    c.type = 'zhou'; c.state = '荆州'; c.lastLevy = null;
-    var plan = G.levyPlan(c);
-    var mat = plan.specialty ? plan.specialty.mat : null;
-    var m0 = st.items[mat] || 0;
-    var r = G.levy(c.id);
-    var got = r.ok && !!mat && (st.items[mat] || 0) > m0 && plan.self === false;
-    c.type = bk.type; c.state = bk.state; c.lastLevy = bk.lastLevy;
-    return got;
-  })());
-  check('P2-8 冷却按城独立（A 城冷却不影响 B 城）', (function () {
-    var st = G.state, c = st.cities[0];
-    var b = { id: 'tmpB', name: 'tmpB', type: 'self', cells: [], army: {}, extGrid: [], lastLevy: null };
-    st.cities.push(b);
-    var ra = G.levyReady(c), rb = G.levyReady(b);
-    st.cities.pop();
-    return ra > 0 && rb === 0;
-  })());
+  /* v82（老板）：「官府不需要征收物质这个功能去除」——征收整段退役（防回魂判据） */
+  check('v82：征收已退役（levy / levyPlan / levyReady / LEVY_CD 全清）',
+    typeof G.levy === 'undefined' && typeof G.levyPlan === 'undefined'
+    && typeof G.levyReady === 'undefined' && typeof G.LEVY_CD === 'undefined');
+  check('v82：特产口径保留（specialtyOf / stateOfCity 仍在 —— 岁贡与州治加成的依赖）',
+    typeof G.specialtyOf === 'function' && typeof G.stateOfCity === 'function');
+
   check('P2-9 科技改耗黄金', (function () {
     var c = DATA.techCost({ type: 'grain' }, 3);
     return c.gold > 0 && c.grain === undefined && c.iron === undefined;
@@ -4067,7 +4043,7 @@
     ['GAME.loadGame', G.loadGame], ['GAME.starveStep', G.starveStep], ['GAME.mutinyOf', G.mutinyOf],
     ['GAME.isStarving', G.isStarving], ['GAME.wildMult', G.wildMult],
     ['GAME.techMult', G.techMult], ['GAME.foodPerSec', G.foodPerSec],
-    ['GAME.storeCap', G.storeCap], ['GAME.wallCost', G.wallCost], ['GAME.levy', G.levy],
+    ['GAME.storeCap', G.storeCap], ['GAME.wallCost', G.wallCost],
     ['U.deep', U.deep], ['U.clamp', U.clamp], ['U.rng', U.rng], ['U.now', U.now], ['U.pad', U.pad],
     ['U.fmt', U.fmt], ['U.numHTML', U.numHTML], ['U.numText', U.numText],
     ['U.durExact', U.durExact], ['U.dur', U.dur], ['U.escape', U.escape],
@@ -5211,12 +5187,12 @@
   /* ---- 需求 2/3：大界面 / 弹窗 / 地图 三层统一 ---- */
   console.log('  --- ②③ 三层界面与风格统一 ---');
   /* v24（需求 3）：地图标题（含观察框说明）整段删除，共享规则只余大界面与弹窗 */
-  check('三层标题同一规格（字号取自同一变量）',
-    /\.gold-heading, \.m-title \{[\s\S]{0,220}font-size: var\(--fs-h2\)/.test(css34)
+  check('三层标题同一规格（字号取自同一变量；v82 扩至 .q-det-title）',
+    /\.gold-heading, \.m-title, \.q-det-title \{[\s\S]{0,220}font-size: var\(--fs-h2\)/.test(css34)
     && !/\.map-title \{/.test(css34));
   check('标题不再各写各的字距（4px 宽字距已取消）', !/letter-spacing: 4px/.test(css34));
-  check('分区小标题同一规格',
-    /\.q-sec-t, \.bag-sec, \.gd-sec, \.forge-q, \.m-sec, \.side-title, \.wb-t \{[\s\S]{0,220}font-size: var\(--fs-h3\)/.test(css34));
+  check('分区小标题同一规格（v82 扩员：q-det-sec/gp-sec/fsn-t/op-zone-t/ledger-sec/seal-h）',
+    /\.q-sec-t, \.q-det-sec, \.bag-sec, \.gd-sec, \.forge-q, \.m-sec, \.side-title, \.wb-t,[\s\S]{0,140}\.gp-sec, \.fsn-t, \.op-zone-t, \.ledger-sec, \.seal-h \{[\s\S]{0,260}font-size: var\(--fs-h3\)/.test(css34));
   check('页脚三套合一（.m-foot / .modal-foot / .panel-foot）',
     /\.m-foot, \.modal-foot, \.panel-foot \{/.test(css34));
   check('卡片几何统一（圆角 / 内边距同一组变量）',
@@ -5654,10 +5630,12 @@
   console.log('  --- ④⑤ 官府征收与特产 ---');
   check('官府入口覆盖面板全部内容（v68：不再叫「征收」）', /guanfu: \{ label: "🏯 官府事务", act: "open-guanfu" \}/.test(uS37)
     && /case 'open-guanfu'/.test(mS37));
-  check('征收面板列出 5 大资源或州特产', /ui\.openGuanfu = function/.test(uS37)
-    && /GAME\.levyPlan/.test(uS37));
-  check('特产三条收集途径写进面板（岁贡/征收/州治）',
-    /① 州郡岁贡/.test(uS37) && /② 官府征收/.test(uS37) && /③ 州治加成/.test(uS37));
+  /* v82（老板）：「官府不需要征收物质这个功能去除」——面板不再挂征收（防回魂） */
+  check('v82：官府面板不再挂征收（openGuanfu 无 levyPlan）', /ui\.openGuanfu = function/.test(uS37)
+    && !/GAME\.levyPlan/.test(uS37));
+  check('特产两条收集途径写进面板（岁贡/州治；征收随退役撤下）',
+    /① 州郡岁贡/.test(uS37) && /② 州治加成/.test(uS37) && !/官府征收/.test(uS37));
+
   /* v25（需求 3/5）：征收→官府、显示比例→设置、岁贡→名城官府，
      侧栏不再有「城池操作」：切城并进城池属性（v71：单城也出现） */
   check('城池清单单城也给出**城池下拉框**（v71 老板：含州郡县 + 坐标）', (function () {
@@ -5715,16 +5693,7 @@
     c.cells.forEach(function (x) { if (x.official) x.build.lvl = bk || 1; });
     return n === 40 && n % 8 === 0;
   })());
-  check('实测：征收冷却按城独立（A 冷却不影响 B）', (function () {
-    var st = G.state;
-    var a = st.cities[0];
-    var b = G.makeCity({ id: 'tmpLevyB', name: 'tmpB', type: 'self' });
-    st.cities.push(b);
-    a.lastLevy = (st.world && st.world.elapsed) || 0;
-    var ra = G.levyReady(a), rb = G.levyReady(b);
-    st.cities.pop();
-    return ra > 0 && rb === 0;
-  })());
+  /* v82：征收退役 —— 冷却按城独立的实测随 levyReady 一并退役。 */
 
   /* ---- 需求 6：侧栏只讲本城 ---- */
   console.log('  --- ⑥ 侧栏精简 ---');
@@ -12361,10 +12330,10 @@ console.log('\n===== 59. v73 五条（黄金 · 资质 · 秘境 · 将领头 ·
 
   /* ---------- ① 黄金闸门 ---------- */
   console.log('  --- ① 黄金获取限制（GOLD_GATE） ---');
-  check('结构：四个黄金出口全部挂到 DATA.GOLD_GATE（税收/俸禄/岁贡 + 征收系数）', (function () {
+  check('结构：三个黄金出口全部挂到 DATA.GOLD_GATE（税收/俸禄/岁贡；v82 征收退役）', (function () {
     return /DATA\.GOLD_GATE\.tax/.test(stS73) && /DATA\.GOLD_GATE\.salary/.test(stS73)
       && /DATA\.GOLD_GATE\.yield/.test(dS73)
-      && /LEVY_RES_RATE = \{ grain: 0\.30, wood: 0\.22, stone: 0\.16, iron: 0\.10, gold: 0\.02 \}/.test(dS73);
+      && !/LEVY_RES_RATE/.test(dS73);
   })(), 'GATE=' + JSON.stringify(DATA.GOLD_GATE));
   check('实测：岁贡黄金按闸门打折（郡城 40000 → 12000）', (function () {
     var tmp = G.makeCity({ id: 'tmpY73', name: '郡城', x: 5, y: 5, type: 'jun', res: {} });
@@ -12682,11 +12651,11 @@ console.log('\n===== 61. v75 客栈招募（大界面 · 单行候选 · 资质�
     return /display: flex/.test(act) && /white-space: nowrap/.test(nm)
       && /text-overflow: ellipsis/.test(at) && !/max-height/.test(ls);
   })());
-  check('⑤ 紧凑几何：内衬 3px 覆盖共用基线 + 头像列 28px（两处一致）', (function () {
+  check('⑤ 紧凑几何：内衬 3px 覆盖共用基线 + 头像列 28px（v82 两条同名规则已合并）', (function () {
     var compact = cssBlock(hS1, '.inn-card { padding:');
+    var iav = cssBlock(hS1, '.inn-avatar {');
     return /padding: 3px 10px/.test(compact) && /margin-bottom: 3px/.test(compact)
-      && /width: 28px/.test(cssBlock(hS1, '.inn-avatar {'))
-      && /width: 28px/.test(cssBlock(hS1, '.inn-avatar { width: 28px;'));
+      && /font-size: 20px/.test(iav) && /width: 28px/.test(iav);
   })());
 })();
 
@@ -13325,6 +13294,64 @@ console.log('\n===== 66. v81 两条（君主卡 · 兵营三页） =====');
     return ok;
   })(), '步兵页不带队列 / 队列页只带队列');
 })();
+
+  /* ============================================================
+   * 67. v82（老板四条）：君主凡品开局 / 官府·君主文案清理 / 征收退役 / 字体三档
+   * ============================================================ */
+  console.log('\n===== 67. v82 四条（君主资质 · 文案 · 征收 · 字体） =====');
+  (function () {
+    var rd82 = function (f) { return fsMod.readFileSync(pathMod.join(__dirname, 'js', f + '.js'), 'utf8'); };
+    var u82 = stripComment(rd82('ui'));
+    var d82 = stripComment(rd82('domain'));
+    var m82 = stripComment(rd82('main'));
+    var st82 = stripComment(rd82('state'));
+    var da82 = stripComment(rd82('data'));
+    var h82 = stripComment(fsMod.readFileSync(pathMod.join(__dirname, 'index.html'), 'utf8'));
+
+    check('① 君主开局凡品（最低档 lvCap 60）—— 需逐步升档', (function () {
+      var lord = G.makeLordGeneral({ name: '甲' }, 1, null);
+      return DATA.LORD_GEN.rankId === 'fan' && DATA.GEN_RANKS[0].id === 'fan'
+        && lord.rank === 'fan' && DATA.GEN_RANK_BY_ID['fan'].lvCap === 60;
+    })(), 'rank=' + DATA.LORD_GEN.rankId + ' lvCap=' + DATA.GEN_RANK_BY_ID['fan'].lvCap);
+    check('① 升档链在（凡→良→英→名→天，四株灵草，唯一出口 rankUpUse）', (function () {
+      var chain = (DATA.ITEMS || []).filter(function (x) { return x.type === 'rank_up'; })
+        .map(function (x) { return x.from + '>' + x.to; });
+      return typeof G.rankUpUse === 'function' && chain.length === 4
+        && chain[0] === 'fan>liang' && chain[3] === 'ming>tian';
+    })());
+
+    check('② 官府面板：城名居中行（.city-title / .city-sub），无原名样式残留', (function () {
+      return /class="city-title"/.test(u82) && /\.city-title \{/.test(h82)
+        && /class="city-sub"/.test(u82) && !/cs-orig/.test(u82) && !/cs-orig/.test(h82);
+    })());
+    check('② 官府面板不再标「附属野地 / 城外空地」（显示与数据副本双退役）',
+      !/附属野地 \/ 城外空地/.test(u82) && !/extraLand/.test(da82));
+    check('② 君主面板城池列表去档位括注（坐标与人口保留）',
+      /ls-meta">\[' \+ c2\.x \+ ',' \+ c2\.y \+ '\] · 人口上限 '/.test(u82)
+      && !/DATA\.CITY_TIER\[c2\.type\]/.test(u82));
+    check('② 改名弹窗不再写「原名」（域层 origName 照记）',
+      !/原名：/.test(u82) && /origName/.test(d82));
+
+    check('③ 征收退役：域 / 界面 / 分发 / 状态 / 数据 五处全清', (function () {
+      return typeof G.levy === 'undefined' && typeof G.levyPlan === 'undefined'
+        && typeof G.levyReady === 'undefined' && typeof G.LEVY_CD === 'undefined'
+        && !/levyPlan|levyReady|LEVY_RES_RATE|LEVY_MAT_QTY|LEVY_HEARTS/.test(d82)
+        && !/do-levy/.test(m82) && !/levy-btn/.test(u82)
+        && !/lastLevy/.test(st82) && !/LEVY_RES_RATE|LEVY_CD/.test(da82);
+    })());
+
+    check('④ 字重只剩三档（400 正文 / 700 强调 / 800 标题）', (function () {
+      var seen = {};
+      (h82.match(/font-weight:\s*\d+/g) || []).forEach(function (m) { seen[m.replace(/\D/g, '')] = 1; });
+      return Object.keys(seen).sort().join(',') === '400,700,800';
+    })());
+    check('④ 备注族一处共享（12px · 常规 · 次要色 · 行高 1.65）',
+      /\.note, \.ui-sub, \.nt-info, \.op-hint, \.m-sub, \.gb-empty, \.q-empty,[\s\S]{0,180}line-height: 1\.65/.test(h82));
+    check('④ 分区标题共享扩员（漏网六处收编：q-det-sec/gp-sec/fsn-t/op-zone-t/ledger-sec/seal-h）',
+      /\.q-sec-t, \.q-det-sec, \.bag-sec[\s\S]{0,240}\.gp-sec, \.fsn-t, \.op-zone-t, \.ledger-sec, \.seal-h \{/.test(h82));
+    check('④ 标题外观共享含 .q-det-title（三层标题一处定义）',
+      /\.gold-heading, \.m-title, \.q-det-title \{[\s\S]{0,200}font-size: var\(--fs-h2\)/.test(h82));
+  })();
 
   console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');
   process.exit(FAIL ? 1 : 0);

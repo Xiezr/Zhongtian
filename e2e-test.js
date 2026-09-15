@@ -2400,50 +2400,18 @@ async function runTests(dom, URL) {
     check('点官府宫殿打开官府面板并含征收入口',
       document.querySelector('#modal-root').innerHTML.indexOf('data-action="open-guanfu"') >= 0);
   }
-  const c24levy = G.currentCity();
-  const bkCity24 = { type: c24levy.type, state: c24levy.state, lastLevy: c24levy.lastLevy };
-  c24levy.type = 'self'; c24levy.state = null; c24levy.lastLevy = null;
-  const cap24 = G.storeCap ? G.storeCap() : 0;
-  const bkRes24 = {};
-  ['grain', 'wood', 'stone', 'iron'].forEach((k) => { bkRes24[k] = G.state.res[k]; });
-  /* 压到 0：满仓时"按余量折算"本就是正确行为，若不清空就会出现
-     "某项恰好顶到仓容、本次一分未入"从而误判失败。
-     同时**临时清空所有城池的驻军**：每 tick 都在按兵力扣粮，
-     粮本来就只有几十（人口 200），扣得比征得多 → 断言会看到"粮食没涨"。 */
-  ['grain', 'wood', 'stone', 'iron'].forEach((k) => { G.state.res[k] = 0; });
-  const bkArmies24 = G.state.cities.map((c) => JSON.stringify(c.army || {}));
-  G.state.cities.forEach((c) => { c.army = {}; });
-
+  /* v82（老板）：「官府不需要征收物质这个功能去除」——
+     原「征收全流程」整段退役，改验**退役本身**（防回魂）+ 面板不被误伤。 */
   G.ui.openGuanfu();
   await sleep(80);
   const gm24 = document.querySelector('#modal-root').innerHTML;
-  check('官府弹窗含征收区（5 大资源表）',
-    gm24.indexOf('官府') >= 0 && gm24.indexOf('征收物资') >= 0
-    && gm24.indexOf('粮食') >= 0 && gm24.indexOf('黄金') >= 0);
-  check('官府弹窗给出征收按钮与代价', !!document.querySelector('#levy-btn')
-    && gm24.indexOf('民心') >= 0);
-  /* 注意：本文件顶部的 s 是初始化时抓的一份引用，存档测试之后它可能已失效；
-     征收这一节一律读 G.state，避免"界面明明变了、断言却读旧对象"。 */
-  const st24 = G.state;
-  const resBefore24 = {};
-  ['grain', 'wood', 'stone', 'iron', 'gold'].forEach((k) => { resBefore24[k] = st24.res[k] || 0; });
-  const heartsBefore24 = st24.hearts;
-  click(document.querySelector('#levy-btn'));
-  await sleep(120);
-  const grew24 = ['grain', 'wood', 'stone', 'iron', 'gold']
-    .filter((k) => (G.state.res[k] || 0) > resBefore24[k]);
-  check('点征收真的入账（5 大资源同增）', grew24.length === 5,
-    grew24.length + '/5 项增加 · ' + grew24.join(','));
-  check('征收以民心为代价', G.state.hearts < heartsBefore24,
-    '民心 ' + Math.round(heartsBefore24) + '→' + Math.round(G.state.hearts));
-  check('征收后弹窗原地刷新并显示冷却',
-    document.querySelector('#modal-root').innerHTML.indexOf('冷却') >= 0);
+  check('v82：官府弹窗已无征收区（物资表 / 征收按钮退役）',
+    gm24.indexOf('官府') >= 0 && gm24.indexOf('征收物资') < 0
+    && !document.querySelector('#levy-btn'));
+  check('v82：官府仍在办事项（退役不误伤面板）', gm24.indexOf('在办事项') >= 0);
   G.ui.closeModal();
   await sleep(60);
-  /* 还原现场 */
-  c24levy.type = bkCity24.type; c24levy.state = bkCity24.state;
-  ['grain', 'wood', 'stone', 'iron'].forEach((k) => { G.state.res[k] = bkRes24[k]; });
-  G.state.cities.forEach((c, i) => { if (bkArmies24[i] != null) c.army = JSON.parse(bkArmies24[i]); });
+
   check('侧栏不再有征收（板块已删，属性行里也没有）',
     !document.querySelector('#city-tools')
     && (document.querySelector('#city-attrs') || {}).textContent.indexOf('征收') < 0);
@@ -4232,6 +4200,29 @@ if (svBtn) {
     G.ui.closeModal();
     await sleep(60);
   }
+
+  /* ============================================================
+   * v82（老板四条）真实 DOM：城名居中 / 文案清理 / 征收退役 / 字体三档
+   * ============================================================ */
+  console.log('\n--- v82. 文案清理 / 征收退役 / 字体（真实 DOM） ---');
+  G.ui.openGuanfu();
+  await sleep(100);
+  (function () {
+    const root = document.querySelector('#modal-root');
+    const title = root.querySelector('.city-title');
+    check('v82：官府面板城名居中行（.city-title 含城名）',
+      !!title && title.textContent.indexOf(G.currentCity().name) >= 0);
+    const ks = Array.prototype.map.call(root.querySelectorAll('.attr .k'), (x) => x.textContent.trim());
+    check('v82：官府面板无「本城」/「附属野地」标签行',
+      ks.indexOf('本城') < 0 && ks.join('|').indexOf('附属野地') < 0);
+    check('v82：征收退役（面板无征收按钮）', !root.querySelector('#levy-btn'));
+    check('v82：分区标题统一 800 字重（计算样式）', (function () {
+      const h = root.querySelector('.gold-heading');
+      return !!h && window.getComputedStyle(h).fontWeight === '800';
+    })());
+    G.ui.closeModal();
+  })();
+  await sleep(60);
 
   G.ui.setView('city');
   await sleep(60);

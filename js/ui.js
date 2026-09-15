@@ -737,13 +737,7 @@
         els[i].textContent = GAME.buildPct(p[0], Number(p[1])) || '…';
       }
     });
-    /* 征收按钮冷却：弹窗不随主循环整体重绘，靠这里每秒同步一次 */
-    var lb = document.getElementById('levy-btn');
-    if (lb) {
-      var lcd = GAME.levyReady(GAME.currentCity());
-      lb.disabled = lcd > 0;
-      lb.textContent = lcd > 0 ? ('冷却 ' + U.durExact(lcd / GAME.timeScale())) : '立即征收';
-    }
+    /* v82：征收退役 —— 按钮冷却同步随功能撤除。 */
     /* 进度条宽度 */
     var bars = document.querySelectorAll('[data-build-bar]');
     for (var b = 0; b < bars.length; b++) {
@@ -1880,8 +1874,8 @@
                 return '<div class="lord-city' + (c2.id === curCity.id ? ' cur' : '') + '">' +
                   '<span class="ls-nm">🏯 ' + U.escape(c2.name) +
                     (GAME.isMainCity(c2) ? ' <span class="city-tier mt">主城</span>' : '') + '</span>' +
-                  '<span class="ls-meta">' + (DATA.CITY_TIER[c2.type] || '自建城') +
-                    ' · [' + c2.x + ',' + c2.y + '] · 人口上限 ' + U.fmt(GAME.maxPopOf(c2)) + '</span>' +
+                  /* v82（老板）：「不要显示（自建城）这种文字」—— 档位文字撤下，坐标与人口保留 */
+                  '<span class="ls-meta">[' + c2.x + ',' + c2.y + '] · 人口上限 ' + U.fmt(GAME.maxPopOf(c2)) + '</span>' +
                   '<button class="btn sm gold" data-action="lord-city-enter" data-city="' + c2.id + '">进入</button>' +
                   '</div>';
               }).join('')
@@ -1903,7 +1897,7 @@
           '<tr><td class="k">主城</td><td>' + (function () {
             var mc = GAME.mainCityOf();
             return mc
-              ? ('🏯 ' + U.escape(mc.name) + ' <span class="ui-sub">（' + (DATA.CITY_TIER[mc.type] || '自建城') + ' · 驻跸加成中）</span>')
+              ? ('🏯 ' + U.escape(mc.name) + ' <span class="ui-sub">（驻跸加成中）</span>')
               : '<span class="ui-sub">未设 —— 到目标城的官府点「设为主城」</span>';
           })() + '</td></tr>' +
           '<tr><td class="k">神器</td><td>供奉 ' + U.fmt(GAME.artPts()) + '　' +
@@ -2532,12 +2526,9 @@
     ui.view = v;
     /* v41（需求 4）：进公文页即视为「已读」—— 闪黄提醒的寿命到玩家看一眼为止。
        清零后立刻同步一次徽标，否则要等主循环下一拍才灭（体感像"点了没反应"）。 */
-    if (v === 'reports' && GAME.state && GAME.state.repUnread) {
-      GAME.state.repUnread = 0;
-      ui.syncBadges();
-    }
     /* v41（需求 4）：进公文页即视为「已读」—— 闪黄提醒的寿命到玩家看一眼为止。
-       清零后立刻同步一次徽标，否则要等主循环下一拍才灭（体感像"点了没反应"）。 */
+       清零后立刻同步一次徽标，否则要等主循环下一拍才灭（体感像"点了没反应"）。
+       v82：收编同段重复块（v67 基线带来的逐字双份）。 */
     if (v === 'reports' && GAME.state && GAME.state.repUnread) {
       GAME.state.repUnread = 0;
       ui.syncBadges();
@@ -3507,8 +3498,7 @@
       var costStr = upCost ? GAME.costString(upCost) : (preUp.ok ? '已满级' : preUp.short);
       var extra = '';
       if (b.id === 'minfang') extra = '<div class="attr"><span class="k">人口上限</span><span class="v good">' + b.pop[cell.build.lvl - 1] + '</span></div>';
-      if (b.id === 'guanfu') extra = '<div class="attr"><span class="k">附属野地上限</span><span class="v">' + cell.build.lvl + '</span></div>' +
-        '<div class="attr"><span class="k">城外空地</span><span class="v">' + b.extraLand(cell.build.lvl) + '</span></div>';
+      /* v82（老板）：「不需要显示附属野地/城外空地及其数量」—— 官府弹窗这两行退役。 */
       if (b.id === 'xiaochang') extra = '<div class="attr"><span class="k">出征</span><span class="v">' + cell.build.lvl + '队 ×' + (cell.build.lvl * 10000).toLocaleString() + '人口</span></div>';
       if (b.id === 'chengqiang') extra = '<div class="attr"><span class="k">耐久</span><span class="v">' + (100 * cell.build.lvl) + '万</span></div>' +
         '<div class="attr"><span class="k">守军防御</span><span class="v">+' + (10 * cell.build.lvl) + '%</span></div>';
@@ -3645,21 +3635,18 @@
     var s = GAME.state, c = GAME.currentCity();
     if (!c) return;
     var lv = GAME.buildingLevel(c, 'guanfu') || 1;
-    var plan = GAME.levyPlan(c);
-    var rows = (plan && plan.resources) || [];
-    var cd = GAME.levyReady(c);
-    var isSelf = plan ? plan.self : true;
+    var isSelf = (c.type || 'self') === 'self';
+    var stateName = GAME.stateOfCity(c);            /* 特产 / 州治判定与岁贡同源 */
     var rn = GAME.canRenameCity(c);
+    var isMain = GAME.isMainCity(c);
 
-    /* v45（需求 4）：**重命名入口提到身份行旁边**。
-       改前 renameBox 排在面板最末（head + 征收表 + 岁贡 + 特产 + rename + 队列），
-       面板一长它就落到折叠线以下 —— 老板因此以为"官府根本没有改名功能"。
-       现在紧贴"本城"这一行，开面板即见。 */
-    /* v65（老板"按建议执行"）：官府面板要装得进弹窗 ——
-       head 的"附属野地上限 / 城外空地"合成一行（省 30px）。 */
-    /* v79（老板）：「每人可有 1 个主城，在官府界面中设置，主城名称后有【主城】标识」 */
-    var mainBtn = GAME.isMainCity(c)
-      ? ' <span class="city-tier mt">主城</span>'
+    /* v45（需求 4）：**重命名入口提到身份行旁边**（面板一长就落到折叠线以下，
+       老板因此以为"官府根本没有改名功能"）；v79：主城设置按钮随行。
+       v82（老板）：「不需要显示"本城"，城市名称居中，字体稍大即可」——
+       档位括注（自建城）/「本城」标签 / 原名标注全部撤下，只留居中放大的城名
+       （主城徽记保留），操作按钮另起一行居中。 */
+    var mainBtn = isMain
+      ? ''
       : ' <button class="btn sm" data-action="set-main-city" title="' +
           U.escape('主城吃驻跸加成：' + (DATA.MAIN_CITY.desc || '').replace('君主驻跸：', '')
             + (GAME.mainCityOf()
@@ -3667,51 +3654,23 @@
                 : '　（首设免费）')) +
         '">设为主城</button>';
     var head = '<div class="gold-heading">🏯 官府 · Lv' + lv + '</div>' +
-      '<div class="attr"><span class="k">附属野地 / 城外空地</span><span class="v">' +
-        lv + ' 处 / ' + GAME.extCap(c) + ' 块</span></div>' +
-      '<div class="attr"><span class="k">本城</span><span class="v">' + U.escape(c.name) +
-        '（' + (DATA.CITY_TIER[c.type] || '自建城') + '）' +
-        ' <button class="btn sm' + (rn.ok ? '' : ' dim') + '" data-action="open-rename-city"' +
+      '<div class="city-title">' + U.escape(c.name) +
+        (isMain ? ' <span class="city-tier mt">主城</span>' : '') + '</div>' +
+      '<div class="city-sub">' +
+        '<button class="btn sm' + (rn.ok ? '' : ' dim') + '" data-action="open-rename-city"' +
         (rn.ok ? '' : ' disabled') + ' title="' +
         U.escape(rn.ok ? '改名会同步到地图 / 侧栏 / 统计 / 战报抬头等所有引用处' : rn.msg) +
         '">✎ 重命名</button>' + mainBtn +
-        '<span class="cs-orig">' +
-          (rn.ok
-            ? (c.origName && c.origName !== c.name ? '原名 ' + U.escape(c.origName) : '原名即今名，可随意改')
-            : U.escape(rn.msg)) +
-        '</span></span></div>';
+      '</div>';
 
-    var body;
-    if (!rows.length) {
-      body = '<div class="q-empty">此城暂无可征收之物。</div>';
-    } else {
-      body = '<div class="q-sec"><span class="q-sec-t">' +
-          (isSelf ? '征收物资（五谷百工）' : '征收特产（' + (plan.stateName || '本州') + '）') +
-        '</span><span class="q-sec-n">民心 -' + plan.hearts + '</span></div>' +
-        '<table class="tbl"><thead><tr><th>物品</th><th>本次可征</th>' +
-          (isSelf ? '<th>现有</th>' : '<th>说明</th>') + '</tr></thead><tbody>' +
-        rows.map(function (r) {
-          return '<tr><td>' + r.icon + ' ' + r.name + '</td>' +
-            '<td class="num" style="color:var(--gold-light);font-weight:700;">+' +
-              (isSelf ? U.numText(r.qty, 0) : r.qty) + '</td>' +
-            '<td class="num" style="color:var(--text-dim);">' +
-              (isSelf ? U.numText(s.res[r.key] || 0, 0)
-                      : ((r.tier || 1) + ' 阶' + (r.seat ? ' · 州治 ×' + DATA.STATE_SEAT_BONUS : ''))) +
-            '</td></tr>';
-        }).join('') + '</tbody></table>' +
-        '<div class="op-zone"><div class="op-row">' +
-          '<button class="btn gold" id="levy-btn" data-action="do-levy"' + (cd > 0 ? ' disabled' : '') + '>' +
-            (cd > 0 ? ('冷却 ' + U.durExact(cd / GAME.timeScale())) : '立即征收') + '</button>' +
-          /* v73（老板需求 3）：种田秘境入口 —— 与征收同排（同为"本城可做的事"），
-             说明进 title。独立成 zone 时 1440×900 实测溢出 11px（队列有活时），
-             并排后省下 ~45px，面板在两种状态下都稳装。 */
-          '<button class="btn" data-action="open-farm"' +
-            ' title="种田秘境：个人田庄灵田种灵植，收高阶打造材料与资质灵草">🌾 种田秘境</button>' +
-          '<span class="op-hint">' + (isSelf
-            ? '以民力换物资（约一小时的产出）'
-            : '取地方珍藏（打造高阶装备的主料）') + '</span>' +
-        '</div></div>';
-    }
+    /* v82（老板）：「官府不需要征收物质这个功能去除」——
+       征收（物资/特产表 + 立即征收按钮 + 冷却同步）整段退役；
+       种田秘境入口（v73 原与征收同排）独立成区保留。 */
+    var farmBox = '<div class="op-zone"><div class="op-row">' +
+      '<button class="btn gold" data-action="open-farm"' +
+        ' title="种田秘境：个人田庄灵田种灵植，收高阶打造材料与资质灵草">🌾 种田秘境</button>' +
+      '<span class="op-hint">灵田种灵植：打造材料 + 资质灵草</span>' +
+      '</div></div>';
 
     /* 需求 5 的正面回答直接写进面板：特产到底怎么收集。
        v65（老板「按建议执行」）：**说明性文字全部进 ui.help** ——
@@ -3719,7 +3678,7 @@
        把官府面板顶出弹窗可视高度（几何探针实测 1600×950 就超 29px、720p 超 87px）。
        按老板的界面规范「弹窗正文是最稀缺的资源，说明一律进 help」收进标题旁的 ⓘ，
        面板正文只留**当前事实**：特产是什么、本州归谁。 */
-    var sp = plan && plan.specialty;
+    var sp = isSelf ? null : GAME.specialtyOf(c);    /* v82：原走 levyPlan，随征收退役改直读 */
     var spBox = '';
     if (sp) {
       var m = DATA.MATERIAL_BY_ID[sp.mat];
@@ -3727,12 +3686,11 @@
           '（' + sp.tier + ' 阶）' +
           ui.help('如何收集本城特产：\n' +
             '① 州郡岁贡 —— 每现实日自动入府，无需操作\n' +
-            '② 官府征收 —— 上方「立即征收」按钮，冷却 1 游戏小时\n' +
-            '③ 州治加成 —— 握有本州州城时，本州特产产量 ×' + DATA.STATE_SEAT_BONUS +
+            '② 州治加成 —— 握有本州州城时，本州特产产量 ×' + DATA.STATE_SEAT_BONUS +
             (sp.lore ? '\n\n' + sp.lore : '')) +
         '</div>' +
-        '<div class="attr"><span class="k">本州归属</span><span class="v">' + (plan.stateName || '—') +
-          (GAME.hasStateSeat(plan.stateName) ? '（州治在握）' : '') + '</span></div>' +
+        '<div class="attr"><span class="k">本州归属</span><span class="v">' + (stateName || '—') +
+          (GAME.hasStateSeat(stateName) ? '（州治在握）' : '') + '</span></div>' +
         '</div>';
     } else if (!isSelf) {
       spBox = '<div class="op-zone"><div class="op-zone-t">本城特产</div>' +
@@ -3768,9 +3726,9 @@
     var queueBox = '<div class="op-zone"><div class="op-zone-t">在办事项 · 建造 / 募兵 / 自动 / 行军</div>' +
       ui.queueBody(4) + '</div>';
 
-    /* v65：改用 **xl 档**（960×min(700px,88vh)）——
-       默认档 660×620 装不下"征收表 + 岁贡 + 特产 + 队列"，实测 1600×950 溢出 57px。 */
-    ui.openModal(head + body + yieldBox + spBox + queueBox +
+    /* v65：改用 **xl 档**（960×min(700px,88vh)）—— 默认档装不下面板全集。
+       v82：征收表退役后内容更少，但档位不动（960 宽是各面板的既定规格）。 */
+    ui.openModal(head + farmBox + yieldBox + spBox + queueBox +
       '<div class="modal-foot"><button class="btn" data-action="close-modal">关闭</button></div>',
       { size: 'xl' });
   };
@@ -3782,8 +3740,7 @@
     if (!chk.ok) { ui.toast(chk.msg); return; }
     ui.openShell({
       title: '✎ 重命名城池',
-      sub: '原名：' + U.escape(c.origName || c.name) +
-        '（初次改名后原名会一直保留，州治与战报仍按它对号）',
+      sub: '改名会同步到地图 / 侧栏 / 统计 / 战报等所有引用处',
       size: 'sm',
       body: '<div class="ui-sub" style="margin-bottom:6px;">新名字（12 字以内）</div>' +
         '<input type="text" id="rename-city-input" maxlength="12" value="' + U.escape(c.name) + '"' +
@@ -3802,7 +3759,7 @@
     var s = GAME.state;
     ui.openShell({
       title: '✎ 君主改名',
-      sub: '原名：' + U.escape(s.ruler.name) + '（8 字以内）',
+      sub: '8 字以内 · 改名会同步到所有引用处',
       size: 'sm',
       body: '<input type="text" id="rename-lord-input" maxlength="8" value="' + U.escape(s.ruler.name) + '"' +
         ' style="width:100%;padding:8px;background:var(--slab-1);border:1px solid var(--gold-dark);' +

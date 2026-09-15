@@ -1193,9 +1193,7 @@
     s.reports.unshift(report);
     if (s.reports.length > 60) s.reports.pop();
     /* v41（需求 4）：新战报 → 未读 +1，公文菜单图标开始闪黄（进公文页清零） */
-    s.repUnread = (s.repUnread || 0) + 1;
-    /* v41（需求 4）：新战报 → 未读 +1，公文菜单图标开始闪黄（进公文页清零） */
-    s.repUnread = (s.repUnread || 0) + 1;
+    s.repUnread = (s.repUnread || 0) + 1;   /* v82：收编同段重复行（原先每份战报 +2） */
     return {
       ok: true, mode: mode.id, result: result, target: t, gains: gains,
       msg: (win ? mode.name + '成功：' + t.name : mode.name + '失败：' + t.name),

@@ -82,13 +82,7 @@
         break;
       }
       case 'quest-detail': ui.openQuestDetail(el.dataset.kind, el.dataset.id); break;
-      /* v24（需求 4）：征收开在官府弹窗里 —— 结果只重绘弹窗，refreshView 只管中央视图 */
-      case 'do-levy': {
-        var rl = GAME.levy();
-        ui.toast(rl.msg);
-        if (rl.ok) { ui.openGuanfu(); GAME.refreshAll(); }
-        break;
-      }
+      /* v82：征收退役 —— do-levy 分发随功能撤除（官府面板不再产出该按钮）。 */
       case 'build-city': (function () { var xy = ui._buildCityXY; if (!xy) return; var r = GAME.buildCityAt(xy.x, xy.y); ui.toast(r.msg); if (r.ok) { ui.closeModal(); GAME.refreshAll(); } })(); break;
       /* 工匠作坊 → 器械募兵面板（#14） */
       case 'open-siege': ui.openTroops(ui._trainBIdx, 'siege'); break;

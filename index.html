@@ -51,6 +51,11 @@
      *   L5 --fs-cap   微标注（角标、计数、脚注）
      * 图标/装饰字形（emoji 头像、"+"/"★" 等符号）不属排版层级，
      * 仍按图形尺寸直接写 px，不受此表约束。
+     *
+     * v82（老板「统一各级标题，文字，备注的字体格式，大小，粗细」）：
+     *   · 字重只留**三档**：400 正文 / 700 强调（按钮·数值·名字）/ 800 标题；
+     *   · 分区标题族与备注族各只有**一处共享定义**（见文末两段共享规则）；
+     *   · 字体族全局一处（body 的 PingFang SC 族），等宽例外仅 .bt-strip 一处。
      * ============================================================ */
     --fs-h1: 20px;
     --fs-h2: 16px;
@@ -277,16 +282,20 @@
      三处**同一规格**：16px / 800 / 金色 / 字距 1px。
      以前分别是 18px(字距4px) / 16px / 18px，同级别标题三种长相。 */
   .gold-heading {
+    /* v82：字号/字重/字距/影由文末「标题外观共享」统一供给（同层级一处定义） */
     text-align: center;
     color: var(--gold-light);
-    font-weight: 800;
-    font-size: var(--fs-h2);
-    letter-spacing: 1px;
     padding: var(--sp-1) 0 var(--sp-4);
-    text-shadow: 0 2px 4px rgba(var(--sh-rgb),.6);
     background:
       linear-gradient(90deg, transparent, var(--sep-gold), transparent);
   }
+
+  /* v82（老板）：「城市名称居中，字体稍大即可」—— 官府面板的城名行
+     （档位括注 / 「本城」标签 / 原名标注全撤，只留居中放大的城名）。 */
+  .city-title { text-align: center; font-size: var(--fs-h2); font-weight: 800;
+    color: var(--gold-light); letter-spacing: 1px; padding: 2px 0 4px; }
+  .city-sub { display: flex; justify-content: center; align-items: center; gap: 8px;
+    padding-bottom: 8px; }
 
   /* ============ 按钮 ============ */
   .btn {
@@ -516,7 +525,7 @@
   .side-block { border-bottom: 1px solid var(--sep-gold); }
   .side-title {
     display: flex; justify-content: space-between; align-items: center;
-    padding: 6px 10px; font-size: var(--fs-h3); font-weight: 700; letter-spacing: 1px;
+    padding: 6px 10px;
     color: var(--gold-light);
     background: linear-gradient(90deg, rgba(201,162,75,.18), transparent);
   }
@@ -533,7 +542,7 @@
     display: inline-flex; align-items: center; justify-content: center;
     width: 16px; height: 16px; margin-left: 5px; line-height: 1;
     background: linear-gradient(180deg,#e8c878,#9a7430); color: var(--ink-on-gold);
-    border-radius: 3px; font-size: var(--fs-body); font-weight: 900; cursor: pointer;
+    border-radius: 3px; font-size: var(--fs-body); font-weight: 800; cursor: pointer;
     box-shadow: 0 1px 2px rgba(var(--sh-rgb),.4);
   }
   .plus-btn:hover { filter: brightness(1.15); }
@@ -543,12 +552,12 @@
   .res-line .lbl { color: var(--text-dim); }
   .res-line .val { font-weight: 700; font-variant-numeric: tabular-nums; display: inline-flex; align-items: baseline; gap: 4px; white-space: nowrap; }
   /* 资源存量：整数千分位 + 小数（暗色小字）—— 让每秒的微小增长肉眼可见 */
-  .res-line .val .num-frac { font-size: var(--fs-cap); font-weight: 500; color: var(--text-dim); letter-spacing: .3px; }
+  .res-line .val .num-frac { font-size: var(--fs-cap); font-weight: 400; color: var(--text-dim); letter-spacing: .3px; }
   /* 增速：按「/秒」显示，与画面刷新节奏一致 */
-  .res-line .val .num-rate { font-size: var(--fs-cap); font-weight: 600; color: var(--green-ok); }
+  .res-line .val .num-rate { font-size: var(--fs-cap); font-weight: 700; color: var(--green-ok); }
   .res-line .val .num-rate.zero { color: var(--text-dim); opacity: .55; }
-  .res-line .val .item-badge { color: var(--gold-light); font-size: var(--fs-cap); font-weight: 600; }
-  .res-line .val .cap { color: var(--text-dim); font-size: var(--fs-cap); font-weight: 500; }
+  .res-line .val .item-badge { color: var(--gold-light); font-size: var(--fs-cap); font-weight: 700; }
+  .res-line .val .cap { color: var(--text-dim); font-size: var(--fs-cap); font-weight: 400; }
 
   /* ============ 史册面板 ============ */
   .story-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
@@ -580,7 +589,6 @@
   .inn-card { display: flex; align-items: center; gap: 10px;
     background: rgba(var(--sh-rgb),.2); border: 1px solid var(--gold-dark); border-radius: 7px; }
   .inn-card.off { opacity: .55; }
-  .inn-avatar { font-size: 20px; width: 28px; text-align: center; }
   .inn-name { font-size: var(--fs-lead); font-weight: 700; color: var(--gold-light); white-space: nowrap; flex: none; }
   .inn-lv { color: var(--text-dim); font-size: var(--fs-cap); font-weight: 400; }
   .inn-attrs { font-size: var(--fs-sub); color: var(--text-dim); letter-spacing: .3px;
@@ -601,7 +609,7 @@
   .store-row { display: flex; align-items: center; padding: 7px 2px; border-bottom: 1px dashed rgba(201,162,75,.2); font-size: var(--fs-body); }
   .store-row .lbl { flex: 0 0 76px; color: var(--text-dim); }
   .store-row .val { flex: 0 0 auto; font-weight: 700; font-variant-numeric: tabular-nums; }
-  .store-row .cap { color: var(--text-dim); font-size: var(--fs-cap); font-weight: 500; }
+  .store-row .cap { color: var(--text-dim); font-size: var(--fs-cap); font-weight: 400; }
   /* ============ v12：子标签 / 任务卡 / 背包网格 / 会话日志 ============ */
   .panel-body { max-height: 558px; overflow-y: auto; margin: 0 -4px; }
   .panel-foot { text-align: center; margin-top: 14px; }
@@ -639,7 +647,7 @@
   /* 任务卡 */
   .q-sec { display: flex; align-items: center; gap: 10px; margin: 14px 0 8px; padding-bottom: 5px;
     border-bottom: 1px solid var(--sep-gold); }
-  .q-sec-t { font-size: var(--fs-h3); font-weight: 800; color: var(--gold-light); letter-spacing: 1px; }
+  .q-sec-t { color: var(--gold-light); }   /* v82：字号/字重/字距走分区标题共享 */
   .q-sec-n { font-size: var(--fs-sub); color: var(--text-dim); }
   .q-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
   /* ---- 任务清单（v25 · 需求 11）：只给名称与状态，详情进弹窗 ---- */
@@ -660,14 +668,13 @@
   /* 任务详情：固定版式 */
   .q-det-hero { display: flex; align-items: center; gap: 8px; padding-bottom: 10px;
     border-bottom: 1px solid var(--sep-gold); margin-bottom: 4px; }
-  .q-det-title { font-size: var(--fs-h2); font-weight: 800; color: var(--gold-light); }
-  .q-det-sec { font-size: var(--fs-h3); font-weight: 800; color: var(--gold-light);
-    margin: 12px 0 5px; letter-spacing: 1px; }
+  .q-det-title { color: var(--gold-light); }   /* v82：字号/字重走文末「标题外观共享」 */
+  .q-det-sec { color: var(--gold-light); margin: 12px 0 5px; }   /* v82：字号/字重/字距走分区标题共享 */
   .q-det-sec::before { content: '◆'; font-size: var(--fs-cap); color: var(--gold); margin-right: 5px; }
   .q-det-txt { font-size: var(--fs-body); line-height: 1.85; color: var(--text); }
   .q-det-txt.good { color: var(--green-ok); font-weight: 700; }
   .q-det-prog { color: var(--text-dim); font-size: var(--fs-sub); }
-  .q-det-tip { font-size: var(--fs-sub); color: var(--text-dim); line-height: 1.7; margin-top: 6px; }
+  .q-det-tip { font-size: var(--fs-sub); color: var(--text-dim); margin-top: 6px; }
   /* v74：视口断点已撤（@media (max-width: 900px) .q-grid）——画布固定，不做窄窗重排 */
   .q-card { background: rgba(var(--sh-rgb),.24); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px;
     transition: border-color .15s, box-shadow .15s; }
@@ -698,7 +705,7 @@
     max-height: 320px; overflow-y: auto; }
   .q-log-row { display: flex; align-items: center; gap: 8px; padding: 5px 2px; font-size: var(--fs-sub);
     border-bottom: 1px dashed rgba(201,162,75,.16); }
-  .q-log-t { color: var(--text); font-weight: 600; }
+  .q-log-t { color: var(--text); font-weight: 700; }
   .q-log-r { margin-left: auto; color: var(--gold-light); font-size: var(--fs-sub); }
   .q-log-r.dim { color: var(--text-dim); }
 
@@ -749,7 +756,7 @@
   .tip-layer .tip-l { font-size: var(--fs-sub); color: var(--text-dim); line-height: 1.65; }
   .tip-layer .tip-a { font-size: var(--fs-sub); color: var(--green-ok); margin-top: 4px; line-height: 1.6; }
   .bag-sec { display: flex; align-items: center; gap: 10px; margin: 12px 0 8px; padding-bottom: 4px;
-    border-bottom: 1px solid var(--sep-gold); font-size: var(--fs-h3); font-weight: 800; color: var(--gold-light); }
+    border-bottom: 1px solid var(--sep-gold); color: var(--gold-light); }
   .bag-sec .n { font-size: var(--fs-sub); font-weight: 400; color: var(--text-dim); }
   .mat-tag { display: inline-block; font-size: var(--fs-cap); padding: 1px 6px; border-radius: 4px;
     background: rgba(201,162,75,.14); color: var(--gold-light); border: 1px solid rgba(201,162,75,.35); margin-right: 3px; }
@@ -915,7 +922,7 @@
     display: flex; align-items: baseline; justify-content: center; gap: 4px;
     padding: 1px 0; border-radius: 5px;
     background: rgba(30,20,6,.52);
-    font-size: var(--fs-cap); font-weight: 600; line-height: 1.5;
+    font-size: var(--fs-cap); font-weight: 700; line-height: 1.5;
     white-space: nowrap; overflow: hidden;
   }
   .tile-label .nm { color: var(--text); overflow: hidden; text-overflow: ellipsis; }
@@ -1025,14 +1032,11 @@
     border: 1px solid var(--line-strong); background: linear-gradient(180deg, var(--surface-2c), #1a1d24);
     box-shadow: inset 0 1px 0 rgba(var(--hl-rgb),.08), 0 3px 8px rgba(var(--sh-rgb),.45);
     overflow: hidden; }
-  .ia.q1 { border-color: var(--q1); }
-  .ia.q2 { border-color: var(--q2); }
-  .ia.q3 { border-color: var(--q3); }
-  .ia.q4 { border-color: var(--q4); }
-  .ia.q1 { background: linear-gradient(180deg, rgba(154,154,140,.16), #1a1d24); }
-  .ia.q2 { background: linear-gradient(180deg, rgba(90,160,110,.20), #1a1d24); }
-  .ia.q3 { background: linear-gradient(180deg, rgba(74,140,200,.22), #1a1d24); }
-  .ia.q4 { background: linear-gradient(180deg, rgba(190,140,60,.26), #1a1d24); }
+  /* v82：同名两条规则合并（描边 + 底色各归一处） */
+  .ia.q1 { border-color: var(--q1); background: linear-gradient(180deg, rgba(154,154,140,.16), #1a1d24); }
+  .ia.q2 { border-color: var(--q2); background: linear-gradient(180deg, rgba(90,160,110,.20), #1a1d24); }
+  .ia.q3 { border-color: var(--q3); background: linear-gradient(180deg, rgba(74,140,200,.22), #1a1d24); }
+  .ia.q4 { border-color: var(--q4); background: linear-gradient(180deg, rgba(190,140,60,.26), #1a1d24); }
   .ia .ia-art { position: absolute; inset: 6px; display: flex; align-items: center; justify-content: center; }
   /* v37 修复（需求 3）：这里原先写的是 `svg` —— 全站其它 5 个图标容器
      （.tile-art/.bag-ico/.eq-ico/.ticon/.rico）都写 `.ico`，只有这一处写标签名。
@@ -1157,7 +1161,7 @@
   .eq-grow .v { color: var(--green-ok); font-weight: 700; font-variant-numeric: tabular-nums; }
   /* 套装进度 */
   .doll-set { border-top: 1px solid var(--sep-gold); padding-top: 8px; }
-  .ds-empty { font-size: var(--fs-sub); color: var(--text-dim); line-height: 1.8; }
+  .ds-empty { font-size: var(--fs-sub); color: var(--text-dim); }
   .ds-empty b { color: var(--gold-light); }
   .ds-block { margin-bottom: 9px; }
   .ds-head { display: flex; align-items: baseline; gap: 7px; flex-wrap: wrap; margin-bottom: 3px; }
@@ -1185,7 +1189,7 @@
   .forge-filter .shop-cats { margin: 0; }
   .forge-set-note { margin-top: 12px; padding: 9px 11px; border-radius: var(--r-lg);
     background: rgba(var(--sh-rgb),.24); border: 1px solid var(--line); }
-  .fsn-t { font-size: var(--fs-h3); font-weight: 800; color: var(--gold-light); margin-bottom: 6px; }
+  .fsn-t { color: var(--gold-light); margin-bottom: 6px; }   /* v82：字号/字重走分区标题共享 */
   .fsn-row { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 3px; }
   .fsn-name { font-size: var(--fs-sub); font-weight: 700; color: var(--hero-tag); min-width: 62px; }
   .fsn-n { font-size: var(--fs-cap); color: var(--text-dim); }
@@ -1369,7 +1373,7 @@
      正向操作与「拆毁/取消」类操作分区展示，避免误点与误操作 */
   .op-zone { margin-top: 12px; padding: 10px 12px; border: 1px solid var(--line-strong);
     border-radius: 8px; background: rgba(var(--hl-rgb),.02); }
-  .op-zone-t { color: var(--text-dim); font-size: var(--fs-sub); letter-spacing: 1px; margin-bottom: 8px; }
+  .op-zone-t { margin-bottom: 8px; }   /* v82：字色/字号/字距走分区标题共享（原 12px 灰字） */
   .op-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   .op-zone.danger { border-color: rgba(176,74,53,.5); background: rgba(176,74,53,.07); }
   .op-zone.danger .op-zone-t { color: var(--red-light); }
@@ -1496,7 +1500,7 @@
     min-width: 74px;
   }
   #res-bar .res-line .amt .amt-u {
-    font-style: normal; font-size: var(--fs-cap); font-weight: 600;
+    font-style: normal; font-size: var(--fs-cap); font-weight: 700;
     color: var(--text-dim); margin-left: 1px;
   }
   #res-bar .res-line .rate-wrap {
@@ -1577,7 +1581,7 @@
   .gd-sub { color: var(--text-dim); font-size: var(--fs-sub); margin-top: 4px; }
   .gd-lore { color: #9c9078; font-size: var(--fs-sub); margin-top: 4px; font-style: italic; }
   .gd-sec {
-    color: var(--gold-light); font-size: var(--fs-h3); font-weight: 700; letter-spacing: 1px;
+    color: var(--gold-light);
     margin: 12px 0 6px; padding-bottom: 4px; border-bottom: 1px dashed var(--line-strong);
   }
   .gd-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: var(--fs-body); margin: 5px 0; }
@@ -1782,8 +1786,8 @@
   .exp-tac-link { color: var(--gold-light); cursor: pointer; text-decoration: underline; margin-left: 6px; }
   .gp-exprow .gd-exptext { flex: none; }
   .gp-expadd { flex: none; min-width: 30px; padding: 1px 6px; line-height: 1.5; }
-  .gp-sec { margin-top: 12px; padding-bottom: 4px; font-size: var(--fs-h3); font-weight: 700;
-    color: var(--gold-light); letter-spacing: 1px; border-bottom: 1px solid var(--sep-gold); }
+  .gp-sec { margin-top: 12px; padding-bottom: 4px;
+    color: var(--gold-light); border-bottom: 1px solid var(--sep-gold); }
   /* v46（需求 2）：装备栏独占右栏。内部仍是「人形 | 属性与套装」并排 ——
      堆叠会让人形（380px）把整个档案顶到 870px，整页多出一条滚动条；
      并排后高度由人形单独决定（≈400px），余量充足。 */
@@ -1846,12 +1850,12 @@
     padding: var(--sp-1) 0;
     background: linear-gradient(90deg, transparent, rgba(201,162,75,.25), transparent); }
   .m-sub { display: block; text-align: center; color: var(--text-dim); font-size: var(--fs-sub);
-    margin-top: 4px; line-height: 1.6; }
+    margin-top: 4px; }
   .m-body { flex: 1; min-height: 0; overflow-y: auto; padding-right: 2px; }
   .m-foot { flex: none; display: flex; justify-content: center; align-items: center;
     gap: 8px; flex-wrap: wrap; padding-top: 10px; margin-top: 10px; border-top: 1px solid var(--line-strong); }
   /* 统一的分区小标题（各弹窗共用） */
-  .m-sec { color: var(--gold-light); font-weight: 700; font-size: var(--fs-h3); margin: 12px 0 6px; }
+  .m-sec { color: var(--gold-light); margin: 12px 0 6px; }   /* v82：字号/字重走分区标题共享 */
   .m-sec:first-child { margin-top: 0; }
   /* 弹窗内表格统一外框（避免贴边） */
   .m-body .tbl { margin-top: 4px; }
@@ -1935,7 +1939,7 @@
   .agree { display: flex; align-items: center; gap: 8px; font-size: var(--fs-body); color: var(--text-dim); }
   .agree input { accent-color: var(--teal); }
   .create-actions { text-align: center; margin-top: 8px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
-  .create-save-note { text-align: center; font-size: var(--fs-sub); color: var(--text-dim); margin-top: 10px; line-height: 1.8; }
+  .create-save-note { text-align: center; font-size: var(--fs-sub); color: var(--text-dim); margin-top: 10px; }
   .create-save-note .good { color: var(--green-ok); }
   .chron-item.tag-offline { border-left-color: var(--blue-info); opacity: .9; }
 
@@ -2018,9 +2022,9 @@
 
   /* ---- 信息条：只承载事实与数据，不再写玩法说明（需求 5）---- */
   .note {
+    /* v82：行高走备注族共享（1.65） */
     font-size: var(--fs-sub);
     color: var(--text-dim);
-    line-height: 1.75;
     background: rgba(var(--sh-rgb), .20);
     border: 1px solid var(--line);
     border-radius: var(--r-md);
@@ -2028,8 +2032,16 @@
     margin-top: var(--sp-3);
   }
   .note b { color: var(--parchment); font-weight: 700; }
-  .ui-sub { font-size: var(--fs-sub); color: var(--text-dim); line-height: 1.6; }
-  .nt-info { font-size: var(--fs-sub); color: var(--text-dim); line-height: 1.6; }
+  /* v82（老板「统一各级标题，文字，备注」）：
+     备注族一处定义 —— 说明 / 空态 / 提示类文字统一 12px · 常规字重 · 次要色 · 行高 1.65。 */
+  .note, .ui-sub, .nt-info, .op-hint, .m-sub, .gb-empty, .q-empty,
+  .gd-hint, .farm-sub, .auto-note, .create-save-note, .q-det-tip, .ds-empty {
+    font-size: var(--fs-sub);
+    color: var(--text-dim);
+    line-height: 1.65;
+  }
+  .ui-sub { font-size: var(--fs-sub); color: var(--text-dim); }
+  .nt-info { font-size: var(--fs-sub); color: var(--text-dim); }
 
   /* ---- 伤兵营（校场与行军共用，v21 需求 1）---- */
   .wounded-box {
@@ -2043,9 +2055,7 @@
     display: flex; align-items: baseline; justify-content: space-between;
     margin-bottom: var(--sp-2);
   }
-  .wounded-box .wb-t {
-    font-size: var(--fs-h3); font-weight: 800; color: var(--gold-light); letter-spacing: .5px;
-  }
+  .wounded-box .wb-t { color: var(--gold-light); }   /* v82：字号/字重/字距走分区标题共享 */
   .wounded-box .wb-n {
     font-size: var(--fs-lead); font-weight: 800; color: var(--parchment);
     font-variant-numeric: tabular-nums;
@@ -2085,15 +2095,19 @@
   .inn-card { padding: 3px 10px; margin-bottom: 3px; }
 
   /* ---- 标题外观共享：三层界面的标题字重/字色/字距只有一处定义 ---- */
-  .gold-heading, .m-title {
+  .gold-heading, .m-title, .q-det-title {
     font-size: var(--fs-h2);
     font-weight: 800;
     color: var(--gold-light);
     letter-spacing: 1px;
     text-shadow: 0 2px 4px rgba(var(--sh-rgb), .6);
   }
-  /* 三层界面的分区小标题同样只有一处定义 */
-  .q-sec-t, .bag-sec, .gd-sec, .forge-q, .m-sec, .side-title, .wb-t {
+  /* 三层界面的分区小标题同样只有一处定义；
+     v82（老板「统一各级标题」）：把漏网的六处收进来 —— 任务详情 .q-det-sec /
+     将领档案 .gp-sec / 时装 .fsn-t / 操作分区 .op-zone-t（原 12px 灰字）/
+     史册 .ledger-sec / 简牍 .seal-h —— 全站分区标题同规格（13px / 800 / 金色 / 字距 .5px）。 */
+  .q-sec-t, .q-det-sec, .bag-sec, .gd-sec, .forge-q, .m-sec, .side-title, .wb-t,
+  .gp-sec, .fsn-t, .op-zone-t, .ledger-sec, .seal-h {
     font-size: var(--fs-h3);
     font-weight: 800;
     color: var(--gold-light);
@@ -2167,7 +2181,7 @@
     display: flex; align-items: center; gap: 8px; }
   .auto-line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 8px 0; }
   .auto-line > .al-k { flex: none; width: 72px; color: var(--text-dim); font-size: var(--fs-sub); }
-  .auto-note { color: var(--text-dim); font-size: var(--fs-sub); line-height: 1.7; margin-top: 8px; }
+  .auto-note { color: var(--text-dim); font-size: var(--fs-sub); margin-top: 8px; }
   .auto-state { margin-top: 8px; padding: 7px 10px; border-radius: 6px;
     background: rgba(var(--sh-rgb),.28); border: 1px solid var(--line-strong);
     font-size: var(--fs-sub); color: var(--text-dim); }
@@ -2194,7 +2208,7 @@
      **结构上不可能出现空格，也不可能歪**。 */
   .ledger { display: grid; grid-template-columns: 1fr; margin: 2px 0 4px; }
   .ledger-sec { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px;
-    margin: 10px 0 2px; font-size: var(--fs-sub); letter-spacing: 2px; color: var(--gold-light); font-weight: 700; }
+    margin: 10px 0 2px; color: var(--gold-light); }
   .ledger-sec::before { content: ''; width: 5px; height: 5px; border-radius: 50%;
     background: var(--cinnabar); box-shadow: 0 0 6px rgba(168,58,44,.7); flex: none; }
   .ledger-sec::after { content: ''; flex: 1; height: 1px;
@@ -2253,7 +2267,7 @@
   /* 简牍分区标题（替代 emoji 小标） */
   .seal-h {
     display: flex; align-items: center; gap: 7px; margin: 16px 0 8px;
-    font-size: var(--fs-h3); font-weight: 800; color: var(--gold-light); letter-spacing: 1px;
+    color: var(--gold-light);
   }
   .seal-h::before {
     content: ''; flex: none; width: 7px; height: 14px; border-radius: 1px;
@@ -2340,7 +2354,7 @@
      三族同名样式叠了三版，是「同一处三种来源」的典型；将领改左右分栏后全部无人引用，
      一并删除。 */
   .gd-face { display: flex; justify-content: center; }
-  .inn-avatar { width: 28px; display: flex; align-items: center; justify-content: center; }
+  .inn-avatar { font-size: 20px; width: 28px; display: flex; align-items: center; justify-content: center; }   /* v82：两条同名规则合并为一 */
 
   /* ---- 城池视图（v22 · 需求 3）：中央只留棋盘 ----
      城池名 / 人口驻军 / 征收 / 显示比例 / 岁贡 全部下沉到左侧栏，
@@ -2379,8 +2393,8 @@
   }
   .city-select:hover { border-color: var(--gold-light); }
   .city-select:focus { outline: none; border-color: var(--gold-light); box-shadow: 0 0 0 2px rgba(232, 206, 136, .18); }
-  /* 原名标注：名城改名后仍要能看出它本来是谁（州治/战报都按原名对齐） */
-  .cs-orig { color: var(--text-dim); font-size: var(--fs-cap); margin-left: 5px; }
+  /* v82（老板）：「不需要显示原名 新城池」——官府面板的原名标注退役，
+     对应样式随之撤除（域层 origName 照记：州治判定/战报仍按它对号）。 */
   .side-body .zoom-bar { margin: 0; justify-content: flex-start; }
 
   /* ---- 页面容器：三种界面同一内边距节奏 ---- */

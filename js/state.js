@@ -332,7 +332,6 @@
       /* v63（老板）：「野外城每天只能被掠夺一次」—— 与 fortsRazed 同一套记法
          （键 = 'x,y'，值 = 游戏日索引），过一天自动失效，不需清理任务。 */
       fortRaids: {},                            // 今日已掠夺的野外城池 { 'x,y': dayIndex }
-      lastLevy: null,                           // v16：上次征收的游戏秒（null = 从未征收；冷却 1 游戏小时）
       yieldDay: null,                           // 上次州郡岁贡结算的现实日（null = 尚未结算过）
       gathers: [],                              // 野地采集队（v15）：{ id,x,y,type,level,genId,army,troops,cityId,elapsed }
       /* 叙事层（story.js）：世界历法 / 史书纪事 / 年号纪元 */
@@ -1573,14 +1572,8 @@
       /* v15 补字段：野地采集队 + 已占野地的等级日期（旧档野地无 levelDay，首次只登记） */
       if (!st.gathers) st.gathers = [];
       if (!st.msgLog) st.msgLog = [];
-      if (st.repUnread == null) st.repUnread = 0;        // v41：旧档补字段
-      if (st.repUnread == null) st.repUnread = 0;        // v41：旧档补字段
-      /* v24（需求 4）：征收冷却从「全境一份」改为**按城一份**（city.lastLevy）。
-         旧档的全局 lastLevy 归给首城，避免迁移后冷却被白清。 */
-      (st.cities || []).forEach(function (c, i) {
-        if (c.lastLevy === undefined) c.lastLevy = (i === 0 ? (st.lastLevy == null ? null : st.lastLevy) : null);
-      });
-      delete st.lastLevy;
+      if (st.repUnread == null) st.repUnread = 0;        // v41：旧档补字段（v82 顺手去重复行）
+      /* v82：征收退役 —— v24 的 lastLevy 迁移块随功能一并撤除（旧档残留字段无害）。 */
       /* v24（需求 8）：募兵队列补 barracks 归属（旧档队列没有 bIdx）
          v29（需求 13）：同时补齐 `kind` —— 旧档里的器械队列还在军营名下，
          迁移到**工匠作坊**（找不到作坊就留在原格位，等玩家建好作坊再正常推进）。 */
