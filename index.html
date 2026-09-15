@@ -2439,6 +2439,76 @@
     border: 1px solid var(--line); border-radius: 5px; padding: 6px; resize: vertical;
   }
 
+  /* ============================================================
+     v77（老板）
+     ------------------------------------------------------------
+     ① 资源区：附属野地下拉框（原「本城 · 城名」表头退役）
+     ② 客栈招募：表格版式（表头 + 单行数据，含月俸列）
+     ③ 君主面板：左右分栏（左城池列表 / 右信息表）
+     ④ 铁匠铺：百炼强化列表
+     ============================================================ */
+  .wild-pick-host { margin-bottom: 3px; }
+  .wild-pick-host .res-line { display: flex; align-items: center; gap: 6px; }
+  .wild-select { flex: 1 1 auto; min-width: 0; max-width: 168px; }
+
+  .inn-tbl { margin: 0; }
+  .inn-tbl th, .inn-tbl td { padding: 3px 8px; }
+  .inn-tbl .inn-face-cell { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+  .inn-tbl tr.off td { opacity: .55; }
+  .inn-tbl .rank-badge { white-space: nowrap; }
+  .inn-tbl .inn-act { display: flex; align-items: center; gap: 6px; justify-content: flex-end; white-space: nowrap; }
+
+  .lord-split { display: grid; grid-template-columns: 5fr 6fr; gap: 12px; align-items: start; }
+  .lord-city { display: flex; align-items: center; gap: 8px; padding: 5px 8px;
+    border: 1px solid var(--sep-gold); border-radius: var(--r-lg); margin-bottom: 5px; }
+  .lord-city.cur { border-color: var(--gold-dark); background: rgba(201, 162, 75, .10); }
+  .lord-city .ls-nm { color: var(--gold-light); font-weight: 700; white-space: nowrap; }
+  .lord-city .ls-meta { color: var(--text-dim); flex: 1 1 auto; min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lord-tbl td.k { width: 86px; color: var(--text-dim); white-space: nowrap; }
+
+  .enh-list { display: flex; flex-direction: column; }
+  .enh-row { display: flex; align-items: center; gap: 10px;
+    padding: 6px 8px; border-bottom: 1px solid var(--sep-gold); }
+  .enh-row:last-child { border-bottom: none; }
+  .enh-nm { flex: 1 1 auto; min-width: 0; }
+  .enh-tag { color: var(--gold-light); font-weight: 700; margin-left: 4px; }
+  .enh-cost { color: var(--text-dim); font-size: var(--fs-sub); }
+  /* ============================================================
+     v77（老板）
+     ------------------------------------------------------------
+     ① 资源区：附属野地下拉框（原「本城 · 城名」表头退役）
+     ② 客栈招募：表格版式（表头 + 单行数据，含月俸列）
+     ③ 君主面板：左右分栏（左城池列表 / 右信息表）
+     ④ 铁匠铺：百炼强化列表
+     ============================================================ */
+  .wild-pick-host { margin-bottom: 3px; }
+  .wild-pick-host .res-line { display: flex; align-items: center; gap: 6px; }
+  .wild-select { flex: 1 1 auto; min-width: 0; max-width: 168px; }
+
+  .inn-tbl { margin: 0; }
+  .inn-tbl th, .inn-tbl td { padding: 3px 8px; }
+  .inn-tbl .inn-face-cell { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+  .inn-tbl tr.off td { opacity: .55; }
+  .inn-tbl .rank-badge { white-space: nowrap; }
+  .inn-tbl .inn-act { display: flex; align-items: center; gap: 6px; justify-content: flex-end; white-space: nowrap; }
+
+  .lord-split { display: grid; grid-template-columns: 5fr 6fr; gap: 12px; align-items: start; }
+  .lord-city { display: flex; align-items: center; gap: 8px; padding: 5px 8px;
+    border: 1px solid var(--sep-gold); border-radius: var(--r-lg); margin-bottom: 5px; }
+  .lord-city.cur { border-color: var(--gold-dark); background: rgba(201, 162, 75, .10); }
+  .lord-city .ls-nm { color: var(--gold-light); font-weight: 700; white-space: nowrap; }
+  .lord-city .ls-meta { color: var(--text-dim); flex: 1 1 auto; min-width: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lord-tbl td.k { width: 86px; color: var(--text-dim); white-space: nowrap; }
+
+  .enh-list { display: flex; flex-direction: column; }
+  .enh-row { display: flex; align-items: center; gap: 10px;
+    padding: 6px 8px; border-bottom: 1px solid var(--sep-gold); }
+  .enh-row:last-child { border-bottom: none; }
+  .enh-nm { flex: 1 1 auto; min-width: 0; }
+  .enh-tag { color: var(--gold-light); font-weight: 700; margin-left: 4px; }
+  .enh-cost { color: var(--text-dim); font-size: var(--fs-sub); }
 </style>
 </head>
 <body>
@@ -2572,11 +2642,10 @@
         <div class="side-block">
           <div class="side-title">
             <span>城池属性</span>
-            <span class="side-quick">
-              <i data-action="open-bldg-info" title="建筑信息">🏗️</i>
-              <i data-action="open-prod-info" title="资源生产">⚙️</i>
-              <i data-action="open-wilds" title="附属野地">🏕️</i>
-            </span>
+            <!-- v77（老板）：「城池属性右边的 3 个按钮以及相应的计算链就不要了
+                 （建筑信息，资源生产，附属野地）」——三个入口整条退役。
+                 附属野地改从**资源区的下拉框**进（见 #wild-pick-host）。 -->
+            <span class="side-quick"></span>
           </div>
           <!-- v53：城池清单**单独成一个静态节点**，不再拼进 #city-attrs 的 html ——
                主循环每秒重绘城池属性，若把这个下拉框一起换掉，展开的列表会立刻合上
@@ -2593,6 +2662,10 @@
         <!-- ③ 资源栏（每项带 + 快捷道具） -->
         <div class="side-block">
           <div class="side-title"><span>资源</span><span class="side-quick" id="res-prod-hint"></span></div>
+          <!-- v77（老板）：「资源这里的备注：本城 新城池改成附属野地 下拉框」——
+               独立静态节点（同 #city-switch-host 的做法）：主循环每秒重绘资源栏，
+               若把下拉框拼进 #res-bar，展开的列表会每秒被合上。 -->
+          <div class="wild-pick-host" id="wild-pick-host"></div>
           <div class="side-body" id="res-bar"></div>
           <!-- v16：资源下方固定驻军栏 -->
           <div class="garrison-bar" id="garrison-bar"></div>

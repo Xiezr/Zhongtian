@@ -399,8 +399,8 @@ async function runTests(dom, URL) {
   }
 
   console.log('\n--- 11. 原版式弹窗（真实函数名） ---');
-  const modals = [['君主', 'openLordInfo'], ['建筑信息', 'openBldgInfo'], ['资源生产', 'openProdInfo'],
-    ['附属野地', 'openWilds'],
+  /* v77（老板）：建筑信息 / 资源生产退役；附属野地保留（资源区下拉框进入）。 */
+  const modals = [['君主', 'openLordInfo'], ['附属野地', 'openWilds'],
     ['客栈', 'openInn'], ['招贤馆', 'openHostel'], ['市集', 'openMarket'], ['仓库', 'openStore'],
     ['铁匠铺', 'openForge']];
   for (const [label, fn] of modals) {
@@ -1919,7 +1919,7 @@ async function runTests(dom, URL) {
     check('君主弹窗为三段式（head/body/foot）',
       !!document.querySelector('#modal-root .m-head') && !!document.querySelector('#modal-root .m-body')
       && !!document.querySelector('#modal-root .m-foot'));
-    check('君主弹窗用 lg 档固定尺寸', !!document.querySelector('#modal-root .modal-lg'));
+    check('君主弹窗用 xl 档固定尺寸（v77 左右分栏）', !!document.querySelector('#modal-root .modal-xl'));
     check('三段式弹窗内层为 flex 布局', !!document.querySelector('#modal-root .inner-panel.inner-shell'));
     G.ui.closeModal();
     /* v25（需求 2）：商城/背包改为整页视图 —— 与各"大界面"同格局（.ui-page 容器） */
@@ -3651,7 +3651,7 @@ async function runTests(dom, URL) {
     await sleep(80);
     const root75 = document.querySelector('#modal-root');
     const modal75 = root75.querySelector('.modal');
-    const cards75 = root75.querySelectorAll('.inn-card');
+    const cards75 = root75.querySelectorAll('.inn-tr');   /* v77：候选改表格行 */
     const cls75 = modal75 ? modal75.className : '';
     const slots75 = G.innSlots() || 0;
     check('v75：客栈升为最大尺寸档 xxl（大界面）', cls75.indexOf('modal-xxl') >= 0, cls75);
@@ -3668,6 +3668,50 @@ async function runTests(dom, URL) {
     ws75.forEach(function (x) { t75 += x.w; if (x.rank.id === 'tian') v75 = x.w; });
     const pct75 = v75 / t75 * 100;
     check('v75：天授权重口径没动（仍 <1%，只是不再展示）', pct75 < 1, '天授 ' + pct75.toFixed(2) + '%');
+
+    /* ---- v77（老板）：客栈表格化 / 君主面板 / 野地下拉框 ---- */
+    check('v77：客栈表格化（表头 + 每人一行 + 月俸列）',
+      !!root75.querySelector('.inn-tbl thead') && root75.innerHTML.indexOf('月俸') >= 0
+      && cards75.length === slots75,
+      cards75.length + ' / ' + slots75);
+    check('v77：表格列头齐备（将领/等级/资质/专长/六维/月俸/招募）', (function () {
+      const ths = Array.prototype.map.call(root75.querySelectorAll('.inn-tbl thead th'), (x) => x.textContent.trim());
+      return ['将领', '等级', '资质', '专长', '统率', '内政', '勇武', '智谋', '月俸', '招募']
+        .every((t, i) => ths[i] === t);
+    })(), Array.prototype.map.call(root75.querySelectorAll('.inn-tbl thead th'), (x) => x.textContent.trim()).join('/'));
+    G.ui.closeModal();
+    /* 君主面板：左城池列表（进入）/ 右信息表（含月俸支出、晋升悬停） */
+    G.ui.openLordInfo();
+    await sleep(60);
+    check('v77：君主面板左右分栏（城池列表带进入 + 信息表含月俸支出）',
+      !!root75.querySelector('.lord-split')
+      && !!root75.querySelector('.lord-city [data-action="lord-city-enter"]')
+      && root75.innerHTML.indexOf('月俸支出') >= 0, '');
+    const pbtn77 = root75.querySelector('[data-action="lord-promote"]');
+    check('v77：晋升按钮悬停带条件（声望 / 黄金）',
+      !!pbtn77 && /声望/.test(pbtn77.getAttribute('title') || '') && /黄金/.test(pbtn77.getAttribute('title') || ''),
+      pbtn77 ? (pbtn77.getAttribute('title') || '').slice(0, 46) : '无按钮');
+    /* 改名实走 */
+    const oldLord77 = G.state.ruler.name;
+    G.ui.openRenameLord();
+    await sleep(40);
+    const inp77 = document.getElementById('rename-lord-input');
+    if (inp77) inp77.value = '测试君主';
+    const btnOk77 = document.querySelector('#modal-root [data-action="do-rename-lord"]');
+    if (btnOk77) btnOk77.click();
+    await sleep(80);
+    check('v77：君主改名生效（ruler 与君主将领同源）',
+      G.state.ruler.name === '测试君主'
+      && (!G.lordGeneralOf() || G.lordGeneralOf().name === '测试君主'), G.state.ruler.name);
+    G.renameLord(oldLord77);
+    G.ui.closeModal();
+    /* 资源区：附属野地下拉框 */
+    G.ui._wildSig = null;
+    G.ui.renderWildPick(G.currentCity(), G.state);
+    check('v77：资源区附属野地下拉框 + 进入按钮', (function () {
+      const host = document.getElementById('wild-pick-host');
+      return !!host && !!host.querySelector('select.wild-select') && !!host.querySelector('[data-action="open-wilds"]');
+    })(), (document.getElementById('wild-pick-host') || { innerHTML: '宿主缺失' }).innerHTML.slice(0, 30));
     G.ui.closeModal();
   })();
 

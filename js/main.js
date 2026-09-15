@@ -90,7 +90,6 @@
         break;
       }
       case 'build-city': (function () { var xy = ui._buildCityXY; if (!xy) return; var r = GAME.buildCityAt(xy.x, xy.y); ui.toast(r.msg); if (r.ok) { ui.closeModal(); GAME.refreshAll(); } })(); break;
-      case 'lord-city-goto': (function () { var el2 = document.getElementById('lord-city-switch'); if (el2) { ui.setCity(el2.value); GAME.refreshAll(); ui.toast('已切换至 ' + el2.options[el2.selectedIndex].text); } })(); break;
       /* 工匠作坊 → 器械募兵面板（#14） */
       case 'open-siege': ui.openTroops(ui._trainBIdx, 'siege'); break;
       /* v62（老板）：工匠作坊 → 器械与工事（含造箭塔）。
@@ -111,6 +110,18 @@
 
       /* 原版三段式信息区 & 功能入口 */
       case 'open-lord': ui.openLordInfo(); break;
+      /* v77（老板）：君主面板 —— 进入城池（直跳该城城内界面）/ 晋升 / 改名 */
+      case 'lord-city-enter': (function () {
+        ui.closeModal();
+        ui.setCity(el.dataset.city);
+        ui.setView('city');
+        GAME.refreshAll();
+      })(); break;
+      case 'lord-promote': GAME.doLordPromote(); break;
+      case 'open-rename-lord': ui.openRenameLord(); break;
+      case 'do-rename-lord': GAME.doRenameLord(); break;
+      /* v77：附属野地下拉框（资源区）—— 选择即记录，进入按钮开野地界面 */
+      case 'wild-pick': ui._wildSel = Number(el.value) || 0; break;
       /* v26：同上，「背包」已是顶栏视图（data-view="bag"）。ui.openBag 仍有调用点。 */
       /* v29（需求 16）：点席位卡切换"下方档案"的对象（不开弹窗，就地换内容） */
       case 'gen-pick': ui._genSel = el.dataset.gen; GAME.refreshView(); break;
@@ -208,8 +219,8 @@
       case 'reroll-rand-quest': GAME.doRerollRandQuest(el.dataset.q); break;
       case 'reroll-all-rand': GAME.doRerollAllRand(); break;
       case 'toggle-done-quests': ui._showDone = !ui._showDone; ui.renderView('tasks'); break;
-      case 'open-bldg-info': ui.openBldgInfo(); break;
-      case 'open-prod-info': ui.openProdInfo(); break;
+      /* v77（老板）：建筑信息 / 资源生产两个入口随城池属性右三按钮一并退役；
+         「附属野地」改由资源区下拉框的「进入」按钮触发（动作名不变）。 */
       case 'open-wilds': ui.openWilds(); break;
       case 'map-pan': ui.mapPan(Number(el.dataset.dx), Number(el.dataset.dy)); break;
       case 'map-goto': ui.mapGoto(); break;
@@ -217,6 +228,9 @@
       case 'map-capital': ui.mapCenterOn(265, 215); ui.toast('已定位至洛阳 (265,215)'); break;
       case 'open-inn': ui.openInn(); break;
       case 'open-forge': ui.openForge(); break;
+      /* v77：百炼强化（铁匠铺底栏入口 + 装备详情入口） */
+      case 'open-enhance': ui.openEnhance(); break;
+      case 'enhance-item': GAME.doEnhance(el.dataset.item); break;
       case 'forge-item': GAME.doForge(el.dataset.item); break;
       case 'open-hostel': ui.openHostel(); break;
       case 'open-market': ui.openMarket(); break;
@@ -242,7 +256,6 @@
       case 'shop-cat': ui.setShopCat(el.dataset.c); break;
       /* v29（需求 12）：铁匠铺品质页签 */
       case 'forge-q': ui.setForgeQ(el.dataset.q); break;
-      case 'jump-cell': GAME.doJumpCell(Number(el.dataset.idx)); break;
       case 'msg-channel': ui.setMsgChannel(el.dataset.ch); break;
 
       /* 城内建筑 */
@@ -423,7 +436,8 @@
         ui.chipSet(el);
         var after = el.dataset.after;
         if (after === 'city') { ui.setCity(el.dataset.v); GAME.refreshAll(); }
-        else if (after === 'workrate') GAME.doSetWorkRate(el.dataset.k, Number(el.dataset.v));
+        /* v77（老板）：资源生产入口退役 —— 开工率调整 UI（after='workrate'）一并下线，
+           机制与取值保留在 state.workRate（默认 100%，产物照常计算）。 */
         else if (after === 'region') ui.setCreate();
         else if (after === 'zoom') GAME.doSetZoom(Number(el.dataset.v));
         /* v29（需求 5）：设置里的时间倍率/税率也改用同一套点选控件 */
@@ -668,21 +682,8 @@
     GAME.refreshAll();
     ui.renderShop();          // 只重绘商城（保留当前分类与页码，不要跳回第一页）
   };
-  /* 建筑信息弹窗 → 定位到城内地块 */
-  GAME.doJumpCell = function (idx) {
-    ui.closeModal();
-    ui.setView('city');
-    ui.openBuildModal(idx);
-  };
-  /* 开工率调整（原版资源生产面板） */
-  GAME.doSetWorkRate = function (res, v) {
-    var s = GAME.state;
-    s.workRate = s.workRate || {};
-    s.workRate[res] = Number(v);
-    ui.toast('开工率已调整为 ' + v + '%');
-    GAME.refreshAll();
-    ui.openProdInfo();      // 刷新面板显示
-  };
+  /* v77（老板）：doJumpCell（建筑信息 → 定位地块）与 doSetWorkRate（开工率调整）
+     随「建筑信息 / 资源生产」两个入口退役 —— 城内地块本就点得到，无须跳转器。 */
   /* --------- 自动出征（v29 · 需求 5） --------- */
   GAME.doToggleAutoMarch = function () {
     var cfg = GAME.autoMarchCfg();
@@ -1025,6 +1026,24 @@
     var r = GAME.systems.promote();
     ui.toast(r.msg);
     if (r.ok) GAME.refreshAll();
+  };
+  /* v77（老板）：君主面板 —— 晋升 / 改名（做完就地重开面板，立刻看到新状态） */
+  GAME.doLordPromote = function () {
+    var r = GAME.systems.promote();
+    ui.toast(r.msg);
+    if (r.ok) { GAME.refreshAll(); ui.openLordInfo(); }
+  };
+  GAME.doRenameLord = function () {
+    var inp = document.getElementById('rename-lord-input');
+    var r = GAME.renameLord(inp ? inp.value : '');
+    ui.toast(r.msg);
+    if (r.ok) { GAME.refreshAll(); ui.openLordInfo(); }
+  };
+  /* v77：百炼强化（唯一出口 GAME.enhance） */
+  GAME.doEnhance = function (itemId) {
+    var r = GAME.enhance(itemId);
+    ui.toast(r.msg);
+    if (r.ok) { GAME.refreshAll(); ui.openEnhance(); }
   };
   GAME.doSetTimeScale = function (v) {
     GAME.state.settings.timeScale = v;

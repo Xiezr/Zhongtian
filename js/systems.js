@@ -126,6 +126,10 @@
       var item = DATA.EQUIP[g.equip[slot]];
       if (!item) continue;
       var mul = (slot === 'mount') ? horseMul : 1;
+      /* v77 · 百炼强化：同种装备共享强化等级（s.forgeEnh），每级全属性 +perLv。
+         乘在「装备本身」这一层（套装加成不参与强化）——结算口径唯一在这里。 */
+      var enhLv = (GAME.enhOf ? GAME.enhOf(g.equip[slot]) : 0);
+      if (enhLv) mul *= 1 + enhLv * ((DATA.ENHANCE && DATA.ENHANCE.perLv) || 0.08);
       b.tong += (item.tong || 0) * mul; b.nz += (item.nz || 0) * mul;
       b.yw += (item.yw || 0) * mul; b.zm += (item.zm || 0) * mul;
       b.atk += (item.atk || 0) * mul; b.def += (item.def || 0) * mul;
@@ -382,6 +386,29 @@
       s.buffs.gens[g6.id] = s.buffs.gens[g6.id] || {};
       s.buffs.gens[g6.id][item.id] = { until: U.now() + 3600 * 1000, spd: item.amount };
       ok = true; msg = g6.name + ' 速度+' + item.amount + '（1h）';
+    } else if (item.type === 'chest') {
+      /* v77 · 宝箱：奖励在 S._openChest 里掷（资源入当前城、受仓储上限约束） */
+      var cr = S._openChest(item);
+      if (!cr.ok) return cr;
+      ok = true; msg = cr.msg;
+    } else if (item.type === 'neigong') {
+      /* v77 · 内功秘籍：修习 / 精进（每将一门，10 重封顶；换书＝转修） */
+      var g8 = S._findGen(targetGenId);
+      if (!g8) return { ok: false, msg: '请选择将领' };
+      var nr = S._neigongUse(g8, item);
+      if (!nr.ok) return nr;
+      ok = true; msg = nr.msg;
+    } else if (item.type === 'corvee') {
+      /* v77 · 徭役令：24 小时建造队列 +3（复用 s.buffs.buildQueue，见 GAME.buildSlots） */
+      s.buffs = s.buffs || {};
+      var prevAdd = (s.buffs.buildQueue && s.buffs.buildQueue.until > U.now())
+        ? (s.buffs.buildQueue.add || 0) : 0;
+      s.buffs.buildQueue = {
+        until: U.now() + (item.dur || 24) * 3600 * 1000,
+        add: Math.max(item.add || 0, prevAdd),
+      };
+      ok = true;
+      msg = item.name + ' 生效：' + (item.dur || 24) + ' 小时内同时建造队列 +' + s.buffs.buildQueue.add;
     } else {
       return { ok: false, msg: '该宝物暂不可直接使用' };
     }
@@ -394,6 +421,100 @@
     return { ok: ok, msg: msg };
   };
 
+
+  /* ============================================================
+   * 宝箱开启（v77 · 老板「各级宝箱」）—— 唯一出口
+   * ------------------------------------------------------------
+   * 奖励按档位 tier 掷：资源（入当前城、受仓储上限约束）· 黄金（货币不受限）·
+   * 珠宝 · 材料（按档取系列品阶）· 图纸（tier3 小概率）· 徭役令（tier3 小概率）。
+   * 概率与区间都在这一个函数里，改平衡只改这里。
+   * ============================================================ */
+  S._openChest = function (item) {
+    var s = GAME.state, tier = item.tier || 1;
+    var R = GAME.res(GAME.currentCity());
+    var parts = [];
+    function pick(a) { return a[Math.floor(Math.random() * a.length)]; }
+    function rnd(a, b) { return a + Math.floor(Math.random() * (b - a + 1)); }
+    var RN = { grain: '粮', wood: '木', stone: '石', iron: '铁' };
+    /* 资源包（2 项随机资源） */
+    var rt = { 1: [1500, 4000], 2: [4000, 12000], 3: [10000, 30000] }[tier] || [1500, 4000];
+    var cap = GAME.storeCap ? GAME.storeCap() : 0;
+    ['grain', 'wood', 'stone', 'iron'].sort(function () { return Math.random() - 0.5; }).slice(0, 2)
+      .forEach(function (k) {
+        var amt = rnd(rt[0], rt[1]);
+        var before = R[k] || 0;
+        R[k] = cap > 0 ? Math.min(cap, before + amt) : before + amt;
+        var got = R[k] - before;
+        if (got > 0) parts.push(RN[k] + ' +' + U.fmt(got));
+      });
+    /* 黄金 */
+    var gt = { 1: [1500, 5000], 2: [5000, 15000], 3: [12000, 40000] }[tier] || [1500, 5000];
+    var gAmt = rnd(gt[0], gt[1]);
+    R.gold = (R.gold || 0) + gAmt;
+    parts.push('金 +' + U.fmt(gAmt));
+    /* 珠宝 */
+    if (Math.random() < { 1: 0.35, 2: 0.5, 3: 0.6 }[tier]) {
+      var jewels = DATA.ITEMS.filter(function (x) { return x.type === 'jewel'; });
+      jewels.sort(function (a, b) { return a.price - b.price; });
+      var jw = pick(jewels.slice(0, Math.min(jewels.length, tier * 3 + 2)));
+      var jn = rnd(1, tier + 1);
+      s.items[jw.id] = (s.items[jw.id] || 0) + jn;
+      parts.push(jw.name + ' ×' + jn);
+    }
+    /* 材料（按档取品阶：t1→tier1-2 少；t2→tier2-3；t3→tier3，20% 出 tier4） */
+    if (Math.random() < { 1: 0.5, 2: 0.6, 3: 0.75 }[tier]) {
+      var mats = (DATA.MATERIALS || []).filter(function (m) {
+        if (tier === 1) return m.tier <= 2;
+        if (tier === 2) return m.tier === 2 || m.tier === 3;
+        return m.tier === 3 || (m.tier === 4 && Math.random() < 0.2);
+      });
+      if (mats.length) {
+        var md = pick(mats);
+        var mn = rnd(2, 3 + tier * 2);
+        s.items[md.id] = (s.items[md.id] || 0) + mn;
+        parts.push(md.name + ' ×' + mn);
+      }
+    }
+    /* 图纸（tier3 小概率） */
+    if (tier >= 3 && Math.random() < 0.10) {
+      var bps = DATA.ITEMS.filter(function (x) { return x.type === 'blueprint'; });
+      if (bps.length) {
+        var bp = pick(bps);
+        s.items[bp.id] = (s.items[bp.id] || 0) + 1;
+        parts.push(bp.name + ' ×1');
+      }
+    }
+    /* 徭役令（tier3 小概率） */
+    if (tier >= 3 && Math.random() < 0.08) {
+      s.items.corvee = (s.items.corvee || 0) + 1;
+      parts.push('徭役令 ×1');
+    }
+    var msg = '开启「' + item.name + '」：' + (parts.join('、') || '空空如也');
+    GAME.log('🎁 ' + msg);
+    return { ok: true, msg: msg };
+  };
+
+  /* 内功修习 / 精进（v77）—— 唯一出口。
+     规则：每将一门；同门加 1 重（10 重封顶）；异门＝转修（旧功散去，从 1 重起）。 */
+  S._neigongUse = function (g, item) {
+    var def = null;
+    (DATA.NEIGONG || []).forEach(function (x) { if (x.id === item.teach) def = x; });
+    if (!def) return { ok: false, msg: '未知内功' };
+    var ATTRS = { tong: '统率', nz: '内政', yw: '勇武', zm: '智谋', spd: '速度' };
+    var maxLv = def.maxLv || 10;
+    if (g.ng && g.ng.id === def.id) {
+      if ((g.ng.lv || 0) >= maxLv) {
+        return { ok: false, msg: g.name + ' 的《' + def.name + '》已至 ' + maxLv + ' 重（化境）' };
+      }
+      g.ng.lv += 1;
+      return { ok: true, msg: g.name + ' 内功精进：《' + def.name + '》' + g.ng.lv
+        + ' 重　' + ATTRS[def.attr] + ' +' + (def.per * g.ng.lv) + '（特性「' + def.trait + '」）' };
+    }
+    var switched = !!g.ng;
+    g.ng = { id: def.id, lv: 1 };
+    return { ok: true, msg: g.name + (switched ? ' 转修' : ' 开始修习') + '《' + def.name + '》'
+      + (switched ? '（旧功散去）' : '') + '　' + ATTRS[def.attr] + ' +' + def.per + '（特性「' + def.trait + '」）' };
+  };
 
   /* ============================================================
    * 募兵加速（v28 · 需求 8）

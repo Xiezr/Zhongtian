@@ -321,6 +321,8 @@
       items: U.deep(DATA.INITIAL_ITEMS),        // 宝物背包 {itemId: count}
       inventory: U.deep(DATA.INITIAL_EQUIP),    // 装备背包 [itemId]
       forged: [],                               // 已打造过的装备（图鉴用）
+      forgeEnh: {},                             // v77：装备百炼强化等级 {itemId: lv}
+      salaryAt: 0,                              // v77：将领月俸上次结算锚点（游戏秒）
       wilds: [],                                // 已占领野地
       fortsRazed: {},                           // 今日已攻取的野外城池 { 'x,y': dayIndex }
       /* v63（老板）：「野外城每天只能被掠夺一次」—— 与 fortsRazed 同一套记法
@@ -1573,6 +1575,9 @@
       }
       /* 补字段（旧档可能缺） */
       if (!st.workRate) st.workRate = { grain: 100, wood: 100, stone: 100, iron: 100 };
+      /* v77 补字段：百炼强化表 / 月俸锚点（老档锚点=当前游戏时刻，首期 7 游戏日后到来） */
+      if (!st.forgeEnh) st.forgeEnh = {};
+      if (st.salaryAt == null) st.salaryAt = (st.world && st.world.elapsed) || 0;
       /* 离线补算：按 savedAt 与当前时间推算，精确段+聚合段（详见 offlineCatchup） */
       var elapsed = Math.max(0, (U.now() - (st.savedAt || U.now())) / 1000);
       if (elapsed > 5) {
@@ -1872,19 +1877,14 @@
     });
     s.starving = s.cities.some(function (ct) { return ct.starving; });
 
-    /* 3) 将领俸禄（等级×20金/h）—— 从**该将所在城**扣。
-       黄金不足则欠俸，忠诚额外下滑 */
+    /* 3) 将领月俸（v77 · 老板「经过 7 个游戏日结算 1 次」）——
+       不再逐秒扣款：每 7 游戏日一次结清（GAME.settleGenSalary，
+       定价见 DATA.GEN_SALARY / GAME.genSalaryOf）。欠俸时置 unpaidAny
+       （供 s._unpaid 标记；不损忠诚 —— v14.1 拍板）。 */
     var gc = DATA.GEN_COST, lo = DATA.LOYALTY;
     var unpaidAny = false;
-    s.cities.forEach(function (ct) {
-      var sal = 0;
-      (s.generals || []).forEach(function (g) { if (g.cityId === ct.id) sal += g.level * 20; });
-      if (!sal) return;
-      var due = sal / 3600 * ts;
-      var R = GAME.res(ct);
-      if ((R.gold || 0) >= due) R.gold -= due;
-      else { R.gold = 0; unpaidAny = true; }
-    });
+    var _salSettle = GAME.settleGenSalary();
+    if (_salSettle && _salSettle.short > 0) unpaidAny = true;
 
     /* 3b) 将领体力/精力恢复
        忠诚（v14.1 按用户要求）：**只在出征战败时下降**，不再随时间/民心/欠俸衰减。

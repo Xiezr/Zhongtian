@@ -1476,6 +1476,62 @@
     }
     return { days: days, capped: capped, gold: gold, rep: rep, mats: mats, got: got };
   };
+  /* ============================================================
+   * 将领月俸（v77 · 老板「经过 7 个游戏日结算 1 次」）
+   * ------------------------------------------------------------
+   * 定价：GAME.genSalaryOf（展示与结算唯一出口）；
+   * 结算：GAME.settleGenSalary —— 锚点 world.elapsed（游戏秒），
+   *   离线跨期一次结清（上限 DATA.GEN_SALARY.maxPeriods 期，防长挂扣穿）。
+   * 扣款：从**各将所在城**的府库扣（与旧的逐秒扣款同一路径，只是改成月结）。
+   * 缺金：扣到 0 为止，余数记欠俸（进讯息；不损忠诚 —— v14.1 拍板
+   *   「忠诚只在出征战败时下降」，欠俸只警示不惩罚）。
+   * ============================================================ */
+  GAME.genSalaryOf = function (g) {
+    if (!g) return 0;
+    if (g.isLord || (GAME.isLordGeneral && GAME.isLordGeneral(g))) return 0;  // 君主不领俸
+    var C = DATA.GEN_SALARY || {};
+    var sum = (g.tong || 0) + (g.nz || 0) + (g.yw || 0) + (g.zm || 0);
+    var v = (C.base || 0) + (g.level || 1) * (C.perLevel || 0) + sum * (C.perAttr || 0);
+    var mul = (C.rankMul && C.rankMul[g.rank]) || 1;
+    return Math.round(v * mul);
+  };
+  /* 全境月俸合计（每期）—— 君主面板 / 侧栏悬停读它 */
+  GAME.genSalaryTotal = function () {
+    var s = GAME.state, t = 0;
+    ((s && s.generals) || []).forEach(function (g) { t += GAME.genSalaryOf(g); });
+    return t;
+  };
+  GAME.settleGenSalary = function () {
+    var s = GAME.state;
+    if (!s || !s.world) return null;
+    var C = DATA.GEN_SALARY || {};
+    var period = (C.periodDays || 7) * 86400;
+    if (!period) return null;
+    if (s.salaryAt == null) { s.salaryAt = s.world.elapsed || 0; return null; }   // 旧档只登记锚点
+    var due = Math.floor(((s.world.elapsed || 0) - s.salaryAt) / period);
+    if (due <= 0) return null;
+    var capped = Math.min(due, C.maxPeriods || 30);
+    s.salaryAt = s.salaryAt + due * period;
+    var paid = 0, short = 0;
+    (s.cities || []).forEach(function (ct) {
+      var per = 0;
+      ((s.generals) || []).forEach(function (g) {
+        if (g.cityId === ct.id) per += GAME.genSalaryOf(g);
+      });
+      if (!per) return;
+      var amount = per * capped;
+      var R = GAME.res(ct);
+      var have = R.gold || 0;
+      if (have >= amount) { R.gold = have - amount; paid += amount; }
+      else { R.gold = 0; paid += have; short += amount - have; }
+    });
+    if (!paid && !short) return { periods: capped, paid: 0, short: 0 };
+    var line = '💰 将领月俸结算（' + capped + ' 期）：金 −' + U.fmt(paid);
+    if (short > 0) line += '；⚠️ 府库不足，欠俸 ' + U.fmt(short) + ' 金';
+    GAME.log(line);
+    return { periods: capped, paid: paid, short: short };
+  };
+
   /* 距下次岁贡结算的剩余现实毫秒 */
   GAME.dailyYieldLeft = function () {
     var s = GAME.state;
@@ -2737,6 +2793,86 @@
     return { ok: true, msg: '打造完成：' + it.name, itemId: itemId };
   };
 
+  /* ============================================================
+   * 铁匠铺 · 百炼强化（v77）
+   * ------------------------------------------------------------
+   * 强化等级按**装备种**记（s.forgeEnh[itemId]）—— 装备是量产件模型
+   * （背包存 id 不存实例），同种共享、新造的继承。
+   * 效果并入 genEquipBonus（唯一出口），这里只管"能不能升、花多少"。
+   * ============================================================ */
+  GAME.enhOf = function (itemId) {
+    var s = GAME.state;
+    return (s && s.forgeEnh && s.forgeEnh[itemId]) || 0;
+  };
+  GAME.enhMax = function () { return (DATA.ENHANCE && DATA.ENHANCE.max) || 10; };
+  /* 下一级成本（唯一出口；UI 与扣费读同一份） */
+  GAME.enhCost = function (itemId) {
+    var it = DATA.EQUIP[itemId];
+    if (!it) return null;
+    var base = (DATA.FORGE.costByQ || {})[it.q] || DATA.FORGE.costByQ[1];
+    var lv = GAME.enhOf(itemId);
+    var C = DATA.ENHANCE || {};
+    return {
+      gold: Math.round((base.gold || 0) * (C.goldMul || 0.35) * (lv + 1)),
+      iron: Math.round((base.iron || 0) * (C.ironMul || 0.22) * (lv + 1)),
+      stone: Math.round((base.stone || 0) * (C.stoneMul || 0.22) * (lv + 1)),
+    };
+  };
+  /* 可强化清单：背包 + 已穿戴里的全部装备种（去重；品质高、已强化者在前） */
+  GAME.enhList = function () {
+    var s = GAME.state, seen = {}, ids = [];
+    ((s && s.inventory) || []).forEach(function (id) {
+      if (!seen[id] && DATA.EQUIP[id]) { seen[id] = 1; ids.push(id); }
+    });
+    ((s && s.generals) || []).forEach(function (g) {
+      for (var sl in (g.equip || {})) {
+        var id = g.equip[sl];
+        if (!seen[id] && DATA.EQUIP[id]) { seen[id] = 1; ids.push(id); }
+      }
+    });
+    ids.sort(function (a, b) {
+      return (DATA.EQUIP[b].q - DATA.EQUIP[a].q) || (GAME.enhOf(b) - GAME.enhOf(a));
+    });
+    return ids;
+  };
+  GAME.enhance = function (itemId) {
+    var s = GAME.state, it = DATA.EQUIP[itemId];
+    if (!it) return { ok: false, msg: '未知装备' };
+    if (GAME.forgeLevel() <= 0) return { ok: false, msg: '需先建造铁匠铺' };
+    var lv = GAME.enhOf(itemId);
+    if (lv >= GAME.enhMax()) return { ok: false, msg: '「' + it.name + '」已至 +' + GAME.enhMax() + '（满级）' };
+    /* 至少得拥有这件（或在穿）—— 没拥有过的种类不给强化 */
+    var owned = ((s.inventory) || []).indexOf(itemId) >= 0;
+    if (!owned) {
+      ((s.generals) || []).forEach(function (g) {
+        for (var sl in (g.equip || {})) if (g.equip[sl] === itemId) owned = true;
+      });
+    }
+    if (!owned) return { ok: false, msg: '尚未拥有「' + it.name + '」（先打造或缴获）' };
+    var cost = GAME.enhCost(itemId);
+    if (!GAME.canAfford(cost)) return { ok: false, msg: '资材不足（需 ' + GAME.costString(cost) + '）' };
+    GAME.payCost(cost);
+    s.forgeEnh = s.forgeEnh || {};
+    s.forgeEnh[itemId] = lv + 1;
+    GAME.log('铁匠铺百炼：' + it.name + ' → +' + (lv + 1));
+    return { ok: true, msg: '「' + it.name + '」强化 +' + (lv + 1)
+      + '（装备属性 +' + Math.round((lv + 1) * ((DATA.ENHANCE || {}).perLv || 0.08) * 100) + '%）' };
+  };
+
+  /* --------- 君主改名（v77 · 君主面板） --------- */
+  GAME.renameLord = function (name) {
+    var s = GAME.state;
+    name = String(name == null ? '' : name).trim();
+    if (!name) return { ok: false, msg: '名字不能为空' };
+    if (name.length > 8) return { ok: false, msg: '名字过长（8 字以内）' };
+    s.ruler = s.ruler || {};
+    s.ruler.name = name;
+    var lg = GAME.lordGeneralOf ? GAME.lordGeneralOf() : null;
+    if (lg) lg.name = name;   // 君主本人也是将领（v70）：两处同源
+    GAME.log('君主更名：' + name);
+    return { ok: true, msg: '君主已更名为 ' + name };
+  };
+
   /* --------- 解雇将领（装备全数归还；名将离去损声望） --------- */
   GAME.dismissGeneral = function (genId) {
     var s = GAME.state;
@@ -3130,6 +3266,14 @@
         }
       }
     }
+    /* v77 · 内功（DATA.NEIGONG）：每重 +per 到对应维（与装备/丹药同层求和）。
+       修习/精进走 systems.useItem → S._neigongUse；这里只管把加成算进去。 */
+    if (g.ng && g.ng.id) {
+      var ngD = null;
+      (DATA.NEIGONG || []).forEach(function (x) { if (x.id === g.ng.id) ngD = x; });
+      if (ngD && ngD.attr && a[ngD.attr] != null) a[ngD.attr] += (ngD.per || 0) * (g.ng.lv || 0);
+    }
+
     /* ---------- v52 派生：攻防值 → 全军加成 ----------
        **必须在 buff 之后算**（武曲星符改的是 a.yw，派生要吃到它）。
        公式走上面那三个原子（唯一来源），一次算完、多处读

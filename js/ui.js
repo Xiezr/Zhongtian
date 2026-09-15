@@ -795,8 +795,41 @@
     var s = GAME.state, c = GAME.currentCity();
     if (!s || !c) return;
     ui.renderCityAttrs(c, s);
+    ui.renderWildPick(c, s);
     ui.renderResBar(c, s);
     ui.renderGarrison(c, s);
+  };
+
+  /* ============================================================
+   * 附属野地下拉框（v77 · 老板）
+   * ------------------------------------------------------------
+   * 资源区一行：「附属野地」+ 下拉框（地形 等级（坐标））+「进入」。
+   * 进入 = openWilds（野地界面：加成一览 / 采集队 / 定位）。
+   * 签名不变则不重绘 —— 下拉展开与选择不会被每秒刷新合上（同 #city-switch-host 套路）。
+   * ============================================================ */
+  ui._wildSig = null;   /* null 而非 ''：首帧必然渲染（哪怕"暂无野地"） */
+  ui._wildSel = 0;
+  ui.renderWildPick = function (c, s) {
+    var box = $('#wild-pick-host');
+    if (!box) return;
+    var wilds = (s && s.wilds) || [];
+    var sig = wilds.map(function (w) { return w.x + ',' + w.y + ',' + w.level; }).join('|');
+    if (sig === ui._wildSig) return;
+    ui._wildSig = sig;
+    if (ui._wildSel >= wilds.length) ui._wildSel = 0;
+    var sel = ui._wildSel || 0;
+    var opts = wilds.map(function (w, i) {
+      var t = DATA.TERRAIN[w.type];
+      return '<option value="' + i + '"' + (i === sel ? ' selected' : '') + '>' +
+        (t ? t.name : w.type) + ' Lv' + w.level + '（' + w.x + ',' + w.y + '）</option>';
+    }).join('') || '<option value="">暂无附属野地</option>';
+    box.innerHTML = '<div class="res-line" title="已占野地（官府等级决定上限）。选一块点「进入」查看加成与采集。">' +
+      '<span class="lbl">附属野地</span>' +
+      '<span class="val" style="display:flex;align-items:center;gap:6px;">' +
+        '<select class="city-select wild-select" id="wild-pick" data-action="wild-pick"' +
+          (wilds.length ? '' : ' disabled') + '>' + opts + '</select>' +
+        '<button class="btn sm gold" data-action="open-wilds">进入</button>' +
+      '</span></div>';
   };
 
   /* ============================================================
@@ -1059,13 +1092,10 @@
     if (!box) return;
     var prodAll = GAME.productionPerSec();
     var prodCity = GAME.cityProdPerSec(c);
-    var html = '<div class="res-line res-scope" title="「/秒」为本城产量；存量为本城库存' +
-      '（资源归属城池，跨城调拨请用「城池面板 → 资源运输」）"' +
-      ' style="border-bottom:1px solid var(--sep-gold);padding-bottom:4px;margin-bottom:3px;">' +
-      '<span class="lbl">本城</span>' +
-      '<span class="val" style="color:var(--gold-light);font-weight:700;">' +
-        /* v71（老板）：只显示城池命名 —— 本城表头同走短名 */
-        ui.cityLabelHTML(c, true) + '</span></div>';
+    /* v77（老板）：「资源这里的备注：本城 新城池改成附属野地 下拉框」——
+       原「本城 · 城名」表头退役；附属野地选择器在独立静态节点
+       #wild-pick-host（ui.renderWildPick 渲染），不会被每秒重绘打断。 */
+    var html = '';
     ['grain', 'wood', 'stone', 'iron', 'gold'].forEach(function (k) {
       var meta = null;
       DATA.RESOURCES.forEach(function (r) { if (r.key === k) meta = r; });
@@ -1607,6 +1637,12 @@
     var html = '<div class="gold-heading">' + it.name + (setNm ? ' · ' + setNm : '') + '</div>';
     html += '<div class="attr"><span class="k">部位</span><span class="v">' + (DATA.EQUIP_SLOT_NAMES[it.slot] || it.slot) + '</span></div>';
     html += '<div class="attr"><span class="k">品质</span><span class="v">' + (DATA.Q_NAME[it.q] || "") + ' ' + '★'.repeat(it.q) + '</span></div>';
+    /* v77：百炼强化等级（同种共享）——装备详情一眼可见 */
+    var eLv77 = GAME.enhOf ? GAME.enhOf(itemId) : 0;
+    if (eLv77) {
+      html += '<div class="attr"><span class="k">百炼</span><span class="v good">+' + eLv77 +
+        '（装备属性 +' + Math.round(eLv77 * ((DATA.ENHANCE || {}).perLv || 0.08) * 100) + '%）</span></div>';
+    }
     html += '<div class="attr"><span class="k">属性</span><span class="v good">' + GAME.equipDesc(it) + '</span></div>';
     if (setNm) {
       var sd = DATA.SETS[it.set];
@@ -1636,7 +1672,9 @@
           + '×' + Math.max(1, Math.floor(mats[mk] * (DATA.FORGE.salvageRate || 0.4))));
       }
       html += '<div class="note" style="margin-top:12px;">拆解可回收 40% 打造材料：' + mtx.join('、') + '</div>';
-      html += '<div style="text-align:center;margin-top:10px;"><button class="btn red" data-action="salvage-equip" data-key="' + itemId + '">拆解回收</button></div>';
+      html += '<div style="text-align:center;margin-top:10px;">' +
+        '<button class="btn sm gold" data-action="open-enhance" style="margin-right:6px;">⚒ 前往铁匠铺强化</button>' +
+        '<button class="btn red" data-action="salvage-equip" data-key="' + itemId + '">拆解回收</button></div>';
     } else {
       html += '<div class="note">此件不在背包中（可能正穿在将领身上）。可在「将领」面板卸下。</div>';
     }
@@ -1750,91 +1788,77 @@
   };
 
   /* 君主信息弹窗（原版「君主」按钮） */
-  ui.openLordInfo = function () {
+    ui.openLordInfo = function () {
     var s = GAME.state;
     var totalPop = GAME.totalPopCap();   /* v60：全境人口上限（唯一出口） */
+    var popNow = GAME.totalPop();
     var heroCount = s.generals.filter(function (g) { return g.hero; }).length;
+    var cur = GAME.systems.rankInfo(s.rank);
+    var next = GAME.systems.nextRank();
+    var chk = next ? GAME.systems.canPromote() : null;
+    var curCity = GAME.currentCity() || {};
+    /* 晋升条件整句（悬停用）——「现有 / 所需」都带上，鼠标一放一目了然 */
+    var condTitle = '已登顶「裂土封王」';
+    if (next) {
+      var jewParts = Object.keys(next.jewel || {}).map(function (j) {
+        var it = null;
+        (DATA.ITEMS || []).forEach(function (x) { if (x.id === j) it = x; });
+        return (it ? it.name : j) + ' ' + ((s.items && s.items[j]) || 0) + '/' + next.jewel[j];
+      });
+      condTitle = '晋升「' + next.name + '」条件：声望 ' + U.fmt(s.rep) + '/' + U.fmt(next.rep)
+        + '　城池 ' + s.cities.length + '/' + next.city
+        + '　黄金 ' + U.fmt(s.res.gold || 0) + '/' + U.fmt(next.gold)
+        + (jewParts.length ? '　珠宝 ' + jewParts.join('、') : '')
+        + (chk && !chk.ok ? '（' + chk.msg + '）' : '（条件已满足）');
+    }
+    var lg = GAME.lordGeneralOf();
+    var salaryTotal = GAME.genSalaryTotal ? GAME.genSalaryTotal() : 0;
+    /* v77（老板）：「君主界面分左右两半：左边城池列表（加进入按钮），右边两列信息表
+       （姓名+改名 / 爵位+晋升（悬停见条件）/ 声望 / 人口总和 / 将领总和 / 状态）」。
+       旧版（单列 + chips + 城池表 + rankBlock）整段退役；爵位区块并入右表。 */
     ui.openShell({
       title: '👤 君主',
-      sub: (DATA.RANK[s.rank] ? DATA.RANK[s.rank].name : '平民') + ' · 声望 ' + U.fmt(s.rep) + ' · ' + s.cities.length + ' 城',
-      size: 'lg',
-      body:
-        '<div class="m-sec">君主概览</div>' +
-      '<div class="attr"><span class="k">君主姓名</span><span class="v">' + U.escape(s.ruler.name) + '</span></div>' +
-      '<div class="attr"><span class="k">官职 / 爵位</span><span class="v">' + (DATA.RANK[s.rank] ? DATA.RANK[s.rank].name : '平民') + '</span></div>' +
-      '<div class="attr"><span class="k">声望</span><span class="v good">' + U.fmt(s.rep) + '</span></div>' +
-      '<div class="attr"><span class="k">城池数量</span><span class="v">' + s.cities.length + '</span></div>' +
-      /* v60（需求 4）：人口归属城池，"人口总和"要**真求和** ——
-         改前直接读 s.res.pop（当时是全境共享的一个数），
-         现在 s.res 是当前城，直接读会变成"当前城人口 / 全境上限"（口径错乱）。 */
-      '<div class="attr"><span class="k">人口总和</span><span class="v">' +
-        U.fmt(GAME.totalPop()) + ' / ' + U.fmt(totalPop) + '</span></div>' +
-      '<div class="attr"><span class="k">将领总数</span><span class="v">' + s.generals.length + '（名将 ' + heroCount + '）</span></div>' +
-      /* v70（老板）：君主本人也是将领 —— 这行让"他在哪、在干什么、几级"一眼可查 */
-      (function () {
-        var lg = GAME.lordGeneralOf();
-        if (!lg) return '';
-        return '<div class="attr"><span class="k">君主领兵</span><span class="v">Lv' + lg.level +
-          ' · ' + ui.genStatusName(lg) + (lg.isLord ? '（不可解雇）' : '') + '</span></div>';
-      })() +
-      '<div class="attr"><span class="k">状态</span><span class="v">正常</span></div>' +
-      /* v25（需求 10）：爵位从独立菜单并入君主 —— 它本来就是"君主身份"，不是玩法模块 */
-      ui.rankBlock() +
-      '<div style="margin-top:12px;color:var(--gold-light);font-weight:700;font-size:var(--fs-body);">城池一览（' + s.cities.length + '）</div>' +
-      (s.cities.length
-        ? '<div style="margin:6px 0 8px;">' + ui.chips({
-            cls: 'city-chips', after: 'city',
-            opts: s.cities.map(function (c) {
-              return {
-                v: c.id, on: c.id === (GAME.currentCity() || {}).id,
-                label: '🏯 ' + U.escape(c.name) + '<span class="chip-sub">' +
-                  (DATA.CITY_TIER[c.type] || '自建城') + ' [' + c.x + ',' + c.y + ']</span>'
-              };
-            })
-          }) + '</div>' +
-          '<div style="height:220px;overflow-y:auto;">' +
-          '<table class="tbl"><thead><tr><th>城池</th><th>类型</th><th>坐标</th><th>人口上限</th><th>驻军</th></tr></thead><tbody>' +
-          s.cities.map(function (c) {
-            return '<tr><td>' + U.escape(c.name) + '</td>' +
-              '<td class="ctr" style="color:' + (c.type === 'self' ? 'var(--text-dim)' : 'var(--gold-light)') + ';">' + (DATA.CITY_TIER[c.type] || '自建城') + '</td>' +
-              '<td class="ctr">' + c.x + ',' + c.y + '</td>' +
-              '<td class="num">' + U.fmt(GAME.maxPopOf(c)) + '</td>' +
-              '<td class="num">' + U.numText(GAME.armyTotal(c), 0) + '</td></tr>';
-          }).join('') + '</tbody></table></div>' +
-          '<div style="text-align:center;margin-top:8px;"><button class="btn sm gold" data-action="lord-city-goto">前往所选城池</button></div>'
-        : '<div class="gb-empty" style="height:140px;">当前无城池</div>'),
+      sub: (cur ? cur.name : '平民') + ' · 声望 ' + U.fmt(s.rep) + ' · ' + s.cities.length + ' 城',
+      size: 'xl',
+      body: '<div class="lord-split">' +
+        '<div class="ls-left"><div class="m-sec">城池一览（' + s.cities.length + '）</div>' +
+          (s.cities.length
+            ? s.cities.map(function (c2) {
+                return '<div class="lord-city' + (c2.id === curCity.id ? ' cur' : '') + '">' +
+                  '<span class="ls-nm">🏯 ' + U.escape(c2.name) + '</span>' +
+                  '<span class="ls-meta">' + (DATA.CITY_TIER[c2.type] || '自建城') +
+                    ' · [' + c2.x + ',' + c2.y + '] · 人口上限 ' + U.fmt(GAME.maxPopOf(c2)) + '</span>' +
+                  '<button class="btn sm gold" data-action="lord-city-enter" data-city="' + c2.id + '">进入</button>' +
+                  '</div>';
+              }).join('')
+            : '<div class="gb-empty" style="height:110px;">当前无城池</div>') +
+        '</div>' +
+        '<div class="ls-right"><div class="m-sec">君主信息</div>' +
+        '<table class="tbl lord-tbl"><tbody>' +
+          '<tr><td class="k">君主姓名</td><td><b>' + U.escape(s.ruler.name) + '</b>　' +
+            '<button class="btn sm" data-action="open-rename-lord">改名</button></td></tr>' +
+          '<tr><td class="k">爵位</td><td>' + (cur ? cur.name : '平民') +
+            ' <span class="ui-sub">（' + (s.rank || 0) + ' / ' + (DATA.RANK.length - 1) + '）</span>　' +
+            (next
+              ? '<button class="btn sm' + (chk && chk.ok ? ' gold' : '') + '" data-action="lord-promote" title="' +
+                  U.escape(condTitle) + '">晋升：' + next.name + '</button>'
+              : '<span style="color:var(--gold-light);">已登顶</span>') +
+            '</td></tr>' +
+          '<tr><td class="k">声望</td><td style="color:var(--green-ok);">' + U.fmt(s.rep) + '</td></tr>' +
+          '<tr><td class="k">人口总和</td><td>' + U.fmt(popNow) + ' / ' + U.fmt(totalPop) + '</td></tr>' +
+          '<tr><td class="k">将领总和</td><td>' + s.generals.length + '（名将 ' + heroCount + '）</td></tr>' +
+          '<tr><td class="k">月俸支出</td><td>' + U.fmt(salaryTotal) + ' 金 / 7 游戏日' +
+            ' <span class="ui-sub">（月俸结算时从各城府库扣除）</span></td></tr>' +
+          (lg ? '<tr><td class="k">君主领兵</td><td>Lv' + lg.level + ' · ' +
+            ui.genStatusName(lg) + '（不可解雇）</td></tr>' : '') +
+          '<tr><td class="k">状态</td><td>正常</td></tr>' +
+        '</tbody></table></div>' +
+      '</div>',
       foot: '<div class="m-foot"><button class="btn" data-action="close-modal">关闭</button></div>'
     });
   };
 
-  /* 资源生产弹窗（原版「资源生产」：含开工率调整） */
-  ui.openProdInfo = function () {
-    var s = GAME.state, c = GAME.currentCity();
-    var prod = GAME.productionPerSec();
-    var rows = ['grain', 'wood', 'stone', 'iron'].map(function (k) {
-      var meta = null;
-      DATA.RESOURCES.forEach(function (r) { if (r.key === k) meta = r; });
-      var rate = (s.workRate && s.workRate[k] != null) ? s.workRate[k] : 100;
-      var perH = (prod[k] || 0) * 3600 / GAME.timeScale();
-      return '<tr><td>' + (meta ? meta.icon + ' ' + meta.name : k) + '</td>' +
-        '<td class="num">' + U.fmt(perH) + '/时</td>' +
-        '<td class="ctr">' + ui.chips({
-          cls: 'chips-xs', k: k, after: 'workrate',
-          opts: [0, 25, 50, 75, 100].map(function (v) {
-            return { v: v, on: rate === v, label: v + '%' };
-          })
-        }) + '</td></tr>';
-    }).join('');
-    var total = GAME.extUsed();
-    ui.openModal(
-      '<div class="gold-heading">⚙️ 资源生产</div>' +
-      '<table class="tbl"><thead><tr><th>资源</th><th>每小时产量</th><th>开工率</th></tr></thead><tbody>' + rows + '</tbody></table>' +
-      '<div class="attr" style="margin-top:10px;"><span class="k">城外地块</span><span class="v">' + total + ' / ' + GAME.extCap(c) + ' 块</span></div>' +
-      '<div style="text-align:center;margin-top:12px;"><button class="btn" data-action="close-modal">关闭</button></div>'
-    );
-  };
-
-  /* ============================================================
+    /* ============================================================
    * 募兵加速（v28 · 需求 8）
    * ------------------------------------------------------------
    * 列出背包里所有 target=train 的宝物，点一下给**这座军营正在跑的那条队列**加速。
@@ -1887,29 +1911,6 @@
     });
   };
 
-  /* 建筑信息弹窗（原版「建筑信息」） */
-  ui.openBldgInfo = function () {
-    var s = GAME.state, c = GAME.currentCity();
-    var list = [];
-    c.cells.forEach(function (cell, idx) {
-      if (cell.build) {
-        var b = DATA.BUILDINGS[cell.build.id];
-        list.push({ icon: b.icon, name: b.name, lvl: cell.build.lvl, idx: idx });
-      }
-    });
-    var rows = list.map(function (x) {
-      return '<tr><td>' + x.icon + ' ' + x.name + '</td><td class="ctr">Lv' + x.lvl + '</td>' +
-        '<td class="ctr"><button class="btn sm" data-action="jump-cell" data-idx="' + x.idx + '">查看</button></td></tr>';
-    }).join('') || '<tr><td colspan="3" style="text-align:center;color:var(--text-dim);">城内暂无建筑</td></tr>';
-    ui.openModal(
-      '<div class="gold-heading">🏗️ 建筑信息</div>' +
-      '<table class="tbl"><thead><tr><th>建筑</th><th>等级</th><th>操作</th></tr></thead><tbody>' + rows + '</tbody></table>' +
-      '<div style="color:var(--text-dim);font-size:var(--fs-sub);margin-top:8px;">官府 Lv' + (GAME.buildingLevel(c, 'guanfu') || 1) +
-      ' · 城外地块 ' + GAME.extUsed() + '/' + GAME.extCap(c) + ' · 建造队列 ' + GAME.buildQueueUsed(c.id) + '/' + GAME.buildSlots() + '</div>' +
-      '<div style="text-align:center;margin-top:12px;"><button class="btn" data-action="close-modal">关闭</button></div>'
-    );
-  };
-
   /* 资源显示名与图标（模块级共享：野地面板 / 采集面板等多处复用） */
   ui.RES_NAME = { grain: '粮', wood: '木', stone: '石', iron: '铁', gold: '金' };
   ui.RES_ICON = { grain: '🌾', wood: '🪵', stone: '⛰️', iron: '🔩', gold: '💰' };
@@ -1929,7 +1930,7 @@
       contrib[k] = m > 0 ? prod[k] * m / (1 + m) * 3600 / GAME.timeScale() : 0;
     });
 
-    var rows = wilds.map(function (w) {
+    var rows = wilds.map(function (w, wi) {
       var t = DATA.TERRAIN[w.type];
       var addStr = '—', resStr = '—';
       var ga = GAME.gatherAt(w.x, w.y);
@@ -1947,7 +1948,8 @@
         addStr = parts.join(' ');
         resStr = names.join('/');
       }
-      return '<tr><td>' + (t ? t.name : w.type) + '</td><td class="ctr">' + w.x + ',' + w.y + '</td>' +
+      return '<tr' + (wi === (ui._wildSel || 0) ? ' style="background:rgba(201,162,75,.10);"' : '') +
+        '><td>' + (t ? t.name : w.type) + '</td><td class="ctr">' + w.x + ',' + w.y + '</td>' +
         '<td class="ctr">Lv' + w.level + '</td><td class="ctr">' + resStr + '</td>' +
         '<td class="ctr" style="color:' + (ga ? 'var(--gold-light)' : 'var(--green-ok)') + ';">' + addStr + '</td></tr>';
     }).join('') || '<tr><td colspan="5" style="text-align:center;color:var(--text-dim);padding:var(--sp-5);">尚未占领野地（在地图点击野地格派兵占领）</td></tr>';
@@ -1991,6 +1993,8 @@
     material: '材料', jewel: '珠宝', attr_buff: '符类', prod_buff: '生产',
     military_buff: '军事', boost: '加速', exp: '经验', stamina: '体力',
     perm: '丹药', mount_buff: '坐骑', blueprint: '图纸',
+    /* v77（老板「丰富商场道具」）：宝箱 / 内功秘籍 / 政令（徭役令）三类新货 */
+    chest: '宝箱', neigong: '秘籍', corvee: '政令',
   };
   ui.shopItems = function () {
     return DATA.ITEMS.filter(function (it) { return it.price > 0; });
@@ -2340,8 +2344,9 @@
           : '<div class="q-empty">' + (kind === 'set' ? '该品质暂无套装件。'
             : kind === 'solo' ? '该品质暂无散件。' : '该品质暂无可打造之物。') + '</div>') +
         (rows.length ? pg.pager : ''),
-      foot: '<div class="m-foot"><button class="btn" data-action="close-modal">关闭</button>' +
-        '<button class="btn" data-action="forge-setinfo">套装效果一览</button></div>'
+      foot: '<div class="m-foot"><button class="btn gold" data-action="open-enhance">⚒ 百炼强化</button>' +
+        '<button class="btn" data-action="forge-setinfo">套装效果一览</button>' +
+        '<button class="btn" data-action="close-modal">关闭</button></div>'
     });
   };
   /* 套装效果一览（从打造面板正文移到独立小窗）——
@@ -2358,6 +2363,49 @@
     });
   };
 
+
+  /* ============================================================
+   * 百炼强化（v77 · 老板「铁匠铺加入装备强化系统，装备可进行强化」）
+   * ------------------------------------------------------------
+   * 列出**已拥有**的装备种（背包 + 已穿戴；GAME.enhList），每行给下一级成本。
+   * 等级与效果都走唯一出口（GAME.enhOf / genEquipBonus），这里只做呈现。
+   * ============================================================ */
+  ui.openEnhance = function () {
+    if (GAME.forgeLevel() <= 0) {
+      ui.openShell({
+        title: '⚒ 百炼强化', size: 'sm',
+        body: '<div class="q-empty">尚未建造铁匠铺。<br>在城内空地上建造「铁匠铺」后即可打造与强化装备。</div>',
+        foot: '<div class="m-foot"><button class="btn" data-action="close-modal">关闭</button></div>'
+      });
+      return;
+    }
+    var ids = GAME.enhList();
+    var perLv = Math.round(((DATA.ENHANCE || {}).perLv || 0.08) * 100);
+    var rows = ids.map(function (id) {
+      var it = DATA.EQUIP[id], lv = GAME.enhOf(id), max = GAME.enhMax();
+      var cost = lv < max ? GAME.enhCost(id) : null;
+      var okA = cost ? GAME.canAfford(cost) : false;
+      return '<div class="enh-row">' +
+        '<span class="enh-art">' + ui.itemArt('equip', id, it.q) + '</span>' +
+        '<span class="enh-nm">' + U.escape(it.name) +
+          (it.set && DATA.SETS[it.set] ? ' <span class="ui-sub">（' + U.escape(DATA.SETS[it.set].name) + '）</span>' : '') +
+          '<span class="enh-tag">+' + lv + '</span>' +
+          '<div class="enh-cost">' + (cost ? ('下一级 ' + GAME.costString(cost)) : ('已至 +' + max + '（满级）')) +
+            '　<span class="ui-sub">每级全属性 +' + perLv + '%（同种装备共享）</span></div></span>' +
+        (cost
+          ? '<button class="btn sm' + (okA ? ' gold' : '') + '" data-action="enhance-item" data-item="' + id + '"' +
+              (okA ? '' : ' disabled') + '>强化 +' + (lv + 1) + '</button>'
+          : '<span class="op-done">满级</span>') +
+        '</div>';
+    }).join('') || '<div class="q-empty">背包与穿戴中还没有可强化的装备（先在左侧打造几件）。</div>';
+    ui.openShell({
+      title: '⚒ 百炼强化',
+      sub: '同种装备共享强化等级（新打造的继承）　满级 +' + GAME.enhMax() + '　黄金 ' + U.numText(GAME.state.res.gold || 0, 0),
+      size: 'lg',
+      body: '<div class="enh-list">' + rows + '</div>',
+      foot: '<div class="m-foot"><button class="btn" data-action="close-modal">关闭</button></div>'
+    });
+  };
 
   /* 排行榜（原版右下功能入口） */
   /* 公告牌已并入「公文」页（v19 需求 6）—— 不再单独开弹窗，避免与公文重复。 */
@@ -2493,25 +2541,34 @@
     var left = Math.ceil(GAME.innRefreshLeft() / 1000);
     var leftTxt = left > 0 ? (left + ' 秒后自动更换') : '可更换';
 
-    /* v75（老板）：「尽量单个将领一行显示」「候选将领的成长 +2/级这个备注也去掉」
-       「美人灯标识去掉」——候选行改**单行**：头像 · 姓名（含 Lv）· 资质徽章 · 四维 · 价格/按钮。
-       成长备注不再写在行内，收进资质徽章悬停（见 ui.rankBadge 的 title）。 */
+    /* v77（老板）：「将领招募字太密了，整成列表，表头比如将领，等级，资质，专长，
+       统率……俸禄」——候选改**表格**：表头 + 每位一行；
+       新增「月俸」列（与月俸体系同源：GAME.genSalaryOf）。
+       v75 的两条仍立着：单行显示 / 成长备注只在资质徽章悬停里。 */
+    var STYLE_NAME = {};
+    (DATA.GEN_STYLES || []).forEach(function (x) { STYLE_NAME[x.id] = x.name; });
     var rows = list.map(function (c) {
       var can = chk.ok && (s.res.gold || 0) >= c.cost;
-      return '<div class="inn-card' + (can ? '' : ' off') + '">' +
-        '<span class="inn-avatar">' + ui.faceOf(
+      return '<tr class="inn-tr' + (can ? '' : ' off') + '">' +
+        '<td><span class="inn-face-cell"><span class="inn-avatar">' + ui.faceOf(
           { name: c.name, rank: c.rank, beauty: c.beauty, portraitSeed: c.portraitSeed }, 28) + '</span>' +
-        '<span class="inn-name">' + U.escape(c.name) +
-          (c.hero ? ' <span class="tag-hero">史实名将</span>' : '') +
-          ' <span class="inn-lv">Lv' + c.level + '</span></span>' +
-        ui.rankBadge(c) +
-        '<span class="inn-attrs">统率 <b>' + c.tong + '</b>　内政 <b>' + c.nz + '</b>　勇武 <b>' + c.yw + '</b>　智谋 <b>' + c.zm + '</b></span>' +
-        '<span class="inn-act">' +
+          '<span class="inn-name" style="white-space:nowrap;">' + U.escape(c.name) +
+            (c.hero ? ' <span class="tag-hero">史实名将</span>' : '') + '</span></span></td>' +
+        '<td class="ctr">Lv' + c.level + '</td>' +
+        '<td class="ctr">' + ui.rankBadge(c) + '</td>' +
+        '<td class="ctr">' + (STYLE_NAME[c.style] || '均衡') + '</td>' +
+        '<td class="num">' + c.tong + '</td>' +
+        '<td class="num">' + c.nz + '</td>' +
+        '<td class="num">' + c.yw + '</td>' +
+        '<td class="num">' + c.zm + '</td>' +
+        '<td class="num" title="每 7 游戏日结算一次（按等级、属性与资质定价）">' +
+          U.fmt(GAME.genSalaryOf(c)) + '</td>' +
+        '<td><span class="inn-act">' +
           '<span class="inn-cost' + ((s.res.gold || 0) >= c.cost ? '' : ' short') + '">' + U.fmt(c.cost) + ' 金</span>' +
           '<button class="btn sm' + (can ? ' gold' : '') + '" data-action="inn-recruit" data-id="' + c.id + '"' +
             (can ? '' : ' disabled') + '>' + (c.beauty ? '相亲' : '招募') + '</button>' +
-        '</span></div>';
-    }).join('') || '<div style="text-align:center;color:var(--text-dim);padding:var(--sp-5);">客栈中暂无贤士，稍候再来。</div>';
+        '</span></td></tr>';
+    }).join('') || '<tr><td colspan="10" style="text-align:center;color:var(--text-dim);padding:var(--sp-5);">客栈中暂无贤士，稍候再来。</td></tr>';
 
     /* v75（老板）：「客栈的招募界面大一点，尽量所有候选都能在同一页」
        「地下的各资质四维，成长和概率也不显示」——
@@ -2526,7 +2583,10 @@
         '　|　' + leftTxt,
       body:
         (chk.ok ? '' : '<div class="note-warn">' + U.escape(chk.msg) + '</div>') +
-        '<div class="inn-list">' + rows + '</div>',
+        '<table class="tbl inn-tbl"><thead><tr>' +
+          '<th>将领</th><th class="ctr">等级</th><th class="ctr">资质</th><th class="ctr">专长</th>' +
+          '<th class="num">统率</th><th class="num">内政</th><th class="num">勇武</th><th class="num">智谋</th>' +
+          '<th class="num">月俸</th><th class="ctr">招募</th></tr></thead><tbody>' + rows + '</tbody></table>',
       foot: '<div class="m-foot">' +
         '<button class="btn sm" data-action="inn-reroll">另请一批（' + U.fmt(GAME.innRefreshCost()) + ' 金）</button>' +
         '<button class="btn" data-action="close-modal">关闭</button></div>',
@@ -3600,6 +3660,24 @@
     });
   };
 
+  /* v77（老板）：「君主姓名（给一个改名按钮）」—— 与城池改名同一套小弹窗版式。
+     域侧唯一出口 GAME.renameLord（同时改 ruler.name 与君主将领 g.name，两处同源）。 */
+  ui.openRenameLord = function () {
+    var s = GAME.state;
+    ui.openShell({
+      title: '✎ 君主改名',
+      sub: '原名：' + U.escape(s.ruler.name) + '（8 字以内）',
+      size: 'sm',
+      body: '<input type="text" id="rename-lord-input" maxlength="8" value="' + U.escape(s.ruler.name) + '"' +
+        ' style="width:100%;padding:8px;background:var(--slab-1);border:1px solid var(--gold-dark);' +
+        'color:var(--text);border-radius:4px;text-align:center;">' +
+        '<div class="op-row" style="justify-content:center;margin-top:12px;">' +
+          '<button class="btn gold" data-action="do-rename-lord">确定</button>' +
+        '</div>',
+      foot: '<div class="m-foot"><button class="btn" data-action="close-modal">取消</button></div>'
+    });
+  };
+
   /* ============================================================
    * 城墙（v16：不占格，环绕城池一圈）
    * 施工中 → 显示进度 + 可取消；未建 → 可修建；已建 → 可升级
@@ -4013,6 +4091,21 @@
       ? '<span class="gp-stag">' + U.escape(ui.genStatusName(g)) +
         (g.cityId && GAME.cityById(g.cityId) ? '·' + U.escape(GAME.cityById(g.cityId).name) : '') + '</span>'
       : '';
+    /* v77（老板）：内功修炼体系 —— 档案里加一行「内功 · 功法 N 重（属性 +X）」，
+       悬停给出特性名与修习规则。加成本体在 GAME.genAttrs（唯一出口）。 */
+    var ngLine77 = '';
+    if (g.ng && g.ng.id) {
+      var ngD77 = null;
+      (DATA.NEIGONG || []).forEach(function (x) { if (x.id === g.ng.id) ngD77 = x; });
+      if (ngD77) {
+        var ATTRS77 = { tong: '统率', nz: '内政', yw: '勇武', zm: '智谋', spd: '速度' };
+        ngLine77 = '<span class="gp-sub gp-ng" title="内功特性「' + ngD77.trait + '」：' +
+          ATTRS77[ngD77.attr] + ' +' + ngD77.per + '/重，当前 +' + (ngD77.per * g.ng.lv) +
+          '。修习同门秘籍可精进（最高 ' + (ngD77.maxLv || 10) + ' 重），换书即转修。">内功 · <b>' +
+          U.escape(ngD77.name) + '</b> ' + g.ng.lv + ' 重（' + ATTRS77[ngD77.attr] + ' +' +
+          (ngD77.per * g.ng.lv) + '）</span>';
+      }
+    }
     var html = '<div class="gen-pane">' +
       '<div class="gp-head">' +
         '<span class="gp-face">' + ui.faceOf(g, 84) + '</span>' +
@@ -4027,6 +4120,7 @@
           '</span>' +
           '<span class="gp-sub">' + U.escape(rkDesc74) +
             (atCap ? '　<span class="gd-warn">已达资质上限</span>' : '') + '</span>' +
+          ngLine77 +
           '<span class="gp-exprow">' +
             '<span class="gd-expbar" title="经验 ' + U.numText(g.exp || 0, 0) + ' / ' +
               U.numText(expNeed, 0) + '"><i style="width:' + pct + '%;"></i></span>' +
@@ -4868,30 +4962,9 @@
       rows + '</div>';
   };
 
-  /* --------- 爵位（v25：抽成区块，君主面板与独立视图共用） --------- */
-  ui.rankBlock = function () {
-    var s = GAME.state;
-    var cur = GAME.systems.rankInfo(s.rank);
-    var next = GAME.systems.nextRank();
-    var chk = next ? GAME.systems.canPromote() : null;
-    return '<div class="m-sec">爵位（' + (s.rank || 0) + ' / ' + (DATA.RANK.length - 1) + '）</div>' +
-      '<div class="attr"><span class="k">当前爵位</span><span class="v good">' + (cur ? cur.name : '平民') + '</span></div>' +
-      '<div class="attr"><span class="k">下个爵位</span><span class="v">' + (next ? next.name : '已登顶') + '</span></div>' +
-      '<div class="attr"><span class="k">晋升条件</span><span class="v">' +
-        (next ? '声望 ' + U.fmt(next.rep) + (next.jewel && Object.keys(next.jewel).length
-          ? ' · 珠宝 ' + Object.keys(next.jewel).map(function (j) {
-              var it = DATA.ITEMS.filter(function (x) { return x.id === j; })[0];
-              return (it ? it.name : j) + '×' + next.jewel[j];
-            }).join('、') : '') : '—') + '</span></div>' +
-      '<div style="text-align:center;margin-top:10px;">' +
-        (next
-          ? '<button class="btn gold" data-action="promote"' + (chk && chk.ok ? '' : ' disabled') + '>晋升：' + next.name + '</button>' +
-            (chk && chk.ok ? '' : '<div class="ui-sub" style="margin-top:6px;">' + U.escape(chk ? chk.msg : '条件未满足') + '</div>')
-          : '<span style="color:var(--gold-light);">已登顶「裂土封王」</span>') +
-      '</div>';
-  };
+  /* v77：爵位区块（rankBlock）已并入新的君主面板（左列表 / 右信息表），退役。 */
 
-  ui.rankHTML = function () {
+    ui.rankHTML = function () {
     var s = GAME.state;
     var cur = GAME.systems.rankInfo(s.rank);
     var next = GAME.systems.nextRank();

@@ -412,9 +412,10 @@
   ];
   var panelOk = panels.every(function (p) { return typeof p[1] === 'string' && p[1].length > 50; });
   check('13 个主面板全部可渲染', panelOk, panels.map(function (p) { return p[0] + ':' + p[1].length; }).join(' '));
+  /* v77（老板）：资源生产 / 建筑信息两个入口退役（随城池属性右三按钮）；
+     附属野地保留（改由资源区下拉框「进入」触发）。 */
   var modals = [
-    ['君主信息', UI.openLordInfo], ['资源生产', UI.openProdInfo], ['建筑信息', UI.openBldgInfo],
-    ['附属野地', UI.openWilds],
+    ['君主信息', UI.openLordInfo], ['附属野地', UI.openWilds],
   ];
   var modalOk = true, failName = '';
   var modalRootEl = global.document.querySelector('#modal-root'); // 确保元素进缓存
@@ -429,7 +430,7 @@
       console.log('     ↳ 堆栈: ' + (e.stack || '').split('\n').slice(1, 3).join(' | ').trim());
     }
   });
-  check('原版式弹窗全部可打开', modalOk, failName || '君主/资源生产/建筑/野地');
+  check('原版式弹窗全部可打开', modalOk, failName || '君主/野地');
   /* v25（需求 2）：商城 / 背包改为整页视图（与城池/地图同级），不再是弹窗 */
   check('商城 / 背包已改为整页视图',
     /ui\.shopHTML = function/.test(uiSrcProbe) && /ui\.bagHTML = function/.test(uiSrcProbe)
@@ -3558,8 +3559,11 @@
   check('#13 施工面板显示 当前→目标 且可取消', uS16.indexOf('→ Lv') > 0 && uS16.indexOf('isUp16') > 0 && /取消'/.test(uS16));
   check('#16 君主面板城池列表区分档位', /DATA\.CITY_TIER/.test(rd16('data')) && /DATA\.CITY_TIER\[c\.type\]/.test(uS16));
   /* v22（需求 1）：下拉框已全站移除 → 城池切换改为点选按钮组 */
-  check('#16 城池切换为点选按钮组（v22 去下拉框）',
-    /city-chips/.test(uS16) && /after: 'city'/.test(uS16) && /after === 'city'/.test(mS16));
+  /* v77（老板）：君主面板改左右分栏（城池列表 + 进入按钮），v22 的 chips 退役；
+     城池切换仍是下拉框一处（v45）。 */
+  check('v77：城池切换走下拉框 + 君主面板「进入」按钮（v22 chips 退役）',
+    /data-action="switch-city"/.test(uS16) && /after === 'city'/.test(mS16)
+    && /lord-city-enter/.test(uS16) && /lord-city-enter/.test(mS16));
   check('#16 无城池时占位空白', /当前无城池/.test(uS16));
   check('#17 侧栏驻军栏（资源下方）', /garrison-bar/.test(hS16) && /ui\.renderGarrison = function/.test(uS16));
   check('#17 驻军栏可折叠且撑满（v76：固定 132px → min-height + 撑满）',
@@ -5277,23 +5281,25 @@
 
   /* ---- 需求 1：全站没有下拉框（v45 收窄为"只准城池切换一处"） ---- */
   console.log('  --- ① 去下拉框 ---');
-  check('下拉框全站只有一处，且就是「城池切换」', (function () {
-    /* v35 的原始要求是"全站已无 <select>"；v45 老板点名要城池下拉框。
-       这里把判据换成**计数**：允许且仅允许 1 处，避免"破例变成惯例"。
-       计数前先剥注释 —— 源码注释里会提到 <select> 这个词。 */
+  check('下拉框全站只有两处：城池切换 + 附属野地（v77 老板点名），无第三处', (function () {
+    /* v35 要求"全站已无 <select>"；v45 老板点名要城池下拉框（破例一次）；
+       v77 老板再点名"附属野地 下拉框"（第二次破例）。
+       判据仍是**计数**：允许且仅允许 2 处，且两者都实名在册 —— 防"破例变成惯例"。 */
     var strip = function (s) { return s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, ''); };
     var all = strip(uS35 + hS35 + mS35);
     var n = (all.match(/<select/g) || []).length;
-    return n === 1 && /class="city-select" data-action="switch-city"/.test(all);
+    return n === 2 && /class="city-select" data-action="switch-city"/.test(all)
+      && /class="city-select wild-select"/.test(all) && /data-action="wild-pick"/.test(all);
   })());
   check('点选组件齐备（chips / chipSet / genChips）',
     /ui\.chips = function/.test(uS35) && /ui\.chipSet = function/.test(uS35)
     && /ui\.genChips = function/.test(uS35));
   check('点选后回写隐藏域（读取端 getElementById 无需改动）',
     /data-target="' \+ x\.v/.test(uS35) || /data-target/.test(uS35));
-  check('chip-set 动作已注册且覆盖四类副作用',
+  /* v77：开工率调整入口随「资源生产」退役（after='workrate' 分支撤除）。 */
+  check('chip-set 动作已注册且覆盖三类副作用（city / region / zoom）',
     /case 'chip-set'/.test(mS35) && /after === 'city'/.test(mS35)
-    && /after === 'workrate'/.test(mS35) && /after === 'region'/.test(mS35)
+    && /after === 'region'/.test(mS35)
     && /after === 'zoom'/.test(mS35));
   check('点选样式已定义（.chips .chip / .on）',
     /\.chips \.chip \{/.test(css35) && /\.chips \.chip\.on \{/.test(css35));
@@ -6067,11 +6073,17 @@
   check('任务与统计相邻；爵位退出顶栏',
     /data-view="tasks"[\s\S]{0,160}data-view="stats"/.test(hS38)
     && !/data-view="rank"/.test(hS38));
-  check('爵位并入君主面板（rankBlock）',
-    /ui\.rankBlock = function/.test(uS38) && /ui\.rankBlock\(\)/.test(uS38));
-  check('实测：rankBlock 含爵位与晋升', (function () {
-    var h = G.ui.rankBlock();
-    return h.indexOf('当前爵位') >= 0 && h.indexOf('promote') >= 0;
+  /* v77（老板）：「君主界面分左右两半……右边两列的信息表（姓名/爵位/声望/人口/将领/状态）」
+     —— 爵位区块（rankBlock）并入新面板，整块退役。 */
+  check('爵位并入君主面板（v77 右栏信息表：爵位 + 晋升按钮）',
+    /ui\.openLordInfo = function/.test(uS38) && /lord-promote/.test(uS38)
+    && /data-action="lord-promote"/.test(uS38));
+  check('实测：君主面板含爵位与晋升 + 左右分栏', (function () {
+    var root38 = global.document.querySelector('#modal-root');
+    root38.innerHTML = '';
+    G.ui.openLordInfo();
+    var h = root38.innerHTML;
+    return h.indexOf('爵位') >= 0 && h.indexOf('lord-promote') >= 0 && h.indexOf('lord-split') >= 0;
   })());
 
   /* ---- 需求 11：任务清单 + 详情弹窗 ---- */
@@ -7264,9 +7276,11 @@
 
   /* ---- 需求 6：去掉下拉 ---- */
   console.log('  --- ⑥ 下拉框 ---');
-  check('下拉框依然只有城池切换那一处（v45 定向例外未扩大）', (function () {
+  check('下拉框两处且在册：城池切换 + 附属野地（v77 二次定向例外）', (function () {
     var strip = function (s) { return s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, ''); };
-    return (strip(uS40 + hS40 + mS40).match(/<select/g) || []).length === 1;
+    var all = strip(uS40 + hS40 + mS40);
+    return (all.match(/<select/g) || []).length === 2
+      && /data-action="switch-city"/.test(all) && /data-action="wild-pick"/.test(all);
   })());
   check('将领选择改为两列网格（不再是一条滚动列表）',
     /\.chips\.gen-chips \{ display: grid; grid-template-columns: 1fr 1fr/.test(hS40)
@@ -7708,11 +7722,11 @@ check('数量改为输入框（带加减号），不靠下拉框', (function () 
   return /ui\.qtyInput = function/.test(u) && /ui\.qtyStep = function/.test(u)
     && /ui\.qtyMax = function/.test(u) && /ui\.qtyValueOf = function/.test(u)
     && /data-action="qty-step"/.test(u) && /data-action="qty-max"/.test(u)
-    /* 数量仍走输入框；ui.js 里唯一的下拉框只允许是城池下拉框。
+    /* 数量仍走输入框；ui.js 的下拉框只允许两处：城池切换 + 附属野地（v77 在册）。
        v53：**先剥注释再计数** —— 注释里解释".map 会把下拉框换掉"时写了标签名，
        计数就会多出 1（第 7 次踩同一个坑）。 */
-    && (u.match(/<select/g) || []).length === 1
-    && /class="city-select"/.test(u) && !/ui\.qtyBar = function/.test(u);
+    && (u.match(/<select/g) || []).length === 2
+    && /class="city-select"/.test(u) && /wild-select/.test(u) && !/ui\.qtyBar = function/.test(u);
 })());
 check('数量以本行输入框为准（不再有全局"购买/使用数量"档位）', (function () {
   var m = require('fs').readFileSync(require('path').join(__dirname, 'js', 'main.js'), 'utf8');
@@ -8461,10 +8475,11 @@ check('已拥有的城池一律可改名，原名另存 origName', (function () 
 })());
 check('城池名走单一取值口（改名同步所有引用）', (function () {
   var u = require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8');
-  return /ui\.cityLabelHTML = function \(c, short\)/.test(u) && (u.match(/ui\.cityLabelHTML\(/g) || []).length >= 3
+  return /ui\.cityLabelHTML = function \(c, short\)/.test(u) && (u.match(/ui\.cityLabelHTML\(/g) || []).length >= 2
     && /GAME\.cityFullName\(x\)/.test(u)
-    /* v71（老板）：侧栏两处走短名（只显城池命名）；下拉框选项 = 全称 + 坐标 —— 防回退 */
-    && (u.match(/ui\.cityLabelHTML\(c, true\)/g) || []).length >= 2;
+    /* v71：侧栏走短名（城池属性标题）；v77 资源区「本城」表头退役（改附属野地下拉框）——
+       调用点由 3 处减到 2 处（侧栏短名 + 统计表全称），防回退的意图不变。 */
+    && (u.match(/ui\.cityLabelHTML\(c, true\)/g) || []).length >= 1;
 })());
 
 /* ---- 需求 1/3/4：底部固定导航条 / 地图满屏 / 背包分页 ---- */
@@ -8510,7 +8525,8 @@ check('数量输入框带加减号与「最多」，不走下拉框', (function 
   var u = stripComment(require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8'));
   return /ui\.qtyInput = function/.test(u) && /data-action="qty-step"/.test(u)
     && /data-action="qty-max"/.test(u)
-    && (u.match(/<select/g) || []).length === 1 && /class="city-select"/.test(u);
+    && (u.match(/<select/g) || []).length === 2 && /class="city-select"/.test(u)
+    && /wild-select/.test(u);
 })());
 
 /* ---- 需求 6/7/8/15/16 ---- */
@@ -12626,6 +12642,182 @@ console.log('\n===== 61. v75 客栈招募（大界面 · 单行候选 · 资质�
       && /width: 28px/.test(cssBlock(hS1, '.inn-avatar { width: 28px;'));
   })());
 })();
+
+  /* ============================================================
+   * 62. v77：月俸体系 / 客栈表格 / 君主面板 / 野地下拉 / 新货 / 强化 / 内功
+   * ============================================================ */
+  console.log('\n===== 62. v77 老板八条（月俸/表格/君主/野地/新货/强化/内功） =====');
+  var uS77 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'ui.js'), 'utf8');
+  var mS77 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'main.js'), 'utf8');
+  var dS77 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'domain.js'), 'utf8');
+  var sS77 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'systems.js'), 'utf8');
+  var tS77 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'state.js'), 'utf8');
+  var hS77 = fsMod.readFileSync(pathMod.join(__dirname, 'index.html'), 'utf8');
+  var daS77 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'data.js'), 'utf8');
+
+  /* ---- ① 客栈表格 ---- */
+  check('① 客栈候选改表格（表头 + 每人一行 + 月俸列）',
+    /inn-tbl/.test(uS77) && /月俸/.test(uS77) && /inn-tr/.test(uS77)
+    && /genSalaryOf\(c\)/.test(uS77));
+
+  /* ---- ② 月俸：定价与 7 游戏日结算 ---- */
+  check('② 月俸表与结算同源（GEN_SALARY + 唯一出口）',
+    /DATA\.GEN_SALARY = \{/.test(daS77) && /GAME\.genSalaryOf = function/.test(dS77)
+    && /GAME\.settleGenSalary = function/.test(dS77)
+    && /GAME\.settleGenSalary\(\)/.test(tS77));
+  check('② 月俸定价 =（底俸 + 等级 + 四维）× 资质（良材 Lv1 公式值）', (function () {
+    var g77 = { level: 1, rank: 'liang', tong: 46, nz: 46, yw: 46, zm: 46 };
+    var C = DATA.GEN_SALARY;
+    var expect = Math.round((C.base + 1 * C.perLevel + 184 * C.perAttr) * C.rankMul.liang);
+    return G.genSalaryOf(g77) === expect && expect > 0;
+  })(), '实测 ' + G.genSalaryOf({ level: 1, rank: 'liang', tong: 46, nz: 46, yw: 46, zm: 46 }));
+  check('② 君主不领俸（0）', G.genSalaryOf(G.lordGeneralOf()) === 0);
+  check('② 越强越贵（名世 Lv30 ≫ 凡品 Lv1）', (function () {
+    var lo = G.genSalaryOf({ level: 1, rank: 'fan', tong: 40, nz: 40, yw: 40, zm: 40 });
+    var hi = G.genSalaryOf({ level: 30, rank: 'ming', tong: 100, nz: 100, yw: 100, zm: 100 });
+    return hi > lo * 5;
+  })());
+  check('② 实测：6 游戏日不结、第 7 游戏日结一次（期数与扣款都对）', (function () {
+    var S77 = G.state;
+    var bkWorld = S77.world, bkAt = S77.salaryAt, bkGold = S77.res.gold;
+    try {
+      S77.world = { elapsed: 0 };
+      S77.salaryAt = 0;
+      S77.res.gold = 100000000;
+      S77.world.elapsed = 6 * 86400;
+      var noPay = G.settleGenSalary();
+      var at6 = S77.salaryAt;
+      S77.world.elapsed = 7 * 86400;
+      var pay = G.settleGenSalary();
+      /* 应扣 = 各城"在册将领"月俸之和（与结算同公式；孤儿将领不计） */
+      var expect = 0;
+      S77.cities.forEach(function (ct) {
+        S77.generals.forEach(function (g) { if (g.cityId === ct.id) expect += G.genSalaryOf(g); });
+      });
+      var delta = 100000000 - S77.res.gold;
+      return noPay === null && at6 === 0 && pay && pay.periods === 1 && delta === expect && expect > 0;
+    } finally {
+      S77.world = bkWorld; S77.salaryAt = bkAt; S77.res.gold = bkGold;
+    }
+  })());
+
+  /* ---- ③ 野地下拉框 ---- */
+  check('③ 资源区附属野地下拉框（宿主 + 渲染 + 进入 → openWilds）',
+    /wild-pick-host/.test(hS77) && /renderWildPick = function/.test(uS77)
+    && /data-action="wild-pick"/.test(uS77) && /data-action="open-wilds"/.test(uS77)
+    && /'wild-pick'/.test(mS77));
+  check('③ 资源区「本城 · 城名」表头退役（res-scope 清空）', uS77.indexOf('res-scope') < 0);
+
+  /* ---- ④ 三按钮退役 ---- */
+  check('④ 城池属性右三按钮全退役（建筑信息 / 资源生产 / 附属野地按钮）',
+    !/open-bldg-info/.test(hS77) && !/open-prod-info/.test(hS77)
+    && !/ui\.openProdInfo = function/.test(uS77) && !/ui\.openBldgInfo = function/.test(uS77)
+    && !/'open-prod-info'/.test(mS77) && !/'open-bldg-info'/.test(mS77));
+
+  /* ---- ⑤ 君主面板 ---- */
+  check('⑤ 君主面板：左城池列表（进入按钮）+ 右信息表（姓名/爵位/声望/人口/将领/状态）',
+    /lord-split/.test(uS77) && /lord-city-enter/.test(uS77) && /lord-promote/.test(uS77)
+    && /open-rename-lord/.test(uS77) && /月俸支出/.test(uS77));
+  check('⑤ 君主改名唯一出口（ruler 与君主将领两处同源）',
+    /GAME\.renameLord = function/.test(dS77) && /lg\.name = name/.test(dS77));
+  check('⑤ 晋升按钮悬停带条件（声望/城池/黄金）',
+    /晋升「' \+ next\.name \+ '」条件/.test(uS77));
+
+  /* ---- ⑥ 商场新货 ---- */
+  check('⑥ 新商品齐备（三级宝箱 / 四部秘籍 / 徭役令）',
+    ['chest_tong', 'chest_yin', 'chest_jin', 'book_sunzi', 'book_liutao', 'book_wuqin',
+     'book_yuenv', 'corvee'].every(function (id) {
+      return (DATA.ITEMS || []).some(function (x) { return x.id === id; });
+    }));
+  check('⑥ 商城分类齐备（宝箱 / 秘籍 / 政令）',
+    G.ui.SHOP_CATS.chest === '宝箱' && G.ui.SHOP_CATS.neigong === '秘籍'
+    && G.ui.SHOP_CATS.corvee === '政令');
+  check('⑥ 实测：开宝箱（黄金入账、宝箱 -1、有战利品文案）', (function () {
+    var S77b = G.state;
+    var bkGold = S77b.res.gold, bkItem = S77b.items.chest_tong;
+    S77b.res.gold = 1000000;
+    S77b.items.chest_tong = (S77b.items.chest_tong || 0) + 1;
+    var r = G.systems.useItem('chest_tong');
+    var okAll = r.ok && /开启/.test(r.msg) && S77b.res.gold > 1000000
+      && (S77b.items.chest_tong || 0) === (bkItem || 0);
+    S77b.res.gold = bkGold; S77b.items.chest_tong = bkItem;
+    if (S77b.items.chest_tong == null) delete S77b.items.chest_tong;
+    return okAll;
+  })(), '');
+  check('⑥ 实测：徭役令 → 建造队列 +3（24h 内）', (function () {
+    var S77d = G.state;
+    var bkItem = S77d.items.corvee;
+    var base = G.buildSlots(G.currentCity());
+    S77d.items.corvee = (S77d.items.corvee || 0) + 1;
+    var r = G.systems.useItem('corvee');
+    var okAll = r.ok && G.buildSlots(G.currentCity()) === base + 3
+      && S77d.buffs.buildQueue && S77d.buffs.buildQueue.add === 3
+      && S77d.buffs.buildQueue.until > Date.now();
+    S77d.items.corvee = bkItem;
+    if (S77d.items.corvee == null) delete S77d.items.corvee;
+    return okAll;
+  })());
+
+  /* ---- ⑦ 内功 ---- */
+  check('⑦ 实测：修习秘籍 → 1 重（加成立刻进 genAttrs：+4）；再修 → 2 重（+8）', (function () {
+    var S77c = G.state, g77c = S77c.generals[0];
+    var bkNg = g77c.ng, bkItem = S77c.items.book_sunzi;
+    S77c.items.book_sunzi = (S77c.items.book_sunzi || 0) + 2;
+    var zm0 = G.genAttrs(g77c).zm;
+    var r1 = G.systems.useItem('book_sunzi', g77c.id);
+    var zm1 = G.genAttrs(g77c).zm;
+    var r2 = G.systems.useItem('book_sunzi', g77c.id);
+    var zm2 = G.genAttrs(g77c).zm;
+    var okAll = r1.ok && r2.ok && g77c.ng && g77c.ng.id === 'sunzi' && g77c.ng.lv === 2
+      && zm1 === zm0 + 4 && zm2 === zm0 + 8;
+    g77c.ng = bkNg;
+    S77c.items.book_sunzi = bkItem;
+    if (S77c.items.book_sunzi == null) delete S77c.items.book_sunzi;
+    return okAll;
+  })(), '');
+
+  /* ---- ⑧ 百炼强化 ---- */
+  check('⑧ 实测：强化 +1（成本扣、等级记、装备加成随之放大）', (function () {
+    var S77e = G.state;
+    var id = 'cr_head_1';
+    if (!DATA.EQUIP[id]) id = Object.keys(DATA.EQUIP)[0];
+    var bkEnh = S77e.forgeEnh ? S77e.forgeEnh[id] : undefined;
+    var bkGold = S77e.res.gold, bkIron = S77e.res.iron, bkStone = S77e.res.stone;
+    /* 先确保铁匠铺在位（没有就临时造一座；不拆已有建筑） */
+    var c77 = G.currentCity();
+    var plantedIdx = -1;
+    if (G.forgeLevel() <= 0) {
+      c77.cells.forEach(function (x, ix) { if (plantedIdx < 0 && !x.build && !x.official) plantedIdx = ix; });
+      if (plantedIdx >= 0) c77.cells[plantedIdx].build = { id: 'tiejiangpu', lvl: 1 };
+    }
+    S77e.inventory = S77e.inventory || [];
+    var owned = S77e.inventory.indexOf(id) >= 0;
+    if (!owned) S77e.inventory.push(id);
+    S77e.res.gold = 100000000; S77e.res.iron = 100000000; S77e.res.stone = 100000000;
+    var it77 = DATA.EQUIP[id];
+    var fake = { equip: {} }; fake.equip[it77.slot] = id;
+    S77e.forgeEnh = S77e.forgeEnh || {};
+    S77e.forgeEnh[id] = 0;
+    var b0 = G.systems.genEquipBonus(fake);
+    var r = G.enhance(id);
+    var b1 = G.systems.genEquipBonus(fake);
+    var grewAttr = ['tong', 'nz', 'yw', 'zm', 'sta', 'atk', 'def', 'spd'].some(function (k) {
+      return Math.abs((b1[k] || 0) - (b0[k] || 0)) > 1e-9;
+    });
+    var okAll = r.ok && G.enhOf(id) === 1 && grewAttr && G.enhMax() === 10;
+    /* 复原 */
+    if (bkEnh == null) delete S77e.forgeEnh[id]; else S77e.forgeEnh[id] = bkEnh;
+    S77e.res.gold = bkGold; S77e.res.iron = bkIron; S77e.res.stone = bkStone;
+    if (!owned) S77e.inventory.splice(S77e.inventory.indexOf(id), 1);
+    if (plantedIdx >= 0) delete c77.cells[plantedIdx].build;
+    return okAll;
+  })(), '');
+  check('⑧ 强化界面与入口（铁匠铺底栏 + 装备详情）',
+    /ui\.openEnhance = function/.test(uS77) && /data-action="open-enhance"/.test(uS77)
+    && /data-action="enhance-item"/.test(uS77) && /'enhance-item'/.test(mS77));
+
+  /* ---- 附加：内功档案行 ---- */
+  check('附加：将领档案含「内功」行（gp-ng）', /gp-ng/.test(uS77) && /内功 · /.test(uS77));
 
   console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');
   process.exit(FAIL ? 1 : 0);
