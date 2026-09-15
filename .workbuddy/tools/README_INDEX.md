@@ -12,10 +12,10 @@
 | `git/` | 3 | **收尾同步的唯一入口**。`sync.py` 默认干跑、`--apply` 才落盘（干跑先行是本项目铁律）；`gate.py` 是三件套门禁的**唯一出口**（pre-commit 钩子与 sync 都调它）；`install_hooks.py` 把 `hooks/` 里的钩子装进 `.git/hooks/`。 |
 | `git/hooks/` | 2 | 存这里是为了**进版本库** —— `.git/hooks/` 不被 git 跟踪，换台机器克隆后必须跑 `install_hooks.py` 重装。⚠️ **行尾必须 LF**，CRLF 会让 `#!/bin/sh` 失效。 |
 | `mem/` | 10 | MEMORY.md 必须 < 9600 字符（超出会被会话注入截断，尾部规则等于不存在）。`slim_memory_template.py` = 把超限整段 cut 到 `docs/` 的模板。 |
-| `patch/` | 42 | **事实上的变更日志**：按断言名 `grep -rl "<断言名>" tools/patch/` 就能找到当初是哪次改的。"同一条消息里对同一文件的多次 Edit 会互相覆盖"，所以补丁一律脚本化并留档。 |
+| `patch/` | 44 | **事实上的变更日志**：按断言名 `grep -rl "<断言名>" tools/patch/` 就能找到当初是哪次改的。"同一条消息里对同一文件的多次 Edit 会互相覆盖"，所以补丁一律脚本化并留档。 |
 | `probe/` | 17 | jsdom 没有布局引擎 → 尺寸/重叠/溢出/折行只能在**真浏览器**量。`probe60_geom.js` 是可复用模板，`probe66_ui.js` 有"逐行折行"量法，`probe67_save3.js` 量存档体积与配额。 |
 | `show/` | 4 | 给老板看的对照图 / 曲线校准 / 素材巡视。 |
-| **合计** | **119** | |
+| **合计** | **121** | |
 
 ## asset/（素材处理）
 
@@ -122,6 +122,8 @@ MEMORY.md 必须 < 9600 字符（超出会被会话注入截断，尾部规则�
 - `patch_build_gate_fix2.py`（3KB）　— v68 修正 2：govMax 作用域提升。
 - `patch_build_gate_fix3.py`（2KB）　— v68 修正 3：第 54 节测试自身的 bug —— free54 需能"避开已在用的格"。
 - `patch_build_gate_test.py`（10KB）　— v68 · 建造前置：e2e 适配 + smoke 第 54 节断言。
+- `patch_city_attr_slim.py`（13KB）　— v71 · 城池属性只显示城池命名（侧栏短名 + 下拉框带坐标；配套 patch_city_attr_slim2.py）
+- `patch_city_attr_slim2.py`（11KB）　— v71 续 · 城池下拉框单城也保留 + 选项显示州郡县坐标（配套 patch_city_attr_slim.py）
 - `patch_dialog_doc.py`（7KB）　— v68 · 弹窗统一：smoke 第 56 节守卫 + docs/设计规范.md §11。
 - `patch_dialog_unify.py`（23KB）　— v68 · 弹窗统一（老板 2026-09-14：「点击建筑出来的弹窗……尽量统一」）
 - `patch_git_docs.py`（7KB）　— 补丁：把「版本库 + 自动同步」写进 docs/项目地图.md，并订正被我改旧的数字。
