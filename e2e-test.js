@@ -2472,7 +2472,11 @@ async function runTests(dom, URL) {
     G.ui.openTroops(junI24, 'normal');
     await sleep(90);
     const tm24 = document.querySelector('#modal-root').innerHTML;
-    check('募兵面板标出所属军营', tm24.indexOf('募兵军营') >= 0 && tm24.indexOf('队列位') >= 0);
+    /* v80（老板）：「募兵军营 城内第 46 格 · Lv11 · 队列位 3 这个也不需要」——
+       面板不再标所属工位；重复标题也撤除（只留弹窗标题一处） */
+    check('v80：募兵面板不再标所属军营 / 重复标题',
+      tm24.indexOf('募兵军营') < 0 && tm24.indexOf('队列位') < 0
+      && (tm24.match(/兵营招募/g) || []).length === 1);
     check('募兵面板列出本营队列一节', tm24.indexOf('本营募兵队列') >= 0);
     /* 通过真实入口按钮进入，确认 data-idx 被带进去 */
     G.ui.closeModal();
@@ -4058,6 +4062,110 @@ if (svBtn) {
     await sleep(80);
     /* 收尾：两件试验品出包 */
     [pA79, pB79].forEach((it) => { const i = G.state.inventory.indexOf(it); if (i >= 0) G.state.inventory.splice(i, 1); });
+  }
+
+  /* ============================================================
+   * v80（老板三条）：客栈固定表 / 建筑吸底操作区 / 兵营分页直输（真实 DOM）
+   * ============================================================ */
+  console.log('\n--- v80. 客栈固定表 · 建筑底栏 · 兵营分页（真实 DOM） ---');
+  {
+    const c80 = G.currentCity();
+    /* ① 客栈：固定列宽 + 去「史实名将」标 */
+    let inn80 = c80.cells.findIndex((x) => x.build && x.build.id === 'kezhan');
+    if (inn80 < 0) {
+      inn80 = c80.cells.findIndex((x) => !x.build && !x.official);
+      c80.cells[inn80] = { build: { id: 'kezhan', lvl: 8 }, pending: null };
+    }
+    G.state.res.gold = Math.max(G.state.res.gold || 0, 50000000);
+    G.ui.openInn();
+    await sleep(130);
+    const tbl80 = document.querySelector('#modal-root .inn-tbl');
+    check('v80：客栈表固定列宽（table-layout: fixed + colgroup ×10）',
+      !!tbl80 && window.getComputedStyle(tbl80).tableLayout === 'fixed'
+      && tbl80.querySelectorAll('colgroup col').length === 10);
+    const colsA80 = tbl80 ? Array.from(tbl80.querySelectorAll('colgroup col')).map((c) => c.getAttribute('class')).join(',') : '';
+    check('v80：招募行无「史实名将」标', document.querySelectorAll('#modal-root .tag-hero').length === 0);
+    G.innRefresh(true);                         /* 强制换一批 */
+    G.ui.openInn();
+    await sleep(130);
+    const colsB80 = Array.from(document.querySelectorAll('#modal-root .inn-tbl colgroup col')).map((c) => c.getAttribute('class')).join(',');
+    check('v80：换一批后列宽声明不变（框架不动；列宽只在 CSS 按类固定）',
+      colsA80.length > 0 && colsA80 === colsB80, colsA80);
+    G.ui.closeModal();
+    await sleep(60);
+
+    /* ② 建筑弹窗：三键+关闭 = 吸底操作区（三键在关闭上方） */
+    const bi80 = c80.cells.findIndex((x) => x.build && x.build.id !== 'guanfu' && !x.pending);
+    if (bi80 >= 0) {
+      G.ui.openBuildModal(bi80);
+      await sleep(130);
+      const bo80 = document.querySelector('#modal-root .bldg-bottom');
+      check('v80：三键+关闭同处吸底操作区', !!(bo80
+        && bo80.querySelector('.bldg-acts')
+        && bo80.querySelector('.bldg-foot [data-action="close-modal"]')));
+      check('v80：操作区吸底（sticky 钉面板下沿）',
+        !!bo80 && window.getComputedStyle(bo80).position === 'sticky');
+      check('v80：三键在关闭上方（DOM 顺序，同块上排）', (function () {
+        if (!bo80) return false;
+        const acts = bo80.querySelector('.bldg-acts');
+        const foot = bo80.querySelector('.bldg-foot');
+        return !!(acts.compareDocumentPosition(foot) & window.Node.DOCUMENT_POSITION_FOLLOWING);
+      })());
+      G.ui.closeModal();
+      await sleep(60);
+    }
+
+    /* ③ 兵营：两页 + 直输 + 不跳顶 */
+    let j80 = c80.cells.findIndex((x) => x.build && x.build.id === 'junying');
+    if (j80 < 0) {
+      j80 = c80.cells.findIndex((x) => !x.build && !x.official);
+      c80.cells[j80] = { build: { id: 'junying', lvl: 10 }, pending: null };
+    }
+    if (c80.cells[j80].build) c80.cells[j80].build.lvl = Math.max(10, c80.cells[j80].build.lvl || 1);
+    G.ui.openTroops(j80, 'normal');
+    await sleep(160);
+    const mr80 = document.querySelector('#modal-root');
+    check('v80：兵营页只剩一处标题（重复标题 / 工位行 / 解锁计数全撤）',
+      (mr80.innerHTML.match(/兵营招募/g) || []).length === 1
+      && mr80.textContent.indexOf('募兵军营') < 0 && mr80.textContent.indexOf('队列位') < 0
+      && mr80.textContent.indexOf('已解锁') < 0);
+    check('v80：步兵 / 骑兵 两页切换按钮',
+      mr80.querySelectorAll('[data-action="train-tab"]').length === 2);
+    click(mr80.querySelector('[data-action="train-tab"][data-page="cav"]'));
+    await sleep(150);
+    check('v80：翻到骑兵页（首卡为骑兵）', (function () {
+      const card = document.querySelector('#modal-root .troop-grid .troop-card');
+      const tid = card && card.getAttribute('data-troop');
+      return !!tid && DATA.TROOPS[tid].cat === 'cav';
+    })());
+    check('v80：±10 退役（输入框直输 + 上限保留）',
+      !document.querySelector('#modal-root [data-action="train-qty"]')
+      && !!document.querySelector('#modal-root #train-count')
+      && !!document.querySelector('#modal-root [data-action="train-max"]'));
+    /* 滚到底 → 点上限 → 滚动位保持（原为跳回顶端） */
+    const pbA80 = document.querySelector('#modal-root .panel-body');
+    const ipA80 = document.querySelector('#modal-root .inner-panel');
+    /* jsdom 无布局引擎（scrollHeight=0）—— 用显式值验证"存/还"链路本身 */
+    pbA80.scrollTop = 126; ipA80.scrollTop = 67;
+    const keepA80 = { pb: pbA80.scrollTop, ip: ipA80.scrollTop };
+    click(document.querySelector('#modal-root [data-action="train-max"]'));
+    await sleep(160);
+    const keepB80 = {
+      pb: document.querySelector('#modal-root .panel-body').scrollTop,
+      ip: document.querySelector('#modal-root .inner-panel').scrollTop,
+    };
+    check('v80：点「上限」不再跳回顶端（滚动位保留）',
+      keepA80.pb === 126 && keepA80.ip === 67 && keepB80.pb === 126 && keepB80.ip === 67,
+      JSON.stringify(keepA80) + ' → ' + JSON.stringify(keepB80));
+    /* 直输：改值 → 状态同步 */
+    const cnt80 = document.querySelector('#modal-root #train-count');
+    if (cnt80) {
+      cnt80.value = '7';
+      cnt80.dispatchEvent(new window.Event('input', { bubbles: true }));
+      check('v80：数量直输同步到状态', Math.floor(Number(G.ui._trainCount)) === 7, String(G.ui._trainCount));
+    }
+    G.ui.closeModal();
+    await sleep(60);
   }
 
   G.ui.setView('city');

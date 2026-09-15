@@ -307,7 +307,8 @@
       case 'train-boost': ui.openTrainBoost(Number(el.dataset.idx)); break;
       case 'do-train-boost': GAME.doBoostTrain(el.dataset.item, Number(el.dataset.idx)); break;
       case 'train-locked': ui.toast('尚不可训练：' + (el.dataset.why || '条件未满足') + '（升级军营/书院、占领对应州城可解锁）'); break;
-      case 'train-qty': GAME.adjustTrainQty(Number(el.dataset.d)); break;
+      /* v80（老板）：「步兵 / 骑兵」翻页（±10 退役，数量改直输 —— 见 troopsHTML） */
+      case 'train-tab': ui._trainTab = (el.dataset.page === 'cav') ? 'cav' : 'inf'; ui.renderTroopsModal(); break;
       case 'confirm-train': GAME.doTrain(el.dataset.troop); break;
 
       /* 将领 */
@@ -892,11 +893,8 @@
     ui.toast(r.msg);
     if (r.ok) { ui.closeModal(); GAME.refreshAll(); }
   };
-  /* v20：数量走 ui._trainCount 状态；加减后重绘**弹窗**（原先 refreshView 只重绘中央视图） */
-  GAME.adjustTrainQty = function (d) {
-    ui._trainCount = Math.max(1, (Number(ui._trainCount) || 1) + d);
-    if (ui.renderTroopsModal) ui.renderTroopsModal();
-  };
+  /* v80（老板）：「数量…可以直接输入」—— ±10 的 adjustTrainQty 随按钮一并退役；
+     直输由 input 事件同步（GAME.syncTrainQty），不再需要"加减后重绘"这条链。 */
   /* 输入框手动改动 → 同步状态（渲染函数不再读 DOM） */
   GAME.syncTrainQty = function (v) {
     ui._trainCount = Math.max(1, Math.floor(Number(v) || 1));

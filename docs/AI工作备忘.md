@@ -890,3 +890,27 @@ v24 把外城地块 9 级 39→40，v28 把建筑上限 10→12 —— 上限抬
 
 ### 22.4 工具行尾盲区（第三次复现，已固化）
 - v78 修的 `elif` 判定（先 LF 后 CRLF）本轮持续生效；新补丁脚本一律照抄该模板。
+
+
+## 二十三、v80：检查器陷阱与环境约束（三处踩坑 + 两项固化）
+
+### 23.1 jsdom（e2e）没有布局引擎 —— 几何断言别写进 e2e
+- 症状：`getBoundingClientRect()` 全 0、`scrollHeight` 全 0、裸 `getComputedStyle` 未定义
+  （要写 `window.getComputedStyle` —— 它能解析 stylesheet 的 `table-layout` / `position`）。
+- 分工定式：**像素/几何**归真机脚本（`_shot_v80.js` + Edge）；**结构/行为/计算样式**归 e2e。
+  v80 实钉：e2e 校验 `colgroup ×10 + tableLayout=fixed + position=sticky` + 用**显式
+  scrollTop 值**（126/67）验证"存/还"链路；像素级（列宽恒定 / 底沿 −1px / 零裁剪）
+  在真机脚本里量。scrollTop 在 jsdom 里可存可取（不裁剪），正好当"纯逻辑链路"的探针。
+
+### 23.2 audit 的隐式约定：`data-tab` 一出现就期待 `case 'tab'`
+- audit 白名单 `['data-action','data-view','data-side','data-tab']`：凡出现 `data-tab=`，
+  即认为由 `case 'tab'` 通用分发。专用分页键要另起属性名 —— v80 用 `data-page` 规避
+  （一度报"孤儿按钮：tab"）。
+
+### 23.3 "注释骗检查"第四次 & 删除型补丁的幂等
+- 守卫 `!/adjustTrainQty/.test(mS33)` 被**退役说明注释里写的函数名**顶红 → 判据先 stripComment
+  （该守卫在 §33 老节里，未走 codeOf）。
+- 删除型替换（B8 删解锁计数行）被 `if (new in t)` 误跳：替换文本与相邻行同名 ——
+  **删除型补丁要以"old 唯一即删"为准**，不能拿"新文本已存在"当幂等证据。
+- 顺手清掉 v77 时期**整段重复的 CSS 块**（1983 字符，同段被写了两遍）：大段追加型补丁必须
+  带完成标记（done_marker）守卫；纯文本自查可用"首行标记出现次数"兜底。

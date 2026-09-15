@@ -1194,9 +1194,25 @@
    * idx == null 时兜底取本城第一座军营（旧入口 / 中央视图直达）。
    * ============================================================ */
   ui.openTroops = function (idx, filter) {
+    /* v80（老板）：「目前选择数量后会跳回到页面顶端，要求取消跳转这个动作」——
+       重绘前把两级滚动容器的位置记下来（.inner-panel 与 .panel-body），重绘后原样还回去；
+       仅当旧窗本来就是募兵面板（有 #train-count）时才恢复，从别处打开时仍从顶端开始。 */
+    var prevRoot = $('#modal-root');
+    var keep = null;
+    if (prevRoot && prevRoot.querySelector('#train-count')) {
+      var pIp = prevRoot.querySelector('.inner-panel');
+      var pPb = prevRoot.querySelector('.panel-body');
+      keep = { ip: pIp ? pIp.scrollTop : 0, pb: pPb ? pPb.scrollTop : 0 };
+    }
     ui._trainBIdx = (idx == null || idx === '' || !isFinite(Number(idx))) ? null : Number(idx);
     ui._trainFilter = (filter === 'siege') ? 'siege' : 'normal';
     ui.openPanel('troops', ui._trainFilter === 'siege' ? '🛠️ 工匠作坊 · 制造器械' : '⚔️ 兵营招募');
+    if (keep) {
+      var nIp = $('#modal-root .inner-panel');
+      var nPb = $('#modal-root .panel-body');
+      if (nIp) nIp.scrollTop = keep.ip;
+      if (nPb) nPb.scrollTop = keep.pb;
+    }
   };
   ui.renderTroopsModal = function () { ui.openTroops(ui._trainBIdx, ui._trainFilter); };
 
@@ -2649,8 +2665,9 @@
       return '<tr class="inn-tr' + (can ? '' : ' off') + '">' +
         '<td><span class="inn-face-cell"><span class="inn-avatar">' + ui.faceOf(
           { name: c.name, rank: c.rank, beauty: c.beauty, portraitSeed: c.portraitSeed }, 28) + '</span>' +
-          '<span class="inn-name" style="white-space:nowrap;">' + U.escape(c.name) +
-            (c.hero ? ' <span class="tag-hero">史实名将</span>' : '') + '</span></span></td>' +
+          /* v80（老板）：「不要将领名称后边的『史实名将』这种标签，在将领界面显示就好」——
+             招募行去标；将领档案清单里那枚（gcard-tag hero）保留。 */
+          '<span class="inn-name" style="white-space:nowrap;">' + U.escape(c.name) + '</span></span></td>' +
         '<td class="ctr">Lv' + c.level + '</td>' +
         '<td class="ctr">' + ui.rankBadge(c) + '</td>' +
         '<td class="ctr">' + (STYLE_NAME[c.style] || '均衡') + '</td>' +
@@ -2680,7 +2697,14 @@
         '　|　' + leftTxt,
       body:
         (chk.ok ? '' : '<div class="note-warn">' + U.escape(chk.msg) + '</div>') +
-        '<table class="tbl inn-tbl"><thead><tr>' +
+        /* v80（老板）：「招募界面的表格行宽相对固定，根据字串长度搞个适合的固定表，
+           在换人时框架不动，只有将领信息变动」——colgroup + table-layout: fixed，
+           列宽只认表头这一次声明，换批只动内容（列宽表在 index.html 的 .inn-tbl 段）。 */
+        '<table class="tbl inn-tbl"><colgroup>' +
+          '<col class="c-name"><col class="c-lv"><col class="c-rank"><col class="c-style">' +
+          '<col class="c-attr"><col class="c-attr"><col class="c-attr"><col class="c-attr">' +
+          '<col class="c-salary"><col class="c-act"></colgroup>' +
+          '<thead><tr>' +
           '<th>将领</th><th class="ctr">等级</th><th class="ctr">资质</th><th class="ctr">专长</th>' +
           '<th class="num">统率</th><th class="num">内政</th><th class="num">勇武</th><th class="num">智谋</th>' +
           '<th class="num">月俸</th><th class="ctr">招募</th></tr></thead><tbody>' + rows + '</tbody></table>',
@@ -3544,7 +3568,11 @@
             '<div class="op-row"><button class="btn gold" data-action="' + f.act + '"' + (f.view ? ' data-view="' + f.view + '"' : '') +
               (f.withIdx ? ' data-idx="' + idx + '"' : '') + '>' + f.label + '</button></div>' +
           '</div>') : ''; })() +
-        '<div class="bldg-acts">' +
+        /* v80（老板）：「升级，拆除（拆1级），移动/交换固定放在底部，关闭的上方」——
+           三键与关闭合成一块**吸底操作区**（.bldg-bottom）：内容再长也钉在弹窗下沿，
+           上排＝操作三键，下排＝关闭。 */
+        '<div class="bldg-bottom">' +
+          '<div class="bldg-acts">' +
           (upCost
             ? '<button class="btn gold bldg-act" data-action="confirm-upgrade" data-idx="' + idx + '">⬆ 升级 → Lv' + (cell.build.lvl + 1) +
                 '<span class="ba-sub">费用 ' + costStr + '</span></button>'
@@ -3555,9 +3583,10 @@
             (cell.build.lvl > 1 ? ('Lv' + cell.build.lvl + ' → Lv' + (cell.build.lvl - 1)) : '整座移除') + '</span></button>' +
           (b.id === 'guanfu' ? ''
             : '<button class="btn bldg-act" data-action="move-ask" data-idx="' + idx + '" title="与另一地块互换位置">🔄 移动 / 交换<span class="ba-sub">与地块互换</span></button>') +
-        '</div>' +
-        '<div class="bldg-foot">' +
-          '<button class="btn" data-action="close-modal">关闭</button>' +
+          '</div>' +
+          '<div class="bldg-foot">' +
+            '<button class="btn" data-action="close-modal">关闭</button>' +
+          '</div>' +
         '</div>'
       );
     } else {
@@ -3987,12 +4016,19 @@
   ui._trainCount = 10;
   /* v16：募兵按建筑分流 —— 军营募常规兵、工匠作坊造器械（#14） */
   ui._trainFilter = 'normal';
+  /* v80（老板）：「页面分成步兵，骑兵两个界面，翻页」—— 募兵页当前分页（inf 步兵 / cav 骑兵） */
+  ui._trainTab = 'inf';
   ui.troopsHTML = function () {
     var s = GAME.state, c = GAME.currentCity();
     if (!DATA.TROOPS[ui._trainSel]) ui._trainSel = 'yibing';   // 兜底：选中项必须存在
+    /* v80（老板）：「页面分成步兵，骑兵两个界面，翻页」——
+       常备兵按 DATA.TROOPS[].cat 拆两页（inf 步兵 / cav 骑兵），ui._trainTab 记当前页；
+       器械页（工匠作坊）维持单列表。选中项若不在本页，自动落到本页首位。 */
     var ids = Object.keys(DATA.TROOPS).filter(function (id) {
-      var isCraft = !!DATA.TROOPS[id].craft;
-      return ui._trainFilter === 'siege' ? isCraft : !isCraft;
+      var t = DATA.TROOPS[id];
+      if (ui._trainFilter === 'siege') return !!t.craft;
+      if (t.craft) return false;
+      return (t.cat || 'inf') === ui._trainTab;
     });
     if (ids.length && ids.indexOf(ui._trainSel) < 0) ui._trainSel = ids[0];
     var cards = ids.map(function (id) {
@@ -4027,23 +4063,27 @@
     var kind = isSiege ? 'craft' : 'train';
     var bar = ui.trainBarracks();
     var slotsLeft = bar ? GAME.trainSlotsLeft(c, bar.idx, kind) : 0;
-    var barLine = bar
-      ? '<div class="q-sec"><span class="q-sec-t">' + (isSiege ? '工匠作坊' : '募兵军营') + '</span>' +
-        '<span class="q-sec-n">城内第 ' + (bar.idx + 1) + ' 格 · Lv' + bar.lvl +
-        ' · 队列位 ' + GAME.trainQueueSlots(bar.lvl, c) + '</span></div>'
-      /* 无对应建筑时给状态而非沉默：按钮会因此不可用，得让人知道为什么 */
+    /* v80（老板）：「募兵军营 城内第 46 格 · Lv11 · 队列位 3 这个也不需要」——
+       所属工位的信息行撤除（空态保留：没有对应建筑时按钮会不可用，得让人知道为什么）。 */
+    var barLine = bar ? ''
       : '<div class="q-empty">本城尚未建造' + (isSiege ? '工匠作坊，无法制造器械。' : '军营，无法募兵。') + '</div>';
+    /* v80（老板）：「兵营招募·LV11这个不需要」—— 本函数里这行与弹窗标题重复，整行撤除
+       （弹窗标题已有「⚔️ 兵营招募」，只留一处）；「步兵 / 骑兵」两页切换按钮放最上、
+       「N / M 种」解锁计数也不要（同批撤除）。 */
     return '<div class="ui-page">' +
-      '<div class="gold-heading">' + (ui._trainFilter === 'siege' ? '🛠️ 工匠作坊 · 制造器械' : '⚔️ 兵营招募') +
-        (bar ? ' · Lv' + bar.lvl : '') + '</div>' +
+      (ui._trainFilter === 'siege' ? ''
+        : '<div class="train-tabs">' +
+            '<button class="btn sm' + (ui._trainTab === 'cav' ? '' : ' gold') + '" data-action="train-tab" data-page="inf">🗡 步兵</button>' +
+            '<button class="btn sm' + (ui._trainTab === 'cav' ? ' gold' : '') + '" data-action="train-tab" data-page="cav">🐎 骑兵</button>' +
+          '</div>') +
       barLine +
       '<div class="troop-grid">' + cards + '</div>' +
       '<div style="margin-top:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:center;background:rgba(var(--sh-rgb),.25);border-radius:8px;padding:12px;">' +
         '<span style="color:var(--gold-light);font-weight:700;">' + (sel ? sel.icon + ' ' + sel.name : '—') + '</span>' +
         '<label style="color:var(--text-dim);">数量</label>' +
-        '<button class="btn sm" data-action="train-qty" data-d="-10">-10</button>' +
-        '<input type="number" id="train-count" min="1" value="' + qty + '" style="width:80px;padding:6px;background:var(--slab-1);border:1px solid var(--gold-dark);color:var(--text);border-radius:4px;text-align:center;">' +
-        '<button class="btn sm" data-action="train-qty" data-d="10">+10</button>' +
+        /* v80（老板）：「数量目前是-10，+10这样设计，可以直接输入，上限这个按钮保留」——
+           ±10 按钮退役：数量直接输入（input 事件实时同步 ui._trainCount，不重绘、不跳顶）。 */
+        '<input type="number" id="train-count" min="1" value="' + qty + '" style="width:96px;padding:6px;background:var(--slab-1);border:1px solid var(--gold-dark);color:var(--text);border-radius:4px;text-align:center;">' +
         /* v28（需求 5）：上限按钮 —— 一次填到"人口与资源的短板" */
         '<button class="btn sm" data-action="train-max" title="按可用人口与资源填到最大可募数">上限</button>' +
         '<span class="ui-sub">上限 <b style="color:var(--gold-light);font-variant-numeric:tabular-nums;">'
@@ -4056,9 +4096,6 @@
           : '<span class="ui-sub" style="color:var(--amber);">' + (isSiege ? '本作坊' : '本营') + '队列已满' +
             (bar && GAME.trainNextSlotLv(bar.lvl) ? '（Lv' + GAME.trainNextSlotLv(bar.lvl) + ' 解锁下一个等待位）' : '') + '</span>') +
       '</div>' +
-      '<div class="ui-sub" style="text-align:center;margin-top:6px;">' +
-        '已解锁 <b style="color:var(--gold-light)">' + ids.filter(function (id) { return GAME.canTrain(id).ok; }).length +
-        '</b> / ' + ids.length + ' 种</div>' +
       (bar ? ui.trainQueueBlock(bar, c, kind) : '') +
       '</div>';
   };

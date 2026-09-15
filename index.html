@@ -1398,6 +1398,19 @@
      内容超长时 sticky（v73）照旧接管。 */
   .modal .inner-panel:has(> .bldg-foot) { display: flex; flex-direction: column; }
   .modal .inner-panel:has(> .bldg-foot) > .bldg-foot { margin-top: auto; }
+  /* v80（老板）：「升级，拆除（拆1级），移动/交换固定放在底部，关闭的上方」——
+     三键与关闭合成一块**吸底操作区**（.bldg-bottom）：几何沿用 v73 校准值
+     （出血到面板边缘 + 钉面板下沿），内容短时 margin-top:auto 贴底、长时 sticky 接管。 */
+  .bldg-bottom { position: sticky; bottom: -12px; z-index: 3;
+    margin: 12px -12px -12px; padding: 8px 12px 22px;
+    border-top: 1px solid var(--line-strong);
+    background: var(--panel-bg);
+    box-shadow: 0 -6px 12px rgba(var(--sh-rgb),.28); }
+  .bldg-bottom .bldg-acts { margin-top: 0; }
+  .bldg-bottom .bldg-foot { position: static; margin: 8px 0 0; padding: 0;
+    border-top: 0; background: transparent; box-shadow: none; }
+  .modal .inner-panel:has(> .bldg-bottom) { display: flex; flex-direction: column; }
+  .modal .inner-panel:has(> .bldg-bottom) > .bldg-bottom { margin-top: auto; }
   .op-done { color: var(--text-dim); font-size: var(--fs-sub); }
   /* v68（弹窗统一）：升级行专用 —— 费用靠左、按钮靠右（同一行对齐） */
   .op-row-between { justify-content: space-between; }
@@ -1584,6 +1597,9 @@
   .tbl td .gen-link:hover { color: #fff3cf; }
 
   /* ============ 军队 / 兵种卡 ============ */
+  /* v80（老板）：「页面分成步兵，骑兵两个界面，翻页」—— 两页切换（选中页走 .btn.gold） */
+  .train-tabs { display: flex; justify-content: center; gap: 10px; margin-bottom: 10px; }
+  .train-tabs .btn { min-width: 118px; }
   .troop-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
   .troop-card {
     background: linear-gradient(180deg, var(--surface-2), var(--surface-3b));
@@ -2462,42 +2478,18 @@
   .wild-pick-host .res-line { display: flex; align-items: center; gap: 6px; }
   .wild-select { flex: 1 1 auto; min-width: 0; max-width: 168px; }
 
-  .inn-tbl { margin: 0; }
-  .inn-tbl th, .inn-tbl td { padding: 3px 8px; }
-  .inn-tbl .inn-face-cell { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
-  .inn-tbl tr.off td { opacity: .55; }
-  .inn-tbl .rank-badge { white-space: nowrap; }
-  .inn-tbl .inn-act { display: flex; align-items: center; gap: 6px; justify-content: flex-end; white-space: nowrap; }
-
-  .lord-split { display: grid; grid-template-columns: 5fr 6fr; gap: 12px; align-items: start; }
-  .lord-city { display: flex; align-items: center; gap: 8px; padding: 5px 8px;
-    border: 1px solid var(--sep-gold); border-radius: var(--r-lg); margin-bottom: 5px; }
-  .lord-city.cur { border-color: var(--gold-dark); background: rgba(201, 162, 75, .10); }
-  .lord-city .ls-nm { color: var(--gold-light); font-weight: 700; white-space: nowrap; }
-  .lord-city .ls-meta { color: var(--text-dim); flex: 1 1 auto; min-width: 0;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .lord-tbl td.k { width: 86px; color: var(--text-dim); white-space: nowrap; }
-
-  .enh-list { display: flex; flex-direction: column; }
-  .enh-row { display: flex; align-items: center; gap: 10px;
-    padding: 6px 8px; border-bottom: 1px solid var(--sep-gold); }
-  .enh-row:last-child { border-bottom: none; }
-  .enh-nm { flex: 1 1 auto; min-width: 0; }
-  .enh-tag { color: var(--gold-light); font-weight: 700; margin-left: 4px; }
-  .enh-cost { color: var(--text-dim); font-size: var(--fs-sub); }
-  /* ============================================================
-     v77（老板）
-     ------------------------------------------------------------
-     ① 资源区：附属野地下拉框（原「本城 · 城名」表头退役）
-     ② 客栈招募：表格版式（表头 + 单行数据，含月俸列）
-     ③ 君主面板：左右分栏（左城池列表 / 右信息表）
-     ④ 铁匠铺：百炼强化列表
-     ============================================================ */
-  .wild-pick-host { margin-bottom: 3px; }
-  .wild-pick-host .res-line { display: flex; align-items: center; gap: 6px; }
-  .wild-select { flex: 1 1 auto; min-width: 0; max-width: 168px; }
-
-  .inn-tbl { margin: 0; }
+  /* v80（老板）：「表格行宽相对固定，根据字串长度搞个适合的固定表，在换人时框架不动，
+     只有将领信息变动」——table-layout: fixed 只认声明过的宽度（colgroup，见 ui.openInn）；
+     列宽按各列字串长度分配：将领最宽（头像+姓名）、四维最窄（2~3 位数字）。
+     列宽和贴着容器实宽（实测 942px）：不足时浏览器会按比例压列，别随手改单列。 */
+  .inn-tbl { margin: 0; table-layout: fixed; }
+  .inn-tbl col.c-name { width: 188px; }
+  .inn-tbl col.c-lv { width: 58px; }
+  .inn-tbl col.c-rank { width: 168px; }
+  .inn-tbl col.c-style { width: 66px; }
+  .inn-tbl col.c-attr { width: 58px; }
+  .inn-tbl col.c-salary { width: 88px; }
+  .inn-tbl col.c-act { width: 140px; }
   .inn-tbl th, .inn-tbl td { padding: 3px 8px; }
   .inn-tbl .inn-face-cell { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
   .inn-tbl tr.off td { opacity: .55; }

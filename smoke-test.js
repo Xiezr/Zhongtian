@@ -3498,7 +3498,12 @@
     /ui\.forgeRow = function[\s\S]{0,1600}ui\.itemRow\(\{/.test(uS16));
   check('#7 未解锁兵种可点击查看原因', /unlocked \? 'select-train' : 'train-locked'/.test(uS16));
   check('#7 train-locked 动作已注册', /case 'train-locked'/.test(mS16));
-  check('#7 面板显示本类已解锁数量', /已解锁 <b style="color:var\(--gold-light\)">' \+ ids\.filter/.test(uS16));
+  /* v80（老板）：「『N / M 种』解锁计数这种备注也不要」—— 计数行退役；判据换成兵种分页 */
+  check('#7 面板含本类兵种分页（v80：步兵 / 骑兵 两页，计数行退役）', (function () {
+    var th = codeOf(uS16, 'ui.troopsHTML = function');
+    return /data-action="train-tab"/.test(th) && /data-page="cav"/.test(th)
+      && th.indexOf('ids.filter') < 0;
+  })());
 
   console.log('  --- 城内布局（城墙 / 官府 / 贴地）---');
   check('#1 城墙不占城内地块', DATA.BUILD_ORDER.indexOf('chengqiang') < 0 && !/chengqiang: 1 \}/.test(dS16));
@@ -5002,7 +5007,12 @@
     /case 'select-train': ui\._trainSel = el\.dataset\.troop; ui\.renderTroopsModal\(\); break;/.test(mS33));
   check('数量为状态驱动（渲染函数不再读 DOM）',
     /ui\._trainCount/.test(uS33) && !/\$\('#train-count'\)/.test(uS33));
-  check('加减数量重绘弹窗', /GAME\.adjustTrainQty = function[\s\S]{0,220}ui\.renderTroopsModal\(\)/.test(mS33));
+  /* v80（老板）：「数量…可以直接输入」—— ±10 退役（adjustTrainQty 同步退休），数量改纯直输 */
+  check('v80：数量直输（±10 / adjustTrainQty 退役，上限保留）',
+    /* 源码里保留"退役说明注释"（含函数名），所以判据先剥注释再查 */
+    /id="train-count"/.test(uS33) && !/train-qty/.test(stripComment(uS33))
+      && !/adjustTrainQty/.test(stripComment(mS33))
+      && /data-action="train-max"/.test(uS33));
   check('输入框变更同步状态', /GAME\.syncTrainQty/.test(mS33) && /syncTrainQty\(e\.target\.value\)/.test(mS33));
   check('实测：可点选兵种卡随军营等级出现', (function () {
     var s = G.state, c = s.cities[0];
@@ -5249,7 +5259,8 @@
   check('死样式同步清理（.q-guide / .nt-guide）',
     !/\.q-guide \{/.test(css34) && !/\.nt-guide \{/.test(css34));
   check('信息型内容保留（数值 / 状态 / 来源）',
-    ['治疗费', '守军约', '已解锁', '累计投入的 50%', '商城价', '返还'].every(function (t) {
+    /* v80：『已解锁 N/M 种』随兵营重排退役 —— 示例位换一条仍在的信息串 */
+    ['治疗费', '守军约', '队列空位', '累计投入的 50%', '商城价', '返还'].every(function (t) {
       return uS34.indexOf(t) >= 0;
     }));
 
@@ -7769,14 +7780,16 @@ check('实测：批量购买按黄金买得起几个就买几个', (function () 
 
 /* ---- 需求 7：拆毁 / 移动按钮 ---- */
 console.log('  --- ⑦ 拆毁与移动按钮 ---');
-check('v76：升级/拆除/移动同排（.bldg-acts），关闭单独吸底', (function () {
+check('v80：三键同排收进吸底操作区（.bldg-bottom），关闭在其下方', (function () {
   var u = require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8');
   var h = require('fs').readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
   return /class="bldg-acts"/.test(u)
     && /data-action="confirm-upgrade"/.test(u)
     && /data-action="demolish-ask"/.test(u)
     && /data-action="move-ask"/.test(u)
-    && /\.bldg-foot \{ display: flex; justify-content: center/.test(h);
+    && /class="bldg-bottom"/.test(u)
+    && /\.bldg-bottom \{ position: sticky/.test(h)
+    && /\.bldg-bottom \.bldg-foot \{ position: static/.test(h);
 })());
 
 /* ============================================================
@@ -12470,12 +12483,14 @@ console.log('\n===== 59. v73 五条（黄金 · 资质 · 秘境 · 将领头 ·
   })());
   check('结构：.dlg-ico 尺寸盒随图标一起退役（JS 与 CSS 双清零）',
     uS73.indexOf('dlg-ico') < 0 && hS73c.indexOf('.dlg-ico') < 0);
-  check('样式：底栏吸底（sticky + 出血到面板边缘 + 钉面板下沿 + 不透明底）', (function () {
-    var b = cssBlock(hS73, '.bldg-foot {');
+  check('样式：吸底操作区（v80 .bldg-bottom：三键+关闭同块 + 出血到边缘 + 钉面板下沿）', (function () {
+    var b = cssBlock(hS73, '.bldg-bottom {');
+    var f = cssBlock(hS73, '.bldg-bottom .bldg-foot {');
     return /position: sticky/.test(b) && /bottom: -12px/.test(b)
       && /margin: 12px -12px -12px/.test(b) && /padding: 8px 12px 22px/.test(b)
-      && /background: var\(--panel-bg\)/.test(b);
-  })(), cssBlock(hS73, '.bldg-foot {').replace(/\s+/g, ' ').slice(0, 84));
+      && /background: var\(--panel-bg\)/.test(b)
+      && /position: static/.test(f);
+  })(), cssBlock(hS73, '.bldg-bottom {').replace(/\s+/g, ' ').slice(0, 84));
 })();
 
 
@@ -13141,6 +13156,82 @@ console.log('\n===== 61. v75 客栈招募（大界面 · 单行候选 · 资质�
     check('界面：装备详情单件视角（同种第 N 件）', /同种第/.test(uS));
 
   })();
+
+/* ============================================================
+ * ===== 65. v80：客栈固定表 / 建筑吸底操作区 / 兵营分页直输（老板三条） =====
+ * ============================================================ */
+console.log('\n===== 65. v80 三条（客栈 · 建筑底栏 · 兵营） =====');
+(function () {
+  var rd = function (f) { return fsMod.readFileSync(pathMod.join(__dirname, 'js', f + '.js'), 'utf8'); };
+  var uRaw = rd('ui');
+  var uS = stripComment(uRaw);
+  var mS = stripComment(rd('main'));
+  var hS = fsMod.readFileSync(pathMod.join(__dirname, 'index.html'), 'utf8');
+
+  /* ---------- ① 客栈 ---------- */
+  console.log('  --- ① 客栈固定表 ---');
+  check('v80：招募行去「史实名将」标（将领档案那枚保留）', (function () {
+    var inn = codeOf(uS, 'ui.openInn = function');
+    return inn.indexOf('tag-hero') < 0 && uRaw.indexOf('<span class="gcard-tag hero">史实名将</span>') >= 0;
+  })());
+  check('v80：表格固定列宽（colgroup ×10 + table-layout: fixed + 列宽表在 CSS）', (function () {
+    var inn = codeOf(uS, 'ui.openInn = function');
+    var b = cssBlock(hS, '.inn-tbl {');
+    return /<colgroup>/.test(inn) && (inn.match(/<col class="c-/g) || []).length === 10
+      && /table-layout: fixed/.test(b)
+      && /width: \d+px/.test(cssBlock(hS, '.inn-tbl col.c-name {'))
+      && /width: \d+px/.test(cssBlock(hS, '.inn-tbl col.c-act {'));
+  })());
+
+  /* ---------- ② 建筑弹窗 ---------- */
+  console.log('  --- ② 建筑弹窗：吸底操作区 ---');
+  check('v80：三键与关闭同处 .bldg-bottom（上排三键 / 下排关闭）', (function () {
+    var body = codeOf(uS, 'ui.openBuildModal = function');
+    var a = body.indexOf('class="bldg-bottom"');
+    if (a < 0) return false;
+    var acts = body.indexOf('class="bldg-acts"', a);
+    var foot = body.indexOf('class="bldg-foot"', a);
+    return acts > a && foot > acts
+      && body.indexOf('data-action="confirm-upgrade"', acts) > acts
+      && body.indexOf('data-action="demolish-ask"', acts) > acts
+      && body.indexOf('data-action="move-ask"', acts) > acts
+      && body.indexOf('close-modal', foot) > foot;
+  })());
+  check('v80：吸底几何沿用 v73 校准 + 短内容贴底（:has flex + margin-top: auto）',
+    /\.modal \.inner-panel:has\(> \.bldg-bottom\) \{ display: flex; flex-direction: column; \}/.test(hS.replace(/\s+/g, ' '))
+    && /\.modal \.inner-panel:has\(> \.bldg-bottom\) > \.bldg-bottom \{ margin-top: auto; \}/.test(hS.replace(/\s+/g, ' ')));
+
+  /* ---------- ③ 兵营 ---------- */
+  console.log('  --- ③ 兵营：分页 / 直输 / 不跳顶 ---');
+  check('v80：常备兵全部归入步兵/骑兵两页（无遗漏、无器械混入）', (function () {
+    var inf = 0, cav = 0, bad = 0;
+    Object.keys(DATA.TROOPS).forEach(function (id) {
+      var t = DATA.TROOPS[id];
+      if (t.craft) return;
+      if (t.cat === 'inf') inf++;
+      else if (t.cat === 'cav') cav++;
+      else bad++;
+    });
+    return bad === 0 && inf + cav === 15 && inf > 0 && cav > 0;
+  })());
+  check('v80：兵营页重排（重复标题 / 工位行 / 解锁计数全撤，空态保留）', (function () {
+    var th = codeOf(uS, 'ui.troopsHTML = function');
+    return th.indexOf('gold-heading') < 0 && th.indexOf('ids.filter') < 0
+      && th.indexOf('q-sec-n') < 0 && th.indexOf('本城尚未建造') >= 0
+      && /data-action="train-tab"/.test(th) && /data-page="inf"/.test(th) && /data-page="cav"/.test(th);
+  })());
+  check('v80：数量直输（±10 退役 / 上限保留 / 输入框在）', (function () {
+    var th = codeOf(uS, 'ui.troopsHTML = function');
+    return /id="train-count"/.test(th) && th.indexOf('train-qty') < 0
+      && th.indexOf('data-action="train-max"') >= 0
+      && mS.indexOf('train-qty') < 0 && mS.indexOf('adjustTrainQty') < 0
+      && /case 'train-tab':/.test(mS);
+  })());
+  check('v80：重绘不跳顶（openTroops 存/还两级滚动位）', (function () {
+    var fn = codeOf(uS, 'ui.openTroops = function');
+    return (fn.match(/scrollTop/g) || []).length >= 4 && /#train-count/.test(fn);
+  })());
+})();
 
   console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');
   process.exit(FAIL ? 1 : 0);
