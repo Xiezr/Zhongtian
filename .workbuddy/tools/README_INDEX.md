@@ -12,10 +12,10 @@
 | `git/` | 3 | **收尾同步的唯一入口**。`sync.py` 默认干跑、`--apply` 才落盘（干跑先行是本项目铁律）；`gate.py` 是三件套门禁的**唯一出口**（pre-commit 钩子与 sync 都调它）；`install_hooks.py` 把 `hooks/` 里的钩子装进 `.git/hooks/`。 |
 | `git/hooks/` | 2 | 存这里是为了**进版本库** —— `.git/hooks/` 不被 git 跟踪，换台机器克隆后必须跑 `install_hooks.py` 重装。⚠️ **行尾必须 LF**，CRLF 会让 `#!/bin/sh` 失效。 |
 | `mem/` | 10 | MEMORY.md 必须 < 9600 字符（超出会被会话注入截断，尾部规则等于不存在）。`slim_memory_template.py` = 把超限整段 cut 到 `docs/` 的模板。 |
-| `patch/` | 44 | **事实上的变更日志**：按断言名 `grep -rl "<断言名>" tools/patch/` 就能找到当初是哪次改的。"同一条消息里对同一文件的多次 Edit 会互相覆盖"，所以补丁一律脚本化并留档。 |
+| `patch/` | 49 | **事实上的变更日志**：按断言名 `grep -rl "<断言名>" tools/patch/` 就能找到当初是哪次改的。"同一条消息里对同一文件的多次 Edit 会互相覆盖"，所以补丁一律脚本化并留档。 |
 | `probe/` | 17 | jsdom 没有布局引擎 → 尺寸/重叠/溢出/折行只能在**真浏览器**量。`probe60_geom.js` 是可复用模板，`probe66_ui.js` 有"逐行折行"量法，`probe67_save3.js` 量存档体积与配额。 |
 | `show/` | 4 | 给老板看的对照图 / 曲线校准 / 素材巡视。 |
-| **合计** | **121** | |
+| **合计** | **126** | |
 
 ## asset/（素材处理）
 
@@ -129,6 +129,7 @@ MEMORY.md 必须 < 9600 字符（超出会被会话注入截断，尾部规则�
 - `patch_git_docs.py`（7KB）　— 补丁：把「版本库 + 自动同步」写进 docs/项目地图.md，并订正被我改旧的数字。
 - `patch_gov_center.py`（16KB）　— v68 · 官府居中（老板 2026-09-14）：
 - `patch_gov_center_fix.py`（5KB）　— v68 官府居中 · 修正：剩余 4 处断言适配。
+- `patch_guanfu_dlg_ico.py`（6KB）　— v72 · 修：官府（及城外建筑）「升级中」弹窗被 1024px 位图撑爆（老板：
 - `patch_invasion.py`（15KB）　— 第 2 期 · 防守（定期被攻打）—— 核心机制落地。
 - `patch_invasion_dedupe.py`（4KB）　— 补丁 7：删掉重复的 `GAME.resName`，并补防回退断言。
 - `patch_invasion_docs.py`（6KB）　— 补丁 6（收尾）：三份文档同步 —— 登记新出口 + 标注第 2 期落地 + 更正第 1 期误判。
@@ -155,6 +156,10 @@ MEMORY.md 必须 < 9600 字符（超出会被会话注入截断，尾部规则�
 - `patch_v70_create.py`（18KB）　— v70 · 第 4 块：创建界面（老板需求 5）。
 - `patch_v70_geo.py`（16KB）　— v70 · 第 1 块：州郡县标识 + 城外满配数量表 + 城内仓库 4 座。
 - `patch_v70_test.py`（22KB）　— v70 测试：smoke 第 58 节（五项需求的断言）+ e2e 追加（真实 DOM 走查）。
+- `patch_v73_core.py`（21KB）　— v73 核心层补丁：黄金闸门 / 资质再降10倍 / 种田秘境（数据 + 域 + 系统）
+- `patch_v73_docs.py`（12KB）　— v73 文档补丁：设计规范 §11 修订 + §14 新增 / AI工作备忘 §16 / 需求档案 v73 登记
+- `patch_v73_tests.py`（26KB）　— v73 测试补丁：口径修正（prodBreakdown）+ smoke/e2e 守卫更新 + 新增 v73 断言节
+- `patch_v73_ui.py`（21KB）　— v73 UI 层补丁：将领界面头部 / 建筑弹窗去顶图+吸底 / 种田秘境界面 / 官府入口
 - `v26-j.py`（14KB）　— v26 批九：smoke 第 39 节 —— v26 五项需求的防回退断言
 
 ## probe/（探针（几何 / 界面 / 存档））

@@ -751,6 +751,29 @@
       var pr = GAME.buildProgress(bp[0], Number(bp[1]));
       bars[b].style.width = (pr ? pr.pct : 100) + '%';
     }
+    /* v73：种田秘境 —— 面板开着时倒计时每秒走、成熟即换出「收获」按钮
+       （与征收冷却同一套"弹窗不整页重绘、靠这里每秒同步"的口径）。 */
+    var fLeft = document.querySelectorAll('[data-farm-left]');
+    for (var f1 = 0; f1 < fLeft.length; f1++) {
+      var fi1 = Number(fLeft[f1].getAttribute('data-farm-left'));
+      var fs1 = GAME.farmPlotState(fi1);
+      fLeft[f1].textContent = fs1.state === 'ripe'
+        ? '✨ 已成熟'
+        : ('成熟还需 ' + U.durExact(fs1.left / GAME.timeScale()));
+    }
+    var fBars = document.querySelectorAll('[data-farm-bar]');
+    for (var f2 = 0; f2 < fBars.length; f2++) {
+      var fi2 = Number(fBars[f2].getAttribute('data-farm-bar'));
+      fBars[f2].style.width = GAME.farmPlotState(fi2).pct + '%';
+    }
+    if (document.querySelector('.farm-space')) {
+      var fr = GAME.farmOf(), ripeN = 0;
+      for (var f3 = 0; f3 < fr.plots.length; f3++) {
+        if (GAME.farmPlotState(f3).state === 'ripe') ripeN++;
+      }
+      var shownN = document.querySelectorAll('.farm-cell [data-action="farm-harvest"]').length;
+      if (ripeN !== shownN) ui.openFarm();
+    }
   };
 
   /* 底部信息流（原版分频道：系统/战报/任务/全部）
@@ -1481,6 +1504,7 @@
     var CN = {
       jewel: '珠宝（赏赐忠诚）', attr_buff: '符类', prod_buff: '生产', military_buff: '军事',
       boost: '加速', exp: '经验', stamina: '体力精力', perm: '永久丹药', mount_buff: '坐骑',
+      rank_up: '灵草（提升资质）',
     };
     var groups = {};
     Object.keys(items).forEach(function (id) {
@@ -1706,6 +1730,7 @@
       jewel: { zhenzhu: '🫧', shanhu: '🪸', liuli: '🔮', hupo: '🟠', manao: '🔴', shuijing: '💎', feicui: '🟢', yushi: '⚪', yemingzhu: '🌟' },
       blueprint: '📜', prod_buff: '🌾', military_buff: '🎖️', boost: '⚡',
       exp: '📗', stamina: '🧪', perm: '💊', mount_buff: '🐎', attr_buff: '🔯',
+      rank_up: '🌿',
     };
     if (it.type === 'jewel') return (m.jewel && m.jewel[it.id]) || '💠';
     return (m[it.type] && typeof m[it.type] === 'string') ? m[it.type] : '💠';
@@ -3269,17 +3294,12 @@
         '<div class="pbar" style="width:70%;margin:0 auto 10px;"><i data-build-bar="city:' + idx + '" style="width:' + (pr16 ? pr16.pct : 0) + '%"></i></div>' +
         '<div style="text-align:center;color:var(--text-dim);font-size:var(--fs-sub);">后台施工中，倒计时每秒更新，<b style="color:var(--gold-light);">不影响下方操作</b></div>';
       var fn = isUpgrade ? BLDG_FUNC[cell.build.id] : null;
-      /* v68（弹窗统一）：施工中弹窗与正常态**同构** ——
-         图标 +「名称 · Lv→Lv」+ 描述，危险操作进底栏（设计规范 §11）。 */
-      /* v72（老板报障）：「官府升级中点击 → 界面内容很大，出现下拉框和左右拉框」——
-         图标收进尺寸盒 .dlg-ico：位图 <img class="ico"> 没有容器尺寸规则时按**固有尺寸
-         1024px** 渲染，把弹窗（660×620）撑成 1036×1349，上下 + 左右滚动条同时出现。
-         位图 / 矢量 / emoji 三种回退都收进盒内（.dlg-ico .ico { 1em }）。 */
-      var icB = GAME.icons.forBuilding(isUpgrade ? cell.build.id : cell.pending.buildId)
-        || (isUpgrade ? (DATA.BUILDINGS[cell.build.id] || {}).icon : (pb2 || {}).icon) || '';
+      /* v68（弹窗统一）：施工中弹窗与正常态**同构** ——「名称 · Lv→Lv」+ 描述，
+         危险操作进底栏（设计规范 §11）。
+         v73（老板）：「建筑点开界面，顶部的图标也不要留，还是旧图标」——
+         顶部图标块整体撤除（城内 / 城外 × 正常 / 施工中 四处一起撤），
+         v72 的 .dlg-ico 尺寸盒随之退休 —— 没有图标，就没有 1024px 撑爆的土壤。 */
       ui.openModal(
-        '<div style="text-align:center;margin-bottom:8px;"><span class="dlg-ico" style="font-size:40px;">' +
-          icB + '</span></div>' +
         '<div class="gold-heading">' + (pb2 ? pb2.name : '建筑') +
           (isUpgrade ? (' · Lv' + (cell.pending.targetLevel - 1) + ' → Lv' + cell.pending.targetLevel) : '') + '</div>' +
         '<div style="color:var(--text-dim);font-size:var(--fs-body);text-align:center;margin-bottom:12px;">' +
@@ -3354,7 +3374,7 @@
           + (gotM ? '已达成 · ' : 'Lv' + DATA.MAX_BLEVEL + ' 达成 · ') + mast.txt + '</span></div>';
       }
       ui.openModal(
-        '<div style="text-align:center;margin-bottom:8px;"><span style="font-size:40px;">' + b.icon + '</span></div>' +
+        /* v73（老板）：顶部图标不留（旧 emoji 图标本就不如棋盘位图，索性撤下） */
         '<div class="gold-heading">' + b.name + ' · Lv' + cell.build.lvl + '</div>' +
         '<div style="color:var(--text-dim);font-size:var(--fs-body);text-align:center;margin-bottom:12px;">' + b.desc + '</div>' + extra +
         (dRef ? '<div style="color:var(--text-dim);font-size:var(--fs-sub);text-align:center;margin-top:10px;">拆毁可返还累计投入的 50%：' + GAME.costString(dRef) + '</div>' : '') +
@@ -3486,9 +3506,14 @@
         '<div class="op-zone"><div class="op-row">' +
           '<button class="btn gold" id="levy-btn" data-action="do-levy"' + (cd > 0 ? ' disabled' : '') + '>' +
             (cd > 0 ? ('冷却 ' + U.durExact(cd / GAME.timeScale())) : '立即征收') + '</button>' +
+          /* v73（老板需求 3）：种田秘境入口 —— 与征收同排（同为"本城可做的事"），
+             说明进 title。独立成 zone 时 1440×900 实测溢出 11px（队列有活时），
+             并排后省下 ~45px，面板在两种状态下都稳装。 */
+          '<button class="btn" data-action="open-farm"' +
+            ' title="种田秘境：个人田庄灵田种灵植，收高阶打造材料与资质灵草">🌾 种田秘境</button>' +
           '<span class="op-hint">' + (isSelf
-            ? '以民力换物资：一次约当本城不足一小时的产出，扣民心 ' + plan.hearts
-            : '取地方珍藏：特产是打造高阶装备的主料，扣民心 ' + plan.hearts) + '</span>' +
+            ? '以民力换物资（约一小时的产出）'
+            : '取地方珍藏（打造高阶装备的主料）') + '</span>' +
         '</div></div>';
     }
 
@@ -3701,9 +3726,7 @@
           '<div class="attr"><span class="k">完工后 Lv' + (e.lv + 1) + '</span><span class="v">' + ebP.prod[e.lv] + '/时</span></div>';
       }
       ui.openModal(
-        /* v72（老板报障）：同城内「升级中」—— 图标收进尺寸盒 .dlg-ico（位图防 1024px 固有尺寸撑爆） */
-        '<div style="text-align:center;margin-bottom:8px;"><span class="dlg-ico" style="font-size:40px;">' +
-          (GAME.icons.forExt(e.type) || (DATA.EXT_BUILDINGS[e.type] || {}).icon) + '</span></div>' +
+        /* v73（老板）：顶部图标不留（与城内两处同批撤除） */
         '<div class="gold-heading">' + pendName + (isUpE ? (' · Lv' + e.lv + ' → Lv' + (e.lv + 1)) : '') + '</div>' +
         '<div style="color:var(--text-dim);font-size:var(--fs-body);text-align:center;margin-bottom:12px;">' +
           (isUpE ? '🛠️ 升级中 · 后台施工，倒计时每秒更新（施工中不停产）' : '🏗️ 建造中 · 倒计时每秒更新') + '</div>' +
@@ -3725,7 +3748,7 @@
       var costStr = upCost ? GAME.costString(upCost) : '已满级';
       var eRef = GAME.demolishExtRefund(idx);
       ui.openModal(
-        '<div style="text-align:center;margin-bottom:8px;"><span style="font-size:40px;">' + eb.icon + '</span></div>' +
+        /* v73（老板）：顶部图标不留（与城内两处同批撤除） */
         '<div class="gold-heading">' + eb.name + ' · Lv' + e.lv + '</div>' +
         '<div class="attr"><span class="k">产量</span><span class="v good">' + prodH + '/时（' + (prodH / 3600 * GAME.timeScale() > 10 ? Math.round(prodH / 3600 * GAME.timeScale()) : (prodH / 3600 * GAME.timeScale()).toFixed(1)) + '/s）</span></div>' +
         (eRef ? '<div style="color:var(--text-dim);font-size:var(--fs-sub);text-align:center;margin-top:10px;">拆毁可返还累计投入的 50%：' + GAME.costString(eRef) + '</div>' : '') +
@@ -4344,18 +4367,16 @@
     var rows = [];
     for (var i = 0; i < total; i++) rows.push(ui.genRow(pool[i], i, cap, ui._genSel));
 
-    var heroN = pool.filter(function (g) { return g.hero; }).length;
     var scopeChips = '<span class="chips gen-scope">' + ui.GEN_SCOPES.map(function (p2) {
       return '<span class="chip' + (p2[0] === scope ? ' on' : '') +
         '" data-action="gen-scope" data-v="' + p2[0] + '">' + p2[1] + '</span>';
     }).join('') + '</span>';
-    var scopeNote = scope === 'city'
-      ? '（本城 ' + pool.length + ' / ' + cap + ' 席 · 全境 ' + s.generals.length + ' / '
-        + GAME.genSlotsTotal() + ' 席）'
-      : '（全境 ' + pool.length + ' / ' + cap + ' 席）';
+    /* v73（老板）：「将领的界面顶部，怎么有个头像加一个飞机啊？不要搞
+       （本城 2 / 11 席 · 全境 2 / 11 席）这些文字，直接将领加本城/全境切换按钮就行」
+       —— 标题只留「将领」二字 + 本城/全境 chips：🧑‍✈️（人+飞机）/ 席位文字 /
+       名将计数一律撤下（席位口径仍在 ⓘ 里说明，具体数字去招贤馆面板看）。 */
     return '<div class="ui-page">' +
-      '<div class="gold-heading">🧑‍✈️ 将领' + scopeNote +
-        (heroN ? '　名将 ' + heroN : '') + scopeChips +
+      '<div class="gold-heading">将领' + scopeChips +
         ui.help('左侧点姓名切换将领；右侧即其**全部**档案与装备栏（不再另开弹窗）\n' +
           '席位**按城算**：每座城的上限 = 该城招贤馆等级（+满级专精 2）；0 级 = 0 席\n' +
           '已超编不会清退现有将领，但**招募/调入**须先建或升级招贤馆\n' +
@@ -4790,7 +4811,7 @@
       var item = GAME.systems.itemInfo(itemId);
       if (!item) return '';
       var n = s.items[itemId];
-      var needGen = ['jewel', 'attr_buff', 'exp', 'stamina', 'perm', 'mount_buff'].indexOf(item.type) >= 0;
+      var needGen = ['jewel', 'attr_buff', 'exp', 'stamina', 'perm', 'mount_buff', 'rank_up'].indexOf(item.type) >= 0;
       /* 需要指定对象的宝物：直接用顶部选定的对象
          （按钮不再带 data-gen → main.js 回退到 ui._itemGen） */
       var btn = '<button class="btn sm" data-action="use-item" data-item="' + itemId + '">使用</button>';
@@ -6809,5 +6830,89 @@
       '</div>' +
       '</div>';
     return html;
+  };
+
+  /* ============================================================
+   * 种田秘境（v73 · 老板需求 3）：官府 → 另一个菜单
+   * ------------------------------------------------------------
+   * 「背景是个人种田空间」：整页暖土渐变（金色三元组低透明 → 四主题自适配），
+   * 六格灵田。空地 → 选种（即买即种）；生长中 → 进度 + 倒计时（每秒刷新）；
+   * 成熟 → 收获。面板只管展示与派发 data-action，逻辑全在 GAME.farm*（域层）。
+   * ============================================================ */
+  ui.openFarm = function () {
+    ui.openModal('<div class="ui-page farm-space">' + ui.farmHTML() + '</div>' +
+      '<div class="modal-foot"><button class="btn" data-action="close-modal">关闭</button></div>',
+      { size: 'xl' });
+  };
+  ui.farmHTML = function () {
+    var f = GAME.farmOf();
+    var ripeN = 0;
+    var cells = f.plots.map(function (p, i) {
+      var st = GAME.farmPlotState(i);
+      var body, act = '';
+      if (st.state === 'empty') {
+        body = '<div class="farm-ic">🟫</div><div class="farm-crop">空地</div>' +
+          '<div class="farm-sub">待播种</div>';
+        act = '<button class="btn sm gold" data-action="farm-seeds" data-idx="' + i + '">播种</button>';
+      } else if (st.state === 'growing') {
+        body = '<div class="farm-ic">' + st.crop.icon + '</div>' +
+          '<div class="farm-crop">' + st.crop.name + '</div>' +
+          '<div class="pbar"><i data-farm-bar="' + i + '" style="width:' + st.pct + '%;"></i></div>' +
+          '<div class="farm-sub" data-farm-left="' + i + '">成熟还需 ' +
+            U.durExact(st.left / GAME.timeScale()) + '</div>';
+      } else {
+        ripeN++;
+        body = '<div class="farm-ic">' + st.crop.icon + '</div>' +
+          '<div class="farm-crop">' + st.crop.name + '</div>' +
+          '<div class="farm-sub" style="color:var(--gold-light);">✨ 已成熟</div>';
+        act = '<button class="btn sm gold" data-action="farm-harvest" data-idx="' + i + '">收获</button>';
+      }
+      return '<div class="farm-cell' + (st.state === 'ripe' ? ' ripe' : '') + '">' + body + act + '</div>';
+    }).join('');
+    return '<div class="gold-heading">🌾 种田秘境</div>' +
+      '<div class="ui-sub" style="text-align:center;">个人田庄 · 六块灵田　种下即扣黄金，生长走游戏时间</div>' +
+      '<div class="farm-grid">' + cells + '</div>' +
+      (ripeN
+        ? '<div class="op-row" style="justify-content:flex-end;">' +
+            '<button class="btn gold" data-action="farm-harvest-all">一键收获（' + ripeN + '）</button></div>'
+        : '') +
+      '<div class="op-zone"><div class="op-zone-t">作物与去向</div>' +
+        '<div class="attr"><span class="k">材料作物</span><span class="v">3 阶打造主料（镔铁 / 檀木 / 犀革 / 蛟筋 / 羊脂玉 / 蜀锦），有机率出 4 阶</span></div>' +
+        '<div class="attr"><span class="k">灵草作物</span><span class="v">蕴灵草 / 洗髓芝 / 化龙参 / 天授果 —— 将领资质逐档提升</span></div>' +
+        '<div class="attr"><span class="k">去向</span><span class="v">材料 → 铁匠铺打造；灵草 → 宝物背包 → 选将领使用</span></div>' +
+      '</div>';
+  };
+  /* 选种弹窗：列出全部作物（6 材料 + 4 灵草），种下即扣黄金 */
+  ui.openFarmSeeds = function (idx) {
+    var city = GAME.currentCity();
+    var R = GAME.res(city);
+    var rows = (DATA.FARM.crops || []).map(function (c) {
+      var afford = (R.gold || 0) >= c.seed;
+      var yieldTxt;
+      if (c.herb) {
+        yieldTxt = '收 灵草 ×1（将领资质提升一档）';
+      } else {
+        var m3 = DATA.MATERIAL_BY_ID[c.mat] || {};
+        var m4 = DATA.MATERIAL_BY_ID[c.rare] || {};
+        yieldTxt = '收 ' + (m3.name || c.mat) + ' ×' + c.qty[0] + '~' + c.qty[1] +
+          '（' + Math.round((c.rareP || 0.15) * 100) + '% 出 ' + (m4.name || c.rare) + '）';
+      }
+      return '<div class="farm-seed">' +
+        '<div class="farm-ic">' + c.icon + '</div>' +
+        '<div class="farm-seed-main">' +
+          '<div class="farm-crop">' + c.name + '</div>' +
+          '<div class="farm-sub">' + U.escape(c.desc) + '</div>' +
+          '<div class="farm-sub">⏱ ' + c.hours + ' 游戏小时　' + yieldTxt + '</div>' +
+        '</div>' +
+        '<button class="btn sm' + (afford ? ' gold' : '') + '" data-action="farm-plant" data-idx="' + idx +
+          '" data-crop="' + c.id + '"' + (afford ? '' : ' disabled') + '>' +
+          (afford ? '种下 · ' + U.fmt(c.seed) + ' 金' : '金 ' + U.fmt(c.seed) + ' 不足') + '</button>' +
+      '</div>';
+    }).join('');
+    ui.openModal('<div class="gold-heading">🌱 第 ' + (idx + 1) + ' 块地 · 选种</div>' +
+      '<div class="ui-sub" style="text-align:center;">种下即扣黄金；成熟后回秘境面板收获。</div>' +
+      rows +
+      '<div class="modal-foot"><button class="btn" data-action="close-modal">关闭</button></div>',
+      { size: 'xl' });
   };
 })();

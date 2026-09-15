@@ -1499,11 +1499,12 @@
       return v / t * 100;
     }
     /* v66（老板）：「客栈天授级将领出现概率降低 10 倍，其他高资质降低 8、6 啥的」
-       → 天授 ÷10 · 名世 ÷8 · 英杰 ÷6，低资质不动。
+       v73（老板）：「限制高资质将领的直接获取，概率再降 10 倍」—— 累计口径：
+       天授 ÷100 · 名世 ÷80 · 英杰 ÷60（v66 的 ÷10/8/6 之后再各 ÷10），低资质两轮不动。
        断言写成"倍率"而不是写死数字，将来老板再调档位时只改 CUT 一处。 */
-    var CUT = { tian: 10, ming: 8, ying: 6 };
+    var CUT = { tian: 100, ming: 80, ying: 60 };
     var ORIG = { tian: 2, ming: 6, ying: 15 };
-    check('实测：高资质权重按 ÷10 / ÷8 / ÷6 下调', (function () {
+    check('实测：高资质权重按累计 ÷100 / ÷80 / ÷60 下调（v73 再降10倍）', (function () {
       var bad = [];
       Object.keys(CUT).forEach(function (k) {
         var r = null;
@@ -1518,8 +1519,9 @@
       DATA.GEN_RANKS.forEach(function (r) { w[r.id] = r.w; });
       return w.fan === 50 && w.liang === 27;
     })());
-    check('实测：客栈1级 天授概率降到 0.25%', Math.abs(pctOf(w1, 'tian') - 0.25) < 0.05,
-      pctOf(w1, 'tian').toFixed(2) + '%');
+    check('实测：客栈1级 天授概率 ≈0.026%（v66 时 0.25%，两轮共 ÷100）',
+      Math.abs(pctOf(w1, 'tian') - 0.026) < 0.01,
+      pctOf(w1, 'tian').toFixed(3) + '%');
     check('结构：权重下限不再吃掉这次下调（旧写法 Math.max(0.5, …) 会把 0.2 抬回 0.5）', (function () {
       var t = null;
       G.rankWeights(1).forEach(function (x) { if (x.rank.id === 'tian') t = x; });
@@ -3456,11 +3458,15 @@
   check('#10 黄金不受仓库上限（三条结算路径均排除 gold）',
     (stS16.match(/rk2? !== 'gold'|k !== 'gold'/g) || []).length >= 2);
   check('#10 实测：黄金可突破仓库上限', (function () {
+    /* v73：改为**直接压测上限豁免** —— 旧写法依赖"产金 > 俸禄"的净流入，
+       黄金闸门收紧后新城的净流入可正可负（税收 30/h vs 俸禄 40/h），
+       与"黄金是否受仓容约束"这个待测点无关。现在：先放到 cap 之上，跑两 tick，
+       只要没被夹回 cap 就是豁免生效。 */
     var st = F16;
     st.cities[0].cells.forEach(function (c) { if (c.build && c.build.id === 'cangku') c.build = null; });
     var cap = G.storeCap();
-    st.res.gold = cap;
-    for (var i = 0; i < 3; i++) G.tickOnce();
+    st.res.gold = cap + 500000;
+    G.tickOnce(); G.tickOnce();
     return st.res.gold > cap;
   })(), '仓库 ' + U.fmt(G.storeCap()));
   /* v29（需求 12）：打造面板改为「物品行」结构（左贴图 / 右：部位·品质·造价 / 下：打造） */
@@ -10205,13 +10211,16 @@ console.log('\n===== 47. v62 工匠作坊造箭塔 =====');
   })());
   check('结构：图标有固定高度（位图/矢量两条路径才不会把卡片撑成高低不一）',
     /height: 84px/.test(cssBlock(hS, '.troop-card.bldg-pick .ticon')));
-  /* v72（老板报障）：两处「升级中」弹窗的图标必须收进 .dlg-ico 尺寸盒 ——
-     位图缺容器规则会按固有尺寸 1024px 把弹窗撑出上下+左右滚动条（几何实测 1036×1349）。 */
-  check('v72：升级中弹窗图标有尺寸盒（.dlg-ico，位图不再按 1024px 固有尺寸撑爆弹窗）', (function () {
-    return (uS.match(/class="dlg-ico"/g) || []).length >= 2
-      && /class="dlg-ico" style="font-size:40px;"/.test(uS)
-      && /width: 1em/.test(cssBlock(hS, '.dlg-ico .ico'))
-      && /height: 1em/.test(cssBlock(hS, '.dlg-ico .ico'));
+  /* v72（老板报障「官府升级中点击被撑爆」）→ v73（老板「顶部的图标也不要留」）：
+     四处建筑弹窗（城内/城外 × 正常/施工中）的顶部图标块整体撤除，
+     .dlg-ico 尺寸盒随之退役 —— 没有图标，就没有 1024px 固有尺寸撑爆的土壤。 */
+  check('v73：建筑弹窗再无顶部图标块（v72 的 1024px 撑爆问题连根拔除）', (function () {
+    var bld = codeOf(uS, 'ui.openBuildModal = function');
+    var ext = codeOf(uS, 'ui.openExtModal = function');
+    return bld.indexOf('dlg-ico') < 0 && ext.indexOf('dlg-ico') < 0
+      && bld.indexOf('class="bldg-foot"') >= 0 && ext.indexOf('class="bldg-foot"') >= 0
+      && uS.indexOf('class="dlg-ico"') < 0
+      && stripComment(hS).indexOf('.dlg-ico') < 0;
   })());
   /* 这两条是**几何探针**抓出来的真问题（jsdom 量不出高度，所以只能在这里钉结构）：
      ① 图标从 emoji 换成 84px 位图后，卡片变高 → lg 档（860×600）正文超出 18px
@@ -11016,8 +11025,8 @@ console.log('\n===== 47. v62 工匠作坊造箭塔 =====');
 
   /* ---------- ③ 客栈高资质降幅 ---------- */
   console.log('  --- ③ 客栈高资质降幅 ---');
-  check('实测：天授 / 名世 / 英杰 权重按 ÷10 / ÷8 / ÷6 下调', (function () {
-    var CUT = { tian: 10, ming: 8, ying: 6 }, ORIG = { tian: 2, ming: 6, ying: 15 };
+  check('实测：天授 / 名世 / 英杰 权重按累计 ÷100 / ÷80 / ÷60 下调', (function () {
+    var CUT = { tian: 100, ming: 80, ying: 60 }, ORIG = { tian: 2, ming: 6, ying: 15 };
     var bad = [];
     DATA.GEN_RANKS.forEach(function (r) {
       if (!CUT[r.id]) return;
@@ -11027,10 +11036,10 @@ console.log('\n===== 47. v62 工匠作坊造箭塔 =====');
   })(), '天授 ' + DATA.GEN_RANKS[4].w + ' · 名世 ' + DATA.GEN_RANKS[3].w + ' · 英杰 ' + DATA.GEN_RANKS[2].w);
   check('实测：低资质（凡品 50 / 良材 27）不动', DATA.GEN_RANKS[0].w === 50 && DATA.GEN_RANKS[1].w === 27,
     DATA.GEN_RANKS[0].w + ' / ' + DATA.GEN_RANKS[1].w);
-  check('实测：客栈1级 天授概率 0.25%（旧版 2%）', (function () {
+  check('实测：客栈1级 天授概率 ≈0.026%（v66 为 0.25%）', (function () {
     var ws = G.rankWeights(1), t = 0, v = 0;
     ws.forEach(function (x) { t += x.w; if (x.rank.id === 'tian') v = x.w; });
-    return Math.abs(v / t * 100 - 0.25) < 0.05;
+    return Math.abs(v / t * 100 - 0.026) < 0.01;
   })());
   check('结构：权重下限按自身基准 5%（不是写死的 0.5 —— 那会把降幅吃掉）', (function () {
     var body = codeOf(stS66, 'GAME.rankWeights = function');
@@ -11773,9 +11782,9 @@ console.log('\n===== 47. v62 工匠作坊造箭塔 =====');
       /junying: \{ label: "[^"]+ · [^"]+"/.test(u56)
       && /gongjiangzuofang: \{ label: "[^"]+ · [^"]+"/.test(u56));
 
-    check('施工中弹窗与正常态同构（图标 + 名称 · Lv→Lv + 描述）',
-      /icons\.forBuilding\(isUpgrade \? cell\.build\.id : cell\.pending\.buildId\)/.test(u56)
-      && /升级中 · 后台施工/.test(u56));
+    check('施工中弹窗与正常态同构（名称 · Lv→Lv + 描述；v73 起不设顶部图标）',
+      /升级中 · 后台施工/.test(u56)
+      && !/icons\.forBuilding\(isUpgrade \? cell\.build\.id : cell\.pending\.buildId\)/.test(u56));
 
     check('e2e 依赖的文案保留（不影响下方操作 / 目标等级）',
       /不影响下方操作/.test(u56) && /→ Lv' \+ cell\.pending\.targetLevel/.test(u56));
@@ -12234,6 +12243,167 @@ console.log('\n===== 47. v62 工匠作坊造箭塔 =====');
 
     check('doCreate 把头像下标当 portraitSeed 传下去', /portraitSeed: avatarIdx/.test(u58));
   })();
+
+
+/* ============================================================
+ * ===== 59. v73：黄金闸门 / 资质再降10倍 / 种田秘境 / 将领头 / 建筑弹窗 =====
+ * ============================================================ */
+console.log('\n===== 59. v73 五条（黄金 · 资质 · 秘境 · 将领头 · 建筑弹窗） =====');
+(function () {
+  var rd = function (f) { return fsMod.readFileSync(pathMod.join(__dirname, 'js', f + '.js'), 'utf8'); };
+  var uS73 = stripComment(rd('ui'));
+  var stS73 = stripComment(rd('state'));
+  var dS73 = stripComment(rd('domain'));
+  var hS73 = fsMod.readFileSync(pathMod.join(__dirname, 'index.html'), 'utf8');
+  var hS73c = stripComment(hS73);
+
+  /* ---------- ① 黄金闸门 ---------- */
+  console.log('  --- ① 黄金获取限制（GOLD_GATE） ---');
+  check('结构：四个黄金出口全部挂到 DATA.GOLD_GATE（税收/俸禄/岁贡 + 征收系数）', (function () {
+    return /DATA\.GOLD_GATE\.tax/.test(stS73) && /DATA\.GOLD_GATE\.salary/.test(stS73)
+      && /DATA\.GOLD_GATE\.yield/.test(dS73)
+      && /LEVY_RES_RATE = \{ grain: 0\.30, wood: 0\.22, stone: 0\.16, iron: 0\.10, gold: 0\.02 \}/.test(dS73);
+  })(), 'GATE=' + JSON.stringify(DATA.GOLD_GATE));
+  check('实测：岁贡黄金按闸门打折（郡城 40000 → 12000）', (function () {
+    var tmp = G.makeCity({ id: 'tmpY73', name: '郡城', x: 5, y: 5, type: 'jun', res: {} });
+    var y = G.cityDailyYield(tmp);
+    return y && y.gold === Math.round(40000 * DATA.GOLD_GATE.yield);
+  })());
+  check('实测：黄金产量分解与 cityProdPerSec 同口径（瀑布式不重不漏）', (function () {
+    var st = G.newGame({ name: '税测', region: '司隶' });
+    var c = st.cities[0];
+    var p = G.cityProdPerSec(c);
+    var rows = G.prodBreakdown('gold', c);
+    var sum = 0;
+    rows.forEach(function (r) { sum += r.val; });
+    return Math.abs(sum - p.gold) <= Math.max(1e-6, p.gold * 1e-9);
+  })());
+  check('实测：黄金不受仓库上限夹制（放到 cap 之上，跑两 tick 不被夹回）', (function () {
+    var st = G.newGame({ name: '上限测试', region: '司隶' });
+    var cap = G.storeCap();
+    st.res.gold = cap + 500000;
+    G.tickOnce(); G.tickOnce();
+    return st.res.gold > cap;
+  })());
+
+  /* ---------- ② 资质再降 10 倍 ---------- */
+  console.log('  --- ② 高资质概率再降 10 倍 ---');
+  check('实测：英杰 / 名世 / 天授 权重再 ÷10（0.25 / 0.075 / 0.02）', (function () {
+    var w = {};
+    DATA.GEN_RANKS.forEach(function (r) { w[r.id] = r.w; });
+    return Math.abs(w.ying - 0.25) < 1e-9 && Math.abs(w.ming - 0.075) < 1e-9 && Math.abs(w.tian - 0.02) < 1e-9;
+  })(), '英杰 ' + DATA.GEN_RANK_BY_ID.ying.w + ' · 名世 ' + DATA.GEN_RANK_BY_ID.ming.w + ' · 天授 ' + DATA.GEN_RANK_BY_ID.tian.w);
+  check('结构：名将直取概率 0.30 → 0.03（组合拳的另一半）', /lv >= 5 && Math\.random\(\) < 0\.03/.test(dS73));
+  check('实测：客栈1级 天授概率 ≈0.026%（两轮共 ÷100）', (function () {
+    var ws = G.rankWeights(1), t = 0, v = 0;
+    ws.forEach(function (x) { t += x.w; if (x.rank.id === 'tian') v = x.w; });
+    return Math.abs(v / t * 100 - 0.026) < 0.01;
+  })());
+
+  /* ---------- ③ 种田秘境（完整链条逐环实测） ---------- */
+  console.log('  --- ③ 种田秘境（锻造材料 + 资质灵草 完整链条） ---');
+  check('数据：10 种作物（6 材料 + 4 灵草）全表化 · 6 块灵田', (function () {
+    var cs = (DATA.FARM && DATA.FARM.crops) || [];
+    var mats = cs.filter(function (c) { return !!c.mat; });
+    var herbs = cs.filter(function (c) { return !!c.herb; });
+    return cs.length === 10 && mats.length === 6 && herbs.length === 4 && DATA.FARM.plots === 6;
+  })());
+  check('数据：4 种灵草道具（rank_up 型，档位一一对应）', (function () {
+    var need = {
+      yunlingcao: ['fan', 'liang'], xisuizhi: ['liang', 'ying'],
+      hualongshen: ['ying', 'ming'], tianshouguo: ['ming', 'tian'],
+    };
+    var ok = true;
+    Object.keys(need).forEach(function (id) {
+      var it = null;
+      (DATA.ITEMS || []).forEach(function (x) { if (x.id === id) it = x; });
+      if (!it || it.type !== 'rank_up' || it.from !== need[id][0] || it.to !== need[id][1]) ok = false;
+    });
+    return ok;
+  })());
+  var st73 = G.newGame({ name: '秘境验收', region: '司隶' });
+  st73.res.gold = 1000000;
+  check('链条①：初始六块空地', G.farmOf().plots.length === 6 && G.farmPlotState(0).state === 'empty');
+  var gold73 = st73.res.gold;
+  var rp73 = G.farmPlant(0, 'tieying');
+  check('链条②：买种即种，扣黄金 5000', rp73.ok && st73.res.gold === gold73 - 5000, rp73.msg);
+  check('链条③：生长中不可收获（提示准确剩余）', (function () {
+    var h = G.farmHarvest(0);
+    return !h.ok && /成熟/.test(h.msg);
+  })());
+  G.tickFarm(6 * 3600);
+  check('链条④：推进 6 游戏小时即成熟', G.farmPlotState(0).state === 'ripe');
+  var b73 = st73.items['bintie'] || 0;
+  var rh73 = G.farmHarvest(0);
+  check('链条⑤：收获进背包（镔铁 ×2~4；地块清空）',
+    rh73.ok && (st73.items['bintie'] || 0) >= b73 + 2 && G.farmPlotState(0).state === 'empty', rh73.msg);
+  G.farmPlant(1, 'yunlingcao');
+  G.tickFarm(12 * 3600);
+  var rh73b = G.farmHarvest(1);
+  check('链条⑥：灵草可收获（蕴灵草 ×1）', rh73b.ok && (st73.items['yunlingcao'] || 0) >= 1, rh73b.msg);
+  var g73 = st73.generals[0];
+  g73.rank = 'fan';
+  var use73 = G.systems.useItem('yunlingcao', g73.id);
+  check('链条⑦：灵草把 凡品 → 良材（唯一出口 rankUpUse）', use73.ok && g73.rank === 'liang', use73.msg);
+  check('链条⑦b：已在该档时拒绝（良材再用蕴灵草 = 不重复生效）', (function () {
+    st73.items['yunlingcao'] = (st73.items['yunlingcao'] || 0) + 1;
+    var r = G.systems.useItem('yunlingcao', g73.id);
+    return !r.ok && /已是/.test(r.msg);
+  })());
+  check('链条⑦c：档位不符时拒绝并说明（英杰不能用蕴灵草）', (function () {
+    g73.rank = 'ying';
+    st73.items['yunlingcao'] = (st73.items['yunlingcao'] || 0) + 1;
+    var r = G.systems.useItem('yunlingcao', g73.id);
+    g73.rank = 'liang';
+    return !r.ok && /只可用于/.test(r.msg);
+  })());
+  check('链条⑧：一键收获（多处成熟一次收）', (function () {
+    st73.res.gold = 1000000;
+    G.farmPlant(2, 'yusuihua');
+    G.farmPlant(3, 'tanxiangshu');
+    G.tickFarm(6 * 3600);
+    var r = G.farmHarvestAll();
+    return r.ok && G.farmPlotState(2).state === 'empty' && G.farmPlotState(3).state === 'empty';
+  })());
+  check('链条⑨：离线补算同口径推进（tickFarm(secReal × ts)）', /GAME\.tickFarm\(secReal \* ts\)/.test(stS73));
+  check('界面：官府入口 + 面板/选种/收获动作齐备', (function () {
+    return /data-action="open-farm"/.test(uS73) && /data-action="farm-seeds"/.test(uS73)
+      && /data-action="farm-plant"/.test(uS73) && /data-action="farm-harvest"/.test(uS73)
+      && /ui\.openFarm = function/.test(uS73) && /ui\.openFarmSeeds = function/.test(uS73);
+  })());
+  check('界面：主循环秒刷新（倒计时 data-farm-left / 进度 data-farm-bar）',
+    /data-farm-left/.test(uS73) && /data-farm-bar/.test(uS73));
+  check('样式：农场底纹 / 地块 / 成熟高亮（.farm-space / .farm-grid / .farm-cell.ripe）',
+    /\.farm-space \{/.test(cssBlock(hS73, '.farm-space')) && /\.farm-grid \{/.test(cssBlock(hS73, '.farm-grid'))
+      && /\.farm-cell\.ripe \{/.test(cssBlock(hS73, '.farm-cell.ripe')));
+  check('背包：灵草有分类与图标（rank_up）',
+    /rank_up: '灵草（提升资质）'/.test(uS73) && /rank_up: '🌿'/.test(uS73));
+
+  /* ---------- ④ 将领界面头部 ---------- */
+  console.log('  --- ④ 将领界面头部（头像+飞机不要 / 席位文字不要） ---');
+  check('结构：标题只剩「将领」+ 本城/全境 chips（🧑‍✈️ / 席位文字 / 名将计数全撤）', (function () {
+    var body = codeOf(uS73, 'ui.generalsHTML = function');
+    return /class="gold-heading">将领' \+ scopeChips/.test(body)
+      && body.indexOf('scopeNote') < 0 && body.indexOf('名将 ') < 0 && body.indexOf('\u{1F9D1}') < 0;
+  })());
+
+  /* ---------- ⑤ 建筑弹窗 ---------- */
+  console.log('  --- ⑤ 建筑弹窗（去顶图 + 底栏吸底） ---');
+  check('结构：四处建筑弹窗顶部图标块已撤（城内×2 / 城外×2）', (function () {
+    var body = codeOf(uS73, 'ui.openBuildModal = function');
+    var ext = codeOf(uS73, 'ui.openExtModal = function');
+    return body.indexOf('dlg-ico') < 0 && ext.indexOf('dlg-ico') < 0
+      && body.indexOf('font-size:40px;"><span') < 0 && ext.indexOf('font-size:40px;"><span') < 0;
+  })());
+  check('结构：.dlg-ico 尺寸盒随图标一起退役（JS 与 CSS 双清零）',
+    uS73.indexOf('dlg-ico') < 0 && hS73c.indexOf('.dlg-ico') < 0);
+  check('样式：底栏吸底（sticky + 出血到面板边缘 + 钉面板下沿 + 不透明底）', (function () {
+    var b = cssBlock(hS73, '.bldg-foot {');
+    return /position: sticky/.test(b) && /bottom: -12px/.test(b)
+      && /margin: 12px -12px -12px/.test(b) && /padding: 8px 12px 22px/.test(b)
+      && /background: var\(--panel-bg\)/.test(b);
+  })(), cssBlock(hS73, '.bldg-foot {').replace(/\s+/g, ' ').slice(0, 84));
+})();
 
   console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');
   process.exit(FAIL ? 1 : 0);

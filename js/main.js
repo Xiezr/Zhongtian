@@ -47,6 +47,28 @@
       })(); break;
       case 'toggle-auto-research': GAME.state.settings.autoResearch = !GAME.state.settings.autoResearch; GAME.refreshView(); break;
       case 'open-guanfu': ui.openGuanfu(); break;
+      /* v73（老板需求 3）：种田秘境（官府 → 另外一个菜单）。
+         播种 / 收获后**留在秘境里刷新** —— 地块状态变化要立刻看得见。 */
+      case 'open-farm': ui.openFarm(); break;
+      case 'farm-seeds': ui.openFarmSeeds(Number(el.dataset.idx)); break;
+      case 'farm-plant': {
+        var fpr = GAME.farmPlant(Number(el.dataset.idx), el.dataset.crop);
+        ui.toast(fpr.msg);
+        if (fpr.ok) { GAME.refreshAll(); ui.openFarm(); }
+        break;
+      }
+      case 'farm-harvest': {
+        var fhr = GAME.farmHarvest(Number(el.dataset.idx));
+        ui.toast(fhr.msg);
+        if (fhr.ok) { GAME.refreshAll(); ui.openFarm(); }
+        break;
+      }
+      case 'farm-harvest-all': {
+        var far = GAME.farmHarvestAll();
+        ui.toast(far.msg);
+        if (far.ok) { GAME.refreshAll(); ui.openFarm(); }
+        break;
+      }
       /* v45（需求 3）：城池下拉框（由 change 监听转交到此，见下方事件委托） */
       case 'switch-city': ui.setCity(el.value); GAME.refreshAll(); break;
       /* v25：说明浮层 / 城池改名 / 任务详情 */

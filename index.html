@@ -1363,8 +1363,16 @@
      两端分离是为了避免误点 —— 拆毁不可逆，紧挨着移动很容易点错。 */
   /* v68（弹窗统一）：与 m-foot 同规格（实线）—— 改前是 dashed，四套页脚里唯一的例外。
      三格摆位保留 v28 的设计：危险（左）· 关闭（中，天然误点缓冲）· 管理（右）。 */
+  /* v73（老板）：「取消升级和关闭按钮要固定在底部，对不同建筑来说位置都要固定」——
+      **吸底**：正文再长，底栏也钉在弹窗下沿（sticky），六处建筑弹窗同一位置。
+      几何校准（真机实测）：左右负边距 = .inner-panel 的 padding(12px) → 出血到面板边缘；
+      `bottom: -12px` + 底部垫 22px → 钉在**面板下沿**（实测底沿差 13px → 1px，三档滚动全对齐）。 */
   .bldg-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px;
-    margin-top: 12px; padding-top: 8px; border-top: 1px solid var(--line-strong); }
+    position: sticky; bottom: -12px; z-index: 3;
+    margin: 12px -12px -12px; padding: 8px 12px 22px;
+    border-top: 1px solid var(--line-strong);
+    background: var(--panel-bg);
+    box-shadow: 0 -6px 12px rgba(var(--sh-rgb),.28); }
   .bldg-foot .btn.sm { font-size: var(--fs-cap); padding: 3px 9px; }
   .op-done { color: var(--text-dim); font-size: var(--fs-sub); }
   /* v68（弹窗统一）：升级行专用 —— 费用靠左、按钮靠右（同一行对齐） */
@@ -1808,11 +1816,35 @@
   .m-sec:first-child { margin-top: 0; }
   /* 弹窗内表格统一外框（避免贴边） */
   .m-body .tbl { margin-top: 4px; }
-  /* 弹窗身份图标尺寸盒（v72 · 老板报障「官府升级中点击 → 内容很大、下拉+左右拉框」）：
-     位图 <img class="ico"> 缺容器尺寸规则时按**固有尺寸 1024px** 渲染，把弹窗撑爆。
-     口径与 .tile-art/.ticon 一致：容器负责尺寸：1em 跟随 span 的内联图标字号（"仅剩图标"的裸像素用法，见 smoke 审计）。 */
-  .dlg-ico { display: inline-block; line-height: 1; }
-  .dlg-ico .ico { width: 1em; height: 1em; display: inline-block; vertical-align: middle; }
+  /* ============ 种田秘境（v73 · 老板需求 3） ============
+     「背景是个人种田空间」：整页暖土渐变（金色三元组低透明 → 四主题自动适配），
+     六格灵田；生长中是进度条 + 倒计时（每秒由 ui.updateProgress 刷新）。
+     （v72 的 .dlg-ico 尺寸盒随「顶部图标块撤除」一起退役 —— 没有图标，就没有 1024px。） */
+  .farm-space {
+    background:
+      radial-gradient(120% 70% at 50% 0%, rgba(var(--gold-rgb),.10), transparent 62%),
+      linear-gradient(180deg, rgba(var(--gold-rgb),.06), rgba(var(--sh-rgb),.10));
+    border: 1px solid var(--line-strong); border-radius: var(--r-lg);
+  }
+  .farm-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--sp-4); margin: var(--sp-4) 0; }
+  .farm-cell {
+    display: flex; flex-direction: column; gap: var(--sp-2); align-items: center; text-align: center;
+    background: linear-gradient(180deg, rgba(var(--gold-rgb),.10), rgba(var(--gold-rgb),.02));
+    border: 1px solid var(--line-strong); border-radius: var(--r-md);
+    padding: var(--sp-4) var(--sp-3);
+  }
+  .farm-cell .pbar { width: 100%; }
+  .farm-cell.ripe { border-color: var(--gold); box-shadow: 0 0 10px rgba(var(--gold-rgb),.30); }
+  .farm-ic { font-size: 2.2em; line-height: 1.3; }
+  .farm-crop { color: var(--gold-light); font-weight: 700; font-size: var(--fs-lead); }
+  .farm-sub { color: var(--text-dim); font-size: var(--fs-sub); }
+  .farm-seed {
+    display: flex; align-items: center; gap: var(--sp-4);
+    background: rgba(var(--sh-rgb),.22); border: 1px solid var(--line-strong);
+    border-radius: var(--r-md); padding: var(--sp-4); margin-bottom: var(--sp-3);
+  }
+  .farm-seed .farm-ic { font-size: 1.6em; }
+  .farm-seed-main { flex: 1; min-width: 0; }
 
   /* ============ 提示条 toast ============ */
   .toast {

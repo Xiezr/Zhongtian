@@ -1122,7 +1122,11 @@
    * 高资质出现概率低，但属性区间与成长都更夸张 —— 拉开档次差异 */
   function makeCandidate(lv, owned) {
     var isBeauty = Math.random() < 0.30;
-    if (lv >= 5 && Math.random() < 0.30) {
+    /* v73（老板「限制高资质将领的直接获取，概率再降 10 倍」）：名将直取
+       0.30 → 0.03。池内史实名将按 HERO_RANK_LINE 皆是英杰以上的高资质，
+       与 DATA.GEN_RANKS 权重再 ÷10 是一套组合拳 —— 高资质将领从此以
+       「秘境灵草养成」为主路（见 DATA.FARM）。 */
+    if (lv >= 5 && Math.random() < 0.03) {
       var pool = ((isBeauty ? DATA.BEAUTIES : DATA.HEROES) || []).filter(function (h) { return !owned[h.name]; });
       if (pool.length) {
         var h = pick(pool);
@@ -1387,7 +1391,9 @@
     var seat = sp ? GAME.hasStateSeat(GAME.stateOfCity(city)) : false;
     var mul = seat ? (DATA.STATE_SEAT_BONUS || 1) : 1;
     return {
-      gold: y.gold, rep: y.rep,
+      /* v73（老板「限制黄金的获取」）：岁贡黄金走 DATA.GOLD_GATE.yield ——
+         展示（官府面板）与结算（settleDailyYield）共用这一出口，不会两本账。 */
+      gold: Math.round(y.gold * (DATA.GOLD_GATE.yield || 1)), rep: y.rep,
       mat: sp ? sp.mat : null,
       qty: sp ? [Math.round(y.matQty[0] * mul), Math.round(y.matQty[1] * mul)] : null,
       seat: seat,
@@ -2439,7 +2445,8 @@
      系数之和刻意压到 0.84 —— 一次征收略少于本城 1 小时的产出，
      使它只是**补充渠道**。旧版基数 ×2 只产金，等于每 30 现实秒白送三十万金，
      把税收与州郡岁贡两条线全压掉了。 */
-  DATA.LEVY_RES_RATE = { grain: 0.30, wood: 0.22, stone: 0.16, iron: 0.10, gold: 0.06 };
+  /* v73（老板「限制黄金的获取」）：征收黄金份额 0.06 → 0.02（与 DATA.GOLD_GATE 同口径） */
+  DATA.LEVY_RES_RATE = { grain: 0.30, wood: 0.22, stone: 0.16, iron: 0.10, gold: 0.02 };
   /* 名城特产按城档位给量（一件三/四阶材料价值上万黄金，故量小） */
   DATA.LEVY_MAT_QTY = { capital: 5, zhou: 3, jun: 2, county: 1 };
   /* 民心的代价：普通城池取民力，名城取的是地方珍藏，代价更重 */
@@ -3764,4 +3771,107 @@
   };
   /* 训练进度（城） */
   /* 科技进度 */
+
+  /* ============================================================
+   * 种田秘境（v73 · 老板需求 3）：个人田庄 —— 种灵植，收高阶材料与资质灵草
+   * ------------------------------------------------------------
+   * 链条：黄金买种 → 灵田播种 → 游戏时间生长 → 收获
+   *      ├─ 材料作物 → 3 阶主产（有机率出 4 阶）→ 铁匠铺高阶打造
+   *      └─ 灵草作物 → 蕴灵草 / 洗髓芝 / 化龙参 / 天授果 → 资质逐档提升
+   * 数据全在 DATA.FARM（加作物 = 加一行）；生长吃**游戏时间**：
+   * 与建造 / 研究同一把尺 —— 在线主循环与离线补算各推一次（tickFarm），
+   * 调时间倍率、挂机离线都有效，不需要另起一套计时。
+   * 存档：s.farm 懒初始化（旧档缺失即补），不动 SAVE_VERSION。
+   * ============================================================ */
+  GAME.farmOf = function () {
+    var s = GAME.state;
+    if (!s.farm) s.farm = { plots: [] };
+    var n = (DATA.FARM && DATA.FARM.plots) || 6;
+    while (s.farm.plots.length < n) s.farm.plots.push(null);
+    return s.farm;
+  };
+  GAME.farmCrop = function (id) { return (DATA.FARM_CROP_BY_ID || {})[id] || null; };
+  /* 单块地状态：empty / growing / ripe（left = 剩余游戏秒） */
+  GAME.farmPlotState = function (idx) {
+    var f = GAME.farmOf(), p = f.plots[idx];
+    if (!p) return { state: 'empty' };
+    var total = p.totalTime || 0;
+    var left = Math.max(0, total - (p.elapsed || 0));
+    return {
+      state: left <= 0 ? 'ripe' : 'growing',
+      crop: GAME.farmCrop(p.crop), left: left,
+      pct: total ? Math.min(100, Math.floor((p.elapsed || 0) / total * 100)) : 100,
+    };
+  };
+  /* 播种 = 买种（黄金，从当前城扣）+ 落地。即买即种，不做种子库存 */
+  GAME.farmPlant = function (idx, cropId) {
+    var f = GAME.farmOf();
+    var c = GAME.farmCrop(cropId);
+    if (!c) return { ok: false, msg: '未知作物' };
+    if (idx < 0 || idx >= f.plots.length) return { ok: false, msg: '地块不存在' };
+    if (f.plots[idx]) return { ok: false, msg: '这块地还占着' };
+    var city = GAME.currentCity();
+    if (!city) return { ok: false, msg: '无城池' };
+    var R = GAME.res(city);
+    if ((R.gold || 0) < c.seed) return { ok: false, msg: '黄金不足（种子需 ' + U.fmt(c.seed) + '）' };
+    R.gold -= c.seed;
+    f.plots[idx] = { crop: cropId, elapsed: 0, totalTime: Math.round(c.hours * 3600) };
+    GAME.log('🌱 秘境播种：' + c.name + '（-' + U.fmt(c.seed) + ' 金）');
+    return { ok: true, msg: '播下 ' + c.name + '（-' + U.fmt(c.seed) + ' 金）' };
+  };
+  /* 生长推进（在线主循环 / 离线补算共用；secGame = 游戏秒） */
+  GAME.tickFarm = function (secGame) {
+    var s = GAME.state;
+    if (!s || !s.farm || !s.farm.plots) return;
+    s.farm.plots.forEach(function (p) {
+      if (p && p.elapsed < p.totalTime) p.elapsed = Math.min(p.totalTime, p.elapsed + secGame);
+    });
+  };
+  /* 材料 / 道具名（材料在 MATERIAL_BY_ID、灵草在 ITEMS，两表各查一次） */
+  function farmItemName(id) {
+    var m = DATA.MATERIAL_BY_ID[id];
+    if (m) return m.name;
+    var nm = id;
+    (DATA.ITEMS || []).forEach(function (x) { if (x.id === id) nm = x.name; });
+    return nm;
+  }
+  /* 收获：成熟才给 —— 材料作物 = 3 阶主产 ×区间 + 4 阶副产（几率）；灵草作物 = 1 株 */
+  GAME.farmHarvest = function (idx) {
+    var s = GAME.state, f = GAME.farmOf();
+    var st = GAME.farmPlotState(idx);
+    if (st.state === 'empty') return { ok: false, msg: '这块地空着' };
+    if (st.state !== 'ripe') {
+      return { ok: false, msg: st.crop.name + ' 还差 ' + U.durExact(st.left / GAME.timeScale()) + ' 成熟' };
+    }
+    var c = st.crop, items = s.items = s.items || {};
+    var got = [];
+    if (c.herb) {
+      items[c.herb] = (items[c.herb] || 0) + 1;
+      got.push(farmItemName(c.herb) + ' ×1');
+    } else {
+      var q = U.randInt(Math.random, c.qty[0], c.qty[1]);
+      items[c.mat] = (items[c.mat] || 0) + q;
+      got.push(farmItemName(c.mat) + ' ×' + q);
+      if (c.rare && Math.random() < (c.rareP || 0.15)) {
+        items[c.rare] = (items[c.rare] || 0) + 1;
+        got.push(farmItemName(c.rare) + ' ×1');
+      }
+    }
+    f.plots[idx] = null;
+    var txt = got.join('、');
+    GAME.log('🌾 秘境收获：' + c.name + ' → ' + txt);
+    return { ok: true, msg: '收获 ' + txt };
+  };
+  /* 一键收获：把成熟的全收了（面板里的快捷按钮） */
+  GAME.farmHarvestAll = function () {
+    var f = GAME.farmOf(), got = [], any = false;
+    for (var i = 0; i < f.plots.length; i++) {
+      if (GAME.farmPlotState(i).state !== 'ripe') continue;
+      var r = GAME.farmHarvest(i);
+      if (r.ok) { any = true; got.push(r.msg.replace(/^收获 /, '')); }
+    }
+    if (!any) return { ok: false, msg: '没有成熟的作物' };
+    return { ok: true, msg: '收获 ' + got.join('、') };
+  };
+
 })();

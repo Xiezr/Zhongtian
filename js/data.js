@@ -797,6 +797,13 @@
     { id: 'lingzhi_yulu', name: '灵芝玉露', type: 'perm', attr: 'nz', amount: 1, price: 200, desc: '内政永久+1（每将上限50）' },
     { id: 'shedan_shenwan', name: '蛇胆神丸', type: 'perm', attr: 'zm', amount: 1, price: 200, desc: '智谋永久+1（每将上限50）' },
     { id: 'hugu_lingdan', name: '虎骨灵丹', type: 'perm', attr: 'yw', amount: 1, price: 200, desc: '勇武永久+1（每将上限50）' },
+    /* 灵草（v73 · 种田秘境产）：把将领资质**升一档**。灵草与档位一一对应
+       （from → to），price 0 = 不进货架 —— 唯一来源是秘境灵田，
+       高资质将领因此从"客栈直取"转向"养成"。 */
+    { id: 'yunlingcao', name: '蕴灵草', type: 'rank_up', from: 'fan', to: 'liang', price: 0, desc: '将领资质：凡品 → 良材（种田秘境产）' },
+    { id: 'xisuizhi', name: '洗髓芝', type: 'rank_up', from: 'liang', to: 'ying', price: 0, desc: '将领资质：良材 → 英杰（种田秘境产）' },
+    { id: 'hualongshen', name: '化龙参', type: 'rank_up', from: 'ying', to: 'ming', price: 0, desc: '将领资质：英杰 → 名世（种田秘境产）' },
+    { id: 'tianshouguo', name: '天授果', type: 'rank_up', from: 'ming', to: 'tian', price: 0, desc: '将领资质：名世 → 天授（种田秘境产）' },
     /* 坐骑 */
     { id: 'mabian', name: '马鞭', type: 'mount_buff', amount: 2, price: 20, desc: '将领速度+2（1h，需蓝坐骑）' },
     { id: 'hanxue_mabian', name: '汗血马鞭', type: 'mount_buff', amount: 5, price: 80, desc: '将领速度+5（1h，需紫坐骑）' },
@@ -1168,19 +1175,23 @@
       desc: '寻常之才，可为县吏。等级上限 60。' },
     { id: 'liang', name: '良材', color: '#5fbf6a', star: 2, w: 27, wg: 0.00, base: [46, 62], grow: 2, price: 1.8, lvCap: 100,
       desc: '可当一郡之任。等级上限 100。' },
-    /* v66（老板）：「客栈天授级将领出现概率降低 10 倍，其他高资质降低 8、6 啥的」——
-       高资质的 `w` 整体下调，**低资质（凡品/良材）不动**：
-         天授 2 → 0.2（÷10）· 名世 6 → 0.75（÷8）· 英杰 15 → 2.5（÷6）
+    /* v66（老板）：「客栈天授级将领出现概率降低 10 倍，其他高资质降低 8、6 啥的」
+       v73（老板）：「限制高资质将领的直接获取，概率再降 10 倍」——
+       高资质的 `w` 在 v66 基础上**再 ÷10**（低资质凡品 / 良材两轮都没动）：
+         天授 2 → 0.2 → 0.02（累计 ÷100）· 名世 6 → 0.75 → 0.075（累计 ÷80）
+         · 英杰 15 → 2.5 → 0.25（累计 ÷60）
        客栈 1 级时的占比因此变成：
-         天授 0.25% / 名世 0.93% / 英杰 3.11% / 良材 33.6% / 凡品 62.2%
+         天授 0.026% / 名世 0.10% / 英杰 0.32% / 良材 34.9% / 凡品 64.6%
+       与「名将直取 0.30 → 0.03」（domain.js makeCandidate）是一套组合拳：
+       高资质将领从此以**种田秘境灵草养成**为主路（见 DATA.FARM）。
        ⚠️ 光改 `w` 是**无效的** —— `GAME.rankWeights` 里原有一道 `Math.max(0.5, …)`
        下限，会把 0.2 直接抬回 0.5（降幅只剩 2.5 倍）。v66 把下限改成**按自身基准的 5%**
-       （见 state.js），既拦住负权重、又不吃掉这次下调。 */
-    { id: 'ying', name: '英杰', color: '#4a9be0', star: 3, w: 2.5, wg: 0.09, base: [64, 84], grow: 3, price: 3.2, lvCap: 140,
+       （见 state.js），既拦住负权重、又不吃掉这两轮下调。 */
+    { id: 'ying', name: '英杰', color: '#4a9be0', star: 3, w: 0.25, wg: 0.09, base: [64, 84], grow: 3, price: 3.2, lvCap: 140,
       desc: '一方之良将，千军易得一将难求。等级上限 140。' },
-    { id: 'ming', name: '名世', color: '#b06fd8', star: 4, w: 0.75, wg: 0.17, base: [86, 106], grow: 5, price: 7.0, lvCap: 180,
+    { id: 'ming', name: '名世', color: '#b06fd8', star: 4, w: 0.075, wg: 0.17, base: [86, 106], grow: 5, price: 7.0, lvCap: 180,
       desc: '当世罕有，可镇一方。等级上限 180。' },
-    { id: 'tian', name: '天授', color: '#e0a83c', star: 5, w: 0.2, wg: 0.28, base: [108, 140], grow: 8, price: 16.0, lvCap: 240,
+    { id: 'tian', name: '天授', color: '#e0a83c', star: 5, w: 0.02, wg: 0.28, base: [108, 140], grow: 8, price: 16.0, lvCap: 240,
       desc: '天授之资，百年一出。等级上限 240。' },
   ];
 
@@ -1571,6 +1582,53 @@
   DATA.STATE_SEAT_BONUS = 1.5;
   /* 离线补齐的现实日上限（防止长期离线后一次性涌入过多材料） */
   DATA.YIELD_MAX_DAYS = 30;
+
+  /* ============================================================
+   * 黄金闸门（v73 · 老板需求 1「限制黄金的获取」）
+   * ------------------------------------------------------------
+   * 黄金有四个进项：税收（每秒）· 爵位俸禄（每秒）· 州郡岁贡（每现实日）·
+   * 官府征收（冷却 1 游戏小时，见 domain.js LEVY_RES_RATE）。
+   * 三个进项各挂一处系数，**全部只读这张表** —— 将来再调档（更松 / 更狠）
+   * 只改这里一行的数字，不碰业务代码。
+   * v73 口径：全线收紧到三成；征收黄金份额同步 0.06 → 0.02。
+   * ============================================================ */
+  DATA.GOLD_GATE = { tax: 0.3, salary: 0.3, yield: 0.3 };
+
+  /* ============================================================
+   * 种田秘境（v73 · 老板需求 3）
+   * ------------------------------------------------------------
+   * 老板原话：「官府可进入另外一个菜单，种田秘境（背景是个人种田空间，
+   * 可种植装备打造、将领提升资质的植物，设计一个完整链条，
+   * 将这个作为高级别材料的获取途径）」
+   *
+   * 完整链条（一环不缺）：
+   *   黄金 → 秘境买种子 → 灵田播种 → 游戏时间生长 → 收获
+   *        ├─ 材料作物 → 3 阶主产（有机率出 4 阶）→ 铁匠铺打造高阶装备
+   *        └─ 灵草作物 → 蕴灵草 / 洗髓芝 / 化龙参 / 天授果 → 将领资质逐档提升
+   *
+   * 数值全表化（加作物 = 加一行；调价 / 调时长只改本表）：
+   *   · hours = **游戏小时**（吃时间倍率，与建造 / 研究同一把尺）
+   *   · seed  = 种子价（黄金）—— 黄金因此有了新用途（与需求 1 一拍即合）
+   *   · mat   = 3 阶主产材料 + 产出区间 qty；rare / rareP = 4 阶副产与几率
+   *   · herb  = 灵草作物：收 1 株对应灵草（道具 id 与作物 id 同名）
+   * ============================================================ */
+  DATA.FARM = {
+    plots: 6,
+    crops: [
+      { id: 'tieying',     name: '铁英树', icon: '🌳', hours: 6,  seed: 5000,   mat: 'bintie',  rare: 'yuntie',     rareP: 0.15, qty: [2, 4], desc: '根须吸铁成英，可炼镔铁；偶结陨铁' },
+      { id: 'tanxiangshu', name: '檀香树', icon: '🌲', hours: 6,  seed: 5000,   mat: 'tanmu',   rare: 'jianmu',     rareP: 0.15, qty: [2, 4], desc: '香气沉郁、坚重近铁，可伐檀木' },
+      { id: 'xipiteng',    name: '犀皮藤', icon: '🪴', hours: 6,  seed: 5000,   mat: 'xige',    rare: 'jiaoge',     rareP: 0.15, qty: [2, 4], desc: '藤皮七层如犀甲，可制犀革' },
+      { id: 'jiaojinteng', name: '蛟筋藤', icon: '🌿', hours: 6,  seed: 5000,   mat: 'jiaojin', rare: 'longjin',    rareP: 0.15, qty: [2, 4], desc: '藤筋韧可曳石，绞之为索' },
+      { id: 'yusuihua',    name: '玉髓花', icon: '🌸', hours: 6,  seed: 5000,   mat: 'yangzhi', rare: 'kunshan',    rareP: 0.15, qty: [2, 4], desc: '花凝玉髓，温润如脂' },
+      { id: 'yunjinsang',  name: '云锦桑', icon: '🍃', hours: 6,  seed: 5000,   mat: 'shujin',  rare: 'yunjin',     rareP: 0.15, qty: [2, 4], desc: '桑叶吐丝成锦，日光流转' },
+      { id: 'yunlingcao',  name: '蕴灵草', icon: '🌱', hours: 12, seed: 20000,  herb: 'yunlingcao',  desc: '灵气温养，助 凡品 将领洗出 良材 之资' },
+      { id: 'xisuizhi',    name: '洗髓芝', icon: '🍄', hours: 24, seed: 60000,  herb: 'xisuizhi',    desc: '洗髓伐骨，助 良材 将领跃入 英杰 之列' },
+      { id: 'hualongshen', name: '化龙参', icon: '🪷', hours: 36, seed: 150000, herb: 'hualongshen', desc: '鱼跃龙门之参，助 英杰 将领跻身 名世' },
+      { id: 'tianshouguo', name: '天授果', icon: '🍑', hours: 48, seed: 400000, herb: 'tianshouguo', desc: '百年一熟的天授之果，名世 亦可问鼎 天授' },
+    ],
+  };
+  DATA.FARM_CROP_BY_ID = {};
+  DATA.FARM.crops.forEach(function (c) { DATA.FARM_CROP_BY_ID[c.id] = c; });
 
   /* ============================================================
    * 名城专有（v60 · 需求 5）

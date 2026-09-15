@@ -575,6 +575,28 @@
     return rk;
   };
 
+  /* 资质灵草（v73 · 种田秘境产物）：把将领的资质**升一档**。
+     灵草与档位**一一对应**（凡→良 蕴灵草 / 良→英 洗髓芝 / 英→名 化龙参 /
+     名→天 天授果，见 DATA.ITEMS 的 rank_up 型）。只改 rank 字段 ——
+     等级上限与每级成长都走 rankOf，改完自动生效（不需要动等级）。 */
+  GAME.rankUpUse = function (g, item) {
+    var cur = GAME.rankOf(g);
+    if (cur.id === item.to) return { ok: false, msg: g.name + ' 已是「' + cur.name + '」，无需此物' };
+    if (cur.id !== item.from) {
+      var fr = DATA.GEN_RANK_BY_ID[item.from] || {};
+      return {
+        ok: false,
+        msg: '「' + item.name + '」只可用于「' + (fr.name || '?') + '」将领（' + g.name + ' 现为「' + cur.name + '」）',
+      };
+    }
+    g.rank = item.to;
+    var nr = DATA.GEN_RANK_BY_ID[item.to] || {};
+    return {
+      ok: true,
+      msg: '🧬 ' + g.name + ' 资质提升：' + cur.name + ' → ' + (nr.name || item.to) + '（' + item.name + '）',
+    };
+  };
+
   /* 资质随客栈等级的出现权重（高级客栈更容易出高资质） */
   GAME.rankWeights = function (innLv) {
     var lv = Math.max(1, innLv || 1);
@@ -1204,6 +1226,8 @@
     s.queues.build.forEach(advance);
     /* v24（需求 8）：募兵队列按军营分组推进（与在线主循环共用同一实现） */
     GAME.advanceTrainQueues(secReal * ts);
+    /* v73：秘境作物按同一段离线时长推进（挂机回来地里的东西也该熟了） */
+    if (GAME.tickFarm) GAME.tickFarm(secReal * ts);
     s.queues.tech.forEach(advance);
     var i;
     for (i = s.queues.build.length - 1; i >= 0; i--) {
@@ -1907,6 +1931,8 @@
     /* 9e) 野地：等级衰减（被占每现实日 -1 级）+ 采集计时推进 */
     if (GAME.decayWilds) GAME.decayWilds();
     if (GAME.tickGathers) GAME.tickGathers(ts);
+    /* v73：种田秘境生长 —— 与建造队列同口径（dtReal × ts） */
+    if (GAME.tickFarm) GAME.tickFarm(dtReal * ts);
 
     /* 9f) 行军队列推进（抵达即结算 —— 见 battle.js GAME.march） */
     if (GAME.march && GAME.march.tick) GAME.march.tick();
@@ -2000,7 +2026,9 @@
       out[r2] = base[r2] * m * perkProd / 3600 * ts;
     }
     var popCap = GAME.maxPopOf(city);
-    var taxGold = popCap * (s.hearts || 100) / 100 * (s.tax || 0) * (1 + GAME.perkNum(city, 'taxPct'));
+    /* v73（老板「限制黄金的获取」）：税收按 DATA.GOLD_GATE.tax 收紧 */
+    var taxGold = popCap * (s.hearts || 100) / 100 * (s.tax || 0) * (1 + GAME.perkNum(city, 'taxPct'))
+      * (DATA.GOLD_GATE.tax || 1);
     var gm = 1;
     var itemM2 = GAME.prodBuffMult();
     if (itemM2.gold) gm = 1 + itemM2.gold;
@@ -2026,7 +2054,8 @@
       var gm = 1, itemM2 = GAME.prodBuffMult();
       if (itemM2.gold) gm = 1 + itemM2.gold;
       if (GAME.story) gm *= GAME.story.prodMult('gold');
-      out.gold += salary * gm / 3600 * GAME.timeScale();
+      /* v73（老板「限制黄金的获取」）：俸禄同口径收紧（DATA.GOLD_GATE.salary） */
+      out.gold += salary * gm / 3600 * GAME.timeScale() * (DATA.GOLD_GATE.salary || 1);
     }
     return out;
   };
@@ -2040,8 +2069,10 @@
       var s = GAME.state;
       var popCap = city ? GAME.maxPopOf(city)
         : s.cities.reduce(function (a, c) { return a + GAME.maxPopOf(c); }, 0);
-      var tax = popCap * (s.hearts || 100) / 100 * (s.tax || 0);
-      var salary = (DATA.RANK[s.rank || 0].salary || 0);
+      /* v73：黄金闸门与 cityProdPerSec / productionPerSec 同口径 ——
+         否则"分解各项之和 = 总产量"对不上（显示与结算是两本账，本项目的老病）。 */
+      var tax = popCap * (s.hearts || 100) / 100 * (s.tax || 0) * (DATA.GOLD_GATE.tax || 1);
+      var salary = (DATA.RANK[s.rank || 0].salary || 0) * (DATA.GOLD_GATE.salary || 1);
       rows.push({ name: '税收（人口' + U.numText(popCap, 0) + '×民心' + Math.round(s.hearts || 100) + '%×税率' + Math.round((s.tax || 0) * 100) + '%）', val: tax / 3600 * ts });
       if (salary) rows.push({ name: '爵位俸禄', val: salary / 3600 * ts });
       var itemM = GAME.prodBuffMult();

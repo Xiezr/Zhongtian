@@ -368,6 +368,13 @@
       g5.perm[item.attr] = (g5.perm[item.attr] || 0) + 1;
       g5[item.attr] += 1;
       ok = true; msg = g5.name + ' ' + { tong: '统率', nz: '内政', yw: '勇武', zm: '智谋' }[item.attr] + ' 永久+1';
+    } else if (item.type === 'rank_up') {
+      /* v73（种田秘境）：资质灵草 —— 校验与升档走唯一出口 GAME.rankUpUse */
+      var g7 = S._findGen(targetGenId);
+      if (!g7) return { ok: false, msg: '请选择将领' };
+      var ru7 = GAME.rankUpUse(g7, item);
+      if (!ru7.ok) return ru7;
+      ok = true; msg = ru7.msg;
     } else if (item.type === 'mount_buff') {
       var g6 = S._findGen(targetGenId);
       if (!g6) return { ok: false, msg: '请选择将领' };

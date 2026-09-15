@@ -1841,10 +1841,11 @@ async function runTests(dom, URL) {
     check('升级中面板保留功能入口（军营→募兵）',
       mh24.indexOf('募兵') >= 0 && !!document.querySelector('#modal-root [data-action="open-troops"]'));
     check('升级中面板可取消升级', !!document.querySelector('#modal-root [data-action="cancel-build"]'));
-    /* v72（老板报障「官府升级中点击被撑爆」）：图标必须带尺寸盒（.dlg-ico .ico）——
-       1024px 位图溢出在 jsdom 量不出，靠这条钉结构 + 真浏览器几何脚本兜底。 */
-    check('v72：升级中面板图标有尺寸盒（.dlg-ico .ico）',
-      !!document.querySelector('#modal-root .dlg-ico .ico'));
+    /* v72（老板报障「官府升级中点击被撑爆」）→ v73（老板「顶部的图标也不要留」）：
+       顶部图标块整体撤除 —— 连根拔除 1024px 位图撑爆的土壤，同时清掉旧 emoji 观感。 */
+    check('v73：升级中面板不再有顶部图标（.dlg-ico 连根退役）',
+      !document.querySelector('#modal-root .dlg-ico')
+      && mh24.indexOf('class="dlg-ico"') < 0);
     check('升级中面板标注「不影响下方操作」', mh24.indexOf('不影响下方操作') >= 0);
     /* 真的点一下功能按钮 → 应打开募兵面板（证明不是装饰） */
     const fnBtn24 = document.querySelector('#modal-root [data-action="open-troops"]');
@@ -3376,14 +3377,28 @@ async function runTests(dom, URL) {
   check('本城席位与全境合计**必须能区分**（测试夹具自身的前提）',
     G.genSlotsTotal() > G.genSlotsOf(city64),
     '本城 ' + G.genSlotsOf(city64) + ' 席 / 全境 ' + G.genSlotsTotal() + ' 席');
-  check('将领页本城栏写「本城 N / M 席」，M = **本城**招贤馆席位数', (function () {
-    const m = /本城 (\d+) \/ (\d+) 席/.exec(genHtml64);
-    return !!m && Number(m[2]) === G.genSlotsOf(city64)
-      && Number(m[1]) === G.generalsIn(city64).length;
-  })(), (genHtml64.match(/本城 \d+ \/ \d+ 席[^）]*/) || ['未找到'])[0]);
-  check('将领页同时给出全境合计（各城席位数之和，不是本城那个数）',
-    genHtml64.indexOf('全境 ' + G.state.generals.length + ' / ' + G.genSlotsTotal() + ' 席') >= 0,
-    '期望 全境 ' + G.state.generals.length + ' / ' + G.genSlotsTotal() + ' 席');
+  /* v73（老板）：「不要搞（本城 2 / 11 席 · 全境 2 / 11 席）这些文字，
+     直接将领加本城/全境切换按钮就行」—— 标题的席位文字已撤。
+     ⚠️ 旧断言的本意（本城栏 vs 全境栏**范围分得开**）不能跟着删 ——
+     改由**列表内容**实测：给别城塞一位将领，本城栏不该出现、全境栏必须出现。 */
+  check('v73：将领页标题精简（无席位文字；本城/全境切换 chips 在位）', (function () {
+    return !/本城 \d+ \/ \d+ 席/.test(genHtml64) && genHtml64.indexOf('席 · 全境') < 0
+      && genHtml64.indexOf('gen-scope') >= 0 && genHtml64.indexOf('>将领<') >= 0;
+  })(), (genHtml64.match(/class="gold-heading">[^<]{0,24}/) || ['未找到'])[0]);
+  const other73 = G.makeGeneral('侧城将', 1, 'idle', side64.id, false);
+  G.state.generals.push(other73);
+  G.ui._genScope = 'city';
+  G.ui.renderView('generals');
+  await sleep(120);
+  const cityHtml73 = document.querySelector('#view-container').innerHTML;
+  G.ui._genScope = 'all';
+  G.ui.renderView('generals');
+  await sleep(120);
+  const allHtml73 = document.querySelector('#view-container').innerHTML;
+  G.ui._genScope = 'city';
+  G.state.generals = G.state.generals.filter((g) => g.id !== other73.id);
+  check('v73：本城/全境两栏范围仍分得开（别城将领只出现在全境栏）',
+    cityHtml73.indexOf('侧城将') < 0 && allHtml73.indexOf('侧城将') >= 0);
 
   G.ui.openHostel();
   await sleep(80);
@@ -3805,6 +3820,97 @@ if (svBtn) {
       await sleep(90);
       check('★ 普通将领仍可解雇（入口只对君主隐藏）',
         vc.innerHTML.indexOf('data-action="dismiss-gen"') >= 0);
+    }
+  }
+
+
+  /* ============================================================
+   * v73（老板五条）：种田秘境 / 建筑弹窗底栏 —— 真实 DOM 走一遍
+   * ============================================================ */
+  console.log('\n--- v73. 种田秘境 · 建筑弹窗底栏（真实 DOM） ---');
+  {
+    G.state.res.gold = 3000000;
+    G.ui.openGuanfu();
+    await sleep(140);
+    let mh73 = document.querySelector('#modal-root').innerHTML;
+    check('v73：官府面板有「种田秘境」入口',
+      mh73.indexOf('data-action="open-farm"') >= 0 && mh73.indexOf('种田秘境') >= 0);
+    const farmBtn73 = document.querySelector('#modal-root [data-action="open-farm"]');
+    if (farmBtn73) {
+      click(farmBtn73);
+      await sleep(140);
+      mh73 = document.querySelector('#modal-root').innerHTML;
+      check('v73：秘境面板六格灵田 + 播种入口',
+        (mh73.match(/class="farm-cell/g) || []).length >= 6 && mh73.indexOf('data-action="farm-seeds"') >= 0);
+      click(document.querySelector('#modal-root [data-action="farm-seeds"]'));
+      await sleep(130);
+      mh73 = document.querySelector('#modal-root').innerHTML;
+      check('v73：选种弹窗列出 10 种作物（6 材料 + 4 灵草）',
+        (mh73.match(/data-action="farm-plant"/g) || []).length === 10);
+      const plantBtn73 = Array.from(document.querySelectorAll('#modal-root [data-action="farm-plant"]'))
+        .find((b) => b.getAttribute('data-crop') === 'tieying');
+      if (plantBtn73) {
+        click(plantBtn73);
+        await sleep(170);
+        mh73 = document.querySelector('#modal-root').innerHTML;
+        check('v73：种下后留在秘境（生长中 + 倒计时元素在位）',
+          mh73.indexOf('成熟还需') >= 0 && !!document.querySelector('#modal-root [data-farm-left]'));
+        G.tickFarm(8 * 3600);
+        G.ui.openFarm();
+        await sleep(130);
+        const hv73 = document.querySelector('#modal-root [data-action="farm-harvest"]');
+        check('v73：成熟地块出现「收获」按钮', !!hv73);
+        if (hv73) {
+          click(hv73);
+          await sleep(170);
+          check('v73：收获入包（镔铁）', (G.state.items['bintie'] || 0) > 0,
+            '镔铁 ×' + (G.state.items['bintie'] || 0));
+        }
+      }
+      G.ui.closeModal();
+      await sleep(80);
+    }
+
+    /* 建筑弹窗：无顶图 + 取消升级/关闭同在吸底底栏 */
+    const c73 = G.currentCity();
+    ['grain', 'wood', 'stone', 'iron'].forEach((k) => { if (c73.res) c73.res[k] = 5000000; });
+    const built73 = c73.cells.findIndex((x) => x.build && !x.pending);
+    if (built73 >= 0) {
+      G.ui.openBuildModal(built73);
+      await sleep(130);
+      check('v73：建筑弹窗无顶部图标块',
+        !document.querySelector('#modal-root .dlg-ico')
+        && document.querySelector('#modal-root').innerHTML.indexOf('class="dlg-ico"') < 0);
+      check('v73：底栏 .bldg-foot 含关闭按钮（吸底那一条）', (function () {
+        const foot = document.querySelector('#modal-root .bldg-foot');
+        return !!foot && !!foot.querySelector('[data-action="close-modal"]');
+      })());
+      G.ui.closeModal();
+      await sleep(80);
+    }
+    const empty73 = c73.cells.findIndex((x) => !x.official && !x.build && !x.pending);
+    if (empty73 >= 0) {
+      G.buildAt(c73.id, empty73, 'junying');
+      let guard73 = 0;
+      while (G.state.queues.build.length && guard73++ < 30) {
+        const q = G.state.queues.build[0];
+        q.elapsed = q.totalTime;
+        G.applyBuildDone(q);
+        const qi = G.state.queues.build.indexOf(q);
+        if (qi >= 0) G.state.queues.build.splice(qi, 1);
+      }
+      const up73 = G.upgradeAt(c73.id, empty73);
+      check('v73：升级队列已起（底栏断言夹具）', !!up73 && up73.ok, up73 && up73.msg);
+      G.ui.openBuildModal(empty73);
+      await sleep(130);
+      check('v73：升级中弹窗也无顶图，取消升级与关闭同在底栏', (function () {
+        const foot = document.querySelector('#modal-root .bldg-foot');
+        return !document.querySelector('#modal-root .dlg-ico') && !!foot
+          && !!foot.querySelector('[data-action="cancel-build"]')
+          && !!foot.querySelector('[data-action="close-modal"]');
+      })());
+      G.ui.closeModal();
+      await sleep(80);
     }
   }
 
