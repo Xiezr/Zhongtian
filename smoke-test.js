@@ -13493,6 +13493,71 @@ console.log('\n===== 69. v84 卡面去拥有行 · 步骑分类对调 =====');
   })());
 })();
 
+/* ============================================================
+ * 70. v85（老板）：民房入口 · 地图自适应 · 缩略地图数据
+ * ============================================================ */
+console.log('\n===== 70. v85 地图自适应 · 缩略地图 =====');
+(function () {
+  var uS85 = stripComment(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'ui.js'), 'utf8'));
+  var mS85 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'map.js'), 'utf8');
+
+  console.log('  --- ① 民房去「人口统计」入口 ---');
+  check('v85：BLDG_FUNC 无 minfang 条目（面板与城防入口保留）', (function () {
+    var i = uS85.indexOf('var BLDG_FUNC = {');
+    var j = uS85.indexOf('};', i);
+    var block = uS85.slice(i, j);
+    return i > 0 && block.indexOf('minfang') < 0 && block.indexOf('chengqiang') >= 0
+      && block.indexOf('junying') >= 0;
+  })());
+
+  console.log('  --- ② 地图自适应（搜索式） ---');
+  check('v85：fitMapCell 为搜索式（枚举 + 覆盖率 + 上限 128）', (function () {
+    var fn = codeOf(uS85, 'ui.fitMapCell = function');
+    return /MAP_SPAN_MAX_X/.test(fn) && /cov/.test(fn) && /MAP_CELL_MAX = 128/.test(uS85);
+  })());
+  check('实测：基准框（869×758）输出 13×11@63（确定性）', (function () {
+    var cell = G.ui.fitMapCell();
+    var fr = G.ui.mapFrame;
+    return fr.spanX === 13 && fr.spanY === 11 && cell === 63
+      && cell >= 34 && cell <= 128;
+  })());
+
+  console.log('  --- ③ 缩略地图数据层 ---');
+  check('v85：miniBuild 派生 + 缓存（结构）',
+    /GAME\.map\.miniBuild = function/.test(mS85) && /GAME\.map\._mini/.test(mS85));
+  check('实测：归属 25 万格 · 13 州 · 洛阳格=司隶 · 边界存在 · 缓存命中', (function () {
+    var d = G.map.miniBuild();
+    if (!d || d.state.length !== 250000 || d.stName.length !== 13) return false;
+    if (d.state[215 * 500 + 265] !== 0) return false;      /* 洛阳（265,215）→ 司隶 id=0 */
+    var edgeN = 0, jedgeN = 0;
+    for (var y = 0; y < 500; y++) {
+      for (var x = 0; x < 499; x++) {
+        var i = y * 500 + x;
+        if (d.state[i] !== d.state[i + 1]) edgeN++;
+        else if (d.jun[i] !== d.jun[i + 1]) jedgeN++;
+      }
+    }
+    return edgeN > 500 && jedgeN > 500 && G.map.miniBuild() === d;
+  })());
+
+  console.log('  --- ④ 渲染层与底部条 ---');
+  check('v85：渲染层齐备（离屏/绘制/面板/底部小图）',
+    /ui\.miniOff = function/.test(uS85) && /ui\.drawMini = function/.test(uS85)
+    && /ui\.openMinimap = function/.test(uS85) && /ui\.paintMiniBottom = function/.test(uS85));
+  check('v85：界线两档样式（州界金 / 郡界灰）', /0xf0d060/.test(uS85) && /0xcfcfc0/.test(uS85));
+  check('v85：paintBottom 固定拼装缩略图（不被 _bottom 覆盖）', (function () {
+    var fn = codeOf(uS85, 'ui.paintBottom = function');
+    return fn.indexOf('open-minimap') >= 0 && fn.indexOf('mini-canvas') >= 0;
+  })());
+  check('实测：paintBottom 后底部条含缩略图按钮（stub DOM）', (function () {
+    G.ui.paintBottom();
+    var el = global.document.querySelector('#bottom-bar');
+    return !!el && String(el.innerHTML || '').indexOf('open-minimap') >= 0
+      && String(el.innerHTML || '').indexOf('mini-canvas') >= 0;
+  })());
+})();
+
+
   console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');
   process.exit(FAIL ? 1 : 0);
 })();

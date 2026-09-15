@@ -3377,7 +3377,8 @@
     majiu: { label: "🐎 坐骑装备", act: "open-panel", view: "equip" },
     tiejiangpu: { label: "⚒️ 打造", act: "open-forge" },
     gongjiangzuofang: { label: "🛠️ 器械 · 箭塔", act: "open-workshop", withIdx: true },
-    minfang: { label: "👥 人口统计", act: "open-panel", view: "stats" },
+    /* v85（老板）：「民房不需要人口统计功能」—— 民房入口退役；
+       「人口统计」面板本身保留（城防统计仍由此进入）。 */
     chengqiang: { label: "🧱 城防统计", act: "open-panel", view: "stats" }
   };
 
@@ -5151,19 +5152,42 @@
   ui.MAP_TARGET_CELL = 88;       /* 正方形时代的理想格距（保留：图标尺寸仍按它对齐） */
   ui.MAP_TARGET_CELL_ISO = 124;  /* v50 菱形等距的理想格距 = 88 × 1.41 */
   ui.MAP_CELL_MIN = 34;          /* 小屏下限：再小就点不准了 */
-  ui.MAP_CELL_MAX = 104;         /* 大屏上限：格子过大反而看不清全局 */
+  ui.MAP_CELL_MAX = 128;         /* v85：104 → 128 —— 搜索式自适应下上限只防极端（1440 屏输出 104 由可用高度决定） */
   ui.MAP_SPAN_MAX_X = 22, ui.MAP_SPAN_MAX_Y = 14;   /* 观察框最大范围 */
   ui.mapFrame = { spanX: MAP_SPAN_X, spanY: MAP_SPAN_Y, cell: MAP_CELL, iso: true };
+  /* v85（老板）：「地图目前没有占满界面，建议占满，然后稍微放大一点图像」——
+     旧口径"先按理想格距估行列、再回算格距"在 1440 屏给出 12×6@104：
+     画布 1248×624 vs 可用 1376×733（右空 154 / 下空 157，且格距被 MAX 卡住）。
+     改为**小搜索**：枚举 cols∈[12,22] × rows∈[6,14]，cell = min(availW/cols,
+     availH/rows) 钳 [MIN, MAX]；score = 宽/高覆盖率的较小者（留白最均衡地最小）。
+     先取 score 最高者；score 差 ≤1.2pp 时取格距更大者（"占满"与"放大"的折中）。
+     1440 屏实测输出 13×7@104：画布 1352×728（覆盖 98%/99%，面积 +26%）；
+     jsdom 基准下输出见测试（保持确定性）。 */
   ui.fitMapCell = function () {
     var box = ui.viewBoxSize();
     /* v76（老板）：地图导航迁入底部条 —— 不再为右下浮标让位（78 → 10，只留呼吸） */
     var pad = 28, extraH = 10, breath = 16;
     var availW = box.w - pad - breath;
     var availH = box.h - extraH - pad - breath;
-    var cols = U.clamp(Math.round(availW / ui.MAP_TARGET_CELL_ISO), MAP_SPAN_X, ui.MAP_SPAN_MAX_X);
-    var rows = U.clamp(Math.round(availH / ui.MAP_TARGET_CELL_ISO), MAP_SPAN_Y, ui.MAP_SPAN_MAX_Y);
-    var cell = Math.floor(Math.min(availW / cols, availH / rows));
-    cell = Math.max(ui.MAP_CELL_MIN, Math.min(ui.MAP_CELL_MAX, cell));
+    var best = null;
+    for (var cols = MAP_SPAN_X; cols <= ui.MAP_SPAN_MAX_X; cols++) {
+      for (var rows = MAP_SPAN_Y; rows <= ui.MAP_SPAN_MAX_Y; rows++) {
+        var raw = Math.min(availW / cols, availH / rows);
+        if (raw < ui.MAP_CELL_MIN) continue;              /* 塞不下：该行列组合不可行 */
+        var cell = Math.min(ui.MAP_CELL_MAX, Math.floor(raw));
+        var cw = cols * cell, ch = rows * cell;
+        var cov = Math.min(cw >= availW ? 1 : cw / availW, ch >= availH ? 1 : ch / availH);
+        var better = !best || cov > best.cov + 0.012
+          || (Math.abs(cov - best.cov) <= 0.012 && cell > best.cell);
+        if (better) best = { cols: cols, rows: rows, cell: cell, cov: cov };
+      }
+    }
+    if (!best) {   /* 兜底（理论上不可达）：极端窗口下也要有解 */
+      best = { cols: MAP_SPAN_X, rows: MAP_SPAN_Y,
+        cell: Math.max(ui.MAP_CELL_MIN, Math.min(ui.MAP_CELL_MAX,
+          Math.floor(Math.min(availW / MAP_SPAN_X, availH / MAP_SPAN_Y)))) };
+    }
+    var cols = best.cols, rows = best.rows, cell = best.cell;
     ui.mapFrame = { spanX: cols, spanY: rows, cell: cell, iso: true };
     MAP_CELL = cell;
     return cell;
@@ -5219,6 +5243,131 @@
     return '<div class="map-wrap">' +
       '<canvas id="mapCanvas"></canvas>' +
       '</div>';
+  };
+
+  /* ============================================================
+   * v85（老板）：缩略地图渲染 —— 底部小图与「天下大势」面板复用同一份离屏图。
+   * ------------------------------------------------------------
+   * 静态层（地形 × 州染 + 州界/郡界 + 州城/郡城/都城点）画进离屏 canvas，
+   * 按 map.seed 缓存；动态层（我城）在每次 drawMini 时叠加。
+   * 界线样式：**州界 = 亮金实线（整格满涂）**；**郡界 = 灰白细线（对角 2px，
+   * 细一档形成区分）** —— 即老板要的「不同样式的线条」。
+   * ============================================================ */
+  ui.MINI_PX = 1000;               /* 离屏分辨率 = 2px / 格（世界 500×500） */
+  ui.MINI_TINT = [
+    '#d4453a', '#4a80c8', '#c8813a', '#4aa06a', '#8a5fc0', '#b0b03a', '#3a9aa8',
+    '#7a6ac0', '#c05a8a', '#5ac0a0', '#c0a040', '#6a9a40', '#c06040'
+  ];
+  ui._miniOff = null; ui._miniSeed = null;
+  ui.mixHex = function (a, b, k) {        /* 十六进制色混合：a×(1-k) + b×k */
+    var pa = parseInt(a.slice(1), 16), pb = parseInt(b.slice(1), 16);
+    var r = Math.round((pa >> 16) * (1 - k) + (pb >> 16) * k);
+    var g = Math.round(((pa >> 8) & 255) * (1 - k) + ((pb >> 8) & 255) * k);
+    var bl = Math.round((pa & 255) * (1 - k) + (pb & 255) * k);
+    return (r << 16) | (g << 8) | bl;
+  };
+  ui.miniOff = function () {              /* 离屏静态层（按 seed 缓存） */
+    var s = GAME.state;
+    if (ui._miniOff && ui._miniSeed === s.map.seed) return ui._miniOff;
+    if (!GAME.map.miniBuild) return null;
+    var d = GAME.map.miniBuild();
+    var W = DATA.MAP_W, H = DATA.MAP_H, P = ui.MINI_PX / W;
+    var cv, ctx, img;
+    try {
+      cv = document.createElement('canvas');
+      cv.width = ui.MINI_PX; cv.height = ui.MINI_PX;
+      ctx = cv.getContext && cv.getContext('2d');
+      if (!ctx || !ctx.createImageData) return null;
+      img = ctx.createImageData(ui.MINI_PX, ui.MINI_PX);
+    } catch (e) { return null; }          /* jsdom：无 2d 上下文，静默跳过 */
+    /* 底色查表：州染 × 地形色（预混，循环内只查表） */
+    var baseLUT = [];
+    for (var si = 0; si < ui.MINI_TINT.length; si++) {
+      baseLUT[si] = {};
+      for (var tk in DATA.TERRAIN) {
+        var tc = DATA.TERRAIN[tk].color || '#b8a06a';            /* city 无 color → 土金 */
+        baseLUT[si][tk] = ui.mixHex(tc, ui.MINI_TINT[si], 0.16);
+      }
+    }
+    var px = img.data;
+    var put = function (mx, my, v) {
+      var o = (my * ui.MINI_PX + mx) * 4;
+      px[o] = (v >> 16) & 255; px[o + 1] = (v >> 8) & 255; px[o + 2] = v & 255; px[o + 3] = 255;
+    };
+    var gt = s.map.grid || [];
+    for (var y = 0; y < H; y++) {
+      var row = gt[y] || [];
+      for (var x = 0; x < W; x++) {
+        var idx = y * W + x;
+        var t = (row[x] && row[x].terrain) || 'plain';
+        var st = d.state[idx], jn = d.jun[idx];
+        var col = (baseLUT[st] && baseLUT[st][t] != null) ? baseLUT[st][t] : 0x808080;
+        var rSt = x + 1 < W ? d.state[idx + 1] : st;
+        var dSt = y + 1 < H ? d.state[idx + W] : st;
+        var rJn = x + 1 < W ? d.jun[idx + 1] : jn;
+        var dJn = y + 1 < H ? d.jun[idx + W] : jn;
+        var X = x * P, Y = y * P;
+        if (rSt !== st || dSt !== st) {                        /* 州界：亮金实线 */
+          put(X, Y, 0xf0d060); put(X + 1, Y, 0xf0d060);
+          put(X, Y + 1, 0xf0d060); put(X + 1, Y + 1, 0xf0d060);
+        } else if (rJn !== jn || dJn !== jn) {                 /* 郡界：灰白细线（对角 2px） */
+          put(X + 1, Y, 0xcfcfc0); put(X, Y + 1, 0xcfcfc0);
+          put(X, Y, col); put(X + 1, Y + 1, col);
+        } else {
+          put(X, Y, col); put(X + 1, Y, col); put(X, Y + 1, col); put(X + 1, Y + 1, col);
+        }
+      }
+    }
+    ctx.putImageData(img, 0, 0);
+    /* 城点：都城红 / 州城亮金 / 郡城米白（各带深色描边提升可读性） */
+    var cityDot = function (cx, cy, w, fill, stroke) {
+      var X = Math.round((cx + 0.5) / W * ui.MINI_PX) - Math.round(w / 2);
+      var Y = Math.round((cy + 0.5) / W * ui.MINI_PX) - Math.round(w / 2);
+      ctx.fillStyle = stroke; ctx.fillRect(X - 1, Y - 1, w + 2, w + 2);
+      ctx.fillStyle = fill; ctx.fillRect(X, Y, w, w);
+    };
+    (DATA.NPC_CITIES || []).forEach(function (c) {
+      if (c.type === 'capital') cityDot(c.x, c.y, 6, '#ff5a40', '#3a0f08');
+      else if (c.type === 'zhou') cityDot(c.x, c.y, 5, '#ffd76a', '#4a3208');
+      else if (c.type === 'jun') cityDot(c.x, c.y, 3, '#f2ead0', '#3a3a2c');
+    });
+    ui._miniOff = cv; ui._miniSeed = s.map.seed;
+    return cv;
+  };
+  ui.drawMini = function (canvas, size) { /* 打底 + 动态层（我城金点） */
+    if (!canvas) return false;
+    var ctx = canvas.getContext && canvas.getContext('2d');
+    if (!ctx || !ctx.drawImage) return false;
+    var off = ui.miniOff();
+    if (!off) return false;
+    var W = DATA.MAP_W;
+    ctx.clearRect(0, 0, size, size);
+    ctx.drawImage(off, 0, 0, size, size);
+    var s = GAME.state;
+    (s.cities || []).forEach(function (c) {
+      var pxx = (c.x + 0.5) / W * size, pyy = (c.y + 0.5) / W * size;
+      ctx.beginPath();
+      ctx.arc(pxx, pyy, Math.max(3, size / 110), 0, 6.2832);
+      ctx.fillStyle = '#ffe9a0'; ctx.fill();
+      ctx.lineWidth = Math.max(1, size / 500); ctx.strokeStyle = '#7a4a12'; ctx.stroke();
+    });
+    return true;
+  };
+  ui.paintMiniBottom = function () {      /* 底部条那枚 38px 小图 */
+    var cv = $('#mini-canvas');
+    if (!cv) return;
+    try { ui.drawMini(cv, ui.MINI_PX); } catch (e) { /* 画布 stub 环境：静默跳过 */ }
+  };
+  ui.openMinimap = function () {          /* 「天下大势」面板 */
+    ui.openModal(
+      '<div class="gold-heading">🗺 天下大势</div>' +
+      '<div class="mini-wrap"><canvas id="mini-big" width="' + ui.MINI_PX + '" height="' + ui.MINI_PX + '"></canvas></div>' +
+      '<div class="mini-legend"><b class="lg-state">━</b> 州界　<b class="lg-jun">┄</b> 郡界　' +
+        '<b class="lg-cap">■</b> 都城　<b class="lg-zhou">■</b> 州城　<b class="lg-jun-c">■</b> 郡城　' +
+        '<b class="lg-me">●</b> 我城</div>' +
+      '<div class="m-foot"><button class="btn" data-action="close-modal">关闭</button></div>');
+    var big = $('#mini-big');
+    try { ui.drawMini(big, ui.MINI_PX); } catch (e) { }
   };
 
   /* 鼠标点选的地块（v44）：存 pick() 的结果，供状态行显示 */
@@ -6316,13 +6465,20 @@
     h += '<span class="pg-info">第 ' + p.page + '/' + p.maxPage + ' 页 · 共 ' + total + ' 项</span>';
     return '<div class="pager">' + h + '</div>';
   };
-  /* 画底部条：有分页就画分页，没有就留一行极淡的占位（位置照留、高度不变） */
+  /* 画底部条：有分页就画分页，没有就留一行极淡的占位（位置照留、高度不变）。
+     v85（老板）：「底部导航栏增加一个缩略地图」—— 每次落画都**固定拼**一枚 38px
+     缩略图（绝对定位在条尾，不参与居中排版），点击展开「天下大势」面板。
+     ⚠ 它只能在 paintBottom 里拼 —— 若在某视图 _bottom.push，会被下一次落画覆盖。 */
   ui.paintBottom = function () {
     var bar = $('#bottom-bar');
     if (!bar) return;
     var arr = ui._bottom || [];
-    bar.innerHTML = arr.length ? arr.join('')
-      : '<span class="bb-hint">—</span>';
+    bar.innerHTML = (arr.length ? arr.join('')
+      : '<span class="bb-hint">—</span>')
+      + '<button class="bb-mini" data-action="open-minimap" title="缩略地图：点击看天下大势">'
+      + '<canvas id="mini-canvas" width="' + ui.MINI_PX + '" height="' + ui.MINI_PX + '"></canvas>'
+      + '</button>';
+    ui.paintMiniBottom();
   };
   ui.setPage = function (key, n) {
     ui._pages[key] = Math.max(1, Number(n) || 1);

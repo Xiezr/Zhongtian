@@ -1321,6 +1321,37 @@
   .map-info.mk-pick { color: var(--blue-info); }
   #mapCanvas { display: block; margin: 0 auto; max-width: 100%; border: 3px solid var(--gold-dark); border-radius: 8px;
     background: #84a050; box-shadow: 0 6px 18px rgba(var(--sh-rgb),.5), inset 0 0 0 1px rgba(var(--sh-rgb),.45); }
+  /* ============ v85（老板）：底部缩略地图 + 天下大势面板 ============ */
+  /* 为条尾缩略图提供定位上下文（单独成条，不动原 .bottombar 块的 46px 高度） */
+  .bottombar { position: relative; padding-right: 56px; }
+  .bb-mini {
+    position: absolute; right: 10px; top: 3px; width: 40px; height: 40px; padding: 0;
+    background: #10160c; border: 1px solid var(--gold-dark); border-radius: 6px;
+    cursor: pointer; overflow: hidden; line-height: 0;
+    box-shadow: 0 2px 6px rgba(var(--sh-rgb), .45);
+  }
+  .bb-mini:hover { border-color: var(--gold-light); }
+  .bb-mini canvas { width: 38px; height: 38px; display: block; }
+  /* 天下大势：方形缩略图（内部 1000×1000 高清背衬，显示 ≤500px） */
+  .mini-wrap { display: flex; justify-content: center; margin: 8px 0 4px; }
+  .mini-wrap canvas {
+    width: min(500px, 68vw); height: auto; aspect-ratio: 1 / 1;
+    border: 2px solid var(--gold-dark); border-radius: 6px; background: #10160c;
+  }
+  .mini-legend {
+    text-align: center; font-size: var(--fs-sub); color: var(--text-dim);
+    margin: 6px 0 2px; letter-spacing: .04em;
+  }
+  .mini-legend { --lg-state: #f0d060; --lg-jun: #cfcfc0; --lg-cap: #ff5a40;
+                 --lg-zhou: #ffd76a; --lg-jun-c: #f2ead0; --lg-me: #ffe9a0; }
+  .mini-legend b { font-weight: 700; }
+  .mini-legend .lg-state { color: var(--lg-state); }
+  .mini-legend .lg-jun { color: var(--lg-jun); }
+  .mini-legend .lg-cap { color: var(--lg-cap); }
+  .mini-legend .lg-zhou { color: var(--lg-zhou); }
+  .mini-legend .lg-jun-c { color: var(--lg-jun-c); }
+  .mini-legend .lg-me { color: var(--lg-me); }
+
   /* v27（需求 6）：数字输入框的原生上下箭头也去掉 —— 它同样是个"小下拉"，
      在暗色界面里尤其突兀；数量增减交给面板上的「最大」「+/-」按钮，
      或直接键盘输入。 */

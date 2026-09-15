@@ -890,11 +890,12 @@ async function runTests(dom, URL) {
     && cv19.height === G.map._view.spanY * G.map._view.cell,
     cv19 ? (cv19.width + '×' + cv19.height) : 'n/a');
   /* v27（需求 9）：格距按窗口算（jsdom 无布局 → 回落到基准 1180×820 的取值） */
-  /* v50：地块改为菱形等距 —— 画布切成 12×6 个格距（菱形只有半格高），
-     可见菱形是 12 宽 × 12 高。格距按窗口算，上限随菱形目标格距抬到 104。 */
-  check('观察框为 12×6（v50 菱形），格距在合理区间',
-    G.map._view && G.map._view.spanX === 12 && G.map._view.spanY === 6
-    && G.map._view.cell >= 34 && G.map._view.cell <= 104,
+  /* v85（老板「占满 + 放大」）：fitMapCell 改**搜索式自适应** —— 行列不再固定 12×6，
+     取"覆盖率最优、格距次优"的解；格距上限 104 → 128。
+     jsdom（无布局，基准框 869×758）下确定输出 13×11@63。 */
+  check('观察框为搜索式自适应（jsdom 基准 13×11），格距在合理区间',
+    G.map._view && G.map._view.spanX === 13 && G.map._view.spanY === 11
+    && G.map._view.cell >= 34 && G.map._view.cell <= 128,
     G.map._view.spanX + '×' + G.map._view.spanY + ' cell=' + G.map._view.cell);
   check('地图为菱形等距（半宽 = cell/2、半高 = cell/4、视口中心为 vx/vy）',
     G.map._view && G.map._view.HW === G.map._view.cell / 2
@@ -1436,6 +1437,15 @@ async function runTests(dom, URL) {
     for (const e58 of G.state.quests.pool) {
       const d58 = G.randomQuestDef(e58.id);
       if (d58 && !d58.abs && !G.randQuestReady(e58)) { rq58 = e58; break; }
+    }
+    /* v85 顺手修存量 flake：本段之前已发育 + 打桩，池里可能"全员达标"——
+       直接在池里找"未达标"会随任务随机抽取假红（同 §57 r18 族）。兜底：挑一条
+       非绝对值型任务、把 base 拉高**确定性造出未达标**（换标的、不放宽判据）。 */
+    if (!rq58) {
+      for (const e58 of G.state.quests.pool) {
+        const d58 = G.randomQuestDef(e58.id);
+        if (d58 && !d58.abs) { rq58 = e58; rq58.base = 1e9; break; }
+      }
     }
     check('夹具：还有一条未达标的随机任务（供实时置顶验证）', !!rq58);
     if (rq58) {
@@ -2740,12 +2750,13 @@ async function runTests(dom, URL) {
   })());
   check('侧栏不再有天时', document.querySelector('#city-attrs').textContent.indexOf('天时') < 0);
 
-  /* ④ 观察框（v50：菱形等距 12×6 格距） */
+  /* ④ 观察框（v85：搜索式自适应 —— 画布 = 当前观察框 × 格距，行列不再写死） */
   G.ui.setView('map');
   await sleep(140);
   const cv26 = document.querySelector('#mapCanvas');
-  check('画布按 12×6 渲染（宽高不等）', cv26 && G.map._view
-    && cv26.width === 12 * G.map._view.cell && cv26.height === 6 * G.map._view.cell,
+  check('画布按当前观察框渲染（宽高不等）', cv26 && G.map._view
+    && cv26.width === G.map._view.spanX * G.map._view.cell
+    && cv26.height === G.map._view.spanY * G.map._view.cell,
     cv26 ? cv26.width + '×' + cv26.height + ' cell=' + G.map._view.cell : 'n/a');
   check('视野信息改报中心格（v50：菱形视野不是矩形）', (function () {
     const v = G.map._view, txt = document.querySelector('#map-info').textContent;
@@ -4281,6 +4292,58 @@ if (svBtn) {
       const z84 = document.querySelector('#modal-root .troop-card[data-troop="zhouche"]');
       const ch84 = document.querySelector('#modal-root .troop-card[data-troop="chihou"]');
       return !!z84 && !ch84;
+    })());
+    G.ui.closeModal();
+    await sleep(60);
+  }
+
+  /* ============================================================
+   * v85（老板）：民房去人口统计 / 底部缩略地图 → 天下大势
+   * ============================================================ */
+  console.log('\n--- v85. 民房 · 缩略地图 · 天下大势（真实 DOM） ---');
+  {
+    /* ① 民房弹窗无「人口统计」入口 */
+    const c85 = G.state.cities[0];
+    let m85 = c85.cells.findIndex((x) => x.build && x.build.id === 'minfang');
+    if (m85 < 0) {
+      m85 = c85.cells.findIndex((x) => !x.build && !x.official);
+      if (m85 >= 0) c85.cells[m85] = { build: { id: 'minfang', lvl: 2 }, pending: null };
+    }
+    G.ui.openBuildModal(m85 < 0 ? undefined : m85);
+    await sleep(140);
+    check('v85：民房弹窗无「人口统计」按钮', (function () {
+      const root = document.querySelector('#modal-root');
+      return !!root && root.textContent.indexOf('民房') >= 0
+        && root.textContent.indexOf('人口统计') < 0;
+    })());
+    G.ui.closeModal();
+    await sleep(60);
+
+    /* ② 底部导航栏缩略图 → 天下大势面板 */
+    G.ui.paintBottom();
+    await sleep(40);
+    check('v85：底部条固定拼缩略图（38px canvas）',
+      !!document.querySelector('#bottom-bar .bb-mini #mini-canvas'));
+    click(document.querySelector('#bottom-bar .bb-mini'));
+    await sleep(160);
+    check('v85：点击展开「天下大势」（缩略图 + 州郡界图例）', (function () {
+      const root = document.querySelector('#modal-root');
+      return !!root && !!root.querySelector('#mini-big')
+        && root.textContent.indexOf('天下大势') >= 0
+        && root.textContent.indexOf('州界') >= 0 && root.textContent.indexOf('郡界') >= 0;
+    })());
+    check('v85：缩略数据（13 州 · 25 万格 · 边界线存在）', (function () {
+      const d = G.map.miniBuild();
+      if (!d || d.stName.length !== 13 || d.state.length !== 250000) return false;
+      let e1 = 0, e2 = 0;
+      for (let y = 0; y < 500; y += 7) {
+        for (let x = 0; x < 499; x += 7) {
+          const i = y * 500 + x;
+          if (d.state[i] !== d.state[i + 1]) e1++;
+          else if (d.jun[i] !== d.jun[i + 1]) e2++;
+        }
+      }
+      return e1 > 10 && e2 > 10;
     })());
     G.ui.closeModal();
     await sleep(60);

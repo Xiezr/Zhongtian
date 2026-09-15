@@ -1210,5 +1210,56 @@
     return { kind: 'land', x: gx, y: gy };
   };
 
+  /* ============================================================
+   * v85（老板）：「底部导航栏增加一个缩略地图（覆盖 500×500），在缩略地图标注
+   * 州城，郡城位置。对州郡的边界以不同样式的线条区分」
+   * ------------------------------------------------------------
+   * 全图 500×500 的州/郡归属一次性派生（按 map.seed 缓存；占领不影响 ——
+   * 边界是**地理**划分，读 DATA.NPC_CITIES 的固有 state）：
+   *   · 州心 = 都城 / 州城（13 个）；每格取最近州心 → 州域（Voronoi）。
+   *   · 郡单元 = 每座郡城 + 所属州城（州直辖）；**先定州、再在本州郡心里取最近**
+   *     —— 两遍最近邻保证郡界不跨州（不会出现交叉行政区）。
+   * 输出：ownerState / ownerJun（Uint8Array × 25 万格）+ 中心坐标表。
+   * 渲染（州染 / 界线 / 城点）在 ui 层，这里只管数据。
+   * ============================================================ */
+  GAME.map.miniBuild = function () {
+    var s = GAME.state, seed = s.map.seed;
+    if (GAME.map._mini && GAME.map._mini.seed === seed) return GAME.map._mini;
+    var W = DATA.MAP_W, H = DATA.MAP_H;
+    var stName = [], stX = [], stY = [];                    /* 州心（出现顺序 = 色板下标） */
+    var junByState = [], junN = 0;                          /* 每州的郡单元：{x,y,id} */
+    (DATA.NPC_CITIES || []).forEach(function (c) {
+      if (c.type === 'county') return;                      /* 县城不参与中心 */
+      var si = stName.indexOf(c.state);
+      if (si < 0) { si = stName.length; stName.push(c.state); }
+      if (c.type === 'capital' || c.type === 'zhou') {
+        if (stX[si] == null) { stX[si] = c.x; stY[si] = c.y; }
+      }
+      if (!junByState[si]) junByState[si] = [];
+      junByState[si].push({ x: c.x, y: c.y, id: junN++ });
+    });
+    var S = stName.length;
+    var ownerState = new Uint8Array(W * H), ownerJun = new Uint8Array(W * H);
+    for (var y = 0; y < H; y++) {
+      for (var x = 0; x < W; x++) {
+        var bs = 0, bd = 4294967295;
+        for (var i = 0; i < S; i++) {
+          var dx = x - stX[i], dy = y - stY[i], d = dx * dx + dy * dy;
+          if (d < bd) { bd = d; bs = i; }
+        }
+        var J = junByState[bs], bjId = 0, bd2 = 4294967295;
+        for (var j = 0; j < J.length; j++) {
+          var dx2 = x - J[j].x, dy2 = y - J[j].y, d2 = dx2 * dx2 + dy2 * dy2;
+          if (d2 < bd2) { bd2 = d2; bjId = J[j].id; }
+        }
+        ownerState[y * W + x] = bs;
+        ownerJun[y * W + x] = bjId;
+      }
+    }
+    GAME.map._mini = { seed: seed, state: ownerState, jun: ownerJun,
+      stName: stName, stX: stX, stY: stY };
+    return GAME.map._mini;
+  };
+
   /* 距离（曼哈顿） */
 })();

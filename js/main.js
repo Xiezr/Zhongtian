@@ -226,6 +226,7 @@
       case 'open-wilds': ui.openWilds(); break;
       case 'map-pan': ui.mapPan(Number(el.dataset.dx), Number(el.dataset.dy)); break;
       case 'map-goto': ui.mapGoto(); break;
+      case 'open-minimap': ui.openMinimap(); break;
       case 'map-center': ui.mapCenter(); break;
       case 'map-capital': ui.mapCenterOn(265, 215); ui.toast('已定位至洛阳 (265,215)'); break;
       case 'open-inn': ui.openInn(); break;
