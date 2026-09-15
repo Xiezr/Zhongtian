@@ -3323,7 +3323,6 @@
       var preUp = GAME.buildPrereqOf(c, cell.build.id);
       var upCost = cell.build.lvl < GAME.buildCapOf(c, cell.build.id) ? b.levelCost(cell.build.lvl) : null;
       var costStr = upCost ? GAME.costString(upCost) : (preUp.ok ? '已满级' : preUp.short);
-      var dRef = GAME.demolishRefund(c, idx);
       var extra = '';
       if (b.id === 'minfang') extra = '<div class="attr"><span class="k">人口上限</span><span class="v good">' + b.pop[cell.build.lvl - 1] + '</span></div>';
       if (b.id === 'guanfu') extra = '<div class="attr"><span class="k">附属野地上限</span><span class="v">' + cell.build.lvl + '</span></div>' +
@@ -3372,33 +3371,36 @@
           + (gotM ? '已达成 · ' : 'Lv' + DATA.MAX_BLEVEL + ' 达成 · ') + mast.txt + '</span></div>';
       }
       ui.openModal(
-        /* v73（老板）：顶部图标不留（旧 emoji 图标本就不如棋盘位图，索性撤下） */
+        /* v73（老板）：顶部图标不留（旧 emoji 图标本就不如棋盘位图，索性撤下）。
+           v76（老板）：「这种备注去掉：招募将领（每级+1停留将领），市井传闻查名将坐标」——
+           标题下的建筑描述（b.desc）连同「拆毁可返还累计投入的 50%：粮…」长备注一并撤除。 */
         '<div class="gold-heading">' + b.name + ' · Lv' + cell.build.lvl + '</div>' +
-        '<div style="color:var(--text-dim);font-size:var(--fs-body);text-align:center;margin-bottom:12px;">' + b.desc + '</div>' + extra +
-        (dRef ? '<div style="color:var(--text-dim);font-size:var(--fs-sub);text-align:center;margin-top:10px;">拆毁可返还累计投入的 50%：' + GAME.costString(dRef) + '</div>' : '') +
+        extra +
         barQueue +
-        /* v68（老板「弹窗统一」· 设计规范 §11）：建筑弹窗统一动线三段 ——
-           ① 功能行「用建筑」：进功能面板（金色主按钮）；
-           ② 升级行「建建筑」：费用与按钮**同行**（改前费用在上、按钮在下，隔着一整块信息区）；
-           ③ 底栏「管建筑」：危险（左）· 关闭（中，天然误点缓冲）· 管理（右）
-              —— v28「拆毁左下、移动右下、中间留白」的原摆位保留，关闭正好居中。 */
+        /* v68（弹窗统一 · 设计规范 §11）动线：① 功能「用建筑」（金色主按钮）；
+           v76（老板）：「建筑的升级，拆除（1级，只能逐级拆除），移动/交换放在同一行上，
+           并进行你的设计小巧思。建筑界面的关闭按钮在弹窗界面的最底部」——
+           ② 操作三键**同排**、等宽，每键带一行小字说明后果（费用 / 降级去向 / 用途）；
+           ③ 关闭单独一行、钉在弹窗最底部。 */
         (function () { var f = BLDG_FUNC[b.id]; return f ? ('<div class="op-zone">' +
             '<div class="op-zone-t">功能</div>' +
             '<div class="op-row"><button class="btn gold" data-action="' + f.act + '"' + (f.view ? ' data-view="' + f.view + '"' : '') +
               (f.withIdx ? ' data-idx="' + idx + '"' : '') + '>' + f.label + '</button></div>' +
           '</div>') : ''; })() +
-        '<div class="op-zone">' +
-          '<div class="op-zone-t">升级</div>' +
-          '<div class="op-row op-row-between">' +
-            '<span class="op-kv">费用 <b>' + costStr + '</b></span>' +
-            (upCost ? '<button class="btn" data-action="confirm-upgrade" data-idx="' + idx + '">升级 → Lv' + (cell.build.lvl + 1) + '</button>' : '<span class="op-done">' + (preUp.ok ? '已达最高等级' : U.escape(preUp.short)) + '</span>') +
-          '</div></div>' +
+        '<div class="bldg-acts">' +
+          (upCost
+            ? '<button class="btn gold bldg-act" data-action="confirm-upgrade" data-idx="' + idx + '">⬆ 升级 → Lv' + (cell.build.lvl + 1) +
+                '<span class="ba-sub">费用 ' + costStr + '</span></button>'
+            : '<button class="btn bldg-act dim" disabled>⬆ 升级<span class="ba-sub">' +
+                (preUp.ok ? '已达最高等级' : U.escape(preUp.short)) + '</span></button>') +
+          '<button class="btn red bldg-act" data-action="demolish-ask" data-kind="city" data-idx="' + idx + '"' +
+            ' title="拆除需二次确认">⛏ 拆 1 级<span class="ba-sub">' +
+            (cell.build.lvl > 1 ? ('Lv' + cell.build.lvl + ' → Lv' + (cell.build.lvl - 1)) : '整座移除') + '</span></button>' +
+          (b.id === 'guanfu' ? ''
+            : '<button class="btn bldg-act" data-action="move-ask" data-idx="' + idx + '" title="与另一地块互换位置">🔄 移动 / 交换<span class="ba-sub">与地块互换</span></button>') +
+        '</div>' +
         '<div class="bldg-foot">' +
-          '<button class="btn sm red" data-action="demolish-ask" data-kind="city" data-idx="' + idx + '"' +
-            ' title="' + (dRef ? '返还累计投入的 50%：' + GAME.costString(dRef) : '不可恢复') + '（需二次确认）">拆毁</button>' +
           '<button class="btn" data-action="close-modal">关闭</button>' +
-          (b.id === 'guanfu' ? '<span></span>'
-            : '<button class="btn sm" data-action="move-ask" data-idx="' + idx + '" title="与另一地块互换位置">🔄 移动 / 交换</button>') +
         '</div>'
       );
     } else {
@@ -3893,9 +3895,12 @@
    *       体力·精力·忠诚、守将效果、装备栏（人形）、套装进度、赏赐、操作。
    * 自此将领只有**一个**界面，没有第二个弹窗。
    * ============================================================ */
-  ui.GEN_SLOTS = 12;             /* 最低显示席位数（招贤馆房间不足时也画够） */
-  /* v45（需求 1）：`ui.GEN_PER_PAGE` 已删除 —— 左清单改**整段滚动**，不再分页。
-     老板明确点名"不要那么多页""不要限制每页的将领个数，这里允许他用下拉框（滚动）"。 */
+  ui.GEN_SLOTS = 12;             /* 每页显示席位数（空着也画够 12 格） */
+  /* v76（老板）：「左侧将领列表12个空格每页，平分空间吧，当城池超过12个将领，
+     自动在底部导航栏产生翻页菜单」—— v45 的"整段滚动"回归**每页 12 席 + 底部条翻页**：
+     每页固定 12 行（不足补空席、12 行平分面板高度），超过 12 位将领时
+     翻页条登记到底部导航条（与其它长列表同一套机制）。 */
+  ui.GEN_PER = 12;               /* 每页 12 席（= GEN_SLOTS） */
 
   ui.genStatusName = function (g) {
     if (!g) return '';
@@ -4372,19 +4377,22 @@
        席位按城。列表分"本城/全境"两栏，上限就要跟栏内范围一致：
        本城栏比本城席位、全境栏比各城席位数之和（否则两栏共用一个数，必有一栏是错的）。 */
     var cap = (scope === 'all') ? GAME.genSlotsTotal() : GAME.genSlotsOf(cur);
-    /* v45（需求 1）：**取消分页** —— 老板要求"不要那么多页""不要限制每页的将领个数"，
-       并明确允许这一处用滚动。理由也成立：分页会把"我到底有几个将"切成好几页，
-       而右栏档案本来就要占地方，左栏滚动比翻页顺手。
-       空席位仍照旧补足到 GEN_SLOTS（让人看见席位上限），靠滚动看全。 */
-    var total = Math.max(ui.GEN_SLOTS, pool.length);
+    /* v76（老板）：「12个空格每页，平分空间吧，当城池超过12个将领，
+       自动在底部导航栏产生翻页菜单」—— 每页固定 12 席（不足以空席补满），
+       超过 12 位将领时把翻页登记到底部导航条；席位号跨页连续（第 N 席 = from + i）。 */
+    var pg = ui.pageOf('gen', pool.length, ui.GEN_PER);
     /* 选中将领：默认第一位；无效（被解雇/换档/换范围）时回落 */
     var sel = null;
     pool.forEach(function (g) { if (g.id === ui._genSel) sel = g; });
-    if (!sel) sel = pool[0] || null;
+    if (!sel) sel = pool[pg.from] || pool[0] || null;
     ui._genSel = sel ? sel.id : null;
 
     var rows = [];
-    for (var i = 0; i < total; i++) rows.push(ui.genRow(pool[i], i, cap, ui._genSel));
+    for (var i = 0; i < ui.GEN_PER; i++) {
+      var gi = pg.from + i;
+      rows.push(ui.genRow(pool[gi], gi, cap, ui._genSel));
+    }
+    if (pg.maxPage > 1) ui.pagerHTML('gen', pool.length, ui.GEN_PER);
 
     var scopeChips = '<span class="chips gen-scope">' + ui.GEN_SCOPES.map(function (p2) {
       return '<span class="chip' + (p2[0] === scope ? ' on' : '') +
@@ -4400,7 +4408,7 @@
           '席位**按城算**：每座城的上限 = 该城招贤馆等级（+满级专精 2）；0 级 = 0 席\n' +
           '已超编不会清退现有将领，但**招募/调入**须先建或升级招贤馆\n' +
           '将领先在客栈招募（本城客栈 + 本城空位），也可「城池面板 → 将领派遣」从别城调入\n' +
-          '左侧清单不再分页 —— 人多时直接滚动') +
+          '左侧清单每页 12 席；超过 12 位将领时在底部导航条翻页') +
       '</div>' +
       '<div class="gen-split">' +
         '<div class="gen-list">' + rows.join('') + '</div>' +
@@ -4647,11 +4655,18 @@
       var b = DATA.BUILDINGS[cell.build.id];
       name = b.name; lv = cell.build.lvl; back = GAME.demolishRefund(c, idx);
     }
-    var html = '<div class="gold-heading">拆毁 ' + U.escape(name) + ' Lv' + lv + '</div>';
+    /* v76（老板）：「拆除（1级，只能逐级拆除）」——
+       城内是**降 1 级**（Lv1 才整座移除）；城外仍为整座拆毁（未动）。 */
+    var isCity = (kind !== 'ext');
+    var html = '<div class="gold-heading">' + (isCity
+      ? ('拆 1 级 · ' + U.escape(name) + ' Lv' + lv + (lv > 1 ? ' → Lv' + (lv - 1) : '（整座移除）'))
+      : ('拆毁 ' + U.escape(name) + ' Lv' + lv)) + '</div>';
     html += '<div class="attr"><span class="k">返还</span><span class="v good">' + (back ? GAME.costString(back) : '—') + '</span></div>';
-    html += '<div class="note">返还按<b style="color:var(--gold-light)">累计投入的 50%</b> 计算，损失不可追回。</div>';
+    html += '<div class="note">' + (isCity
+      ? '逐级拆除：每次只降 1 级，返还本步投入的 50%；拆到 Lv1 再拆即整座移除（腾出地块）。'
+      : '返还按<b style="color:var(--gold-light)">累计投入的 50%</b> 计算，损失不可追回。') + '</div>';
     html += '<div class="panel-foot">'
-      + '<button class="btn red" data-action="demolish-do" data-kind="' + kind + '" data-idx="' + idx + '">确定拆毁</button>'
+      + '<button class="btn red" data-action="demolish-do" data-kind="' + kind + '" data-idx="' + idx + '">' + (isCity && lv > 1 ? '确定拆 1 级' : '确定拆毁') + '</button>'
       + '<button class="btn" data-action="close-modal">取消</button></div>';
     ui.openModal(html);
   };
@@ -4947,7 +4962,8 @@
   ui.mapFrame = { spanX: MAP_SPAN_X, spanY: MAP_SPAN_Y, cell: MAP_CELL, iso: true };
   ui.fitMapCell = function () {
     var box = ui.viewBoxSize();
-    var pad = 28, extraH = 78, breath = 16;   /* 28 = .map-wrap 内边距；78 = 右下浮标让位 */
+    /* v76（老板）：地图导航迁入底部条 —— 不再为右下浮标让位（78 → 10，只留呼吸） */
+    var pad = 28, extraH = 10, breath = 16;
     var availW = box.w - pad - breath;
     var availH = box.h - extraH - pad - breath;
     var cols = U.clamp(Math.round(availW / ui.MAP_TARGET_CELL_ISO), MAP_SPAN_X, ui.MAP_SPAN_MAX_X);
@@ -4986,9 +5002,10 @@
        v44（老板要求）：浮标内部**压成一行** —— 原来「方向键 3×2 网格 ＋ 坐标竖排两行」
        共占三行高度。现在：方向键横排 ← ▲ ▼ → ｜ 视野区间 ｜ 点选坐标 ｜ 坐标输入 + 前往/回主城/洛阳，
        全部同一行，上下不再占空间。 */
-    return '<div class="map-wrap">' +
-      '<canvas id="mapCanvas"></canvas>' +
-      '<div class="map-dock">' +
+    /* v76（老板）：「底下有一个导航栏，可以考虑把地图的导航栏（上下左右，坐标之类）
+       放到这个导航范围内」—— 导航不再挂地图页浮标，改登记到本帧的**底部固定导航条**
+       （ui._bottom → paintBottom）；地图页本身只剩棋盘。 */
+    ui._bottom.push('<div class="map-dock">' +
         '<div class="map-pad">' +
           mkBtn('left', -ui.MAP_STEP_X, 0, '◀') + mkBtn('up', 0, -ui.MAP_STEP_Y, '▲') +
           mkBtn('down', 0, ui.MAP_STEP_Y, '▼') + mkBtn('right', ui.MAP_STEP_X, 0, '▶') +
@@ -5004,7 +5021,9 @@
         '<button class="btn sm gold" data-action="map-goto">前往</button>' +
         '<button class="btn sm" data-action="map-center">回主城</button>' +
         '<button class="btn sm" data-action="map-capital">洛阳</button>' +
-      '</div>' +
+      '</div>');
+    return '<div class="map-wrap">' +
+      '<canvas id="mapCanvas"></canvas>' +
       '</div>';
   };
 

@@ -538,13 +538,19 @@
     }
     return out;
   };
-  /* 城内建筑拆毁（返还累计投入的 50%） */
+  /* 城内建筑拆毁（v76 老板：「拆除（1级，只能逐级拆除）」）——
+     每次只降 1 级：返还**本步投入**（达到当前等级的那一份造价 = 累计差）的 50%；
+     Lv1 时拆除 = 整座移除（返还首级投入的 50%）。 */
   GAME.demolishRefund = function (city, gridIndex) {
     var cell = city && city.cells[gridIndex];
     if (!cell || !cell.build) return null;
     var b = DATA.BUILDINGS[cell.build.id];
     if (!b) return null;
-    return GAME.scaledCost(GAME.investedIn(b, cell.build.lvl), DATA.DEMOLISH_RATE);
+    var lv = cell.build.lvl;
+    var inv = GAME.investedIn(b, lv), prev = GAME.investedIn(b, Math.max(0, lv - 1));
+    var step = { grain: inv.grain - prev.grain, wood: inv.wood - prev.wood,
+      stone: inv.stone - prev.stone, iron: inv.iron - prev.iron };
+    return GAME.scaledCost(step, DATA.DEMOLISH_RATE);
   };
   GAME.demolishAt = function (cityId, gridIndex) {
     var s = GAME.state, city = GAME.cityById(cityId);
@@ -554,9 +560,20 @@
     if (cell.official) return { ok: false, msg: '官府不可拆除' };
     var b = DATA.BUILDINGS[cell.build.id];
     var lv = cell.build.lvl;
-    var inv = GAME.investedIn(b, lv);
-    var back = GAME.scaledCost(inv, DATA.DEMOLISH_RATE);
-    GAME.refundCert(inv, DATA.DEMOLISH_RATE);
+    /* v76（老板）：「拆除（1级，只能逐级拆除）」—— 一级一级拆：
+       Lv>1 每次只降 1 级；拆到 Lv1 再拆才整座移除（腾出地块）。
+       返还 = 本步投入（累计差）的 50%。 */
+    var inv = GAME.investedIn(b, lv), prev = GAME.investedIn(b, Math.max(0, lv - 1));
+    var step = { grain: inv.grain - prev.grain, wood: inv.wood - prev.wood,
+      stone: inv.stone - prev.stone, iron: inv.iron - prev.iron };
+    var back = GAME.scaledCost(step, DATA.DEMOLISH_RATE);
+    GAME.refundCert(step, DATA.DEMOLISH_RATE);
+    if (lv > 1) {
+      cell.build.lvl = lv - 1;
+      GAME.statBump('demolished', 1);
+      GAME.log('拆 ' + b.name + ' Lv' + lv + ' → Lv' + (lv - 1) + '，返还 ' + GAME.costString(back));
+      return { ok: true, msg: '已拆 1 级：' + b.name + ' Lv' + lv + ' → Lv' + (lv - 1) + '，返还 ' + GAME.costString(back), back: back };
+    }
     cell.build = null;
     cell.pending = null;
     /* 清掉该格的建造/升级队列项，避免队列完成后写入已拆毁的格子 */

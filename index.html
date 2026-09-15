@@ -446,7 +446,17 @@
      scrollbar-gutter: stable 让滚动条轨道**常驻预留**，有没有滚动条宽度都一样。 */
   html { scrollbar-gutter: stable; }
   .view-box { flex: 1; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; }
-  .auth-side { min-height: 0; overflow-y: auto; scrollbar-gutter: stable; }
+  .auth-side { min-height: 0; overflow-y: auto; scrollbar-gutter: stable;
+    /* v76（老板）：「城池的左侧统计框没有到底」——左栏改 flex 列，
+       最后一段（资源+驻军）拉伸到栏底：消灭底部留白、与右侧棋盘区底线一致；
+       内容超长时照旧整体滚动。 */
+    display: flex; flex-direction: column; }
+  /* ⚠️ 左栏的"框"是那口**大卡**（.lord-card 里装着 君主头 + 城池属性段 + 资源段）——
+     铺满链必须从 lord-card 起（作者第一版挂在 .auth-side > .side-block 上，
+     选择器压根匹配不到，真机一量才发现驻军框纹丝不动）。 */
+  .auth-side .lord-card { flex: 1 1 auto; display: flex; flex-direction: column; }
+  .auth-side .lord-card > .side-block:last-child { flex: 1 1 auto; display: flex; flex-direction: column; }
+  .auth-side .lord-card > .side-block:last-child .garrison-bar { flex: 1 1 auto; display: flex; flex-direction: column; }
 
   /* ============ 左侧：君主卡 ============ */
   .lord-card {
@@ -1271,23 +1281,15 @@
   /* ============ 地图 canvas 容器 ============ */
   /* ---- 地图（v24 · 需求 2/3）：版面只留棋盘，导航与坐标收进右下角浮标 ---- */
   /* v26（需求 4）：观察框改 12×8，画布变矮，浮标让位也随之收窄 */
-  .map-wrap { position: relative; padding: var(--sp-5); padding-bottom: 78px; }
+  /* v76（老板）：导航迁入底部条后，这里不再需要为右下浮标让位（78px 撤） */
+  .map-wrap { position: relative; padding: var(--sp-5); }
+  /* v76（老板）：「把地图的导航栏（上下左右，坐标之类）放到这个导航范围内」——
+     地图导航迁入**底部固定导航条**（.bottombar，由 ui.mapHTML 登记、paintBottom 落画），
+     改为静态排布、融入条内（条高 46px，v44 的"一行"布局原样保留）。
+     历史：v24 收进右下浮标 → v45 浮标内水平居中 → v76 移入底部条。 */
   .map-dock {
-    /* v45（需求 2）：由右下角改为**水平居中** —— 老板要求"导航条居中放置"。
-       ⚠️ 不能用 `left:50% + translateX(-50%)`：abspos 元素的 shrink-to-fit 是拿
-       **「从 left 到包含块右缘」** 当可用宽度算的，left:50% 等于只给了一半宽度 ——
-       浮标被挤窄 → 按钮里的字折行 → 整条从 44px 胖成 60px（实测踩过）。
-       正确写法是 left/right 都贴边 + margin:auto + width:fit-content：
-       可用宽度是整个包含块，再按内容自适应宽度并居中。 */
-    position: absolute; left: 0; right: 0; bottom: var(--sp-5);
-    margin: 0 auto;
-    width: fit-content;
-    /* v44（老板要求）：**整条压成一行** —— 原来「方向键 3×2 网格 ＋ 坐标竖排两行」
-       共占三行高度。现在方向键横排 + 视野区间 + 点选坐标 + 坐标输入同处一行。 */
-    display: flex; align-items: center; gap: 8px; padding: 7px 10px;
-    background: rgba(12,14,18,.88); border: 1px solid var(--line-strong);
-    border-radius: 8px; box-shadow: 0 4px 14px rgba(var(--sh-rgb),.5);
-    max-width: calc(100% - var(--sp-5) * 2);
+    display: flex; align-items: center; gap: 8px; padding: 2px 4px;
+    max-width: 100%;
   }
   .map-pad { display: grid; grid-template-columns: repeat(4, 28px); grid-template-rows: 26px; gap: 3px; }
   .map-btn { background: linear-gradient(180deg,var(--btn-face-1),var(--btn-face-2)); color: var(--gold-light); border: 1px solid var(--gold-dark);
@@ -1368,21 +1370,34 @@
   .op-zone.danger { border-color: rgba(176,74,53,.5); background: rgba(176,74,53,.07); }
   .op-zone.danger .op-zone-t { color: var(--red-light); }
   .op-hint { color: var(--text-dim); font-size: var(--fs-sub); }
-  /* v28（需求 7）：拆毁（左）与移动/交换（右）分居两端、且都收小。
-     两端分离是为了避免误点 —— 拆毁不可逆，紧挨着移动很容易点错。 */
+  /* v76（老板）：「升级，拆除，移动/交换放在同一行上，并进行你的设计小巧思」——
+     三键同排、等宽；每键下方一行小字说明后果（费用 / 降级去向 / 用途）。
+     （v28 的"拆毁左、移动右分居两端"随 v76 的三键同排一并退役 —— 老板点名要同行。） */
+  .bldg-acts { display: flex; gap: 8px; margin-top: 10px; }
+  .bldg-acts .bldg-act { flex: 1 1 0; display: flex; flex-direction: column; align-items: center;
+    gap: 1px; padding: 7px 4px; line-height: 1.15; }
+  .bldg-acts .bldg-act .ba-sub { font-size: var(--fs-cap); font-weight: 400; opacity: .72; }
   /* v68（弹窗统一）：与 m-foot 同规格（实线）—— 改前是 dashed，四套页脚里唯一的例外。
      三格摆位保留 v28 的设计：危险（左）· 关闭（中，天然误点缓冲）· 管理（右）。 */
   /* v73（老板）：「取消升级和关闭按钮要固定在底部，对不同建筑来说位置都要固定」——
       **吸底**：正文再长，底栏也钉在弹窗下沿（sticky），六处建筑弹窗同一位置。
       几何校准（真机实测）：左右负边距 = .inner-panel 的 padding(12px) → 出血到面板边缘；
       `bottom: -12px` + 底部垫 22px → 钉在**面板下沿**（实测底沿差 13px → 1px，三档滚动全对齐）。 */
-  .bldg-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px;
+  /* v76（老板）：「建筑界面的关闭按钮在弹窗界面的最底部」—— 操作三键上移后，
+     底栏只剩「关闭」一枚，居中摆放（原 space-between 三格摆位随三键同排退役）。 */
+  .bldg-foot { display: flex; justify-content: center; align-items: center; gap: 8px;
     position: sticky; bottom: -12px; z-index: 3;
     margin: 12px -12px -12px; padding: 8px 12px 22px;
     border-top: 1px solid var(--line-strong);
     background: var(--panel-bg);
     box-shadow: 0 -6px 12px rgba(var(--sh-rgb),.28); }
   .bldg-foot .btn.sm { font-size: var(--fs-cap); padding: 3px 9px; }
+  /* v76（老板）：「建筑界面的关闭按钮在弹窗界面的最底部」——
+     内容短时关闭浮在中间（实测离弹窗底 284px），这里把带 .bldg-foot 的面板
+     改纵向 flex，关闭用 margin-top:auto 吃空档、钉死在面板最下沿；
+     内容超长时 sticky（v73）照旧接管。 */
+  .modal .inner-panel:has(> .bldg-foot) { display: flex; flex-direction: column; }
+  .modal .inner-panel:has(> .bldg-foot) > .bldg-foot { margin-top: auto; }
   .op-done { color: var(--text-dim); font-size: var(--fs-sub); }
   /* v68（弹窗统一）：升级行专用 —— 费用靠左、按钮靠右（同一行对齐） */
   .op-row-between { justify-content: space-between; }
@@ -1400,7 +1415,9 @@
   .gb-head { display: flex; align-items: center; gap: 6px; padding: 6px 9px; cursor: pointer;
     font-size: var(--fs-sub); color: var(--gold-light); font-weight: 700; }
   .gb-head .gb-arrow { margin-left: auto; color: var(--text-dim); }
-  .gb-list { height: 132px; overflow-y: auto; padding: 0 9px 8px; }
+  /* v76（老板）：「左侧统计框没有到底」——驻军列表从固定 132px 改**撑满剩余高度**
+     （左栏"铺满到底"的主力；兵多时列表内部照旧滚动）。 */
+  .gb-list { flex: 1 1 auto; min-height: 132px; overflow-y: auto; padding: 0 9px 8px; }
   .gb-row { /* v67（老板）：「分一下列」—— 数量与耗粮各自成列，中间发丝竖线 */
     display: grid; grid-template-columns: 1fr 62px 74px; align-items: center; gap: 8px;
     font-size: var(--fs-sub);
@@ -1662,6 +1679,9 @@
        `scrollbar-gutter: stable` 保留 —— 否则内容增减会让清单宽度跳一下。 */
     max-height: 100%; overflow-y: auto; scrollbar-gutter: stable; padding-right: 2px;
   }
+  /* v76（老板）：「12个空格每页，平分空间吧」——12 行平分清单高度（行随面板伸缩，
+     高度不足时才退回滚动 + 最小行高兜底）。 */
+  .gen-list > .gen-row { flex: 1 1 0; min-height: 40px; }
   .gen-row {
     display: flex; align-items: center; gap: 8px; padding: 4px 8px; cursor: pointer;
     background: rgba(var(--sh-rgb),.22); border: 1px solid var(--line);

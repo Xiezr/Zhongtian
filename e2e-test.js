@@ -872,11 +872,13 @@ async function runTests(dom, URL) {
   G.ui.setView('map');
   await sleep(80);
   const mapHtml = vc.innerHTML;
-  check('地图含方向导航栏', mapHtml.indexOf('map-pad') >= 0 && mapHtml.indexOf('map-btn') >= 0);
-  const padBtns = vc.querySelectorAll('[data-action="map-pan"]');
+  /* v76（老板）：地图导航迁入底部固定导航条 —— 相关元素改从 #bottom-bar 取 */
+  const bb19 = document.querySelector('#bottom-bar').innerHTML;
+  check('地图含方向导航栏（v76：在底部导航条）', bb19.indexOf('map-pad') >= 0 && bb19.indexOf('map-btn') >= 0);
+  const padBtns = document.querySelectorAll('#bottom-bar [data-action="map-pan"]');
   check('方向按钮共 4 个', padBtns.length === 4, padBtns.length + ' 个');
-  check('含坐标输入框', !!vc.querySelector('#map-gx') && !!vc.querySelector('#map-gy'));
-  check('含视野信息', !!vc.querySelector('#map-info'), (vc.querySelector('#map-info') || {}).textContent);
+  check('含坐标输入框', !!document.querySelector('#map-gx') && !!document.querySelector('#map-gy'));
+  check('含视野信息', !!document.querySelector('#map-info'), (document.querySelector('#map-info') || {}).textContent);
   const cv19 = vc.querySelector('#mapCanvas');
   check('地图 canvas 存在', !!cv19);
   /* v26（需求 4）：观察框 12×8、格距 52 —— 判据取实际常量，不写死像素
@@ -920,7 +922,7 @@ async function runTests(dom, URL) {
   check('地图不再渲染图例与说明文字',
     !/湖泊/.test(mapHtml) && !/森林/.test(mapHtml) && !/荒漠/.test(mapHtml) && !/山地/.test(mapHtml)
     && !/天下大势/.test(mapHtml) && !/观察框/.test(mapHtml) && !/名城（红=都城/.test(mapHtml));
-  check('地图导航浮标内（含方向键）', /map-dock/.test(mapHtml) && /map-pad/.test(mapHtml));
+  check('地图导航在底部条内（含方向键；v76）', bb19.indexOf('map-dock') >= 0 && bb19.indexOf('map-pad') >= 0);
   /* 真实点击右移按钮。v45（需求 2）：步长由 1 格改为常量 ui.MAP_STEP_X（12） */
   const x0 = G.ui.mapView.x;
   const rightBtn = Array.prototype.slice.call(padBtns)
@@ -930,19 +932,19 @@ async function runTests(dom, URL) {
   await sleep(60);
   check('点击右移后视野变化（一次一屏）', G.ui.mapView.x === x0 + G.ui.MAP_STEP_X,
     x0 + ' → ' + G.ui.mapView.x);
-  check('视野信息同步刷新', (vc.querySelector('#map-info') || {}).textContent === G.ui.mapInfoText(),
-    (vc.querySelector('#map-info') || {}).textContent);
+  check('视野信息同步刷新', (document.querySelector('#map-info') || {}).textContent === G.ui.mapInfoText(),
+    (document.querySelector('#map-info') || {}).textContent);
   /* 坐标跳转 */
-  vc.querySelector('#map-gx').value = '265';
-  vc.querySelector('#map-gy').value = '215';
-  click(vc.querySelector('[data-action="map-goto"]'));
+  document.querySelector('#map-gx').value = '265';
+  document.querySelector('#map-gy').value = '215';
+  click(document.querySelector('[data-action="map-goto"]'));
   await sleep(60);
   check('坐标跳转生效（v50：目标即视野中心）',
     G.ui.mapView.x === 265 && G.ui.mapView.y === 215,
     '(' + G.ui.mapView.x + ',' + G.ui.mapView.y + ')');
   /* 回主城 */
   const pc19 = G.map.playerCity();
-  click(vc.querySelector('[data-action="map-center"]'));
+  click(document.querySelector('[data-action="map-center"]'));
   await sleep(60);
   check('回主城后主城居中（v50：视野中心 = 主城格）', (function () {
     return G.ui.mapView.x === pc19.x && G.ui.mapView.y === pc19.y;
@@ -1649,25 +1651,37 @@ async function runTests(dom, URL) {
   }
   check('找到可拆毁建筑', bIdx22 >= 0, 'idx=' + bIdx22);
   if (bIdx22 >= 0) {
+    s.cities[0].cells[bIdx22].build.lvl = 2;   /* v76：设 Lv2，验证"逐级"（拆一次 → Lv1） */
     G.ui.openBuildModal(bIdx22);
     await sleep(80);
     const bHtml22 = document.querySelector('#modal-root').innerHTML;
     check('建筑面板有拆毁按钮', !!document.querySelector('#modal-root [data-action="demolish-ask"]'));
-    check('建筑面板显示返还预览', bHtml22.indexOf('返还累计投入的 50%') >= 0);
+    check('v76：面板不再写返还长备注；操作三键同排',
+      bHtml22.indexOf('返还累计投入的 50%') < 0 && bHtml22.indexOf('class="bldg-acts"') >= 0);
     check('建筑面板不再显示升级耗时', bHtml22.indexOf('耗时') < 0);
     click(document.querySelector('#modal-root [data-action="demolish-ask"]'));
     await sleep(90);
     check('拆毁确认弹窗出现', !!document.querySelector('#modal-root [data-action="demolish-do"]'));
     click(document.querySelector('#modal-root [data-action="demolish-do"]'));
     await sleep(100);
-    check('确认后建筑被拆毁', !s.cities[0].cells[bIdx22].build);
+    check('v76 逐级：确认后只降 1 级（Lv2 → Lv1）',
+      !!(s.cities[0].cells[bIdx22].build && s.cities[0].cells[bIdx22].build.lvl === 1));
+    /* 拆到 Lv1 再拆一次 → 整座移除、地块腾空 */
+    G.ui.openBuildModal(bIdx22);
+    await sleep(80);
+    click(document.querySelector('#modal-root [data-action="demolish-ask"]'));
+    await sleep(90);
+    click(document.querySelector('#modal-root [data-action="demolish-do"]'));
+    await sleep(100);
+    check('拆到 Lv1 再拆 → 整座移除', !s.cities[0].cells[bIdx22].build);
     check('拆毁后地块变为空地', !!document.querySelector('.iso-tile.empty'), 'iso-tile.empty 存在');
   } else {
     check('建筑面板有拆毁按钮', false, '无建筑');
-    check('建筑面板显示返还预览', false, '无建筑');
+    check('v76：面板不再写返还长备注；操作三键同排', false, '无建筑');
     check('建筑面板不再显示升级耗时', false, '无建筑');
     check('拆毁确认弹窗出现', false, '无建筑');
-    check('确认后建筑被拆毁', false, '无建筑');
+    check('v76 逐级：确认后只降 1 级（Lv2 → Lv1）', false, '无建筑');
+    check('拆到 Lv1 再拆 → 整座移除', false, '无建筑');
     check('拆毁后地块变为空地', false, '无建筑');
   }
 
@@ -2327,17 +2341,17 @@ async function runTests(dom, URL) {
    * ============================================================ */
   console.log('\n--- v24. 界面精简与队列（真实 DOM） ---');
 
-  /* ①②③ 地图：只留棋盘 + 右下角浮标 */
+  /* ①②③ 地图：只留棋盘；导航迁入底部导航条（v76） */
   G.ui.setView('map');
   await sleep(90);
   const m24 = vc.innerHTML;
-  check('地图只渲染棋盘与右下角浮标',
-    !!vc.querySelector('.map-dock') && !!vc.querySelector('#mapCanvas')
+  check('地图只渲染棋盘；导航在底部导航条（v76）',
+    !!document.querySelector('#bottom-bar .map-dock') && !!vc.querySelector('#mapCanvas')
     && m24.indexOf('天下大势') < 0 && m24.indexOf('湖泊') < 0
     && m24.indexOf('已占野地') < 0 && m24.indexOf('点击城池可出征') < 0);
-  check('导航在浮标内（方向键 + 坐标框）',
-    vc.querySelectorAll('.map-dock [data-action="map-pan"]').length === 4
-    && !!vc.querySelector('.map-dock #map-gx') && !!vc.querySelector('.map-dock #map-gy'));
+  check('导航在底部条内（方向键 + 坐标框）',
+    document.querySelectorAll('#bottom-bar .map-dock [data-action="map-pan"]').length === 4
+    && !!document.querySelector('#map-gx') && !!document.querySelector('#map-gy'));
   check('地图版面里没有横占整行的控制条', !vc.querySelector('.map-bar') && !vc.querySelector('.map-head'));
   /* 浮标里的按钮真的能推动视野。
      v45（需求 2）：步长由 1 格改为「左右 12 / 上下 8」，且浮标改为**水平居中**。
@@ -2346,19 +2360,16 @@ async function runTests(dom, URL) {
   G.ui.mapView.y = 100;
   G.ui.renderMapCanvas();
   const panX0 = G.ui.mapView.x;
-  click(Array.prototype.slice.call(vc.querySelectorAll('.map-dock [data-action="map-pan"]'))
+  click(Array.prototype.slice.call(document.querySelectorAll('#bottom-bar .map-dock [data-action="map-pan"]'))
     .filter((b) => b.dataset.dx === String(G.ui.MAP_STEP_X))[0]);
   await sleep(60);
-  check('浮标方向键生效（一次右移一屏 = 12 格）',
+  check('底栏方向键生效（一次右移一屏 = 12 格）',
     G.ui.mapView.x === Math.min(panX0 + G.ui.MAP_STEP_X, G.DATA.MAP_W - G.ui.mapFrame.spanX),
     'x ' + panX0 + '→' + G.ui.mapView.x);
   (function () {
-    const dock = vc.querySelector('.map-dock');
-    const wrap = vc.querySelector('.map-wrap');
-    if (!dock || !wrap) { check('导航条在版面内水平居中', false); return; }
-    const d = dock.getBoundingClientRect(), w = wrap.getBoundingClientRect();
-    const off = Math.abs((d.left + d.right) / 2 - (w.left + w.right) / 2);
-    check('导航条在版面内水平居中（v45：原为右下角）', off <= 2, '偏离中线 ' + off.toFixed(1) + 'px');
+    const dock = document.querySelector('#bottom-bar .map-dock');
+    if (!dock) { check('导航条挂在底部导航条内（v76）', false); return; }
+    check('导航条挂在底部导航条内（v76：原为地图页右下浮标）', true);
     /* 注意：jsdom **没有布局**，量高度恒为 0 —— 所以这里不测"是否单行/多高"，
        那两条放在真浏览器里测（.workbuddy/tmp/probe_map45.js 会打印
        "单行？是 ✅　高度 ≤48px：是 ✅"，实测 44px）。
@@ -3226,12 +3237,12 @@ async function runTests(dom, URL) {
   if (bi28 >= 0) {
     G.ui.openBuildModal(bi28);
     await sleep(80);
-    const foot28 = document.querySelector('#modal-root .bldg-foot');
-    check('建筑面板有左下/右下分居的操作行（拆毁 · 移动）', !!foot28
-      && !!foot28.querySelector('[data-action="demolish-ask"]')
-      && !!foot28.querySelector('[data-action="move-ask"]'));
-    check('拆毁与移动都是小按钮（btn sm）',
-      /btn sm red/.test(foot28.innerHTML) && /btn sm"/.test(foot28.innerHTML));
+    const acts28 = document.querySelector('#modal-root .bldg-acts');
+    check('v76：操作三键同排（升级 · 拆 1 级 · 移动/交换）', !!acts28
+      && !!(acts28.querySelector('[data-action="confirm-upgrade"]') || acts28.querySelector('.dim'))
+      && !!acts28.querySelector('[data-action="demolish-ask"]')
+      && !!acts28.querySelector('[data-action="move-ask"]'));
+    check('v76：关闭按钮单独吸底', !!document.querySelector('#modal-root .bldg-foot [data-action="close-modal"]'));
     G.ui.closeModal();
     await sleep(40);
   }

@@ -2220,10 +2220,10 @@
   cS.cells[idxS].build = { id: 'minfang', lvl: 3 };
   var refS = G.demolishRefund(cS, idxS);
   check('城内拆毁返还预览存在', !!refS && refS.grain > 0, JSON.stringify(refS));
-  check('返还 = 累计投入的 50%', (function () {
+  check('返还 = 本步投入的 50%（v76 逐级：Lv2→Lv3 那一步）', (function () {
     var b = DATA.BUILDINGS.minfang;
-    var inv = G.investedIn(b, 3);
-    return refS.grain === Math.floor(inv.grain * DATA.DEMOLISH_RATE) && DATA.DEMOLISH_RATE === 0.5;
+    var inv = G.investedIn(b, 3), prev = G.investedIn(b, 2);
+    return refS.grain === Math.floor((inv.grain - prev.grain) * DATA.DEMOLISH_RATE) && DATA.DEMOLISH_RATE === 0.5;
   })());
   check('累计投入含各级升级（3 级 > 仅 1 级）', (function () {
     var b = DATA.BUILDINGS.minfang;
@@ -2233,7 +2233,12 @@
   var rDem = G.demolishAt(cS.id, idxS);
   check('城内拆毁执行成功', rDem.ok === true, rDem.msg);
   check('拆毁后资源确实返还', gS.res.grain > grain0, Math.round(grain0) + ' → ' + Math.round(gS.res.grain));
-  check('拆毁后地块变为空地', !cS.cells[idxS].build);
+  check('v76 逐级：Lv3 拆一次 → Lv2（不整座移除）',
+    !!(cS.cells[idxS].build && cS.cells[idxS].build.lvl === 2),
+    '现在 Lv' + (cS.cells[idxS].build ? cS.cells[idxS].build.lvl : '空'));
+  G.demolishAt(cS.id, idxS);
+  G.demolishAt(cS.id, idxS);
+  check('拆到 Lv1 再拆 → 整座移除、地块变空地（v76）', !cS.cells[idxS].build);
   check('官府不可拆毁', (function () {
     var gi = -1;
     cS.cells.forEach(function (c, i2) { if (c.official) gi = i2; });
@@ -2847,14 +2852,15 @@
     /\.gen-split \{ display: grid; grid-template-columns: 264px minmax\(0, 1fr\)/.test(htmlSrc25)
     && !/ui\.GEN_COLS/.test(uiS)
     && !/'<table class="tbl"><thead><tr>' \+\s*'<th>姓名<\/th><th>资质/.test(uiS));
-  check('v45：左清单取消分页，改为整段可滚（老板 v52 又要求"不要没排满还挂着下拉"）',
-    !/ui\.GEN_PER_PAGE/.test(uiS.replace(/\/\*[\s\S]*?\*\//g, '')) && !/ui\.pageOf\('gens'/.test(uiS)
-    && !/ui\.pagerHTML\('gens'/.test(uiS)
-    /* v52：高度不再写死 68vh（写死 → 将领少时清单也被撑满、滚动条常驻，老板："没排满整什么下拉"），
-       改成吃满可用高度、内容少就矮。这里查**块内容**而不是 160 字符窗口（注释会把窗口挤爆）。 */
+  check('v76：左清单 12 席/页 + 底部条翻页（v45 曾整段滚动）',
+    /ui\.GEN_PER = 12/.test(uiS) && /ui\.pageOf\('gen', pool\.length, ui\.GEN_PER\)/.test(uiS)
+    && /ui\.pagerHTML\('gen', pool\.length, ui\.GEN_PER\)/.test(uiS)
+    && !/ui\.GEN_PER_PAGE/.test(uiS.replace(/\/\*[\s\S]*?\*\//g, ''))
+    /* v52 保留：高度不写死 68vh；v76：12 行平分高度（行可伸缩 + 最小行高兜底） */
     && /overflow-y: auto/.test(cssBlock(htmlSrc25, '.gen-list {'))
     && /max-height: 100%/.test(cssBlock(htmlSrc25, '.gen-list {'))
-    && !/max-height: 68vh/.test(cssBlock(htmlSrc25, '.gen-list {')));
+    && !/max-height: 68vh/.test(cssBlock(htmlSrc25, '.gen-list {'))
+    && /flex: 1 1 0/.test(cssBlock(htmlSrc25, '.gen-list > .gen-row {')));
   check('v45：将领行只留「姓名 + 资质」，不再有「装 x/12」与 Lv（v46：资质另起一行）',
     !/grow-eq/.test(uiS) && !/装 ' \+ eqN/.test(uiS) && !/class="grow-lv/.test(uiS)
     /* v70：名字后多了「君主」标，窗口 260 → 420（本断言要的是「名字行紧跟资质」，不是定长） */
@@ -3544,7 +3550,8 @@
     && (uS16.match(/ui\.openShell\(\{/g) || []).length >= 3,
     (uS16.match(/ui\.openShell\(\{/g) || []).length + ' 处');
   check('#12 操作分区样式', /\.op-zone \{/.test(hS16) && /\.op-zone\.danger \{/.test(hS16));
-  check('#12 建筑面板动线三段（功能 / 升级 / 底栏）', /class="op-zone-t">功能</.test(uS16) && /class="op-zone-t">升级</.test(uS16) && /class="bldg-foot"/.test(uS16));
+  check('#12 建筑面板动线（功能 / 操作三键同排 / 关闭吸底；v76 更新）',
+    /class="op-zone-t">功能</.test(uS16) && /class="bldg-acts"/.test(uS16) && /class="bldg-foot"/.test(uS16));
   check('#12 已移除重复的拆除按钮', !/data-action="confirm-demolish"/.test(uS16));
   check('#13 升级中写入 pending（防重复排队）', /if \(cell\.pending\) return \{ ok: false, msg: '该建筑正在施工中/.test(dS16));
   check('#13 升级完成清 pending', /cell\.build\.lvl = q\.targetLevel;[\s\S]{0,80}cell\.pending = null;/.test(stS16));
@@ -3555,7 +3562,8 @@
     /city-chips/.test(uS16) && /after: 'city'/.test(uS16) && /after === 'city'/.test(mS16));
   check('#16 无城池时占位空白', /当前无城池/.test(uS16));
   check('#17 侧栏驻军栏（资源下方）', /garrison-bar/.test(hS16) && /ui\.renderGarrison = function/.test(uS16));
-  check('#17 驻军栏可折叠且固定高度', /data-action="toggle-garrison"/.test(uS16) && /\.gb-list \{ height: 132px/.test(hS16));
+  check('#17 驻军栏可折叠且撑满（v76：固定 132px → min-height + 撑满）',
+    /data-action="toggle-garrison"/.test(uS16) && /\.gb-list \{ flex: 1 1 auto; min-height: 132px/.test(hS16));
 
   console.log('  --- 菜单与消息 ---');
   /* v29（需求 3/4）：底部栏以**固定导航条**的身份回归 ——
@@ -4541,9 +4549,9 @@
     return !r.ok && /官府/.test(r.msg);
   })());
   /* v28（需求 7）：移动/交换改到右下角、按钮收小（.btn sm） */
-  check('面板右下角有「移动 / 交换」入口（官府除外·小按钮）', /data-action="move-ask"/.test(uS31)
-    && /b\.id === 'guanfu' \? '<span><\/span>'\s*\n?\s*: '<button class="btn sm" data-action="move-ask"/.test(uS31)
-    && /\.bldg-foot \{ display: flex; justify-content: space-between/.test(htmlSrc25));
+  check('v76：移动/交换与升级/拆除同排（官府除外）', /data-action="move-ask"/.test(uS31)
+    && /b\.id === 'guanfu' \? ''[\s\S]{0,60}: '<button class="btn bldg-act" data-action="move-ask"/.test(uS31)
+    && /\.bldg-foot \{ display: flex; justify-content: center/.test(htmlSrc25));
   /* 移动确认弹窗整体定义在 main.js（含按钮），故三处都查 main.js */
   check('移动走二次确认（move-do）', /ui\.openMoveConfirm = function/.test(mS31) && /data-action="move-do"/.test(mS31)
     && /case 'move-do'/.test(mS31) && /ui\.openShell\(\{/.test(mS31));
@@ -4636,11 +4644,11 @@
   /* v29（需求 16）：每页 6 席（3×2），翻页走底部固定条 */
   /* v45（需求 1）：老板要求"不要那么多页""不要限制每页的将领个数，这里允许他用下拉框"。
      所以将领左清单**取消分页**，改整段可滚（其余长列表仍守"必须分页"的规矩）。 */
-  check('将领左清单整段滚动（v45：取消每页 6 席的分页）',
-    /ui\.GEN_SLOTS = 12/.test(uS31)
+  check('将领左清单 12 席/页 + 底栏翻页（v76；v45 曾取消分页）',
+    /ui\.GEN_SLOTS = 12/.test(uS31) && /ui\.GEN_PER = 12/.test(uS31)
     && !/ui\.GEN_PER_PAGE/.test(uS31.replace(/\/\*[\s\S]*?\*\//g, ''))
-    && !/ui\.pagerHTML\('gens'/.test(uS31)
-    && /for \(var i = 0; i < total; i\+\+\) rows\.push\(ui\.genRow/.test(uS31));
+    && /ui\.pagerHTML\('gen', pool\.length, ui\.GEN_PER\)/.test(uS31)
+    && /for \(var i = 0; i < ui\.GEN_PER; i\+\+\)/.test(uS31));
   check('空席也渲染（看得出还差几位、能不能再招）',
     /class="gen-row empty"/.test(uS31) && /招贤馆需 /.test(uS31));
   check('装备背包分页（每页 10）', /ui\.pageOf\('equip', invAll\.length, 10\)/.test(uS31)
@@ -4649,7 +4657,7 @@
     && /ui\.pagerHTML\('chronicle', items\.length, 20\)/.test(uS31));
   check('分页组件与任务/商城同一套', /ui\.pageOf = function/.test(uS31) && /ui\.pagerHTML = function/.test(uS31)
     && /data-action="page" data-key="/.test(uS31));
-  check('实测：30 位将领时**全部渲染**（v45：不再截断到 6 席）', (function () {
+  check('实测：30 位将领 → 每页 12 席、底部条出现翻页（v76）', (function () {
     var s = G.state, backup = s.generals;
     var proto = backup[0] || G.makeGeneral('样本', 1);
     var many = [];
@@ -4659,12 +4667,18 @@
       many.push(g);
     }
     s.generals = many;
+    G.ui._pages['gen'] = 1;
+    G.ui._bottom.length = 0;
     var html = G.ui.generalsHTML();
-    /* 清单行是 .gen-row（v41 起；容器 .gen-list 前缀不撞） */
     var rows = (html.match(/<div class="gen-row[\s"']/g) || []).length;
-    var hasLast = html.indexOf('测试将29') >= 0;
+    var pager = G.ui._bottom.join('');
+    G.ui._pages['gen'] = 2;                       /* 翻到第 2 页：应出现 测试将12 */
+    var html2 = G.ui.generalsHTML();
     s.generals = backup;
-    return rows >= 30 && hasLast;
+    G.ui._pages['gen'] = 1;
+    G.ui._bottom.length = 0;
+    return rows === 12 && html.indexOf('测试将0') >= 0 && html.indexOf('测试将12') < 0
+      && html2.indexOf('测试将12') >= 0 && pager.indexOf('data-key="gen"') >= 0;
   })());
   check('实测：史册分页只渲染 20 条', (function () {
     var s = G.state, backup = s.chronicle;
@@ -5586,19 +5600,21 @@
   check('地图不再输出标题/图例/提示',
     !/天下大势/.test(uS37.slice(uS37.indexOf('ui.mapHTML'), uS37.indexOf('ui.renderMapCanvas')))
     && !/map-legend/.test(uS37) && !/map-hint/.test(uS37));
-  /* v45（需求 2）：浮标由右下角改为**水平居中**。
-     为什么不用 `left:50% + translateX(-50%)`：abspos 的 shrink-to-fit 拿
-     「left 到包含块右缘」当可用宽度，left:50% 只给半幅 → 浮标被挤窄、按钮文字折行，
-     整条从 44px 胖成 60px（实测踩过）。所以断言直接认这个写法。 */
-  check('地图导航浮标水平居中（v45：原为右下角）',
-    /class="map-dock"/.test(uS37)
-    && /\.map-dock \{[\s\S]{0,600}position: absolute; left: 0; right: 0;[\s\S]{0,200}margin: 0 auto;[\s\S]{0,120}width: fit-content/.test(hS37));
+  /* v76（老板）：「把地图的导航栏（上下左右，坐标之类）放到这个导航范围内」——
+     导航不再是地图页浮标（v24 右下角 → v45 居中），改**登记到底部固定导航条**
+     （ui._bottom.push → paintBottom）；.map-dock 改为条内静态排布。 */
+  check('地图导航迁入底部导航条（v76）',
+    /ui\._bottom\.push\('<div class="map-dock">'/.test(uS37)
+    && /\.map-dock \{[\s\S]{0,200}display: flex; align-items: center; gap: 8px/.test(hS37)
+    && !/\.map-dock \{[\s\S]{0,300}position: absolute/.test(hS37));
   check('地图不再有横占整行的控制条', !/\.map-bar \{/.test(hS37) && !/\.map-head \{/.test(hS37));
   check('图例色块样式一并删除（不留死样式）',
     !/\.lg-lake/.test(hS37) && !/\.map-title \{/.test(hS37) && !/\.map-head \{/.test(hS37));
-  check('实测：地图 HTML 只剩棋盘 + 浮标', (function () {
+  check('实测：地图 HTML 只剩棋盘；导航登记到底部条（v76）', (function () {
     var h = G.ui.mapHTML();
-    return h.indexOf('map-dock') >= 0 && h.indexOf('mapCanvas') >= 0
+    var bar = G.ui._bottom.join('');
+    return h.indexOf('mapCanvas') >= 0 && h.indexOf('map-dock') < 0
+      && bar.indexOf('map-dock') >= 0 && bar.indexOf('map-pad') >= 0
       && h.indexOf('天下大势') < 0 && h.indexOf('湖泊') < 0 && h.indexOf('已占野地') < 0
       && h.indexOf('观察框') < 0;
   })());
@@ -6815,7 +6831,7 @@
     cv.getBoundingClientRect = old;
     return hitA && hitA.x === 4 && hitA.y === 3 && hitB && hitB.x === 0 && hitB.y === 0 && out === null;
   })());
-  check('浮标让位随画布变矮一起收窄', /padding-bottom: 78px/.test(hS39));
+  check('v76：浮标让位已撤（导航迁底部条，78px 不再需要）', !/padding-bottom: 78px/.test(hS39));
 
   check('e2e 主流程异常会计入失败（不再"绿着崩"）', (function () {
     /* 本轮实际踩到：删掉 ui.setCitySub 后主流程在 2065 行中断，
@@ -7583,13 +7599,13 @@ check('实测：满级（12）比 10 级多出真实的加成', (function () {
 
 /* ---- 需求 2/3：12 席将领 / 民心民怨一行 ---- */
 console.log('  --- ②③ 将领 12 席 / 城池属性 ---');
-check('将领左清单渲染全部席位（v45：不再每页 6 席），空席写明原因', (function () {
+check('将领左清单渲染整页 12 席，空席写明原因（v76）', (function () {
   var html = G.ui.generalsHTML();
   var n = (html.match(/<div class="gen-row[\s"']/g) || []).length;
   return n >= G.ui.GEN_SLOTS && html.indexOf('class="gen-row empty"') >= 0
     && html.indexOf('招贤馆需 ') >= 0;
 })());
-check('实测：30 位将领时全部渲染、行数随之增长（v45：不再固定 6 席）', (function () {
+check('实测：30 位将领 → 每页 12 席、翻页可见（v76）', (function () {
   var s = G.state, backup = s.generals;
   var proto = backup[0] || G.makeGeneral('样本', 1);
   var many = [];
@@ -7599,10 +7615,14 @@ check('实测：30 位将领时全部渲染、行数随之增长（v45：不再�
     many.push(g);
   }
   s.generals = many;
+  G.ui._pages['gen'] = 1;
   var html = G.ui.generalsHTML();
   var n = (html.match(/<div class="gen-row[\s"']/g) || []).length;
+  G.ui._pages['gen'] = 2;
+  var html2 = G.ui.generalsHTML();
   s.generals = backup;
-  return n >= 30 && html.indexOf('V28将29') >= 0;
+  G.ui._pages['gen'] = 1;
+  return n === 12 && html.indexOf('V28将0') >= 0 && html2.indexOf('V28将12') >= 0;
 })());
 check('城池属性民心/民怨合并为一行', (function () {
   G.ui.renderCityAttrs(G.currentCity(), G.state);
@@ -7732,13 +7752,14 @@ check('实测：批量购买按黄金买得起几个就买几个', (function () 
 
 /* ---- 需求 7：拆毁 / 移动按钮 ---- */
 console.log('  --- ⑦ 拆毁与移动按钮 ---');
-check('拆毁在左下、移动在右下，且都是小按钮', (function () {
+check('v76：升级/拆除/移动同排（.bldg-acts），关闭单独吸底', (function () {
   var u = require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8');
   var h = require('fs').readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
-  return /class="bldg-foot"/.test(u)
-    && /class="btn sm red" data-action="demolish-ask"/.test(u)
-    && /class="btn sm" data-action="move-ask"/.test(u)
-    && /\.bldg-foot \{ display: flex; justify-content: space-between/.test(h);
+  return /class="bldg-acts"/.test(u)
+    && /data-action="confirm-upgrade"/.test(u)
+    && /data-action="demolish-ask"/.test(u)
+    && /data-action="move-ask"/.test(u)
+    && /\.bldg-foot \{ display: flex; justify-content: center/.test(h);
 })());
 
 /* ============================================================
@@ -11777,21 +11798,21 @@ console.log('\n===== 47. v62 工匠作坊造箭塔 =====');
       (u56.match(/class="bldg-foot"/g) || []).length >= 6,
       (u56.match(/class="bldg-foot"/g) || []).length + ' 处');
 
-    check('★ 底栏三格：拆毁（左）· 关闭（中）· 移动（右）', (function () {
-      /* 首个 bldg-foot 是"施工中"的底栏（只有取消+关闭）——
-         取**含拆毁按钮**的那段（城内建筑分支）来验三格摆位 */
+    check('★ v76：操作三键同排（升级 · 拆 1 级 · 移动/交换），关闭单独吸底', (function () {
+      /* 取**含城内拆毁按钮**的那段，从 .bldg-acts 起验三键顺序与底栏关闭 */
       var i = u56.indexOf('data-action="demolish-ask" data-kind="city');
       if (i < 0) return false;
-      var a = u56.lastIndexOf('class="bldg-foot"', i);
+      var a = u56.lastIndexOf('class="bldg-acts"', i);
       if (a < 0) return false;
-      var seg = u56.slice(a, i + 900);
-      return seg.indexOf('close-modal') >= 0 && seg.indexOf('move-ask') >= 0
-        && seg.indexOf('demolish-ask') < seg.indexOf('close-modal')
-        && seg.indexOf('close-modal') < seg.indexOf('move-ask');
+      var seg = u56.slice(a, i + 1200);
+      return seg.indexOf('confirm-upgrade') >= 0
+        && seg.indexOf('confirm-upgrade') < seg.indexOf('demolish-ask')
+        && seg.indexOf('demolish-ask') < seg.indexOf('move-ask')
+        && seg.indexOf('close-modal') > seg.indexOf('move-ask');
     })());
 
-    check('★ 升级行统一：费用与按钮同行（op-row-between 至少三处）',
-      (u56.match(/op-row op-row-between/g) || []).length >= 3,
+    check('★ 升级行统一：费用与按钮同行（op-row-between 余 2 处：城外/城墙）',
+      (u56.match(/op-row op-row-between/g) || []).length >= 2,
       (u56.match(/op-row op-row-between/g) || []).length + ' 处');
 
     check('页脚样式统一：bldg-foot 与 m-foot 同规格（实线，不再 dashed）',
