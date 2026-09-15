@@ -560,21 +560,23 @@
   .chron-item.tag-encounter { border-left-color: var(--blue-info); background: rgba(63,169,201,.10); }
   .chron-item.tag-annual { border-left-color: #4a5a3a; opacity: .82; }
   /* ============ 客栈 / 市集 / 仓储 / 招贤馆 ============ */
-  /* v74：46vh → 414px（= 900 画布的 46%）—— 内部滚动的上限不再随窗口高度浮动 */
-  .inn-list { max-height: 414px; overflow-y: auto; padding-right: 4px; }
-  .inn-card { display: flex; align-items: center; gap: 10px; padding: 8px 10px; margin-bottom: 6px;
+  /* v75（老板）：候选改**单行紧凑**版式（「尽量单个将领一行显示」）。
+     列表不再自带滚动 —— 整页滚动只留 .m-body 一处，避免旧版"列表 + 面板"双滚动条。 */
+  .inn-list { padding-right: 4px; }
+  .inn-card { display: flex; align-items: center; gap: 10px;
     background: rgba(var(--sh-rgb),.2); border: 1px solid var(--gold-dark); border-radius: 7px; }
   .inn-card.off { opacity: .55; }
-  .inn-avatar { font-size: 26px; width: 34px; text-align: center; }
-  .inn-info { flex: 1; min-width: 0; }
-  .inn-name { font-size: var(--fs-lead); font-weight: 700; color: var(--gold-light); }
-  .inn-attrs { font-size: var(--fs-sub); color: var(--text-dim); margin-top: 3px; letter-spacing: .3px; }
+  .inn-avatar { font-size: 20px; width: 28px; text-align: center; }
+  .inn-name { font-size: var(--fs-lead); font-weight: 700; color: var(--gold-light); white-space: nowrap; flex: none; }
+  .inn-lv { color: var(--text-dim); font-size: var(--fs-cap); font-weight: 400; }
+  .inn-attrs { font-size: var(--fs-sub); color: var(--text-dim); letter-spacing: .3px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1 1 auto; min-width: 0; }
   .inn-attrs b { color: var(--text); font-weight: 700; }
-  .inn-act { text-align: right; flex: 0 0 auto; }
-  .inn-cost { font-size: var(--fs-sub); color: var(--gold); margin-bottom: 4px; }
+  .inn-act { display: flex; align-items: center; gap: 10px; flex: none; margin-left: auto; }
+  .inn-cost { font-size: var(--fs-sub); color: var(--gold); white-space: nowrap; }
   .inn-cost.short { color: var(--red-light); }
   .tag-hero { font-size: var(--fs-cap); padding: 1px 5px; border-radius: 3px; background: var(--sep-gold); color: var(--gold-light); }
-  .tag-beauty { font-size: var(--fs-cap); padding: 1px 5px; border-radius: 3px; background: rgba(212,83,126,.22); color: var(--beauty); }
+  /* v75（老板）：「美人灯标识去掉」—— .tag-beauty 整条退役（界面不再产出该标）。 */
   .note-warn { font-size: var(--fs-sub); color: var(--warn); background: rgba(230,164,0,.1); border: 1px solid rgba(230,164,0,.35);
     border-radius: 6px; padding: 7px 10px; margin-bottom: 8px; text-align: center; line-height: 1.6; }
   .mk-row { display: flex; align-items: center; gap: 8px; justify-content: center; margin: 8px 0; }
@@ -1223,11 +1225,8 @@
   .rank-badge.r-tian   { color: var(--amber); background: rgba(224,168,60,.16); box-shadow: 0 0 10px rgba(224,168,60,.35);
     animation: rankPulse 2.4s ease-in-out infinite; }
   @keyframes rankPulse { 0%,100% { box-shadow: 0 0 8px rgba(224,168,60,.25); } 50% { box-shadow: 0 0 16px rgba(224,168,60,.6); } }
-  .rk-box { margin-top: 10px; padding: 8px 10px; background: rgba(var(--sh-rgb),.24); border: 1px solid var(--gold-dark); border-radius: 7px; }
-  .rk-row { display: flex; align-items: center; gap: 8px; font-size: var(--fs-sub); color: var(--text-dim); padding: 3px 0; }
-  .rk-row .rk-base { flex: 0 0 118px; }
-  .rk-row .rk-grow { flex: 0 0 92px; color: var(--green-ok); }
-  .rk-row .rk-pct  { margin-left: auto; font-weight: 700; color: var(--gold-light); font-variant-numeric: tabular-nums; }
+  /* v75（老板）：「地下的各资质四维，成长和概率也不显示」——
+     资质一览（.rk-box / .rk-row）随 rankTable 一并退役。 */
   .forge-q { font-size: var(--fs-h3); font-weight: 700; color: var(--gold-light); margin: 10px 0 5px; padding-bottom: 3px;
     border-bottom: 1px dashed var(--sep-gold); }
   /* 野地资源合计 */
@@ -1771,7 +1770,7 @@
     display: flex; align-items: center; justify-content: center; z-index: 1000;
     backdrop-filter: blur(2px);
   }
-  /* v19：附属窗口**尺寸规范化** —— 四档固定尺寸，不随内容多少伸缩。
+  /* v19：附属窗口**尺寸规范化** —— 固定尺寸档位（v75 起五档：+xxl），不随内容多少伸缩。
      内容少则留白、内容多则内部滚动，连续打开多个面板时视觉稳定。
      所有档位都受 vw/vh 上限约束，保证任何视口下都不会超出边界。 */
   /* v74（老板需求 2）：弹窗尺寸**改成固定像素**（不再随视口 vw/vh 缩放）——
@@ -1790,6 +1789,11 @@
      700 高的弹窗正文约 530，两行稳装。
      v51 曾按"矮屏 min(700px, 88vh)"折衷；v74 画布固定后不再随视口缩（兜底同 md/lg）。 */
   .modal-xl { width: 960px; height: 700px;
+    max-width: calc(100vw - 20px); max-height: calc(100vh - 20px); }
+  /* xxl（v75 客栈招募）：980×800 —— 老板「大一点，尽量所有候选同一页」。
+     单行候选（行高实测 36px）：14 位（客栈 Lv12 + 专精 2）与 16 位（县城上限）真机一页装下；
+     兜底规则同其余档位。 */
+  .modal-xxl { width: 980px; height: 800px;
     max-width: calc(100vw - 20px); max-height: calc(100vh - 20px); }
 
   /* ============ 弹窗统一格局（v19）============
@@ -2035,6 +2039,10 @@
   .q-card, .item-row, .bag-cell, .eq-cell, .inn-card, .story-card, .xc-row {
     border-color: var(--line);
   }
+  /* v75（老板）：「尽量所有候选都能在同一页」——客栈候选行**紧凑几何**：
+     共用基线给的 10px 内衬对"一页装下"太厚，这里就地收窄
+     （同权重、写在基线之后者胜）；配 28px 头像 → 行高实测 36px。 */
+  .inn-card { padding: 3px 10px; margin-bottom: 3px; }
 
   /* ---- 标题外观共享：三层界面的标题字重/字色/字距只有一处定义 ---- */
   .gold-heading, .m-title {
@@ -2281,7 +2289,7 @@
      三族同名样式叠了三版，是「同一处三种来源」的典型；将领改左右分栏后全部无人引用，
      一并删除。 */
   .gd-face { display: flex; justify-content: center; }
-  .inn-avatar { width: 42px; display: flex; align-items: center; justify-content: center; }
+  .inn-avatar { width: 28px; display: flex; align-items: center; justify-content: center; }
 
   /* ---- 城池视图（v22 · 需求 3）：中央只留棋盘 ----
      城池名 / 人口驻军 / 征收 / 显示比例 / 岁贡 全部下沉到左侧栏，

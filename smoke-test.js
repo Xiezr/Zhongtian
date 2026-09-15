@@ -12555,6 +12555,57 @@ console.log('\n===== 60. v74 七条（人口 · 画布 · 简介 · 六维 · �
   })());
 })();
 
+/* ============================================================
+ * ===== 61. v75：客栈招募界面（老板）—— 大界面 / 单行 / 悬停 / 无概率表 =====
+ * ============================================================ */
+console.log('\n===== 61. v75 客栈招募（大界面 · 单行候选 · 资质悬停 · 无概率表） =====');
+(function () {
+  var rd = function (f) { return fsMod.readFileSync(pathMod.join(__dirname, 'js', f + '.js'), 'utf8'); };
+  var uS1 = stripComment(rd('ui'));
+  var hS1 = fsMod.readFileSync(pathMod.join(__dirname, 'index.html'), 'utf8');
+  var inn1 = codeOf(uS1, 'ui.openInn = function');
+
+  /* ---------- ① 大界面（新尺寸档 xxl + 三段式） ---------- */
+  check('① 新增 xxl 尺寸档（980×800 固定 px + 极小窗口兜底）', (function () {
+    var b = cssBlock(hS1, '.modal-xxl {');
+    return /width: 980px; height: 800px/.test(b) && /max-width: calc\(100vw - 20px\)/.test(b);
+  })(), cssBlock(hS1, '.modal-xxl {').replace(/\s+/g, ' ').slice(0, 72));
+  check('① 客栈走三段式 + xxl 档（标题/按钮固定，只有候选区滚动）',
+    /ui\.openShell\(\{/.test(inn1) && /size: 'xxl'/.test(inn1));
+
+  /* ---------- ②③ 单行候选 + 成长备注进悬停 ---------- */
+  check('② 候选行单行化：行内不再有「｜成长 +」备注', uS1.indexOf('｜成长 +') < 0);
+  check('③ 资质徽章悬停带成长（rankBadge 唯一出口）',
+    /每级属性成长 \+' \+ rk\.grow/.test(uS1));
+  var rb1 = G.ui.rankBadge({ rank: 'liang' });
+  var rb2 = G.ui.rankBadge({ rank: 'tian' });
+  check('③ 运行时验证：徽章 title = 资质描述 + 每级属性成长（良材 +2 / 天授 +8）',
+    /每级属性成长 \+2。/.test(rb1) && /每级属性成长 \+8。/.test(rb2),
+    (rb1.match(/title="[^"]*"/) || ['无'])[0]);
+
+  /* ---------- ④ 美人标 / 资质一览退役 ---------- */
+  check('④ 美人标退役（tag-beauty 无产出、无样式）',
+    uS1.indexOf('tag-beauty') < 0 && !/\.tag-beauty \{/.test(hS1));
+  check('④ 资质一览退役（rankTable / rk-box 全清）',
+    !/ui\.rankTable/.test(uS1) && !/\.rk-box \{/.test(hS1) && inn1.indexOf('rk-box') < 0);
+
+  /* ---------- ⑤ 单行版式（CSS） ---------- */
+  check('⑤ 版式：动作横排 + 名字/数值不换行 + 列表不再自带滚动', (function () {
+    var act = cssBlock(hS1, '.inn-act {');
+    var nm = cssBlock(hS1, '.inn-name {');
+    var at = cssBlock(hS1, '.inn-attrs {');
+    var ls = cssBlock(hS1, '.inn-list {');
+    return /display: flex/.test(act) && /white-space: nowrap/.test(nm)
+      && /text-overflow: ellipsis/.test(at) && !/max-height/.test(ls);
+  })());
+  check('⑤ 紧凑几何：内衬 3px 覆盖共用基线 + 头像列 28px（两处一致）', (function () {
+    var compact = cssBlock(hS1, '.inn-card { padding:');
+    return /padding: 3px 10px/.test(compact) && /margin-bottom: 3px/.test(compact)
+      && /width: 28px/.test(cssBlock(hS1, '.inn-avatar {'))
+      && /width: 28px/.test(cssBlock(hS1, '.inn-avatar { width: 28px;'));
+  })());
+})();
+
   console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');
   process.exit(FAIL ? 1 : 0);
 })();

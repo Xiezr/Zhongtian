@@ -970,16 +970,17 @@ async function runTests(dom, URL) {
   /* v12：打造需材料，先备齐 */
   DATA.MATERIAL_IDS.forEach((mid) => { G.state.items[mid] = (G.state.items[mid] || 0) + 300; });
 
-  /* ① 客栈：资质徽章 + 概率表 */
+  /* ① 客栈（v75 改版）：资质徽章 + 悬停成长备注 + 单行候选 + 无概率表（老板） */
   G.ui.openInn();
   await sleep(70);
   const inn20 = document.querySelector('#modal-root').innerHTML;
   check('客栈面板渲染', inn20.length > 400, inn20.length + ' 字符');
   check('候选显示资质徽章', /class="rank-badge r-/.test(inn20));
-  check('候选显示每级成长', inn20.indexOf('成长 +') >= 0);
-  check('客栈含资质概率表', inn20.indexOf('rk-box') >= 0);
-  check('概率表列出五档资质', ['凡品', '良材', '英杰', '名世', '天授'].every((x) => inn20.indexOf(x) >= 0));
-  check('概率表标注成长差异', inn20.indexOf('成长 +8/级') >= 0);
+  check('v75：成长备注不再写行内（收进徽章悬停）',
+    inn20.indexOf('｜成长 +') < 0 && /rank-badge r-\w+" title="[^"]*每级属性成长 \+/.test(inn20));
+  check('v75：不再显示资质一览（四维/成长/概率全撤）',
+    inn20.indexOf('rk-box') < 0 && inn20.indexOf('四维 ') < 0);
+  check('v75：候选单行版式（动作横排 inn-act）', /class="inn-act"/.test(inn20));
   G.ui.closeModal();
 
   /* ② 招贤馆：v29（需求 15）起只讲房间数与升级路径，不再重复将领名录 */
@@ -3621,23 +3622,41 @@ async function runTests(dom, URL) {
     await sleep(40);
   })();
 
-  /* ④ 客栈面板显示的资质概率 = 权重表现算值（天授应显著更稀有） */
+  /* ④ v75（老板）：客栈改大界面 —— 全量渲染 / 无资质一览 / 无美人标 /
+        天授权重口径没动（只是不再展示；数值口径由 smoke 兜底） */
   await (async function () {
+    const c75 = G.currentCity();
+    const put75 = (id, lv) => {
+      const ex = c75.cells.find((c) => c.build && c.build.id === id);
+      if (ex) { ex.build.lvl = lv; return true; }
+      const i = c75.cells.findIndex((c) => !c.build && !c.official);
+      if (i < 0) return false;
+      c75.cells[i].build = { id: id, lvl: lv };
+      return true;
+    };
+    put75('kezhan', 12);
+    G.innRefresh(true);
     G.ui.openInn();
-    await sleep(60);
-    const box = document.querySelector('#modal-root .rk-box');
-    const txt = box ? box.textContent : '';
-    const lv = G.buildingLevel(G.currentCity(), 'kezhan') || 1;
-    const ws = G.rankWeights(lv);
-    let t = 0, v = 0;
-    ws.forEach(function (x) { t += x.w; if (x.rank.id === 'tian') v = x.w; });
-    const pct = v / t * 100;
-    const shown = (pct >= 1 ? pct.toFixed(1) : pct.toFixed(2)) + '%';
-    check('客栈面板的天授概率 = 权重表现算值，且已降到 1% 以下',
-      txt.indexOf('天授') >= 0 && txt.indexOf(shown) >= 0 && pct < 1,
-      '客栈 Lv' + lv + ' 天授 ' + shown);
-    check('客栈面板仍列出全部五档资质（低资质没被删掉）',
-      ['凡品', '良材', '英杰', '名世', '天授'].every(function (n) { return txt.indexOf(n) >= 0; }));
+    await sleep(80);
+    const root75 = document.querySelector('#modal-root');
+    const modal75 = root75.querySelector('.modal');
+    const cards75 = root75.querySelectorAll('.inn-card');
+    const cls75 = modal75 ? modal75.className : '';
+    const slots75 = G.innSlots() || 0;
+    check('v75：客栈升为最大尺寸档 xxl（大界面）', cls75.indexOf('modal-xxl') >= 0, cls75);
+    check('v75：候选全量渲染（' + slots75 + ' 位），一人一行',
+      cards75.length === slots75 && slots75 >= 12, cards75.length + ' / ' + slots75);
+    check('v75：不再显示资质一览（无 rk-box / 无「四维 」）',
+      root75.innerHTML.indexOf('rk-box') < 0 && root75.innerHTML.indexOf('四维 ') < 0);
+    check('v75：不再有美人标；资质悬停含成长备注',
+      root75.innerHTML.indexOf('tag-beauty') < 0
+        && /rank-badge r-\w+" title="[^"]*每级属性成长 \+/.test(root75.innerHTML));
+    const lv75 = G.buildingLevel(G.currentCity(), 'kezhan') || 1;
+    const ws75 = G.rankWeights(lv75);
+    let t75 = 0, v75 = 0;
+    ws75.forEach(function (x) { t75 += x.w; if (x.rank.id === 'tian') v75 = x.w; });
+    const pct75 = v75 / t75 * 100;
+    check('v75：天授权重口径没动（仍 <1%，只是不再展示）', pct75 < 1, '天授 ' + pct75.toFixed(2) + '%');
     G.ui.closeModal();
   })();
 

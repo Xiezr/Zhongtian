@@ -149,8 +149,8 @@
   /* ============================================================
    * 弹窗统一格局（v19 · 需求 4/5）
    *   modalShell({ title, sub, body, foot, size, noClose })
-   * 统一：标题栏 / 内容区 / 操作栏三段式；尺寸走四档固定值
-   *   sm 460×430 · 默认 660×620 · lg 900×640 · xl 1120×700
+   * 统一：标题栏 / 内容区 / 操作栏三段式；尺寸走固定档位（与 CSS 同源）
+   *   sm 440×420 · 默认 660×620 · lg 860×600 · xl 960×700 · xxl 980×800（v75 客栈）
    * 目的：君主、背包、商城、公文等所有弹窗**格局一致**，
    *      且尺寸不随内容变化、任何视口下都不超出边界。
    * ============================================================ */
@@ -2493,39 +2493,45 @@
     var left = Math.ceil(GAME.innRefreshLeft() / 1000);
     var leftTxt = left > 0 ? (left + ' 秒后自动更换') : '可更换';
 
+    /* v75（老板）：「尽量单个将领一行显示」「候选将领的成长 +2/级这个备注也去掉」
+       「美人灯标识去掉」——候选行改**单行**：头像 · 姓名（含 Lv）· 资质徽章 · 四维 · 价格/按钮。
+       成长备注不再写在行内，收进资质徽章悬停（见 ui.rankBadge 的 title）。 */
     var rows = list.map(function (c) {
       var can = chk.ok && (s.res.gold || 0) >= c.cost;
       return '<div class="inn-card' + (can ? '' : ' off') + '">' +
-        '<div class="inn-avatar">' + ui.faceOf(
-          { name: c.name, rank: c.rank, beauty: c.beauty, portraitSeed: c.portraitSeed }, 40) + '</div>' +
-        '<div class="inn-info">' +
-          '<div class="inn-name">' + U.escape(c.name) +
-            (c.hero ? ' <span class="tag-hero">史实名将</span>' : '') +
-            (c.beauty ? ' <span class="tag-beauty">美人</span>' : '') +
-            ' <span style="color:var(--text-dim);font-size:var(--fs-cap);font-weight:400;">Lv' + c.level + '</span>' +
-            ' ' + ui.rankBadge(c) + '</div>' +
-          '<div class="inn-attrs">统率 <b>' + c.tong + '</b>　内政 <b>' + c.nz + '</b>　勇武 <b>' + c.yw + '</b>　智谋 <b>' + c.zm + '</b>' +
-            ' <span style="color:var(--text-dim);">｜成长 +' + GAME.rankOf(c).grow + '/级</span></div>' +
-        '</div>' +
-        '<div class="inn-act">' +
-          '<div class="inn-cost' + ((s.res.gold || 0) >= c.cost ? '' : ' short') + '">' + U.fmt(c.cost) + ' 金</div>' +
+        '<span class="inn-avatar">' + ui.faceOf(
+          { name: c.name, rank: c.rank, beauty: c.beauty, portraitSeed: c.portraitSeed }, 28) + '</span>' +
+        '<span class="inn-name">' + U.escape(c.name) +
+          (c.hero ? ' <span class="tag-hero">史实名将</span>' : '') +
+          ' <span class="inn-lv">Lv' + c.level + '</span></span>' +
+        ui.rankBadge(c) +
+        '<span class="inn-attrs">统率 <b>' + c.tong + '</b>　内政 <b>' + c.nz + '</b>　勇武 <b>' + c.yw + '</b>　智谋 <b>' + c.zm + '</b></span>' +
+        '<span class="inn-act">' +
+          '<span class="inn-cost' + ((s.res.gold || 0) >= c.cost ? '' : ' short') + '">' + U.fmt(c.cost) + ' 金</span>' +
           '<button class="btn sm' + (can ? ' gold' : '') + '" data-action="inn-recruit" data-id="' + c.id + '"' +
             (can ? '' : ' disabled') + '>' + (c.beauty ? '相亲' : '招募') + '</button>' +
-        '</div></div>';
+        '</span></div>';
     }).join('') || '<div style="text-align:center;color:var(--text-dim);padding:var(--sp-5);">客栈中暂无贤士，稍候再来。</div>';
 
-    ui.openModal(
-      '<div class="gold-heading">🍶 客栈 · Lv' + lv + '</div>' +
-      '<div style="color:var(--text-dim);font-size:var(--fs-sub);text-align:center;margin-bottom:8px;">' +
-        '每级 1 位候选　|　' + U.escape(city.name) + ' 招贤馆空位 ' + usedIn + '/' + cap +
-        '　|　' + leftTxt + '</div>' +
-      (chk.ok ? '' : '<div class="note-warn">' + U.escape(chk.msg) + '</div>') +
-      '<div class="inn-list">' + rows + '</div>' +
-      '<div style="text-align:center;margin-top:12px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">' +
+    /* v75（老板）：「客栈的招募界面大一点，尽量所有候选都能在同一页」
+       「地下的各资质四维，成长和概率也不显示」——
+       ① 改走三段式（v19 的 m-head / m-body / m-foot）：标题与按钮固定，只有候选区滚动
+          （旧版「列表 414px 上限 + 面板滚动」两道滚动条并存，这里收敛成一处）；
+       ② 尺寸用新档 xxl（980×800）：候选行紧凑单行（36px），14 位（客栈 Lv12 + 专精 2）
+          与 16 位（县城上限）真机一页装下；
+       ③ 资质一览（rk-box / rankTable）整块退役。 */
+    ui.openShell({
+      title: '🍶 客栈 · Lv' + lv,
+      sub: '每级 1 位候选　|　' + U.escape(city.name) + ' 招贤馆空位 ' + usedIn + '/' + cap +
+        '　|　' + leftTxt,
+      body:
+        (chk.ok ? '' : '<div class="note-warn">' + U.escape(chk.msg) + '</div>') +
+        '<div class="inn-list">' + rows + '</div>',
+      foot: '<div class="m-foot">' +
         '<button class="btn sm" data-action="inn-reroll">另请一批（' + U.fmt(GAME.innRefreshCost()) + ' 金）</button>' +
-        '<button class="btn" data-action="close-modal">关闭</button></div>' +
-      '<div class="rk-box">' + ui.rankTable(lv) + '</div>'
-    );
+        '<button class="btn" data-action="close-modal">关闭</button></div>',
+      size: 'xxl'
+    });
   };
 
   /* ================= 市场：资源互换 ================= */
@@ -2601,23 +2607,15 @@
     if (!rk) return '';
     var style = '';
     (DATA.GEN_STYLES || []).forEach(function (x) { if (x.id === gen.style) style = x.name; });
-    return '<span class="rank-badge r-' + rk.id + '" title="' + U.escape(rk.desc || '') + '">' +
+    /* v75（老板）：「成长 +2/级这个备注也去掉，改成鼠标悬停在资质上时浮现备注」——
+       成长备注收进徽章悬停（desc 里本就有等级上限）；将领清单 / 派遣 / 解雇弹窗同步受益。 */
+    return '<span class="rank-badge r-' + rk.id + '" title="' + U.escape(rk.desc || '') +
+      '每级属性成长 +' + rk.grow + '。">' +
       rk.name + ' ' + '★'.repeat(rk.star) + (style ? ' · ' + style : '') + '</span>';
   };
 
-  /* 资质一览（客栈面板用：让玩家知道自己在赌什么） */
-  ui.rankTable = function (lv) {
-    var ws = GAME.rankWeights(lv), total = 0;
-    ws.forEach(function (x) { total += x.w; });
-    return ws.slice().reverse().map(function (x) {
-      var pct = (x.w / total * 100);
-      var pctTxt = pct >= 1 ? pct.toFixed(1) + '%' : pct.toFixed(2) + '%';
-      return '<div class="rk-row"><span class="rank-badge r-' + x.rank.id + '">' + x.rank.name + '</span>' +
-        '<span class="rk-base">四维 ' + x.rank.base[0] + '~' + x.rank.base[1] + '</span>' +
-        '<span class="rk-grow">成长 +' + x.rank.grow + '/级</span>' +
-        '<span class="rk-pct">' + pctTxt + '</span></div>';
-    }).join('');
-  };
+  /* v75（老板）：「地下的各资质四维，成长和概率也不显示」——
+     资质一览（ui.rankTable / .rk-box）整块退役：候选行的资质徽章 + 悬停备注已够用。 */
 
   /* ================= 招贤馆：将领名录 ================= */
   /* ============================================================
