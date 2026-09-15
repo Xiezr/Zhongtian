@@ -460,16 +460,19 @@
    *     刀盾兵 / 冲车 —— 靠坦度（ehp/pop 1400 / 8400）
    *     斥候 —— 不参战（nocombat）；民夫 / 辎重车 —— 后勤（负重）
    * ============================================================ */
+  /* v84（老板）：「辎重车是骑兵吧，斥候是步兵」——
+     cat 只决定**募兵分页归属**（inf → 步兵页 / cav → 骑兵页），与战场定位无关：
+     斥候（侦察）归步兵页，辎重车（后勤货运）归骑兵页。 */
   DATA.TROOPS = {
     minfu:   { id: 'minfu', cat: 'inf', name: '民夫', icon: '🪓', hp: 100,  atk: 5,   def: 10, range: 10,   spd: 180,  gather: 2, load: 200,  food: 2,   pop: 1, time: 40,   cost: { grain: 50, wood: 150, iron: 10 }, unlock: { junying: 1 }, desc: '基础民夫，战力孱弱，可运输' },
     yibing:  { id: 'yibing', cat: 'inf', name: '义兵', icon: '🗡️', hp: 200, atk: 50,  def: 50, range: 20,  spd: 200,  gather: 3, load: 20,   food: 3,   pop: 1, time: 20,   cost: { grain: 80, wood: 100, iron: 50 }, unlock: { junying: 1 }, desc: '聚集的义军，初具战力' },
-    chihou:  { id: 'chihou', cat: 'cav', name: '斥候', icon: '🦅', hp: 100,  atk: 20,  def: 20, range: 20,  spd: 3000, gather: 1, load: 6,    food: 5,   pop: 1, nocombat: true, time: 90,   cost: { grain: 120, wood: 200, iron: 150 }, unlock: { junying: 2, shuyuan: 2 }, desc: '极限速度，侦察/截援必备' },
+    chihou:  { id: 'chihou', cat: 'inf', name: '斥候', icon: '🦅', hp: 100,  atk: 20,  def: 20, range: 20,  spd: 3000, gather: 1, load: 6,    food: 5,   pop: 1, nocombat: true, time: 90,   cost: { grain: 120, wood: 200, iron: 150 }, unlock: { junying: 2, shuyuan: 2 }, desc: '极限速度，侦察/截援必备' },
     changqiang: { id: 'changqiang', cat: 'inf', name: '长枪兵', icon: '🔱', hp: 300, atk: 150, def: 150, range: 50, spd: 300, gather: 4, load: 40, food: 6, pop: 1, time: 140, cost: { grain: 150, wood: 500, iron: 100 }, unlock: { junying: 2, shuyuan: 2 }, desc: '克制骑兵，阵型严整' },
     daodun:  { id: 'daodun', cat: 'inf', name: '刀盾兵', icon: '🛡️', hp: 400, atk: 130, def: 250, range: 30, spd: 275, gather: 4, load: 30, food: 7, pop: 1, time: 210, cost: { grain: 200, wood: 150, iron: 400 }, unlock: { junying: 3, shuyuan: 3 }, desc: '高防御，克远程，炮灰首选' },
     gongjian: { id: 'gongjian', cat: 'inf', name: '弓箭手', icon: '🏹', hp: 320, atk: 220, def: 50, range: 1200, spd: 250, gather: 5, load: 25, food: 9, pop: 2, time: 340, cost: { grain: 300, wood: 350, iron: 300 }, unlock: { junying: 4, shuyuan: 4 }, desc: '远程主力，射程1200' },
     qingji:  { id: 'qingji', cat: 'cav', name: '轻骑兵', icon: '🐎', hp: 620, atk: 340, def: 180, range: 80, spd: 1000, gather: 6, load: 100, food: 18, pop: 2, time: 480, cost: { grain: 1000, wood: 600, iron: 500 }, unlock: { junying: 5, majiu: 1 }, desc: '机动突袭，抓将主力（需马厩）' },
     tieji:   { id: 'tieji', cat: 'cav', name: '铁骑兵', icon: '🐴', hp: 1200, atk: 520, def: 350, range: 70, spd: 600, gather: 9, load: 80, food: 35, pop: 3, time: 1450, cost: { grain: 2000, wood: 500, iron: 2500 }, unlock: { junying: 7, shuyuan: 6, majiu: 3 }, desc: '重装铁骑，攻守兼备（需马厩3）' },
-    zhouche: { id: 'zhouche', cat: 'inf', name: '辎重车', icon: '🛺', hp: 700, atk: 10, def: 60, range: 10, spd: 150, gather: 1, load: 5000, food: 10, pop: 4, time: 970, cost: { grain: 600, wood: 1500, iron: 350 }, unlock: { junying: 5 }, desc: '负重5000，专属运资' },
+    zhouche: { id: 'zhouche', cat: 'cav', name: '辎重车', icon: '🛺', hp: 700, atk: 10, def: 60, range: 10, spd: 150, gather: 1, load: 5000, food: 10, pop: 4, time: 970, cost: { grain: 600, wood: 1500, iron: 350 }, unlock: { junying: 5 }, desc: '负重5000，专属运资' },
     chuangnu: { id: 'chuangnu', name: '床弩', icon: '🏹', hp: 900, atk: 500, def: 160, range: 1400, spd: 120, gather: 2, load: 35, food: 50, pop: 3, time: 2910, cost: { grain: 2500, wood: 3000, iron: 1800 }, craft: true, unlock: { junying: 8, shuyuan: 8, gongjiangzuofang: 3 }, desc: '强力远程，攻城利器（工匠作坊制造）' },
     chongche: { id: 'chongche', name: '冲车', icon: '🚩', hp: 6000, atk: 620, def: 600, range: 50, spd: 160, gather: 2, load: 45, food: 100, pop: 5, time: 4370, cost: { grain: 4000, wood: 6000, iron: 1500 }, craft: true, unlock: { junying: 9, shuyuan: 8, gongjiangzuofang: 5 }, desc: '血5000防600，城墙杀手（工匠作坊制造）' },
     toudan:  { id: 'toudan', name: '投石车', icon: '🪨', hp: 1100, atk: 950, def: 200, range: 1600, spd: 100, gather: 2, load: 75, food: 250, pop: 4, time: 5830, cost: { grain: 5000, wood: 5000, stone: 8000, iron: 1200 }, craft: true, unlock: { junying: 10, shuyuan: 10, gongjiangzuofang: 7 }, desc: '攻800射程1600，攻城巨炮（工匠作坊制造）' },

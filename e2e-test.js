@@ -1811,7 +1811,17 @@ async function runTests(dom, URL) {
     }
 
     /* 出征弹窗的行军预估 */
-    G.ui._expTarget = { kind: 'wild', x: c23.x + 3, y: c23.y + 3, name: '测试野地', terrain: 'lake', level: 3, def: 0, garrison: { yibing: 100 } };
+    /* v84 顺手修存量 flake：地图种子每次运行都不同（state.js: mapSeed = U.now() % 100000），
+       写死的 c23.x+3 / c23.y+3 可能落在城池 / 越界 —— resolveTarget 拒绝、弹窗不开，
+       两条断言假红（实测命中）。改为 ring 搜索一块合法野地当靶子（换标的、不放宽判据）。 */
+    let emSpot = null;
+    for (let emR = 1; emR <= 12 && !emSpot; emR++) {
+      for (let emDy = -emR; emDy <= emR && !emSpot; emDy++) for (let emDx = -emR; emDx <= emR && !emSpot; emDx++) {
+        const tl23 = G.map.tile(c23.x + emDx, c23.y + emDy);
+        if (tl23 && tl23.terrain !== 'city') emSpot = { x: c23.x + emDx, y: c23.y + emDy };
+      }
+    }
+    G.ui._expTarget = { kind: 'wild', x: emSpot.x, y: emSpot.y, name: '测试野地', terrain: 'lake', level: 3, def: 0, garrison: { yibing: 100 } };
     G.ui._expMode = 'raid';
     c23.army = Object.assign({}, c23.army, { yibing: 5000 });
     G.ui.openExpModal(G.ui._expTarget);
@@ -4243,6 +4253,39 @@ if (svBtn) {
         expPenalty: { mul: 0.0754, need: 7, wl: 1, gap: 6, before: 106, after: 8 } });
     return txt.indexOf('越级惩罚 ×') >= 0 && txt.indexOf('宜打 7 级野地') >= 0;
   })());
+
+  /* ============================================================
+   * v84（老板）：兵种卡去「拥有」行 / 辎重车→骑兵、斥候→步兵
+   * ============================================================ */
+  console.log('\n--- v84. 卡面去拥有行 · 步骑分类对调（真实 DOM） ---');
+  {
+    const c84 = G.state.cities[0];
+    let j84 = c84.cells.findIndex((x) => x.build && x.build.id === 'junying');
+    if (j84 < 0) {
+      j84 = c84.cells.findIndex((x) => !x.build && !x.official);
+      if (j84 >= 0) c84.cells[j84] = { build: { id: 'junying', lvl: 8 }, pending: null };
+    }
+    G.ui._trainFilter = 'normal';
+    G.ui._trainTab = 'inf';
+    G.ui.openTroops(j84 < 0 ? undefined : j84, 'normal');
+    await sleep(160);
+    check('v84：斥候卡已入步兵页', !!document.querySelector('#modal-root .troop-card[data-troop="chihou"]'));
+    check('v84：全部兵种卡面无「拥有」字样', (function () {
+      const cards = document.querySelectorAll('#modal-root .troop-grid .troop-card');
+      if (!cards.length) return false;
+      return Array.prototype.every.call(cards, (cd) => cd.textContent.indexOf('拥有') < 0);
+    })());
+    click(document.querySelector('#modal-root [data-action="train-tab"][data-page="cav"]'));
+    await sleep(150);
+    check('v84：辎重车卡在骑兵页（与斥候两页互斥）', (function () {
+      const z84 = document.querySelector('#modal-root .troop-card[data-troop="zhouche"]');
+      const ch84 = document.querySelector('#modal-root .troop-card[data-troop="chihou"]');
+      return !!z84 && !ch84;
+    })());
+    G.ui.closeModal();
+    await sleep(60);
+  }
+
   await sleep(30);
 
   G.ui.setView('city');

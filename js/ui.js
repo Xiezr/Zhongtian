@@ -3999,7 +3999,6 @@
       var t = DATA.TROOPS[id];
       var chk = GAME.canTrain(id);
       var unlocked = chk.ok;
-      var own = c.army[id] || 0;
       /* v37（需求 1）：募兵资源**从卡面移到悬停浮层** —— 卡面少一行，
          省下的空间给图标（.ticon 52 → 84px，见 CSS）。
          移到浮层而不是删掉：成本是募兵的关键决策信息，只是"不该常驻卡面"。 */
@@ -4009,7 +4008,8 @@
         'data-action="' + (unlocked ? 'select-train' : 'train-locked') + '" data-troop="' + id + '" data-tip-el="1">' +
         '<div class="ticon">' + GAME.icons.forTroop(t.id) + '</div><div class="tname">' + t.name + '</div>' +
         '<div class="tstat">血' + t.hp + ' 攻' + t.atk + ' 防' + t.def + ' 射' + t.range + ' 速' + t.spd + '</div>' +
-        '<div class="tstat">拥有：' + own + (unlocked ? '' : ' · <span style="color:var(--red-light)">' + chk.msg + '</span>') + '</div>' +
+        /* v84（老板）：「兵种底下不要『拥有：0』这个提示」—— 拥有行整行退役；
+           own 读数一并退役；未解锁原因不再挂卡面（悬停浮层照旧给出，信息不丢）。 */
         '<div class="tcard-tip tip-src"><div class="tip-t">' + U.escape(t.name) + ' · 募兵消耗</div>' +
           '<div class="tip-l">' + costStr + '</div>' +
           (unlocked ? '' : '<div class="tip-a" style="color:var(--red-light)">' + U.escape(chk.msg || '') + '</div>') +

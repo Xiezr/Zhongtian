@@ -6113,17 +6113,17 @@
     var h = G.ui.troopsHTML();
     G.ui._trainTab = bkTab;
     /* 逐卡判定（整页有 15 张卡，不是 1 张）：
-       ① 卡面 .tstat 由 3 行降为 2 行（成本行腾给图标）
+       ① 卡面 .tstat 由 3 行降为 2 行（成本行腾给图标）；v84 再降为 1 行（拥有行退役）
        ② 卡面不再出现"耗粮"（成本移入浮层，不是删掉）
        ③ 浮层内容源仍在，且四要素齐备
-       注意"拥有"行的锁定原因里本来就可能出现"人口不足"这类词，
-       所以只查结构化行，不做全文词命中。 */
+       注意未解锁原因类词（"人口不足"等）本属浮层内容，卡面判据只查结构化行；
+       v84 起卡面只剩 1 行 .tstat，"拥有"字样在卡面彻底绝迹。 */
     var cards = h.split('class="troop-card').slice(1);
     if (!cards.length) return false;
     var ok = cards.every(function (c) {
       var face = c.replace(/<div class="tcard-tip tip-src">[\s\S]*?<\/div><\/div>/, '');
       var stats = face.match(/<div class="tstat">[\s\S]*?<\/div>/g) || [];
-      return stats.length === 2 && face.indexOf('耗粮') < 0;
+      return stats.length === 1 && face.indexOf('耗粮') < 0 && face.indexOf('拥有') < 0;
     });
     var tip = h.match(/<div class="tcard-tip tip-src">([\s\S]*?)<\/div><\/div>/);
     return ok && !!tip
@@ -13446,6 +13446,52 @@ console.log('\n===== 66. v81 两条（君主卡 · 兵营三页） =====');
       });
     }), '低阶 14 / 高阶 14×0.65²');
   })();
+
+/* ============================================================
+ * 69. v84（老板）：兵种卡去「拥有」行 / 辎重车→骑兵、斥候→步兵
+ * ============================================================ */
+console.log('\n===== 69. v84 卡面去拥有行 · 步骑分类对调 =====');
+(function () {
+  var uS84v = stripComment(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'ui.js'), 'utf8'));
+
+  console.log('  --- ① 兵种卡去「拥有」行 ---');
+  check('v84：troopsHTML 源码不再输出「拥有：N」行（整行退役）', (function () {
+    var th = codeOf(uS84v, 'ui.troopsHTML = function');
+    return th.indexOf('拥有') < 0 && th.indexOf('tstat') >= 0;
+  })());
+  check('v84：未解锁原因仍在悬停浮层，读数变量退役', (function () {
+    var th = codeOf(uS84v, 'ui.troopsHTML = function');
+    return /tip-a/.test(th) && /chk\.msg/.test(th) && th.indexOf('var own') < 0;
+  })());
+  check('实测：步兵 / 骑兵页卡面 HTML 均无「拥有」', (function () {
+    var bkF = G.ui._trainFilter, bkT = G.ui._trainTab, bkS = G.ui._trainSel;
+    G.ui._trainFilter = 'normal';
+    var ok = ['inf', 'cav'].every(function (tab) {
+      G.ui._trainTab = tab;
+      return G.ui.troopsHTML().indexOf('拥有') < 0;
+    });
+    G.ui._trainFilter = bkF; G.ui._trainTab = bkT; G.ui._trainSel = bkS;
+    return ok;
+  })());
+
+  console.log('  --- ② 步骑分类对调（辎重车→骑兵 / 斥候→步兵） ---');
+  check('v84：斥候归步兵、辎重车归骑兵（cat 仅决定分页归属）',
+    DATA.TROOPS.chihou.cat === 'inf' && DATA.TROOPS.zhouche.cat === 'cav');
+  check('实测：斥候卡在步兵页、辎重车卡在骑兵页（两页互斥）', (function () {
+    var bkF = G.ui._trainFilter, bkT = G.ui._trainTab, bkS = G.ui._trainSel;
+    G.ui._trainFilter = 'normal';
+    G.ui._trainTab = 'inf';
+    var hInf = G.ui.troopsHTML();
+    G.ui._trainTab = 'cav';
+    var hCav = G.ui.troopsHTML();
+    G.ui._trainFilter = bkF; G.ui._trainTab = bkT; G.ui._trainSel = bkS;
+    var card = function (h, id) {
+      return new RegExp('<div class="troop-card[^>]*data-troop="' + id + '"').test(h);
+    };
+    return card(hInf, 'chihou') && !card(hCav, 'chihou')
+      && card(hCav, 'zhouche') && !card(hInf, 'zhouche');
+  })());
+})();
 
   console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');
   process.exit(FAIL ? 1 : 0);
