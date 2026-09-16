@@ -2070,23 +2070,24 @@
     var s = GAME.state;
     var day = Math.floor(((s.world && s.world.elapsed) || 0) / 86400);
     var home = GAME.currentCity();
-    var own = (s.generals || []).filter(function (g) { return g.cityId === home.id; });
+    /* v89：修炼线君主专属 —— 江湖游历只由君主亲往（主角单修） */
+    var own = (s.generals || []).filter(function (g) { return g.cityId === home.id && GAME.isLordGeneral(g); });
     if (!ui._jhGen || !own.some(function (g) { return g.id === ui._jhGen; })) {
       ui._jhGen = own[0] ? own[0].id : '';
     }
     var res = (ui._jhResult && ui._jhResult.xy === (x + ',' + y)) ? ui._jhResult : null;
     var h = '<div class="op-zone" style="margin-top:8px;">' +
-      '<div class="op-zone-t">☯ 江湖游历　<span style="color:var(--text-dim);font-weight:400;font-size:var(--fs-sub);">每事每日一次 · 看灵力判定</span></div>' +
-      '<div style="color:var(--text-dim);font-size:var(--fs-sub);margin:4px 0 6px;">本地特色与江湖诸事都在这里：讨伐切磋、采药静修、拜访奇人——精华用于蕴养修炼装备。</div>';
+      '<div class="op-zone-t">☯ 江湖游历　<span style="color:var(--text-dim);font-weight:400;font-size:var(--fs-sub);">君主亲往 · 每事每日一次 · 看灵力判定</span></div>' +
+      '<div style="color:var(--text-dim);font-size:var(--fs-sub);margin:4px 0 6px;">江湖诸事皆由君主亲历：讨伐切磋、采药静修、拜访奇人——点开即入全屏剧情，精华用于蕴养修炼装备。</div>';
     if (res) {
       h += '<div class="note" style="margin:4px 0;color:' + (res.bad ? 'var(--red-light)' : 'var(--green-ok)') + ';">' +
         U.escape(res.name + '：' + res.text) + '</div>';
     }
     if (!own.length) {
-      h += '<div style="color:var(--text-dim);font-size:var(--fs-sub);">本城无将领可供差遣。</div>';
+      h += '<div style="color:var(--text-dim);font-size:var(--fs-sub);">君主不在此城 —— 江湖之事，需君主亲至。</div>';
     } else {
       h += '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 0;">' +
-        '<label style="color:var(--text-dim);">带队将领</label>' +
+        '<label style="color:var(--text-dim);">君主亲往</label>' +
         '<input type="hidden" id="jh-gen" value="' + ui._jhGen + '">' +
         ui.genChips({ cls: 'gen-chips inline', target: 'jh-gen', value: ui._jhGen, list: own,
           sub: function (g) { return '精' + Math.round(g.energy || 0) + ' 体' + Math.round(GAME.staNow(g)) + ' 灵' + GAME.lingPowerOf(g); } }) +
@@ -2104,16 +2105,134 @@
     h += '</div>';
     return h;
   };
+  /* v89（老板）：「为每项活动做专属全屏交互界面 + 特定退出」——
+     活动按钮 → 全屏剧本（对话 / 事件 2~3 幕）→ 专属退出结算屏。
+     全屏层 #scene-fx 挂在 body 上（z=1500：高于弹窗 1000、低于 toast 2000），
+     不占 modal-root —— 弹窗是单根替换系统，两者互不干扰。 */
+  ui._sceneFx = null;
   ui.doJianghu = function (x, y, actId) {
     var gsel = document.getElementById('jh-gen');
     var gid = gsel ? gsel.value : ui._jhGen;
     if (gid) ui._jhGen = gid;
-    var r = GAME.jianghuDo(x, y, gid, actId);
+    var lg = GAME.lordGeneralOf();       /* v89：君主专属（闸门在 jianghuCheck，这里便于兜底） */
+    if (lg && (!gid || gid !== lg.id)) gid = lg.id;
+    if (!(DATA.SCENE_FLOW || {})[actId]) {
+      /* 无剧本兜底（未来新增活动）：直接一次性结算 —— one-shot 出口保留 */
+      var r0 = GAME.jianghuDo(x, y, gid, actId);
+      if (!r0.ok) { ui.toast(r0.msg); return; }
+      ui._jhResult = { xy: x + ',' + y, name: r0.name, text: r0.text, bad: r0.bad };
+      ui.toast('☯ ' + r0.name + (r0.text ? '（' + r0.text + '）' : ''));
+      GAME.refreshAll();
+      ui.openLandModal(x, y);
+      return;
+    }
+    var r = GAME.sceneStart(x, y, gid, actId);
     if (!r.ok) { ui.toast(r.msg); return; }
-    ui._jhResult = { xy: x + ',' + y, name: r.name, text: r.text, bad: r.bad };
-    ui.toast('☯ ' + r.name + (r.text ? '（' + r.text + '）' : ''));
+    if (!r.fx) { ui.toast('剧本缺失'); return; }
+    ui.openSceneFx(r.fx);
+  };
+  ui.openSceneFx = function (fx) { ui._sceneFx = fx; ui.renderSceneFx(); };
+  ui.renderSceneFx = function () {
+    var fx = ui._sceneFx;
+    if (!fx) return;
+    var el = document.getElementById('scene-fx');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'scene-fx';
+      el.style.cssText = 'position:fixed;left:0;top:0;width:100%;height:100%;z-index:1500;overflow:auto;'
+        + 'background:linear-gradient(180deg,var(--bg-dark) 0%,var(--bg-2) 55%,var(--bg-3) 100%);color:var(--text);';
+      document.body.appendChild(el);
+    }
+    el.style.display = 'block';
+    el.innerHTML = ui.sceneFxHTML(fx);
+    el.scrollTop = 0;
+  };
+  ui.sceneFxHTML = function (fx) {
+    var a = fx.chk.act;
+    var fly = fx.fly;
+    var tile = GAME.map.tile(fx.chk.x, fx.chk.y) || {};
+    var ter = (DATA.TERRAIN[tile.terrain] || {}).name || '';
+    var total = fly.stages.length;
+    var h = '<div style="max-width:860px;margin:0 auto;padding:26px 22px 72px;">';
+    /* 顶栏：活动名 · 地点 · 君主 · 进度 · 退出 */
+    h += '<div style="display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--line-strong);padding-bottom:12px;flex-wrap:wrap;">';
+    h += '<span style="font-size:26px;">' + a.icon + '</span>';
+    h += '<span style="font-size:var(--fs-h1);font-weight:800;color:var(--gold-light);">' + U.escape(a.name) + '</span>';
+    h += '<span style="color:var(--text-dim);font-size:var(--fs-sub);">' + U.escape(ter) + '（' + fx.chk.x + ',' + fx.chk.y + '）· 野地 Lv' + fx.chk.lv + '　君主 ' + U.escape(fx.chk.gen.name) + ' · 灵力 ' + GAME.lingPowerOf(fx.chk.gen) + '</span>';
+    if (fx.phase === 'stage') {
+      var dots = '';
+      for (var i = 0; i < total; i++) dots += '<span style="color:' + (i <= fx.stage ? 'var(--gold)' : 'var(--text-dim)') + ';">' + (i <= fx.stage ? '◆' : '◇') + '</span>';
+      h += '<span style="margin-left:auto;display:inline-flex;gap:10px;align-items:center;">';
+      h += '<span style="font-size:var(--fs-cap);letter-spacing:3px;">' + dots + '</span>';
+      h += '<button class="btn sm" data-action="sxf-escape">' + U.escape(fly.escLabel || '就此离去') + '</button>';
+      h += '</span>';
+    }
+    h += '</div>';
+    /* 已走过的选择（一行日志） */
+    if (fx.picks.length) {
+      h += '<div style="margin:12px 0;color:var(--text-dim);font-size:var(--fs-sub);">'
+        + fx.picks.map(function (p, i2) { return '第' + (i2 + 1) + '幕 · ' + U.escape(p.l); }).join('　›　') + '</div>';
+    }
+    if (fx.phase === 'stage') {
+      /* 当前幕：叙事卡 + 选择按钮 */
+      var st = fly.stages[fx.stage];
+      h += '<div style="background:var(--panel-bg);border:1px solid var(--sep-gold);border-radius:10px;padding:20px 22px;margin:14px 0 4px;">' +
+        '<div style="font-size:var(--fs-lead);line-height:1.95;color:var(--text);">' + U.escape(st.t) + '</div></div>';
+      h += st.o.map(function (op, i3) {
+        return '<button class="btn" data-action="sxf-choice" data-i="' + i3 + '" style="display:block;width:100%;text-align:left;margin:8px 0;padding:12px 14px;font-size:var(--fs-lead);">' +
+          '<b style="color:var(--gold-light);">' + U.escape(op.l) + '</b>' +
+          (op.d ? '<span style="color:var(--text-dim);font-weight:400;margin-left:10px;font-size:var(--fs-sub);">' + U.escape(op.d) + '</span>' : '') +
+          '</button>';
+      }).join('');
+      h += '<div style="margin-top:12px;color:var(--text-dim);font-size:var(--fs-cap);">' +
+        (fx.spent ? '已动身 —— 中途罢手，所耗精力体力不返；此地此事今日即算已过。'
+                  : '尚未动身 —— 此时离去，无任何消耗。') + '</div>';
+    } else {
+      /* 专属退出结算屏 */
+      var ex = fly.exits[fx.grade] || fly.exits.win || fly.exits.escape;
+      var res = fx.result || {};
+      h += '<div style="text-align:center;margin:22px 0 4px;"><div style="font-size:44px;">' + ex.ic + '</div>';
+      h += '<div style="font-size:var(--fs-h1);font-weight:800;color:var(--gold);margin-top:8px;">' + U.escape(ex.t) + '</div>';
+      h += '<div style="color:var(--text-dim);font-size:var(--fs-sub);margin-top:6px;">' + U.escape(ex.s || '') + '</div></div>';
+      h += '<div style="background:var(--panel-bg);border:1px solid var(--sep-gold);border-radius:10px;padding:16px 18px;margin:16px 0;">';
+      if (res.escaped) {
+        h += '<div style="font-size:var(--fs-body);line-height:1.9;color:var(--text);">'
+          + (fx.spent ? '你审时度势，中途罢手。' : '你尚未动身，转身离去。')
+          + '<div style="color:var(--text-dim);font-size:var(--fs-sub);margin-top:4px;">'
+          + (fx.spent ? '所耗精力体力不返；此地此事今日已计入。' : '未有任何消耗。')
+          + '</div></div>';
+      } else if (res.ok) {
+        h += '<div style="font-size:var(--fs-body);color:var(--text-dim);margin-bottom:8px;">' + U.escape(res.name || '') + '</div>';
+        h += res.text
+          ? res.text.split('、').map(function (t2) {
+              return '<div style="font-size:var(--fs-lead);line-height:2;color:' + (res.bad ? 'var(--red-light)' : 'var(--green-ok)') + ';">· ' + U.escape(t2) + '</div>';
+            }).join('')
+          : '';
+      }
+      h += '</div>';
+      h += '<div style="text-align:center;margin-top:18px;"><button class="btn gold lg" data-action="sxf-exit">' + U.escape(fly.backLabel || '打道回府') + '</button></div>';
+    }
+    h += '</div>';
+    return h;
+  };
+  ui.closeSceneFx = function () {
+    var fx = ui._sceneFx;
+    ui._sceneFx = null;
+    GAME.sceneFx = null;
+    var el = document.getElementById('scene-fx');
+    if (el) el.style.display = 'none';
+    if (!fx || !fx.chk) return;
+    if (fx.result && fx.result.escaped && !fx.spent) return;   /* 未动身退出：状态无变化，原地不动 */
+    if (fx.result) {
+      ui._jhResult = {
+        xy: fx.chk.x + ',' + fx.chk.y,
+        name: fx.result.escaped ? '中途罢手' : fx.result.name,
+        text: fx.result.escaped ? '所耗不返，今日已计入' : fx.result.text,
+        bad: fx.result.escaped ? true : fx.result.bad
+      };
+    }
     GAME.refreshAll();
-    ui.openLandModal(x, y);       /* 原地重开：显示结果与「今日已做」态 */
+    ui.openLandModal(fx.chk.x, fx.chk.y);   /* 原地回野地弹窗（显示结果与「今日已做」） */
   };
 
   /* 附属野地弹窗（原版「附属野地」） */
@@ -2620,6 +2739,8 @@
    * lingPowerOf），这里只做呈现。
    * ============================================================ */
   ui.openLingTemper = function () {
+    /* v89：蕴养君主专属 —— 无君主直接拒开 */
+    if (!GAME.lordGeneralOf()) { ui.toast('君主不在，无从蕴养'); return; }
     var list = GAME.lingTemperList();
     var perLv = Math.round(((DATA.LING_TEMPER || {}).perLv || 0.08) * 100);
     var ess = (GAME.state.items || {}).lingsui || 0;
@@ -4278,7 +4399,7 @@
       '<span class="tip-src"><div class="tip-t">' + U.escape(g.name) + ' · ' + rk.name + '</div>' +
         '<div class="tip-l">统 ' + a.tong + '　勇 ' + a.yw + '　智 ' + a.zm + '　政 ' + a.nz +
           '　速 ' + (a.spd || 0) + '　体 ' + a.staMax + '</div>' +
-        '<div class="tip-a">Lv' + g.level + '　装备 ' + Object.keys(((g.equipOn === 'ling') ? g.lingEquip : g.equip) || {}).length + '/12' +
+        '<div class="tip-a">Lv' + g.level + '　装备 ' + Object.keys(GAME.systems.equipBagOf(g)).length + '/12' +
           '　经验 ' + U.numText(g.exp || 0, 0) + ' / ' + U.numText(GAME.expNeedOf(g), 0) +
           '　忠诚 ' + Math.round(g.loyalty || 0) + '</div>' +
       '</span></div>';
@@ -4311,8 +4432,10 @@
     var staEqNow = a.staEq || 0;
     var hpBonus = Math.round(GAME.staHpBonus(g) * 100);
     var setB = GAME.systems.genSetBonus(g);
-    /* v88：当前生效套（'sha' 军中 / 'ling' 修炼）—— 本面板所有装备读取按它分流 */
-    var isLing = (g.equipOn === 'ling');
+    /* v88：当前生效套（'sha' 军中 / 'ling' 修炼）—— 本面板所有装备读取按它分流；
+       v89：非君主恒军装（修炼线君主专属） */
+    var isLing = (g.equipOn === 'ling') && GAME.canCultivate(g);
+    var isCult = GAME.canCultivate(g);
     var eqCnt = Object.keys(((isLing ? g.lingEquip : g.equip) || {})).length;
     var enMx = GAME.energyMax ? GAME.energyMax(g) : 100;
     var bar = function (v, color) {
@@ -4542,13 +4665,16 @@
       if (lp) lingRow = '<div class="eq-grow"><span class="k">灵力</span><span class="v">+' + lp + '</span></div>';
     }
 
+    /* v89：双轨 tab 只给君主（修炼线君主专属）；普通将领整块切换行不渲染 */
     html += '<div class="gp-sec" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">' +
       '装备栏（' + eqCnt + ' / 12）' +
-      ui.help('军中装备用于攻城野战；修炼装备用于野地游历（灵力判定）。\n两套独立养成、整套切换生效 —— 点右侧按钮切换当前生效套。') +
-      '<span style="margin-left:auto;display:inline-flex;gap:4px;">' +
+      ui.help(isCult
+        ? '军中装备用于攻城野战；修炼装备用于野地游历（灵力判定）。\n两套独立养成、整套切换生效 —— 点右侧按钮切换当前生效套。'
+        : '军中装备用于攻城野战。\n修炼一途乃君主专属，钦定不假他人。') +
+      (isCult ? '<span style="margin-left:auto;display:inline-flex;gap:4px;">' +
         '<button class="btn sm' + (isLing ? '' : ' gold') + '" data-action="toggle-equip-set" data-gen="' + genId + '" data-set="sha">⚔ 军中</button>' +
         '<button class="btn sm' + (isLing ? ' gold' : '') + '" data-action="toggle-equip-set" data-gen="' + genId + '" data-set="ling">☯ 修炼</button>' +
-      '</span>' +
+      '</span>' : '') +
       '</div>' +
       '<div class="gp-doll">' +
         '<div class="doll">' +
@@ -4944,7 +5070,7 @@
     /* v88：按**当前生效套**渲染（军装/修炼各 12 槽；槽名/图标/品质色/强化标全同步）。
        附带修复 v79 按件改造的一处遗漏：这里原先直接把实例对象当 DATA.EQUIP 的键
        （装着装备时 it 恒为 null → 格子丢品质色显示 empty 类）。统一走 eqId 规范化。 */
-    var isLing = (g.equipOn === 'ling');
+    var isLing = (g.equipOn === 'ling') && GAME.canCultivate(g);
     var bag = (isLing ? g.lingEquip : g.equip) || {};
     var inst = bag[slot];
     var id = inst ? (GAME.eqId ? GAME.eqId(inst) : inst) : null;
@@ -4989,7 +5115,7 @@
   /* 套装进度面板：件数 + 四档（已达/未达）+ 下一档提示
      v88：修炼侧无套装档 —— 直接转 dollLingPanel（灵力/蕴养面板） */
   ui.dollSetPanel = function (g) {
-    if (g.equipOn === 'ling') return ui.dollLingPanel(g);
+    if (g.equipOn === 'ling' && GAME.canCultivate(g)) return ui.dollLingPanel(g);
     var prog = GAME.setProgressOf(g);
     var active = prog.filter(function (p) { return p.n > 0; });
     var out = '<div class="doll-set">';
@@ -5090,7 +5216,7 @@
     var s = GAME.state, g = null;
     s.generals.forEach(function (x) { if (x.id === genId) g = x; });
     if (!g) { ui.toast('将领不存在'); return; }
-    var isLing = (g.equipOn === 'ling');
+    var isLing = (g.equipOn === 'ling') && GAME.canCultivate(g);
     var bag = (isLing ? g.lingEquip : g.equip) || {};
     var curInst = bag[slot];
     var cur = curInst ? DATA.EQUIP[GAME.eqId(curInst)] : null;
@@ -5166,7 +5292,7 @@
       perm: g.perm || {}, equip: {},
     });
     /* v88：总览按**当前生效套**（槽名/装备/背包候选全同步） */
-    var gIsLing = (g.equipOn === 'ling');
+    var gIsLing = (g.equipOn === 'ling') && GAME.canCultivate(g);
     var gBag = (gIsLing ? g.lingEquip : g.equip) || {};
     var gSlotNames = gIsLing ? DATA.LING_SLOT_NAMES : DATA.EQUIP_SLOT_NAMES;
     var slotRows = DATA.EQUIP_SLOTS.map(function (slot) {

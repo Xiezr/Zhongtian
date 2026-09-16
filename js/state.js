@@ -444,6 +444,10 @@
    *   · 君主**专属功能**的扩张点是 `DATA.LORD_TRAITS`（档案里渲染成「君主特权」）。
    * ============================================================ */
   GAME.isLordGeneral = function (g) { return !!(g && g.isLord); };
+  /* v89（老板：「只有君主将有修炼功能，以及相应装备」）——
+     修炼资格**唯一闸门**：灵气装备 / 蕴养 / 江湖游历全链只认君主一人
+     （对应功法文档 0.1「主角单修」）。全站判断一律走这里，日后要放开只改这一处。 */
+  GAME.canCultivate = function (g) { return GAME.isLordGeneral(g); };
   /* 当前君主将领（无则 null —— 所有调用点都必须能接受 null） */
   GAME.lordGeneralOf = function () {
     var s = GAME.state, hit = null;
@@ -1711,6 +1715,8 @@
       if (!st.workRate) st.workRate = { grain: 100, wood: 100, stone: 100, iron: 100 };
       /* v79：装备单件化迁移（旧 id 串 → 实例；旧"按种"强化并入首件） */
       if (GAME.migrateEquipModel) GAME.migrateEquipModel(st);
+      /* v89：修炼线君主专属 —— 旧档里非君主身上的灵气装备归还背包、归位军装 */
+      if (GAME.migrateLordLing) GAME.migrateLordLing(st);
       /* v77 补字段：月俸锚点（老档锚点=当前游戏时刻，首期 7 游戏日后到来） */
       if (st.salaryAt == null) st.salaryAt = (st.world && st.world.elapsed) || 0;
       /* 离线补算：按 savedAt 与当前时间推算，精确段+聚合段（详见 offlineCatchup） */
@@ -2862,6 +2868,11 @@
     var g = null;
     (s.generals || []).forEach(function (x) { if (x.id === genId) g = x; });
     if (!g) return { ok: false, msg: '将领不存在' };
+    /* v89：修炼线君主专属 —— 非君主一切切换请求拒绝，并归位军装（老档兜底） */
+    if (!GAME.canCultivate(g)) {
+      if (g.equipOn === 'ling') g.equipOn = 'sha';
+      return { ok: false, msg: '修炼乃君主专属 —— 只有君主可切换修炼装备' };
+    }
     var cur = g.equipOn || 'sha';
     var next = (want === 'sha' || want === 'ling') ? want : (cur === 'sha' ? 'ling' : 'sha');
     if (next === cur) return { ok: false, msg: '当前已是' + (next === 'ling' ? '修炼' : '军中') + '装备' };
@@ -2895,6 +2906,8 @@
     var gen = null;
     (s.generals || []).forEach(function (g) { if (g.id === genId) gen = g; });
     if (!gen) return { ok: false, msg: '请选择带队的将领' };
+    /* v89：江湖游历君主专属（主角单修）—— 与装备/蕴养同一道闸门 */
+    if (!GAME.canCultivate(gen)) return { ok: false, msg: '江湖游历乃君主亲历之事 —— 只有君主可前往' };
     if ((gen.energy || 0) < a.energy) {
       return { ok: false, msg: gen.name + ' 精力不足（' + Math.round(gen.energy || 0) + '/' + a.energy + '），可服清心丸' };
     }
@@ -2905,39 +2918,56 @@
     if (GAME.jianghuDone(s, x, y, actId, day)) {
       return { ok: false, msg: '「' + a.name + '」此地今日已做过，明日再来' };
     }
-    return { ok: true, act: a, gen: gen, day: day, lv: GAME.map.wildLevelNow(x, y) };
+    return { ok: true, act: a, gen: gen, day: day, lv: GAME.map.wildLevelNow(x, y), x: x, y: y, actId: actId };
   };
+  /* v89：内核拆三段 —— Check（jianghuCheck）/ Spend（扣费+落锁）/ Roll（抽结果）。
+     全屏剧本流程（GAME.scene*，见下）与 one-shot 入口（jianghuDo）共用同一份内核，
+     保证「改了判定只改一处」。 */
   GAME.jianghuDo = function (x, y, genId, actId) {
-    var s = GAME.state;
     var chk = GAME.jianghuCheck(x, y, genId, actId);
     if (!chk.ok) return chk;
+    GAME.jianghuSpend(chk);
+    return GAME.jianghuRoll(chk);
+  };
+  GAME.jianghuSpend = function (chk) {
+    var s = GAME.state;
+    var a = chk.act, gen = chk.gen;
+    gen.energy = Math.max(0, (gen.energy || 0) - a.energy);
+    GAME.setStaNow(gen, GAME.staNow(gen) - a.stam);
+    s.jianghu = s.jianghu || {};
+    s.jianghu[chk.x + ',' + chk.y + '|' + chk.actId] = chk.day;
+    return { ok: true };
+  };
+  GAME.jianghuRoll = function (chk, mods) {
+    var s = GAME.state;
     var a = chk.act, gen = chk.gen, day = chk.day, lv = chk.lv;
+    var x = chk.x, y = chk.y;
     var tile = GAME.map.tile(x, y);
-    var seedBase = 'jh|' + x + ',' + y + '|' + actId + '|' + day;
+    var seedBase = 'jh|' + x + ',' + y + '|' + chk.actId + '|' + day;
     var roll = function (salt) { return GAME.invasionRoll(seedBase + '|' + salt); };
     var rnd = function (salt, lo, hi) {
       lo = Math.round(lo); hi = Math.round(hi);
       return lo + Math.floor(roll(salt) * (hi - lo + 1));
     };
-    /* 扣费 + 锁 */
-    gen.energy = Math.max(0, (gen.energy || 0) - a.energy);
-    GAME.setStaNow(gen, GAME.staNow(gen) - a.stam);
-    s.jianghu = s.jianghu || {};
-    s.jianghu[x + ',' + y + '|' + actId] = day;
+    /* v89：剧本修正系数（缺省时与 v88 结果逐位一致 —— 可复现不变式） */
+    var mo = mods || {};
+    var mPow = mo.pow || 1, mRw = mo.reward || 1, mWound = mo.wound || 1, mLuck = mo.luck || 0;
+    var mi = function (n) { return Math.max(1, Math.round(n * mRw)); };
+    var mw = function (n) { return Math.max(1, Math.round(n * mWound)); };
     /* 灵力（读修炼装备；与当前生效套无关） */
     var ling = GAME.lingPowerOf(gen);
     var texts = [];
     var bad = false;
     s.items = s.items || {};
     var ess = function (lo, hi, salt, tag) {
-      var n = rnd(salt || 'ess', lo, hi);
+      var n = mi(rnd(salt || 'ess', lo, hi));
       s.items.lingsui = (s.items.lingsui || 0) + n;
       texts.push('灵气精华 +' + n + (tag ? '（' + tag + '）' : ''));
       return n;
     };
     /* 低概率装备掉落（阶随野地等级 0-10 -> 1-6 阶） */
     var tryDrop = function (salt) {
-      if (roll(salt + '|hit') >= a.drop) return;
+      if (roll(salt + '|hit') >= Math.min(0.95, a.drop * (1 + mLuck))) return;
       var q = Math.max(1, Math.min(6, 1 + Math.floor(lv / 2)));
       var slots = DATA.LING_SLOTS || [];
       if (!slots.length) return;
@@ -2951,7 +2981,7 @@
     var title = a.name;
     if (a.kind === 'fight') {
       /* 灵力判定：我方战力 =（灵力 + 等级 x2）x 种子波动；难度随野地等级 +35%/级 */
-      var pow = (ling + (gen.level || 1) * 2) * (0.9 + roll('pow') * 0.2);
+      var pow = (ling + (gen.level || 1) * 2) * (0.9 + roll('pow') * 0.2) * mPow;
       var need = a.power * (1 + lv * 0.35);
       if (pow >= need) {
         ess(a.win.ess[0], a.win.ess[1]);
@@ -2960,8 +2990,9 @@
       } else {
         ess(a.lose.ess[0], a.lose.ess[1], 'essL', '聊胜于无');
         if (a.lose.wound) {
-          GAME.setStaNow(gen, Math.max(0, GAME.staNow(gen) - a.lose.wound));
-          texts.push(gen.name + ' 负伤，体力 −' + a.lose.wound);
+          var wdA = mw(a.lose.wound);
+          GAME.setStaNow(gen, Math.max(0, GAME.staNow(gen) - wdA));
+          texts.push(gen.name + ' 负伤，体力 −' + wdA);
         }
         bad = true;
         title = '力战不敌';
@@ -2970,14 +3001,14 @@
       /* 三层试炼：逐层加码；失败止步（已过层奖励保留）——「见好就收」无损 */
       var layer = 0;
       for (var i = 1; i <= 3; i++) {
-        var p2 = (ling + (gen.level || 1) * 2) * (0.9 + roll('t' + i) * 0.2);
+        var p2 = (ling + (gen.level || 1) * 2) * (0.9 + roll('t' + i) * 0.2) * mPow;
         var nd = a.power * (1 + lv * 0.35) * (1 + (i - 1) * 0.45);
         if (p2 < nd) break;
         layer = i;
       }
       if (layer > 0) {
         var tot = 0;
-        for (var j = 1; j <= layer; j++) tot += rnd('te' + j, a.win.ess[0] / 3, a.win.ess[1] / 3);
+        for (var j = 1; j <= layer; j++) tot += mi(rnd('te' + j, a.win.ess[0] / 3, a.win.ess[1] / 3));
         s.items.lingsui = (s.items.lingsui || 0) + tot;
         texts.push('灵气精华 +' + tot + '（过 ' + layer + ' 层）');
         if (layer >= 3) tryDrop('drop');
@@ -2986,19 +3017,20 @@
       } else {
         ess(a.lose.ess[0], a.lose.ess[1], 'essL', '聊胜于无');
         if (a.lose.wound) {
-          GAME.setStaNow(gen, Math.max(0, GAME.staNow(gen) - a.lose.wound));
-          texts.push(gen.name + ' 负伤，体力 −' + a.lose.wound);
+          var wdB = mw(a.lose.wound);
+          GAME.setStaNow(gen, Math.max(0, GAME.staNow(gen) - wdB));
+          texts.push(gen.name + ' 负伤，体力 −' + wdB);
         }
         bad = true;
         title = '第一层便受阻';
       }
     } else if (a.kind === 'gather') {
       ess(a.win.ess[0], a.win.ess[1]);
-      if (roll('dbl') < 0.25) ess(a.win.ess[0], a.win.ess[1], 'ess2', '意外双收');
+      if (roll('dbl') < 0.25 + mLuck) ess(a.win.ess[0], a.win.ess[1], 'ess2', '意外双收');
       title = '满载而归';
     } else if (a.kind === 'cultivate') {
       ess(a.win.ess[0], a.win.ess[1]);
-      if (roll('wu') < 0.08) {
+      if (roll('wu') < 0.08 + mLuck) {
         ess(a.win.ess[0], a.win.ess[1], 'ess2', '悟道时刻');
         title = '悟道时刻';
       } else {
@@ -3006,24 +3038,30 @@
       }
     } else if (a.kind === 'visit') {
       var pool = (DATA.LING_VISITS || {})[tile.terrain] || [];
-      var ev = pool.length ? pool[Math.floor(roll('ev') * pool.length) % pool.length] : null;
+      var ev = pool.length ? pool[Math.floor(Math.min(0.999, roll('ev') + mLuck) * pool.length) % pool.length] : null;
       ess(a.win.ess[0], a.win.ess[1]);
       var body0 = texts.join('、');
       var name0 = ev ? ev.t : '拜访';
       GAME.log('☯ ' + a.icon + ' ' + a.name + '：' + name0 + '（' + body0 + '）');
-      return { ok: true, name: a.name + ' · ' + name0, text: (ev ? ev.text : '') + '（' + body0 + '）', bad: false };
+      return { ok: true, name: a.name + ' · ' + name0, text: (ev ? ev.text : '') + '（' + body0 + '）', bad: false, grade: 'win' };
     } else if (a.kind === 'scene') {
       /* 地形专属（v87 -> v88.1 整合）：产出原样（金/粮/材料/珠宝/道具/豪杰）。
          扣费与锁已在上文统一完成 —— 这里只做「种子化抽结果 + 发奖」。 */
       var outs2 = a.outcomes || [];
       var tot2 = 0;
       for (var oi2 = 0; oi2 < outs2.length; oi2++) tot2 += outs2[oi2].w;
-      var rr2 = roll('scene_roll') * tot2;
-      var acc2 = 0, out2 = outs2[outs2.length - 1];
-      for (var oj2 = 0; oj2 < outs2.length; oj2++) {
-        acc2 += outs2[oj2].w;
-        if (rr2 < acc2) { out2 = outs2[oj2]; break; }
-      }
+      /* v89：抽签（luck 修正：抽到「遗憾」结果时有一次重抽机会） */
+      var pickScene = function (salt) {
+        var rr2 = roll(salt) * tot2;
+        var acc2 = 0, oo2 = outs2[outs2.length - 1];
+        for (var oj2 = 0; oj2 < outs2.length; oj2++) {
+          acc2 += outs2[oj2].w;
+          if (rr2 < acc2) { oo2 = outs2[oj2]; break; }
+        }
+        return oo2;
+      };
+      var out2 = pickScene('scene_roll');
+      if ((out2.wound || out2.none) && mLuck > 0 && roll('lr') < mLuck) out2 = pickScene('scene_roll2');
       var home2 = GAME.currentCity();
       var gift = function (id, n) {
         s.items[id] = (s.items[id] || 0) + n;
@@ -3031,12 +3069,12 @@
         texts.push((it0 ? it0.name : id) + '×' + n);
       };
       if (out2.gold && home2) {
-        var gn2 = rnd('gold', out2.gold[0], out2.gold[1]);
+        var gn2 = mi(rnd('gold', out2.gold[0], out2.gold[1]));
         GAME.res(home2).gold = (GAME.res(home2).gold || 0) + gn2;
         texts.push('黄金 +' + gn2);
       }
       if (out2.grain && home2) {
-        var gr2 = rnd('grain', out2.grain[0], out2.grain[1]);
+        var gr2 = mi(rnd('grain', out2.grain[0], out2.grain[1]));
         GAME.res(home2).grain = (GAME.res(home2).grain || 0) + gr2;
         texts.push('粮食 +' + gr2);
       }
@@ -3044,7 +3082,7 @@
         var tbl2 = DATA.WILD_MATERIAL[tile.terrain] || {};
         var keys2 = Object.keys(tbl2);
         if (keys2.length) {
-          var n2 = rnd('matn', out2.mats[0], out2.mats[1]);
+          var n2 = mi(rnd('matn', out2.mats[0], out2.mats[1]));
           var bag2 = {};                        /* 同 id 合并，避免"兽筋×2、兽筋×2" */
           for (var mi2 = 0; mi2 < n2; mi2++) {
             var mk2 = keys2[Math.floor(roll('mk' + mi2) * keys2.length) % keys2.length];
@@ -3090,18 +3128,73 @@
         }
       }
       if (out2.wound) {
-        GAME.setStaNow(gen, Math.max(0, GAME.staNow(gen) - out2.wound));
-        texts.push(gen.name + ' 负伤，体力 −' + out2.wound);
+        var wdS = mw(out2.wound);
+        GAME.setStaNow(gen, Math.max(0, GAME.staNow(gen) - wdS));
+        texts.push(gen.name + ' 负伤，体力 −' + wdS);
         bad = true;
       }
       if (!texts.length) { texts.push('此行无所获'); bad = true; }
       var line2 = a.icon + ' ' + a.name + '：' + out2.t + '（' + texts.join('、') + '）';
       GAME.log('🏕️ ' + ((DATA.TERRAIN[tile.terrain] || {}).name || '') + ' · ' + line2);
-      return { ok: true, name: out2.t, text: texts.join('、'), bad: bad };
+      return { ok: true, name: out2.t, text: texts.join('、'), bad: bad,
+        grade: (out2.wound ? 'lose' : (out2.none ? 'partial' : 'win')) };
     }
     var body = texts.join('、');
     if (!body) { body = '此行无所获'; bad = true; }
+    /* v89：结局分级（全屏剧本据此选专属退出结算屏） */
+    var grade = bad ? 'lose' : 'win';
+    if (a.kind === 'trial') grade = bad ? 'lose' : ((title === '三层皆过') ? 'win' : 'partial');
+    if (a.kind === 'cultivate') grade = bad ? 'lose' : ((title === '悟道时刻') ? 'win' : 'partial');
     GAME.log('☯ ' + a.icon + ' ' + a.name + '：' + title + '（' + body + '）');
-    return { ok: true, name: a.name + ' · ' + title, text: body, bad: bad };
+    return { ok: true, name: a.name + ' · ' + title, text: body, bad: bad, grade: grade };
+  };
+
+  /* --------- v89 · 全屏江湖场景流程（老板：「专属全屏界面 + 特定退出」） --------- */
+  GAME.sceneFx = null;
+  /* 进入流程：只校验不扣费（「未动身离去免费」的根基）；无剧本 → fx:null 由调用方兜底 */
+  GAME.sceneStart = function (x, y, genId, actId) {
+    var chk = GAME.jianghuCheck(x, y, genId, actId);
+    if (!chk.ok) return chk;
+    var fly = (DATA.SCENE_FLOW || {})[actId];
+    if (!fly) return { ok: true, fx: null };
+    GAME.sceneFx = {
+      chk: chk, fly: fly, actId: actId,
+      stage: 0, picks: [],
+      mods: { pow: 1, reward: 1, wound: 1, luck: 0 },
+      spent: false, phase: 'stage', result: null, grade: null
+    };
+    return { ok: true, fx: GAME.sceneFx };
+  };
+  /* 选一幕（首次选择才真正扣费+落锁）；末幕选择即结算 */
+  GAME.scenePick = function (idx) {
+    var fx = GAME.sceneFx;
+    if (!fx || fx.phase !== 'stage') return { ok: false, msg: '流程已结束' };
+    var st = fx.fly.stages[fx.stage];
+    var op = (st && st.o) ? st.o[idx] : null;
+    if (!op) return { ok: false, msg: '无此选项' };
+    if (!fx.spent) { GAME.jianghuSpend(fx.chk); fx.spent = true; }
+    fx.picks.push({ l: op.l, d: op.d || '' });
+    var e = op.e || {};
+    if (e.pow) fx.mods.pow *= e.pow;
+    if (e.reward) fx.mods.reward *= e.reward;
+    if (e.wound) fx.mods.wound *= e.wound;
+    if (e.luck) fx.mods.luck += e.luck;
+    fx.stage += 1;
+    var resolved = fx.stage >= fx.fly.stages.length;
+    if (resolved) {
+      fx.result = GAME.jianghuRoll(fx.chk, fx.mods);
+      fx.grade = fx.result.grade || (fx.result.bad ? 'lose' : 'win');
+      fx.phase = 'result';
+    }
+    return { ok: true, resolved: resolved, fx: fx };
+  };
+  /* 中途退出：未动身 → 零消耗（锁都未落）；已动身 → 所耗不返、今日计入 */
+  GAME.sceneEscape = function () {
+    var fx = GAME.sceneFx;
+    if (!fx || fx.phase !== 'stage') return { ok: false, msg: '流程已结束' };
+    fx.phase = 'result';
+    fx.grade = 'escape';
+    fx.result = { ok: true, name: fx.fly.escLabel || '就此离去', text: '', bad: true, escaped: true, grade: 'escape' };
+    return { ok: true, fx: fx };
   };
 })();

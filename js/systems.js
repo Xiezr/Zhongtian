@@ -122,7 +122,8 @@
    * ============================================================ */
   S.equipBagOf = function (g) {
     if (!g) return {};
-    return ((g.equipOn === 'ling') ? g.lingEquip : g.equip) || {};
+    /* v89：非君主恒军装（修炼线君主专属 —— 闸门唯一，见 GAME.canCultivate） */
+    return ((g.equipOn === 'ling' && GAME.canCultivate(g)) ? g.lingEquip : g.equip) || {};
   };
 
   /* 某将装备总加成（按**当前生效套**；v88 双轨分流） */
@@ -135,7 +136,7 @@
     if (!g) return b;
     /* v88：读**当前生效套**（双轨分流的唯一出口；修炼侧 75% 量级写在数据里） */
     var bag = S.equipBagOf(g);
-    var isLing = (g.equipOn === 'ling');
+    var isLing = (g.equipOn === 'ling') && GAME.canCultivate(g);
     /* 驯马技巧：坐骑装备属性 +5%/级（仅军装侧 —— 修炼装备独立体系不吃它） */
     var horseMul = 1 + S.techBonus('horse');
     for (var slot in bag) {
@@ -236,6 +237,8 @@
     var chk = S.canEquip(g, ref);
     if (!chk.ok) return chk;
     var item = chk.item, inst = chk.inst;
+    /* v89：修炼装备君主专属（各处 UI 已藏入口，这里是最后一道闸） */
+    if (item.ling && !GAME.canCultivate(g)) return { ok: false, msg: '修炼装备乃君主专属，' + g.name + ' 无法穿戴' };
     /* v88：按装备归属选袋 —— 修炼装备入 g.lingEquip，军装入 g.equip（各自 12 槽） */
     var bag = item.ling ? (g.lingEquip = g.lingEquip || {}) : (g.equip = g.equip || {});
     /* 同槽位旧件回背包（原物原样，强化随件走） */
@@ -263,8 +266,9 @@
     var s = GAME.state, g = null;
     s.generals.forEach(function (x) { if (x.id === genId) g = x; });
     if (!g) return { ok: false, msg: '将领不存在' };
-    /* v88：只作用于**当前生效套**（军装模式挑军装，修炼模式挑修炼） */
-    var isLing = (g.equipOn === 'ling');
+    /* v88：只作用于**当前生效套**（军装模式挑军装，修炼模式挑修炼）；
+       v89：非君主恒军装 */
+    var isLing = (g.equipOn === 'ling') && GAME.canCultivate(g);
     var bag = isLing ? (g.lingEquip = g.lingEquip || {}) : (g.equip = g.equip || {});
     s.inventory = s.inventory || [];
     var changed = [];

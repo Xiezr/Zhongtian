@@ -12,10 +12,10 @@
 | `git/` | 3 | **收尾同步的唯一入口**。`sync.py` 默认干跑、`--apply` 才落盘（干跑先行是本项目铁律）；`gate.py` 是三件套门禁的**唯一出口**（pre-commit 钩子与 sync 都调它）；`install_hooks.py` 把 `hooks/` 里的钩子装进 `.git/hooks/`。 |
 | `git/hooks/` | 2 | 存这里是为了**进版本库** —— `.git/hooks/` 不被 git 跟踪，换台机器克隆后必须跑 `install_hooks.py` 重装。⚠️ **行尾必须 LF**，CRLF 会让 `#!/bin/sh` 失效。 |
 | `mem/` | 10 | MEMORY.md 必须 < 9600 字符（超出会被会话注入截断，尾部规则等于不存在）。`slim_memory_template.py` = 把超限整段 cut 到 `docs/` 的模板。 |
-| `patch/` | 136 | **事实上的变更日志**：按断言名 `grep -rl "<断言名>" tools/patch/` 就能找到当初是哪次改的。"同一条消息里对同一文件的多次 Edit 会互相覆盖"，所以补丁一律脚本化并留档。 |
+| `patch/` | 144 | **事实上的变更日志**：按断言名 `grep -rl "<断言名>" tools/patch/` 就能找到当初是哪次改的。"同一条消息里对同一文件的多次 Edit 会互相覆盖"，所以补丁一律脚本化并留档。 |
 | `probe/` | 17 | jsdom 没有布局引擎 → 尺寸/重叠/溢出/折行只能在**真浏览器**量。`probe60_geom.js` 是可复用模板，`probe66_ui.js` 有"逐行折行"量法，`probe67_save3.js` 量存档体积与配额。 |
 | `show/` | 4 | 给老板看的对照图 / 曲线校准 / 素材巡视。 |
-| **合计** | **214** | |
+| **合计** | **222** | |
 
 ## asset/（素材处理）
 
@@ -248,6 +248,14 @@ MEMORY.md 必须 < 9600 字符（超出会被会话注入截断，尾部规则�
 - `patch_v88_tools2.py`（3KB）　— v88 工具层补充（domain.js）：军装强化/拆解对灵气件的防护。探针幂等。
 - `patch_v88_ui.py`（13KB）　— v88 UI 第一批（ui.js）：品质色到6 / 描述加灵力 / 两袋寻址 / genPane 双轨 / dollSlot 重写 + 修复 / dollLingPanel。探…
 - `patch_v88_ui2.py`（15KB）　— v88 UI 第二批（ui.js）：openEqSlot 双轨 / openLingTemper / jianghuHTML / 弹窗接线 / 装备总览页。探针幂等。
+- `patch_v89_data.py`（17KB）　— v89 数据层：全屏江湖场景剧本 DATA.SCENE_FLOW（12 活动 · 对话/事件导向 · 专属退出）。探针幂等。
+- `patch_v89_docs.py`（7KB）　— v89 文档：设计规范 §30 · 备忘 §32 · 需求档案 v89 · 规划补记 · 设计文档 v1.2。探针幂等。
+- `patch_v89_e2e.py`（10KB）　— v89 e2e（e2e-test.js）：v88.1/v88 段剧本化改造 + v89 新段（君主专属 + 全屏交互）。探针幂等。
+- `patch_v89_flow.py`（13KB）　— v89 流程引擎（state.js）：jianghuDo 拆 Check/Spend/Roll + sceneStart/Pick/Escape + mods 接线。探针幂等。
+- `patch_v89_lord.py`（15KB）　— v89 君主专属收口：修炼线（装备/蕴养/游历）唯一闸门 GAME.canCultivate + 老档迁移。探针幂等。
+- `patch_v89_main.py`（2KB）　— v89 事件（main.js）：sxf-choice / sxf-escape / sxf-exit 分发 + doScene 包装。探针幂等。
+- `patch_v89_tests.py`（10KB）　— v89 测试（smoke-test.js）：§73 君主化（generals[0] -> 君主） + §74 新段（君主闸门 + 全屏剧本）。探针幂等。
+- `patch_v89_ui.py`（9KB）　— v89 全屏场景 UI（ui.js）：活动按钮 → 全屏剧本 → 专属退出结算屏。探针幂等。
 - `v26-j.py`（14KB）　— v26 批九：smoke 第 39 节 —— v26 五项需求的防回退断言
 
 ## probe/（探针（几何 / 界面 / 存档））

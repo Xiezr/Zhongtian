@@ -2681,6 +2681,25 @@
     return s;
   };
 
+  /* v89（老板「只有君主将有修炼功能，以及相应装备」）：
+     老档收口迁移 —— 非君主身上的灵气装备归还背包、归位军装；君主不受影响。
+     一次性（s._lingLord1 标记），在 loadFrom 里与装备单件化迁移同点调用。 */
+  GAME.migrateLordLing = function (s) {
+    if (!s || s._lingLord1) return s;
+    s.inventory = s.inventory || [];
+    (s.generals || []).forEach(function (g) {
+      if (!g || GAME.isLordGeneral(g)) return;
+      var bag = g.lingEquip;
+      if (bag) {
+        for (var sl in bag) { if (bag[sl]) s.inventory.push(bag[sl]); }
+        delete g.lingEquip;
+      }
+      if (g.equipOn === 'ling') g.equipOn = 'sha';
+    });
+    s._lingLord1 = 1;
+    return s;
+  };
+
   /* --------- 装备拆解：回收部分打造材料（v79：按**件**拆） --------- */
   GAME.salvageEquip = function (ref) {
     var s = GAME.state;
@@ -2892,6 +2911,14 @@
     var s = GAME.state;
     var inst = GAME.eqFind(ref);
     if (!inst) return { ok: false, msg: '尚未拥有这件装备' };
+    /* v89：蕴养君主专属（修炼线）；防御性：该件若在非君主身上先拒绝 */
+    if (!GAME.lordGeneralOf()) return { ok: false, msg: '君主不在，无从蕴养' };
+    var wornOther = false;
+    (s.generals || []).forEach(function (g2) {
+      if (!g2 || GAME.isLordGeneral(g2) || !g2.lingEquip) return;
+      for (var sl2 in g2.lingEquip) { if (g2.lingEquip[sl2] === inst) wornOther = true; }
+    });
+    if (wornOther) return { ok: false, msg: '该件在他人身上 —— 先卸下再蕴养' };
     var it = DATA.EQUIP[GAME.eqId(inst)];
     if (!it || !it.ling) return { ok: false, msg: '只有修炼装备可以蕴养' };
     var lv = GAME.eqEnhOf(inst);

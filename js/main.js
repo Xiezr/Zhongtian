@@ -193,6 +193,10 @@
       case 'ling-temper-open': ui.openLingTemper(); break;
       case 'ling-temper-item': GAME.doLingTemper(el.dataset.key); break;
       case 'do-jianghu': ui.doJianghu(Number(el.dataset.x), Number(el.dataset.y), el.dataset.act); break;
+      /* v89：全屏江湖剧本（选择 / 中途退出 / 收尾关闭） */
+      case 'sxf-choice': GAME.doScenePick(Number(el.dataset.i)); break;
+      case 'sxf-escape': GAME.doSceneEscape(); break;
+      case 'sxf-exit': ui.closeSceneFx(); break;
       case 'wg-max': { var wi = document.getElementById('wg-' + el.dataset.troop); if (wi) wi.value = wi.max; break; }
       case 'wild-garrison-do': GAME.doWildGarrisonDo(); break;
       case 'wild-withdraw': {
@@ -807,6 +811,17 @@
     var r = GAME.lingTemper(key);
     ui.toast(r.msg);
     if (r.ok) { GAME.refreshAll(); ui.openLingTemper(); }
+  };
+  /* v89：全屏剧本 —— 选择 / 中途退出（结算屏由 ui.renderSceneFx 就地重绘） */
+  GAME.doScenePick = function (i) {
+    var r = GAME.scenePick(i);
+    if (!r.ok) { if (r.msg) ui.toast(r.msg); return; }
+    ui.renderSceneFx();
+  };
+  GAME.doSceneEscape = function () {
+    var r = GAME.sceneEscape();
+    if (!r.ok) { if (r.msg) ui.toast(r.msg); return; }
+    ui.renderSceneFx();
   };
   /* 解雇（二次确认） */
   /* v70（老板需求 3/4）：迁址（坐标切换）与一键随机 —— 唯一执行都走 GAME.moveCityTo */
