@@ -1463,10 +1463,12 @@
     /* 已穿戴件号（角标/提示用） */
     var wornByU = {};
     s.generals.forEach(function (g) {
-      for (var sl in (g.equip || {})) {
-        var u = GAME.eqUidOf(g.equip[sl]);
-        if (u != null) wornByU[u] = g.name;
-      }
+      ['equip', 'lingEquip'].forEach(function (bk) {   /* v88：两套都标记 */
+        for (var sl in (g[bk] || {})) {
+          var u = GAME.eqUidOf(g[bk][sl]);
+          if (u != null) wornByU[u] = g.name;
+        }
+      });
     });
     /* 分组（按部位 / 按套装）—— 组内按件排 */
     var groups = {};
@@ -1703,11 +1705,13 @@
     var inInv = inst ? (inv.indexOf(inst) >= 0) : false;
     var wornBy = null;
     s.generals.forEach(function (g) {
-      for (var sl in (g.equip || {})) {
-        var v = g.equip[sl];
-        var hit = inst ? (v === inst) : (GAME.eqId(v) === itemId);
-        if (hit) wornBy = wornBy || g.name;
-      }
+      ['equip', 'lingEquip'].forEach(function (bk) {   /* v88：两套都查 */
+        for (var sl in (g[bk] || {})) {
+          var v = g[bk][sl];
+          var hit = inst ? (v === inst) : (GAME.eqId(v) === itemId);
+          if (hit) wornBy = wornBy || g.name;
+        }
+      });
     });
     var gIdx = '';
     if (sn && group.length > 1) {
@@ -2102,6 +2106,70 @@
     ui.openLandModal(x, y);       /* 原地重开：显示结果与「今日已探」态 */
   };
 
+  /* ============================================================
+   * v88（老板「修炼培养系统」）：江湖游历区块
+   * ------------------------------------------------------------
+   * 嵌在野地弹窗（openLandModal 未占/已占两分支）内、地形场景之下：
+   *   活动菜单（每处**每活动**每日一次）+ 带队将领 + 结果回显。
+   * 逻辑出口 GAME.jianghuCheck / jianghuDo（state.js，唯一）。
+   * ============================================================ */
+  ui._jhGen = null;
+  ui._jhResult = null;
+  ui.jianghuHTML = function (x, y) {
+    if (!GAME.jianghuActsAt) return '';
+    var tile = GAME.map.tile(x, y);
+    if (!tile) return '';
+    var acts = GAME.jianghuActsAt(tile.terrain);
+    if (!acts.length) return '';
+    var s = GAME.state;
+    var day = Math.floor(((s.world && s.world.elapsed) || 0) / 86400);
+    var home = GAME.currentCity();
+    var own = (s.generals || []).filter(function (g) { return g.cityId === home.id; });
+    if (!ui._jhGen || !own.some(function (g) { return g.id === ui._jhGen; })) {
+      ui._jhGen = own[0] ? own[0].id : '';
+    }
+    var res = (ui._jhResult && ui._jhResult.xy === (x + ',' + y)) ? ui._jhResult : null;
+    var h = '<div class="op-zone" style="margin-top:8px;">' +
+      '<div class="op-zone-t">☯ 江湖游历　<span style="color:var(--text-dim);font-weight:400;font-size:var(--fs-sub);">每事每日一次 · 看灵力判定</span></div>' +
+      '<div style="color:var(--text-dim);font-size:var(--fs-sub);margin:4px 0 6px;">讨伐切磋、采药静修、拜访奇人——所得灵气精华用于蕴养修炼装备。</div>';
+    if (res) {
+      h += '<div class="note" style="margin:4px 0;color:' + (res.bad ? 'var(--red-light)' : 'var(--green-ok)') + ';">' +
+        U.escape(res.name + '：' + res.text) + '</div>';
+    }
+    if (!own.length) {
+      h += '<div style="color:var(--text-dim);font-size:var(--fs-sub);">本城无将领可供差遣。</div>';
+    } else {
+      h += '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 0;">' +
+        '<label style="color:var(--text-dim);">带队将领</label>' +
+        '<input type="hidden" id="jh-gen" value="' + ui._jhGen + '">' +
+        ui.genChips({ cls: 'gen-chips inline', target: 'jh-gen', value: ui._jhGen, list: own,
+          sub: function (g) { return '精' + Math.round(g.energy || 0) + ' 体' + Math.round(GAME.staNow(g)) + ' 灵' + GAME.lingPowerOf(g); } }) +
+        '</div>';
+      h += '<div style="display:flex;gap:6px;flex-wrap:wrap;">';
+      acts.forEach(function (a) {
+        var done = GAME.jianghuDone(s, x, y, a.id, day);
+        h += done
+          ? '<span class="op-done" style="font-size:var(--fs-sub);padding:5px 8px;">' + a.def.icon + ' ' + a.def.name + '（今日已做）</span>'
+          : '<button class="btn sm" data-action="do-jianghu" data-x="' + x + '" data-y="' + y + '" data-act="' + a.id + '"' +
+              ' title="' + U.escape(a.def.desc || '') + '">' + a.def.icon + ' ' + a.def.name + '（精' + a.def.energy + ' · 体' + a.def.stam + '）</button>';
+      });
+      h += '</div>';
+    }
+    h += '</div>';
+    return h;
+  };
+  ui.doJianghu = function (x, y, actId) {
+    var gsel = document.getElementById('jh-gen');
+    var gid = gsel ? gsel.value : ui._jhGen;
+    if (gid) ui._jhGen = gid;
+    var r = GAME.jianghuDo(x, y, gid, actId);
+    if (!r.ok) { ui.toast(r.msg); return; }
+    ui._jhResult = { xy: x + ',' + y, name: r.name, text: r.text, bad: r.bad };
+    ui.toast('☯ ' + r.name + (r.text ? '（' + r.text + '）' : ''));
+    GAME.refreshAll();
+    ui.openLandModal(x, y);       /* 原地重开：显示结果与「今日已做」态 */
+  };
+
   /* 附属野地弹窗（原版「附属野地」） */
   ui.openWilds = function () {
     var s = GAME.state;
@@ -2233,7 +2301,7 @@
       icoType = it ? it.type : 'jewel';
       svg = (GAME.icons.forItem ? GAME.icons.forItem(icoType, id) : '') || '';
     }
-    var qq = Math.max(1, Math.min(4, q || 1));
+    var qq = Math.max(1, Math.min(6, q || 1));   /* v88：修炼装备品质到 6（军装 q<=4 不受影响） */
     /* 材料自带品阶珠（icons.js 里已画），不再重复叠一层 */
     var gems = (kind === 'mat') ? '' : new Array(qq + 1).join('<i></i>');
     return '<span class="ia q' + qq + '">' +
@@ -2592,6 +2660,44 @@
     ui.openShell({
       title: '⚒ 百炼强化',
       sub: '**按件**强化（同名以 甲/乙/丙 区分）　满级 +' + GAME.enhMax() + '　黄金 ' + U.numText(GAME.state.res.gold || 0, 0),
+      size: 'lg',
+      body: '<div class="enh-list">' + rows + '</div>',
+      foot: '<div class="m-foot"><button class="btn" data-action="close-modal">关闭</button></div>'
+    });
+  };
+
+  /* ============================================================
+   * v88 · 蕴养（修炼装备强化 —— 与百炼强化平行的独立面板）
+   * ------------------------------------------------------------
+   * 列出**已拥有**的修炼装备（背包 + 穿戴；GAME.lingTemperList），
+   * 每行给下一级精华成本。等级与效果都走唯一出口（eqEnhOf / genEquipBonus /
+   * lingPowerOf），这里只做呈现。
+   * ============================================================ */
+  ui.openLingTemper = function () {
+    var list = GAME.lingTemperList();
+    var perLv = Math.round(((DATA.LING_TEMPER || {}).perLv || 0.08) * 100);
+    var ess = (GAME.state.items || {}).lingsui || 0;
+    var rows = list.map(function (inst) {
+      var id = GAME.eqId(inst);
+      var it = DATA.EQUIP[id], lv = GAME.eqEnhOf(inst), max = GAME.lingTemperMax();
+      var cost = lv < max ? GAME.lingTemperCost(inst) : null;
+      var okA = cost != null && ess >= cost;
+      var key = GAME.eqUidOf(inst) != null ? GAME.eqUidOf(inst) : id;
+      return '<div class="enh-row">' +
+        '<span class="enh-art">' + ui.itemArt('equip', id, it.q) + '</span>' +
+        '<span class="enh-nm">' + U.escape(GAME.eqLabel(inst)) +
+          '<span class="enh-tag">+' + lv + '</span>' +
+          '<div class="enh-cost">' + (cost ? ('下一级 灵气精华 ' + cost) : ('已至 +' + max + '（圆满）')) +
+            '　<span class="ui-sub">每级修炼属性 +' + perLv + '%（按件记，同名各蕴各的）</span></div></span>' +
+        (cost
+          ? '<button class="btn sm' + (okA ? ' gold' : '') + '" data-action="ling-temper-item" data-key="' + key + '"' +
+              (okA ? '' : ' disabled') + '>蕴养 +' + (lv + 1) + '</button>'
+          : '<span class="op-done">圆满</span>') +
+        '</div>';
+    }).join('') || '<div class="q-empty">还没有修炼装备。到野地「江湖游历」讨伐/试炼/采集，可得修炼装备与灵气精华。</div>';
+    ui.openShell({
+      title: '☯ 蕴养 · 修炼装备',
+      sub: '**按件**蕴养（同名以 甲/乙/丙 区分）　满级 +' + GAME.lingTemperMax() + '　灵气精华 ' + ess + '（野地游历获得）',
       size: 'lg',
       body: '<div class="enh-list">' + rows + '</div>',
       foot: '<div class="m-foot"><button class="btn" data-action="close-modal">关闭</button></div>'
@@ -4226,7 +4332,7 @@
       '<span class="tip-src"><div class="tip-t">' + U.escape(g.name) + ' · ' + rk.name + '</div>' +
         '<div class="tip-l">统 ' + a.tong + '　勇 ' + a.yw + '　智 ' + a.zm + '　政 ' + a.nz +
           '　速 ' + (a.spd || 0) + '　体 ' + a.staMax + '</div>' +
-        '<div class="tip-a">Lv' + g.level + '　装备 ' + Object.keys(g.equip || {}).length + '/12' +
+        '<div class="tip-a">Lv' + g.level + '　装备 ' + Object.keys(((g.equipOn === 'ling') ? g.lingEquip : g.equip) || {}).length + '/12' +
           '　经验 ' + U.numText(g.exp || 0, 0) + ' / ' + U.numText(GAME.expNeedOf(g), 0) +
           '　忠诚 ' + Math.round(g.loyalty || 0) + '</div>' +
       '</span></div>';
@@ -4259,7 +4365,9 @@
     var staEqNow = a.staEq || 0;
     var hpBonus = Math.round(GAME.staHpBonus(g) * 100);
     var setB = GAME.systems.genSetBonus(g);
-    var eqCnt = Object.keys(g.equip || {}).length;
+    /* v88：当前生效套（'sha' 军中 / 'ling' 修炼）—— 本面板所有装备读取按它分流 */
+    var isLing = (g.equipOn === 'ling');
+    var eqCnt = Object.keys(((isLing ? g.lingEquip : g.equip) || {})).length;
     var enMx = GAME.energyMax ? GAME.energyMax(g) : 100;
     var bar = function (v, color) {
       return '<div class="gd-bar"><i style="width:' + Math.max(0, Math.min(100, v)) + '%;background:' + color + ';"></i></div>';
@@ -4450,7 +4558,8 @@
     html += '</div><div class="gp-col-r">';
     var inv = {};
     (s.inventory || []).forEach(function (x) {
-      var e = DATA.EQUIP[GAME.eqId(x)]; if (e) inv[e.slot] = (inv[e.slot] || 0) + 1;
+      var e = DATA.EQUIP[GAME.eqId(x)];
+      if (e && !!e.ling === isLing) inv[e.slot] = (inv[e.slot] || 0) + 1;   /* v88：只数当前套 */
     });
     /* 「装备贡献」= 带装属性 − 裸装属性：同一套取值口，不多算一处。
        v60（需求 1/2）：老板要求「装备栏右侧有重复的总属性…右侧把装备提供的属性
@@ -4480,9 +4589,20 @@
       return '<div class="eq-grow"><span class="k">' + p2[1] + '</span>' +
         '<span class="v">' + (d > 0 ? '+' : '') + d + '</span></div>';
     }).join('');
+    /* v88：修炼侧加一行「灵力」（游历战力；差值法不适用 —— 直接用汇总出口） */
+    var lingRow = '';
+    if (isLing && GAME.lingPowerOf) {
+      var lp = GAME.lingPowerOf(g);
+      if (lp) lingRow = '<div class="eq-grow"><span class="k">灵力</span><span class="v">+' + lp + '</span></div>';
+    }
 
-    html += '<div class="gp-sec">装备栏（' + eqCnt + ' / 12）' +
-      ui.help('12 个部位对应人形上的位置，点击任一部位可更换或卸下。\n套装件每满 3 / 5 / 7 / 11 件逐档加成，效果累计。') +
+    html += '<div class="gp-sec" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">' +
+      '装备栏（' + eqCnt + ' / 12）' +
+      ui.help('军中装备用于攻城野战；修炼装备用于野地游历（灵力判定）。\n两套独立养成、整套切换生效 —— 点右侧按钮切换当前生效套。') +
+      '<span style="margin-left:auto;display:inline-flex;gap:4px;">' +
+        '<button class="btn sm' + (isLing ? '' : ' gold') + '" data-action="toggle-equip-set" data-gen="' + genId + '" data-set="sha">⚔ 军中</button>' +
+        '<button class="btn sm' + (isLing ? ' gold' : '') + '" data-action="toggle-equip-set" data-gen="' + genId + '" data-set="ling">☯ 修炼</button>' +
+      '</span>' +
       '</div>' +
       '<div class="gp-doll">' +
         '<div class="doll">' +
@@ -4499,6 +4619,7 @@
           '<div class="gp-dollops">' +
             '<button class="btn sm gold" data-action="gen-auto-equip" data-gen="' + genId + '">一键最优装备</button>' +
             '<button class="btn sm" data-action="gen-unequip-all" data-gen="' + genId + '">全部卸下</button>' +
+            (isLing ? '<button class="btn sm" data-action="ling-temper-open">☯ 蕴养</button>' : '') +
           '</div>' +
         '</div>' +
       '</div>' +
@@ -4874,9 +4995,15 @@
   };
   ui.dollSlot = function (g, genId, slot, inv) {
     var pos = ui.DOLL_POS[slot] || [50, 50];
-    var id = (g.equip || {})[slot];
+    /* v88：按**当前生效套**渲染（军装/修炼各 12 槽；槽名/图标/品质色/强化标全同步）。
+       附带修复 v79 按件改造的一处遗漏：这里原先直接把实例对象当 DATA.EQUIP 的键
+       （装着装备时 it 恒为 null → 格子丢品质色显示 empty 类）。统一走 eqId 规范化。 */
+    var isLing = (g.equipOn === 'ling');
+    var bag = (isLing ? g.lingEquip : g.equip) || {};
+    var inst = bag[slot];
+    var id = inst ? (GAME.eqId ? GAME.eqId(inst) : inst) : null;
     var it = id ? DATA.EQUIP[id] : null;
-    var slotName = DATA.EQUIP_SLOT_NAMES[slot] || slot;
+    var slotName = ((isLing ? DATA.LING_SLOT_NAMES : DATA.EQUIP_SLOT_NAMES) || {})[slot] || slot;
     var invN = inv[slot] || 0;
     var setNm = it && it.set && DATA.SETS[it.set] ? DATA.SETS[it.set].name : '';
     return '<div class="eq-cell doll-slot' + (it ? ' q' + it.q : ' empty') + '"' +
@@ -4884,17 +5011,39 @@
       ' data-action="eq-slot" data-gen="' + genId + '" data-slot="' + slot + '" data-tip-el="1">' +
       '<span class="eq-slotname">' + slotName + '</span>' +
       '<span class="eq-ico">' + (GAME.icons.forEquip ? GAME.icons.forEquip(slot) : '') + '</span>' +
-      '<span class="eq-name' + (it ? '' : ' none') + '">' + (id ? U.escape(GAME.eqLabel(id)) : '未着') + '</span>' +
+      '<span class="eq-name' + (it ? '' : ' none') + '">' + (inst ? U.escape(GAME.eqLabel(inst)) : '未着') + '</span>' +
       (invN ? '<span class="eq-inv">+' + invN + '</span>' : '') +
       /* 悬停走全站唯一的 #tip-layer（v37）—— 不在这里自己绝对定位 */
-      '<span class="eq-slot-tip tip-src"><div class="tip-t">' + slotName + (it ? ' · ' + U.escape(GAME.eqLabel(id)) : '') + '</div>' +
+      '<span class="eq-slot-tip tip-src"><div class="tip-t">' + slotName + (inst ? ' · ' + U.escape(GAME.eqLabel(inst)) : '') + '</div>' +
         '<div class="tip-l">' + (it ? U.escape(GAME.equipDesc(it) || '') : '该部位未着，点击选择') + '</div>' +
         (setNm ? '<div class="tip-a">' + setNm + ' 套装件</div>' : '') +
         (invN ? '<div class="tip-a">背包另有 ' + invN + ' 件可换</div>' : '') +
       '</span></div>';
   };
-  /* 套装进度面板：件数 + 四档（已达/未达）+ 下一档提示 */
+  /* v88：修炼装备面板（灵力 / 总蕴养 / 精华余额）—— dollSetPanel 的修炼分支 */
+  ui.dollLingPanel = function (g) {
+    var s = GAME.state;
+    var ess = (s.items || {}).lingsui || 0;
+    var bag = g.lingEquip || {};
+    var cnt = Object.keys(bag).length, total = 0;
+    for (var k in bag) total += (GAME.eqEnhOf(bag[k]) || 0);
+    var ling = GAME.lingPowerOf ? GAME.lingPowerOf(g) : 0;
+    return '<div class="doll-set">' +
+      '<div class="ds-block">' +
+        '<div class="ds-head"><span class="ds-name">☯ 修炼装备</span><span class="ds-n">' + cnt + ' / 12 件</span></div>' +
+        '<div class="ds-tiers">' +
+          '<i class="on"><b>灵力</b>' + ling + '</i>' +
+          '<i><b>总蕴养</b>+' + total + ' / 120</i>' +
+          '<i><b>灵气精华</b>' + ess + '</i>' +
+        '</div>' +
+      '</div>' +
+      '<div class="ds-empty">灵力用于野地游历判定；蕴养每级修炼属性 +8%（灵气精华 · 游历获得）。</div>' +
+    '</div>';
+  };
+  /* 套装进度面板：件数 + 四档（已达/未达）+ 下一档提示
+     v88：修炼侧无套装档 —— 直接转 dollLingPanel（灵力/蕴养面板） */
   ui.dollSetPanel = function (g) {
+    if (g.equipOn === 'ling') return ui.dollLingPanel(g);
     var prog = GAME.setProgressOf(g);
     var active = prog.filter(function (p) { return p.n > 0; });
     var out = '<div class="doll-set">';
@@ -4970,7 +5119,13 @@
     s.generals.forEach(function (x) { if (x.id === genId) g = x; });
     if (!g) { ui.toast('将领不存在'); return; }
     var a = GAME.genAttrs(g);
-    var eq = Object.keys(g.equip || {}).map(function (sl) { return DATA.EQUIP[g.equip[sl]].name; });
+    var eq = [];
+    ['equip', 'lingEquip'].forEach(function (bk) {   /* v88：两套合并列出 */
+      for (var sl in (g[bk] || {})) {
+        var it2 = DATA.EQUIP[GAME.eqId(g[bk][sl])];
+        if (it2) eq.push(it2.name);
+      }
+    });
     var html = '<div class="gold-heading">解雇 ' + U.escape(g.name) + '</div>';
     html += '<div class="attr"><span class="k">资质</span><span class="v">' + ui.rankBadge(g) + '</span></div>';
     html += '<div class="attr"><span class="k">等级</span><span class="v">Lv' + g.level + '</span></div>';
@@ -4984,30 +5139,46 @@
     ui.openModal(html);
   };
 
-  /* 单槽位更换 */
+  /* 单槽位更换（v88：按**当前生效套**过滤候选与槽名；修炼件附「蕴养」入口） */
   ui.openEqSlot = function (genId, slot) {
     var s = GAME.state, g = null;
     s.generals.forEach(function (x) { if (x.id === genId) g = x; });
     if (!g) { ui.toast('将领不存在'); return; }
-    var curInst = (g.equip || {})[slot];
+    var isLing = (g.equipOn === 'ling');
+    var bag = (isLing ? g.lingEquip : g.equip) || {};
+    var curInst = bag[slot];
     var cur = curInst ? DATA.EQUIP[GAME.eqId(curInst)] : null;
     var cand = (s.inventory || []).filter(function (x) {
       var it = DATA.EQUIP[GAME.eqId(x)];
-      return it && it.slot === slot;
+      return it && it.slot === slot && (!!it.ling === isLing);   /* v88：只列本套件 */
     });
     /* v79：候选是一次**件**（同名各列各的，带 +N 与 甲/乙/丙 序号） */
     cand.sort(function (x, y) {
       var ix = DATA.EQUIP[GAME.eqId(x)], iy = DATA.EQUIP[GAME.eqId(y)];
       return (GAME.systems.equipScore(iy) - GAME.systems.equipScore(ix)) || (GAME.eqEnhOf(y) - GAME.eqEnhOf(x));
     });
-    var html = '<div class="gold-heading">' + (DATA.EQUIP_SLOT_NAMES[slot] || slot) + ' · 更换</div>';
+    var slotName2 = ((isLing ? DATA.LING_SLOT_NAMES : DATA.EQUIP_SLOT_NAMES) || {})[slot] || slot;
+    var html = '<div class="gold-heading">' + slotName2 + ' · 更换' + (isLing ? '（☯ 修炼）' : '（⚔ 军中）') + '</div>';
     html += '<div class="attr"><span class="k">当前</span><span class="v' + (cur ? ' good' : '') + '">'
       + (cur ? U.escape(GAME.eqLabel(curInst)) + '（' + U.escape(GAME.equipDesc(cur)) + '）' : '未着') + '</span></div>';
     if (cur) {
-      html += '<div style="text-align:center;margin:8px 0;"><button class="btn red" data-action="gen-unequip" data-gen="' + genId + '" data-slot="' + slot + '">卸下当前</button></div>';
+      html += '<div style="text-align:center;margin:8px 0;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">';
+      html += '<button class="btn red" data-action="gen-unequip" data-gen="' + genId + '" data-slot="' + slot + '">卸下当前</button>';
+      if (isLing) {
+        /* v88：修炼件就地蕴养（与军装「百炼强化」同位置的平行操作） */
+        var lvT = GAME.eqEnhOf(curInst);
+        if (lvT < GAME.lingTemperMax()) {
+          var tcost = GAME.lingTemperCost(curInst);
+          var tkey = GAME.eqUidOf(curInst) != null ? GAME.eqUidOf(curInst) : GAME.eqId(curInst);
+          html += '<button class="btn gold" data-action="ling-temper-item" data-key="' + tkey + '">☯ 蕴养 +' + (lvT + 1) + '（精华 ' + tcost + '）</button>';
+        } else {
+          html += '<span class="op-done" style="align-self:center;">蕴养已圆满 +' + lvT + '</span>';
+        }
+      }
+      html += '</div>';
     }
     if (!cand.length) {
-      html += '<div class="note">背包中没有该部位的装备。</div>';
+      html += '<div class="note">背包中没有该部位的' + (isLing ? '修炼' : '') + '装备。</div>';
     } else {
       html += '<div class="bag-sec">背包可选 <span class="n">' + cand.length + ' 件</span></div>';
       html += '<div class="bag-grid">' + cand.map(function (inst) {
@@ -5018,7 +5189,7 @@
           cls: 'q' + it.q, ico: GAME.icons.forEquip ? GAME.icons.forEquip(it.slot) : '',
           name: GAME.eqLabel(inst), q: it.q,
           title: GAME.eqLabel(inst) + (better ? '（优于当前）' : ''),
-          lore: (DATA.Q_NAME[it.q] || '') + ' · 估值 ' + U.fmt(GAME.itemValue(id)),
+          lore: (GAME.qNameOf ? GAME.qNameOf(it) : '') + ' · 估值 ' + U.fmt(GAME.itemValue(id)),
           attr: GAME.equipDesc(it),
           act: 'gen-equip-item', key: key, gen: genId,
         });
@@ -5048,16 +5219,23 @@
       attack: g.attack, defense: g.defense, rank: g.rank, style: g.style,
       perm: g.perm || {}, equip: {},
     });
+    /* v88：总览按**当前生效套**（槽名/装备/背包候选全同步） */
+    var gIsLing = (g.equipOn === 'ling');
+    var gBag = (gIsLing ? g.lingEquip : g.equip) || {};
+    var gSlotNames = gIsLing ? DATA.LING_SLOT_NAMES : DATA.EQUIP_SLOT_NAMES;
     var slotRows = DATA.EQUIP_SLOTS.map(function (slot) {
-      var inst = g.equip[slot];
+      var inst = gBag[slot];
       var item = inst ? DATA.EQUIP[GAME.eqId(inst)] : null;
-      return '<div class="res-line"><span class="lbl">' + (DATA.EQUIP_SLOT_NAMES[slot] || slot) + '</span>' +
+      return '<div class="res-line"><span class="lbl">' + (gSlotNames[slot] || slot) + '</span>' +
         '<span class="val">' + (item ? U.escape(GAME.eqLabel(inst)) + (item.set ? ' <span style="color:var(--hero-tag);">[' + (DATA.SETS[item.set] ? DATA.SETS[item.set].name : item.set) + ']</span>' : '') +
         (item.slot === 'weapon' && item.atk ? ' 攻' + item.atk : '') + (item.spd ? ' 速' + item.spd : '') : '—') + '</span>' +
         (item ? '<button class="btn sm red" data-action="unequip-item" data-gen="' + g.id + '" data-slot="' + slot + '" style="margin-left:6px;">卸</button>' : '') + '</div>';
     }).join('');
     /* v19：装备背包会随攻城/打造不断增长 → 接分页（每页 10） */
-    var invAll = (s.inventory || []).filter(function (x) { return !!DATA.EQUIP[GAME.eqId(x)]; });
+    var invAll = (s.inventory || []).filter(function (x) {
+      var it3 = DATA.EQUIP[GAME.eqId(x)];
+      return !!it3 && (!!it3.ling === gIsLing);   /* v88：候选只列当前套 */
+    });
     var pgE = ui.pageOf('equip', invAll.length, 10);
     var inv = invAll.slice(pgE.from, pgE.to).map(function (inst, i) {
       var item = DATA.EQUIP[GAME.eqId(inst)];
@@ -5065,7 +5243,7 @@
       var key = GAME.eqUidOf(inst) != null ? GAME.eqUidOf(inst) : GAME.eqId(inst);
       return '<div class="troop-card" style="cursor:pointer;" data-action="equip-item" data-gen="' + g.id + '" data-item="' + key + '">' +
         '<div class="tname">' + U.escape(GAME.eqLabel(inst)) + '</div>' +
-        '<div class="tstat">' + (DATA.EQUIP_SLOT_NAMES[item.slot] || item.slot) + (item.set ? ' · ' + (DATA.SETS[item.set] ? DATA.SETS[item.set].name : item.set) : '') + '</div>' +
+        '<div class="tstat">' + (gSlotNames[item.slot] || item.slot) + (item.set ? ' · ' + (DATA.SETS[item.set] ? DATA.SETS[item.set].name : item.set) : '') + '</div>' +
         '<div class="tstat">' + GAME.equipDesc(item) + '</div></div>';
     }).join('') || '<div style="color:var(--text-dim);font-size:var(--fs-sub);text-align:center;padding:10px;">背包暂无装备（占领名城/任务可获得）</div>';
     return '<div class="ui-page">' +
@@ -5073,7 +5251,7 @@
       '<div style="margin-bottom:10px;"><div class="ui-sub" style="margin-bottom:4px;">选择将领</div>' +
         ui.genChips({ store: '_equipGen', refresh: 'view', value: g.id || (ui._equipGen || '') }) + '</div>' +
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">' +
-        '<div><div style="color:var(--gold-light);font-weight:700;margin-bottom:6px;">已装备（' + Object.keys(g.equip || {}).length + '/12）</div>' + slotRows + '</div>' +
+        '<div><div style="color:var(--gold-light);font-weight:700;margin-bottom:6px;">已装备（' + Object.keys(gBag).length + '/12）' + (gIsLing ? '　☯ 修炼' : '　⚔ 军中') + '</div>' + slotRows + '</div>' +
         '<div><div style="color:var(--gold-light);font-weight:700;margin-bottom:6px;">加成汇总</div>' +
           '<div class="res-line"><span class="lbl">统率</span><span class="val">+' + bonus.tong + '</span></div>' +
           '<div class="res-line"><span class="lbl">勇武</span><span class="val">+' + bonus.yw + '</span></div>' +
@@ -5105,6 +5283,7 @@
     if (item.def) parts.push('防+' + item.def);
     if (item.spd) parts.push('速+' + item.spd);
     if (item.sta) parts.push('体+' + item.sta);
+    if (item.lingv) parts.push('灵+' + item.lingv);   /* v88：灵力（游历战力） */
     return parts.join(' ') || '—';
   };
 
@@ -5863,6 +6042,7 @@
           base.toLocaleString() + ' 名</div>' +
         '<div class="note">' + note + '</div>' +
         ui.wildSceneHTML(x, y) +
+        ui.jianghuHTML(x, y) +
         '<div style="text-align:center;margin-top:14px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">' +
           '<button class="btn gold" data-action="exp-open" data-kind="wild">出兵（侦查 / 掠夺 / 占领）</button>' +
           '<button class="btn" data-action="close-modal">关闭</button></div>'
@@ -5913,6 +6093,7 @@
         base.toLocaleString() + ' 名　·　产量加成 ' + (addStr || '无') + '</div>' +
       '<div class="note">' + note + '</div>' +
       ui.wildSceneHTML(x, y) +
+      ui.jianghuHTML(x, y) +
       stat + ops +
       '<div class="modal-foot"><button class="btn" data-action="close-modal">关闭</button></div>'
     );

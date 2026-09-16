@@ -12,10 +12,10 @@
 | `git/` | 3 | **收尾同步的唯一入口**。`sync.py` 默认干跑、`--apply` 才落盘（干跑先行是本项目铁律）；`gate.py` 是三件套门禁的**唯一出口**（pre-commit 钩子与 sync 都调它）；`install_hooks.py` 把 `hooks/` 里的钩子装进 `.git/hooks/`。 |
 | `git/hooks/` | 2 | 存这里是为了**进版本库** —— `.git/hooks/` 不被 git 跟踪，换台机器克隆后必须跑 `install_hooks.py` 重装。⚠️ **行尾必须 LF**，CRLF 会让 `#!/bin/sh` 失效。 |
 | `mem/` | 10 | MEMORY.md 必须 < 9600 字符（超出会被会话注入截断，尾部规则等于不存在）。`slim_memory_template.py` = 把超限整段 cut 到 `docs/` 的模板。 |
-| `patch/` | 120 | **事实上的变更日志**：按断言名 `grep -rl "<断言名>" tools/patch/` 就能找到当初是哪次改的。"同一条消息里对同一文件的多次 Edit 会互相覆盖"，所以补丁一律脚本化并留档。 |
+| `patch/` | 131 | **事实上的变更日志**：按断言名 `grep -rl "<断言名>" tools/patch/` 就能找到当初是哪次改的。"同一条消息里对同一文件的多次 Edit 会互相覆盖"，所以补丁一律脚本化并留档。 |
 | `probe/` | 17 | jsdom 没有布局引擎 → 尺寸/重叠/溢出/折行只能在**真浏览器**量。`probe60_geom.js` 是可复用模板，`probe66_ui.js` 有"逐行折行"量法，`probe67_save3.js` 量存档体积与配额。 |
 | `show/` | 4 | 给老板看的对照图 / 曲线校准 / 素材巡视。 |
-| **合计** | **198** | |
+| **合计** | **209** | |
 
 ## asset/（素材处理）
 
@@ -232,6 +232,17 @@ MEMORY.md 必须 < 9600 字符（超出会被会话注入截断，尾部规则�
 - `patch_v87_docs.py`（7KB）　— v87 · 文档补丁：设计规范 §28 / 备忘 §三十 / 需求档案 v87 段。
 - `patch_v87_tests.py`（9KB）　— v87 · 测试补丁：smoke §72（五条）+ e2e v87 段（真实 DOM）。
 - `patch_v87_ui.py`（7KB）　— v87 · UI 层：野地弹窗「地形专属场景」区块（未占/已占两分支）+ 执行 + 分发。
+- `patch_v88_data.py`（11KB）　— v88 数据层：灵气装备（双轨修炼侧）+ 蕴养表 + 江湖活动 + 灵气精华。探针幂等。
+- `patch_v88_docs.py`（8KB）　— v88 文档：设计规范 §29 / 备忘 §三十一 / 档案 v88 段 / 规划 §十八补记。探针幂等 + 行尾适配。
+- `patch_v88_e2e.py`（5KB）　— v88 e2e 段：双轨切换 / 蕴养面板 / 江湖游历（真实 DOM）。探针幂等。
+- `patch_v88_main.py`（2KB）　— v88 main.js：事件分发 4 条 + do* 包装 2 个。探针幂等。
+- `patch_v88_state.py`（10KB）　— v88 状态层（state.js）：双轨切换 + 灵力出口 + 江湖游历出口组。探针幂等。
+- `patch_v88_systems.py`（10KB）　— v88 核心分流（systems.js）：equipBagOf 唯一出口 + 9 处双轨改造。探针幂等。
+- `patch_v88_tests.py`（7KB）　— v88 测试：smoke §73 段（双轨/蕴养/江湖）。探针幂等。
+- `patch_v88_tools.py`（7KB）　— v88 工具层（domain.js）：双轨装备寻址兼容 + 品质名 + 蕴养函数组。探针幂等。
+- `patch_v88_tools2.py`（3KB）　— v88 工具层补充（domain.js）：军装强化/拆解对灵气件的防护。探针幂等。
+- `patch_v88_ui.py`（13KB）　— v88 UI 第一批（ui.js）：品质色到6 / 描述加灵力 / 两袋寻址 / genPane 双轨 / dollSlot 重写 + 修复 / dollLingPanel。探…
+- `patch_v88_ui2.py`（15KB）　— v88 UI 第二批（ui.js）：openEqSlot 双轨 / openLingTemper / jianghuHTML / 弹窗接线 / 装备总览页。探针幂等。
 - `v26-j.py`（14KB）　— v26 批九：smoke 第 39 节 —— v26 五项需求的防回退断言
 
 ## probe/（探针（几何 / 界面 / 存档））

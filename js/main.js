@@ -189,6 +189,11 @@
       case 'wild-garrison-open': ui.openWildGarrison(Number(el.dataset.x), Number(el.dataset.y)); break;
       /* v87（老板）：野地地形专属场景 */
       case 'do-wild-scene': ui.doWildScene(Number(el.dataset.x), Number(el.dataset.y)); break;
+      /* v88：双轨切换 / 蕴养 / 江湖游历 */
+      case 'toggle-equip-set': GAME.doToggleEquipSet(el.dataset.gen, el.dataset.set); break;
+      case 'ling-temper-open': ui.openLingTemper(); break;
+      case 'ling-temper-item': GAME.doLingTemper(el.dataset.key); break;
+      case 'do-jianghu': ui.doJianghu(Number(el.dataset.x), Number(el.dataset.y), el.dataset.act); break;
       case 'wg-max': { var wi = document.getElementById('wg-' + el.dataset.troop); if (wi) wi.value = wi.max; break; }
       case 'wild-garrison-do': GAME.doWildGarrisonDo(); break;
       case 'wild-withdraw': {
@@ -791,6 +796,18 @@
     var r = GAME.systems.unequipAll(genId);
     ui.toast(r.msg);
     if (r.ok) { ui.openGenEquip(genId); GAME.refreshAll(); }
+  };
+  /* v88：双轨切换（改生效套 → 唯一出口分流 → 六维/体力/战斗/界面全链自动同步） */
+  GAME.doToggleEquipSet = function (genId, want) {
+    var r = GAME.toggleEquipSet(genId, want);
+    ui.toast(r.msg);
+    if (r.ok) { ui.openGenEquip(genId); GAME.refreshAll(); }
+  };
+  /* v88：蕴养（修炼装备强化；面板原地重开显示新等级与精华余额） */
+  GAME.doLingTemper = function (key) {
+    var r = GAME.lingTemper(key);
+    ui.toast(r.msg);
+    if (r.ok) { GAME.refreshAll(); ui.openLingTemper(); }
   };
   /* 解雇（二次确认） */
   /* v70（老板需求 3/4）：迁址（坐标切换）与一键随机 —— 唯一执行都走 GAME.moveCityTo */

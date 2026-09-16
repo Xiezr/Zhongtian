@@ -2587,7 +2587,10 @@
     var s = GAME.state, out = [];
     ((s && s.inventory) || []).forEach(function (x) { if (x) out.push(x); });
     ((s && s.generals) || []).forEach(function (g) {
-      for (var sl in (g.equip || {})) if (g.equip[sl]) out.push(g.equip[sl]);
+      /* v88：两套装备袋都要收（军装 g.equip / 修炼 g.lingEquip） */
+      ['equip', 'lingEquip'].forEach(function (bk) {
+        for (var sl in (g[bk] || {})) if (g[bk][sl]) out.push(g[bk][sl]);
+      });
     });
     return out;
   };
@@ -2601,13 +2604,17 @@
       var u = Number(ref);
       for (i = 0; i < inv.length; i++) if (inv[i] && inv[i].u === u) return inv[i];
       ((s && s.generals) || []).forEach(function (g) {
-        for (var sl in (g.equip || {})) if (g.equip[sl] && g.equip[sl].u === u) found = found || g.equip[sl];
+        ['equip', 'lingEquip'].forEach(function (bk) {   /* v88：两袋都查 */
+          for (var sl in (g[bk] || {})) if (g[bk][sl] && g[bk][sl].u === u) found = found || g[bk][sl];
+        });
       });
       return found;
     }
     for (i = 0; i < inv.length; i++) if (GAME.eqId(inv[i]) === ref) return inv[i];
     ((s && s.generals) || []).forEach(function (g) {
-      for (var sl in (g.equip || {})) if (GAME.eqId(g.equip[sl]) === ref) found = found || g.equip[sl];
+      ['equip', 'lingEquip'].forEach(function (bk) {   /* v88：两袋都查 */
+        for (var sl in (g[bk] || {})) if (GAME.eqId(g[bk][sl]) === ref) found = found || g[bk][sl];
+      });
     });
     return found;
   };
@@ -2630,6 +2637,12 @@
   GAME.eqName = function (x) {
     var it = DATA.EQUIP[GAME.eqId(x)];
     return it ? it.name : '（装备）';
+  };
+  /* v88：品质名（两套各用各的名表 —— 军装 凡/良/珍/神，修炼 灵胚…道器） */
+  GAME.qNameOf = function (it) {
+    if (!it) return '';
+    return it.ling ? ((DATA.LING_Q_NAME || {})[it.q] || '')
+                   : ((DATA.Q_NAME || {})[it.q] || '');
   };
   /* 显示名 = 名 + 强化 + 同名序号（老板要的「区分办法」） */
   GAME.eqLabel = function (x) {
@@ -2675,6 +2688,8 @@
     if (!inst) return { ok: false, msg: '背包中没有这件装备' };
     var itemId = GAME.eqId(inst), it = DATA.EQUIP[itemId];
     if (!it) return { ok: false, msg: '无此装备' };
+    /* v88：修炼装备不可拆解（军装材料体系不接纳它；蕴养等级随件保留） */
+    if (it.ling) return { ok: false, msg: '「' + it.name + '」是修炼装备，不可拆解' };
     var idx = (s.inventory || []).indexOf(inst);
     if (idx < 0) return { ok: false, msg: '该件不在背包（正穿在将领身上，先卸下）' };
     var label = GAME.eqLabel(inst);
@@ -2824,9 +2839,13 @@
       stone: Math.round((base.stone || 0) * (C.stoneMul || 0.22) * (lv + 1)),
     };
   };
-  /* 可强化清单：背包 + 穿戴里的**全部件**（品质高、已强化者在前） */
+  /* 可强化清单：背包 + 穿戴里的**军装件**（品质高、已强化者在前）
+     v88：过滤掉修炼装备 —— 它们走「蕴养」（lingTemperList），互不越界 */
   GAME.enhList = function () {
-    var out = GAME.eqPieces().slice();
+    var out = GAME.eqPieces().filter(function (x) {
+      var it = DATA.EQUIP[GAME.eqId(x)];
+      return !(it && it.ling);
+    });
     out.sort(function (a, b) {
       return (DATA.EQUIP[GAME.eqId(b)].q - DATA.EQUIP[GAME.eqId(a)].q)
         || (GAME.enhOf(b) - GAME.enhOf(a));
@@ -2839,6 +2858,8 @@
     if (!inst) return { ok: false, msg: '尚未拥有这件装备（先打造或缴获）' };
     var itemId = GAME.eqId(inst), it = DATA.EQUIP[itemId];
     if (!it) return { ok: false, msg: '未知装备' };
+    /* v88：修炼装备不百炼（导流到「蕴养」——材料与体系独立） */
+    if (it.ling) return { ok: false, msg: '「' + it.name + '」是修炼装备，请用蕴养（灵气精华）' };
     if (GAME.forgeLevel() <= 0) return { ok: false, msg: '需先建造铁匠铺' };
     var lv = GAME.enhOf(inst);
     var label0 = GAME.eqLabel(inst);
@@ -2850,6 +2871,53 @@
     GAME.log('铁匠铺百炼：' + label0 + ' → +' + (lv + 1));
     return { ok: true, msg: '「' + GAME.eqLabel(inst) + '」强化 +' + (lv + 1)
       + '（装备属性 +' + Math.round((lv + 1) * ((DATA.ENHANCE || {}).perLv || 0.08) * 100) + '%）' };
+  };
+
+  /* ============================================================
+   * v88 · 蕴养（修炼装备的强化 —— 与军装百炼平行的独立体系）
+   * ------------------------------------------------------------
+   * 材料 = 灵气精华（s.items.lingsui），与金币/铁/石完全独立；
+   * 等级存 inst.enh（与军装共实例架构，同名各件互不影响），上限 +10、每级 +8%。
+   * 效果并入 genEquipBonus（六维）与 GAME.lingPowerOf（灵力）——唯一出口。
+   * 不失败、不降级、不碎裂（对齐「不惩罚」铁律）。
+   * ============================================================ */
+  GAME.lingTemperMax = function () { return (DATA.LING_TEMPER && DATA.LING_TEMPER.max) || 10; };
+  /* 下一级成本（唯一出口；UI 与扣费读同一份）：essBase + (lv+1) x essPerLv */
+  GAME.lingTemperCost = function (x) {
+    var lv = GAME.eqEnhOf(x);
+    var C = DATA.LING_TEMPER || {};
+    return Math.round((C.essBase || 10) + (lv + 1) * (C.essPerLv || 10));
+  };
+  GAME.lingTemper = function (ref) {
+    var s = GAME.state;
+    var inst = GAME.eqFind(ref);
+    if (!inst) return { ok: false, msg: '尚未拥有这件装备' };
+    var it = DATA.EQUIP[GAME.eqId(inst)];
+    if (!it || !it.ling) return { ok: false, msg: '只有修炼装备可以蕴养' };
+    var lv = GAME.eqEnhOf(inst);
+    var label0 = GAME.eqLabel(inst);
+    if (lv >= GAME.lingTemperMax()) return { ok: false, msg: '「' + label0 + '」已至 +' + GAME.lingTemperMax() + '（圆满）' };
+    var cost = GAME.lingTemperCost(inst);
+    s.items = s.items || {};
+    var own = s.items.lingsui || 0;
+    if (own < cost) return { ok: false, msg: '灵气精华不足（需 ' + cost + '，现有 ' + own + '）' };
+    s.items.lingsui = own - cost;
+    if (inst && typeof inst === 'object') inst.enh = lv + 1;   /* 按件 +1 */
+    GAME.log('蕴养：' + label0 + ' → +' + (lv + 1) + '（耗灵气精华 ' + cost + '）');
+    return { ok: true, msg: '「' + GAME.eqLabel(inst) + '」蕴养 +' + (lv + 1)
+      + '（修炼属性 +' + Math.round((lv + 1) * ((DATA.LING_TEMPER || {}).perLv || 0.08) * 100) + '%）' };
+  };
+  /* 蕴养清单（背包 + 穿戴的灵气件；品质高、已蕴养者在前） */
+  GAME.lingTemperList = function () {
+    var out = GAME.eqPieces().filter(function (x) {
+      var it = DATA.EQUIP[GAME.eqId(x)];
+      return !!(it && it.ling);
+    });
+    out.sort(function (a, b) {
+      return (DATA.EQUIP[GAME.eqId(b)].q - DATA.EQUIP[GAME.eqId(a)].q)
+        || (GAME.eqEnhOf(b) - GAME.eqEnhOf(a));
+    });
+    return out;
   };
 
   /* --------- 君主改名（v77 · 君主面板） --------- */
@@ -2878,7 +2946,10 @@
     if (g.status === 'march') return { ok: false, msg: g.name + ' 正在出征，不可解雇' };
     s.inventory = s.inventory || [];
     var back = 0;
-    for (var slot in (g.equip || {})) { s.inventory.push(g.equip[slot]); back++; }
+    /* v88：两套装备都归还（军装 + 修炼） */
+    ['equip', 'lingEquip'].forEach(function (bk) {
+      for (var slot in (g[bk] || {})) { s.inventory.push(g[bk][slot]); back++; }
+    });
     s.generals.splice(idx, 1);
     var repCost = g.hero ? 50 : 0;
     if (repCost) s.rep = Math.max(0, (s.rep || 0) - repCost);
@@ -3433,7 +3504,8 @@
         t = 0; (DATA.MATERIAL_IDS || []).forEach(function (id) { t += (s.items || {})[id] || 0; });
         return t;
       case 'equipCount':
-        t = 0; (s.generals || []).forEach(function (g) { t += Object.keys(g.equip || {}).length; });
+        /* v88：军装 + 修炼两套都计入 */
+        t = 0; (s.generals || []).forEach(function (g) { t += Object.keys(g.equip || {}).length + Object.keys(g.lingEquip || {}).length; });
         return t;
       case 'invCount': return (s.inventory || []).length;
       case 'forgeKinds': return (s.forged || []).length;
