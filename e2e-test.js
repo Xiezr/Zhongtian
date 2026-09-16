@@ -4424,9 +4424,9 @@ if (svBtn) {
   }
 
   /* ============================================================
-   * v87（老板）：野地专属场景（真实 DOM）
+   * v88.1：场景整合（地形专属并入江湖游历 · 真实 DOM）
    * ============================================================ */
-  console.log('\n--- v87. 野地专属场景（真实 DOM） ---');
+  console.log('\n--- v88.1. 场景整合（真实 DOM） ---');
   {
     let hp = null;
     for (let y = 3; y < 200 && !hp; y++) {
@@ -4436,32 +4436,30 @@ if (svBtn) {
       }
     }
     G.state.generals.forEach(function (g) { g.energy = 100; G.setStaNow(g, 100); });
-    G.state.wildScenes = {};
-    G.state.wilds = G.state.wilds || [];
+    G.state.jianghu = {};
+    G.ui._jhGen = null;
     G.ui.openLandModal(hp.x, hp.y);            /* 未占 → 出兵弹窗 */
-    await sleep(160);
-    check('v87：野地弹窗含地形专属区块（绿林探访）', (function () {
+    await sleep(200);
+    check('v88.1：弹窗仅一个游历区块（含「绿林探访」按钮 · 无旧「地形专属」）', (function () {
       const root = document.querySelector('#modal-root');
-      return !!root && root.textContent.indexOf('绿林探访') >= 0
-        && root.textContent.indexOf('地形专属') >= 0;
+      return !!root && root.textContent.indexOf('江湖游历') >= 0
+        && !!root.querySelector('[data-action="do-jianghu"][data-act="hill_scene"]')
+        && root.textContent.indexOf('地形专属') < 0;
     })());
-    check('v87：区块含带队将领与出发按钮', (function () {
-      return !!document.querySelector('#modal-root [data-action="do-wild-scene"]')
-        && !!document.querySelector('#ws-gen');
-    })());
-    click(document.querySelector('#modal-root [data-action="do-wild-scene"]'));
-    await sleep(240);
-    check('v87：执行后原地回显（今日已探）', (function () {
+    click(document.querySelector('#modal-root [data-action="do-jianghu"][data-act="hill_scene"]'));
+    await sleep(300);
+    check('v88.1：执行「绿林探访」原地回显（今日已做）', (function () {
       const root = document.querySelector('#modal-root');
-      return !!root && root.textContent.indexOf('今日已探过') >= 0;
+      return !!root && root.textContent.indexOf('今日已做') >= 0;
     })());
-    /* 已占分支也含区块（直接注册一块已占野地） */
+    /* 已占分支同样只有新区块 */
     G.state.wilds.push({ x: hp.x, y: hp.y, type: 'hill', level: 4 });
     G.ui.openLandModal(hp.x, hp.y);
     await sleep(160);
-    check('v87：已占野地管理面板也含场景区块', (function () {
+    check('v88.1：已占野地面板同为新区块（无旧区块）', (function () {
       const root = document.querySelector('#modal-root');
-      return !!root && root.textContent.indexOf('地形专属') >= 0;
+      return !!root && root.textContent.indexOf('江湖游历') >= 0
+        && root.textContent.indexOf('地形专属') < 0;
     })());
     G.ui.closeModal();
     await sleep(60);

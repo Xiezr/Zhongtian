@@ -2825,142 +2825,10 @@
     return true;
   };
 
-  /* ============================================================
-   * v87（老板「为各类野地设计专属弹窗场景」）：野地专属场景 —— 唯一出口组
-   * ------------------------------------------------------------
-   * 规则：每处野地**每日一次**（锁存 `s.wildScenes = { 'x,y': day }`，入档）；
-   *   消耗将领精力 + 体力；风险 = 将领负伤（体力损失，⛔ 不损兵）。
-   * 结果**种子化**（invasionRoll，同一天同一地稳定）——测试可复现。
-   * 产出：资源入**当前城** / 材料走 WILD_MATERIAL 池 / 珠宝低四档 /
-   *   道具（jinang·chest·mabian·bp_mingjiang）/ 绿林豪杰走 makeHero。
-   * ============================================================ */
-  GAME.wildSceneOf = function (terrain) {
-    return (DATA.WILD_SCENES || {})[terrain] || null;
-  };
-
-  GAME.wildSceneCheck = function (x, y, genId) {
-    var s = GAME.state;
-    var tile = GAME.map.tile(x, y);
-    if (!tile) return { ok: false, msg: '坐标越界' };
-    var sc = GAME.wildSceneOf(tile.terrain);
-    if (!sc) return { ok: false, msg: '此地平平无奇，没有可做的事' };
-    var gen = null;
-    (s.generals || []).forEach(function (g) { if (g.id === genId) gen = g; });
-    if (!gen) return { ok: false, msg: '请选择带队的将领' };
-    if ((gen.energy || 0) < sc.energy) {
-      return { ok: false, msg: gen.name + ' 精力不足（' + Math.round(gen.energy || 0) + '/' + sc.energy + '），可服清心丸' };
-    }
-    if (GAME.staNow(gen) < sc.stam) {
-      return { ok: false, msg: gen.name + ' 体力不足（' + Math.round(GAME.staNow(gen)) + '/' + sc.stam + '），休整后再来' };
-    }
-    var day = Math.floor(((s.world && s.world.elapsed) || 0) / 86400);
-    if ((s.wildScenes || {})[x + ',' + y] === day) {
-      return { ok: false, msg: '此地今日已探过（每处每日一次），明日再来' };
-    }
-    return { ok: true, sc: sc, gen: gen, day: day };
-  };
-
-  GAME.wildSceneDo = function (x, y, genId) {
-    var s = GAME.state;
-    var chk = GAME.wildSceneCheck(x, y, genId);
-    if (!chk.ok) return chk;
-    var sc = chk.sc, gen = chk.gen, day = chk.day;
-    var seedBase = 'ws|' + x + ',' + y + '|' + day;
-    var rnd = function (salt, lo, hi) {
-      return lo + Math.floor(GAME.invasionRoll(seedBase + '|' + salt) * (hi - lo + 1));
-    };
-    /* 扣费 + 锁 */
-    gen.energy = Math.max(0, (gen.energy || 0) - sc.energy);
-    GAME.setStaNow(gen, GAME.staNow(gen) - sc.stam);
-    s.wildScenes = s.wildScenes || {};
-    s.wildScenes[x + ',' + y] = day;
-    /* 种子化抽结果 */
-    var total = sc.outcomes.reduce(function (a, o) { return a + o.w; }, 0);
-    var r = GAME.invasionRoll(seedBase + '|roll') * total;
-    var acc = 0, out = sc.outcomes[sc.outcomes.length - 1];
-    for (var i = 0; i < sc.outcomes.length; i++) {
-      acc += sc.outcomes[i].w;
-      if (r < acc) { out = sc.outcomes[i]; break; }
-    }
-    /* 发奖 */
-    var texts = [];
-    var home = GAME.currentCity();
-    s.items = s.items || {};
-    var gift = function (id, n) {
-      s.items[id] = (s.items[id] || 0) + n;
-      var it = (DATA.ITEMS || []).filter(function (x2) { return x2.id === id; })[0];
-      texts.push((it ? it.name : id) + '×' + n);
-    };
-    if (out.gold && home) {
-      var gn = rnd('gold', out.gold[0], out.gold[1]);
-      GAME.res(home).gold = (GAME.res(home).gold || 0) + gn;
-      texts.push('黄金 +' + gn);
-    }
-    if (out.grain && home) {
-      var gr = rnd('grain', out.grain[0], out.grain[1]);
-      GAME.res(home).grain = (GAME.res(home).grain || 0) + gr;
-      texts.push('粮食 +' + gr);
-    }
-    if (out.mats) {
-      var tbl = DATA.WILD_MATERIAL[GAME.map.tile(x, y).terrain] || {};
-      var keys = Object.keys(tbl);
-      if (keys.length) {
-        var n = rnd('matn', out.mats[0], out.mats[1]);
-        var bag = {};                        /* 同 id 合并，避免"兽筋×2、兽筋×2" */
-        for (var mi = 0; mi < n; mi++) {
-          var mk = keys[Math.floor(GAME.invasionRoll(seedBase + '|mk' + mi) * keys.length) % keys.length];
-          var mn = 1 + Math.floor(GAME.invasionRoll(seedBase + '|mn' + mi) * 2);
-          bag[mk] = (bag[mk] || 0) + mn;
-        }
-        for (var bk2 in bag) {
-          s.items[bk2] = (s.items[bk2] || 0) + bag[bk2];
-          var mm = DATA.MATERIAL_BY_ID[bk2];
-          texts.push((mm ? mm.name : bk2) + '×' + bag[bk2]);
-        }
-      }
-    }
-    if (out.jewel) {
-      var jewels = (DATA.ITEMS || []).filter(function (x2) { return x2.type === 'jewel'; });
-      var jn = (out.jewel === 1) ? 1 : rnd('jn', out.jewel.n[0], out.jewel.n[1]);
-      for (var ji = 0; ji < jn; ji++) {
-        var jl = jewels[Math.floor(GAME.invasionRoll(seedBase + '|jl' + ji) * Math.min(4, jewels.length)) % Math.min(4, jewels.length)];
-        if (jl) gift(jl.id, 1);
-      }
-    }
-    if (out.item) gift(out.item, 1);
-    if (out.hero) {
-      var sn = DATA.NPC_GUARD_SURNAME || ['王'], gv = DATA.NPC_GUARD_GIVEN || ['虎'];
-      var hname = null;
-      for (var hi = 0; hi < 6 && !hname; hi++) {
-        var cand = sn[Math.floor(GAME.invasionRoll(seedBase + '|hn' + hi) * sn.length) % sn.length] +
-          gv[Math.floor(GAME.invasionRoll(seedBase + '|hg' + hi) * gv.length) % gv.length];
-        var dup = (s.generals || []).some(function (g) { return g.name === cand; });
-        if (!dup) hname = cand;
-      }
-      if (hname) {
-        var base2 = 58 + Math.floor(GAME.invasionRoll(seedBase + '|ht') * 20);
-        var hh = { name: hname, tong: base2, nz: base2, yw: base2, zm: base2 };
-        var gg = GAME.makeHero(hh, 30);
-        gg.loyalty = 60;
-        if (home) gg.cityId = home.id;
-        s.generals.push(gg);
-        texts.push('「' + hname + '」慕名来投，愿效犬马之劳');
-      } else {
-        gift('zhenzhu', 1);       /* 重名兜底：换成一枚珍珠 */
-        texts.push('（豪杰名讳与麾下相重，留下贺礼一份）');
-      }
-    }
-    var bad = false;
-    if (out.wound) {
-      GAME.setStaNow(gen, Math.max(0, GAME.staNow(gen) - out.wound));
-      texts.push(gen.name + ' 负伤，体力 −' + out.wound);
-      bad = true;
-    }
-    if (!texts.length) { texts.push('此行无所获'); bad = true; }
-    var line = sc.icon + ' ' + sc.name + '：' + out.t + '（' + texts.join('、') + '）';
-    GAME.log('🏕️ ' + (DATA.TERRAIN[GAME.map.tile(x, y).terrain] || {}).name + ' · ' + line);
-    return { ok: true, name: out.t, text: texts.join('、'), bad: bad };
-  };
+  /* v87「野地专属场景」-> v88.1 整合：
+     wildSceneOf / wildSceneCheck / wildSceneDo 三函数已并入下方「江湖游历」出口组
+     （GAME.jianghuCheck / GAME.jianghuDo 的 kind:'scene' 分支）——
+     数据、锁（s.jianghu）、扣费、种子化、UI 入口全部统一走江湖游历。 */
 
   /* ============================================================
    * v88（老板「修炼培养系统」）：灵气双轨 + 江湖游历 —— 唯一出口组
@@ -3144,6 +3012,92 @@
       var name0 = ev ? ev.t : '拜访';
       GAME.log('☯ ' + a.icon + ' ' + a.name + '：' + name0 + '（' + body0 + '）');
       return { ok: true, name: a.name + ' · ' + name0, text: (ev ? ev.text : '') + '（' + body0 + '）', bad: false };
+    } else if (a.kind === 'scene') {
+      /* 地形专属（v87 -> v88.1 整合）：产出原样（金/粮/材料/珠宝/道具/豪杰）。
+         扣费与锁已在上文统一完成 —— 这里只做「种子化抽结果 + 发奖」。 */
+      var outs2 = a.outcomes || [];
+      var tot2 = 0;
+      for (var oi2 = 0; oi2 < outs2.length; oi2++) tot2 += outs2[oi2].w;
+      var rr2 = roll('scene_roll') * tot2;
+      var acc2 = 0, out2 = outs2[outs2.length - 1];
+      for (var oj2 = 0; oj2 < outs2.length; oj2++) {
+        acc2 += outs2[oj2].w;
+        if (rr2 < acc2) { out2 = outs2[oj2]; break; }
+      }
+      var home2 = GAME.currentCity();
+      var gift = function (id, n) {
+        s.items[id] = (s.items[id] || 0) + n;
+        var it0 = (DATA.ITEMS || []).filter(function (x2) { return x2.id === id; })[0];
+        texts.push((it0 ? it0.name : id) + '×' + n);
+      };
+      if (out2.gold && home2) {
+        var gn2 = rnd('gold', out2.gold[0], out2.gold[1]);
+        GAME.res(home2).gold = (GAME.res(home2).gold || 0) + gn2;
+        texts.push('黄金 +' + gn2);
+      }
+      if (out2.grain && home2) {
+        var gr2 = rnd('grain', out2.grain[0], out2.grain[1]);
+        GAME.res(home2).grain = (GAME.res(home2).grain || 0) + gr2;
+        texts.push('粮食 +' + gr2);
+      }
+      if (out2.mats) {
+        var tbl2 = DATA.WILD_MATERIAL[tile.terrain] || {};
+        var keys2 = Object.keys(tbl2);
+        if (keys2.length) {
+          var n2 = rnd('matn', out2.mats[0], out2.mats[1]);
+          var bag2 = {};                        /* 同 id 合并，避免"兽筋×2、兽筋×2" */
+          for (var mi2 = 0; mi2 < n2; mi2++) {
+            var mk2 = keys2[Math.floor(roll('mk' + mi2) * keys2.length) % keys2.length];
+            var mn2 = 1 + Math.floor(roll('mn' + mi2) * 2);
+            bag2[mk2] = (bag2[mk2] || 0) + mn2;
+          }
+          for (var bk3 in bag2) {
+            s.items[bk3] = (s.items[bk3] || 0) + bag2[bk3];
+            var mm2 = DATA.MATERIAL_BY_ID[bk3];
+            texts.push((mm2 ? mm2.name : bk3) + '×' + bag2[bk3]);
+          }
+        }
+      }
+      if (out2.jewel) {
+        var jewels2 = (DATA.ITEMS || []).filter(function (x2) { return x2.type === 'jewel'; });
+        var jn2 = (out2.jewel === 1) ? 1 : rnd('jn', out2.jewel.n[0], out2.jewel.n[1]);
+        for (var ji2 = 0; ji2 < jn2; ji2++) {
+          var jl2 = jewels2[Math.floor(roll('jl' + ji2) * Math.min(4, jewels2.length)) % Math.min(4, jewels2.length)];
+          if (jl2) gift(jl2.id, 1);
+        }
+      }
+      if (out2.item) gift(out2.item, 1);
+      if (out2.hero) {
+        var sn2 = DATA.NPC_GUARD_SURNAME || ['王'], gv2 = DATA.NPC_GUARD_GIVEN || ['虎'];
+        var hname2 = null;
+        for (var hi2 = 0; hi2 < 6 && !hname2; hi2++) {
+          var cand2 = sn2[Math.floor(roll('hn' + hi2) * sn2.length) % sn2.length] +
+            gv2[Math.floor(roll('hg' + hi2) * gv2.length) % gv2.length];
+          var dup2 = (s.generals || []).some(function (gg2) { return gg2.name === cand2; });
+          if (!dup2) hname2 = cand2;
+        }
+        if (hname2) {
+          var base22 = 58 + Math.floor(roll('ht') * 20);
+          var hh2 = { name: hname2, tong: base22, nz: base22, yw: base22, zm: base22 };
+          var gg3 = GAME.makeHero(hh2, 30);
+          gg3.loyalty = 60;
+          if (home2) gg3.cityId = home2.id;
+          s.generals.push(gg3);
+          texts.push('「' + hname2 + '」慕名来投，愿效犬马之劳');
+        } else {
+          gift('zhenzhu', 1);       /* 重名兜底：换成一枚珍珠 */
+          texts.push('（豪杰名讳与麾下相重，留下贺礼一份）');
+        }
+      }
+      if (out2.wound) {
+        GAME.setStaNow(gen, Math.max(0, GAME.staNow(gen) - out2.wound));
+        texts.push(gen.name + ' 负伤，体力 −' + out2.wound);
+        bad = true;
+      }
+      if (!texts.length) { texts.push('此行无所获'); bad = true; }
+      var line2 = a.icon + ' ' + a.name + '：' + out2.t + '（' + texts.join('、') + '）';
+      GAME.log('🏕️ ' + ((DATA.TERRAIN[tile.terrain] || {}).name || '') + ' · ' + line2);
+      return { ok: true, name: out2.t, text: texts.join('、'), bad: bad };
     }
     var body = texts.join('、');
     if (!body) { body = '此行无所获'; bad = true; }

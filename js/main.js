@@ -188,8 +188,7 @@
       /* 野地管理（v23 · 需求 1）：驻军 / 撤军 / 放弃 */
       case 'wild-garrison-open': ui.openWildGarrison(Number(el.dataset.x), Number(el.dataset.y)); break;
       /* v87（老板）：野地地形专属场景 */
-      case 'do-wild-scene': ui.doWildScene(Number(el.dataset.x), Number(el.dataset.y)); break;
-      /* v88：双轨切换 / 蕴养 / 江湖游历 */
+      /* v88：双轨切换 / 蕴养 / 江湖游历（v88.1：原 do-wild-scene 已并入 do-jianghu） */
       case 'toggle-equip-set': GAME.doToggleEquipSet(el.dataset.gen, el.dataset.set); break;
       case 'ling-temper-open': ui.openLingTemper(); break;
       case 'ling-temper-item': GAME.doLingTemper(el.dataset.key); break;

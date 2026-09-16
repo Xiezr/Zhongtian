@@ -2333,74 +2333,10 @@
       tip: '布防 8 小时：期间遭来犯时的损失 −40%' },
   ];
 
-  /* ============================================================
-   * v87（老板「为各类野地设计专属弹窗场景」）：野地专属场景
-   * ------------------------------------------------------------
-   * 六地形各一场景（平原除外——平原是主战场与筑城地）：
-   *   hill 绿林探访 / lake 垂钓 / zhaoze 沼泽寻宝 / desert 地宫探险 /
-   *   forest 林中狩猎 / caoyuan 草原牧马。
-   * 规则：每处野地**每日一次**；消耗将领精力 + 体力；风险 = 将领负伤
-   *   （体力损失，⛔ 不损兵——避免与出征体系抢平衡）。
-   * 产出全部走**现有体系**：资源（粮/金）/ WILD_MATERIAL 地形材料 /
-   *   珠宝（jewel 池低档）/ 道具（锦囊 jinang · 木盒 chest · 马鞭 mabian ·
-   *   名将套图纸 bp_mingjiang）/ 绿林豪杰（在野将领，种子化生成）。
-   * 唯一出口：GAME.wildSceneOf / wildSceneCheck / wildSceneDo（state.js）。
-   * 结果种子化（invasionRoll）——同一天同一地结果稳定，测试可复现。
-   * ============================================================ */
-  DATA.WILD_SCENES = {
-    hill: { name: '绿林探访', icon: '⚔️', energy: 12, stam: 4,
-      desc: '入山访豪杰：或得好汉相赠，或得豪杰来投，或遇剪径强人负伤而归。',
-      outcomes: [
-        { w: 30, t: '山寨好汉赠金', gold: [800, 2400] },
-        { w: 24, t: '搜得山寨存货', mats: [1, 2] },
-        { w: 12, t: '豪杰相投（得在野将领）', hero: 1 },
-        { w: 12, t: '得珠宝一颗', jewel: 1 },
-        { w: 22, t: '遇剪径强人，负伤而归', wound: 6 },
-      ] },
-    lake: { name: '垂钓', icon: '🎣', energy: 6, stam: 2,
-      desc: '临湖垂钓：鱼获充作军粮，偶得水中沉物。',
-      outcomes: [
-        { w: 44, t: '鱼获颇丰（充粮）', grain: [800, 2000] },
-        { w: 22, t: '小鱼数尾', grain: [200, 600] },
-        { w: 12, t: '网得沉物（锦囊）', item: 'jinang' },
-        { w: 8, t: '得珠宝一颗', jewel: 1 },
-        { w: 14, t: '空竿而归', none: 1 },
-      ] },
-    zhaoze: { name: '沼泽寻宝', icon: '🔍', energy: 14, stam: 5,
-      desc: '探寻旧战场遗迹：宝物丰厚，瘴气伤身。',
-      outcomes: [
-        { w: 24, t: '掘得珍宝', jewel: { n: [1, 2] } },
-        { w: 22, t: '拾获军资', mats: [1, 3] },
-        { w: 18, t: '掘出旧钱', gold: [1500, 4000] },
-        { w: 12, t: '得古朴木盒', item: 'chest' },
-        { w: 24, t: '瘴气侵体，负伤而归', wound: 8 },
-      ] },
-    desert: { name: '地宫探险', icon: '🏛️', energy: 20, stam: 8,
-      desc: '深入地下宫阙：三层遗藏一层比一层厚，险也一层比一层深。',
-      outcomes: [
-        { w: 30, t: '第一层便有所获', gold: [1500, 3500] },
-        { w: 28, t: '第二层遗藏', mats: [2, 4] },
-        { w: 16, t: '第三层秘宝（名将套图纸）', item: 'bp_mingjiang' },
-        { w: 12, t: '探得珠宝', jewel: { n: [1, 3] } },
-        { w: 14, t: '地宫塌方，负伤逃出', wound: 12 },
-      ] },
-    forest: { name: '林中狩猎', icon: '🏹', energy: 8, stam: 3,
-      desc: '入林行猎：兽皮药材俱是军资，亦可得野味充粮。',
-      outcomes: [
-        { w: 42, t: '猎获皮毛药材', mats: [1, 2] },
-        { w: 22, t: '猎得野味（充粮）', grain: [500, 1500] },
-        { w: 14, t: '偶得失物（锦囊）', item: 'jinang' },
-        { w: 22, t: '空手而归', none: 1 },
-      ] },
-    caoyuan: { name: '草原牧马', icon: '🐎', energy: 10, stam: 4,
-      desc: '逐水草而行：得马市之资或牧马辎具，偶遇良马相随。',
-      outcomes: [
-        { w: 34, t: '马市得资', gold: [800, 2000] },
-        { w: 26, t: '得牧马辎具', mats: [1, 2] },
-        { w: 12, t: '良马相随（得马鞭）', item: 'mabian' },
-        { w: 28, t: '风尘仆仆', none: 1 },
-      ] },
-  };
+  /* v87「野地专属场景」-> v88.1 整合：
+     六地形场景（绿林探访/垂钓/寻宝/地宫/狩猎/牧马）已并入 DATA.LING_ACT
+     （<terrain>_scene，kind: 'scene'）——统一走「江湖游历」入口与 s.jianghu
+     每日锁；原 DATA.WILD_SCENES 表 / GAME.wildScene* / ui.wildSceneHTML 全部删除。 */
 
   /* ============================================================
    * v88（老板「修炼型装备系统」）：灵气装备 · 江湖游历
@@ -2486,6 +2422,67 @@
       spots: ['hill', 'forest', 'lake', 'zhaoze', 'desert', 'caoyuan'],
       win: { ess: [10, 20] },
       desc: '拜访隐士奇人：一段小故事，一份小赠礼。' },
+    /* ---- 地形专属（v87「野地专属场景」-> v88.1 整合：从 WILD_SCENES 原样并入） ----
+       kind: 'scene' —— 每地形一条「招牌」，与通用活动同走江湖游历入口 / s.jianghu 每日锁；
+       产出保持军装经济侧（金/粮/材料/珠宝/道具/豪杰），与活动的灵气精华产出并行不悖。 */
+    hill_scene: { name: '绿林探访', kind: 'scene', icon: '⚔️', energy: 12, stam: 4,
+      spots: ['hill'],
+      desc: '入山访豪杰：或得好汉相赠，或得豪杰来投，或遇剪径强人负伤而归。',
+      outcomes: [
+        { w: 30, t: '山寨好汉赠金', gold: [800, 2400] },
+        { w: 24, t: '搜得山寨存货', mats: [1, 2] },
+        { w: 12, t: '豪杰相投（得在野将领）', hero: 1 },
+        { w: 12, t: '得珠宝一颗', jewel: 1 },
+        { w: 22, t: '遇剪径强人，负伤而归', wound: 6 },
+      ] },
+    lake_scene: { name: '垂钓', kind: 'scene', icon: '🎣', energy: 6, stam: 2,
+      spots: ['lake'],
+      desc: '临湖垂钓：鱼获充作军粮，偶得水中沉物。',
+      outcomes: [
+        { w: 44, t: '鱼获颇丰（充粮）', grain: [800, 2000] },
+        { w: 22, t: '小鱼数尾', grain: [200, 600] },
+        { w: 12, t: '网得沉物（锦囊）', item: 'jinang' },
+        { w: 8, t: '得珠宝一颗', jewel: 1 },
+        { w: 14, t: '空竿而归', none: 1 },
+      ] },
+    zhaoze_scene: { name: '沼泽寻宝', kind: 'scene', icon: '🔍', energy: 14, stam: 5,
+      spots: ['zhaoze'],
+      desc: '探寻旧战场遗迹：宝物丰厚，瘴气伤身。',
+      outcomes: [
+        { w: 24, t: '掘得珍宝', jewel: { n: [1, 2] } },
+        { w: 22, t: '拾获军资', mats: [1, 3] },
+        { w: 18, t: '掘出旧钱', gold: [1500, 4000] },
+        { w: 12, t: '得古朴木盒', item: 'chest' },
+        { w: 24, t: '瘴气侵体，负伤而归', wound: 8 },
+      ] },
+    desert_scene: { name: '地宫探险', kind: 'scene', icon: '🏛️', energy: 20, stam: 8,
+      spots: ['desert'],
+      desc: '深入地下宫阙：三层遗藏一层比一层厚，险也一层比一层深。',
+      outcomes: [
+        { w: 30, t: '第一层便有所获', gold: [1500, 3500] },
+        { w: 28, t: '第二层遗藏', mats: [2, 4] },
+        { w: 16, t: '第三层秘宝（名将套图纸）', item: 'bp_mingjiang' },
+        { w: 12, t: '探得珠宝', jewel: { n: [1, 3] } },
+        { w: 14, t: '地宫塌方，负伤逃出', wound: 12 },
+      ] },
+    forest_scene: { name: '林中狩猎', kind: 'scene', icon: '🏹', energy: 8, stam: 3,
+      spots: ['forest'],
+      desc: '入林行猎：兽皮药材俱是军资，亦可得野味充粮。',
+      outcomes: [
+        { w: 42, t: '猎获皮毛药材', mats: [1, 2] },
+        { w: 22, t: '猎得野味（充粮）', grain: [500, 1500] },
+        { w: 14, t: '偶得失物（锦囊）', item: 'jinang' },
+        { w: 22, t: '空手而归', none: 1 },
+      ] },
+    caoyuan_scene: { name: '草原牧马', kind: 'scene', icon: '🐎', energy: 10, stam: 4,
+      spots: ['caoyuan'],
+      desc: '逐水草而行：得马市之资或牧马辎具，偶遇良马相随。',
+      outcomes: [
+        { w: 34, t: '马市得资', gold: [800, 2000] },
+        { w: 26, t: '得牧马辎具', mats: [1, 2] },
+        { w: 12, t: '良马相随（得马鞭）', item: 'mabian' },
+        { w: 28, t: '风尘仆仆', none: 1 },
+      ] },
   };
   /* 拜访事件池：每地形 2 条（文案轻松诙谐，对齐功法文档 2.3 风格；种子化抽取） */
   DATA.LING_VISITS = {
