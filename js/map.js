@@ -588,6 +588,37 @@
   }
 
   /* ============================================================
+   * v89.5（老板：「按建议进行」）：灵机之地 · 灵机旗
+   * ------------------------------------------------------------
+   * 野地之事已逐地概率化（v89.4），需要"一眼看到哪有江湖事"的地标。
+   * 判定「灵机」= 事数 × 等级（GAME.jianghuSpotInfo，唯一出口）——
+   * 达阈者在**等级角标右侧**悬一面青旗：
+   *   · 只借角标右侧那一小片空当 —— 菱形格内其余空间已被 名带 / 角标 占满
+   *     （上顶点被角标顶到、下半部是名带），这是格内唯一不撞已有元素的落点；
+   *   · 青碧色在现有调色盘（土黄 / 绿族 / 水蓝 / 金）中没有同族 —— 一眼可辨；
+   *   · ⛔ 零三角函数、零仿射变换（v50 全文件守卫：只用直线原语）。
+   * ============================================================ */
+  function drawJhPennant(ctx, bx, by) {
+    var poleX = bx + 13.5, top = by - 8;         /* by = 角标中心行 */
+    ctx.strokeStyle = 'rgba(24,58,50,.92)';      /* 旗杆：深青（衬任何地形） */
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(poleX, top);
+    ctx.lineTo(poleX, by + 7);
+    ctx.stroke();
+    ctx.beginPath();                             /* 旗面：青碧三角，朝右迎风 */
+    ctx.moveTo(poleX, top + 0.4);
+    ctx.lineTo(poleX + 7.6, by - 3.6);
+    ctx.lineTo(poleX, by + 0.4);
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(126,226,198,.96)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(18,46,40,.85)';      /* 描边：暗青，压住地形杂色 */
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+
+  /* ============================================================
    * 正方形俯视网格渲染（v20）
    *   每格画成正方形地块，地形装饰与城池/据点居中绘制
    * ============================================================ */
@@ -1027,6 +1058,9 @@
         ctx.font = 'bold 10px sans-serif';
         ctx.fillStyle = lv >= 9 ? '#ffd9c8' : '#f0e6bf';
         ctx.fillText(String(lv), bx, by + 0.5);
+        /* v89.5：灵机之地 —— 事数 × 等级 达阈者，角标侧悬青旗（江湖事地标） */
+        var jhM5 = GAME.jianghuSpotInfo(d.gx, d.gy);
+        if (jhM5 && jhM5.mark) drawJhPennant(ctx, bx, by);
       }
     });
 

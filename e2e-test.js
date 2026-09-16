@@ -959,6 +959,49 @@ async function runTests(dom, URL) {
   check('点击地图格子有响应', true, document.querySelector('#modal-root').innerHTML.length > 0 ? '弹出面板' : '选中格子');
   G.ui.closeModal();
 
+  /* v89.5：灵机之地 —— 地图悬青旗（渲染接线 + 点选提示 + 真实点击） */
+  console.log('\n--- 19b. v89.5 灵机之地（地图悬旗） ---');
+  check('v89.5：渲染接线含青旗（render 调 drawJhPennant）', /drawJhPennant\(/.test(G.map.render.toString()));
+  const q19b = (function () {
+    const pc = G.map.playerCity();
+    for (let r = 0; r <= 5; r++) {
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+          const x = pc.x + dx, y = pc.y + dy;
+          if (x < 0 || y < 0 || x >= G.DATA.MAP_W || y >= G.DATA.MAP_H) continue;
+          const tl = G.map.tile(x, y);
+          if (!tl || G.map.fortAt(x, y)) continue;
+          const si = G.jianghuSpotInfo(x, y);
+          if (si && si.mark) return { x: x, y: y, n: si.n };
+        }
+      }
+    }
+    return null;
+  })();
+  check('主城周边 5 格内能找到灵机格', !!q19b, q19b ? '(' + q19b.x + ',' + q19b.y + ') 事×' + q19b.n : '未找到');
+  check('v89.5：点选灵机格 → 状态行「江湖事 ×n · 灵机」', (function () {
+    if (!q19b) return false;
+    const old = G.ui.mapPick;
+    G.ui.mapPick = { kind: 'wild', x: q19b.x, y: q19b.y };
+    G.ui.syncMapInfo();
+    const t = document.querySelector('#map-pick-info').textContent;
+    G.ui.mapPick = old;
+    G.ui.syncMapInfo();
+    return t.indexOf('江湖事 ×' + q19b.n) >= 0 && t.indexOf('灵机') >= 0;
+  })());
+  check('v89.5：真实点击灵机格（canvas 事件 → 点选行含灵机）', (function () {
+    if (!q19b) return false;
+    const v = G.map._view;
+    const sx = v.ox + (q19b.x - q19b.y) * v.HW, sy = v.oy + (q19b.x + q19b.y) * v.HH;
+    if (!(sx > 0 && sy > 0 && sx < cv19.width && sy < cv19.height)) return false;
+    const oldRect = cv19.getBoundingClientRect;
+    cv19.getBoundingClientRect = function () { return { left: 0, top: 0, width: cv19.width, height: cv19.height }; };
+    cv19.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true, view: window, clientX: sx, clientY: sy }));
+    cv19.getBoundingClientRect = oldRect;
+    return (document.querySelector('#map-pick-info') || {}).textContent.indexOf('灵机') >= 0;
+  })());
+
   console.log('\n--- 20. 资质分级 / 铁匠铺打造 / 死属性修复 ---');
   /* 给当前城配齐客栈、招贤馆、铁匠铺 */
   const c20 = G.state.cities[0];

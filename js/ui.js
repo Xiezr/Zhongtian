@@ -5905,7 +5905,15 @@
     var p = ui.mapPick;
     if (!p) return '点选 —';
     var tag = ({ player: '我城', npc: '名城', wild: '野地', fort: '据点', land: '空地' })[p.kind] || '';
-    return '点选 ' + tag + ' (' + p.x + ',' + p.y + ')';
+    var out = '点选 ' + tag + ' (' + p.x + ',' + p.y + ')';
+    /* v89.5：野地补一句江湖事 —— 有事报数（灵机者加标），无事报荒僻；
+       非野地地形（平原 / 城）没有江湖活动之说，不补后缀。 */
+    var tl = GAME.map.tile(p.x, p.y);
+    if (tl && GAME.jianghuCands(tl.terrain).length > 0) {
+      var jm = GAME.jianghuSpotInfo(p.x, p.y);
+      out += jm ? (' · 江湖事 ×' + jm.n + (jm.mark ? ' · 灵机' : '')) : ' · 荒僻';
+    }
+    return out;
   };
   /* 刷新状态行（视野区间 + 点选坐标）—— 平移 / 跳转 / 点击后都走这里。
      注意用 `$`（= querySelector）而不是 getElementById：
