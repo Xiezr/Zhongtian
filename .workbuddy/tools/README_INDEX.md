@@ -12,10 +12,10 @@
 | `git/` | 3 | **收尾同步的唯一入口**。`sync.py` 默认干跑、`--apply` 才落盘（干跑先行是本项目铁律）；`gate.py` 是三件套门禁的**唯一出口**（pre-commit 钩子与 sync 都调它）；`install_hooks.py` 把 `hooks/` 里的钩子装进 `.git/hooks/`。 |
 | `git/hooks/` | 2 | 存这里是为了**进版本库** —— `.git/hooks/` 不被 git 跟踪，换台机器克隆后必须跑 `install_hooks.py` 重装。⚠️ **行尾必须 LF**，CRLF 会让 `#!/bin/sh` 失效。 |
 | `mem/` | 10 | MEMORY.md 必须 < 9600 字符（超出会被会话注入截断，尾部规则等于不存在）。`slim_memory_template.py` = 把超限整段 cut 到 `docs/` 的模板。 |
-| `patch/` | 144 | **事实上的变更日志**：按断言名 `grep -rl "<断言名>" tools/patch/` 就能找到当初是哪次改的。"同一条消息里对同一文件的多次 Edit 会互相覆盖"，所以补丁一律脚本化并留档。 |
+| `patch/` | 150 | **事实上的变更日志**：按断言名 `grep -rl "<断言名>" tools/patch/` 就能找到当初是哪次改的。"同一条消息里对同一文件的多次 Edit 会互相覆盖"，所以补丁一律脚本化并留档。 |
 | `probe/` | 17 | jsdom 没有布局引擎 → 尺寸/重叠/溢出/折行只能在**真浏览器**量。`probe60_geom.js` 是可复用模板，`probe66_ui.js` 有"逐行折行"量法，`probe67_save3.js` 量存档体积与配额。 |
 | `show/` | 4 | 给老板看的对照图 / 曲线校准 / 素材巡视。 |
-| **合计** | **222** | |
+| **合计** | **228** | |
 
 ## asset/（素材处理）
 
@@ -248,6 +248,12 @@ MEMORY.md 必须 < 9600 字符（超出会被会话注入截断，尾部规则�
 - `patch_v88_tools2.py`（3KB）　— v88 工具层补充（domain.js）：军装强化/拆解对灵气件的防护。探针幂等。
 - `patch_v88_ui.py`（13KB）　— v88 UI 第一批（ui.js）：品质色到6 / 描述加灵力 / 两袋寻址 / genPane 双轨 / dollSlot 重写 + 修复 / dollLingPanel。探…
 - `patch_v88_ui2.py`（15KB）　— v88 UI 第二批（ui.js）：openEqSlot 双轨 / openLingTemper / jianghuHTML / 弹窗接线 / 装备总览页。探针幂等。
+- `patch_v89_1_css.py`（6KB）　— v89.1 CSS：index.html 追加 .sxf-* 剧本视觉化样式与两段动效（插入 </style> 前）。探针幂等。
+- `patch_v89_1_data.py`（3KB）　— v89.1 数据：SCENE_FLOW 每活动加幕景水印 art、每幕加幕题 s（插入式；原文案零改动）。探针幂等。
+- `patch_v89_1_docs.py`（7KB）　— v89.1 文档：设计规范 §31 · 备忘 §33 · 需求档案 v89.1 · 规划补记 · 设计文档 v1.3。探针幂等。
+- `patch_v89_1_fix.py`（3KB）　— v89.1 修补：① e2e 两处「精力严格相等」断言改容差版（浮点再生脆弱点）
+- `patch_v89_1_tests.py`（7KB）　— v89.1 测试：smoke §75（幕景/幕题/徽章/对白/样式）+ e2e 剧本视觉断言（横幅/时间线/结算卡）。探针幂等。
+- `patch_v89_1_ui.py`（9KB）　— v89.1 UI：sceneFxHTML 视觉升级（幕景横幅 / 行程时间线 / 幕题条 / 对白高亮 / 倾向徽章 / 结算卡）。
 - `patch_v89_data.py`（17KB）　— v89 数据层：全屏江湖场景剧本 DATA.SCENE_FLOW（12 活动 · 对话/事件导向 · 专属退出）。探针幂等。
 - `patch_v89_docs.py`（7KB）　— v89 文档：设计规范 §30 · 备忘 §32 · 需求档案 v89 · 规划补记 · 设计文档 v1.2。探针幂等。
 - `patch_v89_e2e.py`（10KB）　— v89 e2e（e2e-test.js）：v88.1/v88 段剧本化改造 + v89 新段（君主专属 + 全屏交互）。探针幂等。

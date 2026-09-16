@@ -14157,6 +14157,74 @@ console.log('\n===== 74. v89 君主专属 + 全屏江湖剧本 =====');
   })());
 })();
 
+console.log('\n===== 75. v89.1 剧本视觉化（幕景 / 幕题 / 徽章 / 结算卡） =====');
+(function () {
+  var uS1 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'ui.js'), 'utf8');
+  var hS1 = fsMod.readFileSync(pathMod.join(__dirname, 'index.html'), 'utf8');
+  var css1 = hS1.match(/<style[^>]*>([\s\S]*?)<\/style>/)[1];
+
+  console.log('  --- ① 数据：幕景与幕题 ---');
+  check('v89.1：12 活动各有幕景水印 · 36 幕各有幕题（2~8 字）', (function () {
+    var F = DATA.SCENE_FLOW || {};
+    var acts = Object.keys(DATA.LING_ACT || {});
+    if (acts.length !== 12) return false;
+    var n = 0;
+    for (var i = 0; i < acts.length; i++) {
+      var f = F[acts[i]];
+      if (!f || !f.art) return false;
+      for (var j = 0; j < f.stages.length; j++) {
+        var s2 = f.stages[j].s;
+        if (!s2 || s2.length < 2 || s2.length > 8) return false;
+        n++;
+      }
+    }
+    return n === 36;
+  })());
+
+  console.log('  --- ② 辅助函数（徽章 / 对白） ---');
+  check('v89.1：倾向徽章映射（攻/获/险/稳/缘 · 无修正不出徽章）', (function () {
+    if (!GAME.ui.sxfBadges) return false;
+    if (GAME.ui.sxfBadges({}).length !== 0) return false;
+    var s2 = GAME.ui.sxfBadges({ pow: 1.08, reward: 1.15, wound: 0.6, luck: 0.08 });
+    if (s2.indexOf('攻 +8%') < 0 || s2.indexOf('获 +15%') < 0) return false;
+    if (s2.indexOf('稳 -40%') < 0 || s2.indexOf('缘 +8') < 0 || s2.indexOf('险') >= 0) return false;
+    return GAME.ui.sxfBadges({ wound: 1.2 }).indexOf('险 +20%') >= 0;
+  })());
+  check('v89.1：对白高亮（「」成段 · 先转义后切分）', (function () {
+    if (!GAME.ui.sxfQuote) return false;
+    var s2 = GAME.ui.sxfQuote('甲喝道：「来将通名！」乙笑。');
+    if (s2.indexOf('<span class="sxf-q">「来将通名！」</span>') < 0) return false;
+    if (s2.indexOf('甲喝道：') < 0) return false;
+    return GAME.ui.sxfQuote('<b>「x」</b>').indexOf('&lt;b&gt;') >= 0;
+  })());
+
+  console.log('  --- ③ UI 挂点与样式 ---');
+  check('v89.1：横幅 / 幕题 / 行程 / 徽章 / 结算卡均接线', (function () {
+    return uS1.indexOf('sxf-hero') >= 0 && uS1.indexOf('sxf-hero-art') >= 0
+      && uS1.indexOf('sxf-stage-tt') >= 0 && uS1.indexOf('sxf-timeline') >= 0
+      && uS1.indexOf('sxf-bdg') >= 0 && uS1.indexOf('sxf-emblem') >= 0
+      && uS1.indexOf('fly.art ||') >= 0 && uS1.indexOf('st.s ?') >= 0;
+  })());
+  check('v89.1：样式与动效齐（.sxf-* 五类 + sxfIn / sxfPop）', (function () {
+    return ['.sxf-wrap {', '.sxf-hero {', '.sxf-emblem {', '.sxf-timeline {', '.sxf-bdg {'].every(function (t) {
+      return css1.indexOf(t) >= 0;
+    }) && /@keyframes sxfIn/.test(css1) && /@keyframes sxfPop/.test(css1);
+  })());
+  check('v89.1：markup 用到的 sxf-* 类全部有样式接线（防漏字）', (function () {
+    /* 注意：ui.js 里有的类是「字符串拼接」出来的（class="sxf-dot' + (…) + '"），
+       so 抓到的 token 先按 /^sxf-[a-z-]+$/ 过滤，脏 token（带引号/加号）不算数 */
+    var cls = {};
+    (uS1.match(/class="sxf-[^"]*"/g) || []).forEach(function (m) {
+      m.replace(/class="([^"]+)"/, '$1').split(/\s+/).forEach(function (c) {
+        if (/^sxf-[a-z-]+$/.test(c)) cls[c] = 1;
+      });
+    });
+    var keys = Object.keys(cls);
+    var miss = keys.filter(function (c) { return css1.indexOf('.' + c) < 0; });
+    return keys.length >= 30 && miss.length === 0;
+  })());
+})();
+
   console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');
   process.exit(FAIL ? 1 : 0);
 })();

@@ -4659,15 +4659,19 @@ if (svBtn) {
     click(document.querySelector('#scene-fx [data-action="sxf-exit"]'));
     await sleep(220);
     check('v89：免费退出后可再入（energy 未扣 · 锁未落）', (function () {
-      return lg89.energy === e089 && G.jianghuCheck(hp89.x, hp89.y, lg89.id, 'tao').ok;
+      /* ⚠ 精力是「连续再生值（浮点）」：只能断言"未减少"，不能严格相等 ——
+         毫秒级再生会在两次读取之间加出小数（v89.1 实测 85.0666 抓出的脆弱点） */
+      return lg89.energy >= e089 - 0.01 && G.jianghuCheck(hp89.x, hp89.y, lg89.id, 'tao').ok;
     })());
 
     /* ③ 动身后退出：所耗不返、今日计入 */
     click(document.querySelector('#modal-root [data-action="do-jianghu"][data-act="tao"]'));
     await sleep(200);
+    const ePre89 = lg89.energy;
     click(document.querySelector('#scene-fx [data-action="sxf-choice"]'));
     await sleep(160);
-    check('v89：首次选择即扣精力（15）', lg89.energy === e089 - 15);
+    /* 同上：按「扣费前后差 ≈ 15」断言（容差 3 —— 再生量远小于此；双扣 30 / 未扣 0 必被抓住） */
+    check('v89：首次选择即扣精力（15）', Math.abs((ePre89 - lg89.energy) - 15) < 3);
     click(document.querySelector('#scene-fx [data-action="sxf-escape"]'));
     await sleep(160);
     click(document.querySelector('#scene-fx [data-action="sxf-exit"]'));
@@ -4696,8 +4700,24 @@ if (svBtn) {
       const el = document.getElementById('scene-fx');
       return !!el && el.style.display !== 'none' && el.textContent.indexOf('地宫') >= 0;
     })());
+    check('v89.1：幕景横幅（水印 · 幕题 · 倾向徽章 · 选项齐）', (function () {
+      const el = document.getElementById('scene-fx');
+      const f = G.DATA.SCENE_FLOW.desert_scene;
+      const tt = el.querySelector('.sxf-stage-tt');
+      return !!el.querySelector('.sxf-hero') && !!el.querySelector('.sxf-hero-art')
+        && (el.querySelector('.sxf-hero-art').textContent || '').length >= 1
+        && !!tt && tt.textContent === f.stages[0].s
+        && el.querySelectorAll('.sxf-bdg').length >= 1
+        && el.querySelectorAll('.sxf-opt').length >= 2
+        && el.textContent.indexOf('第 1 / ' + f.stages.length + ' 幕') >= 0;
+    })());
     click(document.querySelector('#scene-fx [data-action="sxf-choice"]'));
     await sleep(120);
+    check('v89.1：行程时间线随选择累积（幕题 + 抉择）', (function () {
+      const el = document.getElementById('scene-fx');
+      return el.querySelectorAll('.sxf-tl-item').length === 1
+        && el.textContent.indexOf('行程') >= 0;
+    })());
     click(document.querySelector('#scene-fx [data-action="sxf-choice"]'));
     await sleep(120);
     click(document.querySelector('#scene-fx [data-action="sxf-choice"]'));
@@ -4705,6 +4725,12 @@ if (svBtn) {
     check('v89：结算屏出现（专属退出「出宫回城」）', (function () {
       const el = document.getElementById('scene-fx');
       return !!el && !!el.querySelector('[data-action="sxf-exit"]') && el.textContent.indexOf('出宫回城') >= 0;
+    })());
+    check('v89.1：结算卡（光晕徽记 · 战果面板 · 耗用账单）', (function () {
+      const el = document.getElementById('scene-fx');
+      return !!el.querySelector('.sxf-emblem') && !!el.querySelector('.sxf-loot')
+        && el.textContent.indexOf('耗：精力') >= 0
+        && el.textContent.indexOf('余：精力') >= 0;
     })());
     click(document.querySelector('#scene-fx [data-action="sxf-exit"]'));
     await sleep(240);
