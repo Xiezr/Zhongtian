@@ -1006,7 +1006,26 @@
           (bc > 0 ? '（烽火台 Lv' + bc + ' 提前预警）' : '（无烽火台，预警偏迟）') +
           '　宜收拢兵力、修葺城墙。</div>';
       })();
+    html += ui.citySchemeHTML(c);
     box.innerHTML = html;
+  };
+
+  /* v86：城池面板的计略布防行（生效中显示倒计时；未挂给入口按钮）。
+     输出值可被看见：空城计/坚壁清野剩余时长在此处常显。 */
+  ui.citySchemeHTML = function (c) {
+    if (!GAME.schemeDefOf) return '';
+    var s = GAME.state;
+    var now = (s.world && s.world.elapsed) || 0;
+    var parts = [];
+    var kc = GAME.schemeDefOf(c, 'kongcheng', now);
+    var jb = GAME.schemeDefOf(c, 'jianbi', now);
+    if (kc) parts.push('🎭 空城计（余 ' + Math.ceil(kc.left / 3600) + ' 时）');
+    if (jb) parts.push('🏜️ 坚壁清野（余 ' + Math.ceil(jb.left / 3600) + ' 时）');
+    return '<div class="res-line" style="align-items:center;"><span class="lbl">🎴 计略布防</span>' +
+      '<span class="val" style="display:flex;align-items:center;gap:6px;">' +
+      (parts.length ? '<span style="color:var(--green-ok);font-size:var(--fs-sub);">' + parts.join('　') + '</span>'
+                    : '<span style="color:var(--text-dim);font-size:var(--fs-sub);">未布防</span>') +
+      '<button class="btn sm" data-action="city-scheme">布防</button></span></div>';
   };
 
   /* ============================================================
@@ -2101,6 +2120,8 @@
     perm: '丹药', mount_buff: '坐骑', blueprint: '图纸',
     /* v77（老板「丰富商场道具」）：宝箱 / 内功秘籍 / 政令（徭役令）三类新货 */
     chest: '宝箱', neigong: '秘籍', corvee: '政令',
+    /* v86（老板「按计划进行」· G1）：锦囊 —— 施展计谋所需 */
+    talis: '锦囊',
   };
   ui.shopItems = function () {
     return DATA.ITEMS.filter(function (it) { return it.price > 0; });
@@ -6154,11 +6175,131 @@
     return GAME.map.fortRaidedToday(tg.x, tg.y) ? '此据点今日已掠夺（每日限一次）' : '';
   };
 
+  /* ============================================================
+   * v86（老板「按计划进行」· G1）：计略选择（出征面板）
+   * ------------------------------------------------------------
+   * attack/march 计随出征携带（校验不通过给原因；含每日锁）；
+   * defense 计在「城池面板 → 布防计略」单独布防（见 ui.openCityScheme）。
+   * ============================================================ */
+  ui._expScheme = null;
+  ui.expSchemeLabel = function () {
+    var sid = ui._expScheme;
+    if (!sid) return '未用计';
+    var sc = GAME.schemeOf(sid);
+    return sc ? (sc.icon + ' ' + sc.name + '（精' + sc.energy + ' · 囊' + sc.jinang + '）') : '未用计';
+  };
+  ui.setExpSchemeLabel = function () {
+    var lb = $('#exp-scheme-label');
+    if (lb) lb.textContent = ui.expSchemeLabel();
+  };
+  ui.expSchemeGenOf = function () {
+    var s = GAME.state, gen = null;
+    (s.generals || []).forEach(function (g) { if (g.id === ui._expGen) gen = g; });
+    return gen;
+  };
+  ui.expSchemePanelHTML = function () {
+    var s = GAME.state;
+    var t = ui._expRes;
+    if (!t) return '';
+    var gen = ui.expSchemeGenOf();
+    var list = (DATA.SCHEMES || []).filter(function (sc) { return sc.kind === 'attack' || sc.kind === 'march'; });
+    return list.map(function (sc) {
+      var chk = GAME.schemePrepare(sc.id, t, gen);
+      var on = ui._expScheme === sc.id;
+      var extra = '';
+      if (sc.id === 'tiaobo' && t.npc) {
+        var n = GAME.schemeMarksOf(GAME.schemeKeyOf(t), 'tiaobo');
+        extra = '　<b style="color:var(--gold-light);font-weight:400;">该城守将忠诚 ' + Math.max(0, 100 - 25 * n) + '</b>';
+      }
+      var btn = chk.ok
+        ? '<button class="btn sm' + (on ? '' : ' gold') + '" data-action="exp-scheme-pick" data-v="' + sc.id + '">' + (on ? '撤下' : '选择') + '</button>'
+        : '<button class="btn sm" disabled title="' + U.escape(chk.msg) + '">不可用</button>';
+      return '<div class="inn-card" style="margin-bottom:6px;"><div class="inn-info" style="flex:1;">' +
+        '<div class="inn-name">' + sc.icon + ' ' + sc.name +
+          '　<span style="color:var(--text-dim);font-size:var(--fs-sub);">精' + sc.energy + ' · 囊' + sc.jinang + '</span>' +
+          (on ? '　<span style="color:var(--green-ok);">已选</span>' : '') + extra + '</div>' +
+        '<div style="color:var(--text-dim);font-size:var(--fs-sub);">' + U.escape(sc.tip) + '</div>' +
+        (chk.ok ? '' : '<div style="color:var(--red-light);font-size:var(--fs-sub);margin-top:2px;">' + U.escape(chk.msg) + '</div>') +
+        '</div>' + btn + '</div>';
+    }).join('');
+  };
+  /* 面板内展开/收起（不用子弹窗：弹窗是单根系统，切换会丢出征面板） */
+  ui.toggleExpScheme = function () {
+    var box = $('#exp-scheme-box');
+    if (!box) return;
+    if (box.classList.contains('hidden')) {
+      box.innerHTML = ui.expSchemePanelHTML();
+      box.classList.remove('hidden');
+    } else {
+      box.classList.add('hidden');
+    }
+  };
+  /* 布防计略（城池面板）——防御计布在自己城上，持续期内自动生效 */
+  ui._csGen = null;
+  ui.openCityScheme = function () {
+    var c = GAME.currentCity();
+    var s = GAME.state;
+    var now = (s.world && s.world.elapsed) || 0;
+    var ja = (s.items && s.items.jinang) || 0;
+    var own = (s.generals || []).filter(function (g) { return g.cityId === c.id; });
+    if (!ui._csGen || !own.some(function (g) { return g.id === ui._csGen; })) {
+      ui._csGen = own[0] ? own[0].id : '';
+    }
+    var list = (DATA.SCHEMES || []).filter(function (sc) { return sc.kind === 'defense'; });
+    var rows = list.map(function (sc) {
+      var act = GAME.schemeDefOf(c, sc.id, now);
+      var btn = act
+        ? '<span style="color:var(--green-ok);white-space:nowrap;">布防中（余 ' + Math.ceil(act.left / 3600) + ' 时）</span>'
+        : '<button class="btn sm gold" data-action="city-scheme-pick" data-v="' + sc.id + '">布防</button>';
+      return '<div class="inn-card"><div class="inn-info" style="flex:1;">' +
+        '<div class="inn-name">' + sc.icon + ' ' + sc.name +
+          '　<span style="color:var(--text-dim);font-size:var(--fs-sub);">精' + sc.energy + ' · 囊' + sc.jinang + '</span></div>' +
+        '<div style="color:var(--text-dim);font-size:var(--fs-sub);">' + U.escape(sc.tip) + '</div>' +
+        '</div>' + btn + '</div>';
+    }).join('');
+    ui.openModal(
+      '<div class="gold-heading">🎴 布防计略 · ' + U.escape(c.name) + '</div>' +
+      '<div class="note">防御计布防于本城，持续期内自动生效。锦囊现有 <b>' + ja + '</b> 个。</div>' +
+      '<div class="mk-row" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:8px 0;">' +
+        '<label style="color:var(--text-dim);">施计将领</label>' +
+        '<input type="hidden" id="cs-gen" value="' + ui._csGen + '">' +
+        ui.genChips({ cls: 'gen-chips inline', target: 'cs-gen', value: ui._csGen, list: own,
+          sub: function (g) { return '精' + Math.round(g.energy || 0); } }) +
+      '</div>' +
+      rows +
+      '<div class="m-foot"><button class="btn" data-action="close-modal">关闭</button></div>');
+  };
+  ui.doExpSchemePick = function (sid) {
+    ui._expScheme = (ui._expScheme === sid) ? null : sid;   /* 再点一次 = 撤下 */
+    ui.setExpSchemeLabel();
+    var box = $('#exp-scheme-box');
+    if (box) box.innerHTML = ui.expSchemePanelHTML();       /* 原地刷新（面板不丢） */
+  };
+  ui.doCitySchemePick = function (sid) {
+    var c = GAME.currentCity();
+    var sc = GAME.schemeOf(sid);
+    var s = GAME.state;
+    var gsel = document.getElementById('cs-gen');
+    var gid = gsel ? gsel.value : ui._csGen;
+    var gen = null;
+    (s.generals || []).forEach(function (g) { if (g.id === gid) gen = g; });
+    if (!sc) return;
+    if (!gen) { ui.toast('请选择施计将领'); return; }
+    if ((gen.energy || 0) < sc.energy) { ui.toast(gen.name + ' 精力不足（' + Math.round(gen.energy || 0) + '/' + sc.energy + '），可服清心丸'); return; }
+    if (((s.items || {}).jinang || 0) < sc.jinang) { ui.toast('锦囊不足（' + ((s.items || {}).jinang || 0) + '/' + sc.jinang + '），可去商城购买'); return; }
+    GAME.schemeDefSet(c, sc.id, gen);
+    ui._csGen = gen.id;
+    ui.closeModal();
+    ui.toast('已布防「' + sc.name + '」');
+    GAME.refreshAll();
+  };
+
   ui.openExpModal = function (target) {
     var s = GAME.state, c = GAME.currentCity();
     var t = GAME.battle.resolveTarget(target);
     if (!t.ok) { ui.toast(t.msg); return; }
     ui._expTarget = target;
+    ui._expScheme = null;      /* v86：每次打开出征面板重置计略（防上次的计意外带上） */
     /* v74：把**已解析的目标**存一份 —— 兵力总览/战力对比要用守军与城防，
        同一份 resolveTarget 结果直接读，不再各算一遍（两个出口必漂移）。 */
     ui._expRes = t;
@@ -6231,6 +6372,11 @@
        写在这里是因为"我这次是不是让弓兵防御了"是出征前必须确认的一件事 */
     html += '<div class="exp-info">战术 <b>' + GAME.tacticSummary() + '</b>' +
       '<span class="exp-tac-link" data-action="open-tactic">调整</span></div>';
+    /* v86（老板「按计划进行」· G1）：计略 —— 本次出征携一门计（主将施计） */
+    html += '<div class="exp-info">计略 <b id="exp-scheme-label">' + ui.expSchemeLabel() + '</b>' +
+      '<span class="exp-tac-link" data-action="exp-scheme">选择</span></div>';
+    /* v86：计略选择 = 面板内嵌展开区（复用 .exp-body 的滚动样式，不新增 CSS） */
+    html += '<div id="exp-scheme-box" class="hidden exp-body" style="max-height:210px;margin:0 0 6px;"></div>';
     html += '<div class="exp-modes">' + mtabs + '</div>';
     html += '<div class="exp-body" data-mode="' + cur.id + '">';
     if (!ui._expGen || !s.generals.some(function (g) { return g.id === ui._expGen; })) {

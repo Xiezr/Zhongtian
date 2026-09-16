@@ -426,6 +426,27 @@
     }
     /* 名将必降：按州匹配历史名将 */
     var hero = GAME.battle.grantHero(npcCity, fromCity);
+    /* v86：挑拨离间 —— 守将忠诚 ≤25（累计施计 ≥3 次）时，战胜后 50% 倒戈归降。
+       种子不用随机数：同一个城同一局结果稳定（照 invasionRoll 先例，
+       断言可复现；roll 值仅由城 id 与结果决定）。 */
+    (function () {
+      if (!GAME.schemeOf || !GAME.schemeMarksOf) return;
+      var _tk = 'npc:' + npcCity.id;
+      var _n = GAME.schemeMarksOf(_tk, 'tiaobo');
+      if (!_n) return;
+      var _tsc = GAME.schemeOf('tiaobo');
+      var _loy = Math.max(0, 100 - _tsc.eff.loyaltyDrop * _n);
+      if (_loy > _tsc.eff.joinAt) return;
+      var _roll = GAME.invasionRoll ? GAME.invasionRoll('tj|' + npcCity.id + '|' + _n) : Math.random();
+      if (_roll >= _tsc.eff.joinChance) return;
+      var _ng = GAME.npcCityInfo ? GAME.npcCityInfo(npcCity).guard : null;
+      if (!_ng) return;
+      var _gj = GAME.makeHero(_ng, _ng.level);
+      _gj.loyalty = 50;
+      if (fromCity) _gj.cityId = fromCity.id;
+      s.generals.push(_gj);
+      GAME.log('🕸️ 挑拨离间奏效：守将 ' + _ng.name + ' 倒戈归降，愿效犬马之劳！');
+    })();
     /* 美人 50% 几率（攻占郡城/州城） */
     if (npcCity.type !== 'capital' && Math.random() < 0.5) GAME.battle.grantBeauty(npcCity);
     GAME.advanceConquer();
@@ -999,7 +1020,38 @@
     /* v59：把**目标城的城墙等级**传给引擎 —— 箭塔射程要用它
        （照搬原版：箭塔射程 = 基础×(1+抛射) + 基础×(城墙等级×3%) + 100） */
     var tWallLv = (t.npc && GAME.buildingLevel) ? GAME.buildingLevel(t.npc, 'chengqiang') : 0;
-    var result = GAME.battle.simulate(atkArmy, gen, t.garrison, defBonus, t.guard || null,
+    /* v86（老板「按计划进行」· G1）：计谋效果 —— **全部作用于战斗入参**（零引擎改动）：
+       妖言惑众→守军副本 −15%；火烧粮草→城防值 −30%；挑拨离间→守将加成减半。
+       累计施计次数走 state 层唯一出口 schemeMarksOf（挑拨：忠诚 = 100 − 25×n）。 */
+    var scArmy = t.garrison, scVal = defBonus, scGen = t.guard || null, scNote = null;
+    if (opts.scheme) {
+      var _sc = GAME.schemeOf(opts.scheme);
+      if (_sc) {
+        if (_sc.id === 'yaoyan') {
+          var _ga = {};
+          for (var _gk in (scArmy || {})) {
+            _ga[_gk] = Math.max(1, Math.round((scArmy[_gk] || 0) * (1 + _sc.eff.guardPct)));
+          }
+          scArmy = _ga;
+          scNote = '妖言惑众 · 守军逃散 ' + Math.round(-_sc.eff.guardPct * 100) + '%';
+        } else if (_sc.id === 'huoshao') {
+          scVal = Math.round((defBonus || 0) * (1 - _sc.eff.defCut));
+          scNote = '火烧粮草 · 城防失灵 ' + Math.round(_sc.eff.defCut * 100) + '%';
+        } else if (_sc.id === 'tiaobo') {
+          var _tn = GAME.schemeMarksOf(GAME.schemeKeyOf(t), 'tiaobo');
+          var _loy = Math.max(0, 100 - _sc.eff.loyaltyDrop * _tn);
+          if (scGen && _loy <= _sc.eff.faintAt) {
+            scGen = U.deep(scGen);
+            scGen.zm = Math.round((scGen.zm || 0) * 0.5);
+            scNote = '挑拨离间 · 守将离心（忠诚 ' + _loy + '，加成减半）';
+          } else {
+            scNote = '挑拨离间 · 谗言已下（守将忠诚 ' + _loy + '）';
+          }
+        }
+        /* 趁火打劫（掠夺系数）与金蝉脱壳（战败保全）在下方各自结算点另行注明 */
+      }
+    }
+    var result = GAME.battle.simulate(atkArmy, gen, scArmy, scVal, scGen,
       { sieging: t.kind === 'city', kind: t.kind, defName: t.name, wallLv: tWallLv,
         /* v62（老板：「工匠作坊可以造箭塔，箭塔默认参与防守」）：
            守方的箭塔座数走**唯一出口** `GAME.towerCountOf` ——
@@ -1007,6 +1059,13 @@
            NPC 城没有自建箭塔（`city.towers` 未定义）→ 结果与 v59 完全一致；
            玩家城作为守方时，自己造的箭塔自动上阵（不需要任何指派）。 */
         towers: (t.npc && GAME.towerCountOf) ? GAME.towerCountOf(t.npc) : null });
+    /* v86：计谋注脚 —— 战报/日志可见（金蝉脱壳只在战败时另算保全） */
+    if (scNote) result.schemeNote = scNote;
+    if (opts.scheme === 'jintui' && result.winner !== 'atk') {
+      var _jt = GAME.schemeOf('jintui');
+      result.schemeKeep = _jt ? _jt.eff.woundedKeep : 0;
+      result.schemeNote = '金蝉脱壳 · 保全而退（阵亡 ' + Math.round(result.schemeKeep * 100) + '% 转伤兵）';
+    }
     var win = result.winner === 'atk';
     GAME.statBump('wins', win ? 1 : 0);
     GAME.statBump(mode.occupy ? 'conquerAttempt' : 'raidCount', 1);
@@ -1031,6 +1090,11 @@
       if (resMul > 0) {
         /* 抢掠技巧：掠夺资源收获 +3%/级 —— 只对「掠夺」生效（占领本就不取财货） */
         var raidBonus = (mode.id === 'raid') ? (1 + TB('pillage')) : 1;
+        /* v86：趁火打劫 —— 本战掠夺资源 +30%（乘乱取利，与抢掠技巧叠乘） */
+        if (opts.scheme === 'chenhuo') {
+          var _ch = GAME.schemeOf('chenhuo');
+          raidBonus *= 1 + (_ch ? _ch.eff.lootPct : 0);
+        }
         /* v60（需求 4/6）：**城池**用该城自己的派生库存做战利品来源
            （"侦查看到的数" = "打完搬回来的数"，一个出口）；
            野地/据点仍走 genLoot 的按档位生成。 */
@@ -1207,6 +1271,7 @@
       t: U.now(), type: 'war',
       title: (win ? '胜利' : '战败') + ' · ' + mode.name + ' ' + t.name,
       body: GAME.battle.reportText(t.name, atkArmy, gen, result)
+        + (result.schemeNote ? '<br>【计谋】' + result.schemeNote : '')
         + (lossLines.length ? '<br>【兵种损耗】' + lossLines.join('<br>') : '')
         /* 正文以 HTML 渲染（其余部分用 <br>），换行必须同格式 */
         + (lootLines.length ? '<br>【战利品】' + lootLines.join('；') : (win ? '<br>【战利品】无' : '')),
@@ -1247,6 +1312,8 @@
     if (!city || !aStart) return { back: {}, wounded: {} };
     var keep = Math.max(0, Math.min(1, (result && result.atkRemain || 0) / aStart));
     var rate = (DATA.EXPEDITION && DATA.EXPEDITION.woundedRate) || 0.45;
+    /* v86：金蝉脱壳 —— 战败时额外保全（阵亡转伤兵，与军医/治疗科技同链相加） */
+    if (result && result.schemeKeep) rate = Math.min(0.9, rate + result.schemeKeep);
     if (GAME.systems.buffActive('military') && s.buffs.military.wound) rate = s.buffs.military.wound;
     if (GAME.systems && GAME.systems.techBonus) rate = Math.min(0.9, rate * (1 + GAME.systems.techBonus('repair')));
     var back = {}, wounded = {}, wTotal = 0;
@@ -1471,11 +1538,20 @@
   };
 
   /* 出发：校验 → 扣除 → 入队（真正的结算在抵达时由 tick 触发） */
-  GAME.march.dispatch = function (target, modeId, army, genId) {
+  GAME.march.dispatch = function (target, modeId, army, genId, schemeId) {
     var s = GAME.state;
     var p = GAME.battle.prepare(target, modeId, army, genId, {});
     if (!p.ok) return p;
     var city = p.city, gen = p.gen, mode = p.mode, t = p.t;
+    /* v86（老板「按计划进行」· G1）：计谋 —— 校验与计费在出发时完成；
+       效果由抵达时的 expedition 读 opts.scheme（行军途中不占战斗状态）。 */
+    var scheme = null;
+    if (schemeId) {
+      var schk = GAME.schemePrepare(schemeId, t, gen);
+      if (!schk.ok) return schk;
+      GAME.schemeUse(schemeId, t, gen);
+      scheme = schemeId;
+    }
 
     for (var a in army) city.army[a] -= army[a];
     GAME.setStaNow(gen, GAME.staNow(gen) - mode.stamina);   /* v66：走唯一写入口 */
@@ -1484,12 +1560,18 @@
 
     var to = { x: t.x, y: t.y };
     var total = GAME.march.travelTime({ x: city.x, y: city.y, cityId: city.id }, to, army, null, gen);
+    /* v86：千里奔袭 —— 本次行军 +30%（只影响这一趟，不改全局速度链） */
+    if (scheme === 'benxi') {
+      var _bx = GAME.schemeOf('benxi');
+      total = Math.round(total / (1 + (_bx ? _bx.eff.marchPct : 0)));
+    }
     s.marches = s.marches || [];
     var m = {
       id: 'mr' + (GAME._marchSeq = (GAME._marchSeq || 0) + 1),
       cityId: city.id, genId: gen.id, modeId: mode.id,
       target: target, tx: t.x, ty: t.y, name: t.name, kind: t.kind,
       army: U.deep(army), elapsed: 0, totalTime: total,
+      scheme: scheme,                    /* v86：随军计谋（抵达时读） */
     };
     s.marches.push(m);
     var left = Math.max(0, total / GAME.timeScale());
@@ -1530,7 +1612,7 @@
       return null;
     }
     var r = GAME.battle.expedition(m.target, m.modeId, m.army, m.genId,
-      { arrived: true, cityId: m.cityId });
+      { arrived: true, cityId: m.cityId, scheme: m.scheme || null });
     if (gen.status === 'march') gen.status = 'idle';
     if (r && r.result && r.result.winner === 'scout') {
       GAME.log('🔭 ' + gen.name + ' 侦察归来：' + m.name);

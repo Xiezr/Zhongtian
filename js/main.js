@@ -224,6 +224,11 @@
       /* v77（老板）：建筑信息 / 资源生产两个入口随城池属性右三按钮一并退役；
          「附属野地」改由资源区下拉框的「进入」按钮触发（动作名不变）。 */
       case 'open-wilds': ui.openWilds(); break;
+      /* v86（老板「按计划进行」· G1）：计略 */
+      case 'exp-scheme': ui.toggleExpScheme(); break;
+      case 'exp-scheme-pick': ui.doExpSchemePick(el.dataset.v); break;
+      case 'city-scheme': ui.openCityScheme(); break;
+      case 'city-scheme-pick': ui.doCitySchemePick(el.dataset.v); break;
       case 'map-pan': ui.mapPan(Number(el.dataset.dx), Number(el.dataset.dy)); break;
       case 'map-goto': ui.mapGoto(); break;
       case 'open-minimap': ui.openMinimap(); break;
@@ -1125,9 +1130,10 @@
     if (md.battle && Object.keys(atk).length === 0) { ui.toast('请选择出征兵力'); return; }
     /* v18：出征改为**行军队列** —— 校验/扣除在出发时完成，战斗在抵达时才打。
        于是「速度」这条属性、驿站、烽火台、天气、行军技巧、急行军令才真正有意义。 */
-    var r = GAME.march.dispatch(target, mode, atk, genSel.value);
+    var r = GAME.march.dispatch(target, mode, atk, genSel.value, ui._expScheme || null);
     ui.toast(r.msg);
     if (r.ok) {
+      ui._expScheme = null;      /* v86：计已随军出发，面板状态清空 */
       ui.closeModal();
       GAME.refreshAll();
       /* 旧接口兼容：dispatch 不再立刻返回战报，故不再当场弹侦查结果 */

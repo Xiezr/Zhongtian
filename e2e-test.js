@@ -4357,6 +4357,72 @@ if (svBtn) {
     await sleep(60);
   }
 
+  /* ============================================================
+   * v86（老板「按计划进行」· G1）：计谋（真实 DOM）
+   * ============================================================ */
+  console.log('\n--- v86. 计谋 / 锦囊（真实 DOM） ---');
+  {
+    let wt = null;
+    for (let y = 5; y < 80 && !wt; y++) {
+      for (let x = 5; x < 80; x++) {
+        const tl = G.map.tile(x, y);
+        if (tl && tl.terrain !== 'city' && !G.map.fortAt(x, y)) { wt = { x, y }; break; }
+      }
+    }
+    G.state.items = G.state.items || {};
+    G.state.items.jinang = (G.state.items.jinang || 0) + 10;
+    /* 全军拉满精力/体力：ui._expGen 未必是 generals[0]（前序测试可能改过选择） */
+    G.state.generals.forEach(function (g) { g.energy = 100; G.setStaNow(g, 100); });
+
+    G.ui.openExpModal({ kind: 'wild', x: wt.x, y: wt.y });
+    await sleep(160);
+    check('v86：出征面板含「计略」行', !!document.querySelector('#exp-scheme-label'));
+    click(document.querySelector('#modal-root [data-action="exp-scheme"]'));
+    await sleep(120);
+    check('v86：计略区展开（妖言/千里奔袭等六计可见）', (function () {
+      const box = document.querySelector('#exp-scheme-box');
+      return !!box && !box.classList.contains('hidden')
+        && box.textContent.indexOf('妖言惑众') >= 0
+        && box.textContent.indexOf('千里奔袭') >= 0;
+    })());
+    click(document.querySelector('#exp-scheme-box [data-action="exp-scheme-pick"][data-v="yaoyan"]'));
+    await sleep(120);
+    check('v86：选定后计略标签更新（面板不丢 · 内联区选中态）', (function () {
+      const lb = document.querySelector('#exp-scheme-label');
+      const box = document.querySelector('#exp-scheme-box');
+      return !!lb && lb.textContent.indexOf('妖言惑众') >= 0
+        && !!box && box.textContent.indexOf('已选') >= 0;
+    })());
+    /* 提交携计（需城内有兵） */
+    const c86 = G.currentCity();
+    c86.army = c86.army || {};
+    c86.army.yibing = (c86.army.yibing || 0) + 100;
+    const inp = document.querySelector('#exp-yibing');
+    if (inp) { inp.value = '100'; }
+    click(document.querySelector('#modal-root [data-action="exp-confirm"]'));
+    await sleep(200);
+    check('v86：提交后行军携计（marches[].scheme = yaoyan）', (function () {
+      return (G.state.marches || []).some((m) => m.scheme === 'yaoyan');
+    })());
+    /* 城池布防入口 */
+    G.ui.setView('city');
+    await sleep(220);
+    check('v86：城池面板有「计略布防」入口', !!document.querySelector('[data-action="city-scheme"]'));
+    click(document.querySelector('[data-action="city-scheme"]'));
+    await sleep(160);
+    check('v86：布防弹窗（空城计 / 坚壁清野）', (function () {
+      const root = document.querySelector('#modal-root');
+      return !!root && root.textContent.indexOf('空城计') >= 0
+        && root.textContent.indexOf('坚壁清野') >= 0;
+    })());
+    click(document.querySelector('#modal-root [data-action="city-scheme-pick"][data-v="kongcheng"]'));
+    await sleep(200);
+    check('v86：布防成功（kongcheng 生效）', (function () {
+      const c = G.currentCity();
+      return !!G.schemeDefOf(c, 'kongcheng');
+    })());
+  }
+
   await sleep(30);
 
   G.ui.setView('city');
