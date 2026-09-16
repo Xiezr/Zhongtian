@@ -1002,6 +1002,86 @@ async function runTests(dom, URL) {
     return (document.querySelector('#map-pick-info') || {}).textContent.indexOf('灵机') >= 0;
   })());
 
+  /* v89.6：奇遇 · 见闻录（隐藏点位 → 就近探察 → 探奇 → 图鉴） */
+  console.log('\n--- 19c. v89.6 奇遇 · 见闻录 ---');
+  check('v89.6：底栏含「见闻录」入口', !!document.querySelector('#bottom-bar [data-action="open-journal"]'));
+  const wSite19c = (function () {
+    const list = G.wonderSites();
+    for (let i = 0; i < list.length; i++) {
+      if (!G.map.fortAt(list[i].x, list[i].y)) return list[i];
+    }
+    return null;
+  })();
+  check('v89.6：找到奇遇点位', !!wSite19c, wSite19c ? '(' + wSite19c.x + ',' + wSite19c.y + ') ' + wSite19c.wid : '未找到');
+  const WILD19c = { caoyuan: 1, zhaoze: 1, lake: 1, forest: 1, desert: 1, hill: 1 };
+  G.wonderState().r = {}; G.wonderState().d = {}; G.wonderState().j = {};
+  const farT19c = (function () {
+    if (!wSite19c) return null;
+    for (let d = 3; d <= 12; d++) {
+      const x = wSite19c.x + d, y = wSite19c.y;
+      if (x >= G.DATA.MAP_W) break;
+      const tl = G.map.tile(x, y);
+      if (tl && WILD19c[tl.terrain] && !G.wonderSiteOf(x, y)) return { x: x, y: y };
+    }
+    return null;
+  })();
+  check('v89.6：找到距点位 3+ 格的无奇对照格', !!farT19c, farT19c ? '(' + farT19c.x + ',' + farT19c.y + ')' : '未找到');
+  if (farT19c) {
+    G.ui.openLandModal(farT19c.x, farT19c.y);
+    await sleep(60);
+    const tF = (document.querySelector('#modal-root') || {}).textContent || '';
+    check('v89.6：远处开格 —— 无「探奇」暗示（隐藏点真隐藏）', tF.indexOf('探奇') < 0);
+    check('v89.6：点位仍未现形', G.wonderSiteOf(wSite19c.x, wSite19c.y).revealed === false);
+    G.ui.closeModal();
+    await sleep(40);
+  }
+  const nearX19c = wSite19c.x + 1 <= G.DATA.MAP_W - 1 ? wSite19c.x + 1 : wSite19c.x - 1;
+  G.ui.openLandModal(nearX19c, wSite19c.y);
+  await sleep(60);
+  const tN = (document.querySelector('#modal-root') || {}).textContent || '';
+  check('v89.6：就近探察 —— 「探得异迹」提示 + 点位现形',
+    tN.indexOf('探得异迹') >= 0 && G.wonderSiteOf(wSite19c.x, wSite19c.y).revealed === true);
+  G.ui.closeModal();
+  await sleep(40);
+  G.ui.openLandModal(wSite19c.x, wSite19c.y);
+  await sleep(60);
+  check('v89.6：已现形 → 弹窗有「探奇」入口',
+    ((document.querySelector('#modal-root') || {}).textContent || '').indexOf('探奇') >= 0);
+  const lg19c = G.lordGeneralOf();
+  if (lg19c) { lg19c.energy = 100; G.setStaNow(lg19c, 100); }
+  click(document.querySelector('#modal-root [data-action="do-wonder"]'));
+  await sleep(140);
+  check('v89.6：探奇 → 全屏奇遇（#scene-fx · kind=wonder）',
+    !!document.querySelector('#scene-fx') && !!G.sceneFx && G.sceneFx.kind === 'wonder');
+  const hero19c = document.querySelector('#scene-fx .sxf-hero');
+  check('v89.6：奇遇横幅「奇缘紫」底纹（--wonder-rgb）',
+    !!hero19c && hero19c.outerHTML.indexOf('wonder-rgb') >= 0);
+  let guard19c = 0;
+  while (guard19c < 8 && document.querySelector('#scene-fx [data-action="sxf-choice"]')) {
+    click(document.querySelector('#scene-fx [data-action="sxf-choice"]'));
+    await sleep(90);
+    guard19c++;
+  }
+  const rT19c = (document.querySelector('#scene-fx') || {}).textContent || '';
+  check('v89.6：结算屏（专属退出 + 见闻录收录行）',
+    !!document.querySelector('#scene-fx [data-action="sxf-exit"]') && rT19c.indexOf('见闻录收录') >= 0);
+  check('v89.6：见闻录已录 1 类', Object.keys(G.wonderState().j).length === 1,
+    Object.keys(G.wonderState().j).join(','));
+  click(document.querySelector('#scene-fx [data-action="sxf-exit"]'));
+  await sleep(140);
+  const tA = (document.querySelector('#modal-root') || {}).textContent || '';
+  check('v89.6：回归弹窗显示「已探」', tA.indexOf('已探') >= 0);
+  G.ui.closeModal();
+  await sleep(40);
+  check('v89.6：重复探奇被拒', G.wonderCheck(wSite19c.x, wSite19c.y, (lg19c || {}).id).ok === false);
+  G.ui.openJournal();
+  await sleep(60);
+  const jT19c = (document.querySelector('#modal-root') || {}).textContent || '';
+  const wName19c = (G.DATA.WONDERS[wSite19c.wid] || {}).name || '';
+  check('v89.6：见闻录 —— 已录显名 · 未录？？？ · 进度 1/24',
+    jT19c.indexOf(wName19c) >= 0 && jT19c.indexOf('？？？') >= 0 && /已录见闻\s*1\s*\/\s*24/.test(jT19c));
+  G.ui.closeModal();
+
   console.log('\n--- 20. 资质分级 / 铁匠铺打造 / 死属性修复 ---');
   /* 给当前城配齐客栈、招贤馆、铁匠铺 */
   const c20 = G.state.cities[0];
@@ -1479,7 +1559,10 @@ async function runTests(dom, URL) {
     let rq58 = null;
     for (const e58 of G.state.quests.pool) {
       const d58 = G.randomQuestDef(e58.id);
-      if (d58 && !d58.abs && !G.randQuestReady(e58)) { rq58 = e58; break; }
+      /* v89.6：**统一钉死** base=1e9 造"未达标" —— 只在扫描时判"未达标"不够：
+         任务指标（金/粮…）在真实时间里增长，80ms 窗口内可能跨过目标，渲染时已达标 →
+         had58 变真、断言假红（门禁实测 2/3）。钉死后 amount ≡ 0，确定性未达标。 */
+      if (d58 && !d58.abs && !G.randQuestReady(e58)) { rq58 = e58; rq58.base = 1e9; break; }
     }
     /* v85 顺手修存量 flake：本段之前已发育 + 打桩，池里可能"全员达标"——
        直接在池里找"未达标"会随任务随机抽取假红（同 §57 r18 族）。兜底：挑一条
@@ -1495,10 +1578,27 @@ async function runTests(dom, URL) {
       G.ui.setView('tasks');
       await sleep(80);
       const had58 = !!vc.querySelector('[data-action="claim-rand-quest"][data-q="' + rq58.id + '"]');
+      /* v89.6：翻牌前先等主循环「采样追平」（_lastQuestReady == 当前计数）——
+         主循环的重绘是**变化门**：last 可能因套件此前的快速领取而携带陈旧值，
+         恰等于"翻转后"的计数时就检测不到变化、永不重绘（存量假红的真因）。
+         这里只等循环采样、不碰视图，语义不变。 */
+      for (let iw = 0; iw < 15 && G._lastQuestReady !== G.questSummary().ready; iw++) {
+        await sleep(200);
+      }
       rq58.base = -1e9;                    /* 达标 —— 不切视图、不手动重绘 */
-      await sleep(1500);                   /* 等主循环（1s 间隔）自己发现 */
-      const now58 = !!vc.querySelector('[data-action="claim-rand-quest"][data-q="' + rq58.id + '"]');
-      check('★ 达标后无需手动刷新，主循环自动把它浮上去', !had58 && now58);
+      /* v89.6：固定 sleep(1500) 改**轮询** —— 主循环 1s 一拍，原等待只留 0.5 拍余量，
+         门禁（python subprocess + capture）环境下实测 3/3 假红；最长等 5s，语义不变：
+         达标后不手动刷新，等循环自己浮上来。 */
+      let now58 = false;
+      for (let i58 = 0; i58 < 25 && !now58; i58++) {
+        await sleep(200);
+        now58 = !!vc.querySelector('[data-action="claim-rand-quest"][data-q="' + rq58.id + '"]');
+      }
+      const dbg58 = 'had58=' + had58 + ' now58=' + now58
+        + ' ready=' + G.questSummary().ready + ' last=' + G._lastQuestReady
+        + ' view=' + G.ui.view + ' inPool=' + G.state.quests.pool.some((e) => e === rq58)
+        + ' amt=' + Math.round(G.randQuestAmount(rq58)) + '/goal=' + G.questGoal(G.randomQuestDef(rq58.id));
+      check('★ 达标后无需手动刷新，主循环自动把它浮上去', !had58 && now58, dbg58);
     }
   }
 

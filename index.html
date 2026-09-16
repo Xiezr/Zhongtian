@@ -94,6 +94,7 @@
     --cinnabar: #a83a2c; --strip-troop: #d8b04e; --strip-gap: #3c4148;
     --tag-growth: #d8b04e; --tag-military: #c9705a; --tag-war: #b8412f;
     --tag-build: #7fa85a; --tag-govern: #d8c46a; --tag-forge: #c9a06a;
+    --wonder: #c9a2ff; --wonder-rgb: 201,162,255;   /* v89.6 奇遇（青莲紫）：奇缘星 / 见闻录 / 线索 */
 
 
     --line-strong: rgba(var(--hl-rgb),.15);
@@ -172,6 +173,7 @@
     --cinnabar: #9a3428; --hero-tag: #a87400; --beauty-tag: #a04468; --beauty: #a04468;
     --tag-growth: #9a7018; --tag-military: #a04a32; --tag-war: #9a3428;
     --tag-build: #4f7a38; --tag-govern: #8a7418; --tag-forge: #95683a;
+    --wonder: #7a53b8; --wonder-rgb: 122,83,184;
     --strip-troop: #b08a2c; --strip-gap: #cdc4ae;
     --sh-rgb: 96,79,50; --hl-rgb: 92,76,46; --gold-rgb: 138,101,22;
     --scrim: rgba(78,64,40,.42);
@@ -200,6 +202,7 @@
     --cinnabar: #8f3226; --hero-tag: #966c00; --beauty-tag: #96436a; --beauty: #96436a;
     --tag-growth: #8f6a18; --tag-military: #96472f; --tag-war: #8f3226;
     --tag-build: #467334; --tag-govern: #7d6c14; --tag-forge: #8a6238;
+    --wonder: #6f4aa8; --wonder-rgb: 111,74,168;
     --strip-troop: #9c7d2a; --strip-gap: #c2cdc0;
     --sh-rgb: 74,92,76; --hl-rgb: 62,84,66; --gold-rgb: 125,106,28;
     --scrim: rgba(58,74,60,.42);
@@ -2670,6 +2673,39 @@
     100% { box-shadow: 0 0 0 0 rgba(var(--gold-rgb), 0), 0 2px 6px rgba(var(--sh-rgb), .5); }
   }
 
+  /* ============================================================
+   * v89.6（老板：「探索性和趣味性」）：奇遇 · 见闻录
+   * ------------------------------------------------------------
+   * .wnr-*  野地弹窗里的奇遇入口 / 探察提示（青莲紫 == --wonder）
+   * .sxf-clue  剧本结算屏的线索行（紫框虚线）
+   * .jnl-*  见闻录面板（三档图鉴 + 待探线索）
+   * ============================================================ */
+  .wnr-line { margin: 6px 0; padding: 6px 10px; border-radius: var(--r-md); font-size: var(--fs-sub);
+    color: var(--wonder); border: 1px solid rgba(var(--wonder-rgb),.42);
+    background: rgba(var(--wonder-rgb),.10); }
+  .wnr-line.wnr-new { color: var(--text); }
+  .wnr-line.wnr-done { color: var(--text-dim); border-color: rgba(var(--wonder-rgb),.22);
+    background: rgba(var(--wonder-rgb),.05); }
+  .btn.sm.wnr-btn { color: var(--wonder); border-color: rgba(var(--wonder-rgb),.55); }
+  .sxf-clue { margin-top: 8px; padding: 7px 10px; border-radius: var(--r-md); font-size: var(--fs-sub);
+    color: var(--wonder); border: 1px dashed rgba(var(--wonder-rgb),.5);
+    background: rgba(var(--wonder-rgb),.08); text-align: left; }
+  .jnl-stat { text-align: center; color: var(--text-dim); font-size: var(--fs-sub); margin: 2px 0 8px; }
+  .jnl-stat b { color: var(--gold-light); }
+  .jnl-sec { color: var(--gold-light); font-size: var(--fs-h3); font-weight: 700; margin: 10px 0 6px; }
+  .jnl-empty { color: var(--text-dim); font-size: var(--fs-sub); padding: 4px 0 2px; }
+  .jnl-list { display: flex; flex-direction: column; gap: 4px; }
+  .jnl-row { display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 4px 8px; border-radius: var(--r-sm); background: var(--surface-3); }
+  .jnl-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(148px,1fr)); gap: 6px; }
+  .jnl-card { display: flex; flex-direction: column; align-items: center; gap: 3px; text-align: center;
+    padding: 8px 6px; border-radius: var(--r-md); background: var(--surface-3);
+    border: 1px solid var(--line); }
+  .jnl-card.has { border-color: rgba(var(--wonder-rgb),.45); background: rgba(var(--wonder-rgb),.07); }
+  .jnl-ic { font-size: var(--fs-h1); line-height: 1; }
+  .jnl-nm { color: var(--text-strong); font-weight: 700; font-size: var(--fs-body); }
+  .jnl-card.has .jnl-nm { color: var(--wonder); }
+  .jnl-txt { color: var(--text-dim); font-size: var(--fs-cap); line-height: 1.35; }
 </style>
 </head>
 <body>

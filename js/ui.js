@@ -2084,6 +2084,18 @@
       '<div style="color:var(--text-dim);font-size:var(--fs-sub);margin:4px 0 6px;">野地 Lv' + lv4 +
         ' · 难度 ×' + lvN4.toFixed(1) + ' · 收益 ×' + lvR4.toFixed(1) +
         '　—— 江湖诸事随缘而现，精华用于蕴养修炼装备</div>';
+    /* v89.6：奇遇入口 —— 已现形才露面；未现形不给任何暗示（隐藏点是探索层的地基） */
+    var ws6 = GAME.wonderSiteOf ? GAME.wonderSiteOf(x, y) : null;
+    if (ws6) {
+      var cost6 = (DATA.WONDER && DATA.WONDER.cost) || { energy: 6, stam: 2 };
+      if (ws6.done) {
+        h += '<div class="wnr-line wnr-done">✦ 此地奇遇已探 —— 缘止于此</div>';
+      } else if (ws6.revealed) {
+        h += '<div class="wnr-line">✦ 此地似有异象未探　' +
+          '<button class="btn sm wnr-btn" data-action="do-wonder" data-x="' + x + '" data-y="' + y + '">' +
+          '探奇（精' + cost6.energy + ' · 体' + cost6.stam + '）</button></div>';
+      }
+    }
     if (res) {
       h += '<div class="note" style="margin:4px 0;color:' + (res.bad ? 'var(--red-light)' : 'var(--green-ok)') + ';">' +
         U.escape(res.name + '：' + res.text) + '</div>';
@@ -2138,6 +2150,14 @@
     if (!r.fx) { ui.toast('剧本缺失'); return; }
     ui.openSceneFx(r.fx);
   };
+  /* v89.6：探奇 —— 已现形点位 → 奇遇全屏剧本（君主亲往；扣费与锁在首次选择时落） */
+  ui.doWonder = function (x, y) {
+    var lg = GAME.lordGeneralOf();
+    var r = GAME.wonderStart(x, y, lg ? lg.id : '');
+    if (!r.ok) { ui.toast(r.msg); return; }
+    if (!r.fx) { ui.toast('奇物未载于册'); return; }
+    ui.openSceneFx(r.fx);
+  };
   ui.openSceneFx = function (fx) { ui._sceneFx = fx; ui.renderSceneFx(); };
   ui.renderSceneFx = function () {
     var fx = ui._sceneFx;
@@ -2165,7 +2185,7 @@
      剧本视觉化：幕景横幅（地形染色 + 大字水印 + 活动徽记 + 君主头像 + 天时日号）、
      行程时间线、幕题条、对白高亮、选项倾向徽章、专属退出结算卡（光晕 + 战果 + 账单）。
      全部复用现有素材与主题变量（地形色 / 天气 / 头像），零新资源。 */
-  ui.SXF_KIND = { fight: '征伐', trial: '试炼', gather: '采撷', cultivate: '修真', visit: '访贤', scene: '游历' };
+  ui.SXF_KIND = { fight: '征伐', trial: '试炼', gather: '采撷', cultivate: '修真', visit: '访贤', scene: '游历', wonder: '奇遇' };
   /* 选项倾向徽章：由修正系数直接生成（攻/获 = 增益 · 险/稳 = 负伤变化 · 缘 = 小幸运） */
   ui.sxfBadges = function (e) {
     e = e || {};
@@ -2284,6 +2304,10 @@
       var rgb = (v >> 16) + ',' + ((v >> 8) & 255) + ',' + (v & 255);
       tint = 'background:linear-gradient(135deg,rgba(' + rgb + ',.24),rgba(' + rgb + ',.04) 62%),var(--panel-bg);';
     }
+    /* v89.6：奇遇横幅改「奇缘紫」底纹 —— 与江湖活动一眼区分（看颜色就知道是奇遇） */
+    if (fx.kind === 'wonder') {
+      tint = 'background:linear-gradient(135deg,rgba(var(--wonder-rgb),.26),rgba(var(--wonder-rgb),.05) 62%),var(--panel-bg);';
+    }
     /* 天时（story 缺席时静默省略） */
     var we = (GAME.story && GAME.story.currentWeather) ? GAME.story.currentWeather() : null;
     var se = (GAME.story && GAME.story.currentSeason) ? GAME.story.currentSeason() : null;
@@ -2398,6 +2422,7 @@
         }).join('');
       }
       h += '</div>';
+      if (res.clue) h += '<div class="sxf-clue">' + U.escape(res.clue) + '</div>';
       if (!res.escaped || fx.spent) {
         h += '<div class="sxf-cost">耗：精力 -' + a.energy + ' · 体力 -' + a.stam +
           '　│　余：精力 ' + Math.round(gen.energy || 0) + ' · 体力 ' + Math.round(GAME.staNow(gen)) +
@@ -2428,6 +2453,63 @@
     }
     GAME.refreshAll();
     ui.openLandModal(fx.chk.x, fx.chk.y);   /* 原地回野地弹窗（显示结果与「今日已做」） */
+  };
+
+  /* ============================================================
+   * v89.6（老板：「探索性和趣味性」）：见闻录 —— 奇遇图鉴
+   * ------------------------------------------------------------
+   * 三档分组（逸闻 / 奇珍 / 绝景）；未录者只留「？？？」剪影；
+   * 已现形未探的点位列「待探线索」，带「前往」（回地图居中赴线索）。
+   * ============================================================ */
+  ui.openJournal = function () {
+    ui.openModal(ui.journalHTML());
+  };
+  ui.journalHTML = function () {
+    var ws = GAME.wonderState ? GAME.wonderState() : { r: {}, d: {}, j: {} };
+    var all = DATA.WONDERS || {};
+    var ids = Object.keys(all);
+    var got = ids.filter(function (id) { return ws.j[id]; }).length;
+    var sites = GAME.wonderSites ? GAME.wonderSites() : [];
+    var pending = [];
+    var known = 0;
+    sites.forEach(function (it) {
+      var k = it.x + ',' + it.y;
+      if (ws.d[k]) known++;
+      else if (ws.r[k]) { known++; pending.push(it); }
+    });
+    pending.sort(function (a, b) { return (a.x + a.y) - (b.x + b.y); });
+    var h = '<div class="gold-heading">📜 见闻录 · 天下奇遇</div>';
+    h += '<div class="jnl-stat">奇遇点位 <b>' + sites.length + '</b> 处　·　已知 <b>' + known +
+      '</b>　未探 <b>' + pending.length + '</b>　·　已录见闻 <b>' + got + ' / ' + ids.length + '</b></div>';
+    h += '<div class="jnl-sec">✦ 待探线索</div>';
+    if (pending.length) {
+      h += '<div class="jnl-list">';
+      pending.slice(0, 10).forEach(function (it) {
+        h += '<div class="jnl-row"><span class="jnl-nm">' + it.x + ',' + it.y + ' · ' +
+          GAME.wonderBandName(it.band) + '</span>' +
+          '<button class="btn sm wnr-btn" data-action="journal-go" data-x="' + it.x + '" data-y="' + it.y + '">前往</button></div>';
+      });
+      h += '</div>';
+    } else {
+      h += '<div class="jnl-empty">暂无线索 —— 江湖诸事走完，或可闻得异迹</div>';
+    }
+    ['small', 'rare', 'epic'].forEach(function (t) {
+      var list = ids.filter(function (id) { return (all[id] || {}).tier === t; });
+      var g2 = list.filter(function (id) { return ws.j[id]; }).length;
+      h += '<div class="jnl-sec">' + GAME.wonderTierName(t) + '（' + g2 + '/' + list.length + '）</div><div class="jnl-grid">';
+      list.forEach(function (id) {
+        var w = all[id] || {};
+        var has = !!ws.j[id];
+        h += '<div class="jnl-card' + (has ? ' has' : '') + '">' +
+          '<span class="jnl-ic">' + (has ? w.ic : '？') + '</span>' +
+          '<span class="jnl-nm">' + (has ? U.escape(w.name) : '？？？') + '</span>' +
+          '<span class="jnl-txt">' + (has ? U.escape(w.txt || '') : '未录 · 江湖之行或可闻得') + '</span>' +
+          '</div>';
+      });
+      h += '</div>';
+    });
+    h += '<div class="modal-foot"><button class="btn" data-action="close-modal">合上册子</button></div>';
+    return h;
   };
 
   /* 附属野地弹窗（原版「附属野地」） */
@@ -5768,6 +5850,7 @@
         '<button class="btn sm gold" data-action="map-goto">前往</button>' +
         '<button class="btn sm" data-action="map-center">回主城</button>' +
         '<button class="btn sm" data-action="map-capital">洛阳</button>' +
+        '<button class="btn sm" data-action="open-journal">📜 见闻录</button>' +
       '</div>');
     return '<div class="map-wrap">' +
       '<canvas id="mapCanvas"></canvas>' +
@@ -6281,6 +6364,11 @@
   ui.openLandModal = function (x, y) {
     var RES_NAME = ui.RES_NAME;
     var tile = GAME.map.tile(x, y);
+    /* v89.6：就近探察 —— 开格即见方圆二格内的未现形奇遇点位（探索层的"环顾四周"） */
+    var wsurv6 = GAME.wonderSurvey ? GAME.wonderSurvey(x, y) : 0;
+    var wsurvLine = wsurv6 > 0
+      ? '<div class="wnr-line wnr-new">📜 环顾四周，探得异迹 ' + wsurv6 + ' 处 —— 已记于见闻（图中寻「✦」往探）</div>'
+      : '';
     var lv = GAME.map.wildLevelNow ? GAME.map.wildLevelNow(x, y) : GAME.map.wildLevel(x, y);
     var ter = DATA.TERRAIN[tile.terrain];
     /* v15：加成按「每级 × 等级」线性计算 */
@@ -6316,7 +6404,7 @@
         '<div style="text-align:center;color:var(--text-dim);font-size:var(--fs-body);margin-bottom:8px;">守军约 ' +
           base.toLocaleString() + ' 名</div>' +
         '<div class="note">' + note + '</div>' +
-        ui.jianghuHTML(x, y) +
+        wsurvLine + ui.jianghuHTML(x, y) +
         '<div style="text-align:center;margin-top:14px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">' +
           '<button class="btn gold" data-action="exp-open" data-kind="wild">出兵（侦查 / 掠夺 / 占领）</button>' +
           '<button class="btn" data-action="close-modal">关闭</button></div>'
@@ -6366,7 +6454,7 @@
       '<div style="text-align:center;color:var(--text-dim);font-size:var(--fs-body);margin-bottom:8px;">守军约 ' +
         base.toLocaleString() + ' 名　·　产量加成 ' + (addStr || '无') + '</div>' +
       '<div class="note">' + note + '</div>' +
-      ui.jianghuHTML(x, y) +
+      wsurvLine + ui.jianghuHTML(x, y) +
       stat + ops +
       '<div class="modal-foot"><button class="btn" data-action="close-modal">关闭</button></div>'
     );

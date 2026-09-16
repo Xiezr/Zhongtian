@@ -198,6 +198,15 @@
       case 'sxf-escape': GAME.doSceneEscape(); break;
       case 'sxf-stop': ui.sxfTimingStop(); break;   /* v89.2：时机条停手 */
       case 'sxf-exit': ui.closeSceneFx(); break;
+      /* v89.6：奇遇 · 见闻录 */
+      case 'do-wonder': ui.doWonder(Number(el.dataset.x), Number(el.dataset.y)); break;
+      case 'open-journal': ui.openJournal(); break;
+      case 'journal-go':
+        ui.closeModal();
+        if (ui.view !== 'map') ui.setView('map');
+        ui.mapCenterOn(Number(el.dataset.x), Number(el.dataset.y));
+        ui.toast('已至线索所指（' + el.dataset.x + ',' + el.dataset.y + '）—— 点该格探奇');
+        break;
       case 'wg-max': { var wi = document.getElementById('wg-' + el.dataset.troop); if (wi) wi.value = wi.max; break; }
       case 'wild-garrison-do': GAME.doWildGarrisonDo(); break;
       case 'wild-withdraw': {
