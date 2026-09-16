@@ -13826,7 +13826,7 @@ console.log('\n===== 72. v88.1 场景整合（地形专属并入江湖游历） 
     var ters = ['hill', 'forest', 'lake', 'zhaoze', 'desert', 'caoyuan'];
     var okAll = true;
     ters.forEach(function (t) {
-      var scs = GAME.jianghuActsAt(t).filter(function (x) { return x.def.kind === 'scene'; });
+      var scs = GAME.jianghuCands(t).filter(function (x) { return x.def.kind === 'scene'; });
       if (scs.length !== 1) okAll = false;
     });
     return okAll;
@@ -13842,7 +13842,8 @@ console.log('\n===== 72. v88.1 场景整合（地形专属并入江湖游历） 
     for (var yy = 3; yy < 200 && !p; yy++) {
       for (var xx = 3; xx < 200; xx++) {
         var tl = GAME.map.tile(xx, yy);
-        if (tl && tl.terrain === 'hill' && !GAME.map.fortAt(xx, yy)) { p = { x: xx, y: yy }; break; }
+        if (tl && tl.terrain === 'hill' && !GAME.map.fortAt(xx, yy)
+            && GAME.jianghuActsAt(xx, yy).some(function (k) { return k.id === 'hill_scene'; })) { p = { x: xx, y: yy }; break; }
       }
     }
     if (!p) { hill.outcomes.forEach(function (o, i) { o.w = bakW[i]; }); return false; }
@@ -13969,7 +13970,8 @@ console.log('\n===== 73. v88 灵气双轨装备 + 江湖游历 =====');
     for (var yy = 3; yy < 200 && !p; yy++) {
       for (var xx = 3; xx < 200; xx++) {
         var tl = GAME.map.tile(xx, yy);
-        if (tl && tl.terrain === 'forest' && !GAME.map.fortAt(xx, yy)) { p = { x: xx, y: yy }; break; }
+        if (tl && tl.terrain === 'forest' && !GAME.map.fortAt(xx, yy)
+            && GAME.jianghuActsAt(xx, yy).some(function (k) { return k.id === 'xiu'; })) { p = { x: xx, y: yy }; break; }
       }
     }
     if (!p) return false;
@@ -14028,7 +14030,8 @@ console.log('\n===== 74. v89 君主专属 + 全屏江湖剧本 =====');
     for (var yy = 3; yy < 200 && !p; yy++) {
       for (var xx = 3; xx < 200; xx++) {
         var tl = GAME.map.tile(xx, yy);
-        if (tl && tl.terrain === 'forest' && !GAME.map.fortAt(xx, yy)) { p = { x: xx, y: yy }; break; }
+        if (tl && tl.terrain === 'forest' && !GAME.map.fortAt(xx, yy)
+            && GAME.jianghuActsAt(xx, yy).some(function (k) { return k.id === 'cai'; })) { p = { x: xx, y: yy }; break; }
       }
     }
     if (!p) return false;
@@ -14078,7 +14081,8 @@ console.log('\n===== 74. v89 君主专属 + 全屏江湖剧本 =====');
     for (var yy = 3; yy < 200 && !p; yy++) {
       for (var xx = 3; xx < 200; xx++) {
         var tl = GAME.map.tile(xx, yy);
-        if (tl && tl.terrain === 'forest' && !GAME.map.fortAt(xx, yy)) { p = { x: xx, y: yy }; break; }
+        if (tl && tl.terrain === 'forest' && !GAME.map.fortAt(xx, yy)
+            && GAME.jianghuActsAt(xx, yy).some(function (k) { return k.id === 'cai'; })) { p = { x: xx, y: yy }; break; }
       }
     }
     if (!p) return false;
@@ -14107,7 +14111,8 @@ console.log('\n===== 74. v89 君主专属 + 全屏江湖剧本 =====');
     for (var yy = 3; yy < 200 && !p; yy++) {
       for (var xx = 3; xx < 200; xx++) {
         var tl = GAME.map.tile(xx, yy);
-        if (tl && tl.terrain === 'hill' && !GAME.map.fortAt(xx, yy)) { p = { x: xx, y: yy }; break; }
+        if (tl && tl.terrain === 'hill' && !GAME.map.fortAt(xx, yy)
+            && GAME.jianghuActsAt(xx, yy).some(function (k) { return k.id === 'tao'; })) { p = { x: xx, y: yy }; break; }
       }
     }
     if (!p) return false;
@@ -14295,7 +14300,8 @@ console.log('\n===== 76. v89.2 场景化（场景画布 / 热点点选 / 时机�
     for (var yy = 3; yy < 200 && !p; yy++) {
       for (var xx = 3; xx < 200; xx++) {
         var tl = GAME.map.tile(xx, yy);
-        if (tl && tl.terrain === 'hill' && !GAME.map.fortAt(xx, yy)) { p = { x: xx, y: yy }; break; }
+        if (tl && tl.terrain === 'hill' && !GAME.map.fortAt(xx, yy)
+            && GAME.jianghuActsAt(xx, yy).some(function (k) { return k.id === 'tao'; })) { p = { x: xx, y: yy }; break; }
       }
     }
     if (!p) return false;
@@ -14391,6 +14397,132 @@ console.log('\n===== 77. v89.3 文案统一（灵物志 / 雅名 / 门类章） 
     return css3.indexOf('.sxf-hero-alias {') >= 0
       && uS3.indexOf('sxf-hero-alias') >= 0
       && uS3.indexOf('a.cat || ui.SXF_KIND[a.kind]') >= 0;
+  })());
+})();
+
+console.log('\n===== 78. v89.4 野地生态（逐地分布 · 概率出现 · 等级联动） =====');
+(function () {
+  var sS4 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'state.js'), 'utf8');
+
+  console.log('  --- ① 逐地分布（确定性 · 概率 · 逐地不同） ---');
+  check('v89.4：DATA.JH_SPREAD 齐全（荒僻率 / 两档 / 三系数）', (function () {
+    var sp = DATA.JH_SPREAD;
+    return !!sp && sp.noneP > 0 && sp.noneP < 1 && sp.p2 > sp.noneP && sp.p3 > sp.p2 && sp.p3 < 1
+      && sp.lvNeed > 0 && sp.lvDmg > 0 && sp.lvRew > 0;
+  })());
+  check('v89.4：分布是坐标的确定性函数（同格恒同貌 · 组合各异）', (function () {
+    var same = true, a = null, b = null;
+    for (var yy = 3; yy < 60; yy += 7) {
+      for (var xx = 3; xx < 60; xx += 7) {
+        var k1 = GAME.jianghuActsAt(xx, yy).map(function (k) { return k.id; }).join(',');
+        var k2 = GAME.jianghuActsAt(xx, yy).map(function (k) { return k.id; }).join(',');
+        if (k1 !== k2) same = false;
+        if (k1) { if (a === null) a = k1; else if (k1 !== a) b = k1; }
+      }
+    }
+    return same && a !== null && b !== null && a !== b;
+  })());
+  check('v89.4：概率分布成立（0/1/2/3 事皆存在 · 荒僻率 ~30% · 上限 3）', (function () {
+    var cnt = { 0: 0, 1: 0, 2: 0, 3: 0 }, tot = 0, bad = 0;
+    for (var yy = 3; yy < 120; yy += 3) {
+      for (var xx = 3; xx < 120; xx += 3) {
+        var tl = GAME.map.tile(xx, yy);
+        if (!tl || GAME.map.fortAt(xx, yy)) continue;
+        if (GAME.jianghuCands(tl.terrain).length === 0) continue;
+        var n = GAME.jianghuActsAt(xx, yy).length;
+        tot++;
+        if (n > 3) bad++;
+        cnt[n] = (cnt[n] || 0) + 1;
+      }
+    }
+    return bad === 0 && tot > 300 && cnt[0] > 0 && cnt[1] > 0 && cnt[2] > 0 && cnt[3] > 0
+      && cnt[0] / tot > 0.2 && cnt[0] / tot < 0.42;
+  })());
+  check('v89.4：候选约束（返回活动的地形全含本格地形）', (function () {
+    var okAll = true;
+    for (var yy = 3; yy < 90; yy += 5) {
+      for (var xx = 3; xx < 90; xx += 5) {
+        var tl = GAME.map.tile(xx, yy);
+        if (!tl) continue;
+        GAME.jianghuActsAt(xx, yy).forEach(function (k) {
+          if (!k.def.spots || k.def.spots.indexOf(tl.terrain) < 0) okAll = false;
+        });
+      }
+    }
+    return okAll;
+  })());
+
+  console.log('  --- ② 闸门（无此事之格 / 荒僻格不可行） ---');
+  check('v89.4：无此事之格被拒（随缘而现）· 有此事之格放行', (function () {
+    var lg = GAME.lordGeneralOf();
+    var no = null, yes = null;
+    for (var yy = 3; yy < 200 && (!no || !yes); yy++) {
+      for (var xx = 3; xx < 200; xx++) {
+        var tl = GAME.map.tile(xx, yy);
+        if (!tl || tl.terrain !== 'hill' || GAME.map.fortAt(xx, yy)) continue;
+        var has = GAME.jianghuActsAt(xx, yy).some(function (k) { return k.id === 'tao'; });
+        if (!has && !no) no = { x: xx, y: yy };
+        if (has && !yes) yes = { x: xx, y: yy };
+      }
+    }
+    if (!no || !yes) return false;
+    GAME.state.jianghu = {};
+    lg.energy = 100; GAME.setStaNow(lg, 100);
+    var r1 = GAME.jianghuCheck(no.x, no.y, lg.id, 'tao');
+    var r2 = GAME.jianghuCheck(yes.x, yes.y, lg.id, 'tao');
+    return !r1.ok && /随缘而现/.test(r1.msg || '') && r2.ok === true;
+  })());
+  check('v89.4：荒僻格（0 事）—— 全部候选被拒 + UI 空态，且等级行仍在', (function () {
+    var lg = GAME.lordGeneralOf();
+    var p = null;
+    for (var yy = 3; yy < 200 && !p; yy++) {
+      for (var xx = 3; xx < 200; xx++) {
+        var tl = GAME.map.tile(xx, yy);
+        if (tl && !GAME.map.fortAt(xx, yy) && GAME.jianghuActsAt(xx, yy).length === 0
+            && GAME.jianghuCands(tl.terrain).length > 0) { p = { x: xx, y: yy }; break; }
+      }
+    }
+    if (!p) return false;
+    GAME.state.jianghu = {};
+    lg.energy = 100; GAME.setStaNow(lg, 100);
+    var blocked = GAME.jianghuCands(GAME.map.tile(p.x, p.y).terrain).every(function (k) {
+      return !GAME.jianghuCheck(p.x, p.y, lg.id, k.id).ok;
+    });
+    var h4 = GAME.ui.jianghuHTML(p.x, p.y);
+    return blocked && h4.indexOf('荒僻') >= 0 && h4.indexOf('野地 Lv') >= 0;
+  })());
+  check('v89.4：UI 等级行数字与公式一致（收益 ×（1+lv×lvRew））', (function () {
+    var p = null;
+    for (var yy = 3; yy < 200 && !p; yy++) {
+      for (var xx = 3; xx < 200; xx++) {
+        var tl = GAME.map.tile(xx, yy);
+        if (tl && !GAME.map.fortAt(xx, yy) && GAME.jianghuCands(tl.terrain).length > 0) { p = { x: xx, y: yy }; break; }
+      }
+    }
+    if (!p) return false;
+    var lv4 = GAME.map.wildLevelNow(p.x, p.y);
+    var h4 = GAME.ui.jianghuHTML(p.x, p.y);
+    var m = h4.match(/收益 ×([\d.]+)/);
+    return !!m && m[1] === (1 + lv4 * DATA.JH_SPREAD.lvRew).toFixed(1)
+      && h4.indexOf('野地 Lv' + lv4) >= 0;
+  })());
+
+  console.log('  --- ③ 等级联动（难度 / 负伤 / 收益随 lv） ---');
+  check('v89.4：收益随等级（同 seed · lv0 vs lv10 → ×4.00）', (function () {
+    var lg = GAME.lordGeneralOf();
+    var chk = { act: DATA.LING_ACT.xiu, gen: lg, day: 1, lv: 0, x: 11, y: 22, actId: 'xiu' };
+    var m0 = (GAME.jianghuRoll(chk).text || '').match(/灵气精华 \+(\d+)/);
+    chk.lv = 10;
+    var m1 = (GAME.jianghuRoll(chk).text || '').match(/灵气精华 \+(\d+)/);
+    return !!m0 && !!m1 && Number(m1[1]) === Math.round(Number(m0[1]) * 4);
+  })());
+  check('v89.4：三系数接线（源码：lvN / lvR / lvW + lvN 进难度）', (function () {
+    return sS4.indexOf('var lvN = 1 + lv * (sp4.lvNeed || 0);') >= 0
+      && sS4.indexOf('var lvR = 1 + lv * (sp4.lvRew || 0);') >= 0
+      && sS4.indexOf('var lvW = 1 + lv * (sp4.lvDmg || 0);') >= 0
+      && sS4.indexOf('var need = a.power * lvN;') >= 0
+      && sS4.indexOf('a.power * lvN * (1 + (i - 1) * 0.45)') >= 0
+      && sS4.indexOf('GAME.jianghuCands = function') >= 0;
   })());
 })();
 

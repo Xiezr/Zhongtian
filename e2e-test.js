@@ -4432,7 +4432,8 @@ if (svBtn) {
     for (let y = 3; y < 200 && !hp; y++) {
       for (let x = 3; x < 200; x++) {
         const tl = G.map.tile(x, y);
-        if (tl && tl.terrain === 'hill' && !G.map.fortAt(x, y)) { hp = { x, y }; break; }
+        if (tl && tl.terrain === 'hill' && !G.map.fortAt(x, y)
+            && G.jianghuActsAt(x, y).some(k => k.id === 'hill_scene')) { hp = { x, y }; break; }
       }
     }
     G.state.generals.forEach(function (g) { g.energy = 100; G.setStaNow(g, 100); });
@@ -4557,7 +4558,8 @@ if (svBtn) {
     for (let y = 3; y < 200 && !fp88; y++) {
       for (let x = 3; x < 200; x++) {
         const tl = G.map.tile(x, y);
-        if (tl && tl.terrain === 'forest' && !G.map.fortAt(x, y)) { fp88 = { x, y }; break; }
+        if (tl && tl.terrain === 'forest' && !G.map.fortAt(x, y)
+            && G.jianghuActsAt(x, y).some(k => k.id === 'xiu')) { fp88 = { x, y }; break; }
       }
     }
     G.state.generals.forEach(function (g) { g.energy = 100; G.setStaNow(g, 100); });
@@ -4565,10 +4567,12 @@ if (svBtn) {
     G.ui._jhGen = null;
     G.ui.openLandModal(fp88.x, fp88.y);
     await sleep(200);
-    check('v88：野地弹窗含江湖区块（活动按钮 ≥3）', (function () {
+    check('v88/v89.4：野地弹窗含江湖区块（按钮数 = 逐地分布 1~3）', (function () {
       const root = document.querySelector('#modal-root');
+      const n4 = G.jianghuActsAt(fp88.x, fp88.y).length;
       return !!root && root.textContent.indexOf('江湖游历') >= 0
-        && root.querySelectorAll('[data-action="do-jianghu"]').length >= 3;
+        && n4 >= 1 && n4 <= 3
+        && root.querySelectorAll('[data-action="do-jianghu"]').length === n4;
     })());
     const before88 = G.state.items.lingsui || 0;
     click(document.querySelector('#modal-root [data-action="do-jianghu"][data-act="xiu"]'));
@@ -4636,7 +4640,8 @@ if (svBtn) {
     for (let y = 3; y < 200 && !hp89; y++) {
       for (let x = 3; x < 200; x++) {
         const tl = G.map.tile(x, y);
-        if (tl && tl.terrain === 'hill' && !G.map.fortAt(x, y)) { hp89 = { x, y }; break; }
+        if (tl && tl.terrain === 'hill' && !G.map.fortAt(x, y)
+            && G.jianghuActsAt(x, y).some(k => k.id === 'tao')) { hp89 = { x, y }; break; }
       }
     }
     G.state.jianghu = {};
@@ -4689,7 +4694,8 @@ if (svBtn) {
     for (let y = 3; y < 200 && !fp89; y++) {
       for (let x = 3; x < 200; x++) {
         const tl = G.map.tile(x, y);
-        if (tl && tl.terrain === 'desert' && !G.map.fortAt(x, y)) { fp89 = { x, y }; break; }
+        if (tl && tl.terrain === 'desert' && !G.map.fortAt(x, y)
+            && G.jianghuActsAt(x, y).some(k => k.id === 'desert_scene')) { fp89 = { x, y }; break; }
       }
     }
     G.ui.closeModal();
@@ -4760,6 +4766,58 @@ if (svBtn) {
   }
 
   await sleep(30);
+
+  /* v89.4：野地生态（荒僻空态 · 有事格 1~3 · 等级收益行） */
+  {
+    let wp4 = null;
+    for (let y = 3; y < 200 && !wp4; y++) {
+      for (let x = 3; x < 200; x++) {
+        const tl = G.map.tile(x, y);
+        if (tl && !G.map.fortAt(x, y) && G.jianghuActsAt(x, y).length === 0
+            && G.jianghuCands(tl.terrain).length > 0) { wp4 = { x, y }; break; }
+      }
+    }
+    if (wp4) {
+      G.ui.openLandModal(wp4.x, wp4.y);
+      await sleep(200);
+      check('v89.4：荒僻野地 —— 游历区块空态（随缘而现）', (function () {
+        const root = document.querySelector('#modal-root');
+        return !!root && root.textContent.indexOf('荒僻') >= 0
+          && root.textContent.indexOf('野地 Lv') >= 0;
+      })());
+      G.ui.closeModal();
+      await sleep(80);
+    } else {
+      check('v89.4：荒僻野地 —— 游历区块空态（随缘而现）', false);
+    }
+
+    let yp4 = null, yn4 = 0;
+    for (let y = 3; y < 200 && !yp4; y++) {
+      for (let x = 3; x < 200; x++) {
+        const tl = G.map.tile(x, y);
+        if (tl && tl.terrain === 'hill' && !G.map.fortAt(x, y)) {
+          const n4 = G.jianghuActsAt(x, y).length;
+          if (n4 >= 2) { yp4 = { x, y }; yn4 = n4; break; }
+        }
+      }
+    }
+    G.state.jianghu = {};
+    if (yp4) {
+      G.ui.openLandModal(yp4.x, yp4.y);
+      await sleep(200);
+      check('v89.4：有事格 —— 按钮数=分布数（1~3）· 等级收益行在', (function () {
+        const root = document.querySelector('#modal-root');
+        const btns = root.querySelectorAll('[data-action="do-jianghu"]').length;
+        return btns === yn4 && btns <= 3
+          && root.textContent.indexOf('野地 Lv') >= 0
+          && root.textContent.indexOf('收益 ×') >= 0;
+      })());
+      G.ui.closeModal();
+      await sleep(80);
+    } else {
+      check('v89.4：有事格 —— 按钮数=分布数（1~3）· 等级收益行在', false);
+    }
+  }
 
   G.ui.setView('city');
   await sleep(60);

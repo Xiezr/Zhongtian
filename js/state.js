@@ -2883,13 +2883,30 @@
   };
 
   /* --------- 江湖游历 --------- */
-  GAME.jianghuActsAt = function (terrain) {
+  /* v89.4：候选（某地形上"理论上"可能发生的全部活动）—— 分布与测试共用 */
+  GAME.jianghuCands = function (terrain) {
     var out = [];
     Object.keys(DATA.LING_ACT || {}).forEach(function (id) {
       var a = DATA.LING_ACT[id];
       if (a.spots && a.spots.indexOf(terrain) >= 0) out.push({ id: id, def: a });
     });
     return out;
+  };
+  /* v89.4：逐地分布 —— 某格的活动组合 = 格子坐标的确定性函数（同格恒同貌）。
+     ① 荒僻率：不是所有野地都有活动；② 有事格 1~3 事（按候选洗牌裁剪）。 */
+  GAME.jianghuActsAt = function (x, y) {
+    var tile = GAME.map.tile(x, y);
+    if (!tile) return [];
+    var cands = GAME.jianghuCands(tile.terrain);
+    if (!cands.length) return [];
+    var sp = DATA.JH_SPREAD || {};
+    var r = function (salt) { return GAME.invasionRoll('jhsp|' + x + ',' + y + '|' + salt); };
+    var roll0 = r('any');
+    if (roll0 < (sp.noneP != null ? sp.noneP : 0.3)) return [];
+    var want = roll0 < (sp.p2 != null ? sp.p2 : 0.62) ? 1
+      : (roll0 < (sp.p3 != null ? sp.p3 : 0.87) ? 2 : 3);
+    var list = cands.slice().sort(function (a2, b2) { return r('o:' + a2.id) - r('o:' + b2.id); });
+    return list.slice(0, Math.min(want, list.length));
   };
   GAME.jianghuDone = function (s, x, y, actId, day) {
     return ((s.jianghu || {})[x + ',' + y + '|' + actId]) === day;
@@ -2903,6 +2920,10 @@
     if (!a.spots || a.spots.indexOf(tile.terrain) < 0) {
       return { ok: false, msg: ((DATA.TERRAIN[tile.terrain] || {}).name || '此地') + '做不了「' + a.name + '」' };
     }
+    /* v89.4：逐地分布闸门 —— 此处野地今日并没有这桩事（随缘而现） */
+    var avail4 = false;
+    GAME.jianghuActsAt(x, y).forEach(function (k) { if (k.id === actId) avail4 = true; });
+    if (!avail4) return { ok: false, msg: '此处野地无「' + a.name + '」—— 江湖之事随缘而现，换一处看看' };
     var gen = null;
     (s.generals || []).forEach(function (g) { if (g.id === genId) gen = g; });
     if (!gen) return { ok: false, msg: '请选择带队的将领' };
@@ -2949,11 +2970,17 @@
       lo = Math.round(lo); hi = Math.round(hi);
       return lo + Math.floor(roll(salt) * (hi - lo + 1));
     };
-    /* v89：剧本修正系数（缺省时与 v88 结果逐位一致 —— 可复现不变式） */
+    /* v89：剧本修正系数 · v89.4：野地等级联动 —— 难度 / 负伤 / 收益随 lv 增长
+       （系数全走 DATA.JH_SPREAD；种子与「同选择同结果」不变式不受影响。
+         lv=0 时与 v88 逐位一致） */
+    var sp4 = DATA.JH_SPREAD || {};
+    var lvN = 1 + lv * (sp4.lvNeed || 0);
+    var lvR = 1 + lv * (sp4.lvRew || 0);
+    var lvW = 1 + lv * (sp4.lvDmg || 0);
     var mo = mods || {};
     var mPow = mo.pow || 1, mRw = mo.reward || 1, mWound = mo.wound || 1, mLuck = mo.luck || 0;
-    var mi = function (n) { return Math.max(1, Math.round(n * mRw)); };
-    var mw = function (n) { return Math.max(1, Math.round(n * mWound)); };
+    var mi = function (n) { return Math.max(1, Math.round(n * mRw * lvR)); };
+    var mw = function (n) { return Math.max(1, Math.round(n * mWound * lvW)); };
     /* 灵力（读修炼装备；与当前生效套无关） */
     var ling = GAME.lingPowerOf(gen);
     var texts = [];
@@ -2982,7 +3009,7 @@
     if (a.kind === 'fight') {
       /* 灵力判定：我方战力 =（灵力 + 等级 x2）x 种子波动；难度随野地等级 +35%/级 */
       var pow = (ling + (gen.level || 1) * 2) * (0.9 + roll('pow') * 0.2) * mPow;
-      var need = a.power * (1 + lv * 0.35);
+      var need = a.power * lvN;
       if (pow >= need) {
         ess(a.win.ess[0], a.win.ess[1]);
         tryDrop('drop');
@@ -3002,7 +3029,7 @@
       var layer = 0;
       for (var i = 1; i <= 3; i++) {
         var p2 = (ling + (gen.level || 1) * 2) * (0.9 + roll('t' + i) * 0.2) * mPow;
-        var nd = a.power * (1 + lv * 0.35) * (1 + (i - 1) * 0.45);
+        var nd = a.power * lvN * (1 + (i - 1) * 0.45);
         if (p2 < nd) break;
         layer = i;
       }

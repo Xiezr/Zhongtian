@@ -2061,8 +2061,7 @@
     if (!GAME.jianghuActsAt) return '';
     var tile = GAME.map.tile(x, y);
     if (!tile) return '';
-    var acts = GAME.jianghuActsAt(tile.terrain);
-    if (!acts.length) return '';
+    var acts = GAME.jianghuActsAt(x, y);   /* v89.4：逐地分布（同格恒同貌） */
     /* v88.1：地形专属（scene）排最前 —— 本地的「招牌」 */
     acts.sort(function (p1, p2) {
       return ((p2.def.kind === 'scene') ? 1 : 0) - ((p1.def.kind === 'scene') ? 1 : 0);
@@ -2076,14 +2075,22 @@
       ui._jhGen = own[0] ? own[0].id : '';
     }
     var res = (ui._jhResult && ui._jhResult.xy === (x + ',' + y)) ? ui._jhResult : null;
+    /* v89.4：野地生态 —— 逐地随缘（荒僻 / 1~3 事）· 等级联动（难度 / 收益） */
+    var lv4 = GAME.map.wildLevelNow(x, y);
+    var sp4 = DATA.JH_SPREAD || {};
+    var lvN4 = 1 + lv4 * (sp4.lvNeed || 0), lvR4 = 1 + lv4 * (sp4.lvRew || 0);
     var h = '<div class="op-zone" style="margin-top:8px;">' +
-      '<div class="op-zone-t">☯ 江湖游历　<span style="color:var(--text-dim);font-weight:400;font-size:var(--fs-sub);">君主亲往 · 每事每日一次 · 看灵力判定</span></div>' +
-      '<div style="color:var(--text-dim);font-size:var(--fs-sub);margin:4px 0 6px;">江湖诸事皆由君主亲历：讨伐切磋、采药静修、拜访奇人——点开即入全屏剧情，精华用于蕴养修炼装备。</div>';
+      '<div class="op-zone-t">☯ 江湖游历　<span style="color:var(--text-dim);font-weight:400;font-size:var(--fs-sub);">君主亲往 · 逐地随缘而生 · 看灵力判定</span></div>' +
+      '<div style="color:var(--text-dim);font-size:var(--fs-sub);margin:4px 0 6px;">野地 Lv' + lv4 +
+        ' · 难度 ×' + lvN4.toFixed(1) + ' · 收益 ×' + lvR4.toFixed(1) +
+        '　—— 江湖诸事随缘而现，精华用于蕴养修炼装备</div>';
     if (res) {
       h += '<div class="note" style="margin:4px 0;color:' + (res.bad ? 'var(--red-light)' : 'var(--green-ok)') + ';">' +
         U.escape(res.name + '：' + res.text) + '</div>';
     }
-    if (!own.length) {
+    if (!acts.length) {
+      h += '<div style="color:var(--text-dim);font-size:var(--fs-sub);margin:4px 0;">此处野地荒僻，暂无江湖之事 —— 野地之事随缘而现，换一处看看。</div>';
+    } else if (!own.length) {
       h += '<div style="color:var(--text-dim);font-size:var(--fs-sub);">君主不在此城 —— 江湖之事，需君主亲至。</div>';
     } else {
       h += '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:6px 0;">' +
