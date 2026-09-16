@@ -13539,6 +13539,16 @@ console.log('\n===== 70. v85 地图自适应 · 缩略地图 =====');
     }
     return edgeN > 500 && jedgeN > 500 && G.map.miniBuild() === d;
   })());
+  check('实测：174 城零错位（城格色块 = 城自身州 · v85.1 复核修复）', (function () {
+    var d = G.map.miniBuild();
+    var idx = {};
+    d.stName.forEach(function (n, i) { idx[n] = i; });
+    var mis = 0;
+    (DATA.NPC_CITIES || []).forEach(function (c) {
+      if (d.state[c.y * 500 + c.x] !== idx[c.state]) mis++;
+    });
+    return mis === 0;
+  })());
 
   console.log('  --- ④ 渲染层与底部条 ---');
   check('v85：渲染层齐备（离屏/绘制/面板/底部小图）',

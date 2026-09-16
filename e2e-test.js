@@ -4345,6 +4345,14 @@ if (svBtn) {
       }
       return e1 > 10 && e2 > 10;
     })());
+    check('v85.1：174 城零错位（城格色块 = 城自身州 · 复核修复）', (function () {
+      const d = G.map.miniBuild();
+      const idx = {};
+      d.stName.forEach((n, i) => { idx[n] = i; });
+      let mis = 0;
+      (G.DATA.NPC_CITIES || []).forEach((c) => { if (d.state[c.y * 500 + c.x] !== idx[c.state]) mis++; });
+      return mis === 0;
+    })());
     G.ui.closeModal();
     await sleep(60);
   }
