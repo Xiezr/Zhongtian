@@ -4722,6 +4722,11 @@ if (svBtn) {
         && el.querySelectorAll('.sxf-opt').length >= 2
         && el.textContent.indexOf('第 1 / ' + f.stages.length + ' 幕') >= 0;
     })());
+    check('v89.3：横幅文案统一（雅名「古冢探幽」· 门类章「探幽」）', (function () {
+      const al = document.querySelector('#scene-fx .sxf-hero-alias');
+      const kd = document.querySelector('#scene-fx .sxf-hero-kind');
+      return !!al && al.textContent === '古冢探幽' && !!kd && kd.textContent === '探幽';
+    })());
     click(document.querySelector('#scene-fx [data-action="sxf-choice"]'));
     await sleep(120);
     check('v89.1：行程时间线随选择累积（幕题 + 抉择）', (function () {

@@ -12,10 +12,10 @@
 | `git/` | 3 | **收尾同步的唯一入口**。`sync.py` 默认干跑、`--apply` 才落盘（干跑先行是本项目铁律）；`gate.py` 是三件套门禁的**唯一出口**（pre-commit 钩子与 sync 都调它）；`install_hooks.py` 把 `hooks/` 里的钩子装进 `.git/hooks/`。 |
 | `git/hooks/` | 2 | 存这里是为了**进版本库** —— `.git/hooks/` 不被 git 跟踪，换台机器克隆后必须跑 `install_hooks.py` 重装。⚠️ **行尾必须 LF**，CRLF 会让 `#!/bin/sh` 失效。 |
 | `mem/` | 10 | MEMORY.md 必须 < 9600 字符（超出会被会话注入截断，尾部规则等于不存在）。`slim_memory_template.py` = 把超限整段 cut 到 `docs/` 的模板。 |
-| `patch/` | 157 | **事实上的变更日志**：按断言名 `grep -rl "<断言名>" tools/patch/` 就能找到当初是哪次改的。"同一条消息里对同一文件的多次 Edit 会互相覆盖"，所以补丁一律脚本化并留档。 |
+| `patch/` | 162 | **事实上的变更日志**：按断言名 `grep -rl "<断言名>" tools/patch/` 就能找到当初是哪次改的。"同一条消息里对同一文件的多次 Edit 会互相覆盖"，所以补丁一律脚本化并留档。 |
 | `probe/` | 17 | jsdom 没有布局引擎 → 尺寸/重叠/溢出/折行只能在**真浏览器**量。`probe60_geom.js` 是可复用模板，`probe66_ui.js` 有"逐行折行"量法，`probe67_save3.js` 量存档体积与配额。 |
 | `show/` | 4 | 给老板看的对照图 / 曲线校准 / 素材巡视。 |
-| **合计** | **235** | |
+| **合计** | **240** | |
 
 ## asset/（素材处理）
 
@@ -261,6 +261,11 @@ MEMORY.md 必须 < 9600 字符（超出会被会话注入截断，尾部规则�
 - `patch_v89_2_scene.py`（29KB）　— v89.2 场景插画（map.js）：12 活动各一幅程序化风景画 + GAME.map.paintScene 出口。
 - `patch_v89_2_tests.py`（11KB）　— v89.2 测试：① sxfTimingStop 防误触守卫 ② smoke §76（场景/时机/交互） ③ e2e 三处流程改「停手」+ 新断言。探针幂等。
 - `patch_v89_2_ui.py`（15KB）　— v89.2 UI：sceneFxHTML 场景化改造 —— 场景画布 + 热点点选（spot）+ 时机条（timing）+ 选项图标。
+- `patch_v89_3_copy.py`（10KB）　— v89.3 文案统一 · 灵物志 —— js/data.js
+- `patch_v89_3_css.py`（1KB）　— v89.3 样式 —— index.html：.sxf-hero-alias（雅名金色小字）
+- `patch_v89_3_docs.py`（7KB）　— v89.3 文档补丁 —— 五份文档追加（设计规范 §33 / 备忘 §35 / 规划二十一 / 档案 v89.3 / 设计文档 v1.5）
+- `patch_v89_3_tests.py`（6KB）　— v89.3 测试 —— smoke-test.js §77 + e2e-test.js 横幅断言
+- `patch_v89_3_ui.py`（1KB）　— v89.3 横幅接线 —— js/ui.js：雅名（alias）+ 门类章（cat 兜底 kind）
 - `patch_v89_data.py`（17KB）　— v89 数据层：全屏江湖场景剧本 DATA.SCENE_FLOW（12 活动 · 对话/事件导向 · 专属退出）。探针幂等。
 - `patch_v89_docs.py`（7KB）　— v89 文档：设计规范 §30 · 备忘 §32 · 需求档案 v89 · 规划补记 · 设计文档 v1.2。探针幂等。
 - `patch_v89_e2e.py`（10KB）　— v89 e2e（e2e-test.js）：v88.1/v88 段剧本化改造 + v89 新段（君主专属 + 全屏交互）。探针幂等。

@@ -2398,34 +2398,34 @@
      kind: fight(灵力判定) / trial(多层) / gather(抽取) / cultivate(稳定) / visit(事件)
      spots: 可发生的地形（对齐设计 §3.4 地形 x 活动矩阵） */
   DATA.LING_ACT = {
-    tao: { name: '讨伐', kind: 'fight', icon: '⚔️', energy: 15, stam: 6, power: 200, drop: 0.05,
+    tao: { name: '讨伐', cat: '征伐', alias: '拔寨擒王', kind: 'fight', icon: '⚔️', energy: 15, stam: 6, power: 200, drop: 0.05,
       spots: ['hill', 'forest', 'lake', 'zhaoze', 'desert', 'caoyuan'],
       win: { ess: [30, 50] }, lose: { wound: 8, ess: [5, 10] },
       desc: '清剿野地贼寇妖兽：胜则灵材丰厚，败亦有所得（负伤而归）。' },
-    qie: { name: '切磋', kind: 'fight', icon: '🤝', energy: 10, stam: 4, power: 100, drop: 0.03,
+    qie: { name: '切磋', cat: '论武', alias: '以武会友', kind: 'fight', icon: '🤝', energy: 10, stam: 4, power: 100, drop: 0.03,
       spots: ['hill', 'desert', 'caoyuan'],
       win: { ess: [15, 25] }, lose: { wound: 3, ess: [8, 12] },
       desc: '与江湖武人对练：无论胜负必有所悟（心得保底）。' },
-    shi: { name: '试炼', kind: 'trial', icon: '🗿', energy: 18, stam: 7, power: 320, drop: 0.15,
+    shi: { name: '试炼', cat: '试炼', alias: '石门三重', kind: 'trial', icon: '🗿', energy: 18, stam: 7, power: 320, drop: 0.15,
       spots: ['hill', 'forest', 'zhaoze', 'desert', 'caoyuan'],
       win: { ess: [45, 75] }, lose: { wound: 10, ess: [10, 18] },
       desc: '古阵试炼共三层逐层加码：见好就收，或再进一层。' },
-    cai: { name: '采集', kind: 'gather', icon: '🌿', energy: 8, stam: 3,
+    cai: { name: '采集', cat: '采撷', alias: '采灵撷芳', kind: 'gather', icon: '🌿', energy: 8, stam: 3,
       spots: ['hill', 'forest', 'lake', 'zhaoze', 'desert', 'caoyuan'],
       win: { ess: [20, 35] },
-      desc: '采灵草撷灵矿：灵气精华入袋，偶有双收。' },
-    xiu: { name: '修炼', kind: 'cultivate', icon: '🧘', energy: 12, stam: 5,
+      desc: '采灵草、撷灵矿、拾灵菌：灵气精华入袋，偶有双收。' },
+    xiu: { name: '修炼', cat: '修真', alias: '吐纳周天', kind: 'cultivate', icon: '🧘', energy: 12, stam: 5,
       spots: ['forest', 'lake'],
       win: { ess: [35, 55] },
       desc: '择灵气葱郁处打坐聚气：精华稳定入体，小概率「悟道时刻」。' },
-    bai: { name: '拜访', kind: 'visit', icon: '🏡', energy: 8, stam: 2,
+    bai: { name: '拜访', cat: '访贤', alias: '柴扉清谈', kind: 'visit', icon: '🏡', energy: 8, stam: 2,
       spots: ['hill', 'forest', 'lake', 'zhaoze', 'desert', 'caoyuan'],
       win: { ess: [10, 20] },
       desc: '拜访隐士奇人：一段小故事，一份小赠礼。' },
     /* ---- 地形专属（v87「野地专属场景」-> v88.1 整合：从 WILD_SCENES 原样并入） ----
        kind: 'scene' —— 每地形一条「招牌」，与通用活动同走江湖游历入口 / s.jianghu 每日锁；
        产出保持军装经济侧（金/粮/材料/珠宝/道具/豪杰），与活动的灵气精华产出并行不悖。 */
-    hill_scene: { name: '绿林探访', kind: 'scene', icon: '⚔️', energy: 12, stam: 4,
+    hill_scene: { name: '绿林探访', cat: '绿林', alias: '山道会盟', kind: 'scene', icon: '⚔️', energy: 12, stam: 4,
       spots: ['hill'],
       desc: '入山访豪杰：或得好汉相赠，或得豪杰来投，或遇剪径强人负伤而归。',
       outcomes: [
@@ -2435,17 +2435,17 @@
         { w: 12, t: '得珠宝一颗', jewel: 1 },
         { w: 22, t: '遇剪径强人，负伤而归', wound: 6 },
       ] },
-    lake_scene: { name: '垂钓', kind: 'scene', icon: '🎣', energy: 6, stam: 2,
+    lake_scene: { name: '临湖垂钓', cat: '垂纶', alias: '金鳞之约', kind: 'scene', icon: '🎣', energy: 6, stam: 2,
       spots: ['lake'],
-      desc: '临湖垂钓：鱼获充作军粮，偶得水中沉物。',
+      desc: '泽畔垂纶：灵鲤入篓充作军粮，偶得水中沉物。',
       outcomes: [
-        { w: 44, t: '鱼获颇丰（充粮）', grain: [800, 2000] },
-        { w: 22, t: '小鱼数尾', grain: [200, 600] },
+        { w: 44, t: '灵鲤入篓（充粮）', grain: [800, 2000] },
+        { w: 22, t: '小鲤数尾', grain: [200, 600] },
         { w: 12, t: '网得沉物（锦囊）', item: 'jinang' },
         { w: 8, t: '得珠宝一颗', jewel: 1 },
         { w: 14, t: '空竿而归', none: 1 },
       ] },
-    zhaoze_scene: { name: '沼泽寻宝', kind: 'scene', icon: '🔍', energy: 14, stam: 5,
+    zhaoze_scene: { name: '沼泽寻宝', cat: '寻珍', alias: '瘴泽寻珍', kind: 'scene', icon: '🔍', energy: 14, stam: 5,
       spots: ['zhaoze'],
       desc: '探寻旧战场遗迹：宝物丰厚，瘴气伤身。',
       outcomes: [
@@ -2455,7 +2455,7 @@
         { w: 12, t: '得古朴木盒', item: 'chest' },
         { w: 24, t: '瘴气侵体，负伤而归', wound: 8 },
       ] },
-    desert_scene: { name: '地宫探险', kind: 'scene', icon: '🏛️', energy: 20, stam: 8,
+    desert_scene: { name: '地宫探险', cat: '探幽', alias: '古冢探幽', kind: 'scene', icon: '🏛️', energy: 20, stam: 8,
       spots: ['desert'],
       desc: '深入地下宫阙：三层遗藏一层比一层厚，险也一层比一层深。',
       outcomes: [
@@ -2465,22 +2465,22 @@
         { w: 12, t: '探得珠宝', jewel: { n: [1, 3] } },
         { w: 14, t: '地宫塌方，负伤逃出', wound: 12 },
       ] },
-    forest_scene: { name: '林中狩猎', kind: 'scene', icon: '🏹', energy: 8, stam: 3,
+    forest_scene: { name: '林中狩猎', cat: '行猎', alias: '林中逐鹿', kind: 'scene', icon: '🏹', energy: 8, stam: 3,
       spots: ['forest'],
-      desc: '入林行猎：兽皮药材俱是军资，亦可得野味充粮。',
+      desc: '入林行猎：白鹿灵迹出没之地，皮毛灵材俱是军资，亦可得野味充粮。',
       outcomes: [
-        { w: 42, t: '猎获皮毛药材', mats: [1, 2] },
+        { w: 42, t: '猎获灵兽皮毛', mats: [1, 2] },
         { w: 22, t: '猎得野味（充粮）', grain: [500, 1500] },
         { w: 14, t: '偶得失物（锦囊）', item: 'jinang' },
         { w: 22, t: '空手而归', none: 1 },
       ] },
-    caoyuan_scene: { name: '草原牧马', kind: 'scene', icon: '🐎', energy: 10, stam: 4,
+    caoyuan_scene: { name: '草原牧马', cat: '牧驹', alias: '草原驯驹', kind: 'scene', icon: '🐎', energy: 10, stam: 4,
       spots: ['caoyuan'],
-      desc: '逐水草而行：得马市之资或牧马辎具，偶遇良马相随。',
+      desc: '逐水草而行：得马市之资或牧马辎具，偶遇灵驹相随。',
       outcomes: [
         { w: 34, t: '马市得资', gold: [800, 2000] },
         { w: 26, t: '得牧马辎具', mats: [1, 2] },
-        { w: 12, t: '良马相随（得马鞭）', item: 'mabian' },
+        { w: 12, t: '灵驹相随（得马鞭）', item: 'mabian' },
         { w: 28, t: '风尘仆仆', none: 1 },
       ] },
   };
@@ -2597,8 +2597,8 @@
           o: [
             { l: '崖边的灵草丛', d: '品相最好，路也最险', e: { reward: 1.15, wound: 1.2 } },
             { l: '溪畔的灵苗', d: '稳妥之处，细水长流', e: { reward: 1.0, wound: 0.7 } },
-            { l: '林下的菌菇与矿苗', d: '广撒网，或有两头收', e: { luck: 0.08 } } ] },
-        { s: '草间惊蛇', t: '采得顺手时，草丛忽起窸窣 —— 一条花蛇盘在最近那株灵草上！',
+            { l: '林下的灵菌与矿苗', d: '广撒网，或有两头收', e: { luck: 0.08 } } ] },
+        { s: '草间惊蛇', t: '采得顺手时，草丛忽起窸窣 —— 一条青鳞灵蛇盘在最近那株灵草上，信子轻吐，并不惧人。',
           o: [
             { l: '小心驱赶', d: '不伤生灵，稳稳拿下', e: { reward: 1.05 } },
             { l: '绕开再寻', d: '多走几步，不惹麻烦', e: { wound: 0.6, reward: 0.95 } },
@@ -2677,12 +2677,12 @@
 
     lake_scene: { art: '🌊', scene: 'lake', escLabel: '🧺 收起鱼竿', backLabel: '收竿回城',
       stages: [
-        { s: '择处下竿', t: '湖水澄澈，远处有鱼跃出水面。今日想在哪处下竿？',
+        { s: '择处下竿', t: '湖面澄澈如镜，远处一尾金鳞跃出水面，鳞光一闪而没 —— 不似凡鱼。今日想在哪处下竿？',
           o: [
-            { l: '芦苇荡边', d: '鱼就爱躲在这种地方', e: { reward: 1.1 } },
-            { l: '湖心石上', d: '水深鱼大，也考验定力', e: { reward: 1.15, wound: 1.1 } },
+            { l: '芦苇荡边', d: '灵物就爱躲在这种地方', e: { reward: 1.1 } },
+            { l: '湖心石上', d: '水深藏灵物，也考验定力', e: { reward: 1.15, wound: 1.1 } },
             { l: '柳荫之下', d: '清净，适合打盹', e: { wound: 0.6, reward: 0.95 } } ] },
-        { s: '大物咬钩', t: '浮漂忽然一沉 —— 水面下似有一尾大物！', t2: '提竿！',
+        { s: '灵鲤咬钩', t: '浮漂猛地一沉，水下金鳞翻涌 —— 好一尾灵鲤！', t2: '提竿！',
           o: [
             { l: '稳稳提竿', d: '不急不躁，跟它耗', e: { reward: 1.15 } },
             { l: '慢半拍', d: '鱼线松了半分，险险保住', e: { reward: 1.03 } },
@@ -2690,13 +2690,13 @@
         { s: '日头偏西', t: '日头偏西，水面泛起金光。',
           o: [ { l: '再守最后一竿', d: '守得到是惊喜，守不到是清净', e: {} } ] } ],
       exits: {
-        win:     { ic: '🎣', t: '满载收竿', s: '渔获满篓，晚风正好' },
-        partial: { ic: '🎣', t: '收竿而归', s: '两三条小鱼，也算没白坐' },
-        escape:  { ic: '🧺', t: '收起鱼竿', s: '今日心不静，鱼也不咬钩' } } },
+        win:     { ic: '🎣', t: '满载收竿', s: '灵鲤满篓，晚风正好' },
+        partial: { ic: '🎣', t: '收竿而归', s: '三两尾小鲤，也算没白坐' },
+        escape:  { ic: '🧺', t: '收起鱼竿', s: '今日心不静，灵物也不咬钩' } } },
 
     zhaoze_scene: { art: '🌫️', scene: 'marsh', escLabel: '🏃 退出沼泽', backLabel: '退回高地',
       stages: [
-        { s: '遗痕初探', t: '旧战场的遗痕没入沼泽，锈戟斜插、水洼泛黑。哪一处的底下，值得一探？',
+        { s: '遗痕初探', t: '旧战场的遗痕没入沼泽，锈戟斜插、水洼泛黑，水雾深处隐有青光游走。哪一处的底下，值得一探？',
           o: [
             { l: '锈戟斜插之处', d: '兵戈之下必有遗物', e: { reward: 1.08 } },
             { l: '水雾最深处', d: '越险的地方，越有东西', e: { reward: 1.15, wound: 1.2 } },
@@ -2705,7 +2705,7 @@
           o: [
             { l: '以袖掩鼻，再探片刻', d: '富贵险中求', e: { reward: 1.12, wound: 1.25 } },
             { l: '见好就收，退回高地', d: '人比财要紧', e: { wound: 0.5, reward: 0.9 } } ] },
-        { s: '泥下箱角', t: '脚下淤泥一松，一截漆木箱角露了出来。', t2: '下铲！',
+        { s: '泥下箱角', t: '脚下淤泥一松，一截漆木箱角露了出来 —— 漆纹之间，隐有灵光流转。', t2: '下铲！',
           o: [
             { l: '一铲到位', d: '挖到宝是运，挖得准是本事', e: { reward: 1.12 } },
             { l: '挖偏半尺', d: '多费两铲力气，也挖着了', e: { reward: 1.02 } },
@@ -2717,7 +2717,7 @@
 
     desert_scene: { art: '🔥', scene: 'ruin', escLabel: '🏛️ 退出地宫', backLabel: '出宫回城',
       stages: [
-        { s: '拾级而下', t: '地宫入口的壁画还留着前朝色泽，烛火照出向下的石阶。',
+        { s: '拾级而下', t: '地宫入口的壁画还留着前朝色泽 —— 画的正是方士祭炼之景；烛火照出向下的石阶。',
           o: [
             { l: '举火把，一级一级下', d: '步步为营', e: { wound: 0.7 } },
             { l: '快步直入地宫深处', d: '晚了怕有别人', e: { reward: 1.15, wound: 1.15 } } ] },
@@ -2737,33 +2737,33 @@
 
     forest_scene: { art: '🌲', scene: 'hunt', escLabel: '🌲 就此收弓', backLabel: '收弓回程',
       stages: [
-        { s: '循迹入林', t: '林间晨雾未散，地上有一串新鲜的兽迹。',
+        { s: '循迹入林', t: '林间晨雾未散，湿泥上印着一串梅花状的蹄印，其间隐有灵光未散。',
           o: [
-            { l: '顺着兽迹追', d: '稳扎稳打', e: { reward: 1.05 } },
+            { l: '顺着蹄印追', d: '稳扎稳打', e: { reward: 1.05 } },
             { l: '抄近路去下风口', d: '老猎人的走法', e: { reward: 1.1, luck: 0.05 } },
             { l: '先布几个套子', d: '不费力气，等收成', e: { wound: 0.6 } } ] },
-        { s: '灌木惊兽', t: '灌木丛猛地晃动 —— 一头健壮的野物冲了出来！',
+        { s: '白鹿现踪', t: '灌木丛猛地一晃 —— 一头白鹿跃出：通体如雪，蹄尖点过处，草叶微光一闪。它驻步回望，似在掂量你。',
           o: [
             { l: '张弓搭箭', d: '看这一箭', e: { reward: 1.12 } },
-            { l: '放它一条生路', d: '取之有度，年年有余', e: { wound: 0.6, reward: 0.95 } } ] },
+            { l: '放它一条生路', d: '祥瑞之物，取之有度', e: { wound: 0.6, reward: 0.95 } } ] },
         { s: '收弓回程', t: '日头高起，该收弓了。', t2: '收弓！',
           o: [
             { l: '收弓利落', d: '林子里从不缺明天的猎物', e: { reward: 1.12 } },
             { l: '稳步而行', d: '一路无事，安然而归', e: { reward: 1.02 } },
             { l: '脚下打滑', d: '绊了一下，惊起一群飞鸟', e: { reward: 0.94, wound: 1.06 } } ] } ],
       exits: {
-        win:     { ic: '🏹', t: '满载而归', s: '皮毛药材，俱是军资' },
-        partial: { ic: '🐾', t: '空手而返', s: '野物精明，今日认输' },
+        win:     { ic: '🏹', t: '满载而归', s: '皮毛灵材，俱是军资' },
+        partial: { ic: '🐾', t: '空手而返', s: '灵兽机警，今日认输' },
         escape:  { ic: '🌲', t: '收弓回程', s: '林深不知处，改日再来' } } },
 
     caoyuan_scene: { art: '🌤️', scene: 'steppe', escLabel: '🐎 勒马回城', backLabel: '策马归营',
       stages: [
-        { s: '牧人指点', t: '草原上马群如云。牧人抬手一指：「那匹，还没被谁驯服过。」',
+        { s: '牧人指点', t: '草原上灵驹成群，如云涌动。牧人抬手一指：「最烈的那匹，还没被谁驯服过。」',
           o: [
             { l: '翻身上马，试试驯它', d: '马背上的功夫', e: { reward: 1.12, wound: 1.15 } },
             { l: '先去马市转转', d: '看看行情再说', e: { reward: 1.05 } },
             { l: '帮牧人干会儿活', d: '先混个脸熟', e: { luck: 0.08 } } ] },
-        { s: '马儿相人', t: '马儿打了个响鼻，侧着蹄子打量你 —— 它也在相人。',
+        { s: '灵驹相人', t: '灵驹打了个响鼻，侧着蹄子打量你 —— 它也在相人。',
           o: [
             { l: '走上前去，轻抚马鬃', d: '以心换心', e: { reward: 1.1 } },
             { l: '取套马杆，干脆利落', d: '靠本事说话', e: { pow: 1.1, reward: 1.08, wound: 1.2 } } ] },
@@ -2773,9 +2773,9 @@
             { l: '信马由缰', d: '慢慢走，也不误归期', e: { reward: 1.02 } },
             { l: '马儿使性', d: '颠了一路，灰头土脸', e: { reward: 0.94, wound: 1.06 } } ] } ],
       exits: {
-        win:     { ic: '🐎', t: '驯马成功', s: '烈马贴耳，草原归你' },
-        partial: { ic: '🌾', t: '风尘仆仆', s: '马没驯成，见识长了' },
-        escape:  { ic: '🐎', t: '勒马回城', s: '风向不对，不与马群较劲' } } },
+        win:     { ic: '🐎', t: '驯驹成功', s: '灵驹贴耳，愿随君行' },
+        partial: { ic: '🌾', t: '风尘仆仆', s: '灵驹未驯，见识长了' },
+        escape:  { ic: '🐎', t: '勒马回城', s: '风向不对，不与灵驹较劲' } } },
   };
 
   window.GAME.DATA = DATA;

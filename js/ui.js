@@ -2295,7 +2295,9 @@
     h += '<div class="sxf-hero-top">';
     h += '<span class="sxf-act-ic">' + a.icon + '</span>';
     h += '<span class="sxf-hero-name">' + U.escape(a.name) + '</span>';
-    h += '<span class="sxf-hero-kind">' + U.escape(ui.SXF_KIND[a.kind] || '江湖') + '</span>';
+    /* v89.3：雅名（alias）与门类章（cat 兜底 kind）—— 命名体系统一 */
+    if (a.alias) h += '<span class="sxf-hero-alias">' + U.escape(a.alias) + '</span>';
+    h += '<span class="sxf-hero-kind">' + U.escape(a.cat || ui.SXF_KIND[a.kind] || '江湖') + '</span>';
     h += '<span class="sxf-hero-lord">' + ui.faceOf(gen, 44) +
       '<span class="sxf-lord-meta"><b>' + U.escape(gen.name) + '</b>' +
       '<span class="sxf-lord-sub">灵力 ' + GAME.lingPowerOf(gen) + ' · 精力 ' + Math.round(gen.energy || 0) +
