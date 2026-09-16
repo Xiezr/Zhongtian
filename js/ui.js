@@ -2146,6 +2146,13 @@
     el.style.display = 'block';
     el.innerHTML = ui.sceneFxHTML(fx);
     el.scrollTop = 0;
+    /* v89.2：把场景画到画布上；时机幕启动指针计时器 */
+    ui.paintSceneFx();
+    ui.sxfTimingClear();
+    if (fx.phase === 'stage') {
+      var st0 = fx.fly.stages[fx.stage];
+      if (st0 && st0.t2) ui.sxfTimingStart();
+    }
   };
   /* v89.1（老板：「只有文字，能不能再丰富一点」）——
      剧本视觉化：幕景横幅（地形染色 + 大字水印 + 活动徽记 + 君主头像 + 天时日号）、
@@ -2171,6 +2178,90 @@
   ui.sxfQuote = function (t) {
     return U.escape(t).replace(/「[^」]*」/g, '<span class="sxf-q">$&</span>');
   };
+  /* v89.2（老板「纯选择，缺少场景交互 …… 我想看见个湖，而不是一行字」）——
+     两个新交互原语（数据驱动、引擎零改动）：
+       · spot   —— 第 1 幕变成**场景热点**：在画里点地点，而不是读三个按钮；
+       · timing —— 关键一幕变成**时机条**：看准了再停手，命中三档（正中/不错/脱手）。
+     选项编号仍是 scenePick(i) 的 i，三档即三个选项 —— 可复现不变式保持。 */
+  ui.SXF_ANCHORS = {
+    lake:    [[0.13, 0.62], [0.53, 0.56], [0.86, 0.60]],
+    fort:    [[0.31, 0.62], [0.62, 0.50], [0.86, 0.58]],
+    array:   [[0.27, 0.60], [0.52, 0.54], [0.76, 0.58]],
+    meadow:  [[0.22, 0.54], [0.52, 0.68], [0.80, 0.56]],
+    grove:   [[0.28, 0.62], [0.55, 0.52], [0.78, 0.60]],
+    cottage: [[0.37, 0.60], [0.56, 0.50], [0.80, 0.62]],
+    road:    [[0.30, 0.62], [0.50, 0.54], [0.80, 0.60]],
+    marsh:   [[0.22, 0.58], [0.52, 0.50], [0.80, 0.62]],
+    ruin:    [[0.42, 0.58], [0.62, 0.58], [0.82, 0.64]],
+    hunt:    [[0.25, 0.62], [0.52, 0.54], [0.80, 0.64]],
+    steppe:  [[0.26, 0.58], [0.55, 0.50], [0.80, 0.60]],
+    yard:    [[0.28, 0.60], [0.55, 0.52], [0.78, 0.62]]
+  };
+  /* 一幕用哪种交互：时机 > 场景热点（第 1 幕，2~3 个选项）> 常规按钮 */
+  ui.sxfStageMode = function (fly, idx, st) {
+    if (st && st.t2) return 'timing';
+    if (idx === 0 && st && st.o && st.o.length >= 2 && st.o.length <= 3
+        && ui.SXF_ANCHORS[fly.scene]) return 'spot';
+    return 'choice';
+  };
+  /* 时机判定（纯函数）：正中 / 不错 / 脱手 → 选项 0 / 1 / 2 */
+  ui.sxfTimingGrade = function (pos) {
+    if (pos >= 0.44 && pos <= 0.56) return 0;
+    if (pos >= 0.28 && pos <= 0.72) return 1;
+    return 2;
+  };
+  ui._sxfTick = null; ui._sxfT0 = 0; ui._sxfPos = 0;
+  /* 指针位置：三角波 0→1→0，周期 1.6 秒 */
+  ui.sxfTimingPos = function () {
+    var per = 1600, t = (Date.now() - ui._sxfT0) % (per * 2);
+    if (t < 0) t += per * 2;
+    return t <= per ? t / per : (per * 2 - t) / per;
+  };
+  ui.sxfTimingStart = function () {
+    ui._sxfT0 = Date.now(); ui._sxfPos = 0;
+    if (ui._sxfTick) return;
+    ui._sxfTick = setInterval(function () {
+      var el = document.getElementById('sxf-mark');
+      if (!el) return;
+      ui._sxfPos = ui.sxfTimingPos();
+      el.style.left = (4 + ui._sxfPos * 92) + '%';
+    }, 40);
+  };
+  ui.sxfTimingClear = function () {
+    if (ui._sxfTick) { clearInterval(ui._sxfTick); ui._sxfTick = null; }
+  };
+  /* 停手 → 按命中档选对应选项（pos 可注入：测试用） */
+  ui.sxfTimingStop = function (pos) {
+    var fx = ui._sceneFx;
+    if (!fx || fx.phase !== 'stage') return;        /* 防误触：流程已结束 */
+    var st = fx.fly.stages[fx.stage];
+    if (!st || !st.t2) return;                      /* 只在时机幕生效（连点不越幕） */
+    var p = (typeof pos === 'number') ? pos : ui.sxfTimingPos();
+    ui.sxfTimingClear();
+    GAME.doScenePick(ui.sxfTimingGrade(p));
+  };
+  /* 选项图标：由修正系数派生，让同一幕几个选项一眼不同 */
+  ui.sxfOptIcon = function (e) {
+    e = e || {};
+    if (e.wound && e.wound > 1) return '🔥';
+    if (e.wound && e.wound < 1) return '🛡️';
+    if (e.pow && e.pow > 1) return '⚔️';
+    if (e.reward && e.reward > 1) return '🎁';
+    if (e.luck) return '🍀';
+    return '·';
+  };
+  /* 把当前场景画到画布上（ctx 缺失时静默跳过：测试桩环境安全） */
+  ui.paintSceneFx = function () {
+    var el = document.getElementById('scene-fx');
+    var fx = ui._sceneFx;
+    if (!el || !fx || !GAME.map || !GAME.map.paintScene) return;
+    var cv = el.querySelector ? el.querySelector('canvas.sxf-canvas') : null;
+    if (!cv || !cv.getContext) return;
+    var ctx = null;
+    try { ctx = cv.getContext('2d'); } catch (e) { ctx = null; }
+    if (!ctx) return;
+    GAME.map.paintScene(ctx, fx.fly.scene || 'meadow', fx.chk.x * 31 + fx.chk.y * 17);
+  };
   ui.sceneFxHTML = function (fx) {
     var a = fx.chk.act;
     var fly = fx.fly;
@@ -2194,9 +2285,11 @@
     meta.push('野地 Lv' + fx.chk.lv);
     meta.push('第 ' + dayN + ' 日' + (se && se.name ? ' · ' + U.escape(se.name) : ''));
     if (we) meta.push(we.icon + U.escape(we.name || ''));
+    var st = (fx.phase === 'stage') ? fly.stages[fx.stage] : null;
+    var mode = st ? ui.sxfStageMode(fly, fx.stage, st) : '';
 
     var h = '<div class="sxf-wrap">';
-    /* —— 幕景横幅 —— */
+    /* —— 顶栏：活动 / 门类 / 君主 / 天时 —— */
     h += '<div class="sxf-hero"' + (tint ? ' style="' + tint + '"' : '') + '>';
     h += '<span class="sxf-hero-art" aria-hidden="true">' + (fly.art || '📜') + '</span>';
     h += '<div class="sxf-hero-top">';
@@ -2216,6 +2309,26 @@
         '<button class="btn sm" data-action="sxf-escape">' + U.escape(fly.escLabel || '就此离去') + '</button></div>';
     }
     h += '</div>';
+    /* —— v89.2 场景插画（看见湖，而不是一行字；第 1 幕直接点画选点）—— */
+    h += '<div class="sxf-scene' + (fx.phase === 'result' ? ' is-done' : '') + '">';
+    h += '<canvas class="sxf-canvas" width="1720" height="520" aria-hidden="true"></canvas>';
+    if (mode === 'spot') {
+      var anchors = ui.SXF_ANCHORS[fly.scene] || [];
+      h += '<div class="sxf-spots">';
+      for (var si = 0; si < st.o.length; si++) {
+        var op0 = st.o[si];
+        var pt = anchors[si] || [0.25 + si * 0.25, 0.62];
+        h += '<button class="btn sxf-opt sxf-spot" data-action="sxf-choice" data-i="' + si + '"' +
+          ' style="left:' + (pt[0] * 100).toFixed(1) + '%;top:' + (pt[1] * 100).toFixed(1) + '%;"' +
+          ' title="' + U.escape(op0.d || op0.l) + '">' +
+          '<span class="sxf-spot-hit" aria-hidden="true"></span>' +
+          '<span class="sxf-spot-lb"><b>' + U.escape(op0.l) + '</b>' + ui.sxfBadges(op0.e) + '</span>' +
+          '</button>';
+      }
+      h += '</div>';
+      h += '<div class="sxf-sc-tip">点画中之处 —— 落子于此</div>';
+    }
+    h += '</div>';
     /* —— 行程时间线（已走过的幕题与当时抉择）—— */
     if (fx.picks.length) {
       h += '<div class="sxf-timeline"><span class="sxf-tl-cap">行程</span>';
@@ -2228,18 +2341,29 @@
       h += '</div>';
     }
     if (fx.phase === 'stage') {
-      /* —— 当前幕：幕题条 + 叙事卡（对白高亮）+ 选项（倾向徽章）—— */
-      var st = fly.stages[fx.stage];
+      /* —— 当前幕：幕题条 + 叙事卡 + 交互区（热点 / 时机 / 按钮）—— */
       h += '<div class="sxf-stage">';
       h += '<div class="sxf-stage-tag"><span class="sxf-stage-no">第 ' + (fx.stage + 1) + ' / ' + total + ' 幕</span>' +
         (st.s ? '<span class="sxf-stage-tt">' + U.escape(st.s) + '</span>' : '') + '</div>';
       h += '<div class="sxf-narr">' + ui.sxfQuote(st.t) + '</div>';
-      h += '<div class="sxf-opts">' + st.o.map(function (op, oi) {
-        return '<button class="btn sxf-opt" data-action="sxf-choice" data-i="' + oi + '">' +
-          '<span class="sxf-opt-l"><b>' + U.escape(op.l) + '</b>' +
-          (op.d ? '<span class="sxf-opt-d">' + U.escape(op.d) + '</span>' : '') + '</span>' +
-          '<span class="sxf-opt-b">' + ui.sxfBadges(op.e) + '</span></button>';
-      }).join('') + '</div>';
+      if (mode === 'timing') {
+        h += '<div class="sxf-timing">' +
+          '<div class="sxf-tk"><span class="sxf-zone sxf-zone-g" aria-hidden="true"></span>' +
+          '<span class="sxf-zone sxf-zone-p" aria-hidden="true"></span>' +
+          '<span class="sxf-mark" id="sxf-mark" aria-hidden="true"></span></div>' +
+          '<div class="sxf-tm-row">' +
+          '<span class="sxf-tm-hint">看准时机 —— 正中者事半功倍，脱手者得不偿失</span>' +
+          '<button class="btn gold lg" data-action="sxf-stop">' + U.escape(st.t2 || '就是现在！') + '</button>' +
+          '</div></div>';
+      } else if (mode === 'choice') {
+        h += '<div class="sxf-opts">' + st.o.map(function (op, oi) {
+          return '<button class="btn sxf-opt" data-action="sxf-choice" data-i="' + oi + '">' +
+            '<span class="sxf-opt-ic" aria-hidden="true">' + ui.sxfOptIcon(op.e) + '</span>' +
+            '<span class="sxf-opt-l"><b>' + U.escape(op.l) + '</b>' +
+            (op.d ? '<span class="sxf-opt-d">' + U.escape(op.d) + '</span>' : '') + '</span>' +
+            '<span class="sxf-opt-b">' + ui.sxfBadges(op.e) + '</span></button>';
+        }).join('') + '</div>';
+      }
       h += '<div class="sxf-note">' +
         (fx.spent ? '已动身 —— 中途罢手，所耗精力体力不返；此地此事今日即算已过。'
                   : '尚未动身 —— 此时离去，无任何消耗。') + '</div>';
@@ -2280,6 +2404,7 @@
     var fx = ui._sceneFx;
     ui._sceneFx = null;
     GAME.sceneFx = null;
+    ui.sxfTimingClear();          /* v89.2：时机条计时器随层关闭清零 */
     var el = document.getElementById('scene-fx');
     if (el) el.style.display = 'none';
     if (!fx || !fx.chk) return;

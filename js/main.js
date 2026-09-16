@@ -196,6 +196,7 @@
       /* v89：全屏江湖剧本（选择 / 中途退出 / 收尾关闭） */
       case 'sxf-choice': GAME.doScenePick(Number(el.dataset.i)); break;
       case 'sxf-escape': GAME.doSceneEscape(); break;
+      case 'sxf-stop': ui.sxfTimingStop(); break;   /* v89.2：时机条停手 */
       case 'sxf-exit': ui.closeSceneFx(); break;
       case 'wg-max': { var wi = document.getElementById('wg-' + el.dataset.troop); if (wi) wi.value = wi.max; break; }
       case 'wild-garrison-do': GAME.doWildGarrisonDo(); break;

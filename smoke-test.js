@@ -14225,6 +14225,114 @@ console.log('\n===== 75. v89.1 剧本视觉化（幕景 / 幕题 / 徽章 / 结�
   })());
 })();
 
+console.log('\n===== 76. v89.2 场景化（场景画布 / 热点点选 / 时机条） =====');
+(function () {
+  var uS2 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'ui.js'), 'utf8');
+  var mS2 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'main.js'), 'utf8');
+  var hS2 = fsMod.readFileSync(pathMod.join(__dirname, 'index.html'), 'utf8');
+  var css2 = hS2.match(/<style[^>]*>([\s\S]*?)<\/style>/)[1];
+
+  console.log('  --- ① 场景插画（12 幅全可绘制） ---');
+  check('v89.2：paintScene 出口 + 12 场景名册', (function () {
+    return !!GAME.map.paintScene && (GAME.map.SCENE_KEYS || []).length === 12;
+  })());
+  check('v89.2：12 幅场景全部绘制无异常（记录式桩 ctx）', (function () {
+    function mkCtx2() {
+      var grad = { addColorStop: function () {} };
+      var c2 = {};
+      ['beginPath', 'closePath', 'moveTo', 'lineTo', 'quadraticCurveTo', 'bezierCurveTo',
+        'arc', 'ellipse', 'rect', 'fill', 'stroke', 'fillRect', 'strokeRect', 'clearRect',
+        'save', 'restore', 'translate', 'scale', 'rotate', 'setTransform', 'clip',
+        'fillText', 'strokeText', 'setLineDash'].forEach(function (n) { c2[n] = function () {}; });
+      c2.measureText = function () { return { width: 8 }; };
+      c2.createLinearGradient = function () { return grad; };
+      c2.createRadialGradient = function () { return grad; };
+      return c2;
+    }
+    var all = true;
+    (GAME.map.SCENE_KEYS || []).forEach(function (k) {
+      try { if (GAME.map.paintScene(mkCtx2(), k, 123) !== true) all = false; }
+      catch (e) { all = false; }
+    });
+    return all && GAME.map.paintScene(null, 'lake', 1) === false;
+  })());
+  check('v89.2：每个活动都有一幅对应的场景画（scene × 12 · 全名册内）', (function () {
+    var F = DATA.SCENE_FLOW || {}, keys = Object.keys(DATA.LING_ACT || {});
+    var names = GAME.map.SCENE_KEYS || [];
+    var n = 0;
+    keys.forEach(function (k) { if (F[k] && F[k].scene && names.indexOf(F[k].scene) >= 0) n++; });
+    return n === 12;
+  })());
+
+  console.log('  --- ② 时机幕（三档结局） ---');
+  check('v89.2：12 处时机幕（t2 + 三档：首档增益 / 末档折损）', (function () {
+    var F = DATA.SCENE_FLOW || {}, keys = Object.keys(DATA.LING_ACT || []);
+    var n = 0, bad = 0;
+    keys.forEach(function (k) {
+      var f = F[k]; if (!f) return;
+      f.stages.forEach(function (st) {
+        if (!st.t2) return;
+        n++;
+        var g0 = st.o[0].e || {}, g2 = st.o[2].e || {};
+        var up = (g0.pow > 1) || (g0.reward > 1);
+        var down = (g2.pow < 1) || (g2.reward < 1);
+        if (st.o.length !== 3 || !up || !down) bad++;
+      });
+    });
+    return n === 12 && bad === 0;
+  })());
+  check('v89.2：时机判定纯函数（正中 0.5 → 0 · 其余 → 1 · 边缘 → 2）', (function () {
+    var f = GAME.ui.sxfTimingGrade;
+    if (!f) return false;
+    return f(0.5) === 0 && f(0.44) === 0 && f(0.56) === 0
+      && f(0.35) === 1 && f(0.7) === 1 && f(0.1) === 2 && f(0.9) === 2;
+  })());
+
+  console.log('  --- ③ 渲染与接线（三种交互各就各位） ---');
+  check('v89.2：三种交互分别渲染（第 1 幕热点 / 次幕按钮 / 末幕时机条）', (function () {
+    var s2 = GAME.state, lg = GAME.lordGeneralOf();
+    var p = null;
+    for (var yy = 3; yy < 200 && !p; yy++) {
+      for (var xx = 3; xx < 200; xx++) {
+        var tl = GAME.map.tile(xx, yy);
+        if (tl && tl.terrain === 'hill' && !GAME.map.fortAt(xx, yy)) { p = { x: xx, y: yy }; break; }
+      }
+    }
+    if (!p) return false;
+    s2.jianghu = {};
+    lg.energy = 100; GAME.setStaNow(lg, 100);
+    var st0 = GAME.sceneStart(p.x, p.y, lg.id, 'tao');
+    if (!st0.ok) return false;
+    var h0 = GAME.ui.sceneFxHTML(GAME.sceneFx);
+    var isSpot = h0.indexOf('sxf-canvas') >= 0 && h0.indexOf('sxf-spots') >= 0
+      && h0.indexOf('sxf-spot-lb') >= 0 && (h0.match(/data-action="sxf-choice"/g) || []).length === 3
+      && h0.indexOf('点画中之处') >= 0;
+    GAME.scenePick(0);
+    var h1 = GAME.ui.sceneFxHTML(GAME.sceneFx);
+    var isChoice = h1.indexOf('sxf-opt-ic') >= 0 && h1.indexOf('sxf-spots') < 0
+      && (h1.match(/data-action="sxf-choice"/g) || []).length === 3;
+    GAME.scenePick(0);
+    var h2 = GAME.ui.sceneFxHTML(GAME.sceneFx);
+    var isTiming = h2.indexOf('sxf-timing') >= 0 && h2.indexOf('sxf-tk') >= 0
+      && h2.indexOf('sxf-mark') >= 0 && h2.indexOf('data-action="sxf-stop"') >= 0
+      && h2.indexOf('击鼓！') >= 0 && h2.indexOf('sxf-spots') < 0;
+    GAME.sceneFx = null;
+    return isSpot && isChoice && isTiming;
+  })());
+  check('v89.2：sxf-stop 接线 + 绘制/计时器收口', (function () {
+    return mS2.indexOf("case 'sxf-stop'") >= 0 && mS2.indexOf('ui.sxfTimingStop') >= 0
+      && uS2.indexOf('ui.sxfTimingClear') >= 0 && uS2.indexOf('ui.paintSceneFx') >= 0
+      && uS2.indexOf('GAME.map.paintScene') >= 0
+      && /ui\.sxfTimingStop = function \(pos\) \{\r?\n    var fx = ui\._sceneFx;/.test(uS2);
+  })());
+  check('v89.2：样式齐（画布 / 热点 / 时机条 / 图标 + sxfPing）', (function () {
+    return ['.sxf-scene {', '.sxf-canvas {', '.sxf-spots {', '.sxf-spot-hit {',
+      '.sxf-tk {', '.sxf-mark {', '.sxf-opt-ic {', '.sxf-sc-tip {'].every(function (t) {
+      return css2.indexOf(t) >= 0;
+    }) && /@keyframes sxfPing/.test(css2);
+  })());
+})();
+
   console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');
   process.exit(FAIL ? 1 : 0);
 })();

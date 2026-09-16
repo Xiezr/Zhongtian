@@ -4459,7 +4459,8 @@ if (svBtn) {
     await sleep(120);
     click(document.querySelector('#scene-fx [data-action="sxf-choice"]'));
     await sleep(120);
-    click(document.querySelector('#scene-fx [data-action="sxf-choice"]'));
+    /* v89.2：末幕是「时机判定」——点「抱拳！」停手（而不是再点选择） */
+    click(document.querySelector('#scene-fx [data-action="sxf-stop"]'));
     await sleep(200);
     check('v88.1/v89：终幕结算屏（专属退出按钮出现）', (function () {
       const el = document.getElementById('scene-fx');
@@ -4580,7 +4581,8 @@ if (svBtn) {
     await sleep(120);
     click(document.querySelector('#scene-fx [data-action="sxf-choice"]'));
     await sleep(120);
-    click(document.querySelector('#scene-fx [data-action="sxf-choice"]'));
+    /* v89.2：末幕是「时机判定」——点「收功！」停手 */
+    click(document.querySelector('#scene-fx [data-action="sxf-stop"]'));
     await sleep(200);
     check('v88/v89：结算屏含收获（灵气精华）与专属退出', (function () {
       const el = document.getElementById('scene-fx');
@@ -4700,6 +4702,15 @@ if (svBtn) {
       const el = document.getElementById('scene-fx');
       return !!el && el.style.display !== 'none' && el.textContent.indexOf('地宫') >= 0;
     })());
+    check('v89.2：场景画布 + 热点点选（在画里选点，不是点按钮）', (function () {
+      const el = document.getElementById('scene-fx');
+      const spots = el.querySelectorAll('.sxf-spot');
+      return !!el.querySelector('canvas.sxf-canvas')
+        && spots.length >= 2
+        && spots.length === el.querySelectorAll('[data-action="sxf-choice"]').length
+        && (spots[0].getAttribute('style') || '').indexOf('left:') >= 0
+        && el.textContent.indexOf('点画中之处') >= 0;
+    })());
     check('v89.1：幕景横幅（水印 · 幕题 · 倾向徽章 · 选项齐）', (function () {
       const el = document.getElementById('scene-fx');
       const f = G.DATA.SCENE_FLOW.desert_scene;
@@ -4720,7 +4731,12 @@ if (svBtn) {
     })());
     click(document.querySelector('#scene-fx [data-action="sxf-choice"]'));
     await sleep(120);
-    click(document.querySelector('#scene-fx [data-action="sxf-choice"]'));
+    check('v89.2：末幕时机条（轨道 · 指针 · 停手钮）', (function () {
+      const el = document.getElementById('scene-fx');
+      return !!el.querySelector('.sxf-tk') && !!el.querySelector('.sxf-mark')
+        && !!el.querySelector('[data-action="sxf-stop"]');
+    })());
+    click(document.querySelector('#scene-fx [data-action="sxf-stop"]'));
     await sleep(220);
     check('v89：结算屏出现（专属退出「出宫回城」）', (function () {
       const el = document.getElementById('scene-fx');
