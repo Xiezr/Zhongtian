@@ -187,6 +187,8 @@
 
       /* 野地管理（v23 · 需求 1）：驻军 / 撤军 / 放弃 */
       case 'wild-garrison-open': ui.openWildGarrison(Number(el.dataset.x), Number(el.dataset.y)); break;
+      /* v87（老板）：野地地形专属场景 */
+      case 'do-wild-scene': ui.doWildScene(Number(el.dataset.x), Number(el.dataset.y)); break;
       case 'wg-max': { var wi = document.getElementById('wg-' + el.dataset.troop); if (wi) wi.value = wi.max; break; }
       case 'wild-garrison-do': GAME.doWildGarrisonDo(); break;
       case 'wild-withdraw': {

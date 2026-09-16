@@ -4423,6 +4423,50 @@ if (svBtn) {
     })());
   }
 
+  /* ============================================================
+   * v87（老板）：野地专属场景（真实 DOM）
+   * ============================================================ */
+  console.log('\n--- v87. 野地专属场景（真实 DOM） ---');
+  {
+    let hp = null;
+    for (let y = 3; y < 200 && !hp; y++) {
+      for (let x = 3; x < 200; x++) {
+        const tl = G.map.tile(x, y);
+        if (tl && tl.terrain === 'hill' && !G.map.fortAt(x, y)) { hp = { x, y }; break; }
+      }
+    }
+    G.state.generals.forEach(function (g) { g.energy = 100; G.setStaNow(g, 100); });
+    G.state.wildScenes = {};
+    G.state.wilds = G.state.wilds || [];
+    G.ui.openLandModal(hp.x, hp.y);            /* 未占 → 出兵弹窗 */
+    await sleep(160);
+    check('v87：野地弹窗含地形专属区块（绿林探访）', (function () {
+      const root = document.querySelector('#modal-root');
+      return !!root && root.textContent.indexOf('绿林探访') >= 0
+        && root.textContent.indexOf('地形专属') >= 0;
+    })());
+    check('v87：区块含带队将领与出发按钮', (function () {
+      return !!document.querySelector('#modal-root [data-action="do-wild-scene"]')
+        && !!document.querySelector('#ws-gen');
+    })());
+    click(document.querySelector('#modal-root [data-action="do-wild-scene"]'));
+    await sleep(240);
+    check('v87：执行后原地回显（今日已探）', (function () {
+      const root = document.querySelector('#modal-root');
+      return !!root && root.textContent.indexOf('今日已探过') >= 0;
+    })());
+    /* 已占分支也含区块（直接注册一块已占野地） */
+    G.state.wilds.push({ x: hp.x, y: hp.y, type: 'hill', level: 4 });
+    G.ui.openLandModal(hp.x, hp.y);
+    await sleep(160);
+    check('v87：已占野地管理面板也含场景区块', (function () {
+      const root = document.querySelector('#modal-root');
+      return !!root && root.textContent.indexOf('地形专属') >= 0;
+    })());
+    G.ui.closeModal();
+    await sleep(60);
+  }
+
   await sleep(30);
 
   G.ui.setView('city');
