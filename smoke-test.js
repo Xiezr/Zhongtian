@@ -64,6 +64,14 @@
   require('./js/bitmaps.js');
   require('./js/portraits.js');
   require('./js/story.js');
+  /* 文字游戏故事库（story/）：与 index.html 同序 —— 数据先行，ui/main 后取 */
+  require('./story/vol-01.js');
+  require('./story/vol-02.js');
+  /* v89.9：卷 02（铺量首批 6 篇）随卷加载 */
+  require('./story/vol-03.js');
+  require('./story/vol-04.js');
+  require('./story/vol-05.js');
+  /* v89.10：铺量二批（卷 03~05 · 18 篇）随卷加载 */
   require('./js/ui.js');
   /* main.js 必须加载：主循环 setInterval、事件分发、动作实现都在这里。
      曾经漏测此文件，导致主循环内 "$ is not defined" 长期未被发现
@@ -6169,9 +6177,10 @@
     && !/\.help-chip\[data-tip\]:hover::after/.test(hS38));
   /* ---- 需求 3：图标容器一律用 .ico 类选择器 ---- */
   check('图标容器定尺寸一律用 .ico（只写 svg 会漏掉位图）', (function () {
-    /* 允许三类：① 含 .ico（svg/img 都匹配）② 同时列 svg 与 img
-       ③ 天生矢量、永不为位图的内容（立绘 / 宫殿手绘 SVG） */
-    var ALLOW = /(gov-svg|lord-portrait|lord-avatar|portrait-svg)/;
+    /* 允许四类：① 含 .ico（svg/img 都匹配）② 同时列 svg 与 img
+       ③ 天生矢量、永不为位图的内容（立绘 / 宫殿手绘 SVG）
+       ④ v89.8 故事阅读器壁画（.sgr-bg 满幅背景，天生 SVG、永不为位图） */
+    var ALLOW = /(gov-svg|lord-portrait|lord-avatar|portrait-svg|sgr-bg)/;
     var bad = [];
     var re = /([^{}]*\bsvg\b[^{}]*)\{([^{}]*)\}/g, m;
     /* ⚠ 必须区分「元素选择器 svg」与「类名里含 svg」（如 .doll-fig-svg）——
@@ -14834,6 +14843,303 @@ console.log('\n===== 78. v89.4 野地生态（逐地分布 · 概率出现 · �
       && uM8.indexOf('open-journal') >= 0
       && mS8.indexOf("case 'do-wonder'") >= 0 && mS8.indexOf("case 'open-journal'") >= 0 && mS8.indexOf("case 'journal-go'") >= 0
       && /drawWonderStar\(/.test(GAME.map.render.toString());
+  })());
+})();
+
+/* ============================================================
+ * 81. 文字游戏 · 故事库（story/ · GAME.SG / ui.SG_*）
+ * ============================================================ */
+(function () {
+  console.log('\n===== 81. 文字游戏 · 故事库（story/） =====');
+
+  var SG_KINDS = { building: 1, ext: 1, wild: 1, city: 1, misc: 1 };
+  var SG_MURALS = ['yat', 'ku', 'zhai', 'yuan', 'jiu', 'xiang', 'hu', 'hud', 'shan', 'ying', 'men', 'fu', 'xiao'];
+  var sgStrip = function (s) { return String(s || '').replace(/\s+/g, ''); };
+
+  /* v2：段数 5~7 且全路径同层（幕的选项只能指向下一层；结局只能由最深层指向） */
+  check('故事库：数据齐（≥5 篇 · 段数 5~7 全路径同层 · bg 白名单 · 字数达标）', (function () {
+    var all = GAME.SG.list();
+    if (all.length < 5) return false;
+    var ids = {}, ok = true;
+    all.forEach(function (st) {
+      if (ids[st.id]) ok = false;
+      ids[st.id] = 1;
+      if (!SG_KINDS[(st.anchor || {}).kind]) ok = false;
+      var nodes = st.nodes || [], ends = st.endings || [];
+      if (ends.length < 3) ok = false;
+      var idx = {}, depth = {}, q = [];
+      nodes.forEach(function (n) { idx[n.id] = n; });
+      if (!nodes.length) { ok = false; return; }
+      depth[nodes[0].id] = 1; q.push(nodes[0].id);
+      while (q.length) {
+        var cur = q.shift();
+        ((idx[cur] || {}).o || []).forEach(function (op) {
+          if (idx[op.to] && depth[op.to] == null) { depth[op.to] = depth[cur] + 1; q.push(op.to); }
+        });
+      }
+      var ranks = 0;
+      for (var k in depth) if (depth[k] > ranks) ranks = depth[k];
+      if (ranks < 5 || ranks > 7) ok = false;
+      nodes.forEach(function (n) {
+        if (SG_MURALS.indexOf(n.bg) < 0) ok = false;
+        (n.o || []).forEach(function (op) {
+          if (idx[op.to]) { if (depth[op.to] !== depth[n.id] + 1) ok = false; }
+          else if (depth[n.id] !== ranks) ok = false;
+        });
+      });
+      ends.forEach(function (x) { if (SG_MURALS.indexOf(x.bg) < 0) ok = false; });
+      var n = 0;
+      nodes.forEach(function (x) { n += sgStrip(x.t).length; });
+      ends.forEach(function (x) { n += sgStrip(x.t).length; });
+      if (n < 2400) ok = false;
+    });
+    return ok;
+  })());
+
+  check('故事库：壁画库齐备（ui.SG_MURAL 13 键 ⊇ 数据全部 bg）', (function () {
+    var M = GAME.ui.SG_MURAL || {};
+    var cnt = 0; for (var k in M) cnt++;
+    var used = {}, ok = true;
+    GAME.SG.list().forEach(function (st) {
+      (st.nodes || []).forEach(function (n) { used[n.bg] = 1; });
+      (st.endings || []).forEach(function (x) { used[x.bg] = 1; });
+    });
+    for (var u in used) if (!M[u]) ok = false;
+    return cnt === 13 && ok;
+  })());
+
+  check('故事库：入口区块（有故事出文案 · 无故事返回空串）', (function () {
+    var has = GAME.SG.anchor('building', 'guanfu').length > 0;
+    var b1 = GAME.ui.SG_BLOCK('building', 'guanfu', '官府');
+    /* v89.9：空态锚点动态选 —— 从 16 座建筑里找一座尚无故事的（全有则此项自动放行） */
+    var POOL = ['guanfu', 'minfang', 'shuyuan', 'junying', 'xiaochang', 'shichang', 'cangku',
+                'chengqiang', 'yizhan', 'fenghuotai', 'majiu', 'kezhan', 'zhaoxianguan',
+                'honglusi', 'tiejiangpu', 'gongjiangzuofang'];
+    var emptyId = null;
+    for (var i = 0; i < POOL.length; i++) {
+      if (GAME.SG.anchor('building', POOL[i]).length === 0) { emptyId = POOL[i]; break; }
+    }
+    var b2ok = emptyId ? (GAME.ui.SG_BLOCK('building', emptyId, '空') === '') : true;
+    return has && b1.indexOf('听一段故事') >= 0 && b1.indexOf('story-list') >= 0 && b2ok;
+  })());
+
+  /* 官府篇正路（v2）：一路选第 1 项走满 6 段 → 结局；段数 = rankCount */
+  check('故事库：开卷 → 推进 → 结局（6 段走满 · 账目非空 · 结局后拒绝再选）', (function () {
+    var r = GAME.SG.begin('bld-guanfu-01');
+    if (!r.ok) return false;
+    var ranks = GAME.SG.rankCount(GAME.SG.one('bld-guanfu-01'));
+    var guard = 0;
+    while (GAME.SG._run.phase === 'node' && guard++ < 20) GAME.SG.choose(0);
+    var run = GAME.SG._run;
+    if (run.phase !== 'end' || !run.ending) return false;
+    if (ranks !== 6 || run.path.length !== ranks) return false;
+    if (!(run.got && run.got.got)) return false;
+    return GAME.SG.choose(0).ok === false;
+  })());
+
+  /* 换结局（v2）：同一条路走到末段，改选第 2 项 → 落到不同结局；重读 → 首次标记为假 */
+  check('故事库：入档进度（段末改选换结局 · 新结局记首次 · 同结局重读 → 首次标记为假）', (function () {
+    var rec0 = GAME.SG.progress()['bld-guanfu-01'] || { n: 0, done: [] };
+    var n0 = rec0.n || 0;
+    var ranks = GAME.SG.rankCount(GAME.SG.one('bld-guanfu-01'));
+    var walk = function (lastPick) {
+      GAME.SG.begin('bld-guanfu-01');
+      var guard = 0;
+      while (GAME.SG._run.phase === 'node' && guard++ < 20) {
+        var last = (GAME.SG._run.path.length + 1) === ranks;
+        GAME.SG.choose(last ? lastPick : 0);
+      }
+      return GAME.SG._run;
+    };
+    var run1 = walk(1);                                 /* 末段第 2 项 → e2（首次读到） */
+    if (!(run1.phase === 'end' && run1.ending && run1.ending.id === 'e2' && run1.got.first === true)) return false;
+    var run2 = walk(1);                                 /* 再走一遍 → 同结局，首次为假 */
+    if (!(run2.phase === 'end' && run2.ending.id === 'e2' && run2.got.first === false)) return false;
+    var rec1 = GAME.SG.progress()['bld-guanfu-01'];
+    return (rec1.n || 0) === n0 + 2 && (rec1.done || []).length >= 2;
+  })());
+
+  /* 客栈篇败局（v2）：在数据里找到负声望结局，按可达性搜一条路走过去 → 声望扣至 0 即止 */
+  check('故事库：负赏赐不越界（声望扣至 0 即止）', (function () {
+    var st = GAME.SG.one('bld-kezhan-01');
+    var target = null;
+    (st.endings || []).forEach(function (x) { if (!target && (x.reward || {}).rep < 0) target = x.id; });
+    if (!target) return false;
+    var canReach = function (from) {
+      var seen = {}, q = [from];
+      while (q.length) {
+        var cur = q.shift();
+        if (cur === target) return true;
+        if (seen[cur]) continue;
+        seen[cur] = 1;
+        var node = null;
+        (st.nodes || []).forEach(function (n) { if (n.id === cur) node = n; });
+        if (!node) continue;
+        (node.o || []).forEach(function (op) { q.push(op.to); });
+      }
+      return false;
+    };
+    var keep = GAME.state.rep;
+    GAME.state.rep = 10;
+    GAME.SG.begin('bld-kezhan-01');
+    var guard = 0;
+    while (GAME.SG._run.phase === 'node' && guard++ < 20) {
+      var node = GAME.SG.nodeOf(GAME.SG._run, GAME.SG._run.nodeId);
+      var pick = -1;
+      for (var i = 0; i < (node.o || []).length; i++) {
+        if (canReach(node.o[i].to)) { pick = i; break; }
+      }
+      if (pick < 0) break;
+      GAME.SG.choose(pick);
+    }
+    var ok = GAME.SG._run.phase === 'end' && GAME.SG._run.ending.id === target
+      && GAME.SG._run.ending.grade === 'lose' && GAME.state.rep === 0;
+    GAME.state.rep = keep;
+    return ok;
+  })());
+
+  check('故事库：接线（三处入口 · 四动作 · 奖赏走 STORY.applyReward）', (function () {
+    var mS = '';
+    try { mS = '' + require('fs').readFileSync(require('path').join(__dirname, 'js', 'main.js'), 'utf8'); } catch (e) { mS = ''; }
+    var okMain = mS.indexOf("case 'story-list'") >= 0 && mS.indexOf("case 'story-open'") >= 0
+      && mS.indexOf("case 'story-pick'") >= 0 && mS.indexOf("case 'story-exit'") >= 0;
+    var okEntry = GAME.ui.openBuildModal.toString().indexOf("ui.SG_BLOCK('building'") >= 0
+      && GAME.ui.openLandModal.toString().indexOf("ui.SG_BLOCK('wild'") >= 0
+      && GAME.ui.openCityPanel.toString().indexOf("ui.SG_BLOCK('city'") >= 0;
+    var okSettle = GAME.SG.settle.toString().indexOf('applyReward') >= 0;
+    return okMain && okEntry && okSettle;
+  })());
+
+  /* v89.8：壁画与段进度接线（两层骨架 · 交叉淡入 · 段进度点 · rankCount 出口） */
+  check('故事库：壁画与段进度接线（两层 .sgr-bg · sgBg 交叉淡入 · 段进度点 · rankCount）', (function () {
+    var okRender = ('' + GAME.ui.sgRender).indexOf('sgr-bg') >= 0
+      && ('' + GAME.ui.sgRender).indexOf('sgr-scrim') >= 0;
+    var okBg = /delete cur\.dataset\.on/.test('' + GAME.ui.sgBg)
+      && /dataset\.on = '1'/.test('' + GAME.ui.sgBg);
+    var okProg = ('' + GAME.ui.sgHTML).indexOf('sgr-dots') >= 0
+      && ('' + GAME.ui.sgHTML).indexOf('共 ') >= 0;
+    var okRank = typeof GAME.SG.rankCount === 'function'
+      && GAME.SG.rankCount(GAME.SG.one('wild-hill-01')) === 7;
+    return okRender && okBg && okProg && okRank;
+  })());
+
+  /* v89.9：卷 02 铺量（新锚点 5 处就位 + 新篇可走满至结局） */
+  check('故事库：卷 02（新锚点 5 处就位 · 新篇可走满至结局）', (function () {
+    var okA = GAME.SG.list().length >= 11
+      && GAME.SG.anchor('building', 'minfang').length >= 1
+      && GAME.SG.anchor('building', 'shuyuan').length >= 1
+      && GAME.SG.anchor('building', 'junying').length >= 1
+      && GAME.SG.anchor('wild', 'caoyuan').length >= 1
+      && GAME.SG.anchor('city', 'zhou').length >= 1;
+    var r = GAME.SG.begin('bld-minfang-01');
+    if (!r.ok) return false;
+    var guard = 0;
+    while (GAME.SG._run.phase === 'node' && guard++ < 20) GAME.SG.choose(0);
+    var run = GAME.SG._run;
+    var ranks = GAME.SG.rankCount(GAME.SG.one('bld-minfang-01'));
+    return okA && run.phase === 'end' && ranks === 5 && run.path.length === ranks
+      && !!(run.got && run.got.got);
+  })());
+
+  /* v89.9：建筑逸闻块脱三元 —— 无功能建筑（民房 / 驿站 / 烽火台 / 鸿胪寺）也能出入口 */
+  check('故事库：建筑逸闻块脱三元（所有建筑统一渲染 · 无功能建筑有入口）', (function () {
+    var src = '' + GAME.ui.openBuildModal;
+    var ok1 = src.indexOf("ui.SG_BLOCK('building', b.id, b.name)") >= 0;
+    var ok2 = src.indexOf("ui.SG_BLOCK('building', b.id, b.name) + '</div>'") < 0;
+    var ok3 = GAME.ui.SG_BLOCK('building', 'minfang', '民房').indexOf('story-list') >= 0;
+    return ok1 && ok2 && ok3;
+  })());
+
+  /* v89.10：卷 03~05 铺量（18 处新锚点就位 + 新篇可走满） */
+  check('故事库：卷 03~05（新锚点就位 · 新篇可走满至结局）', (function () {
+    var okA = GAME.SG.list().length >= 29
+      && GAME.SG.anchor('building', 'xiaochang').length >= 1
+      && GAME.SG.anchor('building', 'shichang').length >= 1
+      && GAME.SG.anchor('building', 'cangku').length >= 1
+      && GAME.SG.anchor('building', 'chengqiang').length >= 1
+      && GAME.SG.anchor('building', 'yizhan').length >= 1
+      && GAME.SG.anchor('building', 'zhaoxianguan').length >= 1
+      && GAME.SG.anchor('building', 'honglusi').length >= 1
+      && GAME.SG.anchor('ext', 'farm').length >= 1
+      && GAME.SG.anchor('wild', 'zhaoze').length >= 1
+      && GAME.SG.anchor('wild', 'desert').length >= 1;
+    var r = GAME.SG.begin('bld-xiaochang-01');
+    if (!r.ok) return false;
+    var guard = 0;
+    while (GAME.SG._run.phase === 'node' && guard++ < 20) GAME.SG.choose(0);
+    var run = GAME.SG._run;
+    var ranks = GAME.SG.rankCount(GAME.SG.one('bld-xiaochang-01'));
+    return okA && run.phase === 'end' && run.path.length === ranks && !!(run.got && run.got.got);
+  })());
+})();
+
+/* ============================================================
+ * 82. v89.7 · 头像可更换 + 供奉公文静默（老板）
+ * ============================================================ */
+(function () {
+  console.log('\n===== 82. 头像可更换 + 供奉公文静默（v89.7） =====');
+
+  var fs82 = require('fs'), path82 = require('path');
+  function rd82(f) { return fs82.readFileSync(path82.join(__dirname, 'js', f + '.js'), 'utf8'); }
+  var uS82 = rd82('ui'), mS82 = rd82('main'), dmS82 = rd82('domain');
+  var hS82 = fs82.readFileSync(path82.join(__dirname, 'index.html'), 'utf8');
+
+  /* 换头像 = 只改 portraitSeed 一处（合法生效 · 越界拒绝 · 君主将领同源） */
+  check('头像：换头像只改 portraitSeed（合法生效 · 越界拒绝 · 两处同源）', (function () {
+    var s = GAME.state;
+    s.ruler = s.ruler || {};
+    var lg = GAME.lordGeneralOf();
+    var bkR = s.ruler.portraitSeed, bkL = lg ? lg.portraitSeed : null;
+    var r1 = GAME.setLordAvatar(5);
+    var ok1 = r1.ok === true && s.ruler.portraitSeed === 5 && (!lg || lg.portraitSeed === 5);
+    var r2 = GAME.setLordAvatar(999);
+    var ok2 = r2.ok === false && s.ruler.portraitSeed === 5;
+    var r3 = GAME.setLordAvatar(-1);
+    var ok3 = r3.ok === false && s.ruler.portraitSeed === 5;
+    s.ruler.portraitSeed = bkR;
+    if (lg && bkL != null) lg.portraitSeed = bkL;
+    return ok1 && ok2 && ok3;
+  })());
+
+  check('头像：接线（君主面板入口 · 顶栏可点 · 点选动作 · 网格样式 · 动作分发）', (function () {
+    return /data-action="open-avatar-pick"/.test('' + GAME.ui.openLordInfo)
+      && /ui\.openAvatarPick = function/.test(uS82)
+      && /GAME\.setLordAvatar = function/.test(dmS82)
+      && /data-action="pick-lord-avatar"/.test(uS82)
+      && /id="lord-avatar" data-action="open-avatar-pick"/.test(hS82)
+      && /\.av-grid \{/.test(hS82) && /\.av-cell\.cur \{/.test(hS82)
+      && /\.lord-av-mini \{/.test(hS82)
+      && mS82.indexOf("case 'open-avatar-pick'") >= 0
+      && mS82.indexOf("case 'pick-lord-avatar'") >= 0
+      && mS82.indexOf("case 'close-avatar-pick'") >= 0;
+  })());
+
+  /* 供奉：时长累积静默（零新增公文）且小数寄存不再被取整吃掉 */
+  check('供奉：时长累积不写公文，零碎小数攒整（120× 15 秒 = +1）', (function () {
+    var s = GAME.state;
+    var bk = s.artifacts;
+    s.artifacts = { pts: 0, frac: 0 };
+    var top0 = s.log[0];
+    for (var i = 0; i < 15; i++) GAME.artTick(120);   /* 120×：每秒 0.1 点 */
+    var noLog = (s.log[0] === top0);                  /* 一条公文都没新增 */
+    var pts1 = s.artifacts.pts;                       /* 旧实现：永远 0（被 round 吃掉） */
+    var frac1 = s.artifacts.frac;
+    s.artifacts = bk;
+    return noLog && pts1 === 1 && frac1 > 0.3 && frac1 < 0.7;
+  })());
+
+  /* 供奉：有缘由的入账照写公文（占城 / 晋升一类） */
+  check('供奉：有缘由的入账照写公文（数额整数 · 带缘由）', (function () {
+    var s = GAME.state;
+    var bk = s.artifacts;
+    s.artifacts = { pts: 0, frac: 0 };
+    GAME.artGain(40, '验收 · 开疆拓土');
+    var hit = false;
+    for (var i = 0; i < Math.min(6, s.log.length); i++) {
+      if (String(s.log[i].msg).indexOf('供奉 +40（验收 · 开疆拓土）') >= 0) { hit = true; break; }
+    }
+    s.artifacts = bk;
+    return hit;
   })());
 })();
 

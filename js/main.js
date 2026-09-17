@@ -113,6 +113,19 @@
         break;
       }
       case 'open-artifacts': ui.openArtifacts(); break;
+      /* v89.7（老板）：「头像可更换」—— 顶栏头像 / 君主面板「更换」都开这面板；
+         点选即换（GAME.setLordAvatar 改 portraitSeed，两处同源）；
+         「完成」回君主面板（与改名同一套流程）。 */
+      case 'open-avatar-pick': ui.openAvatarPick(); break;
+      case 'pick-lord-avatar': (function () {
+        var avr = GAME.setLordAvatar(el.dataset.idx);
+        if (avr.ok) {
+          ui.syncHeader();      /* 顶栏立绘立刻换，不等下一拍 */
+          ui.openAvatarPick();  /* 面板原地重绘：高亮跟到新脸 */
+        }
+        ui.toast(avr.msg);
+      })(); break;
+      case 'close-avatar-pick': ui.openLordInfo(); break;
       /* v77（老板）：君主面板 —— 进入城池（直跳该城城内界面）/ 晋升 / 改名 */
       case 'lord-city-enter': (function () {
         ui.closeModal();
@@ -198,6 +211,11 @@
       case 'sxf-escape': GAME.doSceneEscape(); break;
       case 'sxf-stop': ui.sxfTimingStop(); break;   /* v89.2：时机条停手 */
       case 'sxf-exit': ui.closeSceneFx(); break;
+      /* 文字游戏（story/）：清单 / 开卷 / 选择 / 收起 */
+      case 'story-list': ui.openStoryList(el.dataset.kind, el.dataset.id, el.dataset.name); break;
+      case 'story-open': ui.openStory(el.dataset.sid); break;
+      case 'story-pick': ui.sgPick(Number(el.dataset.i)); break;
+      case 'story-exit': ui.sgClose(); break;
       /* v89.6：奇遇 · 见闻录 */
       case 'do-wonder': ui.doWonder(Number(el.dataset.x), Number(el.dataset.y)); break;
       case 'open-journal': ui.openJournal(); break;

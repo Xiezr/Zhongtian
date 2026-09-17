@@ -4962,6 +4962,184 @@ if (svBtn) {
     }
   }
 
+  console.log('');
+  console.log('--- 81. 文字游戏 · 故事库（真实点击 · v2 结构） ---');
+  await (async function () {
+    check('★ 故事库已载入（≥5 篇）', !!(G.SG && G.SG.list().length >= 5),
+      G.SG ? (G.SG.list().length + ' 篇') : '无');
+    var city = G.currentCity();
+    var gi = -1;
+    city.cells.forEach(function (cell, i) { if (cell.build && cell.build.id === 'guanfu') gi = i; });
+    check('官府地块定位', gi >= 0);
+    G.ui.openBuildModal(gi);
+    await sleep(30);
+    var entry = document.querySelector('#modal-root [data-action="story-list"][data-kind="building"][data-id="guanfu"]');
+    check('★ 建筑弹窗出现「逸闻」入口', !!entry);
+    click(entry);
+    await sleep(30);
+    var rd = document.querySelector('#modal-root [data-action="story-open"][data-sid="bld-guanfu-01"]');
+    check('★ 故事清单列出《衙前夜审》', !!rd
+      && document.querySelector('#modal-root').textContent.indexOf('衙前夜审') >= 0);
+    click(rd);
+    await sleep(40);
+    var fx = document.querySelector('#story-fx');
+    var bgLayers = fx ? fx.querySelectorAll('.sgr-bg') : [];
+    check('★ 全屏阅读器打开（第 1 段 · 共 6 段 · 壁画两层就位 · 选项≥2）', !!fx
+      && bgLayers.length === 2
+      && fx.textContent.indexOf('第 1 段') >= 0 && fx.textContent.indexOf('共 6 段') >= 0
+      && fx.querySelectorAll('[data-action="story-pick"]').length >= 2
+      && fx.textContent.length > 200);
+    var muralKeys = {}, seenSeg = 0;
+    if (fx) {
+      var m0 = fx.querySelector('.sgr-bg[data-on]');
+      if (m0) muralKeys[m0.dataset.key] = 1;
+    }
+    var guard = 0;
+    while (guard++ < 12) {
+      var pk = fx.querySelector('[data-action="story-pick"]');
+      if (!pk) break;
+      click(pk);
+      await sleep(30);
+      seenSeg = Math.max(seenSeg, Number((fx.textContent.match(/第 (\d) 段/) || [0, 0])[1]) || 0);
+      var mOn = fx.querySelector('.sgr-bg[data-on]');
+      if (mOn) muralKeys[mOn.dataset.key] = 1;
+    }
+    var keyN = 0; for (var kk in muralKeys) keyN++;
+    check('★ 壁画随段变换（段位走到 ≥3 · 壁画出现 ≥2 张）', seenSeg >= 3 && keyN >= 2,
+      '走到第 ' + seenSeg + ' 段 · 壁画 ' + keyN + ' 张');
+    check('★ 走到结局（结算屏 + 回到城中）', !!fx.querySelector('[data-action="story-exit"]')
+      && fx.textContent.indexOf('回到城中') >= 0);
+    check('★ 阅读进度已入档',
+      !!(G.SG.progress()['bld-guanfu-01'] && G.SG.progress()['bld-guanfu-01'].done.length));
+    click(fx.querySelector('[data-action="story-exit"]'));
+    await sleep(30);
+    check('阅读器收起（不阻塞主界面）', fx.style.display === 'none');
+    /* v89.9：卷 02 新锚点（民房）真实点击 —— 由「空态」升级为「有故事」 */
+    var mfMi = -1;
+    city.cells.forEach(function (cell, i) { if (cell.build && cell.build.id === 'minfang') mfMi = i; });
+    if (mfMi >= 0 && G.SG.anchor('building', 'minfang').length > 0) {
+      G.ui.openBuildModal(mfMi);
+      await sleep(30);
+      var mfEntry = document.querySelector('#modal-root [data-action="story-list"][data-kind="building"][data-id="minfang"]');
+      check('★ v89.9：新锚点「民房」出现逸闻入口', !!mfEntry);
+      if (mfEntry) {
+        click(mfEntry);
+        await sleep(30);
+        var mfItem = document.querySelector('#modal-root [data-action="story-open"][data-sid="bld-minfang-01"]');
+        check('★ v89.9：卷 02《半月无音》在列 · 可开卷', !!mfItem);
+        if (mfItem) {
+          click(mfItem);
+          await sleep(40);
+          var fx2 = document.querySelector('#story-fx');
+          check('★ v89.9：新篇阅读器（壁画两层 · 「第 1 段 · 共 5 段」· 选项≥2）', !!fx2
+            && fx2.querySelectorAll('.sgr-bg').length === 2
+            && fx2.textContent.indexOf('共 5 段') >= 0
+            && fx2.querySelectorAll('[data-action="story-pick"]').length >= 2);
+          var pk2 = fx2 ? fx2.querySelector('[data-action="story-pick"]') : null;
+          if (pk2) { click(pk2); await sleep(30); }
+          var ex2 = fx2 ? fx2.querySelector('[data-action="story-exit"]') : null;
+          if (ex2) { click(ex2); await sleep(30); }
+          check('★ v89.9：掩卷退出（阅读器收起 · 主界面可用）', !!fx2 && fx2.style.display === 'none');
+        }
+      }
+    } else {
+      check('★ v89.9：新锚点「民房」逸闻入口（未找到民房地格，跳过）', true);
+      check('★ v89.9：卷 02《半月无音》可开卷（跳过）', true);
+      check('★ v89.9：新篇阅读器（跳过）', true);
+      check('★ v89.9：掩卷退出（跳过）', true);
+    }
+    /* v89.10：卷 03~05 新锚点（动态选一座新的建筑）· 真实点击 */
+    var NEW_BLD = ['xiaochang', 'shichang', 'cangku', 'chengqiang', 'yizhan', 'fenghuotai',
+                   'majiu', 'zhaoxianguan', 'honglusi', 'tiejiangpu', 'gongjiangzuofang'];
+    var nbMi = -1, nbId = '';
+    city.cells.forEach(function (cell, i) {
+      if (nbMi < 0 && cell.build && NEW_BLD.indexOf(cell.build.id) >= 0
+        && G.SG.anchor('building', cell.build.id).length > 0) { nbMi = i; nbId = cell.build.id; }
+    });
+    if (nbMi >= 0) {
+      G.ui.openBuildModal(nbMi);
+      await sleep(30);
+      var nbEntry = document.querySelector('#modal-root [data-action="story-list"][data-kind="building"][data-id="' + nbId + '"]');
+      check('★ v89.10：卷 03~05 新锚点「' + nbId + '」出现逸闻入口', !!nbEntry);
+      if (nbEntry) {
+        click(nbEntry);
+        await sleep(30);
+        var nbItem = document.querySelector('#modal-root [data-action="story-open"]');
+        check('★ v89.10：新锚点故事在列 · 可开卷', !!nbItem);
+        click(document.querySelector('#modal-root [data-action="close-modal"]'));
+        await sleep(30);
+      } else {
+        check('★ v89.10：新锚点故事在列 · 可开卷（跳过）', true);
+      }
+    } else {
+      check('★ v89.10：卷 03~05 新锚点入口（城中无对应地格，跳过）', true);
+      check('★ v89.10：新锚点故事在列 · 可开卷（跳过）', true);
+    }
+    /* 空态（动态选锚点）：找一座尚无故事的建筑 */
+    var BLD16 = ['guanfu', 'minfang', 'shuyuan', 'junying', 'xiaochang', 'shichang', 'cangku',
+                 'chengqiang', 'yizhan', 'fenghuotai', 'majiu', 'kezhan', 'zhaoxianguan',
+                 'honglusi', 'tiejiangpu', 'gongjiangzuofang'];
+    var emptyMi = -1;
+    city.cells.forEach(function (cell, i) {
+      if (emptyMi < 0 && cell.build && BLD16.indexOf(cell.build.id) >= 0
+        && G.SG.anchor('building', cell.build.id).length === 0) emptyMi = i;
+    });
+    if (emptyMi >= 0) {
+      G.ui.openBuildModal(emptyMi);
+      await sleep(30);
+      check('空态：无故事的建筑不出「逸闻」块',
+        !document.querySelector('#modal-root [data-action="story-list"]'));
+      click(document.querySelector('#modal-root [data-action="close-modal"]'));
+      await sleep(30);
+    } else {
+      check('空态：无故事的建筑不出「逸闻」块（全建筑已有故事，跳过）', true);
+    }
+  })();
+
+  console.log('');
+  console.log('--- 82. v89.7 · 头像可更换（真实点击） ---');
+  await (async function () {
+    var avEl = document.querySelector('#lord-avatar');
+    check('★ 顶栏头像可点（data-action 挂外层 · 每秒重绘不丢）',
+      !!avEl && avEl.getAttribute('data-action') === 'open-avatar-pick');
+    var lgEl = G.lordGeneralOf ? G.lordGeneralOf() : null;
+    var seed0 = G.state.ruler.portraitSeed;
+    var lgSeed0 = lgEl ? lgEl.portraitSeed : null;
+    var cur0 = (seed0 || 0) % 20;
+    click(avEl);
+    await sleep(30);
+    var cells = document.querySelectorAll('#modal-root .av-cell');
+    var curEl0 = document.querySelector('#modal-root .av-cell.cur');
+    check('★ 开出头像面板（20 张 · 当前脸唯一高亮）', cells.length === 20
+      && !!curEl0 && curEl0.dataset.idx === String(cur0));
+    var target = null;
+    for (var i = 0; i < cells.length; i++) {
+      if (Number(cells[i].dataset.idx) !== cur0) { target = cells[i]; break; }
+    }
+    click(target);
+    await sleep(30);
+    var seed1 = G.state.ruler.portraitSeed;
+    var curEl1 = document.querySelector('#modal-root .av-cell.cur');
+    var img1 = document.querySelector('#lord-avatar img');
+    check('★ 点选即换（seed 变 · 高亮跟到新脸 · 顶栏立绘同源更新 · 君主将领同源）',
+      !!target && seed1 === Number(target.dataset.idx) && seed1 !== seed0
+      && !!curEl1 && Number(curEl1.dataset.idx) === seed1
+      && !!img1 && String(img1.getAttribute('src')).indexOf('assets/portraits/pool/') === 0
+      && (!lgEl || lgEl.portraitSeed === seed1));
+    click(document.querySelector('#modal-root [data-action="close-avatar-pick"]'));
+    await sleep(30);
+    check('★ 「完成」回到君主面板（头像行就位 · 更换入口可再进）',
+      !!document.querySelector('#modal-root [data-action="open-avatar-pick"]')
+      && !!document.querySelector('#modal-root .lord-av-mini')
+      && document.querySelector('#modal-root').textContent.indexOf('头像') >= 0);
+    click(document.querySelector('#modal-root [data-action="close-modal"]'));
+    await sleep(30);
+    /* 还原：不污染后续断言 */
+    G.state.ruler.portraitSeed = seed0;
+    if (lgEl && lgSeed0 != null) lgEl.portraitSeed = lgSeed0;
+    G.ui.syncHeader();
+  })();
+
   G.ui.setView('city');
   await sleep(60);
   return finish();

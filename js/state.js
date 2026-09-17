@@ -834,19 +834,29 @@
     return Math.min(lv, (DATA.ARTIFACT && DATA.ARTIFACT.maxLv) || 10);
   };
   GAME.artGain = function (n, why) {
-    n = Math.round(n || 0);
+    /* v89.7（老板「供奉+1这个公文不要显示」）两处：
+       ① 只有"有缘由"的入账（攻占城池 / 爵位晋升）才写公文 ——
+          时长自然累积一律静默（升阶那条报喜保留）。
+       ② 小数寄存在 st.frac 里攒整 —— 低倍率下每秒只有 0.x 点，
+          旧写法 Math.round 把它整段吃掉（120× 实测永远 +0）；
+          修后各倍率口径一致：3 点 / 游戏小时。 */
+    n = n || 0;
     if (n <= 0) return 0;
     var st = GAME.artStore();
     var lv0 = GAME.artLevelOf();
-    st.pts += n;
+    var add = Math.floor(n);
+    st.frac = (st.frac || 0) + (n - add);
+    if (st.frac >= 1) { var f = Math.floor(st.frac); add += f; st.frac -= f; }
+    if (add <= 0) return 0;                     /* 还没攒够 1 点：静默 */
+    st.pts += add;
     var lv1 = GAME.artLevelOf();
-    GAME.log('🏺 供奉 +' + U.fmt(n) + (why ? '（' + why + '）' : '') + '　当前 ' + U.fmt(st.pts));
+    if (why) GAME.log('🏺 供奉 +' + U.fmt(add) + '（' + why + '）　当前 ' + U.fmt(st.pts));
     if (lv1 > lv0) {
       (DATA.ARTIFACTS || []).forEach(function (a) {
         GAME.log('🏺 「' + a.name + '」升至 Lv' + lv1 + ' —— ' + ui77ArtEff(a, lv1));
       });
     }
-    return n;
+    return add;
   };
   /* 神器加成（唯一消费口）：Σ 每件神器 等级 × per[key] */
   GAME.artifactBonusNum = function (key) {
@@ -3538,5 +3548,131 @@
     fx.grade = 'escape';
     fx.result = { ok: true, name: fx.fly.escLabel || '就此离去', text: '', bad: true, escaped: true, grade: 'escape' };
     return { ok: true, fx: fx };
+  };
+  /* ============================================================
+   * 文字游戏 · 故事库引擎（内容层在 story/vol-*.js）
+   * ------------------------------------------------------------
+   * 与「江湖游历 / 奇遇」同族（幕 → 选择 → 幕/结局），但**互不依赖**：
+   *   · 游历 = 有消耗、有日锁、进战斗与生产链；
+   *   · 故事 = 只读叙事 + 一次性赏赐（不进战斗链、不改任何数值公式）。
+   * 事实源：window.STORY_DATA（由 story/vol-*.js 追加）。
+   * 运行态 GAME.SG._run **不入档**（一次阅读是短会话，同 sceneFx 先例）；
+   * 进度 s.stories **入档**（运行中会变 —— 符合「派生数据不入档」的判据）。
+   * ============================================================ */
+  GAME.SG = {};
+  /* 故事全表（无数据时返回空表，界面按空态处理） */
+  GAME.SG.list = function () {
+    return (typeof window !== 'undefined' && window.STORY_DATA) || [];
+  };
+  GAME.SG.one = function (sid) {
+    var all = GAME.SG.list();
+    for (var i = 0; i < all.length; i++) if (all[i].id === sid) return all[i];
+    return null;
+  };
+
+  /* 段数（层数）：从首幕逐层推进的最深层号 —— 界面「第 N 段 · 共 M 段」与测试共用。
+     v89.8 结构约定：全路径同层、结局挂在最深层；本函数只报层数，不判合法性
+     （合法性由 story/tools/check.py 把关）。 */
+  GAME.SG.rankCount = function (st) {
+    var ns = (st && st.nodes) || [];
+    if (!ns.length) return 0;
+    var idx = {}, depth = {}, queue = [ns[0].id];
+    ns.forEach(function (n) { idx[n.id] = n; });
+    depth[ns[0].id] = 1;
+    while (queue.length) {
+      var cur = queue.shift(), node = idx[cur];
+      ((node && node.o) || []).forEach(function (op) {
+        if (idx[op.to] && depth[op.to] == null) { depth[op.to] = depth[cur] + 1; queue.push(op.to); }
+      });
+    }
+    var max = 0;
+    for (var k in depth) if (depth[k] > max) max = depth[k];
+    return max;
+  };
+  /* 该档的阅读进度（懒初始化：老档读入即补，不动 SAVE_VERSION） */
+  GAME.SG.progress = function () {
+    var s = GAME.state;
+    if (!s) return {};
+    if (!s.stories) s.stories = {};
+    return s.stories;
+  };
+  /* 某锚点下的故事（带已读进度）——入口与图鉴共用这一处筛选 */
+  GAME.SG.anchor = function (kind, id) {
+    var pr = GAME.SG.progress();
+    var out = [];
+    GAME.SG.list().forEach(function (st) {
+      var a = st.anchor || {};
+      if (a.kind !== kind || a.id !== id) return;
+      var r = pr[st.id] || {};
+      out.push({ st: st, done: r.done || [], last: r.grade || '', n: r.n || 0 });
+    });
+    out.sort(function (a, b) { return a.st.id < b.st.id ? -1 : 1; });
+    return out;
+  };
+  /* 开一篇：建立运行态（不入档） */
+  GAME.SG.begin = function (sid) {
+    var st = GAME.SG.one(sid);
+    if (!st) return { ok: false, msg: '没有这篇故事' };
+    var nodes = st.nodes || [];
+    if (!nodes.length) return { ok: false, msg: '故事缺幕' };
+    GAME.SG._run = { st: st, nodeId: nodes[0].id, path: [], phase: 'node', ending: null, got: null, fresh: false };
+    return { ok: true, run: GAME.SG._run };
+  };
+  GAME.SG.nodeOf = function (run, nid) {
+    var ns = (run && run.st && run.st.nodes) || [];
+    for (var i = 0; i < ns.length; i++) if (ns[i].id === nid) return ns[i];
+    return null;
+  };
+  GAME.SG.endingOf = function (run, eid) {
+    var es = (run && run.st && run.st.endings) || [];
+    for (var i = 0; i < es.length; i++) if (es[i].id === eid) return es[i];
+    return null;
+  };
+  /* 选一个选项：推进到下一幕，或落到结局并立即结算 */
+  GAME.SG.choose = function (i) {
+    var run = GAME.SG._run;
+    if (!run || run.phase !== 'node') return { ok: false, msg: '当前不在选项中' };
+    var node = GAME.SG.nodeOf(run, run.nodeId);
+    var op = (node && node.o) ? node.o[i] : null;
+    if (!op) return { ok: false, msg: '没有这个选项' };
+    run.path.push({ id: run.nodeId, l: op.l });
+    var end = GAME.SG.endingOf(run, op.to);
+    if (end) {
+      run.phase = 'end';
+      run.ending = end;
+      run.got = GAME.SG.settle(run, end);
+    } else {
+      run.nodeId = op.to;
+    }
+    return { ok: true, run: run };
+  };
+  /* 归档即断开运行态（供退出/收起用） */
+  GAME.SG.close = function () { GAME.SG._run = null; };
+  /* 结算：赏赐走 STORY.applyReward（唯一奖赏出口），本处只做**形状折算** */
+  GAME.SG.settle = function (run, end) {
+    var s = GAME.state;
+    var rw = end.reward || {};
+    var flat = { gold: rw.gold || 0, rep: rw.rep || 0, pop: rw.pop || 0, item: rw.item, count: rw.count };
+    var res = {};
+    ['grain', 'wood', 'stone', 'iron'].forEach(function (k) { if (rw[k]) res[k] = rw[k]; });
+    if (Object.keys(res).length) flat.res = res;
+    if (GAME.story && GAME.story.applyReward) GAME.story.applyReward(flat);
+    if ((s.rep || 0) < 0) s.rep = 0;                    /* 声望不为负（lose 结局可能扣） */
+    var pr = GAME.SG.progress();
+    var rec = pr[run.st.id] || { done: [], n: 0, grade: '' };
+    var fresh = rec.done.indexOf(end.id) < 0;
+    if (fresh) rec.done.push(end.id);
+    rec.n = (rec.n || 0) + 1;
+    rec.grade = end.grade || '';
+    pr[run.st.id] = rec;
+    /* 展示用账目（与 flat 同源，界面不再二次计算） */
+    var got = [];
+    ['grain', 'wood', 'stone', 'iron', 'gold'].forEach(function (k) {
+      if (flat[k]) got.push({ k: GAME.resName ? GAME.resName(k) : k, v: flat[k] });
+    });
+    if (flat.rep) got.push({ k: '声望', v: flat.rep });
+    if (flat.pop) got.push({ k: '人口', v: flat.pop });
+    if (flat.item) got.push({ k: (DATA.ITEM_BY_ID && DATA.ITEM_BY_ID[flat.item] ? DATA.ITEM_BY_ID[flat.item].name : flat.item), v: flat.count || 1 });
+    return { got: got, first: fresh, done: rec.done.length, total: (run.st.endings || []).length };
   };
 })();

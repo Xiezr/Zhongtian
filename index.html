@@ -2235,6 +2235,23 @@
   .art-lv { color: var(--green-ok); margin-left: 4px; }
   .art-side { color: var(--text-dim); font-size: var(--fs-cap); white-space: nowrap; }
 
+  /* v89.7（老板「头像可更换」）：头像更换面板 —— 5×4 一屏 20 张，点选即换。
+     尺寸按默认弹窗（660×620）反推：格子 88px、网格总高约 382px，正文余量约 50px，
+     不出下拉条（老板硬规矩：弹窗内不许有下拉条）。 */
+  .av-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px;
+    max-width: 480px; margin: 10px auto 2px; }
+  .av-cell { aspect-ratio: 1 / 1; border: 2px solid var(--line-strong); border-radius: 8px;
+    overflow: hidden; cursor: pointer; background: #24242e; }
+  .av-cell img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .av-cell:hover { border-color: var(--teal-light); }
+  .av-cell.cur { border-color: var(--gold); box-shadow: 0 0 10px rgba(201,162,75,.45); }
+  /* 君主面板「头像」行的现脸缩略图（与顶栏同源） */
+  .lord-av-mini { width: 32px; height: 32px; border: 1px solid var(--gold); border-radius: 5px;
+    object-fit: cover; vertical-align: middle; margin-right: 6px; }
+  /* 顶栏头像成为更换入口（data-action 挂外层 —— syncHeader 每秒只换内部立绘） */
+  .lord-portrait[data-action] { cursor: pointer; }
+  .lord-portrait[data-action]:hover { border-color: var(--gold-light); box-shadow: 0 0 10px rgba(201,162,75,.45); }
+
   /* v54（老板："别一边长一边短，留空一大块"）：账册改成**单列**。
      改前是 `1fr 1fr` 两列 —— 节标题横贯全宽，于是每节的行数是奇数时
      最后一行只占左列、右列空着（甲·疆域 3 笔就正好这样），
@@ -2706,6 +2723,45 @@
   .jnl-nm { color: var(--text-strong); font-weight: 700; font-size: var(--fs-body); }
   .jnl-card.has .jnl-nm { color: var(--wonder); }
   .jnl-txt { color: var(--text-dim); font-size: var(--fs-cap); line-height: 1.35; }
+  /* ================= 文字游戏 · 阅读器（story/） =================
+     取色/字号全部走主题令牌；标题沿用共享规则内的既有类（.gold-heading / .side-title）。
+     .sgr-text 用 pre-wrap 保留正文换行（数据里的换行即段落，不转 <br>）。 */
+  #story-fx .sgr-wrap { max-width: 880px; margin: 0 auto; padding: var(--sp-6) var(--sp-5) 72px; }
+  .sgr-banner { display: flex; align-items: center; gap: var(--sp-3);
+    border-bottom: 1px solid var(--sep-gold); padding-bottom: var(--sp-3); margin-bottom: var(--sp-5); }
+  .sgr-title { flex: 1 1 auto; }
+  .sgr-text { font-size: var(--fs-lead); line-height: 2; white-space: pre-wrap; color: var(--text); }
+  .sgr-ops { display: flex; flex-direction: column; gap: var(--sp-3); margin-top: var(--sp-5); }
+  .sgr-opt { display: flex; flex-direction: column; align-items: flex-start; gap: var(--sp-1);
+    height: auto; text-align: left; padding: var(--sp-3) var(--sp-4); line-height: 1.6; }
+  .sgr-l { font-weight: 700; color: var(--text-strong); }
+  .sgr-d { font-size: var(--fs-sub); color: var(--text-dim); font-weight: 400; }
+  .sgr-end { border: 1px solid var(--sep-gold); border-radius: var(--r-lg);
+    padding: var(--sp-5); background: var(--panel-bg); }
+  .sgr-g-win { border-color: var(--gold); }
+  .sgr-g-lose { border-color: var(--red); }
+  .sgr-got { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-4);
+    margin-top: var(--sp-4); padding-top: var(--sp-3); border-top: 1px solid var(--line); }
+  .sgr-gv { color: var(--gold-light); font-weight: 700; }
+  .sgr-gv i { font-style: normal; color: var(--text-dim); font-weight: 400; margin-right: var(--sp-1); }
+  .sgr-note { color: var(--text-dim); font-size: var(--fs-cap); }
+  /* v89.8（老板「背景壁画的变换」）：满幅壁画两层 + 交叉淡入 + 沙幕（保正文可读）。
+     沙幕吃主题底色（明暗四主题都成立）；正文层 z=2 压在最上，点选不受遮挡。 */
+  .sgr-bg { position: fixed; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none;
+    opacity: 0; transition: opacity .55s ease; z-index: 0; }
+  .sgr-bg svg { width: 100%; height: 100%; display: block; }
+  .sgr-bg[data-on] { opacity: 1; }
+  .sgr-scrim { position: fixed; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1;
+    background: linear-gradient(180deg, var(--bg-dark) 0%, transparent 15%),
+      linear-gradient(180deg, transparent 30%, var(--bg-2) 74%); }
+  #story-fx .sgr-body { position: relative; z-index: 2; }
+  /* 段入场动效（每段重放入场：正文层 innerHTML 每次替换，动画自然重放） */
+  .sgr-wrap { animation: sgrIn .34s ease both; }
+  @keyframes sgrIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  .sgr-prog { color: var(--text-dim); font-size: var(--fs-sub); white-space: nowrap; flex: none; }
+  .sgr-dots { display: inline-flex; gap: 4px; align-items: center; margin-left: 6px; }
+  .sgr-dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--line-strong); }
+  .sgr-dots i.on { background: var(--gold-light); }
 </style>
 </head>
 <body>
@@ -2821,9 +2877,10 @@
         <!-- ① 君主栏 -->
         <!-- v25（需求 9）：头像换成程序化立绘（不再是 emoji）；「城池 N 城」这类统计从这一栏删掉。
              v81（老板）：「官职这行放玩家名称，现在的名称位置去掉」—— 游戏里没有官职体系，
-             该行退役、君主名并入信息表首行；旧的头像旁名称列一并撤除。 -->
+             该行退役、君主名并入信息表首行；旧的头像旁名称列一并撤除。
+             v89.7（老板「头像可更换」）：头像本身成为更换入口（点它进头像池点选）。 -->
         <div class="lord-head">
-          <div class="lord-portrait" id="lord-avatar"></div>
+          <div class="lord-portrait" id="lord-avatar" data-action="open-avatar-pick" title="点击更换头像"></div>
           <div class="lord-meta">
             <div class="row mrow-name"><span class="name" id="lord-name">—</span></div>
             <div class="row"><span>声望</span><span id="lord-rep">0</span></div>
@@ -2912,6 +2969,12 @@
 <script src="js/bitmaps.js"></script>
 <script src="js/portraits.js"></script>
 <script src="js/story.js"></script>
+<!-- 文字游戏故事库（story/）：数据追加到 window.STORY_DATA；卷文件按需增补 -->
+<script src="story/vol-01.js"></script>
+<script src="story/vol-02.js"></script>
+<script src="story/vol-03.js"></script>
+<script src="story/vol-04.js"></script>
+<script src="story/vol-05.js"></script>
 <script src="js/ui.js"></script>
 <script src="js/main.js"></script>
 </body>

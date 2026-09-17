@@ -2961,6 +2961,24 @@
     return { ok: true, msg: '君主已更名为 ' + name };
   };
 
+  /* --------- 君主换头像（v89.7 · 老板「头像可更换」） ---------
+   * 只改一处事实源：`s.ruler.portraitSeed`（头像池下标，一个整数）。
+   * v70 口径「君主与君主将领同脸」—— 两处同源一起改（同改名：两处同更）。
+   * 可用池按性别：m / f 各 20 张；越界拒绝，不动任何字段。 */
+  GAME.setLordAvatar = function (idx) {
+    var s = GAME.state;
+    if (!s || !s.ruler) return { ok: false, msg: '尚未开局' };
+    var pool = (GAME.portraits && GAME.portraits.POOL
+      && GAME.portraits.POOL[s.ruler.gender === 'female' ? 'f' : 'm']) || [];
+    if (!pool.length) return { ok: false, msg: '头像池不可用（assets/portraits/pool 缺失）' };
+    idx = Math.floor(Number(idx));
+    if (!(idx >= 0 && idx < pool.length)) return { ok: false, msg: '头像编号越界（0 ~ ' + (pool.length - 1) + '）' };
+    s.ruler.portraitSeed = idx;
+    var lg = GAME.lordGeneralOf ? GAME.lordGeneralOf() : null;
+    if (lg) lg.portraitSeed = idx;   /* v70：两处同源（顶栏立绘 + 将领页的脸） */
+    return { ok: true, msg: '已更换头像（第 ' + (idx + 1) + ' 张）' };
+  };
+
   /* --------- 解雇将领（装备全数归还；名将离去损声望） --------- */
   GAME.dismissGeneral = function (genId) {
     var s = GAME.state;
