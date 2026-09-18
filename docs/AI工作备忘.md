@@ -1591,3 +1591,15 @@ v24 把外城地块 9 级 39→40，v28 把建筑上限 10→12 —— 上限抬
 4. **测试环境的前置状态要用诊断兜底**：运行时断言一度"缺对象跳过"——加诊断后发现是套件早段用例
    （S18.generals.length = 1）截掉了君主，不是产品 bug。修法：断言自足构造（现场补临时君主 / 对照将、打完移除），
    并保留"缺对象"的显式分支（不许静默放空）。
+### 62. Git 自动推送钩子与「跟踪引用丢失」的坑（2026-09-19 收口时发现）
+1. **仓库自带提交后自动推送**：`.git/hooks/post-commit`（由 `install_hooks.py` 安装）每次提交后**后台**执行
+   `git push origin HEAD --follow-tags`；日志在 `.workbuddy/tmp/autopush.log`；关闭：`GIT_NO_AUTOPUSH=1`；
+   `sync.py` 执行时置 `GIT_SYNC_ACTIVE=1`，钩子自动让位。
+2. **钩子依赖上游跟踪引用**：它以 `git rev-list --count '@{u}..HEAD'` 判断 ahead ——
+   **`refs/remotes/origin/main` 一旦缺失（`git status -sb` 显示 `[origin/main: gone]`），ahead 计算失败，
+   钩子静默跳过、不再自动推**。常规修复：`git fetch origin`；极端情形（update-ref 不落盘的环境怪癖）
+   可 shell 直写 `.git/refs/remotes/origin/main` 修复。
+3. **判断同步状态的正确姿势**：`git ls-remote origin main` 与 `git rev-parse HEAD` 比对（跟踪引用可能 stale）；
+   `git status -sb` 出现 `[gone]` 或 ahead 数字 → 先 `git fetch origin` 再判断。
+4. **本会话收口记录**：`6fc5a6a`（135 文件）与交档收口提交均已推达远端 `main`；
+   手动补推 = `git push origin main`（或 `python .workbuddy/tools/git/sync.py --push-only`）。
