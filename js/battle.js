@@ -896,12 +896,8 @@
     for (var i = 0; i < s.generals.length; i++) if (s.generals[i].id === genId) gen = s.generals[i];
     if (!gen) return { ok: false, msg: '请选择出征将领' };
 
-    /* 断粮门槛：军无粮草不出兵（粮草系统此前只有「扣」没有「拦」）。
-       仅在「存粮为 0 且消耗大于产出」时拦截，避免临时缺粮就完全动不了。
-       放在目标解析**之前** —— 粮尽是对全军状态的判断，与打哪里无关。 */
-    if (!opts.arrived && GAME.isStarving && GAME.isStarving()) {
-      return { ok: false, msg: '粮尽，士卒饥疲，无法出征 —— 宜增产粮草、掠夺敌粮或裁减军伍' };
-    }
+    /* v89.36（老板「维持军队无需耗粮食」）：断粮门槛随军粮维持一并退役 ——
+       军队不再吃粮，出征不再有"粮尽"拦截（缺粮哗变系统同时移出）。 */
 
     var t = GAME.battle.resolveTarget(target);
     if (!t.ok) return { ok: false, msg: t.msg || '目标无效' };
@@ -1212,11 +1208,17 @@
          （此前是随时间/民心/欠俸慢慢掉，玩家什么都没做也会掉，体验很差） */
       var lLoss = (DATA.LOYALTY && DATA.LOYALTY.defeatLoss) || 8;
       var lBefore = gen.loyalty == null ? 70 : gen.loyalty;
-      gen.loyalty = Math.max(0, lBefore - lLoss);
-      GAME.log((mode.occupy ? '攻城' : '劫掠') + '失败：' + t.name + ' 坚守不退（可退而休整）'
-        + '，' + gen.name + ' 忠诚 -' + lLoss + '（现 ' + Math.round(gen.loyalty) + '）');
-      if (gen.loyalty < (DATA.LOYALTY.warnAt || 50)) {
-        GAME.log('⚠️ ' + gen.name + ' 忠诚已低于 ' + DATA.LOYALTY.warnAt + '，加成减半，宜以珠宝赏赐安抚。');
+      /* v89.40（老板）：「君主不会掉忠诚」—— 战败挫伤不适用于君主
+         （与「不可解雇 / 绝不离去」同源：忠诚对君主无意义，详情页也不再出忠诚行）。 */
+      if (GAME.isLordGeneral(gen)) {
+        GAME.log((mode.occupy ? '攻城' : '劫掠') + '失败：' + t.name + ' 坚守不退（可退而休整）');
+      } else {
+        gen.loyalty = Math.max(0, lBefore - lLoss);
+        GAME.log((mode.occupy ? '攻城' : '劫掠') + '失败：' + t.name + ' 坚守不退（可退而休整）'
+          + '，' + gen.name + ' 忠诚 -' + lLoss + '（现 ' + Math.round(gen.loyalty) + '）');
+        if (gen.loyalty < (DATA.LOYALTY.warnAt || 50)) {
+          GAME.log('⚠️ ' + gen.name + ' 忠诚已低于 ' + DATA.LOYALTY.warnAt + '，加成减半，宜以珠宝赏赐安抚。');
+        }
       }
     }
 

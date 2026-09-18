@@ -701,20 +701,26 @@
      六维都能加（统率/内政/勇武/智谋/速度/体力），**只能加、不能减**。
      四项主属性走 g[stat]+=1；速度 / 体力另有独立加法位（spdAdd / staAdd），
      由 genAttrs 与 staBaseMax 各自吃进去 —— 属性本身保持"基础值"不被污染。 */
-  GAME.addFreePoint = function (g, stat) {
+  /* v89.40（老板）：「输入计划增加的数量，一次加点」—— qty 缺省 1（单点口径不变），
+     超过余额按余额截断（回报实加的数字）。唯一出口不变，仍是本函数。 */
+  GAME.addFreePoint = function (g, stat, qty) {
     if (!g || ['tong', 'nz', 'yw', 'zm', 'spd', 'sta'].indexOf(stat) < 0) {
       return { ok: false, msg: '该属性不支持加点' };
     }
-    if ((g.freePts || 0) < 1) {
+    var have = Math.floor(g.freePts || 0);
+    if (have < 1) {
       return { ok: false, msg: '自由属性点不足（升级获得：每级 = 资质成长值）' };
     }
-    g.freePts -= 1;
+    var n = Math.floor(Number(qty) || 0);
+    if (n < 1) n = 1;
+    if (n > have) n = have;
+    g.freePts -= n;
     var nm = { tong: '统率', nz: '内政', yw: '勇武', zm: '智谋', spd: '速度', sta: '体力' }[stat];
-    if (stat === 'spd') g.spdAdd = (g.spdAdd || 0) + 1;
-    else if (stat === 'sta') g.staAdd = (g.staAdd || 0) + 1;
-    else g[stat] = (g[stat] || 0) + 1;
-    GAME.log('🎯 ' + g.name + ' ' + nm + ' +1（自由点 -1，余 ' + g.freePts + '）');
-    return { ok: true, msg: g.name + ' ' + nm + ' +1（余 ' + g.freePts + ' 点）' };
+    if (stat === 'spd') g.spdAdd = (g.spdAdd || 0) + n;
+    else if (stat === 'sta') g.staAdd = (g.staAdd || 0) + n;
+    else g[stat] = (g[stat] || 0) + n;
+    GAME.log('🎯 ' + g.name + ' ' + nm + ' +' + n + '（自由点 -' + n + '，余 ' + g.freePts + '）');
+    return { ok: true, msg: g.name + ' ' + nm + ' +' + n + '（余 ' + g.freePts + ' 点）' };
   };
 
   /* 生成 NPC 城 */
@@ -1376,8 +1382,9 @@
     /* 定期来袭：离线也要照打（**与在线同一个 invasionTick**）——
        长时间离线会一次跨过多个周期，函数内部用 while 逐个结算。 */
     GAME.invasionTick(ts / 3600 * secReal);
-    /* 资源与耗粮：**逐城**结算（v60 · 需求 4，与在线 tickOnce 同一口径） */
-    var offlineFeedTotal = 0, offLostTotal = 0;
+    /* 资源：**逐城**结算（v60 · 需求 4，与在线 tickOnce 同一口径）。
+       v89.36（老板「维持军队无需耗粮食」）：军队维持耗粮已废除 ——
+       离线补算不再扣军粮、不再推缺粮计时（缺粮哗变系统一并退役）。 */
     s.cities.forEach(function (ct) {
       var prod = GAME.cityProdPerSec(ct);
       var cap = GAME.storeCapOf(ct);
@@ -1388,18 +1395,7 @@
         /* 黄金不受仓库上限约束（同在线口径） */
         if (k !== 'gold' && cap > 0 && R[k] > cap) R[k] = cap;
       }
-      var feedC = GAME.foodPerSecOf(ct);
-      offlineFeedTotal += feedC;
-      R.grain = (R.grain || 0) - feedC * secReal;
-      /* 离线口径必须与在线一致：粮尽同样钳制到 0，并走**同一个** starveStep
-         （v65：长时间离线会按"每 24 游戏小时一次"连续哗变，starveStep 内部循环处理）。 */
-      if (R.grain < 0 && feedC > 0) {
-        var stepOff = GAME.starveStep(ct, true, ts / 3600 * secReal);
-        if (stepOff.lost > 0) offLostTotal += stepOff.lost;
-      } else {
-        GAME.starveStep(ct, false, 0);
-      }
-      if (R.grain < 0) R.grain = 0;
+      /* v89.36：军粮维持耗粮已废除（不再扣粮、不再缺粮计时）。 */
       /* 俸禄：从该将所在城扣（同在线口径） */
       var sal = 0;
       (s.generals || []).forEach(function (g) { if (g.cityId === ct.id) sal += g.level * 20; });
@@ -1408,7 +1404,6 @@
         if (R.gold < 0) R.gold = 0;
       }
     });
-    if (offLostTotal > 0) GAME._offlineStarved = offLostTotal;
     /* 将领体力/精力回满、忠诚（v14.1 同样不随时间衰减，与在线口径一致） */
     (function () {
       var gc = DATA.GEN_COST, lo = DATA.LOYALTY, hours = ts / 3600 * secReal;
@@ -1997,36 +1992,9 @@
       }
     });
 
-    /* 2) 军队耗粮（真实：每兵每小时耗粮，出征×2）—— **逐城**扣本城的粮。
-       粮尽时有后果：钳制到 0 并按缺口比例逃兵。
-       此前只做减法、不设下限，粮能被扣成**无限负数**（实测 20 万铁骑 5 秒后 -151 万），
-       而离线补算却有 `if(<0)=0` —— 在线/离线两套口径不一致，刷新页面还会把负粮抹平。 */
-    s.cities.forEach(function (ct) {
-      var R = GAME.res(ct);
-      var feedC = GAME.foodPerSecOf(ct);
-      R.grain = (R.grain || 0) - feedC;
-      var starving = R.grain < 0;
-      if (starving) R.grain = 0;
-      ct.starving = starving;
-      /* v65（老板）：饿满 24 游戏小时才哗变，之后每满 24 小时各兵种逃 20%。
-         计时与触发都在 `GAME.starveStep`（离线补算走同一个函数，不许各写一套）。 */
-      var step = GAME.starveStep(ct, starving, ts / 3600);
-      var dayIdx = GAME.questDayIndex ? GAME.questDayIndex() : 0;
-      if (step.lost > 0) {
-        if (GAME._starveLogDay !== dayIdx + '|' + ct.id) {
-          GAME._starveLogDay = dayIdx + '|' + ct.id;
-          GAME.log('⚠️ ' + ct.name + '缺粮已满 ' + DATA.STARVE.hours + ' 时，'
-            + U.fmt(step.lost) + ' 士卒哗变逃散 —— 速运粮草入城');
-        }
-      } else if (starving && !ct._starveWarn) {
-        /* 刚断粮：给出"还有多久才哗变"，玩家才知道自己有多少时间可救 */
-        ct._starveWarn = true;
-        GAME.log('🕯 ' + ct.name + '粮尽 —— 守军尚可撑 '
-          + Math.max(0, DATA.STARVE.hours - Math.floor(step.hours)) + ' 游戏小时，逾时将哗变逃散');
-      }
-      if (!starving) ct._starveWarn = false;
-    });
-    s.starving = s.cities.some(function (ct) { return ct.starving; });
+    /* 2) 军队耗粮 —— v89.36（老板「维持军队无需耗粮食」）已废除：
+       军队维持不再消耗粮草（粮改为**募兵时一次性消耗**，见 DATA.TROOPS.cost.grain ×3）；
+       缺粮钳制 / 缺粮计时 / 哗变（原 v65 规则）随之整体退役。 */
 
     /* 3) 将领月俸（v77 · 老板「经过 7 个游戏日结算 1 次」）——
        不再逐秒扣款：每 7 游戏日一次结清（GAME.settleGenSalary，
@@ -2330,86 +2298,11 @@
     return m;
   };
 
-  /* 军队每秒耗粮 */
-  /* 军队耗粮（/秒）。
-     v60（需求 4）：拆出**单城**版本 —— 粮草归属城池，各城军队吃自己城的粮。
-     不传 city = 全境合计（供界面显示与存档索引）。 */
-  GAME.foodPerSecOf = function (city) {
-    var s = GAME.state, ts = GAME.timeScale();
-    if (!s) return 0;
-    var feed = 0;
-    var list = city ? [city] : s.cities;
-    (list || []).forEach(function (ct) {
-      for (var id in (ct.army || {})) {
-        var t = DATA.TROOPS[id];
-        if (t) feed += ct.army[id] * t.food;
-      }
-    });
-    if (GAME.story) feed *= GAME.story.feedMult();
-    return feed / 3600 * ts;
-  };
-  GAME.foodPerSec = function () { return GAME.foodPerSecOf(null); };
+  /* v89.36（老板「维持军队无需耗粮食」）：军队维持耗粮整体退役 ——
+     `foodPerSecOf` / `foodPerSec` / `mutinyOf` / `starveStep` / `isStarving`
+     与 v65 缺粮哗变规则一并移除（军队不再吃粮，断粮没有触发条件）。
+     粮改为**募兵时一次性消耗**（DATA.TROOPS.cost.grain ×3）。 */
 
-  /* --------- 缺粮哗变（v65 · 老板） ---------
-   * 老板原话：「缺粮 24h 后军队才会哗变，各兵种每 24h 逃离当前剩余数量的 20%」
-   *
-   * 改前（`applyStarvation`）：粮一断就按**缺口占需求的比例**逃兵（单次封顶 15%/tick）——
-   *   规则说不清（逃多少取决于缺口比例），而且断粮当场掉兵，玩家根本来不及救。
-   *   它还只吃该城的兵（v60 的口径，这条保留到新实现里）。
-   * 改后两条：
-   *   ① `mutinyOf(city)` —— 一次哗变：**各兵种逃当前数量的 20%**；
-   *   ② `starveStep(city, starving, gameHours)` —— 缺粮计时与"每满 24 小时来一次"的推进，
-   *      **在线 tickOnce 与离线 simulateBulk 共用它**（两套口径漂移是这个项目的老毛病）。
-   * 粮一接上就**清零重计**：否则"断断续续缺粮"会攒够 24 小时突然哗变，玩家看不懂。
-   * ------------------------------------------------------------ */
-  GAME.mutinyOf = function (city) {
-    var s2 = GAME.state;
-    var pct = (DATA.STARVE && DATA.STARVE.mutinyPct) || 0.2;
-    var lost = 0, kinds = 0;
-    ((city ? [city] : ((s2 && s2.cities) || []))).forEach(function (c) {
-      for (var id in (c.army || {})) {
-        var n = c.army[id];
-        if (!(n > 0)) continue;
-        /* 各兵种**分别**逃 20%（向下取整：不到 5 人的小队不会归零消失） */
-        var d = Math.floor(n * pct);
-        if (d <= 0) continue;
-        c.army[id] = n - d;
-        lost += d; kinds++;
-        if (c.army[id] <= 0) delete c.army[id];
-      }
-    });
-    return { lost: lost, kinds: kinds };
-  };
-  /* 推进一个时间步的缺粮计时；返回本步的哗变结果。
-     `starving` = 本步结算后该城是否仍无粮；gameHours = 本步折合的游戏小时。 */
-  GAME.starveStep = function (city, starving, gameHours) {
-    var need = (DATA.STARVE && DATA.STARVE.hours) || 24;
-    if (!starving) {
-      if (city.starveHours) city.starveHours = 0;      // 粮接上 → 清零重计
-      city.isFamine = false;
-      return { lost: 0, kinds: 0, cycles: 0, hours: 0 };
-    }
-    city.starveHours = (city.starveHours || 0) + (gameHours || 0);
-    var lost = 0, kinds = 0, cycles = 0;
-    while (city.starveHours >= need) {
-      city.starveHours -= need;                        // 扣一个周期，余数留给下一次
-      var mu = GAME.mutinyOf(city);
-      lost += mu.lost; kinds = mu.kinds; cycles++;
-    }
-    city.isFamine = city.starveHours > 0;
-    return { lost: lost, kinds: kinds, cycles: cycles, hours: city.starveHours };
-  };
-
-  /* 当前是否处于断粮状态（供出征拦截与界面提示共用）。v60：按城判定 ——
-     出征拦截用的是"出发城"，所以这里默认看当前城。 */
-  GAME.isStarving = function (city) {
-    var s = GAME.state;
-    if (!s) return false;
-    var c = city || GAME.currentCity();
-    var prod = c && GAME.cityProdPerSec ? (GAME.cityProdPerSec(c).grain || 0) : 0;
-    var R = GAME.res(c);
-    return (R.grain || 0) <= 0 && GAME.foodPerSecOf(c) > prod;
-  };
 
   /* ============================================================
    * 定期来袭（第 2 期 · 防守）—— 全部唯一出口
@@ -2606,6 +2499,7 @@
       else e.lv = q.targetLevel;
       e.pending = null;   // 关键：清掉建设中标记
       GAME.log('城外' + (DATA.EXT_BUILDINGS[q.buildId] ? DATA.EXT_BUILDINGS[q.buildId].name : '建筑') + (q.type === 'ext_build' ? '建造完成' : '升级至 Lv' + q.targetLevel));
+      if (GAME.onActionDone) GAME.onActionDone('build-done', { id: q.buildId, type: q.type });
       return;
     }
     /* v16：城墙（不占格，环绕城池） */
@@ -2617,6 +2511,7 @@
         GAME.statBump('buildDone', 1);
         GAME.log('城墙' + (wasLv === 0 ? '建成' : '升级至 Lv' + q.targetLevel)
           + '（耐久 ' + (q.targetLevel * 100) + '万 · 守军防御 +' + (q.targetLevel * 10) + '%）');
+        if (GAME.onActionDone) GAME.onActionDone('build-done', { id: 'wall', type: 'wall' });
       }
       return;
     }
@@ -2640,6 +2535,7 @@
     }
     GAME.statBump('buildDone', 1);
     GAME.log('建筑完成：' + (DATA.BUILDINGS[q.buildId] ? DATA.BUILDINGS[q.buildId].name : q.buildId) + (q.type === 'upgrade' ? ' 升级' : ''));
+    if (GAME.onActionDone) GAME.onActionDone('build-done', { id: q.buildId, type: q.type });
   };
 
   /* 训练完成 */
@@ -2650,6 +2546,7 @@
     GAME.advanceQuestTrain(t.troopId, t.count);
     GAME.statBump('trained', t.count);
     GAME.log('训练完成：' + (DATA.TROOPS[t.troopId] ? DATA.TROOPS[t.troopId].name : t.troopId) + ' ×' + t.count);
+    if (GAME.onActionDone) GAME.onActionDone('train-done', { troopId: t.troopId, count: t.count });
   };
 
   /* 科技完成 */
@@ -2660,6 +2557,7 @@
     var name = tq.techId;
     (DATA.TECH || []).forEach(function (t) { if (t.id === tq.techId) name = t.name; });
     GAME.log('科技完成：' + name);
+    if (GAME.onActionDone) GAME.onActionDone('tech-done', { techId: tq.techId });
   };
 
   GAME.cityById = function (id) {
@@ -3648,6 +3546,244 @@
   };
   /* 归档即断开运行态（供退出/收起用） */
   GAME.SG.close = function () { GAME.SG._run = null; };
+  /* ============================================================
+   * v89.29 · 逸闻奇遇（概率触发入口）
+   * ------------------------------------------------------------
+   * 入口从「列表菜单」改为「概率奇遇」：点击建筑 / 地块时掷骰，
+   * 命中则从该锚点的故事池（每篇 = 一份独立资产）随机抽一篇，
+   * 直接在弹窗之上开卷（叠层语义：掩卷后回到原面板）。
+   *   · 优先抽「还有未读结局的」；池内全部读毕后转为低概率重读；
+   *   · 冷却期内（TRIG.cooldownMs）不再触发 —— 防连点刷屏；
+   *   · TRIG.rng / TRIG.pin 为测试与调试钩子（pin 指定必中篇目）。
+   * 运行态 _lastAt 不入档（会话级即可）。
+   * ============================================================ */
+  GAME.SG.TRIG = {
+    chance: 0.35,        /* 有未读故事时的触发概率 */
+    chanceDone: 0.12,    /* 全部读毕后的重读概率（低） */
+    cooldownMs: 60 * 1000,
+    /* v89.31：动作触发（战事/营造/民生…）—— 同类动作的最小间隔（各记各的） */
+    actCooldownMs: 3 * 60 * 1000,
+    rng: Math.random,    /* 返回 [0,1)；可注入（测试） */
+    pin: null,           /* 调试/测试：指定命中篇目（须在该锚点池内） */
+    _lastAt: 0,          /* 上次被抽走的时刻（运行态，不入档） */
+    _actAt: {}           /* v89.31：各动作键上次触发时刻（运行态，不入档） */
+  };
+  /* 触发池：fresh = 还有未读结局的（优先）；done = 已读全的（重读用） */
+  GAME.SG.candidates = function (kind, id) {
+    var rows = GAME.SG.anchor(kind, id), fresh = [], done = [];
+    rows.forEach(function (r) {
+      var total = (r.st.endings || []).length;
+      if ((r.done || []).length < total) fresh.push(r); else done.push(r);
+    });
+    return { fresh: fresh, done: done, total: rows.length };
+  };
+  /* 掷骰：返回 { fire, why, sid }；why ∈ empty / cool / roll / pin-miss */
+  GAME.SG.roll = function (kind, id, at) {
+    var cands = GAME.SG.candidates(kind, id);
+    if (!cands.total) return { fire: false, why: 'empty' };
+    var now = (at == null ? Date.now() : at);
+    if (now - GAME.SG.TRIG._lastAt < GAME.SG.TRIG.cooldownMs) return { fire: false, why: 'cool' };
+    var pool = cands.fresh.length ? cands.fresh : cands.done;
+    var pick = null;
+    if (GAME.SG.TRIG.pin) {
+      for (var i = 0; i < pool.length; i++) {
+        if (pool[i].st.id === GAME.SG.TRIG.pin) { pick = pool[i]; break; }
+      }
+      if (!pick) return { fire: false, why: 'pin-miss' };
+    } else {
+      var chance = cands.fresh.length ? GAME.SG.TRIG.chance : GAME.SG.TRIG.chanceDone;
+      if (GAME.SG.TRIG.rng() >= chance) return { fire: false, why: 'roll' };
+      pick = pool[Math.min(pool.length - 1, Math.floor(GAME.SG.TRIG.rng() * pool.length))];
+    }
+    GAME.SG.TRIG._lastAt = now;
+    return { fire: true, sid: pick.st.id, st: pick.st };
+  };
+  /* ============================================================
+   * v89.31 · 动作触发（逸闻奇遇 · 因果线）
+   * ------------------------------------------------------------
+   * 除「点击建筑 / 地块」外，玩家的**动作结算**也可偶遇逸闻 ——
+   * 覆盖四条线（共 14 个动作键）：
+   *   · 战事：出征胜 / 出征败 / 占领城池 / 据守野地（行军抵达时结算）；
+   *   · 营造：建造升级完成（含城外与城墙）/ 迁址 / 筑城；
+   *   · 民生：训练完成 / 治疗伤兵 / 市易 / 采集归来；
+   *   · 成长：研习（科技）完成 / 招贤（客栈招募）/ 爵位晋升。
+   * 每个动作键给出「相关建筑池」：
+   *   anchors —— 静态数组，或按 ctx 动态解析（如占城取该档城池 + 官府 + 鸿胪寺）；
+   *   chance / cd —— 命中概率与同类冷却（默认 actCooldownMs）；prefer —— 可选的标签收窄；
+   * 池内先取「有未读结局的」（fresh），全读毕后转低概率重读；pin 指定时绕过 prefer。
+   * 挂点：引擎侧（tick 内完成）经 GAME.onActionDone（main.js 定义）→ ui.sgTryAct；
+   *       界面侧动作在 main.js 各 doXxx 内直接 ui.sgTryAct。
+   * ============================================================ */
+  GAME.SG.ACT = {
+    /* ---- 战事（onMarchArrive 结算） ---- */
+    'battle-win': {
+      chance: 0.35, cd: 4 * 60 * 1000,
+      prefer: ['军伍', '军务', '军情', '城防', '烽燧', '马政', '驿传', '边务', '营务'],
+      anchors: [['building', 'junying'], ['building', 'xiaochang'], ['building', 'chengqiang'],
+                ['building', 'fenghuotai'], ['building', 'majiu'], ['building', 'yizhan']]
+    },
+    'battle-lose': {
+      chance: 0.30, cd: 4 * 60 * 1000,
+      prefer: ['军伍', '军务', '城防', '驿传', '赈济', '信义', '流民'],
+      anchors: [['building', 'junying'], ['building', 'xiaochang'], ['building', 'chengqiang'],
+                ['building', 'yizhan'], ['building', 'minfang']]
+    },
+    'occupy-city': {
+      chance: 0.50, cd: 4 * 60 * 1000,
+      anchors: function (ctx) {
+        var t = ['county', 'jun', 'zhou', 'capital'].indexOf(ctx && ctx.type) >= 0 ? ctx.type : 'county';
+        return [['city', t], ['building', 'guanfu'], ['building', 'honglusi']];
+      }
+    },
+    'occupy-wild': {
+      chance: 0.30,
+      anchors: function (ctx) {
+        return [['wild', (ctx && ctx.terrain) || 'hill'], ['building', 'fenghuotai'], ['building', 'chengqiang']];
+      }
+    },
+    /* ---- 营造（applyBuildDone 结算） ---- */
+    'build-done': {
+      chance: 0.20,
+      anchors: function (ctx) {
+        var ty = (ctx && ctx.type) || '';
+        var b = (ctx && ctx.id) || 'gongjiangzuofang';
+        if (ty.indexOf('ext') === 0) return [['ext', b], ['building', 'gongjiangzuofang']];
+        if (ty === 'wall') return [['building', 'chengqiang'], ['building', 'gongjiangzuofang']];
+        return [['building', b], ['building', 'gongjiangzuofang']];
+      }
+    },
+    'move-city': {
+      chance: 0.60, cd: 4 * 60 * 1000,
+      anchors: [['building', 'guanfu'], ['building', 'minfang'], ['building', 'gongjiangzuofang'], ['building', 'chengqiang']]
+    },
+    'build-city': {
+      chance: 0.60, cd: 4 * 60 * 1000,
+      anchors: [['building', 'guanfu'], ['building', 'minfang'], ['building', 'gongjiangzuofang'], ['building', 'chengqiang']]
+    },
+    /* ---- 民生 / 成长 ---- */
+    'train-done': {
+      chance: 0.10, cd: 5 * 60 * 1000,
+      anchors: [['building', 'junying'], ['building', 'xiaochang'], ['building', 'tiejiangpu']]
+    },
+    'tech-done': {
+      chance: 0.35,
+      anchors: [['building', 'shuyuan'], ['building', 'zhaoxianguan']]
+    },
+    'heal-wounded': {
+      chance: 0.25,
+      anchors: [['building', 'junying'], ['building', 'minfang']]
+    },
+    'recruit-hero': {
+      chance: 0.50, cd: 4 * 60 * 1000,
+      anchors: [['building', 'zhaoxianguan'], ['building', 'kezhan']]
+    },
+    'market-trade': {
+      chance: 0.08, cd: 5 * 60 * 1000,
+      anchors: [['building', 'shichang'], ['building', 'cangku']]
+    },
+    'gather-done': {
+      chance: 0.10, cd: 5 * 60 * 1000,
+      anchors: function (ctx) {
+        return [['wild', (ctx && ctx.terrain) || 'hill'], ['building', 'cangku']];
+      }
+    },
+    'promote': {
+      chance: 0.50, cd: 4 * 60 * 1000,
+      anchors: [['building', 'guanfu'], ['building', 'honglusi'], ['building', 'minfang']]
+    }
+  };
+
+  /* v89.39：世事（misc/any）并入动作触发池 —— 每键配「题材标签」，
+     精确匹配世事篇 tags 的第二词（如 凯旋 / 策勋 / 迁治）——
+     动作做完偶遇「事后的回响」（与 v89.29 点击奇遇、v89.31 动作触发同族）。 */
+  (function () {
+    var MT = {
+      'battle-win': ['凯旋', '献俘', '犒军', '策勋', '追赠'],
+      'battle-lose': ['收葬', '抚孤', '追赠'],
+      'occupy-city': ['献俘', '凯旋', '赐第', '策勋'],
+      'occupy-wild': ['追赠', '收葬'],
+      'build-done': ['筑基', '建仓', '立市', '浚河'],
+      'move-city': ['迁治', '修路', '去思碑'],
+      'build-city': ['筑基', '立市', '迁治'],
+      'train-done': ['犒军', '乡射'],
+      'tech-done': ['奏对', '元日', '立春', '秋尝', '保举', '致仕', '授馆'],
+      'heal-wounded': ['赈粥', '抚孤', '大傩', '腊祭', '雪赈'],
+      'recruit-hero': ['保举', '赐服'],
+      'market-trade': ['立市', '质剂', '岁贡', '贡差', '回赐', '勘合', '通事'],
+      'gather-done': ['建仓', '质剂'],
+      'promote': ['策勋', '铁券', '月俸', '朝会', '赐服', '奏对', '大赦', '赎刑', '旌表']
+    };
+    Object.keys(MT).forEach(function (k) {
+      if (GAME.SG.ACT[k]) GAME.SG.ACT[k].miscTags = MT[k];
+    });
+  })();
+  /* 动作池：相关锚点合并去重 → fresh（有未读结局）/ done（读毕） */
+  GAME.SG.actPool = function (key, ctx) {
+    var act = GAME.SG.ACT[key];
+    if (!act) return { fresh: [], done: [], total: 0, act: null };
+    var list = (typeof act.anchors === 'function') ? (act.anchors(ctx || {}) || []) : (act.anchors || []);
+    var seen = {}, fresh = [], done = [], total = 0;
+    list.forEach(function (a) {
+      if (!a) return;
+      GAME.SG.anchor(a[0], a[1]).forEach(function (r) {
+        if (seen[r.st.id]) return;
+        seen[r.st.id] = 1; total += 1;
+        if ((r.done || []).length < (r.st.endings || []).length) fresh.push(r); else done.push(r);
+      });
+    });
+    /* v89.39：世事（misc）并入 —— 与该键题材标签（miscTags）精确匹配的世事篇（tags 第二词） */
+    if (act.miscTags && act.miscTags.length) {
+      GAME.SG.anchor('misc', 'any').forEach(function (r) {
+        if (seen[r.st.id]) return;
+        var tg = r.st.tags || [];
+        var hit = false;
+        for (var i = 0; i < tg.length; i++) {
+          if (act.miscTags.indexOf(tg[i]) >= 0) { hit = true; break; }
+        }
+        if (!hit) return;
+        seen[r.st.id] = 1; total += 1;
+        if ((r.done || []).length < (r.st.endings || []).length) fresh.push(r); else done.push(r);
+      });
+    }
+    return { fresh: fresh, done: done, total: total, act: act };
+  };
+  /* prefer：优先取「标签命中」的那一档（只收窄、不缩空；pin 指定时绕过） */
+  GAME.SG.preferRows = function (rows, act) {
+    var pref = (act && act.prefer) || [];
+    if (!pref.length || !rows.length) return rows;
+    var hit = rows.filter(function (r) {
+      var tg = r.st.tags || [];
+      for (var i = 0; i < tg.length; i++) if (pref.indexOf(tg[i]) >= 0) return true;
+      return false;
+    });
+    return hit.length ? hit : rows;
+  };
+  /* 动作掷骰：返回 { fire, why, sid, st, key }；why ∈ empty / cool / roll / pin-miss */
+  GAME.SG.rollAct = function (key, ctx, at) {
+    var p = GAME.SG.actPool(key, ctx);
+    if (!p.total) return { fire: false, why: 'empty' };
+    var act = p.act || {};
+    var now = (at == null ? Date.now() : at);
+    var cd = act.cd || GAME.SG.TRIG.actCooldownMs;
+    if (now - (GAME.SG.TRIG._actAt[key] || 0) < cd) return { fire: false, why: 'cool' };
+    var usePin = !!GAME.SG.TRIG.pin;
+    var fresh = usePin ? p.fresh : GAME.SG.preferRows(p.fresh, act);
+    var done = usePin ? p.done : GAME.SG.preferRows(p.done, act);
+    var pool = fresh.length ? fresh : done;
+    var pick = null;
+    if (usePin) {
+      for (var i = 0; i < pool.length; i++) {
+        if (pool[i].st.id === GAME.SG.TRIG.pin) { pick = pool[i]; break; }
+      }
+      if (!pick) return { fire: false, why: 'pin-miss' };
+    } else {
+      var chance = fresh.length ? act.chance : (act.chanceDone != null ? act.chanceDone : GAME.SG.TRIG.chanceDone);
+      if (GAME.SG.TRIG.rng() >= chance) return { fire: false, why: 'roll' };
+      pick = pool[Math.min(pool.length - 1, Math.floor(GAME.SG.TRIG.rng() * pool.length))];
+    }
+    GAME.SG.TRIG._actAt[key] = now;
+    return { fire: true, sid: pick.st.id, st: pick.st, key: key };
+  };
   /* 结算：赏赐走 STORY.applyReward（唯一奖赏出口），本处只做**形状折算** */
   GAME.SG.settle = function (run, end) {
     var s = GAME.state;

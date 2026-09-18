@@ -19,6 +19,10 @@ v2 判据（老板 2026-09-17「适当增长篇幅，5-7段选择」—— 任�
   9  壁画：每幕 / 每结局必须有 bg 键，且在白名单内
      （白名单与 js/ui.js 的 ui.SG_MURAL 键名须一致；漏改由 smoke §81 兜底）
   10 文本不含字面反斜杠字符（防「双转义」——显示层不露出转义字样）
+  11 中文正文不含英文残留（幕文 / 幕题 / 选项 / 结局中不得出现 3 个及以上连续 ASCII 字母）
+  12 reward 白名单（键仅 grain/wood/stone/iron/gold/pop/rep/item/count；
+     item 仅 "jingtie" / "lingsui" + 四部内功秘籍（v89.28 题材线「功法」：
+     book_sunzi / book_liutao / book_wuqin / book_yuenv），且必须带正整数 count）
 """
 import io
 import json
@@ -188,6 +192,38 @@ def check_story(st, errs):
     for x in ends:
         if chr(92) in (x.get('t') or ''):
             e('结局 %s 文本含字面反斜杠（疑似双转义）' % x.get('id'))
+
+    # 11 中文正文不含英文残留（3+ 连续 ASCII 字母；键名 / 锚点 id 不在扫描范围）
+    _en = re.compile(r'[A-Za-z]{3,}')
+    for n in nodes:
+        for fld in ('t', 's'):
+            m = _en.search(n.get(fld) or '')
+            if m:
+                e('幕 %s 的 %s 含英文残留「%s」' % (n.get('id'), fld, m.group()))
+        for op in n.get('o') or []:
+            for fld in ('l', 'd'):
+                m = _en.search(op.get(fld) or '')
+                if m:
+                    e('幕 %s 选项 %s 含英文残留「%s」' % (n.get('id'), fld, m.group()))
+    for x in ends:
+        m = _en.search(x.get('t') or '')
+        if m:
+            e('结局 %s 含英文残留「%s」' % (x.get('id'), m.group()))
+
+    # 12 reward 白名单（键 / item 值 / count 正整数）
+    _rwk = set(['grain', 'wood', 'stone', 'iron', 'gold', 'pop', 'rep', 'item', 'count'])
+    _rwi = set(['jingtie', 'lingsui', 'book_sunzi', 'book_liutao', 'book_wuqin', 'book_yuenv'])  # v89.28 +4 内功秘籍
+    for x in ends:
+        rw = x.get('reward') or {}
+        badk = set(rw.keys()) - _rwk
+        if badk:
+            e('结局 %s reward 含非法键：%s' % (x.get('id'), sorted(badk)))
+        if 'item' in rw:
+            if rw.get('item') not in _rwi:
+                e('结局 %s reward.item 非法：%r' % (x.get('id'), rw.get('item')))
+            c = rw.get('count')
+            if not isinstance(c, int) or c <= 0:
+                e('结局 %s reward.item 缺正整数 count' % x.get('id'))
 
     # 8 grade 覆盖
     grades = set(x.get('grade') for x in ends)

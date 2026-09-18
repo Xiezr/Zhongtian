@@ -1,7 +1,7 @@
 /* ============================================================
  * data.js  静态配置数据 —— 真实热血三国数值版（v2）
  * 数值来源：《热血三国数值系统检索报告》s20728.rxsg.ledu.com 实测+官方
- * 单位约定：产量/耗粮/俸禄 = 每小时；时间 = 游戏秒（受 TIME_SCALE 倍率影响）
+ * 单位约定：产量/俸禄 = 每小时；时间 = 游戏秒（受 TIME_SCALE 倍率影响）
  * 挂到 window.GAME.DATA
  * ============================================================ */
 (function () {
@@ -324,20 +324,9 @@
       hint: '可获珠宝、材料、军械、可采资源与占领后的产量加成' },
   ];
 
-  /* ============================================================
-   * 缺粮哗变（v65 · 老板）
-   * ------------------------------------------------------------
-   * 老板原话：「缺粮 24h 后军队才会哗变，各兵种每 24h 逃离当前剩余数量的 20%」
-   *
-   * 改前是"粮一断就按缺口比例逃兵"（最多 15%/tick）—— 断粮立刻掉兵，
-   * 玩家来不及救；而且逃多少取决于"缺口占需求的比例"，是个说不清的公式。
-   * 改后是一条能背下来的规则：**先饿满 24 游戏小时**，之后每满 24 小时逃 20%。
-   *   累计计时挂在该城（`city.starveHours`），粮一旦接上就**清零重计**。
-   * ============================================================ */
-  DATA.STARVE = {
-    hours: 24,          // 缺粮多少游戏小时开始哗变
-    mutinyPct: 0.2,     // 每次哗变各兵种逃离当前数量的比例
-  };
+  /* v89.36（老板「维持军队无需耗粮食」）：缺粮哗变系统（DATA.STARVE /
+     starveStep / mutinyOf / isStarving）随「军队维持耗粮」一并退役 ——
+     军队不再吃粮，断粮与哗变失去触发条件；粮改为**募兵时一次性消耗**。 */
 
   /* ============================================================
    * 城外资源建筑（4种 · 数量制，上限=12+(官府等级-1)×3）
@@ -424,7 +413,7 @@
    *   **合计恰等于 `EXT_CAP_BY_LV[lv-1]`**（"满建筑"= 一块不空、一块不多）。
    *
    * 设计口径（可复算、可断言）：
-   *   · 粮是养兵主线（见 AI工作备忘 §十五 阶梯复算：缺口卡在粮上）→ 农田恒占 1/3 上下；
+   *   · 粮是养兵主线（v89.36 起"养"由维持耗粮改为**募兵一次性耗粮**，粮依然吃重）→ 农田恒占 1/3 上下；
    *   · 早期营建吃木石、装备吃铁 → 采石/铁矿从 2 长到 9，中后期追上农田的增速；
    *   · 四类各 ≥ 2 块：任何等级都不会"某资源无产地"。
    * 逐档合计：12/15/18/21/24/27/30/33/36/40/44/48 —— 与上限表逐项相等。
@@ -443,7 +432,11 @@
   })();
 
   /* ============================================================
-   * 兵种（18种 · 报告8.1/8.2/8.3：hp/atk/def/射程/速度/负重/耗粮h/人口/训练秒）
+   * 兵种（18种 · 报告8.1/8.2/8.3：hp/atk/def/射程/速度/负重/人口/训练秒）
+   * ------------------------------------------------------------
+   * v89.36（老板「维持军队无需耗粮食，相应招募提供耗粮3倍」）：
+   *   · 每兵每小时耗粮（food）与「军队维持耗粮」整体退役（缺粮/哗变一并下线）；
+   *   · 粮改为**成军一次性消耗** —— 全部兵种 cost.grain ×3。
    * ============================================================ */
   /* ============================================================
    * 兵种（18种）
@@ -464,25 +457,25 @@
      cat 只决定**募兵分页归属**（inf → 步兵页 / cav → 骑兵页），与战场定位无关：
      斥候（侦察）归步兵页，辎重车（后勤货运）归骑兵页。 */
   DATA.TROOPS = {
-    minfu:   { id: 'minfu', cat: 'inf', name: '民夫', icon: '🪓', hp: 100,  atk: 5,   def: 10, range: 10,   spd: 180,  gather: 2, load: 200,  food: 2,   pop: 1, time: 40,   cost: { grain: 50, wood: 150, iron: 10 }, unlock: { junying: 1 }, desc: '基础民夫，战力孱弱，可运输' },
-    yibing:  { id: 'yibing', cat: 'inf', name: '义兵', icon: '🗡️', hp: 200, atk: 50,  def: 50, range: 20,  spd: 200,  gather: 3, load: 20,   food: 3,   pop: 1, time: 20,   cost: { grain: 80, wood: 100, iron: 50 }, unlock: { junying: 1 }, desc: '聚集的义军，初具战力' },
-    chihou:  { id: 'chihou', cat: 'inf', name: '斥候', icon: '🦅', hp: 100,  atk: 20,  def: 20, range: 20,  spd: 3000, gather: 1, load: 6,    food: 5,   pop: 1, nocombat: true, time: 90,   cost: { grain: 120, wood: 200, iron: 150 }, unlock: { junying: 2, shuyuan: 2 }, desc: '极限速度，侦察/截援必备' },
-    changqiang: { id: 'changqiang', cat: 'inf', name: '长枪兵', icon: '🔱', hp: 300, atk: 150, def: 150, range: 50, spd: 300, gather: 4, load: 40, food: 6, pop: 1, time: 140, cost: { grain: 150, wood: 500, iron: 100 }, unlock: { junying: 2, shuyuan: 2 }, desc: '克制骑兵，阵型严整' },
-    daodun:  { id: 'daodun', cat: 'inf', name: '刀盾兵', icon: '🛡️', hp: 400, atk: 130, def: 250, range: 30, spd: 275, gather: 4, load: 30, food: 7, pop: 1, time: 210, cost: { grain: 200, wood: 150, iron: 400 }, unlock: { junying: 3, shuyuan: 3 }, desc: '高防御，克远程，炮灰首选' },
-    gongjian: { id: 'gongjian', cat: 'inf', name: '弓箭手', icon: '🏹', hp: 320, atk: 220, def: 50, range: 1200, spd: 250, gather: 5, load: 25, food: 9, pop: 2, time: 340, cost: { grain: 300, wood: 350, iron: 300 }, unlock: { junying: 4, shuyuan: 4 }, desc: '远程主力，射程1200' },
-    qingji:  { id: 'qingji', cat: 'cav', name: '轻骑兵', icon: '🐎', hp: 620, atk: 340, def: 180, range: 80, spd: 1000, gather: 6, load: 100, food: 18, pop: 2, time: 480, cost: { grain: 1000, wood: 600, iron: 500 }, unlock: { junying: 5, majiu: 1 }, desc: '机动突袭，抓将主力（需马厩）' },
-    tieji:   { id: 'tieji', cat: 'cav', name: '铁骑兵', icon: '🐴', hp: 1200, atk: 520, def: 350, range: 70, spd: 600, gather: 9, load: 80, food: 35, pop: 3, time: 1450, cost: { grain: 2000, wood: 500, iron: 2500 }, unlock: { junying: 7, shuyuan: 6, majiu: 3 }, desc: '重装铁骑，攻守兼备（需马厩3）' },
-    zhouche: { id: 'zhouche', cat: 'cav', name: '辎重车', icon: '🛺', hp: 700, atk: 10, def: 60, range: 10, spd: 150, gather: 1, load: 5000, food: 10, pop: 4, time: 970, cost: { grain: 600, wood: 1500, iron: 350 }, unlock: { junying: 5 }, desc: '负重5000，专属运资' },
-    chuangnu: { id: 'chuangnu', name: '床弩', icon: '🏹', hp: 900, atk: 500, def: 160, range: 1400, spd: 120, gather: 2, load: 35, food: 50, pop: 3, time: 2910, cost: { grain: 2500, wood: 3000, iron: 1800 }, craft: true, unlock: { junying: 8, shuyuan: 8, gongjiangzuofang: 3 }, desc: '强力远程，攻城利器（工匠作坊制造）' },
-    chongche: { id: 'chongche', name: '冲车', icon: '🚩', hp: 6000, atk: 620, def: 600, range: 50, spd: 160, gather: 2, load: 45, food: 100, pop: 5, time: 4370, cost: { grain: 4000, wood: 6000, iron: 1500 }, craft: true, unlock: { junying: 9, shuyuan: 8, gongjiangzuofang: 5 }, desc: '血5000防600，城墙杀手（工匠作坊制造）' },
-    toudan:  { id: 'toudan', name: '投石车', icon: '🪨', hp: 1100, atk: 950, def: 200, range: 1600, spd: 100, gather: 2, load: 75, food: 250, pop: 4, time: 5830, cost: { grain: 5000, wood: 5000, stone: 8000, iron: 1200 }, craft: true, unlock: { junying: 10, shuyuan: 10, gongjiangzuofang: 7 }, desc: '攻800射程1600，攻城巨炮（工匠作坊制造）' },
+    minfu:   { id: 'minfu', cat: 'inf', name: '民夫', icon: '🪓', hp: 100,  atk: 5,   def: 10, range: 10,   spd: 180,  gather: 2, load: 200,  pop: 1, time: 40,   cost: { grain: 150, wood: 150, iron: 10 }, unlock: { junying: 1 }, desc: '基础民夫，战力孱弱，可运输' },
+    yibing:  { id: 'yibing', cat: 'inf', name: '义兵', icon: '🗡️', hp: 200, atk: 50,  def: 50, range: 20,  spd: 200,  gather: 3, load: 20,   pop: 1, time: 20,   cost: { grain: 240, wood: 100, iron: 50 }, unlock: { junying: 1 }, desc: '聚集的义军，初具战力' },
+    chihou:  { id: 'chihou', cat: 'inf', name: '斥候', icon: '🦅', hp: 100,  atk: 20,  def: 20, range: 20,  spd: 3000, gather: 1, load: 6,    pop: 1, nocombat: true, time: 90,   cost: { grain: 360, wood: 200, iron: 150 }, unlock: { junying: 2, shuyuan: 2 }, desc: '极限速度，侦察/截援必备' },
+    changqiang: { id: 'changqiang', cat: 'inf', name: '长枪兵', icon: '🔱', hp: 300, atk: 150, def: 150, range: 50, spd: 300, gather: 4, load: 40, pop: 1, time: 140, cost: { grain: 450, wood: 500, iron: 100 }, unlock: { junying: 2, shuyuan: 2 }, desc: '克制骑兵，阵型严整' },
+    daodun:  { id: 'daodun', cat: 'inf', name: '刀盾兵', icon: '🛡️', hp: 400, atk: 130, def: 250, range: 30, spd: 275, gather: 4, load: 30, pop: 1, time: 210, cost: { grain: 600, wood: 150, iron: 400 }, unlock: { junying: 3, shuyuan: 3 }, desc: '高防御，克远程，炮灰首选' },
+    gongjian: { id: 'gongjian', cat: 'inf', name: '弓箭手', icon: '🏹', hp: 320, atk: 220, def: 50, range: 1200, spd: 250, gather: 5, load: 25, pop: 2, time: 340, cost: { grain: 900, wood: 350, iron: 300 }, unlock: { junying: 4, shuyuan: 4 }, desc: '远程主力，射程1200' },
+    qingji:  { id: 'qingji', cat: 'cav', name: '轻骑兵', icon: '🐎', hp: 620, atk: 340, def: 180, range: 80, spd: 1000, gather: 6, load: 100, pop: 2, time: 480, cost: { grain: 3000, wood: 600, iron: 500 }, unlock: { junying: 5, majiu: 1 }, desc: '机动突袭，抓将主力（需马厩）' },
+    tieji:   { id: 'tieji', cat: 'cav', name: '铁骑兵', icon: '🐴', hp: 1200, atk: 520, def: 350, range: 70, spd: 600, gather: 9, load: 80, pop: 3, time: 1450, cost: { grain: 6000, wood: 500, iron: 2500 }, unlock: { junying: 7, shuyuan: 6, majiu: 3 }, desc: '重装铁骑，攻守兼备（需马厩3）' },
+    zhouche: { id: 'zhouche', cat: 'cav', name: '辎重车', icon: '🛺', hp: 700, atk: 10, def: 60, range: 10, spd: 150, gather: 1, load: 5000, pop: 4, time: 970, cost: { grain: 1800, wood: 1500, iron: 350 }, unlock: { junying: 5 }, desc: '负重5000，专属运资' },
+    chuangnu: { id: 'chuangnu', name: '床弩', icon: '🏹', hp: 900, atk: 500, def: 160, range: 1400, spd: 120, gather: 2, load: 35, pop: 3, time: 2910, cost: { grain: 7500, wood: 3000, iron: 1800 }, craft: true, unlock: { junying: 8, shuyuan: 8, gongjiangzuofang: 3 }, desc: '强力远程，攻城利器（工匠作坊制造）' },
+    chongche: { id: 'chongche', name: '冲车', icon: '🚩', hp: 6000, atk: 620, def: 600, range: 50, spd: 160, gather: 2, load: 45, pop: 5, time: 4370, cost: { grain: 12000, wood: 6000, iron: 1500 }, craft: true, unlock: { junying: 9, shuyuan: 8, gongjiangzuofang: 5 }, desc: '血5000防600，城墙杀手（工匠作坊制造）' },
+    toudan:  { id: 'toudan', name: '投石车', icon: '🪨', hp: 1100, atk: 950, def: 200, range: 1600, spd: 100, gather: 2, load: 75, pop: 4, time: 5830, cost: { grain: 15000, wood: 5000, stone: 8000, iron: 1200 }, craft: true, unlock: { junying: 10, shuyuan: 10, gongjiangzuofang: 7 }, desc: '攻800射程1600，攻城巨炮（工匠作坊制造）' },
     /* 特殊兵种（需对应州城 + 科技） */
-    qingzhoubing: { id: 'qingzhoubing', cat: 'inf', name: '青州兵', icon: '🥷', hp: 620, atk: 350, def: 200, range: 60, spd: 350, gather: 6, load: 50, food: 10, pop: 2, time: 115, cost: { grain: 800, wood: 600, iron: 400 }, unlock: { junying: 8, shuyuan: 6, city: 'qingzhou', tech: { xingjun: 5 } }, desc: '青州精兵' },
-    tengjiabing: { id: 'tengjiabing', cat: 'inf', name: '藤甲兵', icon: '🛡️', hp: 600, atk: 340, def: 350, range: 60, spd: 300, gather: 5, load: 35, food: 10, pop: 2, time: 170, cost: { grain: 600, wood: 300, iron: 500 }, unlock: { junying: 8, shuyuan: 7, city: 'yizhou', tech: { fanghu: 8 } }, desc: '防350，刀枪不入（惧火）' },
-    tuqibing: { id: 'tuqibing', cat: 'cav', name: '突骑兵', icon: '🏇', hp: 640, atk: 330, def: 150, range: 1000, spd: 450, gather: 7, load: 45, food: 15, pop: 2, time: 270, cost: { grain: 1200, wood: 500, iron: 800 }, unlock: { junying: 9, shuyuan: 7, majiu: 3, city: 'hebei', tech: { paoshe: 5, jiayu: 5 } }, desc: '骑射突袭，射程1000' },
-    hubaoqi: { id: 'hubaoqi', cat: 'cav', name: '虎豹骑', icon: '🐯', hp: 800, atk: 510, def: 250, range: 70, spd: 850, gather: 10, load: 60, food: 50, pop: 3, time: 385, cost: { grain: 1500, wood: 800, iron: 1200 }, unlock: { junying: 9, shuyuan: 8, majiu: 4, city: 'sili', tech: { tongshuai: 9, lianbing: 7 } }, desc: '曹魏精锐骑兵' },
-    xiliangtieqi: { id: 'xiliangtieqi', cat: 'cav', name: '西凉铁骑', icon: '🐻', hp: 1400, atk: 700, def: 400, range: 80, spd: 750, gather: 10, load: 100, food: 50, pop: 4, time: 1160, cost: { grain: 1800, wood: 700, iron: 2000 }, unlock: { junying: 9, shuyuan: 8, majiu: 4, city: 'liangzhou', tech: { jiayu: 7 } }, desc: '攻450防400，攻守兼备' },
-    nanjiangxiangbing: { id: 'nanjiangxiangbing', cat: 'cav', name: '南疆象兵', icon: '🐘', hp: 3000, atk: 880, def: 400, range: 70, spd: 400, gather: 12, load: 60, food: 50, pop: 5, time: 3500, cost: { grain: 3000, wood: 1000, iron: 2500 }, unlock: { junying: 9, shuyuan: 8, city: 'yizhou', tech: { yiliao: 8, zhandou: 7 } }, desc: '血2500，战场重坦' },
+    qingzhoubing: { id: 'qingzhoubing', cat: 'inf', name: '青州兵', icon: '🥷', hp: 620, atk: 350, def: 200, range: 60, spd: 350, gather: 6, load: 50, pop: 2, time: 115, cost: { grain: 2400, wood: 600, iron: 400 }, unlock: { junying: 8, shuyuan: 6, city: 'qingzhou', tech: { xingjun: 5 } }, desc: '青州精兵' },
+    tengjiabing: { id: 'tengjiabing', cat: 'inf', name: '藤甲兵', icon: '🛡️', hp: 600, atk: 340, def: 350, range: 60, spd: 300, gather: 5, load: 35, pop: 2, time: 170, cost: { grain: 1800, wood: 300, iron: 500 }, unlock: { junying: 8, shuyuan: 7, city: 'yizhou', tech: { fanghu: 8 } }, desc: '防350，刀枪不入（惧火）' },
+    tuqibing: { id: 'tuqibing', cat: 'cav', name: '突骑兵', icon: '🏇', hp: 640, atk: 330, def: 150, range: 1000, spd: 450, gather: 7, load: 45, pop: 2, time: 270, cost: { grain: 3600, wood: 500, iron: 800 }, unlock: { junying: 9, shuyuan: 7, majiu: 3, city: 'hebei', tech: { paoshe: 5, jiayu: 5 } }, desc: '骑射突袭，射程1000' },
+    hubaoqi: { id: 'hubaoqi', cat: 'cav', name: '虎豹骑', icon: '🐯', hp: 800, atk: 510, def: 250, range: 70, spd: 850, gather: 10, load: 60, pop: 3, time: 385, cost: { grain: 4500, wood: 800, iron: 1200 }, unlock: { junying: 9, shuyuan: 8, majiu: 4, city: 'sili', tech: { tongshuai: 9, lianbing: 7 } }, desc: '曹魏精锐骑兵' },
+    xiliangtieqi: { id: 'xiliangtieqi', cat: 'cav', name: '西凉铁骑', icon: '🐻', hp: 1400, atk: 700, def: 400, range: 80, spd: 750, gather: 10, load: 100, pop: 4, time: 1160, cost: { grain: 5400, wood: 700, iron: 2000 }, unlock: { junying: 9, shuyuan: 8, majiu: 4, city: 'liangzhou', tech: { jiayu: 7 } }, desc: '攻450防400，攻守兼备' },
+    nanjiangxiangbing: { id: 'nanjiangxiangbing', cat: 'cav', name: '南疆象兵', icon: '🐘', hp: 3000, atk: 880, def: 400, range: 70, spd: 400, gather: 12, load: 60, pop: 5, time: 3500, cost: { grain: 9000, wood: 1000, iron: 2500 }, unlock: { junying: 9, shuyuan: 8, city: 'yizhou', tech: { yiliao: 8, zhandou: 7 } }, desc: '血2500，战场重坦' },
   };
 
   /* ============================================================
@@ -1865,8 +1858,8 @@
        口径：名城守军**总数** = 同等级野外城池守军 × 此倍数（`GAME.map.fortGarrison`），
        兵种构成仍按名城自己的规矩（等级越高越有铁骑与攻城器械，见下 garrisonMix）。
        ⚠️ 未占据城池的守军是**派生值**（不入存档，见 `GAME.buildNpcCities`），
-       它不在 `state.cities` 里 → 粮食结算（`GAME.foodPerSecOf`）永远扫不到它，
-       所以"被占领前不消耗粮草"是**结构保证**的，不是靠不写代码。 */
+       它不在 `state.cities` 里 → 从来不在任何粮食结算口径里（v89.36 起军队整体不耗粮，
+       这条从"NPC 特例"变成了通例）。 */
     garrisonMul: 10,
     /* 兵种构成权重（按等级解锁）；总数按目标兵力归一化，所以权重和不必为 1 */
     garrisonMix: [
@@ -2069,15 +2062,15 @@
 
   /* ---------------- ② 天时：四季 + 天气 ---------------- */
   DATA.SEASONS = [
-    { id: 'spring', name: '春', desc: '春耕之时，粮产略增', grain: 0.10, feed: 1.00 },
-    { id: 'summer', name: '夏', desc: '夏日方长，粮产更盛', grain: 0.15, feed: 1.05 },
-    { id: 'autumn', name: '秋', desc: '秋收之际，粮产最丰', grain: 0.25, feed: 1.00 },
-    { id: 'winter', name: '冬', desc: '冬寒地冻，粮产锐减、军粮多耗', grain: -0.35, feed: 1.30 },
+    { id: 'spring', name: '春', desc: '春耕之时，粮产略增', grain: 0.10 },
+    { id: 'summer', name: '夏', desc: '夏日方长，粮产更盛', grain: 0.15 },
+    { id: 'autumn', name: '秋', desc: '秋收之际，粮产最丰', grain: 0.25 },
+    { id: 'winter', name: '冬', desc: '冬寒地冻，粮产锐减', grain: -0.35 },
   ];
   DATA.WEATHERS = {
     clear: { id: 'clear', name: '晴', icon: '☀', grain: 0.00, fire: 1, ambush: 1, move: 1.00, weight: 40, desc: '天朗气清，诸事如常' },
     rain: { id: 'rain', name: '雨', icon: '🌧', grain: -0.15, archerRange: -0.20, fire: 0, ambush: 1.2, move: 0.80, weight: 25, desc: '霖雨不止：粮产 −15%，弓兵射程 −20%，火攻失效，行军 −20%' },
-    snow: { id: 'snow', name: '雪', icon: '❄', grain: -0.30, feed: 0.30, fire: 0, ambush: 1, move: 0.50, weight: 12, desc: '大雪封道：粮产 −30%，军粮多耗 30%，行军 −50%，火攻失效' },
+    snow: { id: 'snow', name: '雪', icon: '❄', grain: -0.30, fire: 0, ambush: 1, move: 0.50, weight: 12, desc: '大雪封道：粮产 −30%，行军 −50%，火攻失效' },
     fog: { id: 'fog', name: '雾', icon: '🌫', scout: false, ambush: 2.0, move: 0.70, weight: 13, desc: '大雾弥天：斥候难察敌情，行军 −30%，然偷袭伤害 ×2' },
     wind: { id: 'wind', name: '大风', icon: '💨', fire: 3, move: 1.10, weight: 10, desc: '风急天高：火攻威力 ×3，行军 +10%' },
   };
@@ -2189,9 +2182,9 @@
     /* 单兵基础战力权重（按兵种属性归一） */
     troopWeight: { hp: 0.004, atk: 0.60, def: 0.40, spd: 0.02 },
     /* 资源折合"可动员战力"：各类资源按募兵成本折算成可养兵力 */
-    /* 以义兵单位成本(粮80/木100/铁50)为基准，除以资源种类数做加权平均，
-       使"可动员战力"贴近实际能养多少兵，避免高估 */
-    resToTroop: { grain: 1 / 240, wood: 1 / 300, iron: 1 / 150, stone: 1 / 500, gold: 1 / 400 },
+    /* 以义兵单位成本(粮240/木100/铁50 · v89.36 募兵耗粮 ×3)为基准，
+       除以资源种类数做加权平均，使"可动员战力"贴近实际能养多少兵，避免高估 */
+    resToTroop: { grain: 1 / 720, wood: 1 / 300, iron: 1 / 150, stone: 1 / 500, gold: 1 / 400 },
     /* 建筑与科技的战力系数 */
     buildingBonus: 0.01,        // 每座建筑 +1%
     techBonus: 0.02,            // 每级科技 +2%

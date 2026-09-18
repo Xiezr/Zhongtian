@@ -83,7 +83,7 @@
       }
       case 'quest-detail': ui.openQuestDetail(el.dataset.kind, el.dataset.id); break;
       /* v82：征收退役 —— do-levy 分发随功能撤除（官府面板不再产出该按钮）。 */
-      case 'build-city': (function () { var xy = ui._buildCityXY; if (!xy) return; var r = GAME.buildCityAt(xy.x, xy.y); ui.toast(r.msg); if (r.ok) { ui.closeModal(); GAME.refreshAll(); } })(); break;
+      case 'build-city': (function () { var xy = ui._buildCityXY; if (!xy) return; var r = GAME.buildCityAt(xy.x, xy.y); ui.toast(r.msg); if (r.ok) { ui.closeModal(); GAME.refreshAll(); ui.sgTryAct('build-city'); } })(); break;
       /* 工匠作坊 → 器械募兵面板（#14） */
       case 'open-siege': ui.openTroops(ui._trainBIdx, 'siege'); break;
       /* v62（老板）：工匠作坊 → 器械与工事（含造箭塔）。
@@ -147,7 +147,11 @@
       case 'gen-exp-pick': ui.openExpPick(el.dataset.gen); break;
       /* v74（老板需求 4/5）：六维「加点」＋ —— 自由属性点或道具 */
       case 'gen-stat-plus': ui.openStatPlus(el.dataset.gen, el.dataset.stat); break;
-      case 'stat-plus-free': GAME.doStatPlusFree(el.dataset.gen, el.dataset.stat); break;
+      /* v89.40（老板）：加点支持一次加 N 点 —— qty 来自加点弹窗的数量框（缺省 1） */
+      case 'stat-plus-free':
+        GAME.doStatPlusFree(el.dataset.gen, el.dataset.stat,
+          el.dataset.qtyFrom ? ui.qtyValueOf(el.dataset.qtyFrom) : 1);
+        break;
       case 'stat-plus-item': GAME.doStatPlusItem(el.dataset.item, el.dataset.gen, el.dataset.stat); break;
       /* v74（老板：完善出征界面）：全带 / 清空（只改输入框值，刷新仍走 updateExpMarch） */
       case 'exp-fill-all': (function () {
@@ -212,8 +216,6 @@
       case 'sxf-stop': ui.sxfTimingStop(); break;   /* v89.2：时机条停手 */
       case 'sxf-exit': ui.closeSceneFx(); break;
       /* 文字游戏（story/）：清单 / 开卷 / 选择 / 收起 */
-      case 'story-list': ui.openStoryList(el.dataset.kind, el.dataset.id, el.dataset.name); break;
-      case 'story-open': ui.openStory(el.dataset.sid); break;
       case 'story-pick': ui.sgPick(Number(el.dataset.i)); break;
       case 'story-exit': ui.sgClose(); break;
       /* v89.6：奇遇 · 见闻录 */
@@ -679,11 +681,12 @@
     if (r.ok) { ui.closeModal(); GAME.refreshAll(); }
   };
   /* v74（老板需求 5）：自由属性点分配（唯一出口 GAME.addFreePoint）；分配后留在弹窗里刷新 */
-  GAME.doStatPlusFree = function (genId, stat) {
+  /* v89.40（老板）：支持一次加 N 点（qty 来自加点弹窗的数量框，缺省 1） */
+  GAME.doStatPlusFree = function (genId, stat, qty) {
     var s = GAME.state, g = null;
     (s.generals || []).forEach(function (x) { if (x.id === genId) g = x; });
     if (!g) { ui.toast('将领不存在'); return; }
-    var r = GAME.addFreePoint(g, stat);
+    var r = GAME.addFreePoint(g, stat, qty);
     ui.toast(r.msg);
     if (r.ok) { GAME.refreshAll(); ui.openStatPlus(genId, stat); }
   };
@@ -863,6 +866,7 @@
       ui.closeModal();
       if (ui.view === 'map' && ui.renderMapCanvas) ui.renderMapCanvas();
       GAME.refreshAll();
+      ui.sgTryAct('move-city');   /* v89.31 · 动作触发 */
     }
   };
   GAME.doRandomCityMove = function () {
@@ -928,7 +932,7 @@
     var c = GAME.currentCity();
     var r = GAME.innRecruit(cid, c ? c.id : null);
     ui.toast(r.msg);
-    if (r.ok) { ui.openInn(); GAME.refreshAll(); }
+    if (r.ok) { ui.openInn(); GAME.refreshAll(); ui.sgTryAct('recruit-hero', { cid: cid }); }   /* v89.31 */
   };
   GAME.doInnReroll = function () {
     var r = GAME.innReroll();
@@ -942,7 +946,7 @@
     if (f.value === t.value) { ui.toast('请选择不同的资源'); return; }
     var r = GAME.marketTrade(f.value, t.value, Number(a.value) || 0);
     ui.toast(r.msg);
-    if (r.ok) { ui.openMarket(); GAME.refreshAll(); }
+    if (r.ok) { ui.openMarket(); GAME.refreshAll(); ui.sgTryAct('market-trade'); }   /* v89.31 */
   };
 
   GAME.doExtBuild = function (idx, eid) {
@@ -996,8 +1000,12 @@
     if (r.ok) { GAME.refreshAll(); ui.openGathers(); }
   };
   GAME.doFinishGather = function (id) {
+    /* v89.31：先取本次采集的地形（动作触发池要用），再结算（记录会被移除） */
+    var _rec31 = null;
+    (GAME.gatherList() || []).forEach(function (x) { if (x.id === id) _rec31 = x; });
     var r = GAME.finishGather(id);
     ui.toast(r.msg);
+    if (r.ok) ui.sgTryAct('gather-done', { terrain: _rec31 ? _rec31.type : null });
     GAME.refreshAll();
     ui.openGathers();
   };
@@ -1095,7 +1103,7 @@
   GAME.doLordPromote = function () {
     var r = GAME.systems.promote();
     ui.toast(r.msg);
-    if (r.ok) { GAME.refreshAll(); ui.openLordInfo(); }
+    if (r.ok) { GAME.refreshAll(); ui.openLordInfo(); ui.sgTryAct('promote'); }   /* v89.31 */
   };
   GAME.doRenameLord = function () {
     var inp = document.getElementById('rename-lord-input');
@@ -1156,6 +1164,7 @@
     var k = host ? host.dataset.healHost : '';
     if (k === 'xiaochang') ui.openXiaochang();
     else if (k === 'marches') ui.openMarches();
+    ui.sgTryAct('heal-wounded');   /* v89.31 · 动作触发 */
   };
   GAME.doClaimQuest = function (qid) {
     var r = GAME.claimQuest(qid);
@@ -1214,7 +1223,24 @@
     if (r.ok) {
       ui.toast('⚔️ ' + m.name + '：' + r.msg);
     }
-    /* 攻占新城 / 战斗结果都在战报里，这里不重复打扰 */
+    /* v89.31 · 战事奇遇：胜 / 败 / 占城 / 据地 之后，从「相关建筑」池里偶遇一篇逸闻 */
+    if (r.result && r.result.winner && r.result.winner !== 'scout' && GAME.SG && ui.sgTryAct) {
+      var _t31 = r.target || {};
+      var _m31 = GAME.battle.modeOf(r.mode) || {};
+      var _win31 = r.result.winner === 'atk';
+      if (_win31 && _m31.occupy && _t31.kind === 'city') {
+        ui.sgTryAct('occupy-city', { type: _t31.cityType || 'county' });
+      } else if (_win31 && _m31.occupy && _t31.kind === 'wild') {
+        ui.sgTryAct('occupy-wild', { terrain: _t31.terrain || 'hill' });
+      } else {
+        ui.sgTryAct(_win31 ? 'battle-win' : 'battle-lose');
+      }
+    }
+    /* 攻占新城 / 战斗结果都在战报里；逸闻触发单独在上一条处理 */
+  };
+  /* v89.31 · 引擎侧动作完成桥（营造 / 训练 / 研习在 tick 内结算）→ 逸闻动作触发 */
+  GAME.onActionDone = function (key, ctx) {
+    if (ui.sgTryAct) ui.sgTryAct(key, ctx);
   };
 
   /* 侦查结果面板（v65 重做：按侦察技巧分层 × 分两页）
@@ -1419,13 +1445,20 @@
              侧栏数据全变），玩家只想看一眼都得先"进去再出来"。
              现在弹「城池面板」：先看摘要，再自己选 进入 / 运输 / 派遣 / 改名。 */
           ui.openCityPanel(hit.city);
+          /* v89.29：概率奇遇 —— 点城池掷骰（命中随机抽一篇，悬于面板之上） */
+          ui.sgTryTrigger('city', hit.city.type);
         } else if (hit.kind === 'fort') {
           ui.openFortModal(hit.fort);
         } else if (hit.kind === 'wild') {
           /* v23（需求 1）：已占野地不再是"只弹一句提示"，直接进管理面板 */
           ui.openLandModal(hit.x, hit.y);
+          /* v89.29：概率奇遇 —— 点地块掷骰（命中随机抽一篇，悬于面板之上） */
+          var _t89a = G.tile(hit.x, hit.y);
+          ui.sgTryTrigger('wild', _t89a && _t89a.terrain);
         } else {
           ui.openLandModal(hit.x, hit.y);
+          var _t89b = G.tile(hit.x, hit.y);
+          ui.sgTryTrigger('wild', _t89b && _t89b.terrain);
         }
       }
     }

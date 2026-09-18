@@ -147,6 +147,10 @@ async function runTests(dom, URL) {
   check('battle', !!(G && G.battle));
   if (!G || !DATA) return finish();
 
+  /* v89.29：逸闻奇遇 —— 测试期默认关闭随机触发（避免打断用例）；
+     触发链专测用 G.SG.TRIG.pin（指定篇目）/ rng 注入精确控制。 */
+  if (G.SG && G.SG.TRIG) G.SG.TRIG.rng = function () { return 0.999; };
+
   console.log('\n--- 2. 数据层完整性 ---');
   check('兵种 18', Object.keys(DATA.TROOPS || {}).length === 18, Object.keys(DATA.TROOPS || {}).length + '');
   check('城内建筑 16', Object.keys(DATA.BUILDINGS || {}).length >= 16, Object.keys(DATA.BUILDINGS || {}).length + '');
@@ -642,6 +646,59 @@ async function runTests(dom, URL) {
         && document.querySelectorAll('#modal-root .doll-slot').length === 0);
     }
     s.generals.pop();
+  })();
+
+  /* ①.5 v89.40：一次加点（数量框批量）+ 君主不出忠诚行（真实 DOM） */
+  await (async function () {
+    const gid40 = s.generals[0].id;
+    const fp0 = s.generals[0].freePts || 0;
+    const tong0 = s.generals[0].tong;
+    s.generals[0].freePts = fp0 + 15;
+    G.ui._genSel = gid40;
+    G.ui.setView('generals');
+    await sleep(60);
+    const plus40 = document.querySelector('#view-container .gd-dims [data-action="gen-stat-plus"][data-stat="tong"]');
+    check('加点入口在位（六维·统率 ＋）', !!plus40);
+    if (plus40) { plus40.click(); await sleep(80); }
+    const inp40 = plus40 ? document.getElementById('fp-add-' + gid40) : null;
+    const apply40 = plus40 ? document.querySelector('#modal-root [data-action="stat-plus-free"]') : null;
+    check('加点弹窗含数量输入框（一次加点）', !!inp40);
+    check('加点按钮带 qty 透传（data-qty-from）',
+      !!apply40 && apply40.getAttribute('data-qty-from') === ('fp-add-' + gid40));
+    let applied40 = false;
+    if (inp40 && apply40) {
+      inp40.value = '10';
+      apply40.click();
+      await sleep(100);
+      applied40 = Math.abs(s.generals[0].freePts - (fp0 + 5)) < 1e-9
+        && Math.abs(s.generals[0].tong - (tong0 + 10)) < 1e-9;
+    }
+    check('一次加 10 点：自由点 -10、属性 +10', applied40,
+      'freePts=' + s.generals[0].freePts + ' Δ统=' + (s.generals[0].tong - tong0));
+    const close40 = document.querySelector('#modal-root [data-action="close-modal"]');
+    if (close40) { close40.click(); await sleep(60); }
+    /* 君主：右侧档案不出忠诚行与赏赐；切回普通将领照旧 */
+    const lord40 = G.lordGeneralOf();
+    if (lord40) {
+      G.ui._genSel = lord40.id;
+      G.ui.setView('generals');
+      await sleep(80);
+      const paneL40 = document.querySelector('#view-container .gen-pane');
+      const dhL40 = paneL40 ? paneL40.innerHTML : '';
+      check('v89.40：君主档案不出忠诚行与赏赐',
+        dhL40.length > 200 && dhL40.indexOf('gd-line">忠诚') < 0 && dhL40.indexOf('gen-gift-pick') < 0);
+    } else {
+      check('v89.40：君主档案不出忠诚行与赏赐（无君主，跳过）', true);
+    }
+    G.ui._genSel = gid40;
+    G.ui.setView('generals');
+    await sleep(60);
+    const paneN40 = document.querySelector('#view-container .gen-pane');
+    check('v89.40：普通将领档案仍有忠诚行与赏赐',
+      !!paneN40 && paneN40.innerHTML.indexOf('gd-line">忠诚') >= 0 && paneN40.innerHTML.indexOf('gen-gift-pick') >= 0);
+    /* 复原：点数与统率回滚，不打乱后续用例 */
+    s.generals[0].freePts = fp0;
+    s.generals[0].tong = tong0;
   })();
 
   /* ② 募兵：初始就能点「训练」（原为「参数错误」） */
@@ -1948,6 +2005,14 @@ async function runTests(dom, URL) {
       c23.army = Object.assign({}, c23.army, { yibing: 20000 });
       const gen2 = G.state.generals.filter((g) => g.id !== g23.id)[0] || g23;
       gen2.stamina = 100; gen2.energy = 100;
+      /* v89.31：战事奇遇 —— pin 取「胜/败两池交集」指定必中（无论胜负都能命中） */
+      const _pw31 = G.SG.actPool('battle-win');
+      const _pl31 = G.SG.actPool('battle-lose');
+      const _set31 = {};
+      _pl31.fresh.concat(_pl31.done).forEach((r) => { _set31[r.st.id] = 1; });
+      const _ov31 = _pw31.fresh.concat(_pw31.done).filter((r) => _set31[r.st.id]);
+      const _pin31 = ((_ov31[0] || _pw31.fresh[0] || _pw31.done[0]).st || {}).id;
+      G.SG.TRIG.pin = _pin31; G.SG.TRIG._actAt = {};
       const r23b = G.march.dispatch({ kind: 'wild', x: w23.x, y: w23.y }, 'raid', { yibing: 20000 }, gen2.id);
       if (r23b.ok) {
         await sleep(60);
@@ -1960,6 +2025,14 @@ async function runTests(dom, URL) {
           G.armyTotal(c23) + (G.state.wounded || 0) > 0,
           '归营 ' + G.armyTotal(c23) + ' · 伤兵 ' + (G.state.wounded || 0));
         check('抵达后将领恢复空闲', G.state.generals.every((g) => g.status !== 'march'));
+        /* v89.31：战事触发链（抵达结算 → 相关建筑池开卷 → 掩卷） */
+        const fx31 = document.querySelector('#story-fx');
+        check('★ v89.31：战事触发 · 抵达后开卷（相关建筑池 · ' + _pin31 + '）',
+          !!fx31 && fx31.style.display !== 'none' && !!G.SG._run && G.SG._run.st.id === _pin31);
+        const ex31 = fx31 && fx31.querySelector('[data-action="story-exit"]');
+        if (ex31) { click(ex31); await sleep(30); }
+        check('★ v89.31：战事触发 · 掩卷收起', !!fx31 && fx31.style.display === 'none');
+        G.SG.TRIG.pin = null; G.SG.TRIG._actAt = {};
       }
     }
 
@@ -4968,21 +5041,33 @@ if (svBtn) {
     check('★ 故事库已载入（≥5 篇）', !!(G.SG && G.SG.list().length >= 5),
       G.SG ? (G.SG.list().length + ' 篇') : '无');
     var city = G.currentCity();
+    /* ============================================================
+     * v89.29：逸闻入口改版 —— 「列表菜单」→「概率奇遇」
+     *   点击建筑 / 地块时掷骰（GAME.SG.roll），命中即从该锚点池随机抽一篇
+     *   完整故事（每篇 = 一份独立资产），在面板之上直接开卷；
+     *   掩卷后回到原面板（叠层语义：弹窗不关）。
+     *   测试口径：
+     *     · 默认 rng 恒 0.999 —— 永不触发（保证既有用例不被随机打断）；
+     *     · sgPin89(sid)：pin 指定必中篇目（确定性）+ 冷却清零 —— 走真实触发链；
+     *     · 冷却口径：pin 路径同样受冷却约束（roll 返回 why='cool'）。
+     * ============================================================ */
+    var rngNever89 = function () { return 0.999; };
+    function sgPin89(sid) { G.SG.TRIG.pin = sid; G.SG.TRIG._lastAt = 0; }
+    function sgOff89() { G.SG.TRIG.pin = null; G.SG.TRIG._lastAt = 0; G.SG.TRIG.rng = rngNever89; }
+    sgOff89();
+
+    /* 块 A：触发链（建筑）—— pin 官府首篇 → 开面板即入卷 → 走满 → 掩卷回面板 */
     var gi = -1;
     city.cells.forEach(function (cell, i) { if (cell.build && cell.build.id === 'guanfu') gi = i; });
     check('官府地块定位', gi >= 0);
+    sgPin89('bld-guanfu-01');
     G.ui.openBuildModal(gi);
-    await sleep(30);
-    var entry = document.querySelector('#modal-root [data-action="story-list"][data-kind="building"][data-id="guanfu"]');
-    check('★ 建筑弹窗出现「逸闻」入口', !!entry);
-    click(entry);
-    await sleep(30);
-    var rd = document.querySelector('#modal-root [data-action="story-open"][data-sid="bld-guanfu-01"]');
-    check('★ 故事清单列出《衙前夜审》', !!rd
-      && document.querySelector('#modal-root').textContent.indexOf('衙前夜审') >= 0);
-    click(rd);
     await sleep(40);
     var fx = document.querySelector('#story-fx');
+    check('★ v89.29：概率奇遇触发（点建筑 → 命中《衙前夜审》直接开卷）', !!fx
+      && fx.style.display !== 'none' && !!G.SG._run && G.SG._run.st.id === 'bld-guanfu-01');
+    check('★ v89.29：叠层语义（命中的逸闻悬于面板之上 · 面板未关）',
+      !!document.querySelector('#modal-root [data-action="close-modal"]'));
     var bgLayers = fx ? fx.querySelectorAll('.sgr-bg') : [];
     check('★ 全屏阅读器打开（第 1 段 · 共 6 段 · 壁画两层就位 · 选项≥2）', !!fx
       && bgLayers.length === 2
@@ -5014,86 +5099,149 @@ if (svBtn) {
     click(fx.querySelector('[data-action="story-exit"]'));
     await sleep(30);
     check('阅读器收起（不阻塞主界面）', fx.style.display === 'none');
-    /* v89.9：卷 02 新锚点（民房）真实点击 —— 由「空态」升级为「有故事」 */
-    var mfMi = -1;
-    city.cells.forEach(function (cell, i) { if (cell.build && cell.build.id === 'minfang') mfMi = i; });
-    if (mfMi >= 0 && G.SG.anchor('building', 'minfang').length > 0) {
-      G.ui.openBuildModal(mfMi);
-      await sleep(30);
-      var mfEntry = document.querySelector('#modal-root [data-action="story-list"][data-kind="building"][data-id="minfang"]');
-      check('★ v89.9：新锚点「民房」出现逸闻入口', !!mfEntry);
-      if (mfEntry) {
-        click(mfEntry);
-        await sleep(30);
-        var mfItem = document.querySelector('#modal-root [data-action="story-open"][data-sid="bld-minfang-01"]');
-        check('★ v89.9：卷 02《半月无音》在列 · 可开卷', !!mfItem);
-        if (mfItem) {
-          click(mfItem);
-          await sleep(40);
-          var fx2 = document.querySelector('#story-fx');
-          check('★ v89.9：新篇阅读器（壁画两层 · 「第 1 段 · 共 5 段」· 选项≥2）', !!fx2
-            && fx2.querySelectorAll('.sgr-bg').length === 2
-            && fx2.textContent.indexOf('共 5 段') >= 0
-            && fx2.querySelectorAll('[data-action="story-pick"]').length >= 2);
-          var pk2 = fx2 ? fx2.querySelector('[data-action="story-pick"]') : null;
-          if (pk2) { click(pk2); await sleep(30); }
-          var ex2 = fx2 ? fx2.querySelector('[data-action="story-exit"]') : null;
-          if (ex2) { click(ex2); await sleep(30); }
-          check('★ v89.9：掩卷退出（阅读器收起 · 主界面可用）', !!fx2 && fx2.style.display === 'none');
+
+    /* 块 B：冷却口径 —— 紧接再掷 → why='cool'；冷却期内开面板也不弹 */
+    check('★ v89.29：冷却口径（刚触发过 · 再掷 why=cool）', (function () {
+      var r = G.SG.roll('building', 'guanfu');
+      return r.fire === false && r.why === 'cool';
+    })());
+    G.ui.openBuildModal(gi);
+    await sleep(30);
+    check('★ v89.29：冷却期内再点不触发（面板照常）', fx.style.display === 'none'
+      && !!document.querySelector('#modal-root [data-action="close-modal"]'));
+    var cmA = document.querySelector('#modal-root [data-action="close-modal"]');
+    if (cmA) { click(cmA); await sleep(25); }
+
+    /* 块 C：默认口径（未命中）—— rng 永不出、无 pin → 开面板不弹逸闻 */
+    sgOff89();
+    G.ui.openBuildModal(gi);
+    await sleep(30);
+    check('★ v89.29：默认口径（未命中 · 面板照常 · 不弹逸闻）',
+      fx.style.display === 'none' && !!document.querySelector('#modal-root [data-action="close-modal"]'));
+    var cmB = document.querySelector('#modal-root [data-action="close-modal"]');
+    if (cmB) { click(cmB); await sleep(25); }
+    check('★ v89.29：无故事锚点永不触发（空池）', (function () {
+      var r = G.SG.roll('building', '__none__');
+      return r.fire === false && r.why === 'empty';
+    })());
+
+    /* 块 D：触发链（地块 · 野地）—— 找一块可读地块，pin 其池中一篇 */
+    var wTile = null;
+    if (city.x != null) {
+      for (var dx9 = -4; dx9 <= 4 && !wTile; dx9++) {
+        for (var dy9 = -4; dy9 <= 4 && !wTile; dy9++) {
+          var tl9 = G.map.tile(city.x + dx9, city.y + dy9);
+          if (tl9 && G.SG.anchor('wild', tl9.terrain).length > 0) {
+            wTile = { x: city.x + dx9, y: city.y + dy9, terrain: tl9.terrain };
+          }
         }
       }
-    } else {
-      check('★ v89.9：新锚点「民房」逸闻入口（未找到民房地格，跳过）', true);
-      check('★ v89.9：卷 02《半月无音》可开卷（跳过）', true);
-      check('★ v89.9：新篇阅读器（跳过）', true);
-      check('★ v89.9：掩卷退出（跳过）', true);
     }
-    /* v89.10：卷 03~05 新锚点（动态选一座新的建筑）· 真实点击 */
-    var NEW_BLD = ['xiaochang', 'shichang', 'cangku', 'chengqiang', 'yizhan', 'fenghuotai',
-                   'majiu', 'zhaoxianguan', 'honglusi', 'tiejiangpu', 'gongjiangzuofang'];
-    var nbMi = -1, nbId = '';
-    city.cells.forEach(function (cell, i) {
-      if (nbMi < 0 && cell.build && NEW_BLD.indexOf(cell.build.id) >= 0
-        && G.SG.anchor('building', cell.build.id).length > 0) { nbMi = i; nbId = cell.build.id; }
-    });
-    if (nbMi >= 0) {
-      G.ui.openBuildModal(nbMi);
+    if (wTile) {
+      var wc9 = G.SG.candidates('wild', wTile.terrain);
+      var wPick9 = (wc9.fresh[0] || wc9.done[0]).st.id;
+      sgPin89(wPick9);
+      G.ui.openLandModal(wTile.x, wTile.y);
       await sleep(30);
-      var nbEntry = document.querySelector('#modal-root [data-action="story-list"][data-kind="building"][data-id="' + nbId + '"]');
-      check('★ v89.10：卷 03~05 新锚点「' + nbId + '」出现逸闻入口', !!nbEntry);
-      if (nbEntry) {
-        click(nbEntry);
-        await sleep(30);
-        var nbItem = document.querySelector('#modal-root [data-action="story-open"]');
-        check('★ v89.10：新锚点故事在列 · 可开卷', !!nbItem);
-        click(document.querySelector('#modal-root [data-action="close-modal"]'));
-        await sleep(30);
-      } else {
-        check('★ v89.10：新锚点故事在列 · 可开卷（跳过）', true);
+      G.ui.sgTryTrigger('wild', wTile.terrain);
+      await sleep(40);
+      check('★ v89.29：地块触发（点地块 → 命中 ' + wPick9 + ' 直接开卷）',
+        fx.style.display !== 'none' && !!G.SG._run && G.SG._run.st.id === wPick9);
+      var exW = fx.querySelector('[data-action="story-exit"]');
+      if (exW) { click(exW); await sleep(30); }
+      check('★ v89.29：掩卷后回面板（叠层语义）', fx.style.display === 'none'
+        && !!document.querySelector('#modal-root [data-action="close-modal"]'));
+      var cmD = document.querySelector('#modal-root [data-action="close-modal"]');
+      if (cmD) { click(cmD); await sleep(25); }
+    } else {
+      check('★ v89.29：地块触发（附近无可读野地，跳过）', true);
+      check('★ v89.29：掩卷后回面板（跳过）', true);
+    }
+
+    /* 块 E：逐卷直开（阅读器 · 走满 · 进度入档 · 掩卷）—— 覆盖各卷代表性新篇 */
+    var VOL89 = [
+      ['v89.9', 'bld-minfang-01'], ['v89.10', 'bld-xiaochang-01'], ['v89.11', 'bld-shuyuan-02'],
+      ['v89.12', 'bld-cangku-02'], ['v89.13', 'bld-zhaoxianguan-02'], ['v89.14', 'bld-guanfu-05'],
+      ['v89.24', 'bld-guanfu-08'], ['v89.25', 'bld-chengqiang-06'], ['v89.26', 'bld-xiaochang-07'],
+      ['v89.27', 'wild-forest-05'], ['v89.27', 'city-county-05'], ['v89.27', 'ext-farm-06'],
+      ['v89.28', 'bld-shuyuan-09'], ['v89.28', 'wild-zhaoze-08'],
+      ['v89.30', 'bld-kezhan-09'], ['v89.30', 'wild-desert-09'], ['v89.30', 'wild-hill-12'],
+      ['v89.30', 'city-county-07'], ['v89.30', 'wild-lake-12'], ['v89.30', 'ext-mine-07'],
+      ['v89.32', 'wild-hill-14'], ['v89.32', 'bld-zhaoxianguan-10'], ['v89.32', 'city-county-11'],
+      ['v89.32', 'city-county-16'], ['v89.32', 'city-jun-18'], ['v89.32', 'wild-zhaoze-11'],
+      ['v89.33', 'bld-cangku-09'], ['v89.33', 'city-county-21'], ['v89.33', 'wild-zhaoze-12'],
+      ['v89.34', 'bld-kezhan-10'], ['v89.34', 'wild-forest-16'], ['v89.34', 'city-jun-23'],
+      ['v89.34', 'city-county-29'], ['v89.34', 'wild-desert-15'], ['v89.34', 'bld-majiu-10'],
+      ['v89.35', 'bld-tiejiangpu-09'], ['v89.35', 'bld-tiejiangpu-10'], ['v89.35', 'bld-fenghuotai-10'],
+      ['v89.35', 'wild-forest-19'], ['v89.35', 'city-capital-10'], ['v89.35', 'city-county-34'],
+      ['v89.37', 'city-county-36'], ['v89.37', 'wild-caoyuan-18'], ['v89.37', 'city-zhou-17'],
+      ['v89.37', 'city-zhou-18'], ['v89.37', 'city-capital-17'], ['v89.37', 'city-zhou-22'],
+      ['v89.38', 'city-county-43'], ['v89.38', 'city-jun-34'], ['v89.38', 'ext-farm-10'],
+      ['v89.38', 'city-county-49'], ['v89.38', 'city-zhou-27'], ['v89.38', 'city-county-50'],
+      ['v89.39', 'misc-01'], ['v89.39', 'misc-07'], ['v89.39', 'misc-13'], ['v89.39', 'misc-19'],
+      ['v89.39', 'misc-25'], ['v89.39', 'misc-33'], ['v89.39', 'misc-40']
+    ];
+    for (var v9 = 0; v9 < VOL89.length; v9++) {
+      var tag9 = VOL89[v9][0], sid9 = VOL89[v9][1];
+      G.ui.openStory(sid9);
+      await sleep(40);
+      var open9 = !!fx && fx.style.display !== 'none'
+        && !!G.SG._run && G.SG._run.st.id === sid9
+        && fx.querySelectorAll('.sgr-bg').length === 2
+        && fx.textContent.indexOf('第 1 段') >= 0 && /共 [5-7] 段/.test(fx.textContent)
+        && fx.querySelectorAll('[data-action="story-pick"]').length >= 2;
+      var g9 = 0;
+      while (open9 && g9++ < 12) {
+        var pk9 = fx.querySelector('[data-action="story-pick"]');
+        if (!pk9) break;
+        click(pk9);
+        await sleep(25);
       }
-    } else {
-      check('★ v89.10：卷 03~05 新锚点入口（城中无对应地格，跳过）', true);
-      check('★ v89.10：新锚点故事在列 · 可开卷（跳过）', true);
+      var end9 = !!fx && !!fx.querySelector('[data-action="story-exit"]')
+        && fx.textContent.indexOf('回到城中') >= 0;
+      var save9 = !!(G.SG.progress()[sid9] && G.SG.progress()[sid9].done.length);
+      if (fx && fx.querySelector('[data-action="story-exit"]')) {
+        click(fx.querySelector('[data-action="story-exit"]'));
+        await sleep(25);
+      }
+      check('★ ' + tag9 + '：直开阅读器 · 走满至结局（' + sid9 + '）', open9 && end9);
+      check('★ ' + tag9 + '：进度入档 · 掩卷收起（' + sid9 + '）',
+        save9 && fx.style.display === 'none');
     }
-    /* 空态（动态选锚点）：找一座尚无故事的建筑 */
-    var BLD16 = ['guanfu', 'minfang', 'shuyuan', 'junying', 'xiaochang', 'shichang', 'cangku',
-                 'chengqiang', 'yizhan', 'fenghuotai', 'majiu', 'kezhan', 'zhaoxianguan',
-                 'honglusi', 'tiejiangpu', 'gongjiangzuofang'];
-    var emptyMi = -1;
-    city.cells.forEach(function (cell, i) {
-      if (emptyMi < 0 && cell.build && BLD16.indexOf(cell.build.id) >= 0
-        && G.SG.anchor('building', cell.build.id).length === 0) emptyMi = i;
-    });
-    if (emptyMi >= 0) {
-      G.ui.openBuildModal(emptyMi);
-      await sleep(30);
-      check('空态：无故事的建筑不出「逸闻」块',
-        !document.querySelector('#modal-root [data-action="story-list"]'));
-      click(document.querySelector('#modal-root [data-action="close-modal"]'));
-      await sleep(30);
-    } else {
-      check('空态：无故事的建筑不出「逸闻」块（全建筑已有故事，跳过）', true);
-    }
+
+    /* 块 F：动作触发（v89.31）—— 动作完成 → 相关建筑池 → 开卷 / 默认阈值不打扰 */
+    var pF1 = G.SG.actPool('tech-done');
+    var pinF1 = (pF1.fresh[0] || pF1.done[0]).st.id;
+    sgPin89(pinF1); G.SG.TRIG._actAt = {};
+    G.onActionDone('tech-done');
+    await sleep(40);
+    check('★ v89.31：动作触发 · 研习完成 → 相关建筑池开卷（' + pinF1 + '）',
+      fx.style.display !== 'none' && !!G.SG._run && G.SG._run.st.id === pinF1);
+    var exF1 = fx.querySelector('[data-action="story-exit"]');
+    if (exF1) { click(exF1); await sleep(30); }
+    check('★ v89.31：动作触发 · 掩卷收起', fx.style.display === 'none');
+    sgOff89(); G.SG.TRIG._actAt = {};
+    G.onActionDone('train-done');
+    await sleep(30);
+    check('★ v89.31：动作触发 · 默认阈值下不打扰（rng 恒 0.999）', fx.style.display === 'none');
+
+    /* v89.39：世事（misc）并入动作池 —— 研习完成 → 世事篇开卷（真实链路） */
+    var pM39 = G.SG.actPool('tech-done');
+    var hasM39 = false;
+    pM39.fresh.concat(pM39.done).forEach(function (r) { if (r.st.id === 'misc-06') hasM39 = true; });
+    check('★ v89.39：世事并入动作池（tech-done 含《奏对》misc-06）', hasM39);
+    sgPin89('misc-06'); G.SG.TRIG._actAt = {};
+    G.onActionDone('tech-done');
+    await sleep(40);
+    check('★ v89.39：动作偶遇世事 · 研习完成 → 开卷（misc-06）',
+      fx.style.display !== 'none' && !!G.SG._run && G.SG._run.st.id === 'misc-06');
+    var exM39 = fx.querySelector('[data-action="story-exit"]');
+    if (exM39) { click(exM39); await sleep(30); }
+    check('★ v89.39：掩卷收起', fx.style.display === 'none');
+    sgOff89(); G.SG.TRIG._actAt = {};
+
+    /* 收尾：恢复测试默认（随机永不触发） */
+    sgOff89();
   })();
 
   console.log('');

@@ -198,7 +198,7 @@ function consumed(name) {
   MODULES.forEach(m => { const s = src[m].replace(defLine, ''); n += (s.match(re) || []).length; });
   return n;
 }
-const storyFns = ['prodMult', 'feedMult', 'atkMult', 'defMult', 'siegeMult', 'researchMult',
+const storyFns = ['prodMult', 'atkMult', 'defMult', 'siegeMult', 'researchMult',
   'leadMult', 'trainMult', 'cityDefMult', 'heartsPerHour', 'combatMod'];
 const deadStory = storyFns.filter(f => consumed(f) === 0);
 console.log('  STORY 修正函数 ' + storyFns.length + ' 个 · 无消费点 ' + deadStory.length);
@@ -220,7 +220,7 @@ if (deadBoon.length) deadBoon.forEach(k => console.log('     ⚠ boon.' + k));
    坑二：业务代码常写 `var cmW = GAME.story.combatMod()`，再用 `cmW.fire`。
         硬编码 `cm.` 会漏判 → 用一次轻量数据流分析：先扫出所有「从
         combatMod()/currentWeather() 接值的变量名」，再据此匹配属性访问。 */
-const weaKeys = ['archerRange', 'fire', 'ambush', 'scout', 'move', 'grain', 'feed'];
+const weaKeys = ['archerRange', 'fire', 'ambush', 'scout', 'move', 'grain'];
 /* 摘掉 story.js 里 combatMod 的函数体（那是生产端，不是消费端） */
 const storyNoRepack = src.story.replace(/STORY\.combatMod = function[\s\S]*?\n  \};/, '/* combatMod body removed */');
 const weaPool = { ...src, story: storyNoRepack };

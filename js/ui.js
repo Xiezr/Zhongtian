@@ -840,7 +840,7 @@
 
   /* ============================================================
    * 侧栏驻军栏（v16 · 需求 #17）
-   * 固定在资源栏下方、固定高度；列出当前城池各兵种数量与耗粮，
+   * 固定在资源栏下方、固定高度；列出当前城池各兵种数量（v89.36 起耗粮列退役），
    * 空城也占位（不塌陷），可折叠。
    * ============================================================ */
   ui._garrisonOpen = true;
@@ -848,18 +848,12 @@
     var el = $('#garrison-bar');
     if (!el || !c) return;
     var ids = Object.keys(c.army || {}).filter(function (k) { return (c.army[k] || 0) > 0; });
-    var total = 0, feed = 0;
-    ids.forEach(function (k) {
-      total += c.army[k];
-      feed += (DATA.TROOPS[k] ? DATA.TROOPS[k].food : 0) * c.army[k];
-    });
     var open = ui._garrisonOpen !== false;
     /* v65（老板）：「左侧统计的驻军，只留驻军 2 个字就行了，
        总数、种类、总体耗粮都不需要」——
        原先标题是「⚔ 许都 · 驻军　12,345　8 种 · 耗粮 1,234/h」，一行塞了四件事；
-       城名在上方「城池属性」栏已有，总数与种类在下面的明细里逐行可见，
-       总体耗粮自己加也行（明细每行都写着）。标题只留两个字。
-       ⚠️ `total` / `feed` 仍在算 —— 它们是明细行的数据源，只是不再上标题。 */
+       城名在上方「城池属性」栏已有，数量在下面的明细里逐行可见。标题只留两个字。
+       v89.36：军粮维持退役，明细的「耗粮」列一并移除（原来那两列而今只剩数量一列）。 */
     var head = '<div class="gb-head" data-action="toggle-garrison">' +
       '<span>⚔ 驻军</span>' +
       '<span class="gb-arrow">' + (open ? '▾' : '▸') + '</span></div>';
@@ -869,8 +863,7 @@
         ? '<div class="gb-list">' + ids.map(function (k) {
             var t = DATA.TROOPS[k];
             return '<div class="gb-row"><span class="gb-n">' + (t ? t.name : k) + '</span>' +
-              '<span class="gb-c">' + U.numText(c.army[k], 0) + '</span>' +
-              '<span class="gb-f">-' + U.numText((t ? t.food : 0) * c.army[k], 0) + '/h</span></div>';
+              '<span class="gb-c">' + U.numText(c.army[k], 0) + '</span></div>';
           }).join('') + '</div>'
         : '<div class="gb-empty">本城暂无驻军（军营可募兵）</div>';
     }
@@ -973,23 +966,14 @@
          · 「🧱 城防 · 驻军」：驻军栏就在正下方（含兵种与耗粮），城防在「统计」页；
          · 「🌾 城外地块」：城外视图的棋盘本身就是这块数据，重复且挤。
          侧栏从此只留下"本城当下最该一眼看到"的几项。 */
-      /* 断粮警示（v65 老板改了规则）：粮尽**不会立刻**掉兵 ——
-         先饿满 24 游戏小时才哗变，之后每 24 小时各兵种逃 20%。
-         所以文案必须报"还能撑多久"，否则这条新规则玩家看不见
-         （项目规矩：新机制上线，它的输出值要能被看见）。 */
-      (function () {
-        if (!(GAME.isStarving && GAME.isStarving())) return '';
-        var need = (DATA.STARVE && DATA.STARVE.hours) || 24;
-        var leftH = Math.max(0, need - Math.floor(c.starveHours || 0));
-        return '<div class="note-warn" style="margin-top:6px;text-align:left;">🕯 <b>粮尽</b>，无法出征。' +
-          '守军尚可支撑 <b>' + leftH + '</b> 游戏小时，逾将哗变逃散' +
-          '（每 ' + need + ' 小时各兵种逃 ' + Math.round((DATA.STARVE.mutinyPct || 0.2) * 100) + '%）。<br>' +
-          '宜速运粮入城、增产粮草，或裁减军伍。</div>';
-      })();
-      /* 定期来袭警示（第 2 期 · 防守）—— 与断粮警示**同一个 `.note-warn`**，
+      /* v89.36：断粮警示随军粮维持退役（军队不再吃粮，不存在"粮尽"状态）；
+         原先它后面的"烽火预警"IIFE 因拼接符被打断、返回串被丢弃 —— 接回后横幅恢复显示。 */
+      /* 定期来袭警示（第 2 期 · 防守）—— 复用 `.note-warn` 样式，
          不新增 CSS、不新增板块，只在「已有排期」时渲染。
          项目规矩：新机制上线，它的输出值要能被看见（否则玩家永远不知道
          自己在被谁打、还有多久、守不守得住）。
+         v89.36 顺带修复：本段此前与拼接链**脱节**（返回串被丢弃、横幅从未上屏），
+         借断粮警示退役之机接回 `html` 链 —— 现在预警真的会显示。
          ⚠️ 这里是 `GAME.invasionDueAt` 与 `GAME.defensePowerOf` 的**界面消费点**，
             删掉这段 audit.js 会报死函数。 */
       (function () {
@@ -4138,9 +4122,8 @@
               (f.withIdx ? ' data-idx="' + idx + '"' : '') + '>' + f.label + '</button>' +
             '</div>' +
           '</div>') : ''; })() +
-        /* v89.9（铺量接线）：逸闻块移出「功能」三元 —— 无功能面板的建筑（民房 / 驿站 /
-           烽火台 / 鸿胪寺）此前被整个漏掉；现在所有建筑统一渲染，与野地 / 城池入口同构。 */
-        ui.SG_BLOCK('building', b.id, b.name) +
+        /* v89.29（入口改版）：逸闻不再挂列表块 —— 开面板时由 ui.sgTryTrigger 掷骰，
+           命中随机抽一篇完整故事直接在面板之上开卷（见本函数尾部）。 */
         /* v80（老板）：「升级，拆除（拆1级），移动/交换固定放在底部，关闭的上方」——
            三键与关闭合成一块**吸底操作区**（.bldg-bottom）：内容再长也钉在弹窗下沿，
            上排＝操作三键，下排＝关闭。 */
@@ -4162,6 +4145,7 @@
           '</div>' +
         '</div>'
       );
+      ui.sgTryTrigger('building', b.id);   /* v89.29 · 概率奇遇 */
     } else {
       /* 空地：选择建筑（弹窗式） */
       /* v19：**不再复制一份唯一建筑表**（曾因此出现「后端放行、前端禁用」的错位）。
@@ -4516,12 +4500,14 @@
             '<span class="op-kv">费用 <b>' + costStr + '</b></span>' +
             (upCost ? '<button class="btn" data-action="ext-upgrade" data-idx="' + idx + '">升级 → Lv' + (e.lv + 1) + '</button>' : '<span class="op-done">已达最高等级</span>') +
           '</div></div>' +
+        /* v89.29（入口改版）：逸闻不再挂列表块 —— 开面板时由 ui.sgTryTrigger 掷骰（见本函数尾部）。 */
         '<div class="bldg-foot">' +
           (upCost ? '<button class="btn sm red" data-action="demolish-ask" data-kind="ext" data-idx="' + idx + '" title="返还累计投入的 50%（需二次确认）">拆毁</button>' : '<span></span>') +
           '<button class="btn" data-action="close-modal">关闭</button>' +
           '<span></span>' +
         '</div>'
       );
+      ui.sgTryTrigger('ext', e.type);   /* v89.29 · 概率奇遇 */
       return;
     }
     /* 空地：选建资源建筑（v63：与城内那处同一套规矩 —— 图标同步、费用改悬停） */
@@ -4585,7 +4571,7 @@
          省下的空间给图标（.ticon 52 → 84px，见 CSS）。
          移到浮层而不是删掉：成本是募兵的关键决策信息，只是"不该常驻卡面"。 */
       var costStr = GAME.costString(t.cost) + '</div><div class="tip-l">人口 ' + t.pop +
-        ' · 耗粮 ' + t.food + '/h · 单兵耗时 ' + U.dur(t.time);
+        ' · 单兵耗时 ' + U.dur(t.time);
       return '<div class="troop-card' + (unlocked ? '' : ' disabled') + (ui._trainSel === id ? ' selected' : '') + '" ' +
         'data-action="' + (unlocked ? 'select-train' : 'train-locked') + '" data-troop="' + id + '" data-tip-el="1">' +
         '<div class="ticon">' + GAME.icons.forTroop(t.id) + '</div><div class="tname">' + t.name + '</div>' +
@@ -4726,7 +4712,7 @@
           '　速 ' + (a.spd || 0) + '　体 ' + a.staMax + '</div>' +
         '<div class="tip-a">Lv' + g.level + '　装备 ' + Object.keys(GAME.systems.equipBagOf(g)).length + '/12' +
           '　经验 ' + U.numText(g.exp || 0, 0) + ' / ' + U.numText(GAME.expNeedOf(g), 0) +
-          '　忠诚 ' + Math.round(g.loyalty || 0) + '</div>' +
+          (GAME.isLordGeneral(g) ? '' : '　忠诚 ' + Math.round(g.loyalty || 0)) + '</div>' +
       '</span></div>';
   };
 
@@ -4895,7 +4881,7 @@
         /* v74（老板需求 5）：「增加一行自由属性点，用于玩家自行决定加点」 */
         '<tr class="gd-freep"><td colspan="3">自由属性点 <b class="fp-n">' +
           Math.round(g.freePts || 0) + '</b><span class="gd-free-hint">升级获得（每级 = 成长值）　' +
-          '点右侧 ＋ 逐点分配，或用道具</span></td></tr>' +
+          '点右侧 ＋ 一次加点（可填数量），或用道具</span></td></tr>' +
       '</tbody></table>';
 
     /* ---------- 状态（v54 · 老板） ----------
@@ -4912,15 +4898,19 @@
     });
     var jewelTotal = 0;
     jewels.forEach(function (it) { jewelTotal += (s.items[it.id] || 0); });
+    /* v89.40（老板）：「君主不会掉忠诚」—— 忠诚行与赏赐入口对君主整体不适用
+       （君主忠诚恒为 100：battle 战败守卫 + 本页不出行；普通将领一切照旧）。 */
+    var isLordGen = GAME.isLordGeneral(g);
     html += '<div class="gp-sec">状态</div>' +
       /* v20（需求 5）的规矩在这里同样适用：**页面只放信息型内容**，
          "出征消耗 / 低于 25 不可出征 / 侦查消耗"这类**规则解说**不常驻页面。 */
+      (isLordGen ? '' :
       '<div class="gd-line">忠诚 <b style="color:' + loyColor + '">' + loy + '</b>' + bar(loy, loyColor) +
         (loy < DATA.LOYALTY.warnAt ? '<span class="gd-warn">⚠ 偏低</span>' : '') +
         '<button class="btn sm' + (jewels.length ? ' gold' : ' dim') + '" data-action="gen-gift-pick"' +
           ' data-gen="' + genId + '"' + (jewels.length ? '' : ' disabled') +
           ' title="' + (jewels.length ? '赏赐珠宝提升忠诚：可赏赐 ' + jewels.length + ' 种（共 ' +
-            jewelTotal + ' 件）' : '背包中暂无珠宝。攻打城池缴获或商城购买') + '">🎁 赏赐</button></div>' +
+            jewelTotal + ' 件）' : '背包中暂无珠宝。攻打城池缴获或商城购买') + '">🎁 赏赐</button></div>') +
       /* 攻击 / 防御：**合计值 + 构成**（勇武 3,300 ＋ 装备 8,148 = 11,448）——
          老板要的"总数"，同时一眼能看出装备贡献了多少，不必再单列一行。
          v66：**体力同口径** —— 主数字改成"总体体力"（= 上限，含装备与套装），
@@ -6211,7 +6201,7 @@
                   (cd ? '\n冷却中：还需 ' + cd + ' 日' : '')) + '">' +
                 o.icon + ' ' + o.name + (cd ? ' <i class="chip-sub">' + cd + '日</i>' : '') + '</span>';
             }).join('') + '</div>';
-        })() : '') + ui.SG_BLOCK('city', city.type, city.name),
+        })() : ''),
       foot: '<div class="m-foot">' +
         (isOwn
           ? '<button class="btn gold" data-action="city-enter" data-city="' + city.id + '">进入城池</button>' +
@@ -6452,7 +6442,7 @@
         '<div style="text-align:center;color:var(--text-dim);font-size:var(--fs-body);margin-bottom:8px;">守军约 ' +
           base.toLocaleString() + ' 名</div>' +
         '<div class="note">' + note + '</div>' +
-        wsurvLine + ui.jianghuHTML(x, y) + ui.SG_BLOCK('wild', tile.terrain, ter.name) +
+        wsurvLine + ui.jianghuHTML(x, y) +
         '<div style="text-align:center;margin-top:14px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">' +
           '<button class="btn gold" data-action="exp-open" data-kind="wild">出兵（侦查 / 掠夺 / 占领）</button>' +
           '<button class="btn" data-action="close-modal">关闭</button></div>'
@@ -6502,7 +6492,7 @@
       '<div style="text-align:center;color:var(--text-dim);font-size:var(--fs-body);margin-bottom:8px;">守军约 ' +
         base.toLocaleString() + ' 名　·　产量加成 ' + (addStr || '无') + '</div>' +
       '<div class="note">' + note + '</div>' +
-      wsurvLine + ui.jianghuHTML(x, y) + ui.SG_BLOCK('wild', tile.terrain, ter.name) +
+      wsurvLine + ui.jianghuHTML(x, y) +
       stat + ops +
       '<div class="modal-foot"><button class="btn" data-action="close-modal">关闭</button></div>'
     );
@@ -7089,23 +7079,22 @@
       + '预计 <b style="color:var(--gold-light)">' + U.durExact(real) + '</b>'
       + (fallback ? '<span style="opacity:.6;">（按城内现有兵种估算）</span>' : '');
     /* v74（老板：完善出征界面）：兵力总览 + 战力对比（估算）。
+       v89.36：军粮维持退役 —— 总览不再列「耗粮 X/时」。
        战力走 STORY.troopPower（与来袭/家底评估同一出口）；
        守军侧对城池/据点吃城防系数（与 defensePowerOf 同一个 defDivisor 常量）。 */
     var sum73 = $('#exp-sum'), pow73 = $('#exp-power');
     if (sum73 || pow73) {
       var tp74 = (GAME.story && GAME.story.troopPower) ? GAME.story.troopPower : null;
-      var n74 = 0, feed74 = 0, mine74 = 0;
+      var n74 = 0, mine74 = 0;
       Object.keys(city.army || {}).forEach(function (id) {
         var inp74 = document.getElementById('exp-' + id);
         var v74 = inp74 ? Number(inp74.value) || 0 : 0;
         var tr74 = DATA.TROOPS[id];
         n74 += v74;
-        if (tr74) feed74 += v74 * (tr74.food || 0);
         if (tp74) mine74 += v74 * tp74(id);
       });
       if (sum73) {
-        sum73.innerHTML = '👥 共派遣 <b>' + U.numText(n74, 0) + '</b> 兵　' +
-          '耗粮 <b>' + U.numText(feed74, 0) + '</b>/时' +
+        sum73.innerHTML = '👥 共派遣 <b>' + U.numText(n74, 0) + '</b> 兵' +
           (fallback ? '<span style="opacity:.6;">（未填兵力，按现有兵种展示守军对比）</span>' : '');
       }
       if (pow73) {
@@ -7172,15 +7161,20 @@
       title: '＋ ' + nm + ' · ' + U.escape(g.name),
       sub: '自由属性点 ' + fp + '　·　' + nm + ' 现 ' + curVal +
         ui.help('自由属性点：每升 1 级获得 = 资质成长值（凡品 +1 … 天授 +8）。\n' +
-          '只能加、不能减；四项主属性另有永久丹药（商城 · 丹药），每将每项上限 50。'),
+          '支持一次加多点：填数量（或点「最多」）后点「加点」；只能加、不能减。\n' +
+          '四项主属性另有永久丹药（商城 · 丹药），每将每项上限 50。'),
       size: 'sm',
       body:
         '<div class="ui-sub">自由属性点</div>' +
-        '<div class="stat-row"><span class="sr-name">🎯 消耗 1 点</span>' +
+        /* v89.40（老板）：「输入计划增加的数量，一次加点」—— ＋1 按钮升级为
+           数量框 +「加点」：单点默认 1 仍一键，批量填数或点「最多」后一次到账。 */
+        '<div class="stat-row"><span class="sr-name">🎯 一次加点</span>' +
           '<span class="sr-sub">剩 ' + fp + ' 点</span>' +
+          ui.qtyInput('fp-add-' + genId, 1, 0, fp) +
           '<button class="btn sm' + (fp > 0 ? ' gold' : ' dim') + '" data-action="stat-plus-free"' +
-            ' data-gen="' + genId + '" data-stat="' + stat + '"' + (fp > 0 ? '' : ' disabled') +
-            ' title="' + (fp > 0 ? nm + ' +1（只增不减）' : '自由属性点不足：升级获得，每级 = 资质成长值') + '">＋1</button></div>' +
+            ' data-gen="' + genId + '" data-stat="' + stat + '" data-qty-from="fp-add-' + genId + '"' +
+            (fp > 0 ? '' : ' disabled') +
+            ' title="' + (fp > 0 ? nm + ' 一次加点（填数量或点「最多」，只增不减）' : '自由属性点不足：升级获得，每级 = 资质成长值') + '">加点</button></div>' +
         '<div class="ui-sub" style="margin-top:10px;">道具</div>' + rows,
       foot: '<div class="m-foot"><button class="btn" data-action="close-modal">关闭</button></div>'
     });
@@ -8498,51 +8492,34 @@
       '</svg>'
   };
 
-  /* entry block: returns '' when the anchor has no story (no empty shell) */
-  ui.SG_BLOCK = function (kind, id, name) {
-    if (!GAME.SG) return '';
-    var rows = GAME.SG.anchor(kind, id);
-    if (!rows.length) return '';
-    var done = 0;
-    rows.forEach(function (r) { if (r.done.length) done++; });
-    return '<div class="op-zone">' +
-      '<div class="op-zone-t">逸闻 · 此地故事（' + done + ' / ' + rows.length + '）</div>' +
-      '<div class="op-row">' +
-        '<button class="btn gold" data-action="story-list" data-kind="' + kind + '" data-id="' + id +
-          '" data-name="' + U.escape(name || '') + '">📖 听一段故事</button>' +
-        '<span class="op-hint">纯叙事 · 走到结局即得赏赐，不影响战斗与数值结算</span>' +
-      '</div></div>';
-  };
-
-  /* story list (modal, reuses openShell) */
-  ui.openStoryList = function (kind, id, name) {
-    var rows = GAME.SG ? GAME.SG.anchor(kind, id) : [];
-    var body = rows.length ? rows.map(function (r) {
-      var total = (r.st.endings || []).length;
-      var tag = r.done.length ? ('已读 ' + r.done.length + ' / ' + total) : '未读';
-      return '<div class="res-line" style="align-items:center;gap:10px;">' +
-        '<span class="lbl" style="flex:0 0 auto;">' + U.escape(r.st.title) + '</span>' +
-        '<span class="ui-sub" style="flex:0 0 auto;">' + tag + '</span>' +
-        '<span style="flex:1 1 auto;color:var(--text-dim);font-size:var(--fs-sub);">' +
-          U.escape(r.st.hook || '') + '</span>' +
-        '<button class="btn gold sm" data-action="story-open" data-sid="' + r.st.id + '">' +
-          (r.done.length ? '再读' : '阅读') + '</button></div>';
-    }).join('') : '<div class="q-empty">此处暂无故事（故事库按锚点铺开，逐步补齐）。</div>';
-    ui.openShell({
-      title: '📖 ' + U.escape(name || '逸闻'),
-      sub: (ui.SG_KIND[kind] || '') + '　共 ' + rows.length + ' 篇　·　走到任一结局即得赏赐',
-      size: 'xl',
-      body: body,
-      foot: '<div class="m-foot"><button class="btn" data-action="close-modal">关闭</button></div>'
-    });
-  };
+  /* v89.29（入口改版）：逸闻入口从「列表菜单」改为「概率奇遇」——
+     点开建筑 / 地块时由 ui.sgTryTrigger 掷骰（GAME.SG.roll），命中即随机抽一篇
+     完整故事（每篇 = 一份独立资产），在弹窗之上直接开卷；掩卷后回到原面板。
+     v89.29 起：旧的「入口块 / 清单弹窗 / 对应动作分发」已整体收敛。 */
 
   /* open one story (full-screen reader) */
-  ui.openStory = function (sid) {
+  ui.openStory = function (sid, keepModal) {
     var r = GAME.SG.begin(sid);
     if (!r.ok) { ui.toast(r.msg); return; }
-    ui.closeModal();
+    if (!keepModal) ui.closeModal();
     ui.sgRender();
+  };
+  /* 概率奇遇：点开建筑 / 地块后掷骰；命中则在面板之上开卷（弹窗不关） */
+  ui.sgTryTrigger = function (kind, id) {
+    if (!GAME.SG || !GAME.SG.roll || !id) return false;
+    var r = GAME.SG.roll(kind, id);
+    if (!r.fire) return false;
+    ui.openStory(r.sid, true);
+    return true;
+  };
+  /* v89.31 · 动作触发：战事 / 营造 / 民生 / 成长等动作结算后调用（见 GAME.SG.ACT 表）；
+     命中即从「相关建筑」池里抽一篇，在当前画面（含弹窗）之上开卷（叠层语义）。 */
+  ui.sgTryAct = function (key, ctx) {
+    if (!GAME.SG || !GAME.SG.rollAct || !key) return false;
+    var r = GAME.SG.rollAct(key, ctx);
+    if (!r.fire) return false;
+    ui.openStory(r.sid, true);
+    return true;
   };
   /* 换壁画：两层交叉淡入（同键不闪；首帧自 0 淡入）。层序由数据里的 bg 驱动。 */
   ui._sgBgKey = '';

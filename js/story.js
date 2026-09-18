@@ -94,12 +94,8 @@
     return m;
   };
 
-  /* 天时对军粮消耗的乘数（冬季更耗粮） */
-  STORY.feedMult = function () {
-    var se = STORY.currentSeason(), we = STORY.currentWeather();
-    var m = (se.feed || 1) * (1 + (we.feed || 0));
-    return m;
-  };
+  /* v89.36（老板「维持军队无需耗粮食」）：军粮维持耗粮退役 ——
+     `STORY.feedMult`（天时对军粮的乘数）随之一并移除；四季/天气的 feed 字段同时下线。 */
 
   /* 天时对战斗的修正（供 battle.js 调用） */
   STORY.combatMod = function () {
