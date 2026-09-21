@@ -28,20 +28,26 @@ BUILDINGS = [
     ('guanfu', '官府'), ('minfang', '民房'), ('shuyuan', '书院'), ('junying', '军营'),
     ('xiaochang', '校场'), ('shichang', '市场'), ('cangku', '仓库'), ('chengqiang', '城墙'),
     ('yizhan', '驿站'), ('fenghuotai', '烽火台'), ('majiu', '马厩'), ('kezhan', '客栈'),
-    ('zhaoxianguan', '招贤馆'), ('honglusi', '鸿胪寺'), ('tiejiangpu', '铁匠铺'),
+    ('zhaoxianguan', '招贤馆'), ('honglusi', '门派驻地'), ('tiejiangpu', '铁匠铺'),
     ('gongjiangzuofang', '工匠作坊'),
 ]
 EXTS = [('farm', '农田'), ('forest', '伐木场'), ('quarry', '采石场'), ('mine', '铁矿场')]
-WILDS = [('caoyuan', '草原'), ('zhaoze', '沼泽'), ('lake', '湖泊'),
-         ('forest', '森林'), ('desert', '荒漠'), ('hill', '山地')]
+WILDS = [('caoyuan', '草原', 20), ('zhaoze', '沼泽', 20), ('lake', '湖泊', 20),
+         ('forest', '森林', 20), ('desert', '荒漠', 20), ('hill', '山地', 10)]
 CITY_TIERS = [('capital', '都城', 20), ('zhou', '州城', 30), ('jun', '郡城', 40), ('county', '县城', 50)]
 
+# v89.74（老板：鸿胪寺拆迁 → 门派驻地；外交故事改锚官府；江湖故事链接到门派）：
+#   · guanfu 10 → 20（原锚在 honglusi 的 10 篇外交故事改锚到官府，id → bld-guanfu-11..20）
+#   · hill  20 → 10（山林/武学题材 10 篇移给门派驻地，id → bld-honglusi-01..10）
+#   · honglusi 仍 10（换了内容：外交 → 江湖），总数仍 500
+#   · 台账的 id 前缀 = 锚点，故锚点一变、分配表必须跟着变（否则 manifest 会报"台账之外的 id"）
+BLD_COUNT = {'guanfu': 20}
 ALLOC = (
-    [('bld', 'building', bid, 10) for bid, _ in BUILDINGS]      # 160
-    + [('ext', 'ext', eid, 10) for eid, _ in EXTS]              # 40
-    + [('wild', 'wild', wid, 20) for wid, _ in WILDS]           # 120
-    + [('city', 'city', cid, n) for cid, _, n in CITY_TIERS]    # 140
-    + [('misc', 'misc', 'any', 40)]                             # 40
+    [('bld', 'building', bid, BLD_COUNT.get(bid, 10)) for bid, _ in BUILDINGS]   # 170
+    + [('ext', 'ext', eid, 10) for eid, _ in EXTS]                              # 40
+    + [('wild', 'wild', wid, n) for wid, _, n in WILDS]                         # 110
+    + [('city', 'city', cid, n) for cid, _, n in CITY_TIERS]                    # 140
+    + [('misc', 'misc', 'any', 40)]                                             # 40
 )
 TOTAL = sum(n for _, _, _, n in ALLOC)     # 500
 

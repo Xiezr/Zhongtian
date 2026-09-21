@@ -206,10 +206,10 @@ window.STORY_DATA = (window.STORY_DATA || []).concat([
   ]
 },
 {
-  "id": "wild-hill-11",
+  "id": "bld-honglusi-01",
   "anchor": {
-    "kind": "wild",
-    "id": "hill"
+    "kind": "building",
+    "id": "honglusi"
   },
   "title": "石室",
   "hook": "石室门开三尺只容一人，出来的人说里头有一面墙在呼吸。",

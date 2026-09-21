@@ -6,6 +6,8 @@
  *   · 战场是一条**网格化的距离轴**（抽象网格地图），双方相向推进。
  *     距离：攻打野地 2000，攻打野外城池 3000，攻打城池 4000。
  *   · **回合制**。每回合所有存活部队按**速度从高到低**行动（速度含将领加成）。
+ *   · v89.87（老板拍板）：每兵种每回合**主动攻击一个目标**；主目标吃满伤害后，
+ *     超出部分对射程内其他每个敌方兵种各溅射 30%（T.SPLASH_PCT）。
  *   · 行动规则：与最近一支敌军的间距若已在射程内 → 开火；
  *     否则**向对方推进"该兵种速度"这么远**，直到接触对方最前方的兵种。
  *   · 攻击值 = （兵种基础攻击 + 将领/装备加成的攻击）× 该兵种数量
@@ -47,6 +49,16 @@
   T.FIELD_MARGIN = 199;
   /* 保底：双方都是近战（长枪 50）时也要留出可推进的间距 → 50 + 199 = 249 */
   T.FIELD_MIN = 200;
+  /* ============================================================
+   * 溢出溅射比例（v89.87 · 老板拍板）
+   * ------------------------------------------------------------
+   * 「每个兵种每回合只主动攻击一次，目标为其中一个兵种」——
+   * 主目标吃满本次伤害后，**超出部分对射程内其他每个敌方兵种各溅射 30%**。
+   * 取代原 v57 的「溢出按由近及远**全额**顺延」。
+   * 标靶是**兵种**（编队）不是个体：溅射量按各自防御/生命折算杀兵数，
+   * 各自钳制在实有人数内（打不光更多）。
+   * ============================================================ */
+  T.SPLASH_PCT = 0.30;
   /* 旧场地常数**保留为回退值**：`opts.field` 显式传入时仍然可用
      （旧战报回放、跨服类玩法要另设距离），不让老数据算不出来。 */
   T.FIELD = { wild: 2000, fort: 3000, city: 4000 };
@@ -423,7 +435,19 @@
    *   defVal            : 城防值（转为守方减伤）
    *   opts              : { kind:'wild'|'fort'|'city', sieging, defName }
    * ============================================================ */
-  T.simulate = function (atkArmy, atkGen, defArmy, defVal, defGen, opts) {
+  /* ============================================================
+   * v89.87：T.begin —— 建立战斗**会话**（观战界面用）
+   * ------------------------------------------------------------
+   * 初始化逻辑与旧 T.simulate 完全同一套。返回 env：
+   *   env.step()                        → 推进一回合（返回该回合 events/双方数量/间距/快照）
+   *   env.runAll()                      → 跑到结束（≡ 旧 while 循环）
+   *   env.finish()                      → 收尾组装 result（与旧返回结构完全一致）
+   *   env.snap()                        → 双方部队状态快照（UI 画战场用）
+   *   env.setCmd(side, troopId, {s,t})  → 为该兵种下达动作/目标指令
+   *   env.units                         → { atk, def } 单位数组（内部引用）
+   * 引擎**完全确定**（无随机）→ 会话可由「输入 + 逐回合指令」重放重建（存档恢复）。
+   * ============================================================ */
+  T.begin = function (atkArmy, atkGen, defArmy, defVal, defGen, opts) {
     opts = opts || {};
     /* v57：战场距离由**双方配兵**算出来（最远射程 + 199），不再是场地常数。
        `opts.field` 显式给了仍以它为准（旧战报回放 / 跨服类玩法另设距离）。 */
@@ -517,6 +541,47 @@
         });
       }
       var hits = [], killed = 0, clash = 1;
+      /* ============================================================
+       * v89.87（老板拍板）：**主动攻击 = 单主目标制**
+       * ------------------------------------------------------------
+       *   · 主目标 = 指定目标（`preferId` 已排到池首）/ 否则最近的一支；
+       *   · 主目标吃满本次攻击的全部伤害（自然钳制：最多打光它）；
+       *   · 吃满后的**超出伤害**对射程内其他每个敌方兵种各溅射 30%
+       *     （`ctx.splashTargets`，由 actSide 预先筛好"在射程内"的其他兵种）。
+       * 箭塔火力与反击**不传 `ctx.single`** → 走下方原溢出逻辑，行为不变。
+       * ============================================================ */
+      if (ctx.single && pool.length) {
+        var tg0 = pool[0];
+        var perHp0 = T.perHp(tg0, ctx.defGenOfTarget);
+        var cf0 = T.clashFactor(perA, T.perDef(tg0, { defMul: T.counterDefOf(tg0.id, shooter.id) }));
+        var holdMul0 = (tg0.stance === 'hold') ? (1 - T.HOLD_DAMAGE_CUT) : 1;
+        var eff0 = av * cf0 * holdMul0;
+        var k0 = Math.floor(eff0 / perHp0);
+        if (k0 > tg0.count) k0 = tg0.count;          // 自然钳制：不能杀超过目标实有人数
+        var over = eff0 - k0 * perHp0;               // 主目标吃满后的**超出伤害**
+        clash = cf0;
+        if (k0 > 0) {
+          tg0.count -= k0;
+          killed += k0;
+          hits.push({ id: tg0.id, name: tg0.name, kill: k0 });
+        }
+        if (over > 0 && ctx.splashTargets && ctx.splashTargets.length) {
+          ctx.splashTargets.forEach(function (sg) {
+            if (sg === tg0 || sg.count <= 0) return;
+            var sPerHp = T.perHp(sg, ctx.defGenOfTarget);
+            var sCf = T.clashFactor(perA, T.perDef(sg, { defMul: T.counterDefOf(sg.id, shooter.id) }));
+            var sHold = (sg.stance === 'hold') ? (1 - T.HOLD_DAMAGE_CUT) : 1;
+            var sk = Math.floor(over * T.SPLASH_PCT * sCf * sHold / sPerHp);
+            if (sk > sg.count) sk = sg.count;        // 同样自然钳制
+            if (sk > 0) {
+              sg.count -= sk;
+              killed += sk;
+              hits.push({ id: sg.id, name: sg.name, kill: sk, splash: true });
+            }
+          });
+        }
+        return { killed: killed, hits: hits, clash: Math.round(clash * 100) };
+      }
       for (var pi = 0; pi < pool.length && av > 0; pi++) {
         var tg = pool[pi];
         var perHp = T.perHp(tg, ctx.defGenOfTarget);
@@ -738,16 +803,23 @@
           return;
         }
         if (gap <= effRange) {
-          /* 溢出杀伤：一支 2000 人的弓兵齐射，攻击值除以敌军生命值本该杀掉一千多，
-             若按"只打最近的一支"来算，前排只剩 91 人时整轮伤害就只兑现 91 ——
-             剩下的 99% 凭空蒸发。所以一轮齐射按"由近及远"依次落到各支敌军身上。 */
+          /* v89.87（老板拍板）：主动攻击 = **单主目标**（rec，指定目标优先/否则最近），
+             主目标吃满后超出伤害对**射程内其他每个**敌方兵种各溅射 30%。
+             溅射目标在此预筛："与射手自身的间距 ≤ 射手有效射程"的其余兵种。 */
           var decay = T.rangeDecay(gap, effRange);
+          var splash = [];
+          enemyUnits.forEach(function (e) {
+            if (e.count <= 0 || e === rec) return;
+            var ge = gapOf(u, ef) + (ef - e.adv);
+            if (ge <= effRange) splash.push(e);
+          });
           var res = fireOnce(u, enemyUnits, {
             siegeMult: siegeMult, decay: decay, onWall: onWall,
             wallFireMul: wallFireMul,
             preferId: u.target || '',
             defBonus: defBonusAgainst(u.side === 'atk' ? 'def' : 'atk'),
             defGenOfTarget: enemyGen,
+            single: true, splashTargets: splash,
           });
           if (res.killed > 0) {
             events.push({
@@ -764,7 +836,9 @@
       });
     }
 
-    while (alive(atk).length && alive(def).length && round < T.MAX_ROUNDS) {
+    /* v89.87：原 `while (…round < MAX_ROUNDS)` 循环体抽成 stepRound()，由 env.step 调用 */
+    function stepRound() {
+      if (env.over) return null;
       round++;
       var events = [];
       /* 速度高的先行动 —— 双方混排后统一排序（需求：速度高的兵种先行动） */
@@ -791,15 +865,46 @@
       });
       /* 城头工事每回合开火一次（原版：箭塔/擂石是守城方自带的火力） */
       if (opts.sieging) wallVolley(atk, events);
-      roundsLog.push({
-        r: round,
-        a: alive(atk).reduce(function (n, u) { return n + u.count; }, 0),
-        d: alive(def).reduce(function (n, u) { return n + u.count; }, 0),
-        gap: Math.round(gapOf({ adv: front(atk) }, front(def))),
-        events: events,
-      });
+      var _rA = alive(atk).reduce(function (n, u) { return n + u.count; }, 0);
+      var _rD = alive(def).reduce(function (n, u) { return n + u.count; }, 0);
+      var _rG = Math.round(gapOf({ adv: front(atk) }, front(def)));
+      roundsLog.push({ r: round, a: _rA, d: _rD, gap: _rG, events: events });
       strips.push(T.strip(front(atk), front(def), D));
+      if (!alive(atk).length || !alive(def).length || round >= T.MAX_ROUNDS) env.over = true;
+      return { r: round, a: _rA, d: _rD, gap: _rG, events: events, over: env.over, snap: snapUnits() };
     }
+
+    /* ---------- 会话对象（v89.87） ---------- */
+    function snapUnits() {
+      function cp(u) {
+        return { side: u.side, id: u.id, name: u.name, count: u.count, adv: Math.round(u.adv),
+                 spd: u.spd, range: u.range, stance: u.stance, target: u.target || '', vsCity: !!u.vsCity };
+      }
+      return { round: round, field: D, atk: atk.map(cp), def: def.map(cp),
+        maxRounds: T.MAX_ROUNDS,
+        /* 攻城时的城防箭塔（界面显示"余 N / M 座"用） */
+        towers: (opts.sieging && towerStart > 0) ? { start: towerStart, left: towerAliveNow() } : null };
+    }
+    var env = {
+      field: D, over: false,
+      units: { atk: atk, def: def },
+      setCmd: function (side, troopId, patch) {
+        var list = (side === 'def') ? def : atk;
+        for (var i = 0; i < list.length; i++) {
+          if (list[i].id === troopId) {
+            if (patch && patch.s) list[i].stance = patch.s;
+            if (patch && patch.t !== undefined) list[i].target = patch.t;
+          }
+        }
+      },
+      snap: snapUnits,
+    };
+    env.over = !(alive(atk).length && alive(def).length);
+    env.step = stepRound;
+    env.runAll = function () { while (!env.over) stepRound(); };
+    var _fin = null;
+    env.finish = function () {
+      if (_fin) return _fin;
 
     /* ---------- 收尾 ---------- */
     var aRemain = alive(atk).reduce(function (n, u) { return n + u.count; }, 0);
@@ -861,7 +966,7 @@
     }
     if (scoutOnly > 0) log.push('斥候 ' + scoutOnly + ' 骑随行侦察，不列阵（不受损失）');
 
-    return {
+    _fin = {
       winner: winner,
       atkLoss: aStart - aRemain, defLoss: dStart - dRemain,
       atkRemain: aRemain, defRemain: dRemain,
@@ -879,6 +984,17 @@
       atkStartBy: aBy.start, defStartBy: dBy.start,
       atkRemainBy: aBy.remain, defRemainBy: dBy.remain,
     };
+    return _fin;
+    };
+    return env;
+  };
+
+  /* v89.87：T.simulate 包装为会话（begin → runAll → finish）——
+     与旧实现逐字节同行为；观战界面改用 env.step 逐回合推进。 */
+  T.simulate = function (atkArmy, atkGen, defArmy, defVal, defGen, opts) {
+    var env = T.begin(atkArmy, atkGen, defArmy, defVal, defGen, opts);
+    env.runAll();
+    return env.finish();
   };
 
   /* 供界面/战报使用：把一场战斗画成文字战场 */

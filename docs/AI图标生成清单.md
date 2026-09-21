@@ -68,7 +68,7 @@ highly detailed material textures, crisp clean edges suitable for a small UI ico
 | majiu | 马厩 | 木构敞棚、长木槽、干草堆、一匹汉代战马剪影、马具挂墙 |
 | kezhan | 客栈 | 两层木楼、酒旗（布招）、红灯笼、木招牌、门前桌凳 |
 | zhaoxianguan | 招贤馆 | 高台门楼、张贴的榜文、长阶梯、两侧灯笼、木牌匾 |
-| honglusi | 鸿胪寺 | 官署院落、歇山顶、朱漆门、竹简卷册、漆盒印信、石阶 |
+| honglusi | 门派驻地 | 山门牌坊、演武场、兵器架、旗幡、青石阶（v89.74：原「鸿胪寺·官署院落」已拆除改名） |
 | tiejiangpu | 铁匠铺 | 通红炉火、铁砧、风箱、水槽、铁锤与夹钳、悬挂的环首刀半成品 |
 | gongjiangzuofang | 工匠作坊 | 木工作架、锯凿斧锤、木轮半成品、竹尺墨斗、堆放木料 |
 

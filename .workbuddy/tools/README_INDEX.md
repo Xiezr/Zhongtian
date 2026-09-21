@@ -5,17 +5,17 @@
 
 | 目录 | 个数 | 干什么 |
 |---|---|---|
-| `asset/` | 9 | 抠底必须连通域洪水填充（BFS）；**绝不用 CSS 滤镜染色**，一律像素级 HSL 重映射写进 PNG。 |
+| `asset/` | 10 | 抠底必须连通域洪水填充（BFS）；**绝不用 CSS 滤镜染色**，一律像素级 HSL 重映射写进 PNG。 |
 | `audit/` | 12 | 结构 / 颜色 / 落盘 / 引用 / 删除 的核对工具。`verify_v66_edits.py` = **落盘核验**模板；`audit_refs.py` = 搬迁前查引用点；`read_recycle.py` = 解析回收站 `$I` 元数据核实删了什么；`trash_paths.py` = 逐项+回查的删除模板。 |
 | `break/` | 17 | 逐类注入故障，确认断言**真的会红**（红不了的就是装饰）。铁律：先校验断言在文件里、注入后连"是否中断"一起看、收尾 md5 比对还原。 |
 | `gen/` | 4 | 素材/索引的**唯一来源**。`gen_bitmaps.js` 扫描 `assets/icons/ui/` 生成 `js/bitmaps.js`（勿手改产物）；`gen_tools_index.py` 生成本索引。 |
 | `git/` | 3 | **收尾同步的唯一入口**。`sync.py` 默认干跑、`--apply` 才落盘（干跑先行是本项目铁律）；`gate.py` 是三件套门禁的**唯一出口**（pre-commit 钩子与 sync 都调它）；`install_hooks.py` 把 `hooks/` 里的钩子装进 `.git/hooks/`。 |
 | `git/hooks/` | 2 | 存这里是为了**进版本库** —— `.git/hooks/` 不被 git 跟踪，换台机器克隆后必须跑 `install_hooks.py` 重装。⚠️ **行尾必须 LF**，CRLF 会让 `#!/bin/sh` 失效。 |
 | `mem/` | 10 | MEMORY.md 必须 < 9600 字符（超出会被会话注入截断，尾部规则等于不存在）。`slim_memory_template.py` = 把超限整段 cut 到 `docs/` 的模板。 |
-| `patch/` | 182 | **事实上的变更日志**：按断言名 `grep -rl "<断言名>" tools/patch/` 就能找到当初是哪次改的。"同一条消息里对同一文件的多次 Edit 会互相覆盖"，所以补丁一律脚本化并留档。 |
-| `probe/` | 17 | jsdom 没有布局引擎 → 尺寸/重叠/溢出/折行只能在**真浏览器**量。`probe60_geom.js` 是可复用模板，`probe66_ui.js` 有"逐行折行"量法，`probe67_save3.js` 量存档体积与配额。 |
-| `show/` | 4 | 给老板看的对照图 / 曲线校准 / 素材巡视。 |
-| **合计** | **260** | |
+| `patch/` | 239 | **事实上的变更日志**：按断言名 `grep -rl "<断言名>" tools/patch/` 就能找到当初是哪次改的。"同一条消息里对同一文件的多次 Edit 会互相覆盖"，所以补丁一律脚本化并留档。 |
+| `probe/` | 19 | jsdom 没有布局引擎 → 尺寸/重叠/溢出/折行只能在**真浏览器**量。`probe60_geom.js` 是可复用模板，`probe66_ui.js` 有"逐行折行"量法，`probe67_save3.js` 量存档体积与配额。 |
+| `show/` | 6 | 给老板看的对照图 / 曲线校准 / 素材巡视。 |
+| **合计** | **322** | |
 
 ## asset/（素材处理）
 
@@ -23,6 +23,7 @@
 
 - `avatar_atlas.py`（8KB）　— 头像图集体检 + 切分 + 抠底。
 - `crop_pd3.py`（6KB）　— 裁切 v3（定稿）：**从上往下裁，只去掉顶部留白**。
+- `crop_terrain.py`（5KB）　— v89.42：地形贴图裁切流水线（从即梦参考图裁切 → 归一化 → 落位 assets/icons/ui/）。
 - `gallery31.js`（4KB）　— 图标画廊截图：把全部图标以 96px 网格渲染成单页，便于统一评估设计感
 - `gallery33.js`（6KB）　— v33 最终验收：99 图标几何验证（getBoundingClientRect，不受承台干扰）+ 总览图 + 城内统计
 - `make_portrait_refs.py`（4KB）　— 将领肖像 · 参考图套件生成。
@@ -118,6 +119,7 @@ MEMORY.md 必须 < 9600 字符（超出会被会话注入截断，尾部规则�
 - `finish_cleanup_v67.py`（8KB）　— v67 清理收尾：
 - `finish_cleanup_v67b.py`（8KB）　— v67 清理收尾（第二次执行 —— 上一轮在「合并旧文档」处被中断）。
 - `finish_cleanup_v67c.py`（9KB）　— v67 清理收尾 · 第三次（补齐上一轮崩溃点之后的剩余动作）。
+- `fix8940_smoke_lord.py`（3KB）　— 修正 smoke 的君主运行时断言：现场补临时君主/对照将（打完移除），保证不放空。
 - `patch_build_gate.py`（11KB）　— v68 · 逐步探索：建造前置规则（老板 2026-09-14 需求）
 - `patch_build_gate_fix.py`（8KB）　— v68 修正：buildPrereqOf 支持"新建语义"，并适配受影响的既有测试。
 - `patch_build_gate_fix2.py`（3KB）　— v68 修正 2：govMax 作用域提升。
@@ -149,6 +151,13 @@ MEMORY.md 必须 < 9600 字符（超出会被会话注入截断，尾部规则�
 - `patch_quest_ready_e2efix.py`（4KB）　— v69 修正（e2e）：领取按钮按 **rq57 自己的 id** 取，不取"第一个"。
 - `patch_quest_ready_fix.py`（3KB）　— v69 修正：① 第 57 节 withState 跨节不可见 → 用本地 helper
 - `patch_quest_ready_live.py`（6KB）　— v69 补缺：让「达标即置顶」是**真·自动**。
+- `patch_story_engine.py`（6KB）　— patch_story_engine.py —— 把「文字游戏 · 故事库引擎」挂进 js/state.js
+- `patch_story_final.py`（5KB）　— patch_story_final.py -- (a) wild entry for UNOWNED tiles, (b) e2e section 81
+- `patch_story_smoke.py`（5KB）　— patch_story_smoke.py -- add smoke section 81 (text game / story library)
+- `patch_story_smoke2.py`（2KB）　— patch_story_smoke2.py -- fix smoke 81 assertion semantics
+- `patch_story_ui.py`（9KB）　— patch_story_ui.py -- wire the text-game reader into js/ui.js
+- `patch_story_vol01.py`（2KB）　— patch_story_vol01.py —— 补足 vol-01 三处幕文字数（每幕 >= 250 判据）
+- `patch_story_wire.py`（5KB）　— patch_story_wire.py -- wire the text game into main.js / index.html / smoke-test.js
 - `patch_v67_save.py`（23KB）　— v67 · 补一套存档系统（老板：「补一个存档，看什么存档设计合适」）。
 - `patch_v67_save2.py`（9KB）　— v67 · 存档系统 补丁 2/2：对话框 · 导出导入 · 首页入口 · 样式。
 - `patch_v67_save3.py`（19KB）　— v67 · 存档系统 补丁 3/3：修 audit 死函数 · 更新受影响的断言 · 补新护栏。
@@ -248,6 +257,55 @@ MEMORY.md 必须 < 9600 字符（超出会被会话注入截断，尾部规则�
 - `patch_v88_tools2.py`（3KB）　— v88 工具层补充（domain.js）：军装强化/拆解对灵气件的防护。探针幂等。
 - `patch_v88_ui.py`（13KB）　— v88 UI 第一批（ui.js）：品质色到6 / 描述加灵力 / 两袋寻址 / genPane 双轨 / dollSlot 重写 + 修复 / dollLingPanel。探…
 - `patch_v88_ui2.py`（15KB）　— v88 UI 第二批（ui.js）：openEqSlot 双轨 / openLingTemper / jianghuHTML / 弹窗接线 / 装备总览页。探针幂等。
+- `patch_v8910.py`（6KB）　— patch_v8910.py —— v89.10 接线：卷 03~05 装载 + 新锚点断言
+- `patch_v8910_docs.py`（11KB）　— patch_v8910_docs.py —— v89.10 文档：README 进度 / 需求档案 / 设计规范 §40 / AI工作备忘 §42+§43
+- `patch_v8914.py`（16KB）　— patch_v8914.py — v89.14：卷 09~18 接线（60 篇）+ 残留清理 + 校验器判据 11/12
+- `patch_v8914_docs.py`（14KB）　— patch_v8914_docs.py — v89.14 文档补录
+- `patch_v8928_theme_check.py`（2KB）　— v89.28 题材线（江湖 / 修炼 / 四夷）· check.py 判据 12 扩展
+- `patch_v8928_theme_docs.py`（17KB）　— v89.28 题材线文档补录（README / 需求档案 / 设计规范 / 工作备忘 / 工作记忆）
+- `patch_v8928_theme_wire.py`（10KB）　— v89.28 题材线接线：index.html 装载 + smoke 断言 + e2e 真实点击
+- `patch_v8929_docs.py`（11KB）　— v89.29 文档补录：README（入口改版）/ 需求档案 / 设计规范 / 工作备忘 / 工作记忆
+- `patch_v8929_e2e.py`（10KB）　— v89.29 e2e 补丁：守卫 + §81 故事区整体重写
+- `patch_v8929_engine.py`（13KB）　— v89.29 逸闻入口改版：列表菜单 → 概率奇遇
+- `patch_v8929_smoke.py`（9KB）　— v89.29 smoke 补丁：概率奇遇（引擎口径 / 接线 / 叠层 / ext）+ 测试期默认关随机
+- `patch_v8930_docs.py`（13KB）　— v89.30 文档补录：README §九 + 需求档案 + 设计规范 + 工作备忘（§43 表 + §51）+ 工作记忆
+- `patch_v8930_wire.py`（7KB）　— v89.30 接线补丁：卷 39~44（36 篇）装载 + smoke 断言 + e2e VOL89 表
+- `patch_v8931_docs.py`（12KB）　— v89.31 文档补录：README §八/§九 + 需求档案 + 设计规范 §45 + 工作备忘 §52 + 工作记忆
+- `patch_v8931_engine.py`（19KB）　— v89.31 动作触发补丁（引擎 + UI + 挂点）
+- `patch_v8931_tests.py`（11KB）　— v89.31 测试补丁：smoke（引擎 + 接线）· e2e（战事触发链 + 动作触发块）
+- `patch_v8932_docs.py`（14KB）　— v89.32 文档补录：README §九（进度表/合计/可玩路径）+ 需求档案 + 设计规范 + 工作备忘 + 工作记忆
+- `patch_v8932_wire.py`（6KB）　— v89.32 接线：铺量七批（卷 45~50 · 36 篇）
+- `patch_v8933_docs.py`（13KB）　— v89.33 文档补录：README §九（进度表/合计/可玩路径/亮点/待办19）+ 需求档案 + 设计规范 + 工作备忘 + 工作记忆
+- `patch_v8933_wire.py`（6KB）　— v89.33 接线：志异线样张三卷（vol-51 练功 / vol-52 灵异 / vol-53 志怪 · 18 篇）
+- `patch_v8934_docs.py`（14KB）　— v89.34 文档补录：README §九 + 待办 + 需求档案 + 设计规范 + AI工作备忘 + 工作记忆。
+- `patch_v8934_wire.py`（8KB）　— v89.34 接线补丁：铺量批（卷 54~59 · 36 篇 · 四线齐发）接入 index.html / smoke / e2e。
+- `patch_v8935_docs.py`（11KB）　— v89.35 文档补录：README（进度表/合计/可玩路径/待办）+ 需求档案 + 设计规范 + 工作备忘 + 工作记忆
+- `patch_v8935_wire.py`（6KB）　— v89.35 接线补丁：index.html 装载 / smoke 卷断言 / e2e VOL89 表（卷 60~65 · 36 篇）
+- `patch_v8936_army.py`（20KB）　— v89.36：军粮口径改造（老板「维持军队无需耗粮食，相应招募提供耗粮3倍」）
+- `patch_v8936_tests.py`（15KB）　— v89.36 测试补丁：smoke-test.js 旧军粮断言 → 新口径（维持退役 / 募兵×3 / 烽火接链）
+- `patch_v8937_docs.py`（14KB）　— 文档补录：v89.36（军粮口径改造）+ v89.37（故事库铺量八批 卷 66~71）
+- `patch_v8937_wire.py`（6KB）　— v89.37 接线：故事库卷 66~71（36 篇）入位后的四处接线
+- `patch_v8938_docs.py`（10KB）　— v89.38 文档补录：README（进度表/合计/可玩路径/待办）+ 需求档案 + 设计规范 + 备忘
+- `patch_v8938_wire.py`（6KB）　— v89.38 故事库接线：卷 72~77（35 篇 · 地理锚点收官批）
+- `patch_v8939_docs.py`（12KB）　— v89.39 文档补录：README（进度表/合计/可玩路径/入口/待办）+ 需求档案 + 设计规范 + 备忘 + 记忆
+- `patch_v8939_misc.py`（10KB）　— v89.39 总补丁
+- `patch_v8940_docs.py`（6KB）　— v89.40 补丁 3/3：文档层（需求档案 / 设计规范 / 工作备忘 / 工作记忆）
+- `patch_v8940_points_loyalty.py`（11KB）　— v89.40 补丁 1/3：代码层
+- `patch_v8940_tests.py`（9KB）　— v89.40 补丁 2/3：测试层
+- `patch_v8941_close.py`（12KB）　— v89.41 会话收尾补丁：
+- `patch_v8942_docs.py`（13KB）　— v89.42 补丁 4/4：文档同步（五处）
+- `patch_v8942_docs2.py`（2KB）　— v89.42 补丁 4b：项目地图 · 工具计数与截图数（精确锚点重试）
+- `patch_v8942_map.py`（5KB）　— v89.42 补丁 1/2：map.js —— 野地贴图回归 + 逐格镜像变体
+- `patch_v8942_tests.py`（5KB）　— v89.42 补丁 2/2：smoke-test.js —— v67 地形位图护栏改写为新不变量
+- `patch_v8942_tex_mix.py`（3KB）　— v89.42 补丁 3：texVariant 换 32 位混合哈希
+- `patch_v897.py`（18KB）
+- `patch_v897_docs.py`（6KB）
+- `patch_v897b.py`（1KB）　— v89.7 补丁修正 b：ui.js 君主面板「头像」行补 IIFE 收尾 `})() +`
+- `patch_v898_code.py`（27KB）
+- `patch_v898_tests.py`（13KB）
+- `patch_v899.py`（8KB）　— patch_v899.py —— v89.9 接线：卷 02 装载 + 空态断言动态化 + e2e 新锚点用例
+- `patch_v899_docs.py`（10KB）　— patch_v899_docs.py —— v89.9 文档补录：README 进度 / 项目地图 / 需求档案 / 设计规范 / 工作备忘
+- `patch_v899b.py`（4KB）　— patch_v899b.py —— v89.9 接线修正：建筑逸闻块脱三元（无功能建筑漏入口）
 - `patch_v89_1_css.py`（6KB）　— v89.1 CSS：index.html 追加 .sxf-* 剧本视觉化样式与两段动效（插入 </style> 前）。探针幂等。
 - `patch_v89_1_data.py`（3KB）　— v89.1 数据：SCENE_FLOW 每活动加幕景水印 art、每幕加幕题 s（插入式；原文案零改动）。探针幂等。
 - `patch_v89_1_docs.py`（7KB）　— v89.1 文档：设计规范 §31 · 备忘 §33 · 需求档案 v89.1 · 规划补记 · 设计文档 v1.3。探针幂等。
@@ -280,7 +338,7 @@ MEMORY.md 必须 < 9600 字符（超出会被会话注入截断，尾部规则�
 - `patch_v89_6_css.py`（4KB）　— v89.6 CSS 补丁：--wonder 语义色（四主题）+ 奇遇/见闻录样式
 - `patch_v89_6_data.py`（21KB）　— v89.6 数据补丁：DATA.WONDER（奇遇配置）+ DATA.WONDERS（24 条奇遇剧本）
 - `patch_v89_6_docs.py`（9KB）　— v89.6 文档补丁 —— 五份文档追加（设计规范 §36 / 备忘 §38 / 规划二十四 / 档案 v89.6 / 设计文档 v1.8）
-- `patch_v89_6_flakefix.py`（4KB）　— v89.6 顺手修存量 flake：e2e「达标后无需手动刷新」固定 sleep(1500) 改轮询
+- `patch_v89_6_flakefix.py`（5KB）　— v89.6 顺手修存量 flake：e2e「达标后无需手动刷新」（门禁环境 2/3 假红，两处合修）
 - `patch_v89_6_main.py`（1KB）　— v89.6 main.js 补丁：do-wonder / open-journal / journal-go 接线
 - `patch_v89_6_map.py`（3KB）　— v89.6 地图补丁：drawWonderStar（奇缘星）+ 渲染接线
 - `patch_v89_6_state.py`（18KB）　— v89.6 引擎补丁：奇遇点位生成 / 线索 / 探奇三段 + 场景机共用（sceneBegin）
@@ -317,6 +375,8 @@ jsdom 没有布局引擎 → 尺寸/重叠/溢出/折行只能在**真浏览器*
 - `probe67_save_ui.js`（3KB）
 - `probe67_tbl.js`（3KB）
 - `probe_v43.js`（5KB）　— v43 战斗数值探针：复现"2000 铁骑兵一轮只打死 80 个长枪兵"。
+- `probe_v8942_map_shot.js`（6KB）　— _shot_map.js — 地图视图截图探针（before/after 通用 · v89.42）
+- `probe_v8942_tex.js`（4KB）　— v89.41 行为探针：texVariant 确定性与分布 + 地图渲染回归（不抛错）
 
 ## show/（展示与校准）
 
@@ -324,7 +384,9 @@ jsdom 没有布局引擎 → 尺寸/重叠/溢出/折行只能在**真浏览器*
 
 - `calib_series.js`（7KB）　— 建筑图标系列配色标定（v2）。
 - `compare34.js`（9KB）　— v34 风格对比：同一批元素，四种画风 —— 现状(西方奇幻金属) / 中国色木刻 / MingCute / IconPark
+- `review_guide.py`（4KB）　— v89.42 定稿验收图：改前/改后 + 2x 放大 + 7 块贴图 + 中文说明，合成单图。
 - `scan6.js`（4KB）
+- `shot_compare.py`（7KB）　— v89.42 前后对比：逐格"两翼"采样（避开等级角标/名称条）→ 报告 + 拼图。
 - `tile_show.js`（3KB）　— v35-f：批量拼图（可复用）—— 传 id:中文列表，输出总览图
 
 ---

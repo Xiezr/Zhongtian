@@ -242,10 +242,10 @@ window.STORY_DATA = (window.STORY_DATA || []).concat([
     ]
   },
   {
-    "id": "wild-hill-16",
+    "id": "bld-honglusi-06",
     "anchor": {
-      "kind": "wild",
-      "id": "hill"
+      "kind": "building",
+      "id": "honglusi"
     },
     "title": "武痴",
     "hook": "山道上逢人拆招的痴汉，只出一招。",

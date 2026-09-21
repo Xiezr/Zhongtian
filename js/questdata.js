@@ -76,7 +76,8 @@
     { id: 'g21', title: '长枪成林', desc: '枪阵森严，拒马破骑。', guide: '长枪兵 200 名。',
       metric: 'troopCount', sub: 'changqiang', goal: 200, reward: { iron: 20000, gold: 8000 } },
     { id: 'g22', title: '铁骑三千', desc: '甲骑具装，所向披靡。', guide: '铁骑兵 50 名。',
-      metric: 'troopCount', sub: 'tieqi', goal: 50, reward: { iron: 40000, gold: 20000 } },
+      /* v89.86 修 bug：sub 'tieqi' → 'tieji'（兵种实际 id；原值导致该任务永远 0/50 做不完） */
+      metric: 'troopCount', sub: 'tieji', goal: 50, reward: { iron: 40000, gold: 20000 } },
     { id: 'g23', title: '攻城之器', desc: '非械不能克坚城。', guide: '冲车 20 乘。',
       metric: 'troopCount', sub: 'chongche', goal: 20, reward: { wood: 60000, gold: 30000 } },
     { id: 'g24', title: '校场点兵', desc: '校场者，出征之门。', guide: '校场升至 Lv3。',
@@ -161,11 +162,13 @@
       reward: { gold: 6000, iron: 4000 } },
     { id: 'r06', title: '轻骑游击', type: 'military', desc: '轻骑剽掠，断敌粮道。', metric: 'troopCount', sub: 'qingji', goal: 30,
       reward: { iron: 15000, gold: 6000 } },
-    { id: 'r07', title: '铁骑成军', type: 'military', desc: '甲骑具装，正面破阵。', metric: 'troopCount', sub: 'tieqi', goal: 20,
+    /* v89.86 修 bug：sub 'tieqi' → 'tieji'（兵种实际 id；原值导致该任务永远 0/20 做不完） */
+    { id: 'r07', title: '铁骑成军', type: 'military', desc: '甲骑具装，正面破阵。', metric: 'troopCount', sub: 'tieji', goal: 20,
       reward: { iron: 30000, gold: 12000 } },
     { id: 'r08', title: '器械之备', type: 'military', desc: '攻城非器不可。', metric: 'troopCount', sub: 'chongche', goal: 8,
       reward: { wood: 30000, gold: 10000 } },
-    { id: 'r09', title: '飞石破城', type: 'military', desc: '投石之威，可碎城楼。', metric: 'troopCount', sub: 'toushiche', goal: 5,
+    /* v89.86 修 bug：sub 'toushiche' → 'toudan'（兵种实际 id；原值导致该任务永远 0/5 做不完） */
+    { id: 'r09', title: '飞石破城', type: 'military', desc: '投石之威，可碎城楼。', metric: 'troopCount', sub: 'toudan', goal: 5,
       reward: { wood: 40000, gold: 16000 } },
     { id: 'r10', title: '养兵之资', type: 'military', desc: '兵者，食为天。总兵力扩充。', metric: 'armyTotal', goal: 500,
       reward: { grain: 20000, gold: 4000 } },

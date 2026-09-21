@@ -8,21 +8,128 @@
 
   GAME.map = {};
 
+  /* ============================================================
+   * v89.43：**地形集中走势**（老板：「不要随机地形，按山地/湖泊/草原/荒漠等的
+   *   集中走势，模拟实际地形」）
+   * ------------------------------------------------------------
+   * 旧做法：逐格独立掷点（TERRAIN_WEIGHTS）→ 相邻格几乎不相关，
+   *   是"椒盐噪声"不是"地形"。
+   * 新做法：**连续场 + 分位切分** ——
+   *   ① 两张 fBm 连续场（elev 高程 / moist 湿度），由 seed 决定、逐点确定性；
+   *      主波长 64 格（一条山脉/一片湖的尺度），叠 32 / 16 两层细节；
+   *   ② 按 TERRAIN_WEIGHTS 的**目标占比**取分位点切分 —— 于是
+   *      "成片"与"占比"同时成立：**场决定形状，权重决定多少**；
+   *   ③ 切分顺序模拟真实地势：低洼 → 水（最深为湖泊、其次沼泽）·
+   *      高地 → 山地 · 陆地中段按湿度：干 → 荒漠、湿 → 森林、居中 → 草原/平地。
+   *   ④ 出生点 ±2 仍强制平原（P2-10：只有平原能筑新城，见下）。
+   * ============================================================ */
+  function nhash(ix, iy, salt) {
+    var h = Math.imul(ix | 0, 0x27d4eb2d) ^ Math.imul(iy | 0, 0x165667b1) ^ Math.imul(salt | 0, 0x9e3779b1);
+    h = Math.imul(h ^ (h >>> 15), 0x2545f491);
+    h ^= h >>> 13;
+    return (h >>> 8) / 16777216;                 /* 0 ~ 1 */
+  }
+  /* 值噪声（格点哈希 + smoothstep 插值）。
+     线性插值会让等值线出折角（看着像"方块田"），所以用 smoothstep。 */
+  function vnoise(x, y, step, salt) {
+    var fx = x / step, fy = y / step;
+    var ix = Math.floor(fx), iy = Math.floor(fy);
+    var tx = fx - ix, ty = fy - iy;
+    tx = tx * tx * (3 - 2 * tx); ty = ty * ty * (3 - 2 * ty);
+    var a = nhash(ix, iy, salt), b = nhash(ix + 1, iy, salt);
+    var c = nhash(ix, iy + 1, salt), d = nhash(ix + 1, iy + 1, salt);
+    var t0 = a + (b - a) * tx, t1 = c + (d - c) * tx;
+    return t0 + (t1 - t0) * ty;
+  }
+  /* fBm：三层叠加。
+     波长口径（实测标定，探针 tools/probe/probe_terrain_size.js）：
+       主波长 64 时团块平均 435 格（≈20×20）、最大 3700 —— 一屏 13×7 只剩一种地形，
+       看着像"色块分区"而不是地形；收到 32 后团块均值实测 274（连片度 0.907）。
+       v89.46（老板：「同类型地块太大，缩到 1/2~1/3」）：主波长 32 → 21，
+       团块均值 274 → 139（≈1/2）、连片度 0.907 → 0.867；一屏可见更多片不同地形，
+       既有走势又不单调。候选档位（探针实测）已记录在 AI工作备忘 §68。 */
+  var FIELD_OCT = [[21, 0.55], [11, 0.30], [6, 0.15]];
+  function fbm(x, y, salt) {
+    var v = 0;
+    for (var i = 0; i < FIELD_OCT.length; i++) {
+      v += FIELD_OCT[i][1] * vnoise(x, y, FIELD_OCT[i][0], salt + i * 101);
+    }
+    return v;
+  }
+  /* 直方图分位点（bins 个桶，frac 为累计占比） */
+  function qOf(hist, total, frac) {
+    var want = total * frac, acc = 0;
+    for (var i = 0; i < hist.length; i++) {
+      acc += hist[i];
+      if (acc >= want) return (i + 0.5) / hist.length;
+    }
+    return 1;
+  }
+
   /* 生成地形网格（可复现 seed） */
   GAME.map.generate = function () {
     var s = GAME.state;
     if (!s.map.grid) {
-      var rand = U.rng(s.map.seed);
       var w = DATA.MAP_W, h = DATA.MAP_H;
       var grid = [];
+      /* ---- ① 连续场（按 2 格步长采样后双线性插值：25 万格只算 6 万次 fBm） ---- */
+      var ST = 2, gw = Math.ceil(w / ST) + 1, gh = Math.ceil(h / ST) + 1;
+      var seed0 = (s.map.seed || 1) | 0;
+      var fe = new Float32Array(gw * gh), fm = new Float32Array(gw * gh);
+      for (var gy2 = 0; gy2 < gh; gy2++) {
+        for (var gx2 = 0; gx2 < gw; gx2++) {
+          var px = gx2 * ST, py = gy2 * ST, kk = gy2 * gw + gx2;
+          fe[kk] = fbm(px, py, seed0 * 7 + 11);      /* 高程场 */
+          fm[kk] = fbm(px, py, seed0 * 7 + 77);      /* 湿度场 */
+        }
+      }
+      function sampleF(arr, x, y) {
+        var fx = x / ST, fy = y / ST;
+        var ix = fx | 0, iy = fy | 0;
+        var tx = fx - ix, ty = fy - iy;
+        var x1 = Math.min(gw - 1, ix + 1), y1 = Math.min(gh - 1, iy + 1);
+        var a = arr[iy * gw + ix], b = arr[iy * gw + x1];
+        var c = arr[y1 * gw + ix], d = arr[y1 * gw + x1];
+        var t0 = a + (b - a) * tx, t1 = c + (d - c) * tx;
+        return t0 + (t1 - t0) * ty;
+      }
+      var elev = new Float32Array(w * h), moist = new Float32Array(w * h);
+      var BINS = 512, eh = new Int32Array(BINS), mh = new Int32Array(BINS);
+      for (var yy = 0; yy < h; yy++) {
+        for (var xx = 0; xx < w; xx++) {
+          var id2 = yy * w + xx;
+          var e = sampleF(fe, xx, yy), m = sampleF(fm, xx, yy);
+          elev[id2] = e; moist[id2] = m;
+          eh[Math.min(BINS - 1, (e * BINS) | 0)]++;
+        }
+      }
+      /* ---- ② 按目标占比取分位点（场决定形状、权重决定多少） ---- */
+      var TW = DATA.TERRAIN_WEIGHTS, WM = {};
+      for (var wi = 0; wi < TW.length; wi++) WM[TW[wi][0]] = TW[wi][1];
+      var total2 = w * h;
+      var qLake = qOf(eh, total2, WM.lake);
+      var qWater = qOf(eh, total2, WM.lake + WM.zhaoze);
+      var qHill = qOf(eh, total2, 1 - WM.hill);
+      /* 陆地（非水非山）单独建湿度直方图 —— 占比要按陆地数折算 */
+      var landN = 0, landFrac = 1 - WM.lake - WM.zhaoze - WM.hill;
+      for (var i2 = 0; i2 < total2; i2++) {
+        if (elev[i2] >= qWater && elev[i2] < qHill) { mh[Math.min(BINS - 1, (moist[i2] * BINS) | 0)]++; landN++; }
+      }
+      var qDes = qOf(mh, landN, WM.desert / landFrac);
+      var qFor = qOf(mh, landN, 1 - WM.forest / landFrac);
+      var qCao = qOf(mh, landN, 1 - (WM.forest + WM.caoyuan) / landFrac);
+
       for (var y = 0; y < h; y++) {
         var row = [];
         for (var x = 0; x < w; x++) {
-          var r = rand(), terrain = 'plain';
-          for (var i = 0; i < DATA.TERRAIN_WEIGHTS.length; i++) {
-            if (r < DATA.TERRAIN_WEIGHTS[i][1]) { terrain = DATA.TERRAIN_WEIGHTS[i][0]; break; }
-            r -= DATA.TERRAIN_WEIGHTS[i][1];
-          }
+          var id3 = y * w + x, e3 = elev[id3], m3 = moist[id3], terrain;
+          if (e3 < qLake) terrain = 'lake';
+          else if (e3 < qWater) terrain = 'zhaoze';
+          else if (e3 >= qHill) terrain = 'hill';
+          else if (m3 < qDes) terrain = 'desert';
+          else if (m3 >= qFor) terrain = 'forest';
+          else if (m3 >= qCao) terrain = 'caoyuan';
+          else terrain = 'plain';
           /* 出生点脚下一小片强制平原。
              ------------------------------------------------------------------
              为何要有这段：玩家开局只有一座城，而**只有平原才能筑新城**（P2-10）；
@@ -66,6 +173,25 @@
     return GAME.state.cities[0];
   };
 
+  /* v89.43：城池位图 tier 取值口（地图渲染的唯一口径）。
+     own 城 type 'self'（自建/首城）按 **county 档**出图 —— 玩家的城就是一座小城；
+     攻占来的系统城保留原 type（capital/zhou/jun/county 各归各档）。 */
+  GAME.map.cityArtKeyAt = function (x, y) {
+    var s = GAME.state;
+    var i, c;
+    for (i = 0; i < (s.cities || []).length; i++) {
+      c = s.cities[i];
+      if (c.x === x && c.y === y) {
+        return 'city_' + (!c.type || c.type === 'self' ? 'county' : c.type);
+      }
+    }
+    for (i = 0; i < (s.map.cities || []).length; i++) {
+      c = s.map.cities[i];
+      if (c.x === x && c.y === y) return 'city_' + c.type;
+    }
+    return null;
+  };
+
   /* v23（需求 1）：**玩家自己的城**在任何坐标 ——
      此前只认 state.cities[0]，于是自己攻下的第二座城在地图上被当成 NPC，
      点它反而弹出"出征"面板，等于能打自己。 */
@@ -97,25 +223,138 @@
   /* ============================================================
    * 野外城池（动态生成，不入存档）
    * ============================================================ */
+  /* 据点哈希（0~1）—— **全项目唯一**的据点随机口径。
+     与旧写法 `U.rng(h)()` **逐位等价**（同一条 mulberry32 序列），只是把闭包内联：
+     全图 25 万格枚举与每日排序都在热路径上，每次构一个闭包太贵。
+     smoke 有一条断言逐点比对"内联版 == U.rng 版"（两处实现不许漂移）。 */
   GAME.map._fortHash = function (x, y, salt) {
-    var s = GAME.state;
-    var h = (x * 73856093 ^ y * 19349663 ^ ((s.map.seed || 1) * 2654435761) ^ (salt * 83492791)) >>> 0;
-    return U.rng(h)();
+    var h = (x * 73856093 ^ y * 19349663 ^ ((GAME.state.map.seed || 1) * 2654435761) ^ (salt * 83492791)) >>> 0;
+    var a = h || 1;
+    a = (a + 0x6D2B79F5) | 0;
+    var t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
-  /* 是否生有野外城池（确定性） */
+  /* ============================================================
+   * 据点「保护区」（出生点半径 + 名城 3×3）—— 唯一判据
+   * ------------------------------------------------------------
+   * 全图枚举时不可能逐格遍历城市表（25 万格 × 174 城 = 4300 万次比较），
+   * 先把保护区摊成一个集合，枚举时 O(1) 查询。判据与旧内联循环逐字等价：
+   *   · 出生点：|dx| ≤ safeRadius && |dy| ≤ safeRadius
+   *   · 名城：  |dx| ≤ 1 && |dy| ≤ 1
+   * 按 (seed, 出生点) 缓存 —— 出生点随所选州走（v70），seed 相同、州不同
+   * 也会得到不同的保护区。
+   * ============================================================ */
+  GAME.map._fortBlockSet = function () {
+    var s = GAME.state, F = DATA.FORT, W = DATA.MAP_W, H = DATA.MAP_H;
+    var sp = (s.map && s.map.startPos) || DATA.START_POS;
+    var seed = s.map.seed || 1;
+    var cch = GAME.map._fortBlocks;
+    if (cch && cch.seed === seed && cch.spx === sp.x && cch.spy === sp.y) return cch.set;
+    var set = {}, x, y, i, c, R = F.safeRadius;
+    for (y = sp.y - R; y <= sp.y + R; y++) {
+      if (y < 0 || y >= H) continue;
+      for (x = sp.x - R; x <= sp.x + R; x++) {
+        if (x < 0 || x >= W) continue;
+        set[y * W + x] = 1;
+      }
+    }
+    var cs = (s.map && s.map.cities) || [];
+    for (i = 0; i < cs.length; i++) {
+      c = cs[i];
+      for (y = c.y - 1; y <= c.y + 1; y++) {
+        if (y < 0 || y >= H) continue;
+        for (x = c.x - 1; x <= c.x + 1; x++) {
+          if (x < 0 || x >= W) continue;
+          set[y * W + x] = 1;
+        }
+      }
+    }
+    GAME.map._fortBlocks = { seed: seed, spx: sp.x, spy: sp.y, set: set };
+    return set;
+  };
+  GAME.map._fortBlocked = function (x, y) {
+    return !!GAME.map._fortBlockSet()[y * DATA.MAP_W + x];
+  };
+  /* 是否生有野外城池（确定性；**位置固定** —— 与"等级每日变化"各管一头） */
   GAME.map.hasFort = function (x, y) {
     var s = GAME.state, F = DATA.FORT;
     if (!F || !s.map.grid) return false;
     var t = GAME.map.tile(x, y);
     if (!t || t.terrain === 'city') return false;
-    /* 离出生点与名城太近则不生成（v70：出生点随所选州走） */
-    var sp = (s.map && s.map.startPos) || DATA.START_POS;
-    if (Math.abs(x - sp.x) <= F.safeRadius && Math.abs(y - sp.y) <= F.safeRadius) return false;
-    for (var i = 0; i < (s.map.cities || []).length; i++) {
-      var c = s.map.cities[i];
-      if (Math.abs(c.x - x) <= 1 && Math.abs(c.y - y) <= 1) return false;
-    }
+    if (GAME.map._fortBlocked(x, y)) return false;
     return GAME.map._fortHash(x, y, 1) < F.density;
+  };
+  /* ============================================================
+   * v89.88（老板需求 3）：据点等级 —— **构造性配额分布**
+   * ------------------------------------------------------------
+   * 老板：「普通城 8，9，10 级城分别占 30%，其他低级城均分 10%」。
+   * 占比必须构造性成立（v89.72 的教训：161 样本掷点 σ≈3.9%，肉眼可见）：
+   *   ① 全图候选格（位置，不含"日"纬度）按 seed 缓存一次（约 250k 格扫一遍）；
+   *   ② 每个现实日，把候选按**当日哈希**排序 → 按名额切段：
+   *        前 30% → Lv8 · 次 30% → Lv9 · 再 30% → Lv10 · 末 10% → 1~7 均分；
+   *   ③ 当日结果按 (seed, 日) 缓存 —— 逐日重掷（"据点等级每日变化"不退役），
+   *      同日稳定（渲染 / 面板 / 出征 / 战斗读的**同一份表**）。
+   * ⚠️ 日 = 现实日（`GAME.questDayIndex`），与"据点次日重置 / 掠夺限一次"同一把尺子。
+   * ============================================================ */
+  GAME.map._fortCandidates = function () {
+    var s = GAME.state, F = DATA.FORT, W = DATA.MAP_W, H = DATA.MAP_H;
+    if (!s || !s.map || !s.map.grid) return [];        /* 地图未生成 → 无候选 */
+    var sp = (s.map && s.map.startPos) || DATA.START_POS;
+    var seed = s.map.seed || 1;
+    var cch = GAME.map._fortCand;
+    if (cch && cch.seed === seed && cch.spx === sp.x && cch.spy === sp.y && cch.list) return cch.list;
+    var g = s.map.grid, bset = GAME.map._fortBlockSet();
+    var list = [], x, y, t;
+    for (y = 0; y < H; y++) {
+      var row = g[y];
+      if (!row) continue;
+      for (x = 0; x < W; x++) {
+        t = row[x];
+        if (!t || t.terrain === 'city') continue;
+        if (bset[y * W + x]) continue;
+        if (GAME.map._fortHash(x, y, 1) >= F.density) continue;
+        list.push(y * W + x);
+      }
+    }
+    GAME.map._fortCand = { seed: seed, spx: sp.x, spy: sp.y, list: list };
+    return list;
+  };
+  GAME.map._fortLevelTable = function (day) {
+    var s = GAME.state, F = DATA.FORT, W = DATA.MAP_W;
+    if (!s || !s.map || !s.map.grid) return {};        /* 地图未生成 → 空表 */
+    var sp = (s.map && s.map.startPos) || DATA.START_POS;
+    var seed = s.map.seed || 1;
+    var cch = GAME.map._fortLv;
+    if (cch && cch.seed === seed && cch.spx === sp.x && cch.spy === sp.y && cch.day === day) return cch.map;
+    var D = F.levelDist || { high: [8, 9, 10], highPct: 0.30 };
+    var highs = (D.high || [8, 9, 10]).slice();
+    /* 排序键先算好再排序（比较器里现算哈希 = 每次比较两个闭包，20k 规模直接卡顿） */
+    var arr = GAME.map._fortCandidates().map(function (k) {
+      return { k: k, r: GAME.map._fortHash(k % W, (k / W) | 0, 9001 + day) };
+    });
+    arr.sort(function (a, b) { return a.r - b.r; });
+    var n = arr.length, map = {};
+    var nTop = Math.round(n * (D.highPct == null ? 0.30 : D.highPct));
+    var idx = 0, i, k;
+    for (i = 0; i < highs.length; i++) {
+      var end = Math.min(n, idx + nTop);
+      for (; idx < end; idx++) { k = arr[idx].k; map[k] = highs[i]; }
+    }
+    /* 低档：剩余名额均分到 levelMin ~（高档最低 - 1）—— 轮转分配保证均匀 */
+    var lows = [];
+    for (var lv = F.levelMin; lv < highs[0]; lv++) lows.push(lv);
+    if (lows.length) {
+      for (i = 0; idx < n; idx++, i++) { k = arr[idx].k; map[k] = lows[i % lows.length]; }
+    } else {
+      for (; idx < n; idx++) { k = arr[idx].k; map[k] = F.levelMin; }
+    }
+    GAME.map._fortLv = { seed: seed, spx: sp.x, spy: sp.y, day: day, map: map };
+    return map;
+  };
+  /* 某格在指定日的据点等级（0 = 不是据点格）—— 测试与读档恢复都读它 */
+  GAME.map._fortLevelAt = function (day, x, y) {
+    return GAME.map._fortLevelTable(day)[y * DATA.MAP_W + x] || 0;
   };
   /* 今日是否仍在（被攻取的据点次日重置） */
   GAME.map.fortRazedToday = function (x, y) {
@@ -124,13 +363,14 @@
     return (s.fortsRazed || {})[x + ',' + y] === day;
   };
   GAME.map.fortAt = function (x, y) {
-    if (!GAME.map.hasFort(x, y)) return null;
+    var s = GAME.state, F = DATA.FORT;
+    if (!F || !s.map.grid) return null;
     if (GAME.map.fortRazedToday(x, y)) return null;
-    var F = DATA.FORT, s = GAME.state;
+    var t = GAME.map.tile(x, y);
+    if (!t || t.terrain === 'city') return null;
     var day = GAME.questDayIndex ? GAME.questDayIndex() : 0;
-    /* 等级每日变化 */
-    var lvR = GAME.map._fortHash(x, y, 101 + day);
-    var level = F.levelMin + Math.floor(lvR * (F.levelMax - F.levelMin + 1));
+    var level = GAME.map._fortLevelAt(day, x, y);   /* 等级表 = 据点存在的唯一事实 */
+    if (!level) return null;
     var a = Math.floor(GAME.map._fortHash(x, y, 7) * F.nameA.length);
     var b = Math.floor(GAME.map._fortHash(x, y, 13) * F.nameB.length);
     return { x: x, y: y, level: level, name: F.nameA[a] + F.nameB[b], kind: 'fort' };
@@ -190,9 +430,36 @@
    *    由 GAME.decayWilds() 结算 —— 迫使玩家轮换争夺
    *  · 取"当前实际等级"一律用 GAME.wildLevelNow(x,y)
    * ------------------------------------------------------------ */
+  /* v89.56（老板）：野地等级**局部成团、按类型分野、居中更高**——
+     旧做法（v89.43）用「到地图中心的归一化距离」做基准（中心 9 → 边角 0），
+     结果整张地图中央一大片高等级、四边一大片低等级，且不分地形类型全都一样 ——
+     老板判定"异常集中、不合常理"。
+     新做法：
+       · 去掉全局中心距离项，改用**局部值噪声场**（两层 octave，主波长 ~9~17 格），
+         等级随坐标平滑起伏 —— 自然形成"小范围团块"，块内中心高、边缘低，
+         正合老板要的"在小范围同类地块中，越居中的等级越高"；
+       · **按地形类型加盐**（per-terrain salt），使不同地形有各自独立的等级场，
+         避免"所有地块不分类型等级高的聚拢在一起"；
+       · 保留少量确定性例外（约 4% 边陲秘境 8~10 级、约 4% 腹地弱地 0~2 级），
+         让地图有可远征的高价值点与新手软柿子，用坐标哈希、同 seed 完全复现。 */
   GAME.map.wildLevelBase = function (x, y) {
-    var rand = U.rng((x * 73856093 ^ y * 19349663 ^ GAME.state.map.seed) >>> 0);
-    return Math.floor(rand() * 11); // 0~10
+    var sd = (GAME.state.map.seed || 1) | 0;
+    var tile = GAME.map.tile(x, y);
+    var tn = tile ? (tile.terrain || 'plain') : 'plain';
+    /* 地形名 → 稳定盐（让每种地形有独立的等级场） */
+    var tSalt = 0;
+    for (var _i = 0; _i < tn.length; _i++) tSalt = (tSalt * 31 + tn.charCodeAt(_i)) >>> 0;
+    /* 局部平滑场（两层 octave）：主波长稍小 → 团块尺度 ~9~17 格，
+       既"成团"又不会一大片同值；频率错开避免栅格感 */
+    var n1 = vnoise(x, y, 9, sd * 13 + (tSalt % 997));
+    var n2 = vnoise(x, y, 17, sd * 7 + (tSalt % 991));
+    var field = n1 * 0.72 + n2 * 0.28;
+    var lv = Math.round(field * 10);
+    /* 少量确定性例外（坐标哈希，跨引擎一致） */
+    var r = nhash(x, y, sd * 3 + 991);
+    if (r < 0.04) lv = 8 + Math.floor(nhash(x, y, sd + 771) * 3);       /* 边陲秘境 */
+    else if (r > 0.96) lv = Math.floor(nhash(x, y, sd + 772) * 3);      /* 腹地弱地 */
+    return Math.max(0, Math.min(10, lv));
   };
   GAME.map.wildLevel = function (x, y) {
     var day = Math.floor(Date.now() / 86400000);
@@ -454,8 +721,8 @@
    * ============================================================ */
   function drawCityArt(ctx, cx, cy, baseW, opts) {
     opts = opts || {};
-    var cap = !!opts.cap, zhou = !!opts.zhou, own = !!opts.player;
-    var big = cap || zhou;
+    var cap = !!opts.cap, zhou = !!opts.zhou, jun = !!opts.jun, own = !!opts.player;
+    var big = cap || zhou || jun;
     var WALL = cap ? ['#e3d2a8', '#c6ae80', '#8d7852']
       : zhou ? ['#d8c8a0', '#baa87c', '#837252']
         : ['#cdbb92', '#ad9a70', '#78694c'];
@@ -518,6 +785,17 @@
       ctx.stroke();
       polyFill(ctx, [[cx, topY - baseW * 0.20], [cx + baseW * 0.085, topY - baseW * 0.163],
         [cx, topY - baseW * 0.126]], '#7bc96f');
+    } else {
+      /* ⑥ 名城旗：城楼顶立一面小旗，强化"城"的识别度（按档位配色） */
+      var bcol = cap ? '#e0503e' : zhou ? '#e8b13a' : '#5a8fd0';
+      ctx.strokeStyle = 'rgba(40,30,20,.92)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(cx, topY);
+      ctx.lineTo(cx, topY - baseW * 0.14);
+      ctx.stroke();
+      polyFill(ctx, [[cx, topY - baseW * 0.14], [cx + baseW * 0.11, topY - baseW * 0.105],
+        [cx, topY - baseW * 0.07]], bcol);
     }
   }
 
@@ -564,27 +842,37 @@
      v42 改 2.5D「方块 + 土色缝」后，缝隙本身就是分界，
      再铺草皮会把方块边界染回一片绿 —— 于是整段（含 LCG 与 pattern 缓存）删除。 */
 
-  /* v50-c：野外据点 = 等距木栅（矮墙 + 两排尖桩 + 一座望楼） */
+  /* v89.5（老板：样式仍丑 → 重做）：野外据点 = 木质营寨
+     （矮墙 + 院内泥地 + 四角角楼 + 中央望楼 + 红旗）。
+     比旧版"木栅+尖桩"更像一座可守的据点，且比名城小一圈、配色更朴，
+     等级感 据点 < 县城 < 郡城 < 州城 < 都城 一眼可分。 */
   function drawFortArt(ctx, cx, cy, baseW) {
-    var WOOD = ['#c2a271', '#a3855a', '#7a6141'];
+    var WOOD = ['#c8a978', '#a9855a', '#7a6141'];
+    var COURT = '#8a6f4a';                       /* 院内泥地（覆盖墙顶亮色，显"中空"） */
     var ROOF = ['#b97a5c', '#95583f', '#6b3d2c'];
-    var ww = baseW * 0.72, hw2 = baseW * 0.13;
-    var f = isoBox(ctx, cx, cy, ww, hw2, WOOD, 'rgba(255,255,255,.20)');
-    /* 尖木桩：沿顶面朝南的两条边各立一排 */
-    var n = 5, ph = baseW * 0.055, pw = baseW * 0.017;
-    for (var i = 0; i < n; i++) {
-      var t = (i + 0.5) / n;
-      var lx = f.top[3][0] + (f.top[2][0] - f.top[3][0]) * t;
-      var ly = f.top[3][1] + (f.top[2][1] - f.top[3][1]) * t;
-      polyFill(ctx, [[lx - pw, ly], [lx, ly - ph], [lx + pw, ly]], WOOD[0]);
-      var rx = f.top[2][0] + (f.top[1][0] - f.top[2][0]) * t;
-      var ry = f.top[2][1] + (f.top[1][1] - f.top[2][1]) * t;
-      polyFill(ctx, [[rx - pw, ry], [rx, ry - ph], [rx + pw, ry]], WOOD[1]);
-    }
-    /* 望楼：立在南角 */
-    var gx2 = f.top[2][0], gy2 = f.top[2][1] + baseW * 0.05;
-    var ft = isoBox(ctx, gx2, gy2, baseW * 0.13, baseW * 0.09, WOOD, 'rgba(255,255,255,.20)');
-    isoRoof(ctx, gx2, ft.ty, baseW * 0.16, baseW * 0.06, ROOF);
+    var BANNER = '#d85a4a';
+    var ww = baseW * 0.80, hw2 = baseW * 0.14;
+    var f = isoBox(ctx, cx, cy, ww, hw2, WOOD, 'rgba(255,255,255,.18)');
+    polyFill(ctx, f.top, COURT);                  /* 院落地面 */
+    /* 四角角楼（矮塔 + 小坡顶） */
+    [f.top[0], f.top[1], f.top[2], f.top[3]].forEach(function (p) {
+      var tw2 = baseW * 0.10, th2 = baseW * 0.072;
+      var tf = isoBox(ctx, p[0], p[1] + hw2 * 0.08, tw2, th2, WOOD, 'rgba(255,255,255,.20)');
+      isoRoof(ctx, p[0], tf.ty, tw2 * 1.22, th2 * 0.72, ROOF);
+    });
+    /* 中央望楼（更高的塔 + 坡顶 + 旗） */
+    var mw = baseW * 0.30, mh = baseW * 0.20;
+    var fm = isoBox(ctx, cx, cy + hw2 * 0.08, mw, mh, WOOD, 'rgba(255,255,255,.20)');
+    isoRoof(ctx, cx, fm.ty, mw * 1.22, mh * 0.60, ROOF);
+    var topY = fm.ty - mh * 0.60;
+    ctx.strokeStyle = 'rgba(40,30,20,.92)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(cx, topY);
+    ctx.lineTo(cx, topY - baseW * 0.16);
+    ctx.stroke();
+    polyFill(ctx, [[cx, topY - baseW * 0.16], [cx + baseW * 0.12, topY - baseW * 0.125],
+      [cx, topY - baseW * 0.09]], BANNER);
   }
 
   /* ============================================================
@@ -663,7 +951,10 @@
   var ART_KEYS = ['terrain_plain', 'terrain_caoyuan', 'terrain_zhaoze', 'terrain_lake',
     'terrain_forest', 'terrain_desert', 'terrain_hill',
     'fort', 'city_county', 'city_jun', 'city_zhou', 'city_capital'];
-  var ART_MAX = 192;          /* 预缩放边长：≥ 2× 最大格边长（96） */
+  /* v89.42：192 → 256 —— v85 自适应格距后 cell 最大 128（旧的"96 的 2 倍"口径过期）。
+     地形贴图本身 256px：预缩放不再缩小它，采样窗（中心 45%）≈ 显示尺寸（104×52），
+     整条链路只经一次 drawImage 重采样，像素风细节不再被二次缩放磨掉。 */
+  var ART_MAX = 256;
   var _artTried = false;
   function loadArt() {
     if (_artTried) return;
@@ -691,6 +982,20 @@
   GAME.map.loadArt = loadArt;
   /* 已就绪的位图张数（e2e 用它验"素材真的加载上了"，而不是只看代码写了） */
   GAME.map.artCount = function () { return Object.keys(ART).length; };
+
+  /* v89.42：逐格贴图镜像变体（0 原样 / 1 横镜像 / 2 竖镜像 / 3 双镜像）。
+     确定性 hash —— 同一格每次渲染的变体固定（截图与回归可复现）；
+     目的只是打破"同地形相邻格贴图一模一样"的墙纸感。
+     ⚠️ 只用**轴对齐线性变换**（translate + scale(±1)），不引入旋转/仿射 ——
+     理由同 blitArtRect 的注释：真仿射会把沙纹 / 水波这类方向性纹理拧歪。 */
+  function texVariant(gx, gy) {
+    /* 32 位混合哈希（Math.imul = 精确 32 位乘法，无浮点精度损耗）：
+       乘-异或-右移两轮 —— 伪随机、确定性、跨引擎一致。
+       （首版 (gx*A)^(gy*B) 实测呈 4 周期对角规律，等于把"墙纸感"换成了"条纹感"。） */
+    var h = Math.imul(gx, 0x27d4eb2d) ^ Math.imul(gy, 0x165667b1);
+    h = Math.imul(h ^ (h >>> 15), 0x2545f491);
+    return ((h ^ (h >>> 13)) >>> 4) & 3;
+  }
 
   /* 按**任意矩形**铺图（cover：只裁不缩，保持素材长宽比）。
      v50 菱形化后用法不变 —— 目标矩形改成"菱形的外接矩形"，外面再套一层
@@ -998,13 +1303,16 @@
       ctx.fill();
     });
 
-    /* ---- ② 地形贴图（铺满菱形顶面） ---- */
+    /* ---- ② 地形/城池贴图（铺满菱形顶面） ----
+       v89.43：城池纳入同一管线 —— tier 由城对象决定（cityArtKeyAt），
+       素材缺席时退回矢量立体城（marks 段画），永不开天窗。
+       城池**不参与**逐格镜像：建筑有朝向，镜像会左右反。 */
     drawList.forEach(function (d) {
-      if (d.terrain === 'city') return;
-      /* v41（需求 5）：平地不放图形 —— 只靠浅青绿底色表达 */
-      if (d.terrain === 'plain') return;
+      var isCity = d.terrain === 'city';
+      var aKey = isCity ? GAME.map.cityArtKeyAt(d.gx, d.gy) : 'terrain_' + d.terrain;
+      if (!aKey) return;                       /* 城但取不到 tier → 底色 + marks 段矢量城 */
       var ab = diaBox(d.gx, d.gy, d.el, IN);
-      if (ART['terrain_' + d.terrain]) {
+      if (ART[aKey]) {
         ctx.save();
         diaPath(d.gx, d.gy, d.el, -IN);        /* 按菱形路径裁切 */
         ctx.clip();
@@ -1012,10 +1320,16 @@
            地表材质本来就是俯视素材，铺到菱形上"纵向压扁 2:1"正是等距视角应有的观感；
            若改成旋转 45° 的真仿射映射，沙纹 / 水波这类**方向性纹理会被拧歪**，
            静态材质（草地/石砾）看不出差别，方向性材质一眼就假。 */
-        blitArtRect(ctx, 'terrain_' + d.terrain, ab.x, ab.y, ab.w, ab.h);
+        /* v89.42：逐格镜像变体 —— 在 clip 之内做轴对齐镜像（clip 区域在 clip() 时刻
+           已定格于设备空间，之后的 transform 不影响裁剪形状）。 */
+        var tv = isCity ? 0 : texVariant(d.gx, d.gy);
+        if (tv & 1) { ctx.translate(2 * ab.x + ab.w, 0); ctx.scale(-1, 1); }
+        if (tv & 2) { ctx.translate(0, 2 * ab.y + ab.h); ctx.scale(1, -1); }
+        blitArtRect(ctx, aKey, ab.x, ab.y, ab.w, ab.h);
         ctx.restore();
         return;
       }
+      if (isCity || d.terrain === 'plain') return;
       /* 位图缺席时才走矢量兜底（立着的小树/山，尺寸按菱形外接框收） */
       var S = Math.min(cell * 0.72, ab.h * 1.7);
       ctx.save();
@@ -1036,8 +1350,65 @@
      * 所以：撤掉左上角的资源小方块，改中部名称 + 右上等级角标。
      * 名称压在图标上，所以加一层底部渐隐底衬，保证在任何地形上都读得清。
      * ============================================================ */
+    /* v89.52：建筑（城池）名称 + 等级标注。
+       v89.67（老板：「名城的名称永不消失（左下角名称菜单不影响名城的显示，不然地图上看不见了）」）
+       —— 于是判定顺序**倒过来**：城池先画、且**不看开关**；开关只留给野地与据点。
+       理由：城池名是地图的骨架（哪座是哪座全靠它），关掉=地图失去可读性；
+       而野地/据点是密集的"背景信息"，才是真正需要一键收起来的东西。 */
+    function drawCityLabel(d) {
+      var city = GAME.map.ownCityAt(d.gx, d.gy) || GAME.map.npcAt(d.gx, d.gy);
+      if (!city) return;
+      var nm = city.name || '城';
+      /* v89.70：**自带对齐设置**，不依赖环境遗留状态 ——
+         城池名现在画在整张图的最后一趟（见下方 ⑨b），中途任何一趟改了
+         textAlign/textBaseline，名字就会偏到格子外（看着像"没画"）。 */
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      var ly = topBottom(d.gx, d.gy, d.el) - 10;
+      var w = nm.length * 12 + 16, h = 15;
+      var lg = ctx.createLinearGradient(d.c.x - w / 2, 0, d.c.x + w / 2, 0);
+      lg.addColorStop(0, 'rgba(40,28,8,.10)');
+      lg.addColorStop(.22, 'rgba(40,28,8,.66)');
+      lg.addColorStop(.78, 'rgba(40,28,8,.66)');
+      lg.addColorStop(1, 'rgba(40,28,8,.10)');
+      ctx.fillStyle = lg;
+      ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(d.c.x - w / 2, ly - h / 2, w, h, 7);
+      else ctx.rect(d.c.x - w / 2, ly - h / 2, w, h);
+      ctx.fill();
+      ctx.font = 'bold 12px sans-serif';
+      ctx.fillStyle = '#ffe9b0';
+      ctx.fillText(nm, d.c.x, ly + 0.5);
+      /* 等级角标：菱形上半部居中（建筑=金底，野地=暗绿底，一眼区分）
+         v89.79（老板「城等级不是跟随官府等级吗」）：改读**唯一出口** `GAME.cityLvOf` ——
+         城等级 = 官府等级 = 建筑等级（县城 12 / 郡城 16 / 州城 20 / 都城 24）。
+         历史：v89.70 读档位满配、v89.74 改回 `city.level`（当时它是 1~10 的分布），
+         两轮反复都因为"同一个数字被当成两件事"。现在只有**一个**城等级口径。 */
+      var lv = GAME.cityLvOf(city);
+      var bx = d.c.x, by = d.c.y - HH * 0.36;
+      ctx.fillStyle = 'rgba(120,90,24,.92)';
+      ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(bx - 10, by - 7, 21, 15, 4);
+      else ctx.rect(bx - 10, by - 7, 21, 15);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(232,206,136,.7)';
+      ctx.lineWidth = 1; ctx.stroke();
+      ctx.font = 'bold 10px sans-serif';
+      ctx.fillStyle = '#ffe9b0';
+      ctx.fillText(String(lv), bx, by + 0.5);
+    }
+    /* v89.52：整层受 showLabels 开关控制（底部「🏷 名称」按钮一键切换）
+       v89.67：**城池例外** —— 城池标注不受开关控制（老板：名城的名称永不消失）。
+       顺序很关键：先判城池并 return，之后才轮到 `if (!SHOW_LB) return;`。
+       反过来写（先判开关）就会把城池一起收掉 —— 那正是这次要修的病。 */
+    var SHOW_LB = opts.showLabels !== false;
     drawList.forEach(function (d) {
-      if (d.terrain === 'city' || !WILD_TERRAINS[d.terrain]) return;
+      /* ① 城池：**不在这一趟画** —— 它走最后的专属一趟（见下方 ⑨b），
+         这样它在结构上不可能被任何图层盖住 */
+      if (d.terrain === 'city') return;
+      /* ② 野地：受「🏷 名称」开关控制 */
+      if (!SHOW_LB) return;
+      if (!WILD_TERRAINS[d.terrain]) return;
       /* 走唯一取值口（terrainName）—— 别在绘制里再读一遍表，
          否则换名规则时地图与别处会不一致 */
       var nm = GAME.map.terrainName(d.terrain);
@@ -1077,9 +1448,12 @@
         ctx.font = 'bold 10px sans-serif';
         ctx.fillStyle = lv >= 9 ? '#ffd9c8' : '#f0e6bf';
         ctx.fillText(String(lv), bx, by + 0.5);
-        /* v89.5：灵机之地 —— 事数 × 等级 达阈者，角标侧悬青旗（江湖事地标） */
-        var jhM5 = GAME.jianghuSpotInfo(d.gx, d.gy);
-        if (jhM5 && jhM5.mark) drawJhPennant(ctx, bx, by);
+        /* v89.5：灵机之地 —— 事数 × 等级 达阈者，角标侧悬青旗（江湖事地标）。
+           v89.45：受 GAME.jianghuWildMounted 控制（false=剥离野地江湖游历呈现层）。 */
+        if (GAME.jianghuWildMounted) {
+          var jhM5 = GAME.jianghuSpotInfo(d.gx, d.gy);
+          if (jhM5 && jhM5.mark) drawJhPennant(ctx, bx, by);
+        }
         /* v89.6：奇遇点位（已现形未探）—— 角标左侧缀一颗「奇缘星」 */
         var wd6 = GAME.wonderSiteOf ? GAME.wonderSiteOf(d.gx, d.gy) : null;
         if (wd6 && wd6.revealed && !wd6.done) drawWonderStar(ctx, bx, by);
@@ -1140,22 +1514,36 @@
         var ah = diaBox(gx, gy, el, 0).h;
         var isoSpan = (cell - IN * 2) * 0.97;   /* 菱形顶面宽（等距变换后的外接宽） */
         if (m.kind === 'fort') {
-          /* v50-c：改**绘图**呈现立体感 —— 等距木栅（矮墙 + 尖桩 + 望楼）。
+          /* v89.5：野外据点 = 木质营寨（矮墙 + 院内泥地 + 四角角楼 + 中央望楼 + 红旗）。
              底面中心放在地块中心稍下（菱形下尖方向），读起来才"站"在地上。 */
           drawFortArt(ctx, c.x, tcy + HH * 0.16, isoSpan * 0.74);
           return;
         }
         var o = m.o;
-        var isCap = o.type === 'capital', isZhou = o.type === 'zhou';
-        if (m.kind === 'own') { isCap = false; isZhou = false; }
+        var own = m.kind === 'own';
+        var isCap = !own && o.type === 'capital', isZhou = !own && o.type === 'zhou';
+        var isJun = !own && o.type === 'jun';
+        /* v89.43+：城池位图已在 ② 段铺满菱形（作"围墙院落"地面），
+           这里再叠一座**矢量立体城**（墙 + 角楼 + 主楼 + 四坡顶），
+           缩到留出一圈贴图院落 → 读起来是"有城池的城"，不是一块平铺色块。
+           ART 素材缺席时同样走这里（地面退回纯色，语义不变）。 */
+        var bw = isoSpan * (isCap ? 0.72 : isZhou ? 0.68 : isJun ? 0.62 : 0.56);
         ctx.save();
-        /* v50-c：改**绘图**呈现立体感 —— 等距盒体自下而上堆叠成城池
-           （台基 → 城墙 → 角楼/门楼 → 主楼 → 四坡顶；都/州再叠小阁楼）。
-           四档规模与瓦色在 drawCityArt 里分档，不再依赖位图素材。 */
-        drawCityArt(ctx, c.x, tcy + HH * 0.18,
-          isoSpan * (isCap ? 1.0 : isZhou ? 0.96 : 0.88),
-          m.kind === 'own' ? { player: true } : { cap: isCap, zhou: isZhou });
+        drawCityArt(ctx, c.x, tcy + HH * 0.18, bw,
+          own ? { player: true } : { cap: isCap, zhou: isZhou, jun: isJun });
         ctx.restore();
+        if (own) {
+          /* 玩家城绿旗（"这是你的城"识别记号，立在城楼顶上） */
+          var fy = tcy - HH * 0.60;
+          ctx.strokeStyle = '#f0f4e8';
+          ctx.lineWidth = 1.2;
+          ctx.beginPath();
+          ctx.moveTo(c.x, fy);
+          ctx.lineTo(c.x, fy - isoSpan * 0.24);
+          ctx.stroke();
+          polyFill(ctx, [[c.x, fy - isoSpan * 0.24], [c.x + isoSpan * 0.095, fy - isoSpan * 0.195],
+            [c.x, fy - isoSpan * 0.15]], '#7bc96f');
+        }
       });
     });
 
@@ -1164,11 +1552,31 @@
       at(m.gx, m.gy, function (gx, gy, c, el) {
         var tcy = topCY(gx, gy, el), tb = topBottom(gx, gy, el);
         if (m.kind === 'fort') {
+          if (!SHOW_LB) return;            /* v89.53：城外据点（建筑）标注随「🏷 名称」按钮同步显示/消失 */
+          /* 名称底带（菱形下顶点下方，与城池/野地同款铭牌） */
+          var fnm = m.o.name || '据点';
           ctx.font = 'bold 10px sans-serif';
-          ctx.fillStyle = 'rgba(0,0,0,.66)';
-          ctx.fillRect(c.x - 15, tb - 13, 30, 14);
-          ctx.fillStyle = '#ffe0a8';
-          ctx.fillText('Lv' + m.o.level, c.x, tb - 6);
+          var fnw = fnm.length * 11 + 12;
+          ctx.fillStyle = 'rgba(0,0,0,.72)';
+          ctx.beginPath();
+          if (ctx.roundRect) ctx.roundRect(c.x - fnw / 2, tb - 1, fnw, 14, 4);
+          else ctx.rect(c.x - fnw / 2, tb - 1, fnw, 14);
+          ctx.fill();
+          ctx.fillStyle = '#e9c89a';       /* 木寨暖色，区别于城池金/野地绿 */
+          ctx.fillText(fnm, c.x, tb + 6);
+          /* 等级角标（菱形上半部居中，配色走木质营寨） */
+          var flv = m.o.level || 1;
+          var fbx = c.x, fby = c.y - HH * 0.36;
+          ctx.fillStyle = 'rgba(96,66,28,.94)';
+          ctx.beginPath();
+          if (ctx.roundRect) ctx.roundRect(fbx - 10, fby - 7, 21, 15, 4);
+          else ctx.rect(fbx - 10, fby - 7, 21, 15);
+          ctx.fill();
+          ctx.strokeStyle = 'rgba(233,200,154,.75)';
+          ctx.lineWidth = 1; ctx.stroke();
+          ctx.font = 'bold 10px sans-serif';
+          ctx.fillStyle = '#e9c89a';
+          ctx.fillText(String(flv), fbx, fby + 0.5);
           return;
         }
         var o = m.o, own = m.kind === 'own';
@@ -1186,26 +1594,26 @@
           ctx.lineWidth = (isCap || isZhou) ? 1.8 : 1.2;
           diaPath(gx, gy, el, -IN * 0.5);
           ctx.stroke();
-          if (isCap || isZhou) {
-            /* 档位标签：菱形**上半部居中** —— 菱形没有"格内上方"这种矩形区域 */
+          if (isCap || isZhou) {   /* v89.67：档位药丸与城池名同命 —— **不再随开关消失**
+                                      （老板：名城的显示不受「🏷 名称」影响；只关药丸会与
+                                       "名字还在、档位没了"打架，读起来像坏了） */
+            /* 档位标签：菱形**上半部居中** —— 菱形没有"格内上方"这种矩形区域。
+               v89.5：黑底→彩色圆角药丸（都城朱红 / 州城鎏金），白字更清晰。 */
+            var lvLabel = isCap ? '都城' : '州城';
             ctx.font = 'bold 9px sans-serif';
-            ctx.fillStyle = 'rgba(0,0,0,.66)';
-            ctx.fillRect(c.x - 13, tcy - HH * 0.80, 26, 13);
-            ctx.fillStyle = isCap ? '#ffd9d0' : '#fff3c4';
-            ctx.fillText(isCap ? '都城' : '州城', c.x, tcy - HH * 0.80 + 7);
+            ctx.fillStyle = isCap ? 'rgba(176,46,46,.94)' : 'rgba(176,128,32,.94)';
+            ctx.beginPath();
+            if (ctx.roundRect) ctx.roundRect(c.x - 14, tcy - HH * 0.82, 28, 14, 4);
+            else ctx.rect(c.x - 14, tcy - HH * 0.82, 28, 14);
+            ctx.fill();
+            ctx.fillStyle = '#fff';
+            ctx.fillText(lvLabel, c.x, tcy - HH * 0.82 + 7);
           }
         }
-        /* 名带挂在菱形**下顶点下方**（像地块挂的铭牌）—— 这样不占菱形内部的窄空间；
-           位于最上层，不会被南边的地块盖掉。 */
-        ctx.font = 'bold 10px sans-serif';
-        var nw = o.name.length * 11 + 12;
-        ctx.fillStyle = 'rgba(0,0,0,.72)';
-        ctx.beginPath();
-        if (ctx.roundRect) ctx.roundRect(c.x - nw / 2, tb - 1, nw, 14, 4);
-        else ctx.rect(c.x - nw / 2, tb - 1, nw, 14);
-        ctx.fill();
-        ctx.fillStyle = own ? '#c8ffb8' : isCap ? '#ffd9d0' : isZhou ? '#fff3c4' : isCty ? '#d9e8c0' : '#ffffff';
-        ctx.fillText(o.name, c.x, tb + 6);
+        /* v89.56：城池名称不再在此处无条件绘制（曾导致「🏷 名称」按钮关不掉城池名）。
+           城池名 + 等级统一由 drawCityLabel 绘制（单一出口，避免双写）。
+           v89.67：drawCityLabel 现在**不受 SHOW_LB 控制** —— 老板要求名城名称永不消失，
+           所以它成了城池标注的唯一出口，且常显（档位药丸同理，见上面 isCap/isZhou 分支）。 */
       });
     });
 
@@ -1225,13 +1633,23 @@
       ctx.fillText(ch, px, py);
     });
 
+    /* ---- ⑨b 城池（名城 / 己方城）名称与等级：**整张图的最后一趟** ----
+       v89.70（老板：「名城的名称永不消失（左下角名称菜单不影响名城的显示，不然地图上看不见了）」）
+       原来城池名画在**标注趟**里，而那一趟之后还有 ⑦ 城池描边与档位药丸、
+       ⑧ 野外据点的名称+等级、⑨ 视野外方向箭头 —— 任何一样都可能**压在城池名上**。
+       真正的解法不是"再补一次判断"，而是**改绘制次序**：把它挪到最后，
+       于是它在结构上**不可能**被任何图层盖住（"把约束力放在环境上"）。
+       仍然**不看 SHOW_LB**：开关只收野地与据点（见上面标注趟）。 */
+    drawList.forEach(function (d) {
+      if (d.terrain === 'city') drawCityLabel(d);
+    });
+
     /* ---- ⑨ 视口坐标标注（v44 移除） ----
        这里原来在画布左下角又画一块「(x,y) — (x,y)」，与浮动条上的"视野区间"重复。
        老板要求"坐标整到一行"—— 那一行在浮动条上，画布里不再重复画。
        textAlign 复位保留，供后续帧使用。 */
     ctx.textAlign = 'center';
   };
-
   /* 点击地图：视口坐标换算 + 命中城或野地 */
   /* v50：菱形网格的拾取 —— 反投影 + 取最近格心。
      屏幕 (mx,my) → 令 a = (mx−ox)/HW, b = (my−oy)/HH，则 (gx,gy) = ((a+b)/2, (b−a)/2)。

@@ -120,8 +120,8 @@ window.STORY_DATA = (window.STORY_DATA || []).concat([
     ]
   },
   {
-    "id": "wild-hill-15",
-    "anchor": { "kind": "wild", "id": "hill" },
+    "id": "bld-honglusi-05",
+    "anchor": { "kind": "building", "id": "honglusi" },
     "title": "石乳",
     "hook": "山洞里滴水成乳，一年滴不了几回。",
     "tags": ["修炼", "乡野"],

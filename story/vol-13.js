@@ -1,7 +1,7 @@
 /* ============================================================
  * story/vol-13.js — 文字游戏故事库 · 第 13 卷（铺量批次 · v2 结构）
  * ------------------------------------------------------------
- * 收录：烽火台 / 马厩 / 招贤馆 / 鸿胪寺 / 铁匠铺 / 工匠作坊 各 1 篇（段数 5/6/5/7/6/5）
+ * 收录：烽火台 / 马厩 / 招贤馆 / 官府 / 铁匠铺 / 工匠作坊 各 1 篇（段数 5/6/5/7/6/5）
  * 台账：story/manifest.json · 规范：story/README.md · 校验：python story/tools/check.py
  * ============================================================ */
 window.STORY_DATA = (window.STORY_DATA || []).concat([
@@ -368,8 +368,8 @@ window.STORY_DATA = (window.STORY_DATA || []).concat([
     ]
   },
   {
-    "id": "bld-honglusi-03",
-    "anchor": { "kind": "building", "id": "honglusi" },
+    "id": "bld-guanfu-13",
+    "anchor": { "kind": "building", "id": "guanfu" },
     "title": "合璧",
     "hook": "邻郡送来一对白璧，玉上有一道细纹；随行玉工偷偷说：这璧，原是三方合的。",
     "tags": ["邦交", "玉器"],

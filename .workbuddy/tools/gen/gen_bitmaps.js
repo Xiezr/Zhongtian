@@ -9,6 +9,7 @@ const files = fs.readdirSync(UI).filter(f => f.endsWith('.png')).sort();
 /* 前缀规则：组 → 文件名前缀 */
 const PREFIX = [
   ['terrain', 'ai_terrain_'],
+  ['city', 'ai_city_'],
   ['mat', 'ai_mat_'],
   ['slot', 'ai_slot_'],
   ['item', 'ai_item_'],
@@ -65,5 +66,5 @@ files.forEach(f => {
 console.log('分组：' + JSON.stringify(stat));
 
 /* 命名规范告警 */
-const bad = files.filter(f => !/^ai_(mat_|slot_|item_|terrain_)?[a-z_0-9]+\.png$/.test(f));
+const bad = files.filter(f => !/^ai_(mat_|slot_|item_|terrain_|city_)?[a-z_0-9]+\.png$/.test(f));
 console.log(bad.length ? '⚠ 命名异常：' + bad.join(',') : '命名规范 ✅');

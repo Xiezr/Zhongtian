@@ -6,8 +6,8 @@
  * ============================================================ */
 window.STORY_DATA = (window.STORY_DATA || []).concat([
   {
-    "id": "wild-hill-20",
-    "anchor": { "kind": "wild", "id": "hill" },
+    "id": "bld-honglusi-10",
+    "anchor": { "kind": "building", "id": "honglusi" },
     "title": "照壁",
     "hook": "祠里没有神像，照壁上却有一处被手磨亮的地方。",
     "tags": ["修炼", "乡野"],

@@ -3,7 +3,7 @@
  * ------------------------------------------------------------
  * 素材：AI 生成的汉代风图标，1024×1024 透明 PNG（已抠底）。
  * 生成规格见 docs/AI图标生成清单.md，落位台账见 docs/图标素材注册表.md。
- * 本文件由 .workbuddy/tools/gen/gen_bitmaps.js 扫描目录自动生成 —— 请勿手改。
+ * 本文件由 .workbuddy/tmp/gen_bitmaps.js 扫描目录自动生成 —— 请勿手改。
  *
  * 用法：BITMAPS.src(group, id) → 相对路径（不存在返回空串，上层走矢量回退）
  * ============================================================ */
@@ -16,6 +16,10 @@ var BITMAPS = (function () {
   F["ai_chihou.png"] = 1;
   F["ai_chongche.png"] = 1;
   F["ai_chuangnu.png"] = 1;
+  F["ai_city_capital.png"] = 1;
+  F["ai_city_county.png"] = 1;
+  F["ai_city_jun.png"] = 1;
+  F["ai_city_zhou.png"] = 1;
   F["ai_daodun.png"] = 1;
   F["ai_farm.png"] = 1;
   F["ai_fenghuotai.png"] = 1;
@@ -90,6 +94,13 @@ var BITMAPS = (function () {
   F["ai_slot_weapon.png"] = 1;
   F["ai_stone.png"] = 1;
   F["ai_tengjiabing.png"] = 1;
+  F["ai_terrain_caoyuan.png"] = 1;
+  F["ai_terrain_desert.png"] = 1;
+  F["ai_terrain_forest.png"] = 1;
+  F["ai_terrain_hill.png"] = 1;
+  F["ai_terrain_lake.png"] = 1;
+  F["ai_terrain_plain.png"] = 1;
+  F["ai_terrain_zhaoze.png"] = 1;
   F["ai_tieji.png"] = 1;
   F["ai_tiejiangpu.png"] = 1;
   F["ai_toudan.png"] = 1;
@@ -103,6 +114,7 @@ var BITMAPS = (function () {
   F["ai_zhouche.png"] = 1;
   var PREFIX = {
     "terrain": "ai_terrain_",
+    "city": "ai_city_",
     "mat": "ai_mat_",
     "slot": "ai_slot_",
     "item": "ai_item_",
@@ -121,7 +133,7 @@ var BITMAPS = (function () {
     has: function (f) { return !!F[f]; },
     fileOf: fileOf,
     src: function (group, id) { var f = fileOf(group, id); return f ? DIR + f : ''; },
-    count: 91,
+    count: 102,
   };
 })();
 

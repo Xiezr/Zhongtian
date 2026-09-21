@@ -1796,11 +1796,87 @@
         '<rect x="51" y="47" width="2" height="2" fill="' + P.goldHi + '"/>';
       return s;
     },
+    /* ---- v89.51：五类「有价却无画」的补图 ----
+       宝箱 / 秘籍 / 政令 / 锦囊 / 灵气精华此前**全部落 attr_buff 兜底**：
+       商城与背包里一排橙色符卡，玩家分不出哪个是宝箱哪个是秘籍。
+       这里按各自物件补专属造型（沿用 64×64 视框与 P 调色板）。 */
+    chest: function () {
+      /* 宝箱：木箱 + 铜箍 + 锁扣 */
+      var s = '<ellipse cx="32" cy="57" rx="24" ry="2.4" fill="#000" opacity=".25"/>';
+      s += '<rect x="12" y="28" width="40" height="24" rx="2" fill="' + P.woodMd + '"/>' +
+        '<rect x="14" y="33" width="36" height="17" rx="1" fill="' + P.woodHi + '" opacity=".35"/>';
+      s += '<path d="M12 28 Q12 13 32 13 Q52 13 52 28 Z" fill="' + P.woodHi + '"/>' +
+        '<path d="M12 28 Q12 13 32 13 L32 28 Z" fill="' + P.woodMd + '" opacity=".55"/>';
+      s += '<rect x="20" y="13" width="4" height="39" fill="' + P.goldMd + '"/>' +
+        '<rect x="40" y="13" width="4" height="39" fill="' + P.goldMd + '"/>' +
+        '<rect x="20" y="13" width="4" height="2" fill="' + P.goldHi + '"/>' +
+        '<rect x="40" y="13" width="4" height="2" fill="' + P.goldHi + '"/>';
+      s += '<rect x="29" y="25" width="6" height="9" rx="1" fill="' + P.goldHi + '"/>' +
+        '<rect x="31" y="28" width="2" height="3" fill="' + P.goldLo + '"/>';
+      return s;
+    },
+    neigong: function () {
+      /* 内功秘籍：线装书 + 周天灵涡 */
+      var s = '<ellipse cx="32" cy="57" rx="22" ry="2.2" fill="#000" opacity=".25"/>';
+      s += '<rect x="14" y="10" width="36" height="44" rx="2" fill="' + P.waLo + '"/>' +
+        '<rect x="17" y="12" width="30" height="40" rx="1.4" fill="' + P.waMd + '"/>';
+      s += '<g fill="' + P.clHi + '">' +
+        '<circle cx="22" cy="18" r="1.1"/><circle cx="22" cy="28" r="1.1"/>' +
+        '<circle cx="22" cy="38" r="1.1"/><circle cx="22" cy="48" r="1.1"/></g>';
+      s += '<g stroke="' + P.waHi + '" stroke-width="1.6" fill="none" stroke-linecap="round" opacity=".9">' +
+        '<path d="M40 22 Q30 20 29 28"/>' +
+        '<path d="M40 30 Q28 28 27 38"/>' +
+        '<path d="M40 38 Q30 36 30 44"/></g>';
+      s += '<rect x="34" y="14" width="9" height="5" rx="1" fill="' + P.rMd + '"/>';
+      return s;
+    },
+    corvee: function () {
+      /* 政令（徭役令）：令牌 + 红绳 + 牌面刻痕 + 朱印 */
+      var s = '<ellipse cx="32" cy="57" rx="18" ry="2.2" fill="#000" opacity=".25"/>';
+      s += '<rect x="19" y="12" width="26" height="40" rx="3" fill="' + P.woodMd + '"/>' +
+        '<rect x="21" y="14" width="22" height="36" rx="2" fill="' + P.woodHi + '" opacity=".5"/>';
+      s += '<path d="M27 12 Q32 5 37 12" stroke="' + P.rMd + '" stroke-width="1.6" fill="none"/>';
+      s += '<g stroke="' + P.woodEdge + '" stroke-width="1.4" stroke-linecap="round" opacity=".85">' +
+        '<line x1="25" y1="22" x2="39" y2="22"/>' +
+        '<line x1="25" y1="30" x2="39" y2="30"/>' +
+        '<line x1="25" y1="38" x2="39" y2="38"/></g>';
+      s += '<rect x="28" y="43" width="8" height="6" rx="1" fill="' + P.rMd + '"/>' +
+        '<rect x="29.5" y="44.5" width="5" height="3" rx=".4" fill="' + P.rHi + '"/>';
+      return s;
+    },
+    talis: function () {
+      /* 锦囊：束口囊袋 + 系带 + 金线织纹 */
+      var s = '<ellipse cx="32" cy="57" rx="18" ry="2.2" fill="#000" opacity=".25"/>';
+      s += '<path d="M22 26 Q14 34 16 44 Q18 55 32 55 Q46 55 48 44 Q50 34 42 26 Z" fill="' + P.rHi + '"/>' +
+        '<path d="M32 26 Q14 34 16 44 Q18 55 32 55 L32 26 Z" fill="' + P.rMd + '" opacity=".45"/>';
+      s += '<rect x="22" y="21" width="20" height="6" rx="2.4" fill="' + P.rLo + '"/>' +
+        '<rect x="22" y="21" width="20" height="2" rx="1" fill="' + P.rHi + '" opacity=".7"/>';
+      s += '<path d="M22 24 Q14 22 12 16 M42 24 Q50 22 52 16" stroke="' + P.goldMd +
+        '" stroke-width="1.6" fill="none" stroke-linecap="round"/>';
+      s += '<g stroke="' + P.goldHi + '" stroke-width=".9" opacity=".8" fill="none">' +
+        '<path d="M24 36 L32 42 L40 36"/><path d="M26 45 L32 49 L38 45"/></g>';
+      return s;
+    },
+    essence: function () {
+      /* 灵气精华：灵珠 + 四向灵光 */
+      var s = '<ellipse cx="32" cy="56" rx="16" ry="2.2" fill="#000" opacity=".25"/>';
+      s += '<circle cx="32" cy="34" r="15" fill="' + P.waLo + '"/>' +
+        '<circle cx="32" cy="34" r="12" fill="' + P.waMd + '"/>' +
+        '<circle cx="32" cy="34" r="8" fill="' + P.waHi + '"/>' +
+        '<circle cx="28" cy="30" r="3" fill="' + P.clHi + '" opacity=".85"/>';
+      s += '<g fill="' + P.waHi + '" opacity=".9">' +
+        '<path d="M32 8 L34 14 L40 16 L34 18 L32 24 L30 18 L24 16 L30 14 Z"/>' +
+        '<path d="M49 22 L50 26 L54 27 L50 28 L49 32 L48 28 L44 27 L48 26 Z"/>' +
+        '<path d="M15 22 L16 26 L20 27 L16 28 L15 32 L14 28 L10 27 L14 26 Z"/></g>';
+      return s;
+    },
   };
   var TYPE_KEY = {
     jewel: 'jewel', blueprint: 'blueprint', prod_buff: 'prod_buff', military_buff: 'military_buff',
     boost: 'boost', exp: 'exp', stamina: 'stamina', perm: 'perm', mount_buff: 'mount_buff',
     attr_buff: 'attr_buff', build_cost: 'build_cost',
+    /* v89.51：宝箱/秘籍/政令/锦囊/灵气精华 —— 补专属造型（此前全落 attr_buff 兜底） */
+    chest: 'chest', neigong: 'neigong', corvee: 'corvee', talis: 'talis', essence: 'essence',
   };
   Object.keys(TYPE_KEY).forEach(function (t) {
     ICON['item_' + t] = function (k, id) { return ITEM_ART[TYPE_KEY[t]](id); };

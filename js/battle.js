@@ -8,6 +8,14 @@
 
   GAME.battle = {};
 
+  /* v89.86（整改 P-25）：行军队列抵达结算的「军账守恒」标记 ——
+     dispatch 时兵力已扣离本城；此后无论结算成功、目标熄灭还是中途异常，
+     兵力都必须有去向（归城 / 驻军 / 伤兵营）。
+     `GAME.march.arrive` 在结算前置 false；`GAME.battle.expedition` 在归还点置 true；
+     arrive 的失败兜底读它决定是否把兵原路退回（防双重回补）。
+     全链路同步执行，不存在跨帧残留。 */
+  var _expArmySettled = true;
+
   /* 科技加成取值（统一入口，避免各处写 GAME.systems.techBonus 冗长判空）
      判据：只要 techBonus 存在就取，缺失时返回 0（保证测试环境可跑） */
   function TB(type) {
@@ -109,6 +117,8 @@
       }
       /* 科技 */
       atkMult *= (1 + GAME.systems.techBonus('atk'));
+      /* 门派被动（v89.86 · 青锋阁「部队攻击 +6%」）—— 与科技/宝物/羁绊同链相乘 */
+      if (GAME.sectBonus) atkMult *= (1 + GAME.sectBonus('atkPct'));
       /* 宝物：陷阵战鼓 */
       if (GAME.systems.buffActive('military') && s.buffs.military.atk) atkMult *= (1 + s.buffs.military.atk);
       /* 名将羁绊 + 当世年号（后台静默加成，界面不提示） */
@@ -229,6 +239,8 @@
        否则"切换引擎"等于换了一套规则。 */
     var siegeMult = 1;
     if (opts.sieging && GAME.story && GAME.story.siegeMult) siegeMult = GAME.story.siegeMult();
+    /* 门派被动（v89.86 · 虎啸营「攻城伤害 +8%」）—— 仅攻城生效 */
+    if (opts.sieging && GAME.sectBonus) siegeMult *= (1 + GAME.sectBonus('siegePct'));
     var craftN = 0;
     if (opts.sieging) {
       for (var ck in atkArmy) {
@@ -346,6 +358,191 @@
     return { ok: true, msg: '治疗完毕（' + U.fmt(n) + ' 名无兵种记录，已遣散）' };
   };
 
+  /* ============================================================
+   * v89.87（老板需求 4）：战斗观战 —— 会话挂起 / 逐回合推进 / 落账重放
+   * ------------------------------------------------------------
+   * · 玩家出征战斗抵达后不再即时结算：挂起到 `s.battles`（纯数据，随存档走），
+   *   由战场界面逐回合指挥（`settings.battleSec` 真实秒/回合，点「完成」提前结算）；
+   * · 会话引擎 = `GAME.tactic.begin` 的**确定性**会话（同输入必得同结果），
+   *   每回合指令快照进 `history` —— 读档恢复 = 重建会话 + 按 history 重放；
+   * · 战斗结束 → `finishBattle` 重入 expedition（opts._result/_sim）走既有落账段；
+   * · 无界面时也照常走表（60 秒一回合自动结算）——"后台照常走"（老板拍板）。
+   * ============================================================ */
+  /* 是否需要玩家指挥（观战）：未显式自动 + 设置开启 */
+  GAME.battle._needWatch = function (opts) {
+    var s = GAME.state;
+    if (opts && opts.auto) return false;
+    return !(s && s.settings && s.settings.battleWatch === false);
+  };
+
+  /* 建立/重建会话：按 history 重放到当前回合（读档恢复与首建同一路径） */
+  GAME.battle._makeEnv = function (rec) {
+    var s = GAME.state;
+    var gen = null;
+    (s.generals || []).forEach(function (g) { if (g.id === rec.genId) gen = g; });
+    var env = GAME.tactic.begin(rec.atkArmy, gen, rec.sim.scArmy || {}, rec.sim.scVal || 0,
+      rec.sim.scGen || null, rec.sim.simOpts || {});
+    (rec.history || []).forEach(function (h) {
+      for (var tid in (h || {})) env.setCmd('atk', tid, h[tid]);
+      env.step();
+    });
+    return env;
+  };
+
+  /* 挂起：保存战斗输入与落账上下文（s.battles 全为纯数据，可随存档往返） */
+  GAME.battle._suspendExpedition = function (target, modeId, atkArmy, genId, opts, simIn) {
+    var s = GAME.state;
+    s.battles = s.battles || [];
+    var id = 'bt' + (GAME._battleSeq = (GAME._battleSeq || 0) + 1);
+    var rec = {
+      id: id, kind: 'expedition', side: 'atk',
+      target: U.deep(target), modeId: modeId,
+      atkArmy: U.deep(atkArmy), genId: genId,
+      cityId: opts.cityId || null, scheme: opts.scheme || null,
+      sim: { scArmy: U.deep(simIn.scArmy || {}), scVal: simIn.scVal || 0,
+             scGen: simIn.scGen ? U.deep(simIn.scGen) : null,
+             scNote: simIn.scNote || null, simOpts: simIn.simOpts || {} },
+      round: 0, cnt: (s.settings && s.settings.battleSec) || 60, state: 'live',
+      cmd: {}, history: [], snapLast: null, evLast: [], gapLast: null,
+      bornAt: U.now(),
+    };
+    s.battles.push(rec);
+    GAME._bsess = GAME._bsess || {};
+    GAME._bsess[id] = GAME.battle._makeEnv(rec);
+    GAME.log('⚔️ 大军已抵 ' + ((rec.target && rec.target.name) || '目标')
+      + '，战斗待指挥（每回合 ' + rec.cnt + ' 秒，可点「完成」提前结算）');
+    return { ok: true, pending: true, battleId: id, target: rec.target,
+             msg: '抵达' + ((rec.target && rec.target.name) || '') + '，战斗待指挥' };
+  };
+
+  /* 找记录 */
+  GAME.battle._recOf = function (id) {
+    var out = null;
+    ((GAME.state && GAME.state.battles) || []).forEach(function (b) { if (b.id === id) out = b; });
+    return out;
+  };
+
+  /* 推进一回合：指令先落会话、快照进 history（重放一致），再 step */
+  GAME.battle.stepBattle = function (id) {
+    var ses = GAME._bsess && GAME._bsess[id];
+    var rec = GAME.battle._recOf(id);
+    if (!ses || !rec || rec.state !== 'live') return null;
+    var snapCmd = U.deep(rec.cmd || {});
+    rec.history.push(snapCmd);
+    for (var tid in snapCmd) ses.setCmd('atk', tid, snapCmd[tid]);
+    var r = ses.step();
+    if (!r) return null;
+    rec.round = r.r;
+    rec.gapLast = r.gap;
+    rec.evLast = r.events || [];
+    rec.snapLast = r.snap || null;
+    if (r.over) GAME.battle.finishBattle(id);
+    return r;
+  };
+
+  /* 自动：用当前指令一键跑完（history 逐回合同步，读档重放仍一致） */
+  GAME.battle.autoBattle = function (id) {
+    var ses = GAME._bsess && GAME._bsess[id];
+    var rec = GAME.battle._recOf(id);
+    if (!ses || !rec || rec.state !== 'live') return null;
+    var snapCmd = U.deep(rec.cmd || {});
+    for (var tid in snapCmd) ses.setCmd('atk', tid, snapCmd[tid]);
+    var guard = 0;
+    while (!ses.over && guard++ < 200) {
+      rec.history.push(U.deep(snapCmd));
+      ses.step();
+    }
+    return GAME.battle.finishBattle(id);
+  };
+
+  /* 结束：收尾组装 result → 重入 expedition 落账（_result/_sim）→ 清挂起 */
+  GAME.battle.finishBattle = function (id) {
+    var s = GAME.state;
+    var ses = GAME._bsess && GAME._bsess[id];
+    var rec = GAME.battle._recOf(id);
+    if (!ses || !rec || rec.state !== 'live') return null;
+    var result = ses.finish();
+    rec.state = 'done';
+    var resp = null, err = null;
+    _expArmySettled = false;
+    try {
+      resp = GAME.battle.expedition(rec.target, rec.modeId, rec.atkArmy, rec.genId,
+        { arrived: true, cityId: rec.cityId, scheme: rec.scheme,
+          _result: result, _sim: rec.sim });
+    } catch (e) { err = e; }
+    /* 将领状态收尾（等价 arrive 的 idle 设置） */
+    var gen = null;
+    (s.generals || []).forEach(function (g) { if (g.id === rec.genId) gen = g; });
+    if (gen && gen.status === 'march') gen.status = 'idle';
+    /* 军账兜底（P-25 同口径）：落账异常 / 目标失效 → 折返 */
+    if (err || !resp || resp.ok === false) {
+      var city = rec.cityId ? GAME.cityById(rec.cityId) : null;
+      var rolled = false;
+      if (!_expArmySettled && city) {
+        for (var aR in rec.atkArmy) city.army[aR] = (city.army[aR] || 0) + rec.atkArmy[aR];
+        rolled = true;
+      }
+      _expArmySettled = true;
+      GAME.log('⚠️ 战斗结算中止（' + (err ? '异常' : ((resp && resp.msg) || '目标已不存在')) + '）：'
+        + (rolled ? '大军折返 ' + city.name : '军账已结'));
+      if (err && typeof console !== 'undefined' && console.warn) console.warn('[finishBattle] 落账异常：', err);
+    }
+    s.battles = (s.battles || []).filter(function (b) { return b.id !== id; });
+    delete GAME._bsess[id];
+    GAME._battleJustDone = {
+      id: id, ok: !(err || !resp || resp.ok === false),
+      winner: result.winner, rounds: result.rounds,
+      atkLoss: result.atkLoss, defLoss: result.defLoss,
+      resp: resp || null, rolled: !!(err || !resp || resp.ok === false),
+    };
+    if (GAME.ui && GAME.ui.onBattleDone) GAME.ui.onBattleDone(GAME._battleJustDone);
+    return resp;
+  };
+
+  /* 主循环倒计时（真实秒）：「后台照常走」——界面关闭也按表推进；
+     界面动画播放中（rec.anim）暂停计时。 */
+  GAME.battle.tick = function (dt) {
+    var s = GAME.state;
+    if (!s || !s.battles || !s.battles.length) return;
+    var sec = (s.settings && s.settings.battleSec) || 60;
+    s.battles.slice().forEach(function (rec) {
+      if (rec.state !== 'live' || rec.anim) return;
+      if (rec.cnt == null) rec.cnt = sec;
+      rec.cnt -= (dt || 1);
+      if (rec.cnt <= 0) {
+        rec.cnt = sec;
+        GAME.battle.stepBattle(rec.id);
+      }
+    });
+  };
+
+  /* 读档恢复：重建会话（按 history 重放）——live 战斗继续等指挥 */
+  GAME.battle.restoreBattles = function () {
+    var s = GAME.state;
+    if (!s || !s.battles || !s.battles.length) return;
+    GAME._bsess = GAME._bsess || {};
+    var drop = [];
+    s.battles.forEach(function (rec) {
+      rec.anim = false;
+      if (rec.state !== 'live') { drop.push(rec.id); return; }
+      try {
+        GAME._bsess[rec.id] = GAME.battle._makeEnv(rec);
+      } catch (e) {
+        try { GAME.battle.autoBattle(rec.id); } catch (e2) { drop.push(rec.id); }
+      }
+    });
+    if (drop.length) s.battles = s.battles.filter(function (b) { return drop.indexOf(b.id) < 0; });
+  };
+
+  /* 待指挥战斗数（军务 / 徽标用） */
+  GAME.battle.pendingCount = function () {
+    var s = GAME.state;
+    if (!s || !s.battles) return 0;
+    var n = 0;
+    s.battles.forEach(function (b) { if (b.state === 'live') n++; });
+    return n;
+  };
+
   /* --------- 攻占处理 ---------
      v60（需求 4/6）：新城**继承该城剩余的库藏** —— 未占据时那份库存是派生的，
      占领就地转正（× cityInherit）。不继承的话，打下一座 9 级州城只能得到一座
@@ -368,6 +565,8 @@
       state: npcCity.state,               // v14：保留州属 → 决定州特产材料
       res: startRes,                      // v60：继承库藏
     });
+    /* v89.79：占城继承的是**档位等级**（12/16/20/24）—— 与 cityLvOf 同值，
+       所以占下来的城"城等级 = 官府等级"依然成立。 */
     newCity.level = npcCity.level;
     newCity.state = npcCity.state;      // 所属州
     newCity.origId = npcCity.id;        // 原 NPC id
@@ -403,6 +602,14 @@
     var repGain = Math.round((npcCity.rep || 10) * (GAME.story && GAME.story.repMult ? GAME.story.repMult() : 1)
       * (1 + GAME.artifactBonusNum('repPct')));   /* v79：传国玉玺 —— 声望获得 +5%/级 */
     s.rep += repGain;
+    /* v89.89（老板拍板 · C3）：开疆拓土 → **门派声望**（门派系统规则 §六"占城"来源）。
+       一次性按城档发（DATA.SECT_CONQUER_REP），未入派自动拒（sectRepGain 内部守卫）。 */
+    var _sg = GAME.sectRepGain ? GAME.sectRepGain('conquer',
+      (DATA.SECT_CONQUER_REP || {})[npcCity.type] || 0) : { ok: false };
+    if (_sg.ok) {
+      GAME.log('🎋 门派声望 +' + _sg.gain + '（开疆拓土 · ' + npcCity.name + '）'
+        + (_sg.rankUp ? '　🎉 晋升「' + _sg.rankUp + '」' : ''));
+    }
     /* 从 NPC 列表移除 */
     var idx = -1;
     for (var i = 0; i < s.map.cities.length; i++) if (s.map.cities[i].id === npcCity.id) { idx = i; break; }
@@ -460,8 +667,12 @@
     var tier = (c && c.type) ? c.type : (c && c.dropType) || 'county';
     var mult = { fort: 0.5, county: 0.9, jun: 1, zhou: 3, capital: 8 }[tier] || 1;
     mult *= (extMul == null ? 1 : extMul);
-    /* 野外城池按等级浮动 */
-    if (tier === 'fort') mult *= (1 + (c.lv || c.level || 1) * 0.12);
+    /* v89.88（老板需求 3「资源满配」）：野外城池的等级因子由线性 (1+lv×0.12)
+       改为**满配曲线** `1.35^(lv-1)` —— Lv1 ≈ 原值（1.0），Lv8 ≈ 11 倍、
+       Lv10 ≈ 15 倍（旧口径 Lv8 只有 2 倍，高级据点"拿不出城的样子"）。
+       ⚠️ 上限口径：Lv10 的 7.45 仍低于都城档 mult=8 —— 档位次序不破
+       （smoke 有断言钉住 capital > zhou > jun > **fort 任意级**）。 */
+    if (tier === 'fort') mult *= Math.pow(1.35, (c.lv || c.level || 1) - 1);
     /* 负重技巧：掠夺与采集收获 +5%/级（负重 = 能搬回来多少） */
     mult *= (1 + TB('load'));
     var out = {
@@ -675,6 +886,12 @@
         fort: f, garrison: fg, def: GAME.fortDefOf(f), plan: GAME.fortPlanOf(f),
         cityType: 'fort', dropType: 'fort' };
     }
+    /* v89.87（老板需求 2）：调兵目标 —— 本境自家城池（走行军通道） */
+    if (target.kind === 'owncity') {
+      var oc = GAME.cityById(target.id);
+      if (!oc) return { ok: false, msg: '目标城池不存在' };
+      return { ok: true, kind: 'owncity', id: oc.id, x: oc.x, y: oc.y, name: oc.name, city: oc };
+    }
     if (target.kind === 'city') {
       var npc = target.npc || null;   // 允许直接传入城池对象（测试/临时目标）
       if (!npc) (s.map.cities || []).forEach(function (c) { if (c.id === target.id) npc = c; });
@@ -683,7 +900,7 @@
          派生（老板：「均有守将，为守将六维进行随机设定（避免存储，在接触时生成即可）」）。
          同一座城每次读到的是同一个人，且它的六维会真的参与战斗（守方将领加成）。 */
       var ng = GAME.npcCityGuard(npc);
-      return { ok: true, kind: 'city', id: npc.id, lv: npc.level, name: npc.name,
+      return { ok: true, kind: 'city', id: npc.id, lv: GAME.cityLvOf(npc), name: npc.name,
         npc: npc, garrison: npc.garrison, def: npc.def, guard: ng,
         cityType: npc.type, dropType: GAME.battle.dropTierOf(npc) };
     }
@@ -730,15 +947,22 @@
     if (!t) return null;
     if (t.kind === 'city' && t.npc && GAME.npcCityRes) {
       var R = GAME.npcCityRes(t.npc), rows = [];
+      /* v89.76 修 bug：`DATA.RESOURCES` **本身就含 `pop`**，这里原先又补推一行「人口」，
+         于是侦查公文里「人口」印了两遍（老板截图：`人口 24.9万　人口 24.9万`）。
+         删掉补推那一行 —— 顺序由 `DATA.RESOURCES` 独家决定。 */
       (DATA.RESOURCES || []).forEach(function (m) {
         if (R[m.key] == null) return;
         rows.push({ name: m.name, v: Math.round(R[m.key]) });
       });
-      rows.push({ name: '人口', v: Math.round(R.pop || 0) });
       return { kind: 'store', title: '城内库藏（占领后尽归我有）', rows: rows };
     }
     if (t.kind === 'fort' && GAME.battle.genLoot) {
-      var mul = (DATA.EXPEDITION && DATA.EXPEDITION.wildResMul && DATA.EXPEDITION.wildResMul.raid) || 1.2;
+      /* v89.88：口径对齐**实际结算** —— 据点掠夺在 `expedition` 里走
+         `cityResMul.raid`（0.5），原先这里读 `wildResMul.raid`（1.2），
+         "侦查看到的掠夺可得"比打完拿到的虚报 **2.4 倍**
+         （侦查的数 ≠ 打完的数，正是本项目最忌讳的一类不一致）。
+         ⚠️ 战时的抢掠技巧 / 计略加成因人而异，这里给的是**基准量**。 */
+      var mul = (DATA.EXPEDITION && DATA.EXPEDITION.cityResMul && DATA.EXPEDITION.cityResMul.raid) || 0.5;
       var loot = GAME.battle.genLoot(t, mul), rows2 = [];
       (DATA.RESOURCES || []).forEach(function (m) {
         if (loot[m.key] == null) return;
@@ -755,18 +979,25 @@
   GAME.battle.buildReportOf = function (t) {
     if (!t) return null;
     var summary = null, buildLv = 1, wallLv = 0, def = t.def || 0, towers = 0;
+    /* v89.77：**城外**建筑也要报出来 —— 老板要的是"城**内外**建筑全是 12/16"，
+       原先只报城内，他看不到城外那部分，没法确认。 */
+    var extN = 0, extLv = 0;
     if (t.kind === 'city' && t.npc) {
       buildLv = GAME.npcBuildLvOf(t.npc);
-      summary = GAME.planSummaryOf(t.npc.level, buildLv);
+      summary = GAME.planSummaryOf(GAME.cityLvOf(t.npc), buildLv);
       var sh = GAME.npcCityShadow(t.npc);
       wallLv = GAME.buildingLevel(sh, 'chengqiang') || buildLv;
       def = GAME.cityDefense(sh);
       towers = GAME.towersFromDef ? GAME.towersFromDef(def) : 0;
+      extN = (sh.extGrid || []).length;
+      extLv = extN ? (sh.extGrid[0].lv || buildLv) : buildLv;
     } else if (t.kind === 'fort' && t.fort && GAME.fortPlanOf) {
       var fp = GAME.fortPlanOf(t.fort);
       summary = { plan: fp, items: fp.items, total: fp.total, minfang: fp.minfang };
       buildLv = fp.buildLv; wallLv = fp.wallLv; def = fp.def;
       towers = GAME.towersFromDef ? GAME.towersFromDef(def) : 0;
+      extN = GAME.extPlanOf ? GAME.extPlanOf(fp.level).length : 0;
+      extLv = fp.buildLv;
     } else {
       return null;         // 野地没有建筑
     }
@@ -774,6 +1005,7 @@
       col: summary.plan.col, row: summary.plan.row, total: summary.total,
       buildLv: buildLv, wallLv: wallLv, def: def, towers: towers,
       items: summary.items || [], minfang: summary.minfang || 0,
+      extN: extN, extLv: extLv,
     };
   };
 
@@ -902,6 +1134,15 @@
     var t = GAME.battle.resolveTarget(target);
     if (!t.ok) return { ok: false, msg: t.msg || '目标无效' };
 
+    /* v89.87（老板需求 2）：调兵 / 驻守 / 采集的前置校验（统一出口的口子） */
+    if (mode.id === 'transfer' && t.kind !== 'owncity') return { ok: false, msg: '调兵目标须为本境城池' };
+    if (mode.id === 'station' && !(t.kind === 'wild' && GAME.map.wildAt(t.x, t.y))) {
+      return { ok: false, msg: '驻守目标须是已属我方的野地' };
+    }
+    if (mode.id === 'gather' && !(t.kind === 'wild' && GAME.map.wildAt(t.x, t.y))) {
+      return { ok: false, msg: '采集目标须是已属我方的野地' };
+    }
+
     /* v63（老板）：「野外城每天只能被掠夺一次」。
        拦在 `prepare` 里 —— 出征的两条路（即时结算 / 行军队列 `march.dispatch`）
        都先过这里，所以才拦得住；写在界面里只是提示，绕过界面就失效。
@@ -952,6 +1193,45 @@
     if (!p.ok) return p;
     var mode = p.mode, gen = p.gen, city = p.city, t = p.t;
 
+    /* ============================================================
+     * v89.87（老板需求 2）：非战斗行动抵达落账 —— 调兵（owncity）/ 采集（gather）
+     * ------------------------------------------------------------
+     * 两条路径与出征共用同一行军通道（dispatch 出发时已扣兵/体力），
+     * 抵达时在此落账。**必须放在侦查判定之前**：两者的 mode.battle 都是
+     * false，若按顺序走会被当成侦查结算（探守军、写侦查公文）。
+     * · 调兵：抵达入城（再验一次目标城校场，超容则整体折返）；
+     * · 采集：调既有 startGather 的 arrived 路径（跳过重复扣减）。
+     * ============================================================ */
+    if (t.kind === 'owncity') {
+      var _to = t.city;
+      var _ocap = (GAME.buildingLevel(_to, 'xiaochang') || 0) * 10000;
+      var _np = 0, _ap = 0;
+      for (var _oa in (_to.army || {})) _np += (DATA.TROOPS[_oa] ? DATA.TROOPS[_oa].pop : 1) * _to.army[_oa];
+      for (var _ob in atkArmy) _ap += (DATA.TROOPS[_ob] ? DATA.TROOPS[_ob].pop : 1) * atkArmy[_ob];
+      if (_ocap > 0 && _np + _ap > _ocap) {
+        /* 折返（_expArmySettled 保持 false → arrive 兜底原路退回出发城） */
+        return { ok: false, msg: _to.name + ' 校场容量不足（途中已满编）' };
+      }
+      var _mv = 0;
+      for (var _ok2 in atkArmy) {
+        var _n2 = Math.floor(atkArmy[_ok2] || 0);
+        if (_n2 <= 0) continue;
+        _to.army[_ok2] = (_to.army[_ok2] || 0) + _n2;
+        _mv += _n2;
+      }
+      gen.cityId = _to.id;                    /* 主将随军入驻新城（城建制） */
+      _expArmySettled = true;                 /* 军账已结（兵入新城） */
+      GAME.log('🚚 军队调防：' + U.fmt(_mv) + ' 兵入 ' + _to.name + '（' + gen.name + ' 统带）');
+      return { ok: true, mode: mode.id, peaceful: true, target: t, moved: _mv,
+        msg: '已入驻 ' + _to.name + '（+' + U.fmt(_mv) + ' 兵）' };
+    }
+    if (mode.id === 'gather') {
+      var _gr = GAME.startGather(t.x, t.y, gen.id, atkArmy, { arrived: true, cityId: city.id });
+      if (_gr.ok) _expArmySettled = true;     /* 兵已移交采集队（军账在采集记录上） */
+      return { ok: _gr.ok, mode: 'gather', peaceful: true, target: t, gather: _gr,
+        msg: _gr.msg };
+    }
+
     /* ---- 侦查：不接战 ---- */
     if (!mode.battle) {
       GAME.setStaNow(gen, GAME.staNow(gen) - mode.stamina);   /* v66：走唯一写入口 */
@@ -978,6 +1258,39 @@
       GAME.log('🔭 侦查 ' + t.name + '：' + lines.join('　'));
       if (sc.loot.length) GAME.log('顺道收取：' + sc.loot.join('、'));
       if (sc.treasure) GAME.log('拾得遗落之物：' + sc.treasure);
+      /* v89.73（老板：「侦察后形成公文报告，不只是弹窗」）
+         ------------------------------------------------------------
+         改前侦查结果只活在那个弹窗里 —— 一关就没了，想回头比对"上次看的守军
+         是多少"只能再派一次斥候。现在**同时落一份公文**（进公文页可回看）。
+         正文按**已解锁的层**写（与弹窗同一口径）：没解锁的写"未探得"，
+         而不是写"守将：无" —— 那是误导，不是没有，是看不见。 */
+      (function () {
+        var rp = [lines.join('<br>')];
+        if (sc.loot && sc.loot.length) rp.push('【顺手所得】' + sc.loot.join('、'));
+        if (sc.treasure) rp.push('【意外发现】' + sc.treasure);
+        rp.push('【情报层级】侦察技巧 Lv' + itL.lv + (itL.next
+          ? '　·　下一层：' + itL.next.name + '（还差 ' + (itL.next.unlock - itL.lv) + ' 级）'
+          : '　·　六层情报全开'));
+        rp.push('【顺手拾获】不受分层影响 —— 任何等级都能捡到。');
+        s.reports.unshift({
+          t: U.now(), type: 'scout',
+          title: '侦查回报 · ' + (sc.totalExact ? '' : '（约略）') + t.name,
+          body: rp.join('<br>'),
+          loot: (sc.loot || []).slice(), win: true,
+          intel: { lv: itL.lv, target: t.name },
+        });
+        if (s.reports.length > 60) s.reports.pop();
+        s.repUnread = (s.repUnread || 0) + 1;      /* 与战报同一套"未读闪黄" */
+      })();
+      /* v89.86（整改 P-25）：行军队列抵达的侦查 —— dispatch 时随行兵力已扣离本城，
+         而侦查不接战，随行者须原路归城（修复前"带兵侦查 = 凭空丢兵"）。 */
+      if (opts.arrived) {
+        var _cS = (opts.cityId && GAME.cityById(opts.cityId)) || GAME.currentCity();
+        var _aS = 0;
+        for (var _kS in atkArmy) _aS += (atkArmy[_kS] || 0);
+        if (_cS && _aS > 0) GAME.battle.returnArmy(_cS, atkArmy, { atkRemain: _aS });
+        _expArmySettled = true;      /* 军账已结（随行者归城 / 本就无兵） */
+      }
       return {
         ok: true, mode: mode.id, result: { winner: 'scout' },
         intel: lines, roster: sc.roster, guard: gd, spoils: sc.spoils,
@@ -1007,6 +1320,26 @@
       for (var a3 in atkArmy) city.army[a3] -= atkArmy[a3];
       GAME.setStaNow(gen, GAME.staNow(gen) - mode.stamina);   /* v66：体力收支唯一写入口 */
       gen.energy = Math.max(0, (gen.energy || 0) - mode.energy);
+    }
+
+    /* ---- v89.63「派遣」(station)：到**已属我方**的野地不接战，到了就驻 ----
+       放在上面扣兵/扣体力之后 —— 即时出征与行军队列（dispatch 已扣）两条路径
+       走到这里都已完成扣减，所以本段**只负责入驻**，不重复扣任何东西。
+       为什么必须短路：己方野地上没有"守军"可打，走战斗结算会出现
+       "自己打自己地盘、还按己方守军算伤害"的荒谬结果。 */
+    if (mode.station && t.kind === 'wild' && GAME.map.wildAt(t.x, t.y)) {
+      var _ga = GAME.wildGarrisonAdd(t.x, t.y, atkArmy, city.id);
+      if (_ga.overflow) {
+        for (var _o1 in _ga.overflow) city.army[_o1] = (city.army[_o1] || 0) + _ga.overflow[_o1];
+      }
+      var _stMsg = '派遣驻守 ' + U.fmt(_ga.add || 0) + ' 名（守地不衰减）';
+      GAME.log('🛡️ ' + t.name + '：' + _stMsg
+        + (_ga.overflow && Object.keys(_ga.overflow).length ? '；超出驻军上限者已回城' : ''));
+      _expArmySettled = true;      /* v89.86（P-25）：军账已结（驻军 / 溢出均已落地） */
+      return {
+        ok: true, mode: mode.id, result: { winner: 'atk' }, target: t,
+        peaceful: true, msg: _stMsg,
+      };
     }
 
     /* 目标城防。旧写法把**我方城墙等级**加到了敌方防御上（`wallLvl` 取自 GAME.currentCity()），
@@ -1047,14 +1380,33 @@
         /* 趁火打劫（掠夺系数）与金蝉脱壳（战败保全）在下方各自结算点另行注明 */
       }
     }
-    var result = GAME.battle.simulate(atkArmy, gen, scArmy, scVal, scGen,
-      { sieging: t.kind === 'city', kind: t.kind, defName: t.name, wallLv: tWallLv,
+    /* ============================================================
+     * v89.87（老板需求 4 · 战斗观战）：出征战斗改为**会话制**
+     * ------------------------------------------------------------
+     * 开启观战（settings.battleWatch !== false）且非自动时，抵达不再立即
+     * 跑完模拟 —— 在此建立战场会话并挂起（GAME.battle.stepBattle 逐回合
+     * 推进，60 真实秒/回合、可提前完成）；战斗结束由 finishBattle 带
+     * `opts._result` 重入本函数，从同一锚点继续走下方**既有落账段** ——
+     * 一场战斗、一段代码、两条路径，落账逻辑零复制。
+     * `opts._sim`：挂起时保存的战斗输入（重放用 —— 保证与首算逐字节一致）。
+     * ============================================================ */
+    var simOpts = { sieging: t.kind === 'city', kind: t.kind, defName: t.name, wallLv: tWallLv,
         /* v62（老板：「工匠作坊可以造箭塔，箭塔默认参与防守」）：
            守方的箭塔座数走**唯一出口** `GAME.towerCountOf` ——
            它把"城防折出"与"工匠作坊建造"合并成一个数。
            NPC 城没有自建箭塔（`city.towers` 未定义）→ 结果与 v59 完全一致；
            玩家城作为守方时，自己造的箭塔自动上阵（不需要任何指派）。 */
-        towers: (t.npc && GAME.towerCountOf) ? GAME.towerCountOf(t.npc) : null });
+        towers: (t.npc && GAME.towerCountOf) ? GAME.towerCountOf(t.npc) : null };
+    if (opts._sim) {                       /* 重放：用挂起时保存的权威输入（不重算） */
+      scArmy = opts._sim.scArmy || {}; scVal = opts._sim.scVal || 0;
+      scGen = opts._sim.scGen || null; scNote = opts._sim.scNote || null;
+      simOpts = opts._sim.simOpts || simOpts;
+    } else if (!opts._result && GAME.battle._needWatch(opts)) {
+      /* 观战：建立会话挂起（落账上下文一并保存） */
+      return GAME.battle._suspendExpedition(target, modeId, atkArmy, genId, opts,
+        { scArmy: scArmy, scVal: scVal, scGen: scGen, scNote: scNote, simOpts: simOpts });
+    }
+    var result = opts._result || GAME.battle.simulate(atkArmy, gen, scArmy, scVal, scGen, simOpts);
     /* v86：计谋注脚 —— 战报/日志可见（金蝉脱壳只在战败时另算保全） */
     if (scNote) result.schemeNote = scNote;
     if (opts.scheme === 'jintui' && result.winner !== 'atk') {
@@ -1139,6 +1491,11 @@
         : (((DATA.SEED_DROP || {}).cityLv || {})[t.dropType || 'county'] || (t.lv || 3));
       var seedGot = GAME.grantSeedDrop(seedLv, DATA.SEED_DROP.battleMult, '缴获种子');
       if (seedGot.length) gains.seeds = seedGot;
+
+      /* v89.51：灵气精华 —— 缴获线的产出（与种子同源的"顺带所得"，
+         补上蕴养修炼装备在游历剥离之后的产出口） */
+      var essLoot = GAME.grantEssenceDrop(seedLv, DATA.ESSENCE_DROP.battleMult, '✨ 缴获灵气精华');
+      if (essLoot.length) gains.essence = essLoot;
 
       /* 占领：据而有之 */
       if (mode.occupy) {
@@ -1226,11 +1583,27 @@
        之前 expedition 扣了兵却从不归还 `result.atkRemain`，伤兵也只是个计数，
        等于每次出征都在凭空蒸发军队、治疗是纯金币消耗。 */
     var returned = { back: {}, wounded: {} };
-    if (city) returned = GAME.battle.returnArmy(city, atkArmy, result);
+    /* v89.63：「派遣」打下来的兵**留驻该地**（伤兵仍回城医治）——
+       于是"出兵"与"驻守"合成一道手续，那道独立的「派军驻守」按钮就此退场。 */
+    var _stW = (mode.station && t.kind === 'wild' && win) ? GAME.map.wildAt(t.x, t.y) : null;
+    var _stAdd = 0;
+    if (city) {
+      returned = GAME.battle.returnArmy(city, atkArmy, result, _stW ? function (back) {
+        var _gb = GAME.wildGarrisonAdd(t.x, t.y, back, city.id);
+        if (_gb.overflow) {
+          for (var _o2 in _gb.overflow) city.army[_o2] = (city.army[_o2] || 0) + _gb.overflow[_o2];
+        }
+        _stAdd = _gb.add || 0;
+      } : null);
+    }
+    _expArmySettled = true;      /* v89.86（P-25）：军账已结（幸存者 / 伤兵均已入账） */
     var backN = 0, woundN = 0;
     for (var bk in returned.back) backN += returned.back[bk];
     for (var wk in returned.wounded) woundN += returned.wounded[wk];
-    if (backN > 0 || woundN > 0) {
+    if (_stW) {
+      GAME.log('🛡️ 派遣驻守：' + U.fmt(_stAdd) + ' 名留驻 ' + t.name
+        + (woundN > 0 ? '，伤兵 ' + U.fmt(woundN) + ' 回城医治' : ''));
+    } else if (backN > 0 || woundN > 0) {
       GAME.log('班师 ' + (city ? city.name : '') + '：' + U.fmt(backN) + ' 名归营'
         + (woundN > 0 ? '，伤兵 ' + U.fmt(woundN) + ' 入营（可花金治疗归队）' : ''));
     }
@@ -1307,7 +1680,10 @@
        · applyWounded 只累加 `s.wounded` 这个数字，heal() 也只是把它清零
          → 「伤兵归队」是空话，治疗成了一笔没有任何回报的金币消耗
      现在统一在这里归还，并记录伤兵的**兵种构成**（`s.woundedArmy`）。 */
-  GAME.battle.returnArmy = function (city, sentArmy, result) {
+  /* v89.63：新增可选的第 4 参 `backSink` —— 由调用方决定"活着的兵"去哪。
+     出征「派遣」(station) 用它把幸存者直接送进野地驻军（而不是回城）；
+     不传则完全维持旧行为（回城）。伤兵**始终回城**（要医治，不能扔在野外）。 */
+  GAME.battle.returnArmy = function (city, sentArmy, result, backSink) {
     var s = GAME.state;
     var aStart = 0;
     for (var id in sentArmy) aStart += sentArmy[id];
@@ -1318,13 +1694,18 @@
     if (result && result.schemeKeep) rate = Math.min(0.9, rate + result.schemeKeep);
     if (GAME.systems.buffActive('military') && s.buffs.military.wound) rate = s.buffs.military.wound;
     if (GAME.systems && GAME.systems.techBonus) rate = Math.min(0.9, rate * (1 + GAME.systems.techBonus('repair')));
+    /* 门派被动（v89.86 · 百草堂「战后伤兵回复 +15%」）—— 与军医/维修科技同链 */
+    if (GAME.sectBonus) rate = Math.min(0.9, rate * (1 + GAME.sectBonus('woundPct')));
     var back = {}, wounded = {}, wTotal = 0;
     for (var id2 in sentArmy) {
       var n = sentArmy[id2] || 0;
       if (n <= 0) continue;
       var alive = Math.floor(n * keep);
       var dead = n - alive;
-      if (alive > 0) { city.army[id2] = (city.army[id2] || 0) + alive; back[id2] = alive; }
+      if (alive > 0) {
+        back[id2] = alive;
+        if (!backSink) city.army[id2] = (city.army[id2] || 0) + alive;   /* 有 backSink 时目的地由调用方落地 */
+      }
       var w = Math.floor(dead * rate);
       if (w > 0) { wounded[id2] = w; wTotal += w; }
     }
@@ -1333,6 +1714,7 @@
       for (var id3 in wounded) s.woundedArmy[id3] = (s.woundedArmy[id3] || 0) + wounded[id3];
       s.wounded = (s.wounded || 0) + wTotal;
     }
+    if (backSink && Object.keys(back).length) backSink(back);   /* 唯一出口：去哪由调用方说了算 */
     return { back: back, wounded: wounded };
   };
 
@@ -1366,8 +1748,15 @@
     }
     var capped = gen.level >= capLv;
     if (capped && from < capLv) {
-      GAME.log('🔒 ' + gen.name + ' 已达资质上限 Lv' + capLv
-        + '（' + (GAME.rankOf(gen).name) + '），再多的经验也无法提升');
+      /* v89.65：君主的段顶不是"资质顶"，文案与真实原因对齐（否则玩家以为练到头了，
+         其实该去练功突破） */
+      if (gen.isLord) {
+        GAME.log('🔒 ' + gen.name + ' 已达本段上限 Lv' + capLv
+          + '（君主每 ' + DATA.LORD_BREAK.step + ' 级一段）—— 练功攒修为后突破可续升');
+      } else {
+        GAME.log('🔒 ' + gen.name + ' 已达资质上限 Lv' + capLv
+          + '（' + (GAME.rankOf(gen).name) + '），再多的经验也无法提升');
+      }
     }
     return { from: from, to: gen.level, up: gen.level - from, step: step, capped: capped, cap: capLv };
   };
@@ -1443,7 +1832,12 @@
           : (result.expCapped
             ? '<span style="color:var(--text-dim);">（歼灭 ' + U.numText(result.expRaw || 0, 0)
               + '，已达单场上限 ' + U.numText(ei.gain, 0) + '）</span>'
-            : (result.defValue ? '<span style="color:var(--text-dim);">（歼敌值 ' + U.numText(result.defValue, 0) + ' 资源）</span>' : '')))
+            : (result.defValue
+              /* v89.89（A3 · 100+ 轮实玩期待）：口径就地解释 —— 悬停「歼敌值」看折算规则
+                 （100+ 轮实玩实测："歼敌值 3,120 资源"口径费解）。 */
+              ? '<span style="color:var(--text-dim);">（<span style="cursor:help;" '
+                + 'title="歼敌值 = 按歼灭敌军的资源造价折算（与将领经验同一口径）">歼敌值</span> '
+                + U.numText(result.defValue, 0) + ' 资源）</span>' : '')))
         + '　Lv' + ei.level + '（' + U.numText(ei.exp, 0) + ' / ' + U.numText(ei.need, 0) + '）'
         + (ei.up > 0 ? '　<b style="color:var(--gold-light);">连升 ' + ei.up + ' 级！</b>' : '');
     } else if (result.expNone && gen) {
@@ -1511,6 +1905,9 @@
 
     /* ③ 天气：雨 −20% / 雪 −50% / 雾 −30% / 大风 +10% */
     if (GAME.story && GAME.story.combatMod) m *= (GAME.story.combatMod().move || 1);
+
+    /* ③c 门派被动（v89.86 · 玄鹤门「行军速度 +8%」）—— 唯一出口 sectBonus */
+    if (GAME.sectBonus) m *= (1 + GAME.sectBonus('marchPct'));
 
     /* ③ 己方城池的驿站：城池间行军提速 1.5~6 倍 */
     var fc = from && from.cityId ? GAME.cityById(from.cityId) : null;
@@ -1613,10 +2010,35 @@
       GAME.log('⚠️ 行军中断：' + m.name + ' 方向的主将已不在，大军折返 ' + ((city && city.name) || ''));
       return null;
     }
-    var r = GAME.battle.expedition(m.target, m.modeId, m.army, m.genId,
-      { arrived: true, cityId: m.cityId, scheme: m.scheme || null });
-    if (gen.status === 'march') gen.status = 'idle';
-    if (r && r.result && r.result.winner === 'scout') {
+    /* v89.86（整改 P-25）：军账守恒护栏 —— 详见 `_expArmySettled` 定义。
+       抵达结算失败（目标在途中熄灭：据点当日已拔除 / 城池被夺 …）或抛异常时，
+       把仍挂在行军账上的兵力原路退回，绝不让"派出去的兵"凭空消失。 */
+    _expArmySettled = false;
+    var r = null, err = null;
+    try {
+      r = GAME.battle.expedition(m.target, m.modeId, m.army, m.genId,
+        { arrived: true, cityId: m.cityId, scheme: m.scheme || null });
+    } catch (e) { err = e; }
+    /* v89.87：观战挂起（pending）时将领**保持征战在外**，不置 idle ——
+       等 finishBattle 落账后统一收尾（否则战斗中将领会被当成空闲可再派遣） */
+    if (!(r && r.pending) && gen.status === 'march') gen.status = 'idle';
+    if (err || !r || r.ok === false) {
+      var rolled = false;
+      if (!_expArmySettled && city) {
+        for (var aR in m.army) city.army[aR] = (city.army[aR] || 0) + m.army[aR];
+        rolled = true;
+      }
+      _expArmySettled = true;
+      var whyR = err ? '结算异常' : ((r && r.msg) || '目标已不存在');
+      GAME.log('⚠️ ' + m.name + ' 方向进军中止（' + whyR + '）：'
+        + (rolled ? '大军原路折返 ' + city.name : '军账已结，兵已入城 / 伤兵营'));
+      if (err && typeof console !== 'undefined' && console.warn) console.warn('[march.arrive] 抵达结算异常：', err);
+      if (GAME.onMarchArrive) {
+        GAME.onMarchArrive(m, { ok: false, rolled: rolled, msg: whyR, err: err ? String((err && err.message) || err) : null });
+      }
+      return { ok: false, rolled: rolled, msg: whyR };
+    }
+    if (r.result && r.result.winner === 'scout') {
       GAME.log('🔭 ' + gen.name + ' 侦察归来：' + m.name);
     }
     if (GAME.onMarchArrive) GAME.onMarchArrive(m, r);

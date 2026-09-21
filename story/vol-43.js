@@ -438,10 +438,10 @@ window.STORY_DATA = (window.STORY_DATA || []).concat([
   ]
 },
 {
-  "id": "wild-hill-13",
+  "id": "bld-honglusi-03",
   "anchor": {
-    "kind": "wild",
-    "id": "hill"
+    "kind": "building",
+    "id": "honglusi"
   },
   "title": "马帮",
   "hook": "山口横着一根木头，拦路的人不收钱也不让路。",

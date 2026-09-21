@@ -908,10 +908,10 @@ window.STORY_DATA = (window.STORY_DATA || []).concat(
     ]
   },
   {
-    "id": "wild-hill-17",
+    "id": "bld-honglusi-07",
     "anchor": {
-      "kind": "wild",
-      "id": "hill"
+      "kind": "building",
+      "id": "honglusi"
     },
     "title": "守墓",
     "hook": "平冢改田的文书下来了，坡上的树也要伐。",

@@ -242,10 +242,10 @@ window.STORY_DATA = (window.STORY_DATA || []).concat(
     ]
   },
   {
-    "id": "wild-hill-14",
+    "id": "bld-honglusi-04",
     "anchor": {
-      "kind": "wild",
-      "id": "hill"
+      "kind": "building",
+      "id": "honglusi"
     },
     "title": "断金",
     "hook": "二十年前他们歃过血，各留了半块铁牌。",

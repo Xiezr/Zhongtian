@@ -35,7 +35,9 @@
     var shuyuanLv = GAME.buildingLevel(city, 'shuyuan');
     if (shuyuanLv < t.lv) return { ok: false, msg: '需要书院 Lv' + t.lv };
     var cur = S.techLevel(techId);
-    if (cur >= 10) return { ok: false, msg: '已满级' };
+    /* v89.81：上限改走 `DATA.TECH_MAX_LV`（唯一出口）—— 原先硬编码 10，
+       而仓库容量的"满配"口径也要用它（见 DATA.NPC_CITY_RES.resByTier）。 */
+    if (cur >= (DATA.TECH_MAX_LV || 10)) return { ok: false, msg: '已满级' };
     var cost = DATA.techCost(t, cur + 1);
     if (!GAME.canAfford(cost)) return { ok: false, msg: '资源不足' };
     return { ok: true };
@@ -137,8 +139,9 @@
     /* v88：读**当前生效套**（双轨分流的唯一出口；修炼侧 75% 量级写在数据里） */
     var bag = S.equipBagOf(g);
     var isLing = (g.equipOn === 'ling') && GAME.canCultivate(g);
-    /* 驯马技巧：坐骑装备属性 +5%/级（仅军装侧 —— 修炼装备独立体系不吃它） */
-    var horseMul = 1 + S.techBonus('horse');
+    /* 驯马技巧：坐骑装备属性 +5%/级（仅军装侧 —— 修炼装备独立体系不吃它）
+       v89.86（门派 P1）：牧云庄「坐骑装备属性 +20%」并入同一条乘链（唯一出口 sectBonus） */
+    var horseMul = (1 + S.techBonus('horse')) * (1 + (GAME.sectBonus ? GAME.sectBonus('mountPct') : 0));
     for (var slot in bag) {
       var inst = bag[slot];
       var item = DATA.EQUIP[GAME.eqId ? GAME.eqId(inst) : inst];
@@ -351,7 +354,15 @@
       if (!g2) return { ok: false, msg: '请选择将领' };
       s.buffs = s.buffs || {}; s.buffs.gens = s.buffs.gens || {};
       s.buffs.gens[g2.id] = s.buffs.gens[g2.id] || {};
-      s.buffs.gens[g2.id][item.id] = { until: U.now() + (item.dur || 24) * 3600 * 1000 };
+      /* v89.50（真 bug 修复）：**必须把 item.eff 一起存进去**。
+         改前这里只写 `{ until }`，而消费端（domain.genAttrs）读的是
+         `buf.tong_mult / nz_mult / yw_mult / zm_mult / spd` ——
+         于是虎符、文曲星符、武曲星符、智多星符**全部空转**：
+         道具扣了、公文写了、属性一点没涨（"买了没效果"的典型）。
+         符类与坐骑类是同一形状（坐骑那条一直是对的，因为它显式写了 spd）。 */
+      var nb = { until: U.now() + (item.dur || 24) * 3600 * 1000 };
+      for (var ek in (item.eff || {})) nb[ek] = item.eff[ek];
+      s.buffs.gens[g2.id][item.id] = nb;
       ok = true; msg = g2.name + ' 获得 ' + item.name + '（' + item.desc + '）';
     } else if (item.type === 'prod_buff') {
       s.buffs = s.buffs || {}; s.buffs.prod = s.buffs.prod || {};
@@ -447,7 +458,16 @@
       ok = true;
       msg = item.name + ' 生效：' + (item.dur || 24) + ' 小时内同时建造队列 +' + s.buffs.buildQueue.add;
     } else {
-      return { ok: false, msg: '该宝物暂不可直接使用' };
+      /* v89.51（老板「别买了用不了」）：不再留「暂不可直接使用」这种**死路话术** ——
+         这几类都有真实消耗口，只是不在 useItem 里直扣。落到这里 = 有人从旧入口点了「使用」，
+         必须告诉他去哪儿用（否则就是"买了用不了"的体验）。 */
+      var HINT = {
+        talis: '锦囊在出征「计略」或城中「布防」施展计谋时消耗',
+        material: '材料在铁匠铺打造装备时消耗',
+        blueprint: '图纸用于铁匠铺解锁打造',
+        essence: '灵气精华在「蕴养 · 修炼装备」中消耗（将领面板 → 修炼装备 → ☯ 蕴养）',
+      }[item.type];
+      return { ok: false, msg: HINT || '该宝物暂不可直接使用' };
     }
 
     if (ok) {
@@ -647,26 +667,33 @@
     return null;
   };
 
-  /* 加速道具：对指定队列生效 */
+  /* 加速道具：对指定队列生效
+     v89.49：三条分支都补 **封顶**（Math.min(totalTime, …)）——
+     改前 `q.elapsed += totalTime × pct` 会把 elapsed 顶过 totalTime，
+     而 advanceTrainQueues 里 `need = totalTime - elapsed` 变负 → `left -= need`
+     反而把左侧时间**加回去**，于是溢出的加速量会白送给本营的下一条队列。
+     与 S.boostTrainQueue 的封顶口径对齐。 */
   S._boost = function (item) {
     var s = GAME.state;
     var target = item.target;
+    var addOf = function (q) {
+      var add = item.pct ? q.totalTime * item.pct : (item.amount || 15) * GAME.timeScale();
+      q.elapsed = Math.min(q.totalTime, (q.elapsed || 0) + add);
+    };
     if (target === 'research') {
       var q = s.queues.tech[0];
       if (!q) return { ok: false, msg: '没有进行中的研究' };
-      q.elapsed += item.pct ? q.totalTime * item.pct : (item.amount || 15) * GAME.timeScale();
+      addOf(q);
       return { ok: true, msg: '研究时间缩短' };
     }
     if (target === 'build') {
       if (!s.queues.build.length) return { ok: false, msg: '没有进行中的建造' };
-      var q2 = s.queues.build[0];
-      q2.elapsed += item.pct ? q2.totalTime * item.pct : (item.amount || 15) * GAME.timeScale();
+      addOf(s.queues.build[0]);
       return { ok: true, msg: '建造时间缩短' };
     }
     if (target === 'train') {
       if (!s.queues.train.length) return { ok: false, msg: '没有进行中的训练' };
-      var q3 = s.queues.train[0];
-      q3.elapsed += item.pct ? q3.totalTime * item.pct : (item.amount || 15) * GAME.timeScale();
+      addOf(s.queues.train[0]);
       return { ok: true, msg: '训练时间缩短' };
     }
     if (target === 'march') {

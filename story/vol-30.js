@@ -1,7 +1,7 @@
 /* ============================================================
  * story/vol-30.js — 文字游戏故事库 · 第 30 卷（铺量批次 · v2 结构）
  * ------------------------------------------------------------
- * 收录：烽火台 / 马厩 / 客栈 / 招贤馆 / 鸿胪寺 / 铁匠铺 各 1 篇（段数 6/5/7/5/6/6）
+ * 收录：烽火台 / 马厩 / 客栈 / 招贤馆 / 官府 / 铁匠铺 各 1 篇（段数 6/5/7/5/6/6）
  * 台账：story/manifest.json · 规范：story/README.md · 校验：python story/tools/check.py
  * ============================================================ */
 window.STORY_DATA = (window.STORY_DATA || []).concat([
@@ -533,8 +533,8 @@ window.STORY_DATA = (window.STORY_DATA || []).concat([
 }
 ,
 {
-  "id": "bld-honglusi-07",
-  "anchor": { "kind": "building", "id": "honglusi" },
+  "id": "bld-guanfu-17",
+  "anchor": { "kind": "building", "id": "guanfu" },
   "title": "蕃使",
   "hook": "蕃使入馆后不肯开口，只在纸上画图；通事懂西边三种话，却说这不是话。",
   "tags": ["外事", "悬疑"],

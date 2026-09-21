@@ -388,8 +388,8 @@ window.STORY_DATA = (window.STORY_DATA || []).concat([
     ]
   },
   {
-    "id": "wild-hill-19",
-    "anchor": { "kind": "wild", "id": "hill" },
+    "id": "bld-honglusi-09",
+    "anchor": { "kind": "building", "id": "honglusi" },
     "title": "望风",
     "hook": "望风人替朋友看了十年道，今年来的却是旧仇人。",
     "tags": ["江湖", "恩仇"],

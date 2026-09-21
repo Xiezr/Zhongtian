@@ -429,8 +429,8 @@ window.STORY_DATA = (window.STORY_DATA || []).concat([
     ]
   },
   {
-    "id": "wild-hill-18",
-    "anchor": { "kind": "wild", "id": "hill" },
+    "id": "bld-honglusi-08",
+    "anchor": { "kind": "building", "id": "honglusi" },
     "title": "应声",
     "hook": "山中有人语引你走岔，万不可应声——这是行规第四条。",
     "tags": ["志怪", "乡野"],
