@@ -7,7 +7,10 @@
  *     距离：攻打野地 2000，攻打野外城池 3000，攻打城池 4000。
  *   · **回合制**。每回合所有存活部队按**速度从高到低**行动（速度含将领加成）。
  *   · v89.87（老板拍板）：每兵种每回合**主动攻击一个目标**；主目标吃满伤害后，
- *     超出部分对射程内其他每个敌方兵种各溅射 30%（T.SPLASH_PCT）。
+ *     **v89.95 起：一击只打一个目标兵种，溢出伤害作废（无溅射）**——
+ *     老板原话：「战斗一个回合只对一个目标兵种出手，后续无溅射伤害」。
+ *     改前是"主目标吃满后，溢出对射程内每个敌方兵种各溅射 30%"，
+ *     结果是"一回合清掉对面两三支"、战斗 1~3 回合结束（没有回合对战可玩）。
  *   · 行动规则：与最近一支敌军的间距若已在射程内 → 开火；
  *     否则**向对方推进"该兵种速度"这么远**，直到接触对方最前方的兵种。
  *   · 攻击值 = （兵种基础攻击 + 将领/装备加成的攻击）× 该兵种数量
@@ -46,9 +49,15 @@
    * 推远 → **远程方拿到先手**（老玩家说"弓的第一回合先发打击是关键"的机制来源）。
    * 距离不再是背景参数，它是**先手权的一部分**。
    * ============================================================ */
-  T.FIELD_MARGIN = 199;
+  /* v89.95（B2）：纵深 = 最远射程 + MARGIN，且**不得小于 FIELD_MIN**。
+     老板原话：「现在的速度对战斗具有决定性影响（一步到面前，先手打击，
+     溅射伤害收场，根本没有回合对战乐趣）」。
+     改前 FIELD_MIN=200、MARGIN=199 → 纯近战纵深 249，而长枪速度 300 →
+     **第 1 回合就贴脸**，先手方一轮打光对手。现在纵深 ≥1400，
+     接敌要走 3~5 回合，速度的收益变成"早到一两回合"而不是"一轮定胜负"。 */
+  T.FIELD_MARGIN = 299;
   /* 保底：双方都是近战（长枪 50）时也要留出可推进的间距 → 50 + 199 = 249 */
-  T.FIELD_MIN = 200;
+  T.FIELD_MIN = 1400;
   /* ============================================================
    * 溢出溅射比例（v89.87 · 老板拍板）
    * ------------------------------------------------------------
@@ -58,7 +67,9 @@
    * 标靶是**兵种**（编队）不是个体：溅射量按各自防御/生命折算杀兵数，
    * 各自钳制在实有人数内（打不光更多）。
    * ============================================================ */
-  T.SPLASH_PCT = 0.30;
+  /* v89.95（B1）：`T.SPLASH_PCT` **退役**（一击一目标，溢出作废）。
+     保留常量 = 0 只为兼容旧引用点（smoke 的老断言会改成新口径）。 */
+  T.SPLASH_PCT = 0;
   /* 旧场地常数**保留为回退值**：`opts.field` 显式传入时仍然可用
      （旧战报回放、跨服类玩法要另设距离），不让老数据算不出来。 */
   T.FIELD = { wild: 2000, fort: 3000, city: 4000 };
@@ -106,6 +117,21 @@
    * 刀盾 550、弓 500 —— 与它们的（含科技）速度一致。
    * ============================================================ */
   T.MARCH_UNIT = 1;
+  /* ============================================================
+   * v89.96（老板批注「伤害计算不要乱定系数，计算过程应当简洁」）：
+   * v89.95 的 `T.DAMAGE_SCALE`（末端总闸）**已删除** —— 平衡一律在源头修：
+   *   · 兵种耐久：hp ×10（data.js；杀率地基从 0.73/回合 → 0.073）
+   *   · 属性覆盖：勇武/智谋 每 20 点 +1%（genAttrs.atkPct/defPct，唯一换算原子）
+   *   · 相克表：枪克骑标定（data.js COUNTER_ATK / COUNTER_DEF）
+   * 伤害公式回到直读关系：k = perAtk × 数量 × cf ÷ perHp（无任何隐藏乘数）。
+   * ============================================================ */
+  /* v89.95（B2）：**单回合推进上限** = 纵深 × MARCH_CAP_FRAC。
+     速度再高也不能一回合贴脸（老板：「一步到面前」）——超出的部分被截掉，
+     于是"速度优势"表现为**早 1~2 回合接敌**，而不是"一轮打光"。 */
+  T.MARCH_CAP_FRAC = 0.35;
+  T.advanceCapOf = function (D) {
+    return Math.max(60, Math.round((D || T.FIELD_MIN) * T.MARCH_CAP_FRAC));
+  };
   /* 推算「几步到接触」—— 现在**接收战场距离本身**（`battlefieldOf` 算出），
      不再接场地种类：距离已经变成双方配兵的函数，"按场地查表"不成立了。
      界面把这条讲清楚，玩家才看得见兵种差异（骑兵 1 步 vs 器械靠射程先开火）。 */
@@ -295,25 +321,29 @@
         stance: stance,
         target: tc ? tc.t : '',
         adv: T.STANCE_ROW[stance] || 0,
-        /* 攻方视角的攻击加成；守方部队同样带自己的将领 */
-        yw: a ? a.yw : 0, eqAtk: a ? (a.atk || 0) : 0,
-        /* v29（需求 11）：防御侧的两个来源 —— 智谋（每点 +1% 防御）与装备防御。
-           它们不再塞进"生命值放大"，而是进入 perDef()，参与攻防对冲。 */
-        zm: a ? a.zm : 0, eqDef: a ? (a.def || 0) : 0,
+        /* v89.96（老板「控制影响战斗的其他因素」）：攻/防加成**只走一个来源** ——
+           genAttrs 的 atkPct/defPct（唯一换算原子见 domain.js atkPctOf/defPctOf）。
+           旧版在这里散装 yw/zm/eqAtk/eqDef 四个字段、在 perAtk/perDef 里各乘一遍，
+           与 UI 展示（v52 换算链）相差 4 倍 —— 属"显示与实战分离"，已并链。 */
+        atkPct: a ? (a.atkPct || 0) : 0,
+        defPct: a ? (a.defPct || 0) : 0,
         vsCity: !!t.craft,
       });
     });
     return out;
   };
 
-  /* 该部队的**单位**攻击值（不含数量）：基础 + 装备攻击×覆盖，再乘各类百分比 */
+  /* 该部队的**单位**攻击值（不含数量）：兵种基础攻 × 加成链
+     （将领/装备 → 科技 → 符 → 剧情 → 相克 → 攻城）。
+     v89.96：将领与装备**合入同一条百分比链**（genAttrs.atkPct，每 20 点勇武 +1%、
+     装备每 10 攻值 +1%）—— 旧版把装备攻击值当"绝对值加到兵种攻上"
+     （弓 220 + 装备 8000 = ×37），与 UI 展示链相差 4 倍；已并链。 */
   T.perAtk = function (u, opts) {
     opts = opts || {};
     var t = DATA.TROOPS[u.id];
-    var base = t.atk + u.eqAtk * u.cover;         // 「兵种基础值 + 将领/装备加成」
-    var pct = 1;
-    pct *= (1 + u.yw * 0.01 * u.cover);           // 勇武：每点 +1% 全军攻击
-    pct *= (1 + TB('atk'));                       // 兵器技巧等
+    var base = t.atk;                                  // 兵种基础攻（唯一来源）
+    var pct = 1 + (u.atkPct || 0) * (u.cover || 0);    // 将领+装备（atkPct 唯一换算原子）
+    pct *= (1 + TB('atk'));                            // 兵器技巧等
     var s = GAME.state;
     if (GAME.systems && GAME.systems.buffActive && GAME.systems.buffActive('military')
       && s && s.buffs && s.buffs.military && s.buffs.military.atk) {
@@ -337,13 +367,12 @@
   T.perDef = function (u, opts) {
     opts = opts || {};
     var t = DATA.TROOPS[u.id];
-    var base = t.def + (u.eqDef || 0) * (u.cover || 0);
+    var base = t.def;                                  // 兵种基础防（v89.96：装备并链）
     /* v57：相克的**防御向**因子（B 套的核心）——"我挨你打时我的兵防 ×N"。
        刀盾防远程 ×3、轻骑防远程 ×4、铁骑 ×2、冲车防弓 ×5。
        它与装备防御一起被放大（口径上"兵防"是整体概念），不再区分来源。 */
     if (opts.defMul > 1) base *= opts.defMul;
-    var pct = 1;
-    pct *= (1 + (u.zm || 0) * 0.01 * (u.cover || 0));   // 智谋：每点 +1% 全军防御
+    var pct = 1 + (u.defPct || 0) * (u.cover || 0);     // 将领+装备（defPct 唯一换算原子）
     pct *= (1 + TB('def'));                             // 护甲/练兵一类科技
     return Math.max(1, base * pct);
   };
@@ -362,7 +391,8 @@
 
   /* 受击部队的单位生命。
      v29（需求 11）：这里**只剩**兵种生命与补给/体力加成 ——
-     智谋与装备护甲已移到 perDef()，不再重复计算（否则同一个防御属性被算两遍）。 */
+     智谋与装备护甲已移到 perDef()，不再重复计算（否则同一个防御属性被算两遍）。
+     v89.96：兵种生命本身 ×10（源头耐久标定，见 data.js TROOPS 注释）。 */
   T.perHp = function (u, defGen) {
     return Math.max(1, u.hpPer * (1 + TB('hp')) * hpMult(defGen));
   };
@@ -545,10 +575,12 @@
        * v89.87（老板拍板）：**主动攻击 = 单主目标制**
        * ------------------------------------------------------------
        *   · 主目标 = 指定目标（`preferId` 已排到池首）/ 否则最近的一支；
-       *   · 主目标吃满本次攻击的全部伤害（自然钳制：最多打光它）；
-       *   · 吃满后的**超出伤害**对射程内其他每个敌方兵种各溅射 30%
-       *     （`ctx.splashTargets`，由 actSide 预先筛好"在射程内"的其他兵种）。
-       * 箭塔火力与反击**不传 `ctx.single`** → 走下方原溢出逻辑，行为不变。
+       *   · 主目标吃满本次攻击的全部伤害（自然钳制：最多打光它）。
+       * v89.95（B1 · 老板「一回合只对一个目标兵种出手，后续无溅射伤害」）：
+       *   · **删除溅射** —— 主目标被打光后，**溢出伤害作废**，不再分给别的兵种；
+       *   · 连带效果：一回合最多打掉**一支**部队，战斗从 1~3 回合拉长到多回合，
+       *     "逐兵种指挥/阵位/计略"这些决策才真正有回本的空间。
+       * 反击（counterStrike）本来就是"只打打我那一支"，天然合规。
        * ============================================================ */
       if (ctx.single && pool.length) {
         var tg0 = pool[0];
@@ -556,7 +588,12 @@
         var cf0 = T.clashFactor(perA, T.perDef(tg0, { defMul: T.counterDefOf(tg0.id, shooter.id) }));
         var holdMul0 = (tg0.stance === 'hold') ? (1 - T.HOLD_DAMAGE_CUT) : 1;
         var eff0 = av * cf0 * holdMul0;
-        var k0 = Math.floor(eff0 / perHp0);
+        /* v89.96：取整用 **round** 而不是 floor ——
+           floor 会让"伤害不足一个人份"的攻击恒为 0 杀：实测义兵 20v20
+           （每回合 0.625 人份）双方站着不动到 30 回合（卡死）。
+           round 的口径是"伤害接近一个人份就算一个战损"，小规模战斗必收敛；
+           大部队（每次几百上千杀）round ≈ floor，节奏不受影响。 */
+        var k0 = Math.round(eff0 / perHp0);
         if (k0 > tg0.count) k0 = tg0.count;          // 自然钳制：不能杀超过目标实有人数
         var over = eff0 - k0 * perHp0;               // 主目标吃满后的**超出伤害**
         clash = cf0;
@@ -565,21 +602,7 @@
           killed += k0;
           hits.push({ id: tg0.id, name: tg0.name, kill: k0 });
         }
-        if (over > 0 && ctx.splashTargets && ctx.splashTargets.length) {
-          ctx.splashTargets.forEach(function (sg) {
-            if (sg === tg0 || sg.count <= 0) return;
-            var sPerHp = T.perHp(sg, ctx.defGenOfTarget);
-            var sCf = T.clashFactor(perA, T.perDef(sg, { defMul: T.counterDefOf(sg.id, shooter.id) }));
-            var sHold = (sg.stance === 'hold') ? (1 - T.HOLD_DAMAGE_CUT) : 1;
-            var sk = Math.floor(over * T.SPLASH_PCT * sCf * sHold / sPerHp);
-            if (sk > sg.count) sk = sg.count;        // 同样自然钳制
-            if (sk > 0) {
-              sg.count -= sk;
-              killed += sk;
-              hits.push({ id: sg.id, name: sg.name, kill: sk, splash: true });
-            }
-          });
-        }
+        /* v89.95（B1）：溢出作废 —— 不再对别的兵种溅射（一击一目标） */
         return { killed: killed, hits: hits, clash: Math.round(clash * 100) };
       }
       for (var pi = 0; pi < pool.length && av > 0; pi++) {
@@ -592,7 +615,7 @@
         /* v59：**防御动作受到的伤害减半**（报告 §九） */
         var holdMul = (tg.stance === 'hold') ? (1 - T.HOLD_DAMAGE_CUT) : 1;
         var eff = av * cf * holdMul;
-        var k = Math.floor(eff / perHp);
+        var k = Math.round(eff / perHp);             /* v89.96：同 single 分支，round 防小规模卡死 */
         if (k <= 0) break;
         if (k > tg.count) k = tg.count;      // 自然钳制：不能杀超过目标实有人数
         tg.count -= k;
@@ -639,8 +662,11 @@
       var pool = enemyUnits.filter(function (e) { return e.count > 0; })
         .sort(function (x, y) { return y.adv - x.adv; });
       var hits = [], killed = 0, dbl = 0;
-      for (var pi = 0; pi < pool.length && av > 0; pi++) {
-        var tg = pool[pi];
+      /* v89.95（B1）：城头火力同样**一击一目标** —— 只打射程内最靠前的那一支。
+         改前是"由近及远逐个分伤"，同样属于溅射的一种（一轮打掉两三支）。 */
+      var _poolOne = pool.slice(0, 1);
+      for (var pi = 0; pi < _poolOne.length && av > 0; pi++) {
+        var tg = _poolOne[pi];
         /* ⚠️ v59：**必须按射程筛目标** —— 改前这里无条件打遍全场（v58 的城头射程
            几乎覆盖整个战场，所以那个漏检看不出来）；v59 后箭塔射程有真实上限
            （2350 一级），不筛就会出现"攻方退到射程外仍被箭塔打"的怪象
@@ -771,6 +797,8 @@
           /* 推进：每回合走「兵种速度 × MARCH_UNIT」丈，走到接触点就停。
              v57：MARCH_UNIT 已改回 **1:1**（速度即每回合丈数）。 */
           var step = Math.min(u.spd * T.MARCH_UNIT, free);
+          var _cap = T.advanceCapOf(D);
+          if (step > _cap) step = _cap;
           u.adv += step;
           gap -= step;
           events.push({ kind: 'move', side: u.side, id: u.id, name: u.name, step: Math.round(step), gap: Math.round(gap) });
@@ -779,6 +807,8 @@
              避开它的双倍攻击区"是核心战术（战报实录："GJ 后退到【1226,1799】处和箭塔对射"）。
              下限取 −D：允许退到自己出发线之后，但不能无限远（否则战斗永远无接触）。 */
           var back = Math.min(u.spd * T.MARCH_UNIT, u.adv + D);
+          var _capB = T.advanceCapOf(D);
+          if (back > _capB) back = _capB;
           if (back > 0) {
             u.adv -= back;
             gap += back;

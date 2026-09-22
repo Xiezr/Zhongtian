@@ -1005,13 +1005,13 @@ async function runTests(dom, URL) {
   check('v89.60：市集为单块（四行表 · 每行可买可卖 · 无互换区与旧隐藏域）', (function () {
     const root = document.querySelector('#modal-root');
     if (!root) return false;
-    return root.querySelectorAll('.ms-table tbody tr').length === 4
+    return root.querySelectorAll('.ms-res-table tbody tr').length === 4   /* v89.100：精确选中资源表（寄售表也用 ms-table） */
       && root.querySelectorAll('[data-action="market-sell"][data-res]').length === 4
       && root.querySelectorAll('[data-action="market-buy"][data-res]').length === 4
       && !!root.querySelector('#mk-amount')
       && !root.querySelector('[data-target="mk-from"]') && !root.querySelector('#mk-sell-res')
       && !root.querySelector('#mk-buy-res');
-  })(), '行数 ' + document.querySelectorAll('#modal-root .ms-table tbody tr').length);
+  })(), '行数 ' + document.querySelectorAll('#modal-root .ms-res-table tbody tr').length);
   {
     /* 注意：e2e 里游戏在跑（产量按秒增长），所以**断言不等式而不是精确相等**；
        精确数额（floor(数量 × 单价)）由 smoke 的同步断言兜底。 */

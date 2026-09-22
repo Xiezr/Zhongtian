@@ -5,25 +5,27 @@
 
 | 目录 | 个数 | 干什么 |
 |---|---|---|
-| `asset/` | 10 | 抠底必须连通域洪水填充（BFS）；**绝不用 CSS 滤镜染色**，一律像素级 HSL 重映射写进 PNG。 |
+| `asset/` | 11 | 抠底必须连通域洪水填充（BFS）；**绝不用 CSS 滤镜染色**，一律像素级 HSL 重映射写进 PNG。 |
 | `audit/` | 12 | 结构 / 颜色 / 落盘 / 引用 / 删除 的核对工具。`verify_v66_edits.py` = **落盘核验**模板；`audit_refs.py` = 搬迁前查引用点；`read_recycle.py` = 解析回收站 `$I` 元数据核实删了什么；`trash_paths.py` = 逐项+回查的删除模板。 |
-| `break/` | 17 | 逐类注入故障，确认断言**真的会红**（红不了的就是装饰）。铁律：先校验断言在文件里、注入后连"是否中断"一起看、收尾 md5 比对还原。 |
-| `gen/` | 4 | 素材/索引的**唯一来源**。`gen_bitmaps.js` 扫描 `assets/icons/ui/` 生成 `js/bitmaps.js`（勿手改产物）；`gen_tools_index.py` 生成本索引。 |
+| `break/` | 21 | 逐类注入故障，确认断言**真的会红**（红不了的就是装饰）。铁律：先校验断言在文件里、注入后连"是否中断"一起看、收尾 md5 比对还原。 |
+| `gen/` | 5 | 素材/索引的**唯一来源**。`gen_bitmaps.js` 扫描 `assets/icons/ui/` 生成 `js/bitmaps.js`（勿手改产物）；`gen_tools_index.py` 生成本索引。 |
 | `git/` | 3 | **收尾同步的唯一入口**。`sync.py` 默认干跑、`--apply` 才落盘（干跑先行是本项目铁律）；`gate.py` 是三件套门禁的**唯一出口**（pre-commit 钩子与 sync 都调它）；`install_hooks.py` 把 `hooks/` 里的钩子装进 `.git/hooks/`。 |
 | `git/hooks/` | 2 | 存这里是为了**进版本库** —— `.git/hooks/` 不被 git 跟踪，换台机器克隆后必须跑 `install_hooks.py` 重装。⚠️ **行尾必须 LF**，CRLF 会让 `#!/bin/sh` 失效。 |
 | `mem/` | 10 | MEMORY.md 必须 < 9600 字符（超出会被会话注入截断，尾部规则等于不存在）。`slim_memory_template.py` = 把超限整段 cut 到 `docs/` 的模板。 |
-| `patch/` | 239 | **事实上的变更日志**：按断言名 `grep -rl "<断言名>" tools/patch/` 就能找到当初是哪次改的。"同一条消息里对同一文件的多次 Edit 会互相覆盖"，所以补丁一律脚本化并留档。 |
-| `probe/` | 19 | jsdom 没有布局引擎 → 尺寸/重叠/溢出/折行只能在**真浏览器**量。`probe60_geom.js` 是可复用模板，`probe66_ui.js` 有"逐行折行"量法，`probe67_save3.js` 量存档体积与配额。 |
-| `show/` | 6 | 给老板看的对照图 / 曲线校准 / 素材巡视。 |
-| **合计** | **322** | |
+| `patch/` | 346 | **事实上的变更日志**：按断言名 `grep -rl "<断言名>" tools/patch/` 就能找到当初是哪次改的。"同一条消息里对同一文件的多次 Edit 会互相覆盖"，所以补丁一律脚本化并留档。 |
+| `playtest/` | 16 | **待归类**：确认用途后放进上面的某个目录。 |
+| `probe/` | 57 | jsdom 没有布局引擎 → 尺寸/重叠/溢出/折行只能在**真浏览器**量。`probe60_geom.js` 是可复用模板，`probe66_ui.js` 有"逐行折行"量法，`probe67_save3.js` 量存档体积与配额。 |
+| `show/` | 7 | 给老板看的对照图 / 曲线校准 / 素材巡视。 |
+| **合计** | **490** | |
 
 ## asset/（素材处理）
 
 抠底必须连通域洪水填充（BFS）；**绝不用 CSS 滤镜染色**，一律像素级 HSL 重映射写进 PNG。
 
 - `avatar_atlas.py`（8KB）　— 头像图集体检 + 切分 + 抠底。
+- `crop_city.py`（3KB）　— v89.43：城池贴图裁切流水线（与 crop_terrain.py 同一套铁律）。
 - `crop_pd3.py`（6KB）　— 裁切 v3（定稿）：**从上往下裁，只去掉顶部留白**。
-- `crop_terrain.py`（5KB）　— v89.42：地形贴图裁切流水线（从即梦参考图裁切 → 归一化 → 落位 assets/icons/ui/）。
+- `crop_terrain.py`（6KB）　— v89.42：地形贴图裁切流水线（从即梦参考图裁切 → 归一化 → 落位 assets/icons/ui/）。
 - `gallery31.js`（4KB）　— 图标画廊截图：把全部图标以 96px 网格渲染成单页，便于统一评估设计感
 - `gallery33.js`（6KB）　— v33 最终验收：99 图标几何验证（getBoundingClientRect，不受承台干扰）+ 总览图 + 城内统计
 - `make_portrait_refs.py`（4KB）　— 将领肖像 · 参考图套件生成。
@@ -70,6 +72,10 @@
 - `break_v67.py`（5KB）　— v67 破坏测试：注入"退回改前写法"，确认对应断言真的变红。
 - `break_v67_save.py`（6KB）　— v67 存档系统 · 破坏测试：逐类注入故障，确认新断言**真的会红**。
 - `break_v70.py`（5KB）　— 破坏测试：确认第 58 节（v70 五项需求）的核心断言**真的会红**。
+- `break_v8986.py`（6KB）　— v89.86 破坏测试：对整改 21 条 + 门派 P1 的 smoke §85 断言逐一注入，确认**变红**（可翻转）。
+- `break_v8987.py`（7KB）　— v89.87 破坏测试：对四需求（快购/派兵统一/战斗规则/观战）的 §87 断言逐一注入，
+- `break_v8988.py`（7KB）　— v89.88 破坏测试：对「野外城池改造 + 地图悬浮」的 §88/§⑦ 断言逐一注入，确认**变红**。
+- `break_v8989.py`（7KB）　— v89.89 破坏测试：对「v6 期待清单八条（A2/A3/A4/B1/C3/C4/D4/E3）」的 §89 断言逐一注入，
 
 ## gen/（生成器与索引）
 
@@ -79,6 +85,7 @@
 - `gen_bitmaps.js`（3KB）　— v35-g：扫描 assets/icons/ui/ 生成 js/bitmaps.js（位图素材登记表）
 - `gen_gicons.js`（13KB）　— 从 @iconify-json/game-icons 提取项目所需的 81 个图标，生成 js/gicons.js
 - `gen_tools_index.py`（6KB）　— 生成 `.workbuddy/tools/README_INDEX.md` —— 按**目录**分组（v67 起目录就是分组）。
+- `gen_v8950_content.js`（20KB）
 
 ## git/（Git 同步与门禁）
 
@@ -130,6 +137,7 @@ MEMORY.md 必须 < 9600 字符（超出会被会话注入截断，尾部规则�
 - `patch_dialog_doc.py`（7KB）　— v68 · 弹窗统一：smoke 第 56 节守卫 + docs/设计规范.md §11。
 - `patch_dialog_unify.py`（23KB）　— v68 · 弹窗统一（老板 2026-09-14：「点击建筑出来的弹窗……尽量统一」）
 - `patch_git_docs.py`（7KB）　— 补丁：把「版本库 + 自动同步」写进 docs/项目地图.md，并订正被我改旧的数字。
+- `patch_gold_v2.py`（4KB）　— v89.91 patch v2：修黄金脑「购书过度购买」bug + 补日志。
 - `patch_gov_center.py`（16KB）　— v68 · 官府居中（老板 2026-09-14）：
 - `patch_gov_center_fix.py`（5KB）　— v68 官府居中 · 修正：剩余 4 处断言适配。
 - `patch_guanfu_dlg_ico.py`（6KB）　— v72 · 修：官府（及城外建筑）「升级中」弹窗被 1024px 位图撑爆（老板：
@@ -147,6 +155,14 @@ MEMORY.md 必须 < 9600 字符（超出会被会话注入截断，尾部规则�
 - `patch_play2_doc.py`（18KB）　— 把老板第二轮玩法清单（9 项）并入 docs/玩法扩展规划.md。
 - `patch_play3_doc.py`（6KB）　— 第三轮：把拍板结果与落地清单并入 docs/玩法扩展规划.md（追加第十六章）。
 - `patch_play4_doc.py`（3KB）　— 第四轮：追加 16.6（官府居中）+ 16.7（弃城核实结论）到 docs/玩法扩展规划.md。
+- `patch_play_600x_v2.py`（11KB）　— patch_play_600x_v2.py — 修复驾驶舱 v1 的三处逻辑缺陷并落盘（python 定点替换）。
+- `patch_play_600x_v3.py`（10KB）　— patch_play_600x_v3.py — 幂等修复驾驶舱（每项：已有→跳过；缺失→替换）。
+- `patch_play_600x_v4.py`（5KB）　— patch_play_600x_v4.py — 幂等补丁：采集前置（须自家野地）+ 持续占领 + 里程碑时序。
+- `patch_play_600x_v5.py`（11KB）　— patch_play_600x_v5.py — 幂等补丁（v4）：真人操作补齐。
+- `patch_play_600x_v6.py`（3KB）　— patch_play_600x_v6.py — 幂等终修（正式跑前的最后补丁）。
+- `patch_play_exit.py`（1KB）
+- `patch_play_farm2.py`（5KB）　— 生成 play_farm2_600x.js：与 play_gold_600x.js 逐字同骨架，
+- `patch_play_gold.py`（8KB）　— v89.91：从 play_600x.js fork 出 play_gold_600x.js（黄金流对照驾驶舱）。
 - `patch_quest_ready.py`（24KB）　— v69：任务列表 —— 可领取的自动置顶 + 行右侧直接「领取」。
 - `patch_quest_ready_e2efix.py`（4KB）　— v69 修正（e2e）：领取按钮按 **rq57 自己的 id** 取，不取"第一个"。
 - `patch_quest_ready_fix.py`（3KB）　— v69 修正：① 第 57 节 withState 跨节不可见 → 用本地 helper
@@ -258,6 +274,10 @@ MEMORY.md 必须 < 9600 字符（超出会被会话注入截断，尾部规则�
 - `patch_v88_ui.py`（13KB）　— v88 UI 第一批（ui.js）：品质色到6 / 描述加灵力 / 两袋寻址 / genPane 双轨 / dollSlot 重写 + 修复 / dollLingPanel。探…
 - `patch_v88_ui2.py`（15KB）　— v88 UI 第二批（ui.js）：openEqSlot 双轨 / openLingTemper / jianghuHTML / 弹窗接线 / 装备总览页。探针幂等。
 - `patch_v8910.py`（6KB）　— patch_v8910.py —— v89.10 接线：卷 03~05 装载 + 新锚点断言
+- `patch_v89100_a_consign.py`（10KB）　— v89.100-A：道具寄售通道（按购买价 75% 回收）
+- `patch_v89100_b_smoke.py`（5KB）　— v89.100-B：冒烟第 100 节（道具寄售验收钉子）
+- `patch_v89100_c_rush.py`（8KB）　— v89.100-C：推演脑 econ / loot 两模式（对 play_rush_1x.js 的增量，幂等）
+- `patch_v89100_d_fix.py`（3KB）　— v89.100-D：三处修复（首测暴露）
 - `patch_v8910_docs.py`（11KB）　— patch_v8910_docs.py —— v89.10 文档：README 进度 / 需求档案 / 设计规范 §40 / AI工作备忘 §42+§43
 - `patch_v8914.py`（16KB）　— patch_v8914.py — v89.14：卷 09~18 接线（60 篇）+ 残留清理 + 校验器判据 11/12
 - `patch_v8914_docs.py`（14KB）　— patch_v8914_docs.py — v89.14 文档补录
@@ -301,9 +321,103 @@ MEMORY.md 必须 < 9600 字符（超出会被会话注入截断，尾部规则�
 - `patch_v897.py`（18KB）
 - `patch_v897_docs.py`（6KB）
 - `patch_v897b.py`（1KB）　— v89.7 补丁修正 b：ui.js 君主面板「头像」行补 IIFE 收尾 `})() +`
+- `patch_v8986_audit_cleanup.py`（4KB）　— v89.86 顺手修复 · audit 两告警（均由 v89.4x~8x 未提交改动引入，非本批新增）
+- `patch_v8986_docs.py`（8KB）　— v89.86 · 文档同步：开发整改清单（状态）/ 试玩测评报告（banner）/ 需求档案 /
+- `patch_v8986_docs2.py`（9KB）　— v89.86 · 文档同步（续）：设计规范 §98 / AI工作备忘 §106 / 门派系统规则 §十七
+- `patch_v8986_docs3.py`（3KB）　— v89.86 · 备忘 §十一 登记新增出口（项目铁律：「新增出口必须登记」）
+- `patch_v8986_e2e_add.py`（5KB）　— v89.86 · e2e 增量：整改清单关键 UI 触点（真实 DOM）
+- `patch_v8986_e2e_fix.py`（8KB）　— v89.86 · e2e 存量失败修复（全部由 v89.4x~v89.85 未提交改动引入，与整改 21 条无关）
+- `patch_v8986_e2e_fix2.py`（3KB）　— v89.86 · e2e 收尾两条（存量口径问题，非本次整改引入）
+- `patch_v8986_e2e_fix3.py`（4KB）　— v89.86 · e2e 收尾：① P-06 战事触发块（阅读器元素须重查 —— 该用例里是首次创建）；
+- `patch_v8986_p02_p15_p26.py`（7KB）　— v89.86 整改 · P-02 favicon + P-15 客栈空位引导 + P-26 新城裸城提示
+- `patch_v8986_p03_p08.py`（8KB）　— v89.86 整改 · P-03 任务「前往」按钮 + P-08 随机任务可达性过滤
+- `patch_v8986_p06.py`（8KB）　— v89.86 整改 · P-06 故事「稍后阅读」
+- `patch_v8986_p06_tests.py`（10KB）　— v89.86 · P-06 测试同步：触发语义从「命中即开卷」→「入待阅 · 从待阅开卷」
+- `patch_v8986_p07.py`（10KB）　— v89.86 整改 · P-07 黄金消耗出口：建造 / 科技队列的花金提速
+- `patch_v8986_p12_p13.py`（7KB）　— v89.86 整改 · P0 显示缺陷：
+- `patch_v8986_p15_fix.py`（2KB）　— v89.86 补 · P-15 引导链补上"官府压顶"分支（v68 规则：城内建筑 ≤ 官府等级）
+- `patch_v8986_p17.py`（9KB）　— v89.86 整改 · P-17 离线推进上限
+- `patch_v8986_p18.py`（15KB）　— v89.86 整改 · P-18 自动化预算闸门
+- `patch_v8986_p1_texts.py`（13KB）　— v89.86 整改 · P1 文案与前置提示四项：
+- `patch_v8986_p20.py`（10KB）　— v89.86 整改 · P-20 军务总览页
+- `patch_v8986_p20_tests.py`（2KB）　— v89.86 · P-20 测试同步：军务总览（全境口径 + 五段结构）
+- `patch_v8986_p21.py`（5KB）　— v89.86 整改 · P-21 门派任务连做（×10 / 一键做完）
+- `patch_v8986_p23_train.py`（16KB）　— v89.86 整改 · P-23 兵力悬殊二次确认 + P-19 募兵上限归因 + P-05 人口占用说明
+- `patch_v8986_p25.py`（7KB）　— v89.86 整改 · P0 竞态：P-25 行军抵达「军账守恒」
+- `patch_v8986_questid_fix.py`（2KB）　— v89.86 顺手修复（真 bug · 存量数据）：随机任务 r07 / r09 的兵种 id 对不上
+- `patch_v8986_sect_p1.py`（11KB）　— v89.86 · 门派 P1 · 六派被动加成实装（老板拍板；走既有消费链，不新增战斗公式）
+- `patch_v8986_smoke.py`（17KB）　— v89.86 · smoke 增量：把整改清单 21 条 + 门派 P1 的**关键不变量**固化进回归网。
+- `patch_v8986_smoke_fix2.py`（2KB）　— v89.86 · smoke 三处断言修复（以 .py 文件执行 —— heredoc 会改写反斜杠）
+- `patch_v8986_smoke_stub.py`（2KB）　— v89.86 · smoke 环境：makeEl 补 querySelector/querySelectorAll（故事阅读器 sgRender 要读子元素）
+- `patch_v8987_docs.py`（7KB）　— v89.87：文档同步（设计规范 §99 · 工作备忘 §107 · 需求档案 v89.87 段）
+- `patch_v8987_e2e90.py`（4KB）　— v89.87：e2e §90 战场界面（真实 DOM：挂起→界面→指令→完成→自动→战果）
+- `patch_v8987_p1.py`（13KB）　— v89.87 需求1：就地快购（组件 + 六接入点 + 种子开售/页签）—— SHOP_CATS 在 ui.js
+- `patch_v8987_p3.py`（7KB）　— v89.87 需求3：战斗单目标攻击 + 30% 溢出溅射（老板拍板）
+- `patch_v8987_p4a.py`（6KB）　— v89.87 需求4a：战斗引擎会话步进 API（机械重构，行为一致）
+- `patch_v8987_p4b1.py`（12KB）　— v89.87 需求4b：战斗观战会话 —— battle.js 核心（挂起/推进/落账重放/恢复）
+- `patch_v8987_p4b2.py`（5KB）　— v89.87 需求4b2：观战接入点 —— 设置项 / 初始 state / 主循环 / boot / 测试引导
+- `patch_v8987_p4c1.py`（2KB）　— v89.87 需求4c-1：快照数据补全（towers / maxRounds / gapLast）
+- `patch_v8987_p4c2.py`（15KB）　— v89.87 需求4c-2：战场观战界面（ui.js）——渲染 / 指令 / 动画 / 倒计时 / 结束面板
+- `patch_v8987_p4c3.py`（5KB）　— v89.87 需求4c-3：接线（closeModal 拆装 / 军务征战中段 / main 动作分发 / onMarchArrive）
+- `patch_v8987_p4c4.py`（4KB）　— v89.87 需求4c-4：战场界面 CSS + BUILD 版本升级（8985→8987）
+- `patch_v8987_p4c5.py`（3KB）　— v89.87 需求4c-5：按项目 UI 规约修正 —— 色走变量 / 图标容器含 img / 下拉框实名在册
+- `patch_v8987_p4c6.py`（3KB）　— v89.87 需求4c-6：audit 清零 —— data-side→data-bside（避保留名）/ pendingCount 接线
+- `patch_v8987_p5_core.py`（19KB）　— v89.87 需求2：派兵统一走行军通道（data/battle/domain 核心）
+- `patch_v8987_p5_core2.py`（10KB）　— v89.87 需求2：domain.js 三函数（承 p5_core：data/battle 已落盘）
+- `patch_v8987_p5d.py`（8KB）　— v89.87 需求2：UI 接线（调兵/驻守面板加将领 · 采集改 dispatch）+ 白名单
+- `patch_v8987_p5e1.py`（4KB）　— v89.87 需求2：smoke 三处断言更新（模态数 / 驻军走行军 / 上限断言补抵达）
+- `patch_v8987_p5e2.py`（5KB）　— v89.87 需求2 收尾：出征面板过滤调派类（panel:false）+ e2e 采集段适配
+- `patch_v8987_smoke87.py`（8KB）　— v89.87：smoke §87 固化断言（四需求）—— 插在结果输出前
+- `patch_v8988_docs.py`（8KB）　— v89.88 文档同步：设计规范 §100 / 工作备忘 §108 / 需求档案 v89.88。
+- `patch_v8988_e2e.py`（5KB）　— v89.88：e2e 增量 —— §91 大地图悬浮浮层（真实 DOM）。
+- `patch_v8988_fort.py`（11KB）　— v89.88（老板需求 1~3）：野外城池（据点）改造 —— 等级分布 / 守军×10 / 满配。
+- `patch_v8988_hover.py`（6KB）　— v89.88（老板需求 4）：大地图悬浮浮层 —— 地块「坐标 + 等级」。
+- `patch_v8988_loot.py`（2KB）　— v89.88（老板需求 3「资源满配」）：battle.js 两处 ——
+- `patch_v8988_smoke.py`（17KB）　— v89.88：smoke-test.js 更新 + 新增 §88 断言块。
+- `patch_v8988_ui.py`（5KB）　— v89.88（老板需求 5）：界面打磨（审计先行 —— 只补真缺口）。
+- `patch_v8989_a2.py`（9KB）
+- `patch_v8989_a3a4.py`（9KB）
+- `patch_v8989_b1d4.py`（10KB）
+- `patch_v8989_c3.py`（8KB）
+- `patch_v8989_c4e3.py`（10KB）
+- `patch_v8989_docs.py`（9KB）　— v89.89 文档同步：设计规范 §101 · 工作备忘 §109 · 需求档案 v89.89 段
+- `patch_v8989_e2e92.py`（7KB）　— v89.89 · e2e §92 段（真实 DOM：A2 归来报告 / B1 一键全领 / C4 故事集 / D4 战报筛选收藏 / E3 三段条）
+- `patch_v8989_smoke89.py`（10KB）
 - `patch_v898_code.py`（27KB）
 - `patch_v898_tests.py`（13KB）
 - `patch_v899.py`（8KB）　— patch_v899.py —— v89.9 接线：卷 02 装载 + 空态断言动态化 + e2e 新锚点用例
+- `patch_v8991_docs.py`（4KB）　— ── ① 需求档案 v89.91 ──
+- `patch_v8992_strat.py`（17KB）　— patch_v8992_strat.py — 由 play_gold_600x.js 生成 play_strat_600x.js（v89.92 多策略驾驶舱）
+- `patch_v8994_a_data.py`（5KB）　— v89.94（B2 战斗三件套）Patch A —— 数据层：DATA.SIEGE / DATA.OPS / DATA.REPLAY。
+- `patch_v8994_b_domain.py`（7KB）　— v89.94 Patch B —— js/domain.js：围攻守备值核心 + 战法唯一出口。
+- `patch_v8994_c1_battle.py`（14KB）　— v89.94 Patch C1 —— js/battle.js：
+- `patch_v8994_c2_battle.py`（8KB）　— v89.94 Patch C2 —— js/battle.js：回放关键帧 / 以少胜多 / 行军通道带 ops。
+- `patch_v8994_d_ui.py`（19KB）　— v89.94 Patch D —— js/ui.js：
+- `patch_v8994_e2_main.py`（6KB）　— v89.94 Patch E（补）—— js/main.js 四处改动（上一版脚本的写盘块被误删）。
+- `patch_v8994_e_main.py`（8KB）　— v89.94 Patch E —— js/main.js：战法 chip / 撤退 / 回放控制 三个动作 + 确认闸改保守口径。
+- `patch_v8994_g_smoke.py`（17KB）　— v89.94 Patch G —— smoke-test.js 第 97 节：B2 战斗三件套的验收断言。
+- `patch_v8995_a_market.py`（10KB）　— v89.95 Patch A —— 经济：黄金兑换比递减（物多价贱）+ 通商券真通道。
+- `patch_v8995_b2_speed.py`（5KB）　— v89.95 Patch B2 —— 速度受控成长：每 5 级 +1（自然成长）+ 自由点投放上限。
+- `patch_v8995_b2b_speed.py`（3KB）　— v89.95 Patch B2b —— genAttrs（domain.js）与 addFreePoint（state.js）分开打。
+- `patch_v8995_b_tactic.py`（8KB）　— v89.95 Patch B —— 战斗核心：取消溅射（一击一目标）+ 战场纵深/推进上限 + 速度受控成长。
+- `patch_v8995_h2_rename.py`（2KB）　— v89.95 Patch H2 —— 稀缺资源改名：虎符 → **节钺**（虎符之名已被商城符类占用，实测撞名）。
+- `patch_v8995_h_hufu.py`（12KB）　— v89.95 Patch H —— A1 虎符：黄金买不到的稀缺资源（发展限制器）。
+- `patch_v8995_t2_smoke.py`（9KB）　— v89.95 Patch T2 —— 末条断言对齐 + 新增第 98 节（经济：虎符 / 折价 / 通商券）。
+- `patch_v8995_t_smoke.py`（8KB）　— v89.95 Patch T —— smoke 断言对齐（去溅射 / 纵深 / 速度受控 / 伤害系数）。
+- `patch_v8996_a_src.py`（19KB）　— patch_v8996_a_src.py — v89.96 伤害链源头标定（撤末端系数；幂等可复跑）
+- `patch_v8996_b_sync.py`（10KB）　— patch_v8996_b_sync.py — v89.96 同步（UI 文案 / battle 注释 / smoke 断言；幂等可复跑）
+- `patch_v8996_c_final.py`（6KB）　— patch_v8996_c_final.py — v89.96 定稿批（幂等可复跑）
+- `patch_v8996_d_assert.py`（6KB）　— patch_v8996_d_assert.py — v89.96 断言同步（第三批；幂等可复跑）
+- `patch_v8996_e_rounds.py`（3KB）　— patch_v8996_e_rounds.py — v89.96 回合上限断言定稿（幂等）
+- `patch_v8998_rush.py`（33KB）
+- `patch_v8999_a_pop.py`（15KB）　— v89.99-A 主补丁：人口经济四件套（幂等；锚点缺失即报错退出）
+- `patch_v8999_b_smoke.py`（9KB）　— v89.99-B 冒烟第 99 节：人口经济四件套的验收断言（幂等）
+- `patch_v8999_c_fix.py`（2KB）　— v89.99-C 三处登记修复（幂等）：
+- `patch_v8999_d_rush.py`（15KB）　— v89.99-D 推演脑：阶段自适应 + 人口银行 + 增民令/税制策略（幂等）
+- `patch_v8999_e_tune.py`（3KB）　— v89.99-E 脑校准（幂等）：保留线回落 / 增民令绝对门槛 / 税制阈值 / 放人节流
+- `patch_v8999_f_tune2.py`（1KB）　— v89.99-F 脑校准（幂等）：体力药剂门槛 —— 围攻的燃料优先于金（条件驱动）
+- `patch_v8999_g_tune3.py`（2KB）　— v89.99-G 脑校准（幂等）：体力药剂改"备弹制度" —— 围攻波次上限的最后一根钉子
+- `patch_v8999_h_tune4.py`（3KB）　— v89.99-H 脑校准（幂等）：① 收割队随军力伸缩（否则门槛永远够不着）② 放人全城扫描
 - `patch_v899_docs.py`（10KB）　— patch_v899_docs.py —— v89.9 文档补录：README 进度 / 项目地图 / 需求档案 / 设计规范 / 工作备忘
 - `patch_v899b.py`（4KB）　— patch_v899b.py —— v89.9 接线修正：建筑逸闻块脱三元（无功能建筑漏入口）
 - `patch_v89_1_css.py`（6KB）　— v89.1 CSS：index.html 追加 .sxf-* 剧本视觉化样式与两段动效（插入 </style> 前）。探针幂等。
@@ -354,10 +468,41 @@ MEMORY.md 必须 < 9600 字符（超出会被会话注入截断，尾部规则�
 - `patch_v89_ui.py`（9KB）　— v89 全屏场景 UI（ui.js）：活动按钮 → 全屏剧本 → 专属退出结算屏。探针幂等。
 - `v26-j.py`（14KB）　— v26 批九：smoke 第 39 节 —— v26 五项需求的防回退断言
 
+## playtest/（未归类）
+
+待归类：请确认用途后归档。
+
+- `analyze_600.py`（12KB）　— analyze_600.py — 600× 全量推演数据分析器。
+- `analyze_gold.py`（9KB）　— v89.91 黄金流 vs 基线对照分析器
+- `analyze_rush.js`（6KB）　— v89.98d：A2 三跑综合提取 → digest_rush.md
+- `analyze_rush_b.js`（4KB）　— v89.98b：A1→A4 演进对照 + A4 里程碑时间线
+- `analyze_rush_d.js`（6KB）　— v89.99 三跑对照分析：rushD_{1x,120x,600x} + A2→A4 演进（1×）
+- `analyze_rush_e.js`（7KB）　— v89.99 定稿三跑对照：rushE_{1x,120x,600x} + A2→A4→E 演进 + 围攻明细归因
+- `analyze_rush_f.js`（7KB）　— v89.99 定稿三跑对照：rushF_{1x,120x,600x} + A2→A4→E 演进 + 围攻明细归因
+- `analyze_rush_g.js`（7KB）　— v89.99 定稿三跑对照：rushG_{1x,120x,600x} + A2→A4→E 演进 + 围攻明细归因
+- `analyze_strat.py`（7KB）　— analyze_strat.py — v89.92 四模式对照分析（gold / buff / equip / all）
+- `analyze_v89100.js`（6KB）　— v89.100 三跑对照分析器：econ（纯经济）/ loot（战利品变现）/ rushG（军事基准）
+- `gold_section.js`（15KB）
+- `play_600x.js`（40KB）
+- `play_farm2_600x.js`（41KB）　— FARM2
+- `play_gold_600x.js`（57KB）　— GOLD v1
+- `play_rush_1x.js`（101KB）　— RUSH v1 (v89.98) —— 1× 300h 全系统极限流
+- `play_strat_600x.js`（73KB）　— STRAT v1 (v89.92)
+
 ## probe/（探针（几何 / 界面 / 存档））
 
 jsdom 没有布局引擎 → 尺寸/重叠/溢出/折行只能在**真浏览器**量。`probe60_geom.js` 是可复用模板，`probe66_ui.js` 有"逐行折行"量法，`probe67_save3.js` 量存档体积与配额。
 
+- `dbg8986_bag.js`（4KB）　— dbg8986_bag.js —— 调试 v89.51 背包分组断言缺哪个词
+- `dbg8986_inn.js`（4KB）　— dbg8986_inn.js —— P-15 调试：打印客栈面板渲染
+- `dbg8986_smoke2.js`（5KB）　— dbg8986_smoke2.js —— 调试 smoke 新增断言里 P-06 / P-08 的失败原因
+- `dbg8987_ctr.js`（1KB）　— debug: 反击场景日志
+- `dbg8987_p23.js`（2KB）　— v89.87 调试：复现 P-23 断言，打印各中间值
+- `dbg8987_wg.js`（2KB）　— debug: 驻军走行军的失败点
+- `dbg8988_rounds.js`（2KB）
+- `dbg8988_splash.js`（2KB）
+- `dbg8989_pop3.js`（1KB）
+- `dbg8989_weather.js`（1KB）
 - `probe.js`（1KB）
 - `probe60_geom.js`（5KB）　— v60 真实浏览器几何探针：老板的硬规矩（弹窗不许出现滚动条、内容不许溢出）
 - `probe61_board.js`（5KB）　— v61 几何探针：**攻占后城格数按等级变小**（6×4 / 8×4 / 8×5）
@@ -377,6 +522,34 @@ jsdom 没有布局引擎 → 尺寸/重叠/溢出/折行只能在**真浏览器*
 - `probe_v43.js`（5KB）　— v43 战斗数值探针：复现"2000 铁骑兵一轮只打死 80 个长枪兵"。
 - `probe_v8942_map_shot.js`（6KB）　— _shot_map.js — 地图视图截图探针（before/after 通用 · v89.42）
 - `probe_v8942_tex.js`（4KB）　— v89.41 行为探针：texVariant 确定性与分布 + 地图渲染回归（不抛错）
+- `probe_v8986_p02_p15_p26.js`（7KB）　— probe_v8986_p02_p15_p26.js —— 整改 P-02 / P-15 / P-26 探针
+- `probe_v8986_p03_p08.js`（7KB）　— probe_v8986_p03_p08.js —— 整改 P-03（前往）/ P-08（可达性过滤）探针
+- `probe_v8986_p06.js`（6KB）　— probe_v8986_p06.js —— 整改 P-06 探针：故事待阅
+- `probe_v8986_p07.js`（8KB）　— probe_v8986_p07.js —— 整改 P-07 探针：建造 / 科技队列花金提速
+- `probe_v8986_p12_p13.js`（7KB）　— probe_v8986_p12_p13.js —— 整改 P-12/P-13 渲染探针
+- `probe_v8986_p17.js`（6KB）　— probe_v8986_p17.js —— 整改 P-17 探针：离线推进上限 + 五折折算
+- `probe_v8986_p18.js`（8KB）　— probe_v8986_p18.js —— 整改 P-18 探针：自动化预算闸门
+- `probe_v8986_p1_texts.js`（11KB）　— probe_v8986_p1_texts.js —— 整改 P-24 / P-11 / P-04 / P-16 渲染探针
+- `probe_v8986_p20.js`（6KB）　— probe_v8986_p20.js —— 整改 P-20 探针：军务总览五段
+- `probe_v8986_p21.js`（6KB）　— probe_v8986_p21.js —— 整改 P-21 探针：门派任务连做
+- `probe_v8986_p23_train.js`（9KB）　— probe_v8986_p23_train.js —— 整改 P-23 / P-19 / P-05 探针
+- `probe_v8986_p25.js`（11KB）　— probe_v8986_p25.js —— 整改 P-25 复现探针：600× 行军抵达的"军账守恒"
+- `probe_v8986_sect_p1.js`（8KB）　— probe_v8986_sect_p1.js —— 门派 P1 被动加成探针
+- `probe_v8987_battle.js`（11KB）　— v89.87 探针：需求3（单目标+30%溅射/反击不限次） + 需求4（观战挂起/步进/重放/落账）
+- `probe_v8987_p12.js`（8KB）　— v89.87 探针：需求1（快购）+ 需求2（派兵统一走行军）
+- `probe_v8988_fort.js`（10KB）　— v89.88 探针：需求1~3（野外城池：等级分布 / 守军×10 / 满配）
+- `probe_v8989_a2.js`（4KB）
+- `probe_v8989_bd.js`（9KB）
+- `probe_v8989_c3.js`（6KB）
+- `probe_v8992_equip_buff.js`（12KB）　— SIM 时钟（与推演驾驶舱同口径：全探针内可手动推进）
+- `probe_v8993_behavior.js`（8KB）
+- `probe_v8993_facts.js`（7KB）　— SIM 时钟
+- `probe_v8994_battle.js`（25KB）
+- `probe_v8996_dmgchain.js`（9KB）
+- `probe_v8997_exploits.js`（10KB）
+- `probe_v8997b_exploits.js`（10KB）
+- `probe_v8997c_exploits.js`（7KB）
+- `probe_v8999_train_cap.js`（1KB）　— 复现"募兵上限"之谜：用 rushF_1x 终局存档直接问游戏
 
 ## show/（展示与校准）
 
@@ -385,6 +558,7 @@ jsdom 没有布局引擎 → 尺寸/重叠/溢出/折行只能在**真浏览器*
 - `calib_series.js`（7KB）　— 建筑图标系列配色标定（v2）。
 - `compare34.js`（9KB）　— v34 风格对比：同一批元素，四种画风 —— 现状(西方奇幻金属) / 中国色木刻 / MingCute / IconPark
 - `review_guide.py`（4KB）　— v89.42 定稿验收图：改前/改后 + 2x 放大 + 7 块贴图 + 中文说明，合成单图。
+- `review_guide_b.py`（5KB）　— v89.42b 验收指南：v89.42a(推翻) vs v89.42b(重做) + 2x 放大 + 7 块新贴图，合成单图。
 - `scan6.js`（4KB）
 - `shot_compare.py`（7KB）　— v89.42 前后对比：逐格"两翼"采样（避开等级角标/名称条）→ 报告 + 拼图。
 - `tile_show.js`（3KB）　— v35-f：批量拼图（可复用）—— 传 id:中文列表，输出总览图

@@ -252,14 +252,19 @@
     return city;
   };
 
-  /* 外城地块：12 块（官府 Lv1 时）。initial=true 时预置首批资源建筑（仅首城） */
+  /* 外城地块：12 块（官府 Lv1 时）。
+     `initial` 三态：true = 首城模板（2田1木1石1铁）· 'new' = 自建城开发模板 ·
+     其余（false/undefined）= 全空（攻占的名城按自己的 extGrid 走，见 battle.js）。
+     v89.93（整改 E12）：改前只有首城有模板，自建城是"裸城"——
+     实测新城 2/3 在 600× 下闲置 100 年零产出（城外等级和 = 0）。 */
   GAME.makeExtGrid = function (initial) {
     var grid = [];
     for (var i = 0; i < 12; i++) grid.push({ id: 'e' + (i + 1), type: null, lv: 0 });
-    if (initial) {
-      var init = ['farm', 'farm', 'forest', 'quarry', 'mine'];
-      init.forEach(function (t, idx) { grid[idx].type = t; grid[idx].lv = 1; });
-    }
+    var tpl = (initial === 'new') ? (DATA.NEW_CITY_EXT || null)
+      : (initial ? ['farm', 'farm', 'forest', 'quarry', 'mine'] : null);
+    (tpl || []).forEach(function (t, idx) {
+      if (idx < grid.length && t) { grid[idx].type = t; grid[idx].lv = 1; }
+    });
     return grid;
   };
 
@@ -626,6 +631,15 @@
         msg: '「' + item.name + '」只可用于「' + (fr.name || '?') + '」将领（' + g.name + ' 现为「' + cur.name + '」）',
       };
     }
+    /* v89.95（A1）：**顶档（天授）须节钺** —— 节钺只能打（首占名城）或爵位赏赐，
+       黄金买不到。于是"全链 54 万金打通资质"这条闭环被掐断：
+       有钱也得到战场上去挣那枚符（老板第 1 问的"发展限制器"）。 */
+    if (item.to === ((DATA.JIEYUE || {}).tianshouTo || 'tian')) {   /* ⚠️ 档位 id 是 'tian'（不是 'tianshou'）——
+        写错的那版门槛**空转**（实测被第 98 节断言抓出），所以这里从配置读，不许再写死 */
+      var _hfC = (DATA.JIEYUE || {}).tianshouCost || 1;
+      var _sp = GAME.jieyueSpend ? GAME.jieyueSpend(_hfC, '问鼎天授 · ' + g.name) : { ok: false, msg: '节钺系统不可用' };
+      if (!_sp.ok) return _sp;
+    }
     g.rank = item.to;
     var nr = DATA.GEN_RANK_BY_ID[item.to] || {};
     /* v78（老板需求 2 · 隐藏设定）：「将领低资质通过蕴灵草等提升资质时，能比直接招募
@@ -712,6 +726,14 @@
     g.zm += step * m74.zm * f74;
     g.nz += step * m74.nz * f74;
     g.freePts = (g.freePts == null ? 0 : g.freePts) + step;
+    /* v89.95（B2）：速度**不再随级 +1**，改为每 SPD_CAP.perLevels 级 +1（见 genAttrs 的和式）。
+       这里只累一个"已满几档"的计数（spdGrow）—— 派生式成长让老档免迁移。 */
+    var _spc = (DATA.SPD_CAP || {}).perLevels || 5;
+    g.spdLvAcc = (g.spdLvAcc || 0) + 1;
+    if (g.spdLvAcc >= _spc) {
+      g.spdLvAcc -= _spc;
+      g.spdGrow = (g.spdGrow || 0) + 1;
+    }
     g.attack = Math.round(g.attack + step * 0.4);
     g.defense = Math.round(g.defense + step * 0.4);
     /* v29（需求 11）：**不再写 g.hp**。
@@ -742,6 +764,20 @@
     var n = Math.floor(Number(qty) || 0);
     if (n < 1) n = 1;
     if (n > have) n = have;
+    /* v89.95（B2）：**速度的投放上限** = base + floor(等级 / perLevels)（与自然成长同口径）——
+       防止"把上千点自由点全砸速度"把速度变成决定性属性（老板点名的那条链）。 */
+    if (stat === 'spd') {
+      var _sc2 = DATA.SPD_CAP || { perLevels: 5, base: 10 };
+      var _lim = (_sc2.base || 0) + Math.floor((g.level || 1) / (_sc2.perLevels || 5));
+      var _have = (g.spdAdd || 0);
+      if (_have + n > _lim) {
+        n = Math.max(0, _lim - _have);
+        if (n <= 0) {
+          return { ok: false, msg: '速度已达上限 ' + _lim + '（每 ' + (_sc2.perLevels || 5)
+            + ' 级 +1；更高速度请靠装备与坐骑）' };
+        }
+      }
+    }
     g.freePts -= n;
     var nm = { tong: '统率', nz: '内政', yw: '勇武', zm: '智谋', spd: '速度', sta: '体力' }[stat];
     if (stat === 'spd') g.spdAdd = (g.spdAdd || 0) + n;
@@ -2511,11 +2547,20 @@
     });
     return m;
   };
-  /* 宝物生产加成 */
+  /* 宝物生产加成（v89.93 整改 W1：**到期真消费**）
+     ------------------------------------------------------------
+     改前只把 `s.buffs.prod[res]` 累加读出，而 `prodUntil` 写下后**全库无人读**
+     （死字段）→ 描述里的"24h"形同虚设，生产符实际永久生效。
+     现在：过期即剔除（顺带回写清理，避免脏数据被界面读到）；
+     旧档没有 prodUntil 记录的资源一律按"仍生效"处理（向后兼容，不静默砍老档的 buff）。 */
   GAME.prodBuffMult = function () {
-    var s = GAME.state, m = {};
-    (s.buffs || {}).prod && Object.keys(s.buffs.prod).forEach(function (res) {
-      m[res] = (m[res] || 0) + s.buffs.prod[res];
+    var s = GAME.state, m = {}, now = U.now();
+    var prod = (s.buffs || {}).prod, until = (s.buffs || {}).prodUntil || {};
+    if (!prod) return m;
+    Object.keys(prod).forEach(function (res) {
+      var exp = until[res];
+      if (exp != null && exp <= now) { delete prod[res]; delete until[res]; return; }
+      m[res] = prod[res];
     });
     return m;
   };
@@ -2711,8 +2756,9 @@
       if (!city.inv.warned && city.inv.nextAt - now <= warnSec && city.inv.nextAt > now) {
         city.inv.warned = true;
         var hrs = Math.max(1, Math.round((city.inv.nextAt - now) / 3600));
-        GAME.log('🔥 烽火：' + city.name + ' 约 ' + hrs + ' 游戏时后将有兵马犯境'
-          + (bc > 0 ? '（烽火台 Lv' + bc + ' 提前预警）' : '（无烽火台，预警较迟）'));
+      GAME.log('🔥 烽火：' + city.name + ' 约 ' + hrs + ' 游戏时后将有兵马犯境'
+        + (bc > 0 ? '（烽火台 Lv' + bc + ' 提前预警）' : '（无烽火台，预警较迟）'));
+      if (GAME.sfx) GAME.sfx('alarm');     /* v89.93（E4）：警报告警音 */
       }
     });
     return fired;
@@ -2721,6 +2767,7 @@
   /* 建造完成 */
   GAME.applyBuildDone = function (q) {
     var s = GAME.state;
+    if (GAME.sfx) GAME.sfx('build');      /* v89.93（E4）：落成有声音（反馈层） */
     if (q.type === 'ext_build' || q.type === 'ext_upgrade') {
       var qc = GAME.cityById(q.cityId) || (s.cities && s.cities[0]);
       var e = qc ? GAME.extGridOf(qc)[q.extIdx] : null;
@@ -2785,6 +2832,7 @@
   /* 科技完成 */
   GAME.applyTechDone = function (tq) {
     var s = GAME.state;
+    if (GAME.sfx) GAME.sfx('levelup');    /* v89.93（E4） */
     s.techs[tq.techId] = (s.techs[tq.techId] || 0) + 1;
     GAME.statBump('techDone', 1);
     var name = tq.techId;
@@ -3709,12 +3757,24 @@
 
   /* v89.86（整改 P-06）：**待阅**清单 —— 触发的逸闻不再全屏弹出（实测 25 分钟触发 7 次，
      全屏层反复打断操作流）；改为入待阅 + 顶栏「史册」徽标 +1，从史册页「待阅逸闻」再读。
-     入档（s.sgPending，懒初始化，不动 SAVE_VERSION）；上限 30 条（超限先删最旧）。 */
+     入档（s.sgPending，懒初始化，不动 SAVE_VERSION）。
+     v89.93（整改 E10）：**超限不再丢** —— 改前上限 30 条、超限 `shift()` 静默丢最旧
+     （实测 y79 触顶后全程 30，玩家不知道错过了什么）。现在上限放到 60，
+     溢出的进「往事」清单（s.sgArchived，仍可在史册页读到），并留一个计数供界面提示。 */
+  GAME.SG.PENDING_CAP = 60;
+  GAME.SG.ARCHIVE_CAP = 240;
   GAME.SG.pending = function () {
     var s = GAME.state;
     if (!s) return [];
     if (!s.sgPending) s.sgPending = [];
     return s.sgPending;
+  };
+  /* v89.93（E10）：溢出往事（只增不减到安全上限；条目与待阅同构，可直接阅读） */
+  GAME.SG.archived = function () {
+    var s = GAME.state;
+    if (!s) return [];
+    if (!s.sgArchived) s.sgArchived = [];
+    return s.sgArchived;
   };
   GAME.SG.defer = function (sid) {
     var st = GAME.SG.one(sid);
@@ -3725,8 +3785,15 @@
     }
     var a = st.anchor || {};
     list.push({ sid: sid, title: st.title || sid, kind: a.kind || '', kid: a.id || '', at: U.now() });
-    while (list.length > 30) list.shift();
-    return { ok: true, n: list.length, st: st };
+    var arch = null;
+    while (list.length > GAME.SG.PENDING_CAP) {
+      var old = list.shift();
+      var arr = GAME.SG.archived();
+      if (!arr.some(function (x) { return x.sid === old.sid; })) arr.push(old);
+      while (arr.length > GAME.SG.ARCHIVE_CAP) arr.shift();
+      arch = arch || old;
+    }
+    return { ok: true, n: list.length, st: st, archived: arch };
   };
   GAME.SG.takePending = function (sid) {
     var s = GAME.state;

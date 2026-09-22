@@ -14,13 +14,161 @@
   var $ = function (sel, root) { return (root || document).querySelector(sel); };
   var $$ = function (sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); };
 
-  ui.toast = function (msg) {
+  /* ============================================================
+   * v89.93（整改 E5）：**里程碑演出层** —— ui.moment(spec)
+   * ------------------------------------------------------------
+   * 改前：全站唯一有演出的地方是江湖剧本；攻占城池/爵位晋升/时代之志
+   *       全部只有一行日志（"重大时刻零演出"）。
+   * 三档：inline（横幅条 2.2s 自动过）· card（居中卡，手动关）·
+   *       full（全屏，手动关）。全部复用既有令牌与金色系，不新增素材。
+   * 铁律：① 不阻塞操作（inline 可点穿；card/full 可 Esc / 点关闭）；
+   *       ② 内容全部来自调用方传入的既有出口数据，不写死字面量。
+   * ============================================================ */
+  ui._momentTimer = null;
+  ui.momentClose = function () {
+    clearTimeout(ui._momentTimer);
+    var fx = document.getElementById('moment-fx');
+    if (fx) { fx.className = ''; fx.innerHTML = ''; }
+  };
+  ui.moment = function (spec) {
+    spec = spec || {};
+    var kind = spec.kind || 'inline';
+    var fx = document.getElementById('moment-fx');
+    if (!fx) {
+      fx = document.createElement('div');
+      fx.id = 'moment-fx';
+      if (document.body) document.body.appendChild(fx);
+    }
+    var head = (spec.icon ? '<span class="mo-ico">' + spec.icon + '</span>' : '') +
+      '<span class="mo-title">' + U.escape(spec.title || '') + '</span>';
+    var sub = spec.sub ? '<div class="mo-sub">' + U.escape(spec.sub) + '</div>' : '';
+    var body = (spec.lines && spec.lines.length)
+      ? '<div class="mo-lines">' + spec.lines.map(function (t) { return '<div>' + U.escape(t) + '</div>'; }).join('') + '</div>' : '';
+    var foot = (kind === 'inline')
+      ? ''
+      : '<div class="mo-foot"><button class="btn sm gold" data-action="moment-close">知道了</button></div>';
+    fx.className = 'mo mo-' + kind;
+    fx.innerHTML = '<div class="mo-box mo-box-' + kind + '"><div class="mo-head">' + head + '</div>' + sub + body + foot + '</div>';
+    clearTimeout(ui._momentTimer);
+    if (kind === 'inline') {
+      ui._momentTimer = setTimeout(function () { ui.momentClose(); }, (spec.ms) || 2200);
+    }
+    return fx;
+  };
+
+  /* ============================================================
+   * v89.93（整改 E4）：**反馈分层** —— 四型通知 + 数值浮字 + 程序化音效
+   * ------------------------------------------------------------
+   * 改前：全站只有一个 toast（单元素、textContent 直接覆盖、2200ms、无类型/队列），
+   *       连续操作时后一条吃掉前一条，成功与失败长得一模一样；且**全站零音效**。
+   * 现在：① ui.notify(type,msg) 四型（success/info/warn/danger）+ 最多 3 条堆叠；
+   *       ② ui.floatGain(el, delta) 数值上浮；③ GAME.audio.play(key) Web Audio 合成。
+   * 旧入口 ui.toast 保留为 info 的别名 —— 200+ 调用点零迁移。
+   * ============================================================ */
+  ui._notes = [];
+  ui.notify = function (type, msg, opt) {
+    type = (['success', 'info', 'warn', 'danger'].indexOf(type) >= 0) ? type : 'info';
+    msg = String(msg == null ? '' : msg);
+    ui._notes.push({ type: type, msg: msg });
+    var keep = (opt && opt.keep) || 3;
+    while (ui._notes.length > keep) ui._notes.shift();
     var el = $('#toast');
-    el.textContent = msg;
+    el.innerHTML = ui._notes.map(function (n) {
+      return '<div class="toast-line t-' + n.type + '">' + U.escape(n.msg) + '</div>';
+    }).join('');
     el.classList.add('show');
     clearTimeout(ui._toastTimer);
-    ui._toastTimer = setTimeout(function () { el.classList.remove('show'); }, 2200);
+    ui._toastTimer = setTimeout(function () {
+      el.classList.remove('show');
+      ui._notes = [];
+    }, (opt && opt.ms) || 2200);
   };
+  /* 兼容别名：旧调用点（200+）一律走 info 型 */
+  ui.toast = function (msg) { ui.notify('info', msg); };
+
+  /* v89.93（E4）：数值浮字 —— el 可为元素或选择器；delta 正绿负红 */
+  ui.floatGain = function (el, delta, opt) {
+    if (!delta) return;
+    var host = (typeof el === 'string') ? $(el) : el;
+    if (!host || !host.getBoundingClientRect || !document.body) return;
+    try {
+      var r = host.getBoundingClientRect();
+      var d = document.createElement('div');
+      d.className = 'float-gain' + (delta < 0 ? ' neg' : '');
+      d.textContent = (delta > 0 ? '+' : '') + GAME.utils.fmt(Math.abs(delta) === delta ? delta : delta);
+      d.style.left = Math.round(r.left + r.width / 2) + 'px';
+      d.style.top = Math.round(r.top) + 'px';
+      document.body.appendChild(d);
+      setTimeout(function () { if (d.parentNode) d.parentNode.removeChild(d); }, (opt && opt.ms) || 950);
+    } catch (e) { /* 浮字永不阻塞玩法 */ }
+  };
+
+  /* ------------------------------------------------------------
+   * v89.93（E4）：程序化音效（零素材 · Web Audio 合成）
+   * ------------------------------------------------------------
+   * 与项目"程序化绘制地图/场景"同一条路线：oscillator + envelope，不落任何素材文件。
+   * · 音频不可用（无 AudioContext / 被策略拦截 / 用户关了）→ **静默降级**，不抛错、不影响玩法
+   * · 开关与音量入档：settings.sfx（默认开）/ settings.sfxVol（默认 0.5）
+   * ------------------------------------------------------------ */
+  GAME.audio = (function () {
+    var AC = (typeof window !== 'undefined') ? (window.AudioContext || window.webkitAudioContext || null) : null;
+    var ctx = null;
+    /* 音符表：[频率, 时长秒, 波形] —— 一句 1~3 个音，克制、不聒噪 */
+    var SPEC = {
+      click:   [[660, 0.05, 'triangle']],
+      build:   [[520, 0.07, 'triangle'], [780, 0.09, 'triangle']],
+      train:   [[300, 0.07, 'sawtooth'], [420, 0.08, 'sawtooth']],
+      march:   [[240, 0.09, 'sine'], [180, 0.12, 'sine']],
+      win:     [[523, 0.09, 'triangle'], [659, 0.09, 'triangle'], [784, 0.16, 'triangle']],
+      lose:    [[392, 0.12, 'sawtooth'], [262, 0.20, 'sawtooth']],
+      levelup: [[659, 0.07, 'triangle'], [880, 0.12, 'triangle']],
+      rank:    [[523, 0.08, 'sine'], [659, 0.08, 'sine'], [880, 0.08, 'sine'], [1046, 0.18, 'sine']],
+      wonder:  [[784, 0.08, 'triangle'], [988, 0.08, 'triangle'], [1174, 0.14, 'triangle']],
+      alarm:   [[440, 0.13, 'square'], [330, 0.13, 'square'], [440, 0.13, 'square']],
+    };
+    function on() {
+      var s = GAME.state;
+      if (s && s.settings && s.settings.sfx === false) return false;
+      return true;
+    }
+    function vol() {
+      var s = GAME.state;
+      var v = (s && s.settings && s.settings.sfxVol != null) ? s.settings.sfxVol : 0.5;
+      return Math.max(0, Math.min(1, Number(v) || 0));
+    }
+    return {
+      keys: function () { return Object.keys(SPEC); },
+      available: function () { return !!AC; },
+      play: function (key) {
+        try {
+          if (!on()) return false;
+          var spec = SPEC[key];
+          if (!spec) return false;
+          if (!AC) return false;
+          if (!ctx) { try { ctx = new AC(); } catch (e) { ctx = null; } }
+          if (!ctx) return false;
+          if (ctx.state === 'suspended' && ctx.resume) { try { ctx.resume(); } catch (e2) {} }
+          var start = ctx.currentTime + 0.01, v = vol() * 0.22;
+          for (var i = 0; i < spec.length; i++) {
+            var n = spec[i];
+            var o = ctx.createOscillator(), g = ctx.createGain();
+            o.type = n[2] || 'triangle';
+            o.frequency.value = n[0];
+            g.gain.setValueAtTime(0.0001, start);
+            g.gain.exponentialRampToValueAtTime(Math.max(0.0002, v), start + 0.012);
+            g.gain.exponentialRampToValueAtTime(0.0001, start + n[1]);
+            o.connect(g); g.connect(ctx.destination);
+            o.start(start); o.stop(start + n[1] + 0.02);
+            start += n[1] + 0.03;
+          }
+          return true;
+        } catch (e) { return false; }   /* 音频永不影响玩法 */
+      }
+    };
+  })();
+  /* 便捷播放入口（调用点一律走它，缺失时静默） */
+  ui.sfx = function (key) { try { if (GAME.audio) GAME.audio.play(key); } catch (e) {} };
+  GAME.sfx = ui.sfx;   /* 域层（state/battle/systems）调用入口 —— 音频永不阻塞玩法 */
 
   /* ============================================================
    * 点选控件（v22 · 需求 1：全站不用下拉框）
@@ -170,6 +318,7 @@
   ui.closeModal = function () {
     /* v89.87：关战场界面 = 转后台（清倒计时 timer、恢复 rec.anim 防后台停摆） */
     if (ui.btTeardown) ui.btTeardown();
+    if (ui.replayStop) ui.replayStop();      /* v89.94：关窗即停战报回放（不留空转定时器） */
     $('#modal-root').innerHTML = '';
     ui._visible = false;
     ui._modalKind = null;          /* v54：认窗标记（见 openExpPick / openGiftPick） */
@@ -952,6 +1101,7 @@
     }
     var snap = rec.snapLast || ses.snap();
     ui._bt = { id: id, lastRound: snap.round || rec.round || 0, playing: false, timer: null };
+    ui._btRetreatArmed = false;                   /* v89.94：撤退两段确认，开界面即复位 */
     var sec = (GAME.state.settings && GAME.state.settings.battleSec) || 60;
     ui.openShell({
       title: '⚔ 战场 · ' + U.escape((rec.target && rec.target.name) || '目标'),
@@ -960,6 +1110,7 @@
       body: '<div id="bt-wrap">' + ui.battlefieldHTML(rec) + '</div>',
       foot: '<button class="btn gold" data-action="bt-done">✅ 完成回合</button>' +
         '<button class="btn" data-action="bt-auto">⏩ 自动战斗</button>' +
+        '<button class="btn" data-action="bt-retreat">🏳️ 撤退</button>' +
         '<button class="btn" data-action="close-modal">后台运行</button>',
     });
     ui._bt.timer = setInterval(ui.btTick, 500);
@@ -2106,6 +2257,8 @@
     seed: '种子（种田秘境）',
     essence: '精华（蕴养修炼装备）',
     chest: '宝箱', neigong: '秘籍', corvee: '政令', talis: '锦囊', build_cost: '营造',
+    /* v89.99（老板「增加道具如增民令」）：民生 —— 人口增速道具 */
+    pop_boost: '民生（人口增速）',
   };
   ui.bagItemHTML = function (sort) {
     var s = GAME.state, items = s.items || {};
@@ -3269,6 +3422,8 @@
     /* v89.87（老板拍板 · 需求 1）：**种子开售** —— 配合"就地快购全覆盖"。
        v78 曾定"种子不售、仅采集/征战产出"；本批按最新拍板开售（价格早已在表中）。 */
     seed: '种子',
+    /* v89.99（老板「增加道具如增民令」）：民生 —— 人口类道具。 */
+    pop_boost: '民生',
   };
   /* v89.51：**在售 == 有页签**（唯一判据）。
      改前只按 `price > 0` 收件 —— 「有价但不在任何页签」的类型（营造/种子/灵草）
@@ -4243,7 +4398,11 @@
         rate.toFixed(2) + '</span></div>' +
       '<div class="res-line" style="margin-top:2px;border:none;"><span class="lbl">黄金</span><span class="val">💰 ' +
         U.fmt(s.res.gold || 0) + '</span></div>' +
-      '<table class="ms-table"><thead><tr>' +
+      /* v89.95（A2/A3）：物多价贱 —— 今日已售/当前汇率/通商券免折额度 */
+      '<div class="ms-note" style="margin-top:2px;">📉 ' + U.escape(GAME.mktSlipText ? GAME.mktSlipText() : '') + '</div>' +
+      /* v89.100：资源表专属 class（ms-res-table）—— 市集里新增"寄售"表后，
+         e2e 的"四行表"判据必须能精确选中资源表（数 .ms-table 会把寄售表也算进去）。 */
+      '<table class="ms-table ms-res-table"><thead><tr>' +
         '<th>资源</th><th>库存</th><th>卖出·每千得金</th><th>买入·每千耗金</th><th>交易</th>' +
       '</tr></thead><tbody>' + rows + '</tbody></table>' +
       '<div class="mk-row"><input type="number" id="mk-amount" min="1" value="100000" placeholder="数量">' +
@@ -4264,6 +4423,30 @@
         '　·　买入再扣 <b>' + loss + '%</b>（金 → 物资吃亏，' +
         '<b>城池间运输更划算</b>，市场只作应急）' +
         (lv > 0 ? '' : '　·　<b>未建市场</b>：折损最大，建市场可提高折损系数') + '</div>' +
+      /* v89.100：寄售战利品（按购买价 75% 回收）—— 价/校验全走 systems.consign* 出口 */
+      (function () {
+        var list = (GAME.systems.consignList ? GAME.systems.consignList() : []);
+        if (!list.length) return '';
+        var top = list.slice(0, 12);
+        var sumAll = 0;
+        list.forEach(function (x) { sumAll += x.total; });
+        return '<div class="gold-heading" style="margin-top:10px;">🎒 寄售战利品' +
+            '　<span style="font-size:var(--fs-sub);font-weight:400;color:var(--text-dim);">按购买价 75% 回收</span></div>' +
+          '<table class="ms-table"><thead><tr><th>道具</th><th>持有</th><th>单价</th><th>全卖得金</th><th></th></tr></thead><tbody>' +
+          top.map(function (x) {
+            return '<tr><td class="ms-name">' + U.escape(x.name) + '</td>' +
+              '<td class="ms-stock">' + U.fmt(x.qty) + '</td>' +
+              '<td class="ms-gold">' + U.fmt(x.unit) + '</td>' +
+              '<td class="ms-gold">' + U.fmt(x.total) + '</td>' +
+              '<td class="ms-act"><button class="btn xs gold" data-action="consign-sell" data-item="' + x.id + '">寄售</button></td></tr>';
+          }).join('') +
+          '</tbody></table>' +
+          (list.length > 12 ? '<div class="ms-note">…仅列价值前 12 种（共 ' + list.length + ' 种）</div>' : '') +
+          '<div class="mk-presets" style="margin-top:6px;">' +
+            '<button class="btn sm gold" data-action="consign-all">一键寄售全部（共得 ' + U.fmt(sumAll) + ' 金）</button>' +
+          '</div>' +
+          '<div class="ms-note">装备请用「拆解」回收材料；灵草 / 灵气精华无购买价，不参与寄售。</div>';
+      })() +
       '<div style="text-align:center;margin-top:10px;">' +
         '<button class="btn" data-action="close-modal">关闭</button></div>',
       'lg'
@@ -5590,6 +5773,7 @@
        归因走 GAME.trainLimitOf 唯一出口（maxTrainCount 是它的 cap 字段）。 */
     var limN = (sel && GAME.trainLimitOf) ? GAME.trainLimitOf(sel.id) : null;
     var maxN = sel ? GAME.maxTrainCount(sel.id, c.id, ui._trainBIdx) : 0;
+    var haveN = (sel && c.army && c.army[sel.id]) || 0;   /* v89.99：本城驻军（解散的门槛） */
     /* v24（需求 8）：面板归属于**某一座军营**，并列出该军营自己的队列 */
     var isSiege = ui._trainFilter === 'siege';
     var kind = isSiege ? 'craft' : 'train';
@@ -5628,6 +5812,8 @@
         '<button class="btn sm" data-action="train-max" title="按可用人口与资源填到最大可募数">上限</button>' +
         '<span class="ui-sub">上限 <b style="color:var(--gold-light);font-variant-numeric:tabular-nums;">'
           + U.numText(maxN, 0) + '</b></span>' +
+        '<span class="ui-sub">驻军 <b style="color:var(--gold-light);font-variant-numeric:tabular-nums;">'
+          + U.numText(haveN, 0) + '</b></span>' +
         /* v89.86（整改 P-19）：上限 0 → 当场归因（人口不足 / 资源不足），不再"静默归零" */
         ((maxN <= 0 && limN)
           ? '<span class="ui-sub" style="color:var(--red-light);">' +
@@ -5646,15 +5832,26 @@
           var capP = GAME.maxPopOf(c) || 0;
           var grow = Math.round(GAME.popGrowthOf(c));
           var pct = capP > 0 ? Math.min(100, Math.round(avail / capP * 100)) : 0;
-          return '<span class="pop-3" title="可征＝当前可用人口（募兵从此扣）· 上限＝民房决定 · 增势＝每小时自然增长">' +
+          /* v89.99：增势的来源分解（内政 / 增民令 / 税制）进悬停 —— 加成显性化 */
+          var srcTxt = '';
+          try {
+            (GAME.popSourcesOf(c) || []).forEach(function (x) {
+              if (Math.abs(x.v) > 1e-9) srcTxt += '　· ' + x.name + ' ' + (x.v > 0 ? '+' : '') + Math.round(x.v * 100) + '%';
+            });
+          } catch (e) {}
+          return '<span class="pop-3" title="可征＝当前可用人口（募兵从此扣）· 上限＝民房决定 · 增势＝每小时自然增长' + srcTxt + '">' +
             '<span class="p3-k">人口</span>' +
             '<span class="p3-seg ok">可征 <b>' + U.numText(avail, 0) + '</b></span>' +
             '<span class="p3-seg">上限 <b>' + U.numText(capP, 0) + '</b></span>' +
             '<span class="p3-seg">增势 <b>+' + grow + '/时</b></span>' +
             '<span class="p3-bar"><i style="width:' + pct + '%"></i></span>' +
-            '<span class="p3-note">每兵占人口 ' + sel.pop + '</span>' +
+            '<span class="p3-note">每兵占人口 ' + sel.pop + (capP > 0 && avail > capP ? '　· 超上限不增长' : '') + '</span>' +
             '</span>';
         })() : '') +
+        /* v89.99（老板「设计兵种解散」）：解散 = 归农（人口返还、军资不退）。
+           与募兵同栏（选中兵种 + 数量即用）—— 人口银行 / 兵种转型都从这里走。 */
+        '<button class="btn" data-action="troop-disband" data-troop="' + ui._trainSel + '"' +
+          (haveN > 0 ? '' : ' disabled') + ' title="解散本城驻军并归农（返还人口，不返还军资）">解散</button>' +
         '<button class="btn gold" data-action="confirm-train" data-troop="' + ui._trainSel + '"' +
           (slotsLeft > 0 ? '' : ' disabled') + '>' + (ui._trainFilter === 'siege' ? '制造' : '训练') + '</button>' +
         '<span style="color:var(--text-dim);font-size:var(--fs-sub);">约' + timeStr + '</span>' +
@@ -5824,6 +6021,34 @@
           (ngD77.per * g.ng.lv) + '）</span>';
       }
     }
+    /* v89.93（整改 E14）：**资质晋升**一行 —— 下一档 / 所需灵草 / 持有数 / 一步到位。
+       改前资质链在界面上没有任何入口（客栈只写"名世/天授只能靠灵草升档"，
+       却不说灵草从哪来；实测连推演侧都不知道种子已在商城开售）。 */
+    var rankUpLine = '';
+    (function () {
+      var order = (DATA.GEN_RANKS || []).map(function (x) { return x.id; });
+      var ri = order.indexOf(g.rank || 'fan');
+      if (ri < 0 || ri >= order.length - 1) return;              /* 已至顶级（天授）→ 不显示 */
+      var nxt = DATA.GEN_RANKS[ri + 1];
+      var herb = null;
+      (DATA.ITEMS || []).forEach(function (it) { if (it.type === 'rank_up' && it.from === (g.rank || 'fan')) herb = it; });
+      if (!herb) return;
+      var haveH = ((GAME.state && GAME.state.items) || {})[herb.id] || 0;
+      var crop = null;
+      ((DATA.FARM && DATA.FARM.crops) || []).forEach(function (c) { if (c.herb === herb.id) crop = c; });
+      var seed = null;
+      if (crop) (DATA.ITEMS || []).forEach(function (it) { if (it.id === crop.seedItem) seed = it; });
+      var btn = haveH > 0
+        ? '<button class="btn sm gold" data-action="gen-rankup" data-gen="' + genId + '" data-item="' + herb.id + '">用《' + herb.name + '》晋升</button>'
+        : (seed ? '<button class="btn sm" data-action="qb-item" data-item="' + seed.id + '" data-need="1">快购种子</button>' : '');
+      rankUpLine = '<span class="gp-sub gp-rankup" title="资质晋升：灵草产自「官府 → 种田秘境」（种下种子 → 按游戏时间生长 → 收获即得）。' +
+        '\n种子两条来源：商城购买 / 采集·征战缴获。' +
+        '\n每次晋升另给**四维各 +' + (nxt.ascend || 0) + '**（灵草淬炼的根基加成，界面不另行提示）。">' +
+        '资质晋升 → <b>' + nxt.name + '</b>（上限 Lv' + (nxt.lvCap || '?') + '）需《' + herb.name + '》' +
+        ' · 持有 <b>' + haveH + '</b> 株' +
+        (crop ? ' · 种子 ' + GAME.utils.fmt((seed ? (seed.price || 0) * 100 : 0)) + ' 金／秘境 ' + crop.hours + ' 游戏时' : '') +
+        ' ' + btn + '</span>';
+    })();
     var html = '<div class="gen-pane">' +
       '<div class="gp-head">' +
         '<span class="gp-face">' + ui.faceOf(g, 84) + '</span>' +
@@ -5838,6 +6063,7 @@
           '</span>' +
           '<span class="gp-sub">' + U.escape(rkDesc74) +
             (atCap ? '　<span class="gd-warn">已达资质上限</span>' : '') + '</span>' +
+          rankUpLine +
           ngLine77 +
           '<span class="gp-exprow">' +
             '<span class="gd-expbar" title="经验 ' + U.numText(g.exp || 0, 0) + ' / ' +
@@ -6309,8 +6535,8 @@
    * ------------------------------------------------------------ */
   /* 五维定义：作用一律写「每点」，且与代码里的消费点一一对应，不是估算。
      统率 → battle.js covered(tong*100) / domain.js maxPopOf(tong*1000)
-     勇武 → battle.js atkMult = 1 + a.atkPct × cover（atkPct = 攻值/10/100，v52 换算链）
-     智谋 → battle.js defBonus / atkDefBonus += a.defPct（同上）
+     勇武 → atkMult = 1 + a.atkPct × cover（atkPct = 勇武×0.0005 + 装备攻值/1000；v89.96）
+     智谋 → battle.js defBonus / defMult += a.defPct（同上）
      内政 → domain.js guardBonus prod / build = nz/100
      速度 → battle.js firstStrike（a += spd）、battle.js march.speedFactor（× (1+spd/300)） */
   /* v65（老板）：「压缩一下六维的作用单元格长度，统率这些属性名都成 2 行了，占空间」——
@@ -6323,19 +6549,19 @@
     /* v74（老板需求 1）：「带兵 +100 · 人口上限 +1000」里的**人口上限那半条已撤**
        （人口只由民房决定）；作用文案现在走六维名称的悬停。 */
     { k: 'tong', n: '统率', color: '#d8b04e', use: '带兵 +100' },
-    /* v52（老板给定换算链）：属性不再"一点一趴"直接进乘区，
-       而是先折算成攻防值，再按"每 10 点 = +1%"进全军。
-       这里写的**就是代码里的同一组常量**（GAME.ATK_PER_YW / PCT_PER_ATK 等），
+    /* v52（老板给定换算链）→ v89.96 改双刻度（见 domain.js atkPctOf 注释）：
+       勇武每 20 点 +1%（无上限属性单独降率）、装备每 10 攻值 +1%（v52 保留）。
+       这里写的**就是代码里的同一组常量**（GAME.YW_PCT / PCT_PER_ATK 等），
        改常量忘了改文案会被 smoke 的一致性断言拦下。 */
     { k: 'yw', n: '勇武', color: '#c9705a',
-      use: '攻击值 +10 · 每 10 攻值→全军攻 +1%',
+      use: '全军攻击 +0.05%/点（每20点+1%）',
       /* v58：`guardUse` = 该将**现任守将**时这一维实际提供的加成（并进"作用"列）。
          映射取自 `GAME.guardBonus`：内政→产量/建造、勇武→征兵、智谋→研究/城防。 */
       guardUse: function (gb) {
         return gb.train ? '守将加成：征兵 +' + Math.round(gb.train * 100) + '%' : '';
       } },
     { k: 'zm', n: '智谋', color: '#4a9be0',
-      use: '防御值 +10 · 每 10 防值→全军防 +1%',
+      use: '全军防御 +0.05%/点（每20点+1%）',
       guardUse: function (gb) {
         var p2 = [];
         if (gb.research) p2.push('研究 +' + Math.round(gb.research * 100) + '%');
@@ -7718,7 +7944,21 @@
         (isOwn
           ? '<button class="btn gold" data-action="city-enter" data-city="' + city.id + '">进入城池</button>' +
             '<button class="btn" data-action="city-transport" data-city="' + city.id + '">资源运输</button>' +
+            /* v89.93（整改 E11）：度支归集 —— 一键把其他城的**结余黄金**汇到本城 */
+            ((s.cities || []).length > 1
+              ? '<button class="btn" data-action="budget-gather" data-city="' + city.id +
+                '" title="把其他城池的结余黄金汇入本城（每城保留 ' + U.fmt(GAME.budgetKeep || 50000) +
+                ' 金）。黄金是货币，不走运输损耗。">🏛 度支归集</button>'
+              : '') +
             '<button class="btn" data-action="city-dispatch" data-city="' + city.id + '">将领派遣</button>' +
+            /* v89.95（A1）：节钺扩编 —— 每城 +1 建造位（至多 2 次），消耗 1 枚节钺 */
+            '<button class="btn" data-action="jieyue-expand" data-city="' + city.id +
+              '" title="' + U.escape((GAME.jieyueTextOf ? GAME.jieyueTextOf() + '　·　' : '')
+                + ((DATA.JIEYUE || {}).desc || '')) + '">🪓 节钺扩编 · 建造位 +1（' +
+              ((city.jieyueSlots || 0) >= ((DATA.JIEYUE || {}).citySlotMax || 2)
+                ? '本城已满 ' + (city.jieyueSlots || 0) + '/' + ((DATA.JIEYUE || {}).citySlotMax || 2)
+                : '本城 ' + (city.jieyueSlots || 0) + '/' + ((DATA.JIEYUE || {}).citySlotMax || 2)
+                  + '　持符 ' + GAME.jieyueOf()) + '</button>' +
             '<button class="btn" data-action="city-rename" data-city="' + city.id + '">改名</button>'
           : '') +
         /* v67（老板）：放弃城池 —— 只在还有别的城可去时才出现（否则点了必被拒） */
@@ -8896,6 +9136,8 @@
     var box = $('#exp-scheme-box'); if (box) box.innerHTML = ui.expSchemePanelHTML();
     var sel = document.getElementById('exp-scheme-sel');
     if (sel && sel.value !== (ui._expScheme || '')) sel.value = ui._expScheme || '';
+    /* v89.94（E2）：计略变 → 战法解锁态跟着变（奇袭须有计略；撤了计略则奇袭置灰） */
+    if (ui.setExpOps) ui.setExpOps(ui._expOps);
   };
 
   /* ============================================================
@@ -9030,6 +9272,51 @@
   };
   ui.expDeleteTactic = function (id) {
     var s = GAME.state; s.tacticSets = (s.tacticSets || []).filter(function (t) { return t.id !== id; }); ui.openTacticSets();   /* v89.86：预设管理 */
+  };
+
+  /* ============================================================
+   * v89.94（B2 · E2）：战法三选（强攻 / 围困 / 奇袭）—— 出兵前最后一次决断
+   * ------------------------------------------------------------
+   * 选中即写入随军 `opts.ops`（与计略同一通道：出发校验 → 抵达生效）。
+   * 不可用项置灰、悬停写明原因（唯一判据 GAME.opsConfigIssueOf）。
+   * ============================================================ */
+  ui._expOps = 'assault';
+  ui.expOpsLockOf = function (id) {
+    return GAME.opsConfigIssueOf(id, ui._expRes, ui._expScheme || null);
+  };
+  ui.expOpsChipsHTML = function () {
+    var cur = GAME.opsIdOf(ui._expOps);
+    return (DATA.OPS || []).map(function (o) {
+      var lock = ui.expOpsLockOf(o.id);
+      return '<span class="ch' + (cur === o.id ? ' active' : '') + ((lock && o.id !== cur) ? ' off' : '') +
+        '" data-action="exp-ops" data-v="' + o.id + '" title="' + U.escape(lock || o.desc) + '">' +
+        o.icon + ' ' + o.name + '</span>';
+    }).join('');
+  };
+  ui.expOpsNoteHTML = function () {
+    var o = GAME.opsOf(GAME.opsIdOf(ui._expOps));
+    var out = o.desc;
+    var t = ui._expRes;
+    if (t && GAME.siegeScopeOf && GAME.siegeScopeOf(t)) {
+      out += '<br>🧱 ' + GAME.siegeTextOf(t) + '　占领＝围攻（每波破防、守备归零即下城）；掠夺不破防。';
+    }
+    return out;
+  };
+  ui.expOpsBlockHTML = function () {
+    return '<div class="exp-ops-row"><span class="exp-ops-lab">战法</span>' +
+      '<span id="exp-ops">' + ui.expOpsChipsHTML() + '</span></div>' +
+      '<div class="exp-info exp-info-l" id="exp-ops-note" style="color:var(--text-dim);margin:2px 0 0;">' +
+      ui.expOpsNoteHTML() + '</div>';
+  };
+  ui.setExpOps = function (id) {
+    var lock = ui.expOpsLockOf(id);
+    if (lock && GAME.opsIdOf(id) !== GAME.opsIdOf(ui._expOps)) { ui.toast('⚠️ ' + lock); return; }
+    ui._expOps = GAME.opsIdOf(id);
+    var box = document.getElementById('exp-ops');
+    if (box) box.innerHTML = ui.expOpsChipsHTML();
+    var note = document.getElementById('exp-ops-note');
+    if (note) note.innerHTML = ui.expOpsNoteHTML();
+    ui.updateExpMarch();          /* 围困改行军时长 → 预估行实时刷新（同一出口） */
   };
 
   ui.openExpModal = function (target) {
@@ -9169,7 +9456,8 @@
     var fortModeNote = (t.kind === 'fort')
       ? '<div class="exp-info exp-info-l" style="color:var(--text-dim);margin-bottom:0;">据点：占领=拔除（打完撤军、当日移除、次日重置）；野地占领才会就地驻军。</div>'
       : '';
-    html += '<div class="exp-sec exp-a-modes"><div class="exp-sec-t">出征方式</div>' + modeSelHTML + fortModeNote + '</div>';
+    html += '<div class="exp-sec exp-a-modes"><div class="exp-sec-t">出征方式</div>' + modeSelHTML + fortModeNote
+      + ui.expOpsBlockHTML() + '</div>';
 
     /* ⑦ 方案（2×2 左下 · v89.59 需求 6）：固定「兵力 + 战术」的一套配置 */
     html += '<div class="exp-sec exp-a-plan"><div class="exp-sec-t">方案</div>';
@@ -9254,6 +9542,16 @@
    * ============================================================ */
   /* 战力比：我方 = 各兵种填报量 × troopPower；守方 = 守军 × troopPower × (1 + 城防/defDivisor)。
      口径与 v74 预估行完全一致（原逻辑迁移到此处，两处共用）。 */
+  /* v89.94（B2 · E2）：情报等级 → 估算误差（±）—— 侦察技巧越高，区间越窄。
+     Lv0 ±55% / Lv3 ±34% / Lv6 ±13% / Lv8+ ±10%（下限 10%：军师也不是神仙）。 */
+  ui.expEstErrOf = function (lv) {
+    lv = Math.max(0, Number(lv) || 0);
+    return Math.max(0.10, Math.min(0.55, 0.55 - 0.07 * lv));
+  };
+  /* 军师估算（v89.94 · E2 改造）：**不再给一键正解** —— 给人一个区间。
+     · 点估计 = 兵种加权（与来袭/家底同一把尺），守方含城防；
+     · 围攻目标（据点/县城）：守军与城防按**当前守备值**折算（与战斗入参同一出口）；
+     · 误差 ±err 由侦察技巧等级决定 —— 情报越细，区间越窄，"判断"才有价值。 */
   ui.expPowerOf = function () {
     var tp = (GAME.story && GAME.story.troopPower) ? GAME.story.troopPower : null;
     var city = GAME.currentCity();
@@ -9266,14 +9564,32 @@
       mine += v * tp(id);
     });
     var res = ui._expRes;
-    var def = 0;
+    var def = 0, sgS = null;
     if (res) {
       var div = (DATA.INVASION && DATA.INVASION.defDivisor) || 480;
       var wall = (res.def || 0) / div;
-      for (var k in (res.garrison || {})) def += tp(k) * (res.garrison[k] || 0);
-      def = Math.round(def * (1 + wall));
+      var base = 0;
+      for (var k in (res.garrison || {})) base += tp(k) * (res.garrison[k] || 0);
+      if (GAME.siegeScopeOf && GAME.siegeScopeOf(res)) {
+        sgS = GAME.siegeScaleOf(res);
+        base *= sgS.garrison;                 /* 守军随破防衰减 */
+        wall *= sgS.def;                      /* 城防同步衰减 */
+      }
+      def = Math.round(base * (1 + wall));
     }
-    return { mine: Math.round(mine), def: def, n: n, ratio: def > 0 ? mine / def : null };
+    var lv = (GAME.battle.intelTiersOf ? GAME.battle.intelTiersOf().lv : 0);
+    var err = ui.expEstErrOf(lv);
+    var out = {
+      mine: Math.round(mine), def: def, n: n,
+      ratio: def > 0 ? mine / def : null,
+      intelLv: lv, err: err,
+      lo: def > 0 ? Math.round(def * (1 - err)) : 0,
+      hi: def > 0 ? Math.round(def * (1 + err)) : 0,
+      siege: sgS ? { hold: sgS.hold } : null,
+    };
+    out.ratioLo = out.hi > 0 ? mine / out.hi : null;   /* 最坏情形（守军偏强） */
+    out.ratioHi = out.lo > 0 ? mine / out.lo : null;   /* 最好情形（守军偏弱） */
+    return out;
   };
   /* "上膛"标记：兵力悬殊时第一次点击置 true（只警告不发兵） */
   ui._expForceArmed = false;
@@ -9340,21 +9656,28 @@
           (fallback ? '<span style="opacity:.6;">（未填兵力，按现有兵种展示守军对比）</span>' : '');
       }
       if (pow73) {
-        /* v89.86（P-23）：战力比改读唯一出口 ui.expPowerOf（确认闸共用同一口径） */
+        /* v89.94（B2 · E2）：**军师估算** —— 给区间不给答案（误差随侦察技巧收窄）。
+           区间跨过 1:1 时提示"凶险"：胜则可入史册 —— 把"势均力敌"框成机会而非劝退。 */
         var pw74 = ui.expPowerOf ? ui.expPowerOf() : null;
+        function _two74(x) { return x == null ? '—' : (Math.round(x * 100) / 100); }
         if (pw74 && pw74.def > 0 && pw74.mine > 0) {
-          var ratio74 = pw74.ratio;
-          var lv74 = ratio74 >= 1.6 ? ['兵力充足', 'var(--green-ok)']
-            : ratio74 >= 1.0 ? ['势均力敌', 'var(--gold-light)']
-            : ratio74 >= 0.6 ? ['兵力偏少', 'var(--amber, #e0a83c)']
-            : ['兵力悬殊', 'var(--red-light)'];
-          pow73.innerHTML = '⚔️ 战力估算　我方 <b style="color:var(--blue-info)">' + U.numText(pw74.mine, 0) +
-            '</b>　vs　守军 <b style="color:var(--red-light)">' + U.numText(pw74.def, 0) + '</b>' +
-            '　<span style="color:' + lv74[1] + ';font-weight:700;">' + lv74[0] + '（' +
-            (Math.round(ratio74 * 100) / 100) + ' : 1）</span>' +
-            '<span style="opacity:.6;">　估算口径：兵种属性加权，守方含城防</span>';
+          var rLo = pw74.ratioLo, rHi = pw74.ratioHi;
+          var lv74 = (rLo != null && rLo >= 1.6) ? ['兵力充足', 'var(--green-ok)']
+            : (rLo != null && rLo >= 1.0) ? ['势均力敌 · 胜负由临阵决断', 'var(--gold-light)']
+            : (rHi != null && rHi < 0.6) ? ['兵力悬殊', 'var(--red-light)']
+            : ['兵力偏少', 'var(--amber, #e0a83c)'];
+          pow73.innerHTML = '⚔️ 军师估算　我方 <b style="color:var(--blue-info)">' + U.numText(pw74.mine, 0) +
+            '</b>　vs　守军 约 <b style="color:var(--red-light)">' + U.numText(pw74.def, 0) + '</b>' +
+            '<span style="opacity:.7;">（误差 ±' + Math.round(pw74.err * 100) + '%）</span>' +
+            '　<span style="color:' + lv74[1] + ';font-weight:700;">' + lv74[0] + '</span>' +
+            '<br><span style="opacity:.75;">区间：我 1 : ' + _two74(rLo) + ' ~ 1 : ' + _two74(rHi)
+            + '　·　情报 Lv' + pw74.intelLv + '（升侦察技巧可收窄）</span>'
+            + ((rLo != null && rLo < 1 && rHi != null && rHi >= 0.9)
+              ? '<br><span style="color:var(--gold-light);font-weight:700;">⚑ 此战凶险：胜则可入史册</span>' : '')
+            + (pw74.siege ? '<br><span style="opacity:.75;">🧱 围攻：守备 ' + Math.round(pw74.siege.hold)
+              + '%（守军与城防已按此衰减）</span>' : '');
         } else {
-          pow73.innerHTML = '⚔️ 战力估算　' + ((pw74 && pw74.mine > 0) ? '守军兵力未知' : '填入兵力后显示对比');
+          pow73.innerHTML = '⚔️ 军师估算　' + ((pw74 && pw74.mine > 0) ? '守军兵力未知（先派侦察）' : '填入兵力后显示对比');
         }
       }
     }
@@ -10072,7 +10395,7 @@
           /* v39（需求 4）：去框 —— 不再有底色/边框/圆角，也不用每行一个「查看」按钮
            （按钮本身就是一个个小框）。整行可点，右侧给一个"查看 ›"文字提示。 */
         return '<div class="doc-bar' + (r.win ? ' win' : '') + '" data-action="view-report" data-i="' + ri + '">' +
-            '<span class="db-t">' + U.escape(r.title) + '</span>' +
+            '<span class="db-t">' + (r.underdog ? '🏅 ' : '') + U.escape(r.title) + '</span>' +
             '<span class="db-d">' + (d.getMonth() + 1) + '/' + d.getDate() + ' ' +
               U.pad(d.getHours()) + ':' + U.pad(d.getMinutes()) + '</span>' +
             '<span class="db-fav' + (r.fav ? ' on' : '') + '" data-action="rep-fav" data-i="' + ri +
@@ -10179,17 +10502,114 @@
    *   ③ 回合纪要表 —— 逐回合双方兵力与间距
    *   ④ 兵种损耗表 —— 初始 / 损失 / 剩余（需求 4 的正面回答）
    * ------------------------------------------------------------ */
+  /* ============================================================
+   * v89.94（B2 · E3）：战报**分回合回放** —— 逐帧 / 播放 / 关键帧跳转
+   * ------------------------------------------------------------
+   * 数据 = report.replay（关键帧 ≤10：首 2 + 尾 2 + 首杀/破塔/折半/最烈）。
+   * 播放是**客户端演示**（不驱动任何结算，纯看）；关窗即停（closeModal 钩子）。
+   * 收藏仍在列表页（⭐，v89.89 已做）—— 回放与收藏各管一段。
+   * ============================================================ */
+  ui._repView = 0;
+  ui._repRp = function () {
+    var s = GAME.state;
+    var r = (s.reports || [])[ui._repView];
+    return (r && r.replay && r.replay.frames && r.replay.frames.length) ? r.replay : null;
+  };
+  ui.replayFrameHTML = function (rp, i) {
+    var f = rp.frames[i];
+    if (!f) return '';
+    return '<div class="bt-row"><span class="bt-r">' + f.r + '</span>' +
+      '<span class="bt-strip">' + String(f.s || '').replace(/▓/g, '<i>▓</i>').replace(/·/g, '<u>·</u>') + '</span>' +
+      '<span class="bt-n">我 ' + U.fmt(f.a) + '　敌 ' + U.fmt(f.d) + '</span>' +
+      '<span class="bt-g">间距 ' + U.numText(f.gap, 0) + '</span></div>' +
+      '<div class="rp-ev">' + (f.ev ? U.escape(f.ev) : '（本回合两军推进）') + '</div>';
+  };
+  ui.replaySectionHTML = function (rp) {
+    var keys = (rp.key || []).map(function (k) {
+      return '<span class="ch rp-key" data-action="rep-jump" data-v="' + k.r + '">' +
+        U.escape(k.text) + ' · 第' + k.r + '回</span>';
+    }).join('');
+    return ui.sealH('分回合回放', '共 ' + rp.rounds + ' 回合 · 存档 ' + rp.frames.length + ' 关键帧'
+        + (rp.retreat ? ' · 主动撤退' : '')) +
+      '<div class="bt-scene" id="rep-fbox">' + ui.replayFrameHTML(rp, 0) + '</div>' +
+      '<div class="rp-ctl">' +
+        '<button class="btn sm" data-action="rep-prev">⏮ 上一帧</button>' +
+        '<button class="btn sm gold" id="rep-play" data-action="rep-play">▶ 播放</button>' +
+        '<button class="btn sm" data-action="rep-next">下一帧 ⏭</button>' +
+        '<input type="range" id="rep-range" class="rp-range" min="0" max="' + (rp.frames.length - 1) + '" value="0" step="1">' +
+        '<span class="rp-pos" id="rep-pos">1 / ' + rp.frames.length + '</span>' +
+      '</div>' +
+      '<div class="rp-keys">关键帧：' + keys + '</div>';
+  };
+  ui.replaySet = function (i) {
+    var rp = ui._repRp();
+    if (!rp) return;
+    i = Math.max(0, Math.min(rp.frames.length - 1, i));
+    if (!ui._rep) ui._rep = { i: 0, timer: null };
+    ui._rep.i = i;
+    var box = document.getElementById('rep-fbox');
+    if (box) box.innerHTML = ui.replayFrameHTML(rp, i);
+    var rg = document.getElementById('rep-range');
+    if (rg) rg.value = i;
+    var pos = document.getElementById('rep-pos');
+    if (pos) pos.textContent = (i + 1) + ' / ' + rp.frames.length;
+  };
+  ui.replayStep = function (d) { ui.replaySet((ui._rep ? ui._rep.i : 0) + d); };
+  ui.replayStop = function () {
+    if (ui._rep && ui._rep.timer) clearInterval(ui._rep.timer);
+    if (ui._rep) ui._rep.timer = null;
+    var b = document.getElementById('rep-play');
+    if (b) b.textContent = '▶ 播放';
+  };
+  ui.replayToggle = function () {
+    var rp = ui._repRp();
+    if (!rp) return;
+    if (ui._rep && ui._rep.timer) { ui.replayStop(); return; }
+    if (!ui._rep) ui._rep = { i: 0, timer: null };
+    if (ui._rep.i >= rp.frames.length - 1) ui.replaySet(0);
+    ui._rep.timer = setInterval(function () {
+      var rr = ui._repRp();
+      if (!rr || !ui._rep || ui._rep.i >= rr.frames.length - 1) { ui.replayStop(); return; }
+      ui.replaySet(ui._rep.i + 1);
+    }, 700);
+    var b = document.getElementById('rep-play');
+    if (b) b.textContent = '⏸ 暂停';
+  };
+  ui.replayJump = function (roundNo) {
+    var rp = ui._repRp();
+    if (!rp) return;
+    var best = 0, bd = Infinity;
+    rp.frames.forEach(function (f, i) { var d = Math.abs(f.r - roundNo); if (d < bd) { bd = d; best = i; } });
+    ui.replaySet(best);
+  };
+
   ui.viewReport = function (i) {
     var r = GAME.state.reports[i];
     if (!r) return;
+    if (ui.replayStop) ui.replayStop();           /* v89.94：换一份战报 → 先停旧回放 */
+    ui._repView = i;
     var html = '<div class="gold-heading">' + U.escape(r.title) + '</div>' +
       '<div style="color:var(--text-dim);font-size:var(--fs-sub);margin-bottom:10px;text-align:center;">' +
         new Date(r.t).toLocaleString() + '</div>' +
       '<div style="background:rgba(var(--sh-rgb),.3);border-radius:6px;padding:12px;font-size:var(--fs-lead);line-height:1.8;">' +
         r.body + '</div>';
 
+    /* v89.94（B2 · E3）：以少胜多（以弱胜强才值得晒）+ 围攻战果（还差多少） */
+    if (r.underdog) html += '<div class="rp-under">🏅 以少胜多 —— 此役以弱胜强，宜入简册</div>';
+    if (r.siege) {
+      html += '<div class="rp-under">🧱 围攻：本波破防 ' + r.siege.chip + '% → 守备余 '
+        + Math.round(r.siege.hold) + '%（第 ' + r.siege.waves + ' 波'
+        + (r.siege.broke ? ' · 城垣已破' : ' · 守军退守内城') + '）</div>';
+    }
+    var _rp94 = r.replay;
+    var _hasRp94 = !!(_rp94 && _rp94.frames && _rp94.frames.length);
+    if (_hasRp94) {
+      ui._rep = { i: 0, timer: null };
+      html += ui.replaySectionHTML(_rp94);        /* v89.94：分回合回放（逐帧/播放/关键帧） */
+    }
     var sc = r.scene;
-    if (sc) {
+    if (sc && !_hasRp94) {
+      /* 旧战报（无回放数据）：退回静态条带列表 —— 同一份数据两种看法，不丢历史 */
       html += ui.sealH('战斗场景', '战场纵深 ' + U.numText(sc.field, 0)
         + '　·　共 ' + sc.rounds + ' 回合　·　▓ 部队　· 间距　▕▏ 两军间距');
       html += '<div class="bt-scene"><div class="bt-head">' +
@@ -10207,7 +10627,9 @@
         last = row.r;
       });
       html += '</div>';
-
+    }
+    if (sc) {
+      /* 回合纪要（逐回合文字）：回放给"画面"、纪要给"全量" —— 两者并存 */
       html += ui.sealH('回合纪要', '速度高的兵种先行动；接敌即开火');
       html += '<div class="bt-log">' + (sc.roundsText || []).map(function (l) {
         return '<div class="bt-line">' + U.escape(l) + '</div>';
@@ -10393,6 +10815,20 @@
             return { v: v, on: ts === v, label: v + '×' };
           })
         }) + '</div>' +
+      '</div>' +
+      /* v89.93（整改 E4）：音效开关 —— 程序化合成（零素材），关掉即全静音 */
+      '<div class="set-card">' +
+        '<div class="res-line"><span class="lbl">🔔 音效</span><span class="val">' +
+          ((s.settings.sfx === false) ? '关' : '开（音量 ' + Math.round((s.settings.sfxVol != null ? s.settings.sfxVol : 0.5) * 100) + '%）') +
+          '</span></div>' +
+        '<div class="auto-line">' + ui.chips({
+          cls: 'chips-xs', after: 'sfx',
+          opts: [{ v: '1', on: s.settings.sfx !== false, label: '开' },
+                 { v: '0', on: s.settings.sfx === false, label: '关' }]
+        }) + '</div>' +
+        '<div class="ui-sub" style="margin-top:6px;">' +
+          '建造落成 / 募兵 / 出征 / 胜败 / 晋升 / 奇遇 / 烽火 各有提示音（浏览器合成，不加载素材）。' +
+          ui.help('零素材程序化音效：与地图/场景的程序化绘制同一条路线。\n音频不可用时静默降级，绝不影响玩法。') + '</div>' +
       '</div>' +
       /* v89.86（整改 P-17）：离线推进上限 —— 防"离线一夜、人间百年"；超出五折折算 */
       '<div class="set-card">' +
@@ -11203,7 +11639,10 @@
     if (!r.ok) return false;
     ui.syncBadges();
     if (ui.view === 'story') GAME.refreshView();      /* 正停在史册页 → 顺手刷新待阅列表 */
-    if (!r.dup) ui.toast('📖 得逸闻一则《' + r.st.title + '》—— 已入待阅（史册 → 待阅逸闻）');
+    if (!r.dup) {
+      ui.sfx('wonder');                               /* v89.93（E4）：奇遇有声音 */
+      ui.notify('success', '📖 得逸闻一则《' + r.st.title + '》—— 已入待阅（史册 → 待阅逸闻）');
+    }
     return true;
   };
   /* 概率奇遇：点开建筑 / 地块后掷骰；命中入待阅（v89.86 起不再直接开卷） */
@@ -11221,19 +11660,28 @@
     if (!r.fire) return false;
     return ui.sgDefer(r.sid);
   };
-  /* v89.86（整改 P-06）：待阅区（史册页顶部；有才出）—— 阅读 / 忽略 */
+  /* v89.86（整改 P-06）：待阅区（史册页顶部；有才出）—— 阅读 / 忽略
+     v89.93（整改 E10）：补「往事」折叠区 —— 待阅超限的条目不再丢失，在此仍可读到。 */
   ui.sgPendingHTML = function () {
     var list = (GAME.SG && GAME.SG.pending) ? GAME.SG.pending() : [];
-    if (!list.length) return '';
-    return '<div class="story-card">' +
+    var arch = (GAME.SG && GAME.SG.archived) ? GAME.SG.archived() : [];
+    if (!list.length && !arch.length) return '';
+    var html = '<div class="story-card">' +
       '<div class="gold-heading">📖 待阅逸闻（' + list.length + '）' +
-        ui.help('触发的逸闻不再全屏弹出（免得打断操作）。\n在此逐条阅读；读一篇移出一篇，「忽略」直接移除。') + '</div>' +
+        ui.help('触发的逸闻不再全屏弹出（免得打断操作）。\n在此逐条阅读；读一篇移出一篇，「忽略」直接移除。\n待阅超过 ' + ((GAME.SG && GAME.SG.PENDING_CAP) || 60) + ' 条后，早先的自动折入「往事」——不再丢失，随时可读。') + '</div>' +
       list.map(function (x) {
         return '<div class="res-line"><span class="lbl">《' + U.escape(x.title) + '》</span>' +
           '<span class="val"><button class="btn sm gold" data-action="story-read" data-sid="' + x.sid + '">阅读</button> ' +
           '<button class="btn sm" data-action="story-drop" data-sid="' + x.sid + '">忽略</button></span></div>';
-      }).join('') +
-      '</div>';
+      }).join('');
+    if (arch.length) {
+      html += '<div class="note" style="margin-top:6px;">另有 ' + arch.length + ' 篇早先的逸闻折入「往事」（未读不丢，点开即读）：</div>' +
+        arch.slice(-12).map(function (x) {
+          return '<div class="res-line"><span class="lbl">《' + U.escape(x.title) + '》</span>' +
+            '<span class="val"><button class="btn sm" data-action="story-read" data-sid="' + x.sid + '">阅读</button></span></div>';
+        }).join('');
+    }
+    return html + '</div>';
   };
   ui.sgReadPending = function (sid) {
     var rec = GAME.SG.takePending(sid);

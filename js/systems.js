@@ -336,6 +336,65 @@
     return null;
   };
 
+  /* ============================================================
+   * v89.100：**道具寄售**（按商城购买价 75% 回收为金）
+   * ------------------------------------------------------------
+   * 唯一出口组（UI / 推演脑都从这里走，别处不许另算价）：
+   *   S.consignCfg()        —— 读 DATA.ITEM_SELL（rate 可调）
+   *   S.consignPriceOf(id)  —— 单价（price×100×rate；无价道具返回 0）
+   *   S.consignList(opts)   —— 当前可寄售清单（{keep:[id]} 可指定保留）
+   *   S.consignItem(id,n)   —— 寄售 n 件（n 省略 / 0 = 全部）
+   *   S.consignAll(opts)    —— 一键全部寄售
+   * 语义：真金入账（与市场卖货同记账口 s.res.gold），statBump('trades')。
+   * ============================================================ */
+  S.consignCfg = function () { return DATA.ITEM_SELL || { rate: 0.75 }; };
+  S.consignPriceOf = function (id) {
+    var it = S.itemInfo(id);
+    if (!it || !(it.price > 0)) return 0;
+    var rate = S.consignCfg().rate;
+    return Math.max(1, Math.floor(it.price * 100 * (rate == null ? 0.75 : rate)));
+  };
+  S.consignList = function (opts) {
+    var s = GAME.state, out = [];
+    if (!s || !s.items) return out;
+    var keep = (opts && opts.keep) || [];
+    for (var id in s.items) {
+      var n = s.items[id] || 0;
+      if (n <= 0 || keep.indexOf(id) >= 0) continue;
+      var unit = S.consignPriceOf(id);
+      if (!(unit > 0)) continue;
+      var it = S.itemInfo(id);
+      out.push({ id: id, name: it ? it.name : id, type: it ? (it.type || '') : '', qty: n, unit: unit, total: unit * n });
+    }
+    out.sort(function (a, b) { return b.total - a.total; });
+    return out;
+  };
+  S.consignItem = function (id, qty) {
+    var s = GAME.state, item = S.itemInfo(id);
+    if (!item) return { ok: false, msg: '未知道具' };
+    var unit = S.consignPriceOf(id);
+    if (!(unit > 0)) return { ok: false, msg: '「' + item.name + '」无购买价，不可寄售（装备请用拆解）' };
+    var have = (s.items[id] || 0);
+    if (have <= 0) return { ok: false, msg: '背包中没有「' + item.name + '」' };
+    qty = Math.max(1, Math.min(have, Math.floor(Number(qty) || have)));
+    var gold = unit * qty;
+    s.items[id] = have - qty;
+    if (s.items[id] <= 0) delete s.items[id];
+    s.res.gold = (s.res.gold || 0) + gold;
+    GAME.statBump('trades', 1);
+    GAME.log('🎒 寄售「' + item.name + '」×' + qty + ' → 得金 ' + U.fmt(gold) + '（购买价 75% 回收）');
+    return { ok: true, msg: '寄售「' + item.name + '」×' + qty + '，得金 ' + U.fmt(gold), gold: gold, n: qty };
+  };
+  S.consignAll = function (opts) {
+    var list = S.consignList(opts), sum = 0, n = 0, cnt = 0;
+    for (var i = 0; i < list.length; i++) {
+      var r = S.consignItem(list[i].id, list[i].qty);
+      if (r && r.ok) { sum += r.gold; n++; cnt += r.n; }
+    }
+    return { ok: n > 0, gold: sum, n: n, cnt: cnt,
+      msg: n > 0 ? ('寄售 ' + n + ' 种 / ' + cnt + ' 件，共得金 ' + U.fmt(sum)) : '没有可寄售的道具' };
+  };
+
   /* opts.silent：批量消耗时只在最后写一条汇总，不要每条道具刷一行日志 */
   S.useItem = function (itemId, targetGenId, opts) {
     var s = GAME.state, item = S.itemInfo(itemId);
@@ -365,11 +424,30 @@
       s.buffs.gens[g2.id][item.id] = nb;
       ok = true; msg = g2.name + ' 获得 ' + item.name + '（' + item.desc + '）';
     } else if (item.type === 'prod_buff') {
+      /* v89.93（整改 W1）：**同类只取最强**（不再累加）——与军事符同口径。
+         改前 `+ (item.eff)` 无上限累加：实测 110 个后稷神犁 = 粮产因子 ×134；
+         且 `prodUntil` 写下后全库没有任何读取方（死字段）→ "24h" 形同虚设。
+         现在：取最大值 + 刷新时长 + 由 prodBuffMult 在到期时真剔除。 */
       s.buffs = s.buffs || {}; s.buffs.prod = s.buffs.prod || {};
-      s.buffs.prod[item.res] = (s.buffs.prod[item.res] || 0) + (item.eff || 0.25);
+      var effNew = item.eff || 0.25;
+      var effOld = s.buffs.prod[item.res] || 0;
+      s.buffs.prod[item.res] = Math.max(effOld, effNew);
       if (!s.buffs.prodUntil) s.buffs.prodUntil = {};
       s.buffs.prodUntil[item.res] = U.now() + (item.dur || 24) * 3600 * 1000;
-      ok = true; msg = item.name + ' 生效：' + item.desc;
+      ok = true;
+      msg = item.name + ' 生效：' + item.desc
+        + (effOld > effNew ? '（已有更强效果 +' + Math.round(effOld * 100) + '%，本次仅刷新时长）' : '');
+    } else if (item.type === 'pop_boost') {
+      /* v89.99（老板「增民令」）：人口增速道具 —— 与生产类同纪律：
+         **同类只取最强**（不叠加）+ **到期真消费**（popBoostMult 每次读 until）。 */
+      s.buffs = s.buffs || {};
+      var pEff = item.eff || 1;
+      var pCur = s.buffs.popBoost;
+      var pStrong = !!(pCur && pCur.until > U.now() && (pCur.mult || 0) > pEff);
+      s.buffs.popBoost = { mult: pStrong ? pCur.mult : pEff,
+        until: U.now() + (item.dur || 24) * 3600 * 1000 };
+      ok = true;
+      msg = item.name + ' 生效：' + item.desc + (pStrong ? '（已有更强效果，本次仅刷新时长）' : '');
     } else if (item.type === 'build_cost') {
       s.buffs = s.buffs || {}; s.buffs.buildCost = { until: U.now() + (item.dur || 24) * 3600 * 1000, eff: item.eff };
       ok = true; msg = item.name + ' 生效：建造成本-30%（24h）';
@@ -707,10 +785,25 @@
       return { ok: false, msg: '行军系统不可用' };
     }
     if (target === 'trade') {
-      /* 交易加速：市场折损临时降低（此前落入兜底分支，提示"暂不可用"） */
+      /* ============================================================
+       * v89.95（A3 · 老板「通商券但是无通商通道」）：**接上真的通道**
+       * ------------------------------------------------------------
+       * 旧实现写了 `s.buffs.tradeCut` 但**全库没有任何读取点** ——
+       * 玩家花了券只看到一句提示，实际什么也没发生（死接线）。
+       * 现在改成 `s.buffs.mktFree`（免折额度）：在有效期内，市场卖出
+       * **不打"物多价贱"的折**，直到额度用尽（额度与时长见 DATA.MARKET_SLIP.free）。
+       * 读取点：GAME.mktFreeOf / mktMulNow（marketSellPer 唯一出口链上）。
+       * ============================================================ */
+      var fcfg = (DATA.MARKET_SLIP || {}).free || { quota: 500000, durMin: 30 };
       s.buffs = s.buffs || {};
-      s.buffs.tradeCut = { until: U.now() + 30 * 60 * 1000, cut: (item.pct || 0.05) };
-      return { ok: true, msg: '市场折损降低 ' + Math.round((item.pct || 0.05) * 100) + '%（30 分钟内）' };
+      var have = s.buffs.mktFree;
+      s.buffs.mktFree = {
+        until: U.now() + (fcfg.durMin || 30) * 60 * 1000,
+        quota: fcfg.quota || 500000,
+        used: (have && have.until > U.now()) ? (have.used || 0) : 0,   /* 续用叠加额度不叠加 */
+      };
+      return { ok: true, msg: '🏷️ 通商凭信已生效：' + (fcfg.durMin || 30) + ' 分钟内可免折抛售，'
+        + '免折额度 ' + U.fmt(s.buffs.mktFree.quota) + ' 金当量（物多价贱不打折）' };
     }
     return { ok: false, msg: '该加速暂不可用' };
   };
@@ -721,7 +814,12 @@
     if (!s || !s.buffs) return false;
     if (type === 'buildCost') return s.buffs.buildCost && s.buffs.buildCost.until > U.now();
     if (type === 'military') return s.buffs.military && s.buffs.militaryUntil > U.now();
-    if (type === 'prod') return s.buffs.prod;
+    /* v89.93（整改 W1）：prod 不再"永远为真"——走 prodBuffMult 的到期过滤出口，
+       过期即视为未生效（旧档无 prodUntil 的一律按生效处理，向后兼容）。 */
+    if (type === 'prod') {
+      var m = GAME.prodBuffMult ? GAME.prodBuffMult() : (s.buffs.prod || {});
+      return Object.keys(m || {}).length > 0;
+    }
     return false;
   };
 
@@ -760,9 +858,15 @@
       if (s.items[j] <= 0) delete s.items[j];
     }
     s.rank += 1;
+    /* v89.95（A1）：爵位每 rankEvery 档 → 赏节钺 ×1（22 档共 5 枚） */
+    var _hfE = (DATA.JIEYUE || {}).rankEvery || 4;
+    if (s.rank % _hfE === 0 && GAME.jieyueGrant) {
+      GAME.jieyueGrant(1, '爵位晋至 ' + DATA.RANK[s.rank].name);
+    }
     /* v79（神器 · 特殊活动）：爵位晋升 → 供奉值大额入账 */
     if (GAME.artGain) GAME.artGain(((DATA.ARTIFACT || {}).promotePts) || 0, '爵位晋升 · ' + DATA.RANK[s.rank].name);
     GAME.log('晋升爵位：' + DATA.RANK[s.rank].name);
+    if (GAME.sfx) GAME.sfx('rank');       /* v89.93（E4）：22 档爵位是仪式感最强的成长 */
     return { ok: true, msg: '晋升 ' + DATA.RANK[s.rank].name + '！俸禄 ' + U.fmt(DATA.RANK[s.rank].salary) + '/h' };
   };
 

@@ -101,11 +101,11 @@
         var dm = GAME.tactic ? GAME.tactic.counterDefOf(did, id) : 1;
         if (dm > defMul) defMul = dm;
       }
-      /* 将领加成 —— v52 走「属性 → 攻防值 → 百分比」这条链（老板给定）：
-           1 勇武 = 10 攻击值、每 10 攻击值 = 全军攻击 +1%
-           1 智谋 = 10 防御值、每 10 防御值 = 全军防御 +1%
-         攻防值里**已经含**装备/套装的 atk/def（genAttrs 统一算），
-         所以原来那条 `× (1 + a.atk/10000)` 的旁路必须删掉 —— 留着就是双计。 */
+      /* 将领加成 —— v52 链、v89.96 改双刻度（唯一原子见 domain.js atkPctOf）：
+           勇武：每 20 点 → 全军攻击 +1%（无上限属性，单独降率）
+           装备：每 10 攻击值 → 全军攻击 +1%（v52 口径，有天花板）
+           genAttrs.atkPct 是**唯一换算原子**，UI / 战报 / 战斗引擎三处同源；
+           旧 `× (1 + a.atk/10000)` 旁路与 tactic 侧的"装备绝对值加法"均已清除。 */
       var atkMult = 1, defMult = 1, cover = 1;
       if (general) {
         var a = GAME.genAttrs(general);
@@ -399,6 +399,7 @@
       target: U.deep(target), modeId: modeId,
       atkArmy: U.deep(atkArmy), genId: genId,
       cityId: opts.cityId || null, scheme: opts.scheme || null,
+      ops: GAME.opsIdOf(opts.ops),                 /* v89.94（E2）：随军战法（落账时读） */
       sim: { scArmy: U.deep(simIn.scArmy || {}), scVal: simIn.scVal || 0,
              scGen: simIn.scGen ? U.deep(simIn.scGen) : null,
              scNote: simIn.scNote || null, simOpts: simIn.simOpts || {} },
@@ -455,19 +456,42 @@
     return GAME.battle.finishBattle(id);
   };
 
-  /* 结束：收尾组装 result → 重入 expedition 落账（_result/_sim）→ 清挂起 */
+  /* 结束：收尾组装 result → 重入 expedition 落账（_result/_sim）→ 清挂起
+     ------------------------------------------------------------
+     v89.94（B2 · E1）：落账段拆成 `_settleBattle` —— 「完成」与「主动撤退」
+     走**同一段落账**，只在 result 上差一个 retreat 旗标（不复制落账逻辑）。 */
   GAME.battle.finishBattle = function (id) {
-    var s = GAME.state;
+    var ses = GAME._bsess && GAME._bsess[id];
+    var rec = GAME.battle._recOf(id);
+    if (!ses || !rec || rec.state !== 'live') return null;
+    return GAME.battle._settleBattle(id, ses.finish());
+  };
+
+  /* v89.94（B2 · E1）：主动撤退 —— 撤出战斗、带走残部、保留已造成的破防（按半计）。
+     与"打完"只有两点不同：① result.retreat=true（破防 ×0.5、战报写明"主动撤退"）；
+     ② 不判胜（目标未下 —— 哪怕台上占优，撤了就是没拿下）。 */
+  GAME.battle.retreatBattle = function (id) {
     var ses = GAME._bsess && GAME._bsess[id];
     var rec = GAME.battle._recOf(id);
     if (!ses || !rec || rec.state !== 'live') return null;
     var result = ses.finish();
+    result.retreat = true;
+    if (result.winner === 'atk') result.winner = 'def';
+    return GAME.battle._settleBattle(id, result);
+  };
+
+  /* 落账段（finishBattle / retreatBattle 共用） */
+  GAME.battle._settleBattle = function (id, result) {
+    var s = GAME.state;
+    var ses = GAME._bsess && GAME._bsess[id];
+    var rec = GAME.battle._recOf(id);
+    if (!rec) return null;
     rec.state = 'done';
     var resp = null, err = null;
     _expArmySettled = false;
     try {
       resp = GAME.battle.expedition(rec.target, rec.modeId, rec.atkArmy, rec.genId,
-        { arrived: true, cityId: rec.cityId, scheme: rec.scheme,
+        { arrived: true, cityId: rec.cityId, scheme: rec.scheme, ops: rec.ops || 'assault',
           _result: result, _sim: rec.sim });
     } catch (e) { err = e; }
     /* 将领状态收尾（等价 arrive 的 idle 设置） */
@@ -496,6 +520,8 @@
       resp: resp || null, rolled: !!(err || !resp || resp.ok === false),
     };
     if (GAME.ui && GAME.ui.onBattleDone) GAME.ui.onBattleDone(GAME._battleJustDone);
+    /* v89.93（E4）：战斗结果 —— 胜/败两声（反馈层最该有的两秒） */
+    if (GAME.sfx) GAME.sfx(result.winner === 'atk' ? 'win' : 'lose');
     return resp;
   };
 
@@ -548,8 +574,35 @@
      占领就地转正（× cityInherit）。不继承的话，打下一座 9 级州城只能得到一座
      "0 粮 0 金"的空城，与"这城本该有多少"完全脱节。
      fromCity 是**出征的出发城**（战利品记在它头上，资源归属城池）。 */
+  /* ============================================================
+   * v89.99（老板：「人口不足就开发其他路径」）：**俘获迁民** —— 唯一出口
+   * 打胜据点/名城时，按敌军损失比例把溃卒收编为「出征城」的人口。
+   * 参数全在 DATA.CAPTIVE（kinds 白名单：野地不俘、小仗不收、有上限）。
+   * ============================================================ */
+  GAME.battle.captiveGain = function (city, result, target) {
+    var cfg = DATA.CAPTIVE || {};
+    if (!city || !result) return { gain: 0 };
+    var kinds = cfg.kinds || ['fort', 'city'];
+    if (kinds.indexOf(target && target.kind) < 0) return { gain: 0 };
+    var defLoss = result.defLoss || 0;
+    if (!(defLoss > 0)) return { gain: 0 };
+    var gain = Math.round(defLoss * (cfg.rate == null ? 0.06 : cfg.rate));
+    if (gain < (cfg.min == null ? 15 : cfg.min)) return { gain: 0 };
+    gain = Math.min(cfg.cap == null ? 500 : cfg.cap, gain);
+    var Rc = GAME.res(city);
+    Rc.pop = (Rc.pop || 0) + gain;
+    return { gain: gain, city: city.name };
+  };
+
   GAME.onConquer = function (npcCity, result, gen, fromCity) {
     var s = GAME.state;
+    /* v89.95（A1）：**首占名城 → 节钺**（黄金买不到的稀缺资源，见 DATA.JIEYUE）。
+       同一座城只算一次（jieyueClaim 幂等）；档位越高的城给得越多。 */
+    var _hfCfg = DATA.JIEYUE || { byTier: {} };
+    var _hfN = ((_hfCfg.byTier || {})[npcCity.type]) || 0;
+    if (_hfN > 0 && GAME.jieyueClaim) {
+      GAME.jieyueClaim('city:' + npcCity.id, _hfN, '首占 ' + npcCity.name);
+    }
     var inherit = GAME.npcCityRes(npcCity);
     var keep = (DATA.EXPEDITION.cityInherit != null) ? DATA.EXPEDITION.cityInherit : 0.8;
     var startRes = {};
@@ -658,6 +711,15 @@
     if (npcCity.type !== 'capital' && Math.random() < 0.5) GAME.battle.grantBeauty(npcCity);
     GAME.advanceConquer();
     GAME.log('占领新城池：' + npcCity.name + '！（威望 +' + repGain + '）');
+    /* v89.93（整改 E5）：**占城演出** —— 核心目标达成，值一张卡（此前只有一行日志） */
+    if (GAME.ui && GAME.ui.moment) {
+      GAME.ui.moment({
+        kind: 'card', icon: '🏯', title: '克城 · ' + npcCity.name,
+        sub: '威望 +' + repGain + '　·　' + (npcCity.state || '') + '　·　' + (DATA.CITY_TIER_NAME ? (DATA.CITY_TIER_NAME[npcCity.type] || npcCity.type) : npcCity.type),
+        lines: ['城防已破，府库入我囊中。', '「' + npcCity.name + '」自此易帜，天下侧目。']
+      });
+      GAME.ui.sfx('rank');
+    }
     /* 胜利判定：攻占帝都洛阳 → 天下一统（此前该函数定义了却从未被调用） */
     if (GAME.checkVictory) GAME.checkVictory();
   };
@@ -1143,6 +1205,10 @@
       return { ok: false, msg: '采集目标须是已属我方的野地' };
     }
 
+    /* v89.94（B2 · E2）：战法校验 —— 围困须据点/城池、奇袭须有计略（与界面同一判据） */
+    var _opsIssue = GAME.opsConfigIssueOf(opts.ops, t, opts.scheme || null);
+    if (_opsIssue) return { ok: false, msg: _opsIssue };
+
     /* v63（老板）：「野外城每天只能被掠夺一次」。
        拦在 `prepare` 里 —— 出征的两条路（即时结算 / 行军队列 `march.dispatch`）
        都先过这里，所以才拦得住；写在界面里只是提示，绕过界面就失效。
@@ -1353,22 +1419,25 @@
        妖言惑众→守军副本 −15%；火烧粮草→城防值 −30%；挑拨离间→守将加成减半。
        累计施计次数走 state 层唯一出口 schemeMarksOf（挑拨：忠诚 = 100 − 25×n）。 */
     var scArmy = t.garrison, scVal = defBonus, scGen = t.guard || null, scNote = null;
+    /* v89.94（B2 · E2）：战法 —— 奇袭放大本战计略效果（opsIdOf 收敛一切脏值） */
+    var opsId = GAME.opsIdOf(opts.ops);
+    var _opsMul = (opsId === 'surprise') ? (((DATA.SIEGE || {}).surprise || {}).schemeMul || 1.5) : 1;
     if (opts.scheme) {
       var _sc = GAME.schemeOf(opts.scheme);
       if (_sc) {
         if (_sc.id === 'yaoyan') {
           var _ga = {};
           for (var _gk in (scArmy || {})) {
-            _ga[_gk] = Math.max(1, Math.round((scArmy[_gk] || 0) * (1 + _sc.eff.guardPct)));
+            _ga[_gk] = Math.max(1, Math.round((scArmy[_gk] || 0) * (1 + _sc.eff.guardPct * _opsMul)));
           }
           scArmy = _ga;
-          scNote = '妖言惑众 · 守军逃散 ' + Math.round(-_sc.eff.guardPct * 100) + '%';
+          scNote = '妖言惑众 · 守军逃散 ' + Math.round(-_sc.eff.guardPct * _opsMul * 100) + '%';
         } else if (_sc.id === 'huoshao') {
-          scVal = Math.round((defBonus || 0) * (1 - _sc.eff.defCut));
-          scNote = '火烧粮草 · 城防失灵 ' + Math.round(_sc.eff.defCut * 100) + '%';
+          scVal = Math.round((defBonus || 0) * (1 - Math.min(0.9, _sc.eff.defCut * _opsMul)));
+          scNote = '火烧粮草 · 城防失灵 ' + Math.round(Math.min(0.9, _sc.eff.defCut * _opsMul) * 100) + '%';
         } else if (_sc.id === 'tiaobo') {
           var _tn = GAME.schemeMarksOf(GAME.schemeKeyOf(t), 'tiaobo');
-          var _loy = Math.max(0, 100 - _sc.eff.loyaltyDrop * _tn);
+          var _loy = Math.max(0, 100 - _sc.eff.loyaltyDrop * _opsMul * _tn);
           if (scGen && _loy <= _sc.eff.faintAt) {
             scGen = U.deep(scGen);
             scGen.zm = Math.round((scGen.zm || 0) * 0.5);
@@ -1378,6 +1447,45 @@
           }
         }
         /* 趁火打劫（掠夺系数）与金蝉脱壳（战败保全）在下方各自结算点另行注明 */
+      }
+      if (opsId === 'surprise' && scNote) scNote += '（奇袭 ×' + _opsMul + '）';
+    }
+    /* ============================================================
+     * v89.94（B2 · E1/E2）：围攻与战法 —— 只作用于**战斗入参**（零引擎改动）
+     * ------------------------------------------------------------
+     * · 围困：守军 −12%、城防同步疲敝（断粮之效）；
+     * · 围攻（据点/县城）：守军与城防按**当前守备值**缩放 —— 破防越多越好打；
+     * · 奇袭已在上方放大计略效果。
+     * ⚠️ 必须发生在**观战挂起之前**：挂起时保存的 scArmy/scVal 是权威输入，
+     *    重放读它（`opts._sim`）不重算 —— 否则同一场战斗两次结算结果会不同。
+     * ⚠️ 缩放对**掠夺/占领都生效**（城破了就是破了），但**破防只有占领推进**。
+     * ============================================================ */
+    if (!opts._sim) {
+      if (opsId === 'encircle' && scArmy) {
+        var _ecCfg = (DATA.SIEGE || {}).encircle || {};
+        var _ecCut = _ecCfg.garrisonCut == null ? 0.12 : _ecCfg.garrisonCut;
+        var _ecA = {};
+        for (var _ecK in scArmy) {
+          var _ecV = scArmy[_ecK] || 0;
+          _ecA[_ecK] = _ecV > 0 ? Math.max(1, Math.round(_ecV * (1 - _ecCut))) : 0;
+        }
+        scArmy = _ecA;
+        scVal = Math.round(scVal * (1 - _ecCut));      /* 被围的守军无暇修葺城防 */
+        scNote = (scNote ? scNote + '；' : '') + '围困 · 守军疲敝 −' + Math.round(_ecCut * 100) + '%';
+      }
+      if (GAME.siegeScopeOf(t)) {
+        var _sgS = GAME.siegeScaleOf(t);
+        var _sgA = {};
+        for (var _sgK in scArmy) {
+          var _sgV = scArmy[_sgK] || 0;
+          _sgA[_sgK] = _sgV > 0 ? Math.max(1, Math.round(_sgV * _sgS.garrison)) : 0;
+        }
+        scArmy = _sgA;
+        scVal = Math.round(scVal * _sgS.def);
+        if (_sgS.hold < 100) {
+          scNote = (scNote ? scNote + '；' : '') + '围攻已成 · 守备仅余 ' + Math.round(_sgS.hold)
+            + '%（守军与城防同步衰减）';
+        }
       }
     }
     /* ============================================================
@@ -1411,16 +1519,52 @@
     if (scNote) result.schemeNote = scNote;
     if (opts.scheme === 'jintui' && result.winner !== 'atk') {
       var _jt = GAME.schemeOf('jintui');
-      result.schemeKeep = _jt ? _jt.eff.woundedKeep : 0;
+      result.schemeKeep = _jt ? Math.min(1, _jt.eff.woundedKeep * _opsMul) : 0;
       result.schemeNote = '金蝉脱壳 · 保全而退（阵亡 ' + Math.round(result.schemeKeep * 100) + '% 转伤兵）';
     }
     var win = result.winner === 'atk';
     GAME.statBump('wins', win ? 1 : 0);
     GAME.statBump(mode.occupy ? 'conquerAttempt' : 'raidCount', 1);
 
+    /* ============================================================
+     * v89.94（B2 · E1）：围攻破防 —— **占领**打据点/县城时，每战都推进守备值
+     * ------------------------------------------------------------
+     * · 不论胜负都破防（战败也留下战果）—— 这就是"五五开"敢打的理由；
+     * · 破防量按**战力比**取：45% × 比，夹在 [8%, 55%]（围困 ×1.5、撤退 ×0.5）；
+     * · 守备归零 + 本战获胜 = 下城；否则"守军退守内城"，整军再来。
+     * ============================================================ */
+    var siegeOut = null;
+    if (mode.occupy && GAME.siegeScopeOf(t)) {
+      var _tpS = (GAME.story && GAME.story.troopPower) ? GAME.story.troopPower : null;
+      var _aP = 0, _dP = 0, _kk;
+      for (_kk in (result.atkStartBy || {})) _aP += (result.atkStartBy[_kk] || 0) * (_tpS ? _tpS(_kk) : 1);
+      for (_kk in (result.defStartBy || {})) _dP += (result.defStartBy[_kk] || 0) * (_tpS ? _tpS(_kk) : 1);
+      var _divS = (DATA.INVASION && DATA.INVASION.defDivisor) || 480;
+      _dP = _dP * (1 + ((result.defBonusEff || 0) / _divS));
+      var _ratioS = _dP > 0 ? (_aP / _dP) : 1;
+      var _chipS = GAME.siegeChipOf(_ratioS, opsId);
+      if (result.retreat) {
+        _chipS = Math.max(1, Math.round(_chipS * ((DATA.SIEGE || {}).retreatChipMul == null
+          ? 0.5 : (DATA.SIEGE || {}).retreatChipMul)));
+      }
+      siegeOut = GAME.siegeChipApply(t, _chipS);
+      result.siege = { chip: siegeOut.chip, hold: siegeOut.hold, waves: siegeOut.waves,
+        broke: siegeOut.broke, ratio: Math.round(_ratioS * 100) / 100, retreat: !!result.retreat };
+      GAME.log((result.retreat ? '🏳️ 主动撤退' : (win ? '⚔️ 得胜' : '⚔️ 受挫'))
+        + '：' + t.name + ' 守备 −' + siegeOut.chip + '% → 余 ' + Math.round(siegeOut.hold) + '%（第 '
+        + siegeOut.waves + ' 波）'
+        + (siegeOut.broke ? ' —— 城垣已破，再胜一阵即可拔城' : ''));
+    }
+
     var gains = { res: null, mats: [], equip: [], hero: null, beauty: null, seeds: [] };
 
     if (win) {
+      /* v89.99：俘获迁民 —— 攻破据点/名城，溃卒收编为民（唯一出口 captiveGain） */
+      var _capt99 = GAME.battle.captiveGain(city, result, t);
+      if (_capt99 && _capt99.gain > 0) {
+        result.captives = _capt99;
+        GAME.log('🪶 俘获迁民：' + _capt99.city + ' +' + U.fmt(_capt99.gain) + ' 人（溃卒收编）');
+      }
       /* v63（老板）：「野外城每天只能被掠夺一次」——**得手才计数**。
          掠夺失败不占用当天的额度（打不过不算掠夺过；否则一次失手就整天没得打，
          与 `prepare` 的拦截语义要一致：拦的是"已掠夺过"，不是"已尝试过"）。 */
@@ -1441,7 +1585,7 @@
         /* v86：趁火打劫 —— 本战掠夺资源 +30%（乘乱取利，与抢掠技巧叠乘） */
         if (opts.scheme === 'chenhuo') {
           var _ch = GAME.schemeOf('chenhuo');
-          raidBonus *= 1 + (_ch ? _ch.eff.lootPct : 0);
+          raidBonus *= 1 + (_ch ? _ch.eff.lootPct * _opsMul : 0);
         }
         /* v60（需求 4/6）：**城池**用该城自己的派生库存做战利品来源
            （"侦查看到的数" = "打完搬回来的数"，一个出口）；
@@ -1523,9 +1667,22 @@
           var enc = GAME.story ? GAME.story.encounterRoll() : null;
           result.encounter = enc;
         } else if (t.kind === 'fort') {
-          GAME.battle.razeFort(t, gen);
+          if (!siegeOut || siegeOut.broke) {
+            GAME.battle.razeFort(t, gen);
+            if (siegeOut) GAME.siegeClear(t);      /* v89.94：下城即清围攻档 */
+          } else {
+            /* 围攻未果：城垣未破 —— 兵回城，守备保留（下波再来） */
+            GAME.log('🏯 ' + t.name + ' 城垣未破（守备余 ' + Math.round(siegeOut.hold)
+              + '%）：守军退守内城，可整军再攻（占领＝围攻，多波次磨）');
+          }
         } else {
-          GAME.onConquer(t.npc, result, gen, city);
+          if (!siegeOut || siegeOut.broke) {
+            GAME.onConquer(t.npc, result, gen, city);
+            if (siegeOut) GAME.siegeClear(t);
+          } else {
+            GAME.log('🏯 ' + t.name + ' 城垣未破（守备余 ' + Math.round(siegeOut.hold)
+              + '%）：守军退守内城，可整军再攻（占领＝围攻，多波次磨）');
+          }
         }
       }
 
@@ -1561,6 +1718,11 @@
          「战败无功，未获经验」，否则原版过来的玩家会以为经验算漏了。 */
       result.expNone = true;
       /* 战败：伤兵在下方 returnArmy 统一结算（此前这里直接 applyWounded 会重复计数） */
+      /* v89.94（B2 · E1）：**主动撤退不是战败** —— 撤退是决策（保全而退），
+         不该被当失败惩罚：不扣忠诚、不写"坚守不退"，写清"破防已保留"。 */
+      if (result.retreat) {
+        GAME.log('🏳️ ' + gen.name + ' 主动撤退：' + t.name + ' 未克（破防已保留，残部带回）');
+      } else {
       /* v14.1：忠诚的唯一自然下降途径 —— 出征战败挫伤士气。
          （此前是随时间/民心/欠俸慢慢掉，玩家什么都没做也会掉，体验很差） */
       var lLoss = (DATA.LOYALTY && DATA.LOYALTY.defeatLoss) || 8;
@@ -1576,6 +1738,7 @@
         if (gen.loyalty < (DATA.LOYALTY.warnAt || 50)) {
           GAME.log('⚠️ ' + gen.name + ' 忠诚已低于 ' + DATA.LOYALTY.warnAt + '，加成减半，宜以珠宝赏赐安抚。');
         }
+      }
       }
     }
 
@@ -1647,6 +1810,10 @@
       title: (win ? '胜利' : '战败') + ' · ' + mode.name + ' ' + t.name,
       body: GAME.battle.reportText(t.name, atkArmy, gen, result)
         + (result.schemeNote ? '<br>【计谋】' + result.schemeNote : '')
+        + (result.retreat ? '<br>【撤退】主动撤退：残部带回，本波破防按半计（围攻进度保留）。' : '')
+        + (result.siege ? '<br>【围攻】' + (result.siege.retreat ? '撤退收兵 · ' : '')
+          + '破防 ' + result.siege.chip + '% → 守备余 ' + Math.round(result.siege.hold) + '%（第 '
+          + result.siege.waves + ' 波' + (result.siege.broke ? ' · 城垣已破' : ' · 守军退守内城') + '）' : '')
         + (lossLines.length ? '<br>【兵种损耗】' + lossLines.join('<br>') : '')
         /* 正文以 HTML 渲染（其余部分用 <br>），换行必须同格式 */
         + (lootLines.length ? '<br>【战利品】' + lootLines.join('；') : (win ? '<br>【战利品】无' : '')),
@@ -1661,6 +1828,12 @@
          整个 roundsLog 带每支部队的每个动作，会让存档迅速膨胀；
          这里只留条带与逐回合兵力（≤16 帧）。 */
       scene: GAME.battle.compactScene(result),
+      /* v89.94（B2 · E3）：分回合回放的关键帧（≤10 帧 + 关键帧标记；增量 <2KB/场） */
+      replay: GAME.battle.replayFramesOf(result),
+      /* v89.94（B2 · E3）：以少胜多 —— 以弱胜强的一仗才值得晒 */
+      underdog: GAME.battle.underdogOf(result),
+      /* v89.94（B2 · E1）：围攻战果（据点/县城才有）—— 列表与详情都要显示"还差多少" */
+      siege: result.siege || null,
     };
     s.reports.unshift(report);
     if (s.reports.length > 60) s.reports.pop();
@@ -1668,7 +1841,13 @@
     s.repUnread = (s.repUnread || 0) + 1;   /* v82：收编同段重复行（原先每份战报 +2） */
     return {
       ok: true, mode: mode.id, result: result, target: t, gains: gains,
-      msg: (win ? mode.name + '成功：' + t.name : mode.name + '失败：' + t.name),
+      msg: (win
+        ? ((siegeOut && !siegeOut.broke)
+          ? '围攻得势：' + t.name + ' 守备余 ' + Math.round(siegeOut.hold) + '%（未下城）'
+          : mode.name + '成功：' + t.name)
+        : ((siegeOut && siegeOut.chip)
+          ? '围攻受挫：' + t.name + ' 守备余 ' + Math.round(siegeOut.hold) + '%（战果已入账）'
+          : mode.name + '失败：' + t.name)),
     };
   };
 
@@ -1776,6 +1955,7 @@
     if (!gen || amount <= 0) return null;
     gen.exp = (gen.exp || 0) + amount;
     var r = GAME.checkLevelUp(gen);
+    if (r && r.up && GAME.sfx) GAME.sfx('levelup');   /* v89.93（E4）：升级音 */
     var need = GAME.expNeedOf(gen);
     GAME.log('📗 ' + gen.name + ' 经验 +' + U.numText(amount, 0)
       + (why ? '（' + why + '）' : '')
@@ -1794,6 +1974,87 @@
         + '（损 ' + U.numText(lost, 0) + '）');
     });
     return parts.join('　');
+  };
+
+  /* ============================================================
+   * v89.94（B2 · E3）：战报回放的数据侧 —— 战力口径 / 以少胜多 / 关键帧
+   * ------------------------------------------------------------
+   * · armyPowerOf：兵种构成 → 战力（走 STORY.troopPower 唯一出口，与来袭/家底同一把尺）；
+   * · underdogOf：以弱胜强（我方战力 < 守方战力×0.8 且赢）；
+   * · replayFramesOf：从 roundsLog 抽 ≤maxFrames 帧（首 2 + 尾 2 + 首杀/破塔/折半/最烈），
+   *   每帧带条带与一行事件（截断到 maxEv 字），并给关键帧标记。
+   *   验收线：战报增量 < 2KB/场（probe 实测钉住）。
+   * ============================================================ */
+  GAME.battle.armyPowerOf = function (by) {
+    var tp = (GAME.story && GAME.story.troopPower) ? GAME.story.troopPower : null;
+    var n = 0;
+    for (var k in (by || {})) {
+      n += (by[k] || 0) * (tp ? tp(k) : ((DATA.TROOPS[k] || {}).power || 1));
+    }
+    return Math.round(n);
+  };
+  GAME.battle.underdogOf = function (r) {
+    if (!r || r.winner !== 'atk') return false;
+    var a = GAME.battle.armyPowerOf(r.atkStartBy);
+    var d0 = GAME.battle.armyPowerOf(r.defStartBy);
+    var div = (DATA.INVASION && DATA.INVASION.defDivisor) || 480;
+    var d = d0 * (1 + ((r.defBonusEff || 0) / div));
+    return d > 0 && a > 0 && a < d * 0.8;
+  };
+  GAME.battle.replayFramesOf = function (r) {
+    var cfg = DATA.REPLAY || {};
+    var maxFrames = cfg.maxFrames || 10, maxEv = cfg.maxEv || 56;
+    if (!r || r.engine !== 'tactic' || !r.roundsLog || !r.roundsLog.length) return null;
+    var log = r.roundsLog, strips = r.strips || [], n = log.length;
+    function evLine(rr) {
+      var parts = [];
+      (rr.events || []).forEach(function (e) {
+        if (parts.length >= 3) return;
+        if (e.kind === 'attack' || e.kind === 'counter') {
+          parts.push((e.side === 'atk' ? '我' : '敌') + (e.name || '') + '→' + (e.target || '')
+            + (e.kind === 'counter' ? '反击' : '') + ' 杀 ' + U.numText(e.kill || 0, 0));
+        } else if (e.kind === 'tower') {
+          parts.push('破塔 ' + (e.destroy || 0) + ' 座（余 ' + (e.left || 0) + '）');
+        } else if (e.kind === 'wall') {
+          parts.push('城头→' + (e.target || '') + ' 杀 ' + U.numText(e.kill || 0, 0));
+        }
+      });
+      var s0 = parts.join('；');
+      if (s0.length > maxEv) s0 = s0.slice(0, maxEv - 1) + '…';
+      return s0;
+    }
+    var a0 = (log[0] && log[0].a) || 0, d0 = (log[0] && log[0].d) || 0;
+    var picks = {};
+    [0, 1, n - 2, n - 1].forEach(function (i) { if (i >= 0 && i < n) picks[i] = true; });
+    var firstKill = -1, firstTower = -1, halfA = -1, halfD = -1, maxKill = 0, maxIdx = -1;
+    log.forEach(function (rr, i) {
+      var k = 0;
+      (rr.events || []).forEach(function (e) {
+        if (e.kill) k += e.kill;
+        if (firstKill < 0 && (e.kill || 0) > 0) firstKill = i;
+        if (firstTower < 0 && e.kind === 'tower') firstTower = i;
+      });
+      if (k > maxKill) { maxKill = k; maxIdx = i; }
+      if (halfA < 0 && a0 > 0 && rr.a <= a0 * 0.5) halfA = i;
+      if (halfD < 0 && d0 > 0 && rr.d <= d0 * 0.5) halfD = i;
+    });
+    [firstKill, firstTower, maxIdx].forEach(function (i) { if (i >= 0) picks[i] = true; });
+    [halfA, halfD].forEach(function (i) { if (i >= 0) picks[i] = true; });
+    var idx = Object.keys(picks).map(Number).sort(function (x, y) { return x - y; });
+    while (idx.length > maxFrames) idx.splice(idx.length - 2, 1);      /* 优先保首尾 */
+    var frames = idx.map(function (i) {
+      var rr = log[i];
+      return { r: rr.r, a: rr.a, d: rr.d, gap: rr.gap, s: strips[i] || '', ev: evLine(rr) };
+    });
+    var key = [];
+    if (firstKill >= 0) key.push({ r: log[firstKill].r, tag: 'first', text: '初次接敌' });
+    if (firstTower >= 0) key.push({ r: log[firstTower].r, tag: 'tower', text: '攻破箭塔' });
+    if (halfD >= 0) key.push({ r: log[halfD].r, tag: 'half', text: '敌军折半' });
+    if (halfA >= 0) key.push({ r: log[halfA].r, tag: 'lost', text: '我军折半' });
+    if (maxIdx >= 0) key.push({ r: log[maxIdx].r, tag: 'hot', text: '最烈一回合' });
+    key.push({ r: log[n - 1].r, tag: 'final',
+      text: r.retreat ? '主动撤退' : (r.winner === 'atk' ? '得胜' : '力尽') });
+    return { field: r.field, rounds: n, frames: frames, key: key, retreat: !!r.retreat };
   };
 
   /* 精简战斗场景（供战报存档与详情面板）：条带 ≤16 帧 + 逐回合兵力 */
@@ -1937,9 +2198,11 @@
   };
 
   /* 出发：校验 → 扣除 → 入队（真正的结算在抵达时由 tick 触发） */
-  GAME.march.dispatch = function (target, modeId, army, genId, schemeId) {
+  GAME.march.dispatch = function (target, modeId, army, genId, schemeId, ops) {
     var s = GAME.state;
-    var p = GAME.battle.prepare(target, modeId, army, genId, {});
+    /* v89.94（B2 · E2）：战法随军 —— 校验与 prepare 同一判据（含"奇袭须有计略"） */
+    var opsId = GAME.opsIdOf(ops);
+    var p = GAME.battle.prepare(target, modeId, army, genId, { ops: opsId, scheme: schemeId || null });
     if (!p.ok) return p;
     var city = p.city, gen = p.gen, mode = p.mode, t = p.t;
     /* v86（老板「按计划进行」· G1）：计谋 —— 校验与计费在出发时完成；
@@ -1964,6 +2227,10 @@
       var _bx = GAME.schemeOf('benxi');
       total = Math.round(total / (1 + (_bx ? _bx.eff.marchPct : 0)));
     }
+    /* v89.94（B2 · E2）：围师必久 —— 围困行军 ×1.5（多出来的时间就是"围"） */
+    if (opsId === 'encircle') {
+      total = Math.round(total * (((DATA.SIEGE || {}).encircle || {}).marchMul || 1.5));
+    }
     s.marches = s.marches || [];
     var m = {
       id: 'mr' + (GAME._marchSeq = (GAME._marchSeq || 0) + 1),
@@ -1971,11 +2238,14 @@
       target: target, tx: t.x, ty: t.y, name: t.name, kind: t.kind,
       army: U.deep(army), elapsed: 0, totalTime: total,
       scheme: scheme,                    /* v86：随军计谋（抵达时读） */
+      ops: opsId,                        /* v89.94：随军战法（抵达时读） */
     };
     s.marches.push(m);
     var left = Math.max(0, total / GAME.timeScale());
     GAME.log('🛫 ' + gen.name + ' 率军出发 → ' + t.name + '（' + mode.name
+      + (opsId !== 'assault' ? ' · ' + GAME.opsOf(opsId).name : '')
       + ' · 行军 ' + U.durExact(left) + ' · 速度 ' + GAME.march.speedText(army, { cityId: city.id }, to, gen) + '）');
+    if (GAME.sfx) GAME.sfx('march');      /* v89.93（E4）：出征音 */
     return {
       ok: true, mode: mode.id, marched: true, march: m,
       msg: '大军已发，约 ' + U.durExact(left) + ' 后抵达 ' + t.name,
@@ -2017,7 +2287,7 @@
     var r = null, err = null;
     try {
       r = GAME.battle.expedition(m.target, m.modeId, m.army, m.genId,
-        { arrived: true, cityId: m.cityId, scheme: m.scheme || null });
+        { arrived: true, cityId: m.cityId, scheme: m.scheme || null, ops: m.ops || 'assault' });
     } catch (e) { err = e; }
     /* v89.87：观战挂起（pending）时将领**保持征战在外**，不置 idle ——
        等 finishBattle 落账后统一收尾（否则战斗中将领会被当成空闲可再派遣） */

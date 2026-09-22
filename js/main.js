@@ -56,6 +56,29 @@
         var r = GAME.battle.stepBattle(rec.id);
         if (r && ui.btAfterStep) ui.btAfterStep(rec, r);
       })(); break;
+      /* v89.94（B2 · E1）：主动撤退 —— 两段确认（第一下"上膛"、第二下真撤） */
+      case 'bt-retreat': (function () {
+        var _bid94 = ui._bt && ui._bt.id;
+        if (!_bid94 || !GAME.battle._recOf(_bid94)) { ui.toast('战斗已结束（战报见公文）'); return; }
+        if (!ui._btRetreatArmed) {
+          ui._btRetreatArmed = true;
+          el.className = 'btn red';
+          el.innerHTML = '🏳️ 再点一次确认撤退';
+          ui.toast('⚠️ 撤退：带残部撤出 —— 本波破防按半计（围攻进度保留）');
+          var _el94 = el;
+          setTimeout(function () {
+            ui._btRetreatArmed = false;
+            if (_el94 && _el94.textContent && _el94.textContent.indexOf('再点一次') >= 0) {
+              _el94.className = 'btn';
+              _el94.innerHTML = '🏳️ 撤退';
+            }
+          }, 4000);
+          return;
+        }
+        ui._btRetreatArmed = false;
+        var _rr94 = GAME.battle.retreatBattle(_bid94);
+        if (_rr94 && _rr94.ok === false) ui.toast('撤退未果：' + (_rr94.msg || '战斗已结束'));
+      })(); break;
       case 'bt-auto': (function () {
         var rec = ui._bt && GAME.battle._recOf(ui._bt.id);
         if (rec) GAME.battle.autoBattle(rec.id);   /* 结束由 ui.onBattleDone 收口 */
@@ -448,6 +471,9 @@
       /* v89.60：市场合并为单块 —— 买卖按钮各自带 data-res，数量取共用输入框 #mk-amount */
       case 'market-sell': GAME.doMarketSell(el.dataset.res); break;
       case 'market-buy': GAME.doMarketBuy(el.dataset.res); break;
+      /* v89.100：道具寄售（价 = 购买价 75%；出口 systems.consign*） */
+      case 'consign-sell': GAME.doConsign(el.dataset.item); break;
+      case 'consign-all': GAME.doConsignAll(); break;
       /* v26：同上，「商城」已是顶栏视图（data-view="shop"）。 */
       case 'quick-item': ui.openQuickItem(el.dataset.res); break;
       case 'use-item-quick': GAME.doUseItemQuick(el.dataset.item); break;
@@ -528,6 +554,15 @@
          v81（老板）：「做成3页，第一页为募兵队列」—— que / inf / cav 三页白名单 */
       case 'train-tab': ui._trainTab = (['que', 'inf', 'cav'].indexOf(el.dataset.page) >= 0) ? el.dataset.page : 'que'; ui.renderTroopsModal(); break;
       case 'confirm-train': GAME.doTrain(el.dataset.troop); break;
+      /* v89.99（老板「设计兵种解散」）：解散归农 —— 数量取同一输入框 */
+      case 'troop-disband': {
+        var dBc = GAME.currentCity();
+        var dBn = Math.max(1, Math.floor(Number(ui._trainCount) || 1));
+        var dBr = GAME.disbandAt(dBc && dBc.id, el.dataset.troop, dBn);
+        ui.toast((dBr.ok ? '🕊 ' : '') + dBr.msg);
+        if (dBr.ok) { GAME.refreshAll(); ui.renderTroopsModal(); }
+        break;
+      }
 
       /* 将领 */
       case 'assign-guard': GAME.doAssignGuard(el.dataset.gen); break;
@@ -589,7 +624,32 @@
         break;
       }
       case 'city-transport': ui.openTransport(el.dataset.city); break;
+      /* v89.93（整改 E11）：度支归集（跨城资金调剂）—— 结果用 toast 回执 */
+      case 'budget-gather': {
+        var bgR = GAME.budgetGather(el.dataset.city);
+        ui.toast((bgR.ok ? '🏛 ' : '') + bgR.msg);
+        if (bgR.ok) { GAME.refreshAll(); }
+        break;
+      }
       case 'city-dispatch': ui.openDispatch(el.dataset.city); break;
+      /* v89.95（A1）：节钺扩编（每城 +1 建造位，至多 2 次）—— 结果 toast + 重开面板 */
+      case 'jieyue-expand': {
+        var _heR = GAME.jieyueExpandCity(el.dataset.city);
+        ui.toast((_heR.ok ? '🪓 ' : '⚠️ ') + _heR.msg);
+        if (_heR.ok) {
+          GAME.refreshAll();
+          var _heC = GAME.cityById(el.dataset.city);
+          if (_heC) ui.openCityPanel(_heC);
+        }
+        break;
+      }
+      /* v89.93（整改 E14）：资质晋升 —— 走既有出口 systems.useItem（rank_up 分支） */
+      case 'gen-rankup': {
+        var ruR = GAME.systems.useItem(el.dataset.item, el.dataset.gen);
+        ui.toast((ruR.ok ? '🧬 ' : '') + ruR.msg);
+        if (ruR.ok) { GAME.refreshAll(); }        /* 档案页随刷新重绘（晋升行自动更新） */
+        break;
+      }
       case 'city-rename': {
         /* 改名弹窗作用于**当前城** —— 先切过去再开，避免改错城 */
         ui.setCity(el.dataset.city);
@@ -678,11 +738,15 @@
         else if (after === 'autofin') GAME.doSetAutoFin(el.dataset.k, el.dataset.v);
         /* v89.86（P-17）：离线推进上限 */
         else if (after === 'offlinecap') GAME.doSetOfflineCap(el.dataset.v);
+        /* v89.93（整改 E4）：音效开关（入档） */
+        else if (after === 'sfx') GAME.doSetSfx(el.dataset.v);
         break;
       }
 
       /* 爵位 */
       case 'promote': GAME.doPromote(); break;
+      /* v89.93（整改 E5）：里程碑演出层关闭 */
+      case 'moment-close': ui.momentClose(); break;
 
       /* 设置 */
       case 'toggle-auto-upgrade': GAME.doToggleAutoUpgrade(); break;
@@ -728,6 +792,13 @@
          （v89.86：本行不再写字面 data-action 模式 —— audit 的孤儿按钮扫描不剥注释，会被误报） */
       case 'exp-max': { var ei = document.getElementById('exp-' + el.dataset.troop); if (ei) ei.value = ei.max; break; }
       case 'exp-confirm': GAME.doExpConfirm(); break;
+      /* v89.94（B2 · E2）：战法三选（强攻/围困/奇袭）—— 唯一出口 ui.setExpOps */
+      case 'exp-ops': ui.setExpOps(el.dataset.v); break;
+      /* v89.94（B2 · E3）：战报回放控制（逐帧 / 播放 / 关键帧跳转） */
+      case 'rep-prev': ui.replayStep(-1); break;
+      case 'rep-next': ui.replayStep(1); break;
+      case 'rep-play': ui.replayToggle(); break;
+      case 'rep-jump': ui.replayJump(Number(el.dataset.v)); break;
       /* v89.52（老板：出征界面可用道具）：背包体力丹直接作用于所选主将，刷新道具条与预估，不关闭面板 */
       case 'exp-use-item': {
         var _it = el.dataset.item, _gs = document.getElementById('exp-gen');
@@ -1087,6 +1158,17 @@
     GAME.refreshView();
   };
 
+  /* v89.93（整改 E4）：音效开关（入档）—— 预览一声 build 音，让玩家当场听见 */
+  GAME.doSetSfx = function (v) {
+    var s = GAME.state;
+    if (!s) return;
+    s.settings = s.settings || {};
+    s.settings.sfx = (String(v) === '1' || v === true);
+    if (s.settings.sfx) ui.sfx('build');
+    ui.toast('音效：' + (s.settings.sfx ? '开（音量 ' + Math.round((s.settings.sfxVol != null ? s.settings.sfxVol : 0.5) * 100) + '%）' : '关'));
+    GAME.refreshView();
+  };
+
   /* v89.86（整改 P-17）：离线推进上限（游戏日；0=不限） */
   GAME.doSetOfflineCap = function (v) {
     var s = GAME.state;
@@ -1312,6 +1394,20 @@
     if (r.ok) { ui.openMarket(); GAME.refreshAll(); ui.sgTryAct('market-trade'); }
   };
 
+  /* v89.100：寄售（UI 包装 —— 唯一出口在 systems.consign*） */
+  GAME.doConsign = function (id) {
+    var r = GAME.systems.consignItem(id, 0);   /* 0 = 全部 */
+    ui.toast((r.ok ? '🎒 ' : '') + r.msg);
+    if (r.ok) { ui.openMarket(); GAME.refreshAll(); }
+    return r;
+  };
+  GAME.doConsignAll = function () {
+    var r = GAME.systems.consignAll();
+    ui.toast((r.ok ? '🎒 ' : '') + r.msg);
+    if (r.ok) { ui.openMarket(); GAME.refreshAll(); }
+    return r;
+  };
+
   GAME.doExtBuild = function (idx, eid) {
     var r = GAME.buildExt(idx, eid);
     ui.toast(r.msg);
@@ -1461,7 +1557,13 @@
   GAME.doPromote = function () {
     var r = GAME.systems.promote();
     ui.toast(r.msg);
-    if (r.ok) GAME.refreshAll();
+    if (r.ok) {
+      /* v89.93（E5）：爵位晋升 = 22 档仪式感最强的成长 → 全屏演出 */
+      var rn = (DATA.RANK[GAME.state.rank] || {}).name || '';
+      ui.moment({ kind: 'full', icon: '🏅', title: '晋升 · ' + rn,
+        sub: r.msg, lines: ['金印绶带，名位既正。', '新特权已入账（产/税 +1%·仓储 +2%·建造位与将格随档递进）。'] });
+      GAME.refreshAll();
+    }
   };
   /* v77（老板）：君主面板 —— 晋升 / 改名（做完就地重开面板，立刻看到新状态） */
   GAME.doLordPromote = function () {
@@ -1607,10 +1709,15 @@
        例外：侦查（不接战）与"占领己方野地"（到了即驻，不接战）不设此闸。 */
     var _tgt86 = ui._expRes;
     var _peaceful86 = !!(_tgt86 && _tgt86.kind === 'wild' && GAME.map.wildAt(_tgt86.x, _tgt86.y));
+    /* v89.94（B2 · E2）：闸门改按**最坏情形**拦（区间下界 ratioLo）——
+       情报越差区间越宽，警告越容易触发：这是"不确定性"该有的代价。
+       文案同时给点估计与误差，玩家知道自己在赌什么。 */
     var _pw86 = (md.battle && !_peaceful86 && ui.expPowerOf) ? ui.expPowerOf() : null;
-    if (_pw86 && _pw86.def > 0 && _pw86.mine > 0 && _pw86.ratio < 0.5 && !ui._expForceArmed) {
+    var _gateLo86 = (_pw86 && _pw86.ratioLo != null) ? _pw86.ratioLo : (_pw86 ? _pw86.ratio : null);
+    if (_pw86 && _pw86.def > 0 && _pw86.mine > 0 && _gateLo86 != null && _gateLo86 < 0.5 && !ui._expForceArmed) {
       ui._expForceArmed = true;
-      var _ratioTxt86 = (Math.round(_pw86.ratio * 100) / 100) + ' : 1';
+      var _ratioTxt86 = '最坏 ' + (Math.round(_gateLo86 * 100) / 100) + ' : 1'
+        + '（军师估算 ' + (Math.round(_pw86.ratio * 100) / 100) + ' ±' + Math.round(_pw86.err * 100) + '%）';
       var _btn86 = document.querySelector('#modal-root [data-action="exp-confirm"]');
       if (_btn86) {
         _btn86.className = 'btn red';
@@ -1622,10 +1729,16 @@
     ui._expForceArmed = false;
     /* v18：出征改为**行军队列** —— 校验/扣除在出发时完成，战斗在抵达时才打。
        于是「速度」这条属性、驿站、烽火台、天气、行军技巧、急行军令才真正有意义。 */
-    var r = GAME.march.dispatch(target, mode, atk, genSel.value, ui._expScheme || null);
+    /* v89.94（B2 · E2）：战法校验（与 prepare/dispatch 同一判据）——
+       奇袭没计略 / 围困打野地 → 拦在这里并说明原因，不静默降级。 */
+    var _ops94 = GAME.opsIdOf(ui._expOps);
+    var _opsIssue94 = GAME.opsConfigIssueOf(_ops94, ui._expRes, ui._expScheme || null);
+    if (_opsIssue94) { ui.toast('⚠️ ' + _opsIssue94); return; }
+    var r = GAME.march.dispatch(target, mode, atk, genSel.value, ui._expScheme || null, _ops94);
     ui.toast(r.msg);
     if (r.ok) {
       ui._expScheme = null;      /* v86：计已随军出发，面板状态清空 */
+      ui._expOps = 'assault';    /* v89.94：战法回到默认（防下次误带围困上野地） */
       ui.closeModal();
       GAME.refreshAll();
       /* 旧接口兼容：dispatch 不再立刻返回战报，故不再当场弹侦查结果 */

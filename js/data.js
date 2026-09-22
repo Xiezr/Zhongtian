@@ -480,26 +480,34 @@
   /* v84（老板）：「辎重车是骑兵吧，斥候是步兵」——
      cat 只决定**募兵分页归属**（inf → 步兵页 / cav → 骑兵页），与战场定位无关：
      斥候（侦察）归步兵页，辎重车（后勤货运）归骑兵页。 */
+  /* v89.96 耐久标定（老板「调整兵种属性」）：全部兵种 hp ×6 ——
+     标定依据（双约束，实测见 probe_v8996_dmgchain / tmp/_cal96）：
+       · 裸兵杀率地基 = 兵攻 ÷ 兵血 = 220/300 = 0.73/回合（一击清场）；
+         ×6 后 0.12/回合（一回合打掉 12%）——带将主流对局 13 回合（目标 8~16）；
+       · 最慢组合（义兵对拼，攻 50 / 血 1200）= 0.042/回合 → ~24 回合，
+         不撞 30 回合上限（×10 时会撞顶，见 _cal96 的对等战矩阵）。
+     兵种间相对强弱**完全不变**（同乘）；战力尺（STORY.troopPower 直接读本表）、
+     守军、UI 显示、探针全线自动跟随，不留"只有战斗变慢"的暗角。 */
   DATA.TROOPS = {
-    minfu:   { id: 'minfu', cat: 'inf', name: '民夫', icon: '🪓', hp: 100,  atk: 5,   def: 10, range: 10,   spd: 180,  gather: 2, load: 200,  pop: 1, time: 40,   cost: { grain: 150, wood: 150, iron: 10 }, unlock: { junying: 1 }, desc: '基础民夫，战力孱弱，可运输' },
-    yibing:  { id: 'yibing', cat: 'inf', name: '义兵', icon: '🗡️', hp: 200, atk: 50,  def: 50, range: 20,  spd: 200,  gather: 3, load: 20,   pop: 1, time: 20,   cost: { grain: 240, wood: 100, iron: 50 }, unlock: { junying: 1 }, desc: '聚集的义军，初具战力' },
-    chihou:  { id: 'chihou', cat: 'inf', name: '斥候', icon: '🦅', hp: 100,  atk: 20,  def: 20, range: 20,  spd: 3000, gather: 1, load: 6,    pop: 1, nocombat: true, time: 90,   cost: { grain: 360, wood: 200, iron: 150 }, unlock: { junying: 2, shuyuan: 2 }, desc: '极限速度，侦察/截援必备' },
-    changqiang: { id: 'changqiang', cat: 'inf', name: '长枪兵', icon: '🔱', hp: 300, atk: 150, def: 150, range: 50, spd: 300, gather: 4, load: 40, pop: 1, time: 140, cost: { grain: 450, wood: 500, iron: 100 }, unlock: { junying: 2, shuyuan: 2 }, desc: '克制骑兵，阵型严整' },
-    daodun:  { id: 'daodun', cat: 'inf', name: '刀盾兵', icon: '🛡️', hp: 400, atk: 130, def: 250, range: 30, spd: 275, gather: 4, load: 30, pop: 1, time: 210, cost: { grain: 600, wood: 150, iron: 400 }, unlock: { junying: 3, shuyuan: 3 }, desc: '高防御，克远程，炮灰首选' },
-    gongjian: { id: 'gongjian', cat: 'inf', name: '弓箭手', icon: '🏹', hp: 320, atk: 220, def: 50, range: 1200, spd: 250, gather: 5, load: 25, pop: 2, time: 340, cost: { grain: 900, wood: 350, iron: 300 }, unlock: { junying: 4, shuyuan: 4 }, desc: '远程主力，射程1200' },
-    qingji:  { id: 'qingji', cat: 'cav', name: '轻骑兵', icon: '🐎', hp: 620, atk: 340, def: 180, range: 80, spd: 1000, gather: 6, load: 100, pop: 2, time: 480, cost: { grain: 3000, wood: 600, iron: 500 }, unlock: { junying: 5, majiu: 1 }, desc: '机动突袭，抓将主力（需马厩）' },
-    tieji:   { id: 'tieji', cat: 'cav', name: '铁骑兵', icon: '🐴', hp: 1200, atk: 520, def: 350, range: 70, spd: 600, gather: 9, load: 80, pop: 3, time: 1450, cost: { grain: 6000, wood: 500, iron: 2500 }, unlock: { junying: 7, shuyuan: 6, majiu: 3 }, desc: '重装铁骑，攻守兼备（需马厩3）' },
-    zhouche: { id: 'zhouche', cat: 'cav', name: '辎重车', icon: '🛺', hp: 700, atk: 10, def: 60, range: 10, spd: 150, gather: 1, load: 5000, pop: 4, time: 970, cost: { grain: 1800, wood: 1500, iron: 350 }, unlock: { junying: 5 }, desc: '负重5000，专属运资' },
-    chuangnu: { id: 'chuangnu', name: '床弩', icon: '🏹', hp: 900, atk: 500, def: 160, range: 1400, spd: 120, gather: 2, load: 35, pop: 3, time: 2910, cost: { grain: 7500, wood: 3000, iron: 1800 }, craft: true, unlock: { junying: 8, shuyuan: 8, gongjiangzuofang: 3 }, desc: '强力远程，攻城利器（工匠作坊制造）' },
-    chongche: { id: 'chongche', name: '冲车', icon: '🚩', hp: 6000, atk: 620, def: 600, range: 50, spd: 160, gather: 2, load: 45, pop: 5, time: 4370, cost: { grain: 12000, wood: 6000, iron: 1500 }, craft: true, unlock: { junying: 9, shuyuan: 8, gongjiangzuofang: 5 }, desc: '血5000防600，城墙杀手（工匠作坊制造）' },
-    toudan:  { id: 'toudan', name: '投石车', icon: '🪨', hp: 1100, atk: 950, def: 200, range: 1600, spd: 100, gather: 2, load: 75, pop: 4, time: 5830, cost: { grain: 15000, wood: 5000, stone: 8000, iron: 1200 }, craft: true, unlock: { junying: 10, shuyuan: 10, gongjiangzuofang: 7 }, desc: '攻800射程1600，攻城巨炮（工匠作坊制造）' },
+    minfu:   { id: 'minfu', cat: 'inf', name: '民夫', icon: '🪓', hp: 600,  atk: 5,   def: 10, range: 10,   spd: 180,  gather: 2, load: 200,  pop: 1, time: 40,   cost: { grain: 150, wood: 150, iron: 10 }, unlock: { junying: 1 }, desc: '基础民夫，战力孱弱，可运输' },
+    yibing:  { id: 'yibing', cat: 'inf', name: '义兵', icon: '🗡️', hp: 1200, atk: 50,  def: 50, range: 20,  spd: 200,  gather: 3, load: 20,   pop: 1, time: 20,   cost: { grain: 240, wood: 100, iron: 50 }, unlock: { junying: 1 }, desc: '聚集的义军，初具战力' },
+    chihou:  { id: 'chihou', cat: 'inf', name: '斥候', icon: '🦅', hp: 600,  atk: 20,  def: 20, range: 20,  spd: 3000, gather: 1, load: 6,    pop: 1, nocombat: true, time: 90,   cost: { grain: 360, wood: 200, iron: 150 }, unlock: { junying: 2, shuyuan: 2 }, desc: '极限速度，侦察/截援必备' },
+    changqiang: { id: 'changqiang', cat: 'inf', name: '长枪兵', icon: '🔱', hp: 1800, atk: 150, def: 150, range: 50, spd: 300, gather: 4, load: 40, pop: 1, time: 140, cost: { grain: 450, wood: 500, iron: 100 }, unlock: { junying: 2, shuyuan: 2 }, desc: '克制骑兵，阵型严整' },
+    daodun:  { id: 'daodun', cat: 'inf', name: '刀盾兵', icon: '🛡️', hp: 2400, atk: 130, def: 250, range: 30, spd: 275, gather: 4, load: 30, pop: 1, time: 210, cost: { grain: 600, wood: 150, iron: 400 }, unlock: { junying: 3, shuyuan: 3 }, desc: '高防御，克远程，炮灰首选' },
+    gongjian: { id: 'gongjian', cat: 'inf', name: '弓箭手', icon: '🏹', hp: 1920, atk: 220, def: 50, range: 1200, spd: 250, gather: 5, load: 25, pop: 2, time: 340, cost: { grain: 900, wood: 350, iron: 300 }, unlock: { junying: 4, shuyuan: 4 }, desc: '远程主力，射程1200' },
+    qingji:  { id: 'qingji', cat: 'cav', name: '轻骑兵', icon: '🐎', hp: 3720, atk: 340, def: 180, range: 80, spd: 1000, gather: 6, load: 100, pop: 2, time: 480, cost: { grain: 3000, wood: 600, iron: 500 }, unlock: { junying: 5, majiu: 1 }, desc: '机动突袭，抓将主力（需马厩）' },
+    tieji:   { id: 'tieji', cat: 'cav', name: '铁骑兵', icon: '🐴', hp: 7200, atk: 520, def: 350, range: 70, spd: 600, gather: 9, load: 80, pop: 3, time: 1450, cost: { grain: 6000, wood: 500, iron: 2500 }, unlock: { junying: 7, shuyuan: 6, majiu: 3 }, desc: '重装铁骑，攻守兼备（需马厩3）' },
+    zhouche: { id: 'zhouche', cat: 'cav', name: '辎重车', icon: '🛺', hp: 4200, atk: 10, def: 60, range: 10, spd: 150, gather: 1, load: 5000, pop: 4, time: 970, cost: { grain: 1800, wood: 1500, iron: 350 }, unlock: { junying: 5 }, desc: '负重5000，专属运资' },
+    chuangnu: { id: 'chuangnu', name: '床弩', icon: '🏹', hp: 5400, atk: 500, def: 160, range: 1400, spd: 120, gather: 2, load: 35, pop: 3, time: 2910, cost: { grain: 7500, wood: 3000, iron: 1800 }, craft: true, unlock: { junying: 8, shuyuan: 8, gongjiangzuofang: 3 }, desc: '强力远程，攻城利器（工匠作坊制造）' },
+    chongche: { id: 'chongche', name: '冲车', icon: '🚩', hp: 36000, atk: 620, def: 600, range: 50, spd: 160, gather: 2, load: 45, pop: 5, time: 4370, cost: { grain: 12000, wood: 6000, iron: 1500 }, craft: true, unlock: { junying: 9, shuyuan: 8, gongjiangzuofang: 5 }, desc: '重甲巨车，城墙杀手（工匠作坊制造）' },
+    toudan:  { id: 'toudan', name: '投石车', icon: '🪨', hp: 6600, atk: 950, def: 200, range: 1600, spd: 100, gather: 2, load: 75, pop: 4, time: 5830, cost: { grain: 15000, wood: 5000, stone: 8000, iron: 1200 }, craft: true, unlock: { junying: 10, shuyuan: 10, gongjiangzuofang: 7 }, desc: '攻800射程1600，攻城巨炮（工匠作坊制造）' },
     /* 特殊兵种（需对应州城 + 科技） */
-    qingzhoubing: { id: 'qingzhoubing', cat: 'inf', name: '青州兵', icon: '🥷', hp: 620, atk: 350, def: 200, range: 60, spd: 350, gather: 6, load: 50, pop: 2, time: 115, cost: { grain: 2400, wood: 600, iron: 400 }, unlock: { junying: 8, shuyuan: 6, city: 'qingzhou', tech: { xingjun: 5 } }, desc: '青州精兵' },
-    tengjiabing: { id: 'tengjiabing', cat: 'inf', name: '藤甲兵', icon: '🛡️', hp: 600, atk: 340, def: 350, range: 60, spd: 300, gather: 5, load: 35, pop: 2, time: 170, cost: { grain: 1800, wood: 300, iron: 500 }, unlock: { junying: 8, shuyuan: 7, city: 'yizhou', tech: { fanghu: 8 } }, desc: '防350，刀枪不入（惧火）' },
-    tuqibing: { id: 'tuqibing', cat: 'cav', name: '突骑兵', icon: '🏇', hp: 640, atk: 330, def: 150, range: 1000, spd: 450, gather: 7, load: 45, pop: 2, time: 270, cost: { grain: 3600, wood: 500, iron: 800 }, unlock: { junying: 9, shuyuan: 7, majiu: 3, city: 'hebei', tech: { paoshe: 5, jiayu: 5 } }, desc: '骑射突袭，射程1000' },
-    hubaoqi: { id: 'hubaoqi', cat: 'cav', name: '虎豹骑', icon: '🐯', hp: 800, atk: 510, def: 250, range: 70, spd: 850, gather: 10, load: 60, pop: 3, time: 385, cost: { grain: 4500, wood: 800, iron: 1200 }, unlock: { junying: 9, shuyuan: 8, majiu: 4, city: 'sili', tech: { tongshuai: 9, lianbing: 7 } }, desc: '曹魏精锐骑兵' },
-    xiliangtieqi: { id: 'xiliangtieqi', cat: 'cav', name: '西凉铁骑', icon: '🐻', hp: 1400, atk: 700, def: 400, range: 80, spd: 750, gather: 10, load: 100, pop: 4, time: 1160, cost: { grain: 5400, wood: 700, iron: 2000 }, unlock: { junying: 9, shuyuan: 8, majiu: 4, city: 'liangzhou', tech: { jiayu: 7 } }, desc: '攻450防400，攻守兼备' },
-    nanjiangxiangbing: { id: 'nanjiangxiangbing', cat: 'cav', name: '南疆象兵', icon: '🐘', hp: 3000, atk: 880, def: 400, range: 70, spd: 400, gather: 12, load: 60, pop: 5, time: 3500, cost: { grain: 9000, wood: 1000, iron: 2500 }, unlock: { junying: 9, shuyuan: 8, city: 'yizhou', tech: { yiliao: 8, zhandou: 7 } }, desc: '血2500，战场重坦' },
+    qingzhoubing: { id: 'qingzhoubing', cat: 'inf', name: '青州兵', icon: '🥷', hp: 3720, atk: 350, def: 200, range: 60, spd: 350, gather: 6, load: 50, pop: 2, time: 115, cost: { grain: 2400, wood: 600, iron: 400 }, unlock: { junying: 8, shuyuan: 6, city: 'qingzhou', tech: { xingjun: 5 } }, desc: '青州精兵' },
+    tengjiabing: { id: 'tengjiabing', cat: 'inf', name: '藤甲兵', icon: '🛡️', hp: 3600, atk: 340, def: 350, range: 60, spd: 300, gather: 5, load: 35, pop: 2, time: 170, cost: { grain: 1800, wood: 300, iron: 500 }, unlock: { junying: 8, shuyuan: 7, city: 'yizhou', tech: { fanghu: 8 } }, desc: '防350，刀枪不入（惧火）' },
+    tuqibing: { id: 'tuqibing', cat: 'cav', name: '突骑兵', icon: '🏇', hp: 3840, atk: 330, def: 150, range: 1000, spd: 450, gather: 7, load: 45, pop: 2, time: 270, cost: { grain: 3600, wood: 500, iron: 800 }, unlock: { junying: 9, shuyuan: 7, majiu: 3, city: 'hebei', tech: { paoshe: 5, jiayu: 5 } }, desc: '骑射突袭，射程1000' },
+    hubaoqi: { id: 'hubaoqi', cat: 'cav', name: '虎豹骑', icon: '🪓', hp: 4800, atk: 510, def: 250, range: 70, spd: 850, gather: 10, load: 60, pop: 3, time: 385, cost: { grain: 4500, wood: 800, iron: 1200 }, unlock: { junying: 9, shuyuan: 8, majiu: 4, city: 'sili', tech: { tongshuai: 9, lianbing: 7 } }, desc: '曹魏精锐骑兵' },
+    xiliangtieqi: { id: 'xiliangtieqi', cat: 'cav', name: '西凉铁骑', icon: '🐻', hp: 8400, atk: 700, def: 400, range: 80, spd: 750, gather: 10, load: 100, pop: 4, time: 1160, cost: { grain: 5400, wood: 700, iron: 2000 }, unlock: { junying: 9, shuyuan: 8, majiu: 4, city: 'liangzhou', tech: { jiayu: 7 } }, desc: '攻450防400，攻守兼备' },
+    nanjiangxiangbing: { id: 'nanjiangxiangbing', cat: 'cav', name: '南疆象兵', icon: '🐘', hp: 18000, atk: 880, def: 400, range: 70, spd: 400, gather: 12, load: 60, pop: 5, time: 3500, cost: { grain: 9000, wood: 1000, iron: 2500 }, unlock: { junying: 9, shuyuan: 8, city: 'yizhou', tech: { yiliao: 8, zhandou: 7 } }, desc: '南疆巨兽，战场重坦' },
   };
 
   /* ============================================================
@@ -517,16 +525,24 @@
    * **不存在**——不是被削弱，而是压根没有这项。
    * ============================================================ */
   DATA.COUNTER_ATK = {
-    /* 枪克骑：长枪对骑兵 ×200%（原版写"骑兵（轻/铁）"；
+    /* 枪克骑：长枪对骑兵 ×300%（v89.96 标定）——
+       ⚠️ 原版 B 套为 ×200%，但本作骑兵 hp 2 倍 + 攻 2.3 倍，实测 ×2 时
+       "枪 vs 骑 1:1 完败（损 6000/敌 891）"——克制名存实亡。
+       攻 ×3 + 防御向"长枪拒马"×5 后：枪 vs 骑 1:1 胜、战损 3398:6000（1:1.77）。
+       扫参表见 probe_v8996_dmgchain 的 K/N 候选矩阵（K3/N5 胜出）。
        突骑/虎豹骑/西凉铁骑是我们自扩展的同族兵种，一并算骑兵——
        否则同族里只有轻/铁被克，另三种变成"无弱点的骑兵"，关系会断裂） */
-    changqiang: { qingji: 2, tieji: 2, tuqibing: 2, hubaoqi: 2, xiliangtieqi: 2 },
+    changqiang: { qingji: 3, tieji: 3, tuqibing: 3, hubaoqi: 3, xiliangtieqi: 3 },
     /* 床弩打器械 ×300%（原版点名：冲车 / 辎重 / 投石 / 床弩） */
     chuangnu: { chongche: 3, zhouche: 3, toudan: 3, chuangnu: 3 },
   };
   DATA.COUNTER_DEF = {
     /* 刀盾防远程 ×300%（"盾牌挡箭"这一常识的结构化） */
     daodun: { gongjian: 3, chuangnu: 3, toudan: 3 },
+    /* v89.96 标定：**长枪拒马**（枪挨骑打时兵防 ×5）——与上表的"枪打骑 ×3"配套。
+       依据：原版只有攻击向一条，实测不足以体现"枪克骑"（见上表注释）；
+       防御向补强符合 B 套"克制靠挨打少实现"的框架（同"刀盾挡箭"的逻辑）。 */
+    changqiang: { qingji: 5, tieji: 5, tuqibing: 5, hubaoqi: 5, xiliangtieqi: 5 },
     /* 轻骑防远程 ×400% —— 这就是"骑兵冲弓阵"的机制来源：
        B 套没有"骑打弓 +120%"那条，克制是通过**自己挨打少**实现的 */
     qingji: { gongjian: 4, chuangnu: 4, toudan: 4 },
@@ -591,6 +607,11 @@
    * 标定依据：使城头火力与 v58 已实测平衡的量级相当（详见 docs/v59说明）。
    * ============================================================ */
   DATA.WALL_TOWER = {
+    /* v89.96 标定：hp 保持原版 2000（不改塔本身），改 `tough` 1200 → 800 ——
+       撤末端系数 + 属性覆盖降率（勇武 300 从 ×4 → ×1.15）后，拆塔速度约降至
+       原来的 1/3.5；tough 800 把"投石 4000 + 中级将拆 100 座"标回 **26 回合**
+       （实测扫参 tough∈{600,800,1000,1200} → 21/26/30/拆不完）。
+       ⚠️ 塔的 atk 保持 300 不动（实测 atk×3 会让攻城方损失 50%、且 30 回合拆不完）。 */
     name: '箭塔', hp: 2000, atk: 300, def: 360, range: 1250,
     wallOffset: 100,   // 墙位移：城防件射程的固定部分（原版式里的 "+100"）
     perDef: 0.5,       // 每 2 点城防值 = 1 座箭塔（映射系数，非原版）
@@ -598,8 +619,8 @@
        两个数量级（原版单次杀伤百万级，本作几百），直接除以 2000 生命会一回合拆光全城。
        它只影响"拆箭塔要几回合"，**不影响箭塔火力本身** —— 实测标定值，非原版数据。
        标定过程：投石 4000 打城防 200（100 座）——tough=200 时一回合拆 58 座（2 回合拆完）；
-       改 1200 后约 8~10 座/回合（原版是"十几回合清完城防"的量级）。 */
-    tough: 1200,
+       v89.96 改 800 后约 4 座/回合（配"中级将 + 投石 4000"≈26 回合清 100 座）。 */
+    tough: 800,
     /* ============================================================
      * v62（老板）：「工匠作坊可以造箭塔，箭塔默认参与防守」
      * ------------------------------------------------------------
@@ -798,6 +819,10 @@
     { id: 'kaishanchui', name: '开山锤', type: 'prod_buff', res: 'stone', eff: 0.25, dur: 24, price: 5, desc: '石料产量+25%（24h）' },
     { id: 'xuantielu', name: '玄铁炉', type: 'prod_buff', res: 'iron', eff: 0.25, dur: 24, price: 5, desc: '铁锭产量+25%（24h）' },
     { id: 'shuilibian', name: '税吏鞭', type: 'prod_buff', res: 'gold', eff: 0.25, dur: 24, price: 10, desc: '黄金收入+25%（24h）' },
+    /* v89.99（老板「增加道具如增民令」）：**民生类** —— 人口增速道具。
+       与生产类同纪律：同类只取最强（不叠加）+ 到期真消费（popBoostMult 读 until）。 */
+    { id: 'zengminling', name: '增民令', type: 'pop_boost', eff: 2.0, dur: 24, price: 30,
+      desc: '人口增速 +200%（24h）—— 轻徭薄赋、劝课农桑，流民闻风来归' },
     { id: 'kaogongji', name: '考工记秘录', type: 'build_cost', eff: 0.3, dur: 24, price: 60, desc: '1~20级建筑建造成本-30%（24h）' },
     /* 军事类 */
     { id: 'xianzhenzhangu', name: '陷阵战鼓', type: 'military_buff', eff: { atk: 0.10 }, dur: 24, price: 8, desc: '军队攻击+10%（24h）' },
@@ -837,14 +862,16 @@
     { id: 'xisuizhi', name: '洗髓芝', type: 'rank_up', from: 'liang', to: 'ying', price: 0, desc: '将领资质：良材 → 英杰（种田秘境产）' },
     { id: 'hualongshen', name: '化龙参', type: 'rank_up', from: 'ying', to: 'ming', price: 0, desc: '将领资质：英杰 → 名世（种田秘境产）' },
     { id: 'tianshouguo', name: '天授果', type: 'rank_up', from: 'ming', to: 'tian', price: 0, desc: '将领资质：名世 → 天授（种田秘境产）' },
-    /* v78（老板需求 1）：**种子** —— 种田秘境专用，**不花金币**，
-       只能从将领活动获得（采集归来 / 出征缴获；见 DATA.SEED_DROP 与 GAME.grantSeedDrop）。
-       凡植种子对应 6 种材料作物；四种灵种一一对应四档灵草。 */
-    { id: 'seed_fan',      name: '凡植种子', type: 'seed', price: 30,   desc: '寻常灵植之种：于种田秘境可种 6 种材料作物（来源：采集归来 / 出征缴获）' },
-    { id: 'seed_yunling',  name: '蕴灵种子', type: 'seed', price: 150,  desc: '蕴灵草之种：种成可助 凡品 将领洗出 良材 之资（来源：采集归来 / 出征缴获）' },
-    { id: 'seed_xisui',    name: '洗髓种子', type: 'seed', price: 450,  desc: '洗髓芝之种：种成可助 良材 将领跃入 英杰 之列（来源：中高级野地 / 名城缴获）' },
-    { id: 'seed_hualong',  name: '化龙种子', type: 'seed', price: 1200, desc: '化龙参之种：种成可助 英杰 将领跻身 名世（来源：高级野地 / 名城缴获）' },
-    { id: 'seed_tianshou', name: '天授种子', type: 'seed', price: 3600, desc: '天授果之种：种成可助 名世 将领问鼎 天授（来源：顶级野地 / 州城·帝都缴获）' },
+    /* v78（老板需求 1）：**种子** —— 种田秘境专用。
+       来源两条：① 将领活动（采集归来 / 出征缴获，见 DATA.SEED_DROP）；
+       ② **商城购买**（v89.87 老板拍板"种子开售 + 快购全覆盖"，价格即本表 price）。
+       v89.93（整改 U4）：desc 里的"来源"曾只写①，玩家不知道商城能买
+       （实测推演侧也没走这条路）—— 现统一写全两个来源，与在售状态一致。 */
+    { id: 'seed_fan',      name: '凡植种子', type: 'seed', price: 30,   desc: '寻常灵植之种：于种田秘境可种 6 种材料作物（来源：商城 / 采集归来 / 出征缴获）' },
+    { id: 'seed_yunling',  name: '蕴灵种子', type: 'seed', price: 150,  desc: '蕴灵草之种：种成可助 凡品 将领洗出 良材 之资（来源：商城 / 采集归来 / 出征缴获）' },
+    { id: 'seed_xisui',    name: '洗髓种子', type: 'seed', price: 450,  desc: '洗髓芝之种：种成可助 良材 将领跃入 英杰 之列（来源：商城 / 中高级野地 / 名城缴获）' },
+    { id: 'seed_hualong',  name: '化龙种子', type: 'seed', price: 1200, desc: '化龙参之种：种成可助 英杰 将领跻身 名世（来源：商城 / 高级野地 / 名城缴获）' },
+    { id: 'seed_tianshou', name: '天授种子', type: 'seed', price: 3600, desc: '天授果之种：种成可助 名世 将领问鼎 天授（来源：商城 / 顶级野地 / 州城·帝都缴获）' },
     /* 坐骑 */
     { id: 'mabian', name: '马鞭', type: 'mount_buff', amount: 2, price: 20, desc: '将领速度+2（1h，需蓝坐骑）' },
     { id: 'hanxue_mabian', name: '汗血马鞭', type: 'mount_buff', amount: 5, price: 80, desc: '将领速度+5（1h，需紫坐骑）' },
@@ -1058,6 +1085,10 @@
        它与「单次兵力」是同一件事的两种说法（单次派 5000 本身就意味着其余留守在城），
        多一个旋钮只会让人算两遍。 */
     dailyOptions: [0, 3, 5, 10, 20],
+    /* v89.93（整改 E9）：**目标轮换（轮空池）** —— 最近打过的 N 个目标优先跳过。
+       改前取"最近的一块"，实测 37 场里 27 场反复打同一坐标（挂机叙事退化成单点循环）。
+       池子只做"优先跳过"：所有候选都被池子挡住时**放行**（绝不因轮换而停摆）。 */
+    ringSize: 4,
     /* 编队优先级：先上精锐，器械与斥候/辎重一律不编入 */
     troopOrder: ['tieji', 'hubaoqi', 'xiliangtieqi', 'tuqibing', 'qingji',
       'nanjiangxiangbing', 'qingzhoubing', 'tengjiabing', 'daodun',
@@ -1109,6 +1140,113 @@
    *     见 `GAME.map._fortLevelTable`），守军随之不同
    *   · 掉落：一阶材料 + 资源 + 珠宝，偶有军械（资源按等级满配放大，见 genLoot）
    * ------------------------------------------------------------ */
+  /* ============================================================
+   * v89.94（B2 · E1 围攻战）：据点/县城的**守备值** —— 多波次投入、可撤退、按日结算
+   * ------------------------------------------------------------
+   * 病根（v8992 四跑实测）：军事只有"稳赢"与"必败"两档 ——
+   *   野地 50~2,000（97% 胜率）；据点 Lv4+ 需 1~3 万兵、Lv8~10 需 6~22 万；
+   *   名城 50 万起。而军力天花板 3.2 万 → **断层 1.5~15 倍**，中间没有台阶。
+   * 修法：据点/县城的目标不再是"一战定生死"，而是**守备值 100% → 0%**：
+   *   · 每战（不论胜负）按战力比破防 —— 保底 chipMin、封顶 chipMax，
+   *     "再投一点就能赢"；
+   *   · 守备越低，守军与城防**同步衰减**（defScale / defThr 保底）→ 后面几波更好打；
+   *   · 每整日未攻 → 守备恢复 repairPerDay（催连续施压，不自作聪明地"攒一年再打"）；
+   *   · 守备归零 + 胜 → 下城（据点拔除 / 县城易主）；
+   *   · 战斗中可**主动撤退**（破防按 retreatChipMul 半计，残部带回）。
+   *     ⚠️ 只有「占领」破防 —— 「掠夺」是取财，不动守备（两个心智模型不混）。
+   * ⚠️ 难度总闸在这里：嫌难打就调 defScale 与 chipBase，不动别处。
+   * ============================================================ */
+  /* ============================================================
+   * v89.95（B2 · 老板「将领每 5 级升高 1 点六维的速度」）：**速度的成长总闸**
+   * ------------------------------------------------------------
+   * 病根（实测）：速度曾是"每级 +1 + 自由点想投多少投多少"——
+   *   240 级天授把自由点全砸速度 → spd ≈ 60+239+1920+装备 ≈ 2400，
+   *   进战斗后单位速度 ×(1+spd/300) = **9 倍** → 轻骑 1000×9 = 9000/回合，
+   *   一步贴脸、先手打光、溅射收场（老板点名的那条链）。
+   * 现在两条闸：
+   *   ① 自然成长 = **每 perLevels 级 +1**（默认 5 级 1 点，240 级共 +47）；
+   *   ② 自由点投放上限 = base + floor(等级 / perLevels)（另有装备/坐骑一条独立来源）。
+   * ⚠️ 装备与坐骑的速度不动（那是"收集"的回报）；这里管的是**无上限的成长**。
+   * ============================================================ */
+  DATA.SPD_CAP = { perLevels: 5, base: 10 };
+
+  /* ============================================================
+   * v89.99（老板：「开发增加人口增长的其他路径」·「设计兵种解散」）
+   * **人口经济四件套**配置 —— 全部唯一来源，别处不许再写第二份。
+   * ------------------------------------------------------------
+   * · POP_CFG —— 增速公式的三条杠杆（基数仍是民房上限）：
+   *     守将内政（安置流民）/ 增民令（道具 buff）/ 税制（轻徭薄赋）。
+   *     保底 1/时**也吃杠杆**（否则小城期道具与税制形同虚设）。
+   * · DISBAND —— 兵种解散：人口 100% 归农；**军资不退**（那是"仓储费"，
+   *     退了就能"募→散"刷资源，闭环会漏）。人口可超上限（见 tickOnce：
+   *     上限只是增长线，超了不增长也不回落）——这就是"人口银行"的前提。
+   * · CAPTIVE —— 俘获迁民：打胜据点/名城，按敌军损失比例收编为人口
+   *     （野地无民可俘；小仗不收编，避免"刷麻了"）。
+   * ============================================================ */
+  DATA.POP_CFG = {
+    base: 0.0005,        /* 每小时 = 民房上限 × 0.05% */
+    minPerHour: 1,       /* 保底 1/时 */
+    govPerNz: 0.0005,    /* 守将内政 1 点 → 增速 +0.05% */
+    govCap: 0.5,         /* 内政加成封顶 +50% */
+    taxPivot: 0.5,       /* 税制杠杆支点：50% 税率 = 不增不减 */
+    taxCoef: 0.6,        /* 税率每低 10% → 增速 +6%（轻徭薄赋则户口滋殖） */
+    taxFloor: 0.6, taxCeil: 1.4,
+  };
+  DATA.DISBAND = { popReturn: 1 };
+  DATA.CAPTIVE = { rate: 0.06, min: 15, cap: 500, kinds: ['fort', 'city'] };
+
+  /* ============================================================
+   * v89.96（老板批注「伤害计算不要乱定系数，计算过程应当简洁」）：
+   * v89.95 的 `DATA.BATTLE.damageScale`（末端总闸）**已删除** ——
+   * 平衡一律在源头修（本文件的兵种 hp / 相克表 / 箭塔耐久，
+   * 加 domain.js 的属性覆盖系数）。标定探针：
+   * .workbuddy/tools/probe/probe_v8996_dmgchain.js（扫参表与实测回合数都在里面）。
+   * ============================================================ */
+
+
+  DATA.SIEGE = {
+    scope: ['fort', 'county'],      /* 试点范围：野外据点 + 县城（郡/州/都仍是决战） */
+    repairPerDay: 8,                /* 每整日守备恢复（%）：围而不攻会前功尽弃 */
+    /* 破防强度 —— **实测标定**（v89.94 探针扫参，别凭感觉改）：
+       45（原口径）→ 一场围攻 2 波就下城，"五五开"波数只占 14%；
+       16 → 4~7 波一场围攻，逐波扫过平衡点，带内波数 **21%**（验收线 20%），总波数 758。
+       → 围攻变成"每波都要决定投多少"，而不是"两波速通"。 */
+    chipBase: 16,                   /* 战力比 1:1 时单波破防 16% */
+    chipMin: 10, chipMax: 45,       /* 单波破防上下限（保底有进展 / 强军 3 波可下） */
+    defScale: 0.35,                 /* 守备 0% 时守军仍保留 35%（残兵据守） */
+    defThr: 0.30,                   /* 守备 0% 时城防系数仍保留 30% */
+    retreatChipMul: 0.5,            /* 主动撤退：本波破防按半计 */
+    /* 战法系数（v89.94 · E2）：改平衡只动这四个数 */
+    encircle: { marchMul: 1.5, garrisonCut: 0.12, chipMul: 1.5 },
+    surprise: { schemeMul: 1.5 },
+  };
+
+  /* ============================================================
+   * v89.94（B2 · E2）：出兵前的**战法三选**（强攻 / 围困 / 奇袭）
+   * ------------------------------------------------------------
+   * 口径：三者都只作用于**战斗入参**（与计略同一条路），零引擎改动。
+   *   · 强攻：无修正（默认，正面决战）；
+   *   · 围困：行军 ×1.5（围师必久），守军 −12%（断粮疲敌），破防 ×1.5；
+   *   · 奇袭：须先选定一门计略，本战计略效果 ×1.5（依附既有计略出口）。
+   * ⚠️ 数值总闸：围困/奇袭的系数都在此表，调平衡只改这里。
+   * ============================================================ */
+  DATA.OPS = [
+    { id: 'assault', name: '强攻', icon: '⚔️', scope: null, require: null,
+      desc: '正面决战，无额外修正。战力相当时胜负由临阵决断（阵位 / 目标 / 计略）决定。' },
+    { id: 'encircle', name: '围困', icon: '🧱', scope: ['fort', 'city'], require: null,
+      desc: '围师必久：行军 ×1.5，守军 −12%（断粮疲敌），破防 +50%。' },
+    { id: 'surprise', name: '奇袭', icon: '🗡️', scope: null, require: 'scheme',
+      desc: '出敌不意：须先选定一门计略，本战计略效果 ×1.5。' },
+  ];
+
+  /* ============================================================
+   * v89.94（B2 · E3）：战报**分回合回放**的存储口径
+   * ------------------------------------------------------------
+   * 只存关键帧（首 2 + 尾 2 + 首杀/破塔/折半/最烈），避免 roundsLog
+   * 全量入档把存档吹大。验收线：战报增量 < 2KB/场（probe 实测）。
+   * ============================================================ */
+  DATA.REPLAY = { maxFrames: 10, maxEv: 56 };
+
   DATA.FORT = {
     density: 1 / 12,
     /* v89.88（老板需求 3「普通城 8，9，10 级城分别占 30%」）：等级上限 8 → 10 ——
@@ -1892,6 +2030,52 @@
   DATA.GOLD_GATE = { tax: 0.3, salary: 0.3, yield: 0.3, market: 1 };
 
   /* ============================================================
+   * v89.95（A2 · 老板）：**物多价贱** —— 当日卖得越多，兑换比越低
+   * ------------------------------------------------------------
+   * 老板原话：「每日售卖获得的黄金越多，将会导致黄金兑换比越低（物多价贱，
+   *   最终甚至一文不值，使得售卖资源变得无利可图）」。
+   * 病根：卖资源是**无上限**的黄金入口 —— 资源换金 → 金买一切 → 玩家"无所不能"，
+   *   而产量本身是指数增长（v8992 实测：满仓一轮 ≈ 1.1 亿金），于是经济失控。
+   * 口径（唯一出口 GAME.mktSlipOf）：
+   *   · 市场每日能"吃下"的黄金当量 = scale（默认 20 万金/游戏日）；
+   *   · 当日累计换金越多，汇率乘数越低：mul = max(floor, 1 − 已换金 / scale)；
+   *   · 每**游戏日**清零（隔日恢复）；floor = 0.10 → "再卖也是一折，无利可图"。
+   * 通商券（free）：把"免折额度"还给玩家 —— 见 DATA.MARKET_SLIP.free。
+   * ⚠️ 总闸就在这里：嫌卡得太死只改 scale/floor，别在各处写第二份。
+   * ============================================================ */
+  /* ============================================================
+   * v89.95（A1 · 老板）：**节钺** —— 黄金买不到的"不可再生"资源
+   * ------------------------------------------------------------
+   * 老板原话：「原游戏以充值所得的元宝和装备作为不可再生资源……我们这个既然是
+   *   单机游戏，如何创造和规划一种不可再生的难以获得的资源，合理设计其获得途径，
+   *   嵌入当前经济系统中，使得作为玩家的发展限制器，否则玩家将通过黄金无所不能」。
+   * 定位：**不是数值，而是"开门"** —— 它不解锁强度，只解锁"再往上走"的资格：
+   *   · 问鼎天授（名世 → 天授，每将 1 枚）：顶档资质从此不是"种一株天授果"就能到；
+   *   · 城池扩编（每城 +1 建造位，每城最多 citySlotMax 次）：城市铺开的节奏闸。
+   * 获得途径（**只能打出来 / 赐下来，绝不能买**）：
+   *   · 首次攻占名城：县城 1 / 郡城 2 / 州城 3 / 都城 5（同一座城只算一次）；
+   *   · 爵位每 rankEvery 档 → +1（22 档共 5 枚，赏赐性质）；
+   * 与战斗玩家的关系（老板第 3 问）：**打仗是节钺的唯一大宗来源** ——
+   *   不想蹲田的人靠开疆拓土换编制与顶档，这就是"替代内容"。
+   * ⚠️ 总闸：数量与用途都在本表，别处不许再写一份。
+   * ============================================================ */
+  DATA.JIEYUE = {
+    name: '节钺', icon: '🪓',
+    byTier: { county: 1, jun: 2, zhou: 3, capital: 5 },
+    rankEvery: 4,
+    citySlotMax: 2,
+    tianshouCost: 1,
+    tianshouTo: 'tian',           /* 顶档的资质 id（gen.rank 用的就是它） */
+    desc: '黄金买不到：首次攻占名城（县1/郡2/州3/都5）· 爵位每 4 档 +1。用途：名世→天授（1 枚）· 城池扩编（建造位 +1，每城至多 2 次）。',
+  };
+
+  DATA.MARKET_SLIP = {
+    scale: 200000,          /* 每日免折抛售额度（金当量） */
+    floor: 0.10,            /* 汇率乘数下限（物多价贱 → 一折） */
+    free: { item: 'tongshang_quan', quota: 500000, durMin: 30 },   /* 通商券 */
+  };
+
+  /* ============================================================
    * 市场售卖（v89.48 · 老板需求）
    * ------------------------------------------------------------
    * 老板原话：「市场可以售卖资源，换取黄金，比例按 1，2，3，4 比例呈现，粮食最便宜」。
@@ -1937,6 +2121,18 @@
     per: 20,          /* 基准：20 粮 ≈ 1 金（与售卖同基准） */
     loss: 0.35        /* 买入比例损耗 35%：金 → 物资只值 65%（市场只应急） */
   };
+
+  /* ============================================================
+   * v89.100（老板假设「战利品以购买价 75% 出售」）：**道具寄售**
+   * ------------------------------------------------------------
+   * 把背包里有价道具（战利品：珠宝 / 材料 / 种子 / 图纸 / 宝箱…）按
+   * **商城购买价的 75%** 回收为黄金。唯一出口 GAME.systems.consign*。
+   *   · 价 = item.price × 100（与 doShopping 同口径）× rate（本配置）
+   *   · price = 0 的道具（灵草 / 灵气精华）无购买价 → 不可寄售
+   *   · 装备实例不在此列（走「拆解」回收打造材料，见 salvageEquip）
+   * 调平衡只改本配置（UI / 探针 / 推演全从这里读，别处不许另算价）。
+   * ============================================================ */
+  DATA.ITEM_SELL = { rate: 0.75 };
 
   /* ============================================================
    * 募兵提速 · 花金买时间（v89.49 · 老板「募兵队列怎么不可加速了？」）
@@ -2181,7 +2377,7 @@
     { id: 'baicao',   name: '百草堂', icon: '🌿', style: '医道',
       trait: { key: 'woundPct', val: 0.15, text: '战后伤兵回复 +15%' },
       desc: '精于金创与药石，门下常行医于军中，救人无数。' },
-    { id: 'huxiao',   name: '虎啸营', icon: '🐯', style: '刚猛',
+    { id: 'huxiao',   name: '虎啸营', icon: '🪓', style: '刚猛',
       trait: { key: 'siegePct', val: 0.08, text: '攻城伤害 +8%' },
       desc: '刚猛横练，以硬桥硬马立门，门风最重信义。' },
     { id: 'xuanji',   name: '玄机阁', icon: '🧭', style: '机变',
@@ -2268,6 +2464,10 @@
   };
   /* 自建新城（玩家择地而建）的启动物资 —— 不给的话新城的兵立刻断粮 */
   DATA.NEW_CITY_RES = { grain: 6000, wood: 6000, stone: 6000, iron: 6000, gold: 6000, pop: 100 };
+  /* v89.93（整改 E12）：**新城开发模板** —— 自建城落成即预置的城外资源地。
+     改前新城只有官府+民房，12 块城外地全空（实测新城 2/3 闲置 100 年零产出）。
+     模板口径：3 田（人口与募兵粮）+ 1 木 + 1 石 + 1 铁 —— 落地就能自己造血。 */
+  DATA.NEW_CITY_EXT = ['farm', 'farm', 'farm', 'forest', 'quarry', 'mine'];
 
   /* ============================================================
    * 运输与派遣（v60 · 需求 4）
@@ -2665,6 +2865,8 @@
   /* v16：zoom 为城内/城外/地图的显示比例（%）；autoResearch 与自动建造同列 */
   DATA.ZOOM_LEVELS = [80, 100, 120, 140, 160];
   DATA.DEFAULT_SETTINGS = { timeScale: 120, tax: 0.5, hearts: 100, autoSave: true, autoUpgrade: false, autoResearch: false, zoom: 100,
+    /* v89.93（整改 E4）：反馈层开关（入档）—— 音效默认开、音量 0.5；关掉即全静音 */
+    sfx: true, sfxVol: 0.5,
     /* v89.86（整改 P-18）：自动化预算闸门 —— 每次消费后至少留下花前存量的 pct%；0 = 不设限 */
     autoReservePct: 5, autoTechMaxLv: 0,
     /* v89.86（整改 P-17）：离线推进上限（游戏日；0 = 不限）—— 超出部分五折折算资源/供奉 */
@@ -3764,7 +3966,11 @@
     { id: 'jixing_ling', name: '疾行令', type: 'boost', target: 'march', amount: 30, price: 40, desc: '行军缩短 1 小时' },
     { id: 'yingzao_yaozhi', name: '营造要旨', type: 'boost', target: 'build', amount: 720, price: 55, desc: '建造缩短 12 小时' },
     { id: 'mojing_yaozhi', name: '墨经要旨', type: 'boost', target: 'research', amount: 720, price: 55, desc: '研究缩短 12 小时' },
-    { id: 'tongshang_quan', name: '通商券', type: 'boost', target: 'trade', pct: 0.5, price: 30, desc: '市场折损时间-50%（30 分钟）' },
+    /* v89.95（A3）：**原来这张券没有任何"通道"** —— 使用后只弹一句"折损降低"，
+       而那份 buff（tradeCut）全库没人读（典型死接线，老板点名）。
+       现在它接的是真通道：**免折抛售**（在"物多价贱"的折价之上开一扇窗）。 */
+    { id: 'tongshang_quan', name: '通商券', type: 'boost', target: 'trade', pct: 0.5, price: 30,
+      desc: '通商凭信：30 分钟内可**免折抛售**资源，免折额度 50 万金当量（来源：商城）' },
     { id: 'taozhu_mishu', name: '陶朱秘术', type: 'boost', target: 'trade', pct: 0.95, price: 60, desc: '市场折损时间-95%（30 分钟）' },
     { id: 'pijiang_shouji', name: '裨将手记', type: 'exp', amount: 500, price: 30, desc: '将领经验+500' },
     { id: 'xiaowei_zhaji', name: '校尉札记', type: 'exp', amount: 5000, price: 200, desc: '将领经验+5000' },

@@ -1520,6 +1520,25 @@
   .bt-row .bt-g { flex: none; color: var(--text-dim); font-size: var(--fs-cap);
     font-variant-numeric: tabular-nums; }
   .bt-gap { color: var(--text-dim); font-size: var(--fs-cap); padding-left: 28px; }
+  /* ============================================================
+   * v89.94（B2 · E3/E1）：战报分回合回放 + 围攻/以少胜多标记 + 战法三选
+   * ------------------------------------------------------------
+   * 帧内容复用上面 .bt-row 的一套（条带/兵力/间距），避免第二套战场样式。
+   * ============================================================ */
+  .rp-ev { color: var(--text-dim); font-size: var(--fs-cap); line-height: 1.7;
+    padding: 2px 0 6px 28px; border-bottom: 1px dotted rgba(201,162,75,.12); }
+  .rp-ctl { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 6px 0 4px; }
+  .rp-range { flex: 1; min-width: 120px; accent-color: var(--gold-dark); }
+  .rp-pos { flex: none; color: var(--text-dim); font-size: var(--fs-cap);
+    font-variant-numeric: tabular-nums; }
+  .rp-keys { display: flex; gap: 6px; flex-wrap: wrap; align-items: center;
+    color: var(--text-dim); font-size: var(--fs-cap); margin-bottom: 4px; }
+  .rp-key { cursor: pointer; }
+  .rp-under { color: var(--gold-light); font-size: var(--fs-sub); text-align: center;
+    padding: 4px 0 2px; }
+  .exp-ops-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 4px 0 0; }
+  .exp-ops-lab { flex: none; color: var(--gold-light); font-size: var(--fs-sub); }
+  .exp-ops-row .ch.off { opacity: .38; cursor: not-allowed; }
   .bt-log { max-height: 168px; overflow-y: auto; }
   .bt-log .bt-line { font-size: var(--fs-sub); color: var(--text-dim); line-height: 1.75;
     padding: 2px 0; border-bottom: 1px dotted rgba(201,162,75,.12); }
@@ -2095,8 +2114,47 @@
     padding: 10px 24px; border-radius: 8px; font-size: var(--fs-lead); font-weight: 700;
     opacity: 0; pointer-events: none; transition: opacity .25s, transform .25s; z-index: 2000;
     box-shadow: 0 10px 30px rgba(var(--sh-rgb),.5);
+    /* v89.93（整改 E4）：反馈分层 —— 多条提示纵向堆叠 + 左侧类型色条 */
+    display: flex; flex-direction: column; gap: 4px; max-width: min(560px, 86vw);
   }
   .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  /* v89.93（E4）：四型反馈 —— success 绿 / info 金（默认）/ warn 琥珀 / danger 朱 */
+  .toast-line { border-left: 3px solid var(--gold-dark); padding-left: 10px; white-space: pre-line; }
+  .toast-line.t-success { border-left-color: var(--green-ok); }
+  .toast-line.t-info { border-left-color: var(--gold-dark); }
+  .toast-line.t-warn { border-left-color: var(--warn); }
+  .toast-line.t-danger { border-left-color: var(--cinnabar); }
+  /* v89.93（E4）：数值浮字（资源/属性变动时上浮） */
+  .float-gain {
+    position: fixed; z-index: 2100; pointer-events: none; font-size: var(--fs-lead); font-weight: 800;
+    color: var(--green-ok); text-shadow: 0 1px 4px rgba(0,0,0,.6);
+    animation: floatGain 900ms ease-out forwards;
+  }
+  .float-gain.neg { color: var(--cinnabar); }
+  @keyframes floatGain {
+    0% { opacity: 0; transform: translateY(6px); }
+    18% { opacity: 1; }
+    100% { opacity: 0; transform: translateY(-26px); }
+  }
+  /* v89.93（E5）：里程碑演出层（三档：inline 横幅 / card 居中卡 / full 全屏） */
+  #moment-fx { position: fixed; inset: 0; z-index: 1400; pointer-events: none; display: none; }
+  #moment-fx.mo { display: block; }
+  #moment-fx.mo-inline { inset: auto 0 auto 0; top: 74px; display: flex; justify-content: center; }
+  #moment-fx.mo-card, #moment-fx.mo-full { background: rgba(0,0,0,.45); pointer-events: auto;
+    display: flex; align-items: center; justify-content: center; }
+  .mo-box { background: rgba(30,24,12,.97); border: 1px solid var(--gold-dark); border-radius: var(--r-xl);
+    padding: var(--sp-5) 22px; color: var(--gold-light); box-shadow: 0 12px 40px rgba(var(--sh-rgb),.55); }
+  .mo-box-inline { padding: var(--sp-3) 18px; animation: moIn .25s ease-out; }
+  .mo-box-card { min-width: 320px; max-width: 520px; animation: moIn .3s ease-out; }
+  .mo-box-full { min-width: 420px; max-width: 620px; text-align: center; animation: moIn .35s ease-out; }
+  @keyframes moIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+  .mo-head { display: flex; align-items: baseline; gap: var(--sp-4); }
+  .mo-ico { font-size: var(--fs-h1); }
+  .mo-title { font-size: var(--fs-h2); font-weight: 800; color: var(--gold-light); letter-spacing: .04em; }
+  .mo-sub { margin-top: var(--sp-2); font-size: var(--fs-sub); color: var(--gold); }
+  .mo-lines { margin-top: var(--sp-4); font-size: var(--fs-sub); line-height: 1.75; color: var(--text-strong); }
+  .mo-foot { margin-top: var(--sp-5); text-align: right; }
+  @media (prefers-reduced-motion: reduce) { .mo-box { animation: none !important; } }
 
   /* ============ 创建角色界面 ============ */
   /* v74（老板需求 2）：创建界面同走**固定像素画布**（窗口怎么推都不动）；
