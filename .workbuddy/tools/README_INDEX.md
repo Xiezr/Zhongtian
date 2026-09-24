@@ -5,34 +5,47 @@
 
 | 目录 | 个数 | 干什么 |
 |---|---|---|
-| `asset/` | 11 | 抠底必须连通域洪水填充（BFS）；**绝不用 CSS 滤镜染色**，一律像素级 HSL 重映射写进 PNG。 |
-| `audit/` | 12 | 结构 / 颜色 / 落盘 / 引用 / 删除 的核对工具。`verify_v66_edits.py` = **落盘核验**模板；`audit_refs.py` = 搬迁前查引用点；`read_recycle.py` = 解析回收站 `$I` 元数据核实删了什么；`trash_paths.py` = 逐项+回查的删除模板。 |
+| `asset/` | 23 | 抠底必须连通域洪水填充（BFS）；**绝不用 CSS 滤镜染色**，一律像素级 HSL 重映射写进 PNG。 |
+| `audit/` | 20 | 结构 / 颜色 / 落盘 / 引用 / 删除 的核对工具。`verify_v66_edits.py` = **落盘核验**模板；`audit_refs.py` = 搬迁前查引用点；`read_recycle.py` = 解析回收站 `$I` 元数据核实删了什么；`trash_paths.py` = 逐项+回查的删除模板。 |
 | `break/` | 21 | 逐类注入故障，确认断言**真的会红**（红不了的就是装饰）。铁律：先校验断言在文件里、注入后连"是否中断"一起看、收尾 md5 比对还原。 |
 | `gen/` | 5 | 素材/索引的**唯一来源**。`gen_bitmaps.js` 扫描 `assets/icons/ui/` 生成 `js/bitmaps.js`（勿手改产物）；`gen_tools_index.py` 生成本索引。 |
 | `git/` | 3 | **收尾同步的唯一入口**。`sync.py` 默认干跑、`--apply` 才落盘（干跑先行是本项目铁律）；`gate.py` 是三件套门禁的**唯一出口**（pre-commit 钩子与 sync 都调它）；`install_hooks.py` 把 `hooks/` 里的钩子装进 `.git/hooks/`。 |
 | `git/hooks/` | 2 | 存这里是为了**进版本库** —— `.git/hooks/` 不被 git 跟踪，换台机器克隆后必须跑 `install_hooks.py` 重装。⚠️ **行尾必须 LF**，CRLF 会让 `#!/bin/sh` 失效。 |
 | `mem/` | 10 | MEMORY.md 必须 < 9600 字符（超出会被会话注入截断，尾部规则等于不存在）。`slim_memory_template.py` = 把超限整段 cut 到 `docs/` 的模板。 |
-| `patch/` | 346 | **事实上的变更日志**：按断言名 `grep -rl "<断言名>" tools/patch/` 就能找到当初是哪次改的。"同一条消息里对同一文件的多次 Edit 会互相覆盖"，所以补丁一律脚本化并留档。 |
-| `playtest/` | 16 | **待归类**：确认用途后放进上面的某个目录。 |
-| `probe/` | 57 | jsdom 没有布局引擎 → 尺寸/重叠/溢出/折行只能在**真浏览器**量。`probe60_geom.js` 是可复用模板，`probe66_ui.js` 有"逐行折行"量法，`probe67_save3.js` 量存档体积与配额。 |
-| `show/` | 7 | 给老板看的对照图 / 曲线校准 / 素材巡视。 |
-| **合计** | **490** | |
+| `patch/` | 463 | **事实上的变更日志**：按断言名 `grep -rl "<断言名>" tools/patch/` 就能找到当初是哪次改的。"同一条消息里对同一文件的多次 Edit 会互相覆盖"，所以补丁一律脚本化并留档。 |
+| `play/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
+| `playtest/` | 20 | **待归类**：确认用途后放进上面的某个目录。 |
+| `probe/` | 92 | jsdom 没有布局引擎 → 尺寸/重叠/溢出/折行只能在**真浏览器**量。`probe60_geom.js` 是可复用模板，`probe66_ui.js` 有"逐行折行"量法，`probe67_save3.js` 量存档体积与配额。 |
+| `show/` | 30 | 给老板看的对照图 / 曲线校准 / 素材巡视。 |
+| **合计** | **690** | |
 
 ## asset/（素材处理）
 
 抠底必须连通域洪水填充（BFS）；**绝不用 CSS 滤镜染色**，一律像素级 HSL 重映射写进 PNG。
 
 - `avatar_atlas.py`（8KB）　— 头像图集体检 + 切分 + 抠底。
+- `build_atlas_src.py`（2KB）　— v89.107 建筑图标重绘 · 第一步：把 4 张原图拼成 2×2 图集（白底），
+- `check_v89103_shots.js`（4KB）
+- `check_v89116_shots.js`（3KB）
+- `check_v89117_shots.js`（4KB）
+- `check_v89118_shots.js`（3KB）
+- `check_v89119_shots.js`（3KB）
+- `check_v89120_shots.js`（4KB）
+- `check_v89121_flags_on_screen.py`（2KB）　— v89121 · 实机截图里的族旗可见性：找高饱和像素簇（旗布）+ 报告颜色与位置
 - `crop_city.py`（3KB）　— v89.43：城池贴图裁切流水线（与 crop_terrain.py 同一套铁律）。
 - `crop_pd3.py`（6KB）　— 裁切 v3（定稿）：**从上往下裁，只去掉顶部留白**。
 - `crop_terrain.py`（6KB）　— v89.42：地形贴图裁切流水线（从即梦参考图裁切 → 归一化 → 落位 assets/icons/ui/）。
+- `diag_bldg_materials.py`（3KB）　— 诊断：原图（_gold_backup）与现图，各自的**图内色相结构** ——
+- `flag_bldg_icons.py`（6KB）　— v89.107 建筑图标 · 第三步：给每座建筑画一面**族旗**。
 - `gallery31.js`（4KB）　— 图标画廊截图：把全部图标以 96px 网格渲染成单页，便于统一评估设计感
 - `gallery33.js`（6KB）　— v33 最终验收：99 图标几何验证（getBoundingClientRect，不受承台干扰）+ 总览图 + 城内统计
 - `make_portrait_refs.py`（4KB）　— 将领肖像 · 参考图套件生成。
 - `matte.js`（3KB）　— v35-b：AI 生成图的背景检测 + 抠底（四角采样 → 距离阈值 → alpha 归零）
 - `portrait_gallery.js`（2KB）　— 头像画廊：渲染多种资质+性别的程序化头像
-- `recolor_buildings.py`（8KB）　— 建筑图标「系列配色」v3。
 - `rename_matte.js`（3KB）　— v35-c：AI 原图 → 按 id 重命名 → 抠底 → 输出 ui/；并做风格一致性复检
+- `split_atlas.py`（6KB）　— v89.107 建筑图标重绘 · 第二步：图集 → 体检 → 切分 → 抠底 → 统一裁切 → 出对照图。
+- `verify_v89102_troop_icons.js`（4KB）
+- `verify_v89106_screen.js`（11KB）
 
 ## audit/（审计与核对）
 
@@ -40,9 +53,17 @@
 
 - `audit_colors.js`（5KB）　— 配色审计：把 index.html 里 4 套主题的关键变量解析出来，
 - `audit_refs.py`（3KB）　— 搬迁前普查：谁引用了 DESIGN.md / docs 里的文件 / tools 里的脚本。
+- `audit_v89105_chains.js`（22KB）
+- `audit_v89105_css_tokens.js`（10KB）　— 取 <style> 段（含多条 style）
+- `audit_v89105_modals.js`（11KB）
+- `audit_v89112_pressure.js`（11KB）
+- `audit_v89116_refs.js`（4KB）　— 白名单：动态挂载 / 测试或工具注入 / 平台/浏览器提供 / 本项目约定的外部注入点
+- `audit_v89117_fonts.js`（7KB）　— 剥注释：说明文字里提到 font-size 不算数（本项目踩过多次）
+- `audit_v89121_inventory.js`（6KB）
 - `consolidate_docs.py`（9KB）　— 集中存放 · 第一步：docs 分档 + 拆 DESIGN.md + 引用转接。
 - `consolidate_docs2.py`（5KB）　— 集中存放 · 第二步：引用转接 + 终检（docs 分档与 DESIGN 拆分已在第一步完成）。
 - `consolidate_tools.py`（5KB）　— 集中存放 · 第三步：tools 分子目录 + 引用转接 + 重写索引生成器。
+- `diag_v89105_overflow.js`（3KB）　— 诊断：7 个溢出弹窗的**高度分布**（哪个块把窗口撑爆了）
 - `economy_audit.js`（8KB）　— 经济审计：金币收入构成（v68 · 老板「审计一下」）
 - `ladder_audit.js`（6KB）　— 数值阶梯审计 —— 回答一个问题：**从开局到洛阳，这条路走得通吗？
 - `read_recycle.py`（2KB）　— 解析 E: 回收站的 $I 元数据，列出"刚刚被删的原始路径"。
@@ -278,7 +299,119 @@ MEMORY.md 必须 < 9600 字符（超出会被会话注入截断，尾部规则�
 - `patch_v89100_b_smoke.py`（5KB）　— v89.100-B：冒烟第 100 节（道具寄售验收钉子）
 - `patch_v89100_c_rush.py`（8KB）　— v89.100-C：推演脑 econ / loot 两模式（对 play_rush_1x.js 的增量，幂等）
 - `patch_v89100_d_fix.py`（3KB）　— v89.100-D：三处修复（首测暴露）
+- `patch_v89100_e_consign_only.py`（5KB）　— v89.100-E：寄售通道支持类型白名单（only）+ 脑改为只卖战利品
+- `patch_v89101_d_span.py`（5KB）　— patch_v89101_d_span.py — v89.101 城流跨越（span 模式）
+- `patch_v89101_e_span2.py`（3KB）　— patch_v89101_e_span2.py — v89.101b 城流跨越 · 校准版
+- `patch_v89101_f_span3.py`（3KB）　— patch_v89101_f_span3.py — v89.101c 城流跨越 · 二校准
+- `patch_v89101_g_span4.py`（2KB）　— patch_v89101_g_span4.py — v89.101d 城流跨越 · 三校准（官府总闸）
+- `patch_v89105_alias.py`（9KB）
+- `patch_v89105_asserts.py`（6KB）
+- `patch_v89105_e2e_restore1.py`（6KB）
+- `patch_v89105_e2e_restore2.py`（3KB）　— v89.105 事故复建 · 批次 2：统计页退役 / 战报两页 / 整叠使用 / 商城 / 故事集
+- `patch_v89105_e2e_restore2b.py`（4KB）
+- `patch_v89105_e2e_restore3.py`（7KB）
+- `patch_v89105_fix_selfref.py`（2KB）
+- `patch_v89105_fix_selfref2.py`（2KB）
+- `patch_v89105_modal.py`（11KB）
+- `patch_v89105_modal2.py`（7KB）
+- `patch_v89105_surfaces.py`（6KB）
+- `patch_v89105_tokens.py`（12KB）
+- `patch_v89107_docpage.py`（2KB）　— v89.107 公文页重做：把 ui.js 的「消息频道」整段换成「五类独立页签」。
+- `patch_v89107_msgkind.py`（4KB）　— v89.107 消息分类打标：把"发射点声明类别"落到 GAME.log 调用点上。
+- `patch_v89107_msgkind2.py`（1KB）　— v89.107 打标 · 第二批（行号按 state.js 插入后的新编号重取）。
+- `patch_v89109_fix.py`（5KB）　— v89.109 收尾：data-tside 改名（避 audit 的 data-side 约定）+ 在途"再出征"入口 + 断言更新
+- `patch_v89109_fix3.py`（3KB）　— v89.109 收尾3：invasionArmyOf 最小分配 bug + 坚壁清野断言场景（兵力在别城）
+- `patch_v89109_invasion.py`（13KB）　— v89.109：state.js —— 来袭防御战战斗化（战报+回放）+ 掠夺 gate + 城墙口径对齐
+- `patch_v89109_jianbi.py`（3KB）　— v89.109 收尾2：坚壁清野对兵损同样生效 + 断言改到破防场景
+- `patch_v89109_loot_checks.py`（4KB）　— v89.109：更新两条 loot 断言（假想档位 → 真实关系）
+- `patch_v89109_loot_fix2.py`（1KB）　— v89.109 fix2：断言1 的县城量纲折算（粮食单项 → 合计）
+- `patch_v89109_lootgate.py`（4KB）　— v89.109：battle.js —— lootGateOf（掠夺前置闸·唯一出口）+ raid 落账接线
+- `patch_v89109_tactic2.py`（2KB）　— v89.109：tactic.js —— playerDef 透传（我方城防御读玩家战术）+ 出城部队起/余统计
+- `patch_v89109_tactic_sortie.py`（4KB）　— v89.109：tactic.js 接 sortie（出城迎战）—— 常量 + 展开 + 墙保护 + 拦拆墙
+- `patch_v89109_tactics.py`（6KB）　— v89.109：domain.js 战术段重写 —— 分侧（atk/def）+ sortie（出城迎战）+ 老档迁移
+- `patch_v89109_ui.py`（13KB）　— v89.109：UI 层 —— 战术分侧渲染 + 军务出征/防守页改造 + main 动作支持 side
 - `patch_v8910_docs.py`（11KB）　— patch_v8910_docs.py —— v89.10 文档：README 进度 / 需求档案 / 设计规范 §40 / AI工作备忘 §42+§43
+- `patch_v89110_danger.py`（25KB）
+- `patch_v89110_tests.py`（15KB）
+- `patch_v89111_inv.py`（27KB）
+- `patch_v89111_tests.py`（13KB）
+- `patch_v89112_modals.py`（16KB）
+- `patch_v89112b_modals.py`（8KB）
+- `patch_v89112c_modals.py`（2KB）　— v89.112c · 弹窗整改收尾：装备 -217 / 战报 -67 的最后一轮压缩
+- `patch_v89113_mayor.py`（19KB）
+- `patch_v89113b_ui_tests.py`（15KB）　— v89.113b · 城主收尾：城池面板/烽火页显示 + 文案 + smoke 升级
+- `patch_v89113c_inv.py`（9KB）
+- `patch_v89113d_texts.py`（8KB）
+- `patch_v89114a_load.py`（4KB）
+- `patch_v89115a_smoke92.py`（6KB）
+- `patch_v89115b_smoke_tail.py`（6KB）
+- `patch_v89115c_smoke_fix.py`（4KB）　— patch_v89115c_smoke_fix.py — 修 4 条失败：① 取轮转城；②-4 自证判据；④ 显式重置 s.inv。
+- `patch_v89115d_auto.py`（18KB）
+- `patch_v89115e_bag.py`（15KB）
+- `patch_v89115f_bag_tests.py`（3KB）　— patch_v89115f_bag_tests.py — 背包四类 → 两类（装备/宝物）+ 二级分类的测试升级
+- `patch_v89115g_guard.py`（3KB）　— patch_v89115g_guard.py — 需求 1：守将属性对守城全军加成（全覆盖）
+- `patch_v89115h_duel.py`（11KB）　— patch_v89115h_duel.py — 需求 2：斗将战（战前 · 50% · 胜者将领属性 +10% 临时）
+- `patch_v89115i_bag_e2e.py`（9KB）　— patch_v89115i_bag_e2e.py — ① ui.openBag / bagHTML 支持旧页签值迁移；② e2e 断言升级
+- `patch_v89115j_smoke95.py`（11KB）　— patch_v89115j_smoke95.py — 新增 smoke §95：本轮五件的新断言
+- `patch_v89116a_bugs.py`（10KB）　— v89.116 补丁 A：三个小 bug —— ①守将函数名笔误 ②显示比例无监听 ③快购按用途过滤
+- `patch_v89116b_defsandbox.py`（19KB）　— v89.116 补丁 B：守城战报接**真沙盘**（老板需求 4）
+- `patch_v89116c_sdview.py`（7KB）　— v89.116 补丁 C：沙盘视角的收尾（sdLine / sdPaint / sdSimEnd / 推演入口 / 打开提示）
+- `patch_v89116d2_captive_state.py`（2KB）　— v89.116 补丁 D2：守城侧的俘虏明细（补 D 里漏掉的两处）
+- `patch_v89116d_captive.py`（14KB）　— v89.116 补丁 D：俘虏营（按兵种） + 自动治疗触发记录（老板需求 3 / 7）
+- `patch_v89116e_affairs.py`（14KB）　— v89.116 补丁 E：军务处「伤兵营 / 俘虏营」（逐兵种）+ 自动治疗触发记录（UI 层）
+- `patch_v89116f_sg_doc.py`（13KB）　— v89.116 补丁 F：待阅逸闻 6×5 + 翻页（需求 1） · 公文去掉烽火页签（需求 6）
+- `patch_v89116g_battleui.py`（23KB）　— v89.116 补丁 G：实时战斗界面重排（老板需求 8）+ 敌方默认目标口径
+- `patch_v89116h_btcss.py`（8KB）　— v89.116 补丁 H：战场新布局的 CSS + 退役 btCmdHTML / bt-cmd* 样式
+- `patch_v89116i_tests.py`（15KB）　— v89.116 补丁 I：测试适配（10 处旧口径）+ 新增 §96（九条需求各一条断言）
+- `patch_v89116j_stats.py`（3KB）　— v89.116 补丁 J：兵种数值梳理（老板需求 9）
+- `patch_v89116k_sec96fix.py`（5KB）　— v89.116 §96 断言修正（五处）：剥注释取 CSS / 篇名计数 / 快购用途判据 / autoHeal 出口 / 退役判据
+- `patch_v89116l_sec96fix2.py`（2KB）　— v89.116 §96 断言修正（续）：日志窗行数判据容错 + 退役判据改查"定义式"
+- `patch_v89116m_sec96fix3.py`（6KB）　— v89.116 §96 修正（三）：btRoundLine 返回行文本（可测）+ 两条判据按"源码可查的事实"重写
+- `patch_v89116n_refs.py`（6KB）　— v89.116 补丁 N：**同族 bug 一次清干净** —— "引用了不存在的成员" 五个修复
+- `patch_v89116o2_auditfix.py`（2KB）　— v89.116 补丁 O2：audit.js ⑥ 节 —— 补本地 stripComment + 扩全模块扫描清单
+- `patch_v89116o_auditrefs.py`（6KB）　— v89.116 补丁 O：把"未定义引用"审计**接进 audit.js**（同族 bug 的制度性防护）
+- `patch_v89116p_sec96refs.py`（2KB）　— v89.116 补丁 P：§96 追加"同族 bug 清剿 + 未定义引用审计"三条断言
+- `patch_v89117a2_maskel.py`（5KB）　— v89.117 补丁 A2 —— 弹窗栈的**能力判据**修正（smoke DOM 桩适配）
+- `patch_v89117a_modalstack.py`（12KB）　— v89.117 补丁 A —— 弹窗**层级栈** + 同级重绘去闪（老板需求 6）
+- `patch_v89117b2_affairs.py`（3KB）　— v89.117 补丁 B2（重写）—— 军务处两卡改走 ui.campCard
+- `patch_v89117b_camps.py`（14KB）　— v89.117 补丁 B —— 俘虏营/伤兵营可见化 + 规则上桌面（老板需求 1）
+- `patch_v89117d_fonts.py`（8KB）　— v89.117 补丁 D —— 字体体系统一：字号 / 字重 / 行高 / 角色（老板需求 3）
+- `patch_v89117f2_smokefix.py`（1KB）　— 修复 smoke-test.js 里被 heredoc 吃掉反斜杠的三处（v89.117 · 第二轮）
+- `patch_v89117f_smokefix.py`（2KB）　— 修复 smoke-test.js 里被 heredoc 吃掉反斜杠的两处（v89.117）
+- `patch_v89117g_forge.py`（11KB）　— v89.117 补丁 E —— 铁匠铺：打造键收敛到底部 + 具体套装筛选（老板需求 4）
+- `patch_v89117h_bag.py`（15KB）　— v89.117 补丁 F —— 背包装备页：列全（含穿戴）+ 细分类（老板需求 5）
+- `patch_v89117i_battle.py`（13KB）　— v89.117 补丁 G —— 战斗界面再压缩 + 阵亡变暗 + 逐兵种回合行（老板需求 7）
+- `patch_v89117j_smoke_bt.py`（5KB）　— v89.117 补丁 H1 —— 两条 v89.116 战斗界面断言升级到新口径（需求 7）
+- `patch_v89117k_e2e.py`（10KB）　— v89.117 补丁 H2 —— 弹窗栈引入后的 e2e 适配 + 铁匠铺新口径
+- `patch_v89117l_e2e2.py`（4KB）　— v89.117 补丁 H3 —— e2e 最后两条
+- `patch_v89117m_archive.py`（33KB）　— v89.117 补档 —— 需求档案：补录 v89.92 ~ v89.117（老板需求 0「注意记录前述的所有需求」）
+- `patch_v89117n_fix6.py`（5KB）　— v89.117 补丁 H4 —— 六条断言/样式适配（§97 首跑 + 两条旧口径 + 标尺）
+- `patch_v89117o_e2e3.py`（3KB）　— v89.117 补丁 H5 —— e2e 两条 v21/v89.86 断言升级（军务总览 ⑤ 段）
+- `patch_v89118a_captive_elephant.py`（15KB）
+- `patch_v89118b_invasion_auto.py`（17KB）
+- `patch_v89118c_tests.py`（11KB）
+- `patch_v89118d_playtest.py`（17KB）
+- `patch_v89118f_boost.py`（13KB）
+- `patch_v89118g_cockpit.py`（4KB）
+- `patch_v89118h_cockpit2.py`（4KB）
+- `patch_v89118i_cockpit3.py`（5KB）
+- `patch_v89118m_archive.py`（7KB）
+- `patch_v89119a2_battle_fix.py`（3KB）　— patch_v89119a2_battle_fix.py — 补上 battle.js evLine 的函数收尾（v89.119）
+- `patch_v89119a_counter_order.py`（13KB）　— patch_v89119a_counter_order.py — 反击记录配对（v89.119）
+- `patch_v89119b_sec100.py`（1KB）　— 把 §100 片段插到 smoke-test.js 的汇总行之前（短脚本：读→改→原子落盘→自检）
+- `patch_v89119c_sec100fix.py`（1KB）　— 修 §100 ⑥ 的源码级正则：battle.js 用中间变量 hk/hi（与 tactic/ui 的内联写法不同）
+- `patch_v89119d_checkfn.py`（4KB）　— patch_v89119d_checkfn.py — 修「把函数当布尔传」的恒真断言（v89.119）
+- `patch_v89119e_audit77.py`（5KB）　— patch_v89119e_audit77.py — audit.js 加第 ⑦ 节：恒真断言扫描（v89.119）
+- `patch_v89119f_polish.py`（5KB）　— patch_v89119f_polish.py — 配对文案统一为「对方X反击」（v89.119）
+- `patch_v89119g_report_dedup.py`（5KB）　— patch_v89119g_report_dedup.py — 战报正文页去重与收高（v89.119）
+- `patch_v89119h_tall.py`（5KB）　— patch_v89119h_tall.py — 战报正文页专属加高档（v89.119）
+- `patch_v89119i_archive.py`（6KB）　— patch_v89119i_archive.py — 需求档案补 v89.119 + smoke 档案断言
+- `patch_v89120a_report_rid.py`（14KB）　— v89.120 补丁 A：战报身份 rid 化（根治「战报异常跳转」）
+- `patch_v89120b_sim_btn_log.py`（14KB）　— v89.120 补丁 B：需求 2（回放态设定即生效）+ 需求 3（三键上移读秒行）+ 需求 4（回合记录倒叙）
+- `patch_v89120c_tests.py`（6KB）　— v89.120 补丁 C：测试适配 + §101 新断言 + e2e 真 DOM 增补
+- `patch_v89120d_sec101fix.py`（5KB）　— v89.120 补丁 D：修 §101 两处断言写法（都是断言自己的问题，代码无 bug）
+- `patch_v89120e_e2e.py`（2KB）　— v89.120 补丁 E：e2e D4 收藏用例升级（dataset.i → dataset.rid）
+- `patch_v89120f_archive.py`（6KB）　— v89.120 补档案：总览表 + 逐轮明细 + 遗留更新（老板「注意记录前述的所有需求」）
 - `patch_v8914.py`（16KB）　— patch_v8914.py — v89.14：卷 09~18 接线（60 篇）+ 残留清理 + 校验器判据 11/12
 - `patch_v8914_docs.py`（14KB）　— patch_v8914_docs.py — v89.14 文档补录
 - `patch_v8928_theme_check.py`（2KB）　— v89.28 题材线（江湖 / 修炼 / 四夷）· check.py 判据 12 扩展
@@ -467,6 +600,17 @@ MEMORY.md 必须 < 9600 字符（超出会被会话注入截断，尾部规则�
 - `patch_v89_tests.py`（10KB）　— v89 测试（smoke-test.js）：§73 君主化（generals[0] -> 君主） + §74 新段（君主闸门 + 全屏剧本）。探针幂等。
 - `patch_v89_ui.py`（9KB）　— v89 全屏场景 UI（ui.js）：活动按钮 → 全屏剧本 → 专属退出结算屏。探针幂等。
 - `v26-j.py`（14KB）　— v26 批九：smoke 第 39 节 —— v26 五项需求的防回退断言
+- `v89116_sec96.js`（21KB）
+- `v89117_sec97.js`（18KB）
+- `v89118_sec98.js`（9KB）
+- `v89119_sec100.js`（10KB）
+- `v89120_sec101.js`（9KB）
+
+## play/（未归类）
+
+待归类：请确认用途后归档。
+
+- `lifecycle_v89121.js`（32KB）
 
 ## playtest/（未归类）
 
@@ -482,12 +626,16 @@ MEMORY.md 必须 < 9600 字符（超出会被会话注入截断，尾部规则�
 - `analyze_rush_g.js`（7KB）　— v89.99 定稿三跑对照：rushG_{1x,120x,600x} + A2→A4→E 演进 + 围攻明细归因
 - `analyze_strat.py`（7KB）　— analyze_strat.py — v89.92 四模式对照分析（gold / buff / equip / all）
 - `analyze_v89100.js`（6KB）　— v89.100 三跑对照分析器：econ（纯经济）/ loot（战利品变现）/ rushG（军事基准）
+- `analyze_v89107_play30h.js`（6KB）
+- `batch_v89100.js`（4KB）　— v89.100 批量对照：4 seed × 3 模式（rush / loot / lootx）
+- `batch_v89100b.js`（4KB）　— v89.100 批量对照：4 seed × 3 模式（rush / loot / lootx）
 - `gold_section.js`（15KB）
 - `play_600x.js`（40KB）
 - `play_farm2_600x.js`（41KB）　— FARM2
 - `play_gold_600x.js`（57KB）　— GOLD v1
-- `play_rush_1x.js`（101KB）　— RUSH v1 (v89.98) —— 1× 300h 全系统极限流
+- `play_rush_1x.js`（107KB）　— RUSH v1 (v89.98) —— 1× 300h 全系统极限流
 - `play_strat_600x.js`（73KB）　— STRAT v1 (v89.92)
+- `play_v89118.js`（84KB）　— v89.118 试玩评测驾驶舱
 
 ## probe/（探针（几何 / 界面 / 存档））
 
@@ -520,6 +668,41 @@ jsdom 没有布局引擎 → 尺寸/重叠/溢出/折行只能在**真浏览器*
 - `probe67_save_ui.js`（3KB）
 - `probe67_tbl.js`（3KB）
 - `probe_v43.js`（5KB）　— v43 战斗数值探针：复现"2000 铁骑兵一轮只打死 80 个长枪兵"。
+- `probe_v89101_explore.js`（16KB）
+- `probe_v89101b_explore.js`（13KB）
+- `probe_v89101c_explore.js`（10KB）
+- `probe_v89102_sandbox.js`（6KB）
+- `probe_v89102b_sandbox.js`（8KB）
+- `probe_v89102c_rankcap.js`（10KB）
+- `probe_v89103_contact.js`（7KB）
+- `probe_v89103b_fort.js`（6KB）
+- `probe_v89103c_cargo.js`（8KB）
+- `probe_v89104a_engine.js`（8KB）
+- `probe_v89107_100cities.js`（6KB）
+- `probe_v89107_doc.js`（3KB）　— 探针：为什么"真打一场"没出战报、"真拨时刻"没出烽火 —— 打印出口返回值
+- `probe_v89109_fortres.js`（4KB）
+- `probe_v89109_inv.js`（2KB）
+- `probe_v89109_sortie.js`（2KB）
+- `probe_v89110_caps.js`（3KB）　— v89.110 探针：两条上限的真实数值取证
+- `probe_v89111_inv.js`（4KB）　— v89.111 探针：来袭新节奏（每日 9 时一场 · 目标轮转 · 提前 4 时只报一次 · 离线补算）
+- `probe_v89112_seg.js`（6KB）
+- `probe_v89114_load.js`（7KB）
+- `probe_v89114b_haul.js`（5KB）
+- `probe_v89116_defsb.js`（7KB）
+- `probe_v89116_gap.js`（4KB）
+- `probe_v89116_stats.js`（7KB）
+- `probe_v89117_flicker.js`（8KB）
+- `probe_v89118_elephant.js`（5KB）
+- `probe_v89118_verify.js`（5KB）
+- `probe_v89119_arena.js`（4KB）
+- `probe_v89119_arena2.js`（3KB）　— probe_v89119_arena2.js — 选靶子（第二版：L5~L7 档 + 多倍兵力）
+- `probe_v89119_counter.js`（3KB）
+- `probe_v89120_report_nav.js`（14KB）
+- `probe_v89120b_sim_behavior.js`（10KB）
+- `probe_v89121a_flag_loc.py`（3KB）　— probe_v89121a · 族旗在图标上的位置与占比（回答"图标前边为什么有面旗"）
+- `probe_v89121b_flag_diff.py`（2KB）　— probe_v89121b · 族旗位置 = 源图（未挂旗）与成品图（assets/icons/ui）的差异像素
+- `probe_v89121c_noshop_refs.py`（1KB）　— v89121 清点辅助：noShop 物品的"额外引用"审查（找真断链嫌疑）
+- `probe_v89121d_reward_scan.py`（2KB）　— v89121：产出渠道全扫描 —— 找出"任务/逸闻/奇遇/游历"等表里给了哪些物品 id，
 - `probe_v8942_map_shot.js`（6KB）　— _shot_map.js — 地图视图截图探针（before/after 通用 · v89.42）
 - `probe_v8942_tex.js`（4KB）　— v89.41 行为探针：texVariant 确定性与分布 + 地图渲染回归（不抛错）
 - `probe_v8986_p02_p15_p26.js`（7KB）　— probe_v8986_p02_p15_p26.js —— 整改 P-02 / P-15 / P-26 探针
@@ -555,12 +738,35 @@ jsdom 没有布局引擎 → 尺寸/重叠/溢出/折行只能在**真浏览器*
 
 给老板看的对照图 / 曲线校准 / 素材巡视。
 
-- `calib_series.js`（7KB）　— 建筑图标系列配色标定（v2）。
 - `compare34.js`（9KB）　— v34 风格对比：同一批元素，四种画风 —— 现状(西方奇幻金属) / 中国色木刻 / MingCute / IconPark
+- `make_v89121_flag_matrix.py`（3KB）　— v89121 · 七族旗色对照图（回答"图标上的旗是什么"）
 - `review_guide.py`（4KB）　— v89.42 定稿验收图：改前/改后 + 2x 放大 + 7 块贴图 + 中文说明，合成单图。
 - `review_guide_b.py`（5KB）　— v89.42b 验收指南：v89.42a(推翻) vs v89.42b(重做) + 2x 放大 + 7 块新贴图，合成单图。
 - `scan6.js`（4KB）
 - `shot_compare.py`（7KB）　— v89.42 前后对比：逐格"两翼"采样（避开等级角标/名称条）→ 报告 + 拼图。
+- `shot_v89102_sandbox.js`（7KB）
+- `shot_v89102b_rankcap.js`（4KB）
+- `shot_v89103.js`（9KB）
+- `shot_v89103b_field.js`（8KB）
+- `shot_v89104_views.js`（5KB）
+- `shot_v89105_ui.js`（4KB）
+- `shot_v89106_bldg.js`（6KB）
+- `shot_v89107_beacon.js`（6KB）
+- `shot_v89107_doc.js`（7KB）
+- `shot_v89108_cap_inn.js`（7KB）
+- `shot_v89109_def.js`（7KB）
+- `shot_v89110_danger.js`（10KB）
+- `shot_v89111_inv.js`（6KB）
+- `shot_v89112_modals.js`（6KB）
+- `shot_v89113_mayor_inv.js`（7KB）
+- `shot_v89114.js`（12KB）
+- `shot_v89115.js`（9KB）
+- `shot_v89116.js`（14KB）
+- `shot_v89117.js`（14KB）
+- `shot_v89118.js`（6KB）
+- `shot_v89119.js`（10KB）
+- `shot_v89120.js`（13KB）
+- `shot_v89121_shop.js`（3KB）
 - `tile_show.js`（3KB）　— v35-f：批量拼图（可复用）—— 传 id:中文列表，输出总览图
 
 ---

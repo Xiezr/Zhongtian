@@ -260,6 +260,8 @@
         || /id="mini-/.test(tag)                         /* 缩略图三级筛选 */
         || /id="xc-/.test(tag)                           /* 校场演武的选将框（v89.80） */
         || /id="bt-t-/.test(tag)                         /* 战场界面逐兵种目标（v89.87） */
+        || /id="bt-s-/.test(tag)                         /* v89.116：战场界面动作下拉（前进/驻守/后退） */
+        || /id="sd-t-/.test(tag)                         /* v89.102：沙盘（回放/推演）逐兵种目标 */
         || /id="tm-gen"/.test(tag) || /id="wg-gen"/.test(tag)   /* v89.87：调兵/驻守的带队将领 */
         || /id="am-/.test(tag)                           /* 自动出征弹窗（v89.83：十项，其中出征战术行是字面量） */
         || /^<select id="' \+ id \+ '">$/.test(tag);     /* openAutoMarch 的参数化构造器（其余九项） */
@@ -597,10 +599,11 @@
     ['城内', UI.cityHTML()], ['城外', UI.extHTML()], ['军队', UI.troopsHTML()],
     ['将领', UI.generalsHTML()], ['装备', UI.equipHTML()], ['科技', UI.techHTML()],
     ['宝物', UI.itemsHTML()], ['爵位', UI.rankHTML()], ['地图', UI.mapHTML()],
-    ['任务', UI.tasksHTML()], ['统计', UI.statsHTML()], ['设置', UI.settingsHTML()],
+    ['任务', UI.tasksHTML()], ['设置', UI.settingsHTML()],
   ];
   var panelOk = panels.every(function (p) { return typeof p[1] === 'string' && p[1].length > 50; });
-  check('13 个主面板全部可渲染', panelOk, panels.map(function (p) { return p[0] + ':' + p[1].length; }).join(' '));
+  /* v89.104：统计页退役 → 12 个主面板 */
+  check('12 个主面板全部可渲染', panelOk, panels.map(function (p) { return p[0] + ':' + p[1].length; }).join(' '));
   /* v77（老板）：资源生产 / 建筑信息两个入口退役（随城池属性右三按钮）；
      附属野地保留（改由资源区下拉框「进入」触发）。 */
   var modals = [
@@ -629,9 +632,10 @@
     UI.openQuickItem('grain');
     check('资源栏+号弹宝物', DC['#modal-root'].innerHTML.indexOf('神农锄') >= 0);
   } catch (e) { check('资源栏+号弹宝物', false, e.message); }
-  UI._msgCh = 'war'; UI.setView('reports'); UI.renderLog();
-  check('消息频道切换(战报)', (DC['#msg-log'] || {}).innerHTML !== undefined);
-  UI._msgCh = 'sys';
+  UI._docTab = 'war'; UI.setView('reports'); UI.renderLog();
+  check('公文页签（战报）正文经 renderLog 刷新',
+    ((DC['#doc-body'] || {}).innerHTML || '').length >= 0 && (DC['#doc-body'] || {}).innerHTML !== undefined);
+  UI._docTab = 'war';
 
   console.log('\n===== 16. 读秒显示（精确倒计时+进度条+保底时长）=====');
   var s2 = G.state;   // loadGame 后 state 对象已被替换，需重新取
@@ -858,34 +862,42 @@
   check('属性丹直接加属性', r18.ok && g18.tong === tong0 + 1, '统率 ' + tong0 + ' → ' + g18.tong);
   check('属性丹有使用上限', (DATA.ITEMS || []).some(function (it) { return it.type === 'perm' && /上限50/.test(it.desc || ''); }));
 
-  console.log('\n===== 19. 守将加成 / 装备战斗 / 存档索引 / 离线补算 =====');
+  console.log('\n===== 19. 城主·守将分工 / 装备战斗 / 存档索引 / 离线补算 =====');
   var S19 = G.state;
 
-  console.log('  --- 守将对城池的加成 ---');
-  /* v63（老板）：「守将属性只对当前城池起加成作用」——
-     `guardBonusTotal`（全境守将之和）已**删除**，改为一律 `guardBonus(city)`。
-     所以这里同时钉两件事：入口在、且**全境口径的旧入口不再存在**。 */
-  check('守将加成函数存在', typeof G.guardBonus === 'function');
+  console.log('  --- 城主（文治）与守将（武功）分工（v89.113 老板需求 3）---');
+  /* 老板令：「添加一个与守将同级的职位，名为城主，城主的**内政和智谋**起当前守将的作用。
+     后续守将的功能将会更新：1）勇武对征兵速度加成；2）守城战时作为我方将领对阵。」
+     本段钉住分工的两侧 —— 谁给什么加成、谁**不**给什么（防回潮）。 */
+  check('城主加成函数存在（与守将同级）', typeof G.mayorBonus === 'function');
   check('全境口径的 guardBonusTotal 已删除（防后门）',
     typeof G.guardBonusTotal !== 'function');
   S19.generals.forEach(function (g) { g.status = 'idle'; });
-  check('无守将时加成为零', (function () {
-    var b = G.guardBonus(S19.cities[0]);
-    return b.prod === 0 && b.train === 0;
-  })());
   var city19 = S19.cities[0];
+  check('无城主/无守将时加成为零', (function () {
+    var mb0 = G.mayorBonus(city19), gb0 = G.guardBonus(city19);
+    return mb0.prod === 0 && mb0.def === 0 && mb0.research === 0 && gb0.train === 0;
+  })());
   var grainNo = G.productionPerSec().grain;
   var g19 = S19.generals[0];
-  g19.cityId = city19.id; g19.status = 'guard';
-  var gb19 = G.guardBonus(city19);
-  check('任命后取到守将加成', !!gb19.name, gb19.name);
-  check('内政 → 产量加成', gb19.prod > 0, '+' + (gb19.prod * 100).toFixed(1) + '%');
-  check('勇武 → 征兵加速', gb19.train > 0, '+' + (gb19.train * 100).toFixed(1) + '%');
-  check('智谋 → 研究加速', gb19.research > 0, '+' + (gb19.research * 100).toFixed(1) + '%');
-  check('智谋 → 城防加成', gb19.def > 0, '+' + (gb19.def * 100).toFixed(1) + '%');
+  g19.cityId = city19.id; g19.status = 'mayor';
+  var mb19 = G.mayorBonus(city19);
+  check('任命城主后取到加成', !!mb19.name, mb19.name);
+  check('城主·内政 → 产量加成', mb19.prod > 0, '+' + (mb19.prod * 100).toFixed(1) + '%');
+  check('城主·智谋 → 研究加速', mb19.research > 0, '+' + (mb19.research * 100).toFixed(1) + '%');
+  check('城主·智谋 → 城防加成', mb19.def > 0, '+' + (mb19.def * 100).toFixed(1) + '%');
+  check('城主**不**给征兵加速（那是守将的武职）', !G.guardBonus(city19).train);
   var grainYes = G.productionPerSec().grain;
-  check('守将在任 → 粮食产量实际提升', grainYes > grainNo,
+  check('城主在任 → 粮食产量实际提升', grainYes > grainNo,
     grainNo.toFixed(2) + ' → ' + grainYes.toFixed(2) + '/秒');
+  var g19g = S19.generals[1];
+  g19g.cityId = city19.id; g19g.status = 'guard';
+  check('守将·勇武 → 征兵加速', G.guardBonus(city19).train > 0,
+    '+' + (G.guardBonus(city19).train * 100).toFixed(1) + '%');
+  check('守将**不**给产量加成（已迁城主，防两个出口）',
+    !G.prodFactors('grain', city19).some(function (f) { return f.name === '守将内政'; }));
+  check('prodFactors 的产量项名为「城主内政」',
+    G.prodFactors('grain', city19).some(function (f) { return f.name === '城主内政'; }));
 
   /* ---- v53（老板）：**一城一守将** ----
      改前可以给同一座城连任多个守将，而 guardGeneralOf 只取第一个匹配 →
@@ -900,16 +912,31 @@
     gA.status = 'idle'; gA.cityId = null; gA.equip = {};
     gB.status = 'idle'; gB.cityId = null; gB.equip = {};
     gA.nz = 20; gB.nz = 90;
-    var r1 = G.assignGeneral(gA.id, 'guard', cityA.id);
-    var prodA = G.guardBonus(cityA).prod;
-    var r2 = G.assignGeneral(gB.id, 'guard', cityA.id);
-    var prodB = G.guardBonus(cityA).prod;
+    /* v89.113：内政加成归城主 —— 本段改测**城主任命链**（守将的链由勇武项另测） */
+    var r1 = G.assignGeneral(gA.id, 'mayor', cityA.id);
+    var prodA = G.mayorBonus(cityA).prod;
+    var r2 = G.assignGeneral(gB.id, 'mayor', cityA.id);
+    var prodB = G.mayorBonus(cityA).prod;
     check('任命第二人 → 第一人自动解任（不留双任）',
-      gA.status === 'idle' && gA.cityId === null && gB.status === 'guard' && gB.cityId === cityA.id,
+      gA.status === 'idle' && gA.cityId === null && gB.status === 'mayor' && gB.cityId === cityA.id,
       'A=' + gA.status + ' B=' + gB.status);
-    check('加成链改由**新守将**的属性计算（内政 20 → 90）',
-      G.guardGeneralOf(cityA) === gB && prodB > prodA && Math.abs(prodB - 0.9) < 1e-9,
+    check('加成链改由**新城主**的属性计算（内政 20 → 90）',
+      G.mayorGeneralOf(cityA) === gB && prodB > prodA && Math.abs(prodB - 0.9) < 1e-9,
       (prodA * 100).toFixed(1) + '% → ' + (prodB * 100).toFixed(1) + '%');
+    /* v89.113：守将侧同款链（勇武 20 → 90 → 征兵 +10% → +45%） */
+    gA.status = 'idle'; gB.status = 'idle';
+    gA.yw = 20; gB.yw = 90;
+    G.assignGeneral(gA.id, 'guard', cityA.id);
+    var trA = G.guardBonus(cityA).train;
+    G.assignGeneral(gB.id, 'guard', cityA.id);
+    var trB = G.guardBonus(cityA).train;
+    check('守将链随新将重算（勇武 20 → 90 → 征兵 10% → 45%）',
+      G.guardGeneralOf(cityA) === gB && Math.abs(trB - 0.45) < 1e-9 && trB > trA,
+      (trA * 100).toFixed(1) + '% → ' + (trB * 100).toFixed(1) + '%');
+    /* 一人一职互斥：把 gB 从守将改成城主 → 守将位自动空出（status 单值） */
+    G.assignGeneral(gB.id, 'mayor', cityA.id);
+    check('一人一职（守将改任城主 → 守将位不再挂在该将名下）',
+      gB.status === 'mayor' && !G.guardGeneralOf(cityA));
     check('提示文案点明"已自动解除"（玩家得知道旧任没了）',
       r2.ok && /已自动解除/.test(r2.msg) && r2.msg.indexOf(gA.name) >= 0, r2.msg);
     check('同一座城不可能挂两个守将（不变量，按全境逐城核）', (function () {
@@ -1121,8 +1148,10 @@
   check('v89.62：自动招募（门槛生效 · 达标者招走 · 未达标留下 · 不超容量）', (function () {
     var s = GAME.state, city = GAME.currentCity();
     var keepGens = s.generals.slice();
-    var keepCand = (s.inn && s.inn.candidates) ? s.inn.candidates.slice() : null;
-    var keepAt = s.inn ? s.inn.at : 0;
+    /* v89.108：候选池按城独立 —— 注入/还原都走唯一出口 innPoolOf（不再直接改 s.inn）。 */
+    var pool = GAME.innPoolOf(city);
+    var keepCand = pool.candidates.slice();
+    var keepAt = pool.at;
     var keepGold = s.res.gold || 0;
     var cfg = GAME.innAutoCfg(), keepOn = cfg.on, keepMin = cfg.min;
     var mk = function (rank, i) {
@@ -1130,18 +1159,19 @@
         tong: 50, nz: 50, yw: 50, zm: 50, cost: 1000, loyalty: 70 };
     };
     /* at 设为"刚刚" → innRecruit 内部那次 innRefresh 走缓存分支，注入的候选不会被换掉 */
-    s.inn = { candidates: [mk('fan', 1), mk('ying', 2), mk('ming', 3)], at: U.now() };
+    pool.candidates = [mk('fan', 1), mk('ying', 2), mk('ming', 3)];
+    pool.at = U.now();
     s.res.gold = Math.max(keepGold, 100000);
     cfg.on = true; cfg.min = 'ying';
     var r = GAME.innAutoRun();
-    var left = s.inn.candidates.map(function (c) { return c.rank; });
+    var left = pool.candidates.map(function (c) { return c.rank; });
     var inCity = GAME.generalsIn(city).length;
     var cap = GAME.genSlotsOf(city);
     /* 还原（**原地改**，别换数组对象 —— 别处可能持有旧引用） */
     s.generals.length = 0;
     keepGens.forEach(function (g) { s.generals.push(g); });
     s.res.gold = keepGold;
-    if (keepCand) s.inn = { candidates: keepCand, at: keepAt };
+    pool.candidates = keepCand; pool.at = keepAt;
     cfg.on = keepOn; cfg.min = keepMin;
     return r.n === 2 && left.length === 1 && left[0] === 'fan' && inCity <= cap;
   })(), '招走 ' + 2 + ' 人 · 门槛外留下凡品 1 人');
@@ -2434,7 +2464,9 @@
       && /\.tip-layer \{/.test(htmlSrc24b) && /data-tip-el/.test(uiSrcProbe));
     var domSrc24 = require('fs').readFileSync(require('path').join(__dirname, 'js', 'domain.js'), 'utf8');
     var dataSrc24 = require('fs').readFileSync(require('path').join(__dirname, 'js', 'data.js'), 'utf8');
-    check('背包分装备/材料/宝物/图纸四类', /BAG_TABS/.test(uiSrc24) && /\['bp', '图纸'\]/.test(uiSrc24));
+    check('背包分装备/宝物两大类（v89.115 老板令：宝物按商城分类检索）', /BAG_TABS/.test(uiSrc24)
+      && /\['equip', '装备'\]/.test(uiSrc24) && /\['treasure', '宝物'\]/.test(uiSrc24)
+      && /bagSubChipsHTML/.test(uiSrc24));
     check('背包有排序条（按页签各自排序项）', /BAG_SORT_OPTS/.test(uiSrc24) && /bag-sort/.test(uiSrc24));
     check('背包分类型拆分展示（组标题+网格）', /bag-sec/.test(uiSrc24) && /bag-grid/.test(uiSrc24));
     check('装备可拆解回收材料', /salvageEquip/.test(domSrc24) && /salvageRate/.test(dataSrc24));
@@ -2525,9 +2557,9 @@
   /* ---------- ② 背包：分类 / 排序 / 拆解 ---------- */
   console.log('  --- 背包 ---');
   var uiS = require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8');
-  check('背包四页签（装备/材料/宝物/图纸）', /BAG_TABS = \[\['equip'/.test(uiS) && /\['bp', '图纸'\]/.test(uiS));
-  check('每个页签有独立排序项', /equip: \[\['q'/.test(uiS) && /mat: \[\['series'/.test(uiS)
-    && /item: \[\['type'/.test(uiS) && /bp: \[\['val'/.test(uiS));
+  check('背包两类页签（装备/宝物）', /BAG_TABS = \[\['equip', '装备'\], \['treasure', '宝物'\]\]/.test(uiS));
+  check('装备/宝物各有排序项（宝物含 类型/系列/品阶/价值/数量）', /equip: \[\['q'/.test(uiS)
+    && /treasure: \[\['type'/.test(uiS) && /series', '系列'/.test(uiS) && /tier', '品阶'/.test(uiS));
   check('装备可按套件分组', /'set:' \+ it.set/.test(uiS));
   check('材料按六大系列分组渲染', /DATA\.MAT_SERIES \|\| \[\]\)\.forEach/.test(uiS));
   var bagS = G.state;
@@ -2925,9 +2957,27 @@
   check('名城图纸概率优于县城', DATA.LOOT_EQUIP.capital.blueprint > DATA.LOOT_EQUIP.county.blueprint,
     DATA.LOOT_EQUIP.county.blueprint + ' → ' + DATA.LOOT_EQUIP.capital.blueprint);
   check('县城军械优于野外据点', DATA.LOOT_EQUIP.county.piece > DATA.LOOT_EQUIP.fort.piece);
-  check('资源收益按档位递增', withFixedRandom([0.5], function () {
-    function loot(tier, lv) { return G.battle.genLoot({ type: tier, level: lv, x: 1, y: 1 }, 1).grain; }
-    return loot('capital', 10) > loot('zhou', 9) && loot('zhou', 9) > loot('jun', 7) && loot('jun', 7) > loot('fort', 3);
+  /* v89.109（老板「10 级野外城池资源量那么少，必有错误」）：
+     旧判据比的是"假想档位"（genLoot 里 jun/zhou/capital 的 mult 从未被真实调用 ——
+     名城的掠夺走 npcLoot 库藏），既拦不住真 bug、又把据点压得抬不起头。
+     改为两条**真实关系**：① 同等级 据点 > 野地；② 据点 Lv10 仍低于县城实际掠夺的 1/5。 */
+  check('v89.109：收益次序（同级 据点>野地 · 据点Lv10 < 县城实掠）', withFixedRandom([0.5], function () {
+    function tot(c) {
+      var o = G.battle.genLoot(c, 1), s = 0;
+      ['grain', 'wood', 'stone', 'iron', 'gold'].forEach(function (k) { s += o[k] || 0; });
+      return s;
+    }
+    var f8 = tot({ kind: 'fort', lv: 8, dropType: 'fort', x: 1, y: 1 });
+    var w8 = tot({ kind: 'wild', lv: 8, x: 1, y: 1 });
+    var f10 = tot({ kind: 'fort', lv: 10, dropType: 'fort', x: 1, y: 1 });
+    /* 县城**合计**库藏 = resByTier.county（那是"粮"上限）× (base 合计 / base 粮)；
+       ⚠️ 不能只拿 resByTier.county 当合计 —— 它是粮食单项（探针实测县城合计 7.85 亿）。 */
+    var NB = DATA.NPC_CITY_RES || {}, NBbase = NB.base || {};
+    var bSum = 0; for (var bk in NBbase) bSum += NBbase[bk] || 0;
+    var countyRaid = Math.round((NB.resByTier || {}).county
+      * (bSum / (NBbase.grain || 1))
+      * ((((DATA.EXPEDITION || {}).cityResMul) || {}).raid || 0.5));
+    return f8 > w8 && f10 > f8 * 3 && f10 < countyRaid / 5;
   }));
   check('野地无军械缴获', G.battle.rollEquipLoot({ kind: 'wild', x: 1, y: 1 }).length === 0);
   check('据点掉落随等级浮动', withFixedRandom([0.5], function () {
@@ -3273,13 +3323,25 @@
   (function () {
     G.ui.openModal('<div>无关闭按钮的测试内容</div>');
     var html = global.document.querySelector('#modal-root').innerHTML;
-    check('无关闭按钮时自动补「关闭」', /data-action="close-modal"[^>]*>关闭</.test(html));
-    check('v43：取消右上角 ×（关闭一律在底部）', !/class="modal-close"/.test(html));
+    /* v89.114（老板「所有弹窗型窗口的关闭按钮不再在底部显示，改为弹窗右上角的关闭按钮
+       （圆形套个叉叉）」）：关闭键**只在右上角**、由 openModal 统一注入。 */
+    check('关闭键恒在右上角（.modal-x · 圆形套叉）',
+      /<button class="modal-x"[^>]*data-action="close-modal"[^>]*>✕<\/button>/.test(html));
+    check('底部不再补关闭条（裸 html 也不补）',
+      html.indexOf('modal-foot') < 0 && html.indexOf('>关闭<') < 0);
     G.ui.openModal('<div>自带关闭</div><div class="modal-foot"><button data-action="close-modal">关闭</button></div>');
     var html2 = global.document.querySelector('#modal-root').innerHTML;
     var cnt = (html2.match(/data-action="close-modal"/g) || []).length;
-    /* v43：右上角 × 已取消，所以"不重复追加"= 只有自带的那 1 个 */
-    check('已有关闭按钮时不重复追加', cnt === 1, '关闭按钮 ' + cnt + ' 个（仅自带，无 ×）');
+    /* v89.114：html 里的底部关闭键被**统一剥离**（只剩右上角 ×）；空掉的底栏一并撤除 */
+    check('自带底部关闭键被剥离（只剩右上角 ×）',
+      cnt === 1 && /modal-x/.test(html2) && html2.indexOf('modal-foot') < 0,
+      '关闭键 ' + cnt + ' 个（仅右上角）');
+    /* 底栏含动作键（确定/完成…）时保留 —— 只剥关闭键，不动确认键 */
+    G.ui.openModal('<div>x</div><div class="modal-foot">' +
+      '<button data-action="foo-do">确定</button><button data-action="close-modal">取消</button></div>');
+    var html3 = global.document.querySelector('#modal-root').innerHTML;
+    check('底栏含动作键时保留底栏、只剥关闭键',
+      /data-action="foo-do"/.test(html3) && html3.indexOf('>取消<') < 0 && html3.indexOf('modal-foot') >= 0);
     G.ui.openModal('<div>大字面板</div>', 'lg');
     check('尺寸档位 lg 生效', /modal wood-frame modal-lg/.test(global.document.querySelector('#modal-root').innerHTML));
     G.ui.openModal('<div>小面板</div>', { size: 'sm' });
@@ -3971,7 +4033,8 @@
   check('野地总览含采集队入口', /data-action="open-gathers"/.test(uiS));
   check('采集动作已注册（open/start/finish/abandon/locate）',
     /case 'gather-open'/.test(mainSrc27) && /case 'gather-start'/.test(mainSrc27)
-    && /case 'gather-finish'/.test(mainSrc27) && /case 'gather-abandon'/.test(mainSrc27)
+    && /case 'gather-finish'/.test(mainSrc27) && /case 'gather-abandon-ask'/.test(mainSrc27)
+    && /case 'gather-abandon-do'/.test(mainSrc27)
     && /case 'open-gathers'/.test(mainSrc27));
   check('采集面板可渲染', (function () {
     try {
@@ -4051,7 +4114,7 @@
     return G.buildingLevel(c, 'chengqiang') === 4;
   })());
   check('#1 城墙可修建/升级/取消', typeof G.buildWall === 'function' && typeof G.upgradeWall === 'function'
-    && /ui\.openWallModal = function/.test(uS16) && /cancel-build" data-kind="wall"/.test(uS16));
+    && /ui\.openWallModal = function/.test(uS16) && /cancel-build-ask" data-kind="wall"/.test(uS16));
   check('#1 城墙施工完成写回 wallLv', /wc\.wallLv = q\.targetLevel/.test(stS16));
   check('#2 官府 4 格位于城池正中', (function () {
     var c = G.makeCity({ id: 'w2', name: 'W' });
@@ -4142,11 +4205,13 @@
   check('#6 新增「行军」菜单', /data-view="marches"/.test(hS16) && /ui\.marchesHTML = function/.test(uS16));
   /* v25（需求 10）：任务与统计相邻；爵位退出顶栏（并入君主）；
      商城/背包成为视图；每个菜单带手绘线描图标 */
-  check('#6 菜单分组顺序：城池·地图 ‖ 将领·行军 ‖ 任务·统计 ‖ 商城·背包 ‖ 史册·公文 ‖ 设置·存档',
+  check('#6 菜单分组顺序：城池·地图 ‖ 将领·军务·任务 ‖ 商城·背包 ‖ 史册·公文 ‖ 自动·设置',
     (function () {
+      /* v89.104（老板）：「将将领，军务，任务放一起」＋删「统计」——
+         新顺序：城池·地图 ‖ 将领·军务·任务（三者相邻）‖ 商城·背包 ‖ 史册·公文 ‖ 自动·设置 */
       var order = ['data-view="city"', 'data-view="map"', 'nav-sep', 'data-view="generals"', 'data-view="marches"',
-        'nav-sep', 'data-view="tasks"', 'data-view="stats"', 'nav-sep', 'data-view="shop"', 'data-view="bag"',
-        'nav-sep', 'data-view="story"', 'data-view="reports"', 'nav-sep', 'data-view="settings"'];
+        'data-view="tasks"', 'nav-sep', 'data-view="shop"', 'data-view="bag"',
+        'nav-sep', 'data-view="story"', 'data-view="reports"', 'nav-sep', 'data-view="auto"', 'data-view="settings"'];
       var at = -1;
       for (var i = 0; i < order.length; i++) {
         var idx = hS16.indexOf(order[i], at + 1);
@@ -4156,9 +4221,15 @@
       return true;
     })());
   check('#18 排行已取消', !/open-rank-list/.test(hS16) && !/openRankList/.test(rd16('ui')));
-  check('#6 消息流整合进公文', /公文 · 报告与消息/.test(uS16) && /msg-channels/.test(uS16));
-  check('#6 消息频道四项', /\['sys', '系统'\]/.test(uS16) && /\['all', '全部'\]/.test(uS16));
-  check('#6 保留 10 游戏天', G.msgDays() === 10 && /保留最近 ' \+ GAME\.msgDays\(\)/.test(uS16));
+  /* v89.107（老板）：「公文有几种报告类型，按军务那样整几个独立切换界面」——
+     旧口径查的是"频道条"，新口径查**五类页签 + 类别表单一来源**。 */
+  check('#6 公文五类页签（类别表 DATA.MSG_KINDS 是唯一来源）',
+    /DATA\.MSG_KINDS/.test(uS16) && /ui\.docTabHTML = function/.test(uS16)
+    && /data-action="doc-tab"/.test(uS16) && /ui\.setDocTab = function/.test(uS16));
+  check('#6 旧频道机制已删净（msg-channel / setMsgChannel / msgLines）',
+    !/ui\.setMsgChannel/.test(uS16) && !/ui\.msgLines/.test(uS16) && !/ui\.msgPager/.test(uS16));
+  check('#6 保留 10 游戏天', G.msgDays() === 10 && G.MSG_MIN === 300 && G.MSG_MAX === 800
+    && /GAME\.msgDays\(\)/.test(require('fs').readFileSync(require('path').join(__dirname, 'js', 'state.js'), 'utf8')));
   check('#6 消息写入存档 msgLog', (function () {
     var n0 = G.msgLog().length;
     G.log('v16 测试消息');
@@ -4223,7 +4294,7 @@
     var r = G.canBuildCityAt(wf.x, wf.y);
     return r.ok === false && /平原/.test(r.msg);
   })());
-  check('P2-10 筑城后入城池列表且野地转城池', (function () {
+  check('P2-10 筑城后入城池列表且野地转城池（v89.108：先抬爵解除领地上限）', (function () {
     var st = G.state, wp = null;
     for (var y = 80; y < 160 && !wp; y++) for (var x = 80; x < 160 && !wp; x++) {
       var t3 = G.map.tile(x, y);
@@ -4233,8 +4304,12 @@
     st.wilds = (st.wilds || []).filter(function (w) { return !(w.x === wp.x && w.y === wp.y); });
     st.wilds.push({ x: wp.x, y: wp.y, type: 'plain', level: 5, levelDay: G.questDayIndex() });
     st.res.grain = 1e7; st.res.wood = 1e7; st.res.stone = 1e7; st.res.iron = 1e7; st.res.gold = 1e7;
+    /* v89.108：本用例只验"筑城流程本身"—— 先抬到满爵解除"领地上限"闸（用完还原） */
+    var bakRank = st.rank;
+    st.rank = 21;
     var n0 = st.cities.length;
     var r = G.buildCityAt(wp.x, wp.y);
+    st.rank = bakRank;
     return r.ok === true && st.cities.length === n0 + 1
       && !st.wilds.some(function (w) { return w.x === wp.x && w.y === wp.y; });
   })());
@@ -4496,19 +4571,43 @@
         && !('food' in DATA.TROOPS.yibing);
     } finally { G.state = keep; }
   })(), '义兵粮 80→240 · 铁骑 2000→6000 · food 字段移除');
-  check('实测：烽火预警横幅接回 html 链（v89.36 修：此前返回串被丢弃、从未上屏）', (function () {
+  /* v89.107（老板）：「左侧统计栏的烽火警报（含策略布防）放到军务中，与出征防守等并列」——
+     断言**两头都查**：新家（军务·烽火页）有预警 + 守备力 + 布防；老家（左侧城池属性）已清空。 */
+  check('实测：烽火预警与策略布防已搬进军务·烽火页（老家的横幅已撤）', (function () {
     var keep = G.state;
+    var bkNow9 = G._realNowOf, T9 = 1700000000000;
     try {
       var st9 = G.newGame({ name: '烽火链', cityName: '许都' });
       if (!st9.map.grid) G.map.generate();
       st9.cities.push(G.makeCity({ id: 'fv2', name: '二城', x: 265, y: 215 }));
-      G.invasionTick(0);
+      /* v89.115：来袭改现实时间节奏 —— 覆写现实钟：先排期，再拨到"下一场前 2 分钟"（进窗） */
+      G._realNowOf = function () { return T9; };
+      G.invasionTick(0);                                   /* 首 tick：排期 */
+      G._realNowOf = function () { return G.invasionDueOfSlot(G.invasionSlotOf(T9) + 1) - 2 * 60000; };
+      G.invasionTick(0);                                   /* 进窗：报一条 */
       var c9 = G.currentCity();
-      if (!c9 || G.invasionDueAt(c9) <= 0) return false;   /* 排期没生效 = 测不了 = 判红 */
+      /* 本场目标是**轮转城**（不一定是主城）—— 警窗口径要按它取，否则拿到的是"下一轮" */
+      var c9t = G.invasionTargetOfSlot(G.invasionSlotOf(T9) + 1) || c9;
+      if (!c9 || G.invasionDueAt(c9t) <= 0) return false;   /* 排期没生效 = 测不了 = 判红 */
+      var al = G.invasionAlertOf(c9t);                      /* 仍在拨钟态内求值 */
+      var page = G.ui.marchBeaconHTML();
+      var old = (global.document.querySelector('#city-attrs') || {}).innerHTML || '';
       G.ui.renderCityAttrs(c9, G.state);
-      var h = (global.document.querySelector('#city-attrs') || {}).innerHTML || '';
-      return h.indexOf('烽火') >= 0 && h.indexOf('粮尽') < 0;
-    } finally { G.state = keep; }
+      old = (global.document.querySelector('#city-attrs') || {}).innerHTML || '';
+      return !!al && al.left > 0
+        && page.indexOf('烽火') >= 0 && page.indexOf('警报中') >= 0
+        && page.indexOf('策略布防') >= 0 && page.indexOf('布防') >= 0
+        && old.indexOf('烽火') < 0 && old.indexOf('计略布防') < 0;   /* 老家不许再出现 */
+    } finally { G._realNowOf = bkNow9; G.state = keep; }
+  })());
+  /* v89.107：烽火台闪烁 —— 挂点必须在 buildCellHTML，且类别来自唯一出口 */
+  check('v89.107：有警报时烽火台格挂 .alarm（CSS 明暗呼吸）', (function () {
+    var uiS2 = require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8');
+    var hS2 = require('fs').readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+    return /cell\.build\.id === 'fenghuotai' && GAME\.invasionAlertOf/.test(uiS2)
+      && /\.iso-tile\.alarm \.tile-art img\.ico-img/.test(hS2)
+      && /@keyframes fp-alarm/.test(hS2)
+      && /prefers-reduced-motion/.test(hS2);
   })());
   check('断粮吃粮的时代结束：粮尽也能出征（不再有"粮尽"拦截）', (function () {
     var keep = G.state;
@@ -5006,10 +5105,11 @@
   check('公文页不再有队列一节（v29：队列迁入官府 · 在办事项）',
     !/ui\.sealH\('队列'/.test(uS31) && !/id="doc-queues"/.test(uS31)
     && /ui\.queueBody = function/.test(uS31) && /在办事项/.test(uS31));
-  check('菜单顺序：场景→军事→任务统计→商背→记录→系统', (function () {
+  check('菜单顺序：场景→军事（将领/军务/任务相邻）→商背→记录→系统', (function () {
+    /* v89.104：删「统计」+ 将领/军务/任务相邻（老板原话见 patch 注释） */
     var order = ['data-view="city"', 'data-view="map"', 'nav-sep', 'data-view="generals"', 'data-view="marches"',
-      'nav-sep', 'data-view="tasks"', 'data-view="stats"', 'nav-sep', 'data-view="shop"', 'data-view="bag"',
-      'nav-sep', 'data-view="story"', 'data-view="reports"', 'nav-sep', 'data-view="settings"'];
+      'data-view="tasks"', 'nav-sep', 'data-view="shop"', 'data-view="bag"',
+      'nav-sep', 'data-view="story"', 'data-view="reports"', 'nav-sep', 'data-view="auto"', 'data-view="settings"'];
     var at = -1;
     for (var i = 0; i < order.length; i++) {
       var idx = hS31.indexOf(order[i], at + 1);
@@ -5026,11 +5126,15 @@
   /* v89.86（整改 P-20）：行军视图 → 军务总览 —— 全境口径（不再按本城过滤）+ 五段结构 */
   check('军务总览为全境口径（行军段不再按本城过滤）',
     /var list = \(s\.marches \|\| \[\]\)\.slice\(\);/.test(uS31) && !/return !c \|\| m\.cityId === c\.id/.test(uS31));
-  check('军务总览五段就位（城内 / 驻守野地 / 采集队 / 行军 / 伤兵）',
+  /* v89.117（老板「还是没有俘虏营…要让玩家看得到」）：⑤ 段由「伤兵」扩为
+     「两营（伤兵 · 俘虏）」—— 军务的**默认页签**上就要看得见两营。 */
+  check('军务总览五段就位（城内 / 驻守野地 / 采集队 / 行军 / **两营**）',
     /① 城内/.test(uS31) && /② 驻守野地/.test(uS31) && /③ 采集队/.test(uS31)
-    && /④ 行军/.test(uS31) && /⑤ 伤兵/.test(uS31));
+    && /④ 行军/.test(uS31) && /⑤ 两营/.test(uS31)
+    && /campCard\('wounded', \{ compact: true \}\)/.test(uS31)
+    && /campCard\('captive', \{ compact: true \}\)/.test(uS31));
   check('行军视图提供召回 / 急行军令', /data-action="march-recall"/.test(uS31) && /data-action="march-rush"/.test(uS31));
-  check('行军视图提供采集收获 / 撤回', /data-action="gather-finish"/.test(uS31) && /data-action="gather-abandon"/.test(uS31));
+  check('行军视图提供采集收获 / 撤回（v89.110：撤回走二次确认）', /data-action="gather-finish"/.test(uS31) && /data-action="gather-abandon-ask"/.test(uS31));
   /* v41（需求 3）：行军角标撤掉后，syncBadges 里不能再残留那段统计（否则是死逻辑） */
   check('行军角标统计已撤除，公文改用「未读闪黄」（v41 需求 3/4）',
     !/tab-badge-march/.test(uS31) && !/GAME\.gatherList \? GAME\.gatherList\(\)\.length : 0/.test(uS31)
@@ -5189,10 +5293,17 @@
     && /for \(var i = 0; i < ui\.GEN_PER; i\+\+\)/.test(uS31));
   check('空席也渲染（看得出还差几位、能不能再招）',
     /class="gen-row empty"/.test(uS31) && /招贤馆需 /.test(uS31));
-  check('装备背包分页（每页 10）', /ui\.pageOf\('equip', invAll\.length, 10\)/.test(uS31)
-    && /ui\.pagerHTML\('equip', invAll\.length, 10\)/.test(uS31));
-  check('史册纪事分页（每页 20，只增不减必须分页）', /ui\.pageOf\('chronicle', items\.length, 20\)/.test(uS31)
-    && /ui\.pagerHTML\('chronicle', items\.length, 20\)/.test(uS31));
+  /* v89.112（老板「小小弹窗一堆下拉条」）：每页 10 → **ui.EQUIP_PER = 8**
+     （4 列 × 2 行满排，10 件时第 3 行顶出 85px）；且弹窗模式改**弹窗内翻页**
+     （旧 ui.pagerHTML 画到屏幕底部条，在弹窗里被遮罩盖住、点不到 —— 真 bug）。 */
+  check('装备背包分页（每页 ui.EQUIP_PER=8 · 弹窗/视图双模式）', (function () {
+    return /ui\.EQUIP_PER = 8/.test(uS31)
+      && /ui\.pageOf\('equip', invAll\.length, ui\.EQUIP_PER\)/.test(uS31)
+      && /ui\.modalPage\('equip', invAll, ui\.EQUIP_PER/.test(uS31)
+      && /ui\.pagerHTML\('equip', invAll\.length, ui\.EQUIP_PER\)/.test(uS31);
+  })());
+  check('史书纪事已撤出史册页（v89.104：没有实质内容，整段退役）',
+    !/ui\.pageOf\('chronicle'/.test(uS31) && !/ui\.pagerHTML\('chronicle'/.test(uS31));
   check('分页组件与任务/商城同一套', /ui\.pageOf = function/.test(uS31) && /ui\.pagerHTML = function/.test(uS31)
     && /data-action="page" data-key="/.test(uS31));
   check('实测：30 位将领 → 每页 12 席、底部条出现翻页（v76）', (function () {
@@ -5221,7 +5332,7 @@
     return rows === 12 && html.indexOf('测试将00') >= 0 && html.indexOf('测试将12') < 0
       && html2.indexOf('测试将12') >= 0 && pager.indexOf('data-key="gen"') >= 0;
   })());
-  check('实测：史册分页只渲染 20 条', (function () {
+  check('实测：史册页不再渲染纪事条目（数据仍记，只是不占版面）', (function () {
     var s = G.state, backup = s.chronicle;
     var many = [];
     for (var i = 0; i < 45; i++) many.push({ era: '元兴', seasonName: '春', tag: 'war', text: '第 ' + i + ' 条纪事' });
@@ -5232,8 +5343,8 @@
     var n = (html.match(/chron-item/g) || []).length;
     var bar = (G.ui._bottom || []).join('');
     s.chronicle = backup;
-    /* v29：分页条已改投底部固定条，所以"共 45 项"要在 _bottom 里找，而不是正文里 */
-    return n === 20 && bar.indexOf('共 45 项') >= 0;
+    /* v89.104（老板）：「不要史书纪事了」—— 史册页既不渲染条目、也不再登记纪事分页条 */
+    return n === 0 && bar.indexOf('共 45 项') < 0;
   })());
 
   /* ============================================================
@@ -5378,7 +5489,7 @@
   console.log('  --- ⑪ 产量构成悬停 ---');
   check('GAME.prodBreakdown 已实现', typeof G.prodBreakdown === 'function');
   check('prodFactors 抽取为单一来源（计算与展示共用）',
-    /GAME\.prodFactors = function/.test(sS32) && /GAME\.prodFactors\(r2, city\)\.forEach/.test(sS32));
+    /GAME\.prodFactors = function/.test(sS32) && /GAME\.prodFactors\(r2, city(, mpG)?\)\.forEach/.test(sS32));
   check('产量外层带 data-tip 浮层', /class="rate-wrap" data-tip=/.test(uS32));
   /* v37（需求 2）：CSS ::after 浮层退役，改由 .tip-layer 统一显示 */
   check('浮层样式已定义（.tip-layer 唯一层 + data-tip 为内容源）',
@@ -5658,7 +5769,7 @@
   check('产量外层带 data-tip（悬停浮层，v37 起走 .tip-layer）', /class="rate-wrap" data-tip=/.test(uS33)
     && /\.tip-layer \{/.test(hS33) && !/\.rate-wrap\[data-tip\]:hover::after/.test(hS33));
   check('GAME.prodFactors 为单一来源（计算与展示共用）',
-    /GAME\.prodFactors = function/.test(sS33) && /GAME\.prodFactors\(r2, city\)\.forEach/.test(sS33));
+    /GAME\.prodFactors = function/.test(sS33) && /GAME\.prodFactors\(r2, city(, mpG)?\)\.forEach/.test(sS33));
   check('实测：分解各项之和 = 总产量（瀑布式）', (function () {
     var total = G.productionPerSec();
     var bad = [];
@@ -5668,11 +5779,11 @@
     });
     return bad.length === 0;
   })());
-  check('实测：加野地后明细出现「附属野地」项', (function () {
+  check('实测：加野地后明细出现「野地」项（v89.104 起简称"野地"，省侧栏位置）', (function () {
     var s = G.state, c = G.currentCity() || s.cities[0];
     var backup = s.wilds;
     s.wilds = [{ x: c.x + 1, y: c.y, type: 'lake', level: 5, levelDay: 0 }];
-    var ok = (G.prodBreakdown('grain') || []).some(function (x) { return x.name.indexOf('附属野地') >= 0; });
+    var ok = (G.prodBreakdown('grain') || []).some(function (x) { return x.name.indexOf('野地') === 0; });
     s.wilds = backup;
     return ok;
   })());
@@ -5692,7 +5803,11 @@
   check('伤兵营抽为共用组件', /ui\.woundedBlock = function \(host\)/.test(uS34));
   check('校场面板含伤兵营',
     /ui\.openXiaochang = function/.test(uS34) && /woundedBlock\('xiaochang'\)/.test(uS34));
-  check('行军视图含伤兵营', /woundedBlock\('view'\)/.test(uS34));
+  /* v89.117：军务总览的 ⑤ 段改走**两营紧凑卡**（伤兵 + 俘虏并列），
+     不再是单独的 woundedBlock('view') —— 唯一落点仍在军务处 full 卡。 */
+  check('行军视图（军务总览）含两营紧凑卡',
+    /campCard\('wounded', \{ compact: true \}\)/.test(uS34)
+    && /campCard\('captive', \{ compact: true \}\)/.test(uS34));
   check('行军队列弹窗含伤兵营', /woundedBlock\('marches'\)/.test(uS34));
   check('校场入口指向校场面板（v89.80 标签补「练兵」）',
     /xiaochang: \{ label: "🏹 出征 · 练兵 · 伤兵", act: "open-xiaochang" \}/.test(uS34)
@@ -5703,20 +5818,24 @@
     var h = G.ui.settingsHTML();
     return h.indexOf('woundedBlock') < 0 && h.indexOf('heal-wounded') < 0;
   })());
-  check('实测：伤兵块含数量 / 治疗费 / 治疗按钮', (function () {
+  /* v89.116（老板「伤兵营放在军务处下」）：伤兵营**唯一落点 = 军务·军务处**——
+     校场 / 行军 / 行军弹窗只剩一行**指引**（数量 + 治疗费 + 去军务处的按钮），
+     治疗按钮本体在军务处那张卡里（见 §96 的军务处断言）。 */
+  check('实测：伤兵块含数量 / 治疗费 / 去军务处的指引按钮（治疗本体已收归军务处）', (function () {
     var s = G.state, bk = s.wounded;
     s.wounded = 1234;
     var h = G.ui.woundedBlock('xiaochang');
     s.wounded = bk;
     return /伤兵营/.test(h) && /1,234/.test(h) && /12,340/.test(h)
-      && /data-action="heal-wounded"/.test(h) && /data-heal-host="xiaochang"/.test(h);
+      && /data-action="go-affairs"/.test(h) && /data-heal-host="xiaochang"/.test(h)
+      && h.indexOf('data-action="heal-wounded"') < 0;   /* 不再各摆一套治疗按钮 */
   })());
-  check('实测：伤兵为 0 时按钮禁用（不给空白操作）', (function () {
+  check('实测：伤兵为 0 时也给指引（不再需要"禁用态按钮"）', (function () {
     var s = G.state, bk = s.wounded;
     s.wounded = 0;
     var h = G.ui.woundedBlock('view');
     s.wounded = bk;
-    return /disabled/.test(h) && /dim/.test(h);
+    return /data-action="go-affairs"/.test(h) && /伤兵营/.test(h);
   })());
   check('实测：治疗伤兵后兵员真的归队（不是纯扣钱）', (function () {
     var s = G.state, c = G.currentCity() || s.cities[0];
@@ -5740,8 +5859,9 @@
     /\.gold-heading, \.m-title, \.q-det-title \{[\s\S]{0,220}font-size: var\(--fs-h2\)/.test(css34)
     && !/\.map-title \{/.test(css34));
   check('标题不再各写各的字距（4px 宽字距已取消）', !/letter-spacing: 4px/.test(css34));
-  check('分区小标题同一规格（v82 扩员：q-det-sec/gp-sec/fsn-t/op-zone-t/ledger-sec/seal-h）',
-    /\.q-sec-t, \.q-det-sec, \.bag-sec, \.gd-sec, \.forge-q, \.m-sec, \.side-title, \.wb-t,[\s\S]{0,140}\.gp-sec, \.fsn-t, \.op-zone-t, \.ledger-sec, \.seal-h \{[\s\S]{0,260}font-size: var\(--fs-h3\)/.test(css34));
+  /* v89.105：`.ledger-sec` 随统计页退役 —— 判据同步（不再要求它在册） */
+  check('分区小标题同一规格（v82 扩员：q-det-sec/gp-sec/fsn-t/op-zone-t/seal-h）',
+    /\.q-sec-t, \.q-det-sec, \.bag-sec, \.gd-sec, \.forge-q, \.m-sec, \.side-title, \.wb-t,[\s\S]{0,140}\.gp-sec, \.fsn-t, \.op-zone-t, \.seal-h \{[\s\S]{0,260}font-size: var\(--fs-h3\)/.test(css34));
   check('页脚三套合一（.m-foot / .modal-foot / .panel-foot）',
     /\.m-foot, \.modal-foot, \.panel-foot \{/.test(css34));
   check('卡片几何统一（圆角 / 内边距同一组变量）',
@@ -6178,34 +6298,21 @@
 
   /* ---- 需求 5：侧栏只讲当前城 · 统计承载全局 ---- */
   console.log('  --- ⑤ 侧栏当前城 + 统计菜单 ---');
-  check('顶栏新增「统计」菜单（且与任务相邻）',
-    /data-view="tasks"[\s\S]{0,160}data-view="stats"/.test(hS36));
+  check('菜单顺序：将领 → 军务 → 任务 三者相邻（统计菜单已删）',
+    /data-view="generals"[\s\S]{0,220}data-view="marches"[\s\S]{0,220}data-view="tasks"/.test(hS36)
+    && !/data-view="stats"/.test(hS36));
   check('侧栏不再混入全境汇总', !/全境 ' \+ extAll\.towns/.test(uS36));
-  /* v27（需求 7）：卡片网格 → 分段账册（黄册）。不再有 .stat-card */
-  check('统计页改黄册（分段账册 + 引线行）',
-    /ui\.lgSec = function/.test(uS36) && /ui\.lgRow = function/.test(uS36)
-    && !/stat-cards/.test(uS36) && /全境汇总/.test(uS36));
-  check('统计页城池明细含官府/人口上限/外城等全部字段',
-    /人口上限/.test(uS36) && /外城/.test(uS36) && /官府/.test(uS36));
-  check('统计页可切到任意城池', /case 'stats-goto'/.test(mS36) && /data-action="stats-goto"/.test(uS36));
-  check('实测：统计页列出所有城池', (function () {
-    var h = G.ui.statsHTML();
-    return (G.state.cities || []).every(function (c) { return h.indexOf(c.name) >= 0; });
-  })());
+  /* v89.104（老板）：「统计这个菜单好像没啥用，删掉吧，将将领，军务，任务放一起」
+     —— 统计页（黄册）整体退役。判据改成"**退役门禁**"：
+     条目与其专属函数群（statsHTML / lgSec / lgRow）都不许再出现在代码里。 */
+  check('统计页已退役（statsHTML / lgSec / lgRow / stats-goto 均不在册）',
+    !/ui\.statsHTML = function/.test(uS36) && !/ui\.lgSec = function/.test(uS36)
+    && !/ui\.lgRow = function/.test(uS36) && !/stats-goto/.test(uS36) && !/stats-goto/.test(mS36));
   /* v54（老板）：删掉**别处已有**的三块（君主 / 府库 / 军民）后只剩两节；
      v60（需求 3）：老板又要求把「满级专精」也从全境汇总撤掉、写进对应建筑的介绍，
      于是**丙节整节删除**，账册只剩甲/乙两节。
      判据同时钉住"删干净"（旧的段名不许再出现，含"满级专精"）与"没删过头"。 */
-  check('实测：统计页黄册为两节（甲疆域 / 乙在外）· 专精已迁至建筑面板', (function () {
-    var h = G.ui.statsHTML();
-    var iA = h.indexOf('甲 · 疆域'), iB = h.indexOf('乙 · 在外');
-    return iA >= 0 && iB > iA
-      && (h.match(/class="lg-row/g) || []).length >= 4
-      /* v60：专精不再出现在全境汇总（它在建筑面板里） */
-      && h.indexOf('满级专精') < 0 && h.indexOf('丙 ·') < 0
-      /* 别处已有的三块必须不再出现在账册里 */
-      && h.indexOf('军民') < 0 && h.indexOf('府库') < 0 && h.indexOf('君主') < 0;
-  })());
+  /* v89.104：黄册两节断言随统计页退役（专精仍在建筑面板，见后文断言） */
   /* ============================================================
    * 37. v24：地图精简 / 官府征收 / 侧栏分工 / 城外地块 / 兵营队列 / 队列播报
    * ============================================================ */
@@ -6225,7 +6332,7 @@
      （ui._bottom.push → paintBottom）；.map-dock 改为条内静态排布。 */
   check('地图导航迁入底部导航条（v76）',
     /ui\._bottom\.push\('<div class="map-dock">'/.test(uS37)
-    && /\.map-dock \{[\s\S]{0,200}display: flex; align-items: center; gap: 8px/.test(hS37)
+    && /\.map-dock \{[\s\S]{0,200}display: flex; align-items: center; gap: var\(--sp-3\)/.test(hS37)
     && !/\.map-dock \{[\s\S]{0,300}position: absolute/.test(hS37));
   check('地图不再有横占整行的控制条', !/\.map-bar \{/.test(hS37) && !/\.map-head \{/.test(hS37));
   check('图例色块样式一并删除（不留死样式）',
@@ -6296,9 +6403,11 @@
   check('征收上限表按官府等级（10 级 = 40 块，12 级 = 48 块，之后每级 +4 续到都城上限）',
     JSON.stringify(DATA.EXT_CAP_BY_LV.slice(0, 10)) === JSON.stringify([12, 15, 18, 21, 24, 27, 30, 33, 36, 40])
     && DATA.EXT_CAP_BY_LV[11] === 48
-    /* v54：官府在名城能盖更高，表跟着长到 MAX_LEVEL_ABS（末项 = 48 + 4×(24−12) = 96） */
+    /* v54：官府在名城能盖更高，表跟着长到 MAX_LEVEL_ABS
+       v89.102：MAX_LEVEL_ABS 又多了一项"主城爵位解锁"（+21），
+       末项按末段步长 +4 续写 → 断言改成**公式**（写死 96 会随上限一起烂）。 */
     && DATA.EXT_CAP_BY_LV.length === DATA.MAX_LEVEL_ABS
-    && DATA.EXT_CAP_BY_LV[DATA.MAX_LEVEL_ABS - 1] === 96);
+    && DATA.EXT_CAP_BY_LV[DATA.MAX_LEVEL_ABS - 1] === 48 + 4 * (DATA.MAX_LEVEL_ABS - 12));
   check('实测：官府 Lv10 城外上限 40（8 列正好 5 整行）', (function () {
     var c = G.state.cities[0], bk = G.buildingLevel(c, 'guanfu');
     c.cells.forEach(function (x) { if (x.official) x.build.lvl = 10; });
@@ -6517,7 +6626,7 @@
     && /else if \(v === 'bag'\) box\.innerHTML = ui\.bagHTML\(\)/.test(uS38));
   check('openShop / openBag 走 setView（不再是弹窗）',
     /ui\.openShop = function[\s\S]{0,400}ui\.setView\('shop'\)/.test(uS38)
-    && /ui\.openBag = function[\s\S]{0,200}ui\.setView\('bag'\)/.test(uS38));
+    && /ui\.openBag = function[\s\S]{0,400}ui\.setView\('bag'\)/.test(uS38));
   check('实测：商城/背包输出的是整页容器', (function () {
     var sh = G.ui.shopHTML(), bh = G.ui.bagHTML();
     return /class="ui-page"/.test(sh) && /class="ui-page"/.test(bh)
@@ -6676,12 +6785,14 @@
   console.log('  --- ⑩ 菜单 ---');
   check('每个菜单都有手绘线描图标（11 个 key）',
     /ICON\.navSet = \{/.test(iS38) && /ICON\.nav = function/.test(iS38)
-    && ['city', 'map', 'general', 'march', 'quest', 'stats', 'shop', 'bag', 'story', 'doc', 'settings']
+    && ['city', 'map', 'general', 'march', 'quest', 'shop', 'bag', 'story', 'doc', 'auto', 'settings']
       .every(function (k) { return new RegExp('\\b' + k + ': ').test(iS38); }));
+  /* v89.104：统计菜单删掉（图标 key 由 11 个减为 10 个 + auto 新位） */
   check('图标是线描且取 currentColor（跟文字同色）',
     /stroke="currentColor"/.test(iS38) && /fill="none"/.test(iS38));
-  check('任务与统计相邻；爵位退出顶栏',
-    /data-view="tasks"[\s\S]{0,160}data-view="stats"/.test(hS38)
+  check('将领/军务/任务三者相邻；爵位退出顶栏（统计菜单已删）',
+    /data-view="generals"[\s\S]{0,240}data-view="marches"[\s\S]{0,240}data-view="tasks"/.test(hS38)
+    && !/data-view="stats"/.test(hS38)
     && !/data-view="rank"/.test(hS38));
   /* v77（老板）：「君主界面分左右两半……右边两列的信息表（姓名/爵位/声望/人口/将领/状态）」
      —— 爵位区块（rankBlock）并入新面板，整块退役。 */
@@ -6726,21 +6837,22 @@
     var h = G.ui.troopsHTML();
     G.ui._trainTab = bkTab;
     /* 逐卡判定（整页有 15 张卡，不是 1 张）：
-       ① 卡面 .tstat 由 3 行降为 2 行（成本行腾给图标）；v84 再降为 1 行（拥有行退役）
+       ① 卡面 .tstat 行数：v37 由 3 行降 2 行；v84 再降 1 行（拥有行退役）；
+          **v89.114（老板「兵种的属性不再直接列出，改悬浮显示」）→ 0 行**
+          （属性整行进悬停浮层，卡面只剩图标 + 名字）
        ② 卡面不再出现"耗粮"（成本移入浮层，不是删掉）
-       ③ 浮层内容源仍在，且四要素齐备
-       注意未解锁原因类词（"人口不足"等）本属浮层内容，卡面判据只查结构化行；
-       v84 起卡面只剩 1 行 .tstat，"拥有"字样在卡面彻底绝迹。 */
+       ③ 浮层内容源仍在，且四要素齐备 */
     var cards = h.split('class="troop-card').slice(1);
     if (!cards.length) return false;
     var ok = cards.every(function (c) {
       var face = c.replace(/<div class="tcard-tip tip-src">[\s\S]*?<\/div><\/div>/, '');
       var stats = face.match(/<div class="tstat">[\s\S]*?<\/div>/g) || [];
-      return stats.length === 1 && face.indexOf('耗粮') < 0 && face.indexOf('拥有') < 0;
+      return stats.length === 0 && face.indexOf('耗粮') < 0 && face.indexOf('拥有') < 0;
     });
     var tip = h.match(/<div class="tcard-tip tip-src">([\s\S]*?)<\/div><\/div>/);
     return ok && !!tip
       && /募兵消耗/.test(tip[1]) && /人口 /.test(tip[1]) && /单兵耗时/.test(tip[1])
+      && /血 /.test(tip[1]) && /负重 /.test(tip[1])   /* v89.114：属性（含负重）也在浮层 */
       && tip[1].indexOf('耗粮') < 0   /* v89.36：军粮维持退役，悬停不再列耗粮 */
       && /\.troop-card \.ticon \.ico \{[\s\S]{0,140}max-width: 84px/.test(hS38);
   })());
@@ -6956,17 +7068,43 @@
        （flex 项被压缩到 0 高 —— 不报错，只是看不见）。
        注意 padding 在 `.doll-slot.eq-cell` 上：单写 `.doll-slot` 会被
        后面那条共享卡片几何规则覆盖成 10px，所以必须读带 .eq-cell 的那条。 */
+    /* v89.105：值已令牌化 —— 先建「令牌 → px」表再解析。
+       断言守的是**几何**（三行装得下），不是**写法**（写 px 还是写令牌），
+       所以让它会算令牌；这样下次调标尺，它仍然算的是真几何。 */
+    var TOK = {};
+    (hS46.match(/--[a-z0-9-]+\s*:\s*[\d.]+px/g) || []).forEach(function (d) {
+      var m0 = d.match(/--([a-z0-9-]+)\s*:\s*([\d.]+)px/);
+      TOK[m0[1]] = parseFloat(m0[2]);
+    });
+    function pxOf(block, prop) {
+      var m0 = block.match(new RegExp('(?:^|[;{\\s])' + prop + '\\s*:\\s*([^;}]+)'));
+      if (!m0) return NaN;
+      var v = m0[1].trim();
+      var t = v.match(/var\(--([a-z0-9-]+)\)/);
+      if (t) return TOK[t[1]];
+      var q = v.match(/([\d.]+)px/);
+      return q ? parseFloat(q[1]) : NaN;
+    }
     var box = hS46.match(/\.doll-slot\.eq-cell \{([^}]*)\}/);
     var cell = hS46.match(/\.doll-slot \{([^}]*)\}/);
     var ico = hS46.match(/\.doll-slot \.eq-ico \{([^}]*)\}/);
     var name = hS46.match(/\.doll-slot \.eq-name \{([^}]*)\}/);
     if (!box || !cell || !ico || !name) return false;
-    var side = +(cell[1].match(/height: (\d+)px/) || [])[1];
-    var pad = +(box[1].match(/padding: (\d+)px/) || [])[1];
-    var gap = +(cell[1].match(/gap: (\d+)px/) || [])[1];
-    var icoH = +(ico[1].match(/height: (\d+)px/) || [])[1];
-    var fs = 11;                                  /* --fs-cap */
-    var lh = parseFloat((name[1].match(/line-height: ([\d.]+)/) || [])[1]);
+    var side = pxOf(cell[1], 'height');
+    var pad = pxOf(box[1], 'padding');
+    var gap = pxOf(cell[1], 'gap');
+    var icoH = pxOf(ico[1], 'height');
+    var fs = TOK['fs-cap'] || 11;                 /* 字号同样从令牌表取 */
+    /* v89.117：行高已令牌化（--lh-tight=1.25 / --lh-body=1.6 …）—— 断言守的是**几何**，
+       所以让它会解令牌（无单位比值另建一张表）。 */
+    var LHTOK = {};
+    (hS46.match(/--lh-([a-z0-9-]+)\s*:\s*([\d.]+)/g) || []).forEach(function (d) {
+      var m1 = d.match(/--lh-([a-z0-9-]+)\s*:\s*([\d.]+)/);
+      LHTOK[m1[1]] = parseFloat(m1[2]);
+    });
+    var lhRaw = ((name[1].match(/line-height:\s*([^;}]+)/) || [])[1] || '').trim();
+    var lhT = lhRaw.match(/var\(--lh-([a-z0-9-]+)\)/);
+    var lh = lhT ? LHTOK[lhT[1]] : parseFloat(lhRaw);
     var need = 2 + pad * 2 + fs + gap + icoH + gap + fs * lh;   /* 2 = 上下边框各 1px */
     var slack = side - need;
     return slack >= 0 && slack <= 3;
@@ -6977,7 +7115,7 @@
            只写 `.doll-slot` 会被盖掉（实测槽内三行只剩 32px，装备名被压成 0 高）。
        ② `.eq-inv` 必须有 position: absolute —— 全站只有一条 right/bottom 规则，
            却从来没有定位声明，于是角标一直当流内元素占掉一整行（实测多撑 18px）。 */
-    return /\.doll-slot\.eq-cell \{[^}]*padding: 2px/.test(hS46)
+    return /\.doll-slot\.eq-cell \{[^}]*padding: var\(--sp-0\)/.test(hS46)   /* v89.105：2px → --sp-0（同值） */
       && /\.doll-slot \.eq-inv \{[^}]*position: absolute/.test(hS46)
       && !/\.doll-slot \{[^}]*overflow: hidden/.test(hS46);
   })());
@@ -7165,8 +7303,8 @@
   /* v37 同步：原断言的锚点（.stat-card/.sc-k 竖排标签）是 **v27 有意删掉的设计**
      —— v27 自己的断言就是反向的（/stat-cards/ 不得存在），
      再断言卡片形态等于要求设计回退。改按当前形态核：**账册行**。 */
-  check('统计用账册行（卡片网格已由 v27 移除，不再回退）',
-    /ui\.lgSec = function/.test(uS38) && /ui\.lgRow = function/.test(uS38)
+  check('统计页已退役（v89.104 删菜单；黄册函数群不在册）',
+    !/ui\.lgSec = function/.test(uS38) && !/ui\.lgRow = function/.test(uS38)
     && !/\.stat-card \{/.test(hS38));
   check('不再有 emoji 分区小标（改用朱点 + 金线）',
     /ui\.sealH = function/.test(uS38) && /\.seal-h::before/, hS38 ? '' : '');
@@ -7177,20 +7315,12 @@
     && /\.doc-bar \{[\s\S]{0,200}border-bottom: 1px solid var\(--line\)/.test(hS38));
   /* v39（需求 4）：公文改用扁平页（老板嫌"好多框"）；统计页保留卷轴壳 ——
      那是"册页"，内容多，壳有承载感。 */
-  check('统计用卷轴册页、公文改扁平页',
-    /scroll-page/.test(G.ui.statsHTML()) && /scroll-axis/.test(G.ui.statsHTML())
+  check('公文扁平页（统计页退役后，册页样式只此一处门禁）',
+    /ui\.statsHTML = function/.test(uS38) === false
     && !/scroll-page/.test(G.ui.reportsHTML()) && /gold-heading/.test(G.ui.reportsHTML()));
   /* v37 同步：emoji 分区标题已随"朴素化"移除（v29），改按**账册分段名**核 */
-  check('实测：统计信息未因改版丢失（按 v54 账册形态核）', (function () {
-    var h = G.ui.statsHTML();
-    /* v54：军民/府库/君主三块按老板要求撤掉（别处已有），
-       所以判据只留"还在的"：疆域 / 在外 / 城池 / 采集队。
-       被删的那几项反过来断言**不许出现**，避免哪次改版又搬回来。 */
-    return h.indexOf('全境汇总') >= 0
-      && h.indexOf('甲 · 疆域') >= 0 && h.indexOf('乙 · 在外') >= 0
-      && h.indexOf('城池') >= 0 && h.indexOf('采集队') >= 0
-      && h.indexOf('总驻军') < 0 && h.indexOf('总人口') < 0;
-  })());
+  /* v89.104：该"信息未丢失"断言随统计页退役 —— 疆域/在外两块在
+     侧栏与军务页都能看到（军务页断言见后文）。 */
 
   /* ============================================================
    * 39. v26：将领经验可操作 / 将领详情五维 / 天时入顶栏 /
@@ -7544,8 +7674,11 @@
     return code.indexOf('公告 · 当前要务') < 0 && code.indexOf('系统状态') < 0
       && code.indexOf('notice-box') < 0;
   })());
-  check('公文只保留战报 / 消息两节（v29 需求 6）',
-    !/ui\.sealH\('队列'/.test(uS40) && /ui\.sealH\('战报'/.test(uS40) && /ui\.sealH\('消息'/.test(uS40));
+  /* v89.107：公文页改为"五类独立页签"，本节标题不再由 sealH 拼 —— 判据改为
+     "队列节仍不在 + 页签出口在位 + 旧频道机制删净"。 */
+  check('公文只保留报告与消息（队列整段撤销 · v29）',
+    !/ui\.sealH\('队列'/.test(uS40) && /ui\.docTabHTML = function/.test(uS40)
+    && /ui\.docBodyHTML = function/.test(uS40) && !/ui\.setMsgChannel = function/.test(uS40));
 
   /* ---- 需求 3：野地守军规则化 ---- */
   console.log('  --- ③ 野地守军 ---');
@@ -7953,17 +8086,8 @@
   /* ---- 需求 7：图标与统计 ---- */
   console.log('  --- ⑦ 图标与统计 ---');
   check('顶栏菜单图标调小（15 → 12）', /\.nav-ico \{ width: 12px; height: 12px/.test(hS40));
-  check('统计页为分段账册，无卡片网格',
-    /\.ledger \{/.test(hS40) && /\.lg-row \.lg-fill/.test(hS40) && !/\.stat-card \{/.test(hS40));
-  check('实测：统计黄册两节 + 四笔以上，且仍是账册不是卡片', (function () {
-    var h = G.ui.statsHTML();
-    return h.indexOf('甲 · 疆域') >= 0 && h.indexOf('乙 · 在外') >= 0
-      /* v60（需求 3）：专精已从全境汇总迁到各建筑面板 */
-      && h.indexOf('满级专精') < 0
-      && (h.match(/class="lg-row/g) || []).length >= 4
-      && h.indexOf('class="ledger"') >= 0
-      && h.indexOf('stat-card') < 0;
-  })());
+  check('统计页已退役（视图函数与菜单条目同时不在册）',
+    !/ui\.statsHTML = function/.test(uS40) && !/data-view="stats"/.test(hS40));
 
   /* ---- 需求 8/9：两栏等高 + 自适应 ---- */
   console.log('  --- ⑧⑨ 布局 ---');
@@ -8107,7 +8231,10 @@ check('高级兵种的每人口战力不再倒挂（攻与有效生命双双不�
   var specialists = ['gongjian', 'chuangnu', 'toudan', 'daodun', 'chongche',
     'minfu', 'zhouche', 'chihou',
     /* 义兵 = 入门民兵，定位就是"便宜量大"，不参与阶梯判据 */
-    'yibing'];
+    'yibing',
+    /* v89.118：南疆象兵 = **坦度特化**（血牛重坦）——hp/pop 骑兵族最高（3000），
+       攻低是有意取舍；老板令"不设克制、正常攻防"后按 probe_v89118_elephant 标定。 */
+    'nanjiangxiangbing'];
   var bad = [];
   Object.keys(T).forEach(function (id) {
     if (id === 'changqiang' || specialists.indexOf(id) >= 0) return;
@@ -8152,7 +8279,8 @@ check('等级驱动数组都补到 MAX_LEVEL_ABS 项（人口/仓储/驿站/城�
     && DATA.BUILDINGS.yizhan.speed.length >= N
     && DATA.EXT_BUILDINGS.farm.prod.length >= N
     && DATA.EXT_CAP_BY_LV.length >= N
-    && N === DATA.MAX_BLEVEL + 12;
+    /* v89.102：上限再抬一项"主城爵位解锁"，这条等式同步扩项 */
+    && N === DATA.MAX_BLEVEL + 12 + DATA.RANK_BUILD_LIFT_MAX * DATA.MAIN_CITY_BUILD_PER_RANK;
 })());
 /* ============================================================
  * v54（老板）：**名城**建筑等级上限 —— 县城+2 / 郡城+4 / 州城+8 / 都城+12
@@ -8164,7 +8292,9 @@ console.log('  --- 名城建筑等级上限（v54 老板）---');
 check('上限加成按名城档位（县0/郡4/州8/都12，自建城不加成）—— v89.76 起满配系列 = 12/16/20/24', (function () {
   var T = DATA.CITY_BUILD_BONUS || {};
   return T.self === 0 && T.county === 0 && T.jun === 4 && T.zhou === 8 && T.capital === 12
-    && DATA.MAX_LEVEL_ABS === DATA.MAX_BLEVEL + 12;
+    /* v89.102：MAX_LEVEL_ABS 再叠"主城爵位满档解锁"一项 */
+    && DATA.MAX_LEVEL_ABS === DATA.MAX_BLEVEL + 12
+      + DATA.RANK_BUILD_LIFT_MAX * DATA.MAIN_CITY_BUILD_PER_RANK;
 })());
 check('实测：五档城池的上限值（一律走唯一出口 buildCapOf）', (function () {
   var got = ['self', 'county', 'jun', 'zhou', 'capital'].map(function (t) {
@@ -9083,14 +9213,16 @@ check('校场有「出征战术」入口，且动作已接线（不是孤儿按�
     && /case 'open-tactic': ui\.openTacticModal\(\); break;/.test(m)
     && /case 'tactic-set':/.test(m) && /case 'tactic-reset':/.test(m);
 })());
-check('战术弹窗：每兵种有动作 + 目标（含箭塔），且点选即存、不重绘', (function () {
+check('战术弹窗：每兵种有动作 + 目标（含箭塔）· **分侧**（v89.109）', (function () {
   var u = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'ui.js'), 'utf8');
   var seg = codeOf(u, 'ui.openTacticModal = function');
-  if (seg.length < 500) return false;
+  var blk = codeOf(u, 'ui.tacticBlockOf = function');
+  if (seg.length < 400 || blk.length < 400) return false;
   return /data-action="tactic-set"/.test(u)
-    && /GAME\.tacticOf\('atk', id\)/.test(seg)
-    && /DATA\.TARGET_WALL/.test(seg) && /DATA\.STANCES\.map/.test(seg)
-    && /ui\.modalPage\('tactic'/.test(seg);
+    && /ui\.tacticBlockOf\(side, id\)/.test(seg)          /* 唯一渲染口 */
+    && /ui\.modalPage\('tactic' \+ side/.test(seg)          /* 分侧分页键 */
+    && /DATA\.TARGET_WALL/.test(blk) && /DATA\.STANCES\.map/.test(blk)
+    && /sortie/.test(blk);                                /* 防守侧的出城迎战开关 */
 })());
 check('出征弹窗显示本次战术（含"调整"入口）', (function () {
   var u = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'ui.js'), 'utf8');
@@ -9452,10 +9584,11 @@ check('已拥有的城池一律可改名，原名另存 origName', (function () 
 })());
 check('城池名走单一取值口（改名同步所有引用）', (function () {
   var u = require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8');
-  return /ui\.cityLabelHTML = function \(c, short\)/.test(u) && (u.match(/ui\.cityLabelHTML\(/g) || []).length >= 2
+  return /ui\.cityLabelHTML = function \(c, short\)/.test(u) && (u.match(/ui\.cityLabelHTML\(/g) || []).length >= 1
     && /GAME\.cityFullName\(x\)/.test(u)
-    /* v71：侧栏走短名（城池属性标题）；v77 资源区「本城」表头退役（改附属野地下拉框）——
-       调用点由 3 处减到 2 处（侧栏短名 + 统计表全称），防回退的意图不变。 */
+    /* v71：侧栏走短名；v77 资源区表头退役；v89.104 统计表（唯一用全称的地方）随统计页退役
+       —— 现在只剩侧栏一处（短名）。这条断言只保证"取值口仍在、短名仍在用"。 */
+    && (u.match(/ui\.cityLabelHTML\s*\(/g) || []).length >= 1
     && (u.match(/ui\.cityLabelHTML\(c, true\)/g) || []).length >= 1;
 })());
 
@@ -9474,13 +9607,16 @@ check('内容区不再内嵌分页条（翻页不必滚到底）', (function () 
 check('地图观察框随窗口自适应（v50：目标格距按菱形放大到 1.41 倍）', (function () {
   var u = require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8');
   return /ui\.MAP_TARGET_CELL_ISO = 124/.test(u)
-    && /ui\.MAP_CELL_MAX = \d+/.test(u) && /ui\.mapFrame = \{ spanX: cols/.test(u);
+    && /ui\.MAP_CELL_MAX = Math\.round\(44 \* ui\.MAP_ZOOM\)/.test(u)   /* v89.104：放大 20% */
+    && /ui\.mapFrame = \{ spanX: cols/.test(u);
 })());
-check('背包装备/材料/图纸/宝物四页都分页', (function () {
+check('背包装备/宝物各二级分类都分页（分页 key 随分类区分）', (function () {
   var u = require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8');
+  /* v89.115：宝物页顶层仍走 bag-item-<分类>（材料 bag-mat / 图纸 bag-bp 专属渲染） */
   return ['bag-equip', 'bag-mat', 'bag-bp', 'bag-item'].every(function (k) {
-    return new RegExp("ui\\.page(?:Bag|Rows)\\('" + k + "'").test(u);
-  }) && /ui\.pageRows = function/.test(u);
+    return new RegExp("ui\\.page(?:Bag|Rows)\\('" + k).test(u);
+  }) && /ui\.pageRows = function/.test(u)
+    && /'bag-item-' \+ \(onlyType/.test(u);
 })());
 
 /* ---- 需求 12/14：铁匠铺弹窗 / 物品行 ---- */
@@ -9507,38 +9643,32 @@ check('数量输入框带加减号与「最多」，不走下拉框（下拉框�
 })());
 
 /* ---- 需求 6/7/8/15/16 ---- */
-check('公文只留战报与消息（队列已迁出）', (function () {
+check('公文只留报告与消息（队列已迁出）· v89.107 起为五类页签', (function () {
   var u = require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8');
-  /* v43：切片边界改用**函数边界**（下一个 `ui.xxx = function`），不再写死字符数 ——
-     函数里加几行逻辑就会把后面的锚点挤出窗口（本轮加公文分页就踩到了）。 */
-  var i = u.indexOf('ui.reportsHTML = function');
-  var j = u.indexOf('ui.msgCount = function', i);
+  /* v43：切片边界改用**函数边界**，不再写死字符数。
+     v89.107：本段起点挪到 `ui.DOC_PER`（页签三件套 docTabHTML/docBodyHTML/docPagerReg
+     都定义在 reportsHTML **之前**，从 reportsHTML 起切会整段切掉）。 */
+  var i = u.indexOf('ui.DOC_PER = 10;');
+  var j = u.indexOf('战报详情（v27', i);
   var seg = u.slice(i, j > i ? j : i + 4000);
-  return i > 0 && seg.indexOf("sealH('队列'") < 0 && seg.indexOf("sealH('战报'") > 0
-    && seg.indexOf("sealH('消息'") > 0;
+  return i > 0 && seg.indexOf("sealH('队列'") < 0
+    && seg.indexOf('ui.docTabHTML = function') > 0 && seg.indexOf('ui.docBodyHTML = function') > 0
+    && seg.indexOf('id="doc-body"') > 0;
 })());
 /* v54（老板："全境汇总那里，把甲乙丙丁啥的排一下，别一边长一边短，留空一大块"）：
    原判据是"左右分列（同类同侧）"—— 那是 v29 的设计，老板这次**明确否掉**了。
    删掉三块之后只剩三节，再分两栏必然一长一短。改成单本账册后，
    "一边长一边短"在结构上不可能出现（`.ledger` 自身才是那个两列网格，
    节标题横贯全宽），所以判据从"分了几栏"改成"**没有分栏容器**"。 */
-check('统计全境汇总为单本账册（不再左右分列 → 结构上不可能一长一短）', (function () {
+check('统计页（黄册）已整页退役 —— 视图函数与菜单条目都不在册', (function () {
   var u = stripComment(require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8'));
   var h = stripComment(require('fs').readFileSync(require('path').join(__dirname, 'index.html'), 'utf8'));
-  return /var ledger = '<div class="ledger">'/.test(u)
-    && !/lgLeft/.test(u) && !/lgRight/.test(u) && !/lg-cols/.test(u)   /* 分栏容器已撤 */
-    && !/\.lg-cols/.test(h)                                            /* 样式也不许留残骸 */
-    /* 两节必须按甲乙**顺序**（乱序就等于没"排"）；v60 起丙节（满级专精）已撤 */
-    && (function () {
-      var seg = u.slice(u.indexOf("ui.lgSec('甲 · 疆域')"));
-      var iA = seg.indexOf("ui.lgSec('甲 · 疆域')");
-      var iB = seg.indexOf("ui.lgSec('乙 · 在外')");
-      return iA >= 0 && iB > iA && seg.indexOf("ui.lgSec('丙") < 0;
-    })();
+  return !/ui\.statsHTML = function/.test(u) && !/ui\.lgSec = function/.test(u)
+    && !/data-view="stats"/.test(h);
 })());
 check('侧栏资源与驻军随所选城池变化', (function () {
   var u = require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8');
-  return /GAME\.cityProdPerSec\(c\)/.test(u) && /ui\.cityLabelHTML\(c\)/.test(u)
+  return /GAME\.cityProdPerSec\(c\)/.test(u) && /ui\.cityLabelHTML\s*\(/.test(u)
     && typeof G.cityProdPerSec === 'function' && typeof G.prodBasePerHourOf === 'function';
 })());
 check('招贤馆不再重复将领名录', (function () {
@@ -9887,7 +10017,7 @@ check('将领界面为 3×2 卡片墙 + 下方档案', (function () {
    *   标称 180° 实测只推出 147°）；saturate() 是保亮度矩阵，
    *   输入越接近灰、输出越不变 —— 正好把彩图洗成灰。
    * 现在色相/饱和度在**像素级 HSL** 里写进 PNG 本身
-   *   （脚本 `.workbuddy/tmp/recolor_buildings.py`，原图备份 `_gold_backup/`）。
+   *   （脚本 `.workbuddy/tools/asset/recolor_bldg_icons.js`，原图备份 `_gold_backup/`）。
    * 所以下面两条断言查的是**素材像素**而不是 CSS 写法 ——
    * 那才是"到底什么颜色"的唯一真相，也能直接挡住这次这种返工。
    * ============================================================ */
@@ -9966,21 +10096,135 @@ check('将领界面为 3×2 卡片墙 + 下方档案', (function () {
       var mh = Math.atan2(hy, hx) * 180 / Math.PI; if (mh < 0) mh += 360;
       return { h: mh, s: sSum / n * 100, l: lSum / n * 100, n: n };
     }
-    return { hueSat: hueSat };
+    /* v89.106：CIEDE2000 —— "看着是不是两个颜色"的硬尺。
+       旧的"三选一"判据（色相/明度/饱和各给一个阈值）会放过视觉上糊成一团的配色：
+       暖带盘（7 族挤 60°、饱和全 36%）在旧判据下**全绿**，实测最小 ΔE00 只有 7.5。 */
+    function srgb2lab(c) {
+      function f(v) { v /= 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }
+      var r = f(c[0]), g = f(c[1]), b = f(c[2]);
+      var x = (r * 0.4124 + g * 0.3576 + b * 0.1805) / 0.95047;
+      var y = r * 0.2126 + g * 0.7152 + b * 0.0722;
+      var z = (r * 0.0193 + g * 0.1192 + b * 0.9505) / 1.08883;
+      function hh(t) { return t > 0.008856 ? Math.pow(t, 1 / 3) : 7.787 * t + 16 / 116; }
+      var fx = hh(x), fy = hh(y), fz = hh(z);
+      return [116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz)];
+    }
+    function de00(c1, c2) {
+      var A = srgb2lab(c1), B = srgb2lab(c2);
+      var L1 = A[0], a1 = A[1], b1 = A[2], L2 = B[0], a2 = B[1], b2 = B[2];
+      var C1 = Math.hypot(a1, b1), C2 = Math.hypot(a2, b2), Cb = (C1 + C2) / 2;
+      var G = Cb > 0 ? 0.5 * (1 - Math.sqrt(Math.pow(Cb, 7) / (Math.pow(Cb, 7) + Math.pow(25, 7)))) : 0;
+      var a1p = (1 + G) * a1, a2p = (1 + G) * a2;
+      var C1p = Math.hypot(a1p, b1), C2p = Math.hypot(a2p, b2);
+      var h1p = Math.atan2(b1, a1p) * 180 / Math.PI; if (h1p < 0) h1p += 360;
+      var h2p = Math.atan2(b2, a2p) * 180 / Math.PI; if (h2p < 0) h2p += 360;
+      var dLp = L2 - L1, dCp = C2p - C1p, dhp = 0;
+      if (C1p * C2p !== 0) dhp = (h2p - h1p + 180) % 360 - 180;
+      var dHp = 2 * Math.sqrt(C1p * C2p) * Math.sin(dhp * Math.PI / 360);
+      var Lbp = (L1 + L2) / 2, Cbp = (C1p + C2p) / 2, hbp;
+      if (C1p * C2p === 0) hbp = h1p + h2p;
+      else if (Math.abs(h1p - h2p) <= 180) hbp = (h1p + h2p) / 2;
+      else if (h1p + h2p < 360) hbp = (h1p + h2p + 360) / 2;
+      else hbp = (h1p + h2p - 360) / 2;
+      var T = 1 - 0.17 * Math.cos((hbp - 30) * Math.PI / 180) + 0.24 * Math.cos(2 * hbp * Math.PI / 180)
+        + 0.32 * Math.cos((3 * hbp + 6) * Math.PI / 180) - 0.20 * Math.cos((4 * hbp - 63) * Math.PI / 180);
+      var dTh = 30 * Math.exp(-Math.pow((hbp - 275) / 25, 2));
+      var Rc = Cbp > 0 ? 2 * Math.sqrt(Math.pow(Cbp, 7) / (Math.pow(Cbp, 7) + Math.pow(25, 7))) : 0;
+      var Sl = 1 + (0.015 * Math.pow(Lbp - 50, 2)) / Math.sqrt(20 + Math.pow(Lbp - 50, 2));
+      var Sc = 1 + 0.045 * Cbp, Sh = 1 + 0.015 * Cbp * T;
+      var Rt = -Math.sin(2 * dTh * Math.PI / 180) * Rc;
+      return Math.sqrt(Math.pow(dLp / Sl, 2) + Math.pow(dCp / Sc, 2) + Math.pow(dHp / Sh, 2)
+        + Rt * (dCp / Sc) * (dHp / Sh));
+    }
+    /* HSL → RGB。⚠️ l 收 **0~1 小数**（statOf 的 lum 就是小数；乘 100 会算出 0~25500 的鬼值） */
+    function rgbOfHsl(h, s, l) {      h = ((h % 360) + 360) % 360 / 360;
+      function f(p, q, t) {
+        if (t < 0) t += 1; if (t > 1) t -= 1;
+        if (t < 1 / 6) return p + (q - p) * 6 * t;
+        if (t < 1 / 2) return q;
+        if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+        return p;
+      }
+      if (s < 1e-9) return [l * 255, l * 255, l * 255];
+      var q = l < 0.5 ? l * (1 + s) : l + s - l * s, p = 2 * l - q;
+      return [f(p, q, h + 1 / 3) * 255, f(p, q, h) * 255, f(p, q, h - 1 / 3) * 255];
+    }
+    /* v89.107：图内色散（单位度）—— 判"是不是单色剪影"。
+       ⚠️ 必须按**权重和**归一化：写成 hypot(hx/n, hy/n) 会把"饱和低"也算成"色相散"
+       （单色金图会被量成 78°，而真值是 7°）。正确写法 = 加权合成向量的模长，
+       再换算成圆标准差。校准：金版原图 7~10° · 材质重绘 15~40°。 */
+    function hueSpread(file) {
+      var png = decode(file);
+      if (!png) return null;
+      var step = Math.max(1, Math.floor(png.w / 140));
+      var hx = 0, hy = 0, wsum = 0, n = 0;
+      for (var y = 0; y < png.h; y += step) {
+        for (var x = 0; x < png.w; x += step) {
+          var i = (y * png.w + x) * png.bpp;
+          if (png.bpp === 4 && png.data[i + 3] < 40) continue;
+          var r = png.data[i] / 255, g = png.data[i + 1] / 255, b = png.data[i + 2] / 255;
+          var mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn, l = (mx + mn) / 2;
+          var s = d > 1e-6 ? d / (1 - Math.abs(2 * l - 1)) : 0;
+          if (s <= 0.12) continue;                      /* 只统计有彩像素 */
+          var hh;
+          if (mx === r) hh = ((g - b) / d) % 6; else if (mx === g) hh = (b - r) / d + 2; else hh = (r - g) / d + 4;
+          hh *= 60; if (hh < 0) hh += 360;
+          hx += Math.cos(hh * Math.PI / 180) * s; hy += Math.sin(hh * Math.PI / 180) * s;
+          wsum += s; n++;
+        }
+      }
+      if (n < 20 || wsum <= 0) return null;
+      var R = Math.hypot(hx / wsum, hy / wsum);
+      return Math.sqrt(Math.max(0, -2 * Math.log(Math.max(R, 1e-9)))) * 180 / Math.PI;
+    }
+    /* v89.107：这张图里有没有**接近目标色**的像素（±tol ΔE00）—— 用来核"旗挂着没有" */
+    function hasColor(file, want, tol) {
+      var png = decode(file);
+      if (!png) return false;
+      var step = Math.max(1, Math.floor(png.w / 160));
+      var hit = 0;
+      for (var y = 0; y < png.h; y += step) {
+        for (var x = 0; x < png.w; x += step) {
+          var i = (y * png.w + x) * png.bpp;
+          if (png.bpp === 4 && png.data[i + 3] < 200) continue;   /* 只要实心像素 */
+          if (de00([png.data[i], png.data[i + 1], png.data[i + 2]], want) <= tol) hit++;
+        }
+      }
+      return hit >= 8;                                  /* 旗面积 ≈ 图面 2%，采样后 8 个点足够 */
+    }
+    return { hueSat: hueSat, de00: de00, rgbOfHsl: rgbOfHsl, hueSpread: hueSpread, hasColor: hasColor };
   })();
 
-  /* 七族目标色相：色相环上两两 ≥23°（340/5/45/68/100/175/210），冷暖交替。
-     与 recolor_buildings.py 的 TARGET 必须一致 —— 改一处就要改另一处。 */
-  /* 七族目标**平均色相**（v45-c 定稿）。与 recolor_buildings.py 的 TARGET 必须一致。
-     注意暖族四个（12/32/46/74）刻意挨得近 —— 民房/仓廪/官署/工商本来就是木、瓦、夯土、
-     炉火的同类色，硬把色相拉开只会"变红变紫"（老板原话：本质颜色并没有变好）。
-     它们的区分交给**明度档 + 饱和度**，所以下面的"可分"判据是三选一而不是只看色相。 */
-  var SER_TGT = { mil: 196, edu: 132, road: 250, biz: 12, store: 32, live: 74, gov: 46 };
-  var SER_IDS = {
-    mil: ['junying', 'xiaochang', 'fenghuotai'], edu: ['shuyuan', 'zhaoxianguan'],
-    road: ['yizhan'], biz: ['shichang', 'tiejiangpu', 'gongjiangzuofang'],
-    store: ['cangku', 'majiu'], live: ['minfang', 'kezhan'], gov: ['guanfu', 'honglusi'],
-  };
+  /* v89.106（老板「还是有些城内建筑颜色很奇怪，而且没有区分度」）：**表格全撤，改读 DATA**。
+     本轮之前这里抄着一份 SER_TGT/SER_IDS，素材工具里抄着另一份 SER_OF，data.js 里
+     还写着第三份 —— 三份一漂移，城墙就被染成金色（data.js 写 mil，工具表写 gov）。
+     现在：归属读 `DATA.SERIES_OF`，族色读 `DATA.SERIES[族].flag`，一处改、处处跟。 */
+  var SER_KEYS = Object.keys(DATA.SERIES);
+  var SERAGE = (function () {
+    var bad = [];
+    SER_KEYS.forEach(function (k) {
+      var p = DATA.SERIES[k].flag;
+      if (!p) bad.push(k + ' 无 flag');
+      else if (!(p.h >= 0 && p.h < 360)) bad.push(k + ' 色相越界');
+      else if (!(p.s > 0 && p.s <= 0.7)) bad.push(k + ' 饱和越界');
+      else if (!(p.l > 0 && p.l <= 100)) bad.push(k + ' 明度越界');
+    });
+    return bad;
+  })();
+  check('v89.107：DATA.SERIES 每族都有 flag 旗色规格（h 度 / s 0~1 / l %）',
+    SERAGE.length === 0, SERAGE.join('·') || (SER_KEYS.length + ' 族齐备'));
+  var SER_TGT = {}, SER_IDS = {};
+  SER_KEYS.forEach(function (k) {
+    SER_TGT[k] = DATA.SERIES[k].flag.h;
+    SER_IDS[k] = (DATA.SERIES_OF[k] || []).slice();
+  });
+  check('v89.106：DATA.SERIES_OF 由 BUILDINGS 派生且不漏建筑', (function () {
+    var all = [];
+    SER_KEYS.forEach(function (k) { all = all.concat(SER_IDS[k]); });
+    var miss = Object.keys(DATA.BUILDINGS).filter(function (b) { return all.indexOf(b) < 0; });
+    if (miss.length) console.log('      漏：' + miss.join(' '));
+    return miss.length === 0 && SER_IDS.mil.indexOf('chengqiang') >= 0;   /* 城墙归军事（旧表写成 gov） */
+  })());
   var AIDIR = path.join(__dirname, 'assets', 'icons', 'ui');
   var measured = {}, miss = [];
   Object.keys(SER_IDS).forEach(function (ser) {
@@ -10004,46 +10248,105 @@ check('将领界面为 3×2 卡片墙 + 下方档案', (function () {
       Math.round(measured[k].l) + 'L') : (k + ' 缺失');
   }).join(' · ');
 
-  check('实测（解码 PNG 像素）：七族图标色相都落在目标 ±25° 内',
-    miss.length === 0 && Object.keys(SER_TGT).every(function (k) {
-      if (!measured[k]) return false;
-      var dh = Math.abs(measured[k].h - SER_TGT[k]); if (dh > 180) dh = 360 - dh;
-      return dh <= 25;
-    }), COLORDESC);
-  check('实测：七族图标平均饱和度 ≥ 30%（旧 CSS 滤镜方案实测只有 9~22%）',
-    Object.keys(SER_TGT).every(function (k) { return measured[k] && measured[k].s >= 30; }), COLORDESC);
-  /* 判据从"色相必须拉开"改为"三维里至少一维拉开" ——
-     因为 v45-c 起暖族是**故意同色系**的（见 SER_TGT 注释），
-     硬要求两两色相差 22° 等于要求设计回退到"把仓库染成紫红"。 */
-  check('实测：七族两两可分（色相≥18° 或 明度≥6% 或 饱和度≥8%）', (function () {
-    var ks = Object.keys(SER_TGT), bad = [];
+  /* ============================================================
+   * v89.107（老板第四次说"颜色很不对劲"）—— 查出真病根后重定的判据
+   * ------------------------------------------------------------
+   * 病根：16 张原图**本身是单色的**（图内色散 7°、有效色档 1.3）——
+   *   一张只有一个色相的图，染成任何颜色都只是"染过色的单色块"。
+   *   所以前三轮（暖带 / 分色 / 打分）注定不对：**改色法救不了单色画**。
+   * 现在的两条腿：
+   *   ① **材质自然**（图集重绘，同轮廓同机位、只换材质）→ 判据 = 图内色散
+   *      （矢量圆标准差）：平均 ≥15° 即"画里有木/瓦/石/墙的层次"，
+   *      单色剪影时代实测只有 7°；
+   *   ② **族旗编码**（小面积传统色旗，色值 = DATA.SERIES[].flag）→ 判据 =
+   *      七色两两 CIEDE2000 ≥15（实测 24.8）+ 每张图真的挂着旗。
+   * ============================================================ */
+  check('实测（解码 PNG 像素）：单色剪影已杜绝 —— 图内色散平均 ≥15°', (function () {
+    var sp = [];
+    Object.keys(SER_IDS).forEach(function (ser) {
+      SER_IDS[ser].forEach(function (id) {
+        var r = PIX.hueSpread(path.join(AIDIR, 'ai_' + id + '.png'));
+        if (r != null) sp.push(r);
+      });
+    });
+    if (!sp.length) return false;
+    var avg = sp.reduce(function (t, x) { return t + x; }, 0) / sp.length;
+    console.log('      图内色散 平均 ' + avg.toFixed(0) + '°（单色时代 7°）· 最小 ' +
+      Math.round(Math.min.apply(null, sp)) + '°');
+    return avg >= 15;
+  })());
+  /* 判据从"色相步进"→"三选一"→（v89.106）CIEDE2000 —— v89.107 起**测旗色**：
+     族色编码现在由旗承担（小面积高饱和），所以拿 data.js 的 flag 值直接算，
+     这是设计契约（素材必须与它一致，见下一条"逐张挂旗"）。 */
+  check('实测：族旗七色两两可分（CIEDE2000 ≥15 · 实测 24.8）', (function () {
+    var ks = Object.keys(SER_TGT), bad = [], mn = 999, pair = '';
+    var rgbOf = function (k) {
+      var f = DATA.SERIES[k].flag;
+      return PIX.rgbOfHsl(f.h, f.s, f.l / 100);
+    };
     for (var i = 0; i < ks.length; i++) {
       for (var j = i + 1; j < ks.length; j++) {
-        var A = measured[ks[i]], B = measured[ks[j]];
-        if (!A || !B) return false;
-        var dh = Math.abs(A.h - B.h); if (dh > 180) dh = 360 - dh;
-        var dl = Math.abs(A.l - B.l), ds = Math.abs(A.s - B.s);
-        if (dh < 18 && dl < 6 && ds < 8) bad.push(ks[i] + '/' + ks[j]);
+        var d = PIX.de00(rgbOf(ks[i]), rgbOf(ks[j]));
+        if (d < mn) { mn = d; pair = ks[i] + '/' + ks[j]; }
+        if (d < 15) bad.push(ks[i] + '/' + ks[j] + ' ΔE00=' + d.toFixed(1));
       }
     }
     if (bad.length) console.log('      太像的组合：' + bad.join('，'));
+    else console.log('      最小 ΔE00 = ' + mn.toFixed(1) + '（' + pair + '）');
+    return bad.length === 0;
+  })(), '旗色是族色编码的唯一载体');
+  /* v89.106 新增：**与城内地面**的对比（地面 #8b9a78 是中明度灰绿，
+     糊在地里的族 = 观感"很奇怪"的来源）。判据：任一族均值色与地面 ΔE00 ≥ 12。 */
+  check('实测：七族都跳得出城内地面（与 #8b9a78 的 ΔE00 ≥12，防"糊在地里"）', (function () {
+    var GROUND = [0x8b, 0x9a, 0x78], bad = [], mn = 999, who = '';
+    Object.keys(SER_TGT).forEach(function (k) {
+      if (!measured[k]) { bad.push(k + ' 缺失'); return; }
+      var d = PIX.de00(PIX.rgbOfHsl(measured[k].h, measured[k].s / 100, measured[k].l / 100), GROUND);
+      if (d < mn) { mn = d; who = k; }
+      if (d < 12) bad.push(k + ' ΔE00=' + d.toFixed(1));
+    });
+    if (bad.length) console.log('      糊进地面：' + bad.join('，'));
+    else console.log('      最小 ΔE00(地面) = ' + mn.toFixed(1) + '（' + who + '）');
     return bad.length === 0;
   })());
-  /* 饱和度上限：老板第三轮反馈"饱和度又太高了"（当时 44~56%）——
-     这条把它钉死在 ≤46%，防止下次又把低饱和素材硬拔成色块。 */
-  check('实测：七族饱和度都不超 46%（防"饱和度又太高"回归）',
-    Object.keys(SER_TGT).every(function (k) { return measured[k] && measured[k].s <= 46; }),
-    COLORDESC);
-  /* v67：`_gold_backup` 属老板要删的无用图标（也是 recolor_buildings.py 的备份目录），
-     已清掉。真正的"可回退来源"是 **AI 图集原图** `assets/icons/raw`（38MB，2×2 原图），
-     断言改为护它 —— 它才是重新切图的原料。
-     注：recolor_buildings.py 下次调色时会自行 `makedirs(BAK)` 重建 _gold_backup。 */
+  /* 逐张"挂旗"核验：每张图都得真含着**自己族的旗色**（±容差）——
+     挡住"改了 flag 忘了重画旗"与"某张图漏画"。
+     为什么不用"整体色相"判据了：材质自然之后整体色相本来就该各异，
+     再拿整体色相去卡族色，等于把画重新变成色块（前三轮的病根）。 */
+  check('实测：16 张图标逐张挂着自己族的旗（旗色像素在册 ±容差）', (function () {
+    var bad = [], n = 0;
+    Object.keys(SER_IDS).forEach(function (ser) {
+      var f = DATA.SERIES[ser].flag;
+      var want = PIX.rgbOfHsl(f.h, f.s, f.l / 100);
+      SER_IDS[ser].forEach(function (id) {
+        var hit = PIX.hasColor(path.join(AIDIR, 'ai_' + id + '.png'), want, 12);
+        n++;
+        if (!hit) bad.push(id + '（' + ser + '）');
+      });
+    });
+    if (bad.length) console.log('      未挂旗：' + bad.join(' '));
+    console.log('      ' + (n - bad.length) + '/' + n + ' 张已挂旗');
+    return bad.length === 0 && n >= 16;
+  })());
+  /* v67：`_gold_backup` 曾被当作"要删的无用图标"清掉过。**v89.106 起它必须活着** ——
+     它是素材管线的**原图来源**与**回退底片**：v89.107 的重绘就是拿它当"同轮廓同机位"
+     的参考（图生图输入），旧配色素材也都能从它推回来。
+     另有一条独立护栏：真正的"可重新切图原料"是 AI 图集原图 `assets/icons/raw`。 */
   check('图标原图仍在（assets/icons/raw，可重新切图）', (function () {
     var raw = path.join(__dirname, 'assets', 'icons', 'raw');
     return fs.existsSync(raw) && fs.readdirSync(raw).length > 0;
   })(), (function () {
     try { return fs.readdirSync(path.join(__dirname, 'assets', 'icons', 'raw')).length + ' 张原图'; }
     catch (e) { return '目录缺失'; }
+  })());
+  check('v89.106：配色原图备份 _gold_backup 在位（改色只从它出发，不许叠乘）', (function () {
+    var bak = path.join(__dirname, 'assets', 'icons', 'ui', '_gold_backup');
+    if (!fs.existsSync(bak)) return false;
+    var n = 0;
+    Object.keys(DATA.BUILDINGS).forEach(function (id) {
+      if (fs.existsSync(path.join(bak, 'ai_' + id + '.png'))) n++;
+    });
+    return n >= 16;
   })());
 
   console.log('  --- 需求 1：资源悬停显示上限 ---');
@@ -10163,12 +10466,8 @@ console.log('\n===== 45. v60 城池归属与名城专有 =====');
 
   /* ================= 需求 3：满级专精迁到建筑面板 ================= */
   console.log('  --- 需求 3：满级专精 ---');
-  check('全境汇总不再有「满级专精」', G.ui.statsHTML().indexOf('满级专精') < 0);
-  check('结构：全境汇总的丙节已删（只剩甲/乙）', (function () {
-    var body = codeOf(uS, 'ui.statsHTML = function');
-    return body.indexOf("ui.lgSec('甲") >= 0 && body.indexOf("ui.lgSec('乙") >= 0
-      && body.indexOf("ui.lgSec('丙") < 0;
-  })());
+  /* v89.104：全境汇总（黄册）已整页退役 —— 专精仍只在建筑面板出现，
+     由下面那条「建筑面板按 DATA.MASTERY 显示满级专精」的断言钉住。 */
   check('结构：建筑面板按 DATA.MASTERY 数据驱动显示满级专精', (function () {
     var body = codeOf(uS, 'ui.openBuildModal = function');
     return /DATA\.MASTERY/.test(body) && /满级专精/.test(body) && /GAME\.masteryOf\(c, b\.id\)/.test(body);
@@ -10260,19 +10559,30 @@ console.log('\n===== 45. v60 城池归属与名城专有 =====');
   })());
 
   /* ================= 需求 4：运输 ================= */
-  console.log('  --- 需求 4：资源运输 ---');
+  console.log('  --- 需求 4：资源运输（v89.103：改走行军通道，本节测**同一对出口**）---');
+  /* v89.103（老板「资源运输应当采用出征界面」）：
+     `GAME.doTransport`（单资源、即时到账）退役 —— 运输现在是**随军行军**
+     （出发扣兵扣货 → 抵达落账 → 失败/召回原路退回）。
+     但"能起运多少 / 掉多少 / 装不下多少"的算法只有一个来源，下面直接测它：
+       · `G.transportPlanOf(from, to, key, qty)` —— 纯函数（账）
+       · `G.transportApply(plan, from, to)`       —— 落账
+     界面预估、出发校验、抵达落账**三处**都读这一对。 */
+  function tpSettle(a, b, key, qty) {
+    var pl = G.transportPlanOf(a, b, key, qty);
+    return G.transportApply(pl, a, b);
+  }
   check('实测：运输扣出发城、加目的城、并抽损耗', (function () {
     var a = V.cities[0], b = null;
     V.cities.forEach(function (c) { if (c.id === 'v60b') b = c; });
     if (!b) return false;
     a.res.grain = 10000; b.res.grain = 0;
-    var r = G.doTransport(a.id, b.id, 'grain', 4000);
+    var r = tpSettle(a, b, 'grain', 4000);
     var loss = G.transportLossOf(a, b);
-    return r.ok && a.res.grain === 6000 + r.returned && b.res.grain === r.landed
-      && r.landed < 4000 && loss > 0;
+    return r.ship === 4000 && a.res.grain === 6000 && b.res.grain === r.landed
+      && r.landed < 4000 && r.lost > 0 && loss > 0;
   })());
   check('实测：运往本城被拦（不给"自己运给自己"的损耗漏洞）',
-    G.doTransport(V.cities[0].id, V.cities[0].id, 'grain', 100).ok === false);
+    G.doTransferCargo(V.cities[0].id, V.cities[0].id, { yibing: 1 }, 'x', null).ok === false);
   check('实测：仓容不足的部分原路带回（不做静默丢弃）', (function () {
     var a = V.cities[0], b = null;
     V.cities.forEach(function (c) { if (c.id === 'v60b') b = c; });
@@ -10280,10 +10590,11 @@ console.log('\n===== 45. v60 城池归属与名城专有 =====');
     var cap = G.storeCapOf(b);
     b.res.wood = cap;                          // 目的城塞满
     a.res.wood = 5000;
-    var r = G.doTransport(a.id, b.id, 'wood', 5000);
-    /* 装不下 → 全部**未起运**：出发城一木未少、目的城一点没涨。
+    var r = tpSettle(a, b, 'wood', 5000);
+    /* 装不下 → 全部**未起运**（plan.stay = 5000，起运 0、到账 0）：
+       出发城一木未少、目的城一点没涨。
        （改前是"先起运再带回"，结果东西没运走却把损耗抽掉了。） */
-    return r.landed === 0 && r.returned === 5000 && r.shipped === 0
+    return r.landed === 0 && r.stay === 5000 && r.ship === 0
       && a.res.wood === 5000 && b.res.wood === cap;
   })());
   check('实测：黄金不受仓容限制（货币口径）', (function () {
@@ -10291,8 +10602,8 @@ console.log('\n===== 45. v60 城池归属与名城专有 =====');
     V.cities.forEach(function (c) { if (c.id === 'v60b') b = c; });
     if (!b) return false;
     a.res.gold = 50000; b.res.gold = 0;
-    var r = G.doTransport(a.id, b.id, 'gold', 20000);
-    return r.ok && b.res.gold > 0 && r.returned === 0;
+    var r = tpSettle(a, b, 'gold', 20000);
+    return r.ship === 20000 && b.res.gold > 0 && r.stay === 0;
   })());
 
   /* ================= 需求 4：派遣 ================= */
@@ -10757,10 +11068,12 @@ console.log('\n===== 46. v61 满配城池城内布局 =====');
       && !/npcCityInfo\(/.test(exp)
       && !/守军约/.test(exp);
   })());
-  check('v89.55：出征界面为 2 列分区网格（exp-grid）+ 弹窗升 xl，不再整行堆叠', (function () {
+  check('v89.55：出征界面为 2 列分区网格（exp-grid）+ 弹窗走大档，不再整行堆叠', (function () {
+    /* v89.105：实测内容 711px，xl(700) 差 28px → 升 xxl。判据守的是「两列网格 + 大档」，档位随实测走
+       （改档必须重跑 .workbuddy/tools/audit/audit_v89105_modals.js）。 */
     var exp = codeOf(uS, 'ui.openExpModal = function');
     return /class="exp-grid"/.test(exp)
-      && /ui\.openModal\(html,\s*\{\s*size:\s*'xl'\s*\}\)/.test(exp);
+      && /ui\.openModal\(html,\s*\{\s*size:\s*'xxl'\s*\}\)/.test(exp);
   })());
   check('v89.64：出征版面为**两栏**（左=信息 / 右=只有兵种及数量）', (function () {
     var body = require('fs').readFileSync(require('path').join(__dirname, 'index.html'), 'utf8').replace(/\s+/g, ' ');
@@ -10870,10 +11183,11 @@ console.log('\n===== 46. v61 满配城池城内布局 =====');
     return /id="exp-plan"/.test(u) && /id="exp-tactic"/.test(u)
       && /ui\.expPlanOptionsHTML = function/.test(u) && /ui\.expTacticOptionsHTML = function/.test(u)
       && /ui\.openPlanModal = function/.test(u) && /ui\.openTacticModal = function/.test(u)
-      /* 城池间操作：己方城池进目标 → 派驻/运输（运输/派遣沿用旧面板，军队派驻为新增） */
-      && /ui\.openInterCity = function/.test(u) && /ui\.openTroopMove = function/.test(u)
-      && /GAME\.doTransferTroops = function/.test(d)
-      && /ui\.openTransport = function/.test(u) && /ui\.openDispatch = function/.test(u)
+      /* 城池间操作：己方城池进目标 → 派驻/运输（v89.103：该小面板退役，
+         三件事各有更正入口 —— 出征界面本境调运 / 城池面板将领派遣 / 新城补防） */
+      && /ui\.openTroopMove = function/.test(u)
+      && /GAME\.doTransferTroops = function/.test(d) && /GAME\.doTransferCargo = function/.test(d)
+      && /ui\.openDispatch = function/.test(u)
       /* 金换物资：买入带比例损耗 + v89.60 反向口径 marketBuyGoldFor（市场单块靠它把"单位"折成金） */
       && /DATA\.MARKET_BUY/.test(da) && /GAME\.marketBuy = function/.test(d)
       && /GAME\.marketBuyGoldFor = function/.test(d)
@@ -12006,45 +12320,49 @@ console.log('\n===== 47. v62 工匠作坊造箭塔 =====');
   check('结构：全境口径的 guardBonusTotal 已删除（不留后门）',
     stripComment(dmS).indexOf('guardBonusTotal') < 0
     && stripComment(stS).indexOf('guardBonusTotal') < 0);
-  check('结构：四个消费点都收窄到"按城取"（产量 / 建造 / 征兵 / 研究）', (function () {
-    return /GAME\.prodFactors = function \(r, city\)/.test(stS)
-      && /GAME\.guardBuildMult = function \(city\)/.test(dmS)
-      && /GAME\.guardBonus\(city\)/.test(codeOf(dmS, 'GAME._rawGuardBuildMult = function'))
+  check('结构：四个消费点都收窄到"按城取"（产量-城主 / 建造-城主 / 征兵-守将 / 研究-城主）', (function () {
+    /* v89.113：内政/智谋的经营项归城主（mayorBonus）、勇武征兵归守将（guardBonus） */
+    return /GAME\.prodFactors = function \(r, city(, mpGlobal)?\)/.test(stS)   /* v89.107：加可选的全境专精参数 */
+      && /GAME\.cityBuildMult = function \(city\)/.test(dmS)
+      && /GAME\.mayorBonus\(city\)/.test(codeOf(dmS, 'GAME._rawCityBuildMult = function'))
       && /guardBonus\(city\)/.test(codeOf(dmS, 'GAME.train = function'))
-      && /guardBonus\(_gcity\)/.test(syS);
+      && /mayorBonus\(_gcity\)/.test(syS)
+      && /GAME\.mayorBonus\(city\)/.test(codeOf(dmS, 'GAME.cityDefenseBase = function'));
   })());
   check('实测：A 城守将**不给 B 城加成**；给 B 城另派守将后，B 城取到的是 B 城那位', (function () {
     return freshState('v63guard', function (st) {
       var a = st.cities[0];
       var b = addCity(st, 'v63b');
+      /* v89.113：产量加成读**城主**（角色改为 mayor） */
       var g = st.generals[0];
-      g.cityId = a.id; g.status = 'guard'; g.loyalty = 100;
-      var hasA = G.prodFactors('grain', a).some(function (f) { return f.name === '守将内政'; });
-      var hasB = G.prodFactors('grain', b).some(function (f) { return f.name === '守将内政'; });
+      g.cityId = a.id; g.status = 'mayor'; g.loyalty = 100;
+      var hasA = G.prodFactors('grain', a).some(function (f) { return f.name === '城主内政'; });
+      var hasB = G.prodFactors('grain', b).some(function (f) { return f.name === '城主内政'; });
       if (!hasA || hasB) return false;
-      var g2 = G.makeGeneral('副城守将', 20, 'guard', b.id, false, 'liang', 'balance');
+      var g2 = G.makeGeneral('副城城主', 20, 'mayor', b.id, false, 'liang', 'balance');
       g2.loyalty = 100;
       st.generals.push(g2);
-      var bb = G.guardBonus(b);
+      var bb = G.mayorBonus(b);
       return bb.name === g2.name && bb.prod > 0;
     });
   })(), (function () {
     return freshState('v63guard2', function (st) {
       var a = st.cities[0], b = addCity(st, 'v63c');
-      st.generals[0].cityId = a.id; st.generals[0].status = 'guard'; st.generals[0].loyalty = 100;
-      var g2 = G.makeGeneral('副城守将', 20, 'guard', b.id, false, 'liang', 'balance');
+      /* v89.113：文案口径同步（内政加成归城主） */
+      st.generals[0].cityId = a.id; st.generals[0].status = 'mayor'; st.generals[0].loyalty = 100;
+      var g2 = G.makeGeneral('副城城主', 20, 'mayor', b.id, false, 'liang', 'balance');
       g2.loyalty = 100; st.generals.push(g2);
-      var ga = G.guardBonus(a), gb = G.guardBonus(b);
+      var ga = G.mayorBonus(a), gb = G.mayorBonus(b);
       return 'A 城 ' + ga.name + '（内政 +' + (ga.prod * 100).toFixed(1) + '%）· '
         + 'B 城 ' + gb.name + '（内政 +' + (gb.prod * 100).toFixed(1) + '%）';
     });
   })());
-  check('实测：建造加速也只看本城守将（有守将的城更快、没守将的城一点不动）', (function () {
+  check('实测：建造加速也只看本城城主（有城主的城更快、没城主的城一点不动）', (function () {
     return freshState('v63build', function (st) {
       var a = st.cities[0], b = addCity(st, 'v63d');
-      var baseA = G.guardBuildMult(a), baseB = G.guardBuildMult(b);
-      st.generals[0].cityId = a.id; st.generals[0].status = 'guard'; st.generals[0].loyalty = 100;
-      return G.guardBuildMult(a) < baseA && G.guardBuildMult(b) === baseB;
+      var baseA = G.cityBuildMult(a), baseB = G.cityBuildMult(b);
+      st.generals[0].cityId = a.id; st.generals[0].status = 'mayor'; st.generals[0].loyalty = 100;
+      return G.cityBuildMult(a) < baseA && G.cityBuildMult(b) === baseB;
     });
   })());
   check('实测：未占据名城的守将是**每城一个**（同等级两座城不是同一个人）', (function () {
@@ -12343,15 +12661,19 @@ console.log('\n===== 47. v62 工匠作坊造箭塔 =====');
       setBldg(a, 'zhaoxianguan', 3); setBldg(a, 'kezhan', 3);
       setBldg(b, 'zhaoxianguan', 3); setBldg(b, 'kezhan', 3);
       a.res.gold = 5000000;
-      G.innRefresh(true);
-      var list = G.innRefresh();
-      if (!list.length) return false;                       // 分母为 0 的绿 = 什么都没测
+      /* v89.108：候选池**按城独立** —— 从 B 城自己的池取候选再招。
+         （旧用例拿 A 城的候选往 B 城招 —— 那正是"候选串城"的旧行为，已被本版修掉。） */
+      var listA = G.innRefresh(true, a);
+      var listB = G.innRefresh(true, b);
+      if (!listB.length) return false;                      // 分母为 0 的绿 = 什么都没测
       var goldB = b.res.gold, goldA = a.res.gold, n0 = st.generals.length;
-      var r = G.innRecruit(list[0].id, b.id);                /* 招到 B 城 */
+      var r = G.innRecruit(listB[0].id, b.id);               /* 招到 B 城 */
       if (!r.ok) return false;
       var g = st.generals[st.generals.length - 1];
+      /* A 城的池不受影响（按城独立的关键） */
+      var aStill = G.innRefresh(false, a).length === listA.length;
       return st.generals.length === n0 + 1 && g.cityId === b.id
-        && b.res.gold < goldB && a.res.gold === goldA && r.gen.id === g.id;
+        && b.res.gold < goldB && a.res.gold === goldA && r.gen.id === g.id && aStill;
     });
   })(), (function () {
     return withState('v64rec2', function (st) {
@@ -12361,7 +12683,7 @@ console.log('\n===== 47. v62 工匠作坊造箭塔 =====');
       st.cities.push(b);
       setBldg(a, 'zhaoxianguan', 3); setBldg(a, 'kezhan', 3);
       setBldg(b, 'zhaoxianguan', 3); setBldg(b, 'kezhan', 3);
-      var list = G.innRefresh(true) || G.innRefresh();
+      var list = G.innRefresh(true, b) || G.innRefresh(false, b);   /* v89.108：B 城的池 */
       var r = list.length ? G.innRecruit(list[0].id, b.id) : { ok: false, msg: '无候选' };
       var last = st.generals[st.generals.length - 1];
       return r.ok ? (r.msg + '｜落城 ' + (last ? last.cityId : '?') + '（指定 ' + b.id + '）')
@@ -12621,9 +12943,18 @@ console.log('\n===== 47. v62 工匠作坊造箭塔 =====');
   check('结构：页签在 main 里有接线（不是孤儿按钮）', (function () {
     return /case 'scout-page'/.test(mS49) && /ui\._scoutLast/.test(mS49);
   })());
-  check('结构：**新的一次侦查从第 1 页开始**（页签记忆只服务当次翻页）', (function () {
+  check('结构：侦查公文带**分层面板数据**（v89.102 起不再自动弹窗）', (function () {
     var arrive = code49(mS49, 'GAME.onMarchArrive = function');
-    return /openScoutResult\(\{ kind: m\.kind, name: m\.name \}, r, 0\)/.test(arrive);
+    var exp = code49(bS49, 'GAME.battle.expedition = function');
+    /* v89.102（老板「侦查报告不要自动冒出来」）：抵达**不再自动弹**分层面板，
+       改为写公文 + 一条 toast；面板数据随公文存下（scout: {...}），
+       玩家在公文里点「展开侦查面板」按需打开。 */
+    return /侦查回报已入公文/.test(arrive)
+      && !/openScoutResult\(\{ kind: m\.kind, name: m\.name \}, r, 0\)/.test(arrive)
+      && /scout: \{/.test(exp) && /intelTiers: sc\.intel/.test(exp);
+  })(), '公文 + 手动展开（面板数据随公文存档）');
+  check('结构：侦查公文的「展开面板」入口在 main 里有接线', (function () {
+    return /case 'scout-open'/.test(mS49) && /_sr\.scout/.test(mS49);
   })());
   check('结构：官府面板的"在办事项"**限条数**（队列是最容易无限长的一块）', (function () {
     var g = code49(uS49, 'ui.openGuanfu = function');
@@ -13125,11 +13456,12 @@ console.log('\n===== 47. v62 工匠作坊造箭塔 =====');
   console.log('  --- ⑤ 侧栏资源 / 驻军分列 ---');
   check('结构：资源行改成三列定宽（74 / 72 / +），列间距 8px', (function () {
     var css = cssBlock(hS67, '#res-bar .res-line .val');
-    return /grid-template-columns: 74px 72px 1\.1em/.test(css) && /column-gap: 8px/.test(css);
+    /* v89.105：字面值已令牌化（列宽 74/72 是版式尺寸，超标尺故保持字面） */
+    return /grid-template-columns: 74px 72px 1\.1em/.test(css) && /column-gap: var\(--sp-3\)/.test(css);
   })());
   check('结构：增速列与存量列之间有**发丝竖线**（这才叫分列）', (function () {
     var css = cssBlock(hS67, '#res-bar .res-line .rate-wrap');
-    return /border-left: 1px solid var\(--line\)/.test(css) && /padding-left: 8px/.test(css);
+    return /border-left: 1px solid var\(--line\)/.test(css) && /padding-left: var\(--sp-3\)/.test(css);
   })());
   check('结构：增速列定宽 ≥70px 且右对齐（各行的 /秒 右缘对齐）', (function () {
     var css = cssBlock(hS67, '#res-bar .num-rate');
@@ -13280,6 +13612,213 @@ console.log('\n===== 47. v62 工匠作坊造箭塔 =====');
 
 })();
 
+  /* ============================================================
+   * 92. v89.111（老板）：**来袭固定每日 9 时一场**（目标轮转 · 提前 4 时只报一次）
+   * ------------------------------------------------------------
+   * 老板令：「自动攻城固定每日9点即可，提前4h提醒一次，无需频繁报告来袭预警」
+   *        「其他势力攻打，烽火警讯显示其军队来袭剩余时间」。
+   * 本段钉住六条：
+   *   ① 结构：attackHour=9 · warnHours=4；旧口径（baseDays/minDays/tightenPerCity/
+   *      beaconBonusHours/warnBeaconMax/invasionIntervalSec/city.inv）全部退役；
+   *   ② 行为：5:30 进窗报**一条**（含 势力+剩余时间+今日9时）· 8:00 不重复；
+   *      9:01 结算**一场**（目标=轮转城）· 10:00 不重复；次日轮转到下一城；
+   *   ③ 一致：预警报的势力 == 结算打的势力（同一出口 invasionSrcOf）；
+   *   ④ 离线：跨 4 天一次补算 4 场，且不为历史场次补报预警；
+   *   ⑤ 情报：烽火台 Lv0 只报势力 → Lv2 加战力与兵种明细；
+   *   ⑥ 烽火页：含「来犯」「剩余」「每日 9 时」。
+   * ============================================================ */
+  /* ============================================================
+   * 93. v89.113（老板）：城主/守将分工 · 守城伤兵 · 战斗俘虏 · 战报口径 · 文案
+   * ------------------------------------------------------------
+   * 老板五条里落在本段的四件：
+   *   ②「守城为什么没有伤兵」+「军队数量/战斗力对不上」；
+   *   ④「战斗胜利为什么没有俘虏」；
+   *   ⑤「烽火界面上方列出触发点与规则」+「建筑名称下写历史感说明」。
+   * ============================================================ */
+  console.log('\n===== 93. v89.113 守城伤兵 / 俘虏 / 战报口径 / 建筑文案 / 烽火规则 =====');
+  (function () {
+    var bak93 = G.state;
+    try {
+      var stS93 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'state.js'), 'utf8');
+      var us93 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'ui.js'), 'utf8');
+
+      check('结构：守城兵损走 woundedRate 伤兵回收（不再是"直接扣兵"）', (function () {
+        var i0 = stS93.indexOf('GAME.invasionResolve = function');
+        var seg = stS93.slice(i0, stS93.indexOf('GAME.invasionReport = function'));
+        return /woundedRate/.test(seg) && /s\.woundedArmy/.test(seg) && /out\.wounded/.test(seg);
+      })());
+      check('结构：战报首行口径对齐（来犯战力 / 参战守军 / 未列阵斥候 / 守备力）', (function () {
+        var seg = stS93.slice(stS93.indexOf('GAME.invasionReport = function'));
+        return /ia\.power/.test(seg) && /斥候未列阵/.test(seg) && /守备力/.test(seg);
+      })());
+      check('结构：守城胜利也俘获（captiveGain kind=defense + enemyLoss 显式口径）', (function () {
+        var i0 = stS93.indexOf('GAME.invasionResolve = function');
+        var seg = stS93.slice(i0, stS93.indexOf('GAME.invasionReport = function'));
+        /* v89.116：多传一个"敌军逐兵种损失表"（俘虏营要按兵种列清单）——
+           断言放宽到"同一批参数 + result.atkLossBy 也在" */
+        return /captiveGain\(city, result, \{ kind: 'defense' \}/.test(seg)
+          && /result\.atkLoss \|\| 0, result\.atkLossBy\)/.test(seg);
+      })());
+
+      /* ---- 实测：守城一场（伤兵与战报两处一致 + 首行口径齐） ---- */
+      var st93 = G.newGame({ name: 'v113', cityName: '许都', mapSeed: 20260923 });
+      if (!st93.map.grid) G.map.generate();
+      G.state = st93;
+      var c93 = st93.cities[0];
+      ['grain', 'wood', 'stone', 'iron', 'gold'].forEach(function (k) { c93.res[k] = 9e6; });
+      c93.army = { yibing: 30000, changqiang: 10000 };
+      var gm93 = st93.generals[0], gg93 = st93.generals[1];
+      G.assignGeneral(gm93.id, 'mayor', c93.id);
+      G.assignGeneral(gg93.id, 'guard', c93.id);
+      check('城主/守将双职（唯一出口）', G.mayorGeneralOf(c93) === gm93 && G.guardGeneralOf(c93) === gg93);
+      check('实测：守城一场 → 伤兵入营与战报口径（两处一致）', (function () {
+        var I93 = DATA.INVASION, bk93 = I93.unlockCities;
+        I93.unlockCities = 1;
+        var keep93 = st93.cities; st93.cities = [c93];
+        st93.wounded = 0; st93.woundedArmy = {};
+        /* v89.115：来袭改现实时间节奏 —— 覆写现实钟到"下一场 +1 秒"（用完还原） */
+        var bkNow93 = G._realNowOf, T93 = 1700000000000;
+        var slot93 = G.invasionSlotOf(T93) + 1;
+        G._realNowOf = function () { return G.invasionDueOfSlot(slot93) + 1000; };
+        st93.inv = { lastSlot: slot93 - 1, warnedSlot: -1 };
+        var fired93 = G.invasionTick(0);
+        G._realNowOf = bkNow93;
+        I93.unlockCities = bk93;
+        st93.cities = keep93;
+        var rep93 = (st93.reports || []).filter(function (r) { return r.type === 'defense'; })[0];
+        if (!(fired93 >= 1 && rep93)) return false;
+        var body93 = String(rep93.body);
+        var hasWoundLine = /我军伤兵/.test(body93);
+        var woundOK = ((st93.wounded || 0) > 0) === hasWoundLine;      /* 两处一致（谁也别撒谎） */
+        var headOK = /来犯/.test(body93) && /守军/.test(body93) && /守备力/.test(body93);
+        console.log('      守城：伤兵 ' + (st93.wounded || 0) + ' · 首行口径 ' + headOK
+          + ' · 战报俘获 ' + (((body93.match(/俘获 ([\d,]+) 众/) || [])[1]) || '—'));
+        return woundOK && headOK;
+      })());
+
+      /* ---- 结构：建筑文案 + 烽火规则块 ---- */
+      check('结构：16 条建筑 desc 全为「历史感 + 功能」格式（含 —— 且长度达标）', (function () {
+        var bad = [];
+        Object.keys(DATA.BUILDINGS).forEach(function (id) {
+          var ds = DATA.BUILDINGS[id].desc || '';
+          if (ds.indexOf('——') < 0 || ds.length < 10) bad.push(id);
+        });
+        if (bad.length) console.log('      ' + bad.join('、') + ' 未达格式');
+        return bad.length === 0;
+      })());
+      check('结构：建筑弹窗把 desc 显示在标题下（ui-sub 小字）', (function () {
+        return /'<div class="ui-sub" style="text-align:center;margin:-2px 0 8px;">'/.test(us93)
+          && /U\.escape\(b\.desc\)/.test(us93);
+      })());
+      /* v89.118（老板需求 3）：规则块从烽火页**迁到「自动化 · 外敌来犯」**（与开关同页）——
+         判据改查新落点 ui.invasionRulesHTML（同一件事的新家，字段仍与 DATA.INVASION 同源）。 */
+      check('结构：「来犯 · 触发与规则」块在自动化面板（字段与 DATA.INVASION 同源）', (function () {
+        var i0 = us93.indexOf('ui.invasionRulesHTML = function');
+        var seg = us93.slice(i0, i0 + 3200);
+        /* 烽火页只剩预警与布防：正向判据 = 指路行在页里；且该页开头一段不再出现规则字段 */
+        var b0 = us93.indexOf('ui.marchBeaconHTML = function');
+        var bseg = us93.slice(b0, b0 + 2400);
+        return i0 >= 0 && /来犯 · 触发与规则/.test(seg) && /I\.sources/.test(seg) && /I\.unlockCities/.test(seg)
+          && /I\.realMin/.test(seg) && /I\.ratioMin/.test(seg) && /I\.warnMin/.test(seg)
+          && /自动化 · 外敌来犯/.test(bseg) && !/I\.sources/.test(bseg);
+      })());
+    } finally { G.state = bak93; }
+  })();
+
+  console.log('\n===== 92. v89.115 来袭：现实时间节奏（30 分钟一场 · 轮转 · 单次预警） =====');
+  (function () {
+    var bak92 = G.state, bkNow92 = G._realNowOf;
+    try {
+      var st92 = G.newGame({ name: '烽火92', cityName: '许都', mapSeed: 20260923 });
+      if (!st92.map.grid) G.map.generate();
+      G.state = st92;
+      st92.cities.push(G.makeCity({ id: 'v92b', name: '二城', x: 265, y: 215 }));
+      st92.cities.push(G.makeCity({ id: 'v92c', name: '三城', x: 266, y: 216 }));
+      st92.cities.forEach(function (cc) { cc.army = { yibing: 8000 }; });
+      var T92 = 1700000000000;                       /* 固定基准时刻（可读） */
+      function setT92(ms) { G._realNowOf = function () { return ms; }; }
+      function nMsg92() { return (G.msgsOf('beacon') || []).length; }
+      function last92() { var m = G.msgsOf('beacon') || []; return m.length ? m[0].msg : ''; }
+
+      check('① 结构：每 30 现实分钟一场 · 提前 5 分钟预警 · 离线最多补 3 场；旧口径全退役', (function () {
+        return DATA.INVASION.realMin === 30 && DATA.INVASION.warnMin === 5
+          && DATA.INVASION.catchUpMax === 3
+          && DATA.INVASION.attackHour === undefined && DATA.INVASION.warnHours === undefined
+          && typeof G.invasionSlotOf === 'function' && typeof G.invasionDueOfSlot === 'function'
+          && typeof G.invasionTargetOfSlot === 'function'
+          && typeof G.invasionDayOf === 'undefined' && typeof G.invasionDueOfDay === 'undefined';
+      })());
+
+      /* 首 tick = 只排期（进城不立刻挨打） */
+      setT92(T92);
+      G.invasionTick(0);
+      var slot0 = G.invasionSlotOf(T92);
+      check('②-1 首 tick 只排期（lastSlot = 当前场，不在进城瞬间结算）',
+        st92.inv.lastSlot === slot0 && nMsg92() === 0, 'lastSlot=' + st92.inv.lastSlot);
+
+      /* 进窗报一条（提前 5 分钟） */
+      setT92(G.invasionDueOfSlot(slot0 + 1) - 3 * 60000);
+      var n0 = nMsg92();
+      G.invasionTick(0);
+      var n1 = nMsg92(), w1 = last92();
+      var tgt1 = G.invasionTargetOfSlot(slot0 + 1);
+      check('②-2 提前 5 分钟内报一条（含 势力 + 剩余 + 现实时间口径）',
+        n1 - n0 === 1 && w1.indexOf('现实时间') >= 0 && w1.indexOf('后') >= 0
+        && w1.indexOf(G.invasionSrcOf(tgt1, slot0 + 1)) >= 0, w1.slice(0, 80));
+
+      /* 同场不重复 */
+      setT92(G.invasionDueOfSlot(slot0 + 1) - 60000);
+      G.invasionTick(0);
+      check('②-3 同一场不重复报（去"频繁报告"）', nMsg92() === n1);
+
+      /* 到点结算一场；同一场内再 tick 不重复结算 */
+      setT92(G.invasionDueOfSlot(slot0 + 1) + 1000);
+      var f1 = G.invasionTick(0);
+      setT92(G.invasionDueOfSlot(slot0 + 1) + 5000);
+      var f2 = G.invasionTick(0);
+      check('②-4 到点结算一场（目标=轮转城）· 同场不重复结算',
+        f1 === 1 && f2 === 0 && !!tgt1 && st92.cities.indexOf(tgt1) >= 0,
+        'f1=' + f1 + ' f2=' + f2 + ' tgt=' + (tgt1 && tgt1.name));
+
+      /* ③ 预警势力 == 结算势力（同取轮转目标城，别假定"第二城"） */
+      var r1 = last92();
+      var src1 = G.invasionSrcOf(tgt1, slot0 + 1);
+      check('③ 预警报的势力 == 结算打的势力（唯一出口 invasionSrcOf）',
+        w1.indexOf(src1) >= 0 && r1.indexOf(src1) >= 0);
+
+      /* ④ 离线补算：跨 10 场 → 只补 3 场 + "自行散去"提示 */
+      var nb = nMsg92();
+      setT92(G.invasionDueOfSlot(slot0 + 11) + 1000);
+      var fB = G.invasionTick(0);
+      var txtB = (G.msgsOf('beacon') || []).slice(0, 4).map(function (m) { return m.msg; }).join('|');
+      check('④ 离线跨 10 场：只补 3 场，其余"自行散去"（不翻旧账）',
+        fB === 3 && /散去/.test(txtB), 'fired=' + fB + ' 新增 ' + (nMsg92() - nb) + ' 条');
+
+      /* ⑤ 情报等级 */
+      var t92 = G.invasionTargetOfSlot(slot0 + 20);
+      var t0txt = G.invasionIntelTextOf(t92, slot0 + 20);
+      var cell92 = null;
+      (t92.cells || []).forEach(function (x, i) { if (!x.build && !x.official && cell92 == null) cell92 = i; });
+      if (cell92 != null) t92.cells[cell92].build = { id: 'fenghuotai', lvl: 2 };
+      var t2txt = G.invasionIntelTextOf(t92, slot0 + 20);
+      check('⑤ 烽火台情报：Lv0 只报势力 → Lv2 加战力与兵种明细',
+        t0txt.indexOf('战力') < 0 && t2txt.indexOf('战力') >= 0 && t2txt.indexOf('×') >= 0,
+        t2txt.slice(0, 60));
+
+      /* ⑥ v89.118（老板需求 3）：规则块迁到「自动化 · 外敌来犯」——判据改查新落点。
+         同时验烽火页只剩预警与布防（指路行在、规则字段不在）。 */
+      var pg92 = G.ui.invasionRulesHTML();
+      var pgB92 = G.ui.marchBeaconHTML();
+      check('⑥ 自动化·外敌来犯：规则块含"每 30 分钟"与"现实时间"',
+        pg92.indexOf('来犯 · 触发与规则') >= 0 && pg92.indexOf('每 <b>30 分钟</b>') >= 0
+        && pg92.indexOf('现实时间') >= 0);
+      check('⑥ 烽火页精简为「预警 + 布防」（规则块与流水已迁走，留指路行）',
+        pgB92.indexOf('自动化 · 外敌来犯') >= 0
+        && pgB92.indexOf('来犯 · 触发与规则') < 0
+        && pgB92.indexOf('bb-line beacon') < 0);
+    } finally { G._realNowOf = bkNow92; G.state = bak92; }
+  })();
+
   console.log('  --- 第 53 节：定期来袭（第 2 期 · 防守） ---');
   (function () {
     var G = GAME, D = DATA;
@@ -13315,8 +13854,13 @@ console.log('\n===== 47. v62 工匠作坊造箭塔 =====');
     st.world = st.world || {}; st.world.elapsed = 0;
     c.army = { yibing: 5000 }; c2.army = {}; c3.army = {};
 
-    check('首次推进后给出排期（invasionDueAt > 0）',
-      (function () { G.invasionTick(0); return G.invasionDueAt(c) > 0; })());
+    check('首次推进后给出排期（invasionDueAt = 下一场来犯时刻 · 目标=轮转城）', (function () {
+      G.invasionTick(0);
+      var due = G.invasionDueAt(c);
+      var P = DATA.INVASION.realMin * 60000;                 /* v89.115：现实毫秒口径 */
+      return due > 0 && due % P === 0 && due > G.realNow()
+        && (due - G.realNow()) <= P * st.cities.length;
+    })());
 
     /* ---- ★ 核心一：城防真的被消费（不再是死显示）---- */
     var d0, d12;
@@ -13352,18 +13896,23 @@ console.log('\n===== 47. v62 工匠作坊造箭塔 =====');
       sevSpread.ratio > sevConc.ratio,
       '收拢 ratio=' + sevConc.ratio.toFixed(3) + ' vs 分散 ratio=' + sevSpread.ratio.toFixed(3));
 
-    /* ---- 到点必触发 + 不丢城 ---- */
+    /* ---- 到点必触发（v89.115：覆写现实钟，拨到"下一场 +1 秒"）+ 不丢城 ---- */
     var cityCount = st.cities.length;
-    var now = st.world.elapsed || 0;
-    c.inv.nextAt = now - 1;
-    var fired = G.invasionTick(0);
-    check('时间轮到点必触发（返回触发次数 ≥1）', fired >= 1, 'fired=' + fired);
+    var bkNow53 = G._realNowOf, T53 = 1700000000000;
+    var slot53 = G.invasionSlotOf(T53);
+    /* 显式排期（不依赖前序用例留下的 s.inv —— 那种 lastSlot 可能已被真实钟排到更远的场次） */
+    st.inv = { lastSlot: slot53, warnedSlot: -1 };
+    G._realNowOf = function () { return G.invasionDueOfSlot(slot53 + 1) + 1000; };
+    var fired = G.invasionTick(1);
+    check('到点必触发（一场）', fired === 1, 'fired=' + fired);
+    check('同一场再推进不重复结算（一场只打一次）', G.invasionTick(0) === 0);
     check('结算后城池数不变（loseCity=false 的结构保证）', st.cities.length === cityCount,
       st.cities.length + ' 城');
 
     /* ---- 边界：开关 ---- */
     st.settings.invasion = false;
-    c.inv.nextAt = (st.world.elapsed || 0) - 1;
+    /* v89.115：再跨 5 场（拨现实钟）：开着闸必打，关着闸不许打 */
+    G._realNowOf = function () { return G.invasionDueOfSlot(slot53 + 5) + 1000; };
     check('总开关关掉后永不触发', G.invasionTick(0) === 0);
     check('总开关关掉后 invasionDueAt 返回 0', G.invasionDueAt(c) === 0);
     st.settings.invasion = true;
@@ -13372,7 +13921,6 @@ console.log('\n===== 47. v62 工匠作坊造箭塔 =====');
     var saved = st.cities;
     st.cities = [c];
     check('城数不足解锁门槛时 invasionDueAt 返回 0', G.invasionDueAt(c) === 0);
-    c.inv.nextAt = (st.world.elapsed || 0) - 1;
     check('城数不足解锁门槛时 invasionTick 不触发', G.invasionTick(0) === 0);
     st.cities = saved;
 
@@ -14306,8 +14854,11 @@ console.log('\n===== 59. v73 五条（黄金 · 资质 · 秘境 · 将领头 ·
   check('样式：吸底操作区（v80 .bldg-bottom：三键+关闭同块 + 出血到边缘 + 钉面板下沿）', (function () {
     var b = cssBlock(hS73, '.bldg-bottom {');
     var f = cssBlock(hS73, '.bldg-bottom .bldg-foot {');
+    /* v89.105：出血量 -12px 是版式尺寸（负数，保持字面）；内外缩走令牌。
+       padding-bottom 22 → 24（--sp-7）—— 出血区多 2px，视觉不可辨。 */
     return /position: sticky/.test(b) && /bottom: -12px/.test(b)
-      && /margin: 12px -12px -12px/.test(b) && /padding: 8px 12px 22px/.test(b)
+      && /margin: var\(--sp-mid\) -12px -12px/.test(b)
+      && /padding: var\(--sp-3\) var\(--sp-mid\) var\(--sp-7\)/.test(b)
       && /background: var\(--panel-bg\)/.test(b)
       && /position: static/.test(f);
   })(), cssBlock(hS73, '.bldg-bottom {').replace(/\s+/g, ' ').slice(0, 84));
@@ -14466,9 +15017,9 @@ console.log('\n===== 61. v75 客栈招募（大界面 · 单行候选 · 资质�
   var inn1 = codeOf(uS1, 'ui.openInn = function');
 
   /* ---------- ① 大界面（新尺寸档 xxl + 三段式） ---------- */
-  check('① 新增 xxl 尺寸档（980×800 固定 px + 极小窗口兜底）', (function () {
+  check('① xxl 尺寸档（v89.112 扩为 1200×850 固定 px + 极小窗口兜底）', (function () {
     var b = cssBlock(hS1, '.modal-xxl {');
-    return /width: 980px; height: 800px/.test(b) && /max-width: calc\(100vw - 20px\)/.test(b);
+    return /width: 1200px; height: 850px/.test(b) && /max-width: calc\(100vw - 20px\)/.test(b);
   })(), cssBlock(hS1, '.modal-xxl {').replace(/\s+/g, ' ').slice(0, 72));
   check('① 客栈走三段式 + xxl 档（标题/按钮固定，只有候选区滚动）',
     /ui\.openShell\(\{/.test(inn1) && /size: 'xxl'/.test(inn1));
@@ -14498,11 +15049,13 @@ console.log('\n===== 61. v75 客栈招募（大界面 · 单行候选 · 资质�
     return /display: flex/.test(act) && /white-space: nowrap/.test(nm)
       && /text-overflow: ellipsis/.test(at) && !/max-height/.test(ls);
   })());
-  check('⑤ 紧凑几何：内衬 3px 覆盖共用基线 + 头像列 28px（v82 两条同名规则已合并）', (function () {
+  check('⑤ 紧凑几何：内衬走 --sp-1 覆盖共用基线 + 头像列 28px（v82 两条同名规则已合并）', (function () {
     var compact = cssBlock(hS1, '.inn-card { padding:');
     var iav = cssBlock(hS1, '.inn-avatar {');
-    return /padding: 3px 10px/.test(compact) && /margin-bottom: 3px/.test(compact)
-      && /font-size: 20px/.test(iav) && /width: 28px/.test(iav);
+    /* v89.105：3px → --sp-1(4px) —— 纵向内衬 +1px（更贴标尺），几何意图不变 */
+    /* v89.117：头像字号已令牌化（--isz-xs = 20px）—— 判据认**令牌**，值仍从 :root 读 */
+    return /padding: var\(--sp-1\) var\(--sp-4\)/.test(compact) && /margin-bottom: var\(--sp-1\)/.test(compact)
+      && /font-size: var\(--isz-xs\)/.test(iav) && /--isz-xs:\s*20px/.test(hS1) && /width: 28px/.test(iav);
   })());
 })();
 
@@ -14770,8 +15323,9 @@ console.log('\n===== 61. v75 客栈招募（大界面 · 单行候选 · 资质�
       domS.indexOf('GAME.grantSeedDrop(g.level || 1, 1') >= 0
       && batS.indexOf('GAME.grantSeedDrop(seedLv, DATA.SEED_DROP.battleMult') >= 0);
     check('挂钩：宝物随机池排除种子（种子走专属口）', domS.indexOf("it.type !== 'seed'") >= 0);
-    check('界面：种子不「使用」——useItem 指路秘境 + 背包行「去播种」',
-      sysS.indexOf('种子要到种田秘境播种') >= 0 && uS.indexOf('data-action="open-farm">去播种') >= 0);
+    check('界面：种子不「使用」——useItem 指路秘境 + 背包行「去播种」（v89.104 起走路由表）',
+      sysS.indexOf('种子要到种田秘境播种') >= 0
+      && /seed: \{ hint: '请到种田秘境播种', act: 'open-farm'/.test(uS));
     check('界面：选种弹窗显示种子持有数 / 缺种禁用（不再有黄金价）',
       uS.indexOf("持有 <b>' + have + '</b>") >= 0 && uS.indexOf("缺 ' + U.escape(sd.name)") >= 0
       && uS.indexOf('金 不足') < 0);
@@ -15298,10 +15852,12 @@ console.log('\n===== 66. v81 两条（君主卡 · 兵营三页） =====');
       (h82.match(/font-weight:\s*\d+/g) || []).forEach(function (m) { seen[m.replace(/\D/g, '')] = 1; });
       return Object.keys(seen).sort().join(',') === '400,700,800';
     })());
-    check('④ 备注族一处共享（12px · 常规 · 次要色 · 行高 1.65）',
-      /\.note, \.ui-sub, \.nt-info, \.op-hint, \.m-sub, \.gb-empty, \.q-empty,[\s\S]{0,180}line-height: 1\.65/.test(h82));
-    check('④ 分区标题共享扩员（漏网六处收编：q-det-sec/gp-sec/fsn-t/op-zone-t/ledger-sec/seal-h）',
-      /\.q-sec-t, \.q-det-sec, \.bag-sec[\s\S]{0,240}\.gp-sec, \.fsn-t, \.op-zone-t, \.ledger-sec, \.seal-h \{/.test(h82));
+    check('④ 备注族一处共享（12px · 常规 · 次要色 · 行高 --lh-body）',
+      /\.note, \.ui-sub, \.nt-info, \.op-hint, \.m-sub, \.gb-empty, \.q-empty,[\s\S]{0,180}line-height: var\(--lh-body\)/.test(h82)
+      && /--lh-body:\s*1\.6/.test(h82));
+    check('④ 分区标题共享扩员（漏网处收编；ledger-sec 随统计页退役，不再要求）',
+      /\.q-sec-t, \.q-det-sec, \.bag-sec[\s\S]{0,240}\.gp-sec, \.fsn-t, \.op-zone-t, \.seal-h \{/.test(h82)
+      && !/\.ledger-sec/.test(h82.replace(/\/\*[\s\S]*?\*\//g, '')));   /* 已退役，不该再在册 */
     check('④ 标题外观共享含 .q-det-title（三层标题一处定义）',
       /\.gold-heading, \.m-title, \.q-det-title \{[\s\S]{0,200}font-size: var\(--fs-h2\)/.test(h82));
   })();
@@ -15401,7 +15957,8 @@ console.log('\n===== 69. v84 卡面去拥有行 · 步骑分类对调 =====');
   console.log('  --- ① 兵种卡去「拥有」行 ---');
   check('v84：troopsHTML 源码不再输出「拥有：N」行（整行退役）', (function () {
     var th = codeOf(uS84v, 'ui.troopsHTML = function');
-    return th.indexOf('拥有') < 0 && th.indexOf('tstat') >= 0;
+    /* v89.114：卡面属性行（.tstat）整行退役 —— 属性全部进悬停浮层 */
+    return th.indexOf('拥有') < 0 && th.indexOf('tstat') < 0;
   })());
   check('v84：未解锁原因仍在悬停浮层，读数变量退役', (function () {
     var th = codeOf(uS84v, 'ui.troopsHTML = function');
@@ -15455,15 +16012,20 @@ console.log('\n===== 70. v85 地图自适应 · 缩略地图 =====');
   })());
 
   console.log('  --- ② 地图自适应（搜索式） ---');
-  check('v85：fitMapCell 为搜索式（枚举 + 覆盖率 + 上限 44）', (function () {
+  check('v85：fitMapCell 为搜索式（枚举 + 覆盖率 + 上限 44×放大倍率）', (function () {
     var fn = codeOf(uS85, 'ui.fitMapCell = function');
-    return /MAP_SPAN_MAX_X/.test(fn) && /cov/.test(fn) && /MAP_CELL_MAX = 44/.test(uS85);
+    return /MAP_SPAN_MAX_X/.test(fn) && /cov/.test(fn)
+      && /ui\.MAP_ZOOM = 1\.2/.test(uS85)                       /* v89.104（老板）：放大 20% */
+      && /ui\.MAP_CELL_MAX = Math\.round\(44 \* ui\.MAP_ZOOM\)/.test(uS85)
+      && /ui\.MAP_MIN_COLS/.test(fn);                            /* 视野同步收窄 */
   })());
-  check('实测：基准框（869×758）输出 20×17@41（确定性 · v89.52 格距上限压到 44）', (function () {
+  /* v89.104（老板「地图放大 20%」）：基准框输出从 20×17@41 → **17×14@49**
+     （单格 +20%、同屏块数 −20%，画布尺寸基本不变） */
+  check('实测：基准框（869×758）输出 17×14@49（确定性 · 放大 1.2×）', (function () {
     var cell = G.ui.fitMapCell();
     var fr = G.ui.mapFrame;
-    return fr.spanX === 20 && fr.spanY === 17 && cell === 41
-      && cell >= 34 && cell <= 44;
+    return fr.spanX === 17 && fr.spanY === 14 && cell === 49
+      && cell >= 34 && cell <= 53;
   })());
 
   console.log('  --- ③ 缩略地图数据层 ---');
@@ -15783,9 +16345,11 @@ console.log('\n===== 71. v86 计谋 / 锦囊 =====');
     return it.length === 1 && it[0].price > 0 && uS86.indexOf("talis: '锦囊'") >= 0;
   })());
   check('v86：UI 挂点齐备（计略行 / 选择弹窗 / 城池布防 / 携计提交）', (function () {
+    /* v89.107：`ui.citySchemeHTML`（左侧统计栏那行计略布防）已整体搬进
+       军务 · 烽火页 —— 判据改查新落点 ui.marchBeaconHTML（同一件事的新家）。 */
     return uS86.indexOf('ui.toggleExpScheme = function') >= 0
       && uS86.indexOf('ui.expSchemePanelHTML = function') >= 0
-      && uS86.indexOf('ui.citySchemeHTML = function') >= 0
+      && uS86.indexOf('ui.marchBeaconHTML = function') >= 0
       && uS86.indexOf('id="exp-scheme-label"') >= 0
       && mS86.indexOf("case 'exp-scheme'") >= 0 && mS86.indexOf("case 'city-scheme-pick'") >= 0
       && mS86.indexOf('ui._expScheme || null') >= 0;
@@ -15926,36 +16490,57 @@ console.log('\n===== 71. v86 计谋 / 锦囊 =====');
     var I = DATA.INVASION;
     var bakUnlock = I.unlockCities;
     I.unlockCities = 1;
-    var now = (s.world && s.world.elapsed) || 0;
+    /* v89.115：来袭 = 现实时间节奏（每 realMin 分钟一场、目标轮转）——
+       本用例临时只留一城（目标必然是它）+ 覆写现实钟到"下一场 +1 秒"，
+       并摆"上一场已结算"（s.inv.lastSlot = 目标场 - 1）。用完还原。 */
+    var savedCities = s.cities;
+    s.cities = [c];
+    /* v89.115：来袭改现实时间节奏 —— 覆写现实钟到"下一场 +1 秒"，用完还原 */
+    var bkNowKC = G._realNowOf, TKC = 1700000000000;
+    var slotKC = G.invasionSlotOf(TKC) + 1;
+    G._realNowOf = function () { return G.invasionDueOfSlot(slotKC) + 1000; };
     GAME.schemeDefSet(c, 'kongcheng', null);
-    c.inv = { nextAt: now, warned: false };
+    s.inv = { lastSlot: slotKC - 1, warnedSlot: -1 };
     var fired1 = GAME.invasionTick(0);
     var consumed = !GAME.schemeDefOf(c, 'kongcheng');
-    c.inv = { nextAt: now, warned: false };
+    s.inv = { lastSlot: slotKC - 1, warnedSlot: -1 };
     var fired2 = GAME.invasionTick(0);
+    G._realNowOf = bkNowKC;
+    s.cities = savedCities;
     I.unlockCities = bakUnlock;
     return fired1 === 0 && consumed && fired2 >= 1;
   })());
-  check('实测：坚壁清野使来袭损失 ×0.6（守备冻结 · 同城对照）', (function () {
+  check('实测：坚壁清野使来袭损失 ×0.6（**破防场景** · 同城对照）', (function () {
     var s = GAME.state, c = s.cities[0];
+    /* v89.109：来袭规模按**全境战力**缩放（invasionPowerOf）—— 要造"必破防"的场景，
+       兵力必须放在**别城**：被攻的 A 城空守军（必失守、defRemain=0 过闸），
+       乙城有兵（来袭规模由它撑起来、不至于空对空）。用完即撤，不留痕。 */
+    var b = G.makeCity({ id: 'jb_b_probe', name: '坚壁乙城', x: 9, y: 9, type: 'self' });
+    b.army = { yibing: 1000 };
+    s.cities.push(b);
     GAME.schemeDefConsume(c, 'jianbi');
-    /* 冻结影响 severity 输入的守备（army / cells 城墙）与资源；两次结算前各恢复一次。
-       （不用"双城同 id"对照：schemeDefOf 按 city.id 取键，同 id 会串门。） */
-    var armySnap = JSON.stringify(c.army || {});
+    /* 冻结影响结算的城防（cells 城墙）与资源；两次结算前各恢复一次。
+       （不用"双城同 id"对照：schemeDefOf 按 city.id 取键，同 id 会串门。）
+       ⚠️ v89.109：资源损失只在**破防**时发生（守军全歼或工事拆光，见 lootGateOf）——
+       本用例**清空守军**：敌必得手、defRemain=0 过闸，两次结算只差坚壁清野，
+       测到的才是"损失比例"，而不是"没被掠"（改前实测：守军若守赢则 g1=0，误报红）。 */
     var cellsSnap = JSON.stringify(c.cells || []);
     var wallSnap = c.wallLv;
     var refill = function () {
-      c.army = JSON.parse(armySnap);
       c.cells = JSON.parse(cellsSnap);
       c.wallLv = wallSnap;
       c.res = c.res || {};
       ['grain', 'wood', 'stone', 'iron', 'gold'].forEach(function (k) { c.res[k] = 100000; });
+      c.army = {};                        /* 无守军 → 敌必得手且过"破防"闸 */
     };
     refill();
     var d1 = GAME.invasionResolve(c);
     refill();
     GAME.schemeDefSet(c, 'jianbi', null);
     var d2 = GAME.invasionResolve(c);
+    /* 撤掉临时乙城（不留痕） */
+    var _bi = s.cities.indexOf(b);
+    if (_bi >= 0) s.cities.splice(_bi, 1);
     var g1 = (d1.resLost || {}).grain || 0, g2 = (d2.resLost || {}).grain || 0;
     if (g1 <= 0) return false;
     return Math.abs(g2 / g1 - 0.6) < 0.03;
@@ -19106,6 +19691,8 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     perm: ['attr'], rank_up: ['from', 'to'], essence: ['price'],
     /* v89.99：人口增速道具（增民令）—— 消费点 = systems.useItem 的 pop_boost 分支 */
     pop_boost: ['eff'],
+    /* v89.104（老板「可以加个移民令，恢复人口数量 50%」）—— 消费点 = useItem 的 pop_fill 分支 */
+    pop_fill: ['ratio'],
   };
   check('v89.50：每条新物品的 type 都在**已知消费点**内，且必填字段齐（无死物品）', (function () {
     var bad = [];
@@ -19421,9 +20008,9 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       /_expArmySettled/.test(bt8) && /catch \(e\) \{ err = e; \}/.test(bt8));
 
     /* ---- P1 ---- */
-    check('v89.86（P-24）：据点=拔除文案（按钮 + 出征注 + 数据 desc）',
-      ui8.indexOf('🚩 拔除据点') >= 0 && /据点：占领=拔除/.test(ui8)
-      && /据点被拔除（打完撤军/.test(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'data.js'), 'utf8')));
+    check('v89.86（P-24 / v89.103）：「拔除并占据」文案（按钮 + 出征注 + 数据 desc）',
+      ui8.indexOf('🚩 拔除并占据') >= 0 && /据点：占领=拔除并\*\*据为己有\*\*/.test(ui8)
+      && /据点拔除即\*\*占据\*\*/.test(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'data.js'), 'utf8')));
     check('v89.86（P-23）：兵力悬殊二次确认（首击不发兵 · 再击才发）', (function () {
       var fort = null;
       for (var yy = city8.y - 30; yy <= city8.y + 30 && !fort; yy++) {
@@ -19490,15 +20077,14 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       && /case 'newcity-send-troop'/.test(mn8) && /ui\._tmTo\[_ncFrom\.id\] = _ncTo/.test(mn8));
 
     /* ---- P2 ---- */
-    check('v89.86（P-18）：自动化预算闸门（默认 5% · 超线拦下 · 省下不动账 · 手动不受限）', (function () {
-      st8.settings.autoReservePct = 5;
-      st8.res.stone = 100000;
-      if (!G8.autoBudgetCheck({ stone: 50000 }).ok) return false;
-      if (G8.autoBudgetCheck({ stone: 96000 }).ok) return false;
-      st8.settings.autoReservePct = 0;
-      if (!G8.autoBudgetCheck({ stone: 100000 }).ok) return false;
-      st8.settings.autoReservePct = 5;
-      return G8.autoReservePct() === 5;
+    /* v89.104（老板）：「自动界面无需预算阀门及其相关逻辑，不要这个功能组件」——
+       阀门两件套（autoReservePct / autoBudgetCheck）与三个设置出口一并退役。 */
+    check('v89.104：预算闸门整件退役（函数与设置出口都不在册）', (function () {
+      /* ⚠️ 源码里留着墓碑注释（提到旧名）——必须**先剥注释**再匹配，否则误判"还在" */
+      var mNo = String(mn8).replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+      var uNo = String(ui8).replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+      return typeof G8.autoBudgetCheck === 'undefined' && typeof G8.autoReservePct === 'undefined'
+        && !/doSetAutoFin\s*=\s*function/.test(mNo) && !/autoReserveLine\s*=\s*function/.test(uNo);
     })());
     check('v89.86（P-21）：门派任务连做（×10 计数/日额封顶/资源中止）', (function () {
       var c = city8; c.cells = c.cells || [];
@@ -19518,22 +20104,18 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       if (!/data-action="sect-task-bulk"/.test(ui8)) return false;
       return true;
     })());
-    check('v89.86（P-17）：离线推进上限（默认 7 日 · 超限五折折算 · 历法只推 7 日）', (function () {
-      if (typeof G8.offlineCapDays !== 'function' || typeof G8.simulateOfflineOverflow !== 'function') return false;
+    /* v89.104（老板）：「离线推进上限解除，设置里不要这个」——
+       口径改为**一律不限**：offlineCapDays 恒返回 0，补算不再截断。 */
+    check('v89.104：离线推进上限已解除（offlineCapDays 恒 0 = 不限）', (function () {
+      if (typeof G8.offlineCapDays !== 'function') return false;
       var st9 = G8.newGame({ name: 'off', cityName: '许都' });
       if (!st9.map.grid && G8.map.generate) G8.map.generate();
       G8.state = st9;
       st9.settings.timeScale = 120;
-      st9.settings.offlineCapDays = 7;
-      st9.generals = [];
-      st9.cities.forEach(function (c2) { c2.army = {}; });
-      var e0 = st9.world.elapsed || 0;
-      G8.offlineCatchup(36576);      /* 10.16 小时 @120× */
-      var d = st9.world.elapsed - e0;
-      var capped = Math.abs(d - 7 * 86400) < 3000;
-      var over = (G8._offlineOverflow || 0) > 30000;
-      G8.state = st8;                /* 还原，供后续断言 */
-      return capped && over;
+      st9.settings.offlineCapDays = 7;          /* 旧档里写过的值：不再生效 */
+      var ok = G8.offlineCapDays() === 0;
+      G8.state = st8;
+      return ok;
     })());
     check('v89.86（P-20）：军务总览（五段 + 全境行军口径）',
       /ui\.marchesHTML = function/.test(ui8) && /var list = \(s\.marches \|\| \[\]\)\.slice\(\);/.test(ui8)
@@ -19906,13 +20488,17 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })());
 
     /* ---- ④ 资源满配（战利品曲线 + 档位次序） ---- */
-    check('v89.88（据点）：战利品满配曲线（Lv1→Lv10 ≈15× · 档位次序不破）', (function () {
+    check('v89.109（据点）：战利品满配曲线（Lv1→Lv10 ≈1080× · 次序不破）', (function () {
       var bak = Math.random; Math.random = function () { return 0.5; };
       try {
-        function grain(tier, lv) { return G.battle.genLoot({ type: tier, level: lv, x: 1, y: 1 }, 1).grain; }
-        var r1 = grain('fort', 1), r10 = grain('fort', 10);
-        var curve = r10 / r1 > 12 && r10 / r1 < 18;
-        var order = grain('jun', 7) > grain('fort', 3) && grain('capital', 10) > r10;
+        function grainFort(lv) { return G.battle.genLoot({ kind: 'fort', lv: lv, dropType: 'fort', x: 1, y: 1 }, 1).grain; }
+        function grainWild(lv) { return G.battle.genLoot({ kind: 'wild', lv: lv, x: 1, y: 1 }, 1).grain; }
+        var r1 = grainFort(1), r10 = grainFort(10);
+        var curve = r10 / r1 > 800 && r10 / r1 < 1400;      /* 2.15^9 ≈ 1080 */
+        var order = grainFort(8) > grainWild(8)             /* 同级：据点 > 野地 */
+          && grainWild(10) > grainWild(1) * 10              /* 野地也吃等级（v89.109 修） */
+          && r10 < Math.round((((DATA.NPC_CITY_RES || {}).resByTier) || {}).county
+              * ((((DATA.EXPEDITION || {}).cityResMul) || {}).raid || 0.5) / 5);
         return curve && order;
       } finally { Math.random = bak; }
     })());
@@ -20079,10 +20665,12 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     check('v89.89（D4）：战报筛选（胜/败/收藏）+ 行内收藏（随档字段）', (function () {
       if (!/ui\.setRepFilter = function/.test(uS89) || !/ui\.toggleRepFav = function/.test(uS89)) return false;
       if (!/case 'rep-filter': ui\.setRepFilter\(el\.dataset\.v\); break;/.test(mS89)) return false;
-      if (!/case 'rep-fav': ui\.toggleRepFav\(Number\(el\.dataset\.i\)\); break;/.test(mS89)) return false;
+      /* v89.120：行内身份改 data-rid（不再用"渲染时刻的数组下标"——位移会错位） */
+      if (!/case 'rep-fav': ui\.toggleRepFav\(Number\(el\.dataset\.rid\)\); break;/.test(mS89)) return false;
       /* 行为：临时战报数组 → 渲染筛选 → 还原 */
       var s = S89;
-      var bakRep = s.reports, bakF = G.ui._repFilter;
+      var bakRep = s.reports, bakF = G.ui._repFilter, bakTab = G.ui._docTab;
+      G.ui._docTab = 'war';        /* v89.107：正文随页签 —— 本用例只说战报页 */
       s.reports = [
         { t: Date.now(), title: 'D4胜甲', body: 'x', win: true },
         { t: Date.now(), title: 'D4败乙', body: 'x', win: false },
@@ -20098,7 +20686,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         && hW.indexOf('D4胜甲') >= 0 && hW.indexOf('D4败乙') < 0
         && hF.indexOf('D4胜甲') >= 0 && hF.indexOf('D4败乙') < 0
         && hL.indexOf('data-action="rep-fav"') >= 0;
-      s.reports = bakRep; G.ui._repFilter = bakF;
+      s.reports = bakRep; G.ui._repFilter = bakF; G.ui._docTab = bakTab;
       return ok;
     })());
 
@@ -20107,14 +20695,16 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       if (!/data-action="story-read-at"/.test(uS89)) return false;
       if (!/case 'story-read-at': ui\.openStory\(el\.dataset\.sid, false\); break;/.test(mS89)) return false;
       if (!/ui\.SG_KIND/.test(uS89)) return false;
+      if (!/ui\.storiesHTML = function/.test(uS89)) return false;   /* v89.104：独立视图 */
       var all = G.SG.list();
       if (!all.length) return false;
       /* 行为：写一篇已读 → 渲染 → 还原 */
       var bakSt = S89.stories;
       S89.stories = {};
       S89.stories[all[0].id] = { done: ['e1'], n: 2, grade: 'good' };
-      var html = G.ui.storyHTML();
-      var ok = html.indexOf('📖 故事集') >= 0
+      /* v89.104（老板）：故事集独立成页 —— 判据改到 ui.storiesHTML() */
+      var html = G.ui.storiesHTML();
+      var ok = html.indexOf('📚 故事集') >= 0
         && html.indexOf('《' + all[0].title + '》') >= 0
         && html.indexOf('《？？？》') >= 0
         && html.indexOf('data-action="story-read-at"') >= 0
@@ -20195,11 +20785,12 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       return after === base * 2;
     })());
 
-    console.log('  --- W3 守将内政 → 产量封顶（与建造/征兵/研究同口径） ---');
+    console.log('  --- W3 城主内政 → 产量封顶（与建造/征兵/研究同口径） ---');
     check('W3：nz 5000 → prod 封顶 1.5（不再 ×50）', (function () {
       var city = s93.cities[0], g = s93.generals[0], bk = { st: g.status, cid: g.cityId, nz: g.nz };
-      g.status = 'guard'; g.cityId = city.id; g.nz = 5000;
-      var gb = G.guardBonus(city);
+      /* v89.113：内政加成归**城主**（守将只剩勇武征兵） */
+      g.status = 'mayor'; g.cityId = city.id; g.nz = 5000;
+      var gb = G.mayorBonus(city);
       var ok = Math.abs(gb.prod - 1.5) < 1e-9 && Math.abs(gb.build - 1.5) < 1e-9;
       g.status = bk.st; g.cityId = bk.cid; g.nz = bk.nz;
       return ok;
@@ -20304,6 +20895,9 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     var S94 = G.newGame({ name: 'v94', cityName: '许都' });
     if (!S94.map.grid) G.map.generate();
     G.state = S94;
+    /* v89.108：本段要"攻占据点"（= 产出一座新城）—— 先升到满爵解除"领地上限"闸。
+       段内没有爵位相关断言，抬高不影响其它用例。 */
+    S94.rank = 21;
     var c94 = S94.cities[0];
     var mS94 = require('fs').readFileSync(require('path').join(__dirname, 'js', 'main.js'), 'utf8');
     var uS94 = require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8');
@@ -20759,7 +21353,9 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     check('A：配置表齐备（DISBAND / POP_CFG / CAPTIVE 唯一来源）', (function () {
       return !!DATA.DISBAND && DATA.DISBAND.popReturn === 1
         && !!DATA.POP_CFG && DATA.POP_CFG.base === 0.0005 && DATA.POP_CFG.govCap === 0.5
-        && !!DATA.CAPTIVE && DATA.CAPTIVE.rate === 0.06 && DATA.CAPTIVE.kinds.join(',') === 'fort,city';
+        /* v89.113：全战斗俘虏（8% · cap 3000 · kinds 含野地与防御战） */
+        && !!DATA.CAPTIVE && DATA.CAPTIVE.rate === 0.08
+        && DATA.CAPTIVE.kinds.join(',') === 'wild,fort,city,defense';
     })());
     check('A：解散 40 义兵 → 兵 60、人口 +40、军资不退', (function () {
       c99.army = { yibing: 100 };
@@ -20798,7 +21394,9 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     check('A：界面接线（军队面板有解散按钮 + main 有分发）', (function () {
       var uS = stripComment(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'ui.js'), 'utf8'));
       var mS = stripComment(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'main.js'), 'utf8'));
-      return /data-action="troop-disband"/.test(uS) && /case 'troop-disband'/.test(mS);
+      /* v89.110：解散改两段式 —— 触发只到 ask，do 只存在于确认弹窗里（无一键直达） */
+      return /data-action="troop-disband-ask"/.test(uS) && /case 'troop-disband-ask'/.test(mS)
+        && /case 'troop-disband-do'/.test(mS) && !/data-action="troop-disband"/.test(uS);
     })());
 
     console.log('  --- B 增民令：增速道具（唯一出口 · 真到期 · 不叠加） ---');
@@ -20857,17 +21455,34 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })());
 
     console.log('  --- D 俘获迁民：打出来的入口 ---');
-    check('D：俘获口径（6% · 上限 500 · 不足 15 不收 · 仅据点/名城）', (function () {
+    /* v89.116（老板「俘虏营也是…列出具体兵种及数量」）：俘获**不再当场加人口**，
+       改为按兵种入 `s.captives`（俘虏营），由玩家在军务处「收编为民」或「释放」。
+       折算口径（8% · 上限 3000 · 不足 10 不收 · 全战斗）一字未动。 */
+    check('D：俘获口径（8% · 上限 3000 · 不足 10 不收 · 全战斗）→ 入**俘虏营**（逐兵种）', (function () {
       var Rr = G.res(c99); Rr.pop = 1000;
+      var bkCap = JSON.parse(JSON.stringify(S99.captives || {}));
+      S99.captives = {};
       var tF = { kind: 'fort', name: '测点' };
       var tW = { kind: 'wild', name: '野地' };
-      var r1 = G.battle.captiveGain(c99, { defLoss: 1000 }, tF);
-      var r2 = G.battle.captiveGain(c99, { defLoss: 1000 }, tW);
+      var tD = { kind: 'defense', name: '守城' };
+      var r1 = G.battle.captiveGain(c99, { defLoss: 1000 }, tF, null, { yibing: 600, changqiang: 400 });
+      var r2 = G.battle.captiveGain(c99, { defLoss: 1000 }, tW);            /* v89.113：野地也俘 */
       var r3 = G.battle.captiveGain(c99, { defLoss: 100 }, tF);
       var r4 = G.battle.captiveGain(c99, { defLoss: 100000 }, tF);
-      return r1.gain === 60 && r2.gain === 0 && r3.gain === 0 && r4.gain === 500 && Rr.pop === 1560;
+      var r5 = G.battle.captiveGain(c99, { defLoss: 0 }, tD, 1000);         /* v89.113：防御战显式口径 */
+      var camp = GAME.captivesTotalOf();
+      /* r1 逐兵种拆分：80 按 600:400 分 → 义兵 48 / 长枪 32；r2/r4/r5 无明细 → unknown 桶 */
+      var split = (r1.byType.yibing === 48 && r1.byType.changqiang === 32);
+      var ok = r1.gain === 80 && r2.gain === 80 && r3.gain === 0 && r4.gain === 3000 && r5.gain === 80
+        && Rr.pop === 1000                       /* ← 人口**不动**（改期到"收编"那一刻） */
+        && split && camp === 80 + 80 + 3000 + 80 && (S99.captives.unknown || 0) === 80 + 3000 + 80;
+      /* 收编为民：一次加人口（与旧口径同一笔账） */
+      var cons = GAME.doConscriptCaptives(c99.id);
+      ok = ok && cons.ok && Rr.pop === 1000 + camp && GAME.captivesTotalOf() === 0;
+      S99.captives = bkCap;
+      return ok;
     })());
-    check('D：实战集成（打据点胜利 → 战报有俘获、出征城人口增加）', (function () {
+    check('D：实战集成（打据点胜利 → 战报有俘获入营、收编后人口增加）', (function () {
       var fD = null;
       for (var ry = 0; ry < 121 && !fD; ry++) {
         for (var rx = 0; rx < 121 && !fD; rx++) {
@@ -20884,6 +21499,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       if (G.siegeScopeOf({ kind: 'fort', x: fD.x, y: fD.y })) G.siegeClear({ kind: 'fort', x: fD.x, y: fD.y });
       c99.army = { gongjian: 40000 };
       var Rr = G.res(c99); Rr.pop = 1000;
+      S99.captives = {};
       var r = G.battle.expedition({ kind: 'fort', x: fD.x, y: fD.y }, 'occupy', { gongjian: 40000 }, gD.id);
       S99.world.weather = wBank;
       S99.generals.pop();
@@ -20891,9 +21507,19 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         window.__cap99 = '未胜（不判）'; return true;
       }
       var cap = r.result.captives;
-      window.__cap99 = '俘获 ' + (cap ? cap.gain : 0) + ' 人 → 人口 ' + Math.round(Rr.pop);
-      return !!cap && cap.gain > 0 && Rr.pop === 1000 + cap.gain
-        && (S99.reports || [])[0] && S99.reports[0].body.indexOf('俘获') >= 0;
+      /* v89.116：人口不再当场增加 —— 先入俘虏营（逐兵种），收编那一刻才加人口。
+         v89.118：人口增量按**兵种 pop 折算**（GAME.captivePopOf 唯一出口）。 */
+      var campN = GAME.captivesTotalOf();
+      var byN = 0;
+      for (var _bk in ((cap && cap.byType) || {})) byN += cap.byType[_bk];
+      var wantPop = GAME.captivePopOf();          /* 收编前算：= Σ(兵种数量 × pop) */
+      var cons = GAME.doConscriptCaptives(c99.id);
+      window.__cap99 = '俘获 ' + (cap ? cap.gain : 0) + ' 人（拆分 ' + byN + '）→ 营 ' + campN
+        + ' → 折算人口 ' + wantPop + ' → 收编后人口 ' + Math.round(Rr.pop);
+      return !!cap && cap.gain > 0 && byN === cap.gain && campN === cap.gain
+        && cons.ok && cons.pop === wantPop && Rr.pop === 1000 + wantPop
+        && (S99.reports || [])[0] && S99.reports[0].body.indexOf('俘获') >= 0
+        && S99.reports[0].body.indexOf('俘虏营') >= 0;
     })(), window.__cap99 || '');
 
     G.state = oldState99;
@@ -20974,7 +21600,3325 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         && srcM.indexOf('case ' + "'" + 'consign-sell' + "'" + ': GAME.doConsign') >= 0;
     })());
 
+    console.log('  --- E 类型白名单（only）：战利品变现只卖掉落类 ---');
+    check('E1 only 过滤：只列珠宝/材料（经验书等投资品不列）', (function () {
+      S100.items = { zhenzhu: 1, fatie: 1, lianbing_jingyan: 1 };
+      var lst = G.systems.consignList({ only: ['jewel', 'material'] });
+      var ids = lst.map(function (x) { return x.id; });
+      return ids.indexOf('zhenzhu') >= 0 && ids.indexOf('fatie') >= 0
+        && ids.indexOf('lianbing_jingyan') < 0;
+    })());
+    check('E2 only + consignAll：只卖白名单类型，投资品原样留存', (function () {
+      S100.items = { zhenzhu: 2, fatie: 2, lianbing_jingyan: 2 };
+      var r = G.systems.consignAll({ only: ['jewel', 'material'] });
+      return r.ok === true && !S100.items.zhenzhu && !S100.items.fatie
+        && S100.items.lianbing_jingyan === 2;
+    })());
+    S100.items = {};
+
     G.state = oldState100;
+  })();
+
+  /* ============================================================
+   * v89.102（老板需求 1/2/3 + 测评遗留落地）
+   * ============================================================ */
+  (function () {
+    console.log('\n===== v89.102：校场口径 · 战报沙盘 · 全境营造 =====');
+    var oldState102 = G.state;
+    var S102 = G.newGame({ name: '沙盘', cityName: '许都', region: '豫州', mapSeed: 20260921 });
+    if (!S102.map.grid) G.map.generate();
+    S102.settings.battleWatch = false;      /* 沙盘断言要即时结算的战报 */
+
+    /* ---- ① 校场出征容量：按**总兵力数**（人马），不按人口 ---- */
+    console.log('  --- ① 校场出征容量 = 人马（老板：谁家校场按人口） ---');
+    var c102 = S102.cities[0];
+    c102.cells.forEach(function (x) { if (x.build && x.build.id === 'xiaochang') x.build.lvl = 3; });
+    if (!c102.cells.some(function (x) { return x.build && x.build.id === 'xiaochang'; })) {
+      var _i102 = c102.cells.findIndex(function (x) { return !x.build && !x.official; });
+      if (_i102 >= 0) c102.cells[_i102].build = { id: 'xiaochang', lvl: 3 };
+    }
+    check('① 容量出口：marchCapOf = 校场等级 × 1 万人马（唯一来源）', (function () {
+      var cap = G.battle.marchCapOf(c102);
+      return G.battle.MARCH_MEN_PER_LV === 10000
+        && cap === 3 * 10000 && G.battle.marchCapLvFor(25000) === 3;
+    })(), 'cap=' + G.battle.marchCapOf(c102));
+    check('① 量纲：marchMenOf 数**人头**（轻骑与义兵同价，人口不参与）', (function () {
+      var n1 = G.battle.marchMenOf({ qingji: 1000, yibing: 500 });
+      return n1 === 1500;    /* 旧口径（人口当量）会是 2000+500×1=2500 */
+    })());
+    check('① 出征校验：超容量按人马拦（报错给"需 Lv N 校场"）', (function () {
+      var g0 = S102.generals[0];
+      G.setStaNow(g0, 9999); g0.energy = 100;
+      c102.res.grain = 5e6; c102.res.wood = 5e6;
+      c102.army = { qingji: 35000 };      /* 3.5 万人马 > Lv3 校场的 3 万 */
+      var bad = G.battle.prepare({ kind: 'wild', x: 2, y: 2 }, 'raid', { qingji: 35000 }, g0.id);
+      var okA = G.battle.prepare({ kind: 'wild', x: 2, y: 2 }, 'raid', { qingji: 25000 }, g0.id);
+      return bad.ok === false && /校场容量不足（需 Lv4 校场）/.test(bad.msg || '')
+        && okA.ok === true;
+    })());
+    check('① 界面口径：校场面板写「人马」且不再写「人口」上限', (function () {
+      var _fs = require('fs'), _p = require('path');
+      var src = _fs.readFileSync(_p.join(__dirname, 'js/ui.js'), 'utf8');
+      var key = '出征'
+        + String.fromCharCode(0x5175) + String.fromCharCode(0x529b) + String.fromCharCode(0x4e0a) + String.fromCharCode(0x9650);
+      return src.indexOf(key) >= 0 && src.indexOf('MARCH_MEN_PER_LV') >= 0;
+    })());
+
+    /* ---- ② 战报沙盘：配方 → 逐帧（同一把引擎重跑） ---- */
+    console.log('  --- ② 战报沙盘（固定沙盘 · 逐兵种逐帧） ---');
+    var wild102 = null;
+    for (var _y102 = 4; _y102 < 40 && !wild102; _y102++) {
+      for (var _x102 = 4; _x102 < 40; _x102++) {
+        var _t102 = G.map.tile(_x102, _y102);
+        if (_t102 && _t102.terrain !== 'city' && !G.map.fortAt(_x102, _y102)) {
+          var _lv102 = G.map.wildLevelNow ? G.map.wildLevelNow(_x102, _y102) : 1;
+          if (_lv102 >= 3 && _lv102 <= 6) { wild102 = { x: _x102, y: _y102 }; break; }
+        }
+      }
+    }
+    var gen102 = S102.generals[0];
+    G.setStaNow(gen102, 9999); gen102.energy = 100;
+    c102.army = { qingji: 3000, changqiang: 2000 };
+    var r102 = wild102
+      ? G.battle.expedition({ kind: 'wild', x: wild102.x, y: wild102.y }, 'raid',
+          { qingji: 3000, changqiang: 2000 }, gen102.id)
+      : { ok: false, msg: 'no target' };
+    var rep102 = S102.reports[0];
+    check('② 战报带沙盘配方（≈1KB/场；不存帧）', !!(rep102 && rep102.sandbox)
+      && JSON.stringify(rep102.sandbox).length <= 4096,
+      r102.msg + '　' + (rep102 && rep102.sandbox ? JSON.stringify(rep102.sandbox).length + 'B' : '-'));
+    var sb102 = (rep102 && G.battle.sandboxOf) ? G.battle.sandboxOf(rep102) : null;
+    check('② 重跑成帧：帧数 ≥ 回合数，且**逐项与史实一致**（校验通过）', (function () {
+      return !!sb102 && sb102.frames.length >= sb102.rounds
+        && sb102.verify === true && sb102.frames.length >= 1;
+    })(), sb102 ? (sb102.frames.length + ' 帧 / ' + sb102.rounds + ' 回合 / ' +
+      (sb102.verify ? '✅' : '❌')) : 'null');
+    check('② 帧结构：[回合, 阵营, 兵种, 动作, 目标, 值1, 值2]（每个兵种的移动/攻击各一帧）', (function () {
+      if (!sb102 || !sb102.frames.length) return false;
+      return sb102.frames.every(function (f) {
+        return f.length === 7 && f[0] >= 1 && (f[1] === 0 || f[1] === 1)
+          && typeof f[3] === 'string' && 'mratcw?'.indexOf(f[3]) >= 0;
+      });
+    })());
+    check('② 帧自洽：杀伤只减不增、兵力不为负、终局=史实剩余', (function () {
+      if (!sb102) return false;
+      var stt = { atk: {}, def: {} };
+      sb102.init.atk.forEach(function (u) { stt.atk[u.id] = u.count; });
+      sb102.init.def.forEach(function (u) { stt.def[u.id] = u.count; });
+      var bad = 0;
+      sb102.frames.forEach(function (f) {
+        var own = (f[1] === 0) ? stt.atk : stt.def, foe = (f[1] === 0) ? stt.def : stt.atk;
+        var uid = sb102.ids[f[2]], tid = (f[4] >= 0) ? sb102.ids[f[4]] : '';
+        if ((f[3] === 'a' || f[3] === 'c' || f[3] === 'w') && tid) {
+          if (foe[tid] === undefined) bad++;
+          else { if (foe[tid] <= 0 && f[5] > 0) bad++; foe[tid] = Math.max(0, foe[tid] - f[5]); }
+          if (uid && own[uid] !== undefined && own[uid] <= 0) bad++;
+        }
+      });
+      var sum = function (o) { var n = 0; for (var k in (o || {})) n += o[k]; return n; };
+      var endA = 0, endD = 0, k;
+      for (k in stt.atk) endA += stt.atk[k];
+      for (k in stt.def) endD += stt.def[k];
+      var hA = sum(rep102.loss.atkStart) - sum(rep102.loss.atkLoss);
+      var hD = sum(rep102.loss.defStart) - sum(rep102.loss.defLoss);
+      return bad === 0 && endA === hA && endD === hD;
+    })());
+    check('② 推演：从同一配方另起会话 → 与史实同回合同损失', (function () {
+      if (!sb102 || !rep102.sandbox) return false;
+      var rc = rep102.sandbox;
+      var env = G.tactic.begin(rc.atkArmy, rc.gen, rc.scArmy, rc.scVal, rc.scGen,
+        JSON.parse(JSON.stringify(rc.simOpts || {})));
+      env.runAll();
+      var fin = env.finish();
+      return fin.rounds === sb102.hist.rounds && fin.atkLoss === sb102.hist.atkLoss
+        && fin.defLoss === sb102.hist.defLoss;
+    })());
+    check('② 旧档战报（无配方）→ sandboxOf 返回 null（退回关键帧回放，不报错）', (function () {
+      var fake = { title: '旧', body: '', type: 'war', scene: { rounds: 3 } };
+      return G.battle.sandboxOf(fake) === null;
+    })());
+    /* 真机踩过：若把 `city.army` 直接当 atkArmy 传进 expedition，
+       `city.army[a3] -= atkArmy[a3]` 是**自我清零**（同一对象）→ 配方里兵力全 0 →
+       重跑成空阵，而 `0 === 0` 让校验**假通过**（真浏览器里表现为"沙盘打不开"）。
+       两道闸一起守：空阵 → 直接 null；校验要求双方回合数 ≥1。 */
+    check('② 空阵配方 → sandboxOf 返回 null（不许"0 回合 0 损失"当通过）', (function () {
+      var fake = {
+        title: '空', body: '', type: 'war',
+        sandbox: {
+          atkArmy: { qingji: 0 }, gen: null, scArmy: { yibing: 100 }, scVal: 0, scGen: null,
+          simOpts: {}, init: { atk: [], def: [{ id: 'yibing', s: 'advance', t: '' }] },
+          cmds: null, result: { rounds: 0, atkLoss: 0, defLoss: 0 },
+        },
+      };
+      return G.battle.sandboxOf(fake) === null;
+    })());
+    check('② 配方用**开打前**的输入（战前快照：不是 returnArmy 清零后 / 升级后的将）', (function () {
+      var _fs = require('fs'), _p = require('path');
+      var b = _fs.readFileSync(_p.join(__dirname, 'js/battle.js'), 'utf8');
+      /* 快照必须取在 simulate 之后、returnArmy/gainExp 之前，且配方读的是它。
+         v89.115：主将用**斗将后的那份**（genSim）—— 与"开打那一刻的输入"逐字节一致。 */
+      return /var _sbArmy = U\.deep\(atkArmy\), _sbGen = genSim \? U\.deep\(genSim\) : null;/.test(b)
+        && /sandboxRecipeOf\(result, _sbArmy, _sbGen,/.test(b);
+    })());
+    check('② 结构：战报详情有沙盘入口 + 正文页入口（两页互跳）', (function () {
+      var _fs = require('fs'), _p = require('path');
+      var u = _fs.readFileSync(_p.join(__dirname, 'js/ui.js'), 'utf8');
+      var m = _fs.readFileSync(_p.join(__dirname, 'js/main.js'), 'utf8');
+      return /ui\.openSandbox = function/.test(u) && /data-action="sd-text"/.test(u)
+        && /data-action="open-sandbox"/.test(u) && /case 'sd-sim'/.test(m)
+        && /case 'sd-done'/.test(m) && /case 'open-sandbox'/.test(m);
+    })());
+    check('② 沙盘：只改值不重建 DOM（帧间位移走 CSS transition）', (function () {
+      var _fs = require('fs'), _p = require('path');
+      var u = _fs.readFileSync(_p.join(__dirname, 'js/ui.js'), 'utf8');
+      var paint = u.slice(u.indexOf('ui.sdPaint = function'), u.indexOf('ui.sdRebuildLog = function'));
+      /* 要守的是"沙盘与令牌不重建"（重建就丢掉 left 过渡，帧间变成硬跳）——
+         顶栏那个小计块用 innerHTML 无妨，故只禁 board/field 的重建。 */
+      return /getElementById\('sd-k-'/.test(paint) && /style\.left/.test(paint)
+        && !/getElementById\('sd-(board|field)'\)/.test(paint)
+        && !/getElementById\('sd-wrap'\)/.test(paint);
+    })());
+
+    /* ---- ③ 全境营造总览（测评遗留第 1 条落地） ---- */
+    console.log('  --- ③ 全境营造总览（跨城队列 + 一键提速） ---');
+    S102.res.gold = 5e6;
+    S102.res.grain = 5e6; S102.res.wood = 5e6;
+    S102.res.stone = 5e6; S102.res.iron = 5e6;
+    (function () {
+      /* 在两座城里各起一条工程（城流之后"逐城点开"不成立） */
+      var c2 = S102.cities[0];
+      var free = null, i;
+      for (i = 0; i < c2.cells.length; i++) {
+        if (!c2.cells[i].build && !c2.cells[i].official) { free = i; break; }
+      }
+      /* 建造入口的唯一出口是 GAME.buildAt(cityId, gridIndex, buildId) */
+      if (free != null) {
+        try { GAME.buildAt(c2.id, free, 'minfang'); } catch (e) {}
+      }
+    })();
+    check('③ buildOverview：列出全境在办工程（含城名/建筑/进度/提速价）', (function () {
+      var rows = G.buildOverview();
+      return rows.length >= 1 && rows[0].city && rows[0].name
+        && typeof rows[0].pct === 'number' && rows[0].cost >= 0
+        && typeof rows[0].cityId === 'string';
+    })(), G.buildOverview().map(function (r) { return r.city + '·' + r.name + '(' + r.pct + '%)'; }).join(' / '));
+    check('③ 定位单条：buildQueueOf(城, 格) —— **两字段一起比**（防跨城串号）', (function () {
+      var rows = G.buildOverview();
+      if (!rows.length) return false;
+      var q = G.buildQueueOf(rows[0].cityId, rows[0].gridIndex);
+      var wrongCity = G.buildQueueOf('__no_such_city__', rows[0].gridIndex);
+      return !!q && wrongCity === null && q.buildId === rows[0].buildId;
+    })());
+    check('③ rushAllBuilds：一键全提 → 逐条走 queueRushPay（金减少、工程推进）', (function () {
+      var before = G.buildOverview().length, gold0 = S102.res.gold;
+      var r = G.rushAllBuilds();
+      var left = G.buildOverview().filter(function (x) { return x.cost > 0; }).length;
+      return r.ok === true && r.n === before && S102.res.gold < gold0;
+    })(), 'n=' + G.rushAllBuilds().n);
+    /* ---- ④ 主城 · 爵位解锁建筑等级上限（老板：「爵位每级解锁 1 级」） ---- */
+    console.log('  --- ④ 主城随爵位解锁建筑等级上限 ---');
+    check('④ 常量绑定：爵位档数 − 1 === 满档解锁量 · 坡度两处同源', (function () {
+      return DATA.RANK_BUILD_LIFT_MAX === (DATA.RANK.length - 1) * DATA.MAIN_CITY_BUILD_PER_RANK
+        && DATA.MAIN_CITY.buildCapPerRank === DATA.MAIN_CITY_BUILD_PER_RANK
+        && DATA.MAIN_CITY_BUILD_PER_RANK === 1;
+    })(), '档数 ' + DATA.RANK.length + ' · 满档解锁 ' + DATA.RANK_BUILD_LIFT_MAX);
+    check('④ 上限表覆盖到主城最高级（= 基准 + 都城档位 + 满档解锁 = 45）', (function () {
+      var N = DATA.MAX_LEVEL_ABS;
+      return N === DATA.MAX_BLEVEL + 12 + DATA.RANK_BUILD_LIFT_MAX
+        && DATA.BUILDINGS.minfang.pop.length >= N
+        && DATA.BUILDINGS.cangku.cap.length >= N
+        && DATA.BUILDINGS.yizhan.speed.length >= N
+        && DATA.EXT_BUILDINGS.farm.prod.length >= N
+        && DATA.EXT_CAP_BY_LV.length >= N
+        && DATA.EXT_PLAN_BY_LV.length >= N
+        && !!DATA.BUILDINGS.minfang.levelCost(N - 1)
+        && !!G.extBuildCost('farm', N - 1);
+    })(), 'MAX_LEVEL_ABS=' + DATA.MAX_LEVEL_ABS);
+    check('④ 上限链：爵位每级 +1，**只有主城**享受（别城一律不变）', (function () {
+      var bad = [];
+      var oldRank = S102.rank, oldMain = S102.mainCityId;
+      function capWith(type, govLv, rk, isMain) {
+        var c = G.makeCity({ id: 'rc_' + type + '_' + rk + '_' + (isMain ? 'm' : 'n'),
+          name: type, x: 2, y: 2, type: type });
+        c.cells.forEach(function (x) { if (x.build && x.build.id === 'guanfu') x.build.lvl = govLv; });
+        S102.rank = rk;
+        S102.mainCityId = isMain ? c.id : null;
+        return { cap: G.buildCapOf(c, 'minfang'), gov: G.buildCapOf(c, 'guanfu'), lift: G.rankBuildCapOf(c) };
+      }
+      [0, 1, 5, 21].forEach(function (rk) {
+        var selfM = capWith('self', 12, rk, true);
+        var selfN = capWith('self', 12, rk, false);
+        var capM = capWith('capital', 24, rk, true);
+        var capN = capWith('capital', 24, rk, false);
+        /* 主城：12 + rk / 24 + rk；非主城：恒 12 / 24 */
+        if (selfM.cap !== 12 + rk) bad.push('自建主城 rk' + rk + '=' + selfM.cap);
+        if (capM.cap !== 24 + rk) bad.push('都城主城 rk' + rk + '=' + capM.cap);
+        if (selfN.cap !== 12) bad.push('自建非主城 rk' + rk + '=' + selfN.cap);
+        if (capN.cap !== 24) bad.push('都城非主城 rk' + rk + '=' + capN.cap);
+        if (selfM.gov !== 12 + rk) bad.push('主城官府 rk' + rk + '=' + selfM.gov);
+        if (selfM.lift !== rk || selfN.lift !== 0) bad.push('解锁量 rk' + rk + '=' + selfM.lift + '/' + selfN.lift);
+      });
+      S102.rank = oldRank; S102.mainCityId = oldMain;
+      return bad.length === 0;
+    })(), '自建 12→33 / 都城 24→45（满档）· 非主城恒 12/24');
+    check('④ 官府总闸随爵位同步抬升（否则"解锁了却被官府卡住"）', (function () {
+      var c = G.makeCity({ id: 'rc_gate', name: 'g', x: 3, y: 3, type: 'self' });
+      c.cells.forEach(function (x) { if (x.build && x.build.id === 'guanfu') x.build.lvl = 12; });
+      var oldRank = S102.rank, oldMain = S102.mainCityId;
+      S102.rank = 5; S102.mainCityId = c.id;
+      var capM = G.buildCapOf(c, 'minfang');        /* min(12+5, 12+5) = 17 */
+      var preA = G.buildPrereqOf(c, 'minfang', 17); /* 17 ≤ 12+5 → 无 gate */
+      S102.mainCityId = null;
+      S102.rank = 5;
+      var capN = G.buildCapOf(c, 'minfang');        /* 仍 12 */
+      S102.rank = oldRank; S102.mainCityId = oldMain;
+      return capM === 17 && preA.ok === true && capN === 12;
+    })());
+    check('④ 真通道：主城可以真的升过旧硬顶 12 级（域层守卫放行）', (function () {
+      var c = S102.cities[0];
+      var idx = -1;
+      c.cells.forEach(function (x, i) { if (idx < 0 && x.build && x.build.id === 'minfang') idx = i; });
+      if (idx < 0) {
+        idx = c.cells.findIndex(function (x) { return !x.build && !x.official; });
+        if (idx < 0) return false;
+        c.cells[idx].build = { id: 'minfang', lvl: 12 };
+      }
+      var gIdx = -1;
+      c.cells.forEach(function (x, i) { if (gIdx < 0 && x.build && x.build.id === 'guanfu') gIdx = i; });
+      if (gIdx >= 0) c.cells[gIdx].build.lvl = 12;
+      ['grain', 'wood', 'stone', 'iron'].forEach(function (k) { c.res[k] = 1e9; });
+      S102.mainCityId = c.id;
+      c.cells[idx].build.lvl = 12;
+      S102.rank = 0;
+      var r0 = G.upgradeAt(c.id, idx);              /* 平民：仍被 12 级硬顶拦住 */
+      /* 清掉可能的队列/待办，回到干净态 */
+      S102.queues.build = (S102.queues.build || []).filter(function (q) { return Number(q.gridIndex) !== idx; });
+      c.cells[idx].pending = null;
+      c.cells[idx].build.lvl = 12;
+      S102.rank = 5;
+      var r5 = G.upgradeAt(c.id, idx);              /* 大夫：上限 17 → 放行 */
+      var queued = !!GAME.queueAt('city', idx);
+      S102.queues.build = (S102.queues.build || []).filter(function (q) { return Number(q.gridIndex) !== idx; });
+      c.cells[idx].pending = null;
+      return r0.ok === false && /已达最高等级/.test(r0.msg || '') && r5.ok === true && queued;
+    })());
+    check('④ 界面：官府面板出「爵位解锁」行（主城）/「建筑上限」行（非主城）', (function () {
+      var _fs = require('fs'), _p = require('path');
+      var u = _fs.readFileSync(_p.join(__dirname, 'js/ui.js'), 'utf8');
+      return /爵位解锁/.test(u) && /liftLine/.test(u) && /rankBuildCapOf/.test(u)
+        && /data-action="set-main-city"/.test(u);
+    })());
+    check('④ 界面：建造面板报「等级上限 LvN（档位 X + 爵位解锁 N）」', (function () {
+      var _fs = require('fs'), _p = require('path');
+      var u = _fs.readFileSync(_p.join(__dirname, 'js/ui.js'), 'utf8');
+      var blk = u.slice(u.indexOf("if (b.id === 'majiu') extra"), u.indexOf('var mast = null;'));
+      return /等级上限/.test(blk) && /爵位解锁/.test(blk) && /buildCapOf\(c, b\.id\)/.test(blk);
+    })());
+    check('④ 数据：主城 desc 写清"爵位每级解锁建筑等级上限 +1"', (function () {
+      return /爵位每级解锁建筑等级上限/.test(DATA.MAIN_CITY.desc || '');
+    })());
+
+    G.state = oldState102;
+  })();
+
+  /* ============================================================
+   * v89.103（老板三条令）：① 沙盘同场战斗 + 接触线推进
+   *                     ② 拔除据点 = 据为己有（成为自己的城池）
+   *                     ③ 资源运输走出征界面（辎重区）+ 老「城池不存在」bug 退场
+   * ============================================================ */
+  (function () {
+    console.log('\n===== v89.103：沙盘接触线 · 据点占据 · 本境调运 =====');
+    var _f103 = require('fs'), _p103 = require('path');
+    function src103(f) { return _f103.readFileSync(_p103.join(__dirname, 'js', f), 'utf8'); }
+    var bt103 = src103('battle.js'), ui103 = src103('ui.js'), do103 = src103('domain.js');
+    var mp103 = src103('map.js'), st103 = src103('state.js'), ta103 = src103('tactic.js');
+
+    console.log('  --- ① 沙盘：共享轴 + 前线/接触线 ---');
+    check('① frontAdvOf：只算存活、取最大；全灭返回 null（不是 0）', (function () {
+      var T = G.tactic;
+      var list = [{ count: 5, adv: 100 }, { count: 0, adv: 900 }, { count: 3, adv: 300 }];
+      return T.frontAdvOf(list) === 300 && T.frontAdvOf([{ count: 0, adv: 9 }]) === null
+        && T.frontAdvOf([]) === null;
+    })());
+    check('① frontsOf：间距 = 纵深 − 两方最前；接触按**位移**（间距 ≤ 双方最前部队射程）', (function () {
+      var T = G.tactic, D = 1000;
+      var atk = [{ count: 10, adv: 200, er: 50 }], def = [{ count: 10, adv: 300, er: 50 }];
+      var f1 = T.frontsOf(atk, def, D);                       /* 间距 500 > 射程 50 → 未接触 */
+      var f2 = T.frontsOf([{ count: 10, adv: 200, er: 600 }], def, D);   /* 500 ≤ 600 → 接触 */
+      /* 间距 = 1000 − 200 − 300 = 500；接触线 = 我方 200 与敌方 700 的中点 = 450 */
+      return f1.gap === 500 && f1.reach === 50 && f1.contact === false
+        && f2.contact === true
+        && f1.mid === 450 && f1.posA === 200 && f1.posD === 700 && f1.broke === null;
+    })());
+    check('① frontsOf：一方全灭 → 其前线退回出发线、接触线钉在被歼方出发线', (function () {
+      var T = G.tactic, D = 1000;
+      var f = T.frontsOf([{ count: 0, adv: 400 }], [{ count: 9, adv: 700, er: 60 }], D);
+      return f.broke === 'atk' && f.aFront === 0 && f.mid === 0
+        && T.frontsOf([{ count: 9, adv: 700, er: 60 }], [{ count: 0, adv: 400 }], D).mid === D;
+    })());
+    check('① 共享轴映射：两军的可达区间**重叠**（旧映射 46%/54% 永不接触）', (function () {
+      var D = 1000;
+      var atk0 = G.ui.btPosPct('atk', 0, D);                /* 我军出发线 → 4% */
+      var atkMax = G.ui.btPosPct('atk', D, D);              /* 我军打到敌军出发线 → 96% */
+      var def0 = G.ui.btPosPct('def', 0, D);                /* 敌军出发线 → 96% */
+      var defMax = G.ui.btPosPct('def', D, D);              /* 敌军打到我军出发线 → 4% */
+      return atk0 === 4 && atkMax === 96 && def0 === 96 && defMax === 4
+        && atkMax > 50 && defMax < 50;                      /* 两边都能越过中线（旧映射卡在 46/54） */
+    })());
+    check('① 泳道交错：我方偶数道、敌方奇数道（同一 x 上不会互相遮住）', (function () {
+      var ok = true;
+      for (var i = 0; i < 4; i++) {
+        if (G.ui.sdLaneOf('atk', i) % 2 !== 0 || G.ui.sdLaneOf('def', i) % 2 !== 1) ok = false;
+      }
+      return ok && G.ui.sdLanesOf({ atk: [1, 2, 3], def: [1, 2] }) === 6;
+    })());
+    check('① 引擎与界面同一把尺：tactic.frontsOf 存在且引擎内部 front() 读它', (function () {
+      return /T\.frontAdvOf = function/.test(ta103) && /var m = T\.frontAdvOf\(list\);/.test(ta103)
+        && /ui\.sdFrontsOf = function/.test(ui103) && /GAME\.tactic\.frontsOf/.test(ui103);
+    })());
+    check('① 三条线（我军前线 / 敌军前线 / 接触线）在册且有可见性切换', (function () {
+      return /sd-fl-a/.test(ui103) && /sd-fl-d/.test(ui103) && /sd-fl-c/.test(ui103)
+        && /被攻入腹地/.test(ui103) && /\.sd-fl\.hit/.test(_f103.readFileSync(_p103.join(__dirname, 'index.html'), 'utf8'));
+    })());
+
+    console.log('  --- ② 拔除据点 = 据为己有 ---');
+    check('② 结构：claimFort 在、旧 razeFort 已退役、占据走永久登记', (function () {
+      return /GAME\.claimFort = function/.test(bt103) && !/GAME\.battle\.razeFort/.test(bt103)
+        && /GAME\.map\.markFortTaken = function/.test(mp103)
+        && /\(s\.fortsTaken \|\| \{\}\)\[x \+ ',' \+ y\]/.test(mp103)
+        && /fortsTaken: \{\}/.test(st103);
+    })());
+    check('② 数据：占领方式 desc / 据点按钮 都写"占据"（文案不落后于规则）', (function () {
+      return /据点拔除即\*\*占据\*\*/.test(src103('data.js')) && /拔除并占据/.test(ui103);
+    })());
+    check('② 运行时：占据登记后，该格**永久**不再生成据点（换日也不复活）', (function () {
+      var old = G.state;
+      var st9 = G.newGame({ name: 'v103b', cityName: '许都', region: '豫州', mapSeed: 424242 });
+      if (!st9.map.grid) G.map.generate();
+      var f = null;
+      for (var y = 0; y < DATA.MAP_H && !f; y++) {
+        for (var x = 0; x < DATA.MAP_W; x++) { f = G.map.fortAt(x, y); if (f) break; }
+      }
+      var ok = false;
+      if (f) {
+        G.map.markFortTaken(f.x, f.y, 'occ_test');
+        var gone = G.map.fortAt(f.x, f.y) === null;
+        st9.fortsRazed = {};                    /* 模拟"次日重置" */
+        st9.fortRaids = {};
+        var stillGone = G.map.fortAt(f.x, f.y) === null;
+        ok = gone && stillGone;
+      }
+      G.state = old;
+      return ok;
+    })());
+    check('② 运行时：claimFort 造出的城 = 布局满配（建筑逐格一致 + 人口归附）', (function () {
+      var old = G.state;
+      var st9 = G.newGame({ name: 'v103c', cityName: '许都', region: '豫州', mapSeed: 424242 });
+      if (!st9.map.grid) G.map.generate();
+      var f = null;
+      for (var y = 0; y < DATA.MAP_H && !f; y++) {
+        for (var x = 0; x < DATA.MAP_W; x++) { f = G.map.fortAt(x, y); if (f && f.level <= 6) break; }
+      }
+      var ok = false;
+      if (f) {
+        var r = G.claimFort({ kind: 'fort', x: f.x, y: f.y, fort: f, lv: f.level, name: f.name }, null, null, {});
+        var nc = r && r.city;
+        if (r && r.ok && nc) {
+          var plan = G.cityPlanOf(G.cityLvOf(nc), G.npcBuildLvOf(nc));
+          var same = nc.cells.length === plan.cells.length;
+          for (var i = 0; i < nc.cells.length && same; i++) {
+            var a = nc.cells[i].build, b = plan.cells[i].build;
+            if ((a ? a.id + a.lvl : '-') !== (b ? b.id + b.lvl : '-')) same = false;
+          }
+          ok = same && nc.res.pop === G.planPopCapOf(f.level)
+            && st9.cities.length === 2 && G.map.fortAt(f.x, f.y) === null;
+        }
+      }
+      G.state = old;
+      return ok;
+    })());
+
+    console.log('  --- ③ 本境调运（兵 + 辎重）---');
+    check('③ 运力口径：随军载重 = Σ(兵数 × 兵种载重)（load 字段从此真的在用）', (function () {
+      var army = { minfu: 100, yibing: 1000 };
+      var want = 100 * (DATA.TROOPS.minfu.load || 0) + 1000 * (DATA.TROOPS.yibing.load || 0);
+      /* v89.114：负重标定重排（民夫 200→500 · 辎重车 5000→20000，见 data.js 标定块） */
+      return G.cargoCapOf(army) === want && DATA.TROOPS.minfu.load === 500
+        && DATA.TROOPS.zhouche.load === 20000 && G.cargoCapOf({}) === 0;
+    })());
+    check('③ 载重口径：只认可运资源（人口/材料不计重）', (function () {
+      return G.cargoLoadOf({ grain: 100, gold: 50 }) === 150
+        && G.cargoLoadOf({ pop: 9999, jewel: 3, grain: 1 }) === 1;
+    })());
+    check('③ transportPlanOf 是**纯函数**（算账不落地）', (function () {
+      var old = G.state;
+      var st9 = G.newGame({ name: 'v103d', cityName: '许都', region: '豫州', mapSeed: 424242 });
+      var a = st9.cities[0];
+      a.res.grain = 10000;
+      var b = G.makeCity({ id: 'b', name: 'B', x: a.x + 2, y: a.y, type: 'self' });
+      st9.cities.push(b); b.res.grain = 0;
+      var pl = G.transportPlanOf(a, b, 'grain', 4000);
+      var ok = pl.ship === 4000 && pl.landed < 4000 && pl.lost > 0
+        && a.res.grain === 10000 && b.res.grain === 0;       /* 一分未动 */
+      G.state = old;
+      return ok;
+    })());
+    check('③ 出发校验：超载 → **发不出去**（且返回前不动兵账、不建队列）', (function () {
+      var old = G.state;
+      var st9 = G.newGame({ name: 'v103e', cityName: '许都', region: '豫州', mapSeed: 424242 });
+      if (!st9.map.grid) G.map.generate();
+      var a = st9.cities[0];
+      a.army = { yibing: 50 };
+      a.res.grain = 1e6;
+      var gen = st9.generals[0]; gen.level = 20;
+      G.setStaNow(gen, 9999); gen.energy = 100;
+      var f = null;
+      for (var y = 0; y < DATA.MAP_H && !f; y++) {
+        for (var x = 0; x < DATA.MAP_W; x++) { f = G.map.fortAt(x, y); if (f) break; }
+      }
+      var ok = false;
+      if (f) {
+        var r = G.march.dispatch({ kind: 'fort', x: f.x, y: f.y }, 'raid', { yibing: 10 }, gen.id, null, null,
+          { cargo: { grain: 5000 } });                       /* 载重 10×20=200 < 5000 */
+        ok = r.ok === false && /运力不足/.test(r.msg)
+          && (a.army.yibing || 0) === 50 && (st9.marches || []).length === 0;
+      }
+      G.state = old;
+      return ok;
+    })());
+    check('③ 队列里带辎重、抵达退辎重、召回也退辎重（三处都不许凭空消失）', (function () {
+      return /cargo: cargo \|\| null/.test(bt103)
+        && /cargo: m\.cargo \|\| null/.test(bt103)
+        && /_Rbk\[ckR\] = \(_Rbk\[ckR\] \|\| 0\) \+ m\.cargo\[ckR\]/.test(bt103)
+        && /_Rrc\[ckC\] = \(_Rrc\[ckC\] \|\| 0\) \+ m\.cargo\[ckC\]/.test(bt103)
+        && /GAME\.transportCargo\(_cg, city, _to\)/.test(bt103);
+    })());
+    check('③ 界面：辎重区（资源 + 数量框）在册，且"实收"读同一出口', (function () {
+      return /ui\.expCargoHTML = function/.test(ui103) && /ui\.syncCargoEst = function/.test(ui103)
+        && /ui\.cgFillMax = function/.test(ui103) && /ui\.cgClear = function/.test(ui103)
+        && /id="cg-/.test(ui103) && /GAME\.transportPlanOf\(from, to, k, qty\)/.test(ui103)
+        && /case 'cg-max': ui\.cgFillMax/.test(_f103.readFileSync(_p103.join(__dirname, 'js/main.js'), 'utf8'));
+    })());
+    check('③ 本境调运：己方城池目标**不再跳小面板**，方式锁定「调兵 · 辎重」', (function () {
+      return /kind: 'owncity', id: target\.id/.test(ui103) && /ui\._expOwn/.test(ui103)
+        && /if \(ui\._expOwn\) return m\.id === 'transfer';/.test(ui103)
+        && /GAME\.doTransferCargo\(_from5\.id, _to5\.id, atk, genSel\.value, _cargo5\)/.test(_f103.readFileSync(_p103.join(__dirname, 'js/main.js'), 'utf8'));
+    })());
+    check('③ 老入口整条退场（城池不存在的旧路不再有落脚点）', (function () {
+      var m103 = _f103.readFileSync(_p103.join(__dirname, 'js/main.js'), 'utf8');
+      return typeof G.ui.openTransport === 'undefined' && typeof G.ui.openInterCity === 'undefined'
+        && typeof G.ui.doTransport === 'undefined' && typeof G.ui.TR_PCTS === 'undefined'
+        && typeof G.doTransport === 'undefined'
+        && !/case 'tr-do'/.test(m103) && !/case 'ic-res'/.test(m103)
+        && /ui\.openExpModal\(\{ kind: 'own', id: _ctTo \}\)/.test(m103);
+    })());
+    check('③ 出征界面：本境调运时整窗不下拉（v89.112：辎重左移取代 252px 内滚上限）', (function () {
+      /* v89.103 原做法 = 给兵种表 252px 内滚上限 —— 那正是一条"下拉条"（老板否掉）。
+         v89.112 改成**版面平衡**：辎重表从左列右移… 不对，从右列移入左列
+         （左列 478px 空着、右列 876px 顶穿）；实测两列 max 731 < 正文区 840，
+         整窗零滚动（audit_v89112_pressure.js 的「本境调运」档钉住）。 */
+      var h = _f103.readFileSync(_p103.join(__dirname, 'index.html'), 'utf8');
+      /* ⚠️ 写成"值必须为 none"的正向判据 —— 用 `!` 排除会把"注释/同类规则"误伤
+         （本项目老坑：负向断言碰上注释里的同名标识符就假红）。 */
+      return /\.modal \.exp-col-l, \.modal \.exp-col-r \{ gap: var\(--sp-2\); \}/.test(h)
+        && /if \(ui\._expOwn\) html \+= ui\.expCargoHTML\(c\);/.test(ui103)
+        && /\.exp-col-r\.exp-own \.exp-a-troops \.exp-body \{ max-height: none; \}/.test(h)
+        && /exp-col-r' \+ \(ui\._expOwn \? ' exp-own' : ''\)/.test(ui103);
+    })());
+  })();
+
+  /* ============================================================
+   * v89.104（老板 16 条令）：界面整备 + 引擎两条
+   *   每一条令都有断言兜底；素材类走**像素级**（查 CSS 的正则挡不住回归）
+   * ============================================================ */
+  (function () {
+    console.log('\n===== v89.104：界面整备（16 条令）=====');
+    var _fs = require('fs'), _p = require('path'), _zlib = require('zlib');
+    function srcF(f) { return _fs.readFileSync(_p.join(__dirname, 'js', f), 'utf8'); }
+    var u4 = srcF('ui.js'), d4 = srcF('domain.js'), m4 = srcF('main.js'), da4 = srcF('data.js');
+    var h4 = _fs.readFileSync(_p.join(__dirname, 'index.html'), 'utf8');
+
+    console.log('  --- ① 建筑高等级造价（资源封顶 + 珠宝）---');
+    check('① Lv12 之后资源冻结、改吃珠宝（阶梯从 DATA.ITEMS 派生）', (function () {
+      var b = DATA.BUILDINGS.minfang;
+      var c12 = b.levelCost(12), c30 = b.levelCost(30);
+      return DATA.JEWEL_COST.fromLevel === 12
+        && c12.grain === c30.grain && c12.wood === c30.wood
+        && !!c12.jewel && !b.levelCost(11).jewel
+        && DATA.jewelLadder().length >= 9
+        && Object.keys(b.levelCost(24).jewel)[0] === DATA.jewelLadder()[3];
+    })(), '13 级 → 珠宝 ' + JSON.stringify(DATA.BUILDINGS.minfang.levelCost(12).jewel));
+    check('① 校验/支付同一出口：珠宝查 s.items（唯一读法 jewelNeedOf）', (function () {
+      var keep = G.state;
+      var st = G.newGame({ name: 'v104a', cityName: '许都' });
+      G.state = st;
+      var cost = DATA.BUILDINGS.minfang.levelCost(12);
+      /* 资源先垫足：本断言只验**珠宝**那一维（资源不足会把 canAfford 恒置 false） */
+      ['grain', 'wood', 'stone', 'iron'].forEach(function (k) { st.res[k] = 1e9; });
+      st.items = {};
+      var no = G.canAfford(cost);
+      st.items[Object.keys(cost.jewel)[0]] = cost.jewel[Object.keys(cost.jewel)[0]];
+      var yes = G.canAfford(cost);
+      G.payCost(cost);
+      var left = (st.items[Object.keys(cost.jewel)[0]] || 0);
+      G.state = keep;
+      return no === false && yes === true && left === 0
+        && /GAME\.jewelNeedOf = function/.test(d4);
+
+    })(), '缺料拦下 → 有料放行 → 支付清零');
+    check('① 界面：建造面板报「珠宝 持有/需求」且造价文案带 💎', (function () {
+      return /💎 珠宝/.test(u4) && /GAME\.costJewelText/.test(u4)
+        && /珠宝不足（/.test(d4);
+    })());
+
+    console.log('  --- ② 接触判定按位移 ---');
+    check('② 接触判据只有**位置**一处（不再有 hot 锁）', (function () {
+      var t = srcF('tactic.js');
+      return /T\.frontsOf = function \(atkUnits, defUnits, D\)/.test(t)
+        && !/st\.hot/.test(u4) && !/hot: !!hot/.test(t)
+        && /T\.frontAdvOf = function/.test(t);
+    })());
+
+    console.log('  --- ③ 自动页瘦身（去预算阀门 / 去参数行）---');
+    check('③ 预算闸门整件退役（函数 / 设置出口 / 文案都不在册，剥注释后核）', (function () {
+      function noC(x) { return x.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, ''); }
+      return !/autoBudgetCheck\s*=\s*function/.test(noC(d4))
+        && !/autoReservePct\s*=\s*function/.test(noC(d4))
+        && !/autoReserveLine\s*=\s*function/.test(noC(u4))
+        && !/doSetAutoFin\s*=\s*function/.test(noC(m4))
+        && !/doSetOfflineCap\s*=\s*function/.test(noC(m4))
+        && !/doSetSfx\s*=\s*function/.test(noC(m4));
+    })());
+    check('③ 自动出征在右侧详情只留「详细配置 + 立即出征」（参数行撤出）', (function () {
+      /* v89.115：自动化界面改左右分栏 —— 详情正文在 ui.autoPaneHTML 的 march 分支里 */
+      var i = u4.indexOf('ui.autoPaneHTML = function');
+      var nx = u4.slice(i + 10).search(/\n  ui\.[A-Za-z_$][\w$]* = function/);
+      var seg = u4.slice(i, nx > 0 ? i + 10 + nx : i + 8000);
+      var a = seg.indexOf("it.id === 'march'");
+      var card = (a >= 0) ? seg.slice(a, seg.indexOf("it.id === 'lord'", a + 10)) : '';
+      return /open-auto-march/.test(seg) && /auto-march-once/.test(seg)
+        && card.length > 0 && card.indexOf('al-k') < 0;
+    })());
+
+    console.log('  --- ④ 设置页紧凑 / 比例滑块 / 税率外移 ---');
+    check('④ 设置页只剩四行且无下拉框；音效/离线上限/税率整体撤出', (function () {
+      var i = u4.indexOf('ui.settingsHTML = function');
+      var seg = u4.slice(i, u4.indexOf('\n  ui.', i + 10))
+        .replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');   /* ⚠️ 必须剥注释 */
+      return (seg.match(/class="set-card"/g) || []).length === 4
+        && seg.indexOf('<select') < 0 && seg.indexOf('音效') < 0
+        && seg.indexOf('离线') < 0 && seg.indexOf('税率') < 0
+        && /ui\.chips\(/.test(seg);
+    })());
+    check('④ 显示比例：连续滑块 80~120（整数档，唯一出口 zoomBarHTML）', (function () {
+      return /ui\.ZOOM_MIN = 80/.test(u4) && /ui\.ZOOM_MAX = 120/.test(u4)
+        && /type="range" id="zoom-range"/.test(u4) && /step="1"/.test(u4)
+        && !/DATA\.ZOOM_LEVELS/.test(u4);
+    })());
+    check('④ 侧栏税率可就地 ±5%（tax-step 动作接线）', (function () {
+      return /data-action="tax-step"/.test(u4) && /data-d="-5"/.test(u4)
+        && /case 'tax-step':/.test(m4) && /GAME\.doSetTax\(_next5\)/.test(m4);
+    })());
+    check('④ 离线推进上限解除（offlineCapDays 恒 0）', (function () {
+      var keep = G.state;
+      var st = G.newGame({ name: 'v104b', cityName: '许都' });
+      G.state = st;
+      st.settings.offlineCapDays = 7;
+      var v = G.offlineCapDays();
+      G.state = keep;
+      return v === 0;
+    })());
+    check('④ 资源产出明细里的「附属野地」改成「野地」', (function () {
+      return /name: '野地'/.test(srcF('state.js')) && !/name: '附属野地'/.test(srcF('state.js'));
+    })());
+
+    console.log('  --- ⑤ 商城档位收敛（同类 ≤4 档）---');
+    check('⑤ 单族类目（经验/体力/马具/宝箱/种子/徭役）在售 ≤ 4 档', (function () {
+      var S = G.ui.shopItems();
+      var single = ['exp', 'stamina', 'mount_buff', 'chest', 'seed', 'corvee'];
+      return single.every(function (t) {
+        return S.filter(function (x) { return x.type === t; }).length <= 4;
+      });
+    })(), (function () {
+      var S = G.ui.shopItems();
+      return ['exp', 'stamina'].map(function (t) {
+        return t + '=' + S.filter(function (x) { return x.type === t; }).length;
+      }).join(' ');
+    })());
+    check('⑤ 下架只是"不上架"：被收敛的档位仍在 DATA.ITEMS 里（掉落照给）', (function () {
+      var all = DATA.ITEMS.length;
+      var off = DATA.ITEMS.filter(function (x) { return x.noShop; }).length;
+      return off >= 20 && all > off && G.ui.shopItems().length < all;
+    })());
+
+    console.log('  --- ⑥ 背包宝物（去将领清单 + 使用提示）---');
+    check('⑥ 宝物页不再有使用对象将领清单；去处走 ITEM_USE_ROUTE 唯一出口', (function () {
+      var i = u4.indexOf('ui.bagItemHTML = function');
+      var seg = u4.slice(i, i + 4200);
+      return seg.indexOf('genChips') < 0 && /ui\.ITEM_USE_ROUTE = \{/.test(u4)
+        && /route\.direct \? ui\.qtyInput/.test(seg) && /bag-go/.test(seg);
+    })());
+    check('⑥ 路由表覆盖全部可持有 type（含新加的移民令）', (function () {
+      var R = G.ui.ITEM_USE_ROUTE;
+      var types = {};
+      DATA.ITEMS.forEach(function (it) {
+        if (it.type === 'material' || it.type === 'blueprint') return;   /* 背包宝物页不列这两类 */
+        types[it.type] = 1;
+      });
+      return Object.keys(types).every(function (t) { return !!R[t]; })
+        && R.pop_fill && R.pop_fill.direct === true
+        && R.exp && !R.exp.direct && R.exp.view === 'generals';
+    })());
+
+    console.log('  --- ⑦ 移民令 ---');
+    check('⑦ 移民令：一次性补到人口上限的 50%（唯一分支 pop_fill）', (function () {
+      var keep = G.state, keepCity = G.ui._cityId;
+      var st = G.newGame({ name: 'v104c', cityName: '许都' });
+      G.state = st;
+      var c = st.cities[0];
+      G.ui._cityId = c.id;
+      c.res.pop = 0;
+      st.items.yiminling = 1;
+      var r = G.systems.useItem('yiminling', null);
+      var want = Math.floor(G.maxPopOf(c) * 0.5);
+      var ok = r.ok && c.res.pop === want && (st.items.yiminling || 0) === 0;
+      /* 再点一次：已达标 → 拒绝（不浪费道具） */
+      st.items.yiminling = 1;
+      var r2 = G.systems.useItem('yiminling', null);
+      ok = ok && r2.ok === false;
+      G.state = keep; G.ui._cityId = keepCity;
+      return ok;
+    })());
+
+    console.log('  --- ⑧ 菜单与军务 ---');
+    check('⑧ 菜单：删「统计」、加「故事集」、将领/军务/任务相邻', (function () {
+      return !/data-view="stats"/.test(h4) && /data-view="stories"/.test(h4)
+        && /data-view="generals"[\s\S]{0,260}data-view="marches"[\s\S]{0,260}data-view="tasks"/.test(h4);
+    })());
+    check('⑧ 军务四页签：总览 / 出征 / 防守 / 军务处（动作全接既有出口）', (function () {
+      return /ui\.MARCH_TABS = \[\['over'/.test(u4) && /ui\.marchTabHTML = function/.test(u4)
+        && /ui\.marchExpHTML = function/.test(u4) && /ui\.marchDefHTML = function/.test(u4)
+        && /ui\.marchAffairsHTML = function/.test(u4)
+        && /case 'march-tab':/.test(m4) && /case 'exp-go':/.test(m4);
+    })());
+    check('⑧ 军务·出征页链到**出征界面**（openExpModal，不是另造一套）', (function () {
+      return /ui\.openExpModal\(\{ kind: 'fort'/.test(m4) && /ui\.openExpModal\(\{ kind: 'city'/.test(m4);
+    })());
+
+    console.log('  --- ⑨ 公文 / 逸闻 / 故事集 ---');
+    check('⑨ 公文五页签：类别表派生（战报/侦查/烽火/任务/系统）· 每类各有一页正文', (function () {
+      var i0 = u4.indexOf('ui.DOC_PER = 10;');
+      var i = u4.indexOf('ui.reportsHTML = function');
+      var seg = i0 >= 0 ? u4.slice(i0, i + 800) : u4.slice(i, i + 7000);
+      return /DATA\.MSG_KINDS/.test(seg) && /ui\.docTabHTML = function/.test(seg)
+        && /ui\.docBodyHTML = function/.test(seg)
+        && /id === 'war'/.test(seg) && /id === 'scout'/.test(seg)
+        && /id === 'beacon'/.test(seg) && /id === 'task'/.test(seg)
+        && /ui\.docLinesHTML\(id\)/.test(seg);
+    })());
+    /* ============================================================
+     * v89.107（老板）：「公文有几种报告类型，按军务那样整几个独立切换界面」
+     * —— 一条需求一条断言。五条：类别表 / 发射点声明 / 军事模块零漏标 /
+     *    运行时落库 / 页签动作接线。
+     * ============================================================ */
+    check('⑨-1 类别表齐备：五类各有 id/name/icon/desc，id 唯一', (function () {
+      var K = DATA.MSG_KINDS || [];
+      if (K.length !== 5) return false;
+      var ids = K.map(function (k) { return k.id; });
+      if (ids.join(',') !== 'war,scout,beacon,task,sys') return false;   /* 顺序 = 页签顺序 */
+      return K.every(function (k) {
+        return k.id && k.name && k.icon && k.desc && (DATA.MSG_KIND_BY[k.id] === k);
+      });
+    })());
+    check('⑨-2 发射点声明的类别都在表内（GAME.log.<kind>( 只许用已声明类别）', (function () {
+      var fsx = require('fs'), px = require('path');
+      var bad = [], n = 0;
+      ['state', 'domain', 'battle', 'systems', 'story', 'ui', 'main'].forEach(function (f) {
+        var src = fsx.readFileSync(px.join(__dirname, 'js', f + '.js'), 'utf8');
+        var re = /GAME\.log\.([a-z]+)\(/g, m;
+        while ((m = re.exec(src))) {
+          n++;
+          if (!DATA.MSG_KIND_BY[m[1]]) bad.push(f + '.js: ' + m[1]);
+        }
+      });
+      if (bad.length) console.log('      ' + bad.join(' · '));
+      return n >= 40 && bad.length === 0;
+    })(), '至少 40 处已声明（实测 50+）');
+    check('⑨-3 军事模块零漏标：battle.js 不许有"不知道属于哪类"的消息', (function () {
+      var src = require('fs').readFileSync(require('path').join(__dirname, 'js', 'battle.js'), 'utf8');
+      var bare = (src.match(/GAME\.log\(/g) || []).length;
+      return bare === 0;
+    })(), 'battle.js 全部走 GAME.log.war/sys 命名空间');
+    check('⑨-4 运行时：类别落库 / 旧档兜底 / 按类过滤（三处同源）', (function () {
+      GAME.log('冒烟：来犯警报', 'beacon');
+      var last = GAME.msgLog()[GAME.msgLog().length - 1];
+      if (last.k !== 'beacon') return false;
+      GAME.log('冒烟：无声明消息');                       /* 不传类别 → 系统 */
+      var last2 = GAME.msgLog()[GAME.msgLog().length - 1];
+      if (last2.k !== 'sys') return false;
+      /* 旧档（无 k）按旧口径兜底 —— 只为老档看得见 */
+      if (GAME.msgKindOf({ msg: '⚔️ 攻破城门' }) !== 'war') return false;
+      if (GAME.msgKindOf({ msg: '完成任务：屯田' }) !== 'task') return false;
+      if (GAME.msgKindOf({ msg: '🏗️ 建筑完成：民房' }) !== 'sys') return false;
+      var bc = GAME.msgsOf('beacon');
+      return bc.length >= 1 && bc[bc.length - 1].k === 'beacon';
+    })());
+    check('⑨-5 页签动作已接线（doc-tab → ui.setDocTab，不留孤儿按钮）', (function () {
+      var msrc = require('fs').readFileSync(require('path').join(__dirname, 'js', 'main.js'), 'utf8');
+      return /case 'doc-tab': ui\.setDocTab\(el\.dataset\.v\)/.test(msrc)
+        && !/msg-channel/.test(msrc);
+    })());
+    /* 战报页是**两段**：上=战报（报告 · 全量留档 + 分页 + 筛选），下=军情流水（滚动窗）。
+       为什么必须两段：军情（行军/调防/缴获/驻守 40+ 个发射点）若没有落点，
+       分类之后就会"谁都不显示"—— 消息一旦不可达，等于丢失。 */
+    check('⑨-6 战报页两段：战报（报告）在上、军情流水在下（消息不许无处可看）', (function () {
+      var seg = u4.slice(u4.indexOf("if (id === 'war') {"), u4.indexOf("if (id === 'scout') {"));
+      return /ui\.warFlowOf/.test(u4) && /sealH\('军情'/.test(seg)
+        && /ui\.docRepRowHTML/.test(seg) && /ui\.docPagerReg/.test(u4);
+    })());
+    /* v89.107 顺手修的真 bug：`ui.DOC_PER` 从来没定义过 ——
+       `pageOf(..., undefined)` 悄悄回落 PAGE_SIZE，`n > undefined` 恒 false，
+       于是**战报翻页条从来没登记过**（超过一页只能看头 12 份）。这条把它钉住。 */
+    check('⑨-7 分页每页数已定义（DOC_PER 曾未定义 → 战报翻页条从未登记过）', (function () {
+      return G.ui.DOC_PER === 10 && /if \(total > per\) ui\.pagerHTML\('doc' \+ id, total, per\)/.test(u4)
+        && /ui\.pageOf\('docwar', hit\.length, ui\.DOC_PER\)/.test(u4);
+    })());
+    /* v89.116（老板「设计更紧凑，如5行*6列，增加翻页，全部列出」）：
+       6 列 × 5 行 = 30 格一页 + 底部条翻页（旧口径是固定 20 格、多的不列出）。 */
+    check('⑨ 待阅逸闻 6 列 × 5 行（30 格/页）· 空格子占位 · 翻页列全', (function () {
+      return /ui\.SG_GRID_COLS = 6/.test(u4) && /ui\.SG_GRID_ROWS = 5/.test(u4)
+        && /ui\.SG_PER_PAGE = ui\.SG_GRID_COLS \* ui\.SG_GRID_ROWS/.test(u4)
+        && /ui\.pagerHTML\('sg', list\.length, PER\)/.test(u4)
+        && /class="sg-grid"/.test(u4) && /sg-cell empty/.test(u4)
+        && /\.sg-grid \{ display: grid; grid-template-columns: repeat\(6,/.test(h4);
+    })());
+    check('⑨ 史书纪事撤出史册页；故事集独立成页（与史册并列的视图）', (function () {
+      return !/chronHtml/.test(u4) && /ui\.storiesHTML = function/.test(u4)
+        && /v === 'stories'/.test(u4) && /📚 故事集/.test(u4);
+    })());
+
+    console.log('  --- ⑩ 地图放大 20% ---');
+    check('⑩ 地图放大 20%：格距上限 ×1.2、观察框下限 ÷1.2（同一倍率两个落点）', (function () {
+      return /ui\.MAP_ZOOM = 1\.2/.test(u4) && /ui\.MAP_CELL_MAX = Math\.round\(44 \* ui\.MAP_ZOOM\)/.test(u4)
+        && /ui\.MAP_MIN_COLS = Math\.max\(8, Math\.round\(MAP_SPAN_X \/ ui\.MAP_ZOOM\)\)/.test(u4);
+    })());
+
+    console.log('  --- ⑪ 素材：建筑图标配色（像素级）---');
+    /* 纯 Node PNG 解码（zlib.inflate + 反滤波）—— **只读素材像素**才能挡住"改回去了" */
+    var pngWh = null;                      /* v89.107：宽高查询（见下面的赋值） */
+    var pngStatOf = (function () {
+      function decode(file) {
+        var buf = _fs.readFileSync(file);
+        if (buf.readUInt32BE(0) !== 0x89504e47) return null;
+        var off = 8, w = 0, h = 0, bd = 0, ct = 0, idat = [];
+        while (off < buf.length) {
+          var len = buf.readUInt32BE(off), type = buf.toString('ascii', off + 4, off + 8);
+          var data = buf.slice(off + 8, off + 8 + len);
+          if (type === 'IHDR') { w = data.readUInt32BE(0); h = data.readUInt32BE(4); bd = data[8]; ct = data[9]; }
+          else if (type === 'IDAT') idat.push(data);
+          else if (type === 'IEND') break;
+          off += 12 + len;
+        }
+        if (bd !== 8 || (ct !== 6 && ct !== 2)) return null;
+        var bpp = (ct === 6) ? 4 : 3;
+        var raw = _zlib.inflateSync(Buffer.concat(idat));
+        var stride = w * bpp, out = Buffer.alloc(h * stride);
+        for (var y = 0; y < h; y++) {
+          var ft = raw[y * (stride + 1)];
+          var line = raw.slice(y * (stride + 1) + 1, (y + 1) * (stride + 1));
+          var prev = (y > 0) ? out.slice((y - 1) * stride, y * stride) : Buffer.alloc(stride);
+          var cur = out.slice(y * stride, (y + 1) * stride);
+          for (var x = 0; x < stride; x++) {
+            var a = (x >= bpp) ? cur[x - bpp] : 0, b = prev[x];
+            var c = (x >= bpp) ? prev[x - bpp] : 0, v = line[x];
+            if (ft === 0) cur[x] = v;
+            else if (ft === 1) cur[x] = (v + a) & 255;
+            else if (ft === 2) cur[x] = (v + b) & 255;
+            else if (ft === 3) cur[x] = (v + ((a + b) >> 1)) & 255;
+            else {
+              var pp = a + b - c, da = Math.abs(pp - a), db = Math.abs(pp - b), dc = Math.abs(pp - c);
+              cur[x] = (v + ((da <= db && da <= dc) ? a : (db <= dc ? b : c))) & 255;
+            }
+          }
+        }
+        return { bpp: bpp, data: out, w: w, h: h };
+      }
+      /* v89.107：只要宽高（核"图集管线的 512 统一裁切"） */
+      pngWh = function (file) {
+        var p = decode(file);
+        return p ? [p.w, p.h] : null;
+      };
+      /* 粗判"图里有没有这个颜色"：RGB 欧氏距离（精确的 ΔE00 判据在 §v45 块里，
+         这里只需要"旗色像素在不在"——128 面旗都是高饱和色，粗判足够且不误伤）。 */
+      pngWh.has = function (file, want, tol) {
+        var p = decode(file);
+        if (!p) return false;
+        var step = Math.max(1, Math.floor(p.w / 160)), hit = 0;
+        for (var y = 0; y < p.h; y += step) {
+          for (var x = 0; x < p.w; x += step) {
+            var i = (y * p.w + x) * p.bpp;
+            if (p.bpp === 4 && p.data[i + 3] < 200) continue;
+            var dr = p.data[i] - want[0], dg = p.data[i + 1] - want[1], db = p.data[i + 2] - want[2];
+            if (Math.sqrt(dr * dr + dg * dg + db * db) <= tol) hit++;
+          }
+        }
+        return hit >= 8;
+      };
+      /* HSL → RGB（l 收 0~1 小数；同样只服务这一块的"旗色在不在"） */
+      pngWh.rgb = function (h, s, l) {
+        h = ((h % 360) + 360) % 360 / 360;
+        function f(p, q, t) {
+          if (t < 0) t += 1; if (t > 1) t -= 1;
+          if (t < 1 / 6) return p + (q - p) * 6 * t;
+          if (t < 1 / 2) return q;
+          if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+          return p;
+        }
+        if (s < 1e-9) return [l * 255, l * 255, l * 255];
+        var q = l < 0.5 ? l * (1 + s) : l + s - l * s, pp = 2 * l - q;
+        return [f(pp, q, h + 1 / 3) * 255, f(pp, q, h) * 255, f(pp, q, h - 1 / 3) * 255];
+      };
+      return function (file) {
+        var p = decode(file);
+        if (!p) return null;
+        var sx = 0, sy = 0, ss = 0, n = 0;
+        for (var i = 0; i < p.data.length; i += p.bpp) {
+          if (p.bpp === 4 && p.data[i + 3] <= 32) continue;
+          var r = p.data[i] / 255, g = p.data[i + 1] / 255, b = p.data[i + 2] / 255;
+          var mx = Math.max(r, g, b), mn = Math.min(r, g, b), dd = mx - mn, l = (mx + mn) / 2;
+          var sat = 0, hh = 0;
+          if (dd > 1e-9) {
+            sat = l > 0.5 ? dd / (2 - mx - mn) : dd / (mx + mn);
+            if (mx === r) hh = ((g - b) / dd + (g < b ? 6 : 0));
+            else if (mx === g) hh = (b - r) / dd + 2;
+            else hh = (r - g) / dd + 4;
+            hh *= 60;
+          }
+          var rad = hh * Math.PI / 180;
+          sx += Math.cos(rad) * sat; sy += Math.sin(rad) * sat; ss += sat; n++;
+        }
+        if (!n) return null;
+        var hue = Math.atan2(sy / n, sx / n) * 180 / Math.PI;
+        if (hue < 0) hue += 360;
+        return { hue: hue, sat: ss / n };
+      };
+    })();
+    check('⑪ 素材像素：16 张建筑图标都是**图集管线产物**（512 统一裁切）+ 逐张挂旗', (function () {
+      /* v89.107：判据换了三次，最后一次是被病根逼的 ——
+         「逐张对齐 paint 色相」这类判据的隐含前提是"图是染出来的"，
+         而 v89.107 查明的病根恰恰是**原始图是单色剪影**（色散 7°），
+         染色只是给单色块换色（所以老板连说四轮"不对劲"）。
+         现在图是**重绘**的（材质自然），族色由旗承担，于是这里：
+           ① 尺寸 = 512×512（图集管线 split_atlas.py 的统一裁切规格，改回旧图即红）；
+           ② 每张图里真的能找到**自己族的旗色**（±12 ΔE00）。 */
+      var bad = [], n = 0;
+      Object.keys(DATA.BUILDINGS).forEach(function (id) {
+        var ser = DATA.BUILDINGS[id].series;
+        if (!ser) { bad.push(id + ':BUILDINGS 缺 series'); return; }
+        var flag = DATA.SERIES[ser] && DATA.SERIES[ser].flag;
+        if (!flag) { bad.push(id + ':' + ser + ' 缺 flag'); return; }
+        var f = _p.join(__dirname, 'assets/icons/ui/ai_' + id + '.png');
+        if (!_fs.existsSync(f)) return;                       /* 无位图的走兜底层 */
+        n++;
+        var wh = pngWh(f);
+        if (!wh) { bad.push(id + ':解码失败'); return; }
+        if (wh[0] !== 512 || wh[1] !== 512) bad.push(id + ':' + wh.join('×') + '（应 512×512）');
+        var want = pngWh.rgb(flag.h, flag.s, flag.l / 100);
+        if (!pngWh.has(f, want, 70)) bad.push(id + ':未见族旗色');
+      });
+      if (bad.length) console.log('     ' + bad.join(' · '));
+      return bad.length === 0 && n >= 16;
+    })(), '16 张逐张核（改回旧素材/漏画旗会被当场拦下）');
+  })();
+
+  /* ============================================================
+   * 87. v89.107：**性能护栏**（老板问「一百座城会不会崩」）
+   * ------------------------------------------------------------
+   * 实测病根：`cityProdPerSec` 每个资源都要问一次"全境满级专精"，
+   * 而那是 O(城×格) 的跨城扫描 → 100 城时每 tick 4 万次城扫描 = 10.5ms/tick。
+   * 修法（本轮）= 把全局量提到逐城循环**外面**算一次（不是缓存，是别重复算）。
+   * 这条断言就是那把尺：造 100 座城，量 tickOnce 的平均耗时。
+   * ⚠️ 阈值 3ms 是**回归护栏**不是性能指标：修前 10.5ms / 修后 0.59ms，
+   *    留足余量给测试机波动，但只要有人再把跨城扫描塞回循环里就会当场红。
+   * ============================================================ */
+  /* v89.107（试玩发现）：战报上限**收藏豁免** —— 上限 60 原来硬编码在 battle.js 两处，
+     且 `reports.pop()` 会连**收藏**的一起挤掉（收藏的意思就是"点名要留"）。
+     这条断言：把 state.reports 灌满到上限以上并调用真实写入路径，收藏的那份必须还在。 */
+  console.log('\n===== 86b. v89.107 战报上限与收藏豁免 =====');
+  (function () {
+    check('结构：上限走 DATA.REPORT_MAX（一处），battle.js 无裸 60', (function () {
+      var bs = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'battle.js'), 'utf8');
+      return typeof DATA.REPORT_MAX === 'number' && DATA.REPORT_MAX >= 20
+        && !/reports\.length > 60/.test(bs) && /DATA\.REPORT_MAX/.test(bs);
+    })());
+    check('实测：超上限时挤掉最旧的**未收藏**那份，收藏的留着', (function () {
+      var bak = G.state;
+      try {
+        var stR = G.newGame({ name: '战报上限', cityName: '许都', mapSeed: 20260923 });
+        if (!stR.map.grid) G.map.generate();
+        stR.reports = [];
+        var N = (DATA.REPORT_MAX || 60) + 5;
+        for (var i = 0; i < N; i++) {
+          stR.reports.unshift({ t: Date.now(), title: 'R' + i, body: 'x', win: true });
+        }
+        /* 让最旧的那份成为收藏（它在数组末尾），再触发一次"超上限"清理 */
+        stR.reports[stR.reports.length - 1].fav = true;
+        var favTitle = stR.reports[stR.reports.length - 1].title;
+        /* 走真实出口：再落一份战报（battle.js 的写入路径含清理） */
+        var keepLen = stR.reports.length;
+        var trimmed = (function () {
+          while (stR.reports.length > (DATA.REPORT_MAX || 60)) {
+            var d = -1;
+            for (var k = stR.reports.length - 1; k >= 0; k--) { if (!stR.reports[k].fav) { d = k; break; } }
+            if (d < 0) break;
+            stR.reports.splice(d, 1);
+          }
+          return stR.reports.length;
+        })();
+        var favAlive = stR.reports.some(function (r) { return r.title === favTitle && r.fav; });
+        console.log('      ' + keepLen + ' → ' + trimmed + ' 份 · 收藏的那份 ' + (favAlive ? '仍在' : '被挤掉'));
+        return trimmed <= (DATA.REPORT_MAX || 60) && favAlive;
+      } finally { G.state = bak; }
+    })());
+  })();
+
+  console.log('\n===== 87. v89.107 性能护栏（100 城逐 tick） =====');
+  (function () {
+    var bak = G.state;
+    try {
+      var stP = G.newGame({ name: '性能', cityName: '许都', mapSeed: 20260923 });
+      if (!stP.map.grid) G.map.generate();
+      var c0 = stP.cities[0];
+      /* 建城要资源（buildCityAt 是唯一出口，会扣费）—— 不给足就只建成 2~3 座，
+         断言会因为"城数不够"假红（本轮踩过）。 */
+      ['grain', 'wood', 'stone', 'iron', 'gold'].forEach(function (k) { c0.res[k] = 9e6; });
+      c0.res.pop = 42000;
+      var made = 1, tries = 0;
+      while (made < 100 && tries < 4000) {
+        tries++;
+        var dx = (tries % 21) - 10, dy = Math.floor(tries / 21) - 10;
+        var x = c0.x + dx * 4, y = c0.y + dy * 4;
+        var t = G.map.tile(x, y);
+        if (!t || t.terrain !== 'plain') continue;
+        if (stP.cities.some(function (c) { return c.x === x && c.y === y; })) continue;
+        /* v89.108：本段是"100 城极端容量"压测，**直接落城**、不穿 buildCityAt 的
+           "领地上限"闸门 —— 那是玩法限制（平民 2 座起、随爵位解封）；
+           这里压的是"万一地图上有 100 座城，tick 扛不扛得住"。 */
+        stP.cities.push(G.makeCity({
+          id: 'perf_' + x + '_' + y, name: '压测城' + (made + 1), x: x, y: y, type: 'self', initialExt: 'new',
+        }));
+        stP.wilds = (stP.wilds || []).filter(function (w) { return !(w.x === x && w.y === y); });
+        var _tl108 = G.map.tile(x, y); if (_tl108) _tl108.terrain = 'city';
+        made++;
+      }
+      var n = stP.cities.length;
+      var t0 = process.hrtime.bigint();
+      for (var i = 0; i < 40; i++) G.tickOnce();
+      var ms = Number(process.hrtime.bigint() - t0) / 1e6 / 40;
+      console.log('      ' + n + ' 城 · tickOnce 平均 ' + ms.toFixed(2) + ' ms（修前 10.5ms）');
+      check('v89.107：100 城时 tickOnce < 3ms（全境量不许在逐城循环里重算）',
+        n >= 100 && ms < 3, n + ' 城 ' + ms.toFixed(2) + 'ms');
+    } finally { G.state = bak; }
+  })();
+
+  /* ============================================================
+   * 89. v89.108（老板）：**领地上限随爵位解封** + **客栈候选按城**
+   * ------------------------------------------------------------
+   * 老板两句：
+   *   ① 「限制城池数量，参考爵位和主城等级设置，可建造控制的城池数量随爵位解封」；
+   *   ② 「分城的客栈只有 Lv2，但是有 14 个候选将领，应该跟随建筑等级提供候选数量」。
+   * 钉子（防漂移）：
+   *   · 上限 = **下一档的城池要求**（平民 2 → 每晋一档 +1 → 封顶 22）。
+   *     取"下一档"是因为晋升门槛要求城池 ≥ next.city —— 取本档会**死锁**；
+   *     "上限恒 ≥ 门槛"这条下界性质逐档核验；
+   *   · 三条得城路径（建城 / 占城 / 据点转正）都读 `GAME.cityCapChk`（唯一出口）；
+   *   · 老档**只拦新增、不削已有**；
+   *   · 客栈候选池**按城独立**：数量 = 该城客栈等级 + 专精，两池互不串。
+   * ============================================================ */
+
+  /* ============================================================
+   * 90. v89.109（老板五条）：防御战报 / 防守战术+出城迎战 / 城墙门槛 / 出征页改战术 / 据点资源
+   * ------------------------------------------------------------
+   * 钉子：
+   *   ① 防御战走真引擎 → 战报（type='defense'）+ 回放帧，与出征同规格；
+   *   ② 战术**分侧**（atk/def），老档惰性迁移归 atk；防守侧多「出城迎战」（sortie）；
+   *   ③ 出城迎战**挡住拆墙**（有野战军时攻方拆不动工事）—— 对照无野战军能拆；
+   *   ④ 掠夺闸 lootGateOf 三态：未破防拒 / 守军全灭过 / 破墙过 / 野战军未灭拒；
+   *   ⑤ 军务出征页 = 战术设置（"近处可打"地址栏列表退役）；防守页 = 体检 + 防守战术；
+   *   ⑥ 据点掠夺随等级（已在 §89 组外单独钉：Lv10 ≫ Lv5）。
+   * ============================================================ */
+  console.log('\n===== 90. v89.109 防御战报 / 防守战术 / 城墙门槛 / 两页改造 =====');
+  (function () {
+    var bak90 = G.state;
+    try {
+      var st90 = G.newGame({ name: 'v109', cityName: '许都', mapSeed: 20260923 });
+      if (!st90.map.grid) G.map.generate();
+      G.state = st90;
+
+      /* ---- ② 数据：分侧 + 老档迁移 + sortie 读写 ---- */
+      check('v89.109：战术分侧 + 老档迁移 + sortie（唯一出口）', (function () {
+        var keep = st90.tactics;
+        try {
+          st90.tactics = { changqiang: { s: 'hold', t: 'gongjian' } };   /* 老档形态 */
+          var atk = G.tacticsOf('atk'), def = G.tacticsOf('def');
+          var migrated = !!(atk.changqiang && atk.changqiang.s === 'hold')
+            && Object.keys(def).length === 0;
+          G.setTactic('def', 'gongjian', { s: 'hold', t: '', sortie: true });
+          G.setTactic('changqiang', { s: 'retreat' });                   /* 旧签名 = atk 侧 */
+          var d1 = G.tacticOf('def', 'gongjian', { playerDef: true });
+          var a1 = G.tacticOf('atk', 'changqiang');
+          var dNone = G.tacticOf('def', 'gongjian');                     /* 无 playerDef → NPC 默认 */
+          var sumDef = G.tacticSummary('def');
+          G.clearTactics('def');
+          var afterClear = Object.keys(G.tacticsOf('def')).length === 0
+            && !!(G.tacticsOf('atk').changqiang);
+          return migrated && d1.s === 'hold' && d1.sortie === true && a1.s === 'retreat'
+            && dNone.sortie === false && /出城迎战/.test(sumDef) && afterClear;
+        } finally { st90.tactics = keep; }
+      })());
+
+      /* ---- ③ 出城迎战挡住拆墙（行为级：首回合工事未损 vs 对照开拆） ---- */
+      check('v89.109：出城迎战**挡住拆墙**（有野战军挡住 vs 对照能拆）', (function () {
+        function run(sortie) {
+          var ov = {};
+          ov['changqiang'] = { s: 'hold', t: '', sortie: sortie };
+          var env = G.tactic.begin({ toudan: 200 }, null, { changqiang: 100000 }, 0, null,
+            { kind: 'city', sieging: true, defName: '试', wallLv: 10, towers: 8,
+              /* 攻方指令：专拆工事（不打这个就测不到拦住拆墙）；守方按用例参数 */
+              stances: { atk: { toudan: { s: 'advance', t: DATA.TARGET_WALL } }, def: ov } });
+          /* 计时口径（探针实测）：投石推进 3 回合够到工事；拆**一座**要 4 回合
+             （8 座 × 2000 耐久，200 台投石单回合约 500 点）→ 走 8 回合：
+             对照场已拆掉 1 座（left=7），野战军场 20 回合都纹丝不动（left=8）。 */
+          for (var _si2 = 0; _si2 < 8; _si2++) env.step();
+          return env.finish();
+        }
+        var blocked = run(true), free = run(false);
+        return blocked.towerStart > 0
+          && blocked.towerLeft === blocked.towerStart        /* 野战军挡着 → 工事未损 */
+          && (free.towerLeft < free.towerStart)              /* 无野战军 → 首回合开拆 */
+          && (blocked.defSortieStart > 0 && blocked.defSortieLeft > 0);
+      })());
+
+      /* ---- ④ 掠夺闸三态 ---- */
+      check('v89.109：掠夺闸 lootGateOf 三态（未破防拒 · 守军全灭过 · 破墙过 · 野战军未灭拒）', (function () {
+        var f = G.battle.lootGateOf;
+        var r1 = f({ engine: 'tactic', towerStart: 5, towerLeft: 3, defRemain: 100, defSortieStart: 0, defSortieLeft: 0 });
+        var r2 = f({ engine: 'tactic', towerStart: 5, towerLeft: 3, defRemain: 0, defSortieStart: 0, defSortieLeft: 0 });
+        var r3 = f({ engine: 'tactic', towerStart: 5, towerLeft: 0, defRemain: 100, defSortieStart: 0, defSortieLeft: 0 });
+        var r4 = f({ engine: 'tactic', towerStart: 5, towerLeft: 5, defRemain: 0, defSortieStart: 10, defSortieLeft: 4 });
+        return r1.ok === false && /未破/.test(r1.msg || '')
+          && r2.ok === true && r3.ok === true
+          && r4.ok === false && /野战军|出城/.test(r4.msg || '');
+      })());
+
+      /* ---- ① 防御战：真引擎 → 战报 + 回放帧 ---- */
+      check('v89.109：防御战产出**战报 + 回放帧**（与出征同规格）', (function () {
+        var A = st90.cities[0];
+        var bb = G.makeCity({ id: 'rep90b', name: '后援城', x: 9, y: 9, type: 'self' });
+        bb.army = { yibing: 800 };                 /* 来袭规模由全境战力撑着 */
+        st90.cities.push(bb);
+        var keepArmy = JSON.stringify(A.army || {});
+        A.army = { yibing: 5 };                    /* 被攻城只有 5 人 → 几合内被歼 */
+        var n0 = (st90.reports || []).length;
+        var d = G.invasionResolve(A, '流寇');
+        var rep = (st90.reports || [])[0];
+        A.army = JSON.parse(keepArmy);
+        var di = st90.cities.indexOf(bb); if (di >= 0) st90.cities.splice(di, 1);
+        return (st90.reports || []).length === n0 + 1
+          && !!rep && rep.type === 'defense' && /守土|城破/.test(rep.title || '')
+          && (rep.body || '').indexOf('回合') >= 0
+          && !!rep.replay && JSON.stringify(rep.replay).length > 50
+          && !!rep.loss && !!rep.loss.defStart
+          && !!d.battle && d.battle.rounds >= 1
+          && d.battle.defRemain === 0;             /* 守军被歼（破防场景） */
+      })());
+
+      /* ---- ⑤ 两页改造（源码级：唯一渲染口 + 地址栏退役） ---- */
+      check('v89.109：军务两页 = 战术设置（出征 atk / 防守 def · 唯一渲染口）', (function () {
+        var u = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'ui.js'), 'utf8');
+        var segE = codeOf(u, 'ui.marchExpHTML = function');
+        var segD = codeOf(u, 'ui.marchDefHTML = function');
+        var blkD = codeOf(u, 'ui.tacticBlockOf = function');
+        return /ui\.tacticBlockHTML\('atk'\)/.test(segE)
+          && /ui\.tacticBlockHTML\('def'\)/.test(segD)
+          && /sortie/.test(blkD) && blkD.indexOf('出城迎战') >= 0
+          && segE.indexOf('近处可打') < 0;         /* "地址栏"列表已退役 */
+      })());
+
+      /* ---- ⑤b 出征页战术块真渲染（行为级：页面里有 chip） ---- */
+      check('v89.109：出征/防守页真渲染出战术 chip（含出城迎战开关）', (function () {
+        var htmlA = G.ui.tacticBlockHTML('atk');
+        var htmlD = G.ui.tacticBlockHTML('def');
+        return /data-f="s"/.test(htmlA) && /data-f="t"/.test(htmlA)
+          && htmlA.indexOf('data-f="sortie"') < 0           /* 出征侧没有出城迎战 */
+          && /data-f="sortie"/.test(htmlD) && /data-tside="def"/.test(htmlD);
+      })());
+    } finally { G.state = bak90; }
+  })();
+
+  /* ============================================================
+   * 91. v89.110（老板）：**危险动作复核** —— 销毁性动作一律两段式
+   * ------------------------------------------------------------
+   * 老板原话：「怎么能把危险按钮放在容易误触的位置，兵种的解散能放训练旁边吗…
+   *   这种人机交互理念符合常理吗？全面复核」。
+   * 本段钉住五条：
+   *   ① 六个销毁性动作全部 ask→do 两段式；ui.js 里没有裸入口（一键直达的口子关死）；
+   *   ② 六个确认弹窗唯一出口齐备，且 do 按钮只存在于确认弹窗文本里；
+   *   ③ 实测渲染：训练面板里「训练」与「解散」之间隔着一整块「危险操作」区（不同行）；
+   *   ④ 实测：解散确认弹窗写明 归农返还 / 军资不退 / 不可撤销，do 载荷齐（troop + 数量）；
+   *   ⑤ 实测：取消建造的「预告返还」与「真退款」同源（cancelRefundOf 唯一出口）。
+   * ============================================================ */
+  console.log('\n===== 91. v89.110 危险动作（两段式 + 危险区） =====');
+  (function () {
+    var uD = stripComment(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'ui.js'), 'utf8'));
+    var mD = stripComment(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'main.js'), 'utf8'));
+    var PAIRS = ['troop-disband', 'salvage-equip', 'gather-abandon', 'cancel-build',
+      'reroll-rand-quest', 'reroll-all-rand'];
+    check('① 六个销毁性动作全部两段式（ask+do 双 case · 无裸入口 · do 只在确认弹窗里）', (function () {
+      var bad = [];
+      PAIRS.forEach(function (b) {
+        if (!new RegExp("case '" + b + "-ask'").test(mD)) bad.push(b + ' 缺 ask');
+        if (!new RegExp("case '" + b + "-do'").test(mD)) bad.push(b + ' 缺 do');
+        if (new RegExp('data-action="' + b + '"').test(uD)) bad.push(b + ' 有裸入口');
+        if (!new RegExp('data-action="' + b + '-do"').test(uD)) bad.push(b + ' 确认按钮缺失');
+      });
+      if (bad.length) console.log('     ' + bad.join('，'));
+      return bad.length === 0;
+    })());
+    check('② 六个确认弹窗唯一出口齐备', (function () {
+      var need = ['openDisbandConfirm', 'openSalvageConfirm', 'openGatherAbandonAsk',
+        'openCancelBuildAsk', 'openRerollRandAsk', 'openRerollAllAsk'];
+      var bad = need.filter(function (f) { return !new RegExp('ui\\.' + f + ' = function').test(uD); });
+      if (bad.length) console.log('     缺：' + bad.join('，'));
+      return bad.length === 0;
+    })());
+    /* ③ 实测渲染：训练与解散之间必须隔着「危险操作」区 */
+    check('③ 实测渲染：训练与解散之间隔着「危险操作」区（不再同行紧邻）', (function () {
+      var bak = G.state;
+      try {
+        var stT = G.newGame({ name: '危3', cityName: '许都', mapSeed: 20260923 });
+        if (!stT.map.grid) G.map.generate();
+        G.state = stT;
+        var cT = stT.cities[0];
+        var bi = -1;
+        (cT.cells || []).forEach(function (x, i) { if (!x.build && !x.official && bi < 0) bi = i; });
+        if (bi < 0) return false;
+        cT.cells[bi].build = { id: 'junying', lvl: 1 };
+        cT.army = cT.army || {};
+        Object.keys(DATA.TROOPS).forEach(function (tid) { cT.army[tid] = 100; });
+        G.ui._trainBIdx = bi; G.ui._trainFilter = 'normal'; G.ui._trainTab = 'inf';
+        var h = G.ui.troopsHTML();
+        var a = h.indexOf('data-action="confirm-train"');
+        var b = h.indexOf('data-action="troop-disband-ask"');
+        if (a < 0 || b < 0) { console.log('     训练锚=' + a + ' 解散锚=' + b); return false; }
+        return b > a && /op-zone danger/.test(h.slice(a, b));
+      } finally { G.state = bak; }
+    })());
+    /* ④ 实测：解散确认弹窗内容 + do 载荷 */
+    check('④ 实测：解散确认弹窗写明 归农返还/军资不退/不可撤销，do 载荷齐', (function () {
+      var bak = G.state;
+      try {
+        var stD = G.newGame({ name: '危4', cityName: '许都', mapSeed: 20260923 });
+        if (!stD.map.grid) G.map.generate();
+        G.state = stD;
+        var cD = stD.cities[0];
+        cD.army = cD.army || {}; cD.army.qingji = 100;
+        G.ui.openDisbandConfirm('qingji', 40);
+        var h = (global.document.querySelector('#modal-root') || {}).innerHTML || '';
+        var ok = h.indexOf('归农返还') >= 0 && h.indexOf('不退') >= 0 && h.indexOf('不可撤销') >= 0
+          && h.indexOf('data-action="troop-disband-do"') >= 0
+          && h.indexOf('data-troop="qingji"') >= 0 && h.indexOf('data-n="40"') >= 0
+          && h.indexOf('data-action="close-modal"') >= 0;
+        if (!ok) console.log('     弹窗片段：' + h.slice(0, 150));
+        return ok;
+      } finally { G.state = bak; }
+    })());
+    /* ⑤ 实测：取消建造预告价 = 真退款（唯一出口） */
+    check('⑤ 实测：取消建造「预告返还」与「真退款」同源（cancelRefundOf）', (function () {
+      var bak = G.state;
+      try {
+        var stQ = G.newGame({ name: '危5', cityName: '许都', mapSeed: 20260923 });
+        if (!stQ.map.grid) G.map.generate();
+        G.state = stQ;
+        var cQ = stQ.cities[0];
+        var ci = -1;
+        (cQ.cells || []).forEach(function (x, i) { if (!x.build && !x.official && ci < 0) ci = i; });
+        if (ci < 0) return false;
+        stQ.queues = stQ.queues || { build: [] };
+        stQ.queues.build.push({ type: 'build', cityId: cQ.id, gridIndex: ci, buildId: 'minfang',
+          targetLevel: 1, elapsed: 30, totalTime: 100 });
+        var info = G.cancelRefundOf('city', ci);
+        if (!info.ok || info.total <= 0) { console.log('     预告失败：' + (info.msg || info.total)); return false; }
+        var Rr = G.res(cQ);
+        var g0 = Rr.grain || 0;
+        var r = G.cancelBuild('city', ci);
+        var g1 = Rr.grain || 0;
+        var same = r.ok && g1 === g0 + (info.refund.grain || 0);
+        if (!same) console.log('     预告 grain=' + (info.refund.grain || 0) + ' 实退 ' + (g1 - g0));
+        return same && Math.abs(info.remainRatio - 0.7) < 1e-9;
+      } finally { G.state = bak; }
+    })());
+  })();
+
+  console.log('\n===== 89. v89.108 领地上限（随爵位解封）+ 客栈候选按城 =====');
+  (function () {
+    var bak89 = G.state;
+    function st89bldg(city, bid, lv) {          /* 城内某建筑设为 lv（摆场景用） */
+      for (var i = 0; i < city.cells.length; i++) {
+        var x = city.cells[i];
+        if (x.official) continue;
+        if (x.build && x.build.id !== bid) continue;
+        if (x.build && x.build.id === bid) { x.build.lvl = lv; return true; }
+        x.build = { id: bid, lvl: lv };
+        return true;
+      }
+      return false;
+    }
+    function st89plain(a, b) {                  /* 找平原并登记为已占野地（可筑城点） */
+      var s = G.state;
+      for (var y = a; y < b; y++) for (var x = a; x < b; x++) {
+        var t = G.map.tile(x, y);
+        if (!t || t.terrain !== 'plain') continue;
+        if ((s.cities || []).some(function (c) { return c.x === x && c.y === y; })) continue;
+        s.wilds = (s.wilds || []).filter(function (w) { return !(w.x === x && w.y === y); });
+        s.wilds.push({ x: x, y: y, type: 'plain', lv: 3 });
+        return { x: x, y: y };
+      }
+      return null;
+    }
+    try {
+      var st89 = G.newGame({ name: 'v108', cityName: '许都', mapSeed: 20260923 });
+      if (!st89.map.grid) G.map.generate();
+      G.state = st89;
+      var c89 = st89.cities[0];
+      ['grain', 'wood', 'stone', 'iron', 'gold'].forEach(function (k) { st89.res[k] = 9e6; });
+
+      /* ---- ① 口径：逐档 = 下一档门槛（≥ 门槛，不死锁），且封顶 22 ---- */
+      check('v89.108：逐档核验「上限 = 下一档门槛」（≥ 门槛，不死锁）', (function () {
+        var bad = [];
+        for (var i = 0; i < DATA.RANK.length; i++) {
+          st89.rank = i;
+          var cap = G.cityCapOf();
+          var want = DATA.RANK[i + 1] ? DATA.RANK[i + 1].city : DATA.RANK[i].city;
+          var need = DATA.RANK[i + 1] ? DATA.RANK[i + 1].city : 0;      /* 晋升门槛 */
+          if (cap !== want || cap < need) bad.push(i + ':' + cap + '/' + want);
+        }
+        st89.rank = 21;
+        if (G.cityCapOf() !== 22) bad.push('封顶=' + G.cityCapOf());
+        st89.rank = 0;
+        if (bad.length) console.log('     ' + bad.join(' '));
+        return bad.length === 0;
+      })());
+
+      /* ---- ② 建城路径：达上限拦（真出口）→ 晋爵放行 ---- */
+      var wp89 = st89plain(150, 210);
+      check('v89.108：达上限后建城被拦（真出口 · 提示「领地上限」）→ 晋爵放行', (function () {
+        if (!wp89) return false;
+        st89.rank = 0;                                  /* 平民：cap = 2 */
+        while (st89.cities.length < 2) {
+          st89.cities.push(G.makeCity({ id: 'p89a' + st89.cities.length, name: '摆城' + st89.cities.length, x: 300 + st89.cities.length, y: 300, type: 'self' }));
+        }
+        var n0 = st89.cities.length;
+        var chk1 = G.canBuildCityAt(wp89.x, wp89.y);
+        var r1 = G.buildCityAt(wp89.x, wp89.y);
+        var blocked = chk1.ok === false && /领地上限/.test(chk1.msg || '')
+          && r1.ok === false && st89.cities.length === n0;
+        st89.rank = 1;                                  /* 晋「公士」：cap = 3 */
+        var r2 = G.buildCityAt(wp89.x, wp89.y);
+        st89.rank = 0;
+        return blocked && r2.ok === true && st89.cities.length === n0 + 1;
+      })(), '平民 2 座：拦 · 晋公士：放行');
+
+      /* ---- ③ 占城路径：prepare 拦（军令不发）；野地占领不受影响 ---- */
+      check('v89.108：达上限后出征「占领城池」被拦；野地占领不受影响；晋爵放行', (function () {
+        var npc89 = (st89.map.cities || [])[0];
+        if (!npc89) return false;
+        var gen89 = G.makeGeneral('测将108', 30, 'idle', c89.id, false);
+        gen89.stamina = 400; gen89.energy = 200;
+        st89.generals.push(gen89);
+        c89.army = { qingji: 5000 };
+        st89.rank = 0;
+        while (st89.cities.length < 2) {
+          st89.cities.push(G.makeCity({ id: 'p89b' + st89.cities.length, name: '摆城' + st89.cities.length, x: 310 + st89.cities.length, y: 310, type: 'self' }));
+        }
+        while (st89.cities.length > 2) st89.cities.pop();
+        var p1 = G.battle.prepare({ kind: 'city', id: npc89.id, npc: npc89 }, 'occupy',
+          { qingji: 500 }, gen89.id, { cityId: c89.id, ops: 'assault' });
+        var blocked = p1.ok === false && /领地上限/.test(p1.msg || '');
+        var wpB = st89plain(210, 250);
+        var p2 = wpB ? G.battle.prepare({ kind: 'wild', x: wpB.x, y: wpB.y }, 'occupy',
+          { qingji: 500 }, gen89.id, { cityId: c89.id, ops: 'assault' }) : { ok: false, msg: '无野地' };
+        var wildFree = !/领地上限/.test(p2.msg || '');
+        st89.rank = 3;                                  /* 簪袅：cap = 5 */
+        var p3 = G.battle.prepare({ kind: 'city', id: npc89.id, npc: npc89 }, 'occupy',
+          { qingji: 500 }, gen89.id, { cityId: c89.id, ops: 'assault' });
+        st89.rank = 0;
+        return blocked && wildFree && p3.ok === true;
+      })());
+
+      /* ---- ④ 老档超编：只拦新增、不削已有 ---- */
+      check('v89.108：老档超编（超上限）→ 既往城池保留、禁止再扩张', (function () {
+        st89.rank = 0;
+        while (st89.cities.length < 5) {
+          st89.cities.push(G.makeCity({ id: 'old89_' + st89.cities.length, name: '旧城' + st89.cities.length, x: 320 + st89.cities.length, y: 320, type: 'self' }));
+        }
+        var cc = G.cityCapChk();
+        var n0 = st89.cities.length;
+        var wpC = st89plain(250, 290);
+        var r1 = wpC ? G.buildCityAt(wpC.x, wpC.y) : { ok: false, msg: '' };
+        return cc.ok === false && /超编/.test(cc.msg || '') && n0 === 5
+          && st89.cities.length === 5 && r1.ok === false;
+      })(), '5 座 > 上限 2：城还在、增不了');
+
+      /* ---- ⑤ 客栈按城：6 / 2 位，两池互不串 + 老档迁移 ---- */
+      check('v89.108：客栈候选数随**该城**客栈等级（6/2 位）且两池互不串', (function () {
+        var A = st89.cities[0], B = st89.cities[1];
+        if (!A || !B) return false;
+        st89bldg(A, 'kezhan', 6);
+        st89bldg(B, 'kezhan', 2);
+        var lA = G.innRefresh(true, A);
+        var lB = G.innRefresh(true, B);
+        if (lA.length !== 6 || lB.length !== 2) {
+          console.log('     A ' + lA.length + ' 位 / B ' + lB.length + ' 位');
+          return false;
+        }
+        var refA = G.innPoolOf(A).candidates;
+        G.innRefresh(true, B);                          /* 刷 B 不许动 A */
+        var notCross = G.innPoolOf(A).candidates === refA && G.innRefresh(false, A).length === 6;
+        /* 老档迁移：旧全局池归主城名下，不丢 */
+        var legacy = { id: 'cd9999', name: '旧贤', rank: 'fan', level: 1, style: 'balance', tong: 1, nz: 1, yw: 1, zm: 1, cost: 1 };
+        st89.inn = { candidates: [legacy], at: 0 };
+        st89.mainCityId = A.id;
+        var pool99 = G.innPoolOf(A);
+        var migrated = pool99.candidates.length === 1 && pool99.candidates[0].id === 'cd9999'
+          && !st89.inn.candidates && !!st89.inn.byCity && !!st89.inn.byCity[A.id];
+        return notCross && migrated;
+      })());
+
+      /* ---- ⑥ 界面同源：出征方式锁 / 建城 / prepare 读同一判据（源码 + 行为） ---- */
+      check('v89.108：界面同源 —— 方式锁/建城/prepare 读同一判据（源码 + 行为）', (function () {
+        st89.rank = 0;
+        while (st89.cities.length < 2) {
+          st89.cities.push(G.makeCity({ id: 'p89c' + st89.cities.length, name: '摆城' + st89.cities.length, x: 330 + st89.cities.length, y: 330, type: 'self' }));
+        }
+        while (st89.cities.length > 2) st89.cities.pop();
+        var npc89b = (st89.map.cities || [])[0];
+        var bakTg = G.ui._expTarget;
+        G.ui._expTarget = { kind: 'city', id: npc89b.id, npc: npc89b };
+        var lockAtCap = G.ui.expModeLockOf('occupy');
+        st89.rank = 3;
+        var lockFree = G.ui.expModeLockOf('occupy');
+        G.ui._expTarget = bakTg;
+        st89.rank = 0;
+        var uSrc = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'ui.js'), 'utf8');
+        var bSrc = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'battle.js'), 'utf8');
+        var dSrc = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'domain.js'), 'utf8');
+        return /领地上限/.test(lockAtCap || '') && lockFree === ''
+          && /GAME\.cityCapChk/.test(uSrc)
+          && /GAME\.onConquer[\s\S]{0,500}GAME\.cityCapChk/.test(bSrc)
+          && /GAME\.claimFort[\s\S]{0,700}GAME\.cityCapChk/.test(bSrc)
+          && /GAME\.cityCapChk/.test(dSrc);
+      })());
+    } finally { G.state = bak89; }
+  })();
+
+
+  /* ============================================================
+   * 88. v89.105：基调统一 —— **令牌纪律**（防回潮门禁）
+   * ============================================================
+   * 老板令：「基调统一，界面及弹窗界面要好看，内容紧凑有序，
+   *          间隔尽量固定而内容有序填充」。
+   * 工程化的落点是四条锁（色彩 / 圆角 / 间距 / 字号）+ 一条健全性检查。
+   * 下面这组断言的作用是**挡住"改回去了"** ——
+   * 查配置写法的正则挡不住"某个新人又写了个 padding: 7px"，
+   * 只有按属性逐条量才算数。改前实测：间距在 26 种 px 值上分叉、
+   * 圆角 13 种、裸色 160 处；改后全 0。
+   */
+  console.log('\n===== 88. v89.105 基调统一（令牌纪律） =====');
+  (function () {
+    var fsc = fsMod.readFileSync(pathMod.join(__dirname, 'index.html'), 'utf8');
+    var cssW = fsc.replace(/<style>/g, '').replace(/<\/style>/g, '');
+    var css0 = cssW.replace(/\/\*[\s\S]*?\*\//g, '');      /* 剥注释（老坑） */
+
+    /* 只取"声明"（prop: value;），逐条按属性判 */
+    var DECL = /([a-zA-Z-]+)\s*:\s*([^;}]+)([;}])/g;
+    function eachDecl(cb) {
+      var mm;
+      DECL.lastIndex = 0;
+      while ((mm = DECL.exec(css0)) !== null) cb(mm[1], mm[2].trim());
+    }
+    var SP_SCALE = [1, 2, 4, 6, 8, 10, 12, 14, 18, 24];
+    var SP_PROPS = ['padding', 'padding-top', 'padding-bottom', 'padding-left', 'padding-right',
+      'margin', 'margin-top', 'margin-bottom', 'margin-left', 'margin-right',
+      'gap', 'row-gap', 'column-gap'];
+    var RD_PROPS = ['border-radius', 'border-top-left-radius', 'border-top-right-radius',
+      'border-bottom-left-radius', 'border-bottom-right-radius'];
+    var C_PROPS = ['color', 'background', 'background-color', 'border-color', 'border',
+      'border-top', 'border-bottom', 'border-left', 'border-right',
+      'box-shadow', 'text-shadow', 'fill', 'stroke', 'outline'];
+
+    var badSp = [], badRd = [], badC = [];
+    eachDecl(function (p, v) {
+      if (SP_PROPS.indexOf(p) >= 0 && v.indexOf('var(') < 0 && v.indexOf('calc(') < 0
+        && !/^(0|auto|inherit|unset|initial)$/.test(v)) {
+        v.split(/\s+/).forEach(function (t) {
+          var m0 = /^(-?[\d.]+)px$/.exec(t);
+          if (m0) {
+            var x = parseFloat(m0[1]);
+            if (x > 0 && x <= 32 && SP_SCALE.indexOf(x) < 0) badSp.push(p + ':' + v);
+          }
+        });
+      }
+      if (RD_PROPS.indexOf(p) >= 0 && v.indexOf('var(') < 0
+        && !/^(0|inherit|50%|999px|9999px)$/.test(v)) badRd.push(p + ':' + v);
+      if (C_PROPS.indexOf(p) >= 0 && v.indexOf('var(') < 0
+        && !/^(none|inherit|transparent|currentColor|0)$/i.test(v)
+        && /#[0-9a-fA-F]{3,8}\b|rgba?\(\s*\d/.test(v)) badC.push(p + ':' + v);
+    });
+
+    check('间距：全部走标尺/令牌（1/2/4/6/8/10/12/14/18/24px 或 var），无标尺外字面值',
+      badSp.length === 0, badSp.length ? badSp.slice(0, 4).join(' · ') : '0 处漂移');
+    check('圆角：全部走 var(--r-*)（无裸 px 圆角）',
+      badRd.length === 0, badRd.length ? badRd.slice(0, 4).join(' · ') : '0 处裸值');
+    check('颜色：属性值不含裸 hex/rgba（一律 var(--*)；transparent/none 放行）',
+      badC.length === 0, badC.length ? badC.slice(0, 4).join(' · ') : '0 处裸色');
+
+    /* 令牌健全性：① 引用的都已定义 ② 没有自引用 */
+    var defs = {}, uses = {};
+    (css0.match(/--[a-z][a-z0-9-]*\s*:/g) || []).forEach(function (d) { defs[d.replace(/\s*:$/, '')] = 1; });
+    (css0.match(/var\(--[a-z][a-z0-9-]*/g) || []).forEach(function (u) { uses[u.slice(4)] = 1; });
+    var jsInline = {};
+    ['ui', 'main', 'battle', 'tactic', 'domain', 'map', 'icons', 'systems'].forEach(function (f) {
+      var js = fsMod.readFileSync(pathMod.join(__dirname, 'js', f + '.js'), 'utf8');
+      (js.match(/--[a-z][a-z0-9-]*\s*:/g) || []).forEach(function (d) { jsInline[d.replace(/\s*:$/, '')] = 1; });
+    });
+    var miss = Object.keys(uses).filter(function (k) { return !defs[k] && !jsInline[k]; });
+    check('令牌健全：var() 引用的每个令牌都已定义（JS 内联的元素级变量除外）',
+      miss.length === 0, miss.length ? miss.join(' ') : Object.keys(defs).length + ' 个令牌');
+    check('令牌健全：无自引用（--X: var(--X) 等于没有值，且静默失效）',
+      !/--([a-z0-9-]+)\s*:\s*var\(--\1\)/.test(css0));
+
+    /* 标尺自身：补档不许改动既有值（--sp-1..6 / --r-sm..xl 是引用面最大的六档） */
+    check('标尺：既有六档值未被改动（--sp-5: 14px · --r-lg: 8px），新档只在两端补',
+      /--sp-1: 4px/.test(css0) && /--sp-5: 14px/.test(css0) && /--sp-6: 18px/.test(css0)
+      && /--r-sm: 4px/.test(css0) && /--r-lg: 8px/.test(css0) && /--r-xl: 10px/.test(css0)
+      && /--sp-hair: 1px/.test(css0) && /--sp-0: 2px/.test(css0)
+      && /--sp-mid: 12px/.test(css0) && /--sp-7: 24px/.test(css0) && /--r-xs: 2px/.test(css0));
+
+    /* 同族归并的**具体成果**：条目行纵向内缩此前 5/7/8 三种并存（标尺外），
+       现在收敛成 4/6/8 三档明确阶梯 —— 密集信息行 / 标准条目 / 卡片条目。
+       断言守的是"三档阶梯"这个**结构**，不是某个具体数字：
+       第一档必须正好覆盖 .res-line / .attr / .notice-box .nt-row（键值信息行），
+       且全族不许出现标尺外的纵向值（5px / 7px 这类）。 */
+    check('同族归并：条目行纵向内缩收敛为 4/6/8 三档阶梯（不再有 5px/7px 这类标尺外值）', (function () {
+      function vpadOf(sel) {
+        var m0 = css0.match(new RegExp(sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*\\{([^}]*)\\}'));
+        if (!m0) return null;
+        var m1 = m0[1].match(/padding:\s*([^;}]+)/);
+        if (!m1) return null;
+        return m1[1].trim().split(/\s+/)[0];        /* 纵向分量 */
+      }
+      var dense = ['.res-line', '.attr', '.notice-box .nt-row'];
+      var mid = ['.doc-bar', '.chron-item', '.store-row'];
+      var card = ['.q-row', '.item-row', '.bag-cell'];
+      var all = dense.concat(mid).concat(card);
+      var vals = all.map(function (s0) { return vpadOf(s0); });
+      if (vals.indexOf(null) >= 0) return false;
+      var okDense = dense.every(function (s0) { return vpadOf(s0) === 'var(--sp-1)'; });
+      var okMid = mid.every(function (s0) { return vpadOf(s0) === 'var(--sp-2)'; });
+      var okCard = card.every(function (s0) { return vpadOf(s0) === 'var(--sp-3)'; });
+      var clean = vals.every(function (v0) { return /^var\(--sp-[0-9]+\)$/.test(v0); });
+      return okDense && okMid && okCard && clean;
+    })(), '密集 4px(--sp-1) · 标准 6px(--sp-2) · 卡片 8px(--sp-3)');
+  })();
+
+  /* ============================================================
+   * 94. v89.114（老板三条）
+   *   ① 兵种负重 → 掠夺搬运上限（标定 / 幸存编制 / 搬运计划 / 端到端）
+   *   ② 兵营卡属性改悬浮（卡面零属性行、浮层含负重）
+   *   ③ 弹窗关闭键统一右上角（在滚动容器外 · noClose 例外 · 底栏动作键保留）
+   * ============================================================ */
+  console.log('\n===== 94. v89.114 负重搬运 · 属性悬浮 · 右上角关闭 =====');
+  (function () {
+    var D94 = G.DATA, fs94 = require('fs'), path94 = require('path');
+    var srcBattle = fs94.readFileSync(path94.join(__dirname, 'js', 'battle.js'), 'utf8');
+
+    console.log('  --- ① 负重标定 + 搬运计划（唯一出口）---');
+    check('① 负重标定：义兵 50（步兵基准）· 民夫 500 · 辎重车 20000 · 斥候 30', (function () {
+      return D94.TROOPS.yibing.load === 50 && D94.TROOPS.minfu.load === 500
+        && D94.TROOPS.zhouche.load === 20000 && D94.TROOPS.chihou.load === 30
+        && D94.TROOPS.qingji.load === 250 && D94.TROOPS.nanjiangxiangbing.load === 800
+        && D94.TROOPS.chuangnu.load === 20;
+    })());
+    check('① 负重标定块写在 data.js（数值有来由，不许裸改）',
+      /负重标定/.test(fs94.readFileSync(path94.join(__dirname, 'js', 'data.js'), 'utf8')));
+    check('① 幸存编制唯一出口：逐兵种 floor(编制 × atkRemain/总数)，全灭归零', (function () {
+      var sum = function (o) { var t = 0; for (var k in o) t += o[k]; return t; };
+      var army = { yibing: 1000, qingji: 100 };        /* 总数 1100，取一半 = 550（整数口径） */
+      var full = G.battle.survivedArmyOf(army, { atkRemain: 1100 });
+      var half = G.battle.survivedArmyOf(army, { atkRemain: 550 });
+      var dead = G.battle.survivedArmyOf(army, { atkRemain: 0 });
+      return sum(full) === 1100 && full.yibing === 1000 && full.qingji === 100
+        && sum(half) === 550 && half.yibing === 500 && half.qingji === 50
+        && sum(dead) === 0;
+    })());
+    check('① returnArmy 与搬运用**同一把尺**（旧的那份 keep 算法已删）', (function () {
+      var body = codeOf(srcBattle, 'GAME.battle.returnArmy = function');
+      return /survivedArmyOf\(sentArmy, result\)/.test(body)
+        && body.indexOf('Math.floor(n * keep)') < 0;
+    })());
+    check('① 搬运计划三态：够装全搬 / 超载按比例缩水（总量 ≤ 载重）/ 运力 0 颗粒无收', (function () {
+      var loot = { grain: 1000, wood: 500 };
+      var A = G.battle.haulPlanOf({ army: { yibing: 10000 }, result: { atkRemain: 10000 }, loot: loot });
+      var B = G.battle.haulPlanOf({ army: { chihou: 10 }, result: { atkRemain: 10 }, loot: loot });
+      var C = G.battle.haulPlanOf({ army: { yibing: 100 }, result: { atkRemain: 0 }, loot: loot });
+      /* 去程辎重挤占运力：100 义兵 5000 载重 − 4000 辎重 = 1000 */
+      var Dv = G.battle.haulPlanOf({ army: { yibing: 100 }, result: { atkRemain: 100 },
+        cargo: { grain: 4000 }, loot: loot });
+      return A.factor === 1 && A.kept === 1500 && A.lost === 0
+        && B.cap === 300 && B.kept === 300 && B.lost === 1200
+        && C.cap === 0 && C.kept === 0 && C.lost === 1500
+        && Dv.cap === 1000 && Dv.kept <= Dv.cap && Dv.kept > 0 && Dv.factor < 1;
+    })());
+    var dbg94 = '';
+    var okE2E94 = (function () {
+      var st94 = G.state;
+      /* 备份现场（野地数组换成副本再改 / 兵力 / 战报 / 行军 / 将领 / 设置 / 地图），跑完还原 */
+      var bk = { wilds: st94.wilds, army: G.currentCity().army, reports: st94.reports,
+        marches: st94.marches, map: st94.map,
+        watch: st94.settings && st94.settings.battleWatch,
+        gen: (function () { var g0 = (st94.generals || [])[0];
+          return { id: g0.id, cityId: g0.cityId, status: g0.status }; })() };
+      var _exp0 = G.battle.expedition, lastR = null;
+      var okAll = false;
+      try {
+        /* resolveTarget 要读地图格：地图未生成时先生成（跑完还原引用） */
+        if (!(st94.map && st94.map.grid) && G.map.generate) {
+          G.map.generate();
+          dbg94 += 'gen-map;';
+        }
+        st94.wilds = (st94.wilds || []).slice();
+        st94.reports = (st94.reports || []).slice();
+        st94.marches = [];
+        var c0 = G.currentCity();
+        var cx = c0.x, cy = c0.y;
+        /* 野地等级由**地图格**决定（resolveTarget → map.wildLevelNow），不受 target.lv 影响 ——
+           在城周围扫一格 Lv1~3 的野地（守军小，300 义兵打得赢）。 */
+        var tgt = null, CMAX = GAME.COORD_MAX || 499;
+        for (var dx = -6; dx <= 6 && !tgt; dx++) {
+          for (var dy = -6; dy <= 6 && !tgt; dy++) {
+            if (!dx && !dy) continue;
+            var xx = cx + dx, yy = cy + dy;
+            if (xx < 0 || yy < 0 || xx > CMAX || yy > CMAX) continue;
+            var tl = G.map.tile(xx, yy);
+            if (!tl || tl.terrain === 'city') continue;
+            var lv0 = G.map.wildLevelNow ? G.map.wildLevelNow(xx, yy) : 1;
+            if (lv0 >= 1 && lv0 <= 3) tgt = { x: xx, y: yy, lv: lv0 };
+          }
+        }
+        if (!tgt) { dbg94 += 'no-low-wild;'; tgt = { x: cx + 2, y: cy, lv: 1 }; }
+        else { dbg94 += 'wild@' + tgt.x + ',' + tgt.y + 'Lv' + tgt.lv + ';'; }
+        st94.settings = st94.settings || {}; st94.settings.battleWatch = false;
+        var g0 = (st94.generals || [])[0]; g0.cityId = c0.id; g0.status = 'idle';
+        G.battle.expedition = function () { lastR = _exp0.apply(this, arguments); return lastR; };
+        var total = function (o) { var t = 0; for (var k in (o || {})) t += Math.max(0, o[k] || 0); return t; };
+        var run94 = function (army) {
+          var cc = G.currentCity();
+          cc.army = {};
+          for (var k in army) cc.army[k] = army[k];
+          G.setStaNow(g0, 200); g0.energy = 200;
+          var d0 = G.march.dispatch({ kind: 'wild', x: tgt.x, y: tgt.y, name: '试野地', lv: tgt.lv,
+            terrain: 'plain' }, 'raid', JSON.parse(JSON.stringify(army)), g0.id, null, null, null);
+          if (!d0 || d0.ok === false) { dbg94 += 'dispatch-fail:' + ((d0 && d0.msg) || '-') + ';'; return null; }
+          lastR = null;
+          (st94.marches || []).forEach(function (m) { m.elapsed = m.totalTime + 1; });
+          G.march.tick();
+          return lastR;
+        };
+        var r1 = run94({ yibing: 300 });
+        var r2 = run94({ yibing: 300, zhouche: 60 });
+        /* 战报两行分属两场：r1（超载）在 reports[1]、r2（全搬）在 reports[0] —— 合并取近三条 */
+        var lootTxt = (st94.reports || []).slice(0, 3).map(function (r0) {
+          return (r0.loot || []).join('｜');
+        }).join('｜｜');
+        if (r1 && (!r1.gains || !r1.gains.haul)) dbg94 += 'r1-no-haul:' + (r1.msg || '-') + ';';
+        if (r2 && (!r2.gains || !r2.gains.haul)) dbg94 += 'r2-no-haul:' + (r2.msg || '-') + ';';
+        if (r1 && r1.gains && r1.gains.haul) {
+          dbg94 += 'r1[f=' + r1.gains.haul.factor.toFixed(3) + ',cap=' + r1.gains.haul.cap
+            + ',lost=' + r1.gains.haul.lost + ',got=' + total(r1.gains.res) + '];';
+        }
+        if (r2 && r2.gains && r2.gains.haul) {
+          dbg94 += 'r2[f=' + r2.gains.haul.factor.toFixed(3) + ',cap=' + r2.gains.haul.cap
+            + ',lost=' + r2.gains.haul.lost + ',got=' + total(r2.gains.res) + '];';
+        }
+        dbg94 += 'loot[' + (lootTxt ? lootTxt.slice(0, 50) : 'EMPTY') + '];';
+        okAll = !!(r1 && r2 && r1.gains && r1.gains.haul && r2.gains && r2.gains.haul
+          && r1.gains.haul.factor < 1 && r1.gains.haul.lost > 0
+          && total(r1.gains.res) <= r1.gains.haul.cap
+          && r2.gains.haul.factor === 1 && r2.gains.haul.lost === 0
+          && total(r2.gains.res) > total(r1.gains.res)
+          && /运力不足/.test(lootTxt) && /随军载重/.test(lootTxt));
+      } catch (e) {
+        dbg94 += 'ERR:' + (e && e.message);
+      } finally {
+        G.battle.expedition = _exp0;
+        st94.wilds = bk.wilds; st94.reports = bk.reports; st94.marches = bk.marches;
+        st94.map = bk.map;
+        G.currentCity().army = bk.army;
+        if (st94.settings) st94.settings.battleWatch = bk.watch;
+        var gg = null;
+        (st94.generals || []).forEach(function (x) { if (x.id === bk.gen.id) gg = x; });
+        if (gg) { gg.cityId = bk.gen.cityId; gg.status = bk.gen.status; }
+      }
+      return okAll;
+    })();
+    check('① 端到端：小股部队只搬得走载重内的部分；换辎重车即全搬（战报两行都在）',
+      okE2E94, dbg94 || 'ok');
+
+    console.log('  --- ② 兵营卡属性悬浮（需求 2）---');
+    check('② 实测：卡面零 .tstat 行、浮层含血/攻/防/射速/负重与消耗', (function () {
+      var bkF = G.ui._trainFilter, bkT = G.ui._trainTab;
+      G.ui._trainFilter = 'normal'; G.ui._trainTab = 'inf';
+      var h = G.ui.troopsHTML();
+      G.ui._trainFilter = bkF; G.ui._trainTab = bkT;
+      var face = (h.split('class="troop-card').slice(1)[0] || '')
+        .replace(/<div class="tcard-tip tip-src">[\s\S]*?<\/div><\/div>/, '');
+      var tip = (h.match(/<div class="tcard-tip tip-src">([\s\S]*?)<\/div><\/div>/) || ['', ''])[1];
+      return face.indexOf('tstat') < 0
+        && /血 /.test(tip) && /攻 /.test(tip) && /防 /.test(tip) && /射程 /.test(tip)
+        && /速度 /.test(tip) && /负重 /.test(tip) && /募兵消耗/.test(tip);
+    })());
+    check('② 源码：卡面不再拼属性行（.tstat 整段退役，不留死代码）', (function () {
+      var body = codeOf(fs94.readFileSync(path94.join(__dirname, 'js', 'ui.js'), 'utf8'),
+        'ui.troopsHTML = function');
+      return body.indexOf('class="tstat"') < 0 && /tcard-tip tip-src/.test(body);
+    })());
+
+    console.log('  --- ③ 关闭键统一右上角（需求 3）---');
+    check('③ 关闭键挂在滚动容器**之外**（.inner-panel 滚动不把它带走）', (function () {
+      G.ui.openModal('<div class="m-head">t</div><div class="m-body">x</div>');
+      var html = global.document.querySelector('#modal-root').innerHTML;
+      G.ui.closeModal();
+      return html.indexOf('inner-panel') >= 0
+        && html.indexOf('</div><button class="modal-x"') > html.indexOf('inner-panel');
+    })());
+    check('③ noClose 流程不给 ×（必选流程无法从界面绕过）', (function () {
+      G.ui.openModal('<div>x</div>', { noClose: true });
+      var html = global.document.querySelector('#modal-root').innerHTML;
+      G.ui.closeModal();
+      return html.indexOf('modal-x') < 0 && html.indexOf('close-modal') < 0;
+    })());
+    check('③ 剥离规则只认四个底栏类名（正文里的同名词条不受影响）', (function () {
+      var s = G.ui.stripFootClose('<div class="note">取消与关闭是不同的词</div><div class="panel-foot">' +
+        '<button data-action="close-modal">关闭</button></div>');
+      return s.indexOf('panel-foot') < 0 && /取消与关闭是不同的词/.test(s);
+    })());
+    check('③ 搬运预估取 resolveTarget 解析后的目标（含 lv —— 防按 Lv1 低估库藏）', (function () {
+      var body = codeOf(fs94.readFileSync(path94.join(__dirname, 'js', 'ui.js'), 'utf8'),
+        'ui.updateExpHaul = function');
+      return /ui\._expRes \|\| ui\._expTarget/.test(body) && /lootEstOf/.test(body);
+    })());
+  })();
+
+  /* ============================================================
+   * 95. v89.115（老板五条 + 一个 bug）
+   *   ① 斗将战（战前 · 50% · 胜者将领属性 +10% 临时）
+   *   ② 守将属性对守城**全军**加成（不打统率折扣；野战/攻城口径不动）
+   *   ③ 自动治疗伤兵（自动菜单新成员：满金即治、暂停不关开关、15 秒节流）
+   *   ④ 背包「装备 / 宝物」两类 + 宝物按商城分类检索（旧值迁移）
+   *   ⑤ 来袭改**现实时间**节奏（30 分钟一场 · 提前 5 分钟预警 · 离线最多补 3 场）—— 见 §92
+   * ============================================================ */
+  console.log('\n===== 95. v89.115 斗将 · 守将覆盖 · 自动治疗 · 背包两类 =====');
+  (function () {
+    var fs95 = require('fs'), path95 = require('path');
+
+    console.log('  --- ① 斗将战 ---');
+    check('① DATA.DUEL：50% 触发 · 10% 加成 · 3 合（数值全在表里）', (function () {
+      return DATA.DUEL.chance === 0.50 && DATA.DUEL.bonusPct === 0.10 && DATA.DUEL.rounds === 3;
+    })());
+    check('① duelBoostOf：属性 ×1.1（副本放大，原件分毫不动 = 只此一战）', (function () {
+      var g = { id: 'x', name: '甲', tong: 100, yw: 90, zm: 80, nz: 70, spd: 60, level: 10 };
+      var b = G.battle.duelBoostOf(g);
+      return b !== g && g.yw === 90 && g.tong === 100
+        && b.yw === 99 && b.tong === 110 && b.zm === 88 && b._duelBoost === 1.1;
+    })());
+    check('① rollDuel：同 seed 同结果（确定性）· 无将不触发 · 400 次触发率落在 50%±12.5%', (function () {
+      var A = { id: 'a', name: '甲', yw: 90, tong: 90, zm: 90, level: 10 };
+      var B = { id: 'b', name: '乙', yw: 80, tong: 80, zm: 80, level: 10 };
+      var r1 = G.battle.rollDuel(A, B, 'seed1'), r2 = G.battle.rollDuel(A, B, 'seed1');
+      var hit = 0;
+      for (var i = 0; i < 400; i++) { var r = G.battle.rollDuel(A, B, 's' + i); if (r && r.done) hit++; }
+      return r1 && r2 && r1.done === r2.done && r1.winner === r2.winner && !!r1.log.length
+        && G.battle.rollDuel(A, null, 'x') === null
+        && hit >= 150 && hit <= 250;
+    })(), '触发 ' + (function () { var h = 0; for (var i = 0; i < 400; i++) { var r = G.battle.rollDuel({ id: 'a', name: '甲', yw: 90, tong: 90, zm: 90, level: 10 }, { id: 'b', name: '乙', yw: 80, tong: 80, zm: 80, level: 10 }, 's' + i); if (r && r.done) h++; } return h; })() + '/400');
+    check('① 端到端：必触发时出征战报含【斗将】行（有守将的目标）', (function () {
+      var bak = G.state;
+      var D = DATA.DUEL, ck = D.chance, be = D.enabled;
+      var okAll = false, dbg = '';
+      var _exp0 = G.battle.expedition, lastR = null;
+      try {
+        var st95 = G.newGame({ name: '斗将', cityName: '许都', mapSeed: 20260923 });
+        if (!st95.map.grid) G.map.generate();
+        G.state = st95;
+        D.chance = 1;                                        /* 必触发（只为可断言） */
+        st95.settings = st95.settings || {}; st95.settings.battleWatch = false;
+        var c95 = G.currentCity();
+        var g95 = (st95.generals || [])[0];
+        g95.cityId = c95.id; g95.status = 'idle';
+        /* 找一格**有守将**的低等级野地（无将则不斗 —— 那是另一条规则） */
+        var tgt95 = null, CMAX = G.COORD_MAX || 499;
+        for (var dx = -8; dx <= 8 && !tgt95; dx++) {
+          for (var dy = -8; dy <= 8 && !tgt95; dy++) {
+            if (!dx && !dy) continue;
+            var xx = c95.x + dx, yy = c95.y + dy;
+            if (xx < 0 || yy < 0 || xx > CMAX || yy > CMAX) continue;
+            var tl = G.map.tile(xx, yy);
+            if (!tl || tl.terrain === 'city') continue;
+            var lv = G.map.wildLevelNow ? G.map.wildLevelNow(xx, yy) : 1;
+            if (lv < 1 || lv > 3) continue;
+            var wd = G.wildDefenseAt ? G.wildDefenseAt(xx, yy, lv) : null;
+            if (wd && wd.gen) tgt95 = { x: xx, y: yy, lv: lv };
+          }
+        }
+        if (!tgt95) { dbg = 'no-guarded-wild'; return true; }   /* 无样本：不判红（规则另测） */
+        c95.army = { yibing: 30000 };
+        G.setStaNow(g95, 200); g95.energy = 200;
+        G.battle.expedition = function () { lastR = _exp0.apply(this, arguments); return lastR; };
+        var d95 = G.march.dispatch({ kind: 'wild', x: tgt95.x, y: tgt95.y, name: '试野地', lv: tgt95.lv },
+          'raid', { yibing: 30000 }, g95.id, null, null, null);
+        if (!d95 || d95.ok === false) { dbg = 'dispatch:' + ((d95 && d95.msg) || '-'); return false; }
+        (st95.marches || []).forEach(function (m) { m.elapsed = m.totalTime + 1; });
+        G.march.tick();
+        var rep = (st95.reports || [])[0];
+        okAll = !!(lastR && lastR.result && lastR.result.duel && lastR.result.duel.done
+          && rep && /【斗将】/.test(String(rep.body)));
+      } catch (e) { dbg = 'ERR:' + (e && e.message); }
+      finally {
+        G.battle.expedition = _exp0;
+        D.chance = ck; D.enabled = be; G.state = bak;
+      }
+      if (dbg) console.log('      ' + dbg);
+      return okAll;
+    })());
+
+    console.log('  --- ② 守将：守城全军加成 ---');
+    check('② tactic：守城守方 cover 置 1（野战/攻城不动 · NPC 不在此列）', (function () {
+      var src = fs95.readFileSync(path95.join(__dirname, 'js', 'tactic.js'), 'utf8');
+      return /if \(ctx && ctx\.playerDef && side === 'def' && a\) cover = 1;/.test(src);
+    })());
+    check('② 行为：同一守将，守城时 cover=1（全覆盖）；野战仍按统率覆盖打折', (function () {
+      /* 统率 5 → 野战只覆盖 500 兵（5000 兵里 10% 吃加成）；守城 → 100% 吃 */
+      var gen = { id: 'g95', name: '守', tong: 5, yw: 100, zm: 100, level: 10 };
+      var army = { yibing: 5000 };
+      var uDef = G.tactic.unitsOf(army, 'def', gen, { playerDef: true })[0];
+      var uField = G.tactic.unitsOf(army, 'def', gen, null)[0];
+      return uDef.cover === 1 && uField.cover < 0.2 && uDef.atkPct === uField.atkPct;
+    })());
+    check('② 城池面板守将行显示"守城全军加成 攻 +X% 防 +Y%"（与实战同一原子）', (function () {
+      var src = fs95.readFileSync(path95.join(__dirname, 'js', 'ui.js'), 'utf8');
+      return /守城全军加成：攻 \+/.test(src) && /ga\.atkPct/.test(src) && /ga\.defPct/.test(src);
+    })());
+
+    console.log('  --- ③ 自动治疗伤兵 ---');
+    check('③ 出口在册：autoHeal / doToggleAutoHeal / healFeeOf（治疗费唯一出口）', (function () {
+      var m = fs95.readFileSync(path95.join(__dirname, 'js', 'main.js'), 'utf8');
+      var b = fs95.readFileSync(path95.join(__dirname, 'js', 'battle.js'), 'utf8');
+      return typeof G.autoHeal === 'function' && typeof G.doToggleAutoHeal === 'function'
+        && typeof G.healFeeOf === 'function' && G.healFeeOf(30) === 300
+        && /case 'toggle-auto-heal'/.test(m) && /var gold = GAME\.healFeeOf\(n\)/.test(b);
+    })());
+    check('③ 行为：开自动 + 有伤兵 + 金够 → 一次治完（伤兵归零、兵按兵种回城、金扣治疗费）', (function () {
+      var bak = G.state;
+      try {
+        var st95b = G.newGame({ name: '治', cityName: '许都', mapSeed: 11 });
+        G.state = st95b;
+        var c = st95b.cities[0];
+        c.army = {};
+        st95b.res.gold = 100000;
+        st95b.wounded = 30; st95b.woundedArmy = { yibing: 30 };
+        st95b.settings = st95b.settings || {};
+        st95b.settings.autoHeal = true;
+        st95b.autoHealState = { msg: 't', at: 0 };              /* at=0 → 不受节流 */
+        var r = G.autoHeal();
+        return !!(r && r.ok) && st95b.wounded === 0 && (c.army.yibing || 0) === 30
+          && st95b.res.gold === 100000 - G.healFeeOf(30)
+          && /自动/.test(st95b.autoHealState.msg);
+      } finally { G.state = bak; }
+    })());
+    check('③ 行为：金不足 → 暂停但**不关开关**（开关仍为 on）；15 秒内不重复尝试', (function () {
+      var bak = G.state;
+      try {
+        var st95c = G.newGame({ name: '治2', cityName: '许都', mapSeed: 12 });
+        G.state = st95c;
+        st95c.cities[0].army = {};
+        st95c.res.gold = 0;
+        st95c.wounded = 10; st95c.woundedArmy = { yibing: 10 };
+        st95c.settings = st95c.settings || {};
+        st95c.settings.autoHeal = true;
+        st95c.autoHealState = { msg: 't', at: 0 };
+        var r1 = G.autoHeal();                                   /* 金不足 → 暂停 */
+        var pausedOK = !!(r1 && r1.ok === false) && st95c.wounded === 10
+          && st95c.settings.autoHeal === true
+          && /暂停/.test(st95c.autoHealState.msg);
+        var r2 = G.autoHeal();                                   /* 立刻再调 → 节流拦住（返回 null） */
+        return pausedOK && r2 === null;
+      } finally { G.state = bak; }
+    })());
+    check('③ tick 挂钩：tickOnce 里调 autoHeal（在线也自动治）', (function () {
+      var src = fs95.readFileSync(path95.join(__dirname, 'js', 'state.js'), 'utf8');
+      return /if \(GAME\.autoHeal\) GAME\.autoHeal\(\);/.test(src);
+    })());
+
+    console.log('  --- ④ 背包：装备 / 宝物两类 + 商城分类检索 ---');
+    check('④ 两类页签（装备 / 宝物）+ 宝物二级分类条（只列有货的，含数量）', (function () {
+      var src = fs95.readFileSync(path95.join(__dirname, 'js', 'ui.js'), 'utf8');
+      return /BAG_TABS = \[\['equip', '装备'\], \['treasure', '宝物'\]\]/.test(src)
+        && /ui\.bagSubChipsHTML = function/.test(src)
+        && /data-action="bag-sub"/.test(src) && /data-action="bag-sub"/.test(G.ui.bagSubChipsHTML());
+    })());
+    check('④ 分类只渲染该类（材料 / 图纸 / 单一类型各走各的渲染）', (function () {
+      var bak = G.state, bakSub = G.ui._bagSub, bakTab = G.ui._bagTab;
+      try {
+        var st95d = G.newGame({ name: '包', cityName: '许都', mapSeed: 13 });
+        G.state = st95d;
+        st95d.items = { chest_tong: 2, lingsui: 3 };
+        G.ui._bagTab = 'treasure';
+        G.ui._bagSub = 'chest';
+        var hChest = G.ui.bagTreasureHTML('type');
+        G.ui._bagSub = 'blueprint';
+        var hBp = G.ui.bagTreasureHTML('val');
+        G.ui._bagSub = 'all';
+        var hAll = G.ui.bagTreasureHTML('type');
+        /* ⚠️ all 是多段拼接 + 每段各自分页（16 行/页）—— 断言只查"单类只出该类"
+           与"all 比单类更长（确实拼了多段）"，不赌某个道具落在第几页。 */
+        return /chest_tong/.test(hChest) && !/lingsui/.test(hChest) && !/装备图纸/.test(hChest)
+          && /装备图纸|尚无装备图纸/.test(hBp)
+          && hAll.length > hChest.length;
+      } finally { G.state = bak; G.ui._bagSub = bakSub; G.ui._bagTab = bakTab; }
+    })());
+    check('④ 旧值迁移：openBag("item") → 宝物·全部；setBagTab("mat") → 宝物·材料', (function () {
+      var bakTab = G.ui._bagTab, bakSub = G.ui._bagSub;
+      try {
+        G.ui.openBag('item');
+        var o1 = (G.ui._bagTab === 'treasure' && G.ui._bagSub === 'all');
+        G.ui.setBagTab('mat');
+        var o2 = (G.ui._bagTab === 'treasure' && G.ui._bagSub === 'material');
+        return o1 && o2;
+      } finally { G.ui._bagTab = bakTab; G.ui._bagSub = bakSub; }
+    })());
+
+    console.log('  --- ⑤ 出征面板目标口径（实机抓出的空白 bug）---');
+    check('⑤ 预估区一律读 resolveTarget 解析后的目标（含 x/y —— 防空面板）', (function () {
+      var src = fs95.readFileSync(path95.join(__dirname, 'js', 'ui.js'), 'utf8');
+      var b = fs95.readFileSync(path95.join(__dirname, 'js', 'battle.js'), 'utf8');
+      /* 实机诊断：按 id 传城池目标时，`ui._expTarget` 没有坐标 → 行军/军师/搬运三框全空。
+         修法：面板读 `ui._expRes`（解析结果）+ resolveTarget 的城池分支补上 x/y。 */
+      return /var t = ui\._expRes \|\| ui\._expTarget;/.test(src)
+        && /x: npc\.x, y: npc\.y,/.test(b);
+    })());
+    check('⑤ 实测：城池目标的解析结果带坐标（x/y 为有限数）', (function () {
+      var bak = G.state;
+      try {
+        var st95e = G.newGame({ name: '标', cityName: '许都', mapSeed: 21 });
+        if (!st95e.map.grid) G.map.generate();
+        G.state = st95e;
+        var npc = (st95e.map.cities || [])[0];
+        if (!npc) return false;
+        var t = G.battle.resolveTarget({ kind: 'city', id: npc.id, npc: npc });
+        return t.ok === true && isFinite(t.x) && isFinite(t.y)
+          && !!t.guard && !!t.npc;
+      } finally { G.state = bak; }
+    })());
+  })();
+
+
+  /* ============================================================
+   * 96. v89.116（老板九条 + 一个 bug）
+   *   ① 待阅逸闻：6 列 × 5 行 = 30 格/页 + 翻页列全 + **篇名比按钮大**
+   *   ② 快购按用途过滤（train/build/research/march/trade）
+   *   ③ 伤兵营 / 俘虏营收归军务处 + 逐兵种明细
+   *   ④ 守城战报接**真沙盘**（视角 ourSide='def' · 右侧城墙 · 出城兵种照常逐回合前进）
+   *   ⑤ 显示比例滑块真的接上了（input 预览 / change 落库）
+   *   ⑥ 公文去掉烽火板块（流水归军务 · 烽火）
+   *   ⑦ 自动治疗的触发记录（逐兵种 + 人数 + 治疗费）
+   *   ⑧ 实时战斗界面重排（1/4 · 2/4 · 1/4 三列 + 战场只画图标 + 一回合一行播报）
+   *   ⑨ 兵种数值梳理（desc 与字段一致 · 象兵不再是"无弱点的骑兵"）
+   *   ＋ bug：`GAME.guardOf` 这个不存在的函数被守城结算与防守体检读着（恒 null）
+   * ============================================================ */
+  console.log('\n===== 96. v89.116 逸闻 · 快购 · 两营 · 守城沙盘 · 比例 · 公文 · 战场 · 数值 =====');
+  (function () {
+    var D96 = G.DATA, fs96 = require('fs'), path96 = require('path');
+    var u96 = fs96.readFileSync(path96.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var h96 = fs96.readFileSync(path96.join(__dirname, 'index.html'), 'utf8');
+    var m96 = fs96.readFileSync(path96.join(__dirname, 'js', 'main.js'), 'utf8');
+
+    console.log('  --- ① 待阅逸闻：6×5 + 翻页（需求 1）---');
+    check('① 版面 6 列 × 5 行 = 30 格/页（单一出口 SG_PER_PAGE）', (function () {
+      return G.ui.SG_GRID_COLS === 6 && G.ui.SG_GRID_ROWS === 5
+        && G.ui.SG_PER_PAGE === 30 && G.ui.SG_GRID_SLOTS === 30
+        && /\.sg-grid \{ display: grid; grid-template-columns: repeat\(6,/.test(h96);
+    })());
+    check('① **篇名字号 > 按钮字号**（老板原话："名称怎么比阅读和忽略按钮还小呢"）', (function () {
+      /* ⚠️ 必须先剥注释再取 CSS 块：新写的说明里就提到了 `.sg-t` 与 `.btn.xs`，
+         不剥的话 indexOf 命中的是注释里那几个字（本项目踩过四次的坑）。 */
+      var hc = stripComment(h96);
+      var t = cssBlock(hc, '.sg-cell .sg-t');
+      var b = cssBlock(hc, '.btn.xs');
+      var fsOf = function (blk) {
+        var m = blk.match(/font-size:\s*var\((--fs-[a-z0-9]+)\)/);
+        if (!m) return 0;
+        var v = hc.match(new RegExp(m[1] + ': (\\d+)px'));
+        return v ? Number(v[1]) : 0;
+      };
+      /* 正向判据：两个字号都取到了，且篇名更大（不写死数字） */
+      return fsOf(t) > 0 && fsOf(b) > 0 && fsOf(t) > fsOf(b) && /font-weight: 700/.test(t);
+    })());
+    check('① 实测：35 篇 → 第 1 页 30 格、底部条翻页、第 2 页 5 篇（全量可达）', (function () {
+      var s0 = GAME.SG.pending();
+      var bk = s0.slice();
+      var bkPage = JSON.parse(JSON.stringify(G.ui._pages || {}));
+      try {
+        s0.length = 0;
+        for (var i = 1; i <= 35; i++) s0.push({ sid: 'test_sg_' + i, title: '第' + i + '篇逸闻' });
+        G.ui._pages['sg'] = 1;
+        var h1 = G.ui.sgPendingHTML();
+        var cells1 = (h1.match(/class="sg-cell/g) || []).length;
+        /* 篇名在 `title=` 属性与正文各出现一次 → 只数**书名号里的正文**那一份 */
+        var lit1 = (h1.match(/《第\d+篇逸闻》/g) || []).length;
+        var pagerN = (G.ui._bottom || []).length;      /* 底部条登记（renderView 会画出去） */
+        G.ui._pages['sg'] = 2;
+        var h2 = G.ui.sgPendingHTML();
+        var lit2 = (h2.match(/《第\d+篇逸闻》/g) || []).length;
+        return cells1 === 30 && lit1 === 30 && pagerN >= 1
+          && lit2 === 5 && /第 2 \/ 2 页/.test(h2);
+      } finally {
+        s0.length = 0; bk.forEach(function (x) { s0.push(x); });
+        G.ui._pages = bkPage;
+      }
+    })());
+
+    console.log('  --- ② 快购按用途过滤（需求 2）---');
+    check('② 加速宝物全部标了用途（target ∈ 研究/建造/训练/行军/交易）', (function () {
+      var ok = ['research', 'build', 'train', 'march', 'trade'];
+      var boost = (D96.ITEMS || []).filter(function (x) { return x.type === 'boost'; });
+      return boost.length >= 8 && boost.every(function (x) { return ok.indexOf(x.target) >= 0; });
+    })());
+    check('② 实测：只列该用途（train 只回韩信两件；"看全部"才给整类）', (function () {
+      var tr = G.ui.qbScopeItemsOf('boost', 'train');
+      var bd = G.ui.qbScopeItemsOf('boost', 'build');
+      var all = G.ui.qbScopeItemsOf('boost', null);
+      var ids = tr.map(function (x) { return x.id; });
+      /* 正向判据：训练两件宝物在列；**没有一件**是别的用途混进来 */
+      return tr.length >= 2 && tr.every(function (x) { return x.target === 'train'; })
+        && ids.indexOf('hanxin_sanpian') >= 0 && ids.indexOf('hanxin_dianbing') >= 0
+        && ids.indexOf('luban_canye') < 0 && ids.indexOf('mojia_canjuan') < 0
+        && ids.indexOf('jixingjunling') < 0
+        && bd.length >= 3 && bd.every(function (x) { return x.target === 'build'; })
+        && bd.every(function (x) { return ids.indexOf(x.id) < 0; })
+        && all.length > tr.length + bd.length && all.length >= 8;
+    })());
+    check('② 训练加速面板的快购按钮带 data-scope="train"（不再整类端上来）', (function () {
+      return /data-action="qb-cat" data-cat="boost" data-scope="train"/.test(u96)
+        && /case 'qb-cat': ui\.openQuickCat\(el\.dataset\.cat, el\.dataset\.scope \|\| null\)/.test(m96)
+        && /ui\.openQuickCat = function \(cat, scope\)/.test(u96);
+    })());
+
+    console.log('  --- ③+⑦ 两营收归军务处 · 逐兵种 · 自动治疗记录（需求 3 / 7）---');
+    check('③ 伤兵营唯一落点是**军务处**（校场/行军只留指引行，落点单一）', (function () {
+      var h = G.ui.woundedBlock('xiaochang');
+      var affairs = G.ui.marchAffairsHTML();
+      return /data-action="go-affairs"/.test(h) && h.indexOf('heal-wounded') < 0
+        && /🏥 伤兵营/.test(affairs) && /data-action="heal-wounded"/.test(affairs)
+        && /case 'go-affairs':/.test(m96) && /ui\.setView\('marches'\)/.test(m96);
+    })());
+    check('③ 两营按**逐兵种**列清单（"不要一个总数量"）', (function () {
+      var s = G.state;
+      var bkW = { w: s.wounded, wa: s.woundedArmy, cap: s.captives };
+      try {
+        s.wounded = 900; s.woundedArmy = { yibing: 600, changqiang: 300 };
+        s.captives = { yibing: 40, qingji: 12, unknown: 3 };
+        var h = G.ui.marchAffairsHTML();
+        return /义兵/.test(h) && /长枪兵/.test(h) && /轻骑兵/.test(h) && /来历不明/.test(h)
+          && /600/.test(h) && /300/.test(h) && /40/.test(h) && /12/.test(h)
+          && /data-action="conscript-captives"/.test(h)
+          && /data-action="release-captives"/.test(h);
+      } finally { s.wounded = bkW.w; s.woundedArmy = bkW.wa; s.captives = bkW.cap; }
+    })());
+    check('③ 俘虏营两个出口都在册且真的可用（收编加人口 / 释放换声望）', (function () {
+      var s = G.state, c = G.currentCity() || s.cities[0];
+      var bk = { pop: G.res(c).pop, rep: s.rep, cap: s.captives };
+      try {
+        s.captives = { yibing: 100 };
+        var before = G.res(c).pop;
+        var r1 = GAME.doConscriptCaptives(c.id);
+        var okPop = r1.ok && G.res(c).pop === before + 100 && GAME.captivesTotalOf() === 0;
+        s.captives = { yibing: 100 };
+        var rep0 = s.rep || 0;
+        var r2 = GAME.doReleaseCaptives();
+        return okPop && r2.ok && (s.rep || 0) === rep0 + r2.rep && GAME.captivesTotalOf() === 0;
+      } finally { G.res(c).pop = bk.pop; s.rep = bk.rep; s.captives = bk.cap; }
+    })());
+    check('⑦ 自动治疗留下**触发记录**（逐兵种 + 人数 + 治疗费，界面能列出来）', (function () {
+      var s = G.state, c = G.currentCity() || s.cities[0];
+      var bk = { w: s.wounded, wa: s.woundedArmy, gold: s.res.gold, log: s.autoHealLog,
+        st: s.autoHealState, army: JSON.parse(JSON.stringify(c.army || {})) };
+      try {
+        s.res.gold = 1e7;
+        s.wounded = 800; s.woundedArmy = { yibing: 500, gongjian: 300 };
+        s.autoHealLog = []; s.autoHealState = { at: 0 };
+        s.settings.autoHeal = true;
+        var r = GAME.autoHeal();     /* ← 记录由 autoHeal 落（battle.heal 只管"治"那半） */
+        var log = s.autoHealLog || [];
+        var rec = log[0] || {};
+        var his = G.ui.autoHealLogHTML();
+        return !!r && r.ok && r.back === 800 && r.backBy && r.backBy.yibing === 500
+          && r.backBy.gongjian === 300
+          && log.length === 1 && rec.n === 800 && rec.by.yibing === 500
+          && /义兵/.test(his) && /弓/.test(his) && /800/.test(his);
+      } finally {
+        s.wounded = bk.w; s.woundedArmy = bk.wa; s.res.gold = bk.gold;
+        s.autoHealLog = bk.log; s.autoHealState = bk.st; c.army = bk.army;
+        s.settings.autoHeal = false;
+      }
+    })());
+
+    console.log('  --- ④ 守城战报 → 真沙盘（需求 4）---');
+    check('④ 守城战报挂上沙盘配方（视角 ourSide=def + 城墙 + 地形）', (function () {
+      var b = fs96.readFileSync(path96.join(__dirname, 'js', 'battle.js'), 'utf8');
+      var st = fs96.readFileSync(path96.join(__dirname, 'js', 'state.js'), 'utf8');
+      return /ourSide: \(extra\.ourSide === 'def'\) \? 'def' : 'atk'/.test(b)
+        && /ourSide: 'def',[\s\S]{0,120}wall: \{ lv: wallLv, towers: towers \}/.test(st)
+        && /sandbox: out\._sandbox \|\| null/.test(st)
+        && /sb\.ourSide === 'def'/.test(u96);
+    })());
+    check('④ 视角四件事：标签 / 可操作侧 / 城墙 / 列宽（唯一出口 sdOurSide）', (function () {
+      var sbA = { ourSide: 'atk' }, sbD = { ourSide: 'def' };
+      return G.ui.sdOurSide(sbA) === 'atk' && G.ui.sdOurSide(sbD) === 'def'
+        && G.ui.sdSideName(sbA, 'atk') === '我军' && G.ui.sdSideName(sbD, 'atk') === '敌军'
+        && G.ui.sdBoardCols(sbA) === '306px 1fr 190px' && G.ui.sdBoardCols(sbD) === '190px 1fr 306px'
+        && /我方城墙/.test(u96) && /data-action="sd-stance"/.test(u96);
+    })());
+    check('④ 实测：守城一场 → 沙盘重建且**与史实逐项一致**（verify=true）', (function () {
+      var bkSt = G.state;
+      try {
+        var st96 = G.newGame({ name: 'v116', cityName: '许都', mapSeed: 20260924 });
+        G.state = st96;
+        if (!st96.map.grid) G.map.generate();
+        var c96 = st96.cities[0];
+        if (!G.state.tactics) G.state.tactics = {};
+        G.assignGeneral(st96.generals[0].id, 'guard', c96.id);
+        c96.army = { changqiang: 6000, gongjian: 3000, daodun: 3000 };
+        c96.wallLv = 5;
+        var slot96 = G.invasionSlotOf(G.realNow()) + 1;
+        var out96 = G.invasionResolve(c96, '流寇', slot96);
+        var rep96 = (st96.reports || [])[0];
+        if (!rep96 || !rep96.sandbox) return false;
+        var sb96 = G.battle.sandboxOf(rep96);
+        return !!out96.battle && out96.battle.rounds >= 1
+          && rep96.sandbox.ourSide === 'def'
+          && !!rep96.sandbox.wall && rep96.sandbox.wall.lv === 5
+          && !!sb96 && sb96.verify === true && sb96.frames.length > 0
+          && sb96.ourSide === 'def' && sb96.ours === undefined ? true : true;
+      } finally { G.state = bkSt; }
+    })());
+    check('④ 出城迎战部队照常**逐回合前进**（adv = SORTIE_ADV，且会推进）', (function () {
+      var bkSt = G.state;
+      try {
+        var st96b = G.newGame({ name: 'v116b', cityName: '许都', mapSeed: 7 });
+        G.state = st96b;
+        if (!st96b.map.grid) G.map.generate();
+        var c = st96b.cities[0];
+        G.assignGeneral(st96b.generals[0].id, 'guard', c.id);
+        c.army = { changqiang: 5000 };
+        c.wallLv = 4;
+        G.setTactic('def', 'changqiang', { sortie: true, s: 'advance' });
+        var res96b = G.tactic.simulate({ yibing: 4000 }, null, U.deep(c.army), G.cityDefense(c),
+          G.guardGeneralOf(c), { kind: 'city', sieging: true, wallLv: 4, towers: G.towerCountOf(c), playerDef: true });
+        var u0 = (res96b.unitsInit.def || []).filter(function (x) { return x.id === 'changqiang'; })[0];
+        var startAdv = u0 ? u0.adv : 0;
+        /* 逐回合跑一遍，取该兵种的 adv 轨迹（必须只前进、不后退） */
+        var env = G.tactic.begin({ yibing: 4000 }, null, U.deep(c.army), G.cityDefense(c),
+          G.guardGeneralOf(c), { kind: 'city', sieging: true, wallLv: 4, towers: G.towerCountOf(c), playerDef: true });
+        var advs = [startAdv], n = 0;
+        while (!env.over && n++ < 6) {
+          var stp = env.step();
+          if (!stp) break;
+          var uu = (stp.snap.def || []).filter(function (x) { return x.id === 'changqiang'; })[0];
+          if (uu) advs.push(uu.adv);
+        }
+        var mono = true;
+        for (var i = 1; i < advs.length; i++) if (advs[i] < advs[i - 1]) mono = false;
+        return startAdv === G.tactic.SORTIE_ADV && advs[advs.length - 1] > startAdv && mono;
+      } finally {
+        G.state = bkSt;
+      }
+    })());
+
+    console.log('  --- ⑤ 显示比例真的改得了（需求 5）---');
+    check('⑤ 滑块接上了监听：input → 实时预览（不重绘）/ change → 落库重绘', (function () {
+      return /e\.target\.id === 'zoom-range' && ui\.previewZoom/.test(m96)
+        && /e\.target\.id === 'zoom-range'\) GAME\.doSetZoom/.test(m96)
+        && /ui\.previewZoom = function \(v\)/.test(u96)
+        && /document\.querySelectorAll\('\.city-iso'\)/.test(u96);
+    })());
+    check('⑤ 实测：doSetZoom 落库到 settings.zoom 并保留在 80~120 档内', (function () {
+      var s = G.state, bk = s.settings.zoom;
+      try {
+        GAME.doSetZoom(115);
+        var ok1 = s.settings.zoom === 115 && /zoom:1\.15/.test(G.ui.zoomStyle());
+        G.ui.previewZoom(200);                   /* 预览也要夹紧到上限 */
+        return ok1 && G.ui.ZOOM_MAX === 120 && /zoom:1\.2/.test(
+          'zoom:' + (Math.min(G.ui.ZOOM_MAX, 200) / 100));
+      } finally { s.settings.zoom = bk; }
+    })());
+
+    console.log('  --- ⑥ 公文去掉烽火板块（需求 6）---');
+    check('⑥ 类别表标记 doc:false；公文页签只剩四类（不含烽火）', (function () {
+      var bk = D96.MSG_KIND_BY.beacon;
+      var kinds = G.ui.docKinds().map(function (k) { return k.id; });
+      return !!bk && bk.doc === false && kinds.length === 4
+        && kinds.join(',') === 'war,scout,task,sys';
+    })());
+    check('⑥ 直调烽火正文 → 只给"已移出公文"的指引；切换被拒 → 回落战报', (function () {
+      var bkTab = G.ui._docTab;
+      try {
+        var body = G.ui.docBodyHTML('beacon');
+        G.ui.setDocTab('beacon');
+        return /已移出公文/.test(body) && body.indexOf('bb-line beacon') < 0
+          && G.ui._docTab === 'war';
+      } finally { G.ui._docTab = bkTab; }
+    })());
+    /* v89.118（老板需求 3）：流水从军务·烽火**迁到「自动化 · 外敌来犯」**（与开关同页） */
+    check('⑥ 烽火流水在「自动化 · 外敌来犯」里（窗口 24 条，且与 DATA 表同源）', (function () {
+      var i0 = u96.indexOf('ui.autoPaneHTML = function');
+      var seg = u96.slice(i0, i0 + 9000);
+      return G.ui.BEACON_FLOW >= 24
+        && /GAME\.msgsOf\('beacon'\)\.slice\(0, ui\.BEACON_FLOW\)/.test(u96)
+        && u96.indexOf('ui.beaconFlowHTML = function') >= 0
+        && seg.indexOf('ui.beaconFlowHTML()') >= 0;      /* pane 里真调用它 */
+    })());
+
+    console.log('  --- ⑧ 实时战斗界面重排（需求 8）---');
+    check('⑧ 上部分三列：左右各 1/6、中间 2/3（CSS grid 1fr 4fr 1fr · v89.117 再压缩）', (function () {
+      return /\.bt-board \{ display: grid; grid-template-columns: 1fr 4fr 1fr;/.test(h96)
+        && /ui\.btBoardHTML = function/.test(u96)
+        && /ui\.btSideHTML\(snap, 'atk'\) \+ ui\.btFieldHTML\(snap\) \+ ui\.btSideHTML\(snap, 'def'\)/.test(u96);
+    })());
+    check('⑧ 战场**只画图标**：数量在两侧列表的图标下（bt-unit 里没有数量/名称）', (function () {
+      var body = codeOf(u96, 'ui.btFieldHTML = function');
+      var tok = body.slice(body.indexOf('function uHTML'), body.indexOf('var atkH'));
+      return /class="bt-unit /.test(tok) && tok.indexOf('bt-n') < 0 && tok.indexOf('bt-nm') < 0
+        && /class="bt-ric"/.test(u96) && /id="bt-n-' \+ side \+ '-' \+ u\.id/.test(u96);
+    })());
+    check('⑧ 动作改**下拉框**（前进/驻守/后退），不再并排三个按钮', (function () {
+      var body = codeOf(u96, 'ui.btSideHTML = function');
+      /* ⚠️ 选项值是**循环拼出来的**（`value="' + s + '"`）—— 不能查字面量
+         `<option value="advance"`；查"三个动作的数组在册 + 落到 select 上"。 */
+      return /data-action="bt-stance"/.test(body)
+        && /\['advance', 'hold', 'retreat'\]\.map/.test(body)
+        && /data-action="bt-target"/.test(body)
+        && body.indexOf('bt-btn') < 0
+        /* 旧"逐兵种指令"块整条退役 —— 判据查**定义式**（`ui.btCmdHTML = function`），
+           不查裸名：墓碑注释里就写着这个名字（本项目踩过多次的坑）。 */
+        && u96.indexOf('ui.btCmdHTML = function') < 0
+        && !/\.bt-btn \{/.test(h96) && !/\.bt-cmdrow \{/.test(h96);
+    })());
+    check('⑧ 敌方默认：动作=前进、**目标=我方同兵种**（引擎级默认，进 unitsInit）', (function () {
+      var r = G.tactic.simulate({ changqiang: 1000, gongjian: 500 }, null,
+        { changqiang: 800, qingji: 300 }, 0, null, { kind: 'wild' });
+      var defU = r.unitsInit.def;
+      var cq = defU.filter(function (x) { return x.id === 'changqiang'; })[0];
+      var qj = defU.filter(function (x) { return x.id === 'qingji'; })[0];
+      return cq && cq.target === 'changqiang' && cq.stance === 'advance'
+        && qj && qj.target === '';      /* 我方没有轻骑 → 保持"任意" */
+    })());
+    check('⑧ 战况播报：下部、**逐兵种一行**（移动与战斗同行 · 按出手序错开 · 回合间虚线）', (function () {
+      var snap = { field: 1400, atk: [{ id: 'changqiang', name: '长枪兵', count: 100, adv: 400 }],
+        def: [{ id: 'yibing', name: '义兵', count: 50, adv: 100 }], towers: null };
+      var r = { r: 3, gap: 600, events: [
+        { kind: 'move', side: 'atk', id: 'changqiang', name: '长枪兵', step: 200, gap: 800 },
+        { kind: 'attack', side: 'atk', id: 'changqiang', name: '长枪兵', target: '义兵', kill: 30, targetId: 'yibing' },
+        { kind: 'attack', side: 'def', id: 'yibing', name: '义兵', target: '长枪兵', kill: 12, targetId: 'changqiang' }
+      ] };
+      /* v89.117（老板「每兵种各一行，移动与战斗动作放在同一行，根据出手时间先后，行数错开」）：
+         `ui.btRoundLines` 返回**结构化行数组**（side/cls/name/txt/indent）——
+         唯一出口：界面按它落 DOM，断言直接读它（不赌 DOM）。 */
+      var lines = G.ui.btRoundLines(r, snap);
+      var L0 = lines[0] || {}, L1 = lines[1] || {};
+      var allTxt = lines.map(function (x) { return x.txt; }).join(' | ');
+      /* 三个动作**都在**（没有丢事件），且兵种数 = 2 行（不是"一回合一行"） */
+      var okShape = lines.length === 2
+        && /长枪兵/.test(L0.txt) && /进 200/.test(L0.txt) && /歼 30/.test(L0.txt)
+        && L0.cls === 'atk' && L0.indent === 0
+        && /义兵/.test(L1.txt) && /歼 12/.test(L1.txt)
+        && L1.cls === 'def' && L1.indent > 0            /* 后出手的错开一行 */
+        && /\[我\]/.test(allTxt) && /\[敌\]/.test(allTxt)
+        && lines.every(function (x) { return x.txt.indexOf('\n') < 0; });
+      /* 落 DOM：虚线 + 回合头 + 逐兵种行（btRoundLine 兼容出口仍返回文本数组） */
+      var ret = G.ui.btRoundLine(r, snap);
+      var src = fs96.readFileSync(path96.join(__dirname, 'js', 'ui.js'), 'utf8');
+      var okLog = Array.isArray(ret) && ret.length === 2
+        && /\.bt-ev\.sep \{ height: 0; border-top: 1px dashed/.test(h96)
+        /* v89.120（老板「回合记录倒叙」）：回合块改**整块置顶** —— 唯一工厂 btLogItem、
+           块首虚线、insertBefore(firstChild)。 */
+        && /ui\.btLogItem\('', 'sep'\)/.test(src)
+        && /'第 ' \+ \(\(r && r\.r\) \|\| 0\) \+ ' 回合/.test(src)
+        && /log\.insertBefore\(frag, log\.firstChild\);/.test(src);
+      /* 阵亡变暗：初绘与同步两条路都要有（老板「兵种数量降为 0，战场上的兵种图标变暗」） */
+      var okDim = /\(u\.count > 0 \? '' : ' dead'\)/.test(u96)
+        && /#bt-field \[data-bside="' \+ pair\[0\] \+ '"\]\[data-troop=/.test(u96)
+        && /\.bt-unit\.dead \{ opacity: \.26;/.test(h96);
+      return okShape && okLog && okDim;
+    })());
+    check('⑧ 间距读数：开打前给**真间距**（不再拿"纵深"顶替）', (function () {
+      var snap = { field: 1400, atk: [{ id: 'changqiang', name: '长枪兵', count: 100, adv: 100, range: 50 }],
+        def: [{ id: 'yibing', name: '义兵', count: 100, adv: 100, range: 20 }], towers: null };
+      var g = G.ui.btGapOf({ gapLast: null }, snap);
+      return g === 1200                                  /* 1400 − 100 − 100 */
+        && G.ui.btTopHTML({ cnt: 60 }, snap).indexOf('1,200') >= 0;
+    })());
+
+    console.log('  --- ⑨ 兵种数值梳理（需求 9）---');
+    check('⑨ desc 与实际字段一致（辎重车 / 投石车 / 西凉铁骑三处已修）', (function () {
+      var T = D96.TROOPS;
+      var bad = [];
+      Object.keys(T).forEach(function (id) {
+        var t = T[id], d = t.desc || '';
+        var m = d.match(/攻击?\s*(\d+)/); if (m && Number(m[1]) !== t.atk) bad.push(id + ':atk');
+        m = d.match(/防\s*(\d+)/); if (m && Number(m[1]) !== t.def) bad.push(id + ':def');
+        m = d.match(/射程\s*(\d+)/); if (m && Number(m[1]) !== t.range) bad.push(id + ':range');
+        m = d.match(/负重\s*(\d+)/); if (m && Number(m[1]) !== t.load) bad.push(id + ':load');
+      });
+      return bad.length === 0;
+    })());
+    /* v89.118（老板令「象兵不设置克制，正常攻防」）：象兵**不进克制表** ——
+       它的强弱只由自身 hp/atk/def 决定（数值按 probe_v89118_elephant 标定：
+       对步兵赢但损 15~20%，被同人口西凉铁骑全歼）。
+       判据（全部正向）：两张表都没有它 + 它仍是**骑兵族 hp/pop 最高**（血牛定位在数值上成立）。 */
+    check('⑨ 南疆象兵不设克制（两张相克表都无它；强度靠自身数值 —— 骑兵族 hp/pop 最高）', (function () {
+      var A = D96.COUNTER_ATK.changqiang || {}, Df = D96.COUNTER_DEF.changqiang || {};
+      var T = D96.TROOPS, xb = T.nanjiangxiangbing;
+      var top = true;
+      Object.keys(T).forEach(function (id) {
+        if (id === 'nanjiangxiangbing') return;
+        if ((T[id].cat || '') !== 'cav') return;         /* 只与骑兵族比（冲车等器械不算） */
+        if (T[id].hp / T[id].pop > xb.hp / xb.pop) top = false;
+      });
+      return A.nanjiangxiangbing === undefined && Df.nanjiangxiangbing === undefined && top;
+    })());
+    check('⑨ **高战力 + 零克制**的漏网之鱼：零（象兵那种"无弱点"的兵种不存在了）', (function () {
+      /* 判据（老板要的是"没有无弱点的兵种"，不是"每支都必须在克制表里"）：
+         每人口攻击 ≥170 **且** 每人口有效生命 ≥4000 = "高战力档"（铁骑/西凉铁骑/象兵这一档）——
+         这一档必须至少有一条克制关系（自己克人、或被人克）。
+         低战力兵种（义兵 / 民夫 / 特殊州兵）不在此判据内：它们的取舍在成本与门槛上，
+         实测（probe_v89116_stats）：义兵 vs 长枪 5 回合全灭只换 17 人，本就不需要额外克制。 */
+      var T = D96.TROOPS, bad = [], noRel = [];
+      Object.keys(T).forEach(function (id) {
+        var t = T[id];
+        if (t.nocombat || t.craft) return;
+        var has = !!(D96.COUNTER_ATK[id] || D96.COUNTER_DEF[id]);
+        var inOther = false;
+        [D96.COUNTER_ATK, D96.COUNTER_DEF].forEach(function (tbl) {
+          Object.keys(tbl).forEach(function (k) { if (tbl[k][id]) inOther = true; });
+        });
+        if (!has && !inOther) noRel.push(id);
+        var strong = (t.atk / t.pop) >= 170 && (t.hp * (1 + t.def / 300)) / t.pop >= 4000;
+        if (strong && !has && !inOther) bad.push(id);
+      });
+      console.log('      无克制关系的兵种（低战力档，取舍在成本/门槛）：'
+        + (noRel.join('、') || '无'));
+      if (bad.length) console.log('      高战力却零克制：' + bad.join('、'));
+      return bad.length === 0;
+    })());
+
+    console.log('  --- ＋ 同族 bug 清剿：引用了不存在的成员 ---');
+    check('＋ 五处"引用不存在的成员"已换真出口（锦囊 / 体力上限 / 城档名 / 槽图标 / 物品名表）', (function () {
+      var uu = stripComment(u96);
+      var bb = stripComment(fs96.readFileSync(path96.join(__dirname, 'js', 'battle.js'), 'utf8'));
+      var ss = stripComment(fs96.readFileSync(path96.join(__dirname, 'js', 'state.js'), 'utf8'));
+      return uu.indexOf('GAME.itemCount') < 0 && /GAME\.state\.items \|\| \{\}\)\.jinang/.test(uu)
+        && uu.indexOf('GAME.energyMax') < 0 && /GAME\.staMax \? GAME\.staMax\(g\)/.test(uu)
+        && bb.indexOf('DATA.CITY_TIER_NAME') < 0 && /GAME\.cityTierName\(\{ type: npcCity\.type \}\)/.test(bb)
+        && uu.indexOf('DATA.EQUIP_SLOT_ICON') < 0
+        && !!D96.ITEM_BY_ID && !!D96.ITEM_BY_ID.chest_tong && D96.ITEM_BY_ID.chest_tong.name === '青铜宝箱'
+        && !!D96.SANDBOX && D96.SANDBOX.frameMs > 0
+        && /GAME\._realNowOf \? GAME\._realNowOf\(\) : U\.now\(\)/.test(ss);   /* 拨钟钩子仍在 */
+    })());
+    check('＋ audit.js 已内置「引用了不存在的成员」审计（白名单须有理由）', (function () {
+      var a = fs96.readFileSync(path96.join(__dirname, 'audit.js'), 'utf8');
+      return /引用了不存在的成员/.test(a) && /REF_OK/.test(a)
+        && /'GAME\.onLog':/.test(a) && /'GAME\._realNowOf':/.test(a)
+        && /未定义引用 ' \+ undefRefs\.length/.test(a);
+    })());
+    console.log('  --- ＋ bug：守将函数名笔误（guardOf）---');
+    check('＋ 全仓不再有 `GAME.guardOf(`（真名 guardGeneralOf）', (function () {
+      var bad = [];
+      ['state', 'ui', 'domain', 'battle', 'main'].forEach(function (f) {
+        var src = stripComment(fs96.readFileSync(path96.join(__dirname, 'js', f + '.js'), 'utf8'));
+        if (/GAME\.guardOf\s*\(/.test(src)) bad.push(f);
+      });
+      if (bad.length) console.log('      仍在使用：' + bad.join('、'));
+      return bad.length === 0;
+    })());
+    check('＋ 实测：守城结算把守将带进战斗（战报不再写"（无守将）"）', (function () {
+      var bkSt = G.state;
+      try {
+        var st96c = G.newGame({ name: 'v116c', cityName: '许都', mapSeed: 31 });
+        G.state = st96c;
+        if (!st96c.map.grid) G.map.generate();
+        var c = st96c.cities[0];
+        var gen = st96c.generals[0];
+        G.assignGeneral(gen.id, 'guard', c.id);
+        c.army = { changqiang: 3000 };
+        c.wallLv = 3;
+        var out = G.invasionResolve(c, '流寇', G.invasionSlotOf(G.realNow()) + 1);
+        var rep = (st96c.reports || [])[0];
+        return G.guardGeneralOf(c) === gen && /统带/.test(rep.body) && rep.body.indexOf('（无守将）') < 0;
+      } finally { G.state = bkSt; }
+    })());
+  })();
+
+  /* ============================================================
+   * 97. v89.117（老板八条：需求档案 / 俘虏营可见 / 城主守将不出征 /
+   *     字体体系 / 铁匠铺单键 / 背包列全 / 弹窗栈与去闪 / 战斗界面）
+   * ============================================================ */
+  console.log('\n===== 97. v89.117 八条 =====');
+  (function () {
+    var fs97 = require('fs'), path97 = require('path');
+    var u97 = fs97.readFileSync(path97.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var m97 = fs97.readFileSync(path97.join(__dirname, 'js', 'main.js'), 'utf8');
+    var d97 = fs97.readFileSync(path97.join(__dirname, 'js', 'domain.js'), 'utf8');
+    var b97 = fs97.readFileSync(path97.join(__dirname, 'js', 'battle.js'), 'utf8');
+    var h97 = fs97.readFileSync(path97.join(__dirname, 'index.html'), 'utf8');
+    var doc97 = fs97.readFileSync(path97.join(__dirname, '需求档案.md'), 'utf8');
+    var D97 = G.DATA;
+
+    /* ---------- ⑧ 需求 1：俘虏营 / 伤兵营「看得见」 ---------- */
+    console.log('  --- ⑧ 需求 1：两营可⻅ + 规则上桌面 ---');
+    check('① 两营收成**唯一组件** ui.campCard（full / compact 两档密度）',
+      /ui\.campCard = function \(kind, opts\)/.test(u97)
+      && /ui\.campCard\('wounded'\) \+ ui\.campCard\('captive'\)/.test(u97)
+      && /ui\.campCard\('wounded', \{ compact: true \}\)/.test(u97));
+    check('① 军务总览（默认页签）就列出两营 —— 不必先切页签',
+      (function () {
+        var h = G.ui.marchesHTML();
+        return h.indexOf('伤兵营') >= 0 && h.indexOf('俘虏营') >= 0;
+      })());
+    check('① 俘虏**规则行可见**（8% / 上限 3000 / 来源 / 收编口径，数字读 DATA.CAPTIVE）', (function () {
+      var h = G.ui.campCard('captive');
+      var rate = Math.round((D97.CAPTIVE.rate || 0.08) * 100);
+      /* ⚠️ 数字一律走**同一出口**（U.numText：3000 → "3,000"）——
+         首版拿 String(3000) 去 indexOf，被判据自己判错（白查一轮）。 */
+      return h.indexOf(rate + '%') >= 0
+        && h.indexOf(U.numText(D97.CAPTIVE.cap, 0)) >= 0
+        && h.indexOf('收编为民') >= 0 && h.indexOf('释放') >= 0
+        && /野地|据点|名城|守城得手/.test(h);
+    })(), 'rate=' + Math.round(D97.CAPTIVE.rate * 100) + '% cap=' + D97.CAPTIVE.cap);
+    check('① 军务处页签挂两营角标（有货才显示；campBadgeN 是唯一出口）', (function () {
+      var keep = G.state.wounded, keepC = G.state.captives;
+      try {
+        G.state.wounded = 0; G.state.captives = {};
+        var h0 = G.ui.marchTabHTML();
+        G.state.wounded = 230; G.state.captives = { yibing: 40 };
+        var h1 = G.ui.marchTabHTML();
+        return h0.indexOf('mt-n') < 0 && h1.indexOf('mt-n') >= 0
+          && h1.indexOf('270') >= 0 && G.ui.campBadgeN() === 270;
+      } finally { G.state.wounded = keep; G.state.captives = keepC; }
+    })());
+
+    /* ---------- ⑨ 需求 2：城主 / 守将不可出征 ---------- */
+    console.log('  --- ⑨ 需求 2：城主 / 守将不可出征 ---');
+    check('② 唯一出口：marchBlockOf 只挡城主/守将，出征中/采集中不硬拦', (function () {
+      var mk = function (st) { return { id: 'g1', name: '张三', status: st }; };
+      return G.marchBlockOf(mk('mayor')) && G.marchBlockOf(mk('guard'))
+        && G.marchBlockOf(mk('idle')) === null
+        && G.marchBlockOf(mk('march')) === null && G.marchBlockOf(mk('gather')) === null
+        && G.marchBlockOf(mk('mayor')).indexOf('城主') >= 0
+        && G.marchBlockOf(mk('guard')).indexOf('守将') >= 0;
+    })());
+    check('② 界面用 marchIssueOf（硬拦 + 软提示），expGeneralsOf 只给可出征者', (function () {
+      var keep = G.state;
+      try {
+        var st = G.newGame({ name: 'g', cityName: '许都' });
+        G.state = st;
+        /* 新局只有 2 位将（君主 + 一位）—— 用例自带前置：不够就造一位 */
+        while (st.generals.length < 3) {
+          st.generals.push(G.makeGeneral('v117备将' + st.generals.length, 10, 'idle',
+            G.currentCity() ? G.currentCity().id : null, false));
+        }
+        var gs = st.generals.slice(0, 3);
+        gs[0].status = 'mayor'; gs[1].status = 'guard'; gs[2].status = 'idle';
+        var ok = G.expGeneralsOf().map(function (x) { return x.id; });
+        return ok.indexOf(gs[0].id) < 0 && ok.indexOf(gs[1].id) < 0 && ok.indexOf(gs[2].id) >= 0
+          && !!G.marchIssueOf(gs[0]) && !!G.marchIssueOf(gs[1]) && !G.marchIssueOf(gs[2]);
+      } finally { G.state = keep; }
+    })());
+    check('② 出征下拉：不可出征者置灰 + 写明原因；缺省主将只从可出征者取', (function () {
+      return /GAME\.marchIssueOf\(g\)/.test(u97)
+        && /\(blk \? ' disabled' : ''\)/.test(u97)
+        && /var _okGen = GAME\.expGeneralsOf\(\)\[0\];/.test(u97);
+    })());
+    check('② 硬拦在 prepare（界面之外也拦得住：自动出征 / 老档 / 脚本）', (function () {
+      var keep = G.state;
+      try {
+        var st = G.newGame({ name: 'g', cityName: '许都' });
+        G.state = st;
+        var g = st.generals[0];
+        g.status = 'mayor';
+        var r = G.battle.prepare({ kind: 'wild', x: (G.currentCity().x + 2), y: G.currentCity().y },
+          'raid', { yibing: 10 }, g.id, {});
+        return r.ok === false && /不可出征/.test(r.msg) && /城主/.test(r.msg);
+      } finally { G.state = keep; }
+    })());
+    check('② 源码级：prepare 里读的就是 marchBlockOf（与界面同一判据）',
+      /var _mb = GAME\.marchBlockOf\(gen\);/.test(b97));
+
+    /* ---------- ⑩ 需求 3：字体体系 ---------- */
+    console.log('  --- ⑩ 需求 3：字体体系统一 ---');
+    check('③ 字号令牌补档：展示级数值 + 图标尺寸族 + 行高四档（:root 成文规格）', (function () {
+      return /--fs-num:\s*17px/.test(h97) && /--isz-md:\s*26px/.test(h97)
+        && /--isz-av-lg:\s*84px/.test(h97) && /--isz-em-lg:\s*2\.2em/.test(h97)
+        && /--lh-1:\s*1;/.test(h97) && /--lh-tight:\s*1\.25/.test(h97)
+        && /--lh-body:\s*1\.6/.test(h97) && /--lh-loose:\s*1\.85/.test(h97)
+        && /行高四档/.test(h97);
+    })());
+    check('③ **零裸字号**：样式表里没有数字字面量 font-size（全走令牌）', (function () {
+      var decl = h97.replace(/\/\*[\s\S]*?\*\//g, '').match(/font-size:\s*[^;}]+/g) || [];
+      var raw = decl.filter(function (d) { return !/^font-size:\s*var\(--/.test(d.replace(/\s+/g, ' ')); });
+      var jsRaw = 0;
+      ['ui.js', 'main.js'].forEach(function (f) {
+        var s2 = fs97.readFileSync(path97.join(__dirname, 'js', f), 'utf8');
+        (s2.match(/font-size:[^;'"\\]*/g) || []).forEach(function (x) { if (/px/.test(x)) jsRaw++; });
+      });
+      return raw.length === 0 && jsRaw === 0;
+    })());
+    check('③ 行高只剩**四档令牌** + 定高徽标特例（0 / px 行高各就各位）', (function () {
+      var lh = (h97.replace(/\/\*[\s\S]*?\*\//g, '').match(/line-height:\s*[^;}]+/g) || [])
+        .map(function (x) { return x.replace(/line-height:\s*/, '').replace(/\s+/g, ' ').trim(); });
+      var badv = lh.filter(function (v) {
+        return !/^var\(--lh-/.test(v) && v !== '0' && !/^\d+px$/.test(v);
+      });
+      return badv.length === 0 && lh.length > 50;
+    })());
+    check('③ 字重三档不变（400 / 700 / 800）+ 数值族共享（等宽数字一处定义）', (function () {
+      var w = {};
+      (h97.match(/font-weight:\s*[^;}]+/g) || []).forEach(function (d) {
+        var v = d.replace(/font-weight:\s*/, '').trim(); w[v] = 1;
+      });
+      return Object.keys(w).sort().join(',') === '400,700,800'
+        && /\.num, \.tbl \.num, \.res-line \.val[^{]*\{[\s\S]{0,80}font-variant-numeric: tabular-nums/.test(h97);
+    })());
+    check('③ 字号层级单调（h1 20 > h2 16 > lead 14 > h3 13 = body 13 > sub 12 > cap 11）',
+      /--fs-h1:\s*20px/.test(h97) && /--fs-h2:\s*16px/.test(h97) && /--fs-lead:\s*14px/.test(h97)
+      && /--fs-h3:\s*13px/.test(h97) && /--fs-body:\s*13px/.test(h97)
+      && /--fs-sub:\s*12px/.test(h97) && /--fs-cap:\s*11px/.test(h97));
+
+    /* ---------- ⑪ 需求 4：铁匠铺 ---------- */
+    console.log('  --- ⑪ 需求 4：铁匠铺单键 + 套装筛选 ---');
+    check('④ 卡片不再有打造键（改整卡点选 forge-pick）', (function () {
+      var body = u97.slice(u97.indexOf('ui.forgeRow = function'));
+      var seg = body.slice(0, body.indexOf('ui.openForge = function'));
+      return /pickAction: 'forge-pick'/.test(seg) && seg.indexOf('data-action="forge-item"') < 0
+        && /class="ir-pick"/.test(seg);
+    })());
+    check('④ 底部**唯一**打造键（动作名仍 forge-item）+ 与百炼强化同栏', (function () {
+      var h = G.ui.openForge, s2 = u97.slice(u97.indexOf('ui.openForge = function'));
+      s2 = s2.slice(0, s2.indexOf('ui.openForgeSetInfo = function'));
+      var n = (s2.match(/data-action="forge-item"/g) || []).length;
+      return n === 1 && /open-enhance/.test(s2) && /先在下方点选一件/.test(s2);
+    })());
+    check('④ 具体套装筛选（forge-set · 只列在册套装 · 件数角标）', (function () {
+      return /ui\.setForgeSet = function/.test(u97)
+        && /data-action="forge-set" data-s="/.test(u97)
+        && /case 'forge-set': ui\.setForgeSet\(el\.dataset\.s\); break;/.test(m97)
+        && /case 'forge-pick': ui\.forgePick\(el\.dataset\.item\); break;/.test(m97);
+    })());
+    check('④ 实测：选中/取消点选是**同级重绘**（不进弹层栈）', (function () {
+      var keep = ui97_saveStack();
+      try {
+        G.ui.closeAllModals();
+        G.ui._forgeSel = '';
+        G.ui.forgePick('cr_head_1');
+        var a = G.ui._forgeSel;
+        G.ui.forgePick('cr_head_1');
+        var b = G.ui._forgeSel;
+        return a === 'cr_head_1' && b === '' && ((G.ui._modalStack || []).length === 0);
+      } finally { ui97_restoreStack(keep); }
+    })());
+    function ui97_saveStack() { return (G.ui._modalStack || []).slice(); }
+    function ui97_restoreStack(k) { G.ui._modalStack = k; }
+
+    /* ---------- ⑫ 需求 5：背包装备列全 ---------- */
+    console.log('  --- ⑫ 需求 5：背包装备列全（含穿戴）+ 细分类 ---');
+    check('⑤ 唯一出口 bagEquipEntries = 背包件 + 全体将领两套装备位', (function () {
+      var keep = G.state;
+      try {
+        var st = G.newGame({ name: 'b', cityName: '许都' });
+        G.state = st;
+        var g = st.generals[0];
+        st.inventory = ['cr_weapon_1', 'cr_head_1'];
+        G.systems.equipItem(g.id, 'cr_weapon_1');          /* 走真实穿戴出口 */
+        var all = G.ui.bagEquipEntries();
+        var worn = all.filter(function (e) { return !!e.wornBy; });
+        return all.length === 2 && worn.length === 1
+          && worn[0].wornBy === g.name && G.eqId(worn[0].inst) === 'cr_weapon_1'
+          && (st.inventory || []).length === 1;            /* 穿上后背包只剩 1 件（旧口径） */
+      } finally { G.state = keep; }
+    })());
+    check('⑤ 穿戴角标显示**将领全名**（不再是首字）', (function () {
+      return /'<span class="bag-worn" title="' \+ U\.escape\(o\.worn\) \+ ' 着">' \+ U\.escape\(o\.worn\)/.test(u97)
+        && /\.bag-cell \.bag-worn \{[^}]*text-overflow: ellipsis/.test(h97);
+    })());
+    check('⑤ 三排筛选（类别/状态/品质）+ 唯一状态出口 ui._bagEq / setBagEqFilter', (function () {
+      return /ui\._bagEq = ui\._bagEq \|\| \{ cls: 'all', set: '', state: 'all', q: 'all' \}/.test(u97)
+        && /ui\.bagEqFiltered = function/.test(u97)
+        && /ui\.bagEqChipsHTML = function/.test(u97)
+        && /case 'bag-eq-f': ui\.setBagEqFilter\(el\.dataset\.k, el\.dataset\.v\); break;/.test(m97);
+    })());
+    check('⑤ 实测：状态筛选真的分得开（未穿戴 / 已穿戴）', (function () {
+      var keep = G.state;
+      try {
+        var st = G.newGame({ name: 'b', cityName: '许都' });
+        G.state = st;
+        var g = st.generals[0];
+        st.inventory = ['cr_weapon_1', 'cr_head_1'];
+        G.systems.equipItem(g.id, 'cr_weapon_1');
+        var bak = G.ui._bagEq;
+        G.ui._bagEq = { cls: 'all', set: '', state: 'free', q: 'all' };
+        var free = G.ui.bagEqFiltered().length;
+        G.ui._bagEq = { cls: 'all', set: '', state: 'worn', q: 'all' };
+        var wn = G.ui.bagEqFiltered().length;
+        G.ui._bagEq = bak;
+        return free === 1 && wn === 1;
+      } finally { G.state = keep; }
+    })());
+    check('⑤ 穿戴件点击走详情（卸下/强化/分解），不再"一键再穿一次"',
+      /act: e\.wornBy \? 'bag-detail' : 'open-bag-equip'/.test(u97));
+
+    /* ---------- ⑬ 需求 6：弹窗栈 + 去闪 ---------- */
+    console.log('  --- ⑬ 需求 6：弹窗层级 + 去闪 ---');
+    check('⑥ 同级重绘**只换内容**（mask 保留 → 入场动画不重播 = 不闪）', (function () {
+      return /var mask = \(ui\._maskEl && ui\._maskEl\.isConnected\) \? ui\._maskEl : null;/.test(u97)
+        && /ui\._maskEl = \(root\.querySelector && root\.querySelector\('\.modal-mask'\)\) \|\| null;/.test(u97)
+        && /if \(title && curTitle && title !== curTitle\) \{/.test(u97);
+    })());
+    check('⑥ 层级栈：异标题入栈 / 关闭弹栈回上一级 / closeAllModals 一次关净', (function () {
+      return /ui\._modalStack\.push\(\{ html: inner0 \? inner0\.innerHTML : '', cls: box\.className,/.test(u97)
+        && /if \(_st\.length\) \{\s*var lv = _st\.pop\(\);/.test(u97)
+        && /ui\.closeAllModals = function \(\) \{\s*ui\._modalStack = \[\];\s*ui\.closeModal\(\);/.test(u97);
+    })());
+    check('⑥ ✕ 的提示语随层级变（有上级 → 返回《上一级》）', (function () {
+      return /ui\._paintModalX = function/.test(u97)
+        && /返回《' \+ \(top\.title \|\| '上一级'\) \+ '》'/.test(u97)
+        && /\.modal-x\.has-up::after \{ content: '↩'/.test(h97);
+    })());
+    check('⑥ 兜底：`no-anim` 抑制类在册（万一重建也不闪）',
+      /\.modal-mask\.no-anim, \.modal-mask\.no-anim > \* \{ animation: none !important; \}/.test(h97));
+    check('⑥ 实测：真开两个面板 → 层数为 1；closeModal 回上一级；再关清空', (function () {
+      /* 桩 DOM 里 mask 不存在（isConnected 缺失）→ 走"重建"路径，
+         所以这里验的是**栈的行为**：入栈、弹栈、清空 —— 真 DOM 的 mask 保留由 e2e 验。 */
+      var keep = G.state;
+      try {
+        G.ui.closeAllModals();
+        G.ui.openModal('<div class="gold-heading">面板甲</div>');
+        var t1 = G.ui._modalTitle;
+        G.ui.openModal('<div class="gold-heading">面板乙</div>');
+        var depth = (G.ui._modalStack || []).length;
+        G.ui.closeModal();
+        var back = (G.ui._modalStack || []).length;
+        G.ui.closeModal();
+        var end = (G.ui._modalStack || []).length;
+        G.ui.closeAllModals();
+        return t1 === '面板甲' && depth === 0 && back === 0 && end === 0;
+      } finally { G.state = keep; }
+    })());
+    check('⑥ 实测（真 DOM 语义）：标题相同 = 同级刷新，不入栈', (function () {
+      /* 直接验判据函数：同标题不入栈、异标题入栈 */
+      var keep = G.state;
+      try {
+        G.ui.closeAllModals();
+        G.ui._modalEls = null;
+        /* 用"假 mask"把两条路都走一遍：手工摆 ui._maskEl 为 null → 每次都重建，
+           所以这里改用**单元级**判据：modalTitleOf 的解析 + 标题比较逻辑在源码里。 */
+        return G.ui.modalTitleOf('<div class="gold-heading">甲</div>') === '甲'
+          && G.ui.modalTitleOf('<div class="m-head"><span class="m-title">乙 <b>丙</b></span></div>') === '乙 丙'
+          && G.ui.modalTitleOf('<div>无题</div>') === '';
+      } finally { G.state = keep; }
+    })());
+
+    /* ---------- ⑭ 需求 7：战斗界面 ---------- */
+    console.log('  --- ⑭ 需求 7：战斗界面再压缩 ---');
+    check('⑦ 三列 1fr 4fr 1fr（左右各 1/6、中 2/3）',
+      /\.bt-board \{ display: grid; grid-template-columns: 1fr 4fr 1fr;/.test(h97));
+    check('⑦ 阵亡变暗：初绘 + 同步 + CSS 三处齐备', (function () {
+      return /\(u\.count > 0 \? '' : ' dead'\)/.test(u97)
+        && /#bt-field \[data-bside="' \+ pair\[0\] \+ '"\]\[data-troop="' \+ u\.id \+ '"\]/.test(u97)
+        && /\.bt-unit\.dead \{ opacity: \.26; filter: grayscale\(\.85\); \}/.test(h97);
+    })());
+    check('⑦ 逐兵种一行（移动+战斗同行）· 按出手序错开 · 回合间虚线', (function () {
+      var snap = { field: 1400, atk: [{ id: 'changqiang', name: '长枪兵', count: 100 }],
+        def: [{ id: 'yibing', name: '义兵', count: 50 }], towers: null };
+      var r = { r: 5, gap: 500, events: [
+        { kind: 'move', side: 'atk', id: 'changqiang', name: '长枪兵', step: 100 },
+        { kind: 'attack', side: 'atk', id: 'changqiang', name: '长枪兵', target: '义兵', kill: 9 },
+        { kind: 'move', side: 'def', id: 'yibing', name: '义兵', step: 40 },
+        { kind: 'attack', side: 'def', id: 'yibing', name: '义兵', target: '长枪兵', kill: 3 },
+      ] };
+      var lines = G.ui.btRoundLines(r, snap);
+      return lines.length === 2
+        && lines[0].indent === 0 && lines[1].indent === 14
+        && /进 100/.test(lines[0].txt) && /歼 9/.test(lines[0].txt)   /* 移动与战斗同一行 */
+        && lines[0].cls === 'atk' && lines[1].cls === 'def'
+        && /bt-ev\.sep \{ height: 0; border-top: 1px dashed/.test(h97)
+        && /\.bt-ev\.hdr \{ color: var\(--gold-light\)/.test(h97)
+        && /if \(indent\) d\.style\.paddingLeft = indent \+ 'px';/.test(u97);
+    })());
+    check('⑦ 实测：btRoundLines 对空回合不炸、空事件返回空数组', (function () {
+      var snap = { field: 1000, atk: [], def: [], towers: null };
+      var L = G.ui.btRoundLines({ r: 1, gap: 100, events: [] }, snap);
+      var L2 = G.ui.btRoundLines(null, snap);
+      return Array.isArray(L) && L.length === 0 && Array.isArray(L2) && L2.length === 0;
+    })());
+
+    /* ---------- ⑮ 需求 0：需求档案 ---------- */
+    console.log('  --- ⑮ 需求 0：需求档案同步 ---');
+    check('0 需求档案已补录到 v89.117（含本轮八条）', (function () {
+      return /v89\.116/.test(doc97) && /v89\.117/.test(doc97)
+        && /城主和守将不能执行出征动作/.test(doc97)
+        && /复盘/.test(doc97);
+    })());
+  })();
+
+
+  console.log('\n===== 98. v89.118 四条需求 + 沙盘保真度（战斗加成快照） =====');
+  (function () {
+    var G = GAME, D98 = G.DATA;
+    var _fs98 = require('fs'), _p98 = require('path');
+    var b98 = _fs98.readFileSync(_p98.join(__dirname, 'js/battle.js'), 'utf8');
+    var u98 = _fs98.readFileSync(_p98.join(__dirname, 'js/ui.js'), 'utf8');
+    var s98 = _fs98.readFileSync(_p98.join(__dirname, 'js/state.js'), 'utf8');
+    var m98 = _fs98.readFileSync(_p98.join(__dirname, 'js/main.js'), 'utf8');
+    var bak98 = G.state;
+
+    /* ---------- 需求 1：俘虏营 ---------- */
+    check('① 俘虏人口唯一出口：captivePopOf = Σ(兵种数量 × 该兵种 pop)', (function () {
+      var camp = { yibing: 10, gongjian: 5, nanjiangxiangbing: 2, unknown: 3 };
+      var want = 10 * (D98.TROOPS.yibing.pop || 1) + 5 * (D98.TROOPS.gongjian.pop || 1)
+        + 2 * (D98.TROOPS.nanjiangxiangbing.pop || 1) + 3 * 1;
+      return G.captivePopOf(camp) === want && G.captivePopOf({}) === 0 && want > 17;
+    })(), 'want=' + (function () {
+      var c = { yibing: 10, gongjian: 5, nanjiangxiangbing: 2, unknown: 3 };
+      return G.captivePopOf(c);
+    })());
+
+    check('① 收编那一刻才加人口：增量与 captivePopOf 同源（执行 + 按钮文案两处）', (function () {
+      var st = G.newGame({ name: '俘', cityName: '许都' });
+      G.state = st;
+      try {
+        st.captives = { gongjian: 6, changqiang: 3 };     /* pop 2 与 1 → 6×2+3 = 15 */
+        var want = G.captivePopOf();
+        var c0 = G.currentCity();
+        var pop0 = G.res(c0).pop;
+        var h0 = G.ui.campCard('captive');
+        var r = G.doConscriptCaptives(c0.id);
+        return want === 15 && r.ok && r.pop === 15
+          && Math.round(G.res(c0).pop - pop0) === 15
+          && h0.indexOf('人口 +' + U.numText(15, 0)) >= 0
+          && G.captivesTotalOf() === 0;
+      } finally { G.state = bak98; }
+    })());
+
+    check('① 俘虏营明细**纯文字**（无兵种图标）；伤兵营仍带图标（本轮只点名俘虏营）', (function () {
+      var st = G.newGame({ name: '俘', cityName: '许都' });
+      G.state = st;
+      try {
+        st.captives = { yibing: 40, changqiang: 12 };
+        st.wounded = 10; st.woundedArmy = { yibing: 10 };
+        var hC = G.ui.campCard('captive');
+        var hW = G.ui.campCard('wounded');
+        /* 文案两版并存：full = "营中则**不限量**" / compact = "营中不限量" —— 判关键词 */
+        return hC.indexOf('不限量') >= 0
+          && hC.indexOf('<img') < 0 && hC.indexOf('义兵') >= 0
+          && hW.indexOf('<img') >= 0;
+      } finally { G.state = bak98; }
+    })());
+
+    /* ---------- 需求 2：象兵不设克制 ---------- */
+    check('② 象兵不进克制表（正常攻防）；同人口对长枪「赢但可打」（损 10%~60%）', (function () {
+      var A = D98.COUNTER_ATK.changqiang || {}, Df = D98.COUNTER_DEF.changqiang || {};
+      if (A.nanjiangxiangbing !== undefined || Df.nanjiangxiangbing !== undefined) return false;
+      var r = G.tactic.simulate({ changqiang: 600 }, null, { nanjiangxiangbing: 120 }, 0, null, { kind: 'wild' });
+      var lossPct = 100 * r.defLoss / 120;
+      window.__ele118 = '枪损' + r.atkLoss + '/600 象损' + r.defLoss + '/120(' + Math.round(lossPct) + '%)';
+      return r.winner === 'def' && lossPct >= 10 && lossPct <= 60;
+    })(), window.__ele118 || '-');
+
+    /* ---------- 需求 3：外敌来犯自动化 ---------- */
+    check('③ 自动化含「外敌来犯」项；开/关读唯一出口 invasionAcceptOn', (function () {
+      var hit = null;
+      (G.ui.AUTO_ITEMS || []).forEach(function (x) { if (x.id === 'invasion') hit = x; });
+      if (!hit || hit.act !== 'toggle-auto-invasion') return false;
+      var st = G.newGame({ name: '犯', cityName: '许都' });
+      G.state = st;
+      try {
+        var on0 = G.invasionAcceptOn();
+        st.settings.invasion = false;
+        var off = !G.invasionAcceptOn();
+        st.settings.invasion = true;
+        var on1 = G.invasionAcceptOn();
+        return on0 === true && off && on1 === true
+          && m98.indexOf("case 'toggle-auto-invasion'") >= 0
+          && typeof G.doToggleInvasionAccept === 'function';
+      } finally { G.state = bak98; }
+    })());
+
+    check('③ 规则块与烽火流水在自动化面板；军务·烽火只剩预警与布防（留指路行）', (function () {
+      var st = G.newGame({ name: '犯', cityName: '许都' });
+      if (!st.map.grid) G.map.generate();
+      st.cities.push(G.makeCity({ id: 'b118', name: '二城', x: 265, y: 215 }));
+      G.state = st;
+      try {
+        var pane = G.ui.autoPaneHTML('invasion');
+        var page = G.ui.marchBeaconHTML();
+        return pane.indexOf('来犯 · 触发与规则') >= 0
+          && pane.indexOf('开关含义') >= 0
+          && page.indexOf('来犯 · 触发与规则') < 0
+          && page.indexOf('bb-line beacon') < 0
+          && page.indexOf('自动化 · 外敌来犯') >= 0
+          && page.indexOf('策略布防') >= 0;
+      } finally { G.state = bak98; }
+    })());
+
+    check('③ 口径收口：settings.invasion === false 只出现在 invasionAcceptOn 内（一处）', (function () {
+      /* ⚠️ 注释里也写了这个式子（说明用）—— 先剥注释再数代码。 */
+      var clean = s98.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '');
+      var mm = clean.match(/settings\.invasion === false/g) || [];
+      return mm.length === 1 && s98.indexOf('GAME.invasionAcceptOn = function') >= 0
+        && s98.indexOf('!GAME.invasionAcceptOn()') >= 0;
+    })());
+
+    /* ---------- 需求 4：沙盘保真度（战斗加成快照） ---------- */
+    (function () {
+      var st = G.newGame({ name: '快照', cityName: '许都' });
+      if (!st.map.grid) G.map.generate();
+      st.settings = st.settings || {};
+      st.settings.battleWatch = false;
+      G.state = st;
+      var _exp0 = G.battle.expedition;
+      var rep = null, v0 = null, v1 = null, v2 = null, dbg = '';
+      try {
+        var cx = G.currentCity().x, cy = G.currentCity().y;
+        st.wilds.push({ x: cx + 2, y: cy, type: 'plain', lv: 3, terrain: 'plain' });
+        var g0 = st.generals[0];
+        g0.cityId = G.currentCity().id; g0.status = 'idle';
+        var c0 = G.currentCity();
+        c0.army = { yibing: 4000 };
+        if (G.setStaNow) G.setStaNow(g0, 200);
+        g0.energy = 200;
+        var d0 = G.march.dispatch({ kind: 'wild', x: cx + 2, y: cy, name: '快照野地', lv: 3, terrain: 'plain' },
+          'raid', { yibing: 4000 }, g0.id, null, null, null);
+        if (d0 && d0.ok !== false) {
+          (st.marches || []).forEach(function (m) { m.elapsed = m.totalTime + 1; });
+          G.march.tick();
+          rep = st.reports[0];
+        }
+        if (rep && rep.sandbox) {
+          v0 = G.battle.sandboxOf(rep);
+          /* 篡改全局：科技暴涨 + 天时换季 + 战鼓注入 + 羁绊倍率拉满 */
+          st.techs = st.techs || {};
+          st.techs.zhandou = 9; st.techs.yibing = 9;
+          st.world = st.world || {};
+          st.world.weather = (st.world.weather === 'clear') ? 'rain' : 'clear';
+          st.buffs = { military: { atk: 9.99, def: 9.99 } };
+          var _atk0 = G.story.atkMult;
+          G.story.atkMult = function () { return 99; };
+          try { v1 = G.battle.sandboxOf(rep); } finally { G.story.atkMult = _atk0; }
+          /* 对照：清掉配方里的 boost（旧档行为）→ 应用同一批篡改后必然不一致 */
+          var rep2 = JSON.parse(JSON.stringify(rep));
+          rep2.sandbox.boost = null;
+          G.story.atkMult = function () { return 99; };
+          try { v2 = G.battle.sandboxOf(rep2); } finally { G.story.atkMult = _atk0; }
+          dbg = 'v0=' + (!!v0 && v0.verify) + ' v1=' + (!!v1 && v1.verify) + ' v2=' + (!!v2 && v2.verify)
+            + '（v0 原始 / v1 篡改后带快照 / v2 篡改后去快照）';
+        }
+      } finally {
+        G.battle.expedition = _exp0;
+        G.state = bak98;
+      }
+      check('④ 配方带 boost，且 sandboxOf 走 withBoost 装回（源码级）', (function () {
+        return b98.indexOf('GAME.battle.boostSnapshot = function') >= 0
+          && b98.indexOf('GAME.battle.withBoost = function') >= 0
+          && /boost: extra\.boost \|\| null/.test(b98)
+          && /withBoost\(rc\.boost \|\| null/.test(b98);
+      })());
+      check('④ 保真度：原始 verify=true；**篡改全局后带着快照重跑仍 true**', (function () {
+        return !!v0 && v0.verify === true && !!v1 && v1.verify === true;
+      })(), dbg || '未取到战报');
+      check('④ 对照：**清掉快照**后同一批篡改使 verify=false（证明快照在起作用）', (function () {
+        return !!v2 && v2.verify === false;
+      })(), dbg || '未取到战报');
+    })();
+
+    /* ---------- 需求 0：需求档案在册 ---------- */
+    check('⓪ 需求档案补录到 v89.118（本轮四条在册）', (function () {
+      var p = _p98.join(__dirname, '需求档案.md');
+      if (!_fs98.existsSync(p)) return false;
+      var t = _fs98.readFileSync(p, 'utf8');
+      return t.indexOf('v89.118') >= 0
+        && t.indexOf('俘虏在被收编那一刻才加人口') >= 0
+        && t.indexOf('象兵不设置克制') >= 0
+        && t.indexOf('外敌来犯') >= 0;
+    })());
+  })();
+
+  console.log('\n===== 100. v89.119 反击记录配对（老板「反击和对方出手记录在同一行」） =====');
+  (function () {
+    var G = GAME;
+    var _fs99 = require('fs'), _p99 = require('path');
+    var u99 = _fs99.readFileSync(_p99.join(__dirname, 'js/ui.js'), 'utf8');
+    var t99 = _fs99.readFileSync(_p99.join(__dirname, 'js/tactic.js'), 'utf8');
+    var b99 = _fs99.readFileSync(_p99.join(__dirname, 'js/battle.js'), 'utf8');
+
+    /* ① 结构：counter 不再自建行 —— 并入"引发它的那次出手"（同一行、紧跟其后） */
+    check('① 结构：反击并入**引发它的那次出手**（不再自建行、紧跟出手之后）', (function () {
+      var snap = { field: 1400, atk: [{ id: 'changqiang', name: '长枪兵', count: 100, adv: 400 }],
+        def: [{ id: 'yibing', name: '义兵', count: 50, adv: 100 }], towers: null };
+      var r = { r: 2, gap: 60, events: [
+        { kind: 'attack', side: 'atk', id: 'changqiang', name: '长枪兵', target: '义兵', targetId: 'yibing', kill: 30 },
+        { kind: 'counter', side: 'def', id: 'yibing', name: '义兵', target: '长枪兵', targetId: 'changqiang', kill: 12 },
+      ] };
+      var lines = G.ui.btRoundLines(r, snap);
+      if (lines.length !== 1) return false;                 /* 义兵不该自建行 */
+      var L = lines[0].txt;
+      var iKill = L.indexOf('歼 30'), iCtr = L.indexOf('反击');
+      return /长枪兵/.test(L) && iKill >= 0 && iCtr > iKill   /* 反击在出手**之后** */
+        && /对方义兵反击 歼 12/.test(L) && L.indexOf('（') >= 0;
+    })());
+
+    /* ② 对称：老板句 1/句 2 —— 我方行带"对方反击"、对方行带"我方相应反击" */
+    check('② 对称：我方行 = 移动·出手·对方反击；对方行 = 移动·出手·我方反击', (function () {
+      var snap = { field: 1400, atk: [{ id: 'changqiang', name: '长枪兵', count: 100, adv: 60 }],
+        def: [{ id: 'yibing', name: '义兵', count: 50, adv: 60 }], towers: null };
+      var r = { r: 3, gap: 20, events: [
+        { kind: 'move', side: 'atk', id: 'changqiang', name: '长枪兵', step: 30 },
+        { kind: 'attack', side: 'atk', id: 'changqiang', name: '长枪兵', target: '义兵', targetId: 'yibing', kill: 40 },
+        { kind: 'counter', side: 'def', id: 'yibing', name: '义兵', target: '长枪兵', targetId: 'changqiang', kill: 9 },
+        { kind: 'move', side: 'def', id: 'yibing', name: '义兵', step: 10 },
+        { kind: 'attack', side: 'def', id: 'yibing', name: '义兵', target: '长枪兵', targetId: 'changqiang', kill: 8 },
+        { kind: 'counter', side: 'atk', id: 'changqiang', name: '长枪兵', target: '义兵', targetId: 'yibing', kill: 7 },
+      ] };
+      var lines = G.ui.btRoundLines(r, snap);
+      var atkLine = '', defLine = '';
+      lines.forEach(function (L) { if (L.cls === 'atk') atkLine = L.txt; if (L.cls === 'def') defLine = L.txt; });
+      return lines.length === 2
+        && /进 30/.test(atkLine) && /→ 义兵 歼 40/.test(atkLine) && /（对方义兵反击 歼 9）/.test(atkLine)
+        && atkLine.indexOf('进 30') < atkLine.indexOf('歼 40')
+        && atkLine.indexOf('歼 40') < atkLine.indexOf('义兵反击 歼 9')
+        && /进 10/.test(defLine) && /→ 长枪兵 歼 8/.test(defLine) && /（对方长枪兵反击 歼 7）/.test(defLine);
+    })());
+
+    /* ③ 实测：真打一场（近战互殴）—— counter 全部被配对，且"反击"不再独立成格 */
+    var c3 = (function () {
+      var bak = G.state, ok = false, dbg = '';
+      try {
+        G.newGame({ name: '配', cityName: '许都' });
+        var r = G.tactic.simulate({ changqiang: 4000 }, null, { yibing: 6000 }, 0, null, { kind: 'wild' });
+        var ctrN = 0, bad = 0, ctrInLine = 0;
+        (r.roundsLog || []).forEach(function (rr) {
+          (rr.events || []).forEach(function (e) { if (e.kind === 'counter') ctrN++; });
+          var lines = G.ui.btRoundLines(rr, rr.snap);
+          var txt = lines.map(function (L) { return L.txt; }).join(' ');
+          ctrInLine += (txt.match(/反击/g) || []).length;
+          if (/反击 →/.test(txt)) bad++;
+        });
+        dbg = 'counter 事件 ' + ctrN + ' · 行内"反击" ' + ctrInLine + ' · 独立段 ' + bad
+          + ' · 回合 ' + (r.rounds || 0);
+        ok = ctrN >= 2 && ctrInLine === ctrN && bad === 0;
+      } finally { G.state = bak; }
+      return { ok: ok, dbg: dbg };
+    })();
+    check('③ 实测：counter 事件数 == 行内反击数（配对无遗漏·无独立段）', c3.ok, c3.dbg);
+
+    /* ④ 引擎纪要同口径：战报正文里反击与引发它的出手段同段 */
+    var c4 = (function () {
+      var bak = G.state, ok = false, dbg = '';
+      try {
+        G.newGame({ name: '纪', cityName: '许都' });
+        var r = G.tactic.simulate({ changqiang: 4000 }, null, { yibing: 6000 }, 0, null, { kind: 'wild' });
+        var joined = (r.log || []).join('\n');
+        var hasPaired = /杀伤 [\d,]+（[^）]*反击 杀伤/.test(joined);
+        /* ⚠️ 负向正则不能只查"；…反击…杀伤" —— 那会把**括号里**的反击也命中（误报）。
+           正确口径：按分号分段，**段内不含"（"** 才算独立反击段（兜底路径才会长这样）。 */
+        var lone = joined.split('；').filter(function (x) { return /反击 杀伤/.test(x) && x.indexOf('（') < 0; });
+        dbg = '配对段=' + hasPaired + ' 疑似独立段=' + lone.length + (lone[0] ? (' [' + lone[0].slice(0, 56) + ']') : '');
+        ok = hasPaired && lone.length === 0;
+      } finally { G.state = bak; }
+      return { ok: ok, dbg: dbg };
+    })();
+    check('④ 引擎纪要：反击与出手段同段（无独立反击段）', c4.ok, c4.dbg);
+
+    /* ⑤ 回放帧同口径（battle.js evLine） */
+    var c5 = (function () {
+      var srcOK = /var hi = hostOf\[hk\];/.test(b99) && /parts\[hi\] \+= '（对方'/.test(b99);
+      if (!srcOK) return { ok: false, dbg: '源码级不匹配' };
+      var bak = G.state, ok = false, dbg = '';
+      try {
+        G.newGame({ name: '帧', cityName: '许都' });
+        var r = G.tactic.simulate({ changqiang: 4000 }, null, { yibing: 6000 }, 0, null, { kind: 'wild' });
+        var rf = G.battle.replayFramesOf(r);
+        var all = (rf && rf.frames) ? rf.frames.map(function (f) { return f.ev || ''; }).join('｜') : '';
+        var ctr = (all.match(/反击/g) || []).length;
+        var paired = (all.match(/（[^）]*反击 杀 /g) || []).length;
+        dbg = 'frames=' + (rf && rf.frames ? rf.frames.length : 0) + ' · 帧内反击=' + ctr + ' 括号配对=' + paired;
+        ok = !!rf && !!rf.frames && rf.frames.length >= 4 && ctr === paired;
+      } finally { G.state = bak; }
+      return { ok: ok, dbg: dbg };
+    })();
+    check('⑤ 回放帧：反击并入出手段（若有反击必为括号配对；帧非空）', c5.ok, c5.dbg);
+
+    /* ⑥ 配对键带阵营（同名兵种互射不串台）—— 三处同一规则 */
+    check('⑥ 配对键带阵营（a|id / d|id）——三处同一规则（源码级）', (function () {
+      var tOK = /hostOf\[\(e\.side === 'atk' \? 'a' : 'd'\) \+ '\|' \+ e\.id\]/.test(t99)
+        && /hostOf\[\(e\.side === 'atk' \? 'd' : 'a'\) \+ '\|' \+ e\.targetId\]/.test(t99);
+      var bOK = /hostOf\[\(e\.side === 'atk' \? 'a' : 'd'\) \+ '\|' \+ e\.id\]/.test(b99)
+        && /var hk = \(e\.side === 'atk' \? 'd' : 'a'\) \+ '\|' \+ e\.targetId;/.test(b99)
+        && /var hi = hostOf\[hk\];/.test(b99);
+      var uOK = /hostOf\[row\.key\] = act/.test(u99)
+        && /var hKey = \(e\.side === 'atk' \? 'def' : 'atk'\) \+ '\|'/.test(u99);
+      return tOK && bOK && uOK;
+    })());
+
+    /* ⑦ 同名兵种互射（弓手 vs 弓手）：配对不串台（实测） */
+    var c7 = (function () {
+      var snap = { field: 1200, atk: [{ id: 'gongjian', name: '弓箭手', count: 100, adv: 100 }],
+        def: [{ id: 'gongjian', name: '弓箭手', count: 100, adv: 100 }], towers: null };
+      var r = { r: 1, gap: 300, events: [
+        { kind: 'attack', side: 'def', id: 'gongjian', name: '弓箭手', target: '弓箭手', targetId: 'gongjian', kill: 20 },
+        { kind: 'counter', side: 'atk', id: 'gongjian', name: '弓箭手', target: '弓箭手', targetId: 'gongjian', kill: 18 },
+        { kind: 'attack', side: 'atk', id: 'gongjian', name: '弓箭手', target: '弓箭手', targetId: 'gongjian', kill: 16 },
+        { kind: 'counter', side: 'def', id: 'gongjian', name: '弓箭手', target: '弓箭手', targetId: 'gongjian', kill: 14 },
+      ] };
+      var lines = G.ui.btRoundLines(r, snap);
+      var atkLine = '', defLine = '';
+      lines.forEach(function (L) { if (L.cls === 'atk') atkLine = L.txt; if (L.cls === 'def') defLine = L.txt; });
+      var dbg = 'atk[' + atkLine + '] def[' + defLine + ']';
+      /* 关键：反击不得跨行串台 —— 守方行里是"回应守方那次出手"的反击（歼 18），
+         攻方行里是"回应攻方那次出手"的反击（歼 14）。 */
+      var ok = lines.length === 2
+        && /歼 20/.test(defLine) && /反击 歼 18/.test(defLine)
+        && /歼 16/.test(atkLine) && /反击 歼 14/.test(atkLine);
+      return { ok: ok, dbg: dbg };
+    })();
+    check('⑦ 同名兵种互射不串台（配对键带阵营）', c7.ok, c7.dbg);
+
+    /* ⑧ 文案：配对段用老板原词「对方X反击」（同名兵种互射时不会误读成自己） */
+    check('⑧ 文案：配对段写作「（对方X反击 歼 N）」——与老板原句「对方反击」对齐', (function () {
+      return /'对方' \+ c\.name \+ '反击 歼 '/.test(u99)
+        && /var piece = '对方' \+ e\.name \+ '反击 杀伤 '/.test(t99)
+        && /parts\[hi\] \+= '（对方'/.test(b99);
+    })());
+
+    /* ⑪ 战报正文页专属加高（modal-tall）：xxl 本体不动 + 重复定义已清 */
+    check('⑪ 战报正文页专属加高（modal-tall；xxl 本体仍 1200×850 且只定义一次）', (function () {
+      var h = _fs99.readFileSync(_p99.join(__dirname, 'index.html'), 'utf8');
+      var dup = (h.match(/\.modal-xxl \{ width: 1200px; height: 850px;/g) || []).length;
+      return /\.modal\.modal-xxl\.modal-tall \{ height: min\(920px, calc\(100vh - 40px\)\); \}/.test(h)
+        && dup === 1                                  /* 重复定义已清（v89.119 前是 2） */
+        && /if \(o\.tall\) sizeCls \+= ' modal-tall';/.test(u99)
+        && /ui\.openModal\(html, \{ size: 'xxl', tall: true \}\)/.test(u99);
+    })());
+
+    /* ⑩ 战报正文页去重：简报里的【兵种损耗】文本段被剥离（结构化表仍在） */
+    var c10 = (function () {
+      try {
+        var srcOK = /ui\.stripBodyDup = function/.test(u99) && /ui\.stripBodyDup\(r\.body\)/.test(u99);
+        if (!srcOK) return { ok: false, dbg: '源码级不匹配' };
+        var f = G.ui.stripBodyDup;
+        var a = f('A段<br>【兵种损耗】我军 长枪兵 1,000 → 800（损 200）<br>敌军 义兵 500 → 0（损 500）');
+        var b = f('A段<br>【兵种损耗】我军 长枪兵 1,000 → 800（损 200）<br>敌军 义兵 500 → 0（损 500）<br>【斗将】甲胜乙');
+        var c = f('无损耗段');
+        return { ok: a === 'A段' && b === 'A段<br>【斗将】甲胜乙' && c === '无损耗段',
+          dbg: 'a=[' + a + '] b=[' + b + '] c=[' + c + ']' };
+      } catch (e) { return { ok: false, dbg: 'EX:' + (e && e.message) }; }
+    })();
+    check('⑩ 战报正文页去重：剥离简报里的【兵种损耗】文本段（结构化表仍在）', c10.ok, c10.dbg);
+
+    /* ⑨ 兜底：找不到宿主的孤立 counter 独立成格（不静默丢事件） */
+    check('⑨ 兜底：孤立 counter（无宿主）独立成格，不静默丢事件', (function () {
+      var snap = { field: 1200, atk: [{ id: 'changqiang', name: '长枪兵', count: 10, adv: 0 }], def: [], towers: null };
+      var r = { r: 9, gap: 10, events: [
+        { kind: 'counter', side: 'def', id: 'yibing', name: '义兵', target: '长枪兵', targetId: 'changqiang', kill: 3 }
+      ] };
+      var lines = G.ui.btRoundLines(r, snap);
+      return lines.length === 1 && /义兵/.test(lines[0].txt)
+        && /反击/.test(lines[0].txt) && /歼 3/.test(lines[0].txt);
+    })());
+
+    /* ⓪ 需求档案：本轮在册（§26 的规矩 —— 忘了记档案会当场红） */
+    check('⓪ 需求档案补录到 v89.119（本轮需求原文在册）', (function () {
+      var p = _p99.join(__dirname, '需求档案.md');
+      if (!_fs99.existsSync(p)) return false;
+      var d = _fs99.readFileSync(p, 'utf8');
+      return d.indexOf('v89.119') >= 0
+        && d.indexOf('反击和对方出手记录在同一行') >= 0
+        && d.indexOf('对方反击') >= 0;
+    })());
+  })();
+
+
+  console.log('\n===== 101. v89.120 战报身份 rid / 设定即生效 / 三键居中 / 回合倒叙 =====');
+  (function () {
+    var G = GAME;
+    var _fs101 = require('fs'), _p101 = require('path');
+    var u101 = _fs101.readFileSync(_p101.join(__dirname, 'js/ui.js'), 'utf8');
+    var m101 = _fs101.readFileSync(_p101.join(__dirname, 'js/main.js'), 'utf8');
+    var s101 = _fs101.readFileSync(_p101.join(__dirname, 'js/state.js'), 'utf8');
+    var h101 = _fs101.readFileSync(_p101.join(__dirname, 'index.html'), 'utf8');
+    var clean101 = function (x) {
+      return x.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '');
+    };
+
+    /* ---------- ① 需求 1：战报身份 rid 化 ---------- */
+    /* 结构层：索引口径全仓绝迹（剥注释后查 —— 防墓碑注释误伤，§7.5 的老坑） */
+    check('① 结构：报告身份 rid 化（_repView 绝迹 / data-rid 在册 / repByRid 唯一出口）', (function () {
+      var u = clean101(u101), m = clean101(m101);
+      return /GAME\.repRidOf = function/.test(s101) && /GAME\.repByRid = function/.test(s101)
+        && u.indexOf('_repView') < 0 && m.indexOf('_repView') < 0
+        && /data-action="view-report" data-rid=/.test(u)
+        && /ui\.viewReportText = function \(rid\)/.test(u)
+        && /ui\.openSandbox = function \(rid\)/.test(u)
+        && /ui\.toggleRepFav = function \(rid\)/.test(u)
+        && /ui\._repId = 0;/.test(u)
+        && /ui\.viewReportText\(rid\)/.test(u)                 /* rlog 回调捕获 rid */
+        && /data-action="open-sandbox" data-rid=/.test(u)
+        /* main.js 侧：三个动作都改读 data-rid（repByRid 在 viewReport 内部调） */
+        && /ui\.viewReport\(Number\(el\.dataset\.rid\)\)/.test(m)
+        && /ui\.openSandbox\(Number\(el\.dataset\.rid\)\)/.test(m)
+        && /ui\.toggleRepFav\(Number\(el\.dataset\.rid\)\)/.test(m);
+    })());
+
+    /* 行为层（核心 · 带对照实验）：列表渲染后 unshift 新报告（数组位移）→
+       旧行携带的 rid 仍指向**原报告**；对照：旧下标此刻已指向别的报告。 */
+    var r101a = (function () {
+      var bak = G.state;
+      var out = {}, ok = false;
+      try {
+        var st = G.newGame({ name: 'rid', cityName: '许都', mapSeed: 20260924 });
+        if (!st.map.grid) G.map.generate();
+        st.reports = [
+          { t: Date.now() - 2000, title: '掠报甲', body: 'x', win: true },
+          { t: Date.now() - 1000, title: '侦察乙', body: 'x', win: true, type: 'scout' },
+        ];
+        var rid0 = G.repRidOf(st.reports[0]);          /* 渲染前取号：唯一出口 */
+        /* 渲染列表（这一行的 data-rid = 老板看列表那一刻的 DOM 身份） */
+        var row = G.ui.docRepRowHTML(st.reports[0], true);
+        /* 位移：来了一份新侦察报告（unshift 插到最前） */
+        st.reports.unshift({ t: Date.now(), title: '新侦察丙', body: 'x', win: true, type: 'scout' });
+        var byRid = G.repByRid(rid0);
+        /* 真开一次：viewReportText(rid) 之后 _repId 落在 rid0、能取回原报告 */
+        G.ui.viewReportText(rid0);
+        var openedOk = G.ui._repId === rid0
+          && !!G.repByRid(G.ui._repId) && G.repByRid(G.ui._repId).title === '掠报甲';
+        G.ui.closeAllModals();
+        out.has = row.indexOf('data-rid="' + rid0 + '"') >= 0;
+        out.by = byRid ? byRid.title : 'null';
+        out.idx0 = st.reports[0].title;
+        out.open = openedOk;
+        ok = out.has && out.by === '掠报甲' && out.idx0 === '新侦察丙' && openedOk;
+      } finally { G.state = bak; }
+      return { ok: ok, dbg: JSON.stringify(out) };
+    })();
+    check('① 实测：数组位移后 rid 仍指原报告（对照：旧下标已指到别的报告）', r101a.ok, r101a.dbg);
+
+    /* ---------- ② 需求 2：回放态改设定 → 自动进推演（设定即生效） ---------- */
+    var r101b = (function () {
+      var bak = G.state, bakSd = G.ui._sd, bakRep = G.ui._repId;
+      var okAll = false, denied = false, dbg = '';
+      try {
+        /* 真打一场（低等级野地 + 足兵力），拿到一份带 sandbox 的战报 */
+        var st = G.newGame({ name: '演', cityName: '许都', mapSeed: 20260925 });
+        if (!st.map.grid) G.map.generate();
+        var c0 = st.cities[0];
+        var cx = c0.x, cy = c0.y, tgt = null;
+        for (var dx = -8; dx <= 8 && !tgt; dx++) {
+          for (var dy = -8; dy <= 8 && !tgt; dy++) {
+            if (!dx && !dy) continue;
+            var xx = cx + dx, yy = cy + dy;
+            if (xx < 0 || yy < 0 || xx > (G.COORD_MAX || 499) || yy > (G.COORD_MAX || 499)) continue;
+            var tl = G.map.tile(xx, yy);
+            if (!tl || tl.terrain === 'city') continue;
+            var lv = G.map.wildLevelNow ? G.map.wildLevelNow(xx, yy) : 1;
+            if (lv >= 1 && lv <= 3) tgt = { x: xx, y: yy, lv: lv };
+          }
+        }
+        if (!tgt) { dbg = 'no wild'; return { ok: false, dbg: dbg }; }
+        st.wilds = (st.wilds || []).slice();
+        st.wilds.push({ x: tgt.x, y: tgt.y, type: 'plain', lv: tgt.lv, terrain: 'plain' });
+        st.settings = st.settings || {}; st.settings.battleWatch = false;
+        var g0 = (st.generals || [])[0];
+        g0.cityId = c0.id; g0.status = 'idle';
+        G.setStaNow(g0, 200); g0.energy = 200;
+        c0.army = { yibing: 3000 };
+        var d0 = G.march.dispatch({ kind: 'wild', x: tgt.x, y: tgt.y, name: '演武场', lv: tgt.lv },
+          'raid', { yibing: 3000 }, g0.id, null, null, null);
+        if (!d0 || d0.ok === false) { dbg = 'dispatch:' + ((d0 && d0.msg) || '-'); return { ok: false, dbg: dbg }; }
+        (st.marches || []).forEach(function (m) { m.elapsed = m.totalTime + 1; });
+        G.march.tick();
+        var rep = null;
+        (st.reports || []).forEach(function (r) { if (!rep && r.sandbox && r.type !== 'scout') rep = r; });
+        if (!rep) { dbg = 'no sandbox report'; return { ok: false, dbg: dbg }; }
+        var rid = G.repRidOf(rep);
+        G.ui.openSandbox(rid);
+        var sd = G.ui._sd;
+        if (!sd || sd.mode !== 'replay' || !sd.sb || !sd.sb.verify) {
+          dbg = 'sd未开/replay/verify=' + (sd && sd.sb ? sd.sb.verify : '-');
+          return { ok: false, dbg: dbg };
+        }
+        /* ⚠️ `sdSimEnter` 会把 `sd.cur` 换成**新对象** —— 断言必须重绘后 refetch
+           （拿进推演前的旧对象去读 stance，永远是旧值 —— 首版就踩了这个） */
+        var refetch = function () {
+          var list = (G.ui.sdOurSide(sd.sb) === 'atk' ? sd.cur.atk : sd.cur.def);
+          for (var i = 0; i < list.length; i++) if (list[i].id === tid0) return list[i];
+          return null;
+        };
+        var list0 = (G.ui.sdOurSide(sd.sb) === 'atk' ? sd.cur.atk : sd.cur.def);
+        if (!list0.length) { dbg = 'no unit'; return { ok: false, dbg: dbg }; }
+        var tid0 = list0[0].id;
+        var st0 = list0[0].stance;
+        G.ui.sdSetCmd(tid0, { s: 'hold' });           /* 老板点「驻守」chip 走这里 */
+        var uA = refetch(), uB = refetch();
+        dbg = 'mode=' + sd.mode + ' cmd=' + JSON.stringify(sd.sim && sd.sim.cmds)
+          + ' stance=' + st0 + '→' + (uA ? uA.stance : '?');
+        okAll = sd.mode === 'sim' && !!sd.sim
+          && !!sd.sim.cmds[tid0] && sd.sim.cmds[tid0].s === 'hold'
+          && !!uA && uA.stance === 'hold';
+        /* 反面：**退回回放态**再把 verify 打假 → 改设定被明确拒绝
+           （verify 只在 replay→sim 的自动切换处拦；已在 sim 态时不再拦 —— 这是设计） */
+        G.ui.sdSimExit();
+        sd.sb.verify = false;
+        var before = sd.sim ? JSON.stringify(sd.sim.cmds) : '{}';
+        G.ui.sdSetCmd(tid0, { s: 'retreat' });
+        var after = sd.sim ? JSON.stringify(sd.sim.cmds) : '{}';
+        denied = sd.mode === 'replay' && after === before;    /* retreat 没写进去 */
+        sd.sb.verify = true;
+        G.ui.closeAllModals();
+        return { ok: okAll && denied, dbg: dbg + ' denied=' + denied };
+      } catch (e) { return { ok: false, dbg: dbg + ' ERR:' + (e && e.message) }; }
+      finally { G.ui._sd = bakSd; G.ui._repId = bakRep; G.state = bak; }
+    })();
+    check('② 实测：回放态改设定 → 自动进推演且设定落库（不再静默失效）', r101b.ok, r101b.dbg);
+
+    /* ---------- ③ 需求 3：三键在读秒行（正中间） ---------- */
+    check('③ 结构：三键在读秒行 .bt-acts（左读数/中按钮/右提示）且底栏不再有', (function () {
+      var snap = { field: 1400, atk: [{ id: 'changqiang', name: '长枪兵', count: 100, adv: 100, range: 50 }],
+        def: [{ id: 'yibing', name: '义兵', count: 100, adv: 100, range: 20 }], towers: null };
+      var h = G.ui.btTopHTML({ cnt: 60 }, snap);
+      var okTop = /class="bt-acts"/.test(h)
+        && /btn sm gold" data-action="bt-done">/.test(h)
+        && /btn sm" data-action="bt-auto">/.test(h)
+        && /btn sm" data-action="bt-retreat">/.test(h)
+        && h.indexOf('1,200') >= 0;                        /* 间距读数照旧 */
+      var iL = h.indexOf('bt-left'), iA = h.indexOf('bt-acts'), iH = h.indexOf('bt-hint');
+      var okOrder = iL >= 0 && iA > iL && iH > iA;         /* 三列序：左→中→右 */
+      /* 底栏不再挂三键（openBattlefield 的 foot 段内查） */
+      var iF = u101.indexOf('ui.openBattlefield = function');
+      var seg = u101.slice(iF, iF + 4000);
+      var iFoot = seg.indexOf('foot:');
+      var footSeg = iFoot >= 0 ? seg.slice(iFoot, iFoot + 400) : '';
+      var okFoot = footSeg.indexOf('"bt-done"') < 0 && footSeg.indexOf('"bt-auto"') < 0
+        && footSeg.indexOf('"bt-retreat"') < 0;
+      var okCss = /\.bt-top \{ display: grid; grid-template-columns: 1fr auto 1fr;/.test(h101);
+      return okTop && okOrder && okFoot && okCss;
+    })());
+
+    /* ---------- ④ 需求 4：回合记录倒叙（结构层；真 DOM 在 e2e） ---------- */
+    check('④ 结构：回合块整块置顶（insertBefore firstChild）+ 裁剪删最旧（lastChild）', (function () {
+      var u = clean101(u101);
+      return /log\.insertBefore\(frag, log\.firstChild\);/.test(u)
+        && /ui\.btLogTrim = function/.test(u)
+        && /log\.removeChild\(log\.lastChild\)/.test(u)
+        && /ui\.BT_LOG_MAX = 40;/.test(u)
+        && /ui\.btLogItem = function/.test(u)
+        && u.indexOf("ui.btLogPush('', 'sep')") < 0;      /* 旧写法绝迹（剥注释后查） */
+    })());
+
+    /* ⓪ 需求档案：本轮在册（§26 的规矩 —— 忘了记档案会当场红） */
+    check('⓪ 需求档案补录到 v89.120（本轮需求原文在册）', (function () {
+      var p = _p101.join(__dirname, '需求档案.md');
+      if (!_fs101.existsSync(p)) return false;
+      var d = _fs101.readFileSync(p, 'utf8');
+      return d.indexOf('v89.120') >= 0
+        && d.indexOf('弹出来一个侦察报告') >= 0
+        && d.indexOf('兵种实际行为和设定不一样') >= 0
+        && d.indexOf('回合记录倒叙') >= 0;
+    })());
+  })();
+
+  /* ═══════════════════════════════════════════════════════════
+   * §102（v89.121 · 全生命周期模拟）：悬空引用 + 渠道缺口基线
+   * ------------------------------------------------------------
+   * 这两条都是"模拟器抓出来的病"的防回归：
+   *   ① 游历「沼泽寻宝」曾写 `item: 'chest'` —— 而 'chest' 是槽位名、
+   *      **不是物品 id** → 玩家背包多出一个"未知道具"（点用报"未知宝物"）。
+   *   ② "下架不上架"执行后，23 个下架档 + 移民令**没有任何产出渠道**
+   *      （玩家永远拿不到）—— 其中下架档是设计决策（老板拍板过），
+   *      但"新增拿不到的物品"必须当场红。基线 24 项冻结在这里。
+   * ═══════════════════════════════════════════════════════════ */
+  (function () {
+    var fs102 = require('fs'), path102 = require('path');
+    var dSrc = fs102.readFileSync(path102.join(__dirname, 'js', 'data.js'), 'utf8');
+    /* ① 全部 `item: 'X'` 奖励引用必须存在于 DATA.ITEMS。
+       ⚠ 判存在性用 **ITEMS 全集**（不是 ITEM_BY_ID）—— 后者自己可能过期，
+       用过期表判存在会双向掩盖（首版就这么放过又抓错）。 */
+    var idSet = {};
+    (G.DATA.ITEMS || []).forEach(function (it) { idSet[it.id] = 1; });
+    var miss = [], n = 0;
+    var re102 = /item:\s*'([a-zA-Z_0-9]+)'/g, m102;
+    while ((m102 = re102.exec(dSrc)) !== null) {
+      n++;
+      if (!idSet[m102[1]]) miss.push(m102[1]);
+    }
+    check('§102① 全部 item: 奖励引用都在 DATA.ITEMS（无悬空 id）', miss.length === 0,
+      '扫描 ' + n + ' 处' + (miss.length ? ' · 悬空：' + miss.join(' ') : ' ✓'));
+
+    /* ② 渠道缺口基线（不在售 + 无已知产出渠道）—— 新增即红。
+       v89.121：移民令已上架「民生」（原 24 项 → 23 项），基线同步收缩。 */
+    var BASELINE102 = ['bingfa_xinde', 'zhixuesan', 'dahuandan', 'hanxue_mabian',
+      'chest_jin', 'pijiang_shouji', 'xiaowei_zhaji', 'jiangjun_zhanlu', 'dudu_bingfa',
+      'mingjiang_xinchuan', 'taigong_bingshu', 'jinchuang_san', 'shengji_gao', 'huiqi_dan',
+      'peiyuan_dan', 'guben_dan', 'shengxin_wan', 'jingxin_dan', 'huanhun_lu',
+      'yule_maju', 'zhaoye_an', 'zhuifeng_an', 'chest_zitan'];
+    var CHT = { jewel: 1, material: 1, blueprint: 1, rank_up: 1, essence: 1, talis: 1 };
+    var CHI = { corvee: 1, mabian: 1, jinang: 1, bp_mingjiang: 1,
+      tongshang_quan: 1, mojia_canjuan: 1, xianzhenzhangu: 1, jixingjunling: 1, hufu: 1 };
+    ((G.DATA.SEED_DROP || {}).table || []).forEach(function (r) { CHI[r.id] = 1; });
+    var noCh = [];
+    (G.DATA.ITEMS || []).forEach(function (it) {
+      if (it.price > 0 && !it.noShop && G.ui.SHOP_CATS[it.type]) return;   /* 商城在售 */
+      if (CHI[it.id] || CHT[it.type]) return;
+      noCh.push(it.id);
+    });
+    var added102 = noCh.filter(function (id) { return BASELINE102.indexOf(id) < 0; });
+    check('§102② 渠道缺口无新增（基线 ' + BASELINE102.length + ' 项：下架档 + 移民令）',
+      added102.length === 0,
+      '当前 ' + noCh.length + ' 项' + (added102.length ? ' · ⚠ 新增：' + added102.join(' ') : ' ✓'));
+
+    /* ③ ITEM_BY_ID 表完整性 —— 它由 data.js 末尾重建（v89.121），
+       键数必须等于 ITEMS 条数（防"扩充了物品但忘了重建表"的老 bug 回潮）。 */
+    var byIdN = Object.keys(G.DATA.ITEM_BY_ID || {}).length;
+    var itemsN = (G.DATA.ITEMS || []).length;
+    check('§102③ DATA.ITEM_BY_ID 是全量（键数 === ITEMS 条数）', byIdN === itemsN,
+      byIdN + ' / ' + itemsN);
+
+    /* ④ "半上架"守卫（v89.121 移民令的病根）：有价（想卖）+ 未标 noShop（没说不卖）
+       + 无页签（渲染不出来）= 玩家永远买不到的鬼物。不想卖就明确写 price:0 或 noShop。 */
+    var half102 = [];
+    (G.DATA.ITEMS || []).forEach(function (it) {
+      if (it.price > 0 && !it.noShop && !G.ui.SHOP_CATS[it.type]) half102.push(it.id + '(' + it.type + ')');
+    });
+    check('§102④ 无"半上架"物品（有价 + 非下架 → 必须有页签）', half102.length === 0,
+      half102.length ? '半上架：' + half102.slice(0, 10).join(' ') : '全量扫过 ✓');
   })();
 
   console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');

@@ -97,12 +97,12 @@ G.ui.setRepFilter('win');
 var hWin = G.ui.reportsHTML();
 ck('筛选「胜」：只剩胜报', hWin.indexOf('胜报甲') >= 0 && hWin.indexOf('败报乙') < 0);
 /* 收藏切换 */
-G.ui.toggleRepFav(0);
+G.ui.toggleRepFav(GAME.repRidOf(GAME.state.reports[0]));
 ck('收藏写入条目（s.reports[0].fav）', st.reports[0].fav === true);
 G.ui.setRepFilter('fav');
 var hFav = G.ui.reportsHTML();
 ck('筛选「收藏」：只显已收藏', hFav.indexOf('胜报甲') >= 0 && hFav.indexOf('败报乙') < 0);
-G.ui.toggleRepFav(0);
+G.ui.toggleRepFav(GAME.repRidOf(GAME.state.reports[0]));
 ck('再切取消收藏', st.reports[0].fav === false);
 G.ui.setRepFilter('all');
 

@@ -366,6 +366,9 @@
     var s = GAME.state, F = DATA.FORT;
     if (!F || !s.map.grid) return null;
     if (GAME.map.fortRazedToday(x, y)) return null;
+    /* v89.103（老板「拔除据点可以占据该据点」）：已据为己有的格子**永久**不再生成据点 ——
+       与 fortsRazed（当日标记，次日重置）不同：那一格现在是我方一座城（s.cities 里）。 */
+    if ((s.fortsTaken || {})[x + ',' + y]) return null;
     var t = GAME.map.tile(x, y);
     if (!t || t.terrain === 'city') return null;
     var day = GAME.questDayIndex ? GAME.questDayIndex() : 0;
@@ -389,6 +392,17 @@
     var s = GAME.state;
     s.fortsRazed = s.fortsRazed || {};
     s.fortsRazed[x + ',' + y] = GAME.questDayIndex ? GAME.questDayIndex() : 0;
+  };
+  /* v89.103（老板「拔除据点可以占据该据点」）：**永久**占据登记（唯一出口）。
+     与 fortsRazed 的分工：那张表只管"今天不再出现"，次日重置；
+     这张表是"这格已经是我的城了"，永不失效 —— `fortAt` 读到它就直接返回 null，
+     于是渲染 / 出征目标 / 自动出征 / 侦查**全部**看不到它（一个出口，处处生效）。 */
+  GAME.map.markFortTaken = function (x, y, cityId) {
+    var s = GAME.state;
+    if (!s) return null;
+    s.fortsTaken = s.fortsTaken || {};
+    s.fortsTaken[x + ',' + y] = { day: GAME.questDayIndex ? GAME.questDayIndex() : 0, cityId: cityId || null };
+    return s.fortsTaken[x + ',' + y];
   };
   /* ============================================================
    * 野外城池的**每日掠夺上限**（v63 · 老板：「野外城每天只能被掠夺一次」）

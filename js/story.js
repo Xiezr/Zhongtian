@@ -197,7 +197,7 @@
     w.eraGoalDone = false;
     var era = DATA.ERAS[w.eraIndex];
     STORY.chronicleAdd('改元' + era.name + '。' + era.desc + ' 时代之志：' + era.goal.text + '。', 'era');
-    if (GAME.log) GAME.log('🎏 改元 ' + era.name + '：' + era.boon.text);
+    if (GAME.log) GAME.log.task('🎏 改元 ' + era.name + '：' + era.boon.text);
   };
 
   /* 时代目标当前进度（返回 {cur,target,text,ratio,ok}） */
@@ -242,7 +242,7 @@
     s.rep = (s.rep || 0) + bonus.rep;
     s.eraHistory.push({ era: era.name, year: w.year, goal: era.goal.text, done: true });
     STORY.chronicleAdd('是岁，' + era.goal.text + '既成，' + era.name + '之志遂矣。赏赐有差，众心大悦。', 'era');
-    if (GAME.log) GAME.log('🏆 时代之志达成：' + era.goal.text + '（+' + bonus.gold + '金 / +' + bonus.rep + '声望）');
+    if (GAME.log) GAME.log.task('🏆 时代之志达成：' + era.goal.text + '（+' + bonus.gold + '金 / +' + bonus.rep + '声望）');
   };
 
   /* ============================================================

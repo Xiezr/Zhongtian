@@ -37,7 +37,8 @@ var ARGV = process.argv.slice(2);
 var MAXT = Math.max(96, Number(ARGV[0] || 1080000));   /* v89.98：默认 1× 300h = 1,080,000 ticks */
 var TAG  = ARGV[1] || 'rush_1x';
 var MODE = ARGV[2] || 'rush';   /* gold | buff | equip | all | rush | econ（v89.100：纯经济，军事全停）
-                                    | loot（v89.100：rush 全行为 + 战利品寄售变现 75%） */
+                                    | loot（v89.100：rush 全行为 + 战利品寄售变现 75%）
+                                    | lootx（对照：寄售空转=只调用不卖，用于分离"寄售效果"与"路径分叉"） */
 var TS   = Math.max(1, Number(ARGV[3] || 1));   /* v89.98：timeScale（1 = 严格 1×） */
 var T_YEAR = 57600, T_HALF = 28800, T_QUARTER = 14400;   /* 模块加载后按 TS 重算 */
 /* v89.98：固定随机种子（三倍速对照跑对齐运气 —— 让差异只来自倍率机制本身） */
@@ -353,6 +354,8 @@ function tryWall() {
 }
 /* 5.4 募兵 */
 var TROOP_ORDER = ['tieji', 'qingji', 'changqiang', 'daodun', 'gongjian', 'yibing'];
+if (MODE === 'span') TROOP_ORDER = ['qingji', 'tieji', 'changqiang', 'daodun', 'gongjian', 'yibing'];   /* v89.101：城流跨越以轻骑为主力 */
+if (MODE === 'span') RUN('🧪 SPAN 模式：城流跨越（筑城无上限 + 轻骑批量成军 + 军链抢建）');
 function armyTarget() {
   var y = yNow();
   /* v89.98b：目标下调 —— 原 5000/15000/40000 远超 18.75 年的人口供给（人口=民房唯一来源），
@@ -833,6 +836,7 @@ function goldRush() {
 function goldTrainRush() {
   var rich = richCity();
   var minKeep = GOLD.reserve + 100000;  /* v89.98b：60 万 → 10 万 */
+  if (MODE === 'span') minKeep = GOLD.reserve + 15000;   /* v89.101c：骑兵批量不被保留线压住 */
   st.cities.forEach(function (city) {
     if ((G.res(rich).gold || 0) < minKeep) return;
     var jy = cellOf(city, 'junying');
@@ -1601,8 +1605,17 @@ function consignBrain() {
       for (var jid in nr.jewel) keep.push(jid);
     }
   } catch (e) {}
-  var rich = richCity(); setCity(rich);
-  var r = safeCall('loot.consign', function () { return G.systems.consignAll({ keep: keep }); });
+  /* v89.100c：**不再 setCity(richCity())** —— 首版每次寄售都切走"当前城"，
+     一个副作用就让 18.75 年轨迹拐弯（配对差方向翻转：+151/+545/-928/-1387）。
+     寄售按"当前城"入账（就地卖出语义）；轨迹与对照保持同一路径。 */
+  /* v89.100b：**只卖攻击掉落类**（珠宝/材料/种子/图纸）—— 老板假设 = "攻击获得的道具"。
+     首测无差别全卖把买来的投资品（生产宝物/体力药/加速）也变现了 → 产线断裂、
+     全面慢于 rush（军 1059 vs 4198）。投资品是买来的，卖掉 = 自断供给。 */
+  /* lootx = 对照：only 传空数组 → 什么都不卖（其余调用/副作用与 loot 完全一致） */
+  var onlySet = (MODE === 'lootx') ? [] : ['jewel', 'material', 'seed', 'blueprint'];
+  var r = safeCall('loot.consign', function () {
+    return G.systems.consignAll({ keep: keep, only: onlySet });
+  });
   if (r && r.ok) {
     if (!CSG.tFirst) CSG.tFirst = tNow;
     CSG.gold += r.gold; CSG.kinds += r.n; CSG.pieces += r.cnt; CSG.runs++;
@@ -1909,6 +1922,91 @@ function popBrain() {
   }
 }
 
+/* ============================================================
+ * v89.101 · 城流跨越（span）—— 老板「轻骑兵是事实，铁骑兵是不是？
+ *   开拓四维，用寻找漏洞的方式寻求跨越式的、不可逆的发展」
+ * ① spanCities：占平原 → 即时筑城（实测无上限 · 附近 1233 块可筑平原）
+ * ② spanCav：轻骑批量成军（选粮最厚的城，一次募到该城上限）
+ * ③ spanMil：军链抢建（军营→5 / 马厩→3 / 书院→6，骑兵门票）
+ * ============================================================ */
+var SPAN = { maxCity: 9, cityLast: -1e9, cavLast: -1e9, milLast: -1e9 };
+function spanCities() {
+  if (st.cities.length >= SPAN.maxCity) return;
+  if (tNow - SPAN.cityLast < 420) return;
+  SPAN.cityLast = tNow;
+  var busy = (st.marches || []).some(function (m) { return m.target && m.target.kind === 'wild'; });
+  if (busy) return;
+  var g = ensurePlainForCity('spanCity');
+  if (!g.have) return;
+  /* v89.101b：逐城试付 —— 首跑单城卡资源不足 85 次（石/铁见底） */
+  var r = null;
+  for (var i2 = 0; i2 < st.cities.length && !(r && r.ok); i2++) {
+    setCity(st.cities[i2]);
+    try { if (!G.canAfford(G.BUILD_CITY_COST)) continue; } catch (e) { continue; }
+    r = safeCall('span.build.' + st.cities[i2].name, function () { return G.buildCityAt(g.w.x, g.w.y); });
+  }
+  if (r && r.ok) RUN('🏯 城流：筑「' + r.city.name + '」（第 ' + st.cities.length + ' 城 · 建造并行 ' + (st.cities.length * 3) + ' 条）');
+  if (r && !r.ok) noteSoft('span.build', r.msg);
+}
+function spanCav() {
+  if (tNow - SPAN.cavLast < 300) return;
+  SPAN.cavLast = tNow;
+  var best = null, bg = -1, bCap = 0, anyUnlocked = false;
+  st.cities.forEach(function (c) {
+    var jy = cellOf(c, 'junying');
+    if (!jy) return;
+    setCity(c);
+    var okc = false;
+    try { okc = (G.canTrain('qingji') || {}).ok; } catch (e) {}
+    if (!okc) return;
+    anyUnlocked = true;
+    var cap = 0;
+    try { cap = G.maxTrainCount('qingji', c.id, jy.idx) || 0; } catch (e) {}
+    if (!(cap > 0)) return;
+    var g = (G.res(c).grain || 0);
+    if (g > bg) { bg = g; best = c; bCap = cap; }
+  });
+  if (!best || !(bCap > 0)) {
+    /* v89.101b：骑兵解锁但缺人 → 解散义兵放人（要特定兵种时解散改募） */
+    if (anyUnlocked) safeCall('span.cav.rel', function () { return releaseBank(500, '轻骑待募·放人'); });
+    return;
+  }
+  var jy2 = cellOf(best, 'junying');
+  var n = Math.min(bCap, 4000);
+  setCity(best);
+  var r = safeCall('span.cav', function () { return G.train('qingji', n, best.id, jy2.idx); });
+  if (r && r.ok) RUN('🐎 轻骑成军：' + best.name + ' 一次 ×' + n + '（该城上限 ' + bCap + '）');
+  else if (r && !r.ok) noteSoft('span.cav', r.msg);
+}
+function spanMil() {
+  if (tNow - SPAN.milLast < 600) return;
+  SPAN.milLast = tNow;
+  var c = st.cities[0];
+  /* v89.101d：**官府总闸优先**（实测 junying 被"建筑等级 ≤ 官府等级"卡了 9 年）；
+     升级取**最高等级的那一格**（buildingLevel = 各格最大等级） */
+  [['guanfu', 8], ['junying', 7], ['majiu', 3], ['shuyuan', 6]].forEach(function (p) {
+    var bid = p[0], want = p[1];
+    if (G.buildingLevel(c, bid) >= want) return;
+    if (G.buildCapOf && G.buildCapOf(c, bid) <= G.buildingLevel(c, bid)) return;   /* 受官府闸：等官府先升 */
+    var idx = -1, bl = -1;
+    (c.cells || []).forEach(function (cc, i) { if (cc.build && cc.build.id === bid && cc.build.lvl > bl) { bl = cc.build.lvl; idx = i; } });
+    if (idx < 0) return;
+    setCity(c);
+    var r = safeCall('span.mil.' + bid, function () { return G.upgradeAt(c.id, idx); });
+    if (r && r.ok && (G.res(c).gold || 0) >= 12000) {
+      /* v89.101c：军链金提速 —— 队列字段实测为 **gridIndex**（不是 idx）；单次仅 ~900 金 */
+      var qb = null;
+      (st.queues.build || []).forEach(function (x) { if (!qb && x.cityId === c.id && x.gridIndex === idx) qb = x; });
+      if (qb) {
+        var pay = safeCall('span.mil.pay', function () { return G.queueRushPay(qb, '工程'); });
+        if (pay && pay.ok) RUN('军链提速：' + bid + ' 花金完工');
+        else if (pay && !pay.ok) noteSoft('span.mil.pay', pay.msg);
+      }
+    }
+    if (r && r.ok) RUN('⚔️ 军链抢建：' + bid + ' Lv' + G.buildingLevel(c, bid) + ' → 目标 Lv' + want);
+  });
+}
+
 /* ---------- 9. 主循环 ---------- */
 var SNAP_EVERY = T_QUARTER;   /* v89.98：每 1/4 游戏年（1× 下 = 14,400 ticks） */
 var BRAIN_LAST = -1e9;
@@ -1916,6 +2014,7 @@ var T0 = _RealNow();
 RUN('主循环启动：每 tick = 1 现实秒 × ' + TS + ' 倍率；快照 1/4 游戏年；脑决策 40t(前10min)→120t（现实秒语义）');
 if (MODE === 'econ') RUN('🧪 ECON 模式：军事全停（征兵/采集/占领/出征/围攻/城墙/装备/存兵全跳过）——只看资源积累 + 商场经验道具');
 if (MODE === 'loot') RUN('🧪 LOOT 模式：rush 全行为 + 战利品寄售（按购买价 75% 变现；保留晋爵缺口珠宝）');
+if (MODE === 'lootx') RUN('🧪 LOOTX 对照：寄售**空转**（只调用不卖）——分离寄售效果与路径分叉');
 
 for (tNow = 1; tNow <= MAXT; tNow++) {
   simMs += 1000;
@@ -1962,13 +2061,13 @@ for (tNow = 1; tNow <= MAXT; tNow++) {
       safeCall('b.reinforce', tryReinforce);
     }
     safeCall('b.market', tryMarketSell);
-    if (MODE === 'loot') safeCall('b.consign', consignBrain);   /* v89.100：战利品寄售变现 */
+    if (MODE === 'loot' || MODE === 'lootx') safeCall('b.consign', consignBrain);   /* v89.100：战利品寄售变现 */
     safeCall('b.farm', tryFarm);
     safeCall('b.shop', tryShop);
     safeCall('b.sect', trySect);
     if (MODE !== 'econ') safeCall('b.autoMarch', manageAutoMarch);   /* v89.100：econ 无军事 */
     /* v89.92：宝物流优先级 = 最先（这是它的打法本体 —— 金先换产量） */
-    if (MODE === 'buff' || MODE === 'all' || MODE === 'rush') {
+    if (MODE === 'buff' || MODE === 'all' || MODE === 'rush' || MODE === 'span') {
       safeCall('b.buffCorvee', buffCorvee);
       safeCall('b.buffAttr', buffAttr);
       safeCall('b.buffProd', buffProd);
@@ -1992,6 +2091,11 @@ for (tNow = 1; tNow <= MAXT; tNow++) {
       safeCall('b.equipWear', equipWear);
     }
     safeCall('b.milestones', execMilestones);
+    if (MODE === 'span') {
+      safeCall('b.spanCity', spanCities);
+      safeCall('b.spanCav', spanCav);
+      safeCall('b.spanMil', spanMil);
+    }
     /* v89.98：RUSH 五链（围攻 / 爵位 / 节钺 / 通商券 / 丹药）
        v89.100：econ 跳过围攻与节钺（军事），保留晋爵/通商券/丹药（经济养成）。 */
     if (MODE !== 'econ') {
