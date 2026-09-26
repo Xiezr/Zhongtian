@@ -312,15 +312,17 @@ step('对将领使用（练兵经验：有对象道具）', function () {
   if ((g.exp || 0) <= e0 && g.level === 1) return { note: '经验道具已消耗（经验 ' + e0 + ' → ' + (g.exp || 0) + '）' };
   return { note: '经验 ' + e0 + ' → ' + (g.exp || 0) };
 });
-step('移民令：补到人口上限 50%', function () {
+step('移民令：每次 +上限 25%（增量语义）', function () {
   var c = G.res(A);
   var cap = G.maxPopOf(A);
   c.pop = Math.floor(cap * 0.2);
+  var before = c.pop;
   var r = G.doUseItem('yiminling');
   if (r && r.ok === false) return r;
-  var want = Math.floor(cap * 0.5);
-  if (Math.abs(c.pop - want) > 1) throw new Error('人口 ' + c.pop + ' ≠ 上限 50%（' + want + '）');
-  return { note: '人口 ' + U.fmt(c.pop) + '（= 上限 ' + U.fmt(cap) + ' 的 50%）' };
+  var add = Math.floor(cap * 0.25);
+  var want = Math.min(cap, before + add);
+  if (Math.abs(c.pop - want) > 1) throw new Error('人口 ' + c.pop + ' ≠ ' + before + ' + ' + add + '（' + want + '）');
+  return { note: '人口 ' + U.fmt(before) + ' → ' + U.fmt(c.pop) + '（+' + U.fmt(c.pop - before) + '，上限 ' + U.fmt(cap) + '）' };
 });
 
 /* ══════════ ⑧ 经济链 ══════════ */

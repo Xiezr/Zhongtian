@@ -14,8 +14,9 @@
     n = Math.floor(n);
     if (n >= 1e8) return (n / 1e8).toFixed(2) + '亿';
     if (n >= 1e4) return (n / 1e4).toFixed(1) + '万';
-    if (n >= 1e3) return (n / 1e3).toFixed(1) + 'k';
-    return '' + n;
+    /* v89.127：1 千~1 万段原用英文 'k'（如 "1.5k"）—— 整个中文界面唯一的英文单位，
+       改**逗号千分位**（1500 → "1,500"），与「万 / 亿」体系同气。 */
+    return U.numText(n, 0);
   };
   /* 精确数字（千分位，不缩写）—— 用于资源存量等需要"肉眼看到在增长"的地方。
      U.fmt 会把 20000 缩写成 "2.0万"、并向下取整，导致每秒 +0.67 的变化完全不可见。
@@ -42,7 +43,7 @@
      · < 1 万  → 千分位精确值（1,234；不动它，四位数以内不占地方）
      · ≥ 1 万  → X.X 万
      · ≥ 1 亿  → X.XX 亿
-     与 `U.fmt` 的分工：fmt 用 "k" 这种非中文单位、且 Math.floor 掉零头，
+     与 `U.fmt` 的分工：fmt 会 Math.floor 掉零头（≥1 万走"万"缩写、千级用千分位），
      适合日志与概览；这里供**存量**用，取整规则是"够用就好"。
      单位另包一个 <i> 便于用小字排（视觉上数字部分宽度才稳定）。 */
   U.amtHTML = function (n) {
@@ -59,12 +60,29 @@
   U.amtText = function (n) {
     return U.amtHTML(n).replace(/<[^>]*>/g, '');
   };
-  /* 增速显示：每秒产量（与画面刷新节奏一致，最能体现"在涨"） */
+  /* v89.123（老板「资源产量以每小时产量呈现，过万以"万"显示」）：
+     **每小时产量的格式化唯一出口** —— 消费端只给"每小时"的数，不各自打格式。
+     档位：≥1亿 → X.XX亿 · ≥1万 → X.X万 · ≥10 → 整数 · 否则 1 位小数。
+     （与 U.amtHTML 的分工：那是**存量**的档位（富余到亿也不奇怪）；
+       产量用同一把尺子 —— <1 万的产量以整数呈现，"过万"才进万档。） */
+  U.perHourText = function (perH) {
+    var v = Number(perH) || 0;
+    if (v <= 0) return '0';
+    if (v >= 1e8) return (v / 1e8).toFixed(2) + '亿';
+    if (v >= 1e4) return (v / 1e4).toFixed(1) + '万';
+    if (v >= 10) return String(Math.round(v));
+    return v.toFixed(1);
+  };
+  /* 增速显示（v89.123：由「/秒」改为「**每小时**」）——
+     ⚠️ 换算 = `每秒 × 3600 ÷ timeScale`（= **游戏时间**的每小时）：
+       上游 `cityProdPerSec` 返回的是**现实每秒**（内部 `base/3600×ts`，tick 直接累加），
+       直接 ×3600 会把 120× 的倍率乘进来，与建筑面板「产量 100/时」「野地表」差 120 倍。
+       同一把尺子 = 野地表 contrib 的公式（`prod × 3600 / timeScale()`）。
+     入参仍为**每秒**产量（上游唯一口径不变），本函数只负责换算 + 格式化。 */
   U.rateHTML = function (perSec) {
     var v = Number(perSec) || 0;
-    if (v <= 0) return '<span class="num-rate zero">+0/秒</span>';
-    var txt = v >= 100 ? v.toFixed(0) : (v >= 10 ? v.toFixed(1) : v.toFixed(2));
-    return '<span class="num-rate">+' + txt + '/秒</span>';
+    if (v <= 0) return '<span class="num-rate zero">+0/时</span>';
+    return '<span class="num-rate">+' + U.perHourText(v * 3600 / GAME.timeScale()) + '/时</span>';
   };
   U.randInt = function (rand, lo, hi) { return Math.floor(rand() * (hi - lo + 1)) + lo; };
   U.escape = function (s) {
@@ -236,9 +254,12 @@
     };
     var total = city.col * city.row;
     for (var i = 0; i < total; i++) city.cells.push({ build: null, pending: null });
+    /* v89.128（老板）：「城墙以**环城一圈的城墙结构**作为一个建筑（地位与城内建筑同），
+       而不是占据城内一个地块」—— 城墙走**环城槽** `city.wall`（与 cell 同形，
+       不占 48 格中的任何一格；建造/升级/拆除统一走 GAME.cellOf）。 */
+    city.wall = { build: null, pending: null };
     /* 官府占 4 格：v68（老板）移回**正中央** —— 8×6 时占「第三行 4、5 与第四行 4、5」。
-       落位公式的唯一出口是 GAME.govCellsOf（makeCity / cityPlanOf / 旧档迁移共用）。
-       城墙另存 city.wallLv（不占格，见 GAME.buildingLevel 特判）。 */
+       落位公式的唯一出口是 GAME.govCellsOf（makeCity / cityPlanOf / 旧档迁移共用）。 */
     var gfIdx = GAME.govCellsOf(city.col, city.row);
     gfIdx.forEach(function (g) { city.cells[g].build = { id: 'guanfu', lvl: 1 }; city.cells[g].official = true; });
     /* 初始民房2座（其余格子玩家自建） */
@@ -423,13 +444,16 @@
     return id;
   };
 
-  GAME.makeGeneral = function (name, level, status, cityId, isStarter, rankId, styleId) {
+  GAME.makeGeneral = function (name, level, status, cityId, isStarter, rankId, styleId, rand) {
     var b = DATA.GEN_BASE;
     var rk = DATA.GEN_RANK_BY_ID[rankId] || DATA.GEN_RANK_BY_ID.liang;
     var st = null;
     (DATA.GEN_STYLES || []).forEach(function (x) { if (x.id === styleId) st = x; });
     if (!st) st = DATA.GEN_STYLES[0];
-    var rand = U.rng((U.now() + (GAME._genSeq || 0) * 977 + Math.floor(Math.random() * 1e7)) >>> 0);
+    /* v89.129：`rand` 可作第 8 参传入**确定性流**（据点守将等"派生型 NPC"用 ——
+       同一目标每次读到同一个人，侦查看到的 == 打起来遇到的）；
+       不传则保持原行为（时间戳 + 随机）。 */
+    rand = rand || U.rng((U.now() + (GAME._genSeq || 0) * 977 + Math.floor(Math.random() * 1e7)) >>> 0);
     function roll() { return U.randInt(rand, rk.base[0], rk.base[1]); }
     var g = {
       id: GAME.nextGenId(),
@@ -1130,7 +1154,9 @@
    *   野外城池 → 建筑等级 = 城等级（它没有档位加成，`cityBuildBonus` = 0）；
    *   名城     → 建筑等级 = 城等级 + 档位加成（县城+2 / 郡城+4 / 州城+8 / 都城+12），
    *             即 v54 定下的「名城建筑等级上限」——"补满"就是把每座建筑盖到它的上限。
-   * 城墙不占格，但同样算"建筑"，所以 `wallLv` 也取 `buildLv`。
+   * v89.126 → v89.128：城墙在**NPC 计划**里仍占一格（`CITY_PLAN.order` 收录，
+   *   等级 = `buildLv`）—— 这只是影子数据的形状；**攻占转正时提取到环城槽**
+   *   （`city.wall`），玩家侧永不占格（老板：「以环城一圈的结构作为一个建筑」）。
    * ============================================================ */
   GAME.cityPlanOf = function (level, buildLv) {
     var P = DATA.CITY_PLAN;
@@ -1185,7 +1211,7 @@
       var bid = n < restOrder.length ? restOrder[n] : P.filler;
       cells[idx] = { build: { id: bid, lvl: bl }, pending: null };
     });
-    return { col: col, row: row, level: lv, buildLv: bl, cells: cells, wallLv: bl, total: total };
+    return { col: col, row: row, level: lv, buildLv: bl, cells: cells, total: total };
   };
   /* 系统城的**建筑等级**（唯一出口，与玩家侧 `buildCapOf` 同一个换算口径）。
      口径演变（**以最后一条为准**）：
@@ -1314,7 +1340,7 @@
     var sh = {
       id: city.id, name: city.name, x: city.x, y: city.y,
       level: lv, buildLv: bl, type: city.type, state: city.state,
-      col: plan.col, row: plan.row, cells: cells, extGrid: ext, wallLv: plan.wallLv, def: city.def || 0,
+      col: plan.col, row: plan.row, cells: cells, extGrid: ext, def: city.def || 0,
       army: {}, ruler: false, shadow: true,
     };
     GAME._npcCache[key] = sh;
@@ -1341,7 +1367,7 @@
    * 野外城池（`GAME.map.fortAt`）原本**只有守军和名字**，没有城内结构。
    * 现在给它同一套满配布局（走 `GAME.cityPlanOf`，与未占据名城同一个出口）：
    *   · 城内所有建筑各 1 座、军营 2 座、余为民房（老板给定）；
-   *   · 城墙不占格（`wallLv` = 城等级，与玩家城/名城同口径）；
+   *   · 城墙读环城槽 city.wall（据点无城墙 → 等级 0，与玩家城/名城同口径）；
    *   · 人口上限按民房算；城防按城墙等级算。
    * `fortCityOf` 把 fort 包装成 city-like，让派生函数复用同一份口径 ——
    * 不这么做就会出现"名城一套、野城另一套"的两个出口。
@@ -1363,7 +1389,14 @@
     var out = {
       col: summary.plan.col, row: summary.plan.row, level: lv,
       buildLv: summary.plan.buildLv,
-      wallLv: summary.plan.wallLv, total: summary.plan.total,
+      /* v89.126：城墙占格后，等级从 cells 读（与 GAME.buildingLevel 同源） */
+      wallLv: (function () {
+        var w = 0;
+        (summary.plan.cells || []).forEach(function (x) {
+          if (x.build && x.build.id === 'chengqiang') w = Math.max(w, x.build.lvl || 0);
+        });
+        return w;
+      })(), total: summary.plan.total,
       items: summary.items, minfang: summary.minfang,
       popCap: GAME.planPopCapOf(lv),
       def: GAME.fortDefOf(fort),
@@ -1741,13 +1774,23 @@
     /* 将领体力/精力回满、忠诚（v14.1 同样不随时间衰减，与在线口径一致） */
     (function () {
       var gc = DATA.GEN_COST, lo = DATA.LOYALTY, hours = ts / 3600 * secReal;
+      var rateRec131 = 1 / ((gc.recoverHours || 24) * 3600);   /* v89.131：满回复 24 现实小时 */
       s.generals.forEach(function (g) {
         /* v29（需求 11）：体力上限不再是写死的 100，而是 GAME.staMax(g)
            v66：`g.stamina` 存的是**等级那一份的余量**（装备体力常备不失），
-           所以这里按 staBaseMax 封顶，别把余量灌进装备那份里去。 */
+           所以这里按 staBaseMax 封顶，别把余量灌进装备那份里去。
+           v89.131（老板「体力精力应随现实时间百分比回复，按现实时间24h可恢复满值」）：
+           口径改**现实时间百分比** —— 速率 = 池子上限 ÷(recoverHours×3600) /现实秒，
+           离线用 secReal（真实秒）直接乘。体力按"可用池"（staBaseMax，
+           装备那份是常备额度不参与消耗）→ 显示值从下限到上限恰 24h；
+           精力按 energyMaxOf（六维公式）→ 从 0 到满恰 24h。
+           ⚠️ 直接写 g.stamina/g.energy（**不走 staNow/setStaNow**）：
+           那两个出口带 Math.round，读-改-写会把每 tick 的零头抹掉（永远涨不上去）。 */
         var mx = GAME.staBaseMax(g);
-        g.stamina = Math.min(mx, (g.stamina == null ? mx : g.stamina) + gc.staPerHour * hours);
-        g.energy = Math.min(100, (g.energy == null ? 100 : g.energy) + gc.enePerHour * hours);
+        g.stamina = Math.min(mx, (g.stamina == null ? mx : g.stamina) + mx * rateRec131 * secReal);
+        var enMx131 = GAME.energyMaxOf(g);
+        g.energy = Math.min(enMx131,
+          (g.energy == null ? enMx131 : g.energy) + enMx131 * rateRec131 * secReal);
       });
       /* v70：君主不参与"忠诚离去"（老板「不可解雇」的另一半 —— 自己也不会走） */
       s.generals = s.generals.filter(function (g) {
@@ -1864,7 +1907,8 @@
         /* v66：老存档里的 g.stamina 可能大于 staBaseMax（那时它含套装体力），
            夹回余量口径即可 —— 装备那一份由 staNow 现算，不会丢。 */
         else g.stamina = Math.min(g.stamina, GAME.staBaseMax(g));
-        if (g.energy == null) g.energy = 100;
+        /* v89.131：老档缺 energy → 给**新口径的满值**（六维公式算出，非写死 100） */
+        if (g.energy == null) g.energy = GAME.energyMaxOf ? GAME.energyMaxOf(g) : 100;
         if (g.loyalty == null) g.loyalty = 70;
         /* v22（需求 2）：旧档将领补肖像 seed / 名将头像 key（按名字确定性推导） */
         if (GAME.portraits) GAME.portraits.ensure(g);
@@ -1934,37 +1978,36 @@
         q.bIdx = GAME.firstBarracksIdx ? GAME.firstBarracksIdx(c) : -1;
       });
       (st.wilds || []).forEach(function (w) { if (w.levelDay === undefined) w.levelDay = null; });
-      /* ---- v16 迁移 ----
-         ① 官府 4 格从「正中央」移到「右侧」（col 4-5 × row 2-3）
-         ② 城墙从「占格建筑」改为 city.wallLv（不占格，环绕城池一圈） */
+      /* ---- v16 / v40 / v89.126 / v89.128 迁移**整合重写**（城墙归一）----
+         ① 官府 4 格：6×6 时代的"右侧中部" → 标准位（govCellsOf）
+         ② 城内 6×6 → 8×6（48 格；队列 gridIndex 同步重映射）
+         ③ 城墙**一律归一进环城槽** `city.wall`（v89.128 定稿：不占城内地块、地位与
+            城内建筑同）：v89.126 档的"格子里城墙"与更老档的 `wallLv` 在此合流，
+            旧痕（格子占用 / wallLv 字段）全删 —— 不留第二个等级出口。
+            在建 / 升级中的城墙队列项，槽位从格号改成 'wall'。 */
       (st.cities || []).forEach(function (c) {
-        if (!c.cells || c.cells.length !== 36) return;
-        /* ① 官府位置迁移 */
-        var want = [4 + 6 * 2, 5 + 6 * 2, 4 + 6 * 3, 5 + 6 * 3];
-        var has = [];
-        c.cells.forEach(function (x, i) { if (x.official) has.push(i); });
-        var same = has.length === want.length && has.every(function (i) { return want.indexOf(i) >= 0; });
-        if (!same) {
-          var gLv = 1;
-          has.forEach(function (i) {
-            if (c.cells[i].build && c.cells[i].build.id === 'guanfu') gLv = c.cells[i].build.lvl;
-          });
-          has.forEach(function (i) { c.cells[i].official = false; c.cells[i].build = null; c.cells[i].pending = null; });
-          want.forEach(function (i) {
-            c.cells[i].official = true;
-            c.cells[i].build = { id: 'guanfu', lvl: gLv };
-            c.cells[i].pending = null;
-          });
+        if (!c || !c.cells) return;
+        if (!c.wall) c.wall = { build: null, pending: null };
+        /* ① 官府位置（仅 6×6 老档） */
+        if (c.cells.length === 36) {
+          var want = [4 + 6 * 2, 5 + 6 * 2, 4 + 6 * 3, 5 + 6 * 3];
+          var has = [];
+          c.cells.forEach(function (x, i) { if (x.official) has.push(i); });
+          var same = has.length === want.length && has.every(function (i) { return want.indexOf(i) >= 0; });
+          if (!same) {
+            var gLv = 1;
+            has.forEach(function (i) {
+              if (c.cells[i].build && c.cells[i].build.id === 'guanfu') gLv = c.cells[i].build.lvl;
+            });
+            has.forEach(function (i) { c.cells[i].official = false; c.cells[i].build = null; c.cells[i].pending = null; });
+            want.forEach(function (i) {
+              c.cells[i].official = true;
+              c.cells[i].build = { id: 'guanfu', lvl: gLv };
+              c.cells[i].pending = null;
+            });
+          }
         }
-        /* ② 城墙搬出格子 */
-        var wLv = 0;
-        c.cells.forEach(function (x) {
-          if (x.build && x.build.id === 'chengqiang') wLv = Math.max(wLv, x.build.lvl);
-          /* ---- v40 迁移：城内 6×6 → 8×6（48 格）----
-           老板要"6 行 8 列"。已建建筑按**原行列**搬过去（列 0-5 原位、新列 6-7 留空），
-           官府 4 格从 col4-5×row2-3 移到 col6-7×row2-3（仍在右侧中部）。
-           ⚠ 队列里的 gridIndex 必须一起重映射 —— 否则在建/升级中的那几项
-             会指向错误的格子（"改一处、忘一处"的典型位置）。 */
+        /* ② 6×6 → 8×6（48 格） */
         if (c.cells.length === 36 && (c.col || 6) === 6 && (c.row || 6) === 6) {
           var old36 = c.cells.slice(), gLv2 = 1;
           old36.forEach(function (x) { if (x.official && x.build) gLv2 = x.build.lvl; });
@@ -1982,17 +2025,32 @@
             n48[gi].build = { id: 'guanfu', lvl: gLv2 };
           });
           c.cells = n48; c.col = 8; c.row = 6;
-          /* 建造/升级队列里的格子索引跟着换坐标系 */
           ((st.queues && st.queues.build) || []).forEach(function (q) {
-            if (q.cityId !== c.id || q.gridIndex == null || q.gridIndex >= 36) return;
+            if (q.cityId !== c.id || typeof q.gridIndex !== 'number' || q.gridIndex >= 36) return;
             q.gridIndex = Math.floor(q.gridIndex / 6) * 8 + (q.gridIndex % 6);
           });
         }
-      });
-        if (c.wallLv == null) c.wallLv = wLv;
-        c.cells.forEach(function (x) {
-          if (x.build && x.build.id === 'chengqiang') { x.build = null; x.pending = null; }
+        /* ③ 城墙归一（格子 / wallLv → 环城槽） */
+        var wlv128 = (c.wallLv != null) ? (c.wallLv || 0) : 0;
+        c.cells.forEach(function (x, i) {
+          if (!x.build || x.build.id !== 'chengqiang') return;
+          if ((x.build.lvl || 0) > wlv128) wlv128 = x.build.lvl;
+          ((st.queues && st.queues.build) || []).forEach(function (q) {
+            if (q.cityId === c.id && q.gridIndex === i && q.buildId === 'chengqiang') q.gridIndex = 'wall';
+          });
+          x.build = null; x.pending = null;
         });
+        delete c.wallLv;
+        if (wlv128 > 0 && !c.wall.build) {
+          /* 不静默（v89.127 精神）：改版提示写进消息流 —— 玩家翻得到"城墙去哪了" */
+          c.wall.build = { id: 'chengqiang', lvl: wlv128 };
+          var _m128 = '🏯 城墙调整：『' + c.name + '』城墙改为环城结构（不再占城内地块 · Lv' + wlv128 + '）';
+          st.log = st.log || [];
+          st.log.unshift({ t: U.now(), msg: _m128 });
+          if (st.log.length > 40) st.log.pop();
+          st.msgLog = st.msgLog || [];
+          st.msgLog.push({ t: U.now(), gt: (st.world && st.world.elapsed) || 0, msg: _m128, k: 'sys' });
+        }
       });
       /* ---- v68 迁移：官府从"右侧中部"移到"棋盘正中"（老板 2026-09-14）----
          对调式：中央 4 格上的占用者与旧官府位**一一对调** —— 玩家建筑不丢。
@@ -2313,6 +2371,8 @@
     if (GAME.autoLordTrain) GAME.autoLordTrain();
     /* v89.115（老板「自动菜单增加一个自动治疗伤兵」）：伤兵满金即治（节流在域层里） */
     if (GAME.autoHeal) GAME.autoHeal();
+    /* v89.128（需求 5）：自动采集/收获（每 24 游戏小时一轮，节流在域层里） */
+    if (GAME.autoGatherTick) GAME.autoGatherTick();
     /* 定期来袭（第 2 期）—— 唯一出口 GAME.invasionTick，离线补算走同一个函数 */
     GAME.invasionTick(GAME.timeScale() / 3600);
 
@@ -2357,11 +2417,16 @@
        忠诚（v14.1 按用户要求）：**只在出征战败时下降**，不再随时间/民心/欠俸衰减。
        保留「忠诚极低有概率离去」的判定 —— 连败才会把人逼走。 */
     var gameHours = ts / 3600;                      // 本 tick 折合的游戏小时
+    /* v89.131（老板「体力精力应随现实时间百分比回复，24h 回满」）：
+       回复与倍速解耦 —— 每小时回"上限的 1/24"，1 现实秒 = 上限/86400。
+       实现是**直接写字段**（不走 staNow/setStaNow —— 它们带 round，读改写会抹零头）。 */
+    var rateRec131 = 1 / ((gc.recoverHours || 24) * 3600);
     var deserters = [];
     s.generals.forEach(function (g) {
       var staMx = GAME.staBaseMax(g);   /* v66：余量口径（装备体力常备不失） */
-      g.stamina = Math.min(staMx, (g.stamina == null ? staMx : g.stamina) + gc.staPerHour * gameHours);
-      g.energy = Math.min(100, (g.energy == null ? 100 : g.energy) + gc.enePerHour * gameHours);
+      g.stamina = Math.min(staMx, (g.stamina == null ? staMx : g.stamina) + staMx * rateRec131 * dtReal);
+      var enMx131 = GAME.energyMaxOf(g);
+      g.energy = Math.min(enMx131, (g.energy == null ? enMx131 : g.energy) + enMx131 * rateRec131 * dtReal);
       /* 忠诚极低：有概率离去（名将更难留，但概率仍很低）
          v70：君主除外 —— 「不可解雇」的另一半是"自己不会走" */
       if (!GAME.isLordGeneral(g) && (g.loyalty == null ? 70 : g.loyalty) < lo.desertAt) {
@@ -2395,10 +2460,12 @@
     /* 5) 人口增长：**逐城**向本城民房上限爬升（v60 · 需求 4：人口归属城池） */
     s.cities.forEach(function (city) {
       var maxPop = GAME.maxPopOf(city);
-      var growth = GAME.popGrowthOf(city);   /* v89.89（E3）：唯一出口（与募兵面板同源） */
+      var growth = GAME.popGrowthOf(city);   /* v89.89（E3）：唯一出口（与募兵面板同源）；
+                                                v89.126 起单位 = 人 / **现实小时**（补满 ≈ 2 小时） */
       var R = GAME.res(city);
       R.pop = R.pop || 0;
-      if (R.pop < maxPop) R.pop = Math.min(maxPop, R.pop + growth / 3600 * ts);
+      /* v89.126：增量随口径改 —— 每现实小时 ÷ 3600 × **现实秒**（不再是 × 游戏秒 ts） */
+      if (R.pop < maxPop) R.pop = Math.min(maxPop, R.pop + growth / 3600 * dtReal);
       city.maxPop = maxPop;
     });
 
@@ -2902,7 +2969,7 @@
        三元判断永远落 null：守将不进战斗、战报永远写「（无守将）」。
        守将加成（tactic 的 cover=1 全覆盖）因此从未在守城战里生效过。 */
     var guard = GAME.guardGeneralOf ? GAME.guardGeneralOf(city) : null;
-    var wallLv = city.wallLv || (GAME.buildingLevel ? (GAME.buildingLevel(city, 'chengqiang') || 0) : 0);
+    var wallLv = GAME.buildingLevel ? (GAME.buildingLevel(city, 'chengqiang') || 0) : 0;   /* v89.128：环城槽经 buildingLevel 统一读 */
     var towers = GAME.towerCountOf ? (GAME.towerCountOf(city) || 0) : 0;
     var defVal = GAME.cityDefense ? (GAME.cityDefense(city) || 0) : 0;
     var defArmy0 = U.deep(city.army || {});        /* 战前快照（战报与配方用） */
@@ -2990,7 +3057,13 @@
     /* ---- 城墙掉级：破防得手才掉（与"墙被打穿"语义对齐） ---- */
     if (!held && lootOk && (L.wallDrop || 0) > 0) {
       var wl = GAME.buildingLevel(city, 'chengqiang') || 0;
-      if (wl > 0) { city.wallLv = wl - (L.wallDrop || 1); out.wallDrop = L.wallDrop || 1; }
+      if (wl > 0) {
+        /* v89.128：城墙在环城槽（不占格）—— 掉级写回槽（唯一写口 wallSlotOf） */
+        var _ws128 = GAME.wallSlotOf(city);
+        var _nl128 = Math.max(0, wl - (L.wallDrop || 1));
+        _ws128.build = _nl128 <= 0 ? null : { id: 'chengqiang', lvl: _nl128 };
+        out.wallDrop = L.wallDrop || 1;
+      }
     }
     /* v89.113（老板「战斗胜利为什么没有俘虏」）：守城得手同样俘获溃卒 ——
        敌军损失（result.atkLoss）按同一张俘虏表收编为民（kind 'defense'）。 */
@@ -3248,23 +3321,13 @@
       if (GAME.onActionDone) GAME.onActionDone('build-done', { id: q.buildId, type: q.type });
       return;
     }
-    /* v16：城墙（不占格，环绕城池） */
-    if (q.type === 'wall') {
-      var wc = GAME.cityById(q.cityId);
-      if (wc) {
-        var wasLv = wc.wallLv || 0;
-        wc.wallLv = q.targetLevel;
-        GAME.statBump('buildDone', 1);
-        GAME.log('城墙' + (wasLv === 0 ? '建成' : '升级至 Lv' + q.targetLevel)
-          + '（耐久 ' + (q.targetLevel * 100) + '万 · 守军防御 +' + (q.targetLevel * 10) + '%）');
-        if (GAME.onActionDone) GAME.onActionDone('build-done', { id: 'wall', type: 'wall' });
-      }
-      return;
-    }
+    /* v89.126 / v89.128：城墙走通用路径（type 'build'/'upgrade'，槽位 'wall'）——
+       环城槽与 cells 共用同一套 cellOf 访问器；两个旧时代的分支
+       （wallLv 直写 / 找格）都已退役，见老档迁移（adoptState）。 */
     var city = GAME.cityById(q.cityId);
     if (!city) return;
     var idx = q.gridIndex;
-    var cell = city.cells[idx];
+    var cell = GAME.cellOf(city, idx);   /* v89.128：'wall' 槽同样生效 */
     if (!cell) return;
     if (q.type === 'build') {
       if (cell.build) return;           // 该格已有建筑，丢弃过期队列项

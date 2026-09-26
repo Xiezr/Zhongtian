@@ -745,7 +745,19 @@
         pending: null, official: !!c.official };
     });
     newCity.extGrid = sh.extGrid.map(function (e) { return { id: e.id, type: e.type, lv: e.lv }; });
-    newCity.wallLv = sh.wallLv;
+    /* v89.128：城墙从影子格**提取到环城槽**（玩家侧不占格）——影子计划仍含城墙格，
+       转正时在这里归一，那一格释放回可建造状态。 */
+    newCity.wall = { build: null, pending: null };
+    (function () {
+      var _wl128 = 0;
+      newCity.cells.forEach(function (c) {
+        if (c.build && c.build.id === 'chengqiang') {
+          _wl128 = Math.max(_wl128, c.build.lvl || 0);
+          c.build = null; c.pending = null;
+        }
+      });
+      if (_wl128 > 0) newCity.wall.build = { id: 'chengqiang', lvl: _wl128 };
+    })();
     newCity.def = npcCity.def || 0;
     /* v60（需求 4）：**占领不再另发一次性战利品** ——
        与「占领野地不取财货」同一铁律：城池连同剩余库藏（上面的 startRes）一起归你。
@@ -1229,9 +1241,12 @@
       var fg = GAME.map.fortGarrison(f.level);
       /* v61（老板）：「野地里的城池，应默认其建筑全都建满了」——
          布局由 GAME.fortPlanOf 派生（所有建筑各 1 座 · 军营 2 座 · 余为民房 · 位置固定），
-         城防走唯一出口 GAME.fortDefOf（原来写死在这行里）。 */
+         城防走唯一出口 GAME.fortDefOf（原来写死在这行里）。
+         v89.129：**守将**同样走唯一出口 GAME.fortGuardOf ——
+         补上"据点无守将"的缺口（战斗吃将领加成 / 侦查名册可见 / 可触发斗将）。 */
       return { ok: true, kind: 'fort', x: f.x, y: f.y, lv: f.level, name: f.name + '（野外城池 Lv' + f.level + '）',
         fort: f, garrison: fg, def: GAME.fortDefOf(f), plan: GAME.fortPlanOf(f),
+        guard: GAME.fortGuardOf(f),
         cityType: 'fort', dropType: 'fort' };
     }
     /* v89.87（老板需求 2）：调兵目标 —— 本境自家城池（走行军通道） */
@@ -2440,7 +2455,18 @@
           pending: null, official: !!c.official };
       });
       city.extGrid = shadow.extGrid.map(function (e) { return { id: e.id, type: e.type, lv: e.lv }; });
-      city.wallLv = shadow.wallLv;
+      /* v89.128：城墙从影子格提取到环城槽（同占城转正，玩家侧不占格） */
+      city.wall = { build: null, pending: null };
+      (function () {
+        var _wl128 = 0;
+        city.cells.forEach(function (c) {
+          if (c.build && c.build.id === 'chengqiang') {
+            _wl128 = Math.max(_wl128, c.build.lvl || 0);
+            c.build = null; c.pending = null;
+          }
+        });
+        if (_wl128 > 0) city.wall.build = { id: 'chengqiang', lvl: _wl128 };
+      })();
     }
     /* 城里的人跟着留下（口径 = 该布局民房满员，与侦查面板同一数字） */
     if (GAME.planPopCapOf) city.res.pop = GAME.planPopCapOf(lv);

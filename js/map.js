@@ -388,6 +388,50 @@
       qingji: lv >= 4 ? Math.round(base * 0.1) : 0,
     };
   };
+  /* ============================================================
+   * v89.129（老板：「任何野外目标（野地，城池，名城等）均应有将领带领，
+   *   根据等级配备相称资质和等级的将领」）——**据点守将**（唯一出口）：
+   * ------------------------------------------------------------
+   * 缺口修复：此前据点只有守军没有守将 ——
+   *   ① 战斗侧 `scGen = t.guard || null` 恒 null（守方不吃将领加成、不参加斗将）；
+   *   ② 侦查面板"守将"行恒显示「无（守军无将，即无加成）」——与其他野外目标不一致。
+   * 口径（"相称" = 按据点等级配置）：
+   *   · 资质：`GEN_RANKS[min(4, 2 + ⌊lv/3⌋)]` —— lv1-2 英杰 / 3-5 名世 / 6-10 天授；
+   *     （比同为 Lv1-10 的野地高一档：据点是"城"，守军约 10 倍于同级野地）
+   *   · 等级：`max(10, lv*4 + 20) + rand(0..5)` —— lv1 → 24~29、lv10 → 60~65
+   *     （Lv10 据点 ≈ 弱县城守将 60~100 的下端，与"野地里的城"定位相称）；
+   *   · **必有**（非概率：野地贼寇可无大当家，据点是有建制的守备军）；
+   *   · **确定性**：名字 / 资质 / 等级 / 特性 / 四维全部按 (x, y, level) + map seed
+   *     经 `_fortHash` 派生 —— 同一天"侦查看到的"与"打起来遇到的"必然是同一人；
+   *   · 每日随据点等级刷新（level 变则人变）；不存档、不占 generals 列表
+   *     （与 npcCityGuard / wildDefenseAt 同族 —— 接触时派生）。
+   * ============================================================ */
+  GAME.fortGuardOf = function (fort) {
+    if (!fort) return null;
+    var lv = Math.max(1, Math.min(10, fort.level | 0));
+    /* 确定性 rng 流：同一 (x,y,level) 每次产出同一个人（含四维）。
+       level 混进种子 —— 每个"据点形态"是一位独立的守备官
+       （不同等级不再是"同一个人忽高忽低"，而是不同规模的守备军官）。 */
+    var rand = U.rng((Math.floor(GAME.map._fortHash(fort.x, fort.y, 23) * 4294967295) ^ (lv * 83492791)) >>> 0);
+    var rk = DATA.GEN_RANKS[GAME.guardRankIdxOf('fort', lv)];   /* v89.129：唯一出口 */
+    var gLv = Math.max(10, lv * 4 + 20) + Math.floor(rand() * 6);
+    /* 名字走守备军官系池（太守/都尉一系；与野地贼寇、客栈招募都不重名） */
+    var sn = DATA.NPC_GUARD_SURNAME, gv = DATA.NPC_GUARD_GIVEN, tt = DATA.NPC_GUARD_TITLE;
+    var name = sn[Math.floor(rand() * sn.length)] + gv[Math.floor(rand() * gv.length)];
+    /* 特性：抽一门（与 npcCityGuard 同款权重抽签 —— 猛将/智将有偏科，战报有戏） */
+    var styles = DATA.GEN_STYLES || [{ id: 'balance', name: '均衡', w: 1, mul: { tong: 1, nz: 1, yw: 1, zm: 1 } }];
+    var stTotal = 0;
+    styles.forEach(function (x) { stTotal += (x.w || 0); });
+    var rollS = rand() * (stTotal || 1), st = styles[0];
+    for (var si = 0; si < styles.length; si++) {
+      rollS -= (styles[si].w || 0);
+      if (rollS <= 0) { st = styles[si]; break; }
+    }
+    var g = GAME.makeGeneral(name, gLv, 'guard', null, false, rk.id, st.id, rand);
+    g.npcGuard = true;                        /* 系统派生标记（与 npcCityGuard 同） */
+    g.title = tt[Math.floor(rand() * tt.length)];
+    return g;
+  };
   GAME.map.razeFort = function (x, y) {
     var s = GAME.state;
     s.fortsRazed = s.fortsRazed || {};

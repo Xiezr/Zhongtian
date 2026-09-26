@@ -1733,7 +1733,7 @@
     var s = GAME.state;
     var rows = (s.cities || []).map(function (ct) {
       var army = GAME.armyTotal(ct);
-      var wall = ct.wallLv || 0;
+      var wall = GAME.buildingLevel(ct, 'chengqiang') || 0;   /* v89.126：城墙占格后同一读法 */
       var towers = GAME.towerCountOf ? (GAME.towerCountOf(ct) || 0) : 0;
       var guard = GAME.guardGeneralOf ? GAME.guardGeneralOf(ct) : null;   /* v89.116：函数名笔误修正 */
       var def = GAME.defensePowerOf ? Math.round(GAME.defensePowerOf(ct) || 0) : 0;
@@ -2276,13 +2276,15 @@
       var t = DATA.TERRAIN[w.type];
       return '<option value="' + i + '"' + (i === sel ? ' selected' : '') + '>' +
         (t ? t.name : w.type) + ' Lv' + w.level + '（' + w.x + ',' + w.y + '）</option>';
-    }).join('') || '<option value="">暂无附属野地</option>';
+    }).join('') || '<option value="">暂无野地</option>';
+    /* v89.128（老板）：「附属野地改成野地，现在换行了有点难看」——短标签 + 小按钮，一行放得下。 */
     box.innerHTML = '<div class="res-line" title="已占野地（官府等级决定上限）。选一块点「进入」查看加成与采集。">' +
-      '<span class="lbl">附属野地</span>' +
+      '<span class="lbl">野地</span>' +
       '<span class="val" style="display:flex;align-items:center;gap:6px;">' +
         '<select class="city-select wild-select" id="wild-pick" data-action="wild-pick"' +
           (wilds.length ? '' : ' disabled') + '>' + opts + '</select>' +
-        '<button class="btn sm gold" data-action="open-wilds">进入</button>' +
+        /* v89.128（老板）：「进入按钮太大了点，适当缩小」 */
+        '<button class="btn sm gold wild-go" data-action="open-wilds">进入</button>' +
       '</span></div>';
   };
 
@@ -2411,22 +2413,61 @@
       /* v26（需求 3）：天时已移到顶栏 —— 它是全局信息，不该占城池属性的位置 */
       /* v28（需求 3）：民心与民怨合并成一行「xx / xx」——
          两者本是同一枚硬币（民怨 = 100 − 民心），各占一行纯粹浪费侧栏高度。 */
-      '<div class="res-line"><span class="lbl">❤️ 民心 / 民怨</span><span class="val">' +
+      /* v89.128（老板）：「民心/税率/人口前边的小图标去掉」 */
+      '<div class="res-line"><span class="lbl">民心 / 民怨</span><span class="val">' +
         '<b style="color:' + (hearts > 60 ? 'var(--green-ok)' : hearts > 30 ? '#e6a400' : 'var(--red-light)') + ';font-variant-numeric:tabular-nums;">' + hearts + '</b>' +
         ' <span style="color:var(--text-dim);">/</span> ' +
         '<span style="font-variant-numeric:tabular-nums;">' + minyuan + '</span></span></div>' +
       /* v89.104（老板）：「税率调整直接放左侧统计栏的税率处，将目前的数值显示
          改成可调节的税率数值」—— 就地点 −/＋（步长 5%，0~100%），值走 GAME.doSetTax。 */
-      '<div class="res-line"><span class="lbl">💰 税率</span><span class="val">' +
-        '<button class="btn sm tax-step" data-action="tax-step" data-d="-5" title="税率 −5%">−</button>' +
+      '<div class="res-line"><span class="lbl">税率</span><span class="val">' +
+        /* v89.128（老板）：「可点击的功能按钮参考资源那里的按钮，统一图标风格大小和颜色」 */
+        '<span class="plus-btn" data-action="tax-step" data-d="-5" title="税率 −5%">−</span>' +
         '<b style="font-variant-numeric:tabular-nums;margin:0 6px;">' + Math.round((s.tax || 0) * 100) + '%</b>' +
-        '<button class="btn sm tax-step" data-action="tax-step" data-d="5" title="税率 +5%">＋</button>' +
+        '<span class="plus-btn" data-action="tax-step" data-d="5" title="税率 +5%">＋</span>' +
       '</span></div>' +
       /* v20（需求 5/12）：黄金存量、税收速率、可征人口**全部去掉** ——
          · 黄金与资源栏重复
          · 税收（金/时）数值不准且与资源栏的 /秒 增速口径不一致，删掉避免误导
          · 可征人口 信息密度低，需要时在人口统计面板看 */
-      '<div class="res-line"><span class="lbl">👥 人口</span><span class="val">' + U.numHTML(s.res.pop || 0, 0) + '<span class="cap"> / ' + U.numText(maxPop, 0) + '</span></span></div>' +
+      /* v89.124（老板「人口增速也按小时显示。界面规划参考资源」）：
+         人口行补**增速列**（/时），排版对齐资源行三列（名称 | 存量·上限 | 增速）——
+         增速走唯一出口 GAME.popGrowthOf（**现实每小时**口径 v89.126，无需换算）；
+         已到上限显示 +0/时（与 tickOnce 的"超上限不增长"同判据）；
+         悬停给增速来源分解（与募兵面板 pop-3 同一份 popSourcesOf）。 */
+      (function () {
+        var popNow = Math.floor(s.res.pop || 0);
+        var grow = Math.floor(GAME.popGrowthOf(c));
+        if (popNow >= maxPop) grow = 0;
+        var popSrc = '';
+        try {
+          (GAME.popSourcesOf(c) || []).forEach(function (x) {
+            if (Math.abs(x.v) > 1e-9) popSrc += '　· ' + x.name + ' ' + (x.v > 0 ? '+' : '') + Math.round(x.v * 100) + '%';
+          });
+        } catch (e) {}
+        /* v89.126：补满预计（现实时间）—— "固定时间速率"的可读化 */
+        var popEta = (popNow < maxPop && grow > 0)
+          ? '\n约 ' + U.dur((maxPop - popNow) / (grow / 3600)) + '后补满（现实时间）' : '';
+        /* v89.128（老板）：「悬停显示"建筑人口/上限人口"，建筑人口就是各建筑固定占据的
+           人口数，这部分人口不可征兵」—— 劳作占用的**展示名**定为"建筑人口"。 */
+        var popLab = GAME.popLaborOf(c);
+        var popLabLine = '\n建筑人口 ' + U.fmt(popLab) + ' / 上限人口 ' + U.numText(maxPop, 0)
+          + '（建筑人口为各建筑固定占用，不可征兵）';
+        return '<div class="res-line pop-line"><span class="lbl">人口</span><span class="val">' +
+          /* v89.128（老板）：「人口只显示当前人口数，不显示上限，节约空间」——
+             上限迁入悬停（与建筑人口合并给）。
+             ⚠️ 存量仍是**一个** .amt 块（裸文本会变独立网格项、把后续列顶错位）。 */
+          '<span class="amt">' + U.numHTML(popNow, 0) + '</span>' +
+          '<span class="rate-wrap" data-tip="人口增势（现实时间：基准 ' + ((DATA.POP_CFG || {}).fillHours || 2)
+            + ' 小时补满）：民房上限决定速率' + popSrc + popEta + popLabLine +
+            (popNow >= maxPop ? '\n已到上限 —— 不再增长（建/升民房可提上限）' : '') + '">' +
+          '<span class="num-rate' + (grow > 0 ? '' : ' zero') + '">+' + U.perHourText(grow) + '/时</span>' +
+          '</span>' +
+          /* v89.128（老板）：「人口增速这里加个类似资源增速的加号按钮，用于使用相关道具
+             （不要显示现有道具数量）」——与资源 "+" 同款（plus-btn）。 */
+          '<span class="plus-btn" data-action="quick-pop" title="使用人口道具（增民令 / 移民令）">+</span>' +
+          '</span></div>';
+      })() +
       /* v24（需求 6）：再删两行 ——
          · 「🧱 城防 · 驻军」：驻军栏就在正下方（含兵种与耗粮），城防在「统计」页；
          · 「🌾 城外地块」：城外视图的棋盘本身就是这块数据，重复且挤。
@@ -2538,7 +2579,10 @@
    * 侧栏资源栏（v29 建 · v60 改口径）
    * ------------------------------------------------------------
    * v29：产量取 `GAME.productionPerSec()` 是**全境合计**，切城时资源栏一个数字
-   *   都不动；于是把「/秒」改成本城产量，栏首写明"本城产量 · 全境存量"。
+   *   都不动；于是改成本城产量，栏首写明"本城产量 · 全境存量"。
+   * v89.123（老板「资源产量以每小时产量呈现，过万以"万"显示」）：
+   *   增速由「/秒」改「/时」（`U.rateHTML` 内换算，入参 *每秒* 口径不变），
+   *   数值过万进「万」档（`U.perHourText` 唯一出口）；悬停明细与主显示同口径。
    * v60（需求 4）：**存量也归属城池了** —— s.res 现在就是当前城的库存
    *   （见 state.js 的 attachRes 访问器）。所以：
    *     · 栏首报"本城"；
@@ -2560,8 +2604,6 @@
       DATA.RESOURCES.forEach(function (r) { if (r.key === k) meta = r; });
       var perSec = prodCity[k] || 0;          // 本城产量（随切城变化）
       var perSecAll = prodAll[k] || 0;        // 全境合计（悬停里给出）
-      var itemId = RES_QUICK_ITEM[k];
-      var have = (s.items && s.items[itemId]) || 0;
       var val = s.res[k] || 0;
       /* v19：资源行**只用文字**（去掉图标）；存量取整到个位
          （小数在每秒刷新的画面上一直在闪，没有信息量）；增速仍按 /秒。 */
@@ -2569,17 +2611,19 @@
       /* v20（需求 11）：产量悬停显示构成明细（基础 + 各类加成/扣除）
          U.rateHTML 产出的是 <span class="num-rate">，外面再包一层带 data-tip 的容器。 */
       var bd = GAME.prodBreakdown ? GAME.prodBreakdown(k, c) : null;
-      var tipLines = ['本城产量构成（/秒）'];
+      var tipLines = ['本城产量构成（/时）'];
+      var _ts = GAME.timeScale();
       if (bd && bd.length) {
         bd.forEach(function (x) {
-          tipLines.push(x.name + '：' + (x.val >= 0 ? '+' : '') + (Math.abs(x.val) >= 10 ? x.val.toFixed(1) : x.val.toFixed(2)));
+          /* v89.123：明细与主显示同口径 —— /时（游戏时间，×3600÷ts）+ 过万以万 */
+          tipLines.push(x.name + '：' + (x.val >= 0 ? '+' : '-') + U.perHourText(Math.abs(x.val) * 3600 / _ts));
         });
-        tipLines.push('本城合计：+' + (perSec >= 10 ? perSec.toFixed(1) : perSec.toFixed(2)));
+        tipLines.push('本城合计：+' + U.perHourText(perSec * 3600 / _ts));
       } else {
         tipLines.push('本城暂无产量');
       }
       tipLines.push('———');
-      tipLines.push('全境合计：+' + (perSecAll >= 10 ? perSecAll.toFixed(1) : perSecAll.toFixed(2)));
+      tipLines.push('全境合计：+' + U.perHourText(perSecAll * 3600 / _ts));
       var rateHtml = '<span class="rate-wrap" data-tip="' + U.escape(tipLines.join('\n')) + '">'
         + U.rateHTML(perSec) + '</span>';
       /* v40（需求 1）：存量悬停从「精确值」改为**仓储上限** ——
@@ -2600,8 +2644,8 @@
         '<span class="val">' +
           '<span class="amt" title="' + U.escape(amtTip) + '">' + U.amtHTML(val) + '</span>' +
           rateHtml +
+          /* v89.128（老板）：「不要显示现有道具数量，纯粹一个加号按钮就行」 */
           '<span class="plus-btn" data-action="quick-item" data-res="' + k + '" title="使用辅助宝物">+</span>' +
-          (have ? '<span class="item-badge">×' + have + '</span>' : '') +
         '</span></div>';
     });
     box.innerHTML = html;
@@ -2626,6 +2670,32 @@
       '</div>';
     }).join('');
     ui.openModal('<div class="gold-heading">加快' + resName + '产量</div>' + rows +
+      '<div style="text-align:center;margin-top:12px;"><button class="btn" data-action="close-modal">关闭</button></div>');
+  };
+
+  /* ============================================================
+   * v89.128（老板 需求 7）：「人口增长速度这里加个类似资源增速的加号按钮，
+   *   用于使用相关道具（不要显示现有道具数量）」—— 人口道具快用：
+   *   增民令（增速 buff）/ 移民令（一次性注入）。与资源 "+" 同款交互；
+   *   左侧栏按钮上**不显数量**，持有与否在弹窗里说明。
+   * ============================================================ */
+  ui.openQuickPop = function () {
+    var s = GAME.state;
+    var cands = DATA.ITEMS.filter(function (it) {
+      return (it.type === 'pop_boost' || it.type === 'pop_fill') && !it.noShop;
+    });
+    var rows = cands.map(function (it) {
+      var have = (s.items && s.items[it.id]) || 0;
+      return '<div style="background:rgba(var(--sh-rgb),.22);border:1px solid #1d2028;border-radius:8px;padding:10px;margin-bottom:8px;">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;">' +
+          '<span style="font-weight:700;color:var(--gold-light);">' + it.name + ' <span style="color:var(--text-dim);font-size:var(--fs-cap);">持有 ' + have + '</span></span>' +
+          (have ? '<button class="btn sm gold" data-action="use-item-quick" data-item="' + it.id + '">使用</button>'
+                : '<span style="color:var(--text-dim);font-size:var(--fs-sub);">未持有（商城 · 民生页有售）</span>') +
+        '</div>' +
+        '<div style="color:var(--text-dim);font-size:var(--fs-sub);margin-top:4px;">' + it.desc + '</div>' +
+      '</div>';
+    }).join('');
+    ui.openModal('<div class="gold-heading">人口道具（增民令 / 移民令）</div>' + rows +
       '<div style="text-align:center;margin-top:12px;"><button class="btn" data-action="close-modal">关闭</button></div>');
   };
 
@@ -3220,6 +3290,7 @@
     attr_buff: { hint: '符类加属性：请对将领使用', view: 'generals', btn: '去将领面板' },
     exp: { hint: '加经验：请对将领使用', view: 'generals', btn: '去将领面板' },
     stamina: { hint: '恢复体力：请对将领使用', view: 'generals', btn: '去将领面板' },
+    energy: { hint: '恢复精力：请对将领使用', view: 'generals', btn: '去将领面板' },
     perm: { hint: '永久丹药：请对将领使用', view: 'generals', btn: '去将领面板' },
     mount_buff: { hint: '坐骑道具：请对将领使用', view: 'generals', btn: '去将领面板' },
     neigong: { hint: '秘籍传授：请对将领使用', view: 'generals', btn: '去将领面板' },
@@ -3241,7 +3312,9 @@
      商城不售、只能征战/秘境所得）。**新增可上架类型时两处都要有**。 */
   ui.BAG_ITEM_CN = {
     jewel: '珠宝（赏赐忠诚）', attr_buff: '符类', prod_buff: '生产', military_buff: '军事',
-    boost: '加速', exp: '经验', stamina: '体力精力', perm: '永久丹药', mount_buff: '坐骑',
+    boost: '加速', exp: '经验', stamina: '体力', perm: '永久丹药', mount_buff: '坐骑',
+    /* v89.131：精力族（清心丸等）单独一组 —— 与将领页的「体力 / 精力」两行同名对应 */
+    energy: '精力',
     rank_up: '灵草（提升资质）',
     seed: '种子（种田秘境）',
     essence: '精华（蕴养修炼装备）',
@@ -3645,6 +3718,14 @@
             '</td></tr>' +
           /* v79（老板）：爵位加成 / 主城 / 神器 —— 三条新系统的入口与现况 */
           '<tr><td class="k">爵位加成</td><td style="color:var(--green-ok);">' + GAME.rankBonusText() + '</td></tr>' +
+          /* v89.131（老板「只有攻打名城才给的那什么'节X'，列出其设定」）：
+             节钺余额 + 一条式来源进表（此前只在城池面板的「扩编」按钮悬停里可见 ——
+             玩家看不到自己有几枚、从哪来）。悬停给 DATA.JIEYUE.desc 全文。 */
+          '<tr><td class="k">节钺</td><td title="' +
+            U.escape((DATA.JIEYUE || {}).desc || '') + '">' +
+            ((DATA.JIEYUE || {}).icon || '🪓') + ' ×<b>' + GAME.jieyueOf() + '</b>' +
+            ' <span class="ui-sub">（攻占名城 / 爵位每 ' +
+            ((DATA.JIEYUE || {}).rankEvery || 4) + ' 档 +1）</span></td></tr>' +
           '<tr><td class="k">主城</td><td>' + (function () {
             var mc = GAME.mainCityOf();
             return mc
@@ -4431,6 +4512,10 @@
        **商城与快购都渲染不出来** → 有定价却永远买不到（"半上架"）。
        并入「民生」页签（与增民令同族）后：商城可见、可比价。 */
     pop_fill: '民生',
+    /* v89.131（老板「体力精力应当设计加号按钮，供道具使用」）：
+       精力族（清心丸/提神散/养神丹/凝神玉露）—— 新 type 'energy'，
+       **在售 == 有页签**（v89.51 判据）：漏了这行就是"半上架"（有价却渲染不出来）。 */
+    energy: '精力',
   };
   /* v89.51：**在售 == 有页签**（唯一判据）。
      改前只按 `price > 0` 收件 —— 「有价但不在任何页签」的类型（营造/种子/灵草）
@@ -4439,8 +4524,9 @@
      自然被排除，不会再出现"半上架"状态。 */
   ui.shopItems = function () {
     /* v89.104（老板「商场同类产品档次太多了…最多分 4 档」）：
-       `noShop: true` 的档位**不上架**（掉落 / 任务 / 炼制照给）——
-       这里是唯一过滤口，商城页与快购都读它。 */
+       `noShop: true` 的档位**不上架** —— 这里是唯一过滤口，商城页与快购都读它。
+       v89.121（老板拍板「承认绝版」）：下架 = 停止产出（掉落/任务/炼制亦不给），
+       仅老存档已持有的可用；详见 data.js「宝物」段头。 */
     return DATA.ITEMS.filter(function (it) {
       return it.price > 0 && !it.noShop && !!ui.SHOP_CATS[it.type];
     });
@@ -4466,6 +4552,9 @@
     var it = null;
     (DATA.ITEMS || []).forEach(function (x) { if (x.id === itemId) it = x; });
     if (!it || !it.price) { ui.toast('该物品暂不可购买（仅产出获得）'); return; }
+    /* v89.121（老板「承认绝版」）：下架档 = 绝版 —— 商城页本就不列，
+       这里把"就地快购"也堵上（noShop 必须在**所有购买口**生效）。 */
+    if (it.noShop) { ui.toast('「' + it.name + '」已下架（绝版），不再出售 —— 仅旧藏可用'); return; }
     ui._qbItem = itemId;
     ui._qbBack = back || null;
     var have = (GAME.state.items || {})[itemId] || 0;
@@ -4498,6 +4587,7 @@
   ui.qbScopeItemsOf = function (cat, scope) {
     return (DATA.ITEMS || []).filter(function (x) {
       if (!(x.price > 0) || x.type !== cat) return false;
+      if (x.noShop) return false;    /* v89.121：快购列表与商城同口径（下架=绝版，不列） */
       if (scope && x.target !== scope) return false;
       return true;
     });
@@ -5816,7 +5906,8 @@
       return ui.buildCellHTML(cell, idx, c, { M: M, col: idx % COLS, row: Math.floor(idx / COLS) });
     }).join('') + ui.govPalaceHTML(c, M);
     /* v25（需求 1）：城墙不再挂文字牌 —— 等级与操作都在点击后弹出的城墙面板里 */
-    var board = ui.isoBoard(COLS, ROWS, cells, { wall: true, wallAction: 'open-wall' });
+    /* v89.128：环城一圈 = **城墙建筑的视觉** —— 修了才画；热区常在（未建时点它=修建） */
+    var board = ui.isoBoard(COLS, ROWS, cells, { wall: !!(c.wall && c.wall.build), wallHit: true, wallAction: 'open-wall' });
     GAME.ensureExtGrid(c);
     /* ============================================================
      * v22（需求 3）：**中央只留城池与地块**
@@ -6020,7 +6111,7 @@
       + '--tile-clip:' + M.clip.replace(/"/g, '') + ';">'
       + (opt.wall ? ui.isoWallSVG(cols, rows) : '')
       + inner
-      + (opt.wall ? ui.wallHitHTML(cols, rows, opt.wallAction) : '')
+      + (opt.wallHit ? ui.wallHitHTML(cols, rows, opt.wallAction) : '')
       + '</div>';
   };
 
@@ -6338,7 +6429,7 @@
 
   ui.openBuildModal = function (idx) {
     var s = GAME.state, c = GAME.currentCity();
-    var cell = c.cells[idx];
+    var cell = GAME.cellOf(c, idx);   /* v89.128：'wall' = 环城槽（不占格） */
     ui._curGrid = idx;
     if (cell.pending) {
       var pb2 = DATA.BUILDINGS[cell.pending.buildId];
@@ -6378,6 +6469,32 @@
           '<button class="btn" data-action="close-modal">关闭</button>' +
           '<span class="op-hint">按剩余时间比例返还 80% 资源</span>' +
         '</div>');
+      return;
+    }
+    if (!cell.build && idx === 'wall') {
+      /* v89.128（老板）：「城墙以**环城一圈的城墙结构**作为一个建筑（地位与城内建筑同），
+         而不是占据城内一个地块」—— 城墙不占格，没有"空地可选"，入口 = 环城热区；
+         这里给「修建」面板（造价 / 前置 / 说明）。 */
+      var wb128 = DATA.BUILDINGS.chengqiang;
+      var wcost128 = wb128.buildCost;
+      if (GAME.systems && GAME.systems.buffActive && GAME.systems.buffActive('buildCost')) wcost128 = GAME.applyBuildCostDiscount(wcost128);
+      wcost128 = GAME.cityDefCostOf('chengqiang', wcost128);
+      var wpre128 = GAME.buildPrereqOf(c, 'chengqiang', 1);
+      var wcan128 = GAME.canAfford(wcost128) && wpre128.ok;
+      var wsub128 = !wpre128.ok ? ui.prereqText(c, wpre128)
+        : (GAME.canAfford(wcost128) ? ('耗：' + GAME.costString(wcost128) + '（城防技术已折扣）') : '材料不足');
+      ui.openModal(
+        '<div class="gold-heading">🧱 城墙（未修建）</div>' +
+        (wb128.desc ? '<div class="ui-sub" style="text-align:center;margin:-2px 0 8px;">' + U.escape(wb128.desc) + '</div>' : '') +
+        '<div class="ui-sub" style="text-align:center;margin-bottom:10px;">环城一圈的城墙结构 · 不占城内地块 · 与城内建筑同一套管理</div>' +
+        '<div class="bldg-bottom"><div class="bldg-acts">' +
+          '<button class="btn gold bldg-act"' + (wcan128 ? '' : ' disabled') +
+            ' data-action="confirm-build" data-idx="wall" data-build="chengqiang">🏗 修建城墙<span class="ba-sub">' +
+            U.escape(wsub128) + '</span></button>' +
+        '</div><div class="bldg-foot">' +
+          '<button class="btn" data-action="close-modal">关闭</button>' +
+          '<span class="op-hint">耐久 100×N 万 · 守军防御 +10N% · 远程射程 +3N%</span>' +
+        '</div></div>');
       return;
     }
     if (cell.build) {
@@ -6492,7 +6609,7 @@
           '<button class="btn red bldg-act" data-action="demolish-ask" data-kind="city" data-idx="' + idx + '"' +
             ' title="拆除需二次确认">⛏ 拆 1 级<span class="ba-sub">' +
             (cell.build.lvl > 1 ? ('Lv' + cell.build.lvl + ' → Lv' + (cell.build.lvl - 1)) : '整座移除') + '</span></button>' +
-          (b.id === 'guanfu' ? ''
+          (b.id === 'guanfu' || b.id === 'chengqiang' ? ''   /* v89.128：城墙不占格，无"互换"可言 */
             : '<button class="btn bldg-act" data-action="move-ask" data-idx="' + idx + '" title="与另一地块互换位置">🔄 移动 / 交换<span class="ba-sub">与地块互换</span></button>') +
           '</div>' +
           '<div class="bldg-foot">' +
@@ -6514,7 +6631,8 @@
              ② 卡片上不再写费用，改为 `title` 悬停显示（作用 + 材料 + 状态）。
            只留"图标 + 名称 + 不可建的原因"：不可建原因是**当前事实**，必须看得见；
            费用是"要花多少"，选的时候看一眼就够，正适合悬停。 */
-      var all = DATA.BUILD_ORDER.map(function (bid) {
+      /* v89.128：城墙不占格 —— 不在"空格菜单"里（入口 = 环城热区），从候选剔除 */
+      var all = DATA.BUILD_ORDER.filter(function (bid) { return bid !== 'chengqiang'; }).map(function (bid) {
         var b = DATA.BUILDINGS[bid];
         var cost = GAME.costString(b.buildCost);
         var lockMsg = '', afford = '', tip = b.desc + '｜耗：' + cost;
@@ -6733,55 +6851,9 @@
     });
   };
 
-  /* ============================================================
-   * 城墙（v16：不占格，环绕城池一圈）
-   * 施工中 → 显示进度 + 可取消；未建 → 可修建；已建 → 可升级
-   * ============================================================ */
-  ui.openWallModal = function () {
-    var s = GAME.state, c = GAME.currentCity();
-    var b = DATA.BUILDINGS.chengqiang;
-    var lv = c.wallLv || 0;
-    var q = null;
-    (s.queues.build || []).forEach(function (x) {
-      if (x.type === 'wall' && (!x.cityId || x.cityId === c.id)) q = x;
-    });
-    if (q) {
-      var pct = Math.min(100, Math.floor(q.elapsed / q.totalTime * 100));
-      var left = Math.max(0, (q.totalTime - q.elapsed) / GAME.timeScale());
-      ui.openModal('<div class="gold-heading">🧱 城墙施工中</div>' +
-        '<div style="text-align:center;color:var(--green-ok);font-size:var(--fs-h1);font-weight:800;margin:8px 0;" data-modal-progress="wall:0">' +
-          pct + '% · ' + U.durExact(left) + '</div>' +
-        '<div style="text-align:center;color:var(--text-dim);font-size:var(--fs-body);">' +
-          (lv > 0 ? ('Lv' + lv + ' → Lv' + q.targetLevel) : '初次修建') + '　倒计时实时更新…</div>' +
-        '<div class="bldg-foot">' +
-          '<button class="btn sm gold" data-action="rush-wall" title="花金立即完成（工程价 20% × 剩余比例）">⚡ 提速</button>' +
-          '<button class="btn sm red" data-action="cancel-build-ask" data-kind="wall">取消施工</button>' +
-          '<button class="btn" data-action="close-modal">关闭</button>' +
-          '<span class="op-hint">取消后按剩余时间比例返还 80% 资源</span>' +
-        '</div>');
-      return;
-    }
-    var cost = GAME.wallCost(c);
-    var next = lv + 1;
-    var eff = function (n) {
-      return '耐久 ' + (n * 100) + '万 · 守军防御 +' + (n * 10) + '% · 远程射程 +' + (n * 3) + '%';
-    };
-    ui.openModal('<div class="gold-heading">🧱 城墙 · ' + (lv > 0 ? 'Lv' + lv : '尚未修建') + '</div>' +
-      '<div style="color:var(--text-dim);font-size:var(--fs-body);text-align:center;margin-bottom:10px;">' + b.desc + '</div>' +
-      '<div class="attr"><span class="k">当前效果</span><span class="v' + (lv > 0 ? ' good' : '') + '">' +
-        (lv > 0 ? eff(lv) : '无') + '</span></div>' +
-      (lv > 0 && lv < GAME.buildCapOf(c, 'chengqiang')
-        ? '<div class="attr"><span class="k">升至 Lv' + next + '</span><span class="v good">' + eff(next) + '</span></div>' : '') +
-      /* v68（设计规范 §11）：费用与按钮同行、关闭进底栏 —— 与建筑弹窗同骨架 */
-      '<div class="op-zone"><div class="op-zone-t">' + (lv > 0 ? '升级' : '修建') + '</div>' +
-        '<div class="op-row op-row-between">' +
-          '<span class="op-kv">费用 <b>' + (cost ? GAME.costString(cost) : '已满级') + '</b></span>' +
-          ((lv < GAME.buildCapOf(c, 'chengqiang') && cost)
-            ? '<button class="btn" data-action="wall-build">' + (lv > 0 ? '升级城墙' : '修建城墙') + '</button>'
-            : '<span class="op-done">已达最高等级</span>') +
-        '</div></div>' +
-      '<div class="bldg-foot"><span></span><button class="btn" data-action="close-modal">关闭</button><span></span></div>');
-  };
+  /* v89.126：原「城墙」独立面板（openWallModal）退役 ——
+     城墙占格后走**通用建筑面板**（ui.openBuildModal，含建造/升级/取消/提速）；
+     环城热区 `open-wall` 由 main.js 转发到该面板。 */
 
   GAME.costString = function (cost) {
     var parts = [];
@@ -6877,8 +6949,8 @@
       if (isUpE) {
         var ebP = DATA.EXT_BUILDINGS[e.type];
         var phP = ebP.prod[e.lv - 1];
-        prodLine = '<div class="attr"><span class="k">当前产出（施工中不停产）</span><span class="v good">' + phP + '/时</span></div>' +
-          '<div class="attr"><span class="k">完工后 Lv' + (e.lv + 1) + '</span><span class="v">' + ebP.prod[e.lv] + '/时</span></div>';
+        prodLine = '<div class="attr"><span class="k">当前产出（施工中不停产）</span><span class="v good">' + U.perHourText(phP) + '/时</span></div>' +
+          '<div class="attr"><span class="k">完工后 Lv' + (e.lv + 1) + '</span><span class="v">' + U.perHourText(ebP.prod[e.lv]) + '/时</span></div>';
       }
       ui.openModal(
         /* v73（老板）：顶部图标不留（与城内两处同批撤除） */
@@ -6906,7 +6978,7 @@
       ui.openModal(
         /* v73（老板）：顶部图标不留（与城内两处同批撤除） */
         '<div class="gold-heading">' + eb.name + ' · Lv' + e.lv + '</div>' +
-        '<div class="attr"><span class="k">产量</span><span class="v good">' + prodH + '/时（' + (prodH / 3600 * GAME.timeScale() > 10 ? Math.round(prodH / 3600 * GAME.timeScale()) : (prodH / 3600 * GAME.timeScale()).toFixed(1)) + '/s）</span></div>' +
+        '<div class="attr"><span class="k">产量</span><span class="v good">' + U.perHourText(prodH) + '/时</span></div>' +
         (eRef ? '<div style="color:var(--text-dim);font-size:var(--fs-sub);text-align:center;margin-top:10px;">拆毁可返还累计投入的 50%：' + GAME.costString(eRef) + '</div>' : '') +
         /* v68（设计规范 §11）：与城内弹窗同一骨架 —— 功能行 / 升级行 / 底栏 */
         '<div class="op-zone">' +
@@ -7059,7 +7131,8 @@
         ((maxN <= 0 && limN)
           ? '<span class="ui-sub" style="color:var(--red-light);">' +
               (limN.reason === 'pop'
-                ? '⚠️ 人口不足（募兵占用人口）—— 建民房或等待人口增长'
+                ? '⚠️ 可征人口不足（劳作占用 ' + U.fmt(GAME.popLaborOf(GAME.currentCity()))
+                    + ' 不可征兵）—— 建民房或等待人口增长'
                 : (limN.reason === 'res'
                     ? '⚠️ 资源不足 —— 缺 ' + ((limN.lack || []).map(function (k) { return GAME.resName(k); }).join('、') || '募兵所需资源')
                     : '当前不可募')) +
@@ -7069,7 +7142,7 @@
            v89.89（E3 · 100+ 轮实玩期待）：升级为**三段条**（可征 / 上限 / 增势）+ 进度条 ——
            人口与兵源的关系一眼可见；增势走 GAME.popGrowthOf 唯一出口（与 tickOnce 同源）。 */
         (sel ? (function () {
-          var avail = Math.floor(s.res.pop || 0);
+          var avail = GAME.popFreeOf(c);   /* v89.126：可征 = 人口 − 劳作占用（唯一出口） */
           var capP = GAME.maxPopOf(c) || 0;
           var grow = Math.round(GAME.popGrowthOf(c));
           var pct = capP > 0 ? Math.min(100, Math.round(avail / capP * 100)) : 0;
@@ -7080,7 +7153,8 @@
               if (Math.abs(x.v) > 1e-9) srcTxt += '　· ' + x.name + ' ' + (x.v > 0 ? '+' : '') + Math.round(x.v * 100) + '%';
             });
           } catch (e) {}
-          return '<span class="pop-3" title="可征＝当前可用人口（募兵从此扣）· 上限＝民房决定 · 增势＝每小时自然增长' + srcTxt + '">' +
+          return '<span class="pop-3" title="可征＝人口 − 劳作占用（城市产业所占，不可征兵 · 当前劳作 '
+            + U.fmt(GAME.popLaborOf(c)) + '）· 上限＝民房决定 · 增势＝现实每小时自然增长（基准 2 小时补满）' + srcTxt + '">' +
             '<span class="p3-k">人口</span>' +
             '<span class="p3-seg ok">可征 <b>' + U.numText(avail, 0) + '</b></span>' +
             '<span class="p3-seg">上限 <b>' + U.numText(capP, 0) + '</b></span>' +
@@ -7230,9 +7304,19 @@
     var isLing = (g.equipOn === 'ling') && GAME.canCultivate(g);
     var isCult = GAME.canCultivate(g);
     var eqCnt = Object.keys(((isLing ? g.lingEquip : g.equip) || {})).length;
-    /* v89.116：原写 `GAME.energyMax`（不存在）→ 上限恒 100。
-       真出口 = `GAME.staMax`（等级/资质/内政 + 装备与套装体力，见 domain.js 的注释）。 */
-    var enMx = GAME.staMax ? GAME.staMax(g) : 100;
+    /* v89.131（老板「精力的数值设定基于六维设计一个公式」）：
+       上限 = GAME.energyMaxOf（六维加权公式，domain.js 唯一出口）。
+       沿革：v89.116 曾借 `staMax` 当上限（GAME.energyMax 不存在）——
+       那让"精力/上限"跟着体力涨而回复段又硬顶 100（两口径），本轮一并收口。 */
+    var enMx = GAME.energyMaxOf(g);
+    var enNow = GAME.energyNowOf(g);
+    var eParts = GAME.energyPartsOf(g);
+    var energyTip = '精力上限 ' + enMx + ' = 基准 ' + eParts.base
+      + eParts.items.map(function (x) {
+          return ' ＋ ' + x.n + ' ' + x.val + '×' + ((DATA.ENERGY.per || {})[x.k] || 0) + '=' + x.v;
+        }).join('')
+      + '\n（六维公式 · DATA.ENERGY）回复：现实时间 '
+      + ((DATA.GEN_COST.recoverHours || 24)) + ' 小时回满（与倍速无关）';
     var bar = function (v, color) {
       return '<div class="gd-bar"><i style="width:' + Math.max(0, Math.min(100, v)) + '%;background:' + color + ';"></i></div>';
     };
@@ -7311,7 +7395,14 @@
         '<span class="gp-id">' +
           '<b class="gp-name">' + U.escape(g.name) +
             (g.hero ? '<span class="gcard-tag hero">史实名将</span>' : '') +
-            (g.beauty ? '<span class="gcard-tag beauty">美人</span>' : '') + statusTag74 + '</b>' +
+            (g.beauty ? '<span class="gcard-tag beauty">美人</span>' : '') + statusTag74 +
+            /* v89.131（老板）：「解雇放在人名所在行右侧，稍带点距离」——
+               从身份行右侧的操作列移进人名行（margin-left:auto 推到行右缘，
+               padding-left 留出与姓名/标签的间距）。君主不给（v70 不可解雇）。 */
+            (GAME.isLordGeneral(g) ? '' :
+              '<span class="gp-nameops"><button class="btn sm" data-action="dismiss-gen"' +
+                ' data-gen="' + genId + '">解雇</button></span>') +
+          '</b>' +
           '<span class="gp-sub">' +
             '<span class="rank-badge r-' + rk.id + '" title="等级上限 ' + capLv +
               '，每级属性成长 +' + rk.grow + '">' + rk.name + ' ' + '★'.repeat(rk.star) + '</span>' +
@@ -7347,8 +7438,6 @@
           '<button class="btn sm' + (g.status === 'mayor' ? ' red' : '') + '" data-action="assign-mayor" data-gen="' + genId + '">' +
             (g.status === 'mayor' ? '解除城主' : '任命城主') + '</button>' +
           /* v70（老板）：「不可解雇」—— 君主的档案里**不给解雇按钮**（守卫在域层，这里连入口都不给） */
-          (GAME.isLordGeneral(g) ? '' :
-            '<button class="btn sm" data-action="dismiss-gen" data-gen="' + genId + '">解雇</button>') +
         '</span>' +
       '</div>' +
       /* v70（老板）：「留可扩张框架」—— 君主特权清单（数据源 DATA.LORD_TRAITS，
@@ -7398,10 +7487,11 @@
             '<td class="ctr gd-v">' + (a[d.val || d.k] || 0) + '</td>' +
             '<td class="ctr gd-u gd-plus-c">' + plus74 + '</td></tr>';
         }).join('') +
-        /* v74（老板需求 5）：「增加一行自由属性点，用于玩家自行决定加点」 */
+        /* v74（老板需求 5）：「增加一行自由属性点，用于玩家自行决定加点」
+           v89.131（老板）：「备注去掉：升级获得（每级 = 成长值）…或用道具」
+           —— 说明文案撤下，只留数字（点右侧「＋」自然知道怎么用）。 */
         '<tr class="gd-freep"><td colspan="3">自由属性点 <b class="fp-n">' +
-          Math.round(g.freePts || 0) + '</b><span class="gd-free-hint">升级获得（每级 = 成长值）　' +
-          '点右侧 ＋ 一次加点（可填数量），或用道具</span></td></tr>' +
+          Math.round(g.freePts || 0) + '</b></td></tr>' +
       '</tbody></table>';
 
     /* ---------- 状态（v54 · 老板） ----------
@@ -7421,22 +7511,44 @@
     /* v89.40（老板）：「君主不会掉忠诚」—— 忠诚行与赏赐入口对君主整体不适用
        （君主忠诚恒为 100：battle 战败守卫 + 本页不出行；普通将领一切照旧）。 */
     var isLordGen = GAME.isLordGeneral(g);
+    /* v89.131（老板）：「体力精力应当设计加号按钮，供道具使用，参考赏赐」
+       —— 两个「＋」的选择窗与赏赐同构：选项来自 DATA.ITEMS + 背包，不复制配置。 */
+    var staItems = (DATA.ITEMS || []).filter(function (it) {
+      return it.type === 'stamina' && (s.items || {})[it.id] > 0;
+    });
+    var staHave = 0;
+    staItems.forEach(function (it) { staHave += (s.items[it.id] || 0); });
+    var enItems = (DATA.ITEMS || []).filter(function (it) {
+      return it.type === 'energy' && (s.items || {})[it.id] > 0;
+    });
+    var enHave = 0;
+    enItems.forEach(function (it) { enHave += (s.items[it.id] || 0); });
+    /* v89.131（老板）：「体力，精力列在攻击，防御上方。…忠诚列在最下方」
+       —— 新行序：体力 → 精力 → 攻击 → 防御 → 忠诚（君主不适用忠诚行）。 */
     html += '<div class="gp-sec">状态</div>' +
       /* v20（需求 5）的规矩在这里同样适用：**页面只放信息型内容**，
-         "出征消耗 / 低于 25 不可出征 / 侦查消耗"这类**规则解说**不常驻页面。 */
-      (isLordGen ? '' :
-      '<div class="gd-line">忠诚 <b style="color:' + loyColor + '">' + loy + '</b>' + bar(loy, loyColor) +
-        (loy < DATA.LOYALTY.warnAt ? '<span class="gd-warn">⚠ 偏低</span>' : '') +
-        '<button class="btn sm' + (jewels.length ? ' gold' : ' dim') + '" data-action="gen-gift-pick"' +
-          ' data-gen="' + genId + '"' + (jewels.length ? '' : ' disabled') +
-          ' title="' + (jewels.length ? '赏赐珠宝提升忠诚：可赏赐 ' + jewels.length + ' 种（共 ' +
-            jewelTotal + ' 件）' : '背包中暂无珠宝。攻打城池缴获或商城购买') + '">🎁 赏赐</button></div>') +
+         "出征消耗 / 低于 25 不可出征 / 侦查消耗"这类**规则解说**不常驻页面。
+         v66：主数字 = 总体体力（上限，含装备与套装）；当前值单独写在右边。 */
+      '<div class="gd-line" title="体力上限 ' + U.numText(staMx, 0) + ' = 等级/资质/内政 '
+        + U.numText(staMx - staEqNow, 0) + ' ＋ 装备 ' + U.numText(staEqNow, 0)
+        + '\n回复：现实时间 ' + (DATA.GEN_COST.recoverHours || 24) + ' 小时回满（与倍速无关）">体力 <b>'
+        + U.numText(staMx, 0) + '</b>' + bar(staPct, '#6a9a4a') +
+        '<span class="gd-hint">当前 ' + U.numText(staNow, 0) +
+          '　全军生命 <b style="color:var(--green-ok);">+' + hpBonus + '%</b></span>' +
+        '<button class="btn sm gd-plus' + (staItems.length ? ' gold' : ' dim') + '" data-action="gen-sta-pick"' +
+          ' data-gen="' + genId + '"' + (staItems.length ? '' : ' disabled') +
+          ' title="' + (staItems.length ? '使用体力道具：背包 ' + staItems.length + ' 种 / ' + staHave + ' 件'
+            : '背包中暂无体力道具。商城「体力」页签可购') + '">＋</button></div>' +
+      /* 精力：主数字 = 当前值；上限由六维公式给出（悬停给逐项分解，同源 energyPartsOf） */
+      '<div class="gd-line" title="' + U.escape(energyTip) + '">精力 <b>' + U.numText(enNow, 0) + '</b>' +
+        bar(enNow / Math.max(1, enMx) * 100, '#4a9be0') +
+        '<span class="gd-hint">' + U.numText(enNow, 0) + ' / ' + U.numText(enMx, 0) + '</span>' +
+        '<button class="btn sm gd-plus' + (enItems.length ? ' gold' : ' dim') + '" data-action="gen-energy-pick"' +
+          ' data-gen="' + genId + '"' + (enItems.length ? '' : ' disabled') +
+          ' title="' + (enItems.length ? '使用精力道具：背包 ' + enItems.length + ' 种 / ' + enHave + ' 件'
+            : '背包中暂无精力道具。商城「精力」页签可购') + '">＋</button></div>' +
       /* 攻击 / 防御：**合计值 + 构成**（勇武 3,300 ＋ 装备 8,148 = 11,448）——
-         老板要的"总数"，同时一眼能看出装备贡献了多少，不必再单列一行。
-         v66：**体力同口径** —— 主数字改成"总体体力"（= 上限，含装备与套装），
-         当前值退到右边括号里。改前主数字是"当前值"，于是老板看到
-         「装备栏写着体力 +600，六维/状态里的体力却一点没变」→
-         「部分将领的体力没有加上装备的数值」。 */
+         老板要的"总数"，同时一眼能看出装备贡献了多少，不必再单列一行。 */
       '<div class="gd-line">攻击 <b>' + U.numText(a.atkVal, 0) + '</b>' +
         '<span class="gd-hint">勇武 ' + U.numText(a.yw * GAME.ATK_PER_YW, 0) + ' ＋ 装备 ' +
           U.numText(a.atk, 0) + '</span>' +
@@ -7445,18 +7557,14 @@
         '<span class="gd-hint">智谋 ' + U.numText(a.zm * GAME.DEF_PER_ZM, 0) + ' ＋ 装备 ' +
           U.numText(a.def, 0) + '</span>' +
         '<span class="gd-hint">全军防御 <b style="color:var(--green-ok);">+' + defShow + '%</b></span></div>' +
-      /* v66：主数字 = 总体体力（上限，含装备与套装）；当前值单独写在右边。
-         装备构成（等级/资质/内政多少 + 装备多少）进 title ——
-         1366/1280 下三组小字会把这一行挤成两行（几何探针实测 41px vs 17px），
-         而装备贡献的逐行清单本来就在右栏「装备提供」里，不必在这里再说一遍。 */
-      '<div class="gd-line" title="体力上限 ' + U.numText(staMx, 0) + ' = 等级/资质/内政 '
-        + U.numText(staMx - staEqNow, 0) + ' ＋ 装备 ' + U.numText(staEqNow, 0) + '">体力 <b>'
-        + U.numText(staMx, 0) + '</b>' + bar(staPct, '#6a9a4a') +
-        '<span class="gd-hint">当前 ' + U.numText(staNow, 0) +
-          '　全军生命 <b style="color:var(--green-ok);">+' + hpBonus + '%</b></span></div>' +
-      '<div class="gd-line">精力 <b>' + Math.round(g.energy || 0) + '</b>' +
-        bar((g.energy || 0) / Math.max(1, enMx) * 100, '#4a9be0') +
-        '<span class="gd-hint">' + Math.round(g.energy || 0) + ' / ' + Math.round(enMx) + '</span></div>';
+      /* v89.131（老板）：「忠诚列在最下方」—— 行序末位；赏赐入口仍在它右侧。 */
+      (isLordGen ? '' :
+      '<div class="gd-line">忠诚 <b style="color:' + loyColor + '">' + loy + '</b>' + bar(loy, loyColor) +
+        (loy < DATA.LOYALTY.warnAt ? '<span class="gd-warn">⚠ 偏低</span>' : '') +
+        '<button class="btn sm' + (jewels.length ? ' gold' : ' dim') + '" data-action="gen-gift-pick"' +
+          ' data-gen="' + genId + '"' + (jewels.length ? '' : ' disabled') +
+          ' title="' + (jewels.length ? '赏赐珠宝提升忠诚：可赏赐 ' + jewels.length + ' 种（共 ' +
+            jewelTotal + ' 件）' : '背包中暂无珠宝。攻打城池缴获或商城购买') + '">🎁 赏赐</button></div>');
 
     /* ---------- ③ 右侧：装备栏（人形，**内嵌**，不再开弹窗） ---------- */
     html += '</div><div class="gp-col-r">';
@@ -7590,6 +7698,68 @@
     ui._giftQ = ui._giftQ || {};
     ui._giftQ[genId] = 1;                      /* 换珠宝 → 件数回 1（新珠宝持有数不同） */
     ui.openGiftPick(genId);
+  };
+
+  /* 体力 / 精力道具选择窗（v89.131 · 老板「体力精力应当设计加号按钮，供道具使用，参考赏赐」）
+     ------------------------------------------------------------
+     与赏赐/经验两窗同一套做法：可选项直接来自 DATA.ITEMS + 背包（以后加道具自动出现），
+     「用几个」在窗里选；将领页上只留一个 ＋。
+     kind: 'sta'（stamina 族 · 体力）/ 'energy'（energy 族 · 精力）—— 一个出口管两个池子。
+     上限/当前一律走唯一出口（energyMaxOf/energyNowOf · staMax/staNow），不另算一份。 */
+  ui.openRestorePick = function (genId, kind) {
+    var s = GAME.state;
+    var g = null;
+    (s.generals || []).forEach(function (x) { if (x.id === genId) g = x; });
+    if (!g) { ui.toast('将领不存在'); return; }
+    var isEn = (kind === 'energy');
+    var type = isEn ? 'energy' : 'stamina';
+    var cfg = isEn
+      ? { label: '精力', maxOf: GAME.energyMaxOf, nowOf: GAME.energyNowOf }
+      : { label: '体力', maxOf: GAME.staMax, nowOf: GAME.staNow };
+    var items = (DATA.ITEMS || []).filter(function (it) {
+      return it.type === type && (s.items || {})[it.id] > 0;
+    });
+    if (!items.length) { ui.toast('背包中暂无' + cfg.label + '道具'); return; }
+    ui._modalKind = 'restore';
+    ui._restorePick = ui._restorePick || {};
+    var key = genId + '|' + kind;
+    var want = ui._restorePick[key];
+    var pick = items[0].id;
+    items.forEach(function (x) { if (x.id === want) pick = x.id; });
+    var it = null;
+    items.forEach(function (x) { if (x.id === pick) it = x; });
+    var have = s.items[pick] || 0;
+    var mx = cfg.maxOf(g), now = Math.round(cfg.nowOf(g));
+    var q = Math.max(1, Math.min(have, Number((ui._restoreQ || {})[key]) || 1));
+    var after = Math.min(mx, now + q * Math.round((it.amount || 0) * mx));
+    ui.openShell({
+      title: '💊 ' + cfg.label + '道具 · ' + U.escape(g.name),
+      sub: '按上限百分比回复　当前 ' + now + ' / ' + mx,
+      size: 'sm',
+      body: '<div class="ui-sub">选道具</div>' +
+        '<div class="gd-chips">' + items.map(function (x) {
+          return '<button class="btn sm' + (x.id === pick ? ' gold' : '') + '" data-action="restore-pick-item"' +
+            ' data-gen="' + genId + '" data-kind="' + kind + '" data-item="' + x.id + '">' +
+            U.escape(x.name) + ' <i class="gd-sub">×' + (s.items[x.id] || 0) + '</i>' +
+            ' <i class="gd-sub">回' + Math.round((x.amount || 0) * 100) + '%</i></button>';
+        }).join('') + '</div>' +
+        '<div class="op-zone" style="margin-top:12px;"><div class="op-row">' +
+          ui.qtyInput('restore-q-' + kind + '-' + genId, q, 0, have) +
+          '<span class="op-hint">用 <b>' + q + '</b> 件　' + cfg.label + ' ' + now + ' → <b>' + after + '</b>' +
+            (q >= have ? '（已用满持有）' : '') + '</span>' +
+        '</div></div>',
+      foot: '<div class="m-foot">' +
+        '<button class="btn gold" data-action="gen-restore-do" data-gen="' + genId + '" data-kind="' + kind +
+          '" data-item="' + pick + '" data-qty-from="restore-q-' + kind + '-' + genId + '">使用 ' + q + ' 件</button>' +
+        '<button class="btn" data-action="close-modal">取消</button></div>'
+    });
+  };
+  ui.setRestoreItem = function (genId, kind, itemId) {
+    ui._restorePick = ui._restorePick || {};
+    ui._restorePick[genId + '|' + kind] = itemId;
+    ui._restoreQ = ui._restoreQ || {};
+    ui._restoreQ[genId + '|' + kind] = 1;   /* 换道具 → 件数回 1（新道具回复量不同） */
+    ui.openRestorePick(genId, kind);
   };
 
   /* 经验道具选择窗（v54 · 老板：经验条右端「＋」点开）。
@@ -7767,7 +7937,7 @@
       return '<div class="xc-row">' +
         '<div class="xc-ico">' + GAME.icons.forExt(eid) + '</div>' +
         '<div class="xc-info"><b>' + eb.name + '</b>' +
-          '<span class="xc-prod">Lv' + e.lv + ' 产量 ' + eb.prod[e.lv - 1] + '/时</span>' +
+          '<span class="xc-prod">Lv' + e.lv + ' 产量 ' + U.perHourText(eb.prod[e.lv - 1]) + '/时</span>' +
           '<span class="xc-cost">改建费 ' + GAME.costString(cost) + '</span></div>' +
         '<button class="btn sm' + (afford ? ' gold' : ' dim') + '" data-action="ext-convert" data-idx="' + idx + '" data-eid="' + eid + '"'
           + (afford ? '' : ' disabled') + '>改建</button>' +
@@ -8010,7 +8180,7 @@
       var eb = DATA.EXT_BUILDINGS[e.type];
       name = eb.name; lv = e.lv; back = GAME.demolishExtRefund(idx);
     } else {
-      var cell = c.cells[idx];
+      var cell = GAME.cellOf(c, idx);   /* v89.128：'wall' 槽同样生效 */
       if (!cell || !cell.build) { ui.toast('该地块无建筑'); return; }
       var b = DATA.BUILDINGS[cell.build.id];
       name = b.name; lv = cell.build.lvl; back = GAME.demolishRefund(c, idx);
@@ -8132,13 +8302,13 @@
     var info = GAME.cancelRefundOf ? GAME.cancelRefundOf(kind, idx) : { ok: false, msg: '' };
     if (!info.ok) { ui.toast(info.msg || '没有进行中的建造'); return; }
     var isUp = (info.q.type === 'upgrade' || info.q.type === 'ext_upgrade');
-    var kn = kind === 'wall' ? '城墙施工' : (kind === 'ext' ? '城外' + (isUp ? '升级' : '建造') : (isUp ? '升级' : '建造'));
+    var kn = kind === 'ext' ? '城外' + (isUp ? '升级' : '建造') : (isUp ? '升级' : '建造');
     var html = '<div class="gold-heading">⏹ 取消' + kn + '</div>';
     html += '<div class="attr"><span class="k">按剩余进度返还</span><span class="v good">'
       + U.fmt(info.total) + ' 资源（' + Math.round(info.remainRatio * 80) + '%）</span></div>';
     html += '<div class="note">已投入的 20% 与已耗时间<b>不返还</b>。取消后地块空出，是否确定？</div>';
     html += '<div class="panel-foot">'
-      + '<button class="btn red" data-action="cancel-build-do" data-kind="' + kind + '" data-idx="' + (idx == null || isNaN(Number(idx)) ? 0 : Number(idx)) + '">确定取消</button>'
+      + '<button class="btn red" data-action="cancel-build-do" data-kind="' + kind + '" data-idx="' + idx + '">确定取消</button>'   /* v89.128：'wall' 原样透传（旧写法把非数字洗成 0） */
       + '<button class="btn" data-action="close-modal">继续施工</button></div>';
     ui.openModal(html);
   };
@@ -10114,7 +10284,7 @@
       '<div class="attr"><span class="k">城内建筑</span><span class="v plan-v">' + names +
         '　<span class="plan-dim">（皆 Lv' + p.level + '）</span></span></div>' +
       '<div class="attr"><span class="k">民房 / 城墙</span><span class="v plan-v">民房 ×' + p.minfang +
-        ' Lv' + p.level + '　城墙 Lv' + p.wallLv + '<span class="plan-dim">（不占格）</span></span></div>' +
+        ' Lv' + p.level + '　城墙 Lv' + p.wallLv + '<span class="plan-dim">（占城内 1 格）</span></span></div>' +
       '<div class="attr"><span class="k">地块 / 人口</span><span class="v plan-v">' +
         p.col + ' × ' + p.row + ' = ' + p.total + ' 格　人口上限 ' + U.numText(p.popCap, 0) +
         '　城防 ' + p.def + '</span></div>' +
@@ -10897,6 +11067,14 @@
         U.escape(g.name) + (blk ? '（' + U.escape(blk) + '）' : '（' + six + '）') + '</option>';
     }).join('');
     html += '</select></div>';
+    /* v89.129（老板「根据等级配备相称资质和等级的将领」）：**相称建议**行 ——
+       纯按目标等级给"宜派"的档位（守将实情请侦查；软提示、非门槛）。
+       目标切换时整窗重绘（目标下拉 change → openExpModal），本行随 t 重建。 */
+    var rec129 = GAME.recGenOf(t);
+    if (rec129) {
+      html += '<div class="exp-info exp-info-l" style="color:var(--text-dim);margin:4px 0 0;">'
+        + '相称建议：宜 <b>' + U.escape(rec129.text) + '</b> 带队</div>';
+    }
     /* v89.112：「可用道具」**移入右列**（原在主将段内）——
        物品多时体力丹 pills 会换行（199 物品环境下 +42px，撑高左列顶穿正文区）。
        右列余量充足；语义上也更顺：它和"派遣兵力"同属"带什么走"。 */
@@ -12968,6 +13146,8 @@
     { id: 'research', icon: '📜', name: '自动研究', act: 'toggle-auto-research' },
     { id: 'march', icon: '⚔️', name: '自动出征', act: 'toggle-auto-march' },
     { id: 'lord', icon: '🧘', name: '自动练功', act: 'toggle-auto-lord' },
+    /* v89.128（需求 5）：自动采集/收获（每 24 游戏小时一轮） */
+    { id: 'gather', icon: '🌾', name: '自动采集/收获', act: 'toggle-auto-gather' },
     { id: 'recruit', icon: '🧲', name: '自动招募', act: 'auto-recruit-toggle' },
     { id: 'heal', icon: '🏥', name: '自动治疗', act: 'toggle-auto-heal' },
     /* v89.118（老板需求 3）：外敌来犯的**接受开关** + 介绍 + 烽火流水（从军务·烽火迁来） */
@@ -12983,6 +13163,7 @@
     if (id === 'lord') return !!(s.settings && s.settings.autoLordTrain);
     if (id === 'recruit') return !!(GAME.innAutoCfg && GAME.innAutoCfg().on);
     if (id === 'heal') return !!(s.settings && s.settings.autoHeal);
+    if (id === 'gather') return !!(s.settings && s.settings.autoGather);
     if (id === 'invasion') return GAME.invasionAcceptOn ? GAME.invasionAcceptOn() : true;
     return false;
   };
@@ -12993,6 +13174,7 @@
     if (id === 'research') return (s.autoTechState && s.autoTechState.msg) || '未开启';
     if (id === 'march') return (s.autoMarchInfo && s.autoMarchInfo.msg) || '未开启';
     if (id === 'lord') return (s.autoLordState && s.autoLordState.msg) || '未开启';
+    if (id === 'gather') return (s.autoGatherState && s.autoGatherState.msg) || '未开启';
     if (id === 'recruit') {
       var c = GAME.innAutoCfg ? GAME.innAutoCfg() : null;
       return (c && c.on) ? ('门槛 ' + ((DATA.GEN_RANK_BY_ID[c.min] || {}).name || c.min)) : '未开启';
@@ -13095,6 +13277,16 @@
         '产修为、未到段顶还给经验。过半才练是为了<b>把体力留给玩家</b> —— ' +
         '君主的体力也是出征与演武的本钱，自动化不该把它抢光。' +
         '粮草不足或体力不足时<b>暂停但不关开关</b>，恢复后自动继续。</div>';
+    } else if (it.id === 'gather') {
+      var _ws128 = (s.wilds || []).filter(function (w) { return GAME.wildGarrisonTotal(w.garrison) > 0; });
+      var _gn128 = GAME.gatherList().length, _gm128 = DATA.GATHER.maxActive;
+      body = '<div class="auto-line" style="margin-top:2px;">' +
+          '<span class="ui-sub">有驻军野地 <b>' + _ws128.length + '</b> · 采集队 <b>' + _gn128 + '/' + _gm128 + '</b>' +
+          (s.autoGatherState && s.autoGatherState.at ? '　·　上次执行 ' + U.dur((U.now() - s.autoGatherState.at) / 1000) + '前' : '') +
+          '</span></div>' +
+        '<div class="auto-note">每 <b>24 游戏小时</b>一轮：先<b>自动收获</b>（满 1 游戏小时即可收，24 小时封顶），' +
+          '再把<b>有驻军的可采野地</b>全部转入采集（驻军全员入队，采完自动回驻军）。' +
+          '目标已有采集队 / 野地不可采 / 无驻军 → 自动跳过；与手动采集共用同一套结算出口。</div>';
     } else if (it.id === 'recruit') {
       /* 招募门槛/说明的正文由 ui.autoRecruitHTML 提供（去壳版：外壳与开关由本 pane 统一给） */
       body = ui.autoRecruitHTML();

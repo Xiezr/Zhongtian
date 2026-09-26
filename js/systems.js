@@ -455,23 +455,24 @@
       ok = true;
       msg = item.name + ' 生效：' + item.desc + (pStrong ? '（已有更强效果，本次仅刷新时长）' : '');
     } else if (item.type === 'pop_fill') {
-      /* v89.104（老板）：「移民令，恢复人口数量 50%」——
-         一次性把本城人口补到**上限的 ratio**（不足则补差额，已超则不动）。
-         与增民令（加速度）分工：这张是**存量**（贵、立刻见效、用完就没）。
-         为什么按"上限的比例"而不是"当前人口的 50%"：后者在人口低谷时几乎没用
-         （缺人时才用它，却按已有的那份算），前者才是"移民来投"的语义。 */
+      /* v89.125（老板「移民令改为每次使用增加 25% 上限人口的人数」）——
+         语义：**每次使用 +上限 × ratio（封顶上限）**，可多次叠加。
+         旧口径（v89.104）是"补到上限的 ratio"（人口 40% 时用只剩 10% 收益，
+         越早用越亏）；新口径是"增加"（任何时点都是 +ratio，与"移民来投"字面一致）。
+         与增民令（加速度）分工：这张是**存量**（贵、立刻见效、用完就没）。 */
       var _c5 = GAME.currentCity();
       if (!_c5) return { ok: false, msg: '没有当前城池' };
       var _cap5 = GAME.maxPopOf(_c5);
-      var _want = Math.floor(_cap5 * (item.ratio || 0.5));
+      var _ratio5 = item.ratio || 0.25;
+      var _add5 = Math.floor(_cap5 * _ratio5);
       var _have = Math.floor((GAME.res(_c5).pop || 0));
-      if (_have >= _want) {
-        return { ok: false, msg: '本城人口已不低于上限的 ' + Math.round((item.ratio || 0.5) * 100) + '%（无需移民）' };
-      }
+      if (_add5 <= 0) return { ok: false, msg: '本城尚无人口上限（先建造民房）' };
+      if (_have >= _cap5) return { ok: false, msg: '本城人口已满（无需移民）' };
+      var _want = Math.min(_cap5, _have + _add5);
       GAME.res(_c5).pop = _want;
       ok = true;
       msg = item.name + ' 生效：' + _c5.name + ' 人口 ' + U.fmt(_have) + ' → ' + U.fmt(_want)
-        + '（上限 ' + U.fmt(_cap5) + ' 的 ' + Math.round((item.ratio || 0.5) * 100) + '%）';
+        + '（+' + U.fmt(_want - _have) + ' = 上限 ' + U.fmt(_cap5) + ' 的 ' + Math.round(_ratio5 * 100) + '%）';
     } else if (item.type === 'build_cost') {
       s.buffs = s.buffs || {}; s.buffs.buildCost = { until: U.now() + (item.dur || 24) * 3600 * 1000, eff: item.eff };
       ok = true; msg = item.name + ' 生效：建造成本-30%（24h）';
@@ -512,6 +513,21 @@
       var healed = Math.min(staMx, staNow0 + (item.amount || 0.1) * staMx) - staNow0;
       GAME.setStaNow(g4, staNow0 + healed);
       ok = true; msg = g4.name + ' 体力 +' + Math.round(healed);
+    } else if (item.type === 'energy') {
+      /* v89.131（老板「体力精力应当设计加号按钮，供道具使用」）：
+         精力族（清心丸/提神散/养神丹/凝神玉露）——与体力分支同构：
+         按**上限百分比**回复、满了拒绝（不烧道具）。
+         上限走唯一出口 GAME.energyMaxOf（六维公式，domain.js）。 */
+      var g8 = S._findGen(targetGenId);
+      if (!g8) return { ok: false, msg: '请选择将领' };
+      var enMx8 = GAME.energyMaxOf(g8);
+      var enNow8 = GAME.energyNowOf(g8);
+      if (enNow8 >= enMx8) {
+        return { ok: false, msg: g8.name + ' 精力已满（无需服药）' };
+      }
+      var healed8 = Math.min(enMx8, enNow8 + (item.amount || 0.1) * enMx8) - enNow8;
+      GAME.setEnergyNow(g8, enNow8 + healed8);
+      ok = true; msg = g8.name + ' 精力 +' + Math.round(healed8);
     } else if (item.type === 'perm') {
       var g5 = S._findGen(targetGenId);
       if (!g5) return { ok: false, msg: '请选择将领' };

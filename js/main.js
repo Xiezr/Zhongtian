@@ -28,7 +28,12 @@
       case 'page': ui.setPage(el.dataset.key, Number(el.dataset.n)); break;
       /* v20：弹窗内翻页 —— 重绘**弹窗**而非中央视图 */
       case 'mpage': ui.setModalPage(el.dataset.key, Number(el.dataset.n)); break;
-      case 'open-wall': ui.openWallModal(); break;
+      case 'open-wall': {
+        /* v89.128（老板「城墙以环城一圈的结构作为一个建筑」）：环城热区点击 =
+           打开**环城槽**的面板（已建 → 升级/拆除；未建 → 修建）。不占格、不找空地。 */
+        ui.openBuildModal('wall');
+        break;
+      }
       /* 行军队列（v18） */
       /* v26：v25 把「行军」提升为顶栏视图（data-view="marches"）后，
          这条 case 已无触发点，删除以免审计一直报不可达分支。
@@ -179,13 +184,13 @@
         var _rq1 = GAME.queueRushPay(GAME.queueAt('city', el.dataset.idx), '营造工程');
         ui.toast(_rq1.msg);
         GAME.refreshAll();
-        if (GAME.queueAt('city', el.dataset.idx)) ui.openBuildModal(Number(el.dataset.idx));
+        if (GAME.queueAt('city', el.dataset.idx)) ui.openBuildModal(GAME.slotKey(el.dataset.idx));
         break;
       }
       /* v89.102（测评遗留落地）：全境营造总览 —— 跨城队列 + 逐条/一键提速 */
       case 'open-build-ov': ui.openBuildOverview(); break;
       case 'rush-ov': {
-        var _q2 = GAME.buildQueueOf(el.dataset.ci, Number(el.dataset.gi));
+        var _q2 = GAME.buildQueueOf(el.dataset.ci, GAME.slotKey(el.dataset.gi));
         var _r2 = GAME.queueRushPay(_q2, '营造工程');
         ui.toast(_r2.msg);
         GAME.refreshAll();
@@ -204,13 +209,6 @@
         ui.toast(_rq2.msg);
         GAME.refreshAll();
         if (GAME.queueAt('ext', el.dataset.idx)) ui.openExtModal(Number(el.dataset.idx));
-        break;
-      }
-      case 'rush-wall': {
-        var _rq3 = GAME.queueRushPay(GAME.queueAt('wall'), '城墙工程');
-        ui.toast(_rq3.msg);
-        GAME.refreshAll();
-        ui.openWallPanel();
         break;
       }
       case 'rush-tech': {
@@ -261,7 +259,6 @@
       case 'toggle-garrison': ui._garrisonOpen = !(ui._garrisonOpen !== false); ui.renderSide(); break;
       /* v22：缩放按钮改为点选 chip（data-after="zoom"），这条 branch 已无触发点，删除 ——
          留着的坏处是 audit 会一直报「不可达分支」，掩盖真正的新问题。 */
-      case 'wall-build': GAME.doBuildWall(); break;
 
       /* 原版三段式信息区 & 功能入口 */
       case 'open-lord': ui.openLordInfo(); break;
@@ -363,6 +360,15 @@
          三个动作：开选择窗 / 换珠宝 / 执行赏赐（可一次赏多件）。 */
       case 'gen-gift-pick': ui.openGiftPick(el.dataset.gen); break;
       case 'gift-pick-item': ui.setGiftItem(el.dataset.gen, el.dataset.item); break;
+      /* v89.131（老板「体力精力应当设计加号按钮，供道具使用，参考赏赐」）：
+         两个「＋」→ 同一个选择窗（kind 分流体力/精力）→ 执行 */
+      case 'gen-sta-pick': ui.openRestorePick(el.dataset.gen, 'sta'); break;
+      case 'gen-energy-pick': ui.openRestorePick(el.dataset.gen, 'energy'); break;
+      case 'restore-pick-item': ui.setRestoreItem(el.dataset.gen, el.dataset.kind, el.dataset.item); break;
+      case 'gen-restore-do':
+        GAME.doGenRestore(el.dataset.gen, el.dataset.kind, el.dataset.item,
+          el.dataset.qtyFrom ? ui.qtyValueOf(el.dataset.qtyFrom) : 1);
+        break;
       case 'gen-gift-do':
         GAME.doGenGift(el.dataset.gen, el.dataset.item,
           el.dataset.qtyFrom ? ui.qtyValueOf(el.dataset.qtyFrom) : 1);
@@ -553,6 +559,8 @@
       case 'consign-all': GAME.doConsignAll(); break;
       /* v26：同上，「商城」已是顶栏视图（data-view="shop"）。 */
       case 'quick-item': ui.openQuickItem(el.dataset.res); break;
+      /* v89.128（需求 7）：人口道具快用（人口行 "+" 按钮） */
+      case 'quick-pop': ui.openQuickPop(); break;
       case 'use-item-quick': GAME.doUseItemQuick(el.dataset.item); break;
       /* v29（需求 14）：数量以**本行输入框**为准（不再有全局的"购买数量"档位） */
       case 'shop-buy': {
@@ -603,13 +611,13 @@
         GAME.refreshAll();
         break;
       }
-      case 'confirm-build': GAME.doBuild(Number(el.dataset.idx), el.dataset.build); break;
-      case 'confirm-upgrade': GAME.doUpgrade(Number(el.dataset.idx)); break;
-      case 'demolish-ask': ui.openDemolishConfirm(el.dataset.kind, Number(el.dataset.idx)); break;
-      case 'demolish-do': GAME.doDemolishDo(el.dataset.kind, Number(el.dataset.idx)); break;
+      case 'confirm-build': GAME.doBuild(GAME.slotKey(el.dataset.idx), el.dataset.build); break;
+      case 'confirm-upgrade': GAME.doUpgrade(GAME.slotKey(el.dataset.idx)); break;
+      case 'demolish-ask': ui.openDemolishConfirm(el.dataset.kind, GAME.slotKey(el.dataset.idx)); break;
+      case 'demolish-do': GAME.doDemolishDo(el.dataset.kind, GAME.slotKey(el.dataset.idx)); break;
       /* v89.110：取消建造 = 扣 20% 与已耗时间 —— 两段式（先看退多少，再执行） */
-      case 'cancel-build-ask': ui.openCancelBuildAsk(el.dataset.kind, Number(el.dataset.idx)); break;
-      case 'cancel-build-do': GAME.doCancelBuild(el.dataset.kind, Number(el.dataset.idx)); break;
+      case 'cancel-build-ask': ui.openCancelBuildAsk(el.dataset.kind, GAME.slotKey(el.dataset.idx)); break;
+      case 'cancel-build-do': GAME.doCancelBuild(el.dataset.kind, GAME.slotKey(el.dataset.idx)); break;
 
       /* 造兵 */
       /* v20：募兵面板在弹窗里 —— 必须重绘**弹窗**，refreshView 只重绘中央视图 */
@@ -869,6 +877,7 @@
       case 'forge-setinfo': ui.openForgeSetInfo(); break;
       case 'toggle-auto-march': GAME.doToggleAutoMarch(); break;
       case 'toggle-auto-lord': GAME.doToggleAutoLord(); break;   /* v89.83：第 4 条自动化 */
+      case 'toggle-auto-gather': GAME.doToggleAutoGather(); break;   /* v89.128：自动采集/收获 */
       case 'auto-march-once': GAME.doAutoMarchOnce(); break;
       /* v89.65（老板「自动出征精细化，根据现有出征界面形成弹窗」）：
          弹窗里的三个入口 —— 后端一字未改（仍走 doToggleAutoMarch / doAutoMarchOnce），
@@ -1176,6 +1185,14 @@
        商城按钮共用本出口，调用方需要结果来决定"是否重开来源面板"。
        旧调用方无视返回值，行为不变。 */
     if (!item) { ui.toast('未知物品'); return { ok: false, msg: '未知物品' }; }
+    /* v89.121（老板「承认绝版」）：下架档 = 绝版 —— **唯一硬闸**。
+       商城页（shopItems）与快购列表（qbScopeItemsOf）本就不列，这里再兜底：
+       任何调用方（含未来新增的购买口）都不可能把绝版物品卖出去。 */
+    if (item.noShop) {
+      var jbMsg = '「' + item.name + '」已下架（绝版），不可购买 —— 仅旧藏可用';
+      ui.toast(jbMsg);
+      return { ok: false, msg: jbMsg };
+    }
     qty = Math.max(1, Math.floor(Number(qty) || 1));
     var price = (item.price || 0) * 100;
     /* v28（需求 6）：**买得起几个就买几个**，而不是"差一点就一口拒绝"。
@@ -1268,7 +1285,12 @@
     if (!s) return;
     s.settings = s.settings || {};
     var wasOn = GAME.invasionAcceptOn();
-    s.settings.invasion = wasOn;          /* 反置：原本接受 → 写 false（拒战） */
+    /* v89.122（老板「自动化·外敌来犯看起来没起作用」）：**写入端反置 bug** ——
+       原写 `s.settings.invasion = wasOn`，而判据是 `=== false`（false = 拒战）：
+       接受中点一下写进 `true` → 判据不变 → 状态**永远卡在"接受"**，
+       而 toast/日志却报"已拒战"（文字与事实脱节 —— 老板正是这么发现的）。
+       正确写法 = 写入"目标态"：`!wasOn`（接受中 → false=拒战；拒战中 → true=接受）。 */
+    s.settings.invasion = !wasOn;
     GAME.log.beacon(wasOn
       ? '🛡 已拒战：自此烽火无警（「自动化 · 外敌来犯」可随时重开）'
       : '🔥 已接受外敌来犯：诸方势力按期而来（「自动化 · 外敌来犯」可关）');
@@ -1276,6 +1298,21 @@
     GAME.refreshView();
   };
   /* v89.115：自动治疗开关（与其它开关同形：开启即试一次，关闭只清状态） */
+  /* v89.128（需求 5）：自动采集/收获开关（仿自动治疗） */
+  GAME.doToggleAutoGather = function () {
+    var s = GAME.state;
+    if (!s) return;
+    s.settings.autoGather = !s.settings.autoGather;
+    if (s.settings.autoGather) {
+      s.autoGatherState = { lastAt: ((s.world && s.world.elapsed) || 0) - 86400, msg: '已开启，待命', at: 0 };   /* 立刻试一轮 */
+      var r = GAME.autoGatherTick();
+      ui.toast(r && r.ok ? ('🌾 ' + r.msg) : '🌾 自动采集/收获已开启（每 24 游戏小时一轮）');
+    } else {
+      s.autoGatherState = null;
+      ui.toast('自动采集/收获已关闭');
+    }
+    GAME.refreshView();
+  };
   GAME.doToggleAutoHeal = function () {
     var s = GAME.state;
     if (!s) return;
@@ -1613,14 +1650,7 @@
     ui.toast('显示比例 ' + s.settings.zoom + '%');
   };
 
-  /* --------- 城墙（v16：不占格） --------- */
-  GAME.doBuildWall = function () {
-    var c = GAME.currentCity();
-    if (!c) return;
-    var r = (c.wallLv || 0) > 0 ? GAME.upgradeWall(c.id) : GAME.buildWall(c.id);
-    ui.toast(r.msg);
-    if (r.ok) { GAME.refreshAll(); ui.openWallModal(); }
-  };
+  /* v89.126：`doBuildWall` 退役 —— 城墙走通用建造/升级（confirm-build / confirm-upgrade）。 */
 
   /* v19：移动/交换的二次确认弹窗 */
   ui.openMoveConfirm = function (from, to) {
@@ -1653,6 +1683,17 @@
   /* 赏赐珠宝提升忠诚（将领详情面板一键操作） */
   /* 赏赐：v52 支持一次赏 N 件（选择窗里填了件数）。
      赏完关闭选择窗并刷新将领页 —— 原来赏一件就重开一次将领详情，选多件时很烦。 */
+  /* v89.131：体力/精力道具的使用出口（与 doGenGift 同构：真调 useItem(+Many) → toast → 刷新） */
+  GAME.doGenRestore = function (genId, kind, itemId, qty) {
+    qty = Math.max(1, Math.floor(Number(qty) || 1));
+    var r = qty > 1
+      ? GAME.systems.useItemMany(itemId, genId, qty)
+      : GAME.systems.useItem(itemId, genId);
+    ui.toast(r.msg);
+    GAME.refreshAll();
+    ui.closeModal();
+    if (ui.view === 'generals') ui.renderView();
+  };
   GAME.doGenGift = function (genId, itemId, qty) {
     qty = Math.max(1, Math.floor(Number(qty) || 1));
     var r = qty > 1

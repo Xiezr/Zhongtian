@@ -89,7 +89,7 @@
          --lh-loose 长说明 / 可读性优先的段落
        特例：`line-height: 0`（2 处，压 inline-block 缝隙）与**定高徽标**的 px 行高
        （.tab-badge 16px / .bag-worn 15px / .tile-badge 17px / .sigchip 17px /
-        .tax-step 20px / .sd-chip 16px / .tac-k 22px）—— 那是"垂直居中手段"不是排版节奏。 */
+        .wild-go 20px / .sd-chip 16px / .tac-k 22px）—— 那是"垂直居中手段"不是排版节奏。 */
     --lh-1: 1;
     --lh-tight: 1.25;
     --lh-body: 1.6;
@@ -695,7 +695,6 @@
   /* 增速：按「/秒」显示，与画面刷新节奏一致 */
   .res-line .val .num-rate { font-size: var(--fs-cap); font-weight: 700; color: var(--green-ok); }
   .res-line .val .num-rate.zero { color: var(--text-dim); opacity: .55; }
-  .res-line .val .item-badge { color: var(--gold-light); font-size: var(--fs-cap); font-weight: 700; }
   .res-line .val .cap { color: var(--text-dim); font-size: var(--fs-cap); font-weight: 400; }
 
   /* ============ 史册面板 ============ */
@@ -992,7 +991,15 @@
     color: var(--parchment); font-size: var(--fs-cap); font-weight: 800; font-style: normal;
     font-variant-numeric: tabular-nums; }
   .zoom-range { width: 100%; accent-color: rgb(var(--gold-rgb)); }
-  .tax-step { padding: 0 var(--sp-2); line-height: 20px; }
+  /* v89.128：税率 ±按钮改用 plus-btn（删 .tax-step 专有样式）；野地「进入」小按钮。
+     ⛔ v89.130 修正（老板复核「进入按钮太大了…这个说了还没做」）：v89.128 版 `.wild-go`
+     特异性只有 0-1-0，被 `.btn.sm`（0-2-0）的 `padding: var(--sp-1) var(--sp-4)` 压过
+     —— 按钮实际仍是 **46×30**（形同未改）。本次用 `.btn.sm.wild-go`（0-3-0）修正：
+     20px 高 mini 按钮，对齐资源区「＋」（plus-btn 16×16）的视觉体系；
+     阴影从 3px 压到 1px（3px 下沉是"药丸感"的另一半来源）。 */
+  .btn.sm.wild-go { height: 20px; padding: 0 var(--sp-2); line-height: var(--lh-1); font-size: var(--fs-cap);
+    border-radius: var(--r-sm); box-shadow: 0 1px 0 var(--gold-dark), inset 0 1px 0 rgba(var(--hl-rgb),.5); }
+  .btn.sm.wild-go:active { box-shadow: 0 0 0 var(--gold-dark); }
 
   .zoom-bar { display: flex; align-items: center; justify-content: center; gap: var(--sp-1);
     flex-wrap: wrap; margin: var(--sp-0) 0 var(--sp-3); }
@@ -1403,14 +1410,16 @@
      与左栏「状态」区的总体/攻击/防御重复；老板要求"装备提供的属性分行显示"，
      所以留下的是 .eq-grow（见下）。 */
   .eq-doll-wrap { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); gap: var(--sp-5); align-items: start; }
-  /* 人形框尺寸：300×380。
-     高度不是随便定的 —— 右栏 = 人形框 + 属性 + 套装 + 按钮，这里是唯一能压的项；
-     400px 会把档案顶到 840px、整页溢出 16px（多出一条页面滚动条）。
-     min-width 是**方槽不重叠的硬下限**：5 行 × 54px = 270px 高，
-     而框高 = 宽 × 19/15，所以宽度低于 230px 时行间距会被压到负数（实测 1024 视口下
-     框只有 167×212 → 19 对方槽重叠）。宁可让人形框顶出格子，也不能让方槽叠一起。
+  /* 人形框尺寸：v46 的 300×380 → v89.131 的 **400×506**（老板「装备栏…稍微放大一点」）。
+     放大依据：装备栏拿到 3/4 宽（808px）后，2/4 的格子有 ~529px ——
+     300 上限会让框在格子里显得空，故抬到 400（宽 +33%、面积 ×1.78）。
+     高度 = 宽 × 19/15（aspect-ratio 不动 → DOLL_POS 的百分比落点全部照旧）；
+     视图页允许滚动（§30.3），不再为"不出现滚动条"把框压小。
+     min-width 是**方槽不重叠的硬下限**：5 行 × 62px = 310px 高，
+     而框高 = 宽 × 19/15，所以宽度低于 250px 时行间距会被压到负数。
+     宁可让人形框顶出格子，也不能让方槽叠一起。
      ⚠️ 高度变则 DOLL_POS 的百分比全部要重排（详见 js/ui.js 里那张表）。 */
-  .doll { position: relative; width: 100%; max-width: 300px; min-width: 230px;
+  .doll { position: relative; width: 100%; max-width: 400px; min-width: 230px;
     margin: 0 auto; aspect-ratio: 15 / 19;
     /* v46（需求 3）：人形框有了自己的底 —— 放大的将领抠图要有个"画框"才不像浮在空中。
        层级：抠图（1）→ 人体剪影（2）→ 12 个方形槽位（3）。 */
@@ -1425,7 +1434,9 @@
   .doll-portrait { -webkit-mask-image: linear-gradient(180deg, rgb(var(--sh-rgb)) 46%, rgba(var(--sh-rgb),.35) 72%, transparent 96%);
     mask-image: linear-gradient(180deg, rgb(var(--sh-rgb)) 46%, rgba(var(--sh-rgb),.35) 72%, transparent 96%); }
   .doll-fig-svg { position: absolute; left: 50%; top: 0; transform: translateX(-50%); width: 46%; height: 100%; z-index: 2; opacity: .62; }
-  .doll-side { min-width: 0; }
+  /* v89.131：汇总列改为纵向 flex —— 与 .gp-doll 的 stretch 配合，
+     「装备提供 / 套装进度」在上、按钮组钉底（margin-top:auto）。 */
+  .doll-side { min-width: 0; display: flex; flex-direction: column; }
   /* ---- 槽位基础样式（v13 起沿用，v38 漏过一次，务必保留）----
      `.eq-ico .ico { width/height:100% }` 尤其关键：少了它，位图会按**固有尺寸
      1024px** 渲染并把槽位撑到上千像素高（v38 实测 1090px）。 */
@@ -1453,11 +1464,13 @@
      `.eq-inv` 角标同理：全站只有一条 `right/bottom` 规则却从来没有 `position: absolute`，
      于是它一直当作普通流内元素占掉一整行（实测给 chest 多撑出 18px）。 */
   .doll-slot.eq-cell { padding: var(--sp-0); border-radius: var(--r-md); }
-  .doll-slot { position: absolute; width: 54px; height: 54px; margin-left: -27px;
+  /* v89.131：方槽 54→62、图标 22→28（跟随人形框放大；排版预算见下方
+     "槽位内三行装得下" 的实算：2+4+11+1+28+1+11 = 58 ≤ 62，余 4px）。 */
+  .doll-slot { position: absolute; width: 62px; height: 62px; margin-left: -31px;
     min-height: 0; gap: var(--sp-hair); z-index: 3; }
   /* ⚠ 这里**不能**加 overflow: hidden —— 背包存货角标（.eq-inv，right/bottom −3px）
      本来就设计成压在边框外，裁了就看不出"这件还有几件可换"。 */
-  .doll-slot .eq-ico { width: 22px; height: 22px; margin-top: 0; }
+  .doll-slot .eq-ico { width: 28px; height: 28px; margin-top: 0; }
   .doll-slot .eq-slotname { position: static; font-size: var(--fs-cap); line-height: var(--lh-1); letter-spacing: 0; }
   /* 字号一律走令牌（七档），不写裸像素 —— 槽位窄，用最小档 + 省略号 */
   .doll-slot .eq-name { font-size: var(--fs-cap); line-height: var(--lh-1); max-width: 100%; overflow: hidden;
@@ -1916,7 +1929,6 @@
     align-items: center; justify-content: end; column-gap: var(--sp-3);
     min-width: 0; position: relative;
   }
-  #res-bar .res-line .val .item-badge { position: absolute; right: -2px; top: -9px; }
   #res-bar .res-line .amt {
     font-variant-numeric: tabular-nums; text-align: right; justify-self: end;
     /* v65（老板）：「规划一下显示得齐整一点」——
@@ -1936,6 +1948,37 @@
   }
   /* v67：增速列自成一体 —— 左侧发丝竖线 + 内边距，宽度 62 → 72（容「+1,234.5/秒」） */
 #res-bar .num-rate { font-variant-numeric: tabular-nums; min-width: 72px; text-align: right; display: inline-block; }
+
+  /* ============================================================
+   * v89.124（老板「人口增速也按小时显示。界面规划参考资源」）：
+   * 人口行（城池属性区）与资源行**同款三列对齐** —— 名称 | 存量·上限 | 增速。
+   * 列模板与资源行一致（56px 首列 + 增速列 72px 右对齐 + 1.1em 徽标空位），
+   * 两行的增速列右缘因此逐像素对齐；增速列同样带发丝竖线分隔。 */
+  #city-attrs .pop-line {
+    /* 标签列 44px（比资源行的 56px 窄，给 .val 让出空间）——
+       人口存量文本「2,880 / 7,200」比资源存量（「679.5万」）宽约 25px，
+       56px 首列下 .val 只有 167px，装不下「存量 + 72px 增速列 + 1.1em 徽标位」
+       → auto 列被压到 min-content、内容外溢（实测 rate 右缘 439 vs 359）。
+       两行的标签都靠左（左缘一致，实测 140=140），列宽差 12px 不影响观感。 */
+    display: grid; grid-template-columns: 44px 1fr auto;
+    align-items: center; gap: var(--sp-3); column-gap: var(--sp-4);
+  }
+  #city-attrs .pop-line .val {
+    /* 与资源行**同款内部模板**（auto 存量列 + 72px 增速列 + 1.1em 徽标位）——
+       增速列右缘因此与资源行一致。第一列必须按内容宽（auto）：
+       `1fr` 会吸收剩余宽、把 72px 列挤出行外（实测差 70px）。 */
+    display: grid; grid-template-columns: auto 72px 1.1em;
+    align-items: center; justify-content: end; column-gap: var(--sp-3);
+    min-width: 0;
+  }
+  #city-attrs .pop-line .cap { text-align: right; }
+  #city-attrs .pop-line .rate-wrap {
+    border-left: 1px solid var(--line);
+    padding-left: var(--sp-3);
+  }
+  #city-attrs .pop-line .num-rate {
+    font-variant-numeric: tabular-nums; min-width: 72px; text-align: right; display: inline-block;
+  }
 
   /* ============================================================
    * v25（需求 12/13）：说明从"常驻一行"改为「触发式」
@@ -2143,7 +2186,9 @@
      属性挪到人形下方（人形能吃满整栏，方槽才不挤）。 */
   /* v74：将领档案的 1300/1100/900 三档视口断点全部撤除 ——
      画布固定后，这些"窄窗重排"永不触发（留着反而是随窗口移动的隐患）。 */
-  .gp-body { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  /* v89.131：这里原有一条 `.gp-body { grid-template-columns: 1fr 1fr }` ——
+     与 2250 行的定义同权重且更早，**永远是死规则**（后者胜），一并删除。
+     当前分栏口径写在 2250 行（1/4 : 3/4）。 */
   /* ============================================================
    * 左清单（v45 · 需求 1）：**整段可滚、不分页**
    * ------------------------------------------------------------
@@ -2210,7 +2255,10 @@
    * 分栏比例：左栏全是文字（表格自己会折行），右栏要放人形 + 放大的将领抠图，
    * 所以右栏给得多一点。窄屏（<900px）退回单列，否则两边都会被挤到不能用。
    * ============================================================ */
-  .gp-body { display: grid; grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
+  /* v89.131（老板）：「六维/状态占左四分之一；装备栏占四分之三，稍微放大一点。
+     其中的四分之二为装备图，另四分之一为装备属性汇总」——
+     列宽三段合起来 = 4 份：.gp-body 给 1:3，.gp-doll 内部再给 2:1。 */
+  .gp-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 3fr);
     gap: var(--sp-5); align-items: start; }
   .gp-col-l, .gp-col-r { min-width: 0; display: flex; flex-direction: column; }
   /* 每栏的第一个分区标题不再上留白 —— 上方的 gp-head 已经给了分隔线 */
@@ -2228,6 +2276,10 @@
      它不再在 .gp-head 里，所以这里要自己给上下间距。 */
   /* v58：操作已移回 .gp-head 内部，这条"上一行是 gp-head 时"的间距不再需要 */
   .gp-ops .btn { min-width: 92px; }
+  /* v89.131（老板）：「解雇放在人名所在行右侧，稍带点距离」——
+     margin-left:auto 把按钮推到人名行的右缘（flex 行内“右侧”的标准解法），
+     padding-left 留出与姓名/标签的间距（"稍带点距离"）。 */
+  .gp-nameops { margin-left: auto; padding-left: var(--sp-5); flex: none; }
   /* v54（老板："将领经验条放在顶上…整个加号"）：经验条进身份行，
      右端一个「＋」开经验道具选择窗。 */
   .gp-exprow { display: flex; align-items: center; gap: var(--sp-3); margin-top: var(--sp-1); }
@@ -2255,9 +2307,14 @@
   /* v46（需求 2）：装备栏独占右栏。内部仍是「人形 | 属性与套装」并排 ——
      堆叠会让人形（380px）把整个档案顶到 870px，整页多出一条滚动条；
      并排后高度由人形单独决定（≈400px），余量充足。 */
-  .gp-doll { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--sp-4);
-    align-items: start; margin-top: var(--sp-3); }
-  .gp-dollops { display: flex; gap: var(--sp-2); margin-top: var(--sp-3); }
+  /* v89.131（老板）：「装备图占四分之二、装备属性汇总占四分之一」——
+     装备栏（3/4）内部再分 2:1；同时 `align-items: stretch` 让汇总列**撑满人形框高度**
+     （老板报的「装备的界面没有占满，底下有留空的一块」就是它：汇总列内容只到 186px，
+     而人形框 358px —— 下缘一大片空）。按钮组改 `margin-top:auto` 钉到列底，
+     于是汇总列目视从顶到底都排满。 */
+  .gp-doll { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: var(--sp-4);
+    align-items: stretch; margin-top: var(--sp-3); }
+  .gp-dollops { display: flex; gap: var(--sp-2); margin-top: auto; padding-top: var(--sp-3); }
   .gp-dollops .btn { flex: 1; }
   /* 仍在使用：名字旁的「名将 / 美人」小标 */
   .gcard-tag { flex: none; font-size: var(--fs-cap); font-weight: 400; padding: 0 var(--sp-1); border-radius: var(--r-sm);
@@ -3068,6 +3125,9 @@
      作用文案已进六维名称的悬停）。 */
   .gd-dims .gd-plus-c { padding-right: var(--sp-1); }
   .gd-dims .gd-plus { padding: 0 var(--sp-3); line-height: var(--lh-body); }
+  /* v89.131：体力/精力行的「＋」（道具入口）—— 与六维表里的 gd-plus 同款
+     （行内贴右；.gd-line 是 flex，margin-left:auto 把它推到行尾）。 */
+  .gd-line .gd-plus { margin-left: auto; padding: 0 var(--sp-3); line-height: var(--lh-body); flex: none; }
   /* v74（老板需求 5）：自由属性点行（表末整行） */
   .gd-freep td { border-top: 1px dashed var(--line-strong); color: var(--text-dim);
     font-size: var(--fs-sub); padding: var(--sp-1) var(--sp-2) var(--sp-1) var(--sp-3); }

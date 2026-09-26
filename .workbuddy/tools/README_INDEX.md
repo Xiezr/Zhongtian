@@ -8,16 +8,16 @@
 | `asset/` | 23 | 抠底必须连通域洪水填充（BFS）；**绝不用 CSS 滤镜染色**，一律像素级 HSL 重映射写进 PNG。 |
 | `audit/` | 20 | 结构 / 颜色 / 落盘 / 引用 / 删除 的核对工具。`verify_v66_edits.py` = **落盘核验**模板；`audit_refs.py` = 搬迁前查引用点；`read_recycle.py` = 解析回收站 `$I` 元数据核实删了什么；`trash_paths.py` = 逐项+回查的删除模板。 |
 | `break/` | 21 | 逐类注入故障，确认断言**真的会红**（红不了的就是装饰）。铁律：先校验断言在文件里、注入后连"是否中断"一起看、收尾 md5 比对还原。 |
-| `gen/` | 5 | 素材/索引的**唯一来源**。`gen_bitmaps.js` 扫描 `assets/icons/ui/` 生成 `js/bitmaps.js`（勿手改产物）；`gen_tools_index.py` 生成本索引。 |
+| `gen/` | 6 | 素材/索引的**唯一来源**。`gen_bitmaps.js` 扫描 `assets/icons/ui/` 生成 `js/bitmaps.js`（勿手改产物）；`gen_tools_index.py` 生成本索引。 |
 | `git/` | 3 | **收尾同步的唯一入口**。`sync.py` 默认干跑、`--apply` 才落盘（干跑先行是本项目铁律）；`gate.py` 是三件套门禁的**唯一出口**（pre-commit 钩子与 sync 都调它）；`install_hooks.py` 把 `hooks/` 里的钩子装进 `.git/hooks/`。 |
 | `git/hooks/` | 2 | 存这里是为了**进版本库** —— `.git/hooks/` 不被 git 跟踪，换台机器克隆后必须跑 `install_hooks.py` 重装。⚠️ **行尾必须 LF**，CRLF 会让 `#!/bin/sh` 失效。 |
 | `mem/` | 10 | MEMORY.md 必须 < 9600 字符（超出会被会话注入截断，尾部规则等于不存在）。`slim_memory_template.py` = 把超限整段 cut 到 `docs/` 的模板。 |
-| `patch/` | 463 | **事实上的变更日志**：按断言名 `grep -rl "<断言名>" tools/patch/` 就能找到当初是哪次改的。"同一条消息里对同一文件的多次 Edit 会互相覆盖"，所以补丁一律脚本化并留档。 |
+| `patch/` | 509 | **事实上的变更日志**：按断言名 `grep -rl "<断言名>" tools/patch/` 就能找到当初是哪次改的。"同一条消息里对同一文件的多次 Edit 会互相覆盖"，所以补丁一律脚本化并留档。 |
 | `play/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
 | `playtest/` | 20 | **待归类**：确认用途后放进上面的某个目录。 |
-| `probe/` | 92 | jsdom 没有布局引擎 → 尺寸/重叠/溢出/折行只能在**真浏览器**量。`probe60_geom.js` 是可复用模板，`probe66_ui.js` 有"逐行折行"量法，`probe67_save3.js` 量存档体积与配额。 |
-| `show/` | 30 | 给老板看的对照图 / 曲线校准 / 素材巡视。 |
-| **合计** | **690** | |
+| `probe/` | 101 | jsdom 没有布局引擎 → 尺寸/重叠/溢出/折行只能在**真浏览器**量。`probe60_geom.js` 是可复用模板，`probe66_ui.js` 有"逐行折行"量法，`probe67_save3.js` 量存档体积与配额。 |
+| `show/` | 40 | 给老板看的对照图 / 曲线校准 / 素材巡视。 |
+| **合计** | **756** | |
 
 ## asset/（素材处理）
 
@@ -53,7 +53,7 @@
 
 - `audit_colors.js`（5KB）　— 配色审计：把 index.html 里 4 套主题的关键变量解析出来，
 - `audit_refs.py`（3KB）　— 搬迁前普查：谁引用了 DESIGN.md / docs 里的文件 / tools 里的脚本。
-- `audit_v89105_chains.js`（22KB）
+- `audit_v89105_chains.js`（23KB）
 - `audit_v89105_css_tokens.js`（10KB）　— 取 <style> 段（含多条 style）
 - `audit_v89105_modals.js`（11KB）
 - `audit_v89112_pressure.js`（11KB）
@@ -106,6 +106,7 @@
 - `gen_bitmaps.js`（3KB）　— v35-g：扫描 assets/icons/ui/ 生成 js/bitmaps.js（位图素材登记表）
 - `gen_gicons.js`（13KB）　— 从 @iconify-json/game-icons 提取项目所需的 81 个图标，生成 js/gicons.js
 - `gen_tools_index.py`（6KB）　— 生成 `.workbuddy/tools/README_INDEX.md` —— 按**目录**分组（v67 起目录就是分组）。
+- `gen_v89125_build_times.js`（9KB）　— v89.125：生成 docs/v89125-建筑建造时间表.md
 - `gen_v8950_content.js`（20KB）
 
 ## git/（Git 同步与门禁）
@@ -412,6 +413,52 @@ MEMORY.md 必须 < 9600 字符（超出会被会话注入截断，尾部规则�
 - `patch_v89120d_sec101fix.py`（5KB）　— v89.120 补丁 D：修 §101 两处断言写法（都是断言自己的问题，代码无 bug）
 - `patch_v89120e_e2e.py`（2KB）　— v89.120 补丁 E：e2e D4 收藏用例升级（dataset.i → dataset.rid）
 - `patch_v89120f_archive.py`（6KB）　— v89.120 补档案：总览表 + 逐轮明细 + 遗留更新（老板「注意记录前述的所有需求」）
+- `patch_v89126a_pop_cfg.py`（3KB）　— v89.126 补丁 A：人口增速改「固定 2 小时补满（现实时间）」
+- `patch_v89126b_pop_rate.py`（5KB）　— v89.126 补丁 B：人口增速口径落地（domain/state/ui 三处）
+- `patch_v89126c_smoke.py`（5KB）　— v89.126 补丁 C：smoke 断言升级
+- `patch_v89126d_labor.py`（10KB）　— v89.126 补丁 D：劳作占用人口（需求 2）
+- `patch_v89126e_smoke_labor.py`（5KB）　— v89.126 补丁 E：smoke 新增 §106（劳作占用：满配 12.5% / 比例 / 可征 / 守卫真调）
+- `patch_v89126f_smoke_fix.py`（2KB）　— v89.126 补丁 F：修 §106② 判据（占用比 = 级数比，而不是"级数减半"）
+- `patch_v89126g1_wall_state.py`（9KB）　— v89.126 补丁 G1：城墙并入建筑体系（data / state / battle）
+- `patch_v89126g2_wall_code.py`（12KB）　— v89.126 补丁 G2：城墙并入建筑体系（domain / ui / main）
+- `patch_v89126h_smoke_wall1.py`（7KB）　— v89.126 补丁 H：smoke 城墙专区断言升级（批次 1）
+- `patch_v89126i2_citydef.py`（3KB）　— v89.126 补丁 I2：citydef 折扣接线（仅 ③）
+- `patch_v89126i_wall_fix.py`（6KB）　— v89.126 补丁 I：
+- `patch_v89126j_smoke_auto.py`（6KB）　— v89.126 补丁 J：重写「①城墙纳入自动建造」断言段（v64 旧口径 → v89.126 占格口径）
+- `patch_v89126k_smoke_wall2.py`（6KB）　— v89.126 补丁 K：smoke 城墙消费类断言升级
+- `patch_v89126l_final.py`（8KB）　— v89.126 补丁 L：收尾批
+- `patch_v89126m_e2e.py`（5KB）　— v89.126 补丁 M：e2e 城墙断言升级
+- `patch_v89126n_e2e2.py`（3KB）　— v89.126 补丁 N：e2e 点墙环 —— 前置先跑、再取 wallHit（防 refreshAll 重建 DOM 后引用失效）
+- `patch_v89126o_diag.py`（1KB）　— v89.126 补丁 O（临时诊断）：给点墙环断言加 DBG 输出
+- `patch_v89126p_e2e3.py`（2KB）　— v89.126 补丁 P：e2e 点墙环断言定稿（打开建造菜单 + 翻页见「城墙」）
+- `patch_v89126q_gen.py`（5KB）　— v89.126 补丁 Q：
+- `patch_v89127a_tips_fmt.py`（4KB）
+- `patch_v89127b_smoke.py`（4KB）　— v89.127 补丁 B：smoke 断言 —— U.fmt 千级逗号 + §107 城墙入城迁移提示（3 条）
+- `patch_v89128a_domain.py`（7KB）　— v89.128 补丁 A（domain.js）：城墙回环城槽 —— 槽访问唯一出口 cellOf / wallSlotOf
+- `patch_v89128b2_state.py`（2KB）　— v89.128 补丁 B2（state.js）：清理三处残留
+- `patch_v89128b_state.py`（9KB）　— v89.128 补丁 B（state.js）：城墙回环城槽
+- `patch_v89128c_ui.py`（15KB）　— v89.128 补丁 C：城墙回环城槽 —— 界面层与转正提取
+- `patch_v89128d_smoke.py`（12KB）　— v89.128 补丁 D：smoke 城墙断言升级（占格 → 环城槽）
+- `patch_v89128e_smoke2.py`（9KB）　— v89.128 补丁 E：smoke 剩余 8 条红点升级（转正提取 / 迁移口径 / 正则可升级）
+- `patch_v89128f_e2e.py`（8KB）　— v89.128 补丁 F：e2e 城墙断言升级（环城视觉=建筑外观 / 环城槽面板 / 自动升级）
+- `patch_v89128g_buildtime.py`（7KB）　— v89.128 补丁 G：需求 3+4 —— 建造时间重设计
+- `patch_v89128h_smoke3.py`（10KB）　— v89.128 补丁 H（smoke）：§104 口径升级（哨兵 0 → 曲线）+ 新增 §108（12 级循环/≤24h/区分度）
+- `patch_v89128j_leftbar.py`（16KB）　— v89.128 补丁 J：需求 7+8 左栏统计改造
+- `patch_v89128k_gather.py`（12KB）　— v89.128 补丁 K：需求 5 —— 自动采集/自动收获 + 野地驻军规则
+- `patch_v89129a_wall_time.py`（6KB）　— patch_v89129a_wall_time.py —— v89.129 需求 1：城墙独立建造时间 + 资源重排。
+- `patch_v89129b_fort_guard.py`（7KB）　— patch_v89129b_fort_guard.py —— v89.129 需求 2：据点守将（唯一缺口）。
+- `patch_v89129c_recgen.py`（7KB）　— patch_v89129c_recgen.py —— v89.129 需求 2：相称尺子 + 出征面板建议行。
+- `patch_v89129d_smoke.py`（9KB）　— patch_v89129d_smoke.py —— v89.129：smoke §111 断言（插在"结果："行之前）。
+- `patch_v89130_archive.py`（9KB）　— patch_v89130_archive.py —— 档案：① 总览补 v89.121~130 ② v89.128 逐字原文
+- `patch_v89131a_data.py`（6KB）　— v89.131 补丁 A：data.js
+- `patch_v89131b2_domain.py`（3KB）　— v89.131 补丁 B2：domain.js —— 精力公式拆成"零件唯一出口"（energyPartsOf）
+- `patch_v89131b_domain.py`（3KB）　— v89.131 补丁 B：domain.js —— 精力三出口（上限 / 当前 / 写入）
+- `patch_v89131c_systems.py`（2KB）　— v89.131 补丁 C：systems.js —— useItem 新增 'energy' 分支（对照 stamina 分支）
+- `patch_v89131d_state.py`（5KB）　— v89.131 补丁 D：state.js —— 回复口径改「现实时间百分比（24h 满）」
+- `patch_v89131e1_ui_pane.py`（12KB）　— v89.131 补丁 E1：ui.js —— genPane 状态区改造
+- `patch_v89131e2_ui_picker.py`（8KB）　— v89.131 补丁 E2：体力/精力道具选择窗 + 动作派发 + 商城页签 + 提示表
+- `patch_v89131f_css.py`（7KB）　— v89.131 补丁 F：index.html —— 将领档案版面改造
+- `patch_v89131g_smoke.py`（16KB）　— v89.131 补丁 G：smoke-test.js 升级 8 处 + 新增 §112
 - `patch_v8914.py`（16KB）　— patch_v8914.py — v89.14：卷 09~18 接线（60 篇）+ 残留清理 + 校验器判据 11/12
 - `patch_v8914_docs.py`（14KB）　— patch_v8914_docs.py — v89.14 文档补录
 - `patch_v8928_theme_check.py`（2KB）　— v89.28 题材线（江湖 / 修炼 / 四夷）· check.py 判据 12 扩展
@@ -610,7 +657,7 @@ MEMORY.md 必须 < 9600 字符（超出会被会话注入截断，尾部规则�
 
 待归类：请确认用途后归档。
 
-- `lifecycle_v89121.js`（32KB）
+- `lifecycle_v89121.js`（33KB）
 
 ## playtest/（未归类）
 
@@ -703,6 +750,15 @@ jsdom 没有布局引擎 → 尺寸/重叠/溢出/折行只能在**真浏览器*
 - `probe_v89121b_flag_diff.py`（2KB）　— probe_v89121b · 族旗位置 = 源图（未挂旗）与成品图（assets/icons/ui）的差异像素
 - `probe_v89121c_noshop_refs.py`（1KB）　— v89121 清点辅助：noShop 物品的"额外引用"审查（找真断链嫌疑）
 - `probe_v89121d_reward_scan.py`（2KB）　— v89121：产出渠道全扫描 —— 找出"任务/逸闻/奇遇/游历"等表里给了哪些物品 id，
+- `probe_v89122_invasion_toggle.js`（3KB）
+- `probe_v89125_build_time_migration.js`（4KB）　— v89.125 探针：建筑时间表口径（城墙哨兵 0）与移民令新语义
+- `probe_v89126_labor_calib.js`（5KB）　— v89.126 探针：劳作占用校准与守卫真调（需求 2）
+- `probe_v89127_migrate_tip.js`（3KB）　— v89.127 探针：① U.fmt 千级新格式（k 退役）② 城墙入城迁移不再静默
+- `probe_v89128a_time_audit.js`（4KB）　— v89.128 需求 1 探针：时间口径总表 —— 以 1 倍速为基准，枚举全部时间数值
+- `probe_v89129_audit.js`（6KB）
+- `probe_v89131_energy_domain.js`（5KB）　— v89.131 探针：精力公式设计的数值域采样
+- `probe_v89131_jieyue.js`（4KB）　— v89.131 探针：节钺设定全表（老板「只有攻打名城才给的那什么节X，列出其设定」）
+- `probe_v89131_pane_geom.js`（3KB）　— v89.131 探针：将领档案面板几何量测（真浏览器）
 - `probe_v8942_map_shot.js`（6KB）　— _shot_map.js — 地图视图截图探针（before/after 通用 · v89.42）
 - `probe_v8942_tex.js`（4KB）　— v89.41 行为探针：texVariant 确定性与分布 + 地图渲染回归（不抛错）
 - `probe_v8986_p02_p15_p26.js`（7KB）　— probe_v8986_p02_p15_p26.js —— 整改 P-02 / P-15 / P-26 探针
@@ -767,6 +823,16 @@ jsdom 没有布局引擎 → 尺寸/重叠/溢出/折行只能在**真浏览器*
 - `shot_v89119.js`（10KB）
 - `shot_v89120.js`（13KB）
 - `shot_v89121_shop.js`（3KB）
+- `shot_v89122_invasion.js`（4KB）
+- `shot_v89123_rate.js`（4KB）
+- `shot_v89124_pop.js`（4KB）
+- `shot_v89125_migration.js`（4KB）
+- `shot_v89126_three.js`（8KB）
+- `shot_v89128_final.js`（3KB）　— v89.128 实机图：① 自动化面板（新增自动采集/收获）② 营造总览（新时长：官府 11→12 = 18h）
+- `shot_v89128_leftbar.js`（4KB）　— v89.128 需求 7/8 实机图：左栏统计（人口行/按钮统一/野地行/人口道具弹窗）+ 对齐复验
+- `shot_v89128_wall.js`（4KB）　— v89.128 需求 6 实机图：城墙环城结构（未建不画 / 修上画环 / 点环城开面板）
+- `shot_v89129_three.js`（7KB）　— v89.129 实机图（三个场景）：
+- `shot_v89131_pane.js`（9KB）　— v89.131 实机脚本：将领档案版面（自带判定）+ 截图
 - `tile_show.js`（3KB）　— v35-f：批量拼图（可复用）—— 传 id:中文列表，输出总览图
 
 ---

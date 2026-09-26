@@ -149,10 +149,14 @@ if (PART === 'A1' || PART === 'ALL') {
       verify: function (it) { var s = G.state; return s.buffs.popBoost && s.buffs.popBoost.mult === (it.eff || 1); },
     },
     pop_fill: {
+      /* v89.125：语义 = 每次 +上限×ratio（增量，封顶上限）——
+         prep 摆 10%，用后应 = min(上限, 10% + ratio)（旧口径是"补到 ratio"，已废）。 */
       prep: function () { G.res(A).pop = Math.floor(G.maxPopOf(A) * 0.1); },
       use: function (it) { return S.useItem(it.id, gen.id); },
       verify: function (it) {
-        return Math.floor(G.res(A).pop) === Math.floor(G.maxPopOf(A) * (it.ratio || 0.5));
+        var cap = G.maxPopOf(A);
+        var want = Math.min(cap, Math.floor(cap * 0.1) + Math.floor(cap * (it.ratio || 0.25)));
+        return Math.floor(G.res(A).pop) === want;
       },
     },
     build_cost: {
