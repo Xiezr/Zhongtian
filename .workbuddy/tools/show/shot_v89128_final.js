@@ -52,17 +52,9 @@ var pw = require('playwright-core');
   });
   console.log('自动化面板:', m1.t);
 
-  /* ② 营造总览（新时长） */
-  var m2 = await p.evaluate(function () {
-    var G = window.GAME;
-    G.ui.closeAllModals();
-    G.ui.openBuildOverview();
-    var mr = document.querySelector('#modal-root');
-    return { t: (mr.textContent || '').replace(/\s+/g, ' ').slice(0, 160) };
-  });
-  await p.waitForTimeout(400);
-  await p.screenshot({ path: 'E:/Deepseekdb/.workbuddy/shots/v89128-build-18h.png' });
-  console.log('营造总览:', m2.t);
+  /* ② 营造总览（新时长） —— ⛔ v89.137：「全境营造总览」面板整条退役（老板判重），
+     本段停用；建造时长的守护改由 smoke §108（buildTimeSec 曲线四连）承担。
+     （历史脚本原样保留，恢复见 backup/v89137）*/
 
   var pass = m1.t.indexOf('自动采集') >= 0 && m2.t.indexOf('官府') >= 0;
   console.log(pass ? '✓ v89128 实机验证通过' : '✗ 有未达标项');

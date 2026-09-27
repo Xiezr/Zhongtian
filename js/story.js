@@ -77,7 +77,8 @@
     var changed = s.world.weather !== pick.id;
     s.world.weather = pick.id;
     s.world.weatherLeft = DATA.CALENDAR.secPerYear / 4;
-    if (changed && !silent && GAME.log) GAME.log('天时：' + pick.name + '（' + pick.desc + '）');
+    /* v89.153（老板 2）：主题 = 天时（系统页小标签） */
+    if (changed && !silent && GAME.log) GAME.log('天时：' + pick.name + '（' + pick.desc + '）', 'sys', 'weather');
     return pick;
   };
 
@@ -197,7 +198,8 @@
     w.eraGoalDone = false;
     var era = DATA.ERAS[w.eraIndex];
     STORY.chronicleAdd('改元' + era.name + '。' + era.desc + ' 时代之志：' + era.goal.text + '。', 'era');
-    if (GAME.log) GAME.log.task('🎏 改元 ' + era.name + '：' + era.boon.text);
+    /* v89.153（老板 2）：主题 = 改元（系统页小标签；大类仍是 task——任务并入系统页） */
+    if (GAME.log) GAME.log('🎏 改元 ' + era.name + '：' + era.boon.text, 'task', 'era');
   };
 
   /* 时代目标当前进度（返回 {cur,target,text,ratio,ok}） */
@@ -575,7 +577,7 @@
       : GAME.makeGeneral(h.name, 1, 'idle', GAME.currentCity().id, false);
     g.loyalty = 70;
     s.generals.push(g);
-    if (GAME.log) GAME.log('贤才来归：' + h.name + ' 入我帐下。');
+    if (GAME.log) GAME.log('贤才来归：' + h.name + ' 入我帐下。', 'sys', 'staff');
     return g;
   };
 

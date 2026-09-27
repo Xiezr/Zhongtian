@@ -84,14 +84,12 @@ function auditScene(label, nSelf, namedTypes, govLv, houses) {
   });
   const salaryPerH = (D.RANK[rank] || {}).salary || 0;
 
-  /* 岁贡（名城专有）与征调（手动，列为参考） */
+  /* 岁贡（名城专有）—— 征调列保留为 0：
+     ⛔ v89.141（复核 · 工具跟随）：`GAME.levyPlan` 在 v82（老板「官府不需要征收物质
+     这个功能去除」）已整段退役，本工具还在调它 → TypeError 崩。字段保留为历史对照列。 */
   const y = G.dailyYieldSummary();
   const tributePerH = (y.gold || 0) / 24;
-  let levyGoldPerDay = 0;
-  cities.forEach(c => {
-    const plan = (G.levyPlan(c) || {}).resources || [];
-    plan.forEach(r => { if (r.key === 'gold') levyGoldPerDay += r.qty; });
-  });
+  const levyGoldPerDay = 0;
 
   const auto = taxPerH + salaryPerH + tributePerH;
   const parts = [

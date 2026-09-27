@@ -23,7 +23,7 @@ var pw = require('playwright-core');
     c.cells.forEach(function (x) { if (x.build) x.build.lvl = Math.max(x.build.lvl || 1, 7); });
     try { G.buildCityAt(c.x + 3, c.y + 1); } catch (e) {}
     st.items = st.items || {};
-    ['shennongchu', 'zengminling', 'yiminling', 'zhenzhu', 'lianbing_jingyan', 'chest_tong'].forEach(function (id) { st.items[id] = 4; });
+    ['shennongchu', 'zengminling', 'yiminling', 'bengzhu', 'lianbing_jingyan', 'chest_tong'].forEach(function (id) { st.items[id] = 4; });
     st.wounded = 5200; st.woundedArmy = { yibing: 3600 };
     st.reports = st.reports || [];
     for (var i = 0; i < 6; i++) st.reports.push({ t: Date.now() - i * 1e5, type: 'war', title: '战报 ' + i, body: 'x', win: true });

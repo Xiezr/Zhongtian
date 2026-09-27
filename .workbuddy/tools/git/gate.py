@@ -36,6 +36,10 @@ TESTS = [
     ('e2e-test.js',   '真实 DOM', False),
 ]
 
+# v89.136（老板「盘点器进入 gate」）：数据表卫生四查（跨文件写 / 重复定义 / 孤儿 / 悬空）。
+# 秒级成本 → 与 audit 同属"轻量级"：未触及代码时也跑（结构漂移越早抓越便宜）。
+TABLES = ('.workbuddy/tools/audit/audit_v89134_tables.js', '数据表卫生', True)
+
 
 def _find_node():
     for p in NODE_CANDIDATES:
@@ -111,6 +115,13 @@ def run_one(node, node_path, script, label):
             return False, f'{script} 0 通过 —— 什么都没测，不算绿', tail
         return True, f'{script} {ok_n} 通过 / 0 失败', tail
 
+    # 数据表卫生盘点器（v89.136 进 gate）：四查全过 = 绿；需处理 = 红。
+    # （退出码已由盘点器给出：全过 0 / 需处理 1 —— 上面 returncode 分支先兜底）
+    if '卫生四查全过' in out:
+        return True, f'{script} 四查全过（跨文件写/重复定义/孤儿/悬空）', tail
+    if '需处理' in out:
+        return False, f'{script} 四查未过（详见输出尾部）', tail
+
     # audit.js 无「结果：」行，用它的汇总特征
     if '死函数' in out and '孤儿按钮' in out:
         bad = re.search(r'死函数\s*(\d+)\s*·\s*孤儿按钮\s*(\d+)\s*·\s*重复定义\s*(\d+)\s*·\s*零引用字段\s*(\d+)', out)
@@ -146,14 +157,14 @@ def main():
     node_path = _find_node_path()
 
     if full:
-        plan = list(TESTS)
-        why = '--full 强制三件套全跑'
+        plan = list(TESTS) + [TABLES]
+        why = '--full 强制三件套 + 数据表卫生全跑'
     elif needs_full(files):
-        plan = list(TESTS)
-        why = '改动了代码（index.html 或 js/**）→ 三件套全跑'
+        plan = list(TESTS) + [TABLES]
+        why = '改动了代码（index.html 或 js/**）→ 三件套 + 数据表卫生全跑'
     else:
-        plan = [TESTS[0]]
-        why = '未触及代码 → 只跑 audit（2 秒兜底）'
+        plan = [TESTS[0], TABLES]
+        why = '未触及代码 → 只跑 audit + 数据表卫生（各 1~2 秒兜底）'
 
     print(f'━━ 三件套门禁 ━━ {why}')
     if files:

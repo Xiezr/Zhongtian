@@ -345,10 +345,16 @@ function tryBuildExt() {
 /* 5.3 城墙 */
 function tryWall() {
   var city = st.cities[0];
-  if (G.wallPendingOf(city.id)) return;
-  var lv = city.wallLv || 0;
+  /* ⛔ v89.141（复核修复 · 工具跟随）：`G.wallPendingOf` / `city.wallLv` / `G.buildWall`
+     在 v89.126「城墙并入建筑体系」时整条退役（城墙走**环城槽** `city.wall`，
+     建造/升级走通用 buildAt/upgradeAt）—— 原调用每拍 TypeError
+     （96h 跑出 **2890 次**错误，城墙线整条停摆）。改为新形态。 */
+  var lv = G.buildingLevel(city, 'chengqiang') || 0;
+  if (city.wall && city.wall.pending) return;                    /* 施工中不重排 */
   if (lv >= G.buildCapOf(city, 'chengqiang')) return;
-  var r = safeCall('wall', function () { return G.buildWall(city.id); });
+  var r = safeCall('wall', function () {
+    return lv > 0 ? G.upgradeAt(city.id, 'wall') : G.buildAt(city.id, 'wall', 'chengqiang');
+  });
   if (r && r.ok) RUN('🧱 城墙 → Lv' + (lv + 1) + ' 开建');
   if (r && !r.ok) noteSoft('wall', r.msg);
 }

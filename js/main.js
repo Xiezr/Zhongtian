@@ -41,11 +41,19 @@
       case 'march-recall': (function () {
         var r = GAME.march.recall(el.dataset.id);
         ui.toast(r.msg);
-        ui.openMarches();
+        /* v89.163（老板 1）：召回后的重绘**跟宿主走** —— 「指挥战斗」清单里也放了
+           召回按钮（.war-list 是它的标记）；改前硬编码 openMarches，
+           在指挥战斗清单里点召回会把人弹到另一个窗口。
+           ⚠️ 用 querySelectorAll.length 探测（smoke 的 DOM 桩 querySelector 恒 truthy）。 */
+        if (document.querySelectorAll && document.querySelectorAll('#modal-root .war-list').length) ui.openBattleList();
+        else ui.openMarches();
         GAME.refreshAll();
       })(); break;
       /* v89.87（老板需求 4）：战场界面动作 —— 指令 / 完成回合 / 自动 / 军务入口 */
       case 'bt-open': ui.openBattlefield(el.dataset.id); break;
+      /* v89.151（老板 3）：底栏「⚔ 指挥战斗」→ 战斗待指挥清单
+         （与 v89.150 抵达时自动弹的**同一个出口** —— 两处入口一份清单）。 */
+      case 'battle-list-open': ui.openBattleList(); break;
       case 'bt-stance': (function () {
         var rec = ui._bt && GAME.battle._recOf(ui._bt.id);
         /* v89.116：动作改**下拉框**（老板「不要直接列出，节省空间」）——
@@ -114,6 +122,8 @@
         GAME.refreshView();
         break;
       }
+      /* v89.133（第 14 条）：防守页内两小页（全境防御 / 防守战术） */
+      case 'def-sub': ui._defSub = el.dataset.v === 'tac' ? 'tac' : 'over'; GAME.refreshView(); break;
       /* v89.116：伤兵营 / 俘虏营的**唯一落点**跳转（校场 / 行军 / 行军弹窗的指引行） */
       case 'go-affairs': {
         ui._marchTab = 'affairs';
@@ -121,7 +131,8 @@
         ui.toast('伤兵营 / 俘虏营在「军务 · 军务处」');
         break;
       }
-      /* v89.116：俘虏营的两个出口（收编为民 / 释放） */
+      /* v89.116：俘虏营的两个出口（收编入军 / 释放）
+         v89.142（老板 5）：收编 = 逐兵种转入本城军队 + 支金（造价 50%）—— 不再加人口 */
       case 'conscript-captives': {
         var _cc = GAME.doConscriptCaptives();
         ui.toast(_cc.msg);
@@ -134,16 +145,11 @@
         if (_cr.ok) GAME.refreshAll();
         break;
       }
-      /* 军务·出征：一键进**出征界面**（目标 = 据点 / 名城 / 己方城池） */
-      case 'exp-go': {
-        var _ek = el.dataset.kind;
-        if (_ek === 'fort') ui.openExpModal({ kind: 'fort', x: Number(el.dataset.x), y: Number(el.dataset.y) });
-        else if (_ek === 'city') ui.openExpModal({ kind: 'city', id: el.dataset.id });
-        else if (_ek === 'own') ui.openExpModal({ kind: 'own', id: el.dataset.id });
-        break;
-      }
+      /* ⛔ v89.134 移除：`case 'exp-go'` —— v89.133 出征页改造后按钮改为
+         「进入军事行动」（exp-act-go，经 ui.actTargetGroups/actPickOf 覆盖 5 类目标
+         全类型）；旧 case 已无界面触发点（audit 判不可达）。 */
       case 'toggle-auto-research': GAME.doToggleAutoResearch(); break;   /* v89.86（P-18）：改函数（带保留线下限提示） */
-      case 'open-guanfu': ui.openGuanfu(); break;
+      /* ⛔ v89.135 移除：`case 'open-guanfu'` —— 官府面板退役（功能直接进官府格建筑面板）。 */
       /* v73（老板需求 3）：种田秘境（官府 → 另外一个菜单）。
          播种 / 收获后**留在秘境里刷新** —— 地块状态变化要立刻看得见。 */
       case 'open-farm': ui.openFarm(); break;
@@ -187,23 +193,9 @@
         if (GAME.queueAt('city', el.dataset.idx)) ui.openBuildModal(GAME.slotKey(el.dataset.idx));
         break;
       }
-      /* v89.102（测评遗留落地）：全境营造总览 —— 跨城队列 + 逐条/一键提速 */
-      case 'open-build-ov': ui.openBuildOverview(); break;
-      case 'rush-ov': {
-        var _q2 = GAME.buildQueueOf(el.dataset.ci, GAME.slotKey(el.dataset.gi));
-        var _r2 = GAME.queueRushPay(_q2, '营造工程');
-        ui.toast(_r2.msg);
-        GAME.refreshAll();
-        ui.openBuildOverview();
-        break;
-      }
-      case 'rush-ov-all': {
-        var _r3 = GAME.rushAllBuilds();
-        ui.toast(_r3.msg);
-        GAME.refreshAll();
-        ui.openBuildOverview();
-        break;
-      }
+      /* ⛔ v89.137（老板 4）：case open-build-ov / rush-ov / rush-ov-all 整条退役 ——
+         全境营造总览已删（见 ui.js 与 domain.js 的同款墓碑）。
+         建筑面板的「⚡ 提速」走 rush-build（保留）。 */
       case 'rush-ext': {
         var _rq2 = GAME.queueRushPay(GAME.queueAt('ext', el.dataset.idx), '城外工程');
         ui.toast(_rq2.msg);
@@ -267,7 +259,8 @@
         var mc = GAME.currentCity();
         var mr = GAME.setMainCity(mc ? mc.id : null);
         ui.toast(mr.msg);
-        if (mr.ok) { GAME.refreshAll(); ui.openGuanfu(); }
+        /* v89.135：官府面板退役后不再重开面板 —— 建筑面板已挂 live，下一秒自动刷新 */
+        if (mr.ok) { GAME.refreshAll(); }
         break;
       }
       case 'open-artifacts': ui.openArtifacts(); break;
@@ -323,23 +316,8 @@
           el.dataset.qtyFrom ? ui.qtyValueOf(el.dataset.qtyFrom) : 1);
         break;
       case 'stat-plus-item': GAME.doStatPlusItem(el.dataset.item, el.dataset.gen, el.dataset.stat); break;
-      /* v74（老板：完善出征界面）：全带 / 清空（只改输入框值，刷新仍走 updateExpMarch） */
-      case 'exp-fill-all': (function () {
-        var c74 = GAME.currentCity();
-        Object.keys((c74 && c74.army) || {}).forEach(function (id) {
-          var i74 = document.getElementById('exp-' + id);
-          if (i74) i74.value = i74.max;
-        });
-        ui.updateExpMarch();
-      })(); break;
-      case 'exp-clear-all': (function () {
-        var c74 = GAME.currentCity();
-        Object.keys((c74 && c74.army) || {}).forEach(function (id) {
-          var i74 = document.getElementById('exp-' + id);
-          if (i74) i74.value = 0;
-        });
-        ui.updateExpMarch();
-      })(); break;
+      /* ⛔ v89.144（老板 2）退役：标题栏那对**全局**兵力键（「全带→上限」逐行分配 + 全局清空）——
+         两个操作挪进**每个兵种行**（行内上限 = 下面的 exp-max 改语义；行内清空 = exp-zero）。 */
       case 'exp-pick-item': ui.setExpItem(el.dataset.gen, el.dataset.item); break;
       case 'gen-exp-item': {
         var rgex = GAME.systems.gainExpByItem(el.dataset.item, el.dataset.gen, el.dataset.mode);
@@ -374,17 +352,26 @@
           el.dataset.qtyFrom ? ui.qtyValueOf(el.dataset.qtyFrom) : 1);
         break;
       /* 野地采集（v15） */
-      case 'gather-open': ui.openGatherModal(Number(el.dataset.x), Number(el.dataset.y)); break;
-      case 'open-gathers': ui.openGathers(); break;
-      case 'gather-start': GAME.doStartGather(); break;
+      /* ⛔ v89.136 移除：'gather-open'（派军采集面板）/ 'open-gathers'（野地采集弹窗）/
+         'gather-start'（其提交端）—— 采集已合并为「带将驻军原地开工」，
+         全部操作收敛到地块界面的「采集」区（见 ui.openLandModal 的 gatherBox）。 */
       case 'gather-finish': GAME.doFinishGather(el.dataset.id); break;
       /* v89.110：撤回采集 = 本轮无收益 —— 两段式 */
-      case 'gather-abandon-ask': ui.openGatherAbandonAsk(el.dataset.id); break;
-      case 'gather-abandon-do': GAME.doAbandonGather(el.dataset.id); break;
-      case 'gather-locate': ui.mapCenterOn(Number(el.dataset.x), Number(el.dataset.y)); ui.toast('已定位 (' + el.dataset.x + ',' + el.dataset.y + ')'); break;
+      /* ⛔ v89.138（老板 0）：case gather-abandon-ask / gather-abandon-do 退役 ——
+         「召回」全站统一走 `wild-withdraw`（撤回驻军 = 停采 + 兵将回城，两段确认）。
+         见 ui.js 的 openGatherAbandonAsk 墓碑与 GAME.doAbandonGather 墓碑。 */
+      /* ⛔ v89.136 移除：'gather-locate' —— 采集队总览弹窗退役（地块界面即野地本体，无需定位跳转）。 */
 
       /* 野地管理（v23 · 需求 1）：驻军 / 撤军 / 放弃 */
-      case 'wild-garrison-open': ui.openWildGarrison(Number(el.dataset.x), Number(el.dataset.y)); break;
+      case 'wild-garrison-open':
+        /* ============================================================
+         * v89.137（老板 7）：「派驻弹出出征界面（即侦察/掠夺/占领界面）…
+         *   所有军队操作均以出征界面进行」——
+         * 三个入口（地块界面「派驻/增派驻军」· 军务总览「增派」· 附属野地「派驻」）
+         * 共用这一个动作 → 一律打开出征界面；方式是己方野地自动落「驻守 · 增援」。
+         * ============================================================ */
+        ui.openExpModal({ kind: 'wild', x: Number(el.dataset.x), y: Number(el.dataset.y) });
+        break;
       /* v87（老板）：野地地形专属场景 */
       /* v88：双轨切换 / 蕴养 / 江湖游历（v88.1：原 do-wild-scene 已并入 do-jianghu） */
       case 'toggle-equip-set': GAME.doToggleEquipSet(el.dataset.gen, el.dataset.set); break;
@@ -415,17 +402,38 @@
         ui.mapCenterOn(Number(el.dataset.x), Number(el.dataset.y));
         ui.toast('已至线索所指（' + el.dataset.x + ',' + el.dataset.y + '）—— 点该格探奇');
         break;
-      /* v89.83：派驻面板（兵种 + 数量）—— 加减 / 全带 / 装满 / 清空，
-         全部走 ui.wg* 纯界面助手（只改值与合计文字，不重绘）。 */
-      case 'wg-step': ui.wgStep(el); break;
-      case 'wg-max': ui.wgMax(el); break;
-      case 'wg-fill': ui.wgFill(); break;
-      case 'wg-clear': ui.wgClear(); break;
-      case 'wild-garrison-do': GAME.doWildGarrisonDo(); break;
+      /* ⛔ v89.137（老板 7）：case wg-step / wg-max / wg-fill / wg-clear / wild-garrison-do
+         随派驻面板整条退役（面板已删，见 ui.js 同款墓碑）；
+         「派驻 / 增派驻军」入口改走 case 'wild-garrison-open'（下方向征界面下发）。 */
       case 'wild-withdraw': {
-        var wr = GAME.doWildWithdraw(Number(el.dataset.x), Number(el.dataset.y));
+        /* ============================================================
+         * v89.155（老板 2）：召回改「**第一次变黄 → 第二次执行 → 变无驻军绿**」，
+         *   2 秒内无第二次点击则自动回落红色（DATA.WD_ARM_MS）。
+         *   · 第一次点击只上膛（按钮变黄），**不弹任何说明/文字窗**（老板：
+         *     「就不要显示一大段说明或者文字弹窗了」）—— 旧版的长 toast 退役；
+         *   · 执行后**不再弹地块面板**（老板：「召回后不要弹窗己方小野地界面，
+         *     直接执行召回即可」）—— 列表/面板的 live 逐秒刷新自然切到无驻军形态，
+         *     按钮经 wdRepaint 就地变绿；
+         *   · 按钮三态渲染唯一出口 = ui.wildWdBtnHTML（本处只改状态 + 触发重绘）。
+         * ============================================================ */
+        var _wx155 = Number(el.dataset.x), _wy155 = Number(el.dataset.y);
+        var _wk155 = _wx155 + ',' + _wy155;
+        if (ui._wdArm138 !== _wk155) {
+          ui._wdArm138 = _wk155;
+          if (ui._wdArmTimer155) clearTimeout(ui._wdArmTimer155);
+          ui._wdArmTimer155 = setTimeout(function () {
+            if (ui._wdArm138 !== _wk155) return;
+            ui._wdArm138 = null; ui._wdArmTimer155 = null;
+            ui.wdRepaint(_wx155, _wy155);        /* 2 秒无第二次点击 → 回落（红 / 绿） */
+          }, DATA.WD_ARM_MS || 2000);
+          ui.wdRepaint(_wx155, _wy155);          /* 立即变黄（就地重绘，唯一出口） */
+          break;
+        }
+        if (ui._wdArmTimer155) { clearTimeout(ui._wdArmTimer155); ui._wdArmTimer155 = null; }
+        ui._wdArm138 = null;
+        var wr = GAME.doWildWithdraw(_wx155, _wy155);
         ui.toast(wr.msg);
-        if (wr.ok) { ui.openLandModal(Number(el.dataset.x), Number(el.dataset.y)); GAME.refreshAll(); }
+        if (wr.ok) { ui.wdRepaint(_wx155, _wy155); GAME.refreshAll(); }
         break;
       }
       /* v89.63（老板「野地驻军可以选择采集或召回」）：驻军就地开采 —— 无将领带队、
@@ -434,12 +442,21 @@
         var _gx = Number(el.dataset.x), _gy = Number(el.dataset.y);
         var _gg = GAME.wildGarrisonAt(_gx, _gy);
         if (!_gg || !GAME.wildGarrisonTotal(_gg)) { ui.toast('此地没有驻军可开采'); break; }
-        var _gr = GAME.startGather(_gx, _gy, null, U.deep(_gg.troops), { from: 'garrison' });
+        /* v89.135（老板 5）：无将驻军只可驻留 —— 动作层先拦（startGather 内亦有硬闸） */
+        if (!_gg.genId) { ui.toast('驻军须有将领带队方可开采（再次「派驻」选一位将领补驻）'); break; }
+        var _gr = GAME.startGather(_gx, _gy, U.deep(_gg.troops), {});   /* v89.136：新签名 */
         ui.toast(_gr.msg);
-        if (_gr.ok) { GAME.refreshAll(); ui.openLandModal(_gx, _gy); }
+        /* v89.139（老板 2）：「点击采集不要出现页面、界面跳转，直接后台开始计时即可」——
+           不再重开面板（地块面板带 live 逐秒刷新，会自然切到"采集中"形态）；
+           刷新总览即可（军务/资源区的采集标记跟着更新）。 */
+        if (_gr.ok) GAME.refreshAll();
         break;
       }
       case 'wild-abandon-ask': ui.openAbandonWildAsk(Number(el.dataset.x), Number(el.dataset.y)); break;
+      /* v89.156（老板 1）：「弹窗出来的放弃按钮点击直接执行即可，本身已经是 2 次确认了」——
+         上膛式（连点两次）整条退役：操作列「🗑️ 放弃」→ 二次确认窗 → 窗内红键**一击执行**。
+         `-arm` → `-do` 改名收敛回 §14.1 的「xxx-ask → xxx-do」两段式；
+         旧 `ui._wildArm154` 标记随本需求退役（零残留）。 */
       case 'wild-abandon-do': {
         var wa = GAME.doAbandonWild(Number(el.dataset.x), Number(el.dataset.y));
         ui.toast(wa.msg);
@@ -461,6 +478,14 @@
         /* v29（需求 14）：使用数量取本行输入框 */
         var qf = el.getAttribute('data-qty-from');
         GAME.doBagUse(el.dataset.key, qf ? ui.qtyValueOf(qf) : 1);
+        break;
+      }
+      /* v89.141（老板 0 · 按建议执行）：宝物整叠使用（入口在 contextmenu 委托 ·
+         执行仍走统一分发：数量框 → doBagUse） */
+      case 'bulk-use-do': {
+        var bq = ui.qtyValueOf('bulk-q');
+        ui.closeModal();
+        GAME.doBagUse(el.dataset.key, bq);
         break;
       }
       case 'open-bag-equip': GAME.doBagEquip(el.dataset.key); break;
@@ -487,6 +512,9 @@
       case 'map-toggle-labels': {
         ui._mapShowLabels = !ui._mapShowLabels;
         ui.applyLabelSwitch();
+        /* v89.151（老板 3）：按钮文案随状态走（「🏷 隐藏名称」↔「🏷 显示名称」）——
+           applyLabelSwitch 只切 class，文案在底栏渲染里 —— 必须重绘底栏才更新。 */
+        ui.paintBottom();
         ui.renderMapCanvas();
         break;
       }
@@ -592,6 +620,8 @@
       case 'forge-q': ui.setForgeQ(el.dataset.q); break;
       /* v89.107（老板）：公文五类独立页签 —— 只换正文，动作全复用既有出口 */
       case 'doc-tab': ui.setDocTab(el.dataset.v); break;
+      /* v89.153（老板 2）：系统页小标签（军情/任务/改元/天时/建造/采集收获）——唯一出口 ui.setMsgTag */
+      case 'msg-tag': ui.setMsgTag(el.dataset.v); break;
 
       /* 城内建筑 */
       case 'build-cell': {
@@ -672,13 +702,26 @@
 
       /* 城外资源建筑 */
       case 'ext-cell': ui.openExtModal(Number(el.dataset.idx)); break;
+      /* v89.142（老板 1）：未解锁暗格 —— 点了给"官府升到几级能解锁"的提示 */
+      case 'ext-locked': {
+        var _c142 = GAME.currentCity();
+        var _nx142 = GAME.extNextLvOf ? GAME.extNextLvOf(_c142) : 0;
+        ui.toast(_nx142
+          ? '官府升到 Lv' + _nx142 + ' 可解锁更多城外地块（当前 ' +
+            GAME.extUsed(_c142) + '/' + GAME.extCap(_c142) + '）'
+          : '城外地块已至上限（96 = 12×8 满）');
+        break;
+      }
       case 'ext-build': GAME.doExtBuild(Number(el.dataset.idx), el.dataset.eid); break;
       case 'ext-upgrade': GAME.doExtUpgrade(Number(el.dataset.idx)); break;
       case 'ext-convert-ask': ui.openExtConvert(Number(el.dataset.idx)); break;
       case 'ext-convert': (function () {
         var rr = GAME.convertExt(Number(el.dataset.idx), el.dataset.eid);
         ui.toast(rr.msg);
-        if (rr.ok) { ui.closeModal(); GAME.refreshAll(); }
+        /* v89.154（老板 2）：「城外建筑进入改建界面，完成改建后，应直接回到城外大界面」——
+           改建面板是从「地块面板」进的下级；closeModal 只弹一层会回到地块面板（已被改用途，
+           信息过时）。closeAllModals 一次关净 → 回到城外地块大界面（视图页）。 */
+        if (rr.ok) { ui.closeAllModals(); GAME.refreshAll(); }
       })(); break;
 
       /* 装备 */
@@ -704,7 +747,9 @@
          可选项会随游戏进程增长，窄侧栏里 chips 折行反而更占地方。
          除它之外仍然不用下拉框。 */
       /* v59：出征战术（校场入口 / 点选 / 恢复默认） */
-      case 'open-tactic': ui.openTacticModal(); break;
+      case 'open-tactic': ui.openTacticModal(ui._expMode === 'raid' ? 'raid' : 'occupy'); break;
+      /* v89.136（老板 4）：出征战术细分小页切换（掠夺 / 占领） */
+      case 'exp-tac-sub': ui._expTac = (el.dataset.v === 'raid') ? 'raid' : 'occupy'; GAME.refreshView(); break;
       /* v60（需求 4）：城池面板与城池间调拨 ——
          地图上点自家城池先弹面板（不直接进城），面板里再进 / 运 / 派 / 改名。
          chips 一律"只切 class + 写选择"，需要刷新数字的走 ui.syncTransportEst。 */
@@ -712,6 +757,9 @@
         var ceId = el.dataset.city, ceC = GAME.cityById(ceId);
         if (!ceC) { ui.toast('城池不存在'); break; }
         ui.setCity(ceId);
+        /* v89.138（老板 2）：「进入城池，**直接进入该城的城内界面**」——
+           改前只切了"当前城"、视图还停在地图上（玩家看不出"进去了"）。 */
+        ui.setView('city');
         GAME.refreshAll();
         ui.toast('已进入 ' + ceC.name);
         break;
@@ -724,20 +772,22 @@
         var _ctFrom = GAME.currentCity();
         var _ctTo = el.dataset.city;
         if (!_ctFrom || !_ctTo || _ctTo === _ctFrom.id) { ui.toast('请选择另一座己方城池'); break; }
-        ui.openExpModal({ kind: 'own', id: _ctTo });
+        /* v89.138：「运输」入口 —— 同一出征界面 + 押运提示 */
+        ui.openExpModal({ kind: 'own', id: _ctTo }, { hint: 'cargo' });
         break;
       }
       /* v89.93（整改 E11）：度支归集（跨城资金调剂）—— 结果用 toast 回执 */
-      case 'budget-gather': {
-        var bgR = GAME.budgetGather(el.dataset.city);
-        ui.toast((bgR.ok ? '🏛 ' : '') + bgR.msg);
-        if (bgR.ok) { GAME.refreshAll(); }
+      /* ⛔ v89.138（老板 2）：case budget-gather（度支归集）与 case city-dispatch
+         （将领派遣面板）整条退役 —— 见 ui.js / domain.js 的同款墓碑。 */
+      case 'city-dispatch-exp':
+        /* v89.138（老板 2）：「派遣」—— 与「运输」同进出征界面（本境调运），
+           入口提示不同：派遣 = 兵/将随军入城（可不带货）。 */
+        ui.openExpModal({ kind: 'own', id: el.dataset.city }, { hint: 'dispatch' });
         break;
-      }
-      case 'city-dispatch': ui.openDispatch(el.dataset.city); break;
-      /* v89.95（A1）：节钺扩编（每城 +1 建造位，至多 2 次）—— 结果 toast + 重开面板 */
+      /* v89.95（A1）：节钺扩编（每城 +1 建造位，至多 2 次）—— 结果 toast + 重开面板
+         v89.132：改走统一出口 GAME.jieyueExpand（city/xc/gen 三族共用一套判据） */
       case 'jieyue-expand': {
-        var _heR = GAME.jieyueExpandCity(el.dataset.city);
+        var _heR = GAME.jieyueExpand('city', el.dataset.city);
         ui.toast((_heR.ok ? '🪓 ' : '⚠️ ') + _heR.msg);
         if (_heR.ok) {
           GAME.refreshAll();
@@ -746,6 +796,44 @@
         }
         break;
       }
+      /* v89.132（老板「节钺设计再开拓一下」）：校场扩编 / 招贤纳士 / 节钺面板 */
+      case 'jieyue-xc': {
+        var _jxR = GAME.jieyueExpand('xc', el.dataset.city);
+        ui.toast((_jxR.ok ? '🪓 ' : '⚠️ ') + _jxR.msg);
+        /* v89.133：入口在「军务 · 出征」页 —— refreshAll 重绘当前视图即可 */
+        if (_jxR.ok) GAME.refreshAll();
+        break;
+      }
+      /* v89.133（v89.128 第二批第 9/11 条）：出征页 —— 选目标 / 进军队行动 / 练兵选将 */
+      /* v89.142（老板 2）：目标分 5 类、每类一个下拉 —— 选中项**落库**（ui._actPick），
+         提交端读同一个出口（ui.actPickOf）—— 不许"看着像选中、提交时另算一个"。 */
+      /* v89.144（老板 4）：选定后**立刻 live 刷新**（下方「当前目标 / 进入军事行动」随之更新）；
+         空首项 = 取消选择（该行选回空 → 清空 _actPick）；
+         在**另一行**选择 → 原来那一行自动回到空（_actPick 只有一份，渲染读同一出口）。 */
+      case 'exp-act-pick': {
+        var g144 = el.dataset.grp || '';
+        if (el.value === '') {
+          if (ui._actPick && ui._actPick.grp === g144) ui._actPick = null;
+        } else {
+          ui._actPick = { grp: g144, idx: Number(el.value) || 0 };
+        }
+        GAME.refreshView();
+        break;
+      }
+      case 'exp-act-go': {
+        var _pk142 = ui.actPickOf();
+        if (!_pk142) { ui.toast('请先选择目标'); break; }
+        ui.openExpModal(_pk142.tg);
+        break;
+      }
+      /* ⛔ v89.136 移除：'xc-gen-pick'（练兵选将）—— 随练兵块退役。 */
+      case 'jieyue-gen': {
+        var _jgR = GAME.jieyueExpand('gen', el.dataset.city);
+        ui.toast((_jgR.ok ? '🪓 ' : '⚠️ ') + _jgR.msg);
+        if (_jgR.ok) { GAME.refreshAll(); ui.openHostel(); }
+        break;
+      }
+      case 'open-jieyue': ui.openJieyue(); break;
       /* v89.93（整改 E14）：资质晋升 —— 走既有出口 systems.useItem（rank_up 分支） */
       case 'gen-rankup': {
         var ruR = GAME.systems.useItem(el.dataset.item, el.dataset.gen);
@@ -753,22 +841,30 @@
         if (ruR.ok) { GAME.refreshAll(); }        /* 档案页随刷新重绘（晋升行自动更新） */
         break;
       }
-      case 'city-rename': {
-        /* 改名弹窗作用于**当前城** —— 先切过去再开，避免改错城 */
-        ui.setCity(el.dataset.city);
-        ui.openRenameCity();
-        break;
-      }
+      /* ⛔ v89.138（老板 2）：「去掉改名菜单」——城池面板的改名入口退役；
+         改名功能不丢：官府格面板的「📝 修改城名」（open-rename-city）仍在。 */
       /* v67（老板）：放弃城池 —— 先二次确认（不可逆），确认后走 GAME.abandonCity
          （业务侧照 CITY_SCOPED 表批量清理，界面不自己动数据）。 */
       case 'city-abandon-ask': ui.openAbandonCityAsk(el.dataset.city); break;
-      case 'city-abandon-do': {
-        var acR = GAME.abandonCity(el.dataset.city);
-        ui.toast(acR.msg);
-        if (acR.ok) { ui.closeModal(); GAME.refreshAll(); }
+      /* v89.138（老板 2）：弃城**两段确认** —— 第一次点"上膛"（改文案 + 警告），
+         再点一次才真的执行（执行仍走 GAME.abandonCity 同一出口）。 */
+      case 'city-abandon-arm': {
+        if (ui._abandonArm138 !== el.dataset.city) {
+          ui._abandonArm138 = el.dataset.city;
+          el.innerHTML = '⚠️ 再点一次 —— 永久失去该城（不可撤销）';
+          ui.toast('⚠️ 危险操作：再点一次才真的放弃');
+          break;
+        }
+        ui._abandonArm138 = null;
+        var acR2 = GAME.abandonCity(el.dataset.city);
+        ui.toast(acR2.msg);
+        if (acR2.ok) { ui.closeModal(); GAME.refreshAll(); }
         else { ui.openAbandonCityAsk(el.dataset.city); }
         break;
       }
+      /* ⛔ v89.141（复核）：`city-abandon-do` 残余 case 删除 ——
+         v89.138 弃城改两段确认后，执行已并入 `city-abandon-arm`（第二次点击），
+         本 case 在界面查无触发点（audit ② 报"不可达分支"）。 */
       /* ⛔ v89.103：旧运输面板的 tr-to / tr-key / tr-pct / tr-do 四个动作整条退场
          （面板已由出征界面取代，见 city-transport 与 ui.expCargoHTML）。 */
       /* v89.103（老板「资源运输应当采用出征界面」）：辎重区动作
@@ -776,9 +872,7 @@
          · cg-clear = 清空五项（改走别的货） */
       case 'cg-max': ui.cgFillMax(el.dataset.k); break;
       case 'cg-clear': ui.cgClear(); break;
-      case 'dp-gen': ui.setDpGen(el.dataset.i, el.dataset.v); break;
-      case 'dp-to': ui.setDpTo(el.dataset.i, el.dataset.v); break;
-      case 'dp-do': ui.doDispatch(); break;
+      /* ⛔ v89.138（老板 2）：case dp-gen / dp-to / dp-do 随「将领派遣」面板整条退役。 */
       /* v60（需求 5）：名城专属选项（征调 / 犒军 / 建制）——
          执行后重开面板，冷却与代价措辞随新状态刷新。 */
       case 'city-opt': {
@@ -795,29 +889,29 @@
         break;
       }
       case 'tactic-set': {
-        /* v89.109：战术分侧（atk = 出征 / def = 防守）—— chip 带 data-side */
-        var tSide = el.dataset.tside === 'def' ? 'def' : 'atk';
-        /* 「出城迎战」= 开关（不是互斥组）：取反 → 就地切视觉，不重绘整页 */
+        /* v89.133（第 13 条）：控件 chip → **select / checkbox** ——
+           值分别读 el.value / el.checked；旧 chip 的「就地切 class」不再需要
+           （原生控件自管选中态）。data-f：s=动作 · t=目标 · sortie=出城迎战。 */
+        /* v89.136（老板 4）：tside 值域扩展 —— 'raid'/'occupy' = 出征细分表 */
+        var _tRaw = el.dataset.tside;
+        var tSide = (_tRaw === 'def' || _tRaw === 'raid' || _tRaw === 'occupy') ? _tRaw : 'atk';
         if (el.dataset.f === 'sortie') {
           var TT = GAME.tacticsOf(tSide)[el.dataset.troop] || {};
-          GAME.setTactic(tSide, el.dataset.troop, { sortie: !TT.sortie });
-          el.classList.toggle('on');
+          var _sv = (el.tagName === 'INPUT') ? !!el.checked : !TT.sortie;
+          GAME.setTactic(tSide, el.dataset.troop, { sortie: _sv });
+          if (el.tagName !== 'INPUT') el.classList.toggle('on');
           break;
         }
-        /* 点选即存：同组互斥只切 class、不重绘（与全站点选一致） */
-        var tg = el.dataset.g;
-        if (tg) {
-          var same = document.querySelectorAll('[data-action="tactic-set"][data-g="' + tg + '"]');
-          for (var ti = 0; ti < same.length; ti++) same[ti].classList.toggle('on', same[ti] === el);
-        }
         var tp = {};
-        if (el.dataset.f === 's') tp.s = el.dataset.v;
-        else if (el.dataset.f === 't') tp.t = el.dataset.v;
+        var _tv = (el.tagName === 'SELECT') ? el.value : el.dataset.v;
+        if (el.dataset.f === 's') tp.s = _tv;
+        else if (el.dataset.f === 't') tp.t = _tv;
         GAME.setTactic(tSide, el.dataset.troop, tp);
         break;
       }
       case 'tactic-reset': {
-        var rSide = el.dataset.tside === 'def' ? 'def' : 'atk';
+        var _rRaw = el.dataset.tside;
+        var rSide = (_rRaw === 'def' || _rRaw === 'raid' || _rRaw === 'occupy') ? _rRaw : 'atk';
         var rrT = GAME.clearTactics(rSide);
         ui.toast(rrT.msg);
         /* 弹窗里点的 → 重开弹窗；页面内嵌的 → 就地重绘视图 */
@@ -889,12 +983,17 @@
       /* v40：`case 'set-timescale'` / `case 'set-tax'` 已删 ——
          v22 起税率与倍率改走 `chip-set + data-after='tax'/'timescale'`，
          这两个旧分支在界面上查无触发点（audit 会一直报"不可达分支"）。 */
-      /* 校场（v21 需求 1：伤兵营归属军事建筑与行军，不再挂设置） */
-      case 'open-xiaochang': ui.openXiaochang(); break;
+      /* v89.133（v89.128 第二批第 10 条）：「校场不要现在的界面功能，点击建筑功能
+         直接进入'军务'界面」—— 校场面板退役，点建筑功能 = 切到军务视图。 */
+      /* v89.140（老板 3）：「校场点击进入军务之后，应**关闭建筑菜单**，进入军务界面」——
+         实测确实留在建筑菜单里（setView 只切中央视图，弹层仍在栈上）→ 先全关再切。 */
+      case 'open-xiaochang': ui.closeAllModals(); ui.setView('marches'); ui._marchTab = 'over'; break;
       /* v89.80：校场练兵（演武 / 阅兵）—— 两者都改状态，落地后重开面板刷新可用态 */
-      case 'xc-spar': { var _xs = GAME.xcSpar(ui._xcGen); ui.toast(_xs.msg); ui.openXiaochang(); break; }
-      case 'xc-review': { var _xr = GAME.xcReview(); ui.toast(_xr.msg); ui.openXiaochang(); break; }
-      case 'xiaochang-exp': ui.closeModal(); ui.setView('map'); break;
+      /* v89.133：练兵块迁到「出征战术」页尾 —— 重开面板改重绘当前视图 */
+      /* ⛔ v89.136 移除：'xc-spar' / 'xc-review' —— 练兵（演武/阅兵）按老板第 4 条整组退役
+         （域函数组墓碑见 domain.js；界面块墓碑见 ui.js 的 trainBlockHTML）。 */
+      /* ⛔ v89.133 退役：'xiaochang-exp'（校场面板的「出兵地图」）—— 面板退役，
+         出兵入口 = 地图点选 / 「军务 · 出征」页。 */
       case 'heal-wounded': GAME.doHeal(); break;
 
       /* 任务 */
@@ -913,18 +1012,44 @@
       }
       /* v89.58：出征方式已改下拉框（change 事件在 openExpModal 内挂），旧「exp-mode」动作退场
          （v89.86：本行不再写字面 data-action 模式 —— audit 的孤儿按钮扫描不剥注释，会被误报） */
-      case 'exp-max': { var ei = document.getElementById('exp-' + el.dataset.troop); if (ei) ei.value = ei.max; break; }
+      /* v89.144（老板 2）：行内「上限」—— 该兵种上限 = min(拥有, 总额度 − **其他行**已填)
+         （唯一出口 ui.expTroopMaxOf；不限（无校场等）→ 拥有数）。
+         分配顺序由玩家"点哪行"决定 —— 不再有全局一键分配（老板明确不要强兵优先之类约定）。 */
+      case 'exp-max': {
+        var ei = document.getElementById('exp-' + el.dataset.troop);
+        if (ei) {
+          var m144 = ui.expTroopMaxOf(el.dataset.troop, GAME.currentCity(), ui._expMode);
+          var own144 = Number(ei.max) || 0;
+          ei.value = m144;
+          ui.updateExpMarch();
+          /* 额度被别的兵种占满时明确说清（不然玩家看到"填 0"会以为按钮坏了） */
+          ui.toast(m144 === 0 && own144 > 0
+            ? '本次总额度已被其他兵种占满 —— 先清空其他行，再点「上限」'
+            : '「' + ((DATA.TROOPS[el.dataset.troop] || {}).name || el.dataset.troop)
+              + '」按上限填入 ' + U.fmt(m144) + ' 人');
+        }
+        break;
+      }
+      /* v89.144（老板 2）：行内「清空」—— 只清该兵种这一行（不影响其他兵种） */
+      case 'exp-zero': {
+        var zi = document.getElementById('exp-' + el.dataset.troop);
+        if (zi) { zi.value = 0; ui.updateExpMarch(); }
+        break;
+      }
       case 'exp-confirm': GAME.doExpConfirm(); break;
       /* v89.94（B2 · E2）：战法三选（强攻/围困/奇袭）—— 唯一出口 ui.setExpOps */
       case 'exp-ops': ui.setExpOps(el.dataset.v); break;
-      /* v89.94（B2 · E3）：战报回放控制（逐帧 / 播放 / 关键帧跳转） */
-      case 'rep-prev': ui.replayStep(-1); break;
-      case 'rep-next': ui.replayStep(1); break;
-      case 'rep-play': ui.replayToggle(); break;
-      case 'rep-jump': ui.replayJump(Number(el.dataset.v)); break;
+      /* ⛔ v89.150（老板 3）：`rep-prev / rep-next / rep-play / rep-jump`
+         （战报「分回合回放」的逐帧/播放/关键帧控制）随该板块一并退役 —— 四个 case 全删。
+         「沙盘回放」（open-sandbox → sd-* 系列动作）是另一个功能，不受影响。 */
       /* v89.52（老板：出征界面可用道具）：背包体力丹直接作用于所选主将，刷新道具条与预估，不关闭面板 */
-      case 'exp-use-item': {
-        var _it = el.dataset.item, _gs = document.getElementById('exp-gen');
+      /* v89.156（老板 2）：可用道具收成下拉框 —— 动作由「按 item 直接点」改「读下拉选择」
+         （旧 `exp-use-item` 的按钮形态随 chips 列表一并退役，不留双形态）。 */
+      case 'exp-use-item-pick': {
+        var _sv = document.getElementById('exp-item-sel');
+        var _it = _sv ? _sv.value : '';
+        if (!_it) { ui.toast('请先在下拉框选择道具'); break; }
+        var _gs = document.getElementById('exp-gen');
         var _gid = (_gs && _gs.value) || ui._expGen || '';
         var _r = GAME.systems.useItem(_it, _gid);
         ui.toast(_r.msg || (_r.ok ? '已使用' : '使用失败'));
@@ -972,6 +1097,8 @@
        * · open-sandbox：正文页顶部的「打开沙盘回放」
        * ============================================================ */
       case 'open-sandbox': ui.openSandbox(Number(el.dataset.rid)); break;  /* v89.120：身份 rid */
+      /* v89.157（老板「逐回合文字复盘」）：战报逐回合文字（独立弹窗 · 分页） */
+      case 'report-rounds': ui.openReportRounds(Number(el.dataset.rid)); break;
       case 'sd-text': ui.viewReportText(ui._repId); break;   /* v89.120：_repId（rid） */
       case 'sd-first': ui.sdSet(0); break;
       case 'sd-prev': ui.sdStep(-1); break;
@@ -1161,9 +1288,10 @@
     ui.toast(r.msg);
     if (r.ok) {
       GAME.refreshAll();
-      /* 加速后留在弹窗里刷新 —— 让"剩余时间变短了"直接看得见，
-         而不是关掉弹窗再自己去找（本项目吃过"点了没反应"的亏）。 */
-      ui.openTrainBoost(bIdx);
+      /* 加速后留在弹窗里刷新 —— 让"剩余时间变短了"直接看得见（v89.49 的诉求）。
+         v89.138（老板 3）：「如果提速后完成了募兵，剩余时长为 0，则应**自动关闭**提速小弹窗」——
+         完成 → 关窗；没完成 → 照旧留窗。 */
+      if (ui.queueDone138(bIdx)) ui.closeModal(); else ui.openTrainBoost(bIdx);
     }
   };
   /* v89.49：花金买时间（老板「募兵队列怎么不可加速了？」—— 补上"永远可用"的那条路） */
@@ -1173,7 +1301,8 @@
     ui.toast(r.msg);
     if (r.ok) {
       GAME.refreshAll();
-      ui.openTrainBoost(bIdx);     /* 同样留在面板里，让"剩余变短"看得见 */
+      /* v89.138（老板 3）：完成即关窗；未完成留在面板里（同 doBoostTrain） */
+      if (ui.queueDone138(bIdx)) ui.closeModal(); else ui.openTrainBoost(bIdx);
     }
   };
 
@@ -1244,6 +1373,14 @@
     /* 数值字段一律转 Number。漏一个就会变成字符串：`total - '2000'` 看着对
        （JS 会做减法），但 `>=` 比较会按字符串走，护栏就静默失效了。
        v89.83：`keepHome`（留守）退役；新增 `radius`（搜索距离）与 `scheme`（计略）。 */
+    /* v89.140（老板 7'）：兵种级数量配置 —— 键形如 `army:changqiang`，
+       写进 cfg.army[tid]（0 表示不带该兵种）。 */
+    if (k.indexOf('army:') === 0) {
+      cfg.army = cfg.army || {};
+      cfg.army[k.slice(5)] = Math.max(0, Math.floor(Number(v) || 0));
+      GAME.refreshView();
+      return;
+    }
     if (k === 'troops' || k === 'maxLevel' || k === 'everyMin'
       || k === 'radius' || k === 'dailyMax') cfg[k] = Number(v);
     else cfg[k] = (v === '' && k === 'scheme') ? null : String(v);
@@ -1335,7 +1472,7 @@
     if (s.settings.autoUpgrade) {
       s.autoState = { paused: false, msg: '已开启，待命' };
       /* v89.86（P-18）：开启时提示当前将遵循的预算下限 */
-      ui.toast('🔨 自动升级已开启（按等级从低到高、同级城内优先）');
+      ui.toast('🔨 自动升级已开启（按等级从低到高；某项不足则顺延下一项）');
       GAME.autoUpgrade();
     } else {
       s.autoState = null;
@@ -1608,23 +1745,8 @@
     GAME.refreshAll();
   };
   /* --------- 野地采集（v15） --------- */
-  GAME.doStartGather = function () {
-    var xy = ui._gatherXY;
-    if (!xy) { ui.toast('未指定野地'); return; }
-    var genEl = document.getElementById('gather-gen');
-    var cntEl = document.getElementById('gather-troops');
-    var genId = genEl ? genEl.value : ui._gatherGen;
-    var count = cntEl ? Number(cntEl.value) : 0;
-    if (!count || count <= 0) { ui.toast('请填写派兵数量'); return; }
-    var army = GAME.autoPickTroops(count);
-    var total = 0;
-    for (var k in army) total += army[k];
-    if (total <= 0) { ui.toast('城中无兵可派（请先募兵）'); return; }
-    /* v89.87（需求 2）：采集改走**行军通道**（出发扣兵，抵达后开始采） */
-    var r = GAME.dispatchGather(xy.x, xy.y, genId, army);
-    ui.toast(r.msg);
-    if (r.ok) { GAME.refreshAll(); ui.openGathers(); }
-  };
+  /* ⛔ v89.136 移除：`GAME.doStartGather`（派军采集的提交端）—— 随 openGatherModal 退役，
+     采集唯一形态 = 带将驻军原地开工（GAME.startGather，由地块界面 / 自动采集调用）。 */
   GAME.doFinishGather = function (id) {
     /* v89.31：先取本次采集的地形（动作触发池要用），再结算（记录会被移除） */
     var _rec31 = null;
@@ -1633,13 +1755,13 @@
     ui.toast(r.msg);
     if (r.ok) ui.sgTryAct('gather-done', { terrain: _rec31 ? _rec31.type : null });
     GAME.refreshAll();
-    ui.openGathers();
+    /* v89.136：不再重开"野地采集"弹窗（已退役）—— 若当前开着地块面板，
+       liveModalTick 立即重开一次（状态当场刷新；从军务点则靠其逐秒重绘）。 */
+    ui.liveModalTick();
   };
-  GAME.doAbandonGather = function (id) {
-    var r = GAME.abandonGather(id);
-    ui.toast(r.msg);
-    if (r.ok) { GAME.refreshAll(); ui.openGathers(); }
-  };
+  /* ⛔ v89.138（老板 0）：`GAME.doAbandonGather`（撤回采集队提交端）随
+     `gather-abandon-ask/do` 两个动作一并退役 —— 召回统一走 `wild-withdraw`。
+     域侧 `GAME.abandonGather` 保留（`doWildWithdraw` 内部调用：停采，满 1h 先收获）。 */
 
   /* 显示比例（v16）：城内/城外整体缩放 */
   GAME.doSetZoom = function (z) {
@@ -1771,24 +1893,8 @@
     ui.toast('税率：' + v + '%');
     GAME.refreshAll();
   };
-  /* 派军驻守：读取面板输入 → 调 domain（v23 · 需求 1） */
-  GAME.doWildGarrisonDo = function () {
-    var xy = ui._wildGarXY;
-    if (!xy) return;
-    var c = GAME.currentCity();
-    var army = {};
-    Object.keys(c.army || {}).forEach(function (k) {
-      var el = document.getElementById('wg-' + k);
-      var n = el ? parseInt(el.value, 10) || 0 : 0;
-      if (n > 0) army[k] = Math.min(n, c.army[k] || 0);
-    });
-    /* v89.87（需求 2）：驻守走行军通道，须带带队将领 */
-    var genEl = document.getElementById('wg-gen');
-    var genId = genEl ? genEl.value : null;
-    var r = GAME.doWildGarrison(xy.x, xy.y, army, c.id, genId);
-    ui.toast(r.msg);
-    if (r.ok) { ui.closeModal(); ui.openLandModal(xy.x, xy.y); GAME.refreshAll(); }
-  };
+  /* ⛔ v89.137（老板 7）：`GAME.doWildGarrisonDo` 随派驻面板退役 ——
+     读 #wg-* 输入框的提交端已无面板可读；派驻统一走出征界面（dispatch → station）。 */
 
   /* 驻军面板「全」按钮：把该兵种全部填入 */
   GAME.doHeal = function () {
@@ -1801,8 +1907,9 @@
        —— v20 的募兵面板踩过同一个坑。 */
     var host = document.querySelector('#modal-root [data-heal-host]');
     var k = host ? host.dataset.healHost : '';
-    if (k === 'xiaochang') ui.openXiaochang();
-    else if (k === 'marches') ui.openMarches();
+    /* v89.133：'xiaochang' 宿主随校场面板退役（woundedBlock('xiaochang') 已删）——
+       现只剩行军队列弹窗这一个 host。 */
+    if (k === 'marches') ui.openMarches();
     ui.sgTryAct('heal-wounded');   /* v89.31 · 动作触发 */
   };
   /* v89.89（A4 · 100+ 轮实玩期待）：材料产地一键定位 ——
@@ -1881,18 +1988,20 @@
       var _from5 = GAME.currentCity();
       var _to5 = (ui._expRes && ui._expRes.city) || GAME.cityById(target.id);
       if (!_from5 || !_to5) { ui.toast('城池不存在'); return; }
-      if (!Object.keys(atk).length) {
-        /* v89.114：载重数从 DATA 读（此前硬编码 200/5000 —— 负重标定一改就成假文案） */
-        ui.toast('请选择随行兵力 —— 辎重靠人挑（民夫载重 ' + DATA.TROOPS.minfu.load
-          + ' / 辎重车 ' + DATA.TROOPS.zhouche.load + '）');
-        return;
-      }
+      /* v89.138（老板 2）：本境调运**允许 0 兵**（只派将）——
+         有辎重才必须有兵押运（运力随兵力），没辎重就纯调将。 */
       var _cargo5 = {};
       GAME.TRANSPORT_KEYS.forEach(function (k) {
         var el5 = document.getElementById('cg-' + k);
         var v5 = el5 ? Math.floor(Number(el5.value) || 0) : 0;
         if (v5 > 0) _cargo5[k] = v5;
       });
+      if (!Object.keys(atk).length && Object.keys(_cargo5).length) {
+        /* v89.114：载重数从 DATA 读（此前硬编码 200/5000 —— 负重标定一改就成假文案） */
+        ui.toast('请选择押运兵力 —— 辎重靠人挑（民夫载重 ' + DATA.TROOPS.minfu.load
+          + ' / 辎重车 ' + DATA.TROOPS.zhouche.load + '）');
+        return;
+      }
       var _r5 = GAME.doTransferCargo(_from5.id, _to5.id, atk, genSel.value, _cargo5);
       ui.toast(_r5.msg);
       if (_r5.ok) {
@@ -1933,7 +2042,19 @@
     var _ops94 = GAME.opsIdOf(ui._expOps);
     var _opsIssue94 = GAME.opsConfigIssueOf(_ops94, ui._expRes, ui._expScheme || null);
     if (_opsIssue94) { ui.toast('⚠️ ' + _opsIssue94); return; }
-    var r = GAME.march.dispatch(target, mode, atk, genSel.value, ui._expScheme || null, _ops94);
+    /* ============================================================
+     * v89.137（老板 7）：己方野地 + 已有驻将 → **纯增援**（不带将、不带计）。
+     * 判据与 prepare 的硬闸同源（目标野地 garrison.genId）；这里先一步把 genId 传空，
+     * 让"界面显示不带将"与"实际执行"从入口就一致（prepare 的硬闸是兜底）。
+     * ============================================================ */
+    var _stGen137m = false;
+    if (ui._expRes && ui._expRes.kind === 'wild') {
+      var _wm137 = GAME.map.wildAt(ui._expRes.x, ui._expRes.y);
+      _stGen137m = !!(_wm137 && _wm137.garrison && _wm137.garrison.genId);
+    }
+    var _genSend137 = _stGen137m ? '' : genSel.value;
+    var _schemeSend137 = _stGen137m ? null : (ui._expScheme || null);
+    var r = GAME.march.dispatch(target, mode, atk, _genSend137, _schemeSend137, _ops94);
     ui.toast(r.msg);
     if (r.ok) {
       ui._expScheme = null;      /* v86：计已随军出发，面板状态清空 */
@@ -1948,8 +2069,22 @@
   GAME.onMarchArrive = function (m, r) {
     GAME.refreshAll();
     if (!r) return;
-    /* v89.87（老板需求 4）：观战挂起 → 直接进入战场界面（不再只弹 toast） */
-    if (r.pending && r.battleId) { ui.openBattlefield(r.battleId); return; }
+    /* ============================================================
+     * v89.150（老板 5）：「不要主动直接弹出战斗界面，如果目前触发新战斗，提供一个弹窗，
+     *   假设同时有多场战斗，简洁提供上方标题，下方表格样式的：目标，战斗类型，是否观战按钮」
+     * ------------------------------------------------------------
+     * 旧（v89.87）：挂起 → `ui.openBattlefield` 直接进战场。
+     * 新：弹「战斗待指挥」清单（多场并列）；**正在观战时**不弹窗打断，只 toast 报数
+     *   （否则会把正在看的那场压到下层）。
+     * ============================================================ */
+    if (r.pending && r.battleId) {
+      if (ui._bt) {
+        ui.toast('⚔ 新的战斗待指挥（待指挥 ' + ui.battleListOf().length + ' 场）—— 关闭当前战场后可查看');
+        return;
+      }
+      ui.openBattleList();
+      return;
+    }
     if (r.intel && r.intel.length) {
       /* ============================================================
        * v89.102（老板）：「侦查报告不要自动冒出来」
@@ -2269,6 +2404,21 @@
       handleCanvasClick(e);
     });
     /* ============================================================
+     * v89.141（老板 0 · 按建议执行）：背包宝物的**批量使用**入口 ——
+     *   单击格子 = 用 1 个（既定）；**右键** = 开「用几个」小窗（整叠）。
+     *   只认带 `data-bulk` 的格子（当前 = 宝物页的就地使用类）；其它位置右键
+     *   行为不变（保留浏览器默认菜单）。
+     * ============================================================ */
+    document.addEventListener('contextmenu', function (e) {
+      var t = (e.target && e.target.closest) ? e.target.closest('[data-bulk]') : null;
+      if (!t) return;
+      e.preventDefault();
+      /* 直调 ui 出口（右键是**补充入口**、格子自身仍带 use-bag-item 动作）——
+         不另立 `bulk-use-ask` case（它永远没有 data-action 触发点，audit 会报不可达）。 */
+      /* ⚠️ 本文件全局名是 `GAME`（不是 `G`）—— 写 `G.ui` 会 ReferenceError（实测抓出） */
+      GAME.ui.openBulkUse(t.dataset.key);
+    });
+    /* ============================================================
      * v89.88（老板需求 4）：大地图悬浮浮层 —— 地块「坐标 + 等级」
      * ------------------------------------------------------------
      * 复用既有浮层系统（ui.tipShow / tipHide，与 data-tip 提示同一层渲染）。
@@ -2302,9 +2452,10 @@
        也不会被 audit 误判成"有按钮但无处理器"的孤儿动作。 */
     document.addEventListener('change', function (e) {
       var el = e.target;
-      if (el && el.tagName === 'SELECT' && el.getAttribute && el.getAttribute('data-action')) {
-        GAME.action(el.getAttribute('data-action'), el);
-      }
+      /* v89.133：复选框同走动作表（战术「出城迎战」是首个勾选项） */
+      var _hit = el && el.getAttribute && el.getAttribute('data-action') &&
+        (el.tagName === 'SELECT' || (el.tagName === 'INPUT' && el.type === 'checkbox'));
+      if (_hit) GAME.action(el.getAttribute('data-action'), el);
     });
     /* 数量输入框：手输后同步到状态（面板重绘时不丢） */
     /* v89.116（老板「显示比例实质改不了比例」）：滑块此前**没有监听** ——
@@ -2365,6 +2516,10 @@
     setInterval(function () {
       if (!GAME.state) return;
       if (!$('#screen-game').classList.contains('hidden')) {
+        /* v89.158（老板 2）：本窗口内的所有重绘 = "周期性重绘" ——
+           悬停保护（ui.hoverHold）只在此窗口内生效（操作驱动的重绘永远放行）。 */
+        ui._tickPaint = true;
+        try {
         GAME.tickOnce();
         /* v89.87（老板需求 4）：战斗观战倒计时（**真实秒**，不走 timeScale）——
            "后台照常走"：界面关闭也按表推进；动画播放中由 rec.anim 暂停。 */
@@ -2388,7 +2543,47 @@
         ui.renderSide();
         ui.syncHeader();
         ui.syncBadges();
+        /* v89.132（老板「当前玩家所在城池的点出现闪烁…提示当前所在位置」）：
+           底部条缩略图每秒重绘 —— 我城红点随秒交替明暗（1Hz 闪烁）。 */
+        ui.paintMiniBottom();
+        /* v89.151（老板 3）：底栏「⚔ 指挥战斗」的闪烁态每秒核对一次 ——
+           只切 class（不重建 DOM），有 state==='live' 的战斗即闪烁。 */
+        ui.paintWarBeacon();
+        /* v89.135（老板 7）：**弹窗实时刷新** —— 声明了 opts.live 的面板每秒重开一次
+           （快照输入值/滚动回填，不打断打字；桩 DOM 环境自动跳过）。 */
+        ui.liveModalTick();
+        /* v89.135（老板 7）：军务总览逐秒刷新（在途行军倒计时）—— 带滚动保持
+           v89.165（老板：「查看所有类似实时读秒设置」）：**烽火页同样逐秒刷新** ——
+           「下次来袭」是现实时间口径的分钟级读秒（invDueText），静止会像"没在计时"。
+           其余军务页（expand/act/exp/def/affairs）无读秒，保持不逐秒重建。 */
+        if (ui.view === 'marches' && ['over', 'beacon'].indexOf(ui._marchTab || 'over') >= 0) {
+          var _ae135 = document.activeElement;
+          if (!_ae135 || ['INPUT', 'SELECT', 'TEXTAREA'].indexOf(_ae135.tagName) < 0) {
+            var _vc135 = document.getElementById('view-container');
+            var _st135 = _vc135 ? _vc135.scrollTop : 0;
+            /* v89.158（老板 2）：悬停视图页 → 本秒不重绘（保持悬停那一刻的数据；移开即恢复） */
+            if (!ui.hoverHold(_vc135)) {
+              ui.renderView('marches');
+              if (_vc135) _vc135.scrollTop = _st135;
+            }
+          }
+        }
+        /* v89.136（上轮未完成清单②）：**将领视图逐秒刷新**（带滚动保持）——
+           体力/精力随现实时间回复、经验/忠诚/状态变化即时可见（与军务总览同款守卫）。 */
+        if (ui.view === 'generals') {
+          var _ae136 = document.activeElement;
+          if (!_ae136 || ['INPUT', 'SELECT', 'TEXTAREA'].indexOf(_ae136.tagName) < 0) {
+            var _vc136 = document.getElementById('view-container');
+            var _st136 = _vc136 ? _vc136.scrollTop : 0;
+            /* v89.158（老板 2）：悬停保护（同军务总览） */
+            if (!ui.hoverHold(_vc136)) {
+              ui.renderView('generals');
+              if (_vc136) _vc136.scrollTop = _st136;
+            }
+          }
+        }
         if (ui.view === 'map') ui.renderMapCanvas();
+        } finally { ui._tickPaint = false; }
       }
     }, 1000);
     /* 自动存档：每 5 分钟一次，覆盖式写入（同键替换，只保留最新一档） */
@@ -2399,7 +2594,59 @@
   }
 
   /* --------- 启动 --------- */
+  /* ============================================================
+   * v89.150（老板 2）：「所有弹窗界面，目前如果缩放浏览器显示比例的话，界面就会发生溢出……
+   *   统一设置为等比例变动，字体字号边框比例固定呈现。让玩家面对的游戏画面如同图片一样整体缩放」
+   * ------------------------------------------------------------
+   * 改前（v89.139）：按视口改写 --app-w/--app-h —— 大屏**重排**（棋盘格数/列宽全变）、
+   *   小屏出滚动条；弹窗是固定像素，视口一小就被压小 → 内容溢出。
+   * 改后：画布**永远 1440×900**（--app-w/h 不再被 JS 改），只算一个**等比缩放比** --app-k：
+   *     k = min(视口宽 ÷ 1440, 视口高 ÷ 900)
+   *   外层 #app-fit 按 `画布 × k` 参与文档流（居中、不裁不滚）；
+   *   内层 #app-scale 用 `transform: scale(k)` 把**整幅画面**（城内/城外/野地/全部弹窗/浮层）
+   *   同比缩放 —— 布局一格不重排，字号/边框/间距随图缩放（见 index.html 的同名注释）。
+   * 桩环境（jsdom / 没有 #app-scale）静默跳过 → --app-k 保持 1，测试口径不变。
+   * ============================================================ */
+  function fitAppSize() {
+    try {
+      var el = document.documentElement;
+      if (!el || !el.style || !el.style.setProperty) return;
+      /* 没有缩放容器 = 桩环境（jsdom / 老档页面）：不缩放，保持 k=1 */
+      if (!document.getElementById || !document.getElementById('app-scale')) return;
+      var w = window.innerWidth || 1440, h = window.innerHeight || 900;
+      var k = Math.min(w / 1440, h / 900);
+      if (!isFinite(k) || k <= 0) k = 1;
+      /* v89.151（老板 1）：「缩放加幅按你建议」—— 限幅一档（DATA.APP_SCALE，唯一旋钮）：
+         4K 屏（k≈2.4）不再无限放大、超小窗口不无限缩小；限幅后画布居中（#app-fit margin auto）。 */
+      var _sc151 = (GAME.DATA && GAME.DATA.APP_SCALE) || { min: 0.6, max: 1.6 };
+      k = Math.max(_sc151.min, Math.min(_sc151.max, k));
+      el.style.setProperty('--app-k', String(Math.round(k * 10000) / 10000));
+    } catch (e) { /* 桩环境：保持 CSS 默认 */ }
+  }
+  GAME.fitAppSize = fitAppSize;
+  /* 画布缩放比的**唯一读出口**（界面上凡"按 rect 摆位置"的浮层都读它换算）——
+     用实测比值（视觉宽 ÷ 布局宽）而不是读 --app-k 令牌：令牌没写时也拿得到真值；
+     桩环境（rect 恒 0 / 无元素）回落到 1。 */
+  GAME.appKOf = function () {
+    var k = 0;
+    try {
+      var sc = document.getElementById && document.getElementById('app-scale');
+      if (sc && sc.getBoundingClientRect && sc.offsetWidth) {
+        k = sc.getBoundingClientRect().width / sc.offsetWidth;
+      }
+    } catch (e) { k = 0; }
+    return (isFinite(k) && k > 0) ? k : 1;
+  };
+
   function boot() {
+    fitAppSize();
+    try {
+      window.addEventListener('resize', function () {
+        fitAppSize();
+        /* 尺寸变了要重排地图（fitMapCell 读容器实测尺寸）——延后一拍，等布局落定 */
+        setTimeout(function () { try { ui.renderMapCanvas(); } catch (e) { } }, 120);
+      });
+    } catch (e) { }
     bindEvents();
     GAME._lastBuildCount = 0;
     GAME._lastQuestReady = 0;   /* v69：可领取数变化时重绘任务面板的基准值 */

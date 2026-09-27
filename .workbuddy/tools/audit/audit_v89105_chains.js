@@ -50,7 +50,7 @@ A.cells.forEach(function (c) { if (c.build) c.build.lvl = Math.max(c.build.lvl |
 /* 民夫是"运力"（调运链靠挑夫挑担），不放它调运链第一步就发不出去 */
 A.army = { yibing: 9000, gongjian: 3000, qingji: 1500, minfu: 1200 };
 st.items = st.items || {};
-['zengminling', 'yiminling', 'shennongchu', 'lianbing_jingyan', 'zhenzhu', 'jinang', 'seed_daomi']
+['zengminling', 'yiminling', 'shennongchu', 'lianbing_jingyan', 'bengzhu', 'jinang', 'seed_daomi']
   .forEach(function (id) { st.items[id] = 6; });
 st.generals.forEach(function (g, i) { g.level = 30 + i; g.sta = 100; g.energy = 100; });
 /* 补两座必需建筑：军营（募兵前置）+ 校场（出征人马上限的尺）。
@@ -93,7 +93,20 @@ var B = null;
   if (cx !== null) {
     try {
       var bt = G.buildCityAt(cx, cy);
-      if (bt && bt.ok) B = bt.city;
+      if (bt && bt.ok) {
+        B = bt.city;
+        /* ⛔ v89.141（复核修复 · 工具跟随）：v89.138 把"目标城席位预检"迁到 prepare ——
+           分城若无招贤馆（0 席），调兵会被**正确**拦下（"尚无招贤馆"）→ 本工具⑤链被卡。
+           真实玩法里玩家也必先建招贤馆；工具补一座（lvl 5 = 5 席）。 */
+        if (B && B.cells) {
+          for (var _ci = 0; _ci < B.cells.length; _ci++) {
+            if (!B.cells[_ci].official && !B.cells[_ci].build) {
+              B.cells[_ci].build = { id: 'zhaoxianguan', lvl: 5 };
+              break;
+            }
+          }
+        }
+      }
       else console.log('（分城未建成：' + ((bt && bt.msg) || '未知') + '）');
     } catch (e) { console.log('（分城异常：' + e.message + '）'); }
   } else console.log('（附近无空平原，未建分城）');
@@ -176,6 +189,7 @@ step('解散归农：兵 → 人口（100% 回补）', function () {
 /* ══════════ ③ 出征链 ══════════ */
 head('③ 出征链（选目标 → 行军 → 抵达 → 战斗 → 战报 + 沙盘）');
 var tgt = null, bestLv = 99;
+var transferDispatched = false;   /* v89.141：⑤链"出发是否真的起运"（被拦时别在抵达步抛假异常） */
 for (var y = 0; y < (DATA.MAP_H || 61); y++) {
   for (var x = 0; x < (DATA.MAP_W || 61); x++) {
     var f = G.map.fortAt(x, y);
@@ -255,6 +269,7 @@ step('出发：doTransferCargo 扣兵扣货', function () {
   var r = G.doTransferCargo(A.id, B.id, { minfu: 200 }, st.generals[1].id, { grain: 30000 });
   if (!r.ok) return r;
   if (!(A.res.grain < g0)) throw new Error('出发城粮没扣（在途能二次花）');
+  transferDispatched = true;
   return { note: '粮 30,000 起运（在途 1 支 · 载重 4 万）' };
 });
 step('抵达：目标城按损耗落账', function () {
@@ -264,6 +279,9 @@ step('抵达：目标城按损耗落账', function () {
   if (!m) return { ok: false, msg: '无在途档' };
   /* 走 `GAME.march.rushAll`（与线上"加快行军"同一条抵达出口），
      而不是自己拆内部函数 —— 探针要量的是**链路**，不是内部实现。 */
+  /* v89.141（复核修复）：先确认"出发确实起运"——出发被拦（席位/兵力/运力）时
+     抵达无从验证，**不该在这里抛假异常**（它会把工具自身的造局问题伪装成产品 bug）。 */
+  if (!transferDispatched) return { ok: false, msg: '出发步骤被拦 → 抵达无从验证（跳过）' };
   var g0 = B.res.grain;
   G.march.rushAll();
   var moved = B.res.grain - g0;
@@ -286,13 +304,13 @@ step('赏赐忠诚（doGenGift：宝物 → 忠诚）', function () {
   /* ⚠ 字段名是 `loyalty`（探针起初写成 `loyal` —— 赋了个不存在的字段，
      于是"赏赐成功但忠诚不变"，看着像游戏 bug，其实是探针自己没对上） */
   g.loyalty = 60;
-  var n0 = st.items.zhenzhu || 0;
-  var r = G.systems.useItem('zhenzhu', g.id);
+  var n0 = st.items.bengzhu || 0;      /* v89.152：珍珠退役 -> 蚌珠 */
+  var r = G.systems.useItem('bengzhu', g.id);
   if (r && r.ok === false) return r;
-  var n1 = st.items.zhenzhu || 0;
-  if (n1 >= n0) throw new Error('用了但珍珠没减（' + n0 + ' → ' + n1 + '）');
+  var n1 = st.items.bengzhu || 0;
+  if (n1 >= n0) throw new Error('用了但蚌珠没减（' + n0 + ' → ' + n1 + '）');
   if (g.loyalty <= 60) throw new Error('赏赐了但忠诚没涨（' + g.loyalty + '）');
-  return { note: '珍珠 ' + n0 + ' → ' + n1 + ' · 忠诚 60 → ' + g.loyalty };
+  return { note: '蚌珠 ' + n0 + ' → ' + n1 + ' · 忠诚 60 → ' + g.loyalty };
 });
 
 /* ══════════ ⑦ 物品链 ══════════ */

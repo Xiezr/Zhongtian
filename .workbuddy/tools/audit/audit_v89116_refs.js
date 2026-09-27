@@ -24,13 +24,17 @@ var FILES = ['data', 'state', 'questdata', 'systems', 'domain', 'map', 'battle',
 var OK = {
   GAME: ['icons', 'bitmaps', 'portraits', 'gicons', 'ui', 'utils', 'DATA', 'state', 'story',
     'tactic', 'battle', 'map', 'systems', 'SG', '_bsess', '_battleSeq', '_battleJustDone',
-    '_realNowOf', 'action', 'refreshAll', 'refreshView', 'newGame', 'adoptState'],
+    '_realNowOf', 'onLog', 'action', 'refreshAll', 'refreshView', 'newGame', 'adoptState'],
   DATA: [],
   U: [],
 };
 /* 额外白名单：这些名字可能是"运行期由别处挂上"的（列出并注明原因） */
 var EXTRA = {
   'GAME.icons': 'icons.js 挂载', 'GAME.bitmaps': 'bitmaps.js 挂载',
+  /* v89.141（复核）：与主 audit.js 的同名白名单**对齐**（此前两版不一致 ——
+     单跑版把"故意不定义"的注入点报成了"疑似拼错"，主 audit 反而不报，容易误伤） */
+  'GAME.onLog': '试玩工具挂的钩子（tools/playtest/*.js 里 G.onLog = …）',
+  'GAME._realNowOf': '测试拨钟钩子（smoke/e2e 覆写它把"现实时间"固定住）',
 };
 
 function stripComment(s) {

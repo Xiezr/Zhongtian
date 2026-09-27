@@ -24,7 +24,8 @@ var OUT = path.join(R, '.workbuddy/shots');
 fs.mkdirSync(OUT, { recursive: true });
 
 var MODALS = [
-  ['官府', 'ui.openGuanfu()'],
+  /* ⛔ v89.141（复核）：`ui.openGuanfu` 在 v89.135 退役 → 改开官府格的建筑面板 */
+  ['官府（建筑面板）', '(function(){var c=GAME.currentCity();for(var i=0;i<c.cells.length;i++){if(c.cells[i].official){return ui.openBuildModal(i);}}return ui.openBuildModal(0);})()'],
   ['征募/训练', 'ui.openTroops()'],
   ['市场', 'ui.openMarket()'],
   ['客栈招募', 'ui.openInn()'],
@@ -40,18 +41,20 @@ var MODALS = [
   ['门派', 'ui.openSect()'],
   ['仓库', 'ui.openStore()'],
   ['军务总览', 'ui.openMarches()'],
-  ['城墙', 'ui.openWallModal()'],
-  ['校场', 'ui.openXiaochang()'],
+  /* ⛔ v89.141（复核）：`openWallModal` 在 v89.126 退役 → `openBuildModal("wall")`；
+     `openXiaochang` 在 v89.133 退役（点建筑功能 = 直接进军务视图，不再是弹窗）→ 删除条目 */
+  ['城墙（环城槽）', 'ui.openBuildModal("wall")'],
   ['据点半览', 'ui.openForts()'],
-  ['采集点', 'ui.openGathers()'],
+  /* ⛔ v89.141（复核）：`ui.openGathers` 在 v89.136 退役 → 改开"已占野地的地块界面" */
+  ['野地地块（采集区）', '(function(){var st=GAME.state,c=st.cities[0];st.wilds=st.wilds||[];var spot=null;for(var dx=2;dx<=14&&!spot;dx++){for(var dy=-14;dy<=14&&!spot;dy++){var t=GAME.map.tile(c.x+dx,c.y+dy);if(t&&t.terrain!=="city"&&!GAME.map.wildAt(c.x+dx,c.y+dy)){spot={x:c.x+dx,y:c.y+dy};}}}if(!spot)return ui.toast("无空野地");st.wilds.push({x:spot.x,y:spot.y,type:"lake",level:8,day:0,startDay:0});return ui.openLandModal(spot.x,spot.y);})()'],
   ['野地一览', 'ui.openWilds()'],
   ['布阵方案', 'ui.openTacticSets()'],
   ['防守战术', '(function(){ui._marchTab="def";ui.openMarches();})()'],
   ['自动出征配置', 'ui.openAutoMarch()'],
   ['出征', '(function(){var st=GAME.state;ui.openExpModal({kind:"wild",x:st.cities[0].x+2,y:st.cities[0].y+2});})()'],
-  ['本境调运', '(function(){var st=GAME.state;ui.openExpModal({kind:"own",id:st.cities[1].id});})()'],
+  ['本境调运', '(function(){var st=GAME.state;if(st.cities.length<2)return ui.toast("无第二城");return ui.openExpModal({kind:"own",id:st.cities[1].id});})()'],
   ['打造', 'ui.openBuildModal(0)'],
-  ['全境营造', 'ui.openBuildOverview()'],
+  /* ⛔ v89.137：「全境营造总览」面板整条退役（老板判重）——条目随之删除 */
   ['统计·爵位', 'ui.openPanel()'],
   ['统计·物品', 'ui.setView("items")'],
   ['背包', 'ui.setView("bag")'],
@@ -60,7 +63,8 @@ var MODALS = [
   /* v89.120：报告身份 rid 化 —— 按唯一出口取号再打开（不再是数组下标） */
   ['战报详情', '(function(){var st=GAME.state;if(!st.reports.length)return;ui.viewReport(GAME.repRidOf(st.reports[0]));})()'],
   ['商店', 'ui.openShop()'],
-  ['派遣', 'ui.openDispatch(GAME.currentCity().id)'],
+  /* ⛔ v89.141（复核）：`ui.openDispatch` 在 v89.138 退役（并入出征界面）→ 同上，本境调运即其形态 */
+  ['派遣（本境调运·出征界面）', '(function(){var st=GAME.state;if(st.cities.length<2)return ui.toast("无第二城");return ui.openExpModal({kind:"own",id:st.cities[1].id});})()'],
   ['派驻', 'ui.openTroopMove(GAME.currentCity().id)'],
 ];
 
@@ -105,6 +109,27 @@ var MODALS = [
         level: 4 + (gi % 5), genId: gen.id, troops: 1200 + gi * 100, at: (st.world && st.world.elapsed || 0) + 7200 });
     }
     (DATA.ITEMS || []).forEach(function (it) { if (it && it.id) st.items[it.id] = 3; });  /* 全物品 */
+    /* v89.141（复核修复）：补第二城 —— v105 载荷体检同款问题（原造局只 1 城，
+       "本境调运/派驻/派遣"等面板失去对象，压不出真实载荷）。 */
+    try {
+      var _spot = null;
+      for (var _rr = 2; _rr <= 10 && !_spot; _rr++) {
+        for (var _dx = -_rr; _dx <= _rr && !_spot; _dx++) {
+          for (var _dy = -_rr; _dy <= _rr && !_spot; _dy++) {
+            var _t = G.map.tile(c.x + _dx, c.y + _dy);
+            if (_t && _t.terrain === 'plain' && !G.map.wildAt(c.x + _dx, c.y + _dy)
+              && !(G.map.npcAt && G.map.npcAt(c.x + _dx, c.y + _dy))) {
+              _spot = { x: c.x + _dx, y: c.y + _dy };
+            }
+          }
+        }
+      }
+      if (_spot && st.cities.length < 2) {
+        st.wilds = st.wilds || [];
+        st.wilds.push({ x: _spot.x, y: _spot.y, lv: 3, day: 0, type: 'plain' });
+        G.buildCityAt(_spot.x, _spot.y);
+      }
+    } catch (e) {}
     try { G.map._view = { vx: Math.max(0, c.x - 13), vy: Math.max(0, c.y - 13), span: 26 }; } catch (e) {}
     return { cities: st.cities.length, wilds: st.wilds.length, gathers: st.gathers.length,
       items: Object.keys(st.items || {}).length, reports: (st.reports || []).length,
