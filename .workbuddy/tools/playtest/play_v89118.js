@@ -341,10 +341,13 @@ function tryBuildExt() {
 /* 5.3 城墙 */
 function tryWall() {
   var city = st.cities[0];
-  if (G.wallPendingOf(city.id)) return;
-  var lv = city.wallLv || 0;
+  /* v89.126 跟随：城墙并入建筑体系，wallPendingOf/buildWall/wallLv 退役 */
+  var lv = G.buildingLevel(city, 'chengqiang') || 0;
+  if (city.wall && city.wall.pending) return;
   if (lv >= G.buildCapOf(city, 'chengqiang')) return;
-  var r = safeCall('wall', function () { return G.buildWall(city.id); });
+  var r = safeCall('wall', function () {
+    return lv > 0 ? G.upgradeAt(city.id, 'wall') : G.buildAt(city.id, 'wall', 'chengqiang');
+  });
   if (r && r.ok) RUN('🧱 城墙 → Lv' + (lv + 1) + ' 开建');
   if (r && !r.ok) noteSoft('wall', r.msg);
 }
@@ -1376,7 +1379,7 @@ function snapshot() {
         seen[id] = 1;
         bl[tag + id] = Math.max(bl[tag + id] || 0, cc.build.lvl);
       });
-      wall[c.id] = c.wallLv || 0;
+      wall[c.id] = G.buildingLevel(c, 'chengqiang') || 0;
       (G.extGridOf(c) || []).forEach(function (e) { if (e.type) ext[tag + e.type] = (ext[tag + e.type] || 0) + e.lv; });
     });
     o.bl = bl; o.wall = wall; o.ext = ext;

@@ -89,18 +89,8 @@
       if (!t) continue;
       var cnt = attackerArmy[id];
       if (cnt <= 0) continue;
-      /* v57：相克改成 B 套（见 data.js 的 COUNTER_ATK / COUNTER_DEF）。
-         这里是**攻击向**：与 tactic 引擎读同一张表，不另写一套。 */
-      var mult = GAME.tactic ? GAME.tactic.counterAtkOf(id, defenderArmy) : 1;
-      /* **防御向**：dice 引擎没有 A/D 对冲，用"守方对这支攻方兵种的最高防御因子"
-         折算成除法（×N 防御 ≈ 伤害 ÷N）。方向与量级与 tactic 的 2A/(A+D) 一致，
-         但不完全等价 —— dice 本就是简化回退引擎，切引擎时相克强度会有差异。 */
-      var defMul = 1;
-      for (var did in defenderArmy) {
-        if ((defenderArmy[did] || 0) <= 0) continue;
-        var dm = GAME.tactic ? GAME.tactic.counterDefOf(did, id) : 1;
-        if (dm > defMul) defMul = dm;
-      }
+      /* v89.179：克制系统全撤 —— dice 回退引擎与 tactic 主引擎同口径：
+         伤害 = 兵种纸面攻 × 加成链（不再有"打谁 / 被谁打"的对局态因子）。 */
       /* 将领加成 —— v52 链、v89.96 改双刻度（唯一原子见 domain.js atkPctOf）：
            勇武：每 20 点 → 全军攻击 +1%（无上限属性，单独降率）
            装备：每 10 攻击值 → 全军攻击 +1%（v52 口径，有天花板）
@@ -124,7 +114,7 @@
       /* 名将羁绊 + 当世年号（后台静默加成，界面不提示） */
       if (GAME.story) atkMult *= GAME.story.atkMult();
       /* 远程白嫖：射程远超时首轮伤害加成（模拟"后退射杀"） */
-      var dmg = cnt * t.atk * mult * atkMult / defMul;
+      var dmg = cnt * t.atk * atkMult;
       /* 抛射技巧：远程射程 +4%/级 */
       var effRange = t.range * (1 + TB('range'));
       if (GAME.story) effRange *= GAME.story.combatMod().archerRange; // 雨天弓兵射程 −20%
@@ -317,14 +307,45 @@
     return GAME.battle.expedition({ kind: 'city', id: npcCity.id, npc: npcCity }, modeId || 'occupy', atkArmy, genId);
   };
 
-  /* 伤兵营：青囊书30%转伤兵（存伤兵营，花金治疗） */
+  /* ============================================================
+   * v89.186（老板 2/4）：**伤兵回收率唯一出口**
+   * ------------------------------------------------------------
+   * 改前口径散在三处、且互不一致（probe_v89186a 取证）：
+   *   · returnArmy（出征）：base 0.45 + schemeKeep + buff（**替换**） + tech × + sect ×
+   *   · applyWounded（旧口/测试）：base + tech ×（缺 schemeKeep / sect）
+   *   · state.js 守城战：**只有 base**（商品/科技/门派全不吃 —— 守城买的伤兵书没用）
+   * 且 buff 走替换语义：青囊书 0.30 低于当时基础 0.45 → 买了反而亏；续命书 0.45 = 没买。
+   * 本出口统一口径（老板拍板：**提高固定伤兵比例** + 商品改**加法提升**）：
+   *   base（DATA.EXPEDITION.woundedRate = 0.75）
+   *   + schemeKeep（金蝉脱壳：战败额外保全）
+   *   + buff.wound（商品：+5% / +10% / +15% —— 加法，见商品表）
+   *   → × (1 + 维修技术) × (1 + 门派百草堂)，全程以 woundCap（0.9）封顶。
+   * 三处消费点（returnArmy / applyWounded / 守城）+ 界面显示 全读它。
+   * ============================================================ */
+  GAME.woundedRateOf = function (result) {
+    var s = GAME.state;
+    var E = DATA.EXPEDITION || {};
+    var cap = (E.woundCap == null) ? 0.9 : E.woundCap;
+    var rate = (E.woundedRate == null) ? 0.75 : E.woundedRate;
+    if (result && result.schemeKeep) rate += result.schemeKeep;   /* 金蝉脱壳（战败保全，与商品同链相加） */
+    /* v89.186：商品改**加法**（原为替换 —— 见函数头注释） */
+    if (s && s.buffs && s.buffs.military && s.buffs.military.wound
+      && GAME.systems && GAME.systems.buffActive && GAME.systems.buffActive('military')) {
+      rate += s.buffs.military.wound;
+    }
+    rate = Math.min(cap, rate);
+    /* 维修技术：伤兵回收率 +3%/级（乘法链） */
+    if (GAME.systems && GAME.systems.techBonus) rate = Math.min(cap, rate * (1 + GAME.systems.techBonus('repair')));
+    /* 门派被动（v89.86 · 百草堂「战后伤兵回复 +15%」）—— 与维修科技同链 */
+    if (GAME.sectBonus) rate = Math.min(cap, rate * (1 + GAME.sectBonus('woundPct')));
+    return rate;
+  };
+  /* 伤兵营：阵亡者按回收率折为伤兵（存伤兵营，花金治疗） */
   GAME.battle.applyWounded = function (lossCount) {
     var s = GAME.state;
     if (!lossCount || lossCount <= 0) return;
-    var rate = (DATA.EXPEDITION && DATA.EXPEDITION.woundedRate) || 0.45;
-    if (GAME.systems.buffActive('military') && s.buffs.military.wound) rate = s.buffs.military.wound;
-    /* 维修技术：伤兵回收率 +3%/级 */
-    rate = Math.min(0.9, rate * (1 + TB('repair')));
+    /* v89.186：率走唯一出口（原在此只算 base+tech，与 returnArmy 分叉） */
+    var rate = GAME.woundedRateOf(null);
     s.wounded = (s.wounded || 0) + Math.floor(lossCount * rate);
   };
 
@@ -380,19 +401,31 @@
     return !(s && s.settings && s.settings.battleWatch === false);
   };
 
-  /* 建立/重建会话：按 history 重放到当前回合（读档恢复与首建同一路径） */
-  GAME.battle._makeEnv = function (rec) {
+  /* 建立/重建会话：按 history 重放到当前回合（读档恢复与首建同一路径）
+     v89.192（老板 2）：加可选第 2 参 `collectSteps` —— 传数组时把重放中**每回合的
+     `{ r, gap, events, snap }`** 收集进去（供界面补渲染"前边回合的记录"）。
+     不传 = 与既有行为逐字一致（读档恢复/守城等所有既有调用零影响）。 */
+  GAME.battle._makeEnv = function (rec, collectSteps) {
     var s = GAME.state;
     var gen = null;
     (s.generals || []).forEach(function (g) { if (g.id === rec.genId) gen = g; });
     /* v89.142（老板 7）：重放用**斗将后的那份主将**（rec.sim.genSim）——
        否则史实（结算读 genSim）与重放（读原件）在将领属性上差一个 +10%，verify 必假红。 */
     var _genSimD = rec.sim.genSim || gen;
-    var env = GAME.tactic.begin(rec.atkArmy, _genSimD, rec.sim.scArmy || {}, rec.sim.scVal || 0,
-      rec.sim.scGen || null, rec.sim.simOpts || {});
-    (rec.history || []).forEach(function (h) {
-      for (var tid in (h || {})) env.setCmd('atk', tid, h[tid]);
-      env.step();
+    var env = null;
+    /* v89.179b·P1-3：会话建立 + 逐回合重放读的是"现在"的全局加成（科技/天时/年号/羁绊/战鼓），
+       而史实是开打那一刻的 → 读档/挂起重放会漂。包 withBoost(rec.sim.boost) 装回史实快照。 */
+    GAME.battle.withBoost(rec.sim.boost, function () {
+      env = GAME.tactic.begin(rec.atkArmy, _genSimD, rec.sim.scArmy || {}, rec.sim.scVal || 0,
+        rec.sim.scGen || null, rec.sim.simOpts || {});
+      (rec.history || []).forEach(function (h) {
+        for (var tid in (h || {})) env.setCmd('atk', tid, h[tid]);
+        var _st192 = env.step();
+        if (collectSteps && _st192) {
+          collectSteps.push({ r: _st192.r, gap: _st192.gap,
+            events: _st192.events || [], snap: _st192.snap || null });
+        }
+      });
     });
     return env;
   };
@@ -463,10 +496,38 @@
   };
   /* 单个单位的姿态决策（纯函数 · 执行与断言共用）：
      u = 内部单位（读 range/spd）；gap = 到敌前军间距（field − 双方前出）。 */
-  GAME.battle.smartStanceOf = function (u, gap, plan) {
+  GAME.battle.smartStanceOf = function (u, gap, plan, mode, ctx) {
     plan = plan || GAME.battle.smartPlanOf();
+    mode = mode || 'echelon';
+    /* v89.176（老板「总体策略是齐头并进，针尖麦芒，还是退守底线消耗，一波冲锋。
+       还是错落有致，进退有据逐一消灭，伺机全军出动」）：**阵型模式**（第 4 参）——
+       与目标规则正交：本函数只决定"动作"，打谁由 smartPickTarget 决定。
+       模式表与标定数据见 DATA.SMART_PLAN.modes 注释（probe_v89176d_modes）。
+       `plan.fastestId`（spear 的尖刀）由 smartApply 经 planX 传入；单独调用缺省时
+       spear 自动回落到 echelon 分支（纯函数不依赖外部状态）。 */
+    if (mode === 'turtle') return 'hold';        /* 退守消耗：全军原地（受创减半） */
+    if (mode === 'charge') return 'advance';     /* 一波冲锋：全军全速、永不转防御 */
+    var _er = (u.er != null ? u.er : (u.range || 0));
+    if (mode === 'line') {                       /* 齐头并进：贴到**射程边缘**才转防御 */
+      return (gap <= _er) ? 'hold' : 'advance';
+    }
+    if (mode === 'spear' && plan.fastestId && u.id === plan.fastestId) {
+      return 'advance';                          /* 针尖麦芒：尖刀（最快一档）持续前压 */
+    }
+    /* echelon 错落有致（默认 · v89.164 标定） */
     if ((u.range || 0) >= 500) {
-      return (gap <= u.range * (plan.rangeK || 1)) ? 'hold' : 'advance';
+      if (gap > u.range * (plan.rangeK || 1)) return 'advance';
+      /* v89.180（老板 3/4「距离难道不是弓兵的生命线吗……那是还不够智能」）：
+         **风筝** —— 进射程后不再无条件站桩：处于威胁线内（敌下回合能打到我）、
+         且存在"我打得到 / 它够不着"的窗口（敌射程 < 我）、且退一步后仍在射程内
+         （退出去打不着 → 原地打）→ **后撤一步**（引擎的 retreat 可退到 −D，
+         后退回合照常开火 = 边退边射）；否则站桩输出（受创减半）。
+         ctx 由 smartApply 按**团队条件**构造（我方最慢远程 > 敌最前速度才给 ctx.kite ——
+         混编里最慢那支决定整条远程线是否风筝；probe_v89180b 的 S3 实测"部分退、部分留"
+         反而更差）。**无 ctx（旧调用 / 旧断言）→ 行为与 v89.164 逐字一致。** */
+      if (ctx && ctx.kite && ctx.back > 0 && gap <= ctx.threat && ctx.eRange < _er - 1
+          && gap + ctx.back <= _er + 1) return 'retreat';   /* back>0：退不动就别退（hold 受创减半） */
+      return 'hold';
     }
     var isCav = (u.spd || 0) >= 400;
     var k = isCav ? (plan.gapCav != null ? plan.gapCav : 250)
@@ -476,29 +537,185 @@
   /* 应用：把方案写进本场战斗（env.setCmd + rec.cmd）。
      只托管攻方；返回"本回合改了几支部队"（探针/断言用）。 */
   GAME.battle.smartApply = function (rec, env) {
-    if (!rec || rec.side !== 'atk' || !env || !env.setCmd) return 0;
+    if (!rec || rec.side !== 'atk' || !env || !env.setCmd) return { n: 0, notes: [] };
     var plan = GAME.battle.smartPlanOf();
+    /* v89.175：目标规则（首回合赛马选定；缺省 static = v89.164 静态表，行为不变）
+       v89.176：阵型模式（modes × rules 联合赛马；缺省 echelon = v89.164 标定，行为不变） */
+    var rule = rec.smartRule || 'static';
+    var mode = rec.smartMode || 'echelon';
     var mine = (env.units && env.units.atk) || [];
     var theirs = (env.units && env.units.def) || [];
-    var D = env.field || 1, themFront = 0;
-    theirs.forEach(function (x) { if (x.count > 0 && x.adv > themFront) themFront = x.adv; });
+    /* v89.176：尖刀是谁 —— 我军存活部队里 spd 最高的一支（spear 模式用；经 planX
+       传入 smartStanceOf，让它保持纯函数）。 */
+    var _fastest = '', _fspd = -1;
+    mine.forEach(function (x) { if (x.count > 0 && (x.spd || 0) > _fspd) { _fspd = x.spd || 0; _fastest = x.id; } });
+    var planX = { gapInf: plan.gapInf, gapCav: plan.gapCav, rangeK: plan.rangeK,
+      targets: plan.targets, fastestId: _fastest };
+    var D = env.field || 1, themFront = 0, _eF180 = null;
+    theirs.forEach(function (x) {
+      if (x.count > 0 && x.adv > themFront) { themFront = x.adv; _eF180 = x; }
+    });
+    /* v89.180（老板 3/4）：风筝（kite）**团队条件**与威胁线 —— 唯一出口
+       （开战赛马与实战执行共用本函数）。团队条件：我方存活远程（射程 ≥ 500）的
+       最小速度 > 敌最前单位速度（跑不动就别退）；威胁线 = 敌射程 + 敌速度 × kiteLead。 */
+    var kiteOn180 = false, kiteThreat180 = 0, kiteER180 = 0;
+    if (_eF180) {
+      var _eSpd180 = _eF180.spd || 0;
+      var _minRSpd180 = Infinity, _hasR180 = false;
+      mine.forEach(function (x) {
+        if (x.count > 0 && (x.range || 0) >= 500) {
+          _hasR180 = true;
+          if ((x.spd || 0) < _minRSpd180) _minRSpd180 = (x.spd || 0);
+        }
+      });
+      kiteOn180 = _hasR180 && _eSpd180 > 0 && _minRSpd180 > _eSpd180;
+      kiteER180 = (_eF180.er != null ? _eF180.er : (_eF180.range || 0));
+      kiteThreat180 = kiteER180 + _eSpd180 * (plan.kiteLead == null ? 1 : plan.kiteLead);
+    }
     rec.cmd = rec.cmd || {};
     /* ⛔ v89.164 撤销（实测有害）：曾加"目标灭失回退"（目标兵种灭后改打敌方主力）——
        对照实验（probe diag_trace）显示：火力被引离**前线可歼灭目标**后，敌方前排
        不再减员并一路推进穿场（dFront 12160），敌损从 4435（全灭）掉到 726。
        目标灭失时**保持原值**、由引擎回落"射程内任意"反而是实测最优。 */
-    var n = 0;
+    var n = 0, notes = [];
+    var SC = {};
+    (DATA.STANCES || []).forEach(function (x) { SC[x.id] = x.name; });
+    var tName = function (tid) {
+      var t = DATA.TROOPS[tid];
+      return t ? t.name : String(tid || '');
+    };
     mine.forEach(function (u) {
       if (!(u.count > 0)) return;
       var c = rec.cmd[u.id] = rec.cmd[u.id] || {};
-      var wantS = GAME.battle.smartStanceOf(u, D - u.adv - themFront, plan);
-      var wantT = plan.targets[u.id];
+      var kctx180 = null;
+      if (kiteOn180 && (u.range || 0) >= 500) {
+        var _bk180 = Math.min(u.spd || 0, u.adv + D);   /* 与引擎 retreat 的退量同尺 */
+        if (_bk180 > 0) kctx180 = { kite: true, threat: kiteThreat180, eRange: kiteER180, back: _bk180 };
+      }
+      var wantS = GAME.battle.smartStanceOf(u, D - u.adv - themFront, planX, mode, kctx180);
+      /* v89.175：目标 = 规则决策（静态表 / 伤害最优 / 清除效率 / 清前排） */
+      var wantT = (rule === 'static')
+        ? plan.targets[u.id]
+        : GAME.battle.smartPickTarget(u, theirs, rule, D);
       var patch = {};
-      if (wantS && c.s !== wantS) { c.s = wantS; patch.s = wantS; }
-      if (wantT != null && c.t !== wantT) { c.t = wantT; patch.t = wantT; }
+      if (wantS && c.s !== wantS) {
+        notes.push(u.name + ' ' + (SC[c.s] || c.s || '—') + '→' + (SC[wantS] || wantS));
+        c.s = wantS; patch.s = wantS;
+      }
+      if (wantT != null && c.t !== wantT) {
+        notes.push(u.name + ' 目标→' + tName(wantT));
+        c.t = wantT; patch.t = wantT;
+      }
       if (patch.s || patch.t !== undefined) { env.setCmd('atk', u.id, patch); n++; }
     });
-    return n;
+    return { n: n, notes: notes };
+  };
+  /* v89.175：目标评分器（**唯一出口** —— 赛马模拟与实战执行共用同一把尺）。
+     规则：dmg = 期望实伤（perAtk×防御对冲÷单兵HP · v89.179 起无相克项）；eff = 有效杀（防溢出，
+     能打满的优先）；front = 清前排（adv 大者优先 + 有效杀打底）。
+     与 v89.164 静态表同源可比：static 直接读 plan.targets（代表兵种）。 */
+  GAME.battle.smartPickTarget = function (u, foes, rule, D) {
+    var list = (foes || []).filter(function (e) { return e.count > 0; });
+    if (!list.length) return null;
+    var T = GAME.tactic;
+    var perA = T.perAtk(u);
+    var best = null, bestSc = -Infinity;
+    list.forEach(function (e) {
+      var cf = T.clashFactor(perA, T.perDef(e));
+      var perHp = T.perHp(e, null);
+      var hold = (e.stance === 'hold') ? (1 - T.HOLD_DAMAGE_CUT) : 1;
+      /* v89.180：拆械 —— 评分器与实战共用一把尺（床弩打器械的 killF 乘 vsMech） */
+      var _st180 = DATA.TROOPS[u.id] || {};
+      var _et180 = DATA.TROOPS[e.id] || {};
+      var mechF180 = (_st180.vsMech && _et180.mech) ? _st180.vsMech : 1;
+      var killF = perA * u.count * cf * hold * mechF180 / perHp;
+      var sc;
+      if (rule === 'dmg') sc = killF;
+      else if (rule === 'eff') sc = Math.min(killF, e.count) * 1000 + killF * 0.001;
+      else if (rule === 'front') sc = e.adv * 1000 + Math.min(killF, e.count);
+      /* v89.185（老板 7「改进战役智能」）：**击其脆弱** —— 优先每兵生命最低的目标
+         （清场加速；probe_v89185f 实测 infHeavy 我损 -16% vs 次优规则）。 */
+      else if (rule === 'weak') sc = -perHp * 1000 + Math.min(killF, e.count);
+      else sc = killF;
+      if (sc > bestSc) { bestSc = sc; best = e; }
+    });
+    return best ? best.id : null;
+  };
+  /* v89.175：**开战赛马** —— 候选策略各全速模拟一遍（引擎确定 → 同输入同结果）。
+     v89.176：候选空间从 4 条目标规则扩到 **5 阵型 × 4 目标 = 20 组合**；
+     评分从「胜 > 交换比」改为「**胜 > 保兵率 > 交换比**」——老板「减少伤亡很重要，
+     或者最重要」：同胜局面选**我方损失最小**的组合，劣局同样优先保兵。
+     结果 `{ rule, mode, scores }` 存 rec.smartPick（随档往返），每场只跑一次；
+     成本（probe_v89176d 实测）20 组合 ≈ 数十毫秒（首回合一次，长跑无感）。 */
+  GAME.battle.smartArbitrate = function (rec) {
+    var plan = GAME.battle.smartPlanOf();
+    var rules = (plan.rules || ['static']).slice();
+    var modes = (plan.modes || ['echelon']).slice();
+    var t0 = Date.now();
+    var gen = null;
+    (GAME.state.generals || []).forEach(function (g) { if (g.id === rec.genId) gen = g; });
+    var genSim = (rec.sim && rec.sim.genSim) || gen;
+    var scores = [];
+    modes.forEach(function (mode) {
+      rules.forEach(function (rule) {
+        var env = null;
+        try {
+          env = GAME.tactic.begin(rec.atkArmy || {}, genSim, (rec.sim && rec.sim.scArmy) || {},
+            (rec.sim && rec.sim.scVal) || 0, (rec.sim && rec.sim.scGen) || null,
+            (rec.sim && rec.sim.simOpts) || {});
+        } catch (e) { env = null; }
+        if (!env) return;
+        var recX = { side: 'atk', cmd: {}, smartRule: rule, smartMode: mode };
+        var g = 0;
+        while (!env.over && g++ < 40) { GAME.battle.smartApply(recX, env); env.step(); }
+        var aRem = 0, dRem = 0, aStart = 0, dStart = 0;
+        env.units.atk.forEach(function (u) { aStart += u.start; if (u.count > 0) aRem += u.count; });
+        env.units.def.forEach(function (u) { dStart += u.start; if (u.count > 0) dRem += u.count; });
+        var win = aRem > 0 && dRem === 0;
+        var ratio;
+        if (dRem === 0) ratio = (aStart > aRem) ? (dStart / (aStart - aRem)) : 999;
+        else ratio = (dStart - dRem) / Math.max(0.0001, (aStart - aRem));
+        ratio = Math.round(ratio * 100) / 100;
+        var aLoss = aStart > 0 ? Math.round((aStart - aRem) / aStart * 1000) / 1000 : 0;
+        scores.push({ mode: mode, rule: rule, win: win, ratio: ratio, aLoss: aLoss, rounds: g });
+      });
+    });
+    var best = null, bestSc = -1e30;
+    scores.forEach(function (s) {
+      var sc = (s.win ? 1e6 : 0) + (1 - s.aLoss) * 1e4 + Math.min(s.ratio, 999);
+      if (sc > bestSc) { bestSc = sc; best = s; }
+    });
+    return { rule: (best && best.rule) || 'static', mode: (best && best.mode) || 'echelon',
+      scores: scores, ms: Date.now() - t0 };
+  };
+  /* v89.176：保兵闸的三个读数出口（stepBattle 与界面共用 —— 数值只改 DATA.SMART_PLAN） */
+  GAME.battle.retreatAtOf = function () {
+    var p = GAME.battle.smartPlanOf();
+    return (p && p.retreatAt != null) ? p.retreatAt : 0.30;
+  };
+  GAME.battle.warnAtOf = function () {
+    var p = GAME.battle.smartPlanOf();
+    return (p && p.warnAt != null) ? p.warnAt : 0.22;
+  };
+  /* 我方当前损失率（从会话快照算：start 总量 ↔ 现存总量；无快照/无 start → 0） */
+  GAME.battle.lossRatioOf = function (ses) {
+    if (!ses || !ses.snap) return 0;
+    var snap = null;
+    try { snap = ses.snap(); } catch (e) { return 0; }
+    var s0 = 0, s1 = 0;
+    ((snap && snap.atk) || []).forEach(function (u) { s0 += (u.start || 0); s1 += (u.count || 0); });
+    if (s0 <= 0) return 0;
+    return Math.max(0, (s0 - s1) / s0);
+  };
+  /* 目标是否"非拿下不可"（撤不得）—— 口径：**名城**（县城及以上系统城，
+     GAME.isFamousCity 唯一出口）。野地 / 据点 / 自建城 → false（到线可撤）。 */
+  GAME.battle.mustTakeOf = function (rec) {
+    try {
+      if (!rec || !rec.target) return false;
+      var t = GAME.battle.resolveTarget(rec.target);
+      if (!t || !t.ok || t.kind !== 'city') return false;
+      return !!(t.npc && GAME.isFamousCity && GAME.isFamousCity(t.npc));
+    } catch (e) { return false; }
   };
   /* 推进一回合：指令先落会话、快照进 history（重放一致），再 step */
   GAME.battle.stepBattle = function (id) {
@@ -506,12 +723,50 @@
     var rec = GAME.battle._recOf(id);
     if (!ses || !rec || rec.state !== 'live') return null;
     /* v89.164：智能战斗（默认开）——本回合先改写我方指令（姿态+目标），
-       改写落 rec.cmd → 随后照常进 history 快照（重放/读档逐回合一致）。 */
-    if (GAME.battle.smartOnOf()) GAME.battle.smartApply(rec, ses);
+       改写落 rec.cmd → 随后照常进 history 快照（重放/读档逐回合一致）。
+       v89.175（老板「多种最优路径比较」）：首回合**赛马**（4 套策略全速模拟 → 选最优，
+       结果确定可重放）；每回合记录**调整明细**（rec.smartNote/smartLog，战报与回合
+       记录渲染读它 —— 「每回合我要看见调整」）。 */
+    if (GAME.battle.smartOnOf()) {
+      if (!rec.smartPick) rec.smartPick = GAME.battle.smartArbitrate(rec);
+      if (rec.smartPick && rec.smartPick.rule) rec.smartRule = rec.smartPick.rule;
+      if (rec.smartPick && rec.smartPick.mode) rec.smartMode = rec.smartPick.mode;
+      var _sm175 = GAME.battle.smartApply(rec, ses);
+      rec.smartNote = { r: (rec.round || 0) + 1, n: _sm175.n, notes: _sm175.notes,
+        rule: rec.smartRule, mode: rec.smartMode };
+      (rec.smartLog = rec.smartLog || []).push(rec.smartNote);
+      if (rec.smartLog.length > 80) rec.smartLog.shift();
+      /* ============================================================
+       * v89.176（老板「减少伤亡很重要……损伤 30% 的局面，宁愿撤退。
+       *   除非是有非拿下不可的目标比如名城」）：**保兵闸**。
+       * 损失达线（DATA.SMART_PLAN.retreatAt）且目标非名城 → 走既有撤退落账
+       * （retreatBattle：残部带回、本波破防按半计）；到线原因写进 smartNote
+       * 与战报日志（问题可见）。名城（县城及以上系统城）死战不退。
+       * 返回 null = 本回合无正常推进记录（已按撤退结算，调用方照常收尾）。
+       * ============================================================ */
+      var _lr176 = GAME.battle.lossRatioOf(ses);
+      if (_lr176 >= GAME.battle.retreatAtOf() && !GAME.battle.mustTakeOf(rec)) {
+        rec.smartNote.retreat = true;
+        rec.smartNote.notes = rec.smartNote.notes || [];
+        rec.smartNote.notes.push('损失 ' + Math.round(_lr176 * 100) + '% 达撤退线 → 保兵撤退');
+        GAME.log.war('🏳️ 智能托管：损失达 ' + Math.round(_lr176 * 100) + '%（撤退线 '
+          + Math.round(GAME.battle.retreatAtOf() * 100) + '%），按保兵策略主动撤退（残部带回）');
+        GAME.battle.retreatBattle(id);
+        return null;
+      }
+      if (_lr176 >= GAME.battle.warnAtOf() && !rec.smartWarned) {
+        rec.smartWarned = true;
+        GAME.log.war('⚠️ 智能托管：损失 ' + Math.round(_lr176 * 100) + '% 已近撤退线（'
+          + Math.round(GAME.battle.retreatAtOf() * 100) + '%）—— 非名城目标到线将自动撤退（保兵）');
+      }
+    }
     var snapCmd = U.deep(rec.cmd || {});
     rec.history.push(snapCmd);
     for (var tid in snapCmd) ses.setCmd('atk', tid, snapCmd[tid]);
-    var r = ses.step();
+    /* v89.179b·P1-3：每回合推进也装回史实加成快照（否则观战途中点科技/天时变化、
+       战鼓到期，这场仗的结果会漂；读档重放与史实不同源）。rec.sim.boost 为空（旧档/沙盘）时
+       直接跑，与既有行为一致。 */
+    var r = GAME.battle.withBoost(rec.sim.boost, function () { return ses.step(); });
     if (!r) return null;
     rec.round = r.r;
     rec.gapLast = r.gap;
@@ -1060,12 +1315,19 @@
        出征面板的"目标估掠"用同一公式取区间中值（rnd 恒 0.5、dry=true 不落账），
        于是"面板看到的量"与"结算搬回来的量"永远同一份公式，不会两处漂移。 */
     var rd = rnd || Math.random;
+    /* v89.189（老板 2）：基数收进 DATA.LOOT_BASE（唯一数据源）——金随价值体系下调，
+       资源保持 v89.109 曲线（与建筑/军费规模匹配）。 */
+    var LB = DATA.LOOT_BASE || {};
+    function _rg189(k, d0, d1) {
+      var rg = LB[k] || [d0, d1];
+      return rg[0] + rd() * (rg[1] - rg[0]);
+    }
     var out = {
-      grain: Math.round((20000 + rd() * 30000) * mult),
-      wood: Math.round((15000 + rd() * 25000) * mult),
-      stone: Math.round((10000 + rd() * 20000) * mult),
-      iron: Math.round((8000 + rd() * 15000) * mult),
-      gold: Math.round((10000 + rd() * 20000) * mult),
+      grain: Math.round(_rg189('grain', 20000, 30000) * mult),
+      wood: Math.round(_rg189('wood', 15000, 25000) * mult),
+      stone: Math.round(_rg189('stone', 10000, 20000) * mult),
+      iron: Math.round(_rg189('iron', 8000, 15000) * mult),
+      gold: Math.round(_rg189('gold', 200, 600) * mult),
     };
     /* 珠宝：忠诚管理的补给来源（越高等级城池越多）。dry（估算）不掷骰、不落账 */
     if (!dry && rd() < 0.55) {
@@ -1139,12 +1401,21 @@
    * ============================================================ */
   GAME.battle.survivedArmyOf = function (sentArmy, result) {
     var out = {}, aStart = 0, id;
-    for (id in (sentArmy || {})) aStart += Math.max(0, Math.floor(sentArmy[id] || 0));
-    if (!aStart) return out;
-    var keep = Math.max(0, Math.min(1, (result && result.atkRemain || 0) / aStart));
+    var T = DATA.TROOPS || {};
+    /* v89.179b·P0-2：参战兵口径 = 不含 nocombat（斥候/后勤）的兵种。
+       原 aStart 把斥候也算进分母，而 result.atkRemain 只统计参战兵（tactic 跳过 nocombat）
+       → 幸存率被稀释、斥候也按比例蒸发。修复：斥候整队返回，不进幸存率分母；
+       无 nocombat 兵种时与旧行为完全一致（向后兼容）。 */
+    for (id in (sentArmy || {})) {
+      if (T[id] && T[id].nocombat) continue;
+      aStart += Math.max(0, Math.floor(sentArmy[id] || 0));
+    }
+    var keep = aStart > 0 ? Math.max(0, Math.min(1, (result && result.atkRemain || 0) / aStart)) : 1;
     for (id in sentArmy) {
       var n = Math.floor(sentArmy[id] || 0);
-      if (n > 0) out[id] = Math.floor(n * keep);
+      if (n <= 0) continue;
+      if (T[id] && T[id].nocombat) { out[id] = n; continue; }   /* 非参战兵整队返回 */
+      out[id] = Math.floor(n * keep);
     }
     return out;
   };
@@ -1250,7 +1521,7 @@
     g.loyalty = 60;
     if (home) g.cityId = home.id;
     s.generals.push(g);
-    GAME.log.war('镇守名将 ' + h.name + ' 归降！（攻打城池必降）');
+    GAME.log.war('守将 ' + h.name + ' 归降！（攻打城池必降）');   /* v89.188（老板 3）：文案中性化 */
     return g;
   };
 
@@ -1265,7 +1536,7 @@
     var g = GAME.makeHero(b);
     g.loyalty = 60;
     s.generals.push(g);
-    GAME.log.war('获得美人 ' + b.name + '！（掠夺/占领野外城池50%几率）');
+    GAME.log.war('获得女将 ' + b.name + '！（掠夺/占领野外城池50%几率）');   /* v89.188（老板 3）：文案中性化 */
     return g;
   };
 
@@ -1819,7 +2090,7 @@
        *    这里提前给更清楚的文案；界面在"已有驻将"时也不会带计谋提交）。
        * ============================================================ */
       var _w137b = GAME.map.wildAt(t.x, t.y);
-      var _cap137b = GAME.wildGarrisonCap(_w137b.level);
+      var _cap137b = GAME.wildGarrisonCap(_w137b.level, _w137b.x, _w137b.y);   /* v89.186：#3 兵站加成读坐标 */
       var _have137b = GAME.wildGarrisonTotal(_w137b.garrison);
       var _men137b = 0;
       for (var _k137b in (atkArmy || {})) _men137b += Math.floor(atkArmy[_k137b] || 0);
@@ -1897,9 +2168,31 @@
    * opts.cityId 指定出发城池（行军结算时城池可能已不是当前视图那座）。 */
   GAME.battle.expedition = function (target, modeId, atkArmy, genId, opts) {
     opts = opts || {};
-    var s = GAME.state;
     var p = GAME.battle.prepare(target, modeId, atkArmy, genId, opts);
     if (!p.ok) return p;
+    /* ============================================================
+     * v89.191（老板 3-④）：出征全程把科技读点钉在**出发城** ——
+     *   · set-if-unset：重放 / 沙盘已有更权威的快照上下文时不覆盖；
+     *   · try/finally 还原（抛错也不漏）。
+     * 覆盖范围 = 整段结算（战斗模拟走 withBoost 的快照，采集负重 / 掠夺 / 伤兵回收 /
+     * 侦察分层等**非模拟读点**由此获得正确城池）。
+     * ============================================================ */
+    var Sys191 = GAME.systems;
+    var bakCtx191 = Sys191 ? Sys191._techCtx : null;
+    var setCtx191 = false;
+    if (Sys191 && Sys191._techCtx == null) {
+      Sys191._techCtx = GAME.techsOf(p.city);
+      setCtx191 = true;
+    }
+    try {
+      return GAME.battle._expeditionRun(p, target, modeId, atkArmy, genId, opts);
+    } finally {
+      if (setCtx191) Sys191._techCtx = bakCtx191;
+    }
+  };
+  /* 出征结算主体（v89.191 从 expedition 拆出；参数 p = prepare 的结果） */
+  GAME.battle._expeditionRun = function (p, target, modeId, atkArmy, genId, opts) {
+    var s = GAME.state;
     var mode = p.mode, gen = p.gen, city = p.city, t = p.t;
 
     /* ============================================================
@@ -2289,7 +2582,7 @@
       return duel;
     }
     /* v89.118：战斗加成快照 —— 开打那一刻采集；重放沿用挂起时的那份（三者同源） */
-    var _boost = (opts._sim && opts._sim.boost) || GAME.battle.boostSnapshot();
+    var _boost = (opts._sim && opts._sim.boost) || GAME.battle.boostSnapshot(city);
     if (opts._sim) {                       /* 重放：用挂起时保存的权威输入（不重算） */
       scArmy = opts._sim.scArmy || {}; scVal = opts._sim.scVal || 0;
       scGen = opts._sim.scGen || null; scNote = opts._sim.scNote || null;
@@ -2367,7 +2660,7 @@
         + (siegeOut.broke ? ' —— 城垣已破，再胜一阵即可拔城' : ''));
     }
 
-    var gains = { res: null, mats: [], equip: [], hero: null, beauty: null, seeds: [] };
+    var gains = { res: null, mats: [], equip: [], hero: null, beauty: null, seeds: [], gold: 0 };
 
     if (win) {
       /* v89.99：俘获迁民 —— 攻破据点/名城，溃卒入**俘虏营**（唯一出口 captiveGain）
@@ -2420,6 +2713,17 @@
            战利品总重 ≤ **随军载重**（幸存部队，扣去去程已载辎重）。
            超载时按比例缩减，余数留在原处（战报里明示"未能装下"，下次可再取）。 */
         var _haul = GAME.battle.haulPlanOf({ army: atkArmy, result: result, cargo: opts.cargo, loot: loot });
+        /* v89.189（老板 2 · 顺修）：**玄金不入搬运** —— gold 不在 TRANSPORT_KEYS
+           （v89.161：金是玩家层级货币），但旧实现把 keep 直接覆盖回 loot →
+           genLootEx / npcLoot 产的 gold 在下一步**静默蒸发**（"面板估掠有金、
+           打完不给"的真 bug）。现在：金从原始战利品单独取出、直入玩家金池
+           （与珠宝/材料落账同精神：货币不靠辎重队搬）。 */
+        var _goldLoot189 = Math.max(0, Math.round(loot.gold || 0));
+        if (_goldLoot189 > 0) {
+          if (GAME.goldAdd) GAME.goldAdd(_goldLoot189);
+          else s.res.gold = (s.res.gold || 0) + _goldLoot189;
+          gains.gold = _goldLoot189;
+        }
         loot = _haul.keep;
         gains.haul = _haul;
         /* v60（需求 4）：战利品归**出征的出发城**（资源归属城池） */
@@ -2469,6 +2773,16 @@
          补上蕴养修炼装备在游历剥离之后的产出口） */
       var essLoot = GAME.grantEssenceDrop(seedLv, DATA.ESSENCE_DROP.battleMult, '✨ 缴获灵气精华');
       if (essLoot.length) gains.essence = essLoot;
+
+      /* v89.179c（老板「高阶加速宝物改采集/战役掉落」）：战役缴获线（次渠道，
+         mult = DATA.BOOST_DROP.battleMult）。与种子/精华同构，只掷 BOOST_DROP 表。 */
+      var boostLoot = GAME.grantBoostDrop(seedLv, (DATA.BOOST_DROP || {}).battleMult, '🎁 缴获加速宝物');
+      if (boostLoot.length) gains.boost = boostLoot;
+
+      /* v89.186（老板 1）：宝具 —— 打据点/名城缴获（唯一渠道；与上面的"加速宝物"互不占配额）。
+         掉落随机不影响战斗确定性（发生在落账段，沙盘重跑只重跑引擎）。 */
+      var baoLoot = GAME.grantBaoDrop ? GAME.grantBaoDrop(t) : [];
+      if (baoLoot.length) gains.baoju = baoLoot;
 
       /* 占领：据而有之 */
       if (mode.occupy) {
@@ -2621,6 +2935,8 @@
     /* v20：战报必须包含**战利品**。
        此前 body 只有伤亡，战利品仅写进系统提示，玩家看战报以为「掠夺胜利什么都没得到」。 */
     var lootLines = [];
+    /* v89.189（老板 2）：缴获黄金单列（金不入搬运、直接入池——旧版它连战报都不出现） */
+    if (gains.gold > 0) lootLines.push('💰 缴获黄金：+' + U.fmt(gains.gold) + '（直接入金库）');
     if (gains.res) {
       var _lp = [];
       for (var _rk in gains.res) {
@@ -2641,10 +2957,13 @@
          而是**城池连同其中的库藏**（该城按等级派生的库存 × cityInherit）一起归我。 */
       lootLines.push('战果：城池易主，其中库藏尽归我有（占领不取现财 —— 财货已在城中）');
     } else if (win && mode.occupy && t.kind === 'fort' && result.claimed) {
-      /* v89.103（老板「拔除据点可以占据该据点」）：拔除 = 据而有之 */
-      lootLines.push('战果：**就地据守** —— ' + t.name + ' 已成为我城（建筑 Lv'
-        + result.claimed.lv + ' 转正 · 人口 ' + U.fmt((result.claimed.city.res || {}).pop || 0)
-        + ' 归附 · 该地不再生成据点）');
+      /* v89.186（老板 3）：据点剥离 —— 占据 = **我方前哨**（不转城市；周边野地享 5 项之利）
+         v89.193（老板 2）：半径与效果随前哨等级 —— 文案走唯一出口 fortEffectOf（不重算）。 */
+      var _fx193r = GAME.fortEffectOf(result.claimed);
+      lootLines.push('战果：**收为我方前哨** —— ' + t.name + '（Lv' + result.claimed.lv
+        + ' · 不占城池名额）；周边 ' + _fx193r.radius
+        + ' 格内野地：衰减减半 · 采集×' + _fx193r.gatherMul + ' · 驻军上限 ×' + _fx193r.garrisonCapMul
+        + ' · ' + (_fx193r.intelFull ? '情报确凿' : '情报半明') + ' · 商税 ' + _fx193r.tax + ' 金/现实日');
     }
     /* v89.114：运力不足的明示（唯一出口 haulPlanOf 的结果）——
        "搬回来多少"与"最多能搬多少"写进战报，玩家一眼看出差在后勤。 */
@@ -2717,8 +3036,8 @@
         { cmds: (opts._sim && opts._sim.history) || null,
           place: { kind: t.kind, terrain: t.terrain || null },
           boost: _boost }),
-      /* v89.94（B2 · E3）：以少胜多 —— 以弱胜强的一仗才值得晒 */
-      underdog: GAME.battle.underdogOf(result),
+      /* v89.94（B2 · E3）：以少胜多 —— 以弱胜强的一仗才值得晒（出征=攻方视角） */
+      underdog: GAME.battle.underdogOf(result, 'atk'),
       /* v89.94（B2 · E1）：围攻战果（据点/县城才有）—— 列表与详情都要显示"还差多少" */
       siege: result.siege || null,
     };
@@ -2766,13 +3085,9 @@
        原先这里另算一份 keep；两处算法各自演化，就会出现"搬货按 A、归队按 B"。
        归队与搬货的差别只在 rate（伤兵回收率）：归队把阵亡者的一部分折成伤兵。 */
     var surv = GAME.battle.survivedArmyOf(sentArmy, result);
-    var rate = (DATA.EXPEDITION && DATA.EXPEDITION.woundedRate) || 0.45;
-    /* v86：金蝉脱壳 —— 战败时额外保全（阵亡转伤兵，与军医/治疗科技同链相加） */
-    if (result && result.schemeKeep) rate = Math.min(0.9, rate + result.schemeKeep);
-    if (GAME.systems.buffActive('military') && s.buffs.military.wound) rate = s.buffs.military.wound;
-    if (GAME.systems && GAME.systems.techBonus) rate = Math.min(0.9, rate * (1 + GAME.systems.techBonus('repair')));
-    /* 门派被动（v89.86 · 百草堂「战后伤兵回复 +15%」）—— 与军医/维修科技同链 */
-    if (GAME.sectBonus) rate = Math.min(0.9, rate * (1 + GAME.sectBonus('woundPct')));
+    /* v89.186：率走**唯一出口**（base + 金蝉脱壳 + 商品 + 维修科技 + 门派）——
+       原实现四段散在此处、且商品是替换语义（详见 GAME.woundedRateOf 注释）。 */
+    var rate = GAME.woundedRateOf(result);
     var back = {}, wounded = {}, wTotal = 0;
     for (var id2 in sentArmy) {
       var n = sentArmy[id2] || 0;
@@ -2798,78 +3113,63 @@
   /* 兼容旧接口：默认「占领」 */
 
   /* ============================================================
-   * v89.103（老板「拔除据点可以占据该据点（成为自己的城池）」）
+   * v89.186（老板 3）：据点剥离 —— **占据 = 野外建筑 + 归属**（不再就地转城市）
    * ------------------------------------------------------------
-   * 改前：占领打下一座野外城池 = **拔除**（当日移除、次日重置、谁也不得）——
-   *   于是 v89.94 那套"磨守备值"的围攻机制对据点毫无回报：磨下来一场空。
-   * 现在：拔除 = **据而有之** —— 据点就地转为我方一座城：
-   *   · 建筑**就地转正**（野城本来就是"建筑全满"；布局与侦查面板、守军
-   *     同出一源：GAME.fortPlanOf / GAME.npcCityShadow）→ 拿到的是满配城；
-   *   · 城里的人跟着留下（人口 = 该布局民房满员，与侦查看到的数字同一个）；
-   *   · 库藏不继承 —— 据点本就没有库藏（掠夺所得是"打下来才有"的），
-   *     所以按新城启动物资发一份，够它自己开张；
-   *   · 永久登记（GAME.map.markFortTaken）→ 该格从此不再生成据点。
-   * 返回 { ok, city, rep, lv }：调用方（战报/日志）据此写"就地据守"。
+   * 沿革：v89.103 曾"拔除 = 就地转为我方一座城"（建筑转正 + 人口归附 + 占城池名额）；
+   * 老板拍板改为：**不转城市** —— 占据后作为"我方前哨"（野外建筑）提供 buff：
+   *   #1 前哨效应（覆盖内野地衰减减半）· #2 采集增产 · #3 兵站（驻军上限 +50%）
+   *   · #5 情报站（守军/守将情报确凿）· #6 商旅税所（每游戏日商税）。
+   * 顺带解决 v89.108 的既有矛盾（"据点转正占城名额"让扩张玩家两难）——**不占名额**。
+   * 旧档：已转正的据点城**不追溯**（保留为城市）；本函数只服务新占据。
+   * 数据：`s.forts['x,y'] = { x, y, lv, name, day, cityId }`（随档；v89.193 起含
+   *   cityId = **占据时的出发城** —— "每城最多 5 处"的归属口径）；`fortsTaken` 照写
+   *   （地图"该格不再生成据点"的既有读点不变）。
+   * v89.193（老板 2）：「设置同附属野地，每城最多 5 个」+「等级不同的前哨辐射范围和
+   *   效果不同」—— 超限**不设哨**（战利品照收；两层防线：据点面板受阻提示 →
+   *   这里结算兜底）；半径/效果随等级（DATA.FORT_AURA.tiers，走 GAME.fortEffectOf 唯一出口）。
+   * 返回 { ok, fort, rep, lv }；超限 { ok:false, full:true }：调用方据此写"收为我方前哨"。
    * ============================================================ */
   GAME.claimFort = function (t, gen, fromCity, result) {
     var s = GAME.state;
     if (!t || t.kind !== 'fort' || !t.fort) return { ok: false, msg: '不是野外城池' };
-    /* v89.108（兜底）：领地上限 —— 据点转正 = 一座新城（防"绕过 prepare 的路径"） */
-    var _cc108 = GAME.cityCapChk ? GAME.cityCapChk() : { ok: true };
-    if (!_cc108.ok) return { ok: false, msg: _cc108.msg };
     var f = t.fort;
     var lv = Math.max(1, f.level || 1);
-    /* 布局唯一出口：与"侦查看到的布局 / 守军"同一份 */
-    var shadow = GAME.npcCityShadow
-      ? GAME.npcCityShadow({ id: 'fort_' + f.x + '_' + f.y, name: f.name, x: f.x, y: f.y,
-        level: lv, type: 'self', def: GAME.fortDefOf ? GAME.fortDefOf(f) : 0 })
-      : null;
-    var city = GAME.makeCity({
-      id: 'occ_' + f.x + '_' + f.y,
-      name: f.name,
-      x: f.x, y: f.y,
-      /* 自建城档位（type='self'）：无岁贡、靠城外地块与税收 ——
-         与"打下来的一座野城"相称；城等级跟随官府（= 布局等级）。 */
-      type: 'self',
-      res: Object.assign({}, DATA.NEW_CITY_RES || {}),
-    });
-    city.level = lv;
-    city.def = GAME.fortDefOf ? GAME.fortDefOf(f) : 0;
-    city.fromFort = { x: f.x, y: f.y, level: lv };        /* 出身（界面/战报用） */
-    if (shadow) {
-      city.col = shadow.col; city.row = shadow.row;
-      city.cells = shadow.cells.map(function (c) {
-        return { build: c.build ? { id: c.build.id, lvl: c.build.lvl } : null,
-          pending: null, official: !!c.official };
-      });
-      city.extGrid = shadow.extGrid.map(function (e) { return { id: e.id, type: e.type, lv: e.lv }; });
-      /* v89.128：城墙从影子格提取到环城槽（同占城转正，玩家侧不占格） */
-      city.wall = { build: null, pending: null };
-      (function () {
-        var _wl128 = 0;
-        city.cells.forEach(function (c) {
-          if (c.build && c.build.id === 'chengqiang') {
-            _wl128 = Math.max(_wl128, c.build.lvl || 0);
-            c.build = null; c.pending = null;
-          }
-        });
-        if (_wl128 > 0) city.wall.build = { id: 'chengqiang', lvl: _wl128 };
-      })();
+    var A = DATA.FORT_AURA || {};
+    var forts = GAME.fortsOf();
+    var key = f.x + ',' + f.y;
+    /* v89.193：归属 = 出发城；超限分支 —— 本格照常记"已拔除"（不再刷据点）、
+       不登记前哨（战利品已在 result 里照收）。 */
+    var own193 = (fromCity && (s.cities || []).some(function (c) { return c.id === fromCity.id; })) ? fromCity : null;
+    var max193 = A.maxPerCity == null ? 5 : A.maxPerCity;
+    if (own193 && GAME.fortsOfCity(own193).length >= max193) {
+      if (GAME.map.markFortTaken) GAME.map.markFortTaken(f.x, f.y, key);
+      if (GAME.map.razeFort) GAME.map.razeFort(f.x, f.y);
+      GAME.log.war('🚩 拔除 ' + f.name + '（野外城池 Lv' + lv + '）—— 但「' + own193.name
+        + '」的前哨已满（' + max193 + ' 处），**未能设哨**（战利品照收；可先放手一处，或从其他城池出征）');
+      return { ok: false, full: true,
+        msg: f.name + ' 已拔除，但本城前哨已满（' + max193 + ' 处）—— 未能设哨' };
     }
-    /* 城里的人跟着留下（口径 = 该布局民房满员，与侦查面板同一数字） */
-    if (GAME.planPopCapOf) city.res.pop = GAME.planPopCapOf(lv);
-    GAME.registerCity(city);   /* v89.161：入库唯一出口（含黄金池接线） */
-    if (GAME.map.markFortTaken) GAME.map.markFortTaken(f.x, f.y, city.id);
+    var rec = forts[key] = forts[key] || { x: f.x, y: f.y,
+      day: GAME.questDayIndex ? GAME.questDayIndex() : 0 };
+    rec.lv = lv; rec.name = f.name;
+    rec.cityId = own193 ? own193.id : (rec.cityId || null);   /* v89.193：归属城（老档迁移兜底） */
+    var fx193 = GAME.fortEffectOf(rec);                       /* v89.193：半径/文案与覆盖同源（按等级） */
+    var RR = fx193.radius;
+    if (GAME.map.markFortTaken) GAME.map.markFortTaken(f.x, f.y, key);
     if (GAME.map.razeFort) GAME.map.razeFort(f.x, f.y);    /* 当日标记：今日不再出现 */
     var tile = GAME.map.tile(f.x, f.y);
-    if (tile) tile.terrain = 'city';
+    /* v89.195（老板 1）：「前哨可放手」—— 记录**占据前的地形**（terrain0），
+       放手时恢复（GAME.abandonFort 唯一出口）。`rec.terrain0 ||` 保证只记最早那一次。 */
+    if (tile) { rec.terrain0 = rec.terrain0 || tile.terrain; tile.terrain = 'city'; }   /* 据点仍占该格（视觉可见） */
     GAME.statBump('forts', 1);
     var repF = Math.round((20 + lv * 5) * (GAME.story && GAME.story.repMult ? GAME.story.repMult() : 1));
     s.rep = (s.rep || 0) + repF;
-    GAME.log.war('🚩 破 ' + f.name + '（野外城池 Lv' + lv + '）—— **就地据守**：'
-      + '全城建筑转正 · 人口 ' + U.fmt(city.res.pop || 0) + ' 归附（声望 +' + repF + '）');
-    return { ok: true, city: city, rep: repF, lv: lv,
-      msg: f.name + ' 已归我（建筑 Lv' + lv + ' 转正 · 人口 ' + U.fmt(city.res.pop || 0) + '）' };
+    GAME.log.war('🚩 拔除 ' + f.name + '（野外城池 Lv' + lv + '）—— 收为**我方前哨**（声望 +' + repF + '）：'
+      + '周边 ' + RR + ' 格内野地：衰减减半 · 采集×' + fx193.gatherMul + ' · 驻军上限 ×'
+      + fx193.garrisonCapMul + ' · ' + (fx193.intelFull ? '情报确凿' : '情报半明') + '，商税 '
+      + fx193.tax + ' 金/现实日');
+    return { ok: true, fort: rec, rep: repF, lv: lv,
+      msg: f.name + ' 已为我方前哨（周边 ' + RR + ' 格野地受益 · 商税 ' + fx193.tax + ' 金/日 · 不占城池名额）' };
   };
 
   /* --------- 经验升级（真实公式：等级²×100） --------- */
@@ -2968,13 +3268,20 @@
     }
     return Math.round(n);
   };
-  GAME.battle.underdogOf = function (r) {
-    if (!r || r.winner !== 'atk') return false;
-    var a = GAME.battle.armyPowerOf(r.atkStartBy);
-    var d0 = GAME.battle.armyPowerOf(r.defStartBy);
+  GAME.battle.underdogOf = function (r, mySide) {
+    /* v89.179b·P2-8：加显式视角参数（§17.2 同函数被两视角调用必须显式传参）。
+       不传 mySide → 默认攻方（与旧行为一致，向后兼容）。 */
+    if (!r) return false;
+    var iAmDef = (mySide === 'def');
+    var meWin = iAmDef ? (r.winner === 'def') : (r.winner === 'atk');
+    if (!meWin) return false;
     var div = (DATA.INVASION && DATA.INVASION.defDivisor) || 480;
-    var d = d0 * (1 + ((r.defBonusEff || 0) / div));
-    return d > 0 && a > 0 && a < d * 0.8;
+    var myRaw = GAME.battle.armyPowerOf(iAmDef ? r.defStartBy : r.atkStartBy);
+    var foeRaw = GAME.battle.armyPowerOf(iAmDef ? r.atkStartBy : r.defStartBy);
+    /* 守方加成（城防/箭塔）只作用于"守方"一侧：攻视角下敌(守)吃它，守视角下我吃它 */
+    var myEff = myRaw * (1 + ((iAmDef ? (r.defBonusEff || 0) : 0) / div));
+    var foeEff = foeRaw * (1 + ((iAmDef ? 0 : (r.defBonusEff || 0)) / div));
+    return foeEff > 0 && myEff > 0 && myEff < foeEff * 0.8;
   };
   /* ============================================================
    * v89.157（老板「逐回合文字复盘」）：**逐回合文字**的唯一出口
@@ -3102,11 +3409,14 @@
    * 采集清单 = 引擎侧全部全局读点（tactic.js 里的 TB/combatMod/atkMult/siegeMult/
    * buffActive 与 state.buffs）—— 新增读点时要往这里补一项，别只改一边。
    * ============================================================ */
-  GAME.battle.boostSnapshot = function () {
+  GAME.battle.boostSnapshot = function (city) {
     var st = GAME.state || {}, S = GAME.story || {};
     try {
       return {
-        techs: U.deep(st.techs || {}),            /* → systems.techBonus（TB 全部 type） */
+        /* v89.191（老板 3-④）：科技快照 = **那一战那座城**的表
+           （出征 = 出发城 / 守城 = 被攻城；无城 → 空表，纯 NPC 场景不吃科技）——
+           与 v89.118 同一机制，只是内容从"全境表"换成"该城表"，史实与重跑依旧同源。 */
+        techs: U.deep((city && city.techs) || {}),   /* → systems.techBonus（TB 全部 type） */
         world: U.deep(st.world || {}),            /* → STORY.combatMod（天时/年号，由 world 推导） */
         buffs: U.deep(st.buffs || {}),            /* → systems.buffActive + st.buffs.military */
         atkMult: (S.atkMult ? S.atkMult() : 1),   /* 羁绊「攻」× 年号 atkEra */
@@ -3120,14 +3430,16 @@
   GAME.battle.withBoost = function (bs, fn) {
     if (!fn) return null;
     if (!bs) return fn();
-    var st = GAME.state, S = GAME.story;
+    var st = GAME.state, S = GAME.story, Sys = GAME.systems;
     if (!st || !S) return fn();
     var bak = {
-      techs: st.techs, world: st.world, buffs: st.buffs,
+      techCtx: Sys ? Sys._techCtx : null, world: st.world, buffs: st.buffs,
       atkMult: S.atkMult, siegeMult: S.siegeMult, cityDefMult: S.cityDefMult, defMult: S.defMult,
     };
     try {
-      if (bs.techs) st.techs = bs.techs;
+      /* v89.191：科技快照装进 systems 的**读点上下文**（`st.techs` 已随按城改造退役 ——
+         快照里的 techs 现在就是"那一战那座城"的表）。 */
+      if (Sys && bs.techs) Sys._techCtx = bs.techs;
       if (bs.world) st.world = bs.world;
       st.buffs = bs.buffs || {};
       if (bs.atkMult != null) S.atkMult = function () { return bs.atkMult; };
@@ -3136,7 +3448,8 @@
       if (bs.defAdd != null) S.defMult = function () { return bs.defAdd; };
       return fn();
     } finally {
-      st.techs = bak.techs; st.world = bak.world; st.buffs = bak.buffs;
+      if (Sys) Sys._techCtx = bak.techCtx;
+      st.world = bak.world; st.buffs = bak.buffs;
       S.atkMult = bak.atkMult; S.siegeMult = bak.siegeMult;
       S.cityDefMult = bak.cityDefMult; S.defMult = bak.defMult;
     }
@@ -3175,7 +3488,10 @@
          重跑靠它把全局读点装回史实那一刻（否则 30h 后重跑必然 verify=false）。 */
       boost: extra.boost || null,
       /* 史实结果（校验沙盘忠实度的锚点，不参与画面） */
-      result: { rounds: r.rounds, atkLoss: r.atkLoss, defLoss: r.defLoss },
+      /* v89.185b：`retreat` 标志随配方走 —— 史实"主动撤退"（智能保兵 v89.176 / 手动）
+         是"提前结束"的动作，重跑必须对齐（见 _sandboxBuild 的 stopAfter），
+         否则重跑一路打到回合上限、verify 必 false（智能托管默认开 → 所有智能战报中招）。 */
+      result: { rounds: r.rounds, atkLoss: r.atkLoss, defLoss: r.defLoss, retreat: !!r.retreat },
     };
   };
 
@@ -3220,8 +3536,12 @@
     var init = env.snap();
     /* v89.102：逐回合指令重放（与 `_makeEnv` 同一手法 —— 观战路径的史实指令） */
     var cmds = rc.cmds || null;
+    /* v89.185b：史实为**主动撤退**（result.retreat）→ 重跑到同一回合数（result.rounds）即停 ——
+       对齐"这场仗是被提前结束的"，否则重跑打满上限、与史实两回事（verify 必 false）。 */
+    var stopAfter = ((rc.result || {}).retreat) ? (((rc.result || {}).rounds) || 0) : 0;
     var frames = [], per = [], guard = 0;
     while (!env.over && guard++ < (GAME.tactic.MAX_ROUNDS || 30) + 5) {
+      if (stopAfter && per.length >= stopAfter) break;
       var _ci = per.length;
       if (cmds && cmds[_ci]) {
         for (var _tid in cmds[_ci]) env.setCmd('atk', _tid, cmds[_ci][_tid]);
@@ -3431,8 +3751,8 @@
    * gen = 该单位所属方的将领（我方法：rec.genId；敌方法：rec.sim.scGen）——
    * 生命加成走 T.perHp(u, gen)，与战斗里"被击方将领加血"同源。
    * 返回 null 表示不是有效兵种（调用方自行兜底）。
-   * ⚠️ 不含"相克 / 攻城"这类**对局态**因子（那是 perAtk 的 opts，随打谁而变）——
-   *   悬停给的是"这支部队自己的面板"，相克请见兵种说明。
+   * ⚠️ 不含"攻城"这类**对局态**因子（那是 perAtk 的 opts，随打谁而变）——
+   *   悬停给的是"这支部队自己的面板"。
    * ============================================================ */
   GAME.battle.unitFinalOf = function (u, gen) {
     if (!u || !DATA.TROOPS[u.id]) return null;
@@ -3641,14 +3961,49 @@
     return r;
   };
 
-  /* 急行军令：立即完成全部行军 */
-  GAME.march.rushAll = function () {
+  /* 行军即刻抵达 —— 唯一出口（v89.179c 老板②B方案）
+     ------------------------------------------------------------
+     原状：UI 里有个**免费**的「⚡急行军令（立即抵达）」按钮（不扣金、不耗道具），
+           而付费的急行军令 / 疾行令行为与它相同 → 两支道具被完全压死（"鬼商品"）。
+     现在：即刻抵达**必须消耗道具**，且两支各有分工（见 DATA.ITEMS 的 marchScope）：
+       · 急行军令（one）→ 只催单支（军务页逐行「⚡ 急行军」，带 marchId）
+       · 疾行令（all）  → 催全部（面板底部按钮）
+     ⚠️ `rushApply` 是**纯效果**（不扣道具）—— 扣道具分两处，但都只经此一个效果出口：
+        · 按钮路径 `rushByItem`（点了就扣 1）
+        · 背包路径 `S.useItem`（其尾部统一扣 1，见 systems.js） */
+  GAME.march.rushApply = function (marchId) {
     var s = GAME.state;
-    var list = (s.marches || []).slice();
-    if (!list.length) return { ok: false, msg: '当前没有行军队列' };
-    s.marches = [];
-    list.forEach(function (m) { GAME.march.arrive(m); });
-    return { ok: true, msg: '急行军令：' + list.length + ' 支大军即刻抵达' };
+    var all = (s.marches || []).slice();
+    if (!all.length) return { ok: false, msg: '当前没有行军队列' };
+    var targets = marchId ? all.filter(function (m) { return m.id === marchId; }) : all;
+    if (!targets.length) return { ok: false, msg: '该行军已结束' };
+    s.marches = all.filter(function (m) { return targets.indexOf(m) < 0; });
+    targets.forEach(function (m) { GAME.march.arrive(m); });
+    return { ok: true, count: targets.length, msg: targets.length + ' 支大军即刻抵达' };
+  };
+  /* 离线结算用：把"离线期间早该抵达"的行军一次结清。
+     **不消耗道具** —— 那是正确性需求（时间本就过去了），不是玩家点了什么。 */
+  GAME.march.rushAll = function () { return GAME.march.rushApply(null); };
+  /* 按钮路径：校验作用域 → 校验道具 → 走同一效果出口 → 扣 1 */
+  GAME.march.rushByItem = function (itemId, marchId) {
+    var s = GAME.state;
+    var it = GAME.systems.itemInfo(itemId);
+    if (!it || it.target !== 'march') return { ok: false, msg: '该宝物不能用于行军' };
+    if (it.marchScope === 'one' && !marchId) {
+      return { ok: false, msg: '「' + it.name + '」只用于**单支**行军（请点该行的「⚡ 急行军」）' };
+    }
+    if (it.marchScope === 'all' && marchId) {
+      return { ok: false, msg: '「' + it.name + '」用于**全部**行军（请用面板底部的按钮）' };
+    }
+    if (((s.items || {})[itemId] || 0) <= 0) {
+      return { ok: false, need: itemId, msg: '需要「' + it.name + '」×1 —— 背包里没有（可就地购买）' };
+    }
+    var r = GAME.march.rushApply(marchId || null);
+    if (!r.ok) return r;
+    s.items[itemId] -= 1;
+    if (s.items[itemId] <= 0) delete s.items[itemId];
+    GAME.log.war('⚡ ' + it.name + '：' + r.msg);
+    return { ok: true, count: r.count, msg: '⚡ ' + it.name + '：' + r.msg };
   };
 
   /* 撤回：兵力原路返还（无收益） */

@@ -15,6 +15,7 @@
 
 退出码：0 通过 / 1 门禁不通 / 2 环境错误
 """
+import io
 import os, re, subprocess, sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -39,6 +40,11 @@ TESTS = [
 # v89.136（老板「盘点器进入 gate」）：数据表卫生四查（跨文件写 / 重复定义 / 孤儿 / 悬空）。
 # 秒级成本 → 与 audit 同属"轻量级"：未触及代码时也跑（结构漂移越早抓越便宜）。
 TABLES = ('.workbuddy/tools/audit/audit_v89134_tables.js', '数据表卫生', True)
+
+# v89.179c（老板第 1 条 `data-scope` 丢失的同类病）：`el.dataset.X` 读取必须有对应的
+# `data-X` 发射（静态模板或运行时赋值）。这类 bug **不报错、只是行为悄悄变错**，
+# 所以放进 gate 常跑（只读源码，~1 秒）。
+DATASET = ('.workbuddy/tools/audit/audit_v89179c_dataset_refs.js', 'dataset 引用', True)
 
 
 def _find_node():
@@ -87,6 +93,19 @@ def needs_full(files):
     return False
 
 
+def _dump_fail(script, out, err):
+    """v89.192：失败时把**全量输出**落盘（原先只留尾部 400 字符 —— 一次 flaky 后
+    红名无从查证，只能盲重跑）。路径：.workbuddy/tmp/gate_fail_<script>.log。"""
+    try:
+        d = os.path.join(ROOT, '.workbuddy', 'tmp')
+        os.makedirs(d, exist_ok=True)
+        p = os.path.join(d, 'gate_fail_' + os.path.basename(script) + '.log')
+        with io.open(p, 'w', encoding='utf-8') as f:
+            f.write('=== stdout ===\n' + out + '\n=== stderr ===\n' + err)
+    except Exception:
+        pass
+
+
 def run_one(node, node_path, script, label):
     """跑一个测试，返回 (ok, 摘要行, 详情)。必须连「是否中断」一起看 —— 项目铁律。"""
     env = dict(os.environ)
@@ -102,6 +121,7 @@ def run_one(node, node_path, script, label):
     tail = (out[-400:] + err[-200:]).strip()
 
     if r.returncode != 0:
+        _dump_fail(script, out, err)
         return False, f'{script} 退出码 {r.returncode}（异常中断）', tail
 
     # ① 显式失败数
@@ -109,6 +129,7 @@ def run_one(node, node_path, script, label):
     if m:
         ok_n, fail_n = int(m.group(1)), int(m.group(2))
         if fail_n > 0:
+            _dump_fail(script, out, err)
             return False, f'{script} {ok_n} 通过 / {fail_n} 失败', tail
         # ② 分母为 0 的绿 = 什么都没测
         if ok_n == 0:
@@ -157,14 +178,14 @@ def main():
     node_path = _find_node_path()
 
     if full:
-        plan = list(TESTS) + [TABLES]
+        plan = list(TESTS) + [TABLES, DATASET]
         why = '--full 强制三件套 + 数据表卫生全跑'
     elif needs_full(files):
-        plan = list(TESTS) + [TABLES]
+        plan = list(TESTS) + [TABLES, DATASET]
         why = '改动了代码（index.html 或 js/**）→ 三件套 + 数据表卫生全跑'
     else:
-        plan = [TESTS[0], TABLES]
-        why = '未触及代码 → 只跑 audit + 数据表卫生（各 1~2 秒兜底）'
+        plan = [TESTS[0], TABLES, DATASET]
+        why = '未触及代码 → 只跑 audit + 数据表卫生 + dataset 引用（各 1~2 秒兜底）'
 
     print(f'━━ 三件套门禁 ━━ {why}')
     if files:

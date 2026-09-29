@@ -1685,7 +1685,7 @@ function snapshot() {
         seen[id] = 1;
         bl[tag + id] = Math.max(bl[tag + id] || 0, cc.build.lvl);
       });
-      wall[c.id] = c.wallLv || 0;
+      wall[c.id] = G.buildingLevel(c, 'chengqiang') || 0;
       (G.extGridOf(c) || []).forEach(function (e) { if (e.type) ext[tag + e.type] = (ext[tag + e.type] || 0) + e.lv; });
     });
     o.bl = bl; o.wall = wall; o.ext = ext;

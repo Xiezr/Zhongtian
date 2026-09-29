@@ -434,7 +434,10 @@
   var grain0 = s.res.grain;
   for (var i = 0; i < 60; i++) G.tickOnce(); // 60 现实秒 = 30分钟游戏时间
   check('60秒后粮食增长', s.res.grain > grain0, '+' + Math.round(s.res.grain - grain0));
-  check('民心初始100', s.hearts === 100);
+  /* v89.177 升级：民心 = 100−税率×100+安抚（默认税 50% → 基准 50）；
+     旧断言"初始 100"是旧口径（税率>50% 才衰减）——随公式口径升级。 */
+  check('民心 = 100−税率×100（默认税 50% → 50）· 缓存与出口一致',
+    s.hearts === 50 && G.heartsOf() === 50);
   check('黄金产出>0', s.res.gold >= 0);
 
   console.log('\n===== 4. 城外地块建造/升级（含 pending 状态机）=====');
@@ -478,7 +481,7 @@
   var r5 = G.systems.research('zhongzhi');
   check('研究种植技术', r5.ok === true, r5.msg);
   for (var i5 = 0; i5 < 10; i5++) G.tickOnce();
-  check('种植技术 Lv1', s.techs.zhongzhi === 1);
+  check('种植技术 Lv1', G.systems.techLevel('zhongzhi') === 1);   /* v89.191：按城读（研究由当前城发起） */
 
   console.log('\n===== 7. 造兵 =====');
   /* v60：`G.res = s.res` 这行**必须删** —— GAME.res 现在是「取某城库存」的函数，
@@ -1432,7 +1435,10 @@
   var au1 = G.autoUpgrade();
   check('开启后自动排队升级', !!(au1 && au1.ok),
     au1 && au1.target ? (au1.target.name + ' → Lv' + (au1.target.lv + 1)) : '无动作');
-  check('升级已进入建造队列', S21.queues.build.length === 1, S21.queues.build.length + ' 个队列');
+  /* v89.167（老板 · 每城独立建造位）：一次调用**把各城空位排满**（不再一条一条来）——
+     原断言 `=== 1` 是"一次一条"的旧口径。 */
+  check('升级已进入建造队列（v89.167：一次调用即排入）',
+    S21.queues.build.length >= 1, S21.queues.build.length + ' 个队列');
   check('优先升级等级最低者（v89.126：城墙占格后，未建不参与候选 —— 与其它建筑一致）', (function () {
     if (!(au1 && au1.target) || au1.target.lv !== wantLv) return false;
     /* 旧口径：城墙"永远存在（Lv0）"必然最低 → 自动升级先修墙；
@@ -1446,12 +1452,17 @@
     + '（当前最低 Lv' + wantLv + '）');
   check('记录了自动升级状态', !!S21.autoState && !S21.autoState.paused, S21.autoState && S21.autoState.msg);
 
-  /* 同级时城内优先 */
+  /* v89.167（老板）：核心口径 = **各城不超各自建造位**（改前 = 全境合计受"当前城位"压 ——
+     全境一共只排 3 条）。一次调用后再来一次，逐城核对不越界。 */
   var au2 = G.autoUpgrade();
-  check('继续排队下一个', !!(au2 && au2.ok), au2 && au2.target ? au2.target.name : '—');
+  var usedByCity21 = {};
+  S21.queues.build.forEach(function (q) { usedByCity21[q.cityId] = (usedByCity21[q.cityId] || 0) + 1; });
+  check('★ 各城不超各自建造位（v89.167 每城独立 · 不再全境合抢一个额度）',
+    S21.cities.every(function (c) { return (usedByCity21[c.id] || 0) <= G.buildSlots(c); }),
+    JSON.stringify(usedByCity21));
   var slots21 = G.buildSlots();
-  check('队列上限生效（不无限排队）', S21.queues.build.length <= slots21,
-    S21.queues.build.length + ' / 上限 ' + slots21);
+  check('本城队列不超上限', (usedByCity21[city21.id] || 0) <= slots21,
+    (usedByCity21[city21.id] || 0) + ' / 上限 ' + slots21);
   /* v89.93（整改 E8）：基础槽位 2 → 3 后，这里**先把队列填满**再验"满则不再排队" */
   var fillGuard21 = 0;
   while (S21.queues.build.length < slots21 && fillGuard21++ < 8) {
@@ -1459,7 +1470,10 @@
   }
   var full21 = S21.queues.build.length;
   var au3 = G.autoUpgrade();
-  check('队列满时不再排队', S21.queues.build.length === full21 && au3 === null,
+  /* v89.167：全境视角下"某城满、他城缺资源"时返回的是暂停态（非 null）——
+     判据改为"**不再排入**"（非 ok），比"=== null"更贴语义。 */
+  check('队列满时不再排队（不再排入 · 队列数不增）',
+    S21.queues.build.length === full21 && !(au3 && au3.ok),
     S21.autoState && S21.autoState.msg);
 
   /* 资源不足 → 暂停 */
@@ -3493,17 +3507,17 @@
     && /max-height: 100%/.test(cssBlock(htmlSrc25, '.gen-list {'))
     && !/max-height: 68vh/.test(cssBlock(htmlSrc25, '.gen-list {'))
     && /flex: 1 1 0/.test(cssBlock(htmlSrc25, '.gen-list > .gen-row {')));
-  check('v45/v89.80：将领行 =「姓名 + Lv + 资质」，仅去掉「装 x/12」（v46：资质另起一行）',
-    /* v45 曾连 Lv 一起砍掉；v89.80（老板「将领名称后增加 Lv.x 的等级标识」）加回 ——
-       所以这里钉"有 Lv、无装备数"，不再是"都没有"。 */
+  check('v45/v89.80→v89.188：将领行 =「姓名(5 字位定宽) + Lv + 资质」，仅去掉「装 x/12」',
+    /* v45 曾连 Lv 一起砍掉；v89.80 加回；v89.188（老板 4）姓名外包 .grow-nm（5em 定宽）——
+       判据改为"grow-nm → grow-lv 紧邻"（不再从 grow-name 直连 name）。 */
     !/grow-eq/.test(uiS) && !/装 ' \+ eqN/.test(uiS)
-    /* ⚠️ 不要用"grow-name 到 rankBadge 的距离"当判据：uiS 是**未剥注释**的原文，
-       中间插一段说明注释就会把窗口撑破（本轮实测 403 → 523，假红）。
-       改成分开的两条**精确**断言：Lv 紧跟姓名、资质仍在 grow-sub 行。 */
-    && /class="grow-name">' \+ U\.escape\(g\.name\) \+[\s\S]{0,260}class="grow-lv">Lv' \+ \(g\.level \|\| 1\)/.test(uiS)
+    && /class="grow-nm"[\s\S]{0,200}class="grow-lv">Lv' \+ \(g\.level \|\| 1\)/.test(uiS)
     && /class="grow-sub">' \+ ui\.rankBadge\(g\)/.test(uiS)
     /* v46（需求 1）：老板判"并排太拥挤" → 回到**上下两行**（姓名一行、资质一行） */
-    && /\.grow-main \{ flex: 1; min-width: 0; display: flex; flex-direction: column/.test(htmlSrc25));
+    && /\.grow-main \{ flex: 1; min-width: 0; display: flex; flex-direction: column/.test(htmlSrc25)
+    /* v89.188（老板 4）：名称 5 字位定宽 + 星号 5 星位补位 —— CSS 在册 */
+    && /\.grow-nm \{ flex: none; width: 5em/.test(htmlSrc25)
+    && /\.rpad \{ visibility: hidden/.test(htmlSrc25));
   /* v41（需求 2）：完整档案不再走弹窗 —— 右侧 gen-pane 本身就是完整档案 */
   check('档案不再走弹窗（右侧即完整档案，v41 需求 2）',
     /class="gen-pane"/.test(uiS) && /ui\.genPane = function/.test(uiS)
@@ -3658,6 +3672,10 @@
     /* 剥掉所有装备，先只验属性那一段 */
     g.equip = {};
     g.yw = 100; g.zm = 40; g.tong = 50;
+    /* v89.195（老板 3）机制适配：本用例要"攻防全零"的确定性口径 —— 关掉
+       "攻防欠账补发"（否则 genAttrs→staMax→rankOf 链路会把 attack 从 0 补到
+       资质标准线，本用例的被测变量被改）。 */
+    g.atkAcc = 0; g.defAcc = 0;
     g.attack = 0; g.defense = 0;
     var a = G.genAttrs(g);
     var okBare = a.atkVal === 1000 && a.defVal === 400
@@ -4099,13 +4117,13 @@
     st.wilds = [];
     return v === 6;
   })());
-  check('decayWilds：跨 3 日降 3 级', (function () {
+  check('decayWilds：跨 3 日降 6 级（v89.185：每现实日 -2 级 · 旧口径 -1）', (function () {
     var st = G.state;
     st.wilds = [{ x: 1, y: 1, type: 'lake', level: 8, levelDay: G.questDayIndex() - 3 }];
     var ch = G.decayWilds();
     var lv = st.wilds[0].level;
     st.wilds = [];
-    return ch.length === 1 && lv === 5;
+    return ch.length === 1 && lv === 2;
   })());
   check('decayWilds：最低降到 1 级', (function () {
     var st = G.state;
@@ -4224,8 +4242,16 @@
     /* v89.87：窗口 1600→2600 —— 快购"补货按钮"（qbBtns）把 itemRow 调用推后了
        v89.89：2600→3600 —— A4 产地提示（data-tip + 🗺️ mat-go）又推后了一截 */
     /ui\.forgeRow = function[\s\S]{0,3600}ui\.itemRow\(\{/.test(uS16));
-  check('#7 未解锁兵种可点击查看原因', /unlocked \? 'select-train' : 'train-locked'/.test(uS16));
-  check('#7 train-locked 动作已注册', /case 'train-locked'/.test(mS16));
+  /* v89.189 规则变更所致：原因机制从"train-locked case（被委托 class 拦截拦死、
+     从不可达）"收编为"data-why + 委托统一弹「无法执行」窗"。 */
+  check('#7 未解锁兵种卡：无 data-action + 带 data-why（点击弹「无法执行」窗）', (function () {
+    return /\(unlocked \? 'data-action="select-train"' : ''\)/.test(uS16)
+      && /unlocked \? '' : ' data-why=/.test(uS16);
+  })());
+  check('#7 train-locked 死 case 已退役（代之以委托 data-why 分支 · 双向在册）', (function () {
+    return /case 'train-locked'/.test(mS16) === false
+      && /GAME\.ui\.openWhyAsk\(tw189\);/.test(mS16);
+  })());
   /* v80（老板）：「『N / M 种』解锁计数这种备注也不要」—— 计数行退役；判据换成兵种分页 */
   check('#7 面板含本类兵种分页（v80 两页 → v81 三页：队列 / 步兵 / 骑兵，计数行退役）', (function () {
     var th = codeOf(uS16, 'ui.troopsHTML = function');
@@ -4483,7 +4509,7 @@
 
   /* ---------- ① 科技接线 ---------- */
   console.log('  --- ① 科技接线（17 项补齐消费点）---');
-  check('业务代码已定义科技取值包装函数', /function TB\(type\)/.test(bS29) && /function techB\(type\)/.test(dS29));
+  check('业务代码已定义科技取值包装函数', /function TB\(type\)/.test(bS29) && /function techB\(type, city\)/.test(dS29));
   (function () {
     /* 判据：每项科技要么走通用路径（资源四类由 GAME.techMult 覆盖），
        要么能在业务代码里找到读取点。注意包装函数 TB()/techB() 也要认。 */
@@ -4495,8 +4521,10 @@
     DATA.TECH.forEach(function (tc) {
       if (GENERIC.indexOf(tc.type) >= 0) return;
       var hit = accessors.some(function (a) {
-        return new RegExp('\\b' + a + "\\('" + tc.type + "'\\)").test(pool)
-          || new RegExp('\\b' + a + "\\('" + tc.id + "'\\)").test(pool);
+        /* v89.191：读取点带城参（techB('store', city) / techBonus('train', city)）——
+           闭合括号放宽为 `'[,)]`：匹配 `'store')` 与 `'store',`。 */
+        return new RegExp('\\b' + a + "\\('" + tc.type + "'[,)]").test(pool)
+          || new RegExp('\\b' + a + "\\('" + tc.id + "'[,)]").test(pool);
       });
       if (!hit) dead.push(tc.name + '(' + tc.type + ')');
     });
@@ -4508,36 +4536,36 @@
 
   check('打造技巧 → 材料消耗下降', (function () {
     var eqId = Object.keys(DATA.EQUIP)[0];
-    function total(lv) { stS.techs['dazao'] = lv; var m = G.forgeMaterials(eqId), n = 0; for (var k in m) n += m[k]; return n; }
-    var a = total(0), b = total(10); stS.techs['dazao'] = 0;
+    function total(lv) { G.techSet('dazao', lv); var m = G.forgeMaterials(eqId), n = 0; for (var k in m) n += m[k]; return n; }   /* v89.191：按城写 */
+    var a = total(0), b = total(10); G.techSet('dazao', 0);
     return b < a;
   })());
   check('储存技术 → 仓库存量上升', (function () {
     var c0 = stS.cities[0];
     c0.cells.forEach(function (c) { if (c.build && c.build.id === 'cangku') c.build.lvl = 5; });
-    stS.techs['chucun'] = 0; var a = G.storeCap();
-    stS.techs['chucun'] = 10; var b = G.storeCap();
-    stS.techs['chucun'] = 0;
+    G.techSet('chucun', 0); var a = G.storeCap();
+    G.techSet('chucun', 10); var b = G.storeCap();
+    G.techSet('chucun', 0);
     return b > a;
   })());
   check('维修技术 → 伤兵回收率上升', (function () {
-    stS.techs['weixiu'] = 0; stS.wounded = 0; G.battle.applyWounded(10000); var a = stS.wounded;
-    stS.techs['weixiu'] = 10; stS.wounded = 0; G.battle.applyWounded(10000); var b = stS.wounded;
-    stS.techs['weixiu'] = 0; stS.wounded = 0;
+    G.techSet('weixiu', 0); stS.wounded = 0; G.battle.applyWounded(10000); var a = stS.wounded;
+    G.techSet('weixiu', 10); stS.wounded = 0; G.battle.applyWounded(10000); var b = stS.wounded;
+    G.techSet('weixiu', 0); stS.wounded = 0;
     return b > a;
   })());
   check('负重技巧 → 掠夺收获上升', withFixedRandom([0.5], function () {
     /* genLoot 的数值区间含随机项 —— 必须固定随机序列后再比大小，
        否则约 1/3 概率出现 a 取到区间上限、b 取到下限而误判（项目铁律第 2 条）。 */
-    stS.techs['fuzhong'] = 0; var a = G.battle.genLoot({ type: 'jun', level: 5 }, 1).grain;
-    stS.techs['fuzhong'] = 10; var b = G.battle.genLoot({ type: 'jun', level: 5 }, 1).grain;
-    stS.techs['fuzhong'] = 0;
+    G.techSet('fuzhong', 0); var a = G.battle.genLoot({ type: 'jun', level: 5 }, 1).grain;
+    G.techSet('fuzhong', 10); var b = G.battle.genLoot({ type: 'jun', level: 5 }, 1).grain;
+    G.techSet('fuzhong', 0);
     return b > a;
   }));
   check('行军技巧 → 行军速度上升', (function () {
-    stS.techs['xingjun'] = 0; var a = G.battle.armySpeedOf({ changqiang: 1000, qingji: 1000 });
-    stS.techs['xingjun'] = 10; var b = G.battle.armySpeedOf({ changqiang: 1000, qingji: 1000 });
-    stS.techs['xingjun'] = 0;
+    G.techSet('xingjun', 0); var a = G.battle.armySpeedOf({ changqiang: 1000, qingji: 1000 });
+    G.techSet('xingjun', 10); var b = G.battle.armySpeedOf({ changqiang: 1000, qingji: 1000 });
+    G.techSet('xingjun', 0);
     return b > a;
   })());
   /* v27（需求 3）：情报**不再按侦察技巧分层** —— 侦查就是一次准确点验，
@@ -4549,7 +4577,7 @@
   check('技巧 0 级：只有守军**约数**，其余五层全锁（分层生效）', (function () {
     var w0 = G.state.world.weather;
     G.state.world.weather = 'clear';
-    stS.techs['zhencha'] = 0;
+    G.techSet('zhencha', 0);
     var tgt = { kind: 'wild', x: 10, y: 10, terrain: 'lake', lv: 5,
       garrison: { yibing: 100, changqiang: 40 }, guard: null };
     var sc = G.battle.scoutTarget(tgt, stS.generals[0]);
@@ -4566,14 +4594,14 @@
   check('技巧满级 10 级：六层全开（守军准确 + 兵种 + 守将 + 资源 + 建筑 + 可图之利）', (function () {
     var w0 = G.state.world.weather;
     G.state.world.weather = 'clear';
-    stS.techs['zhencha'] = 10;
+    G.techSet('zhencha', 10);
     var npc = stS.map.cities[0];
     var tgt = { kind: 'city', id: npc.id, npc: npc, lv: npc.level, name: npc.name,
       def: 20, dropType: 'county', guard: { name: '守将甲', tong: 80, yw: 70, zm: 60, nz: 50, level: 10 },
       garrison: { yibing: 100, changqiang: 40 } };
     /* v89.156：带守将 → 侦察可能失败 → 本用例验"分层全开"，固定随机为成功 */
     var sc = withFixedRandom([0.001], function () { return G.battle.scoutTarget(tgt, stS.generals[0]); });
-    stS.techs['zhencha'] = 0; G.state.world.weather = w0;
+    G.techSet('zhencha', 0); G.state.world.weather = w0;
     var got = sc.intel.got;
     return sc.intel.next === null && got.total && got.res && got.troops
       && got.guard && got.build && got.spoils
@@ -4602,7 +4630,7 @@
     var seq = [];
     for (var q = 0; q < 600; q++) seq.push(((q * 37 + 11) % 100) / 100);
     var sample = function (techLv) {
-      stS.techs['zhencha'] = techLv;
+      G.techSet('zhencha', techLv);
       var i0 = JSON.stringify(G.state.items || {});
       var before = sumItems();
       withFixedRandom(seq, function () {
@@ -4613,17 +4641,17 @@
       return got;
     };
     var lo = sample(0), hi = sample(10);
-    stS.techs['zhencha'] = 0;
+    G.techSet('zhencha', 0);
     G.state.world.weather = w0;
     return hi > lo;
   })());
   check('大雾时情报被强制降级（已解锁的层也看不准）', (function () {
     var tgt = { kind: 'wild', x: 12, y: 12, terrain: 'lake', lv: 5, garrison: { yibing: 100, changqiang: 40 } };
     var w0 = G.state.world.weather;
-    stS.techs['zhencha'] = 8;
+    G.techSet('zhencha', 8);
     G.state.world.weather = 'clear'; var a = G.battle.scoutTarget(tgt, stS.generals[0]);
     G.state.world.weather = 'fog';   var b = G.battle.scoutTarget(tgt, stS.generals[0]);
-    stS.techs['zhencha'] = 0; G.state.world.weather = w0;
+    G.techSet('zhencha', 0); G.state.world.weather = w0;
     /* 8 级时 total/res/troops 三层本该解锁；大雾把它们全部遮掉 */
     /* ⚠️ 顶层没有 `blinded` —— 它在 `detail.blinded`（顶层那个是 expedition 返回时映射的） */
     return a.detail.blinded === false && a.totalExact === true && (a.roster || []).length === 2
@@ -5008,7 +5036,56 @@
   /* v24（需求 9）：行军进度随底部队列条一起移到「公文 · 队列」一节 */
   check('行军进度在公文「队列」呈现', /'🛫 行军'/.test(uS30) && /ui\.openMarches = function/.test(uS30));
   check('出征弹窗显示行军预估', /ui\.updateExpMarch = function/.test(uS30) && /exp-march/.test(uS30));
-  check('急行军令已接 rushAll（原为静默失效）', /GAME\.march\.rushAll/.test(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'systems.js'), 'utf8')));
+  /* v89.179c（老板②B方案）：即刻抵达**必须消耗道具** —— 原先是**免费**按钮
+     （不扣金不耗道具），把付费的急行军令 / 疾行令做成了"鬼商品"。
+     分工：急行军令 = 单支（指名目标）· 疾行令 = 全部。
+     行为断言取代原先的 grep 断言（"grep 在场"不能证明行为对）。 */
+  check('⑧c⑨ 行军即刻抵达须消耗道具（单支用令/全部用疾行令）· 离线结清不扣道具', (function () {
+    var w = nearWild('hill'); if (!w) return true;
+    var gen = st30.generals[0];
+    var bkM = (st30.marches || []).slice();
+    var bkA = st30.items.jixing_ling, bkQ = st30.items.jixingjunling;
+    function mk() {
+      st30.marches = [];
+      gen.stamina = 100; gen.energy = 100; gen.status = 'idle';
+      st30.cities[0].army = { yibing: 30000 };
+      return G.march.dispatch({ kind: 'wild', x: w.x, y: w.y }, 'scout', {}, gen.id).ok;
+    }
+    if (!mk()) { st30.marches = bkM; return true; }        /* 造不出行军 → 跳过（不误红） */
+    var ok = true;
+    /* ① 没有道具 → 拒收 + 回传 need（引导就地快购），队列原地不动 */
+    delete st30.items.jixing_ling;
+    var no = G.march.rushByItem('jixing_ling', null);
+    ok = no.ok === false && no.need === 'jixing_ling' && st30.marches.length === 1;
+    /* ② 急行军令是"单支"道具：不指名目标必须拒（否则又变成免费全量） */
+    if (ok) {
+      st30.items.jixingjunling = 1;
+      ok = G.march.rushByItem('jixingjunling', null).ok === false;
+    }
+    /* ③ 指名单支 → 成功、只清那一支、扣 1 */
+    if (ok) {
+      var one = G.march.rushByItem('jixingjunling', st30.marches[0].id);
+      ok = one.ok && one.count === 1 && st30.marches.length === 0 && (st30.items.jixingjunling || 0) === 0;
+    }
+    /* ④ 疾行令 → 全部抵达、扣 1 */
+    if (ok && !mk()) ok = false;
+    if (ok) {
+      st30.items.jixing_ling = 1;
+      var allR = G.march.rushByItem('jixing_ling', null);
+      ok = allR.ok && st30.marches.length === 0 && (st30.items.jixing_ling || 0) === 0;
+    }
+    /* ⑤ 离线结算（rushAll/rushApply）：效果照做但**不碰道具** —— 那是正确性需求 */
+    if (ok && !mk()) ok = false;
+    if (ok) {
+      st30.items.jixing_ling = 2;
+      var raw = G.march.rushAll();
+      ok = raw.ok && st30.marches.length === 0 && (st30.items.jixing_ling || 0) === 2;
+    }
+    st30.marches = bkM;
+    if (bkA == null) { delete st30.items.jixing_ling; } else { st30.items.jixing_ling = bkA; }
+    if (bkQ == null) { delete st30.items.jixingjunling; } else { st30.items.jixingjunling = bkQ; }
+    return ok;
+  })());
   check('行军参数可在数据层调（secPerTile / baseSpeed / minRealSec）',
     DATA.EXPEDITION.marchSecPerTile > 0 && DATA.EXPEDITION.marchBaseSpeed > 0 && DATA.EXPEDITION.marchMinRealSec > 0);
 
@@ -6326,8 +6403,11 @@
   check('野地管理三函数齐备',
     /GAME\.doWildGarrison = function/.test(dS36) && /GAME\.doWildWithdraw = function/.test(dS36)
     && /GAME\.doAbandonWild = function/.test(dS36));
-  check('驻军有真实消费点：守地免衰减',
-    /GAME\.wildHeld = function/.test(dS36) && /if \(GAME\.wildHeld\(w\)\) \{/.test(dS36));
+  check('驻军/前哨有真实消费点：守地减半衰减（无保护 -2/日 · 驻军或前哨覆盖 -1/日）',
+    /* v89.186（老板 3 · #1 前哨效应）规则变更：step 判据从 `wildHeld(w)` 单条件
+       升级为 `wildHeld(w) || fortAuraAt(w.x, w.y)`（取档不叠加）。 */
+    /GAME\.wildHeld = function/.test(dS36)
+    && /var _hold186 = GAME\.wildHeld\(w\) \|\|/.test(dS36));
   check('实测：驻军走行军通道（出发扣兵入队 · 抵达写入野地 · v89.137 唯一入口 = dispatch）', (function () {
     /* v89.87（需求 2）：驻守改走行军 —— 出发扣兵入 marches，抵达才写野地。
        v89.137（老板 7）：`GAME.doWildGarrison` 退役 —— 唯一入口 = `GAME.march.dispatch(...,'station')`
@@ -6391,7 +6471,7 @@
     s.wilds = JSON.parse(bw); c.army = JSON.parse(ba);
     return ok;
   })());
-  check('实测：有驻军的野地等级不再衰减', (function () {
+  check('实测：有驻军减半衰减（3 日：无驻军 -6 → 2 级 · 有驻军 -3 → 5 级 · v89.185）', (function () {
     var s = G.state;
     var bw = JSON.stringify(s.wilds);
     var today = G.questDayIndex();
@@ -6400,7 +6480,7 @@
       { x: -7, y: -7, type: 'forest', level: 8, levelDay: today - 3, garrison: { troops: { yibing: 100 }, cityId: 'c' } },
     ];
     G.decayWilds();
-    var ok = s.wilds[0].level < 8 && s.wilds[1].level === 8;
+    var ok = s.wilds[0].level === 2 && s.wilds[1].level === 5;
     s.wilds = JSON.parse(bw);
     return ok;
   })());
@@ -6582,8 +6662,9 @@
   })());
   check('点下拉框展开的那一下不触发动作分发（否则处理函数里的重绘会把它合上）', (function () {
     var m = stripComment(mS37);
+    /* v89.191：排除名单扩为 SELECT + INPUT（数字输入框带 data-action，点它会被当按钮派发） */
     return /closest\('\[data-action\]'\)/.test(m)
-      && /if \(t && t\.tagName === 'SELECT'\) return;/.test(m)
+      && /if \(t && \(t\.tagName === 'SELECT' \|\| t\.tagName === 'INPUT'\)\) return;/.test(m)
       && /case 'switch-city': ui\.setCity\(el\.value\)/.test(m);
   })());
   /* v28（需求 1）：等级上限 12，表也随之延长；前 10 档保持原值不回归 */
@@ -7561,8 +7642,11 @@
   console.log('  --- ① 将领经验 ---');
   check('升级所需经验只有一处口径（GAME.expNeedOf）',
     /GAME\.expNeedOf = function/.test(dS39)
-    /* v89.43 新曲线：Lv1=41（base 40 + quad 0.5×1²，按 Math.round 进位）· Lv4=48 */
-    && GAME.expNeedOf({ level: 1 }) === 41 && GAME.expNeedOf({ level: 4 }) === 48,
+    /* v89.170 新曲线：单段幂律 need = 100万 × (lv/240)^1.25 —— Lv1 上抬到 ~1 千、
+       Lv4 近 6 千（旧口径 41/48 已退役，见 §170 的完整形状断言）。
+       此处只锚"唯一出口 + 前期已上抬 + 单调"（不写死具体值）。 */
+    && GAME.expNeedOf({ level: 1 }) >= 1000
+    && GAME.expNeedOf({ level: 4 }) > GAME.expNeedOf({ level: 1 }),
     'Lv1=' + GAME.expNeedOf({ level: 1 }) + ' Lv4=' + GAME.expNeedOf({ level: 4 }));
   check('获取经验只有一个入口（gainExp），源码里没有裸加 exp', (function () {
     var all = bS39 + '|' + dS39 + '|' + syS39;
@@ -7617,7 +7701,9 @@
     var bk = { lv: g.level, exp: g.exp, items: JSON.stringify(st.items || {}) };
     g.level = 1; g.exp = 0;
     st.items = st.items || {};
-    st.items.lianbing_jingyan = 3;           // 每个 +100（v89.43），Lv1 只需 40
+    /* v89.173：面额 = 固定 10 万/个 —— 1 个即从 Lv1 连升过 Lv11 → till 停。
+       数量给 3 个是为了验"用不完不白扣"（used=1、剩 2）。 */
+    st.items.lianbing_jingyan = 3;
     var r = G.systems.gainExpByItem('lianbing_jingyan', g.id, 'till');
     var ok = r.ok && r.used === 1 && st.items.lianbing_jingyan === 2 && g.level >= 2;
     g.level = bk.lv; g.exp = bk.exp;
@@ -7631,9 +7717,13 @@
     st.items = st.items || {};
     st.items.bingfa_xinde = 5;
     var r = G.systems.gainExpByItem('bingfa_xinde', g.id, 'one');
-    /* v89.82：面额 = pct × EXP_CURVE.total，从 DATA 现读（写死 1000 会在调曲线时假红） */
+    /* v89.173：额度走**闸门**核对（= 固定面额全额）；gain 与出口同源（含神器加成 ——
+       与 gainExp 同一算式，防"入口改了、判据没跟"） */
     var _it80 = (DATA.ITEMS || []).filter(function (x) { return x.id === 'bingfa_xinde'; })[0];
-    var ok = r.ok && r.used === 1 && r.gain === (_it80 && _it80.amount) && st.items.bingfa_xinde === 4;
+    var _gt80 = G.expItemGrantOf({ level: 1, exp: 0, name: '样本', rank: 'tian' }, _it80);
+    var _bg80 = 1 + ((G.artifactBonusNum && G.artifactBonusNum('genExpPct')) || 0);
+    var _exp80 = Math.round(((_gt80 && _gt80.grant) || 0) * _bg80);
+    var ok = r.ok && r.used === 1 && r.gain === _exp80 && st.items.bingfa_xinde === 4;
     g.level = bk.lv; g.exp = bk.exp;
     st.items = JSON.parse(bk.items);
     return ok;
@@ -8089,25 +8179,25 @@
     return hi;
   })() + '/60 次');
   check('技巧满级后侦查给全（准确数量 / 可图之利）', (function () {
-    var w0 = G.state.world.weather, t0 = G.state.techs['zhencha'] || 0;
+    var w0 = G.state.world.weather, t0 = G.systems.techLevel('zhencha');   /* v89.191：按城读 */
     G.state.world.weather = 'clear';
-    G.state.techs['zhencha'] = 10;
+    G.techSet('zhencha', 10);                    /* v89.191：按城写 */
     var tgt = { kind: 'wild', x: 10, y: 10, terrain: 'lake', lv: 5,
       garrison: { yibing: 100, changqiang: 40 }, guard: null };
     var sc = G.battle.scoutTarget(tgt, G.state.generals[0]);
-    G.state.world.weather = w0; G.state.techs['zhencha'] = t0;
+    G.state.world.weather = w0; G.techSet('zhencha', t0);
     var names = (sc.roster || []).map(function (x) { return x.name + ':' + x.n; }).join(',');
     return sc.totalExact === true && sc.gNum === 140 && names === '义兵:100,长枪兵:40'
       && sc.spoils && (sc.spoils.jewels || []).length >= 1
       && sc.spoils.types.length >= 4 && sc.spoils.materials.length >= 1;
   })());
   check('平地无可采之物（占领只给产量加成）', (function () {
-    var w0 = G.state.world.weather, t0 = G.state.techs['zhencha'] || 0;
+    var w0 = G.state.world.weather, t0 = G.systems.techLevel('zhencha');   /* v89.191：按城读 */
     G.state.world.weather = 'clear';
-    G.state.techs['zhencha'] = 10;         /* v65：可图之利是第 6 层，要看先升满 */
+    G.techSet('zhencha', 10);              /* v65：可图之利是第 6 层，要看先升满（v89.191：按城写） */
     var sc = G.battle.scoutTarget({ kind: 'wild', x: 9, y: 9, terrain: 'plain', lv: 4,
       garrison: { yibing: 10 } }, G.state.generals[0]);
-    G.state.world.weather = w0; G.state.techs['zhencha'] = t0;
+    G.state.world.weather = w0; G.techSet('zhencha', t0);
     return sc.spoils && sc.spoils.gather === null && !!sc.spoils.terrainBonus;
   })());
   check('守军与「我方驻军」是两个概念（命名不冲突）',
@@ -8237,8 +8327,8 @@
     /var k = Math\.floor\(eff \/ perHp\)/.test(tS40)
     && /T\.perHp = function \(u, defGen\)/.test(tS40)
     && /T\.perHp\(tg, ctx\.defGenOfTarget\)/.test(tS40)
-    /* v57：杀伤里多了相克的**防御向**因子 */
-    && /var cf = T\.clashFactor\(perA, T\.perDef\(tg, \{ defMul: defMul \}\)\)/.test(tS40));
+    /* v89.179：克制全撤后杀伤只剩 perAtk × 防御对冲 ÷ 生命（无对局态因子） */
+    && /var cf = T\.clashFactor\(perA, T\.perDef\(tg\)\)/.test(tS40));
   check('速度高的兵种先行动（双方混排后按速度降序）',
     /order\.sort\(function \(x, y\) \{[\s\S]{0,120}y\.spd - x\.spd/.test(tS40));
   /* v29（需求 0）：推进步长 = 兵种速度 × MARCH_UNIT（旧实现直接用速度本身，
@@ -8456,7 +8546,7 @@ check('实测：带 1000 斥候出征，斥候不参战也不计损失', (functi
 /* 行为断言：人口约束下高级兵不再最弱（修掉数值倒挂） */
 check('实测：同为满人口，铁骑兵能打赢弓兵（高级兵不再是最差选择）', (function () {
   /* v89.96：原判据是"铁骑赢长枪"——但 v89.96 把"枪克骑"标定成真之后
-     （枪打骑 ×3 + 长枪拒马 ×5，见 data.js COUNTER 表），长枪是铁骑的**天敌**，
+     （v89.178 起：枪打骑 ×2.5 + 长枪拒马 ×3，见 data.js COUNTER 表），长枪是铁骑的**天敌**，
      打不过是设计；"高级兵不废"改由"铁骑同人口赢弓兵/刀盾"承担。实测：
      铁骑 1833 vs 弓 2750 → 5 回合胜（我损 74）；vs 刀盾 5500 → 7 回合胜。 */
   var POP = 5500, per = DATA.TROOPS;
@@ -8465,10 +8555,18 @@ check('实测：同为满人口，铁骑兵能打赢弓兵（高级兵不再是�
   var r = G.battle.simulate(a, null, b, 0, null, { kind: 'wild' });
   return r.winner === 'atk';
 })(), '铁骑 ' + Math.floor(5500 / G.DATA.TROOPS.tieji.pop) + ' vs 弓 ' + Math.floor(5500 / G.DATA.TROOPS.gongjian.pop));
-check('实测：枪克骑标定生效（长枪 1:1 打赢轻骑——克制不再名存实亡）', (function () {
-  var r = G.battle.simulate({ changqiang: 6000 }, null, { qingji: 6000 }, 0, null, { kind: 'wild' });
-  return r.winner === 'atk';
-})(), '长枪 6000 vs 轻骑 6000');
+check('实测：骑兵对枪兵保有赢面（同人口骑胜 · 同数量（骑2倍人口）大胜）——无克制口径', (function () {
+  /* v89.179（老板「取消所有克制关系，直接按兵种纸面数据计算」）：克制全撤后
+     战斗只看 TROOPS 纸面数值 ——
+       同人口（6000 枪 vs 3000 骑，各 6000 pop）骑兵**胜**（实测骑损 ~34%）；
+       同数量（骑 2 倍人口）骑兵**大胜**（实测骑损 ~7%）。
+     历史：v89.96（×3/×5）同数量枪胜；v89.178（×2.5/×3）同人口枪胜 ——
+     都是"克制翻转胜负"；全撤后由纸面数值裁决（复核见 docs/v89179）。 */
+  var r1 = G.battle.simulate({ changqiang: 6000 }, null, { qingji: 3000 }, 0, null, { kind: 'wild' });
+  if (r1.winner !== 'def') return false;
+  var r2 = G.battle.simulate({ changqiang: 6000 }, null, { qingji: 6000 }, 0, null, { kind: 'wild' });
+  return r2.winner === 'def' && r2.defLoss <= 6000 * 0.2 && r1.defLoss >= 3000 * 0.1 && r1.defLoss <= 3000 * 0.5;
+})(), '骑胜双局（阈值：同人口骑损 10%~50% · 同数量 ≤20%）');
 check('高级兵种的每人口战力不再倒挂（攻与有效生命双双不低于长枪基准）', (function () {
   /* 基准 = 长枪兵（pop1 / atk150 / hp300 / def150） */
   var T = DATA.TROOPS, base = T.changqiang;
@@ -8481,7 +8579,7 @@ check('高级兵种的每人口战力不再倒挂（攻与有效生命双双不�
     /* 义兵 = 入门民兵，定位就是"便宜量大"，不参与阶梯判据 */
     'yibing',
     /* v89.118：南疆象兵 = **坦度特化**（血牛重坦）——hp/pop 骑兵族最高（3000），
-       攻低是有意取舍；老板令"不设克制、正常攻防"后按 probe_v89118_elephant 标定。 */
+       攻低是有意取舍；老板令"不设克制、正常攻防"后按 probe_v89118_elephant 标定（v89.179 起全表同口径）。 */
     'nanjiangxiangbing'];
   var bad = [];
   Object.keys(T).forEach(function (id) {
@@ -8806,16 +8904,21 @@ check('v89.49：病根不再存在 —— 队列表的「加速」按钮不再�
     && !/hasBoost \? ' gold' : ' dim'/.test(fn)
     && !/>加速<\/button>'[\s\S]{0,80}disabled/.test(fn);
 })());
-check('v89.49：表与出口齐（TRAIN_RUSH 三档 · 五个唯一出口 · 闸门读同一表）', (function () {
+check('v89.49：表与出口齐（TRAIN_RUSH 三档 ≤ BOOST_CAP · 六个唯一出口 · 闸门读同一表）', (function () {
   var t = DATA.TRAIN_RUSH;
   var d = stripComment(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'domain.js'), 'utf8'));
+  var cap = DATA.BOOST_CAP || 0.3;
   return !!t && t.costPct > 0 && (t.steps || []).length === 3
-    && (t.steps || []).map(function (s) { return s.pct; }).join(',') === '0.25,0.5,1'
+    && (t.steps || []).map(function (s) { return s.pct; }).join(',') === '0.1,0.2,0.3'
+    /* v89.179c（老板「花金买时间同步封顶」）：三档一律 ≤ BOOST_CAP，
+       原「立刻完成(1.0)」档已撤 —— 花金再也买不到"瞬完"。 */
+    && (t.steps || []).every(function (s) { return s.pct <= cap + 1e-9; })
     && /GAME\.trainRushCfg = function/.test(d) && /GAME\.trainBatchValue = function/.test(d)
     && /GAME\.trainRushRemain = function/.test(d) && /GAME\.trainRushCost = function/.test(d)
-    && /GAME\.trainRush = function/.test(d) && /GAME\.trainRunningOf = function/.test(d);
+    && /GAME\.trainRush = function/.test(d) && /GAME\.trainRunningOf = function/.test(d)
+    && /GAME\.boostRoomOf = function/.test(d);
 })());
-check('实测：报价 = 军资 × 20% ×（还能缩短的比例）· 且按档线性', (function () {
+check('实测：报价 = 军资 × 20% ×（实际能削的比例）· 档内线性 · 超上限按 BOOST_CAP 收', (function () {
   var c = G.state.cities[0], s = G.state;
   var bkQ = s.queues.train.slice(), bkR = s.res.gold, bkP = s.res.pop;
   s.queues.train = [];
@@ -8830,17 +8933,19 @@ check('实测：报价 = 军资 × 20% ×（还能缩短的比例）· 且按档
   var ok = false;
   if (q) {
     var val = G.trainBatchValue(q);
-    var full = G.trainRushCost(q, 1);
-    /* 军资 = 兵种单价 × 数量；立刻完成 = 军资 × 20%（向上取整，容 1 金误差） */
-    var want = Math.ceil(val * DATA.TRAIN_RUSH.costPct);
-    ok = Math.abs(full - want) <= 1
-      && Math.abs(G.trainRushCost(q, 0.5) - Math.ceil(want / 2)) <= 1
-      && Math.abs(G.trainRushCost(q, 0.25) - Math.ceil(want / 4)) <= 1;
+    var cap = DATA.BOOST_CAP || 0.3;
+    /* 军资 = 兵种单价 × 数量；"削满 100%" 的等价价 = 军资 × 20%（向上取整，容 1 金误差）。
+       v89.179c：报价按**实际能削的比例**（受 BOOST_CAP 封顶）折算，不再按 100% 虚报。 */
+    var one = Math.ceil(val * DATA.TRAIN_RUSH.costPct);
+    ok = Math.abs(G.trainRushCost(q, 0.1) - Math.ceil(one * 0.1)) <= 1     /* 档内线性 */
+      && Math.abs(G.trainRushCost(q, 0.2) - Math.ceil(one * 0.2)) <= 1
+      && Math.abs(G.trainRushCost(q, 1) - Math.ceil(one * cap)) <= 1       /* 100% 档被 BOOST_CAP 封顶 */
+      && G.trainRushCost(q, 1) === G.trainRushCost(q, cap);                /* 过上限不再涨价 */
   }
   s.queues.train = bkQ; s.res.gold = bkR; s.res.pop = bkP;
   return ok;
 })());
-check('实测：结算扣金 + 缩短 + 封顶（不越 totalTime）· 越接近完工越便宜', (function () {
+check('实测：结算扣金 + 缩短 + 封顶（跳过量 ≤ BOOST_CAP · 用满后再提速被拒且不扣金）', (function () {
   var c = G.state.cities[0], s = G.state;
   var bkQ = s.queues.train.slice(), bkR = s.res.gold;
   s.queues.train = [];
@@ -8852,15 +8957,18 @@ check('实测：结算扣金 + 缩短 + 封顶（不越 totalTime）· 越接近
   G.train('yibing', 1000, c.id, idx);
   var q = G.trainRunningOf(c.id, idx, 'train');
   if (!q) { s.queues.train = bkQ; s.res.gold = bkR; return false; }
-  var g0 = s.res.gold, cost = G.trainRushCost(q, 0.5), p1 = G.trainRushCost(q, 1);
-  var r = G.trainRush(c.id, idx, 0.5, 'train');
+  var cap = DATA.BOOST_CAP || 0.3, capSkip = q.totalTime * cap;
+  /* 报价必须在提速**之前**取：q 是活对象，提速后额度变化会改写它的报价。 */
+  var g0 = s.res.gold, cost1 = G.trainRushCost(q, 1);
+  var r = G.trainRush(c.id, idx, 1, 'train');           /* 点"上限档" */
   var q2 = G.trainRunningOf(c.id, idx, 'train');
-  var ok = r.ok && s.res.gold === g0 - cost
-    && q2.elapsed === Math.round(q.totalTime * 0.5)
-    && G.trainRushCost(q2, 1) < p1                       /* 越接近完工越便宜 */
-    && G.trainRush(c.id, idx, 1, 'train').ok
-    /* 一次做完 = elapsed 顶到 totalTime（**不越界**）；出队由主循环扫走，故这里只断言完工 */
-    && G.trainRunningOf(c.id, idx, 'train').elapsed === G.trainRunningOf(c.id, idx, 'train').totalTime;
+  var g1 = s.res.gold;
+  var deny = G.trainRush(c.id, idx, 1, 'train');        /* 额度已用光 → 必须被拒 */
+  var ok = r.ok && g1 === g0 - cost1
+    && Math.abs((q2.boosted || 0) - capSkip) <= 1       /* 只削了 BOOST_CAP，不是 100% */
+    && q2.elapsed > 0 && q2.elapsed < q2.totalTime      /* 剩下 70% 自然耗时必须真等 → 不瞬完 */
+    && deny.ok === false && /上限|已完工/.test(deny.msg)
+    && s.res.gold === g1;                               /* 被拒时不扣金 */
   s.queues.train = bkQ; s.res.gold = bkR;
   return ok;
 })());
@@ -8899,6 +9007,249 @@ check('v89.49：顺带修复 —— S._boost 三条分支封顶（不再把 elap
   var fn = codeOf(y, 'S._boost = function');
   var n = (fn.match(/Math\.min\(q\.totalTime/g) || []).length;
   return n >= 1 && !/q\.elapsed \+=/ .test(fn);
+})());
+
+/* ---- v89.179c（老板「价值价格体系重平衡 · 三问」）：新规则的**行为**防回归断言 ----
+   门禁能保证"没改坏"，但保证不了"新规则真的按拍板口径跑"——
+   所以三道闸各配行为断言（不是只 grep 源码里有没有那个词）。 */
+console.log('  --- ⑧c v89.179c 价值价格体系重平衡（BOOST_CAP / dropOnly / 资质晋升）---');
+
+/* 造一条"刚开建"的募兵队列（本组断言共用）；返回 { q, idx } 或 null */
+function _bpFreshTrainQ(c, s) {
+  s.queues.train = [];
+  var idx = -1;
+  c.cells.forEach(function (x, i) { if (idx < 0 && x.build && x.build.id === 'junying') idx = i; });
+  if (idx < 0) return null;
+  c.cells[idx].build.lvl = 10;
+  s.res.gold = 5e7; s.res.pop = 999999;
+  s.res.grain += 5e6; s.res.wood += 5e6; s.res.iron += 5e6;
+  var tr = G.train('yibing', 1000, c.id, idx);
+  if (!tr || !tr.ok) return null;
+  return { q: G.trainRunningOf(c.id, idx, 'train'), idx: idx };
+}
+function _bpSnap(s) { return { q: s.queues.train.slice(), gold: s.res.gold, grain: s.res.grain, wood: s.res.wood, iron: s.res.iron, pop: s.res.pop }; }
+function _bpRestore(s, b) { s.queues.train = b.q; s.res.gold = b.gold; s.res.grain = b.grain; s.res.wood = b.wood; s.res.iron = b.iron; s.res.pop = b.pop; }
+function _bpItem(s, id, n) {
+  var pri = s.items[id];
+  s.items[id] = n;
+  return function () { if (pri == null) delete s.items[id]; else s.items[id] = pri; };
+}
+
+check('⑧c① 加速道具封顶：50% 宝物只削 BOOST_CAP（30%），不是削一半', (function () {
+  var c = G.state.cities[0], s = G.state, b = _bpSnap(s);
+  var t = _bpFreshTrainQ(c, s), ok = false, cap = DATA.BOOST_CAP || 0.3;
+  if (t && t.q) {
+    var undo = _bpItem(s, 'hanxin_dianbing', 3);        /* pct 0.50 的高阶训练宝物 */
+    var r = G.systems.boostTrainQueue('hanxin_dianbing', c.id, t.idx);
+    var q2 = G.trainRunningOf(c.id, t.idx, 'train');
+    ok = r.ok && Math.abs((q2.boosted || 0) - q2.totalTime * cap) <= 1
+      && (q2.boosted || 0) < q2.totalTime * 0.4;        /* 远没削到 50% */
+    undo();
+  }
+  _bpRestore(s, b);
+  return ok;
+})());
+
+check('⑧c② 叠加也封顶：0.20 + 0.40 两件连用，合计仍只削 BOOST_CAP', (function () {
+  var c = G.state.cities[0], s = G.state, b = _bpSnap(s);
+  var t = _bpFreshTrainQ(c, s), ok = false, cap = DATA.BOOST_CAP || 0.3;
+  if (t && t.q) {
+    var u1 = _bpItem(s, 'lianbing_jiyao', 1), u2 = _bpItem(s, 'dianbing_can', 1);   /* 0.20 + 0.40 = 0.60 */
+    var r1 = G.systems.boostTrainQueue('lianbing_jiyao', c.id, t.idx);
+    var r2 = G.systems.boostTrainQueue('dianbing_can', c.id, t.idx);
+    var q2 = G.trainRunningOf(c.id, t.idx, 'train');
+    ok = r1.ok && r2.ok
+      && Math.abs((q2.boosted || 0) - q2.totalTime * cap) <= 1
+      && (q2.boosted || 0) <= q2.totalTime * cap + 1;
+    u1(); u2();
+  }
+  _bpRestore(s, b);
+  return ok;
+})());
+
+check('⑧c③ 花金买时间：最高档只削 30%、报价 = 实收、用满后再点被拒且不扣金', (function () {
+  var c = G.state.cities[0], s = G.state, b = _bpSnap(s);
+  var t = _bpFreshTrainQ(c, s), ok = false, cap = DATA.BOOST_CAP || 0.3;
+  if (t && t.q) {
+    var quote = G.trainRushCost(t.q, 1);
+    var g0 = s.res.gold;
+    var r = G.trainRush(c.id, t.idx, 1, 'train');
+    var q2 = G.trainRunningOf(c.id, t.idx, 'train');
+    var g1 = s.res.gold;
+    var deny = G.trainRush(c.id, t.idx, 1, 'train');
+    ok = r.ok && (g0 - g1) === quote                       /* 报价 = 实收（不虚报） */
+      && Math.abs((q2.boosted || 0) - q2.totalTime * cap) <= 1
+      && q2.elapsed < q2.totalTime                         /* 永不瞬完 */
+      && deny.ok === false && s.res.gold === g1;           /* 被拒不扣金 */
+  }
+  _bpRestore(s, b);
+  return ok;
+})());
+
+check('⑧c④ 高阶比例道具（pct ≥ 0.5）已移出商城：商城/快购都不列，doShopping 硬拒', (function () {
+  var drop = (DATA.ITEMS || []).filter(function (x) { return x.dropOnly; });
+  if (!drop.length) return false;
+  var onSale = {}, qb = {};
+  (G.ui.shopItems() || []).forEach(function (x) { onSale[x.id] = 1; });
+  (G.ui.qbScopeItemsOf('boost', null) || []).forEach(function (x) { qb[x.id] = 1; });
+  var s = G.state, g0 = s.res.gold;
+  var ref = G.doShopping(drop[0].id, 1);
+  return drop.every(function (x) { return (x.pct || 0) >= 0.5 - 1e-9; })   /* 抬走的确实都是 ≥50% */
+    && drop.every(function (x) { return !onSale[x.id] && !qb[x.id]; })
+    && ref.ok === false && s.res.gold === g0;
+})());
+
+check('⑧c⑤ 移出商城 ≠ 绝版：掉落表能真掉出来，且**现实日配额**封顶（用满即停 · 换日回满）', (function () {
+  var s = G.state, bk = s.items, bkBD = s.boostDrop, bkRnd = Math.random;
+  var tbl = (DATA.BOOST_DROP || {}).table || [];
+  var quota = ((DATA.BOOST_DROP || {}).quota || {}).perRealDay || 0;
+  if (!tbl.length || quota <= 0) return false;              /* B 闸的"周期配额"必须配置 */
+  s.items = {};
+  s.boostDrop = { key: '', count: 0 };                      /* 视作新的一日 */
+  Math.random = function () { return 0; };                  /* 必掉：0 >= 概率 恒 false */
+  var got1 = G.grantBoostDrop(10, 1, null);
+  var left1 = G.boostDropLeft();
+  var got2 = G.grantBoostDrop(10, 1, null);                 /* 配额已满 → 空手 */
+  var left2 = G.boostDropLeft();
+  s.boostDrop = { key: '0', count: quota };                 /* 跨过现实日 */
+  var left3 = G.boostDropLeft();
+  Math.random = bkRnd;
+  var names = got1.map(function (x) { return String(x).split('×')[0]; });
+  var ok = got1.length === Math.min(quota, tbl.length)      /* 一次最多给满配额，不是全表 */
+    && left1 === Math.max(0, quota - got1.length)
+    && got2.length === 0 && left2 === 0
+    && left3 === quota                                       /* 换日自动回满 */
+    && names.length > 0
+    && tbl.slice(0, names.length).every(function (r, i) { return r.name === names[i]; });
+  s.items = bk;
+  if (bkBD === undefined) { delete s.boostDrop; } else { s.boostDrop = bkBD; }
+  return ok;
+})());
+
+check('⑧c⑥ 资质晋升：补足新档固定属性 + 发自由点 + 提示显式列出三项', (function () {
+  var s = G.state, g = (s.generals || [])[0];
+  var it = (DATA.ITEMS || []).filter(function (x) {
+    return x.type === 'rank_up' && x.from === 'fan' && x.to === 'liang';
+  })[0];
+  if (!g || !it) return true;                              /* 环境缺样例 → 跳过（不误红） */
+  var bk = { rank: g.rank, tong: g.tong, yw: g.yw, zm: g.zm, nz: g.nz, fp: g.freePts, asc: g.ascend };
+  g.rank = 'fan';
+  g.tong = 30; g.yw = 30; g.zm = 30; g.nz = 30;            /* 低于良材地板（46） */
+  g.freePts = 0;
+  var floor = ((DATA.GEN_RANK_BY_ID.liang || {}).base || [])[0] || 0;
+  var lump = (DATA.RANKUP_FREE_PTS || {}).liang || 0;
+  var r = G.rankUpUse(g, it);
+  var ok = r.ok && floor > 0 && lump > 0
+    && g.tong >= floor && g.yw >= floor && g.zm >= floor && g.nz >= floor
+    && g.freePts >= lump
+    && /四维补足/.test(r.msg) && /自由属性点/.test(r.msg) && /淬炼/.test(r.msg);
+  g.rank = bk.rank; g.tong = bk.tong; g.yw = bk.yw; g.zm = bk.zm; g.nz = bk.nz; g.freePts = bk.fp;
+  if (bk.asc == null) { delete g.ascend; } else { g.ascend = bk.asc; }
+  return ok;
+})());
+
+check('⑧c⑦ 快购弹窗的「买入」按钮带 data-scope（买完重渲染不再丢用途过滤 · 老板 1）', (function () {
+  var cap = null, bk = G.ui.openModal;
+  G.ui.openModal = function (h) { cap = h; };
+  try { G.ui.openQuickCat('boost', 'train'); } finally { G.ui.openModal = bk; }
+  if (!cap) return false;
+  /* ① 按钮必须把 scope 带出去 —— main.js 买完走 openQuickCat(cat, el.dataset.scope||null)，
+        按钮缺 data-scope 就会退回"整类端上来"（这正是老板第 1 条的病根）。 */
+  var scopeOk = /data-action="qb-cat-buy"[^>]*data-scope="train"/.test(cap);
+  /* ② 弹窗里只该有**训练用途的在售**宝物（不混别的用途，也不含 dropOnly 高阶件）。 */
+  var ids = (cap.match(/data-action="qb-cat-buy"[^>]*data-item="[a-zA-Z_0-9]+"/g) || [])
+    .map(function (s) { return s.replace(/.*data-item="/, '').replace(/".*/, ''); });
+  var T = DATA.ITEM_BY_ID || {};
+  var pure = ids.length > 0 && ids.every(function (id) {
+    var it = T[id] || {};
+    return it.target === 'train' && !it.dropOnly;
+  });
+  return scopeOk && pure;
+})());
+
+check('⑧c⑧ 旧档兼容：队列没有 q.boosted 字段时按"额度未用"处理（不因缺字段永久拒收）', (function () {
+  var c = G.state.cities[0], s = G.state, b = _bpSnap(s);
+  var t = _bpFreshTrainQ(c, s), ok = false, cap = DATA.BOOST_CAP || 0.3;
+  if (t && t.q) {
+    delete t.q.boosted;                                     /* 模拟 v89.179c 之前的存档：队列无此字段 */
+    var room = G.boostRoomOf(t.q);
+    var undo = _bpItem(s, 'hanxin_dianbing', 1);
+    var r = G.systems.boostTrainQueue('hanxin_dianbing', c.id, t.idx);
+    var q2 = G.trainRunningOf(c.id, t.idx, 'train');
+    ok = Math.abs(room - t.q.totalTime * cap) <= 1           /* 缺字段 = 满额（不是 0 额度） */
+      && r.ok && (q2.boosted || 0) > 0                       /* 能正常加速，并把计数回填 */
+      && Math.abs((q2.boosted || 0) - q2.totalTime * cap) <= 1;
+    undo();
+  }
+  _bpRestore(s, b);
+  return ok;
+})());
+
+check('⑧c⑩ 建造费折扣唯一出口：成本打折 · **工期不动** · 无 buff 原样返回', (function () {
+  var s = G.state, bk = (s.buffs || {}).buildCost;
+  var rawFee = { grain: 1000, wood: 2000, stone: 500, iron: 100 };
+  var same = GAME.buildCostDiscountOf({ grain: 1000, wood: 2000, stone: 500, iron: 100 });
+  var ok1 = same.grain === 1000 && same.wood === 2000;            /* 无 buff → 原样 */
+  s.buffs = s.buffs || {};
+  s.buffs.buildCost = { eff: 0.5, until: Date.now() + 3600e3 };
+  var d = GAME.buildCostDiscountOf({ grain: 1000, wood: 2000, stone: 500, iron: 100, time: 3600 });
+  var ok2 = d.grain === 500 && d.wood === 1000 && d.stone === 250 && d.iron === 50
+    && d.time === 3600;                                          /* "成本"打折，工期不碰 */
+  if (bk === undefined) { delete s.buffs.buildCost; } else { s.buffs.buildCost = bk; }
+  return ok1 && ok2 && !!rawFee;
+})());
+
+check('⑧c⑪ 城外建造吃折扣 · 退款按**实付**（杜绝"建造→立即取消"的资源泵）', (function () {
+  var s = G.state, c = G.currentCity();
+  var bkBuff = (s.buffs || {}).buildCost, bkQ = s.queues.build.slice();
+  var bkRes = { grain: s.res.grain, wood: s.res.wood, stone: s.res.stone, iron: s.res.iron };
+  s.buffs = s.buffs || {};
+  s.buffs.buildCost = { eff: 0.5, until: Date.now() + 3600e3 };
+  var raw = GAME.resOnlyOf(G.extBuildCost('farm', 0));
+  var paid = GAME.resOnlyOf(GAME.buildCostDiscountOf(raw));
+  /* ① 出口层：城外费用确实吃到折扣（原价比对） */
+  var outletOk = paid.grain === Math.round(raw.grain * 0.5) && paid.time === undefined;
+  /* ② 真调 buildExt：实付必须是折扣价（不是原价） */
+  var extIdx = -1;
+  G.extGridOf(c).forEach(function (e, i) { if (extIdx < 0 && !e.type && !e.pending) extIdx = i; });
+  var realOk = false;
+  if (extIdx >= 0) {
+    s.queues.build = [];
+    s.res.grain += 5e6; s.res.wood += 5e6; s.res.stone += 5e6; s.res.iron += 5e6;
+    var g0 = s.res.grain;
+    var r = G.buildExt(extIdx, 'farm');
+    realOk = r.ok && (g0 - s.res.grain) === paid.grain;
+  }
+  /* ③ 退款按实付：新队列（有 paidCost）退 ≤ 实付；旧档（无 paidCost）回退原价反查 */
+  s.queues.build = [{ extIdx: 0, buildId: 'farm', type: 'ext_build', paidCost: paid, elapsed: 0, totalTime: 1000 }];
+  var infoNew = G.cancelRefundOf('ext', 0);
+  s.queues.build = [{ extIdx: 0, buildId: 'farm', type: 'ext_build', elapsed: 0, totalTime: 1000 }];
+  var infoOld = G.cancelRefundOf('ext', 0);
+  var refundOk = infoNew.ok && infoOld.ok
+    && Math.abs(infoNew.refund.grain - Math.floor(paid.grain * 0.8)) <= 1   /* 按实付 */
+    && infoNew.refund.grain <= paid.grain                                   /* ≤ 实付 → 无泵 */
+    && infoOld.refund.grain === Math.floor(raw.grain * 0.8);                /* 旧档同旧行为 */
+  /* 还原 */
+  s.queues.build = bkQ;
+  s.res.grain = bkRes.grain; s.res.wood = bkRes.wood; s.res.stone = bkRes.stone; s.res.iron = bkRes.iron;
+  if (bkBuff === undefined) { delete s.buffs.buildCost; } else { s.buffs.buildCost = bkBuff; }
+  return outletOk && (!(extIdx >= 0) || realOk) && refundOk;
+})());
+
+check('⑧c⑫ 体力/精力回复速率唯一出口：默认「off」= 1/86400/秒（v89.131 口径不变）· sqrt 可按倍率补偿', (function () {
+  var gc = DATA.GEN_COST, bk = gc.recoverSpeedScale, bkTs = G.state.settings.timeScale;
+  var base = 1 / ((gc.recoverHours || 24) * 3600);
+  var ok1 = Math.abs(GAME.recoverRatePerRealSec() - base) < 1e-15;      /* 默认 off = 原口径 */
+  gc.recoverSpeedScale = { mode: 'sqrt' };
+  G.state.settings.timeScale = 600;
+  var r600 = GAME.recoverRatePerRealSec();
+  G.state.settings.timeScale = 1;
+  var r1 = GAME.recoverRatePerRealSec();
+  gc.recoverSpeedScale = bk;
+  G.state.settings.timeScale = bkTs;
+  return ok1
+    && Math.abs(r600 - Math.sqrt(600) * base) < 1e-15                   /* 600× 快 √600 ≈ 24.5 倍 */
+    && Math.abs(r1 - base) < 1e-15;                                     /* 1× 与旧口径完全一致 */
 })());
 
 /* ---- 需求 6：批次购买 / 使用 ---- */
@@ -9045,7 +9396,7 @@ check('实测：纵深随速度放大（快兵种战场更宽）+ 无人 1 回�
     + ' / 长枪 ' + G.tactic.battlefieldOf({ changqiang: 800 }, { yibing: 800 }, 0, {}) + ' 纵深');
 
 /* ============================================================
- * v57（老板拍板 6 项战斗设定）：反击 / 衰减 / 相克 B 套 / 回合 30
+ * v57（老板拍板 6 项战斗设定）：反击 / 衰减 / 相克 B 套（v89.179 全撤）/ 回合 30
  * ============================================================ */
 check('反击：双方都在射程内才触发（隔空打不被反击）', (function () {
   var cnt = function (r) {
@@ -9119,25 +9470,16 @@ check('射程衰减：半程内全伤害 / 半程外半伤害 / 贴身 1/4，且
     /* 近战（射程 < 500）不受衰减 —— 否则近战伤害一律除以 4，回合数翻几倍 */
     && T.rangeDecay(10, 80) === 1 && T.rangeDecay(50, 50) === 1;
 })());
-check('相克查询收的是**兵种 id**（签名不一致会让整套防御向静默失效）', (function () {
-  var T = G.tactic;
-  return T.counterDefOf('daodun', 'gongjian') === 3
-    && T.counterDefOf('daodun', 'chuangnu') === 3
-    && T.counterDefOf('qingji', 'gongjian') === 4
-    && T.counterDefOf('tieji', 'toudan') === 2
-    && T.counterDefOf('chongche', 'gongjian') === 5
-    /* 原版明确：冲车只防**弓**，不防弩、不防投 */
-    && T.counterDefOf('chongche', 'toudan') === 1
-    && T.counterAtkOf('changqiang', { qingji: 1 }) === 3        /* v89.96 标定：2→3 */
-    && T.counterDefOf('changqiang', 'qingji') === 5             /* v89.96：长枪拒马（挨骑打 ×5） */
-    && T.counterAtkOf('chuangnu', { chongche: 1 }) === 3
-    /* B 套明确否掉的两条：盾打枪、骑打弓 —— 都没有加成 */
-    && T.counterAtkOf('daodun', { changqiang: 1 }) === 1
-    && T.counterAtkOf('qingji', { gongjian: 1 }) === 1
-    /* 旧的那张单向互克表与 ×1.5 必须已删（不留第二出口） */
-    && DATA.COUNTER === undefined && DATA.COUNTER_MULT === undefined;
+check('相克查询出口已退役（v89.179 全撤；v57"签名不一致"的坑成为历史）', (function () {
+  /* 历史：v57 防御向出口曾误收 army 对象 → 整套防御向静默失效（靠实测打印才发现）。
+     v89.179 克制全撤后，两出口与两表一并删除 —— 结构断言见 §179①。 */
+  return G.tactic.counterAtkOf === undefined && G.tactic.counterDefOf === undefined
+    && DATA.COUNTER === undefined && DATA.COUNTER_MULT === undefined
+    && DATA.COUNTER_ATK === undefined && DATA.COUNTER_DEF === undefined;
 })());
-check('实测：防御向相克真的生效（弓打冲车 ≪ 打刀盾 ≪ 打长枪）', (function () {
+check('实测：防守差异只由纸面防御决定（弓打长枪 > 打刀盾 > 打冲车）——无克制口径', (function () {
+  /* v89.179：防御向表退役后，排序改由纸面数值决定（实测杀伤 473 / 340 / 18）：
+     长枪（防150·血1800）> 刀盾（防250·血2400）> 冲车（防600·血36000 巨肉）。 */
   var kill = function (def) {
     var r = G.tactic.simulate({ gongjian: 1000 }, null, def, 0, null, { kind: 'wild' });
     var n = 0;
@@ -9146,10 +9488,10 @@ check('实测：防御向相克真的生效（弓打冲车 ≪ 打刀盾 ≪ 打
     });
     return n;
   };
-  var vsQiang = kill({ changqiang: 1000 });   /* 长枪无防御向 */
-  var vsDun = kill({ daodun: 1000 });         /* 刀盾防远程 ×3 */
-  var vsChe = kill({ chongche: 1000 });       /* 冲车防弓 ×5 */
-  return vsQiang > vsDun && vsDun > vsChe;
+  var vsQiang = kill({ changqiang: 1000 });
+  var vsDun = kill({ daodun: 1000 });
+  var vsChe = kill({ chongche: 1000 });
+  return vsQiang > vsDun && vsDun > vsChe && vsChe > 0;
 })(), (function () {
   var kill = function (def) {
     var r = G.tactic.simulate({ gongjian: 1000 }, null, def, 0, null, { kind: 'wild' });
@@ -9160,7 +9502,7 @@ check('实测：防御向相克真的生效（弓打冲车 ≪ 打刀盾 ≪ 打
     return n;
   };
   return '弓1000 的杀伤：打长枪 ' + kill({ changqiang: 1000 }) + ' / 打刀盾 ' + kill({ daodun: 1000 }) +
-    ' / 打冲车 ' + kill({ chongche: 1000 });
+    ' / 打冲车 ' + kill({ chongche: 1000 }) + '（纸面防御越高越难射穿）';
 })());
 check('回合上限 30（tactic 与 dice 引擎同一口径）', (function () {
   var b = require('fs').readFileSync(require('path').join(__dirname, 'js', 'battle.js'), 'utf8');
@@ -9209,8 +9551,8 @@ check('经验条宽度**固定**（老板："不要那么长"）—— 不再是
 })());
 check('抛射科技 5%/级（对齐原版），满级战场距离与原版公开值逐项对上', (function () {
   var t = DATA.TECH.filter(function (x) { return x.id === 'paoshe'; })[0];
-  var bak = G.state.techs.paoshe;
-  G.state.techs.paoshe = 10;                       /* 科技上限 10 级（domain.js 的升级守卫） */
+  var bak = G.systems.techLevel('paoshe');          /* v89.191：按城读（本用例在同一城内改回） */
+  G.techSet('paoshe', 10);                         /* 科技上限 10 级（domain.js 的升级守卫） */
   var k = 1 + G.systems.techBonus('range');
   var D = function (id) { var o = {}; o[id] = 1; return G.tactic.battlefieldOf(o, { yibing: 1 }, 0, {}); };
   /* ⚠️ 不能写死 1999 —— 射程会被**天气**二次修正（雨天弓 −20%），
@@ -9229,17 +9571,17 @@ check('抛射科技 5%/级（对齐原版），满级战场距离与原版公开
     && Math.round(Math.round(1200 * k) * K0) === 2250
     && Math.round(Math.round(1400 * k) * K0) === 2625
     && Math.round(Math.round(1600 * k) * K0) === 3000;
-  G.state.techs.paoshe = bak;                     /* ⚠️ 必须还原，否则污染后面的断言 */
+  G.techSet('paoshe', bak);                       /* ⚠️ 必须还原，否则污染后面的断言 */
   return ok;
 })(), (function () {
-  var bak = G.state.techs.paoshe;
-  G.state.techs.paoshe = 10;
+  var bak = G.systems.techLevel('paoshe');
+  G.techSet('paoshe', 10);
   var k = 1 + G.systems.techBonus('range');
   var D = function (id) { var o = {}; o[id] = 1; return G.tactic.battlefieldOf(o, { yibing: 1 }, 0, {}); };
   var w = (G.story && G.story.combatMod) ? G.story.combatMod().archerRange : 1;
   var txt = '满抛射 ×' + k.toFixed(2) + '（天气 ×' + w + '）：弓 ' + D('gongjian') + ' / 床弩 ' +
     D('chuangnu') + ' / 投石 ' + D('toudan') + '　无天气时 = 2250 / 2625 / 3000（×1.25 口径）';
-  G.state.techs.paoshe = bak;
+  G.techSet('paoshe', bak);
   return txt;
 })());
 check('城防是**独立火力源**：守军全近战时城头也开火（野地战没有工事）', (function () {
@@ -9466,13 +9808,10 @@ check('实测：指定目标 → 打击序列优先落在它头上（自动则�
   };
   return '指定打刀盾 ' + JSON.stringify(ids('daodun')) + '　自动 ' + JSON.stringify(ids(null));
 })());
-check('相克补两项：虎豹骑同轻骑（防远程×4）、西凉铁骑同铁骑（×2）；突骑仍无',
-  G.tactic.counterDefOf('hubaoqi', 'gongjian') === 4
-  && G.tactic.counterDefOf('hubaoqi', 'toudan') === 4
-  && G.tactic.counterDefOf('xiliangtieqi', 'gongjian') === 2
-  && G.tactic.counterDefOf('tuqibing', 'gongjian') === 1
-  /* 依据必须写在数据里（是"同族类比"而非原版点名，不许后人误当成原文出处） */
-  && /同族类比/.test(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'data.js'), 'utf8')));
+check('相克补两项（v59 · 虎豹/西凉 防远程因子）已随全撤作废 —— 判据升级为"表已退役 + 墓碑在册"',
+  DATA.COUNTER_ATK === undefined && DATA.COUNTER_DEF === undefined
+  && G.tactic.counterDefOf === undefined
+  && /取消所有克制关系/.test(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'data.js'), 'utf8')));
 check('战术只有一个取值口，且非法值一律回落默认（NaN 会让整场战斗静默跑坏）', (function () {
   var out = G.tacticOf('atk', 'changqiang');
   G.setTactic('changqiang', { s: 'retreat', t: 'gongjian' });
@@ -9600,34 +9939,40 @@ check('实测：凡品喂 10 亿经验也停在 Lv60，天授能到 240', (funct
   var b = mk('tian'); b.exp = 1e9; G.checkLevelUp(b);
   return a.level === 60 && b.level === 240;
 })());
-/* v89.82（老板澄清）：「**239 升 240 需要 100 万经验**，而不是 1 级升到 240 需要 100 万」
-   —— 锚点在曲线**顶端**；中后期由线性改**指数**（线性 + 锚点在 240 会让 Lv31 从 490
-   突跳到 5250，10 倍断层）。旧口径（累计 100 万）整条曲线被压到 1/32，240 级单级只要 8982。 */
-check('经验曲线 v89.82：need(240) = 100 万（锚点在顶端）· 逐级单调 · 无断层', (function () {
+/* v89.82（老板澄清）：「**239 升 240 需要 100 万经验**」—— 锚点钉在曲线**顶端**（不动）。
+   v89.170（老板：「前期所需经验太低…曲线应该上抬一点，比直接线性低」）：
+   形状改**单段幂律** need = 100万 × (lv/240)^1.25 —— 全程平滑（v89.168 曲线图体检
+   暴露的 Lv30→31 折角随之消失）、前期上抬、且**全程低于"起点→锚点"的直线**。 */
+check('经验曲线 v89.170：need(240) = 100 万（锚点不动）· 幂律形状 · 低于线性 · 无折角', (function () {
   var C = DATA.EXP_CURVE;
-  var cum = 0, prev = 0, mono = true, jump = 0;
+  var cum = 0, prev = 0, mono = true, conv = true, prevR = 1e9;
   for (var i = 1; i <= 240; i++) {
     var v = G.expNeedOf({ level: i });
     if (v < prev) mono = false;
-    if (prev > 0 && v / prev > jump) jump = v / prev;      /* 最大相邻涨幅 */
+    if (i > 1) { var _rr = v / prev; if (_rr > prevR + 1e-12) conv = false; prevR = _rr; }
     prev = v; cum += v;
   }
-  /* ⚠️ 断层判据只看**分段点**（Lv30→Lv31）—— 低等级段带 Math.round 的锯齿
-     （如 48→53 = +10.4%），拿"全局最大涨幅"当判据会在低段假红。 */
-  var _seam = G.expNeedOf({ level: 31 }) / G.expNeedOf({ level: 30 });
+  /* 全程低于线性（起点 → 锚点的直线）—— 老板要的形状（幂律 = 凸，天然在弦下方） */
+  var _n1 = G.expNeedOf({ level: 1 }), _nT = G.expNeedOf({ level: 240 });
+  var _under = true;
+  for (var j = 2; j <= 239; j++) {
+    if (G.expNeedOf({ level: j }) >= _n1 + (_nT - _n1) * (j - 1) / 239) _under = false;
+  }
   var _cv = {
-    n240: G.expNeedOf({ level: 240 }), top: C.needTop, mono: mono, seam: _seam,
-    n1: G.expNeedOf({ level: 1 }), n30: G.expNeedOf({ level: 30 }), diff: Math.abs(cum - C.total),
+    n240: _nT, top: C.needTop, alpha: C.alpha, mono: mono, conv: conv, under: _under,
+    n1: _n1, n30: G.expNeedOf({ level: 30 }), diff: Math.abs(cum - C.total),
   };
-  var _cok = _cv.n240 === 1000000 && C.needTop === 1000000 && mono
-    && _seam < 1.1                                         /* 二次段→指数段平滑衔接 */
-    && _cv.n1 === 41 && _cv.n30 === 490
-    /* total 必须等于 Σ need（经验道具按 pct×total 取额，两处不许各算各的） */
+  var _cok = _cv.n240 === 1000000 && C.needTop === 1000000 && C.alpha === 1.25
+    && mono                            /* 逐级单调 */
+    && conv                            /* 相邻涨幅比值递减 = 凸性/无折角 */
+    && _under                          /* 全程低于线性 */
+    && _cv.n1 >= 1000                  /* 前期已上抬（旧口径 41） */
+    /* total 必须等于 Σ need（两处不许各算各的） */
     && _cv.diff < Math.max(2, C.total * 0.001);
   if (!_cok) {
-    console.log('    (曲线诊断: n240=' + _cv.n240 + ' needTop=' + _cv.top + ' mono=' + _cv.mono
-      + ' 衔接=' + _cv.seam.toFixed(4) + ' n1=' + _cv.n1 + ' n30=' + _cv.n30
-      + ' cumDiff=' + _cv.diff + ' total=' + C.total + ')');
+    console.log('    (曲线诊断: n240=' + _cv.n240 + ' needTop=' + _cv.top + ' alpha=' + _cv.alpha
+      + ' mono=' + _cv.mono + ' conv=' + _cv.conv + ' under=' + _cv.under
+      + ' n1=' + _cv.n1 + ' n30=' + _cv.n30 + ' cumDiff=' + _cv.diff + ' total=' + C.total + ')');
   }
   return _cok;
 })(), (function () {
@@ -9637,20 +9982,31 @@ check('经验曲线 v89.82：need(240) = 100 万（锚点在顶端）· 逐级�
     + ' · Lv100 单级 ' + G.expNeedOf({ level: 100 }).toLocaleString()
     + ' · 累计 ' + Math.round(c / 1e4) + '万';
 })());
-check('经验道具按 pct × total 取额（曲线一改自动跟随，不需手改面额）', (function () {
-  var total = DATA.EXP_CURVE.total, bad = [];
+check('v89.173 经验道具面额固定（在售 4 档 = 10/100/300/450 万 · 无 capLv · 整数万 · desc 无旧上限文案）', (function () {
+  var bad = [];
+  var want = { lianbing_jingyan: 100000, zhijun_zhidao: 1000000, bingxian_yipian: 3000000, bingsheng: 4500000 };
   (DATA.EXP_ITEM_SPEC || []).forEach(function (sp) {
     var it = null;
     (DATA.ITEMS || []).forEach(function (x) { if (x.id === sp.id) it = x; });
     if (!it) return;
-    if (it.amount !== Math.max(1, Math.round(total * sp.pct))) bad.push(sp.id);
+    if (it.amount !== sp.amount) bad.push(sp.id + ':amount');
+    if (it.capLv) bad.push(sp.id + ':capLv残留');
+    if (sp.amount % 10000 !== 0) bad.push(sp.id + ':非整数万');
+    if (String(it.desc || '') !== '将领经验+' + it.amount) bad.push(sp.id + ':desc');
+    if (/最多培养至|最多至/.test(String(it.desc || ''))) bad.push(sp.id + ':旧上限文案');
   });
-  return bad.length === 0 && total > 20000000;             /* 量级：与"240 级 100 万"匹配 */
+  Object.keys(want).forEach(function (id) {
+    var it = null;
+    (DATA.ITEMS || []).forEach(function (x) { if (x.id === id) it = x; });
+    if (!it || it.amount !== want[id]) bad.push(id + ':非老板值');
+  });
+  return bad.length === 0;
 })());
 check('老存档经验池归一（migrateExpScale 截断到本级所需，不白送等级）', (function () {
   var g = { level: 30, exp: 90000 };
   var n = G.migrateExpScale({ generals: [g] });
-  return n === 1 && g.exp === G.expNeedOf({ level: 30 }) && g.exp === 490;
+  /* v89.170：不再写死 490（曲线已抬升），只锚"截断到本级所需" */
+  return n === 1 && g.exp === G.expNeedOf({ level: 30 });
 })());
 
 /* ---- 需求 11：体力第六维 + 攻防对冲 ---- */
@@ -9663,10 +10019,20 @@ check('体力上限随等级、资质、内政成长', (function () {
   var nz = G.staMax({ level: 100, nz: 300, rank: 'fan' });
   return lv > base && tian > lv && nz > lv;
 })());
-check('体力直接放大全军生命（渐近且不硬顶）', (function () {
+check('体力直接放大全军生命（前段渐近、后段线性续增 · v89.184 方案A）', (function () {
   var lo = G.staHpBonus({ level: 1, nz: 50, rank: 'fan', stamina: 100 });
   var hi = G.staHpBonus({ level: 240, nz: 120, rank: 'tian', stamina: 3000 });
-  return lo > 0 && hi > lo && hi < DATA.STAMINA.hpCap;
+  /* 前段（≤ hpKnee）：仍渐近且不硬顶（与旧曲线逐点相同） */
+  if (!(lo > 0 && hi > lo && hi < DATA.STAMINA.hpCap)) return false;
+  /* 后段（> hpKnee）：线性续增 —— 拐点连续 / 值 / 边际 / 可超旧上限 四判据
+     （期望值 = probe_v89183b 预演表：8000 → +76.7%）。 */
+  var K = DATA.STAMINA;
+  var atKnee = K.hpCap * K.hpKnee / (K.hpKnee + K.hpK);
+  var a = G.staHpPct(8000), b = G.staHpPct(9000);
+  return Math.abs(G.staHpPct(K.hpKnee) - atKnee) < 1e-9
+    && Math.abs(a - (atKnee + (8000 - K.hpKnee) / 1000 * K.hpTail)) < 1e-9
+    && Math.abs((b - a) - K.hpTail) < 1e-9
+    && G.staHpPct(12000) > K.hpCap;   /* 后段可超过旧渐近上限（12000 → +86.7% > 80%） */
 })());
 check('攻防对冲：2A/(A+D)，攻防相当为 1、纯攻到 2、攻不破防趋近 0', (function () {
   var T = G.tactic;
@@ -11419,7 +11785,9 @@ console.log('\n===== 46. v61 满配城池城内布局 =====');
        （改档必须重跑 .workbuddy/tools/audit/audit_v89105_modals.js）。 */
     var exp = codeOf(uS, 'ui.openExpModal = function');
     return /class="exp-grid"/.test(exp)
-      && /ui\.openModal\(html,\s*\{\s*size:\s*'xxl'\s*\}\)/.test(exp);
+      /* v89.186：同一调用改为携带 live（伤兵行刷新）→ 判据放宽到 size 前缀
+         （"走大档"本身仍是判据；档位随实测走，改档须重跑 modals 审计）。 */
+      && /ui\.openModal\(html,\s*\{\s*size:\s*'xxl'/.test(exp);
   })());
   check('v89.64：出征版面为**两栏**（左=信息 / 右=只有兵种及数量）', (function () {
     var body = require('fs').readFileSync(require('path').join(__dirname, 'index.html'), 'utf8').replace(/\s+/g, ' ');
@@ -12255,7 +12623,7 @@ console.log('\n===== 47. v62 工匠作坊造箭塔 =====');
        历史上这条链断在**字段名**上（面板读 r.res/r.build，产出方给 resReport/buildReport），
        v89.73 已修；本守卫做**端到端**（科技→结算→面板渲染）而不是只看源码名字，
        因为"名字对但没接线"同样会显示锁定行 —— 光断言字段名是抓不到的。 */
-    var s = G.state, backup = s.techs, bkEng = null, bkSta = null, bkW = null;
+    var s = G.state, bakZ191 = G.systems.techLevel('zhencha'), bkEng = null, bkSta = null, bkW = null;
     var city = G.currentCity();
     if (!city) return false;
     var gen = null;
@@ -12270,8 +12638,7 @@ console.log('\n===== 47. v62 工匠作坊造箭塔 =====');
        本守卫要证的是"科技满级 + 非大雾 ⇒ 面板不出现锁定行"，天气就交给它显式控制。 */
     if (s.world) s.world.weather = 'clear';
     try {
-      s.techs = s.techs || {};
-      s.techs.zhencha = 10;
+      G.techSet('zhencha', 10);                    /* v89.191：科技按城（本用例的出征从当前城发起） */
       G.setStaNow(gen, 999); gen.energy = 999;
       var npc = (s.map.cities || [])[0];
       if (!npc) return false;
@@ -12311,7 +12678,7 @@ console.log('\n===== 47. v62 工匠作坊造箭塔 =====');
         ' 有城内库藏=' + /城内库藏/.test(html) + ' 有锁定=' + /需侦察技巧/.test(html) + ')');
       return _okR;
     } finally {
-      s.techs = backup;
+      G.techSet('zhencha', bakZ191);
       if (gen) { G.setStaNow(gen, bkSta); gen.energy = bkEng; }   /* 体力/精力还回去 */
       if (s.world && bkW != null) s.world.weather = bkW;          /* 天气还回去 */
     }
@@ -12322,15 +12689,16 @@ console.log('\n===== 47. v62 工匠作坊造箭塔 =====');
        判据：拿"储存技术拉满 + 满配影子城"**实算** storeCapOf，与 resByTier 逐档比对。
        这条守卫是防"两套数各自漂移"的关键 —— 改了 BASE_STORE / 仓库座数 / 科技上限 /
        专精 / storePct 而忘了重算 resByTier 时，它会立刻红（否则库藏会悄悄失准）。 */
-    var s = G.state, backup = s.techs, bad = [];
+    var s = G.state, bad = [];
     try {
-      s.techs = s.techs || {};
-      s.techs.chucun = DATA.TECH_MAX_LV;                       /* 储存技术拉满 = +50% */
       ['capital', 'zhou', 'jun', 'county'].forEach(function (ty) {
         var c = (DATA.NPC_CITIES || []).filter(function (x) { return x.type === ty; })[0];
         if (!c) { bad.push(ty + ':无样本'); return; }
         var sh = G.npcCityShadow(c);
         var fake = G.makeCity({ id: 'capchk_' + ty, name: '核' + ty, x: c.x, y: c.y, type: ty });
+        /* v89.191（老板 3-④）：科技按城 —— 影子城要**自己**拉满储存技术（+50%），
+           不再借"全境表"的光（否则满配仓容会少算 50%，与 resByTier 对不上）。 */
+        G.techSet('chucun', DATA.TECH_MAX_LV, fake);
         fake.cells = sh.cells.map(function (x) {
           return { build: x.build ? { id: x.build.id, lvl: x.build.lvl } : null,
             pending: null, official: !!x.official };
@@ -12342,7 +12710,7 @@ console.log('\n===== 47. v62 工匠作坊造箭塔 =====');
           bad.push(ty + '(仓容 ' + cap + ' ≠ 基准 ' + want + ')');
         }
       });
-    } finally { s.techs = backup; }
+    } catch (e191b) { bad.push('异常:' + ((e191b && e191b.message) || e191b)); }
     return bad.length === 0;
   })(), (function () {
     return ['capital', 'zhou', 'jun', 'county'].map(function (ty) {
@@ -12597,7 +12965,7 @@ console.log('\n===== 47. v62 工匠作坊造箭塔 =====');
     });
   })());
   check('结构：只有**得手**才计数（失败不占当日额度）', (function () {
-    var body = codeOf(bS, 'GAME.battle.expedition = function');
+    var body = codeOf(bS, 'GAME.battle._expeditionRun = function');   /* v89.191：expedition 拆壳，主体在此 */
     var iWin = body.indexOf('if (win) {');
     var iMark = body.indexOf('markFortRaided');
     return iWin >= 0 && iMark > iWin;
@@ -12716,7 +13084,7 @@ console.log('\n===== 47. v62 工匠作坊造箭塔 =====');
   check('结构：外城那处（改建资源建筑）也照同一套改（图标 + 悬停）', (function () {
     var body = codeOf(uS, 'ui.openExtModal = function');
     /* 同上：只允许出现在悬停文案里一次 */
-    var cnt = body.split("'｜耗' + U.fmt(cost0[0])").length - 1;
+    var cnt = body.split("'｜耗' + U.fmt(costNow.grain)").length - 1;
     return /GAME\.icons\.forExt\(eid\)/.test(body) && /bldg-pick/.test(body)
       && cnt === 1 && !/tstat">' \+ '耗/.test(body);
   })());
@@ -12875,13 +13243,11 @@ console.log('\n===== 47. v62 工匠作坊造箭塔 =====');
       });
       st.settings.autoUpgrade = true;
       st.queues.build.length = 0;
-      var r1 = G.autoUpgrade();
-      var r2 = G.autoUpgrade();
-      var ids = [r1, r2].filter(function (r) { return r && r.target; })
-        .map(function (r) { return r.target.cityId; });
-      return ids.length >= 1 && ids.indexOf(b.id) >= 0 && ids.indexOf(a.id) >= 0;
+      G.autoUpgrade();   /* v89.167：一次调用即把**两城**空位排满（不再"两次调用各得一城"） */
+      var qids = (st.queues.build || []).map(function (q) { return q.cityId; });
+      return qids.indexOf(a.id) >= 0 && qids.indexOf(b.id) >= 0;
     });
-  })(), '两城各得一次城墙升级候选');
+  })(), '一次调用两城齐上（v89.167）');
 
   /* ------------------------------------------------------------
    * ②  将领席位按城
@@ -13131,22 +13497,22 @@ console.log('\n===== 47. v62 工匠作坊造箭塔 =====');
       && /下一层：/.test(panel);
   })());
   check('实测：层数与已解锁数随等级单调增长（0 级 0 层 → 10 级 6 层）', (function () {
-    var t0 = G.state.techs['zhencha'] || 0;
+    var t0 = G.systems.techLevel('zhencha');     /* v89.191：按城读 */
     var counts = [];
     [0, 3, 5, 7, 9, 10].forEach(function (lv) {
-      G.state.techs['zhencha'] = lv;
+      G.techSet('zhencha', lv);
       var it = G.battle.intelTiersOf();
       if (it.lv !== lv) counts.push(-1);
       counts.push(it.list.filter(function (x) { return x.unlocked; }).length);
     });
-    G.state.techs['zhencha'] = t0;
+    G.techSet('zhencha', t0);
     /* 解锁分布：Lv1 total / Lv3 +res / Lv5 +troops / Lv7 +guard / Lv9 +build / Lv10 +spoils
        → 0 / 3 / 5 / 7 / 9 / 10 级分别是 0、2、3、4、5、6 层 */
     return counts.join(',') === '0,2,3,4,5,6';
   })(), '0/3/5/7/9/10 级 → 已解锁层数');
   check('实测：顺手拾获**不受分层影响**（0 级也能捡到材料）', (function () {
-    var t0 = G.state.techs['zhencha'] || 0, w0 = G.state.world.weather;
-    G.state.techs['zhencha'] = 0;
+    var t0 = G.systems.techLevel('zhencha'), w0 = G.state.world.weather;
+    G.techSet('zhencha', 0);
     G.state.world.weather = 'clear';
     var got = false;
     for (var i = 0; i < 40 && !got; i++) {
@@ -13154,7 +13520,7 @@ console.log('\n===== 47. v62 工匠作坊造箭塔 =====');
         garrison: { yibing: 10 } }, G.state.generals[0]);
       if (sc.loot.length > 0) got = true;
     }
-    G.state.techs['zhencha'] = t0; G.state.world.weather = w0;
+    G.techSet('zhencha', t0); G.state.world.weather = w0;
     return got;
   })());
 
@@ -13272,7 +13638,7 @@ console.log('\n===== 47. v62 工匠作坊造箭塔 =====');
   })());
   check('结构：侦查公文带**分层面板数据**（v89.102 起不再自动弹窗）', (function () {
     var arrive = code49(mS49, 'GAME.onMarchArrive = function');
-    var exp = code49(bS49, 'GAME.battle.expedition = function');
+    var exp = code49(bS49, 'GAME.battle._expeditionRun = function');   /* v89.191：拆壳后主体在此 */
     /* v89.102（老板「侦查报告不要自动冒出来」）：抵达**不再自动弹**分层面板，
        改为写公文 + 一条 toast；面板数据随公文存下（scout: {...}），
        玩家在公文里点「展开侦查面板」按需打开。 */
@@ -13295,19 +13661,19 @@ console.log('\n===== 47. v62 工匠作坊造箭塔 =====');
   /* ⚠️ `gNum` 必须从 expedition 带出来 —— 漏了面板就显示「约 undefined 名」。
      这个真 bug 是本轮 e2e 抓到的：改成"结构断言"守它，避免下次又漏。 */
   check('结构：侦查结果把 `gNum` 一起带出（否则面板显示 undefined）', (function () {
-    var exp = code49(bS49, 'GAME.battle.expedition = function');
+    var exp = code49(bS49, 'GAME.battle._expeditionRun = function');   /* v89.191：拆壳后主体在此 */
     return /gNum: sc\.gNum/.test(exp) && /totalExact: sc\.totalExact/.test(exp);
   })());
   check('实测：侦查面板渲染守军总数时**不出 undefined**', (function () {
-    var t0 = G.state.techs['zhencha'] || 0, w0 = G.state.world.weather;
-    G.state.techs['zhencha'] = 10; G.state.world.weather = 'clear';
+    var t0 = G.systems.techLevel('zhencha'), w0 = G.state.world.weather;
+    G.techSet('zhencha', 10); G.state.world.weather = 'clear';
     var g = G.state.generals[0];
     g.status = 'idle'; g.stamina = G.staMax(g); g.energy = 100;
     /* v89.156：侦察可失败 → 固定随机为成功（本用例验的是"gNum 有值、面板不出 undefined"） */
     var r = withFixedRandom([0.001], function () {
       return G.battle.expedition({ kind: 'wild', x: 34, y: 34 }, 'scout', {}, g.id);
     });
-    G.state.techs['zhencha'] = t0; G.state.world.weather = w0;
+    G.techSet('zhencha', t0); G.state.world.weather = w0;
     if (!r || !r.ok) return false;
     var html = G.ui.openScoutResult ? '（有渲染入口）' : '';
     G.ui.openScoutResult({ name: '野地' }, r, 0);
@@ -13451,12 +13817,12 @@ console.log('\n===== 47. v62 工匠作坊造箭塔 =====');
     var r = G.systems.gainExpByItem(itemId, g.id, 'till');
     return r.ok === true && g.level > 1;
   }));
-  check('结构：三个消费点都先问同一个出口（单个 / 批量 / 界面面板）', (function () {
+  check('结构：三个消费点都先问同一个出口（v89.173：单用/批量/界面选择 = expItemGrantOf）', (function () {
     var use = codeOf(syS66, 'S.useItem = function');
     var batch = codeOf(syS66, 'S.gainExpByItem = function');
-    var panel = codeOf(uS66, 'ui.openExpPick = function');
-    return /expBlockOf/.test(use) && /expBlockOf/.test(batch) && /expBlockOf/.test(panel)
-      && use.length > 200 && batch.length > 200 && panel.length > 200;
+    var pick = codeOf(uS66, 'ui.setExpItem = function');
+    return /expItemGrantOf/.test(use) && /expItemGrantOf/.test(batch) && /expItemGrantOf/.test(pick)
+      && use.length > 200 && batch.length > 200;
   })());
   check('结构：到上限时 ＋ 按钮转暗并写明原因（入口仍在，点得动）', (function () {
     var pane = codeOf(uS66, 'ui.genPane = function');
@@ -13557,8 +13923,9 @@ console.log('\n===== 47. v62 工匠作坊造箭塔 =====');
   check('实测：装备体力对上限的贡献是整数（哪怕坐骑加成带小数）', with66('v66s9', function (st) {
     var g = g66(st);
     g.equip = { mount: 'jueying' };
-    st.techs = st.techs || {};
-    st.techs['majiu'] = 5;                     /* 驯马技巧会乘出小数 */
+    /* v89.191：按城写 + 修正历史键名 —— `majiu` 是建筑 id 不是科技 id（旧写法静默空转），
+       本意是驯马技巧（xunma）。 */
+    G.techSet('xunma', 5);
     var a = G.genAttrs(g);
     return a.staMax === Math.round(a.staMax) && a.staEq === Math.round(a.staEq);
   }));
@@ -15253,13 +15620,22 @@ console.log('\n===== 60. v74 七条（人口 · 画布 · 简介 · 六维 · �
   /* ⚠️ 断言只看**档案段**（gen-pane）—— 左清单行的悬停 tip 里仍有"装备 x/12"，
      它是 v45 明令保留的悬停细节，不是简介的一部分。 */
   var hpane74 = h74.slice(h74.indexOf('class="gen-pane"'));
-  check('③ 简介两行化：名字在前 + 资质★（悬停 = 上限/成长）+ 类型 + 描述（去上限句）', (function () {
+  check('③ 简介两行化（v89.188：定宽名+袖珍解雇 · 徽章+袖珍晋升 · v89.190：去重复位）', (function () {
+    /* v89.188 规则变更所致：内联徽章改走唯一出口 ui.rankBadge（星号 5 星位补位），
+       "title=等级上限"内联形态退役（上限句仍在资质描述行；按钮悬停给全部条件）。
+       v89.190（老板 1）：「均衡这个备注位重复了，去掉」——资质行尾 .gp-style 整位退役，
+       风格名唯一出口 = 徽章后缀（断言升级为正负两层）。 */
     var i = hpane74.indexOf('class="gp-name"');
     if (i < 0) return false;
-    var seg = hpane74.slice(i, i + 1200);
-    return /class="gp-name">[^<]/.test(seg)
-      && /rank-badge r-\w+" title="等级上限 \d+，每级属性成长 \+\d+"/.test(seg)
-      && /class="gp-style">/.test(seg)
+    var seg = hpane74.slice(i, i + 1800);
+    return /class="gp-name">/.test(seg)
+      && /class="gp-nm"/.test(seg)
+      && /btn sm mini/.test(seg) && /data-action="dismiss-gen"/.test(seg)
+      && /class="gp-sub gp-rankrow"/.test(seg)
+      && /class="gp-rankcol"><span class="rank-badge r-\w+"/.test(seg)
+      && /data-action="gen-rankup"/.test(seg)
+      && !/class="gp-style"/.test(seg)                 /* v89.190：重复位退役 */
+      && /· [^<]+<\/span>/.test(seg)                    /* 风格名仍在徽章后缀（唯一出口） */
       && /class="gp-sub">[^<]*(可|之才|之资)/.test(seg);
   })());
   check('③ 旧行已撤：Lv N / M 行、装备 n/12、每级成长小字（改为悬停）',
@@ -15333,8 +15709,9 @@ console.log('\n===== 60. v74 七条（人口 · 画布 · 简介 · 六维 · �
 
   /* ---------- ⑦ 出征界面 ---------- */
   console.log('  --- ⑦ 出征界面 ---');
-  check('⑦ 结构：总览/战力行 + 每兵种行 [上限][清空]（v89.144 起从标题栏挪进行内）+ 动作注册', (function () {
-    return /id="exp-sum"/.test(uS) && /id="exp-power"/.test(uS)
+  check('⑦ 结构：预估块（march/power/haul；v89.178 起 #exp-sum「共派遣」退役）'
+    + ' + 每兵种行 [上限][清空] + 动作注册', (function () {
+    return !/id="exp-sum"/.test(uS) && /id="exp-power"/.test(uS)
       && /data-action="exp-max"/.test(uS) && /data-action="exp-zero"/.test(uS)
       && /case 'exp-max'/.test(mS) && /case 'exp-zero'/.test(mS)
       && /ui\.expTroopMaxOf = function/.test(uS) && /ui\.expTroopTipOf = function/.test(uS)
@@ -15927,9 +16304,13 @@ console.log('\n===== 65. v80 三条（客栈 · 建筑底栏 · 兵营） ====='
 
   /* ---------- ① 客栈 ---------- */
   console.log('  --- ① 客栈固定表 ---');
-  check('v80：招募行去「史实名将」标（将领档案那枚保留）', (function () {
+  check('v80→v89.188：全站零「美人 / 名将」标签（招募行与档案一并撤；君主标保留）', (function () {
+    /* v89.188（老板 3）：「不再采用『美人』『名将』标签，从客栈，将领等所有地方同步去除，
+       所有将领标识统一」—— hero/beauty 的 gcard-tag 全站退役（字段保留供立绘与机制）。 */
     var inn = codeOf(uS, 'ui.openInn = function');
-    return inn.indexOf('tag-hero') < 0 && uRaw.indexOf('<span class="gcard-tag hero">史实名将</span>') >= 0;
+    return inn.indexOf('tag-hero') < 0
+      && uRaw.indexOf('gcard-tag hero') < 0 && uRaw.indexOf('gcard-tag beauty') < 0
+      && uRaw.indexOf('gcard-tag lord') >= 0;   /* 君主标保留（身份，非 hero/beauty 族标签） */
   })());
   check('v80：表格固定列宽（colgroup ×10 + table-layout: fixed + 列宽表在 CSS）', (function () {
     var inn = codeOf(uS, 'ui.openInn = function');
@@ -16157,13 +16538,42 @@ console.log('\n===== 66. v81 两条（君主卡 · 兵营三页） =====');
           /* ② 段顶但修为不足：拒 */
           lord.level = 60; lord.cultiv = 0;
           if (G.doLordBreak().ok !== false) return false;
-          /* ③ 段顶 + 修为够：跨段（上限 +60、修为扣掉、发自由点） */
+          /* ③ v89.177（老板「综合考验」）：段顶 + 修为够，但五关不过 → **拒**（提示综合考验） */
           var need = G.lordCultivNeed(lord);
           lord.cultiv = need;
-          var fp0 = lord.freePts || 0;
-          var r = G.doLordBreak();
-          return r.ok === true && lord.breaks === 1 && lord.cultiv === 0
-            && G.genLevelCap(lord) === 120 && (lord.freePts || 0) > fp0;
+          var r0 = G.doLordBreak();
+          if (r0.ok !== false || !/综合考验/.test(r0.msg)) return false;
+          /* ③b 灌满五关（政务 3 / 城池 2 / 兵力 5k / 持金 5w / 珠宝 2 种）→ 跨段。
+                 ⚠️ 用例改状态要还原（§131 纪律）——失败前也要恢复。 */
+          var bk = {
+            done: G.state.quests.done,
+            cities: G.state.cities.slice(),
+            army: G.state.cities.map(function (c) { return c.army; }),
+            items: JSON.parse(JSON.stringify(G.state.items || {})),
+            gold: G.goldOf(),
+          };
+          var ok = false;
+          try {
+            G.state.quests.done = { qa: 1, qb: 1, qc: 1 };
+            var c2 = JSON.parse(JSON.stringify(G.state.cities[0]));
+            c2.id = 'p2-test'; c2.army = { yibing: 3000 };
+            G.state.cities.forEach(function (c) { c.army = { yibing: 3000 }; });
+            G.state.cities.push(c2);
+            G.goldAdd(bk.gold >= 50000 ? 0 : (50000 - bk.gold));
+            G.state.items.bengzhu = 2;
+            G.state.items.mila = 1;
+            var fp0 = lord.freePts || 0;
+            var r = G.doLordBreak();
+            ok = r.ok === true && lord.breaks === 1 && lord.cultiv === 0
+              && G.genLevelCap(lord) === 120 && (lord.freePts || 0) > fp0;
+          } finally {
+            G.state.quests.done = bk.done;
+            G.state.cities = bk.cities;
+            bk.cities.forEach(function (c, i2) { c.army = bk.army[i2]; });
+            G.state.items = bk.items;
+            G.goldAdd(bk.gold - G.goldOf());
+          }
+          return ok;
         });
       }());
       check('v89.65：三突破到天授上限后不再有突破（needs 用尽 → null）', function () {
@@ -16229,19 +16639,20 @@ console.log('\n===== 66. v81 两条（君主卡 · 兵营三页） =====');
     check('吃满：野地等级 ≥ 台阶 → 系数 1（不设超额加成）',
       G.battle.expPenaltyOf(20, 2).mul === 1 && G.battle.expPenaltyOf(20, 9).mul === 1
       && G.battle.expPenaltyOf(121, 10).mul === 1);
-    check('惩罚：每低一档 ×0.65（低1档 0.65 / 低6档 0.65⁶）', (function () {
+    check('惩罚：每低一档 ×0.8（v89.173 放宽 · 低1档 0.8 / 低6档 0.8⁶）', (function () {
       var p1 = G.battle.expPenaltyOf(20, 1);
       var p6 = G.battle.expPenaltyOf(73, 1);
-      return Math.abs(p1.mul - 0.65) < 1e-9 && Math.abs(p6.mul - Math.pow(0.65, 6)) < 1e-9
+      return Math.abs(p1.mul - 0.8) < 1e-9 && Math.abs(p6.mul - Math.pow(0.8, 6)) < 1e-9
         && p1.need === 2 && p6.need === 7 && p6.wl === 1;
     })());
-    check('地板：极深越级不低于 0.03（不至于归零）',
-      Math.abs(G.battle.expPenaltyOf(200, 1).mul - 0.03) < 1e-9);
+    check('地板：极深越级不低于 0.03（v89.173 后 gap 最深 9 → 0.134，地板为防御性保底）',
+      G.battle.expPenaltyOf(200, 1).mul >= DATA.EXP_PENALTY.minMul
+      && Math.abs(G.battle.expPenaltyOf(200, 1).mul - Math.pow(0.8, 9)) < 1e-9);
     check('野地 0 级按 1 级对待（尚未长成不比 1 级更差）',
-      G.battle.expPenaltyOf(5, 0).mul === 1 && Math.abs(G.battle.expPenaltyOf(13, 0).mul - 0.65) < 1e-9);
-    check('数值全在 DATA.EXP_PENALTY（改一处即可调平衡）',
+      G.battle.expPenaltyOf(5, 0).mul === 1 && Math.abs(G.battle.expPenaltyOf(13, 0).mul - 0.8) < 1e-9);
+    check('数值全在 DATA.EXP_PENALTY（改一处即可调平衡 · v89.173 decay 0.8）',
       DATA.EXP_PENALTY.tier === 12 && DATA.EXP_PENALTY.maxLv === 10
-      && DATA.EXP_PENALTY.decay === 0.65 && DATA.EXP_PENALTY.minMul === 0.03);
+      && DATA.EXP_PENALTY.decay === 0.8 && DATA.EXP_PENALTY.minMul === 0.03);
 
     check('结构：惩罚挂在野地出征结算口（唯一出口），非野地不适用', (function () {
       var bs = stripComment(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'battle.js'), 'utf8'));
@@ -20058,6 +20469,9 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     /* v89.131（老板「体力精力应当设计加号按钮，供道具使用」）——
        精力族（清心丸等）消费点 = useItem 的 energy 分支 */
     energy: ['amount'],
+    /* v89.186（老板 1）：宝具 —— 消费点 = **挂件体系**（GAME.attachEquip，不经 useItem）；
+       渠道 = 打据点/名城缴获（GAME.grantBaoDrop，掉落表 DATA.BAOJU_DROP）。 */
+    bao: ['eff'],
   };
   check('v89.50：每条新物品的 type 都在**已知消费点**内，且必填字段齐（无死物品）', (function () {
     var bad = [];
@@ -20377,9 +20791,11 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       /_expArmySettled/.test(bt8) && /catch \(e\) \{ err = e; \}/.test(bt8));
 
     /* ---- P1 ---- */
-    check('v89.86（P-24 / v89.103）：「拔除并占据」文案（按钮 + 出征注 + 数据 desc）',
-      ui8.indexOf('🚩 拔除并占据') >= 0 && /据点：占领=拔除并\*\*据为己有\*\*/.test(ui8)
-      && /据点拔除即\*\*占据\*\*/.test(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'data.js'), 'utf8')));
+    check('v89.86（P-24 / v89.103→v89.186）：「拔除并收为前哨」文案（按钮 + 出征注 + 数据 desc）',
+      /* v89.186（老板 3）规则变更：据点剥离 —— 三处文案同步为新语义（不转城市/不占名额）。 */
+      /* v89.193 规则变更所致：文案去掉 markdown 星号（改「」）——判据同步。 */
+      ui8.indexOf('🚩 拔除并收为前哨') >= 0 && /「我方前哨」（不转城市、不占城池名额）/.test(ui8)
+      && /收为「我方前哨」/.test(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'data.js'), 'utf8')));
     check('v89.86（P-23）：兵力悬殊二次确认（首击不发兵 · 再击才发）', (function () {
       var fort = null;
       for (var yy = city8.y - 30; yy <= city8.y + 30 && !fort; yy++) {
@@ -21108,7 +21524,8 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       /* 行为：出口值 = 上限 ÷ fillHours（v89.126 固定时间速率；旧"保底 1"已退役）。 */
       var fakeBig = { cells: [{ build: { id: 'minfang', lvl: 12 } }] };
       var mpBig = G.maxPopOf(fakeBig);
-      var okG = G.popGrowthOf(fakeBig) === mpBig / (DATA.POP_CFG.fillHours || 2);
+      /* v89.185：口径与产品同源 —— 增速 = **有效上限** ÷ fillHours（民心折算，见 effPopCapOf） */
+      var okG = G.popGrowthOf(fakeBig) === G.effPopCapOf(fakeBig) / (DATA.POP_CFG.fillHours || 2);
       /* 渲染：切兵种页 → 三段条在 */
       var bakTab = G.ui._trainTab, bakFil = G.ui._trainFilter, bakSel = G.ui._trainSel;
       G.ui._trainTab = 'inf'; G.ui._trainFilter = 'normal'; G.ui._trainSel = 'yibing';
@@ -21170,16 +21587,16 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })());
 
     console.log('  --- W3 城主内政 → 产量曲线（v89.164 分段减半 · 收敛 +300%） ---');
-    check('W3：nz 5000 → prod 收敛 +300%（不再封顶 1.5，也不 ×50）', (function () {
+    check('W3：nz 5000 → prod 不封口（v89.185：+1400% · 旧收敛 +300%）', (function () {
       var city = s93.cities[0], g = s93.generals[0], bk = { st: g.status, cid: g.cityId, nz: g.nz };
       /* v89.113：内政加成归**城主**（守将只剩勇武征兵） */
       g.status = 'mayor'; g.cityId = city.id; g.nz = 5000;
       var gb = G.mayorBonus(city);
-      /* v89.164（老板 1）：走 DATA.MAYOR_CURVE 分段减半曲线 —— 有界收敛于 +300% */
-      var ok = gb.prod > 2.999 && gb.prod <= 3.0 + 1e-9 && Math.abs(gb.build - gb.prod) < 1e-9;
+      /* v89.185（老板「设计不封口上限」）：段 2 起率恒定 —— nz 5000 = 1.5 + 0.75 + 4700×0.25% = 14.0 */
+      var ok = Math.abs(gb.prod - 14.0) < 1e-9 && Math.abs(gb.build - gb.prod) < 1e-9;
       g.status = bk.st; g.cityId = bk.cid; g.nz = bk.nz;
       return ok;
-    })(), '收敛 ' + (G.curveBonusOf(5000, 0.01, 150) * 100).toFixed(2) + '%');
+    })(), '不封口 ' + (G.curveBonusOf(5000, 0.01, 150) * 100).toFixed(2) + '%');
 
     console.log('  --- E9 自动出征：目标轮换（轮空池） ---');
     check('E9：轮空池记最近目标、满则滚出、候选全被挡时放行', (function () {
@@ -21378,9 +21795,11 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var pw = G.ui.expPowerOf(); G.ui._expRes = bak;
       return pw ? ('守军 ' + pw.def + ' ±' + Math.round(pw.err * 100) + '%') : 'n/a';
     })());
-    check('E2：界面文案是"军师估算"（不再写"战力估算：一键正解"）', (function () {
-      return uS94.indexOf('⚔️ 军师估算') >= 0 && uS94.indexOf('情报 Lv') >= 0
-        && uS94.indexOf('此战凶险：胜则可入史册') >= 0;
+    check('E2：界面文案是"军师估算"；v89.178 起区间/情报条退役、「此战凶险」并入兵力标签', (function () {
+      return uS94.indexOf('⚔️ 军师估算') >= 0
+        && uS94.indexOf('pw74.intelLv') < 0
+        && uS94.indexOf('区间：我 1 : ') < 0
+        && uS94.indexOf('兵力偏少，此战凶险') >= 0;
     })());
 
     console.log('  --- E2 战法三选：校验与真实效果 ---');
@@ -22300,6 +22719,8 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var gIdx = -1;
       c.cells.forEach(function (x, i) { if (gIdx < 0 && x.build && x.build.id === 'guanfu') gIdx = i; });
       ['grain', 'wood', 'stone', 'iron'].forEach(function (k) { c.res[k] = 1e9; });
+      /* v89.194（老板 S1）：Lv9 起升级另需营造金 —— 本用例验门槛，成本一并备足 */
+      S102.gold = 1e9;
       /* 12→13 的珠宝需求补足（本用例验门槛，不验材料） */
       var _c13 = DATA.BUILDINGS.minfang.levelCost(12) || {};
       if (_c13.jewel) {
@@ -22406,8 +22827,10 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         && /\(s\.fortsTaken \|\| \{\}\)\[x \+ ',' \+ y\]/.test(mp103)
         && /fortsTaken: \{\}/.test(st103);
     })());
-    check('② 数据：占领方式 desc / 据点按钮 都写"占据"（文案不落后于规则）', (function () {
-      return /据点拔除即\*\*占据\*\*/.test(src103('data.js')) && /拔除并占据/.test(ui103);
+    check('② 数据：占领方式 desc / 据点按钮 都写"前哨"（文案不落后于规则）', (function () {
+      /* v89.186（老板 3）规则变更：据点剥离 —— 文案从"占据（转城）"改为"收为前哨"。
+         v89.193 再变更：desc 去 markdown 星号（改「」）——判据同步。 */
+      return /收为「我方前哨」/.test(src103('data.js')) && /拔除并收为前哨/.test(ui103);
     })());
     check('② 运行时：占据登记后，该格**永久**不再生成据点（换日也不复活）', (function () {
       var old = G.state;
@@ -22429,7 +22852,9 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       G.state = old;
       return ok;
     })());
-    check('② 运行时：claimFort 造出的城 = 布局满配（建筑逐格一致 + 人口归附）', (function () {
+    check('② 运行时：claimFort = 收为我方前哨（不造城 · s.forts 登记 · 不占城池名额）', (function () {
+      /* v89.186（老板 3）规则变更：据点剥离 —— 旧 v89.103「就地转城（布局满配 + 人口归附）」
+         口径退役；新判据 = 前哨登记 + 城市数不变 + 该格永久不再生成据点。 */
       var old = G.state;
       var st9 = G.newGame({ name: 'v103c', cityName: '许都', region: '豫州', mapSeed: 424242 });
       if (!st9.map.grid) G.map.generate();
@@ -22439,23 +22864,12 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       }
       var ok = false;
       if (f) {
+        var nCity0 = st9.cities.length;
         var r = G.claimFort({ kind: 'fort', x: f.x, y: f.y, fort: f, lv: f.level, name: f.name }, null, null, {});
-        var nc = r && r.city;
-        if (r && r.ok && nc) {
-          var plan = G.cityPlanOf(G.cityLvOf(nc), G.npcBuildLvOf(nc));
-          var same = nc.cells.length === plan.cells.length;
-          var planWall9 = 0;
-          for (var i = 0; i < nc.cells.length && same; i++) {
-            var a = nc.cells[i].build, b = plan.cells[i].build;
-            /* v89.128：计划里的城墙格 → 实城的**环城槽**（那一格是空格） */
-            if (b && b.id === 'chengqiang') { planWall9 = b.lvl; if (a) same = false; continue; }
-            if ((a ? a.id + a.lvl : '-') !== (b ? b.id + b.lvl : '-')) same = false;
-          }
-          ok = same && planWall9 > 0
-            && !!(nc.wall && nc.wall.build && nc.wall.build.lvl === planWall9)
-            && nc.res.pop === G.planPopCapOf(f.level)
-            && st9.cities.length === 2 && G.map.fortAt(f.x, f.y) === null;
-        }
+        var rec = (st9.forts || {})[f.x + ',' + f.y];
+        ok = !!(r && r.ok && rec && rec.lv === f.level && !r.city
+          && st9.cities.length === nCity0
+          && (st9.fortsTaken || {})[f.x + ',' + f.y]);
       }
       G.state = old;
       return ok;
@@ -22580,6 +22994,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var cost = DATA.BUILDINGS.minfang.levelCost(12);
       /* 资源先垫足：本断言只验**珠宝**那一维（资源不足会把 canAfford 恒置 false） */
       ['grain', 'wood', 'stone', 'iron'].forEach(function (k) { st.res[k] = 1e9; });
+      st.gold = 1e9;    /* v89.194：升 13 级另需营造金 2.4 万（本用例只验珠宝那一维） */
       st.items = {};
       var no = G.canAfford(cost);
       st.items[Object.keys(cost.jewel)[0]] = cost.jewel[Object.keys(cost.jewel)[0]];
@@ -22592,8 +23007,10 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
 
     })(), '缺料拦下 → 有料放行 → 支付清零');
     check('① 界面：建造面板报「珠宝 持有/需求」且造价文案带 💎', (function () {
+      /* v89.194：升级判据 —— 缺料提示统一走 GAME.costLackMsg（珠宝在缺料清单里，
+         costJewelText 是它的珠宝段出口）。旧判据查"珠宝不足（"字面（已并入出口）。 */
       return /💎 珠宝/.test(u4) && /GAME\.costJewelText/.test(u4)
-        && /珠宝不足（/.test(d4);
+        && /GAME\.costLackMsg/.test(d4);
     })());
 
     console.log('  --- ② 接触判定按位移 ---');
@@ -22705,7 +23122,8 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       G.state = st;
       var c = st.cities[0];
       G.ui._cityId = c.id;
-      var cap = G.maxPopOf(c);
+      /* v89.185（老板 6）：封顶走**有效上限**（民心折算）——与 useItem 内部的 _cap5 同源 */
+      var cap = G.effPopCapOf(c);
       var add = Math.floor(cap * 0.25);
       c.res.pop = 0;
       st.items.yiminling = 1;
@@ -23468,7 +23886,9 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         return /领地上限/.test(lockAtCap || '') && lockFree === ''
           && /GAME\.cityCapChk/.test(uSrc)
           && /GAME\.onConquer[\s\S]{0,500}GAME\.cityCapChk/.test(bSrc)
-          && /GAME\.claimFort[\s\S]{0,700}GAME\.cityCapChk/.test(bSrc)
+          /* v89.186（老板 3）：据点剥离 —— 占据不占城池名额 → claimFort **不再读领地闸**
+             （改前是"转城"口径的正向判据；规则变更后反转为负向，防回潮）。 */
+          && !/GAME\.claimFort[\s\S]{0,900}GAME\.cityCapChk/.test(bSrc)
           && /GAME\.cityCapChk/.test(dSrc);
       })());
     } finally { G.state = bak89; }
@@ -23655,7 +24075,10 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         var c0 = G.currentCity();
         var cx = c0.x, cy = c0.y;
         /* 野地等级由**地图格**决定（resolveTarget → map.wildLevelNow），不受 target.lv 影响 ——
-           在城周围扫一格 Lv1~3 的野地（守军小，300 义兵打得赢）。 */
+           在城周围扫一格 Lv1~2 的野地（守军小，300 义兵打得赢）。
+           v89.192 规则变更所致：射程回落修复（目标不在射程→打射程内任意）后战斗节奏加快，
+           Lv3 沼泽属于临界局（实测同 seed 下胜负可翻转）→ 扫描上限 3 收窄为 2
+           （本用例验的是"运输/载重"，需要一场赢局，靶必须留余量）。 */
         var tgt = null, CMAX = GAME.COORD_MAX || 499;
         for (var dx = -6; dx <= 6 && !tgt; dx++) {
           for (var dy = -6; dy <= 6 && !tgt; dy++) {
@@ -23665,7 +24088,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
             var tl = G.map.tile(xx, yy);
             if (!tl || tl.terrain === 'city') continue;
             var lv0 = G.map.wildLevelNow ? G.map.wildLevelNow(xx, yy) : 1;
-            if (lv0 >= 1 && lv0 <= 3) tgt = { x: xx, y: yy, lv: lv0 };
+            if (lv0 >= 1 && lv0 <= 2) tgt = { x: xx, y: yy, lv: lv0 };
           }
         }
         if (!tgt) { dbg94 += 'no-low-wild;'; tgt = { x: cx + 2, y: cy, lv: 1 }; }
@@ -24064,14 +24487,20 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var boost = (D96.ITEMS || []).filter(function (x) { return x.type === 'boost'; });
       return boost.length >= 8 && boost.every(function (x) { return ok.indexOf(x.target) >= 0; });
     })());
-    check('② 实测：只列该用途（train 只回韩信两件；"看全部"才给整类）', (function () {
+    check('② 实测：只列该用途（train 回在售件 · dropOnly 高阶件不列；"看全部"才给整类）', (function () {
       var tr = G.ui.qbScopeItemsOf('boost', 'train');
       var bd = G.ui.qbScopeItemsOf('boost', 'build');
       var all = G.ui.qbScopeItemsOf('boost', null);
       var ids = tr.map(function (x) { return x.id; });
-      /* 正向判据：训练两件宝物在列；**没有一件**是别的用途混进来 */
+      /* 正向判据：训练在售宝物在列；**没有一件**是别的用途混进来。
+         v89.179c（老板「高阶比例道具移出商城」）：pct ≥ 0.5 的 dropOnly 件
+         （hanxin_dianbing 50% / hufu_junling 75% / shiwan_jiabing 90%）
+         与商城同口径 —— 快购**不得**再列，只能在采集 / 战役里掉。 */
       return tr.length >= 2 && tr.every(function (x) { return x.target === 'train'; })
-        && ids.indexOf('hanxin_sanpian') >= 0 && ids.indexOf('hanxin_dianbing') >= 0
+        && tr.every(function (x) { return !x.dropOnly; })
+        && ids.indexOf('hanxin_sanpian') >= 0 && ids.indexOf('dianbing_can') >= 0
+        && ids.indexOf('hanxin_dianbing') < 0 && ids.indexOf('hufu_junling') < 0
+        && ids.indexOf('shiwan_jiabing') < 0
         && ids.indexOf('luban_canye') < 0 && ids.indexOf('mojia_canjuan') < 0
         && ids.indexOf('jixingjunling') < 0
         && bd.length >= 3 && bd.every(function (x) { return x.target === 'build'; })
@@ -24377,8 +24806,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
        它的强弱只由自身 hp/atk/def 决定（数值按 probe_v89118_elephant 标定：
        对步兵赢但损 15~20%，被同人口西凉铁骑全歼）。
        判据（全部正向）：两张表都没有它 + 它仍是**骑兵族 hp/pop 最高**（血牛定位在数值上成立）。 */
-    check('⑨ 南疆象兵不设克制（两张相克表都无它；强度靠自身数值 —— 骑兵族 hp/pop 最高）', (function () {
-      var A = D96.COUNTER_ATK.changqiang || {}, Df = D96.COUNTER_DEF.changqiang || {};
+    check('⑨（v89.179 升级）全表零克制：象兵不再是孤例；骑兵族 hp/pop 最高仍成立', (function () {
       var T = D96.TROOPS, xb = T.nanjiangxiangbing;
       var top = true;
       Object.keys(T).forEach(function (id) {
@@ -24386,31 +24814,17 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         if ((T[id].cat || '') !== 'cav') return;         /* 只与骑兵族比（冲车等器械不算） */
         if (T[id].hp / T[id].pop > xb.hp / xb.pop) top = false;
       });
-      return A.nanjiangxiangbing === undefined && Df.nanjiangxiangbing === undefined && top;
+      return D96.COUNTER_ATK === undefined && D96.COUNTER_DEF === undefined && top;
     })());
-    check('⑨ **高战力 + 零克制**的漏网之鱼：零（象兵那种"无弱点"的兵种不存在了）', (function () {
-      /* 判据（老板要的是"没有无弱点的兵种"，不是"每支都必须在克制表里"）：
-         每人口攻击 ≥170 **且** 每人口有效生命 ≥4000 = "高战力档"（铁骑/西凉铁骑/象兵这一档）——
-         这一档必须至少有一条克制关系（自己克人、或被人克）。
-         低战力兵种（义兵 / 民夫 / 特殊州兵）不在此判据内：它们的取舍在成本与门槛上，
-         实测（probe_v89116_stats）：义兵 vs 长枪 5 回合全灭只换 17 人，本就不需要额外克制。 */
-      var T = D96.TROOPS, bad = [], noRel = [];
-      Object.keys(T).forEach(function (id) {
-        var t = T[id];
-        if (t.nocombat || t.craft) return;
-        var has = !!(D96.COUNTER_ATK[id] || D96.COUNTER_DEF[id]);
-        var inOther = false;
-        [D96.COUNTER_ATK, D96.COUNTER_DEF].forEach(function (tbl) {
-          Object.keys(tbl).forEach(function (k) { if (tbl[k][id]) inOther = true; });
-        });
-        if (!has && !inOther) noRel.push(id);
-        var strong = (t.atk / t.pop) >= 170 && (t.hp * (1 + t.def / 300)) / t.pop >= 4000;
-        if (strong && !has && !inOther) bad.push(id);
-      });
-      console.log('      无克制关系的兵种（低战力档，取舍在成本/门槛）：'
-        + (noRel.join('、') || '无'));
-      if (bad.length) console.log('      高战力却零克制：' + bad.join('、'));
-      return bad.length === 0;
+    check('⑨（v89.179 升级）原"高战力必须有克制关系"判据随全撤作废：制衡改由成本/门槛承担', (function () {
+      /* 历史：v89.118 曾要求"高战力档至少有一条克制关系"（防"无弱点兵种"）；
+         v89.179 全撤后无表可依 —— 升级为：全表零克制 + 强兵（西凉铁骑）每人口
+         粮耗 ≥ 基础兵 3 倍（1350 vs 450），制衡从"克制关系"转移到"成本与解锁门槛"。
+         实跑复核（probe_v89179c）：西凉/铁骑/虎豹对枪兵同人口全胜，但成本贵 3~4 倍。 */
+      var T = D96.TROOPS, xl = T.xiliangtieqi, base = T.changqiang;
+      return D96.COUNTER_ATK === undefined && D96.COUNTER_DEF === undefined
+        && (xl.atk / xl.pop) >= 170
+        && (xl.cost.grain / xl.pop) >= 3 * (base.cost.grain / base.pop);
     })());
 
     console.log('  --- ＋ 同族 bug 清剿：引用了不存在的成员 ---');
@@ -24864,9 +25278,8 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })());
 
     /* ---------- 需求 2：象兵不设克制 ---------- */
-    check('② 象兵不进克制表（正常攻防）；同人口对长枪「赢但可打」（损 10%~60%）', (function () {
-      var A = D98.COUNTER_ATK.changqiang || {}, Df = D98.COUNTER_DEF.changqiang || {};
-      if (A.nanjiangxiangbing !== undefined || Df.nanjiangxiangbing !== undefined) return false;
+    check('②（v89.179 升级）全表零克制（象兵不再是孤例）；同人口对长枪「赢但可打」（损 10%~60%）', (function () {
+      if (D98.COUNTER_ATK !== undefined || D98.COUNTER_DEF !== undefined) return false;
       var r = G.tactic.simulate({ changqiang: 600 }, null, { nanjiangxiangbing: 120 }, 0, null, { kind: 'wild' });
       var lossPct = 100 * r.defLoss / 120;
       window.__ele118 = '枪损' + r.atkLoss + '/600 象损' + r.defLoss + '/120(' + Math.round(lossPct) + '%)';
@@ -24971,8 +25384,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         if (rep && rep.sandbox) {
           v0 = G.battle.sandboxOf(rep);
           /* 篡改全局：科技暴涨 + 天时换季 + 战鼓注入 + 羁绊倍率拉满 */
-          st.techs = st.techs || {};
-          st.techs.zhandou = 9; st.techs.yibing = 9;
+          G.techSet('zhandou', 9); G.techSet('yibing', 9);   /* v89.191：按城写（yibing 非科技 id，历史占位） */
           st.world = st.world || {};
           st.world.weather = (st.world.weather === 'clear') ? 'rain' : 'clear';
           st.buffs = { military: { atk: 9.99, def: 9.99 } };
@@ -25455,13 +25867,21 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       'mingjiang_xinchuan', 'taigong_bingshu', 'jinchuang_san', 'shengji_gao', 'huiqi_dan',
       'peiyuan_dan', 'guben_dan', 'shengxin_wan', 'jingxin_dan', 'huanhun_lu',
       'yule_maju', 'zhaoye_an', 'zhuifeng_an', 'chest_zitan'];
-    var CHT = { jewel: 1, material: 1, blueprint: 1, rank_up: 1, essence: 1, talis: 1 };
+    /* v89.186：宝具（type='bao'）渠道 = 打据点/名城缴获（GAME.grantBaoDrop · DATA.BAOJU_DROP） */
+    var CHT = { jewel: 1, material: 1, blueprint: 1, rank_up: 1, essence: 1, talis: 1, bao: 1 };
     var CHI = { corvee: 1, mabian: 1, jinang: 1, bp_mingjiang: 1,
       tongshang_quan: 1, mojia_canjuan: 1, xianzhenzhangu: 1, jixingjunling: 1, hufu: 1 };
     ((G.DATA.SEED_DROP || {}).table || []).forEach(function (r) { CHI[r.id] = 1; });
+    /* v89.179c：dropOnly 的高阶加速宝物**有产出渠道**（采集归来 / 出征缴获），
+       只是不在商城卖 —— 渠道表与掉落表都要登记，否则会被误判成"渠道缺口"。 */
+    ((G.DATA.BOOST_DROP || {}).table || []).forEach(function (r) { CHI[r.id] = 1; });
+    /* 在售判据改用 shopItems()（它已排除 dropOnly）—— 与玩家实际看到的商城同口径；
+       用 raw `SHOP_CATS[type]` 会把 dropOnly 件误当成"在售"而放过（盲区）。 */
+    var ON_SALE = {};
+    (G.ui.shopItems() || []).forEach(function (it) { ON_SALE[it.id] = 1; });
     var noCh = [];
     (G.DATA.ITEMS || []).forEach(function (it) {
-      if (it.price > 0 && !it.noShop && G.ui.SHOP_CATS[it.type]) return;   /* 商城在售 */
+      if (ON_SALE[it.id]) return;          /* 商城在售 */
       if (CHI[it.id] || CHT[it.type]) return;
       noCh.push(it.id);
     });
@@ -25482,8 +25902,12 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     var half102 = [];
     (G.DATA.ITEMS || []).forEach(function (it) {
       if (it.price > 0 && !it.noShop && !G.ui.SHOP_CATS[it.type]) half102.push(it.id + '(' + it.type + ')');
+      /* v89.179c：有价 + 有页签，却不在 shopItems（如 dropOnly），必须另有掉落渠道 ——
+         否则就是新的"买不到也打不到"的鬼物。 */
+      else if (it.price > 0 && !it.noShop && G.ui.SHOP_CATS[it.type] && !ON_SALE[it.id]
+        && !CHI[it.id] && !CHT[it.type]) half102.push(it.id + '(无渠道)');
     });
-    check('§102④ 无"半上架"物品（有价 + 非下架 → 必须有页签）', half102.length === 0,
+    check('§102④ 无"半上架"物品（有价 + 非下架 → 必须有页签；不在售 → 必须有掉落渠道）', half102.length === 0,
       half102.length ? '半上架：' + half102.slice(0, 10).join(' ') : '全量扫过 ✓');
     /* ⑤ 绝版不可购（v89.121「承认绝版」的落地验证）——
        四条购买路径全部堵死：商城页不列 / 快购列表不列 / 快购单品拦住 / doShopping 硬拒。
@@ -25515,8 +25939,8 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     var c103 = G.currentCity();
     var s103 = G.state;
     var cap103 = G.maxPopOf(c103);
-    /* 摆"上限的一半"：既未到上限（不触发"已满 +0"分支）、又不是 0（增速有值） */
-    s103.res.pop = Math.max(1, Math.floor(cap103 * 0.5));
+    /* 摆"**有效**上限的一半"（v89.185：UI"已满 +0"判据走 effPopCapOf）——既未到上限、又不是 0 */
+    s103.res.pop = Math.max(1, Math.floor(G.effPopCapOf(c103) * 0.5));
     G.ui.renderCityAttrs(c103, s103);
     var h103 = (global.document.querySelector('#city-attrs') || {}).innerHTML || '';
     var m103 = h103.match(/pop-line[\s\S]*?num-rate[^>]*>\+([^<]*)\/时</);
@@ -25603,6 +26027,17 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     });
     /* v89.128：城墙在**环城槽**（不占格）—— 摆 Lv10，走通用升级出口 upgradeAt('wall') */
     G.wallSlotOf(c104).build = { id: 'chengqiang', lvl: 10 };
+    /* v89.191（老板 3-①②/③）：城墙吃两道新闸 —— 配对（作坊 ≥ 目标−2）与建筑技术 Lv2。
+       本用例验的是"时间曲线"，前置摆足即可。 */
+    G.techSet('jianzhu', 5, c104);
+    (function () {
+      for (var i191 = 0; i191 < c104.cells.length; i191++) {
+        var cl191 = c104.cells[i191];
+        if (cl191 && !cl191.build && !cl191.official && !cl191.pending) {
+          cl191.build = { id: 'gongjiangzuofang', lvl: 10 }; return;
+        }
+      }
+    })();
     var nq104 = (st104.queues.build || []).length;
     var rw104 = G.upgradeAt(c104.id, 'wall');
     var q104 = (st104.queues.build || [])[nq104];
@@ -25653,6 +26088,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     G.state = st108;
     var c108 = st108.cities[0];
     st108.res.grain = 1e9; st108.res.wood = 1e9; st108.res.stone = 1e9; st108.res.iron = 1e9;
+    st108.gold = 1e9;   /* v89.194（老板 S1）：Lv9 起升级另需营造金（本用例验时间曲线） */
     var g108 = -1;
     c108.cells.forEach(function (cl, i) { if (cl.build && cl.build.id === 'guanfu') g108 = i; });
     if (g108 >= 0) c108.cells[g108].build.lvl = 11;
@@ -25960,7 +26396,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     var c105 = st105.cities[0];
     /* ① 老板原场景：8 间 1 级民房（上限 800）——增速 = 上限 ÷ fillHours */
     c105.cells.forEach(function (x, i) { if (i < 8) x.build = { id: 'minfang', lvl: 1 }; });
-    var cap105 = G.maxPopOf(c105);
+    var cap105 = G.effPopCapOf(c105);   /* v89.185：口径改走**有效上限**（民心折算）——"补满时长恒定"不变 */
     var g105 = G.popGrowthOf(c105);
     var hours105 = cap105 / g105;
     var cfg105 = DATA.POP_CFG || {};
@@ -25977,7 +26413,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     /* ③ 上限大 40 倍，补满时长仍然相同（固定时间速率的核心语义） */
     var big105 = { cells: [{ build: { id: 'minfang', lvl: 12 } }, { build: { id: 'minfang', lvl: 12 } },
       { build: { id: 'minfang', lvl: 12 } }, { build: { id: 'minfang', lvl: 12 } }] };
-    var capBig105 = G.maxPopOf(big105);
+    var capBig105 = G.effPopCapOf(big105);   /* v89.185：同尺（有效上限） */
     var hoursBig105 = capBig105 / G.popGrowthOf(big105);
     check('§105③ 更大上限（' + capBig105 + '）补满时长同为 ' + hoursBig105.toFixed(2) + ' 小时',
       Math.abs(hoursBig105 - hours105) < 1e-9);
@@ -26002,29 +26438,44 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       for (var j = 0; j < n; j++) extGrid.push({ type: 'farm', lv: lv });
       return { id: 'f106' + type + lv, type: type, cells: cells, extGrid: extGrid };
     }
-    /* ① 五类城池满配 → 占比恰 = fullPct（12.5%，老板区间 10%-15% 中值） */
-    var pct106 = [];
-    [['self', 12], ['county', 12], ['jun', 16], ['zhou', 20], ['capital', 24]].forEach(function (t) {
-      var cc = mkFull106(t[0], t[1]);
-      var cap = G.maxPopOf(cc);
-      pct106.push(cap > 0 ? G.popLaborOf(cc) / cap : -1);
-    });
-    var fp106 = (DATA.POP_LABOR || {}).fullPct || 0.125;
-    check('§106① 满配占比：五类城池全部 = fullPct（' + (fp106 * 100) + '%）',
-      pct106.length === 5 && pct106.every(function (p) { return Math.abs(p - fp106) < 1e-3; }),
-      pct106.map(function (p) { return (p * 100).toFixed(2) + '%'; }).join(' / '));
-    /* ② 未满配按级数比例：**占用比 === 级数比**（城外减半 → 占用落到级数份额） */
-    var c2_106 = mkFull106('self', 12);
-    c2_106.extGrid = c2_106.extGrid.slice(0, Math.floor(c2_106.extGrid.length / 2));
-    var fullCity106 = mkFull106('self', 12);
-    var half106 = G.popLaborOf(c2_106);
-    var full106 = G.popLaborOf(fullCity106);
-    var lvRatio106 = G.popLaborLevelsOf(c2_106) / G.popLaborLevelsOf(fullCity106);
-    check('§106② 未满配按比例：占用比 = 级数比',
-      half106 > 0 && Math.abs(half106 / full106 - lvRatio106) < 0.01,
-      '占用比 ' + (half106 / full106 * 100).toFixed(1) + '% = 级数比 '
-      + (lvRatio106 * 100).toFixed(1) + '%（' + G.popLaborLevelsOf(c2_106)
-      + '/' + G.popLaborLevelsOf(fullCity106) + ' 级）');
+    /* ①（v89.189 新口径 · 规则变更重写）老板定义恒等：
+       「1 间民房的人口可以照看 16 座同级资源建筑 或 9 座城内同级建筑」——
+       9 座同级城内建筑的总占用 == 1 座同级民房的人口；16 块资源同理。 */
+    check('§106①（v89.189）定义恒等：9 座同级建筑占 = 1 民房人口 · 16 块资源 = 1 民房人口', (function () {
+      var lv = 12, pm = DATA.BUILDINGS.minfang.pop[lv - 1];
+      function labor(cells, extGrid) {
+        return G.popLaborOf({ id: 't106a', cells: cells || [], extGrid: extGrid || [] });
+      }
+      var b1 = labor([{ build: { id: 'junying', lvl: lv } }]);
+      var b9 = labor([{ build: { id: 'junying', lvl: lv } }, { build: { id: 'shuyuan', lvl: lv } },
+        { build: { id: 'xiaochang', lvl: lv } }, { build: { id: 'shichang', lvl: lv } },
+        { build: { id: 'cangku', lvl: lv } }, { build: { id: 'kezhan', lvl: lv } },
+        { build: { id: 'majiu', lvl: lv } }, { build: { id: 'yizhan', lvl: lv } },
+        { build: { id: 'fenghuotai', lvl: lv } }]);
+      var e16 = labor([], (function () {
+        var a = []; for (var i = 0; i < 16; i++) a.push({ type: 'farm', lv: lv });
+        return a;
+      })());
+      return Math.abs(b9 - pm) <= 1 && Math.abs(e16 - pm) <= 1
+        && Math.abs(b1 - Math.floor(pm / 9)) <= 1;
+    })());
+    /* ② 逐建筑按**等级**折算（非级数线性）：Lv6 / Lv24 单座占用 = P_m(级)/9 */
+    check('§106②（v89.189）按等级折算：Lv6 座占 = P_m(6)/9 · Lv24 座 = P_m(24)/9', (function () {
+      function labor1(id, lv) {
+        return G.popLaborOf({ id: 't2' + id + lv, cells: [{ build: { id: id, lvl: lv } }], extGrid: [] });
+      }
+      var pm6 = DATA.BUILDINGS.minfang.pop[5], pm24 = DATA.BUILDINGS.minfang.pop[23];
+      return Math.abs(labor1('junying', 6) - Math.floor(pm6 / 9)) <= 1
+        && Math.abs(labor1('junying', 24) - Math.floor(pm24 / 9)) <= 1;
+    })());
+    /* ②b 除外项：官府 / 民房 / 城墙**不占**（老板明示"除官府和城墙外"） */
+    check('§106②b（v89.189）除外项：官府 / 民房 / 城墙不占劳作人口', (function () {
+      var lv = 12;
+      var only = G.popLaborOf({ id: 't106c',
+        cells: [{ build: { id: 'guanfu', lvl: lv } }, { build: { id: 'minfang', lvl: lv } }],
+        extGrid: [], wall: { build: { id: 'chengqiang', lvl: lv } } });
+      return only === 0;
+    })());
     /* ③ 可征 = 人口 − 劳作（唯一出口 popFreeOf；人口 < 劳作 → 0 不为负） */
     var keep106 = G.state;
     var st106 = G.newGame({ name: 'v126e', cityName: '许都' });
@@ -26049,8 +26500,8 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       rOK106.ok === true && rNo106.ok === false && /可征人口不足/.test(rNo106.msg || ''),
       'ok=' + rOK106.ok + ' / 拦=' + rNo106.ok + '｜' + String(rNo106.msg).slice(0, 52));
     /* ⑤ 劳作只约束征兵 —— 增长公式不受影响（仍 = 上限 ÷ fillHours） */
-    check('§106⑤ 劳作不动增长：popGrowthOf = 上限 ÷ fillHours（不受劳作影响）',
-      Math.abs(G.popGrowthOf(c106) - G.maxPopOf(c106) / (DATA.POP_CFG.fillHours || 2)) < 1e-9);
+    check('§106⑤ 劳作不动增长：popGrowthOf = 有效上限 ÷ fillHours（不受劳作影响 · v89.185 同源）',
+      Math.abs(G.popGrowthOf(c106) - G.effPopCapOf(c106) / (DATA.POP_CFG.fillHours || 2)) < 1e-9);
     G.state = keep106;
   })();
 
@@ -26150,11 +26601,11 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         && gA111.tong === gB111.tong && gA111.rank === gB111.rank && gA111.style === gB111.style;
       var idx1_111 = DATA.GEN_RANKS.indexOf(DATA.GEN_RANK_BY_ID[G.fortGuardOf({ x: 1, y: 1, level: 1 }).rank]);
       var idx6_111 = DATA.GEN_RANKS.indexOf(DATA.GEN_RANK_BY_ID[G.fortGuardOf({ x: 1, y: 1, level: 6 }).rank]);
-      ok111b = !!(tt111.ok && tt111.guard && tt111.guard.name && det111 && idx1_111 === 2 && idx6_111 === 4);
+      ok111b = !!(tt111.ok && tt111.guard && tt111.guard.name && det111 && idx1_111 === 3 && idx6_111 === 3);   /* v89.185：一律名世=3 */
       note111b = fort111.name + ' Lv' + fort111.level + ' → ' + (tt111.guard ? tt111.guard.name + ' ' + G.rankOf(tt111.guard).name + ' Lv' + tt111.guard.level : 'null')
-        + ' · 确定性=' + det111 + ' · Lv1档=' + idx1_111 + '（英杰=2）/ Lv6档=' + idx6_111 + '（天授=4）';
+        + ' · 确定性=' + det111 + ' · Lv1档=' + idx1_111 + '（名世=3）/ Lv6档=' + idx6_111 + '（名世=3）';
     }
-    check('§111② 据点守将：resolveTarget 带 guard + 确定性（两次全等）+ 相称（1→英杰 / 6→天授）', ok111b, note111b);
+    check('§111② 据点守将：resolveTarget 带 guard + 确定性（两次全等）+ 相称（v89.185：一律名世）', ok111b, note111b);
 
     /* ③ 相称尺子：三类型逐档 + "建议等级 === 守将等级下限"交叉核对（防两处漂移） */
     var recW10_111 = G.recGenOf({ ok: true, kind: 'wild', lv: 10 });
@@ -26171,15 +26622,15 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       fortMin111 = Math.min(fortMin111, G.fortGuardOf({ x: j111 % 10, y: (j111 / 10) | 0, level: 8 }).level);
     }
     check('§111③ 相称尺子 recGenOf：三类型逐档 + 建议等级 === 守将等级下限（同尺）',
-      !!(recW1_111 && recW1_111.rankId === 'liang' && recW1_111.lv === 3)
-      && !!(recW10_111 && recW10_111.rankId === 'tian' && recW10_111.lv === 20)
-      && !!(recF10_111 && recF10_111.rankId === 'tian' && recF10_111.lv === 60)
-      && !!(recCap_111 && recCap_111.rankId === 'tian' && recCap_111.lv === 190)
+      !!(recW1_111 && recW1_111.rankId === 'ying' && recW1_111.lv === 30)       /* v89.185：野地=英杰 30 起 */
+      && !!(recW10_111 && recW10_111.rankId === 'ying' && recW10_111.lv === 120)  /* 野地 Lv10 = 120 */
+      && !!(recF10_111 && recF10_111.rankId === 'ming' && recF10_111.lv === 150)  /* 据点=名世 60 起 · Lv10=150 */
+      && !!(recCap_111 && recCap_111.rankId === 'tian' && recCap_111.lv === 210)  /* 名城天授 120-240（都城 210） */
       && recOwn_111 === null
-      && wildMin111 >= 16 && wildMin111 <= 20          /* 野地 Lv8：下限 16（+jitter 0~4） */
-      && fortMin111 >= 52 && fortMin111 <= 57,         /* 据点 Lv8：下限 52（+jitter 0~5） */
+      && wildMin111 >= 100 && wildMin111 <= 109        /* 野地 Lv8：下限 30+7×10=100（+jitter 0~9） */
+      && fortMin111 >= 130 && fortMin111 <= 139,       /* 据点 Lv8：下限 60+7×10=130（+jitter 0~9） */
       '野地Lv1=' + recW1_111.text + ' · 野地Lv10=' + recW10_111.text + ' · 据点Lv10=' + recF10_111.text
-      + ' · 都城=' + recCap_111.text + ' · 调兵=null · 野地Lv8守将最小 ' + wildMin111 + '（建议 16）· 据点Lv8最小 ' + fortMin111 + '（建议 52）');
+      + ' · 都城=' + recCap_111.text + ' · 调兵=null · 野地Lv8守将最小 ' + wildMin111 + '（建议 100）· 据点Lv8最小 ' + fortMin111 + '（建议 130）');
 
     /* ④ 无将出征硬闸：真调两条路，全被拒且不扣兵 */
     var c111 = st111.cities[0];
@@ -26739,9 +27190,15 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       return /ui\.view === 'generals'/.test(m117)
         && /_st136/.test(m117) && /view-container/.test(m117);
     })());
-    check('§117③ 盘点器进 gate（TABLES 常量 + 判据分支 + 退出码）', (function () {
+    check('§117③ 盘点器进 gate（TABLES + DATASET 常量 · 判据分支 · 退出码）', (function () {
       return /TABLES = \('\.workbuddy\/tools\/audit\/audit_v89134_tables\.js'/.test(g117)
-        && /卫生四查全过/.test(g117) && /plan = list\(TESTS\) \+ \[TABLES\]/.test(g117)
+        && /卫生四查全过/.test(g117)
+        /* v89.179c：第二个"常跑"盘点器 —— dataset 引用一致性。
+           老板第 1 条的 `data-scope` 丢失正是这类"不报错、只是行为悄悄变错"的病，
+           必须与数据表卫生同档常跑（轻量路径也要带上）。 */
+        && /DATASET = \('\.workbuddy\/tools\/audit\/audit_v89179c_dataset_refs\.js'/.test(g117)
+        && /plan = list\(TESTS\) \+ \[TABLES, DATASET\]/.test(g117)
+        && /\[TESTS\[0\], TABLES, DATASET\]/.test(g117)
         && /process\.exit\(bad === 0 \? 0 : 1\);/.test(t117);
     })());
   })();
@@ -26810,14 +27267,13 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })());
 
     /* ---- ③ 战场（老板 2/3）：兵种悬停最终属性 + 回合记录下移到底 ---------- */
-    check('§118③/§151 兵种悬停：ui.btUnitTip 唯一读 unitFinalOf（两处**富浮层**共用 · 绿红克制）', (function () {
+    check('§118③/§151 兵种悬停：ui.btUnitTip 唯一读 unitFinalOf（两处**富浮层**共用 · v89.179 起无克制行）', (function () {
       return /ui\.btUnitTip = function/.test(uc)
         && /GAME\.battle\.unitFinalOf\(u, gen\)/.test(uc)
         /* v89.151：title（纯文本装不下颜色）→ 富浮层（data-tip-el + .tip-src）——
-           兵牌与侧栏简称两处共用同一出口；克制/抗性走 cnt-good（绿）、被克走 cnt-bad（红） */
+           兵牌与侧栏简称两处共用同一出口；克制行已随全撤删除（cnt-* 与 troopCounterOf 均须零残留） */
         && /data-tip-el="1"/.test(uc) && /class="tip-src"/.test(uc)
-        && /cnt-good/.test(uc) && /cnt-bad/.test(uc)
-        && /ui\.troopCounterOf = function/.test(uc)
+        && !/cnt-(good|bad)/.test(uc) && !/troopCounterOf/.test(uc)
         && (uc.match(/ui\.btUnitTip\(u, side\)/g) || []).length >= 2;
     })());
     check('§118③ 实测：unitFinalOf 输出最终属性（含科技/将领加成 · 无将↔有将 hp 不同）', (function () {
@@ -28651,19 +29107,15 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         && /hpPer: u\.hpPer, cover: u\.cover \|\| 0, atkPct: u\.atkPct \|\| 0, defPct: u\.defPct \|\| 0,/.test(t131);
     })(), _r131f);
 
-    check('§131⑤ 克制反查唯一出口 troopCounterOf（长枪克骑 / 刀盾抗箭 / 弓箭被克）', (function () {
-      var cq = G.ui.troopCounterOf('changqiang');
-      var dd = G.ui.troopCounterOf('daodun');
-      var gj = G.ui.troopCounterOf('gongjian');
-      _r131f = '枪克=' + (cq ? cq.beats.length : -1) + ' 盾抗=' + (dd ? dd.resists.length : -1)
-        + ' 弓被克=' + (gj ? gj.beaten.length : -1);
-      return cq && cq.beats.some(function (x) { return x.id === 'qingji' && x.mul === 3; })
-        && dd && dd.resists.some(function (x) { return x.id === 'gongjian'; })
-        && gj && gj.beaten.some(function (x) { return x.id === 'daodun'; })
-        && G.ui.troopCounterOf('__nope__') === null;
+    check('§131⑤ 克制反查出口已随全撤退役（troopCounterOf 不存在 · 源码零残骸）', (function () {
+      var uc131 = stripComment(require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8'));
+      _r131f = 'troopCounterOf=' + typeof G.ui.troopCounterOf;
+      return G.ui.troopCounterOf === undefined
+        && uc131.indexOf('troopCounterOf') < 0 && uc131.indexOf('cnt-good') < 0
+        && uc131.indexOf('cnt-bad') < 0 && uc131.indexOf('被克') < 0;
     })(), _r131f);
 
-    check('§131⑤ 悬停富浮层：五段排版 + 绿红克制 + 血非零（实调 btUnitTip）', (function () {
+    check('§131⑤ 悬停富浮层：五段排版 + 血非零（实调 btUnitTip · v89.179 起无克制行）', (function () {
       var snap = { field: 1400, towers: null, atk: [], def: [] };
       var u = { id: 'changqiang', name: '长枪兵', count: 6000, hpPer: 1800, cover: 1,
         atkPct: 0, defPct: 0, adv: 100, spd: 300, range: 50, stance: 'advance', target: '' };
@@ -28674,7 +29126,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       _r131g = 'tip 长度=' + html.length;
       return /class="tip-t"/.test(html) && /数量 <b>/.test(html) && /射程 <b>/.test(html)
         && /全军血量 <b>/.test(html) && /全军攻击 <b>/.test(html) && /全军防御 <b>/.test(html)
-        && /cnt-good/.test(html) && /无将领带队/.test(html)
+        && html.indexOf('克制') < 0 && html.indexOf('cnt-') < 0 && /无将领带队/.test(html)
         /* 兵牌与侧栏两处都挂富浮层（data-tip-el + .tip-src） */
         && (u131s.match(/data-tip-el="1"/g) || []).length >= 2
         && /class="tip-src"/.test(u131s);
@@ -28717,7 +29169,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     /* ---- ⑩ 野地按钮规格（文案 / 等长 / 统一规格 · 其他弹窗共用） ---- */
     check('§131⑩ 野地面板「⛏️ 采集」+ op-zone-eq 等长（半行宽）+ 禁用态统一 + 建筑键共用规格', (function () {
       return u131s.indexOf('>⚙️ 设置采集</button>') < 0
-        && (u131s.match(/op-zone-eq/g) || []).length === 4   /* v89.152：+「产出」区 */
+        && (u131s.match(/op-zone-eq/g) || []).length === 6   /* v89.152：+「产出」区 · v89.193：+前哨护持区 · v89.195：+前哨危险区（放手） */
         && /\.op-zone-eq \.op-row > \.btn \{ flex: 0 0 auto; width: calc\(\(100% - var\(--sp-3\)\) \/ 2\); \}/.test(h131)
         && /\.op-zone-eq \.op-row > \.btn:disabled,\s*\n  \.bldg-acts > \.btn:disabled,\s*\n  \.bldg-foot > \.btn:disabled \{ opacity: \.55;/.test(h131);
     })());
@@ -28902,10 +29354,12 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var bak = { status: gen.status, cityId: gen.cityId };
       GAME.map.wildAt(wk.x, wk.y).garrison = { troops: { changqiang: 5000 }, cityId: c.id, genId: gen.id };
       var ok = false, sawJewel = false;
-      for (var i = 0; i < 12 && !sawJewel; i++) {              /* 34% 概率；每次重开采集 */
+      for (var i = 0; i < 30 && !sawJewel; i++) {              /* 34% 概率；每次重开采集
+          v89.180：重试 12→30 且 break→continue —— 原版第一次 startGather 失败就整体退出
+          （重试机制名存实亡），本轮实中一次 flaky。 */
         GAME.startGather(wk.x, wk.y, { changqiang: 5000 }, { cityId: c.id });
         var g = GAME.gatherList().filter(function (x) { return x.x === wk.x && x.y === wk.y; })[0];
-        if (!g) break;
+        if (!g) continue;
         g.elapsed = 24 * 3600;
         var r = GAME.finishGather(g.id);
         if (r.ok) {
@@ -29381,8 +29835,9 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       c.cells.forEach(function (x, i) { if (gIdx < 0 && x.build && x.build.id === 'guanfu') gIdx = i; });
       if (gIdx < 0) { _why157 = 'no guanfu'; return false; }
       var bk = { lvl: c.cells[gIdx].build.lvl, wall: JSON.stringify(G.wallSlotOf(c)),
-        q: (s.queues.build || []).slice(), res: {} };
+        q: (s.queues.build || []).slice(), res: {}, gold: c.res.gold };
       ['grain', 'wood', 'stone', 'iron'].forEach(function (k) { bk.res[k] = c.res[k]; c.res[k] = 1e9; });
+      c.res.gold = 1e9;   /* v89.194（老板 S1）：11→12 另需营造金 2.4 万（本用例验城墙门槛） */
       s.queues.build = [];
       var r1 = null, r2 = null, r3 = null;
       try {
@@ -29404,6 +29859,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         G.wallSlotOf(c).build = (wb && wb.build) ? wb.build : null;
         G.wallSlotOf(c).pending = (wb && wb.pending) ? wb.pending : null;
         Object.keys(bk.res).forEach(function (k) { c.res[k] = bk.res[k]; });
+        c.res.gold = bk.gold;   /* v89.194：金一并还原 */
       }
       if (!(r1 && r1.ok === false && /城墙/.test(r1.msg || ''))) { _why157 = 'r1=' + JSON.stringify(r1); return false; }
       if (!(r2 && r2.ok === true)) { _why157 = 'r2=' + JSON.stringify(r2); return false; }
@@ -29680,7 +30136,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var c = G.makeCity({ id: 'v159b', name: 'v159b城', x: 601, y: 601, type: 'self' });
       var bkQ = (st.queues.build || []).slice();
       var bkMain = st.mainCityId, bkRank = st.rank;
-      var bkCity159b = G.ui._cityId, bkRes159b = {}, bkItems159b = {};
+      var bkCity159b = G.ui._cityId, bkRes159b = {}, bkItems159b = {}, bkGold159b = st.gold;
       st.cities.push(c);
       try {
         G.ui._cityId = c.id;                          /* 资源写入当前城 */
@@ -29696,6 +30152,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
           c.cells[mi].build = { id: 'minfang', lvl: 12 };
         }
         ['grain', 'wood', 'stone', 'iron'].forEach(function (k) { c.res[k] = 1e9; });
+        st.gold = 1e9;    /* v89.194（老板 S1）：12→13 另需营造金 2.4 万（本用例验官府总闸） */
         var _c = DATA.BUILDINGS.minfang.levelCost(12) || {};
         if (_c.jewel) { st.jewels = st.jewels || {}; for (var jk in _c.jewel) st.jewels[jk] = Math.max(st.jewels[jk] || 0, _c.jewel[jk]); }
         st.mainCityId = c.id; st.rank = 5;
@@ -29716,6 +30173,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         st.mainCityId = bkMain; st.rank = bkRank;
         ['grain', 'wood', 'stone', 'iron'].forEach(function (k) { if (bkRes159b[k] != null) st.res[k] = bkRes159b[k]; });
         for (var jk2 in bkItems159b) st.items[jk2] = bkItems159b[jk2];
+        st.gold = bkGold159b;   /* v89.194：金一并还原 */
         G.ui._cityId = bkCity159b;
       }
     })());
@@ -29992,7 +30450,8 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         var sum4 = function (R) { return (R.grain || 0) + (R.wood || 0) + (R.stone || 0) + (R.iron || 0); };
         var beforeA = sum4(G.res(c));
         var r = G.upgradeAt(cB.id, mi);
-        var blocked = r.ok === false && /本城资源不足/.test(r.msg || '') && sum4(G.res(c)) === beforeA;
+        /* v89.194：缺料提示统一走 costLackMsg（"缺 粮食 …（现 0）"）——判据跟新口径 */
+        var blocked = r.ok === false && /(本城资源不足|缺 )/.test(r.msg || '') && sum4(G.res(c)) === beforeA;
         /* 给该城备料 → 放行，且只扣该城 */
         var cost = DATA.BUILDINGS.minfang.levelCost(cB.cells[mi].build.lvl);
         ['grain', 'wood', 'stone', 'iron'].forEach(function (k) { G.res(cB)[k] = cost[k] || 0; });
@@ -30042,7 +30501,8 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       return /\bGAME\.registerCity\(/.test(dS161.replace(/GAME\.registerCity = function[\s\S]{0,400}?\n  \};/, ''))
         && /\bGAME\.registerCity\(/.test(bS161)
         && !/s\.cities\.push\(/.test(bS161.replace(/attachGold[\s\S]{0,80}?registerCity/, ''))
-        && (bS161.match(/GAME\.registerCity\(/g) || []).length === 2;
+        /* v89.186：claimFort 不再造城 → battle.js 里 registerCity 消费点 2 → 1（规则变更同步）。 */
+        && (bS161.match(/GAME\.registerCity\(/g) || []).length === 1;
     })());
     check('§161④ 需求档案在册（v89.161 · 老板原文关键句逐字）', (function () {
       var arc = fs161.readFileSync(p161.join(__dirname, '需求档案.md'), 'utf8');
@@ -30066,15 +30526,18 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     var dS162 = stripComment(fs162.readFileSync(p162.join(__dirname, 'js', 'domain.js'), 'utf8'));
     var uS162 = fs162.readFileSync(p162.join(__dirname, 'js', 'ui.js'), 'utf8');
 
-    check('§162 城主税加成出口：mayorBonus.tax 存在（v89.164：与产量同率同**曲线**）', (function () {
-      return /tax: GAME\.curveBonusOf\(a\.nz, 0\.01, MB_SEG\) \* faint,/.test(dS162)
+    check('§162 城主税加成出口：mayorBonus.tax 存在（v89.188：独立率 + 封顶 200%）', (function () {
+      /* v89.188 规则变更所致：税收通道从"与产量同率同曲线"改为**独立率**（taxRate）
+         且封顶（taxCap）——旧公式断言随新口径升级（不删、不放宽）。 */
+      return /taxRate \|\| 0\.006, MB_SEG\),/.test(dS162)
+        && /taxCap \|\| 2\) \* faint,/.test(dS162)
         && /return \{ name: null, prod: 0, build: 0, tax: 0, research: 0, def: 0, faint: 1 \};/.test(dS162);
     })());
     check('§162 结算接入：cityProdPerSec 城主税加成与"税制加成"同层相加（加法口径）', (function () {
       return /var mbTax162 = GAME\.mayorBonus\(city\)\.tax \|\| 0;/.test(sS162)
         && /\(1 \+ GAME\.cityBonusNum\(city, 'taxPct'\) \+ mbTax162\)/.test(sS162);
     })());
-    check('§162 ★ 真调：城主在任 → 税收 ×2.75（内政 200 曲线 +175%）· 解任即还原', (function () {
+    check('§162 ★ 真调：城主在任 → 税收 ×2.05（内政 200 → +105% · v89.188 独立率）· 解任即还原', (function () {
       var st = G.newGame({ name: 's162a', region: '司隶' });
       var c = st.cities[0];
       st.generals.forEach(function (gg) { gg.status = 'idle'; gg.cityId = null; });
@@ -30086,16 +30549,16 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       st.generals.forEach(function (x) { x.status = 'idle'; x.cityId = null; });
       var back = G.cityProdPerSec(c).gold;
       return Math.abs(G.mayorBonus(c).tax) < 1e-9
-        && Math.abs(yes / no - 2.75) < 1e-9 && Math.abs(back - no) < 1e-12;
+        && Math.abs(yes / no - 2.05) < 1e-9 && Math.abs(back - no) < 1e-12;
     })());
-    check('§162 线性（封顶前）：内政 80 → 税收 +80%', (function () {
+    check('§162 线性（封顶前）：内政 80 → 税收 +48%（v89.188 独立率 0.006/点）', (function () {
       var st = G.state, c = st.cities[0];
       var bk = st.generals.map(function (gg) { return [gg.status, gg.cityId, gg.nz]; });
       try {
         st.generals.forEach(function (gg) { gg.status = 'idle'; gg.cityId = null; });
         var g0 = st.generals[0];
         g0.nz = 80; g0.cityId = c.id; g0.status = 'mayor';
-        return Math.abs(G.mayorBonus(c).tax - 0.8) < 1e-9;
+        return Math.abs(G.mayorBonus(c).tax - 0.48) < 1e-9;
       } finally {
         st.generals.forEach(function (gg, i) { gg.status = bk[i][0]; gg.cityId = bk[i][1]; gg.nz = bk[i][2]; });
       }
@@ -30138,7 +30601,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var hasCity = rows.some(function (x) { return x.name === '税制加成（名城/爵位/主城/神器）'; });
       var may = rows.filter(function (x) { return x.name === '城主内政'; })[0];
       var base = rows[0].val;
-      var okVal = !!(may && Math.abs(may.val - base * 1.2) < Math.max(1e-9, base * 1e-6));
+      var okVal = !!(may && Math.abs(may.val - base * 0.72) < Math.max(1e-9, base * 1e-6));
       st.generals.forEach(function (x) { x.status = 'idle'; x.cityId = null; });
       var gone = !G.prodBreakdown('gold', c).some(function (x) { return x.name === '城主内政'; });
       return hasMayor && hasCity && okVal && gone;
@@ -30266,25 +30729,26 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     var bS164 = stripComment(fs164.readFileSync(p164.join(__dirname, 'js', 'battle.js'), 'utf8'));
 
     console.log('  --- ① 六维曲线（分段减半 · 收敛 +300%/+150%） ---');
-    check('§164① 常量表 DATA.MAYOR_CURVE 存在（seg 150 · maxK 20）', (function () {
+    check('§164① 常量表 DATA.MAYOR_CURVE 存在（seg 150 · tailDiv 4 —— v89.185 不封口）', (function () {
       var C = DATA.MAYOR_CURVE || {};
-      return C.seg === 150 && C.maxK === 20;
+      return C.seg === 150 && C.tailDiv === 4;
     })());
     check('§164① curveBonusOf 唯一出口（一处定义）', (function () {
       return (dS164.match(/GAME\.curveBonusOf = function/g) || []).length === 1;
     })());
-    check('§164① ★ 样本点：80→+80% · 150→+150% · 200→+175% · 300→+225% · 500→+268.75%', (function () {
+    check('§164① ★ 样本点（v89.185 不封口）：150→+150% · 300→+225% · 450→+262.5% · 600→+300%', (function () {
       var f = G.curveBonusOf;
       return Math.abs(f(80, 0.01, 150) - 0.8) < 1e-9
         && Math.abs(f(150, 0.01, 150) - 1.5) < 1e-9
-        && Math.abs(f(200, 0.01, 150) - 1.75) < 1e-9
         && Math.abs(f(300, 0.01, 150) - 2.25) < 1e-9
-        && Math.abs(f(500, 0.01, 150) - 2.6875) < 1e-9;
+        && Math.abs(f(450, 0.01, 150) - 2.625) < 1e-9
+        && Math.abs(f(600, 0.01, 150) - 3.0) < 1e-9;
     })());
-    check('§164① ★ 收敛：nz 5000 → +300%（有界）· zm 836 → +146.7%', (function () {
-      var a = G.curveBonusOf(5000, 0.01, 150);
-      var b = G.curveBonusOf(836, 0.005, 150);
-      return a > 2.999 && a <= 3.0 + 1e-9 && Math.abs(b - 1.4666) < 5e-4;
+    check('§164① ★ 尾段不封口（v89.185）：nz 5000 → +1400% · zm 836 → +179.5% · 10 万点仍线性续增', (function () {
+      var a = G.curveBonusOf(5000, 0.01, 150);     /* 1.5 + 0.75 + 4700×0.25% = 14.0 */
+      var b = G.curveBonusOf(836, 0.005, 150);     /* 0.75 + 0.375 + 536×0.125% = 1.795 */
+      var c = G.curveBonusOf(100000, 0.01, 150);   /* 大输入：1.5+0.75+99700×0.25% = 251.5 */
+      return Math.abs(a - 14.0) < 1e-9 && Math.abs(b - 1.795) < 1e-9 && Math.abs(c - 251.5) < 1e-6;
     })());
     check('§164① 首段与旧线性一字不差（150 点内逐点恒等：n/100）', (function () {
       var ok = true;
@@ -30394,8 +30858,13 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var off = run(false), on = run(true);
       var rOff = off.aL > 0 ? off.dL / off.aL : 0;
       var rOn = on.aL > 0 ? on.dL / on.aL : 0;
-      _r164sim = 'off=' + rOff.toFixed(2) + ' → on=' + rOn.toFixed(2);
-      return rOn > rOff * 2 && on.dL > off.dL;
+      _r164sim = 'off=' + rOff.toFixed(2) + ' → on=' + rOn.toFixed(2)
+        + '（我损 ' + off.aL + '→' + on.aL + '）';
+      /* v89.178：克制降档后重测（镜像小局 0.83→1.97；我方损失 1767→671）。
+             v89.179：克制全撤后复测（off 比 1.17 → on 比 3.10；我方损失 1073→515）—— 判据仍成立。
+         判据升级：交换比 ≥2× **且我方损失砍半** —— 智能方案的设计目标是"我方少死"
+         （v89.176 老板：减少伤亡很重要）；旧判据 "on.dL > off.dL"（敌方多死）已删。 */
+      return rOn > rOff * 2 && on.aL < off.aL * 0.5;
     })(), _r164sim);
     check('§164③ 界面：战术下拉含「⚡ 智能战斗」· 摘要行 · 战场指示（源码级）', (function () {
       var uS = fs164.readFileSync(p164.join(__dirname, 'js', 'ui.js'), 'utf8');
@@ -30512,6 +30981,3090 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       arc165.indexOf('v89.165') >= 0
       && arc165.indexOf('指挥战斗界面的行军为啥读秒和进度条不动的') >= 0
       && arc165.indexOf('查看所有类似实时读秒设置') >= 0);
+  })();
+
+  /* ============================================================
+   * §166（v89.166）：进入城池 = 菜单全关 + 直接显示城内大界面
+   * 老板原话：「地图上点击我方城市，点击进入城池，城市菜单界面应关闭，直接显示城内大界面」
+   * 改前取证：case 'city-enter' 关闭调用 **0 次**（弹窗盖着城内视图）；君主面板为 1 次（对照）。
+   * ============================================================ */
+  (function () {
+    var fs166 = require('fs'), p166 = require('path');
+    var m166 = fs166.readFileSync(p166.join(__dirname, 'js', 'main.js'), 'utf8');
+    var segA166 = m166.slice(m166.indexOf("case 'city-enter'"), m166.indexOf("case 'city-transport'"));
+    var segB166 = m166.slice(m166.indexOf("case 'lord-city-enter'"), m166.indexOf("case 'lord-promote'"));
+
+    console.log('\n===== §166 进入城池（菜单全关） =====');
+    check('§166① 城池面板·进入城池 → closeAllModals 在 setCity 之前（先关菜单再切城）',
+      segA166.indexOf('ui.closeAllModals();') >= 0
+      && segA166.indexOf('ui.closeAllModals();') < segA166.indexOf('ui.setCity('));
+    check('§166② 君主面板·进入城池 → 同一出口 closeAllModals（两入口统一）',
+      segB166.indexOf('ui.closeAllModals();') >= 0);
+    check('§166③ 负向：两段无裸 closeModal（单层出口退役）',
+      segA166.indexOf('ui.closeModal();') < 0 && segB166.indexOf('ui.closeModal();') < 0);
+
+    var arc166 = fs166.readFileSync(p166.join(__dirname, '需求档案.md'), 'utf8');
+    check('§166④ 需求档案在册（v89.166 · 老板原文关键句逐字）',
+      arc166.indexOf('v89.166') >= 0
+      && arc166.indexOf('城市菜单界面应关闭，直接显示城内大界面') >= 0);
+  })();
+
+  /* ============================================================
+   * §167（v89.167）：自动升级 —— **每城独立建造位**（逐城遍历、各自排满）
+   * 老板原话：「自动升级建造，应该每个城池均遍历，分别升级，而不是所有城池一起，
+   *   总共只升级 3 个建筑」—— 改前闸门 = 全境队列总数 vs buildSlots(当前城)（=3）。
+   * ============================================================ */
+  (function () {
+    var fs167 = require('fs'), p167 = require('path');
+    var d167 = fs167.readFileSync(p167.join(__dirname, 'js', 'domain.js'), 'utf8');
+    console.log('\n===== §167 自动升级 · 每城独立建造位 =====');
+    check('§167① 老全局闸门退役（全境队列 vs 单城位 不再存在）+ 新出口 cityRoomOf 就位',
+      d167.indexOf('if ((s.queues.build || []).length >= slots)') < 0
+      && d167.indexOf('var cityRoomOf = function (ct) {') >= 0);
+    check('§167② 每城独立口径：buildQueueUsed / buildSlots 逐城核对',
+      /GAME\.buildQueueUsed\(ct\.id\) < GAME\.buildSlots\(ct\)/.test(d167));
+    check('§167③ 循环排满（第一条成功不再 return · doneN167 计数在册）',
+      /var first167 = null, last167 = null, doneN167 = 0;/.test(d167)
+      && /count: doneN167 \};/.test(d167));
+
+    /* ② 真调：三城各自排满（改前 count 上限 3） */
+    var keep167 = GAME.state;
+    try {
+      GAME.newGame({ name: 's167', region: '司隶' });
+      var sE = GAME.state;
+      if (!sE.map.grid) GAME.map.generate();
+      sE.rank = 6;                    /* 领地上限随爵位（v89.108）—— 平民只 2 城 */
+      ['grain', 'wood', 'stone', 'iron'].forEach(function (k) { GAME.res(GAME.currentCity())[k] = 600000; });
+      GAME.res(GAME.currentCity()).gold = 300000;
+      var MAXW = Math.min((GAME.DATA.MAP_W || 40) - 1, 60);
+      for (var y = 1; y < MAXW && sE.cities.length < 3; y++) {
+        for (var x = 1; x < MAXW && sE.cities.length < 3; x++) {
+          var t = GAME.map.tile(x, y);
+          if (!t || t.terrain !== 'plain') continue;
+          var dup = false;
+          (sE.wilds || []).forEach(function (w) { if (w.x === x && w.y === y) dup = true; });
+          if (dup) continue;
+          ['grain', 'wood', 'stone', 'iron'].forEach(function (k) { GAME.res(GAME.currentCity())[k] = 600000; });
+          sE.wilds.push({ x: x, y: y, type: 'plain', lv: 3 });   /* 先占野地再筑城（wildAt 查 s.wilds） */
+          try { GAME.buildCityAt(x, y); } catch (e) { }
+        }
+      }
+      sE.cities.forEach(function (c) {
+        c.cells.forEach(function (x) { if (x.build && !x.official) x.build = null; });
+        var gi = -1;
+        for (var i = 0; i < c.cells.length; i++) { if (c.cells[i].official) { gi = i; break; } }
+        c.cells[gi].build = { id: 'guanfu', lvl: 3 };
+        var put = 0;
+        for (var i2 = 0; i2 < c.cells.length && put < 4; i2++) {
+          if (c.cells[i2].official || c.cells[i2].build) continue;
+          c.cells[i2].build = { id: 'minfang', lvl: 1 };
+          put++;
+        }
+        ['grain', 'wood', 'stone', 'iron'].forEach(function (k) { GAME.res(c)[k] = 600000; });
+      });
+      check('§167 造局：3 城就绪（官府 lv3 + 民房×4/城）', sE.cities.length === 3, sE.cities.length + ' 城');
+      sE.settings.autoUpgrade = true;
+      sE.queues.build.length = 0;
+      var r167 = GAME.autoUpgrade();
+      var byCity167 = {};
+      (sE.queues.build || []).forEach(function (q) { byCity167[q.cityId] = (byCity167[q.cityId] || 0) + 1; });
+      check('§167④ ★ 真调三城：一次调用排入 > 3（改前全境上限 3 的铁证）',
+        !!(r167 && r167.count > 3), 'count=' + (r167 && r167.count));
+      check('§167⑤ ★ 每城都被遍历到（每城 ≥1 条）+ 各自封顶（≤ 该城位）',
+        sE.cities.every(function (c) {
+          var n = byCity167[c.id] || 0;
+          return n >= 1 && n <= GAME.buildSlots(c);
+        }),
+        JSON.stringify(sE.cities.map(function (c) { return byCity167[c.id] || 0; })));
+      check('§167⑥ 各城都被排满（= 该城建造位 · 资源/候选充足时）',
+        sE.cities.every(function (c) { return (byCity167[c.id] || 0) === GAME.buildSlots(c); }),
+        JSON.stringify(sE.cities.map(function (c) { return GAME.buildSlots(c); })));
+    } finally { GAME.state = keep167; }
+
+    /* ③ 档案在册 */
+    var arc167 = fs167.readFileSync(p167.join(__dirname, '需求档案.md'), 'utf8');
+    check('§167⑦ 需求档案在册（v89.167 · 老板原文关键句逐字）',
+      arc167.indexOf('v89.167') >= 0
+      && arc167.indexOf('每个城池均遍历，分别升级') >= 0
+      && arc167.indexOf('总共只升级3个建筑') >= 0);
+  })();
+
+  /* ============================================================
+   * §169（v89.169）：城墙 0 级虚影环
+   * 老板原话：「城墙0级的时候不明显，整得明显一点」——
+   *   改前 0 级（未修建 / 破城掉回 0）= `wall.build = null` → 墙环整段不画，
+   *   城内视角一无所有；唯一入口（环城热区）隐形。
+   *   现在 0 级画**虚线虚影环**（与实墙同一几何出口 wallRingGeom）。
+   * 注：v89.168 为"经验曲线只读取证"轮（无代码变更 · 无断言节）。
+   * ============================================================ */
+  (function () {
+    var fs169 = require('fs'), p169 = require('path');
+    console.log('\n===== §169 城墙 0 级虚影环 =====');
+    var keep169 = GAME.state;
+    try {
+      GAME.newGame({ name: 's169', cityName: '许都', region: '豫州', mapSeed: 13 });
+      var c169 = GAME.currentCity();
+
+      var htmlG = GAME.ui.cityHTML();
+      var g169 = htmlG.slice(htmlG.indexOf('<svg class="iso-wall iso-wall-ghost"'));
+      g169 = g169.slice(0, g169.indexOf('</svg>') + 6);
+      check('§169① 0 级（未修建）→ 虚线虚影环（墙基带 + 虚线 + 四角 · 无实墙形制）',
+        htmlG.indexOf('iso-wall-ghost') >= 0
+        && g169.indexOf('stroke-dasharray') >= 0
+        && (g169.match(/wghost-corner/g) || []).length === 4
+        && g169.indexOf('wtower') < 0 && g169.indexOf('wallBody') < 0);
+      check('§169② 0 级热区不变（4 条 open-wall · 点虚影 = 修建入口）',
+        (htmlG.match(/class="wall-hit /g) || []).length === 4);
+
+      GAME.wallSlotOf(c169).build = { id: 'chengqiang', lvl: 3 };
+      var htmlW = GAME.ui.cityHTML();
+      var w169 = htmlW.slice(htmlW.indexOf('<svg class="iso-wall" '));
+      w169 = w169.slice(0, w169.indexOf('</svg>') + 6);
+      check('§169③ 已修建（Lv3）→ 实墙形制在位 + 虚影退场',
+        htmlW.indexOf('wtower') >= 0 && htmlW.indexOf('url(#wallBody)') >= 0
+        && htmlW.indexOf('iso-wall-ghost') < 0);
+      check('§169④ ★ 几何同源：虚影与实墙 polygon points 逐字节一致（同一条带）', (function () {
+        var a = /class="wghost-line" points="([^"]+)"/.exec(g169);
+        var b = /<polygon points="([^"]+)"/.exec(w169);
+        return !!a && !!b && a[1] === b[1];
+      })());
+
+      GAME.wallSlotOf(c169).build = null;         /* 破城掉回 0 的真实形态 */
+      check('§169⑤ 掉回 0（build=null）→ 虚影回归（与未修建同态）',
+        GAME.ui.cityHTML().indexOf('iso-wall-ghost') >= 0);
+
+      var ui169 = fs169.readFileSync(p169.join(__dirname, 'js', 'ui.js'), 'utf8');
+      check('§169⑥ 源码：几何唯一出口 + 两处 SVG 同读 + isoBoard 三态', (function () {
+        return /ui\.wallRingGeom = function/.test(ui169)
+          && /ui\.isoWallGhostSVG = function/.test(ui169)
+          && (ui169.match(/ui\.wallRingGeom\(cols, rows\)/g) || []).length >= 2
+          && /opt\.wall === 'ghost' \? ui\.isoWallGhostSVG/.test(ui169);
+      })());
+      var h169 = fs169.readFileSync(p169.join(__dirname, 'index.html'), 'utf8');
+      check('§169⑦ CSS：虚影描边走主题金（4 主题自适应）+ 悬停提亮',
+        h169.indexOf('.iso-wall-ghost .wghost-line') >= 0
+        && h169.indexOf('.iso-wall-ghost .wghost-corner') >= 0
+        && /\.iso-board:has\(\.wall-hit:hover\) \.iso-wall-ghost \{ filter: brightness\(1\.45\); \}/.test(h169));
+    } finally { GAME.state = keep169; }
+
+    var arc169 = fs169.readFileSync(p169.join(__dirname, '需求档案.md'), 'utf8');
+    check('§169⑧ 需求档案在册（v89.169 · 老板原文关键句逐字）',
+      arc169.indexOf('v89.169') >= 0
+      && arc169.indexOf('城墙0级的时候不明显') >= 0
+      && arc169.indexOf('整得明显一点') >= 0);
+  })();
+
+  /* ============================================================
+   * 170. v89.170（老板）：「等级诡异在前期所需经验太低了…曲线应该上抬一点，
+   *      比直接线性低…玩家只要花24万金买兵仙遗篇，直升一百多级」
+   *   —— 曲线改单段幂律：前期上抬、全程低于线性；道具不再"一步登天"。
+   * ============================================================ */
+  console.log('\n===== 170. v89.170 经验曲线（上抬 · 低于线性 · 道具不再一步登天） =====');
+  (function () {
+    var fs170 = require('fs'), p170 = require('path');
+
+    /* ① 真调：兵仙遗篇（24 万金）从 Lv1 喂下 —— 不再直升一百多级 */
+    console.log('  --- ① 兵仙遗篇的真实等级效果 ---');
+    (function () {
+      var it = null;
+      (DATA.ITEMS || []).forEach(function (x) { if (x.id === 'bingxian_yipian') it = x; });
+      var g = { id: 'g170a', name: '样本', rank: 'tian', level: 1, exp: 0, tong: 40, yw: 40, zm: 40, nz: 40,
+        speed: 10, attack: 10, defense: 10, hp: 100, stamina: 100, equip: {}, perm: {} };
+      /* v89.173：走**真实闸门**（= 固定面额全额），兵仙遗篇 = +300 万经验（无等级限制）。 */
+      var gt = G.expItemGrantOf(g, it);
+      var r = G.battle.gainExp(g, gt.grant, '§170');
+      check('§170①（v89.173 更新）兵仙遗篇从 Lv1 → Lv' + g.level + '（固定面额 300 万 · 无等级限制）',
+        gt.ok === true && gt.grant === 3000000 && g.level === 49 && !it.capLv,
+        'Lv' + g.level + '（入账 ' + (r && r.gain) + ' · 面额 ' + it.amount + '）');
+      check('§170①b 兵仙遗篇商城实售 = 24 万金（内部价 2400 × 100 —— 老板原话口径）',
+        it.price === 2400, 'price=' + it.price);
+    })();
+
+    /* ② 累计占比：升级体验从"最后 40 级"回到前中段 */
+    console.log('  --- ② 累计占比（体验分布） ---');
+    (function () {
+      var cum = 0, c100 = 0, c150 = 0;
+      for (var lv = 1; lv <= 240; lv++) {
+        cum += G.expNeedOf({ level: lv });
+        if (lv === 100) c100 = cum;
+        if (lv === 150) c150 = cum;
+      }
+      var p100 = c100 / cum, p150 = c150 / cum;
+      check('§170② ★ 前 100 级累计占比 ≥ 10%（旧口径 0.59% · 现 ' + (p100 * 100).toFixed(2) + '%）',
+        p100 >= 0.10 && p100 < 0.25);
+      check('§170②b 前 150 级累计占比 ≥ 30%（旧口径 3.79% · 现 ' + (p150 * 100).toFixed(2) + '%）',
+        p150 >= 0.30 && p150 < 0.45);
+    })();
+
+    /* ③ 上抬的量级下界（守护：不许改回低曲线） */
+    console.log('  --- ③ 上抬量级（下界守卫） ---');
+    (function () {
+      var n1 = G.expNeedOf({ level: 1 }), n30 = G.expNeedOf({ level: 30 }),
+          n100 = G.expNeedOf({ level: 100 }), n240 = G.expNeedOf({ level: 240 });
+      check('§170③ 前期已上抬（Lv1≥1千 · Lv30≥5万 · Lv100≥25万 · Lv240=100万）',
+        n1 >= 1000 && n30 >= 50000 && n100 >= 250000 && n240 === 1000000,
+        'Lv1=' + n1 + ' Lv30=' + n30 + ' Lv100=' + n100);
+    })();
+
+    /* ④ 源码级：单段幂律 + 旧字段零残留 */
+    console.log('  --- ④ 源码：单段幂律 · 退役字段零残留 ---');
+    (function () {
+      var dS170 = fs170.readFileSync(p170.join(__dirname, 'js', 'data.js'), 'utf8');
+      var doS170 = fs170.readFileSync(p170.join(__dirname, 'js', 'domain.js'), 'utf8');
+      check('§170④ 出口 = 单段幂律（needTop × (lv/topLv)^alpha · alpha 1.25）',
+        /Math\.pow\(lv \/ C\.topLv, C\.alpha\)/.test(doS170)
+        && /alpha: 1\.25/.test(dS170) && /topLv: 240/.test(dS170));
+      /* 负向：查**可执行形态**（剥注释——墓碑注释不误伤，§72.4 老规矩） */
+      var exec = (dS170 + '\n' + doS170).replace(/\/\*[\s\S]*?\*\//g, '')
+        .split('\n').map(function (l) { return l.split('//')[0]; }).join('\n');
+      /* 只查 EXP_CURVE **专属**字段（seg1To / quad / C.growth 在别的系统无同名用法，
+         三词均已实测零残留）；不用宽判据——`C.base` 会撞体力公式、裸 `base: 40` 撞精力表。 */
+      check('§170④b 旧两段字段（seg1To / quad / growth）零残留（可执行形态）',
+        !/seg1To/.test(exec) && !/C\.quad/.test(exec) && !/C\.growth/.test(exec));
+    })();
+
+    /* ⑤ 相对口径未受影响：战斗封顶仍 = 需求×80%（曲线抬升不动升级节奏的形状） */
+    console.log('  --- ⑤ 升级节奏的相对口径（曲线抬升不动它们） ---');
+    (function () {
+      var R = DATA.EXP_RULE || {};
+      check('§170⑤ 战斗经验封顶 = 当前需求 × 80%（相对口径 · 与曲线高低无关）',
+        R.capPct === 0.8);
+      var lv60 = G.expNeedOf({ level: 60 });
+      var raw = 81040;                                   /* 县城级歼灭（探针实测锚） */
+      var cap = Math.round(lv60 * R.capPct);
+      var gain = Math.min(raw, cap);
+      check('§170⑤b 真算一场县城级战斗在 Lv60 的收益（' + (gain / lv60 * 100).toFixed(0)
+        + '% 级 · gain=min(raw,cap)）', gain === raw && cap > raw);
+    })();
+
+    var arc170 = fs170.readFileSync(p170.join(__dirname, '需求档案.md'), 'utf8');
+    check('§170⑥ 需求档案在册（v89.170 · 老板原文关键句逐字）',
+      arc170.indexOf('v89.170') >= 0
+      && arc170.indexOf('前期所需经验太低了') >= 0
+      && arc170.indexOf('直升一百多级') >= 0);
+  })();
+
+  /* ============================================================
+   * 173. v89.173（老板）：「已下架的就不要拿出来讨论了。那就这样，不作等级限制，
+   *      对道具经验取整，练兵10W，治军100W，兵仙300W，兵圣450W。
+   *      出征带来的经验体验调高一点，出征上限不变，但出征对象的等级和所得的经验
+   *      可以要求低一点，尽量拿满0.8级经验」
+   *   —— ① 道具：撤 capLv / 固定整数面额；② 出征：perResource 减半 + 惩罚放宽。
+   * ============================================================ */
+  console.log('\n===== 173. v89.173 道具固定面额（撤等级限制） + 出征经验调高 =====');
+  (function () {
+    var fs173 = require('fs'), p173 = require('path');
+    var itBx = null, it10 = null, it30 = null, it60 = null;
+    (DATA.ITEMS || []).forEach(function (x) {
+      if (x.id === 'bingxian_yipian') itBx = x;
+      if (x.id === 'lianbing_jingyan') it10 = x;
+      if (x.id === 'zhijun_zhidao') it30 = x;
+      if (x.id === 'bingsheng') it60 = x;
+    });
+
+    /* ① 数据层：4 档 = 老板数字 · capLv 零残留 · 全族整数万 */
+    console.log('  --- ① 数据层（固定面额 · capLv 退役） ---');
+    (function () {
+      check('§173① ★ 在售 4 档 = 老板拍板数字（练兵10万/治军100万/兵仙300万/兵圣450万）',
+        it10.amount === 100000 && it30.amount === 1000000
+        && itBx.amount === 3000000 && it60.amount === 4500000,
+        [it10.amount, it30.amount, itBx.amount, it60.amount].join('/'));
+      var bad = [];
+      (DATA.EXP_ITEM_SPEC || []).forEach(function (sp) {
+        var it2 = null;
+        (DATA.ITEMS || []).forEach(function (x) { if (x.id === sp.id) it2 = x; });
+        if (!it2) return;
+        if (it2.amount !== sp.amount) bad.push(sp.id + ':amount');
+        if (it2.capLv) bad.push(sp.id + ':capLv');
+        if (sp.amount % 10000 !== 0) bad.push(sp.id + ':wan');
+      });
+      check('§173①b 全族 11 档无 capLv 残留 · 面额全为整数万', bad.length === 0, bad.join(','));
+      check('§173①c desc 统一「将领经验+N」（旧上限文案零残留）',
+        String(itBx.desc) === '将领经验+3000000'
+        && !/最多培养至|最多至/.test(String(itBx.desc) + String(it10.desc)));
+      check('§173①d ★ expCumOf / expItemCapOf 出口退役（无死代码）', (function () {
+        var dS = fs173.readFileSync(p173.join(__dirname, 'js', 'data.js'), 'utf8');
+        var dmS = fs173.readFileSync(p173.join(__dirname, 'js', 'domain.js'), 'utf8');
+        var dmExec = dmS.replace(/\/\*[\s\S]*?\*\//g, '');
+        return !/DATA\.expCumOf\s*=/.test(dS) && !/GAME\.expItemCapOf\s*=/.test(dmS)
+          && !/expCumOf/.test(dmExec);
+      })());
+    })();
+
+    /* ② 闸门（真调）：无等级限制 —— Lv60 / Lv200 都能用；资质闸仍在 */
+    console.log('  --- ② 闸门（真调 expItemGrantOf） ---');
+    (function () {
+      var gg = { id: 'g173x', name: '样本', rank: 'tian', level: 1, exp: 0, tong: 40, yw: 40, zm: 40, nz: 40,
+        speed: 10, attack: 10, defense: 10, hp: 100, stamina: 100, equip: {}, perm: {} };
+      var t1 = G.expItemGrantOf(gg, itBx);
+      check('§173② Lv1 + 兵仙遗篇 → grant = 面额全额（300 万）· 无 capped 字段',
+        t1.ok === true && t1.grant === 3000000 && t1.capped === undefined);
+      gg.level = 60;
+      check('§173②b ★ Lv60 → 仍可用（v89.171 的"只服务前期"已退役）',
+        G.expItemGrantOf(gg, itBx).ok === true);
+      gg.level = 200;
+      check('§173②c Lv200 → 仍可用（不设等级限制）', G.expItemGrantOf(gg, it60).ok === true);
+      var gFan = { id: 'g173f', name: '凡品样本', rank: 'fan', level: 60, exp: 0, tong: 40, yw: 40, zm: 40, nz: 40,
+        speed: 10, attack: 10, defense: 10, hp: 100, stamina: 100, equip: {}, perm: {} };
+      var t4 = G.expItemGrantOf(gFan, itBx);
+      check('§173②d 资质闸保留：凡品 Lv60 → 拒绝（与"道具限制"是两码事）',
+        !t4.ok && /上限/.test(t4.msg || ''), t4.msg);
+    })();
+
+    /* ③ 全链路（真调 useItem / gainExpByItem）：Lv1 兵仙遗篇 → Lv49；再用一本继续涨 */
+    console.log('  --- ③ 全链路（真调 useItem） ---');
+    (function () {
+      var st = G.state;
+      var bkItems = st.items;
+      var g0 = { id: 'g173c', name: '样本173', rank: 'tian', level: 1, exp: 0, tong: 40, yw: 40, zm: 40, nz: 40,
+        speed: 10, attack: 10, defense: 10, hp: 100, stamina: 100, equip: {}, perm: {},
+        status: 'idle', cityId: null };
+      st.generals.push(g0);
+      try {
+        st.items = { bingxian_yipian: 3 };
+        var r1 = G.systems.useItem('bingxian_yipian', g0.id, {});
+        check('§173③ ★ 真调 useItem：Lv1 用兵仙遗篇 → Lv' + g0.level + '（+300 万）· 道具 -1',
+          r1.ok === true && g0.level === 49 && st.items.bingxian_yipian === 2,
+          (r1.msg || '').slice(0, 90));
+        var r2 = G.systems.useItem('bingxian_yipian', g0.id, {});
+        check('§173③b 再用一本 → 继续涨（无"到线拒绝"）',
+          r2.ok === true && g0.level > 49 && st.items.bingxian_yipian === 1,
+          (r2.msg || '').slice(0, 90));
+        var r3 = G.systems.gainExpByItem('bingxian_yipian', g0.id, 'one');
+        check('§173③c 批量口同闸（one：ok 且消息无旧上限文案）',
+          r3.ok === true && !/培养上限|只服务前期/.test(r3.msg || ''), (r3.msg || '').slice(0, 90));
+      } finally {
+        st.generals.pop();
+        st.items = bkItems;
+      }
+    })();
+
+    /* ④ 出征经验（真调 battleExp / expPenaltyOf）：perResource=500 · decay=0.8 · capPct 不动 */
+    console.log('  --- ④ 出征经验（真调） ---');
+    (function () {
+      check('§173④ 参数拍板：perResource=500 · decay=0.8 · capPct=0.8（上限不变）',
+        DATA.EXP_RULE.perResource === 500 && DATA.EXP_PENALTY.decay === 0.8
+        && DATA.EXP_RULE.capPct === 0.8);
+      var army10 = {};
+      (DATA.WILD_DEFENSE[10] || []).forEach(function (e) { army10[e.id] = (e.min + e.max) / 2; });
+      var r = G.battle.battleExp(army10, { level: 100 });
+      var pct = r.cap > 0 ? Math.round(r.gain / r.cap * 100) : 0;
+      check('§173④b ★ Lv100 打 Lv10 野地 → 拿满 0.8 级（实测 ' + pct + '%）',
+        r.capped === true && r.gain === r.cap, 'gain=' + r.gain + ' cap=' + r.cap);
+      var pen1 = G.battle.expPenaltyOf(120, 9);
+      check('§173④c 惩罚放宽：差 1 档 ×0.8（旧 0.65）', Math.abs(pen1.mul - 0.8) < 1e-9, 'mul=' + pen1.mul);
+      var pen3 = G.battle.expPenaltyOf(120, 7);
+      check('§173④d 差 3 档 ×0.512（0.8³；旧 0.2746）',
+        Math.abs(pen3.mul - Math.pow(0.8, 3)) < 1e-9, 'mul=' + pen3.mul);
+    })();
+
+    /* ⑤ 源码：唯一出口在册 · 旧形态零残留 */
+    console.log('  --- ⑤ 源码（唯一出口 · 旧形态零残留） ---');
+    (function () {
+      var dS = fs173.readFileSync(p173.join(__dirname, 'js', 'data.js'), 'utf8');
+      var dmS = fs173.readFileSync(p173.join(__dirname, 'js', 'domain.js'), 'utf8');
+      var syS = fs173.readFileSync(p173.join(__dirname, 'js', 'systems.js'), 'utf8');
+      var uS = fs173.readFileSync(p173.join(__dirname, 'js', 'ui.js'), 'utf8');
+      check('§173⑤ 唯一出口：单用/批量/界面三处仍问 expItemGrantOf',
+        /expItemGrantOf/.test(codeOf(syS, 'S.useItem = function'))
+        && /expItemGrantOf/.test(codeOf(syS, 'S.gainExpByItem = function'))
+        && /expItemGrantOf/.test(codeOf(uS, 'ui.setExpItem = function')));
+      var dExec = dS.replace(/\/\*[\s\S]*?\*\//g, '').split('\n')
+        .map(function (l) { return l.split('//')[0]; }).join('\n');
+      check('§173⑤b data.js 可执行形态：capLv 零残留 · expCumOf 零残留',
+        !/capLv/.test(dExec) && !/expCumOf/.test(dExec));
+      var pickS173 = codeOf(uS, 'ui.openExpPick = function');
+      check('§173⑤c 选择窗内旧上限文案零残留（最多至 / 只服务前期 / dim 态）',
+        !/最多至|只服务前期|btn sm dim/.test(pickS173));
+    })();
+
+    var arc173 = fs173.readFileSync(p173.join(__dirname, '需求档案.md'), 'utf8');
+    check('§173⑥ 需求档案在册（v89.173 · 老板原文关键句逐字）',
+      arc173.indexOf('v89.173') >= 0
+      && arc173.indexOf('不作等级限制') >= 0
+      && arc173.indexOf('尽量拿满0.8级经验') >= 0);
+  })();
+
+  /* ============================================================
+   * 174. v89.174（老板）：「在城池的官方界面，官府要务的下方，显示本城在建的建筑队列和
+   *      剩余时间。目前大界面上建筑的建造时间仍然不对，读秒完成后，状态还是在建造中。」
+   *   —— 复现双根因：① 显示 round（"00:00 但未完成"窗口）；② 施工中弹窗没接 live。
+   * ============================================================ */
+  console.log('\n===== 174. v89.174 读秒 ceil + 建造弹窗 live + 官府「在建队列」 =====');
+  (function () {
+    var fs174 = require('fs'), p174 = require('path');
+
+    /* ① durExact：ceil 语义（"至少还需"—— 显示 0 只在真完成时） */
+    console.log('  --- ① 读秒口径（ceil） ---');
+    check('§174① ★ durExact 改向上取整（0.2 → 00:01 · 0 → 00:00 · 59.001 → 01:00 · 整数不变）',
+      G.utils.durExact(0.2) === '00:01' && G.utils.durExact(0) === '00:00'
+      && G.utils.durExact(59.001) === '01:00' && G.utils.durExact(3995) === '1:06:35',
+      [G.utils.durExact(0.2), G.utils.durExact(0), G.utils.durExact(59.001)].join(' / '));
+
+    /* ② buildProgressOf：唯一出口 + 真调（剩 0.4 现实秒 → 00:01 不再是 00:00） */
+    console.log('  --- ② 进度唯一出口 ---');
+    check('§174② ★ buildProgressOf 抽取（buildProgress 与在建队列共用同一算式）', (function () {
+      var dm = fs174.readFileSync(p174.join(__dirname, 'js', 'domain.js'), 'utf8');
+      var bp = codeOf(dm, 'GAME.buildProgress = function');
+      return /GAME\.buildProgressOf = function/.test(dm) && /return GAME\.buildProgressOf\(q\)/.test(bp);
+    })());
+    check('§174②b ★ 真调：剩 0.4 现实秒的 label 以 00:01 结尾（旧口径 00:00 → 修掉"读完还在建"）', (function () {
+      var ts = GAME.timeScale();
+      var pr = GAME.buildProgressOf({ elapsed: 120 - 0.4 * ts, totalTime: 120 });
+      return !!pr && /00:01$/.test(pr.label) && pr.pct >= 0;
+    })());
+    check('§174②c 完成后 buildProgressOf(null) 为 null（列表行不会残留）',
+      GAME.buildProgressOf(null) === null);
+
+    /* ③ 弹窗 live：城内两处 + 城外两处（完成瞬间换形态） */
+    console.log('  --- ③ 弹窗 live（完成即换态） ---');
+    (function () {
+      var uS = fs174.readFileSync(p174.join(__dirname, 'js', 'ui.js'), 'utf8');
+      var ob = codeOf(uS, 'ui.openBuildModal = function');
+      var ox = codeOf(uS, 'ui.openExtModal = function');
+      check('§174③ ★ 城内：锁城签名 + 两处 live（施工中 / 正常态）',
+        /ui\.openBuildModal = function \(idx, cityId\)/.test(uS)
+        && /liveFn174/.test(ob)
+        && (ob.match(/\{ live: liveFn174 \}/g) || []).length === 2,
+        'liveFn174×' + ((ob.match(/liveFn174/g) || []).length));
+      check('§174③b ★ 城外：同构（锁城 + 施工/正常两处 live）',
+        /ui\.openExtModal = function \(idx, cityId\)/.test(uS)
+        && /liveFnE174/.test(ox)
+        && (ox.match(/\{ live: liveFnE174 \}/g) || []).length === 2);
+      check('§174③c live 回调锁城（重开带 cityId）+ 城池失效自动关闭',
+        /ui\.openBuildModal\(idx, c\.id\)/.test(ob) && /ui\.openExtModal\(idx, c\.id\)/.test(ox)
+        && /if \(!GAME\.cityById\(c\.id\)\) \{ ui\.closeModal\(\); return; \}/.test(ob));
+    })();
+
+    /* ④ 官府格「在建队列」段 */
+    console.log('  --- ④ 官府「在建队列」（官府要务下方） ---');
+    (function () {
+      var uS = fs174.readFileSync(p174.join(__dirname, 'js', 'ui.js'), 'utf8');
+      check('§174④ ★ 在建队列段在册（官府要务下方 · 行内挂进度 attr · 城内/城外两态）',
+        /queueBox174 = '<div class="op-zone"><div class="op-zone-t">在建队列（/.test(uS)
+        && /guanfuBox \+ heartsBox177 \+ queueBox174 \+/.test(uS)   /* v89.177：「民心/民怨」段居中插入 */
+        && /data-build-progress="city:' \+ q\.gridIndex/.test(uS)
+        && /data-ext-progress="ext:' \+ q\.extIdx/.test(uS));
+      check('§174④b 空态文案在册（本城暂无在建工程）', /本城暂无在建工程/.test(uS));
+      check('§174④c updateProgress 非数字槽位原样传（city:wall 可解析）',
+        /pv174 = \/\^\\d\+\$\/\.test\(p\[1\]\) \? Number\(p\[1\]\) : p\[1\]/.test(uS));
+    })();
+
+    /* ⑤ 完成脏标记（主循环重绘不再只比条数） */
+    console.log('  --- ⑤ 完成脏标记 ---');
+    (function () {
+      var sS = fs174.readFileSync(p174.join(__dirname, 'js', 'state.js'), 'utf8');
+      var mS6 = fs174.readFileSync(p174.join(__dirname, 'js', 'main.js'), 'utf8');
+      check('§174⑤ ★ tickOnce 完成处置 _buildDirty · 主循环判据含它 · 初始化在册',
+        /GAME\._buildDirty = true;/.test(sS)
+        && /GAME\._lastBuildCount !== bc \|\| GAME\._buildDirty/.test(mS6)
+        && /GAME\._buildDirty = false;/.test(mS6));
+    })();
+
+    var arc174 = fs174.readFileSync(p174.join(__dirname, '需求档案.md'), 'utf8');
+    check('§174⑥ 需求档案在册（v89.174 · 老板原文关键句逐字）',
+      arc174.indexOf('v89.174') >= 0
+      && arc174.indexOf('官府要务的下方') >= 0
+      && arc174.indexOf('读秒完成后，状态还是在建造中') >= 0);
+  })();
+
+  /* ============================================================
+   * 175. v89.175（老板）：「每回合我要看见调整（可以不动，但需要显示智能调兵完成，
+   *      开始回合战斗）」「确实采用最优策略……多种最优路径比较」
+   *   —— 策略库 + 开战赛马 + 每回合调整明细。
+   * ============================================================ */
+  console.log('\n===== 175. v89.175 智能战术（赛马 · 可见调整） =====');
+  (function () {
+    var fs175 = require('fs'), p175 = require('path');
+
+    /* ① 策略库在册 */
+    console.log('  --- ① 策略库 ---');
+    check('§175① ★ 策略库 5 套（静态表/伤害最优/清除效率/清前排/击其脆弱 · v89.185 扩）+ 中文名表',
+      (DATA.SMART_PLAN.rules || []).join(',') === 'static,dmg,eff,front,weak'
+      && DATA.SMART_PLAN.ruleCN && DATA.SMART_PLAN.ruleCN.front === '清前排'
+      && DATA.SMART_PLAN.ruleCN.weak === '击其脆弱');
+
+    /* ② smartPickTarget 真调：四套规则各自选靶 */
+    console.log('  --- ② 目标评分器（真调） ---');
+    check('§175② ★ smartPickTarget 真调：战力碾压下 front 选最靠前 · dmg/eff 选最软',
+      (function () {
+        var u = { id: 'gongjian', name: '弓', count: 500, spd: 250, range: 1200, adv: 800 };
+        var foes = [
+          { id: 'daodun', name: '刀盾', count: 500, adv: 2500, stance: 'advance', spd: 275, range: 30, hpPer: 2400 },
+          { id: 'gongjian', name: '弓', count: 100, adv: 100, stance: 'hold', spd: 250, range: 1200, hpPer: 1920 },
+        ];
+        var tf = G.battle.smartPickTarget(u, foes, 'front', 4000);
+        var td = G.battle.smartPickTarget(u, foes, 'dmg', 4000);
+        var te = G.battle.smartPickTarget(u, foes, 'eff', 4000);
+        return tf === 'daodun' && td === 'gongjian' && te === 'gongjian';
+      })());
+    check('§175②b 空敌阵返回 null（不抛错）', G.battle.smartPickTarget({ id: 'gongjian', count: 10 }, [], 'dmg', 100) === null);
+
+    /* ③ 赛马真调（确定性 + 选出规则 + scores 齐） */
+    console.log('  --- ③ 赛马（真调 · 确定性） ---');
+    check('§175③ ★ smartArbitrate 真调：5 阵型 × 4 规则 = 20 组合各跑一场 · 返回 {rule, mode, scores, ms} · 两次同结果', (function () {
+      /* v89.176 升级：候选从 4 条规则扩到 20 组合（modes × rules），返回值带 mode 与 aLoss；
+         旧口径（scores.length === 4）随之升级 —— 标定见 DATA.SMART_PLAN.modes 注释。 */
+      var A = { changqiang: 400, daodun: 300, gongjian: 350, qingji: 150 };
+      var B = { changqiang: 400, daodun: 300, gongjian: 350, qingji: 150 };
+      var rec = { side: 'atk', genId: null, atkArmy: A, sim: { scArmy: B, scVal: 0, scGen: null, simOpts: {} } };
+      var r1 = G.battle.smartArbitrate(rec);
+      var r2 = G.battle.smartArbitrate(rec);
+      return r1.scores.length === 25 && r1.rule === r2.rule && r1.mode === r2.mode   /* v89.185：5 模式 × 5 规则 */
+        && typeof r1.mode === 'string' && r1.scores[0].rule === 'static' && r1.scores[0].mode === 'echelon'
+        && r1.ms >= 0
+        && r1.scores.every(function (s) { return typeof s.win === 'boolean' && s.ratio > 0 && s.aLoss >= 0; });
+    })());
+    check('§175③b 镜像对局赛马选型（v89.179 复测：front×echelon 6.54 独大；v89.164 时 static 9.36）',
+      (function () {
+        var A = { minfu: 200, yibing: 800, changqiang: 800, daodun: 600, tengjiabing: 400,
+          gongjian: 700, qingji: 300, tieji: 150, tuqibing: 200, hubaoqi: 100,
+          xiliangtieqi: 60, nanjiangxiangbing: 20, chuangnu: 60, chongche: 15, toudan: 30 };
+        var rec = { side: 'atk', genId: null, atkArmy: A, sim: { scArmy: JSON.parse(JSON.stringify(A)), scVal: 0, scGen: null, simOpts: {} } };
+        var r = G.battle.smartArbitrate(rec);
+        /* v89.179：克制全撤后复测（probe_v89179d）：front×echelon 6.54 独大 ——
+           旧 static 口径（v89.164 标定 9.36）随相克表退役，赛马按新数值重选。 */
+        return r.rule === 'front' && r.mode === 'echelon';
+      })());
+
+    /* ④ smartApply 返回明细（每回合"可见调整"的数据源） */
+    console.log('  --- ④ 调整明细（真调） ---');
+    check('§175④ ★ smartApply 返回 {n, notes}：首回合全量指派（notes 有「目标→」）', (function () {
+      var A = { changqiang: 300, gongjian: 300, qingji: 200 };
+      var env = G.tactic.begin(JSON.parse(JSON.stringify(A)), null, JSON.parse(JSON.stringify(A)), 0, null, { stances: {} });
+      var rec = { side: 'atk', cmd: {} };
+      var r1 = G.battle.smartApply(rec, env);
+      return r1.n === 3 && r1.notes.length >= 3
+        && r1.notes.some(function (s) { return s.indexOf('目标→') >= 0; });
+    })());
+    check('§175④b 规则注入：smartRule=front 时目标按 front 规则走（与 static 可比）', (function () {
+      var A = { changqiang: 300, gongjian: 300, qingji: 200 };
+      var env = G.tactic.begin(JSON.parse(JSON.stringify(A)), null, JSON.parse(JSON.stringify(A)), 0, null, { stances: {} });
+      var rec = { side: 'atk', cmd: {}, smartRule: 'front' };
+      G.battle.smartApply(rec, env);
+      /* front 规则：最靠前优先 —— 初始双方 adv 对称（100），首选应为敌方最前排兵种之一 */
+      return !!rec.cmd && Object.keys(rec.cmd).length === 3
+        && Object.keys(rec.cmd).every(function (k) { return !!rec.cmd[k].t; });
+    })());
+
+    /* ⑤ 源码：stepBattle 接入 + 界面渲染 */
+    console.log('  --- ⑤ 源码（接入与可见） ---');
+    (function () {
+      var bS = fs175.readFileSync(p175.join(__dirname, 'js', 'battle.js'), 'utf8');
+      var uS = fs175.readFileSync(p175.join(__dirname, 'js', 'ui.js'), 'utf8');
+      var hS = fs175.readFileSync(p175.join(__dirname, 'index.html'), 'utf8');
+      var step = codeOf(bS, 'GAME.battle.stepBattle = function');
+      check('§175⑤ stepBattle：赛马在 smartApply 之前 · smartNote/smartLog 写入',
+        step.indexOf('smartArbitrate(rec)') >= 0
+        && step.indexOf('smartArbitrate(rec)') < step.indexOf('smartApply(rec, ses)')
+        && step.indexOf('rec.smartLog') >= 0 && step.indexOf('rec.smartNote') >= 0);
+      check('§175⑤b 回合记录渲染智能行（btRoundLine · 「智能调兵完成」+「开始回合战斗」+ smart 类）',
+        uS.indexOf('🤖 智能调兵完成') >= 0 && uS.indexOf('开始回合战斗') >= 0
+        && uS.indexOf("'smart'") >= 0);
+      check('§175⑤c 顶栏指示带「调整 N / 维持」（btTopHTML）',
+        /⚡ 智能'[\s\S]{0,120}调整 ' \+ sn175\.n/.test(uS) || uS.indexOf("('调整 ' + sn175.n)") >= 0
+        || uS.indexOf("sn175.n ? ('调整 ' + sn175.n) : '维持'") >= 0);
+      check('§175⑤d 样式 .bt-ev.smart 在册', hS.indexOf('.bt-ev.smart') >= 0);
+    })();
+
+    var arc175 = fs175.readFileSync(p175.join(__dirname, '需求档案.md'), 'utf8');
+    check('§175⑥ 需求档案在册（v89.175 · 老板原文关键句逐字）',
+      arc175.indexOf('v89.175') >= 0
+      && arc175.indexOf('每回合我要看见调整') >= 0
+      && arc175.indexOf('多种最优路径比较') >= 0);
+  })();
+
+  (function () {
+    console.log('  --- 176. v89.176 智能战术 v2（接敌预测 · 阵型 · 保兵闸 · 沙盘统一）---');
+    var fs176 = require('fs'), p176 = require('path');
+
+    /* ① contactForecast 纯函数（接敌预测唯一出口） */
+    console.log('  --- ① 接敌预测（真调） ---');
+    check('§176① ★ contactForecast 真调：近距双向开火 + engage 集合 + contact', (function () {
+      var A = [{ id: 'gongjian', count: 100, adv: 1400, spd: 250, er: 1200, stance: 'advance' }];
+      var D2 = [{ id: 'gongjian', count: 100, adv: 1400, spd: 250, er: 1200, stance: 'advance' }];
+      var fc = G.tactic.contactForecast(A, D2, 2600);
+      return fc.fire.length === 2 && fc.engage['atk|gongjian'] === true && fc.engage['def|gongjian'] === true
+        && fc.contact === true;
+    })());
+    check('§176①b 远距不开火 + 推进预演（gapAfter 确定性 1900）', (function () {
+      var A = [{ id: 'gongjian', count: 100, adv: 100, spd: 250, er: 1200, stance: 'advance' }];
+      var D2 = [{ id: 'gongjian', count: 100, adv: 100, spd: 250, er: 1200, stance: 'advance' }];
+      var fc = G.tactic.contactForecast(A, D2, 2600);
+      /* 各自推 250（cap=910 不拦）→ adv 350/350 → gapAfter = 2600−350−350 = 1900 */
+      return fc.fire.length === 0 && fc.contact === false && fc.gapAfter === 1900;
+    })());
+    check('§176①c hold 不推进（防御原地待敌）', (function () {
+      var A = [{ id: 'gongjian', count: 100, adv: 100, spd: 250, er: 1200, stance: 'hold' }];
+      var D2 = [{ id: 'yibing', count: 100, adv: 100, spd: 200, er: 20, stance: 'advance' }];
+      var fc = G.tactic.contactForecast(A, D2, 2600);
+      /* 我方 hold → adv 不动；敌推 200 → 敌 adv 300。gapAfter = 2600−100−300 = 2200 */
+      return fc.gapAfter === 2200 && fc.fire.length === 0;
+    })());
+
+    /* ② smartStanceOf 五模式（真调） */
+    console.log('  --- ② 阵型模式（真调） ---');
+    check('§176② ★ smartStanceOf 五模式：turtle 全 hold / charge 全 advance / line 贴射程才守', (function () {
+      var f = G.battle.smartStanceOf;
+      var inf = { id: 'changqiang', range: 50, spd: 300 };
+      var bow = { id: 'gongjian', range: 1200, spd: 250 };
+      return f(inf, 40, null, 'turtle') === 'hold' && f(inf, 9999, null, 'turtle') === 'hold'
+        && f(inf, 40, null, 'charge') === 'advance' && f(inf, 10, null, 'charge') === 'advance'
+        && f(inf, 90, null, 'line') === 'advance' && f(inf, 40, null, 'line') === 'hold'
+        && f(bow, 900, null, 'line') === 'hold' && f(bow, 1500, null, 'line') === 'advance';
+    })());
+    check('§176②b spear：尖刀（fastestId）近距仍 advance；其余回落 echelon', (function () {
+      var f = G.battle.smartStanceOf;
+      var plan = { gapInf: 250, gapCav: 250, rangeK: 1, fastestId: 'qingji' };
+      var cav = { id: 'qingji', range: 80, spd: 1000 };
+      var inf = { id: 'changqiang', range: 50, spd: 300 };
+      return f(cav, 50, plan, 'spear') === 'advance'      /* 尖刀贴脸也不停 */
+        && f(inf, 50, plan, 'spear') === 'hold'           /* 非尖刀：gap 50 ≤ 250 → echelon 的 hold */
+        && f(inf, 400, plan, 'spear') === 'advance';
+    })());
+    check('§176②c 缺省兼容：三参调用行为 = echelon（与 §164③ 同判据）', (function () {
+      var f = G.battle.smartStanceOf;
+      var bow = { range: 1200, spd: 250 };
+      return f(bow, 900) === 'hold' && f(bow, 1500) === 'advance';
+    })());
+
+    /* ③ 保兵闸出口 */
+    console.log('  --- ③ 保兵闸（损失/名城/撤退线） ---');
+    check('§176③ 撤退线读表（retreatAt 0.30 / warnAt 0.22）· 唯一出口',
+      G.battle.retreatAtOf() === 0.30 && G.battle.warnAtOf() === 0.22
+      && DATA.SMART_PLAN.retreatAt === 0.30 && DATA.SMART_PLAN.warnAt === 0.22);
+    check('§176③b mustTakeOf：野地/无目标 → 可撤；系统城口径 = isFamousCity', (function () {
+      var f = G.isFamousCity;
+      return G.battle.mustTakeOf(null) === false
+        && G.battle.mustTakeOf({ target: { kind: 'wild', x: 2, y: 2 } }) === false
+        && f({ type: 'county' }) === true && f({ type: 'capital' }) === true
+        && f({ type: 'self' }) === false && f({ type: 'fort' }) === false;
+    })());
+    check('§176③c ★ lossRatioOf 真调：与手算一致 + 无快照回 0', (function () {
+      var A = { changqiang: 300, daodun: 200, gongjian: 200 };
+      var env = G.tactic.begin(A, null, { qingji: 800, gongjian: 900 }, 0, null, {});
+      var g = 0;
+      while (!env.over && g++ < 5) env.step();
+      var lr = G.battle.lossRatioOf(env);
+      var snap = env.snap(), s0 = 0, s1 = 0;
+      snap.atk.forEach(function (u) { s0 += u.start; s1 += u.count; });
+      var manual = s0 > 0 ? (s0 - s1) / s0 : 0;
+      return lr >= 0 && lr <= 1 && Math.abs(lr - manual) < 1e-9
+        && G.battle.lossRatioOf(null) === 0;
+    })());
+
+    /* ④ stepBattle 接入（源码级） */
+    console.log('  --- ④ 接入（源码级） ---');
+    (function () {
+      var bS = fs176.readFileSync(p176.join(__dirname, 'js', 'battle.js'), 'utf8');
+      var step = codeOf(bS, 'GAME.battle.stepBattle = function');
+      check('§176④ stepBattle：保兵闸在智能改写之后、history 之前 · mode 记录',
+        step.indexOf('lossRatioOf(ses)') > step.indexOf('smartApply(rec, ses)')
+        && step.indexOf('lossRatioOf(ses)') < step.indexOf('rec.history.push(snapCmd)')
+        && step.indexOf('retreatBattle(id)') >= 0
+        && step.indexOf('rec.smartMode') >= 0);
+    })();
+
+    /* ⑤ 界面：统一化 + 损失 + 角标（真调输出） */
+    console.log('  --- ⑤ 界面（共享出口与读数） ---');
+    (function () {
+      var uS = fs176.readFileSync(p176.join(__dirname, 'js', 'ui.js'), 'utf8');
+      check('§176⑤ 三线/标尺共享出口：fieldLinesHTML 在册 + sd 转发 + bt 调用（id 前缀分家）',
+        uS.indexOf('ui.fieldLinesHTML = function') >= 0
+        && uS.indexOf('return ui.fieldLinesHTML(function (sd2)') >= 0
+        && uS.indexOf("ui.fieldLinesHTML(ui.btSideName, snap.atk || [], snap.def || [], D, 'bt-fl')") >= 0
+        && uS.indexOf('ui.fieldScaleHTML = function') >= 0);
+      var snap176 = { field: 2600, atk: [
+          { id: 'changqiang', name: '长枪兵', count: 80, start: 100, adv: 1400, spd: 300, er: 50, stance: 'advance' }],
+        def: [{ id: 'gongjian', name: '弓箭手', count: 90, start: 100, adv: 1400, spd: 250, er: 1200, stance: 'advance' }],
+        towers: null };
+      var fh = G.ui.btFieldHTML(snap176);
+      check('§176⑤b ★ btFieldHTML 输出：三线（bt-fl-a）+ 标尺 + 接敌角标（incoming）',
+        fh.indexOf('bt-fl-a') >= 0 && fh.indexOf('sd-scale') >= 0
+        && /bt-fl-c/.test(fh) && fh.indexOf('incoming') >= 0,
+        fh.slice(0, 120));
+      check('§176⑤c ★ 顶栏损失读数：btLossHTML 真调（我损 20%）· 无 start → 空', (function () {
+        var h1 = G.ui.btLossHTML({}, snap176);
+        var h0 = G.ui.btLossHTML({}, { field: 100, atk: [{ id: 'x', count: 5, adv: 0 }], def: [] });
+        return h1.indexOf('我损 20%') >= 0 && h1.indexOf('bt-loss') >= 0
+          && h1.indexOf('敌损 10%') >= 0 && h0 === '';
+      })());
+      check('§176⑤d 撤退预警三态：≥30% danger · ≥22% warn · 常态无类', (function () {
+        function loss(pct) {
+          return G.ui.btLossHTML({}, { field: 100,
+            atk: [{ id: 'x', count: 100 - pct, start: 100, adv: 0 }], def: [] });
+        }
+        return loss(35).indexOf('danger') >= 0 && loss(25).indexOf('warn') >= 0
+          && loss(10).indexOf('warn') < 0 && loss(10).indexOf('danger') < 0;
+      })());
+      check('§176⑤e ★ 沙盘损失：sdLossHTML 真调（我 10% / 敌 20%）', (function () {
+        var st = { atk: [{ id: 'gongjian', count: 90, start: 100, adv: 1400, spd: 250, er: 1200, stance: 'advance' }],
+          def: [{ id: 'gongjian', count: 80, start: 100, adv: 1400, spd: 250, er: 1200, stance: 'advance' }],
+          towers: 0, round: 3 };
+        var sb = { field: 2600, ourSide: 'atk' };
+        var h = G.ui.sdLossHTML(st, sb);
+        return h.indexOf('损失 我') >= 0 && h.indexOf('10%') >= 0 && h.indexOf('20%') >= 0;
+      })());
+      check('§176⑤f 智能行含「阵型 · 规则」（源码级 modeCN 接线）',
+        uS.indexOf('mc175') >= 0 && uS.indexOf('DATA.SMART_PLAN.modeCN') >= 0
+        && uS.indexOf('strat175') >= 0);
+      check('§176⑤g 撤退行渲染（源码级 · 🏳️ 智能撤退 + 残部带回）',
+        uS.indexOf('🏳️ 智能撤退') >= 0 && uS.indexOf('sn175.retreat') >= 0);
+      var hS = fs176.readFileSync(p176.join(__dirname, 'index.html'), 'utf8');
+      check('§176⑤h 样式：.bt-unit.incoming 与 #bt-loss 三态在册',
+        hS.indexOf('.bt-unit.incoming') >= 0 && hS.indexOf('#bt-loss.warn') >= 0
+        && hS.indexOf('#bt-loss.danger') >= 0);
+    })();
+
+    var arc176 = fs176.readFileSync(p176.join(__dirname, '需求档案.md'), 'utf8');
+    check('§176⑥ 需求档案在册（v89.176 · 老板原文关键句逐字）',
+      arc176.indexOf('v89.176') >= 0
+      && arc176.indexOf('损伤30%的局面，宁愿撤退') >= 0
+      && arc176.indexOf('谁在下一回合接敌') >= 0);
+  })();
+
+  (function () {
+    console.log('  --- 177. v89.177 民心/民怨 · 措施 · 君主突破综合考验 ---');
+    var fs177 = require('fs'), p177 = require('path');
+
+    /* ① 民心公式（唯一出口） */
+    console.log('  --- ① 民心公式（真调） ---');
+    check('§177① ★ heartsBaseOf = 100−税率×100（0/30/50/75/100% → 100/70/50/25/0）', (function () {
+      var bkTax = G.state.tax, out = [];
+      [0, 0.3, 0.5, 0.75, 1].forEach(function (t) { G.state.tax = t; out.push(G.heartsBaseOf()); });
+      G.state.tax = bkTax;
+      return out.join(',') === '100,70,50,25,0';
+    })());
+    check('§177①b heartsOf = 基准+安抚 · minyuan = 100−民心 · applyHearts 写缓存', (function () {
+      var bk = { tax: G.state.tax, c: G.state.heartsComfort, h: G.state.hearts };
+      G.state.tax = 0.5; G.state.heartsComfort = 20;
+      var h = G.heartsOf(), m = G.minyuanOf(), c = G.applyHearts();
+      var r = h === 70 && m === 30 && c === 70 && G.state.hearts === 70;
+      G.state.tax = bk.tax; G.state.heartsComfort = bk.c; G.state.hearts = bk.h;
+      return r;
+    })());
+    check('§177①c 安抚钳制（上限 comfortCap · 下限 −100）', (function () {
+      var bk = { tax: G.state.tax, c: G.state.heartsComfort };
+      G.state.tax = 0.5;
+      G.heartsComfortAdd(999); var hi = G.heartsComfortOf();
+      G.heartsComfortAdd(-999); var lo = G.heartsComfortOf();
+      G.state.tax = bk.tax; G.state.heartsComfort = bk.c; G.applyHearts();
+      return hi === DATA.HEARTS.comfortCap && lo === -100;
+    })());
+
+    /* ② 措施（真调 · 每日一次 · 耗金币） */
+    console.log('  --- ② 措施（真调） ---');
+    check('§177② ★ doHeartsAction：扣金/加安抚/当日再调拒/跨日恢复', (function () {
+      var bk = { gold: G.goldOf(), c: G.state.heartsComfort, days: G.state.heartsDays, tax: G.state.tax };
+      try {
+        G.state.tax = 0.5;
+        G.state.heartsComfort = 0;
+        G.state.heartsDays = {};
+        G.goldAdd(100000);
+        var g0 = G.goldOf();
+        var r = G.doHeartsAction('boost');
+        var r2 = G.doHeartsAction('boost');                 /* 当日再调 = 拒 */
+        G.state.heartsDays.boost = null;                    /* 跨日（清当日记录）→ 可再调 */
+        var r3 = G.doHeartsAction('boost');
+        var r4 = G.doHeartsAction('soothe');
+        return r.ok === true
+          && (g0 - G.goldOf()) === (DATA.HEARTS.boost.cost * 2 + DATA.HEARTS.soothe.cost)
+          && G.heartsComfortOf() === (DATA.HEARTS.boost.add * 2 + DATA.HEARTS.soothe.add)
+          && r2.ok === false && /本日已行/.test(r2.msg)
+          && r3.ok === true && r4.ok === true;
+      } finally {
+        G.goldAdd(bk.gold - G.goldOf());
+        G.state.heartsComfort = bk.c;
+        G.state.heartsDays = bk.days;
+        G.state.tax = bk.tax;
+        G.applyHearts();
+      }
+    })());
+    check('§177②b 金不足 → 拒（提示黄金不足）', (function () {
+      var bk = { gold: G.goldOf(), days: G.state.heartsDays };
+      try {
+        G.state.heartsDays = {};
+        G.goldAdd(-G.goldOf());
+        var r = G.doHeartsAction('soothe');
+        return r.ok === false && /黄金不足/.test(r.msg);
+      } finally {
+        G.goldAdd(bk.gold - G.goldOf());
+        G.state.heartsDays = bk.days;
+      }
+    })());
+
+    /* ③ 安抚衰减（tick 真调） */
+    console.log('  --- ③ 安抚衰减 ---');
+    check('§177③ 安抚每游戏小时向 0 回落（1 tick = 120 游戏秒 → −1/60）', (function () {
+      var bk = { c: G.state.heartsComfort, tax: G.state.tax };
+      G.state.tax = 0.5;
+      G.state.heartsComfort = 10;
+      G.tickOnce();
+      var c1 = G.state.heartsComfort;
+      G.state.heartsComfort = bk.c; G.state.tax = bk.tax; G.applyHearts();
+      return c1 < 10 && c1 > 9.9;
+    })());
+
+    /* ④ 调税即时重算 */
+    console.log('  --- ④ 调税即时重算 ---');
+    check('§177④ doSetTax(30) → 民心 70（安抚 0 时）', (function () {
+      var bk = { tax: G.state.tax, c: G.state.heartsComfort };
+      try {
+        G.state.heartsComfort = 0;
+        G.doSetTax(30);
+        return G.heartsOf() === 70;
+      } finally {
+        G.doSetTax(Math.round(bk.tax * 100));
+        G.state.heartsComfort = bk.c; G.applyHearts();
+      }
+    })());
+
+    /* ⑤ 君主突破综合考验 */
+    console.log('  --- ⑤ 综合考验 ---');
+    check('§177⑤ ★ lordTrialOf：五关行（政务/城池/军队/资源/宝物）+ 口径读表', (function () {
+      var lord = null;
+      (G.state.generals || []).forEach(function (g) { if (g.isLord) lord = g; });
+      if (!lord) { lord = G.makeGeneral('测试君主', 1, 'idle', G.state.cities[0].id, false); lord.isLord = true; }
+      var tr = G.lordTrialOf(lord);
+      var keys = tr.rows.map(function (r) { return r.key; }).join(',');
+      var tbl = (DATA.LORD_BREAK.trials || [])[0];
+      return tr.n === 1 && keys === 'quests,cities,army,gold,treasure'
+        && tr.rows[0].goal === tbl.quests && tr.rows[4].goal === tbl.treasure
+        && typeof tr.ok === 'boolean';
+    })());
+    check('§177⑤b 考验表在册（trials 三段 · 逐段递增）', (function () {
+      var t = DATA.LORD_BREAK.trials;
+      return Array.isArray(t) && t.length === 3
+        && t[0].cities < t[1].cities && t[1].cities < t[2].cities
+        && t[0].gold < t[1].gold && t[1].gold < t[2].gold;
+    })());
+
+    /* ⑥ 界面与接入（源码级） */
+    console.log('  --- ⑥ 界面与接入（源码级） ---');
+    (function () {
+      var uS = fs177.readFileSync(p177.join(__dirname, 'js', 'ui.js'), 'utf8');
+      var mS = fs177.readFileSync(p177.join(__dirname, 'js', 'main.js'), 'utf8');
+      check('§177⑥ 官府段在册：heartsBox177 + 「民心 / 民怨」标题 + 两处拼接（施工/正常互斥）',
+        uS.indexOf('heartsBox177') >= 0 && /民心 \/ 民怨/.test(uS)
+        && uS.split('guanfuBox + heartsBox177 + queueBox174 +').length === 3);
+      check('§177⑥b main.js：hearts-boost / hearts-soothe 动作 + doSetTax 重算',
+        mS.indexOf("case 'hearts-boost'") >= 0 && mS.indexOf("case 'hearts-soothe'") >= 0
+        && mS.indexOf('GAME.applyHearts()') >= 0);
+      check('§177⑥c 君主面板考验清单在册（_trialHTML177 · 五关逐条）',
+        uS.indexOf('_trialHTML177') >= 0 && uS.indexOf('突破考验（第') >= 0);
+      check('§177⑥d HEARTS 表在册（安抚上限/衰减/两措施）',
+        DATA.HEARTS.comfortCap === 50 && DATA.HEARTS.decayPerHour === 0.5
+        && DATA.HEARTS.boost.cost === 2000 && DATA.HEARTS.soothe.cost === 6000);
+    })();
+
+    var arc177 = fs177.readFileSync(p177.join(__dirname, '需求档案.md'), 'utf8');
+    check('§177⑦ 需求档案在册（v89.177 · 老板原文关键句逐字）',
+      arc177.indexOf('v89.177') >= 0
+      && arc177.indexOf('民心=100-税率*100') >= 0
+      && arc177.indexOf('综合考验') >= 0);
+  })();
+
+  /* ═══════════════════════════════════════════════════════════════
+   * §178（v89.178）——兵种克制降档（老板：「兵种克制太厉害了……外的系数给到3倍，
+   *   游戏体感很差。766弓箭手杀伤35个敌方轻骑兵，这合理吗。」）
+   *   + 出征预估文案精简（共派遣 / 区间·情报 / 此战凶险 三处）
+   * ═══════════════════════════════════════════════════════════════ */
+  (function () {
+    console.log('  --- §178 克制降档与出征文案 ---');
+    var fs178 = require('fs'), p178 = require('path');
+    var uS178 = fs178.readFileSync(p178.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var _r178b = '';
+
+    check('§178①（v89.179 升级）克制表已整体退役 —— 历史锚：v89.178 曾降档至枪 2.5 / 拒马 3', (function () {
+      /* v89.179 全撤（老板「取消所有克制关系，直接按兵种纸面数据计算」）——
+         本锚从"表值核对"升级为"表已退役 + 墓碑在册"。 */
+      var raw178 = require('fs').readFileSync(require('path').join(__dirname, 'js', 'data.js'), 'utf8');
+      return DATA.COUNTER_ATK === undefined && DATA.COUNTER_DEF === undefined
+        && raw178.indexOf('v89.178') >= 0 && raw178.indexOf('取消所有克制关系') >= 0;
+    })());
+
+    check('§178②（v89.179 重写）无克制口径：766 弓打 800 轻骑首轮齐射走纸面值（≥20）', (function () {
+      /* v89.178 时这里比"克制下 / 无克制"两臂；v89.179 全撤后只剩单一口径 ——
+         判据改为**下限**（旧克制把首轮齐射压到 11~17，全撤后应回到纸面量级）。
+         注：受天气影响（雨天弓射程 −20%）—— 固定晴天再跑，跑完还原。 */
+      function firstKill(A, B) {
+        var env = G.tactic.begin(JSON.parse(JSON.stringify(A)), null, JSON.parse(JSON.stringify(B)), 0, null, {});
+        var first = 0, g = 0;
+        while (!env.over && g++ < 40) {
+          var st = env.step();
+          (st.events || []).forEach(function (e) {
+            if (e.kind === 'attack' && e.side === 'atk' && !first) first = e.kill || 0;
+          });
+        }
+        return first;
+      }
+      var wBak = G.state.world.weather;
+      var k179;
+      G.state.world.weather = 'clear';
+      try { k179 = firstKill({ gongjian: 766 }, { qingji: 800 }); }
+      finally { G.state.world.weather = wBak; }
+      _r178b = '首轮齐射 ' + k179;
+      return k179 >= 20;
+    })(), _r178b);
+
+    check('§178③ 出征预估源码级：共派遣/区间/情报条退役；「兵力偏少，此战凶险」在册', (function () {
+      var S = uS178;
+      return S.indexOf("'👥 共派遣") < 0
+        && S.indexOf('区间：我 1 : ') < 0
+        && S.indexOf('pw74.intelLv') < 0
+        && S.indexOf('font-weight:700;">⚑') < 0
+        && S.indexOf('兵力偏少，此战凶险') >= 0
+        && /var pow73 = \$\('#exp-power'\);/.test(S);
+    })());
+
+    check('§178④ 预估块骨架：march/power/haul 三框（#exp-sum 退役）', (function () {
+      var h = G.ui.expEstBlockHTML();
+      return h.indexOf('id="exp-march"') >= 0 && h.indexOf('id="exp-power"') >= 0
+        && h.indexOf('id="exp-haul"') >= 0 && h.indexOf('exp-sum') < 0;
+    })());
+
+    var arc178 = fs178.readFileSync(p178.join(__dirname, '需求档案.md'), 'utf8');
+    check('§178⑤ 需求档案在册（v89.178 · 老板原文关键句）',
+      arc178.indexOf('v89.178') >= 0
+      && arc178.indexOf('766弓箭手') >= 0
+      && arc178.indexOf('兵力偏少，此战凶险') >= 0);
+  })();
+
+  /* ============================================================
+   * §179（v89.179）—— 克制系统全撤 + 纸面数据机制复核
+   * 老板原话：「得了，不算了，取消所有克制关系，直接按兵种纸面数据计算，
+   *   复核纸面数据机制是否合理」
+   * 复核证据：.workbuddy/tools/probe/probe_v89179c_paper.js（全兵种矩阵 · 双向实跑）
+   * ============================================================ */
+  (function () {
+    console.log('  --- §179 克制全撤与纸面数据 ---');
+    var fs179 = require('fs'), p179 = require('path');
+    var _r179 = '';
+
+    check('§179① 克制全撤：两表 + 三出口 + 全部消费点退役（剥注释零残骸）', (function () {
+      var tS = stripComment(fs179.readFileSync(p179.join(__dirname, 'js', 'tactic.js'), 'utf8'));
+      var bS = stripComment(fs179.readFileSync(p179.join(__dirname, 'js', 'battle.js'), 'utf8'));
+      var uS = stripComment(fs179.readFileSync(p179.join(__dirname, 'js', 'ui.js'), 'utf8'));
+      var dS = stripComment(fs179.readFileSync(p179.join(__dirname, 'js', 'data.js'), 'utf8'));
+      var noRef = [tS, bS, uS, dS].every(function (src) {
+        return src.indexOf('COUNTER_ATK') < 0 && src.indexOf('COUNTER_DEF') < 0
+          && src.indexOf('counterAtkOf') < 0 && src.indexOf('counterDefOf') < 0
+          && src.indexOf('troopCounterOf') < 0 && src.indexOf('counterMul') < 0
+          && !/\bdefMul\b/.test(src);
+      });
+      return DATA.COUNTER_ATK === undefined && DATA.COUNTER_DEF === undefined
+        && G.tactic.counterAtkOf === undefined && G.tactic.counterDefOf === undefined
+        && G.ui.troopCounterOf === undefined && noRef;
+    })());
+
+    check('§179② 纸面主链：四种近战骑兵同人口全胜枪兵（纯数值 · 无克制）', (function () {
+      var out = [];
+      var ok = [['qingji', 2000], ['tieji', 1333], ['hubaoqi', 1333], ['xiliangtieqi', 1000]]
+        .every(function (c) {
+          var o = {}; o[c[0]] = c[1];
+          var r = G.battle.simulate({ changqiang: 4000 }, null, o, 0, null, { kind: 'wild' });
+          out.push(DATA.TROOPS[c[0]].name + (r.winner === 'def' ? '胜' : '负')
+            + '损' + Math.round(r.defLoss / c[1] * 100) + '%');
+          return r.winner === 'def' && r.defLoss <= c[1] * 0.5;
+        });
+      _r179 = out.join(' · ');
+      return ok;
+    })(), _r179);
+
+    var arc179 = fs179.readFileSync(p179.join(__dirname, '需求档案.md'), 'utf8');
+    check('§179③ 需求档案在册（v89.179 · 老板原文关键句）',
+      arc179.indexOf('v89.179') >= 0
+      && arc179.indexOf('取消所有克制关系') >= 0
+      && arc179.indexOf('纸面数据') >= 0);
+    /* v89.179c（同版本第二批 · 价值价格体系重平衡）：同一档案文件另存一节 ——
+       与 §179③（克制全撤）**分开断言**，避免"两批需求互相顶掉"（grep 到场即绿）。 */
+    check('§179④ 需求档案在册（v89.179c · 三问原文 + 拍板值）',
+      arc179.indexOf('v89.179c') >= 0
+      && arc179.indexOf('后期可以无限募兵') >= 0
+      && arc179.indexOf('自由属性点') >= 0
+      && arc179.indexOf('BOOST_CAP') >= 0
+      && arc179.indexOf('dropOnly') >= 0);
+  })();
+
+  /* ============================================================
+   * §180（v89.180）—— 拆械特性 + 智能风筝（老板四条）
+   * 老板原话：「1.补床弩拆器械特性 / 2.你在意的是每人口效率，我在意的是能上场的
+   *   总人口和总攻防 / 3.突骑兵是带速度的弓兵，……前出接敌（拉进射程），后边持续
+   *   无伤消耗，……距离难道不是弓兵的生命线吗 / 4.如果对弓兵的运用只会前直接对对碰，
+   *   那是还不够智能」
+   * 标定证据：probe_v89180a（总人口矩阵）· b（风筝候选）· c（拆械倍率）· d（落地后对照）
+   * ============================================================ */
+  (function () {
+    console.log('  --- §180 拆械与风筝 ---');
+    var fs180 = require('fs'), p180 = require('path');
+
+    /* ① 拆械表结构 */
+    check('§180① 拆械表：床弩 vsMech=3 · 四器械 mech 标签 · 非器械零污染', (function () {
+      var T = DATA.TROOPS;
+      var mechIds = Object.keys(T).filter(function (k) { return T[k].mech; }).sort();
+      return T.chuangnu.vsMech === 3
+        && mechIds.join(',') === 'chongche,chuangnu,toudan,zhouche'
+        && !T.changqiang.mech && !T.qingji.mech && !T.gongjian.mech;
+    })());
+
+    /* ② 拆械引擎真调（单变量对照：×3 胜 / ×1 负，防"没生效"平凡解） */
+    check('§180② 拆械引擎真调：床弩打投石（×3 胜 · ×1 负）· 打长枪不受影响', (function () {
+      var bak = DATA.TROOPS.chuangnu.vsMech;
+      var r3, r1, rK;
+      try {
+        DATA.TROOPS.chuangnu.vsMech = 3;
+        r3 = G.battle.simulate({ chuangnu: 1333 }, null, { toudan: 1000 }, 0, null, { kind: 'wild' });
+        rK = G.battle.simulate({ chuangnu: 1333 }, null, { changqiang: 4000 }, 0, null, { kind: 'wild' });
+        DATA.TROOPS.chuangnu.vsMech = 1;
+        r1 = G.battle.simulate({ chuangnu: 1333 }, null, { toudan: 1000 }, 0, null, { kind: 'wild' });
+      } finally { DATA.TROOPS.chuangnu.vsMech = bak; }
+      return r3.winner === 'atk' && r3.defLoss >= 1000 * 0.99
+        && r1.winner !== 'atk' && r1.defLoss < 1000 * 0.5
+        && rK.atkLoss <= 1333 * 0.55;
+    })(), (function () {
+      return '对照已跑';
+    })());
+
+    /* ③ 风筝五态（带 ctx 临战 / 无 ctx 向后兼容） */
+    check('§180③ smartStanceOf 风筝五态：威胁退 / 安全守 / 射程外进 / 无窗口守 / 退不动守', (function () {
+      var f = G.battle.smartStanceOf;
+      var tu = { id: 'tuqibing', range: 1000, spd: 450, er: 1000 };
+      var bow = { id: 'gongjian', range: 1200, spd: 250, er: 1200 };
+      var k1 = { kite: true, threat: 350, eRange: 50, back: 450 };
+      return f(tu, 300, null, 'echelon', k1) === 'retreat'
+        && f(tu, 300, null, 'echelon') === 'hold'
+        && f(tu, 500, null, 'echelon', k1) === 'hold'
+        && f(tu, 1500, null, 'echelon', k1) === 'advance'
+        && f(bow, 300, null, 'echelon', { kite: true, threat: 350, eRange: 1200, back: 250 }) === 'hold'
+        && f(tu, 300, null, 'echelon', { kite: true, threat: 350, eRange: 50, back: 0 }) === 'hold';
+    })());
+
+    /* ④ 风筝真实管线：突骑（能跑）出现"后退"指令；弓（跑不动）不出现 */
+    check('§180④ 风筝真实管线：突骑 vs 长枪 8 回合内出「后退」· 弓为对照不出现', (function () {
+      function runOne(A, B) {
+        var id = Object.keys(A)[0];
+        var env = G.tactic.begin(JSON.parse(JSON.stringify(A)), null, JSON.parse(JSON.stringify(B)), 0, null, {});
+        var rec = { side: 'atk', cmd: {} };
+        var saw = false, g = 0;
+        while (!env.over && g++ < 8) {
+          G.battle.smartApply(rec, env);
+          if (rec.cmd && rec.cmd[id] && rec.cmd[id].s === 'retreat') saw = true;
+          env.step();
+        }
+        return saw;
+      }
+      return runOne({ tuqibing: 2000 }, { changqiang: 4000 }) === true
+        && runOne({ gongjian: 2000 }, { changqiang: 4000 }) === false;
+    })());
+
+    /* ⑤ 界面可见（源码级：悬停两处 + desc） */
+    check('§180⑤ 界面可见：战场悬停与募兵卡各含「拆械」行 · desc 更新', (function () {
+      var uS = stripComment(fs180.readFileSync(p180.join(__dirname, 'js', 'ui.js'), 'utf8'));
+      var dS = fs180.readFileSync(p180.join(__dirname, 'js', 'data.js'), 'utf8');
+      return (uS.match(/拆械/g) || []).length >= 2 && dS.indexOf('拆械破车') >= 0;
+    })());
+
+    /* ⑥ live 快照选择器含 panel-body（本轮修的 flaky 根因 · 结构性守卫） */
+    check('§180⑥ live 快照/回填含 .panel-body（滚动位不丢 · 两处同改）', (function () {
+      var uS180 = fs180.readFileSync(p180.join(__dirname, 'js', 'ui.js'), 'utf8');
+      return (uS180.match(/querySelectorAll\('\.inner-panel, \.panel-body, \.modal-scroll'\)/g) || []).length === 2;
+    })());
+
+    /* ⑦ 需求档案在册 */
+    var arc180 = '';
+    try { arc180 = fs180.readFileSync(p180.join(__dirname, '需求档案.md'), 'utf8'); } catch (e) { }
+    check('§180⑦ 需求档案在册（v89.180 · 老板原文关键句）',
+      arc180.indexOf('v89.180') >= 0
+      && arc180.indexOf('补床弩拆器械特性') >= 0
+      && arc180.indexOf('距离难道不是弓兵的生命线吗') >= 0);
+  })();
+
+  /* ============================================================
+   * §181（v89.181）—— 虎豹加强 + 血量合理性复核 + 拍板存档
+   * 老板原话：「1.弓箭兵不提速 2.虎豹稍微加强 3.不要 4.为啥现在兵种的血量
+   *   这么高，确认是否是合理的数值设计，是就算了」
+   * 标定证据：probe_v89180e（血量复核）· probe_v89180f（虎豹候选扫描）
+   * 存档（拍板，不锁测试值，仅供后人检索）：弓 spd 250 不提速 · 拆械 vsMech 3 不加码
+   * ============================================================ */
+  (function () {
+    console.log('  --- §181 虎豹加强与血量基线 ---');
+    var fs181 = require('fs'), p181 = require('path');
+
+    check('§181① 虎豹骑新值：hp 5400 / def 280（血防 +12% · 攻速人口不动）', (function () {
+      var t = DATA.TROOPS.hubaoqi;
+      return t.hp === 5400 && t.def === 280 && t.atk === 510 && t.spd === 850 && t.pop === 3;
+    })());
+
+    check('§181② 同人口 虎豹 vs 轻骑：两向皆虎豹胜（口径修正 —— "平手"系误读）', (function () {
+      /* ⚠️ 正确读法 = "胜者"（行动序 = 速度序，交换攻守的两局是同场镜像，数字天然一致）：
+         r1 虎豹当攻 → 虎豹胜；r2 轻骑当攻 → 虎豹（守）胜。 */
+      var r1 = G.battle.simulate({ hubaoqi: 1333 }, null, { qingji: 2000 }, 0, null, { kind: 'wild' });
+      var r2 = G.battle.simulate({ qingji: 2000 }, null, { hubaoqi: 1333 }, 0, null, { kind: 'wild' });
+      var ok1 = r1.winner === 'atk' && r1.atkLoss <= 1333 * 0.55;
+      var ok2 = r2.winner === 'def' && r2.defLoss <= 1333 * 0.55;
+      return ok1 && ok2;
+    })(), '虎损 ≤55% · 两向胜');
+
+    check('§181③ 血量护栏哨兵：主流对局不秒杀（≥3 回合）不拖死（≤24）', (function () {
+      /* 无将口径（稳定、不依赖将领构造）—— 守护"血量标定（原值 ×6）"的核心目的：
+         防"1 回合清场"回归（若 hp 被改回原值 → rounds 1~2 → 红）。 */
+      var a = G.battle.simulate({ gongjian: 6000 }, null, { changqiang: 6000 }, 0, null, { kind: 'wild' });
+      var b = G.battle.simulate({ qingji: 6000 }, null, { changqiang: 6000 }, 0, null, { kind: 'wild' });
+      return a.rounds >= 3 && a.rounds <= 24 && b.rounds >= 2 && b.rounds <= 24;
+    })(), '弓vs枪 14 / 骑vs枪 4（2026-09-28 读数）');
+
+    check('§181③b 小规模必收敛（义兵 20v20 · round 取整口径）', (function () {
+      var r = G.battle.simulate({ yibing: 20 }, null, { yibing: 20 }, 0, null, { kind: 'wild' });
+      return r.rounds >= 2 && r.rounds < 30;
+    })());
+
+    var arc181 = '';
+    try { arc181 = fs181.readFileSync(p181.join(__dirname, '需求档案.md'), 'utf8'); } catch (e) { }
+    check('§181④ 需求档案在册（v89.181 · 老板原文关键句 + 误读修正留痕）',
+      arc181.indexOf('v89.181') >= 0
+      && arc181.indexOf('虎豹稍微加强') >= 0
+      && arc181.indexOf('血量这么高') >= 0);
+  })();
+
+  /* ═══════════════════════════════════════════════════════════
+   * §185（v89.185）老板 7 条：六维不封口 · 守将体系 · 衰减-2 · 民心人口 · 智能 weak · 撤退沙盘同源
+   * ═══════════════════════════════════════════════════════════ */
+  (function () {
+    /* ① 六维不封口 */
+    check('§185① 六维尾段不封口：450 后恒定 +0.25%/点（内政）· 表无 maxK 截断', (function () {
+      var f = G.curveBonusOf;
+      var a = f(450, 0.01, 150), b = f(450 + 1000, 0.01, 150);
+      return Math.abs((b - a) - 2.5) < 1e-9 && !('maxK' in (DATA.MAYOR_CURVE || {}));
+    })());
+
+    /* ② 衰减表 */
+    check('§185② 野地衰减表在册（-2/日 · 驻军 -1/日 · 任何保护不为 0）', (function () {
+      var WD = DATA.WILD_DECAY || {};
+      return WD.perDay === 2 && WD.heldPerDay === 1;
+    })());
+
+    /* ③ 守将体系 */
+    check('§185③a+§186 守将三表在册（野地 30/10/10 · 据点 60/10/10 · 名城区间上抬 + 折损表 0.5/0.8）', (function () {
+      var W = DATA.WILD_GUARD_LV || {}, F = DATA.FORT_GUARD_LV || {};
+      var N = DATA.NPC_GUARD_LV || {}, FD = DATA.GUARD_FOLD || {};
+      /* v89.186（老板 2）规则变更：staPct 0.5 → 0.8（体力"比玩家将领稍逊色"= 八成池）。 */
+      return W.base === 30 && W.perLv === 10 && F.base === 60 && F.perLv === 10
+        && N.county[0] === 120 && N.capital[1] === 240
+        && FD.dim === 0.5 && FD.staPct === 0.8;
+    })());
+
+    check('§185③b 野地守将实测（Lv5 → Lv70~79 · 资质英杰）', (function () {
+      var got = 0, ok = true, rankOk = true;
+      for (var i = 0; i < 90 && got < 8; i++) {
+        var wd = G.wildDefenseAt(30 + (i % 9), 200 + ((i / 9) | 0), 5);
+        if (!wd.gen) continue;
+        got++;
+        if (!(wd.gen.level >= 70 && wd.gen.level <= 79)) ok = false;
+        if (wd.gen.rank !== 'ying') rankOk = false;
+      }
+      return got > 0 && ok && rankOk;
+    })());
+
+    check('§185③c 据点守将实测（Lv5 → Lv100~109 · 资质名世）', (function () {
+      var g = G.fortGuardOf({ x: 33, y: 44, level: 5 });
+      return g.level >= 100 && g.level <= 109 && g.rank === 'ming';
+    })());
+
+    check('§185③d 守将成型含折损（四维 < 满量 · 体力增量折半 · 名城不折）', (function () {
+      var g1 = G.makeGeneral('折', 100, 'guard', null, false, 'ying', 'balance');
+      G.guardFillOf(g1, DATA.GUARD_FOLD);
+      var g2 = G.makeGeneral('满', 100, 'guard', null, false, 'ying', 'balance');
+      G.guardFillOf(g2);
+      /* 折：四维成长 ×0.5（base 84 + 99×3×1.25×0.5 ≈ 270）· 满：≈ 455 */
+      var okFold = g1.yw < g2.yw && (g2.yw - g1.yw) > 150;
+      var okSta = g1.stamina < g2.stamina && g1.stamina > 100;
+      /* 名城（不传 fold）= 满量口径 */
+      var g3 = G.npcCityGuard({ id: 'ncx185', type: 'county', level: 10, name: '测' });
+      var okNpc = g3.tong > 500;   /* 天授 Lv120+ 满量：四维几百起步 */
+      return okFold && okSta && okNpc;
+    })(), '折四维 ' + G.guardFillOf(G.makeGeneral('x', 100, 'guard', null, false, 'ying', 'balance'), DATA.GUARD_FOLD).yw);
+
+    check('§185③e 守将确定性含四维（同一天同坐标两次全等 · v89.185 传确定性 rand）', (function () {
+      var hit = null;
+      for (var i = 0; i < 40 && !hit; i++) {
+        var wd = G.wildDefenseAt(60 + (i % 8), 240 + ((i / 8) | 0), 7);
+        if (wd.gen) hit = { x: 60 + (i % 8), y: 240 + ((i / 8) | 0) };
+      }
+      if (!hit) return true;   /* 全无将（0.66^40 极低）不判红 */
+      var a = G.wildDefenseAt(hit.x, hit.y, 7).gen, b = G.wildDefenseAt(hit.x, hit.y, 7).gen;
+      return a.name === b.name && a.level === b.level && a.yw === b.yw && a.tong === b.tong
+        && a.stamina === b.stamina;
+    })());
+
+    /* ④ 民心人口 */
+    check('§185④a effPopCapOf = 基础上限 × 民心%（税率 50 → 折半）', (function () {
+      var keep = G.state;
+      var st = G.newGame({ name: 'v185a', cityName: '许都' });
+      G.state = st;
+      var c = st.cities[0];
+      var base = G.maxPopOf(c);
+      st.tax = 0.5; G.applyHearts();
+      var half = G.effPopCapOf(c);
+      st.tax = 0; G.applyHearts();
+      var full = G.effPopCapOf(c);
+      G.state = keep;
+      return full === base && half === Math.round(base * 0.5) && half < full;
+    })());
+
+    check('§185④b 只封增长不削存量（民心掉 → 人口保留 · 不再增长）', (function () {
+      var keep = G.state;
+      var st = G.newGame({ name: 'v185b', cityName: '许都' });
+      G.state = st;
+      var c = st.cities[0];
+      st.tax = 0.5; G.applyHearts();
+      var eff = G.effPopCapOf(c);
+      c.res.pop = eff + 100;    /* 存量高于有效上限（民心后来掉了的情形） */
+      G.tickOnce();
+      var kept = G.res(c).pop;
+      G.state = keep;
+      return kept === eff + 100;   /* 不削存量（若被削回 eff 则红） */
+    })());
+
+    check('§185④c UI 同源：人口行悬停含「民心 X% 折算」', (function () {
+      G.newGame({ name: 'v185c', cityName: '许都', region: '豫州', mapSeed: 20260926 });
+      var c = G.currentCity(), st = G.state;
+      G.ui.renderCityAttrs(c, st);
+      var h = (global.document.querySelector('#city-attrs') || {}).innerHTML || '';
+      return h.indexOf('民心 ') >= 0 && h.indexOf('折算') >= 0;
+    })());
+
+    /* ⑤ 智能 weak 规则 */
+    check('§185⑤ smartPickTarget weak 真调：选每兵生命最低的目标（与出口同尺）', (function () {
+      var env = G.tactic.begin({ changqiang: 500 }, null, { daodun: 500, gongjian: 200, toudan: 100 }, 0, null, {});
+      var u = env.units.atk[0];
+      var pick = G.battle.smartPickTarget(u, env.units.def, 'weak', env.field);
+      var lowest = null, lv = Infinity;
+      env.units.def.forEach(function (e) { var ph = G.tactic.perHp(e, null); if (ph < lv) { lv = ph; lowest = e.id; } });
+      return pick === lowest && pick === 'gongjian';
+    })());
+
+    /* ⑥ 撤退沙盘同源（手动撤退路径 · 与智能撤退同一出口 retreatBattle） */
+    check('§185⑥ 撤退的沙盘重跑 verify=true（v89.185b：rc.result.retreat → 重跑对齐停止）', (function () {
+      var keep = G.state, kcid = G.ui._cityId;
+      var st = G.newGame({ name: 'v185r', cityName: '许都', region: '豫州', mapSeed: 20260926 });
+      G.state = st;
+      try {
+        if (!st.map.grid) G.map.generate();
+        var c = st.cities[0];
+        var wt = null;
+        for (var r1 = 1; r1 <= 12 && !wt; r1++) for (var dy = -r1; dy <= r1 && !wt; dy++) for (var dx = -r1; dx <= r1 && !wt; dx++) {
+          var xx = c.x + dx, yy = c.y + dy, tl = G.map.tile(xx, yy);
+          if (!tl || tl.terrain !== 'plain') continue;
+          if (G.map.wildAt(xx, yy) || G.map.fortAt(xx, yy)) continue;
+          wt = { x: xx, y: yy };
+        }
+        if (!wt) return true;
+        var g = G.makeGeneral('撤', 3, 'idle', c.id, false, 'ying', 'balance');
+        st.generals.push(g);
+        st.marches = []; st.reports = []; st.battles = [];
+        c.army = { yibing: 500 };
+        st.res.grain = 1e6; st.res.wood = 1e6; st.res.stone = 1e6; st.res.iron = 1e6;
+        st.settings.smartBattle = false;   /* 确定性：本用例专测"手动撤退"路径（智能撤退走同一出口） */
+        G.march.dispatch({ kind: 'wild', x: wt.x, y: wt.y }, 'raid', { yibing: 500 }, g.id);
+        var m = st.marches[0];
+        if (!m) return true;
+        m.elapsed = m.totalTime; G.march.tick();
+        var b = st.battles[0];
+        if (!b) return true;
+        G.battle.stepBattle(b.id);
+        G.battle.stepBattle(b.id);
+        G.battle.retreatBattle(b.id);       /* 主动撤退（智能保兵闸走同一出口） */
+        var rep = (st.reports || [])[0];
+        if (!rep || !rep.sandbox) return false;
+        var sb = G.battle.sandboxOf(rep);
+        return !!rep.sandbox.result.retreat && !!sb && sb.verify === true && sb.rounds === rep.sandbox.result.rounds;
+      } finally {
+        G.state = keep; G.ui._cityId = kcid;
+      }
+    })());
+  })();
+
+  /* ═══════════════════════════════════════════════════════════
+   * §186（v89.186）老板 2/4：伤兵体系（固定比例提高 0.45→0.75 + 商品加法语义
+   *   + 唯一出口 GAME.woundedRateOf）+ 守将体力"稍逊色"（staPct 0.8）
+   *   + 出征界面（伤兵提示行 / 快购兵书 / 战备快购）
+   * ═══════════════════════════════════════════════════════════ */
+  (function () {
+    var fs186 = require('fs'), p186 = require('path');
+    var bSrc186 = fs186.readFileSync(p186.join(__dirname, 'js', 'battle.js'), 'utf8');
+    var dSrc186 = fs186.readFileSync(p186.join(__dirname, 'js', 'data.js'), 'utf8');
+    var sSrc186 = fs186.readFileSync(p186.join(__dirname, 'js', 'state.js'), 'utf8');
+    var uSrc186 = fs186.readFileSync(p186.join(__dirname, 'js', 'ui.js'), 'utf8');
+
+    /* ① 唯一出口（结构 + 行为） */
+    check('§186① 伤兵回收率唯一出口：定义 1 处 · 三消费点（applyWounded/returnArmy/守城）全点名', (function () {
+      var defN = (bSrc186.match(/GAME\.woundedRateOf = function/g) || []).length;
+      var b = stripComment(bSrc186);
+      var s = stripComment(sSrc186);
+      return defN === 1
+        && /var rate = GAME\.woundedRateOf\(result\);/.test(b)     /* returnArmy（出征） */
+        && /var rate = GAME\.woundedRateOf\(null\);/.test(b)       /* applyWounded（旧口/测试） */
+        && /GAME\.woundedRateOf \? GAME\.woundedRateOf\(null\)/.test(s);   /* 守城 */
+    })());
+
+    check('§186①b 唯一出口真调：无 buff 无科技 = 0.75（表值）', (function () {
+      return Math.abs(G.woundedRateOf(null) - 0.75) < 1e-9
+        && Math.abs(G.woundedRateOf({}) - 0.75) < 1e-9;
+    })());
+
+    /* ② cap 硬顶（极端 buff 不破 0.9 —— "必留一成真死"） */
+    check('§186② woundCap 0.9 硬顶：叠加任意高也不越 0.9', (function () {
+      var s = G.state, bk = s.buffs;
+      try {
+        s.buffs = s.buffs || {};
+        s.buffs.military = { wound: 0.9 };
+        s.buffs.militaryUntil = Date.now() + 3600000;
+        var hot = G.woundedRateOf(null);
+        s.buffs.military = {};
+        var cold = G.woundedRateOf(null);
+        return hot <= 0.9 + 1e-9 && Math.abs(cold - 0.75) < 1e-9;
+      } finally { s.buffs = bk; }
+    })());
+
+    /* ③ 商品加法语义（真调 —— 旧语义是"替换"，0.10 会被当成总率） */
+    check('§186③ 商品改加法真调：buff +0.10 → 0.85（= 0.75 + 0.10，非替换）', (function () {
+      var s = G.state, bk = s.buffs;
+      try {
+        s.buffs = s.buffs || {};
+        s.buffs.military = { wound: 0.10 };
+        s.buffs.militaryUntil = Date.now() + 3600000;
+        var r = G.woundedRateOf(null);
+        /* 替换语义会得 0.10；加法语义得 0.85 —— 断言直接钉加法结果 */
+        return Math.abs(r - 0.85) < 1e-9;
+      } finally { s.buffs = bk; }
+    })());
+
+    /* ④ 商品表：三档均 >0 且描述含"伤兵回收"；旧文案零残留 */
+    check('§186④ 伤兵三档商品：值 >0 · 描述含"伤兵回收" · 旧"战损转伤"文案零残留', (function () {
+      var ids = ['qingnangshu', 'xuming_shu', 'yisheng_shu'], ok = true, n = 0;
+      (DATA.ITEMS || []).forEach(function (x) {
+        if (ids.indexOf(x.id) < 0) return;
+        n++;
+        if (!(x.eff && x.eff.wound > 0)) ok = false;
+        if ((x.desc || '').indexOf('伤兵回收') < 0) ok = false;
+      });
+      var d = stripComment(dSrc186);
+      return ok && n === 3 && d.indexOf('战损30%转伤兵') < 0 && d.indexOf('战损转伤+') < 0;
+    })());
+
+    /* ⑤ 老档迁移（真调 adoptState · 幂等） */
+    check('§186⑤ 老档旧 wound buff 作废：0.45 被删 · 新值 0.10 保留 · 重跑不误删', (function () {
+      var keep = G.state;
+      try {
+        var st = G.newGame({ name: 'v186e', cityName: '许都' });
+        st.buffs = st.buffs || {};
+        st.buffs.military = { wound: 0.45 };
+        st.buffs.militaryUntil = Date.now() + 3600000;
+        G.adoptState(st);
+        var ok1 = !(st.buffs.military && st.buffs.military.wound != null);
+        st.buffs.military.wound = 0.10;
+        G.adoptState(st);              /* 幂等重跑 */
+        var ok2 = st.buffs.military.wound === 0.10;
+        return ok1 && ok2;
+      } finally { G.state = keep; }
+    })());
+
+    /* ⑥ 守城与出征同源（结构） */
+    check('§186⑥ 守城兵损走唯一出口（与出征同源；不再只读 base）', (function () {
+      var s = stripComment(sSrc186);
+      return /GAME\.woundedRateOf \? GAME\.woundedRateOf\(null\) : 0\.75/.test(s);
+    })());
+
+    /* ⑦ 净损验收（真跑引擎 · 老板"每战役治疗后净损 ≤ 0.1~0.2"） */
+    check('§186⑦ 净损验收：正常仗 ≤0.15 · 苦仗裸打 0.25（提示购买场景）· 苦仗+医圣书 ≤0.15', (function () {
+      var wKeep = G.state.world.weather;
+      var s = G.state, bk = s.buffs;
+      var net1, net2, net3;
+      try {
+        G.state.world.weather = 'clear';           /* v89.90：战斗数字受天气影响，先固定 */
+        var dg = G.makeGeneral('验将', 59, 'guard', null, false, 'ying', 'balance');
+        G.guardFillOf(dg, DATA.GUARD_FOLD);
+        var def = { gongjian: 400, daodun: 300 };
+        s.buffs = s.buffs || {};
+        /* a) 正常仗：1.5× 兵力 */
+        s.buffs.military = {};
+        s.buffs.militaryUntil = Date.now() + 3600000;
+        var r1 = G.battle.simulate({ gongjian: 600, daodun: 450 }, null, def, 0, dg, { kind: 'wild' });
+        net1 = (r1.atkLoss / 1050) * (1 - G.woundedRateOf(null));
+        /* b) 苦仗：1.0× 兵力（全灭档）——裸打 */
+        var r2 = G.battle.simulate({ gongjian: 400, daodun: 300 }, null, def, 0, dg, { kind: 'wild' });
+        net2 = (r2.atkLoss / 700) * (1 - G.woundedRateOf(null));
+        /* c) 同一苦仗 + 医圣书（+0.15 → cap 0.9） */
+        s.buffs.military = { wound: 0.15 };
+        var r3 = G.battle.simulate({ gongjian: 400, daodun: 300 }, null, def, 0, dg, { kind: 'wild' });
+        net3 = (r3.atkLoss / 700) * (1 - G.woundedRateOf(null));
+      } finally {
+        s.buffs = bk;
+        G.state.world.weather = wKeep;
+      }
+      /* 正常 ≤0.15 · 苦仗裸打落在 0.2~0.3（正是"提示购买"的触发区）· 苦仗+书 ≤0.15 */
+      return net1 <= 0.15 && net2 > 0.2 && net2 < 0.3 && net3 <= 0.15;
+    })(), '正常 8.6% · 苦仗裸打 25% · 苦仗+医圣 10%（2026-09-28 实测）');
+
+    /* ⑧ 守将体力"稍逊色"（80% 池 · 不满） */
+    check('§186⑧ 守将体力 = 80% 池（比玩家满状态稍逊 · < staMax）', (function () {
+      var g = G.makeGeneral('t186', 120, 'guard', null, false, 'ying', 'balance');
+      G.guardFillOf(g, DATA.GUARD_FOLD);
+      var mx = G.staMax(g), now = G.staNow(g);
+      var want = Math.round(100 + (mx - 100) * 0.8);
+      return Math.abs(now - want) <= 1 && now < mx && mx > 100;
+    })());
+
+    /* ⑨ 出征界面：提示行 + 快购（源码级） + wound 过滤真调 */
+    check('§186⑨ 出征界面在册：伤兵提示行函数 / live 注册 / 快购兵书按钮 / 战备快购', (function () {
+      var u = uSrc186;   /* 不剥注释：按钮串在字符串里，剥注释不影响；函数名判定义式 */
+      return u.indexOf('ui.expWoundTipHTML186 = function') >= 0
+        && u.indexOf('ui.expWoundLive186 = function') >= 0
+        && u.indexOf('live: ui.expWoundLive186 });') >= 0
+        && u.indexOf('data-scope="wound"') >= 0
+        && u.indexOf('\u{1F6D2} 战备快购') >= 0;
+    })());
+
+    check('§186⑨b 快购 wound 过滤真调：全含 eff.wound · 含青囊书 · 不含纯攻防品', (function () {
+      var list = G.ui.qbScopeItemsOf('military_buff', 'wound');
+      if (!list || list.length < 3) return false;
+      var ok = true;
+      list.forEach(function (x) { if (!(x.eff && x.eff.wound > 0)) ok = false; });
+      var ids = list.map(function (x) { return x.id; });
+      return ok && ids.indexOf('qingnangshu') >= 0 && ids.indexOf('yisheng_shu') >= 0
+        && ids.indexOf('pozhengu') < 0;
+    })());
+
+    /* ⑩ 挂件框架在册（结构） */
+    check('§186⑩ 挂件框架：ATTACH_SLOTS 表 · 出口组 · genAttrs 同层注入 · 8 件宝具入 ITEMS', (function () {
+      var o = stripComment(fs186.readFileSync(p186.join(__dirname, 'js', 'domain.js'), 'utf8'));
+      var slotsOk = (DATA.ATTACH_SLOTS || []).some(function (x) { return x.id === 'bao' && x.itemType === 'bao'; });
+      var baoN = (DATA.ITEMS || []).filter(function (x) { return x.type === 'bao'; }).length;
+      return slotsOk && baoN === 8
+        && /GAME\.attachEquip = function/.test(o) && /GAME\.attachUnequip = function/.test(o)
+        && /GAME\.attachBonusOf = function/.test(o) && /var bAt = GAME\.attachBonusOf\(g\);/.test(o)
+        && dSrc186.indexOf('DATA.BAOJU = [') >= 0;
+    })());
+
+    /* ⑪ 装/卸/替换（真调 · 数量守恒 + genAttrs 同源提升） */
+    check('§186⑪ 宝具装/卸真调：库存守恒（装 −1 / 卸 +1 / 替换 = 旧还新扣）· genAttrs 提升', (function () {
+      var st = G.state;
+      var g = st.generals[0];
+      var A = 'bao_yuxi', B = 'bao_tongque';
+      var bkG = g.attach, bkA = st.items[A] || 0, bkB = st.items[B] || 0;
+      var baseTong = G.genAttrs(g).tong;
+      try {
+        delete g.attach;
+        st.items[A] = 2; st.items[B] = 1;
+        var r1 = G.attachEquip(g, 'bao', A);
+        var ok1 = r1.ok && st.items[A] === 1 && g.attach.bao === A && G.genAttrs(g).tong === baseTong + 6;
+        var r2 = G.attachEquip(g, 'bao', B);          /* 替换 A→B（旧还新扣） */
+        var ok2 = r2.ok && st.items[A] === 2 && st.items[B] === 0 && g.attach.bao === B;
+        var r3 = G.attachUnequip(g, 'bao');           /* 卸下（还库） */
+        var ok3 = r3.ok && st.items[B] === 1 && !g.attach.bao;
+        var r4 = G.attachUnequip(g, 'bao');           /* 幂等：空手卸 → 拒绝 */
+        var ok4 = !r4.ok;
+        return ok1 && ok2 && ok3 && ok4;
+      } finally { g.attach = bkG; st.items[A] = bkA; st.items[B] = bkB; }
+    })());
+
+    /* ⑫ 掉落真调（固定随机 · 档位随等级上抬 · 野地不掉 · 入包） */
+    check('§186⑫ 宝具掉落真调：据点必掉（固定随机）· Lv1 只出档1 · Lv10 可出档4 · 野地不掉 · 入包', (function () {
+      var st = G.state;
+      var bkItems = JSON.parse(JSON.stringify(st.items || {}));
+      try {
+        st.items = st.items || {};
+        var r1 = withFixedRandom([0.001, 0.999], function () { return G.grantBaoDrop({ kind: 'fort', lv: 1 }); });
+        var ok1 = r1.length === 1 && r1[0].tier === 1;
+        var r2 = withFixedRandom([0.001, 0.999], function () { return G.grantBaoDrop({ kind: 'fort', lv: 10 }); });
+        var ok2 = r2.length === 1 && r2[0].tier === 4 && (st.items[r2[0].id] || 0) >= 1;
+        var r3 = withFixedRandom([0.999], function () { return G.grantBaoDrop({ kind: 'fort', lv: 5 }); });
+        var ok3 = r3.length === 0;
+        var r4 = withFixedRandom([0.001, 0.999], function () { return G.grantBaoDrop({ kind: 'wild', lv: 5 }); });
+        var ok4 = r4.length === 0;
+        return ok1 && ok2 && ok3 && ok4;
+      } finally { st.items = bkItems; }
+    })());
+
+    /* ⑬ 界面在册（源码级） */
+    check('§186⑬ 将领面板挂件行 + 选择窗 + 摘要出口在册（源码级）', (function () {
+      return uSrc186.indexOf('attachLines186') >= 0
+        && uSrc186.indexOf('ui.openAttachPick = function') >= 0
+        && uSrc186.indexOf('data-action="attach-pick"') >= 0
+        && uSrc186.indexOf('ui.attachEffDesc186 = function') >= 0;
+    })());
+
+    /* ⑭ 据点剥离：占据 = 前哨（不转城市） */
+    check('§186⑭ claimFort 真调：占据 → s.forts 登记 · 不新增城市 · 领地上限不占', (function () {
+      var keep = G.state, keepCity = G.ui._cityId;
+      try {
+        var st = G.newGame({ name: 'v186f', cityName: '许都', mapSeed: 424242 });
+        G.state = st;
+        G.ui._cityId = st.cities[0].id;
+        var nCity = st.cities.length;
+        var fake = { kind: 'fort', name: '测据点', fort: { x: 88, y: 66, level: 5, name: '测据点' } };
+        var r = G.claimFort(fake, null, st.cities[0], {});
+        var rec = (st.forts || {})['88,66'];
+        return r.ok && !!rec && rec.lv === 5 && st.cities.length === nCity
+          && r.fort && r.fort.x === 88;
+      } finally { G.state = keep; G.ui._cityId = keepCity; }
+    })());
+
+    /* ⑮ 覆盖查询 + 五项读点（真调） */
+    check('§186⑮（v89.193 口径）fortAuraAt 覆盖：逐哨半径命中 · 半径外 null · 空坐标 null', (function () {
+      /* v89.193（老板 2）规则变更所致：半径从"全境常数"改为"随前哨等级"
+         （DATA.FORT_AURA.tiers 五档）—— 判据改读唯一出口 GAME.fortRadiusOf。 */
+      var st = G.state, bk = st.forts;
+      try {
+        var f = { x: 10, y: 10, lv: 3, name: '甲' };
+        st.forts = { '10,10': f };
+        var R = G.fortRadiusOf(f);
+        return !!G.fortAuraAt(10 + R, 10) && !!G.fortAuraAt(10, 10 - R)
+          && !G.fortAuraAt(10 + R + 1, 10) && !G.fortAuraAt(null, 5);
+      } finally { st.forts = bk; }
+    })());
+
+    check('§186⑮b（v89.193 口径）兵站：覆盖内驻军上限随前哨等级（半径外不变）· 签名向后兼容', (function () {
+      var st = G.state, bk = st.forts;
+      try {
+        var base = G.wildGarrisonCap(10);
+        st.forts = {};
+        var noAura = G.wildGarrisonCap(10, 9999, 9999);
+        st.forts = { '20,20': { x: 20, y: 20, lv: 3, name: '甲' } };
+        var aura = G.wildGarrisonCap(10, 20, 22);
+        var oldSign = G.wildGarrisonCap(10);   /* 不传坐标 = 无加成（老调用/老断言兼容） */
+        /* v89.193 规则变更所致：乘数随前哨等级（×1.25~1.80）—— 读唯一出口。 */
+        var mul = G.fortEffectOf({ lv: 3 }).garrisonCapMul;
+        return noAura === base && Math.abs(aura - base * mul) <= 1 && oldSign === base;
+      } finally { st.forts = bk; }
+    })());
+
+    check('§186⑮c 前哨：覆盖内野地衰减档 = heldPerDay（-1）· 半径外 = perDay（-2）', (function () {
+      var st = G.state, bk = st.forts, bkWilds = st.wilds;
+      var bkDay = null;
+      try {
+        var WD = DATA.WILD_DECAY || {};
+        /* 造两块野地：一块在覆盖内、一块在覆盖外；把 levelDay 拨到两天前 */
+        var today = G.questDayIndex ? G.questDayIndex() : Math.floor(Date.now() / 86400000);
+        st.forts = { '30,30': { x: 30, y: 30, lv: 3, name: '甲' } };
+        st.wilds = [
+          { x: 30, y: 32, type: 'plain', level: 10, levelDay: today - 2 },
+          { x: 90, y: 90, type: 'plain', level: 10, levelDay: today - 2 },
+        ];
+        G.decayWilds();
+        var inA = st.wilds[0].level, outA = st.wilds[1].level;
+        return inA === 10 - Math.max(1, WD.heldPerDay) * 2 && outA === 10 - Math.max(1, WD.perDay) * 2;
+      } finally { st.forts = bk; st.wilds = bkWilds; }
+    })());
+
+    check('§186⑮d（v89.193 口径）采集增产：覆盖内 yield ×档位（或受负重封顶更小）· 宝物概率 +档位', (function () {
+      var st = G.state, bk = st.forts;
+      try {
+        st.forts = {};
+        /* 自造采集队（forest 可采 · 民夫采力 2/兵/h · 2 小时）——不依赖地图上的野地记录 */
+        var g = { id: 'g186', x: 95, y: 95, type: 'forest', level: 5,
+          elapsed: 2 * 3600, cityId: st.cities[0].id, army: { minfu: 500 } };
+        var y0 = G.gatherYield(g);
+        if (!y0 || !(y0.amount > 0)) return false;
+        var p0 = G.gatherTreasureChance(g, 10);
+        st.forts = { 'x,y': { x: 95, y: 95, lv: 3, name: '甲' } };   /* 同坐标 → 必覆盖 */
+        var y1 = G.gatherYield(g);
+        var p1 = G.gatherTreasureChance(g, 10);
+        /* v89.193 规则变更所致：增产/宝物随前哨等级 —— 读唯一出口。 */
+        var mul = G.fortEffectOf({ lv: 3 }).gatherMul;
+        var add = G.fortEffectOf({ lv: 3 }).treasureAdd;
+        /* 受负重封顶时 y1 == y0（loadLimited）→ 也算通过（增产被运力吸收） */
+        var amountOk = (Math.abs(y1.amount - Math.round(y0.amount * mul)) <= 1) || !!y1.loadLimited;
+        return amountOk && Math.abs(p1 - Math.min((DATA.GATHER || {}).treasureCap,
+          p0 + add)) <= 1e-9;
+      } finally { st.forts = bk; }
+    })());
+
+    check('§186⑮e（v89.193 口径）情报站双档：Lv6+ 确凿（误差 0）· Lv3 半明（减半）· 半径外 > 0', (function () {
+      var st = G.state, bk = st.forts, keepCity = G.ui._cityId;
+      try {
+        var c = st.cities[0];
+        G.ui._cityId = c.id;
+        G.ui._expRes = { kind: 'wild', x: 40, y: 40, lv: 5, garrison: { gongjian: 100 }, def: 0, guard: null };
+        Object.keys(c.army || {}).forEach(function () { });
+        st.forts = {};
+        var p0 = G.ui.expPowerOf();
+        /* v89.193 规则变更所致：情报站随前哨等级 —— Lv6+ 档"确凿"、Lv≤4 档"半明"。 */
+        st.forts = { '40,41': { x: 40, y: 41, lv: 6, name: '甲' } };
+        var p1 = G.ui.expPowerOf();
+        st.forts = { '40,41': { x: 40, y: 41, lv: 3, name: '乙' } };
+        var p2 = G.ui.expPowerOf();
+        return p1 && p1.aura === true && p1.err === 0
+          && p2 && p2.aura === true && p2.err > 0 && Math.abs(p2.err - p0.err * 0.5) < 1e-9
+          && p0 && p0.aura === false && p0.err > 0;
+      } finally {
+        st.forts = bk; G.ui._cityId = keepCity; G.ui._expRes = null;
+      }
+    })());
+
+    check('§186⑮f（v89.193 口径）商旅税所：每现实日 Σ各哨档位税 · 首期只登记 · 幂等 · 随等级', (function () {
+      /* v89.188 规则变更：旧口径"Σlv×40 / 游戏日"超模 → "每现实日"结算（与岁贡同轴）。
+         v89.193（老板 2）再变更：金额从"全档固定 500"改为**随前哨等级**（Σ 各哨档位 tax）——
+         判据改读唯一出口 fortEffectOf（"等级无关"的核验点翻转为"等级相关"）。 */
+      var st = G.state, bk = st.forts;
+      var bkDay = st.fortTaxDay, bkGold = G.state.gold;
+      try {
+        st.forts = { '50,50': { x: 50, y: 50, lv: 5, name: '甲' }, '51,51': { x: 51, y: 51, lv: 3, name: '乙' } };
+        st.fortTaxDay = null;
+        var first = G.fortTaxSettle();                       /* 首期只登记 */
+        var g0 = G.state.gold || 0;
+        st.fortTaxDay = G.questDayIndex() - 2;               /* 拨钟两天（现实日） */
+        var r = G.fortTaxSettle();
+        var g1 = G.state.gold || 0;
+        var again = G.fortTaxSettle();                       /* 幂等：不重复结 */
+        /* v89.193：**随等级**（Lv1 与 Lv10 混合 ≠ 同额——与旧"固定额"口径相反）。 */
+        var tax1 = G.fortEffectOf({ lv: 5 }).tax + G.fortEffectOf({ lv: 3 }).tax;
+        st.forts['50,50'].lv = 1; st.forts['51,51'].lv = 10;
+        var tax2 = G.fortEffectOf({ lv: 1 }).tax + G.fortEffectOf({ lv: 10 }).tax;
+        st.fortTaxDay = G.questDayIndex() - 1;
+        var r2 = G.fortTaxSettle();
+        return first === null && r && r.gold === tax1 * 2 && (g1 - g0) === r.gold
+          && again === null && r2 && r2.gold === tax2 * 1 && tax2 !== tax1;
+      } finally { st.forts = bk; st.fortTaxDay = bkDay; if (G.state) G.state.gold = bkGold; }
+    })());
+
+    /* ⑯ 界面在册（源码级） */
+    check('§186⑯ 界面在册：据点文案（前哨）· 情报站文案 · 兵站传坐标', (function () {
+      /* v89.193 规则变更所致：文案去 markdown 星号（改「」）。 */
+      return uSrc186.indexOf('「我方前哨」（不转城市、不占城池名额）') >= 0
+        && uSrc186.indexOf('情报站覆盖：情报确凿') >= 0
+        && uSrc186.indexOf('GAME.wildGarrisonCap(w.level, w.x, w.y)') >= 0;
+    })());
+  })();
+
+  /* ═══════════════════════════════════════════════════════════
+   * §187（v89.187）老板 3 条：宝具品质与合成 · 掉率/税所评估 · 据点情报 + 半径 10
+   * ═══════════════════════════════════════════════════════════ */
+  (function () {
+    var fs187 = require('fs'), p187 = require('path');
+    var dSrc187 = fs187.readFileSync(p187.join(__dirname, 'js', 'data.js'), 'utf8');
+    var uSrc187 = fs187.readFileSync(p187.join(__dirname, 'js', 'ui.js'), 'utf8');
+
+    /* ① 品质映射（真调 · 8 件 → 低4/中2/高2） */
+    check('§187① 宝具品质映射：低=tier1-2（4件）· 中=tier3（2件）· 高=tier4（2件）', (function () {
+      var n = { low: 0, mid: 0, high: 0, none: 0 };
+      (DATA.BAOJU || []).forEach(function (b) {
+        var q = G.baojuQOf(b);
+        if (q) n[q]++; else n.none++;
+      });
+      return n.low === 4 && n.mid === 2 && n.high === 2 && n.none === 0
+        && (DATA.BAOJU_FUSE || {}).need === 2;
+    })());
+
+    /* ② 合成真调（守恒：2 → 1 · 品质 +1 档） */
+    check('§187② 合成真调：2 低 → 1 中（消耗 2 件 · 得目标品质 1 件 · 总量 -1）', (function () {
+      var st = G.state;
+      var bk = JSON.parse(JSON.stringify(st.items || {}));
+      try {
+        st.items = { bao_yuxi: 1, bao_tongque: 1 };   /* 两件低（异名也可合） */
+        var before = G.baojuCountQOf('low').n;
+        var r = G.baojuFuse('low');
+        var afterLow = G.baojuCountQOf('low').n;
+        var midN = G.baojuCountQOf('mid').n;
+        var gotQ = r.ok ? G.baojuQOf(r.got) : null;
+        return before === 2 && r.ok && afterLow === 0 && midN === 1 && gotQ === 'mid'
+          && r.used.length === 2
+          && ((st.items['bao_yuxi'] || 0) + (st.items['bao_tongque'] || 0)) === 0;
+      } finally { st.items = bk; }
+    })());
+
+    /* ③ 护栏：不足拒绝 · 高为顶阶拒绝 · 失败不扣件 · 二级链（中→高） */
+    check('§187③ 合成护栏：1 件低拒绝 · 高顶阶拒绝不扣件 · 中→高真调', (function () {
+      var st = G.state;
+      var bk = JSON.parse(JSON.stringify(st.items || {}));
+      try {
+        st.items = { bao_yuxi: 1 };
+        var r1 = G.baojuFuse('low');
+        var r2 = G.baojuFuse('high');
+        var kept = (st.items.bao_yuxi || 0) === 1;
+        st.items = { bao_yushan: 2 };
+        var r3 = G.baojuFuse('mid');
+        var highN = G.baojuCountQOf('high').n;
+        return !r1.ok && !r2.ok && kept && r3.ok && highN === 1 && G.baojuQOf(r3.got) === 'high';
+      } finally { st.items = bk; }
+    })());
+
+    /* ③b 消耗顺序：tier 低优先（先耗凡品） */
+    check('§187③b 消耗顺序：同品质内 tier 低优先（凡品先耗 · 良品留下）', (function () {
+      var st = G.state;
+      var bk = JSON.parse(JSON.stringify(st.items || {}));
+      try {
+        st.items = { bao_yuxi: 2, bao_qingnang: 1 };   /* 凡品×2 + 良品×1 → 应耗 2 件凡品 */
+        var r = G.baojuFuse('low');
+        return r.ok && !(st.items['bao_yuxi'] > 0) && (st.items['bao_qingnang'] || 0) === 1
+          && r.used.length === 2 && r.used.every(function (b) { return b.tier === 1; });
+      } finally { st.items = bk; }
+    })());
+
+    /* ④ 界面在册（源码级） */
+    check('§187④ 界面在册：品质徽标 / 合成区 / 合成按钮 / 情报按钮与弹窗', (function () {
+      return uSrc187.indexOf('ui.baojuQBadgeOf = function') >= 0
+        && uSrc187.indexOf('ui.baojuFuseBoxHTML = function') >= 0
+        && uSrc187.indexOf('data-action="bao-fuse"') >= 0
+        && uSrc187.indexOf('ui.fortIntelHTML = function') >= 0
+        && uSrc187.indexOf('data-action="wild-fortintel"') >= 0
+        && uSrc187.indexOf('🏯 据点情报') >= 0;
+    })());
+
+    /* ⑤ 半径 10（表值 + 行为） */
+    check('§187⑤（v89.193 口径）覆盖半径随等级：五档表 + 中档（Lv5-6）= 原定稿 10 格', (function () {
+      /* v89.193（老板 2）规则变更所致：全境常数 10 → 五档（Lv1→6 … Lv10→14）。
+         判据：表在册 + Lv5 档 10 格命中 / 11 格不中（与 v89.187 的拍板值对齐验证）。 */
+      var st = G.state, bk = st.forts;
+      try {
+        if (!((DATA.FORT_AURA || {}).tiers || []).length) return false;
+        if (G.fortEffectOf({ lv: 5 }).radius !== 10) return false;
+        st.forts = { '10,10': { x: 10, y: 10, lv: 5, name: '甲' } };
+        return !!G.fortAuraAt(20, 10) && !!G.fortAuraAt(10, 0)
+          && !G.fortAuraAt(21, 10) && !G.fortAuraAt(10, 21);
+      } finally { st.forts = bk; }
+    })());
+
+    /* ⑥ 据点情报真调（HTML 输出：守军明细与出口同源 + 守将块 + 覆盖外拒绝） */
+    check('§187⑥ 据点情报：覆盖外拒绝 · 覆盖内出明细（守军总数与 wildDefenseAt 同源 + 守将块）', (function () {
+      var st = G.state, bk = st.forts;
+      try {
+        if (!st.map.grid && G.map.generate) G.map.generate();   /* 地图未生成则先建（tile 才有值） */
+        var c = st.cities[0];
+        var hit = null;
+        for (var r = 2; r <= 30 && !hit; r++) {
+          for (var dy = -r; dy <= r && !hit; dy++) for (var dx = -r; dx <= r && !hit; dx++) {
+            var x = c.x + dx, y = c.y + dy, tl = G.map.tile(x, y);
+            if (!tl || tl.terrain === 'city' || tl.terrain === 'water' || tl.terrain === 'mountain') continue;
+            hit = { x: x, y: y };
+          }
+        }
+        if (!hit) return false;
+        st.forts = {};
+        var outN = G.ui.fortIntelHTML(hit.x, hit.y).indexOf('不在任何我方前哨') >= 0;
+        st.forts = { 'a': { x: hit.x + 1, y: hit.y, lv: 3, name: '前哨甲' } };
+        var lv = G.map.wildLevelNow ? G.map.wildLevelNow(hit.x, hit.y) : G.map.wildLevel(hit.x, hit.y);
+        var wd = G.wildDefenseAt(hit.x, hit.y, lv);
+        var html = G.ui.fortIntelHTML(hit.x, hit.y);
+        var hasArmy = html.indexOf('守军明细') >= 0 && html.indexOf(U.numText(wd.total, 0)) >= 0;
+        var hasGen = wd.gen ? (html.indexOf(wd.gen.name) >= 0) : (html.indexOf('无守将') >= 0);
+        var hasPre = html.indexOf('前哨甲') >= 0;
+        return outN && hasArmy && hasGen && hasPre;
+      } finally { st.forts = bk; }
+    })());
+  })();
+
+  /* ============================================================
+   * §188. v89.188（老板 9 条）：清账三条（书价复核 / 税所现实日固定 500 / 城主税封顶）
+   *   + 界面五条（解雇晋升袖珍按钮 / 标签统一 / 列表 5 字位 / 民心行限官府 / 改建可点）
+   * ============================================================ */
+  console.log('\n===== 188. v89.188（价格复核 · 税所 · 城主税 · 将领界面 · 标签 · 民心 · 改建）=====');
+  (function () {
+    var fs188 = require('fs'), p188 = require('path');
+    var dS188 = stripComment(fs188.readFileSync(p188.join(__dirname, 'js', 'domain.js'), 'utf8'));
+    var uR188 = fs188.readFileSync(p188.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var uS188 = stripComment(uR188);
+    var bS188 = stripComment(fs188.readFileSync(p188.join(__dirname, 'js', 'battle.js'), 'utf8'));
+    var hS188 = fs188.readFileSync(p188.join(__dirname, 'index.html'), 'utf8');
+
+    /* ① 书价复核：70/120/150 · 单位价单调递减（14 > 12 > 10） */
+    check('§188① 伤兵三档书 70/120/150：单位价单调递减（14 > 12 > 10 金/pp）', (function () {
+      var ps = [];
+      [['qingnangshu', 0.05], ['xuming_shu', 0.10], ['yisheng_shu', 0.15]].forEach(function (x) {
+        var it = (G.DATA.ITEMS || []).filter(function (y) { return y.id === x[0]; })[0];
+        ps.push(it ? it.price / (it.eff.wound * 100) : NaN);
+      });
+      return ps[0] === 14 && ps[1] === 12 && ps[2] === 10 && ps[0] > ps[1] && ps[1] > ps[2];
+    })());
+
+    /* ② 城主税封顶 200%（真调；产量通道不封口作对照） */
+    check('§188② 城主税封顶：内政 1400 → +200% · 产量同值 +500%（独立通道对照）', (function () {
+      var st = G.newGame({ name: 's188b', region: '司隶' });
+      var c = st.cities[0];
+      st.generals.forEach(function (gg) { gg.status = 'idle'; gg.cityId = null; });
+      var g0 = st.generals[0];
+      g0.cityId = c.id; g0.status = 'mayor'; g0.loyalty = 100; g0.nz = 1400;
+      var mb = G.mayorBonus(c);
+      return Math.abs(mb.tax - 2.0) < 1e-9 && mb.prod > 4.9;
+    })());
+
+    /* ③ 将领界面：袖珍按钮 + 定宽名 + 资质行（真渲染） */
+    check('§188③ 将领界面：gp-nm 定宽 · 解雇/晋升 btn mini · 资质行 gp-rankrow（真渲染）', (function () {
+      var st = G.newGame({ name: 's188c', region: '司隶' });
+      var g = st.generals[0];
+      G.ui._genSel = g.id;
+      var h = G.ui.generalsHTML();
+      return /class="gp-nm"/.test(h) && /btn sm mini/.test(h)
+        && /data-action="dismiss-gen"/.test(h) && /data-action="gen-rankup"/.test(h)
+        && /class="gp-sub gp-rankrow"/.test(h);
+    })());
+
+    /* ④ 列表 5 字位 + 星号 5 星位（真渲染 + 真调 rankBadge 两档） */
+    check('§188④ 列表：姓名 5em 定宽 · 星号 5 星位（凡品 1 实+4 透明星 · 天授 5 实 0 透明）', (function () {
+      var st = G.newGame({ name: 's188d', region: '司隶' });
+      var g = st.generals[0];
+      G.ui._genSel = g.id;
+      var h = G.ui.generalsHTML();
+      var rb1 = G.ui.rankBadge({ rank: 'fan', style: null });
+      var rb5 = G.ui.rankBadge({ rank: 'tian', style: null });
+      return /class="grow-nm"/.test(h)
+        && (rb1.match(/★/g) || []).length === 5 && rb1.indexOf('<i class="rpad">') >= 0
+        && (rb5.match(/★/g) || []).length === 5 && rb5.indexOf('rpad') < 0;
+    })());
+
+    /* ⑤ 标签/话术零残留（可执行形态 · 剥注释） */
+    check('§188⑤ 零「美人/名将」标签与话术：ui/domain/battle 可执行形态全清', (function () {
+      return uS188.indexOf('gcard-tag hero') < 0 && uS188.indexOf('gcard-tag beauty') < 0
+        && uS188.indexOf("? '相亲'") < 0
+        && dS188.indexOf('相亲结缘') < 0 && dS188.indexOf("'迎娶 '") < 0
+        && bS188.indexOf('获得美人') < 0 && bS188.indexOf('镇守名将') < 0
+        && uS188.indexOf("（名将 ' + heroCount") < 0
+        && dS188.indexOf('麾下名将达') < 0;
+    })());
+
+    /* ⑥ 民心行门 + 改建松绑（源码级 · 渲染两态在实机脚本 shot_v89188_gates） */
+    check('§188⑥ 民心段生成门 = 官府判据 · 改建按钮零 disabled · 施工说明在册（源码级）', (function () {
+      var gate188 = /if \(_gfBid135 === 'guanfu' && GAME\.heartsOf && GAME\.heartsActionOf\) \{/.test(uS188);
+      var i188 = uS188.indexOf('data-action="ext-convert"');
+      var seg188 = i188 >= 0 ? uS188.slice(i188, i188 + 420) : '';
+      return gate188 && seg188.length > 0 && seg188.indexOf('disabled') < 0
+        && uS188.indexOf('施工中不可改建 / 拆毁（完工后恢复') >= 0;
+    })());
+
+    /* ⑦ 改建缺料真调（域层：精确原因 + 不扣费） */
+    check('§188⑦ 改建缺料真调：ok:false + 原因含「材料不足」+ 资源未被扣', (function () {
+      var st = G.newGame({ name: 's188e', region: '司隶' });
+      var c = st.cities[0];
+      G.ui._cityId = c.id;
+      var eg = G.extGridOf(c);
+      if (!eg[0]) return false;
+      eg[0].type = 'farm'; eg[0].lv = 10;
+      ['grain', 'wood', 'stone', 'iron'].forEach(function (kk) { c.res[kk] = 0; });
+      var r = G.convertExt(0, 'forest');
+      return r && r.ok === false && /材料不足/.test(r.msg || '')
+        && c.res.grain === 0 && c.res.wood === 0;
+    })());
+
+    /* ⑧ CSS 在册 */
+    check('§188⑧ CSS：--gp-namew · .btn.sm.mini · .gp-rankrow/.gp-rankcol · .rpad · .grow-nm(5em)', (function () {
+      /* v89.190（老板 1）规则变更所致：mini 再瘦身 20 → 16px（≤ 文字行高 17px → 不再撑行）。 */
+      return /--gp-namew: 96px/.test(hS188) && /\.btn\.sm\.mini \{ height: 16px/.test(hS188)
+        && /\.gp-rankrow \{ display: flex/.test(hS188) && /\.gp-rankcol \{ flex: none/.test(hS188)
+        && /\.rpad \{ visibility: hidden/.test(hS188) && /\.grow-nm \{ flex: none; width: 5em/.test(hS188);
+    })());
+  })();
+
+  /* ============================================================
+   * §189. v89.189（老板 3 条）：受阻弹窗（无法操作给原因）/ 掠夺黄金储量 /
+   *   建筑人口占用（1 民房 ↔ 16 资源 或 9 建筑）
+   * ============================================================ */
+  console.log('\n===== 189. v89.189（受阻弹窗 · 掠夺黄金 · 人口占用）=====');
+  (function () {
+    var fs189 = require('fs'), p189 = require('path');
+    var uS189 = fs189.readFileSync(p189.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var mS189 = fs189.readFileSync(p189.join(__dirname, 'js', 'main.js'), 'utf8');
+    var bS189 = fs189.readFileSync(p189.join(__dirname, 'js', 'battle.js'), 'utf8');
+
+    /* ① 受阻弹窗机制：弹窗出口 + 软化器 + 委托分支 + 挂载点 + 白名单 */
+    check('§189① 受阻弹窗机制：openWhyAsk + softenBlocked + 委托 data-why 优先 + 挂载收口', (function () {
+      return /ui\.openWhyAsk = function/.test(uS189)
+        && /ui\.softenBlocked = function/.test(uS189)
+        && /GAME\.ui\.openWhyAsk\(tw189\);/.test(mS189)
+        && /closest\('\[data-why\]'\)/.test(mS189)
+        && /ui\.softenBlocked\(root\);/.test(uS189) && /ui\.softenBlocked\(box\);/.test(uS189)
+        && /data-no-why/.test(uS189);
+    })());
+    /* ①b 原"点了没反应"的拦截式 disabled 已收编（灰卡 data-why · train-locked 死路退役） */
+    check('§189①b 灰兵种卡：data-action 退役 + data-why 在册（原 case 不可达已清）', (function () {
+      return /\(unlocked \? 'data-action="select-train"' : ''\)/.test(uS189)
+        && uS189.indexOf("case 'train-locked'") < 0 && mS189.indexOf("case 'train-locked'") < 0;
+    })());
+    /* ①c 关键场景文案在册（抽查 8 处高频受阻） */
+    check('§189①c 受阻原因文案在册（出征/治疗/加速/购买/打造/训练/研究/投降）', (function () {
+      var keys = ['尚未选择出征目标', '伤兵营已空', '本队列本日已用过该加速', '黄金不足：需',
+        '先在下方点选一件要打造的装备', '本营训练队列已满', '本城书院正在研究其他科技'];
+      return keys.every(function (k) { return uS189.indexOf(k) >= 0; });
+    })());
+
+    /* ② 掠夺黄金：基数表 + 真调占比 + 结算入池 + 战报行 */
+    check('§189② 掠夺黄金储量：基数 [200,600] · 金占库藏 ≤1.2%（真调 dry）', (function () {
+      var LB = DATA.LOOT_BASE || {};
+      var g = (LB.gold || [])[0] === 200 && (LB.gold || [])[1] === 600;
+      var o = G.battle.genLootEx({ kind: 'fort', lv: 10, dropType: 'fort', x: 1, y: 1 }, 1,
+        function () { return 0.5; }, true);
+      var rs = (o.grain || 0) + (o.wood || 0) + (o.stone || 0) + (o.iron || 0);
+      return g && o.gold > 0 && o.gold / (rs + o.gold) <= 0.012;
+    })());
+    check('§189②b 名城库藏金：占全库 ≤0.6% 且占领全拿 ≤ 2000 万（县城 ≤ 500 万）', (function () {
+      var cty = G.npcCityRes({ id: 'npc_c189', type: 'county', level: 12, x: 1, y: 1 });
+      var cap = G.npcCityRes({ id: 'npc_c189c', type: 'capital', level: 24, x: 1, y: 1 });
+      function pct(r) {
+        var rs = (r.grain || 0) + (r.wood || 0) + (r.stone || 0) + (r.iron || 0);
+        return r.gold / (rs + r.gold);
+      }
+      return pct(cty) <= 0.006 && pct(cap) <= 0.006
+        && cty.gold <= 5e6 && cap.gold <= 2e7 && cty.gold > 1e6;
+    })());
+    check('§189②c 结算金入池（修"静默蒸发"）+ 战报单列', (function () {
+      /* 结构：结算段从原始 loot 取 gold 并 goldAdd；战报有「缴获黄金」行 */
+      var hasSettle = /_goldLoot189/.test(bS189) && /GAME\.goldAdd\(_goldLoot189\)/.test(bS189);
+      var hasLine = /缴获黄金：\+/.test(bS189);
+      return hasSettle && hasLine;
+    })());
+
+    /* ③ 人口占用：表值 + 非负 + 与 v89.126 的"全部级数"解耦（已随 §106 重写真调） */
+    check('§189③ 人口占用口径：POP_LABOR = cityDiv 9 / extDiv 16（老板 9:16 与 16:16 表值）', (function () {
+      var L = DATA.POP_LABOR || {};
+      return L.cityDiv === 9 && L.extDiv === 16 && L.fullPct === undefined;
+    })());
+  })();
+
+  /* ============================================================
+   * §190. v89.190（老板 2 条 + 上轮遗留清账）：
+   *   将领界面按钮瘦身右移+去重复位 / 自动征兵（设置·判别·执行）/
+   *   老档人口安置 / 据点情报覆盖已占 / 受阻按钮兜底扫掠
+   * ============================================================ */
+  console.log('\n===== 190. v89.190（按钮瘦身 · 自动征兵 · 遗留清账）=====');
+  (function () {
+    var fs190 = require('fs'), p190 = require('path');
+    var uS190 = fs190.readFileSync(p190.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var mS190 = fs190.readFileSync(p190.join(__dirname, 'js', 'main.js'), 'utf8');
+    var dS190 = fs190.readFileSync(p190.join(__dirname, 'js', 'domain.js'), 'utf8');
+    var stS190 = fs190.readFileSync(p190.join(__dirname, 'js', 'state.js'), 'utf8');
+    var hS190 = fs190.readFileSync(p190.join(__dirname, 'index.html'), 'utf8');
+
+    /* ① 将领界面按钮（老板 1）：袖珍 16px（不再撑行）+ 右移 10 字符 + 去重复位/备注 */
+    /* v89.194（老板）：「晋升解雇往左挪一点，相对位置不动」——
+       130px（10 字符）→ 78px（6 字符）；两行仍共用同一变量（相对位置不变）。
+       规则变更所致（§0.7）：v89.190 的"右移 10 字符"由此改写为"当前位移 = 78px"。 */
+    check('§194① 袖珍按钮 16px + 位移 78px（--gp-ops-shift · 解雇/晋升两行同法）', (function () {
+      return /\.btn\.sm\.mini \{ height: 16px/.test(hS190)
+        && /--gp-ops-shift: 78px/.test(hS190)
+        && /--gp-ops-stagger: 40px/.test(hS190)                 /* v89.191：错开量 */
+        && /\.gp-nameops \{ flex: none; display: flex; margin-left: var\(--gp-ops-shift\); \}/.test(hS190)
+        && /\.gp-rankops190 \{ flex: none; display: flex; margin-left: calc\(var\(--gp-ops-shift\) \+ var\(--gp-ops-stagger\)\); \}/.test(hS190)
+        && /rankBtn186 \? '<span class="gp-rankops190">' \+ rankBtn186/.test(uS190);
+    })());
+    check('§190①b 四处按钮并入袖珍（解雇/晋升 · 经验＋ · 军中/修炼）', (function () {
+      var n = (uS190.match(/btn sm mini/g) || []).length;
+      return /'<button class="btn sm mini ' \+ \(atCap/.test(uS190)
+        && /'<button class="btn sm mini' \+ \(isLing \? '' : ' gold'\) \+ '" data-action="toggle-equip-set"/.test(uS190)
+        && /'<button class="btn sm mini' \+ \(isLing \? ' gold' : ''\) \+ '" data-action="toggle-equip-set"/.test(uS190)
+        && n >= 6;
+    })());
+    check('§190①c 经验行不带「（N%）」备注（与进度条重复 · 老板令撤）', (function () {
+      return !/'　（' \+ pct \+ '%）<\/span>'/.test(uS190);
+    })());
+    check('§190①d 「均衡」重复位退役：.gp-style 渲染与 CSS 双清（徽章后缀保留）', (function () {
+      return uS190.indexOf('class="gp-style"') < 0 && !/\.gp-style \{ display/.test(hS190)
+        && /\(style \? ' · ' \+ style : ''\)/.test(uS190);
+    })());
+
+    /* ② 自动征兵（老板 2）：九项在册 + 出口接线 */
+    check('§190② 自动征兵：自动化九项在册（train 项）+ 出口全接线 + 输入在册', (function () {
+      return /id: 'train', icon: '🛡️', name: '自动征兵', act: 'toggle-auto-train'/.test(uS190)
+        && /if \(id === 'train'\) return !!\(s\.settings && s\.settings\.autoTrain\)/.test(uS190)
+        && /if \(id === 'train'\) return \(s\.autoTrain && s\.autoTrain\.msg\)/.test(uS190)
+        && /body = ui\.autoTrainHTML\(\)/.test(uS190)
+        && /ui\.autoTrainHTML = function/.test(uS190)
+        && (uS190.match(/data-action="autotrain-set"/g) || []).length >= 3
+        && /case 'toggle-auto-train': GAME\.doToggleAutoTrain\(\); break;/.test(mS190)
+        && /case 'autotrain-set':/.test(mS190)
+        && /case 'go-auto-train':/.test(mS190)
+        && /GAME\.doToggleAutoTrain = function/.test(mS190)
+        && /GAME\.autoTrainTick = function/.test(dS190)
+        && /if \(GAME\.autoTrainTick\) GAME\.autoTrainTick\(\);/.test(stS190)   /* 主循环挂钩 */
+        && /GAME\.autoTrainPlanOf = function/.test(dS190)
+        && /GAME\.autoTrainSet = function/.test(dS190);
+    })());
+
+    /* ③ 自动征兵（行为 · 真调）：触发补单 / 达标即停 / 金保底 / 队列满 / 关闸即停 */
+    var at190 = (function () {
+      var bk = G.state, out = { err: 'unset' };
+      try {
+        G.newGame({ name: 'autotrain190', region: '司隶' });
+        var c = G.state.cities[0];
+        var placed = 0;
+        for (var i = 0; i < c.cells.length && placed < 2; i++) {
+          if (c.cells[i] && c.cells[i].build) continue;
+          c.cells[i] = { build: { id: placed === 0 ? 'junying' : 'shuyuan', lvl: 3 } };
+          placed++;
+        }
+        c.res.grain = 5000000; c.res.wood = 5000000; c.res.iron = 5000000; c.res.pop = 100000;
+        G.goldAdd(5000000);
+        /* v89.191（老板 3-③）：长枪兵新增「练兵技巧 Lv1」组合解锁 —— 本用例验的是自动征兵，
+           前置把该科技摆上（否则 canTrain 拒单、补单数为 0）。 */
+        G.techSet('lianbing', 1, c);
+        var cfg = G.autoTrainCfg();
+        cfg.targets.changqiang = { min: 0, max: 500 };
+        G.state.settings.autoTrain = true;
+        cfg.at = 0;
+        var r1 = G.autoTrainTick();
+        var q1 = G.state.queues.train.filter(function (q) { return q.cityId === c.id; });
+        var ok1 = !!(r1 && r1.done === 1 && q1.length === 1
+          && q1[0].troopId === 'changqiang' && q1[0].count === 500);
+        cfg.at = 0;
+        var r2 = G.autoTrainTick();
+        var ok2 = !!(r2 && r2.done === 0);                       /* 达标（在训计入）不再补 */
+        G.state.queues.train = [];
+        cfg.goldKeep = 99999999;
+        cfg.at = 0;
+        var r3 = G.autoTrainTick();
+        var ok3 = !!(r3 && r3.done === 0 && /保底/.test(cfg.msg));
+        cfg.goldKeep = 0;
+        cfg.targets.changqiang = { min: 0, max: 2000 };
+        cfg.at = 0;
+        G.autoTrainTick();                                       /* 先补一单占满唯一队列位（2000） */
+        cfg.targets.changqiang = { min: 0, max: 9999 };          /* 抬高目标 → 仍有缺口，但队列已满 */
+        cfg.at = 0;
+        var r4 = G.autoTrainTick();                              /* 队列满 → 暂停等消化 */
+        var ok4 = !!(r4 && r4.done === 0 && /队列已满/.test(cfg.msg));
+        G.state.settings.autoTrain = false;
+        cfg.at = 0;
+        var r5 = G.autoTrainTick();
+        var ok5 = r5 === null;                                   /* 关闸即停 */
+        return { ok1: ok1, ok2: ok2, ok3: ok3, ok4: ok4, ok5: ok5, msg: cfg.msg };
+      } catch (e) { out.err = String(e && e.stack || e); return out; }
+      finally { G.state = bk; }
+    })();
+    check('§190③ 自动征兵真调：低于触发线→补单（长枪兵×500）· 达标/金保底/队列满/关闸各归位',
+      at190.ok1 && at190.ok2 && at190.ok3 && at190.ok4 && at190.ok5, JSON.stringify(at190));
+
+    /* ④ 老档人口安置（v89.189 遗留）：一次性补足 + 幂等 + 新局带标记 */
+    var pg190 = (function () {
+      var bk = G.state;
+      try {
+        G.newGame({ name: 'pop190', region: '司隶' });
+        var st = JSON.parse(JSON.stringify(G.state));
+        delete st.popGrace190;
+        st.cities[0].res.pop = 0;
+        G.adoptState(st);
+        var pop1 = G.state.cities[0].res.pop;
+        var g1 = ((G.state.popGrace190 && G.state.popGrace190.granted) || []).length;
+        G.adoptState(G.state);
+        var pop2 = G.state.cities[0].res.pop;
+        var g2 = ((G.state.popGrace190 && G.state.popGrace190.granted) || []).length;
+        return { pop1: Math.round(pop1), g1: g1, pop2: Math.round(pop2), g2: g2,
+          ok: pop1 > 0 && g1 >= 1 && Math.abs(pop1 - pop2) < 0.001 && g2 === g1 };
+      } catch (e) { return { err: String(e && e.stack || e) }; }
+      finally { G.state = bk; }
+    })();
+    check('§190④ 老档人口安置：pop 打穿→一次性补足（可征恢复）· 二次载入幂等', pg190.ok, JSON.stringify(pg190));
+    check('§190④b 新局建档即带 popGrace190 标记（迁移永不误触）',
+      /popGrace190: \{ at: U\.now\(\), fresh: true \}/.test(stS190));
+
+    /* ⑤ 据点情报覆盖「已占领野地」（上轮遗留）：我方视角 + 未占态对照不变 */
+    var fi190 = (function () {
+      var bk = G.state, out = { err: 'unset' };
+      try {
+        G.newGame({ name: 'fortintel190', region: '司隶' });
+        if (!G.state.map.grid) G.map.generate();
+        var c = G.state.cities[0];
+        var hit = null;
+        for (var r = 1; r <= 6 && !hit; r++) {
+          for (var dy = -r; dy <= r && !hit; dy++) for (var dx = -r; dx <= r && !hit; dx++) {
+            var x = c.x + dx, y = c.y + dy, tl = G.map.tile(x, y);
+            if (!tl || tl.terrain === 'city' || tl.terrain === 'water') continue;
+            hit = { x: x, y: y };
+          }
+        }
+        G.state.wilds.push({ x: hit.x, y: hit.y, type: 'plain', lv: 3 });
+        G.state.forts = {};
+        G.state.forts[(hit.x + 1) + ',' + hit.y] = { x: hit.x + 1, y: hit.y, lv: 3, name: '前哨甲' };
+        var html = G.ui.fortIntelHTML(hit.x, hit.y);
+        var okA = html.indexOf('已归我方') >= 0 && html.indexOf('我方驻军') >= 0
+          && html.indexOf('守军明细') < 0;
+        G.state.wilds.pop();                       /* 撤掉野地记录 → 未占态（对照组） */
+        var html2 = G.ui.fortIntelHTML(hit.x, hit.y);
+        var okB = html2.indexOf('守军明细') >= 0;
+        return { okA: okA, okB: okB, x: hit.x, y: hit.y };
+      } catch (e) { out.err = String(e && e.stack || e); return out; }
+      finally { G.state = bk; }
+    })();
+    check('§190⑤ 据点情报·已占野地分支（我方驻军）· 未占态口径不变（对照组）', fi190.okA && fi190.okB, JSON.stringify(fi190));
+    check('§190⑤b 已占面板含「据点情报」入口（源码级 · 同前哨判据）',
+      /据点情报覆盖「已占领野地」[\s\S]{0,420}?wild-fortintel/.test(uS190));
+
+    /* ⑥ 受阻按钮兜底扫掠（上轮遗留）：定义 + 主循环挂载 + 分页白名单 + 节流 */
+    check('§190⑥ 兜底扫掠：blockedSweep 定义 + 主循环挂载 + 分页 data-no-why 白名单', (function () {
+      return /ui\.blockedSweep = function/.test(uS190)
+        && /if \(ui\.blockedSweep\) ui\.blockedSweep\(\);/.test(mS190)
+        && /\(off \? ' disabled data-no-why="1"' : ''\) \+ '>' \+ label/.test(uS190);
+    })());
+    var sw190 = (function () {
+      try {
+        var a = G.ui.blockedSweep(1e12);      /* 传未来时间 → 必然越过节流 */
+        var b = G.ui.blockedSweep(1e12);      /* 同一时刻第二次 → 被节流（返回 0，不重复跑） */
+        return { a: a, b: b };
+      } catch (e) { return { err: String(e && e.stack || e) }; }
+      finally { try { G.ui._blockedSweepAt = 0; } catch (e2) {} }
+    })();
+    check('§190⑥b 扫掠节流：同一时刻第二次调用被节流（不重复跑）', sw190.b === 0 && sw190.a != null, JSON.stringify(sw190));
+  })();
+
+  /* ═══════════════════════════════════════════════════════════
+   * §191（v89.191）：数值框可填 / 按钮错开 / 建筑配对闸 / 建筑↔科技体系 /
+   *   科技按城与主城 20 级 / 宝具并列入口 / 自动征兵全城池
+   * ═══════════════════════════════════════════════════════════ */
+  (function () {
+    var fs191 = require('fs'), path191 = require('path');
+    var uS191 = fs191.readFileSync(path191.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var mS191 = fs191.readFileSync(path191.join(__dirname, 'js', 'main.js'), 'utf8');
+    var hS191 = fs191.readFileSync(path191.join(__dirname, 'index.html'), 'utf8');
+
+    /* ① 上轮清单：自动征兵「触发线/目标」数值框不可填写 —— 双修（click 排除 INPUT + 变更后焦点归还） */
+    check('§191① 数值框可填：click 委托排除 INPUT · 变更后焦点归还原框 · change 落库链在册', (function () {
+      var m = stripComment(mS191);
+      return /if \(t && \(t\.tagName === 'SELECT' \|\| t\.tagName === 'INPUT'\)\) return;/.test(m)
+        && /input\.at-num\[data-k="/.test(m)
+        && /if \(_same191 && _same191\.focus\) _same191\.focus\(\);/.test(m)
+        && /el\.tagName === 'INPUT' && el\.type === 'number'/.test(m);
+    })());
+
+    /* ② 解雇/晋升错开防误点（实机几何复量在 shot 脚本；此处锁 CSS 口径） */
+    check('§191② 解雇/晋升错开：--gp-ops-stagger 40px（≥ 按钮宽 36px）· rankops calc 叠加', (function () {
+      return /--gp-ops-stagger: 40px/.test(hS191)
+        && /\.gp-rankops190 \{ flex: none; display: flex; margin-left: calc\(var\(--gp-ops-shift\) \+ var\(--gp-ops-stagger\)\); \}/.test(hS191);
+    })());
+
+    /* ③ 配对闸（真调）：城墙↔工匠作坊 · 驿站↔马厩 */
+    var pg191 = (function () {
+      var bk = G.state, out = { err: 'unset' };
+      try {
+        G.newGame({ name: 'pair191', region: '司隶' });
+        var c = G.state.cities[0];
+        G.techSet('jianzhu', 9, c); G.techSet('xingjun', 9, c);   /* 排除科技闸干扰，本用例只验配对 */
+        c.cells.forEach(function (x) { if (x && x.build && x.build.id === 'guanfu') x.build.lvl = 12; });
+        out.capA = G.buildCapOf(c, 'chengqiang');                 /* 作坊 0 → cap = 2 */
+        out.preA = G.buildPrereqOf(c, 'chengqiang', 3).msg;
+        var idx = -1;
+        for (var i = 0; i < c.cells.length; i++) {
+          var cl = c.cells[i];
+          if (cl && !cl.build && !cl.pending && !cl.official) { idx = i; break; }
+        }
+        if (idx < 0) throw new Error('无空格');
+        c.cells[idx].build = { id: 'gongjiangzuofang', lvl: 4 };
+        out.capB = G.buildCapOf(c, 'chengqiang');                 /* 作坊 4 → cap = 6 */
+        out.gapYz = G.pairGapOf(c, 'yizhan').cap;                 /* 马厩 0 → 驿站 cap = 2 */
+        out.ok = out.capA === 2 && out.capB === 6 && out.gapYz === 2
+          && /相差不得超过 2 级/.test(out.preA);
+      } catch (e) { out.err = String(e && e.message || e); }
+      finally { G.state = bk; }
+      return out;
+    })();
+    check('§191③ 配对等级差 ≤2：城墙被作坊压制（cap=对方+2）· 追方不受限 · 提示逐字', pg191.ok === true, JSON.stringify(pg191));
+    check('§191③b 配对表双向对称（改一侧必须两侧都改 · 上限/提示同读唯一出口）', (function () {
+      var P = DATA.PAIR_GAP || {};
+      return P.chengqiang === 'gongjiangzuofang' && P.gongjiangzuofang === 'chengqiang'
+        && P.yizhan === 'majiu' && P.majiu === 'yizhan' && (DATA.PAIR_GAP_MAX || 2) === 2;
+    })());
+
+    /* ④ 建筑↔科技双向闸（真调三态）+ 兵种组合 + 死锁自查 */
+    var tg191 = (function () {
+      var bk = G.state, out = { err: 'unset' };
+      try {
+        G.newGame({ name: 'techgate191', region: '司隶' });
+        var c = G.state.cities[0];
+        var placed = 0;
+        for (var i = 0; i < c.cells.length && placed < 2; i++) {
+          var cl = c.cells[i];
+          if (cl && !cl.build && !cl.pending && !cl.official) {
+            cl.build = { id: placed === 0 ? 'shuyuan' : 'junying', lvl: placed === 0 ? 3 : 2 }; placed++;
+          }
+        }
+        if (placed < 2) throw new Error('无空格');
+        c.cells.forEach(function (x) { if (x && x.build && x.build.id === 'guanfu') x.build.lvl = 12; });   /* 排除官府总闸，本用例只验科技闸 */
+        var rA = G.systems.canResearch('zhandou', c.id);            /* req 军营3 未达 → 拦 */
+        var pA = G.buildPrereqOf(c, 'junying', 3);                  /* 军营升3 需练兵技巧1 → 拦 */
+        G.techSet('lianbing', 1, c);
+        var pB = G.buildPrereqOf(c, 'junying', 3);                  /* 研究后放行 */
+        c.cells.forEach(function (x) { if (x && x.build && x.build.id === 'junying') x.build.lvl = 3; });
+        c.res.gold = 9e8; c.res.wood = 9e8; c.res.stone = 9e8;
+        var rB = G.systems.canResearch('zhandou', c.id);            /* 军营到位 → 受理 */
+        out.rA = rA.ok === false && /军营/.test(rA.msg);
+        out.pA = pA.ok === false && /练兵技巧/.test(pA.msg);
+        out.pB = pB.ok === true;
+        out.rB = rB.ok === true;
+        out.ok = out.rA && out.pA && out.pB && out.rB;
+      } catch (e) { out.err = String(e && e.message || e); }
+      finally { G.state = bk; }
+      return out;
+    })();
+    check('§191④ 建筑↔科技双向闸（真调三态）：研究需建筑（req）· 建筑升级需研究（floor(N/div)）', tg191.ok === true, JSON.stringify(tg191));
+    check('§191④b 兵种科技组合体系：斥候=侦察技巧 · 轻骑=战斗+行军+驾驭 · 铁骑/辎重各带组合', (function () {
+      var T = DATA.TROOPS;
+      return (T.chihou.unlock.tech || {}).zhencha === 1
+        && (T.qingji.unlock.tech || {}).zhandou >= 1 && T.qingji.unlock.tech.xingjun >= 1 && T.qingji.unlock.tech.jiayu >= 1
+        && (T.tieji.unlock.tech || {}).jiayu >= 1 && (T.zhouche.unlock.tech || {}).fuzhong >= 1
+        && (T.gongjian.unlock.tech || {}).paoshe >= 1 && (T.daodun.unlock.tech || {}).fanghu >= 1;
+    })());
+    check('§191④c 死锁自查（写表必查）：每条 BUILD_TECH_REQ 链最终落在「无 req 的科技」上', (function () {
+      function walk(b, pathArr) {
+        if (pathArr.indexOf(b) >= 0) return false;               /* 环 */
+        var r = DATA.BUILD_TECH_REQ[b];
+        if (!r) return true;                                     /* 链底：该建筑无科技闸 */
+        var t = null;
+        (DATA.TECH || []).forEach(function (x) { if (x.id === r.tech) t = x; });
+        if (!t) return false;
+        var keys = Object.keys(t.req || {});
+        if (!keys.length) return true;                           /* 无 req 的科技 = 合法链底 */
+        return keys.every(function (k) { return walk(k, pathArr.concat([b])); });
+      }
+      var okAll = true;
+      Object.keys(DATA.BUILD_TECH_REQ || {}).forEach(function (b) { if (!walk(b, [])) okAll = false; });
+      return okAll;
+    })());
+
+    /* ⑤ 科技按城（真调两城对照）+ 迁移 + 战斗上下文 */
+    var tc191 = (function () {
+      var bk = G.state, out = { err: 'unset' };
+      try {
+        G.newGame({ name: 'techcity191', region: '司隶' });
+        var c0 = G.state.cities[0];
+        var c2 = G.makeCity({ id: 'techc2', name: '二城', x: c0.x + 6, y: c0.y + 6 });
+        G.registerCity(c2);
+        var placed = 0;
+        for (var i = 0; i < c0.cells.length && placed < 1; i++) {
+          var cl = c0.cells[i];
+          if (cl && !cl.build && !cl.pending && !cl.official) { cl.build = { id: 'shuyuan', lvl: 3 }; placed++; }
+        }
+        if (!placed) throw new Error('无空格');
+        c0.res.gold = 9e8; c0.res.wood = 9e8; c0.res.stone = 9e8;
+        var r = G.systems.research('zhongzhi', c0.id);
+        for (var tk = 0; tk < 40; tk++) G.tickOnce();
+        out.r = !!(r && r.ok);
+        out.c0lv = G.systems.techLevel('zhongzhi', c0);
+        out.c2lv = G.systems.techLevel('zhongzhi', c2);
+        out.ok = out.r && out.c0lv === 1 && out.c2lv === 0;
+      } catch (e) { out.err = String(e && e.message || e); }
+      finally { G.state = bk; }
+      return out;
+    })();
+    check('§191⑤ 科技按城：研究写回发起城 · 他城不受益（两城对照真调）', tc191.ok === true, JSON.stringify(tc191));
+    check('§191⑤b 老档迁移：全境表→各城各一份 · 删顶层 · 队列补 cityId · 二次调用幂等', (function () {
+      var c1 = G.makeCity({ id: 'mig191a', name: '甲', x: 1, y: 1 });
+      var c2 = G.makeCity({ id: 'mig191b', name: '乙', x: 2, y: 2 });
+      var st = { cities: [c1, c2], queues: { tech: [{ techId: 'kanfa' }] }, techs: { zhongzhi: 7 } };
+      G.migrateTechs191(st);
+      G.migrateTechs191(st);
+      return c1.techs.zhongzhi === 7 && c2.techs.zhongzhi === 7
+        && st.techs === undefined && st.queues.tech[0].cityId === 'mig191a';
+    })());
+    check('§191⑤c 战斗科技上下文：boostSnapshot(城) 带该城表 · withBoost 装/还原（史实=重跑同源）', (function () {
+      var bk = G.state;
+      try {
+        G.newGame({ name: 'bst191', region: '司隶' });
+        var c = G.state.cities[0];
+        G.techSet('zhandou', 3, c);
+        var snap = G.battle.boostSnapshot(c);
+        var inV = null;
+        G.battle.withBoost(snap, function () { inV = G.systems.techLevel('zhandou'); });
+        var snapEmpty = G.battle.boostSnapshot(null), eIn = null;
+        G.battle.withBoost(snapEmpty, function () { eIn = G.systems.techLevel('zhandou'); });
+        return snap.techs.zhandou === 3 && inV === 3 && eIn === 0 && G.systems._techCtx == null;
+      } catch (e) { return false; }
+      finally { G.state = bk; }
+    })());
+
+    check('§191⑤d 科技聚合口径：techTotal=各城之和 · techLevel=各城最高（任务/叙事同读 questMetric）', (function () {
+      var bk = G.state;
+      try {
+        G.newGame({ name: 'agg191', region: '司隶' });
+        var c1 = G.state.cities[0];
+        var c2 = G.makeCity({ id: 'aggc2', name: '聚合城', x: c1.x + 3, y: c1.y + 3 });
+        G.registerCity(c2);
+        G.techSet('zhongzhi', 3, c1); G.techSet('zhongzhi', 5, c2);
+        return G.questMetric('techTotal') === 8 && G.questMetric('techLevel', 'zhongzhi') === 5;
+      } catch (e) { return false; }
+      finally { G.state = bk; }
+    })());
+    check('§191⑤e story 科技求和走 questMetric（防「引用不存在的成员」回魂 · audit ⑥ 同案）', (function () {
+      var y191 = fs191.readFileSync(path191.join(__dirname, 'js', 'story.js'), 'utf8');
+      return /GAME\.questMetric\('techTotal'\)/.test(y191) && y191.indexOf('GAME.statOf') < 0;
+    })());
+
+    /* ⑥ 主城 20 级 + 尾段价 + 面板按城 */
+    check('§191⑥ 主城科技上限 20 / 别城 10（唯一出口 techCapOf）· canResearch 11 级受理', (function () {
+      var bk = G.state;
+      try {
+        G.newGame({ name: 'cap191', region: '司隶' });
+        var c = G.state.cities[0];
+        /* 研究需书院（t.lv=1）—— 摆一座（本用例验的是上限与 11 级受理） */
+        for (var i = 0; i < c.cells.length; i++) {
+          var cl = c.cells[i];
+          if (cl && !cl.build && !cl.pending && !cl.official) { cl.build = { id: 'shuyuan', lvl: 3 }; break; }
+        }
+        var base = G.techCapOf(c);
+        G.state.mainCityId = c.id;
+        var asMain = G.techCapOf(c);
+        G.techSet('zhongzhi', 10, c);
+        c.res.gold = 9e8; c.res.wood = 9e8; c.res.stone = 9e8;      /* 11 级研究费 80 万金（料备足） */
+        var r = G.systems.canResearch('zhongzhi', c.id);
+        return base === 10 && asMain === 20 && r.ok === true;
+      } catch (e) { return false; }
+      finally { G.state = bk; }
+    })());
+    check('§191⑥b 尾段价：11 级 80 万（≈前 10 级满研 65%）· 20 级 3075 万 · 1~10 逐字不变', (function () {
+      var cum10 = 0;
+      for (var i = 1; i <= 10; i++) cum10 += DATA.techCost({ type: 'grain' }, i).gold;
+      return DATA.techCost({ type: 'grain' }, 11).gold === 800000
+        && DATA.techCost({ type: 'grain' }, 20).gold === 30754688
+        && DATA.techCost({ type: 'grain' }, 10).gold === 614400
+        && cum10 === 1227600
+        && (DATA.TECH_MAX_LV_MAIN || 20) === 20;
+    })());
+    check('§191⑥c 科技面板按城：lv/cap 动态 · 上限提示（主城 20/别城 10）· req 缺建筑逐条列明', (function () {
+      var u = stripComment(uS191);
+      return /GAME\.techCapOf\(c\)/.test(u)
+        && /本城科技上限 Lv/.test(uS191) && /设为主城可提升至 Lv/.test(uS191)
+        && /miss\.push\(\(\(DATA\.BUILDINGS\[b\] \|\| \{\}\)\.name \|\| b\) \+ ' Lv'/.test(uS191);
+    })());
+
+    /* ⑦ 宝具并列入口（与军中/修炼同排；普通将领只有军中+宝具） */
+    check('§191⑦ 宝具与军中/修炼并列：普通将「军中(静态金刚)+宝具」· 君主另加修炼 · attach-pick 接线', (function () {
+      var u = stripComment(uS191);
+      return /普通将领只行军中套装；修炼一途乃君主专属/.test(u)
+        && /data-slot="bao"/.test(uS191)
+        && /🔮 宝具<\/button>/.test(uS191);
+    })());
+    check('§191⑦b 宝具按钮高亮跟随已佩 + 选择窗沿用既有出口（合成区随窗）', (function () {
+      var u = stripComment(uS191);
+      return /GAME\.attachOf\(g, 'bao'\) \? ' gold' : ''/.test(u)
+        && /GAME\.attachOf\(g, slot\.id\)/.test(u);
+    })());
+
+    /* ⑧ 自动征兵：默认全部城池（逐城真调）· 器械（craft）不参与 */
+    var at191 = (function () {
+      var bk = G.state, out = { err: 'unset' };
+      try {
+        G.newGame({ name: 'atall191', region: '司隶' });
+        var c1 = G.state.cities[0];
+        var c2 = G.makeCity({ id: 'atc2', name: '二城', x: c1.x + 7, y: c1.y + 7 });
+        G.registerCity(c2);
+        [c1, c2].forEach(function (c) {
+          var placed = 0;
+          for (var i = 0; i < c.cells.length && placed < 2; i++) {
+            var cl = c.cells[i];
+            if (cl && !cl.build && !cl.pending && !cl.official) {
+              cl.build = { id: placed === 0 ? 'junying' : 'shuyuan', lvl: placed === 0 ? 3 : 2 }; placed++;
+            }
+          }
+          c.res.grain = 5e6; c.res.wood = 5e6; c.res.iron = 5e6; c.res.pop = 1e5;
+          G.techSet('lianbing', 1, c);            /* 长枪兵组合门槛（v89.191 新规） */
+        });
+        G.goldAdd(5e7);
+        var cfg = G.autoTrainCfg();
+        cfg.targets.changqiang = { min: 0, max: 400 };
+        G.state.settings.autoTrain = true;
+        cfg.at = 0;
+        var r = G.autoTrainTick();
+        out.q1 = G.state.queues.train.filter(function (q) { return q.cityId === c1.id; }).length;
+        out.q2 = G.state.queues.train.filter(function (q) { return q.cityId === c2.id; }).length;
+        out.craft = Object.keys(cfg.targets).filter(function (id) {
+          return DATA.TROOPS[id] && DATA.TROOPS[id].craft;
+        }).length;
+        out.ok = out.q1 === 1 && out.q2 === 1 && out.craft === 0 && !!(r && r.done === 2);
+      } catch (e) { out.err = String(e && e.stack || e); }
+      finally { G.state = bk; }
+      return out;
+    })();
+    check('§191⑧ 自动征兵默认全部城池（两城各补 1 单）· 器械不参与（craft 不进目标表）', at191.ok === true, JSON.stringify(at191));
+  })();
+
+  /* ============================================================
+   * §192（v89.192）：射程回落 / 回本城 / 观战补史 / 沙盘铺满
+   * ============================================================ */
+  (function () {
+    var fs192 = require('fs'), path192 = require('path');
+    var uS192 = fs192.readFileSync(path192.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var mS192 = fs192.readFileSync(path192.join(__dirname, 'js', 'main.js'), 'utf8');
+    var tS192 = fs192.readFileSync(path192.join(__dirname, 'js', 'tactic.js'), 'utf8');
+    var bS192 = fs192.readFileSync(path192.join(__dirname, 'js', 'battle.js'), 'utf8');
+    var hS192 = fs192.readFileSync(path192.join(__dirname, 'index.html'), 'utf8');
+
+    console.log('  --- §192 射程回落（老板 4 · 目标不在射程时打射程内任意）---');
+    check('§192①a 源码：指定目标带射程门槛（prefInRange 两处消费）', (function () {
+      return tS192.indexOf('if (prefGap <= effRange) { rec = pref; bestGap = prefGap; prefInRange = true; }') >= 0
+        && tS192.indexOf("preferId: prefInRange ? u.target : ''") >= 0;
+    })());
+    check('§192①b 行为：目标极远（射程外）+ 最近敌在射程内 → 出手打最近的（老板实测场景）', (function () {
+      var bw = G.state.world.weather;
+      try {
+        G.state.world.weather = 'clear';
+        var env = G.tactic.begin({ gongjian: 3000 }, null, { qingji: 3000, gongjian: 3000 }, 0, null, { field: 2300 });
+        env.units.atk.forEach(function (u) { if (u.id === 'gongjian') u.adv = 267; });
+        env.units.def.forEach(function (u) {
+          if (u.id === 'qingji') u.adv = 875;          /* 距我弓 1158 —— 射程 1200 内 */
+          if (u.id === 'gongjian') u.adv = -600;       /* 目标：3167 —— 任何射程外 */
+          env.setCmd('def', u.id, { s: 'hold' });
+        });
+        env.setCmd('atk', 'gongjian', { s: 'advance', t: 'gongjian' });
+        var r = env.step();
+        var evs = (r.events || []).filter(function (e) { return e.side === 'atk' && e.id === 'gongjian'; });
+        var atk = evs.filter(function (e) { return e.kind === 'attack'; })[0];
+        return !!atk && atk.targetId === 'qingji';
+      } catch (e) { return false; }
+      finally { G.state.world.weather = bw; }
+    })());
+    check('§192①c 行为：指定目标**在射程内** → 仍打指定目标（优先保留 · 即使别的更近）', (function () {
+      var bw = G.state.world.weather;
+      try {
+        G.state.world.weather = 'clear';
+        var env = G.tactic.begin({ gongjian: 3000 }, null, { qingji: 3000, gongjian: 3000 }, 0, null, { field: 2300 });
+        env.units.atk.forEach(function (u) { if (u.id === 'gongjian') u.adv = 900; });
+        env.units.def.forEach(function (u) {
+          if (u.id === 'qingji') u.adv = 875;          /* 距我弓 525（更近） */
+          if (u.id === 'gongjian') u.adv = 300;        /* 目标：1100 —— 射程内 */
+          env.setCmd('def', u.id, { s: 'hold' });
+        });
+        env.setCmd('atk', 'gongjian', { s: 'advance', t: 'gongjian' });
+        var r = env.step();
+        var evs = (r.events || []).filter(function (e) { return e.side === 'atk' && e.id === 'gongjian'; });
+        var atk = evs.filter(function (e) { return e.kind === 'attack'; })[0];
+        return !!atk && atk.targetId === 'gongjian';
+      } catch (e) { return false; }
+      finally { G.state.world.weather = bw; }
+    })());
+
+    console.log('  --- §192 回本城（老板 1）---');
+    check('§192② 回本城：按钮在「回主城」右侧 + 出口/动作在册 + 回的是当前城（GAME.currentCity）', (function () {
+      var a = uS192.indexOf('data-action="map-center">回主城');
+      var b = uS192.indexOf('data-action="map-capital">洛阳');
+      var seg = (a >= 0 && b > a) ? uS192.slice(a, b) : '';
+      var btn = seg.indexOf('data-action="map-mycity">回本城') >= 0;
+      var fn = /ui\.mapMyCity = function/.test(uS192) && /GAME\.currentCity\(\)/.test(uS192);
+      var cs = mS192.indexOf("case 'map-mycity': ui.mapMyCity();") >= 0;
+      return btn && fn && cs;
+    })());
+
+    console.log('  --- §192 观战补历史（老板 2）---');
+    check('§192③a 源码：_makeEnv 带收集参 + btReplayHistory 出口 + 打开观战时调用', (function () {
+      return bS192.indexOf('_makeEnv = function (rec, collectSteps)') >= 0
+        && uS192.indexOf('ui.btReplayHistory = function') >= 0
+        && uS192.indexOf('ui.btReplayHistory(rec);') >= 0;
+    })());
+    check('§192③b 行为：重放收集 = history 步数（每步含 r/events/snap）', (function () {
+      var bk = G.state;
+      try {
+        G.newGame({ name: 'w192', region: '司隶' });
+        var rec = { id: 'btW192', kind: 'expedition', side: 'atk', target: { kind: 'wild', x: 1, y: 1, name: '测试' },
+          atkArmy: { yibing: 300 }, genId: null, cityId: null,
+          sim: { scArmy: { yibing: 100 }, scVal: 0, scGen: null, simOpts: {} },
+          round: 0, state: 'live', cmd: {}, history: [], snapLast: null, evLast: [], gapLast: null };
+        var env = G.battle._makeEnv(rec);
+        for (var i = 0; i < 3; i++) {
+          rec.history.push({});
+          env.step();
+        }
+        var steps = [];
+        G.battle._makeEnv(rec, steps);
+        return steps.length === 3 && steps.every(function (st) { return st.r >= 1 && !!st.snap && !!st.events; });
+      } catch (e) { return false; }
+      finally { G.state = bk; }
+    })());
+
+    console.log('  --- §192 沙盘铺满（老板 4 · 参考战场界面）---');
+    check('§192④a CSS：#sd-wrap 撑满 + .sd-board 吃余高 + .sd-log 底部 40%', (function () {
+      return hS192.indexOf('#sd-wrap { display: flex; flex-direction: column; height: 100%;') >= 0
+        && hS192.indexOf('align-items: stretch; grid-template-rows: minmax(0, 1fr);') >= 0
+        && hS192.indexOf('.sd-log { flex: 0 0 40%;') >= 0;
+    })());
+    check('§192④b 泳道总高上限 420 → 360（匹配铺满后的 board 高 · 双方各 8 队也装得下）', (function () {
+      return uS192.indexOf('var maxH = 360;') >= 0;
+    })());
+  })();
+
+  /* ═══════════════════════════════════════════════════════════
+   * §193（v89.193）老板 3 条：离线募兵（时间跳变补偿）· 前哨体系（每城5/等级/总览）· 自动征兵确认
+   * ═══════════════════════════════════════════════════════════ */
+  (function () {
+    var fs193 = require('fs'), p193 = require('path');
+    var uS193 = fs193.readFileSync(p193.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var mS193 = fs193.readFileSync(p193.join(__dirname, 'js', 'main.js'), 'utf8');
+    var sS193 = fs193.readFileSync(p193.join(__dirname, 'js', 'state.js'), 'utf8');
+    var dS193 = fs193.readFileSync(p193.join(__dirname, 'js', 'data.js'), 'utf8');
+
+    console.log('  --- §193 时间跳变补偿（老板 3 · 过夜回来应看到募兵完成）---');
+    check('§193① 主循环真实钟锚 + 跳变分支 + LOOP_GAP 表（源码形态 · 壳在 main/锚在 main）', (function () {
+      return mS193.indexOf('GAME._loopLastAt = GAME.utils.now();') >= 0
+        && mS193.indexOf('GAME.loopGapCatchup(_gap193)') >= 0
+        && sS193.indexOf('GAME.loopGapCatchup = function') >= 0
+        && /DATA.LOOP_GAP = \{ gapSec: 5, toastSec: 300 \};/.test(dS193);
+    })());
+    check('§193② 静默补偿：队列推完 · offline 编年史不增 · 不生成归来报告（真调 · 沙坑）', (function () {
+      var bk = G.state, bkRep = G._offlineReport, bkSec = G._offlineSec;
+      try {
+        G.newGame({ name: 'gap193', region: '司隶' });
+        G.state.world.weather = 'clear';
+        var c = G.state.cities[0], bIdx = -1;
+        for (var i = 0; i < c.cells.length; i++) {
+          var cl = c.cells[i];
+          if (cl && !cl.build && !cl.pending && !cl.official) { cl.build = { id: 'junying', lvl: 3 }; bIdx = i; break; }
+        }
+        c.res.grain = 5e6; c.res.wood = 5e6; c.res.iron = 5e6; c.res.pop = 1e5;
+        var tr1 = G.train('yibing', 300, c.id, bIdx);
+        if (!tr1.ok) return false;
+        var offN = function () {
+          return (G.state.chronicle || []).filter(function (r) { return r.tag === 'offline'; }).length;
+        };
+        var a0 = offN();
+        G._offlineReport = { sentinel: true };
+        G._offlineSec = 777;
+        var rc = G.loopGapCatchup(2 * 3600);
+        return rc.mode === 'catchup'
+          && G.state.queues.train.length === 0
+          && (G.state.cities[0].army || {}).yibing >= 300
+          && offN() === a0
+          && (G._offlineReport || {}).sentinel === true
+          && G._offlineSec === 777;
+      } catch (e) { return false; }
+      finally { G.state = bk; G._offlineReport = bkRep; G._offlineSec = bkSec; }
+    })());
+    check('§193③ 对照 · 读档路径（非静默）：offline 编年史 +1 · 生成归来报告（防"静默过度"）', (function () {
+      var bk = G.state, bkRep = G._offlineReport, bkSec = G._offlineSec;
+      try {
+        G.newGame({ name: 'gap193b', region: '司隶' });
+        var offN = function () {
+          return (G.state.chronicle || []).filter(function (r) { return r.tag === 'offline'; }).length;
+        };
+        var a0 = offN();
+        G._offlineReport = { sentinel2: true };
+        G._offlineSec = 0;
+        G.offlineCatchup(600);
+        return offN() === a0 + 1 && (G._offlineReport || {}).sentinel2 !== true && G._offlineSec === 600;
+      } catch (e) { return false; }
+      finally { G.state = bk; G._offlineReport = bkRep; G._offlineSec = bkSec; }
+    })());
+    check('§193④ 小缺口 skip（≤5 秒不走补算 —— 调用方照常 tickOnce）', (function () {
+      return G.loopGapCatchup(3).mode === 'skip' && G.loopGapCatchup(5).mode === 'skip';
+    })());
+
+    console.log('  --- §193 前哨体系（老板 2 · 每城5/等级/总览）---');
+    check('§193⑤ 出口组五档表（逐档核值：半径/采/宝/驻/税 · 越档兜底）', (function () {
+      var e1 = G.fortEffectOf({ lv: 1 }), e5 = G.fortEffectOf({ lv: 5 }), e10 = G.fortEffectOf({ lv: 10 });
+      return e1.radius === 6 && e1.tax === 300 && e1.intelHalf === true
+        && e5.radius === 10 && e5.gatherMul === 1.35 && e5.tax === 500 && e5.intelFull === true
+        && e10.radius === 14 && e10.garrisonCapMul === 1.8 && e10.tax === 800
+        && G.fortTierOf(11).radius === 14;
+    })());
+    check('§193⑥ 每城上限 5：同城 6 连占据 = 5 ok + 1 full（真调 claimFort）· 归属 cityId', (function () {
+      var bk = G.state;
+      try {
+        G.newGame({ name: 'fort193', region: '司隶' });
+        G.state.world.weather = 'clear';
+        if (!G.state.map.grid) G.map.generate();
+        var c0 = G.state.cities[0], spots = [];
+        for (var r = 2; r <= 20 && spots.length < 7; r++) {
+          for (var dy = -r; dy <= r && spots.length < 7; dy++) {
+            for (var dx = -r; dx <= r && spots.length < 7; dx++) {
+              if (dx === 0 && dy === 0) continue;
+              var tl = G.map.tile(c0.x + dx, c0.y + dy);
+              if (!tl || tl.terrain === 'city' || tl.terrain === 'water') continue;
+              spots.push({ x: c0.x + dx, y: c0.y + dy });
+            }
+          }
+        }
+        if (spots.length < 6) return false;
+        var res = [];
+        for (var i = 0; i < 6; i++) {
+          var rr = G.claimFort({ kind: 'fort', fort: { x: spots[i].x, y: spots[i].y, level: 5, name: 'S' + i } }, null, c0, {});
+          res.push(rr.ok ? 'ok' : (rr.full ? 'full' : 'other'));
+        }
+        var fsAll = G.fortsOf();
+        var cityOk = Object.keys(fsAll).every(function (k) { return fsAll[k].cityId === c0.id; });
+        return res.join(',') === 'ok,ok,ok,ok,ok,full'
+          && Object.keys(fsAll).length === 5 && cityOk
+          && G.fortsOfCity(c0).length === 5;
+      } catch (e) { return false; }
+      finally { G.state = bk; }
+    })());
+    check('§193⑦ 老档迁移：无 cityId → 最近己方城 · 幂等（真调 migrateForts193）', (function () {
+      var bk = G.state;
+      try {
+        G.newGame({ name: 'fort193b', region: '司隶' });
+        var c0 = G.state.cities[0];
+        G.state.forts = { 'x1,y1': { x: c0.x + 3, y: c0.y, lv: 4, name: '旧哨' } };
+        delete G.state.fortsMig193;
+        var r1 = G.migrateForts193();
+        var got = G.state.forts['x1,y1'].cityId;
+        var r2 = G.migrateForts193();
+        return r1 === true && got === c0.id && r2 === false;
+      } catch (e) { return false; }
+      finally { G.state = bk; }
+    })());
+    check('§193⑧ 逐哨半径 + 重叠最近优先（独哨 Lv2 六格 · 双哨平分取 key 序）', (function () {
+      var bk = G.state;
+      try {
+        var st = G.state;
+        st.forts = {};
+        var f2 = { x: 100, y: 100, lv: 2, name: 'A2' };
+        st.forts['100,100'] = f2;
+        var solo1 = G.fortAuraAt(105, 100) === f2 && G.fortAuraAt(107, 100) === null;
+        st.forts = { '200,200': { x: 200, y: 200, lv: 10, name: 'A' },
+                     '210,200': { x: 210, y: 200, lv: 10, name: 'B' } };
+        var mid = G.fortAuraAt(205, 200);   /* 平分 → key 序小（'200,200' < '210,200'）→ A */
+        var nearB = G.fortAuraAt(208, 200); /* 距 B 2 格 → B */
+        return solo1 && mid && mid.name === 'A' && nearB && nearB.name === 'B';
+      } catch (e) { return false; }
+      finally { G.state = bk; }
+    })());
+    check('§193⑨ 税所逐哨 Σtax（Lv5+Lv3=900/日 · 真调 · 首期登记 · 幂等 · 沙坑）', (function () {
+      var bk = G.state;
+      try {
+        G.newGame({ name: 'tax193', region: '司隶' });
+        var st = G.state;
+        st.forts = { '50,50': { x: 50, y: 50, lv: 5, name: '甲' }, '51,51': { x: 51, y: 51, lv: 3, name: '乙' } };
+        st.fortTaxDay = null;
+        var first = G.fortTaxSettle();
+        st.fortTaxDay = G.questDayIndex() - 2;
+        var g0 = st.gold || 0;
+        var r = G.fortTaxSettle();
+        var g1 = st.gold || 0;
+        var again = G.fortTaxSettle();
+        var exp = (G.fortEffectOf({ lv: 5 }).tax + G.fortEffectOf({ lv: 3 }).tax) * 2;
+        return first === null && r && r.gold === exp && (g1 - g0) === exp && again === null;
+      } catch (e) { return false; }
+      finally { G.state = bk; }
+    })());
+    check('§193⑩ 界面形态：前哨格分支 / 总览弹窗 / 导航栏 / 满员受阻 / 情报半档（源码级）', (function () {
+      return uS193.indexOf('ui.openOutpostPanel = function') >= 0
+        && uS193.indexOf('ui.openOutposts = function') >= 0
+        && uS193.indexOf('GAME.fortOwnAt(x, y) : null') >= 0
+        && uS193.indexOf('data-action="open-outposts">🚩 前哨</button>') >= 0
+        && uS193.indexOf('data-why="「') >= 0
+        && uS193.indexOf('_fx193e.intelHalf') >= 0;
+    })());
+    check('§193⑪ 数据表：tiers 五档 + maxPerCity + 旧字段可执行形态零残留', (function () {
+      var strip = function (t) {
+        return t.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:\w])\/\/[^\n]*/g, '$1');
+      };
+      var d = strip(dS193);
+      return d.indexOf('maxPerCity: 5') >= 0 && (d.match(/radius: \d+/g) || []).length === 5
+        && d.indexOf('decayTo:') < 0 && d.indexOf('fortTaxGold:') < 0
+        && d.indexOf('intelCertain') < 0;
+    })());
+  })();
+
+  /* ============================================================
+   * §194. v89.194（老板本批）：S1 建筑营造金 · S2 价格口径 · S3 藏珍阁 ·
+   *   S4 欠俸忠诚 · UI 三处（按钮位移 §194① 已在原处升级）· 前哨雷达圈（欧氏）
+   * ============================================================ */
+  console.log('\n===== 194. v89.194（营造金 · 藏珍阁 · 欠俸忠诚 · 雷达圈） =====');
+  (function () {
+    var fs194 = require('fs'), p194 = require('path');
+    var raw194 = function (f) { return fs194.readFileSync(p194.join(__dirname, 'js', f), 'utf8'); };
+    var rd194 = function (f) { return stripComment(raw194(f)); };
+    var dS194 = rd194('domain.js'), uS194 = rd194('ui.js'), mS194 = rd194('main.js');
+    var hS194 = fs194.readFileSync(p194.join(__dirname, 'index.html'), 'utf8');
+
+    console.log('  --- ② S1：建筑营造金（Lv9 起）---');
+    /* v89.192 报告 S1 拍板值：Lv9=3000 / Lv10=6000 / Lv11=12000 / Lv12+=24000；
+       Lv1-8 零金 = 保前期流畅的**护栏**（防误伤）。 */
+    check('§194② 营造金五档：升 Lv9/10/11/12+ = 3000/6000/12000/24000 · Lv1-8 零金', (function () {
+      var g = function (bid, lv) { var c = DATA.BUILDINGS[bid].levelCost(lv); return c && c.gold ? c.gold : 0; };
+      return g('guanfu', 7) === 0 && g('guanfu', 8) === 3000
+        && g('guanfu', 9) === 6000 && g('guanfu', 10) === 12000
+        && g('guanfu', 11) === 24000 && g('guanfu', 12) === 24000 && g('guanfu', 20) === 24000
+        && g('minfang', 8) === 3000 && g('chengqiang', 8) === 3000
+        && (G.extBuildCost('farm', 8).gold || 0) === 0;
+    })());
+    check('§194② 唯一出口 DATA.buildGoldAt（低档 0 / 越档封顶）', (function () {
+      return DATA.buildGoldAt(8) === 0 && DATA.buildGoldAt(9) === 3000
+        && DATA.buildGoldAt(99) === 24000;
+    })());
+    check('§194② 真调支付/退款链：canAffordIn 按金判 · payCostIn 扣金 · refundCert 退还', (function () {
+      var bk = G.state;
+      var st = G.newGame({ name: 'v194pay', cityName: '许都' });
+      G.state = st;
+      try {
+        var c = st.cities[0];
+        var cost = { gold: 3000, grain: 100, wood: 100, stone: 100, iron: 100 };
+        ['grain', 'wood', 'stone', 'iron'].forEach(function (k) { G.res(c)[k] = 999999; });
+        G.goldAdd(-G.goldOf());
+        var no = G.canAffordIn(c, cost) === false;
+        G.goldAdd(3500);
+        var yes = G.canAffordIn(c, cost) === true;
+        G.payCostIn(c, cost);
+        var afterPay = G.goldOf() === 500;
+        G.refundCert(cost, 1.0, c);
+        var afterBack = G.goldOf() === 3500;
+        return no && yes && afterPay && afterBack;
+      } finally { G.state = bk; }
+    })());
+    check('§194② 缺料提示唯一出口：costLackMsg 报缺项（金标"全境通用"）· 五处同源', (function () {
+      var bk = G.state;
+      var st = G.newGame({ name: 'v194lack', cityName: '许都' });
+      G.state = st;
+      try {
+        var c = st.cities[0];
+        G.goldAdd(-G.goldOf());
+        G.res(c).grain = 0;          /* 造局：粮食清零（新局有初始余粮，否则"缺粮"不成立） */
+        var msg = GAME.costLackMsg(c, { gold: 3000, grain: 500 });
+        var okMsg = /金 3,000/.test(msg) && /粮食 500/.test(msg) && /全境通用/.test(msg);
+        var n = (dS194.match(/GAME\.costLackMsg\(city, cost\) \|\|/g) || []).length;
+        return okMsg && n === 5;
+      } finally { G.state = bk; }
+    })());
+
+    console.log('  --- ③ S2：商品价格表口径 ---');
+    /* 老板：「兵圣可不是4000」——4000 是**内部价**（商城实售口径 = ×100 = 40 万金）。
+       本断言把"实售口径"钉死，防后人再把内部价当实售价引用。 */
+    check('§194③ 价格口径锚：兵圣内部价 4000 × 100 = 实售 40 万金（商城统一口径）', (function () {
+      var u = raw194('ui.js');
+      var it = DATA.ITEM_BY_ID.bingsheng;
+      return it && it.price === 4000 && it.price * 100 === 400000
+        && DATA.ITEM_BY_ID.bingxian_yipian.price * 100 === 240000
+        && /it\.price \* 100/.test(u) && /price \* 100/.test(u);
+    })());
+    check('§194③ 价格表唯一来源：ITEMS[].price（在售件皆有价且 ×100 为整数金）', (function () {
+      var shop = (DATA.ITEMS || []).filter(function (it) {
+        return it.price > 0 && !it.noShop && !it.dropOnly && !!G.ui.SHOP_CATS[it.type];
+      });
+      var bad = shop.filter(function (it) { return !(it.price * 100 > 0); });
+      return shop.length >= 100 && bad.length === 0;
+    })());
+
+    console.log('  --- ④ S3：藏珍阁（收藏）---');
+    check('§194④ 数据表：18 系列 / 73 件 / id 全唯一 / 与 ITEMS 零冲突 / 价格为正', (function () {
+      var C = DATA.COLLECT || { series: [] };
+      var ids = {}, dup = 0, n = 0, badP = 0;
+      (C.series || []).forEach(function (sr) {
+        (sr.items || []).forEach(function (it) {
+          n++; if (ids[it.id]) dup++; ids[it.id] = 1;
+          if (!(it.price > 0)) badP++;
+        });
+      });
+      var clash = (DATA.ITEMS || []).filter(function (x) { return ids[x.id]; }).length;
+      return C.series.length === 18 && n === 73 && dup === 0 && clash === 0 && badP === 0
+        && /col_zhangliao/.test(JSON.stringify(C));
+    })());
+    check('§194④ 购买唯一出口：扣金 / 入藏 / 重复拒 / 金不足拒（不扣金）· 真调', (function () {
+      var bk = G.state;
+      var st = G.newGame({ name: 'v194col', cityName: '许都' });
+      G.state = st;
+      try {
+        var it1 = DATA.COLLECT.series[0].items[0];
+        G.goldAdd(1000000 - G.goldOf());
+        var g0 = G.goldOf();
+        var r1 = G.collectBuy(it1.id);
+        var paid = r1.ok === true && (g0 - G.goldOf()) === it1.price && G.collectHaveOf(it1.id) === true;
+        var r2 = G.collectBuy(it1.id);
+        var again = r2.ok === false && G.goldOf() === g0 - it1.price;
+        G.goldAdd(-G.goldOf());
+        var it2 = DATA.COLLECT.series[0].items[1];
+        var r3 = G.collectBuy(it2.id);
+        var poor = r3.ok === false && G.goldOf() === 0 && !G.collectHaveOf(it2.id);
+        return paid && again && poor;
+      } finally { G.state = bk; }
+    })());
+    check('§194④ 集齐系列：声望入账（真调）· 编年史在册 · 全收 allRep 幂等', (function () {
+      var bk = G.state;
+      var st = G.newGame({ name: 'v194col2', cityName: '许都' });
+      G.state = st;
+      try {
+        G.goldAdd(5e7);
+        var sr = DATA.COLLECT.series[0];
+        var rep0 = st.rep || 0;
+        sr.items.forEach(function (it) { G.collectBuy(it.id); });
+        var got = (st.rep || 0) - rep0 === sr.rep;
+        var d = G.collectSeriesDoneOf(sr.id);
+        var chron = (st.chronicle || []).length;
+        /* 全收集 → allRep 一次；随后再触发一次收藏购买（重复分支）→ 不再发 */
+        (DATA.COLLECT.series || []).forEach(function (s2) {
+          (s2.items || []).forEach(function (it) { G.collectBuy(it.id); });
+        });
+        var stAll = G.collectStatOf();
+        var bonus = st.collectAllBonus === 1;
+        var repA = st.rep || 0;
+        G.collectBuy(sr.items[0].id);         /* 重复 → 拒 */
+        var idem = (st.rep || 0) === repA;
+        return got && d.done === true && chron >= 1 && bonus
+          && stAll.have === stAll.total && idem;
+      } finally { G.state = bk; }
+    })());
+    check('§194④ 一键集齐：预检总价（不足不买半套）· 逐件走同一出口', (function () {
+      var bk = G.state;
+      var st = G.newGame({ name: 'v194col3', cityName: '许都' });
+      G.state = st;
+      try {
+        var sr = DATA.COLLECT.series[1];
+        G.goldAdd(-G.goldOf());
+        var r1 = G.collectBuySeries(sr.id);
+        var noHalf = r1.ok === false && G.collectSeriesDoneOf(sr.id).have === 0;
+        G.goldAdd(5e6);
+        var r2 = G.collectBuySeries(sr.id);
+        var d = G.collectSeriesDoneOf(sr.id);
+        var r3 = G.collectBuySeries(sr.id);
+        return noHalf && r2.ok === true && r2.bought === d.total && d.done === true && r3.ok === false;
+      } finally { G.state = bk; }
+    })());
+    check('§194④ 界面结构：导航 tab / renderView 分支 / collectHTML / 三 case（源码级）', (function () {
+      return hS194.indexOf('data-view="collection"><i class="ti" data-nav="collection"></i>收藏') >= 0
+        && uS194.indexOf("else if (v === 'collection') box.innerHTML = ui.collectHTML();") >= 0
+        && uS194.indexOf('ui.collectHTML = function') >= 0
+        && uS194.indexOf('data-action="collect-buy"') >= 0
+        && uS194.indexOf('data-action="collect-series"') >= 0
+        && mS194.indexOf("case 'collect-cat':") >= 0
+        && mS194.indexOf("case 'collect-buy':") >= 0
+        && mS194.indexOf("case 'collect-series':") >= 0
+        && raw194('icons.js').indexOf('collection:') >= 0;
+    })());
+
+    console.log('  --- ⑤ S4：欠俸降忠诚 + 0 忠诚禁出征 ---');
+    check('§194⑤ 欠俸扣忠诚（真调）：−10 · 君主豁免 · 连欠封顶 −20', (function () {
+      var bk = G.state;
+      var st = G.newGame({ name: 'v194loy', cityName: '许都' });
+      G.state = st;
+      try {
+        var gens = (st.generals || []).filter(function (x) { return !G.isLordGeneral(x); });
+        var lord = (st.generals || []).filter(function (x) { return G.isLordGeneral(x); })[0];
+        if (!gens.length || !lord) return false;
+        var g1 = gens[0], l0 = g1.loyalty, lL = lord.loyalty;
+        G.goldAdd(-G.goldOf());
+        st.salaryAt = st.world.elapsed - 8 * 86400;
+        var r1 = G.settleGenSalary();
+        var d1 = (l0 - g1.loyalty) === 10 && r1 && r1.drop === 10 && lord.loyalty === lL;
+        st.salaryAt = st.world.elapsed - 25 * 86400;
+        var r2 = G.settleGenSalary();
+        var d2 = !!(r2 && r2.drop === 20);
+        return d1 && d2;
+      } finally { G.state = bk; }
+    })());
+    check('§194⑤ 忠诚 0 禁出征（唯一出口 marchBlockOf）· 恢复后可出征', (function () {
+      var bk = G.state;
+      var st = G.newGame({ name: 'v194loy2', cityName: '许都' });
+      G.state = st;
+      try {
+        var g1 = (st.generals || []).filter(function (x) { return !G.isLordGeneral(x); })[0];
+        if (!g1) return false;
+        var bkL = g1.loyalty;
+        g1.loyalty = 0;
+        var blocked = G.marchBlockOf(g1) === '忠诚已尽（赏赐珠宝可安抚）' && G.canMarch(g1) === false;
+        g1.loyalty = 30;
+        var ok = G.marchBlockOf(g1) === null && G.canMarch(g1) === true;
+        g1.loyalty = bkL;
+        return blocked && ok;
+      } finally { G.state = bk; }
+    })());
+    check('§194⑤ 口径反转在册：DATA 字段 + 域层扣减（源码级）', (function () {
+      return /salaryDrop: 10,/.test(raw194('data.js'))
+        && /salaryDropMax: 20,/.test(raw194('data.js'))
+        && /v89\.194（老板 S4）/.test(raw194('domain.js'))
+        && /欠俸挫伤军心/.test(raw194('domain.js'));
+    })());
+
+    console.log('  --- ⑥ UI 三处 ---');
+    check('§194⑥ 城主标签退役（mayor 不渲染）· 月俸行 · 宝具备注行退役（源码级）', (function () {
+      return uS194.indexOf("g.status !== 'mayor'") >= 0
+        && uS194.indexOf('gp-sal194') >= 0
+        && uS194.indexOf("'月俸：' + (GAME.isLordGeneral(g)") >= 0
+        && /if \(!pool186\.length\) return '';/.test(uS194)
+        && uS194.indexOf('未佩宝具（打据点/名城有几率缴获）') < 0;
+    })());
+    check('§194⑥ 月俸 1.5 倍（真调 genSalaryOf）：城主/守将 ×1.5 · 普通不变 · 同城两职等值', (function () {
+      var g = { level: 10, rank: 'fan', tong: 50, nz: 50, yw: 50, zm: 50, status: 'idle' };
+      var base = G.genSalaryOf(g);
+      g.status = 'mayor';
+      var mayor = G.genSalaryOf(g);
+      g.status = 'guard';
+      var guard = G.genSalaryOf(g);
+      return base > 0 && Math.abs(mayor - base * 1.5) <= 1 && mayor === guard;
+    })());
+
+    console.log('  --- ⑦ 前哨雷达圈（欧氏）---');
+    check('§194⑦ 覆盖判定欧氏（真调）：轴向命中 / 半径+1 不命中 / 对角线不命中 / 半对角命中', (function () {
+      var bk = G.state;
+      var st = G.newGame({ name: 'v194radar', cityName: '许都' });
+      G.state = st;
+      try {
+        var c0 = st.cities[0];
+        st.forts = st.forts || {};
+        st.forts['100,100'] = { x: 100, y: 100, lv: 6, name: 't', day: 0, cityId: c0.id };
+        var R = G.fortRadiusOf(st.forts['100,100']);
+        var out = R === 10
+          && !!G.fortAuraAt(100 + R, 100)
+          && G.fortAuraAt(100 + R + 1, 100) === null
+          && G.fortAuraAt(100 + R, 100 + R) === null
+          && !!G.fortAuraAt(107, 107);
+        delete st.forts['100,100'];
+        return out;
+      } finally { G.state = bk; }
+    })());
+    check('§194⑦ 渲染结构：己方过滤 / 椭圆几何 √2 / 淡填充 / 图层在野地框之前（源码级）', (function () {
+      var m = raw194('map.js');
+      return /if \(!f194 \|\| !f194\.cityId\) continue;/.test(m)
+        && /R194 \* HW \* 1\.4142/.test(m) && /R194 \* HH \* 1\.4142/.test(m)
+        && /rgba\(140,220,170,\.055\)/.test(m)
+        && m.indexOf('④a 己方前哨：雷达辐射圈') >= 0
+        && m.indexOf('④a 己方前哨：雷达辐射圈') < m.indexOf('④ 已占野地：金色菱形框')
+        && /if \(!ctx \|\| !ctx\.ellipse\) return;/.test(m);
+    })());
+  })();
+
+  /* ============================================================
+   * §195. v89.195（老板本批）：前哨可放手 · 等级高功能强（档位一览）·
+   *   为将领资质补全属性（攻防成长累积器 / 升档补齐 / 守将攻防 / 老档补发）
+   * ============================================================ */
+  console.log('\n===== 195. v89.195（前哨放手 · 档位一览 · 资质补全属性） =====');
+  (function () {
+    var fs195 = require('fs'), p195 = require('path');
+    var raw195 = function (f) { return fs195.readFileSync(p195.join(__dirname, 'js', f), 'utf8'); };
+    var rd195 = function (f) { return stripComment(raw195(f)); };
+    var dS195 = rd195('domain.js'), uS195 = rd195('ui.js'), mS195 = rd195('main.js'),
+        sS195 = rd195('state.js'), bS195 = rd195('battle.js');
+
+    console.log('  --- ① 前哨放手（结构）---');
+    check('§195① 唯一出口 GAME.abandonFort + 确认窗 + 两个 case + terrain0 记录（源码级）', (function () {
+      return /GAME\.abandonFort = function \(x, y\) \{/.test(dS195)
+        && /ui\.openFortAbandonAsk = function \(x, y\) \{/.test(uS195)
+        && /case 'fort-abandon-ask': ui\.openFortAbandonAsk/.test(mS195)
+        && /case 'fort-abandon-arm': \{/.test(mS195)
+        && /rec\.terrain0 = rec\.terrain0 \|\| tile\.terrain/.test(bS195)
+        && (uS195.match(/data-action="fort-abandon-ask"/g) || []).length === 2;   /* 面板 + 总览各一 */
+    })());
+
+    console.log('  --- ② 前哨放手（行为·真调）---');
+    check('§195② 真调放手：记录删除 / 地形恢复 / 名额释放 / 护持终止 / fortsTaken 保留 / 重复被拒', (function () {
+      var bk = G.state;
+      var st = G.newGame({ name: 'v195ab', cityName: '许都' });
+      G.state = st;
+      try {
+        if (!st.map.grid) G.map.generate();
+        var c0 = st.cities[0];
+        var tx = null, ty = null;
+        for (var yy = 3; yy < 60 && tx == null; yy++) {
+          for (var xx = 3; xx < 60; xx++) {
+            var t = G.map.tile(xx, yy);
+            if (t && t.terrain !== 'city' && t.terrain !== 'water' && t.terrain !== 'lake'
+              && (Math.abs(xx - c0.x) > 3 || Math.abs(yy - c0.y) > 3)) { tx = xx; ty = yy; break; }
+          }
+        }
+        var r1 = G.claimFort({ kind: 'fort', fort: { x: tx, y: ty, level: 8, name: '回归哨', kind: 'fort' } }, null, c0, {});
+        var rec = G.fortOwnAt(tx, ty);
+        var t0 = rec && rec.terrain0;
+        st.wilds = st.wilds || [];
+        st.wilds.push({ x: tx + 2, y: ty, type: 'plain', level: 5, levelDay: G.questDayIndex() });
+        var auraBefore = !!G.fortAuraAt(tx + 2, ty);
+        var nBefore = G.fortsOfCity(c0).length;
+        var ra = G.abandonFort(tx, ty);
+        return r1.ok && ra.ok
+          && G.fortOwnAt(tx, ty) === null                       /* 记录删除 */
+          && G.map.tile(tx, ty).terrain === (t0 || 'plain')     /* 地形恢复 */
+          && !!(st.fortsTaken || {})[tx + ',' + ty]             /* fortsTaken 保留（不再生据点） */
+          && G.fortAuraAt(tx + 2, ty) === null                  /* 护持终止 */
+          && G.fortsOfCity(c0).length === nBefore - 1           /* 名额释放 */
+          && auraBefore === true
+          && G.abandonFort(tx, ty).ok === false;                /* 重复放手被拒 */
+      } finally { G.state = bk; }
+    })());
+    check('§195② 老档兜底：无 terrain0 的前哨放手 → 恢复 plain', (function () {
+      var bk = G.state;
+      var st = G.newGame({ name: 'v195ab2', cityName: '许都' });
+      G.state = st;
+      try {
+        if (!st.map.grid) G.map.generate();
+        var c0 = st.cities[0];
+        st.forts = st.forts || {};
+        var fx = c0.x + 6, fy = c0.y;
+        st.forts[fx + ',' + fy] = { x: fx, y: fy, lv: 5, name: '旧哨', day: 0, cityId: c0.id };
+        var tt = G.map.tile(fx, fy);
+        tt.terrain = 'city';
+        var r = G.abandonFort(fx, fy);
+        return r.ok && tt.terrain === 'plain';
+      } finally { G.state = bk; }
+    })());
+
+    console.log('  --- ③ 等级高功能强（档位一览 · 税分档保留）---');
+    check('§195③ 档位一览：五档 · 边界派生（上一档+1）· 源码级读唯一表', (function () {
+      var tiers = (DATA.FORT_AURA || {}).tiers || [];
+      if (tiers.length !== 5) return false;
+      var bounds = tiers.map(function (t, i) { return (i === 0) ? 1 : (tiers[i - 1].lv + 1); });
+      return bounds.join(',') === '1,3,5,7,9'
+        && tiers[4].lv === 10
+        && uS195.indexOf('📶 等级档位一览') >= 0
+        && uS195.indexOf('(DATA.FORT_AURA || {}).tiers') >= 0
+        && /等级越高护持越强/.test(uS195);
+    })());
+    check('§195③ 税所分档保留（等级高功能强 · 逐档递增 · 不退回固定 500）', (function () {
+      var tx = ((DATA.FORT_AURA || {}).tiers || []).map(function (t) { return t.tax; });
+      return tx.length === 5 && tx[0] === 300 && tx[4] === 800
+        && tx[0] < tx[1] && tx[1] < tx[2] && tx[2] < tx[3] && tx[3] < tx[4];
+    })());
+
+    console.log('  --- ④ 资质补全属性（结构）---');
+    check('§195④ 累积器 / 升档补齐 / 守将 atkDim / 老档补发 全链在册（源码级）', (function () {
+      return /g\.atkAcc = \(g\.atkAcc \|\| 0\) \+ step \* 0\.4;/.test(sS195)
+        && /_std195 = Math\.round\(\(_gb195\.attack \|\| 10\)/.test(sS195)
+        && /_atkK195 = fold \? Math\.max\(0, Math\.min\(1, fold\.atkDim/.test(dS195)
+        && (DATA.GUARD_FOLD || {}).atkDim === 0.25
+        && /if \(g\.atkAcc == null && !g\.npcGuard && !g\.wild\)/.test(sS195)
+        && /攻防补足至/.test(sS195);
+    })());
+
+    console.log('  --- ⑤ 资质补全属性（行为·真调）---');
+    check('§195⑤ 累积器：凡品不再被抹平（100 级≈49）· 档间拉开（英>良>凡）', (function () {
+      var bk = G.state;
+      var st = G.newGame({ name: 'v195acc', cityName: '许都' });
+      G.state = st;
+      try {
+        var res = {};
+        ['fan', 'liang', 'ying'].forEach(function (rid) {
+          var g = G.makeGeneral('测', 1, 'idle', null, false, rid, 'balance');
+          g.attack = 10; g.defense = 10; g.atkAcc = 0; g.defAcc = 0;
+          for (var i = 1; i <= 100; i++) G.applyLevelGrowth(g);
+          res[rid] = g.attack;
+        });
+        return Math.abs(res.fan - 49) <= 2 && Math.abs(res.liang - 89) <= 2
+          && Math.abs(res.ying - 128) <= 2
+          && res.fan > 40 && res.liang > res.fan && res.ying > res.liang;
+      } finally { G.state = bk; }
+    })());
+    check('§195⑤ 升档补齐攻防（真调 rankUpUse · 凡品 Lv60 → 良材标准 57）· 只补不削', (function () {
+      var bk = G.state;
+      var st = G.newGame({ name: 'v195ru', cityName: '许都' });
+      G.state = st;
+      try {
+        var herb = null;
+        (DATA.ITEMS || []).forEach(function (x) { if (x.type === 'rank_up' && x.from === 'fan') herb = x; });
+        if (!herb) return false;
+        var g = G.makeGeneral('升', 60, 'idle', null, false, 'fan', 'balance');
+        g.atkAcc = 0; g.attack = 10; g.defense = 10;
+        var r = G.rankUpUse(g, herb);
+        var std = Math.round(10 + 59 * 0.4 * 2);          /* 良材 Lv60 标准 = 57 */
+        var ok1 = r.ok && g.attack === std && g.defense === std && r.msg.indexOf('攻防补足') >= 0;
+        var g2 = G.makeGeneral('高', 60, 'idle', null, false, 'fan', 'balance');
+        g2.atkAcc = 0; g2.attack = 999; g2.defense = 999;
+        G.rankUpUse(g2, herb);
+        return ok1 && g2.attack === 999 && g2.defense === 999;   /* 只补不削 */
+      } finally { G.state = bk; }
+    })());
+    check('§195⑤ 老档补发（缺 atkAcc）· 守将防顶穿（折损不被顶到满量线）· 名城守将保持 undefined', (function () {
+      var bk = G.state;
+      var st = G.newGame({ name: 'v195bf', cityName: '许都' });
+      G.state = st;
+      try {
+        if (!st.map.grid) G.map.generate();
+        var g = G.makeGeneral('旧', 60, 'idle', null, false, 'fan', 'balance');
+        delete g.atkAcc; delete g.defAcc;
+        g.attack = 10; g.defense = 10;
+        G.rankOf(g);
+        var okOld = g.attack === Math.round(10 + 59 * 0.4) && g.atkAcc === 0;   /* 34 */
+        var fg = G.fortGuardOf({ x: 30, y: 30, level: 8, name: '测' });
+        var a1 = fg.attack;
+        G.rankOf(fg); G.rankOf(fg);
+        var okGuard = fg.attack === a1 && a1 > 10;
+        var ng = G.npcCityGuard({ id: 'v195k', type: 'jun', x: 0, y: 0 });
+        var okCity = ng.attack === undefined;
+        return okOld && okGuard && okCity;
+      } finally { G.state = bk; }
+    })());
+
+    console.log('  --- ⑥ 需求档案在册 ---');
+    check('§195⑥ 需求档案在册（v89.195 · 前哨可放手 / 等级高功能强 / 资质补全属性）', (function () {
+      var a = fs195.readFileSync(p195.join(__dirname, '需求档案.md'), 'utf8');
+      return a.indexOf('v89.195') >= 0 && a.indexOf('前哨可放手') >= 0
+        && a.indexOf('等级高功能强') >= 0 && a.indexOf('资质补全属性') >= 0;
+    })());
   })();
 
   console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');

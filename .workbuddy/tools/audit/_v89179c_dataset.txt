@@ -1,0 +1,66 @@
+=== v89.179c · el.dataset.X 读取/发射 一致性审计 ===
+读取端 js/main.js / js/ui.js（去注释后）· 发射端 js/ui.js / js/main.js / index.html + 运行时 dataset.X= 赋值
+读取到的 dataset 键 58 个 · 静态发射 76 个 · 运行时发射 3 个
+
+键               | 归一名             | 读取点
+----------------|------------------|--------
+act             | act             | js/main.js:382   ✅ 模板发射
+after           | after           | js/main.js:941   ✅ 模板发射
+build           | build           | js/main.js:646   ✅ 模板发射
+c               | c               | js/main.js:620   ✅ 模板发射
+cat             | cat             | js/main.js:603 js/main.js:613   ✅ 模板发射
+city            | city            | js/main.js:244 js/main.js:285 js/main.js:759 …(+13)   ✅ 模板发射
+crop            | crop            | js/main.js:158   ✅ 模板发射
+d               | d               | js/main.js:974   ✅ 模板发射
+dx              | dx              | js/main.js:510   ✅ 模板发射
+dy              | dy              | js/main.js:510   ✅ 模板发射
+eid             | eid             | js/main.js:717 js/main.js:721   ✅ 模板发射
+f               | f               | js/main.js:915 js/main.js:924 js/main.js:925   ✅ 模板发射
+from            | from            | js/main.js:230 js/main.js:639   ✅ 模板发射
+gen             | gen             | js/main.js:308 js/main.js:312 js/main.js:314 …(+26)   ✅ 模板发射
+gender          | gender          | js/main.js:19 js/ui.js:820   ✅ 模板发射
+grp             | grp             | js/main.js:822   ✅ 模板发射
+healHost        | heal-host       | js/main.js:1937   ✅ 模板发射
+help            | help            | js/main.js:178   ✅ 模板发射
+i               | i               | js/main.js:384 js/main.js:389 js/main.js:1079   ✅ 模板发射
+id              | id              | js/main.js:42 js/main.js:53 js/main.js:103 …(+4)   ✅ 模板发射
+idx             | idx             | js/main.js:156 js/main.js:158 js/main.js:164 …(+28)   ✅ 模板发射
+item            | item            | js/main.js:320 js/main.js:323 js/main.js:325 …(+18)   ✅ 模板发射
+k               | k               | js/main.js:535 js/main.js:881 js/main.js:953 …(+1)   ✅ 模板发射
+key             | key             | js/main.js:28 js/main.js:30 js/main.js:381 …(+11)   ✅ 模板发射
+kind            | kind            | js/main.js:187 js/main.js:214 js/main.js:347 …(+7)   ✅ 模板发射
+lblmode         | lblmode         | js/ui.js:5477   ✅ 模板发射
+mat             | mat             | js/main.js:400   ✅ 模板发射
+mode            | mode            | js/main.js:325 js/main.js:1022 js/main.js:1023   ✅ 模板发射
+msg             | msg             | js/main.js:968   ✅ 模板发射
+n               | n               | js/main.js:28 js/main.js:30 js/main.js:244 …(+2)   ✅ 模板发射
+need            | need            | js/main.js:602   ✅ 模板发射
+on              | on              | js/ui.js:16037 js/ui.js:16037 js/ui.js:16042   ✅ 运行时赋值
+opt             | opt             | js/main.js:887   ✅ 模板发射
+page            | page            | js/main.js:675 js/main.js:675   ✅ 模板发射
+pct             | pct             | js/main.js:671   ✅ 模板发射
+q               | q               | js/main.js:495 js/main.js:497 js/main.js:498 …(+2)   ✅ 模板发射
+qtyFrom         | qty-from        | js/main.js:318 js/main.js:318 js/main.js:350 …(+3)   ✅ 模板发射
+refresh         | refresh         | js/ui.js:241   ✅ 模板发射
+res             | res             | js/main.js:585 js/main.js:586 js/main.js:591   ✅ 模板发射
+rid             | rid             | js/main.js:1110 js/main.js:1116 js/main.js:1118 …(+1)   ✅ 模板发射
+s               | s               | js/main.js:61 js/main.js:534 js/main.js:1125   ✅ 模板发射
+scope           | scope           | js/main.js:603 js/main.js:613   ✅ 模板发射
+set             | set             | js/main.js:379   ✅ 模板发射
+sid             | sid             | js/main.js:391 js/main.js:393 js/main.js:394   ✅ 模板发射
+slot            | slot            | js/main.js:697 js/main.js:699 js/main.js:731   ✅ 模板发射
+stat            | stat            | js/main.js:314 js/main.js:317 js/main.js:320   ✅ 模板发射
+store           | store           | js/ui.js:240 js/ui.js:240   ✅ 模板发射
+t               | t               | js/main.js:1125 js/main.js:1128   ✅ 模板发射
+target          | target          | js/main.js:573 js/main.js:577 js/ui.js:236 …(+1)   ✅ 模板发射
+tech            | tech            | js/main.js:734   ✅ 模板发射
+to              | to              | js/main.js:231 js/main.js:639   ✅ 模板发射
+troop           | troop           | js/main.js:61 js/main.js:65 js/main.js:656 …(+12)   ✅ 模板发射
+tside           | tside           | js/main.js:913 js/main.js:930   ✅ 模板发射
+v               | v               | js/main.js:121 js/main.js:126 js/main.js:470 …(+31)   ✅ 模板发射
+view            | view            | js/main.js:27 js/main.js:566 js/main.js:966 …(+2)   ✅ 模板发射
+why             | why             | js/main.js:672   ✅ 模板发射
+x               | x               | js/main.js:375 js/main.js:382 js/main.js:397 …(+10)   ✅ 模板发射
+y               | y               | js/main.js:375 js/main.js:382 js/main.js:397 …(+10)   ✅ 模板发射
+
+✅ 无缺口 —— 每个 dataset 读取都有对应的 data-* 模板发射

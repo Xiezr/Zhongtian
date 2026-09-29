@@ -1,0 +1,48 @@
+=== 符号在场性（10 处编辑点全部存在且可调用）===
+  ✅ battle.survivedArmyOf 存在
+  ✅ battle.underdogOf 存在
+  ✅ battle.withBoost 存在
+  ✅ state.tickOnce 存在
+  ✅ state.simulateSeconds 存在
+  ✅ state.prodBreakdown 存在
+  ✅ state.goldAdd 存在
+  ✅ queueRushCost 存在
+  ✅ settleGenSalary 存在
+
+=== P0-2 斥候(nocombat) 整队返回，不被战斗折算 ===
+  ✅ chihou 标记为 nocombat
+  ✅ 攻方获胜（对照）  [winner=atk]
+  ✅ 斥候整队返回（不被折算）  [surv.chihou=50]
+  ✅ 参战兵按比例折算  [surv.changqiang=5000]
+  ✅ 参战兵折算口径=5000（分母不含斥候）  [surv=5000 期望≈5000]
+
+=== P0-1 爵位俸禄逐秒入账（tickOnce）+ P2-7 整段结算 ===
+  ✅ 找到带俸禄的爵位  [rank[1] salary=1000]
+   金增(有俸禄)=39600.00  金增(无俸禄)=0.00  理论俸禄=36000.00 (timeScale=120, GATE.salary=0.3)
+  ✅ 有俸禄档金明显增长  [Δ=39600.00]
+  ✅ 俸禄贡献隔离出（有俸禄 ≫ 无俸禄）  [ΔA=39600.00 ΔB=0.00]
+  ✅ 俸禄量级符合公式（±50%）  [实测=39600.00 理论=36000.00]
+
+=== P2-7 simulateBulk 整段推进 + 调起将领月俸结算（不崩、elapsed 前进）===
+  ✅ simulateBulk 运行不抛
+  ✅ world.elapsed 前进  [elapsed 0→72000]
+
+=== P2-8 underdogOf 攻/守侧正确路由（defBonusEff 只加成我方）===
+  ✅ 守方(以弱胜强+守城加成)判为以弱胜强  [underdogOf(def)=true]
+  ✅ 攻方(已败)不判以弱胜强  [underdogOf(atk)=false]
+  ✅ 攻方大优胜不判以弱胜强  [underdogOf(atk)=false]
+
+=== P1-4 prodBreakdown 本城加成行出现 ===
+  ✅ food 明细含「本城加成」行  [行数=3]
+
+=== P1-5 金源俸禄行仅全境视角列出 ===
+  ✅ 全境视角列出俸禄行  [行数=4]
+  ✅ 按城视角不列俸禄行  [行数=3]
+
+=== P2-6 goldAdd 直接写字段（无 round）===
+  ✅ goldAdd 保留小数零头  [s.gold=1.7347]
+
+=== P1-3 withBoost 包裹的战术环境可构造可推进 ===
+  ✅ 带 boost 战术环境构造+推进不抛  [steps=50]
+
+━━ 修复行为取证：28 通过 / 0 失败 ━━

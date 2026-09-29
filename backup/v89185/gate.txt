@@ -1,0 +1,10 @@
+━━ 三件套门禁 ━━ --full 强制三件套 + 数据表卫生全跑
+   改动 271 个文件
+
+  ✅ audit.js 死函数/孤儿/重复/零引用 全 0
+  ✅ smoke-test.js 3349 通过 / 0 失败
+  ✅ e2e-test.js 1170 通过 / 0 失败
+  ✅ .workbuddy/tools/audit/audit_v89134_tables.js 四查全过（跨文件写/重复定义/孤儿/悬空）
+  ✅ .workbuddy/tools/audit/audit_v89179c_dataset_refs.js 58 通过 / 0 失败
+
+✓ 门禁通过。
