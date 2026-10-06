@@ -129,14 +129,15 @@ function chk(name, ok, extra) {
     G.ui.openGenEquip(g.id);
     var pane = document.querySelector('.gen-pane');
     var txt = pane ? pane.textContent : '';
-    var btn = document.querySelector('.gp-attach186 [data-action="attach-pick"]');
-    return { hasLine: txt.indexOf('宝具') >= 0, hasBtn: !!btn, tong0: tong0,
-      line: (txt.match(/🔮[^<]{0,60}/) || [''])[0] };
+    var btn = document.querySelector('.gen-pane [data-action="attach-pick"][data-slot="bao"]');
+    return { hasBtn: !!btn, noLine: document.querySelectorAll('.gp-attach186').length === 0, tong0: tong0 };
   });
-  chk('④a 将领面板挂件行：含「🔮 宝具」+ 佩上按钮', w4.hasLine && w4.hasBtn, (w4.line || '').slice(0, 60));
+  /* v89.205（老板）：「将领名称信息下的这行去掉，只保留装备栏的即可：🔮 宝具」——
+     信息区挂件行整行退役，入口/回显/卸下全走装备栏「🔮 宝具」→ 选择窗。本条随口径升级。 */
+  chk('④a（v89.205）将领面板：信息区无挂件行 · 装备栏「🔮 宝具」入口在', w4.hasBtn && w4.noLine, JSON.stringify(w4));
   /* 真点 → 弹窗 → 真点「佩上」 */
   await p.evaluate(function () {
-    var btn = document.querySelector('.gp-attach186 [data-action="attach-pick"]');
+    var btn = document.querySelector('.gen-pane [data-action="attach-pick"][data-slot="bao"]');
     if (btn) btn.click();
   });
   await p.waitForTimeout(350);
@@ -159,24 +160,29 @@ function chk(name, ok, extra) {
     'tong ' + w4.tong0 + '→' + w4c.tong + ' · items=' + w4c.items);
   await p.waitForTimeout(300);
   var w4d = await p.evaluate(function () {
-    var pane = document.querySelector('.gen-pane');
-    var txt = pane ? pane.textContent : '';
-    return { line: (txt.match(/🔮[^<]{0,90}/) || [''])[0],
-      hasOff: !!document.querySelector('.gp-attach186 [data-action="attach-off"]'),
-      hasEff: txt.indexOf('统率 +6') >= 0 };
+    /* v89.205：面板回显职责移交选择窗 —— 再开一看（面板无挂件行 + 窗内「当前：」回显 + 卸下） */
+    var baoBtn = document.querySelector('.gen-pane [data-action="attach-pick"][data-slot="bao"]');
+    if (baoBtn) baoBtn.click();
+    var mr = document.querySelector('#modal-root');
+    var mtxt = mr ? mr.textContent : '';
+    return { noLine: document.querySelectorAll('.gp-attach186').length === 0, baoBtn: !!baoBtn,
+      hasCur: mtxt.indexOf('当前：') >= 0 && mtxt.indexOf('玉犀符') >= 0,
+      hasEff: mtxt.indexOf('统率 +6') >= 0,
+      hasOff: !!document.querySelector('#modal-root [data-action="attach-off"]') };
   });
-  chk('④d 面板回显：显示宝具名 + 效果摘要（统率 +6）+ 卸下按钮', w4d.hasOff && w4d.hasEff,
-    (w4d.line || '').slice(0, 80));
+  chk('④d（v89.205）面板无挂件行 · 选择窗回显「当前：玉犀符（统率 +6）」+ 卸下按钮',
+    w4d.noLine && w4d.baoBtn && w4d.hasCur && w4d.hasEff && w4d.hasOff, JSON.stringify(w4d));
   await p.screenshot({ path: OUT + 'v89186-bao.png' });
 
-  /* ④e 卸下真调 */
+  /* ④e 卸下真调（v89.205：卸下入口在选择窗「当前件」行） */
   var w4e = await p.evaluate(function () {
-    var btn = document.querySelector('.gp-attach186 [data-action="attach-off"]');
+    var btn = document.querySelector('#modal-root [data-action="attach-off"]');
     if (btn) btn.click();
     var G = window.GAME, g = G.state.generals[0];
     return { off: !(g.attach && g.attach.bao), items: G.state.items['bao_yuxi'] || 0 };
   });
   chk('④e 卸下真调：g.attach 清空 · 库存 1→2（守恒）', w4e.off && w4e.items === 2, 'items=' + w4e.items);
+  await p.evaluate(function () { window.GAME.ui.closeAllModals(); });
 
   /* ⑤ 据点面板新文案 */
   var w5 = await p.evaluate(function () {
