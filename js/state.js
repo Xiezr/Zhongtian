@@ -226,7 +226,7 @@
    *   各城 `res.gold` 变成**同一口池子的访问器**（读/写都落在这一个数上）。
    * ------------------------------------------------------------
    * 为什么用访问器、而不是逐处改调用点：全仓 ~100 处读写 `res.gold`
-   *   （市场买卖 / 月俸 / 缴获 / 治疗 / 提速 / 神器 / 爵位…）。逐处改必漏，
+   *   （交易站买卖 / 月俸 / 缴获 / 治疗 / 提速 / 神器 / 威望…）。逐处改必漏，
    *   漏掉的那一处就是"某条路仍按城扣款"的静默错账（本项目最经典的失效模式）。
    *   物理上只有一份数据，getter 就是唯一出口。
    * 口径：
@@ -400,11 +400,11 @@
     return city;
   };
 
-  /* ---------------- 新建玩家城（城内 8×6=48 格，官府居中4格，余44格可建）---------------
+  /* ---------------- 新建玩家城（城内 8×6=48 格，政务厅居中4格，余44格可建）---------------
      v40（需求 2）：老板要「8*6，6 行 8 列」并「尽量填充界面」——
      格子数据由 col/row 驱动（isoMetrics 早就是参数化的），
-     所以这里改两个数、官府落位跟着移到新坐标系即可。 */
-  /* 官府 2×2 的落位（唯一出口 · v68 老板）：
+     所以这里改两个数、政务厅落位跟着移到新坐标系即可。 */
+  /* 政务厅 2×2 的落位（唯一出口 · v68 老板）：
      城内棋盘**正中央** —— 8×6 时占「第三行 4、5 与第四行 4、5」。
      makeCity / cityPlanOf（系统城）/ 旧档迁移三处都走它，别处不许再写死格号。 */
   GAME.govCellsOf = function (col, row) {
@@ -438,24 +438,24 @@
       army: {},
       ruler: true,
       /* 'self' = 自建城/首城（无岁贡，靠外城地块与税收）；
-         capital/zhou/jun/county = 攻占的系统名城（有州特产岁贡，见 DATA.CITY_YIELD） */
+         capital/zhou/jun/county = 攻占的系统名城（有辖区特产岁贡，见 DATA.CITY_YIELD） */
       type: opts.type || 'self',
-      state: opts.state || null,                     // 所属州（决定特产）
+      state: opts.state || null,                     // 所属区（决定特产）
       extGrid: GAME.makeExtGrid(opts.initialExt),   // 外城地块按城池独立（v14）
     };
     var total = city.col * city.row;
     for (var i = 0; i < total; i++) city.cells.push({ build: null, pending: null });
-    /* v89.128（老板）：「城墙以**环城一圈的城墙结构**作为一个建筑（地位与城内建筑同），
-       而不是占据城内一个地块」—— 城墙走**环城槽** `city.wall`（与 cell 同形，
+    /* v89.128（老板）：「围墙以**环城一圈的围墙结构**作为一个建筑（地位与城内建筑同），
+       而不是占据城内一个地块」—— 围墙走**环城槽** `city.wall`（与 cell 同形，
        不占 48 格中的任何一格；建造/升级/拆除统一走 GAME.cellOf）。 */
     city.wall = { build: null, pending: null };
-    /* 官府占 4 格：v68（老板）移回**正中央** —— 8×6 时占「第三行 4、5 与第四行 4、5」。
+    /* 政务厅占 4 格：v68（老板）移回**正中央** —— 8×6 时占「第三行 4、5 与第四行 4、5」。
        落位公式的唯一出口是 GAME.govCellsOf（makeCity / cityPlanOf / 旧档迁移共用）。 */
     var gfIdx = GAME.govCellsOf(city.col, city.row);
     gfIdx.forEach(function (g) { city.cells[g].build = { id: 'guanfu', lvl: 1 }; city.cells[g].official = true; });
-    /* 初始民房2座（其余格子玩家自建） */
+    /* 初始居所2座（其余格子玩家自建） */
     DATA.INITIAL_BUILDINGS.forEach(function (bid, idx) {
-      var slots = [0, 7, 1, 6, 40]; // 初始民房放四角（v40：按 8 列重排）
+      var slots = [0, 7, 1, 6, 40]; // 初始居所放四角（v40：按 8 列重排）
       if (bid === 'minfang' && idx < 2) {
         var si = slots[idx];
         if (!city.cells[si].build) city.cells[si].build = { id: bid, lvl: 1 };
@@ -464,7 +464,7 @@
     return city;
   };
 
-  /* 外城地块：12 块（官府 Lv1 时）。
+  /* 外城地块：12 块（政务厅 Lv1 时）。
      `initial` 三态：true = 首城模板（2田1木1石1铁）· 'new' = 自建城开发模板 ·
      其余（false/undefined）= 全空（攻占的名城按自己的 extGrid 走，见 battle.js）。
      v89.93（整改 E12）：改前只有首城有模板，自建城是"裸城"——
@@ -491,9 +491,9 @@
     var mapSeed = (rulerOpts && rulerOpts.mapSeed != null)
       ? ((Math.round(Number(rulerOpts.mapSeed)) % 100000) || 1)
       : (U.now() % 100000);
-    /* v70（老板需求 5）：出生坐标按**所选州**落位（州治近旁的平原空地），
-       司隶以洛阳为锚；落不到才回退旧口径的固定点。出生城写明所属州 ——
-       展示、岁贡、州特产都读同一份归属。 */
+    /* v70（老板需求 5）：出生坐标按**所选区**落位（首府近旁的平原空地），
+       烬环以灰烬城为锚；落不到才回退旧口径的固定点。出生城写明所属区 ——
+       展示、岁贡、辖区特产都读同一份归属。 */
     var startPos = GAME.pickStartPos(rulerOpts.region, mapSeed);
     var city = GAME.makeCity({
       id: 'p1',
@@ -518,7 +518,7 @@
         name: rulerOpts.name || '无名君主',
         avatar: rulerOpts.avatar || '🧔',
         gender: rulerOpts.gender || 'male',
-        /* v70：记**解析后**的州（'random' 也记成抽到的那一州）——
+        /* v70：记**解析后的区**（'random' 也记成抽到的那一区）——
            创建界面的选择因此可复盘，出生城的归属与它一致 */
         region: startPos.state || rulerOpts.region || 'random',
         /* v45（需求 2）：主角头像改为**从 20 张头像池里随机取一张**。
@@ -538,13 +538,13 @@
       /* v89.87（老板需求 4）：待指挥战斗（观战挂起）—— 纯数据、随存档往返；
          运行时会话挂在内存 GAME._bsess（read 档时由 restoreBattles 重放重建） */
       battles: [],
-      /* v70：出生点随"所选州"走 —— 地图生成时的"出生圈强制平原"与据点安全半径
+      /* v70：出生点随"所选区"走 —— 地图生成时的"出生圈强制平原"与据点安全半径
          都读 `map.startPos`（见 map.js），旧档缺字段则回退 DATA.START_POS。 */
       map: { seed: mapSeed, cities: GAME.buildNpcCities(mapSeed), wilds: null,
         startPos: { x: startPos.x, y: startPos.y } },
       rep: 0,
       rank: 0,
-      mainCityId: null,          // v79：主城（官府里设；驻跸加成 + 【主城】标识）
+      mainCityId: null,          // v79：主城（政务厅里设；驻跸加成 + 【主城】标识）
       artifacts: { pts: 0 },     // v79：神器供奉值（时长自动 + 活动加速）
       /* v89.177：初值 = 100 − 默认税率 50%×100 = 50（公式口径；首 tick 起由 applyHearts 持续维护） */
       hearts: U.clamp(100 - (DATA.DEFAULT_SETTINGS.tax || 0) * 100, 0, 100),
@@ -568,13 +568,12 @@
       /* v63（老板）：「野外城每天只能被掠夺一次」—— 与 fortsRazed 同一套记法
          （键 = 'x,y'，值 = 游戏日索引），过一天自动失效，不需清理任务。 */
       fortRaids: {},                            // 今日已掠夺的野外城池 { 'x,y': dayIndex }
-      yieldDay: null,                           // 上次州郡岁贡结算的现实日（null = 尚未结算过）
+      yieldDay: null,                           // 上次辖区岁贡结算的现实日（null = 尚未结算过）
       gathers: [],                              // 野地采集队（v15）：{ id,x,y,type,level,genId,army,troops,cityId,elapsed }
-      /* 叙事层（story.js）：世界历法 / 史书纪事 / 年号纪元 */
+      /* 叙事层（story.js）：世界历法 / 年号纪元
+         ⛔ v89.218：chronicle / chronicleDone / eraHistory 三字段随史册退役
+         （老档残留不再读取，随下次存档自然消失）。 */
       world: null,                              // 由 GAME.story.init() 填充
-      chronicle: [],                            // 史册条目
-      chronicleDone: {},                        // 已记录过的里程碑 id
-      eraHistory: [],                           // 已完成的时代之志
       quests: { done: {}, stash: {}, pool: [], poolDay: null, log: [] },
       /* 累计统计（任务指标来源，跨存档保留） */
       stats: { buildDone: 0, techDone: 0, trained: 0, forgedCount: 0, recruited: 0,
@@ -622,7 +621,10 @@
       var m = /^g(\d+)$/.exec(id || '') || /^cd(\d+)$/.exec(id || '');
       if (m) max = Math.max(max, Number(m[1]));
     }
-    ((s && s.generals) || []).forEach(function (g) { scan(g.id); });
+    /* v89.209（v89.208 评估缺陷链 ③）：`|| []` 只兜 null/undefined，兜不住"非数组真值"
+       （generals:'oops' → .forEach is not a function）——一律 Array.isArray 归位；
+       元素防 null（scan 会取 g.id，null 元素同样炸）。 */
+    (Array.isArray(s && s.generals) ? s.generals : []).forEach(function (g) { if (g) scan(g.id); });
     /* v89.108：候选池改为**按城独立**（s.inn.byCity[cityId].candidates）——
        两种结构都要扫：新结构逐城，老档（全局池）也要认。 */
     var _pool108 = (s && s.inn && s.inn.byCity) || {};
@@ -638,7 +640,8 @@
   /* 取下一个不与现有将领冲突的 id */
   GAME.nextGenId = function () {
     var s = GAME.state, used = {};
-    ((s && s.generals) || []).forEach(function (g) { if (g && g.id) used[g.id] = true; });
+    /* v89.209（v89.208 评估缺陷链 ③）：同 syncSeq —— Array.isArray 归位（保发号器不崩）。 */
+    (Array.isArray(s && s.generals) ? s.generals : []).forEach(function (g) { if (g && g.id) used[g.id] = true; });
     var id, guard = 0;
     do { id = 'g' + (GAME._genSeq = (GAME._genSeq || 0) + 1); } while (used[id] && ++guard < 10000);
     return id;
@@ -692,9 +695,9 @@
    *   · 君主**专属功能**的扩张点是 `DATA.LORD_TRAITS`（档案里渲染成「君主特权」）。
    * ============================================================ */
   GAME.isLordGeneral = function (g) { return !!(g && g.isLord); };
-  /* v89（老板：「只有君主将有修炼功能，以及相应装备」）——
-     修炼资格**唯一闸门**：灵气装备 / 蕴养 / 江湖游历全链只认君主一人
-     （对应功法文档 0.1「主角单修」）。全站判断一律走这里，日后要放开只改这一处。 */
+  /* v89（老板：「只有君主将有改造功能，以及相应装备」）——
+     改造资格**唯一闸门**：辐能装备 / 调校 / 荒野行动全链只认君主一人
+     （对应战技文档 0.1「主角单修」）。全站判断一律走这里，日后要放开只改这一处。 */
   GAME.canCultivate = function (g) { return GAME.isLordGeneral(g); };
   /* 当前君主将领（无则 null —— 所有调用点都必须能接受 null） */
   GAME.lordGeneralOf = function () {
@@ -709,24 +712,24 @@
   /* ============================================================
    * 出生坐标（v70 · 老板需求 5）—— 唯一出口
    * ------------------------------------------------------------
-   * 老板：「城池归属应归属到州城所辖范围内，目前几个选项不太 OK」
-   * 口径：选了某个州 → 出生城落在**该州州治近旁**的确定性环带（半径 3~8 格），
-   *   并要求 `GAME.stateOfCity(落点)` 就是该州 —— "所辖范围"与就近认领是**同一判据**，
+   * 老板：「城池归属应归属到首府所辖范围内，目前几个选项不太 OK」
+   * 口径：选了某个区 → 出生城落在**该区首府近旁**的确定性环带（半径 3~8 格），
+   *   并要求 `GAME.stateOfCity(落点)` 就是该区 —— "所辖范围"与就近认领是**同一判据**，
    *   不另画一套边界（画了就是第二个出口）。
-   *   司隶无州城 → 锚点取都城洛阳（与 stateOfCity 的口径一致）。
-   * 约束：不压任何系统城（±2 缓冲）、不越界；由 (州名, 种子) 确定性生成 —— 同种子同落点。
+   *   烬环无首府 → 锚点取旧都灰烬城（与 stateOfCity 的口径一致）。
+   * 约束：不压任何系统城（±2 缓冲）、不越界；由 (区名, 种子) 确定性生成 —— 同种子同落点。
    * ============================================================ */
   GAME.pickStartPos = function (stateName, seed) {
     var states = DATA.START_STATES || [];
     var rand = U.rng((Math.round(seed) || 1) >>> 0);
     var name = String(stateName == null ? '' : stateName);
     if (name !== 'random' && states.indexOf(name) < 0) name = 'random';
-    if (name === 'random') name = states[Math.floor(rand() * states.length)] || '司隶';
+    if (name === 'random') name = states[Math.floor(rand() * states.length)] || '烬环';
     var anchor = null;
     (DATA.NPC_CITIES || []).forEach(function (c) {
       if (anchor) return;
       if (c.type === 'zhou' && c.state === name) anchor = c;
-      if (!anchor && name === '司隶' && c.type === 'capital') anchor = c;
+      if (!anchor && name === '烬环' && c.type === 'capital') anchor = c;
     });
     if (!anchor) anchor = { x: DATA.START_POS.x, y: DATA.START_POS.y };
     var free = function (x, y) {
@@ -844,7 +847,7 @@
     }
     var sum = (g.tong || 0) + (g.yw || 0) + (g.zm || 0) + (g.nz || 0);
     var rk = g.hero ? GAME.heroRank(sum) : (function () {
-      /* 客栈旧档：按四维均值反推最接近的资质 */
+      /* 酒馆旧档：按四维均值反推最接近的资质 */
       var avg = sum / 4, best = DATA.GEN_RANKS[0];
       DATA.GEN_RANKS.forEach(function (r) {
         if (avg >= (r.base[0] + r.base[1]) / 2 - 4) best = r;
@@ -870,9 +873,9 @@
     return rk;
   };
 
-  /* 资质灵草（v73 · 种田秘境产物）：把将领的资质**升一档**。
-     灵草与档位**一一对应**（凡→良 蕴灵草 / 良→英 洗髓芝 / 英→名 化龙参 /
-     名→天 天授果，见 DATA.ITEMS 的 rank_up 型）。只改 rank 字段 ——
+  /* 资质药草（v73 · 基因实验室产物）：把将领的资质**升一档**。
+     药草与档位**一一对应**（凡→良 活性血清 / 良→英 强化血清 / 英→名 跃迁血清 /
+     名→天 天选血清，见 DATA.ITEMS 的 rank_up 型）。只改 rank 字段 ——
      等级上限与每级成长都走 rankOf，改完自动生效（不需要动等级）。 */
   GAME.rankUpUse = function (g, item) {
     var cur = GAME.rankOf(g);
@@ -884,7 +887,7 @@
         msg: '「' + item.name + '」只可用于「' + (fr.name || '?') + '」将领（' + g.name + ' 现为「' + cur.name + '」）',
       };
     }
-    /* v89.95（A1）：**顶档（天授）须节钺** —— 节钺只能打（首占名城）或爵位赏赐，
+    /* v89.95（A1）：**顶档（天授）须节钺** —— 节钺只能打（首占名城）或威望赏赐，
        黄金买不到。于是"全链 54 万金打通资质"这条闭环被掐断：
        有钱也得到战场上去挣那枚符（老板第 1 问的"发展限制器"）。 */
     if (item.to === ((DATA.JIEYUE || {}).tianshouTo || 'tian')) {   /* ⚠️ 档位 id 是 'tian'（不是 'tianshou'）——
@@ -920,8 +923,8 @@
         if ((g[_d196] || 0) < _t196) { g[_d196] = _t196; filled++; }
       }
     }
-    /* v78（老板需求 2 · 隐藏设定）：「将领低资质通过蕴灵草等提升资质时，能比直接招募
-       获得额外提升」—— 灵草淬炼过的根基更实：每次升档，四维各 +新档 ascend。
+    /* v78（老板需求 2 · 隐藏设定）：「将领低资质通过活性血清等提升资质时，能比直接招募
+       获得额外提升」—— 药草淬炼过的根基更实：每次升档，四维各 +新档 ascend。
        数值见 DATA.GEN_RANKS[].ascend（良材2 / 英杰3 / 名世5 / 天授8，全链 +18/维）。
        v89.179c（老板 3 ③）：这项"额外属性奖励"由隐藏改为**晋升时显式告知** ——
        老板要它承担"鼓励玩家耗时养成"的作用，看不见的奖励起不到激励。
@@ -973,7 +976,7 @@
     /* 晋升所见即所得：固定属性 / 淬炼奖励 / 自由点 / 攻防 四项逐一列出 */
     var extra = [];
     if (filled > 0) extra.push('四维补足至「' + (nr.name || item.to) + '」Lv' + _lv196 + ' 标准');
-    if (asc78 > 0) extra.push('四维 +' + asc78 + '（灵草淬炼）');
+    if (asc78 > 0) extra.push('四维 +' + asc78 + '（药草淬炼）');
     if (_pt196 > 0) extra.push('自由属性点 +' + _pt196 + '（等级差补）');
     if (freeLump > 0) extra.push('自由属性点 +' + freeLump);
     if (_aw196 > 0) extra.push('资质奖励：四维各 +' + _aw196 + ' · 体力上限 +' + _aw196);
@@ -989,7 +992,7 @@
     };
   };
 
-  /* 资质随客栈等级的出现权重（高级客栈更容易出高资质） */
+  /* 资质随酒馆等级的出现权重（高级酒馆更容易出高资质） */
   GAME.rankWeights = function (innLv) {
     var lv = Math.max(1, innLv || 1);
     var out = [];
@@ -997,7 +1000,7 @@
       /* v66：下限从**写死的 0.5** 改成**按自身基准的 5%**。
          原因：老板要求天授出现率降 10 倍（w 2 → 0.2），而 0.5 这道下限会把 0.2
          直接抬回 0.5 —— 表里改了、界面上没变，属于"改了等于没改"的静默失效。
-         下限本身仍要保留：凡品 wg 为负（-0.06），客栈 18 级以上会算成负权重。
+         下限本身仍要保留：凡品 wg 为负（-0.06），酒馆 18 级以上会算成负权重。
          现在：凡品最低 2.5、天授最低 0.01，两边都不再被误伤。 */
       out.push({ rank: r, w: Math.max(r.w * 0.05, r.w * (1 + (r.wg || 0) * (lv - 1))) });
     });
@@ -1010,14 +1013,14 @@
     for (var i = 0; i < ws.length; i++) { roll -= ws[i].w; if (roll <= 0) return ws[i].rank; }
     return ws[0].rank;
   };
-  /* v89.73（老板：「客栈不能再直接招募名世、天授级别将领，只能通过资质提升达到」）
+  /* v89.73（老板：「酒馆不能再直接招募名世、天授级别将领，只能通过资质提升达到」）
      ------------------------------------------------------------
-     客栈候选的**资质上限** —— 唯一出口。
-       · 凡品 / 良材 / 英杰 可以出；名世 / 天授**只能靠灵草升档**（GAME.rankUpUse）。
+     酒馆候选的**资质上限** —— 唯一出口。
+       · 凡品 / 良材 / 英杰 可以出；名世 / 天授**只能靠药草升档**（GAME.rankUpUse）。
      为什么用"截断"而不是"把权重改成 0"：`rankWeights` 还服务着别的入口
-     （秘境、史实名将等），动表会把它们一起封死；截断只作用于客栈这条链。
+     （遗迹、史实名将等），动表会把它们一起封死；截断只作用于酒馆这条链。
      两条候选链都要过这里：普通掷档（pickRank）与史实名将直取（heroRank）——
-     漏掉后者的后果是"关羽照样带着天授从客栈走出来"，等于没改。 */
+     漏掉后者的后果是"关羽照样带着天授从酒馆走出来"，等于没改。 */
   GAME.INN_RANK_CAP = 'ying';
   GAME.innCapRank = function (rk) {
     if (!rk) return rk;
@@ -1114,7 +1117,7 @@
         n = Math.max(0, _lim - _have);
         if (n <= 0) {
           return { ok: false, msg: '速度已达上限 ' + _lim + '（每 ' + (_sc2.perLevels || 5)
-            + ' 级 +1；更高速度请靠装备与坐骑）' };
+            + ' 级 +1；更高速度请靠装备与座驾）' };
         }
       }
     }
@@ -1140,12 +1143,12 @@
   /* ============================================================
    * 城等级 —— 唯一出口 `GAME.cityLvOf`（v89.79 · 老板拍板）
    * ------------------------------------------------------------
-   * 老板原话：「为什么有个城等级是 Lv7，城等级不是跟随官府等级吗？」
-   * 定稿：**城等级 = 官府等级 = 建筑等级**，一号到底。
-   *   · 名城（县城/郡城/州城/都城）→ 档位等级：12 / 16 / 20 / 24
+   * 老板原话：「为什么有个城等级是 Lv7，城等级不是跟随政务厅等级吗？」
+   * 定稿：**城等级 = 政务厅等级 = 建筑等级**，一号到底。
+   *   · 名城（聚落/重镇/首府/旧都）→ 档位等级：12 / 16 / 20 / 24
    *     （= MAX_BLEVEL 12 + 档位加成 0/4/8/12，与 `buildCapOf` 同一把尺子；
-   *       名城是"满配城"，官府自建起即满配，所以城等级就是官府等级）
-   *   · 自建城（self）  → **官府等级**（跟随官府 —— 正是老板那句话的字面口径）
+   *       名城是"满配城"，政务厅自建起即满配，所以城等级就是政务厅等级）
+   *   · 自建城（self）  → **政务厅等级**（跟随政务厅 —— 正是老板那句话的字面口径）
    *   · 野外据点（fort）→ 自身等级（1~10，随现实日变化；它本来就不是名城）
    *
    * ⚠️ 界面 / 派生 / 筛选**一律读这里**，不许再直接读 `city.level`：
@@ -1156,7 +1159,7 @@
     if (!city) return 1;
     var T = DATA.NPC_TIER_LV || {};
     if (city.type && T[city.type] != null) return T[city.type];        /* 名城：档位等级 */
-    if (city.type === 'self') {                                        /* 自建城：跟随官府 */
+    if (city.type === 'self') {                                        /* 自建城：跟随政务厅 */
       return Math.max(1, GAME.buildingLevel(city, 'guanfu') || city.level || 1);
     }
     return Math.max(1, Math.min(DATA.MAX_LEVEL_ABS, Math.round(city.level) || 1));
@@ -1197,7 +1200,7 @@
    * 名城档位优势（v60 · 需求 5）
    * ------------------------------------------------------------
    * 「名城专有的资源、优势，或者选项」里的**优势**这一层：
-   * 按城档位（都城/州治/郡治/县城/自建）给本城经营加成。
+   * 按城档位（旧都/首府/重镇/聚落/自建）给本城经营加成。
    * 唯一出口 `GAME.perkOf` —— 别处不要再按 city.type 写分支
    * （写了就是第二个出口，改一处忘一处）。
    * ============================================================ */
@@ -1211,14 +1214,14 @@
   };
 
   /* ============================================================
-   * v79 加成四层（爵位 / 主城 / 神器 + 名城档位）—— **唯一汇总出口**
+   * v79 加成四层（威望 / 主城 / 神器 + 名城档位）—— **唯一汇总出口**
    * ------------------------------------------------------------
-   * 老板三条：「爵位加成」「主城加成」「神器加成」。
+   * 老板三条：「威望加成」「主城加成」「神器加成」。
    * 它们的落点是同一批经营量（产量/税收/仓储/席位/野地上限…），
    * 所以**合并到一个函数**里相加 —— 消费点永远只调 cityBonusNum，
    * 别处再拼第二个汇总就是本项目的经典失效模式（改了不生效）。
    * ============================================================ */
-  /* ① 爵位加成：22 级曲线在 DATA.RANK_BONUS（与 DATA.RANK 同序） */
+  /* ① 威望加成：22 级曲线在 DATA.RANK_BONUS（与 DATA.RANK 同序） */
   GAME.rankBonusOf = function (i) {
     return (DATA.RANK_BONUS || [])[i == null ? ((GAME.state && GAME.state.rank) || 0) : i] || {};
   };
@@ -1227,7 +1230,7 @@
     return (GAME.rankBonusOf((s && s.rank) || 0)[key]) || 0;
   };
 
-  /* ② 主城：每人 1 个（s.mainCityId；新档为空，官府里设） */
+  /* ② 主城：每人 1 个（s.mainCityId；新档为空，政务厅里设） */
   GAME.mainCityOf = function () {
     var s = GAME.state;
     if (!s || !s.mainCityId) return null;
@@ -1245,7 +1248,7 @@
    * v89.191（老板 3-④）：**科技按城** 的三个出口。
    * ------------------------------------------------------------
    * · `techCapOf(city)` —— 等级上限的**唯一出口**：主城 20、别城 10
-   *   （canResearch / 科技面板 / 断言同读；仓库"满配"口径仍用 DATA.TECH_MAX_LV，互不影响）。
+   *   （canResearch / 科技面板 / 断言同读；货仓"满配"口径仍用 DATA.TECH_MAX_LV，互不影响）。
    * · `techsOf(city)` —— 某城科技表的惰性出口（老档 / 造局城可能没有 techs 字段）。
    * · `techSet(id, lv, city)` —— 写等级的小工具（测试 / 迁移 / 调试共用；
    *   正常玩法只经 research 递增，不从别处写）。
@@ -1291,16 +1294,16 @@
     });
   };
   /* ============================================================
-   * v89.102（老板）：**主城随爵位解锁建筑等级上限**
+   * v89.102（老板）：**主城随威望解锁建筑等级上限**
    * ------------------------------------------------------------
-   * 老板原话：「主城（每个玩家只能设定一座主城）可随爵位逐步解锁官府及其他建筑
-   *   等级上限，爵位每级解锁建筑等级上限 1 级」。
+   * 老板原话：「主城（每个玩家只能设定一座主城）可随威望逐步解锁政务厅及其他建筑
+   *   等级上限，威望每级解锁建筑等级上限 1 级」。
    * 口径：
    *   · **只有主城**享受（`s.mainCityId` 那一座）—— 别城不享受，
    *     这就是"定都"的实质回报（与驻跸加成同一个池子）；
-   *   · 解锁量 = 爵位序号 × `DATA.MAIN_CITY.buildCapPerRank`（每档 +1）；
+   *   · 解锁量 = 威望序号 × `DATA.MAIN_CITY.buildCapPerRank`（每档 +1）；
    *   · 它同时抬两样东西（见 `buildCapOf`）：① 建筑自身等级上限；
-   *     ② **官府总闸**（城内建筑 ≤ 官府等级）—— 否则"解锁了上限却仍被官府卡住"。
+   *     ② **政务厅总闸**（城内建筑 ≤ 政务厅等级）—— 否则"解锁了上限却仍被政务厅卡住"。
    * ⚠️ 唯一出口：升级守卫 / 建造前置提示 / UI / 测试一律读这里，不许各处自拼
    *   （否则又会出现"面板说能升、点下去被拦"）。
    * ⚠️ 上限夹在 `DATA.RANK_BUILD_LIFT_MAX` 内：等级表按这个上限一次性外推，
@@ -1314,15 +1317,15 @@
     return Math.max(0, Math.min(DATA.RANK_BUILD_LIFT_MAX || 0, lift));
   };
   /* ============================================================
-   * v89.108（老板）：**领地上限随爵位解封** —— 唯一出口
+   * v89.108（老板）：**领地上限随威望解封** —— 唯一出口
    * ------------------------------------------------------------
-   * 老板原话（v89.108）：「限制城池数量，参考爵位和主城等级设置，
-   *   可建造控制的城池数量随爵位解封」。
-   * ⛔ v89.203（老板 4）口径变更：「各级爵位能管理的城池数 —— 平民 9 座，随爵位每升
+   * 老板原话（v89.108）：「限制城池数量，参考威望和主城等级设置，
+   *   可建造控制的城池数量随威望解封」。
+   * ⛔ v89.203（老板 4）口径变更：「各级威望能管理的城池数 —— 幸存者 9 座，随威望每升
    *   一级增加一座」。上限 = **本档值**（RANK[i].city，9..30）；
-   *   晋爵城池门槛 = **打满本档上限**（同名同值 —— 打满的那一刻正是该求晋爵的时候，
+   *   晋升城池门槛 = **打满本档上限**（同名同值 —— 打满的那一刻正是该求晋升的时候，
    *   门槛与上限天然合一，不另立第二张表）。
-   *   （v89.108 取"下一档"是为避开"本档值=平民1座"的死锁；本档值上调至 9 起后
+   *   （v89.108 取"下一档"是为避开"本档值=幸存者1座"的死锁；本档值上调至 9 起后
    *    门槛同步改为"打满本档"，死锁不复存在 —— 两处一起读 DATA.RANK，仍是一张表。）
    * 三条得城路径全部过此闸（自建 / 占城 / 据点转正）：
    *   · 界面：`ui.expModeLockOf`（出征方式置灰）与 `canBuildCityAt` 读同一判据；
@@ -1333,7 +1336,7 @@
     var s = GAME.state;
     if (!s) return 0;
     var i = Math.max(0, Math.min(s.rank | 0, DATA.RANK.length - 1));
-    return DATA.RANK[i].city;   /* v89.203：本档管理数（平民 9 → 每档 +1 → 封顶 30） */
+    return DATA.RANK[i].city;   /* v89.203：本档管理数（幸存者 9 → 每档 +1 → 封顶 30） */
   };
   /* 领地上限检查：{ ok, cap, n, msg }。ok=false 时 msg 已备好（界面与执行共用）。 */
   GAME.cityCapChk = function () {
@@ -1346,10 +1349,10 @@
     var msg;
     if (n > cap) {
       /* 老档（本上限上线前已超编）：既往不咎，只是不再扩张 */
-      msg = '领地已超编（' + n + '/' + cap + ' 座）—— 既往城池保留，新的扩张须待爵位提升';
+      msg = '领地已超编（' + n + '/' + cap + ' 座）—— 既往城池保留，新的扩张须待威望提升';
     } else if (nx) {
-      /* v89.203：晋爵后的新上限 = 下一档的本档值（nx.city） */
-      msg = '领地上限 ' + cap + ' 座（' + cur.name + '）—— 晋爵「' + nx.name +
+      /* v89.203：晋升后的新上限 = 下一档的本档值（nx.city） */
+      msg = '领地上限 ' + cap + ' 座（' + cur.name + '）—— 晋升「' + nx.name +
         '」可扩至 ' + nx.city + ' 座';
     } else {
       msg = '领地上限 ' + cap + ' 座（' + cur.name + ' · 已至封顶）';
@@ -1389,7 +1392,7 @@
   };
   GAME.artGain = function (n, why) {
     /* v89.7（老板「供奉+1这个公文不要显示」）两处：
-       ① 只有"有缘由"的入账（攻占城池 / 爵位晋升）才写公文 ——
+       ① 只有"有缘由"的入账（攻占城池 / 威望晋升）才写公文 ——
           时长自然累积一律静默（升阶那条报喜保留）。
        ② 小数寄存在 st.frac 里攒整 —— 低倍率下每秒只有 0.x 点，
           旧写法 Math.round 把它整段吃掉（120× 实测永远 +0）；
@@ -1440,7 +1443,7 @@
     GAME.artGain(secGame / 3600 * rate, '');
   };
 
-  /* 爵位加成文案（爵位表 / 君主面板共用） */
+  /* 威望加成文案（威望表 / 君主面板共用） */
   GAME.rankBonusText = function (i) {
     var b = GAME.rankBonusOf(i);
     var parts = [];
@@ -1452,7 +1455,7 @@
     if (b.genCap) parts.push('席+' + b.genCap);
     return parts.join(' ') || '—';
   };
-  /* 汇总：名城档位 + 爵位 + 主城 + 神器（四层相加，唯一出口） */
+  /* 汇总：名城档位 + 威望 + 主城 + 神器（四层相加，唯一出口） */
   GAME.cityBonusNum = function (city, key) {
     return GAME.perkNum(city, key) + GAME.rankBonusNum(key)
       + GAME.mainCityBonusNum(city, key) + GAME.artifactBonusNum(key);
@@ -1494,21 +1497,21 @@
    * 满配城池的城内布局（v61 · 老板）—— **唯一出口**
    * ------------------------------------------------------------
    * 老板：「野地里的城池，应默认其建筑全都建满了，城内所有建筑各1个，
-   *   兵营2个，其他建民房，位置也相对固定一下。城池的地块数量根据等级，数量你来定」
+   *   兵营2个，其他建居所，位置也相对固定一下。城池的地块数量根据等级，数量你来定」
    *
    * 规则见 `DATA.CITY_PLAN` 的注释。要点：
-   *   · 官府 2×2 **居中**，落位走与 `GAME.makeCity` 相同的唯一出口 `GAME.govCellsOf`；
-   *   · 军营成对（第一优先占位，紧挨官府），其余建筑各 1 座，剩下的全是民房；
-   *   · 非官府格按"到官府中心的曼哈顿距离"升序取用 → 核心贴着官府、民房在最外圈，
+   *   · 政务厅 2×2 **居中**，落位走与 `GAME.makeCity` 相同的唯一出口 `GAME.govCellsOf`；
+   *   · 训练营成对（第一优先占位，紧挨政务厅），其余建筑各 1 座，剩下的全是居所；
+   *   · 非政务厅格按"到政务厅中心的曼哈顿距离"升序取用 → 核心贴着政务厅、居所在最外圈，
    *     跨等级跨城池都同一条规则（这就是老板要的"位置相对固定"）。
    * ⚠️ 布局**只与等级有关**，与城池身份无关 → 同等级的任意两座城，逐格完全一致。
    *
    * v63（老板）：「为名城也补满建筑，**根据其等级上限**」——
    * 于是布局多了一个参数 `buildLv`：**建筑等级**。
    *   野外城池 → 建筑等级 = 城等级（它没有档位加成，`cityBuildBonus` = 0）；
-   *   名城     → 建筑等级 = 城等级 + 档位加成（县城+2 / 郡城+4 / 州城+8 / 都城+12），
+   *   名城     → 建筑等级 = 城等级 + 档位加成（聚落+2 / 重镇+4 / 首府+8 / 旧都+12），
    *             即 v54 定下的「名城建筑等级上限」——"补满"就是把每座建筑盖到它的上限。
-   * v89.126 → v89.128：城墙在**NPC 计划**里仍占一格（`CITY_PLAN.order` 收录，
+   * v89.126 → v89.128：围墙在**NPC 计划**里仍占一格（`CITY_PLAN.order` 收录，
    *   等级 = `buildLv`）—— 这只是影子数据的形状；**攻占转正时提取到环城槽**
    *   （`city.wall`），玩家侧永不占格（老板：「以环城一圈的结构作为一个建筑」）。
    * ============================================================ */
@@ -1524,23 +1527,23 @@
     var cells = [];
     for (var k = 0; k < total; k++) cells.push({ build: null, pending: null });
 
-    /* ① 官府 2×2：**棋盘正中**（v68 老板）—— 走与 makeCity 同一出口 */
+    /* ① 政务厅 2×2：**棋盘正中**（v68 老板）—— 走与 makeCity 同一出口 */
     var gf = GAME.govCellsOf(col, row);
     var gc = Math.floor((col - 2) / 2), gr = Math.floor((row - 2) / 2);
     gf.forEach(function (g) {
       cells[g] = { build: { id: 'guanfu', lvl: bl }, pending: null, official: true };
     });
 
-    /* ② 军营 2 座：**紧贴官府左邻一列的两格**（成对、挨着官府，军事区自成一格）。
-       col 都是偶数、官府宽 2，所以左邻格必定合法；仍留一个越界兜底。 */
+    /* ② 训练营 2 座：**紧贴政务厅左邻一列的两格**（成对、挨着政务厅，军事区自成一格）。
+       col 都是偶数、政务厅宽 2，所以左邻格必定合法；仍留一个越界兜底。 */
     var bar = [];
     var bc = gc - 1;
     if (bc >= 0) { bar = [gr * col + bc, (gr + 1) * col + bc]; }
     bar = bar.filter(function (i) { return i >= 0 && i < total && !cells[i].build; });
 
     /* ③ 其余格按"到**城池中心**的曼哈顿距离"升序取用（同距按格号）。
-       基准取城池中心（不取官府中心）—— "中心"跨棋盘尺寸是稳定参照；
-       v68 官府居中后两者结果接近，仍以城池中心为准。 */
+       基准取城池中心（不取政务厅中心）—— "中心"跨棋盘尺寸是稳定参照；
+       v68 政务厅居中后两者结果接近，仍以城池中心为准。 */
     var cx = (col - 1) / 2, cy = (row - 1) / 2;
     var rest = [];
     for (var i = 0; i < total; i++) {
@@ -1554,12 +1557,12 @@
       return (da - db) || (a - b);
     });
 
-    /* ④ 军营占满 2 座之后，剩下的按 DATA.CITY_PLAN.order 依次落位（每种 1 座），
-       再有余格一律民房。 */
+    /* ④ 训练营占满 2 座之后，剩下的按 DATA.CITY_PLAN.order 依次落位（每种 1 座），
+       再有余格一律居所。 */
     bar.forEach(function (idx) {
       cells[idx] = { build: { id: 'junying', lvl: bl }, pending: null };
     });
-    /* 其余 12 种按固定序落位（每种 1 座），军营已在上面手工落好 2 座 */
+    /* 其余 12 种按固定序落位（每种 1 座），训练营已在上面手工落好 2 座 */
     var restOrder = P.order.filter(function (b) { return b !== 'junying'; });
     rest.forEach(function (idx, n) {
       var bid = n < restOrder.length ? restOrder[n] : P.filler;
@@ -1569,25 +1572,25 @@
   };
   /* 系统城的**建筑等级**（唯一出口，与玩家侧 `buildCapOf` 同一个换算口径）。
      口径演变（**以最后一条为准**）：
-       v63   → 城等级 + 档位加成（9 级州城 = Lv17）
-       v65   → 基数固定为"满级城等级 10"（县12/郡14/州18/都22）
-       v89.64→ 基数改 MAX_BLEVEL(12)（县14/郡16/州20/都24）
+       v63   → 城等级 + 档位加成（9 级首府 = Lv17）
+       v65   → 基数固定为"满级城等级 10"（聚落12/重镇14/首府18/旧都22）
+       v89.64→ 基数改 MAX_BLEVEL(12)（聚落14/重镇16/首府20/旧都24）
        v89.75→ 一度改成"随城等级"（郡 Lv7 → 建筑 13）—— **老板否掉了**
-       v89.76→ **档位一律满配**：县城 12 · 郡城 16 · 州城 20 · 都城 24
+       v89.76→ **档位一律满配**：聚落 12 · 重镇 16 · 首府 20 · 旧都 24
      ⚠️ 非名城（野外城池）不是"名城"，按**自己的等级**补：据点是随等级长起来的，
         给它们也上满级会凭空变出一座座满配城。 */
-  /* v89.76（老板）：「我要郡城一律 16 级建筑及其对应人口资源满额。
-     县城也是一律 12 级（按 12，16，20，24 级），类推」
+  /* v89.76（老板）：「我要重镇一律 16 级建筑及其对应人口资源满额。
+     聚落也是一律 12 级（按 12，16，20，24 级），类推」
      ------------------------------------------------------------------
      即：**名城是"满配城"，一切按档位固定，不看 `city.level`** ——
        v89.79 再进一步：守军与库藏**也**改为按档位给基准（`garrisonByTier` / `resByTier`），
          不再乘 `city.level` 的指数 —— 于是"城等级"不再有任何派生副作用，
-         它就是**官府等级 / 建筑等级的别名**，一号到底（唯一出口 `GAME.cityLvOf`）。
+         它就是**政务厅等级 / 建筑等级的别名**，一号到底（唯一出口 `GAME.cityLvOf`）。
      为什么 v89.75 那版"随城等级"是错的（已回退）：
-       它让 Lv7 的郡城只到建筑 Lv13 —— 但老板要的是"郡城就是 16 级城"，
-       低等级的郡城只是**守军少、库藏薄**，不是"城本身没建好"。
+       它让 Lv7 的重镇只到建筑 Lv13 —— 但老板要的是"重镇就是 16 级城"，
+       低等级的重镇只是**守军少、库藏薄**，不是"城本身没建好"。
      ⚠️ 与 `buildCapOf` 仍是同一把尺子（同一个 `cityBuildBonus`）：
-       县城 +0 → 12 · 郡城 +4 → 16 · 州城 +8 → 20 · 都城 +12 → 24。 */
+       聚落 +0 → 12 · 重镇 +4 → 16 · 首府 +8 → 20 · 旧都 +12 → 24。 */
   GAME.npcBuildLvOf = function (city) {
     if (!city) return 1;
     var isTier = (city.type === 'county' || city.type === 'jun'
@@ -1600,8 +1603,8 @@
   /* ============================================================
    * ⛔ 已退役：`GAME.npcLevelOf`（v89.70 引入 · v89.74 删除）
    * ------------------------------------------------------------
-   * v89.70 曾把"对外显示的城等级"改成**档位满配**（都24/州20/郡16/县14），
-   * 本意是回答老板那句「州城不是 20 级满级吗，为什么显示 Lv9」。
+   * v89.70 曾把"对外显示的城等级"改成**档位满配**（旧都24/首府20/重镇16/聚落14），
+   * 本意是回答老板那句「首府不是 20 级满级吗，为什么显示 Lv9」。
    * 但 v89.72 给普通城发了 1~10 的**等级分布**之后，两把尺子当场打架：
    *   地图角标写 Lv14、守军却按 `city.level`（=9）算 —— 数字对不上，
    *   看起来就是"等级没按分布表生效"（老板 v89.74 原话）。
@@ -1632,27 +1635,27 @@
       return DATA.BUILD_ORDER.indexOf(a.id) - DATA.BUILD_ORDER.indexOf(b.id);
     });
     /* ⚠️ 不要再算一个"slots"出来 —— 它与 `minfang` 是同一个数的两种算法，
-       正是本项目最经典的"两个出口"（改一处忘一处）。民房数只认 `minfang`。 */
+       正是本项目最经典的"两个出口"（改一处忘一处）。居所数只认 `minfang`。 */
     return { plan: plan, items: ord, minfang: civil, total: plan.total };
   };
 
   /* ============================================================
    * 城外满配的**铺法**（v70 · 老板）—— 唯一出口
    * ------------------------------------------------------------
-   * 入参是"官府能管多少块地"（即 `EXT_CAP_BY_LV` 那一档），返回**逐块的地块类型**：
-   * 按 农田 → 伐木场 → 采石场 → 铁矿场 轮转铺满（同数量表 `DATA.EXT_PLAN_BY_LV`）。
+   * 入参是"政务厅能管多少块地"（即 `EXT_CAP_BY_LV` 那一档），返回**逐块的地块类型**：
+   * 按 集水场 → 木料场 → 碎石场 → 废铁场 轮转铺满（同数量表 `DATA.EXT_PLAN_BY_LV`）。
    * 轮转铺法的好处：任何等级下四类地都均匀分布在区块里，不会"前 20 块全是田"。
    * 数量表本身只给**数量**，本函数负责把它变成**确定性的铺法** ——
    * 两者都是纯函数，同等级永远同一结果（"位置排布有序且固定"）。
    * ============================================================ */
   GAME.extPlanOf = function (lv) {
-    /* ⚠️ 入参是**官府等级**（1 起），不是块数 —— 两者会撞车（12 级 ↔ 12 块），
+    /* ⚠️ 入参是**政务厅等级**（1 起），不是块数 —— 两者会撞车（12 级 ↔ 12 块），
        所以只认一个口径；返回数组的**长度**就是这级的块数（= EXT_CAP_BY_LV 那一档）。 */
     var n = Math.max(1, Math.min(DATA.MAX_LEVEL_ABS, Math.round(lv) || 1));
     var counts = (DATA.EXT_PLAN_BY_LV || [])[n - 1] || [0, 0, 0, 0];
     return buildList(counts);
   };
-  /* 把 [农田,伐木,采石,铁矿] 的**数量**摊成**逐块类型**（轮转） */
+  /* 把 [集水场,伐木,采石,铁矿] 的**数量**摊成**逐块类型**（轮转） */
   function buildList(counts) {
     var order = DATA.EXT_BUILD_ORDER || ['farm', 'forest', 'quarry', 'mine'];
     var out = [], i, k;
@@ -1665,12 +1668,12 @@
 
   /* 「建筑全满、均 N 级」的影子城 —— 只用于算派生量（人口上限 / 产量），不参与玩法。
      v61：格子改由 `GAME.cityPlanOf` 统一生成（老板的布局规则），
-     外城仍按官府等级拿满地块。
+     外城仍按政务厅等级拿满地块。
      v63（老板）：「为名城也补满建筑，根据其等级上限」→ 建筑等级走
      `GAME.npcBuildLvOf`（城等级 + 档位加成），不再是"与城同级"。 */
   GAME.npcCityShadow = function (city) {
     if (!city) return null;
-    /* v89.79：城等级走唯一出口（名城=档位等级；自建城=官府等级）。
+    /* v89.79：城等级走唯一出口（名城=档位等级；自建城=政务厅等级）。
        城外地块数由它派生（extPlanOf），所以"满配城"的地块也随档位拉满
        （EXT_PLAN_BY_LV 已自动补齐到 MAX_LEVEL_ABS，档位等级不会越界取空表）。 */
     var lv = GAME.cityLvOf(city);
@@ -1682,12 +1685,12 @@
       return { build: c.build ? { id: c.build.id, lvl: c.build.lvl } : null,
         pending: null, official: !!c.official };
     });
-    /* 块数按**城等级**（= 该城的官府等级，官府随城长），
+    /* 块数按**城等级**（= 该城的政务厅等级，政务厅随城长），
        但每块地的**等级**按建筑等级上限（v65 老板「城内外建筑也达到等级上限」）——
-       两者不是一回事：块数是"官府能管多少地"，等级是"这地开发到什么水平"。
+       两者不是一回事：块数是"政务厅能管多少地"，等级是"这地开发到什么水平"。
        v70：**种类与数量**改由数量表产出（唯一出口 `GAME.extPlanOf`，入参=等级）——
        返回数组的长度就是这级的块数（与 `EXT_CAP_BY_LV` 那一档相等，一块不空）；
-       改前是 ['farm','farm','forest','quarry','mine'] 循环，数量比与官府等级无关。 */
+       改前是 ['farm','farm','forest','quarry','mine'] 循环，数量比与政务厅等级无关。 */
     var kinds = GAME.extPlanOf(lv);
     var ext = [];
     kinds.forEach(function (t, k) { ext.push({ id: 'e' + (k + 1), type: t, lv: bl }); });
@@ -1701,12 +1704,12 @@
     return sh;
   };
 
-  /* 满配城的**人口上限** = 民房座数 × 该级民房人口。
-     为什么不用 `GAME.maxPopOf`：那个函数吃玩家侧的全境加成（民房满级专精 +20%），
+  /* 满配城的**人口上限** = 居所座数 × 该级居所人口。
+     为什么不用 `GAME.maxPopOf`：那个函数吃玩家侧的全境加成（居所满级专精 +20%），
      拿来算"系统城本该有多少人"会被玩家自己的进度污染 —— 侦查面板的数字
-     不该因为我在别处盖了座 Lv12 民房就变。这里按纯布局算，可断言、不漂移。
-     ⚠️ 民房人口按**建筑等级**（`plan.buildLv`）取，不是城等级 ——
-     州城 Lv9 的建筑 Lv20，民房就按 Lv20 的人口算（v89.75 起郡/县还随城等级折减）。 */
+     不该因为我在别处盖了座 Lv12 居所就变。这里按纯布局算，可断言、不漂移。
+     ⚠️ 居所人口按**建筑等级**（`plan.buildLv`）取，不是城等级 ——
+     首府 Lv9 的建筑 Lv20，居所就按 Lv20 的人口算（v89.75 起重镇/聚落还随城等级折减）。 */
   GAME.planPopCapOf = function (level, buildLv) {
     var plan = GAME.cityPlanOf(level, buildLv);
     var per = (DATA.BUILDINGS.minfang.pop || [])[plan.buildLv - 1] || 0;
@@ -1720,14 +1723,14 @@
    * ------------------------------------------------------------
    * 野外城池（`GAME.map.fortAt`）原本**只有守军和名字**，没有城内结构。
    * 现在给它同一套满配布局（走 `GAME.cityPlanOf`，与未占据名城同一个出口）：
-   *   · 城内所有建筑各 1 座、军营 2 座、余为民房（老板给定）；
-   *   · 城墙读环城槽 city.wall（据点无城墙 → 等级 0，与玩家城/名城同口径）；
-   *   · 人口上限按民房算；城防按城墙等级算。
+   *   · 城内所有建筑各 1 座、训练营 2 座、余为居所（老板给定）；
+   *   · 围墙读环城槽 city.wall（据点无围墙 → 等级 0，与玩家城/名城同口径）；
+   *   · 人口上限按居所算；城防按围墙等级算。
    * `fortCityOf` 把 fort 包装成 city-like，让派生函数复用同一份口径 ——
    * 不这么做就会出现"名城一套、野城另一套"的两个出口。
    * ============================================================ */
   /* 野外城池的城防（唯一出口；原来写死在 battle.resolveTarget 里）。
-     口径：底数 10 + 城墙等级 × 4 —— 城墙等级即城等级（满配城的城墙自然拉满）。 */
+     口径：底数 10 + 围墙等级 × 4 —— 围墙等级即城等级（满配城的围墙自然拉满）。 */
   GAME.fortDefOf = function (fort) {
     return 10 + ((fort && fort.level) || 1) * 4;
   };
@@ -1743,7 +1746,7 @@
     var out = {
       col: summary.plan.col, row: summary.plan.row, level: lv,
       buildLv: summary.plan.buildLv,
-      /* v89.126：城墙占格后，等级从 cells 读（与 GAME.buildingLevel 同源） */
+      /* v89.126：围墙占格后，等级从 cells 读（与 GAME.buildingLevel 同源） */
       wallLv: (function () {
         var w = 0;
         (summary.plan.cells || []).forEach(function (x) {
@@ -1761,11 +1764,11 @@
   };
 
   /* 未占据城池的库存（v89.79：**按档位**派生，同类城不再天差地别）。
-     口径：以**粮食**为锚（DATA.NPC_CITY_RES.resByTier），其余资源按 base 的比例缩放，
-     再乘 ±8% 的确定性波动。人口取"建筑全满时的民房上限"（老板说的那个口径）。
+     口径：以**净水**为锚（DATA.NPC_CITY_RES.resByTier），其余资源按 base 的比例缩放，
+     再乘 ±8% 的确定性波动。人口取"建筑全满时的居所上限"（老板说的那个口径）。
      ⛔ 退役的旧口径：`base × 1.55^(城等级-1) × npcResMul` —— 指数 + 1~10 分布
      让同类城库藏差几十倍（老板 v89.79：「谁规定了这么大守军数量范围吗」）。
-     ⚠️ 档位系数 npcResMul（都2.2/州1.6/郡1.25/县1.0）**不再参与** ——
+     ⚠️ 档位系数 npcResMul（旧都2.2/首府1.6/重镇1.25/聚落1.0）**不再参与** ——
         它已经被 resByTier 这张显式的档位梯级吸收了（两处都乘就是双重放大）。 */
   GAME.npcCityRes = function (city) {
     if (!city) return GAME.emptyRes();
@@ -1779,7 +1782,7 @@
     var byTier = R.resByTier || {};
     var grainBase = (city.type && byTier[city.type] != null) ? byTier[city.type] : 0;
     if (grainBase) {
-      var k = grainBase / R.base.grain;             /* 以粮食为锚的缩放比 */
+      var k = grainBase / R.base.grain;             /* 以净水为锚的缩放比 */
       var fluct = 0.92 + rng() * 0.16;
       Object.keys(R.base).forEach(function (kk) {
         out[kk] = Math.round(R.base[kk] * k * fluct);
@@ -1794,15 +1797,15 @@
     }
     var sh = GAME.npcCityShadow(city);
     /* v61：人口改走 `planPopCapOf`（纯按布局算，不吃玩家侧加成）；
-       顺带保证"民房座数 × 民房等级"这条口径只存在一处。
-       v63：建筑等级按名城上限（lv + 档位），民房人口跟着涨 —— 见 `npcBuildLvOf`。 */
+       顺带保证"居所座数 × 居所等级"这条口径只存在一处。
+       v63：建筑等级按名城上限（lv + 档位），居所人口跟着涨 —— 见 `npcBuildLvOf`。 */
     out.pop = GAME.planPopCapOf(lv, bl);
     GAME._npcCache[key] = out;
     return out;
   };
 
   /* 未占据城池的守将（六维 / 名字 / 等级全部由城 id 确定性派生）。
-     资质随城档位走（都城→名世、州城→英杰、郡城→良材、县城→凡品），
+     资质随城档位走（旧都→名世、首府→英杰、重镇→良材、聚落→凡品），
      六维 = 资质中值 + 等级×成长，再按风格系数各自抖动。 */
   GAME.npcCityGuard = function (city) {
     if (!city) return null;
@@ -1815,7 +1818,7 @@
     /* v89.64（老板「将领默认资质为天授，等级根据城池级别设定范围，
        四维拉满（自由属性点也随机加上）」）：
          · 资质一律**天授**（不再按城等级在 凡/良/英/名 之间降档）；
-         · 等级取**城档位**区间（DATA.NPC_GUARD_LV，县城 60~100 起，都城 190~240 顶）；
+         · 等级取**城档位**区间（DATA.NPC_GUARD_LV，聚落 60~100 起，旧都 190~240 顶）；
          · 四维先取该资质的**属性上限**（base[1]），再把自由点（(等级−1)×成长）
            **随机**摊到四维上 —— 于是"拉满 + 随机加点"两者都在；
          · freePts 归零：上面已经加完，别再发一份（否则界面会显示出"未分配点数"）。
@@ -1903,8 +1906,6 @@
     var yy = (w.year || 1) - (w.eraStartYear || 1) + 1;
     var yearName = yy <= 1 ? '元' : (yy <= 10 ? cn[yy] : (yy < 20 ? '十' + cn[yy - 10] : String(yy)));
     var we = (DATA.WEATHERS || {})[w.weather || 'clear'] || { name: '晴', icon: '☀' };
-    var chron = st.chronicle || [];
-    var last = chron[chron.length - 1];
     return {
       version: st.version || SAVE_VERSION,
       name: (st.ruler && st.ruler.name) || '无名君主',
@@ -1920,8 +1921,6 @@
       weather: we.icon + we.name,
       gameElapsed: Math.round(w.elapsed || 0),
       savedAt: st.savedAt || U.now(),
-      lastText: last ? last.text : '',
-      chronicleCount: chron.length,
     };
   };
 
@@ -1967,7 +1966,7 @@
    * 分两段处理，兼顾正确与性能：
    *   ① 精确段：前 OFFLINE_EXACT_MAX 秒逐秒 tick（队列/民心/人口的逐秒逻辑正确）
    *   ② 聚合段：超出部分一次性结算资源与队列，并整段推进历法
-   * 记账抑制：补算期间不逐年逐季记账；结束后由 story.recordOffline 统一记一条。
+   * ⛔ v89.218：史书纪事退役（纪事抑制与归来记账调用一并撤除）。
    * ------------------------------------------------------------ */
   var OFFLINE_EXACT_MAX = 3600;   // 逐秒补算上限（现实秒）
 
@@ -1990,10 +1989,12 @@
     var rate = 0.5;
     s.cities.forEach(function (ct) {
       var prod = GAME.cityProdPerSec(ct);
-      var cap = GAME.storeCapOf(ct);
+      /* v89.212（老板 1）：城外堆场按资源分账 —— 上限逐资源取（每城算一次，循环内查表） */
+      var caps = GAME.storePartsOf(ct).capByRes || {};
       var R = GAME.res(ct);
       for (var k in prod) {
         if (k === 'pop') continue;
+        var cap = (k === 'gold') ? 0 : (caps[k] != null ? caps[k] : GAME.storeCapOf(ct, k));
         /* v89.158：只封增长、不削存量（同在线口径） */
         if (k === 'gold' || !(cap > 0)) {
           R[k] = (R[k] || 0) + prod[k] * secReal * rate;
@@ -2013,8 +2014,8 @@
     if (secReal <= 5) return 0;
     /* v89.193（老板 3）：**静默模式** —— 主循环"时间跳变补偿"（电脑睡眠 /
        标签节流）复用本函数的全部推进逻辑（队列/资源/历法/行军），但
-       **不记编年史、不生成归来报告、不设 _offlineSec** —— 那些是"读档归来"
-       的语义，在线补偿不该打扰（每 60 秒的节流周期都记一条"离城"显然不对）。
+       **不设 _offlineSec** —— 那是"读档归来"的语义（v89.207 起归来报告在
+       两种模式下都归集、按 via 分流标题；见下方「归集归来报告」）。
        silent 只静默"记录类"；真结算一律保留（settleDailyYield / march.rushAll）。 */
     var _silent193 = !!(opts && opts.silent);
     /* v89.89（A2）：归来报告 —— 补算**前后快照**（纯读取），归集为分类数据，
@@ -2051,13 +2052,11 @@
     }
     var exact = Math.min(applied, OFFLINE_EXACT_MAX);
     var bulk = applied - exact;
-    GAME._offline = true;
     if (exact >= 1) GAME.simulateSeconds(Math.floor(exact));
     if (bulk >= 1) GAME.simulateBulk(bulk);
     if (overflow >= 1) GAME.simulateOfflineOverflow(overflow);
-    GAME._offline = false;
     if (!_silent193) GAME._offlineSec = secReal;   // 供 UI 提示离线补算量（v89.193：在线补算不设）
-    /* 州郡岁贡：离线可能跨现实日，须补结（内部按天数差一次结清，上限 30 日） */
+    /* 辖区岁贡：离线可能跨现实日，须补结（内部按天数差一次结清，上限 30 日） */
     if (GAME.settleDailyYield) GAME.settleDailyYield();
     /* 行军队列：离线期间出发的大军早已抵达 → 一次结清。
        注意必须在 simulateBulk 之后（补算期间城池兵力/资源已按整段变化）。
@@ -2082,7 +2081,6 @@
         GAME.log.war('（离线期间）' + _autoBN200 + ' 场战斗已自动打完 —— 战报与全程回看见「公文」');
       }
     }
-    if (GAME.story && GAME.story.recordOffline && !_silent193) GAME.story.recordOffline(secReal);
     /* v89.89（A2）：归集归来报告（快照差 → 分类数据；纯读取）
        v89.193：静默模式（在线时间跳变补偿）曾跳过（"归来报告"是读档语义）；
        v89.207（老板 2）：**静默也归集**（via 标记来源）—— 睡眠/息屏大缺口由主循环侧
@@ -2180,14 +2178,16 @@
        长时间离线会一次跨过多个周期，函数内部用 while 逐个结算。 */
     GAME.invasionTick(ts / 3600 * secReal);
     /* 资源：**逐城**结算（v60 · 需求 4，与在线 tickOnce 同一口径）。
-       v89.36（老板「维持军队无需耗粮食」）：军队维持耗粮已废除 ——
+       v89.36（老板「维持军队无需耗净水」）：军队维持耗粮已废除 ——
        离线补算不再扣军粮、不再推缺粮计时（缺粮哗变系统一并退役）。 */
     s.cities.forEach(function (ct) {
       var prod = GAME.cityProdPerSec(ct);
-      var cap = GAME.storeCapOf(ct);
+      /* v89.212（老板 1）：城外堆场按资源分账 —— 上限逐资源取（每城算一次，循环内查表） */
+      var caps = GAME.storePartsOf(ct).capByRes || {};
       var R = GAME.res(ct);
       for (var k in prod) {
         if (k === 'pop') continue;
+        var cap = (k === 'gold') ? 0 : (caps[k] != null ? caps[k] : GAME.storeCapOf(ct, k));
         /* v89.158：只封增长、不削存量（与在线 tickOnce 同一口径） */
         if (k === 'gold' || !(cap > 0)) {
           R[k] = (R[k] || 0) + prod[k] * secReal;
@@ -2227,9 +2227,9 @@
     /* 队列：整段推进后统一判定完成 */
     var advance = function (q) { q.elapsed += secReal * ts; };
     s.queues.build.forEach(advance);
-    /* v24（需求 8）：募兵队列按军营分组推进（与在线主循环共用同一实现） */
+    /* v24（需求 8）：募兵队列按训练营分组推进（与在线主循环共用同一实现） */
     GAME.advanceTrainQueues(secReal * ts);
-    /* v73：秘境作物按同一段离线时长推进（挂机回来地里的东西也该熟了） */
+    /* v73：遗迹作物按同一段离线时长推进（挂机回来地里的东西也该熟了） */
     if (GAME.tickFarm) GAME.tickFarm(secReal * ts);
     if (GAME.artTick) GAME.artTick(secReal * ts);   // v79：神器供奉（离线补算同口径）
     s.queues.tech.forEach(advance);
@@ -2300,7 +2300,20 @@
    * 就会出现"迁移逻辑两份、只改一处"的经典失效（本项目已发生多次）。
    * 现在 loadGame（主档）与 loadFrom（任意槽位）都走它。
    * ============================================================ */
-  GAME.adoptState = function (st) {      GAME.state = st;
+  GAME.adoptState = function (st) {
+    /* v89.209（v89.208 评估缺陷链 ①）：形状抽检（读路径同闸）—— importText 已拦一道，
+       这里再拦一道：手改 localStorage / 旧版导入残留的坏档同样进不了迁移链；
+       不合法即抛，且**不触碰 GAME.state**（loadGame/loadFrom 的 catch 返回 null）。 */
+    var _ck209 = GAME.saveShapeChk(st);
+    if (!_ck209.ok) throw new Error('存档形状损坏：' + _ck209.msg);
+    /* v89.209（v89.208 评估缺陷链 ②）：**原子化** —— 迁移链内的助手（syncSeq /
+       normalizeGuards / normalizeGenCities / migrate* 及 offlineCatchup）全部以全局
+       `GAME.state` 为读点（见 syncSeq 首行），因此"把赋值挪到最后一步"行不通 ——
+       挪了它们读到的就是**上一个档**。等价形态 = 先存 prev、挂上新档跑完整链、
+       异常时回滚 prev 再抛出：失败后内存里**不留半迁移态**，游戏继续跑完好的旧档。 */
+    var _prev209 = GAME.state;
+    GAME.state = st;
+    try {
       /* ============================================================
        * v60 迁移：全境共享库存 → **各城独立库存**
        * ------------------------------------------------------------
@@ -2389,7 +2402,7 @@
          （0.30~0.60），若按新"加值"解释会得到 0.75+0.6 = 超强（顶到 cap）。
          处置：直接作废该键（幂等）。代价极小 —— buff 最长 24h；且旧值本就"低于基础=负收益"。 */
       if (st.buffs && st.buffs.military && st.buffs.military.wound > 0.2) delete st.buffs.military.wound;
-      if (!st.forged) st.forged = [];   // 铁匠铺已打造记录（用于图鉴）
+      if (!st.forged) st.forged = [];   // 锻造间已打造记录（用于图鉴）
       /* ---- v14 迁移：外城地块从 state.extGrid（全局单份）搬到各城 city.extGrid ---- */
       var legacyExt = st.extGrid || null;
       (st.cities || []).forEach(function (c, i) {
@@ -2416,8 +2429,8 @@
       if (st.repUnread == null) st.repUnread = 0;        // v41：旧档补字段（v82 顺手去重复行）
       /* v82：征收退役 —— v24 的 lastLevy 迁移块随功能一并撤除（旧档残留字段无害）。 */
       /* v24（需求 8）：募兵队列补 barracks 归属（旧档队列没有 bIdx）
-         v29（需求 13）：同时补齐 `kind` —— 旧档里的器械队列还在军营名下，
-         迁移到**工匠作坊**（找不到作坊就留在原格位，等玩家建好作坊再正常推进）。 */
+         v29（需求 13）：同时补齐 `kind` —— 旧档里的器械队列还在训练营名下，
+         迁移到**机工坊**（找不到作坊就留在原格位，等玩家建好作坊再正常推进）。 */
       (st.queues && st.queues.train || []).forEach(function (q) {
         var t = DATA.TROOPS[q.troopId];
         if (!q.kind) q.kind = (t && t.craft) ? 'craft' : 'train';
@@ -2432,17 +2445,17 @@
         q.bIdx = GAME.firstBarracksIdx ? GAME.firstBarracksIdx(c) : -1;
       });
       (st.wilds || []).forEach(function (w) { if (w.levelDay === undefined) w.levelDay = null; });
-      /* ---- v16 / v40 / v89.126 / v89.128 迁移**整合重写**（城墙归一）----
-         ① 官府 4 格：6×6 时代的"右侧中部" → 标准位（govCellsOf）
+      /* ---- v16 / v40 / v89.126 / v89.128 迁移**整合重写**（围墙归一）----
+         ① 政务厅 4 格：6×6 时代的"右侧中部" → 标准位（govCellsOf）
          ② 城内 6×6 → 8×6（48 格；队列 gridIndex 同步重映射）
-         ③ 城墙**一律归一进环城槽** `city.wall`（v89.128 定稿：不占城内地块、地位与
-            城内建筑同）：v89.126 档的"格子里城墙"与更老档的 `wallLv` 在此合流，
+         ③ 围墙**一律归一进环城槽** `city.wall`（v89.128 定稿：不占城内地块、地位与
+            城内建筑同）：v89.126 档的"格子里围墙"与更老档的 `wallLv` 在此合流，
             旧痕（格子占用 / wallLv 字段）全删 —— 不留第二个等级出口。
-            在建 / 升级中的城墙队列项，槽位从格号改成 'wall'。 */
+            在建 / 升级中的围墙队列项，槽位从格号改成 'wall'。 */
       (st.cities || []).forEach(function (c) {
         if (!c || !c.cells) return;
         if (!c.wall) c.wall = { build: null, pending: null };
-        /* ① 官府位置（仅 6×6 老档） */
+        /* ① 政务厅位置（仅 6×6 老档） */
         if (c.cells.length === 36) {
           var want = [4 + 6 * 2, 5 + 6 * 2, 4 + 6 * 3, 5 + 6 * 3];
           var has = [];
@@ -2484,7 +2497,7 @@
             q.gridIndex = Math.floor(q.gridIndex / 6) * 8 + (q.gridIndex % 6);
           });
         }
-        /* ③ 城墙归一（格子 / wallLv → 环城槽） */
+        /* ③ 围墙归一（格子 / wallLv → 环城槽） */
         var wlv128 = (c.wallLv != null) ? (c.wallLv || 0) : 0;
         c.cells.forEach(function (x, i) {
           if (!x.build || x.build.id !== 'chengqiang') return;
@@ -2492,13 +2505,16 @@
           ((st.queues && st.queues.build) || []).forEach(function (q) {
             if (q.cityId === c.id && q.gridIndex === i && q.buildId === 'chengqiang') q.gridIndex = 'wall';
           });
-          x.build = null; x.pending = null;
+          /* v89.211（老板 2）：释放格**补建居所**（同等级）—— 原样留空会让"满配城"
+             缺一块（老板实测"第五行第六格未建造"即此格）；同口径见 battle.js onConquer。 */
+          x.build = { id: 'minfang', lvl: x.build.lvl || 1 };
+          x.pending = null;
         });
         delete c.wallLv;
         if (wlv128 > 0 && !c.wall.build) {
-          /* 不静默（v89.127 精神）：改版提示写进消息流 —— 玩家翻得到"城墙去哪了" */
+          /* 不静默（v89.127 精神）：改版提示写进消息流 —— 玩家翻得到"围墙去哪了" */
           c.wall.build = { id: 'chengqiang', lvl: wlv128 };
-          var _m128 = '🏯 城墙调整：『' + c.name + '』城墙改为环城结构（不再占城内地块 · Lv' + wlv128 + '）';
+          var _m128 = '🏯 围墙调整：『' + c.name + '』围墙改为环城结构（不再占城内地块 · Lv' + wlv128 + '）';
           st.log = st.log || [];
           st.log.unshift({ t: U.now(), msg: _m128 });
           if (st.log.length > 40) st.log.pop();
@@ -2506,9 +2522,9 @@
           st.msgLog.push({ t: U.now(), gt: (st.world && st.world.elapsed) || 0, msg: _m128, k: 'sys' });
         }
       });
-      /* ---- v68 迁移：官府从"右侧中部"移到"棋盘正中"（老板 2026-09-14）----
-         对调式：中央 4 格上的占用者与旧官府位**一一对调** —— 玩家建筑不丢。
-         队列里引用这些格号的项（在建 gridIndex / 军营 bIdx）一起重映射，
+      /* ---- v68 迁移：政务厅从"右侧中部"移到"棋盘正中"（老板 2026-09-14）----
+         对调式：中央 4 格上的占用者与旧政务厅位**一一对调** —— 玩家建筑不丢。
+         队列里引用这些格号的项（在建 gridIndex / 训练营 bIdx）一起重映射，
          漏了就是"在建项指向错格"（v40 迁移踩过的同一个坑）。 */
       (st.cities || []).forEach(function (c) {
         if (!c.cells || c.cells.length !== 48) return;
@@ -2525,7 +2541,7 @@
         var remap = {};
         oldPos.forEach(function (oi, n) {
           var ni = newPos[n];
-          remap[ni] = oi;                       /* 中央格 → 旧官府位 */
+          remap[ni] = oi;                       /* 中央格 → 旧政务厅位 */
           var dis = c.cells[ni];                /* 中央格上的占用者（空/建筑/在建皆可） */
           c.cells[oi].official = false;
           c.cells[oi].build = dis.build || null;
@@ -2566,8 +2582,10 @@
       if (!st.workRate) st.workRate = { grain: 100, wood: 100, stone: 100, iron: 100 };
       /* v79：装备单件化迁移（旧 id 串 → 实例；旧"按种"强化并入首件） */
       if (GAME.migrateEquipModel) GAME.migrateEquipModel(st);
-      /* v89：修炼线君主专属 —— 旧档里非君主身上的灵气装备归还背包、归位军装 */
+      /* v89：改造线君主专属 —— 旧档里非君主身上的辐能装备归还背包、归位军装 */
       if (GAME.migrateLordLing) GAME.migrateLordLing(st);
+      /* v89.211（老板 2）：占城"围墙格释放成空格"的存量补齐（紧签名 · 一次性） */
+      if (GAME.migrateWallCell211) GAME.migrateWallCell211(st);
       /* v89.43：经验曲线整体缩到 1/32 —— 老档经验池按新曲线截断，避免读档连升 */
       if (GAME.migrateExpScale) GAME.migrateExpScale(st);
       /* v77 补字段：月俸锚点（老档锚点=当前游戏时刻，首期 7 游戏日后到来） */
@@ -2604,6 +2622,10 @@
         GAME.state.savedAt = U.now();
       }
       return st;
+    } catch (e209) {
+      GAME.state = _prev209;   /* v89.209：回滚 —— 坏档失败不留半迁移态 */
+      throw e209;
+    }
   };
   GAME.hasSave = function () {
     try { return !!localStorage.getItem(SAVE_KEY); } catch (e) { return false; }
@@ -2797,6 +2819,35 @@
     return { ok: true, text: JSON.stringify(pack), name: (st.ruler && st.ruler.name) || '无名君主' };
   };
   GAME.slotMetaOf = function (id) { return GAME.slotIndex()[id] || null; };
+  /* v89.209（v89.208 评估缺陷链 ①·③）：**存档形状抽检** —— 唯一出口。
+     旧口径只验"cities 是非空数组"——评估探针 16 包实锤：`[{}]` / `[null]` /
+     5000 个 `{}` / `generals:'oops'` / `map:null` 全部放行，接受后有 5 种静默坏。
+     形状一坏，adoptState 半途抛错或 nextGenId 崩 —— 入口先拦，比事后兜底便宜。
+     判据 = **数组类型 + 元素必填字段**（真实存档全实体必有 id/name；城池另有 x/y 坐标）；
+     口径已对照 4,036 份真实长跑存档 + savePayload 往返产物 —— 合法档零误杀。 */
+  GAME.saveShapeChk = function (st) {
+    if (!st || typeof st !== 'object' || Array.isArray(st)) return { ok: false, msg: '存档状态不是有效对象' };
+    if (!Array.isArray(st.cities) || !st.cities.length) return { ok: false, msg: '存档内容不完整（没有城池数据）' };
+    if (!Array.isArray(st.generals)) return { ok: false, msg: '存档内容不完整（将领数据不是列表）' };
+    if (!st.map || typeof st.map !== 'object') return { ok: false, msg: '存档内容不完整（缺少地图数据）' };
+    var i, c, g;
+    for (i = 0; i < st.cities.length; i++) {
+      c = st.cities[i];
+      if (!c || typeof c !== 'object' || Array.isArray(c)
+        || typeof c.id !== 'string' || !c.id
+        || typeof c.name !== 'string'
+        || typeof c.x !== 'number' || typeof c.y !== 'number')
+        return { ok: false, msg: '存档内容损坏（第 ' + (i + 1) + ' 座城池数据不完整）' };
+    }
+    for (i = 0; i < st.generals.length; i++) {
+      g = st.generals[i];
+      if (!g || typeof g !== 'object' || Array.isArray(g)
+        || typeof g.id !== 'string' || !g.id
+        || typeof g.name !== 'string')
+        return { ok: false, msg: '存档内容损坏（第 ' + (i + 1) + ' 位将领数据不完整）' };
+    }
+    return { ok: true };
+  };
   /* 导入：校验顺序 = 能不能解析 → 是不是本游戏的存档 → 版本对不对 → 内容完整 → 校验和。
      任一不过**明确报哪一步**，不接受"导入失败"这种没信息量的提示。
      目标槽位默认取"第一个空的手动槽"，全满则拒绝（不覆盖玩家已有档）。 */
@@ -2811,6 +2862,10 @@
       return { ok: false, msg: '存档版本不符（存档 v' + pack._ver + '，当前 v' + SAVE_VERSION + '），无法导入' };
     if (!pack.state || typeof pack.state !== 'object' || !pack.state.cities || !pack.state.cities.length)
       return { ok: false, msg: '存档内容不完整（没有城池数据）' };
+    /* v89.209（v89.208 评估缺陷链 ①）：**结构抽检**（唯一出口 saveShapeChk）——
+       旧口径只验"cities 是非空数组"：[{}] / [null] / 5000 个 {} / generals:'oops' 全放行。 */
+    var _shape209 = GAME.saveShapeChk(pack.state);
+    if (!_shape209.ok) return { ok: false, msg: _shape209.msg };
     if (pack._check && GAME.checksum(JSON.stringify(pack.state)) !== pack._check)
       return { ok: false, msg: '存档校验失败：内容被改动过或复制时掉字了' };
     var id = slotId;
@@ -2865,9 +2920,9 @@
     /* 定期来袭（第 2 期）—— 唯一出口 GAME.invasionTick，离线补算走同一个函数 */
     GAME.invasionTick(GAME.timeScale() / 3600);
 
-    /* v89.64（老板「客栈出现相应要求的将领时触发招募」）：
-       客栈候选的 5 分钟换批与「自动招募」此前**只在打开客栈时才发生** ——
-       玩家不点客栈就永远不会换批，也就永远不会触发自动招募。
+    /* v89.64（老板「酒馆出现相应要求的将领时触发招募」）：
+       酒馆候选的 5 分钟换批与「自动招募」此前**只在打开酒馆时才发生** ——
+       玩家不点酒馆就永远不会换批，也就永远不会触发自动招募。
        这里在主循环里挂一次（**廉价**：innRefresh 命中缓存即立刻返回，
        只有真正过期/首次才会换批），于是后台也能换批并自动招人。 */
     if (GAME.innRefresh && GAME.innAutoRun) { GAME.innRefresh(); }
@@ -2878,14 +2933,16 @@
     var _mpGlobal = GAME.mastery ? GAME.mastery('prodPct', null) : 0;   /* v89.107：循环外一次 */
     s.cities.forEach(function (ct) {
       var p = GAME.cityProdPerSec(ct, { mpGlobal: _mpGlobal });
-      var cap = GAME.storeCapOf(ct);
+      /* v89.212（老板 1）：城外堆场按资源分账 —— 上限逐资源取（每城算一次，循环内查表） */
+      var caps = GAME.storePartsOf(ct).capByRes || {};
       var R = GAME.res(ct);
       for (var rk2 in p) {
         if (rk2 === 'pop') continue;
+        var cap = (rk2 === 'gold') ? 0 : (caps[rk2] != null ? caps[rk2] : GAME.storeCapOf(ct, rk2));
         /* v89.158（老板 1）：**只封"自然增长"，不削已有存量** ——
            改前是 `R += p; if (R > cap) R = cap`：奖励类入账（宝箱/纪事/市易）把资源
            顶到上限之上后，**下一 tick 被静默削回 cap**（实测 500 万 → 366.7 万，丢 133 万）。
-           仓库面板的文案本来就是"超出部分将停止增长"——现在代码与文案一致。
+           货仓面板的文案本来就是"超出部分将停止增长"——现在代码与文案一致。
            黄金是货币，不受储量上限约束（同前口径）。 */
         if (rk2 === 'gold' || !(cap > 0)) {
           R[rk2] = (R[rk2] || 0) + p[rk2];
@@ -2896,9 +2953,9 @@
       }
     });
 
-    /* v89.179b·P0-1：爵位俸禄入账（此前只进 productionPerSec 显示值，tickOnce 与离线都没收这笔账
+    /* v89.179b·P0-1：威望俸禄入账（此前只进 productionPerSec 显示值，tickOnce 与离线都没收这笔账
        → 红利永不入账）。与 productionPerSec 同一口径（v73 黄金收紧 GOLD_GATE.salary），
-       一次性并入全境金池（爵位属府库层面收入，不按城各算）。 */
+       一次性并入全境金池（威望属府库层面收入，不按城各算）。 */
     var _rankSal = (DATA.RANK[s.rank || 0].salary || 0);
     if (_rankSal) {
       var _sgm = 1, _sItem = GAME.prodBuffMult();
@@ -2907,7 +2964,7 @@
       s.gold += _rankSal * _sgm / 3600 * GAME.timeScale() * (DATA.GOLD_GATE.salary || 1);
     }
 
-    /* 2) 军队耗粮 —— v89.36（老板「维持军队无需耗粮食」）已废除：
+    /* 2) 军队耗粮 —— v89.36（老板「维持军队无需耗净水」）已废除：
        军队维持不再消耗粮草（粮改为**募兵时一次性消耗**，见 DATA.TROOPS.cost.grain ×3）；
        缺粮钳制 / 缺粮计时 / 哗变（原 v65 规则）随之整体退役。 */
 
@@ -2946,7 +3003,6 @@
       deserters.forEach(function (g) {
         delete g._desert;
         GAME.log('💨 ' + g.name + ' 忠诚尽失，弃我而去。', 'sys', 'staff');
-        if (GAME.story && GAME.story.chronicleAdd) GAME.story.chronicleAdd(g.name + '背我而去，投奔他处。', 'note');
       });
     }
     s._unpaid = unpaidAny;
@@ -2967,7 +3023,7 @@
     }
     GAME.applyHearts();
 
-    /* 5) 人口增长：**逐城**向本城民房上限爬升（v60 · 需求 4：人口归属城池） */
+    /* 5) 人口增长：**逐城**向本城居所上限爬升（v60 · 需求 4：人口归属城池） */
     s.cities.forEach(function (city) {
       /* v89.185（老板 6）：「实际人口上限=人口上限*民心/100」——
          爬升目标改走 effPopCapOf（民心折算）；**只封增长、不削存量**：
@@ -2994,7 +3050,7 @@
         GAME._buildDirty = true;
       }
     }
-    /* 7) 训练队列（v24 · 需求 8：按军营分组，只有最早一条在走） */
+    /* 7) 训练队列（v24 · 需求 8：按训练营分组，只有最早一条在走） */
     GAME.advanceTrainQueues(dtReal * ts);
     /* 8) 科技队列 */
     for (var k2 = s.queues.tech.length - 1; k2 >= 0; k2--) {
@@ -3025,20 +3081,20 @@
     /* 9c) 随机任务：每现实日刷新 5 个（未完成可累积，上限 5 天） */
     if (GAME.ensureDailyQuests) GAME.ensureDailyQuests();
 
-    /* 9d) 州郡岁贡：按现实日结算占城的持续收益（州特产材料 / 黄金 / 声望） */
+    /* 9d) 辖区岁贡：按现实日结算占城的持续收益（辖区特产材料 / 黄金 / 声望） */
     if (GAME.settleDailyYield) GAME.settleDailyYield();
 
     /* 9e) 野地：等级衰减（v89.185 起每现实日 -2 级 · 有驻军 -1 级）+ 采集计时推进 */
     if (GAME.decayWilds) GAME.decayWilds();
     if (GAME.tickGathers) GAME.tickGathers(ts);
-    /* v73：种田秘境生长 —— 与建造队列同口径（dtReal × ts） */
+    /* v73：基因实验室生长 —— 与建造队列同口径（dtReal × ts） */
     if (GAME.tickFarm) GAME.tickFarm(dtReal * ts);
     if (GAME.artTick) GAME.artTick(dtReal * ts);   // v79：神器供奉（在线主循环）
 
     /* 9f) 行军队列推进（抵达即结算 —— 见 battle.js GAME.march） */
     if (GAME.march && GAME.march.tick) GAME.march.tick();
 
-    /* 10) 历法天时推进 + 史册记账 + 年号纪元（story.js） */
+    /* 10) 历法天时推进 + 年号纪元（story.js；史册记账随 v89.218 退役） */
     if (GAME.story) GAME.story.tick(ts);
 
     /* 11) 逾溢折损（v89.160 · 老板 1）——**放在历法推进之后**：锚点读的是刚推进过的
@@ -3056,7 +3112,7 @@
      为避免「计算一处、展示另一处」的两份逻辑漂移，
      把因子抽取成单一来源 prodFactors()，计算与 UI 共用。 */
 
-  /* 产量基数（每小时）：城外资源建筑 + 城内功能建筑
+  /* 产量基数（每小时）：城外资源建筑 + 城战技能建筑
      ------------------------------------------------------------
      v29（需求 8）：拆出**单城**版本 —— 侧栏「资源」要在切城时跟着变。
      加成因子（科技/宝物/野地/守将/天时）本来就是全境共享的，
@@ -3116,7 +3172,7 @@
     if (mbProd.prod) list.push({ name: '城主内政', d: mbProd.prod });
     var wr = (s.workRate && s.workRate[r] != null) ? s.workRate[r] : 100;
     if (wr !== 100) list.push({ name: '开工率 ' + wr + '%', d: wr / 100 - 1 });
-    /* v28（需求 1）：马厩/门派驻地/铁匠铺满级专精 —— 全城产量 +6%（逐座叠加）
+    /* v28（需求 1）：车库/派系驻地/锻造间满级专精 —— 全城产量 +6%（逐座叠加）
        （建筑 id 仍是 honglusi，v89.74 只改了显示名） */
     if (GAME.mastery) {
       var mp = (mpGlobal != null) ? mpGlobal : GAME.mastery('prodPct', null);
@@ -3135,7 +3191,7 @@
     var out = { grain: 0, wood: 0, stone: 0, iron: 0, gold: 0 };
     if (!city) return out;
     var mpG = (opt && opt.mpGlobal != null) ? opt.mpGlobal : null;
-    /* v79：「本城产量」加成 = 名城档位 + 爵位 + 主城 + 神器（唯一汇总口）
+    /* v79：「本城产量」加成 = 名城档位 + 威望 + 主城 + 神器（唯一汇总口）
        v89.157（老板 4）：「资源产量的各种加成，应分别对**基础产量**加成，叠加的话有点夸张了」——
        旧口径是**连乘**（(1+a)(1+b)…），高配下叠乘放大幅度失真；现在改为**加法叠加**：
          总倍率 = 1 + Σ各加成（科技/宝物/野地/天时/城主内政/开工率/专精） + 本城加成。
@@ -3151,7 +3207,7 @@
     /* v73（老板「限制黄金的获取」）：税收按 DATA.GOLD_GATE.tax 收紧
        v89.162（老板「内政对税收也应有加成」）：城主内政 → 税收加成；
        v89.188（老板 3）：「减少一点，封顶 200%」—— 走独立率（MAYOR_CURVE.taxRate 0.006）
-       且封顶（taxCap 2.0，产量/建造不受影响），与"税制加成"（名城/爵位/主城/神器）
+       且封顶（taxCap 2.0，产量/建造不受影响），与"税制加成"（名城/威望/主城/神器）
        **同层相加**（v89.157 的加法口径，不连乘）。 */
     var mbTax162 = GAME.mayorBonus(city).tax || 0;
     /* v89.204（老板 1）：税收按**城级民心**（含战争创伤 —— 民心受创的城，税收同步走低） */
@@ -3165,10 +3221,10 @@
     return out;
   };
 
-  /* 全境合计（每秒）：**各城实际增产之和** + 爵位的俸禄收入（记在首城）。
+  /* 全境合计（每秒）：**各城实际增产之和** + 威望的俸禄收入（记在首城）。
      v60 起它不再是"另一套算法"，而是 Σ cityProdPerSec —— 否则
      侧栏"本城产量"与"全境合计"会用两把尺子（本项目最经典的失效模式）。
-     俸禄只加到首城，是因为爵位属于"府库"层面的收入，不该每城各算一遍。 */
+     俸禄只加到首城，是因为威望属于"府库"层面的收入，不该每城各算一遍。 */
   GAME.productionPerSec = function () {
     var s = GAME.state;
     var out = { grain: 0, wood: 0, stone: 0, iron: 0, gold: 0 };
@@ -3198,7 +3254,7 @@
     if (r === 'gold') {
       var s = GAME.state;
       /* v89.162（老板「内政对税收也应有加成」· 顺修）：税收分解与结算**逐项对齐** ——
-         修"带税制加成（爵位/名城/主城/神器）时分解之和 < 结算值"的分叉
+         修"带税制加成（威望/名城/主城/神器）时分解之和 < 结算值"的分叉
          （这些加成此前只在 cityProdPerSec 里乘、分解里没有列 = 显示与结算两本账）。
          逐城求和（名城档位/主城因城而异 · 城主内政按城），与 cityProdPerSec 逐城相乘的结构同源。 */
       var _cts162 = city ? [city] : (s.cities || []);
@@ -3215,7 +3271,7 @@
       });
       /* v89.204：民心逐城各按城级值（战争创伤计入），汇总行不再显示单值 */
       rows.push({ name: '税收（人口' + U.numText(_popC162, 0) + '×民心×税率' + Math.round((s.tax || 0) * 100) + '%）', val: _taxBase162 / 3600 * ts });
-      if (_taxCity162) rows.push({ name: '税制加成（名城/爵位/主城/神器）', val: _taxCity162 / 3600 * ts });
+      if (_taxCity162) rows.push({ name: '税制加成（名城/威望/主城/神器）', val: _taxCity162 / 3600 * ts });
       if (_taxMayor162) rows.push({ name: '城主内政', val: _taxMayor162 / 3600 * ts });
       var salary = (DATA.RANK[s.rank || 0].salary || 0) * (DATA.GOLD_GATE.salary || 1);
       /* 俸禄乘子（宝物×天时）走 productionPerSec 的原口径（连乘），直接给最终值一行 */
@@ -3227,7 +3283,7 @@
       /* v89.179b·P1-5：俸禄是府库层面收入（productionPerSec 注释明言"俸禄只加到首城"），
          本城视图不应列出、更不应计入本城合计（否则每座城都显示同一笔全额俸禄，差 500 倍）。
          仅全境视图（!city）列出；本城视图留白即正确。 */
-      if (salary && !city) rows.push({ name: '爵位俸禄' + (Math.abs(gmS162 - 1) > 1e-9 ? '（含宝物/天时）' : ''), val: salary * gmS162 / 3600 * ts });
+      if (salary && !city) rows.push({ name: '威望俸禄' + (Math.abs(gmS162 - 1) > 1e-9 ? '（含宝物/天时）' : ''), val: salary * gmS162 / 3600 * ts });
       /* 宝物/天时对**税收部分**：结算为加法（v89.157），逐项展开 —— 各项之和 = 总值 */
       var _taxAll162 = _taxBase162 + _taxCity162 + _taxMayor162;
       if (itemM.gold) rows.push({ name: '宝物加成 +' + Math.round(itemM.gold * 100) + '%', val: _taxAll162 * itemM.gold / 3600 * ts });
@@ -3235,17 +3291,17 @@
       return rows;
     }
     var base = ((city ? GAME.prodBasePerHourOf(city)[r] : GAME.prodBasePerHour()[r]) || 0) / 3600 * ts;
-    rows.push({ name: '基础产量（城外建筑 + 城内功能建筑）', val: base });
+    rows.push({ name: '基础产量（城外建筑 + 城战技能建筑）', val: base });
     /* v89.157（老板 4）：加成**各自作用于基础产量再相加**（旧为连乘瀑布）——
        每项贡献 = 基础 × 本项增量；各项之和 = 总值（与 cityProdPerSec 同一把尺）。 */
     GAME.prodFactors(r, city).forEach(function (f) {
       rows.push({ name: f.name + ' ' + (f.d >= 0 ? '+' : '') + Math.round(f.d * 1000) / 10 + '%', val: base * f.d });
     });
-    /* v89.179b·P1-4：补「本城加成」行（名城/爵位/主城/神器）。
+    /* v89.179b·P1-4：补「本城加成」行（名城/威望/主城/神器）。
        cityProdPerSec 把 perkProd(cityBonusNum prodPct) 加进 mAdd，但分解漏列
-       → 各项之和 < 结算值（爵位 ≥1 必现，非名城也中招）。补上后各项之和 = 总值。 */
+       → 各项之和 < 结算值（威望 ≥1 必现，非名城也中招）。补上后各项之和 = 总值。 */
     var _perkP = GAME.cityBonusNum(city, 'prodPct');
-    if (_perkP) rows.push({ name: '本城加成（名城/爵位/主城/神器）', val: base * _perkP });
+    if (_perkP) rows.push({ name: '本城加成（名城/威望/主城/神器）', val: base * _perkP });
     return rows;
   };
 
@@ -3289,7 +3345,7 @@
     return m;
   };
 
-  /* v89.36（老板「维持军队无需耗粮食」）：军队维持耗粮整体退役 ——
+  /* v89.36（老板「维持军队无需耗净水」）：军队维持耗粮整体退役 ——
      `foodPerSecOf` / `foodPerSec` / `mutinyOf` / `starveStep` / `isStarving`
      与 v65 缺粮哗变规则一并移除（军队不再吃粮，断粮没有触发条件）。
      粮改为**募兵时一次性消耗**（DATA.TROOPS.cost.grain ×3）。 */
@@ -3304,7 +3360,7 @@
    *   invasionDueOfSlot(n)      第 n 场的到来时刻（现实毫秒）
    *   invasionTargetOfSlot(n)   第 n 场的目标城（按场轮转）
    *   invasionSrcOf(city, n)    本场来袭的势力（唯一出口：预警与结算**同一个**）
-   *   invasionIntelTextOf(...)  警讯敌情（按烽火台情报等级给详略）
+   *   invasionIntelTextOf(...)  警讯敌情（按瞭望塔情报等级给详略）
    *   armyPowerOf(city)         本城兵力战力（单兵战力复用 story.troopPower，不另造出口）
    *   defensePowerOf(city)      本城守备力 —— **城防在这里被真正消费**
    *   invasionPowerOf(city, n)  本次来袭规模
@@ -3340,8 +3396,8 @@
   };
 
   /* 本城守备力 = 兵力战力 ×（1 + 城防/defDivisor）
-     ⚠️ 这一行就是"让城墙/箭塔真正生效"的接口：`GAME.cityDefense` 已含
-     城墙等级 ×20、箭塔 homeDef、守将智谋、羁绊守御、满级专精 +25%。 */
+     ⚠️ 这一行就是"让围墙/箭塔真正生效"的接口：`GAME.cityDefense` 已含
+     围墙等级 ×20、箭塔 homeDef、守将智谋、羁绊守御、满级专精 +25%。 */
   GAME.defensePowerOf = function (city) {
     if (!city) return 0;
     var div = (DATA.INVASION && DATA.INVASION.defDivisor) || 480;
@@ -3360,7 +3416,7 @@
   };
 
   /* ============================================================
-   * v89.109（老板「为烽火防御战提供战报回放，等同出征战报」）：
+   * v89.109（老板「为警报防御战提供战报回放，等同出征战报」）：
    *   来袭从"一次比值结算"改成**真打一场** —— 走战斗引擎、与出征同规格。
    *   本函数把「来袭战力」（`invasionPowerOf`，与玩家全境战力同口径）拆成一支军队：
    *   按 `DATA.INVASION.mix` 权重分兵种，并用 `story.troopPower` 折算人头，
@@ -3396,7 +3452,7 @@
 
   /* ============================================================
    * v89.111（老板）：「自动攻城固定每日9点即可，提前4h提醒一次，
-   *   无需频繁报告来袭预警」+「其他势力攻打，烽火警讯显示其军队来袭剩余时间」
+   *   无需频繁报告来袭预警」+「其他势力攻打，警报警讯显示其军队来袭剩余时间」
    * v89.115（老板「为啥每分钟都被打一次」）：节奏口径二改 ——
    *   v89.111 的"游戏日"在 600× 下等于每 2.4 现实分钟一场（老板挂机一小时挨 25 场）。
    *   现改为**现实时间**：每 `realMin` 分钟一场、目标城按场轮转、提前 `warnMin` 分钟预警一次。
@@ -3448,7 +3504,7 @@
     var i = ((Math.floor(n) % n2) + n2) % n2;
     return list[i];
   };
-  /* 本城**下一次**被袭时刻（现实毫秒时间戳）—— 界面 / 烽火台闪烁 / 断言都读这里 */
+  /* 本城**下一次**被袭时刻（现实毫秒时间戳）—— 界面 / 瞭望塔闪烁 / 断言都读这里 */
   GAME.invasionDueAt = function (city) {
     var I = DATA.INVASION || {};
     if (!city) return 0;
@@ -3473,19 +3529,19 @@
     var arr = I.sources || ['敌军'];
     return arr[Math.floor(GAME.invasionRoll('src|' + (city && city.id) + '|' + slotIdx) * arr.length)];
   };
-  /* 烽火台情报等级（0 ~ intelBeaconMax）：不再改"提前量"，改管敌情详略 */
+  /* 瞭望塔情报等级（0 ~ intelBeaconMax）：不再改"提前量"，改管敌情详略 */
   GAME.invasionIntelLvOf = function (city) {
     var I = DATA.INVASION || {};
     return Math.min(I.intelBeaconMax == null ? 3 : I.intelBeaconMax,
       (city && GAME.buildingLevel(city, 'fenghuotai')) || 0);
   };
-  /* 警讯里的敌情一段（唯一出口：烽火页与烽火警讯共用）——
+  /* 警讯里的敌情一段（唯一出口：警报页与警报警讯共用）——
      Lv0：只报势力；Lv1：+战力；Lv2+：+兵种明细（按数量取前 3 项）。
      参数 = 场次序号（invasionSlotOf 的返回值）。 */
   GAME.invasionIntelTextOf = function (city, slotIdx) {
     var lv = GAME.invasionIntelLvOf(city);
     var txt = '「' + GAME.invasionSrcOf(city, slotIdx) + '」';
-    /* v89.204（老板 1）：本城**民心警示**（独立于烽火台情报等级 —— 民心是自家账） */
+    /* v89.204（老板 1）：本城**民心警示**（独立于瞭望塔情报等级 —— 民心是自家账） */
     if (GAME.cityHeartsOf) {
       var _h204 = GAME.cityHeartsOf(city);
       if (_h204 <= 0) txt += '💔 民心已尽·城破即失';
@@ -3570,7 +3626,7 @@
     }
     var held = result ? result.winner === 'def' : (ratio <= 0.5);   /* 引擎异常 → 旧口径兜底 */
     var gate = result ? GAME.battle.lootGateOf(result, { kind: 'city' }) : { ok: true, msg: '' };
-    /* v89.109（老板「只有打破城墙并杀死出城迎战的军队，才能进行资源掠夺」）：
+    /* v89.109（老板「只有打破围墙并杀死出城迎战的军队，才能进行资源掠夺」）：
        敌得手（winner='atk'）**且过城防闸**才掠得到 —— 与"我方掠夺 NPC"同一把闸。 */
     var lootOk = result ? (result.winner === 'atk' && gate.ok) : !held;
 
@@ -3597,7 +3653,7 @@
     /* v89.113（老板「守城为什么没有伤兵」）：守城战与出征**同源伤兵回收** ——
        阵亡者按 woundedRate 折算为伤兵入营（可花金治疗归队）。
        改前这里直接 `-= nl` 就完了，伤兵营永远空着 —— 老板实际看到的就是"守城没有伤兵"。
-       v89.186：率走**唯一出口** GAME.woundedRateOf —— 守城也吃商品/科技/门派
+       v89.186：率走**唯一出口** GAME.woundedRateOf —— 守城也吃商品/科技/派系
        （改前只读 base，玩家买的伤兵书在守城不生效）。 */
     var wRate = GAME.woundedRateOf ? GAME.woundedRateOf(null) : 0.75;
     if (result) {
@@ -3632,11 +3688,11 @@
         if (lost > 0) { R[k3] -= lost; out.resLost[k3] = lost; }
       }
     }
-    /* ---- 城墙掉级：破防得手才掉（与"墙被打穿"语义对齐） ---- */
+    /* ---- 围墙掉级：破防得手才掉（与"墙被打穿"语义对齐） ---- */
     if (!held && lootOk && (L.wallDrop || 0) > 0) {
       var wl = GAME.buildingLevel(city, 'chengqiang') || 0;
       if (wl > 0) {
-        /* v89.128：城墙在环城槽（不占格）—— 掉级写回槽（唯一写口 wallSlotOf） */
+        /* v89.128：围墙在环城槽（不占格）—— 掉级写回槽（唯一写口 wallSlotOf） */
         var _ws128 = GAME.wallSlotOf(city);
         var _nl128 = Math.max(0, wl - (L.wallDrop || 1));
         _ws128.build = _nl128 <= 0 ? null : { id: 'chengqiang', lvl: _nl128 };
@@ -3690,7 +3746,7 @@
 
     /* ---- v89.116（老板「守城的战报沙盘应当通用掠夺战斗的沙盘」）----
        防御战**照给沙盘配方**：视角 atk=来犯敌军 / def=我方守军（含出城迎战部队），
-       城墙与箭塔一并入画。此前一律 `sandbox:null`（注释理由是"视角固定攻方，会把双方画反"）
+       围墙与箭塔一并入画。此前一律 `sandbox:null`（注释理由是"视角固定攻方，会把双方画反"）
        —— 正确解法是**给视角**，不是不给沙盘。 */
     if (result) {
       try {
@@ -3728,8 +3784,8 @@
     var defMen0 = 0, scoutN = 0;
     for (var dk in defArmy0) {
       defMen0 += (defArmy0[dk] || 0);
-      /* v89.113（老板「军队数量对不上」）：把"未列阵"的斥候单独点出来 ——
-         战斗表只统计参战部队（斥候 nocombat 不列阵不挨打），而界面上驻军是含斥候的，
+      /* v89.113（老板「军队数量对不上」）：把"未列阵"的侦察兵单独点出来 ——
+         战斗表只统计参战部队（侦察兵 nocombat 不列阵不挨打），而界面上驻军是含侦察兵的，
          两个数不说明白就是"对不上"。 */
       if (DATA.TROOPS[dk] && DATA.TROOPS[dk].nocombat) scoutN += (defArmy0[dk] || 0);
     }
@@ -3737,10 +3793,10 @@
     var lines = [];
     /* v89.113：首行口径一次说全 ——
        来犯：兵力 + **战力**（与预警同一出口 ia.power）；
-       守军：**参战**人数（与战斗表同口径）+ 未列阵斥候 + 统带守将 + **本城守备力**（界面同源）。 */
+       守军：**参战**人数（与战斗表同口径）+ 未列阵侦察兵 + 统带守将 + **本城守备力**（界面同源）。 */
     lines.push('来犯 ' + U.numText(ia.total || 0, 0) + ' 众（约 ' + U.numText(ia.power || 0, 0)
       + ' 战力 · ' + U.escape(src) + '）　守军 ' + U.numText(defFight, 0) + ' 众'
-      + (scoutN > 0 ? '（另 ' + U.numText(scoutN, 0) + ' 斥候未列阵）' : '')
+      + (scoutN > 0 ? '（另 ' + U.numText(scoutN, 0) + ' 侦察兵未列阵）' : '')
       + ((r.defSortieStart || 0) > 0 ? '（其中出城迎战 ' + U.numText(r.defSortieStart, 0) + ' 众）' : '')
       + (guard ? '（' + U.escape(guard.name) + ' 统带）' : '（无守将）')
       + '　守备力 ' + U.numText(out.def || 0, 0));
@@ -3761,7 +3817,7 @@
       for (var k in out.resLost) a.push(GAME.resName(k) + ' −' + U.fmt(out.resLost[k]));
       lines.push('【遭劫】' + (a.join('、') || '（库藏已空，无物可掠）'));
     } else {
-      lines.push('【未破防】敌军破门却未能搬空库藏 —— 城墙 / 野战军仍在，劫掠不成。');
+      lines.push('【未破防】敌军破门却未能搬空库藏 —— 围墙 / 野战军仍在，劫掠不成。');
     }
     /* v89.204（老板 1）：民心行 —— 战败失 20 民心；民心尽时城陷 */
     if (out.cityFallen && out.cityFallen.ok) {
@@ -3772,7 +3828,7 @@
       lines.push('【民心】民心 −' + out.heartsLoss + '（余 ' + Math.round(out.cityHearts)
         + '）—— 民心尽时，此城将为敌方所据（得胜可夺其民心 · 每胜 20）');
     }
-    if (out.wallDrop) lines.push('城墙 −' + out.wallDrop + ' 级');
+    if (out.wallDrop) lines.push('围墙 −' + out.wallDrop + ' 级');
     /* v89.113：伤兵入营 + 俘获溃卒（与出征战报同款口径） */
     if (out.wounded > 0) lines.push('我军伤兵 ' + U.numText(out.wounded, 0) + ' 入营（可花金治疗归队）');
     if (out.captives && out.captives.gain > 0) {
@@ -3802,7 +3858,7 @@
       scene: GAME.battle.compactScene(r),
       replay: GAME.battle.replayFramesOf(r),
       /* v89.116：防御战**给沙盘**（`out._sandbox` 由 invasionResolve 建好）——
-         视角 `ourSide:'def'`：敌军在左、我军守城在右，城墙画在我方一侧。 */
+         视角 `ourSide:'def'`：敌军在左、我军守城在右，围墙画在我方一侧。 */
       sandbox: out._sandbox || null,
       underdog: GAME.battle.underdogOf ? GAME.battle.underdogOf(r, 'def') : null,
       siege: null,
@@ -3821,14 +3877,14 @@
   };
 
   /* ============================================================
-   * v89.107（老板）：「有警报时，建筑烽火台颜色明暗闪烁」
+   * v89.107（老板）：「有警报时，建筑瞭望塔颜色明暗闪烁」
    * ------------------------------------------------------------
    * 预警窗 = 唯一出口。三处都读它，不许各算一份：
-   *   · invasionTick 的报信分支（「🔥 烽火：…」消息）
-   *   · 军务 · 烽火页（预警/布防/流水）
-   *   · 城内棋盘上烽火台的闪烁（ui.buildCellHTML 挂 .alarm）
+   *   · invasionTick 的报信分支（「🔥 警报：…」消息）
+   *   · 军务 · 警报页（预警/布防/流水）
+   *   · 城内棋盘上瞭望塔的闪烁（ui.buildCellHTML 挂 .alarm）
    * v89.111（老板「提前4h提醒一次」）：窗口改**固定提前量**，
-   *   烽火台不再改变"提前量" —— 它改管**情报等级**（bc 字段即情报级，供文案用）。
+   *   瞭望塔不再改变"提前量" —— 它改管**情报等级**（bc 字段即情报级，供文案用）。
    * v89.115：提前量口径改**现实时间**（warnMin 分钟），left 单位为现实秒。
    * ============================================================ */
   GAME.invasionWarnSec = function (city) {
@@ -3892,7 +3948,7 @@
       var bits = [];
       for (var rk in detail.resLost) bits.push(GAME.resName(rk) + ' −' + U.fmt(detail.resLost[rk]));
       if (detail.troopsLost) bits.push('损兵 ' + U.fmt(detail.troopsLost));
-      if (detail.wallDrop) bits.push('城墙 −' + detail.wallDrop + ' 级');
+      if (detail.wallDrop) bits.push('围墙 −' + detail.wallDrop + ' 级');
       if (detail.repDrop) bits.push('声望 −' + detail.repDrop);
       if (detail.battle) bits.push('战报已入公文（' + detail.battle.rounds + ' 回合）');
       GAME.log.beacon(head + (bits.length ? '：' + bits.join('、') : ''));
@@ -3910,9 +3966,9 @@
       var tgt = GAME.invasionTargetOfSlot(nextSlot);
       if (tgt) {
         s.inv.warnedSlot = nextSlot;
-        GAME.log.beacon('🔥 烽火：' + GAME.invasionIntelTextOf(tgt, nextSlot) +
+        GAME.log.beacon('🔥 警报：' + GAME.invasionIntelTextOf(tgt, nextSlot) +
           '将于 ' + U.dur(left) + '后（现实时间）犯『' + tgt.name + '』');
-        if (GAME.sfx) GAME.sfx('alarm');     /* v89.93（E4）：烽火警讯音 */
+        if (GAME.sfx) GAME.sfx('alarm');     /* v89.93（E4）：警报警讯音 */
       }
     }
     return fired;
@@ -3933,10 +3989,9 @@
       else e.lv = q.targetLevel;
       e.pending = null;   // 关键：清掉建设中标记
       GAME.log('城外' + (DATA.EXT_BUILDINGS[q.buildId] ? DATA.EXT_BUILDINGS[q.buildId].name : '建筑') + (q.type === 'ext_build' ? '建造完成' : '升级至 Lv' + q.targetLevel), 'sys', 'build');
-      if (GAME.onActionDone) GAME.onActionDone('build-done', { id: q.buildId, type: q.type });
       return;
     }
-    /* v89.126 / v89.128：城墙走通用路径（type 'build'/'upgrade'，槽位 'wall'）——
+    /* v89.126 / v89.128：围墙走通用路径（type 'build'/'upgrade'，槽位 'wall'）——
        环城槽与 cells 共用同一套 cellOf 访问器；两个旧时代的分支
        （wallLv 直写 / 找格）都已退役，见老档迁移（adoptState）。 */
     var city = GAME.cityById(q.cityId);
@@ -3946,20 +4001,27 @@
     if (!cell) return;
     if (q.type === 'build') {
       if (cell.build) return;           // 该格已有建筑，丢弃过期队列项
-      cell.build = { id: q.buildId, lvl: 1 };
+      /* v89.220（老板 3）：hiLv = 本座历史最高（科技闸存量宽限的基准，新建即第 1 级） */
+      cell.build = { id: q.buildId, lvl: 1, hiLv: 1 };
       cell.pending = null;
     } else if (q.type === 'upgrade') {
       if (!cell.build) return;          // 建筑已在施工期间被拆毁
       cell.build.lvl = q.targetLevel;
+      /* v89.220（老板 3）：历史最高随升级往上记（只增不减 —— 拆了也能升回） */
+      cell.build.hiLv = Math.max(cell.build.hiLv || 0, q.targetLevel);
       cell.pending = null;              // v16：升级完成必须清施工标记
-      /* 官府 4 格同步升级 */
+      /* 政务厅 4 格同步升级 */
       if (cell.build.id === 'guanfu') {
-        city.cells.forEach(function (c) { if (c.build && c.build.id === 'guanfu') c.build.lvl = q.targetLevel; });
+        city.cells.forEach(function (c) {
+          if (c.build && c.build.id === 'guanfu') {
+            c.build.lvl = q.targetLevel;
+            c.build.hiLv = Math.max(c.build.hiLv || 0, q.targetLevel);
+          }
+        });
       }
     }
     GAME.statBump('buildDone', 1);
     GAME.log('建筑完成：' + (DATA.BUILDINGS[q.buildId] ? DATA.BUILDINGS[q.buildId].name : q.buildId) + (q.type === 'upgrade' ? ' 升级' : ''), 'sys', 'build');
-    if (GAME.onActionDone) GAME.onActionDone('build-done', { id: q.buildId, type: q.type });
   };
 
   /* 训练完成 */
@@ -3970,7 +4032,6 @@
     GAME.advanceQuestTrain(t.troopId, t.count);
     GAME.statBump('trained', t.count);
     GAME.log('训练完成：' + (DATA.TROOPS[t.troopId] ? DATA.TROOPS[t.troopId].name : t.troopId) + ' ×' + t.count, 'sys', 'admin');
-    if (GAME.onActionDone) GAME.onActionDone('train-done', { troopId: t.troopId, count: t.count });
   };
 
   /* 科技完成 */
@@ -3987,7 +4048,6 @@
     (DATA.TECH || []).forEach(function (t) { if (t.id === tq.techId) name = t.name; });
     GAME.log('科技完成：' + name + (_ct191 ? '（' + _ct191.name + ' Lv' + ((_tt191 && _tt191[tq.techId]) || 0) + '）' : ''),
       'sys', 'admin');
-    if (GAME.onActionDone) GAME.onActionDone('tech-done', { techId: tq.techId, cityId: _ct191 ? _ct191.id : null });
   };
 
   GAME.cityById = function (id) {
@@ -4055,7 +4115,7 @@
        静态审计 audit.js ⑥ 把它列在白名单里（原因同此）。 */
     if (GAME.onLog) GAME.onLog(msg);
   };
-  /* 分类命名空间：`GAME.log.beacon('🔥 烽火：…')` —— 与 GAME.log(msg,'beacon') 等价，
+  /* 分类命名空间：`GAME.log.beacon('🔥 警报：…')` —— 与 GAME.log(msg,'beacon') 等价，
      只是不必动调用点的括号（多行拼接的消息用括号形式要动语句边界，容易改坏）。 */
   ['war', 'scout', 'beacon', 'task', 'sys'].forEach(function (k) {
     GAME.log[k] = function (msg) { return GAME.log(msg, k); };
@@ -4071,7 +4131,7 @@
     if (!rec) return 'sys';
     if (rec.k && DATA.MSG_KIND_BY && DATA.MSG_KIND_BY[rec.k]) return rec.k;
     var m = rec.msg || '';
-    return /战|攻|败|损/.test(m) ? 'war' : (/任务|史册|改元/.test(m) ? 'task' : 'sys');
+    return /战|攻|败|损/.test(m) ? 'war' : (/任务|改元/.test(m) ? 'task' : 'sys');
   };
   /* ============================================================
    * v89.153：消息**主题**与**系统页池**（两个唯一出口）
@@ -4082,7 +4142,7 @@
    *     标签 id **就是返回值**（era/weather/build/gather/war/task/sys）——
    *     界面 chips、筛选、颜色三处全读它，不另立映射表。
    *   · `GAME.msgFeedOf()` —— 系统页的消息池：军情 + 任务 + 系统**三源合一**、
-   *     按时间倒序（scout / beacon 不入：前者有自己的页签，后者在军务 · 烽火）。
+   *     按时间倒序（scout / beacon 不入：前者有自己的页签，后者在军务 · 警报）。
    * ============================================================ */
   GAME.msgSubOf = function (rec) {
     if (!rec) return 'sys';
@@ -4141,7 +4201,7 @@
   };
 
   /* ============================================================
-   * v86（老板「按计划进行」· 第四轮 G1）：计谋 / 锦囊 —— 唯一出口组
+   * v86（老板「按计划进行」· 第四轮 G1）：计谋 / 封存匣 —— 唯一出口组
    * ------------------------------------------------------------
    * 状态存储：`s.schemes = { [key]: { [sid]: { n, day, until } } }`
    *   · n     = 累计施计次数（挑拨离间：忠诚 = 100 − loyaltyDrop × n）
@@ -4151,7 +4211,7 @@
    * Key 规则（schemeKeyOf）：NPC 城 'npc:<id>'、据点 'fort:<id>'、
    *   野地 'w:x,y'；防御计布在自己城上，独立前缀 'my:<cityId>'。
    * 费用：精力扣在施计将领 gen.energy（与出征同一条链）；
-   *   锦囊走 s.items.jinang（商城道具）。
+   *   封存匣走 s.items.jinang（商城道具）。
    * ============================================================ */
   GAME.schemeOf = function (sid) {
     var list = DATA.SCHEMES || [];
@@ -4183,11 +4243,11 @@
       return { ok: false, msg: '野地无守将，挑拨离间无处施展' };
     }
     if ((gen.energy || 0) < sc.energy) {
-      return { ok: false, msg: gen.name + ' 精力不足（' + Math.round(gen.energy || 0) + '/' + sc.energy + '），可服清心丸' };
+      return { ok: false, msg: gen.name + ' 精力不足（' + Math.round(gen.energy || 0) + '/' + sc.energy + '），可服提神剂' };
     }
     var have = (s.items && s.items.jinang) || 0;
     if (have < sc.jinang) {
-      return { ok: false, msg: '锦囊不足（' + have + '/' + sc.jinang + '），可在商城购买' };
+      return { ok: false, msg: '封存匣不足（' + have + '/' + sc.jinang + '），可在商城购买' };
     }
     if (sid === 'tiaobo') {
       var key = GAME.schemeKeyOf(t);
@@ -4264,32 +4324,32 @@
   };
 
   /* v87「野地专属场景」-> v88.1 整合：
-     wildSceneOf / wildSceneCheck / wildSceneDo 三函数已并入下方「江湖游历」出口组
+     wildSceneOf / wildSceneCheck / wildSceneDo 三函数已并入下方「荒野行动」出口组
      （GAME.jianghuCheck / GAME.jianghuDo 的 kind:'scene' 分支）——
-     数据、锁（s.jianghu）、扣费、种子化、UI 入口全部统一走江湖游历。 */
+     数据、锁（s.jianghu）、扣费、种子化、UI 入口全部统一走荒野行动。 */
 
   /* ============================================================
-   * v88（老板「修炼培养系统」）：灵气双轨 + 江湖游历 —— 唯一出口组
+   * v88（老板「改造培养系统」）：辐能双轨 + 荒野行动 —— 唯一出口组
    * ------------------------------------------------------------
-   * ① 双轨切换：g.equipOn = 'sha'（军装）| 'ling'（修炼）。
+   * ① 双轨切换：g.equipOn = 'sha'（军装）| 'ling'（改造）。
    *    分流唯一出口 systems.equipBagOf -> genEquipBonus；六维/体力/战斗/
    *    界面显示全部消费该出口 —— 切换后全链自动同步（零特判）。
-   * ② 灵力（lingPowerOf）：修炼装备汇总（Σ lingv x 蕴养系数）。
-   *    **独立于六维与战斗公式** —— 只用于江湖游历判定（与当前生效套无关）。
-   * ③ 江湖游历：与 v87 地形场景并存（场景=趣味奇遇一次；江湖=修炼活动菜单，
+   * ② 机能（lingPowerOf）：改造装备汇总（Σ lingv x 调校系数）。
+   *    **独立于六维与战斗公式** —— 只用于荒野行动判定（与当前生效套无关）。
+   * ③ 荒野行动：与 v87 地形场景并存（场景=趣味奇遇一次；荒野=改造活动菜单，
    *    每处**每活动**每日一次，锁 s.jianghu = { 'x,y|act': day }）。
-   *    消耗精力+体力；判定看灵力；风险=负伤（不损兵）；产出=灵气精华+低概率装备；
+   *    消耗精力+体力；判定看机能；风险=负伤（不损兵）；产出=辐能核心+低概率装备；
    *    结果种子化（invasionRoll，同一天同一地同一活动稳定可复现）。
    * ============================================================ */
   GAME.lingPowerOf = function (g) {
     if (!g) return 0;
     var bag = g.lingEquip || {}, t = 0;
-    var perLv = (DATA.LING_TEMPER && DATA.LING_TEMPER.perLv) || 0.08;
     for (var slot in bag) {
       var inst = bag[slot];
       var it = DATA.EQUIP[GAME.eqId ? GAME.eqId(inst) : inst];
       if (!it || !it.lingv) continue;
-      t += it.lingv * (1 + (GAME.eqEnhOf ? GAME.eqEnhOf(inst) : 0) * perLv);
+      /* v89.211：调校乘数收敛到 GAME.eqLingMulOf（唯一出口；装备描述 equipDescOf 同源） */
+      t += it.lingv * (GAME.eqLingMulOf ? GAME.eqLingMulOf(inst) : 1);
     }
     return Math.round(t);
   };
@@ -4300,27 +4360,27 @@
     var g = null;
     (s.generals || []).forEach(function (x) { if (x.id === genId) g = x; });
     if (!g) return { ok: false, msg: '将领不存在' };
-    /* v89：修炼线君主专属 —— 非君主一切切换请求拒绝，并归位军装（老档兜底） */
+    /* v89：改造线君主专属 —— 非君主一切切换请求拒绝，并归位军装（老档兜底） */
     if (!GAME.canCultivate(g)) {
       if (g.equipOn === 'ling') g.equipOn = 'sha';
-      return { ok: false, msg: '修炼乃君主专属 —— 只有君主可切换修炼装备' };
+      return { ok: false, msg: '改造乃君主专属 —— 只有君主可切换改造装备' };
     }
     var cur = g.equipOn || 'sha';
     var next = (want === 'sha' || want === 'ling') ? want : (cur === 'sha' ? 'ling' : 'sha');
-    if (next === cur) return { ok: false, msg: '当前已是' + (next === 'ling' ? '修炼' : '军中') + '装备' };
+    if (next === cur) return { ok: false, msg: '当前已是' + (next === 'ling' ? '改造' : '军中') + '装备' };
     g.equipOn = next;
     var n = Object.keys(((next === 'ling') ? g.lingEquip : g.equip) || {}).length;
-    GAME.log(g.name + ' 换装：' + (next === 'ling' ? '☯ 修炼装备' : '⚔ 军中装备') + '（' + n + ' / 12 件）', 'sys', 'staff');
-    return { ok: true, msg: '已切换为' + (next === 'ling' ? '☯ 修炼装备' : '⚔ 军中装备'), set: next };
+    GAME.log(g.name + ' 换装：' + (next === 'ling' ? '☯ 改造装备' : '⚔ 军中装备') + '（' + n + ' / 12 件）', 'sys', 'staff');
+    return { ok: true, msg: '已切换为' + (next === 'ling' ? '☯ 改造装备' : '⚔ 军中装备'), set: next };
   };
 
-  /* v89.45（老板：「将野地的江湖游历板块剥离，不体现在游戏中，但资产保留」）：
-     野地江湖游历**组件挂载开关**。false = 野地呈现层全剥离（面板区块 / 点选状态行 / 地图青旗）；
+  /* v89.45（老板：「将野地的荒野行动板块剥离，不体现在游戏中，但资产保留」）：
+     野地荒野行动**组件挂载开关**。false = 野地呈现层全剥离（面板区块 / 点选状态行 / 地图青旗）；
      底层资产与逻辑（DATA.LING_ACT 活动表 · DATA.JH_SPREAD / JH_MARK · GAME.jianghu* 判定/扣费/结算 ·
      ui.jianghuHTML / drawJhPennant 函数体 · 逸闻故事资产）全部保留。
      **后续重新挂载**：把这里改成 true 即可，无需改动其它代码（四处 guard 自动恢复呈现）。 */
   GAME.jianghuWildMounted = false;
-  /* --------- 江湖游历 --------- */
+  /* --------- 荒野行动 --------- */
   /* v89.4：候选（某地形上"理论上"可能发生的全部活动）—— 分布与测试共用 */
   GAME.jianghuCands = function (terrain) {
     var out = [];
@@ -4348,7 +4408,7 @@
   };
   /* v89.5：灵机之地 —— 有事的野地中「值得专程一访」者（大地图悬青旗）。
      灵机 = 事数 × 野地等级，≥ DATA.JH_MARK.minScore 者为地标（mark）。
-     返回 null = 此地无江湖事（荒僻 / 非野地地形）。地图渲染与点选信息共用此出口。 */
+     返回 null = 此地无荒野事（荒僻 / 非野地地形）。地图渲染与点选信息共用此出口。 */
   GAME.jianghuSpotInfo = function (x, y) {
     var acts = GAME.jianghuActsAt(x, y);
     if (!acts.length) return null;
@@ -4365,7 +4425,7 @@
    *   ① wonderSites —— 隐藏点位（map.seed 的确定性函数，一次生成缓存）：
    *      三带密度：近郊多逸闻、绝域多奇珍绝景；不与据点/城池重叠。
    *   ② 现形：线索（活动结算时按 day 盐确定性掷）与「就近探察」（开野地弹窗方圆二格）。
-   *   ③ 探奇三段 Check/Spend/Roll（与江湖活动同一形状）：首次选择扣费并锁点位，
+   *   ③ 探奇三段 Check/Spend/Roll（与荒野活动同一形状）：首次选择扣费并锁点位，
    *      结算入见闻录；点位一旦动身即断（无论成败）。
    * ============================================================ */
   GAME.wonderState = function () {
@@ -4488,7 +4548,7 @@
     if (n) GAME.log('📜 探得异迹 ' + n + ' 处 —— 记于见闻，可于图中寻「✦」往探');
     return n;
   };
-  /* 线索：走完一桩江湖事后有几率闻得尚未现形的点位（确定性 roll；无剩余点位则无） */
+  /* 线索：走完一桩荒野事后有几率闻得尚未现形的点位（确定性 roll；无剩余点位则无） */
   GAME.wonderClueRoll = function (x, y, actId, day) {
     var ws = GAME.wonderState();
     var wc = DATA.WONDER || {};
@@ -4531,7 +4591,7 @@
     } catch (e) { /* 线索失败不影响活动结算 */ }
     return res;
   };
-  /* --------- 探奇三段：Check / Spend / Roll（与江湖活动同一形状） --------- */
+  /* --------- 探奇三段：Check / Spend / Roll（与荒野活动同一形状） --------- */
   GAME.wonderCheck = function (x, y, genId) {
     var s = GAME.state;
     var tile = GAME.map.tile(x, y);
@@ -4539,7 +4599,7 @@
     var site = GAME.wonderSiteOf(x, y);
     if (!site) return { ok: false, msg: '此地无奇可探' };
     if (site.done) return { ok: false, msg: '此地奇遇已探 —— 缘止于此' };
-    if (!site.revealed) return { ok: false, msg: '此地尚无音信 —— 江湖之行或可闻得异迹' };
+    if (!site.revealed) return { ok: false, msg: '此地尚无音信 —— 荒野之行或可闻得异迹' };
     var w = (DATA.WONDERS || {})[site.wid];
     if (!w) return { ok: false, msg: '奇物未载于册' };
     var gen = null;
@@ -4548,7 +4608,7 @@
     if (!GAME.canCultivate(gen)) return { ok: false, msg: '寻奇探幽乃君主亲历之事 —— 只有君主可前往' };
     var cost = (DATA.WONDER && DATA.WONDER.cost) || { energy: 6, stam: 2 };
     if ((gen.energy || 0) < cost.energy) {
-      return { ok: false, msg: gen.name + ' 精力不足（' + Math.round(gen.energy || 0) + '/' + cost.energy + '），可服清心丸' };
+      return { ok: false, msg: gen.name + ' 精力不足（' + Math.round(gen.energy || 0) + '/' + cost.energy + '），可服提神剂' };
     }
     if (GAME.staNow(gen) < cost.stam) {
       return { ok: false, msg: gen.name + ' 体力不足（' + Math.round(GAME.staNow(gen)) + '/' + cost.stam + '），休整后再来' };
@@ -4593,7 +4653,7 @@
     if (rw.ess) {
       var ne = mi(rnd('ess', rw.ess[0], rw.ess[1]));
       s.items.lingsui = (s.items.lingsui || 0) + ne;
-      texts.push('灵气精华 +' + ne);
+      texts.push('辐能核心 +' + ne);
     }
     var home = GAME.currentCity();
     if (rw.gold && home) {
@@ -4650,21 +4710,21 @@
     var tile = GAME.map.tile(x, y);
     if (!tile) return { ok: false, msg: '坐标越界' };
     var a = (DATA.LING_ACT || {})[actId];
-    if (!a) return { ok: false, msg: '无此江湖活动' };
+    if (!a) return { ok: false, msg: '无此荒野活动' };
     if (!a.spots || a.spots.indexOf(tile.terrain) < 0) {
       return { ok: false, msg: ((DATA.TERRAIN[tile.terrain] || {}).name || '此地') + '做不了「' + a.name + '」' };
     }
     /* v89.4：逐地分布闸门 —— 此处野地今日并没有这桩事（随缘而现） */
     var avail4 = false;
     GAME.jianghuActsAt(x, y).forEach(function (k) { if (k.id === actId) avail4 = true; });
-    if (!avail4) return { ok: false, msg: '此处野地无「' + a.name + '」—— 江湖之事随缘而现，换一处看看' };
+    if (!avail4) return { ok: false, msg: '此处野地无「' + a.name + '」—— 荒野之事随缘而现，换一处看看' };
     var gen = null;
     (s.generals || []).forEach(function (g) { if (g.id === genId) gen = g; });
     if (!gen) return { ok: false, msg: '请选择带队的将领' };
-    /* v89：江湖游历君主专属（主角单修）—— 与装备/蕴养同一道闸门 */
-    if (!GAME.canCultivate(gen)) return { ok: false, msg: '江湖游历乃君主亲历之事 —— 只有君主可前往' };
+    /* v89：荒野行动君主专属（主角单修）—— 与装备/调校同一道闸门 */
+    if (!GAME.canCultivate(gen)) return { ok: false, msg: '荒野行动乃君主亲历之事 —— 只有君主可前往' };
     if ((gen.energy || 0) < a.energy) {
-      return { ok: false, msg: gen.name + ' 精力不足（' + Math.round(gen.energy || 0) + '/' + a.energy + '），可服清心丸' };
+      return { ok: false, msg: gen.name + ' 精力不足（' + Math.round(gen.energy || 0) + '/' + a.energy + '），可服提神剂' };
     }
     if (GAME.staNow(gen) < a.stam) {
       return { ok: false, msg: gen.name + ' 体力不足（' + Math.round(GAME.staNow(gen)) + '/' + a.stam + '），休整后再来' };
@@ -4715,7 +4775,7 @@
     var mPow = mo.pow || 1, mRw = mo.reward || 1, mWound = mo.wound || 1, mLuck = mo.luck || 0;
     var mi = function (n) { return Math.max(1, Math.round(n * mRw * lvR)); };
     var mw = function (n) { return Math.max(1, Math.round(n * mWound * lvW)); };
-    /* 灵力（读修炼装备；与当前生效套无关） */
+    /* 机能（读改造装备；与当前生效套无关） */
     var ling = GAME.lingPowerOf(gen);
     var texts = [];
     var bad = false;
@@ -4723,7 +4783,7 @@
     var ess = function (lo, hi, salt, tag) {
       var n = mi(rnd(salt || 'ess', lo, hi));
       s.items.lingsui = (s.items.lingsui || 0) + n;
-      texts.push('灵气精华 +' + n + (tag ? '（' + tag + '）' : ''));
+      texts.push('辐能核心 +' + n + (tag ? '（' + tag + '）' : ''));
       return n;
     };
     /* 低概率装备掉落（阶随野地等级 0-10 -> 1-6 阶） */
@@ -4741,7 +4801,7 @@
     };
     var title = a.name;
     if (a.kind === 'fight') {
-      /* 灵力判定：我方战力 =（灵力 + 等级 x2）x 种子波动；难度随野地等级 +35%/级 */
+      /* 机能判定：我方战力 =（机能 + 等级 x2）x 种子波动；难度随野地等级 +35%/级 */
       var pow = (ling + (gen.level || 1) * 2) * (0.9 + roll('pow') * 0.2) * mPow;
       var need = a.power * lvN;
       if (pow >= need) {
@@ -4771,7 +4831,7 @@
         var tot = 0;
         for (var j = 1; j <= layer; j++) tot += mi(rnd('te' + j, a.win.ess[0] / 3, a.win.ess[1] / 3));
         s.items.lingsui = (s.items.lingsui || 0) + tot;
-        texts.push('灵气精华 +' + tot + '（过 ' + layer + ' 层）');
+        texts.push('辐能核心 +' + tot + '（过 ' + layer + ' 层）');
         if (layer >= 3) tryDrop('drop');
         title = (layer >= 3) ? '三层皆过' : ('止步第 ' + (layer + 1) + ' 层');
         bad = false;
@@ -4837,7 +4897,7 @@
       if (out2.grain && home2) {
         var gr2 = mi(rnd('grain', out2.grain[0], out2.grain[1]));
         GAME.res(home2).grain = (GAME.res(home2).grain || 0) + gr2;
-        texts.push('粮食 +' + gr2);
+        texts.push('净水 +' + gr2);
       }
       if (out2.mats) {
         var tbl2 = DATA.WILD_MATERIAL[tile.terrain] || {};
@@ -4910,10 +4970,10 @@
     return GAME._jhClueAttach({ ok: true, name: a.name + ' · ' + title, text: body, bad: bad, grade: grade }, chk);
   };
 
-  /* --------- v89 · 全屏江湖场景流程（老板：「专属全屏界面 + 特定退出」） --------- */
+  /* --------- v89 · 全屏荒野场景流程（老板：「专属全屏界面 + 特定退出」） --------- */
   GAME.sceneFx = null;
   /* 进入流程：只校验不扣费（「未动身离去免费」的根基）；无剧本 → fx:null 由调用方兜底 */
-  /* v89.6：剧本开场内核抽成共用出口 —— 江湖活动与奇遇共用同一套场景机 */
+  /* v89.6：剧本开场内核抽成共用出口 —— 荒野活动与奇遇共用同一套场景机 */
   GAME.sceneBegin = function (chk, fly, extra) {
     GAME.sceneFx = {
       chk: chk, fly: fly, actId: chk.actId,
@@ -4978,417 +5038,10 @@
     return { ok: true, fx: fx };
   };
   /* ============================================================
-   * 文字游戏 · 故事库引擎（内容层在 story/vol-*.js）
-   * ------------------------------------------------------------
-   * 与「江湖游历 / 奇遇」同族（幕 → 选择 → 幕/结局），但**互不依赖**：
-   *   · 游历 = 有消耗、有日锁、进战斗与生产链；
-   *   · 故事 = 只读叙事 + 一次性赏赐（不进战斗链、不改任何数值公式）。
-   * 事实源：window.STORY_DATA（由 story/vol-*.js 追加）。
-   * 运行态 GAME.SG._run **不入档**（一次阅读是短会话，同 sceneFx 先例）；
-   * 进度 s.stories **入档**（运行中会变 —— 符合「派生数据不入档」的判据）。
+   * ⛔ v89.218（老板）：「故事全部去除，不再保留史册，故事集」——
+   * 故事库引擎（GAME.SG：清单 / 待阅 / 掷骰 / 动作触发 / 结算）整条退役；
+   * 内容层 story/（84 卷）已删，阅读器与「史册 / 故事集」两视图在 ui.js 同步移除。
+   * 老档残留：s.sgPending / s.sgArchived / s.stories 不再被读取（无消费者，
+   * 随下次存档自然消失）—— 不做迁移。
    * ============================================================ */
-  GAME.SG = {};
-  /* 故事全表（无数据时返回空表，界面按空态处理） */
-  GAME.SG.list = function () {
-    return (typeof window !== 'undefined' && window.STORY_DATA) || [];
-  };
-  GAME.SG.one = function (sid) {
-    var all = GAME.SG.list();
-    for (var i = 0; i < all.length; i++) if (all[i].id === sid) return all[i];
-    return null;
-  };
-
-  /* v89.86（整改 P-06）：**待阅**清单 —— 触发的逸闻不再全屏弹出（实测 25 分钟触发 7 次，
-     全屏层反复打断操作流）；改为入待阅 + 顶栏「史册」徽标 +1，从史册页「待阅逸闻」再读。
-     入档（s.sgPending，懒初始化，不动 SAVE_VERSION）。
-     v89.93（整改 E10）：**超限不再丢** —— 改前上限 30 条、超限 `shift()` 静默丢最旧
-     （实测 y79 触顶后全程 30，玩家不知道错过了什么）。现在上限放到 60，
-     溢出的进「往事」清单（s.sgArchived，仍可在史册页读到），并留一个计数供界面提示。 */
-  GAME.SG.PENDING_CAP = 60;
-  GAME.SG.ARCHIVE_CAP = 240;
-  GAME.SG.pending = function () {
-    var s = GAME.state;
-    if (!s) return [];
-    if (!s.sgPending) s.sgPending = [];
-    return s.sgPending;
-  };
-  /* v89.93（E10）：溢出往事（只增不减到安全上限；条目与待阅同构，可直接阅读） */
-  GAME.SG.archived = function () {
-    var s = GAME.state;
-    if (!s) return [];
-    if (!s.sgArchived) s.sgArchived = [];
-    return s.sgArchived;
-  };
-  GAME.SG.defer = function (sid) {
-    var st = GAME.SG.one(sid);
-    if (!st) return { ok: false, msg: '没有这篇故事' };
-    var list = GAME.SG.pending();
-    for (var i = 0; i < list.length; i++) {
-      if (list[i].sid === sid) return { ok: true, dup: true, st: st, n: list.length };
-    }
-    var a = st.anchor || {};
-    list.push({ sid: sid, title: st.title || sid, kind: a.kind || '', kid: a.id || '', at: U.now() });
-    var arch = null;
-    while (list.length > GAME.SG.PENDING_CAP) {
-      var old = list.shift();
-      var arr = GAME.SG.archived();
-      if (!arr.some(function (x) { return x.sid === old.sid; })) arr.push(old);
-      while (arr.length > GAME.SG.ARCHIVE_CAP) arr.shift();
-      arch = arch || old;
-    }
-    return { ok: true, n: list.length, st: st, archived: arch };
-  };
-  GAME.SG.takePending = function (sid) {
-    var s = GAME.state;
-    if (!s || !s.sgPending) return null;
-    var idx = -1;
-    s.sgPending.forEach(function (x, i) { if (x.sid === sid) idx = i; });
-    if (idx < 0) return null;
-    return s.sgPending.splice(idx, 1)[0];
-  };
-
-  /* 段数（层数）：从首幕逐层推进的最深层号 —— 界面「第 N 段 · 共 M 段」与测试共用。
-     v89.8 结构约定：全路径同层、结局挂在最深层；本函数只报层数，不判合法性
-     （合法性由 story/tools/check.py 把关）。 */
-  GAME.SG.rankCount = function (st) {
-    var ns = (st && st.nodes) || [];
-    if (!ns.length) return 0;
-    var idx = {}, depth = {}, queue = [ns[0].id];
-    ns.forEach(function (n) { idx[n.id] = n; });
-    depth[ns[0].id] = 1;
-    while (queue.length) {
-      var cur = queue.shift(), node = idx[cur];
-      ((node && node.o) || []).forEach(function (op) {
-        if (idx[op.to] && depth[op.to] == null) { depth[op.to] = depth[cur] + 1; queue.push(op.to); }
-      });
-    }
-    var max = 0;
-    for (var k in depth) if (depth[k] > max) max = depth[k];
-    return max;
-  };
-  /* 该档的阅读进度（懒初始化：老档读入即补，不动 SAVE_VERSION） */
-  GAME.SG.progress = function () {
-    var s = GAME.state;
-    if (!s) return {};
-    if (!s.stories) s.stories = {};
-    return s.stories;
-  };
-  /* 某锚点下的故事（带已读进度）——入口与图鉴共用这一处筛选 */
-  GAME.SG.anchor = function (kind, id) {
-    var pr = GAME.SG.progress();
-    var out = [];
-    GAME.SG.list().forEach(function (st) {
-      var a = st.anchor || {};
-      if (a.kind !== kind || a.id !== id) return;
-      var r = pr[st.id] || {};
-      out.push({ st: st, done: r.done || [], last: r.grade || '', n: r.n || 0 });
-    });
-    out.sort(function (a, b) { return a.st.id < b.st.id ? -1 : 1; });
-    return out;
-  };
-  /* 开一篇：建立运行态（不入档） */
-  GAME.SG.begin = function (sid) {
-    var st = GAME.SG.one(sid);
-    if (!st) return { ok: false, msg: '没有这篇故事' };
-    var nodes = st.nodes || [];
-    if (!nodes.length) return { ok: false, msg: '故事缺幕' };
-    GAME.SG._run = { st: st, nodeId: nodes[0].id, path: [], phase: 'node', ending: null, got: null, fresh: false };
-    return { ok: true, run: GAME.SG._run };
-  };
-  GAME.SG.nodeOf = function (run, nid) {
-    var ns = (run && run.st && run.st.nodes) || [];
-    for (var i = 0; i < ns.length; i++) if (ns[i].id === nid) return ns[i];
-    return null;
-  };
-  GAME.SG.endingOf = function (run, eid) {
-    var es = (run && run.st && run.st.endings) || [];
-    for (var i = 0; i < es.length; i++) if (es[i].id === eid) return es[i];
-    return null;
-  };
-  /* 选一个选项：推进到下一幕，或落到结局并立即结算 */
-  GAME.SG.choose = function (i) {
-    var run = GAME.SG._run;
-    if (!run || run.phase !== 'node') return { ok: false, msg: '当前不在选项中' };
-    var node = GAME.SG.nodeOf(run, run.nodeId);
-    var op = (node && node.o) ? node.o[i] : null;
-    if (!op) return { ok: false, msg: '没有这个选项' };
-    run.path.push({ id: run.nodeId, l: op.l });
-    var end = GAME.SG.endingOf(run, op.to);
-    if (end) {
-      run.phase = 'end';
-      run.ending = end;
-      run.got = GAME.SG.settle(run, end);
-    } else {
-      run.nodeId = op.to;
-    }
-    return { ok: true, run: run };
-  };
-  /* 归档即断开运行态（供退出/收起用） */
-  GAME.SG.close = function () { GAME.SG._run = null; };
-  /* ============================================================
-   * v89.29 · 逸闻奇遇（概率触发入口）
-   * ------------------------------------------------------------
-   * 入口从「列表菜单」改为「概率奇遇」：点击建筑 / 地块时掷骰，
-   * 命中则从该锚点的故事池（每篇 = 一份独立资产）随机抽一篇，
-   * 直接在弹窗之上开卷（叠层语义：掩卷后回到原面板）。
-   *   · 优先抽「还有未读结局的」；池内全部读毕后转为低概率重读；
-   *   · 冷却期内（TRIG.cooldownMs）不再触发 —— 防连点刷屏；
-   *   · TRIG.rng / TRIG.pin 为测试与调试钩子（pin 指定必中篇目）。
-   * 运行态 _lastAt 不入档（会话级即可）。
-   * ============================================================ */
-  GAME.SG.TRIG = {
-    chance: 0.35,        /* 有未读故事时的触发概率 */
-    chanceDone: 0.12,    /* 全部读毕后的重读概率（低） */
-    cooldownMs: 60 * 1000,
-    /* v89.31：动作触发（战事/营造/民生…）—— 同类动作的最小间隔（各记各的） */
-    actCooldownMs: 3 * 60 * 1000,
-    rng: Math.random,    /* 返回 [0,1)；可注入（测试） */
-    pin: null,           /* 调试/测试：指定命中篇目（须在该锚点池内） */
-    _lastAt: 0,          /* 上次被抽走的时刻（运行态，不入档） */
-    _actAt: {}           /* v89.31：各动作键上次触发时刻（运行态，不入档） */
-  };
-  /* 触发池：fresh = 还有未读结局的（优先）；done = 已读全的（重读用） */
-  GAME.SG.candidates = function (kind, id) {
-    var rows = GAME.SG.anchor(kind, id), fresh = [], done = [];
-    rows.forEach(function (r) {
-      var total = (r.st.endings || []).length;
-      if ((r.done || []).length < total) fresh.push(r); else done.push(r);
-    });
-    return { fresh: fresh, done: done, total: rows.length };
-  };
-  /* 掷骰：返回 { fire, why, sid }；why ∈ empty / cool / roll / pin-miss */
-  GAME.SG.roll = function (kind, id, at) {
-    var cands = GAME.SG.candidates(kind, id);
-    if (!cands.total) return { fire: false, why: 'empty' };
-    var now = (at == null ? Date.now() : at);
-    if (now - GAME.SG.TRIG._lastAt < GAME.SG.TRIG.cooldownMs) return { fire: false, why: 'cool' };
-    var pool = cands.fresh.length ? cands.fresh : cands.done;
-    var pick = null;
-    if (GAME.SG.TRIG.pin) {
-      for (var i = 0; i < pool.length; i++) {
-        if (pool[i].st.id === GAME.SG.TRIG.pin) { pick = pool[i]; break; }
-      }
-      if (!pick) return { fire: false, why: 'pin-miss' };
-    } else {
-      var chance = cands.fresh.length ? GAME.SG.TRIG.chance : GAME.SG.TRIG.chanceDone;
-      if (GAME.SG.TRIG.rng() >= chance) return { fire: false, why: 'roll' };
-      pick = pool[Math.min(pool.length - 1, Math.floor(GAME.SG.TRIG.rng() * pool.length))];
-    }
-    GAME.SG.TRIG._lastAt = now;
-    return { fire: true, sid: pick.st.id, st: pick.st };
-  };
-  /* ============================================================
-   * v89.31 · 动作触发（逸闻奇遇 · 因果线）
-   * ------------------------------------------------------------
-   * 除「点击建筑 / 地块」外，玩家的**动作结算**也可偶遇逸闻 ——
-   * 覆盖四条线（共 14 个动作键）：
-   *   · 战事：出征胜 / 出征败 / 占领城池 / 据守野地（行军抵达时结算）；
-   *   · 营造：建造升级完成（含城外与城墙）/ 迁址 / 筑城；
-   *   · 民生：训练完成 / 治疗伤兵 / 市易 / 采集归来；
-   *   · 成长：研习（科技）完成 / 招贤（客栈招募）/ 爵位晋升。
-   * 每个动作键给出「相关建筑池」：
-   *   anchors —— 静态数组，或按 ctx 动态解析（如占城取该档城池 + 官府 + 门派驻地）；
-   *   chance / cd —— 命中概率与同类冷却（默认 actCooldownMs）；prefer —— 可选的标签收窄；
-   * 池内先取「有未读结局的」（fresh），全读毕后转低概率重读；pin 指定时绕过 prefer。
-   * 挂点：引擎侧（tick 内完成）经 GAME.onActionDone（main.js 定义）→ ui.sgTryAct；
-   *       界面侧动作在 main.js 各 doXxx 内直接 ui.sgTryAct。
-   * ============================================================ */
-  GAME.SG.ACT = {
-    /* ---- 战事（onMarchArrive 结算） ---- */
-    'battle-win': {
-      chance: 0.35, cd: 4 * 60 * 1000,
-      prefer: ['军伍', '军务', '军情', '城防', '烽燧', '马政', '驿传', '边务', '营务'],
-      anchors: [['building', 'junying'], ['building', 'xiaochang'], ['building', 'chengqiang'],
-                ['building', 'fenghuotai'], ['building', 'majiu'], ['building', 'yizhan']]
-    },
-    'battle-lose': {
-      chance: 0.30, cd: 4 * 60 * 1000,
-      prefer: ['军伍', '军务', '城防', '驿传', '赈济', '信义', '流民'],
-      anchors: [['building', 'junying'], ['building', 'xiaochang'], ['building', 'chengqiang'],
-                ['building', 'yizhan'], ['building', 'minfang']]
-    },
-    'occupy-city': {
-      chance: 0.50, cd: 4 * 60 * 1000,
-      anchors: function (ctx) {
-        var t = ['county', 'jun', 'zhou', 'capital'].indexOf(ctx && ctx.type) >= 0 ? ctx.type : 'county';
-        return [['city', t], ['building', 'guanfu'], ['building', 'honglusi']];
-      }
-    },
-    'occupy-wild': {
-      chance: 0.30,
-      anchors: function (ctx) {
-        return [['wild', (ctx && ctx.terrain) || 'hill'], ['building', 'fenghuotai'], ['building', 'chengqiang']];
-      }
-    },
-    /* ---- 营造（applyBuildDone 结算） ---- */
-    'build-done': {
-      chance: 0.20,
-      anchors: function (ctx) {
-        var ty = (ctx && ctx.type) || '';
-        var b = (ctx && ctx.id) || 'gongjiangzuofang';
-        if (ty.indexOf('ext') === 0) return [['ext', b], ['building', 'gongjiangzuofang']];
-        if (ty === 'wall') return [['building', 'chengqiang'], ['building', 'gongjiangzuofang']];
-        return [['building', b], ['building', 'gongjiangzuofang']];
-      }
-    },
-    'move-city': {
-      chance: 0.60, cd: 4 * 60 * 1000,
-      anchors: [['building', 'guanfu'], ['building', 'minfang'], ['building', 'gongjiangzuofang'], ['building', 'chengqiang']]
-    },
-    'build-city': {
-      chance: 0.60, cd: 4 * 60 * 1000,
-      anchors: [['building', 'guanfu'], ['building', 'minfang'], ['building', 'gongjiangzuofang'], ['building', 'chengqiang']]
-    },
-    /* ---- 民生 / 成长 ---- */
-    'train-done': {
-      chance: 0.10, cd: 5 * 60 * 1000,
-      anchors: [['building', 'junying'], ['building', 'xiaochang'], ['building', 'tiejiangpu']]
-    },
-    'tech-done': {
-      chance: 0.35,
-      anchors: [['building', 'shuyuan'], ['building', 'zhaoxianguan']]
-    },
-    'heal-wounded': {
-      chance: 0.25,
-      anchors: [['building', 'junying'], ['building', 'minfang']]
-    },
-    'recruit-hero': {
-      chance: 0.50, cd: 4 * 60 * 1000,
-      anchors: [['building', 'zhaoxianguan'], ['building', 'kezhan']]
-    },
-    'market-trade': {
-      chance: 0.08, cd: 5 * 60 * 1000,
-      anchors: [['building', 'shichang'], ['building', 'cangku']]
-    },
-    'gather-done': {
-      chance: 0.10, cd: 5 * 60 * 1000,
-      anchors: function (ctx) {
-        return [['wild', (ctx && ctx.terrain) || 'hill'], ['building', 'cangku']];
-      }
-    },
-    'promote': {
-      chance: 0.50, cd: 4 * 60 * 1000,
-      anchors: [['building', 'guanfu'], ['building', 'honglusi'], ['building', 'minfang']]
-    }
-  };
-
-  /* v89.39：世事（misc/any）并入动作触发池 —— 每键配「题材标签」，
-     精确匹配世事篇 tags 的第二词（如 凯旋 / 策勋 / 迁治）——
-     动作做完偶遇「事后的回响」（与 v89.29 点击奇遇、v89.31 动作触发同族）。 */
-  (function () {
-    var MT = {
-      'battle-win': ['凯旋', '献俘', '犒军', '策勋', '追赠'],
-      'battle-lose': ['收葬', '抚孤', '追赠'],
-      'occupy-city': ['献俘', '凯旋', '赐第', '策勋'],
-      'occupy-wild': ['追赠', '收葬'],
-      'build-done': ['筑基', '建仓', '立市', '浚河'],
-      'move-city': ['迁治', '修路', '去思碑'],
-      'build-city': ['筑基', '立市', '迁治'],
-      'train-done': ['犒军', '乡射'],
-      'tech-done': ['奏对', '元日', '立春', '秋尝', '保举', '致仕', '授馆'],
-      'heal-wounded': ['赈粥', '抚孤', '大傩', '腊祭', '雪赈'],
-      'recruit-hero': ['保举', '赐服'],
-      'market-trade': ['立市', '质剂', '岁贡', '贡差', '回赐', '勘合', '通事'],
-      'gather-done': ['建仓', '质剂'],
-      'promote': ['策勋', '铁券', '月俸', '朝会', '赐服', '奏对', '大赦', '赎刑', '旌表']
-    };
-    Object.keys(MT).forEach(function (k) {
-      if (GAME.SG.ACT[k]) GAME.SG.ACT[k].miscTags = MT[k];
-    });
-  })();
-  /* 动作池：相关锚点合并去重 → fresh（有未读结局）/ done（读毕） */
-  GAME.SG.actPool = function (key, ctx) {
-    var act = GAME.SG.ACT[key];
-    if (!act) return { fresh: [], done: [], total: 0, act: null };
-    var list = (typeof act.anchors === 'function') ? (act.anchors(ctx || {}) || []) : (act.anchors || []);
-    var seen = {}, fresh = [], done = [], total = 0;
-    list.forEach(function (a) {
-      if (!a) return;
-      GAME.SG.anchor(a[0], a[1]).forEach(function (r) {
-        if (seen[r.st.id]) return;
-        seen[r.st.id] = 1; total += 1;
-        if ((r.done || []).length < (r.st.endings || []).length) fresh.push(r); else done.push(r);
-      });
-    });
-    /* v89.39：世事（misc）并入 —— 与该键题材标签（miscTags）精确匹配的世事篇（tags 第二词） */
-    if (act.miscTags && act.miscTags.length) {
-      GAME.SG.anchor('misc', 'any').forEach(function (r) {
-        if (seen[r.st.id]) return;
-        var tg = r.st.tags || [];
-        var hit = false;
-        for (var i = 0; i < tg.length; i++) {
-          if (act.miscTags.indexOf(tg[i]) >= 0) { hit = true; break; }
-        }
-        if (!hit) return;
-        seen[r.st.id] = 1; total += 1;
-        if ((r.done || []).length < (r.st.endings || []).length) fresh.push(r); else done.push(r);
-      });
-    }
-    return { fresh: fresh, done: done, total: total, act: act };
-  };
-  /* prefer：优先取「标签命中」的那一档（只收窄、不缩空；pin 指定时绕过） */
-  GAME.SG.preferRows = function (rows, act) {
-    var pref = (act && act.prefer) || [];
-    if (!pref.length || !rows.length) return rows;
-    var hit = rows.filter(function (r) {
-      var tg = r.st.tags || [];
-      for (var i = 0; i < tg.length; i++) if (pref.indexOf(tg[i]) >= 0) return true;
-      return false;
-    });
-    return hit.length ? hit : rows;
-  };
-  /* 动作掷骰：返回 { fire, why, sid, st, key }；why ∈ empty / cool / roll / pin-miss */
-  GAME.SG.rollAct = function (key, ctx, at) {
-    var p = GAME.SG.actPool(key, ctx);
-    if (!p.total) return { fire: false, why: 'empty' };
-    var act = p.act || {};
-    var now = (at == null ? Date.now() : at);
-    var cd = act.cd || GAME.SG.TRIG.actCooldownMs;
-    if (now - (GAME.SG.TRIG._actAt[key] || 0) < cd) return { fire: false, why: 'cool' };
-    var usePin = !!GAME.SG.TRIG.pin;
-    var fresh = usePin ? p.fresh : GAME.SG.preferRows(p.fresh, act);
-    var done = usePin ? p.done : GAME.SG.preferRows(p.done, act);
-    var pool = fresh.length ? fresh : done;
-    var pick = null;
-    if (usePin) {
-      for (var i = 0; i < pool.length; i++) {
-        if (pool[i].st.id === GAME.SG.TRIG.pin) { pick = pool[i]; break; }
-      }
-      if (!pick) return { fire: false, why: 'pin-miss' };
-    } else {
-      var chance = fresh.length ? act.chance : (act.chanceDone != null ? act.chanceDone : GAME.SG.TRIG.chanceDone);
-      if (GAME.SG.TRIG.rng() >= chance) return { fire: false, why: 'roll' };
-      pick = pool[Math.min(pool.length - 1, Math.floor(GAME.SG.TRIG.rng() * pool.length))];
-    }
-    GAME.SG.TRIG._actAt[key] = now;
-    return { fire: true, sid: pick.st.id, st: pick.st, key: key };
-  };
-  /* 结算：赏赐走 STORY.applyReward（唯一奖赏出口），本处只做**形状折算** */
-  GAME.SG.settle = function (run, end) {
-    var s = GAME.state;
-    var rw = end.reward || {};
-    var flat = { gold: rw.gold || 0, rep: rw.rep || 0, pop: rw.pop || 0, item: rw.item, count: rw.count };
-    var res = {};
-    ['grain', 'wood', 'stone', 'iron'].forEach(function (k) { if (rw[k]) res[k] = rw[k]; });
-    if (Object.keys(res).length) flat.res = res;
-    if (GAME.story && GAME.story.applyReward) GAME.story.applyReward(flat);
-    if ((s.rep || 0) < 0) s.rep = 0;                    /* 声望不为负（lose 结局可能扣） */
-    var pr = GAME.SG.progress();
-    var rec = pr[run.st.id] || { done: [], n: 0, grade: '' };
-    var fresh = rec.done.indexOf(end.id) < 0;
-    if (fresh) rec.done.push(end.id);
-    rec.n = (rec.n || 0) + 1;
-    rec.grade = end.grade || '';
-    pr[run.st.id] = rec;
-    /* 展示用账目（与 flat 同源，界面不再二次计算） */
-    var got = [];
-    /* v89.134：读 DATA.RES_ORDER */
-    DATA.RES_ORDER.forEach(function (k) {
-      if (flat[k]) got.push({ k: GAME.resName ? GAME.resName(k) : k, v: flat[k] });
-    });
-    if (flat.rep) got.push({ k: '声望', v: flat.rep });
-    if (flat.pop) got.push({ k: '人口', v: flat.pop });
-    if (flat.item) got.push({ k: (DATA.ITEM_BY_ID && DATA.ITEM_BY_ID[flat.item] ? DATA.ITEM_BY_ID[flat.item].name : flat.item), v: flat.count || 1 });
-    return { got: got, first: fresh, done: rec.done.length, total: (run.st.endings || []).length };
-  };
 })();

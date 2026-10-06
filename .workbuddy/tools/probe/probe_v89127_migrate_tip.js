@@ -17,7 +17,7 @@ console.log('== ① U.fmt 千级新格式（k 退役）==');
 
 console.log('');
 console.log('== ② 迁移提示（满格老档：wallLv=7，无空地 → 有损覆盖）==');
-var st = G.newGame({ name: 'X', cityName: '许都', region: '豫州', mapSeed: 1 });
+var st = G.newGame({ name: 'X', cityName: '许都', region: '碎垣', mapSeed: 1 });
 var c = st.cities[0];
 c.cells.forEach(function (x) {
   if (!x.official && !x.build) x.build = { id: 'minfang', lvl: 1 };
@@ -38,7 +38,7 @@ console.log('  侧栏消息流头部同条：' + !!(logHead && logHead.msg && lo
 
 console.log('');
 console.log('== ③ 有空地时（无损失 → 仍写一条，但不含"原为"）==');
-var st3 = G.newGame({ name: 'Y', cityName: '许都', region: '豫州', mapSeed: 2 });
+var st3 = G.newGame({ name: 'Y', cityName: '许都', region: '碎垣', mapSeed: 2 });
 var c3 = st3.cities[0];
 var emptied = 0;
 c3.cells.forEach(function (x) { if (!x.official && x.build && emptied < 2) { delete x.build; emptied++; } });

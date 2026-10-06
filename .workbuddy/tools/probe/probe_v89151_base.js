@@ -11,7 +11,7 @@ eval(fs.readFileSync(path.join('E:/Deepseekdb/', '.workbuddy/tmp/smoke_env_head.
   .forEach(function (f) { require(path.join('E:/Deepseekdb/js/', f + '.js')); });
 var G = global.GAME, DATA = G.DATA, U = G.utils;
 
-G.newGame({ name: '探151', cityName: '许都', region: '豫州', mapSeed: 20260951 });
+G.newGame({ name: '探151', cityName: '许都', region: '碎垣', mapSeed: 20260951 });
 if (!G.state.map.grid) G.map.generate();
 var st = G.state, c = st.cities[0];
 G.ui._cityId = c.id;

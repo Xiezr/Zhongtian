@@ -12,7 +12,7 @@ var TAG = process.argv[2] || 'now';
   await p.waitForFunction('window.GAME && window.GAME.DATA && GAME.ui', null, { timeout: 30000 });
   var r = await p.evaluate(function () {
     var G = window.GAME;
-    var st = G.newGame({ name: '箭', cityName: '许都', region: '豫州', mapSeed: 20260939 });
+    var st = G.newGame({ name: '箭', cityName: '许都', region: '碎垣', mapSeed: 20260939 });
     if (!st.map.grid) G.map.generate();
     G.ui.enterGame(); G.ui.setView('map');
     try { G.ui.closeAllModals(); } catch (e) { }

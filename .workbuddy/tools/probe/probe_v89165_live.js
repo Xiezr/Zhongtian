@@ -21,7 +21,7 @@ G.ui.openModal = function (html, opts) {
   return _om.apply(this, arguments);
 };
 
-G.newGame({ name: 'v165', region: '司隶' });
+G.newGame({ name: 'v165', region: '烬环' });
 var s = G.state, c = G.currentCity();
 G.ui._cityId = c.id;
 

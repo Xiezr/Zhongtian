@@ -22,7 +22,7 @@ function chk(name, cond, extra) {
   /* ---------- 造局：第二城（进入目标）+ 站在地图视图 ---------- */
   var boot = await p.evaluate(function () {
     var G = window.GAME;
-    G.newGame({ name: '验166', cityName: '许都', region: '豫州', mapSeed: 20260966 });
+    G.newGame({ name: '验166', cityName: '许都', region: '碎垣', mapSeed: 20260966 });
     G.ui.enterGame(); G.ui.closeAllModals();
     if (!G.state.map.grid) G.map.generate();
     var c0 = G.currentCity();

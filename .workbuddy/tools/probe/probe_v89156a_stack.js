@@ -97,7 +97,7 @@ async function run(dom, URL) {
   ui.liveModalTick = function () { };
 
   /* ---------- 造局：新游戏 + 2 片野地 ---------- */
-  G.newGame({ name: '验', cityName: '许都', region: '豫州', mapSeed: 20260927 });
+  G.newGame({ name: '验', cityName: '许都', region: '碎垣', mapSeed: 20260927 });
   ui.enterGame();
   ui.closeAllModals();
   await sleep(350);

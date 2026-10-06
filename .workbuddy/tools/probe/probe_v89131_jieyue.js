@@ -25,7 +25,7 @@ console.log('  desc: ' + C.desc);
 
 console.log('');
 console.log('== ② 获得链（真调）==');
-var st = G.newGame({ name: '节钺', cityName: '许都', region: '豫州', mapSeed: 7131 });
+var st = G.newGame({ name: '节钺', cityName: '许都', region: '碎垣', mapSeed: 7131 });
 var before02 = G.jieyueOf();
 G.jieyueClaim('city:demoA', 3, '首占 演示州城');
 var after02 = G.jieyueOf();

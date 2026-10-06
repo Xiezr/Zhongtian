@@ -5,22 +5,22 @@
 
 | 目录 | 个数 | 干什么 |
 |---|---|---|
-| `asset/` | 81 | 抠底必须连通域洪水填充（BFS）；**绝不用 CSS 滤镜染色**，一律像素级 HSL 重映射写进 PNG。 |
-| `audit/` | 31 | 结构 / 颜色 / 落盘 / 引用 / 删除 的核对工具。`verify_v66_edits.py` = **落盘核验**模板；`audit_refs.py` = 搬迁前查引用点；`read_recycle.py` = 解析回收站 `$I` 元数据核实删了什么；`trash_paths.py` = 逐项+回查的删除模板。 |
+| `asset/` | 94 | 抠底必须连通域洪水填充（BFS）；**绝不用 CSS 滤镜染色**，一律像素级 HSL 重映射写进 PNG。 |
+| `audit/` | 37 | 结构 / 颜色 / 落盘 / 引用 / 删除 的核对工具。`verify_v66_edits.py` = **落盘核验**模板；`audit_refs.py` = 搬迁前查引用点；`read_recycle.py` = 解析回收站 `$I` 元数据核实删了什么；`trash_paths.py` = 逐项+回查的删除模板。 |
 | `break/` | 21 | 逐类注入故障，确认断言**真的会红**（红不了的就是装饰）。铁律：先校验断言在文件里、注入后连"是否中断"一起看、收尾 md5 比对还原。 |
 | `gen/` | 8 | 素材/索引的**唯一来源**。`gen_bitmaps.js` 扫描 `assets/icons/ui/` 生成 `js/bitmaps.js`（勿手改产物）；`gen_tools_index.py` 生成本索引。 |
 | `git/` | 3 | **收尾同步的唯一入口**。`sync.py` 默认干跑、`--apply` 才落盘（干跑先行是本项目铁律）；`gate.py` 是三件套门禁的**唯一出口**（pre-commit 钩子与 sync 都调它）；`install_hooks.py` 把 `hooks/` 里的钩子装进 `.git/hooks/`。 |
 | `git/__pycache__/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
 | `git/hooks/` | 2 | 存这里是为了**进版本库** —— `.git/hooks/` 不被 git 跟踪，换台机器克隆后必须跑 `install_hooks.py` 重装。⚠️ **行尾必须 LF**，CRLF 会让 `#!/bin/sh` 失效。 |
 | `mem/` | 10 | MEMORY.md 必须 < 9600 字符（超出会被会话注入截断，尾部规则等于不存在）。`slim_memory_template.py` = 把超限整段 cut 到 `docs/` 的模板。 |
-| `patch/` | 919 | **事实上的变更日志**：按断言名 `grep -rl "<断言名>" tools/patch/` 就能找到当初是哪次改的。"同一条消息里对同一文件的多次 Edit 会互相覆盖"，所以补丁一律脚本化并留档。 |
+| `patch/` | 1024 | **事实上的变更日志**：按断言名 `grep -rl "<断言名>" tools/patch/` 就能找到当初是哪次改的。"同一条消息里对同一文件的多次 Edit 会互相覆盖"，所以补丁一律脚本化并留档。 |
 | `patch/__pycache__/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
 | `play/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
 | `playtest/` | 21 | **待归类**：确认用途后放进上面的某个目录。 |
-| `probe/` | 228 | jsdom 没有布局引擎 → 尺寸/重叠/溢出/折行只能在**真浏览器**量。`probe60_geom.js` 是可复用模板，`probe66_ui.js` 有"逐行折行"量法，`probe67_save3.js` 量存档体积与配额。 |
-| `show/` | 130 | 给老板看的对照图 / 曲线校准 / 素材巡视。 |
+| `probe/` | 241 | jsdom 没有布局引擎 → 尺寸/重叠/溢出/折行只能在**真浏览器**量。`probe60_geom.js` 是可复用模板，`probe66_ui.js` 有"逐行折行"量法，`probe67_save3.js` 量存档体积与配额。 |
+| `show/` | 147 | 给老板看的对照图 / 曲线校准 / 素材巡视。 |
 | `tmp/` | 20 | **待归类**：确认用途后放进上面的某个目录。 |
-| **合计** | **1482** | |
+| **合计** | **1636** | |
 
 ## asset/（素材处理）
 
@@ -93,10 +93,23 @@
 - `check_v89204_shots.js`（6KB）　— v89.204 截图像素体检（4 张：强化面板 / 商城底栏分页 / 侧栏民心 / 失城后）
 - `check_v89205_shots.js`（3KB）　— v89.205 像素体检：挂件行退役 + 卸下迁入选择窗（三图）
 - `check_v89207_shots.js`（3KB）　— v89.207 像素体检：toast 合并 / 增速档 / 离线纪要 / 沙盘推演（四图）
+- `check_v89209_shots.js`（3KB）　— v89.209 像素体检：三张实机图（先量后定 —— 判据来自 dump209pix 实测）
+- `check_v89210_shots.js`（6KB）　— v89.210 像素体检：键盘流 / 状态条 / 战前推演 / 睡眠等价
+- `check_v89211_shots.js`（5KB）　— v89.211 像素体检：装备显示对照 / 占城视图 / 器械提交（先量后定）
+- `check_v89212_shots.js`（4KB）　— v89.212 像素体检：四图（资源悬停 / 仓库面板 / 城外面板 / 出征面板）
+- `check_v89213_shots.js`（5KB）　— v89.213 像素体检：分页条「整体居中」（底栏 + 弹窗）
+- `check_v89214_shots.js`（3KB）　— v89.214 像素体检：装备悬停三色 + 换皮画面（程序化"眼睛"—— 判据先量后定）
+- `check_v89215_shots.js`（3KB）　— v89.215 像素体检：驻军栏全兵种固定序（有兵城 / 空城全 0）
+- `check_v89218_shots.js`（3KB）　— v89.217/v89.218 像素体检：四张实机图（创建 / 顶栏 / 地图 / 城池）
+- `check_v89219_shots.js`（3KB）　— v89.219 像素体检：悬停浮层（白值+金增量）/ 百炼面板（整套键）/ 缩略图（新机构词）
+- `check_v89220_shots.js`（3KB）　— v89.220 像素体检：四张实机图（基因实验室 / 政务厅按钮 / 调运不限 / 拆后升级）
+- `check_v89221_shots.js`（3KB）　— v89.221 像素体检：创建 chip 标签 / 任务页签闪烁（两帧对照）/ 车库行 / 任务视图
 - `crop_city.py`（3KB）　— v89.43：城池贴图裁切流水线（与 crop_terrain.py 同一套铁律）。
 - `crop_pd3.py`（6KB）　— 裁切 v3（定稿）：**从上往下裁，只去掉顶部留白**。
 - `crop_terrain.py`（6KB）　— v89.42：地形贴图裁切流水线（从即梦参考图裁切 → 归一化 → 落位 assets/icons/ui/）。
 - `diag_bldg_materials.py`（3KB）　— 诊断：原图（_gold_backup）与现图，各自的**图内色相结构** ——
+- `diag_v89214_ascii.js`（1KB）
+- `diag_v89214_tip.js`（1KB）
 - `flag_bldg_icons.py`（6KB）　— v89.107 建筑图标 · 第三步：给每座建筑画一面**族旗**。
 - `gallery31.js`（4KB）　— 图标画廊截图：把全部图标以 96px 网格渲染成单页，便于统一评估设计感
 - `gallery33.js`（6KB）　— v33 最终验收：99 图标几何验证（getBoundingClientRect，不受承台干扰）+ 总览图 + 城内统计
@@ -131,13 +144,19 @@
 - `audit_v89206_ux.js`（4KB）　— v89.206 体验梳理 · 交互面盘点脚本（ux）
 - `audit_v89207_icontitle.js`（2KB）　— v89.207 快赢①：纯图标按钮 title 审计 —— 扫全仓（js 字符串 + index.html），
 - `audit_v89207_icontitle2.js`（1KB）　— v89.207 快赢① 升级版：跨行匹配 <button ...>...</button>，剥离 JS 拼接符后看可见文本。
+- `audit_v89208_codemap.js`（12KB）　— v89.208 代码梳理 · 量化 + 一致性/健壮性探针（codemap）
+- `audit_v89208_cover.js`（6KB）　— v89.208 · 全面评价体系 · 维度⑧「测试体系的覆盖盲区」（元层）
+- `audit_v89208_systemmatrix.js`（12KB）　— v89.208 玩法功能梳理 · 四链核对 + 入口面/关停清单（systemmatrix）
+- `audit_v89208_ux.js`（9KB）　— v89.208 体验梳理 · 交互面盘点（ux）
+- `audit_v89214_namescan.py`（3KB）　— v89.214：换皮前的影响面扫描 —— 统计"中文名词"在 产品代码/测试 里的出现（剥注释后）
+- `check_v89214_risk.py`（1KB）　— 换皮前置安全检查：把高风险词的**全部出现上下文**打印出来（人眼过一遍误伤）
 - `consolidate_docs.py`（9KB）　— 集中存放 · 第一步：docs 分档 + 拆 DESIGN.md + 引用转接。
 - `consolidate_docs2.py`（5KB）　— 集中存放 · 第二步：引用转接 + 终检（docs 分档与 DESIGN 拆分已在第一步完成）。
 - `consolidate_tools.py`（5KB）　— 集中存放 · 第三步：tools 分子目录 + 引用转接 + 重写索引生成器。
 - `diag_v89105_overflow.js`（3KB）　— 诊断：7 个溢出弹窗的**高度分布**（哪个块把窗口撑爆了）
 - `economy_audit.js`（8KB）　— 经济审计：金币收入构成（v68 · 老板「审计一下」）
 - `fix_v89165_audit.py`（3KB）　— 修 audit_v89165_live.js：hasLive 递归化 + 豁免表补全。
-- `ladder_audit.js`（6KB）　— 数值阶梯审计 —— 回答一个问题：**从开局到洛阳，这条路走得通吗？
+- `ladder_audit.js`（6KB）　— 数值阶梯审计 —— 回答一个问题：**从开局到灰烬城，这条路走得通吗？
 - `read_recycle.py`（2KB）　— 解析 E: 回收站的 $I 元数据，列出"刚刚被删的原始路径"。
 - `survey_project.py`（5KB）　— 项目全景盘点：产物清单 + 规则分布 + 引用关系（为"是否完整/精简/集中"提供证据）。
 - `survey_project2.py`（3KB）　— 补充盘点：素材分解 · 记忆体量 · 项目自建技能 · 测试规模。
@@ -225,9 +244,17 @@ MEMORY.md 必须 < 9600 字符（超出会被会话注入截断，尾部规则�
 
 - `apply_abandon.py`（14KB）　— v67 补丁 B：放弃城池（唯一入口 + 城池关联数据登记表 + 界面入口）。
 - `apply_cols.py`（6KB）　— v67 补丁 A：侧栏「资源 / 驻军」两列数字各自成列、拉开间距。
+- `dump_v89222_ab.py`（1KB）　— v89.222 · 兵牌简称 troopAbOf 现状 + 相关区段
+- `dump_v89222_final.py`（2KB）　— v89.222 · 收尾取证：档案原文 / 灰岗用法 / 杂项上下文
+- `dump_v89222_last.py`（2KB）　— v89.222 · 最后取证：§179/§164 区段原文 + 版本号 + 计数
+- `dump_v89222_regions.py`（1KB）　— v89.222 · 关键区段原文 dump（供定级）
+- `finalize_v89222.py`（2KB）　— v89.222 · 收尾：记忆追加 + 技能沉淀（§132 + §131.3 决议标注）
+- `finalize_v89223.py`（2KB）　— v89.223 收尾：工作记忆 + 技能沉淀（§133 + §131.3 补注）。
 - `finish_cleanup_v67.py`（8KB）　— v67 清理收尾：
 - `finish_cleanup_v67b.py`（8KB）　— v67 清理收尾（第二次执行 —— 上一轮在「合并旧文档」处被中断）。
 - `finish_cleanup_v67c.py`（9KB）　— v67 清理收尾 · 第三次（补齐上一轮崩溃点之后的剩余动作）。
+- `fix214_archive_scope.py`（3KB）　— v89.214 收口 2：把"误还原"的产品断言回改成新名。
+- `fix216_archive_revert.py`（3KB）　— v89.216：把**读档案的断言**里被换皮词表改过的串，还原成老板原文（档案不参与换皮）。
 - `fix8940_smoke_lord.py`（3KB）　— 修正 smoke 的君主运行时断言：现场补临时君主/对照将（打完移除），保证不放空。
 - `patch_build_gate.py`（11KB）　— v68 · 逐步探索：建造前置规则（老板 2026-09-14 需求）
 - `patch_build_gate_fix.py`（8KB）　— v68 修正：buildPrereqOf 支持"新建语义"，并适配受影响的既有测试。
@@ -821,6 +848,84 @@ MEMORY.md 必须 < 9600 字符（超出会被会话注入截断，尾部规则�
 - `patch_v89207_b1.py`（3KB）　— v89.207 批次 B1：三条连带断言升级（§193① §193② §193③ §200①）
 - `patch_v89207_b2.py`（11KB）　— v89.207 批次 B2：新增 §207 段（smoke + e2e）+ 版本号 v89.207
 - `patch_v89207_skill.py`（3KB）　— v89.207：SKILL.md 追加 §119（快赢类执行 + 报告化改造 + 口径漂移）
+- `patch_v89209_a.py`（8KB）　— v89.209 · v89.208 评估缺陷链修复（state.js 五段）
+- `patch_v89209_b.py`（11KB）　— v89.209 · 补丁 B：版本号 + §199④ 随轮升级 + smoke/e2e 新增 §209 段
+- `patch_v89209_d.py`（5KB）　— v89.209 · 补丁 D：需求档案（总览行 + 明细段）
+- `patch_v89209_e.py`（6KB）　— v89.209 · 收尾补丁 E：
+- `patch_v89210_a.py`（6KB）　— v89.210 补丁 A —— battle.js：
+- `patch_v89210_b.py`（25KB）　— v89.210 补丁 B —— ui.js：
+- `patch_v89210_c.py`（4KB）　— v89.210 补丁 C —— main.js：
+- `patch_v89210_d.py`（2KB）　— v89.210 补丁 D —— index.html：环境状态条 chips 样式（插在 .nav-sky .ns-k 之后）
+- `patch_v89210_e.py`（1KB）　— v89.210 补丁 E —— smoke-test.js：插入 §210 段 + §199④ 版本升级
+- `patch_v89210_f.py`（5KB）　— v89.210 补丁 F —— 需求档案.md：总览行 + v89.210 明细段
+- `patch_v89210_g.py`（1KB）　— v89.210 补丁 G —— e2e-test.js：插入 §210 段
+- `patch_v89210_skill.py`（4KB）　— v89.210 SKILL 沉淀：§121（键盘流 / 唯一出口重构对照法 / 信息重复自查 / 拨钟等价）
+- `patch_v89211_a.py`（8KB）　— v89.211 补丁 A：强化乘数收敛（domain 出口 + systems 结算/评分）
+- `patch_v89211_arch.py`（5KB）　— v89.211 档案补丁：总览行 + 明细段
+- `patch_v89211_b.py`（4KB）　— v89.211 补丁 B：state.js
+- `patch_v89211_c.py`（2KB）　— v89.211 补丁 C：battle.js onConquer 释放块 → 补建民房
+- `patch_v89211_d.py`（8KB）　— v89.211 补丁 D：ui.js
+- `patch_v89211_e.py`（3KB）　— v89.211 补丁 E：main.js
+- `patch_v89211_f.py`（2KB）　— v89.211 补丁 F：domain.js GAME.train 域侧防御回落
+- `patch_v89211_g.py`（18KB）　— v89.211 补丁 G：测试升级（规则变更重写 + §211 新段）
+- `patch_v89211_skill.py`（3KB）　— v89.211 SKILL 沉淀 §122（append 脚本，防 Edit 撞字符）
+- `patch_v89212_a.py`（7KB）　— v89.212（老板 1）：城外堆场**按资源分账** —— domain.js 出口组与消费点
+- `patch_v89212_arch.py`（5KB）　— v89.212：需求档案补录 + 版本号（main.js）+ 版本断言随轮升级（smoke §199④）
+- `patch_v89212_b.py`（4KB）　— v89.212（老板 1）：城外堆场按资源分账 —— state.js 三处资源循环（按资源封顶）
+- `patch_v89212_g.py`（9KB）　— v89.212：测试升级（规则变更的连带断言按 §0.7 重写）+ §212 新段（smoke + e2e）
+- `patch_v89212_g2.py`（3KB）　— v89.212：测试升级（续）—— §159⑤ ×2 / §160① ×2 改按资源口径
+- `patch_v89212_g3.py`（9KB）　— v89.212：§212 新段（smoke）+ §212e 新段（e2e）
+- `patch_v89212_h.py`（3KB）　— v89.212：e2e 里 §158/§160 用例改按资源口径（规则变更连带）
+- `patch_v89212_skill.py`（4KB）　— 沉淀 SKILL §123（append 模式，防 Edit 撞字符差异）
+- `patch_v89213_a.py`（4KB）　— v89.213 补丁 A：分页条改「整体居中 flex」（三栏 grid 退役）
+- `patch_v89213_b.py`（2KB）　— v89.213 补丁 B：ui.js 两处分页出口注释改口径（三栏 → 整体居中）
+- `patch_v89213_c.py`（1KB）　— v89.213 补丁 C：.bottombar padding 对称化（左 92/右 12 → 左右 92）
+- `patch_v89213_d.py`（3KB）　— v89.213 补丁 D（smoke）：① §204⑦ 重写（三栏 → 整体居中口径）② §199④ 版本升级
+- `patch_v89213_e.py`（4KB）　— v89.213 补丁 E（e2e）：① §204① 标题措辞更新（三栏 → 三段，判据不变）
+- `patch_v89213_f.py`（4KB）　— v89.213 补丁 F：① shot_v89204_gates.js 两处"页码居中"判据 → 内容块居中（v89.213 口径）
+- `patch_v89213_g.py`（4KB）　— v89.213 档案补丁：总览行 + 明细段（双 guard 防重跑重复）
+- `patch_v89213_skill.py`（4KB）　— v89.213 SKILL 沉淀：§124 追加
+- `patch_v89214a_terms.py`（5KB）　— v89.214 换皮 PART A：名词层**机械替换**（唯一出口式：一份映射、全仓同改）
+- `patch_v89214b_desc.py`（17KB）　— v89.214 换皮 PART B：定向重写（描述/表名/人物/羁绊/年号/圣物/称号/战技）
+- `patch_v89214c_archive.py`（2KB）　— v89.214 收口：把 smoke 里**引用历史档案**的 md.indexOf('…') 串还原成老板原文
+- `patch_v89217a_ling.py`（13KB）　— v89.216 换皮第二批 PART C：江湖-修炼线 → 荒野-改造线（机械词表 + 表驱动名 + 场景文案）
+- `patch_v89217a_names.py`（18KB）　— v89.217 · 州名 / 城池名 → 架空命名（废土 · 余烬纪元）
+- `patch_v89217b_tests.py`（12KB）　— v89.217 · 命名替换的测试与界面连带（smoke/e2e/ui 按钮）
+- `patch_v89217c_archive.py`（6KB）　— v89.217 / v89.218 需求档案补录（总览行 + 明细段；两处各自幂等守卫）
+- `patch_v89217c_story.py`（4KB）　— v89.216 换皮第二批 PART E：**故事库**（story/vol-*.js · 84 卷）术语对齐
+- `patch_v89217d_items.py`（9KB）　— v89.216 换皮第二批 PART A：长尾名词 —— 物品 214 / 材料 24 / 珠宝 18 / 套装 7 / 收藏 18 系 73 件
+- `patch_v89217e_icons.py`（9KB）　— v89.216 换皮视觉层（程序化图标）：① 调色板「荒原化」（材质与色相：青瓦→锈铁顶/琉璃→旧铜/
+- `patch_v89218a_story_core.py`（25KB）　— v89.218 · 故事系统退役（产品代码）
+- `patch_v89218b_smoke.py`（27KB）　— v89.218 · 故事系统退役 —— smoke-test.js 断言改写
+- `patch_v89218c_e2e.py`（8KB）　— v89.218 · 故事系统退役 —— e2e-test.js 断言改写
+- `patch_v89219a_words.py`（10KB）　— v89.219-a：机构词更换（产品 + 测试 **同映射同改**）
+- `patch_v89219b_rest.py`（7KB）　— v89.219-b：机构词收尾（缩略图标签后缀 / 紧凑枚举）+ 装备悬停"白值=原始值"校正（老板 2）
+- `patch_v89219c_enh.py`（15KB）
+- `patch_v89219d_tests.py`（3KB）　— v89.219-d：版本号升级 + data.js 注释换代 + 插入 smoke §219 段 / e2e §219E 段
+- `patch_v89219e_archive.py`（5KB）　— v89.219 需求档案：总览行 + 明细段（幂等）
+- `patch_v89219f_coll.py`（9KB）　— v89.219-f：收藏表换皮补完（v89.216 第二批遗漏）——
+- `patch_v89220a_gene.py`（4KB）　— v89.220 补丁 A：温室农场 → 基因实验室（老板 1）。
+- `patch_v89220b_transfer.py`（7KB）　— v89.220 补丁 B：调兵（transfer/派驻）不再受目标城练兵场容量限制（老板 2）。
+- `patch_v89220c_techhi.py`（14KB）　— v89.220 补丁 C：分城/占领城建筑的"科技闸存量宽限"三件套（老板 3）。
+- `patch_v89220e_archive.py`（6KB）　— v89.220 档案补录：总览行 + 明细段（幂等）。
+- `patch_v89221a_inst.py`（22KB）　— v89.221a · 注释过一遍（一）：机构词 + 旧城名 + 创建界面 chip 标签
+- `patch_v89221b_troops.py`（16KB）　— v89.221b · 注释过一遍（二）：旧兵种缩写对齐（产品侧）
+- `patch_v89221c_hao.py`（3KB）　— v89.221c · 绰号更换：WILD_LORD_TITLE → 末日废土称呼
+- `patch_v89221d_badge.py`（6KB）　— v89.221d · 任务页签：去数字徽标，改公文同款闪烁
+- `patch_v89221e_tests.py`（5KB）　— v89.221e · 测试面：插入 §221 断言段 + 版本号升级
+- `patch_v89221f_archive.py`（4KB）　— v89.221 需求档案：总览行 + 明细段（幂等）
+- `patch_v89222a_smoke.py`（9KB）　— v89.222a · 用例文件旧词全面更换（smoke-test.js）
+- `patch_v89222b_e2e.py`（2KB）　— v89.222b · 用例文件旧词全面更换（e2e-test.js）
+- `patch_v89222c_ui.py`（2KB）　— v89.222c · 产品侧收尾：ui.js 三处旧城名引述 + 一处旧城名引语；main.js 版本号
+- `patch_v89222d_sec.py`（1KB）　— v89.222d · 向 smoke 插入 §222 零残留守卫段（片段文件读取，防转义事故）
+- `patch_v89222e_archive.py`（1KB）　— v89.222e · 需求档案补录（总览行 + 明细段；两处各自幂等）
+- `patch_v89223a_ab.py`（2KB）　— v89.223a：兵牌简称（ab）换代 —— js/data.js 15 步（含两组换位链）+ 终态序列校验。
+- `patch_v89223b_misc.py`（3KB）　— v89.223b：产品侧旧词收尾（注释/文案 15 处 · 机制零变化）。
+- `patch_v89223c_smoke.py`（2KB）　— v89.223c：smoke —— §129③/§151 镜像与 §199④ 版本正则修正 + §223 守卫段插入。
+- `patch_v89223e2_playtest.py`（1KB）　— v89.223e2：playtest 显示词与注释同步（义兵→民兵 / 轻骑→摩托游骑 / 铁骑→装甲战车）。
+- `patch_v89223e_tools.py`（2KB）　— v89.223e：活工具夹具同步 —— cityName 许都→灰岗（17 文件）+ 显示词（audit 链）。
+- `patch_v89223f_archive.py`（5KB）　— v89.223f：需求档案补录（总览行 + v89.222 观察项销项注 + 明细段）。
+- `patch_v89223g_fixdoc.py`（2KB）　— v89.223g：文档口径校正（记忆/档案：活工具同步范围 + 收尾计数 16）。
 - `patch_v8928_theme_check.py`（2KB）　— v89.28 题材线（江湖 / 修炼 / 四夷）· check.py 判据 12 扩展
 - `patch_v8928_theme_docs.py`（17KB）　— v89.28 题材线文档补录（README / 需求档案 / 设计规范 / 工作备忘 / 工作记忆）
 - `patch_v8928_theme_wire.py`（10KB）　— v89.28 题材线接线：index.html 装载 + smoke 断言 + e2e 真实点击
@@ -1006,6 +1111,18 @@ MEMORY.md 必须 < 9600 字符（超出会被会话注入截断，尾部规则�
 - `patch_v89_main.py`（2KB）　— v89 事件（main.js）：sxf-choice / sxf-escape / sxf-exit 分发 + doScene 包装。探针幂等。
 - `patch_v89_tests.py`（10KB）　— v89 测试（smoke-test.js）：§73 君主化（generals[0] -> 君主） + §74 新段（君主闸门 + 全屏剧本）。探针幂等。
 - `patch_v89_ui.py`（9KB）　— v89 全屏场景 UI（ui.js）：活动按钮 → 全屏剧本 → 专属退出结算屏。探针幂等。
+- `precheck_v89223.py`（6KB）　— v89.223 锚点预检：所有补丁锚点逐条计数 + repr（逐字节）。
+- `probe_v89223a_ab.py`（6KB）　— v89.223 探针 A：兵牌简称（ab）现状 + 产品侧旧词粗扫 + 工具目录计数。
+- `probe_v89223b_ctx.py`（5KB）　— v89.223 探针 B：上下文取证 + 产品广扫 + 工具目录分类 + 版本线索。
+- `probe_v89223c_final.py`（4KB）　— v89.223 探针 C：候选修改点完整原文 + smoke 守卫依赖 + 活工具明细。
+- `probe_v89223d_mirror.py`（4KB）　— v89.223 探针 D：ab 镜像全量扫描 + 保留/修改判定所需的最后取证。
+- `samples_v89223.py`（3KB）　— v89.223 改前/改后对照样本 v2（换位链与守卫段引用已校正）。
+- `scan_v89222_full.py`（2KB）　— v89.222 · 细扫：全量命中行原文 + 概念词/单字弓的现行口径
+- `scan_v89222_sweep.py`（3KB）　— v89.222 · 全面反扫 v2：只做文本解析（不 import 补丁脚本！）
+- `scan_v89222_terms.py`（2KB）　— v89.222 · 扫描器：用例文件（smoke/e2e）里三族旧词残留全量枚举
+- `scan_v89222_verify.py`（1KB）　— v89.222 · 残留验证：旧词在用例文件里的最终分布（对照保留面）
+- `scan_v89223_e2.py`（1KB）　— v89.223 E2 预扫：playtest 目录旧词明细（为显示词同步定范围）。
+- `scan_v89223_verify.py`（3KB）　— v89.223 终态残留验证：产品侧（js/+index.html）旧词分布 = 预期保留面？
 - `v26-j.py`（14KB）　— v26 批九：smoke 第 39 节 —— v26 五项需求的防回退断言
 - `v89116_sec96.js`（21KB）
 - `v89117_sec97.js`（18KB）
@@ -1142,6 +1259,13 @@ MEMORY.md 必须 < 9600 字符（超出会被会话注入截断，尾部规则�
 - `v89185j_asserts.py`（10KB）　— v89.185 · 新增 §185 断言段（smoke + e2e）——六维不封口 / 守将体系 / 衰减-2 / 民心人口 / weak / 撤退沙盘同源。
 - `v89185k_arc.py`（7KB）　— v89.185 · 需求档案：追加 v89.185 总览行（v89.184 行后）+ 明细段（文件尾）。幂等。
 - `v89185m_mem.py`（3KB）　— v89.185 · 工作记忆追加。
+- `v89222_arc.txt`（4KB）
+- `v89222_mem.txt`（2KB）
+- `v89222_sec_smoke.txt`（4KB）　— §222-guard
+- `v89222_skill132.txt`（4KB）　— # §132. 用例层「历史标题/引述」批清理的定式 + 两条硬纪律（v89.222）
+- `v89223_mem.txt`（3KB）　— # v89.223 · 兵牌简称（ab）换代 + 产品侧旧词收尾
+- `v89223_sec_smoke.txt`（4KB）　— §223-guard
+- `v89223_skill133.txt`（2KB）　— # §133. 兵牌简称（ab）换代 + 「全仓旧词收尾」的三层边界（v89.223）
 
 ## patch/__pycache__/（未归类）
 
@@ -1388,6 +1512,19 @@ jsdom 没有布局引擎 → 尺寸/重叠/溢出/折行只能在**真浏览器*
 - `probe_v89202b_peak.js`（4KB）　— v89.202b 收藏峰值 —— "达到过即永久解锁"设计验证
 - `probe_v89204a_hearts.js`（10KB）　— v89.204 探针 a：民心占领机制 —— 改前基线 / 改后对照（同一支探针跑两遍）
 - `probe_v89205_attach.js`（4KB）　— v89.205 探针：将领名称信息下的挂件行退役 + 卸下迁入选择窗
+- `probe_v89208_robust.js`（20KB）　— v89.208 · 全面评价体系 · 维度③④⑤「输入健壮性 / 不变量 / 极端值」（实证层）
+- `probe_v89210_sim.js`（5KB）　— v89.210 探针：战前推演（previewOf）—— 与实战同源对照 + 零落账
+- `probe_v89211a_plan.js`（6KB）　— v89.211 探针 A：城内地块布局与占城补齐（老板 2「占领县城后有一格未建造 · 猜测是仓库」）
+- `probe_v89211b_enh.js`（10KB）　— v89.211 探针 B：强化/蕴养数值链全链排查（老板 1「强化后装备属性似乎并未真实增加」）
+- `probe_v89211c_train.js`（5KB）　— v89.211 探针 C：工匠作坊器械提交链（老板 3「明明有作坊却提示本城暂无工匠作坊」）
+- `probe_v89212a_ext.js`（7KB）　— v89.212（老板 1）：「城外资源建筑并未提供准确储存上限……各资源地块数量不同，
+- `probe_v89212b_order.js`（2KB）　— v89.212（老板 2）：出征界面左侧行序 —— 目标 → 主将 → 出征方式 → 出征方案 → 出征战术 → 出征计略 → 可用道具。
+- `probe_v89214a_tables.js`（3KB）　— v89.214 探测：世界观"名词层"资产清单 —— 换皮前的全量清点（只读 v2）
+- `probe_v89219_enh.js`（4KB）
+- `probe_v892209_import.js`（9KB）　— v89.209 探针：v89.208 评估缺陷链修复 —— 改前基线 / 改后对照（同一支探针跑两遍）
+- `probe_v89220_b2.js`（5KB）　— v89.220 探针 B：① 各档位占领城建筑条件 ② 拆后升回（科技闸边界）③ 调兵容量拒复现
+- `probe_v89220_build.js`（6KB）　— v89.220 探针：① 调兵容量拒复现（需求 2）② 占领城建筑条件全量体检（需求 3）
+- `probe_v89220_c.js`（5KB）　— v89.220 探针 C（改后复验 · 修正版）：科技闸存量宽限四态 + 调兵不限 + 界面出口 + 出征闸保留面
 - `probe_v8942_map_shot.js`（6KB）　— _shot_map.js — 地图视图截图探针（before/after 通用 · v89.42）
 - `probe_v8942_tex.js`（4KB）　— v89.41 行为探针：texVariant 确定性与分布 + 地图渲染回归（不抛错）
 - `probe_v8986_p02_p15_p26.js`（7KB）　— probe_v8986_p02_p15_p26.js —— 整改 P-02 / P-15 / P-26 探针
@@ -1432,6 +1569,7 @@ jsdom 没有布局引擎 → 尺寸/重叠/溢出/折行只能在**真浏览器*
 - `diag_v89135b_btns.js`（6KB）　— 诊断 v2：军务处三个按钮真点验证（治疗伤兵 / 收编为民 / 释放）
 - `diag_v89202_scout.js`（8KB）　— v89.202 诊断：侦查报告「可下拉」现状量测
 - `diag_v89203_occupy.js`（8KB）　— v89.203 诊断：① 防守默认阵位（sieging 守方）② 占领名城全流程 ③ 城池一览 DOM
+- `diag_v89213_pager.js`（5KB）　— v89.213 诊断：底栏分页条三栏布局 → 与左右相邻菜单（bb-tools / 缩略图）重叠实况
 - `make_v89121_flag_matrix.py`（3KB）　— v89121 · 七族旗色对照图（回答"图标上的旗是什么"）
 - `measure_v89139_arrow.js`（2KB）　— v89.139 箭头对照量测（单场景）：视野移到地图角落 → 数边缘环带暖黄像素
 - `measure_v89139_before.js`（8KB）　— v89.139 实机量测（改前基线）：大屏留白 / 战场侧栏 / 缩略图红点 / 地图箭头
@@ -1552,6 +1690,22 @@ jsdom 没有布局引擎 → 尺寸/重叠/溢出/折行只能在**真浏览器*
 - `shot_v89204_gates.js`（9KB）　— v89.204 实机验收：① 强化面板分页条（页码居中 · 几何真量）② 强化卡面（成本悬停 · 无 .ec-cost · 高 84）
 - `shot_v89205_gates.js`（7KB）　— v89.205 实机验收：将领面板挂件行退役 + 卸下迁入选择窗
 - `shot_v89207_gates.js`（10KB）　— v89.207 实机验收：快赢五条 + 离线纪要 + 沙盘推演链路
+- `shot_v89209_gates.js`（8KB）　— v89.209 实机验收：存档缺陷链修复（真浏览器 + 真 UI 链路）
+- `shot_v89210_gates.js`（10KB）　— v89.210 实机验收：键盘流 · 状态条 · 战前推演（真浏览器 + 真 UI 链路）
+- `shot_v89210_night.js`（4KB）　— v89.210 实机验收 · 睡眠补偿等价验证（真浏览器 · 拨钟法）
+- `shot_v89211_gates.js`（9KB）　— v89.211 实机验收：强化显示链 · 占城空格补齐 · 器械工位归一（真浏览器 + 真 UI 链路）
+- `shot_v89212_gates.js`（7KB）　— v89.212 实机验收：城外堆场按资源分账（资源悬停 / 仓库面板 / 城外面板）+ 出征行序（真 DOM）
+- `shot_v89213_gates.js`（10KB）　— v89.213 实机验收：分页条「整体居中」（底栏 + 弹窗两条路）
+- `shot_v89213_pre.js`（2KB）　— v89.213 改前图（换备份法专用）：同一场景截三张（底栏商场 / 弹窗 / 满页）
+- `shot_v89214_gates.js`（10KB）　— v89.214 实机验收：装备悬停「分行 + 三色」+ 世界观换皮（废土 · 余烬纪元）
+- `shot_v89214_skin.js`（2KB）　— v89.214 换皮实机图（第二组）：军务·出征（兵种） / 威望（爵位阶梯） / 城池（建筑）
+- `shot_v89215_gates.js`（8KB）　— v89.215 实机验收：侧栏驻军栏 —— 去下拉 · 全兵种固定序 · 暂无记 0
+- `shot_v89216_gates.js`（5KB）　— v89.216 实机验收：① 分页条「页码文本严格居中」（v89.213 挂账 36px 归零）
+- `shot_v89218_gates.js`（7KB）　— v89.217/v89.218 实机验收：
+- `shot_v89219_gates.js`（7KB）　— v89.219 实机验收：机构词（缩略图/岁贡/城档）+ 悬停白值=原始值 + 整套键
+- `shot_v89220_gates.js`（6KB）　— v89.220 实机验收：① 基因实验室（面板+政务厅按钮）② 本境调运「不设上限」
+- `shot_v89221_gates.js`（8KB）　— v89.221 实机验收：① 创建界面 chip 标签=新区名 ② 任务页签 .fresh 闪烁（两帧对照）
+- `shot_v89223_ab.js`（5KB）　— v89.223 实机验证：兵牌简称换代（真浏览器读 .bt-rnm 全量简称）
 - `tile_show.js`（3KB）　— v35-f：批量拼图（可复用）—— 传 id:中文列表，输出总览图
 
 ## tmp/（未归类）

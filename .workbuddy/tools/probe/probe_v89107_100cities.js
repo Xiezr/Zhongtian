@@ -22,7 +22,7 @@ var G = global.GAME, DATA = G.DATA, U = G.utils;
 G.DATA.DEFAULT_SETTINGS.battleWatch = false;
 
 function build(n) {
-  var st = G.newGame({ name: '压力测试', cityName: '许都', region: '豫州', mapSeed: 20260923 });
+  var st = G.newGame({ name: '压力测试', cityName: '许都', region: '碎垣', mapSeed: 20260923 });
   if (!st.map.grid) G.map.generate();
   var c0 = st.cities[0];
   G.ui._cityId = c0.id;

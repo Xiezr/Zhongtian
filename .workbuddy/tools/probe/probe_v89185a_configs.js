@@ -15,7 +15,7 @@ eval(fs.readFileSync(path.join(R, '.workbuddy/tmp/smoke_env_head.js'), 'utf8'));
   .forEach(function (f) { require(path.join(R, 'js', f + '.js')); });
 var G = global.GAME, DATA = G.DATA, U = G.utils;
 
-G.newGame({ name: '探185', avatar: '🧔', gender: 'male', region: '豫州' });
+G.newGame({ name: '探185', avatar: '🧔', gender: 'male', region: '碎垣' });
 var s = G.state;
 
 function sum(o) { var n = 0; for (var k in o) n += o[k] || 0; return n; }

@@ -23,7 +23,7 @@ var E = 'E:/Deepseekdb/.workbuddy/shots/';
   await p.waitForFunction('window.GAME && window.GAME.DATA', null, { timeout: 30000 });
   await p.evaluate(function () {
     var G = window.GAME;
-    G.newGame({ name: '验191', cityName: '许都', region: '豫州', mapSeed: 20260929 });
+    G.newGame({ name: '验191', cityName: '许都', region: '碎垣', mapSeed: 20260929 });
     G.ui.enterGame(); G.ui.closeAllModals();
     if (!G.state.map.grid) G.map.generate();
     var c = G.state.cities[0];

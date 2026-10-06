@@ -23,7 +23,7 @@ var pw = require('playwright-core');
 
   await p.evaluate(function () {
     var G = window.GAME;
-    G.newGame({ name: '前哨客', cityName: '许都', region: '豫州', mapSeed: 20260932 });
+    G.newGame({ name: '前哨客', cityName: '许都', region: '碎垣', mapSeed: 20260932 });
     G.state.world.weather = 'clear';
     if (!G.state.map.grid) G.map.generate();
     G.goldAdd(5000000 - G.goldOf());

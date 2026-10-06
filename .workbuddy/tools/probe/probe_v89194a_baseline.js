@@ -10,7 +10,7 @@ eval(fs.readFileSync(path.join(R, '.workbuddy/tmp/smoke_env_head.js'), 'utf8'));
   .forEach(function (f) { require(path.join(R, 'js', f + '.js')); });
 var G = global.GAME, D = G.DATA, U = G.utils;
 
-G.newGame({ name: '基线', region: '司隶' });
+G.newGame({ name: '基线', region: '烬环' });
 if (!G.state.map.grid) G.map.generate();
 
 console.log('══════ ① S1：当前升级成本（官府 / 校场 / 城墙，Lv7~12）══════');

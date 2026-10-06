@@ -9,7 +9,7 @@ const EXE = 'C:/Users/18811/AppData/Local/ms-playwright/chromium-1217/chrome-win
   await p.waitForFunction('window.GAME && window.GAME.DATA && GAME.ui', null, { timeout: 30000 });
   await p.evaluate(function () {
     var G = window.GAME;
-    G.newGame({ name: '验', cityName: '许都', region: '豫州', mapSeed: 20260927 });
+    G.newGame({ name: '验', cityName: '许都', region: '碎垣', mapSeed: 20260927 });
     G.ui.enterGame(); G.ui.closeAllModals();
     if (!G.state.map.grid) G.map.generate();
     var subs = ['war', 'task', 'era', 'weather', 'build', 'gather', 'sys'];

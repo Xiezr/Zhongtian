@@ -10,7 +10,7 @@ eval(fs.readFileSync(path.join(R, '.workbuddy/tmp/smoke_env_head.js'), 'utf8'));
 ['data', 'state', 'questdata', 'systems', 'domain', 'map', 'battle', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits', 'story', 'ui', 'main']
   .forEach(function (f) { require(path.join(R, 'js', f + '.js')); });
 var G = global.GAME;
-G.newGame({ name: 'watch192', region: '司隶', mapSeed: 20260931 });
+G.newGame({ name: 'watch192', region: '烬环', mapSeed: 20260931 });
 G.state.world.weather = 'clear';
 var st = G.state;
 st.settings = st.settings || {}; st.settings.battleWatch = true;   /* 观战开（挂起式） */

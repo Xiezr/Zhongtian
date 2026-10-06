@@ -15,7 +15,7 @@ var pw = require('playwright-core');
 
   var out = await p.evaluate(async function () {
     var G = window.GAME;
-    G.newGame({ name: '量测', cityName: '会稽', region: '扬州', mapSeed: 20260931 });
+    G.newGame({ name: '量测', cityName: '会稽', region: '潮湾', mapSeed: 20260931 });
     G.state.world.weather = 'clear';
     if (!G.state.map.grid) G.map.generate();
     G.ui.enterGame(); G.ui.closeAllModals();

@@ -40,7 +40,7 @@ chk('暗主题基线（均亮 35~75）', [A, B].every(function (s) { return s.me
   await p.waitForFunction('window.GAME && window.GAME.DATA && GAME.ui', null, { timeout: 30000 });
   var info = await p.evaluate(function () {
     var G = window.GAME;
-    G.newGame({ name: '量174', cityName: '许都', region: '豫州', mapSeed: 20260976 });
+    G.newGame({ name: '量174', cityName: '灰岗', region: '碎垣', mapSeed: 20260976 });
     G.ui.enterGame(); G.ui.closeAllModals();
     G.ui.setView('city');
     G.state.settings.timeScale = 1;

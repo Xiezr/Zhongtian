@@ -8,7 +8,7 @@ eval(fs.readFileSync(path.join(R, '.workbuddy/tmp/smoke_env_head.js'), 'utf8'));
   .forEach(function (f) { require(path.join(R, 'js', f + '.js')); });
 var G = global.GAME, DATA = G.DATA, U = G.utils;
 
-G.newGame({ name: '自动征兵', region: '司隶' });
+G.newGame({ name: '自动征兵', region: '烬环' });
 var c = G.state.cities[0];
 /* 造局：给首城配 军营Lv3 + 书院Lv3（changqiang 门槛），资源给足 */
 var placed = 0;

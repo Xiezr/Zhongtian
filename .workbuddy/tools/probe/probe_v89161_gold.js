@@ -7,7 +7,7 @@ eval(fs.readFileSync('.workbuddy/tmp/smoke_env_head.js', 'utf8'));
 ['data', 'state', 'questdata', 'systems', 'domain', 'map', 'battle', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits', 'story', 'ui', 'main']
   .forEach(function (f) { require(path.join('E:/Deepseekdb/js/', f + '.js')); });
 var G = global.GAME, DATA = G.DATA;
-G.newGame({ name: '探161', cityName: '许都', region: '豫州', mapSeed: 20260961 });
+G.newGame({ name: '探161', cityName: '许都', region: '碎垣', mapSeed: 20260961 });
 var s = G.state, c = G.currentCity();
 function P(tag, v) { console.log((v ? '  ✓ ' : '  ✗ ') + tag); return v; }
 function sum4(R) { return (R.grain || 0) + (R.wood || 0) + (R.stone || 0) + (R.iron || 0); }

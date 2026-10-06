@@ -86,7 +86,7 @@ var MODALS = [
       st = JSON.parse(raw);
       G.adoptState(st);                            /* 走真实读档后处理（迁移/补字段全跑） */
     } else {
-      st = G.newGame({ name: '压测', cityName: '许都', region: '豫州', mapSeed: 20260923 });
+      st = G.newGame({ name: '压测', cityName: '灰岗', region: '碎垣', mapSeed: 20260923 });
     }
     if (!st.map.grid) G.map.generate();
     var c = G.currentCity() || st.cities[0];

@@ -21,7 +21,7 @@ function chk(name, ok, extra) {
   await p.waitForFunction('window.GAME && window.GAME.DATA && GAME.ui', null, { timeout: 30000 });
 
   var r1 = await p.evaluate(function () {
-    var G = window.GAME, st = G.newGame({ name: '验', cityName: '许都', region: '豫州', mapSeed: 20260942 });
+    var G = window.GAME, st = G.newGame({ name: '验', cityName: '许都', region: '碎垣', mapSeed: 20260942 });
     if (!st.map.grid) G.map.generate();
     G.ui.enterGame(); try { G.ui.closeAllModals(); } catch (e) { }
     var c = st.cities[0]; G.ui._cityId = c.id;

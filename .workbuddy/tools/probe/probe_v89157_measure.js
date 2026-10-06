@@ -13,7 +13,7 @@ const fs = require('fs');
   /* ---------- ① 公文系统页 ---------- */
   await p.evaluate(function () {
     var G = window.GAME;
-    G.newGame({ name: '验', cityName: '许都', region: '豫州', mapSeed: 20260927 });
+    G.newGame({ name: '验', cityName: '许都', region: '碎垣', mapSeed: 20260927 });
     G.ui.enterGame(); G.ui.closeAllModals();
     if (!G.state.map.grid) G.map.generate();
     /* 40 条不同主题消息 */

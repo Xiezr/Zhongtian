@@ -16,7 +16,7 @@ var G = global.GAME, DATA = G.DATA, U = G.utils;
 var pass = 0, fail = 0;
 var P = function (n, ok, ex) { if (ok) pass++; else fail++; console.log((ok ? '  ✅ ' : '  ❌ ') + n + (ex ? '  [' + ex + ']' : '')); };
 
-G.newGame({ name: '道具171', region: '司隶' });
+G.newGame({ name: '道具171', region: '烬环' });
 var st = G.state;
 var C = DATA.EXP_CURVE;
 var need = function (lv) { return Math.round(C.needTop * Math.pow(lv / C.topLv, C.alpha)); };

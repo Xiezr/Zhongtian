@@ -7,7 +7,7 @@ eval(fs.readFileSync('.workbuddy/tmp/smoke_env_head.js', 'utf8'));
   require(path.join('E:/Deepseekdb/js/', f + '.js'));
 });
 var G = global.GAME, DATA = G.DATA;
-G.newGame({ name: '探159', cityName: '许都', region: '豫州', mapSeed: 20260959 });
+G.newGame({ name: '探159', cityName: '许都', region: '碎垣', mapSeed: 20260959 });
 var s = G.state;
 var c = G.currentCity();
 console.log('城 =', c.name, '· type =', c.type, '· 主城?', !!G.isMainCity(c), '· lift =', G.rankBuildCapOf(c));

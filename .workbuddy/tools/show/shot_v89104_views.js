@@ -25,7 +25,7 @@ fs.mkdirSync(OUT, { recursive: true });
 
   /* 建局：三城 + 若干道具 + 两条待阅逸闻（都走游戏自己的出口） */
   var boot = await page.evaluate(function () {
-    var G = window.GAME, st = G.newGame({ name: '北辰', cityName: '许都', region: '豫州', mapSeed: 20260921 });
+    var G = window.GAME, st = G.newGame({ name: '北辰', cityName: '许都', region: '碎垣', mapSeed: 20260921 });
     if (!st.map.grid) G.map.generate();
     var c = st.cities[0];
     G.ui._cityId = c.id;
@@ -72,7 +72,7 @@ fs.mkdirSync(OUT, { recursive: true });
   await shot('v89104-bag.png', 'bag', function () {
     var G = window.GAME; G.ui._bagTab = 'item'; G.ui.renderBag();
   });
-  await shot('v89104-story.png', 'story');
+  /* v89.218：story / stories 视图已退役，截图项撤除。 */
   await shot('v89104-stories.png', 'stories');
   await shot('v89104-map.png', 'map');
   var mapGeo = await page.evaluate(function () {

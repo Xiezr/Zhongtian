@@ -18,7 +18,7 @@ function chk(name, cond, extra) {
   await p.waitForFunction('window.GAME && window.GAME.DATA && GAME.ui', null, { timeout: 30000 });
   await p.evaluate(function () {
     var G = window.GAME;
-    G.newGame({ name: '验', cityName: '许都', region: '豫州', mapSeed: 20260927 });
+    G.newGame({ name: '验', cityName: '许都', region: '碎垣', mapSeed: 20260927 });
     G.ui.enterGame(); G.ui.closeAllModals();
     if (!G.state.map.grid) G.map.generate();
     /* 起一座仓库（让悬停出现"仓库（N 级合计）"分账行）+ 给点资源 */

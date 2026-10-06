@@ -17,7 +17,7 @@ eval(fs.readFileSync(path.join(R, '.workbuddy/tmp/smoke_env_head.js'), 'utf8'));
 });
 var G = global.GAME, DATA = G.DATA;
 
-var st = G.newGame({ name: '探', cityName: '许都', region: '豫州', mapSeed: 20260926 });
+var st = G.newGame({ name: '探', cityName: '许都', region: '碎垣', mapSeed: 20260926 });
 G.state = st;
 if (!st.map.grid) G.map.generate();
 /* 两座城（来犯需要城池数 ≥ unlockCities） */

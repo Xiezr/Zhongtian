@@ -26,7 +26,7 @@ fs.mkdirSync(OUT, { recursive: true });
   /* ① 商城民生页（新文案） */
   await page.evaluate(function () {
     var G = window.GAME;
-    var st = G.newGame({ name: '北辰', cityName: '许都', region: '豫州', mapSeed: 20260926 });
+    var st = G.newGame({ name: '北辰', cityName: '许都', region: '碎垣', mapSeed: 20260926 });
     if (!st.map.grid) G.map.generate();
     st.res.gold = 5e6;
     st.items.yiminling = 3;

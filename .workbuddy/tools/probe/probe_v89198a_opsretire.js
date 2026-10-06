@@ -25,7 +25,7 @@ chk('siegeChipOf 单参 / dispatch 六参', G.siegeChipOf.length === 1 && G.marc
 chk('SIEGE 战法系数零残留', DATA.SIEGE.encircle === undefined && DATA.SIEGE.surprise === undefined);
 
 console.log('══════ ② 真打一场（据点）：战报无战法痕迹 ══════');
-G.newGame({ name: 'probe198', cityName: '许都', region: '豫州', mapSeed: 20260932 });
+G.newGame({ name: 'probe198', cityName: '许都', region: '碎垣', mapSeed: 20260932 });
 var st = G.state;
 if (!st.map.grid) G.map.generate();
 st.world.weather = 'clear';

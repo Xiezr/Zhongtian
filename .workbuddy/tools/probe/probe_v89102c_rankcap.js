@@ -24,7 +24,7 @@ var G = global.GAME, DATA = G.DATA, U = G.utils;
 var out = [];
 function ap(s) { out.push(s); }
 
-var st = G.newGame({ name: '探针', cityName: '许都', region: '豫州', mapSeed: 20260921 });
+var st = G.newGame({ name: '探针', cityName: '许都', region: '碎垣', mapSeed: 20260921 });
 if (!st.map.grid) G.map.generate();
 st.settings.battleWatch = false;
 var c0 = st.cities[0];

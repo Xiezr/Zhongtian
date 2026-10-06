@@ -20,7 +20,7 @@ function ck(name, cond, extra) {
   else { F++; console.log('  ✗ ' + name + (extra ? '   [' + extra + ']' : '')); }
 }
 
-G.newGame({ name: '验', cityName: '许都', region: '豫州', mapSeed: 20260927 });
+G.newGame({ name: '验', cityName: '许都', region: '碎垣', mapSeed: 20260927 });
 var st = G.state, c = st.cities[0];
 G.ui._cityId = c.id;
 

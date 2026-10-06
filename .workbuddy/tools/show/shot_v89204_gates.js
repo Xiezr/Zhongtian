@@ -23,7 +23,7 @@ var sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms);
   await p.waitForFunction('window.GAME && window.GAME.DATA', null, { timeout: 30000 });
   await p.evaluate(function () {
     var G = window.GAME;
-    G.newGame({ name: 'v204', cityName: '许都', region: '豫州', mapSeed: 20261006 });
+    G.newGame({ name: 'v204', cityName: '许都', region: '碎垣', mapSeed: 20261006 });
     if (!G.state.map.grid) G.map.generate();
     var c = G.state.cities[0];
     c.army = { qingji: 5000 };
@@ -58,8 +58,10 @@ var sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms);
     if (!mid || !l || !r) return { err: 'no-three' };
     /* 几何：rect 中点差 ÷ k = 布局差（#app-scale 会乘 k） */
     var k = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--app-k')) || 1;
-    var pr = pg.getBoundingClientRect(), mr = mid.getBoundingClientRect();
-    var diff = Math.round(((mr.left + mr.right) / 2 - (pr.left + pr.right) / 2) / k * 10) / 10;
+    var pr = pg.getBoundingClientRect();
+    /* v89.213 口径变更：三栏退役 → 内容块（l 组左缘~r 组右缘）整体居中 */
+    var lr = l.getBoundingClientRect(), rr = r.getBoundingClientRect();
+    var diff = Math.round(((lr.left + rr.right) / 2 - (pr.left + pr.right) / 2) / k * 10) / 10;
     return {
       pages: document.querySelectorAll('#modal-root .pager').length,
       diff: diff,
@@ -69,7 +71,7 @@ var sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms);
   });
   chk('①a 强化面板分页条：三栏齐备（左 ' + (r1.nL || 0) + ' 钮 / 右 ' + (r1.nR || 0) + ' 钮）· 页码「' + (r1.midTxt || '') + '」',
     !r1.err && r1.nL >= 3 && r1.nR >= 2, JSON.stringify(r1));
-  chk('①b 页码**居中**（页码中点 − 条中点 = ' + r1.diff + 'px，|差| ≤ 2）',
+  chk('①b 内容块**居中**（l 左缘~r 右缘中点 − 条中点 = ' + r1.diff + 'px，|差| ≤ 2 · v89.213 口径）',
     !r1.err && Math.abs(r1.diff) <= 2, JSON.stringify(r1));
   await p.screenshot({ path: E + 'v89204-enh.png' });
 
@@ -105,17 +107,21 @@ var sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms);
     if (!pg) return { err: 'no-pager' };
     var mid = pg.querySelector('.pg-info');
     if (!mid) return { err: 'no-mid' };
+    var l3 = pg.querySelector('.pg-side.l'), r3b = pg.querySelector('.pg-side.r');
+    if (!l3 || !r3b) return { err: 'no-sides' };
     var mini = document.querySelector('#bottom-bar .bb-mini');
     var k = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--app-k')) || 1;
-    var pr = pg.getBoundingClientRect(), mr = mid.getBoundingClientRect();
+    var pr = pg.getBoundingClientRect();
+    /* v89.213 口径变更：内容块（l 组左缘~r 组右缘）整体居中（三栏退役） */
+    var lr3 = l3.getBoundingClientRect(), rr3 = r3b.getBoundingClientRect();
     var mrr = mini ? mini.getBoundingClientRect() : null;
     return {
-      diff: Math.round(((mr.left + mr.right) / 2 - (pr.left + pr.right) / 2) / k * 10) / 10,
+      diff: Math.round(((lr3.left + rr3.right) / 2 - (pr.left + pr.right) / 2) / k * 10) / 10,
       midTxt: (mid.textContent || '').slice(0, 24),
       overlap: mrr ? Math.round((pr.right - mrr.left) / k) : null,
     };
   });
-  chk('③a 商城底栏分页：页码「' + (r3.midTxt || '') + '」居中（差 ' + r3.diff + 'px ≤ 2）',
+  chk('③a 商城底栏分页：内容块居中（差 ' + r3.diff + 'px ≤ 2 · v89.213 口径 · 页码「' + (r3.midTxt || '') + '」）',
     !r3.err && Math.abs(r3.diff) <= 2, JSON.stringify(r3));
   chk('③b 分页条与缩略图不重叠（右缘 − 缩略图左缘 = ' + r3.overlap + 'px < 0 即不相交）',
     r3.overlap != null && r3.overlap < 0, JSON.stringify(r3));

@@ -10,7 +10,7 @@ eval(fs.readFileSync(path.join(R, '.workbuddy/tmp/smoke_env_head.js'), 'utf8'));
 ['data', 'state', 'questdata', 'systems', 'domain', 'map', 'battle', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits', 'story', 'ui', 'main']
   .forEach(function (f) { require(path.join(R, 'js', f + '.js')); });
 var G = global.GAME, DATA = G.DATA, U = G.utils;
-G.newGame({ name: 'e188', avatar: '🧔', gender: 'male', region: '豫州' });
+G.newGame({ name: 'e188', avatar: '🧔', gender: 'male', region: '碎垣' });
 
 var ts = G.timeScale ? G.timeScale() : (DATA.DEFAULT_SETTINGS || {}).timeScale || 120;
 console.log('时间倍率 ts = ' + ts + '（1 现实秒 = ' + ts + ' 游戏秒）；1 现实日 = ' + ts + ' 游戏日 = ' + (ts * 86400).toLocaleString() + ' 游戏秒');

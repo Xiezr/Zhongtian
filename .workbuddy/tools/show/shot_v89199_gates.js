@@ -23,7 +23,7 @@ function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
   await p.waitForFunction('window.GAME && window.GAME.DATA', null, { timeout: 30000 });
   await p.evaluate(function () {
     var G = window.GAME;
-    G.newGame({ name: 'v199', cityName: '许都', region: '豫州', mapSeed: 20260932 });
+    G.newGame({ name: 'v199', cityName: '许都', region: '碎垣', mapSeed: 20260932 });
     G.ui.enterGame(); G.ui.closeAllModals();
     G.ui._autoSel = 'train';
     G.ui.setView('auto');

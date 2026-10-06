@@ -19,7 +19,7 @@ eval(fs.readFileSync(path.join(R, '.workbuddy/tmp/smoke_env_head.js'), 'utf8'));
   .forEach(function (f) { require(path.join(R, 'js', f + '.js')); });
 var G = global.GAME, DATA = G.DATA, T = G.tactic;
 
-G.newGame({ name: '探183', avatar: '🧔', gender: 'male', region: '豫州' });
+G.newGame({ name: '探183', avatar: '🧔', gender: 'male', region: '碎垣' });
 G.state.world.weather = 'clear';
 
 var YT11 = ['yt_helm', 'yt_neck', 'yt_should', 'yt_chest', 'yt_back', 'yt_waist',

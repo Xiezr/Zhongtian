@@ -4,7 +4,7 @@ eval(fs.readFileSync(path.join(R, '.workbuddy/tmp/smoke_env_head.js'), 'utf8'));
 ['data', 'state', 'questdata', 'systems', 'domain', 'map', 'battle', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits', 'story', 'ui', 'main']
   .forEach(function (f) { require(path.join(R, 'js', f + '.js')); });
 var G = global.GAME;
-G.newGame({ name: 'x', region: '司隶' });
+G.newGame({ name: 'x', region: '烬环' });
 var ARMY = { yibing: 800, changqiang: 800, gongjian: 700, qingji: 300, toudan: 30 };
 var env = G.tactic.begin(JSON.parse(JSON.stringify(ARMY)), null, JSON.parse(JSON.stringify(ARMY)), 0, null, { stances: {} });
 console.log('field =', env.field);

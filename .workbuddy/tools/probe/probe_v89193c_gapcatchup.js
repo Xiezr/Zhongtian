@@ -9,7 +9,7 @@ eval(fs.readFileSync(path.join(R, '.workbuddy/tmp/smoke_env_head.js'), 'utf8'));
   .forEach(function (f) { require(path.join(R, 'js', f + '.js')); });
 var G = global.GAME, U = G.utils;
 
-G.newGame({ name: '跳变补偿', region: '司隶' });
+G.newGame({ name: '跳变补偿', region: '烬环' });
 G.state.world.weather = 'clear';
 var c = G.state.cities[0];
 var bIdx = -1;

@@ -22,7 +22,7 @@ function chk(name, cond, extra) {
 
   var setup = await p.evaluate(function () {
     var G = window.GAME;
-    G.newGame({ name: '验175', cityName: '许都', region: '豫州', mapSeed: 20260977 });
+    G.newGame({ name: '验175', cityName: '许都', region: '碎垣', mapSeed: 20260977 });
     G.ui.enterGame(); G.ui.closeAllModals();
     G.map.generate();          /* 地图网格懒建（tile/wildAt 依赖 grid）——幂等 */
     var s = G.state, c = s.cities[0];

@@ -24,7 +24,7 @@ function chk(name, ok, extra) {
   await p.waitForFunction('window.GAME && window.GAME.DATA', null, { timeout: 30000 });
   await p.evaluate(function () {
     var G = window.GAME;
-    G.newGame({ name: '验186', cityName: '许都', region: '豫州', mapSeed: 20260926 });
+    G.newGame({ name: '验186', cityName: '许都', region: '碎垣', mapSeed: 20260926 });
     G.ui.enterGame(); G.ui.closeAllModals();
     if (!G.state.map.grid) G.map.generate();
     G.ui.setView('city');

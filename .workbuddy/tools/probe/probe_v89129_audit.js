@@ -36,7 +36,7 @@ console.log('  城墙资源占全表最高（' + Math.round(rows[0].res) + '）�
 
 console.log('');
 console.log('════════ B. 野外目标守将现状（逐类真调 resolveTarget）════════');
-var st = G.newGame({ name: 'X', cityName: '许都', region: '豫州', mapSeed: 20260926 });
+var st = G.newGame({ name: 'X', cityName: '许都', region: '碎垣', mapSeed: 20260926 });
 if (!st.map.grid) { try { G.map.generate(); } catch (e) {} }
 G.ui._cityId = st.cities[0].id;
 

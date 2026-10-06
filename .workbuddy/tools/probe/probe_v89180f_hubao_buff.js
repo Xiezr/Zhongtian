@@ -9,7 +9,7 @@ eval(fs.readFileSync(R + '.workbuddy/tmp/smoke_env_head.js', 'utf8'));
   require(R + 'js/' + f + '.js');
 });
 var G = global.GAME, DATA = G.DATA, T = G.tactic;
-G.newGame({ name: 'p180f', avatar: '🧔', gender: 'male', region: '豫州' });
+G.newGame({ name: 'p180f', avatar: '🧔', gender: 'male', region: '碎垣' });
 try { GAME.state.world.weather = 'clear'; } catch (e) {}
 
 var HB = DATA.TROOPS.hubaoqi;

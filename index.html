@@ -86,14 +86,14 @@
        语义：--fs-num = 行内重点数字（倒计时/大数值）；--isz-* = **元素尺寸**（emoji/SVG
        图标、头像），不是排版字号 —— 单独立族，免得后人拿字号令牌去量图标。 */
     --fs-num: 17px;         /* 重点数字（战场倒计时等） */
-    --isz-xs: 20px;         /* 行内小图标（客栈头像位） */
+    --isz-xs: 20px;         /* 行内小图标（酒馆头像位） */
     --isz-sm: 22px;         /* 卡片小图标（空地块 +） */
     --isz-md: 26px;         /* 标准图标（背包格 / 地块装饰 / 头像导航箭头） */
     --isz-lg: 34px;         /* 大图标（兵种卡图标位） */
     --isz-av: 40px;         /* 头像（顶栏领主） */
     --isz-av-lg: 84px;      /* 大头像（创角预览） */
-    --isz-em-lg: 2.2em;     /* em 族（随容器字号缩放）：农田/器物大图标 */
-    --isz-em-md: 1.6em;     /* em 族：农田种子位 */
+    --isz-em-lg: 2.2em;     /* em 族（随容器字号缩放）：集水场/器物大图标 */
+    --isz-em-md: 1.6em;     /* em 族：集水场种子位 */
     --isz-xl: 60px;         /* 特大图标（一统天下的奖杯）：单次使用，但也得有名字 */
     /* ---- v89.117：**行高四档** ----
        收敛前 26 种值（1.05~2 之间几乎每个小数都有）。口径：
@@ -102,7 +102,7 @@
          --lh-body  正文（默认，弹窗与视图正文都走它）
          --lh-loose 长说明 / 可读性优先的段落
        特例：`line-height: 0`（2 处，压 inline-block 缝隙）与**定高徽标**的 px 行高
-       （.tab-badge 16px / .bag-worn 15px / .tile-badge 17px / .sigchip 17px /
+       （.bag-worn 15px / .tile-badge 17px / .sigchip 17px /
         .wild-go 20px / .sd-chip 16px / .tac-k 22px）—— 那是"垂直居中手段"不是排版节奏。 */
     --lh-1: 1;
     --lh-tight: 1.25;
@@ -180,7 +180,7 @@
     --foe-rgb: 190,84,74;        /* 敌军侧（兵牌/接触线断开/战报条）：偏冷的朱红 */
     --contact-rgb: 232,176,60;   /* 接触线（沙盘交战标记）：琥珀金 */
     --win-rgb: 79,191,106;       /* 战报"胜"字辉光 */
-    --gold-line: #6b5a2c;        /* 深金分隔线（史册条目左缘） */
+    --gold-line: #6b5a2c;        /* 深金分隔线（作战指示徽章描边） */
     --gd-chip-ink: #d8b0f0;      /* 详情页奇遇芯片的字色 */
 
     /* v89.105：以下为**独一份的艺术面**（卷轴/印章/头像球/小地图底…）——
@@ -267,12 +267,12 @@
        地块不再逐格画渐变与花纹，改铺**纯色**；颜色随主题走：
        深色主题配偏暗的草绿（亮草绿在暗底上过于跳），
        浅色主题配浅草绿。野地四色就是老板点名的
-       「农田偏黄 / 伐木偏青绿 / 采石偏灰 / 铁矿偏棕黑」。 */
+       「集水场偏黄 / 伐木偏青绿 / 采石偏灰 / 铁矿偏棕黑」。 */
     --ground: #8b9a78;            /* 城内地面（一整片） */
     --ground-busy: #a09580;       /* 施工工地（土色） */
     --ground-gov: #a59b80;        /* 官署格 */
     --ground-sel: #9caa86;        /* 选中格 */
-    --res-farm: #c2b45e;          /* 农田 · 麦黄 */
+    --res-farm: #c2b45e;          /* 集水场 · 麦黄 */
     --res-forest: #6b8a5c;        /* 林地 · 青绿 */
     --res-quarry: #a8a495;        /* 采石 · 石灰 */
     --res-mine: #8a7052;          /* 矿场 · 棕黑 */
@@ -444,7 +444,7 @@
     border-bottom: 1px solid var(--line-strong);
     margin-bottom: var(--sp-4);
   }
-  /* v82（老板）：「城市名称居中，字体稍大即可」—— 官府面板的城名行
+  /* v82（老板）：「城市名称居中，字体稍大即可」—— 政务厅面板的城名行
      （档位括注 / 「本城」标签 / 原名标注全撤，只留居中放大的城名）。 */
   .city-title { text-align: center; font-size: var(--fs-h2); font-weight: 800;
     color: var(--gold-light); letter-spacing: 1px; padding: var(--sp-0) 0 var(--sp-1); }
@@ -558,6 +558,18 @@
     border: 1px solid var(--line-strong);
   }
   .nav-sky .ns-k { color: var(--text-dim); font-weight: 400; letter-spacing: 0; }
+  /* v89.210（规划三）：环境状态条 —— 非默认态 chips（来犯 / 民心低 / 逾溢；
+     天候不进 chips，原 sky-weather 档位随之退役。数据与生成见 ui.skyBadgesOf）。 */
+  .nav-sky .sky-badge {
+    display: inline-flex; align-items: center; gap: var(--sp-0);
+    padding: var(--sp-0) var(--sp-2); margin-left: var(--sp-1); border-radius: var(--r-sm);
+    font-weight: 400; letter-spacing: 0; cursor: pointer; user-select: none;
+    background: rgba(var(--sh-rgb), .44); border: 1px solid var(--line-strong); color: var(--text);
+  }
+  .nav-sky .sky-badge.sky-none { cursor: default; }
+  .nav-sky .sky-badge.sky-war { color: var(--gold-light); border-color: var(--gold-dark); }
+  .nav-sky .sky-badge.sky-hearts { color: var(--red-light); border-color: var(--red); }
+  .nav-sky .sky-badge.sky-rot { color: var(--gold-light); }
   .topnav .tab.active {
     color: var(--gold-light);
     background: linear-gradient(180deg, var(--btn-face-1), var(--btn-face-2));
@@ -744,30 +756,16 @@
   .res-line .val .num-rate.zero { color: var(--text-dim); opacity: .55; }
   .res-line .val .cap { color: var(--text-dim); font-size: var(--fs-cap); font-weight: 400; }
 
-  /* ============ 史册面板 ============ */
-  .story-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-4); margin-bottom: var(--sp-4); }
+  /* ============ 卡片式面板（.story-card / .prog 为多页共用件；史册专属件已于 v89.218 退役） ============ */
   .story-card {
     background: linear-gradient(180deg, rgba(var(--sh-rgb),.28), rgba(var(--sh-rgb),.12));
     border: 1px solid var(--gold-dark);
     border-radius: var(--r-lg); padding: var(--sp-4) var(--sp-mid); margin-bottom: var(--sp-4);
   }
-  .sky-big { font-size: var(--fs-h1); font-weight: 800; color: var(--gold-light); text-align: center; letter-spacing: 1px; margin: var(--sp-2) 0 var(--sp-1); }
-  .sky-sub { font-size: var(--fs-sub); color: var(--text-dim); text-align: center; line-height: var(--lh-body); }
-  .sky-boon { font-size: var(--fs-sub); color: var(--green-ok); text-align: center; margin-top: var(--sp-2); padding-top: var(--sp-2); border-top: 1px dashed var(--sep-gold); }
-  .goal-line { display: flex; justify-content: space-between; align-items: baseline; font-size: var(--fs-lead); margin: var(--sp-2) 0; }
-  .goal-line .good { color: var(--green-ok); font-weight: 700; }
   .prog { height: 9px; background: rgba(var(--sh-rgb),.45); border: 1px solid var(--gold-dark); border-radius: var(--r-md); overflow: hidden; }
   .prog > i { display: block; height: 100%; background: linear-gradient(90deg, #9a7430, var(--gold-light)); transition: width .5s linear; }
-  .hint { font-size: var(--fs-sub); color: var(--text-dim); margin-top: var(--sp-2); line-height: var(--lh-body); }
-  .chron-list { max-height: 420px; overflow-y: auto; padding-right: var(--sp-1); }
-  .chron-item { display: flex; gap: var(--sp-3); padding: var(--sp-2) var(--sp-3); border-left: 3px solid var(--gold-line); background: rgba(var(--sh-rgb),.16); border-radius: 0 var(--r-md) var(--r-md) 0; margin-bottom: var(--sp-1); }
-  .chron-item .chron-era { flex: 0 0 62px; font-size: var(--fs-sub); color: var(--gold); opacity: .9; }
-  .chron-item .chron-txt { font-size: var(--fs-sub); line-height: var(--lh-body); color: var(--text); }
-  .chron-item.tag-milestone { border-left-color: var(--gold-light); }
-  .chron-item.tag-era { border-left-color: var(--rank-ming); background: rgba(var(--wonder-rgb),.10); }
-  .chron-item.tag-encounter { border-left-color: var(--blue-info); background: rgba(var(--blue-info-rgb),.10); }
-  .chron-item.tag-annual { border-left-color: #4a5a3a; opacity: .82; }
-  /* ============ 客栈 / 市集 / 仓储 / 招贤馆 ============ */
+  /* ⛔ v89.218：纪事条目样式（.chron-list / .chron-item 七行）随史册退役 —— 早在 v89.104 已无消费点。 */
+  /* ============ 酒馆 / 市集 / 仓储 / 招募站 ============ */
   /* v75（老板）：候选改**单行紧凑**版式（「尽量单个将领一行显示」）。
      列表不再自带滚动 —— 整页滚动只留 .m-body 一处，避免旧版"列表 + 面板"双滚动条。 */
   .inn-list { padding-right: var(--sp-1); }
@@ -789,11 +787,11 @@
   .mk-row { display: flex; align-items: center; gap: var(--sp-3); justify-content: center; margin: var(--sp-3) 0; }
   .mk-row select, .mk-row input { padding: var(--sp-2) var(--sp-3); background: var(--slab-1); color: var(--text); border: 1px solid var(--gold-dark); border-radius: var(--r-sm); font-size: var(--fs-body); }
   .mk-row input { width: 120px; text-align: center; }
-  /* v89.60：`.mk-arrow`（资源互换的 → 箭头）随互换区退役删除 —— 市场已合并为单块表。 */
+  /* v89.60：`.mk-arrow`（资源互换的 → 箭头）随互换区退役删除 —— 交易站已合并为单块表。 */
   .mk-hint { font-size: var(--fs-sub); color: var(--text-dim); }
-  /* ============ v89.48（老板「市场售卖资源换取黄金，比例 1,2,3,4」）============
+  /* ============ v89.48（老板「交易站售卖资源换取黄金，比例 1,2,3,4」）============
      比价表：**1 / 2 / 3 / 4 四个数原样上屏**（老板要的就是这四个数），单位在表头写一次。
-     比价列加粗放大 —— 一眼看出粮食最便宜、铁最贵。 */
+     比价列加粗放大 —— 一眼看出净水最便宜、铁最贵。 */
   /* v89.60：`.mk-sell`（旧售卖/买入两块的包裹类）随三块合并删除。 */
   .ms-table { width: 100%; border-collapse: collapse; margin: var(--sp-2) 0 var(--sp-1);
     font-size: var(--fs-body); font-variant-numeric: tabular-nums; }
@@ -808,7 +806,7 @@
   .ms-note { font-size: var(--fs-sub); color: var(--text-dim); text-align: center;
     line-height: var(--lh-body); margin: var(--sp-0) 0 var(--sp-1); }
   .ms-note b { color: var(--gold-light); }
-  /* v89.60（老板「市场太杂，4资源+黄金可买卖就行，没必要分成 3 个板块」）
+  /* v89.60（老板「交易站太杂，4资源+黄金可买卖就行，没必要分成 3 个板块」）
      —— 三块合并为一张表：每行 资源|库存|卖出|买入|[卖][买]。
      下面的三列为表格新增（库存 / 买入价 / 操作），表尾预设按钮成行。 */
   .ms-table .ms-stock { color: var(--text); font-variant-numeric: tabular-nums; }
@@ -834,12 +832,12 @@
   .panel-foot { text-align: center; margin-top: var(--sp-5); }
   .bag-cell.dim { opacity: .45; }
   .subtabs.hidden { display: none; }
-  .topnav .tab .tab-badge { display: inline-block; min-width: 16px; height: 16px; line-height: 16px; padding: 0 var(--sp-1);
-    margin-left: var(--sp-1); border-radius: var(--r-lg); background: var(--tag-war); color: var(--on-accent); font-size: var(--fs-cap); font-weight: 700;
-    vertical-align: 1px; text-align: center; }
-  .topnav .tab .tab-badge.hidden { display: none; }
+  /* ⛔ v89.221（老板）：「任务有完成的任务不需要加数字显示，参考公文菜单的闪烁」——
+     .tab-badge 数字徽标随任务页签去数字化**整族退役**：任务页签改挂 .fresh
+     （与公文 tab 的 docBlink 同款动画，见上）。 */
   /* ============================================================
    * v41（需求 4）：公文有新战报 → 菜单**图标底色闪黄**，1.5 秒一轮
+   *   （v89.221 起：任务页签「有可领取任务」复用同一套 .fresh / docBlink）
    * ------------------------------------------------------------
    * 做法：图标本身是 `stroke="currentColor"`，所以把底色的"亮"和
    * 图标的"暗"一起动 —— 只闪底色的话，暗色主题里浅色图标压在黄底上
@@ -978,6 +976,12 @@
     --tip-ink-h: #e8ce88;                          /* 标题：暖金 */
     --tip-ink: #cdc8ba;                            /* 正文：浅灰米 */
     --tip-ink-b: #f2e8ca;                          /* 强调（<b>）：提亮 */
+    /* v89.214（老板 1）：装备属性**分行**浮层的三色 —— 原始值 白 / 百炼 亮金 / 调校 亮青。
+       与 --tip-ink-* 同理：浮层是深色卡，必须用"跟卡片走"的固定亮色（浅色主题的
+       金色令牌是深色，压在深底上会糊）。 */
+    --tip-eq-base: #ffffff;                        /* 原始属性数字：白 */
+    --tip-eq-add1: #f0c14b;                        /* 百炼增量：亮金 */
+    --tip-eq-add2: #7fd6e0;                        /* 调校增量：亮青 */
     box-shadow: 0 12px 28px rgba(var(--sh-rgb),.75);
     opacity: 0; visibility: hidden;
     transform: translateY(2px);                    /* v89.88：入场微位移（反馈"浮层出现"） */
@@ -989,6 +993,19 @@
   .tip-layer .tip-l { font-size: var(--fs-sub); color: var(--tip-ink); line-height: var(--lh-body); }
   .tip-layer .tip-l b { color: var(--tip-ink-b); font-weight: 700; }
   .tip-layer .tip-a { font-size: var(--fs-sub); color: var(--green-ok); margin-top: var(--sp-1); line-height: var(--lh-body); }
+  /* ---- v89.214（老板 1）：装备属性分行（悬停浮层 / 详情面板共用一套类） ----
+     基础字色跟上下文走（浮层=深色卡用 --tip-eq-*；弹窗=主题色），
+     行内三段：属性名 · 现值（白/强）· 增强增量（按来源缀金/青）。 */
+  .eqv-line { display: flex; align-items: baseline; gap: var(--sp-2); }
+  .eqv-k { flex: 0 0 auto; width: 3.4em; opacity: .82; }
+  .eqv-b { flex: 0 0 auto; min-width: 3.4em; text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text-strong); }
+  .eqv-d1, .eqv-d2 { flex: 0 0 auto; font-weight: 700; }
+  .eqv-d1 { color: var(--gold-light); }
+  .eqv-d2 { color: var(--blue-info); }
+  .tip-layer .eqv-b { color: var(--tip-eq-base); }
+  .tip-layer .eqv-d1 { color: var(--tip-eq-add1); }
+  .tip-layer .eqv-d2 { color: var(--tip-eq-add2); }
+  .eqv-note { margin-top: var(--sp-1); opacity: .92; }
   /* v89.179：.cnt-good/.cnt-bad（悬停相克行配色）随克制全撤删除。 */
   .bag-sec { display: flex; align-items: center; gap: var(--sp-4); margin: var(--sp-mid) 0 var(--sp-3); padding-bottom: var(--sp-1);
     border-bottom: 1px solid var(--sep-gold); color: var(--gold-light); }
@@ -1018,19 +1035,8 @@
   .iso-board { position: relative; flex: none; }
   /* 显示比例控件 */
   /* ============================================================
-   * v89.104（老板）：待阅逸闻 4×5 网格 + 军务页签 + 显示比例滑块
+   * ⛔ v89.218：待阅逸闻 6×5 网格（.sg-grid / .sg-cell 系列）随史册退役
    * ============================================================ */
-  /* v89.116（老板「待阅轶闻，名称怎么比阅读和忽略按钮还小呢？设计更紧凑，如5行*6列」）：
-     6 列 × 5 行 = 30 格一页；**篇名字号必须大于按钮字号**（.sg-t 14px 粗体 vs .btn.xs 11px），
-     这条由 §96 断言守（字号令牌比较，不靠肉眼）。 */
-  .sg-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: var(--sp-1); }
-  .sg-cell { border: 1px solid var(--line); border-radius: var(--r-md); padding: var(--sp-1) var(--sp-2); min-height: 54px;
-    background: rgba(var(--sh-rgb), .16); display: flex; flex-direction: column;
-    justify-content: space-between; gap: var(--sp-1); }
-  .sg-cell.empty { opacity: .34; border-style: dashed; }
-  .sg-cell .sg-t { font-size: var(--fs-lead); font-weight: 700; line-height: var(--lh-tight); color: var(--gold-light);
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .sg-cell .sg-a { display: flex; gap: var(--sp-1); flex-wrap: nowrap; }
   .march-tabs { display: flex; gap: var(--sp-2); margin-bottom: var(--sp-4); flex-wrap: wrap; }
   .march-tabs .mt { padding: var(--sp-1) var(--sp-5); border-radius: 999px; cursor: pointer; font-size: var(--fs-sub);
     border: 1px solid rgba(var(--gold-soft-rgb), .3); background: rgba(var(--sh-rgb), .42); color: var(--text-dim); }
@@ -1059,7 +1065,7 @@
   /* v89.190（老板 1）：「还是占位太大了，导致君主（没有这个标签）跟普通将领的界面出现
      行高的位移差异」——20px 的按钮把普通将的名称行从 17px 撑到 20.5px（君主无按钮 →
      切将时下方整体位移 4.5px）。压到 **16px**（≤ 文字行高 17px → 不再撑行）。
-     解雇/晋升（本类）+ 经验＋/军中/修炼（v89.190 同批并入本类）四处一起瘦身。 */
+     解雇/晋升（本类）+ 经验＋/军中/改造（v89.190 同批并入本类）四处一起瘦身。 */
   .btn.sm.mini { height: 16px; padding: 0 var(--sp-2); line-height: var(--lh-1); font-size: var(--fs-cap);
     border-radius: var(--r-sm); box-shadow: 0 1px 0 rgba(0,0,0,.3), inset 0 1px 0 rgba(var(--hl-rgb),.5); }
   .btn.sm.mini:active { box-shadow: 0 0 0 rgba(0,0,0,.3); }
@@ -1187,7 +1193,7 @@
   }
   /* ---- 城外资源：图标与地块同色系呼应（需求 2 点名的田黄/林青绿/石灰/矿棕黑）----
      v45：**只保留提亮**，去掉 `hue-rotate` / `saturate` —— 与城内建筑同一教训：
-     矩阵式滤镜在低饱和图上不可靠（上一版采石场 `saturate(.16)` 直接被洗成纯灰，
+     矩阵式滤镜在低饱和图上不可靠（上一版碎石场 `saturate(.16)` 直接被洗成纯灰，
      老板判定"阴间"）。资源图标本身就带正确固有色，CSS 只需把过暗的提亮即可。 */
   .iso-tile.res-farm   .tile-art img.ico-img { filter: brightness(1.16) drop-shadow(0 2px 3px rgba(var(--sh-rgb),.42)); }
   .iso-tile.res-forest .tile-art img.ico-img { filter: brightness(1.22) drop-shadow(0 2px 3px rgba(var(--sh-rgb),.42)); }
@@ -1234,8 +1240,8 @@
     background: var(--grad-progress); transition: width .4s linear; }
   .tile-add { font-size: var(--isz-sm); color: rgba(var(--tile-add-rgb),.66); line-height: var(--lh-1); }
 
-  /* ---- 城墙（v25 · 需求 1）：围着棋盘一圈的**环**，与地块留出空隙 ----
-     墙上画的是城墙该有的东西（墙身 / 雉堞 / 压顶 / 四角角楼），
+  /* ---- 围墙（v25 · 需求 1）：围着棋盘一圈的**环**，与地块留出空隙 ----
+     墙上画的是围墙该有的东西（墙身 / 雉堞 / 压顶 / 四角角楼），
      不再有任何文字标签 —— 需要操作时点这圈墙。 */
   .iso-wall { position: absolute; left: 0; top: 0; pointer-events: none; z-index: 1; }
   .iso-wall .wtower { transition: filter .15s; }
@@ -1244,7 +1250,7 @@
   .wall-hit:hover { background: rgba(var(--gold-soft-rgb),.10); }
   /* 悬停墙体时给整圈墙一点提亮反馈（角楼是墙的"提手"） */
   .iso-board:has(.wall-hit:hover) .iso-wall { filter: brightness(1.14); }
-  /* v89.169（老板「城墙 0 级的时候不明显」）：未修建 = 虚线虚影环 ——
+  /* v89.169（老板「围墙 0 级的时候不明显」）：未修建 = 虚线虚影环 ——
      描边走主题金（暗底发亮 / 浅底加深，四套主题自适应）；悬停再提一档。 */
   .iso-wall-ghost .wghost-base { stroke: rgba(var(--gold-rgb), .12); }
   .iso-wall-ghost .wghost-line { stroke: rgba(var(--gold-rgb), .74); }
@@ -1252,10 +1258,10 @@
   .iso-board:has(.wall-hit:hover) .iso-wall-ghost { filter: brightness(1.45); }
 
   /* ============================================================
-   * v89.107（老板）：「有警报时，建筑烽火台颜色明暗闪烁」
+   * v89.107（老板）：「有警报时，建筑瞭望塔颜色明暗闪烁」
    * ------------------------------------------------------------
-   * · 挂点：`ui.buildCellHTML` 在**预警窗内**给烽火台格加 `.alarm`
-   *   （窗口口径 = GAME.invasionAlertOf 唯一出口，与军务·烽火页、报信消息同源）；
+   * · 挂点：`ui.buildCellHTML` 在**预警窗内**给瞭望塔格加 `.alarm`
+   *   （窗口口径 = GAME.invasionAlertOf 唯一出口，与军务·警报页、报信消息同源）；
    * · 手法：亮度呼吸 + 一圈告警红光 —— 「明暗」是主信号，红光只补一层"紧急"；
    * · 只动 filter，不动尺寸/位置：不挤格线、不触发重排；
    * · 尊重 prefers-reduced-motion（关呼吸，改常亮告警色）。
@@ -1712,7 +1718,7 @@
   /* v74：视口断点已撤（@media (max-width: 820px) .eq-doll-wrap） */
 
   /* ---- 打造界面筛选条（v38 · 需求 3/4）---- */
-  /* v51：铁匠铺打造列表**独立列数（3 列）**，不再复用 `.shop-rows`。
+  /* v51：锻造间打造列表**独立列数（3 列）**，不再复用 `.shop-rows`。
      理由：那是"整页视图"的 4 列（内容宽 1000+，每格 317~375px）；
      打造面板是**弹窗**（内容宽 ~922px），4 列会把每格压到 198px，
      卡片的部位/造价/材料三行全部折行 → 卡片反被撑到 265px 高，越挤越高。
@@ -1761,7 +1767,7 @@
     max-width: calc(100% - 8px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     text-align: center; border-radius: var(--r-lg); background: rgba(var(--rank-liang-rgb),.85); color: var(--ink-on-gold);
     font-size: var(--fs-cap); font-weight: 800; padding: 0 var(--sp-1); }
-  /* v89.117 铁匠铺：整卡点选（打造键收敛到底部后的选中提示） */
+  /* v89.117 锻造间：整卡点选（打造键收敛到底部后的选中提示） */
   .item-row .ir-pick { font-size: var(--fs-cap); color: var(--text-dim); border: 1px dashed var(--line-strong);
     border-radius: var(--r-md); padding: 1px var(--sp-3); }
   .item-row.on { border-color: rgba(var(--gold-soft-rgb), .85);
@@ -1908,7 +1914,7 @@
   .mini-legend .lg-cty { color: var(--lg-cty); }
   .mini-legend .lg-me { color: var(--lg-me); }
 
-  /* v89.68（老板：缩略图加筛选按钮，三级下钻 州城/郡城/县城）——
+  /* v89.68（老板：缩略图加筛选按钮，三级下钻 首府/重镇/聚落）——
      筛选行放在标题与地图之间：层级永远在，州/郡下拉**按层级级联出现**（不占空位）。 */
   .mini-filter { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-4);
     justify-content: center; margin: var(--sp-1) 0 var(--sp-2); font-size: var(--fs-sub); }
@@ -2104,27 +2110,34 @@
   .modal .pbar i { display: block; height: 100%; border-radius: var(--r-sm);
     background: var(--grad-progress); transition: width .4s linear; }
 
-  /* ============ 侧栏驻军栏（v16）============
-     固定高度、固定位置；折叠状态默认展开 */
+  /* ============ 侧栏驻军栏（v16 · v89.215 改版）============
+     固定高度、固定位置；**列表常驻**（v89.215 起折叠开关退役）。 */
   .garrison-bar { margin: var(--sp-3) var(--sp-4) var(--sp-4); border: 1px solid var(--line-strong); border-radius: var(--r-md);
     background: rgba(var(--sh-rgb),.24); overflow: hidden; }
-  .gb-head { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); cursor: pointer;
+  .gb-head { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3);
     font-size: var(--fs-sub); color: var(--gold-light); font-weight: 700; }
-  .gb-head .gb-arrow { margin-left: auto; color: var(--text-dim); }
+  /* ⛔ v89.215（老板「不再设置下拉」）：`.gb-head { cursor:pointer }` 与 `.gb-head .gb-arrow`
+     随折叠开关整条退役（列表常驻，头只是头）。 */
   /* v76（老板）：「左侧统计框没有到底」——驻军列表从固定 132px 改**撑满剩余高度**
      （左栏"铺满到底"的主力；兵多时列表内部照旧滚动）。 */
   /* v89.53（老板 09-19）：侧栏仅 283px 宽，原单列滚动「不够显示」。
      改为 2 列紧凑网格（每格 = 兵种名 + 数量），同高可见兵种数翻倍、名字完整可读。
      4 列会把「重装步兵 12,345」挤压/截断，故取 2 列；要更密把下方 repeat(2,…) 改 3/4。 */
+  /* v89.215（老板「直接按固定位置和顺序列出**所有**兵种」）：18 行按 2 列 = 9 行 ——
+     行距与行高各收一档（行间隔 4px→1px · 行高走 --lh-tight），
+     把"全列"多出来的高度吃回去：侧栏不再因驻军栏变长而整体出滚动条（铺满到底口径不破）。 */
   .gb-list { flex: 1 1 auto; min-height: 132px; overflow-y: auto;
-    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-1) var(--sp-4);
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-hair) var(--sp-4);
     align-content: start; padding: var(--sp-0) var(--sp-3) var(--sp-3); }
   .gb-row { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-2);
-    font-size: var(--fs-sub); padding: var(--sp-0) 0; border-bottom: 1px dashed var(--line); }
+    font-size: var(--fs-sub); line-height: var(--lh-tight); padding: var(--sp-0) 0; border-bottom: 1px dashed var(--line); }
   .gb-row .gb-n { color: var(--text); min-width: 0; overflow: hidden;
     text-overflow: ellipsis; white-space: nowrap; }
   .gb-row .gb-c { color: var(--gold-light); font-variant-numeric: tabular-nums;
     text-align: right; flex: none; }
+  /* v89.215（老板「暂无的数量则为 0」）：零行**灰显** —— 固定阵位里一眼挑出"有兵的那几行" */
+  .gb-row.gb-zero .gb-n { color: var(--text-dim); }
+  .gb-row.gb-zero .gb-c { color: var(--text-dim); font-weight: 400; }
   .gb-empty { height: 132px; display: flex; align-items: center; justify-content: center;
     color: var(--text-dim); font-size: var(--fs-sub); }
 
@@ -2252,8 +2265,11 @@
    * ============================================================ */
   .bottombar {
     flex: none; height: 46px; display: flex; align-items: center; justify-content: center;
-    /* v89.52：左留白给最左的「🏷 名称」按钮（绝对定位），避免与居中分页/导航重叠 */
-    padding: 0 var(--sp-mid) 0 92px; border-top: 1px solid var(--line-strong);
+    /* v89.52：左留白给最左的「🏷 名称」按钮（绝对定位），避免与居中分页/导航重叠。
+       v89.213（老板「页码集中在中部」）：左 92 / 右 12 不对称会让居中内容整体右偏
+       40px（内容盒中轴 760 ≠ 屏幕中轴 720）——改**左右对称**，内容轴回到屏幕正中；
+       右侧顺带为 40px 缩略图（right:10px）留出更大余量。 */
+    padding: 0 92px; border-top: 1px solid var(--line-strong);
     background: linear-gradient(180deg, rgba(var(--sh-rgb),.28), rgba(var(--sh-rgb),.55));
   }
   /* v89.52：底部导航栏最左 · 一键显示建筑/野地名称与等级 */
@@ -2294,31 +2310,42 @@
   body.labels-off .tile-label,
   body.labels-off .tile-badge { display: none !important; }
   .bottombar .pager {
-    /* v89.204：三栏满行后右缘贴到条尾 —— 留 52px 给绝对定位的缩略图（40px + right 10px） */
-    margin: 0 52px 0 0; padding: var(--sp-1) var(--sp-4); background: transparent; border: none;
+    /* v89.213（老板）：「页码集中在中部，不要分散至两边，导致和其他菜单重叠住了」——
+       改**整体居中**后条不再满行铺开，两侧（左 10~197px 的 bb-tools「🏷/⚔」、右 1390px
+       的缩略图）天然留白；v89.204 的「右留 52px」随三栏布局一起退役（不对称 margin 会让
+       中点偏左 26px）。 */
+    margin: 0; padding: var(--sp-1) var(--sp-4); background: transparent; border: none;
   }
   .bottombar .bb-hint {
     color: var(--text-dim); font-size: var(--fs-sub); opacity: .45; letter-spacing: .06em;
   }
 
   /* ============ 分页条（v14.1：长列表不再无限下拉） ============ */
-  /* v89.204（老板 2）：「其页码固定显示位置为居中，其他菜单按钮位置合理排布」——
-     三栏 grid：左 = 前导导航（首页/上页/数字页）· 中 = 页码信息**恒定居中** ·
-     右 = 后导导航（下页/末页）。左右 1fr 等宽 ⇒ 中栏永远落在正中央（与按钮多少无关）。
-     width:100%：在弹窗 foot / 底栏（均为 flex 容器）里独占满行，"居中"才是整条的中轴。 */
+  /* v89.213（老板）：「页码集中在中部，不要分散至两边，导致和其他菜单重叠住了」——
+     改前是 v89.204 的三栏 grid（前导/页码/后导分居两端）：底栏里左栏按钮直接撞进
+     「🏷 隐藏名称 / ⚔ 指挥战斗」（.bb-tools · 绝对定位 left:10px · 实测重叠 95px，
+     按钮被盖住、点「首页」实际点到「隐藏名称」）。改后 = **整体居中 flex**：首页/上页/
+     数字页 + 页码 + 下页/末页 作为一个整体排在中轴（justify-content:center），两侧
+     自动留白、与 bb-tools / 缩略图天然不重叠。DOM 结构不变（l → pg-info → r 顺序），
+     只改排布方向；超长（数字页满档）时 flex-wrap 兜底换行。
+     width:100%：在弹窗 foot / 底栏（均为 flex 容器）里独占满行，居中即整条中轴。 */
   .pager {
-    display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; width: 100%;
+    display: flex; justify-content: center; align-items: center; width: 100%;
     gap: var(--sp-1); margin: var(--sp-mid) 0 var(--sp-1); padding: var(--sp-3) var(--sp-4);
     background: rgba(var(--sh-rgb), .22); border: 1px solid var(--line-strong); border-radius: var(--r-md);
   }
-  .pager .pg-side { display: flex; align-items: center; gap: var(--sp-1); flex-wrap: wrap; min-width: 0; }
-  .pager .pg-side.l { justify-content: flex-start; }
-  .pager .pg-side.r { justify-content: flex-end; }
+  /* v89.216（老板「不再遗留可执行任务」· 接 v89.213 的挂账）：
+     上一版「整体居中」下，两侧按钮数不等（左 7 / 右 2）→ 页码文本被挤偏中轴 **+36px**（实机实测）。
+     改法 = **两侧等宽对中**：.pg-side 走 `flex: 1 1 0`（等基准，min-width:0 允许让位），
+     左组贴中轴右对齐、右组贴中轴左对齐 —— 中间那段（页码文本）落在**正轴**上（实测 720 = 720）。
+     比"右组补占位"更干净：占位是拿宽度凑、换语言/改字号就失准；等基准是布局本身的对称。 */
+  .pager .pg-side { flex: 1 1 0; display: flex; align-items: center; gap: var(--sp-1); flex-wrap: wrap; min-width: 0; }
+  .pager .pg-side.l { justify-content: flex-end; }
+  .pager .pg-side.r { justify-content: flex-start; }
+  .pager .pg-info { flex: 0 0 auto; }
   .pager .btn.sm { min-width: 32px; }
   .pager .btn[disabled] { opacity: .35; cursor: not-allowed; }
   .pager .pg-info { color: var(--text-dim); font-size: var(--fs-sub); text-align: center; white-space: nowrap; }
-  /* 单元素态（暂无记录 / 共 N 项）：独立居中（三栏 grid 下默认会落左栏） */
-  .pager > .pg-info:only-child { grid-column: 2; }
 
   /* ============ 弹窗统一规范（v14.1） ============
      统一尺寸档位 + 底部关闭 + 内部滚动，避免超屏与无限下拉 */
@@ -2378,7 +2405,7 @@
   .tbl td .gen-link:hover { color: #fff3cf; }
 
   /* ============ 军队 / 兵种卡 ============ */
-  /* v80（老板）：「页面分成步兵，骑兵两个界面，翻页」—— 两页切换（选中页走 .btn.gold） */
+  /* v80（老板）：「页面分成步兵，机车两个界面，翻页」—— 两页切换（选中页走 .btn.gold） */
   .train-tabs { display: flex; justify-content: center; gap: var(--sp-4); margin-bottom: var(--sp-4); }
   .train-tabs .btn { min-width: 118px; }
   .troop-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--sp-4); }
@@ -2682,9 +2709,9 @@
      v51 曾按"矮屏 min(700px, 88vh)"折衷；v74 画布固定后不再随视口缩（兜底同 md/lg）。 */
   .modal-xl { width: 960px; height: 700px;
     max-width: calc(var(--app-w) - 20px); max-height: calc(var(--app-h) - 20px); }
-  /* xxl（v75 客栈招募；v89.112 再扩）：**1200×850** —— 老板「充分利用界面版面。
+  /* xxl（v75 酒馆招募；v89.112 再扩）：**1200×850** —— 老板「充分利用界面版面。
      画布 1440×900：左右各留 120px、上下各留 25px —— 相比旧 1020×840（左右各 210px）
-     多出 18% 面积。坐在这一档的是"内容确实多"的面板（市场/客栈/见闻/君主/出征/
+     多出 18% 面积。坐在这一档的是"内容确实多"的面板（交易站/酒馆/见闻/君主/出征/
      全境营造/战报详情…），加宽后原本靠滚动条苟着的段（出兵表/候选表）多数能一屏站直。
      兜底规则同其余档位。 */
   .modal-xxl { width: 1200px; height: 850px;
@@ -2724,7 +2751,7 @@
   .m-sec:first-child { margin-top: 0; }
   /* 弹窗内表格统一外框（避免贴边） */
   .m-body .tbl { margin-top: var(--sp-1); }
-  /* ============ 种田秘境（v73 · 老板需求 3） ============
+  /* ============ 基因实验室（v73 · 老板需求 3） ============
      「背景是个人种田空间」：整页暖土渐变（金色三元组低透明 → 四主题自动适配），
      六格灵田；生长中是进度条 + 倒计时（每秒由 ui.updateProgress 刷新）。
      （v72 的 .dlg-ico 尺寸盒随「顶部图标块撤除」一起退役 —— 没有图标，就没有 1024px。） */
@@ -2769,7 +2796,7 @@
   .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
   /* v89.203（老板 1）：「强化的弹窗信息放在屏幕中上部，不要挡住操作按钮」——
      弹窗打开时提示条**上浮到屏幕中上部**（top 13% = 画布 117px，在弹窗标题行之下、
-     正文上部）：xxl 强化/蕴养面板的底部是操作键区，提示条留在底部会挡住「强化/蕴养」
+     正文上部）：xxl 强化/调校面板的底部是操作键区，提示条留在底部会挡住「强化/调校」
      键（点一次挡一次）。无弹窗时保持底部 30px（原习惯不变）。 */
   .toast.high { top: 13%; bottom: auto; }
   .toast.high:not(.show) { transform: translateX(-50%) translateY(-16px); }
@@ -2932,7 +2959,7 @@
     font-size: var(--fs-body); line-height: var(--lh-body); word-break: break-all;
   }
   .rt-round:nth-child(odd) { background: rgba(var(--sh-rgb), .18); }
-  /* 页签上的条数徽标（战报 12 · 烽火 3 …）—— 让"哪一类有新东西"一眼可见 */
+  /* 页签上的条数徽标（战报 12 · 警报 3 …）—— 让"哪一类有新东西"一眼可见 */
   .doc-tabs .mt-n { margin-left: var(--sp-1); font-size: var(--fs-cap); opacity: .72;
     font-variant-numeric: tabular-nums; }
   .doc-tabs .mt.on .mt-n { opacity: 1; }
@@ -2984,7 +3011,7 @@
   .ui-sub { font-size: var(--fs-sub); color: var(--text-dim); }
   .nt-info { font-size: var(--fs-sub); color: var(--text-dim); }
 
-  /* ---- 伤兵营（校场与行军共用，v21 需求 1）---- */
+  /* ---- 伤兵营（练兵场与行军共用，v21 需求 1）---- */
   .wounded-box {
     margin-top: var(--sp-4);
     padding: var(--sp-4);
@@ -3035,7 +3062,7 @@
 
   /* ---- 页脚规格已收进上文「弹窗操作栏只有一条定义」（v89.105） ---- */
 
-  /* ---- 门派六派：两列卡片（v89.105）----
+  /* ---- 派系六派：两列卡片（v89.105）----
      卡片内是"名称 + 被动 + 入派键"三段，纵向排；grid 让六派三行铺满。 */
   .sect-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-3); }
   .sect-grid .sect-card { display: block; padding: var(--sp-3) var(--sp-4); }
@@ -3061,7 +3088,7 @@
   .q-card, .item-row, .bag-cell, .eq-cell, .inn-card, .story-card, .xc-row {
     border-color: var(--line);
   }
-  /* v75（老板）：「尽量所有候选都能在同一页」——客栈候选行**紧凑几何**：
+  /* v75（老板）：「尽量所有候选都能在同一页」——酒馆候选行**紧凑几何**：
      共用基线给的 10px 内衬对"一页装下"太厚，这里就地收窄
      （同权重、写在基线之后者胜）；配 28px 头像 → 行高实测 36px。 */
   .inn-card { padding: var(--sp-1) var(--sp-4); margin-bottom: var(--sp-1); }
@@ -3109,7 +3136,7 @@
   /* 名字留在底部（等级不再挤在这一行） */
   .tile-label .lv { display: none; }
 
-  /* ---- 官府宫殿（v23 · 需求 4）：4 格融合成一座建筑 ---- */
+  /* ---- 政务厅宫殿（v23 · 需求 4）：4 格融合成一座建筑 ---- */
   .gov-palace { position: absolute; z-index: 3; cursor: pointer; transition: z-index 0s; }
   .gov-palace .tile-face { inset: 2px; border-radius: var(--r-xl); }
   .gov-palace .gov-art {
@@ -3117,7 +3144,7 @@
     padding-bottom: var(--sp-5); pointer-events: none; z-index: 4;
   }
   .gov-palace .gov-svg { width: 86%; height: 86%; display: block; filter: none; }
-  /* v36：官府位图（AI 汉代宫殿）。2×2 格的外框是正方形，与 1024×1024 方图同比例，
+  /* v36：政务厅位图（AI 汉代宫殿）。2×2 格的外框是正方形，与 1024×1024 方图同比例，
      contain 既不裁也不变形；底对齐 + 接地投影，让它"落"在台基上而非浮着。 */
   .gov-palace .gov-img {
     width: 100%; height: 100%; display: block;
@@ -3139,7 +3166,7 @@
    *   · 朱印作为标题标点，数值用朱笔/金笔大字
    * ============================================================ */
   /* ============================================================
-   * 官府黄册（v27 · 需求 7）：统计页的信息呈现
+   * 政务厅黄册（v27 · 需求 7）：统计页的信息呈现
    * ------------------------------------------------------------
    * 原先是一排 8 个「卡片 + 竖排标签 + 大字数值」，本质还是数据座舱：
    * 卡片之间有 8 处边框、8 处底色、8 处间距，眼睛没有落点，
@@ -3207,7 +3234,7 @@
   .auto-pane .ap-state { font-size: var(--fs-sub); color: var(--text-dim); }
 
   /* v29（需求 7）：全境汇总左右分列 —— 同类同侧 */
-  /* v29（需求 9）：城池名后的等级标注 [都城] / [州城] … */
+  /* v29（需求 9）：城池名后的等级标注 [旧都] / [首府] … */
   .city-tier { color: var(--gold-light); opacity: .85; font-size: var(--fs-cap); font-weight: 400; margin-left: var(--sp-0); }
   /* v79：【主城】标识（与档位标同族、金色描边更亮） */
   .city-tier.mt { color: var(--gold-light); opacity: 1; filter: brightness(1.3);
@@ -3319,16 +3346,7 @@
   /* v89.89（A4）：材料产地跳转图标 */
   .mat-go { cursor: pointer; opacity: .55; margin-left: var(--sp-1); }
   .mat-go:hover { opacity: 1; }
-  /* v89.89（C4）：故事集（已读回看 + 收集进度） */
-  .sg-row { display: flex; align-items: baseline; gap: var(--sp-3); padding: var(--sp-1) 0; flex-wrap: wrap; }
-  .sg-k { flex: none; width: 44px; color: var(--gold-light); font-size: var(--fs-sub); font-weight: 700; }
-  .sg-items { flex: 1; display: flex; flex-wrap: wrap; gap: var(--sp-1) var(--sp-4); }
-  .sg-item { color: var(--gold-light); font-size: var(--fs-body); cursor: pointer; }
-  .sg-item:hover { text-decoration: underline; }
-  .sg-item i { font-style: normal; font-size: var(--fs-sub); color: var(--text-dim); margin-left: var(--sp-0); }
-  .sg-item.dim { color: var(--text-dim); cursor: default; opacity: .55; }
-  .sg-item.dim:hover { text-decoration: none; }
-  .sg-n { flex: none; font-size: var(--fs-sub); color: var(--text-dim); }
+  /* ⛔ v89.218：故事集行样式（.sg-row 系列 8 行）随故事集视图退役。 */
   /* v89.89（E3）：募兵面板人口三段条 */
   .pop-3 { display: inline-flex; align-items: center; gap: var(--sp-3); }
   .pop-3 .p3-k { color: var(--text-dim); font-size: var(--fs-sub); }
@@ -3398,7 +3416,7 @@
   /* v27（需求 6）：将领选择原先是一条**只有 96px 高的滚动列表** ——
      实际效果和下拉框一模一样（要滚才能看到后面的将领），
      而且滚动条还挂在弹窗里（弹窗本来就要求不出现滚动条）。
-     将领上限 = 招贤馆等级（≤10 位），改成两列网格后全部一次呈现，不需要滚动。 */
+     将领上限 = 招募站等级（≤10 位），改成两列网格后全部一次呈现，不需要滚动。 */
   .chips.gen-chips { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-1); padding: var(--sp-hair); }
   /* v89.112：**宽版 4 列** —— 装备/宝物面板的选择器。
      166 位将领 × 2 列 = 83 行 = 2356px 的高墙（"小小弹窗一屏全是人名"）。
@@ -3467,8 +3485,8 @@
   }
   .city-select:hover { border-color: var(--gold-light); }
   .city-select:focus { outline: none; border-color: var(--gold-light); box-shadow: 0 0 0 2px rgba(var(--gold-soft-rgb), .18); }
-  /* v82（老板）：「不需要显示原名 新城池」——官府面板的原名标注退役，
-     对应样式随之撤除（域层 origName 照记：州治判定/战报仍按它对号）。 */
+  /* v82（老板）：「不需要显示原名 新城池」——政务厅面板的原名标注退役，
+     对应样式随之撤除（域层 origName 照记：首府判定/战报仍按它对号）。 */
   .side-body .zoom-bar { margin: 0; justify-content: flex-start; }
 
   /* ---- 页面容器：三种界面同一内边距节奏 ---- */
@@ -3566,9 +3584,9 @@
      v77（老板）
      ------------------------------------------------------------
      ① 资源区：附属野地下拉框（原「本城 · 城名」表头退役）
-     ② 客栈招募：表格版式（表头 + 单行数据，含月俸列）
+     ② 酒馆招募：表格版式（表头 + 单行数据，含月俸列）
      ③ 君主面板：左右分栏（左城池列表 / 右信息表）
-     ④ 铁匠铺：百炼强化列表
+     ④ 锻造间：百炼强化列表
      ============================================================ */
   .wild-pick-host { margin-bottom: var(--sp-1); }
   .wild-pick-host .res-line { display: flex; align-items: center; gap: var(--sp-2); }
@@ -3601,9 +3619,9 @@
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .lord-tbl td.k { width: 86px; color: var(--text-dim); white-space: nowrap; }
 
-  /* ⛔ v89.202（老板 1「蕴养同款」）：.enh-list / .enh-row / .enh-nm / .enh-tag /
-     .enh-cost 单列家族随蕴养面板改网格卡片（.enh-rows/.enh-card）整族退役 ——
-     原"每行一颗蕴养键"的单列形态无第二消费方（全仓唯一用点=蕴养面板）。 */
+  /* ⛔ v89.202（老板 1「调校同款」）：.enh-list / .enh-row / .enh-nm / .enh-tag /
+     .enh-cost 单列家族随调校面板改网格卡片（.enh-rows/.enh-card）整族退役 ——
+     原"每行一颗调校键"的单列形态无第二消费方（全仓唯一用点=调校面板）。 */
   /* v89.201（老板 3）：百炼强化专属界面 —— 3 列网格卡片（点选 + 底部唯一强化键）。
      卡高 84px = 品阶图 68px + 上下 padding 各 8px（垂直居中由 align-items:center 保证）。 */
   .enh-rows { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-4);
@@ -3622,7 +3640,7 @@
   .enh-card .ec-lv { font-size: var(--fs-num); font-weight: 700; color: var(--gold-light); line-height: var(--lh-1); }
   .enh-card .ec-lv i { font-size: var(--fs-cap); color: var(--text-dim); font-weight: 400; font-style: normal; }
   /* ⛔ v89.204（老板 2）：「强化界面的资源要求请以悬停显示，而不是直接占用位置」——
-     .ec-cost（卡面成本行）退役：成本并入 title（百炼/蕴养两处同改，见 js/ui.js）。 */
+     .ec-cost（卡面成本行）退役：成本并入 title（百炼/调校两处同改，见 js/ui.js）。 */
   /* ---------- v89.1 全屏剧本视觉化（幕景横幅 / 幕题 / 徽章 / 结算卡） ---------- */
   .sxf-wrap { --sxf-art-sz: 118px; --sxf-act-sz: 40px; --sxf-emb-sz: 52px;
     max-width: 860px; margin: 0 auto; padding: var(--sp-6) var(--sp-5) 72px;
@@ -3765,45 +3783,8 @@
   .jnl-nm { color: var(--text-strong); font-weight: 700; font-size: var(--fs-body); }
   .jnl-card.has .jnl-nm { color: var(--wonder); }
   .jnl-txt { color: var(--text-dim); font-size: var(--fs-cap); line-height: var(--lh-tight); }
-  /* ================= 文字游戏 · 阅读器（story/） =================
-     取色/字号全部走主题令牌；标题沿用共享规则内的既有类（.gold-heading / .side-title）。
-     .sgr-text 用 pre-wrap 保留正文换行（数据里的换行即段落，不转 <br>）。 */
-  #story-fx .sgr-wrap { max-width: 880px; margin: 0 auto; padding: var(--sp-6) var(--sp-5) 72px; }
-  .sgr-banner { display: flex; align-items: center; gap: var(--sp-3);
-    border-bottom: 1px solid var(--sep-gold); padding-bottom: var(--sp-3); margin-bottom: var(--sp-5); }
-  .sgr-title { flex: 1 1 auto; }
-  .sgr-text { font-size: var(--fs-lead); line-height: var(--lh-loose); white-space: pre-wrap; color: var(--text); }
-  .sgr-ops { display: flex; flex-direction: column; gap: var(--sp-3); margin-top: var(--sp-5); }
-  .sgr-opt { display: flex; flex-direction: column; align-items: flex-start; gap: var(--sp-1);
-    height: auto; text-align: left; padding: var(--sp-3) var(--sp-4); line-height: var(--lh-body); }
-  .sgr-l { font-weight: 700; color: var(--text-strong); }
-  .sgr-d { font-size: var(--fs-sub); color: var(--text-dim); font-weight: 400; }
-  .sgr-end { border: 1px solid var(--sep-gold); border-radius: var(--r-lg);
-    padding: var(--sp-5); background: var(--panel-bg); }
-  .sgr-g-win { border-color: var(--gold); }
-  .sgr-g-lose { border-color: var(--red); }
-  .sgr-got { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-4);
-    margin-top: var(--sp-4); padding-top: var(--sp-3); border-top: 1px solid var(--line); }
-  .sgr-gv { color: var(--gold-light); font-weight: 700; }
-  .sgr-gv i { font-style: normal; color: var(--text-dim); font-weight: 400; margin-right: var(--sp-1); }
-  .sgr-note { color: var(--text-dim); font-size: var(--fs-cap); }
-  /* v89.8（老板「背景壁画的变换」）：满幅壁画两层 + 交叉淡入 + 沙幕（保正文可读）。
-     沙幕吃主题底色（明暗四主题都成立）；正文层 z=2 压在最上，点选不受遮挡。 */
-  .sgr-bg { position: fixed; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none;
-    opacity: 0; transition: opacity .55s ease; z-index: 0; }
-  .sgr-bg svg { width: 100%; height: 100%; display: block; }
-  .sgr-bg[data-on] { opacity: 1; }
-  .sgr-scrim { position: fixed; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1;
-    background: linear-gradient(180deg, var(--bg-dark) 0%, transparent 15%),
-      linear-gradient(180deg, transparent 30%, var(--bg-2) 74%); }
-  #story-fx .sgr-body { position: relative; z-index: 2; }
-  /* 段入场动效（每段重放入场：正文层 innerHTML 每次替换，动画自然重放） */
-  .sgr-wrap { animation: sgrIn .34s ease both; }
-  @keyframes sgrIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
-  .sgr-prog { color: var(--text-dim); font-size: var(--fs-sub); white-space: nowrap; flex: none; }
-  .sgr-dots { display: inline-flex; gap: var(--sp-1); align-items: center; margin-left: var(--sp-2); }
-  .sgr-dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--line-strong); }
-  .sgr-dots i.on { background: var(--gold-light); }
+  /* ⛔ v89.218（老板「故事全部去除」）：#story-fx 阅读器样式（.sgr-* 全族）退役 ——
+     阅读器与内容层 story/ 一并删除。 */
   /* ============================================================
    * 战场界面（v89.87 · 老板需求 4）：实时观战 + 逐回合指挥
    * ------------------------------------------------------------
@@ -3841,12 +3822,12 @@
      `--rel`（0~1 的无单位数，渲染时按 `i / n` 给）决定纵向位置：
        atk 第 i 队 = i/n；def 第 i 队 = (i+0.5)/n（错半行，与 v89.103 同规，不互相遮）。
      牌高写进 CSS（30px）：`top = (100% − 牌高) × --rel` —— 最后一队正好贴底、不越界。 */
-  /* v89.150（老板 1）：「战场中兵种[周]围的环形框，根据兵种，步兵窄一点，骑兵比目前稍窄但
-     比步兵宽，如果是器械兵种如床弩等则维持目前方块大小，使兵种便于区分」——
+  /* v89.150（老板 1）：「战场中兵种[周]围的环形框，根据兵种，步兵窄一点，机车比目前稍窄但
+     比步兵宽，如果是器械兵种如重弩车等则维持目前方块大小，使兵种便于区分」——
      宽度三档（图标 26px **不变**，变的是**框的留白**：窄框贴图标 = 步兵；宽框留白 = 器械）：
-       · .inf   步兵（含民夫/斥候）— 28px（贴边窄框）
-       · .cav   骑兵              — 32px（比改前的 36 稍窄、比步兵宽 4px）
-       · .siege 器械（床弩/冲车/投石）— 36px（**维持改前的方块尺寸**）
+       · .inf   步兵（含搬运工/侦察兵）— 28px（贴边窄框）
+       · .cav   机车              — 32px（比改前的 36 稍窄、比步兵宽 4px）
+       · .siege 器械（重弩车/破门车/迫击炮）— 36px（**维持改前的方块尺寸**）
      形态由 `GAME.troopShapeOf` 判定（唯一出口，读数据表的 cat / craft 字段）。 */
   .bt-unit { --u-w: 36px; position: absolute; transform: translateX(-50%); display: flex; align-items: center;
     height: 30px; width: var(--u-w); justify-content: center;
@@ -4111,7 +4092,7 @@
   .sd-tok.hit { animation: btHit .36s ease; }
   .sd-tok.dead { opacity: .42; filter: grayscale(.7); }
   .sd-castle { position: absolute; right: 6px; top: 3px; font-size: var(--fs-cap); color: var(--gold-light); }
-  /* 攻城时的城墙（右缘，纯画面）：竖着的窄条，压暗以免抢戏 */
+  /* 攻城时的围墙（右缘，纯画面）：竖着的窄条，压暗以免抢戏 */
   .sd-wall { position: absolute; right: 0; top: 0; bottom: 0; height: 100%; width: 34px;
     object-fit: cover; opacity: .38; pointer-events: none; }
   .sd-scale { position: absolute; left: 0; right: 0; bottom: 1px; display: flex; justify-content: space-between;
@@ -4204,24 +4185,24 @@
           <div class="field"><label>城池归属</label>
             <!-- v22（需求 1）：下拉框改为点选按钮组；隐藏域保留原 id，读取端不用改 -->
             <input type="hidden" id="create-region" value="random">
-            <!-- v70（老板需求 5）：「城池归属应归属到州城所辖范围内，目前几个选项不太 OK」——
-                 旧的「北方/中原/江南」只是三句文案（从不影响落位）；现在给出**十三州**，
-                 选哪个州，出生城就落在该州州治近旁（GAME.pickStartPos，就近归属同一判据）。 -->
+            <!-- v70（老板需求 5）：「城池归属应归属到首府所辖范围内，目前几个选项不太 OK」——
+                 旧的「北方/中原/江南」只是三句文案（从不影响落位）；现在给出**十三区**，
+                 选哪个区，出生城就落在该区首府近旁（GAME.pickStartPos，就近归属同一判据）。 -->
             <span class="chips" style="flex:1;flex-wrap:wrap;">
               <span class="chip on" data-action="chip-set" data-v="random" data-target="create-region" data-after="region">随机</span>
-              <span class="chip" data-action="chip-set" data-v="司隶" data-target="create-region" data-after="region">司隶</span>
-              <span class="chip" data-action="chip-set" data-v="兖州" data-target="create-region" data-after="region">兖州</span>
-              <span class="chip" data-action="chip-set" data-v="豫州" data-target="create-region" data-after="region">豫州</span>
-              <span class="chip" data-action="chip-set" data-v="徐州" data-target="create-region" data-after="region">徐州</span>
-              <span class="chip" data-action="chip-set" data-v="青州" data-target="create-region" data-after="region">青州</span>
-              <span class="chip" data-action="chip-set" data-v="冀州" data-target="create-region" data-after="region">冀州</span>
-              <span class="chip" data-action="chip-set" data-v="幽州" data-target="create-region" data-after="region">幽州</span>
-              <span class="chip" data-action="chip-set" data-v="并州" data-target="create-region" data-after="region">并州</span>
-              <span class="chip" data-action="chip-set" data-v="凉州" data-target="create-region" data-after="region">凉州</span>
-              <span class="chip" data-action="chip-set" data-v="益州" data-target="create-region" data-after="region">益州</span>
-              <span class="chip" data-action="chip-set" data-v="荆州" data-target="create-region" data-after="region">荆州</span>
-              <span class="chip" data-action="chip-set" data-v="扬州" data-target="create-region" data-after="region">扬州</span>
-              <span class="chip" data-action="chip-set" data-v="交州" data-target="create-region" data-after="region">交州</span>
+              <span class="chip" data-action="chip-set" data-v="烬环" data-target="create-region" data-after="region">烬环</span>
+              <span class="chip" data-action="chip-set" data-v="枯河" data-target="create-region" data-after="region">枯河</span>
+              <span class="chip" data-action="chip-set" data-v="碎垣" data-target="create-region" data-after="region">碎垣</span>
+              <span class="chip" data-action="chip-set" data-v="沉陆" data-target="create-region" data-after="region">沉陆</span>
+              <span class="chip" data-action="chip-set" data-v="盐岸" data-target="create-region" data-after="region">盐岸</span>
+              <span class="chip" data-action="chip-set" data-v="灰野" data-target="create-region" data-after="region">灰野</span>
+              <span class="chip" data-action="chip-set" data-v="霜脊" data-target="create-region" data-after="region">霜脊</span>
+              <span class="chip" data-action="chip-set" data-v="黑岭" data-target="create-region" data-after="region">黑岭</span>
+              <span class="chip" data-action="chip-set" data-v="风碛" data-target="create-region" data-after="region">风碛</span>
+              <span class="chip" data-action="chip-set" data-v="雾谷" data-target="create-region" data-after="region">雾谷</span>
+              <span class="chip" data-action="chip-set" data-v="泽心" data-target="create-region" data-after="region">泽心</span>
+              <span class="chip" data-action="chip-set" data-v="潮湾" data-target="create-region" data-after="region">潮湾</span>
+              <span class="chip" data-action="chip-set" data-v="藤林" data-target="create-region" data-after="region">藤林</span>
             </span>
           </div>
           <div class="summary-box" id="create-summary">
@@ -4246,11 +4227,11 @@
   <!-- 顶部导航 -->
   <!-- v19：菜单按**类型分组**，同类型相邻、不同类型以竖线分隔
        ① 场景：城池 / 地图   ② 军事：将领 / 行军
-       ③ 成长：任务 / 商城 / 爵位   ④ 记录：史册 / 公文   ⑤ 系统：设置 / 存档 / 新游戏
+       ③ 成长：任务 / 商城 / 威望   ④ 记录：公文   ⑤ 系统：设置 / 存档 / 新游戏
        原「公告」菜单已取消，内容并入「公文」 -->
   <div class="topnav" id="topnav">
     <!-- v25（需求 10）：① 每个菜单加手绘线描图标（JS 填 <i class="ti">）
-         ② 任务与统计相邻  ③「爵位」不再是独立菜单，并入「君主」
+         ② 任务与统计相邻  ③「威望」不再是独立菜单，并入「君主」
          ④ 商城 / 背包由弹窗改为**整页视图**，与其他菜单一致 -->
     <div class="tab active" data-view="city"><i class="ti" data-nav="city"></i>城池</div>
     <div class="tab" data-view="ext"><i class="ti" data-nav="ext"></i>城外</div>
@@ -4263,16 +4244,14 @@
     <div class="tab" data-view="marches"><i class="ti" data-nav="march"></i>军务</div>
     <!-- v89.104（老板）：「将将领，军务，任务放一起」—— 三者之间**不再插分隔条**；
          同时删掉「统计」菜单（见 ui.js 的退役注释）。 -->
-    <div class="tab" data-view="tasks"><i class="ti" data-nav="quest"></i>任务<span class="tab-badge hidden" id="tab-badge-task"></span></div>
+    <div class="tab" data-view="tasks"><i class="ti" data-nav="quest"></i>任务</div>
     <span class="nav-sep"></span>
     <div class="tab" data-view="shop"><i class="ti" data-nav="shop"></i>商城</div>
     <div class="tab" data-view="bag"><i class="ti" data-nav="bag"></i>背包</div>
     <!-- v89.194（老板 S3）：收藏（藏珍阁）—— 与商城 / 背包并列 -->
     <div class="tab" data-view="collection"><i class="ti" data-nav="collection"></i>收藏</div>
     <span class="nav-sep"></span>
-    <div class="tab" data-view="story"><i class="ti" data-nav="story"></i>史册<span class="tab-badge hidden" id="tab-badge-story"></span></div>
-    <!-- v89.104（老板）：「故事集做成另一个单独界面与待阅逸闻这个界面并列」 -->
-    <div class="tab" data-view="stories"><i class="ti" data-nav="story"></i>故事集</div>
+    <!-- ⛔ v89.218（老板「不再保留史册，故事集」）：两个页签整条退役。 -->
     <div class="tab" data-view="reports"><i class="ti" data-nav="doc"></i>公文</div>
     <span class="nav-sep"></span>
     <!-- v29（需求 5）：①「自动」独立成菜单，就放在「设置」旁边 ——
@@ -4301,7 +4280,7 @@
           <div class="lord-meta">
             <div class="row mrow-name"><span class="name" id="lord-name">—</span></div>
             <div class="row"><span>声望</span><span id="lord-rep">0</span></div>
-            <div class="row"><span>爵位</span><span id="lord-rank">0</span></div>
+            <div class="row"><span>威望</span><span id="lord-rank">0</span></div>
           </div>
         </div>
         <!-- v20（需求 6）：背包已移至顶栏；「任务」与顶栏重复，一并移除 -->
@@ -4326,7 +4305,7 @@
         </div>
 
         <!-- v27（需求 1）：原「城池操作」板块已删除 ——
-             征收在官府、显示比例在设置、岁贡在名城官府，这一栏只剩"切换城池"；
+             征收在政务厅、显示比例在设置、岁贡在名城政务厅，这一栏只剩"切换城池"；
              而切城已经并进「城池属性」顶部（多城时才出现），
              单独占一个带标题的板块既浪费纵向空间、又让侧栏出现滚动条。 -->
 
@@ -4390,91 +4369,7 @@
 <script src="js/bitmaps.js?v=8989"></script>
 <script src="js/portraits.js?v=8989"></script>
 <script src="js/story.js?v=8989"></script>
-<!-- 文字游戏故事库（story/）：数据追加到 window.STORY_DATA；卷文件按需增补 -->
-<script src="story/vol-01.js?v=8989"></script>
-<script src="story/vol-02.js?v=8989"></script>
-<script src="story/vol-03.js?v=8989"></script>
-<script src="story/vol-04.js?v=8989"></script>
-<script src="story/vol-05.js?v=8989"></script>
-<script src="story/vol-06.js?v=8989"></script>
-<script src="story/vol-07.js?v=8989"></script>
-<script src="story/vol-08.js?v=8989"></script>
-<script src="story/vol-09.js?v=8989"></script>
-<script src="story/vol-10.js?v=8989"></script>
-<script src="story/vol-11.js?v=8989"></script>
-<script src="story/vol-12.js?v=8989"></script>
-<script src="story/vol-13.js?v=8989"></script>
-<script src="story/vol-14.js?v=8989"></script>
-<script src="story/vol-15.js?v=8989"></script>
-<script src="story/vol-16.js?v=8989"></script>
-<script src="story/vol-17.js?v=8989"></script>
-<script src="story/vol-18.js?v=8989"></script>
-<script src="story/vol-19.js?v=8989"></script>
-<script src="story/vol-20.js?v=8989"></script>
-<script src="story/vol-21.js?v=8989"></script>
-<script src="story/vol-22.js?v=8989"></script>
-<script src="story/vol-23.js?v=8989"></script>
-<script src="story/vol-24.js?v=8989"></script>
-<script src="story/vol-25.js?v=8989"></script>
-<script src="story/vol-26.js?v=8989"></script>
-<script src="story/vol-27.js?v=8989"></script>
-<script src="story/vol-28.js?v=8989"></script>
-<script src="story/vol-29.js?v=8989"></script>
-<script src="story/vol-30.js?v=8989"></script>
-<script src="story/vol-31.js?v=8989"></script>
-<script src="story/vol-32.js?v=8989"></script>
-<script src="story/vol-33.js?v=8989"></script>
-<script src="story/vol-34.js?v=8989"></script>
-<script src="story/vol-35.js?v=8989"></script>
-<script src="story/vol-36.js?v=8989"></script>
-<script src="story/vol-37.js?v=8989"></script>
-<script src="story/vol-38.js?v=8989"></script>
-<script src="story/vol-39.js?v=8989"></script>
-<script src="story/vol-40.js?v=8989"></script>
-<script src="story/vol-41.js?v=8989"></script>
-<script src="story/vol-42.js?v=8989"></script>
-<script src="story/vol-43.js?v=8989"></script>
-<script src="story/vol-44.js?v=8989"></script>
-<script src="story/vol-45.js?v=8989"></script>
-<script src="story/vol-46.js?v=8989"></script>
-<script src="story/vol-47.js?v=8989"></script>
-<script src="story/vol-48.js?v=8989"></script>
-<script src="story/vol-49.js?v=8989"></script>
-<script src="story/vol-50.js?v=8989"></script>
-<script src="story/vol-51.js?v=8989"></script>
-<script src="story/vol-52.js?v=8989"></script>
-<script src="story/vol-53.js?v=8989"></script>
-<script src="story/vol-54.js?v=8989"></script>
-<script src="story/vol-55.js?v=8989"></script>
-<script src="story/vol-56.js?v=8989"></script>
-<script src="story/vol-57.js?v=8989"></script>
-<script src="story/vol-58.js?v=8989"></script>
-<script src="story/vol-59.js?v=8989"></script>
-<script src="story/vol-60.js?v=8989"></script>
-<script src="story/vol-61.js?v=8989"></script>
-<script src="story/vol-62.js?v=8989"></script>
-<script src="story/vol-63.js?v=8989"></script>
-<script src="story/vol-64.js?v=8989"></script>
-<script src="story/vol-65.js?v=8989"></script>
-<script src="story/vol-66.js?v=8989"></script>
-<script src="story/vol-67.js?v=8989"></script>
-<script src="story/vol-68.js?v=8989"></script>
-<script src="story/vol-69.js?v=8989"></script>
-<script src="story/vol-70.js?v=8989"></script>
-<script src="story/vol-71.js?v=8989"></script>
-<script src="story/vol-72.js?v=8989"></script>
-<script src="story/vol-73.js?v=8989"></script>
-<script src="story/vol-74.js?v=8989"></script>
-<script src="story/vol-75.js?v=8989"></script>
-<script src="story/vol-76.js?v=8989"></script>
-<script src="story/vol-77.js?v=8989"></script>
-<script src="story/vol-78.js?v=8989"></script>
-<script src="story/vol-79.js?v=8989"></script>
-<script src="story/vol-80.js?v=8989"></script>
-<script src="story/vol-81.js?v=8989"></script>
-<script src="story/vol-82.js?v=8989"></script>
-<script src="story/vol-83.js?v=8989"></script>
-<script src="story/vol-84.js?v=8989"></script>
+<!-- ⛔ v89.218（老板「故事全部去除」）：84 卷故事库（story/）整目录删除，脚本标签同步撤除。 -->
 <script src="js/ui.js?v=8989"></script>
 <script src="js/main.js?v=8989"></script>
 </body>

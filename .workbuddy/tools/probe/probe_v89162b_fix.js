@@ -11,7 +11,7 @@ var pass = 0, fail = 0;
 function P(n, ok, ex) { if (ok) { pass++; console.log('  ✅ ' + n + (ex ? '  [' + ex + ']' : '')); } else { fail++; console.log('  ❌ ' + n + (ex ? '  [' + ex + ']' : '')); } }
 
 console.log('=== ① 城主内政 → 税收（改后） ===');
-var st = G.newGame({ name: '税测2', region: '司隶' });
+var st = G.newGame({ name: '税测2', region: '烬环' });
 var c = st.cities[0];
 st.generals.forEach(function (g) { g.status = 'idle'; g.cityId = null; });
 var g = st.generals[0];
@@ -36,7 +36,7 @@ P('内政 80 → 税收 +80%（0.01/点）', Math.abs(G.mayorBonus(c).tax - 0.8)
 g.nz = 200;
 
 console.log('\n=== ③ 分解 vs 结算：全境 + 单城两口径（带爵位+城主+宝物） ===');
-var st2 = G.newGame({ name: '对齐测', region: '司隶' });
+var st2 = G.newGame({ name: '对齐测', region: '烬环' });
 var c2 = st2.cities[0];
 st2.rank = 10;                                       /* 爵位 10 → 税制 +10% */
 st2.generals.forEach(function (x) { x.status = 'idle'; x.cityId = null; });
@@ -78,7 +78,7 @@ P('未任命 → 仍与结算对齐', (function () {
 })());
 
 console.log('\n=== ⑤ 顺手复验：修复前的分叉已消失（爵位10 时） ===');
-var st3 = G.newGame({ name: '回归测', region: '司隶' });
+var st3 = G.newGame({ name: '回归测', region: '烬环' });
 st3.rank = 10;
 var p3 = G.productionPerSec().gold;
 var s3 = G.prodBreakdown('gold').reduce(function (a, x) { return a + x.val; }, 0);

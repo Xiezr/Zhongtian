@@ -14,7 +14,7 @@ var pw = require('playwright-core');
   /* ① 造复杂状态 + 挂监控 */
   var setup = await p.evaluate(function () {
     var G = window.GAME;
-    G.newGame({ name: 'freeze', cityName: '许都', region: '豫州', mapSeed: 20260932 });
+    G.newGame({ name: 'freeze', cityName: '许都', region: '碎垣', mapSeed: 20260932 });
     var s = G.state;
     if (!s.map.grid) G.map.generate();
     var c = s.cities[0];

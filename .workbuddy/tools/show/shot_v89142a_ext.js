@@ -20,7 +20,7 @@ function chk(name, ok, extra) {
 
   await p.evaluate(function () {
     var G = window.GAME;
-    var st = G.newGame({ name: '验', cityName: '许都', region: '豫州', mapSeed: 20260942 });
+    var st = G.newGame({ name: '验', cityName: '许都', region: '碎垣', mapSeed: 20260942 });
     if (!st.map.grid) G.map.generate();
     G.ui.enterGame();
     try { G.ui.closeAllModals(); } catch (e) { }

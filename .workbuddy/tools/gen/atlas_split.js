@@ -53,11 +53,16 @@ function cropCenter(src, box, out) {
   }
 }
 
-/* 用法：node atlas_split.js <图集文件名> <id1,id2,id3,id4>
-   象限顺序：左上 / 右上 / 左下 / 右下 */
+/* 用法：node atlas_split.js <图集文件名> <id1,id2,id3,id4> [输出目录]
+   象限顺序：左上 / 右上 / 左下 / 右下
+   [输出目录] 省略 = 直接落 assets/icons/ui/（老行为）；
+   给了则落到该目录（供 wasteland_batch 先装前体检、过了再入库）。 */
 const file = process.argv[2];
 const ids = (process.argv[3] || '').split(',').map(s => s.trim()).filter(Boolean);
-if (!file || !ids.length) { console.log('用法: node atlas_split.js <图集.png> <id1,id2,id3,id4>'); process.exit(1); }
+const outArg = process.argv[4];
+const OUT = outArg ? (outArg.replace(/[\\/]+$/, '') + '/') : UI;
+if (!file || !ids.length) { console.log('用法: node atlas_split.js <图集.png> <id1,id2,id3,id4> [输出目录]'); process.exit(1); }
+if (outArg) fs.mkdirSync(OUT, { recursive: true });
 
 const src = PNG.sync.read(fs.readFileSync(RAW + file));
 const HW = Math.floor(src.width / 2), HH = Math.floor(src.height / 2);
@@ -73,7 +78,7 @@ ids.forEach((id, i) => {
   const r = matteInPlace(working, ox, oy, HW, HH);
   const out = new PNG({ width: CANVAS, height: CANVAS });
   cropCenter(working, r, out);
-  fs.writeFileSync(UI + 'ai_' + id + '.png', PNG.sync.write(out));
+  fs.writeFileSync(OUT + 'ai_' + id + '.png', PNG.sync.write(out));
   const cw = r.maxX - r.minX + 1, ch = r.maxY - r.minY + 1;
   console.log('  ' + qname + ' → ai_' + id + '.png   背景#' + r.bg.map(v => v.toString(16).padStart(2, '0')).join('')
     + '  内容 ' + cw + 'x' + ch + '（占象限 ' + (cw / HW * 100).toFixed(0) + '%x' + (ch / HH * 100).toFixed(0) + '%）'

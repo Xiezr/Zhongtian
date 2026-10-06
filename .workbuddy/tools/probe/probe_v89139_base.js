@@ -89,7 +89,7 @@ console.log('备注行在 ui.js 第 ' + (uiSrc.slice(0, subIdx).split('\n').leng
 console.log('文案：' + uiSrc.slice(subIdx, subIdx + 80).split('\n')[0]);
 
 console.log('\n=== ⑥ 缩略图我城（默认档 vs 筛选）===');
-var st = G.newGame({ name: '探', cityName: '许都', region: '豫州', mapSeed: 20260939 });
+var st = G.newGame({ name: '探', cityName: '许都', region: '碎垣', mapSeed: 20260939 });
 G.makeCity({ id: 'mine2', name: '二城', x: 30, y: 30, type: 'self' });
 G.makeCity({ id: 'mine3', name: '三城', x: 60, y: 40, type: 'self' });
 console.log('我方城池数=' + G.state.cities.length + '（' + G.state.cities.map(function (c) { return c.name; }).join(', ') + '）');

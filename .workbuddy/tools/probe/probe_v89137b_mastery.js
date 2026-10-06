@@ -24,7 +24,7 @@ function setMf(lv) {
 });
 
 console.log('=== ② 库藏（四档 · 满科技）实算 ===');
-G.newGame({ name: '验', cityName: '许都', region: '豫州', mapSeed: 20260931 });
+G.newGame({ name: '验', cityName: '许都', region: '碎垣', mapSeed: 20260931 });
 var backup = G.state.techs;
 G.state.techs = G.state.techs || {};
 G.state.techs.chucun = DATA.TECH_MAX_LV;

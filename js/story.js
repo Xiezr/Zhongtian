@@ -1,13 +1,22 @@
 /* ============================================================
- * story.js  世界与叙事层（v6）
+ * story.js  世界与数值层（v6；v89.218 起叙事内容整条退役）
  *
- * 四件事，全部后台运行：
- *   1) 历法天时 —— 年 / 季 / 天气推进，产出与战斗受其影响
- *   2) 年号纪元 —— 赛季制，每个年号立「时代之志」，达成给赏
- *   3) 史书纪事 —— 按里程碑与逐年快照自动记账，仿《三国志》纪传体
- *   4) 名将羁绊 —— 组合判定后静默并入各项加成，界面不作任何提示
+ * ⛔ v89.218（老板）：「故事全部去除，不再保留史册，故事集」——
+ *   本文件中的**史书纪事**（chronicle 记账 / 里程碑 / 逐年快照 / 离线归来记账）
+ *   与**称号评定**（evaluateTitle + DATA.TITLES）、**战力折算展示**
+ *   （powerIndex / reservePower / currentPower / powerBreakdown）整条退役；
+ *   故事库引擎（GAME.SG）与阅读器（#story-fx）已从 state.js / ui.js 移除，
+ *   内容层 `story/` 目录（84 卷）与「史册 / 故事集」两个视图一并删除。
  *
- * 另含：奇遇秘境（探索触发）与资源↔战力折算。
+ *   保留的是**玩法数值层**（四件事，全部后台运行）：
+ *     1) 历法天时 —— 年 / 季 / 天气推进，产出与战斗受其影响
+ *     2) 年号纪元 —— 赛季制，每个年号立「时代之志」，达成给赏
+ *        （进度页随史册退役；改元 / 达成仍写入公文播报）
+ *     3) 名将羁绊 —— 组合判定后静默并入各项加成，界面不作提示
+ *     4) 奇遇遗迹（巡野拾获）· 奖励结算 · 战力尺（troopPower）
+ *
+ * 文件名沿用 story.js：加载链（index.html / smoke / e2e / 全仓 200+ 工具探针）
+ * 的引用面过大，重命名零功能收益 —— 迁移说明记于此，勿再按名索骥。
  * 挂到 window.GAME.story
  * ============================================================ */
 (function () {
@@ -36,8 +45,6 @@
         eraGoalClaimed: false,
       };
     }
-    if (!s.chronicle) s.chronicle = [];
-    if (!s.eraHistory) s.eraHistory = [];
     STORY.rollWeather(true);
   };
 
@@ -95,7 +102,7 @@
     return m;
   };
 
-  /* v89.36（老板「维持军队无需耗粮食」）：军粮维持耗粮退役 ——
+  /* v89.36（老板「维持军队无需耗净水」）：军粮维持耗粮退役 ——
      `STORY.feedMult`（天时对军粮的乘数）随之一并移除；四季/天气的 feed 字段同时下线。 */
 
   /* 天时对战斗的修正（供 battle.js 调用） */
@@ -154,14 +161,9 @@
     /* 年号推进 */
     STORY.checkEra();
 
-    /* 换季：检查里程碑；换年：写逐年快照 */
-    if (w.season !== prevSeason || w.year !== prevYear) {
-      if (w.year !== prevYear) {
-        STORY.settleEraGoal();
-        STORY.chronicleYearSnapshot();
-      } else {
-        STORY.checkMilestones();
-      }
+    /* 换年：结算时代之志（⛔ v89.218：里程碑 / 逐年快照随史册退役，不再记账） */
+    if (w.year !== prevYear) {
+      STORY.settleEraGoal();
     }
   };
 
@@ -175,10 +177,6 @@
     var era = DATA.ERAS[w.eraIndex];
     if (!era) return;
     if (yearsInEra >= era.years) {
-      /* 未达成的时代之志，留一笔史书 */
-      if (!w.eraGoalDone) {
-        STORY.chronicleAdd('是岁改元。' + era.name + '之世，' + era.goal.text + '，未能有成。', 'era');
-      }
       STORY.eraAdvance();
     }
   };
@@ -190,14 +188,12 @@
       w.eraIndex = 0;
       w.eraStartYear = w.year;
       w.eraGoalDone = false;
-      STORY.chronicleAdd('天下大势，合久必分，分久必合。纪元复始，' + DATA.ERAS[0].name + '之世再临。', 'era');
       return;
     }
     w.eraIndex += 1;
     w.eraStartYear = w.year;
     w.eraGoalDone = false;
     var era = DATA.ERAS[w.eraIndex];
-    STORY.chronicleAdd('改元' + era.name + '。' + era.desc + ' 时代之志：' + era.goal.text + '。', 'era');
     /* v89.153（老板 2）：主题 = 改元（系统页小标签；大类仍是 task——任务并入系统页） */
     if (GAME.log) GAME.log('🎏 改元 ' + era.name + '：' + era.boon.text, 'task', 'era');
   };
@@ -243,129 +239,11 @@
     var bonus = { gold: 20000 * (w.eraIndex + 1), rep: 500 * (w.eraIndex + 1) };
     s.res.gold = (s.res.gold || 0) + bonus.gold;
     s.rep = (s.rep || 0) + bonus.rep;
-    s.eraHistory.push({ era: era.name, year: w.year, goal: era.goal.text, done: true });
-    STORY.chronicleAdd('是岁，' + era.goal.text + '既成，' + era.name + '之志遂矣。赏赐有差，众心大悦。', 'era');
     if (GAME.log) GAME.log.task('🏆 时代之志达成：' + era.goal.text + '（+' + bonus.gold + '金 / +' + bonus.rep + '声望）');
   };
 
   /* ============================================================
-   * 三、史书纪事（记账式）
-   * ============================================================ */
-
-  STORY.chronicleAdd = function (text, tag) {
-    var s = GAME.state;
-    if (!s) return;
-    /* 离线补算期间抑制逐年/逐季记账，避免一次性涌出大量条目；
-       补算结束后由 recordOffline 统一记一条。关键事件（改元/里程碑）仍保留。 */
-    if (GAME._offline && tag !== 'era' && tag !== 'milestone') return;
-    if (!s.chronicle) s.chronicle = [];
-    var w = s.world || { year: 1, season: 0, eraIndex: 0, eraStartYear: 1 };
-    s.chronicle.push({
-      y: w.year, era: STORY.currentEra().name, eraYear: w.year - w.eraStartYear + 1,
-      season: w.season, seasonName: STORY.seasonName(w.season),
-      text: text, tag: tag || 'note', at: U.now(),
-    });
-    /* 史册过长时保留最近 300 条，避免存档膨胀 */
-    if (s.chronicle.length > 300) s.chronicle = s.chronicle.slice(-300);
-  };
-
-  /* 变量替换 */
-  STORY.fill = function (tpl) {
-    var s = GAME.state, w = s.world;
-    var army = 0;
-    s.cities.forEach(function (c) { for (var id in (c.army || {})) army += c.army[id]; });
-    var buildings = 0;
-    s.cities.forEach(function (c) { c.cells.forEach(function (cell) { if (cell.build) buildings++; }); });
-    var heroNames = s.generals.slice(0, 3).map(function (g) { return g.name; }).join('、');
-    var vars = {
-      '{era}': STORY.currentEra().name,
-      '{yy}': STORY.yearName(),
-      '{season}': STORY.seasonName(w.season),
-      '{lord}': (s.ruler && s.ruler.name) || '君主',
-      '{city}': (s.cities[0] && s.cities[0].name) || '新城',
-      '{cities}': s.cities.length,
-      '{army}': U.fmt(army),
-      '{heroes}': s.generals.length,
-      '{heroList}': heroNames || '无',
-      '{pop}': U.fmt(s.res.pop || 0),
-      '{buildings}': buildings,
-      '{grain}': U.fmt(s.res.grain || 0),
-      '{gold}': U.fmt(s.res.gold || 0),
-    };
-    var out = tpl;
-    for (var k in vars) out = out.split(k).join(vars[k]);
-    return out;
-  };
-
-  STORY._condOk = function (rule) {
-    var s = GAME.state, c = rule.cond || {};
-    var buildings = 0;
-    s.cities.forEach(function (cc) { cc.cells.forEach(function (cell) { if (cell.build) buildings++; }); });
-    var army = 0;
-    s.cities.forEach(function (cc) { for (var id in (cc.army || {})) army += cc.army[id]; });
-    if (c.always) return true;
-    if (c.govLevel != null && (GAME.buildingLevel(GAME.currentCity(), 'guanfu') || 1) < c.govLevel) return false;
-    if (c.army != null && army < c.army) return false;
-    if (c.heroes != null && s.generals.length < c.heroes) return false;
-    if (c.cities != null && s.cities.length < c.cities) return false;
-    if (c.buildings != null && buildings < c.buildings) return false;
-    if (c.pop != null && GAME.totalPop() < c.pop) return false;   /* v60：全境人口 */
-    if (c.rep != null && (s.rep || 0) < c.rep) return false;
-    return true;
-  };
-
-  /* 里程碑检查：每次换季调用，挑一条尚未记过、优先级最高的写入 */
-  STORY.checkMilestones = function () {
-    var s = GAME.state;
-    if (!s.chronicleDone) s.chronicleDone = {};
-    var rules = (DATA.CHRONICLE_RULES || []).filter(function (r) { return !r.repeat; });
-    rules.sort(function (a, b) { return (b.prio || 0) - (a.prio || 0); });
-    for (var i = 0; i < rules.length; i++) {
-      var r = rules[i];
-      if (s.chronicleDone[r.id]) continue;
-      if (!STORY._condOk(r)) continue;
-      s.chronicleDone[r.id] = true;
-      STORY.chronicleAdd(STORY.fill(r.t), 'milestone');
-      return r.id;
-    }
-    return null;
-  };
-
-  /* 逐年快照（无论是否达成里程碑，都留一笔，使史册连贯） */
-  STORY.chronicleYearSnapshot = function () {
-    var s = GAME.state;
-    var rules = (DATA.CHRONICLE_RULES || []).filter(function (r) { return r.repeat; });
-    if (!rules.length) return;
-    STORY.chronicleAdd(STORY.fill(rules[0].t), 'annual');
-  };
-
-  /* 重大外部事件记账（供战斗/占领等调用） */
-
-  /* 离线归来记账：把整段离线合并为一条，与存档的 world.elapsed 事实源对齐 */
-  STORY.recordOffline = function (secReal) {
-    var s = GAME.state;
-    if (!s || !s.world) return;
-    var hours = secReal / 3600;
-    var dur = hours >= 1 ? (hours.toFixed(1) + '时') : (Math.round(secReal / 60) + '分');
-    var army = 0;
-    s.cities.forEach(function (c) { for (var id in (c.army || {})) army += c.army[id]; });
-    STORY.chronicleAdd('离城' + dur + '乃归。' + STORY.currentEra().name + STORY.yearName() + '年' +
-      STORY.seasonName(s.world.season) + '，城' + s.cities.length + '座，甲兵' + U.fmt(army) + '，粟' +
-      U.fmt(s.res.grain) + '石。', 'offline');
-  };
-
-  /* 生成史册文本（导出/展示用） */
-  STORY.chronicleText = function (limit) {
-    var s = GAME.state;
-    var list = (s.chronicle || []);
-    if (limit) list = list.slice(-limit);
-    return list.map(function (e) {
-      return '【' + e.era + '·' + e.seasonName + '】' + e.text;
-    }).join('\n');
-  };
-
-  /* ============================================================
-   * 四、名将羁绊（后台静默生效，不提示）
+   * 三、名将羁绊（后台静默生效，不提示）
    * ============================================================ */
 
   /* 玩家拥有的将领名集合 */
@@ -447,7 +325,9 @@
   };
 
   /* ============================================================
-   * 五、奇遇秘境（探索触发 · 带隐性幸运保底）
+   * 四、奇遇遗迹（探索触发 · 带隐性幸运保底）
+   * v89.218：原「写入史册」改为**写入公文**（史册退役后保持可见性——
+   *   奖励是实时落账的，玩家必须能看到它从哪来）。
    * ============================================================ */
 
   STORY.encounterChance = function () {
@@ -475,12 +355,12 @@
     s.world.encounters = (s.world.encounters || 0) + 1;
     s.world.lastEncounter = pick.id;
     STORY.applyReward(pick.reward);
-    STORY.chronicleAdd('遣斥候巡于野，得' + pick.name + '。' + pick.text, 'encounter');
+    if (GAME.log) GAME.log('🔍 巡野所得：' + pick.name + '。' + pick.text, 'sys', 'gather');
     return pick;
   };
 
   /* ============================================================
-   * 六、奖励结算（纪事/奇遇共用）
+   * 五、奖励结算（奇遇共用）
    * ============================================================ */
 
   STORY.applyReward = function (rw) {
@@ -504,7 +384,7 @@
   };
 
   /* ============================================================
-   * 七、资源 ↔ 战力折算
+   * 六、战力尺（单兵折算 —— 供 battle / state 复用，全仓唯一出口）
    * ============================================================ */
 
   /* 单兵战力：按兵种属性加权 */
@@ -515,55 +395,7 @@
     return (t.hp * W.hp + t.atk * W.atk + t.def * W.def + t.spd * W.spd) || 1;
   };
 
-  /* 当前战力（现有军队折算） */
-  STORY.currentPower = function () {
-    var s = GAME.state, total = 0;
-    s.cities.forEach(function (c) {
-      for (var id in (c.army || {})) {
-        total += STORY.troopPower(id) * c.army[id];
-      }
-    });
-    return Math.round(total * STORY.atkMult());
-  };
-
-  /* 资源可动员战力（把库存折算成"还能养多少兵"） */
-  STORY.reservePower = function () {
-    var s = GAME.state, troops = 0;
-    for (var r in DATA.POWER.resToTroop) {
-      troops += (s.res[r] || 0) * DATA.POWER.resToTroop[r];
-    }
-    var avg = STORY.troopPower('yibing'); // 以义兵为基准单位
-    return Math.round(troops * avg);
-  };
-
-  /* 综合国力指数：战力 ×（1 + 建筑系数 + 科技系数） */
-  STORY.powerIndex = function () {
-    var s = GAME.state;
-    var buildings = 0;
-    s.cities.forEach(function (c) { c.cells.forEach(function (cell) { if (cell.build) buildings += cell.build.lvl; }); });
-    var tech = GAME.questMetric ? GAME.questMetric('techTotal') : 0;   /* v89.191：各城之和（唯一出口 questMetric —— 曾误写 statOf，audit ⑥ 抓出） */
-    var base = STORY.currentPower() + STORY.reservePower() * 0.35;
-    var mult = 1 + buildings * DATA.POWER.buildingBonus + tech * DATA.POWER.techBonus;
-    return Math.round(base * mult);
-  };
-
-  /* 战力构成明细（面板展示用） */
-  STORY.powerBreakdown = function () {
-    var s = GAME.state;
-    var buildings = 0;
-    s.cities.forEach(function (c) { c.cells.forEach(function (cell) { if (cell.build) buildings += cell.build.lvl; }); });
-    var tech = GAME.questMetric ? GAME.questMetric('techTotal') : 0;   /* v89.191：各城之和（唯一出口 questMetric —— 曾误写 statOf，audit ⑥ 抓出） */
-    return {
-      army: STORY.currentPower(),
-      reserve: STORY.reservePower(),
-      buildings: buildings,
-      tech: tech,
-      index: STORY.powerIndex(),
-      bondCount: STORY.activeBonds().length,
-    };
-  };
-
-  /* ---- 招募一名尚未拥有的名将（纪事/奇遇奖励用） ---- */
+  /* ---- 招募一名尚未拥有的名将（奇遇奖励用） ---- */
   GAME.recruitRandomGeneral = function () {
     var s = GAME.state;
     if (!s) return null;
@@ -578,24 +410,6 @@
     s.generals.push(g);
     if (GAME.log) GAME.log('贤才来归：' + h.name + ' 入我帐下。', 'sys', 'staff');
     return g;
-  };
-
-  /* ============================================================
-   * 八、称号判定（结局 / 史册展示）
-   * ============================================================ */
-
-  STORY.evaluateTitle = function () {
-    var s = GAME.state;
-    var cities = s.cities.length, hearts = s.hearts || 0;
-    var list = DATA.TITLES || [];
-    for (var i = 0; i < list.length; i++) {
-      var c = list[i].cond || {};
-      if (c.minCities != null && cities < c.minCities) continue;
-      if (c.minHearts != null && hearts < c.minHearts) continue;
-      if (c.maxHearts != null && hearts > c.maxHearts) continue;
-      return list[i];
-    }
-    return list[list.length - 1];
   };
 
 })();

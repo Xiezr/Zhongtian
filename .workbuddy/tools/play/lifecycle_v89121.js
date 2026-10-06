@@ -36,7 +36,7 @@ function row(cells) { ROWS.push(cells); }
  * ============================================================ */
 function buildScene(opts) {
   opts = opts || {};
-  var st = G.newGame({ name: '生命周期', cityName: '许都', region: '豫州', mapSeed: 20260924, portraitSeed: 20260924 });
+  var st = G.newGame({ name: '生命周期', cityName: '灰岗', region: '碎垣', mapSeed: 20260924, portraitSeed: 20260924 });
   if (!st.map.grid) G.map.generate();
   try { G.ui.closeAllModals && G.ui.closeAllModals(); } catch (e) {}
   var A = st.cities[0];

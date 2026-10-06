@@ -39,7 +39,7 @@ function step(label, fn) {
 }
 
 /* ---------- 开局：一座主城 + 一座分城 + 满配资源 ---------- */
-var st = G.newGame({ name: '复核', cityName: '许都', region: '豫州', mapSeed: 20260921, portraitSeed: 20260921 });
+var st = G.newGame({ name: '复核', cityName: '灰岗', region: '碎垣', mapSeed: 20260921, portraitSeed: 20260921 });
 if (!st.map.grid) G.map.generate();
 st.settings.battleWatch = false;
 var A = st.cities[0];
@@ -47,7 +47,7 @@ G.ui._cityId = A.id;
 ['grain', 'wood', 'stone', 'iron', 'gold'].forEach(function (k) { A.res[k] = 5e6; });
 A.res.pop = 60000;
 A.cells.forEach(function (c) { if (c.build) c.build.lvl = Math.max(c.build.lvl || 1, 6); });
-/* 民夫是"运力"（调运链靠挑夫挑担），不放它调运链第一步就发不出去 */
+/* 搬运工是"运力"（调运链靠挑夫挑担），不放它调运链第一步就发不出去 */
 A.army = { yibing: 9000, gongjian: 3000, qingji: 1500, minfu: 1200 };
 st.items = st.items || {};
 ['zengminling', 'yiminling', 'shennongchu', 'lianbing_jingyan', 'bengzhu', 'jinang', 'seed_daomi']
@@ -160,13 +160,13 @@ step('入口：train / canTrain / marchCapOf 齐备', function () {
 });
 var menBefore = 0;
 Object.keys(A.army).forEach(function (k) { menBefore += A.army[k]; });
-step('募兵 · 义兵 ×2000（受校场人马上限约束）', function () {
+step('募兵 · 民兵 ×2000（受校场人马上限约束）', function () {
   if (ARMY_IDX < 0) return { ok: false, msg: '本城无军营格（探针未铺）' };
   var r = G.train('yibing', 2000, A.id, ARMY_IDX);
   if (!r.ok) return r;
   menBefore = 0;
   Object.keys(A.army).forEach(function (k) { menBefore += A.army[k]; });
-  return { note: '义兵 +2000（存量 ' + U.fmt(menBefore) + ' 人）' };
+  return { note: '民兵 +2000（存量 ' + U.fmt(menBefore) + ' 人）' };
 });
 step('校场人马上限：超额募兵必被拦（唯一出口 = 校场等级 × 1 万）', function () {
   var cap = G.battle.marchCapOf(A);
@@ -183,7 +183,7 @@ step('解散归农：兵 → 人口（100% 回补）', function () {
   var men1 = (A.army.yibing || 0);
   if (!(pop1 > pop0)) throw new Error('人口没回补（' + pop0 + ' → ' + pop1 + '）');
   if (!(men1 < men0)) throw new Error('兵没减（' + men0 + ' → ' + men1 + '）');
-  return { note: '义兵 ' + men0 + ' → ' + men1 + ' · 人口 +' + (pop1 - pop0) };
+  return { note: '民兵 ' + men0 + ' → ' + men1 + ' · 人口 +' + (pop1 - pop0) };
 });
 
 /* ══════════ ③ 出征链 ══════════ */
@@ -235,7 +235,7 @@ step('攻城至破防（连打 3 波，与真实玩法同路）', function () {
   if (!tgt) return { ok: false, msg: '无目标' };
   var broke = false, waves = 0;
   for (var i = 0; i < 3 && !broke; i++) {
-    /* ⚠ 这里要**保留民夫**：调运链在后，靠它挑担子（攻城只补战兵） */
+    /* ⚠ 这里要**保留搬运工**：调运链在后，靠它挑担子（攻城只补战兵） */
     A.army = { qingji: 4000, gongjian: 3000, yibing: 3000, minfu: 1200 };
     st.generals[0].status = 'idle';
     st.generals[0].energy = 100; st.generals[0].sta = 100;
@@ -264,8 +264,8 @@ step('出发：doTransferCargo 扣兵扣货', function () {
   if (!B) return { ok: false, msg: '无分城（跳过）' };
   B.res.grain = 0; B.res.gold = 0;
   var g0 = A.res.grain;
-  /* 运力 = Σ(兵数 × 兵种载重)：200 民夫 × 200 = 4 万 —— 运 3 万（留余量），
-     超载会被明确拦下并给出"多带民夫/辎重车"的指引（上一步已实测过那条规则）。 */
+  /* 运力 = Σ(兵数 × 兵种载重)：200 搬运工 × 200 = 4 万 —— 运 3 万（留余量），
+     超载会被明确拦下并给出"多带搬运工/运输车"的指引（上一步已实测过那条规则）。 */
   var r = G.doTransferCargo(A.id, B.id, { minfu: 200 }, st.generals[1].id, { grain: 30000 });
   if (!r.ok) return r;
   if (!(A.res.grain < g0)) throw new Error('出发城粮没扣（在途能二次花）');

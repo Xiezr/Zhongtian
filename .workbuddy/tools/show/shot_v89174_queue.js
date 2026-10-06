@@ -21,7 +21,7 @@ function chk(name, cond, extra) {
 
   var info = await p.evaluate(function () {
     var G = window.GAME;
-    G.newGame({ name: '验174', cityName: '许都', region: '豫州', mapSeed: 20260975 });
+    G.newGame({ name: '验174', cityName: '许都', region: '碎垣', mapSeed: 20260975 });
     G.ui.enterGame(); G.ui.closeAllModals();
     G.ui.setView('city');
     G.state.settings.timeScale = 1;

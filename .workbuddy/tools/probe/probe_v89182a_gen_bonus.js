@@ -17,7 +17,7 @@ eval(fs.readFileSync(path.join(R, '.workbuddy/tmp/smoke_env_head.js'), 'utf8'));
   .forEach(function (f) { require(path.join(R, 'js', f + '.js')); });
 var G = global.GAME, DATA = G.DATA, U = G.utils, T = G.tactic;
 
-G.newGame({ name: '探182', avatar: '🧔', gender: 'male', region: '豫州' });
+G.newGame({ name: '探182', avatar: '🧔', gender: 'male', region: '碎垣' });
 G.state.world.weather = 'clear';        /* §90.1：战斗数字受天气影响，固定晴天 */
 console.log('天气 = ' + G.story.currentWeather().name + '（固定）');
 

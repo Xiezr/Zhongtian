@@ -74,7 +74,7 @@ ck('建筑 Lv45 珠宝档 = ' + Object.keys(jc45 || {}).join(','), !!jc45);
 console.log('    Lv13 -> ' + JSON.stringify(jc13) + ' ; Lv24 -> ' + JSON.stringify(DATA.jewelCostAt(24)) + ' ; Lv45 -> ' + JSON.stringify(jc45));
 
 console.log('=== ⑤ 老档迁移：旧 15 种 -> 新 18 种（等值 · 幂等 · 同名安全） ===');
-G.newGame({ name: '验', cityName: '许都', region: '豫州', mapSeed: 20260927 });
+G.newGame({ name: '验', cityName: '许都', region: '碎垣', mapSeed: 20260927 });
 var s = G.state;
 /* 造"老档"：塞旧 15 种 + 一颗新 id（混淆项） */
 s.items = { zhenzhu: 10, shanhu: 5, liuli: 3, hupo: 7, manao: 2, shuijing: 4, feicui: 6, yushi: 8,

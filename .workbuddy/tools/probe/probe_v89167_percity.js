@@ -17,7 +17,7 @@ function P(n, ok, ex) {
 }
 var sum = function (o) { var t = 0; for (var k in o) { if (k !== 'time' && k !== 'jewel' && k !== 'pop') t += o[k] || 0; } return t; };
 
-G.newGame({ name: 'v167', region: '司隶' });
+G.newGame({ name: 'v167', region: '烬环' });
 var s = G.state;
 if (!s.map.grid) G.map.generate();
 

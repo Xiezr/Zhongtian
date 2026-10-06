@@ -25,7 +25,7 @@ var seg = fs.readFileSync(R + 'js/ui.js', 'utf8');
 ck('战报页源码无军情流水（warFlowOf 已退役）', seg.indexOf('ui.warFlowOf = function') < 0);
 
 console.log('=== ② 主题体系：发射点打标 + msgSubOf 唯一出口 ===');
-G.newGame({ name: '验', cityName: '许都', region: '豫州', mapSeed: 20260927 });
+G.newGame({ name: '验', cityName: '许都', region: '碎垣', mapSeed: 20260927 });
 G.log('天时：晴（测）', 'sys', 'weather');
 G.log('🎏 改元 测元：测', 'task', 'era');
 G.log('建筑完成：民房', 'sys', 'build');

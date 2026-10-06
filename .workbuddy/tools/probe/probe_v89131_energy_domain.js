@@ -16,7 +16,7 @@ eval(fs.readFileSync(path.join(R, '.workbuddy/tmp/smoke_env_head.js'), 'utf8'));
 var G = global.GAME, D = G.DATA;
 
 /* 先建局（genAttrs 需要 state.buffs 等） */
-var st = G.newGame({ name: '探针', cityName: '许都', region: '豫州', mapSeed: 99131 });
+var st = G.newGame({ name: '探针', cityName: '许都', region: '碎垣', mapSeed: 99131 });
 
 console.log('== ① 各资质四维和 / 体力上限 数值域（每档 40 样本 · 按资质典型等级）==');
 var base = D.GEN_BASE;

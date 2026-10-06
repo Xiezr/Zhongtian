@@ -24,7 +24,7 @@ function chk(name, ok, extra) {
   /* ---------- 造局 ---------- */
   await p.evaluate(function () {
     var G = window.GAME;
-    var st = G.newGame({ name: '验144', cityName: '许都', region: '豫州', mapSeed: 20260944 });
+    var st = G.newGame({ name: '验144', cityName: '许都', region: '碎垣', mapSeed: 20260944 });
     if (!st.map.grid) G.map.generate();
     G.ui.enterGame(); try { G.ui.closeAllModals(); } catch (e) { }
     var c = st.cities[0]; G.ui._cityId = c.id;

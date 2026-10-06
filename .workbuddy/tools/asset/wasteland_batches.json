@@ -1,0 +1,422 @@
+{
+  "_comment": "废土·余烬纪元 · 位图替换批次唯一真相源。驱动 gen/wasteland_batch.js 与 docs/AI图标生成清单-废土版.md 共读此表。每个图集自带 group（决定输出前缀）；文件名为改前名，原地同名覆盖，不改名。",
+  "version": "v89222",
+  "style": "废土·余烬纪元",
+  "dir": "assets/icons/ui/",
+  "prefixMap": {
+    "building": "ai_",
+    "ext": "ai_",
+    "res": "ai_",
+    "troop": "ai_",
+    "mat": "ai_mat_",
+    "slot": "ai_slot_",
+    "item": "ai_item_",
+    "terrain": "ai_terrain_",
+    "city": "ai_city_",
+    "fort": "ai_"
+  },
+  "atlasBatches": [
+    {
+      "batch": "W-B1",
+      "label": "建筑 16",
+      "method": "i2i",
+      "count": 16,
+      "note": "坑区：i2i 保轮廓 + ≥4 材质；切分后必贴族旗(flag_bldg_icons.py)；装前色散门禁 ≥15°",
+      "atlases": [
+        {
+          "atlas": "atlas_A_src.png",
+          "group": "building",
+          "ids": [
+            "guanfu",
+            "honglusi",
+            "junying",
+            "chengqiang"
+          ]
+        },
+        {
+          "atlas": "atlas_B_src.png",
+          "group": "building",
+          "ids": [
+            "xiaochang",
+            "fenghuotai",
+            "shuyuan",
+            "zhaoxianguan"
+          ]
+        },
+        {
+          "atlas": "atlas_C_src.png",
+          "group": "building",
+          "ids": [
+            "minfang",
+            "kezhan",
+            "cangku",
+            "majiu"
+          ]
+        },
+        {
+          "atlas": "atlas_D_src.png",
+          "group": "building",
+          "ids": [
+            "shichang",
+            "tiejiangpu",
+            "gongjiangzuofang",
+            "yizhan"
+          ]
+        }
+      ]
+    },
+    {
+      "batch": "W-B2",
+      "label": "城外 4 + 资源 6",
+      "method": "t2i",
+      "count": 10,
+      "atlases": [
+        {
+          "atlas": "atlas_ext1_src.png",
+          "group": "ext",
+          "ids": [
+            "farm",
+            "forest",
+            "quarry",
+            "mine"
+          ]
+        },
+        {
+          "atlas": "atlas_res1_src.png",
+          "group": "res",
+          "ids": [
+            "grain",
+            "wood",
+            "stone",
+            "iron"
+          ]
+        },
+        {
+          "atlas": "atlas_res2_src.png",
+          "group": "res",
+          "ids": [
+            "gold",
+            "pop"
+          ]
+        }
+      ]
+    },
+    {
+      "batch": "W-B3",
+      "label": "兵种 18",
+      "method": "t2i",
+      "count": 18,
+      "note": "机车/机械化（调色板已定马→机车）；按兵种线分组",
+      "atlases": [
+        {
+          "atlas": "atlas_troop_melee_src.png",
+          "group": "troop",
+          "ids": [
+            "yibing",
+            "daodun",
+            "changqiang",
+            "tengjiabing"
+          ]
+        },
+        {
+          "atlas": "atlas_troop_cav_src.png",
+          "group": "troop",
+          "ids": [
+            "qingji",
+            "tieji",
+            "tuqibing",
+            "xiliangtieqi"
+          ]
+        },
+        {
+          "atlas": "atlas_troop_range_src.png",
+          "group": "troop",
+          "ids": [
+            "gongjian",
+            "chuangnu",
+            "chongche",
+            "zhouche"
+          ]
+        },
+        {
+          "atlas": "atlas_troop_special_src.png",
+          "group": "troop",
+          "ids": [
+            "toudan",
+            "minfu",
+            "hubaoqi",
+            "chihou"
+          ]
+        },
+        {
+          "atlas": "atlas_troop_regional_src.png",
+          "group": "troop",
+          "ids": [
+            "qingzhoubing",
+            "nanjiangxiangbing"
+          ]
+        }
+      ]
+    },
+    {
+      "batch": "W-B4",
+      "label": "材料 24",
+      "method": "t2i",
+      "count": 24,
+      "note": "6 系 × 4 阶；同系同形，阶=材质升级（非换色）",
+      "atlases": [
+        {
+          "atlas": "atlas_mat_iron_src.png",
+          "group": "mat",
+          "ids": [
+            "fatie",
+            "jingtie",
+            "yuntie",
+            "bintie"
+          ]
+        },
+        {
+          "atlas": "atlas_mat_wood_src.png",
+          "group": "mat",
+          "ids": [
+            "nanmu",
+            "songmu",
+            "tanmu",
+            "jianmu"
+          ]
+        },
+        {
+          "atlas": "atlas_mat_cloth_src.png",
+          "group": "mat",
+          "ids": [
+            "mabu",
+            "xijuan",
+            "shujin",
+            "yunjin"
+          ]
+        },
+        {
+          "atlas": "atlas_mat_jade_src.png",
+          "group": "mat",
+          "ids": [
+            "yangzhi",
+            "qingyu",
+            "kunshan",
+            "heshi"
+          ]
+        },
+        {
+          "atlas": "atlas_mat_leather_src.png",
+          "group": "mat",
+          "ids": [
+            "cuge",
+            "xige",
+            "jiaoge",
+            "xiaoge"
+          ]
+        },
+        {
+          "atlas": "atlas_mat_sinew_src.png",
+          "group": "mat",
+          "ids": [
+            "niujin",
+            "jiaojin",
+            "longjin",
+            "shoujin"
+          ]
+        }
+      ]
+    },
+    {
+      "batch": "W-B5",
+      "label": "装备 12 + 物品 11",
+      "method": "t2i",
+      "count": 23,
+      "atlases": [
+        {
+          "atlas": "atlas_slot1_src.png",
+          "group": "slot",
+          "ids": [
+            "head",
+            "neck",
+            "shoulder",
+            "chest"
+          ]
+        },
+        {
+          "atlas": "atlas_slot2_src.png",
+          "group": "slot",
+          "ids": [
+            "arm",
+            "waist",
+            "feet",
+            "back"
+          ]
+        },
+        {
+          "atlas": "atlas_slot3_src.png",
+          "group": "slot",
+          "ids": [
+            "ring",
+            "pendant",
+            "weapon",
+            "mount"
+          ]
+        },
+        {
+          "atlas": "atlas_item1_src.png",
+          "group": "item",
+          "ids": [
+            "attr_buff",
+            "prod_buff",
+            "military_buff",
+            "mount_buff"
+          ]
+        },
+        {
+          "atlas": "atlas_item2_src.png",
+          "group": "item",
+          "ids": [
+            "boost",
+            "stamina",
+            "exp",
+            "build_cost"
+          ]
+        },
+        {
+          "atlas": "atlas_item3_src.png",
+          "group": "item",
+          "ids": [
+            "blueprint",
+            "perm",
+            "jewel"
+          ]
+        }
+      ]
+    }
+  ],
+  "textureBatches": [
+    {
+      "batch": "W-T1",
+      "label": "地形 7",
+      "method": "crop",
+      "count": 7,
+      "note": "crop_terrain.py：从废土等距像素参考图裁切；零调色铁律；按中心 45%×41% 条带评分选坐标",
+      "tool": ".workbuddy/tools/asset/crop_terrain.py",
+      "group": "terrain",
+      "size": 256,
+      "ids": [
+        "plain",
+        "caoyuan",
+        "forest",
+        "zhaoze",
+        "lake",
+        "desert",
+        "hill"
+      ],
+      "specPending": true
+    },
+    {
+      "batch": "W-T2",
+      "label": "城池 4",
+      "method": "crop",
+      "count": 4,
+      "note": "crop_city.py：四档（首府/州/郡/县）；避「即梦AI」水印禁区",
+      "tool": ".workbuddy/tools/asset/crop_city.py",
+      "group": "city",
+      "size": 256,
+      "ids": [
+        "capital",
+        "zhou",
+        "jun",
+        "county"
+      ],
+      "specPending": true
+    },
+    {
+      "batch": "W-T3",
+      "label": "据点 1",
+      "method": "crop",
+      "count": 1,
+      "note": "据点贴图；同为 256×256，走 crop 而非 1024 图集",
+      "tool": ".workbuddy/tools/asset/crop_city.py",
+      "group": "fort",
+      "size": 256,
+      "ids": [
+        "fort"
+      ],
+      "specPending": true
+    }
+  ],
+  "newSlots": [
+    {
+      "phase": 6,
+      "group": "tech",
+      "prefix": "ai_tech_",
+      "count": 24,
+      "note": "DATA.TECH（js/data.js:1170）无 icon 字段；新增 ICON.forTech + 接科技面板；最干净空槽",
+      "ids": [
+        "zhongzhi",
+        "kanfa",
+        "lianbing",
+        "wajue",
+        "yelian",
+        "zhandou",
+        "dazao",
+        "zhencha",
+        "fanghu",
+        "fuzhong",
+        "xingjun",
+        "paoshe",
+        "jiayu",
+        "jianzhu",
+        "chucun",
+        "buji",
+        "tongshuai",
+        "chengfang",
+        "weixiu",
+        "qianglue",
+        "hecheng",
+        "chelun",
+        "xunma",
+        "yanjiu"
+      ],
+      "codeTouch": [
+        "js/data.js (DATA.TECH[*].icon)",
+        "js/icons.js (ICON.forTech)",
+        "js/bitmaps.js (regen)"
+      ]
+    },
+    {
+      "phase": 6,
+      "group": "collect",
+      "prefix": "ai_collect_",
+      "count": 18,
+      "note": "DATA.COLLECT.series[].icon 现为 emoji；换 ai_collect_<seriesid>.png；系列数待从 data.js 定稿",
+      "ids": [],
+      "codeTouch": [
+        "js/data.js (DATA.COLLECT.series[*].icon)",
+        "js/domain.js (collect 渲染)"
+      ]
+    }
+  ],
+  "pilotScope": {
+    "batches": [
+      "W-B1",
+      "W-B3"
+    ],
+    "count": 34,
+    "note": "试点 = 建筑 16 + 兵种 18 = 34；跑通全环（生成→切图→校验→入库→门禁全绿）后再铺其余"
+  },
+  "guards": {
+    "buildingHueSpreadMin": 15,
+    "buildingFlagDeltaE00Max": 12,
+    "seriesGroundDeltaE00Min": 12,
+    "flagPairwiseDeltaE00Min": 15,
+    "textureSize": 256,
+    "alphaCoverageMin": 0.1,
+    "alphaCoverageMax": 0.95,
+    "bgCornerDeltaE00Max": 15,
+    "_coverageNote": "1024 画布上小主体（如短矛手）合法低至 ~0.14；下限只作空图护栏"
+  }
+}

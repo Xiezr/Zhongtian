@@ -47,7 +47,7 @@ P('批量换算：100 长枪兵现实（' + ((T.changqiang.time * 100 / ts)).toF
   T.changqiang.time * 100 / ts <= 60);
 
 console.log('\n=== ③ 指挥战斗清单：战斗 + 行军中 两段 ===');
-var st = G.newGame({ name: '清测', region: '司隶' });
+var st = G.newGame({ name: '清测', region: '烬环' });
 var c = st.cities[0];
 var g0 = st.generals[0];
 st.battles = [];

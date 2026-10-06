@@ -18,7 +18,7 @@ function chk(name, cond, extra) {
   await p.waitForFunction('window.GAME && window.GAME.DATA', null, { timeout: 30000 });
   await p.evaluate(function () {
     var G = window.GAME;
-    G.newGame({ name: 'x', cityName: '许都', region: '豫州', mapSeed: 20260932 });
+    G.newGame({ name: 'x', cityName: '许都', region: '碎垣', mapSeed: 20260932 });
     if (!G.state.map.grid) G.map.generate();
     var c = G.state.cities[0];
     c.army = { changqiang: 5000, gongbing: 3000 };

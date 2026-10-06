@@ -27,7 +27,7 @@ function chk(name, ok, extra) {
   /* ---------- 造局：把能塞的道具都塞进背包（材料页最满） ---------- */
   var seed = await p.evaluate(function () {
     var G = window.GAME;
-    var st = G.newGame({ name: '验145', cityName: '许都', region: '豫州', mapSeed: 20260945 });
+    var st = G.newGame({ name: '验145', cityName: '许都', region: '碎垣', mapSeed: 20260945 });
     if (!st.map.grid) G.map.generate();
     G.ui.enterGame(); try { G.ui.closeAllModals(); } catch (e) { }
     st.items = st.items || {};

@@ -23,7 +23,7 @@ var sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms);
   await p.waitForFunction('window.GAME && window.GAME.DATA', null, { timeout: 30000 });
   await p.evaluate(function () {
     var G = window.GAME;
-    G.newGame({ name: 'v203', cityName: '许都', region: '豫州', mapSeed: 20260935 });
+    G.newGame({ name: 'v203', cityName: '许都', region: '碎垣', mapSeed: 20260935 });
     if (!G.state.map.grid) G.map.generate();
     var c = G.state.cities[0];
     c.army = { qingji: 5000 };
@@ -140,7 +140,7 @@ var sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms);
     return { names: names };
   });
   chk('③b 君主界面「城池一览」显示新占名城（' + (r6.names || []).join(' / ') + '）',
-    (r6.names || []).some(function (n) { return n.indexOf('洛阳') >= 0; }) || (r6.names || []).length >= 2,
+    (r6.names || []).some(function (n) { return n.indexOf('灰烬城') >= 0; }) || (r6.names || []).length >= 2,
     JSON.stringify(r6));
   await p.screenshot({ path: E + 'v89203-occupy.png' });
   await p.evaluate(function () { window.GAME.ui.closeAllModals(); });

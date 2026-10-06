@@ -16,7 +16,7 @@ var pw = require('playwright-core');
   await p.waitForFunction('window.GAME && window.GAME.DATA', null, { timeout: 30000 });
   await p.evaluate(function () {
     var G = window.GAME;
-    G.newGame({ name: '量188', cityName: '许都', region: '豫州', mapSeed: 20260928 });
+    G.newGame({ name: '量188', cityName: '许都', region: '碎垣', mapSeed: 20260928 });
     G.ui.enterGame(); G.ui.closeAllModals();
     if (!G.state.map.grid) G.map.generate();
     /* 造三将：p1 素人 / p2 美人+守将（双标签+状态标） / p3 史实名将 */

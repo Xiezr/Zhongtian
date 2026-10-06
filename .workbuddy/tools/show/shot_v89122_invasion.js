@@ -25,7 +25,7 @@ fs.mkdirSync(OUT, { recursive: true });
 
   await page.evaluate(function () {
     var G = window.GAME;
-    var st = G.newGame({ name: '北辰', cityName: '许都', region: '豫州', mapSeed: 20260926 });
+    var st = G.newGame({ name: '北辰', cityName: '许都', region: '碎垣', mapSeed: 20260926 });
     if (!st.map.grid) G.map.generate();
     st.cities.push(G.makeCity({ id: 'c2b', name: '二城', x: 265, y: 215 }));
     G.ui.enterGame();

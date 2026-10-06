@@ -19,7 +19,7 @@ function chk(name, ok, extra) {
   console.log('===== ① 公文系统页（徽章 + 铺满） =====');
   await p.evaluate(function () {
     var G = window.GAME;
-    G.newGame({ name: '验', cityName: '许都', region: '豫州', mapSeed: 20260927 });
+    G.newGame({ name: '验', cityName: '许都', region: '碎垣', mapSeed: 20260927 });
     G.ui.enterGame(); G.ui.closeAllModals();
     if (!G.state.map.grid) G.map.generate();
     var subs = ['war', 'task', 'era', 'weather', 'build', 'gather', 'staff', 'admin', 'trade', 'sys'];

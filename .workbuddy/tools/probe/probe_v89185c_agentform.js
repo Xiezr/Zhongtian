@@ -7,7 +7,7 @@ eval(fs.readFileSync(path.join(R, '.workbuddy/tmp/smoke_env_head.js'), 'utf8'));
 ['data', 'state', 'questdata', 'systems', 'domain', 'map', 'battle', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits', 'story', 'ui', 'main']
   .forEach(function (f) { require(path.join(R, 'js', f + '.js')); });
 var G = global.GAME, DATA = G.DATA, T = G.tactic;
-G.newGame({ name: 'form', avatar: '🧔', gender: 'male', region: '豫州' });
+G.newGame({ name: 'form', avatar: '🧔', gender: 'male', region: '碎垣' });
 G.state.world.weather = 'clear';
 
 function dumpGuard(tag, g) {

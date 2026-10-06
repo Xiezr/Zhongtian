@@ -42,7 +42,7 @@ ap('④ 珠宝数量随等级递增（13 级 2 颗 → 45 级 ' + b.levelCost(44
   + (b.levelCost(12).jewel[DATA.jewelLadder()[0]] === 2 ? '✅' : '❌'));
 /* 支付：真有/真扣 */
 (function () {
-  var st = G.newGame({ name: '探针', cityName: '许都', region: '豫州', mapSeed: 20260921 });
+  var st = G.newGame({ name: '探针', cityName: '许都', region: '碎垣', mapSeed: 20260921 });
   var c = st.cities[0];
   c.res.grain = c.res.wood = c.res.stone = c.res.iron = 1e12;
   st.items = {};
@@ -60,7 +60,7 @@ ap('④ 珠宝数量随等级递增（13 级 2 颗 → 45 级 ' + b.levelCost(44
 /* ================= item1a：接触判定按位移 ================= */
 ap('');
 ap('===== item1a：接触按位移 + 前沿互锁 =====');
-var st2 = G.newGame({ name: '探针', cityName: '许都', region: '豫州', mapSeed: 20260921 });
+var st2 = G.newGame({ name: '探针', cityName: '许都', region: '碎垣', mapSeed: 20260921 });
 if (!st2.map.grid) G.map.generate();
 st2.settings.battleWatch = false;
 var city = st2.cities[0];

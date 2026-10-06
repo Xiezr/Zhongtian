@@ -17,7 +17,7 @@ var OUT = 'E:/Deepseekdb/.workbuddy/shots/';
 
   var info = await p.evaluate(function () {
     var G = window.GAME;
-    G.newGame({ name: '复现174b', cityName: '许都', region: '豫州', mapSeed: 20260974 });
+    G.newGame({ name: '复现174b', cityName: '灰岗', region: '碎垣', mapSeed: 20260974 });
     G.ui.enterGame(); G.ui.closeAllModals();
     G.ui.setView('city');
     var city = G.currentCity();

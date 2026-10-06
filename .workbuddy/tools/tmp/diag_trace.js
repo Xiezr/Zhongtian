@@ -10,7 +10,7 @@ var ARMY = {
   gongjian: 700, qingji: 300, tieji: 150, tuqibing: 200, hubaoqi: 100,
   xiliangtieqi: 60, nanjiangxiangbing: 20, chuangnu: 60, chongche: 15, toudan: 30,
 };
-G.newGame({ name: 'x', region: '司隶' });
+G.newGame({ name: 'x', region: '烬环' });
 
 function run(smart, disableFb, trace) {
   var env = G.tactic.begin(JSON.parse(JSON.stringify(ARMY)), null, JSON.parse(JSON.stringify(ARMY)), 0, null, { stances: {} });

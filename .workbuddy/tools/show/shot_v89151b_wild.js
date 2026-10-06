@@ -19,7 +19,7 @@ function chk(name, ok, extra) {
 
   /* ============ 造局：一块带驻军的可采野地 ============ */
   var r1 = await p.evaluate(function () {
-    var G = window.GAME, st = G.newGame({ name: '验', cityName: '许都', region: '豫州', mapSeed: 20260951 });
+    var G = window.GAME, st = G.newGame({ name: '验', cityName: '许都', region: '碎垣', mapSeed: 20260951 });
     if (!st.map.grid) G.map.generate();
     G.ui.enterGame(); try { G.ui.closeAllModals(); } catch (e) { }
     var c = st.cities[0]; G.ui._cityId = c.id;

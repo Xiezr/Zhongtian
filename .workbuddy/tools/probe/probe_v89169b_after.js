@@ -6,7 +6,7 @@ eval(fs.readFileSync(path.join(R, '.workbuddy/tmp/smoke_env_head.js'), 'utf8'));
   .forEach(function (f) { require(path.join(R, 'js', f + '.js')); });
 var G = global.GAME, pass = 0, fail = 0;
 var P = function (n, ok, ex) { if (ok) pass++; else fail++; console.log((ok ? '  ✅ ' : '  ❌ ') + n + (ex ? '  [' + ex + ']' : '')); };
-G.newGame({ name: '改后', cityName: '许都', region: '豫州', mapSeed: 7 });
+G.newGame({ name: '改后', cityName: '许都', region: '碎垣', mapSeed: 7 });
 var c = G.currentCity();
 
 console.log('=== ① 城墙 0 级（未修建）→ 虚线虚影环 ===');

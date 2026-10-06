@@ -10,7 +10,7 @@ var ARMY = {
   gongjian: 700, qingji: 300, tieji: 150, tuqibing: 200, hubaoqi: 100,
   xiliangtieqi: 60, nanjiangxiangbing: 20, chuangnu: 60, chongche: 15, toudan: 30,
 };
-G.newGame({ name: 'x', region: '司隶' });
+G.newGame({ name: 'x', region: '烬环' });
 /* 拦截：统计回退触发 + 记录每回合 tick */
 var origApply = G.battle.smartApply;
 var fbHits = [];

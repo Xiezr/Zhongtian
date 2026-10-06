@@ -23,7 +23,7 @@ function chk(name, ok, extra) {
 
   /* 造局：打一场野地（即时结算）→ 拿战报；再挂起一场（拿待指挥清单） */
   var r1 = await p.evaluate(function () {
-    var G = window.GAME, st = G.newGame({ name: '报', cityName: '许都', region: '豫州', mapSeed: 20260950 });
+    var G = window.GAME, st = G.newGame({ name: '报', cityName: '许都', region: '碎垣', mapSeed: 20260950 });
     if (!st.map.grid) G.map.generate();
     G.ui.enterGame(); try { G.ui.closeAllModals(); } catch (e) { }
     var c = st.cities[0]; G.ui._cityId = c.id;

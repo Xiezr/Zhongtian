@@ -63,7 +63,7 @@ function run(atkSmart, defSmart, defArmy, label, trace) {
   return { aL: aL, dL: dL, lines: lines, rounds: fin.rounds, winner: fin.winner };
 }
 
-G.newGame({ name: 'smart', region: '司隶' });
+G.newGame({ name: 'smart', region: '烬环' });
 console.log('=== ① 多场景标定（我方=攻 用智能 vs 敌方=守 全默认） ===');
 var base = run(false, false, null, '镜像 · 基线（无指令）');
 var smart = run(true, false, null, '镜像 · ★ 智能方案');

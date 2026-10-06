@@ -6,7 +6,7 @@ eval(fs.readFileSync(path.join(R, '.workbuddy/tmp/smoke_env_head.js'), 'utf8'));
   .forEach(function (f) { require(path.join(R, 'js', f + '.js')); });
 var G = global.GAME;
 
-G.newGame({ name: '验', cityName: '许都', region: '豫州', mapSeed: 20260927 });
+G.newGame({ name: '验', cityName: '许都', region: '碎垣', mapSeed: 20260927 });
 var feed = G.msgFeedOf();
 console.log('msgFeedOf 条数 = ' + feed.length);
 var bySub = {};

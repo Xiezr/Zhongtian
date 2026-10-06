@@ -30,7 +30,7 @@ P('★ 收敛有界：nz 3000/5000 → +300% 封顶（不会回到 ×9 量级）
 P('智谋系收敛 +150%（zm 836 → +146.66%）', Math.abs(G.curveBonusOf(836, 0.005, 150) - 1.466554) < 1e-5);
 
 console.log('\n=== ② 真调：城主 836 的实际加成（mayorBonus） ===');
-var st = G.newGame({ name: 'c', region: '司隶' });
+var st = G.newGame({ name: 'c', region: '烬环' });
 var c = st.cities[0];
 st.generals.forEach(function (g) { g.status = 'idle'; g.cityId = null; });
 var g0 = st.generals[0];

@@ -12,7 +12,7 @@ eval(fs.readFileSync(path.join(R, '.workbuddy/tmp/smoke_env_head.js'), 'utf8'));
   .forEach(function (f) { require(path.join(R, 'js', f + '.js')); });
 var G = global.GAME, D = G.DATA, U = G.utils;
 
-G.newGame({ name: '藏珍阁', region: '司隶' });
+G.newGame({ name: '藏珍阁', region: '烬环' });
 var s = G.state;
 
 console.log('══════ ① 数据表规模 ══════');
@@ -75,7 +75,7 @@ console.log('  已藏复购被拒 = ' + (rRepeat.ok === false) + ' · 声望未�
 console.log('  allBonus 标记 = ' + s.collectAllBonus + '（须 1）');
 
 console.log('\n══════ ⑤ 一键集齐 ══════');
-G.newGame({ name: '一键', region: '司隶' });
+G.newGame({ name: '一键', region: '烬环' });
 var s2 = G.state, C2 = D.COLLECT;
 G.goldAdd(5000000 - G.goldOf());
 var sr2 = C2.series[12];  /* 三国奇女子 4 件 ×15万 = 60万 */

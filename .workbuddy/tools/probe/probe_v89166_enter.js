@@ -27,7 +27,7 @@ P('负向：两段无裸 closeModal（单层出口退役）',
   segA.indexOf('ui.closeModal();') < 0 && segB.indexOf('ui.closeModal();') < 0);
 
 console.log('\n=== ② 动作序列真调（与 case 内序列一致）===');
-G.newGame({ name: 's166', region: '司隶' });
+G.newGame({ name: 's166', region: '烬环' });
 var st = G.state, c0 = G.currentCity();
 G.ui._cityId = c0.id;
 if (!st.map.grid) G.map.generate();

@@ -12,7 +12,7 @@ var EXE = 'C:/Users/18811/AppData/Local/ms-playwright/chromium-1217/chrome-win64
   await p.waitForFunction('window.GAME && window.GAME.DATA && GAME.ui', null, { timeout: 30000 });
   await p.evaluate(function () {
     var G = window.GAME;
-    G.newGame({ name: '诊断', cityName: '许都', region: '豫州', mapSeed: 7 });
+    G.newGame({ name: '诊断', cityName: '许都', region: '碎垣', mapSeed: 7 });
     G.ui.enterGame(); G.ui.closeAllModals();
     G.ui.renderSide();                                   /* 侧栏需主动渲染（主循环也会，但这里先摆好） */
   });

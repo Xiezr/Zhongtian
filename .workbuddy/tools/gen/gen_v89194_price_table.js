@@ -8,7 +8,7 @@ eval(fs.readFileSync(path.join(R, '.workbuddy/tmp/smoke_env_head.js'), 'utf8'));
   .forEach(function (f) { require(path.join(R, 'js', f + '.js')); });
 var G = global.GAME, D = G.DATA, U = G.utils;
 
-G.newGame({ name: '价格表', region: '司隶' });
+G.newGame({ name: '价格表', region: '烬环' });
 var cats = G.ui.SHOP_CATS || {};
 var all = (D.ITEMS || []).filter(function (it) { return it.price > 0; });
 

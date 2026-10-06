@@ -141,7 +141,7 @@ function fmtNum(v) {
 }
 
 /* ---------- 3. 建局（固定地图 seed；其余保持真随机） ---------- */
-var st = G.newGame({ name: '北辰', cityName: '许都', region: '豫州', mapSeed: 20260921, portraitSeed: 20260921 });
+var st = G.newGame({ name: '北辰', cityName: '灰岗', region: '碎垣', mapSeed: 20260921, portraitSeed: 20260921 });
 if (!st.map.grid) G.map.generate();
 var city0 = st.cities[0];
 st.settings.timeScale = 600;
@@ -157,7 +157,7 @@ amc.on = true; amc.genId = null; amc.troops = 500; amc.target = 'wild'; amc.maxL
 amc.mode = 'raid'; amc.everyMin = 5; amc.radius = 14; amc.dailyMax = 0;
 
 RUN('=== v89.118 600× × 30h 全功能试玩评测（STRAT v1 基座 · MODE=' + MODE + '） ===');
-RUN('建局：北辰 · 「许都」· 豫州 · mapSeed=20260921 · 600× · 目标 ' + MAXT + ' tick（' + (MAXT / 96).toFixed(1) + ' 游戏年）');
+RUN('建局：北辰 · 「灰岗」· 碎垣 · mapSeed=20260921 · 600× · 目标 ' + MAXT + ' tick（' + (MAXT / 96).toFixed(1) + ' 游戏年）');
 RUN('城坐标 (' + city0.x + ',' + city0.y + ') · 初始将 ' + st.generals.map(function (g) { return g.name; }).join('、'));
 RUN('初始资源 粮木石铁金各 2 万 · 人口 200 · 城外预设 2田1木1石1铁');
 
@@ -373,7 +373,7 @@ function tryTrain() {
     if (!jy) return;
     setCity(city);
     /* v2：从精锐到基础逐个尝试 —— **未解锁的兵种要跳过继续试后面的**
-       （v1 在第一个失败处 return —— 永远试不到义兵，五年一兵未募的根因） */
+       （v1 在第一个失败处 return —— 永远试不到民兵，五年一兵未募的根因） */
     var lastFail = '';
     for (var i = 0; i < TROOP_ORDER.length; i++) {
       var tid = TROOP_ORDER[i];
@@ -1626,7 +1626,7 @@ function checkViews() {
     ['techHTML', 'techHTML'], ['itemsHTML', 'itemsHTML'], ['rankHTML', 'rankHTML'],
     ['mapHTML', 'mapHTML'], ['shopHTML', 'shopHTML'], ['bagHTML', 'bagHTML'],
     ['tasksHTML', 'tasksHTML'], ['reportsHTML', 'reportsHTML'], ['settingsHTML', 'settingsHTML'],
-    ['autoHTML', 'autoHTML'], ['storyHTML', 'storyHTML'], ['storiesHTML', 'storiesHTML'],
+    ['autoHTML', 'autoHTML'],   /* v89.218：storyHTML / storiesHTML 随故事系统退役 */
     ['marchBeaconHTML', 'marchBeaconHTML'], ['marchAffairsHTML', 'marchAffairsHTML'],
     ['invasionRulesHTML', 'invasionRulesHTML'], ['beaconFlowHTML', 'beaconFlowHTML'],
   ];

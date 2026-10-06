@@ -9,7 +9,7 @@ var G = global.GAME, D = G.DATA;
 console.log('timeScale =', G.timeScale ? G.timeScale() : '?');
 console.log('1 游戏日 =', 86400, '游戏秒 → 现实', Math.round(86400 / (G.timeScale ? G.timeScale() : 1)), '秒');
 
-G.newGame({ name: 'cash192', region: '司隶' });
+G.newGame({ name: 'cash192', region: '烬环' });
 G.state.world.weather = 'clear';
 
 /* 造中期局面：3 城（首城 Lv8 已建好，另两座筑城），8 将（2 良 6 英） */

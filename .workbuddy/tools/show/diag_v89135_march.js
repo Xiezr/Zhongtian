@@ -14,7 +14,7 @@ var pw = require('playwright-core');
   await p.waitForFunction('window.GAME && window.GAME.DATA && GAME.ui', null, { timeout: 30000 });
   await p.evaluate(function () {
     var G = window.GAME;
-    var st = G.newGame({ name: '诊', cityName: '许都', region: '豫州', mapSeed: 20260926 });
+    var st = G.newGame({ name: '诊', cityName: '许都', region: '碎垣', mapSeed: 20260926 });
     if (!st.map.grid) G.map.generate();
     G.ui._cityId = st.cities[0].id;
     st.wounded = 1234; st.woundedArmy = { yibing: 800, gongjian: 300, qingji: 134 };

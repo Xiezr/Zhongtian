@@ -27,7 +27,7 @@ fs.readdirSync(path.join(R, 'story')).filter(function (f) { return /^vol-.*\.js$
   .forEach(function (f) { try { require(path.join(R, 'story', f)); } catch (e) {} });
 
 var G = global.GAME, DATA = G.DATA, U = G.utils;
-var st = G.newGame({ name: '北辰', cityName: '许都', region: '豫州', mapSeed: 20260921, portraitSeed: 20260921 });
+var st = G.newGame({ name: '北辰', cityName: '许都', region: '碎垣', mapSeed: 20260921, portraitSeed: 20260921 });
 if (!st.map.grid) G.map.generate();
 var city0 = st.cities[0];
 G.ui = G.ui || {}; G.ui._cityId = city0.id;

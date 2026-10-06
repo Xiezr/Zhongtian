@@ -13,7 +13,7 @@ console.log('OFFLINE 逐秒上限 = 3600 现实秒（代码常量）');
 
 /* ---------- 场景① 读档路径（关页面过夜） ---------- */
 console.log('\n══════ 场景①：读档路径（关页面过夜 10h）══════');
-G.newGame({ name: '过夜测试', region: '司隶' });
+G.newGame({ name: '过夜测试', region: '烬环' });
 G.state.world.weather = 'clear';
 var c = G.state.cities[0];
 var bIdx = -1;

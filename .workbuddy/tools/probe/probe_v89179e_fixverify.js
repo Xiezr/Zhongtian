@@ -31,7 +31,7 @@ check('queueRushCost 存在', typeof G.queueRushCost === 'function');
 check('settleGenSalary 存在', typeof G.settleGenSalary === 'function');
 
 /* 战斗/生产数学会走到 STORY 羁绊加成（读 GAME.state）→ 先开一局，让 state 存在 */
-G.newGame({ name: '复核', avatar: '🧔', gender: 'male', region: '豫州' });
+G.newGame({ name: '复核', avatar: '🧔', gender: 'male', region: '碎垣' });
 
 /* ============================================================
  * P0-2：survivedArmyOf 排除 nocombat（斥候 chihou）出分母/被折算
@@ -66,7 +66,7 @@ for (var i = 0; i < DATA.RANK.length; i++) { if (DATA.RANK[i] && DATA.RANK[i].sa
 check('找到带俸禄的爵位', rankIdx >= 0, rankIdx >= 0 ? ('rank[' + rankIdx + '] salary=' + DATA.RANK[rankIdx].salary) : '');
 (function () {
   function freshWithRank(rk) {
-    G.newGame({ name: '薪' + rk, avatar: '🧔', gender: 'male', region: '豫州' });
+    G.newGame({ name: '薪' + rk, avatar: '🧔', gender: 'male', region: '碎垣' });
     var s = G.state;
     s.tax = 0;                         /* 关掉税收，隔离出俸禄这一项金源 */
     s.rank = rk;
@@ -95,7 +95,7 @@ check('找到带俸禄的爵位', rankIdx >= 0, rankIdx >= 0 ? ('rank[' + rankId
 console.log('');
 console.log('=== P2-7 simulateBulk 整段推进 + 调起将领月俸结算（不崩、elapsed 前进）===');
 (function () {
-  G.newGame({ name: '整段', avatar: '🧔', gender: 'male', region: '豫州' });
+  G.newGame({ name: '整段', avatar: '🧔', gender: 'male', region: '碎垣' });
   var s = G.state;
   var e0 = s.world.elapsed;
   var ok = true, err = '';
@@ -127,7 +127,7 @@ console.log('=== P2-8 underdogOf 攻/守侧正确路由（defBonusEff 只加成�
 console.log('');
 console.log('=== P1-4 prodBreakdown 本城加成行出现 ===');
 (function () {
-  G.newGame({ name: '产', avatar: '🧔', gender: 'male', region: '豫州' });
+  G.newGame({ name: '产', avatar: '🧔', gender: 'male', region: '碎垣' });
   var s = G.state;
   var city = s.cities[0];
   DATA.CITY_PERK.self.prodPct = 0.1;   /* 注入名城产出加成，仅本探针有效 */
@@ -143,7 +143,7 @@ console.log('=== P1-4 prodBreakdown 本城加成行出现 ===');
 console.log('');
 console.log('=== P1-5 金源俸禄行仅全境视角列出 ===');
 (function () {
-  G.newGame({ name: '金', avatar: '🧔', gender: 'male', region: '豫州' });
+  G.newGame({ name: '金', avatar: '🧔', gender: 'male', region: '碎垣' });
   var s = G.state;
   s.rank = rankIdx >= 0 ? rankIdx : 1;
   var globalRows = G.prodBreakdown('gold') || [];          /* 无 city = 全境视角 */
@@ -159,7 +159,7 @@ console.log('=== P1-5 金源俸禄行仅全境视角列出 ===');
 console.log('');
 console.log('=== P2-6 goldAdd 直接写字段（无 round）===');
 (function () {
-  G.newGame({ name: '金B', avatar: '🧔', gender: 'male', region: '豫州' });
+  G.newGame({ name: '金B', avatar: '🧔', gender: 'male', region: '碎垣' });
   var s = G.state;
   s.gold = 1.234;
   G.goldAdd(0.5);
@@ -174,7 +174,7 @@ console.log('=== P2-6 goldAdd 直接写字段（无 round）===');
 console.log('');
 console.log('=== P1-3 withBoost 包裹的战术环境可构造可推进 ===');
 (function () {
-  G.newGame({ name: '镜', avatar: '🧔', gender: 'male', region: '豫州' });
+  G.newGame({ name: '镜', avatar: '🧔', gender: 'male', region: '碎垣' });
   var ok = true, err = '', env = null;
   try {
     env = T.begin({ changqiang: 1000 }, null, { changqiang: 800 }, 0, null, {});

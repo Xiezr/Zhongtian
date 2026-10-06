@@ -24,7 +24,7 @@ var E = 'E:/Deepseekdb/.workbuddy/shots/';
   /* ===== 起局 + 地图 ===== */
   var boot = await p.evaluate(function () {
     var G = window.GAME;
-    G.newGame({ name: '越王勾践', cityName: '会稽', region: '扬州', mapSeed: 20260931 });
+    G.newGame({ name: '越王勾践', cityName: '会稽', region: '潮湾', mapSeed: 20260931 });
     G.state.world.weather = 'clear';       /* §90.1 纪律：战斗相关固定天气 */
     if (!G.state.map.grid) G.map.generate();
     G.ui.enterGame(); G.ui.closeAllModals();

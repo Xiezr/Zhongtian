@@ -23,7 +23,7 @@ fs.mkdirSync(OUT, { recursive: true });
   await page.waitForFunction('window.GAME && GAME.DATA && GAME.ui', null, { timeout: 30000 });
 
   var info = await page.evaluate(function () {
-    var G = window.GAME, st = G.newGame({ name: '北辰', cityName: '许都', region: '豫州', mapSeed: 20260921 });
+    var G = window.GAME, st = G.newGame({ name: '北辰', cityName: '许都', region: '碎垣', mapSeed: 20260921 });
     if (!st.map.grid) G.map.generate();
     st.settings.battleWatch = true;                 /* 观战：真进战场界面 */
     var c = st.cities[0];

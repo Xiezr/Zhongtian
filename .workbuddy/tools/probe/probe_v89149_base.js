@@ -14,7 +14,7 @@ eval(fs.readFileSync(path.join(R, '.workbuddy/tmp/smoke_env_head.js'), 'utf8'));
   .forEach(function (f) { require(path.join(R, 'js', f + '.js')); });
 var G = global.GAME, DATA = G.DATA, U = G.utils;
 
-G.newGame({ name: '探149', cityName: '许都', region: '豫州', mapSeed: 20260949 });
+G.newGame({ name: '探149', cityName: '许都', region: '碎垣', mapSeed: 20260949 });
 var st = G.state;
 if (!st.map.grid) G.map.generate();
 var city = st.cities[0];

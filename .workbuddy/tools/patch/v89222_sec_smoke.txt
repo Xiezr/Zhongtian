@@ -1,0 +1,75 @@
+  /* §222-guard */
+  /* ============================================================
+   * §222（v89.222）：用例文件旧词全面更换（历史标题/引述等）
+   * 老板原话：「历史标题引述等全面更换」——v89.214~221 改名后残余在
+   * smoke/e2e 标题、注释、引述、夹具里的旧词一次清完（本段 = 零残留守卫）。
+   * ============================================================ */
+  (function () {
+    var fs222 = require('fs'), path222 = require('path');
+    var rd222 = function (rel) { return fs222.readFileSync(path222.join(__dirname, rel), 'utf8'); };
+
+    /* 旧词全集（保留面：7 条读档案校验 / 旧词守卫清单 / §219 沿革映射） */
+    var OLD222 = ['长枪', '轻骑', '铁骑', '虎豹', '突骑', '西凉', '象兵', '青州', '刀盾', '藤甲', '投石',
+      '弓兵', '弓箭', '弓手', '枪兵', '骑兵', '床弩',
+      '州城', '州治', '郡城', '郡治', '县城', '都城', '帝都', '太守', '州郡',
+      '洛阳', '司隶', '宛县', '许都', '邺城', '渠帅', '贼首', '山君', '寨主', '渠魁', '豪帅', '贼寇'];
+
+    check('§222① 用例文件旧词零残留（smoke · 仅保留面：档案校验/守卫清单/沿革映射）', (function () {
+      var src = rd222('smoke-test.js');
+      var cut = src.indexOf('/* §222-guard */');
+      if (cut < 0) return false;
+      var scan = src.slice(0, cut).split('\n');
+      var allow = [
+        /* A 读「需求档案」原文校验（档案逐字记录，不参与换皮） */
+        /indexOf\('(象兵不设置克制|步兵1分钟以内，骑兵5分钟以内|青州=长枪，刀盾=藤甲|766弓箭手|补床弩拆器械特性|距离难道不是弓兵的生命线吗|虎豹稍微加强)'\)/,
+        /* B 旧词守卫清单（§219②/§221①②③④：数组与标题本身就是哨兵） */
+        /var OLD = \[|var olds = \[|残留='/,
+        /旧词零残留/,
+        /&& \['长枪', '铁骑',/,
+        /js221\.indexOf|d221\.indexOf|!\/>司隶<\//,
+        /* C §219 沿革映射注释（旧→新对照表需要旧词才成立） */
+        /① 机构词：|→区界\/镇界|城守系/
+      ];
+      var inBlock = false, bad = [], allowHit = 0, total = 0;
+      scan.forEach(function (ln, i) {
+        var hit = OLD222.filter(function (w) { return ln.indexOf(w) >= 0; });
+        if (!hit.length) return;
+        total++;
+        var wasBlock = inBlock;
+        if (/var OLD = \[|var olds = \[/.test(ln)) inBlock = true;
+        if (inBlock && ln.indexOf('];') >= 0) inBlock = false;
+        if (wasBlock || allow.some(function (re) { return re.test(ln); })) { allowHit++; return; }
+        bad.push('L' + (i + 1) + ':' + hit[0]);
+      });
+      /* 基数自证（§20.3）：保留面必须真命中 —— 扫描器坏了会全 0，拦在红里 */
+      return bad.length === 0 && allowHit >= 18 && total >= 19;
+    })(), '（保留面 ≥18 行 + 白名单外零命中）');
+
+    check('§222② 用例文件旧词零残留（e2e · 无保留面）+ 新词在册', (function () {
+      var e2e = rd222('e2e-test.js');
+      var left = OLD222.filter(function (w) { return e2e.indexOf(w) >= 0; });
+      return left.length === 0
+        && e2e.indexOf('长矛手') >= 0 && e2e.indexOf('弩手') >= 0
+        && e2e.indexOf('区镇落') >= 0 && e2e.indexOf('灰岗') >= 0;
+    })(), '');
+
+    check('§222③ 正面：新词在册（smoke 抽样）· 夹具名 = 灰岗', (function () {
+      var core = rd222('smoke-test.js');
+      return core.indexOf("cityName: '灰岗'") >= 0
+        && core.indexOf('长矛手') >= 0 && core.indexOf('装甲战车') >= 0
+        && core.indexOf('摩托游骑') >= 0 && core.indexOf('变异巨兽') >= 0
+        && core.indexOf('区镇落') >= 0;
+    })(), '');
+
+    check('§222④ 产品侧收尾：ui.js 旧城名引述零残留（许都/善无）+ 新名在册', (function () {
+      var uiSrc = rd222('js/ui.js');
+      return uiSrc.indexOf('许都') < 0 && uiSrc.indexOf('善无') < 0 && uiSrc.indexOf('灰岗') >= 0;
+    })(), '');
+
+    check('§222⑤ 需求档案在册（v89.222 · 老板原文关键句逐字）', (function () {
+      var a = fs222.readFileSync(path222.join(__dirname, '需求档案.md'), 'utf8');
+      return a.indexOf('v89.222') >= 0 && a.indexOf('历史标题引述等全面更换') >= 0
+        && a.indexOf('灰岗') >= 0;
+    })(), '');
+  })();
+

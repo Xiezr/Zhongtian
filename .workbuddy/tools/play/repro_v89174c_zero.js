@@ -12,7 +12,7 @@ var EXE = 'C:/Users/18811/AppData/Local/ms-playwright/chromium-1217/chrome-win64
 
   var info = await p.evaluate(function () {
     var G = window.GAME;
-    G.newGame({ name: '复现174c', cityName: '许都', region: '豫州', mapSeed: 20260974 });
+    G.newGame({ name: '复现174c', cityName: '灰岗', region: '碎垣', mapSeed: 20260974 });
     G.ui.enterGame(); G.ui.closeAllModals();
     G.ui.setView('city');
     var city = G.currentCity();

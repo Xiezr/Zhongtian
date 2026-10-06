@@ -22,7 +22,7 @@ function chk(name, cond, extra) {
 
   var clip = await p.evaluate(function () {
     var G = window.GAME;
-    G.newGame({ name: '验169', cityName: '许都', region: '豫州', mapSeed: 20260969 });
+    G.newGame({ name: '验169', cityName: '许都', region: '碎垣', mapSeed: 20260969 });
     G.ui.enterGame(); G.ui.closeAllModals();
     G.ui.setView('city');
     G.wallSlotOf(G.currentCity()).build = null;      /* 未修建（0 级） */

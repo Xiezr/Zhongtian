@@ -7,7 +7,7 @@ eval(fs.readFileSync(path.join(R, '.workbuddy/tmp/smoke_env_head.js'), 'utf8'));
 var G = global.GAME, DATA = G.DATA;
 
 console.log('===== ① 税所：首期登记 → 拨钟 2 日 → 幂等 =====');
-G.newGame({ name: 't188', avatar: '🧔', gender: 'male', region: '豫州' });
+G.newGame({ name: 't188', avatar: '🧔', gender: 'male', region: '碎垣' });
 var st = G.state;
 st.forts = { '50,50': { x: 50, y: 50, lv: 5, name: '甲' }, '51,51': { x: 51, y: 51, lv: 3, name: '乙' } };
 st.fortTaxDay = null;

@@ -11,7 +11,7 @@ eval(fs.readFileSync(path.join(R, '.workbuddy/tmp/smoke_env_head.js'), 'utf8'));
   .forEach(function (f) { require(path.join(R, 'js', f + '.js')); });
 var G = global.GAME, D = G.DATA, U = G.utils;
 
-G.newGame({ name: '探针A96', region: '司隶' });
+G.newGame({ name: '探针A96', region: '烬环' });
 if (!G.state.map.grid) G.map.generate();
 var s = G.state;
 G.state.jieyue = (G.state.jieyue || 0) + 2;   /* 天授闸备节钺 */

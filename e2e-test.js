@@ -124,8 +124,8 @@ async function runTests(dom, URL) {
   const { document } = window;
   const G = window.GAME;
   const DATA = G && G.DATA;
-  /* v89.135（老板 10）：官府面板退役 —— 打开"官府格建筑面板"的统一姿势（本文件多处用）。
-     官府占 4 格（G.govCellsOf），取第一格即官府本体。 */
+  /* v89.135（老板 10）：政务厅面板退役 —— 打开"政务厅格建筑面板"的统一姿势（本文件多处用）。
+     政务厅占 4 格（G.govCellsOf），取第一格即政务厅本体。 */
   function openGov() {
     const c = G.currentCity();
     G.ui.openBuildModal(G.govCellsOf(c.col, c.row)[0]);
@@ -166,9 +166,7 @@ async function runTests(dom, URL) {
   check('battle', !!(G && G.battle));
   if (!G || !DATA) return finish();
 
-  /* v89.29：逸闻奇遇 —— 测试期默认关闭随机触发（避免打断用例）；
-     触发链专测用 G.SG.TRIG.pin（指定篇目）/ rng 注入精确控制。 */
-  if (G.SG && G.SG.TRIG) G.SG.TRIG.rng = function () { return 0.999; };
+  /* ⛔ v89.218：逸闻奇遇触发钩子随故事系统退役（不再需要测试期 rng 钉死）。 */
 
   /* v89.89：**全域钉天气为「晴」**（测试环境包装，产品代码零改动）——
      同 smoke 的根因修法：`STORY.rollWeather` 是 Math.random 重掷（newGame 与
@@ -205,9 +203,9 @@ async function runTests(dom, URL) {
   check('城内建筑 16', Object.keys(DATA.BUILDINGS || {}).length >= 16, Object.keys(DATA.BUILDINGS || {}).length + '');
   check('城外建筑 4', Object.keys(DATA.EXT_BUILDINGS || {}).length === 4);
   check('科技 ≥23', (DATA.TECH || []).length >= 23, (DATA.TECH || []).length + ' 项');
-  check('爵位 22', (DATA.RANK || []).length === 22);
+  check('威望 22', (DATA.RANK || []).length === 22);
   check('城池 174（1都+12州+96郡+65县）', (DATA.NPC_CITIES || []).length === 174,
-    (DATA.NPC_CITIES || []).length + ' 座 · 县城 ' + DATA.NPC_CITIES.filter(function (c) { return c.type === 'county'; }).length);
+    (DATA.NPC_CITIES || []).length + ' 座 · 聚落 ' + DATA.NPC_CITIES.filter(function (c) { return c.type === 'county'; }).length);
   check('装备槽位 ≥6', Object.keys(DATA.EQUIP_SLOTS || DATA.SLOTS || {}).length >= 6,
     Object.keys(DATA.EQUIP_SLOTS || DATA.SLOTS || {}).length + '');
 
@@ -231,12 +229,12 @@ async function runTests(dom, URL) {
   const startBtn = document.querySelector('[data-action="create-start"]') || document.querySelector('#create-start');
   check('找到开始按钮', !!startBtn);
 
-  /* v70（老板需求 5）：创建界面 —— 头像与将领同源（头像池）、归属改十三州 */
+  /* v70（老板需求 5）：创建界面 —— 头像与将领同源（头像池）、归属改十三区 */
   const regChips = document.querySelectorAll('#screen-create [data-target="create-region"]');
-  check('★ 归属选项 = 随机 + 十三州（14 枚）', regChips.length === 14, regChips.length + ' 枚');
+  check('★ 归属选项 = 随机 + 十三区（14 枚）', regChips.length === 14, regChips.length + ' 枚');
   check('★ 归属选项是州名（旧「北方/中原/江南」已撤）', (function () {
     const vals = Array.from(regChips).map((el) => el.dataset.v);
-    return vals.indexOf('random') >= 0 && vals.indexOf('青州') >= 0 && vals.indexOf('north') < 0;
+    return vals.indexOf('random') >= 0 && vals.indexOf('盐岸') >= 0 && vals.indexOf('north') < 0;
   })());
   const avImg = document.querySelector('#create-avatar img');
   check('★ 头像预览走头像池（<img> 指向 assets/portraits/pool）',
@@ -250,8 +248,8 @@ async function runTests(dom, URL) {
   if (!G.state) return finish();
   const s = G.state;
   const city = s.cities[0];
-  /* v70（老板需求 5）：出生城归属所选州 + 君主将领入册 */
-  check('★ 出生城落在所选州（就近归属一致）', (function () {
+  /* v70（老板需求 5）：出生城归属所选区 + 君主将领入册 */
+  check('★ 出生城落在所选区（就近归属一致）', (function () {
     const rg = s.ruler.region;
     return (DATA.START_STATES || []).indexOf(rg) >= 0 && G.stateOfCity(city) === rg;
   })(), s.ruler.region + ' @ ' + city.x + ',' + city.y);
@@ -267,14 +265,14 @@ async function runTests(dom, URL) {
   await sleep(50);
   const vc = document.querySelector('#view-container');
   check('城内格子 ≥32', vc.querySelectorAll('.iso-tile').length >= 32, vc.querySelectorAll('.iso-tile').length + ' 个');
-  /* v23：官府 4 格融合为 1 座宫殿 → 地块面数 = 32 普通格 + 1 宫殿 */
+  /* v23：政务厅 4 格融合为 1 座宫殿 → 地块面数 = 32 普通格 + 1 宫殿 */
   check('城内为等距地块（iso-board + tile-face）', !!vc.querySelector('.iso-board') && vc.querySelectorAll('.tile-face').length >= 33,
     vc.querySelectorAll('.tile-face').length + ' 块地块面');
-  /* 官府 4 格里只有主格立建筑（其余 3 格是台基），所以 33 = 36 - 3 */
+  /* 政务厅 4 格里只有主格立建筑（其余 3 格是台基），所以 33 = 36 - 3 */
   check('有建筑的格都有容器（tile-art，底边落在格心）', vc.querySelectorAll('.tile-art').length >= 32,
     vc.querySelectorAll('.tile-art').length + ' 个');
   /* v23（需求 4）：4 格不再逐格渲染，改为跨格融合成一座宫殿 */
-  check('官府 4 格融合为一座宫殿（需求 4）',
+  check('政务厅 4 格融合为一座宫殿（需求 4）',
     vc.querySelectorAll('.gov-palace').length === 1
     && vc.querySelectorAll('.gov-palace svg.gov-svg, .gov-palace img.gov-img').length === 1
     && vc.querySelectorAll('.iso-tile.gov').length === 0,
@@ -364,12 +362,12 @@ async function runTests(dom, URL) {
         : lblTxt2.textContent.indexOf('隐藏名称') >= 0) : true),
       lblTxt2 ? ('off=' + document.body.classList.contains('labels-off') + ' txt=' + lblTxt2.textContent) : '按钮丢失');
   }
-  /* v25（需求 1）：城墙是一圈环（墙身/雉堞/压顶/角楼），并带四条点击热区。
+  /* v25（需求 1）：围墙是一圈环（墙身/雉堞/压顶/角楼），并带四条点击热区。
      判据只看"结构齐备 + 热区存在"，不数 polygon 个数（画法会变）。 */
-  /* v89.128：环城视觉 = **城墙建筑的外观**（修了才画）= 完整形制只在建好后出现。
-     v89.169（老板「城墙 0 级的时候不明显」）：0 级改画**虚线虚影环**（可见入口）——
+  /* v89.128：环城视觉 = **围墙建筑的外观**（修了才画）= 完整形制只在建好后出现。
+     v89.169（老板「围墙 0 级的时候不明显」）：0 级改画**虚线虚影环**（可见入口）——
      先验"实墙不画、虚影在"，再摆上验实墙结构。 */
-  check('未修建城墙时：不画实墙环、画虚线虚影环（v89.169）',
+  check('未修建围墙时：不画实墙环、画虚线虚影环（v89.169）',
     !vc.querySelector('svg.iso-wall:not(.iso-wall-ghost)')
     && !!vc.querySelector('svg.iso-wall-ghost'));
   check('虚影环结构：虚线描边 + 四角虚影角楼位（与实墙同一几何出口）', (function () {
@@ -382,16 +380,16 @@ async function runTests(dom, URL) {
   G.wallSlotOf(G.currentCity()).build = { id: 'chengqiang', lvl: 1 };
   G.refreshAll();
   await sleep(90);
-  check('城墙为环形 SVG 且四角有角楼',
+  check('围墙为环形 SVG 且四角有角楼',
     !!vc.querySelector('svg.iso-wall')
     && vc.querySelectorAll('svg.iso-wall polygon').length >= 3
     && vc.querySelectorAll('svg.iso-wall .wtower').length === 4);
-  check('城墙四条点击热区齐备（需求 1：点击进行操作）',
+  check('围墙四条点击热区齐备（需求 1：点击进行操作）',
     vc.querySelectorAll('.wall-hit[data-action="open-wall"]').length === 4);
-  check('城墙不再有文字标签',
+  check('围墙不再有文字标签',
     !vc.querySelector('.wtag') && vc.innerHTML.indexOf('点击升级') < 0);
   check('内城 48 格（8 列 × 6 行）', city.cells.length === 48);   /* v40（需求 2） */
-  check('官府占 4 格', city.cells.filter((c) => c.build && c.build.id === 'guanfu').length === 4);
+  check('政务厅占 4 格', city.cells.filter((c) => c.build && c.build.id === 'guanfu').length === 4);
 
   console.log('\n--- 6. 点空地 → 建造 ---');
   s.res.grain += 50000; s.res.wood += 50000; s.res.stone += 50000; s.res.iron += 50000;
@@ -404,11 +402,11 @@ async function runTests(dom, URL) {
   const modal = document.querySelector('#modal-root');
   check('建造弹窗打开', modal.innerHTML.length > 100, modal.innerHTML.length + ' 字符');
   const bookBtn = modal.querySelector('[data-build="shuyuan"]');
-  check('弹窗含书院选项', !!bookBtn);
+  check('弹窗含研习所选项', !!bookBtn);
   if (bookBtn) {
     click(bookBtn);
     await sleep(50);
-    check('书院入队', s.queues.build.length === 1, s.queues.build.length + ' 队列');
+    check('研习所入队', s.queues.build.length === 1, s.queues.build.length + ' 队列');
     check('格子进入 pending', !!city.cells[emptyIdx].pending);
     check('队列有 totalTime', s.queues.build[0] && s.queues.build[0].totalTime > 0,
       s.queues.build[0] ? s.queues.build[0].totalTime + ' 游戏秒' : '无');
@@ -464,7 +462,7 @@ async function runTests(dom, URL) {
   check('顶栏菜单带手绘图标（11 个）',
     document.querySelectorAll('#topnav .ti[data-nav] svg.nav-ico').length >= 11,
     document.querySelectorAll('#topnav .ti[data-nav] svg.nav-ico').length + ' 个');
-  check('「爵位」不再是独立菜单（已并入君主）', !document.querySelector('#topnav [data-view="rank"]'));
+  check('「威望」不再是独立菜单（已并入君主）', !document.querySelector('#topnav [data-view="rank"]'));
   /* v19：公告不再是独立菜单，内容并入公文页 */
   check('公告已并入公文（顶栏无公告菜单）', !document.querySelector('#topnav [data-action="open-notice"]'));
   check('顶栏含「行军」菜单', !!document.querySelector('#topnav [data-view="marches"]'));
@@ -479,24 +477,24 @@ async function runTests(dom, URL) {
   const repHtml = vc.innerHTML;
   /* v89.153（老板 1/2）：页签顺序 系统/战报/侦查，**默认页 = 系统** */
   check('公文页含系统区（默认页）', repHtml.indexOf('公文 · 系统') >= 0 && repHtml.indexOf('id="doc-body"') >= 0);
-  /* v89.116：烽火移出公文；v89.153（老板 2）：任务并入系统页 → 页签 **3 类**：
-     系统 / 战报 / 侦查（顺序 = 老板原话）。断言同时钉住"烽火/任务页签不存在"。 */
-  check('公文页含三类页签（系统 / 战报 / 侦查 · 烽火与任务已移出）',
+  /* v89.116：警报移出公文；v89.153（老板 2）：任务并入系统页 → 页签 **3 类**：
+     系统 / 战报 / 侦查（顺序 = 老板原话）。断言同时钉住"警报/任务页签不存在"。 */
+  check('公文页含三类页签（系统 / 战报 / 侦查 · 警报与任务已移出）',
     document.querySelectorAll('.doc-tabs [data-action="doc-tab"]').length === 3,
     document.querySelectorAll('.doc-tabs [data-action="doc-tab"]').length + ' 个页签');
-  check('公文页签里没有烽火（烽火流水在军务 · 烽火）',
+  check('公文页签里没有警报（警报流水在军务 · 警报）',
     !document.querySelector('.doc-tabs [data-v="beacon"]'));
   check('消息保留策略为 10 游戏天', G.msgDays() === 10 && /保留 10 游戏天|保留最近|msgLog/.test(
     require('fs').readFileSync(require('path').join(__dirname, 'js', 'state.js'), 'utf8')));
   /* 切页签：正文真的换（侦查页 ≠ 战报页），且动作走 ui.setDocTab；
-     另验"烽火直调 → 给一句已移出的指引"（老档 _docTab 残留也不会渲染旧板块）。 */
+     另验"警报直调 → 给一句已移出的指引"（老档 _docTab 残留也不会渲染旧板块）。 */
   const scTab = document.querySelector('.doc-tabs [data-v="scout"]');
   if (scTab) {
     click(scTab); await sleep(80);
     check('可切换公文页签（切换到侦查页）', G.ui._docTab === 'scout'
       && document.querySelector('#doc-body') !== null, '页签=' + G.ui._docTab);
     const bh = G.ui.docBodyHTML('beacon');
-    check('公文直调烽火 → 只给"已移出"指引（不再渲染烽火流水）',
+    check('公文直调警报 → 只给"已移出"指引（不再渲染警报流水）',
       bh.indexOf('已移出公文') >= 0 && bh.indexOf('bb-line beacon') < 0);
     G.ui.setDocTab('beacon'); await sleep(60);       /* 不在页签里的类别：拒绝并回落战报 */
     check('切换被移出的类别会被拒（回落系统页 · v89.153）', G.ui._docTab === 'sys');
@@ -520,8 +518,8 @@ async function runTests(dom, URL) {
   console.log('\n--- 11. 原版式弹窗（真实函数名） ---');
   /* v77（老板）：建筑信息 / 资源生产退役；附属野地保留（资源区下拉框进入）。 */
   const modals = [['君主', 'openLordInfo'], ['附属野地', 'openWilds'],
-    ['客栈', 'openInn'], ['招贤馆', 'openHostel'], ['市集', 'openMarket'], ['仓库', 'openStore'],
-    ['铁匠铺', 'openForge']];
+    ['酒馆', 'openInn'], ['招募站', 'openHostel'], ['市集', 'openMarket'], ['货仓', 'openStore'],
+    ['锻造间', 'openForge']];
   for (const [label, fn] of modals) {
     if (typeof G.ui[fn] !== 'function') { check('弹窗 ' + label, false, fn + ' 未定义'); continue; }
     try {
@@ -556,13 +554,13 @@ async function runTests(dom, URL) {
   s.settings.timeScale = 600;
   s.res.grain += 200000; s.res.wood += 200000; s.res.stone += 200000; s.res.iron += 200000;
   s.res.gold += 100000; s.res.pop += 5000;
-  await sleep(2200); // 高倍率下让在建书院先完工（后续科技研究依赖它）
+  await sleep(2200); // 高倍率下让在建研习所先完工（后续科技研究依赖它）
   const act = (label, fn) => {
     try { const r = fn(); check(label, r === undefined || r === null || r.ok !== false, r && r.msg ? r.msg : 'ok'); return r; }
     catch (e) { check(label, false, '抛错: ' + e.message); return null; }
   };
   act('升级城内建筑', () => G.doUpgrade(emptyIdx));
-  act('训练义兵', () => G.doTrain('yibing'));
+  act('训练民兵', () => G.doTrain('yibing'));
   act('研究科技', () => G.systems.research('zhongzhi'));
   act('城外地块建造', () => {
     const ei = extOf(s).findIndex((e) => !e.type && !e.pending);
@@ -602,17 +600,12 @@ async function runTests(dom, URL) {
   check('日志在写入', (s.log || []).length > 0, (s.log || []).length + ' 条');
 
 
-  console.log('\n--- 15. 叙事层可见性 ---');
-  G.ui.setView('story');
-  await sleep(80);
-  const storyHtml = vc.innerHTML;
-  check('史册面板渲染', storyHtml.length > 300, storyHtml.length + ' 字符');
-  check('史册含天时栏', storyHtml.indexOf('天时') >= 0);
-  check('史册含时代之志', storyHtml.indexOf('时代之志') >= 0);
-  check('史册含实力折算', storyHtml.indexOf('实力折算') >= 0);
-  /* v89.104（老板「不要史书纪事了，没有什么实质内容」）：整段撤出 */
-  check('史册不含史书纪事（v89.104 已撤出：没有实质内容）', storyHtml.indexOf('史书纪事') < 0);
-  check('史册含称号评定', storyHtml.indexOf('当前评定') >= 0);
+  console.log('\n--- 15. 叙事层可见性（v89.218：史册/故事集退役 · 保留天时） ---');
+  check('v89.218：史册 / 故事集两页签退役（顶栏无 · 视图函数无）', (function () {
+    return !document.querySelector('#topnav [data-view="story"]')
+      && !document.querySelector('#topnav [data-view="stories"]')
+      && typeof G.ui.storyHTML === 'undefined' && typeof G.ui.storiesHTML === 'undefined';
+  })());
   /* v26（需求 3）：天时已从左侧「城池属性」移到顶栏（菜单与存档之间的偏右位置） */
   const attrHtml = document.querySelector('#city-attrs').innerHTML;
   check('侧栏不再显示天时', attrHtml.indexOf('天时') < 0);
@@ -633,7 +626,8 @@ async function runTests(dom, URL) {
     const t = document.querySelector('#topnav [data-view="auto"]');
     return !!t && !!t.querySelector('svg.nav-ico');
   })());
-  check('羁绊不在界面暴露', storyHtml.indexOf('羁绊') < 0 && attrHtml.indexOf('羁绊') < 0);
+  check('羁绊不在界面暴露（v89.218：原查史册页 → 改查侧栏与顶栏）',
+    attrHtml.indexOf('羁绊') < 0 && (!skyEl || skyEl.textContent.indexOf('羁绊') < 0));
   G.ui.openWilds();
   const wildHtml = document.querySelector('#modal-root').innerHTML;
   check('野地面板含产出资源列', wildHtml.indexOf('产出资源') >= 0);
@@ -642,7 +636,7 @@ async function runTests(dom, URL) {
   G.ui.closeAllModals();
 
   console.log('\n--- 18. 岁贡与外城按城独立（v14）---');
-  const conq18 = G.makeCity({ id: 'conq_e2e18', name: '江陵', x: 255, y: 335, type: 'jun', state: '荆州' });
+  const conq18 = G.makeCity({ id: 'conq_e2e18', name: '泽乡', x: 255, y: 335, type: 'jun', state: '泽心' });
   s.cities.push(conq18);
   check('新占城池自带外城地块', !!conq18.extGrid && conq18.extGrid.length === 12);
   check('各城外城地块互相独立', conq18.extGrid !== s.cities[0].extGrid);
@@ -652,29 +646,29 @@ async function runTests(dom, URL) {
   /* v22（需求 3）：中央只留城池与地块；身份与数值下沉侧栏 */
   check('城池视图只留棋盘（不再有标题行/征收/缩放/岁贡）',
     /city-pure/.test(cityHtml18) && /city-iso/.test(cityHtml18)
-    && cityHtml18.indexOf('州郡岁贡') < 0 && cityHtml18.indexOf('显示比例') < 0
-    && cityHtml18.indexOf('官府Lv') < 0 && cityHtml18.indexOf('以民心换金') < 0);
+    && cityHtml18.indexOf('辖区岁贡') < 0 && cityHtml18.indexOf('显示比例') < 0
+    && cityHtml18.indexOf('政务厅Lv') < 0 && cityHtml18.indexOf('以民心换金') < 0);
   G.ui.renderSide();
   /* v27（需求 1）：#city-tools 板块已删除，切城并进城池属性 */
   const tools18 = (document.querySelector('#city-attrs') || {}).innerHTML || '';
-  /* v25（需求 5）：州郡岁贡从左侧栏移入「名城官府」—— 它是"这块地盘值多少"，
-     属于官府的账，不该常驻占着屏幕左侧。 */
-  /* 岁贡只属于"攻占的名城"，所以先切到那座城再看官府 */
+  /* v25（需求 5）：辖区岁贡从左侧栏移入「名城政务厅」—— 它是"这块地盘值多少"，
+     属于政务厅的账，不该常驻占着屏幕左侧。 */
+  /* 岁贡只属于"攻占的名城"，所以先切到那座城再看政务厅 */
   G.ui.setCity(conq18.id);
   await sleep(60);
   openGov();
   await sleep(80);
   const govY18 = document.querySelector('#modal-root').innerHTML;
-  /* v89.135：官府面板退役 —— 岁贡行并入官府格建筑面板的「官府要务」段 */
-  check('名城的官府段内含本城岁贡', govY18.indexOf('岁贡 / 日') >= 0);
-  check('岁贡列出特产（荆州蜀锦）', govY18.indexOf('蜀锦') >= 0);
+  /* v89.135：政务厅面板退役 —— 岁贡行并入政务厅格建筑面板的「政务厅要务」段 */
+  check('名城的政务厅段内含本城岁贡', govY18.indexOf('岁贡 / 日') >= 0);
+  check('岁贡列出特产（泽心织锦）', govY18.indexOf('织锦') >= 0);
   check('岁贡显示每日收入（金 / 声望）',
     govY18.indexOf('岁贡 / 日') >= 0 && govY18.indexOf('金 +') >= 0);
   G.ui.closeAllModals();
   G.ui.setCity(G.state.cities[0].id);
   await sleep(40);
-  /* v24（需求 4）：征收移入「官府」建筑，侧栏只留切换城池 / 显示比例 / 岁贡 */
-  /* v25（需求 3/5）：征收 → 官府；显示比例 → 设置；州郡岁贡 → 名城官府 */
+  /* v24（需求 4）：征收移入「政务厅」建筑，侧栏只留切换城池 / 显示比例 / 岁贡 */
+  /* v25（需求 3/5）：征收 → 政务厅；显示比例 → 设置；辖区岁贡 → 名城政务厅 */
   check('侧栏不再有 征收 / 显示比例 / 岁贡',
     tools18.indexOf('征收') < 0 && tools18.indexOf('显示比例') < 0 && tools18.indexOf('岁贡') < 0);
   /* 切到新城：外城应为全荒地（证明地块按城独立） */
@@ -687,13 +681,13 @@ async function runTests(dom, URL) {
   /* v24（需求 6）：侧栏的「城外地块 0/12」一行已删 —— 城外棋盘本身就是这块数据 */
   check('新城外城为空地（0/12 块）', G.extUsed(conq18) === 0 && G.extCap(conq18) === 12,
     G.extUsed(conq18) + ' / ' + G.extCap(conq18));
-  /* v71（老板）：「城池属性不要显示坐标和所在州，只显示城池命名即可」——
-     本断言自 v70 翻转：只验城名在、坐标与州全称**不在** */
-  check('侧栏城池属性只显城名（不含坐标 / 不含州全称）',
-    attrs18.indexOf('江陵') >= 0
+  /* v71（老板）：「城池属性不要显示坐标和所在区，只显示城池命名即可」——
+     本断言自 v70 翻转：只验城名在、坐标与区全称**不在** */
+  check('侧栏城池属性只显城名（不含坐标 / 不含区全称）',
+    attrs18.indexOf('泽乡') >= 0
     && attrs18.indexOf('500×500') < 0
     && attrs18.indexOf(G.coordText(conq18)) < 0
-    && attrs18.indexOf('官府Lv') < 0
+    && attrs18.indexOf('政务厅Lv') < 0
     && (G.cityFullName(conq18).indexOf(' · ') < 0
         || attrs18.indexOf(G.cityFullName(conq18)) < 0));
   /* v23（需求 5）：侧栏只反映当前城池，全境汇总移到底栏「统计」菜单 */
@@ -701,10 +695,10 @@ async function runTests(dom, URL) {
   check('侧栏只反映当前城池（无全境汇总 / 无城防驻军 / 无城外地块）',
     attrs18.indexOf('全境') < 0 && attrs18.indexOf('城防') < 0
     && attrs18.indexOf('驻军') < 0 && attrs18.indexOf('城外地块') < 0);
-  /* 在新城开垦农田 → 只影响新城 */
+  /* 在新城开垦集水场 → 只影响新城 */
   s.queues.build.length = 0;
   const r18 = G.doExtBuild(0, 'farm');
-  check('新城可独立开垦农田（队列已入项）',
+  check('新城可独立开垦集水场（队列已入项）',
     s.queues.build.some((q) => q.type === 'ext_build' && q.cityId === conq18.id),
     r18 && r18.msg ? r18.msg : '已入队');
   check('新城地块进入施工态', G.extGridOf(conq18)[0].pending === 'farm');
@@ -832,7 +826,7 @@ async function runTests(dom, URL) {
   })();
 
   /* ② 募兵：初始就能点「训练」（原为「参数错误」） */
-  /* v81：兵营三页制 —— 训练控件在步兵/骑兵页（首页为募兵队列），先切步兵页 */
+  /* v81：兵营三页制 —— 训练控件在步兵/机车页（首页为募兵队列），先切步兵页 */
   G.ui._trainTab = 'inf';
   G.ui.setView('troops');
   const trainBtn = document.querySelector('#view-container [data-action="confirm-train"]');
@@ -984,34 +978,34 @@ async function runTests(dom, URL) {
     const html = document.querySelector('#modal-root').innerHTML;
     modalOk17 = html.indexOf('募兵') >= 0;
     funcBtnText = (html.match(/⚔️ 募兵/) || [''])[0];
-    check('军营弹窗含「募兵」功能入口', modalOk17, funcBtnText);
-    check('军营弹窗显示可募兵种数', html.indexOf('可募兵种') >= 0);
+    check('训练营弹窗含「募兵」功能入口', modalOk17, funcBtnText);
+    check('训练营弹窗显示可募兵种数', html.indexOf('可募兵种') >= 0);
     G.ui.closeAllModals();
     break;
   }
-  check('军营格子可点击', modalOk17 || funcBtnText !== '');
+  check('训练营格子可点击', modalOk17 || funcBtnText !== '');
   G.ui.openInn();
   await sleep(40);
   const innHtml = document.querySelector('#modal-root').innerHTML;
-  check('客栈弹窗渲染', innHtml.length > 300, innHtml.length + ' 字符');
+  check('酒馆弹窗渲染', innHtml.length > 300, innHtml.length + ' 字符');
   /* 候选按游戏日刷新，可能恰好为空 → 有候选验属性、无候选验空态（两者都是正确渲染） */
   /* 候选可能是「美人」（按钮显示"相亲"），所以判据用动作名 inn-recruit 而不是按钮文案 ——
      原先只认"招募"，一旦当天候选全是美人就误报失败（偶发假红） */
-  check('客栈渲染候选（含属性）或空态',
+  check('酒馆渲染候选（含属性）或空态',
     (innHtml.indexOf('统率') >= 0 && innHtml.indexOf('inn-recruit') >= 0) || innHtml.indexOf('暂无贤士') >= 0,
     innHtml.indexOf('统率') >= 0 ? '有候选' : '空态');
-  /* v64（老板）：「根据**该城的招贤馆等级**有相应空位」——
-     文案从"空房"改为"<城名> 招贤馆空位 N/M"，所以判据要连**城名与席位比**一起看 */
-  check('客栈显示本城招贤馆席位（城名 + N/M）', (function () {
+  /* v64（老板）：「根据**该城的招募站等级**有相应空位」——
+     文案从"空房"改为"<城名> 招募站空位 N/M"，所以判据要连**城名与席位比**一起看 */
+  check('酒馆显示本城招募站席位（城名 + N/M）', (function () {
     var nm = G.currentCity().name;                 /* 城名**现取**，不写死（改名/换城都不假红） */
-    return /招贤馆空位 \d+\/\d+/.test(innHtml) && innHtml.indexOf(nm) >= 0;
-  })(), (innHtml.match(/招贤馆空位 \d+\/\d+/) || ['未找到'])[0] + ' · ' + G.currentCity().name);
+    return /招募站空位 \d+\/\d+/.test(innHtml) && innHtml.indexOf(nm) >= 0;
+  })(), (innHtml.match(/招募站空位 \d+\/\d+/) || ['未找到'])[0] + ' · ' + G.currentCity().name);
   G.ui.openHostel();
   await sleep(40);
   const hostHtml = document.querySelector('#modal-root').innerHTML;
-  check('招贤馆弹窗显示房间数', hostHtml.indexOf('房间') >= 0, hostHtml.length + ' 字符');
-  /* v89.74（老板：「鸿胪寺已拆除 → 门派驻地；点击地块时提供可选项」）：
-     真实点击链：临时放一座门派驻地 → 开面板 → 点「入派」→ 归属落库 → 做一次门派任务。
+  check('招募站弹窗显示房间数', hostHtml.indexOf('房间') >= 0, hostHtml.length + ' 字符');
+  /* v89.74（老板：「鸿胪寺已拆除 → 派系驻地；点击地块时提供可选项」）：
+     真实点击链：临时放一座派系驻地 → 开面板 → 点「入派」→ 归属落库 → 做一次派系任务。
      P0 是"零平衡影响"的骨架，所以这里只验归属/品阶/声望分家，**不验**数值加成（那是 P1）。 */
   {
     const pc = G.currentCity();
@@ -1025,8 +1019,8 @@ async function runTests(dom, URL) {
     await sleep(40);
     const scHtml = document.querySelector('#modal-root').innerHTML;
     const joinBtn = document.querySelector('#modal-root [data-action="sect-join"]');
-    check('v89.74：门派面板列出六派与「入派」入口',
-      scHtml.indexOf('江湖六派') >= 0 && !!joinBtn,
+    check('v89.74：派系面板列出六派与「入派」入口',
+      scHtml.indexOf('荒野六派') >= 0 && !!joinBtn,
       (scHtml.match(/data-action="sect-join"/g) || []).length + ' 个入派按钮');
     if (joinBtn) click(joinBtn);
     await sleep(80);
@@ -1037,10 +1031,10 @@ async function runTests(dom, URL) {
     const taskBtn = document.querySelector('#modal-root [data-action="sect-task"][data-v="chores"]');
     if (taskBtn) click(taskBtn);
     await sleep(80);
-    check('v89.74：门派任务只涨门派声望（君主声望一分不动）',
+    check('v89.74：派系任务只涨派系声望（君主声望一分不动）',
       G.sectState().rep === 12 && (G.state.rep || 0) === lordRep0,
-      '门派声望 ' + G.sectState().rep + ' · 君主声望 ' + (G.state.rep || 0));
-    /* 还原：门派状态与那座临时建筑 */
+      '派系声望 ' + G.sectState().rep + ' · 君主声望 ' + (G.state.rep || 0));
+    /* 还原：派系状态与那座临时建筑 */
     G.sectState().id = null; G.sectState().rep = 0; G.sectState().founder = false;
     G.sectState().tasks = {}; G.sectState().leftAt = 0;
     if (cell) cell.build = savedBuild;
@@ -1052,7 +1046,7 @@ async function runTests(dom, URL) {
   const mkHtml = document.querySelector('#modal-root').innerHTML;
   check('市集弹窗含交易控件（数量框 + 买卖入口）',
     mkHtml.indexOf('mk-amount') >= 0 && mkHtml.indexOf('market-sell') >= 0 && mkHtml.indexOf('market-buy') >= 0);
-  /* v89.60（老板）：「市场的界面太杂了，4资源+黄金可买卖就行，没必要分成 3 个板块」
+  /* v89.60（老板）：「交易站的界面太杂了，4资源+黄金可买卖就行，没必要分成 3 个板块」
      —— 单块：一张表四行，每行可买可卖；旧三块（互换 / 售卖 / 买入）控件全部退场。
      真实点击双向各来一次：卖铁 → 金增铁减；买铁 → 金减铁增。 */
   check('v89.60：市集为单块（四行表 · 每行可买可卖 · 无互换区与旧隐藏域）', (function () {
@@ -1082,7 +1076,7 @@ async function runTests(dom, URL) {
         && G.state.res.iron < before.iron;
     })(), '卖 2 万铁 → 至少 ' + want + ' 金');
 
-    /* 反方向：买铁 —— 买价走 marketBuyGoldFor（比卖出贵 35%，市场只应急） */
+    /* 反方向：买铁 —— 买价走 marketBuyGoldFor（比卖出贵 35%，交易站只应急） */
     G.ui.openMarket();
     await sleep(40);
     G.state.res.gold = Math.max(G.state.res.gold || 0, 200000);
@@ -1102,7 +1096,7 @@ async function runTests(dom, URL) {
   G.ui.openStore();
   await sleep(40);
   const stHtml = document.querySelector('#modal-root').innerHTML;
-  check('仓库弹窗显示储量上限', stHtml.indexOf('储量上限') >= 0 || stHtml.indexOf('仓库') >= 0);
+  check('货仓弹窗显示储量上限', stHtml.indexOf('储量上限') >= 0 || stHtml.indexOf('货仓') >= 0);
   G.ui.closeAllModals();
 
   console.log('\n--- 18. 自动升级（真实交互） ---');
@@ -1120,14 +1114,14 @@ async function runTests(dom, URL) {
   check('点击后开启自动升级', s.settings.autoUpgrade === true, 'autoUpgrade=' + s.settings.autoUpgrade);
   check('开启后立即尝试排队', s.queues.build.length > 0 || !!(s.autoState && s.autoState.msg),
     s.autoState && s.autoState.msg);
-  /* v29（需求 6）：队列总览迁到「官府 · 在办事项」，公文只留报告与消息 */
+  /* v29（需求 6）：队列总览迁到「政务厅 · 在办事项」，公文只留报告与消息 */
   openGov();
   await sleep(90);
   const gq = document.querySelector('#modal-root');
-  /* v89.135（老板 10）：「在办事项」退役 —— 官府建筑面板只留「官府要务」 */
-  check('官府建筑面板无「在办事项」（v89.135 退役 · 官府要务在）',
-    !!gq && gq.textContent.indexOf('在办事项') < 0 && gq.textContent.indexOf('官府要务') >= 0,
-    gq ? gq.textContent.replace(/\s+/g, ' ').slice(-60) : '(无官府弹窗)');
+  /* v89.135（老板 10）：「在办事项」退役 —— 政务厅建筑面板只留「政务厅要务」 */
+  check('政务厅建筑面板无「在办事项」（v89.135 退役 · 政务厅要务在）',
+    !!gq && gq.textContent.indexOf('在办事项') < 0 && gq.textContent.indexOf('政务厅要务') >= 0,
+    gq ? gq.textContent.replace(/\s+/g, ' ').slice(-60) : '(无政务厅弹窗)');
   G.ui.closeAllModals();
   G.ui.setView('reports');
   await sleep(90);
@@ -1142,9 +1136,9 @@ async function runTests(dom, URL) {
   openGov();
   await sleep(90);
   const gq2 = document.querySelector('#modal-root');
-  check('（关闭后）官府建筑面板仍无「在办事项」',
+  check('（关闭后）政务厅建筑面板仍无「在办事项」',
     !!gq2 && gq2.textContent.indexOf('在办事项') < 0,
-    gq2 ? gq2.textContent.replace(/\s+/g, ' ').slice(-60) : '(无官府弹窗)');
+    gq2 ? gq2.textContent.replace(/\s+/g, ' ').slice(-60) : '(无政务厅弹窗)');
   G.ui.closeAllModals();
 
   console.log('\n--- 19. 地图观察框（真实 DOM 交互） ---');
@@ -1204,7 +1198,7 @@ async function runTests(dom, URL) {
   /* v24（需求 1/3）：地形图例与说明整段删除（地形本身由画布绘制，不受影响） */
   check('地图不再渲染图例与说明文字',
     !/湖泊/.test(mapHtml) && !/森林/.test(mapHtml) && !/荒漠/.test(mapHtml) && !/山地/.test(mapHtml)
-    && !/天下大势/.test(mapHtml) && !/观察框/.test(mapHtml) && !/名城（红=都城/.test(mapHtml));
+    && !/天下大势/.test(mapHtml) && !/观察框/.test(mapHtml) && !/名城（红=旧都/.test(mapHtml));
   check('地图导航在底部条内（含方向键；v76）', bb19.indexOf('map-dock') >= 0 && bb19.indexOf('map-pad') >= 0);
   /* 真实点击右移按钮。v45（需求 2）：步长由 1 格改为常量 ui.MAP_STEP_X（12） */
   const x0 = G.ui.mapView.x;
@@ -1241,7 +1235,7 @@ async function runTests(dom, URL) {
 
   /* v89.5：灵机之地 —— 地图悬青旗（渲染接线 + 点选提示 + 真实点击） */
   console.log('\n--- 19b. v89.5 灵机之地（地图悬旗） ---');
-  /* v89.86（测试修复）：v89.45 起野地江湖游历默认剥离（GAME.jianghuWildMounted=false）；
+  /* v89.86（测试修复）：v89.45 起野地荒野行动默认剥离（GAME.jianghuWildMounted=false）；
      19b/19c 两段测的是**该层本身** —— 显式临时挂载，跑完还原（与 smoke §v89.45 同一手法）。 */
   const jhWasA = G.jianghuWildMounted;
   G.jianghuWildMounted = true;
@@ -1264,7 +1258,7 @@ async function runTests(dom, URL) {
     return null;
   })();
   check('主城周边 5 格内能找到灵机格', !!q19b, q19b ? '(' + q19b.x + ',' + q19b.y + ') 事×' + q19b.n : '未找到');
-  check('v89.5：点选灵机格 → 状态行「江湖事 ×n · 灵机」', (function () {
+  check('v89.5：点选灵机格 → 状态行「荒野事 ×n · 灵机」', (function () {
     if (!q19b) return false;
     const old = G.ui.mapPick;
     G.ui.mapPick = { kind: 'wild', x: q19b.x, y: q19b.y };
@@ -1272,7 +1266,7 @@ async function runTests(dom, URL) {
     const t = document.querySelector('#map-pick-info').textContent;
     G.ui.mapPick = old;
     G.ui.syncMapInfo();
-    return t.indexOf('江湖事 ×' + q19b.n) >= 0 && t.indexOf('灵机') >= 0;
+    return t.indexOf('荒野事 ×' + q19b.n) >= 0 && t.indexOf('灵机') >= 0;
   })());
   check('v89.5：真实点击灵机格（canvas 事件 → 点选行含灵机）', (function () {
     if (!q19b) return false;
@@ -1371,8 +1365,8 @@ async function runTests(dom, URL) {
   G.ui.closeAllModals();
   G.jianghuWildMounted = jhWasA;   /* v89.86：还原剥离状态 */
 
-  console.log('\n--- 20. 资质分级 / 铁匠铺打造 / 死属性修复 ---');
-  /* 给当前城配齐客栈、招贤馆、铁匠铺 */
+  console.log('\n--- 20. 资质分级 / 锻造间打造 / 死属性修复 ---');
+  /* 给当前城配齐酒馆、招募站、锻造间 */
   const c20 = G.state.cities[0];
   const put20 = (id, lv) => {
     const ex = c20.cells.find((c) => c.build && c.build.id === id);
@@ -1387,11 +1381,11 @@ async function runTests(dom, URL) {
   /* v12：打造需材料，先备齐 */
   DATA.MATERIAL_IDS.forEach((mid) => { G.state.items[mid] = (G.state.items[mid] || 0) + 300; });
 
-  /* ① 客栈（v75 改版）：资质徽章 + 悬停成长备注 + 单行候选 + 无概率表（老板） */
+  /* ① 酒馆（v75 改版）：资质徽章 + 悬停成长备注 + 单行候选 + 无概率表（老板） */
   G.ui.openInn();
   await sleep(70);
   const inn20 = document.querySelector('#modal-root').innerHTML;
-  check('客栈面板渲染', inn20.length > 400, inn20.length + ' 字符');
+  check('酒馆面板渲染', inn20.length > 400, inn20.length + ' 字符');
   check('候选显示资质徽章', /class="rank-badge r-/.test(inn20));
   check('v75：成长备注不再写行内（收进徽章悬停）',
     inn20.indexOf('｜成长 +') < 0 && /rank-badge r-\w+" title="[^"]*每级属性成长 \+/.test(inn20));
@@ -1400,13 +1394,13 @@ async function runTests(dom, URL) {
   check('v75：候选单行版式（动作横排 inn-act）', /class="inn-act"/.test(inn20));
   G.ui.closeAllModals();
 
-  /* ② 招贤馆：v29（需求 15）起只讲房间数与升级路径，不再重复将领名录 */
+  /* ② 招募站：v29（需求 15）起只讲房间数与升级路径，不再重复将领名录 */
   G.ui.openHostel();
   await sleep(60);
   const host20 = document.querySelector('#modal-root').innerHTML;
-  check('招贤馆不再有将领名录（不重复「将领」菜单）',
+  check('招募站不再有将领名录（不重复「将领」菜单）',
     host20.indexOf('inn-card') < 0 && host20.indexOf('房间') >= 0);
-  check('招贤馆指向「将领」菜单看名录', host20.indexOf('将领') >= 0);
+  check('招募站指向「将领」菜单看名录', host20.indexOf('将领') >= 0);
   G.ui.closeAllModals();
   /* 资质徽章改在「将领」菜单验证 */
   G.ui.setView('generals');
@@ -1485,7 +1479,7 @@ async function runTests(dom, URL) {
     G.refreshAll();
   })();
 
-  /* ④ 铁匠铺打造面板 */
+  /* ④ 锻造间打造面板 */
   G.ui.openForge();
   await sleep(70);
   const forge20 = document.querySelector('#modal-root').innerHTML;
@@ -1493,7 +1487,7 @@ async function runTests(dom, URL) {
   check('标题显示可打造等级', forge20.indexOf('可打造至') >= 0);
   check('按品质分组（凡品/良品/珍品/神品）',
     forge20.indexOf('凡品') >= 0 && forge20.indexOf('神品') >= 0);
-  /* v29（需求 12）：材料逐项列出，并标出**出产州**（缺料时最想知道的那件事） */
+  /* v29（需求 12）：材料逐项列出，并标出**出产区**（缺料时最想知道的那件事） */
   check('列出材料成本（含出产州）', forge20.indexOf('材料') >= 0 && forge20.indexOf('特产') >= 0);
   /* v51：卡片瘦身时删掉了「条件齐备，可以打造」——它只是复述按钮状态
      （可造＝金色可点、不可造＝灰且 disabled）。所以旧判据（面板里出现四个词之一）
@@ -1502,13 +1496,13 @@ async function runTests(dom, URL) {
      ② 齐备的卡片不再出现复述文字。 */
   /* v89.117（老板「太多打造按钮了，统一成一个放在底部」）：
      口径变了 —— **逐卡打造键退役**，改「点选一件 + 底部唯一打造键（与百炼强化同栏）」。 */
-  check('v89.117 铁匠铺：卡片不再带打造键（整卡可点选 data-action="forge-pick"）', (function () {
+  check('v89.117 锻造间：卡片不再带打造键（整卡可点选 data-action="forge-pick"）', (function () {
     const cards = Array.prototype.slice.call(document.querySelectorAll('#modal-root .item-row[data-action="forge-pick"]'));
     const picks = document.querySelectorAll('#modal-root .ir-pick').length;
     return cards.length > 0 && picks === cards.length
       && document.querySelectorAll('#modal-root .item-row [data-action="forge-item"]').length === 0;
   })(), document.querySelectorAll('#modal-root .item-row').length + ' 张卡');
-  check('v89.140 铁匠铺：底部只有 1 个打造键；百炼强化已搬去**建筑菜单**', (function () {
+  check('v89.140 锻造间：底部只有 1 个打造键；百炼强化已搬去**建筑菜单**', (function () {
     const btns = document.querySelectorAll('#modal-root [data-action="forge-item"]');
     const foot = document.querySelector('#modal-root .m-foot');
     return btns.length === 1 && !!foot && !!foot.querySelector('[data-action="forge-item"]')
@@ -1516,7 +1510,7 @@ async function runTests(dom, URL) {
       /* 分页条（v89.140 老板 5：翻页放底部）——单页时可能为空，只要求 foot 里出现 pager 容器或单页 */
       && (!!foot.querySelector('.mpage, .pager') || true);
   })());
-  check('v89.117 铁匠铺：未选中时打造键受阻（dim + data-why · v89.189 软化）', (function () {
+  check('v89.117 锻造间：未选中时打造键受阻（dim + data-why · v89.189 软化）', (function () {
     const b = document.querySelector('#modal-root [data-action="forge-item"]');
     return !!b && !b.hasAttribute('disabled') && b.classList.contains('dim')
       && !!b.getAttribute('data-why') && /点选/.test(b.textContent);
@@ -1535,7 +1529,7 @@ async function runTests(dom, URL) {
     G.ui.openForge();                       /* 复位，后续用例继续 */
     return ok;
   })());
-  check('v89.117 铁匠铺：点选后底部键写明件名 + 缺什么写在卡上', (function () {
+  check('v89.117 锻造间：点选后底部键写明件名 + 缺什么写在卡上', (function () {
     /* 先造出阻塞（清空材料）→ 点选一件 → 底部键禁用且面板给出原因；验完恢复 */
     const saveItems = G.state.items;
     G.state.items = {};
@@ -1548,13 +1542,13 @@ async function runTests(dom, URL) {
     const selRow = document.querySelector('#modal-root .item-row.on');
     /* v89.189：软化后 disabled 属性被摘除 —— 判据改用 data-why 受阻说明。 */
     const okBlocked = !!b2 && !b2.hasAttribute('disabled') && !!b2.getAttribute('data-why')
-      && !!hint && /材料不足|缺图纸|需铁匠铺|资材不足/.test(hint.textContent)
-      && !!selRow && /材料不足|缺图纸|需铁匠铺|资材不足/.test(selRow.textContent);
+      && !!hint && /材料不足|缺图纸|需锻造间|资材不足/.test(hint.textContent)
+      && !!selRow && /材料不足|缺图纸|需锻造间|资材不足/.test(selRow.textContent);
     G.state.items = saveItems;
     G.ui.openForge();
     return okBlocked;
   })());
-  check('v89.117 铁匠铺：选中件可打造时底部键启用（金色 + 写明件名）', (function () {
+  check('v89.117 锻造间：选中件可打造时底部键启用（金色 + 写明件名）', (function () {
     /* 恢复到"哪件都能造"：补满资材与图纸，再点选凡品盔 */
     /* v89.201：选中改多选 —— 本用例验"**单件**选中 → 底键写明件名"，先清空选集（否则
        前序用例的残留选中会让底键显示「打造 N 件」，无件名）。 */
@@ -1574,7 +1568,7 @@ async function runTests(dom, URL) {
       && b3.textContent.indexOf(it.name) >= 0;
     return ok;
   })());
-  check('v89.117 铁匠铺：类别条可切「套装」，且出现**具体套装**子条', (function () {
+  check('v89.117 锻造间：类别条可切「套装」，且出现**具体套装**子条', (function () {
     const setCat = document.querySelector('#modal-root [data-action="forge-kind"][data-k="set"]');
     if (!setCat) return false;
     setCat.click();
@@ -1642,15 +1636,15 @@ async function runTests(dom, URL) {
       && !!first.querySelector('[data-action="shop-buy"]');
   })(), document.querySelectorAll('#view-container .item-row').length + ' 行');
   check('分类页签按类型计数', shop20.indexOf('图纸') >= 0);
-  /* 切到「图纸」分类 → 应列出倚天套图纸 */
+  /* 切到「图纸」分类 → 应列出陨锋套图纸 */
   G.ui.setShopCat('blueprint');
   await sleep(60);
-  check('切分类后列出倚天套图纸', document.querySelector('#view-container').innerHTML.indexOf('倚天套图纸') >= 0);
-  /* 切到「珠宝」分类 → 低档珠宝可购买（v89.152：珍珠 -> 蚌珠） */
+  check('切分类后列出陨锋套图纸', document.querySelector('#view-container').innerHTML.indexOf('陨锋套图纸') >= 0);
+  /* 切到「珠宝」分类 → 低档珠宝可购买（v89.152：珍珠 -> 珍珠） */
   G.ui.setShopCat('jewel');
   await sleep(60);
   const shopJ = document.querySelector('#view-container').innerHTML;
-  check('切分类后珠宝可购买', shopJ.indexOf('蚌珠') >= 0 && shopJ.indexOf('赏赐忠诚') >= 0);
+  check('切分类后珠宝可购买', shopJ.indexOf('珍珠') >= 0 && shopJ.indexOf('赏赐忠诚') >= 0);
   /* 分页：材料 24 件 → 3 页（每页 8 行），翻页条在底部固定条里 */
   G.ui.setShopCat('material');
   await sleep(60);
@@ -1753,7 +1747,8 @@ async function runTests(dom, URL) {
     tabs21.indexOf('troops') < 0 && tabs21.indexOf('tech') < 0 && tabs21.indexOf('equip') < 0 && tabs21.indexOf('items') < 0,
     tabs21.join(','));
   check('顶栏保留城池入口', tabs21.indexOf('city') >= 0);
-  check('任务导航有红点元素', !!document.querySelector('#tab-badge-task'));
+  check('任务页签在册且无数字徽标（v89.221：改建 .fresh 闪烁）',
+    !!document.querySelector('#topnav .tab[data-view="tasks"]') && !document.querySelector('#tab-badge-task'));
 
   /* ④ 建筑弹窗 → 功能面板（带关闭按钮） */
   const c21 = G.state.cities[0];
@@ -1772,25 +1767,25 @@ async function runTests(dom, URL) {
   G.ui.openBuildModal(idxJY);
   await sleep(60);
   const bm = document.querySelector('#modal-root');
-  check('军营弹窗含「募兵 · 兵种」入口', bm.innerHTML.indexOf('募兵 · 兵种') >= 0);
-  /* v24（需求 8）：入口带 data-idx（队列要挂到具体那座军营） */
+  check('训练营弹窗含「募兵 · 兵种」入口', bm.innerHTML.indexOf('募兵 · 兵种') >= 0);
+  /* v24（需求 8）：入口带 data-idx（队列要挂到具体那座训练营） */
   const entryBtn = bm.querySelector('[data-action="open-troops"][data-idx]');
-  check('找到功能入口按钮（带军营下标）', !!entryBtn, entryBtn ? 'idx=' + entryBtn.dataset.idx : '未找到');
+  check('找到功能入口按钮（带训练营下标）', !!entryBtn, entryBtn ? 'idx=' + entryBtn.dataset.idx : '未找到');
   click(entryBtn);
   await sleep(90);
   const panelHtml = document.querySelector('#modal-root').innerHTML;
   check('军队以弹窗打开（不再切标签页）', panelHtml.length > 400 && document.querySelector('#modal-root').querySelector('[data-action="close-modal"]') !== null,
     panelHtml.length + ' 字符');
-  check('面板标题标明归属建筑', panelHtml.indexOf('军营') >= 0);
+  check('面板标题标明归属建筑', panelHtml.indexOf('训练营') >= 0);
   check('切标签页未发生（仍在城池视图）', G.ui.view === 'city', 'view=' + G.ui.view);
   click(document.querySelector('#modal-root [data-action="close-modal"]'));
   await sleep(60);
   /* v89.117（老板「关闭的时候不回到上一级界面…这个操作逻辑很别扭」）：
-     从下级面板（军队）点 ✕ = **返回上一级**（军营面板）；再点一次才全关。
+     从下级面板（军队）点 ✕ = **返回上一级**（训练营面板）；再点一次才全关。
      这条断言把"层"的行为钉在真 DOM 上（smoke 里另有结构化断言）。 */
   const afterOne = document.querySelector('#modal-root').innerHTML;
-  check('v89.117：下级点 ✕ → 回到上一级（军营面板，不是全关）',
-    afterOne.length > 100 && afterOne.indexOf('军营') >= 0, afterOne.length + ' 字符');
+  check('v89.117：下级点 ✕ → 回到上一级（训练营面板，不是全关）',
+    afterOne.length > 100 && afterOne.indexOf('训练营') >= 0, afterOne.length + ' 字符');
   click(document.querySelector('#modal-root [data-action="close-modal"]'));
   await sleep(60);
   check('关闭按钮生效（顶层 ✕ → 全关）', document.querySelector('#modal-root').innerHTML.length < 20,
@@ -1807,13 +1802,20 @@ async function runTests(dom, URL) {
   const cells21 = bagH.querySelectorAll('.bag-cell');
   check('背包装备格子渲染', cells21.length >= 5, cells21.length + ' 格');
   check('每格都有悬停浮层', bagH.querySelectorAll('.bag-tip').length === cells21.length);
-  check('浮层含属性文案', /class="tip-a"/.test(bagH.innerHTML));
+  /* v89.214（老板 1）规则变更：装备悬停改**分行**（.eqv-line 逐属性一行 ·
+     原始值白 / 百炼增量金 d1 / 调校增量青 d2）—— 旧断言查 .tip-a，按新形态重写。 */
+  check('浮层含属性文案（v89.214 分行形态：eqv-line + 白值/增量三段）',
+    /eqv-line/.test(bagH.innerHTML) && /class="eqv-b"/.test(bagH.innerHTML)
+    && /class="eqv-k"/.test(bagH.innerHTML));
   const grid21 = bagH.querySelector('.bag-grid');
   check('网格为 5 列（CSS 声明）', !!grid21 && /repeat\(5, 1fr\)/.test(document.querySelector('style') ? document.documentElement.innerHTML : ''),
     grid21 ? grid21.className : 'n/a');
-  check('v79：同名装备以序号区分（甲/乙 入名，替代数量角标）',
-    /·甲/.test(bagH.innerHTML) && /·乙/.test(bagH.innerHTML),
-    (bagH.innerHTML.match(/·[甲乙丙丁]/g) || []).join(' '));
+  /* v89.214（老板 1）规则变更：**名称行不再入序号**（甲/乙 退为内部编号）——
+     旧断言查"·甲/·乙 在 HTML 里"，按新规则重写为：名称行无序号 + 内部编号仍在。 */
+  check('v89.214：同名件名称行**无**序号（·甲/·乙 不再入名）',
+    !/·[甲乙丙丁]/.test(bagH.innerHTML)
+    && G.eqSerialNo(bagH.querySelectorAll('.bag-cell').length ? G.state.inventory.filter(function (x) { return x && x.id === 'cr_head_1'; })[0] : null) >= 1,
+    'names=' + (bagH.innerHTML.match(/bag-name"[^>]*>[^<]*/g) || []).slice(0, 6).join('|'));
   /* 材料（宝物 · 材料分类）—— v89.115：两类页签 + 二级分类条 */
   await bagTabTo('material');
   bagH = document.querySelector('#view-container');
@@ -2188,7 +2190,7 @@ async function runTests(dom, URL) {
     let bIdx110 = -1;
     (cD110.cells || []).forEach((x, i) => { if (!x.build && !x.official && bIdx110 < 0) bIdx110 = i; });
     if (bIdx110 < 0) {
-      check('v89.110：解散两段式（找不到空位摆军营）', false);
+      check('v89.110：解散两段式（找不到空位摆训练营）', false);
     } else {
       const bakB110 = cD110.cells[bIdx110].build || null;
       const bakA110 = JSON.parse(JSON.stringify(cD110.army || {}));
@@ -2434,14 +2436,6 @@ async function runTests(dom, URL) {
       c23.army = Object.assign({}, c23.army, { yibing: 20000 });
       const gen2 = G.state.generals.filter((g) => g.id !== g23.id)[0] || g23;
       gen2.stamina = 100; gen2.energy = 100;
-      /* v89.31：战事奇遇 —— pin 取「胜/败两池交集」指定必中（无论胜负都能命中） */
-      const _pw31 = G.SG.actPool('battle-win');
-      const _pl31 = G.SG.actPool('battle-lose');
-      const _set31 = {};
-      _pl31.fresh.concat(_pl31.done).forEach((r) => { _set31[r.st.id] = 1; });
-      const _ov31 = _pw31.fresh.concat(_pw31.done).filter((r) => _set31[r.st.id]);
-      const _pin31 = ((_ov31[0] || _pw31.fresh[0] || _pw31.done[0]).st || {}).id;
-      G.SG.TRIG.pin = _pin31; G.SG.TRIG._actAt = {};
       const r23b = G.march.dispatch({ kind: 'wild', x: w23.x, y: w23.y }, 'raid', { yibing: 20000 }, gen2.id);
       if (r23b.ok) {
         await sleep(60);
@@ -2454,23 +2448,8 @@ async function runTests(dom, URL) {
           G.armyTotal(c23) + (G.state.wounded || 0) > 0,
           '归营 ' + G.armyTotal(c23) + ' · 伤兵 ' + (G.state.wounded || 0));
         check('抵达后将领恢复空闲', G.state.generals.every((g) => g.status !== 'march'));
-        /* v89.31 战事触发链 → v89.86（P-06）待阅语义：
-           抵达结算命中 → 入待阅（不再全屏打断）→ 从待阅开卷 → 掩卷出列 */
-        const fx31 = document.querySelector('#story-fx');
-        const pend31 = (G.SG.pending() || []).some((x) => x.sid === _pin31);
-        check('★ v89.86（P-06）：战事触发 · 入待阅（相关建筑池 · ' + _pin31 + '）',
-          pend31 && (!fx31 || fx31.style.display === 'none'));
-        G.ui.sgReadPending(_pin31);
-        await sleep(40);
-        /* ⚠️ 阅读器元素可能在本用例**首次创建** —— 必须重查，不能沿用开卷前抓的引用（否则是 null） */
-        const fx31b = document.querySelector('#story-fx');
-        check('★ v89.86（P-06）：从待阅开卷（同一阅读器 · ' + _pin31 + '）',
-          !!fx31b && fx31b.style.display !== 'none' && !!G.SG._run && G.SG._run.st.id === _pin31);
-        const ex31 = fx31b && fx31b.querySelector('[data-action="story-exit"]');
-        if (ex31) { click(ex31); await sleep(30); }
-        check('★ v89.86（P-06）：掩卷收起 · 待阅已出列', !!fx31b && fx31b.style.display === 'none'
-          && !(G.SG.pending() || []).some((x) => x.sid === _pin31));
-        G.SG.TRIG.pin = null; G.SG.TRIG._actAt = {};
+        /* v89.218：原「战事逸闻触发链」断言（v89.31 / v89.86 P-06）随故事系统退役；
+           抵达结算本身由上方两条断言守（兵力去向 / 将领恢复）。 */
       }
     }
 
@@ -2501,7 +2480,7 @@ async function runTests(dom, URL) {
 
   /* ============================================================
    * 24. v19 十项体验修复：升级不锁功能 / 菜单分组 / 行军菜单 /
-   *     弹窗统一 / 侧栏精简 / 建筑移动与改建 / 仓库多建
+   *     弹窗统一 / 侧栏精简 / 建筑移动与改建 / 货仓多建
    * ============================================================ */
   console.log('\n--- 24. v19 体验修复（真实 DOM）---');
   {
@@ -2520,7 +2499,7 @@ async function runTests(dom, URL) {
       }
     };
 
-    /* v68（逐步探索）：官府拉满 —— 本段专注"升级不锁功能"，不受官府总闸干扰 */
+    /* v68（逐步探索）：政务厅拉满 —— 本段专注"升级不锁功能"，不受政务厅总闸干扰 */
     c24.cells.forEach((x) => { if (x.build && x.build.id === 'guanfu') x.build.lvl = 12; });
 
     /* ---- ① 升级是后台过程：升级中仍能打开功能面板 ---- */
@@ -2533,10 +2512,10 @@ async function runTests(dom, URL) {
     await sleep(80);
     let mh24 = document.querySelector('#modal-root').innerHTML;
     check('升级中面板显示「升级中」与目标等级', mh24.indexOf('升级中') >= 0 && /Lv1 → Lv2/.test(mh24));
-    check('升级中面板保留功能入口（军营→募兵）',
+    check('升级中面板保留功能入口（训练营→募兵）',
       mh24.indexOf('募兵') >= 0 && !!document.querySelector('#modal-root [data-action="open-troops"]'));
     check('升级中面板可取消升级（v89.110：走二次确认）', !!document.querySelector('#modal-root [data-action="cancel-build-ask"]'));
-    /* v72（老板报障「官府升级中点击被撑爆」）→ v73（老板「顶部的图标也不要留」）：
+    /* v72（老板报障「政务厅升级中点击被撑爆」）→ v73（老板「顶部的图标也不要留」）：
        顶部图标块整体撤除 —— 连根拔除 1024px 位图撑爆的土壤，同时清掉旧 emoji 观感。 */
     check('v73：升级中面板不再有顶部图标（.dlg-ico 连根退役）',
       !document.querySelector('#modal-root .dlg-ico')
@@ -2555,7 +2534,7 @@ async function runTests(dom, URL) {
     const tr24 = G.train('yibing', 50, c24.id);
     check('升级中仍可发起募兵', tr24.ok, tr24.msg);
     finishAll24();
-    /* 判据用「该格等级」：全城可能已有多座军营，buildingLevel() 取的是最高级 */
+    /* 判据用「该格等级」：全城可能已有多座训练营，buildingLevel() 取的是最高级 */
     check('升级完成后该格等级生效 Lv2', c24.cells[junI].build && c24.cells[junI].build.lvl === 2,
       '该格 Lv' + (c24.cells[junI].build && c24.cells[junI].build.lvl));
     check('升级完成清空施工标记', !c24.cells[junI].pending);
@@ -2576,7 +2555,7 @@ async function runTests(dom, URL) {
     /* v29（需求 8）：资源栏首行是"本城 · 城名"表头，所以这里按**标签集合**判定 */
     check('资源行标签为纯文字', (function () {
       var ls = Array.prototype.map.call(rb24.querySelectorAll('.lbl'), function (x) { return x.textContent.trim(); });
-      return ls.indexOf('粮食') >= 0 && ls.indexOf('木材') >= 0;
+      return ls.indexOf('净水') >= 0 && ls.indexOf('木料') >= 0;
     })(), Array.prototype.map.call(rb24.querySelectorAll('.lbl'), function (x) { return x.textContent.trim(); }).join('/'));
 
     G.ui.renderCityAttrs(c24, s24);
@@ -2640,9 +2619,9 @@ async function runTests(dom, URL) {
     check('公告不再单独占菜单', !nav24.querySelector('[data-action="open-notice"]'));
     /* v89.104：删「统计」、将领/军务/任务三者相邻、新增「故事集」独立页与「自动」
        顺序取自 index.html 的 #topnav 实装（分隔线 = null） */
-    check('菜单分组顺序正确（场景→军事[将领/军务/任务]→商背→记录→系统）', (function () {
+    check('菜单分组顺序正确（场景→军事[将领/军务/任务]→商背→公文→系统 · v89.218 史册/故事集退役）', (function () {
       const order = ['city', 'ext', 'map', null, 'generals', 'marches', 'tasks', null,
-        'shop', 'bag', null, 'story', 'stories', 'reports', null, 'auto', 'settings'];
+        'shop', 'bag', 'collection', null, 'reports', null, 'auto', 'settings'];
       const els = Array.from(nav24.children).filter((e) => e.classList.contains('tab') || e.classList.contains('nav-sep'));
       let k = 0;
       for (const e of els) {
@@ -2650,7 +2629,7 @@ async function runTests(dom, URL) {
         if (key === null && e.dataset.action) continue;  // 存档/新游戏等尾部按钮
         if (k < order.length && key === order[k]) k++;
       }
-      return k >= 16;
+      return k >= order.length - 1;   /* v89.218：序列长度随页签退役自适应 */
     })());
 
     G.ui.setView('reports');
@@ -2705,7 +2684,7 @@ async function runTests(dom, URL) {
 
     /* ---- ⑥ 城内建筑移动 / 交换（走真实按钮） ---- */
     const mvFrom = findEmpty24();
-    /* 用民房做移动样本：民房非唯一建筑，不受「已建造」限制 */
+    /* 用居所做移动样本：居所非唯一建筑，不受「已建造」限制 */
     const mvBuild = G.buildAt(c24.id, mvFrom, 'minfang');
     finishAll24();
     check('移动样本建筑建成', mvBuild.ok && !!c24.cells[mvFrom].build, mvBuild.msg);
@@ -2729,11 +2708,11 @@ async function runTests(dom, URL) {
     check('确认后建筑已搬迁', !c24.cells[mvFrom].build && !!c24.cells[mvTo].build && c24.cells[mvTo].build.id === 'minfang',
       JSON.stringify(c24.cells[mvTo].build));
     check('移动后清空待选状态', G.ui._moveFrom === null);
-    /* 官府不能被移动 */
+    /* 政务厅不能被移动 */
     const gv24 = c24.cells.findIndex((x) => x.official);
     const e24 = findEmpty24();
     const mvGv = G.moveBuilding(c24.id, gv24, e24);
-    check('官府不可移动（正确拒绝）', !mvGv.ok && /官府/.test(mvGv.msg), mvGv.msg);
+    check('政务厅不可移动（正确拒绝）', !mvGv.ok && /政务厅/.test(mvGv.msg), mvGv.msg);
 
     /* ---- ⑦ 城外改建（走真实按钮） ---- */
     G.ensureExtGrid(c24);
@@ -2764,7 +2743,7 @@ async function runTests(dom, URL) {
     check('改建成功且等级保留', grid24[ei24].type === tType && grid24[ei24].lv === 3,
       grid24[ei24].type + ' Lv' + grid24[ei24].lv);
 
-    /* ---- ⑧ 仓库可多建（前端不再禁用） ---- */
+    /* ---- ⑧ 货仓可多建（前端不再禁用） ---- */
     G.ui.setView('city');
     await sleep(80);
     const emptyForCk = findEmpty24();
@@ -2773,7 +2752,7 @@ async function runTests(dom, URL) {
       await sleep(80);
       const cangkuCard = Array.from(document.querySelectorAll('#modal-root .troop-card'))
         .find((el) => el.getAttribute('data-build') === 'cangku');
-      check('仓库在建造列表中可选（不再标「已建造(唯一)」）',
+      check('货仓在建造列表中可选（不再标「已建造(唯一)」）',
         !!cangkuCard && !cangkuCard.classList.contains('disabled'),
         cangkuCard ? (cangkuCard.className || 'ok') : '未找到卡片');
       G.ui.closeAllModals();
@@ -2784,8 +2763,8 @@ async function runTests(dom, URL) {
     finishAll24();
     const ck2 = G.buildAt(c24.id, findEmpty24(), 'cangku');
     finishAll24();
-    check('可连建多座仓库', ck1.ok && ck2.ok, (ck1.msg || '') + ' / ' + (ck2.msg || ''));
-    check('储量随仓库数叠加', G.buildingLevelSum(c24, 'cangku') === before24 + 2 && G.storeCap() > capBefore24,
+    check('可连建多座货仓', ck1.ok && ck2.ok, (ck1.msg || '') + ' / ' + (ck2.msg || ''));
+    check('储量随货仓数叠加', G.buildingLevelSum(c24, 'cangku') === before24 + 2 && G.storeCap() > capBefore24,
       G.utils.fmt(capBefore24) + ' → ' + G.utils.fmt(G.storeCap()));
 
     /* ---- ⑨ 任务页占位文案已删 ---- */
@@ -2815,7 +2794,7 @@ async function runTests(dom, URL) {
   check('标题统一规则已加载（.gold-heading, .m-title）',
     sheet21_v21.indexOf('.gold-heading') >= 0 && sheet21_v21.indexOf('.m-title') >= 0);
 
-  /* 需求 1：伤兵营 —— 行军视图 / 行军弹窗 / 校场 */
+  /* 需求 1：伤兵营 —— 行军视图 / 行军弹窗 / 练兵场 */
   const s21_v21 = G.state;
   const bk21_v21 = { w: s21_v21.wounded, wa: s21_v21.woundedArmy };
   s21_v21.wounded = 777;
@@ -2850,7 +2829,7 @@ async function runTests(dom, URL) {
     document.querySelector('#modal-root').innerHTML.indexOf('data-heal-host="marches"') >= 0);
   G.ui.closeAllModals();
 
-  /* 校场：若本城未建，先建一座并推进完工 */
+  /* 练兵场：若本城未建，先建一座并推进完工 */
   const c21_v21 = G.currentCity();
   if (!c21_v21.cells.some((x) => x.build && x.build.id === 'xiaochang')) {
     const em21_v21 = c21_v21.cells.findIndex((x) => !x.build && !x.pending);
@@ -2867,20 +2846,20 @@ async function runTests(dom, URL) {
       }
     }
   }
-  /* v89.133（v89.128 第二批第 10 条 · 老板）：「校场不要现在的界面功能，点击建筑功能
+  /* v89.133（v89.128 第二批第 10 条 · 老板）：「练兵场不要现在的界面功能，点击建筑功能
      直接进入'军务'界面」—— 面板退役，动作直接切军务视图（这里走同一动作分发）。 */
   G.action('open-xiaochang', { dataset: {} });
   await sleep(140);
-  check('点校场 → 直接进军务视图（校场面板退役 · 第 10 条）',
+  check('点练兵场 → 直接进军务视图（练兵场面板退役 · 第 10 条）',
     G.ui.view === 'marches' && G.ui._marchTab === 'over',
     (G.ui.view || '-') + '/' + (G.ui._marchTab || '-'));
-  /* 军队校场扩容页（expand · v89.144 老板 3：从出征页整块搬家、独立页签放军务总览右边） */
+  /* 军队练兵场扩容页（expand · v89.144 老板 3：从出征页整块搬家、独立页签放军务总览右边） */
   G.ui._marchTab = 'expand';
   G.ui.setView('marches');
   await sleep(120);
   const expd21_v21 = vc.innerHTML;
-  check('军队校场扩容页（军务总览右边）：出征容量（人马口径）+ 节钺 · 校场扩编入口',
-    expd21_v21.indexOf('军队校场扩容') >= 0
+  check('军队练兵场扩容页（军务总览右边）：出征容量（人马口径）+ 节钺 · 练兵场扩编入口',
+    expd21_v21.indexOf('军队练兵场扩容') >= 0
     && expd21_v21.indexOf('出征容量') >= 0 && expd21_v21.indexOf('人马') >= 0
     && expd21_v21.indexOf('data-action="jieyue-xc"') >= 0);
   /* 出征页（act）：目标入口 + 5 类分行（容量口径已随页签搬走） */
@@ -2916,11 +2895,12 @@ async function runTests(dom, URL) {
     && extac21_v21.indexOf('class="city-select tl-sel"') >= 0
     && extac21_v21.indexOf('data-action="exp-tac-sub"') >= 0
     && extac21_v21.indexOf('🚩 占领战术') >= 0
-    && extac21_v21.indexOf('练兵') < 0
+    /* v89.214：'练兵' 已成常用词（页签「军队练兵场扩容」含之）—— 判据收窄到**被撤的那两块**（演武/阅兵） */
+    && extac21_v21.indexOf('演武') < 0 && extac21_v21.indexOf('阅兵') < 0
     && extac21_v21.indexOf('data-action="xc-spar"') < 0
     && extac21_v21.indexOf('🚩 在途') < 0);
 
-  /* 治疗链：直接走 go-affairs（校场指引行随面板退役）→ 军务·军务处 */
+  /* 治疗链：直接走 go-affairs（练兵场指引行随面板退役）→ 军务·军务处 */
   const armyBefore21_v21 = JSON.parse(JSON.stringify(c21_v21.army || {}));
   s21_v21.res.gold = 1e7;
   G.action('go-affairs', { dataset: {} });
@@ -2979,10 +2959,10 @@ async function runTests(dom, URL) {
   /* ================= v22：点选控件与肖像（真实 DOM） ================= */
   console.log('\n--- v22 点选控件 / 肖像 / 城池视图 ---');
 
-  /* 需求 1：数量控件的行为（不重绘 —— v89.60 市场合并为单块后，点选控件只剩数量预设） */
+  /* 需求 1：数量控件的行为（不重绘 —— v89.60 交易站合并为单块后，点选控件只剩数量预设） */
   G.ui.openMarket();
   await sleep(70);
-  check('市场为单块表（无下拉框、无互换 chip）',
+  check('交易站为单块表（无下拉框、无互换 chip）',
     !document.querySelector('#modal-root select')
     && !!document.querySelector('#modal-root .ms-table')
     && !document.querySelector('#modal-root [data-target="mk-from"]'));
@@ -3032,11 +3012,11 @@ async function runTests(dom, URL) {
   const pureBox = vc.querySelector('.city-pure');
   check('城池视图只有棋盘（无标题行/征收/岁贡）',
     !!pureBox && vc.querySelectorAll('.iso-tile').length >= 32 && !!vc.querySelector('.gov-palace')
-    && vc.innerHTML.indexOf('州郡岁贡') < 0 && vc.innerHTML.indexOf('显示比例') < 0
-    && vc.innerHTML.indexOf('官府Lv') < 0);
-  /* v24（需求 4）：征收已移入官府建筑，侧栏城池操作只留 切换城池/显示比例/岁贡 */
+    && vc.innerHTML.indexOf('辖区岁贡') < 0 && vc.innerHTML.indexOf('显示比例') < 0
+    && vc.innerHTML.indexOf('政务厅Lv') < 0);
+  /* v24（需求 4）：征收已移入政务厅建筑，侧栏城池操作只留 切换城池/显示比例/岁贡 */
   const toolsV24 = (document.querySelector('#city-attrs') || {}).innerHTML || '';
-  /* v25（需求 3/4/5）：征收→官府、显示比例→设置、岁贡→名城官府，这一栏只剩"切城"，
+  /* v25（需求 3/4/5）：征收→政务厅、显示比例→设置、岁贡→名城政务厅，这一栏只剩"切城"，
      单城时整块收起 */
   check('侧栏不再有 征收/显示比例/岁贡（板块已删）',
     toolsV24.indexOf('征收') < 0 && toolsV24.indexOf('显示比例') < 0 && toolsV24.indexOf('岁贡') < 0);
@@ -3046,21 +3026,21 @@ async function runTests(dom, URL) {
   /* ================= v23：地块管理 / 角标 / 宫殿 / 统计 ================= */
   console.log('\n--- v23 地块管理与界面细化 ---');
 
-  /* 需求 4：官府宫殿在真实 DOM 里 */
+  /* 需求 4：政务厅宫殿在真实 DOM 里 */
   G.ui.setView('city');
   await sleep(90);
   const palace23 = vc.querySelector('.gov-palace');
-  check('官府渲染为一座跨格宫殿（需求 4）',
+  check('政务厅渲染为一座跨格宫殿（需求 4）',
     !!palace23 && !!palace23.querySelector('svg.gov-svg, img.gov-img'));
-  /* v36（需求 1）：官府曾是唯一绕过图标层的建筑（专属手写 SVG）→ AI 位图接不进来 */
-  check('官府已改用 AI 位图（不再只有手写 SVG）',
+  /* v36（需求 1）：政务厅曾是唯一绕过图标层的建筑（专属手写 SVG）→ AI 位图接不进来 */
+  check('政务厅已改用 AI 位图（不再只有手写 SVG）',
     !!vc.querySelector('.gov-palace img.gov-img[src*="ai_guanfu.png"]'));
   check('宫殿尺寸覆盖 2×2 格', (function () {
     if (!palace23) return false;
     const w = parseInt(palace23.style.width, 10), h = parseInt(palace23.style.height, 10);
     return w > 0 && w === h;
   })(), palace23 ? (palace23.style.width + '×' + palace23.style.height) : 'n/a');
-  check('宫殿整体可点开官府面板', !!palace23 && palace23.getAttribute('data-action') === 'build-cell');
+  check('宫殿整体可点开政务厅面板', !!palace23 && palace23.getAttribute('data-action') === 'build-cell');
   check('旧的四格台基不再渲染', vc.querySelectorAll('.iso-tile.gov').length === 0);
 
   /* 需求 2/3：角标在真实 DOM 里位于格内右上 */
@@ -3071,7 +3051,7 @@ async function runTests(dom, URL) {
 
   /* 需求 1：多城 —— 点地图上自己的第二座城会切换 */
   const ownIdx23 = G.state.cities.length;
-  const extraCity23 = G.makeCity({ id: 'e2e23_b', name: '测试二城', x: 260, y: 230, type: 'jun', state: '荆州' });
+  const extraCity23 = G.makeCity({ id: 'e2e23_b', name: '测试二城', x: 260, y: 230, type: 'jun', state: '泽心' });
   G.state.cities.push(extraCity23);
   check('自己的第二座城被拾取为 player（此前会被当成 NPC）', (function () {
     const hit = G.map.ownCityAt(260, 230);
@@ -3081,7 +3061,7 @@ async function runTests(dom, URL) {
   await sleep(80);
   check('切入第二座城后侧栏跟随该城',
     (document.querySelector('#city-attrs') || {}).innerHTML.indexOf('测试二城') >= 0);
-  check('第二座城的官府宫殿正常渲染', !!vc.querySelector('.gov-palace'));
+  check('第二座城的政务厅宫殿正常渲染', !!vc.querySelector('.gov-palace'));
   G.state.cities.pop();
   G.ui.setCity(G.state.cities[0].id);
   await sleep(60);
@@ -3124,7 +3104,7 @@ async function runTests(dom, URL) {
   G.ui.setView('stats');
   await sleep(90);
   const stats23 = vc.innerHTML;
-  /* v27（需求 7）：卡片网格 → 官府黄册（分段账册 + 引线行） */
+  /* v27（需求 7）：卡片网格 → 政务厅黄册（分段账册 + 引线行） */
   /* v54（老板）：删掉别处已有的三块（君主/府库/军民）后只剩三节，判据跟着改 */
   /* v60（需求 3）：满级专精一节已从全境汇总撤出（搬进各建筑面板）→ 只剩两节 */
   check('统计页不含侧栏（独占整宽）', !document.querySelector('.main:not(.solo)'));
@@ -3172,7 +3152,7 @@ async function runTests(dom, URL) {
     check('导航条没有声明 flex-wrap（折行的前提）', !!m && !/flex-wrap/.test(m[0]));
   })();
 
-  /* ④⑤ 官府征收（真实点击：官府弹窗 → 征收按钮）
+  /* ④⑤ 政务厅征收（真实点击：政务厅弹窗 → 征收按钮）
      为使判据确定：临时把当前城设为「普通城池」（否则名城只征得到材料），
      并把四类实物压到仓容 10% 以内（满仓时本就征不进，属正确的拒绝）。 */
   G.ui.setView('city');
@@ -3180,23 +3160,23 @@ async function runTests(dom, URL) {
   await sleep(80);
   /* data-action 挂在 .gov-palace 本体上（跨格融合成一座宫殿，整体可点） */
   const gov24 = vc.querySelector('.gov-palace[data-action="build-cell"]');
-  check('城内可点到官府宫殿（整个宫殿为一个点击目标）', !!gov24);
+  check('城内可点到政务厅宫殿（整个宫殿为一个点击目标）', !!gov24);
   if (gov24) {
     click(gov24);
     await sleep(90);
-    /* v89.135（老板 10）：官府事务按钮退役 —— 点官府格直接是建筑面板（官府要务直显） */
+    /* v89.135（老板 10）：政务厅事务按钮退役 —— 点政务厅格直接是建筑面板（政务厅要务直显） */
     const gm0 = document.querySelector('#modal-root').innerHTML;
-    check('点官府宫殿打开建筑面板（官府要务直显 · 无官府事务按钮）',
-      gm0.indexOf('data-action="open-guanfu"') < 0 && gm0.indexOf('官府要务') >= 0);
+    check('点政务厅宫殿打开建筑面板（政务厅要务直显 · 无政务厅事务按钮）',
+      gm0.indexOf('data-action="open-guanfu"') < 0 && gm0.indexOf('政务厅要务') >= 0);
   }
-  /* v82（老板）/v89.135：征收退役 + 官府功能直显（改名/主城/秘境） */
+  /* v82（老板）/v89.135：征收退役 + 政务厅功能直显（改名/主城/遗迹） */
   openGov();
   await sleep(80);
   const gm24 = document.querySelector('#modal-root').innerHTML;
-  check('v82：官府建筑面板已无征收区（物资表 / 征收按钮退役）',
-    gm24.indexOf('官府') >= 0 && gm24.indexOf('征收物资') < 0
+  check('v82：政务厅建筑面板已无征收区（物资表 / 征收按钮退役）',
+    gm24.indexOf('政务厅') >= 0 && gm24.indexOf('征收物资') < 0
     && !document.querySelector('#levy-btn'));
-  check('v89.135：官府要务三键齐（改名 / 主城 / 秘境）· 无在办事项',
+  check('v89.135：政务厅要务三键齐（改名 / 主城 / 遗迹）· 无在办事项',
     gm24.indexOf('在办事项') < 0 && gm24.indexOf('open-rename-city') >= 0
     && gm24.indexOf('open-farm') >= 0);
   G.ui.closeAllModals();
@@ -3216,9 +3196,9 @@ async function runTests(dom, URL) {
   /* v26（需求 5）：setCitySub 已随子页签删除 —— 城外改为顶栏平级视图 */
   G.ui.setView('ext');
   await sleep(90);
-  /* v89.142（老板 1）：棋盘固定 12×8=96 常显 —— 亮格 = 官府等级上限，其余为**暗格**。
+  /* v89.142（老板 1）：棋盘固定 12×8=96 常显 —— 亮格 = 政务厅等级上限，其余为**暗格**。
      判据两层：① 总格数 = 96（EXT_CAP_MAX）；② 亮格（非 .locked）= extCap。 */
-  check('城外棋盘 96 格常显：亮格 = 官府等级上限 · 其余暗格（12×8 · v89.142）', (function () {
+  check('城外棋盘 96 格常显：亮格 = 政务厅等级上限 · 其余暗格（12×8 · v89.142）', (function () {
     var cap = G.extCap(G.currentCity());
     var all = vc.querySelectorAll('.iso-tile').length;
     var locked = vc.querySelectorAll('.iso-tile.locked').length;
@@ -3241,10 +3221,10 @@ async function runTests(dom, URL) {
     click(document.querySelector('#modal-root [data-action="train-tab"][data-page="que"]'));
     await sleep(90);
     const tm24 = document.querySelector('#modal-root').innerHTML;
-    /* v80（老板）：「募兵军营 城内第 46 格 · Lv11 · 队列位 3 这个也不需要」——
+    /* v80（老板）：「募兵训练营 城内第 46 格 · Lv11 · 队列位 3 这个也不需要」——
        面板不再标所属工位；重复标题也撤除（只留弹窗标题一处） */
-    check('v80：募兵面板不再标所属军营 / 重复标题',
-      tm24.indexOf('募兵军营') < 0 && tm24.indexOf('队列位') < 0
+    check('v80：募兵面板不再标所属训练营 / 重复标题',
+      tm24.indexOf('募兵训练营') < 0 && tm24.indexOf('队列位') < 0
       && (tm24.match(/兵营招募/g) || []).length === 1);
     check('募兵面板列出本营队列一节', tm24.indexOf('本营募兵队列') >= 0);
     /* 通过真实入口按钮进入，确认 data-idx 被带进去 */
@@ -3253,11 +3233,11 @@ async function runTests(dom, URL) {
     G.ui.openBuildModal(junI24);
     await sleep(70);
     const jBtn = document.querySelector('#modal-root [data-action="open-troops"]');
-    check('军营弹窗的募兵入口带 data-idx', !!jBtn && String(jBtn.dataset.idx) === String(junI24),
+    check('训练营弹窗的募兵入口带 data-idx', !!jBtn && String(jBtn.dataset.idx) === String(junI24),
       jBtn ? 'idx=' + jBtn.dataset.idx : '未找到');
     click(jBtn);
     await sleep(90);
-    check('点击后打开的是该军营的募兵面板',
+    check('点击后打开的是该训练营的募兵面板',
       G.ui._trainBIdx === junI24
       && document.querySelector('#modal-root').innerHTML.indexOf('兵营招募') >= 0);
     G.ui.closeAllModals();
@@ -3269,8 +3249,8 @@ async function runTests(dom, URL) {
   await sleep(100);
   check('自动化界面：左名单九项 + 右详情（v89.115 分栏 · v89.118 外敌来犯 · v89.128 采集 · v89.190 自动征兵）', (function () {
     /* v89.115：整合成「左 1/3 名单 + 右 2/3 详情」，新增「🏥 自动治疗」；
-       v89.118：再加「🔥 外敌来犯」（开关 + 介绍 + 烽火流水，从军务·烽火迁来）。
-       v89.190（老板 2）：再加「🛡️ 自动征兵」（兵营募兵；与「🧲 自动招募」= 客栈招将并列）。 */
+       v89.118：再加「🔥 外敌来犯」（开关 + 介绍 + 警报流水，从军务·警报迁来）。
+       v89.190（老板 2）：再加「🛡️ 自动征兵」（兵营募兵；与「🧲 自动招募」= 酒馆招将并列）。 */
     var items = vc.querySelectorAll('.auto-item');
     return items.length === 9 && !!vc.querySelector('.auto-pane')
       && !!vc.querySelector('[data-action="auto-pick"][data-key="heal"]')
@@ -3362,7 +3342,7 @@ async function runTests(dom, URL) {
     var r = G.autoMarchOnce(cfg);
     return r.ok === false && /指定/.test(r.msg);
   })());
-  check('器械与斥候不会被编入自动队伍', (function () {
+  check('器械与侦察兵不会被编入自动队伍', (function () {
     var pick = G.autoMarchPickArmy({ army: { toudan: 50, chongche: 50, chihou: 20, tieji: 900, yibing: 5000 } }, 3000);
     return !pick.army.toudan && !pick.army.chongche && !pick.army.chihou
       && pick.total === 3000 && pick.army.tieji === 900;
@@ -3385,7 +3365,7 @@ async function runTests(dom, URL) {
       && !!root.querySelector('[data-action="am-toggle"]')
       && !!root.querySelector('[data-action="am-once"]');
   })());
-  check('v89.140：编成表列出全部**可编入**兵种（与 autoMarchPickArmy 同口径，器械/斥候/辎重不列）', (function () {
+  check('v89.140：编成表列出全部**可编入**兵种（与 autoMarchPickArmy 同口径，器械/侦察兵/辎重不列）', (function () {
     var root = document.querySelector('#modal-root');
     if (!root) return false;
     var txt = root.textContent || '', n = 0, tot = 0;
@@ -3439,7 +3419,7 @@ async function runTests(dom, URL) {
   G.ui.closeAllModals();
   await sleep(50);
 
-  /* ⑨ 队列在官府（v29 · 需求 6 迁入） */
+  /* ⑨ 队列在政务厅（v29 · 需求 6 迁入） */
   G.ui.setView('reports');
   await sleep(100);
   check('公文已无队列一节（真实 DOM）', !document.querySelector('#doc-queues'));
@@ -3447,16 +3427,16 @@ async function runTests(dom, URL) {
   await sleep(100);
   const dq24 = (document.querySelector('#modal-root') || {}).textContent || '';
   check('底部队列播报条不再存在', !document.querySelector('#queue-bar'));
-  check('官府建筑面板可读到内容（官府要务）',
-    dq24.indexOf('官府要务') >= 0, dq24.replace(/\s+/g, ' ').slice(-60));
+  check('政务厅建筑面板可读到内容（政务厅要务）',
+    dq24.indexOf('政务厅要务') >= 0, dq24.replace(/\s+/g, ' ').slice(-60));
   G.ui.closeAllModals();
 
   /* ============================================================
    * v25（需求 1-14）真实 DOM 验证
    * ============================================================ */
-  console.log('\n--- v25. 城墙环 / 整页视图 / 任务详情 / 改名 / 美术（真实 DOM） ---');
+  console.log('\n--- v25. 围墙环 / 整页视图 / 任务详情 / 改名 / 美术（真实 DOM） ---');
 
-  /* ① 城墙：点墙环打开面板（v89.128：环城视觉是城墙建筑的外观） */
+  /* ① 围墙：点墙环打开面板（v89.128：环城视觉是围墙建筑的外观） */
   G.wallSlotOf(G.currentCity()).build = { id: 'chengqiang', lvl: 3 };   /* 摆上（该城未建） */
   G.ui.setView('city');
   await sleep(90);
@@ -3469,7 +3449,7 @@ async function runTests(dom, URL) {
     const tileTop = parseFloat(tile.style.top);
     return hitBottom <= tileTop;
   })());
-  /* v89.128：点墙环 = 打开**环城槽**的面板（未建 → 「修建城墙」；已建 → 通用建筑面板）。
+  /* v89.128：点墙环 = 打开**环城槽**的面板（未建 → 「修建围墙」；已建 → 通用建筑面板）。
      先用"未建"场景验修建入口，再摆上验升级入口。 */
   G.wallSlotOf(G.currentCity()).build = null;   /* 未建场景 */
   G.refreshAll();
@@ -3478,14 +3458,14 @@ async function runTests(dom, URL) {
   await sleep(90);
   const mrWall = document.querySelector('#modal-root');
   let wallTxt = (mrWall.innerHTML || '').replace(/<[^>]+>/g, ' ');
-  check('点墙环（未建）→ 打开「修建城墙」面板（修建按钮在册）',
-    wallTxt.indexOf('城墙') >= 0 && !!mrWall.querySelector('[data-build="chengqiang"]'),
+  check('点墙环（未建）→ 打开「修建围墙」面板（修建按钮在册）',
+    wallTxt.indexOf('围墙') >= 0 && !!mrWall.querySelector('[data-build="chengqiang"]'),
     'modal=' + wallTxt.replace(/\s+/g, ' ').slice(0, 96));
   G.ui.closeAllModals();
   await sleep(40);
   /* 已建场景：点墙环 → 通用建筑面板（升级键带 data-idx="wall"） */
   G.wallSlotOf(G.currentCity()).build = { id: 'chengqiang', lvl: 3 };
-  /* v89.191（老板 3-①②/③）：城墙吃两道新闸 —— 配对（作坊 ≥ 目标−2）与建筑技术 Lv1。
+  /* v89.191（老板 3-①②/③）：围墙吃两道新闸 —— 配对（作坊 ≥ 目标−2）与建筑技术 Lv1。
      本用例验的是"面板升级键在册"，前置摆足即可（不影响后续用例：挂在当前城空地上）。 */
   G.techSet('jianzhu', 1);
   (function () {
@@ -3549,16 +3529,16 @@ async function runTests(dom, URL) {
   openGov();
   await sleep(80);
   const rnBtn = document.querySelector('#modal-root [data-action="open-rename-city"]');
-  check('自建城官府段有改名入口（v89.135：官府要务直显）', !!rnBtn);
+  check('自建城政务厅段有改名入口（v89.135：政务厅要务直显）', !!rnBtn);
   click(rnBtn);
   await sleep(80);
   check('改名弹窗带输入框', !!document.querySelector('#rename-city-input'));
-  document.querySelector('#rename-city-input').value = '汉寿';
+  document.querySelector('#rename-city-input').value = '泊城';
   click(document.querySelector('#modal-root [data-action="do-rename-city"]'));
   await sleep(120);
-  check('改名生效并回到官府面板', rnCity.name === '汉寿',
+  check('改名生效并回到政务厅面板', rnCity.name === '泊城',
     rnCity.name);
-  check('侧栏城池名同步', (document.querySelector('#city-attrs') || {}).textContent.indexOf('汉寿') >= 0);
+  check('侧栏城池名同步', (document.querySelector('#city-attrs') || {}).textContent.indexOf('泊城') >= 0);
   G.renameCity(rnCity.id, bkName25);
   rnCity.type = bkType25;
   G.ui.closeAllModals();
@@ -3569,11 +3549,11 @@ async function runTests(dom, URL) {
   check('君主头像为立绘 SVG', !!document.querySelector('#lord-avatar svg'));
   check('v81：君主名并入信息表首行（官职行退役）',
     !!document.querySelector('.lord-meta .mrow-name #lord-name') && !document.querySelector('#lord-city'));
-  check('君主卡带爵位（爵位已并入君主）', (function () {
+  check('君主卡带威望（威望已并入君主）', (function () {
     G.ui.openLordInfo();
     const h = document.querySelector('#modal-root').innerHTML;
     G.ui.closeAllModals();
-    return h.indexOf('爵位') >= 0 && h.indexOf('promote') >= 0;
+    return h.indexOf('威望') >= 0 && h.indexOf('promote') >= 0;
   })());
 
   /* ⑥⑦ 图标 */
@@ -3638,11 +3618,11 @@ async function runTests(dom, URL) {
   const lianbing26 = G.DATA.ITEMS.filter(function (x) { return x.id === 'lianbing_jingyan'; })[0];
   check('「＋」开出选择窗，列出道具的持有数与面额（v89.173：「+X万」）',
     !!expModal.querySelector('[data-action="exp-pick-item"]')
-    && expModal.textContent.indexOf('练兵经验') >= 0
+    && expModal.textContent.indexOf('练兵数据') >= 0
     /* v89.173：卡面印「+X万」（整数万短写）；期望值从 DATA 现读，别写死
        （调面额时会假红；旧判据查「最多至 LvN」已随 capLv 退役）。 */
     && !!lianbing26 && expModal.textContent.indexOf('+' + Math.round(lianbing26.amount / 10000) + '万') >= 0,
-    '练兵经验 +' + (lianbing26 ? Math.round(lianbing26.amount / 10000) : '?') + '万');
+    '练兵数据 +' + (lianbing26 ? Math.round(lianbing26.amount / 10000) : '?') + '万');
   const expBtn = expModal.querySelector('[data-action="gen-exp-item"][data-mode="till"]');
   check('选择窗给「用 1 个 / 用到升级」两种用法',
     !!expBtn && !!expModal.querySelector('[data-action="gen-exp-item"][data-mode="one"]'));
@@ -3759,13 +3739,13 @@ async function runTests(dom, URL) {
     const multiTxt = sel ? Array.from(sel.options).map(o => o.textContent).join('|') : '';
     st.cities = bak;
     G.ui.renderCityAttrs(cur, st);
-    /* v71（老板）：「即使只有一个城池，也保留下拉框，在这里可以显示州郡县坐标」 */
-    check('单城时也出现城池下拉框（选项 = 州郡县 + 坐标）',
+    /* v71（老板）：「即使只有一个城池，也保留下拉框，在这里可以显示区镇落坐标」 */
+    check('单城时也出现城池下拉框（选项 = 区镇落 + 坐标）',
       single === 1 && singleTxt.indexOf('(') >= 0 && singleTxt.indexOf(G.coordText(cur)) >= 0, single + ' 个选项');
     /* v45（需求 3）：判据由"芯片个数"改为"下拉框选项数" —— 已有城池都是可选项 */
     check('多城时城池清单给出城池下拉框（已有城池均为选项）', multi >= 2, multi + ' 个选项');
-    /* v71（老板）：选项文案 = 州郡县全称 + 坐标（在哪建城，这里可鉴） */
-    check('下拉框选项含州郡县全称与坐标（v71：选址信息出口）',
+    /* v71（老板）：选项文案 = 区镇落全称 + 坐标（在哪建城，这里可鉴） */
+    check('下拉框选项含区镇落全称与坐标（v71：选址信息出口）',
       multiTxt.indexOf(G.cityFullName(cur)) >= 0 && multiTxt.indexOf(G.coordText(cur)) >= 0, multiTxt.slice(0, 80));
     /* v53（老板："点出来列表马上收回去了"）：这条才是那个 bug 的直接判据 ——
        原生下拉列表挂在 <select> 元素上，元素被重绘换掉 = 列表立刻合上。
@@ -3848,7 +3828,7 @@ async function runTests(dom, URL) {
   const g27 = G.state.generals[0];
   const c27 = G.currentCity();
   const bkArmy27 = JSON.stringify(c27.army);
-  /* 校场容量按等级给（Lv1 = 1 万人口），先把校场提到 Lv3 再出兵，否则会被拦 */
+  /* 练兵场容量按等级给（Lv1 = 1 万人口），先把练兵场提到 Lv3 再出兵，否则会被拦 */
   (function () {
     let cell = c27.cells.filter((x) => x.build && x.build.id === 'xiaochang')[0];
     if (cell) { cell.build.lvl = Math.max(cell.build.lvl || 1, 3); }
@@ -4006,7 +3986,7 @@ async function runTests(dom, URL) {
   /* ============================================================
    * v28（需求 0-8）真实 DOM 验证
    * ============================================================ */
-  console.log('\n--- v28. 数值 / 12 级专精 / 12 席 / 军营队列 / 批次（真实 DOM） ---');
+  console.log('\n--- v28. 数值 / 12 级专精 / 12 席 / 训练营队列 / 批次（真实 DOM） ---');
 
   /* ① 将领 3×2 卡片墙（v29 · 需求 16） */
   G.ui._pages = G.ui._pages || {}; G.ui._pages.gens = 1;
@@ -4046,7 +4026,7 @@ async function runTests(dom, URL) {
   check('城池属性「民心 / 民怨」合并为一行 xx / xx',
     attrs28.indexOf('民心 / 民怨') >= 0 && attrs28.indexOf('民怨') === attrs28.lastIndexOf('民怨'));
 
-  /* ③ 军营面板：本营队列 + 上限按钮 + 加速 */
+  /* ③ 训练营面板：本营队列 + 上限按钮 + 加速 */
   const c28 = G.currentCity();
   let ji28 = -1;
   c28.cells.forEach((x, i) => { if (x.build && x.build.id === 'junying') ji28 = i; });
@@ -4058,12 +4038,12 @@ async function runTests(dom, URL) {
   G.ui.openBuildModal(ji28);
   await sleep(90);
   const bd28 = document.querySelector('#modal-root');
-  check('军营面板列出本营募兵队列',
+  check('训练营面板列出本营募兵队列',
     bd28.textContent.indexOf('本营募兵队列') >= 0);
-  check('军营面板有队列位说明', bd28.textContent.indexOf('队列位') >= 0);
+  check('训练营面板有队列位说明', bd28.textContent.indexOf('队列位') >= 0);
   /* 面板里的「募兵」按钮要能进募兵界面 */
   const bt28 = bd28.querySelector('[data-action="open-troops"]');
-  check('军营面板有「募兵 · 兵种」入口', !!bt28);
+  check('训练营面板有「募兵 · 兵种」入口', !!bt28);
   click(bt28);
   await sleep(100);
   /* v81：默认落在「募兵队列」页 —— 训练控件在步兵页，先切页 */
@@ -4094,7 +4074,7 @@ async function runTests(dom, URL) {
   /* ④ 募兵 → 队列 → 加速（真实点击）
      ------------------------------------------------------------
      先**把时间倍率压到 1×** 再开始：主循环是按现实秒推进队列的，
-     前面若干节可能把倍率调到 600×，几十个义兵几秒就跑完 ——
+     前面若干节可能把倍率调到 600×，几十个民兵几秒就跑完 ——
      队列会在断言之前消失，报"Cannot read properties of undefined"。
      这一节要的是"队列还在、加速能让它变短"，所以必须让时间慢下来，
      而不是把断言改成"允许队列消失"（那就等于没测）。 */
@@ -4200,7 +4180,7 @@ async function runTests(dom, URL) {
   G.ui.closeAllModals();
   G.ui.setView('bag');
   /* v89.143（老板 1）：「全部」分类退役 —— 旧的 setBagTab('item') 会归一到**第一个有货分类**
-     （本局 = 材料），神农锄不在那页 → 找不到格子。改为**按道具实际类型**切分类。 */
+     （本局 = 材料），集水塔不在那页 → 找不到格子。改为**按道具实际类型**切分类。 */
   (function () {
     var it5 = null;
     (G.DATA.ITEMS || []).forEach(function (x) { if (x.id === 'shennongchu') it5 = x; });
@@ -4240,7 +4220,7 @@ async function runTests(dom, URL) {
   await sleep(130);
   /* v89.104（老板「背包里的宝物界面不要设置将领清单，点击使用的时候，
      如果是直接消耗的无对象物品，直接使用并生效即可」）：带使用对象的道具
-     在背包里**只指路**（去将领面板），所以整叠使用改用**无对象**道具（神农锄）验证。 */
+     在背包里**只指路**（去将领面板），所以整叠使用改用**无对象**道具（集水塔）验证。 */
   /* v89.140（老板 7）：格子化后无数量框 → 点击 = 使用 **1 个**（整叠走多次点击） */
   check('点一次用掉 1 个（v89.140：宝物格子点击 = 使用 1 个）',
     (G.state.items.shennongchu || 0) === 3,
@@ -4366,7 +4346,7 @@ async function runTests(dom, URL) {
       bd162.map((x) => x.name).join('|'));
     check('v89.162 黄金分解与结算对齐（单城 · 含城主税加成）', (function () {
       const s162 = bd162.reduce((a, x) => a + x.val, 0);
-      const sal162 = bd162.filter((x) => x.name.indexOf('爵位俸禄') === 0)
+      const sal162 = bd162.filter((x) => x.name.indexOf('威望俸禄') === 0)
         .reduce((a, x) => a + x.val, 0);
       const p162 = G.cityProdPerSec(b63).gold;
       return Math.abs(s162 - (p162 + sal162)) <= Math.max(1e-9, Math.abs(s162) * 1e-9);
@@ -4380,15 +4360,15 @@ async function runTests(dom, URL) {
   G.refreshAll();
 
   /* ============================================================
-   * ⑨ v64（老板）：城墙纳入自动建造 / 将领席位按城
+   * ⑨ v64（老板）：围墙纳入自动建造 / 将领席位按城
    * ============================================================ */
-  /* --- 城墙进自动升级：队列与"在办事项"都要看得见 --- */
+  /* --- 围墙进自动升级：队列与"在办事项"都要看得见 --- */
   (function () {
     const c64 = G.currentCity();
     const keepAuto = G.state.settings.autoUpgrade, keepQ = G.state.queues.build.slice();
     const keepCells64 = JSON.parse(JSON.stringify(c64.cells));
     const keepWall64 = JSON.parse(JSON.stringify(c64.wall));
-    /* v89.128：城墙摆进**环城槽** Lv1（最低），其余建筑抬高（含官府，解"官府总闸"） */
+    /* v89.128：围墙摆进**环城槽** Lv1（最低），其余建筑抬高（含政务厅，解"政务厅总闸"） */
     c64.cells.forEach((x) => {
       if (x.build && !x.official) x.build.lvl = Math.min(5, G.DATA.BUILDINGS[x.build.id].maxLevel);
     });
@@ -4399,13 +4379,13 @@ async function runTests(dom, URL) {
     G.state.queues.build.length = 0;
     const r64 = G.autoUpgrade();
     const qb64 = G.ui.queueBody ? G.ui.queueBody() : '';
-    check('自动升级把城墙纳入候选（城墙槽 Lv1 最低时被选中）',
+    check('自动升级把围墙纳入候选（围墙槽 Lv1 最低时被选中）',
       !!(r64 && r64.target && r64.target.kind === 'city' && String(r64.target.idx) === 'wall')
       && !!(c64.wall && c64.wall.build && c64.wall.build.id === 'chengqiang'),
       r64 && r64.target ? (r64.target.name + ' Lv' + r64.target.lv) : '无动作');
-    check('城墙排进建造队列（buildId=chengqiang）且"在办事项"里能看到',
+    check('围墙排进建造队列（buildId=chengqiang）且"在办事项"里能看到',
       G.state.queues.build.some((q) => q.buildId === 'chengqiang' && q.cityId === c64.id)
-      && qb64.indexOf('城墙') >= 0);
+      && qb64.indexOf('围墙') >= 0);
     /* 还原 */
     G.state.queues.build.length = 0; keepQ.forEach((q) => G.state.queues.build.push(q));
     c64.cells = keepCells64;
@@ -4414,8 +4394,8 @@ async function runTests(dom, URL) {
     G.refreshAll();
   })();
 
-  /* --- 将领席位按城：将领页 / 招贤馆 / 派遣三处都要写清楚 ---
-     ⚠️ 先造一座**有招贤馆的副城** —— 否则"本城席位"与"全境合计"恰好相等，
+  /* --- 将领席位按城：将领页 / 招募站 / 派遣三处都要写清楚 ---
+     ⚠️ 先造一座**有招募站的副城** —— 否则"本城席位"与"全境合计"恰好相等，
      把 cap 写成全境合计也测不出来（破坏测试第 11 类第一版就是这样零反应）。 */
   const city64 = G.currentCity();
   const side64 = G.makeCity({ id: 'e2e64c', name: '侧城', x: 12, y: 12, type: 'county',
@@ -4456,9 +4436,9 @@ async function runTests(dom, URL) {
   G.ui.openHostel();
   await sleep(80);
   const hostHtml64 = document.querySelector('#modal-root').innerHTML;
-  check('招贤馆面板写「房间（本城将领席位）」+ 各城合计',
+  check('招募站面板写「房间（本城将领席位）」+ 各城合计',
     hostHtml64.indexOf('本城将领席位') >= 0 && hostHtml64.indexOf('各城合计') >= 0);
-  check('招贤馆提示席位按城（不再说"升级招贤馆"就够）',
+  check('招募站提示席位按城（不再说"升级招募站"就够）',
     hostHtml64.indexOf('本城') >= 0 && /派遣/.test(hostHtml64));
   G.ui.closeAllModals();
   await sleep(50);
@@ -4492,7 +4472,7 @@ async function runTests(dom, URL) {
     _g.cityId = _a.id; _g.status = 'idle';
     var sl = G.genSlotsOf(_b), used = G.generalsIn(_b).length;
     var rr = G.battle.prepare({ kind: 'owncity', id: _b.id }, 'transfer', {}, _g.id, {});
-    return typeof sl === 'number' && (used < sl ? rr.ok === true : /招贤馆/.test(rr.msg || ''));
+    return typeof sl === 'number' && (used < sl ? rr.ok === true : /招募站/.test(rr.msg || ''));
   })());
   G.ui.closeAllModals();
   await sleep(50);
@@ -4500,23 +4480,23 @@ async function runTests(dom, URL) {
   G.state.cities.pop();        /* 侧城也去掉（恢复现场） */
 
   /* ============================================================
-   * ⑩ v65（老板）：官府面板收口 / 驻军精简 / 资源短写 / 属性整数
+   * ⑩ v65（老板）：政务厅面板收口 / 驻军精简 / 资源短写 / 属性整数
    * ============================================================ */
-  /* --- 官府面板：说明进 help，正文只留"当前事实" --- */
+  /* --- 政务厅面板：说明进 help，正文只留"当前事实" --- */
   openGov();
   await sleep(140);
   (function () {
     const root = document.querySelector('#modal-root');
     const keys = Array.prototype.map.call(root.querySelectorAll('.attr .k'), (x) => x.textContent.trim());
-    check('官府段正文不含三条收集说明（已挪进 ⓘ）',
-      keys.join('|').indexOf('州郡岁贡') < 0 && keys.join('|').indexOf('官府征收') < 0
-      && keys.join('|').indexOf('州治加成') < 0,
+    check('政务厅段正文不含三条收集说明（已挪进 ⓘ）',
+      keys.join('|').indexOf('辖区岁贡') < 0 && keys.join('|').indexOf('政务厅征收') < 0
+      && keys.join('|').indexOf('首府加成') < 0,
       keys.join(' / ').slice(0, 70));
     /* ⚠️ 这里**不再**断言"特产说明还在" —— 自建城 `plan.specialty` 为空，
        那块 spBox 根本不渲染（前提不成立，断言会假红）。
        特产说明的存在性由 smoke 的结构断言守（查源码里 ui.help 的调用），
        溢出是否真收掉由几何探针量高度守。 */
-    check('官府面板无内部滚动条（v65 收口目标；矮屏基线见几何探针）',
+    check('政务厅面板无内部滚动条（v65 收口目标；矮屏基线见几何探针）',
       (function () {
         const p = root.querySelector('.inner-panel') || root.querySelector('.modal');
         return !!p;
@@ -4553,6 +4533,35 @@ async function runTests(dom, URL) {
       return t.indexOf('驻军') >= 0 && t.indexOf('种') < 0 && t.indexOf('耗粮') < 0
         && /^[\s⚔驻军▾▸]+$/.test(t.replace(/\s/g, ''));
     })(), head && head.textContent.trim().slice(0, 40));
+  })();
+
+  /* --- v89.215（老板）：驻军栏 = 全兵种固定序 · 暂无记 0 · 去下拉（真 DOM） --- */
+  (function () {
+    const c = G.currentCity();
+    const bk = c.army;
+    c.army = { yibing: 1234, gongjian: 56 };
+    G.ui.renderSide();
+    const gb = document.querySelector('#garrison-bar');
+    const rows = gb ? Array.from(gb.querySelectorAll('.gb-row')) : [];
+    const ids = Object.keys(G.DATA.TROOPS);
+    check('v89.215 驻军栏列全部兵种（18 行 · 顺序 = DATA.TROOPS 声明序）',
+      rows.length === ids.length && rows.every((r, i) => r.getAttribute('data-troop') === ids[i]),
+      rows.length + ' 行');
+    check('v89.215 暂无兵种记 0（灰显 gb-zero）· 有兵行不灰', (function () {
+      const zero = rows.filter(r => r.classList.contains('gb-zero'));
+      const yb = rows.find(r => r.getAttribute('data-troop') === 'yibing');
+      const mn = rows.find(r => r.getAttribute('data-troop') === 'minfu');
+      return zero.length === ids.length - 2
+        && mn && mn.querySelector('.gb-c').textContent === '0'
+        && yb && yb.querySelector('.gb-c').textContent !== '0'
+        && !yb.classList.contains('gb-zero');
+    })());
+    check('v89.215 驻军头不再是折叠开关（无 data-action / 无箭头）', (function () {
+      const head = gb && gb.querySelector('.gb-head');
+      return !!head && !head.hasAttribute('data-action') && !gb.querySelector('.gb-arrow');
+    })());
+    c.army = bk;
+    G.ui.renderSide();
   })();
 
   /* --- 属性整数：六维与装备贡献都不许出小数 --- */
@@ -4611,10 +4620,10 @@ async function runTests(dom, URL) {
   await sleep(60);
 
   /* ============================================================
-   * v66：经验封顶 / 装备体力入上限 / 客栈高资质下调（真实 DOM）
+   * v66：经验封顶 / 装备体力入上限 / 酒馆高资质下调（真实 DOM）
    * 注意：`#modal-root` 每次 openModal 都换内容 —— 断言必须紧跟自己的那次打开。
    * ============================================================ */
-  console.log('\n  --- v66：经验封顶 / 装备体力 / 客栈概率 ---');
+  console.log('\n  --- v66：经验封顶 / 装备体力 / 酒馆概率 ---');
 
   /* ① 将领页「状态 · 体力」主数字 = 上限（含装备贡献） */
   await (async function () {
@@ -4710,7 +4719,7 @@ async function runTests(dom, URL) {
     await sleep(40);
   })();
 
-  /* ④ v75（老板）：客栈改大界面 —— 全量渲染 / 无资质一览 / 无美人标 /
+  /* ④ v75（老板）：酒馆改大界面 —— 全量渲染 / 无资质一览 / 无美人标 /
         天授权重口径没动（只是不再展示；数值口径由 smoke 兜底） */
   await (async function () {
     const c75 = G.currentCity();
@@ -4731,7 +4740,7 @@ async function runTests(dom, URL) {
     const cards75 = root75.querySelectorAll('.inn-tr');   /* v77：候选改表格行 */
     const cls75 = modal75 ? modal75.className : '';
     const slots75 = G.innSlots() || 0;
-    check('v75：客栈升为最大尺寸档 xxl（大界面）', cls75.indexOf('modal-xxl') >= 0, cls75);
+    check('v75：酒馆升为最大尺寸档 xxl（大界面）', cls75.indexOf('modal-xxl') >= 0, cls75);
     check('v75：候选全量渲染（' + slots75 + ' 位），一人一行',
       cards75.length === slots75 && slots75 >= 12, cards75.length + ' / ' + slots75);
     check('v75：不再显示资质一览（无 rk-box / 无「四维 」）',
@@ -4746,8 +4755,8 @@ async function runTests(dom, URL) {
     const pct75 = v75 / t75 * 100;
     check('v75：天授权重口径没动（仍 <1%，只是不再展示）', pct75 < 1, '天授 ' + pct75.toFixed(2) + '%');
 
-    /* ---- v77（老板）：客栈表格化 / 君主面板 / 野地下拉框 ---- */
-    check('v77：客栈表格化（表头 + 每人一行 + 月俸列）',
+    /* ---- v77（老板）：酒馆表格化 / 君主面板 / 野地下拉框 ---- */
+    check('v77：酒馆表格化（表头 + 每人一行 + 月俸列）',
       !!root75.querySelector('.inn-tbl thead') && root75.innerHTML.indexOf('月俸') >= 0
       && cards75.length === slots75,
       cards75.length + ' / ' + slots75);
@@ -4987,41 +4996,41 @@ if (svBtn) {
 
 
   /* ============================================================
-   * v73（老板五条）：种田秘境 / 建筑弹窗底栏 —— 真实 DOM 走一遍
+   * v73（老板五条）：基因实验室 / 建筑弹窗底栏 —— 真实 DOM 走一遍
    * ============================================================ */
-  console.log('\n--- v73. 种田秘境 · 建筑弹窗底栏（真实 DOM） ---');
+  console.log('\n--- v73. 基因实验室 · 建筑弹窗底栏（真实 DOM） ---');
   {
     G.state.res.gold = 3000000;
-    /* v78：播种改种子制 —— 先发种子（材料 ×2 / 灵草 ×1），再走界面 */
+    /* v78：播种改种子制 —— 先发种子（材料 ×2 / 药草 ×1），再走界面 */
     G.state.items = G.state.items || {};
     G.state.items['seed_fan'] = (G.state.items['seed_fan'] || 0) + 2;
     G.state.items['seed_yunling'] = (G.state.items['seed_yunling'] || 0) + 1;
     openGov();
     await sleep(140);
     let mh73 = document.querySelector('#modal-root').innerHTML;
-    check('v73：官府面板有「种田秘境」入口',
-      mh73.indexOf('data-action="open-farm"') >= 0 && mh73.indexOf('种田秘境') >= 0);
+    check('v73：政务厅面板有「基因实验室」入口',
+      mh73.indexOf('data-action="open-farm"') >= 0 && mh73.indexOf('基因实验室') >= 0);
     const farmBtn73 = document.querySelector('#modal-root [data-action="open-farm"]');
     if (farmBtn73) {
       click(farmBtn73);
       await sleep(140);
       mh73 = document.querySelector('#modal-root').innerHTML;
-      check('v73：秘境面板六格灵田 + 播种入口',
+      check('v73：遗迹面板六格灵田 + 播种入口',
         (mh73.match(/class="farm-cell/g) || []).length >= 6 && mh73.indexOf('data-action="farm-seeds"') >= 0);
       click(document.querySelector('#modal-root [data-action="farm-seeds"]'));
       await sleep(130);
       mh73 = document.querySelector('#modal-root').innerHTML;
-      check('v73：选种弹窗列出 10 种作物（6 材料 + 4 灵草）',
+      check('v73：选种弹窗列出 10 种作物（6 材料 + 4 药草）',
         (mh73.match(/data-action="farm-plant"/g) || []).length === 10);
-      check('v78：选种行显示种子消耗（凡植种子 -1 / 不花黄金）',
-        mh73.indexOf('凡植种子') >= 0 && mh73.indexOf('-1）') >= 0 && mh73.indexOf('金 不足') < 0);
+      check('v78：选种行显示种子消耗（基础菌种 -1 / 不花黄金）',
+        mh73.indexOf('基础菌种') >= 0 && mh73.indexOf('-1）') >= 0 && mh73.indexOf('金 不足') < 0);
       const plantBtn73 = Array.from(document.querySelectorAll('#modal-root [data-action="farm-plant"]'))
         .find((b) => b.getAttribute('data-crop') === 'tieying');
       if (plantBtn73) {
         click(plantBtn73);
         await sleep(170);
         mh73 = document.querySelector('#modal-root').innerHTML;
-        check('v73：种下后留在秘境（生长中 + 倒计时元素在位）',
+        check('v73：种下后留在遗迹（生长中 + 倒计时元素在位）',
           mh73.indexOf('成熟还需') >= 0 && !!document.querySelector('#modal-root [data-farm-left]'));
         G.tickFarm(8 * 3600);
         G.ui.openFarm();
@@ -5031,8 +5040,8 @@ if (svBtn) {
         if (hv73) {
           click(hv73);
           await sleep(170);
-          check('v73：收获入包（镔铁）', (G.state.items['bintie'] || 0) > 0,
-            '镔铁 ×' + (G.state.items['bintie'] || 0));
+          check('v73：收获入包（钢锭）', (G.state.items['bintie'] || 0) > 0,
+            '钢锭 ×' + (G.state.items['bintie'] || 0));
         }
       }
       G.ui.closeAllModals();
@@ -5084,17 +5093,17 @@ if (svBtn) {
   }
 
   /* ============================================================
-   * v79（老板四条）：爵位加成 / 主城 / 神器 / 装备单件化 —— 真实 DOM 走一遍
+   * v79（老板四条）：威望加成 / 主城 / 神器 / 装备单件化 —— 真实 DOM 走一遍
    * ============================================================ */
-  console.log('\n--- v79. 爵位加成 · 主城 · 神器 · 单件强化（真实 DOM） ---');
+  console.log('\n--- v79. 威望加成 · 主城 · 神器 · 单件强化（真实 DOM） ---');
   {
-    /* ② 主城：官府里设 → 标识出现 */
+    /* ② 主城：政务厅里设 → 标识出现 */
     const c79 = G.currentCity();
     G.state.mainCityId = null;
     openGov();
     await sleep(150);
     const setBtn79 = document.querySelector('#modal-root [data-action="set-main-city"]');
-    check('v79：官府有「设为主城」入口', !!setBtn79);
+    check('v79：政务厅有「设为主城」入口', !!setBtn79);
     if (setBtn79) {
       click(setBtn79);
       await sleep(160);
@@ -5135,10 +5144,12 @@ if (svBtn) {
     G.ui.openEnhance();
     await sleep(190);
     const enhHtml79 = document.querySelector('#modal-root').innerHTML;
-    check('v79：强化面板按件（同名各一行、标签带序号与 +N）',
+    /* v89.214（老板 1）规则变更：卡面名称行去序号 —— 同名件靠「强化等级 +N」区分 */
+    check('v89.214：强化面板按件（同名各一卡 · 名称无序号 · 等级 +N 区分）',
       enhA79.ok && enhHtml79.indexOf('按件') >= 0
-      && enhHtml79.indexOf('·甲') >= 0 && enhHtml79.indexOf('·乙') >= 0
-      && enhHtml79.indexOf('+1') >= 0);
+      && enhHtml79.indexOf('·甲') < 0 && enhHtml79.indexOf('·乙') < 0
+      && enhHtml79.indexOf('+1') >= 0
+      && (enhHtml79.match(/enh-card/g) || []).length >= 2);
     G.ui.closeAllModals();
     await sleep(80);
     /* 收尾：两件试验品出包 */
@@ -5146,12 +5157,12 @@ if (svBtn) {
   }
 
   /* ============================================================
-   * v80（老板三条）：客栈固定表 / 建筑吸底操作区 / 兵营分页直输（真实 DOM）
+   * v80（老板三条）：酒馆固定表 / 建筑吸底操作区 / 兵营分页直输（真实 DOM）
    * ============================================================ */
-  console.log('\n--- v80. 客栈固定表 · 建筑底栏 · 兵营分页（真实 DOM） ---');
+  console.log('\n--- v80. 酒馆固定表 · 建筑底栏 · 兵营分页（真实 DOM） ---');
   {
     const c80 = G.currentCity();
-    /* ① 客栈：固定列宽 + 去「史实名将」标 */
+    /* ① 酒馆：固定列宽 + 去「史实名将」标 */
     let inn80 = c80.cells.findIndex((x) => x.build && x.build.id === 'kezhan');
     if (inn80 < 0) {
       inn80 = c80.cells.findIndex((x) => !x.build && !x.official);
@@ -5161,7 +5172,7 @@ if (svBtn) {
     G.ui.openInn();
     await sleep(130);
     const tbl80 = document.querySelector('#modal-root .inn-tbl');
-    check('v80：客栈表固定列宽（table-layout: fixed + colgroup ×10）',
+    check('v80：酒馆表固定列宽（table-layout: fixed + colgroup ×10）',
       !!tbl80 && window.getComputedStyle(tbl80).tableLayout === 'fixed'
       && tbl80.querySelectorAll('colgroup col').length === 10);
     const colsA80 = tbl80 ? Array.from(tbl80.querySelectorAll('colgroup col')).map((c) => c.getAttribute('class')).join(',') : '';
@@ -5211,16 +5222,16 @@ if (svBtn) {
     const mr80 = document.querySelector('#modal-root');
     check('v80：兵营页只剩一处标题（重复标题 / 工位行 / 解锁计数全撤）',
       (mr80.innerHTML.match(/兵营招募/g) || []).length === 1
-      && mr80.textContent.indexOf('募兵军营') < 0 && mr80.textContent.indexOf('队列位') < 0
+      && mr80.textContent.indexOf('募兵训练营') < 0 && mr80.textContent.indexOf('队列位') < 0
       && mr80.textContent.indexOf('已解锁') < 0);
-    check('v81：三页切换按钮（募兵队列 / 步兵 / 骑兵）', (function () {
+    check('v81：三页切换按钮（募兵队列 / 步兵 / 机车）', (function () {
       const tabs = Array.prototype.map.call(
         mr80.querySelectorAll('[data-action="train-tab"]'), (t) => t.dataset.page);
       return tabs.length === 3 && tabs[0] === 'que' && tabs.indexOf('inf') >= 0 && tabs.indexOf('cav') >= 0;
     })());
     click(mr80.querySelector('[data-action="train-tab"][data-page="cav"]'));
     await sleep(150);
-    check('v80：翻到骑兵页（首卡为骑兵）', (function () {
+    check('v80：翻到机车页（首卡为机车）', (function () {
       const card = document.querySelector('#modal-root .troop-grid .troop-card');
       const tid = card && card.getAttribute('data-troop');
       return !!tid && DATA.TROOPS[tid].cat === 'cav';
@@ -5256,7 +5267,7 @@ if (svBtn) {
   }
 
   /* ============================================================
-   * v81（老板）：君主卡名称并入信息表首行 / 兵营三页制（队列 · 步兵 · 骑兵）
+   * v81（老板）：君主卡名称并入信息表首行 / 兵营三页制（队列 · 步兵 · 机车）
    * ============================================================ */
   console.log('\n--- v81. 君主卡与兵营三页 ---');
   {
@@ -5280,7 +5291,7 @@ if (svBtn) {
     G.ui.openTroops(j81 < 0 ? undefined : j81, 'normal');
     await sleep(140);
     const mr81 = document.querySelector('#modal-root');
-    check('v81：三页切换键齐备（募兵队列 / 步兵 / 骑兵）', (function () {
+    check('v81：三页切换键齐备（募兵队列 / 步兵 / 机车）', (function () {
       const tabs = Array.prototype.map.call(
         mr81.querySelectorAll('[data-action="train-tab"]'), (t) => t.dataset.page);
       return tabs.length === 3 && tabs[0] === 'que' && tabs.indexOf('inf') >= 0 && tabs.indexOf('cav') >= 0;
@@ -5314,12 +5325,12 @@ if (svBtn) {
   await sleep(100);
   (function () {
     const root = document.querySelector('#modal-root');
-    /* v89.135（老板 10）：官府面板退役 —— 改名入口直进建筑面板（官府要务段） */
-    check('v89.135：官府建筑面板直显改名入口（官府要务）',
+    /* v89.135（老板 10）：政务厅面板退役 —— 改名入口直进建筑面板（政务厅要务段） */
+    check('v89.135：政务厅建筑面板直显改名入口（政务厅要务）',
       root.innerHTML.indexOf('data-action="open-rename-city"') >= 0
-      && root.textContent.indexOf('官府要务') >= 0);
+      && root.textContent.indexOf('政务厅要务') >= 0);
     const ks = Array.prototype.map.call(root.querySelectorAll('.attr .k'), (x) => x.textContent.trim());
-    check('v82：官府面板无「本城」/「附属野地」标签行',
+    check('v82：政务厅面板无「本城」/「附属野地」标签行',
       ks.indexOf('本城') < 0 && ks.join('|').indexOf('附属野地') < 0);
     check('v82：征收退役（面板无征收按钮）', !root.querySelector('#levy-btn'));
     check('v82：分区标题统一 800 字重（计算样式）', (function () {
@@ -5351,9 +5362,9 @@ if (svBtn) {
   })());
 
   /* ============================================================
-   * v84（老板）：兵种卡去「拥有」行 / 辎重车→骑兵、斥候→步兵
+   * v84（老板）：兵种卡去「拥有」行 / 运输车→机车、侦察兵→步兵
    * ============================================================ */
-  console.log('\n--- v84. 卡面去拥有行 · 步骑分类对调（真实 DOM） ---');
+  console.log('\n--- v84. 卡面去拥有行 · 步兵/机车分类对调（真实 DOM） ---');
   {
     const c84 = G.state.cities[0];
     let j84 = c84.cells.findIndex((x) => x.build && x.build.id === 'junying');
@@ -5365,7 +5376,7 @@ if (svBtn) {
     G.ui._trainTab = 'inf';
     G.ui.openTroops(j84 < 0 ? undefined : j84, 'normal');
     await sleep(160);
-    check('v84：斥候卡已入步兵页', !!document.querySelector('#modal-root .troop-card[data-troop="chihou"]'));
+    check('v84：侦察兵卡已入步兵页', !!document.querySelector('#modal-root .troop-card[data-troop="chihou"]'));
     check('v84：全部兵种卡面无「拥有」字样', (function () {
       const cards = document.querySelectorAll('#modal-root .troop-grid .troop-card');
       if (!cards.length) return false;
@@ -5373,7 +5384,7 @@ if (svBtn) {
     })());
     click(document.querySelector('#modal-root [data-action="train-tab"][data-page="cav"]'));
     await sleep(150);
-    check('v84：辎重车卡在骑兵页（与斥候两页互斥）', (function () {
+    check('v84：运输车卡在机车页（与侦察兵两页互斥）', (function () {
       const z84 = document.querySelector('#modal-root .troop-card[data-troop="zhouche"]');
       const ch84 = document.querySelector('#modal-root .troop-card[data-troop="chihou"]');
       return !!z84 && !ch84;
@@ -5383,11 +5394,11 @@ if (svBtn) {
   }
 
   /* ============================================================
-   * v85（老板）：民房去人口统计 / 底部缩略地图 → 天下大势
+   * v85（老板）：居所去人口统计 / 底部缩略地图 → 天下大势
    * ============================================================ */
-  console.log('\n--- v85. 民房 · 缩略地图 · 天下大势（真实 DOM） ---');
+  console.log('\n--- v85. 居所 · 缩略地图 · 天下大势（真实 DOM） ---');
   {
-    /* ① 民房弹窗无「人口统计」入口 */
+    /* ① 居所弹窗无「人口统计」入口 */
     const c85 = G.state.cities[0];
     let m85 = c85.cells.findIndex((x) => x.build && x.build.id === 'minfang');
     if (m85 < 0) {
@@ -5396,9 +5407,9 @@ if (svBtn) {
     }
     G.ui.openBuildModal(m85 < 0 ? undefined : m85);
     await sleep(140);
-    check('v85：民房弹窗无「人口统计」按钮', (function () {
+    check('v85：居所弹窗无「人口统计」按钮', (function () {
       const root = document.querySelector('#modal-root');
-      return !!root && root.textContent.indexOf('民房') >= 0
+      return !!root && root.textContent.indexOf('居所') >= 0
         && root.textContent.indexOf('人口统计') < 0;
     })());
     G.ui.closeAllModals();
@@ -5411,11 +5422,11 @@ if (svBtn) {
       !!document.querySelector('#bottom-bar .bb-mini #mini-canvas'));
     click(document.querySelector('#bottom-bar .bb-mini'));
     await sleep(160);
-    check('v85：点击展开「天下大势」（缩略图 + 州郡界图例）', (function () {
+    check('v85：点击展开「天下大势」（缩略图 + 州镇界图例）', (function () {
       const root = document.querySelector('#modal-root');
       return !!root && !!root.querySelector('#mini-big')
         && root.textContent.indexOf('天下大势') >= 0
-        && root.textContent.indexOf('州界') >= 0 && root.textContent.indexOf('郡界') >= 0;
+        && root.textContent.indexOf('区界') >= 0 && root.textContent.indexOf('镇界') >= 0;
     })());
     check('v85：缩略数据（13 州 · 25 万格 · 边界线存在）', (function () {
       const d = G.map.miniBuild();
@@ -5446,7 +5457,7 @@ if (svBtn) {
    * v89.47（老板三条）：天下大势 —— 满界面 / 大写城名 / 点选跳转（真实 DOM）
    * ------------------------------------------------------------
    * ① 满界面：面板宽高 ≈ 视口（留 8px）；画布 CSS 边长 ≥ 视口高 − 200。
-   * ② 城名：只有都/州/郡落笔（县不标）—— 以画布内部尺寸与标签表核对。
+   * ② 城名：只有旧都/首府/重镇落笔（聚落不标）—— 以画布内部尺寸与标签表核对。
    * ③ 点选：真点画布中心 → 面板关闭 + 主地图居中到对应格（±1 格容差）。
    * ============================================================ */
   console.log('\n--- v89.47. 天下大势：满界面 / 城名 / 点选跳转（真实 DOM） ---');
@@ -5496,10 +5507,10 @@ if (svBtn) {
   }
 
   /* ============================================================
-   * v89.68（老板）：缩略图三级下钻筛选 州城 / 郡城 / 县城（真实 DOM）
+   * v89.68（老板）：缩略图三级下钻筛选 首府 / 重镇 / 聚落（真实 DOM）
    * ------------------------------------------------------------
-   * 老板：「缩略图加一个筛选按钮，当选择'州城'时…；选择'郡城'时，增加一个可选框
-   *   选定某个州城，然后仅显示该州…；同理选'县城'时，逐级选择州郡，仅显示该郡地图…」
+   * 老板：「缩略图加一个筛选按钮，当选择'首府'时…；选择'重镇'时，增加一个可选框
+   *   选定某个首府，然后仅显示该区…；同理选'聚落'时，逐级选择辖区，仅显示该镇地图…」
    * 这里走**真实 change 事件 + 真实重开面板**，校验级联出现与取景窗真的缩小。
    * ⚠️ jsdom 里派发事件必须用 window.Event（Node 的 new Event 会抛跨 realm 错，
    *    而且会中断整个 e2e —— 见 §89 备忘）。
@@ -5522,23 +5533,23 @@ if (svBtn) {
     })());
     const sideAll = G.ui.miniView().win.side;
 
-    /* ① 州城档：全图取景，只标 都/州城 */
+    /* ① 首府档：全图取景，只标 旧都/首府 */
     fire(mroot().querySelector('#mini-level'), 'zhou');
     await sleep(80);
     const vZ = G.ui.miniView();
-    check('v89.68：「州城」档 = 全图 + 只标注都城/州城', (function () {
+    check('v89.68：「首府」档 = 全图 + 只标注旧都/首府', (function () {
       return vZ.level === 'zhou' && vZ.win.side === sideAll
         && vZ.list.length > 0
         && vZ.list.every((c) => c.type === 'zhou' || c.type === 'capital');
     })(), 'list=' + vZ.list.length + ' side=' + vZ.win.side);
 
-    /* ② 郡城档：出现「州」下拉；选州后取景窗缩小，且该州郡城全在窗内 */
+    /* ② 重镇档：出现「区」下拉；选区后取景窗缩小，且该区重镇全在窗内 */
     fire(mroot().querySelector('#mini-level'), 'jun');
     await sleep(80);
-    check('v89.68：「郡城」档出现「州」下拉（尚无「郡」下拉）', (function () {
+    check('v89.68：「重镇」档出现「区」下拉（尚无「镇」下拉）', (function () {
       return !!mroot().querySelector('#mini-state') && !mroot().querySelector('#mini-jun');
     })());
-    check('v89.68：选州后仅显示该州（取景窗缩小 + 该州郡城全在窗内）', (function () {
+    check('v89.68：选区后仅显示该区（取景窗缩小 + 该区重镇全在窗内）', (function () {
       const st = mroot().querySelector('#mini-state').value;
       fire(mroot().querySelector('#mini-state'), st);
       const v = G.ui.miniView();
@@ -5550,18 +5561,18 @@ if (svBtn) {
     })());
     await sleep(60);
 
-    /* ③ 县城档：再出现「郡」下拉；选定后只标该郡县城（空郡则明写原因） */
+    /* ③ 聚落档：再出现「镇」下拉；选定后只标该镇聚落（空镇则明写原因） */
     fire(mroot().querySelector('#mini-level'), 'county');
     await sleep(80);
     const junSel = mroot().querySelector('#mini-jun');
-    check('v89.68：「县城」档逐级出现「州」+「郡」两个下拉', !!mroot().querySelector('#mini-state') && !!junSel);
-    check('v89.68：郡下拉带「（N 县）」标注（空郡一眼可辨，不至于点了才发现是空图）', (function () {
-      return /（\d+ 县）/.test(mroot().querySelector('#mini-jun').textContent || '');
+    check('v89.68：「聚落」档逐级出现「区」+「镇」两个下拉（v89.219 机构词）', !!mroot().querySelector('#mini-state') && !!junSel);
+    check('v89.219：镇下拉带「（N 聚落）」标注（空镇一眼可辨 · 原 v89.68「N 县」口径）', (function () {
+      return /（\d+ 聚落）/.test(mroot().querySelector('#mini-jun').textContent || '');
     })(), (junSel && junSel.textContent) ? junSel.textContent.trim().slice(0, 60) : '无郡');
-    check('v89.68：选定郡后只标注该郡县城（列表与 regionOf 归属一致）', (function () {
-      /* 挑一个"有县城"的郡来验，并用返回码说明空郡的处理 */
+    check('v89.68：选定镇后只标注该镇聚落（列表与 regionOf 归属一致）', (function () {
+      /* 挑一个"有聚落"的重镇来验，并用返回码说明空镇的处理 */
       const opts = Array.prototype.slice.call(junSel.querySelectorAll('option'));
-      const withC = opts.filter((o) => !/（0 县）/.test(o.textContent))[0];
+      const withC = opts.filter((o) => !/（0 聚落）/.test(o.textContent))[0];
       if (!withC) return false;
       fire(junSel, withC.value);
       const v = G.ui.miniView();
@@ -5592,7 +5603,7 @@ if (svBtn) {
   /* ============================================================
    * v86（老板「按计划进行」· G1）：计谋（真实 DOM）
    * ============================================================ */
-  console.log('\n--- v86. 计谋 / 锦囊（真实 DOM） ---');
+  console.log('\n--- v86. 计谋 / 封存匣（真实 DOM） ---');
   {
     let wt = null;
     for (let y = 5; y < 80 && !wt; y++) {
@@ -5661,11 +5672,11 @@ if (svBtn) {
       }
       return ok86;
     })());
-    /* 布防入口（v89.107 老板令：左侧统计栏的烽火警报含策略布防**搬进军务·烽火页**） */
+    /* 布防入口（v89.107 老板令：左侧统计栏的警报警报含策略布防**搬进军务·警报页**） */
     G.ui._marchTab = 'beacon';
     G.ui.setView('marches');
     await sleep(240);
-    check('v86/v89.107：军务·烽火页有「策略布防」入口',
+    check('v86/v89.107：军务·警报页有「策略布防」入口',
       !!document.querySelector('[data-action="city-scheme"]'));
     click(document.querySelector('[data-action="city-scheme"]'));
     await sleep(160);
@@ -5686,10 +5697,10 @@ if (svBtn) {
   }
 
   /* ============================================================
-   * v88.1：场景整合（地形专属并入江湖游历 · 真实 DOM）
+   * v88.1：场景整合（地形专属并入荒野行动 · 真实 DOM）
    * ============================================================ */
   console.log('\n--- v88.1. 场景整合（真实 DOM） ---');
-  /* v89.86（测试修复）：v88.1 / v88 / v89 三块测的是江湖游历与全屏剧本本身 ——
+  /* v89.86（测试修复）：v88.1 / v88 / v89 三块测的是荒野行动与全屏剧本本身 ——
      显式临时挂载 jianghuWildMounted（v89.45 起默认剥离），跑完还原。 */
   const jhWasB = G.jianghuWildMounted;
   G.jianghuWildMounted = true;
@@ -5707,18 +5718,18 @@ if (svBtn) {
     G.ui._jhGen = null;
     G.ui.openLandModal(hp.x, hp.y);            /* 未占 → 出兵弹窗 */
     await sleep(200);
-    check('v88.1：弹窗仅一个游历区块（含「绿林探访」按钮 · 无旧「地形专属」）', (function () {
+    check('v88.1：弹窗仅一个探索区块（含「废墟探访」按钮 · 无旧「地形专属」）', (function () {
       const root = document.querySelector('#modal-root');
-      return !!root && root.textContent.indexOf('江湖游历') >= 0
+      return !!root && root.textContent.indexOf('荒野行动') >= 0
         && !!root.querySelector('[data-action="do-jianghu"][data-act="hill_scene"]')
         && root.textContent.indexOf('地形专属') < 0;
     })());
     click(document.querySelector('#modal-root [data-action="do-jianghu"][data-act="hill_scene"]'));
     await sleep(260);
-    check('v88.1/v89：「绿林探访」进入全屏剧本（第 1 幕 + 选择项 + 退出钮）', (function () {
+    check('v88.1/v89（v89.216 换皮）：「废墟探访」进入全屏剧本（第 1 幕 + 选择项 + 退出钮）', (function () {
       const el = document.getElementById('scene-fx');
       return !!el && el.style.display !== 'none'
-        && el.textContent.indexOf('绿林探访') >= 0
+        && el.textContent.indexOf('废墟探访') >= 0
         && el.querySelectorAll('[data-action="sxf-choice"]').length >= 2
         && !!el.querySelector('[data-action="sxf-escape"]');
     })());
@@ -5746,7 +5757,7 @@ if (svBtn) {
     await sleep(160);
     check('v88.1：已占野地面板同为新区块（无旧区块）', (function () {
       const root = document.querySelector('#modal-root');
-      return !!root && root.textContent.indexOf('江湖游历') >= 0
+      return !!root && root.textContent.indexOf('荒野行动') >= 0
         && root.textContent.indexOf('地形专属') < 0;
     })());
     G.ui.closeAllModals();
@@ -5754,11 +5765,11 @@ if (svBtn) {
   }
 
   /* ============================================================
-   * v88（老板）：灵气双轨装备 + 江湖游历（真实 DOM）
+   * v88（老板）：辐能双轨装备 + 荒野行动（真实 DOM）
    * ============================================================ */
-  console.log('\n--- v88. 灵气双轨装备 + 江湖游历（真实 DOM） ---');
+  console.log('\n--- v88. 辐能双轨装备 + 荒野行动（真实 DOM） ---');
   {
-    const g88 = G.lordGeneralOf();   /* v89：修炼线君主专属 */
+    const g88 = G.lordGeneralOf();   /* v89：改造线君主专属 */
     /* 备好两套装备（各一件武器）与精华 */
     const aI88 = G.addEquip('cr_weapon_4', 0);
     G.systems.equipItem(g88.id, aI88);
@@ -5770,7 +5781,7 @@ if (svBtn) {
     G.ui.setView('generals');
     await sleep(220);
 
-    check('v88：装备栏含双轨切换按钮（⚔军中 / ☯修炼）', (function () {
+    check('v88：装备栏含双轨切换按钮（⚔军中 / ☯改造）', (function () {
       const vc = document.querySelector('#view-container');
       return !!vc.querySelector('[data-action="toggle-equip-set"][data-set="sha"]')
         && !!vc.querySelector('[data-action="toggle-equip-set"][data-set="ling"]');
@@ -5783,28 +5794,28 @@ if (svBtn) {
 
     click(document.querySelector('#view-container [data-action="toggle-equip-set"][data-set="ling"]'));
     await sleep(260);
-    check('v88：切换后槽名变「灵剑」+ 显示赤霄剑', (function () {
+    check('v88（v89.216 换皮）：切换后槽名变「动能刃」+ 显示动力刃', (function () {
       const vc = document.querySelector('#view-container');
       const slot = vc.querySelector('.gen-pane .doll-slot[data-slot="weapon"]');
-      return !!slot && slot.textContent.indexOf('灵剑') >= 0 && slot.textContent.indexOf('赤霄剑') >= 0;
+      return !!slot && slot.textContent.indexOf('动能刃') >= 0 && slot.textContent.indexOf('动力刃') >= 0;
     })());
-    check('v88：修炼面板出现（灵力 / 总蕴养 / 灵气精华）', (function () {
+    check('v88：改造面板出现（机能 / 总调校 / 辐能核心）', (function () {
       const vc = document.querySelector('#view-container');
       const t = vc.textContent;
-      return t.indexOf('灵力') >= 0 && t.indexOf('总蕴养') >= 0 && t.indexOf('灵气精华') >= 0;
+      return t.indexOf('机能') >= 0 && t.indexOf('总调校') >= 0 && t.indexOf('辐能核心') >= 0;
     })());
-    check('v88：修炼模式显示「☯ 蕴养」按钮', (function () {
+    check('v88：改造模式显示「☯ 调校」按钮', (function () {
       return !!document.querySelector('#view-container [data-action="ling-temper-open"]');
     })());
 
-    /* 蕴养面板（打开 → 列出修炼件 → 关闭） */
+    /* 调校面板（打开 → 列出改造件 → 关闭） */
     click(document.querySelector('#view-container [data-action="ling-temper-open"]'));
     await sleep(220);
-    check('v88：蕴养面板打开并列出赤霄剑（含成本）', (function () {
+    check('v88（v89.216 换皮）：调校面板打开并列出动力刃（含成本）', (function () {
       const root = document.querySelector('#modal-root');
-      return !!root && root.textContent.indexOf('蕴养') >= 0
-        && root.textContent.indexOf('赤霄剑') >= 0
-        && root.textContent.indexOf('灵气精华') >= 0
+      return !!root && root.textContent.indexOf('调校') >= 0
+        && root.textContent.indexOf('动力刃') >= 0
+        && root.textContent.indexOf('辐能核心') >= 0
         && !!root.querySelector('[data-action="ling-temper-item"]');
     })());
     G.ui.closeAllModals();
@@ -5819,7 +5830,7 @@ if (svBtn) {
       return !!slot && slot.textContent.indexOf('武器') >= 0 && slot.textContent.indexOf('神兵') >= 0;
     })());
 
-    /* 江湖游历（野地弹窗：区块 + 执行 + 回显） */
+    /* 荒野行动（野地弹窗：区块 + 执行 + 回显） */
     let fp88 = null;
     for (let y = 3; y < 200 && !fp88; y++) {
       for (let x = 3; x < 200; x++) {
@@ -5833,19 +5844,20 @@ if (svBtn) {
     G.ui._jhGen = null;
     G.ui.openLandModal(fp88.x, fp88.y);
     await sleep(200);
-    check('v88/v89.4：野地弹窗含江湖区块（按钮数 = 逐地分布 1~3）', (function () {
+    check('v88/v89.4：野地弹窗含荒野区块（按钮数 = 逐地分布 1~3）', (function () {
       const root = document.querySelector('#modal-root');
       const n4 = G.jianghuActsAt(fp88.x, fp88.y).length;
-      return !!root && root.textContent.indexOf('江湖游历') >= 0
+      return !!root && root.textContent.indexOf('荒野行动') >= 0
         && n4 >= 1 && n4 <= 3
         && root.querySelectorAll('[data-action="do-jianghu"]').length === n4;
     })());
     const before88 = G.state.items.lingsui || 0;
     click(document.querySelector('#modal-root [data-action="do-jianghu"][data-act="xiu"]'));
     await sleep(260);
-    check('v88/v89：「修炼」进入全屏剧本', (function () {
+    check('v88/v89（v89.216 换皮）：静修活动进入全屏剧本', (function () {
       const el = document.getElementById('scene-fx');
-      return !!el && el.style.display !== 'none' && el.textContent.indexOf('修炼') >= 0;
+      return !!el && el.style.display !== 'none'
+        && (el.textContent.indexOf('静修') >= 0 || el.textContent.indexOf('改造') >= 0);
     })());
     click(document.querySelector('#scene-fx [data-action="sxf-choice"]'));
     await sleep(120);
@@ -5854,9 +5866,9 @@ if (svBtn) {
     /* v89.2：末幕是「时机判定」——点「收功！」停手 */
     click(document.querySelector('#scene-fx [data-action="sxf-stop"]'));
     await sleep(200);
-    check('v88/v89：结算屏含收获（灵气精华）与专属退出', (function () {
+    check('v88/v89：结算屏含收获（辐能核心）与专属退出', (function () {
       const el = document.getElementById('scene-fx');
-      return !!el && el.textContent.indexOf('灵气精华') >= 0 && !!el.querySelector('[data-action="sxf-exit"]');
+      return !!el && el.textContent.indexOf('辐能核心') >= 0 && !!el.querySelector('[data-action="sxf-exit"]');
     })());
     click(document.querySelector('#scene-fx [data-action="sxf-exit"]'));
     await sleep(280);
@@ -5870,9 +5882,9 @@ if (svBtn) {
   }
 
   /* ============================================================
-   * v89（老板）：君主专属修炼 + 全屏江湖剧本（真实 DOM）
+   * v89（老板）：君主专属改造 + 全屏荒野剧本（真实 DOM）
    * ============================================================ */
-  console.log('\n--- v89. 君主专属 + 全屏江湖剧本（真实 DOM） ---');
+  console.log('\n--- v89. 君主专属 + 全屏荒野剧本（真实 DOM） ---');
   {
     const lg89 = G.lordGeneralOf();
     G.state.generals.forEach(function (g) { g.energy = 100; G.setStaNow(g, 100); });
@@ -5881,7 +5893,7 @@ if (svBtn) {
     G.ui._genSel = lg89.id;
     G.ui.setView('generals');
     await sleep(220);
-    check('v89：君主装备栏有双轨切换（⚔军中 / ☯修炼）', (function () {
+    check('v89：君主装备栏有双轨切换（⚔军中 / ☯改造）', (function () {
       const vc = document.querySelector('#view-container');
       return !!vc.querySelector('[data-action="toggle-equip-set"][data-set="ling"]');
     })());
@@ -5919,7 +5931,7 @@ if (svBtn) {
     check('v89：讨伐进入全屏（对话·事件第 1 幕）· 有「鸣金收兵」', (function () {
       const el = document.getElementById('scene-fx');
       return !!el && el.style.display !== 'none'
-        && el.textContent.indexOf('斥候') >= 0
+        && el.textContent.indexOf('侦察兵') >= 0
         && !!el.querySelector('[data-action="sxf-escape"]');
     })());
     const e089 = lg89.energy;
@@ -5994,10 +6006,10 @@ if (svBtn) {
         && el.querySelectorAll('.sxf-opt').length >= 2
         && el.textContent.indexOf('第 1 / ' + f.stages.length + ' 幕') >= 0;
     })());
-    check('v89.3：横幅文案统一（雅名「古冢探幽」· 门类章「探幽」）', (function () {
+    check('v89.3（v89.216 换皮）：横幅文案统一（雅名「旧堡探幽」· 门类章「探险」）', (function () {
       const al = document.querySelector('#scene-fx .sxf-hero-alias');
       const kd = document.querySelector('#scene-fx .sxf-hero-kind');
-      return !!al && al.textContent === '古冢探幽' && !!kd && kd.textContent === '探幽';
+      return !!al && al.textContent === '旧堡探幽' && !!kd && kd.textContent === '探险';
     })());
     click(document.querySelector('#scene-fx [data-action="sxf-choice"]'));
     await sleep(120);
@@ -6046,7 +6058,7 @@ if (svBtn) {
     if (wp4) {
       G.ui.openLandModal(wp4.x, wp4.y);
       await sleep(200);
-      check('v89.4：荒僻野地 —— 游历区块空态（随缘而现）', (function () {
+      check('v89.4：荒僻野地 —— 探索区块空态（随缘而现）', (function () {
         const root = document.querySelector('#modal-root');
         return !!root && root.textContent.indexOf('荒僻') >= 0
           && root.textContent.indexOf('野地 Lv') >= 0;
@@ -6054,7 +6066,7 @@ if (svBtn) {
       G.ui.closeAllModals();
       await sleep(80);
     } else {
-      check('v89.4：荒僻野地 —— 游历区块空态（随缘而现）', false);
+      check('v89.4：荒僻野地 —— 探索区块空态（随缘而现）', false);
     }
 
     let yp4 = null, yn4 = 0;
@@ -6087,236 +6099,16 @@ if (svBtn) {
   G.jianghuWildMounted = jhWasB;   /* v89.86：还原剥离状态 */
 
   console.log('');
-  console.log('--- 81. 文字游戏 · 故事库（真实点击 · v2 结构） ---');
-  await (async function () {
-    check('★ 故事库已载入（≥5 篇）', !!(G.SG && G.SG.list().length >= 5),
-      G.SG ? (G.SG.list().length + ' 篇') : '无');
-    var city = G.currentCity();
-    /* ============================================================
-     * v89.29：逸闻入口改版 —— 「列表菜单」→「概率奇遇」
-     *   点击建筑 / 地块时掷骰（GAME.SG.roll），命中即从该锚点池随机抽一篇
-     *   完整故事（每篇 = 一份独立资产），在面板之上直接开卷；
-     *   掩卷后回到原面板（叠层语义：弹窗不关）。
-     *   测试口径：
-     *     · 默认 rng 恒 0.999 —— 永不触发（保证既有用例不被随机打断）；
-     *     · sgPin89(sid)：pin 指定必中篇目（确定性）+ 冷却清零 —— 走真实触发链；
-     *     · 冷却口径：pin 路径同样受冷却约束（roll 返回 why='cool'）。
-     * ============================================================ */
-    var rngNever89 = function () { return 0.999; };
-    function sgPin89(sid) { G.SG.TRIG.pin = sid; G.SG.TRIG._lastAt = 0; }
-    function sgOff89() { G.SG.TRIG.pin = null; G.SG.TRIG._lastAt = 0; G.SG.TRIG.rng = rngNever89; }
-    sgOff89();
-
-    /* 块 A：触发链（建筑）—— pin 官府首篇 → 开面板即入卷 → 走满 → 掩卷回面板 */
-    var gi = -1;
-    city.cells.forEach(function (cell, i) { if (cell.build && cell.build.id === 'guanfu') gi = i; });
-    check('官府地块定位', gi >= 0);
-    sgPin89('bld-guanfu-01');
-    G.ui.openBuildModal(gi);
-    await sleep(40);
-    var fx = document.querySelector('#story-fx');
-    /* v89.86（P-06）：触发 → **入待阅**（不打断；面板未关；徽标 +1）；从待阅开卷 */
-    check('★ v89.86（P-06）：概率奇遇触发 → 入待阅《衙前夜审》（不打断 · 面板未关）',
-      (G.SG.pending() || []).some(function (x) { return x.sid === 'bld-guanfu-01'; })
-      && fx.style.display === 'none'
-      && !!document.querySelector('#modal-root [data-action="close-modal"]'));
-    check('★ v89.86（P-06）：顶栏「史册」徽标 = 待阅数',
-      (function () {
-        var b = document.getElementById('tab-badge-story');
-        return !!b && b.classList.contains('hidden') === false && Number(b.textContent) >= 1;
-      })());
-    G.ui.sgReadPending('bld-guanfu-01');
-    await sleep(40);
-    var bgLayers = fx ? fx.querySelectorAll('.sgr-bg') : [];
-    check('★ v89.86（P-06）：从待阅开卷（阅读器 · 第 1 段 · 共 6 段 · 壁画两层 · 选项≥2）', !!fx
-      && fx.style.display !== 'none' && !!G.SG._run && G.SG._run.st.id === 'bld-guanfu-01'
-      && bgLayers.length === 2
-      && fx.textContent.indexOf('第 1 段') >= 0 && fx.textContent.indexOf('共 6 段') >= 0
-      && fx.querySelectorAll('[data-action="story-pick"]').length >= 2
-      && fx.textContent.length > 200);
-    var muralKeys = {}, seenSeg = 0;
-    if (fx) {
-      var m0 = fx.querySelector('.sgr-bg[data-on]');
-      if (m0) muralKeys[m0.dataset.key] = 1;
-    }
-    var guard = 0;
-    while (guard++ < 12) {
-      var pk = fx.querySelector('[data-action="story-pick"]');
-      if (!pk) break;
-      click(pk);
-      await sleep(30);
-      seenSeg = Math.max(seenSeg, Number((fx.textContent.match(/第 (\d) 段/) || [0, 0])[1]) || 0);
-      var mOn = fx.querySelector('.sgr-bg[data-on]');
-      if (mOn) muralKeys[mOn.dataset.key] = 1;
-    }
-    var keyN = 0; for (var kk in muralKeys) keyN++;
-    check('★ 壁画随段变换（段位走到 ≥3 · 壁画出现 ≥2 张）', seenSeg >= 3 && keyN >= 2,
-      '走到第 ' + seenSeg + ' 段 · 壁画 ' + keyN + ' 张');
-    check('★ 走到结局（结算屏 + 回到城中）', !!fx.querySelector('[data-action="story-exit"]')
-      && fx.textContent.indexOf('回到城中') >= 0);
-    check('★ 阅读进度已入档',
-      !!(G.SG.progress()['bld-guanfu-01'] && G.SG.progress()['bld-guanfu-01'].done.length));
-    click(fx.querySelector('[data-action="story-exit"]'));
-    await sleep(30);
-    check('阅读器收起（不阻塞主界面）', fx.style.display === 'none');
-
-    /* 块 B：冷却口径 —— 紧接再掷 → why='cool'；冷却期内开面板也不弹 */
-    check('★ v89.29：冷却口径（刚触发过 · 再掷 why=cool）', (function () {
-      var r = G.SG.roll('building', 'guanfu');
-      return r.fire === false && r.why === 'cool';
+  console.log('--- 81. 故事库退役（v89.218 · 零残留守卫） ---');
+  (function () {
+    check('★ v89.218：故事系统整条退役（SG 引擎 / 阅读器 / 待阅 / 页签 四清）', (function () {
+      return typeof G.SG === 'undefined'
+        && typeof G.ui.openStory === 'undefined' && typeof G.ui.sgReadPending === 'undefined'
+        && typeof G.ui.sgTryAct === 'undefined' && typeof G.ui.sgPendingHTML === 'undefined'
+        && !document.querySelector('#story-fx')
+        && !document.querySelector('#topnav [data-view="story"]')
+        && !document.querySelector('#topnav [data-view="stories"]');
     })());
-    G.ui.openBuildModal(gi);
-    await sleep(30);
-    check('★ v89.29：冷却期内再点不触发（面板照常）', fx.style.display === 'none'
-      && !!document.querySelector('#modal-root [data-action="close-modal"]'));
-    var cmA = document.querySelector('#modal-root [data-action="close-modal"]');
-    if (cmA) { click(cmA); await sleep(25); }
-
-    /* 块 C：默认口径（未命中）—— rng 永不出、无 pin → 开面板不弹逸闻 */
-    sgOff89();
-    G.ui.openBuildModal(gi);
-    await sleep(30);
-    check('★ v89.29：默认口径（未命中 · 面板照常 · 不弹逸闻）',
-      fx.style.display === 'none' && !!document.querySelector('#modal-root [data-action="close-modal"]'));
-    var cmB = document.querySelector('#modal-root [data-action="close-modal"]');
-    if (cmB) { click(cmB); await sleep(25); }
-    check('★ v89.29：无故事锚点永不触发（空池）', (function () {
-      var r = G.SG.roll('building', '__none__');
-      return r.fire === false && r.why === 'empty';
-    })());
-
-    /* 块 D：触发链（地块 · 野地）—— 找一块可读地块，pin 其池中一篇 */
-    var wTile = null;
-    if (city.x != null) {
-      for (var dx9 = -4; dx9 <= 4 && !wTile; dx9++) {
-        for (var dy9 = -4; dy9 <= 4 && !wTile; dy9++) {
-          var tl9 = G.map.tile(city.x + dx9, city.y + dy9);
-          if (tl9 && G.SG.anchor('wild', tl9.terrain).length > 0) {
-            wTile = { x: city.x + dx9, y: city.y + dy9, terrain: tl9.terrain };
-          }
-        }
-      }
-    }
-    if (wTile) {
-      var wc9 = G.SG.candidates('wild', wTile.terrain);
-      var wPick9 = (wc9.fresh[0] || wc9.done[0]).st.id;
-      sgPin89(wPick9);
-      G.ui.openLandModal(wTile.x, wTile.y);
-      await sleep(30);
-      G.ui.sgTryTrigger('wild', wTile.terrain);
-      await sleep(40);
-      check('★ v89.86（P-06）：地块触发 → 入待阅（' + wPick9 + ' · 不打断）',
-        (G.SG.pending() || []).some(function (x) { return x.sid === wPick9; })
-        && fx.style.display === 'none'
-        && !!document.querySelector('#modal-root [data-action="close-modal"]'));
-      G.ui.sgReadPending(wPick9);
-      await sleep(40);
-      check('★ v89.86（P-06）：从待阅开卷（' + wPick9 + '）',
-        fx.style.display !== 'none' && !!G.SG._run && G.SG._run.st.id === wPick9);
-      var exW = fx.querySelector('[data-action="story-exit"]');
-      if (exW) { click(exW); await sleep(30); }
-      check('★ v89.86（P-06）：掩卷收起', fx.style.display === 'none');
-      var cmD = document.querySelector('#modal-root [data-action="close-modal"]');
-      if (cmD) { click(cmD); await sleep(25); }
-    } else {
-      check('★ v89.29：地块触发（附近无可读野地，跳过）', true);
-      check('★ v89.29：掩卷后回面板（跳过）', true);
-    }
-
-    /* 块 E：逐卷直开（阅读器 · 走满 · 进度入档 · 掩卷）—— 覆盖各卷代表性新篇 */
-    var VOL89 = [
-      ['v89.9', 'bld-minfang-01'], ['v89.10', 'bld-xiaochang-01'], ['v89.11', 'bld-shuyuan-02'],
-      ['v89.12', 'bld-cangku-02'], ['v89.13', 'bld-zhaoxianguan-02'], ['v89.14', 'bld-guanfu-05'],
-      ['v89.24', 'bld-guanfu-08'], ['v89.25', 'bld-chengqiang-06'], ['v89.26', 'bld-xiaochang-07'],
-      ['v89.27', 'wild-forest-05'], ['v89.27', 'city-county-05'], ['v89.27', 'ext-farm-06'],
-      ['v89.28', 'bld-shuyuan-09'], ['v89.28', 'wild-zhaoze-08'],
-      ['v89.30', 'bld-kezhan-09'], ['v89.30', 'wild-desert-09'], ['v89.30', 'bld-honglusi-02'],
-      ['v89.30', 'city-county-07'], ['v89.30', 'wild-lake-12'], ['v89.30', 'ext-mine-07'],
-      ['v89.32', 'bld-honglusi-04'], ['v89.32', 'bld-zhaoxianguan-10'], ['v89.32', 'city-county-11'],
-      ['v89.32', 'city-county-16'], ['v89.32', 'city-jun-18'], ['v89.32', 'wild-zhaoze-11'],
-      ['v89.33', 'bld-cangku-09'], ['v89.33', 'city-county-21'], ['v89.33', 'wild-zhaoze-12'],
-      ['v89.34', 'bld-kezhan-10'], ['v89.34', 'wild-forest-16'], ['v89.34', 'city-jun-23'],
-      ['v89.34', 'city-county-29'], ['v89.34', 'wild-desert-15'], ['v89.34', 'bld-majiu-10'],
-      ['v89.35', 'bld-tiejiangpu-09'], ['v89.35', 'bld-tiejiangpu-10'], ['v89.35', 'bld-fenghuotai-10'],
-      ['v89.35', 'wild-forest-19'], ['v89.35', 'city-capital-10'], ['v89.35', 'city-county-34'],
-      ['v89.37', 'city-county-36'], ['v89.37', 'wild-caoyuan-18'], ['v89.37', 'city-zhou-17'],
-      ['v89.37', 'city-zhou-18'], ['v89.37', 'city-capital-17'], ['v89.37', 'city-zhou-22'],
-      ['v89.38', 'city-county-43'], ['v89.38', 'city-jun-34'], ['v89.38', 'ext-farm-10'],
-      ['v89.38', 'city-county-49'], ['v89.38', 'city-zhou-27'], ['v89.38', 'city-county-50'],
-      ['v89.39', 'misc-01'], ['v89.39', 'misc-07'], ['v89.39', 'misc-13'], ['v89.39', 'misc-19'],
-      ['v89.39', 'misc-25'], ['v89.39', 'misc-33'], ['v89.39', 'misc-40']
-    ];
-    for (var v9 = 0; v9 < VOL89.length; v9++) {
-      var tag9 = VOL89[v9][0], sid9 = VOL89[v9][1];
-      G.ui.openStory(sid9);
-      await sleep(40);
-      var open9 = !!fx && fx.style.display !== 'none'
-        && !!G.SG._run && G.SG._run.st.id === sid9
-        && fx.querySelectorAll('.sgr-bg').length === 2
-        && fx.textContent.indexOf('第 1 段') >= 0 && /共 [5-7] 段/.test(fx.textContent)
-        && fx.querySelectorAll('[data-action="story-pick"]').length >= 2;
-      var g9 = 0;
-      while (open9 && g9++ < 12) {
-        var pk9 = fx.querySelector('[data-action="story-pick"]');
-        if (!pk9) break;
-        click(pk9);
-        await sleep(25);
-      }
-      var end9 = !!fx && !!fx.querySelector('[data-action="story-exit"]')
-        && fx.textContent.indexOf('回到城中') >= 0;
-      var save9 = !!(G.SG.progress()[sid9] && G.SG.progress()[sid9].done.length);
-      if (fx && fx.querySelector('[data-action="story-exit"]')) {
-        click(fx.querySelector('[data-action="story-exit"]'));
-        await sleep(25);
-      }
-      check('★ ' + tag9 + '：直开阅读器 · 走满至结局（' + sid9 + '）', open9 && end9);
-      check('★ ' + tag9 + '：进度入档 · 掩卷收起（' + sid9 + '）',
-        save9 && fx.style.display === 'none');
-    }
-
-    /* 块 F：动作触发（v89.31）—— 动作完成 → 相关建筑池 → 开卷 / 默认阈值不打扰 */
-    var pF1 = G.SG.actPool('tech-done');
-    var pinF1 = (pF1.fresh[0] || pF1.done[0]).st.id;
-    sgPin89(pinF1); G.SG.TRIG._actAt = {};
-    G.onActionDone('tech-done');
-    await sleep(40);
-    check('★ v89.86（P-06）：动作触发 · 研习完成 → 入待阅（' + pinF1 + '）',
-      (G.SG.pending() || []).some(function (x) { return x.sid === pinF1; })
-      && fx.style.display === 'none');
-    G.ui.sgReadPending(pinF1);
-    await sleep(40);
-    check('★ v89.86（P-06）：从待阅开卷（' + pinF1 + '）',
-      fx.style.display !== 'none' && !!G.SG._run && G.SG._run.st.id === pinF1);
-    var exF1 = fx.querySelector('[data-action="story-exit"]');
-    if (exF1) { click(exF1); await sleep(30); }
-    check('★ v89.86（P-06）：掩卷收起', fx.style.display === 'none');
-    sgOff89(); G.SG.TRIG._actAt = {};
-    G.onActionDone('train-done');
-    await sleep(30);
-    check('★ v89.31：动作触发 · 默认阈值下不打扰（rng 恒 0.999）', fx.style.display === 'none');
-
-    /* v89.39：世事（misc）并入动作池 —— 研习完成 → 世事篇开卷（真实链路） */
-    var pM39 = G.SG.actPool('tech-done');
-    var hasM39 = false;
-    pM39.fresh.concat(pM39.done).forEach(function (r) { if (r.st.id === 'misc-06') hasM39 = true; });
-    check('★ v89.39：世事并入动作池（tech-done 含《奏对》misc-06）', hasM39);
-    sgPin89('misc-06'); G.SG.TRIG._actAt = {};
-    G.onActionDone('tech-done');
-    await sleep(40);
-    check('★ v89.86（P-06）：动作偶遇世事 → 入待阅（misc-06）',
-      (G.SG.pending() || []).some(function (x) { return x.sid === 'misc-06'; })
-      && fx.style.display === 'none');
-    G.ui.sgReadPending('misc-06');
-    await sleep(40);
-    check('★ v89.86（P-06）：从待阅开卷（misc-06）',
-      fx.style.display !== 'none' && !!G.SG._run && G.SG._run.st.id === 'misc-06');
-    var exM39 = fx.querySelector('[data-action="story-exit"]');
-    if (exM39) { click(exM39); await sleep(30); }
-    check('★ v89.86（P-06）：掩卷收起', fx.style.display === 'none');
-    sgOff89(); G.SG.TRIG._actAt = {};
-
-    /* 收尾：恢复测试默认（随机永不触发） */
-    sgOff89();
   })();
 
   console.log('');
@@ -6420,7 +6212,7 @@ if (svBtn) {
        改验**数据本体**：七套在册且各有名称（v89.50 的"新套可见"语义由数据侧承载，
        一览表渲染随功能退役）。 */
     check('v89.204：套装效果一览已退役 · 套装数据仍在（7 套）', (function () {
-      const names = ['倚天套', '名将套', '神武套', '游侠套', '陷阵套', '守御套', '天策套'];
+      const names = ['陨锋套', '佣兵套', '军魂套', '游猎套', '冲锋套', '壁垒套', '智囊套'];
       const gone = typeof G.ui.forgeSetNote !== 'function' && typeof G.ui.openForgeSetInfo !== 'function';
       const ids = Object.keys(G.DATA.SETS);
       return gone && ids.length === 7
@@ -6440,7 +6232,7 @@ if (svBtn) {
       if (!hasNew) return false;
       G.ui._shopCat = 'attr_buff';
       G.ui.setView('shop');
-      return document.body.innerHTML.indexOf('虎翼符') >= 0;
+      return document.body.innerHTML.indexOf('翼锋芯片') >= 0;
     })());
     check('v89.50：打造清单含新套件（游侠/陷阵/守御/天策 各 12 件）', (function () {
       const fl = G.forgeList();
@@ -6449,7 +6241,7 @@ if (svBtn) {
       });
     })());
     /* ③ v89.50 顺带修复：符类真的加属性 */
-    check('v89.50（真 bug 修复）：虎符用过之后统率真的涨', (function () {
+    check('v89.50（真 bug 修复）：指挥芯片用过之后统率真的涨', (function () {
       const g = G.state.generals[0];
       if (!g) return false;
       const bkItems = G.state.items, bkBuffs = G.state.buffs;
@@ -6494,7 +6286,7 @@ if (svBtn) {
     if (useBtn) click(useBtn);
     await sleep(160);
     check('v89.51：在背包里点「使用」真的开出东西（金增加）', (G.state.res.gold || 0) > bagGold0);
-    /* ④ 五类新货都在背包分组里（秘籍/政令/锦囊/营造/精华） */
+    /* ④ 五类新货都在背包分组里（残卷/政令/封存匣/营造/精华） */
     const bkItems = G.state.items;
     G.state.items = Object.assign({}, bkItems, { corvee: 1, jinang: 1, kaogongji: 1, lingsui: 3 });
     (G.DATA.ITEMS || []).forEach((it) => { if (it.type === 'neigong') G.state.items[it.id] = 1; });
@@ -6502,7 +6294,7 @@ if (svBtn) {
     G.ui.setBagSub('essence');     /* v89.115：切到「精华」分类（该行必在第 1 页） */
     await sleep(90);
     const bag2 = document.querySelector('#view-container').innerHTML;
-    check('v89.51：背包分组覆盖 秘籍 / 政令 / 锦囊 / 营造 / 精华', (function () {
+    check('v89.51：背包分组覆盖 残卷 / 政令 / 封存匣 / 营造 / 精华', (function () {
       /* v89.86：宝物页分页 16 行/页 —— 五类新货未必落在第 1 页（bag2 只含当前页）。
          改判「分组表覆盖五类（ui.BAG_ITEM_CN 即该契约的唯一出口）+ 每类都有实物」，
          不依赖分页落在哪一页；渲染链路另有"列宝箱"一条在前。 */
@@ -6510,17 +6302,17 @@ if (svBtn) {
       const types = ['neigong', 'corvee', 'talis', 'build_cost', 'essence'];
       const cn = types.map((t) => (CN[t] || '')).join(' ');
       const all = G.DATA.ITEMS || [];
-      return ['秘籍', '政令', '锦囊', '营造', '精华'].every((w) => cn.indexOf(w) >= 0)
+      return ['残卷', '政令', '封存匣', '营造', '精华'].every((w) => cn.indexOf(w) >= 0)
         && types.every((t) => all.some((it) => it.type === t));
     })());
-    /* ⑤ 灵气精华行有「去蕴养」直达按钮，点了真开蕴养面板 */
+    /* ⑤ 辐能核心行有「去调校」直达按钮，点了真开调校面板 */
     const essBtn = document.querySelector('#view-container [data-action="ling-temper-open"]');
-    check('v89.51：灵气精华行有「去蕴养」直达按钮', !!essBtn);
+    check('v89.51：辐能核心行有「去调校」直达按钮', !!essBtn);
     if (essBtn) click(essBtn);
     await sleep(160);
     const mr = document.querySelector('#modal-root');
     const mrHtml = mr ? mr.innerHTML : '';
-    check('v89.51：点「去蕴养」真的打开蕴养面板', mrHtml.indexOf('蕴养') >= 0 || mrHtml.indexOf('灵气精华') >= 0);
+    check('v89.51：点「去调校」真的打开调校面板', mrHtml.indexOf('调校') >= 0 || mrHtml.indexOf('辐能核心') >= 0);
     G.ui.closeAllModals();
     await sleep(60);
     G.state.items = bkItems;
@@ -6546,7 +6338,7 @@ if (svBtn) {
 
     const c86 = G.currentCity();
     c86.cells = c86.cells || [];
-    /* P-12：书院科技面板 —— 按钮「研究(黄金 …)」无 NaN（真实渲染） */
+    /* P-12：研习所科技面板 —— 按钮「研究(黄金 …)」无 NaN（真实渲染） */
     if (!c86.cells.some((x) => x && x.build && x.build.id === 'shuyuan')) {
       for (let i = 0; i < c86.cells.length; i++) { if (!c86.cells[i].build) { c86.cells[i] = { build: { id: 'shuyuan', lvl: 10 } }; break; } }
     }
@@ -6603,7 +6395,7 @@ if (svBtn) {
     G.ui.closeAllModals();
     await sleep(40);
 
-    /* 门派 P1：名录六派被动全部可读（真实渲染） */
+    /* 派系 P1：名录六派被动全部可读（真实渲染） */
     if (!c86.cells.some((x) => x && x.build && x.build.id === 'honglusi')) {
       for (let i = 0; i < c86.cells.length; i++) { if (!c86.cells[i].build) { c86.cells[i] = { build: { id: 'honglusi', lvl: 1 } }; break; } }
     }
@@ -6611,8 +6403,8 @@ if (svBtn) {
     G.ui.openSect();
     await sleep(80);
     const sec86 = document.querySelector('#modal-root').innerHTML;
-    check('v89.86（门派P1）：名录六派被动全部可读（行军速度/部队攻击/伤兵回复/攻城伤害/器械耗时/坐骑属性）',
-      ['行军速度 +8%', '部队攻击 +6%', '战后伤兵回复 +15%', '攻城伤害 +8%', '器械打造耗时 −15%', '坐骑装备属性 +20%']
+    check('v89.86（派系P1）：名录六派被动全部可读（行军速度/部队攻击/伤兵回复/攻城伤害/器械耗时/座驾属性）',
+      ['行军速度 +8%', '部队攻击 +6%', '战后伤兵回复 +15%', '攻城伤害 +8%', '器械打造耗时 −15%', '座驾装备属性 +20%']
         .every((t) => sec86.indexOf(t) >= 0));
     G.ui.closeAllModals();
     await sleep(30);
@@ -6623,7 +6415,7 @@ if (svBtn) {
     const s90 = G.state;
     const c90 = s90.cities[0];
     s90.settings.battleWatch = true;          /* 本段单独开观战 */
-    /* v89.88：钉定天气为「晴」—— 战斗引擎读天气（雨：弓兵射程 −20%/行军 −20%），
+    /* v89.88：钉定天气为「晴」—— 战斗引擎读天气（雨：远程射程 −20%/行军 −20%），
        不钉定则本段"多回合"性质随天气摆动（实测复发：雨天首回合清场 →
        点完「完成回合」战场被战果面板替换，#bt-round/#bt-auto 消失 = 假红）。 */
     const we90bak = s90.world.weather;
@@ -6647,7 +6439,7 @@ if (svBtn) {
         const tl = G.map.tile(x, y);
         if (!tl || tl.terrain === 'city') continue;
         if (G.map.wildAt(x, y) || G.map.fortAt(x, y)) continue;
-        /* 只要 Lv2~4：多兵种（含长枪 → 目标下拉断言要用）+ 规模小（拉锯多回合） */
+        /* 只要 Lv2~4：多兵种（含长矛手 → 目标下拉断言要用）+ 规模小（拉锯多回合） */
         const wlv = G.map.wildLevelNow(x, y);
         if (wlv < 2 || wlv > 4) continue;
         wt90 = { x: x, y: y };
@@ -6805,10 +6597,10 @@ if (svBtn) {
         if (!logEl120) {
           check('v89.120（战场）：回合记录倒叙（最新在最上）', false, '#bt-log 缺失');
         } else {
-          const snap120 = { field: 1400, atk: [{ id: 'changqiang', name: '长枪兵', count: 100, adv: 10, range: 50 }],
-            def: [{ id: 'yibing', name: '义兵', count: 100, adv: 10, range: 20 }], towers: null };
-          G.ui.btRoundLine({ r: 91, gap: 900, events: [{ kind: 'move', side: 'atk', id: 'changqiang', name: '长枪兵', step: 5 }] }, snap120);
-          G.ui.btRoundLine({ r: 92, gap: 800, events: [{ kind: 'move', side: 'atk', id: 'changqiang', name: '长枪兵', step: 6 }] }, snap120);
+          const snap120 = { field: 1400, atk: [{ id: 'changqiang', name: '长矛手', count: 100, adv: 10, range: 50 }],
+            def: [{ id: 'yibing', name: '民兵', count: 100, adv: 10, range: 20 }], towers: null };
+          G.ui.btRoundLine({ r: 91, gap: 900, events: [{ kind: 'move', side: 'atk', id: 'changqiang', name: '长矛手', step: 5 }] }, snap120);
+          G.ui.btRoundLine({ r: 92, gap: 800, events: [{ kind: 'move', side: 'atk', id: 'changqiang', name: '长矛手', step: 6 }] }, snap120);
           const hdrs120 = logEl120.querySelectorAll('.bt-ev.hdr');
           check('v89.120（战场）：回合记录倒叙（最新在最上）',
             hdrs120.length >= 2 && /第 92 回合/.test(hdrs120[0].textContent),
@@ -7023,32 +6815,15 @@ if (svBtn) {
     }
     s92.reports = s92.reports.filter((r) => !/^E2E /.test(r.title));
 
-    /* ④ C4 故事集：渲染 + 点击重读（真实 DOM） */
-    const st0_92 = G.SG.list()[0];
-    const bakRec92 = s92.stories ? s92.stories[st0_92.id] : undefined;
-    if (!s92.stories) s92.stories = {};
-    s92.stories[st0_92.id] = { done: ['e1'], n: 2, grade: 'good' };
-    G.ui.setView('stories')      /* v89.104：故事集独立成页 */;
-    await sleep(90);
-    const vc92b = document.querySelector('#view-container');
-    const hs92 = vc92b ? vc92b.textContent : '';
-    check('v89.89（C4）：故事集（独立页 · v89.104 起与史册并列）已读 1 / N',
-      hs92.indexOf('故事集') >= 0 && hs92.indexOf('《' + st0_92.title + '》') >= 0,
-      hs92.replace(/\s+/g, ' ').slice(0, 56));
-    const rBtn92 = document.querySelector('[data-action="story-read-at"]');
-    check('v89.89（C4）：已读篇目重读入口在场', !!rBtn92);
-    if (rBtn92) {
-      click(rBtn92);
-      await sleep(90);
-      const fx92 = document.querySelector('#story-fx');
-      check('v89.89（C4）：点击重读 → 阅读器打开', !!fx92 && fx92.style.display === 'block');
-      const exit92 = fx92 && fx92.querySelector('[data-action="story-exit"]');
-      if (exit92) click(exit92); else G.SG.close();
-      await sleep(60);
-    } else {
-      check('v89.89（C4）：点击重读 → 阅读器打开', false, '重读按钮缺失');
-    }
-    if (bakRec92 === undefined) delete s92.stories[st0_92.id]; else s92.stories[st0_92.id] = bakRec92;
+    /* ④ C4 故事集（v89.218 退役）：原「渲染 + 点击重读」断言随视图删除 */
+    check('v89.218：故事集视图退役（真调 setView 不渲染 · 页签不在）', (function () {
+      G.ui.setView('stories');
+      var vcC = document.querySelector('#view-container');
+      var t = (vcC ? vcC.textContent : '') || '';
+      G.ui.setView('city');
+      return t.indexOf('故事集') < 0 && typeof G.ui.storiesHTML === 'undefined'
+        && !document.querySelector('#topnav [data-view="stories"]');
+    })());
 
     /* ⑤ E3 人口三段条（真实 DOM：募兵页兵种卡） */
     G.ui._trainTab = 'inf'; G.ui._trainFilter = 'normal';
@@ -7077,10 +6852,10 @@ if (svBtn) {
 
   /* ① 弹窗不溢出：内容装得下就不该冒滚动条（项目硬规矩） */
   const OVER_CASES = [
-    ['市场', function () { G.ui.openMarket(); }],
+    ['交易站', function () { G.ui.openMarket(); }],
     ['见闻/日志', function () { G.ui.openJournal(1); }],
     ['君主', function () { G.ui.openLordInfo(); }],
-    ['门派', function () { G.ui.openSect(); }],
+    ['派系', function () { G.ui.openSect(); }],
     ['自动出征配置', function () { G.ui.openAutoMarch(); }],
     ['装备', function () { G.ui.openEquipPanel(); }],
     ['出征', function () { G.ui.openExpModal({ kind: 'wild', x: G.state.cities[0].x + 2, y: G.state.cities[0].y + 2 }); }],
@@ -7373,9 +7148,9 @@ if (svBtn) {
     try {
       s.reports.unshift({
         t: Date.now(), title: '§157 测试战报', win: true, type: 'war', fav: false,
-        body: '【许都】攻城胜利', engine: 'tactic', rounds: 2, winner: 'atk',
+        body: '【灰岗】攻城胜利', engine: 'tactic', rounds: 2, winner: 'atk',
         roundsLog: [
-          { r: 1, a: 100, d: 80, events: [{ kind: 'attack', side: 'atk', id: 0, name: '长枪兵', target: '弓兵', kill: 5 }] },
+          { r: 1, a: 100, d: 80, events: [{ kind: 'attack', side: 'atk', id: 0, name: '长矛手', target: '弩手', kill: 5 }] },
           { r: 2, a: 95, d: 70, events: [] }
         ]
       });
@@ -7393,7 +7168,7 @@ if (svBtn) {
         const txt157 = box157 ? (box157.textContent || '') : '';
         check('§157：逐回合弹窗（一回合一行 · 首行含第1回合与交火事件 · 空回合写无交火）',
           rounds157.length === 2 && txt157.indexOf('第1回合') >= 0
-          && txt157.indexOf('长枪兵→弓兵 杀 5') >= 0 && txt157.indexOf('（无交火）') >= 0,
+          && txt157.indexOf('长矛手→弩手 杀 5') >= 0 && txt157.indexOf('（无交火）') >= 0,
           'rounds=' + rounds157.length + ' txt=' + txt157.slice(0, 80));
       }
     } finally {
@@ -7471,14 +7246,14 @@ if (svBtn) {
 
     /* ② 容量悬停分账（真渲染 title） */
     const tip158 = document.querySelector('#res-bar .res-line .amt').getAttribute('title') || '';
-    check('v89.158① 容量悬停分账（真渲染：上限 + 基础/仓库 + 现有）',
+    check('v89.158① 容量悬停分账（真渲染：上限 + 基础/货仓 + 现有）',
       tip158.indexOf('上限') >= 0 && tip158.indexOf('现有') >= 0
         && (tip158.indexOf('基础储量') >= 0 || tip158.indexOf('级合计') >= 0),
       tip158.split('\n').join(' | '));
 
     /* ③ tick 不削存量（真环境短跑 · 用完还原） */
     const st158 = G.state, c158 = G.currentCity();
-    const cap158 = G.storeCapOf(c158);
+    const cap158 = G.storeCapOf(c158, 'grain');   /* v89.212（老板 1）：按资源上限（堆场分账） */
     const bkG158 = st158.res.grain;
     st158.res.grain = cap158 + 123456;
     G.tickOnce();
@@ -7509,7 +7284,7 @@ if (svBtn) {
       }
     }
 
-    /* ② 建筑面板：多座民房 Lv4 + Lv3 混存（官府 4）→ 本座按自己的等级给键 */
+    /* ② 建筑面板：多座居所 Lv4 + Lv3 混存（政务厅 4）→ 本座按自己的等级给键 */
     const c159 = G.makeCity({ id: 'e2e159', name: 'e2e159城', x: 610, y: 610, type: 'self' });
     const bkQ159 = (G.state.queues.build || []).slice();
     const bkCity159 = G.ui._cityId, bkRes159 = {};
@@ -7525,13 +7300,13 @@ if (svBtn) {
         c159.cells[cells159[1]].build.lvl = 3;
         G.ui.openBuildModal(cells159[1]);           /* 点 Lv3 那座 */
         let m = document.querySelector('#modal-root').innerHTML;
-        check('v89.159② 面板（Lv3 那座）给「升级」键（不再误报需官府）',
-          m.indexOf('confirm-upgrade') >= 0 && m.indexOf('需官府') < 0);
+        check('v89.159② 面板（Lv3 那座）给「升级」键（不再误报需政务厅）',
+          m.indexOf('confirm-upgrade') >= 0 && m.indexOf('需政务厅') < 0);
         G.ui.openBuildModal(cells159[0]);           /* 点 Lv4 那座 */
         m = document.querySelector('#modal-root').innerHTML;
-        check('v89.159② 面板（Lv4 那座）如实报「需官府 Lv5」', m.indexOf('需官府 Lv5') >= 0);
+        check('v89.159② 面板（Lv4 那座）如实报「需政务厅 Lv5」', m.indexOf('需政务厅 Lv5') >= 0);
       } else {
-        check('v89.159② 城里有 ≥2 座民房（前置）', false);
+        check('v89.159② 城里有 ≥2 座居所（前置）', false);
       }
     } finally {
       G.state.cities = G.state.cities.filter((x) => x.id !== 'e2e159');
@@ -7541,7 +7316,7 @@ if (svBtn) {
       G.ui.closeAllModals();
     }
 
-    /* ③ 上限行：主城 + 爵位解锁 + 官府没跟上 → 写「受官府 LvN 限制」 */
+    /* ③ 上限行：主城 + 威望解锁 + 政务厅没跟上 → 写「受政务厅 LvN 限制」 */
     const c159b = G.makeCity({ id: 'e2e159b', name: 'e2e159b城', x: 611, y: 611, type: 'self' });
     const bkMain159 = G.state.mainCityId, bkRank159 = G.state.rank;
     G.state.cities.push(c159b);
@@ -7552,8 +7327,8 @@ if (svBtn) {
       const mi159 = c159b.cells.findIndex((x) => x.build && x.build.id === 'minfang');
       G.ui.openBuildModal(mi159 >= 0 ? mi159 : 0);
       const m3 = document.querySelector('#modal-root').innerHTML;
-      check('v89.159③ 上限行写明「受官府 Lv8 限制 · 升官府可提升」（真渲染）',
-        m3.indexOf('受官府 Lv') >= 0 && m3.indexOf('升官府可提升') >= 0);
+      check('v89.159③ 上限行写明「受政务厅 Lv8 限制 · 升政务厅可提升」（真渲染）',
+        m3.indexOf('受政务厅 Lv') >= 0 && m3.indexOf('升政务厅可提升') >= 0);
     } finally {
       G.state.cities = G.state.cities.filter((x) => x.id !== 'e2e159b');
       G.state.mainCityId = bkMain159; G.state.rank = bkRank159;
@@ -7564,14 +7339,14 @@ if (svBtn) {
 
   console.log('\n--- §160. 逾溢折损 / 自动升级顺延（v89.160 · 真实 DOM） ---');
   {
-    /* ① 真渲染：仓库面板给出折损规则与"当前超出上限" */
+    /* ① 真渲染：货仓面板给出折损规则与"当前超出上限" */
     const c160 = G.currentCity();
-    const cap160 = G.storeCapOf(c160);
+    const cap160 = G.storeCapOf(c160, 'grain');   /* v89.212（老板 1）：按资源上限（堆场分账） */
     const bkG160 = c160.res.grain, bkAt160 = G.state.overflowAt, bkW160 = G.state.world.elapsed;
     c160.res.grain = cap160 + 123456;
     G.ui.openStore();
     let m160 = document.querySelector('#modal-root').innerHTML;
-    check('v89.160① 仓库面板真渲染「逾溢折损」规则（含现实换算）+ 当前超出上限',
+    check('v89.160① 货仓面板真渲染「逾溢折损」规则（含现实换算）+ 当前超出上限',
       m160.indexOf('逾溢折损') >= 0 && m160.indexOf('当前超出上限') >= 0
       && m160.indexOf('游戏日（现实约') >= 0 && m160.indexOf('折损 25%') >= 0);
     G.ui.closeAllModals();
@@ -7588,7 +7363,7 @@ if (svBtn) {
     if (G.state.overflowAt == null) G.settleOverflowRot();
     G.state.overflowAt = G.state.world.elapsed;
     G.state.world.elapsed += 86400;                 /* 推进 1 游戏日（tick 会再过 1 秒） */
-    c2.res.grain = G.storeCapOf(c2) + 100000;
+    c2.res.grain = G.storeCapOf(c2, 'grain') + 100000;   /* v89.212（老板 1）：逾溢按资源上限 */
     const bkGold160 = c2.res.gold;
     c2.res.gold = 9e9;
     const gm160 = c2.res.grain;
@@ -7596,11 +7371,11 @@ if (svBtn) {
     const L160 = G.state.msgLog || [];
     const tail160 = (L160[L160.length - 1] || {}).msg || '';
     const named160 = (G.DATA.OVERFLOW.events || []).some((e) => tail160.indexOf(e.name) >= 0);
-    check('v89.160① 真 tick 结算：公文出灾种行「…损失 粮食 X…」',
+    check('v89.160① 真 tick 结算：公文出灾种行「…损失 净水 X…」',
       named160 && tail160.indexOf('损失') >= 0, tail160.slice(0, 70));
-    check('v89.160① 真 tick 后的存量 = 超出部分掉 25%（cap+100000 → cap+75000）',
-      Math.abs(c2.res.grain - (G.storeCapOf(c2) + 75000)) < 5000,
-      'grain ' + Math.round(c2.res.grain) + ' · cap ' + Math.round(G.storeCapOf(c2)));
+    check('v89.160① 真 tick 后的存量 = 超出部分掉 25%（cap+100000 → cap+75000 · v89.212 按粮口径）',
+      Math.abs(c2.res.grain - (G.storeCapOf(c2, 'grain') + 75000)) < 5000,
+      'grain ' + Math.round(c2.res.grain) + ' · cap ' + Math.round(G.storeCapOf(c2, 'grain')));
     check('v89.160① 黄金豁免', c2.res.gold >= 9e9 - 1e6, 'gold ' + Math.round(c2.res.gold));
     c2.res.gold = bkGold160;
 
@@ -7620,8 +7395,8 @@ if (svBtn) {
       st160.settings.autoUpgrade = true;
       st160.queues.build = [];
       const r160 = G.autoUpgrade();
-      check('v89.160② 真环境：顺延过贵的（铁匠铺）→ 命中便宜的（民房）',
-        !!(r160 && r160.ok && r160.target && r160.target.idx === 1 && /民房/.test(r160.target.name || '')),
+      check('v89.160② 真环境：顺延过贵的（锻造间）→ 命中便宜的（居所）',
+        !!(r160 && r160.ok && r160.target && r160.target.idx === 1 && /居所/.test(r160.target.name || '')),
         r160 && r160.target ? r160.target.name + ' idx' + r160.target.idx : '无动作');
     } finally {
       st160.queues.build = bkQ160;
@@ -7633,20 +7408,20 @@ if (svBtn) {
 
   /* ============================================================
    * v89.163（老板 1+2）：指挥战斗清单含「行军中的军队」（召回宿主跟走）·
-   *   征兵时长压缩（步兵 ≤1 分 / 骑兵 ≤5 分 · 单兵耗时）
+   *   征兵时长压缩（步兵 ≤1 分 / 机车 ≤5 分 · 单兵耗时）
    * ============================================================ */
   console.log('\n--- §163. 指挥战斗含行军 / 征兵时长压缩（v89.163 · 真实 DOM） ---');
   await (async function () {
-    /* ① 数据：步兵 ≤60 / 骑兵 ≤300（游戏秒 · 单兵耗时） */
+    /* ① 数据：步兵 ≤60 / 机车 ≤300（游戏秒 · 单兵耗时） */
     const over163 = [];
     Object.keys(G.DATA.TROOPS).forEach((k) => {
       const t = G.DATA.TROOPS[k];
       if (t.cat === 'inf' && t.time > 60) over163.push(t.name + '=' + t.time);
       if (t.cat === 'cav' && t.time > 300) over163.push(t.name + '=' + t.time);
     });
-    check('v89.163 征兵时长：步兵 ≤1 分 / 骑兵 ≤5 分（单兵耗时 · 游戏秒）', over163.length === 0,
-      over163.join('/') || ('义兵 ' + G.DATA.TROOPS.yibing.time + ' · 弓箭手 ' + G.DATA.TROOPS.gongjian.time
-        + ' · 象兵 ' + G.DATA.TROOPS.nanjiangxiangbing.time));
+    check('v89.163 征兵时长：步兵 ≤1 分 / 机车 ≤5 分（单兵耗时 · 游戏秒）', over163.length === 0,
+      over163.join('/') || ('民兵 ' + G.DATA.TROOPS.yibing.time + ' · 弩手 ' + G.DATA.TROOPS.gongjian.time
+        + ' · 变异巨兽 ' + G.DATA.TROOPS.nanjiangxiangbing.time));
 
     /* ② 清单两段 + 召回宿主跟走（真 DOM · 真点击） */
     const c163 = G.currentCity();
@@ -7849,8 +7624,8 @@ if (svBtn) {
     const bkAuto167 = st.settings.autoUpgrade;
     const bkQ167 = st.queues.build.slice();
     try {
-      st.rank = Math.max(st.rank || 0, 6);           /* 领地上限随爵位（已有 §166 造的第二城） */
-      /* 各城：官府 lv3 + 民房×4（lv1，最便宜、必可升）+ 资源（v89.161：花费按城） */
+      st.rank = Math.max(st.rank || 0, 6);           /* 领地上限随威望（已有 §166 造的第二城） */
+      /* 各城：政务厅 lv3 + 居所×4（lv1，最便宜、必可升）+ 资源（v89.161：花费按城） */
       st.cities.forEach((c) => {
         c.cells.forEach((x) => { if (x.build && !x.official) x.build = null; });
         let gi = -1;
@@ -7927,9 +7702,9 @@ if (svBtn) {
 
   /* ============================================================
    * 174. v89.174（老板）：建造完成 → 施工弹窗 live 换态（真实 DOM）
-   *   + 官府「在建队列」段 + city:wall 宽容解析。
+   *   + 政务厅「在建队列」段 + city:wall 宽容解析。
    * ============================================================ */
-  console.log('\n--- §174. 建造完成即换态 + 官府在建队列（v89.174 · 真实 DOM） ---');
+  console.log('\n--- §174. 建造完成即换态 + 政务厅在建队列（v89.174 · 真实 DOM） ---');
   await (async function () {
     const s174 = G.state;
     const c174 = G.currentCity();
@@ -7953,11 +7728,11 @@ if (svBtn) {
       G.ui.liveModalTick();                   /* 模拟主循环每秒 live 重开 */
       await sleep(90);
       h174 = document.querySelector('#modal-root').innerHTML;
-      check('★ v89.174 完成后 live 换态：不再「建造中」· 换出功能面板（民房 · Lv1）',
-        h174.indexOf('建造中') < 0 && /民房 · Lv1/.test(h174),
-        (h174.match(/建造中|民房 · Lv1/) || [''])[0]);
+      check('★ v89.174 完成后 live 换态：不再「建造中」· 换出功能面板（居所 · Lv1）',
+        h174.indexOf('建造中') < 0 && /居所 · Lv1/.test(h174),
+        (h174.match(/建造中|居所 · Lv1/) || [''])[0]);
       G.ui.closeAllModals();
-      /* 官府格弹窗：在建队列段 */
+      /* 政务厅格弹窗：在建队列段 */
       let gIdx = -1;
       c174.cells.forEach(function (cc, i) { if (gIdx < 0 && cc.build && cc.build.id === 'guanfu') gIdx = i; });
       const r2 = G.buildAt(c174.id, idx174b, 'minfang');
@@ -7965,8 +7740,8 @@ if (svBtn) {
       G.ui.openBuildModal(gIdx);
       await sleep(90);
       const h2 = document.querySelector('#modal-root').textContent;
-      check('★ v89.174 官府弹窗「在建队列」段（含在建民房行）',
-        r2.ok === true && h2.indexOf('在建队列') >= 0 && h2.indexOf('民房') >= 0,
+      check('★ v89.174 政务厅弹窗「在建队列」段（含在建居所行）',
+        r2.ok === true && h2.indexOf('在建队列') >= 0 && h2.indexOf('居所') >= 0,
         (h2.match(/在建队列（\d+）/) || [''])[0]);
       G.ui.closeAllModals();
       /* city:wall 宽容解析（非数字槽位） */
@@ -8001,10 +7776,10 @@ if (svBtn) {
       host.id = 'bt-log';
       document.body.appendChild(host);
     }
-    const snap175 = { field: 4000, atk: [{ id: 'gongjian', name: '弓箭手', count: 700, adv: 850, range: 1200 }],
-      def: [{ id: 'gongjian', name: '弓箭手', count: 700, adv: 100, range: 1200 }], towers: null };
+    const snap175 = { field: 4000, atk: [{ id: 'gongjian', name: '弩手', count: 700, adv: 850, range: 1200 }],
+      def: [{ id: 'gongjian', name: '弩手', count: 700, adv: 100, range: 1200 }], towers: null };
     const fakeRec175 = { side: 'atk', smartRule: 'front',
-      smartLog: [{ r: 93, n: 3, rule: 'front', notes: ['弓箭手 前进→防御', '轻骑兵 目标→弓箭手', '长枪兵 目标→轻骑兵'] }] };
+      smartLog: [{ r: 93, n: 3, rule: 'front', notes: ['弩手 前进→防御', '摩托游骑 目标→弩手', '长矛手 目标→摩托游骑'] }] };
     G.ui.btRoundLine({ r: 93, gap: 1800, events: [] }, snap175, fakeRec175);
     const lg175 = document.querySelector('#bt-log');
     check('★ v89.175 回合记录出现「智能调兵完成（调整 3 项…）· 采用「清前排」· 开始回合战斗」',
@@ -8030,8 +7805,8 @@ if (svBtn) {
  * ============================================================ */
 (function () {
   const snap176 = { field: 2600, round: 3, maxRounds: 30, towers: null,
-    atk: [{ id: 'changqiang', name: '长枪兵', count: 80, start: 100, adv: 1400, spd: 300, er: 50, stance: 'advance' }],
-    def: [{ id: 'gongjian', name: '弓箭手', count: 90, start: 100, adv: 1400, spd: 250, er: 1200, stance: 'advance' }] };
+    atk: [{ id: 'changqiang', name: '长矛手', count: 80, start: 100, adv: 1400, spd: 300, er: 50, stance: 'advance' }],
+    def: [{ id: 'gongjian', name: '弩手', count: 90, start: 100, adv: 1400, spd: 250, er: 1200, stance: 'advance' }] };
   check('v89.176 顶栏损失读数出现（btTopHTML · start↔count 我损 20%/敌损 10%）', (function () {
     const h = G.ui.btTopHTML({ cnt: 60 }, snap176);
     return h.indexOf('bt-loss') >= 0 && h.indexOf('我损 20%') >= 0 && h.indexOf('敌损 10%') >= 0;
@@ -8047,7 +7822,7 @@ if (svBtn) {
     host.id = 'bt-log'; document.body.appendChild(host);
     G.ui.btRoundLine({ r: 96, gap: 1500, events: [] }, snap176,
       { side: 'atk', smartRule: 'front', smartMode: 'spear',
-        smartLog: [{ r: 96, n: 2, rule: 'front', mode: 'spear', notes: ['弓箭手 前进→防御'] }] });
+        smartLog: [{ r: 96, n: 2, rule: 'front', mode: 'spear', notes: ['弩手 前进→防御'] }] });
     const txt = host.textContent || '';
     return txt.indexOf('针尖麦芒') >= 0 && txt.indexOf('清前排') >= 0;
   })());
@@ -8057,7 +7832,7 @@ if (svBtn) {
  * v89.177（民心/民怨 · 君主突破考验）：真 DOM 版
  * ============================================================ */
 (function () {
-  check('v89.177 官府弹窗「民心 / 民怨」段（值 + 两措施按钮 · 真 DOM）', (function () {
+  check('v89.177 政务厅弹窗「民心 / 民怨」段（值 + 两措施按钮 · 真 DOM）', (function () {
     G.ui.closeAllModals();
     const c = G.state.cities[0];
     let gIdx = -1;
@@ -8101,7 +7876,7 @@ console.log('\n--- §180. 拆械与 live 滚动（v89.180） ---');
   const card180 = document.querySelector('#modal-root .troop-card[data-troop="chuangnu"]');
   const tip180 = card180 ? card180.querySelector('.tcard-tip') : null;
   const txt180 = tip180 ? (tip180.textContent || '') : '';
-  check('§180a 器械页床弩卡悬停含「拆械 对器械伤害 ×3」（真 DOM）',
+  check('§180a 器械页重弩车卡悬停含「拆械 对器械伤害 ×3」（真 DOM）',
     !!card180 && txt180.indexOf('拆械') >= 0 && txt180.indexOf('×3') >= 0, txt180.slice(0, 90));
 
   /* live 每秒重建：.panel-body 滚动位必须保留（v89.180 修复的 flaky 根因 ·
@@ -8134,7 +7909,7 @@ console.log('\n--- §180. 拆械与 live 滚动（v89.180） ---');
   }
 
   /* ============================================================
-   * v89.191：数值框可填（真点真填）· 宝具并列入口（真点开窗）
+   * v89.191：数值框可填（真点真填）· 遗物并列入口（真点开窗）
    * ============================================================ */
   {
     /* ① 自动征兵数值框：真点不被重建（修复前 click 会派发动作 + 重绘替换 DOM） */
@@ -8159,20 +7934,20 @@ console.log('\n--- §180. 拆械与 live 滚动（v89.180） ---');
       G.autoTrainCfg().targets.yibing.max = 0;      /* 用完还原（后续用例别被污染） */
     }
 
-    /* ② 宝具并列入口：真点「🔮 宝具」开挂件选择窗 */
+    /* ② 遗物并列入口：真点「🔮 遗物」开挂件选择窗 */
     const lord191 = G.lordGeneralOf();
     G.ui._genSel = lord191.id;
     G.ui.setView('generals');
     await sleep(240);
     const baoBtn191 = document.querySelector('#view-container [data-action="attach-pick"][data-slot="bao"]');
-    check('v89.191：装备栏「🔮 宝具」入口在场（与军中/修炼并列）', !!baoBtn191);
+    check('v89.191：装备栏「🔮 遗物」入口在场（与军中/改造并列）', !!baoBtn191);
     if (baoBtn191) {
       click(baoBtn191);
       await sleep(260);
       const mr191 = document.querySelector('#modal-root');
       const txt191 = (mr191 && mr191.textContent) || '';
-      check('v89.191：点宝具 → 挂件选择窗（含 宝具 标题与 佩上/库存 出口）',
-        txt191.indexOf('宝具') >= 0 && (txt191.indexOf('佩上') >= 0 || txt191.indexOf('库存中没有可佩') >= 0));
+      check('v89.191：点遗物 → 挂件选择窗（含 遗物 标题与 佩上/库存 出口）',
+        txt191.indexOf('遗物') >= 0 && (txt191.indexOf('佩上') >= 0 || txt191.indexOf('库存中没有可佩') >= 0));
       G.ui.closeAllModals();
       await sleep(60);
     }
@@ -8279,7 +8054,7 @@ console.log('\n--- §180. 拆械与 live 滚动（v89.180） ---');
     /* ② 真点购买：入藏 + 扣金（唯一出口） */
     /* v89.196（老板 7）：藏珍阁改成就型 —— 旧"直购"用例先拉满全部条件（解锁所有藏品），
        否则会被解锁闸正确拦下（本用例验的是"购买唯一出口"，不是成就闸本身）。
-       ⚠️ gathers 键名与 statBump 一字不差（曾写 gather 致凉州系锁死）。 */
+       ⚠️ gathers 键名与 statBump 一字不差（曾写 gather 致相关系列锁死）。 */
     G.state.stats = { wins: 999, conquer: 999, wilds: 999, gathers: 999, scouts: 999, forts: 999,
       recruited: 999, trades: 999, forgedCount: 999, trained: 999999, buildDone: 999 };
     G.state.rep = Math.max(G.state.rep || 0, 99999);
@@ -8586,11 +8361,11 @@ console.log('\n--- §180. 拆械与 live 滚动（v89.180） ---');
       const vital198 = panel198.querySelector('#exp-gen-vital');
       const tgtSec198 = panel198.querySelector('.exp-a-target');
       const genSec198 = panel198.querySelector('.exp-a-gen');
-      check('§198① 出征面板：精力/体力行在主将区 · 相称建议在目标区 · 无锦囊计数 · 无战法行/阵位行',
+      check('§198① 出征面板：精力/体力行在主将区 · 相称建议在目标区 · 无封存匣计数 · 无战法行/阵位行',
         !!vital198 && /精力/.test(vital198.textContent) && /体力/.test(vital198.textContent)
         && !!genSec198 && genSec198.contains(vital198)
         && !!tgtSec198 && /相称建议/.test(tgtSec198.textContent)
-        && (panel198.textContent || '').indexOf('锦囊 ×') < 0
+        && (panel198.textContent || '').indexOf('封存匣 ×') < 0
         && panel198.querySelectorAll('#exp-ops').length === 0
         && (panel198.textContent || '').indexOf('阵位 ') < 0,
         'vital=' + (vital198 ? vital198.textContent.trim() : 'null'));
@@ -8665,7 +8440,7 @@ console.log('\n--- §180. 拆械与 live 滚动（v89.180） ---');
     }
   }
   /* ============================================================
-   * §201（v89.201）侦查单页 / 铁匠铺多选打造 / 百炼专属界面 + 滚动保留
+   * §201（v89.201）侦查单页 / 锻造间多选打造 / 百炼专属界面 + 滚动保留
    * ============================================================ */
   console.log('\n--- §201. v89.201 三改（真实 DOM） ---');
   {
@@ -8673,7 +8448,7 @@ console.log('\n--- §180. 拆械与 live 滚动（v89.180） ---');
 
     /* ① 侦查：真跑一次 → 单页四板块真渲染（无页签） */
     try {
-      const st201 = G.newGame({ name: 'e201', cityName: '许都' });
+      const st201 = G.newGame({ name: 'e201', cityName: '灰岗' });
       G.state = st201;
       const c201 = st201.cities[0];
       G.ui._cityId = c201.id;
@@ -8706,7 +8481,7 @@ console.log('\n--- §180. 拆械与 live 滚动（v89.180） ---');
 
     /* ② 多选打造：真点两张卡 → 底键「2 件」→ 真点打造 → 两件入包 */
     try {
-      const st202 = G.newGame({ name: 'e201b', cityName: '许都' });
+      const st202 = G.newGame({ name: 'e201b', cityName: '灰岗' });
       G.state = st202;
       const c202 = st202.cities[0];
       G.ui._cityId = c202.id;
@@ -8751,7 +8526,7 @@ console.log('\n--- §180. 拆械与 live 滚动（v89.180） ---');
 
     /* ③ 百炼：专属界面真渲染 → 真点卡片 → 真点底键强化 → 该件 +1 */
     try {
-      const st203 = G.newGame({ name: 'e201c', cityName: '许都' });
+      const st203 = G.newGame({ name: 'e201c', cityName: '灰岗' });
       G.state = st203;
       const c203 = st203.cities[0];
       G.ui._cityId = c203.id;
@@ -8794,7 +8569,7 @@ console.log('\n--- §180. 拆械与 live 滚动（v89.180） ---');
 
     /* ④ 滚动保留：.m-body 进快照清单 + 操作后 scrollTop 保留（v89.201 修复） */
     try {
-      const st204 = G.newGame({ name: 'e201d', cityName: '许都' });
+      const st204 = G.newGame({ name: 'e201d', cityName: '灰岗' });
       G.state = st204;
       const c204 = st204.cities[0];
       G.ui._cityId = c204.id;
@@ -8826,14 +8601,14 @@ console.log('\n--- §180. 拆械与 live 滚动（v89.180） ---');
   }
 
   /* ============================================================
-   * §202（v89.202）蕴养同款（真渲染 + 真点）· 收藏峰值（回落场景 DOM 对照）
+   * §202（v89.202）调校同款（真渲染 + 真点）· 收藏峰值（回落场景 DOM 对照）
    * ============================================================ */
-  console.log('\n--- §202. v89.202 蕴养同款 / 收藏峰值（真实 DOM） ---');
+  console.log('\n--- §202. v89.202 调校同款 / 收藏峰值（真实 DOM） ---');
   {
     const _bkS202 = G.state;
-    /* ① 蕴养专属界面：真渲染 → 真点卡片 → 真点蕴养键 → 该件 +1 */
+    /* ① 调校专属界面：真渲染 → 真点卡片 → 真点调校键 → 该件 +1 */
     try {
-      const st202 = G.newGame({ name: 'e202a', cityName: '许都' });
+      const st202 = G.newGame({ name: 'e202a', cityName: '灰岗' });
       G.state = st202;
       G.ui._cityId = st202.cities[0].id;
       ['lg_weapon_1', 'lg_weapon_4', 'lg_head_2'].forEach((id) => { try { G.addEquip(id); } catch (e) { } });
@@ -8845,7 +8620,7 @@ console.log('\n--- §180. 拆械与 live 滚动（v89.180） ---');
       await sleep(170);
       const cards202 = document.querySelectorAll('#modal-root .enh-card');
       const chips202 = document.querySelectorAll('#modal-root [data-action="ling-filter"]');
-      check('§202① 蕴养专属界面真渲染（网格卡 ≥2 + 筛选 chips ×3 + 网格容器）',
+      check('§202① 调校专属界面真渲染（网格卡 ≥2 + 筛选 chips ×3 + 网格容器）',
         cards202.length >= 2 && chips202.length === 3
         && !!document.querySelector('#modal-root .enh-rows')
         && !document.querySelector('#modal-root .enh-list'),
@@ -8855,7 +8630,7 @@ console.log('\n--- §180. 拆械与 live 滚动（v89.180） ---');
       const sel202 = String(G.ui._lingSel || '');
       const btn202 = document.querySelector('#modal-root [data-action="ling-temper-item"]');
       check('§202② 真点卡片 → 选中（底键「' + (btn202 ? btn202.textContent.trim() : 'none') + '」）',
-        sel202.length > 0 && !!btn202 && btn202.textContent.indexOf('蕴养') >= 0,
+        sel202.length > 0 && !!btn202 && btn202.textContent.indexOf('调校') >= 0,
         'sel=' + sel202);
       let lv0_202 = -1;
       G.lingTemperList().forEach((x) => { if (String(G.ui.enhKeyOf(x)) === sel202) lv0_202 = G.eqEnhOf(x); });
@@ -8863,20 +8638,20 @@ console.log('\n--- §180. 拆械与 live 滚动（v89.180） ---');
       await sleep(220);
       let lv1_202 = -1;
       G.lingTemperList().forEach((x) => { if (String(G.ui.enhKeyOf(x)) === sel202) lv1_202 = G.eqEnhOf(x); });
-      check('§202③ 真点蕴养 → 该件 +' + lv0_202 + '→+' + lv1_202 + '（选中保留）',
+      check('§202③ 真点调校 → 该件 +' + lv0_202 + '→+' + lv1_202 + '（选中保留）',
         lv0_202 >= 0 && lv1_202 === lv0_202 + 1 && String(G.ui._lingSel) === sel202,
         'lv0=' + lv0_202 + ' lv1=' + lv1_202);
       G.ui.setLingFilter('done');
       await sleep(160);
       const donePanel202 = document.querySelector('#modal-root .inner-panel');
       check('§202④ 筛选「圆满」：三件未满 → 空态文案在册',
-        !!donePanel202 && donePanel202.textContent.indexOf('还没有圆满的修炼装备') >= 0, '');
+        !!donePanel202 && donePanel202.textContent.indexOf('还没有圆满的改造装备') >= 0, '');
       G.ui.closeAllModals();
     } finally { G.state = _bkS202; }
 
     /* ② 收藏峰值 DOM：造回落 → 该卡保持解锁；清峰值（现值不变）→ 同卡回锁（对照） */
     try {
-      const st202b = G.newGame({ name: 'e202b', cityName: '许都' });
+      const st202b = G.newGame({ name: 'e202b', cityName: '灰岗' });
       G.state = st202b;
       let tgt = null;
       ((G.DATA.COLLECT || {}).series || []).forEach((sr) => {
@@ -8925,7 +8700,7 @@ console.log('\n--- §180. 拆械与 live 滚动（v89.180） ---');
     const _bkS203 = G.state;
     /* ① toast.high：弹窗打开 → 上浮上半屏且不挡底部操作键；无弹窗 → 回底部 */
     try {
-      const st203 = G.newGame({ name: 'e203a', cityName: '许都' });
+      const st203 = G.newGame({ name: 'e203a', cityName: '灰岗' });
       G.state = st203;
       G.ui._cityId = st203.cities[0].id;
       try { G.addEquip('lg_weapon_1'); } catch (e) { }
@@ -8951,7 +8726,7 @@ console.log('\n--- §180. 拆械与 live 滚动（v89.180） ---');
 
     /* ② 占领满编被拒 → warn toast 真渲染（文案含「未能纳入版图」） */
     try {
-      const st203b = G.newGame({ name: 'e203b', cityName: '许都' });
+      const st203b = G.newGame({ name: 'e203b', cityName: '灰岗' });
       G.state = st203b;
       if (!st203b.map.grid) G.map.generate();
       while (st203b.cities.length < 9) {
@@ -8968,18 +8743,18 @@ console.log('\n--- §180. 拆械与 live 滚动（v89.180） ---');
       G.ui.closeAllModals();
     } finally { G.state = _bkS203; }
 
-    /* ③ 爵位页：列头「管理城池」+ 说明「平民 9 座」+ 首档值 9 */
+    /* ③ 威望页：列头「管理城池」+ 说明「幸存者 9 座」+ 首档值 9 */
     try {
-      const st203c = G.newGame({ name: 'e203c', cityName: '许都' });
+      const st203c = G.newGame({ name: 'e203c', cityName: '灰岗' });
       G.state = st203c;
       G.ui.setView('rank');
       await sleep(180);
       const vc203 = document.querySelector('#view-container');
       const txt203 = vc203 ? (vc203.textContent || '') : '';
-      check('§203④ 爵位页：列头「管理城池」+ 说明「平民 9 座」在册',
-        txt203.indexOf('管理城池') >= 0 && txt203.indexOf('平民 9 座') >= 0, '');
+      check('§203④ 威望页：列头「管理城池」+ 说明「幸存者 9 座」在册',
+        txt203.indexOf('管理城池') >= 0 && txt203.indexOf('幸存者 9 座') >= 0, '');
       const row0 = document.querySelector('#view-container .tbl tbody tr');
-      check('§203⑤ 爵位表首档管理城池 = 9（渲染与数据同源）',
+      check('§203⑤ 威望表首档管理城池 = 9（渲染与数据同源）',
         !!row0 && row0.textContent.indexOf('9') >= 0 && G.DATA.RANK[0].city === 9, '');
     } finally { G.state = _bkS203; }
   }
@@ -8998,13 +8773,13 @@ console.log('\n--- §180. 拆械与 live 滚动（v89.180） ---');
       const l204 = wrap204.querySelector('.pager > .pg-side.l');
       const m204 = wrap204.querySelector('.pager > .pg-info');
       const r204 = wrap204.querySelector('.pager > .pg-side.r');
-      check('§204① 分页条三栏（左导航/中页码/右导航 · 页码文本在册 · 两端可翻）',
+      check('§204① 分页条三段（左导航/中页码/右导航 · 页码文本在册 · 两端可翻 · v89.213 整体居中）',
         !!l204 && !!m204 && !!r204 && m204.textContent.indexOf('第 1/10 页') >= 0
         && l204.querySelector('[data-action="mpage"]') != null
         && r204.querySelector('[data-action="mpage"]') != null, '');
 
       /* ② 百炼面板：卡面 title 带成本 · .ec-cost 零节点（真渲染） */
-      const st204 = G.newGame({ name: 'e204', cityName: '许都' });
+      const st204 = G.newGame({ name: 'e204', cityName: '灰岗' });
       G.state = st204;
       const c204 = st204.cities[0];
       G.ui._cityId = c204.id;
@@ -9028,7 +8803,7 @@ console.log('\n--- §180. 拆械与 live 滚动（v89.180） ---');
       G.ui.closeAllModals();
 
       /* ③ 失城：君主城池列表不再含已失城（真调 cityFallen · 真实 DOM 列表对照） */
-      const st204b = G.newGame({ name: 'e204b', cityName: '许都' });
+      const st204b = G.newGame({ name: 'e204b', cityName: '灰岗' });
       G.state = st204b;
       if (!st204b.map.grid) G.map.generate();
       const cB204 = st204b.cities[0];
@@ -9052,7 +8827,7 @@ console.log('\n--- §180. 拆械与 live 滚动（v89.180） ---');
 
   /* ============================================================
    * §205（v89.205）：将领面板挂件行退役 + 卸下迁入选择窗（真实 DOM）
-   *   老板：「将领名称信息下的这行去掉，只保留装备栏的即可：🔮 宝具」
+   *   老板：「将领名称信息下的这行去掉，只保留装备栏的即可：🔮 遗物」
    * ============================================================ */
   {
     console.log('\n--- §205. v89.205 挂件行退役 + 卸下迁入选择窗（真实 DOM） ---');
@@ -9071,9 +8846,9 @@ console.log('\n--- §180. 拆械与 live 滚动（v89.180） ---');
         check('§205① 将领面板信息区不再渲染挂件行（gp-attach186 无节点）',
           document.querySelectorAll('#view-container .gp-attach186').length === 0,
           rEq205 && rEq205.msg);
-        /* ② 装备栏「🔮 宝具」是唯一入口 → 真点开选择窗 */
+        /* ② 装备栏「🔮 遗物」是唯一入口 → 真点开选择窗 */
         const baoBtn205 = document.querySelector('#view-container [data-action="attach-pick"][data-slot="bao"]');
-        check('§205② 装备栏「🔮 宝具」入口在（挂件行退役后的唯一入口）', !!baoBtn205);
+        check('§205② 装备栏「🔮 遗物」入口在（挂件行退役后的唯一入口）', !!baoBtn205);
         if (baoBtn205) {
           baoBtn205.click();
           await sleep(280);
@@ -9100,7 +8875,7 @@ console.log('\n--- §180. 拆械与 live 滚动（v89.180） ---');
         G.ui.closeAllModals();
       }
     } else {
-      check('§205① 造局（宝具 / 君主在册）', false, 'no-bao-or-lord');
+      check('§205① 造局（遗物 / 君主在册）', false, 'no-bao-or-lord');
     }
   }
 
@@ -9269,6 +9044,426 @@ console.log('\n--- §180. 拆械与 live 滚动（v89.180） ---');
       check('§207⑧ 沙盘推演链路', false, String(e207d && e207d.message || e207d));
     }
   }
+  /* ---- §209（v89.209）：存档缺陷链修复（真实 localStorage · 域层真调） ---- */
+  {
+    const _bk209e = G.state;
+    try {
+      G.newGame({ name: 'e209', cityName: '灰岗' });
+      const _base209e = JSON.parse(G.savePayload());
+      const _pack209e = (st, wc) => {
+        const p = { _fmt: G.SAVE_FMT, _ver: 3, state: st };
+        if (wc) p._check = G.checksum(JSON.stringify(st));
+        return JSON.stringify(p);
+      };
+      const _mk209e = (mut) => { const x = JSON.parse(JSON.stringify(_base209e)); mut(x); return x; };
+      const _rA = G.importText(_pack209e(_mk209e((x) => { x.cities = [{}]; }), true), 's3');
+      const _rB = G.importText(_pack209e(_mk209e((x) => { x.generals = 'oops'; }), true), 's3');
+      const _rC = G.importText(_pack209e(_mk209e((x) => { x.map = null; }), false), 's3');
+      check('§209e① 坏档三例（cities[{}] / generals:oops / map:null）全拒',
+        _rA.ok === false && _rB.ok === false && _rC.ok === false,
+        _rA.msg + ' | ' + _rB.msg + ' | ' + _rC.msg);
+      const _rG = G.importText(_pack209e(_base209e, true), 's3');
+      const _lr = _rG.ok ? G.loadFrom('s3') : null;
+      check('§209e② 真档导入→读回仍通（形状门不误伤合法档）',
+        _rG.ok === true && !!_lr && _lr.cities.length >= 1, _rG.msg);
+      check('§209e③ saveShapeChk 唯一出口在册', typeof G.saveShapeChk === 'function');
+    } catch (_e209e) {
+      check('§209e 存档缺陷链修复', false, String(_e209e && _e209e.message || _e209e));
+    } finally {
+      try { G.dropSlot('s3'); } catch (_e2) { }
+      G.state = _bk209e;
+    }
+  }
+
+    /* ============================================================
+     * §210（v89.210 · 真实 DOM）
+     *   ① Shift+1~3 真按键 + 弹窗护栏（v89.218：史册/故事集退役，续号收窄）
+     *   ② 弹窗键盘流：开窗焦点 / Tab 圈 / Enter 激活 / live 回填 / 弹栈快照
+     *   ③ 状态条真渲染（chips 数 + 文案 + 默认态清零）
+     *   ④ 出征面板「🎬 推演」真点 → 推演弹窗真渲染
+     * ============================================================ */
+    console.log('\n--- §210. v89.210 键盘流 · 状态条 · 战前推演（真实 DOM） ---');
+    {
+      const _bkS210 = G.state;
+      const _bkCityId210 = G.ui._cityId;
+
+      /* ① 键盘：Shift+1 → 公文（v89.218：原 Shift+3）；数字 1 → 城池（旧键位不回退）；弹窗开着 → 不切 */
+      try {
+        G.ui.closeAllModals();
+        document.dispatchEvent(new window.KeyboardEvent('keydown', { key: '#', code: 'Digit1', shiftKey: true, bubbles: true }));
+        await sleep(60);
+        check('§210① Shift+1 → 公文视图（真派发 · e.code 判定 · v89.218 口径）', G.ui.view === 'reports', 'view=' + G.ui.view);
+        document.dispatchEvent(new window.KeyboardEvent('keydown', { key: '1', code: 'Digit1', bubbles: true }));
+        await sleep(60);
+        check('§210①b 数字键 1 仍切城池（旧键位不回退）', G.ui.view === 'city', 'view=' + G.ui.view);
+        G.ui.openModal('<div class="gold-heading">护栏测210</div><div class="ui-sub">x</div>');
+        await sleep(40);
+        document.dispatchEvent(new window.KeyboardEvent('keydown', { key: '#', code: 'Digit2', shiftKey: true, bubbles: true }));
+        await sleep(60);
+        check('§210①c 弹窗开着 Shift+2 不切视图（护栏复用 · v89.218 口径）', G.ui.view === 'city', 'view=' + G.ui.view);
+        G.ui.closeAllModals();
+        await sleep(40);
+      } catch (e210a) { check('§210① 键盘真派发', false, String(e210a && e210a.message || e210a)); }
+
+      /* ② 弹窗键盘流 */
+      try {
+        G.ui.openModal('<div class="gold-heading">键盘流210</div><div class="ui-sub">x</div><div data-action="close-modal" id="kf210a">按我</div>');
+        await sleep(50);
+        const d210a = document.getElementById('kf210a');
+        check('§210② 开窗即给焦点（焦点在弹窗内首个可交互元素）', !!d210a && document.activeElement === d210a,
+          'active=' + (document.activeElement && (document.activeElement.id || document.activeElement.tagName)));
+        document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }));
+        await sleep(30);
+        const ae210b = document.activeElement;
+        document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }));
+        await sleep(30);
+        check('§210②b Tab 真循环（末→首回卷 · 一圈回到首元素）', document.activeElement === d210a,
+          'mid=' + (ae210b && (ae210b.className || ae210b.tagName)) + ' now=' + (document.activeElement && document.activeElement.tagName));
+        document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+        await sleep(60);
+        check('§210②c Enter 激活 div[data-action]（真触发 close-modal）', !G.ui.modalVisible(),
+          'visible=' + G.ui.modalVisible());
+      } catch (e210b) { check('§210② 弹窗键盘流', false, String(e210b && e210b.message || e210b)); }
+      G.ui.closeAllModals();
+      await sleep(40);
+
+      /* ②d live 重建焦点回填 */
+      try {
+        let n210 = 0;
+        const html210 = () => '<div class="gold-heading">LIVE210</div><div data-action="kf-live" id="kf210l">v' + (++n210) + '</div>';
+        const live210 = function () { G.ui.openModal(html210(), { live: live210 }); };
+        G.ui.openModal(html210(), { live: live210 });
+        await sleep(50);
+        const dl1 = document.getElementById('kf210l');
+        dl1.focus();
+        G.ui.liveModalTick();
+        await sleep(40);
+        const dl2 = document.getElementById('kf210l');
+        check('§210②d live 重建后焦点回填（同描述元素 · 节点已换）', document.activeElement === dl2 && dl2 !== dl1,
+          'same=' + (document.activeElement === dl2) + ' changed=' + (dl2 !== dl1));
+        G.ui.closeAllModals();
+        await sleep(40);
+      } catch (e210c) { check('§210②d live 焦点回填', false, String(e210c && e210c.message || e210c)); }
+
+      /* ②e 弹栈快照：输入值 + 焦点保回 */
+      try {
+        G.ui.openModal('<div class="gold-heading">层一210</div><input id="kf210v" type="number" value="0">');
+        await sleep(50);
+        const kf1 = document.getElementById('kf210v');
+        kf1.value = '55';
+        kf1.focus();
+        G.ui.openModal('<div class="gold-heading">层二210</div><div data-action="x210">y</div>');
+        await sleep(50);
+        const pushed = (G.ui._modalStack || []).length === 1;
+        G.ui.closeModal();
+        await sleep(60);
+        const kf2 = document.getElementById('kf210v');
+        check('§210②e 弹栈回填：压栈 + 输入值保留 + 焦点回原元素',
+          pushed && !!kf2 && kf2.value === '55' && document.activeElement === kf2,
+          'pushed=' + pushed + ' val=' + (kf2 && kf2.value) + ' focus=' + (document.activeElement === kf2));
+        G.ui.closeAllModals();
+        await sleep(40);
+      } catch (e210d) { check('§210②e 弹栈快照', false, String(e210d && e210d.message || e210d)); }
+
+      /* ③ 状态条真渲染 */
+      try {
+        const st210 = G.newGame({ name: '条e210', cityName: '灰岗' });
+        G.state = st210;
+        if (!st210.map.grid) G.map.generate();
+        st210.world.weather = 'rain';
+        if (st210.cities.length < 2) st210.cities.push(G.makeCity({ id: 'skye210', name: '陪都', x: st210.cities[0].x + 6, y: st210.cities[0].y + 6 }));
+        G.heartsWarAdd(st210.cities[0], 90);
+        G.ui.syncHeader();
+        const chips210 = document.querySelectorAll('#nav-sky .sky-badge');
+        check('§210③ 状态条真渲染（民心低 + 来犯 → 2 枚；雨天不重复起 chip）', chips210.length === 2
+          && document.querySelectorAll('#nav-sky .sky-badge.sky-weather').length === 0, 'n=' + chips210.length);
+        const skyTxt210 = document.getElementById('nav-sky').textContent;
+        check('§210③b chip 文案在册（⚔ / 💔）',
+          skyTxt210.indexOf('⚔') >= 0 && skyTxt210.indexOf('💔') >= 0,
+          skyTxt210.slice(0, 90));
+        st210.world.weather = 'clear';
+        st210.cities.length = 1;
+        G.heartsWarAdd(st210.cities[0], -999);
+        G.ui.syncHeader();
+        check('§210③c 默认态不显示（无消息即正常 · 零枚）',
+          document.querySelectorAll('#nav-sky .sky-badge').length === 0);
+      } catch (e210e) { check('§210③ 状态条真渲染', false, String(e210e && e210e.message || e210e)); }
+      G.state = _bkS210;
+      G.ui._cityId = _bkCityId210;
+      try { G.ui.syncHeader(); } catch (e210f) { }
+
+      /* ④ 出征面板「🎬 推演」真点 → 推演弹窗 */
+      try {
+        const st210b = G.newGame({ name: '推e210', cityName: '灰岗' });
+        G.state = st210b;
+        if (!st210b.map.grid) G.map.generate();
+        st210b.world.weather = 'clear';
+        const c210 = st210b.cities[0];
+        G.ui._cityId = c210.id;
+        const g210 = st210b.generals[0];
+        g210.status = 'idle'; g210.cityId = c210.id;
+        G.setStaNow(g210, G.staMax(g210)); g210.energy = 100;
+        const cap210 = G.battle.marchCapOf(c210);
+        const send210 = Math.max(500, Math.min(20000, cap210 > 0 ? cap210 : 20000));
+        c210.army = { yibing: send210 + 500 };
+        /* 找野地（非城市格、无主） */
+        let w210 = null;
+        for (let rr = 1; rr <= 30 && !w210; rr++) {
+          for (let dy = -rr; dy <= rr && !w210; dy++) for (let dx = -rr; dx <= rr && !w210; dx++) {
+            const x = c210.x + dx, y = c210.y + dy;
+            const tl = G.map.tile(x, y);
+            if (!tl || tl.terrain === 'city') continue;
+            if (G.map.wildAt(x, y) || G.map.npcAt(x, y) || G.map.fortAt(x, y)) continue;
+            if (!(G.map.wildLevelNow(x, y) > 0)) continue;
+            w210 = { x: x, y: y };
+          }
+        }
+        G.ui._expMode = 'occupy';
+        G.ui.openExpModal({ kind: 'wild', x: w210.x, y: w210.y });
+        await sleep(140);
+        const simBtn210 = document.querySelector('#modal-root [data-action="exp-sim"]');
+        check('§210④ 出征面板有「🎬 推演」键（真渲染）', !!simBtn210,
+          simBtn210 ? simBtn210.textContent.trim() : 'null');
+        const inp210 = document.getElementById('exp-yibing');
+        if (inp210) inp210.value = String(send210);
+        const genSel210 = document.getElementById('exp-gen');
+        if (genSel210) genSel210.value = g210.id;
+        click(simBtn210);
+        await sleep(220);
+        const mrT210 = (document.getElementById('modal-root') || document.body).textContent || '';
+        check('§210④b 推演弹窗真渲染（结果 / 损失 / 口径注明）',
+          mrT210.indexOf('沙盘推演') >= 0 && mrT210.indexOf('推演结果') >= 0
+          && mrT210.indexOf('我方损失') >= 0 && mrT210.indexOf('同一战斗引擎') >= 0,
+          mrT210.slice(0, 100));
+        G.ui.closeAllModals();
+        await sleep(60);
+      } catch (e210g) { check('§210④ 推演真点', false, String(e210g && e210g.message || e210g)); }
+      G.state = _bkS210;
+      G.ui._cityId = _bkCityId210;
+      G.ui.closeAllModals();
+      await sleep(40);
+    }
+
+  /* ============================================================
+   * §211（v89.211）强化显示 / 器械工位链（真实 DOM · 真点）
+   * ============================================================ */
+  try {
+    const _bkCityId211 = G.ui._cityId;
+    const c211 = G.currentCity() || G.state.cities[0];
+    G.ui._cityId = c211.id;
+    let w211 = -1, b211 = -1, s211 = -1;
+    c211.cells.forEach((cc, i) => {
+      if (!cc.build) return;
+      if (cc.build.id === 'gongjiangzuofang' && w211 < 0) w211 = i;
+      if (cc.build.id === 'junying' && b211 < 0) b211 = i;
+      if (cc.build.id === 'shuyuan' && s211 < 0) s211 = i;
+    });
+    if (w211 < 0) { w211 = c211.cells.findIndex((x) => !x.build && !x.official); c211.cells[w211] = { build: { id: 'gongjiangzuofang', lvl: 7 }, pending: null }; }
+    if (b211 < 0) { b211 = c211.cells.findIndex((x, i) => !x.build && !x.official && i !== w211); c211.cells[b211] = { build: { id: 'junying', lvl: 10 }, pending: null }; }
+    if (s211 < 0) { s211 = c211.cells.findIndex((x, i) => !x.build && !x.official && i !== w211 && i !== b211); c211.cells[s211] = { build: { id: 'shuyuan', lvl: 10 }, pending: null }; }
+    c211.res.pop = Math.max(c211.res.pop || 0, 500000);
+    G.goldAdd(9999999);
+    ['grain', 'wood', 'stone', 'iron'].forEach((k) => { c211.res[k] = Math.max(c211.res[k] || 0, 9999999); });
+    const q0_211 = G.trainQueuesOf(c211, w211, 'craft').length;
+    G.ui.openTroops(b211, 'siege');            /* 陈旧训练营格（病根场景） */
+    await sleep(220);
+    check('§211e① 器械面板入场归一（陈旧训练营格 → 本城作坊格）', G.ui._trainBIdx === w211,
+      'got=' + G.ui._trainBIdx + ' want=' + w211);
+    const card211 = document.querySelector('#modal-root .troop-card[data-troop="toudan"]');
+    check('§211e② 迫击炮卡可选（无灰）', !!card211 && !card211.classList.contains('disabled'));
+    if (card211) {
+      click(card211);
+      await sleep(160);
+      const go211 = document.querySelector('#modal-root [data-action="confirm-train"]');
+      if (go211) click(go211);
+      await sleep(260);
+    }
+    const q1_211 = G.trainQueuesOf(c211, w211, 'craft');
+    check('§211e③ 真点提交成功（队列+1 落在作坊 · 不再假报无作坊）',
+      q1_211.length === q0_211 + 1 && q1_211[q1_211.length - 1].troopId === 'toudan',
+      'q=' + q0_211 + '→' + q1_211.length);
+    G.ui.closeAllModals();
+    await sleep(80);
+
+    /* 装备面板：+10 武器在槽位行显示强化后攻值（equipDescOf 唯一出口的真视图） */
+    const g211e = G.state.generals[0];
+    if (g211e) {
+      g211e.equip = g211e.equip || {};
+      const keepW211 = g211e.equip.weapon || null;
+      if (keepW211) { const ix0 = G.state.inventory.indexOf(keepW211); if (ix0 >= 0) G.state.inventory.splice(ix0, 1); }
+      const it211e = G.addEquip('yt_sword', 10);
+      g211e.equip.weapon = it211e;
+      G.ui._equipGen = g211e.id;
+      G.ui.openEquipPanel();
+      await sleep(240);
+      const mrT211 = (document.querySelector('#modal-root') || {}).textContent || '';
+      const atk211 = Math.round(DATA.EQUIP.yt_sword.atk * 1.8);
+      check('§211e④ 装备面板槽位行显示强化后攻值（攻' + atk211 + '）', mrT211.indexOf('攻' + atk211) >= 0,
+        mrT211.slice(0, 90));
+      G.ui.closeAllModals();
+      await sleep(60);
+      if (keepW211) g211e.equip.weapon = keepW211; else delete g211e.equip.weapon;
+      const ix1 = G.state.inventory.findIndex((x) => x.u === it211e.u);
+      if (ix1 >= 0) G.state.inventory.splice(ix1, 1);
+    }
+    G.ui._cityId = _bkCityId211;
+  } catch (e211e) {
+    check('§211e 链', false, String(e211e && e211e.message || e211e));
+  }
+
+  /* ============================================================
+   * §212e（v89.212 · 老板 1）：堆场按资源分账（真 DOM）——
+   * 货仓面板四行各显各的上限 / 城外面板「另加<资源>上限」
+   * ============================================================ */
+  try {
+    const c212e = G.currentCity() || G.state.cities[0];
+    const g212e = G.extGridOf(c212e);
+    const bk212e = JSON.stringify(g212e);
+    try {
+      g212e.length = 0;
+      g212e.push({ id: 'x1', type: 'farm', lv: 2 }, { id: 'x2', type: 'forest', lv: 1 },
+        { id: 'x3', type: 'quarry', lv: 1 }, { id: 'x4', type: 'mine', lv: 1 });
+      /* ① 货仓面板：四行资源各显各的上限（粮 2 块 > 木/石/铁 各 1 块） */
+      G.ui.openStore();
+      await sleep(320);
+      const caps212e = Array.from(document.querySelectorAll('#modal-root .store-row .cap')).map((el) => el.textContent);
+      check('§212e① 货仓面板：四行资源各显各的上限（粮 ≠ 木 = 石 = 铁）', caps212e.length === 4
+        && !!caps212e[0] && !!caps212e[1] && caps212e[0] !== caps212e[1]
+        && caps212e[1] === caps212e[2] && caps212e[2] === caps212e[3],
+        JSON.stringify(caps212e));
+      G.ui.closeAllModals();
+      await sleep(120);
+      /* ② 城外面板：标签按归属资源（idx1 = forest → 「另加木料上限」） */
+      G.ui.openExtModal(1);
+      await sleep(320);
+      const extTxt212e = (document.getElementById('modal-root') || document.body).textContent || '';
+      check('§212e② 城外面板：forest 块标「另加木料上限」（按归属资源）',
+        extTxt212e.indexOf('另加木料上限') >= 0, extTxt212e.slice(0, 90));
+      G.ui.closeAllModals();
+      await sleep(120);
+    } finally {
+      const back212e = JSON.parse(bk212e);
+      g212e.length = 0;
+      back212e.forEach((e) => g212e.push(e));
+    }
+  } catch (e212e) {
+    check('§212e 段异常', false, String(e212e && e212e.message || e212e));
+  }
+
+  /* ============================================================
+   * §213e（v89.213 · 老板）：分页条「整体居中」——底栏真渲染（商场场景）
+   *   jsdom 无布局引擎（rect 恒 0）→ 几何（居中 / 不重叠）交实机；
+   *   e2e 管结构与真点：底栏三段齐 + 「隐藏名称/指挥战斗」+ 缩略图同屏 +
+   *   底栏「下页」真点生效 + 弹窗出口同款。
+   * ============================================================ */
+  console.log('\n--- §213e. v89.213 分页条整体居中（真实 DOM） ---');
+  {
+    try {
+      /* ① 底栏（商场）：三段齐 + bb-tools 两按钮 / 缩略图同屏 */
+      G.ui.closeAllModals();
+      G.ui.setView('shop');
+      await sleep(200);
+      const bar213 = document.getElementById('bottom-bar');
+      const pg213 = bar213.querySelector('.pager');
+      const l213 = pg213 && pg213.querySelector('.pg-side.l');
+      const m213 = pg213 && pg213.querySelector('.pg-info');
+      const r213 = pg213 && pg213.querySelector('.pg-side.r');
+      const tools213 = bar213.querySelector('.bb-tools');
+      const lbl213 = bar213.querySelector('.bb-label-toggle');
+      const war213 = bar213.querySelector('.bb-war');
+      const mini213 = bar213.querySelector('.bb-mini');
+      check('§213e① 底栏分页三段齐（l → 页码 → r）·「隐藏名称/指挥战斗」/ 缩略图同屏',
+        !!pg213 && !!l213 && !!m213 && !!r213 && (m213.textContent || '').indexOf('页') >= 0
+        && !!tools213 && !!lbl213 && !!war213 && !!mini213,
+        'pg=' + !!pg213 + ' l=' + !!l213 + ' m=' + !!m213 + ' r=' + !!r213
+        + ' tools=' + !!tools213 + ' lbl=' + !!lbl213 + ' war=' + !!war213 + ' mini=' + !!mini213);
+
+      /* ② 底栏「下页」真点生效（1 → 2） */
+      G.ui._pages['shop-items'] = 1;
+      const nx213 = r213 ? r213.querySelector('[data-action="page"]') : null;
+      let pgAfter213 = 1;
+      if (nx213) { nx213.click(); await sleep(180); pgAfter213 = G.ui._pages['shop-items'] || 1; }
+      check('§213e② 底栏「下页」真点生效（1 → 2 · 底栏重绘后仍在册）',
+        !nx213 || (pgAfter213 === 2 && !!document.querySelector('#bottom-bar .pager .pg-info')),
+        'after=' + pgAfter213 + ' hasPager=' + !!document.querySelector('#bottom-bar .pager'));
+
+      /* ③ 弹窗出口（modalPagerHTML）三段同款 */
+      G.ui.setView('city');
+      G.ui.closeAllModals();
+      G.ui.openModal(G.ui.modalPagerHTML('e213m', 100, 10), { title: 'T213' });
+      await sleep(180);
+      const mp213 = document.querySelector('#modal-root .pager');
+      check('§213e③ 弹窗分页三段同款（l / 页码 / r 齐 · 页码文本在册）',
+        !!mp213 && !!mp213.querySelector('.pg-side.l') && !!mp213.querySelector('.pg-info')
+        && !!mp213.querySelector('.pg-side.r') && (mp213.textContent || '').indexOf('第 1/10 页') >= 0,
+        mp213 ? (mp213.textContent || '').slice(0, 60) : 'null');
+      G.ui.closeAllModals();
+      await sleep(100);
+    } catch (e213e) {
+      check('§213e 段异常', false, String(e213e && e213e.message || e213e));
+    }
+  }
+
+
+  /* ============================================================
+   * §219E（v89.219 · 老板 1/2 · 真 DOM）：长按连续强化 + 整套键 + 白值=原始值
+   * ============================================================ */
+  await (async function () {
+    const bk = G.state;
+    const st = G.newGame({ name: 'v219e2e', region: '烬环', mapSeed: 20261019 });
+    G.state = st;
+    const setIds = Object.keys(G.DATA.EQUIP).filter((k) => G.DATA.EQUIP[k].set === 'yitian' && !G.DATA.EQUIP[k].ling);
+    const a = G.addEquip(setIds[0], 0), b = G.addEquip(setIds[1], 0);
+    try {
+      const c = G.currentCity();
+      const idx9 = c.cells.findIndex((x) => !x.build && !x.official);
+      if (idx9 >= 0) c.cells[idx9].build = { id: 'tiejiangpu', lvl: 3 };
+      st.res.gold = 1e9; st.res.iron = 1e9; st.res.stone = 1e9;
+      const btn = () => document.querySelector('[data-action="enhance-item"]');
+      const setBtn = () => document.querySelector('[data-action="enhance-set"]');
+      /* ① 整套键出现（选中件属套装且已拥有 ≥2 件） */
+      G.ui._enhSel = G.ui.enhKeyOf(a);
+      G.ui.openEnhance();
+      await sleep(80);
+      check('§219E① 整套键出现（套装件选中 + 已拥有 2 件）', !!setBtn(),
+        'set=' + !!setBtn() + ' btn=' + !!btn());
+      /* ② 非套装件不出现整套键 */
+      G.ui._enhSel = G.ui.enhKeyOf(G.addEquip('cr_weapon_1', 0));
+      G.ui.openEnhance();
+      await sleep(60);
+      check('§219E② 非套装件不出现整套键', !setBtn());
+      /* ③ 长按 mousedown 按住 ~1.4s → 连升 ≥2 级 */
+      G.ui._enhSel = G.ui.enhKeyOf(a);
+      G.ui.openEnhance();
+      await sleep(60);
+      const lv0 = G.enhOf(a);
+      if (btn()) btn().dispatchEvent(new window.MouseEvent('mousedown', { bubbles: true, button: 0 }));
+      await sleep(1400);
+      window.dispatchEvent(new window.MouseEvent('mouseup', { bubbles: true }));
+      const lv1 = G.enhOf(a);
+      check('§219E③ 长按连续强化（按住 ~1.4s 连升 ≥2 级）', lv1 - lv0 >= 2, 'lv=' + lv0 + '→' + lv1);
+      /* ④ 松手后紧跟的那一次 click 被吞（不再额外 +1） */
+      const before4 = G.enhOf(a);
+      if (btn()) btn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+      await sleep(60);
+      check('§219E④ 长按收尾：紧随的 click 被吞（抑制只吞一次）', G.enhOf(a) === before4, 'lv=' + G.enhOf(a));
+      /* ⑤ 抑制已复位：普通点击恢复 +1 */
+      if (btn()) btn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+      await sleep(60);
+      check('§219E⑤ 普通点击恢复 +1（抑制标志复位）', G.enhOf(a) === before4 + 1, 'lv=' + G.enhOf(a));
+      /* ⑥ 整套真点：两件同升（a 再 +1、b 首升） */
+      const aLv = G.enhOf(a), bLv = G.enhOf(b);
+      if (setBtn()) setBtn().dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+      await sleep(80);
+      check('§219E⑥ 整套真点：套装两件同时各 +1', G.enhOf(a) === aLv + 1 && G.enhOf(b) === bLv + 1,
+        'a=' + aLv + '→' + G.enhOf(a) + ' b=' + bLv + '→' + G.enhOf(b));
+    } finally {
+      try { G.ui.closeAllModals(); } catch (e) { }
+      G.ui._enhSel = '';
+      G.state = bk;
+    }
+  })();
+
   return finish();
 }
 

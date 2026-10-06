@@ -15,7 +15,7 @@ function chk(tag, cond, extra) {
   else { bad++; console.log('FAIL ' + tag + (extra ? '  [' + extra + ']' : '')); }
 }
 
-G.newGame({ name: 'tech191', region: '司隶' });
+G.newGame({ name: 'tech191', region: '烬环' });
 var c0 = G.state.cities[0];
 chk('①a 新局城市带 techs 表', !!c0.techs && typeof c0.techs === 'object');
 chk('①b state 顶层无 techs', G.state.techs === undefined);

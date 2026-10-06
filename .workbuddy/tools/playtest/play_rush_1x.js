@@ -133,7 +133,7 @@ function fmtNum(v) {
 }
 
 /* ---------- 3. 建局（固定地图 seed；其余保持真随机） ---------- */
-var st = G.newGame({ name: '北辰', cityName: '许都', region: '豫州', mapSeed: 20260921, portraitSeed: 20260921 });
+var st = G.newGame({ name: '北辰', cityName: '灰岗', region: '碎垣', mapSeed: 20260921, portraitSeed: 20260921 });
 if (!st.map.grid) G.map.generate();
 var city0 = st.cities[0];
 st.settings.timeScale = TS;   /* v89.98：1× 默认（1 游戏秒 / 现实秒） */
@@ -155,7 +155,7 @@ amc.everyMin = 5; amc.radius = 14; amc.dailyMax = 0;
    吃紧或没有采集将可用就收回。执行将与围攻将**分班**（见 pickAmcGen）。 */
 
 RUN('=== v89.92 多策略对照推演开始（STRAT v1 · MODE=' + MODE + '） ===');
-RUN('建局：北辰 · 「许都」· 豫州 · mapSeed=20260921 · ' + TS + '× · 目标 ' + MAXT + ' tick（'
+RUN('建局：北辰 · 「灰岗」· 碎垣 · mapSeed=20260921 · ' + TS + '× · 目标 ' + MAXT + ' tick（'
   + (MAXT * TS / 57600).toFixed(2) + ' 游戏年 = ' + (MAXT / 3600).toFixed(1) + ' 现实小时）');
 RUN('城坐标 (' + city0.x + ',' + city0.y + ') · 初始将 ' + st.generals.map(function (g) { return g.name; }).join('、'));
 RUN('初始资源 粮木石铁金各 2 万 · 人口 200 · 城外预设 2田1木1石1铁');
@@ -360,8 +360,8 @@ function tryWall() {
 }
 /* 5.4 募兵 */
 var TROOP_ORDER = ['tieji', 'qingji', 'changqiang', 'daodun', 'gongjian', 'yibing'];
-if (MODE === 'span') TROOP_ORDER = ['qingji', 'tieji', 'changqiang', 'daodun', 'gongjian', 'yibing'];   /* v89.101：城流跨越以轻骑为主力 */
-if (MODE === 'span') RUN('🧪 SPAN 模式：城流跨越（筑城无上限 + 轻骑批量成军 + 军链抢建）');
+if (MODE === 'span') TROOP_ORDER = ['qingji', 'tieji', 'changqiang', 'daodun', 'gongjian', 'yibing'];   /* v89.101：城流跨越以摩托游骑为主力 */
+if (MODE === 'span') RUN('🧪 SPAN 模式：城流跨越（筑城无上限 + 摩托游骑批量成军 + 军链抢建）');
 function armyTarget() {
   var y = yNow();
   /* v89.98b：目标下调 —— 原 5000/15000/40000 远超 18.75 年的人口供给（人口=民房唯一来源），
@@ -376,7 +376,7 @@ function armyTarget() {
 }
 function tryTrain() {
   if ((st.queues.train || []).length >= 4) return;     /* 队列已有 4 批 → 先等 */
-  /* v89.99：募兵缺人而人口银行有货 → 先解散义兵放人（"要特定兵种时解散改募"） */
+  /* v89.99：募兵缺人而人口银行有货 → 先解散民兵放人（"要特定兵种时解散改募"） */
   if (!(((G.res(st.cities[0]) || {}).pop) >= 60) && tNow - REL_LAST > 300) {
     REL_LAST = tNow;
     releaseBank(150, '募兵缺人');       /* v89.99：5 分钟一次上限 —— 放人是桥，不是常态 */
@@ -392,7 +392,7 @@ function tryTrain() {
     if (!jy) return;
     setCity(city);
     /* v2：从精锐到基础逐个尝试 —— **未解锁的兵种要跳过继续试后面的**
-       （v1 在第一个失败处 return —— 永远试不到义兵，五年一兵未募的根因） */
+       （v1 在第一个失败处 return —— 永远试不到民兵，五年一兵未募的根因） */
     var lastFail = '';
     for (var i = 0; i < TROOP_ORDER.length; i++) {
       var tid = TROOP_ORDER[i];
@@ -1766,8 +1766,8 @@ function snapshot() {
  *   ① 体力：两班将（围攻将 / 采集将）分开 —— 采集只吃主攻将之外的余量；
  *      军力不足 margin 时自动收回，充足时放出去收割（会溢出的恢复 → 资源）。
  *   ② 金：保留线 = 在办目标的下一笔开销（建城期 / 养将期 / 应急底，见 reserveNow）。
- *   ③ 人口：贴顶的增长"存"进义兵（**人口银行**）；募兵缺人时解散归农再募
- *      —— 对应老板「有人口就征义兵，避免人口停在顶端；要特定兵种时解散改募」。
+ *   ③ 人口：贴顶的增长"存"进民兵（**人口银行**）；募兵缺人时解散归农再募
+ *      —— 对应老板「有人口就征民兵，避免人口停在顶端；要特定兵种时解散改募」。
  * 阶段（ERA）由**条件**判定（城数/等级/战果），切换即换规则（税制/打法/掠夺模式）。
  * ============================================================ */
 var ERA = { id: 'E0', n: 0, log: [] };
@@ -1853,7 +1853,7 @@ function applyPolicies() {
   }
 }
 
-/* 人口银行：贴顶的增长"存"进义兵（避免增长停在顶端被浪费） */
+/* 人口银行：贴顶的增长"存"进民兵（避免增长停在顶端被浪费） */
 function bankPop() {
   var RP = eraRuleOf(ERA.id);
   if (!RP.bank) return;
@@ -1877,12 +1877,12 @@ function bankPop() {
   var r = safeCall('bank.train', function () { return G.train('yibing', n, c.id, jy.idx); });
   if (r && r.ok) {
     BANK.joined += n;
-    if (BANK.joined <= 600) noteSoft('bank.join', '存人：义兵 ×' + n + '（人口银行）');
+    if (BANK.joined <= 600) noteSoft('bank.join', '存人：民兵 ×' + n + '（人口银行）');
   }
 }
-/* 放人：募兵缺人时解散义兵归农（"要特定兵种时解散兵种、改募别的"） */
+/* 放人：募兵缺人时解散民兵归农（"要特定兵种时解散兵种、改募别的"） */
 function releaseBank(needPop, why) {
-  /* v89.99：**全城扫描** —— 义兵可能在任意一座城（首测里只扫主城，漏掉分城的存货） */
+  /* v89.99：**全城扫描** —— 民兵可能在任意一座城（首测里只扫主城，漏掉分城的存货） */
   var c = null, bank = 0;
   st.cities.forEach(function (cc) {
     var b = ((cc.army || {}).yibing) || 0;
@@ -1897,7 +1897,7 @@ function releaseBank(needPop, why) {
   var r = safeCall('bank.release', function () { return G.disbandAt(c.id, 'yibing', n); });
   if (r && r.ok) {
     BANK.released += n;
-    RUN('🕊 人口银行放人：解散义兵 ×' + n + ' → 归农 +' + r.pop + '（' + why + '）');
+    RUN('🕊 人口银行放人：解散民兵 ×' + n + ' → 归农 +' + r.pop + '（' + why + '）');
     return r.pop;
   }
   return 0;
@@ -1929,10 +1929,10 @@ function popBrain() {
 }
 
 /* ============================================================
- * v89.101 · 城流跨越（span）—— 老板「轻骑兵是事实，铁骑兵是不是？
+ * v89.101 · 城流跨越（span）—— 老板「摩托游骑是事实，装甲战车是不是？
  *   开拓四维，用寻找漏洞的方式寻求跨越式的、不可逆的发展」
  * ① spanCities：占平原 → 即时筑城（实测无上限 · 附近 1233 块可筑平原）
- * ② spanCav：轻骑批量成军（选粮最厚的城，一次募到该城上限）
+ * ② spanCav：摩托游骑批量成军（选粮最厚的城，一次募到该城上限）
  * ③ spanMil：军链抢建（军营→5 / 马厩→3 / 书院→6，骑兵门票）
  * ============================================================ */
 var SPAN = { maxCity: 9, cityLast: -1e9, cavLast: -1e9, milLast: -1e9 };
@@ -1973,15 +1973,15 @@ function spanCav() {
     if (g > bg) { bg = g; best = c; bCap = cap; }
   });
   if (!best || !(bCap > 0)) {
-    /* v89.101b：骑兵解锁但缺人 → 解散义兵放人（要特定兵种时解散改募） */
-    if (anyUnlocked) safeCall('span.cav.rel', function () { return releaseBank(500, '轻骑待募·放人'); });
+    /* v89.101b：骑兵解锁但缺人 → 解散民兵放人（要特定兵种时解散改募） */
+    if (anyUnlocked) safeCall('span.cav.rel', function () { return releaseBank(500, '摩托游骑待募·放人'); });
     return;
   }
   var jy2 = cellOf(best, 'junying');
   var n = Math.min(bCap, 4000);
   setCity(best);
   var r = safeCall('span.cav', function () { return G.train('qingji', n, best.id, jy2.idx); });
-  if (r && r.ok) RUN('🐎 轻骑成军：' + best.name + ' 一次 ×' + n + '（该城上限 ' + bCap + '）');
+  if (r && r.ok) RUN('🐎 摩托游骑成军：' + best.name + ' 一次 ×' + n + '（该城上限 ' + bCap + '）');
   else if (r && !r.ok) noteSoft('span.cav', r.msg);
 }
 function spanMil() {

@@ -47,7 +47,7 @@ var T_SHIELD = { daodun: { t: 'gongjian' }, tengjiabing: { t: 'changqiang' } };
 var T_FULL = {};
 [TL, TL_CAV, T_REMOTE, T_SHIELD].forEach(function (o) { for (var k in o) T_FULL[k] = o[k]; });
 
-G.newGame({ name: 'grid', region: '司隶' });
+G.newGame({ name: 'grid', region: '烬环' });
 console.log('=== A. 目标组合 × 统一阈值(300) ===');
 run({ byId: {}, smart: function (e, s) { smartTick(e, s, {}); } }, null, 'T0 默认目标');
 run(targetsPlan(TL), null, 'T1 仅枪→骑');

@@ -12,7 +12,7 @@ var pass = 0, fail = 0;
 function P(n, ok, ex) { if (ok) { pass++; console.log('  ✅ ' + n + (ex ? '  [' + ex + ']' : '')); } else { fail++; console.log('  ❌ ' + n + (ex ? '  [' + ex + ']' : '')); } }
 
 console.log('=== ① 城主六维 → 生产/经营 的现状清点（真调 mayorBonus） ===');
-var st = G.newGame({ name: '城测', region: '司隶' });
+var st = G.newGame({ name: '城测', region: '烬环' });
 var c = st.cities[0];
 st.generals.forEach(function (g) { g.status = 'idle'; g.cityId = null; });
 var g = st.generals[0];
@@ -42,7 +42,7 @@ P('粮食产量随城主任命上升（说明造局有效）', grainYes > grainN
   grainNo.toFixed(2) + ' → ' + grainYes.toFixed(2));
 
 console.log('\n=== ③ 税收分解 vs 结算：带「税制加成」时是否分叉（疑点实证） ===');
-var st2 = G.newGame({ name: '分叉测', region: '司隶' });
+var st2 = G.newGame({ name: '分叉测', region: '烬环' });
 var c2 = st2.cities[0];
 console.log('  首城：popCap=' + G.maxPopOf(c2) + ' · 税率=' + (st2.tax || 0) + ' · 民心=' + (st2.hearts || 100));
 var p0 = G.productionPerSec().gold;

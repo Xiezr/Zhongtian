@@ -32,7 +32,7 @@ fs.mkdirSync(OUT, { recursive: true });
   /* 建局 + 打一场（全部走游戏自己的出口，不碰存档） */
   var info = await page.evaluate(function () {
     var G = window.GAME;
-    var st = G.newGame({ name: '北辰', cityName: '许都', region: '豫州', mapSeed: 20260921 });
+    var st = G.newGame({ name: '北辰', cityName: '许都', region: '碎垣', mapSeed: 20260921 });
     if (!st.map.grid) G.map.generate();
     st.settings.battleWatch = false;
     var c = st.cities[0];

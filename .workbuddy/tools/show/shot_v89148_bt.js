@@ -25,7 +25,7 @@ function chk(name, ok, extra) {
   console.log('===== ① 城外资源建筑容量（同级仓库的 1/6）=====');
   var m0 = await p.evaluate(function () {
     var G = window.GAME;
-    var st = G.newGame({ name: '验148', cityName: '许都', region: '豫州', mapSeed: 20260947 });
+    var st = G.newGame({ name: '验148', cityName: '许都', region: '碎垣', mapSeed: 20260947 });
     if (!st.map.grid) G.map.generate();
     G.ui.enterGame(); try { G.ui.closeAllModals(); } catch (e) { }
     var c = st.cities[0]; G.ui._cityId = c.id;

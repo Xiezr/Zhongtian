@@ -9,7 +9,7 @@ var mode = process.argv[2];
 if (mode === 'old') eval(fs.readFileSync(path.join(R, 'backup/v89169/ui.js'), 'utf8'));
 else require(path.join(R, 'js', 'ui.js'));
 var G = global.GAME;
-G.newGame({ name: 'x', cityName: '许都', region: '豫州', mapSeed: 7 });
+G.newGame({ name: 'x', cityName: '许都', region: '碎垣', mapSeed: 7 });
 var c = G.currentCity();
 c.wall.build = { id: 'chengqiang', lvl: 3 };
 var h = G.ui.cityHTML();

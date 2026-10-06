@@ -22,7 +22,7 @@ function chk(name, cond, extra) {
 
   var gid = await p.evaluate(function () {
     var G = window.GAME;
-    G.newGame({ name: '验173', cityName: '许都', region: '豫州', mapSeed: 20260973 });
+    G.newGame({ name: '验173', cityName: '许都', region: '碎垣', mapSeed: 20260973 });
     G.ui.enterGame(); G.ui.closeAllModals();
     G.ui.setView('generals');
     var st = G.state;

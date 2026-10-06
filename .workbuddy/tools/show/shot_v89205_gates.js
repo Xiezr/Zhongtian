@@ -27,7 +27,7 @@ var sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms);
   await p.waitForFunction('window.GAME && window.GAME.DATA', null, { timeout: 30000 });
   await p.evaluate(function () {
     var G = window.GAME;
-    G.newGame({ name: 'v205', cityName: '许都', region: '豫州', mapSeed: 20261007 });
+    G.newGame({ name: 'v205', cityName: '许都', region: '碎垣', mapSeed: 20261007 });
     if (!G.state.map.grid) G.map.generate();
     var c = G.state.cities[0];
     c.army = { qingji: 5000 };

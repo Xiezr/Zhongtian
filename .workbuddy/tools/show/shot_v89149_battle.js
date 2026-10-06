@@ -25,7 +25,7 @@ var S = 'E:/Deepseekdb/.workbuddy/shots/';
 
   /* ---------- 造局（首局 · 即时结算路径）---------- */
   var r0 = await p.evaluate(function () {
-    var G = window.GAME, st = G.newGame({ name: '验149', cityName: '许都', region: '豫州', mapSeed: 20260949 });
+    var G = window.GAME, st = G.newGame({ name: '验149', cityName: '许都', region: '碎垣', mapSeed: 20260949 });
     if (!st.map.grid) G.map.generate();
     G.ui.enterGame(); try { G.ui.closeAllModals(); } catch (e) { }
     var c = st.cities[0]; G.ui._cityId = c.id;

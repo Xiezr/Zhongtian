@@ -12,7 +12,7 @@ eval(fs.readFileSync(path.join(R, '.workbuddy/tmp/smoke_env_head.js'), 'utf8'));
   .forEach(function (f) { require(path.join(R, 'js', f + '.js')); });
 var G = global.GAME, D = G.DATA, U = G.utils;
 
-G.newGame({ name: '探针E96', region: '司隶' });
+G.newGame({ name: '探针E96', region: '烬环' });
 var s = G.state;
 
 console.log('══════ ① 73 件条件全解析 ══════');

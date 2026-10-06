@@ -5,7 +5,7 @@ eval(fs.readFileSync(path.join(R, '.workbuddy/tmp/smoke_env_head.js'), 'utf8'));
 ['data', 'state', 'questdata', 'systems', 'domain', 'map', 'battle', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits', 'story', 'ui', 'main']
   .forEach(function (f) { require(path.join(R, 'js', f + '.js')); });
 var G = global.GAME;
-G.newGame({ name: '改前取证', cityName: '许都', region: '豫州', mapSeed: 7 });
+G.newGame({ name: '改前取证', cityName: '许都', region: '碎垣', mapSeed: 7 });
 var c = G.currentCity();
 var P = function (n, ok, ex) { console.log((ok ? '  ✅ ' : '  ❌ ') + n + (ex ? '  [' + ex + ']' : '')); };
 

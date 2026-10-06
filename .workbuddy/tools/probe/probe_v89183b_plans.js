@@ -18,7 +18,7 @@ eval(fs.readFileSync(path.join(R, '.workbuddy/tmp/smoke_env_head.js'), 'utf8'));
   .forEach(function (f) { require(path.join(R, 'js', f + '.js')); });
 var G = global.GAME, DATA = G.DATA, T = G.tactic;
 
-G.newGame({ name: '探183b', avatar: '🧔', gender: 'male', region: '豫州' });
+G.newGame({ name: '探183b', avatar: '🧔', gender: 'male', region: '碎垣' });
 G.state.world.weather = 'clear';
 
 /* ---------- 四条曲线（都是"体力池 → 全军生命加成"） ---------- */

@@ -17,7 +17,7 @@ var G = global.GAME, DATA = G.DATA;
 
 var N = 50000;                     /* 每等级采样次数 */
 var s = G.state;
-G.newGame({ name: '标定', cityName: '许都', region: '豫州', mapSeed: 20260928 });
+G.newGame({ name: '标定', cityName: '许都', region: '碎垣', mapSeed: 20260928 });
 s = G.state;
 
 var tbl = (DATA.BOOST_DROP || {}).table || [];

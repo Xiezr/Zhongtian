@@ -105,7 +105,7 @@ function run(atkPlan, defPlan, label) {
   return { rounds: fin.rounds, aL: aL, dL: dL, winner: fin.winner, fin: fin, log: log };
 }
 
-G.newGame({ name: 'sim', region: '司隶' });
+G.newGame({ name: 'sim', region: '烬环' });
 console.log('=== 全兵种镜像对局（我方=攻 用候选方案 · 敌方=守 全默认前进） ===');
 var r1 = run(PLAN_BASE, PLAN_BASE, 'P0 基线（全默认）');
 var r2 = run(PLAN_TARGET, PLAN_BASE, 'B 目标优化（静态）');

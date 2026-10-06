@@ -39,7 +39,7 @@ ok('RES_ORDER 无重复',
 
 /* ② 首城外城模板 */
 console.log('\n② 首城外城模板（INITIAL_EXT 接线）');
-var st = G.newGame({ name: '验', cityName: '许都', region: '豫州', mapSeed: 20260927 });
+var st = G.newGame({ name: '验', cityName: '许都', region: '碎垣', mapSeed: 20260927 });
 G.state = st;
 var c0 = st.cities[0];
 var t5 = (c0.extGrid || []).slice(0, 5).map(function (g) { return g.type; });

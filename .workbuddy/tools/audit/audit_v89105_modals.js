@@ -35,7 +35,7 @@ fs.mkdirSync(OUT, { recursive: true });
 
   /* ---------- 开局：状态尽量"满"，才能压出真实排版 ---------- */
   var boot = await page.evaluate(function () {
-    var G = window.GAME, st = G.newGame({ name: '北辰', cityName: '许都', region: '豫州', mapSeed: 20260921 });
+    var G = window.GAME, st = G.newGame({ name: '北辰', cityName: '灰岗', region: '碎垣', mapSeed: 20260921 });
     if (!st.map.grid) G.map.generate();
     var c = st.cities[0];
     G.ui._cityId = c.id;

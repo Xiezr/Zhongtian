@@ -23,7 +23,7 @@ fs.mkdirSync(OUT, { recursive: true });
 
   var boot = await page.evaluate(function () {
     var G = window.GAME;
-    var st = G.newGame({ name: '北辰', cityName: '许都', region: '豫州', mapSeed: 20260923 });
+    var st = G.newGame({ name: '北辰', cityName: '许都', region: '碎垣', mapSeed: 20260923 });
     if (!st.map.grid) G.map.generate();
     var c = st.cities[0];
     st.rank = 10;                       /* 抬爵 → 领地上限放宽（否则平民 2 座挡住建城） */

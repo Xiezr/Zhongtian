@@ -12,7 +12,7 @@ eval(fs.readFileSync(path.join(R, '.workbuddy/tmp/smoke_env_head.js'), 'utf8'));
 var G = global.GAME;
 var TAG = process.argv[2] || 'after';
 
-G.newGame({ name: 'load192', region: '司隶', mapSeed: 20260931 });
+G.newGame({ name: 'load192', region: '烬环', mapSeed: 20260931 });
 G.state.world.weather = 'clear';
 var st = G.state;
 st.settings = st.settings || {}; st.settings.battleWatch = false;

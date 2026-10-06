@@ -22,7 +22,7 @@ function chk(name, ok, extra) {
   await p.waitForFunction('window.GAME && window.GAME.DATA', null, { timeout: 30000 });
   await p.evaluate(function () {
     var G = window.GAME;
-    G.newGame({ name: '验185', cityName: '许都', region: '豫州', mapSeed: 20260926 });
+    G.newGame({ name: '验185', cityName: '许都', region: '碎垣', mapSeed: 20260926 });
     G.ui.enterGame(); G.ui.closeAllModals();
     if (!G.state.map.grid) G.map.generate();
     /* v89.185 实机修：开场引导弹窗会挡住侧栏；主动切视图 + 渲染侧栏（同产品出口） */

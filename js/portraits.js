@@ -24,12 +24,12 @@
 
   /* 史实名将 → 头像文件 id */
   P.HERO_FILE = {
-    '曹操': 'caocao', '诸葛亮': 'zhugeliang', '关羽': 'guanyu', '吕布': 'lvbu', '周瑜': 'zhouyu',
-    '司马懿': 'simayi', '陆逊': 'luxun', '邓艾': 'dengai', '吕蒙': 'lvmeng', '姜维': 'jiangwei',
-    '孙坚': 'sunjian', '赵云': 'zhaoyun', '陆抗': 'lukang', '羊祜': 'yanghu', '孙策': 'sunce',
-    '徐庶': 'xushu', '张辽': 'zhangliao', '鲁肃': 'lusu', '贾诩': 'jiaqu', '刘备': 'liubei',
-    '张飞': 'zhangfei', '马超': 'machao', '黄忠': 'huangzhong', '典韦': 'dianwei', '许褚': 'xuchu',
-    '孙权': 'sunquan', '袁绍': 'yuanshao', '董卓': 'dongzhuo'
+    '铁枭': 'caocao', '明灯': 'zhugeliang', '长刀': 'guanyu', '狂刀': 'lvbu', '火鸦': 'zhouyu',
+    '灰隼': 'simayi', '石壁': 'luxun', '荒岭': 'dengai', '雾狼': 'lvmeng', '断剑': 'jiangwei',
+    '赤旗': 'sunjian', '银枪': 'zhaoyun', '铁壁': 'lukang', '星图': 'yanghu', '快帆': 'sunce',
+    '冷面': 'xushu', '疾风': 'zhangliao', '白鸦': 'lusu', '毒眼': 'jiaqu', '长胜': 'liubei',
+    '雷吼': 'zhangfei', '双枪': 'machao', '神射': 'huangzhong', '铁腕': 'dianwei', '铁牛': 'xuchu',
+    '江河': 'sunquan', '金殿': 'yuanshao', '黑塔': 'dongzhuo'
   };
   P.DIR = 'assets/portraits/';
 

@@ -29,7 +29,7 @@ var TAG = process.env.TAG || 'v89106';
   /* 建局 → 把 16 座建筑一座一格摆满（每族都能看见，才是"分色"的验收条件） */
   var info = await page.evaluate(function () {
     var G = window.GAME;
-    var st = G.newGame({ name: '北辰', cityName: '许都', region: '豫州', mapSeed: 20260923 });
+    var st = G.newGame({ name: '北辰', cityName: '许都', region: '碎垣', mapSeed: 20260923 });
     if (!st.map.grid) G.map.generate();
     var c = st.cities[0];
     G.ui._cityId = c.id;

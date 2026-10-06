@@ -23,7 +23,7 @@ function chk(name, cond, extra) {
   /* ---------- 造局：3 城 + 候选 + 开自动升级 ---------- */
   var boot = await p.evaluate(function () {
     var G = window.GAME;
-    G.newGame({ name: '验167', cityName: '许都', region: '豫州', mapSeed: 20260967 });
+    G.newGame({ name: '验167', cityName: '许都', region: '碎垣', mapSeed: 20260967 });
     G.ui.enterGame(); G.ui.closeAllModals();
     if (!G.state.map.grid) G.map.generate();
     G.state.rank = 6;                                 /* 领地上限随爵位 */

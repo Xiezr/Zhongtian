@@ -14,36 +14,41 @@
      设计原则：底色近乎墨黑，仅把**金/火**留作暖色高光（唯一亮点），
      其余材质一律冷灰暗调 —— 这样图标在深色面板上才有"物件感"而非贴纸感。 */
   var P = {
-    /* v30 调色板「亮画面」化：对齐原版——鲜亮但不失层次，高光更透、暗部保留 */
-    ink: '#241a10',
-    /* 亮青瓦 */
-    tileHi: '#9db2c8', tileMd: '#64788e', tileLo: '#3d4d61', tileEdge: '#232e3c',
-    /* 金琉璃 */
-    glaHi: '#e8b44e', glaMd: '#b47c26', gllaLo: '#7a4e12',
-    /* 米黄砖墙 */
-    wallHi: '#eedcb2', wallMd: '#c4a872', wallLo: '#93794c', wallEdge: '#5e4a2c',
-    /* 亮木 */
-    woodHi: '#c89058', woodMd: '#96602e', woodLo: '#6a4018', woodEdge: '#3f260c',
-    /* 亮岩 */
-    stHi: '#d0ccbe', stMd: '#9c968a', stLo: '#6b655a', stEdge: '#453f36',
-    /* 亮金 */
-    goldHi: '#f6d788', goldMd: '#d0a038', goldLo: '#92691e',
-    /* 亮绿 */
-    grHi: '#96c258', grMd: '#689838', grLo: '#42701e',
-    /* 亮水 */
-    waHi: '#8cc8ec', waMd: '#5898c4', waLo: '#35709e',
+    /* v89.216 调色板「荒原化」（换皮视觉层 · 一处改全局）：材质与色相换到废土 ——
+       青瓦→**锈铁顶** · 金琉璃→**旧铜** · 米黄砖墙→**水泥** · 亮木→**旧木** ·
+       亮岩→**碎石** · 亮金→**黄铜** · 亮绿→**荒草** · 亮水→**浑水** · 亮朱→**锈红** ·
+       亮钢/麻/玉/皮革→哑光版。**形制不动**（屋檐还是屋檐、城墙还是城墙），
+       只把"新瓦亮漆"换成"旧料锈迹"——这是"名字已废土、图仍是新屋"的收口。
+       ⚠️ 全局观感由这一处决定；要回退只改这里（备份在 .workbuddy/backup/v89215/icons.js）。 */
+    ink: '#241f18',
+    /* 锈铁顶 */
+    tileHi: '#b4a08a', tileMd: '#857055', tileLo: '#56452f', tileEdge: '#33281a',
+    /* 旧铜 */
+    glaHi: '#c9a464', glaMd: '#97743c', gllaLo: '#6a5024',
+    /* 水泥墙 */
+    wallHi: '#d5cfc0', wallMd: '#a8a294', wallLo: '#7a7466', wallEdge: '#4e4840',
+    /* 旧木 */
+    woodHi: '#b89468', woodMd: '#8e6a42', woodLo: '#5f452a', woodEdge: '#3a2a18',
+    /* 碎石 */
+    stHi: '#cfcabd', stMd: '#a09a8e', stLo: '#6e675c', stEdge: '#46403a',
+    /* 黄铜 */
+    goldHi: '#e8cf92', goldMd: '#c09a48', goldLo: '#84662a',
+    /* 荒草 */
+    grHi: '#a8b06a', grMd: '#7a8248', grLo: '#4e5628',
+    /* 浑水 */
+    waHi: '#8fbcca', waMd: '#5c8ea0', waLo: '#3a6478',
     /* 火（保留暖亮） */
     fiHi: '#ffdd77', fiMd: '#f0952f', fiLo: '#b85414',
-    /* 亮朱 */
-    rHi: '#d45c3c', rMd: '#a83a22', rLo: '#742513',
-    /* 亮钢 */
-    irHi: '#d4dce8', irMd: '#98a4b6', irLo: '#667284',
-    /* 亮麻 */
-    clHi: '#ecdcb2', clMd: '#b89e6e', clLo: '#856c44',
-    /* 亮玉（修复 SLOT_ART 死引用：jadeHi/jadeLo 此前未定义） */
-    jadeHi: '#8fd8ac', jadeLo: '#4a8a60',
-    /* 亮皮革（修复 SLOT_ART 死引用：leatherHi/Md/Lo 此前未定义） */
-    leatherHi: '#d8b488', leatherMd: '#a87e50', leatherLo: '#745432',
+    /* 锈红 */
+    rHi: '#cf6040', rMd: '#a04428', rLo: '#702e18',
+    /* 哑钢 */
+    irHi: '#cdd4de', irMd: '#93a0b2', irLo: '#616c7c',
+    /* 帆布 */
+    clHi: '#e2d3ab', clMd: '#ab9268', clLo: '#7a6340',
+    /* 玉（哑） */
+    jadeHi: '#86c9a2', jadeLo: '#457f5a',
+    /* 皮革（旧） */
+    leatherHi: '#cfae84', leatherMd: '#a07a4e', leatherLo: '#6e502f',
   };
   ICON.P = P;
 
@@ -203,7 +208,7 @@
       door(32, 39, 9, 11, k) +
       lattice(20, 34, 6, 7) + lattice(44, 34, 6, 7) +
       '<rect x="26" y="34.5" width="12" height="3.6" rx="1" fill="' + P.goldMd + '"/>' +
-      '<text x="32" y="37.4" font-size="3" text-anchor="middle" fill="' + P.woodEdge + '" font-family="serif">官府</text>';
+      '<text x="32" y="37.4" font-size="3" text-anchor="middle" fill="' + P.woodEdge + '" font-family="serif">政务厅</text>';
   };
 
   B.minfang = function (k) {
@@ -303,7 +308,7 @@
 
   B.chengqiang = function (k) {
     var s = G(k + 'wl', P.wallHi, P.wallLo);
-    /* 城墙主体 */
+    /* 围墙主体 */
     s += '<rect x="6" y="26" width="52" height="26" rx="1.4" fill="url(#' + k + 'wl)"/>' +
       '<rect x="34" y="26" width="24" height="26" fill="' + P.wallLo + '" opacity=".28"/>' +
       /* 垛口 */
@@ -363,7 +368,7 @@
   B.majiu = function (k) {
     var s = thatch(24, 22, 28, 9, k);
     s += wallBlock(11, 31, 26, 16, k) +
-      /* 马厩栅栏开口 */
+      /* 车库栅栏开口 */
       '<rect x="15" y="36" width="18" height="11" fill="' + P.woodLo + '" opacity=".55"/>' +
       '<g stroke="' + P.woodMd + '" stroke-width="1.2">' +
       '<line x1="18" y1="36" x2="18" y2="47"/><line x1="24" y1="36" x2="24" y2="47"/><line x1="30" y1="36" x2="30" y2="47"/></g>' +
@@ -605,7 +610,7 @@
   var R = {};
   /* v31 资源 6 重画：每个都做成"写实小品"——粮袋/木堆/石堆/矿坑/金币/村民 */
   R.grain = function (k) {
-    /* 粮袋（麻布袋装粮，束口绳） */
+    /* 粮袋（帆布袋装粮，束口绳） */
     var s = '<ellipse cx="32" cy="56" rx="20" ry="3" fill="#000" opacity=".25"/>';
     /* 袋身（梯形上窄下宽） */
     s += '<path d="M14 22 L50 22 L54 54 L10 54 Z" fill="url(#' + G('ic_grn', P.clHi, P.clLo) + ')"/>';
@@ -798,9 +803,9 @@
    * ============================================================ */
   /* v31 兵种四类独立剪影
      foot: 步兵（持长兵器，盾在身侧）
-     bow: 弓兵（开弓姿态）
-     horse: 骑兵（马+骑手剪影）
-     cart: 器械（车/弩/投石机） */
+     bow: 弩手（开弓姿态）
+     horse: 机车（马+骑手剪影）
+     cart: 器械（车/弩/迫击炮） */
   function soldierFoot(tone, w) {
     var C1 = tone[0], C2 = tone[1], C3 = tone[2];
     var s = '<ellipse cx="30" cy="56" rx="14" ry="2.6" fill="#000" opacity=".28"/>';
@@ -902,69 +907,68 @@
   }
   function soldierMount(tone, w) {
     var C1 = tone[0], C2 = tone[1], C3 = tone[2];
-    /* v31：骑兵剪影——坐姿骑手 + 马（马头朝右） */
-    var s = '<ellipse cx="32" cy="56" rx="22" ry="2.6" fill="#000" opacity=".28"/>';
-    /* 马（横向，腿前伸） */
-    s += '<path d="M8 48 L10 36 Q14 28 22 28 L46 28 Q52 30 50 36 L48 38 L50 44 Q50 48 46 48 L43 48 L43 52 L40 52 L40 48 L20 48 L20 52 L17 52 L17 48 L13 48 Q8 48 8 48 Z" fill="' + P.woodLo + '"/>' +
-      /* 马的左亮面 */
-      '<path d="M8 48 L10 36 Q14 28 22 28 L20 36 L17 48 Z" fill="' + P.woodMd + '" opacity=".5"/>' +
-      /* 马鬃 */
-      '<path d="M14 32 Q20 28 22 28 L24 28 L20 34 Z" fill="' + P.woodHi + '"/>' +
-      '<path d="M16 32 L18 28 M18 32 L20 28 M20 32 L22 28" stroke="' + P.woodEdge + '" stroke-width=".5"/>' +
-      /* 马头（朝右前） */
-      '<path d="M46 28 Q48 22 52 22 L58 24 Q60 28 56 30 Z" fill="' + P.woodMd + '"/>' +
-      '<path d="M56 30 L58 26 L60 27.4 L57.4 31 Z" fill="' + P.woodHi + '"/>' +
-      '<circle cx="55" cy="26" r=".8" fill="#000"/>' +
-      /* 马尾 */
-      '<path d="M8 42 Q2 38 4 46 Q6 42 8 46" fill="' + P.woodLo + '"/>' +
-      '<path d="M6 42 Q4 38 6 36" stroke="' + P.woodLo + '" stroke-width="1.4" fill="none"/>' +
-      /* 马镫 */
-      '<line x1="24" y1="48" x2="24" y2="52" stroke="' + P.woodLo + '" stroke-width="1"/>' +
-      '<line x1="38" y1="48" x2="38" y2="52" stroke="' + P.woodLo + '" stroke-width="1"/>';
-    /* 骑手（坐姿，腿前伸） */
-    /* 腿 */
-    s += '<path d="M22 26 L20 36 L26 36 L28 26 Z" fill="' + C3 + '"/>' +
-      '<path d="M38 26 L38 36 L44 36 L42 26 Z" fill="' + C2 + '"/>';
-    /* 身（铠甲前倾） */
-    s += '<path d="M22 16 L20 28 L32 28 L32 16 Z" fill="' + C2 + '"/>' +
-      '<path d="M32 16 L44 16 L42 28 L32 28 Z" fill="' + C3 + '"/>' +
+    /* v89.216 换皮视觉层：骑兵剪影 → **机车**（两轮 + 车架 + 油箱 + 车把 + 前灯 + 骑行姿态；
+       车头朝右）。武器语汇同旧版（矛/刀/弓/斧 一只手可持）—— 兵种语义已是「摩托游骑/
+       装甲战车/突击摩托」，马形才是真正的错配。 */
+    var s = '<ellipse cx="32" cy="57" rx="22" ry="2.6" fill="#000" opacity=".28"/>';
+    var wheel = function (cx) {
+      return '<circle cx="' + cx + '" cy="50" r="6.6" fill="' + P.irLo + '"/>' +
+        '<circle cx="' + cx + '" cy="50" r="4.6" fill="' + P.stLo + '"/>' +
+        '<circle cx="' + cx + '" cy="50" r="1.5" fill="' + P.irHi + '"/>' +
+        '<g stroke="' + P.irHi + '" stroke-width=".7" opacity=".45">' +
+        '<line x1="' + cx + '" y1="44.6" x2="' + cx + '" y2="55.4"/>' +
+        '<line x1="' + (cx - 5.4) + '" y1="50" x2="' + (cx + 5.4) + '" y2="50"/></g>';
+    };
+    s += wheel(13) + wheel(51);
+    /* 车架 + 油箱 + 座垫 + 排气管 + 车把 + 前灯 */
+    s += '<path d="M12 50 L21 39 L43 39 L52 50 L47.4 50 L40 42.6 L24 42.6 L16.6 50 Z" fill="' + C2 + '"/>' +
+      '<path d="M21 31.4 L43 31.4 Q45 31.4 45 33.4 L45 36.6 Q45 38.6 43 38.6 L21 38.6 Q19 38.6 19 36.6 L19 33.4 Q19 31.4 21 31.4 Z" fill="' + C1 + '"/>' +
+      '<path d="M21 31.4 L43 31.4 Q45 31.4 45 33.4 L45 34.2 L19 34.2 L19 33.4 Q19 31.4 21 31.4 Z" fill="' + C3 + '" opacity=".75"/>' +
+      '<path d="M44 45 L57 45 L57 48.2 L43 48.2 Z" fill="' + P.irMd + '"/>' +
+      '<path d="M54 34.4 L63 33 L63.8 36.2 L54.8 37.4 Z" fill="' + C3 + '"/>' +
+      '<line x1="58.6" y1="34.6" x2="58.6" y2="30" stroke="' + P.irMd + '" stroke-width="1.6"/>' +
+      '<circle cx="61.4" cy="28.6" r="2.8" fill="' + P.goldHi + '"/>' +
+      '<path d="M14 31 L27 30 L29 33.4 L14 34.4 Z" fill="' + P.leatherMd + '"/>' +
+      '<line x1="24" y1="42.6" x2="18" y2="48" stroke="' + P.irLo + '" stroke-width="1.4"/>' +
+      '<line x1="40" y1="42.6" x2="48" y2="48" stroke="' + P.irLo + '" stroke-width="1.4"/>';
+    /* 骑手（骑行姿态：前倾，腿跨车身） */
+    s += '<path d="M24 24 L21 34 L28 34 L30 24 Z" fill="' + C3 + '"/>' +
+      '<path d="M36 24 L38 34 L45 34 L42 24 Z" fill="' + C2 + '"/>' +
+      '<path d="M22 15 L20 27 L32 27 L32 15 Z" fill="' + C2 + '"/>' +
+      '<path d="M32 15 L44 15 L42 27 L32 27 Z" fill="' + C3 + '"/>' +
       '<g stroke="' + C1 + '" stroke-width=".4" opacity=".5">' +
-      '<path d="M21 20 L43 20"/><path d="M20 24 L42 24"/>' +
+      '<path d="M21 19 L43 19"/><path d="M20.6 23 L42.4 23"/>' +
       '</g>';
-    /* 左臂（持兵器） */
-    s += '<path d="M22 16 L14 14 L12 16 L20 18 Z" fill="' + C2 + '"/>' +
-      '<circle cx="13" cy="15" r="1.4" fill="' + P.woodMd + '"/>';
+    /* 左臂（持兵器；握在车把上方） */
+    s += '<path d="M22 15 L51 12 L52.6 14.6 L21 18 Z" fill="' + C2 + '"/>' +
+      '<circle cx="52" cy="13.4" r="1.5" fill="' + P.leatherMd + '"/>';
     /* 持兵器 */
     if (w === 'spear') {
-      s += '<line x1="14" y1="14" x2="6" y2="2" stroke="' + P.woodMd + '" stroke-width="2"/>' +
-        '<path d="M6 2 L9 -1 L11 3 L8 5 Z" fill="' + P.irHi + '"/>';
+      s += '<line x1="52" y1="13" x2="44" y2="1" stroke="' + P.woodMd + '" stroke-width="2"/>' +
+        '<path d="M44 1 L47 -2 L49 2 L46 4 Z" fill="' + P.irHi + '"/>';
     } else if (w === 'sword') {
-      s += '<path d="M14 14 L8 10 L10 8 L16 12 Z" fill="' + P.irHi + '"/>' +
-        '<rect x="10" y="12" width="6" height="1.6" rx=".8" transform="rotate(-30 13 13)" fill="' + P.goldMd + '"/>';
+      s += '<path d="M52 13 L46 9 L48 7 L54 11 Z" fill="' + P.irHi + '"/>' +
+        '<rect x="48" y="11" width="6" height="1.6" rx=".8" transform="rotate(-30 51 12)" fill="' + P.goldMd + '"/>';
     } else if (w === 'bow') {
-      s += '<path d="M14 14 Q6 8 14 4" stroke="' + P.woodHi + '" stroke-width="1.8" fill="none"/>' +
-        '<line x1="14" y1="14" x2="14" y2="4" stroke="' + P.clHi + '" stroke-width=".7"/>';
+      s += '<path d="M52 13 Q44 7 52 3" stroke="' + P.woodHi + '" stroke-width="1.8" fill="none"/>' +
+        '<line x1="52" y1="13" x2="52" y2="3" stroke="' + P.clHi + '" stroke-width=".7"/>';
     } else if (w === 'axe') {
-      s += '<line x1="14" y1="14" x2="12" y2="4" stroke="' + P.woodMd + '" stroke-width="1.6"/>' +
-        '<path d="M10 4 Q4 0 0 4 Q6 8 10 8 Z" fill="' + P.irHi + '"/>';
+      s += '<line x1="52" y1="13" x2="50" y2="3" stroke="' + P.woodMd + '" stroke-width="1.6"/>' +
+        '<path d="M48 3 Q42 -1 38 3 Q44 7 48 7 Z" fill="' + P.irHi + '"/>';
     }
-    /* 右臂 */
-    s += '<path d="M42 16 L50 18 L52 16 L44 14 Z" fill="' + C3 + '"/>';
-    /* 头 */
-    s += '<circle cx="32" cy="12" r="4.2" fill="' + P.woodMd + '"/>' +
-      '<circle cx="32" cy="12" r="3.4" fill="' + P.clHi + '"/>' +
-      '<circle cx="31" cy="10.5" r="1" fill="#fff" opacity=".4"/>';
-    /* 盔 */
-    s += '<path d="M27.4 10 Q27.4 5 32 5 Q36.6 5 36.6 10 Z" fill="' + C1 + '"/>' +
-      '<rect x="27.4" y="8" width="9.2" height="2" rx="1" fill="' + C3 + '"/>' +
-      '<path d="M32 5 L30 2 M32 5 L34 2 M32 5 L32 1" stroke="' + P.rMd + '" stroke-width=".8" stroke-linecap="round"/>' +
-      '<circle cx="32" cy="5" r="1" fill="' + P.goldMd + '"/>';
-    /* 披风（骑兵常有） */
-    s += '<path d="M44 18 L52 22 L48 28 L42 24 Z" fill="' + P.rMd + '" opacity=".5"/>';
+    /* 右臂（扶把） */
+    s += '<path d="M44 15 L56 20 L57.4 18 L45.4 13 Z" fill="' + C3 + '"/>';
+    /* 头 + 盔（战术头盔 + 护目镜） */
+    s += '<circle cx="32" cy="11.4" r="4.2" fill="' + P.leatherMd + '"/>' +
+      '<circle cx="32" cy="11.4" r="3.4" fill="' + P.clHi + '"/>' +
+      '<path d="M27.4 9.4 Q27.4 4 32 4 Q36.6 4 36.6 9.4 Z" fill="' + C1 + '"/>' +
+      '<rect x="27.4" y="7.4" width="9.2" height="2" rx="1" fill="' + C3 + '"/>' +
+      '<rect x="28.2" y="10.6" width="7.6" height="2.1" rx="1" fill="' + P.irMd + '" opacity=".9"/>' +
+      '<path d="M32 4 L30 1.4 M32 4 L34 1.4" stroke="' + P.irLo + '" stroke-width=".7" stroke-linecap="round"/>';
     return s;
   }
   function soldierCart(tone, kind) {
-    /* v31：器械四类——投石机/冲车/床弩/投石车 */
+    /* v31：器械四类——运输车/破门车/重弩车/迫击炮 */
     var C1 = tone[0], C2 = tone[1], C3 = tone[2];
     var s = '<ellipse cx="32" cy="56" rx="20" ry="2.6" fill="#000" opacity=".28"/>';
     /* 车轮（两轮） */
@@ -989,7 +993,7 @@
     s += '<line x1="14" y1="50" x2="20" y2="44" stroke="' + P.woodLo + '" stroke-width="1.6"/>' +
       '<line x1="50" y1="50" x2="44" y2="44" stroke="' + P.woodLo + '" stroke-width="1.6"/>';
     if (kind === 'cart') {
-      /* 投石车：基座 + 抛杆 + 配重 + 弹丸 */
+      /* 迫击炮：基座 + 抛杆 + 配重 + 弹丸 */
       s += '<path d="M20 30 L44 30 L46 42 L18 42 Z" fill="' + C2 + '"/>' +
         '<path d="M20 30 L32 30 L32 42 L18 42 Z" fill="' + C1 + '" opacity=".4"/>' +
         /* 抛杆（斜向上） */
@@ -1001,7 +1005,7 @@
         '<circle cx="14" cy="8" r="3" fill="' + P.stLo + '"/>' +
         '<circle cx="13" cy="7" r="1.2" fill="' + P.stHi + '" opacity=".7"/>';
     } else if (kind === 'siege_ram') {
-      /* 冲车：上覆皮盾的攻城槌 */
+      /* 破门车：上覆皮盾的攻城槌 */
       s += '<path d="M20 18 L44 18 L46 30 L18 30 Z" fill="' + C2 + '"/>' +
         '<path d="M20 18 L32 18 L32 30 L18 30 Z" fill="' + C1 + '" opacity=".4"/>' +
         /* 屋顶皮盖 */
@@ -1020,7 +1024,7 @@
         /* 铜钉 */
         '<circle cx="12" cy="36" r=".8" fill="' + P.goldMd + '"/>';
     } else if (kind === 'ballista') {
-      /* 床弩：巨型弓 + 弩臂 + 弩机 */
+      /* 重弩车：巨型弓 + 弩臂 + 弩机 */
       s += '<rect x="18" y="36" width="28" height="6" rx="1" fill="' + C2 + '"/>' +
         '<path d="M18 36 L32 36 L32 42 L18 42 Z" fill="' + C1 + '" opacity=".4"/>' +
         /* 弩臂 */
@@ -1037,7 +1041,7 @@
         /* 箭羽 */
         '<path d="M48 11 L50 9 L50 11 Z M48 13 L50 15 L50 13 Z" fill="' + P.clHi + '"/>';
     } else if (kind === 'catapult') {
-      /* 投石机：高架投臂 + 弹筐 */
+      /* 迫击炮（原投石车形制）：高架投臂 + 弹筐 */
       s += '<path d="M22 32 L42 32 L42 42 L22 42 Z" fill="' + C2 + '"/>' +
         '<path d="M22 32 L32 32 L32 42 L22 42 Z" fill="' + C1 + '" opacity=".4"/>' +
         /* 投臂（斜向下，弹筐端朝下） */
@@ -1103,7 +1107,7 @@
       var c = TR[id];
       var s = '';
       if (c.beast) {
-        /* 战象 */
+        /* 变异巨兽 */
         s += '<path d="M8 52 L12 38 Q16 32 26 32 L44 32 Q50 33 50 38 L48 40 L49 47 Q49 50 46 50 L42 50 L42 53 L39 53 L39 50 L20 50 L20 53 L17 53 L17 50 Z" fill="' + P.stLo + '"/>' +
           '<path d="M14 36 Q16 30 22 30 L26 32 L22 38 Z" fill="' + P.stMd + '"/>' +
           '<path d="M14 40 Q8 44 8 50 Q12 50 13 44 Z" fill="' + P.stMd + '"/>' +
@@ -1111,13 +1115,13 @@
           '<rect x="20" y="20" width="24" height="12" rx="1.6" fill="' + P.woodMd + '"/>' +
           flag(30, 22, 14, P.rMd, P.rHi);
       } else if (c.cls === 'bow') {
-        /* v31：弓兵独立剪影 */
+        /* v31：弩手独立剪影 */
         s += soldierBow(c.tone);
       } else if (c.cls === 'mount') {
-        /* v31：骑兵（马+骑手）独立剪影 */
+        /* v31：机车（车体+骑手）独立剪影 */
         s += soldierMount(c.tone, c.w);
       } else if (c.cls === 'cart') {
-        /* v31：器械 4 类（按 c.w 区分投石/冲车/床弩/投石车） */
+        /* v31：器械 4 类（按 c.w 区分运输车/破门车/重弩车/迫击炮） */
         s += soldierCart(c.tone, c.w === 'cart' ? 'cart' : (c.w === 'siege_ram' ? 'siege_ram' : (c.w === 'ballista' ? 'ballista' : 'catapult')));
       } else {
         /* v31：步兵 4 种兵器（默认 foot 类） */
@@ -1433,11 +1437,15 @@
               '<path d="M32 12 L32 50 L22 26 Z" fill="' + P.jadeLo + '" opacity=".45"/>' +
               '<path d="M32 12 L32 6" stroke="' + P.goldMd + '" stroke-width="2"/>' +
               '<circle cx="32" cy="5" r="2.6" fill="' + P.goldMd + '"/>',
-    mount:    '<path d="M10 50 L14 38 Q18 30 28 30 L44 30 Q50 32 50 38 L48 40 L49 47 Q49 50 46 50 L42 50 L42 53 L39 53 L39 50 L20 50 L20 53 L17 53 L17 50 Z" fill="' + P.woodLo + '"/>' +
-              '<path d="M46 30 Q48 24 54 25 L56 27 L52 31 Z" fill="' + P.woodMd + '"/>' +
-              '<path d="M18 34 Q26 30 34 32" stroke="' + P.woodHi + '" stroke-width="1.6" fill="none" opacity=".6"/>' +
-              '<rect x="24" y="20" width="18" height="9" rx="2" fill="' + P.rMd + '" opacity=".85"/>' +
-              '<path d="M26 20 Q32 12 42 15 L42 20 Z" fill="' + P.rHi + '" opacity=".8"/>',
+    /* v89.216 换皮视觉层：坐骑（马身）→ **座驾**（越野车剪影：车身 + 车顶 + 两轮 + 前灯） */
+    mount:    '<path d="M8 44 L12 34 Q14 30 20 30 L44 30 Q50 32 50 38 L48 41 L49 47 Q49 50 46 50 L42 50 L42 53 L39 53 L39 50 L20 50 L20 53 L17 53 L17 50 L8 50 Z" fill="' + P.woodLo + '"/>' +
+              '<path d="M8 44 L12 34 Q14 30 20 30 L20 44 Z" fill="' + P.woodMd + '" opacity=".6"/>' +
+              '<path d="M22 30 L24 20 L40 20 L44 30 Z" fill="' + P.rMd + '" opacity=".9"/>' +
+              '<path d="M25 22 L27 29 L39 29 L41.5 22 Z" fill="' + P.waHi + '" opacity=".55"/>' +
+              '<circle cx="18" cy="50" r="5.4" fill="' + P.irLo + '"/><circle cx="18" cy="50" r="2.6" fill="' + P.stLo + '"/>' +
+              '<circle cx="44" cy="50" r="5.4" fill="' + P.irLo + '"/><circle cx="44" cy="50" r="2.6" fill="' + P.stLo + '"/>' +
+              '<circle cx="52" cy="34" r="2.6" fill="' + P.goldHi + '"/>' +
+              '<rect x="8" y="44" width="8" height="3" rx="1.4" fill="' + P.irMd + '"/>',
   };
   var SLOT_ICON = {};
   Object.keys(SLOT_ART).forEach(function (id) {
@@ -1450,8 +1458,8 @@
   /* v89.152：珠宝体系重设（18 种，配色按宝石本色）——
      唯一消费点 = 下方 ITEM_ART.jewel（`GEM_PAL[id] || 默认`），新增珠宝必须在此上色。 */
   var GEM_PAL = {
-    bengzhu: ['#f2ece0', '#b8a888'],        /* 蚌珠：乳白 */
-    mila: ['#f0c268', '#a86c14'],           /* 蜜蜡：蜜黄 */
+    bengzhu: ['#f2ece0', '#b8a888'],        /* 珍珠：乳白 */
+    mila: ['#f0c268', '#a86c14'],           /* 琥珀：蜜黄 */
     meiyu: ['#5a5650', '#221f1c'],          /* 煤玉：漆黑 */
     puyu: ['#a8c8b0', '#5c8a68'],         /* 璞玉：原石青白 */
     zijin: ['#c8a0e8', '#7048a8'],          /* 紫晶：紫 */
@@ -1462,11 +1470,11 @@
     cuiyu: ['#5fd490', '#207a4c'],          /* 翠玉：翠绿 */
     danbaishi: ['#e8e0f4', '#a890c8'],      /* 蛋白石：幻彩白紫 */
     bixi: ['#f0a0c8', '#b83078'],           /* 碧玺：粉红 */
-    jiaorenlei: ['#d8f0f8', '#78b8d0'],     /* 鲛人泪：珠光淡蓝 */
+    jiaorenlei: ['#d8f0f8', '#78b8d0'],     /* 琉璃珠：珠光淡蓝 */
     tianzhu: ['#5a5048', '#181410'],        /* 天珠：黑褐 */
     longxianxiang: ['#d8d0b8', '#8a7c58'],  /* 龙涎香：灰白 */
     chenxiang: ['#6a4a38', '#2f1c12'],      /* 沉香：深棕 */
-    yemingzhu: ['#fff4c0', '#d0a63f'],      /* 夜明珠：荧光黄 */
+    yemingzhu: ['#fff4c0', '#d0a63f'],      /* 夜光珠：荧光黄 */
     dushanyu: ['#e4f0e8', '#a8c4b0'],       /* 独山玉：玉中君子 */
   };
   function gemArt(a, b) {
@@ -1511,23 +1519,23 @@
       var s = '<ellipse cx="32" cy="54" rx="22" ry="2.6" fill="#000" opacity=".28"/>';
       var icon = '';
       if (id === 'shennongchu') {
-        /* 神农锄：弯柄 + 锄头 */
+        /* 集水塔：弯柄 + 锄头 */
         icon = '<line x1="44" y1="14" x2="20" y2="48" stroke="' + P.woodMd + '" stroke-width="3"/>' +
           '<path d="M14 46 L26 46 L30 54 L10 54 Z" fill="' + P.irMd + '"/>' +
           '<path d="M14 46 L20 46 L24 50 L18 50 Z" fill="' + P.irHi + '"/>';
       } else if (id === 'lubanfu') {
-        /* 鲁班斧：长柄 + 斧头 */
+        /* 电锯组：长柄 + 斧头 */
         icon = '<line x1="20" y1="48" x2="44" y2="12" stroke="' + P.woodMd + '" stroke-width="2.4"/>' +
           '<path d="M40 8 Q52 4 56 14 Q50 16 46 22 Q42 18 40 8 Z" fill="' + P.irHi + '"/>' +
           '<path d="M40 8 Q52 4 56 14 L48 14 Z" fill="#fff" opacity=".4"/>';
       } else if (id === 'kaishanchui') {
-        /* 开山锤：锤头 + 锤柄 */
+        /* 破碎机：锤头 + 锤柄 */
         icon = '<rect x="18" y="12" width="22" height="14" rx="2" fill="' + P.irMd + '"/>' +
           '<rect x="18" y="12" width="22" height="4" rx="2" fill="' + P.irHi + '"/>' +
           '<line x1="29" y1="26" x2="20" y2="48" stroke="' + P.woodLo + '" stroke-width="3"/>' +
           '<rect x="14" y="46" width="14" height="6" rx="1.4" fill="' + P.woodMd + '"/>';
       } else if (id === 'xuantielu') {
-        /* 玄铁炉：方形炉 + 火苗 + 钳 */
+        /* 冶炼炉：方形炉 + 火苗 + 钳 */
         icon = '<rect x="14" y="30" width="36" height="22" rx="2" fill="' + P.stLo + '"/>' +
           '<rect x="14" y="30" width="36" height="6" rx="2" fill="' + P.stMd + '"/>' +
           '<rect x="14" y="30" width="36" height="22" rx="2" fill="none" stroke="' + P.stEdge + '" stroke-width=".8"/>' +
@@ -1535,7 +1543,7 @@
           '<path d="M22 30 Q24 22 28 30 Q26 24 30 30 Q28 22 32 30 Q30 24 34 30 Q32 22 36 30 Q34 24 38 30 Q36 22 42 30" stroke="' + P.fiHi + '" stroke-width="2" fill="none"/>' +
           '<circle cx="32" cy="38" r="3" fill="' + P.fiMd + '"/>';
       } else if (id === 'shuilibian') {
-        /* 税吏鞭：长鞭 + 握柄 */
+        /* 稽征令：长鞭 + 握柄 */
         icon = '<rect x="42" y="22" width="8" height="14" rx="2" fill="' + P.woodMd + '"/>' +
           '<rect x="42" y="22" width="8" height="3" rx="1" fill="' + P.goldMd + '"/>' +
           '<path d="M38 30 Q34 36 30 32 Q26 28 22 36 Q18 44 14 38 Q12 32 16 30" stroke="' + P.leatherLo + '" stroke-width="3" fill="none" stroke-linecap="round"/>' +
@@ -1552,7 +1560,7 @@
       /* v31：军备造型——鼓/阵图/医书/旗 */
       var s = '<ellipse cx="32" cy="56" rx="22" ry="2.4" fill="#000" opacity=".28"/>';
       if (id === 'xianzhenzhangu') {
-        /* 陷阵战鼓：立鼓 + 鼓槌 */
+        /* 冲锋号：立鼓 + 鼓槌 */
         s += '<rect x="20" y="22" width="24" height="28" rx="2" fill="' + P.woodMd + '"/>' +
           '<ellipse cx="32" cy="22" rx="12" ry="3.4" fill="' + P.rMd + '"/>' +
           '<ellipse cx="32" cy="22" rx="10" ry="2.6" fill="' + P.rHi + '"/>' +
@@ -1567,7 +1575,7 @@
           '<ellipse cx="49" cy="13" rx="2.4" ry="3" fill="' + P.woodMd + '"/>' +
           '<ellipse cx="49" cy="13" rx="1.4" ry="1.8" fill="' + P.woodHi + '"/>';
       } else if (id === 'baguazhentu') {
-        /* 八卦阵图：圆盘 + 八卦纹 */
+        /* 掩体图：圆盘 + 八卦纹 */
         s += '<circle cx="32" cy="34" r="22" fill="' + P.woodMd + '"/>' +
           '<circle cx="32" cy="34" r="20" fill="' + P.woodLo + '"/>' +
           '<circle cx="32" cy="34" r="14" fill="' + P.clMd + '"/>' +
@@ -1590,7 +1598,7 @@
           })() +
           '</g>';
       } else if (id === 'qingnangshu') {
-        /* 青囊书：医书 */
+        /* 救护手册：医书 */
         s += '<rect x="12" y="18" width="40" height="32" rx="2" fill="' + P.grLo + '"/>' +
           '<rect x="12" y="18" width="40" height="32" rx="2" fill="url(#ic_qnsh_g)" />';
         s = s.replace('url(#ic_qnsh_g)', 'url(#ic_qnsh)');
@@ -1789,7 +1797,7 @@
       return s;
     },
     build_cost: function () {
-      /* v31：考工记秘录——古籍书 */
+      /* v31：施工手册——古籍书 */
       var s = '<ellipse cx="32" cy="56" rx="24" ry="2.4" fill="#000" opacity=".25"/>';
       /* 书页底 */
       s += '<rect x="10" y="14" width="44" height="36" rx="2" fill="' + P.woodMd + '"/>' +
@@ -1812,8 +1820,8 @@
       return s;
     },
     /* ---- v89.51：五类「有价却无画」的补图 ----
-       宝箱 / 秘籍 / 政令 / 锦囊 / 灵气精华此前**全部落 attr_buff 兜底**：
-       商城与背包里一排橙色符卡，玩家分不出哪个是宝箱哪个是秘籍。
+       宝箱 / 残卷 / 政令 / 封存匣 / 辐能核心此前**全部落 attr_buff 兜底**：
+       商城与背包里一排橙色符卡，玩家分不出哪个是宝箱哪个是残卷。
        这里按各自物件补专属造型（沿用 64×64 视框与 P 调色板）。 */
     chest: function () {
       /* 宝箱：木箱 + 铜箍 + 锁扣 */
@@ -1831,7 +1839,7 @@
       return s;
     },
     neigong: function () {
-      /* 内功秘籍：线装书 + 周天灵涡 */
+      /* 战技残卷：线装书 + 周天灵涡 */
       var s = '<ellipse cx="32" cy="57" rx="22" ry="2.2" fill="#000" opacity=".25"/>';
       s += '<rect x="14" y="10" width="36" height="44" rx="2" fill="' + P.waLo + '"/>' +
         '<rect x="17" y="12" width="30" height="40" rx="1.4" fill="' + P.waMd + '"/>';
@@ -1846,7 +1854,7 @@
       return s;
     },
     corvee: function () {
-      /* 政令（徭役令）：令牌 + 红绳 + 牌面刻痕 + 朱印 */
+      /* 政令（征调令）：令牌 + 红绳 + 牌面刻痕 + 朱印 */
       var s = '<ellipse cx="32" cy="57" rx="18" ry="2.2" fill="#000" opacity=".25"/>';
       s += '<rect x="19" y="12" width="26" height="40" rx="3" fill="' + P.woodMd + '"/>' +
         '<rect x="21" y="14" width="22" height="36" rx="2" fill="' + P.woodHi + '" opacity=".5"/>';
@@ -1860,7 +1868,7 @@
       return s;
     },
     talis: function () {
-      /* 锦囊：束口囊袋 + 系带 + 金线织纹 */
+      /* 封存匣：束口囊袋 + 系带 + 金线织纹 */
       var s = '<ellipse cx="32" cy="57" rx="18" ry="2.2" fill="#000" opacity=".25"/>';
       s += '<path d="M22 26 Q14 34 16 44 Q18 55 32 55 Q46 55 48 44 Q50 34 42 26 Z" fill="' + P.rHi + '"/>' +
         '<path d="M32 26 Q14 34 16 44 Q18 55 32 55 L32 26 Z" fill="' + P.rMd + '" opacity=".45"/>';
@@ -1873,7 +1881,7 @@
       return s;
     },
     essence: function () {
-      /* 灵气精华：灵珠 + 四向灵光 */
+      /* 辐能核心：灵珠 + 四向灵光 */
       var s = '<ellipse cx="32" cy="56" rx="16" ry="2.2" fill="#000" opacity=".25"/>';
       s += '<circle cx="32" cy="34" r="15" fill="' + P.waLo + '"/>' +
         '<circle cx="32" cy="34" r="12" fill="' + P.waMd + '"/>' +
@@ -1890,7 +1898,7 @@
     jewel: 'jewel', blueprint: 'blueprint', prod_buff: 'prod_buff', military_buff: 'military_buff',
     boost: 'boost', exp: 'exp', stamina: 'stamina', perm: 'perm', mount_buff: 'mount_buff',
     attr_buff: 'attr_buff', build_cost: 'build_cost',
-    /* v89.51：宝箱/秘籍/政令/锦囊/灵气精华 —— 补专属造型（此前全落 attr_buff 兜底） */
+    /* v89.51：宝箱/残卷/政令/封存匣/辐能核心 —— 补专属造型（此前全落 attr_buff 兜底） */
     chest: 'chest', neigong: 'neigong', corvee: 'corvee', talis: 'talis', essence: 'essence',
   };
   Object.keys(TYPE_KEY).forEach(function (t) {
@@ -2000,8 +2008,7 @@
     collection: '<rect x="6.4" y="6.6" width="11.2" height="10.8" rx="1"/>'
       + '<path d="M3.6 4.6v14.8M20.4 4.6v14.8"/>'
       + '<path d="M3.6 6.6h2.8M3.6 17.4h2.8M17.6 6.6h2.8M17.6 17.4h2.8"/>',
-    story: '<path d="M4.6 4.2h6.2v15.6H4.6z"/><path d="M13.2 4.2h6.2v15.6h-6.2z"/>'
-      + '<path d="M6.6 8h2.2M6.6 12h2.2M6.6 16h2.2M15.2 8H17.4M15.2 12h2.2M15.2 16h2.2"/>',
+    /* ⛔ v89.218：story 导航图标随「史册 / 故事集」页签退役。 */
     doc: '<path d="M7.6 3.4h6.6l4.2 4.2v13H7.6z"/><path d="M14.2 3.4v4.2h4.2"/>'
       + '<path d="M10.4 12.4h5.2M10.4 16.2h5.2"/>',
     /* v29（需求 5）：自动化菜单 —— 齿轮外圈 + 回旋箭头，表示"自行运转" */
@@ -2049,8 +2056,8 @@
     return m ? bmOf(m[1], m[2]) : '';
   }
 
-  /* v36（需求 1「官府的贴图没变」）：位图**原始路径**查询。
-     ICON.get 返回的是包好的 <img> 字符串；而官府宫殿是跨 4 格的自绘容器
+  /* v36（需求 1「政务厅的贴图没变」）：位图**原始路径**查询。
+     ICON.get 返回的是包好的 <img> 字符串；而政务厅宫殿是跨 4 格的自绘容器
      （.gov-art 要按自己的尺寸与对齐方式摆图），所以单独暴露路径。 */
   ICON.bitmapSrc = function (group, id) {
     if (typeof BITMAPS === 'undefined' || !BITMAPS) return '';

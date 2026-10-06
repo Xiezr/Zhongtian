@@ -69,7 +69,7 @@ function run(atkPlan, defArmy, label) {
   console.log('  [' + label + '] r=' + fin.rounds + ' 我损=' + (aL/aTot*100).toFixed(1) + '% 敌损=' + (dL/dTot*100).toFixed(1) + '% 交换=' + (aL>0?(dL/aL).toFixed(2):'inf') + ' w=' + fin.winner);
   return { aL: aL, dL: dL };
 }
-G.newGame({ name: 'dyn', region: '司隶' });
+G.newGame({ name: 'dyn', region: '烬环' });
 console.log('=== 镜像：静态目标 vs 动态目标 ===');
 run(plan({ dynTarget: false, gapInf: 250, gapCav: 250 }), null, '静态目标(写死)');
 run(plan({ dynTarget: true, gapInf: 250, gapCav: 250 }), null, '★ 动态目标');
