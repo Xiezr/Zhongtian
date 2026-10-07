@@ -75,7 +75,7 @@ var pw = require('playwright-core');
   console.log('烽火页含备注行：' + march.bcHasNote);
 
   console.log('');
-  console.log('===== ③ 校场点击链路 =====');
+  console.log('===== ③ 练兵场点击链路 =====');
   var xc = await p.evaluate(function () {
     var G = window.GAME;
     try { G.ui.closeAllModals(); } catch (e) { }
@@ -85,7 +85,7 @@ var pw = require('playwright-core');
     return { hasEntry: !!hit,
       entryTxt: hit ? (hit.textContent || '').trim().slice(0, 40) : '' };
   });
-  console.log('城内视图校场入口：' + xc.hasEntry + ' 「' + xc.entryTxt + '」');
+  console.log('城内视图练兵场入口：' + xc.hasEntry + ' 「' + xc.entryTxt + '」');
 
   await p.screenshot({ path: 'E:/Deepseekdb/.workbuddy/shots/v89133-before-generals.png' });
   await b.close();

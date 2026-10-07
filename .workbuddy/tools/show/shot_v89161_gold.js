@@ -1,9 +1,9 @@
 /* v89.161 实机验证（真浏览器）：
-   ① 资源栏金悬停 = 「全境通用」（真渲染 title）+ 图 v89161-gold-row.png
+   ① 资源栏旧币悬停 = 「全境通用」（真渲染 title）+ 图 v89161-gold-row.png
    ② 仓库面板折损行含现实换算（「游戏日（现实约 X @120×）」）+ 图 v89161-store-real.png
-   ③ 费用悬停含金 → 注明「金：全境通用 · 粮木石铁：按本城结算」
+   ③ 费用悬停含旧币 → 注明「旧币：全境通用 · 粮木石铁：按本城结算」
    ④ 真环境跨城：乙城没货 → 报「本城资源不足」；给乙城备料 → 放行且只扣乙城
-   ⑤ 调运面板没有金的数量框（真渲染）
+   ⑤ 调运面板没有旧币的数量框（真渲染）
    运行：NODE_PATH="C:/Users/18811/.workbuddy/binaries/node/workspace/node_modules" node .workbuddy/tools/show/shot_v89161_gold.js */
 module.paths.unshift('C:/Users/18811/.workbuddy/binaries/node/workspace/node_modules');
 var pw = require('playwright-core');
@@ -29,7 +29,7 @@ function chk(name, cond, extra) {
   });
   await p.waitForTimeout(900);
 
-  console.log('===== ① 资源栏金行悬停 = 全境通用 =====');
+  console.log('===== ① 资源栏旧币行悬停 = 全境通用 =====');
   var r1 = await p.evaluate(function () {
     var G = window.GAME;
     G.ui.renderSide();
@@ -37,17 +37,17 @@ function chk(name, cond, extra) {
     var gold = null;
     document.querySelectorAll('#res-bar .res-line').forEach(function (row) {
       var lbl = row.querySelector('.lbl');
-      if (lbl && /金/.test(lbl.textContent || '')) gold = row.querySelector('.amt');
+      if (lbl && /旧币/.test(lbl.textContent || '')) gold = row.querySelector('.amt');
     });
     return { tip: gold ? (gold.getAttribute('title') || '') : '', n: amts.length };
   });
-  console.log('    金行 title = ' + r1.tip.split('\n')[0]);
-  chk('金行悬停写「全境通用（各城共用这一口池子…）」', /全境通用/.test(r1.tip) && /一口池子/.test(r1.tip));
+  console.log('    旧币行 title = ' + r1.tip.split('\n')[0]);
+  chk('旧币行悬停写「全境通用（各城共用这一口池子…）」', /全境通用/.test(r1.tip) && /一口池子/.test(r1.tip));
   var rc1 = await p.evaluate(function () {
     var row = null;
     document.querySelectorAll('#res-bar .res-line').forEach(function (x) {
       var l = x.querySelector('.lbl');
-      if (!row && l && /金/.test(l.textContent || '')) row = x.getBoundingClientRect();
+      if (!row && l && /旧币/.test(l.textContent || '')) row = x.getBoundingClientRect();
     });
     return row ? { x: row.left, y: row.top, w: row.width, h: row.height } : null;
   });
@@ -85,16 +85,16 @@ function chk(name, cond, extra) {
   }
   await p.evaluate(function () { window.GAME.ui.closeAllModals(); });
 
-  console.log('===== ③ 费用悬停（含金时注明口径） =====');
+  console.log('===== ③ 费用悬停（含旧币时注明口径） =====');
   var r3 = await p.evaluate(function () {
     var G = window.GAME;
     var tip = G.ui.buildCostTip({ grain: 100, gold: 500, time: 60 });
     var tip2 = G.ui.buildCostTip({ grain: 100, time: 60 });
-    return { hit: /金：全境通用 · 粮木石铁：按本城结算/.test(tip), noHit: !/全境通用/.test(tip2), tip: tip };
+    return { hit: /旧币：全境通用 · 粮木石铁：按本城结算/.test(tip), noHit: !/全境通用/.test(tip2), tip: tip };
   });
-  console.log('    含金费用悬停 = ' + r3.tip.replace(/\n/g, ' | '));
-  chk('含金费用悬停注明「金：全境通用 · 粮木石铁：按本城结算」', r3.hit);
-  chk('不含金的费用悬停没有这行（不误导）', r3.noHit);
+  console.log('    含旧币费用悬停 = ' + r3.tip.replace(/\n/g, ' | '));
+  chk('含旧币费用悬停注明「旧币：全境通用 · 粮木石铁：按本城结算」', r3.hit);
+  chk('不含旧币的费用悬停没有这行（不误导）', r3.noHit);
 
   console.log('===== ④ 真环境跨城：谁的城用谁的货 =====');
   var r4 = await p.evaluate(function () {
@@ -124,7 +124,7 @@ function chk(name, cond, extra) {
   chk('★ 不挪用甲城（报「本城资源不足」，甲城分毫未动）', r4.blocked);
   chk('★ 备料后放行且只扣乙城', r4.paid);
 
-  console.log('===== ⑤ 调运面板没有金的数量框 =====');
+  console.log('===== ⑤ 调运面板没有旧币的数量框 =====');
   var r5 = await p.evaluate(function () {
     var G = window.GAME, st = G.state, A = G.currentCity();
     var B = G.makeCity({ id: 'v161C', name: 'v161丙城', x: 641, y: 641, type: 'self' });
@@ -137,8 +137,8 @@ function chk(name, cond, extra) {
     st.cities = st.cities.filter(function (x) { return x.id !== 'v161C'; });
     return { gold: hasGold, grain: hasGrain, keys: (G.TRANSPORT_KEYS || []).join(',') };
   });
-  console.log('    辎重框：粮=' + r5.grain + ' · 金=' + r5.gold + ' · TRANSPORT_KEYS=' + r5.keys);
-  chk('★ 辎重区有粮框、无金框（金全境通用，不用运）', r5.grain === true && r5.gold === false);
+  console.log('    辎重框：粮=' + r5.grain + ' · 旧币=' + r5.gold + ' · TRANSPORT_KEYS=' + r5.keys);
+  chk('★ 辎重区有粮框、无金框（旧币全境通用，不用运）', r5.grain === true && r5.gold === false);
   chk('TRANSPORT_KEYS 不含 gold', r5.keys.indexOf('gold') < 0);
 
   console.log('\n结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');

@@ -1,8 +1,8 @@
 /* v89.189 实机验证（真浏览器）：
    ① 受阻弹窗：出征「进入军事行动」（未选目标）真点 → 弹「无法执行」窗（含原因）
    ② 受阻弹窗：灰兵种卡真点 → 弹窗（原"点了没反应"修复）
-   ③ 掠夺金：genLootEx / npcLoot 实机真调（金占比 · 占领全拿量级）
-   ④ 人口占用：1 民房 ↔ 9 建筑 / 16 资源 恒等（真调）+ 侧栏「建筑人口」渲染
+   ③ 掠夺旧币：genLootEx / npcLoot 实机真调（旧币占比 · 占领全拿量级）
+   ④ 幸存者占用：1 居所 ↔ 9 建筑 / 16 资源 恒等（真调）+ 侧栏「建筑幸存者」渲染
    跑法：NODE_PATH=... node .workbuddy/tools/show/shot_v89189_gates.js */
 module.paths.unshift('C:/Users/18811/.workbuddy/binaries/node/workspace/node_modules');
 var pw = require('playwright-core');
@@ -94,12 +94,12 @@ function chk(name, ok, extra) {
     return { fGold: o.gold, fPct: o.gold / (rs + o.gold),
       cGold: cty.gold, kGold: cap.gold };
   });
-  chk('③ 掠夺金真调：fort Lv10 金 19.6 万·占比 ≤1.2% · 县城占领金 ≤500 万 · 都城 ≤2000 万',
+  chk('③ 掠夺旧币真调：fort Lv10 旧币 19.6 万·占比 ≤1.2% · 县城占领旧币 ≤500 万 · 都城 ≤2000 万',
     Math.abs(r3.fGold - 196000) / 196000 < 0.05 && r3.fPct <= 0.012
       && r3.cGold > 1e6 && r3.cGold <= 5e6 && r3.kGold <= 2e7,
-    'fort金 ' + r3.fGold + ' 占比 ' + (r3.fPct * 100).toFixed(2) + '% 县城 ' + r3.cGold + ' 都城 ' + r3.kGold);
+    'fort旧币 ' + r3.fGold + ' 占比 ' + (r3.fPct * 100).toFixed(2) + '% 县城 ' + r3.cGold + ' 都城 ' + r3.kGold);
 
-  /* ---------- ④ 人口占用恒等 + 侧栏渲染 ---------- */
+  /* ---------- ④ 幸存者占用恒等 + 侧栏渲染 ---------- */
   var r4 = await p.evaluate(function () {
     var G = window.GAME;
     var lv = 12, pm = G.DATA.BUILDINGS.minfang.pop[lv - 1];
@@ -116,13 +116,13 @@ function chk(name, ok, extra) {
       var a = []; for (var i = 0; i < 16; i++) a.push({ type: 'farm', lv: lv });
       return a;
     })());
-    /* 侧栏渲染（含"建筑人口"悬停） */
+    /* 侧栏渲染（含"建筑幸存者"悬停） */
     G.ui.setView('city');
     if (G.ui.renderSide) G.ui.renderSide();
     var sideTxt = (document.querySelector('.auth-side') || {}).innerHTML || '';
-    return { pm: pm, b9: b9, e16: e16, side: sideTxt.indexOf('建筑人口') >= 0 };
+    return { pm: pm, b9: b9, e16: e16, side: sideTxt.indexOf('建筑幸存者') >= 0 };
   });
-  chk('④ 人口恒等：9 座同级建筑 == 1 民房人口（±1）· 16 块资源同理 · 侧栏「建筑人口」在册',
+  chk('④ 幸存者恒等：9 座同级建筑 == 1 居所幸存者（±1）· 16 块资源同理 · 侧栏「建筑幸存者」在册',
     Math.abs(r4.b9 - r4.pm) <= 1 && Math.abs(r4.e16 - r4.pm) <= 1 && r4.side,
     'P_m=' + r4.pm + ' b9=' + r4.b9 + ' e16=' + r4.e16);
   await p.screenshot({ path: OUT + 'v89189-city.png' });

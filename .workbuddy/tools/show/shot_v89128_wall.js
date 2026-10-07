@@ -1,4 +1,4 @@
-/* v89.128 需求 6 实机图：城墙环城结构（未建不画 / 修上画环 / 点环城开面板） */
+/* v89.128 需求 6 实机图：围墙环城结构（未建不画 / 修上画环 / 点环城开面板） */
 'use strict';
 var fs = require('fs');
 module.paths.unshift('C:/Users/18811/.workbuddy/binaries/node/workspace/node_modules');
@@ -34,7 +34,7 @@ var pw = require('playwright-core');
   var r1 = await p.evaluate(function () {
     return { hasWallSvg: !!document.querySelector('#view-container svg.iso-wall') };
   });
-  console.log('① 未建城墙：环城 SVG 存在 =', r1.hasWallSvg, '（期望 false）');
+  console.log('① 未建围墙：环城 SVG 存在 =', r1.hasWallSvg, '（期望 false）');
 
   /* 修上 Lv8（官府拉满 —— 否则非官府建筑被"官府总闸"卡住，升级键不显示） */
   await p.evaluate(function () {
@@ -54,7 +54,7 @@ var pw = require('playwright-core');
       cellsWithWall: G.currentCity().cells.filter(function (x) { return x.build && x.build.id === 'chengqiang'; }).length,
     };
   });
-  console.log('② 修上 Lv8：环城 SVG =', r2.hasWallSvg, ' 角楼 =', r2.towers, ' 格子里的城墙 =', r2.cellsWithWall, '（期望 true/4/0）');
+  console.log('② 修上 Lv8：环城 SVG =', r2.hasWallSvg, ' 角楼 =', r2.towers, ' 格子里的围墙 =', r2.cellsWithWall, '（期望 true/4/0）');
 
   /* 点环城 → 面板 */
   await p.click('#view-container .wall-hit[data-action="open-wall"]');

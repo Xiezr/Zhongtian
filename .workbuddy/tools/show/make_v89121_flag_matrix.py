@@ -29,7 +29,7 @@ def hsl_hex(h, s, l):
     return '#%02x%02x%02x' % (round(r*255), round(g*255), round(b*255))
 
 # 每族代表建筑
-REP = [('gov', 'guanfu', '官署·官府'), ('live', 'minfang', '民居·民房'),
+REP = [('gov', 'guanfu', '官署·官府'), ('live', 'minfang', '民居·居所'),
        ('store', 'cangku', '仓廪·仓库'), ('edu', 'shuyuan', '文教·书院'),
        ('mil', 'junying', '军事·军营'), ('biz', 'shichang', '工商·市场'),
        ('road', 'yizhan', '驿传·驿站')]

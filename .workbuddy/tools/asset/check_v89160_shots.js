@@ -1,4 +1,6 @@
 /* v89.160 像素体检：仓库面板折损行（琥珀警示）· 公文灾种行（内政青主题色）· 自动化面板说明
+   ⚠️ 历史截图体检（时称）：本脚本读 v89.160 时代的历史截图，"内政"是当时六维名
+   （v89.224 换代后为「治理」）。像素判据与名称无关，历史正文保留。
    运行：NODE_PATH="C:/Users/18811/.workbuddy/binaries/node/workspace/node_modules" node .workbuddy/tools/asset/check_v89160_shots.js */
 module.paths.unshift('C:/Users/18811/.workbuddy/binaries/node/workspace/node_modules');
 var fs = require('fs'), PNG = require('pngjs').PNG;

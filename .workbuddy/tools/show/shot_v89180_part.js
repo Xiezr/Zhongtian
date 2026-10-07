@@ -1,6 +1,6 @@
 /* v89.180 实机验证（真浏览器）：
    ① 真开一仗（突骑 vs Lv4 野地）→ 逐回合推进 → 检查智能"后退"调整出现在回合记录
-   ② 募兵（器械页）床弩卡悬停 → #tip-layer 显示「拆械 对器械伤害 ×3」
+   ② 募兵（器械页）无人轰炸机卡悬停 → #tip-layer 显示「拆械 对器械伤害 ×3」
    运行：NODE_PATH="C:/Users/18811/.workbuddy/binaries/node/workspace/node_modules" node .workbuddy/tools/show/shot_v89180_part.js */
 module.paths.unshift('C:/Users/18811/.workbuddy/binaries/node/workspace/node_modules');
 var pw = require('playwright-core');
@@ -102,7 +102,7 @@ function chk(name, cond, extra) {
     'state=' + s2.state + ' round=' + s2.round + ' 阵型=' + s2.mode + '×' + s2.rule);
   await p.screenshot({ path: OUT + 'v89180-battle.png' });
 
-  /* ③ 募兵（器械页）床弩卡悬停 → 拆械行 */
+  /* ③ 募兵（器械页）无人轰炸机卡悬停 → 拆械行 */
   await p.evaluate(function () {
     var G = window.GAME;
     G.ui.closeAllModals();
@@ -121,7 +121,7 @@ function chk(name, cond, extra) {
   });
   await p.waitForTimeout(600);
   var card = await p.$('#modal-root .troop-card[data-troop="chuangnu"]');
-  chk('③ 器械页床弩卡在册', !!card);
+  chk('③ 器械页无人轰炸机卡在册', !!card);
   if (card) {
     await card.hover();
     await p.waitForTimeout(500);

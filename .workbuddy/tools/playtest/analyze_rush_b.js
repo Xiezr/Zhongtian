@@ -12,7 +12,7 @@ ap('# v89.98b · 1× 300h 最优路径再测评（A1→A4 四轮演进）');
 ap('');
 ap('## 一、四轮演进（同一 1× 300h 口径 · 同 seed · 每轮只改"脑的决策"）');
 ap('');
-ap('| 指标 | A1 原始脑 | A2 +体力修正 | A3 停自动出征+人口+保价 | A4 +珠宝晋爵+淤积兜底 |');
+ap('| 指标 | A1 原始脑 | A2 +体力修正 | A3 停自动出征+幸存者+保价 | A4 +珠宝晋爵+淤积兜底 |');
 ap('|---|---|---|---|---|');
 var A1 = { cities: 1, army: 161, rank: 0, sold: 2618073, books: 0, lordLv: 20, elites: 6 };
 var A2 = { cities: 1, army: 161, rank: 0, sold: 2618073, books: 0, lordLv: 20, elites: 6 };
@@ -70,7 +70,7 @@ function r2(label, fn) { ap('| ' + label + ' | ' + T3.map(function (t) { return 
 r2('城池', function (f) { return f.cities.length; });
 r2('爵位', function (f) { return '第 ' + f.rank + ' 档'; });
 r2('晋爵次数', function (f) { return f.rush.promote; });
-r2('累计卖金', function (f) { return fmt(f.gold.sold) + '（' + f.gold.sales + ' 笔）'; });
+r2('累计卖旧币', function (f) { return fmt(f.gold.sold) + '（' + f.gold.sales + ' 笔）'; });
 r2('经验书', function (f) { return f.gold.books + ' 本'; });
 r2('内功 / 提建', function (f) { return fmt(f.gold.spends.neigong) + ' / ' + fmt(f.gold.spends.build); });
 r2('围攻派兵', function (f) { return f.rush.sieRep; });

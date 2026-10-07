@@ -1,6 +1,15 @@
 # -*- coding: utf-8 -*-
 """v89121 · 实机截图里的族旗可见性：找高饱和像素簇（旗布）+ 报告颜色与位置"""
 import os, sys, math
+
+# ⛔ v89.225 退役（v89.226 复核补墓）：族旗管线整体退役，族色改由城内地块承载
+#   （DATA.SERIES[].plot + --ser-*）。本检查器（v89.121 立）以"截图里找高饱和旗布簇"
+#   为唯一判据 —— 旗已不存在，运行只会输出误导结论。守卫须在**一切第三方依赖导入之前**
+#   强制退出（PIL 在部分 python 环境缺失，守卫晚于它会在缺依赖时先崩、打印不出说明）。
+if __name__ == '__main__':
+    sys.exit('⛔ 本工具已于 v89.225 退役（族旗 → 地块染色）。\n'
+             '   现行防线：gen/wasteland_batch.py gate ③ · smoke §225。')
+
 from PIL import Image
 from collections import defaultdict
 

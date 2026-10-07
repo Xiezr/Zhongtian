@@ -1,6 +1,6 @@
 /* ============================================================
  * battle.js  回合制战斗（真实数值版）
- * 速度先手、远程射程优势、将领四维加成、科技/宝物加成、伤兵营
+ * 速度先手、远程射程优势、英雄四维加成、科技/宝物加成、伤兵营
  * ============================================================ */
 (function () {
   var GAME = window.GAME = window.GAME || {};
@@ -30,18 +30,18 @@
   function totalHp(army, gen) {
     var hp = 0;
     for (var id in army) if (DATA.TROOPS[id]) hp += army[id] * DATA.TROOPS[id].hp;
-    /* 补给技巧：士兵生命 +3%/级 —— 同等伤害下战损更少 */
+    /* 生命维持：士兵生命 +3%/级 —— 同等伤害下战损更少 */
     return hp * (1 + TB('hp')) * hpMultOf(gen);
   }
-  /* 将领加成 → 全军生命（v29 · 需求 11 重写；v66 收成一条链）
+  /* 英雄加成 → 全军生命（v29 · 需求 11 重写；v66 收成一条链）
      * ------------------------------------------------------------
      * ② **只看体力这一条链**：体力满则全军生命厚，刚打完仗体力见底就明显变脆
      *     —— 于是"休整/服止血粉"第一次有了战斗意义。
      *    取值走 GAME.staHpBonus()（界面与战斗同源，不写第二份公式）。
-     * v66（老板）：「部分将领的体力没有加上装备的数值」。根因就是这里：
+     * v66（老板）：「部分英雄的体力没有加上装备的数值」。根因就是这里：
      *   装备那一列（源数据表的「体力」）原先**在体力之外**又开了一条
      *   `eqHp = min(0.25, 装备体力/10000)` 的路，与"体力→全军生命"并行。
-     *   同一个数两个出口 → 界面上的"体力"当然对不上装备栏。
+     *   同一个数两个出口 → 界面上的"体力"当然对不上部件栏。
      *   现在装备体力并进体力上限（GAME.staMax），这里那条并行路径**删掉**。
      */
   function hpMultOf(gen) {
@@ -49,12 +49,14 @@
     return 1 + (GAME.staHpBonus ? GAME.staHpBonus(gen) : 0);
   }
   /* 兵种速度（影响先手判定）
-   * 科技加成各管一类：行军技巧→全军、驾驭技巧→机车、车轮技术→器械 */
+   * 科技加成各管一类：机动行军→全军、机车操控→机车、传动系统→器械 */
   function spdMultOf(t) {
     var m = 1 + TB('march');
     if (!t) return m;
-    if (t.craft) return m * (1 + TB('wheel'));                    // 器械（重弩车/破门车/迫击炮）
-    if (/qi$|tieqi|qingji/.test(t.id) || t.name.indexOf('骑') >= 0) {
+    if (t.craft) return m * (1 + TB('wheel'));                    // 器械（无人轰炸机/自行火炮/自行火炮）
+    if (t.ride) {
+      /* v89.229：id 模式匹配（/qi$|tieqi|qingji/）退役 —— 兵种重构后 id 无此规律，
+         改读 TROOPS 的显式字段 `ride`（原 cav 类的显式化）。 */
       return m * (1 + TB('ride'));                                // 机车
     }
     return m;
@@ -80,7 +82,7 @@
     return n ? r / n : 0;
   }
 
-  /* 攻方对守方伤害（将领/科技/宝物加成 + 统率覆盖限制） */
+  /* 攻方对守方伤害（英雄/科技/宝物加成 + 指挥覆盖限制） */
   function damageOf(attackerArmy, defenderArmy, general, defenderDefBonus, isFirst) {
     var s = GAME.state;
     var sum = 0;
@@ -91,15 +93,15 @@
       if (cnt <= 0) continue;
       /* v89.179：克制系统全撤 —— dice 回退引擎与 tactic 主引擎同口径：
          伤害 = 兵种纸面攻 × 加成链（不再有"打谁 / 被谁打"的对局态因子）。 */
-      /* 将领加成 —— v52 链、v89.96 改双刻度（唯一原子见 domain.js atkPctOf）：
-           勇武：每 20 点 → 全军攻击 +1%（无上限属性，单独降率）
+      /* 英雄加成 —— v52 链、v89.96 改双刻度（唯一原子见 domain.js atkPctOf）：
+           武力：每 20 点 → 全军攻击 +1%（无上限属性，单独降率）
            装备：每 10 攻击值 → 全军攻击 +1%（v52 口径，有天花板）
            genAttrs.atkPct 是**唯一换算原子**，UI / 战报 / 战斗引擎三处同源；
            旧 `× (1 + a.atk/10000)` 旁路与 tactic 侧的"装备绝对值加法"均已清除。 */
       var atkMult = 1, defMult = 1, cover = 1;
       if (general) {
         var a = GAME.genAttrs(general);
-        /* 统率覆盖：统率×100 内士兵吃满加成；统帅能力科技再放宽覆盖范围 */
+        /* 指挥覆盖：指挥×100 内士兵吃满加成；指挥链路科技再放宽覆盖范围 */
         var covered = Math.min(cnt, a.tong * 100 * (1 + TB('command')));
         cover = covered / cnt;
         atkMult = 1 + a.atkPct * cover;        // 全军攻击（含装备，见 genAttrs.atkVal）
@@ -115,7 +117,7 @@
       if (GAME.story) atkMult *= GAME.story.atkMult();
       /* 远程白嫖：射程远超时首轮伤害加成（模拟"后退射杀"） */
       var dmg = cnt * t.atk * atkMult;
-      /* 抛射技巧：远程射程 +4%/级 */
+      /* 弹道校正：远程射程 +4%/级 */
       var effRange = t.range * (1 + TB('range'));
       if (GAME.story) effRange *= GAME.story.combatMod().archerRange; // 雨天远程射程 −20%
       if (isFirst && effRange >= 1200 && rangeRatio(defenderArmy) < 0.3) dmg *= 1.3; // 远程先手优势
@@ -150,8 +152,8 @@
   GAME.battle.firstStrike = function (atkArmy, defArmy, atkGen, defGen) {
     var a = armySpeed(atkArmy), d = armySpeed(defArmy);
     /* v26（需求 2）：速度是**五维之一**，口径为「求和计算」——
-       将领速度有多少点，就直接给全军战斗速度加多少点（线性相加）。
-       旧写法是 ×(1 + spd/200) 的乘算，高速度将领被指数放大；
+       英雄速度有多少点，就直接给全军战斗速度加多少点（线性相加）。
+       旧写法是 ×(1 + spd/200) 的乘算，高速度英雄被指数放大；
        改成加算后，"每点速度 = 全军速度 +1 点" 这句话才真的成立。 */
     if (atkGen) a += (GAME.genAttrs(atkGen).spd || 0);
     if (defGen) d += (GAME.genAttrs(defGen).spd || 0);
@@ -190,7 +192,7 @@
   GAME.battle.simulateDice = function (atkArmy, atkGen, defArmy, defVal, defGen, opts) {
     atkArmy = U.deep(atkArmy); defArmy = U.deep(defArmy);
     opts = opts || {};
-    /* v28（需求 0）：侦察兵（nocombat）是侦察兵，两个引擎口径一致 ——
+    /* v28（需求 0）：侦察单元（nocombat）是侦察单元，两个引擎口径一致 ——
        从战场剔除，因此既不输出也不阵亡。 */
     function stripScouts(a) {
       var o = {};
@@ -212,15 +214,15 @@
     /* 名将羁绊：守御之力（后台静默）—— 唯一来源 STORY.defMult() */
     if (GAME.story && GAME.story.defMult) defBonus = Math.min(0.9, defBonus + GAME.story.defMult());
     if (defGen) {
-      /* v52：守将的防御加成同样走「智谋→防御值→百分比」这条链（含装备/套装防御），
+      /* v52：守将的防御加成同样走「谋略→防御值→百分比」这条链（含装备/套装防御），
          原来分成 `zm/100` 与 `def/10000` 两笔的地方合成一笔。 */
       var ga = GAME.genAttrs(defGen);
       defBonus = Math.min(0.9, defBonus + ga.defPct);
     }
 
-    /* 攻方自身减伤：防护技巧（科技）+ 装备护甲 —— 在守方反击时生效。
-       此前「防护技巧」与装备 def 只在扮演守方时才算，而玩家**只当攻方**，
-       等于这两项完全废弃。v52：攻方的防御也走同一条链（含智谋与装备）。 */
+    /* 攻方自身减伤：装甲强化（科技）+ 装备护甲 —— 在守方反击时生效。
+       此前「装甲强化」与装备 def 只在扮演守方时才算，而玩家**只当攻方**，
+       等于这两项完全废弃。v52：攻方的防御也走同一条链（含谋略与装备）。 */
     var atkDefBonus = Math.min(0.85, TB('def') + (atkGen ? GAME.genAttrs(atkGen).defPct : 0));
 
     /* 攻城伤害：羁绊「白衣渡江」+ 赛季国策（青龙·大兴土木 / 景元·大将西征）
@@ -252,7 +254,7 @@
     var aFirst = GAME.battle.firstStrike(atkArmy, defArmy, atkGen, defGen);
 
     /* 天时：奇袭窗口 —— 只有**抢到先手**才吃这两个加成
-     *   · 大雾 ambush ×2（「侦察兵难察敌情，然偷袭伤害 ×2」）
+     *   · 大雾 ambush ×2（「侦察单元难察敌情，然偷袭伤害 ×2」）
      *   · 大风 fire ×3（「风急天高：火攻威力 ×3」），需带火器（器械/远程）
      *   · 雨雪 fire = 0（「火攻失效」）
      * 此前这两项在 WEATHERS 里声明，却没有任何战斗读取点。 */
@@ -319,7 +321,7 @@
    *   base（DATA.EXPEDITION.woundedRate = 0.75）
    *   + schemeKeep（金蝉脱壳：战败额外保全）
    *   + buff.wound（商品：+5% / +10% / +15% —— 加法，见商品表）
-   *   → × (1 + 维修技术) × (1 + 派系百草堂)，全程以 woundCap（0.9）封顶。
+   *   → × (1 + 再生技术) × (1 + 派系百草堂)，全程以 woundCap（0.9）封顶。
    * 三处消费点（returnArmy / applyWounded / 守城）+ 界面显示 全读它。
    * ============================================================ */
   GAME.woundedRateOf = function (result) {
@@ -334,13 +336,13 @@
       rate += s.buffs.military.wound;
     }
     rate = Math.min(cap, rate);
-    /* 维修技术：伤兵回收率 +3%/级（乘法链） */
+    /* 再生技术：伤兵回收率 +3%/级（乘法链） */
     if (GAME.systems && GAME.systems.techBonus) rate = Math.min(cap, rate * (1 + GAME.systems.techBonus('repair')));
     /* 派系被动（v89.86 · 百草堂「战后伤兵回复 +15%」）—— 与维修科技同链 */
     if (GAME.sectBonus) rate = Math.min(cap, rate * (1 + GAME.sectBonus('woundPct')));
     return rate;
   };
-  /* 伤兵营：阵亡者按回收率折为伤兵（存伤兵营，花金治疗） */
+  /* 伤兵营：阵亡者按回收率折为伤兵（存伤兵营，花旧币治疗） */
   GAME.battle.applyWounded = function (lossCount) {
     var s = GAME.state;
     if (!lossCount || lossCount <= 0) return;
@@ -350,7 +352,7 @@
   };
 
   /* 治疗伤兵 */
-  /* 治疗费**唯一出口**（伤兵 × 10 金）—— 弹窗、自动治疗、断言共读这一处（v89.115 抽取，
+  /* 治疗费**唯一出口**（伤兵 × 10 旧币）—— 弹窗、自动治疗、断言共读这一处（v89.115 抽取，
      此前"n * 10"在 battle.heal 与 ui.woundedBlock 各写一份）。 */
   GAME.healFeeOf = function (n) { return Math.max(0, Math.floor(n || 0)) * 10; };
   GAME.battle.heal = function (cityId) {
@@ -358,12 +360,12 @@
     var n = s.wounded || 0;
     if (!n) return { ok: false, msg: '伤兵营为空' };
     var gold = GAME.healFeeOf(n);
-    if ((s.res.gold || 0) < gold) return { ok: false, msg: '黄金不足（需 ' + U.fmt(gold) + '）' };
+    if ((s.res.gold || 0) < gold) return { ok: false, msg: '旧币不足（需 ' + U.fmt(gold) + '）' };
     var city = (cityId && GAME.cityById(cityId)) || GAME.currentCity() || s.cities[0];
     s.res.gold -= gold;
     /* 真正归队：按兵种把伤兵加回城池。
        此前只是 `s.wounded = 0` 然后把「归队」写进日志 —— 兵没有回来，
-       治疗纯粹是一笔没有回报的金币消耗。 */
+       治疗纯粹是一笔没有回报的旧币消耗。 */
     var comp = s.woundedArmy || {}, back = 0, backBy = {};
     for (var id in comp) {
       var c = comp[id] || 0;
@@ -410,7 +412,7 @@
     var gen = null;
     (s.generals || []).forEach(function (g) { if (g.id === rec.genId) gen = g; });
     /* v89.142（老板 7）：重放用**斗将后的那份主将**（rec.sim.genSim）——
-       否则史实（结算读 genSim）与重放（读原件）在将领属性上差一个 +10%，verify 必假红。 */
+       否则史实（结算读 genSim）与重放（读原件）在英雄属性上差一个 +10%，verify 必假红。 */
     var _genSimD = rec.sim.genSim || gen;
     var env = null;
     /* v89.179b·P1-3：会话建立 + 逐回合重放读的是"现在"的全局加成（科技/天时/年号/羁绊/战鼓），
@@ -517,7 +519,7 @@
     /* echelon 错落有致（默认 · v89.164 标定） */
     if ((u.range || 0) >= 500) {
       if (gap > u.range * (plan.rangeK || 1)) return 'advance';
-      /* v89.180（老板 3/4「距离难道不是弩手的生命线吗……那是还不够智能」）：
+      /* v89.180（老板 3/4「距离难道不是导弹车的生命线吗……那是还不够智能」）：
          **风筝** —— 进射程后不再无条件站桩：处于威胁线内（敌下回合能打到我）、
          且存在"我打得到 / 它够不着"的窗口（敌射程 < 我）、且退一步后仍在射程内
          （退出去打不着 → 原地打）→ **后撤一步**（引擎的 retreat 可退到 −D，
@@ -624,7 +626,7 @@
       var cf = T.clashFactor(perA, T.perDef(e));
       var perHp = T.perHp(e, null);
       var hold = (e.stance === 'hold') ? (1 - T.HOLD_DAMAGE_CUT) : 1;
-      /* v89.180：拆械 —— 评分器与实战共用一把尺（重弩车打器械的 killF 乘 vsMech） */
+      /* v89.180：拆械 —— 评分器与实战共用一把尺（无人轰炸机打器械的 killF 乘 vsMech） */
       var _st180 = DATA.TROOPS[u.id] || {};
       var _et180 = DATA.TROOPS[e.id] || {};
       var mechF180 = (_st180.vsMech && _et180.mech) ? _st180.vsMech : 1;
@@ -839,7 +841,7 @@
         { arrived: true, cityId: rec.cityId, scheme: rec.scheme,
           _result: result, _sim: rec.sim });
     } catch (e) { err = e; }
-    /* 将领状态收尾（等价 arrive 的 idle 设置） */
+    /* 英雄状态收尾（等价 arrive 的 idle 设置） */
     var gen = null;
     (s.generals || []).forEach(function (g) { if (g.id === rec.genId) gen = g; });
     if (gen && gen.status === 'march') gen.status = 'idle';
@@ -958,14 +960,14 @@
   /* --------- 攻占处理 ---------
      v60（需求 4/6）：新城**继承该城剩余的库藏** —— 未占据时那份库存是派生的，
      占领就地转正（× cityInherit）。不继承的话，打下一座 9 级首府只能得到一座
-     "0 粮 0 金"的空城，与"这城本该有多少"完全脱节。
+     "0 粮 0 旧币"的空城，与"这城本该有多少"完全脱节。
      fromCity 是**出征的出发城**（战利品记在它头上，资源归属城池）。 */
   /* ============================================================
-   * v89.99（老板「人口不足就开发其他路径」）：**俘获溃卒** —— 唯一出口
+   * v89.99（老板「幸存者不足就开发其他路径」）：**俘获溃卒** —— 唯一出口
    * 打胜时按敌军损失比例把溃卒收入**俘虏营**（s.captives，逐兵种）。
    * 参数全在 DATA.CAPTIVE（kinds 白名单：野地不俘、小仗不收、有上限）。
-   * v89.142（老板 5）：入营后的**去向重做** —— 收编 = 直接转入本城相应兵种 + 支金
-   *   （50% 兵种造价），不再折算人口；见下方 conscriptPlanOf / doConscriptCaptives。
+   * v89.142（老板 5）：入营后的**去向重做** —— 收编 = 直接转入本城相应兵种 + 支旧币
+   *   （50% 兵种造价），不再折算幸存者；见下方 conscriptPlanOf / doConscriptCaptives。
    * ============================================================ */
   /* v89.113：`enemyLoss` = 敌军损失的**显式口径**（可选）。
      攻方视角可直接读 result.defLoss；**防御战**里我方是守方、敌军损失在 result.atkLoss ——
@@ -982,7 +984,7 @@
    *   总数仍按 `DATA.CAPTIVE.rate` 折、仍受 `min/cap` 约束（口径不变），
    *   逐兵种分配用"按权重取整 + 余数补最大项"（与 `assignArmy` 同手法，避免取整丢人）。
    * 收编 / 释放由玩家在军务处决定（`GAME.doConscriptCaptives` / `doReleaseCaptives`）。
-   * v89.142：收编已改为**转入本城军队 + 支金**（50% 兵种造价）—— 不再折算人口。
+   * v89.142：收编已改为**转入本城军队 + 支旧币**（50% 兵种造价）—— 不再折算幸存者。
    * ============================================================ */
   GAME.battle.captiveGain = function (city, result, target, enemyLoss, enemyLossBy, opts) {
     var cfg = DATA.CAPTIVE || {};
@@ -1033,19 +1035,19 @@
   };
   /* ============================================================
    * v89.142（老板 5）：「俘虏营收编**直接转换为本城相应兵种**，增加相应数量。
-   *   收编应支出黄金。按照相应兵种造价（所有资源换算黄金）的 50% 计算」
+   *   收编应支出旧币。按照相应兵种造价（所有资源换算旧币）的 50% 计算」
    * ------------------------------------------------------------
    * 三件套（全部唯一出口 —— 界面按钮文案 / 执行 / 探针 / 断言都读它们）：
-   *   ① troopGoldCostOf(tid)：兵种造价的**黄金当量** = Σ 资源量 ÷ per × ratio
-   *      （DATA.MARKET_SELL：粮1 木2 石3 铁4、每 20 单位 1 金 —— 与交易站**平价**同源；
+   *   ① troopGoldCostOf(tid)：兵种造价的**旧币当量** = Σ 资源量 ÷ per × ratio
+   *      （DATA.MARKET_SELL：粮1 木2 石3 铁4、每 20 单位 1 旧币 —— 与交易站**平价**同源；
    *       不乘交易站折损与"物多价贱"：那是"此刻卖值多少"，这里是"这座兵值多少钱"，
    *       稳定可对账，且四类同乘 → 1:2:3:4 的比例永远成立）；
    *   ② conscriptPlanOf(camp)：逐兵种转换明细 { byType, men, cost, pct }；
-   *      无明细（'unknown'，旧档 / 骰子引擎）→ 计入 DATA.CAPTIVE.unknownAs（搬运工）；
-   *      花费 = Σ(数量 × 单兵黄金造价) × conscriptPct(50%)，**一次取整**（不逐项丢零头）。
-   *   ③ doConscriptCaptives：读 ② 执行 —— 扣金 → 逐兵种入本城军队；**不再加人口**
-   *      （"直接转换为本城相应兵种"= 兑现物就是兵，人口那条旧口径整条退役）。
-   * ⛔ 旧出口 `captivePopOf`（Σ 兵种数量 × pop）随本条退役 —— 它只有"收编加人口"
+   *      无明细（'unknown'，旧档 / 骰子引擎）→ 计入 DATA.CAPTIVE.unknownAs（板车）；
+   *      花费 = Σ(数量 × 单兵旧币造价) × conscriptPct(50%)，**一次取整**（不逐项丢零头）。
+   *   ③ doConscriptCaptives：读 ② 执行 —— 扣旧币 → 逐兵种入本城军队；**不再加幸存者**
+   *      （"直接转换为本城相应兵种"= 兑现物就是兵，幸存者那条旧口径整条退役）。
+   * ⛔ 旧出口 `captivePopOf`（Σ 兵种数量 × pop）随本条退役 —— 它只有"收编加幸存者"
    *    这一个语义，留着就是第二个出口。
    * ============================================================ */
   GAME.troopGoldCostOf = function (tid) {
@@ -1060,11 +1062,11 @@
     var cfg = DATA.CAPTIVE || {};
     var map = camp || (GAME.state || {}).captives || {};
     var by = {}, men = 0, cost = 0;
-    var UNK = cfg.unknownAs || 'minfu';
+    var UNK = cfg.unknownAs || 'banche';   /* v89.229：板车 → 板车 */
     for (var k in map) {
       var n = Math.max(0, Math.floor(map[k] || 0));
       if (!n) continue;
-      var tid = (k === 'unknown' || !DATA.TROOPS[k]) ? UNK : k;   /* 无明细 → 搬运工 */
+      var tid = (k === 'unknown' || !DATA.TROOPS[k]) ? UNK : k;   /* 无明细 → 板车 */
       by[tid] = (by[tid] || 0) + n;
       men += n;
     }
@@ -1072,7 +1074,7 @@
     var pct = (cfg.conscriptPct == null ? 0.5 : cfg.conscriptPct);
     return { byType: by, men: men, cost: Math.round(cost * pct), pct: pct };
   };
-  /* 收编入军：**直接转换**为本城相应兵种（老板口径）；支金不足则整单拒绝（不半途扣） */
+  /* 收编入军：**直接转换**为本城相应兵种（老板口径）；支旧币不足则整单拒绝（不半途扣） */
   GAME.doConscriptCaptives = function (cityId) {
     var s = GAME.state;
     var plan = GAME.conscriptPlanOf(s.captives);
@@ -1081,7 +1083,7 @@
     if (!city) return { ok: false, msg: '没有可安置的城池' };
     var Rc = GAME.res(city);
     if ((Rc.gold || 0) < plan.cost) {
-      return { ok: false, msg: '黄金不足（收编需 ' + U.fmt(plan.cost) + '，现有 ' +
+      return { ok: false, msg: '旧币不足（收编需 ' + U.fmt(plan.cost) + '，现有 ' +
         U.fmt(Rc.gold || 0) + '）' };
     }
     Rc.gold = (Rc.gold || 0) - plan.cost;
@@ -1094,11 +1096,11 @@
     });
     s.captives = {};
     GAME.log.sys('🪶 ' + city.name + ' 收编俘虏 ' + U.fmt(plan.men) + ' 众入军（' + bits.join('、') +
-      '，支金 ' + U.fmt(plan.cost) + '）');
-    return { ok: true, msg: '收编 ' + U.fmt(plan.men) + ' 众入军（支金 ' + U.fmt(plan.cost) + '）',
+      '，支旧币 ' + U.fmt(plan.cost) + '）');
+    return { ok: true, msg: '收编 ' + U.fmt(plan.men) + ' 众入军（支旧币 ' + U.fmt(plan.cost) + '）',
       n: plan.men, cost: plan.cost, byType: plan.byType, city: city.name };
   };
-  /* 释放：不添人口，换一点声望（"仁义之师"的实惠，但明显小于收编的收益） */
+  /* 释放：不添幸存者，换一点声望（"仁义之师"的实惠，但明显小于收编的收益） */
   GAME.doReleaseCaptives = function () {
     var s = GAME.state;
     var n = GAME.captivesTotalOf();
@@ -1124,7 +1126,7 @@
       if (GAME.ui && GAME.ui.notify) GAME.ui.notify('warn', _m203);
       return { ok: false, msg: _cc108.msg };
     }
-    /* v89.95（A1）：**首占名城 → 节钺**（黄金买不到的稀缺资源，见 DATA.JIEYUE）。
+    /* v89.95（A1）：**首占名城 → 节钺**（旧币买不到的稀缺资源，见 DATA.JIEYUE）。
        同一座城只算一次（jieyueClaim 幂等）；档位越高的城给得越多。 */
     var _hfCfg = DATA.JIEYUE || { byTier: {} };
     var _hfN = ((_hfCfg.byTier || {})[npcCity.type]) || 0;
@@ -1158,7 +1160,7 @@
      * 一座 9 级满配城 + 围墙 + 满额外城地块。
      * 改前这里把非政务厅格**全部清空**、只补 2 座 1 级居所 ——
      * 那等于"打下一座名城却得到一片空地"，与"这城本该有什么"完全脱节，
-     * 也让刚刚继承来的库藏与人口失去意义（满配建筑才是它们的存在基础）。
+     * 也让刚刚继承来的库藏与幸存者失去意义（满配建筑才是它们的存在基础）。
      * ============================================================ */
     var sh = GAME.npcCityShadow(npcCity);
     newCity.col = sh.col;                 // ⚠️ col/row 必须跟着 cells 一起换！
@@ -1197,7 +1199,7 @@
     /* 军械战利品：图纸与成品装备（装备获取途径之一） */
     var eq = GAME.battle.rollEquipLoot(npcCity);
     if (eq.length) GAME.log.war('缴获军械：' + eq.join('、'));
-    GAME.registerCity(newCity);   /* v89.161：入库唯一出口（缴获的金并进玩家池） */
+    GAME.registerCity(newCity);   /* v89.161：入库唯一出口（缴获的旧币并进玩家池） */
     /* 声望（受赛季国策「人心思附」加成） */
     var repGain = Math.round((npcCity.rep || 10) * (GAME.story && GAME.story.repMult ? GAME.story.repMult() : 1)
       * (1 + GAME.artifactBonusNum('repPct')));   /* v79：传国玉玺 —— 声望获得 +5%/级 */
@@ -1216,7 +1218,7 @@
     if (idx >= 0) s.map.cities.splice(idx, 1);
     var tile = GAME.map.tile(newCity.x, newCity.y);
     if (tile) tile.terrain = 'city';
-    /* 将领经验（v55 · 与野地战同一个出口）：
+    /* 英雄经验（v55 · 与野地战同一个出口）：
        原来写 `rep × 5`（聚落 300、旧都 2000）—— 与野地那套口径互不相干，
        而且比"打一块 10 级野地"还少，攻下名城的战功反而最不值钱。
        现在统一按**实际歼灭的守军资源量**折算，攻名城自然给得比野地多。 */
@@ -1275,14 +1277,14 @@
   };
 
   /* ============================================================
-   * v89.115（老板「设计斗将战」）：**斗将战**（将领个人战 · 军队战前）
+   * v89.115（老板「设计斗将战」）：**斗将战**（英雄个人战 · 军队战前）
    * ------------------------------------------------------------
-   * · 触发：只在**双方都有将领**时才有得斗（出击打野地/据点/名城 · 我方主将 vs 守将）；
+   * · 触发：只在**双方都有英雄**时才有得斗（出击打野地/据点/名城 · 我方主将 vs 守将）；
    *   概率 = DATA.DUEL.chance（50%）。敌方无将（如流寇来袭）→ 不触发。
-   * · 个人战：逐合比"勇武 ×2 + 统率 + 智谋 ×0.5 + 等级 ×2"（各带确定性抖动），
+   * · 个人战：逐合比"武力 ×2 + 指挥 + 谋略 ×0.5 + 等级 ×2"（各带确定性抖动），
    *   先占先多者胜（DATA.DUEL.rounds 合）。
-   * · 结果：胜者将领**属性 +bonusPct（10%）** —— 以"深拷贝并放大属性"实现，
-   *   原件不动 → 天然只是"这一战"；加成经 genAttrs 链（攻/防/统率覆盖/速度）
+   * · 结果：胜者英雄**属性 +bonusPct（10%）** —— 以"深拷贝并放大属性"实现，
+   *   原件不动 → 天然只是"这一战"；加成经 genAttrs 链（攻/防/指挥覆盖/速度）
    *   传导成**全军战斗力**。
    * · 确定性：种子由调用方给（同一个 seed 必得同一结果）—— 观战挂起与沙盘配方
    *   都靠"把结果存进 _sim"来复现，重放绝不重掷（v89.87 会话制的同一原则）。
@@ -1303,7 +1305,7 @@
     var t = target || {};
     return (t.x == null ? '-' : t.x) + ',' + (t.y == null ? '-' : t.y) + '@' + U.now();
   };
-  /* 掷一次斗将（纯函数：只读两名将领，不落任何状态） */
+  /* 掷一次斗将（纯函数：只读两名英雄，不落任何状态） */
   GAME.battle.rollDuel = function (atkGen, defGen, seed) {
     var D = DATA.DUEL || {};
     if (!D.enabled || !atkGen || !defGen) return null;
@@ -1345,7 +1347,7 @@
     /* v89.109（老板「10 级野外城池资源量那么少，必有错误」）：三处修正 ——
        ① 据点曲线 1.35 → **2.15**：取证（probe_v89109_fortres.js）——
           旧口径下 Lv10 据点打 22.4 万守军只抢 44 万资源（掠夺/守军 = 1.97），
-          而聚落同口径是 785 —— 打一场损兵成本就 ≥2000 万（1 万长矛手 ≈ 1050 万资源），
+          而聚落同口径是 785 —— 打一场损兵成本就 ≥2000 万（1 万步行机 ≈ 1050 万资源），
           掠夺 44 万 = 血亏 50 倍。新曲线 Lv10 ≈ 3200 万（≈ 阵亡两万兵的成本，保本略赚）。
        ② **野地补等级曲线**：旧口径 Lv1/5/10 掠夺量恒为 12.7 万（tier 落 'county'
           不吃 lv）—— 高级野地白打。补 1.45^(lv-1)。同等级下**据点 > 野地**仍成立
@@ -1356,13 +1358,13 @@
     mult *= (extMul == null ? 1 : extMul);
     if (tier === 'fort') mult *= Math.pow(2.15, (c.lv || c.level || 1) - 1);
     if (tier === 'wild') mult *= Math.pow(1.45, (c.lv || c.level || 1) - 1);
-    /* 负重技巧：掠夺与采集收获 +5%/级（负重 = 能搬回来多少） */
+    /* 载重优化：掠夺与采集收获 +5%/级（负重 = 能搬回来多少） */
     mult *= (1 + TB('load'));
     /* v89.114：随机源与落账开关**显式传入**（`rnd` 默认 Math.random）——
        出征面板的"目标估掠"用同一公式取区间中值（rnd 恒 0.5、dry=true 不落账），
        于是"面板看到的量"与"结算搬回来的量"永远同一份公式，不会两处漂移。 */
     var rd = rnd || Math.random;
-    /* v89.189（老板 2）：基数收进 DATA.LOOT_BASE（唯一数据源）——金随价值体系下调，
+    /* v89.189（老板 2）：基数收进 DATA.LOOT_BASE（唯一数据源）——旧币随价值体系下调，
        资源保持 v89.109 曲线（与建筑/军费规模匹配）。 */
     var LB = DATA.LOOT_BASE || {};
     function _rg189(k, d0, d1) {
@@ -1392,7 +1394,7 @@
     return GAME.battle.genLootEx(c, extMul, Math.random, false);
   };
   /* 期望口径（不掷骰、不落账）：出征面板「目标估掠」用 —— 只给基准量，
-     战时加成（抢掠技巧 / 趁火打劫）因人而异，不进估算。 */
+     战时加成（废墟搜刮 / 趁火打劫）因人而异，不进估算。 */
   GAME.battle.lootEstOf = function (c, extMul) {
     return GAME.battle.genLootEx(c, extMul, function () { return 0.5; }, true);
   };
@@ -1444,14 +1446,14 @@
    *        超载时按同一比例缩放各类战利品（保持结构），余数**留在原处**（下次可再取）。
    *
    * 设计效果（标定见 probe_v89114_load.js）：纯战兵编队可搬同级战利品约 1/4~1/3；
-   * 编入 ~1% 运输车（或 5% 搬运工）即可全数搬回 —— "带不带后勤"从此是一道真题。
+   * 编入 ~1% 运输平台（或 5% 板车）即可全数搬回 —— "带不带后勤"从此是一道真题。
    * ============================================================ */
   GAME.battle.survivedArmyOf = function (sentArmy, result) {
     var out = {}, aStart = 0, id;
     var T = DATA.TROOPS || {};
-    /* v89.179b·P0-2：参战兵口径 = 不含 nocombat（侦察兵/后勤）的兵种。
-       原 aStart 把侦察兵也算进分母，而 result.atkRemain 只统计参战兵（tactic 跳过 nocombat）
-       → 幸存率被稀释、侦察兵也按比例蒸发。修复：侦察兵整队返回，不进幸存率分母；
+    /* v89.179b·P0-2：参战兵口径 = 不含 nocombat（侦察单元/后勤）的兵种。
+       原 aStart 把侦察单元也算进分母，而 result.atkRemain 只统计参战兵（tactic 跳过 nocombat）
+       → 幸存率被稀释、侦察单元也按比例蒸发。修复：侦察单元整队返回，不进幸存率分母；
        无 nocombat 兵种时与旧行为完全一致（向后兼容）。 */
     for (id in (sentArmy || {})) {
       if (T[id] && T[id].nocombat) continue;
@@ -1472,7 +1474,7 @@
     var surv = GAME.battle.survivedArmyOf(o.army || {}, o.result);
     return Math.max(0, GAME.cargoCapOf(surv) - GAME.cargoLoadOf(o.cargo || null));
   };
-  /* 一批战利品的**重量**（粮木石铁金同权 1:1，与 cargoLoadOf 同源同口径） */
+  /* 一批战利品的**重量**（粮木石铁旧币同权 1:1，与 cargoLoadOf 同源同口径） */
   GAME.battle.lootWeightOf = function (loot) {
     var w = 0, keys = GAME.TRANSPORT_KEYS || [];
     for (var i = 0; i < keys.length; i++) {
@@ -1711,7 +1713,7 @@
 
   /* v83（老板）：「形成经验惩罚机制」——
      掠夺 / 占领**野地**时，按「每 12 级一个台阶」给经验打折（唯一出口）。
-     · expTierOf：将领等级 → 该吃满的野地等级（1~10；>120 封顶在 10 级野地）
+     · expTierOf：英雄等级 → 该吃满的野地等级（1~10；>120 封顶在 10 级野地）
      · expPenaltyOf：野地等级 ≥ 台阶 → 1（吃满）；每差一档 ×decay，地板 minMul
      野地 0 级按 1 级对待（尚未长成的野地不比 1 级更差）。 */
   GAME.battle.expTierOf = function (genLevel) {
@@ -1738,7 +1740,7 @@
       var lv = GAME.map.wildLevelNow ? GAME.map.wildLevelNow(target.x, target.y) : GAME.map.wildLevel(target.x, target.y);
       /* v27（需求 3）：守军改由 wildDefenseAt 按 (坐标, 现实日) 确定性生成 ——
          同一天内"侦查看到的"与"打起来遇到的"必然是同一支军队。
-         守将一并带出：野地也可能有将，有将就真的吃将领加成。 */
+         守将一并带出：野地也可能有将，有将就真的吃英雄加成。 */
       var wd = GAME.wildDefenseAt(target.x, target.y, lv);
       return { ok: true, kind: 'wild', x: target.x, y: target.y, lv: lv,
         name: (DATA.TERRAIN[tile.terrain] ? DATA.TERRAIN[tile.terrain].name : '野地') + ' Lv' + lv,
@@ -1752,7 +1754,7 @@
          布局由 GAME.fortPlanOf 派生（所有建筑各 1 座 · 训练营 2 座 · 余为居所 · 位置固定），
          城防走唯一出口 GAME.fortDefOf（原来写死在这行里）。
          v89.129：**守将**同样走唯一出口 GAME.fortGuardOf ——
-         补上"据点无守将"的缺口（战斗吃将领加成 / 侦查名册可见 / 可触发斗将）。 */
+         补上"据点无守将"的缺口（战斗吃英雄加成 / 侦查名册可见 / 可触发斗将）。 */
       return { ok: true, kind: 'fort', x: f.x, y: f.y, lv: f.level, name: f.name + '（野外城池 Lv' + f.level + '）',
         fort: f, garrison: fg, def: GAME.fortDefOf(f), plan: GAME.fortPlanOf(f),
         guard: GAME.fortGuardOf(f),
@@ -1770,7 +1772,7 @@
       if (!npc) return { ok: false, msg: '目标城池不存在（可能已被攻占）' };
       /* v60（需求 6）：未占据城池**有守将** —— 由 GAME.npcCityGuard 按城 id 确定性
          派生（老板：「均有守将，为守将六维进行随机设定（避免存储，在接触时生成即可）」）。
-         同一座城每次读到的是同一个人，且它的六维会真的参与战斗（守方将领加成）。 */
+         同一座城每次读到的是同一个人，且它的六维会真的参与战斗（守方英雄加成）。 */
       var ng = GAME.npcCityGuard(npc);
       /* v89.115：**坐标带上**（x/y）—— 面板的行军估算 / 军师估算 / 搬运预估都读它；
          此前返回值没有 x/y，按 id 传目标时预估区会整体早退成空白
@@ -1795,7 +1797,7 @@
    * 侦查情报分层（v65 · 老板）
    * ------------------------------------------------------------
    * 老板原话：「不同侦察技巧等级应该可以侦察出**不同类型**的信息，比如，
-   *   资源数量，兵种数量，将领名称属性，建筑等级和数量，可获得的宝物/特产等」
+   *   资源数量，兵种数量，英雄名称属性，建筑等级和数量，可获得的宝物/特产等」
    *
    * 分层表在 `DATA.SCOUT_INTEL`（数据驱动，改表就是改分层，不碰这里）。
    * 唯一出口 `intelTiersOf()`：战斗侧与界面都读它 ——
@@ -1823,8 +1825,8 @@
     if (!t) return null;
     if (t.kind === 'city' && t.npc && GAME.npcCityRes) {
       var R = GAME.npcCityRes(t.npc), rows = [];
-      /* v89.76 修 bug：`DATA.RESOURCES` **本身就含 `pop`**，这里原先又补推一行「人口」，
-         于是侦查公文里「人口」印了两遍（老板截图：`人口 24.9万　人口 24.9万`）。
+      /* v89.76 修 bug：`DATA.RESOURCES` **本身就含 `pop`**，这里原先又补推一行「幸存者」，
+         于是侦查公文里「幸存者」印了两遍（老板截图：`幸存者 24.9万　幸存者 24.9万`）。
          删掉补推那一行 —— 顺序由 `DATA.RESOURCES` 独家决定。 */
       (DATA.RESOURCES || []).forEach(function (m) {
         if (R[m.key] == null) return;
@@ -1837,7 +1839,7 @@
          `cityResMul.raid`（0.5），原先这里读 `wildResMul.raid`（1.2），
          "侦查看到的掠夺可得"比打完拿到的虚报 **2.4 倍**
          （侦查的数 ≠ 打完的数，正是本项目最忌讳的一类不一致）。
-         ⚠️ 战时的抢掠技巧 / 计略加成因人而异，这里给的是**基准量**。 */
+         ⚠️ 战时的废墟搜刮 / 计略加成因人而异，这里给的是**基准量**。 */
       var mul = (DATA.EXPEDITION && DATA.EXPEDITION.cityResMul && DATA.EXPEDITION.cityResMul.raid) || 0.5;
       var loot = GAME.battle.genLoot(t, mul), rows2 = [];
       (DATA.RESOURCES || []).forEach(function (m) {
@@ -1888,16 +1890,16 @@
   /* ------------------------------------------------------------
    * 侦查（v27 · 需求 3 → v65 分层）
    * ------------------------------------------------------------
-   * v27 改前：守军数字只能"约 N 名"，兵种要侦察技巧 ≥3 才看得见，
+   * v27 改前：守军数字只能"约 N 名"，兵种要侦察网络 ≥3 才看得见，
    *   宝物与产地完全看不到 —— 玩家只能靠试。
    * v27 改后：一次侦查给全六项（总数/兵种/守将/宝物/可采/类型）。
    * v65（老板）：**改回按等级分层解锁** —— 全给等于这条科技没有成长感。
    *   已解锁的层给**准确值**（同日同地多次侦查结果一致）；
-   *   未解锁的层给 `null`，界面显示"侦察技巧 Lv N 可查"。
-   * 侦察技巧的另一半作用（顺手所得的数量与品质）始终生效，不受分层影响。
+   *   未解锁的层给 `null`，界面显示"侦察网络 Lv N 可查"。
+   * 侦察网络的另一半作用（顺手所得的数量与品质）始终生效，不受分层影响。
    * ------------------------------------------------------------ */
   /* ============================================================
-   * v89.156（老板 4）：「侦察可能失败，视双方将领资质和等级差设计」
+   * v89.156（老板 4）：「侦察可能失败，视双方英雄资质和等级差设计」
    * ------------------------------------------------------------
    * **侦察成功率的唯一出口**（结算 / 公文 / 探针 / 断言都读它）：
    *   P = base + perLv×(我方等级 − 守将等级) + perStar×(我方资质星 − 守将资质星)，
@@ -1922,7 +1924,7 @@
     var tiers = GAME.battle.intelTiersOf();
     var got = tiers.got;
     out.intel = tiers;
-    /* v89.156（老板 4）：侦察可能失败 —— 视双方将领资质与等级差（唯一出口 scoutChanceOf）。
+    /* v89.156（老板 4）：侦察可能失败 —— 视双方英雄资质与等级差（唯一出口 scoutChanceOf）。
        失败 = 一无所获：无情报（连"约略"也不给）、无顺手所得、无宝物线索；
        成功后的分层/大雾逻辑不变（大雾是"降级"，失败是"没成"，两回事）。 */
     var _ch156 = GAME.battle.scoutChanceOf(gen, t);
@@ -1932,7 +1934,7 @@
       out.detail.fail = true;
       return out;
     }
-    /* 天气：大雾侦察兵难察 —— 情报整体降级（已解锁的也看不准），且不拾获 */
+    /* 天气：大雾侦察单元难察 —— 情报整体降级（已解锁的也看不准），且不拾获 */
     var cmW = null;
     if (GAME.story && GAME.story.combatMod) cmW = GAME.story.combatMod();
     var blinded = !!(cmW && cmW.scout === false);
@@ -1966,7 +1968,7 @@
     out.detail.gen = !!got.guard && !blinded;
     out.detail.roster = showRoster;
     out.detail.lv = techLv;
-    /* 顺手采集：按目标类型给少量材料（侦察技巧提升拾获率与数量；大雾则一无所获）
+    /* 顺手采集：按目标类型给少量材料（侦察网络提升拾获率与数量；大雾则一无所获）
        ⚠️ 这一段**不看分层** —— 拾获是"顺手拿到的"，谁都能顺手，只是看得多的人才看得细。 */
     var tbl = blinded ? null : (t.kind === 'wild' ? DATA.WILD_MATERIAL[t.terrain] : DATA.CITY_MATERIAL[t.dropType || 'county']);
     if (tbl) {
@@ -1981,7 +1983,7 @@
         out.loot.push((DATA.MATERIAL_BY_ID[mid] ? DATA.MATERIAL_BY_ID[mid].name : mid) + '×' + cnt);
       }
     }
-    /* 宝物线索：低概率直接获得一件小宝物（侦察技巧提升概率） */
+    /* 宝物线索：低概率直接获得一件小宝物（侦察网络提升概率） */
     if (Math.random() < 0.18 * (1 + TB('scout'))) {
       var pool = (DATA.ITEMS || []).filter(function (it) {
         return it.price > 0 && it.type !== 'material' && it.type !== 'blueprint' && it.price <= 40;
@@ -2017,7 +2019,7 @@
       /* 可采资源之外的持续收益：占地的产量加成 */
       terrainBonus: t.kind === 'wild' ? (GAME.wildAddOf(ter, t.lv || 0) || {}) : null,
       /* ⑥ 可获宝物的类型 */
-      types: ['珠宝（赏赐将领、提升忠诚）', '材料（打造高阶装备的主料）',
+      types: ['珠宝（赏赐英雄、提升忠诚）', '材料（打造高阶装备的主料）',
         '军械图纸（打造套装件的必需物）', '成品装备（直接佩戴）'],
       materials: matNames,
       equip: (t.kind === 'fort' || t.kind === 'city') ? '按城池档次掉落图纸与成品装备' : '野地不掉军械',
@@ -2026,15 +2028,15 @@
   };
 
   /* ============================================================
-   * v89.102（老板）：「练兵场出征应限制总兵力数而不是人口」
+   * v89.102（老板）：「练兵场出征应限制总兵力数而不是幸存者」
    * ------------------------------------------------------------
-   * 老板原话：「谁家练兵场按人口，不是按人数」。
-   * 改前口径 = Σ(兵种.pop × 数量)（人口当量）—— 于是同样"一万人马"，
-   * 带摩托游骑（pop 2）比带民兵（pop 1）少吃一半容量，与"练兵场点兵"的
+   * 老板原话：「谁家练兵场按幸存者，不是按人数」。
+   * 改前口径 = Σ(兵种.pop × 数量)（幸存者当量）—— 于是同样"一万人马"，
+   * 带伏击车（pop 2）比带步行机（pop 1）少吃一半容量，与"练兵场点兵"的
    * 直觉完全相反（练兵场点的是**人头**）。
    * 现在：容量 = 练兵场等级 × 10000（**人马**），再乘三条加成链
    * （建筑专精 / 年号 / 军事增益）。
-   * ⚠️ 人口仍是**募兵**时的消耗（GAME.train / trainLimitOf 一字不动）——
+   * ⚠️ 幸存者仍是**募兵**时的消耗（GAME.train / trainLimitOf 一字不动）——
    *    改的只是"出征这道门"的量纲。
    * 唯一出口：出征校验 / 调兵校验 / 抵达复验 / 界面提示 / 测试全读这里，
    * 不许任何一处再各算一遍（否则又会出现"面板说能出兵、一发兵被拦"）。
@@ -2077,7 +2079,7 @@
     var gen = null;
     for (var i = 0; i < s.generals.length; i++) if (s.generals[i].id === genId) gen = s.generals[i];
     /* v89.137（老板 7）：**station 增援允许不带将** ——
-       野地已有将领驻守时，增援只并兵不换将（与 doWildGarrison 的"已有将→不带将"同规），
+       野地已有英雄驻守时，增援只并兵不换将（与 doWildGarrison 的"已有将→不带将"同规），
        而入口统一到出征界面后，"不带将"是界面上的正常形态（不是老档残迹）。
        判据挂在**目标野地的现役驻将**上（不是"玩家有没有选将"）—— else 分支保持原拦截。 */
     var _stNoGen137 = false;
@@ -2088,7 +2090,7 @@
         _stNoGen137 = !!(_wpre137 && _wpre137.garrison && _wpre137.garrison.genId);
       }
     }
-    if (!gen && !_stNoGen137) return { ok: false, msg: '请选择出征将领' };
+    if (!gen && !_stNoGen137) return { ok: false, msg: '请选择出征英雄' };
     /* v89.117（老板「城主和守将不能执行出征动作」）：与界面**同一判据**（唯一出口
        GAME.marchBlockOf）—— 界面置灰只是提示，这里才是拦得住的那道闸
        （自动出征 / 脚本 / 老档里的旧配置都会经过 prepare）。 */
@@ -2106,9 +2108,9 @@
     /* v89.87（老板需求 2）：调兵 / 驻守 / 采集的前置校验（统一出口的口子） */
     if (mode.id === 'transfer' && t.kind !== 'owncity') return { ok: false, msg: '调兵目标须为本境城池' };
     /* ============================================================
-     * v89.138（老板 2）：「将领派遣」并进出征界面后，原 `GAME.doDispatch` 的
+     * v89.138（老板 2）：「英雄派遣」并进出征界面后，原 `GAME.doDispatch` 的
      * **目标城席位预检**迁移到这道唯一闸口（入场即拦，比"到了再发现住不下"好）——
-     * 将领是**归属城市**的，席位 = 该城招募站房间数；不拦的话目标城名册会静默超编。
+     * 英雄是**归属城市**的，席位 = 该城招募站房间数；不拦的话目标城名册会静默超编。
      * （「守将/城主不可出征」由下方 `GAME.marchBlockOf` 同一出口负责。）
      * ============================================================ */
     if (mode.id === 'transfer' && t.kind === 'owncity' && gen) {
@@ -2117,7 +2119,7 @@
         var _slots138 = GAME.genSlotsOf(_to138), _used138 = GAME.generalsIn(_to138).length;
         if (_used138 >= _slots138) {
           return { ok: false, msg: _slots138 <= 0
-            ? (_to138.name + ' 尚无招募站（0 席）—— 先在该城建造招募站才能安置将领')
+            ? (_to138.name + ' 尚无招募站（0 席）—— 先在该城建造招募站才能安置英雄')
             : (_to138.name + ' 招募站无空位（' + _used138 + '/' + _slots138 + '），请先升级该城招募站') };
         }
       }
@@ -2245,12 +2247,12 @@
   GAME.battle.defenseInputsOf = function (t, modeId, opts) {
     opts = opts || {};
     var defBonus = (t.def || 0);
-    /* v27（需求 3/5）：守将（野地贼将 / 名城守将）参与战斗 —— 双方将领都要加成 */
+    /* v27（需求 3/5）：守将（野地贼将 / 名城守将）参与战斗 —— 双方英雄都要加成 */
     /* v59：把**目标城的围墙等级**传给引擎 —— 箭塔射程要用它
        （照搬原版：箭塔射程 = 基础×(1+抛射) + 基础×(围墙等级×3%) + 100） */
     var tWallLv = (t.npc && GAME.buildingLevel) ? GAME.buildingLevel(t.npc, 'chengqiang') : 0;
     /* v86（老板「按计划进行」· G1）：计谋效果 —— **全部作用于战斗入参**（零引擎改动）：
-       妖言惑众→守军副本 −15%；火烧粮草→城防值 −30%；挑拨离间→守将加成减半。
+       妖言惑众→守军副本 −15%；焚其辎重→城防值 −30%；挑拨离间→守将加成减半。
        累计施计次数走 state 层唯一出口 schemeMarksOf（挑拨：忠诚 = 100 − 25×n）。 */
     var scArmy = t.garrison, scVal = defBonus, scGen = t.guard || null, scNote = null;
     /* ⛔ v89.198（老板「清除战法这个玩法」）：战法（强攻/围困/奇袭）全撤 ——
@@ -2267,7 +2269,7 @@
           scNote = '妖言惑众 · 守军逃散 ' + Math.round(-_sc.eff.guardPct * 100) + '%';
         } else if (_sc.id === 'huoshao') {
           scVal = Math.round((defBonus || 0) * (1 - Math.min(0.9, _sc.eff.defCut)));
-          scNote = '火烧粮草 · 城防失灵 ' + Math.round(Math.min(0.9, _sc.eff.defCut) * 100) + '%';
+          scNote = '焚其辎重 · 城防失灵 ' + Math.round(Math.min(0.9, _sc.eff.defCut) * 100) + '%';
         } else if (_sc.id === 'tiaobo') {
           var _tn = GAME.schemeMarksOf(GAME.schemeKeyOf(t), 'tiaobo');
           var _loy = Math.max(0, 100 - _sc.eff.loyaltyDrop * _tn);
@@ -2375,13 +2377,13 @@
      * 抵达时在此落账。**必须放在侦查判定之前**：两者的 mode.battle 都是
      * false，若按顺序走会被当成侦查结算（探守军、写侦查公文）。
      * · 调兵：抵达入城（v89.220 起**不再复验目标城容量** —— 驻军不设容量闸）；
-     * · 采集：**v89.136 起仅服务老档** —— 将领带队采集已并入驻军开采（入口全撤），
+     * · 采集：**v89.136 起仅服务老档** —— 英雄带队采集已并入驻军开采（入口全撤），
      *   此处只负责把"老档在途"的采集行军并入该野地驻军（不丢兵）。
      * ============================================================ */
     if (t.kind === 'owncity') {
       var _to = t.city;
       /* ⛔ v89.220（老板 2）：抵达复验（目标城练兵场容量）随发起闸一并退役 ——
-         驻军不受目标城容量限制（见 domain.doTransferCargo 段 / docs/v89220）。 */
+         驻军不受目标城容量限制（见 domain.doTransferCargo 段 / docs/_史料/交付/v89220-基因实验室与建筑条件复核.md）。 */
       var _mv = 0;
       for (var _ok2 in atkArmy) {
         var _n2 = Math.floor(atkArmy[_ok2] || 0);
@@ -2410,7 +2412,7 @@
           + (_cgOut && _cgOut.keys.length ? ' · 辎重实收 ' + U.fmt(_cgOut.landed) + ' 单位' : '') + '）' };
     }
     if (mode.id === 'gather') {
-      /* v89.136：将领带队采集已并入驻军开采（`dispatchGather` / `openGatherModal` /
+      /* v89.136：英雄带队采集已并入驻军开采（`dispatchGather` / `openGatherModal` /
          `openGathers` 全撤，墓碑见各文件）。此分支**仅服务老档**：
          v89.136 之前出发、仍在途的采集行军 —— 抵达时兵并入该野地驻军
          （野地非我方则整体回城），与此前"抵达开始采集"的下场等价（**不丢兵**）。 */
@@ -2444,7 +2446,7 @@
       GAME.statBump('scouts', 1);
       var gd = sc.guard;
       var itL = sc.intel || { got: {}, lv: 0, next: null };
-      /* v89.156（老板 4）：侦察失败 → 只报失手（缘由 = 守将资质/等级压过我方侦察兵），
+      /* v89.156（老板 4）：侦察失败 → 只报失手（缘由 = 守将资质/等级压过我方侦察单元），
          不再走成功路径的分层日志。 */
       var lines;
       if (sc.fail) {
@@ -2453,10 +2455,10 @@
         lines = ['【侦查失败】守军戒备森严，此行未得任何情报。'];
         if (_foeF) {
           lines.push('缘由：守将 ' + _foeF.name + '（' + GAME.rankOf(_foeF).name + ' Lv' + (_foeF.level || 1)
-            + '）机警过人 —— 我方侦察兵（' + (gen ? (GAME.rankOf(gen).name + ' Lv' + (gen.level || 1)) : '无将')
+            + '）机警过人 —— 我方侦察单元（' + (gen ? (GAME.rankOf(gen).name + ' Lv' + (gen.level || 1)) : '无将')
             + '）未能应付。');
         }
-        lines.push('建言：改派资质更高、等级更高的将领带队，成功率随之提高。');
+        lines.push('建言：改派资质更高、等级更高的英雄带队，成功率随之提高。');
       } else {
       /* 日志也按分层：没解锁的项不写"守将：无"（那是误导 —— 不是没有，是看不见），
          改写"未解锁"。 */
@@ -2471,12 +2473,12 @@
       }
       if (itL.got.build && sc.build) lines.push('城防 ' + sc.build.def + ' · 围墙 Lv' + sc.build.wallLv);
       else if (sc.detail.wall) lines.push('目标城防 ' + (t.def || 0));
-      if (itL.next) lines.push('（下一层情报：' + itL.next.name + ' 需侦察技巧 Lv' + itL.next.unlock + '）');
+      if (itL.next) lines.push('（下一层情报：' + itL.next.name + ' 需侦察网络 Lv' + itL.next.unlock + '）');
       }
       /* v89.73（老板：「侦察后形成公文报告，不只是弹窗」）
          ------------------------------------------------------------
          改前侦查结果只活在那个弹窗里 —— 一关就没了，想回头比对"上次看的守军
-         是多少"只能再派一次侦察兵。现在**同时落一份公文**（进公文页可回看）。
+         是多少"只能再派一次侦察单元。现在**同时落一份公文**（进公文页可回看）。
          正文按**已解锁的层**写（与弹窗同一口径）：没解锁的写"未探得"，
          而不是写"守将：无" —— 那是误导，不是没有，是看不见。 */
       (function () {
@@ -2503,7 +2505,7 @@
         var rp = [lines.join('<br>')];
         if (sc.loot && sc.loot.length) rp.push('【顺手所得】' + sc.loot.join('、'));
         if (sc.treasure) rp.push('【意外发现】' + sc.treasure);
-        rp.push('【情报层级】侦察技巧 Lv' + itL.lv + (itL.next
+        rp.push('【情报层级】侦察网络 Lv' + itL.lv + (itL.next
           ? '　·　下一层：' + itL.next.name + '（还差 ' + (itL.next.unlock - itL.lv) + ' 级）'
           : '　·　六层情报全开'));
         rp.push('【顺手拾获】不受分层影响 —— 任何等级都能捡到。');
@@ -2579,7 +2581,7 @@
         /* v89.156（老板 4）：失败给独立的 msg（行军抵达的 toast / 军务读它） */
         fail: !!sc.fail,
         msg: sc.fail
-          ? ('侦查失败：' + t.name + ' 守军戒备森严，侦察兵未得情报'
+          ? ('侦查失败：' + t.name + ' 守军戒备森严，侦察单元未得情报'
               + (sc.chance && sc.chance.foe ? '（守将 ' + sc.chance.foe.name + ' 坐镇）' : ''))
           : ('侦查完成：' + lines[0] + (sc.loot.length ? '，顺手得 ' + sc.loot.join('、') : '')),
       };
@@ -2603,9 +2605,9 @@
        为什么必须短路：己方野地上没有"守军"可打，走战斗结算会出现
        "自己打自己地盘、还按己方守军算伤害"的荒谬结果。 */
     if (mode.station && t.kind === 'wild' && GAME.map.wildAt(t.x, t.y)) {
-      /* v89.135（老板 4）：「设置将领在野地停留的机制」—— 驻军首队（或补将）时把
-         带队将领写进 `garrison.genId`，将领驻留野地（status='garrison'、cityId=null）；
-         已有**别的**将领驻守时，新将随军**回城**（增援不许带将，与 doWildGarrison 同规）。 */
+      /* v89.135（老板 4）：「设置英雄在野地停留的机制」—— 驻军首队（或补将）时把
+         带队英雄写进 `garrison.genId`，英雄驻留野地（status='garrison'、cityId=null）；
+         已有**别的**英雄驻守时，新将随军**回城**（增援不许带将，与 doWildGarrison 同规）。 */
       var _wg135 = GAME.wildGarrisonAt(t.x, t.y);
       var _hadGen135 = !!(_wg135 && _wg135.genId);
       var _ga = GAME.wildGarrisonAdd(t.x, t.y, atkArmy, city.id, { genId: gen && gen.id });
@@ -2643,8 +2645,8 @@
     var scArmy = _di210.scArmy, scVal = _di210.scVal, scGen = _di210.scGen, scNote = _di210.scNote;
     var simOpts = _di210.simOpts;
 
-    /* ---- v89.115（老板「设计斗将战，为将领个人战，军队作战中概率触发（50%），
-       斗将战在军队战前进行，斗将战胜利将获得临时 10% 将领属性加成」）----
+    /* ---- v89.115（老板「设计斗将战，为英雄个人战，军队作战中概率触发（50%），
+       斗将战在军队战前进行，斗将战胜利将获得临时 10% 英雄属性加成」）----
        战前斗将：胜方主将拿到一份**属性 +10% 的副本**（原件不动 = 只此一战），
        由 genAttrs 加成链传导到全军。结果随 `_sim` 存走 —— 重放/挂起不重掷。 */
     var duel = null, genSim = gen;
@@ -2666,7 +2668,7 @@
       duel = opts._sim.duel || null;
       genSim = opts._sim.genSim || gen;
     } else if (!opts._result && GAME.battle._needWatch(opts)) {
-      /* 观战：**先斗将**（战前发生），结果与加成后的两份将领一并挂起 */
+      /* 观战：**先斗将**（战前发生），结果与加成后的两份英雄一并挂起 */
       _doDuel();
       return GAME.battle._suspendExpedition(target, modeId, atkArmy, genId, opts,
         { scArmy: scArmy, scVal: scVal, scGen: scGen, scNote: scNote, simOpts: simOpts,
@@ -2686,10 +2688,10 @@
      * ------------------------------------------------------------
      * 必须在下面这些"会改输入"的步骤**之前**取：
      *   · `returnArmy(city, atkArmy, …)` 结算归队时会把 `atkArmy` 逐项清零
-     *     —— 真机实测：战后取配方拿到的是 `{qingji:0, gongjian:0, …}`，
+     *     —— 真机实测：战后取配方拿到的是 `{fujiche:0, daodanche:0, …}`，
      *       重跑成了**空阵**（0 回合 0 损失），而校验又是 0==0 **假通过**；
-     *   · `gainExp(gen, …)` 可能让将领当场升级 —— 用战后的将重跑，同配方跑出另一场仗。
-     * 这个坑靠"真浏览器截图脚本里推演按钮被禁用"才暴露（Node 探针里将领没升级、
+     *   · `gainExp(gen, …)` 可能让英雄当场升级 —— 用战后的将重跑，同配方跑出另一场仗。
+     * 这个坑靠"真浏览器截图脚本里推演按钮被禁用"才暴露（Node 探针里英雄没升级、
      * 也没走到 returnArmy 之后，所以一直绿）。
      * ============================================================ */
     /* v89.115：配方里的主将用**斗将后的那份**（genSim）—— 否则沙盘重跑会少一个 +10% 的加成，
@@ -2733,7 +2735,7 @@
       }
     }
 
-    var gains = { res: null, mats: [], equip: [], hero: null, beauty: null, seeds: [], gold: 0 };
+    var gains = { res: null, mats: [], equip: [], hero: null, beauty: null, gold: 0 };
 
     if (win) {
       /* v89.99：俘获迁民 —— 攻破据点/名城，溃卒入**俘虏营**（唯一出口 captiveGain）
@@ -2769,9 +2771,9 @@
         GAME.log.war('🧱 ' + _lg109.msg);
       }
       if (resMul > 0 && _lg109.ok) {
-        /* 抢掠技巧：掠夺资源收获 +3%/级 —— 只对「掠夺」生效（占领本就不取财货） */
+        /* 废墟搜刮：掠夺资源收获 +3%/级 —— 只对「掠夺」生效（占领本就不取财货） */
         var raidBonus = (mode.id === 'raid') ? (1 + TB('pillage')) : 1;
-        /* v86：趁火打劫 —— 本战掠夺资源 +30%（乘乱取利，与抢掠技巧叠乘） */
+        /* v86：趁火打劫 —— 本战掠夺资源 +30%（乘乱取利，与废墟搜刮叠乘） */
         if (opts.scheme === 'chenhuo') {
           var _ch = GAME.schemeOf('chenhuo');
           raidBonus *= 1 + (_ch ? _ch.eff.lootPct : 0);
@@ -2786,10 +2788,10 @@
            战利品总重 ≤ **随军载重**（幸存部队，扣去去程已载辎重）。
            超载时按比例缩减，余数留在原处（战报里明示"未能装下"，下次可再取）。 */
         var _haul = GAME.battle.haulPlanOf({ army: atkArmy, result: result, cargo: opts.cargo, loot: loot });
-        /* v89.189（老板 2 · 顺修）：**玄金不入搬运** —— gold 不在 TRANSPORT_KEYS
-           （v89.161：金是玩家层级货币），但旧实现把 keep 直接覆盖回 loot →
-           genLootEx / npcLoot 产的 gold 在下一步**静默蒸发**（"面板估掠有金、
-           打完不给"的真 bug）。现在：金从原始战利品单独取出、直入玩家金池
+        /* v89.189（老板 2 · 顺修）：**旧币不入搬运** —— gold 不在 TRANSPORT_KEYS
+           （v89.161：旧币是玩家层级货币），但旧实现把 keep 直接覆盖回 loot →
+           genLootEx / npcLoot 产的 gold 在下一步**静默蒸发**（"面板估掠有旧币、
+           打完不给"的真 bug）。现在：旧币从原始战利品单独取出、直入玩家旧币池
            （与珠宝/材料落账同精神：货币不靠辎重队搬）。 */
         var _goldLoot189 = Math.max(0, Math.round(loot.gold || 0));
         if (_goldLoot189 > 0) {
@@ -2834,22 +2836,19 @@
       var eq = GAME.battle.rollEquipLoot(t);
       if (eq.length) { gains.equip = eq; GAME.log.war('缴获军械：' + eq.join('、')); }
 
-      /* v78（老板需求 1）：种子 —— 出征获胜的缴获之一（种子另一主渠道是采集）。
-         城档折算见 DATA.SEED_DROP.cityLv；野地按自身等级。 */
-      var seedLv = (t.kind === 'wild')
+      /* v89.224（老板 2）：种子缴获整条退役（播种改「立项」后不再需要种子）。
+         来源等级口径保留 —— 辐能核心掉落继续用它（城档折算随表迁入 DATA.ESSENCE_DROP.cityLv）。 */
+      var dropLv = (t.kind === 'wild')
         ? (t.lv || 1)
-        : (((DATA.SEED_DROP || {}).cityLv || {})[t.dropType || 'county'] || (t.lv || 3));
-      var seedGot = GAME.grantSeedDrop(seedLv, DATA.SEED_DROP.battleMult, '缴获种子');
-      if (seedGot.length) gains.seeds = seedGot;
+        : (((DATA.ESSENCE_DROP || {}).cityLv || {})[t.dropType || 'county'] || (t.lv || 3));
 
-      /* v89.51：辐能核心 —— 缴获线的产出（与种子同源的"顺带所得"，
-         补上调校改造装备在探索剥离之后的产出口） */
-      var essLoot = GAME.grantEssenceDrop(seedLv, DATA.ESSENCE_DROP.battleMult, '✨ 缴获辐能核心');
+      /* v89.51：辐能核心 —— 缴获线的产出（补上调校基因强化件的产出口） */
+      var essLoot = GAME.grantEssenceDrop(dropLv, DATA.ESSENCE_DROP.battleMult, '✨ 缴获辐能核心');
       if (essLoot.length) gains.essence = essLoot;
 
       /* v89.179c（老板「高阶加速宝物改采集/战役掉落」）：战役缴获线（次渠道，
-         mult = DATA.BOOST_DROP.battleMult）。与种子/精华同构，只掷 BOOST_DROP 表。 */
-      var boostLoot = GAME.grantBoostDrop(seedLv, (DATA.BOOST_DROP || {}).battleMult, '🎁 缴获加速宝物');
+         mult = DATA.BOOST_DROP.battleMult）。与精华掉落同构，只掷 BOOST_DROP 表。 */
+      var boostLoot = GAME.grantBoostDrop(dropLv, (DATA.BOOST_DROP || {}).battleMult, '🎁 缴获加速宝物');
       if (boostLoot.length) gains.boost = boostLoot;
 
       /* v89.186（老板 1）：遗物 —— 打据点/名城缴获（唯一渠道；与上面的"加速宝物"互不占配额）。
@@ -2905,7 +2904,7 @@
         }
       }
 
-      /* 将领经验（v55 · 原版规则；v56 老板调口径）：
+      /* 英雄经验（v55 · 原版规则；v56 老板调口径）：
          经验 = 歼灭敌军的资源量 / 1000 × 2（胜方），并封顶到"升级需求的 80%"。
          ⚠️ 口径从"野地等级 × 12"改成"**实际歼灭量**"——这是本质修正：
          原来的线性公式对二次增长的升级需求，到后期是 750~840 场一级（实测）。 */
@@ -2968,7 +2967,7 @@
 
     /* 归队 —— 「派出去的兵能回来」的唯一路径。
        之前 expedition 扣了兵却从不归还 `result.atkRemain`，伤兵也只是个计数，
-       等于每次出征都在凭空蒸发军队、治疗是纯金币消耗。 */
+       等于每次出征都在凭空蒸发军队、治疗是纯旧币消耗。 */
     var returned = { back: {}, wounded: {} };
     /* v89.63：「派遣」打下来的兵**留驻该地**（伤兵仍回城医治）——
        于是"出兵"与"驻守"合成一道手续，那道独立的「派军驻守」按钮就此退场。 */
@@ -2977,7 +2976,7 @@
     if (city) {
       returned = GAME.battle.returnArmy(city, atkArmy, result, _stW ? function (back) {
         /* v89.135（老板 3）：**占领新野地不受驻军上限**（noCap）——「10W 占领 1 级野地
-           也能全部进去」；老板 4：首队随征将领记入驻军（genId）。 */
+           也能全部进去」；老板 4：首队随征英雄记入驻军（genId）。 */
         var _gb = GAME.wildGarrisonAdd(t.x, t.y, back, city.id, {
           genId: gen && gen.id,
           noCap: !!mode.occupy,
@@ -2993,7 +2992,7 @@
     for (var bk in returned.back) backN += returned.back[bk];
     for (var wk in returned.wounded) woundN += returned.wounded[wk];
     if (_stW) {
-      /* v89.135（老板 4）：占领/驻守后**将领留在野地**（与 station 到达同口径）——
+      /* v89.135（老板 4）：占领/驻守后**英雄留在野地**（与 station 到达同口径）——
          驻军有将，野地面板可见，开采由他带队（老板第 5 条）。 */
       /* v89.135：驻守不改 cityId（同 station 段） */
       if (gen) { gen.status = 'garrison'; }
@@ -3002,14 +3001,14 @@
         + (woundN > 0 ? '，伤兵 ' + U.fmt(woundN) + ' 回城医治' : ''));
     } else if (backN > 0 || woundN > 0) {
       GAME.log.war('班师 ' + (city ? city.name : '') + '：' + U.fmt(backN) + ' 名归营'
-        + (woundN > 0 ? '，伤兵 ' + U.fmt(woundN) + ' 入营（可花金治疗归队）' : ''));
+        + (woundN > 0 ? '，伤兵 ' + U.fmt(woundN) + ' 入营（可花旧币治疗归队）' : ''));
     }
 
     /* v20：战报必须包含**战利品**。
        此前 body 只有伤亡，战利品仅写进系统提示，玩家看战报以为「掠夺胜利什么都没得到」。 */
     var lootLines = [];
-    /* v89.189（老板 2）：缴获黄金单列（金不入搬运、直接入池——旧版它连战报都不出现） */
-    if (gains.gold > 0) lootLines.push('💰 缴获黄金：+' + U.fmt(gains.gold) + '（直接入金库）');
+    /* v89.189（老板 2）：缴获旧币单列（旧币不入搬运、直接入池——旧版它连战报都不出现） */
+    if (gains.gold > 0) lootLines.push('💰 缴获旧币：+' + U.fmt(gains.gold) + '（直接入旧币库）');
     if (gains.res) {
       var _lp = [];
       for (var _rk in gains.res) {
@@ -3036,14 +3035,14 @@
       lootLines.push('战果：**收为我方前哨** —— ' + t.name + '（Lv' + result.claimed.lv
         + ' · 不占城池名额）；周边 ' + _fx193r.radius
         + ' 格内野地：衰减减半 · 采集×' + _fx193r.gatherMul + ' · 驻军上限 ×' + _fx193r.garrisonCapMul
-        + ' · ' + (_fx193r.intelFull ? '情报确凿' : '情报半明') + ' · 商税 ' + _fx193r.tax + ' 金/现实日');
+        + ' · ' + (_fx193r.intelFull ? '情报确凿' : '情报半明') + ' · 商税 ' + _fx193r.tax + ' 旧币/现实日');
     }
     /* v89.114：运力不足的明示（唯一出口 haulPlanOf 的结果）——
        "搬回来多少"与"最多能搬多少"写进战报，玩家一眼看出差在后勤。 */
     if (gains.haul && gains.haul.lost > 0) {
       lootLines.push('🚚 运力不足：库藏重 ' + U.fmt(gains.haul.weight) + '，随军载重仅 '
         + U.fmt(gains.haul.cap) + ' —— 尚有 ' + U.fmt(gains.haul.lost)
-        + ' 未能装下（仍留库中，下次可再取；编入运输车或搬运工可提高搬运量）');
+        + ' 未能装下（仍留库中，下次可再取；编入运输平台或板车可提高搬运量）');
     }
     if (gains.mats && gains.mats.length) lootLines.push('材料：' + gains.mats.join('、'));
     if (gains.equip && gains.equip.length) lootLines.push('军械：' + gains.equip.join('、'));
@@ -3058,7 +3057,7 @@
       }
       lootLines.push('俘虏：' + U.fmt(result.captives.gain) + ' 众入营'
         + (_cpl.length ? '（' + _cpl.join('、') + '）' : '')
-        + '　·　军务处·俘虏营可收编入军（费金 = 兵种造价的 50%）');
+        + '　·　军务处·俘虏营可收编入军（费旧币 = 兵种造价的 50%）');
     }
     /* v63（老板）：野外城池每日限掠一次 —— 要么告诉玩家"本日额度已用尽"，
        要么他下次点掠夺被拦下来时会以为"功能坏了"。 */
@@ -3078,7 +3077,7 @@
       body: GAME.battle.reportText(t.name, atkArmy, gen, result)
         + (result.duel && result.duel.done
           ? '<br>【斗将】' + result.duel.log.join('；') + '　·　' + result.duel.winnerName +
-            ' 得势：其全军将领属性 +' + Math.round((result.duel.bonusPct || 0.10) * 100) + '%（限本战）'
+            ' 得势：其全军英雄属性 +' + Math.round((result.duel.bonusPct || 0.10) * 100) + '%（限本战）'
           : '')
         + (result.schemeNote ? '<br>【计谋】' + result.schemeNote : '')
         + (result.retreat ? '<br>【撤退】主动撤退：残部带回，民心未动（围攻进度保留）。' : '')
@@ -3142,7 +3141,7 @@
        · expedition 只做了 `city.army[id] -= atkArmy[id]`，`result.atkRemain` 从未加回城池
          → 派 10 万、零损失打一场，回来城内是 0，每次出征都在凭空蒸发军队
        · applyWounded 只累加 `s.wounded` 这个数字，heal() 也只是把它清零
-         → 「伤兵归队」是空话，治疗成了一笔没有任何回报的金币消耗
+         → 「伤兵归队」是空话，治疗成了一笔没有任何回报的旧币消耗
      现在统一在这里归还，并记录伤兵的**兵种构成**（`s.woundedArmy`）。 */
   /* v89.63：新增可选的第 4 参 `backSink` —— 由调用方决定"活着的兵"去哪。
      出征「派遣」(station) 用它把幸存者直接送进野地驻军（而不是回城）；
@@ -3186,7 +3185,7 @@
   /* ============================================================
    * v89.186（老板 3）：据点剥离 —— **占据 = 野外建筑 + 归属**（不再就地转城市）
    * ------------------------------------------------------------
-   * 沿革：v89.103 曾"拔除 = 就地转为我方一座城"（建筑转正 + 人口归附 + 占城池名额）；
+   * 沿革：v89.103 曾"拔除 = 就地转为我方一座城"（建筑转正 + 幸存者归附 + 占城池名额）；
    * 老板拍板改为：**不转城市** —— 占据后作为"我方前哨"（野外建筑）提供 buff：
    *   #1 前哨效应（覆盖内野地衰减减半）· #2 采集增产 · #3 兵站（驻军上限 +50%）
    *   · #5 情报站（守军/守将情报确凿）· #6 商旅税所（每游戏日商税）。
@@ -3238,29 +3237,29 @@
     GAME.log.war('🚩 拔除 ' + f.name + '（野外城池 Lv' + lv + '）—— 收为**我方前哨**（声望 +' + repF + '）：'
       + '周边 ' + RR + ' 格内野地：衰减减半 · 采集×' + fx193.gatherMul + ' · 驻军上限 ×'
       + fx193.garrisonCapMul + ' · ' + (fx193.intelFull ? '情报确凿' : '情报半明') + '，商税 '
-      + fx193.tax + ' 金/现实日');
+      + fx193.tax + ' 旧币/现实日');
     return { ok: true, fort: rec, rep: repF, lv: lv,
-      msg: f.name + ' 已为我方前哨（周边 ' + RR + ' 格野地受益 · 商税 ' + fx193.tax + ' 金/日 · 不占城池名额）' };
+      msg: f.name + ' 已为我方前哨（周边 ' + RR + ' 格野地受益 · 商税 ' + fx193.tax + ' 旧币/日 · 不占城池名额）' };
   };
 
   /* --------- 经验升级（真实公式：等级²×100） --------- */
   GAME.checkLevelUp = function (gen) {
     var need = GAME.expNeedOf(gen);
     var step = 0, from = gen.level;
-    /* v29（需求 2）：**资质决定等级上限**（凡品 60 / 良材 100 / 英杰 140 /
-       名世 180 / 天授 240）。到顶后经验继续累积但不再升级 ——
+    /* v29（需求 2）：**资质决定等级上限**（凡人 60 / 突变体 100 / 进化体 140 /
+       觉醒体 180 / 天启体 240）。到顶后经验继续累积但不再升级 ——
        不扣经验，玩家换一个高资质的将或喂丹药仍有意义。 */
     var capLv = (GAME.genLevelCap ? GAME.genLevelCap(gen) : 999);
     while (gen.exp >= need && gen.level < capLv) {
       gen.exp -= need;
       gen.level += 1;
-      step = GAME.applyLevelGrowth(gen);   // 资质决定每级成长（凡品+1 … 天授+8）
+      step = GAME.applyLevelGrowth(gen);   // 资质决定每级成长（凡人+1 … 天启体+8）
       need = GAME.expNeedOf(gen);
-      GAME.log.sys('⭐ 将领 ' + gen.name + ' 升至 Lv' + gen.level +
+      GAME.log.sys('⭐ 英雄 ' + gen.name + ' 升至 Lv' + gen.level +
         '（自动加点 +' + step + ' · 自由点 +' + step + '）');
     }
-    /* v89.159（老板 1）：「升级时将领刷新状态，恢复所有体力、精力」——
-       将领**自身升级**（战斗/侦察/练功/经验道具…凡经 gainExp 的路径）即回满
+    /* v89.159（老板 1）：「升级时英雄刷新状态，恢复所有体力、精力」——
+       英雄**自身升级**（战斗/侦察/练功/经验道具…凡经 gainExp 的路径）即回满
        体力与精力、状态焕然一新。写在本函数 = **升级的唯一出口**：
        不在各调用点各写一遍 —— 否则又会出现"某条路升级不回满"
        （同 v89.151「打包点漏字段」的教训）。多级连升只回一次（幂等）。 */
@@ -3294,7 +3293,7 @@
      让经验从"背后悄悄涨的数字"变成看得见、可操作的东西。 */
   GAME.battle.gainExp = function (gen, amount, why) {
     amount = Math.max(0, Math.round(amount || 0));
-    /* v79：演算图谱 —— 将领经验 +6%/级（唯一消费口） */
+    /* v79：演算图谱 —— 英雄经验 +6%/级（唯一消费口） */
     if (amount > 0 && GAME.artifactBonusNum) {
       amount = Math.round(amount * (1 + GAME.artifactBonusNum('genExpPct')));
     }
@@ -3390,7 +3389,7 @@
 
   };
 
-  /* 逐回合一行：`第N回合（我 X · 敌 Y）：我长矛手→弩手 杀 120；…`
+  /* 逐回合一行：`第N回合（我 X · 敌 Y）：我步行机→导弹车 杀 120；…`
      —— 兵力读回合记录（rr.a / rr.d = 双方当时兵力）；没有事件的回合写「（无交火）」。 */
   GAME.battle.roundLinesOf = function (r) {
     if (!r || !r.roundsLog || !r.roundsLog.length) return [];
@@ -3677,7 +3676,7 @@
 
   GAME.battle.reportText = function (cityName, atkArmy, gen, result) {
     var line1 = '【' + cityName + '】攻城' + (result.winner === 'atk' ? '胜利' : '失败') + '。';
-    var line2 = '远征将领：' + (gen ? gen.name : '无') + '。战斗持续 ' + result.rounds + ' 回合。';
+    var line2 = '远征英雄：' + (gen ? gen.name : '无') + '。战斗持续 ' + result.rounds + ' 回合。';
     var line3 = '我军损失 ' + result.atkLoss + '，剩余 ' + result.atkRemain + '；敌军损失 ' + result.defLoss + '，剩余 ' + result.defRemain + '。';
     var line4 = '';
     /* v26（需求 1）：经验写进战报正文 —— 这是玩家唯一会认真看战报的地方。
@@ -3700,7 +3699,7 @@
               /* v89.89（A3 · 100+ 轮实玩期待）：口径就地解释 —— 悬停「歼敌值」看折算规则
                  （100+ 轮实玩实测："歼敌值 3,120 资源"口径费解）。 */
               ? '<span style="color:var(--text-dim);">（<span style="cursor:help;" '
-                + 'title="歼敌值 = 按歼灭敌军的资源造价折算（与将领经验同一口径）">歼敌值</span> '
+                + 'title="歼敌值 = 按歼灭敌军的资源造价折算（与英雄经验同一口径）">歼敌值</span> '
                 + U.numText(result.defValue, 0) + ' 资源）</span>' : '')))
         + '　Lv' + ei.level + '（' + U.numText(ei.exp, 0) + ' / ' + U.numText(ei.need, 0) + '）'
         + (ei.up > 0 ? '　<b style="color:var(--gold-light);">连升 ' + ei.up + ' 级！</b>' : '');
@@ -3736,7 +3735,7 @@
    *   · 补给站（己方城池间提速 1.5~6 倍，按建筑等级）
    *   · 瞭望塔 10 级（27×27 范围内行军 +50%）
    *   · 天气 move（雨 −20% / 雪 −50% / 雾 −30% / 大风 +10%）
-   *   · 行军技巧 / 驾驭技巧 / 车轮技术（按兵种类型分别提速）
+   *   · 机动行军 / 机车操控 / 传动系统（按兵种类型分别提速）
    *   · 急行军令（立即完成当前行军）
    * ============================================================ */
   GAME.march = {};
@@ -3764,9 +3763,9 @@
   /* 行军速度系数：1.0 = 标准步卒（spd = marchBaseSpeed）、晴、无加成
      v26（需求 2）：主将速度也计入 —— 每 1 点速度 = 全军行军速度 +1 点
      （兵种 spd 量级 100~1000，基准 marchBaseSpeed=300，故 +1 点 ≈ 系数 +1/300）。
-     在此之前将领速度只影响战斗先手，对行军毫无作用，是个只显示不生效的死属性。 */
+     在此之前英雄速度只影响战斗先手，对行军毫无作用，是个只显示不生效的死属性。 */
   GAME.march.speedFactor = function (army, from, to, gen) {
-    /* ① 最慢兵种决定全军速度（带迫击炮就别指望跑得快） */
+    /* ① 最慢兵种决定全军速度（带自行火炮就别指望跑得快） */
     var slowest = null;
     for (var id in (army || {})) {
       var t = DATA.TROOPS[id];
@@ -3813,14 +3812,14 @@
   };
 
   /* ============================================================
-   * v89.137（老板 2）：**兵种最终属性**（科技 / 将领 / 装备等全加成后）
+   * v89.137（老板 2）：**兵种最终属性**（科技 / 英雄 / 装备等全加成后）
    * ------------------------------------------------------------
    * 战斗界面悬停兵种时的唯一出口 —— 口径直接读战斗引擎自己的
    * perAtk / perDef / perHp（`GAME.tactic.*`），不另算一份，
    * "悬停里看到的数"与"结算时用的数"必然同一把尺。
    * 传入 u = 引擎单位（unitsOf 的产物：含 id / count / cover / atkPct / defPct / hpPer）；
-   * gen = 该单位所属方的将领（我方法：rec.genId；敌方法：rec.sim.scGen）——
-   * 生命加成走 T.perHp(u, gen)，与战斗里"被击方将领加血"同源。
+   * gen = 该单位所属方的英雄（我方法：rec.genId；敌方法：rec.sim.scGen）——
+   * 生命加成走 T.perHp(u, gen)，与战斗里"被击方英雄加血"同源。
    * 返回 null 表示不是有效兵种（调用方自行兜底）。
    * ⚠️ 不含"攻城"这类**对局态**因子（那是 perAtk 的 opts，随打谁而变）——
    *   悬停给的是"这支部队自己的面板"。
@@ -3891,7 +3890,7 @@
         var _capW = GAME.cargoCapOf(army), _needW = GAME.cargoLoadOf(cargo);
         if (_needW > _capW) {
           return { ok: false, msg: '运力不足：辎重 ' + U.fmt(_needW) + ' ＞ 随军载重 ' + U.fmt(_capW)
-            + '（多带搬运工 / 运输车）' };
+            + '（多带板车 / 运输平台）' };
         }
       }
     }
@@ -3979,7 +3978,7 @@
     /* v89.137（老板 7）：`m.genId === ''` = **设计上的无将增援**（station 补兵，不走折返）；
        只有"记了将、人却已不在"（解雇/离去）才折返。 */
     if (!gen && m.genId) {
-      /* 将领已不在（解雇/离去）：兵力原路退回，避免凭空消失 */
+      /* 英雄已不在（解雇/离去）：兵力原路退回，避免凭空消失 */
       if (city) for (var a in m.army) city.army[a] = (city.army[a] || 0) + m.army[a];
       GAME.log.war('⚠️ 行军中断：' + m.name + ' 方向的主将已不在，大军折返 ' + ((city && city.name) || ''));
       return null;
@@ -3994,8 +3993,8 @@
         { arrived: true, cityId: m.cityId, scheme: m.scheme || null,
           cargo: m.cargo || null });      /* v89.103：随军辎重（owncity 分支落账） */
     } catch (e) { err = e; }
-    /* v89.87：观战挂起（pending）时将领**保持征战在外**，不置 idle ——
-       等 finishBattle 落账后统一收尾（否则战斗中将领会被当成空闲可再派遣）。
+    /* v89.87：观战挂起（pending）时英雄**保持征战在外**，不置 idle ——
+       等 finishBattle 落账后统一收尾（否则战斗中英雄会被当成空闲可再派遣）。
        v89.137：`gen` 可能为 null（无将增援 · station 补兵）—— 守卫防空引用。 */
     if (gen && !(r && r.pending) && gen.status === 'march') gen.status = 'idle';
     if (err || !r || r.ok === false) {
@@ -4020,7 +4019,7 @@
       return { ok: false, rolled: rolled, msg: whyR };
     }
     if (r.result && r.result.winner === 'scout') {
-      GAME.log.war('🔭 ' + (gen ? gen.name : '侦察兵') + ' 侦察归来：' + m.name);   /* v89.137：无将守卫 */
+      GAME.log.war('🔭 ' + (gen ? gen.name : '侦察单元') + ' 侦察归来：' + m.name);   /* v89.137：无将守卫 */
     }
     if (GAME.onMarchArrive) GAME.onMarchArrive(m, r);
     return r;
@@ -4028,7 +4027,7 @@
 
   /* 行军即刻抵达 —— 唯一出口（v89.179c 老板②B方案）
      ------------------------------------------------------------
-     原状：UI 里有个**免费**的「⚡急行军令（立即抵达）」按钮（不扣金、不耗道具），
+     原状：UI 里有个**免费**的「⚡急行军令（立即抵达）」按钮（不扣旧币、不耗道具），
            而付费的急行军令 / 疾行令行为与它相同 → 两支道具被完全压死（"鬼商品"）。
      现在：即刻抵达**必须消耗道具**，且两支各有分工（见 DATA.ITEMS 的 marchScope）：
        · 急行军令（one）→ 只催单支（军务页逐行「⚡ 急行军」，带 marchId）

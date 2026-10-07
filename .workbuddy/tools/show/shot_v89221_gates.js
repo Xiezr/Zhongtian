@@ -101,7 +101,7 @@ function chk(name, cond, extra) {
     return {
       idx: idx,
       has: txt.indexOf('摩托游骑需1级 · 装甲战车/突击摩托需3级 · 王牌战车/重甲战车需4级') >= 0,
-      old: txt.indexOf('轻骑需1级') >= 0,
+      old: txt.indexOf('伏击车需1级') >= 0,
       rect: r ? { x: Math.max(0, Math.round(r.left) - 6), y: Math.max(0, Math.round(r.top) - 6), w: Math.round(r.width) + 12, h: Math.round(r.height) + 12 } : null,
     };
   });

@@ -41,7 +41,7 @@ fs.mkdirSync(OUT, { recursive: true });
     G.ui._cityId = c.id;
     ['grain', 'wood', 'stone', 'iron', 'gold'].forEach(function (k) { c.res[k] = 9e6; });
     c.res.pop = 42000;
-    c.army = { yibing: 12000, gongjian: 4200, qingji: 1800, daodun: 900, changqiang: 2600 };
+    c.army = { buxingji: 14600, daodanche: 4200, fujiche: 1800, dunwei: 900 };   /* v89.230：旧 yibing+changqiang 合并相加 */
     c.cells.forEach(function (x) { if (x.build) x.build.lvl = Math.max(x.build.lvl || 1, 7); });
     /* 第二座城（调运/派驻/任命要有对象）
        v89.141（复核修复）：原写法只试一个坐标 —— 不是平原就**静默失败**（实测 cities 恒 1），
@@ -71,10 +71,10 @@ fs.mkdirSync(OUT, { recursive: true });
       st.items[id] = 4;
     });
     st.wounded = 5200;
-    st.woundedArmy = { yibing: 3600, changqiang: 1600 };
+    st.woundedArmy = { buxingji: 5200 };
     st.reports = st.reports || [];
     st.reports.unshift({ t: Date.now(), type: 'war', title: '战报 · 黄巾寨（胜）', body: '歼敌 3,200', win: true,
-      loss: { atkStart: { yibing: 12000 }, atkLoss: { yibing: 420 }, defStart: { yibing: 3200 }, defLoss: { yibing: 3200 } } });
+      loss: { atkStart: { buxingji: 12000 }, atkLoss: { buxingji: 420 }, defStart: { buxingji: 3200 }, defLoss: { buxingji: 3200 } } });
     st.reports.unshift({ t: Date.now() - 6e4, type: 'scout', title: '侦查回报 · 黄巾寨', body: '守军约 3,200 名', win: true,
       intel: [{ title: '守军', rows: [['兵力', '3,200']] }] });
     st.chronicle = st.chronicle || [];
@@ -96,11 +96,11 @@ fs.mkdirSync(OUT, { recursive: true });
     ['官府（建筑面板）', '(function(){var c=GAME.currentCity();for(var i=0;i<c.cells.length;i++){if(c.cells[i].official){ui.openBuildModal(i);return;}}ui.openBuildModal(0);})()'],
     ['征募', 'ui.openTroops()'],
     ['市场', 'ui.openMarket()'],
-    ['宿将/客栈', 'ui.openHostel()'],
-    ['客栈招募', 'ui.openInn()'],
+    ['英雄/酒馆', 'ui.openHostel()'],
+    ['酒馆招募', 'ui.openInn()'],
     ['宝物', 'ui.openArtifacts()'],
     ['装备', 'ui.openEquipPanel()'],
-    ['秘境/农庄', 'ui.openFarm()'],
+    ['基因实验室', 'ui.openFarm()'],
     ['锻造', 'ui.openForge()'],
     ['作坊', 'ui.openWorkshop()'],
     ['书简/帮助', 'ui.openHelp()'],
@@ -109,12 +109,12 @@ fs.mkdirSync(OUT, { recursive: true });
     ['小地图', 'ui.openMinimap()'],
     ['存档管理', 'ui.openSaveManager()'],
     ['门派', 'ui.openSect()'],
-    ['仓库', 'ui.openStore()'],
+    ['货仓', 'ui.openStore()'],
     ['军务总览', 'ui.openMarches()'],
-    /* v89.132：v89.126 城墙并入建筑体系后 `openWallModal` 退役（墓碑见 ui.js）——
+    /* v89.132：v89.126 围墙并入建筑体系后 `openWallModal` 退役（墓碑见 ui.js）——
        现出口 = `openBuildModal('wall')`（环城槽；与 main.js 的 open-wall 动作同一落点）。 */
-    ['城墙（环城槽）', 'ui.openBuildModal("wall")'],
-    /* ⛔ v89.133 移除：'校场' 弹窗 —— v89.128 第二批第 10 条后面板退役
+    ['围墙（环城槽）', 'ui.openBuildModal("wall")'],
+    /* ⛔ v89.133 移除：'练兵场' 弹窗 —— v89.128 第二批第 10 条后面板退役
        （点建筑功能 = 直接进「军务」视图，不再是弹窗；audit 第 3 次抓工具过期）。 */
     ['据点半览', 'ui.openForts()'],
     /* ⛔ v89.141（复核）：`ui.openGathers`（采集点面板）在 v89.136 退役（采集并入地块界面）
@@ -125,7 +125,7 @@ fs.mkdirSync(OUT, { recursive: true });
     ['布阵方案', 'ui.openTacticSets()'],
     ['自动出征配置', 'ui.openAutoMarch()'],
     ['派驻', 'ui.openTroopMove(GAME.currentCity().id)'],
-    /* ⛔ v89.141（复核）：`ui.openDispatch`（将领派遣面板）在 v89.138 退役（并入出征界面）
+    /* ⛔ v89.141（复核）：`ui.openDispatch`（英雄派遣面板）在 v89.138 退役（并入出征界面）
        → 改开"本境调运"的出征面板（第二城为目标）。 */
     ['派遣（本境调运·出征界面）', '(function(){var st=GAME.state;if(st.cities.length<2)return ui.toast("无第二城");ui.openExpModal({kind:"own",id:st.cities[1].id});})()'],
     ['出征', '(function(){var st=GAME.state;ui.openExpModal({kind:"wild",x:st.cities[0].x+2,y:st.cities[0].y+2});})()'],
@@ -134,7 +134,7 @@ fs.mkdirSync(OUT, { recursive: true });
     ['统计·爵位', 'ui.openPanel()'],
     /* v89.163：指挥战斗清单（两段一门：战斗待指挥 + 行军中的军队）—— 造 1 战斗 + 2 行军再开，
        防"内容变多后纵向溢出"（§3 弹窗不许滚动条）。totalTime 取大值防主循环到点抵达。 */
-    ['指挥战斗（战斗+行军）', '(function(){var st=GAME.state;st.battles=[{id:"AUD163",state:"live",side:"atk",modeId:"raid",target:{name:"荒野·甲"}}];st.marches=[{id:"AUM1",cityId:st.cities[0].id,genId:"",modeId:"raid",target:{kind:"wild",x:1,y:1},tx:1,ty:1,name:"荒野·乙",kind:"wild",army:{yibing:1200},elapsed:252000,totalTime:600000,scheme:null,ops:"assault",cargo:null},{id:"AUM2",cityId:st.cities[0].id,genId:"",modeId:"siege",target:{kind:"fort",x:2,y:2},tx:2,ty:2,name:"黑风寨",kind:"fort",army:{yibing:3000,minfu:200},elapsed:60000,totalTime:600000,scheme:null,ops:"assault",cargo:null}];ui.openBattleList();})()'],
+    ['指挥战斗（战斗+行军）', '(function(){var st=GAME.state;st.battles=[{id:"AUD163",state:"live",side:"atk",modeId:"raid",target:{name:"荒野·甲"}}];st.marches=[{id:"AUM1",cityId:st.cities[0].id,genId:"",modeId:"raid",target:{kind:"wild",x:1,y:1},tx:1,ty:1,name:"荒野·乙",kind:"wild",army:{buxingji:1200},elapsed:252000,totalTime:600000,scheme:null,ops:"assault",cargo:null},{id:"AUM2",cityId:st.cities[0].id,genId:"",modeId:"siege",target:{kind:"fort",x:2,y:2},tx:2,ty:2,name:"黑风寨",kind:"fort",army:{buxingji:3000,banche:200},elapsed:60000,totalTime:600000,scheme:null,ops:"assault",cargo:null}];ui.openBattleList();})()'],
   ];
 
   var rows = [];

@@ -1,7 +1,7 @@
 'use strict';
 /* v89.144 实机验证 A（真浏览器）：需求 2/3/4 —— 军务三处
    ② 每兵种行 [上限][清空]（标题栏无按钮 + 真点一次验证 min 口径）
-   ③ 军队校场扩容独立页签（军务总览右边）
+   ③ 军队练兵场扩容独立页签（军务总览右边）
    ④ 目标下拉：5 行定宽统一 · 默认空 · 选定即 live 刷新 · 换行选择旧行消失
    跑法：node .workbuddy/tools/show/shot_v89144a_march.js  */
 module.paths.unshift('C:/Users/18811/.workbuddy/binaries/node/workspace/node_modules');
@@ -28,7 +28,7 @@ function chk(name, ok, extra) {
     if (!st.map.grid) G.map.generate();
     G.ui.enterGame(); try { G.ui.closeAllModals(); } catch (e) { }
     var c = st.cities[0]; G.ui._cityId = c.id;
-    /* 校场 Lv5（= 出征容量 5 万）+ 兵力两档；再放一块我方野地（让"我方野地"组有目标） */
+    /* 练兵场 Lv5（= 出征容量 5 万）+ 兵力两档；再放一块我方野地（让"我方野地"组有目标） */
     var xc = null;
     c.cells.forEach(function (x) { if (x.build && x.build.id === 'xiaochang') xc = x; });
     if (!xc) {
@@ -45,8 +45,8 @@ function chk(name, ok, extra) {
     G.ui._actPick = null;
   });
 
-  /* ================= ③ 军队校场扩容页签 ================= */
-  console.log('===== ③ 军队校场扩容独立页签 =====');
+  /* ================= ③ 军队练兵场扩容页签 ================= */
+  console.log('===== ③ 军队练兵场扩容独立页签 =====');
   var r3 = await p.evaluate(function () {
     var G = window.GAME;
     G.ui._marchTab = 'expand';
@@ -58,13 +58,13 @@ function chk(name, ok, extra) {
       tabs: tabs,
       hasCap: txt.indexOf('出征容量') >= 0,
       hasJieyue: vc.innerHTML.indexOf('data-action="jieyue-xc"') >= 0,
-      hasTitle: txt.indexOf('军队校场扩容') >= 0,
+      hasTitle: txt.indexOf('军队练兵场扩容') >= 0,
     };
   });
   console.log('  页签条：' + JSON.stringify(r3.tabs));
-  chk('③ 页签「军队校场扩容」排在「军务总览」右边（第 2 位）',
-    r3.tabs.length >= 2 && r3.tabs[1].indexOf('军队校场扩容') >= 0, r3.tabs.join(' / '));
-  chk('③ 该页 = 出征容量 + 节钺 · 校场扩编入口', r3.hasTitle && r3.hasCap && r3.hasJieyue);
+  chk('③ 页签「军队练兵场扩容」排在「军务总览」右边（第 2 位）',
+    r3.tabs.length >= 2 && r3.tabs[1].indexOf('军队练兵场扩容') >= 0, r3.tabs.join(' / '));
+  chk('③ 该页 = 出征容量 + 节钺 · 练兵场扩编入口', r3.hasTitle && r3.hasCap && r3.hasJieyue);
   await p.screenshot({ path: 'E:/Deepseekdb/.workbuddy/shots/v89144-march-expand.png' });
 
   /* ================= ④ 目标下拉 ================= */
@@ -209,7 +209,7 @@ function chk(name, ok, extra) {
     };
   });
   console.log('  标题栏="' + r2a.headText + '" 按钮数=' + r2a.headBtns + ' · 行内 [上限]×' + r2a.nMax + ' [清空]×' + r2a.nZero + '（兵种 ' + r2a.nTroop + '）');
-  console.log('  行内容：yibing=「' + r2a.yibingRow + '」changqiang=「' + r2a.cqRow + '」· 校场容量=' + r2a.cap);
+  console.log('  行内容：yibing=「' + r2a.yibingRow + '」changqiang=「' + r2a.cqRow + '」· 练兵场容量=' + r2a.cap);
   chk('② 标题栏**没有**按钮（两枚全局键已退役）', r2a.headBtns === 0, 'buttons=' + r2a.headBtns);
   chk('② 每个兵种行都有 [上限][清空]（行数 = 兵种数）',
     r2a.nMax === r2a.nTroop && r2a.nZero === r2a.nTroop && r2a.nTroop > 0,

@@ -33,9 +33,9 @@ function row(label, fn) {
 }
 row('城池数', function (x) { return x.final.cities.length; });
 row('总军力', function (x) { return x.final.cities.reduce(function (a, c) { return a + c.army; }, 0); });
-row('人口（四资源仅粮/金/人口均值）', function (x) { return x.final.cities.reduce(function (a, c) { return a + c.pop; }, 0); });
-row('金（城内合计）', function (x) { return fmt(x.final.cities.reduce(function (a, c) { return a + c.gold; }, 0)); });
-row('累计卖金', function (x) { return fmt(x.final.gold.sold); });
+row('幸存者（四资源仅粮/旧币/幸存者均值）', function (x) { return x.final.cities.reduce(function (a, c) { return a + c.pop; }, 0); });
+row('旧币（城内合计）', function (x) { return fmt(x.final.cities.reduce(function (a, c) { return a + c.gold; }, 0)); });
+row('累计卖旧币', function (x) { return fmt(x.final.gold.sold); });
 row('卖金笔数', function (x) { return x.final.gold.sales; });
 row('单笔均额', function (x) { return x.final.gold.sales ? fmt(x.final.gold.sold / x.final.gold.sales) : '0'; });
 row('声望', function (x) { return x.final.rep; });
@@ -49,7 +49,7 @@ row('建筑位（主城）', function (x) { return x.final.cities[0].slots; });
 ap('');
 
 /* ---------- 2. 逐年曲线（每 3 游戏年） ---------- */
-ap('## 2. 逐年曲线（军/金/建筑等级和/将领等级和）');
+ap('## 2. 逐年曲线（军/旧币/建筑等级和/将领等级和）');
 ap('| 年 | 1× | 120× | 600× |');
 ap('|---|---|---|---|');
 [1, 3, 6, 9, 12, 15, 18.75].forEach(function (Y) {
@@ -58,7 +58,7 @@ ap('|---|---|---|---|');
     D[t].snaps.forEach(function (s) { if (best === null || Math.abs(s.y - Y) < Math.abs(best.y - Y)) best = s; });
     if (!best) return '-';
     var bl = 0; for (var k in (best.bl || {})) bl += best.bl[k];
-    return '军' + Math.round(best.army) + ' 金' + fmt((best.res || {}).gold)
+    return '军' + Math.round(best.army) + ' 旧币' + fmt((best.res || {}).gold)
       + ' 建' + bl + ' 将Lv' + (best.genLv || 0);
   });
   ap('| ' + Y + 'y | ' + cells.join(' | ') + ' |');
@@ -66,11 +66,11 @@ ap('|---|---|---|---|');
 ap('');
 
 /* ---------- 3. 1×：市场折价行为 ---------- */
-ap('## 3. 1× 卖金行为（物多价贱实测）');
+ap('## 3. 1× 卖旧币行为（物多价贱实测）');
 var sells = [];
 D.rushA_1x.events.forEach(function (o) {
   if (o.msg && o.msg.indexOf('市易') >= 0) {
-    var m = /售出 ([\d.]+)(万?)\s*得金 ([\d.]+)([k万]?)。今日已售 ([\d.]+)(万?)\s*金 · 汇率 ×([\d.]+)/.exec(o.msg);
+    var m = /售出 ([\d.]+)(万?)\s*得旧币 ([\d.]+)([k万]?)。今日已售 ([\d.]+)(万?)\s*旧币 · 汇率 ×([\d.]+)/.exec(o.msg);
     if (m) {
       var amt = Number(m[1]) * (m[2] === '万' ? 1e4 : 1);
       var got = Number(m[3]) * (m[4] === 'k' ? 1e3 : (m[4] === '万' ? 1e4 : 1));
@@ -79,7 +79,7 @@ D.rushA_1x.events.forEach(function (o) {
   }
 });
 ap('总笔数 ' + sells.length + ' · 累计卖 ' + fmt(sells.reduce(function (a, x) { return a + x.amt; }, 0))
-  + ' 单位 · 得金 ' + fmt(sells.reduce(function (a, x) { return a + x.got; }, 0)));
+  + ' 单位 · 得旧币 ' + fmt(sells.reduce(function (a, x) { return a + x.got; }, 0)));
 var buckets = { '贴保价(≥0.9)': 0, '(0.5~0.9)': 0, '(0.2~0.5)': 0, '触底(≤0.2)': 0 };
 sells.forEach(function (x) {
   if (x.rate >= 0.9) buckets['贴保价(≥0.9)']++; else if (x.rate >= 0.5) buckets['(0.5~0.9)']++;

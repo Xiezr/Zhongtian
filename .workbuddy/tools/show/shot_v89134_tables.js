@@ -3,7 +3,7 @@
  * 本轮是重构型交付（行为必须零变化）——实机验证三件事：
  *   ① 页面加载零 JS 错误（控制台错误全抓）；
  *   ② 长跑 2 游戏日（快进 tickOnce ×2×86400/scale 折算）——
- *      资源推进不 NaN / 人口健康 / 无异常中断；
+ *      资源推进不 NaN / 幸存者健康 / 无异常中断；
  *   ③ 可见面照常：资源行 5 行（RES_ORDER 驱动）、出征页「进入军队行动」在（exp-act-go 存活）。
  * 截图：v89134-main.png（城内）/ v89134-act.png（出征页）
  * 跑法：node .workbuddy/tools/show/shot_v89134_tables.js
@@ -59,7 +59,7 @@ function chk(name, cond, extra) {
   });
   chk('长跑无异常', !run.err, run.err || (run.steps + ' 步'));
   chk('资源推进不 NaN / 有限', run && run.bad === false, run && run.sample);
-  chk('至少一类资源有增长（产出链在转）', !!(run && run.grew), '人口 ' + (run && run.pop0) + '→' + (run && run.pop1));
+  chk('至少一类资源有增长（产出链在转）', !!(run && run.grew), '幸存者 ' + (run && run.pop0) + '→' + (run && run.pop1));
 
   /* ── ② 城内截图 + 资源行量测 ── */
   var v1 = await p.evaluate(function () {

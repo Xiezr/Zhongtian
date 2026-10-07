@@ -55,7 +55,7 @@ var sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms);
     r1.ids.slice(0, 4).join(',') + ' …');
   chk('①c 头只写「⚔ 驻军」· 无箭头 · 无 data-action', r1.head.indexOf('驻军') >= 0 && !r1.arrow && !r1.hasAction, r1.head.trim());
 
-  /* ══ ② 颜色：有兵金 / 零行灰 ══ */
+  /* ══ ② 颜色：有兵旧币 / 零行灰 ══ */
   var r2 = await p.evaluate(function () {
     var seg = function (id) { return document.querySelector('#garrison-bar .gb-row[data-troop="' + id + '"]'); };
     var gold = getComputedStyle(seg('yibing').querySelector('.gb-c')).color;

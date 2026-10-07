@@ -50,7 +50,7 @@ function chk(name, cond, extra) {
   console.log('  浮层文本：' + tip.text);
   chk('① 悬停浮层已弹出', tip.on, 'on=' + tip.on);
   chk('①a 白字画**原始值**：浮层含 体力 600（表值）', tip.text.indexOf('600') >= 0, tip.text.slice(0, 80));
-  chk('①b 金/青增量在册：浮层含 +480（= 600 × 80%）', tip.text.indexOf('+480') >= 0, '');
+  chk('①b 旧币/青增量在册：浮层含 +480（= 600 × 80%）', tip.text.indexOf('+480') >= 0, '');
   chk('①c 脚注写"对原始值线性叠加 · 本件共 +80%"',
     tip.text.indexOf('对原始值线性叠加') >= 0 && tip.text.indexOf('本件共 +80%') >= 0, '');
   var tipRect = await p.evaluate(function () {

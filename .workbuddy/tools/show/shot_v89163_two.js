@@ -1,7 +1,7 @@
 /* v89.163 实机验证（真浏览器）：
    ① 底栏「⚔ 指挥战斗」清单 = ⚔ 战斗待指挥 + 🛫 行军中的军队（两段一门）+ 图 v89163-war-list.png
    ② 清单内点「召回」→ 原地重绘（不跳行军队列弹窗 · 行数 2→1）
-   ③ 募兵面板兵种卡片悬停「单兵耗时」= 新值（弓箭手 1分 / 义兵 10秒）+ 图 v89163-train-time.png
+   ③ 募兵面板兵种卡片悬停「单兵耗时」= 新值（弓箭手 1分 / 步行机 10秒）+ 图 v89163-train-time.png
    运行：NODE_PATH="C:/Users/18811/.workbuddy/binaries/node/workspace/node_modules" node .workbuddy/tools/show/shot_v89163_two.js */
 module.paths.unshift('C:/Users/18811/.workbuddy/binaries/node/workspace/node_modules');
 var pw = require('playwright-core');
@@ -143,15 +143,15 @@ function chk(name, cond, extra) {
   } else {
     chk('募兵面板弓箭手卡片存在', false);
   }
-  /* 义兵（junying 1 级可募）也在场：顺带读它的耗时 */
+  /* 步行机（junying 1 级可募）也在场：顺带读它的耗时 */
   var r6 = await p.evaluate(function () {
     var card = document.querySelector('[data-troop="yibing"]');
     if (!card) return null;
     var tip = card.querySelector('.tcard-tip');
     return tip ? (tip.textContent || '').replace(/\s+/g, ' ') : '';
   });
-  console.log('  义兵卡 tip = ' + (r6 || '').slice(0, 110));
-  chk('★ 义兵单兵耗时 = 10秒（新值）', !!r6 && r6.indexOf('单兵耗时 10秒') >= 0);
+  console.log('  步行机卡 tip = ' + (r6 || '').slice(0, 110));
+  chk('★ 步行机单兵耗时 = 10秒（新值）', !!r6 && r6.indexOf('单兵耗时 10秒') >= 0);
 
   await p.evaluate(function () { window.GAME.ui.closeAllModals(); });
 

@@ -1,4 +1,4 @@
-/* v89.157 实机：① 公文系统页（徽章+铺满）② 将领条单行 ③ 城墙门槛 ④ 逐回合弹窗 ⑤ 地块 4×3 */
+/* v89.157 实机：① 公文系统页（徽章+铺满）② 将领条单行 ③ 围墙门槛 ④ 逐回合弹窗 ⑤ 地块 4×3 */
 const pw = require('playwright-core');
 const EXE = 'C:/Users/18811/AppData/Local/ms-playwright/chromium-1217/chrome-win64/chrome.exe';
 const OUT = 'E:/Deepseekdb/.workbuddy/shots/';
@@ -88,13 +88,13 @@ function chk(name, ok, extra) {
     'barW=' + (single[0] ? single[0].barW : -1));
   await p.locator('.gen-split').screenshot({ path: OUT + 'v89157-gen-rows.png' });
 
-  /* ---------- ③ 城墙门槛 ---------- */
-  console.log('===== ③ 官府 · 城墙要求 =====');
+  /* ---------- ③ 围墙门槛 ---------- */
+  console.log('===== ③ 官府 · 围墙要求 =====');
   const r3 = await p.evaluate(function () {
     var G = window.GAME;
     var c = G.currentCity();
     G.ui._cityId = c.id;
-    /* 官府抬到 11、无墙 → 面板应显示"升 Lv12 需城墙 ≥ Lv10（当前 Lv0 ✗）" */
+    /* 官府抬到 11、无墙 → 面板应显示"升 Lv12 需围墙 ≥ Lv10（当前 Lv0 ✗）" */
     var gi = -1;
     c.cells.forEach(function (x, i) { if (gi < 0 && x.build && x.build.id === 'guanfu') gi = i; });
     c.cells[gi].build.lvl = 11;
@@ -103,11 +103,11 @@ function chk(name, ok, extra) {
     G.ui.openBuildModal(gi);
     var root = document.getElementById('modal-root');
     var txt = root.textContent || '';
-    var m = txt.match(/城墙要求[^）]*（[^）]*）/);
-    return { gi: gi, row: m ? m[0].slice(0, 80) : (txt.indexOf('城墙要求') >= 0 ? '有行无文' : '无行'),
-      hasRow: txt.indexOf('城墙要求') >= 0, txt: m ? m[0] : '' };
+    var m = txt.match(/围墙要求[^）]*（[^）]*）/);
+    return { gi: gi, row: m ? m[0].slice(0, 80) : (txt.indexOf('围墙要求') >= 0 ? '有行无文' : '无行'),
+      hasRow: txt.indexOf('围墙要求') >= 0, txt: m ? m[0] : '' };
   });
-  chk('官府面板出「城墙要求」行（含所需/当前/✗）', r3.hasRow && r3.txt.indexOf('需城墙') >= 0 && r3.txt.indexOf('✗') >= 0, r3.txt);
+  chk('官府面板出「围墙要求」行（含所需/当前/✗）', r3.hasRow && r3.txt.indexOf('需围墙') >= 0 && r3.txt.indexOf('✗') >= 0, r3.txt);
   { /* live 面板每秒重绘 → 元素截图会 detached；用整页截图 + clip（一次性取坐标） */
     const box = await p.evaluate(function () {
       var el = document.querySelector('#modal-root .inner-panel');
@@ -116,7 +116,7 @@ function chk(name, ok, extra) {
     });
     await p.screenshot({ path: OUT + 'v89157-wall-req.png', clip: { x: box.x, y: box.y, width: box.w, height: box.h } });
   }
-  /* 真点升级 → 被拦（toast 指向城墙）；给墙 → 放行 */
+  /* 真点升级 → 被拦（toast 指向围墙）；给墙 → 放行 */
   const r3b = await p.evaluate(function () {
     var G = window.GAME;
     var c = G.currentCity();
@@ -140,7 +140,7 @@ function chk(name, ok, extra) {
     var toast = (document.getElementById('toast') || {}).textContent || '';
     return { toast: toast, hasBtn: !!t };
   });
-  chk('无墙点升级 → 被拦（提示含「城墙」）', (r3b.toast0 || r3c.toast || '').indexOf('城墙') >= 0,
+  chk('无墙点升级 → 被拦（提示含「围墙」）', (r3b.toast0 || r3c.toast || '').indexOf('围墙') >= 0,
     (r3b.toast0 || r3c.toast || '').slice(0, 60));
   const r3d = await p.evaluate(function () {
     var G = window.GAME;
@@ -162,7 +162,7 @@ function chk(name, ok, extra) {
     for (var i = 1; i <= 14; i++) {
       rl.push({ r: i, a: 200000 - i * 4000, d: 120000 - i * 3000, gap: i < 6 ? 1200 - i * 150 : 0,
         events: (i % 5 === 0) ? [] : [
-          { kind: 'attack', side: 'atk', id: 0, name: '长枪兵', target: '弓兵', kill: 120 + i * 7 },
+          { kind: 'attack', side: 'atk', id: 0, name: '步行机', target: '弓兵', kill: 120 + i * 7 },
           { kind: 'counter', side: 'd', targetId: 0, name: '弓兵', kill: 30 + i }
         ] });
     }
@@ -184,7 +184,7 @@ function chk(name, ok, extra) {
   });
   chk('逐回合弹窗：每页 12 回合 + 翻页条 + 无溢出', r4.n === 12 && r4.pager && r4.overflow <= 0,
     'n=' + r4.n + ' overflow=' + r4.overflow);
-  chk('首行 = 第1回合（我 X · 敌 Y）：事件', r4.head.indexOf('第1回合') === 0 && r4.head.indexOf('长枪兵→弓兵') > 0, r4.head);
+  chk('首行 = 第1回合（我 X · 敌 Y）：事件', r4.head.indexOf('第1回合') === 0 && r4.head.indexOf('步行机→弓兵') > 0, r4.head);
   {
     const box2 = await p.evaluate(function () {
       var el = document.querySelector('#modal-root .inner-panel');
@@ -199,7 +199,7 @@ function chk(name, ok, extra) {
   await p.evaluate(function () {
     var G = window.GAME;
     var c = G.currentCity();
-    /* 官府复位到 Lv1（前面城墙用例把官府抬到 11 了 —— extCap 跟官府走） */
+    /* 官府复位到 Lv1（前面围墙用例把官府抬到 11 了 —— extCap 跟官府走） */
     c.cells.forEach(function (x) { if (x.build && x.build.id === 'guanfu') x.build.lvl = 1; });
     G.wallSlotOf(c).build = null;
     G.state.queues.build = [];

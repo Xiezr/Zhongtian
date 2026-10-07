@@ -41,7 +41,7 @@ var pw = require('playwright-core');
     G.ui.setView('marches');
     return { cap: G.captivesTotalOf(), pop: G.captivePopOf ? G.captivePopOf(st.captives) : 0 };
   });
-  console.log('boot: 俘虏 ' + boot.cap + ' 人 · 折算人口 ' + boot.pop);
+  console.log('boot: 俘虏 ' + boot.cap + ' 人 · 折算幸存者 ' + boot.pop);
 
   async function shot(name, expr, probe) {
     await page.evaluate(function (e) {
@@ -69,7 +69,7 @@ var pw = require('playwright-core');
     '(function(){ ' + PC +
     'var img=(v?v.querySelectorAll(".camp-card img").length:-1);' +
     'return {hasCamp:t.indexOf("俘虏营")>=0,hasPlain:t.indexOf("不限量")>=0,' +
-    'totalPop:t.indexOf("人口 +")>=0,campImgs:img}; })()');
+    'totalPop:t.indexOf("幸存者 +")>=0,campImgs:img}; })()');
 
   var r2 = await shot('v89118-auto-invasion.png',
     '(function(){ ui._autoSel = "invasion"; ui.setView("auto"); })()',

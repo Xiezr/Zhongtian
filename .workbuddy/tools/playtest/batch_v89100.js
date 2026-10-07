@@ -46,7 +46,7 @@ var out = [];
 function ap(x) { out.push(x); }
 ap('# v89.100 批量对照（4 seed × rush / loot / lootx）');
 ap('');
-ap('| seed | 模式 | 城 | 军力 | 建筑和 | 金 | 顶将 | 书 | 卖资源 | 寄售 | 爵 | 攻胜 | 错 |');
+ap('| seed | 模式 | 城 | 军力 | 建筑和 | 旧币 | 顶将 | 书 | 卖资源 | 寄售 | 爵 | 攻胜 | 错 |');
 ap('|---|---|---|---|---|---|---|---|---|---|---|---|---|');
 rows.forEach(function (r) {
   ap('| ' + r.seed + ' | ' + r.mode + ' | ' + r.cities + ' | ' + r.army + ' | ' + r.bl + ' | ' + r.gold
@@ -64,7 +64,7 @@ ap('## 均值对照');
 ap('');
 ap('| 指标 | rush | loot（真卖） | lootx（空转） | loot / lootx |');
 ap('|---|---|---|---|---|');
-[['army', '军力'], ['cities', '城池'], ['bl', '建筑和'], ['topLv', '顶将等级'], ['books', '经验书'], ['sold', '卖资源金'], ['gold', '终局金']].forEach(function (p) {
+[['army', '军力'], ['cities', '城池'], ['bl', '建筑和'], ['topLv', '顶将等级'], ['books', '经验书'], ['sold', '卖资源旧币'], ['gold', '终局旧币']].forEach(function (p) {
   var a = avg('rush', p[0]), b = avg('loot', p[0]), c = avg('lootx', p[0]);
   var ratio = c > 0 ? (b / c).toFixed(2) : '—';
   ap('| ' + p[1] + ' | ' + Math.round(a * 10) / 10 + ' | ' + Math.round(b * 10) / 10 + ' | ' + Math.round(c * 10) / 10 + ' | **' + ratio + '** |');
@@ -72,7 +72,7 @@ ap('|---|---|---|---|---|');
 ap('');
 ap('## 配对对比（loot − lootx，同 seed）');
 ap('');
-ap('| seed | 军力 loot | 军力 lootx | Δ军力 | 寄售金 | 书 loot/lootx |');
+ap('| seed | 军力 loot | 军力 lootx | Δ军力 | 寄售旧币 | 书 loot/lootx |');
 ap('|---|---|---|---|---|---|');
 SEEDS.forEach(function (s) {
   var l = rows.filter(function (r) { return r.seed === s && r.mode === 'loot'; })[0];

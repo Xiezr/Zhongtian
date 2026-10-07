@@ -10,34 +10,34 @@
 <style>
   :root {
     /* ============================================================
-     * 配色（v16 改进）
-     * 原为「深绿棕」底色（#14161c / #1c1f27），黄绿偏色重、对比刺眼，久看费眼。
-     * 改为**深墨蓝灰**基调：降饱和、去黄绿偏色，文字改中性浅灰，对比更柔和。
-     * 金色作为唯一的暖色点缀保留。
+     * 配色（v90.1 · 玄金 · 冷墨玉）
+     * 老板 1：「墨玉和夜阑色系重合有点高」——墨玉改为**冷蓝灰**（原暖炭），
+     * 与暖近黑的夜阑拉开；保留柔金作暖点缀（冷底 + 暖金 = 高级）。
      * ============================================================ */
-    --bg-dark: #1e222b;
-    --panel-bg: #272c37;
-    --wood: #574530;
-    --wood-light: #7d6450;
-    --wood-dark: #3a3028;
-    --gold: #cfa856;
+    --bg-dark: #252b33;
+    --panel-bg: #30363f;
+    --wood: #3f4a56;
+    --wood-light: #55616f;
+    --wood-dark: #2b333d;
+    --gold: #c8a869;
     /* v41（需求 4）：公文新战报提醒 —— 图标闪黄的底色与同色系深字 */
     --alert-gold: #ffd84d; --alert-ink: #3a2c06;
-    --gold-light: #edd08a;
-    --gold-dark: #8a6a2c;
-    --parchment: #efe6cf;
-    --parchment-dark: #d9caa8;
+    --gold-light: #e6cf9a;
+    --gold-dark: #8a6f3c;
+    --parchment: #f0e8d6;
+    --parchment-dark: #dccdb2;
     /* v89.136（老板 3）：战斗播报里"我方动作"片段的纯白（与暖白 --parchment 区分开） */
     --white: #fff;
-    --teal: #2f6b5a;
-    --teal-light: #3e8571;
-    --red: #8a2b1f;
-    --red-light: #b04a35;
-    --text: #eae7e0;
-    --text-dim: #a8a7af;
-    --text-dark: #2a2416;
-    --green-ok: #7bc96f;
-    --blue-info: #6fb7e0;
+    --teal: #3e6b5e;
+    --teal-light: #4f8574;
+    --red: #a8564a;
+    --red-light: #c07a72;
+    --text: #e6e9ee;
+    --text-dim: #9aa2ad;
+    --text-dark: #2a2318;
+    --on-block: #fff;              /* v89.229：名称色块上的文字（色块四主题均为中深色 → 恒用白 · 对比 ≥4.5） */
+    --green-ok: #8bb08a;
+    --blue-info: #88aecb;
 
     /* ============================================================
      * 排版令牌（v21）——**全界面唯一字号来源**
@@ -69,8 +69,8 @@
     --fs-body: 13px;        /* 正文：默认文字 */
     --fs-sub: 12px;         /* 次要：说明/备注/表头（备注族共享定义读它） */
     --fs-cap: 11px;         /* 极小：角标/脚注（信息密度最高的那一档） */
-    /* v89.188（老板 1/2/4）：将领界面「名称区 / 资质徽章列」定宽 —— 解雇与晋升按钮的
-       横向基准（两者垂直对齐、切换将领恒定）。取 96px = 天授徽章实测 86.6px + 余量；
+    /* v89.188（老板 1/2/4）：英雄界面「名称区 / 资质徽章列」定宽 —— 解雇与晋升按钮的
+       横向基准（两者垂直对齐、切换英雄恒定）。取 96px = 天启体徽章实测 86.6px + 余量；
        列表侧另有 .grow-nm 的 5em（老板点名的「5 个中文字符位」）。 */
     --gp-namew: 96px;
   /* v89.190（老板 1）：「解雇和晋升……往右边移动 10 个字符」——按钮列相对
@@ -92,8 +92,8 @@
     --isz-lg: 34px;         /* 大图标（兵种卡图标位） */
     --isz-av: 40px;         /* 头像（顶栏领主） */
     --isz-av-lg: 84px;      /* 大头像（创角预览） */
-    --isz-em-lg: 2.2em;     /* em 族（随容器字号缩放）：集水场/器物大图标 */
-    --isz-em-md: 1.6em;     /* em 族：集水场种子位 */
+    --isz-em-lg: 2.2em;     /* em 族（随容器字号缩放）：净化厂/器物大图标 */
+    --isz-em-md: 1.6em;     /* em 族：实验室研发行（.farm-proj .farm-ic） */
     --isz-xl: 60px;         /* 特大图标（一统天下的奖杯）：单次使用，但也得有名字 */
     /* ---- v89.117：**行高四档** ----
        收敛前 26 种值（1.05~2 之间几乎每个小数都有）。口径：
@@ -140,9 +140,9 @@
     /* v89.105：以下三元组由上面的命名色自动派生（alpha 合成的唯一来源） */
     --alert-gold-rgb: 255,216,77;
     --amber-rgb: 224,168,60;
-    --blue-info-rgb: 111,183,224;
+    --blue-info-rgb: 136,174,203;
     --cinnabar-rgb: 168,58,44;
-    --green-ok-rgb: 123,201,111;
+    --green-ok-rgb: 139,176,138;
     --hero-tag-rgb: 230,184,0;
     --q2-rgb: 111,191,122;
     --q3-rgb: 90,160,216;
@@ -151,7 +151,7 @@
     --rank-liang-rgb: 95,191,106;
     --rank-ming-rgb: 176,111,216;
     --rank-ying-rgb: 74,155,224;
-    --red-light-rgb: 176,74,53;
+    --red-light-rgb: 192,122,114;
     --slab-0-rgb: 16,20,26;
     --strip-troop-rgb: 216,176,78;
     --tag-war-rgb: 184,65,47;
@@ -246,36 +246,46 @@
      * ============================================================ */
     --sh-rgb: 0,0,0;              /* 阴影/暗面基色 */
     --hl-rgb: 255,255,255;        /* 高光/描边基色 */
-    --gold-rgb: 201,162,75;       /* 金色线条基色（浅底上要加深） */
-    --bg-2: #232833;              /* 页底渐变中段 */
-    --bg-3: #1a1e26;              /* 页底渐变末段 / 底部固定条 */
-    --surface-2: #343b49;         /* 卡片/格子顶（原 #262931） */
-    --surface-3: #292f3a;         /* 卡片/格子底（原 #1c1f26） */
-    --surface-2b: #3c4250;        /* 次级卡顶（原 #31343d） */
-    --surface-2c: #353b47;        /* 次级卡中（原 #2a2e37） */
-    --surface-3b: #262b34;        /* 网格底（原 #1e2129） */
-    --slab-1: #22262f;            /* 输入框/内槽/滚动条轨（原 #1a1c22） */
-    --slab-2: #2f333e;            /* 内槽亮档 */
-    --slab-3: #31353f;            /* 深卡（原 #23262e） */
-    --btn-face-1: #4a4a3c;        /* 木钮顶（原 #3a3a2c） */
-    --btn-face-2: #33363f;        /* 木钮底（原 #252832） */
-    --btn-hi-1: #5c5c4a;          /* 木钮悬停顶（原 #4c4c3a） */
-    --btn-hi-2: #414450;          /* 木钮悬停底（原 #33332a） */
+    --gold-rgb: 200,168,105;      /* 金色线条基色（浅底上要加深） */
+    --bg-2: #2b323b;              /* 页底渐变中段 */
+    --bg-3: #1e232a;              /* 页底渐变末段 / 底部固定条 */
+    --surface-2: #3a414b;         /* 卡片/格子顶（原 #262931） */
+    --surface-3: #30363f;         /* 卡片/格子底（原 #1c1f26） */
+    --surface-2b: #434b57;        /* 次级卡顶（原 #31343d） */
+    --surface-2c: #3a414b;        /* 次级卡中（原 #2a2e37） */
+    --surface-3b: #272d35;        /* 网格底（原 #1e2129） */
+    --slab-1: #272d35;            /* 输入框/内槽/滚动条轨（原 #1a1c22） */
+    --slab-2: #343c46;            /* 内槽亮档 */
+    --slab-3: #363d47;            /* 深卡（原 #23262e） */
+    --btn-face-1: #3f4b58;        /* 木钮顶（原 #3a3a2c） */
+    --btn-face-2: #323840;        /* 木钮底（原 #252832） */
+    --btn-hi-1: #4c5a68;          /* 木钮悬停顶（原 #4c4c3a） */
+    --btn-hi-2: #3e4750;          /* 木钮悬停底（原 #33332a） */
     --scrim: rgba(var(--sh-rgb),.62);     /* 弹窗遮罩 */
 
     /* ---- 地面与野地色（v39 · 需求 2/3）----
        地块不再逐格画渐变与花纹，改铺**纯色**；颜色随主题走：
        深色主题配偏暗的草绿（亮草绿在暗底上过于跳），
        浅色主题配浅草绿。野地四色就是老板点名的
-       「集水场偏黄 / 伐木偏青绿 / 采石偏灰 / 铁矿偏棕黑」。 */
-    --ground: #8b9a78;            /* 城内地面（一整片） */
+       「净化厂偏黄 / 温室偏青绿 / 电站偏灰 / 熔炉偏棕黑」。 */
+    --ground: #a8a08b;            /* 城内地面（一整片）· v89.229 浅废土沙色（原灰绿 #8b9a78） */
     --ground-busy: #a09580;       /* 施工工地（土色） */
-    --ground-gov: #a59b80;        /* 官署格 */
-    --ground-sel: #9caa86;        /* 选中格 */
-    --res-farm: #c2b45e;          /* 集水场 · 麦黄 */
-    --res-forest: #6b8a5c;        /* 林地 · 青绿 */
-    --res-quarry: #a8a495;        /* 采石 · 石灰 */
-    --res-mine: #8a7052;          /* 矿场 · 棕黑 */
+    /* v89.225：建筑地块按"族"染色（族旗退役 → 族色编码落在地块底色上；同类型建筑同色）。
+       值 = data.js DATA.SERIES[].plot 在默认主题的渲染色（smoke §225 逐值对齐）；
+       其余三主题（silk / bamboo / night）各有对应一版（见下方主题块）。
+       顺带清退两个零消费死变量：--ground-gov（v39 官署格，被族色取代）· --ground-sel。 */
+    /* v89.229（老板：「去掉城内地块颜色，统一废土底色（浅一点）…建筑名称的文字色块行高调高，
+       并以此文字色块区分各系建筑。目前各系颜色晦暗，不好区分」）——**族色编码从"地块染色"
+       迁到"名称文字色块"**：地块统一浅废土底（上方 --ground），色块 = 小面积高对比，
+       因此回到鲜明档（S ≈ 40~55 / L ≈ 34~42；v89.227 的降饱和是为"大面积不刺眼"）。
+       实测：族间 ΔE00 ≥23（门槛 15）· 与浅废土地面 ≥15（门槛 10）· 白字对比 ≥4.5（WCAG AA）。
+       值 = data.js DATA.SERIES[].plot 在默认主题的渲染色（smoke §229 逐字节对齐）；
+       其余三主题（silk/bamboo/night）各有对应一版（见下方主题块）。 */
+    --ser-gov: #866f27; --ser-live: #914f3b; --ser-mil: #405a96; --ser-ops: #378172;
+    --res-farm: #c2b45e;          /* 净化厂 · 麦黄（v89.229 改名） */
+    --res-forest: #6b8a5c;        /* 水培温室 · 青绿 */
+    --res-quarry: #a8a495;        /* 发电站 · 石灰 */
+    --res-mine: #8a7052;          /* 电弧熔炉 · 棕黑 */
   }
 
   /* ============================================================
@@ -288,21 +298,21 @@
    *   · 金/绿/蓝/品质色四组在浅底上全部加深，否则原值会「亮得发飘」；
    *   · 阴影基色改褐灰、描边基色改深褐，避免白线在浅底上隐形。
    * ============================================================ */
-  /* ---- 素绢：暖米黄浅色（长玩首选）---- */
+  /* ---- 素绢：暖米低饱和浅色（长玩首选 · v90.1 降亮去晃眼）---- */
   html[data-theme="silk"] {
-    --bg-dark: #e6e2d8; --bg-2: #ded9cd; --bg-3: #d3cec4;
-    --panel-bg: #f4f1e9;
-    --surface-2: #fbfaf6; --surface-3: #efece4;
-    --surface-2b: #f8f6ef; --surface-2c: #f0ede5; --surface-3b: #e8e4da;
-    --slab-1: #e6e2d8; --slab-2: #ddd8cb; --slab-3: #e9e5db;
-    --btn-face-1: #d6c8a6; --btn-face-2: #c2b18c;
-    --btn-hi-1: #e2d5b4; --btn-hi-2: #cdbc98;
-    --wood: #ab8760; --wood-light: #c9a47c; --wood-dark: #7d6144;
-    --gold: #8a6516; --gold-light: #a1751a; --gold-dark: #6b4e10;
-    --text: #3b3325; --text-dim: #6b6353; --text-strong: #2b2418;
-    --green-ok: #3f8a3a; --blue-info: #2a6d9a; --warn: #a87400; --amber: #9a7018;
-    --red: #9a2f20; --red-light: #8a2b1f;
-    --parchment: #fbf7ec; --parchment-dark: #e6dcc4;
+    --bg-dark: #dcd7cd; --bg-2: #d5d0c5; --bg-3: #cbc5b8;
+    --panel-bg: #eae6de;
+    --surface-2: #f1eee8; --surface-3: #e4e0d6;
+    --surface-2b: #eeeae3; --surface-2c: #e7e3da; --surface-3b: #ddd8cc;
+    --slab-1: #dcd7cd; --slab-2: #d0cabd; --slab-3: #e0dbd0;
+    --btn-face-1: #cbbd9c; --btn-face-2: #b8a783;
+    --btn-hi-1: #d8caab; --btn-hi-2: #c3b28f;
+    --wood: #a2845b; --wood-light: #bf9d74; --wood-dark: #776040;
+    --gold: #94773b; --gold-light: #a98a48; --gold-dark: #6e5828;
+    --text: #443e38; --text-dim: #797266; --text-strong: #302b24;
+    --green-ok: #5a8550; --blue-info: #587a8b; --warn: #a87400; --amber: #9a7018;
+    --red: #a24e3b; --red-light: #8a4434;
+    --parchment: #f5f1e7; --parchment-dark: #e0d6be;
     --q1: #8a857a; --q2: #3f7f48; --q3: #2f6f9a; --q4: #9a7018;
     --rank-fan: #7a7a6c; --rank-liang: #3f8a45; --rank-ying: #2f6f9a; --rank-ming: #7a4a9a;
     --cinnabar: #9a3428; --hero-tag: #a87400; --beauty-tag: #a04468; --beauty: #a04468;
@@ -310,28 +320,29 @@
     --tag-build: #4f7a38; --tag-govern: #8a7418; --tag-forge: #95683a;
     --wonder: #7a53b8; --wonder-rgb: 122,83,184;
     --strip-troop: #b08a2c; --strip-gap: #cdc4ae;
-    --sh-rgb: 96,79,50; --hl-rgb: 92,76,46; --gold-rgb: 138,101,22;
+    --sh-rgb: 96,79,50; --hl-rgb: 92,76,46; --gold-rgb: 148,119,59;
     --scrim: rgba(78,64,40,.42);
     --line: rgba(var(--hl-rgb),.16); --line-strong: rgba(var(--hl-rgb),.28);
     --sep-gold: rgba(var(--gold-rgb),.30);
-    --ground: #c6cbb3; --ground-busy: #cdc3ae; --ground-gov: #cbc5b2; --ground-sel: #c8cfb8;
+    --ground: #d3ccb6; --ground-busy: #cdc3ae;      /* v89.229：浅废土沙（原 #c6cbb3 绿灰） */
+    --ser-gov: #897024; --ser-live: #904c37; --ser-mil: #3d5794; --ser-ops: #347f70;
     --res-farm: #ded08a; --res-forest: #9dba9c; --res-quarry: #c9c9c0; --res-mine: #b0a396;
   }
-  /* ---- 青竹：浅青灰绿（低对比、偏冷）---- */
+  /* ---- 青竹：暖调微绿浅色（低对比、耐看 · v90.1 降亮去晃眼）---- */
   html[data-theme="bamboo"] {
-    --bg-dark: #dde4e2; --bg-2: #d5dedb; --bg-3: #cad4d1;
-    --panel-bg: #eaf0ee;
-    --surface-2: #f6faf9; --surface-3: #e7efed;
-    --surface-2b: #f0f6f5; --surface-2c: #e8f0ee; --surface-3b: #dfe8e6;
-    --slab-1: #dde5e3; --slab-2: #d3dcd9; --slab-3: #e1eae8;
-    --btn-face-1: #c2cfba; --btn-face-2: #adbba6;
-    --btn-hi-1: #cfdac7; --btn-hi-2: #b9c6b2;
-    --wood: #8e7a5a; --wood-light: #ab9673; --wood-dark: #6b5b40;
-    --gold: #7d6a1c; --gold-light: #947c1e; --gold-dark: #5f5010;
-    --text: #2c3830; --text-dim: #55605c; --text-strong: #1f2a22;
-    --green-ok: #357a3a; --blue-info: #26688f; --warn: #966c00; --amber: #8a6818;
-    --red: #8f2c1e; --red-light: #7d271b;
-    --parchment: #f7fbf6; --parchment-dark: #dde7dc;
+    --bg-dark: #d9dacf; --bg-2: #d2d4c7; --bg-3: #c6c9ba;
+    --panel-bg: #e6e8df;
+    --surface-2: #eef0e8; --surface-3: #e0e3d8;
+    --surface-2b: #eaede3; --surface-2c: #e2e5da; --surface-3b: #d8dbcf;
+    --slab-1: #d9dacf; --slab-2: #ccd0c2; --slab-3: #dde0d5;
+    --btn-face-1: #c2c7b2; --btn-face-2: #aeb49e;
+    --btn-hi-1: #ced3bf; --btn-hi-2: #babfab;
+    --wood: #8a7453; --wood-light: #a68d6b; --wood-dark: #66543a;
+    --gold: #7c672e; --gold-light: #947e3a; --gold-dark: #5c4b1e;
+    --text: #313830; --text-dim: #5b6056; --text-strong: #212820;
+    --green-ok: #4a8042; --blue-info: #446f7a; --warn: #966c00; --amber: #8a6818;
+    --red: #944637; --red-light: #843f30;
+    --parchment: #f4f5ec; --parchment-dark: #dadfcf;
     --q1: #7d857f; --q2: #3a7a45; --q3: #2c6b95; --q4: #8f6a18;
     --rank-fan: #71807a; --rank-liang: #3a8442; --rank-ying: #2c6b95; --rank-ming: #6f469a;
     --cinnabar: #8f3226; --hero-tag: #966c00; --beauty-tag: #96436a; --beauty: #96436a;
@@ -339,30 +350,32 @@
     --tag-build: #467334; --tag-govern: #7d6c14; --tag-forge: #8a6238;
     --wonder: #6f4aa8; --wonder-rgb: 111,74,168;
     --strip-troop: #9c7d2a; --strip-gap: #c2cdc0;
-    --sh-rgb: 74,92,76; --hl-rgb: 62,84,66; --gold-rgb: 125,106,28;
-    --scrim: rgba(58,74,60,.42);
+    --sh-rgb: 80,86,64; --hl-rgb: 70,80,58; --gold-rgb: 124,103,46;
+    --scrim: rgba(64,72,50,.42);
     --line: rgba(var(--hl-rgb),.18); --line-strong: rgba(var(--hl-rgb),.30);
     --sep-gold: rgba(var(--gold-rgb),.32);
-    --ground: #c2ccbc; --ground-busy: #c9c4ad; --ground-gov: #c7c2ab; --ground-sel: #c6d0bf;
+    --ground: #cfcab3; --ground-busy: #c9c4ad;      /* v89.229：浅废土沙（原 #c2ccbc 绿灰） */
+    --ser-gov: #897024; --ser-live: #904c37; --ser-mil: #3d5794; --ser-ops: #347f70;
     --res-farm: #d6cd8e; --res-forest: #93b295; --res-quarry: #c4c8c0; --res-mine: #a9a094;
   }
-  /* ---- 夜阑：近黑（夜间 / 暗房）---- */
+  /* ---- 夜阑：暖近黑（夜间 / 暗房 · v90.1 更深，与墨玉拉开）---- */
   html[data-theme="night"] {
-    --bg-dark: #101319; --bg-2: #14181f; --bg-3: #0c0f14;
-    --panel-bg: #171b22;
-    --surface-2: #1f242c; --surface-3: #1a1e25;
-    --surface-2b: #23272f; --surface-2c: #1f232b; --surface-3b: #14171c;
-    --slab-1: #13161b; --slab-2: #1b1e25; --slab-3: #1b1e25;
-    --btn-face-1: #26261c; --btn-face-2: #1c1f26;
-    --btn-hi-1: #33332a; --btn-hi-2: #262931;
-    --wood: #3a2e22; --wood-light: #553f2c; --wood-dark: #241d18;
-    --gold: #c09640; --gold-light: #d8b878; --gold-dark: #7a5c24;
-    --text: #d8d5cd; --text-dim: #8f8e96; --text-strong: #e8dcbe;
-    --sh-rgb: 0,0,0; --hl-rgb: 200,205,220; --gold-rgb: 192,150,64;
+    --bg-dark: #0f0b08; --bg-2: #130f0b; --bg-3: #0b0806;
+    --panel-bg: #191410;
+    --surface-2: #241e18; --surface-3: #1d1813;
+    --surface-2b: #29231c; --surface-2c: #241e18; --surface-3b: #15110d;
+    --slab-1: #14100c; --slab-2: #201a14; --slab-3: #201a14;
+    --btn-face-1: #282217; --btn-face-2: #1b1611;
+    --btn-hi-1: #352d1c; --btn-hi-2: #282217;
+    --wood: #33261b; --wood-light: #4a3626; --wood-dark: #201812;
+    --gold: #c09a58; --gold-light: #d8bd80; --gold-dark: #7a5c28;
+    --text: #e6ddd1; --text-dim: #948a7d; --text-strong: #efe3c8;
+    --sh-rgb: 0,0,0; --hl-rgb: 220,210,190; --gold-rgb: 192,154,88;
     --scrim: rgba(var(--sh-rgb),.72);
     --line: rgba(var(--hl-rgb),.07); --line-strong: rgba(var(--hl-rgb),.12);
     --sep-gold: rgba(var(--gold-rgb),.24);
-    --ground: #5c6b52; --ground-busy: #6a6352; --ground-gov: #68614f; --ground-sel: #68765c;
+    --ground: #6f6957; --ground-busy: #6a6352;      /* v89.229：深废土土灰（原 #5c6b52 暗绿） */
+    --ser-gov: #8c742c; --ser-live: #9a5642; --ser-mil: #47619e; --ser-ops: #397f71;
     --res-farm: #9c934e; --res-forest: #50694f; --res-quarry: #8a8a82; --res-mine: #5a4a3a;
   }
   /* 浅色主题：柔化重投影 —— 深底上的 .5 黑影落到浅底会显得脏 */
@@ -766,7 +779,7 @@
   .prog > i { display: block; height: 100%; background: linear-gradient(90deg, #9a7430, var(--gold-light)); transition: width .5s linear; }
   /* ⛔ v89.218：纪事条目样式（.chron-list / .chron-item 七行）随史册退役 —— 早在 v89.104 已无消费点。 */
   /* ============ 酒馆 / 市集 / 仓储 / 招募站 ============ */
-  /* v75（老板）：候选改**单行紧凑**版式（「尽量单个将领一行显示」）。
+  /* v75（老板）：候选改**单行紧凑**版式（「尽量单个英雄一行显示」）。
      列表不再自带滚动 —— 整页滚动只留 .m-body 一处，避免旧版"列表 + 面板"双滚动条。 */
   .inn-list { padding-right: var(--sp-1); }
   .inn-card { display: flex; align-items: center; gap: var(--sp-4);
@@ -789,9 +802,9 @@
   .mk-row input { width: 120px; text-align: center; }
   /* v89.60：`.mk-arrow`（资源互换的 → 箭头）随互换区退役删除 —— 交易站已合并为单块表。 */
   .mk-hint { font-size: var(--fs-sub); color: var(--text-dim); }
-  /* ============ v89.48（老板「交易站售卖资源换取黄金，比例 1,2,3,4」）============
+  /* ============ v89.48（老板「交易站售卖资源换取旧币，比例 1,2,3,4」）============
      比价表：**1 / 2 / 3 / 4 四个数原样上屏**（老板要的就是这四个数），单位在表头写一次。
-     比价列加粗放大 —— 一眼看出净水最便宜、铁最贵。 */
+     比价列加粗放大 —— 一眼看出净水最便宜、废钢最贵。 */
   /* v89.60：`.mk-sell`（旧售卖/买入两块的包裹类）随三块合并删除。 */
   .ms-table { width: 100%; border-collapse: collapse; margin: var(--sp-2) 0 var(--sp-1);
     font-size: var(--fs-body); font-variant-numeric: tabular-nums; }
@@ -806,7 +819,7 @@
   .ms-note { font-size: var(--fs-sub); color: var(--text-dim); text-align: center;
     line-height: var(--lh-body); margin: var(--sp-0) 0 var(--sp-1); }
   .ms-note b { color: var(--gold-light); }
-  /* v89.60（老板「交易站太杂，4资源+黄金可买卖就行，没必要分成 3 个板块」）
+  /* v89.60（老板「交易站太杂，4资源+旧币可买卖就行，没必要分成 3 个板块」）
      —— 三块合并为一张表：每行 资源|库存|卖出|买入|[卖][买]。
      下面的三列为表格新增（库存 / 买入价 / 操作），表尾预设按钮成行。 */
   .ms-table .ms-stock { color: var(--text); font-variant-numeric: tabular-nums; }
@@ -815,7 +828,7 @@
   .ms-table td.ms-act .btn { margin-left: var(--sp-1); }
   .mk-presets { display: flex; gap: var(--sp-2); justify-content: center; flex-wrap: wrap; margin-top: var(--sp-2); }
   /* ============ v89.49（老板「募兵队列怎么不可加速了？」）============
-     提速面板里"花金买时间"三档按钮：主字（−25% / 立刻完成）+ 第二行价格。
+     提速面板里"花旧币买时间"三档按钮：主字（−25% / 立刻完成）+ 第二行价格。
      价格是动态的（随还能缩短多少浮动），所以用小一号字与金色——一眼看得出是价钱。 */
   .tr-cost { font-size: var(--fs-cap); color: var(--gold-light); font-weight: 400;
     font-variant-numeric: tabular-nums; }
@@ -927,9 +940,9 @@
   .q-log-r.dim { color: var(--text-dim); }
 
   /* 背包：每行 5 格 */
-  /* v39（需求 6）：5 列 → 4 列。老板要"跟商城同步搞成 4 行"，
+  /* v39（需求 6）：5 列 → 4 列。老板要"跟游商同步搞成 4 行"，
      一页 16 格正好 4 列 × 4 行（见 ui.BAG_PER_PAGE），格子也随加宽。
-     v51：**固定 4 列**（同商城，见上面的说明）；原 1150 那档降级已删。 */
+     v51：**固定 4 列**（同游商，见上面的说明）；原 1150 那档降级已删。 */
   /* v89.140（老板 7）：每行 7 个物品并列（尺寸固定）——材料/宝物/图纸统一走这一档 */
   .bag-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: var(--sp-2); }
   .bag-cell { position: relative; background: linear-gradient(180deg, var(--surface-2), var(--surface-3)); border: 1px solid var(--line);
@@ -957,7 +970,7 @@
    * 一层、一套定位规则、一个层级 —— 不再有"某处浮层被压住/飞出屏幕"。
    * ============================================================ */
   /* ⚠ `tip-src` 是**所有内容源的通用标记**（ui.tipFor 就是按它取内容的）——
-     少了这条，凡是带 tip-src 但没有单独类名的浮层（如人形装备栏的 .eq-slot-tip）
+     少了这条，凡是带 tip-src 但没有单独类名的浮层（如人形部件栏的 .eq-slot-tip）
      会**直接把浮层正文渲染在卡片里**，把卡片撑高、布局全乱。 */
   .tip-src { display: none; }
   .bag-tip, .tcard-tip { display: none; }
@@ -976,11 +989,11 @@
     --tip-ink-h: #e8ce88;                          /* 标题：暖金 */
     --tip-ink: #cdc8ba;                            /* 正文：浅灰米 */
     --tip-ink-b: #f2e8ca;                          /* 强调（<b>）：提亮 */
-    /* v89.214（老板 1）：装备属性**分行**浮层的三色 —— 原始值 白 / 百炼 亮金 / 调校 亮青。
+    /* v89.214（老板 1）：装备属性**分行**浮层的三色 —— 原始值 白 / 熔铸 亮金 / 调校 亮青。
        与 --tip-ink-* 同理：浮层是深色卡，必须用"跟卡片走"的固定亮色（浅色主题的
        金色令牌是深色，压在深底上会糊）。 */
     --tip-eq-base: #ffffff;                        /* 原始属性数字：白 */
-    --tip-eq-add1: #f0c14b;                        /* 百炼增量：亮金 */
+    --tip-eq-add1: #f0c14b;                        /* 熔铸增量：亮金 */
     --tip-eq-add2: #7fd6e0;                        /* 调校增量：亮青 */
     box-shadow: 0 12px 28px rgba(var(--sh-rgb),.75);
     opacity: 0; visibility: hidden;
@@ -1059,10 +1072,10 @@
   .btn.sm.wild-go { height: 20px; padding: 0 var(--sp-2); line-height: var(--lh-1); font-size: var(--fs-cap);
     border-radius: var(--r-sm); box-shadow: 0 1px 0 var(--gold-dark), inset 0 1px 0 rgba(var(--hl-rgb),.5); }
   .btn.sm.wild-go:active { box-shadow: 0 0 0 var(--gold-dark); }
-  /* v89.188（老板 1/2）：将领详情「解雇 / 晋升」的**袖珍按钮**（与 wild-go 同一档视觉：
+  /* v89.188（老板 1/2）：英雄详情「解雇 / 晋升」的**袖珍按钮**（与 wild-go 同一档视觉：
      20px 高 · fs-cap · 紧凑内边距）。写 .btn.sm.mini（0-3-0）防被 .btn.sm 压过
      （v89.130 的 0-1-0 教训）；阴影压到 1px（3px 下沉是“药丸感”的来源）。 */
-  /* v89.190（老板 1）：「还是占位太大了，导致君主（没有这个标签）跟普通将领的界面出现
+  /* v89.190（老板 1）：「还是占位太大了，导致君主（没有这个标签）跟普通英雄的界面出现
      行高的位移差异」——20px 的按钮把普通将的名称行从 17px 撑到 20.5px（君主无按钮 →
      切将时下方整体位移 4.5px）。压到 **16px**（≤ 文字行高 17px → 不再撑行）。
      解雇/晋升（本类）+ 经验＋/军中/改造（v89.190 同批并入本类）四处一起瘦身。 */
@@ -1113,8 +1126,17 @@
   .iso-tile.locked:hover { z-index: 2; }
   /* 施工中：土色工地（"正在动"的地方，要显眼） */
   .iso-tile.busy .tile-face { background: var(--ground-busy); }
-  /* 官署格：台基色（4 格合并的宫殿台基由 .gov-palace 单独画） */
-  .iso-tile.gov .tile-face { background: var(--ground-gov); }
+  /* v89.229（老板）：「去掉城内地块颜色，统一废土底色（浅一点）…以此文字色块区分各系建筑」
+     ——**地块染色整体退役**：已建成格地块 = 统一 --ground（浅废土底），与整片地面同色；
+     族色编码改由 `.tile-label .nm`（名称文字色块）承载 —— 小面积高对比，
+     实测族间 ΔE00 ≥23 · 白字对比 ≥4.5（smoke §229）。
+     三次迁址的终点：族旗（v89.107·图标上小旗）→ 地块（v89.225）→ **名称色块（v89.229）**
+     —— 编码要小面积、名称要居顶（大面积染 = 老板两次投诉"视觉负担/不好区分"的真身）。
+     施工/升级中的格子不带 ser 类，名称自动落暗色 veil 底（与旧观感一致）。 */
+  .iso-tile.built.ser-gov  .tile-label .nm { background: var(--ser-gov); }
+  .iso-tile.built.ser-live .tile-label .nm { background: var(--ser-live); }
+  .iso-tile.built.ser-mil  .tile-label .nm { background: var(--ser-mil); }
+  .iso-tile.built.ser-ops  .tile-label .nm { background: var(--ser-ops); }
   /* ---- 城外资源地（v39 · 需求 2）：老板点名的四种色系 ---- */
   .iso-tile.res-farm   .tile-face { background: var(--res-farm); }
   .iso-tile.res-forest .tile-face { background: var(--res-forest); }
@@ -1160,7 +1182,7 @@
   img.ico-img { object-fit: contain; }
 
   /* ============================================================
-   * 城内建筑按「系列」分色（v39 · 需求 2/3；v45 改为**素材固有色**）
+   * 城内建筑按「系列」分色（v39 立；v45 素材固有色；v89.107 族旗；v89.225 地块染色；v89.227 4 族降饱和；v89.229 **名称文字色块**）
    * ------------------------------------------------------------
    * ⚠️ 血泪教训（别再回退到 CSS 染色）：
    *   v39~v43 用 `hue-rotate + saturate` 给统一的暖金位图染色，老板连续三轮
@@ -1176,10 +1198,11 @@
    *     S → 按比例放大到目标均值（保留"白墙低饱和 / 彩绘高饱和"的相对结构）
    *     L → **原样保留**，材质的明暗层次一点不丢
    *   CSS 只负责落地投影，一个字都不再染色。
-   *   七族目标色：军事铁青 208° · 文教竹青 152° · 驿传赭黄 28° · 工商朱红 2°
+   *   （v45 时代历史）七族目标色：军事铁青 208° · 文教竹青 152° · 驿传赭黄 28° · 工商朱红 2°
    *              仓廪绛褐 340° · 民居麦黄 70° · 官署暖金 42°
-   * `ser-<系列>` 类保留为**语义标记**（数据侧唯一来源 DATA.SERIES，供调试与
-   * 后续按系列扩展），当前不再驱动颜色。
+   * `ser-<系列>` 类现在驱动**名称文字色块**（v89.229）—— 选择器见上方
+   * `.iso-tile.built.ser-x .tile-label .nm` 四条；数据侧唯一来源仍是 DATA.SERIES
+   * （族归属派生 SERIES_OF；色值为各主题 `--ser-*`，与 data.js `plot` 对齐）。
    * ============================================================ */
   .iso-tile.built .tile-art img.ico-img { filter: drop-shadow(0 2px 3px rgba(var(--sh-rgb),.42)); }
   /* 建筑"长高"：等级 → 缩放系数（`.tile-art` 上有 transition 承接动画）。
@@ -1209,21 +1232,28 @@
   }
   .iso-tile.empty .tile-art { padding-bottom: 0; }
   .iso-tile.empty .tile-art .ico { opacity: .38; width: 34%; height: 34%; }
-  /* 格内标签：名字 + 等级**同一行**（需求 1） */
+  /* 格内标签：名称 + 等级**都放格顶、同一行**（v89.229 老板：「建筑名称和等级都放顶部，
+     建筑名称的文字色块行高调高，并以此文字色块区分各系建筑」）。
+     · 位置：底部 → **格顶**（等级角标自右上角并入本行右端 —— 见 .tile-badge）；
+     · 名称 = **族色文字色块**（.nm 背景 = --ser-*，见上方四条族色规则）；
+       施工/升级中格不带 ser 类 → 自动落暗色 veil 底（与旧观感一致）；
+     · 行高调高：字号升一档（--fs-cap → --fs-sub）+ 上下 padding（--sp-1）——
+       色块高 ≈23px（旧标签 ≈20px），更醒目；
+     · 白字 + 描边（色块饱和 40~55，白字对比全部 ≥4.5，见 smoke §229）。 */
   .tile-label {
-    position: absolute; left: 5px; right: 5px; bottom: 4px;
-    display: flex; align-items: baseline; justify-content: center; gap: var(--sp-1);
-    padding: var(--sp-hair) 0; border-radius: var(--r-md);
-    background: rgba(var(--tile-veil-rgb),.52);
-    font-size: var(--fs-cap); font-weight: 700; line-height: var(--lh-body);
+    position: absolute; left: var(--sp-1); right: var(--sp-1); top: var(--sp-0);
+    display: flex; align-items: center; justify-content: center; gap: var(--sp-hair);
+    background: transparent;
+    font-size: var(--fs-sub); font-weight: 700; line-height: var(--lh-tight);
     white-space: nowrap; overflow: hidden;
   }
-  .tile-label .nm { color: var(--text); overflow: hidden; text-overflow: ellipsis; }
-  .tile-label .lv {
-    flex: none; font-size: var(--fs-cap); font-weight: 700; font-variant-numeric: tabular-nums;
-    color: var(--gold-light);
+  .tile-label .nm {
+    min-width: 0; color: var(--on-block);
+    background: rgba(var(--tile-veil-rgb),.62);
+    padding: var(--sp-1) var(--sp-2); border-radius: var(--r-sm);
+    overflow: hidden; text-overflow: ellipsis;
+    text-shadow: 0 1px 2px rgba(var(--sh-rgb),.6);
   }
-  .tile-label .lv.max { color: var(--green-ok); }
   .iso-tile.empty .tile-label { display: none; }
   /* 施工中：图标 + 居中进度 */
   .tile-scaf { font-size: var(--isz-md); color: var(--gold-light); line-height: var(--lh-1); }
@@ -1285,7 +1315,7 @@
     }
   }
 
-  /* ============ v89.194（老板 S3）：藏珍阁（收藏视图）============ */
+  /* ============ v89.194（老板 S3）：陈列馆（收藏视图 · v89.227 更名）============ */
   .col-cats { flex-wrap: wrap; }
   .col-chip i { font-style: normal; margin-left: var(--sp-1); color: var(--text-dim); font-size: var(--fs-cap); }
   .col-chip.done { border-color: rgba(var(--gold-rgb),.65); }
@@ -1310,7 +1340,7 @@
   .col-buy { display: flex; align-items: center; gap: var(--sp-3); margin-top: auto; }
   .col-price { color: var(--gold-light); font-variant-numeric: tabular-nums; }
 
-  /* ============ 商城（v18：分类 + 固定网格 + 分页）============ */
+  /* ============ 游商（v18：分类 + 固定网格 + 分页）============ */
   .shop-cats { display: flex; flex-wrap: wrap; gap: var(--sp-1); margin: var(--sp-1) 0 var(--sp-4); }
   .shop-cats .shop-cat {
     cursor: pointer; font-size: var(--fs-sub); color: var(--text-dim);
@@ -1323,18 +1353,18 @@
   /* ============================================================
    * 物品行（v29 · 需求 14）：左贴图 · 右介绍 · 下方 数量 + 操作
    * ------------------------------------------------------------
-   * 改前商城是"竖卡 + 一颗按钮"：一件物品要横着读三行小字；
+   * 改前游商是"竖卡 + 一颗按钮"：一件物品要横着读三行小字；
    * 背包更只有一枚小格子，说明全靠悬停浮层（平板没有 hover 就抓瞎）。
    * 现在文字直接铺在右边、数量与操作固定在下沿，扫一眼就能做决定。
    * ============================================================ */
   /* v39（需求 5）：老板要「统一整成 4 列」，原先两列右侧空一大片。
      4 列是"整行不截断"的选择：一页 16 个正好 4 行（见 ui.SHOP_PER_PAGE）。
-     v51：**固定 4 列**（老板：「商城和背包的宝物物品整 4 列」）。
+     v51：**固定 4 列**（老板：「游商和背包的宝物物品整 4 列」）。
      原先有 1500 / 1150 / 760 三档降级断点 —— 老板的屏在 1366~1440，
      正好落进 ≤1500 那一档，所以他看到的其实是 **3 列**。
      降级看似"自适应"，实际是**同一份列表在不同窗口下长得不一样**，
      跟本项目「界面像素尺寸必须固定」的约定也冲突。列数写死，窗口小就格子窄。 */
-  /* v89.140（老板 6）：「商城…铺满界面，**四行四列，位置固定，大小固定**。
+  /* v89.140（老板 6）：「游商…铺满界面，**四行四列，位置固定，大小固定**。
      物品简介改悬停显示」——4 列 × 16 件/页（= 4 行）不变，行高固定 116px、
      卡片撑满（简介已悬停 → 内容等高）→ 每格位置与大小恒定。 */
   .shop-rows { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--sp-3);
@@ -1366,10 +1396,10 @@
   .item-row .ir-desc .lack, .item-row .lack { color: var(--red-light); }
 
   /* ============================================================
-   * v89.143（老板 2）：「商城的物品区块高度低，导致 4 行物品没有铺满整个界面，统一调整」——
+   * v89.143（老板 2）：「游商的物品区块高度低，导致 4 行物品没有铺满整个界面，统一调整」——
    * ------------------------------------------------------------
    * 改前：行高写死 116px → 4 行 ≈ 500px，下面的半屏是空白。
-   * 改后：商城页改**满高 flex 列**（标题 / 分类条按内容，物品区吃掉剩余高度），
+   * 改后：游商页改**满高 flex 列**（标题 / 分类条按内容，物品区吃掉剩余高度），
    *   满页（16 件 = 4 行）时 4 行**平分可视区** —— `minmax(116px, 1fr)`：
    *   窗口够大就铺满，窗口小到 <116px/行 时退回滚动（不把卡片压扁）。
    *   列数仍固定 4（v89.140 的"四行四列"口径不变）—— 变的只是行高。
@@ -1420,7 +1450,7 @@
   /* v37 修复（需求 3）：这里原先写的是 `svg` —— 全站其它 5 个图标容器
      （.tile-art/.bag-ico/.eq-ico/.ticon/.rico）都写 `.ico`，只有这一处写标签名。
      位图接管后 <img> 匹配不到规则 → 回退到**固有尺寸 1024px**，
-     被 .ia 的 overflow:hidden 裁到只剩中心一小块 —— 商城/宝物行的图标"大小不匹配"。
+     被 .ia 的 overflow:hidden 裁到只剩中心一小块 —— 游商/宝物行的图标"大小不匹配"。
      教训：图标容器一律用 `.ico` 类选择器，永远不要写标签名。 */
   .ia .ia-art .ico { width: 100%; height: 100%; }
   .ia .ia-gem { position: absolute; right: 4px; bottom: 4px; display: flex; gap: var(--sp-0); }
@@ -1604,7 +1634,7 @@
   /* ⛔ v89.198（老板「清除战法这个玩法」）：.exp-ops-cell（战法 chips 单元格）随玩法全撤退役。 */
 
   /* ============================================================
-   * 将领人形装备栏（v38 · 需求 2）
+   * 英雄人形部件栏（v38 · 需求 2）
    * ------------------------------------------------------------
    * 改前是 4 列 12 格平铺卡片 —— 能换装但看不出"哪件穿在哪"。
    * 改后：左边一个人形，12 个部位按身体位置贴上去；右边属性与套装进度。
@@ -1614,8 +1644,8 @@
      与左栏「状态」区的总体/攻击/防御重复；老板要求"装备提供的属性分行显示"，
      所以留下的是 .eq-grow（见下）。 */
   .eq-doll-wrap { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); gap: var(--sp-5); align-items: start; }
-  /* 人形框尺寸：v46 的 300×380 → v89.131 的 **400×506**（老板「装备栏…稍微放大一点」）。
-     放大依据：装备栏拿到 3/4 宽（808px）后，2/4 的格子有 ~529px ——
+  /* 人形框尺寸：v46 的 300×380 → v89.131 的 **400×506**（老板「部件栏…稍微放大一点」）。
+     放大依据：部件栏拿到 3/4 宽（808px）后，2/4 的格子有 ~529px ——
      300 上限会让框在格子里显得空，故抬到 400（宽 +33%、面积 ×1.78）。
      高度 = 宽 × 19/15（aspect-ratio 不动 → DOLL_POS 的百分比落点全部照旧）；
      视图页允许滚动（§30.3），不再为"不出现滚动条"把框压小。
@@ -1625,19 +1655,25 @@
      ⚠️ 高度变则 DOLL_POS 的百分比全部要重排（详见 js/ui.js 里那张表）。 */
   .doll { position: relative; width: 100%; max-width: 400px; min-width: 230px;
     margin: 0 auto; aspect-ratio: 15 / 19;
-    /* v46（需求 3）：人形框有了自己的底 —— 放大的将领抠图要有个"画框"才不像浮在空中。
-       层级：抠图（1）→ 人体剪影（2）→ 12 个方形槽位（3）。 */
+    /* v46（需求 3）：人形框有了自己的底 —— 放大的英雄抠图要有个"画框"才不像浮在空中。
+       v89.238（老板）：剪影（原第 2 层）已去；抠图调亮后方角会顶破圆角，
+       故补 overflow: hidden —— 画框圆角对子元素一并生效（槽位/角标全在框内，不误裁）。
+       层级：抠图（1）→ 12 个方形槽位（3）。 */
     background: radial-gradient(ellipse at 50% 26%, rgba(var(--hl-rgb),.06), transparent 70%), rgba(var(--sh-rgb),.24);
-    border: 1px solid var(--line); border-radius: var(--r-xl); }
-  /* v46（需求 3）：大号将领抠图，**浅色**显示（低透明 + 下缘渐隐，不许用滤镜染色） */
+    border: 1px solid var(--line); border-radius: var(--r-xl); overflow: hidden; }
+  /* v46（需求 3）：大号英雄抠图，**浅色**显示（低透明 + 下缘渐隐，不许用滤镜染色）。
+     v89.238（老板）：「背景图太暗了…背景调亮」—— 0.32 → 0.55；
+     v89.239（老板）：「不够亮」—— 0.55 → 0.80 并叠 brightness(1.15) 提亮；
+     v89.240（老板）：「再调亮点」—— 0.80+b1.15 → 1.0 + brightness(1.35)（七档扫描定档 · 过曝仅 0.19%）。
+     （brightness = 提亮不是染色，染色类滤镜仍全禁。） */
   .doll-portrait { position: absolute; left: 0; right: 0; top: 0; bottom: 0; z-index: 1;
     display: flex; align-items: flex-start; justify-content: center; pointer-events: none; }
   .doll-portrait img, .doll-portrait svg { width: 100%; height: auto; display: block;
-    opacity: .32; border-radius: 0; }
+    opacity: 1; filter: brightness(1.35); border-radius: 0; }
   /* 下缘渐隐 —— 半身像直接切断会像"贴上去的"，渐隐后才像底纹 */
   .doll-portrait { -webkit-mask-image: linear-gradient(180deg, rgb(var(--sh-rgb)) 46%, rgba(var(--sh-rgb),.35) 72%, transparent 96%);
     mask-image: linear-gradient(180deg, rgb(var(--sh-rgb)) 46%, rgba(var(--sh-rgb),.35) 72%, transparent 96%); }
-  .doll-fig-svg { position: absolute; left: 50%; top: 0; transform: translateX(-50%); width: 46%; height: 100%; z-index: 2; opacity: .62; }
+  /* ⛔ v89.238：.doll-fig-svg（几何人形剪影）随 ui.dollFigure 整条退役 —— 老板令去掉"小人图"。 */
   /* v89.131：汇总列改为纵向 flex —— 与 .gp-doll 的 stretch 配合，
      「装备提供 / 套装进度」在上、按钮组钉底（margin-top:auto）。 */
   .doll-side { min-width: 0; display: flex; flex-direction: column; }
@@ -1691,7 +1727,7 @@
   .eq-gain { text-align: center; font-size: var(--fs-cap); color: var(--text-dim); margin-bottom: var(--sp-3); }
   .eq-gain i { font-style: normal; color: var(--green-ok); margin: 0 var(--sp-1); }
   .eq-gain .none { opacity: .7; }
-  /* v60（需求 2）：装备提供的属性**逐行**显示（统帅 +775.5 / 勇武 +752.5 …）
+  /* v60（需求 2）：装备提供的属性**逐行**显示（统帅 +775.5 / 武力 +752.5 …）
      —— 老板原话「右侧把装备提供的属性分行显示即可」。
      数值一律右对齐，好一眼比出"哪一项是这件装备给的大头"。 */
   .eq-grows { display: flex; flex-direction: column; gap: var(--sp-0); margin-bottom: var(--sp-3); }
@@ -1722,7 +1758,7 @@
      理由：那是"整页视图"的 4 列（内容宽 1000+，每格 317~375px）；
      打造面板是**弹窗**（内容宽 ~922px），4 列会把每格压到 198px，
      卡片的部位/造价/材料三行全部折行 → 卡片反被撑到 265px 高，越挤越高。
-     3 列 → 每格约 300px，接近商城整页的舒适宽度，卡片更矮，一屏反而放得下更多。 */
+     3 列 → 每格约 300px，接近游商整页的舒适宽度，卡片更矮，一屏反而放得下更多。 */
   /* v89.140（老板 5）：「每个装备占据的区块大小，按目前给**倚天套装的单个装备**的区块
      大小设置**固定**，位置也固定」——实机量测基准 297×215px（3 列 × 6 件/页）：
      **行高固定 215px**（grid-auto-rows）+ 卡片撑满行高 → 跨品质/跨页大小与位置一致。 */
@@ -1759,10 +1795,10 @@
   .ui-page.bag-page > *:not(.bag-body) { flex: 0 0 auto; }      /* 顶部各行：冻结、不伸缩 */
   .ui-page.bag-page .bag-body { flex: 1 1 auto; min-height: 0; overflow-y: auto;
     scrollbar-gutter: stable; padding-right: var(--sp-1); }
-  /* v39（需求 6）：图标 44 → 68px，与商城的 64px 靠拢；格子加宽后撑得住 */
+  /* v39（需求 6）：图标 44 → 68px，与游商的 64px 靠拢；格子加宽后撑得住 */
   .bag-cell .bag-ico { width: 68px; height: 68px; display: flex; align-items: center; justify-content: center; }
   .bag-cell .bag-ico .ico { width: 100%; height: 100%; }
-  /* v89.117：角标从"首字"改**将领全名** —— 放宽 + 省略号（格宽有限，长名不撑破） */
+  /* v89.117：角标从"首字"改**英雄全名** —— 放宽 + 省略号（格宽有限，长名不撑破） */
   .bag-cell .bag-worn { position: absolute; left: 4px; bottom: 3px; min-width: 15px; height: 15px; line-height: 15px;
     max-width: calc(100% - 8px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     text-align: center; border-radius: var(--r-lg); background: rgba(var(--rank-liang-rgb),.85); color: var(--ink-on-gold);
@@ -1786,7 +1822,7 @@
   .bb-log::-webkit-scrollbar-thumb { background: rgba(var(--gold-rgb),.35); border-radius: var(--r-sm); }
   .bb-log::-webkit-scrollbar-track { background: rgba(var(--sh-rgb),.25); }
 
-  /* ============ 将领资质徽章 / 打造 ============ */
+  /* ============ 英雄资质徽章 / 打造 ============ */
   .rank-badge { display: inline-block; font-size: var(--fs-cap); font-weight: 700; padding: var(--sp-hair) var(--sp-2); border-radius: var(--r-sm);
     border: 1px solid currentColor; opacity: .95; letter-spacing: .3px; white-space: nowrap; }
   .rank-badge.r-fan    { color: var(--rank-fan); background: rgba(var(--rank-fan-rgb),.12); }
@@ -2031,6 +2067,16 @@
   }
   .tbl td { padding: var(--sp-3); border: 1px solid var(--line); background: rgba(var(--sh-rgb),.15); vertical-align: middle; }
   .tbl tr:nth-child(even) td { background: rgba(var(--sh-rgb),.05); }
+  /* v89.231：研习所科技分组标题行（DATA.TECH_CATS · 每节一行，四列合 colspan） */
+  .tbl .tech-cat td {
+    background: rgba(var(--sh-rgb),.5);
+    color: var(--gold-light);
+    font-weight: 700;
+    font-size: var(--fs-sub);
+    letter-spacing: 2px;
+    padding: var(--sp-1) var(--sp-3);
+    text-align: center;
+  }
   .tbl .ctr { text-align: center; }
   .tbl .num { text-align: right; font-variant-numeric: tabular-nums; }
 
@@ -2202,13 +2248,13 @@
 #res-bar .num-rate { font-variant-numeric: tabular-nums; min-width: 72px; text-align: right; display: inline-block; }
 
   /* ============================================================
-   * v89.124（老板「人口增速也按小时显示。界面规划参考资源」）：
-   * 人口行（城池属性区）与资源行**同款三列对齐** —— 名称 | 存量·上限 | 增速。
+   * v89.124（老板「幸存者增速也按小时显示。界面规划参考资源」）：
+   * 幸存者行（城池属性区）与资源行**同款三列对齐** —— 名称 | 存量·上限 | 增速。
    * 列模板与资源行一致（56px 首列 + 增速列 72px 右对齐 + 1.1em 徽标空位），
    * 两行的增速列右缘因此逐像素对齐；增速列同样带发丝竖线分隔。 */
   #city-attrs .pop-line {
     /* 标签列 44px（比资源行的 56px 窄，给 .val 让出空间）——
-       人口存量文本「2,880 / 7,200」比资源存量（「679.5万」）宽约 25px，
+       幸存者存量文本「2,880 / 7,200」比资源存量（「679.5万」）宽约 25px，
        56px 首列下 .val 只有 167px，装不下「存量 + 72px 增速列 + 1.1em 徽标位」
        → auto 列被压到 min-content、内容外溢（实测 rate 右缘 439 vs 359）。
        两行的标签都靠左（左缘一致，实测 140=140），列宽差 12px 不影响观感。 */
@@ -2371,8 +2417,8 @@
   }
 
 
-  /* ============ 将领属性详情（v14.1） ============ */
-  /* v26（需求 2）：将领详情改「左头像 · 右五维」两栏，原先的居中标题块不再使用 */
+  /* ============ 英雄属性详情（v14.1） ============ */
+  /* v26（需求 2）：英雄详情改「左头像 · 右五维」两栏，原先的居中标题块不再使用 */
   .gd-name { font-size: var(--fs-h2); font-weight: 800; color: var(--gold-light); }
   .gd-sub { color: var(--text-dim); font-size: var(--fs-sub); margin-top: var(--sp-1); }
   .gd-lore { color: var(--gd-lore-ink); font-size: var(--fs-sub); margin-top: var(--sp-1); font-style: italic; }
@@ -2400,7 +2446,7 @@
   .gd-chip.on { color: var(--text); }
   .gd-chip.on.q3 { border-color: rgba(var(--rank-ming-rgb), .6); color: var(--gd-chip-ink); }
   .gd-chip.on.q4 { border-color: rgba(var(--amber-rgb), .7); color: var(--gold-light); }
-  /* 将领姓名可点进详情 */
+  /* 英雄姓名可点进详情 */
   .tbl td .gen-link { color: var(--gold-light); cursor: pointer; text-decoration: underline dotted; }
   .tbl td .gen-link:hover { color: #fff3cf; }
 
@@ -2434,15 +2480,15 @@
   .troop-card .tname { font-size: var(--fs-body); font-weight: 700; color: var(--parchment); margin-top: var(--sp-1); }
   .troop-card .tstat { font-size: var(--fs-cap); color: var(--text-dim); margin-top: var(--sp-1); line-height: var(--lh-body); }
 
-  /* ============ 将领卡片（v20 · 需求 3：分次呈现）============
+  /* ============ 英雄卡片（v20 · 需求 3：分次呈现）============
      旧版 .gen-card（.gavatar/.ginfo 结构，v11 遗留）已废弃并删除 ——
      它与新结构同名不同形，残留会把新卡片样式顶掉。
      v41（需求 2）：新结构（卡片墙）也已被「左清单 + 右档案」取代，见 .gen-split。 */
   /* ============================================================
-     将领一览（v28 · 需求 2）：一屏 12 个栏位，**细条式**
+     英雄一览（v28 · 需求 2）：一屏 12 个栏位，**细条式**
      ------------------------------------------------------------
      旧的 .gen-grid 是 3 列卡片墙、每页 9 个：一屏装不下要看翻页，
-     每张卡片竖排五行、信息密度极低。现在一条将领只占一行。
+     每张卡片竖排五行、信息密度极低。现在一条英雄只占一行。
      v41 后 .gen-card 已彻底无引用（仅 .gcard-tag 仍用于名字旁的名将/美人标）——
      但列表页不再引用它，避免两套样式互相顶掉（本项目踩过这个坑）。
      ============================================================ */
@@ -2466,11 +2512,11 @@
     vertical-align: middle; margin-right: var(--sp-2); }
   .gd-expbar.sm i { display: block; height: 100%; background: var(--grad-progress); }
   /* ============================================================
-   * 将领界面（v41 · 需求 2）—— 左姓名清单 / 右完整档案
+   * 英雄界面（v41 · 需求 2）—— 左姓名清单 / 右完整档案
    * ------------------------------------------------------------
-   * 老板原话：「将领左侧显示姓名清单，右侧显示详细属性和装备图（不需要再整一个
+   * 老板原话：「英雄左侧显示姓名清单，右侧显示详细属性和装备图（不需要再整一个
    * 装备图的弹窗），把完整档案的全部信息也整合过来，不需要再整个单独弹窗」。
-   * 所以只有**一套**布局：左列清单 + 右列（档案 + 人形装备栏）。
+   * 所以只有**一套**布局：左列清单 + 右列（档案 + 人形部件栏）。
    * 原先的 .gen-wall / .gen-card 卡片墙、以及 v11 遗留的第二族 .gen-card
    * 至此全部无人引用，一并删除（否则就是"样式还在、结构早没了"的死样式）。
    * ============================================================ */
@@ -2480,9 +2526,9 @@
   .gen-split { display: grid; grid-template-columns: 264px minmax(0, 1fr); gap: var(--sp-mid); align-items: stretch; }
   .gen-split > .gen-pane { align-self: start; }
   /* 断点按**视口宽**定，不是按内容区宽 —— 视图区实际宽度 = 视口 − 侧栏(~300px)。
-     1300px 视口 ≈ 内容区 1000px：再窄装备栏就放不下"人形 | 属性"两列，
+     1300px 视口 ≈ 内容区 1000px：再窄部件栏就放不下"人形 | 属性"两列，
      属性挪到人形下方（人形能吃满整栏，方槽才不挤）。 */
-  /* v74：将领档案的 1300/1100/900 三档视口断点全部撤除 ——
+  /* v74：英雄档案的 1300/1100/900 三档视口断点全部撤除 ——
      画布固定后，这些"窄窗重排"永不触发（留着反而是随窗口移动的隐患）。 */
   /* v89.131：这里原有一条 `.gp-body { grid-template-columns: 1fr 1fr }` ——
      与 2250 行的定义同权重且更早，**永远是死规则**（后者胜），一并删除。
@@ -2498,7 +2544,7 @@
   .gen-list {
     display: flex; flex-direction: column; gap: var(--sp-1);
     /* v52（老板：「左边空间都没排满整什么下拉」）：
-       改前写死 `max-height: 68vh` + 常驻滚动开关 —— 于是**将领少的时候清单也被撑到 68vh**，
+       改前写死 `max-height: 68vh` + 常驻滚动开关 —— 于是**英雄少的时候清单也被撑到 68vh**，
        下面一大片空席位/空白，滚动条却还挂在那儿（实测 12 席恰好 = 596px = 68vh）。
        "没排满"和"下拉"是同一个病根：**高度写死，而不是按内容走**。
        改成 `max-height: 100%`（吃满可用高度、内容少就矮）+ 只在真超出时才出现滚动。
@@ -2531,7 +2577,7 @@
   .grow-sub { display: flex; align-items: center; gap: var(--sp-1);
     font-size: var(--fs-cap); color: var(--text-dim); }
   .grow-sub .grow-loy { font-style: normal; color: var(--warn); font-weight: 700; }
-  /* v89.80（老板）：「将领名称后增加 Lv.x 的等级标识」——
+  /* v89.80（老板）：「英雄名称后增加 Lv.x 的等级标识」——
      金色小徽标，跟在姓名后；弹性收缩（姓名过长时让位），不换行。 */
   .grow-lv { flex: none; font-size: var(--fs-cap); font-weight: 800; color: var(--gold-light);
     border: 1px solid rgba(var(--gold-soft-rgb),.45); border-radius: var(--r-sm); padding: 0 var(--sp-1);
@@ -2552,11 +2598,11 @@
   /* ============================================================
    * 右侧档案 = 三块（v46 · 需求 2）
    * ------------------------------------------------------------
-   * 上＝汇总身份行（横贯全宽）；左下＝六维 / 经验 / 状态；右＝装备栏。
-   * 分栏比例：左栏全是文字（表格自己会折行），右栏要放人形 + 放大的将领抠图，
+   * 上＝汇总身份行（横贯全宽）；左下＝六维 / 经验 / 状态；右＝部件栏。
+   * 分栏比例：左栏全是文字（表格自己会折行），右栏要放人形 + 放大的英雄抠图，
    * 所以右栏给得多一点。窄屏（<900px）退回单列，否则两边都会被挤到不能用。
    * ============================================================ */
-  /* v89.131（老板）：「六维/状态占左四分之一；装备栏占四分之三，稍微放大一点。
+  /* v89.131（老板）：「六维/状态占左四分之一；部件栏占四分之三，稍微放大一点。
      其中的四分之二为装备图，另四分之一为装备属性汇总」——
      列宽三段合起来 = 4 份：.gp-body 给 1:3，.gp-doll 内部再给 2:1。 */
   .gp-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 3fr);
@@ -2577,22 +2623,22 @@
      它不再在 .gp-head 里，所以这里要自己给上下间距。 */
   /* v58：操作已移回 .gp-head 内部，这条"上一行是 gp-head 时"的间距不再需要 */
   .gp-ops .btn { min-width: 92px; }
-  /* v89.188（老板 1）：「解雇……位置放置在将领名称所在行，界面左三分之一处，
-     达到切换将领其相对位置不变的效果」——姓名区定宽（.gp-nm = --gp-namew），
-     解雇按钮**紧随其后**：任何将领 / 任何窗口下按钮横位恒定。
+  /* v89.188（老板 1）：「解雇……位置放置在英雄名称所在行，界面左三分之一处，
+     达到切换英雄其相对位置不变的效果」——姓名区定宽（.gp-nm = --gp-namew），
+     解雇按钮**紧随其后**：任何英雄 / 任何窗口下按钮横位恒定。
      （v89.131 的 margin-left:auto 推到行右缘退役 —— 按钮与姓名相隔整行宽。） */
   .gp-nm { flex: none; width: var(--gp-namew); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* v89.190：包裹 span 走 display:flex —— block 行盒会带基线余量（16px 按钮被撑成 18.5px，
      实机量测所得），flex 化后行高 = 按钮高（不再撑行）。 */
   .gp-nameops { flex: none; display: flex; margin-left: var(--gp-ops-shift); }
   /* v89.190：资质行「晋升」按钮的包裹位；v89.191（老板 2）：在共享位移上**再错开**
-     --gp-ops-stagger —— 与解雇不再垂直相邻（防误点），切换将领时两行仍各自恒定。 */
+     --gp-ops-stagger —— 与解雇不再垂直相邻（防误点），切换英雄时两行仍各自恒定。 */
   .gp-rankops190 { flex: none; display: flex; margin-left: calc(var(--gp-ops-shift) + var(--gp-ops-stagger)); }
   /* v89.188（老板 2）：资质行 = [资质徽章（定宽列）| 晋升按钮 | 风格名] ——
-     徽章列与姓名区同宽（--gp-namew），晋升按钮与解雇按钮**垂直对齐**、切换将领不动。 */
+     徽章列与姓名区同宽（--gp-namew），晋升按钮与解雇按钮**垂直对齐**、切换英雄不动。 */
   .gp-rankrow { display: flex; align-items: center; gap: var(--sp-2); }
   .gp-rankcol { flex: none; width: var(--gp-namew); display: flex; align-items: center; }
-  /* v54（老板："将领经验条放在顶上…整个加号"）：经验条进身份行，
+  /* v54（老板："英雄经验条放在顶上…整个加号"）：经验条进身份行，
      右端一个「＋」开经验道具选择窗。 */
   .gp-exprow { display: flex; align-items: center; gap: var(--sp-3); margin-top: var(--sp-1); }
   /* v58（老板："经验条不要那么长"）：原来 flex:1 会撑满身份行右侧、像一条贯穿横线；
@@ -2619,11 +2665,11 @@
   .btn.sm.gp-expadd { flex: none; min-width: 30px; padding: var(--sp-hair) var(--sp-2); line-height: var(--lh-body); }
   .gp-sec { margin-top: var(--sp-mid); padding-bottom: var(--sp-1);
     color: var(--gold-light); border-bottom: 1px solid var(--sep-gold); }
-  /* v46（需求 2）：装备栏独占右栏。内部仍是「人形 | 属性与套装」并排 ——
+  /* v46（需求 2）：部件栏独占右栏。内部仍是「人形 | 属性与套装」并排 ——
      堆叠会让人形（380px）把整个档案顶到 870px，整页多出一条滚动条；
      并排后高度由人形单独决定（≈400px），余量充足。 */
   /* v89.131（老板）：「装备图占四分之二、装备属性汇总占四分之一」——
-     装备栏（3/4）内部再分 2:1；同时 `align-items: stretch` 让汇总列**撑满人形框高度**
+     部件栏（3/4）内部再分 2:1；同时 `align-items: stretch` 让汇总列**撑满人形框高度**
      （老板报的「装备的界面没有占满，底下有留空的一块」就是它：汇总列内容只到 186px，
      而人形框 358px —— 下缘一大片空）。按钮组改 `margin-top:auto` 钉到列底，
      于是汇总列目视从顶到底都排满。 */
@@ -2753,7 +2799,7 @@
   .m-body .tbl { margin-top: var(--sp-1); }
   /* ============ 基因实验室（v73 · 老板需求 3） ============
      「背景是个人种田空间」：整页暖土渐变（金色三元组低透明 → 四主题自动适配），
-     六格灵田；生长中是进度条 + 倒计时（每秒由 ui.updateProgress 刷新）。
+     六座培养舱；研发中是进度条 + 倒计时（每秒由 ui.updateProgress 刷新）。
      （v72 的 .dlg-ico 尺寸盒随「顶部图标块撤除」一起退役 —— 没有图标，就没有 1024px。） */
   .farm-space {
     background:
@@ -2773,13 +2819,13 @@
   .farm-ic { font-size: var(--isz-em-lg); line-height: var(--lh-tight); }
   .farm-crop { color: var(--gold-light); font-weight: 700; font-size: var(--fs-lead); }
   .farm-sub { color: var(--text-dim); font-size: var(--fs-sub); }
-  .farm-seed {
+  .farm-proj {
     display: flex; align-items: center; gap: var(--sp-4);
     background: rgba(var(--sh-rgb),.22); border: 1px solid var(--line-strong);
     border-radius: var(--r-md); padding: var(--sp-4); margin-bottom: var(--sp-3);
   }
-  .farm-seed .farm-ic { font-size: var(--isz-em-md); }
-  .farm-seed-main { flex: 1; min-width: 0; }
+  .farm-proj .farm-ic { font-size: var(--isz-em-md); }
+  .farm-proj-main { flex: 1; min-width: 0; }
 
   /* ============ 提示条 toast ============ */
   .toast {
@@ -2858,7 +2904,7 @@
     display: flex; align-items: center; justify-content: center; font-size: var(--isz-av-lg);
     box-shadow: 0 8px 24px rgba(var(--sh-rgb),.5);
   }
-  /* v70（老板需求 5）：头像改用画像（与将领同一套池子），不再用 emoji */
+  /* v70（老板需求 5）：头像改用画像（与英雄同一套池子），不再用 emoji */
   .avatar-big img { width: 100%; height: 100%; object-fit: cover; border-radius: var(--r-md); display: block; }
   .avatar-nav { display: flex; align-items: center; justify-content: center; gap: var(--sp-5); }
   .avatar-nav .arrow { font-size: var(--isz-md); color: var(--teal-light); cursor: pointer; padding: var(--sp-2) var(--sp-5); user-select: none; }
@@ -3079,7 +3125,7 @@
   }
 
   /* ---- 卡片基线：同屏所有卡片同一几何（圆角/内边距）---- */
-  /* v41（需求 2）：.gen-card 已随将领卡片墙删除；将领行改用 .gen-row 自己的一组几何 */
+  /* v41（需求 2）：.gen-card 已随英雄卡片墙删除；英雄行改用 .gen-row 自己的一组几何 */
   .q-card, .item-row, .eq-cell, .bag-cell, .inn-card, .story-card, .xc-row {
     border-radius: var(--r-lg);
     padding: var(--sp-4);
@@ -3112,7 +3158,7 @@
   }
   /* 三层界面的分区小标题同样只有一处定义；
      v82（老板「统一各级标题」）：把漏网的六处收进来 —— 任务详情 .q-det-sec /
-     将领档案 .gp-sec / 时装 .fsn-t / 操作分区 .op-zone-t（原 12px 灰字）/
+     英雄档案 .gp-sec / 时装 .fsn-t / 操作分区 .op-zone-t（原 12px 灰字）/
      史册 .ledger-sec / 简牍 .seal-h —— 全站分区标题同规格（13px / 800 / 金色 / 字距 .5px）。 */
   .q-sec-t, .q-det-sec, .bag-sec, .gd-sec, .forge-q, .m-sec, .side-title, .wb-t,
   .gp-sec, .op-zone-t, .seal-h {                  /* v89.105：.ledger-sec 随统计页退役 · v89.204：.fsn-t 随套装一览退役 */
@@ -3122,9 +3168,11 @@
     letter-spacing: .5px;
   }
 
-  /* ---- 等级角标（v23 · 需求 2/3）：格内右上，只显示数字 ---- */
+  /* ---- 等级角标（v23 立 · v89.229 改）：只显示数字，**排在名称色块右端（格顶同一行）** ----
+     v23~v89.228：绝对定位在格内右上角的独立角标；v89.229 老板令「名称和等级都放顶部」
+     —— 名称行移到格顶后，角标并入该行（flex 行内），与色块同排、随名称居中。 */
   .tile-badge {
-    position: absolute; right: 4px; top: 3px;
+    position: static; flex: none;
     min-width: 17px; height: 17px; line-height: 17px; padding: 0 var(--sp-1);
     border-radius: var(--r-lg); text-align: center;
     font-size: var(--fs-cap); font-weight: 800; font-variant-numeric: tabular-nums;
@@ -3133,8 +3181,6 @@
     box-shadow: 0 1px 3px rgba(var(--sh-rgb), .55);
   }
   .tile-badge.max { color: var(--ink-on-gold); background: linear-gradient(180deg, #a8e59a, var(--green-ok)); }
-  /* 名字留在底部（等级不再挤在这一行） */
-  .tile-label .lv { display: none; }
 
   /* ---- 政务厅宫殿（v23 · 需求 4）：4 格融合成一座建筑 ---- */
   .gov-palace { position: absolute; z-index: 3; cursor: pointer; transition: z-index 0s; }
@@ -3205,7 +3251,7 @@
   .res-line.wrap-ok .val { display: inline; white-space: normal; overflow-wrap: anywhere; }
   /* ============ 自动化 · 左右分栏（v89.115 · 老板令） ============
      「左三分之一为自动功能列表（简洁），右侧三分之二为介绍展示和详细设置面板
-      （类似将领界面），通过切换左侧自动化功能浏览和设置」 */
+      （类似英雄界面），通过切换左侧自动化功能浏览和设置」 */
   /* v89.199（老板 2）：1fr/2fr 会被列的 min-content 撑开（v89.132 老坑）——
      自动征兵面板「待补」清单逐项累积后把右列撑爆、连锁撑宽整页。
      minmax(0,·) 锁住轨道比例（与 .res-line.wrap-ok 的换行许可**成对**生效）。 */
@@ -3347,7 +3393,7 @@
   .mat-go { cursor: pointer; opacity: .55; margin-left: var(--sp-1); }
   .mat-go:hover { opacity: 1; }
   /* ⛔ v89.218：故事集行样式（.sg-row 系列 8 行）随故事集视图退役。 */
-  /* v89.89（E3）：募兵面板人口三段条 */
+  /* v89.89（E3）：募兵面板幸存者三段条 */
   .pop-3 { display: inline-flex; align-items: center; gap: var(--sp-3); }
   .pop-3 .p3-k { color: var(--text-dim); font-size: var(--fs-sub); }
   .pop-3 .p3-seg { font-size: var(--fs-sub); color: var(--text-dim); }
@@ -3408,18 +3454,18 @@
   .chips.bag-filterrow .lb { color: var(--text-dim); font-size: var(--fs-cap);
     margin-left: var(--sp-4); margin-right: var(--sp-1); }
   .chips.bag-filterrow .lb:first-child { margin-left: 0; }
-  /* v60（需求 4）：将领页的「本城 / 全境」范围切换 —— 与标题同行，不另占一行高度 */
+  /* v60（需求 4）：英雄页的「本城 / 全境」范围切换 —— 与标题同行，不另占一行高度 */
   .chips.gen-scope { width: auto; margin-left: var(--sp-2); vertical-align: middle; }
   .chips.gen-scope .chip { padding: var(--sp-hair) var(--sp-3); font-size: var(--fs-cap); }
   .chips.city-chips, .chips.res-chips, .chips.gen-chips { width: 100%; }
-  /* 将领可能几十位 → 点选列表给个高度上限，超出的滚动看 */
-  /* v27（需求 6）：将领选择原先是一条**只有 96px 高的滚动列表** ——
-     实际效果和下拉框一模一样（要滚才能看到后面的将领），
+  /* 英雄可能几十位 → 点选列表给个高度上限，超出的滚动看 */
+  /* v27（需求 6）：英雄选择原先是一条**只有 96px 高的滚动列表** ——
+     实际效果和下拉框一模一样（要滚才能看到后面的英雄），
      而且滚动条还挂在弹窗里（弹窗本来就要求不出现滚动条）。
-     将领上限 = 招募站等级（≤10 位），改成两列网格后全部一次呈现，不需要滚动。 */
+     英雄上限 = 招募站等级（≤10 位），改成两列网格后全部一次呈现，不需要滚动。 */
   .chips.gen-chips { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-1); padding: var(--sp-hair); }
   /* v89.112：**宽版 4 列** —— 装备/宝物面板的选择器。
-     166 位将领 × 2 列 = 83 行 = 2356px 的高墙（"小小弹窗一屏全是人名"）。
+     166 位英雄 × 2 列 = 83 行 = 2356px 的高墙（"小小弹窗一屏全是人名"）。
      4 列 + 分页（每页 24，见 ui.genChips 的 per/modal 参数）后 6 行 ≈ 170px。 */
   .chips.gen-chips.wide { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .chips.gen-chips.wide .chip { padding: 2px var(--sp-2); }   /* v89.112c：行高再收 4px */
@@ -3438,18 +3484,17 @@
   .plan-box .plan-v { text-align: right; max-width: 74%; line-height: var(--lh-body); }
   .plan-box .plan-dim { color: var(--text-dim); font-size: var(--fs-cap); }
 
-  /* ---- 将领肖像（v22 · 需求 2）---- */
+  /* ---- 英雄肖像（v22 · 需求 2）---- */
   .portrait-holder { display: inline-block; position: relative; line-height: 0; }
-  .portrait-holder img, .portrait-holder svg { display: block; border-radius: var(--r-xl); }
-  .portrait-svg { display: block; border-radius: var(--r-xl); }
+  .portrait-holder img { display: block; border-radius: var(--r-xl); }
   /* v41（需求 2）：此处原为**第三族** .gen-card（v22 遗留，.gc-face/.gc-body 结构）。
-     三族同名样式叠了三版，是「同一处三种来源」的典型；将领改左右分栏后全部无人引用，
+     三族同名样式叠了三版，是「同一处三种来源」的典型；英雄改左右分栏后全部无人引用，
      一并删除。 */
   .gd-face { display: flex; justify-content: center; }
   .inn-avatar { font-size: var(--isz-xs); width: 28px; display: flex; align-items: center; justify-content: center; }   /* v82：两条同名规则合并为一 */
 
   /* ---- 城池视图（v22 · 需求 3）：中央只留棋盘 ----
-     城池名 / 人口驻军 / 征收 / 显示比例 / 岁贡 全部下沉到左侧栏，
+     城池名 / 幸存者驻军 / 征收 / 显示比例 / 岁贡 全部下沉到左侧栏，
      让「看的东西」占满中央、操作类控件待在侧栏。 */
   .city-pure { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100%; }
   .city-pure .city-iso { padding: 0; }
@@ -3494,11 +3539,11 @@
   .panel-body > .ui-page { padding: 0 !important; }
 
   /* ============================================================
-   * 将领详情（v26 · 需求 2）：左头像 · 右五维
+   * 英雄详情（v26 · 需求 2）：左头像 · 右五维
    * ------------------------------------------------------------
    * 头像固定 168px 在左，属性在右并排；五维表只给一个数值列，
    * "作用"是固定文案（每点……），实时数值在「当前效果」行里。
-   * 经验条与经验道具行用于把商城买的练兵经验直接消耗在将领身上。
+   * 经验条与经验道具行用于把游商买的练兵经验直接消耗在英雄身上。
    * ============================================================ */
   .gd-hero { display: flex; gap: var(--sp-5); align-items: flex-start;
     padding-bottom: var(--sp-4); border-bottom: 1px solid var(--line-strong); }
@@ -3509,7 +3554,7 @@
   .gd-tag.hero { color: var(--hero-tag); border: 1px solid rgba(var(--hero-tag-rgb),.5); }
   .gd-tag.beauty { color: var(--beauty-tag); border: 1px solid rgba(var(--beauty-tag-rgb),.5); }
 
-  /* v65（老板）：「统率这些属性名都成 2 行了，占空间」——
+  /* v65（老板）：「指挥这些属性名都成 2 行了，占空间」——
      根因是**表格自动分配宽度**：作用列文字长 → 抢走空间 → 第一列被压到折行。
      所以这里给第一列**固定宽 + nowrap**（名字短，一定放得下），
      作用列吃剩余宽度；`table-layout:fixed` 保证列宽不再随内容抖动。 */
@@ -3551,7 +3596,7 @@
   .stat-row .sr-name { font-weight: 700; color: var(--gold-light); }
   .stat-row .sr-sub { color: var(--text-dim); font-size: var(--fs-sub); flex: 1; }
 
-  /* v74：`.gd-effect`（带兵/人口/产量/速度 四行备注）随老板需求 6 整块撤除 —— 样式同步下线。 */
+  /* v74：`.gd-effect`（带兵/幸存者/产量/速度 四行备注）随老板需求 6 整块撤除 —— 样式同步下线。 */
 
   .gd-expbar { height: 10px; border-radius: var(--r-md); background: rgba(var(--sh-rgb),.45);
     border: 1px solid var(--line); overflow: hidden; }
@@ -3586,15 +3631,15 @@
      ① 资源区：附属野地下拉框（原「本城 · 城名」表头退役）
      ② 酒馆招募：表格版式（表头 + 单行数据，含月俸列）
      ③ 君主面板：左右分栏（左城池列表 / 右信息表）
-     ④ 锻造间：百炼强化列表
+     ④ 锻造间：熔铸强化列表
      ============================================================ */
   .wild-pick-host { margin-bottom: var(--sp-1); }
   .wild-pick-host .res-line { display: flex; align-items: center; gap: var(--sp-2); }
   .wild-select { flex: 1 1 auto; min-width: 0; max-width: 168px; }
 
   /* v80（老板）：「表格行宽相对固定，根据字串长度搞个适合的固定表，在换人时框架不动，
-     只有将领信息变动」——table-layout: fixed 只认声明过的宽度（colgroup，见 ui.openInn）；
-     列宽按各列字串长度分配：将领最宽（头像+姓名）、四维最窄（2~3 位数字）。
+     只有英雄信息变动」——table-layout: fixed 只认声明过的宽度（colgroup，见 ui.openInn）；
+     列宽按各列字串长度分配：英雄最宽（头像+姓名）、四维最窄（2~3 位数字）。
      列宽和贴着容器实宽（实测 942px）：不足时浏览器会按比例压列，别随手改单列。 */
   .inn-tbl { margin: 0; table-layout: fixed; }
   .inn-tbl col.c-name { width: 188px; }
@@ -3622,7 +3667,7 @@
   /* ⛔ v89.202（老板 1「调校同款」）：.enh-list / .enh-row / .enh-nm / .enh-tag /
      .enh-cost 单列家族随调校面板改网格卡片（.enh-rows/.enh-card）整族退役 ——
      原"每行一颗调校键"的单列形态无第二消费方（全仓唯一用点=调校面板）。 */
-  /* v89.201（老板 3）：百炼强化专属界面 —— 3 列网格卡片（点选 + 底部唯一强化键）。
+  /* v89.201（老板 3）：熔铸强化专属界面 —— 3 列网格卡片（点选 + 底部唯一强化键）。
      卡高 84px = 品阶图 68px + 上下 padding 各 8px（垂直居中由 align-items:center 保证）。 */
   .enh-rows { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-4);
     grid-auto-rows: 84px; align-content: start; }
@@ -3640,7 +3685,7 @@
   .enh-card .ec-lv { font-size: var(--fs-num); font-weight: 700; color: var(--gold-light); line-height: var(--lh-1); }
   .enh-card .ec-lv i { font-size: var(--fs-cap); color: var(--text-dim); font-weight: 400; font-style: normal; }
   /* ⛔ v89.204（老板 2）：「强化界面的资源要求请以悬停显示，而不是直接占用位置」——
-     .ec-cost（卡面成本行）退役：成本并入 title（百炼/调校两处同改，见 js/ui.js）。 */
+     .ec-cost（卡面成本行）退役：成本并入 title（熔铸/调校两处同改，见 js/ui.js）。 */
   /* ---------- v89.1 全屏剧本视觉化（幕景横幅 / 幕题 / 徽章 / 结算卡） ---------- */
   .sxf-wrap { --sxf-art-sz: 118px; --sxf-act-sz: 40px; --sxf-emb-sz: 52px;
     max-width: 860px; margin: 0 auto; padding: var(--sp-6) var(--sp-5) 72px;
@@ -3823,20 +3868,21 @@
        atk 第 i 队 = i/n；def 第 i 队 = (i+0.5)/n（错半行，与 v89.103 同规，不互相遮）。
      牌高写进 CSS（30px）：`top = (100% − 牌高) × --rel` —— 最后一队正好贴底、不越界。 */
   /* v89.150（老板 1）：「战场中兵种[周]围的环形框，根据兵种，步兵窄一点，机车比目前稍窄但
-     比步兵宽，如果是器械兵种如重弩车等则维持目前方块大小，使兵种便于区分」——
-     宽度三档（图标 26px **不变**，变的是**框的留白**：窄框贴图标 = 步兵；宽框留白 = 器械）：
-       · .inf   步兵（含搬运工/侦察兵）— 28px（贴边窄框）
-       · .cav   机车              — 32px（比改前的 36 稍窄、比步兵宽 4px）
-       · .siege 器械（重弩车/破门车/迫击炮）— 36px（**维持改前的方块尺寸**）
-     形态由 `GAME.troopShapeOf` 判定（唯一出口，读数据表的 cat / craft 字段）。 */
+     比步兵宽，如果是器械兵种如无人轰炸机等则维持目前方块大小，使兵种便于区分」——
+     宽度三档（图标 26px **不变**，变的是**框的留白**：窄框贴图标 = 徒步；宽框留白 = 器械）：
+       · .walk  徒步（无 ride/craft，含板车/侦察单元）— 28px（贴边窄框）
+       · .ride  机车（ride = true）                 — 32px（比改前的 36 稍窄、比徒步宽 4px）
+       · .craft 器械（craft：无人轰炸机/自行火炮）   — 36px（**维持改前的方块尺寸**）
+     形态由 `GAME.troopShapeOf` 判定（唯一出口，读数据表的 ride / craft 字段）。
+     v89.230：类名随兵种体系同步（原 .inf/.cav/.siege 退役 —— 步兵/骑兵不再区分）。 */
   .bt-unit { --u-w: 36px; position: absolute; transform: translateX(-50%); display: flex; align-items: center;
     height: 30px; width: var(--u-w); justify-content: center;
     top: calc((100% - 30px) * var(--rel, 0));
     padding: var(--sp-0) 0; border-radius: var(--r-lg); white-space: nowrap;
     transition: left .55s cubic-bezier(.4, .8, .4, 1); }
-  .bt-unit.inf { --u-w: 28px; }
-  .bt-unit.cav { --u-w: 32px; }
-  .bt-unit.siege { --u-w: 36px; }
+  .bt-unit.walk { --u-w: 28px; }
+  .bt-unit.ride { --u-w: 32px; }
+  .bt-unit.craft { --u-w: 36px; }
   .bt-unit .bt-ico svg, .bt-unit .bt-ico img { width: 26px; height: 26px; vertical-align: middle; }
   /* 兵种数 > 8 队时的紧凑档（渲染时挂 .bt-field.dense）：牌 30→24px、图标 26→20px ——
      12 队（极端载荷）也能一屏放下，不再把兵牌叠在一起。 */
@@ -3869,7 +3915,7 @@
   /* v89.149：列表随行同高（撤 330 上限）· 超出仍在列表内部滚动 —— 布局高度恒定 */
   .bt-side { display: flex; flex-direction: column; gap: var(--sp-1); min-width: 0;
     max-height: 100%; overflow-y: auto; }
-  /* v89.151（老板 n）：「我军、敌军以及各自将领的姓名等级，分别居中显示」 */
+  /* v89.151（老板 n）：「我军、敌军以及各自英雄的姓名等级，分别居中显示」 */
   .bt-side-h { font-size: var(--fs-cap); color: var(--text-dim); padding: 0 var(--sp-1) var(--sp-0);
     text-align: center; }
   /* v89.139（老板 1）：「压缩战场界面兵种显示，内容更紧凑，默认兵种全部列出呈 2 列，
@@ -3989,9 +4035,9 @@
      旧样式已无消费点（老板：「前进驻守撤退通过下拉框选择，不要直接列出，节省空间」）。 */
   .bt-sel { background: rgba(var(--sh-rgb), .5); color: var(--text); border-radius: var(--r-md);
     border: 1px solid rgba(var(--gold-soft-rgb), .32); padding: var(--sp-0) var(--sp-2); font-size: var(--fs-cap); }
-  /* v89.136（老板 2/3）：战场双方将领行 · 我方动作片段白色 · 结束行 */
+  /* v89.136（老板 2/3）：战场双方英雄行 · 我方动作片段白色 · 结束行 */
   .bt-gen { display: flex; align-items: center; justify-content: center; gap: var(--sp-2);
-    padding: var(--sp-1) var(--sp-2);   /* v89.151（老板 n）：将领姓名等级行**居中显示** */
+    padding: var(--sp-1) var(--sp-2);   /* v89.151（老板 n）：英雄姓名等级行**居中显示** */
     margin-bottom: var(--sp-1); font-size: var(--fs-sub); color: var(--parchment);
     border-bottom: 1px dashed rgba(var(--gold-soft-rgb), .28); }
   .bt-gen.foe { color: var(--red-light); }
@@ -4226,29 +4272,29 @@
 <div id="screen-game" class="hidden">
   <!-- 顶部导航 -->
   <!-- v19：菜单按**类型分组**，同类型相邻、不同类型以竖线分隔
-       ① 场景：城池 / 地图   ② 军事：将领 / 行军
-       ③ 成长：任务 / 商城 / 威望   ④ 记录：公文   ⑤ 系统：设置 / 存档 / 新游戏
+       ① 场景：城池 / 地图   ② 军事：英雄 / 行军
+       ③ 成长：任务 / 游商 / 威望   ④ 记录：公文   ⑤ 系统：设置 / 存档 / 新游戏
        原「公告」菜单已取消，内容并入「公文」 -->
   <div class="topnav" id="topnav">
     <!-- v25（需求 10）：① 每个菜单加手绘线描图标（JS 填 <i class="ti">）
          ② 任务与统计相邻  ③「威望」不再是独立菜单，并入「君主」
-         ④ 商城 / 背包由弹窗改为**整页视图**，与其他菜单一致 -->
+         ④ 游商 / 背包由弹窗改为**整页视图**，与其他菜单一致 -->
     <div class="tab active" data-view="city"><i class="ti" data-nav="city"></i>城池</div>
     <div class="tab" data-view="ext"><i class="ti" data-nav="ext"></i>城外</div>
     <div class="tab" data-view="map"><i class="ti" data-nav="map"></i>地图</div>
     <span class="nav-sep"></span>
-    <div class="tab" data-view="generals"><i class="ti" data-nav="general"></i>将领</div>
+    <div class="tab" data-view="generals"><i class="ti" data-nav="general"></i>英雄</div>
     <!-- v41（需求 3）：行军菜单**不再挂数值徽标** —— 老板指出「不要给在行军这个
          菜单名上产生数值」。顶栏徽标的语义是"有事情等你处理"（如任务可领取）；
          行军只是"部队在外面"，属状态不属待办。队列数在行军菜单里本来就有。 -->
     <div class="tab" data-view="marches"><i class="ti" data-nav="march"></i>军务</div>
-    <!-- v89.104（老板）：「将将领，军务，任务放一起」—— 三者之间**不再插分隔条**；
+    <!-- v89.104（老板）：「将英雄，军务，任务放一起」—— 三者之间**不再插分隔条**；
          同时删掉「统计」菜单（见 ui.js 的退役注释）。 -->
     <div class="tab" data-view="tasks"><i class="ti" data-nav="quest"></i>任务</div>
     <span class="nav-sep"></span>
-    <div class="tab" data-view="shop"><i class="ti" data-nav="shop"></i>商城</div>
+    <div class="tab" data-view="shop"><i class="ti" data-nav="shop"></i>游商</div>
     <div class="tab" data-view="bag"><i class="ti" data-nav="bag"></i>背包</div>
-    <!-- v89.194（老板 S3）：收藏（藏珍阁）—— 与商城 / 背包并列 -->
+    <!-- v89.194（老板 S3）：收藏（陈列馆）—— 与游商 / 背包并列 -->
     <div class="tab" data-view="collection"><i class="ti" data-nav="collection"></i>收藏</div>
     <span class="nav-sep"></span>
     <!-- ⛔ v89.218（老板「不再保留史册，故事集」）：两个页签整条退役。 -->
@@ -4256,7 +4302,7 @@
     <span class="nav-sep"></span>
     <!-- v29（需求 5）：①「自动」独立成菜单，就放在「设置」旁边 ——
          自动升级/研究/出征是**一类**东西（让系统替你干活），挤在设置里既不好找、
-         也没空间放"将领 / 兵力 / 目标 / 等级 / 类型 / 频率"这些参数。
+         也没空间放"英雄 / 兵力 / 目标 / 等级 / 类型 / 频率"这些参数。
          ② 顶栏的「存档 / 新游戏」删掉 —— 设置面板里本来就有同一对按钮，
          顶栏再摆一份只是让右手边常年挂着两个危险按钮。 -->
     <div class="tab" data-view="auto"><i class="ti" data-nav="auto"></i>自动</div>
@@ -4337,7 +4383,7 @@
   <div class="bottombar" id="bottom-bar"></div>
 
   <!-- v16：底部消息栏与功能按钮已移除：
-       消息 → 整合进「公文」菜单；商城/公告 → 移入顶栏；排行 → 取消；设置 → 顶栏已有 -->
+       消息 → 整合进「公文」菜单；游商/公告 → 移入顶栏；排行 → 取消；设置 → 顶栏已有 -->
 </div>
 
 <div class="toast" id="toast"></div>
@@ -4350,27 +4396,27 @@
 </div><!-- /#app-scale -->
 </div><!-- /#app-fit -->
 
-<!-- BUILD 8989 -->
-<script src="js/data.js?v=8989"></script>
-<script src="js/state.js?v=8989"></script>
-<script src="js/questdata.js?v=8989"></script>
-<script src="js/systems.js?v=8989"></script>
-<script src="js/domain.js?v=8989"></script>
-<script src="js/map.js?v=8989"></script>
-<script src="js/battle.js?v=8989"></script>
+<!-- BUILD 9100 -->
+<script src="js/data.js?v=9100"></script>
+<script src="js/state.js?v=9100"></script>
+<script src="js/questdata.js?v=9100"></script>
+<script src="js/systems.js?v=9100"></script>
+<script src="js/domain.js?v=9100"></script>
+<script src="js/map.js?v=9100"></script>
+<script src="js/battle.js?v=9100"></script>
 <!-- v27（需求 5）：回合制文字战场。放在 battle.js 之后 —— simulate 由它接管 -->
-<script src="js/tactic.js?v=8989"></script>
-<script src="js/icons.js?v=8989"></script>
+<script src="js/tactic.js?v=9100"></script>
+<script src="js/icons.js?v=9100"></script>
 <!-- v32（需求「采用网图」）：game-icons 开源图标素材层。必须在 icons.js 之后 ——
      icons.js 内的取图函数用 typeof GICONS 延迟绑定，渲染时才真正查表。 -->
-<script src="js/gicons.js?v=8989"></script>
+<script src="js/gicons.js?v=9100"></script>
 <!-- v35：AI 位图素材登记表（汉代风，最高优先级）。同样在 icons.js 之后 ——
      取图函数用 typeof BITMAPS 延迟绑定；未登记的 id 自动回退矢量层。 -->
-<script src="js/bitmaps.js?v=8989"></script>
-<script src="js/portraits.js?v=8989"></script>
-<script src="js/story.js?v=8989"></script>
+<script src="js/bitmaps.js?v=9100"></script>
+<script src="js/portraits.js?v=9100"></script>
+<script src="js/story.js?v=9100"></script>
 <!-- ⛔ v89.218（老板「故事全部去除」）：84 卷故事库（story/）整目录删除，脚本标签同步撤除。 -->
-<script src="js/ui.js?v=8989"></script>
-<script src="js/main.js?v=8989"></script>
+<script src="js/ui.js?v=9100"></script>
+<script src="js/main.js?v=9100"></script>
 </body>
 </html>

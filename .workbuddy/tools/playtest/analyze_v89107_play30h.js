@@ -42,7 +42,7 @@ picks.forEach(function (i) {
   if (!s) return;
   console.log('  第 ' + String(s.year != null ? s.year : i).padStart(6) + ' 年 · 城 ' +
     String(s.cities != null ? s.cities : '?').padStart(3) + ' · 军 ' + String(fmt(s.army)).padStart(8) +
-    ' · 金 ' + String(fmt(s.gold)).padStart(9) + ' · 将 ' + String(s.generals != null ? s.generals : '?').padStart(4) +
+    ' · 旧币 ' + String(fmt(s.gold)).padStart(9) + ' · 将 ' + String(s.generals != null ? s.generals : '?').padStart(4) +
     ' · 民心 ' + (s.hearts != null ? Math.round(s.hearts) : '?'));
 });
 
@@ -65,9 +65,9 @@ var KEY = [
   ['烽火/来袭', /烽火|犯境|来犯|击退|攻破城门|空城计|坚壁清野/],
   ['占领/扩张', /占领|建城|新城池|接管|转正/],
   ['行军/调防', /行军|抵达|抵|调防|辎重|召回|驻守/],
-  ['招募/将领', /招募|招贤|入我帐下|归降|客栈|贤才/],
+  ['招募/英雄', /招募|招贤|入我帐下|归降|酒馆|贤才/],
   ['建造/升级', /建造|完成|升级|落成|改建|拆除|扩编/],
-  ['经济/交易', /市易|售出|购入|得金|税收|开采|收获|采集/],
+  ['经济/交易', /市易|售出|购入|得旧币|税收|开采|收获|采集/],
   ['任务/成就', /任务|奖励|达成|爵位|晋升|改元/],
   ['战斗/战报', /得胜|受挫|撤退|缴械|缴获|损兵|伤兵|俘获/],
   ['其它', /.*/]

@@ -1,4 +1,4 @@
-/* v89.157 像素体检：公文徽章/铺满 · 将领条 · 城墙要求 · 逐回合弹窗 · 地块 4×3 */
+/* v89.157 像素体检：公文徽章/铺满 · 将领条 · 围墙要求 · 逐回合弹窗 · 地块 4×3 */
 module.paths.unshift('C:/Users/18811/.workbuddy/binaries/node/workspace/node_modules');
 var fs = require('fs'), PNG = require('pngjs').PNG;
 var S = 'E:/Deepseekdb/.workbuddy/shots/';
@@ -49,10 +49,10 @@ var barB = count(B, function (r, g, b) { return b > 140 && b - r > 40 && b - g >
 chk('图非空 + 进度条色块（体力绿 / 精力蓝 / 忠诚色）', B.width >= 1000 && B.height >= 600 && barG >= 1500 && barB >= 400,
   B.width + 'x' + B.height + ' 绿=' + barG + ' 蓝=' + barB);
 
-console.log('===== ③ 官府 · 城墙要求 =====');
+console.log('===== ③ 官府 · 围墙要求 =====');
 var C = load('v89157-wall-req.png');
 var cRows = rows(C).length, cBright = bandBright(C, 0, C.height);
-chk('图非空 + 多行文案（城墙要求行在册）', C.width >= 600 && cRows >= 12 && cBright >= 8000,
+chk('图非空 + 多行文案（围墙要求行在册）', C.width >= 600 && cRows >= 12 && cBright >= 8000,
   C.width + 'x' + C.height + ' 行组=' + cRows + ' 亮=' + cBright);
 
 console.log('===== ④ 逐回合文字复盘 =====');

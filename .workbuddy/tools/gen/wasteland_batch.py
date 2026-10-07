@@ -6,7 +6,12 @@
 
 为什么要有"装前门禁"：历史上建筑图标被投诉 4 轮「颜色不对劲」，根因是单色剪影
 （图内色散仅 7°）。本驱动**在装机之前**就把不合格批次挡下 —— 不合格只会浪费一次
-生成，不会污染线上素材。判据镜像 smoke-test.js 的像素断言（见 _gate）。
+生成，不会污染线上素材。判据镜像 smoke-test.js 的像素断言（见 gate）。
+
+v89.225 沿革：**"贴族旗"退役** —— 老板令「建筑前边的带颜色棋子好突兀，
+能否用地块颜色区分」：族色编码从"图标上的小旗"迁到"城内地块染色"
+（`DATA.SERIES[].plot` + index.html `--ser-*`）。本驱动的建筑切分不再画旗，
+gate ③ 相应**反转**为"逐张无族旗色"（防回潮；墓碑色表见 HIST_FLAG_RGB）。
 
 用法：
   python .workbuddy/tools/gen/wasteland_batch.py --list
@@ -76,20 +81,15 @@ def rgb_of_hsl(h, s, l):              # l 收 0~1 小数（与 smoke 一致）
 
 # ---------- 数据源：族归属与旗色都从 js/data.js 读（不另抄表）----------
 
-def load_series():
+def load_ser_of():
+    """族归属（建筑 → 族）从 js/data.js 读（唯一来源；gate 的建筑②用）。
+    ⛔ v89.225：原 `load_series` 兼读的 `flag` 旗色随族旗退役删除 ——
+    族色编码已迁到 `DATA.SERIES[].plot`（地块染色），不需要在本工具里解析。"""
     src = io.open(os.path.join(BASE, "js", "data.js"), encoding="utf-8").read()
-    blk = src[src.index("DATA.SERIES = {"):]
-    blk = blk[:blk.index("\n  };")]
-    flag = {}
-    rx = re.compile(r"^    ([a-z]+):\s*\{.*?flag:\s*\{\s*h:\s*([\d.]+),\s*s:\s*([\d.]+),\s*l:\s*([\d.]+)\s*\}")
-    for line in blk.split("\n"):
-        m = rx.match(line)
-        if m:
-            flag[m.group(1)] = (float(m.group(2)), float(m.group(3)), float(m.group(4)))
     bblk = src[src.index("DATA.BUILDINGS = {"):]
     bblk = bblk[:bblk.index("\n  };")]
     ser_of = dict(re.findall(r"id: '([a-z]+)', series: '([a-z]+)'", bblk))
-    return flag, ser_of
+    return ser_of
 
 
 # ---------- 像素体检（镜像 smoke-test.js）----------
@@ -209,7 +209,9 @@ def series_mean(paths):
 
 
 def has_color(path, want, tol=12, min_hits=8):
-    """图里是否真含接近目标色的像素（镜像 smoke hasColor）。"""
+    """图里是否真含接近目标色的像素（镜像 smoke hasColor）。
+    ⛔ v89.225：原 gate ③"逐张含族旗"的判据载体，随族旗退役已无调用方 ——
+    保留为通用工具（供未来其它"素材色彩在册"校验复用），不再是门禁环节。"""
     arr, (w, h) = _png_pixels(path)
     step = max(1, w // 160)
     hit = 0
@@ -249,6 +251,31 @@ def is_building_batch(batch):
     return bool(batch.get("atlases")) and all(a.get("group") == "building" for a in batch["atlases"])
 
 
+def _despeckle(alpha, min_px=24):
+    """去掉面积小于 min_px 的漂浮连通块（AI 图集背景噪点抠底后的残留小点）。
+    alpha 是 uint8 前景掩码（0/255）。返回清过散点的新掩码。"""
+    import numpy as np
+    from collections import deque
+    m = alpha > 128
+    h, w = m.shape
+    seen = np.zeros_like(m, dtype=bool)
+    out = np.zeros_like(m, dtype=bool)
+    for y in range(h):
+        for x in range(w):
+            if m[y, x] and not seen[y, x]:
+                q = deque([(y, x)]); seen[y, x] = True; pts = []
+                while q:
+                    cy, cx = q.popleft(); pts.append((cy, cx))
+                    for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                        ny, nx = cy + dy, cx + dx
+                        if 0 <= ny < h and 0 <= nx < w and m[ny, nx] and not seen[ny, nx]:
+                            seen[ny, nx] = True; q.append((ny, nx))
+                if len(pts) >= min_px:
+                    for (py, px) in pts:
+                        out[py, px] = True
+    return np.where(out, 255, 0).astype(np.uint8)
+
+
 def split_batch(batch, atlas_dir):
     """把一批图集切到 per-batch 暂存目录；返回 {id: staged_path}。"""
     out = {}
@@ -263,22 +290,29 @@ def split_batch(batch, atlas_dir):
             print("    ⚠ 缺图集 " + a["atlas"] + "（跳过）")
             continue
         g = a["group"]
+        suf = a.get("suffix", "")
         if g == "building":
-            # 建筑：连通域洪水填充抠底（不伤内部浅色墙）+ 居中 1024
-            _split_building_floodfill(atlas, a["ids"], stage)
+            # 建筑：连通域洪水填充抠底（不伤内部浅色墙）+ 512 居中
+            #   （v89.225："贴族旗"步骤退役 —— 族色编码改"地块染色"，见 gate ③ 注释）
+            _split_building_floodfill(atlas, a["ids"], stage, suf)
         else:
             run([NODE, os.path.join(BASE, ".workbuddy", "tools", "gen", "atlas_split.js"), a["atlas"], ",".join(a["ids"]), stage])
         for id_ in a["ids"]:
-            p = os.path.join(stage, "ai_%s.png" % id_)
+            key = id_ + suf
+            p = os.path.join(stage, "ai_%s.png" % key)
             if os.path.exists(p):
-                out[id_] = p
+                out[key] = p
     return out
 
 
-def _split_building_floodfill(atlas, ids, stage):
-    """建筑专用切分：连通域洪水填充抠底 + 1024 画布居中（对齐 split_atlas.py 口径）。
-    这里内联实现，避免依赖 split_atlas.py 固定输出目录 —— 驱动要落自定义暂存目录。"""
-    from PIL import Image, ImageFilter
+def _split_building_floodfill(atlas, ids, stage, suf=""):
+    """建筑专用切分：连通域洪水填充抠底 + 512 画布居中（对齐 split_atlas.py 口径）。
+    为什么内联：split_atlas.py 输出到固定目录 + 只认写死的 GROUPS；驱动要落自定义暂存目录。
+    ⛔ v89.225 退役"贴族旗"（原 `draw_flag(canvas, …)` 调用）—— 老板令「带颜色棋子
+       好突兀，能否用地块颜色区分」：族色编码从"图标上的小旗"迁到"城内地块染色"
+       （`DATA.SERIES[].plot` + index.html 的 `--ser-*` 主题变量）。
+       若旗回潮：本文件 gate ③ 与 smoke §225 双重拦截。"""
+    from PIL import Image, ImageDraw
     import numpy as np
     from collections import deque
     TOL, PAD, SIZE = 46, 0.035, 512
@@ -311,25 +345,77 @@ def _split_building_floodfill(atlas, ids, stage):
                 if 0 <= ny < hh and 0 <= nx < ww and cand[ny, nx] and not vis[ny, nx]:
                     vis[ny, nx] = True; q.append((ny, nx))
         alpha = np.where(vis, 0, 255).astype(np.uint8)
+        # 去散点：AI 图集背景有噪点，抠底后残留漂浮小点（视觉"毛边"）。只留面积够的连通域。
+        alpha = _despeckle(alpha, min_px=24)
         rgba = np.dstack([cell.astype(np.uint8), alpha])
-        # bbox + 居中到 1024
         ys, xs = (alpha > 24).nonzero()
         if len(xs) == 0:
             continue
         crop = rgba[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
         cimg = Image.fromarray(crop, "RGBA")
         side = max(cimg.size)
-        scale = (1 - PAD * 2) * 1024 / side
+        scale = (1 - PAD * 2) * SIZE / side
         cimg = cimg.resize((max(1, round(cimg.width * scale)), max(1, round(cimg.height * scale))), Image.LANCZOS)
-        canvas = Image.new("RGBA", (1024, 1024), (0, 0, 0, 0))
-        canvas.paste(cimg, ((1024 - cimg.width) // 2, (1024 - cimg.height) // 2), cimg)
-        canvas.save(os.path.join(stage, "ai_%s.png" % bid))
+        canvas = Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0))
+        canvas.paste(cimg, ((SIZE - cimg.width) // 2, (SIZE - cimg.height) // 2), cimg)
+        # 二次去散点：LANCZOS 缩放会把弱 alpha 又切成小点，在最终画布上再清一遍
+        ca = np.asarray(canvas).copy()
+        ca[..., 3] = _despeckle(ca[..., 3], min_px=16)
+        canvas = Image.fromarray(ca, "RGBA")
+        canvas.save(os.path.join(stage, "ai_%s.png" % (bid + suf)))
+
+
+# ⛔ v89.225 退役：`draw_flag`（燕尾旗：深木旗杆 + 横挑 + 三角燕尾布）整条删除。
+#   沿革：v89.107 立（族色编码 = 小面积高饱和色旗）→ v89.225 撤
+#   （老板：「建筑前边的带颜色棋子是什么，能否用地块颜色区分，不然好突兀」）。
+#   去向：`DATA.SERIES[].plot` + index.html `--ser-*` 主题变量（城内地块染色）。
+#   历史上贴旗的 16 张图标在 v89.225 已由"本文件重切不画旗"清除；若旗回潮，
+#   本文件 gate ③（无旗校验）与 smoke §225 会当场拦下。
 
 
 # ---------- 门禁 ----------
 
-def gate(staged, batch, flag, ser_of, guards):
-    """装配前体检 —— 镜像 smoke-test.js 的三条建筑判据 + 通用完整性。
+# v89.225：历史族旗色（RGB）—— 旗退役后**仅作墓碑比对**（gate ③"无旗"校验的对照色），
+# 不是"要贴的目标"。有旗时每张图在旗位区域命中 ≈4800px，无旗后只剩自然材质的零星近似。
+HIST_FLAG_RGB = [
+    (205, 160, 55),   # gov 旧币（42°/60%/51%）
+    (231, 227, 213),  # live 素（48°/27%/87%）
+    (104, 76, 39),    # store 赭（34°/45%/28%）
+    (44, 125, 100),   # edu 青碧（162°/48%/33%）
+    (43, 82, 136),    # mil 靛（215°/52%/35%）
+    (196, 70, 59),    # biz 朱（5°/54%/50%）
+    (110, 155, 175),  # road 青灰（199°/29%/56%）
+]
+FLAG_BOX = (0.62, 0.58, 0.87, 0.78)   # 旗位区域（相对比例：旗面 x0.645~0.845 + 旗杆外沿）
+
+
+def flag_px_in_box(path, colors, tol=15):
+    """旗位区域内"任一历史族旗色"的最大命中像素数（欧氏距离 ≤ tol）。
+    全采样（不 step）—— 区域约 128×102 px，代价可忽略。
+    tol=15 经 16 张实测标定：无旗 ≤448（自然材质零星近似）· 有旗 ≈4806（精确平涂，
+    PIL polygon 硬边缘无抗锯齿）—— 判别力 ~10×；阈值见 guards.buildingNoFlagMaxPx。"""
+    arr, (w, h) = _png_pixels(path)
+    x0, y0 = int(w * FLAG_BOX[0]), int(h * FLAG_BOX[1])
+    x1, y1 = int(w * FLAG_BOX[2]), int(h * FLAG_BOX[3])
+    best = 0
+    for want in colors:
+        hit = 0
+        for y in range(y0, y1):
+            for x in range(x0, x1):
+                if arr[y, x, 3] < 200:
+                    continue
+                dr = arr[y, x, 0] - want[0]
+                dg = arr[y, x, 1] - want[1]
+                db = arr[y, x, 2] - want[2]
+                if dr * dr + dg * dg + db * db <= tol * tol:
+                    hit += 1
+        if hit > best:
+            best = hit
+    return best
+
+
+def gate(staged, batch, ser_of, guards):
+    """装配前体检 —— 镜像 smoke-test.js 的建筑判据 + 通用完整性。
     返回 (per_image_rows, batch_fails)。batch_fails 非空 = 整批拒。"""
     is_building = is_building_batch(batch)
     rows = []
@@ -369,15 +455,14 @@ def gate(staged, batch, flag, ser_of, guards):
         if d < guards["seriesGroundDeltaE00Min"]:
             batch_fails.append("族 %s 糊进地面 ΔE00=%.1f <12" % (ser, d))
 
-    # ---- 建筑③：逐张含自己族旗色（smoke:10944）----
+    # ---- 建筑③：逐张**无族旗色**（v89.225 口径反转：族旗退役，防回潮）----
+    #   判据 = 旗位区域（FLAG_BOX = 原 draw_flag 几何外沿）内，"任一历史族旗色"
+    #   （HIST_FLAG_RGB 墓碑色表）命中像素 < guards["buildingNoFlagMaxPx"]。
+    #   有旗时每张 ≈4800px；无旗后自然材质只会有零星近似（阈值经 16 张实测标定）。
     for id_, p in staged.items():
-        ser = ser_of.get(id_)
-        if not ser or ser not in flag:
-            continue
-        want = rgb_of_hsl(flag[ser][0], flag[ser][1], flag[ser][2] / 100.0)
-        hits, need = has_color(p, want, guards["buildingFlagDeltaE00Max"])
-        if hits < need:
-            batch_fails.append("%s 缺族旗 %s（命中 %d<%d）" % (id_, ser, hits, need))
+        hits = flag_px_in_box(p, HIST_FLAG_RGB)
+        if hits >= guards["buildingNoFlagMaxPx"]:
+            batch_fails.append("%s 旗位含族旗色 %d≥%d（旗回潮？）" % (id_, hits, guards["buildingNoFlagMaxPx"]))
 
     return rows, batch_fails
 
@@ -405,6 +490,23 @@ def install(staged, batch):
     return n
 
 
+# ---------- 进度 ----------
+
+def status(spec):
+    """一览：每批图集到位几张 / 缺失哪些 + 已装/未装。"""
+    print("\n══ 进度一览（图集到位情况）══\n")
+    for b in spec["atlasBatches"]:
+        have, miss = [], []
+        for a in b["atlases"]:
+            (have if find_atlas(a["atlas"]) else miss).append(a["atlas"])
+        mark = "✅" if not miss else ("◑" if have else "○")
+        print("  %s %-6s %-22s 图集 %d/%d" % (mark, b["batch"], b.get("label"), len(have), len(b["atlases"])))
+        if miss:
+            print("        缺: " + ", ".join(miss))
+    print("\n  贴图批（W-T1/T2/T3）走 crop_terrain.py / crop_city.py，需参考图，见规格书 §四。")
+    print("  出图 prompt: python .workbuddy/tools/gen/wasteland_prompts.py --batch <批号>")
+
+
 # ---------- 主 ----------
 
 def main():
@@ -416,12 +518,15 @@ def main():
     ap.add_argument("--force", action="store_true")
     ap.add_argument("--atlas-dir")
     ap.add_argument("--list", action="store_true")
+    ap.add_argument("--status", action="store_true")
     args = ap.parse_args()
 
     spec = json.load(io.open(JSONP, encoding="utf-8"))
     guards = spec["guards"]
-    flag, ser_of = load_series()
+    ser_of = load_ser_of()
 
+    if args.status:
+        status(spec); return
     if args.list:
         for b in spec["atlasBatches"] + spec["textureBatches"]:
             print("  %-6s %-22s %3d  %s" % (b["batch"], b.get("label", b.get("group")), b["count"], b.get("method")))
@@ -431,20 +536,19 @@ def main():
     if args.batch:
         batches = [b for b in batches if b["batch"] == args.batch]
     elif not args.all:
-        print("请给 --batch <id> 或 --all；--list 看批次"); return
+        print("请给 --batch <id> 或 --all；--list 看批次；--status 看进度"); return
     if not batches:
         print("没有匹配的批次（贴图批走 crop_*.py，不在此驱动）"); return
 
-    if args.apply and not args.check:
-        pass  # apply 隐含先体检
     total_fail = 0
+    installed_any = False
     for batch in batches:
         print("\n══ %s %s ══" % (batch["batch"], batch.get("label", "")))
         staged = split_batch(batch, args.atlas_dir)
         if not staged:
-            print("    （无图集，跳过 —— 生成在外部：WorkBuddy image-edit / 即梦）")
+            print("    （无图集，跳过 —— 先生成：wasteland_prompts.py --batch %s）" % batch["batch"])
             continue
-        rows, batch_fails = gate(staged, batch, flag, ser_of, guards)
+        rows, batch_fails = gate(staged, batch, ser_of, guards)
         print_table(rows)
         ok_img = sum(1 for r in rows if r[2])
         print("    逐张完整性：%d/%d 过" % (ok_img, len(rows)))
@@ -460,9 +564,21 @@ def main():
                 print("    → 拒绝入库（批级判据未过）。修图重出，或 --force 强装（记录）。")
             else:
                 n = install(staged, batch)
+                installed_any = True
                 print("    → 入库 %d 张%s" % (n, "（--force 忽略门禁，已记录）" if batch_fails else ""))
+
+                # 自动收尾：重生成登记表 + 素材层校验
+                print("    → 重生成登记表 gen_bitmaps.js …")
+                run([NODE, os.path.join(BASE, ".workbuddy", "tools", "gen", "gen_bitmaps.js")])
+                print("    → 素材层校验（穷举 layerOf）…")
+                subprocess.run([NODE, os.path.join(BASE, ".workbuddy", "tools", "asset", "verify_wasteland.js")],
+                               env=dict(os.environ, NODE_PATH=os.path.join(os.path.expanduser("~"), ".workbuddy", "binaries", "node", "workspace", "node_modules")))
         else:
-            print("    → 体检完成；加 --apply 入库")
+            print("    → 体检完成；加 --apply 一键入库")
+    if installed_any:
+        print("\n✅ 已入库。下一步：")
+        print("   node .workbuddy/tools/asset/verify_wasteland.js      # 看回退情况")
+        print("   node smoke-test.js                                    # 门禁（建筑色散/族旗）")
     if total_fail and not args.force:
         sys.exit(1)
 

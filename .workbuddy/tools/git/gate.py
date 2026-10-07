@@ -46,6 +46,10 @@ TABLES = ('.workbuddy/tools/audit/audit_v89134_tables.js', '数据表卫生', Tr
 # 所以放进 gate 常跑（只读源码，~1 秒）。
 DATASET = ('.workbuddy/tools/audit/audit_v89179c_dataset_refs.js', 'dataset 引用', True)
 
+# v89.230（兵种链路批）：兵种链体检 —— 一个兵种从数据表链到六组节点（形态/图标三链/解锁/
+# 被引表/派生出口/退役残留）。**唯一实现**（smoke §230② 也调它）；gate 里直跑一遍更早报红。
+TROOPCHAIN = ('.workbuddy/tools/audit/audit_v89229b_troopchain.js', '兵种链体检', True)
+
 
 def _find_node():
     for p in NODE_CANDIDATES:
@@ -120,6 +124,17 @@ def run_one(node, node_path, script, label):
     err = r.stderr.decode('utf-8', 'replace')
     tail = (out[-400:] + err[-200:]).strip()
 
+    # 兵种链体检（v89.230 进 gate）：先于通用退出码判 —— 它的红是"体检项不达标"，
+    # 不是异常中断（通用分支会把退出码 1 误报成"异常中断"）。
+    # ⚠ 判据必须**按脚本名限定**：smoke 的输出里也含"兵种链体检"字样（§230② 的标题），
+    #   若只按输出串判，smoke 的红会被错误地走这条分支。
+    if os.path.basename(script) == 'audit_v89229b_troopchain.js':
+        m = re.search(r'错误\s*(\d+)\s*条', out)
+        if r.returncode == 0 and m and int(m.group(1)) == 0:
+            return True, f'{script} 兵种链错误 0（14 兵种 × 依赖/被引）', tail
+        _dump_fail(script, out, err)
+        return False, f'{script} 兵种链有错误（退出码 {r.returncode}，详见输出尾部）', tail
+
     if r.returncode != 0:
         _dump_fail(script, out, err)
         return False, f'{script} 退出码 {r.returncode}（异常中断）', tail
@@ -178,13 +193,13 @@ def main():
     node_path = _find_node_path()
 
     if full:
-        plan = list(TESTS) + [TABLES, DATASET]
+        plan = list(TESTS) + [TABLES, DATASET, TROOPCHAIN]
         why = '--full 强制三件套 + 数据表卫生全跑'
     elif needs_full(files):
-        plan = list(TESTS) + [TABLES, DATASET]
+        plan = list(TESTS) + [TABLES, DATASET, TROOPCHAIN]
         why = '改动了代码（index.html 或 js/**）→ 三件套 + 数据表卫生全跑'
     else:
-        plan = [TESTS[0], TABLES, DATASET]
+        plan = [TESTS[0], TABLES, DATASET, TROOPCHAIN]
         why = '未触及代码 → 只跑 audit + 数据表卫生 + dataset 引用（各 1~2 秒兜底）'
 
     print(f'━━ 三件套门禁 ━━ {why}')

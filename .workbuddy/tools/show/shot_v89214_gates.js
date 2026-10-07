@@ -4,7 +4,7 @@
           六维属性分行显示，原始属性数字白色，其他方式增强的数字分不同颜色显示」
          「转换为废土，余烬纪元」
    ① 悬停真出浮层：.eqv-line 逐属性一行（行数 = 属性数）· 三个色段类都真着色
-      （白 #ffffff / 百炼金 #f0c14b / 蕴养青 #7fd6e0 —— 读 computedStyle 实测）
+      （白 #ffffff / 百炼旧币 #f0c14b / 蕴养青 #7fd6e0 —— 读 computedStyle 实测）
    ② 名称行无 ·甲/·乙（悬停标题 + 卡面 + 槽位名三处）
    ③ 修炼件（蕴养）走青色段
    ④ 换皮：资源栏 / 建筑 / 兵种 / 年号 的实机文本
@@ -79,7 +79,7 @@ var sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms);
   chk('①b 悬停浮层真出现（#tip-layer.on）', t1.on === true, JSON.stringify(t1).slice(0, 160));
   chk('①c 属性**逐行**（.eqv-line ≥ 5 · 行数 = 属性数）', t1.lines >= 5, 'lines=' + t1.lines);
   chk('①d 原始值=白（rgb(255,255,255)）', t1.base && t1.base.color === 'rgb(255, 255, 255)', JSON.stringify(t1.base));
-  chk('①e 百炼增量=金（rgb(240,193,75)）· 字号加粗', t1.d1 && t1.d1.color === 'rgb(240, 193, 75)', JSON.stringify(t1.d1));
+  chk('①e 百炼增量=旧币（rgb(240,193,75)）· 字号加粗', t1.d1 && t1.d1.color === 'rgb(240, 193, 75)', JSON.stringify(t1.d1));
   chk('①f 名称行无 ·甲/·乙', t1.title.indexOf('·') < 0 && !/[甲乙丙丁]/.test(t1.title), t1.title);
   chk('①g 浮层带来源注（百炼 +N 级）', /百炼/.test(t1.note), t1.note.slice(0, 40));
   /* v89.214：按浮层实际矩形裁图（clip 用视口坐标 = getBoundingClientRect 同域） */

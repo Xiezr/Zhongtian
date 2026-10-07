@@ -1,6 +1,6 @@
 /* v89.159 实机验证（真浏览器）：
-   ① 民房 Lv3（官府 4）→ 面板给「升级」键（不再误报需官府）
-   ② 民房 Lv4（同城 · 另一座）→ 面板如实报「需官府 Lv5」
+   ① 居所 Lv3（官府 4）→ 面板给「升级」键（不再误报需官府）
+   ② 居所 Lv4（同城 · 另一座）→ 面板如实报「需官府 Lv5」
    ③ 主城 + 爵位解锁 → 「等级上限」行写「受官府 Lv8 限制 · 升官府可提升」
    ④ 将领升级 → 体力/精力回满 + 公文「升级刷新」行（真渲染）
    ⑤ 采集收获满仓 → 收获明细含「仓容已满…未入库」（真环境）
@@ -51,7 +51,7 @@ function chk(name, cond, extra) {
     console.log('    📷 ' + name + '  ' + Math.round(r.w) + '×' + Math.round(r.h));
   }
 
-  console.log('===== ① 民房 Lv3（官府 4）→ 给「升级」键 =====');
+  console.log('===== ① 居所 Lv3（官府 4）→ 给「升级」键 =====');
   await p.evaluate(function () {
     window.GAME.ui.openBuildModal(window.__mf159[1]);
   });
@@ -62,12 +62,12 @@ function chk(name, cond, extra) {
     return { html: m, up: !!btn, need: m.indexOf('需官府') >= 0,
       title: (document.querySelector('#modal-root .gold-heading') || {}).textContent || '' };
   });
-  chk('① 面板标题 = 民房 · Lv3（' + r1.title.trim() + '）', /民房 · Lv3/.test(r1.title));
+  chk('① 面板标题 = 居所 · Lv3（' + r1.title.trim() + '）', /居所 · Lv3/.test(r1.title));
   chk('① 有「升级」键（Lv3 → Lv4）', r1.up === true);
   chk('① 面板不含「需官府」（不再误报）', r1.need === false);
   await shotModal('v89159-build-up.png');
 
-  console.log('===== ② 民房 Lv4（同城另一座）→ 报「需官府 Lv5」 =====');
+  console.log('===== ② 居所 Lv4（同城另一座）→ 报「需官府 Lv5」 =====');
   await p.evaluate(function () { window.GAME.ui.openBuildModal(window.__mf159[0]); });
   await p.waitForTimeout(700);
   var r2 = await p.evaluate(function () {

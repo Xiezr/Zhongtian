@@ -35,7 +35,7 @@ def fmt(v, d=0):
 # ============ 1. 里程碑年表（快照采样） ============
 w('# 600× 全量推演 · 素材摘要\n')
 w('## 1. 里程碑年表（游戏年 | 现实分钟 | 关键指标）')
-w('| 年 | 现实min | 粮 | 木 | 石 | 铁 | 金 | 人口/上限 | 兵力 | 驻军 | 城 | 科技 | 门派rep | 爵/声望 | 任务完成 | 待阅 | 史册 | 战报 | 存档KB |')
+w('| 年 | 现实min | 净水 | 生物质 | 电能 | 废钢 | 旧币 | 幸存者/上限 | 兵力 | 驻军 | 城 | 科技 | 门派rep | 爵/声望 | 任务完成 | 待阅 | 史册 | 战报 | 存档KB |')
 w('|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|')
 MV = [1, 5, 10, 25, 50, 75, 100, 125, 150, 175, 200, 225]
 byyear = {}
@@ -81,9 +81,9 @@ for y in sorted(stw):
     if gov >= 12:
         w('- **官府达到 Lv12（城市满级）**：第 %d 游戏年' % y)
         break
-# 兵力/金 走势（稀疏采样）
-w('\n## 3. 曲线（兵力 / 金 / 人口 / 木——四大关键指标）')
-w('| 年 | 兵力 | 城外驻军 | 金 | 人口 | 木 | 石 |')
+# 兵力/旧币 走势（稀疏采样）
+w('\n## 3. 曲线（兵力 / 旧币 / 幸存者 / 生物质——四大关键指标）')
+w('| 年 | 兵力 | 城外驻军 | 旧币 | 幸存者 | 生物质 | 电能 |')
 w('|---|---|---|---|---|---|---|')
 for y in range(5, 226, 20):
     s = byyear.get(y)
@@ -118,18 +118,21 @@ w('\n## 5. 入侵（外敌来袭）')
 inv_hit = [e for e in events if '攻破城门' in e.get('msg', '')]
 inv_hold = [e for e in events if '击退' in e.get('msg', '')]
 w('- 被攻破 **%d 次** · 击退 **%d 次**（共 %d 次来袭）' % (len(inv_hit), len(inv_hold), len(inv_hit) + len(inv_hold)))
-pat = re.compile(r'粮食 −([\d.万亿]+)、木材 −([\d.万亿]+)、石料 −([\d.万亿]+)、铁锭 −([\d.万亿]+)、黄金 −([\d.万亿k]+)')
+# v89.233：产品日志随资源/货币换代（粮食/木材/石料/铁锭 → 净水/生物质/电能/废钢）；
+# 且消息只带「非零项」、顺序由对象键序决定 —— 固定序整段匹配必假 0，改逐资源独立查找。
 def num(sx):
-    m = re.match(r'([\d.]+)([万亿k]?)', sx or '')
-    if not m: return 0
-    v = float(m.group(1)); u = m.group(2)
+    sx = (sx or '').strip()
+    u = ''
+    if sx.endswith('万'): u = '万'; sx = sx[:-1]
+    elif sx.endswith('亿'): u = '亿'; sx = sx[:-1]
+    elif sx.endswith('k'): u = 'k'; sx = sx[:-1]
+    v = float((sx.replace(',', '') or '0'))
     return v * (1e4 if u == '万' else 1e8 if u == '亿' else 1e3 if u == 'k' else 1)
-tot = [0, 0, 0, 0, 0]
-for e in inv_hit:
-    m = pat.search(e.get('msg', ''))
-    if m:
-        for i in range(5): tot[i] += num(m.group(i + 1))
-w('- 被破累计损失：粮 %s · 木 %s · 石 %s · 铁 %s · 金 %s' % tuple(fmt(x) for x in tot))
+def grabn(msg, name):
+    m = re.search(re.escape(name) + r' −([\d,.]+[万亿k]?)', msg or '')
+    return num(m.group(1)) if m else 0
+tot = [sum(grabn(e.get('msg', ''), n) for e in inv_hit) for n in ['净水', '生物质', '电能', '废钢', '旧币']]
+w('- 被破累计损失：净水 %s · 生物质 %s · 电能 %s · 废钢 %s · 旧币 %s' % tuple(fmt(x) for x in tot))
 byc = collections.Counter()
 for e in inv_hit + inv_hold:
     m = re.search(r'(?:🛡|⚔) (\S+?)(?: 被| 击退)', e.get('msg', ''))
@@ -145,18 +148,18 @@ w('\n## 6. 经济流（事件解析）')
 sells = [e for e in events if '市易：售出' in e.get('msg', '')]
 sg = 0; sgrain = 0
 for e in sells:
-    m = re.search(r'售出 ([\d.]+)([万亿]?) 得金 ([\d.]+)([万亿]?)', e.get('msg', ''))
+    m = re.search(r'售出 ([\d.]+)([万亿]?) 得旧币 ([\d.]+)([万亿]?)', e.get('msg', ''))
     if m:
         sg += num(m.group(3) + m.group(4)); sgrain += num(m.group(1) + m.group(2))
-w('- 市场售粮：%d 笔，累计售出 %s 粮、换金 %s（均价 ≈ %.1f 粮/金）' % (len(sells), fmt(sgrain), fmt(sg), (sgrain / sg if sg else 0)))
+w('- 市场售水：%d 笔，累计售出 %s 净水、换旧币 %s（均价 ≈ %.1f 净水/旧币）' % (len(sells), fmt(sgrain), fmt(sg), (sgrain / sg if sg else 0)))
 sal = [e for e in events if '月俸' in e.get('msg', '')]
 sp = 0; short = 0
 for e in sal:
-    m = re.search(r'金 −([\d.]+)([万亿k]?)', e.get('msg', ''))
+    m = re.search(r'旧币 −([\d.]+)([万亿k]?)', e.get('msg', ''))
     if m: sp += num(m.group(1) + (m.group(2) or ''))
     m2 = re.search(r'欠俸 ([\d.]+)([万亿k]?)', e.get('msg', ''))
     if m2: short += num(m2.group(1) + (m2.group(2) or ''))
-w('- 月俸：%d 期，累计支付 %s 金，欠俸 %s 金' % (len(sal), fmt(sp), fmt(short)))
+w('- 月俸：%d 期，累计支付 %s 旧币，欠俸 %s 旧币' % (len(sal), fmt(sp), fmt(short)))
 seeds = len([e for e in events if '凡植种子' in e.get('msg', '') and '购买' in e.get('msg', '')])
 w('- 种子购买事件行：%d' % seeds)
 buildup = len([e for e in events if '建筑完成' in e.get('msg', '') or '升级至 Lv' in e.get('msg', '')])
@@ -169,7 +172,7 @@ w('- 史册条目：%s' % '、'.join('y%d:%d' % (y, stw[y].get('chronicle') or 0
 w('- 任务完成（成长）：%s' % (stw.get(225, {}).get('qDone', '?')))
 w('- 战报：%s' % (stw.get(225, {}).get('reports', '?')))
 w('- 道具种类：%s' % (stw.get(225, {}).get('items', '?')))
-w('- 招募将领累计：%s（stats2.recruited）' % (stw.get(225, {}).get('stats2', {}).get('recruited', '?')))
+w('- 招募英雄累计：%s（stats2.recruited）' % (stw.get(225, {}).get('stats2', {}).get('recruited', '?')))
 w('- 训练总数：%s（stats2.trained）' % (stw.get(225, {}).get('stats2', {}).get('trained', '?')))
 
 # ============ 8. 终态细节 ============
@@ -195,7 +198,7 @@ if ck:
     w('### 8.2 科技')
     techs = ck.get('techs', {})
     w('- 已研究 %d 项，总等级 %d · 分布：%s' % (len(techs), sum(techs.values()), ' '.join('%s%d' % (k, v) for k, v in sorted(techs.items(), key=lambda x: -x[1])[:20])))
-    w('### 8.3 将领（%d 名）' % len(ck.get('generals', [])))
+    w('### 8.3 英雄（%d 名）' % len(ck.get('generals', [])))
     for g in ck.get('generals', []):
         w('- %s Lv%d %s · 属性 统%d 武%d 智%d' % (g.get('name'), g.get('level'), g.get('rank'), g.get('tong', 0), g.get('yw', 0), g.get('zm', 0)))
     w('### 8.4 野地 / 王国内务')
@@ -223,7 +226,7 @@ first_event('大军已发', '首次出征')
 first_event('战报', '首份战报', )
 first_event('市易：售出', '首次售粮')
 first_event('采集收获', '首次采集收获')
-first_event('秘境收获', '首次秘境收获')
+first_event('基因实验室收获', '首次基因实验室收获')
 first_event('占领野地', '首次占领野地')
 first_event('筑城成功', '首次筑城')
 first_event('月俸', '首期月俸')

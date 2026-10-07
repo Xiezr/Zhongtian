@@ -26,7 +26,7 @@ function chk(name, ok, extra) {
     try { G.ui.closeAllModals(); } catch (e) { }
     var c = st.cities[0];
     G.ui._cityId = c.id;
-    /* 校场 Lv5 → 出征容量 5 万 */
+    /* 练兵场 Lv5 → 出征容量 5 万 */
     var xc = c.cells.filter(function (x) { return x.build && x.build.id === 'xiaochang'; })[0];
     if (xc) xc.build.lvl = 5; else {
       var free = c.cells.filter(function (x) { return x && !x.build && !x.official; })[0];
@@ -46,7 +46,7 @@ function chk(name, ok, extra) {
     G.buildCityAt(bx, by);
     var c2 = st.cities[st.cities.length - 1];
     c2.name = '二城';
-    /* 二城：校场 Lv3（容量 3 万）+ 现有兵力 12000 → 上限 18000 */
+    /* 二城：练兵场 Lv3（容量 3 万）+ 现有兵力 12000 → 上限 18000 */
     var xc2 = c2.cells.filter(function (x) { return x && !x.build && !x.official; })[0];
     if (xc2) xc2.build = { id: 'xiaochang', lvl: 3 };
     c2.army = { yibing: 12000 };
@@ -91,7 +91,7 @@ function chk(name, ok, extra) {
   console.log('  [出征·NPC 城] 上限=' + r6a.cap + ' · 实填=' + r6a.got + ' · ' + JSON.stringify(r6a.per));
   console.log('    title: ' + r6a.title);
   chk('6A 表头按钮 = 「上限」（不是"全带"）', r6a.title.indexOf('上限') >= 0);
-  chk('6A 出征类：按校场容量填入（30000+20000=50000；轻骑挤不进去）',
+  chk('6A 出征类：按练兵场容量填入（30000+20000=50000；伏击车挤不进去）',
     r6a.cap === scene.capMain && r6a.got === scene.capMain, 'cap=' + r6a.cap + ' got=' + r6a.got);
 
   var r6b = await fillVia('ownwild');

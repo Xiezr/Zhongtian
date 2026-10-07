@@ -31,14 +31,14 @@ const MAP = {
     hill: ['mountains', 'stone'], city: ['castle', 'red'],
   },
   troop: {
-    minfu: ['farmer', 'cloth'], yibing: ['swordman', 'metal'], chihou: ['spy', 'cloth'],
-    changqiang: ['pikeman', 'metal'], daodun: ['checked-shield', 'metal'],
-    gongjian: ['archer', 'wood'], qingji: ['cavalry', 'wood'], tieji: ['mounted-knight', 'metal'],
-    zhouche: ['boat-fishing', 'wood'], chuangnu: ['crossbow', 'wood'],
-    chongche: ['siege-tower', 'wood'], toudan: ['slingshot', 'wood'],
-    qingzhoubing: ['guards', 'metal'], tengjiabing: ['spiked-armor', 'jade'],
-    tuqibing: ['mounted-knight', 'metal'], hubaoqi: ['tiger', 'red'],
-    xiliangtieqi: ['cavalry', 'red'], nanjiangxiangbing: ['elephant', 'metal'],
+    /* v89.230：随兵种重构 18→14 换代（与 js/gicons.js 现行名册逐项一致；
+       未继承的 3 个键 swordman / siege-tower / guards 随之退出 needed 集合）。 */
+    banche: ['farmer', 'cloth'], fujiche: ['cavalry', 'wood'], zhencha: ['spy', 'cloth'],
+    yunshu: ['boat-fishing', 'wood'], buxingji: ['pikeman', 'metal'],
+    dunwei: ['checked-shield', 'metal'], daodanche: ['archer', 'wood'],
+    wuzhi: ['mounted-knight', 'metal'], zhuzhan: ['cavalry', 'red'],
+    kuanglie: ['tiger', 'red'], dianci: ['spiked-armor', 'jade'],
+    huopao: ['slingshot', 'wood'], wuren: ['crossbow', 'wood'], taitan: ['elephant', 'metal'],
   },
   mat: {
     iron: ['metal-bar'], wood: ['log'], leather: ['animal-hide'],
@@ -191,7 +191,15 @@ lines.push('    credit: \'game-icons.net · CC BY 3.0\',');
 lines.push('  };');
 lines.push('})();');
 lines.push('');
-lines.push('/* v36：CommonJS 桥接 —— smoke 用 require 加载，裸 var 不可见 */');
+lines.push('/* ============================================================');
+lines.push(' * v36 修复：CommonJS 桥接');
+lines.push(' * ------------------------------------------------------------');
+lines.push(' * 本文件用裸 `var X = ...` 声明 —— 在浏览器（<script>）里这是全局变量，');
+lines.push(' * 但 smoke-test.js 用 require() 加载时它是**模块局部**的，');
+lines.push(' * icons.js 里的 `typeof GICONS` / `typeof BITMAPS` 永远为 undefined');
+lines.push(' * → 素材层在 smoke 里静默失效（v32/v35 期间 smoke 一直看不见它）。');
+lines.push(' * 显式挂到 window（smoke 已把 global.window 指向 global）即可两边一致。');
+lines.push(' * ============================================================ */');
 lines.push("if (typeof window !== 'undefined') window.GICONS = GICONS;");
 lines.push('');
 lines.push('/* 页面加载时自动注入渐变与光照滤镜定义（只注入一次）。');

@@ -1,5 +1,5 @@
 'use strict';
-/* v89.140 实机验证：战场两行制 / 军务兵种表 / 校场关菜单 / 铁匠铺双按钮 / 商城固定 /
+/* v89.140 实机验证：战场两行制 / 军务兵种表 / 练兵场关菜单 / 铁匠铺双按钮 / 商城固定 /
    宝物 7 列 / 自动出征 3 列 / 附属野地两列。跑法：node .workbuddy/tools/show/shot_v89140_wide.js */
 module.paths.unshift('C:/Users/18811/.workbuddy/binaries/node/workspace/node_modules');
 var pw = require('playwright-core');
@@ -126,17 +126,17 @@ function chk(name, ok, extra) {
   });
   chk('② 固定列宽（table-layout: fixed）', m2b === 'fixed', m2b);
 
-  console.log('===== ③ 校场 → 军务：建筑菜单关闭 =====');
+  console.log('===== ③ 练兵场 → 军务：建筑菜单关闭 =====');
   var m3 = await p.evaluate(function (o) {
     var G = window.GAME;
     G.ui.setView('city');
     G.ui.openBuildModal(o.forgeIdx);
     var before = (G.ui._modalStack || []).length;
-    /* 直接走动作：等价于点校场建筑的「进入军务」 */
+    /* 直接走动作：等价于点练兵场建筑的「进入军务」 */
     G.lordGeneralOf && 0;
     var nav = document.querySelector('#modal-root [data-action="open-xiaochang"]');
     if (!nav) {
-      /* 校场建筑不在盘上时，手动调动作验证同一条 case */
+      /* 练兵场建筑不在盘上时，手动调动作验证同一条 case */
       GAME_actionFallback();
     }
     function GAME_actionFallback() { }
@@ -153,7 +153,7 @@ function chk(name, ok, extra) {
     return { stack: (G.ui._modalStack || []).length,
       view: G.ui.view, tab: G.ui._marchTab, panelOpen: !!document.querySelector('#modal-root .inner-panel') };
   });
-  chk('③ 校场进军务：弹层清空（0 层）· 视图=marches · tab=over',
+  chk('③ 练兵场进军务：弹层清空（0 层）· 视图=marches · tab=over',
     m3b.stack === 0 && m3b.view === 'marches' && m3b.tab === 'over',
     '层 ' + m3b.stack + ' · view ' + m3b.view + ' · tab ' + m3b.tab);
 

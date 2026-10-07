@@ -26,7 +26,7 @@ function chk(name, ok, extra) {
     G.newGame({ name: '验187', cityName: '许都', region: '碎垣', mapSeed: 20260926 });
     G.ui.enterGame(); G.ui.closeAllModals();
     if (!G.state.map.grid) G.map.generate();
-    /* 造宝具库存：低×2（玉犀符）+ 低×2（铜雀令）+ 中×2（八卦羽扇） */
+    /* 造宝具库存：低×2（避难所徽章）+ 低×2（旧军号令）+ 中×2（作战地图） */
     G.state.items = G.state.items || {};
     G.state.items['bao_yuxi'] = 2;
     G.state.items['bao_tongque'] = 2;

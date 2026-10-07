@@ -110,7 +110,7 @@ fs.mkdirSync(OUT, { recursive: true });
     });
     out.beacon = G.msgsOf('beacon').length;
     /* ④ 任务 / 系统：走真实出口 */
-    G.log.task('完成任务：屯田兴学（奖励：黄金 800 · 声望 20）');
+    G.log.task('完成任务：屯田兴学（奖励：旧币 800 · 声望 20）');
     G.log.sys('🏗️ 建筑完成：军营 → Lv4');
     G.log.sys('🪓 得节钺 ×1（赏赐）· 现有 3');
     G.log.sys('🏯 城池改名：许都 → 许都');

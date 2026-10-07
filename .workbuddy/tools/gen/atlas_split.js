@@ -8,6 +8,34 @@ const RAW = 'E:/Deepseekdb/assets/icons/raw/';
 const UI = 'E:/Deepseekdb/assets/icons/ui/';
 const CANVAS = 1024;      // 输出画布
 const PAD = 0.06;         // 内容四周留白比例
+const MIN_PX = 32;        // 去散点：小于此面积的连通块清零（AI 图集背景噪点残留）
+
+/* 去散点：把"非主体"的漂浮连通块清零（AI 图集背景噪点抠底后的残留小点 → 视觉"毛边"）。
+   做法：按 alpha>0 求连通域（含抗锯齿半透明边，使其随主体一起保留），
+   面积 < minPx 的连通块整体清零。必须在**最终画布**上做（缩放会把弱 alpha 又切成小点）。 */
+function despeckle(png, minPx) {
+  const w = png.width, h = png.height, d = png.data;
+  const seen = new Uint8Array(w * h);
+  const st = new Int32Array(w * h);
+  for (let sy = 0; sy < h; sy++) {
+    for (let sx = 0; sx < w; sx++) {
+      const s0 = sy * w + sx;
+      if (seen[s0] || d[s0 * 4 + 3] === 0) continue;
+      let sp = 0; st[sp++] = s0; seen[s0] = 1;
+      const pts = [];
+      while (sp > 0) {
+        const p = st[--sp]; pts.push(p);
+        const px = p % w, py = (p - px) / w;
+        if (px > 0)     { const q = p - 1; if (!seen[q] && d[q * 4 + 3] > 0) { seen[q] = 1; st[sp++] = q; } }
+        if (px < w - 1) { const q = p + 1; if (!seen[q] && d[q * 4 + 3] > 0) { seen[q] = 1; st[sp++] = q; } }
+        if (py > 0)     { const q = p - w; if (!seen[q] && d[q * 4 + 3] > 0) { seen[q] = 1; st[sp++] = q; } }
+        if (py < h - 1) { const q = p + w; if (!seen[q] && d[q * 4 + 3] > 0) { seen[q] = 1; st[sp++] = q; } }
+      }
+      if (pts.length < minPx) for (const p of pts) d[p * 4 + 3] = 0;
+    }
+  }
+  return png;
+}
 
 function matteInPlace(png, ox, oy, w, h) {
   /* 四角采样背景色（在该象限内取） */
@@ -78,6 +106,7 @@ ids.forEach((id, i) => {
   const r = matteInPlace(working, ox, oy, HW, HH);
   const out = new PNG({ width: CANVAS, height: CANVAS });
   cropCenter(working, r, out);
+  despeckle(out, MIN_PX);                                      // 去散点（最终画布）
   fs.writeFileSync(OUT + 'ai_' + id + '.png', PNG.sync.write(out));
   const cw = r.maxX - r.minX + 1, ch = r.maxY - r.minY + 1;
   console.log('  ' + qname + ' → ai_' + id + '.png   背景#' + r.bg.map(v => v.toString(16).padStart(2, '0')).join('')

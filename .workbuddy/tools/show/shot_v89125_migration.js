@@ -62,7 +62,7 @@ fs.mkdirSync(OUT, { recursive: true });
   });
   await new Promise(function (r) { setTimeout(r, 200); });
   await page.screenshot({ path: path.join(OUT, 'v89125-yiminling-use.png'), fullPage: false });
-  console.log('✓ v89125-yiminling-use.png（使用一次：人口 ' + evidence.before + ' → ' + evidence.after
+  console.log('✓ v89125-yiminling-use.png（使用一次：幸存者 ' + evidence.before + ' → ' + evidence.after
     + '，上限 ' + evidence.cap + '）');
 
   /* 证据核对：增量必须 = 上限 × 25%，且 toast 文案里的增量数字一致 */

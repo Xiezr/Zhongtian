@@ -1,4 +1,6 @@
 /* v89.161 像素体检：资源栏金行（真渲染）· 仓库折损行（现实换算）
+   ⚠️ 历史截图体检（时称）：本脚本读 v89.161 时代的历史截图，"金行"是当时对
+   货币行的称呼；v89.233 起货币更名「旧币」。像素判据与名称无关，历史正文保留。
    运行：NODE_PATH="C:/Users/18811/.workbuddy/binaries/node/workspace/node_modules" node .workbuddy/tools/asset/check_v89161_shots.js */
 module.paths.unshift('C:/Users/18811/.workbuddy/binaries/node/workspace/node_modules');
 var fs = require('fs'), PNG = require('pngjs').PNG;

@@ -1,0 +1,78 @@
+======================================================================
+批 W-B3 · 兵种 18 · 18 图
+======================================================================
+
+─── 存成：assets/icons/raw/atlas_troop_t12_src.png
+Refined realistic post-apocalyptic mecha unit design, unified salvaged-steel mecha aesthetic (war-rig / walking-machine silhouettes built from reclaimed industrial steel, hydraulic limbs, exposed pistons and armor plating), gritty desaturated military color, in the polish class of high-end mobile strategy games.
+A 2x2 grid of four separate mecha unit icons, each centered in its own quadrant, evenly spaced, no dividing lines.
+All the unit(s) must share ONE unified art style.
+Top-left, Top-right, Bottom-left, Bottom-right in order:
+  minfu [拾荒者阶 Scavenger] —— 搬运工/拾荒机：a crude scavenger hauler rig: exposed scrap frame, hand-cart wheels, a single cab, no armor plating
+  yibing [拾荒者阶 Scavenger] —— 民兵机：a crude militia walker: bare scrap-metal frame, welded patch plates, hand-held salvage weapon
+  chihou [制式阶 Regulation] —— 侦察机：a fast scout walker: light frame, tall antenna mast, sensor pod, slim hydraulic legs
+  changqiang [制式阶 Regulation] —— 长矛机：a line walker: boxy torso, long steel lance, hydraulic piston arms
+Tier progression (later tiers build on earlier ones — more armor, bigger hydraulics, heavier weapon):
+  T1 拾荒者阶 Scavenger: Bare scavenger build: exposed scrap frame, mismatched welded plates, exposed pistons, a single scavenged weapon, minimal armor.
+  T2 制式阶 Regulation: Standard-issue build: uniform welded steel plating, coherent silhouette, riveted panels, one primary weapon.
+This atlas spans T1–T2. Keep every unit in the same unified mecha style; differentiate purely by tier build-up (armor mass, hydraulics, weapon size), NOT by mixing art styles.
+isolated on a plain solid pure white background (#ffffff), no text, no watermark, no frame, no border, no ground shadow, centered composition, slight three-quarter isometric view, warm golden light from upper left, soft ambient occlusion, highly detailed material textures, crisp clean edges suitable for a small UI icon
+Negative: no people face, no glossy anime mecha, no neon sci-fi, no cartoon, no logo, no watermark, no glossy plastic, no ground shadow
+
+─── 存成：assets/icons/raw/atlas_troop_t23_src.png
+Refined realistic post-apocalyptic mecha unit design, unified salvaged-steel mecha aesthetic (war-rig / walking-machine silhouettes built from reclaimed industrial steel, hydraulic limbs, exposed pistons and armor plating), gritty desaturated military color, in the polish class of high-end mobile strategy games.
+A 2x2 grid of four separate mecha unit icons, each centered in its own quadrant, evenly spaced, no dividing lines.
+All the unit(s) must share ONE unified art style.
+Top-left, Top-right, Bottom-left, Bottom-right in order:
+  daodun [制式阶 Regulation] —— 盾卫机：a shielded riot walker: torso-mounted riot plate, welded ballistic shield, warning stripes
+  gongjian [装甲阶 Armored] —— 弩炮机：a missile walker: shoulder-mounted ballista/launcher rack, targeting optics, armored ammo drums
+  qingji [装甲阶 Armored] —— 游骑机：a scout mecha on two-wheeled legs (motorcycle-fused lower body), light armor, short lance
+  zhouche [装甲阶 Armored] —— 运输机：a cargo hauler mecha: large open cargo bed, heavy legs, lifting winch
+Tier progression (later tiers build on earlier ones — more armor, bigger hydraulics, heavier weapon):
+  T2 制式阶 Regulation: Standard-issue build: uniform welded steel plating, coherent silhouette, riveted panels, one primary weapon.
+  T3 装甲阶 Armored: Armored build: layered armor plates on joints and torso, reinforced limb actuators, refined weapon mount.
+This atlas spans T2–T3. Keep every unit in the same unified mecha style; differentiate purely by tier build-up (armor mass, hydraulics, weapon size), NOT by mixing art styles.
+isolated on a plain solid pure white background (#ffffff), no text, no watermark, no frame, no border, no ground shadow, centered composition, slight three-quarter isometric view, warm golden light from upper left, soft ambient occlusion, highly detailed material textures, crisp clean edges suitable for a small UI icon
+Negative: no people face, no glossy anime mecha, no neon sci-fi, no cartoon, no logo, no watermark, no glossy plastic, no ground shadow
+
+─── 存成：assets/icons/raw/atlas_troop_t4_src.png
+Refined realistic post-apocalyptic mecha unit design, unified salvaged-steel mecha aesthetic (war-rig / walking-machine silhouettes built from reclaimed industrial steel, hydraulic limbs, exposed pistons and armor plating), gritty desaturated military color, in the polish class of high-end mobile strategy games.
+A 2x2 grid of four separate mecha unit icons, each centered in its own quadrant, evenly spaced, no dividing lines.
+All the unit(s) must share ONE unified art style.
+Top-left, Top-right, Bottom-left, Bottom-right in order:
+  tieji [重装阶 Heavy] —— 装甲机：a heavy mainline mecha: thick layered steel armor, tracked lower legs, long cannon barrel
+  chuangnu [重装阶 Heavy] —— 重弩机：a siege mecha: enormous shoulder ballista with winch, braced heavy tripod legs
+  chongche [重装阶 Heavy] —— 破门机：a massive battering-ram mecha: armored ram head, reinforced front plating, tracks
+  tengjiabing [重装阶 Heavy] —— 防暴机：a riot-control mecha: full riot armor shell, layered ballistic plates, stun baton
+Tier progression (later tiers build on earlier ones — more armor, bigger hydraulics, heavier weapon):
+  T4 重装阶 Heavy: Heavy build: thick stacked armor, heavy hydraulic limbs, oversized weapon, visibly reinforced frame.
+This atlas spans T4–T4. Keep every unit in the same unified mecha style; differentiate purely by tier build-up (armor mass, hydraulics, weapon size), NOT by mixing art styles.
+isolated on a plain solid pure white background (#ffffff), no text, no watermark, no frame, no border, no ground shadow, centered composition, slight three-quarter isometric view, warm golden light from upper left, soft ambient occlusion, highly detailed material textures, crisp clean edges suitable for a small UI icon
+Negative: no people face, no glossy anime mecha, no neon sci-fi, no cartoon, no logo, no watermark, no glossy plastic, no ground shadow
+
+─── 存成：assets/icons/raw/atlas_troop_t5a_src.png
+Refined realistic post-apocalyptic mecha unit design, unified salvaged-steel mecha aesthetic (war-rig / walking-machine silhouettes built from reclaimed industrial steel, hydraulic limbs, exposed pistons and armor plating), gritty desaturated military color, in the polish class of high-end mobile strategy games.
+A 2x2 grid of four separate mecha unit icons, each centered in its own quadrant, evenly spaced, no dividing lines.
+All the unit(s) must share ONE unified art style.
+Top-left, Top-right, Bottom-left, Bottom-right in order:
+  qingzhoubing [原型阶 Prototype] —— 旧军机：a disciplined old-guard mecha: weathered formal-issue armor, regimental pennant, coherent stance
+  tuqibing [原型阶 Prototype] —— 突击机：an assault mecha: fast bike-fused legs, chest gun, lances
+  hubaoqi [原型阶 Prototype] —— 王牌机：a champion mecha: aggressive layered armor with beast-mark livery, jacked stance
+  xiliangtieqi [原型阶 Prototype] —— 重甲机：an ultra-heavy assault mecha: stacked ablative armor, long gun, huge frame
+Tier progression (later tiers build on earlier ones — more armor, bigger hydraulics, heavier weapon):
+  T5 原型阶 Prototype: Prototype build: pristine over-engineered armor, distinctive elite livery/sigil, massive weapon, sleek powerful silhouette.
+This atlas spans T5–T5. Keep every unit in the same unified mecha style; differentiate purely by tier build-up (armor mass, hydraulics, weapon size), NOT by mixing art styles.
+isolated on a plain solid pure white background (#ffffff), no text, no watermark, no frame, no border, no ground shadow, centered composition, slight three-quarter isometric view, warm golden light from upper left, soft ambient occlusion, highly detailed material textures, crisp clean edges suitable for a small UI icon
+Negative: no people face, no glossy anime mecha, no neon sci-fi, no cartoon, no logo, no watermark, no glossy plastic, no ground shadow
+
+─── 存成：assets/icons/raw/atlas_troop_t5b_src.png
+Refined realistic post-apocalyptic mecha unit design, unified salvaged-steel mecha aesthetic (war-rig / walking-machine silhouettes built from reclaimed industrial steel, hydraulic limbs, exposed pistons and armor plating), gritty desaturated military color, in the polish class of high-end mobile strategy games.
+A 2x2 grid with TWO mecha unit icons in the top row only (top-left, top-right); the bottom two quadrants stay empty pure white.
+All the unit(s) must share ONE unified art style.
+Top-left, Top-right in order:
+  toudan [原型阶 Prototype] —— 迫击炮机：a mortar mecha: massive tube, recoil-braced base, ammo hopper
+  nanjiangxiangbing [原型阶 Prototype] —— 巨兽机：a colossal siege mecha: towering beetle-like chassis, thick limbs, dorsal artillery
+Tier progression (later tiers build on earlier ones — more armor, bigger hydraulics, heavier weapon):
+  T5 原型阶 Prototype: Prototype build: pristine over-engineered armor, distinctive elite livery/sigil, massive weapon, sleek powerful silhouette.
+This atlas spans T5–T5. Keep every unit in the same unified mecha style; differentiate purely by tier build-up (armor mass, hydraulics, weapon size), NOT by mixing art styles.
+isolated on a plain solid pure white background (#ffffff), no text, no watermark, no frame, no border, no ground shadow, centered composition, slight three-quarter isometric view, warm golden light from upper left, soft ambient occlusion, highly detailed material textures, crisp clean edges suitable for a small UI icon
+Negative: no people face, no glossy anime mecha, no neon sci-fi, no cartoon, no logo, no watermark, no glossy plastic, no ground shadow

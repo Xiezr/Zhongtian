@@ -1,0 +1,60 @@
+======================================================================
+批 W-B6 · 建筑 16 · T2(5-9级) · 16 图
+⚠ 建筑走**图生图**：先跑  python .workbuddy/tools/asset/build_atlas_src.py  拼出 4 张白底源图集
+  （在 .workbuddy/tmp/atlas/），再把源图集 + 下面的 prompt 一起给图像工具。
+======================================================================
+
+─── 存成：assets/icons/raw/atlas_1_t2_src.png ───
+Keep the exact same camera angle, silhouette and composition of each building in the 2x2 source atlas.
+Convert ALL materials from Han-dynasty (grey tile roof, vermilion wood pillars, rammed earth, bronze) to post-apocalyptic wasteland: corrugated rusted-iron roofs, exposed steel I-beams and trusses, cracked concrete walls, weathered scrap-sheet paneling, oil drums, salvaged old-world tech, warning-signal accents in rust-red / warning-yellow.
+Use at least 4 clearly distinct materials per building so the color range is rich.
+Each quadrant target look:
+  1) guanfu —— 混凝土主楼 + 波纹锈铁顶 + 裸露钢梁门廊 + 红布族旗与横幅、旧世广播喇叭、沙袋工事、告警灯
+  2) honglusi —— 钢制门坊、演武/训练场、武器架、派系旗帜、水泥台阶、涂鸦墙
+  3) junying —— 数顶帆布军帐 + 拼接板棚、铁管拒马、军旗、武器架（铁管矛/改装枪）、沙袋掩体
+  4) chengqiang —— 水泥/钢板墙断面、铁丝网与垛口、钢制闸门、岗楼、探照灯与信号旗
+UPGRADED version (this is the level-5~9 look): keep the SAME footprint/outline but make it **more imposing and grander** — add an extra upper tier/reinforced wall, taller sturdier structure, expanded compound with extra walls and towers. Make it **visibly tidier / better maintained**: clean uniform paneling, orderly stacked materials, polished metal with less visible rust, aligned fittings. Keep the same art style and colors.
+Keep it as 4 icons in a 2x2 grid, same layout, crisply separated. Plain pure white background (#ffffff), no text/watermark/frame.
+Negative: no people face, no logo, no signature, no anime, no cartoon, no glossy plastic
+
+
+─── 存成：assets/icons/raw/atlas_2_t2_src.png ───
+Keep the exact same camera angle, silhouette and composition of each building in the 2x2 source atlas.
+Convert ALL materials from Han-dynasty (grey tile roof, vermilion wood pillars, rammed earth, bronze) to post-apocalyptic wasteland: corrugated rusted-iron roofs, exposed steel I-beams and trusses, cracked concrete walls, weathered scrap-sheet paneling, oil drums, salvaged old-world tech, warning-signal accents in rust-red / warning-yellow.
+Use at least 4 clearly distinct materials per building so the color range is rich.
+Each quadrant target look:
+  1) xiaochang —— 锈铁人形靶、武器架、水泥指挥台、沙地、晨练场旗、锈鼓/警钟
+  2) fenghuotai —— 钢结构高塔 + 水泥基座、顶部信号火盆与浓烟、天线/探照灯、爬梯、旗
+  3) shuyuan —— 水泥/砖混两层、钢窗、门内可见黑板与旧书卷、门口回收钢管旗杆挂信号布
+  4) zhaoxianguan —— 水泥门楼 + 张贴告示栏、钢梯、两侧信号灯、旧世牌匾、排队栏
+UPGRADED version (this is the level-5~9 look): keep the SAME footprint/outline but make it **more imposing and grander** — add an extra upper tier/reinforced wall, taller sturdier structure, expanded compound with extra walls and towers. Make it **visibly tidier / better maintained**: clean uniform paneling, orderly stacked materials, polished metal with less visible rust, aligned fittings. Keep the same art style and colors.
+Keep it as 4 icons in a 2x2 grid, same layout, crisply separated. Plain pure white background (#ffffff), no text/watermark/frame.
+Negative: no people face, no logo, no signature, no anime, no cartoon, no glossy plastic
+
+
+─── 存成：assets/icons/raw/atlas_3_t2_src.png ───
+Keep the exact same camera angle, silhouette and composition of each building in the 2x2 source atlas.
+Convert ALL materials from Han-dynasty (grey tile roof, vermilion wood pillars, rammed earth, bronze) to post-apocalyptic wasteland: corrugated rusted-iron roofs, exposed steel I-beams and trusses, cracked concrete walls, weathered scrap-sheet paneling, oil drums, salvaged old-world tech, warning-signal accents in rust-red / warning-yellow.
+Use at least 4 clearly distinct materials per building so the color range is rich.
+Each quadrant target look:
+  1) minfang —— 拼接板房/水泥小屋、帆布顶补丁、锈铁烟囱、晾衣绳、门前彩色信号旗、旧轮胎
+  2) kezhan —— 两层拼接板楼、霓虹/灯箱招牌、帆布遮阳棚、门前旧桌凳、串灯
+  3) cangku —— 波纹铁皮大仓、集装箱门、钢架货垛、油桶、封条与挂锁、仓号牌
+  4) majiu —— 钢架敞棚、长工作台、油桶、一架摩托剪影与挂墙工具、轮胎堆
+UPGRADED version (this is the level-5~9 look): keep the SAME footprint/outline but make it **more imposing and grander** — add an extra upper tier/reinforced wall, taller sturdier structure, expanded compound with extra walls and towers. Make it **visibly tidier / better maintained**: clean uniform paneling, orderly stacked materials, polished metal with less visible rust, aligned fittings. Keep the same art style and colors.
+Keep it as 4 icons in a 2x2 grid, same layout, crisply separated. Plain pure white background (#ffffff), no text/watermark/frame.
+Negative: no people face, no logo, no signature, no anime, no cartoon, no glossy plastic
+
+
+─── 存成：assets/icons/raw/atlas_4_t2_src.png ───
+Keep the exact same camera angle, silhouette and composition of each building in the 2x2 source atlas.
+Convert ALL materials from Han-dynasty (grey tile roof, vermilion wood pillars, rammed earth, bronze) to post-apocalyptic wasteland: corrugated rusted-iron roofs, exposed steel I-beams and trusses, cracked concrete walls, weathered scrap-sheet paneling, oil drums, salvaged old-world tech, warning-signal accents in rust-red / warning-yellow.
+Use at least 4 clearly distinct materials per building so the color range is rich.
+Each quadrant target look:
+  1) shichang —— 帆布摊位 + 拼接板棚、铁皮货箱、地秤、招牌幌子、净水袋、油桶货堆
+  2) tiejiangpu —— 通红炉火、铁砧、鼓风机、水槽、重锤与夹钳、悬挂的动力刃半成品
+  3) gongjiangzuofang —— 钢工作台、电锯/焊机/扳手、半成品车轮与引擎件、油污、堆放钢材
+  4) yizhan —— 钢架门架、帆布顶棚、油桶与补给箱、挂式前灯与旧轮、草料/物资堆
+UPGRADED version (this is the level-5~9 look): keep the SAME footprint/outline but make it **more imposing and grander** — add an extra upper tier/reinforced wall, taller sturdier structure, expanded compound with extra walls and towers. Make it **visibly tidier / better maintained**: clean uniform paneling, orderly stacked materials, polished metal with less visible rust, aligned fittings. Keep the same art style and colors.
+Keep it as 4 icons in a 2x2 grid, same layout, crisply separated. Plain pure white background (#ffffff), no text/watermark/frame.
+Negative: no people face, no logo, no signature, no anime, no cartoon, no glossy plastic

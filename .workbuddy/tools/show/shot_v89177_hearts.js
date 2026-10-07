@@ -1,6 +1,6 @@
 /* v89.177 实机验证（真浏览器）：
    ① 官府弹窗「民心 / 民怨」段（值 + 两措施按钮）
-   ② 真点「鼓舞民心」→ 民心 50→56 · 金 -2000 · 按钮转「本日已行」（live 重开刷新）
+   ② 真点「鼓舞民心」→ 民心 50→56 · 旧币 -2000 · 按钮转「本日已行」（live 重开刷新）
    ③ 君主面板「突破考验」五关清单
    运行：NODE_PATH="C:/Users/18811/.workbuddy/binaries/node/workspace/node_modules" node .workbuddy/tools/show/shot_v89177_hearts.js */
 module.paths.unshift('C:/Users/18811/.workbuddy/binaries/node/workspace/node_modules');
@@ -64,11 +64,11 @@ function chk(name, cond, extra) {
       stillBtn: !!document.querySelector('#modal-root [data-action="hearts-boost"]'),
     };
   });
-  /* ⚠️ 这是活系统：1.6 秒等待期间民心在按公式**衰减**（0.5/游戏时）、金在**生产**——
+  /* ⚠️ 这是活系统：1.6 秒等待期间民心在按公式**衰减**（0.5/游戏时）、旧币在**生产**——
      断言取区间（上界=理论值 +6 / 扣 2000，下界放宽 0.2 以容纳实时变化）。 */
   chk('② 民心 50→≈56（安抚 +6 · 实时衰减下界）', s2.hearts > 55.8 && s2.hearts <= 56 && s2.comfort > 5.8,
     '民心=' + s2.hearts.toFixed(2) + ' 安抚=' + s2.comfort.toFixed(2));
-  chk('② 金扣 2000（±期间税产）', (setup.gold - s2.gold) >= 1990 && (setup.gold - s2.gold) <= 2010,
+  chk('② 旧币扣 2000（±期间税产）', (setup.gold - s2.gold) >= 1990 && (setup.gold - s2.gold) <= 2010,
     setup.gold + '→' + s2.gold);
   chk('② 按钮转「本日已行」', s2.stillBtn && s2.btnTxt.indexOf('本日已行') >= 0, s2.btnTxt.slice(0, 40));
   await p.screenshot({ path: OUT + 'v89177-after.png', fullPage: false });

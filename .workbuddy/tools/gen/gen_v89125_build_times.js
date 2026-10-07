@@ -53,11 +53,11 @@ out.push('| 项 | 口径 |');
 out.push('|---|---|');
 out.push('| 时间单位 | **游戏秒**（游戏时间 = 现实时间 × 倍率，默认 120×；`U.dur` 同款显示） |');
 out.push('| 实际耗时 | `max(基准 × 城建倍率, 最短 5 现实秒)` |');
-out.push('| 城建倍率 | `1 / [(1 + 城主内政×1%（封顶 +150%）) × (1 + 建筑技术等级×5%)]`，最低约 0.32（−68%） |');
-out.push('| 最短 5 现实秒 | `GAME.buildMinTime() = 5 × 倍率`（默认 120× → 600 游戏秒）—— 低档位（如校场 1→2、农田 1→2）会被它抬到 5 现实秒 |');
+out.push('| 城建倍率 | `1 / [(1 + 城主治理×1%（封顶 +150%）) × (1 + 废墟重建等级×5%)]`，最低约 0.32（−68%） |');
+out.push('| 最短 5 现实秒 | `GAME.buildMinTime() = 5 × 倍率`（默认 120× → 600 游戏秒）—— 低档位（如练兵场 1→2、净化厂 1→2）会被它抬到 5 现实秒 |');
 out.push('| 新建 Lv1 | 所有城内建筑与城外建筑统一 **60 游戏秒**基准（`buildCost` 不含时间字段时的兜底） |');
 out.push('| 12 级后 | 资源封顶在「11→12」档（改需珠宝）；**时间走 12 级循环**（13-24 复用 1-12 的时长，25-36 再循环，v89.128） |');
-out.push('| 加速手段 | 城主（内政）/ 建筑技术（书院科技，−5%/级，5 级）/ 鲁班残页·书册·全集（单项道具） |');
+out.push('| 加速手段 | 城主（治理）/ 废墟重建（研习所科技，−5%/级，5 级）/ 鲁班残页·书册·全集（单项道具） |');
 out.push('');
 out.push('## 二、等级上限（`buildCapOf` 唯一出口）');
 out.push('');
@@ -71,7 +71,7 @@ tiers.forEach(function (t) {
 out.push('');
 out.push('- **主城**（玩家设定的一座城）额外享受「每 1 档爵位 +1 级」（封顶 +' + DATA.RANK_BUILD_LIFT_MAX + '）——`rankBuildCapOf` 非主城恒 0。');
 out.push('- **城内建筑（除官府）** 另被「官府等级 + 爵位上限」卡：`cap = min(cap, 官府等级 + 爵位加成)`。');
-out.push('- **城外建筑**（农田/伐木场/采石场/铁矿场）不受官府闸，直接随城池 / 爵位上限。');
+out.push('- **城外建筑**（净化厂/伐木场/采石场/铁矿场）不受官府闸，直接随城池 / 爵位上限。');
 out.push('- 全部等级表按 `MAX_LEVEL_ABS = ' + DATA.MAX_LEVEL_ABS + '`（12 基准 + 12 都城 + 21 爵位）一次性外推。');
 out.push('');
 out.push('## 三、城内建筑（' + Object.keys(DATA.BUILDINGS).length + ' 座，Lv1→Lv12）');
@@ -95,7 +95,7 @@ names.forEach(function (k) {
   for (var lv = 1; lv < 12; lv++) {
     var c = b.levelCost ? b.levelCost(lv) : null;
     var t = c ? (c.time || 0) : 0;
-    /* v89.128：时间列全部走 buildTimeSec 曲线（含城墙）——不需要任何特例兜底 */
+    /* v89.128：时间列全部走 buildTimeSec 曲线（含围墙）——不需要任何特例兜底 */
     acc += t;
     line += ' ' + hrs(t) + ' |';
   }
@@ -112,10 +112,10 @@ names.forEach(function (k) {
   out.push('#### ' + b.name + '（`' + k + '`）');
   if (k === 'chengqiang') {
     out.push('');
-    out.push('- v89.128：城墙以**环城一圈的结构**作为一个建筑（不占城内格）——与城内建筑同一套出口管理。');
-    out.push('- 时间走**曲线**（同一出口 buildTimeSec）——城墙 T_max = **24h（全表顶格）**、独立**线性**形态（起 2h → 终 24h），12 级一循环。');
-    out.push('- 环城视觉只在**修建后**绘制；点环城 = 城墙面板（未建 → 修建；已建 → 升级/拆除）。');
-    out.push('- 城防技术减城墙资源成本（−5%/级，封顶 −60%），**不减时间**。');
+    out.push('- v89.128：围墙以**环城一圈的结构**作为一个建筑（不占城内格）——与城内建筑同一套出口管理。');
+    out.push('- 时间走**曲线**（同一出口 buildTimeSec）——围墙 T_max = **24h（全表顶格）**、独立**线性**形态（起 2h → 终 24h），12 级一循环。');
+    out.push('- 环城视觉只在**修建后**绘制；点环城 = 围墙面板（未建 → 修建；已建 → 升级/拆除）。');
+    out.push('- 防御工事减围墙资源成本（−5%/级，封顶 −60%），**不减时间**。');
     out.push('');
     return;
   }
@@ -141,22 +141,22 @@ DATA.EXT_BUILD_ORDER.forEach(function (eid) {
   out.push(lines.join('\n'));
   out.push('');
 });
-out.push('## 五、城墙（环城结构 · 不占格）');
+out.push('## 五、围墙（环城结构 · 不占格）');
 out.push('');
-out.push('- v89.128：城墙以**环城一圈的结构**作为一个建筑（地位与城内建筑同）——');
+out.push('- v89.128：围墙以**环城一圈的结构**作为一个建筑（地位与城内建筑同）——');
 out.push('  不占城内地块；建造/升级/拆除走通用出口（`cellOf(city, \'wall\')` = 环城槽）。');
 out.push('- v89.129（老板「结合现实里耗材，耗资，耗时的特点」）：**双料之王** ——');
-out.push('  时间 = T_max 24h 顶格 + 独立**线性**曲线（其他建筑是 1.5 次幂）：现实城墙无"廉价期"，');
+out.push('  时间 = T_max 24h 顶格 + 独立**线性**曲线（其他建筑是 1.5 次幂）：现实围墙无"廉价期"，');
 out.push('  起 2h/级均匀加固到 24h（单次 ≤24h · 12 级循环不变）；');
-out.push('  资源 = 11→12 档 3,482 万（**全表之最**，超驿站 2,355 万）、石料占 66%（砖石工程主材）。');
-out.push('- 环城视觉（isoWallSVG）只在**修建后**绘制；点环城 = 城墙面板。');
-out.push('- 老档迁移：格子里的城墙 / wallLv → 环城槽（等级保留、格释放，消息流有提示）。');
+out.push('  资源 = 11→12 档 3,482 万（**全表之最**，超驿站 2,355 万）、电能占 66%（体量最大的一项）。');
+out.push('- 环城视觉（isoWallSVG）只在**修建后**绘制；点环城 = 围墙面板。');
+out.push('- 老档迁移：格子里的围墙 / wallLv → 环城槽（等级保留、格释放，消息流有提示）。');
 out.push('');
 out.push('## 六、复现');
 out.push('');
 out.push('```bash');
 out.push('node .workbuddy/tools/gen/gen_v89125_build_times.js      # 重新生成本文件');
-out.push('node .workbuddy/tools/probe/probe_v89125_build_time_migration.js   # 探针：城墙旧/新外推对照 + 移民令新语义');
+out.push('node .workbuddy/tools/probe/probe_v89125_build_time_migration.js   # 探针：围墙旧/新外推对照 + 移民令新语义');
 out.push('node smoke-test.js | tail -3                            # §104/§108 口径守卫（曲线 · 循环 · ≤24h）');
 out.push('```');
 out.push('');
@@ -166,7 +166,7 @@ fs.writeFileSync(dst, out.join('\n'), 'utf8');
 
 /* 写后自检：非空 + 关键标题在位 */
 var chk = fs.readFileSync(dst, 'utf8');
-if (chk.length < 3000 || chk.indexOf('## 五、城墙') < 0 || chk.indexOf('逐建筑明细') < 0) {
+if (chk.length < 3000 || chk.indexOf('## 五、围墙') < 0 || chk.indexOf('逐建筑明细') < 0) {
   console.error('✗ 自检失败：产物异常（len=' + chk.length + '）');
   process.exit(1);
 }

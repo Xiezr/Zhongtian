@@ -2,7 +2,7 @@
    ① 仓库面板真渲染「逾溢折损」规则 + 当前超出上限（图 v89160-store-rot.png）
    ② 真跑 1 游戏日 → 公文出灾种行（图 v89160-rot-log.png）
    ③ 自动化面板真渲染新文案（图 v89160-auto-pane.png）
-   ④ 真环境顺延：贵项在前也不挡路（铁匠铺 → 民房）
+   ④ 真环境顺延：贵项在前也不挡路（铁匠铺 → 居所）
    运行：NODE_PATH="C:/Users/18811/.workbuddy/binaries/node/workspace/node_modules" node .workbuddy/tools/show/shot_v89160_two.js */
 module.paths.unshift('C:/Users/18811/.workbuddy/binaries/node/workspace/node_modules');
 var pw = require('playwright-core');
@@ -77,7 +77,7 @@ function chk(name, cond, extra) {
     return { msg: msg };
   });
   console.log('    公文行 = ' + r2.msg);
-  chk('公文出现灾种 + 逐项损失（粮/铁）', /损失/.test(r2.msg) && /粮食/.test(r2.msg) && /铁/.test(r2.msg));
+  chk('公文出现灾种 + 逐项损失（粮/铁）', /损失/.test(r2.msg) && /净水/.test(r2.msg) && /铁/.test(r2.msg));
   await p.waitForTimeout(800);
   var r2b = await p.evaluate(function () {
     var out = null;
@@ -137,7 +137,7 @@ function chk(name, cond, extra) {
     c.cells.forEach(function (x) { x.pending = null; });
     return { ok: !!(r && r.ok), name: (r && r.target && r.target.name) || '', idx: (r && r.target && r.target.idx) };
   });
-  chk('顺延过铁匠铺（idx0）· 命中民房（idx1）', r4.ok && r4.idx === 1 && /民房/.test(r4.name), JSON.stringify(r4));
+  chk('顺延过铁匠铺（idx0）· 命中居所（idx1）', r4.ok && r4.idx === 1 && /居所/.test(r4.name), JSON.stringify(r4));
 
   console.log('\n结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');
   await b.close();

@@ -120,7 +120,7 @@ fs.mkdirSync(OUT, { recursive: true });
     if (rows.length) rows[0].click();
     var root = document.querySelector('#modal-root');
     var tx = root ? (root.textContent || '') : '';
-    return { opened: !!root && tx.length > 30, hasRounds: /回合/.test(tx), hasTower: /工事|城墙/.test(tx) };
+    return { opened: !!root && tx.length > 30, hasRounds: /回合/.test(tx), hasTower: /工事|围墙/.test(tx) };
   });
   await new Promise(function (r) { setTimeout(r, 300); });
   await page.screenshot({ path: path.join(OUT, 'v89109-report-detail.png') });

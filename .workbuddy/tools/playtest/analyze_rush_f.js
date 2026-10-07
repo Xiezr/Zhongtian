@@ -29,19 +29,19 @@ out.push('');
   if (!f) { out.push('（缺 rush_final.json）'); out.push(''); return; }
   var army = f.cities.reduce(function(a, c){ return a + c.army; }, 0);
   var goldAll = f.cities.reduce(function(a, c){ return a + c.gold; }, 0);
-  out.push('- 终态：城 ' + f.cities.length + ' · 军 ' + army + ' · 金 ' + goldAll
+  out.push('- 终态：城 ' + f.cities.length + ' · 军 ' + army + ' · 旧币 ' + goldAll
     + ' · 声望 ' + f.rep + ' · 爵位档 ' + f.rank + ' · 建筑等级和 ' + blSum(rows[rows.length - 1]));
   out.push('- rush：围攻 发起' + f.rush.sieRep + '/下城' + f.rush.sieWin + '/败' + f.rush.sieFail
     + ' · 晋爵 ' + f.rush.promote + ' · 节钺用 ' + f.rush.jieyueUsed + ' · 通商券 ' + f.rush.coupon
     + ' · 丹药 ' + f.rush.perm + ' · 大还丹 ' + f.rush.sta);
   out.push('- 阶段：' + f.rush.era + '（切换 ' + (f.rush.eras || []).length + ' 次：'
     + (f.rush.eras || []).map(function(x){ return 'y' + x.y + '→' + x.id; }).join(' · ') + '）');
-  out.push('- 民生：增民令 ' + (f.rush.popUses || 0) + ' 张 · 人口银行 存'
+  out.push('- 民生：增民令 ' + (f.rush.popUses || 0) + ' 张 · 幸存者银行 存'
     + ((f.rush.bank || {}).join || 0) + '/放' + ((f.rush.bank || {}).release || 0)
-    + '（峰值人口 ' + Math.round((f.rush.bank || {}).peak || 0) + '）· 税制 ' + f.rush.tax);
-  if (g) out.push('- 金：套现 ' + g.gold.sold + '（' + g.gold.sales + ' 笔）· 花费 ' + JSON.stringify(g.gold.spends)
+    + '（峰值幸存者 ' + Math.round((f.rush.bank || {}).peak || 0) + '）· 税制 ' + f.rush.tax);
+  if (g) out.push('- 旧币：套现 ' + g.gold.sold + '（' + g.gold.sales + ' 笔）· 花费 ' + JSON.stringify(g.gold.spends)
     + ' · 书 ' + g.gold.books + ' · 换批 ' + g.gold.rerolls);
-  f.cities.forEach(function(c){ out.push('  - ' + c.name + '：金' + c.gold + ' 人口' + c.pop + ' 兵' + c.army + ' 建造位' + c.slots); });
+  f.cities.forEach(function(c){ out.push('  - ' + c.name + '：旧币' + c.gold + ' 幸存者' + c.pop + ' 兵' + c.army + ' 建造位' + c.slots); });
   var bs = battlesOf(tag);
   var wins = bs.filter(function(b){ return b.winner === 'atk'; }).length;
   out.push('- 战斗：' + bs.length + ' 场 · 胜 ' + wins + '（' + (bs.length ? Math.round(wins / bs.length * 100) : 0) + '%）');
@@ -67,13 +67,13 @@ out.push('');
     + ' · 城垣未破 ' + lg.filter(function(l){ return /城垣未破/.test(l); }).length
     + ' · 据点已下 ' + lg.filter(function(l){ return /据点已下/.test(l); }).length);
   var yrs = [0.25, 1, 2, 4, 8, 12, 16];
-  out.push('- 曲线（y · 城 · 军 · 人口/上限 · 金 · 阶段）：');
+  out.push('- 曲线（y · 城 · 军 · 幸存者/上限 · 旧币 · 阶段）：');
   yrs.forEach(function(y){
     var best = null;
     rows.forEach(function(r){ if (!best || Math.abs(r.y - y) < Math.abs(best.y - y)) best = r; });
     if (best) out.push('  - y' + best.y + ' · ' + best.cities + '城 · 军' + Math.round(best.army)
       + ' · 人' + Math.round(best.pop) + '/' + Math.round(best.popCap)
-      + ' · 金' + Math.round((best.res || {}).gold || 0) + ' · ' + (best.era || ''));
+      + ' · 旧币' + Math.round((best.res || {}).gold || 0) + ' · ' + (best.era || ''));
   });
   var key = logOf(tag).filter(function(l){ return /阶段切换|自动出征 [开关]|税制切|银行放人|存人|增民令|采集将|体力补给/.test(l); });
   out.push('- 阶段/策略/补给日志（共 ' + key.length + ' 条，前 26）：');
@@ -93,7 +93,7 @@ out.push('## 1× 演进对照：A2 → A3 → A4 → E（v89.99 定稿）');
   var gg = readJSON(BASE + pair[0] + '/gold_final.json');
   if (gg && gg.gens) gg.gens.forEach(function(x){ if ((x.lv || 0) > topLv) topLv = x.lv || 0; });
   out.push('- ' + pair[1] + '：城 ' + f.cities.length + ' · 军 ' + army + ' · 爵 ' + f.rush.rank
-    + ' · 建筑和 ' + blSum(last) + ' · 顶将 Lv' + topLv + ' · 人口 ' + Math.round(last.pop || 0)
+    + ' · 建筑和 ' + blSum(last) + ' · 顶将 Lv' + topLv + ' · 幸存者 ' + Math.round(last.pop || 0)
     + ' · 围攻发起 ' + (f.rush.sieRep || 0) + '/下城 ' + (f.rush.sieWin || 0));
 });
 out.push('');
@@ -103,7 +103,7 @@ out.push('## 三倍速 E 跑横比');
   if (!f) return;
   var rows = rowsOf(tag); var last = rows[rows.length - 1] || {};
   out.push('- ' + tag + '：城 ' + f.cities.length + ' · 军 ' + f.cities.reduce(function(a, c){ return a + c.army; }, 0)
-    + ' · 建筑和 ' + blSum(last) + ' · 人口 ' + Math.round(last.pop || 0) + '/' + Math.round(last.popCap || 0)
+    + ' · 建筑和 ' + blSum(last) + ' · 幸存者 ' + Math.round(last.pop || 0) + '/' + Math.round(last.popCap || 0)
     + ' · 增民令 ' + (f.rush.popUses || 0) + ' · 银行放 ' + ((f.rush.bank || {}).release || 0)
     + ' · 围攻 发起' + (f.rush.sieRep || 0) + '/下城' + (f.rush.sieWin || 0)
     + ' · 大还丹 ' + (f.rush.sta || 0));

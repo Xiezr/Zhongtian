@@ -1,6 +1,6 @@
 /* v89.174 实机验证（真浏览器）：
    ① 官府格弹窗：官府要务下方「在建队列」段（图 v89174-queue.png）
-   ② 施工中弹窗：**不操作**，等主循环 live 自动换态（建造中 → 民房 · Lv1）（图 v89174-swap.png）
+   ② 施工中弹窗：**不操作**，等主循环 live 自动换态（建造中 → 居所 · Lv1）（图 v89174-swap.png）
    运行：NODE_PATH="C:/Users/18811/.workbuddy/binaries/node/workspace/node_modules" node .workbuddy/tools/show/shot_v89174_queue.js */
 module.paths.unshift('C:/Users/18811/.workbuddy/binaries/node/workspace/node_modules');
 var pw = require('playwright-core');
@@ -70,7 +70,7 @@ function chk(name, cond, extra) {
     return {
       hasQ: txt.indexOf('在建队列') >= 0,
       cnt: (txt.match(/在建队列（\d+）/) || [''])[0],
-      hasRow: txt.indexOf('民房') >= 0 && txt.indexOf('建造') >= 0,
+      hasRow: txt.indexOf('居所') >= 0 && txt.indexOf('建造') >= 0,
       pct: /\d+% · \d\d:\d\d/.test(txt),
     };
   });
@@ -95,12 +95,12 @@ function chk(name, cond, extra) {
     return {
       open: !!m && txt.length > 0,
       stillBuilding: txt.indexOf('建造中') >= 0,
-      normal: /民房 · Lv1/.test(txt),
+      normal: /居所 · Lv1/.test(txt),
       txt: txt.slice(0, 120),
     };
   });
   chk('② 弹窗仍开着（没被静默关掉）', s2.open);
-  chk('★ ② 完全不操作 → 弹窗被 live 自动换成「民房 · Lv1」（不再建造中）',
+  chk('★ ② 完全不操作 → 弹窗被 live 自动换成「居所 · Lv1」（不再建造中）',
     !s2.stillBuilding && s2.normal, s2.txt.replace(/\s+/g, ' ').slice(0, 70));
   var c2 = await shotModal('v89174-swap.png');
   console.log('   图2 ' + (c2 ? Math.round(c2.width) + 'x' + Math.round(c2.height) : 'FAIL'));

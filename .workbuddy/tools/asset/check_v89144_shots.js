@@ -24,7 +24,7 @@ function region(png, x0, y0, x1, y1) {
 
 var S = 'E:/Deepseekdb/.workbuddy/shots/';
 
-console.log('===== ① 军队校场扩容页（march-expand）=====');
+console.log('===== ① 军队练兵场扩容页（march-expand）=====');
 var A = load(S + 'v89144-march-expand.png');
 console.log('  尺寸 ' + A.width + '×' + A.height);
 var aAll = region(A, 0, 0, A.width, A.height);

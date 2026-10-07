@@ -63,7 +63,7 @@ row('A', '9', '军务菜单改名（出征→出征战术 / 防守→防守战�
 ROWStab = ROWS[-1]
 ROWS[-1] = (ROWStab[0], ROWStab[1], ROWStab[2], ('✅ 已落地' if '出征战术' in UI else '❌ 未落地'), (m.group(1).replace('\n', ' ')[:110] if m else ''))
 
-row('A', '10', '校场点击直入军务界面（旧弹窗退役）', r'ui\.openXiaochang\s*=\s*function', expect='notdone')
+row('A', '10', '练兵场点击直入军务界面（旧弹窗退役）', r'ui\.openXiaochang\s*=\s*function', expect='notdone')
 row('A', '11', '出征 = 一切军事行动的入口（统一）', r"_expMode === 'station'|mode === 'station'", expect='done')
 row('A', '12', '缩略地图（字细 / 红点 / 波纹）', r'miniMeLabels|mini-pulse', expect='done')
 row('A', '13', '出征战术：动作/目标下拉 + 两列 + 去在途队列', r'exp-act-pick|expActHTML|expActionHTML', expect=None)
@@ -79,7 +79,7 @@ row('B', 'E15', '开局重排（教学战 / 首建 0 秒 / 军师条）', r'教�
 row('B', 'E16', '将领差异线 · 被动武学', r'被动武学|DATA\.WUXUE', expect='notdone')
 row('B', 'U2', '日月年文案（俸期口径）', r'俸期', expect='notdone')
 row('B', 'U5', '资源溢出出口（自动粜卖）', r'粜', expect='notdone')
-row('B', 'W4', '客栈换批成本递增', r'innRefreshCost', expect=None)
+row('B', 'W4', '酒馆换批成本递增', r'innRefreshCost', expect=None)
 row('B', 'W5', '经验书低段效率', r'经验书', expect=None)
 row('B', 'W6', '装备线性价比', r'装备线性价比', expect='notdone')
 row('B', 'W7', '入侵强度（末段必破 · 复核）', r'invasionStrength|breachChance|末段', expect=None)
@@ -98,7 +98,7 @@ row('C', '10', '来袭间隔可选档位', r'invasionEveryRealMin|invasionRealMi
 row('D', '1', 'live 刷新续铺（其余面板）', r'opts\.live|live: function', expect=None, text=UI)
 row('D', '2', '将领视图秒刷（带滚动保持）', r'_genScroll|genView.*live|openGenerals', expect=None)
 row('D', '3', '「将领带队采集」与「驻军开采」合并', r'garrisonGather|wild-garrison-gather', expect=None)
-row('D', '4', 'A 木供给 / B 城墙起步价 / C 缺口明细（v89.141 三问）', r'v89\.157|A木', expect=None, text=ARC)
+row('D', '4', 'A 木供给 / B 围墙起步价 / C 缺口明细（v89.141 三问）', r'v89\.157|A木', expect=None, text=ARC)
 row('D', '5', '夜明珠 / 爵位数量 / 独山玉名（v89.152 遗留）', r'夜明珠', expect=None, text=ARC)
 row('D', '6', '侦察斜率体感（±2%/级 · ±8%/星）', r'perLv:\s*0\.02', expect='done')
 row('D', '7', '公文新主题继续补打标', r'MSG_SUBS', expect=None)

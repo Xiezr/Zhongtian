@@ -3,7 +3,7 @@
  * ------------------------------------------------------------
  * 出图：
  *   v89123-reshour.png   侧栏资源栏（/时 增速 + 过万以万）
- * 场景：把城外农田拉到高级别，让粮食产量过万（"万"档可见）。
+ * 场景：把城外净化厂拉到高级别，让净水产量过万（"万"档可见）。
  * 顺带量：#res-bar 各行增速文本 / 悬停明细是否 /时 口径
  * 用法：node .workbuddy/tools/show/shot_v89123_rate.js
  * ============================================================ */
@@ -32,7 +32,7 @@ fs.mkdirSync(OUT, { recursive: true });
     G.ui._cityId = c.id;
     /* 城内建筑拉到 8 级（官府放闸） */
     c.cells.forEach(function (x) { if (x.build) x.build.lvl = Math.max(x.build.lvl || 1, 8); });
-    /* 城外：前 6 格全部改成满级农田（让粮食产量过万）—— extGrid 结构 = {id,type,lv} */
+    /* 城外：前 6 格全部改成满级净化厂（让净水产量过万）—— extGrid 结构 = {id,type,lv} */
     var grid = c.extGrid || [];
     grid.forEach(function (e, k) {
       if (k < 6) { e.type = 'farm'; e.lv = 12; e.pending = null; }
@@ -48,7 +48,7 @@ fs.mkdirSync(OUT, { recursive: true });
       ts: G.timeScale(),
     };
   });
-  console.log('本城粮食：现实每秒 ' + info.perSec.toFixed(2) + ' · timeScale=' + info.ts
+  console.log('本城净水：现实每秒 ' + info.perSec.toFixed(2) + ' · timeScale=' + info.ts
     + ' → 游戏每小时 ' + Math.round(info.perH) + '（页面应显示此值）');
   await new Promise(function (r) { setTimeout(r, 600); });
 

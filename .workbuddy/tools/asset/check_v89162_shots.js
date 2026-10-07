@@ -1,5 +1,7 @@
-/* v89.162 像素体检：三张图（六维表 / 城池面板 / 黄金 tip）
+/* v89.162 像素体检：三张图（六维表 / 城池面板 / 旧币 tip）
    —— 逐行亮度投影数「文字行组」（版式指纹）+ 金色高亮像素（标题/数值）
+   ⚠️ 历史截图体检（时称）：本脚本读 v89.162 时代的历史截图，"内政"是当时六维名
+   （v89.224 换代后为「治理」）。像素判据与名称无关，历史正文保留。
    运行：NODE_PATH="C:/Users/18811/.workbuddy/binaries/node/workspace/node_modules" node .workbuddy/tools/asset/check_v89162_shots.js */
 module.paths.unshift('C:/Users/18811/.workbuddy/binaries/node/workspace/node_modules');
 var fs = require('fs'), PNG = require('pngjs').PNG;
@@ -45,7 +47,7 @@ chk('暗色主题基线（平均亮度 25~60 · 亮像素 0.5%~4%）', (function
   return m > 25 && m < 60 && bp > 0.005 && bp < 0.04;
 })());
 
-console.log('===== ③ 黄金 tip 浮层（分账行） =====');
+console.log('===== ③ 旧币 tip 浮层（分账行） =====');
 var C = load('v89162-gold-tip.png');
 console.log('  ' + C.width + 'x' + C.height + ' · 行组=' + rows(C).length + ' · 金=' + gold(C) + ' · 青=' + cyan(C));
 console.log('  行组 y: ' + rows(C).map(function (r) { return r.y0 + '-' + r.y1; }).join(' | '));

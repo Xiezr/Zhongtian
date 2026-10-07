@@ -3,7 +3,7 @@
  *   进行全生命周期模拟，充分发掘闭环能力」）
  * ------------------------------------------------------------
  * 逐项跑"获得 → 持有 → 使用 → 效果 → 清账"五段链，逐项给证据：
- *   · 来源：在售 → 真走商城购买出口（doShopping，真扣金）；
+ *   · 来源：在售 → 真走游商购买出口（doShopping，真扣旧币）；
  *           非在售 → 直接发放（= 掉落/缴获/游历到手），并注明"真实来源是否接线"
  *   · 持有：s.items[id] > 0
  *   · 使用：按 type 走真实出口（useItem / 专项出口），带齐前置场景
@@ -32,7 +32,7 @@ function pad(s, n) { s = String(s == null ? '' : s); while (s.length < n) s += '
 function row(cells) { ROWS.push(cells); }
 
 /* ============================================================
- * 场景：一座主城 + 全建筑 + 满资源 + 可用将领
+ * 场景：一座主城 + 全建筑 + 满资源 + 可用英雄
  * ============================================================ */
 function buildScene(opts) {
   opts = opts || {};
@@ -44,7 +44,7 @@ function buildScene(opts) {
   ['grain', 'wood', 'stone', 'iron', 'gold'].forEach(function (k) { A.res[k] = 5e6; });
   A.res.pop = 60000;
   A.cells.forEach(function (c) { if (c.build) c.build.lvl = Math.max(c.build.lvl || 1, 8); });
-  /* 补关键建筑（军营/校场/铁匠铺/书院/市场/仓库/客栈），探针直写 cell */
+  /* 补关键建筑（军营/练兵场/铁匠铺/研习所/市场/货仓/酒馆），探针直写 cell */
   (function () {
     var need = ['junying', 'xiaochang', 'shuyuan', 'tiejiangpu', 'shichang', 'cangku', 'kezhan', 'guanfu'];
     var k = 0;
@@ -98,7 +98,8 @@ if (PART === 'A1' || PART === 'ALL') {
      只有这些路径能产出物品；不在表内 + 不在售 = **玩家拿不到**（渠道缺口）。 */
   var CH_BY_TYPE = {
     jewel: '宝箱/缴获(按类)', material: '宝箱/缴获/采集(按类)', blueprint: '宝箱/缴获(按类)',
-    rank_up: '种田秘境(灵草作物)', essence: '采集/缴获(精华掉落表)', talis: '游历/逸闻(锦囊)',
+    rank_up: '基因实验室(基因调试)', essence: '采集/缴获(精华掉落表)', talis: '游历/逸闻(锦囊)',
+    bao: '缴获(据点/名城·遗物掉落表)',   /* v89.230：遗物渠道随工具同步 */
   };
   var CH_BY_ID = {};
   ((DATA.SEED_DROP || {}).table || []).forEach(function (r) { CH_BY_ID[r.id] = '采集/缴获(种子掉落表)'; });
@@ -109,7 +110,7 @@ if (PART === 'A1' || PART === 'ALL') {
   ['tongshang_quan', 'mojia_canjuan', 'xianzhenzhangu', 'jixingjunling', 'hufu'].forEach(function (id) { CH_BY_ID[id] = '任务/逸闻奖励'; });
   function inShop(it) { return it.price > 0 && !it.noShop && !!(G.ui.SHOP_CATS || {})[it.type]; }
   function channelOf(it) {
-    if (inShop(it)) return '商城';
+    if (inShop(it)) return '游商';
     if (CH_BY_ID[it.id]) return CH_BY_ID[it.id];
     if (CH_BY_TYPE[it.type]) return CH_BY_TYPE[it.type];
     return null;   /* ← 渠道缺口 */
@@ -150,11 +151,13 @@ if (PART === 'A1' || PART === 'ALL') {
     },
     pop_fill: {
       /* v89.125：语义 = 每次 +上限×ratio（增量，封顶上限）——
-         prep 摆 10%，用后应 = min(上限, 10% + ratio)（旧口径是"补到 ratio"，已废）。 */
-      prep: function () { G.res(A).pop = Math.floor(G.maxPopOf(A) * 0.1); },
+         prep 摆 10%，用后应 = min(上限, 10% + ratio)（旧口径是"补到 ratio"，已废）。
+         v89.230 工具同步：上限 = **有效上限**（effPopCapOf · 民心折算）—— v89.185 起产品口径，
+         原写 maxPopOf（满额上限）→ 民心 <100% 时实测必然对不上（假红）。 */
+      prep: function () { G.res(A).pop = Math.floor(G.effPopCapOf(A) * 0.1); },
       use: function (it) { return S.useItem(it.id, gen.id); },
       verify: function (it) {
-        var cap = G.maxPopOf(A);
+        var cap = G.effPopCapOf(A);
         var want = Math.min(cap, Math.floor(cap * 0.1) + Math.floor(cap * (it.ratio || 0.25)));
         return Math.floor(G.res(A).pop) === want;
       },
@@ -174,7 +177,7 @@ if (PART === 'A1' || PART === 'ALL') {
       },
     },
     exp: {
-      /* 资质决定等级上限（凡品 60）；测试将领拉到天授，避免"到顶"干扰 exp 道具本身的验证。
+      /* 资质决定等级上限（凡品 60）；测试英雄拉到天启体，避免"到顶"干扰 exp 道具本身的验证。
          v89.171：道具带**培养上限**（10~60）—— prep 放到 Lv1（每项前重置，见"每项前重置"），
          verify 改看"等级或经验任一变化"（到线即止时 exp 归零、等级上升）。 */
       prep: function () { gen.rank = 'tian'; gen.level = 1; gen.exp = 0; },
@@ -209,7 +212,7 @@ if (PART === 'A1' || PART === 'ALL') {
       verify: function (it) { return (gen.perm[it.attr] || 0) === 1; },
     },
     rank_up: {
-      /* 灵草与档位一一对应：把将领摆到 from 档；顶档（→天授）需节钺（黄金买不到，
+      /* 灵草与档位一一对应：把英雄摆到 from 档；顶档（→天启体）需节钺（旧币买不到，
          走 jieyueGrant 模拟"攻占名城/爵位赏赐"的既得资源） */
       prep: function (it) { gen.rank = it.from; try { G.jieyueGrant(3, '生命周期模拟预置'); } catch (e) {} },
       use: function (it) { return S.useItem(it.id, gen.id); },
@@ -255,8 +258,8 @@ if (PART === 'A1' || PART === 'ALL') {
       s.queues = s.queues || { build: [], tech: [], train: [] };
       s.queues.train.length = 0;
       var bIdx = findCell(A, 'junying');
-      var r = G.trainAt ? G.trainAt(A.id, bIdx, 'yibing', 10) : null;
-      if (!r || !r.ok) { s.queues.train.push({ id: 'yibing', elapsed: 0, totalTime: 100000, cityId: A.id }); }
+      var r = G.trainAt ? G.trainAt(A.id, bIdx, 'buxingji', 10) : null;
+      if (!r || !r.ok) { s.queues.train.push({ id: 'buxingji', elapsed: 0, totalTime: 100000, cityId: A.id }); }
       return s.queues.train[0];
     },
     march: function () { return G.march && G.march.rushAll ? true : null; },
@@ -278,12 +281,12 @@ if (PART === 'A1' || PART === 'ALL') {
     var shopable = inShop(it);
     var chan = channelOf(it);
     if (!chan) NOCH.push(id + ' ' + it.name + '（' + t + '）');
-    G.res(A).gold = 5e6;   /* 每项前回满黄金（逐项独立；否则买到后面没钱了） */
+    G.res(A).gold = 5e6;   /* 每项前回满旧币（逐项独立；否则买到后面没钱了） */
     var goldBefore = G.res(A).gold;
     if (shopable) {
       var br = G.doShopping(id, 1);
       hasSrc = br && br.ok && (G.state.items[id] || 0) >= 1;
-      srcNote = hasSrc ? '商城(真买,-' + U.fmt(goldBefore - G.res(A).gold) + '金)' : '商城买失败:' + ((br && br.msg) || '');
+      srcNote = hasSrc ? '游商(真买,-' + U.fmt(goldBefore - G.res(A).gold) + '旧币)' : '游商买失败:' + ((br && br.msg) || '');
     } else {
       G.state.items[id] = (G.state.items[id] || 0) + 1;
       hasSrc = true;
@@ -316,12 +319,16 @@ if (PART === 'A1' || PART === 'ALL') {
         }
       } else if (t === 'seed') {
         hasUse = false;
-        useNote = '专项：种田秘境播种（useItem 明确拒绝=设计）';
+        useNote = '专项：基因实验室播种（useItem 明确拒绝=设计）';
         hasEff = true;  /* 设计上不可直用 */
       } else if (t === 'talis' || t === 'material' || t === 'blueprint' || t === 'essence') {
         hasUse = false;
         useNote = '专项：' + ({ talis: '计略/布防消耗', material: '打造消耗', blueprint: '打造解锁', essence: '蕴养消耗' }[t]);
         hasEff = true;
+      } else if (t === 'bao') {
+        hasUse = false;
+        useNote = '专项：遗物（装配进遗物槽生效 · 打据点/名城缴获）';
+        hasEff = true;  /* v89.230：设计上不可直用（同 talis 族） */
       } else {
         useNote = '未知 type';
       }
@@ -331,17 +338,17 @@ if (PART === 'A1' || PART === 'ALL') {
     /* --- 清账 --- */
     var afterN = (G.state.items[id] || 0);
     if (hasUse) hasClear = afterN === beforeN - 1;
-    else if (t === 'seed' || t === 'talis' || t === 'material' || t === 'blueprint' || t === 'essence') hasClear = afterN >= 0;
+    else if (t === 'seed' || t === 'talis' || t === 'material' || t === 'blueprint' || t === 'essence' || t === 'bao') hasClear = afterN >= 0;
     /* 别让背包堆积影响后续项：复位 */
     delete G.state.items[id];
     clearItemBuffs(id);
 
     row([t, id, it.name,
-      shopable ? '商城' : (it.noShop ? '下架' : '非售'),
+      shopable ? '游商' : (it.noShop ? '下架' : '非售'),
       hasSrc ? '✓' : '✗', hasHold ? '✓' : '✗', hasUse ? '✓' : '—',
       hasEff ? '✓' : (hasUse ? '✗' : '—'), hasClear ? '✓' : '✗',
       srcNote + (useNote && useNote !== 'ok' ? ' · ' + useNote : '')]);
-    ok('A1/' + id, hasSrc && hasHold && (hasUse || ['seed', 'talis', 'material', 'blueprint', 'essence'].indexOf(t) >= 0) && hasEff && hasClear,
+    ok('A1/' + id, hasSrc && hasHold && (hasUse || ['seed', 'talis', 'material', 'blueprint', 'essence', 'bao'].indexOf(t) >= 0) && hasEff && hasClear,
       'src=' + (hasSrc ? 'y' : 'n') + ' use=' + (hasUse ? 'y' : (hasUse === false ? 'n' : '-')) + ' eff=' + (hasEff ? 'y' : 'n') + ' clear=' + (hasClear ? 'y' : 'n') + ' ' + useNote);
   });
 
@@ -560,7 +567,7 @@ if (PART === 'A6' || PART === 'ALL') {
  * PART A7 · 种田闭环（种子 → 播种 → 生长 → 收获 → 灵草/材料）
  * ============================================================ */
 if (PART === 'A7' || PART === 'ALL') {
-  console.log('\n═══ PART A7 · 种田秘境闭环（逐作物）═══\n');
+  console.log('\n═══ PART A7 · 基因实验室闭环（逐作物）═══\n');
   var sc7 = buildScene();
   var st7 = sc7.st;
   var crops = (DATA.FARM && DATA.FARM.crops) || [];
@@ -600,7 +607,7 @@ if (PART === 'B1' || PART === 'ALL') {
     if (cond) { bPass++; console.log('  ✓ ' + name + (note ? ' —— ' + note : '')); }
     else { bFail++; bNotes.push(name + ' | ' + (note || '')); console.log('  ✗ ' + name + (note ? ' —— ' + note : '')); }
   }
-  /* 布置三队列：建造 / 研究 / 募兵（人口先压到上限内 —— 预置 6 万超过上限会卡增长） */
+  /* 布置三队列：建造 / 研究 / 募兵（幸存者先压到上限内 —— 预置 6 万超过上限会卡增长） */
   AB.res.pop = Math.floor(G.maxPopOf(AB) * 0.4);
   var freeB = -1;
   AB.cells.forEach(function (c, i) { if (freeB < 0 && !c.build && !c.official && !c.pending) freeB = i; });
@@ -608,7 +615,7 @@ if (PART === 'B1' || PART === 'ALL') {
   var rsB = G.systems.research('zhongzhi', AB.id);
   if (rsB && !rsB.ok) console.log('  （研究未开：' + rsB.msg + '）');
   var jyB = findCell(AB, 'junying');
-  var trB = G.train ? G.train('yibing', 50, AB.id, jyB) : null;
+  var trB = G.train ? G.train('buxingji', 30, AB.id, jyB) : null;   /* v89.230：50→30（劳作占用后可征 ~49，50 会拒 → 假红） */
   if (trB && !trB.ok) console.log('  （募兵未开：' + trB.msg + '）');
   var snap = {
     grain: G.res(AB).grain, gold: G.res(AB).gold, pop: G.res(AB).pop,
@@ -636,11 +643,11 @@ if (PART === 'B1' || PART === 'ALL') {
   bchk('世界时间推进 7 游戏日', Math.abs(snap2.elapsed - snap.elapsed - 604800) < 2000,
     (snap.elapsed | 0) + ' → ' + (snap2.elapsed | 0));
   bchk('资源持续产出（粮增长）', snap2.grain > snap.grain, U.fmt(snap.grain) + ' → ' + U.fmt(snap2.grain));
-  bchk('黄金结算（税收/卖出）', snap2.gold > snap.gold || snap2.gold > 0, U.fmt(snap.gold) + ' → ' + U.fmt(snap2.gold));
-  bchk('人口增长且不超上限', snap2.pop > snap.pop && snap2.pop <= G.maxPopOf(AB) + 1,
+  bchk('旧币结算（税收/卖出）', snap2.gold > snap.gold || snap2.gold > 0, U.fmt(snap.gold) + ' → ' + U.fmt(snap2.gold));
+  bchk('幸存者增长且不超上限', snap2.pop > snap.pop && snap2.pop <= G.maxPopOf(AB) + 1,
     Math.floor(snap.pop) + ' → ' + Math.floor(snap2.pop) + '（上限 ' + G.maxPopOf(AB) + '）');
-  bchk('建造队列完成（民房落地 +1 级）', snap2.bldLv > snap.bldLv, 'Lv' + snap.bldLv + ' → Lv' + snap2.bldLv);
-  bchk('研究队列推进（种植技术升级）', snap2.tech > snap.tech, 'Lv' + snap.tech + ' → Lv' + snap2.tech);
+  bchk('建造队列完成（居所落地 +1 级）', snap2.bldLv > snap.bldLv, 'Lv' + snap.bldLv + ' → Lv' + snap2.bldLv);
+  bchk('研究队列推进（净化技术升级）', snap2.tech > snap.tech, 'Lv' + snap.tech + ' → Lv' + snap2.tech);
   bchk('募兵完成（兵力增加）', snap2.army > snap.army, snap.army + ' → ' + snap2.army);
   bchk('资源全程无 NaN/负值', nanHit === 0, '抽检 8 次');
   /* 战报与消息体检 */

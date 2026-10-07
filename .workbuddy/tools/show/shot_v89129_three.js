@@ -1,5 +1,5 @@
 /* v89.129 实机图（三个场景）：
-   ① 城墙面板（新时间：Lv11→12 = 22h 起 / 资源重排）
+   ① 围墙面板（新时间：Lv11→12 = 22h 起 / 资源重排）
    ② 据点侦查（守将行显示守备官 —— 补上"据点无守将"缺口）
    ③ 出征面板（"相称建议"行 —— 按目标等级配备相称资质等级的将领） */
 'use strict';
@@ -25,7 +25,7 @@ var pw = require('playwright-core');
     c.cells.forEach(function (x) { if (x.build && x.build.id === 'guanfu') x.build.lvl = 12; });
     st.res.grain = 9e7; st.res.wood = 9e7; st.res.stone = 9e7; st.res.iron = 9e7;
     st.techs = st.techs || {}; st.techs.zhencha = 99;      /* 侦查层全解锁（守将名册可见） */
-    G.wallSlotOf(c).build = { id: 'chengqiang', lvl: 10 }; /* 城墙 Lv10 → 下一档 22h */
+    G.wallSlotOf(c).build = { id: 'chengqiang', lvl: 10 }; /* 围墙 Lv10 → 下一档 22h */
     G.ui.enterGame();
     try { G.ui.closeAllModals(); } catch (e) {}
     G.ui.setView('city');
@@ -33,7 +33,7 @@ var pw = require('playwright-core');
   });
   await p.waitForTimeout(500);
 
-  /* ── ① 城墙面板：点环城 → 看"升级"档的时长与资源 ── */
+  /* ── ① 围墙面板：点环城 → 看"升级"档的时长与资源 ── */
   await p.click('#view-container .wall-hit[data-action="open-wall"]');
   await p.waitForTimeout(400);
   await p.screenshot({ path: 'E:/Deepseekdb/.workbuddy/shots/v89129-wall-panel.png' });
@@ -48,7 +48,7 @@ var pw = require('playwright-core');
       cost: G.DATA.BUILDINGS.chengqiang.levelCost(10),
     };
   });
-  console.log('① 城墙面板（Lv10→11，应见 22h/资源 1740.8 万）：');
+  console.log('① 围墙面板（Lv10→11，应见 22h/资源 1740.8 万）：');
   console.log('   面板文本：', r1.txt);
   console.log('   曲线值：', r1.nextTimeH + 'h  资源：', JSON.stringify(r1.cost));
 

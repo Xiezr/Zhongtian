@@ -1,8 +1,8 @@
 /* 数值阶梯审计 —— 回答一个问题：**从开局到灰烬城，这条路走得通吗？**
  *
  * 为什么需要它：`docs/_史料/全面梳理报告.md` 判过一条「数量级断层」
- * （官府 Lv10 满农田仅养民兵 5.3 万 / 攻灰烬城需 20 万混编），但那是 v28 之前的数字。
- * v28 把建筑上限 10→12、v24 把外城地块 9 级 39→40、Lv12 农田 7800/h ——
+ * （官府 Lv10 满净化厂仅养民兵 5.3 万 / 攻灰烬城需 20 万混编），但那是 v28 之前的数字。
+ * v28 把建筑上限 10→12、v24 把外城地块 9 级 39→40、Lv12 净化厂 7800/h ——
  * 上限抬过三轮，那条结论**没人复算过**。所以把判据脚本化：**数值一改就能重跑**，
  * 别再用二手结论做决策。
  *
@@ -17,6 +17,7 @@
  *
  * 用法：node .workbuddy/tools/audit/ladder_audit.js
  * 退出码：0 阶梯可攀 / 1 存在跨度过大的坑
+ * v89.230：兵种 id 随兵种重构换代（yibing→buxingji · tieji→zhuzhan）；数值与判据未动。
  */
 const fs = require('fs'), path = require('path'), vm = require('vm');
 
@@ -39,11 +40,12 @@ const PROD = D.EXT_BUILDINGS.farm.prod;
 const FORT = D.FORT;
 const fortBase = lv => Math.round(FORT.garrisonBase * Math.pow(FORT.garrisonGrowth, lv - 1) *
   ((D.EXPEDITION && D.EXPEDITION.garrisonMul) || 1));
-const FORT_MIX = { yibing: .35, changqiang: .25, daodun: .2, gongjian: .2, qingji: .1 };
+/* v89.230：权重**与 map.fortGarrison 同步**（旧 .35+.25 两兵合并相加 → buxingji .6）。 */
+const FORT_MIX = { buxingji: .6, dunwei: .2, daodanche: .2, fujiche: .1 };
 const fortTotal = lv => {
   const b = fortBase(lv);
   let t = 0;
-  for (const k in FORT_MIX) t += Math.round(b * (k === 'qingji' && lv < 4 ? 0 : FORT_MIX[k]));
+  for (const k in FORT_MIX) t += Math.round(b * (k === 'fujiche' && lv < 4 ? 0 : FORT_MIX[k]));
   return t;
 };
 const cityTotal = lv => Math.round(fortTotal(lv) * (D.NPC_CITY_RES.garrisonMul || 1));
@@ -53,15 +55,15 @@ const capOf = {};
 for (let g = 1; g <= GOV_MAX; g++) {
   const tiles = D.EXT_CAP_BY_LV[g - 1];
   const grain = Math.floor(tiles / 4) * PROD[g - 1];   // 混编：四种资源各占 1/4
-  capOf[g] = { tiles, grain, yibing: Math.floor(grain / 3), tieji: Math.floor(grain / 35) };
+  capOf[g] = { tiles, grain, buxingji: Math.floor(grain / 3), zhuzhan: Math.floor(grain / 35) };   /* ÷3 / ÷35 = v28 军粮口径的代理值（非当前 cost.grain）—— 本表定位节奏参考 */
 }
 
 L.push('=== ① 单城产能（混编：每种资源各占 1/4）===');
-L.push('官府  外城地块   混编各资源/h   可养民兵   可养装甲战车');
+L.push('官府  外城地块   混编各资源/h   可养步兵   可养重装');
 L.push('-'.repeat(56));
 for (let g = 1; g <= GOV_MAX; g++) {
   const c = capOf[g];
-  L.push(`${pad(g, 2)}    ${pad(c.tiles, 7)}   ${pad(fmt(c.grain), 12)}   ${pad(fmt(c.yibing), 9)}   ${pad(fmt(c.tieji), 9)}`);
+  L.push(`${pad(g, 2)}    ${pad(c.tiles, 7)}   ${pad(fmt(c.grain), 12)}   ${pad(fmt(c.buxingji), 9)}   ${pad(fmt(c.zhuzhan), 9)}`);
 }
 
 L.push('');
@@ -74,9 +76,9 @@ for (const lv of TIERS) {
 }
 
 L.push('');
-L.push(`=== ③ 递进阶梯（以单城官府 Lv${GOV_MAX} 的民兵产能为一把尺）===`);
-const one = capOf[GOV_MAX].yibing;
-L.push(`单城满级可出民兵：${fmt(one)}`);
+L.push(`=== ③ 递进阶梯（以单城官府 Lv${GOV_MAX} 的步兵产能为一把尺）===`);
+const one = capOf[GOV_MAX].buxingji;
+L.push(`单城满级可出步兵：${fmt(one)}`);
 L.push('目标   名城守军     需几座满级城');
 L.push('-'.repeat(42));
 const steps = [];
@@ -108,7 +110,7 @@ const reachable = needMax <= maxCities;
 
 L.push('');
 L.push('=== ⑤ 判定 ===');
-L.push(`  野外城池：单城满级可出 ${fmt(one)} 民兵，最高档（Lv10）守军 ${fmt(fortTotal(10))} → ` +
+L.push(`  野外城池：单城满级可出 ${fmt(one)} 步兵，最高档（Lv10）守军 ${fmt(fortTotal(10))} → ` +
   (one >= fortTotal(10) ? '✅ 单城可平推' : '❌ 需多城'));
 L.push(`  名城扩张：靠「平原筑城」扩城（无城池数量上限）`);
 L.push(`  打灰烬城需 ${needMax.toFixed(1)} 座满级城；地图平原约 ${fmt(plainTiles)} 块（上限代理）→ ` +

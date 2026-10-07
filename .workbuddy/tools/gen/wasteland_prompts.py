@@ -1,0 +1,333 @@
+# -*- coding: utf-8 -*-
+"""傻瓜式出图 prompt 生成器 —— 一次打印一批的**可直接复制**提示词。
+
+用法：
+  python .workbuddy/tools/gen/wasteland_prompts.py --list
+  python .workbuddy/tools/gen/wasteland_prompts.py --batch W-B1        # 打印建筑 4 张图集的 prompt
+  python .workbuddy/tools/gen/wasteland_prompts.py --batch W-B1 --write # 写成 txt 文件到 tmp/prompts/
+
+输出每张图集一段：先给**文件名**（照着存），再给**整段 prompt**（整段复制去出图）。
+建筑批额外提示：先跑 build_atlas_src.py 拼源图集（图生图要保轮廓）。
+"""
+import os, io, json, argparse
+
+BASE = r"E:/Deepseekdb"
+JSONP = os.path.join(BASE, ".workbuddy", "tools", "asset", "wasteland_batches.json")
+OUTDIR = os.path.join(BASE, ".workbuddy", "tmp", "prompts")
+syscom = ""
+
+RAW = os.path.join(BASE, "assets", "icons", "raw")
+TMP_ATLAS = os.path.join(BASE, ".workbuddy", "tmp", "atlas")
+
+
+def src_atlas_of(spec, at, batches_all):
+    """i2i 的**源图集** = 同 id、无后缀的上一档图集（唯一映射源 = 批次表本身）。
+    基础批（W-B1）没有上一档 -> 源在 tmp/atlas（由 build_atlas_src.py 拼出）。"""
+    ids = list(at["ids"])
+    base = None
+    for b in batches_all:
+        for a in b["atlases"]:
+            if a["atlas"] == at["atlas"]:
+                continue
+            if not a.get("suffix") and list(a["ids"]) == ids:
+                base = a["atlas"]
+    name = base or at["atlas"]
+    rel = ("assets/icons/raw/" + name) if base else (".workbuddy/tmp/atlas/" + name)
+    p = os.path.join(BASE, rel.replace("/", os.sep))
+    note = ("← 上一档出图（已是废土风）"
+            if base else
+            "← 先跑 python .workbuddy/tools/asset/build_atlas_src.py 拼出（v89.237 起 _gold_backup 已清理——如需重拼先 git 恢复；基础批源图集已固化在 assets/icons/raw/）")
+    if not os.path.exists(p):
+        note += "   ⚠ 该源图还不在磁盘"
+    return rel, note
+
+# ---- 统一技术项（每条 prompt 末尾都拼这段）----
+TECH = ("isolated on a plain solid pure white background (#ffffff), no text, no watermark, "
+        "no frame, no border, no ground shadow, centered composition, slight three-quarter "
+        "isometric view, warm golden light from upper left, soft ambient occlusion, "
+        "highly detailed material textures, crisp clean edges suitable for a small UI icon")
+NEG = "no people face, no logo, no signature, no anime, no cartoon, no glossy plastic"
+ANCHOR = ("Refined realistic game art, post-apocalyptic wasteland strategy game aesthetic "
+          "(salvaged rusty steel, cracked concrete, tarp and scrap-metal, old-world tech ruins), "
+          "in the polish class of Rise of Kingdoms / high-end mobile strategy games.")
+
+# ---- 兵种专用：统一机甲风锚点（措辞与其余批一致，不用过时词）----
+TROOP_ANCHOR = ("Refined realistic post-apocalyptic mecha unit design, unified salvaged-steel "
+                "mecha aesthetic (war-rig / walking-machine silhouettes built from reclaimed "
+                "industrial steel, hydraulic limbs, exposed pistons and armor plating), gritty "
+                "desaturated military color, in the polish class of high-end mobile strategy games.")
+TROOP_NEG = ("no people face, no glossy anime mecha, no neon sci-fi, no cartoon, no logo, "
+             "no watermark, no glossy plastic, no ground shadow")
+
+# ---- 兵种 5 阶（按 DATA.TROOPS 的 unlock 门槛与数值强弱分级）----
+# 每阶一个"递进配方"：机体 → 装甲 → 动力 → 武器 → 细节（后一阶在前一阶基础上叠加）
+TROOP_TIERS = [
+ (1, "拾荒者阶 Scavenger", [
+   ("minfu", "搬运工/拾荒机", "a crude scavenger hauler rig: exposed scrap frame, hand-cart wheels, a single cab, no armor plating"),
+   ("yibing", "民兵机", "a crude militia walker: bare scrap-metal frame, welded patch plates, hand-held salvage weapon"),
+ ]),
+ (2, "制式阶 Regulation", [
+   ("chihou", "侦察机", "a fast scout walker: light frame, tall antenna mast, sensor pod, slim hydraulic legs"),
+   ("changqiang", "长矛机", "a line walker: boxy torso, long steel lance, hydraulic piston arms"),
+   ("daodun", "盾卫机", "a shielded riot walker: torso-mounted riot plate, welded ballistic shield, warning stripes"),
+ ]),
+ (3, "装甲阶 Armored", [
+   ("gongjian", "弩炮机", "a missile walker: shoulder-mounted ballista/launcher rack, targeting optics, armored ammo drums"),
+   ("qingji", "游骑机", "a scout mecha on two-wheeled legs (motorcycle-fused lower body), light armor, short lance"),
+   ("zhouche", "运输机", "a cargo hauler mecha: large open cargo bed, heavy legs, lifting winch"),
+ ]),
+ (4, "重装阶 Heavy", [
+   ("tieji", "装甲机", "a heavy mainline mecha: thick layered steel armor, tracked lower legs, long cannon barrel"),
+   ("chuangnu", "重弩机", "a siege mecha: enormous shoulder ballista with winch, braced heavy tripod legs"),
+   ("chongche", "破门机", "a massive battering-ram mecha: armored ram head, reinforced front plating, tracks"),
+   ("tengjiabing", "防暴机", "a riot-control mecha: full riot armor shell, layered ballistic plates, stun baton"),
+ ]),
+ (5, "原型阶 Prototype", [
+   ("qingzhoubing", "旧军机", "a disciplined old-guard mecha: weathered formal-issue armor, regimental pennant, coherent stance"),
+   ("tuqibing", "突击机", "an assault mecha: fast bike-fused legs, chest gun, lances"),
+   ("hubaoqi", "王牌机", "a champion mecha: aggressive layered armor with beast-mark livery, jacked stance"),
+   ("xiliangtieqi", "重甲机", "an ultra-heavy assault mecha: stacked ablative armor, long gun, huge frame"),
+   ("toudan", "迫击炮机", "a mortar mecha: massive tube, recoil-braced base, ammo hopper"),
+   ("nanjiangxiangbing", "巨兽机", "a colossal siege mecha: towering beetle-like chassis, thick limbs, dorsal artillery"),
+ ]),
+]
+TIER_OF = {tid: (n, name) for n, name, ids in TROOP_TIERS for tid, _, _ in ids}
+TIER_PROFILE = {
+  1: "Bare scavenger build: exposed scrap frame, mismatched welded plates, exposed pistons, a single scavenged weapon, minimal armor.",
+  2: "Standard-issue build: uniform welded steel plating, coherent silhouette, riveted panels, one primary weapon.",
+  3: "Armored build: layered armor plates on joints and torso, reinforced limb actuators, refined weapon mount.",
+  4: "Heavy build: thick stacked armor, heavy hydraulic limbs, oversized weapon, visibly reinforced frame.",
+  5: "Prototype build: pristine over-engineered armor, distinctive elite livery/sigil, massive weapon, sleek powerful silhouette.",
+}
+
+# ---- 逐 id 形制（废土）—— 与 docs/AI图标生成清单-废土版.md 一致 ----
+BRIEF = {
+ # 建筑 16
+ "guanfu":"混凝土主楼 + 波纹锈铁顶 + 裸露钢梁门廊 + 红布族旗与横幅、旧世广播喇叭、沙袋工事、告警灯",
+ "minfang":"拼接板房/水泥小屋、帆布顶补丁、锈铁烟囱、晾衣绳、门前彩色信号旗、旧轮胎",
+ "shuyuan":"水泥/砖混两层、钢窗、门内可见黑板与旧书卷、门口回收钢管旗杆挂信号布",
+ "junying":"数顶帆布军帐 + 拼接板棚、铁管拒马、军旗、武器架（铁管矛/改装枪）、沙袋掩体",
+ "xiaochang":"锈铁人形靶、武器架、水泥指挥台、沙地、晨练场旗、锈鼓/警钟",
+ "shichang":"帆布摊位 + 拼接板棚、铁皮货箱、地秤、招牌幌子、净水袋、油桶货堆",
+ "cangku":"波纹铁皮大仓、集装箱门、钢架货垛、油桶、封条与挂锁、仓号牌",
+ "chengqiang":"水泥/钢板墙断面、铁丝网与垛口、钢制闸门、岗楼、探照灯与信号旗",
+ "yizhan":"钢架门架、帆布顶棚、油桶与补给箱、挂式前灯与旧轮、草料/物资堆",
+ "fenghuotai":"钢结构高塔 + 水泥基座、顶部信号火盆与浓烟、天线/探照灯、爬梯、旗",
+ "majiu":"钢架敞棚、长工作台、油桶、一架摩托剪影与挂墙工具、轮胎堆",
+ "kezhan":"两层拼接板楼、霓虹/灯箱招牌、帆布遮阳棚、门前旧桌凳、串灯",
+ "zhaoxianguan":"水泥门楼 + 张贴告示栏、钢梯、两侧信号灯、旧世牌匾、排队栏",
+ "honglusi":"钢制门坊、演武/训练场、武器架、派系旗帜、水泥台阶、涂鸦墙",
+ "tiejiangpu":"通红炉火、铁砧、鼓风机、水槽、重锤与夹钳、悬挂的动力刃半成品",
+ "gongjiangzuofang":"钢工作台、电锯/焊机/扳手、半成品车轮与引擎件、油污、堆放钢材",
+ # 城外 4（v89.237 重制：按 v89.229 新身份重写形制 —— 净化厂/水培温室/发电站/电弧熔炉）
+ "farm":"净化厂：旧世水塔与滤罐阵列、沉降过滤池（净水蓝点缀）、阀门管道与压力泵、锈铁储水罐",
+ "forest":"水培温室：钢架玻璃温室（碎玻璃与帆布补丁）、多层水培架（绿苗点缀）、生长灯组、营养液罐与塑管",
+ "quarry":"发电站：旧世电厂厂房与冷却塔、变压器与瓷瓶阵列、高压输电塔架、蓄电池组（电火花点缀）",
+ "mine":"电弧熔炉：电弧熔炼炉（电极臂与橙红熔光）、悬吊加料斗与废钢堆、钢水罐与轨道、火花四溅与烟囱管线",
+ # 资源 6
+ "grain":"铁皮水箱与净水桶、封装粮袋、量斗、水滴点缀",
+ "wood":"数段去皮圆木与板材堆、旧锯、木屑、绑扎钢带",
+ "stone":"混凝土块/碎石堆、废弃路缘石、凿痕碎屑",
+ "iron":"铁矿石块与锈铁锭、旧钢件、锈迹与金属反光",
+ "gold":"旧世硬币与军规代币、金属弹药箱、结算用金属筹码",
+ "pop":"废土平民一家（拼接布衣 + 护目镜）、背包与工具",
+ # 兵种 18
+ "minfu":"搬运工：拼接布衣、扁担与铁皮箱、无甲",
+ "yibing":"民兵：简易拼装钢甲、锈铁刀 + 木板盾",
+ "chihou":"侦察兵：轻装 + 护目镜、背负电台与望远镜、疾行姿态",
+ "changqiang":"长矛手：拼装甲、铁管长矛、直立持握",
+ "daodun":"盾卫：拼装甲、锈铁刀 + 钢制防暴盾（涂装警示条）",
+ "gongjian":"弩手：轻甲、改装弩/撬棍弓、箭袋",
+ "qingji":"摩托游骑：轻装甲骑手 + 摩托（两轮/车架/油箱/前灯）、短矛",
+ "tieji":"装甲战车：重拼装甲 + 履带装甲车（铆钉装甲板）、长枪管",
+ "zhouche":"运输车：履带运输车 + 车斗物资、短刀",
+ "chuangnu":"重弩车：车载大型重弩（钢架 + 绞盘）、两名操作兵",
+ "chongche":"破门车：钢制破门车（撞木 + 装甲顶棚）、推车兵",
+ "toudan":"迫击炮：迫击炮组（炮管 + 底座 + 炮弹）、射手姿态",
+ "qingzhoubing":"旧军残部：残存制式装甲、长枪、褪色军旗披风、队列感",
+ "tengjiabing":"防暴甲兵：防暴拼装甲 + 面罩、警棍/链锯棍",
+ "tuqibing":"突击摩托：快速摩托 + 骑手、长柄兵器",
+ "hubaoqi":"王牌战车：重装战车 + 兽纹涂装、精甲、护目面罩带兽纹",
+ "xiliangtieqi":"重甲战车：重装甲战车、长炮管、附加装甲板",
+ "nanjiangxiangbing":"变异巨兽：披甲变异巨兽（象/巨兽）+ 背上射手与弩",
+ # 装备部位 12
+ "weapon":"链锯剑 / 动力刃（机油与齿刃、旧世科技）",
+ "head":"焊接废钢护面 + 防毒面具/护目镜 + 警示涂装",
+ "chest":"拼装钢板胸甲 + 铆钉 + 绑带",
+ "shoulder":"铆钉护肩板 + 破布垫衬",
+ "arm":"皮护臂 + 钢板条 + 腕部工具扣",
+ "waist":"战术腰带 + 弹匣袋/工具挂 + 金属扣",
+ "feet":"加固战靴/旧世军靴",
+ "back":"褪色军旗披风（旧世界标志）",
+ "neck":"金属牌/旧世界信物挂链",
+ "ring":"淬火钢环 / 旧世戒指",
+ "pendant":"战术铭牌/遗物坠（旧世科技纹）",
+ "mount":"越野机车装备（油箱、车把、前灯、加固件）",
+ # 物品 11
+ "jewel":"珍珠/琥珀/琉璃珠/夜光珠串",
+ "blueprint":"旧世工程蓝晒图 / 数据板",
+ "prod_buff":"生产装置件（集水塔/电锯组/破碎机，取一组）",
+ "military_buff":"军事物件（冲锋号/掩体图/战地医典，取一组）",
+ "boost":"旧世计时器 / 加速模块",
+ "exp":"练兵数据卡 / 军官手记",
+ "stamina":"强效针剂 / 急救血清（针管与药瓶）",
+ "perm":"军规代币 / 指挥芯片",
+ "mount_buff":"油门拉杆 / 强化底盘 / 动力核心组",
+ "attr_buff":"芯片 / 矩阵芯片（电路板形态）",
+ "build_cost":"旧世施工档案 / 工程数据",
+}
+# 材质：6 系形状 + 阶名（中→英简写，够 AI 理解）
+MAT_SERIES = {
+ "iron":("铁锭/矿石块", ["粗铁 raw pig-iron ingot","精铁 refined steel ingot","钢锭 folded layered steel ingot","陨铁 meteoric dark-silver metal with star pattern"]),
+ "wood":("圆木段/板材", ["松木 rough pine log","硬木 dense hardwood log","铁木 dark ironwood log","复合材 laminated composite wood with tech grain"]),
+ "leather":("皮张卷", ["生皮 raw hide","熟皮 tanned leather","硬甲皮 thick scaled armor hide","变异皮 mutated hide with iridescent scales"]),
+ "sinew":("盘绕筋束", ["兽筋 beast sinew bundle","牛筋 ox sinew bundle","巨兽筋 thick monster sinew","泰坦筋 dark-gold titan sinew"]),
+ "jade":("玉璧/宝石", ["河石 river stone","青玉 green jade","羊脂玉 creamy mutton-fat jade","昆山玉 luminous precious jade"]),
+ "silk":("布卷", ["帆布 coarse canvas roll","细布 fine cloth roll","织锦 woven brocade roll","云缎 cloud-satin with gold thread"]),
+}
+MAT_IDS = {"iron":["fatie","jingtie","bintie","yuntie"],"wood":["songmu","nanmu","tanmu","jianmu"],
+           "leather":["cuge","xiaoge","xige","jiaoge"],"sinew":["shoujin","niujin","jiaojin","longjin"],
+           "jade":["heshi","qingyu","yangzhi","kunshan"],"silk":["mabu","xijuan","shujin","yunjin"]}
+
+def brief_of(id_, group):
+    if group == "mat" or id_ in [x for v in MAT_IDS.values() for x in v]:
+        for ser, ids in MAT_IDS.items():
+            if id_ in ids:
+                shape, tiers = MAT_SERIES[ser]
+                t = ids.index(id_)
+                return "%s（%s）" % (shape, tiers[t])
+    return BRIEF.get(id_, "（缺形制，见规格书）")
+
+def troop_line(tid):
+    """兵种一行：现名 + 形制 + 阶（T?)."""
+    name, spec = None, None
+    for n, tname, ids in TROOP_TIERS:
+        for t, nm, sp in ids:
+            if t == tid:
+                name, spec, tier = nm, sp, (n, tname)
+    if name is None:
+        return "  %s —— %s" % (tid, BRIEF.get(tid, ""))
+    return "  %s [%s] —— %s：%s" % (tid, tier[1], name, spec)
+
+
+def _grid_spec(ids):
+    """返回 (grid_line, order_line)：处理 1~4 件（不足 4 件时说明空象限）。"""
+    n = len(ids)
+    if n >= 4:
+        return ("A 2x2 grid of four separate icons, each centered in its own quadrant, "
+                "evenly spaced, no dividing lines.",
+                "Top-left, Top-right, Bottom-left, Bottom-right in order:")
+    if n == 2:
+        return ("A 2x2 grid with TWO icons in the top row only (top-left, top-right); "
+                "the bottom two quadrants stay empty pure white.",
+                "Top-left, Top-right in order:")
+    if n == 3:
+        return ("A 2x2 grid with THREE icons: top-left, top-right, bottom-left; "
+                "bottom-right quadrant stays empty pure white.",
+                "Top-left, Top-right, Bottom-left in order:")
+    return ("A single icon centered squarely on pure white (the other three quadrants stay empty).",
+            "The single icon:")
+
+
+def build_prompt(atlas, group, ids, method):
+    if group == "troop":
+        return build_troop_prompt(atlas, ids)
+    four = "\n".join("  %d) %s —— %s" % (i+1, id_, brief_of(id_, group)) for i, id_ in enumerate(ids))
+    grid, order = _grid_spec(ids)
+    mat_line = ""
+    if group in ("building", "slot", "mat", "item", "troop"):
+        mat_line = " Use at least 4 clearly distinct materials per item.\n"
+    head = ("Icons for a post-apocalyptic wasteland strategy game. " + grid + "\n"
+            + order + "\n" + four + "\n")
+    return ANCHOR + "\n" + head + mat_line + TECH + "\nNegative: " + NEG
+
+
+def build_troop_prompt(atlas, ids):
+    """兵种专用：统一机甲风 + 逐级递进配方。"""
+    lines = "\n".join(troop_line(t) for t in ids)
+    tiers = sorted({TIER_OF[t][0] for t in ids if t in TIER_OF})
+    prof = "\n".join("  T%d %s: %s" % (n, TROOP_TIERS[n-1][1], TIER_PROFILE[n]) for n in tiers)
+    rng = "T%d–T%d" % (tiers[0], tiers[-1]) if tiers else "T1–T5"
+    grid, order = _grid_spec(ids)
+    return (TROOP_ANCHOR + "\n"
+            + grid.replace("icons", "mecha unit icons").replace("A 2x2 grid", "A 2x2 grid") + "\n"
+            "All the unit(s) must share ONE unified art style.\n"
+            + order + "\n" + lines + "\n"
+            "Tier progression (later tiers build on earlier ones — more armor, bigger hydraulics, "
+            "heavier weapon):\n" + prof + "\n"
+            "This atlas spans " + rng + ". Keep every unit in the same unified mecha style; "
+            "differentiate purely by tier build-up (armor mass, hydraulics, weapon size), NOT by "
+            "mixing art styles.\n"
+            + TECH + "\nNegative: " + TROOP_NEG)
+
+def build_i2i_prompt(atlas, ids, suffix=""):
+    """建筑图集 prompt。suffix='_t2'/'_t3' 时产出**升级版/满级版**（更雄伟、更整洁）。"""
+    four = "\n".join("  %d) %s —— %s" % (i+1, id_, brief_of(id_, "building")) for i, id_ in enumerate(ids))
+    base = ("Keep the exact same camera angle, silhouette and composition of each building in the "
+            "2x2 source atlas.\nConvert ALL materials from Han-dynasty (grey tile roof, vermilion wood "
+            "pillars, rammed earth, bronze) to post-apocalyptic wasteland: corrugated rusted-iron roofs, "
+            "exposed steel I-beams and trusses, cracked concrete walls, weathered scrap-sheet paneling, "
+            "oil drums, salvaged old-world tech, warning-signal accents in rust-red / warning-yellow.\n"
+            "Use at least 4 clearly distinct materials per building so the color range is rich.\n"
+            "Each quadrant target look:\n" + four + "\n")
+    if suffix == "_t2":
+        base += ("UPGRADED version (this is the level-5~9 look): keep the SAME footprint/outline but make it "
+                 "**more imposing and grander** — add an extra upper tier/reinforced wall, taller sturdier "
+                 "structure, expanded compound with extra walls and towers. Make it **visibly tidier / better "
+                 "maintained**: clean uniform paneling, orderly stacked materials, polished metal with less "
+                 "visible rust, aligned fittings. Keep the same art style and colors.\n")
+    elif suffix == "_t3":
+        base += ("MAXED version (this is the level-10+ look, most grand): same footprint but **the grandest and "
+                 "most imposing** — fortified tiers, grand gate, extra towers and battlements, larger central "
+                 "keep. **Pristine and immaculate**: spotless uniform armor plating, freshly maintained metal, "
+                 "clean organized layout, subtle elite accents (banners/trim). Same art style, most tidy.\n")
+    base += ("Keep it as 4 icons in a 2x2 grid, same layout, crisply separated. Plain pure white "
+             "background (#ffffff), no text/watermark/frame.\nNegative: " + NEG)
+    return base
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--batch"); ap.add_argument("--all", action="store_true")
+    ap.add_argument("--list", action="store_true"); ap.add_argument("--write", action="store_true")
+    a = ap.parse_args()
+    spec = json.load(io.open(JSONP, encoding="utf-8"))
+    batches = spec["atlasBatches"]
+    if a.list:
+        for b in batches: print("  %-6s %-24s %3d  %s" % (b["batch"], b.get("label"), b["count"], b["method"]))
+        return
+    if a.batch: batches = [b for b in batches if b["batch"] == a.batch]
+    elif not a.all: print("给 --batch <id> 或 --all；--list 看批"); return
+
+    per_batch = {}
+    for b in batches:
+        lines = []
+        lines.append("=" * 70)
+        lines.append("批 %s · %s · %d 图" % (b["batch"], b.get("label"), b["count"]))
+        if b["method"] == "i2i":
+            lines.append("⚠ 图生图：每张下面都标了**源图集**（输入）与**存成**（输出）两个路径，")
+            lines.append("  把源图 + 该张的 prompt 一起给图像工具（保轮廓），出图后按“存成”路径落盘。")
+        lines.append("=" * 70)
+        for at in b["atlases"]:
+            lines.append("")
+            if b["method"] == "i2i":
+                src, note = src_atlas_of(spec, at, batches)
+                lines.append("─── 源图集（i2i 输入）：%s  %s" % (src, note))
+            lines.append("─── 存成：assets/icons/raw/%s" % at["atlas"])
+            if b["method"] == "i2i":
+                lines.append(build_i2i_prompt(at["atlas"], at["ids"], at.get("suffix", "")))
+            else:
+                lines.append(build_prompt(at["atlas"], at["group"], at["ids"], b["method"]))
+        per_batch[b["batch"]] = "\n".join(lines)
+
+    text = "\n".join(per_batch.values())
+    print(text)
+    if a.write:
+        os.makedirs(OUTDIR, exist_ok=True)
+        for bid, body in per_batch.items():
+            p = os.path.join(OUTDIR, bid + ".txt")
+            io.open(p, "w", encoding="utf-8").write(body)
+            print("  写 " + p)
+        print("\n已写 → " + OUTDIR + "（每批一个文件，整段复制即可）")
+
+if __name__ == "__main__":
+    main()

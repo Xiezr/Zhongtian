@@ -34,7 +34,7 @@ function rowGroups(png) {
   return out;
 }
 
-console.log('===== ① 民房面板「升级」键在/不在（同一装置的两态对照） =====');
+console.log('===== ① 居所面板「升级」键在/不在（同一装置的两态对照） =====');
 var UP = load('v89159-build-up.png'), BLK = load('v89159-build-block.png');
 chk('两图非空且同尺寸（同装置对照）', UP.width >= 700 && UP.height >= 600 && UP.width === BLK.width && UP.height === BLK.height,
   UP.width + 'x' + UP.height);

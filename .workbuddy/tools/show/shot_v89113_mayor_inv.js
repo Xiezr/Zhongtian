@@ -88,7 +88,7 @@ fs.mkdirSync(OUT, { recursive: true });
 
   /* ② 城池面板：城主 / 守将 */
   var r2 = await shot('city-mayor', 'ui.openCityPanel()',
-    '(function(){var tx=scope.textContent||"";return {hasMayor:tx.indexOf("城主")>=0,hasGuard:tx.indexOf("守将")>=0,hasFn:tx.indexOf("内政·智谋")>=0,hasFn2:tx.indexOf("征兵·对阵")>=0};})()');
+    '(function(){var tx=scope.textContent||"";return {hasMayor:tx.indexOf("城主")>=0,hasGuard:tx.indexOf("守将")>=0,hasFn:tx.indexOf("治理·谋略")>=0,hasFn2:tx.indexOf("征兵·对阵")>=0};})()');
 
   /* ③ 防御战报（最新一条 defense） */
   var r3 = await shot('def-report',

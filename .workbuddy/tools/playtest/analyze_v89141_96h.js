@@ -21,7 +21,7 @@ function gmStr(t) {   /* 游戏小时 → "第X天Y时" */
 }
 
 console.log('===== ① 24 快照全表（每 4 游戏小时） =====');
-console.log('时间     城  军   金     粮      木     石      铁    人口/上限  科技  任务  爵位');
+console.log('时间     城  军   旧币     净水      生物质     电能      废钢    幸存者/上限  科技  任务  爵位');
 snaps.forEach(function (s) {
   console.log(
     pad(gmStr(s.t), 8) + pad(s.cities, 3) + pad(s.army, 4) + pad(fmt(s.res.gold), 7) +
@@ -31,7 +31,7 @@ snaps.forEach(function (s) {
 });
 
 console.log('\n===== ② 分段资源净增（每 4h 一段） =====');
-console.log('时段       木净增/时   石净增/时   铁净增/时   粮净增/时   金净增/时');
+console.log('时段       木净增/时   石净增/时   铁净增/时   粮净增/时   旧币净增/时');
 for (var i = 1; i < snaps.length; i++) {
   var a = snaps[i - 1], b = snaps[i], h = (b.t - a.t) / 3600;
   console.log(pad(gmStr(b.t), 10) +
@@ -48,7 +48,7 @@ console.log('  城内建筑：' + JSON.stringify(f.bl) + '\n        → ' + JSON
 console.log('  城外地块：' + JSON.stringify(f.ext) + '\n        → ' + JSON.stringify(l.ext));
 console.log('  科技：' + JSON.stringify(f.tech) + '（合 ' + f.techSum + '）→ ' +
   JSON.stringify(l.tech) + '（合 ' + l.techSum + '）');
-console.log('  城墙：' + JSON.stringify(f.wall) + ' → ' + JSON.stringify(l.wall));
+console.log('  围墙：' + JSON.stringify(f.wall) + ' → ' + JSON.stringify(l.wall));
 
 console.log('\n===== ④ 卡点统计（软失败按类型） =====');
 var soft = {};

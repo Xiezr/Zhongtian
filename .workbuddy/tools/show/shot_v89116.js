@@ -1,7 +1,7 @@
 /* ============================================================
  * shot_v89116.js — v89.116 实机图 + 几何量测
  *   ① 战场界面重排（左 1/4 我军 · 中 1/2 战场只画图标 · 右 1/4 敌军 · 底部一回合一行）
- *   ② 守城战报 → 真沙盘（我军在右 · 右侧城墙示意 · 出城兵种逐回合前进）
+ *   ② 守城战报 → 真沙盘（我军在右 · 右侧围墙示意 · 出城兵种逐回合前进）
  *   ③ 军务处：伤兵营 + 俘虏营（逐兵种明细）
  *   ④ 待阅逸闻：6 列 × 5 行 + 底部翻页
  *   ⑤ 快购按用途过滤（训练加速只列训练宝物）
@@ -52,7 +52,7 @@ fs.mkdirSync(OUT, { recursive: true });
     st.sgPending = [];
     for (var i = 1; i <= 34; i++) {
       st.sgPending.push({ sid: 'shot_sg_' + i, title: '逸闻·' + (i < 10 ? '0' + i : i) + '　' +
-        ['许都夜雨', '长坂坡旧事', '校场见闻', '市集奇谈', '书院残卷', '野地狼烟'][i % 6] });
+        ['许都夜雨', '长坂坡旧事', '练兵场见闻', '市集奇谈', '书院残卷', '野地狼烟'][i % 6] });
     }
     /* 找一格低等级野地（战场截图真打一场用） */
     var tgt = null, CMAX = G.COORD_MAX || 499;
@@ -141,7 +141,7 @@ fs.mkdirSync(OUT, { recursive: true });
     '(function(){var st=GAME.state;if(!st.battles||!st.battles[0])return "no-battle";' +
     'var r=GAME.battle.stepBattle(st.battles[0].id);if(r&&ui.btAfterStep)ui.btAfterStep(st.battles[0],r);})()');
 
-  /* ---------- ② 守城沙盘（我军在右 + 城墙） ---------- */
+  /* ---------- ② 守城沙盘（我军在右 + 围墙） ---------- */
   var r2 = await shot('def-sandbox',
     '(function(){' +
     'var st=GAME.state,c=GAME.currentCity();' +
@@ -153,9 +153,9 @@ fs.mkdirSync(OUT, { recursive: true });
     '})()',
     '(function(){var mr=document.querySelector("#modal-root");var tx=mr?mr.textContent:"";' +
     'var sd=ui._sd;' +
-    'return {ourSide:sd&&sd.sb?sd.sb.ourSide:"-",wall:/我方城墙/.test(tx),' +
+    'return {ourSide:sd&&sd.sb?sd.sb.ourSide:"-",wall:/我方围墙/.test(tx),' +
     'wallLv:/Lv\\d/.test(tx),cols:document.querySelector("#sd-board")?document.querySelector("#sd-board").style.gridTemplateColumns:"-",' +
-    'snip:(function(){var i=tx.indexOf("我方城墙");return i<0?"(无)":tx.slice(i,i+28).replace(/\\s+/g," ");})()};})()');
+    'snip:(function(){var i=tx.indexOf("我方围墙");return i<0?"(无)":tx.slice(i,i+28).replace(/\\s+/g," ");})()};})()');
 
   /* ---------- ③ 军务处：两营逐兵种 ---------- */
   var r3 = await shot('affairs',
@@ -228,7 +228,7 @@ fs.mkdirSync(OUT, { recursive: true });
   need2(r1.p && r1.p.stanceSel > 0, '① 动作下拉');
   need2(r1.p && r1.p.foeReadonly > 0, '① 敌方只读');
   need2(r1.p && /第 \d+ 回合/.test(r1.p.log), '① 一回合一行播报');
-  need2(r2.p && r2.p.ourSide === 'def' && r2.p.wall, '② 守城沙盘视角 + 城墙');
+  need2(r2.p && r2.p.ourSide === 'def' && r2.p.wall, '② 守城沙盘视角 + 围墙');
   need2(r2.p && r2.p.cols && r2.p.cols.indexOf('190px') >= 0, '② 守城列宽（我军加宽）');
   need2(r3.p && r3.p.wounded && r3.p.captive && r3.p.cons && r3.p.rel, '③ 两营逐兵种');
   need2(r4.p && r4.p.cells === 30 && r4.p.page && r4.p.pager, '④ 逸闻 6×5 + 翻页');

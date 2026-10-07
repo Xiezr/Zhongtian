@@ -1,4 +1,4 @@
-/* v89.169 像素体检：城墙 0 级虚影环（三图对照）
+/* v89.169 像素体检：围墙 0 级虚影环（三图对照）
    运行：NODE_PATH="C:/Users/18811/.workbuddy/binaries/node/workspace/node_modules" node .workbuddy/tools/asset/check_v89169_shots.js */
 module.paths.unshift('C:/Users/18811/.workbuddy/binaries/node/workspace/node_modules');
 var fs = require('fs'), PNG = require('pngjs').PNG;

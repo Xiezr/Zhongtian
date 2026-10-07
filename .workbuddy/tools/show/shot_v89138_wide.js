@@ -180,7 +180,7 @@ function chk(name, cond, extra) {
     var root = document.getElementById('modal-root');
     var txt = (root.textContent || '');
     var hasBoostRow = txt.indexOf('已用宝物') >= 0;
-    /* 花金提速 → 选**满档**（pct 最大者，一步到底）→ 期望自动关窗；
+    /* 花旧币提速 → 选**满档**（pct 最大者，一步到底）→ 期望自动关窗；
        低档只缩短时长、队列未完成 → 不关窗（这是设计，见 queueDone138 注释）。 */
     var btns = Array.prototype.slice.call(root.querySelectorAll('[data-action="train-rush"]'));
     var best = null;

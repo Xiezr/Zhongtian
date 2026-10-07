@@ -1,5 +1,5 @@
 /* v89.185 实机验证（真浏览器）：
-   ① 人口行显示"民心 x% 折算"（有效人口上限）→ 截图
+   ① 幸存者行显示"民心 x% 折算"（有效幸存者上限）→ 截图
    ② 野地守将新体系（Lv5+ 有将 → 等级 70~129 · 英杰）→ 出征面板截图
    ③ 据点守将（名世 60 起）→ 出征面板截图
    ④ 衰减 -2/日 真跑 + 六维不封口真调（数值断言）
@@ -32,12 +32,12 @@ function chk(name, ok, extra) {
   });
   await p.waitForTimeout(900);
 
-  /* ① 人口行（民心折算） */
+  /* ① 幸存者行（民心折算） */
   var pop = await p.evaluate(function () {
     var tip = document.querySelector('#city-attrs .pop-line .rate-wrap');
     return { tip: tip ? (tip.getAttribute('data-tip') || '') : null };
   });
-  chk('① 人口行悬停含「民心 X% 折算」', !!pop.tip && /民心 \d+% 折算/.test(pop.tip),
+  chk('① 幸存者行悬停含「民心 X% 折算」', !!pop.tip && /民心 \d+% 折算/.test(pop.tip),
     (pop.tip || '缺').replace(/\s+/g, ' ').slice(0, 60));
   var clip1 = await p.evaluate(function () {
     var el = document.querySelector('#city-attrs');

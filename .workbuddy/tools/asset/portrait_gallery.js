@@ -20,12 +20,12 @@ const { chromium } = require('playwright-core');
         samples.push({ label: r + (sex ? '/女' : '/男'), svg: P.svg(g, 140) });
       }
     }
-    // 不同四维主色（统率 vs 勇武 vs 智谋 vs 内政）
+    // 不同四维主色（指挥 vs 武力 vs 谋略 vs 治理 · v89.224 六维换代后现名）
     const dims = [
-      { yw: 100, zm: 50, tong: 60, nz: 60, label: '勇武主' },
-      { yw: 60, zm: 100, tong: 60, nz: 60, label: '智谋主' },
-      { yw: 60, zm: 60, tong: 100, nz: 60, label: '统率主' },
-      { yw: 60, zm: 60, tong: 60, nz: 100, label: '内政主' },
+      { yw: 100, zm: 50, tong: 60, nz: 60, label: '武力主' },
+      { yw: 60, zm: 100, tong: 60, nz: 60, label: '谋略主' },
+      { yw: 60, zm: 60, tong: 100, nz: 60, label: '指挥主' },
+      { yw: 60, zm: 60, tong: 60, nz: 100, label: '治理主' },
     ];
     dims.forEach((d, i) => samples.push({ label: d.label, svg: P.svg({ name: 'd' + i, rank: 'ying', gender: 'male', portraitSeed: 90000 + i, ...d }, 140) }));
 

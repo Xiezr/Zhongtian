@@ -221,8 +221,8 @@ function chk(name, cond, extra) {
       gens.forEach(function (e) { txt.push(e.textContent.trim()); tips.push(e.getAttribute('title') || ''); });
       return { n: gens.length, txt: txt.join(' ~ '), tip: tips.join(' # ') };
     });
-    chk('③ 战场双方将领行（各一 · 悬停含六维：统率/勇武/…）',
-      v3a.n === 2 && /统率/.test(v3a.tip) && /勇武/.test(v3a.tip),
+    chk('③ 战场双方将领行（各一 · 悬停含六维：指挥/武力/…）',
+      v3a.n === 2 && /指挥/.test(v3a.tip) && /武力/.test(v3a.tip),
       (v3a.txt + ' · tip[' + v3a.tip.replace(/\n/g, ' ').slice(0, 66) + ']'));
     /* 自动战斗跑完 */
     await p.evaluate(function () {

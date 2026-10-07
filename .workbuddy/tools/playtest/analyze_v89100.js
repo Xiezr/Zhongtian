@@ -48,9 +48,9 @@ function row(name, fn) {
 row('城池数', function (d) { return d.last ? d.last.cities : '?'; });
 row('军力', function (d) { return d.last ? fmt(d.last.army) : '?'; });
 row('建筑等级和', function (d) { return d.last ? blSum(d.last.bl) : '?'; });
-row('人口', function (d) { return d.last ? fmt(d.last.pop) + '/' + fmt(d.last.popCap) : '?'; });
+row('幸存者', function (d) { return d.last ? fmt(d.last.pop) + '/' + fmt(d.last.popCap) : '?'; });
 row('粮（终局）', function (d) { return d.last ? fmt((d.last.res || {}).grain) : '?'; });
-row('金（终局）', function (d) { return d.last ? fmt((d.last.res || {}).gold) : '?'; });
+row('旧币（终局）', function (d) { return d.last ? fmt((d.last.res || {}).gold) : '?'; });
 row('累计套现（卖资源）', function (d) { return d.gf ? fmt(d.gf.gold.sold) + ' / ' + d.gf.gold.sales + ' 笔' : '?'; });
 row('经验书（本）', function (d) { return d.gf ? (d.gf.gold.books || 0) : '?'; });
 row('爵位档位（0=平民）', function (d) { return d.rf ? d.rf.rank : '?'; });
@@ -59,8 +59,8 @@ row('顶将等级', function (d) {
   var m = 0; ((d.gf && d.gf.gens) || []).forEach(function (g) { if ((g.lv || 0) > m) m = g.lv; });
   return m ? ('Lv' + m) : '?';
 });
-row('将领数', function (d) { return d.gf ? d.gf.gens.length : '?'; });
-row('寄售总金（v89.100 新）', function (d) {
+row('英雄数', function (d) { return d.gf ? d.gf.gens.length : '?'; });
+row('寄售总旧币（v89.100 新）', function (d) {
   if (!d.rf || !d.rf.rush || !d.rf.rush.consign) return '—';
   var c = d.rf.rush.consign;
   return fmt(c.gold) + ' / ' + c.pieces + ' 件';
@@ -93,7 +93,7 @@ TAGS.forEach(function (p) {
   var d = D[p[0]];
   ap('### ' + p[1]);
   ap('');
-  ap('| 游戏年 | 城 | 军 | 人口 | 建筑和 | 金 |');
+  ap('| 游戏年 | 城 | 军 | 幸存者 | 建筑和 | 旧币 |');
   ap('|---|---|---|---|---|---|');
   var rows = d.snaps;
   var step = Math.max(1, Math.floor(rows.length / 38));
@@ -125,12 +125,12 @@ ap('');
   var d = D['loot_1x'];
   if (!d.rf || !d.rf.rush || !d.rf.rush.consign) { ap('（无寄售数据）'); return; }
   var c = d.rf.rush.consign;
-  ap('- 寄售总金：' + fmt(c.gold) + ' 金 · ' + c.kinds + ' 种 / ' + c.pieces + ' 件 · ' + c.runs + ' 轮');
+  ap('- 寄售总旧币：' + fmt(c.gold) + ' 旧币 · ' + c.kinds + ' 种 / ' + c.pieces + ' 件 · ' + c.runs + ' 轮');
   ap('- 首售时间：tick ' + c.tFirst + '（游戏年第 ' + (c.tFirst * 1 / 57600).toFixed(2) + ' 年）');
-  /* 寄售 vs 卖资源：金收入结构 */
+  /* 寄售 vs 卖资源：旧币收入结构 */
   if (d.gf) {
     var sold = d.gf.gold.sold || 0;
-    ap('- 对照：卖资源（市场）累计 ' + fmt(sold) + ' 金 → 寄售相当于其 ' + Math.round(c.gold / Math.max(1, sold) * 100) + '%');
+    ap('- 对照：卖资源（市场）累计 ' + fmt(sold) + ' 旧币 → 寄售相当于其 ' + Math.round(c.gold / Math.max(1, sold) * 100) + '%');
   }
   /* 寄售相关日志样本 */
   var cs = d.log.filter(function (l) { return /loot\.consign/.test(l); });

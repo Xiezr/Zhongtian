@@ -123,7 +123,7 @@ var pw = require('playwright-core');
     var owned = document.querySelectorAll('#view-container .col-card.owned').length;
     return { owned: owned, have: G.collectHaveOf(ctx.id), g1: G.goldOf(), price: G.collectItemOf(ctx.id).price };
   }, r3);
-  chk('② 真点购买：「' + r3.id + '」入藏 · 扣金 ' + r3.paid + '（应 ' + r3b.price + ' · 立即读）',
+  chk('② 真点购买：「' + r3.id + '」入藏 · 扣旧币 ' + r3.paid + '（应 ' + r3b.price + ' · 立即读）',
     r3.ok && r3b.have === true && Math.abs(r3.paid - r3b.price) <= 50 && r3b.owned >= 1, JSON.stringify(r3b));
   await p.screenshot({ path: E + 'v89194-collect.png' });
 

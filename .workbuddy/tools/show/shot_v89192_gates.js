@@ -186,7 +186,7 @@ var E = 'E:/Deepseekdb/.workbuddy/shots/';
     var evs = (r.events || []).filter(function (e) { return e.side === 'atk' && e.id === 'gongjian'; });
     return { evs: evs.map(function (e) { return e.kind + (e.kill ? ('(' + e.kill + '→' + (e.target || '') + ')') : ''); }) };
   });
-  chk('④ 射程回落：目标（长枪 1733 外）不打、「射程内轻骑（1158）」被出手',
+  chk('④ 射程回落：目标（长枪 1733 外）不打、「射程内伏击车（1158）」被出手',
     r4.evs.join(' ').indexOf('attack') >= 0, JSON.stringify(r4.evs));
 
   console.log('\n结果：' + pass + ' 通过 / ' + fail + ' 失败');

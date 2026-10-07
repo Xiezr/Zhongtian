@@ -4,7 +4,7 @@
  *   ① 军务处：两营**左右分列**（左卡 right ≤ 右卡 left · 同一行）+ 逐兵种；总览四段无两营；
  *   ② 缩略图：城名层字体 normal（去 bold）；我城**红点**（画布像素实测朱红）；
  *      波纹层在画（pulse 画布有非零像素）+ 与底图同尺寸；
- *   ③ 节钺：校场 / 招贤馆面板各带扩编入口；真点一次 → 容量/席位数字当场变；面板四用途齐。
+ *   ③ 节钺：练兵场 / 招贤馆面板各带扩编入口；真点一次 → 容量/席位数字当场变；面板四用途齐。
  * 跑法：node .workbuddy/tools/show/shot_v89132_three.js
  */
 'use strict';
@@ -32,7 +32,7 @@ function chk(name, cond, extra) {
     st.wounded = 1234; st.woundedArmy = { yibing: 800, gongjian: 300, qingji: 134 };
     st.captives = { changqiang: 420, qingji: 260, gongjian: 90 };
     st.jieyue = 3;
-    /* 摆校场 / 招贤馆（节钺扩编入口所在） */
+    /* 摆练兵场 / 招贤馆（节钺扩编入口所在） */
     var put = function (bid) {
       var idx = -1;
       (c.cells || []).forEach(function (cell, i) { if (idx < 0 && !cell.build) idx = i; });
@@ -181,7 +181,7 @@ function chk(name, cond, extra) {
     blink && blink.s1[0] > 150 && (Math.abs(blink.s1[0] - blink.s2[0]) >= 15 || blink.s1[0] !== blink.s2[0]),
     blink ? ('帧1 rgb(' + blink.s1.join(',') + ') 帧2 rgb(' + blink.s2.join(',') + ') 画布 ' + blink.size + 'px') : '-');
 
-  /* ══ ③ 节钺：校场 / 招贤馆 / 面板 ══ */
+  /* ══ ③ 节钺：练兵场 / 招贤馆 / 面板 ══ */
   await p.evaluate(function () { try { window.GAME.ui.closeAllModals(); } catch (e) { } window.GAME.ui.openXiaochang(); });
   await p.waitForTimeout(500);
   var xc = await p.evaluate(function () {
@@ -190,7 +190,7 @@ function chk(name, cond, extra) {
     var btn = document.querySelector('#modal-root [data-action="jieyue-xc"]');
     return { has: !!btn, txt: btn ? btn.textContent : '', cap: (t.match(/出征兵力上限[\s\S]{0,24}/) || [''])[0] };
   });
-  chk('③ 校场面板带「节钺 · 校场扩编」入口', xc.has && xc.txt.indexOf('校场扩编') >= 0, xc.txt.slice(0, 30));
+  chk('③ 练兵场面板带「节钺 · 练兵场扩编」入口', xc.has && xc.txt.indexOf('练兵场扩编') >= 0, xc.txt.slice(0, 30));
   await p.screenshot({ path: 'E:/Deepseekdb/.workbuddy/shots/v89132-xiaochang.png' });
 
   /* 真点一次：容量数字当场变 */
@@ -230,7 +230,7 @@ function chk(name, cond, extra) {
     var inner = document.querySelector('#modal-root .inner-panel');
     return { t: t, lines: boxes.length,
       overflow: inner ? (inner.scrollHeight - inner.clientHeight) : -999,
-      four: ['问鼎天授', '城建扩编', '校场扩编', '招贤纳士'].filter(function (k) { return t.indexOf(k) >= 0; }).length };
+      four: ['问鼎天授', '城建扩编', '练兵场扩编', '招贤纳士'].filter(function (k) { return t.indexOf(k) >= 0; }).length };
   });
   chk('③ 节钺面板：四用途齐 + 来源 + 全境进度', jy.four === 4 && jy.t.indexOf('首占名城') >= 0
     && jy.t.indexOf('全境扩编') >= 0, '用途 ' + jy.four + '/4 · 行 ' + jy.lines);

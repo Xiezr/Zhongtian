@@ -99,7 +99,7 @@ function chk(name, ok, extra) {
     var G = window.GAME, c = G.currentCity();
     c.cells.forEach(function (x) { if (x.official && x.build) x.build.lvl = 24; });
     G.ensureExtGrid(c);
-    /* 顺手把前若干块建成农田/伐木场，让"满级铺满"的画面更有代表性 */
+    /* 顺手把前若干块建成净化厂/伐木场，让"满级铺满"的画面更有代表性 */
     var types = ['farm', 'forest', 'quarry', 'mine'];
     c.extGrid.forEach(function (e, i) { if (i < 60) { e.type = types[i % 4]; e.lv = 1 + (i % 6); } });
   });

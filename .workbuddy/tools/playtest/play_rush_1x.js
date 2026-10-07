@@ -8,19 +8,19 @@
  * 新增链：围攻打据点（occupy+围困）/ 爵位晋升 / 节钺扩编 / 通商券 / 丹药
  * ============================================================ */
 /* ============================================================
- * play_gold_600x.js — v89.91 「黄金流对照推演」驾驶舱
+ * play_gold_600x.js — v89.91 「旧币流对照推演」驾驶舱
  * （由 play_600x.js 基线 fork；唯一差异 = 新增 GOLD 策略脑：
- *   金换批招英杰 / 金买经验书喂将 / 用光自由点 / 金提速建造·科技·募兵 /
+ *   旧币换批招进化体 / 旧币买经验书喂将 / 用光自由点 / 旧币提速建造·科技·募兵 /
  *   全资源套现。其余段（建造/扩张/里程碑/战斗）与基线逐字一致。）
  * ------------------------------------------------------------
  * 目标：以 1× 实跑 300 现实小时（= 18.75 游戏年 · 全系统极限流），
- *       由一个「种田流玩家脑」驱动：建造 / 募兵 / 采集 / 秘境种田 /
+ *       由一个「种田流玩家脑」驱动：建造 / 募兵 / 采集 / 基因实验室种田 /
  *       任务 / 门派 / 扩张 / 自动出征 / 战斗观战（一键自动）。
  *
  * 关键口径（与真人游玩一致）：
  *   · 1 tick = 现实 1 秒；每 tick 时间倍率 600×（tickOnce 内读 settings）
  *   · U.now / Date.now 重写为 **SIM 时钟**（+1s/tick）——使「按现实时间节流」
- *     的系统（自动出征 5 分钟、客栈批次、每日任务、岁贡）与真人 6 小时
+ *     的系统（自动出征 5 分钟、酒馆批次、每日任务、岁贡）与真人 6 小时
  *     在线时一致地流逝
  *   · 地图 seed 固定（20260921）· 天气/掉落等保持真随机（真实游玩）
  *   · 战斗：观战挂起 → 让它在表上自然走数十秒 → 一键自动（真人点「自动战斗」）
@@ -158,7 +158,7 @@ RUN('=== v89.92 多策略对照推演开始（STRAT v1 · MODE=' + MODE + '） =
 RUN('建局：北辰 · 「灰岗」· 碎垣 · mapSeed=20260921 · ' + TS + '× · 目标 ' + MAXT + ' tick（'
   + (MAXT * TS / 57600).toFixed(2) + ' 游戏年 = ' + (MAXT / 3600).toFixed(1) + ' 现实小时）');
 RUN('城坐标 (' + city0.x + ',' + city0.y + ') · 初始将 ' + st.generals.map(function (g) { return g.name; }).join('、'));
-RUN('初始资源 粮木石铁金各 2 万 · 人口 200 · 城外预设 2田1木1石1铁');
+RUN('初始资源 净水/生物质/电能/废钢/旧币各 2 万 · 幸存者 200 · 城外预设 2净化厂 1水培温室 1发电站 1电弧熔炉');
 
 /* ---------- 4. 工具函数 ---------- */
 function yNow() { return (st.world.elapsed || 0) / 57600; }
@@ -294,7 +294,7 @@ function setCity(c) { G.ui._cityId = c.id; }
 /* ---------- 5. 玩家脑：各系统动作 ---------- */
 /* 5.1 建造（空位 → 关键建筑）*/
 var BUILD_PRIO = [
-  /* v2：顺序按依赖链修正 —— v1 实测「招贤馆 需客栈 Lv2」，客栈必须先建 */
+  /* v2：顺序按依赖链修正 —— v1 实测「招贤馆 需酒馆 Lv2」，酒馆必须先建 */
   { bid: 'junying', want: 1 }, { bid: 'shuyuan', want: 1 }, { bid: 'kezhan', want: 1 },
   { bid: 'zhaoxianguan', want: 1 }, { bid: 'cangku', want: 1 }, { bid: 'shichang', want: 1 },
   { bid: 'honglusi', want: 1 }, { bid: 'fenghuotai', want: 1 }, { bid: 'yizhan', want: 1 },
@@ -342,30 +342,30 @@ function tryBuildExt() {
     return;
   }
 }
-/* 5.3 城墙 */
+/* 5.3 围墙 */
 function tryWall() {
   var city = st.cities[0];
   /* ⛔ v89.141（复核修复 · 工具跟随）：`G.wallPendingOf` / `city.wallLv` / `G.buildWall`
-     在 v89.126「城墙并入建筑体系」时整条退役（城墙走**环城槽** `city.wall`，
+     在 v89.126「围墙并入建筑体系」时整条退役（围墙走**环城槽** `city.wall`，
      建造/升级走通用 buildAt/upgradeAt）—— 原调用每拍 TypeError
-     （96h 跑出 **2890 次**错误，城墙线整条停摆）。改为新形态。 */
+     （96h 跑出 **2890 次**错误，围墙线整条停摆）。改为新形态。 */
   var lv = G.buildingLevel(city, 'chengqiang') || 0;
   if (city.wall && city.wall.pending) return;                    /* 施工中不重排 */
   if (lv >= G.buildCapOf(city, 'chengqiang')) return;
   var r = safeCall('wall', function () {
     return lv > 0 ? G.upgradeAt(city.id, 'wall') : G.buildAt(city.id, 'wall', 'chengqiang');
   });
-  if (r && r.ok) RUN('🧱 城墙 → Lv' + (lv + 1) + ' 开建');
+  if (r && r.ok) RUN('🧱 围墙 → Lv' + (lv + 1) + ' 开建');
   if (r && !r.ok) noteSoft('wall', r.msg);
 }
 /* 5.4 募兵 */
-var TROOP_ORDER = ['tieji', 'qingji', 'changqiang', 'daodun', 'gongjian', 'yibing'];
-if (MODE === 'span') TROOP_ORDER = ['qingji', 'tieji', 'changqiang', 'daodun', 'gongjian', 'yibing'];   /* v89.101：城流跨越以摩托游骑为主力 */
-if (MODE === 'span') RUN('🧪 SPAN 模式：城流跨越（筑城无上限 + 摩托游骑批量成军 + 军链抢建）');
+var TROOP_ORDER = ['zhuzhan', 'fujiche', 'buxingji', 'dunwei', 'daodanche'];
+if (MODE === 'span') TROOP_ORDER = ['fujiche', 'zhuzhan', 'buxingji', 'dunwei', 'daodanche'];   /* v89.101：城流跨越以伏击车为主力（原「伏击车」） */
+if (MODE === 'span') RUN('🧪 SPAN 模式：城流跨越（筑城无上限 + 伏击车批量成军 + 军链抢建）');
 function armyTarget() {
   var y = yNow();
-  /* v89.98b：目标下调 —— 原 5000/15000/40000 远超 18.75 年的人口供给（人口=民房唯一来源），
-     会导致"永远征兵中"把人口抽干（城 2 因此建不起来）。 */
+  /* v89.98b：目标下调 —— 原 5000/15000/40000 远超 18.75 年的幸存者供给（幸存者=居所唯一来源），
+     会导致"永远征兵中"把幸存者抽干（城 2 因此建不起来）。 */
   if (y < 0.25) return 300;
   if (y < 1) return 1000;
   if (y < 3) return 3000;
@@ -376,12 +376,12 @@ function armyTarget() {
 }
 function tryTrain() {
   if ((st.queues.train || []).length >= 4) return;     /* 队列已有 4 批 → 先等 */
-  /* v89.99：募兵缺人而人口银行有货 → 先解散民兵放人（"要特定兵种时解散改募"） */
+  /* v89.99：募兵缺人而幸存者银行有货 → 先解散民兵放人（"要特定兵种时解散改募"） */
   if (!(((G.res(st.cities[0]) || {}).pop) >= 60) && tNow - REL_LAST > 300) {
     REL_LAST = tNow;
     releaseBank(150, '募兵缺人');       /* v89.99：5 分钟一次上限 —— 放人是桥，不是常态 */
   }
-  /* v89.98b：**筑城前保住人口**（筑城要 100 人）。阈值 110：既保住建城底线，
+  /* v89.98b：**筑城前保住幸存者**（筑城要 100 人）。阈值 110：既保住建城底线，
      又留 90+ 兵力给"占平原"（150 会死锁：兵太少连平原都占不下）。城 3 前同样保护。 */
   if (st.cities.length < 3 && ((G.res(st.cities[0]) || {}).pop || 0) < 110) return;
   var target = armyTarget(), cur = totalArmy();
@@ -409,7 +409,7 @@ function tryTrain() {
 }
 /* v2：编队取兵 —— 按 prefer 顺序从城内抽 n 名（不超实有） */
 function takeArmy(city, n, order) {
-  order = order || ['tieji', 'qingji', 'changqiang', 'daodun', 'gongjian', 'yibing'];
+  order = order || ['zhuzhan', 'fujiche', 'buxingji', 'dunwei', 'daodanche'];
   var out = {}, need = n;
   order.forEach(function (tid) {
     if (need <= 0) return;
@@ -432,7 +432,7 @@ function tryGather() {
   if (!spot) { noteSoft('gather.spot', '暂无自家野地可采（待占领）'); return; }
   var c0 = st.cities[0];
   setCity(c0);
-  var tkG = takeArmy(c0, 300, ['minfu', 'yibing', 'changqiang', 'daodun', 'gongjian', 'qingji']);
+  var tkG = takeArmy(c0, 300, ['banche', 'buxingji', 'dunwei', 'daodanche', 'fujiche']);
   if (tkG.total < 50) { noteSoft('gather.noarmy', '城内取不出采集兵（清点各兵种）'); return; }
   var army = tkG.army;
   var r = safeCall('gather.dispatch', function () { return G.dispatchGather(spot.x, spot.y, gen.id, army); });
@@ -462,7 +462,7 @@ function ownedGatherable() {
 function keepOccupying() {
   if (ownedGatherable().length >= 3) return;
   if (tNow - OCCUPY_LAST < 240) return;
-  if (totalArmy() < 80) return;          /* v89.98b：400 → 80（人口增长 4~9 人/游戏小时 · 开局仅 ~90 兵可用） */
+  if (totalArmy() < 80) return;          /* v89.98b：400 → 80（幸存者增长 4~9 人/游戏小时 · 开局仅 ~90 兵可用） */
   /* v89.98b：体力优先 —— 选体力最高空闲将；不足 30 先嗑药/等待（不再空转撞墙） */
   var gen = pickSiegeGen(); if (!gen) return;
   if (!staminaFix(gen, 30)) return;
@@ -512,12 +512,12 @@ function tryReinforce() {
   }
 }
 
-/* 5.5d 市场售粮换金（设计内的黄金入口：粮→金，平价恒定 ≈ 1 金 / 6.7 粮） */
+/* 5.5d 市场售粮换旧币（设计内的旧币入口：粮→旧币，平价恒定 ≈ 1 旧币 / 6.7 粮） */
 var SELL_LAST = -1e9;
 function tryMarketSell() {
   if (tNow - SELL_LAST < 240) return;
   var gold = st.res.gold || 0;
-  /* v89.100：econ 金主要花在经验书（大宗 40 万/本）→ 卖出阈值抬到 25 万；其余模式照旧 */
+  /* v89.100：econ 旧币主要花在经验书（大宗 40 万/本）→ 卖出阈值抬到 25 万；其余模式照旧 */
   if (gold > (MODE === 'econ' ? 250000 : 150000)) return;
   var grain = st.res.grain || 0;
   if (grain < 900000) return;                /* 先保 60 万粮底 */
@@ -535,7 +535,7 @@ function tryMarketSell() {
   if (r && !r.ok) noteSoft('market.sellfail', r.msg);
 }
 
-/* 5.6 秘境种田 */
+/* 5.6 基因实验室种田 */
 var FARM_ROT = 0;
 function tryFarm() {
   var hr = safeCall('farm.harvestAll', function () { return G.farmHarvestAll(); });
@@ -564,7 +564,7 @@ function tryFarm() {
     if (!planted) break;
   }
 }
-/* 5.7 商城（种子快购） */
+/* 5.7 游商（种子快购） */
 function tryShop() {
   if ((st.items.seed_fan || 0) < 2 && (st.res.gold || 0) > 120000 && G.farmOf().plots.some(function (p) { return !p; })) {
     var r = safeCall('shop.seed', function () { return G.doShopping('seed_fan', 4); });
@@ -590,7 +590,7 @@ function trySect() {
     if (r2 && r2.ok) noteSoft('sect.chores', r2.msg);
     if (r2 && !r2.ok) { SECT_CHORE_MAXED = true; RUN('☁️ 门派杂役今日已满：' + r2.msg); }
   }
-  /* 偶尔捐资测试出口（金 > 40 万一次） */
+  /* 偶尔捐资测试出口（旧币 > 40 万一次） */
   if (!DUMPED.sectDonate && (st.res.gold || 0) > 400000 && yNow() > 2) {
     DUMPED.sectDonate = 1;
     var r3 = safeCall('sect.donate', function () { return G.doSectTask('donate'); });
@@ -629,25 +629,25 @@ function manageAutoMarch() {
 }
 
 /* ============================================================
- * v89.91 GOLD 策略脑（黄金流对照）—— 与种田基线 play_600x.js 的唯一差异
+ * v89.91 GOLD 策略脑（旧币流对照）—— 与种田基线 play_600x.js 的唯一差异
  * ------------------------------------------------------------
- * 老板假说：金换批招高资质 → 金买经验书升将 → 用光自由点 →
- *           金提速（建造/生产/募兵）→ 增长应是指数级。
+ * 老板假说：旧币换批招高资质 → 旧币买经验书升将 → 用光自由点 →
+ *           旧币提速（建造/生产/募兵）→ 增长应是指数级。
  * 本段如实实现该策略，全部走游戏既有出口（不新增任何游戏规则）：
  *   goldSell   全资源溢出套现（基线只卖粮）     → GAME.marketSell
- *   goldInn    客栈花金换批直到出英杰           → GAME.innReroll + innAuto（门槛=英杰）
+ *   goldInn    酒馆花旧币换批直到出进化体           → GAME.innReroll + innAuto（门槛=进化体）
  *   goldBooks  最优档经验书喂「高潜将」         → GAME.doShopping + systems.useItemMany
  *   goldPoints 用光全部自由点                   → GAME.addFreePoint
- *   goldRush   建造/科技队列花金立成            → GAME.queueRushPay
- *   goldTrainRush 募兵队列花金买时间            → GAME.trainRush
- *   goldGuards 各城守将 = 本城最高内政者        → GAME.assignGeneral
+ *   goldRush   建造/科技队列花旧币立成            → GAME.queueRushPay
+ *   goldTrainRush 募兵队列花旧币买时间            → GAME.trainRush
+ *   goldGuards 各城守将 = 本城最高治理者        → GAME.assignGeneral
  *   goldHerbs  灵草升档（给高潜将）             → systems.useItem（rank_up 分支）
- *   goldNeigong 守卫修内功（内政 +6/重）        → GAME.doShopping + systems.useItem
+ *   goldNeigong 守卫修内功（治理 +6/重）        → GAME.doShopping + systems.useItem
  *   goldLord   君主练功 + 突破                  → GAME.doLordTrain / doLordBreak
  * ============================================================ */
 var GOLD = {
   version: 'GOLD v1',
-  reserve: 300000,                                  /* 金保留下限（不动） */
+  reserve: 300000,                                  /* 旧币保留下限（不动） */
   spends: { inn: 0, books: 0, build: 0, tech: 0, train: 0, neigong: 0 },
   rerolls: 0, recruits: 0, booksUsed: 0,
   salesCount: 0, goldSold: 0, freePts: 0,
@@ -694,7 +694,7 @@ function goldSell() {
   richCity();
 }
 
-/* ---------- ② 客栈：花金换批 → 自动招英杰 ---------- */
+/* ---------- ② 酒馆：花旧币换批 → 自动招进化体 ---------- */
 var GI_LAST = -1e9;
 function goldInn() {
   if (tNow - GI_LAST < 90) return;
@@ -704,7 +704,7 @@ function goldInn() {
   cfg.min = (GOLD.recruits < 6 && yNow() < 120) ? 'ying' : 'liang';
   st.cities.slice().sort(function (a, b) { return (G.res(b).gold || 0) - (G.res(a).gold || 0); })
     .forEach(function (city) {
-      if ((G.innLevel(city) || 0) < 6) return;        /* 客栈太低不出货，等升上来 */
+      if ((G.innLevel(city) || 0) < 6) return;        /* 酒馆太低不出货，等升上来 */
       if (G.genFreeOf(city) <= 0) return;
       setCity(city);
       var budget = Math.min((G.res(city).gold || 0) - 200000, 450000);
@@ -721,8 +721,8 @@ function goldInn() {
           GOLD.recruits++;
           var ng = st.generals[st.generals.length - 1];
           if (ng) {
-            noteSoft('gold.recruit', '客栈录用 ' + ng.name + '（' + G.rankOf(ng).name + '）');
-            if (rankIdxOf(ng) >= 2) gml('firstElite', '客栈录得高资质：' + ng.name + '（' + G.rankOf(ng).name + '）');
+            noteSoft('gold.recruit', '酒馆录用 ' + ng.name + '（' + G.rankOf(ng).name + '）');
+            if (rankIdxOf(ng) >= 2) gml('firstElite', '酒馆录得高资质：' + ng.name + '（' + G.rankOf(ng).name + '）');
           }
         }
       }
@@ -751,8 +751,8 @@ function goldBookTarget() {
   return null;
 }
 function gmlLv(g, lv) {
-  [{ l: 60, t: '首位 Lv60' }, { l: 100, t: '首位 Lv100' }, { l: 140, t: '首位 Lv140（英杰满级）' },
-   { l: 180, t: '首位 Lv180（名世满级）' }, { l: 240, t: '首位 Lv240（天授满级）' }].forEach(function (x) {
+  [{ l: 60, t: '首位 Lv60' }, { l: 100, t: '首位 Lv100' }, { l: 140, t: '首位 Lv140（进化体满级）' },
+   { l: 180, t: '首位 Lv180（觉醒体满级）' }, { l: 240, t: '首位 Lv240（天启体满级）' }].forEach(function (x) {
     if (lv >= x.l) gml('lv' + x.l, x.t + '：' + g.name + '（' + G.rankOf(g).name + '）Lv' + lv);
   });
 }
@@ -761,7 +761,7 @@ function goldBooks() {
   GB_LAST = tNow;
   var tgt = goldBookTarget();
   if (!tgt) return;
-  /* 档位按「每金经验」效率从高到低；买得起哪档用哪档（大宗优惠口径） */
+  /* 档位按「每旧币经验」效率从高到低；买得起哪档用哪档（大宗优惠口径） */
   var tiers = [['bingsheng', 400000], ['taigong_bingshu', 330000], ['bingxian_yipian', 240000],
     ['mingjiang_xinchuan', 156000], ['dudu_bingfa', 84000], ['jiangjun_zhanlu', 45000]];
   var guard = 0;
@@ -773,7 +773,7 @@ function goldBooks() {
     for (var i = 0; i < tiers.length; i++) { if (budget >= tiers[i][1]) { tier = tiers[i]; break; } }
     if (!tier) break;
     /* v2 修 bug：**按需购买（一次一本）** —— v1 按预算买 120 本/次，超出目标上限
-       的部分全堆进背包（实测终局积压 570 本千古兵圣 = 2.28 亿金存货，报表失真）。
+       的部分全堆进背包（实测终局积压 570 本千古兵圣 = 2.28 亿旧币存货，报表失真）。
        现在：背包有同档存货先用存货；否则买 1 本 → 用 1 本 → 循环。 */
     var use = null;
     var bagN = st.items[tier[0]] || 0;
@@ -795,7 +795,7 @@ function goldBooks() {
   }
 }
 
-/* ---------- ④ 自由点：全部用光（守将/高潜 → 内政；其余 → 勇武） ---------- */
+/* ---------- ④ 自由点：全部用光（守将/高潜 → 治理；其余 → 武力） ---------- */
 function goldPoints() {
   var list = (st.generals || []).filter(function (g) { return !g.isLord; });
   list.sort(function (a, b) {
@@ -817,10 +817,10 @@ function goldPoints() {
   });
 }
 
-/* ---------- ⑤ 队列金提速（建造 / 科技） ---------- */
+/* ---------- ⑤ 队列旧币提速（建造 / 科技） ---------- */
 function goldRush() {
   var rich = richCity();
-  var minKeep = GOLD.reserve + 50000;   /* v89.98b：15 万 → 5 万（1× 里金买时间=省现实时间，值） */
+  var minKeep = GOLD.reserve + 50000;   /* v89.98b：15 万 → 5 万（1× 里旧币买时间=省现实时间，值） */
   (st.queues.build || []).slice().forEach(function (q) {
     if ((G.res(rich).gold || 0) < minKeep) return;
     var c = 0; try { c = G.queueRushCost(q); } catch (e) {}
@@ -838,7 +838,7 @@ function goldRush() {
   }
 }
 
-/* ---------- ⑥ 募兵花金买时间（高水位才动 —— 大兵力批次很贵） ---------- */
+/* ---------- ⑥ 募兵花旧币买时间（高水位才动 —— 大兵力批次很贵） ---------- */
 function goldTrainRush() {
   var rich = richCity();
   var minKeep = GOLD.reserve + 100000;  /* v89.98b：60 万 → 10 万 */
@@ -856,7 +856,7 @@ function goldTrainRush() {
   });
 }
 
-/* ---------- ⑦ 守将：本城最高内政者（带滞后带，防来回换） ---------- */
+/* ---------- ⑦ 守将：本城最高治理者（带滞后带，防来回换） ---------- */
 function goldGuards() {
   if ((st.generals || []).length < 3) return;
   st.cities.forEach(function (city) {
@@ -878,7 +878,7 @@ function goldGuards() {
   });
 }
 
-/* ---------- ⑧ 灵草升档（秘境产；优先给守将/高等级） ---------- */
+/* ---------- ⑧ 灵草升档（基因实验室产；优先给守将/高等级） ---------- */
 function goldHerbs() {
   ['tianshouguo', 'hualongshen', 'xisuizhi', 'yunlingcao'].forEach(function (hid) {
     var guard = 0;
@@ -892,7 +892,7 @@ function goldHerbs() {
         var sc = (g.level || 1) + ((g.status === 'guard') ? 1000 : 0);
         if (sc > bs) { bs = sc; tgt = g; }
       });
-      if (!tgt) { noteSoft('gold.herbno', hid + '：无适用资质的将领（from=' + item.from + '）'); break; }
+      if (!tgt) { noteSoft('gold.herbno', hid + '：无适用资质的英雄（from=' + item.from + '）'); break; }
       var r = safeCall('gold.rankup', function () { return G.systems.useItem(hid, tgt.id); });
       if (!r || !r.ok) { if (r && !r.ok) noteSoft('gold.rankupfail', r.msg); break; }
       gml('rankup1', '🧬 灵草升档：' + r.msg);
@@ -900,7 +900,7 @@ function goldHerbs() {
   });
 }
 
-/* ---------- ⑨ 内功（守卫修尉缭子·内政 +6/重；君主修三略·勇武 +6/重） ---------- */
+/* ---------- ⑨ 内功（守卫修尉缭子·治理 +6/重；君主修三略·武力 +6/重） ---------- */
 var GNG_LAST = -1e9;
 function goldNeigong() {
   if (tNow - GNG_LAST < 300) return;
@@ -949,9 +949,9 @@ function goldLord() {
 
 /* ---------- ⑪ 状态行 ---------- */
 function goldLine() {
-  return '💰 黄金流：累卖 ' + fmtNum(GOLD.goldSold) + ' 金/' + GOLD.salesCount + ' 笔'
+  return '💰 旧币流：累卖 ' + fmtNum(GOLD.goldSold) + ' 旧币/' + GOLD.salesCount + ' 笔'
     + ' · 书耗 ' + fmtNum(GOLD.spends.books) + '（' + GOLD.booksUsed + ' 本）'
-    + ' · 换批 ' + GOLD.rerolls + ' 次/招 ' + GOLD.recruits + ' 人（英杰 ' + eliteCount() + '）'
+    + ' · 换批 ' + GOLD.rerolls + ' 次/招 ' + GOLD.recruits + ' 人（进化体 ' + eliteCount() + '）'
     + ' · 提速 建' + fmtNum(GOLD.spends.build) + '/科' + fmtNum(GOLD.spends.tech) + '/兵' + fmtNum(GOLD.spends.train) + '/内功' + fmtNum(GOLD.spends.neigong)
     + ' · 最高将 Lv' + maxGenLv();
 }
@@ -961,9 +961,9 @@ function goldLine() {
  * v89.92 · 策略脑 A：BUFF（宝物流）
  * ------------------------------------------------------------
  * 探针实证（probe_v8992）：
- *   · 生产类宝物 3,000 金 = 产量 +100%，且 prodUntil **从不被消费**
- *     （死字段）→ 永不到期、叠加无上限 —— 游戏内最便宜的金→产量出口；
- *   · 符类（治粟+安民+玄德+文曲星）= 守将内政 ×6.56（24h，正常到期）；
+ *   · 生产类宝物 3,000 旧币 = 产量 +100%，且 prodUntil **从不被消费**
+ *     （死字段）→ 永不到期、叠加无上限 —— 游戏内最便宜的旧币→产量出口；
+ *   · 符类（治粟+安民+玄德+文曲星）= 守将治理 ×6.56（24h，正常到期）；
  *   · 大役令 = 建造队列 +5（24h）。
  * 本段如实实现这条路线，全部走游戏既有出口（doShopping + useItem），
  * 不新增任何游戏规则。
@@ -983,7 +983,7 @@ function buffCorvee() {
   var u = safeCall('buff.cvUse', function () { return G.systems.useItem('corvee5', null); });
   if (u && u.ok) { BUFF.flags.corvee = 1; BUFF.spend.corvee += 20000; RUN('🎏 大役令：建造队列 → ' + G.buildSlots(rich)); }
 }
-/* ② 符类：各城守将四符叠加（内政 ×6.56；到期自动续） */
+/* ② 符类：各城守将四符叠加（治理 ×6.56；到期自动续） */
 var BA_LAST = -1e9;
 var ATTR_FU = [['zhisu', 28000], ['anmin', 20000], ['xuande', 13000], ['wenquxing', 6000]];
 function buffAttr() {
@@ -1008,7 +1008,7 @@ function buffAttr() {
     });
   });
 }
-/* ③ 生产宝物：金 → 产量 直接兑换（v89.93 修复后：同类只取最强 + 24h 到期）
+/* ③ 生产宝物：旧币 → 产量 直接兑换（v89.93 修复后：同类只取最强 + 24h 到期）
    —— 脑按游戏规则行动：同类已有**同级或更强**效果就不再买（钱留给别的线）。 */
 var BP_LAST = -1e9;
 var PROD_FLOOR = 50000;
@@ -1047,7 +1047,7 @@ function buffProd() {
     BUFF.spend.prod += it[1] * got;
     BUFF.units[it[0]] = (BUFF.units[it[0]] || 0) + used;
     budget -= it[1] * got;
-    if (!BUFF.tFirst && used > 0) { BUFF.tFirst = tNow; RUN('🎏 生产宝物线点火：首个「' + it[0] + '」（+100% 产量/个 · 3,000 金）'); }
+    if (!BUFF.tFirst && used > 0) { BUFF.tFirst = tNow; RUN('🎏 生产宝物线点火：首个「' + it[0] + '」（+100% 产量/个 · 3,000 旧币）'); }
   });
 }
 
@@ -1056,10 +1056,10 @@ function buffProd() {
  * ------------------------------------------------------------
  * 老板假说：「装备拉满 + 强化拉满 → 原始积累会更快？」
  * 本段如实实现这条路线：
- *   铁匠铺升 Lv7 → 买图纸 → 缺材料就买 → 打造 12 件倚天套
- *   → 百炼逐级升到 +10 → 整套装到主城守将。
- * 目标套装 = 倚天套（探针实测：+10 后内政 +861 —— 七套中唯一
- * 能显著抬内政的套装；全成本约 4,004 万金）。
+ *   铁匠铺升 Lv7 → 买图纸 → 缺材料就买 → 打造 12 件陨锋套
+ *   → 熔铸逐级升到 +10 → 整套装到主城守将。
+ * 目标套装 = 陨锋套（探针实测：+10 后治理 +861 —— 七套中唯一
+ * 能显著抬治理的套装；全成本约 4,004 万旧币）。
  * ============================================================ */
 var EQUIP = {
   spend: { bp: 0, mat: 0, craft: 0, enh: 0 },
@@ -1130,13 +1130,13 @@ function equipCraft() {
       EQUIP.crafted[id] = 1; EQUIP.spend.craft += (cost.gold || 0);
       var cnum = Object.keys(EQUIP.crafted).length;
       if (!EQUIP.tCraft1) { EQUIP.tCraft1 = tNow; RUN('⚒ 装备流：首件打造 ' + r.msg + '（1/12）'); }
-      else if (cnum % 4 === 0) RUN('⚒ 装备流：倚天套进度 ' + cnum + '/12');
-      if (cnum >= 12 && !EQUIP.tCraft12) { EQUIP.tCraft12 = tNow; RUN('🏆 装备流：倚天套 12 件打造完成'); }
+      else if (cnum % 4 === 0) RUN('⚒ 装备流：陨锋套进度 ' + cnum + '/12');
+      if (cnum >= 12 && !EQUIP.tCraft12) { EQUIP.tCraft12 = tNow; RUN('🏆 装备流：陨锋套 12 件打造完成'); }
     } else if (r && !r.ok) { noteSoft('equip.forge', r.msg); }
     return;   /* 每轮只打造一件 */
   }
 }
-/* ③ 百炼 +10（逐级；钱/铁/石够就升一件） */
+/* ③ 熔铸 +10（逐级；钱/铁/石够就升一件） */
 var EE_LAST = -1e9;
 function equipEnhance() {
   if (tNow - EE_LAST < 40) return;
@@ -1159,7 +1159,7 @@ function equipEnhance() {
       EQUIP.spend.enh += (c.gold || 0);
       if (G.eqEnhOf(inst) >= 10) {
         var all10 = ytIds().every(function (x) { var i2 = G.eqFind(x); return i2 && G.eqEnhOf(i2) >= 10; });
-        RUN('⚒ 百炼：' + G.eqLabel(inst) + ' 满级（+10）' + (all10 ? ' —— 12 件全部 +10 达成' : ''));
+        RUN('⚒ 熔铸：' + G.eqLabel(inst) + ' 满级（+10）' + (all10 ? ' —— 12 件全部 +10 达成' : ''));
         if (all10 && !EQUIP.tEnh120) EQUIP.tEnh120 = tNow;
       }
       return;
@@ -1191,7 +1191,7 @@ function equipWear() {
     if (r && r.ok) n++;
   }
   EQUIP.wornCount = n; EQUIP.wornGen = g.name;
-  if (n >= 12 && !EQUIP.tWorn12) { EQUIP.tWorn12 = tNow; RUN('🏆 装备流：12 件倚天套全部上身（' + g.name + '，nz ' + guardNzOf(g) + '，产量 +' + Math.round(G.guardBonus(st.cities[0]).prod * 100) + '%）'); }
+  if (n >= 12 && !EQUIP.tWorn12) { EQUIP.tWorn12 = tNow; RUN('🏆 装备流：12 件陨锋套全部上身（' + g.name + '，nz ' + guardNzOf(g) + '，产量 +' + Math.round(G.guardBonus(st.cities[0]).prod * 100) + '%）'); }
 }
 /* ⑤ 状态行 */
 function stratLine() {
@@ -1246,18 +1246,18 @@ var MILE = [
       if (r && !r.ok) { noteSoft('fort1', r.msg); return 'wait'; }
   } },
   { id: 'scout1', at: 2400, done: false, retries: 0, fn: function () {
-      var chk = safeCall('scout.train', function () { return G.maxTrainCount('chihou', st.cities[0].id, (cellOf(st.cities[0], 'junying') || {}).idx); });
+      var chk = safeCall('scout.train', function () { return G.maxTrainCount('zhencha', st.cities[0].id, (cellOf(st.cities[0], 'junying') || {}).idx); });
       var n = (typeof chk === 'number') ? chk : Number(chk && (chk.n || chk.count || chk.max) || 0);
       if (n <= 0) return 'wait';
       var jy = cellOf(st.cities[0], 'junying');
       if (!jy) return 'wait';                              /* v89.100：无兵营 → 等（此前 jy.idx 直接崩） */
       setCity(st.cities[0]);
       var c0 = st.cities[0];
-      if (!c0.army.chihou || c0.army.chihou < 10) {
-        var t = safeCall('scout.tr', function () { return G.train('chihou', 10, c0.id, jy.idx); });
+      if (!c0.army.zhencha || c0.army.zhencha < 10) {
+        var t = safeCall('scout.tr', function () { return G.train('zhencha', 10, c0.id, jy.idx); });
         if (t && !t.ok) { noteSoft('scout.tr', t.msg); return 'wait'; }
       }
-      if ((c0.army.chihou || 0) < 10) return 'wait';
+      if ((c0.army.zhencha || 0) < 10) return 'wait';
       /* 找最近名城 */
       var npc = null;
       for (var rr = 5; rr <= 30 && !npc; rr++) {
@@ -1269,7 +1269,7 @@ var MILE = [
       }
       if (!npc) return 'wait';
       var gen = idleGen(true); if (!gen) return 'wait';
-      var r = G.march.dispatch({ kind: 'city', id: npc.id, npc: npc }, 'scout', { chihou: 10 }, gen.id);
+      var r = G.march.dispatch({ kind: 'city', id: npc.id, npc: npc }, 'scout', { zhencha: 10 }, gen.id);
       if (r && r.ok) { RUN('🦅 侦查名城：' + npc.name + '（' + r.msg + '）'); return 'ok'; }
       if (r && !r.ok) { noteSoft('scout1', r.msg); return 'wait'; }
   } },
@@ -1395,10 +1395,10 @@ function handleBattles() {
  * 老板令：「以 1 倍速度测评 300h，重复利用所有板块和道具，走捷径」
  * 新增五链（全部走游戏既有出口，不新增任何规则）：
  *   ① 围攻打据点：occupy 多波次 + 围困战法（守军−12% / 破防×1.5）
- *   ② 爵位晋升：声望/城池/金/珠宝齐备即晋（每 4 档得节钺 ×1）
- *   ③ 节钺：≥2 枚时扩编（建造位 +1）；留 1 枚备天授
+ *   ② 爵位晋升：声望/城池/旧币/珠宝齐备即晋（每 4 档得节钺 ×1）
+ *   ③ 节钺：≥2 枚时扩编（建造位 +1）；留 1 枚备天启体
  *   ④ 通商券：折价张口（mul < 0.92）时开出免折窗（无券则买 1 张）
- *   ⑤ 丹药：君主勇武丹 + 主城守将内政丹（永久 +1，上限 50）
+ *   ⑤ 丹药：君主武力丹 + 主城守将治理丹（永久 +1，上限 50）
  * ============================================================ */
 var RUSH = { siegeRep: 0, siegeWin: 0, siegeFail: 0, tSiege1: null,
   jieyueUsed: 0, promoteN: 0, couponN: 0, permN: 0, staUsed: 0 };
@@ -1459,15 +1459,15 @@ function pickSiegeGen() {
   });
   return best;
 }
-/* 体力不足 → 金够就嗑「大还丹」（60%/3,000 金）；金不够就等（1× 经济紧张，门槛 6 万） */
+/* 体力不足 → 旧币够就嗑「大还丹」（60%/3,000 旧币）；旧币不够就等（1× 经济紧张，门槛 6 万） */
 function staminaFix(gen, need) {
   var sta = G.staNow ? G.staNow(gen) : (gen.stamina || 0);
   if (sta >= need) return true;
   var rich = richCity();
   /* v89.99：体力 = 围攻的燃料（1× 实测：波次上限被"药门槛"卡死 —— 全跑只买到 1 颗，
      围攻被自然再生压到 ~7 小时/波）。改**备弹制度**：
-       · 金 ≥6 万 → 囤到 5 颗（每颗 3,000 金 = 8 波体力，效率远超任何别的花法）；
-       · 否则金 ≥1.2 万 → 随用随买 1 颗（4 倍于药价的应急底，不再空转）。 */
+       · 旧币 ≥6 万 → 囤到 5 颗（每颗 3,000 旧币 = 8 波体力，效率远超任何别的花法）；
+       · 否则旧币 ≥1.2 万 → 随用随买 1 颗（4 倍于药价的应急底，不再空转）。 */
   var havePill = st.items['dahuandan'] || 0;
   if (havePill <= 0) {
     if ((G.res(rich).gold || 0) < 12000) return false;
@@ -1481,7 +1481,7 @@ function staminaFix(gen, need) {
   var u = safeCall('rush.staUse', function () { return G.systems.useItem('dahuandan', gen.id); });
   if (u && u.ok) {
     RUSH.staUsed = (RUSH.staUsed || 0) + 1;
-    RUN('💊 体力补给：' + gen.name + ' ← 大还丹（60% · 3,000 金）· 累计 ' + RUSH.staUsed + ' 颗');
+    RUN('💊 体力补给：' + gen.name + ' ← 大还丹（60% · 3,000 旧币）· 累计 ' + RUSH.staUsed + ' 颗');
     return true;
   }
   return false;
@@ -1516,7 +1516,7 @@ function siegeBrain() {
 function promoteBrain() {
   if (tNow - PR_LAST < 600) return;
   PR_LAST = tNow;
-  /* v89.98c：**先补晋爵珠宝**（硬门槛；珠宝=商城货，金够就该买齐）。 */
+  /* v89.98c：**先补晋爵珠宝**（硬门槛；珠宝=游商货，旧币够就该买齐）。 */
   var nextR = safeCall('rush.nextRank', function () { return G.systems.nextRank(); });
   if (nextR && nextR.jewel) {
     for (var jid in nextR.jewel) {
@@ -1546,7 +1546,7 @@ function jieyueBrain() {
   if (tNow - JY_LAST < 600) return;
   JY_LAST = tNow;
   var have = G.jieyueOf ? G.jieyueOf() : 0;
-  if (have < 2) return;                      /* 至少留 1 枚备天授 */
+  if (have < 2) return;                      /* 至少留 1 枚备天启体 */
   var c = st.cities[0];
   var r = safeCall('rush.expand', function () { return G.jieyueExpandCity(c.id); });
   if (r && r.ok) {
@@ -1579,12 +1579,12 @@ function couponBrain() {
 
 /* v89.99：**保留线 = 当前"在办目标"的下一笔开销**（条件驱动，不是年份档位）——
    建城期留筑城钱（含启动物资）；养将期留换书钱；两件都办完只剩应急底。
-   金远超保留线时再压半 —— 避免"金多却被保留线锁住花不出去"（v89.98 的教训）。 */
+   旧币远超保留线时再压半 —— 避免"旧币多却被保留线锁住花不出去"（v89.98 的教训）。 */
 function reserveNow() {
   var must = 20000;
-  if (st.cities.length < 3) must = 40000;      /* 筑城金 1 万 + 珠宝/启动 + 缓冲 */
+  if (st.cities.length < 3) must = 40000;      /* 筑城旧币 1 万 + 珠宝/启动 + 缓冲 */
   else if (maxGenLv() < 140) must = 30000;
-  /* v89.100：econ 保留线压低 —— 金的最大去处是经验书（买书预算 = 金 - 保留线） */
+  /* v89.100：econ 保留线压低 —— 旧币的最大去处是经验书（买书预算 = 旧币 - 保留线） */
   if (MODE === 'econ') must = 12000;
   var gold = 0;
   try { gold = G.res(richCity()).gold || 0; } catch (e) {}
@@ -1592,7 +1592,7 @@ function reserveNow() {
   return must;
 }
 /* ---------- 战利品寄售（v89.100 · 老板「以购买价 75% 出售」） ----------
-   语义：把背包里可售道具（珠宝/材料/种子/图纸/宝箱…）按 75% 变金。
+   语义：把背包里可售道具（珠宝/材料/种子/图纸/宝箱…）按 75% 变旧币。
    保留：晋爵缺口珠宝（买了再卖白亏 25%）。出口：systems.consignAll。 */
 var CSG_LAST = -1e9;
 var CSG = { gold: 0, kinds: 0, pieces: 0, runs: 0, tFirst: 0 };
@@ -1607,7 +1607,7 @@ function consignBrain() {
       /* v89.100 fix：**整类保留**下一档晋爵所需珠宝。
          ⚠️ 只保"缺口"会出死循环：promoteBrain 把缺口买齐（缺口归 0）→ 下一轮
          consignBrain 就把它们按 75% 卖掉 → promoteBrain 再买回 → 每轮白亏 25%。
-         首测实测：珍珠×10 + 珊瑚×5（买 4000 金）→ 卖 3000 金，反复 6 次。 */
+         首测实测：珍珠×10 + 珊瑚×5（买 4000 旧币）→ 卖 3000 旧币，反复 6 次。 */
       for (var jid in nr.jewel) keep.push(jid);
     }
   } catch (e) {}
@@ -1668,7 +1668,7 @@ function snapshot() {
       army += armyAll(c.army);
     });
     o.res = res; o.pop = Math.round(pop); o.popCap = Math.round(popCap);
-    o.era = ERA.id; o.bankJ = BANK.joined; o.bankR = BANK.released;   /* v89.99：阶段与人口银行 */
+    o.era = ERA.id; o.bankJ = BANK.joined; o.bankR = BANK.released;   /* v89.99：阶段与幸存者银行 */
     o.army = army; o.wounded = Math.round(st.wounded || 0);
     o.marchArmy = 0; (st.marches || []).forEach(function (m) { o.marchArmy += armyAll(m.army); });
     o.marches = (st.marches || []).length;
@@ -1765,9 +1765,9 @@ function snapshot() {
  * 三张总资源各有一个**条件驱动**的调度器（不是按年份钉死的档位）：
  *   ① 体力：两班将（围攻将 / 采集将）分开 —— 采集只吃主攻将之外的余量；
  *      军力不足 margin 时自动收回，充足时放出去收割（会溢出的恢复 → 资源）。
- *   ② 金：保留线 = 在办目标的下一笔开销（建城期 / 养将期 / 应急底，见 reserveNow）。
- *   ③ 人口：贴顶的增长"存"进民兵（**人口银行**）；募兵缺人时解散归农再募
- *      —— 对应老板「有人口就征民兵，避免人口停在顶端；要特定兵种时解散改募」。
+ *   ② 旧币：保留线 = 在办目标的下一笔开销（建城期 / 养将期 / 应急底，见 reserveNow）。
+ *   ③ 幸存者：贴顶的增长"存"进民兵（**幸存者银行**）；募兵缺人时解散归农再募
+ *      —— 对应老板「有幸存者就征民兵，避免幸存者停在顶端；要特定兵种时解散改募」。
  * 阶段（ERA）由**条件**判定（城数/等级/战果），切换即换规则（税制/打法/掠夺模式）。
  * ============================================================ */
 var ERA = { id: 'E0', n: 0, log: [] };
@@ -1780,7 +1780,7 @@ function eraNow() {
   var siege = RUSH.siegeWin || 0;
   if (cityN >= 3 && lv >= 120) return 'E4';        /* 鼎立：书养将 */
   if (cityN >= 3) return 'E3';                      /* 三城：围攻+晋爵 */
-  if (cityN >= 2 || siege >= 1) return 'E2';        /* 双城/首胜：人口银行开张 */
+  if (cityN >= 2 || siege >= 1) return 'E2';        /* 双城/首胜：幸存者银行开张 */
   if (yNow() >= 1.5) return 'E1b';                  /* 拓野 */
   return 'E1a';                                     /* 立足 */
 }
@@ -1788,7 +1788,7 @@ function eraRuleOf(id) {
   var T = {
     E1a: { mode: 'occupy', tax: 0.35, bank: 0, note: '立足：占野地/换将；税轻聚人' },
     E1b: { mode: 'occupy', tax: 0.35, bank: 0, note: '拓野：围攻试点；自动出征只吃余量' },
-    E2:  { mode: 'occupy', tax: 0.35, bank: 1, note: '奠基：双城/首胜；人口银行开张' },
+    E2:  { mode: 'occupy', tax: 0.35, bank: 1, note: '奠基：双城/首胜；幸存者银行开张' },
     E3:  { mode: 'raid',   tax: 0.35, bank: 1, note: '三城：围攻+晋爵；转掠夺收割' },
     E4:  { mode: 'raid',   tax: 0.5,  bank: 1, note: '鼎立：书养将；财政转常规' },
   };
@@ -1845,15 +1845,15 @@ function applyPolicies() {
   var wantTax = RP.tax;
   var goldNow = 0;
   try { goldNow = G.res(richCity()).gold || 0; } catch (e) {}
-  if (wantTax < 0.5 && goldNow < 8000) wantTax = 0.5;   /* 现金见底 → 先保财政（条件翻转） */
+  if (wantTax < 0.5 && goldNow < 8000) wantTax = 0.5;   /* 现旧币见底 → 先保财政（条件翻转） */
   if (tNow - TAX_LAST > 3600 && Math.abs(st.tax - wantTax) >= 0.1) {
     TAX_LAST = tNow;
     st.tax = wantTax;
-    RUN('🧾 税制切至 ' + Math.round(wantTax * 100) + '%（' + (wantTax < 0.5 ? '轻徭薄赋·聚人口' : '常规·先保财政') + '）');
+    RUN('🧾 税制切至 ' + Math.round(wantTax * 100) + '%（' + (wantTax < 0.5 ? '轻徭薄赋·聚幸存者' : '常规·先保财政') + '）');
   }
 }
 
-/* 人口银行：贴顶的增长"存"进民兵（避免增长停在顶端被浪费） */
+/* 幸存者银行：贴顶的增长"存"进民兵（避免增长停在顶端被浪费） */
 function bankPop() {
   var RP = eraRuleOf(ERA.id);
   if (!RP.bank) return;
@@ -1863,8 +1863,8 @@ function bankPop() {
   if (cap > 0) BANK.peak = Math.max(BANK.peak, pop);
   if (cap <= 0) return;
   if (pop < cap * 0.9) return;                          /* 没贴顶：先让 tryTrain 正常吃人 */
-  if (totalArmy() < armyTarget()) return;               /* 军队有缺口：人口留给正经募兵 */
-  if (((c.army || {}).yibing || 0) > 1500) return;      /* 银行上限（存太多是纯浪费军资） */
+  if (totalArmy() < armyTarget()) return;               /* 军队有缺口：幸存者留给正经募兵 */
+  if (((c.army || {}).buxingji || 0) > 1500) return;      /* 银行上限（存太多是纯浪费军资） */
   var jy = cellOf(c, 'junying');
   if (!jy) return;
   if ((st.queues.train || []).length >= 4) return;
@@ -1874,10 +1874,10 @@ function bankPop() {
   var Rr = G.res(c);
   if ((Rr.grain || 0) < 40000 || (Rr.wood || 0) < 12000 || (Rr.iron || 0) < 6000) return;
   setCity(c);
-  var r = safeCall('bank.train', function () { return G.train('yibing', n, c.id, jy.idx); });
+  var r = safeCall('bank.train', function () { return G.train('buxingji', n, c.id, jy.idx); });
   if (r && r.ok) {
     BANK.joined += n;
-    if (BANK.joined <= 600) noteSoft('bank.join', '存人：民兵 ×' + n + '（人口银行）');
+    if (BANK.joined <= 600) noteSoft('bank.join', '存人：民兵 ×' + n + '（幸存者银行）');
   }
 }
 /* 放人：募兵缺人时解散民兵归农（"要特定兵种时解散兵种、改募别的"） */
@@ -1885,7 +1885,7 @@ function releaseBank(needPop, why) {
   /* v89.99：**全城扫描** —— 民兵可能在任意一座城（首测里只扫主城，漏掉分城的存货） */
   var c = null, bank = 0;
   st.cities.forEach(function (cc) {
-    var b = ((cc.army || {}).yibing) || 0;
+    var b = ((cc.army || {}).buxingji) || 0;
     if (b > bank) { bank = b; c = cc; }
   });
   if (!c || bank <= 0) return 0;
@@ -1894,23 +1894,23 @@ function releaseBank(needPop, why) {
   if (gap <= 0) return 0;
   var n = Math.min(bank, gap, 400);
   if (n < 10) return 0;
-  var r = safeCall('bank.release', function () { return G.disbandAt(c.id, 'yibing', n); });
+  var r = safeCall('bank.release', function () { return G.disbandAt(c.id, 'buxingji', n); });
   if (r && r.ok) {
     BANK.released += n;
-    RUN('🕊 人口银行放人：解散民兵 ×' + n + ' → 归农 +' + r.pop + '（' + why + '）');
+    RUN('🕊 幸存者银行放人：解散民兵 ×' + n + ' → 归农 +' + r.pop + '（' + why + '）');
     return r.pop;
   }
   return 0;
 }
 
-/* 民生：增民令（金换增速；**人口是当前瓶颈时才买** —— 条件驱动） */
+/* 民生：增民令（旧币换增速；**幸存者是当前瓶颈时才买** —— 条件驱动） */
 function popBrain() {
   if (tNow - POPB_LAST < 1500) return;
   POPB_LAST = tNow;
   if (G.popBoostMult() > 1) return;      /* 已有增民令效果：同类只取最强，重复=白花钱 */
   var rich = richCity();
   var gold = G.res(rich).gold || 0;
-  /* 3000 金的道具：绝对可负担即可 —— **不挂保留线**（增速是复利型收益；
+  /* 3000 旧币的道具：绝对可负担即可 —— **不挂保留线**（增速是复利型收益；
      保留线是给"必办大事"留的，不是给复利道具设的门）。 */
   if (gold < 15000) return;
   var popTight = st.cities.length < 3 || totalArmy() < armyTarget();
@@ -1924,16 +1924,16 @@ function popBrain() {
   var u = safeCall('popb.use', function () { return G.systems.useItem('zengminling', null); });
   if (u && u.ok) {
     RUSH.popUses = (RUSH.popUses || 0) + 1;
-    RUN('👶 增民令：人口增速 ×3（24 游戏时）· 累计 ' + RUSH.popUses + ' 张');
+    RUN('👶 增民令：幸存者增速 ×3（24 游戏时）· 累计 ' + RUSH.popUses + ' 张');
   }
 }
 
 /* ============================================================
- * v89.101 · 城流跨越（span）—— 老板「摩托游骑是事实，装甲战车是不是？
+ * v89.101 · 城流跨越（span）—— 老板「伏击车是事实，主战机甲是不是？
  *   开拓四维，用寻找漏洞的方式寻求跨越式的、不可逆的发展」
  * ① spanCities：占平原 → 即时筑城（实测无上限 · 附近 1233 块可筑平原）
- * ② spanCav：摩托游骑批量成军（选粮最厚的城，一次募到该城上限）
- * ③ spanMil：军链抢建（军营→5 / 马厩→3 / 书院→6，骑兵门票）
+ * ② spanCav：伏击车批量成军（选粮最厚的城，一次募到该城上限）
+ * ③ spanMil：军链抢建（军营→5 / 马厩→3 / 研习所→6，骑兵门票）
  * ============================================================ */
 var SPAN = { maxCity: 9, cityLast: -1e9, cavLast: -1e9, milLast: -1e9 };
 function spanCities() {
@@ -1963,25 +1963,25 @@ function spanCav() {
     if (!jy) return;
     setCity(c);
     var okc = false;
-    try { okc = (G.canTrain('qingji') || {}).ok; } catch (e) {}
+    try { okc = (G.canTrain('fujiche') || {}).ok; } catch (e) {}
     if (!okc) return;
     anyUnlocked = true;
     var cap = 0;
-    try { cap = G.maxTrainCount('qingji', c.id, jy.idx) || 0; } catch (e) {}
+    try { cap = G.maxTrainCount('fujiche', c.id, jy.idx) || 0; } catch (e) {}
     if (!(cap > 0)) return;
     var g = (G.res(c).grain || 0);
     if (g > bg) { bg = g; best = c; bCap = cap; }
   });
   if (!best || !(bCap > 0)) {
     /* v89.101b：骑兵解锁但缺人 → 解散民兵放人（要特定兵种时解散改募） */
-    if (anyUnlocked) safeCall('span.cav.rel', function () { return releaseBank(500, '摩托游骑待募·放人'); });
+    if (anyUnlocked) safeCall('span.cav.rel', function () { return releaseBank(500, '伏击车待募·放人'); });
     return;
   }
   var jy2 = cellOf(best, 'junying');
   var n = Math.min(bCap, 4000);
   setCity(best);
-  var r = safeCall('span.cav', function () { return G.train('qingji', n, best.id, jy2.idx); });
-  if (r && r.ok) RUN('🐎 摩托游骑成军：' + best.name + ' 一次 ×' + n + '（该城上限 ' + bCap + '）');
+  var r = safeCall('span.cav', function () { return G.train('fujiche', n, best.id, jy2.idx); });
+  if (r && r.ok) RUN('🐎 伏击车成军：' + best.name + ' 一次 ×' + n + '（该城上限 ' + bCap + '）');
   else if (r && !r.ok) noteSoft('span.cav', r.msg);
 }
 function spanMil() {
@@ -2000,12 +2000,12 @@ function spanMil() {
     setCity(c);
     var r = safeCall('span.mil.' + bid, function () { return G.upgradeAt(c.id, idx); });
     if (r && r.ok && (G.res(c).gold || 0) >= 12000) {
-      /* v89.101c：军链金提速 —— 队列字段实测为 **gridIndex**（不是 idx）；单次仅 ~900 金 */
+      /* v89.101c：军链旧币提速 —— 队列字段实测为 **gridIndex**（不是 idx）；单次仅 ~900 旧币 */
       var qb = null;
       (st.queues.build || []).forEach(function (x) { if (!qb && x.cityId === c.id && x.gridIndex === idx) qb = x; });
       if (qb) {
         var pay = safeCall('span.mil.pay', function () { return G.queueRushPay(qb, '工程'); });
-        if (pay && pay.ok) RUN('军链提速：' + bid + ' 花金完工');
+        if (pay && pay.ok) RUN('军链提速：' + bid + ' 花旧币完工');
         else if (pay && !pay.ok) noteSoft('span.mil.pay', pay.msg);
       }
     }
@@ -2018,7 +2018,7 @@ var SNAP_EVERY = T_QUARTER;   /* v89.98：每 1/4 游戏年（1× 下 = 14,400 t
 var BRAIN_LAST = -1e9;
 var T0 = _RealNow();
 RUN('主循环启动：每 tick = 1 现实秒 × ' + TS + ' 倍率；快照 1/4 游戏年；脑决策 40t(前10min)→120t（现实秒语义）');
-if (MODE === 'econ') RUN('🧪 ECON 模式：军事全停（征兵/采集/占领/出征/围攻/城墙/装备/存兵全跳过）——只看资源积累 + 商场经验道具');
+if (MODE === 'econ') RUN('🧪 ECON 模式：军事全停（征兵/采集/占领/出征/围攻/围墙/装备/存兵全跳过）——只看资源积累 + 商场经验道具');
 if (MODE === 'loot') RUN('🧪 LOOT 模式：rush 全行为 + 战利品寄售（按购买价 75% 变现；保留晋爵缺口珠宝）');
 if (MODE === 'lootx') RUN('🧪 LOOTX 对照：寄售**空转**（只调用不卖）——分离寄售效果与路径分叉');
 
@@ -2048,15 +2048,15 @@ for (tNow = 1; tNow <= MAXT; tNow++) {
   var every = tNow < 600 ? 40 : 120;
   if (tNow - BRAIN_LAST >= every) {
     BRAIN_LAST = tNow;
-    GOLD.reserve = reserveNow();          /* v89.99：按"在办目标"刷新的金保留线 */
+    GOLD.reserve = reserveNow();          /* v89.99：按"在办目标"刷新的旧币保留线 */
     safeCall('b.policies', applyPolicies);/* v89.99：阶段自适应（体力/税制/自动出征条件翻转） */
     if (MODE !== 'econ') safeCall('b.bank', bankPop);   /* v89.100：econ 不存兵（银行=征兵的一种） */
-    safeCall('b.popb', popBrain);         /* v89.99：增民令（人口瓶颈时才买） */
+    safeCall('b.popb', popBrain);         /* v89.99：增民令（幸存者瓶颈时才买） */
     safeCall('b.quests', tryQuests);
     safeCall('b.build', tryBuildNew);
     safeCall('b.ext', tryBuildExt);
-    /* v89.100：econ（纯经济）——军事调用全跳过（城墙/征兵/采集/占领/撤援），
-       只留"建设 + 市场 + 商城"这条线；其余模式照旧。 */
+    /* v89.100：econ（纯经济）——军事调用全跳过（围墙/征兵/采集/占领/撤援），
+       只留"建设 + 市场 + 游商"这条线；其余模式照旧。 */
     if (MODE !== 'econ') {
       safeCall('b.wall', tryWall);
       safeCall('b.train', tryTrain);
@@ -2072,7 +2072,7 @@ for (tNow = 1; tNow <= MAXT; tNow++) {
     safeCall('b.shop', tryShop);
     safeCall('b.sect', trySect);
     if (MODE !== 'econ') safeCall('b.autoMarch', manageAutoMarch);   /* v89.100：econ 无军事 */
-    /* v89.92：宝物流优先级 = 最先（这是它的打法本体 —— 金先换产量） */
+    /* v89.92：宝物流优先级 = 最先（这是它的打法本体 —— 旧币先换产量） */
     if (MODE === 'buff' || MODE === 'all' || MODE === 'rush' || MODE === 'span') {
       safeCall('b.buffCorvee', buffCorvee);
       safeCall('b.buffAttr', buffAttr);
@@ -2117,7 +2117,7 @@ for (tNow = 1; tNow <= MAXT; tNow++) {
     flushEv();
     var perf = (_RealNow() - T0) / 1000;
     RUN('进度 ' + tNow + '/' + MAXT + ' · 第 ' + yNow().toFixed(1) + ' 游戏年 · 用时 ' + perf.toFixed(0) + 's'
-      + ' · 城' + st.cities.length + ' · 军 ' + fmtNum(totalArmy()) + ' · 金 ' + fmtNum(st.res.gold)
+      + ' · 城' + st.cities.length + ' · 军 ' + fmtNum(totalArmy()) + ' · 旧币 ' + fmtNum(st.res.gold)
       + ' · 将 ' + st.generals.length + ' · 日志 ' + (EVFLUSHED + EV.length) + ' · 错 ' + ERRN);
     RUN(goldLine() + stratLine());
   }
@@ -2163,7 +2163,7 @@ try {
 var errTop = Object.keys(ERRS).map(function (k) { return { k: k, n: ERRS[k].n }; })
   .sort(function (a, b) { return b.n - a.n; }).slice(0, 12);
 RUN(goldLine() + stratLine());
-RUN('👥 将领前十：' + (st.generals || []).slice().sort(function (a, b) { return (b.level || 1) - (a.level || 1); }).slice(0, 10).map(function (g) {
+RUN('👥 英雄前十：' + (st.generals || []).slice().sort(function (a, b) { return (b.level || 1) - (a.level || 1); }).slice(0, 10).map(function (g) {
   var a = G.genAttrs(g) || {};
   return g.name + '[' + G.rankOf(g).name + ']Lv' + g.level + '(nz' + Math.round(a.nz || 0) + '/yw' + Math.round(a.yw || 0) + ')';
 }).join(' · '));
@@ -2187,7 +2187,7 @@ try {
 } catch (e) { noteErr('rush.final', e); }
 RUN('=== 推演结束 ===');
 RUN('终态：第 ' + yNow().toFixed(1) + ' 游戏年 · 城 ' + st.cities.length + ' · 军 ' + fmtNum(totalArmy())
-  + ' · 金 ' + fmtNum(st.res.gold) + ' · 将 ' + st.generals.length + ' · 战报 ' + (st.reports || []).length + ' 份'
+  + ' · 旧币 ' + fmtNum(st.res.gold) + ' · 将 ' + st.generals.length + ' · 战报 ' + (st.reports || []).length + ' 份'
   + ' · 阶段 ' + ERA.id + '（' + ERA.n + ' 次切换）· 银行 存' + BANK.joined + '/放' + BANK.released);
 RUN('错误合计 ' + ERRN + ' 次；Top: ' + errTop.map(function (x) { return x.k.slice(0, 60) + '×' + x.n; }).join(' || '));
 RUN('输出目录：' + OUT);

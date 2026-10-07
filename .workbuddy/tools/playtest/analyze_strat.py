@@ -8,7 +8,7 @@ import io, json, os
 
 R = 'E:/Deepseekdb/.workbuddy/tmp/playtest600/'
 MODES = ['gold', 'buff', 'equip', 'all']
-LABEL = {'gold': 'gold(黄金流)', 'buff': 'buff(宝物流)', 'equip': 'equip(装备流)', 'all': 'all(宝物流+装备流)'}
+LABEL = {'gold': 'gold(旧币流)', 'buff': 'buff(宝物流)', 'equip': 'equip(装备流)', 'all': 'all(宝物流+装备流)'}
 
 def load(mode):
     rows = []
@@ -46,8 +46,8 @@ out = []
 W = out.append
 W('# v89.92 四模式对照推演 · 数据摘要')
 W('')
-W('> gold = v89.91 黄金流（对照基线）· buff = 黄金流 + 生产宝物叠 buff + 符类')
-W('> equip = 黄金流 + 倚天套打造/强化/穿戴 · all = 黄金流 + 两线全开。')
+W('> gold = v89.91 旧币流（对照基线）· buff = 旧币流 + 生产宝物叠 buff + 符类')
+W('> equip = 旧币流 + 陨锋套打造/强化/穿戴 · all = 旧币流 + 两线全开。')
 W('> 同一骨架、同 mapSeed=20260921、各 21600 tick（225 游戏年）、零游戏代码改动。')
 W('')
 
@@ -70,7 +70,7 @@ row('粮产量（/时）', lambda m: prod_of(m, 'grain'))
 row('木产量（/时）', lambda m: prod_of(m, 'wood'))
 def gold_of(m):
     r = pick(data[m], 225); return fmt(r['res']['gold']) if r else '—'
-row('黄金（户部余额）', gold_of)
+row('旧币（户部余额）', gold_of)
 def army_of(m):
     r = pick(data[m], 225); return fmt(r.get('army')) if r else '—'
 row('军队', army_of)
@@ -79,7 +79,7 @@ def cities_of(m):
 row('城池数', cities_of)
 def gens_of(m):
     r = pick(data[m], 225); return r.get('gens') if r else '—'
-row('将领数', gens_of)
+row('英雄数', gens_of)
 def tech_of(m):
     r = pick(data[m], 225); return r.get('techSum') if r else '—'
 row('科技总级', tech_of)
@@ -90,7 +90,7 @@ row('城内建筑等级和', build_of)
 def trade_of(m):
     r = pick(data[m], 225)
     return fmt(((r.get('goldState') or {}).get('sold'))) if r else '—'
-row('累计套现金', trade_of)
+row('累计套现旧币', trade_of)
 def gnz(m):
     r = pick(data[m], 225)
     return ((r.get('buff') or {}).get('gnz') or (r.get('equip') or {}).get('gnz') or 0) if r else 0
@@ -127,8 +127,8 @@ for y in [10, 25, 40, 60, 100, 150, 200, 225]:
     W('| %d | %s |' % (y, ' | '.join(cells)))
 W('')
 
-# ---- 三、金曲线
-W('## 三、黄金余额曲线（户部）')
+# ---- 三、旧币曲线
+W('## 三、旧币余额曲线（户部）')
 W('')
 W('| 游戏年 | ' + ' | '.join(LABEL[m] for m in MODES) + ' |')
 W('|' + '---|' * (len(MODES) + 1))
@@ -140,7 +140,7 @@ for y in [10, 25, 40, 60, 100, 150, 200, 225]:
     W('| %d | %s |' % (y, ' | '.join(cells)))
 W('')
 
-# ---- 四、粮食因子 & 装备进度曲线（buff/equip 侧）
+# ---- 四、净水因子 & 装备进度曲线（buff/equip 侧）
 W('## 四、粮产因子与装备进度（各线内部）')
 W('')
 W('| 游戏年 | buff:粮因子 | buff:犁数 | equip:炉Lv | equip:造/12 | equip:穿/12 | equip:强化和 |')
@@ -167,7 +167,7 @@ for m in MODES:
     if b.get('tFirst') is not None:
         bits.append('宝物线点火 t=%s（y%.2f）' % (b['tFirst'], b['tFirst'] / 96.0))
         sp = (b.get('spend') or {}).get('prod', 0)
-        bits.append('累计投入 %s 金' % fmt(sp))
+        bits.append('累计投入 %s 旧币' % fmt(sp))
         u = b.get('units') or {}
         bits.append('犁 %s（其余 %s）' % (u.get('houji', 0), sum(v for k, v in u.items() if k != 'houji')))
     if e:

@@ -1,0 +1,34 @@
+======================================================================
+批 W-B2 · 城外 4 + 资源 6 · 10 图
+======================================================================
+
+─── 存成：assets/icons/raw/atlas_ext1_src.png
+Refined realistic game art, post-apocalyptic wasteland strategy game aesthetic (salvaged rusty steel, cracked concrete, tarp and scrap-metal, old-world tech ruins), in the polish class of Rise of Kingdoms / high-end mobile strategy games.
+Icons for a post-apocalyptic wasteland strategy game. A 2x2 grid of four separate icons, each centered in its own quadrant, evenly spaced, no dividing lines.
+Top-left, Top-right, Bottom-left, Bottom-right in order:
+  1) farm —— 旧世水塔底盘上的集水槽与滤网、滴灌管、作物苗床（荒草绿点缀）、铁皮水桶
+  2) forest —— 几株耐荒的枯树/再生林、树桩、堆放的去皮圆木与树枝、旧伐木锯、林间碎石径
+  3) quarry —— 爆破采石坑、凿痕岩壁、碎石堆与铁皮粉碎机、钢钎与撬棍、临时钢管架
+  4) mine —— 矿洞（钢支撑拱）、矿石车与旧轨道、铁镐/钻机、矿渣堆、头灯
+isolated on a plain solid pure white background (#ffffff), no text, no watermark, no frame, no border, no ground shadow, centered composition, slight three-quarter isometric view, warm golden light from upper left, soft ambient occlusion, highly detailed material textures, crisp clean edges suitable for a small UI icon
+Negative: no people face, no logo, no signature, no anime, no cartoon, no glossy plastic
+
+─── 存成：assets/icons/raw/atlas_res1_src.png
+Refined realistic game art, post-apocalyptic wasteland strategy game aesthetic (salvaged rusty steel, cracked concrete, tarp and scrap-metal, old-world tech ruins), in the polish class of Rise of Kingdoms / high-end mobile strategy games.
+Icons for a post-apocalyptic wasteland strategy game. A 2x2 grid of four separate icons, each centered in its own quadrant, evenly spaced, no dividing lines.
+Top-left, Top-right, Bottom-left, Bottom-right in order:
+  1) grain —— 铁皮水箱与净水桶、封装粮袋、量斗、水滴点缀
+  2) wood —— 数段去皮圆木与板材堆、旧锯、木屑、绑扎钢带
+  3) stone —— 混凝土块/碎石堆、废弃路缘石、凿痕碎屑
+  4) iron —— 铁矿石块与锈铁锭、旧钢件、锈迹与金属反光
+isolated on a plain solid pure white background (#ffffff), no text, no watermark, no frame, no border, no ground shadow, centered composition, slight three-quarter isometric view, warm golden light from upper left, soft ambient occlusion, highly detailed material textures, crisp clean edges suitable for a small UI icon
+Negative: no people face, no logo, no signature, no anime, no cartoon, no glossy plastic
+
+─── 存成：assets/icons/raw/atlas_res2_src.png
+Refined realistic game art, post-apocalyptic wasteland strategy game aesthetic (salvaged rusty steel, cracked concrete, tarp and scrap-metal, old-world tech ruins), in the polish class of Rise of Kingdoms / high-end mobile strategy games.
+Icons for a post-apocalyptic wasteland strategy game. A 2x2 grid with TWO icons in the top row only (top-left, top-right); the bottom two quadrants stay empty pure white.
+Top-left, Top-right in order:
+  1) gold —— 旧世硬币与军规代币、金属弹药箱、结算用金属筹码
+  2) pop —— 废土平民一家（拼接布衣 + 护目镜）、背包与工具
+isolated on a plain solid pure white background (#ffffff), no text, no watermark, no frame, no border, no ground shadow, centered composition, slight three-quarter isometric view, warm golden light from upper left, soft ambient occlusion, highly detailed material textures, crisp clean edges suitable for a small UI icon
+Negative: no people face, no logo, no signature, no anime, no cartoon, no glossy plastic

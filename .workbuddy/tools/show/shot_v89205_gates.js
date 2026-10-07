@@ -3,7 +3,7 @@
    老板需求：「将领名称信息下的这行去掉，只保留装备栏的即可：🔮 宝具」
    ① 将领面板：信息区无挂件行（.gp-attach186 零节点）· 装备栏「🔮 宝具」入口在（title 含佩/换/卸）
    ② 真点入口 → 选择窗（未佩态：「当前未佩」+ 列表佩上）
-   ③ 真点「佩上」→ 再开窗：已佩态「当前：玉犀符」+ 卸下按钮（截图）
+   ③ 真点「佩上」→ 再开窗：已佩态「当前：避难所徽章」+ 卸下按钮（截图）
    ④ 真点「卸下」→ 清空 + 库存守恒 + 窗重开（当前未佩 · 卸下消失）
    ------------------------------------------------------------ */
 module.paths.unshift('C:/Users/18811/.workbuddy/binaries/node/workspace/node_modules');
@@ -109,12 +109,12 @@ var sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms);
     var off = document.querySelector('#modal-root [data-action="attach-off"]');
     return {
       noLine: document.querySelectorAll('.gen-pane .gp-attach186').length,
-      cur: t.indexOf('当前：') >= 0 && t.indexOf('玉犀符') >= 0,
-      eff: t.indexOf('统率 +6') >= 0,
+      cur: t.indexOf('当前：') >= 0 && t.indexOf('避难所徽章') >= 0,
+      eff: t.indexOf('指挥 +6') >= 0,
       off: !!off, offTxt: off ? off.textContent : '',
     };
   });
-  chk('③b 已佩态选择窗：回显「当前：玉犀符（统率 +6）」+ 卸下按钮（实为「' + w3b.offTxt + '」）',
+  chk('③b 已佩态选择窗：回显「当前：避难所徽章（指挥 +6）」+ 卸下按钮（实为「' + w3b.offTxt + '」）',
     w3b.cur && w3b.eff && w3b.off, JSON.stringify(w3b));
   chk('③c 已佩后面板信息区仍零挂件行（' + w3b.noLine + '）', w3b.noLine === 0, 'n=' + w3b.noLine);
   await p.screenshot({ path: E + 'v89205-pick.png' });

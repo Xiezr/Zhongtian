@@ -97,8 +97,8 @@
     return { ok: true, msg: '「' + item.name + '」×' + got + ' 已使用' + tail, count: got };
   };
 
-  /* 研究技巧（v63 · 老板：「守将属性只对当前城池起加成作用」）：
-     研究由**某城的研习所**发起，所以智谋加速取**发起城**的守将（不传则按当前城）。
+  /* 逆向工程（v63 · 老板：「守将属性只对当前城池起加成作用」）：
+     研究由**某城的研习所**发起，所以谋略加速取**发起城**的守将（不传则按当前城）。
      研究本身仍是全境科技（`s.queues.tech` 无 cityId、全境共享）——
      但"加成从哪来"必须能指到一座城，否则又变成全境加成。 */
   S.research = function (techId, cityId) {
@@ -116,19 +116,19 @@
     var _mt = GAME.mastery ? GAME.mastery('techPct', null) : 0;
     if (_mt > 0) time = Math.round(time / (1 + _mt));
     if (GAME.story) time = Math.round(time / GAME.story.researchMult()); // 名将羁绊/年号加速
-    /* v89.113（老板需求 3）：研究加速走**城主**智谋（守将不再管研究） */
+    /* v89.113（老板需求 3）：研究加速走**城主**谋略（守将不再管研究） */
     if (GAME.mayorBonus) {
       var _gcity = (cityId ? GAME.cityById(cityId) : null) || GAME.currentCity();
       var _mb = GAME.mayorBonus(_gcity);
       /* v89.164：曲线自带边界，二次截断（旧 min 1.5）退役 */
-      if (_mb.research) time = Math.round(time / (1 + _mb.research)); // 城主智谋：研究加速
+      if (_mb.research) time = Math.round(time / (1 + _mb.research)); // 城主谋略：研究加速
     }
     s.queues.tech.push({ techId: techId, cityId: city ? city.id : null,
       elapsed: 0, totalTime: Math.max(5, time) });
     return { ok: true, msg: '开始研究 ' + t.name };
   };
 
-  /* 研究技巧：-5%/级（v89.191：按**发起城**的科技读） */
+  /* 逆向工程：-5%/级（v89.191：按**发起城**的科技读） */
   S.studyMult = function (city) {
     return Math.min(0.6, S.techLevel('yanjiu', city) * 0.05);
   };
@@ -149,14 +149,14 @@
   /* ============================================================
    * v88 · 双轨装备（老板「改造型装备系统」）
    * ------------------------------------------------------------
-   * 「当前生效套」由 g.equipOn 决定（'sha' 军装 / 'ling' 改造，缺省 sha）。
+   * 「当前生效套」由 g.equipOn 决定（'sha' 机甲 / 'ling' 基因，缺省 sha）。
    * equipBagOf 是**唯一分流出口**：genEquipBonus / genSetBonus / setProgressOf /
    * 穿脱 / 一键最优 / 全部卸下全部读它 —— 切换只需改这一个键，
    * 六维（genAttrs）、体力上限（staMax）、战斗换算与界面显示自动同步。
    * ============================================================ */
   S.equipBagOf = function (g) {
     if (!g) return {};
-    /* v89：非君主恒军装（改造线君主专属 —— 闸门唯一，见 GAME.canCultivate） */
+    /* v89：非君主恒机甲（基因线君主专属 —— 闸门唯一，见 GAME.canCultivate） */
     return ((g.equipOn === 'ling' && GAME.canCultivate(g)) ? g.lingEquip : g.equip) || {};
   };
 
@@ -164,14 +164,14 @@
   S.genEquipBonus = function (g) {
     /* v52：**加上 sta（体力）** —— 老板：「体力都没加上套装的体力」。
        改前这个返回对象里没有 sta，也不读 item.sta，而 staMax() 只由
-       「基础 + 等级×资质 + 内政」派生 → 装备与套装写多少体力都无处生效（静默丢弃）。
+       「基础 + 等级×资质 + 治理」派生 → 装备与套装写多少体力都无处生效（静默丢弃）。
        这是一条"数据里有、消费点缺"的断链，属于本项目最典型的失效模式。 */
     var b = { tong: 0, nz: 0, yw: 0, zm: 0, atk: 0, def: 0, spd: 0, sta: 0 };
     if (!g) return b;
     /* v88：读**当前生效套**（双轨分流的唯一出口；改造侧 75% 量级写在数据里） */
     var bag = S.equipBagOf(g);
     var isLing = (g.equipOn === 'ling') && GAME.canCultivate(g);
-    /* 机修技巧：座驾装备属性 +5%/级（仅军装侧 —— 改造装备独立体系不吃它）
+    /* 座驾改装：座驾部件属性 +5%/级（仅机甲侧 —— 基因强化件独立体系不吃它）
        v89.86（派系 P1）：牧云庄「座驾装备属性 +20%」并入同一条乘链（唯一出口 sectBonus） */
     var horseMul = (1 + S.techBonus('horse')) * (1 + (GAME.sectBonus ? GAME.sectBonus('mountPct') : 0));
     for (var slot in bag) {
@@ -179,7 +179,7 @@
       var item = DATA.EQUIP[GAME.eqId ? GAME.eqId(inst) : inst];
       if (!item) continue;
       var mul = (slot === 'mount' && !isLing) ? horseMul : 1;
-      /* v79 · 百炼强化改**按件**：读这一件自己的 inst.enh（同名各件互不影响）。
+      /* v79 · 熔铸强化改**按件**：读这一件自己的 inst.enh（同名各件互不影响）。
          乘在「装备本身」这一层（套装加成不参与强化）。
          v89.211：乘数收敛到 GAME.eqEnhMulOf（唯一出口）—— 展示 equipDescOf 与评分
          equipScore 读同一份；改前只在这里现写一份、展示侧读原值（"强化了数字没动"）。 */
@@ -200,7 +200,7 @@
   S.genSetBonus = function (g) {
     var out = {};
     if (!g) return out;
-    var bag = S.equipBagOf(g);   /* v88：按当前生效套（改造装备 MVP 无套装，自动为空） */
+    var bag = S.equipBagOf(g);   /* v88：按当前生效套（基因强化件 MVP 无套装，自动为空） */
     var counts = {};
     for (var slot in bag) {
       var item = DATA.EQUIP[GAME.eqId ? GAME.eqId(bag[slot]) : bag[slot]];
@@ -269,13 +269,13 @@
   S.equipItem = function (genId, ref) {
     var s = GAME.state, g = null;
     s.generals.forEach(function (x) { if (x.id === genId) g = x; });
-    if (!g) return { ok: false, msg: '将领不存在' };
+    if (!g) return { ok: false, msg: '英雄不存在' };
     var chk = S.canEquip(g, ref);
     if (!chk.ok) return chk;
     var item = chk.item, inst = chk.inst;
-    /* v89：改造装备君主专属（各处 UI 已藏入口，这里是最后一道闸） */
-    if (item.ling && !GAME.canCultivate(g)) return { ok: false, msg: '改造装备乃君主专属，' + g.name + ' 无法穿戴' };
-    /* v88：按装备归属选袋 —— 改造装备入 g.lingEquip，军装入 g.equip（各自 12 槽） */
+    /* v89：基因强化件君主专属（各处 UI 已藏入口，这里是最后一道闸） */
+    if (item.ling && !GAME.canCultivate(g)) return { ok: false, msg: '基因强化件乃君主专属，' + g.name + ' 无法穿戴' };
+    /* v88：按部件归属选袋 —— 基因强化件入 g.lingEquip，机甲入 g.equip（各自 12 槽） */
     var bag = item.ling ? (g.lingEquip = g.lingEquip || {}) : (g.equip = g.equip || {});
     /* 同槽位旧件回背包（原物原样，强化随件走） */
     if (bag[item.slot]) s.inventory.push(bag[item.slot]);
@@ -296,7 +296,7 @@
     if (!it) return -1;
     var v = (it.tong || 0) * 3 + (it.yw || 0) * 3 + (it.zm || 0) * 3 + (it.nz || 0) * 3
       + (it.atk || 0) + (it.def || 0) + (it.sta || 0) * 0.2 + (it.spd || 0) * 4;
-    v += (it.lingv || 0) * 0.5;   /* v88：机能计入评分（改造侧同槽比优；军装 lingv=0 无影响） */
+    v += (it.lingv || 0) * 0.5;   /* v88：机能计入评分（改造侧同槽比优；机甲 lingv=0 无影响） */
     if (x && typeof x === 'object') {
       /* v89.211：属性部分按件乘（六维/攻防/速/体走 eqEnhMulOf、机能走 eqLingMulOf ——
          与结算同源）；套装档位加成 50 与强化无关（同 genEquipBonus 口径）。 */
@@ -311,9 +311,9 @@
   S.autoEquipBest = function (genId) {
     var s = GAME.state, g = null;
     s.generals.forEach(function (x) { if (x.id === genId) g = x; });
-    if (!g) return { ok: false, msg: '将领不存在' };
-    /* v88：只作用于**当前生效套**（军装模式挑军装，改造模式挑改造）；
-       v89：非君主恒军装 */
+    if (!g) return { ok: false, msg: '英雄不存在' };
+    /* v88：只作用于**当前生效套**（机甲模式挑机甲，基因模式挑基因）；
+       v89：非君主恒机甲 */
     var isLing = (g.equipOn === 'ling') && GAME.canCultivate(g);
     var bag = isLing ? (g.lingEquip = g.lingEquip || {}) : (g.equip = g.equip || {});
     s.inventory = s.inventory || [];
@@ -346,7 +346,7 @@
   S.unequipAll = function (genId) {
     var s = GAME.state, g = null;
     s.generals.forEach(function (x) { if (x.id === genId) g = x; });
-    if (!g) return { ok: false, msg: '将领不存在' };
+    if (!g) return { ok: false, msg: '英雄不存在' };
     var cnt = 0;
     var bag = S.equipBagOf(g);   /* v88：只卸当前生效套 */
     for (var slot in bag) {
@@ -354,7 +354,7 @@
       delete bag[slot];
       cnt++;
     }
-    if (!cnt) return { ok: false, msg: '该将领未着装备' };
+    if (!cnt) return { ok: false, msg: '该英雄未着装备' };
     GAME.log(g.name + ' 卸下全部装备（' + cnt + ' 件）', 'sys', 'staff');
     return { ok: true, msg: '已卸下 ' + cnt + ' 件' };
   };
@@ -380,7 +380,7 @@
   };
 
   /* ============================================================
-   * v89.100：**道具寄售**（按商城购买价 75% 回收为金）
+   * v89.100：**道具寄售**（按游商购买价 75% 回收为旧币）
    * ------------------------------------------------------------
    * 唯一出口组（UI / 推演脑都从这里走，别处不许另算价）：
    *   S.consignCfg()        —— 读 DATA.ITEM_SELL（rate 可调）
@@ -388,7 +388,7 @@
    *   S.consignList(opts)   —— 当前可寄售清单（{keep:[id]} 可指定保留）
    *   S.consignItem(id,n)   —— 寄售 n 件（n 省略 / 0 = 全部）
    *   S.consignAll(opts)    —— 一键全部寄售
-   * 语义：真金入账（与交易站卖货同记账口 s.res.gold），statBump('trades')。
+   * 语义：真币入账（与交易站卖货同记账口 s.res.gold），statBump('trades')。
    * ============================================================ */
   S.consignCfg = function () { return DATA.ITEM_SELL || { rate: 0.75 }; };
   S.consignPriceOf = function (id) {
@@ -430,8 +430,8 @@
     if (s.items[id] <= 0) delete s.items[id];
     s.res.gold = (s.res.gold || 0) + gold;
     GAME.statBump('trades', 1);
-    GAME.log('🎒 寄售「' + item.name + '」×' + qty + ' → 得金 ' + U.fmt(gold) + '（购买价 75% 回收）', 'sys', 'trade');
-    return { ok: true, msg: '寄售「' + item.name + '」×' + qty + '，得金 ' + U.fmt(gold), gold: gold, n: qty };
+    GAME.log('🎒 寄售「' + item.name + '」×' + qty + ' → 得旧币 ' + U.fmt(gold) + '（购买价 75% 回收）', 'sys', 'trade');
+    return { ok: true, msg: '寄售「' + item.name + '」×' + qty + '，得旧币 ' + U.fmt(gold), gold: gold, n: qty };
   };
   S.consignAll = function (opts) {
     var list = S.consignList(opts), sum = 0, n = 0, cnt = 0;
@@ -440,7 +440,7 @@
       if (r && r.ok) { sum += r.gold; n++; cnt += r.n; }
     }
     return { ok: n > 0, gold: sum, n: n, cnt: cnt,
-      msg: n > 0 ? ('寄售 ' + n + ' 种 / ' + cnt + ' 件，共得金 ' + U.fmt(sum)) : '没有可寄售的道具' };
+      msg: n > 0 ? ('寄售 ' + n + ' 种 / ' + cnt + ' 件，共得旧币 ' + U.fmt(sum)) : '没有可寄售的道具' };
   };
 
   /* opts.silent：批量消耗时只在最后写一条汇总，不要每条道具刷一行日志 */
@@ -451,14 +451,14 @@
 
     var ok = false, msg = '', gain = 0;   /* v89.171：gain 供 exp 分支回传「实得」（面额可能被上限截断） */
     if (item.type === 'jewel') {
-      /* 珠宝：赏赐将领忠诚 */
+      /* 珠宝：赏赐英雄忠诚 */
       var g = S._findGen(targetGenId);
-      if (!g) return { ok: false, msg: '请选择将领' };
+      if (!g) return { ok: false, msg: '请选择英雄' };
       g.loyalty = Math.min(100, g.loyalty + (item.loyalty || 5));
       ok = true; msg = g.name + ' 忠诚 +' + (item.loyalty || 5);
     } else if (item.type === 'attr_buff') {
       var g2 = S._findGen(targetGenId);
-      if (!g2) return { ok: false, msg: '请选择将领' };
+      if (!g2) return { ok: false, msg: '请选择英雄' };
       s.buffs = s.buffs || {}; s.buffs.gens = s.buffs.gens || {};
       s.buffs.gens[g2.id] = s.buffs.gens[g2.id] || {};
       /* v89.50（真 bug 修复）：**必须把 item.eff 一起存进去**。
@@ -486,7 +486,7 @@
       msg = item.name + ' 生效：' + item.desc
         + (effOld > effNew ? '（已有更强效果 +' + Math.round(effOld * 100) + '%，本次仅刷新时长）' : '');
     } else if (item.type === 'pop_boost') {
-      /* v89.99（老板「招揽令」）：人口增速道具 —— 与生产类同纪律：
+      /* v89.99（老板「招揽令」）：幸存者增速道具 —— 与生产类同纪律：
          **同类只取最强**（不叠加）+ **到期真消费**（popBoostMult 每次读 until）。 */
       s.buffs = s.buffs || {};
       var pEff = item.eff || 1;
@@ -497,25 +497,25 @@
       ok = true;
       msg = item.name + ' 生效：' + item.desc + (pStrong ? '（已有更强效果，本次仅刷新时长）' : '');
     } else if (item.type === 'pop_fill') {
-      /* v89.125（老板「迁入令改为每次使用增加 25% 上限人口的人数」）——
+      /* v89.125（老板「迁入令改为每次使用增加 25% 上限幸存者的人数」）——
          语义：**每次使用 +上限 × ratio（封顶上限）**，可多次叠加。
-         旧口径（v89.104）是"补到上限的 ratio"（人口 40% 时用只剩 10% 收益，
+         旧口径（v89.104）是"补到上限的 ratio"（幸存者 40% 时用只剩 10% 收益，
          越早用越亏）；新口径是"增加"（任何时点都是 +ratio，与"移民来投"字面一致）。
          与招揽令（加速度）分工：这张是**存量**（贵、立刻见效、用完就没）。 */
       var _c5 = GAME.currentCity();
       if (!_c5) return { ok: false, msg: '没有当前城池' };
-      /* v89.185（老板 6）：封顶 = **有效人口上限**（民心折算）——
-         民心低时移民来投自然也少（与人口增长目标同一把尺）。 */
+      /* v89.185（老板 6）：封顶 = **有效幸存者上限**（民心折算）——
+         民心低时移民来投自然也少（与幸存者增长目标同一把尺）。 */
       var _cap5 = GAME.effPopCapOf(_c5);
       var _ratio5 = item.ratio || 0.25;
       var _add5 = Math.floor(_cap5 * _ratio5);
       var _have = Math.floor((GAME.res(_c5).pop || 0));
-      if (_add5 <= 0) return { ok: false, msg: '本城尚无人口上限（先建造居所）' };
-      if (_have >= _cap5) return { ok: false, msg: '本城人口已满（无需移民）' };
+      if (_add5 <= 0) return { ok: false, msg: '本城尚无幸存者上限（先建造居所）' };
+      if (_have >= _cap5) return { ok: false, msg: '本城幸存者已满（无需移民）' };
       var _want = Math.min(_cap5, _have + _add5);
       GAME.res(_c5).pop = _want;
       ok = true;
-      msg = item.name + ' 生效：' + _c5.name + ' 人口 ' + U.fmt(_have) + ' → ' + U.fmt(_want)
+      msg = item.name + ' 生效：' + _c5.name + ' 幸存者 ' + U.fmt(_have) + ' → ' + U.fmt(_want)
         + '（+' + U.fmt(_want - _have) + ' = 上限 ' + U.fmt(_cap5) + ' 的 ' + Math.round(_ratio5 * 100) + '%）';
     } else if (item.type === 'build_cost') {
       s.buffs = s.buffs || {}; s.buffs.buildCost = { until: U.now() + (item.dur || 24) * 3600 * 1000, eff: item.eff };
@@ -530,7 +530,7 @@
       msg = ok.msg;
     } else if (item.type === 'exp') {
       var g3 = S._findGen(targetGenId);
-      if (!g3) return { ok: false, msg: '请选择将领' };
+      if (!g3) return { ok: false, msg: '请选择英雄' };
       /* v89.173（老板「不作等级限制」）：v89.171 的 capLv 培养上限与到线折算整条退役；
          闸门仍走**唯一出口** GAME.expItemGrantOf（余资质上限闸），grant = 固定面额全额。 */
       var gt3 = GAME.expItemGrantOf ? GAME.expItemGrantOf(g3, item) : { ok: true, grant: item.amount };
@@ -543,10 +543,10 @@
       msg = g3.name + ' 经验 +' + U.numText(got3, 0);
     } else if (item.type === 'stamina') {
       var g4 = S._findGen(targetGenId);
-      if (!g4) return { ok: false, msg: '请选择将领' };
+      if (!g4) return { ok: false, msg: '请选择英雄' };
       /* v28（需求 6）：**已经满了就拒绝**。原先只做 Math.min(100, …) 后照样返回 ok，
          于是"批量使用"会把整叠体力药烧光却一点没加（丹药、经验都有上限判断，体力漏了）。
-         v29（需求 11）：体力上限改为 GAME.staMax(g) —— 高级将领体力池更深，
+         v29（需求 11）：体力上限改为 GAME.staMax(g) —— 高级英雄体力池更深，
          一剂止血粉（10%）回的绝对量也更多。
          v66：**判据与回复量都改到"池子口径"**（staNow/staMax）——
          装备体力进上限后，`g.stamina` 存的是"等级那一份的余量"，
@@ -565,7 +565,7 @@
          按**上限百分比**回复、满了拒绝（不烧道具）。
          上限走唯一出口 GAME.energyMaxOf（六维公式，domain.js）。 */
       var g8 = S._findGen(targetGenId);
-      if (!g8) return { ok: false, msg: '请选择将领' };
+      if (!g8) return { ok: false, msg: '请选择英雄' };
       var enMx8 = GAME.energyMaxOf(g8);
       var enNow8 = GAME.energyNowOf(g8);
       if (enNow8 >= enMx8) {
@@ -576,24 +576,21 @@
       ok = true; msg = g8.name + ' 精力 +' + Math.round(healed8);
     } else if (item.type === 'perm') {
       var g5 = S._findGen(targetGenId);
-      if (!g5) return { ok: false, msg: '请选择将领' };
-      if ((g5.perm[item.attr] || 0) >= 50) return { ok: false, msg: '该将领此属性已达上限50' };
+      if (!g5) return { ok: false, msg: '请选择英雄' };
+      if ((g5.perm[item.attr] || 0) >= 50) return { ok: false, msg: '该英雄此属性已达上限50' };
       g5.perm[item.attr] = (g5.perm[item.attr] || 0) + 1;
       g5[item.attr] += 1;
-      ok = true; msg = g5.name + ' ' + { tong: '统率', nz: '内政', yw: '勇武', zm: '智谋' }[item.attr] + ' 永久+1';
+      ok = true; msg = g5.name + ' ' + { tong: '指挥', nz: '治理', yw: '武力', zm: '谋略' }[item.attr] + ' 永久+1';
     } else if (item.type === 'rank_up') {
-      /* v73（基因实验室）：资质药草 —— 校验与升档走唯一出口 GAME.rankUpUse */
+      /* v73（基因实验室）：资质血清 —— 校验与升档走唯一出口 GAME.rankUpUse */
       var g7 = S._findGen(targetGenId);
-      if (!g7) return { ok: false, msg: '请选择将领' };
+      if (!g7) return { ok: false, msg: '请选择英雄' };
       var ru7 = GAME.rankUpUse(g7, item);
       if (!ru7.ok) return ru7;
       ok = true; msg = ru7.msg;
-    } else if (item.type === 'seed') {
-      /* v78（老板需求 1）：种子**不直接使用** —— 播种在基因实验室里（政务厅 → 基因实验室） */
-      return { ok: false, msg: '种子要到基因实验室播种（政务厅 → 🧬 基因实验室）' };
     } else if (item.type === 'mount_buff') {
       var g6 = S._findGen(targetGenId);
-      if (!g6) return { ok: false, msg: '请选择将领' };
+      if (!g6) return { ok: false, msg: '请选择英雄' };
       s.buffs = s.buffs || {}; s.buffs.gens = s.buffs.gens || {};
       s.buffs.gens[g6.id] = s.buffs.gens[g6.id] || {};
       s.buffs.gens[g6.id][item.id] = { until: U.now() + 3600 * 1000, spd: item.amount };
@@ -606,7 +603,7 @@
     } else if (item.type === 'neigong') {
       /* v77 · 战技残卷：修习 / 精进（每将一门，10 重封顶；换书＝转修） */
       var g8 = S._findGen(targetGenId);
-      if (!g8) return { ok: false, msg: '请选择将领' };
+      if (!g8) return { ok: false, msg: '请选择英雄' };
       var nr = S._neigongUse(g8, item);
       if (!nr.ok) return nr;
       ok = true; msg = nr.msg;
@@ -629,9 +626,9 @@
         talis: '封存匣在出征「计略」或城中「布防」施展计谋时消耗',
         material: '材料在锻造间打造装备时消耗',
         blueprint: '图纸用于锻造间解锁打造',
-        essence: '辐能核心在「调校 · 改造装备」中消耗（将领面板 → 改造装备 → ☯ 调校）',
-        /* v89.186（老板 1）：遗物 = 将领挂件（打据点/名城缴获，在将领面板佩上） */
-        bao: '遗物是将领挂件：请到「将领面板」把遗物佩到将领身上（打据点/名城缴获）',
+        essence: '辐能核心在「调校 · 基因强化件」中消耗（英雄面板 → 基因强化件 → ☯ 调校）',
+        /* v89.186（老板 1）：遗物 = 英雄挂件（打据点/名城缴获，在英雄面板佩上） */
+        bao: '遗物是英雄挂件：请到「英雄面板」把遗物佩到英雄身上（打据点/名城缴获）',
       }[item.type];
       return { ok: false, msg: HINT || '该宝物暂不可直接使用' };
     }
@@ -648,7 +645,7 @@
   /* ============================================================
    * 宝箱开启（v77 · 老板「各级宝箱」）—— 唯一出口
    * ------------------------------------------------------------
-   * 奖励按档位 tier 掷：资源（入当前城、受仓储上限约束）· 黄金（货币不受限）·
+   * 奖励按档位 tier 掷：资源（入当前城、受仓储上限约束）· 旧币（货币不受限）·
    * 珠宝 · 材料（按档取系列品阶）· 图纸（tier3 小概率）· 征调令（tier3 小概率）。
    * 概率与区间都在这一个函数里，改平衡只改这里。
    * ============================================================ */
@@ -658,7 +655,7 @@
     var parts = [];
     function pick(a) { return a[Math.floor(Math.random() * a.length)]; }
     function rnd(a, b) { return a + Math.floor(Math.random() * (b - a + 1)); }
-    var RN = { grain: '粮', wood: '木', stone: '石', iron: '铁' };
+    var RN = { grain: '净水', wood: '生物质', stone: '电能', iron: '废钢' };
     /* 资源包（2 项随机资源） */
     var rt = { 1: [1500, 4000], 2: [4000, 12000], 3: [10000, 30000] }[tier] || [1500, 4000];
     ['grain', 'wood', 'stone', 'iron'].sort(function () { return Math.random() - 0.5; }).slice(0, 2)
@@ -671,11 +668,11 @@
         var got = R[k] - before;
         if (got > 0) parts.push(RN[k] + ' +' + U.fmt(got));
       });
-    /* 黄金 */
+    /* 旧币 */
     var gt = { 1: [1500, 5000], 2: [5000, 15000], 3: [12000, 40000] }[tier] || [1500, 5000];
     var gAmt = rnd(gt[0], gt[1]);
     R.gold = (R.gold || 0) + gAmt;
-    parts.push('金 +' + U.fmt(gAmt));
+    parts.push('旧币 +' + U.fmt(gAmt));
     /* 珠宝 */
     if (Math.random() < { 1: 0.35, 2: 0.5, 3: 0.6 }[tier]) {
       var jewels = DATA.ITEMS.filter(function (x) { return x.type === 'jewel'; });
@@ -724,7 +721,7 @@
     var def = null;
     (DATA.NEIGONG || []).forEach(function (x) { if (x.id === item.teach) def = x; });
     if (!def) return { ok: false, msg: '未知战技' };
-    var ATTRS = { tong: '统率', nz: '内政', yw: '勇武', zm: '智谋', spd: '速度' };
+    var ATTRS = { tong: '指挥', nz: '治理', yw: '武力', zm: '谋略', spd: '速度' };
     var maxLv = def.maxLv || 10;
     if (g.ng && g.ng.id === def.id) {
       if ((g.ng.lv || 0) >= maxLv) {
@@ -767,9 +764,9 @@
     if (item.once && q.boost[item.id]) {
       return { ok: false, msg: '该队列已用过「' + item.name + '」（每队列限 1 次）' };
     }
-    /* v89.179c（BOOST_CAP）：宝物与花金买时间**合并封顶** ——
+    /* v89.179c（BOOST_CAP）：宝物与花旧币买时间**合并封顶** ——
        一条队列**被跳过的时长**（q.boosted）最多 = totalTime × BOOST_CAP，
-       即道具/金币只能削 30%，剩下 70% 必须真等（掐死"无限募兵/一键瞬造"）。
+       即道具/旧币只能削 30%，剩下 70% 必须真等（掐死"无限募兵/一键瞬造"）。
        额度走唯一出口 GAME.boostRoomOf（与 S._boost / GAME.trainRush 同口径）。
        没余量就拒收（不消耗道具），有则按余量部分生效（超出部分作废）。 */
     var _room = GAME.boostRoomOf(q);
@@ -808,7 +805,7 @@
    * ------------------------------------------------------------ */
   S.gainExpByItem = function (itemId, genId, mode) {
     var s = GAME.state, g = S._findGen(genId), item = S.itemInfo(itemId);
-    if (!g) return { ok: false, msg: '将领不存在' };
+    if (!g) return { ok: false, msg: '英雄不存在' };
     if (!item || item.type !== 'exp') return { ok: false, msg: '该道具不是经验道具' };
     /* v66：到资质上限时直接拦住（否则循环里 useItem 会一直拒绝，
        外面只会看到一句含糊的"未能使用 XX"）。
@@ -852,7 +849,7 @@
      反而把左侧时间**加回去**，于是溢出的加速量会白送给本营的下一条队列。
      与 S.boostTrainQueue 的封顶口径对齐。
      v89.179c（BOOST_CAP）：封顶值不再是 totalTime，而是 totalTime × (1 − BOOST_CAP)
-     的**跳过量**额度（唯一出口 GAME.boostRoomOf）—— 道具 + 花金合并最多削 30%。 */
+     的**跳过量**额度（唯一出口 GAME.boostRoomOf）—— 道具 + 花旧币合并最多削 30%。 */
   S._boost = function (item) {
     var s = GAME.state;
     var target = item.target;
@@ -915,7 +912,7 @@
         used: (have && have.until > U.now()) ? (have.used || 0) : 0,   /* 续用叠加额度不叠加 */
       };
       return { ok: true, msg: '🏷️ 通商凭信已生效：' + (fcfg.durMin || 30) + ' 分钟内可免折抛售，'
-        + '免折额度 ' + U.fmt(s.buffs.mktFree.quota) + ' 金当量（物多价贱不打折）' };
+        + '免折额度 ' + U.fmt(s.buffs.mktFree.quota) + ' 旧币当量（物多价贱不打折）' };
     }
     return { ok: false, msg: '该加速暂不可用' };
   };
@@ -956,7 +953,7 @@
     if (s.cities.length < _cur203.city) {
       return { ok: false, msg: '需要 ' + _cur203.city + ' 座城池（打满本档领地上限）' };
     }
-    if ((s.res.gold || 0) < next.gold) return { ok: false, msg: '黄金不足（需 ' + U.fmt(next.gold) + '）' };
+    if ((s.res.gold || 0) < next.gold) return { ok: false, msg: '旧币不足（需 ' + U.fmt(next.gold) + '）' };
     /* 珠宝检查 */
     for (var j in next.jewel) {
       if ((s.items[j] || 0) < next.jewel[j]) return { ok: false, msg: '珠宝不足（缺' + (S.itemInfo(j) ? S.itemInfo(j).name : j) + '）' };
@@ -986,7 +983,7 @@
     return { ok: true, msg: '晋升 ' + DATA.RANK[s.rank].name + '！俸禄 ' + U.fmt(DATA.RANK[s.rank].salary) + '/h' };
   };
 
-  /* 威望俸禄（每小时黄金收入） */
+  /* 威望俸禄（每小时旧币收入） */
   S.salary = function () {
     var s = GAME.state;
     return DATA.RANK[s.rank || 0].salary || 0;

@@ -33,7 +33,7 @@ function chk(name, cond, extra) {
     var c = G.state.cities[0];
     G.ui._cityId = c.id;
     if (!G.state.map.grid) G.map.generate();      /* ⚠️ 实机地图惰性生成 —— 不生成则 tile()=null → "坐标越界" */
-    /* 校场 Lv5（标题显示"校场出征上限"）+ 一点兵 */
+    /* 练兵场 Lv5（标题显示"练兵场出征上限"）+ 一点兵 */
     c.cells.push({ build: { id: 'xiaochang', lvl: 5 }, pending: null });
     c.army = c.army || {};
     c.army.changqiang = 3200;
@@ -99,7 +99,7 @@ function chk(name, cond, extra) {
     };
   });
   console.log('    cap=' + r1.capTxt + ' · 溢出=' + r1.overflow + 'px · quad列数=' + r1.quadCols);
-  chk('标题 = 校场出征上限标签', /校场出征上限/.test(r1.capTxt), r1.capTxt);
+  chk('标题 = 练兵场出征上限标签', /练兵场出征上限/.test(r1.capTxt), r1.capTxt);
   chk('限制行容器在（无限制时为空）', r1.hasLimits, '内容="' + r1.limitsTxt.slice(0, 24) + '"');
   chk('可用道具 = 下拉框（在左列）', r1.hasItemSel && r1.itemsInLeft, 'options=' + r1.itemOpts);
   chk('预估在右列、位于派遣兵力之后', r1.hasEst && r1.estAfterTroops);

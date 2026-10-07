@@ -10,7 +10,7 @@
    用法：node .workbuddy/tools/audit/audit_v89208_systemmatrix.js
    数值侧另有现成尺子（本报告直接引用其结果，不重造）：
      node .workbuddy/tools/audit/ladder_audit.js      # 数值阶梯走不走得通
-     node .workbuddy/tools/audit/economy_audit.js     # 金币收入构成
+     node .workbuddy/tools/audit/economy_audit.js     # 旧币收入构成
      node .workbuddy/tools/audit/audit_v89134_tables.js  # 数据表卫生四查 */
 var fs = require('fs');
 var R = 'E:/Deepseekdb/';
@@ -25,8 +25,8 @@ function cnt(re, s) { return (String(s).match(re) || []).length; }
 var SYS = [
   { n: '城池建设', d: ['BUILDINGS', 'EXT_BUILDINGS', 'CITY_PLAN', 'MASTERY'], g: ['buildCityAt', 'canBuildCityAt', 'cityPlanOf'], u: ['openBuildModal', 'openCityPanel'], t: ['建造', '城池'] },
   { n: '科技研究', d: ['TECH', 'TECH_MAX_LV', 'GOLD_GATE'], g: ['techCost', 'canResearch', 'techCapOf'], u: ['techHTML', 'openTech'], t: ['科技'] },
-  { n: '人口民房', d: ['POP_CFG', 'POP_LABOR', 'CITY_YIELD'], g: ['planPopCapOf', 'popOf'], u: ['民房', 'pop'], t: ['民房', '人口'] },
-  { n: '种田秘境', d: ['FARM', 'SEED_DROP', 'ESSENCE_DROP'], g: ['farm'], u: ['秘境', 'farm'], t: ['秘境', '灵草'] },
+  { n: '幸存者居所', d: ['POP_CFG', 'POP_LABOR', 'CITY_YIELD'], g: ['planPopCapOf', 'popOf'], u: ['居所', 'pop'], t: ['居所', '幸存者'] },
+  { n: '基因实验室', d: ['FARM', 'SEED_DROP', 'ESSENCE_DROP'], g: ['farm'], u: ['基因实验室', 'farm'], t: ['基因实验室', '灵草'] },
   { n: '官府任免', d: ['MAYOR_CURVE', 'LOYALTY'], g: ['assignMayor', 'genSalaryOf'], u: ['openCourt', '官府'], t: ['城主', '守将'] },
   { n: '征兵练兵', d: ['AUTO_TRAIN', 'TROOPS'], g: ['autoTrain'], u: ['autoTrain', '征兵'], t: ['征兵'] },
   { n: '出征战斗', d: ['STANCES', 'SIEGE', 'DUEL', 'CLASH'], g: ['expedition', 'siegeScaleOf'], u: ['openExpModal', 'expRowHTML'], t: ['出征', '围攻'] },
@@ -35,7 +35,7 @@ var SYS = [
   { n: '野地流寇', d: ['WILD_DEFENSE', 'WILD_GUARD_LV', 'WILD_DECAY'], g: ['wildDefenseAt', 'wildGuardOf'], u: ['openWild'], t: ['野地', '流寇'] },
   { n: '运输补给', d: ['TRANSPORT'], g: ['transport'], u: ['运输'], t: ['运输'] },
   { n: '来犯防御', d: ['INVASION'], g: ['invasion'], u: ['invasion'], t: ['来犯', '失城'] },
-  { n: '将领招揽', d: ['HEROES', 'ENCOUNTERS', 'WILD_LORD_SURNAME'], g: ['jianghuRoll', 'recruit'], u: ['openJianghu', '客栈'], t: ['江湖', '招募'] },
+  { n: '英雄招揽', d: ['HEROES', 'ENCOUNTERS', 'WILD_LORD_SURNAME'], g: ['jianghuRoll', 'recruit'], u: ['openJianghu', '酒馆'], t: ['江湖', '招募'] },
   { n: '资质晋升', d: ['GEN_RANKS', 'RANKUP_AWARD', 'EXP_CURVE'], g: ['rankUpUse', 'genAttrs'], u: ['rankBadge', 'gen-rankup'], t: ['晋升', '资质'] },
   { n: '装备锻造', d: ['EQUIP', 'SETS', 'FORGE', 'ENHANCE'], g: ['enhance', 'forge'], u: ['openForge', 'openEnhance'], t: ['打造', '强化'] },
   { n: '宝具挂件', d: ['BAOJU', 'ATTACH_SLOTS', 'BAOJU_FUSE'], g: ['attachEquip', 'baojuFuse'], u: ['openAttachPick'], t: ['宝具'] },
@@ -45,10 +45,10 @@ var SYS = [
   { n: '爵位晋升', d: ['RANK', 'RANK_BONUS'], g: ['rankOf', 'cityCapOf'], u: ['rankBadge'], t: ['爵位'] },
   { n: '门派', d: ['SECTS', 'SECT_TASKS', 'SECT_JOIN'], g: ['sect'], u: ['sect', '门派'], t: ['门派'] },
   { n: '声望', d: ['REP_RULE', 'REP_PENALTY'], g: ['rep'], u: ['rep'], t: ['声望'] },
-  { n: '宝物收藏', d: ['COLLECT', 'JEWEL_LADDER', 'JEWEL_COST'], g: ['collectCondMetOf', 'collectBuySeries'], u: ['openCollect', '藏珍阁'], t: ['收藏', '藏珍'] },
+  { n: '宝物收藏', d: ['COLLECT', 'JEWEL_LADDER', 'JEWEL_COST'], g: ['collectCondMetOf', 'collectBuySeries'], u: ['openCollect', '陈列馆'], t: ['收藏', '藏珍'] },
   { n: '奇观', d: ['WONDER', 'WONDERS'], g: ['wonder'], u: ['wonder', '奇观'], t: ['wonder'] },
   { n: '季节天气', d: ['SEASONS', 'WEATHERS'], g: ['season', 'weather'], u: ['season'], t: ['季节', '天气'] },
-  { n: '道具材料', d: ['ITEMS', 'MATERIALS', 'BLUEPRINTS'], g: ['useItem', 'addItem'], u: ['openBag', 'openMarket'], t: ['道具', '商城'] },
+  { n: '道具材料', d: ['ITEMS', 'MATERIALS', 'BLUEPRINTS'], g: ['useItem', 'addItem'], u: ['openBag', 'openMarket'], t: ['道具', '游商'] },
   { n: '战报消息', d: ['MSG_KINDS', 'SCHEMES'], g: ['notify', 'moment'], u: ['openReport', 'openMessage'], t: ['战报'] },
   { n: '存档', d: ['DEFAULT_SETTINGS'], g: ['savePayload', 'adoptState'], u: ['openSettings', '存档'], t: ['存档'] },
   { n: '离线补偿', d: ['LOOP_GAP'], g: ['offlineCatchup', 'loopPulse'], u: ['loopPulse'], t: ['离线'] },
@@ -67,8 +67,8 @@ var SYS = [
 var SYS_CK = {
   '城池建设': /^build|^wall|^city-|^demolish|^cancel-build|^open-.*city|^rush-build/,
   '科技研究': /^tech/,
-  '人口民房': /^pop|^house/,
-  '种田秘境': /^farm|^seed|^plant|^harvest/,
+  '幸存者居所': /^pop|^house/,
+  '基因实验室': /^farm|^seed|^plant|^harvest/,
   '官府任免': /^mayor|^assign|^court|^salary|^gp-/,
   '征兵练兵': /^train|^conscript|^troop/,
   '出征战斗': /^exp|^march|^atk|^attack|^tactic|^sd-|^bt-|^battle/,
@@ -77,7 +77,7 @@ var SYS_CK = {
   '野地流寇': /^wild|^land-wild|^sweep|^clear/,
   '运输补给': /^transport|^cargo|^move-|^tm-/,
   '来犯防御': /^invasion|^defend|^garrison/,
-  '将领招揽': /^jianghu|^recruit|^hostel|^inn-|^sg-|^jh-/,
+  '英雄招揽': /^jianghu|^recruit|^hostel|^inn-|^sg-|^jh-/,
   '资质晋升': /^rank|^stat-|^gen-|^reroll|^artifact/,
   '装备锻造': /^forge|^enh|^eq-|^equip|^bag-eq|^salvage|^bp-|^quick-/,
   '宝具挂件': /^attach|^baoju|^act-/,

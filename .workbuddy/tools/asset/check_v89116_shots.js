@@ -45,7 +45,7 @@ FILES.forEach(function (n) {
     + 'KB　亮度 ' + s.lum.toFixed(1) + '　亮像素 ' + s.brightPct.toFixed(2) + '%');
   if (!ok) bad.push(f);
 });
-/* 分区：战场三列（左/中/右）+ 守城沙盘右缘城墙带 必须各有内容 */
+/* 分区：战场三列（左/中/右）+ 守城沙盘右缘围墙带 必须各有内容 */
 (function () {
   var png = load('v89116-battle.png');
   if (!png) return;
@@ -64,7 +64,7 @@ FILES.forEach(function (n) {
     var s2 = stat(png2, Math.round(png2.width * 0.80), Math.round(png2.width * 0.98),
       Math.round(png2.height * 0.20), Math.round(png2.height * 0.70));
     var ok2 = s2.brightPct > 0.3;
-    console.log((ok2 ? '  ✅ ' : '  ❌ ') + '守城沙盘**右缘城墙带**　亮像素 ' + s2.brightPct.toFixed(2) + '%');
+    console.log((ok2 ? '  ✅ ' : '  ❌ ') + '守城沙盘**右缘围墙带**　亮像素 ' + s2.brightPct.toFixed(2) + '%');
     if (!ok2) bad.push('def-wall-band');
   }
 })();

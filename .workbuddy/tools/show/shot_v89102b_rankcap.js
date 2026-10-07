@@ -3,7 +3,7 @@
  * ------------------------------------------------------------
  * 出三张图：① 官府面板（主城 · 爵位「大夫」→ 爵位解锁 +5）
  *          ② 官府面板（非主城 · 只报建筑上限 + 说明）
- *          ③ 建造面板（民房 Lv12 · 等级上限 Lv17 = 档位 12 + 爵位解锁 5）
+ *          ③ 建造面板（居所 Lv12 · 等级上限 Lv17 = 档位 12 + 爵位解锁 5）
  * 顺带量：面板正文是否溢出（老板硬规矩：弹窗内不做下拉）。
  * 用法：node .workbuddy/tools/show/shot_v89102b_rankcap.js
  * ============================================================ */
@@ -29,7 +29,7 @@ var exe = 'C:/Users/18811/AppData/Local/ms-playwright/chromium-1217/chrome-win64
     G.ui._cityId = c.id;
     ['grain', 'wood', 'stone', 'iron'].forEach(function (k) { c.res[k] = 5e7; });
     c.res.gold = 5e6;
-    /* 官府满 12（旧硬顶）· 民房 12 级站住上限，才看得出"爵位解锁"这一层 */
+    /* 官府满 12（旧硬顶）· 居所 12 级站住上限，才看得出"爵位解锁"这一层 */
     c.cells.forEach(function (x) {
       if (x.build && x.build.id === 'guanfu') x.build.lvl = 12;
       if (x.build && x.build.id === 'minfang') x.build.lvl = 12;

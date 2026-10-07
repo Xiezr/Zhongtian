@@ -3,11 +3,12 @@
 > **用途**：全量位图重绘的生成规格书。**本文件是 v89.222 起的新规格**；汉代版
 > `docs/AI图标生成清单.md` 保留作**史料**，不再用于生成。
 > 配套：`.workbuddy/tools/asset/wasteland_batches.json`（批次唯一真相源）·
-> `docs/图标素材注册表.md`（落位台账）· `docs/图标适配流程.md`（接入流程）。
+> `docs/图标素材注册表.md`（落位台账）· `docs/图标适配流程.md`（接入流程）·
+> **`docs/美术换皮方法论.md`（可复用方法论 · 流程/踩坑/门禁）**。
 >
 > **背景**：v89.214/216/217 已把**文案层**与**矢量回退层**换到「废土·余烬纪元」，
 > 但**最高优先级的位图层**（UI 优先显示）仍是汉代风 —— 本规格即重绘这批 103 张位图。
-> **同名原地覆盖**（不改文件名，零 JS 改动），驱动见 `gen/wasteland_batch.js`。
+> **同名原地覆盖**（不改文件名，零 JS 改动），驱动见 `gen/wasteland_batch.py`。
 
 ---
 
@@ -93,7 +94,7 @@ highly detailed material textures, crisp clean edges suitable for a small UI ico
 | shuyuan | 研习所 | 水泥/砖混两层、钢窗、门内可见**黑板与旧书卷**、门口回收钢管旗杆挂信号布 |
 | junying | 训练营 | 数顶帆布军帐 + 拼接板棚、铁管拒马、**军旗**、武器架（铁管矛/改装枪）、沙袋掩体 |
 | xiaochang | 练兵场 | 靶标（锈铁人形靶）、武器架、水泥指挥台、沙地、**晨练场旗**、锈鼓/警钟 |
-| shichang | 交易站 | 帆布摊位 + 拼接板棚、铁皮货箱、地秤、**招牌幌子**、粮食袋、油桶货堆 |
+| shichang | 交易站 | 帆布摊位 + 拼接板棚、铁皮货箱、地秤、**招牌幌子**、净水袋、油桶货堆 |
 | cangku | 货仓 | 波纹铁皮大仓、集装箱门、**钢架货垛**、油桶、封条与挂锁、仓号牌 |
 | chengqiang | 围墙 | 水泥/钢板墙断面、铁丝网与垛口、钢制闸门、岗楼、**探照灯与信号旗** |
 | yizhan | 补给站 | 钢架门架、帆布顶棚、油桶与补给箱、**挂式前灯与木轮/旧轮**、草料/物资堆 |
@@ -101,7 +102,7 @@ highly detailed material textures, crisp clean edges suitable for a small UI ico
 | majiu | 车库 | 钢架敞棚、长工作台、油桶、**一架摩托剪影与挂墙工具**、轮胎堆 |
 | kezhan | 酒馆 | 两层拼接板楼、**霓虹/灯箱招牌**、帆布遮阳棚、门前旧桌凳、串灯 |
 | zhaoxianguan | 招募站 | 水泥门楼 + 张贴告示栏、钢梯、两侧**信号灯**、旧世牌匾、排队栏 |
-| honglusi | 派系驻地 | 钢制门坊、演武/训练场、武器架、**派系旗帜**、水泥台阶、涂鸦墙 |
+| honglusi | 基因实验室 | 钢制门坊、演武/训练场、武器架、**派系旗帜**、水泥台阶、涂鸦墙 |
 | tiejiangpu | 锻造间 | 通红炉火、铁砧、鼓风机、水槽、重锤与夹钳、悬挂的**动力刃半成品** |
 | gongjiangzuofang | 机工坊 | 钢工作台、电锯/焊机/扳手、**半成品车轮与引擎件**、油污、堆放钢材 |
 
@@ -109,12 +110,15 @@ highly detailed material textures, crisp clean edges suitable for a small UI ico
 
 ## 四、城外资源地 4 种（方式 = 文生图 t2i）
 
+> **v89.237 重制批**：形制按 v89.229 新身份重写（净化厂/水培温室/发电站/电弧熔炉）——
+> 旧批形制（集水场/木料场/碎石场/废铁场）作废；prompt 重出 → `docs/出图prompt/W-B2-城外4+资源6.txt`。
+
 | id | 现名 | 废土形制描述 |
 |---|---|---|
-| farm | 集水场 | 旧世水塔底盘上的**集水槽与滤网**、滴灌管、作物苗床（荒草绿点缀）、铁皮水桶 |
-| forest | 木料场 | 几株耐荒的枯树/再生林、树桩、堆放的**去皮圆木与树枝**、旧伐木锯、林间碎石径 |
-| quarry | 碎石场 | 爆破采石坑、凿痕岩壁、**碎石堆与铁皮粉碎机**、钢钎与撬棍、临时钢管架 |
-| mine | 废铁场 | 矿洞（钢支撑拱）、**矿石车与旧轨道**、铁镐/钻机、矿渣堆、头灯 |
+| farm | 净化厂 | 旧世水塔与滤罐阵列、**沉降过滤池（净水蓝点缀）**、阀门管道与压力泵、锈铁储水罐 |
+| forest | 水培温室 | **钢架玻璃温室（碎玻璃与帆布补丁）**、多层水培架（绿苗点缀）、生长灯组、营养液罐与塑管 |
+| quarry | 发电站 | 旧世电厂厂房与冷却塔、**变压器与瓷瓶阵列**、高压输电塔架、蓄电池组（电火花点缀） |
+| mine | 电弧熔炉 | **电弧熔炼炉（电极臂与橙红熔光）**、悬吊加料斗与废钢堆、钢水罐与轨道、火花四溅与烟囱管线 |
 
 ## 五、资源 6 种
 
@@ -123,35 +127,58 @@ highly detailed material textures, crisp clean edges suitable for a small UI ico
 | grain | 净水/粮 | **铁皮水箱与净水桶**、封装粮袋、量斗、水滴点缀 |
 | wood | 木料 | 数段去皮圆木与板材堆、旧锯、木屑、绑扎钢带 |
 | stone | 建材 | 混凝土块/碎石堆、废弃路缘石、凿痕碎屑 |
-| iron | 废铁 | 铁矿石块与**锈铁锭**、旧钢件、锈迹与金属反光 |
+| iron | 废铁 | 铁矿石块与**锈废铁**、旧钢件、锈迹与金属反光 |
 | gold | 货币 | **旧世硬币与军规代币**、金属弹药箱、结算用金属筹码 |
-| pop | 人口 | 废土平民一家（拼接布衣 + 护目镜）、**背包与工具**（非深衣） |
+| pop | 幸存者 | 废土平民一家（拼接布衣 + 护目镜）、**背包与工具**（非深衣） |
 
 ## 六、兵种 18 种（方式 = 文生图 t2i）
 
-统一基线：**焊接废钢拼装甲 + 护目镜/面罩 + 绑带 + 战靴**，差异体现在**武器、载具与姿态**。
-（v89.216 调色板已定 **马 → 机车**。）
+### 6.1 统一风格锚点（**所有兵种图集共用**）
+**末日废土机械机甲风**——不是骑手、不是生物，而是**回收工业钢拼装的步行机甲（war-rig）**：
+液压肢、外露活塞、焊接装甲板、粗粝低饱和军绿/铁灰色调。
+```
+Refined realistic post-apocalyptic mecha unit design, unified salvaged-steel mecha aesthetic
+(war-rig / walking-machine silhouettes built from reclaimed industrial steel, hydraulic limbs,
+exposed pistons and armor plating), gritty desaturated military color.
+```
+> 为什么强调"机甲"：此前 prompt 写"骑手 + 摩托"会混出真人骑士与摩托两种画风；
+> 机甲方能让 18 张**风格统一**。
 
-| id | 现名 | 差异点 |
-|---|---|---|
-| minfu | 搬运工 | 拼接布衣、扁担与铁皮箱、无甲 |
-| yibing | 民兵 | 简易拼装钢甲、锈铁刀 + 木板盾 |
-| chihou | 侦察兵 | 轻装 + 护目镜、**背负电台与望远镜**、疾行姿态 |
-| changqiang | 长矛手 | 拼装甲、**铁管长矛**、直立持握 |
-| daodun | 盾卫 | 拼装甲、锈铁刀 + **钢制防暴盾**（涂装警示条） |
-| gongjian | 弩手 | 轻甲、**改装弩/撬棍弓**、箭袋 |
-| qingji | 摩托游骑 | 轻装甲骑手 + **摩托**（两轮/车架/油箱/前灯）、短矛 |
-| tieji | 装甲战车 | 重拼装甲 + **履带装甲车**（铆钉装甲板）、长枪管 |
-| zhouche | 运输车 | **履带运输车** + 车斗物资、短刀 |
-| chuangnu | 重弩车 | **车载大型重弩**（钢架 + 绞盘）、两名操作兵 |
-| chongche | 破门车 | **钢制破门车**（撞木 + 装甲顶棚）、推车兵 |
-| toudan | 迫击炮 | **迫击炮组**（炮管 + 底座 + 炮弹）、射手姿态 |
-| qingzhoubing | 旧军残部 | 残存制式装甲、长枪、**褪色军旗披风**、队列感 |
-| tengjiabing | 防暴甲兵 | 防暴拼装甲 + 面罩、警棍/链锯棍 |
-| tuqibing | 突击摩托 | **快速摩托** + 骑手、长柄兵器 |
-| hubaoqi | 王牌战车 | **重装战车** + 兽纹涂装、精甲、护目面罩带兽纹 |
-| xiliangtieqi | 重甲战车 | 重装甲战车、长炮管、附加装甲板 |
-| nanjiangxiangbing | 变异巨兽 | **披甲变异巨兽**（象/巨兽）+ 背上射手与弩 |
+### 6.2 五阶递进（**图集必须按阶分组**，不跨阶拼图集）
+按 `DATA.TROOPS` 的 `unlock` 门槛与数值强弱分 5 阶。**后一阶在前一阶基础上叠加**：
+更多装甲 → 更大液压 → 更重武器 → 更精良涂装。
+
+| 阶 | 名称 | 配方（递进） | 兵种 |
+|---|---|---|---|
+| **T1** | 拾荒者阶 | 裸露废钢骨架、手工焊补板、外露活塞、单件拾荒武器、几乎无甲 | 板车 · 步行机 |
+| **T2** | 制式阶 | 统一焊接钢板、轮廓规整、铆钉板、一件主武器 | 侦察机(侦察单元) · 长矛机 · 盾卫机 |
+| **T3** | 装甲阶 | 关节与躯干加**叠层装甲**、加强肢作动器、精良武器座 | 弩炮机(导弹车) · 游骑机(伏击车) · 运输机 |
+| **T4** | 重装阶 | **厚叠甲**、重型液压肢、超规格武器、明显加固骨架 | 装甲机 · 重弩机 · 破门机 · 防暴机 |
+| **T5** | 原型阶 | 精锐过度装甲、**独有徽记/涂装**、巨型武器、流线强机 | 狂猎机 · 武装机 · 机甲机 · 自行火炮弹机 · 泰坦机 |
+
+**逐 id 形制**（喂 prompt 的核心句）：
+
+> v89.229（兵种重构 18→14）：下表 id / 现名 / 位图文件名已随换代更新（每个新 id 一张图，
+> 承原型形制 —— 原 18 张里未被继承的 4 张：`ai_yibing.png`·`ai_chongche.png`·`ai_tieji.png`·`ai_qingzhoubing.png`）。
+
+| id | 现名 | 阶 | 机甲形制 |
+|---|---|---|---|
+| banche | 板车 | T1 | 粗糙拾荒搬运机：裸露废钢架、手推车轮、单驾驶舱、无甲 |
+| buxingji | 步行机 | T1 | 粗糙步行机：裸钢架、焊补装甲板、手持拾荒武器；线列感（方正躯干、长钢矛、液压活塞臂） |
+| zhencha | 侦察单元 | T2 | 高速侦察步行机：轻架、高天线桅、传感吊舱、细液压腿 |
+| dunwei | 盾卫 | T2 | 防暴步行机：躯干防暴板、焊接弹道盾、警示条纹 |
+| daodanche | 导弹车 | T3 | 导弹步行机：肩载弩炮/发射架、瞄准光学、装甲弹药鼓 |
+| fujiche | 伏击车 | T3 | 两轮腿侦察机甲（下半身融合摩托）、轻甲、短矛 |
+| yunshu | 运输平台 | T3 | 货运搬运机甲：大号敞篷货斗、重腿、起重绞盘 |
+| zhuzhan | 主战机甲 | T4 | 重型主战机甲：多层厚钢甲、履带下腿、长炮管；超重突击型（堆叠烧蚀甲、巨大骨架） |
+| wuren | 无人轰炸机 | T4 | 攻城机甲：巨型肩载弩炮 + 绞盘、加固三脚重腿 |
+| huopao | 自行火炮 | T4 | 巨型撞门机甲/自行火炮机甲：装甲撞头、后坐支架、巨型炮管、弹药斗 |
+| dianci | 电磁盾卫 | T4 | 防暴机甲：全防暴装甲壳、叠层弹道板、警棍 |
+| kuanglie | 狂猎 | T5 | 旧军制式机甲（斑驳制式甲、团旗幡、队列感）+ 王牌涂装（兽纹、张扬层甲、昂立机姿） |
+| wuzhi | 武装直升机 | T5 | 突击机甲：摩托融合快腿、胸炮、长兵 |
+| taitan | 泰坦机甲 | T5 | 巨兽机甲：巨塔级底盘、粗壮肢体、背载火炮 |
+
+**负向词**（机甲专用，追加）：`no people face, no glossy anime mecha, no neon sci-fi, no cartoon, no ground shadow`。
 
 ## 七、材料 24 种（6 系 × 4 品阶；方式 = 文生图 t2i）
 
@@ -159,18 +186,18 @@ highly detailed material textures, crisp clean edges suitable for a small UI ico
 
 | 系 | 形状基线 | 品阶递进（现名） |
 |---|---|---|
-| iron 铁 | 铁锭 / 矿石 | 粗铁(粗铸) → 精铁(细锻) → **钢锭**(流水纹) → 陨铁(暗银星纹) |
+| iron 铁 | 废铁 / 矿石 | 粗铁(粗铸) → 精铁(细锻) → **钢锭**(流水纹) → 陨铁(暗银星纹) |
 | wood 木 | 圆木段 / 板材 | 松木 → 硬木(细密) → 铁木(深褐) → **复合材**(科技层压纹) |
 | leather 革 | 皮张卷 | 生皮 → 熟皮(硝制) → 硬甲皮(厚鳞) → **变异皮**(异色鳞光) |
-| sinew 筋 | 盘绕筋束 | 兽筋 → 牛筋 → 巨兽筋(粗韧) → **泰坦筋**(暗金光泽) |
-| jade 玉 | 玉璧 / 宝石 | 河石 → 青玉 → 羊脂玉(温润) → 昆山玉(内蕴光华) |
-| silk 丝 | 布卷 | **帆布**(粗纤) → 细布(平滑) → 织锦(织纹) → 云缎(金线云纹) |
+| sinew 筋 | 盘绕筋束 | 兽筋 → 牛筋 → 巨兽筋(粗韧) → **仿生腱**(暗金光泽) |
+| jade 玉 | 玉璧 / 宝石 | 碎晶 → 青玉 → 纯晶(温润) → 源晶(内蕴光华) |
+| silk 丝 | 布卷 | **帆布**(粗纤) → 细布(平滑) → 高强纤维(织纹) → 光学纤维(金线云纹) |
 
 > id 与现名对照：`fatie 粗铁 · jingtie 精铁 · bintie 钢锭 · yuntie 陨铁 · songmu 松木 ·
 > nanmu 硬木 · tanmu 铁木 · jianmu 复合材 · cuge 生皮 · xiaoge 熟皮 · xige 硬甲皮 ·
-> jiaoge 变异皮 · shoujin 兽筋 · niujin 牛筋 · jiaojin 巨兽筋 · longjin 泰坦筋 ·
-> heshi 河石 · qingyu 青玉 · yangzhi 羊脂玉 · kunshan 昆山玉 · mabu 帆布 · xijuan 细布 ·
-> shujin 织锦 · yunjin 云缎`
+> jiaoge 变异皮 · shoujin 兽筋 · niujin 牛筋 · jiaojin 巨兽筋 · longjin 仿生腱 ·
+> heshi 碎晶 · qingyu 青玉 · yangzhi 纯晶 · kunshan 源晶 · mabu 帆布 · xijuan 细布 ·
+> shujin 高强纤维 · yunjin 光学纤维`
 
 ## 八、装备 12 部位（现名见 `DATA.EQUIP_SLOT_NAMES`）
 
@@ -211,6 +238,7 @@ highly detailed material textures, crisp clean edges suitable for a small UI ico
 |---|---|---|---|
 | tech 科技 | 24 | `DATA.TECH`（`js/data.js:1170`）**无 icon 字段**，界面纯文字 → 补 `ai_tech_<id>.png` | `data.js` 加 icon + `icons.js` 加 `ICON.forTech` + 科技面板接线 |
 | collect 收藏 | 18 | `DATA.COLLECT.series[].icon` 现 emoji → 换 `ai_collect_<seriesid>.png` | `data.js` 换 icon + 渲染处 |
+| item 物品类型（补） | 12 | `verify_wasteland.js` 实测：物品 23 类里 **12 类无专图**（talis/essence/pop_boost/pop_fill/rank_up/seed/chest/neigong/corvee/material/energy/bao → 走 emoji/兜底），补 `ai_item_<type>.png` | 无需改代码（`bmOf('item', type)` 自动命中） |
 
 科技图标形制：**旧世科技/工程符号化装置**（种植=集水/水培、冶炼=熔炉、侦察=雷达、城防=堡垒图…），统一废土材质 + 单色信号点缀。
 
@@ -222,7 +250,7 @@ highly detailed material textures, crisp clean edges suitable for a small UI ico
 |---|---|---|---|---|---|
 | W-B1 | 建筑 16 | 16 | 4 | **i2i** + 贴旗 | 待办（试点） |
 | W-B2 | 城外 4 + 资源 6 | 10 | 3 | t2i | 待办 |
-| W-B3 | 兵种 18 | 18 | 5 | t2i | 待办（试点） |
+| W-B3 | 兵种 18 | 18 | 5（按 T1~T5 阶分组） | t2i（统一机甲风） | 待办（试点） |
 | W-B4 | 材料 24 | 24 | 6 | t2i | 待办 |
 | W-B5 | 装备 12 + 物品 11 | 23 | 6 | t2i | 待办 |
 | W-T1 | 地形 7 | 7 | — | crop | 待办（需参考图） |
@@ -275,11 +303,15 @@ python .workbuddy/tools/asset/split_atlas.py <图集.png> A|B|C|D [--install]
 python .workbuddy/tools/asset/flag_bldg_icons.py
 
 # ④ 批驱动：一次跑一批图集 + 装前门禁（见 §十四）
-node .workbuddy/tools/gen/wasteland_batch.js --batch W-B1 --check   # 只体检
-node .workbuddy/tools/gen/wasteland_batch.js --batch W-B1 --apply   # 体检过才装
+python .workbuddy/tools/gen/wasteland_batch.py --list            # 看批次
+python .workbuddy/tools/gen/wasteland_batch.py --batch W-B1 --check   # 只体检（切分到暂存，不装）
+python .workbuddy/tools/gen/wasteland_batch.py --batch W-B1 --apply   # 批级判据全过才装
 
 # ⑤ 重生成登记表（文件名不变则应逐字节相同）
 node .workbuddy/tools/gen/gen_bitmaps.js
+
+# ⑥ 素材层校验（穷举业务 id：谁由位图提供、谁退回矢量；登记表 vs 磁盘）
+node .workbuddy/tools/verify_wasteland.js
 ```
 
 **贴图**（地形/城池/据点，走 crop 非图集）：改 `crop_terrain.py` / `crop_city.py` 的
@@ -311,11 +343,42 @@ node .workbuddy/tools/gen/gen_bitmaps.js
 
 | 批次 | 状态 | 负责人 |
 |---|---|---|
-| W-B1 建筑 16 | 待生成 | 【外部】老板 → 切图入库 |
-| W-B3 兵种 18 | 待生成 | 【外部】老板 → 切图入库 |
-| W-B2/B4/B5 | 待办 | 试点通过后 |
-| W-T1/T2/T3 贴图 | 待办（需参考图） | 试点通过后 |
+| W-B1 建筑 16 | ✅ 基础版定稿（16/16 位图在册）；5/10 级档（W-B6/W-B7）未出——缺档自动回退基础图 | — |
+| W-B2 城外 4 | 🚧 **重制中**（v89.237 形制按新身份重写 · prompt 已出） | 【外部】老板 → 切图入库 |
+| W-B2 资源 6 · W-B4 材料 24 · W-B5 装备/物品 23 | 待办（旧版图在册） | 待定 |
+| W-B3 兵种 | ✅ 定稿（v89.229 重构 18→14 · 14/14 位图在册） | — |
+| W-T1 地形 7 · W-T3 据点 1 | ✅ 完成（在册） | — |
+| W-T2 城池 4 | ⏸ v89.237 移出 · 待重制（回收站/git/备份三处可回） | 【外部】老板 → 切图入库 |
 | 阶段 6 新增（科技 24 / 收藏 18） | 待办 | 全量后 |
+
+> 上表按 v89.237 会话实测刷新（`verify_wasteland.js` + 在册清点）。
 
 > **诚实缺口**：本文件**不含任何像素** —— 生成在外部工具（WorkBuddy image-edit / 即梦）。
 > 本文件的价值是"喂什么 prompt + 出什么规格 + 怎么验"，把返工挡在装机之前。
+
+---
+
+## 三补、建筑**等级分档**（v89.227 · 5级/10级更雄伟）
+
+老板：「为城内建筑组图设置升级版，5级、10级时建筑更雄伟，外观更整洁。」
+
+**三档**（`js/icons.js` `ICON.bmBuildingTier(id, lvl)`）：
+
+| 档 | 等级 | 素材文件 | 外观 |
+|---|---|---|---|
+| 基础 | Lv1–4 | `ai_<id>.png` | 现状（饱经风霜） |
+| 升级 | Lv5–9 | `ai_<id>_t2.png` | **更雄伟**：加一层/加固围墙、加高塔楼；**更整洁**：统一甲板、料码整齐、少锈 |
+| 满级 | Lv10–12 | `ai_<id>_t3.png` | **最雄伟**：多层防御、大门楼、更多塔楼；**最整洁**：如新甲板、精英纹饰 |
+
+**降级安全**：`_t2`/`_t3` **未出图时自动回退基础图**（零破坏）。图出好后放进 `assets/icons/ui/` 并跑 `gen_bitmaps.js` 即生效。
+
+**出图批次**：`W-B6`（t2）/ `W-B7`（t3），各 4 张 2×2 图集（16 座建筑）。
+```
+python .workbuddy/tools/gen/wasteland_prompts.py --batch W-B6   # 升级版 prompt
+python .workbuddy/tools/gen/wasteland_prompts.py --batch W-B7   # 满级版 prompt
+```
+出图存 `assets/icons/raw/atlas_<n>_t2_src.png`（及 `_t3`），再：
+```
+python .workbuddy/tools/gen/wasteland_batch.py --batch W-B6 --check
+python .workbuddy/tools/gen/wasteland_batch.py --batch W-B6 --apply
+```

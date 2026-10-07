@@ -147,7 +147,7 @@ var GROUND = [0x8b, 0x9a, 0x78];
     var avg = [0, 1, 2].map(function (k) {
       return Math.round(acc.reduce(function (t, c) { return t + c[k]; }, 0) / n);
     });
-    /* 强调色 = 最饱和四分位的均值 —— 族旗/彩绘都在这里（均值口径抓不到 10% 的小色块） */
+    /* 强调色 = 最饱和四分位的均值 —— 材质高光/彩绘都在这里（均值口径抓不到 10% 的小色块） */
     var bySat = acc.slice().sort(function (x, y) {
       return rgb2hsl(y[0], y[1], y[2])[1] - rgb2hsl(x[0], x[1], x[2])[1];
     }).slice(0, Math.max(1, Math.round(n * 0.25)));
@@ -203,7 +203,7 @@ var GROUND = [0x8b, 0x9a, 0x78];
     if (d < gmn) { gmn = d; gw = k; }
     console.log('  ' + k.padEnd(6) + d.toFixed(1) + (d < 12 ? '  <<< 糊进地面' : ''));
   });
-  console.log('\n-- 屏幕实测：**强调色**（最饱和四分位 = 族旗/彩绘）族间 ΔE00 --');
+  console.log('\n-- 屏幕实测：**强调色**（最饱和四分位 = 材质高光/彩绘）族间 ΔE00 --');
   var amn = 999, apair = '';
   for (var a1 = 0; a1 < keys.length; a1++) {
     for (var a2 = a1 + 1; a2 < keys.length; a2++) {

@@ -172,7 +172,7 @@ function chk(name, cond, extra) {
   var v6 = await p.evaluate(function () {
     var G = window.GAME;
     var c = G.currentCity();
-    /* 官府先升到 5 级 —— 否则非官府建筑上限被总闸压成 1（民房升不了，无升级键） */
+    /* 官府先升到 5 级 —— 否则非官府建筑上限被总闸压成 1（居所升不了，无升级键） */
     G.govCellsOf(c.col, c.row).forEach(function (i) {
       if (c.cells[i].build) c.cells[i].build.lvl = Math.max(5, c.cells[i].build.lvl || 1);
     });

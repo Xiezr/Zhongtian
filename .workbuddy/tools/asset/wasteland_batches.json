@@ -1,5 +1,5 @@
 {
-  "_comment": "废土·余烬纪元 · 位图替换批次唯一真相源。驱动 gen/wasteland_batch.js 与 docs/AI图标生成清单-废土版.md 共读此表。每个图集自带 group（决定输出前缀）；文件名为改前名，原地同名覆盖，不改名。",
+  "_comment": "废土·余烬纪元 · 位图替换批次唯一真相源。驱动 gen/wasteland_batch.py 与 docs/AI图标生成清单-废土版.md 共读此表。每个图集自带 group（决定输出前缀）；文件名为改前名，原地同名覆盖，不改名。",
   "version": "v89222",
   "style": "废土·余烬纪元",
   "dir": "assets/icons/ui/",
@@ -21,7 +21,7 @@
       "label": "建筑 16",
       "method": "i2i",
       "count": 16,
-      "note": "坑区：i2i 保轮廓 + ≥4 材质；切分后必贴族旗(flag_bldg_icons.py)；装前色散门禁 ≥15°",
+      "note": "坑区：i2i 保轮廓 + ≥4 材质；切分后不贴旗（v89.225 族旗退役 · gate③ 逐张无旗）；装前色散门禁 ≥15°",
       "atlases": [
         {
           "atlas": "atlas_A_src.png",
@@ -31,7 +31,8 @@
             "honglusi",
             "junying",
             "chengqiang"
-          ]
+          ],
+          "suffix": ""
         },
         {
           "atlas": "atlas_B_src.png",
@@ -41,7 +42,8 @@
             "fenghuotai",
             "shuyuan",
             "zhaoxianguan"
-          ]
+          ],
+          "suffix": ""
         },
         {
           "atlas": "atlas_C_src.png",
@@ -51,7 +53,8 @@
             "kezhan",
             "cangku",
             "majiu"
-          ]
+          ],
+          "suffix": ""
         },
         {
           "atlas": "atlas_D_src.png",
@@ -61,7 +64,8 @@
             "tiejiangpu",
             "gongjiangzuofang",
             "yizhan"
-          ]
+          ],
+          "suffix": ""
         }
       ]
     },
@@ -70,6 +74,7 @@
       "label": "城外 4 + 资源 6",
       "method": "t2i",
       "count": 10,
+      "note": "v89.237 重制：城外 4 形制按 v89.229 新身份重写（净化厂/水培温室/发电站/电弧熔炉）；资源 6 维持原档",
       "atlases": [
         {
           "atlas": "atlas_ext1_src.png",
@@ -106,53 +111,53 @@
       "label": "兵种 18",
       "method": "t2i",
       "count": 18,
-      "note": "机车/机械化（调色板已定马→机车）；按兵种线分组",
+      "note": "统一机甲风 + T1→T5 逐级递进；图集按阶分组（T12=拾荒/制式起步 … T5=原型）",
       "atlases": [
         {
-          "atlas": "atlas_troop_melee_src.png",
+          "atlas": "atlas_troop_t12_src.png",
           "group": "troop",
           "ids": [
+            "minfu",
             "yibing",
+            "chihou",
+            "changqiang"
+          ]
+        },
+        {
+          "atlas": "atlas_troop_t23_src.png",
+          "group": "troop",
+          "ids": [
             "daodun",
-            "changqiang",
-            "tengjiabing"
-          ]
-        },
-        {
-          "atlas": "atlas_troop_cav_src.png",
-          "group": "troop",
-          "ids": [
-            "qingji",
-            "tieji",
-            "tuqibing",
-            "xiliangtieqi"
-          ]
-        },
-        {
-          "atlas": "atlas_troop_range_src.png",
-          "group": "troop",
-          "ids": [
             "gongjian",
-            "chuangnu",
-            "chongche",
+            "qingji",
             "zhouche"
           ]
         },
         {
-          "atlas": "atlas_troop_special_src.png",
+          "atlas": "atlas_troop_t4_src.png",
           "group": "troop",
           "ids": [
-            "toudan",
-            "minfu",
-            "hubaoqi",
-            "chihou"
+            "tieji",
+            "chuangnu",
+            "chongche",
+            "tengjiabing"
           ]
         },
         {
-          "atlas": "atlas_troop_regional_src.png",
+          "atlas": "atlas_troop_t5a_src.png",
           "group": "troop",
           "ids": [
             "qingzhoubing",
+            "tuqibing",
+            "hubaoqi",
+            "xiliangtieqi"
+          ]
+        },
+        {
+          "atlas": "atlas_troop_t5b_src.png",
+          "group": "troop",
+          "ids": [
+            "toudan",
             "nanjiangxiangbing"
           ]
         }
@@ -293,6 +298,112 @@
           ]
         }
       ]
+    },
+    {
+      "batch": "W-B6",
+      "label": "建筑 16 · T2(5-9级)",
+      "method": "i2i",
+      "count": 16,
+      "note": "升级版：更雄伟、外观更整洁（Lv5-9 使用 _t2）",
+      "atlases": [
+        {
+          "atlas": "atlas_1_t2_src.png",
+          "group": "building",
+          "suffix": "_t2",
+          "ids": [
+            "guanfu",
+            "honglusi",
+            "junying",
+            "chengqiang"
+          ]
+        },
+        {
+          "atlas": "atlas_2_t2_src.png",
+          "group": "building",
+          "suffix": "_t2",
+          "ids": [
+            "xiaochang",
+            "fenghuotai",
+            "shuyuan",
+            "zhaoxianguan"
+          ]
+        },
+        {
+          "atlas": "atlas_3_t2_src.png",
+          "group": "building",
+          "suffix": "_t2",
+          "ids": [
+            "minfang",
+            "kezhan",
+            "cangku",
+            "majiu"
+          ]
+        },
+        {
+          "atlas": "atlas_4_t2_src.png",
+          "group": "building",
+          "suffix": "_t2",
+          "ids": [
+            "shichang",
+            "tiejiangpu",
+            "gongjiangzuofang",
+            "yizhan"
+          ]
+        }
+      ]
+    },
+    {
+      "batch": "W-B7",
+      "label": "建筑 16 · T3(10-12级)",
+      "method": "i2i",
+      "count": 16,
+      "note": "满级版：最雄伟、最整洁（Lv10-12 使用 _t3）",
+      "atlases": [
+        {
+          "atlas": "atlas_1_t3_src.png",
+          "group": "building",
+          "suffix": "_t3",
+          "ids": [
+            "guanfu",
+            "honglusi",
+            "junying",
+            "chengqiang"
+          ]
+        },
+        {
+          "atlas": "atlas_2_t3_src.png",
+          "group": "building",
+          "suffix": "_t3",
+          "ids": [
+            "xiaochang",
+            "fenghuotai",
+            "shuyuan",
+            "zhaoxianguan"
+          ]
+        },
+        {
+          "atlas": "atlas_3_t3_src.png",
+          "group": "building",
+          "suffix": "_t3",
+          "ids": [
+            "minfang",
+            "kezhan",
+            "cangku",
+            "majiu"
+          ]
+        },
+        {
+          "atlas": "atlas_4_t3_src.png",
+          "group": "building",
+          "suffix": "_t3",
+          "ids": [
+            "shichang",
+            "tiejiangpu",
+            "gongjiangzuofang",
+            "yizhan"
+          ]
+        }
+      ]
     }
   ],
   "textureBatches": [
@@ -410,13 +521,12 @@
   },
   "guards": {
     "buildingHueSpreadMin": 15,
-    "buildingFlagDeltaE00Max": 12,
     "seriesGroundDeltaE00Min": 12,
-    "flagPairwiseDeltaE00Min": 15,
     "textureSize": 256,
     "alphaCoverageMin": 0.1,
     "alphaCoverageMax": 0.95,
     "bgCornerDeltaE00Max": 15,
-    "_coverageNote": "1024 画布上小主体（如短矛手）合法低至 ~0.14；下限只作空图护栏"
+    "_coverageNote": "1024 画布上小主体（如短矛手）合法低至 ~0.14；下限只作空图护栏",
+    "buildingNoFlagMaxPx": 1500
   }
 }

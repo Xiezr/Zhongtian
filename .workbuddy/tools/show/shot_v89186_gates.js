@@ -155,7 +155,7 @@ function chk(name, ok, extra) {
       items: G.state.items['bao_yuxi'] || 0 };
     return r1;
   });
-  chk('④c 佩上真调：g.attach.bao = bao_yuxi · 库存 2→1 · genAttrs 统率 +6',
+  chk('④c 佩上真调：g.attach.bao = bao_yuxi · 库存 2→1 · genAttrs 指挥 +6',
     w4c.has && w4c.items === 1 && w4c.tong === w4.tong0 + 6,
     'tong ' + w4.tong0 + '→' + w4c.tong + ' · items=' + w4c.items);
   await p.waitForTimeout(300);
@@ -166,11 +166,11 @@ function chk(name, ok, extra) {
     var mr = document.querySelector('#modal-root');
     var mtxt = mr ? mr.textContent : '';
     return { noLine: document.querySelectorAll('.gp-attach186').length === 0, baoBtn: !!baoBtn,
-      hasCur: mtxt.indexOf('当前：') >= 0 && mtxt.indexOf('玉犀符') >= 0,
-      hasEff: mtxt.indexOf('统率 +6') >= 0,
+      hasCur: mtxt.indexOf('当前：') >= 0 && mtxt.indexOf('避难所徽章') >= 0,
+      hasEff: mtxt.indexOf('指挥 +6') >= 0,
       hasOff: !!document.querySelector('#modal-root [data-action="attach-off"]') };
   });
-  chk('④d（v89.205）面板无挂件行 · 选择窗回显「当前：玉犀符（统率 +6）」+ 卸下按钮',
+  chk('④d（v89.205）面板无挂件行 · 选择窗回显「当前：避难所徽章（指挥 +6）」+ 卸下按钮',
     w4d.noLine && w4d.baoBtn && w4d.hasCur && w4d.hasEff && w4d.hasOff, JSON.stringify(w4d));
   await p.screenshot({ path: OUT + 'v89186-bao.png' });
 

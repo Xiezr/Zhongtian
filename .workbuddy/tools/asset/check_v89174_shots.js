@@ -51,7 +51,7 @@ chk('暗主题基线（均亮 35~75）', [A, B].every(function (s) { return s.me
       if (!cc.build && !cc.pending && !cc.official) empties.push(i);
       if (gIdx < 0 && cc.build && cc.build.id === 'guanfu') gIdx = i;
     });
-    /* 灌满 3 条在建（buildSlots 基础 3）：民房×2 + 学院（BUILD_ORDER 合法 id） */
+    /* 灌满 3 条在建（buildSlots 基础 3）：居所×2 + 学院（BUILD_ORDER 合法 id） */
     var okN = 0, ids = ['minfang', 'minfang', 'shuyuan'];
     var tried = [];
     for (var i = 0; i < empties.length && okN < 3; i++) {

@@ -42,7 +42,7 @@ function stat(png, x0, x1, y0, y1) {
 console.log('== ① 主图基线（非空 / 亮度）==');
 [['v89132-affairs.png', '军务处两营'],
  ['v89132-overview.png', '军务总览四段'],
- ['v89132-xiaochang.png', '校场面板（节钺入口）'],
+ ['v89132-xiaochang.png', '练兵场面板（节钺入口）'],
  ['v89132-hostel.png', '招贤馆面板（节钺入口）'],
  ['v89132-jieyue.png', '节钺面板']].forEach(function (it) {
   var L = load(it[0]);

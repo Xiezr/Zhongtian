@@ -91,7 +91,7 @@ var pw = require('playwright-core');
       modalTxt: txt.replace(/\n{2,}/g, ' | ') };
   });
   console.log('\n② 收编 click →', JSON.stringify(r2).slice(0, 160));
-  console.log('   后：俘虏', JSON.stringify(s2.captives), '· 人口', s2.pop, '· 弹窗:', s2.modalTxt.slice(0, 180));
+  console.log('   后：俘虏', JSON.stringify(s2.captives), '· 幸存者', s2.pop, '· 弹窗:', s2.modalTxt.slice(0, 180));
 
   /* ③ 释放 */
   var r3 = await p.evaluate(function () {

@@ -1,3 +1,13 @@
+# ============================================================
+# ⛔ v89.225 已退役：族旗管线（本文件运行即退出，代码仅作历史追溯）。
+#   沿革：v89.107 立 —— 老板第四次说"颜色很不对劲"后，族色编码改为
+#         "小面积高饱和族旗"；本文件给 16 座建筑图标在右下角外侧画燕尾旗。
+#   退役：v89.225 —— 老板令「建筑前边的带颜色棋子是什么，能否用地块颜色区分，
+#         不然好突兀」：族色编码从"图标上的小旗"迁到"城内地块染色"
+#         （js/data.js 的 DATA.SERIES[].plot + index.html 的 --ser-* 主题变量）。
+#   已清：贴旗的 16 张图标由 gen/wasteland_batch.py（重切不画旗）重新导出。
+#   防线：wasteland_batch.py 的 gate ③（逐张无旗校验）+ smoke §225。
+# ============================================================
 import io, re
 # -*- coding: utf-8 -*-
 """v89.107 建筑图标 · 第三步：给每座建筑画一面**族旗**。
@@ -11,7 +21,16 @@ import io, re
 并**当场用 CIEDE2000 验两两 ≥15**（不够就按结果调这个文件的 boost 参数）。
 """
 import os, sys, math, json, colorsys
-from PIL import Image, ImageDraw
+# from PIL import Image, ImageDraw   # ⛔ v89.225 退役：绘图 import 移除（运行只打印退役说明）
+
+# ⛔ v89.225 早退守卫（必须在一切解析/绘图代码之前 —— v89.226 复核修正）：
+#   原守卫生效点在文件末尾（line 120），而模块级解析（读 DATA.SERIES[].flag）更早执行
+#   —— flag 字段退役后，运行本文件会在解析段 assert 崩掉、而非打印退役说明。
+#   本守卫提前到解析之前，保证「运行 = 打印退役说明并退出」。
+if __name__ == '__main__':
+    sys.exit('⛔ 本工具已于 v89.225 退役（族旗 → 地块染色）。\n'
+             '   物证与防线：gen/wasteland_batch.py 的 gate ③（逐张无旗）· smoke §225。\n'
+             '   下方代码为 v89.107 原始实现，只读参考，勿再执行。')
 
 R = r'E:/Deepseekdb'
 SRC = os.path.join(R, '.workbuddy/tmp/atlas/icons')     # 第二轮重绘（自然材质）
@@ -108,6 +127,10 @@ def draw_flag(im, color):
 
 
 if __name__ == '__main__':
+    sys.exit('⛔ 本工具已于 v89.225 退役（族旗 → 地块染色）。\n'
+             '   物证与防线：gen/wasteland_batch.py 的 gate ③（逐张无旗）· smoke §225。\n'
+             '   下方代码为 v89.107 原始实现，只读参考，勿再执行。')
+
     # 1) 旗色两两可分（CIEDE2000）—— 不够就调 FLAG 再跑
     keys = sorted(FLAG)
     rgbs = {k: hsl2rgb(*FLAG[k]) for k in keys}

@@ -1,9 +1,9 @@
 /* v89.211 实机验收：强化显示链 · 占城空格补齐 · 器械工位归一（真浏览器 + 真 UI 链路）
    ------------------------------------------------------------
    ① 装备面板：+10 武器槽位行显示「攻5198」（=2888×1.8）；降回 +0 显示原值（同屏对照）
-   ② 占城：真调 onConquer → 城内 0 空格、原墙格（idx37）补民房、城墙在环城槽；城市视图截图
-   ③ 器械链：先开军营面板（污染 _trainBIdx）→ 开作坊面板 → 真点「造冲车/投石车等」→
-      面板归一到作坊格 → 真点投石车 → 真点提交 → 队列落在作坊（不再假报"本城尚无工匠作坊"）
+   ② 占城：真调 onConquer → 城内 0 空格、原墙格（idx37）补居所、围墙在环城槽；城市视图截图
+   ③ 器械链：先开军营面板（污染 _trainBIdx）→ 开作坊面板 → 真点「造自行火炮/自行火炮等」→
+      面板归一到作坊格 → 真点自行火炮 → 真点提交 → 队列落在作坊（不再假报"本城尚无工匠作坊"）
    ------------------------------------------------------------ */
 module.paths.unshift('C:/Users/18811/.workbuddy/binaries/node/workspace/node_modules');
 var pw = require('playwright-core');
@@ -80,7 +80,7 @@ var sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms);
   await p.evaluate(function () { window.GAME.ui.closeAllModals(); });
   await sleep(200);
 
-  /* ══ ② 占城：0 空格 + 原墙格补民房 ══ */
+  /* ══ ② 占城：0 空格 + 原墙格补居所 ══ */
   var s2 = await p.evaluate(function () {
     var G = window.GAME;
     var st = G.state;
@@ -107,9 +107,9 @@ var sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms);
   });
   await sleep(600);
   chk('②a 占城后 0 空格（' + s2.name + ' · ' + s2.empt + ' 格空）', s2.empt === 0, JSON.stringify(s2));
-  chk('②b 原墙格（idx' + s2.wIdx + '）补民房 ' + s2.wallCell + ' · 城墙在环城槽 ' + s2.wall,
+  chk('②b 原墙格（idx' + s2.wIdx + '）补居所 ' + s2.wallCell + ' · 围墙在环城槽 ' + s2.wall,
     s2.wallCell.indexOf('minfang') >= 0 && !!s2.wall);
-  chk('②c 民房 27 座（26+墙位 1）', s2.mf === 27, 'mf=' + s2.mf);
+  chk('②c 居所 27 座（26+墙位 1）', s2.mf === 27, 'mf=' + s2.mf);
   await p.screenshot({ path: E + 'v89211-city.png' });
 
   /* ══ ③ 器械链：军营污染 → 作坊入口 → 真点提交 ══ */
@@ -151,7 +151,7 @@ var sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms);
   });
   chk('③a 作坊入口 → 器械面板归一到作坊格（_trainBIdx ' + s3.stale + ' → ' + s3a.bIdx + '）',
     s3a.bIdx === 22, JSON.stringify(s3a));
-  /* 真点投石车卡 → 真点提交 */
+  /* 真点自行火炮卡 → 真点提交 */
   await p.evaluate(function () {
     var card = document.querySelector('#modal-root .troop-card[data-troop="toudan"]');
     if (card) card.click();
@@ -161,7 +161,7 @@ var sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms);
     var go = document.querySelector('#modal-root [data-action="confirm-train"]');
     return { has: !!go, disabled: go ? go.hasAttribute('disabled') : true };
   });
-  chk('③b 投石车卡可选 · 提交键在册', s3b.has && !s3b.disabled, JSON.stringify(s3b));
+  chk('③b 自行火炮卡可选 · 提交键在册', s3b.has && !s3b.disabled, JSON.stringify(s3b));
   await p.evaluate(function () {
     var go = document.querySelector('#modal-root [data-action="confirm-train"]');
     if (go) go.click();
@@ -175,11 +175,11 @@ var sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms);
     var txt = (document.getElementById('modal-root') || {}).textContent || '';
     var toastTxt = (document.getElementById('toast') || {}).textContent || '';
     return { q22: q22.length, q18: q18.length, troop: q22.length ? q22[q22.length - 1].troopId : null,
-      panelHasQueue: txt.indexOf('投石车') >= 0, toast: toastTxt.slice(0, 60) };
+      panelHasQueue: txt.indexOf('自行火炮') >= 0, toast: toastTxt.slice(0, 60) };
   });
   chk('③c 真点提交成功：队列落在作坊 22（q22=' + s3c.q22 + ' · 兵种 ' + s3c.troop + '）',
     s3c.q22 === 1 && s3c.q18 === 0 && s3c.troop === 'toudan', JSON.stringify(s3c));
-  chk('③d 面板当场显示队列（含投石车）· 无「本城尚无工匠作坊」假报',
+  chk('③d 面板当场显示队列（含自行火炮）· 无「本城尚无工匠作坊」假报',
     s3c.panelHasQueue && s3c.toast.indexOf('本城尚无工匠作坊') < 0, s3c.toast);
   await p.screenshot({ path: E + 'v89211-train.png' });
 

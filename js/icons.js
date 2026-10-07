@@ -803,9 +803,9 @@
    * ============================================================ */
   /* v31 兵种四类独立剪影
      foot: 步兵（持长兵器，盾在身侧）
-     bow: 弩手（开弓姿态）
+     bow: 导弹车（开弓姿态）
      horse: 机车（马+骑手剪影）
-     cart: 器械（车/弩/迫击炮） */
+     cart: 器械（车/弩/自行火炮） */
   function soldierFoot(tone, w) {
     var C1 = tone[0], C2 = tone[1], C3 = tone[2];
     var s = '<ellipse cx="30" cy="56" rx="14" ry="2.6" fill="#000" opacity=".28"/>';
@@ -908,8 +908,8 @@
   function soldierMount(tone, w) {
     var C1 = tone[0], C2 = tone[1], C3 = tone[2];
     /* v89.216 换皮视觉层：骑兵剪影 → **机车**（两轮 + 车架 + 油箱 + 车把 + 前灯 + 骑行姿态；
-       车头朝右）。武器语汇同旧版（矛/刀/弓/斧 一只手可持）—— 兵种语义已是「摩托游骑/
-       装甲战车/突击摩托」，马形才是真正的错配。 */
+       车头朝右）。武器语汇同旧版（矛/刀/弓/斧 一只手可持）—— 兵种语义已是「伏击车/
+       主战机甲/武装直升机」，马形才是真正的错配。 */
     var s = '<ellipse cx="32" cy="57" rx="22" ry="2.6" fill="#000" opacity=".28"/>';
     var wheel = function (cx) {
       return '<circle cx="' + cx + '" cy="50" r="6.6" fill="' + P.irLo + '"/>' +
@@ -968,7 +968,7 @@
     return s;
   }
   function soldierCart(tone, kind) {
-    /* v31：器械四类——运输车/破门车/重弩车/迫击炮 */
+    /* v31：器械四类——运输平台/自行火炮/无人轰炸机/自行火炮 */
     var C1 = tone[0], C2 = tone[1], C3 = tone[2];
     var s = '<ellipse cx="32" cy="56" rx="20" ry="2.6" fill="#000" opacity=".28"/>';
     /* 车轮（两轮） */
@@ -993,7 +993,7 @@
     s += '<line x1="14" y1="50" x2="20" y2="44" stroke="' + P.woodLo + '" stroke-width="1.6"/>' +
       '<line x1="50" y1="50" x2="44" y2="44" stroke="' + P.woodLo + '" stroke-width="1.6"/>';
     if (kind === 'cart') {
-      /* 迫击炮：基座 + 抛杆 + 配重 + 弹丸 */
+      /* 自行火炮：基座 + 抛杆 + 配重 + 弹丸 */
       s += '<path d="M20 30 L44 30 L46 42 L18 42 Z" fill="' + C2 + '"/>' +
         '<path d="M20 30 L32 30 L32 42 L18 42 Z" fill="' + C1 + '" opacity=".4"/>' +
         /* 抛杆（斜向上） */
@@ -1005,7 +1005,7 @@
         '<circle cx="14" cy="8" r="3" fill="' + P.stLo + '"/>' +
         '<circle cx="13" cy="7" r="1.2" fill="' + P.stHi + '" opacity=".7"/>';
     } else if (kind === 'siege_ram') {
-      /* 破门车：上覆皮盾的攻城槌 */
+      /* 自行火炮：上覆皮盾的攻城槌 */
       s += '<path d="M20 18 L44 18 L46 30 L18 30 Z" fill="' + C2 + '"/>' +
         '<path d="M20 18 L32 18 L32 30 L18 30 Z" fill="' + C1 + '" opacity=".4"/>' +
         /* 屋顶皮盖 */
@@ -1024,7 +1024,7 @@
         /* 铜钉 */
         '<circle cx="12" cy="36" r=".8" fill="' + P.goldMd + '"/>';
     } else if (kind === 'ballista') {
-      /* 重弩车：巨型弓 + 弩臂 + 弩机 */
+      /* 无人轰炸机：巨型弓 + 弩臂 + 弩机 */
       s += '<rect x="18" y="36" width="28" height="6" rx="1" fill="' + C2 + '"/>' +
         '<path d="M18 36 L32 36 L32 42 L18 42 Z" fill="' + C1 + '" opacity=".4"/>' +
         /* 弩臂 */
@@ -1041,7 +1041,7 @@
         /* 箭羽 */
         '<path d="M48 11 L50 9 L50 11 Z M48 13 L50 15 L50 13 Z" fill="' + P.clHi + '"/>';
     } else if (kind === 'catapult') {
-      /* 迫击炮（原投石车形制）：高架投臂 + 弹筐 */
+      /* 自行火炮（原投石车形制）：高架投臂 + 弹筐 */
       s += '<path d="M22 32 L42 32 L42 42 L22 42 Z" fill="' + C2 + '"/>' +
         '<path d="M22 32 L32 32 L32 42 L22 42 Z" fill="' + C1 + '" opacity=".4"/>' +
         /* 投臂（斜向下，弹筐端朝下） */
@@ -1083,31 +1083,30 @@
     return '';
   }
   var TR = {
-    minfu: { tone: ['#a89070', '#c4a985', '#8a7154'], cls: 'foot', w: 'axe' },
-    yibing: { tone: ['#9a7c58', '#b89a72', '#7c6244'], cls: 'foot', w: 'sword' },
-    chihou: { tone: ['#7f9a86', '#9fb8a4', '#5f7a68'], cls: 'bow', w: 'bow', light: true },
-    changqiang: { tone: ['#8f7a5e', '#ac9673', '#6d5c48'], cls: 'foot', w: 'spear' },
-    daodun: { tone: ['#8a7f6a', '#a89c84', '#6a6050'], cls: 'foot', w: 'shield' },
-    gongjian: { tone: ['#8e9463', '#a8ae7c', '#6c714c'], cls: 'bow', w: 'bow' },
-    qingji: { tone: ['#8a7358', '#a88e6c', '#665340'], w: 'sword', cls: 'mount', mount: true },
-    tieji: { tone: ['#6f7784', '#8d95a2', '#525a66'], w: 'spear', cls: 'mount', mount: true },
-    zhouche: { tone: ['#96876c', '#b2a184', '#70624c'], cls: 'cart', w: 'cart' },
-    chuangnu: { tone: ['#7d7154', '#9a8d6c', '#5c5240'], cls: 'bow', w: 'bow' },
-    chongche: { tone: ['#7a6b4e', '#95835f', '#584c38'], cls: 'cart', w: 'cart' },
-    toudan: { tone: ['#75664b', '#8f7d5c', '#544a36'], cls: 'cart', w: 'cart' },
-    qingzhoubing: { tone: ['#5f7f9a', '#7e9db8', '#456078'], cls: 'foot', w: 'spear' },
-    tengjiabing: { tone: ['#6e8f5c', '#8cab77', '#4f6a41'], cls: 'foot', w: 'shield' },
-    tuqibing: { tone: ['#7a8a6a', '#98a886', '#586648'], w: 'bow', cls: 'mount', mount: true },
-    hubaoqi: { tone: ['#8f6a3c', '#ab864f', '#6a4c29'], w: 'spear', cls: 'mount', mount: true },
-    xiliangtieqi: { tone: ['#8a5f45', '#a87c5e', '#654232'], w: 'sword', cls: 'mount', mount: true },
-    nanjiangxiangbing: { tone: ['#6f7a8a', '#8d98a8', '#525b68'], w: 'axe', beast: true },
+    /* v89.229 兵种重构：18→14 —— 按原型继承剪影（tone/cls/w），14 个新 id 全覆盖；
+       位图（assets/icons/ui/ai_<id>.png）缺省回退本表（forTroop 老绘制路径）。
+       新增兵种只在本表登记即可（与 TROOPS 表同构扩展）。 */
+    banche:    { tone: ['#a89070', '#c4a985', '#8a7154'], cls: 'cart', w: 'cart' },
+    fujiche:   { tone: ['#8a7358', '#a88e6c', '#665340'], w: 'sword', cls: 'mount', mount: true },
+    zhencha:   { tone: ['#7f9a86', '#9fb8a4', '#5f7a68'], cls: 'bow', w: 'bow', light: true },
+    yunshu:    { tone: ['#96876c', '#b2a184', '#70624c'], cls: 'cart', w: 'cart' },
+    buxingji:  { tone: ['#8f7a5e', '#ac9673', '#6d5c48'], cls: 'foot', w: 'spear' },
+    dunwei:    { tone: ['#8a7f6a', '#a89c84', '#6a6050'], cls: 'foot', w: 'shield' },
+    daodanche: { tone: ['#8e9463', '#a8ae7c', '#6c714c'], cls: 'bow', w: 'bow' },
+    wuzhi:     { tone: ['#7a8a6a', '#98a886', '#586648'], w: 'bow', cls: 'mount', mount: true },
+    zhuzhan:   { tone: ['#8a5f45', '#a87c5e', '#654232'], w: 'sword', cls: 'mount', mount: true },
+    kuanglie:  { tone: ['#8f6a3c', '#ab864f', '#6a4c29'], w: 'spear', cls: 'mount', mount: true },
+    dianci:    { tone: ['#6e8f5c', '#8cab77', '#4f6a41'], cls: 'foot', w: 'shield' },
+    huopao:    { tone: ['#75664b', '#8f7d5c', '#544a36'], cls: 'cart', w: 'cart' },
+    wuren:     { tone: ['#7d7154', '#9a8d6c', '#5c5240'], cls: 'bow', w: 'bow' },
+    taitan:    { tone: ['#6f7a8a', '#8d98a8', '#525b68'], w: 'axe', beast: true },
   };
   Object.keys(TR).forEach(function (id) {
     ICON['troop_' + id] = function (k) {
       var c = TR[id];
       var s = '';
       if (c.beast) {
-        /* 变异巨兽 */
+        /* 泰坦机甲 */
         s += '<path d="M8 52 L12 38 Q16 32 26 32 L44 32 Q50 33 50 38 L48 40 L49 47 Q49 50 46 50 L42 50 L42 53 L39 53 L39 50 L20 50 L20 53 L17 53 L17 50 Z" fill="' + P.stLo + '"/>' +
           '<path d="M14 36 Q16 30 22 30 L26 32 L22 38 Z" fill="' + P.stMd + '"/>' +
           '<path d="M14 40 Q8 44 8 50 Q12 50 13 44 Z" fill="' + P.stMd + '"/>' +
@@ -1115,13 +1114,13 @@
           '<rect x="20" y="20" width="24" height="12" rx="1.6" fill="' + P.woodMd + '"/>' +
           flag(30, 22, 14, P.rMd, P.rHi);
       } else if (c.cls === 'bow') {
-        /* v31：弩手独立剪影 */
+        /* v31：导弹车独立剪影 */
         s += soldierBow(c.tone);
       } else if (c.cls === 'mount') {
         /* v31：机车（车体+骑手）独立剪影 */
         s += soldierMount(c.tone, c.w);
       } else if (c.cls === 'cart') {
-        /* v31：器械 4 类（按 c.w 区分运输车/破门车/重弩车/迫击炮） */
+        /* v31：器械 4 类（按 c.w 区分运输平台/自行火炮/无人轰炸机/自行火炮） */
         s += soldierCart(c.tone, c.w === 'cart' ? 'cart' : (c.w === 'siege_ram' ? 'siege_ram' : (c.w === 'ballista' ? 'ballista' : 'catapult')));
       } else {
         /* v31：步兵 4 种兵器（默认 foot 类） */
@@ -1821,7 +1820,7 @@
     },
     /* ---- v89.51：五类「有价却无画」的补图 ----
        宝箱 / 残卷 / 政令 / 封存匣 / 辐能核心此前**全部落 attr_buff 兜底**：
-       商城与背包里一排橙色符卡，玩家分不出哪个是宝箱哪个是残卷。
+       游商与背包里一排橙色符卡，玩家分不出哪个是宝箱哪个是残卷。
        这里按各自物件补专属造型（沿用 64×64 视框与 P 调色板）。 */
     chest: function () {
       /* 宝箱：木箱 + 铜箍 + 锁扣 */
@@ -2062,6 +2061,21 @@
   ICON.bitmapSrc = function (group, id) {
     if (typeof BITMAPS === 'undefined' || !BITMAPS) return '';
     return BITMAPS.src(group, id);
+  };
+
+  /* ============================================================
+   * v89.227：建筑按等级分档取图（老板：5级/10级时更雄伟、更整洁）
+   * ------------------------------------------------------------
+   * 三档：Lv1–4 基础 · Lv5–9 `_t2` · Lv10–MAX `_t3`（雄伟版）。
+   * 素材文件名 `ai_<id>_t2.png` / `ai_<id>_t3.png` **先在就在则用**；
+   * 未出图时自动降级回基础图 `ai_<id>.png` —— 系统先立、图后补，零破坏。
+   * 返回 `<img>`；两档都查不到时返回 ''（调用方退回基础图/矢量）。
+   * ============================================================ */
+  ICON.bmBuildingTier = function (id, lvl) {
+    var n = Number(lvl) || 1;
+    var suffix = n >= 10 ? '_t3' : (n >= 5 ? '_t2' : '');
+    if (!suffix) return '';
+    return bmOf('building', id + suffix);   /* 无档位图 → ''（调用方回退基础图） */
   };
   /* ============================================================
    * 兜底层取图（**跳过 AI 位图**）：手绘 SVG / game-icons 矢量

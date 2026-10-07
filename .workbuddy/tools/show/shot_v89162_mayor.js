@@ -1,7 +1,7 @@
 /* v89.162 实机验证（真浏览器）：
-   ① 将领详情六维表：内政行悬停含「税收 +X%」（城主在任 · 真渲染 title）+ 图 v89162-gen-dims.png
-   ② 城池面板：城主行悬停给全部加成（内政→产量/建造/税收 · 智谋→研究/城防）+ 图 v89162-city-mayor.png
-   ③ 侧栏黄金悬停：产量分解含「城主内政」行（tip 层真渲染）+ 图 v89162-gold-tip.png
+   ① 将领详情六维表：治理行悬停含「税收 +X%」（城主在任 · 真渲染 title）+ 图 v89162-gen-dims.png
+   ② 城池面板：城主行悬停给全部加成（治理→产量/建造/税收 · 谋略→研究/城防）+ 图 v89162-city-mayor.png
+   ③ 侧栏旧币悬停：产量分解含「城主治理」行（tip 层真渲染）+ 图 v89162-gold-tip.png
    运行：NODE_PATH="C:/Users/18811/.workbuddy/binaries/node/workspace/node_modules" node .workbuddy/tools/show/shot_v89162_mayor.js */
 module.paths.unshift('C:/Users/18811/.workbuddy/binaries/node/workspace/node_modules');
 var pw = require('playwright-core');
@@ -28,7 +28,7 @@ function chk(name, cond, extra) {
     G.state.generals.forEach(function (g) { g.status = 'idle'; g.cityId = null; });
     G.state.rank = 6;                          /* 爵位 6 级 → 税制 +6% + 俸禄（让分账行齐全） */
     var g = G.state.generals[0];
-    g.nz = 600; g.zm = 300;                    /* 内政封顶 +150% · 智谋 300 → +100% */
+    g.nz = 600; g.zm = 300;                    /* 治理封顶 +150% · 谋略 300 → +100% */
     var r = G.assignGeneral(g.id, 'mayor', c.id);
     return { ok: r.ok, name: g.name, id: g.id, city: c.name,
       mb: G.mayorBonus(c) };
@@ -38,7 +38,7 @@ function chk(name, cond, extra) {
   chk('造局：城主任命成功且税加成 = +150%', boot.ok === true && Math.abs(boot.mb.tax - 1.5) < 1e-9);
   await p.waitForTimeout(900);
 
-  console.log('===== ① 将领详情六维表（内政行悬停含税收） =====');
+  console.log('===== ① 将领详情六维表（治理行悬停含税收） =====');
   var r1 = await p.evaluate(function () {
     var G = window.GAME;
     G.ui.setView('generals');
@@ -50,13 +50,13 @@ function chk(name, cond, extra) {
     for (var i = 0; i < rows.length; i++) {
       var td = rows[i].querySelector('td');
       var t = (td && td.textContent) || '';
-      if (/内政/.test(t)) { out.tip = td.getAttribute('title') || ''; out.rowTip = t; }
+      if (/治理/.test(t)) { out.tip = td.getAttribute('title') || ''; out.rowTip = t; }
     }
     return out;
   });
-  console.log('    内政行 tip = ' + r1.tip.replace(/\n/g, ' | ').slice(0, 160));
-  chk('六维表含 6 维 + 自由点行（>=6 行 · 内政行在位）', r1.n >= 6, 'rows=' + r1.n);
-  chk('★ 内政行悬停含「城主加成：…税收 +150%」', /城主加成/.test(r1.tip) && /税收 \+150%/.test(r1.tip)
+  console.log('    治理行 tip = ' + r1.tip.replace(/\n/g, ' | ').slice(0, 160));
+  chk('六维表含 6 维 + 自由点行（>=6 行 · 治理行在位）', r1.n >= 6, 'rows=' + r1.n);
+  chk('★ 治理行悬停含「城主加成：…税收 +150%」', /城主加成/.test(r1.tip) && /税收 \+150%/.test(r1.tip)
     && /产量 \+150%/.test(r1.tip) && /建造 \+150%/.test(r1.tip));
   var rc1 = await p.evaluate(function () {
     var tb = document.querySelector('.gd-dims');
@@ -85,9 +85,9 @@ function chk(name, cond, extra) {
       panel: !!m.querySelector('.inner-panel') };
   });
   console.log('    城主行悬停 = ' + r2.tip.replace(/\n/g, ' | ').slice(0, 170));
-  chk('★ 城池面板城主行悬停含「内政 → 产量 +150% · 建造 +150% · 税收 +150%」',
-    /内政 → 产量 \+150%/.test(r2.tip) && /建造 \+150%/.test(r2.tip) && /税收 \+150%/.test(r2.tip));
-  chk('★ 且含「智谋 → 研究/城防」', /智谋 → 研究/.test(r2.tip) && /城防/.test(r2.tip));
+  chk('★ 城池面板城主行悬停含「治理 → 产量 +150% · 建造 +150% · 税收 +150%」',
+    /治理 → 产量 \+150%/.test(r2.tip) && /建造 \+150%/.test(r2.tip) && /税收 \+150%/.test(r2.tip));
+  chk('★ 且含「谋略 → 研究/城防」', /谋略 → 研究/.test(r2.tip) && /城防/.test(r2.tip));
   var rc2 = await p.evaluate(function () {
     var box = document.querySelector('#modal-root .inner-panel') || document.querySelector('#modal-root .modal');
     var r = box ? box.getBoundingClientRect() : null;
@@ -99,7 +99,7 @@ function chk(name, cond, extra) {
     console.log('    📷 v89162-city-mayor.png');
   }
 
-  console.log('===== ③ 侧栏黄金悬停（分解含「城主内政」行 · tip 真渲染） =====');
+  console.log('===== ③ 侧栏旧币悬停（分解含「城主治理」行 · tip 真渲染） =====');
   await p.evaluate(function () {
     var G = window.GAME;
     G.ui.closeAllModals();
@@ -113,7 +113,7 @@ function chk(name, cond, extra) {
     var wrap = null;
     document.querySelectorAll('#res-bar .res-line').forEach(function (row) {
       var lbl = row.querySelector('.lbl');
-      if (lbl && /金/.test(lbl.textContent || '')) {
+      if (lbl && /旧币/.test(lbl.textContent || '')) {
         var w = row.querySelector('.rate-wrap');
         if (w) wrap = w.getBoundingClientRect();
       }
@@ -143,9 +143,9 @@ function chk(name, cond, extra) {
       });
     }
     console.log('    tip 显示 = ' + r4.on + ' · 全内容 = ' + r4.txt.replace(/\n/g, ' | ').slice(0, 300));
-    chk('★ tip 层真渲染「城主内政」行', r4.on && r4.txt.indexOf('城主内政') >= 0);
+    chk('★ tip 层真渲染「城主治理」行', r4.on && r4.txt.indexOf('城主治理') >= 0);
     chk('tip 含「税制加成（名城/爵位/主城/神器）」行（爵位 6 → +6%）', r4.txt.indexOf('税制加成') >= 0);
-    chk('tip 含「税收（人口…）」「爵位俸禄」行', r4.txt.indexOf('税收（人口') >= 0 && r4.txt.indexOf('爵位俸禄') >= 0);
+    chk('tip 含「税收（幸存者…）」「爵位俸禄」行', r4.txt.indexOf('税收（幸存者') >= 0 && r4.txt.indexOf('爵位俸禄') >= 0);
     var rc3 = await p.evaluate(function () {
       var el = document.getElementById('tip-layer');
       var r = el ? el.getBoundingClientRect() : null;
@@ -157,7 +157,7 @@ function chk(name, cond, extra) {
       console.log('    📷 v89162-gold-tip.png');
     }
   } else {
-    chk('侧栏黄金行可定位', false, '未找到 #res-bar 金行 .rate-wrap');
+    chk('侧栏旧币行可定位', false, '未找到 #res-bar 旧币行 .rate-wrap');
   }
 
   await p.evaluate(function () { window.GAME.ui.closeAllModals(); });

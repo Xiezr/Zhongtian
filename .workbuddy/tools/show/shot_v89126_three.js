@@ -2,10 +2,10 @@
  * shot_v89126_three.js — v89.126 三条需求实机截图
  * ------------------------------------------------------------
  * 出图：
- *   v89126-city-wall.png   城内：城墙**占一格**（真建 + 升到 Lv8）+ 环城视觉 + 侧栏人口行
- *   v89126-train-pop.png   募兵面板：可征（人口−劳作）/ 上限 / 增势三段条
- *   v89126-build-menu.png  建造菜单第 2 页：「城墙」卡片在册
- * 顺带打印：cap / labor / free / growth / 城墙格 / 队列（真调出口）
+ *   v89126-city-wall.png   城内：围墙**占一格**（真建 + 升到 Lv8）+ 环城视觉 + 侧栏幸存者行
+ *   v89126-train-pop.png   募兵面板：可征（幸存者−劳作）/ 上限 / 增势三段条
+ *   v89126-build-menu.png  建造菜单第 2 页：「围墙」卡片在册
+ * 顺带打印：cap / labor / free / growth / 围墙格 / 队列（真调出口）
  * 用法：node .workbuddy/tools/show/shot_v89126_three.js
  * ============================================================ */
 'use strict';
@@ -24,7 +24,7 @@ fs.mkdirSync(OUT, { recursive: true });
   await page.goto('file:///E:/Deepseekdb/index.html');
   await page.waitForFunction('window.GAME && window.GAME.DATA && GAME.ui', null, { timeout: 30000 });
 
-  /* ① 建局 + 真建城墙（通用出口）→ 升到 Lv8 */
+  /* ① 建局 + 真建围墙（通用出口）→ 升到 Lv8 */
   var info = await page.evaluate(function () {
     var G = window.GAME;
     var st = G.newGame({ name: '北辰', cityName: '许都', region: '碎垣', mapSeed: 20260926 });
@@ -34,7 +34,7 @@ fs.mkdirSync(OUT, { recursive: true });
     G.ui._cityId = c.id;
     /* 官府拉满（解"官府总闸"） */
     (c.cells || []).forEach(function (x) { if (x.official && x.build) x.build.lvl = 12; });
-    /* 真建城墙：通用入口 buildAt + 拨钟完成 */
+    /* 真建围墙：通用入口 buildAt + 拨钟完成 */
     var idxW = -1;
     for (var i = 0; i < c.cells.length; i++) {
       var x = c.cells[i];
@@ -74,13 +74,13 @@ fs.mkdirSync(OUT, { recursive: true });
       log: log,
     };
   });
-  console.log('城墙格 idx=' + info.idxW + ' · 等级 Lv' + info.wallLv + ' · wallCellIdxOf=' + info.wallCell);
-  console.log('人口：上限 ' + info.cap + ' · 劳作占用 ' + info.labor + ' · 可征 ' + info.free
+  console.log('围墙格 idx=' + info.idxW + ' · 等级 Lv' + info.wallLv + ' · wallCellIdxOf=' + info.wallCell);
+  console.log('幸存者：上限 ' + info.cap + ' · 劳作占用 ' + info.labor + ' · 可征 ' + info.free
     + ' · 增速 ' + info.growth.toFixed(1) + '/时（现实）');
   if (info.log.length) console.log('建造日志：' + info.log.join('｜'));
   await new Promise(function (r) { setTimeout(r, 700); });
   await page.screenshot({ path: path.join(OUT, 'v89126-city-wall.png'), fullPage: false });
-  console.log('✓ v89126-city-wall.png（城内：城墙占格 + 环城 + 侧栏人口）');
+  console.log('✓ v89126-city-wall.png（城内：围墙占格 + 环城 + 侧栏幸存者）');
 
   /* ② 募兵面板（三段条：可征 / 上限 / 增势） */
   var trainInfo = await page.evaluate(function () {
@@ -113,9 +113,9 @@ fs.mkdirSync(OUT, { recursive: true });
   await new Promise(function (r) { setTimeout(r, 500); });
   await page.screenshot({ path: path.join(OUT, 'v89126-train-pop.png'), fullPage: false });
   console.log('✓ v89126-train-pop.png（募兵面板：可征 ' + trainInfo.canRecruit
-    + ' = 人口 − 劳作 ' + trainInfo.labor + '）');
+    + ' = 幸存者 − 劳作 ' + trainInfo.labor + '）');
 
-  /* ③ 建造菜单第 2 页（「城墙」卡片） */
+  /* ③ 建造菜单第 2 页（「围墙」卡片） */
   var menuInfo = await page.evaluate(function () {
     var G = window.GAME;
     var c = G.currentCity();
@@ -130,7 +130,7 @@ fs.mkdirSync(OUT, { recursive: true });
     return { ok: true };
   });
   await new Promise(function (r) { setTimeout(r, 300); });
-  /* 翻到第 2 页（城墙在末尾） */
+  /* 翻到第 2 页（围墙在末尾） */
   var page2 = await page.evaluate(function () {
     var root = document.querySelector('#modal-root');
     var btns = Array.prototype.slice.call(root.querySelectorAll('[data-action="mpage"]'))
@@ -150,11 +150,11 @@ fs.mkdirSync(OUT, { recursive: true });
   console.log('✓ v89126-build-menu.png（翻页=' + page2 + '）：' + menuTxt);
 
   var pass = info.wallLv === 8 && info.wallCell === info.idxW
-    && trainInfo.ok && trainInfo.hasPop3 && menuTxt.indexOf('城墙') >= 0;
+    && trainInfo.ok && trainInfo.hasPop3 && menuTxt.indexOf('围墙') >= 0;
   console.log('核对项：wallLv=' + info.wallLv + ' wallCellOk=' + (info.wallCell === info.idxW)
     + ' trainOk=' + trainInfo.ok + ' hasPop3=' + trainInfo.hasPop3
-    + ' menuWall=' + (menuTxt.indexOf('城墙') >= 0));
-  console.log(pass ? '✓ 实机核对通过（城墙占格 Lv8 · 三段条 · 城墙卡片在册）' : '✗ 实机核对失败');
+    + ' menuWall=' + (menuTxt.indexOf('围墙') >= 0));
+  console.log(pass ? '✓ 实机核对通过（围墙占格 Lv8 · 三段条 · 围墙卡片在册）' : '✗ 实机核对失败');
   await browser.close();
   process.exit(pass ? 0 : 1);
 })();

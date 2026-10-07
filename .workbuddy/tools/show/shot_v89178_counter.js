@@ -122,9 +122,9 @@ function chk(name, ok, extra) {
     return { qingji: pick('qingji'), daodun: pick('daodun'), chuangnu: pick('chuangnu'),
       gongjian: pick('gongjian') };
   });
-  chk('轻骑 抗[弓箭手×2]（改前 ×4）', cnt.qingji.indexOf('弓箭手×2') >= 0, cnt.qingji);
+  chk('伏击车 抗[弓箭手×2]（改前 ×4）', cnt.qingji.indexOf('弓箭手×2') >= 0, cnt.qingji);
   chk('刀盾 抗[弓箭手×2]（改前 ×3）', cnt.daodun.indexOf('弓箭手×2') >= 0, cnt.daodun);
-  chk('床弩 克[冲车×3]（专项保留）', cnt.chuangnu.indexOf('冲车×3') >= 0, cnt.chuangnu);
+  chk('无人轰炸机 克[自行火炮×3]（专项保留）', cnt.chuangnu.indexOf('自行火炮×3') >= 0, cnt.chuangnu);
 
   /* ---- 截图（出征面板元素） ---- */
   try {

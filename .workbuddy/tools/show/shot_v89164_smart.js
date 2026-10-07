@@ -1,6 +1,6 @@
 /* v89.164 实机验证（真浏览器）：
    ① 出征面板「战术」下拉首项 = ⚡ 智能战斗（通用方案）+ 图 v89164-tactic-smart.png
-   ② 战场顶栏「⚡ 智能」指示 + 完成一回合后智能指令落进 rec.cmd（长枪→轻骑）
+   ② 战场顶栏「⚡ 智能」指示 + 完成一回合后智能指令落进 rec.cmd（步行机→伏击车）
       + 图 v89164-bt-smart.png
    运行：NODE_PATH="C:/Users/18811/.workbuddy/binaries/node/workspace/node_modules" node .workbuddy/tools/show/shot_v89164_smart.js */
 module.paths.unshift('C:/Users/18811/.workbuddy/binaries/node/workspace/node_modules');
@@ -104,7 +104,7 @@ function chk(name, cond, extra) {
   });
   if (r4) {
     console.log('  完成一回合后 rec.cmd = ' + JSON.stringify(r4.cmd).slice(0, 200));
-    chk('★ 智能指令落账：长枪→轻骑（target 写入 rec.cmd）',
+    chk('★ 智能指令落账：步行机→伏击车（target 写入 rec.cmd）',
       !!(r4.cmd.changqiang && r4.cmd.changqiang.t === 'qingji'),
       r4.cmd && r4.cmd.changqiang ? JSON.stringify(r4.cmd.changqiang) : '无');
     chk('骑兵→弓（target）', !!(r4.cmd.qingji && r4.cmd.qingji.t === 'gongjian'));

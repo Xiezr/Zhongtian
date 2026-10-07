@@ -3,7 +3,7 @@
  *   ① 城池弹窗：达上限 →「占领」置灰 + 理由条（侦查/掠夺照常）
  *   ② 出征面板：方式下拉「占领」置灰带原因（从侦查进入）
  *   ③ 爵位页：城池（领地上限）2/2
- *   ④⑤ 客栈对比：主城 Lv6 → 6 位候选 ／ 分城 Lv2 → 2 位候选
+ *   ④⑤ 酒馆对比：主城 Lv6 → 6 位候选 ／ 分城 Lv2 → 2 位候选
  * 顺带量：按钮 disabled、dropdown option disabled、候选行数、溢出
  * ============================================================ */
 'use strict';
@@ -49,7 +49,7 @@ fs.mkdirSync(OUT, { recursive: true });
     if (!built || !built.ok) return { err: '建分城失败' };
     var cB = built.city;
     cB.name = '分城';
-    /* 客栈等级：主城 6（=6 位候选）／ 分城 2（=2 位候选）；招贤馆都给 3 席 */
+    /* 酒馆等级：主城 6（=6 位候选）／ 分城 2（=2 位候选）；招贤馆都给 3 席 */
     function setB(city, bid, lv) {
       for (var i = 0; i < city.cells.length; i++) {
         var x = city.cells[i];
@@ -110,7 +110,7 @@ fs.mkdirSync(OUT, { recursive: true });
   await page.screenshot({ path: path.join(OUT, 'v89108-rank-page.png') });
   console.log('✓ v89108-rank-page.png（含「城池（领地上限）」' + m3.hasCap + ' · ' + m3.hit.trim() + '）');
 
-  /* ④ 客栈：主城 Lv6 → 6 位 */
+  /* ④ 酒馆：主城 Lv6 → 6 位 */
   var m4 = await page.evaluate(function (ids) {
     GAME.ui._cityId = ids.mainId;
     GAME.ui.openInn();
@@ -120,9 +120,9 @@ fs.mkdirSync(OUT, { recursive: true });
   }, boot);
   await new Promise(function (r) { setTimeout(r, 260); });
   await page.screenshot({ path: path.join(OUT, 'v89108-inn-main.png') });
-  console.log('✓ v89108-inn-main.png（主城客栈 Lv6 → ' + m4.rows + ' 位候选）');
+  console.log('✓ v89108-inn-main.png（主城酒馆 Lv6 → ' + m4.rows + ' 位候选）');
 
-  /* ⑤ 客栈：分城 Lv2 → 2 位（老板投诉的场景） */
+  /* ⑤ 酒馆：分城 Lv2 → 2 位（老板投诉的场景） */
   var m5 = await page.evaluate(function (ids) {
     GAME.ui.closeModal();
     GAME.ui._cityId = ids.splitId;
@@ -132,7 +132,7 @@ fs.mkdirSync(OUT, { recursive: true });
   }, boot);
   await new Promise(function (r) { setTimeout(r, 260); });
   await page.screenshot({ path: path.join(OUT, 'v89108-inn-split.png') });
-  console.log('✓ v89108-inn-split.png（分城客栈 Lv2 → ' + m5.rows + ' 位候选）');
+  console.log('✓ v89108-inn-split.png（分城酒馆 Lv2 → ' + m5.rows + ' 位候选）');
 
   var ok = m1.disabled && m2.disabled && m3.hasCap && m4.rows === 6 && m5.rows === 2;
   console.log(ok ? '\n全部实机判据通过（置灰 2 处 · 上限显示 1 处 · 候选 6/2）' : '\n⚠ 有判据未过，请查看上方');

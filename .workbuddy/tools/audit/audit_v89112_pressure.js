@@ -28,10 +28,10 @@ var MODALS = [
   ['官府（建筑面板）', '(function(){var c=GAME.currentCity();for(var i=0;i<c.cells.length;i++){if(c.cells[i].official){return ui.openBuildModal(i);}}return ui.openBuildModal(0);})()'],
   ['征募/训练', 'ui.openTroops()'],
   ['市场', 'ui.openMarket()'],
-  ['客栈招募', 'ui.openInn()'],
+  ['酒馆招募', 'ui.openInn()'],
   ['宝物', 'ui.openArtifacts()'],
   ['装备', 'ui.openEquipPanel()'],
-  ['秘境/农庄', 'ui.openFarm()'],
+  ['基因实验室', 'ui.openFarm()'],
   ['锻造', 'ui.openForge()'],
   ['作坊', 'ui.openWorkshop()'],
   ['书简/帮助', 'ui.openHelp()'],
@@ -39,11 +39,11 @@ var MODALS = [
   ['君主', 'ui.openLordInfo()'],
   ['存档管理', 'ui.openSaveManager()'],
   ['门派', 'ui.openSect()'],
-  ['仓库', 'ui.openStore()'],
+  ['货仓', 'ui.openStore()'],
   ['军务总览', 'ui.openMarches()'],
   /* ⛔ v89.141（复核）：`openWallModal` 在 v89.126 退役 → `openBuildModal("wall")`；
      `openXiaochang` 在 v89.133 退役（点建筑功能 = 直接进军务视图，不再是弹窗）→ 删除条目 */
-  ['城墙（环城槽）', 'ui.openBuildModal("wall")'],
+  ['围墙（环城槽）', 'ui.openBuildModal("wall")'],
   ['据点半览', 'ui.openForts()'],
   /* ⛔ v89.141（复核）：`ui.openGathers` 在 v89.136 退役 → 改开"已占野地的地块界面" */
   ['野地地块（采集区）', '(function(){var st=GAME.state,c=st.cities[0];st.wilds=st.wilds||[];var spot=null;for(var dx=2;dx<=14&&!spot;dx++){for(var dy=-14;dy<=14&&!spot;dy++){var t=GAME.map.tile(c.x+dx,c.y+dy);if(t&&t.terrain!=="city"&&!GAME.map.wildAt(c.x+dx,c.y+dy)){spot={x:c.x+dx,y:c.y+dy};}}}if(!spot)return ui.toast("无空野地");st.wilds.push({x:spot.x,y:spot.y,type:"lake",level:8,day:0,startDay:0});return ui.openLandModal(spot.x,spot.y);})()'],

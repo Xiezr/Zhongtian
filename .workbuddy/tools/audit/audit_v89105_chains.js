@@ -47,13 +47,13 @@ G.ui._cityId = A.id;
 ['grain', 'wood', 'stone', 'iron', 'gold'].forEach(function (k) { A.res[k] = 5e6; });
 A.res.pop = 60000;
 A.cells.forEach(function (c) { if (c.build) c.build.lvl = Math.max(c.build.lvl || 1, 6); });
-/* 搬运工是"运力"（调运链靠挑夫挑担），不放它调运链第一步就发不出去 */
-A.army = { yibing: 9000, gongjian: 3000, qingji: 1500, minfu: 1200 };
+/* 板车是"运力"（调运链靠挑夫挑担），不放它调运链第一步就发不出去 */
+A.army = { buxingji: 9000, daodanche: 3000, fujiche: 1500, banche: 1200 };
 st.items = st.items || {};
 ['zengminling', 'yiminling', 'shennongchu', 'lianbing_jingyan', 'bengzhu', 'jinang', 'seed_daomi']
   .forEach(function (id) { st.items[id] = 6; });
 st.generals.forEach(function (g, i) { g.level = 30 + i; g.sta = 100; g.energy = 100; });
-/* 补两座必需建筑：军营（募兵前置）+ 校场（出征人马上限的尺）。
+/* 补两座必需建筑：军营（募兵前置）+ 练兵场（出征人马上限的尺）。
    探针直接写 cell（与"建造完成"同构），不走流程 —— 目的是量**链路**，不是量建造。 */
 var ARMY_IDX = -1;          /* 军营格下标（募兵必须指到具体军营） */
 (function () {
@@ -111,11 +111,11 @@ var B = null;
     } catch (e) { console.log('（分城异常：' + e.message + '）'); }
   } else console.log('（附近无空平原，未建分城）');
 })();
-console.log('开局：城池 ' + st.cities.length + ' · 将领 ' + st.generals.length
+console.log('开局：城池 ' + st.cities.length + ' · 英雄 ' + st.generals.length
   + ' · 分城 ' + (B ? B.name : '（未建）'));
 
-/* ══════════ ① 内政 · 营造链 ══════════ */
-head('① 内政 · 营造链（建造 → 队列 → 完工 → 等级）');
+/* ══════════ ① 治理 · 营造链 ══════════ */
+head('① 治理 · 营造链（建造 → 队列 → 完工 → 等级）');
 step('入口：buildAt / canAfford / payCost / queueAt 齐备', function () {
   var miss = ['buildAt', 'canAfford', 'payCost'].filter(function (k) { return typeof G[k] !== 'function'; });
   if (miss.length) throw new Error('缺少出口 ' + miss.join(' '));
@@ -123,13 +123,13 @@ step('入口：buildAt / canAfford / payCost / queueAt 齐备', function () {
 });
 var freeCell = -1;
 A.cells.forEach(function (c, i) { if (freeCell < 0 && !c.build && !c.official) freeCell = i; });
-step('起建 · 民房（空地块 ' + freeCell + '）', function () {
+step('起建 · 居所（空地块 ' + freeCell + '）', function () {
   var lv0 = G.buildingLevel(A, 'minfang');
   var r = G.buildAt(A.id, freeCell, 'minfang');
   if (!r.ok) return r;
   var q = G.queueAt('city', freeCell);
   if (!q) throw new Error('起了队列但 queueAt 查不到');
-  return { note: '民房 Lv' + lv0 + ' → 在建（队列 1 条）' };
+  return { note: '居所 Lv' + lv0 + ' → 在建（队列 1 条）' };
 });
 step('推进队列 → 完工落成', function () {
   var q0 = (G.state.queues && G.state.queues.build) || [];
@@ -141,7 +141,7 @@ step('推进队列 → 完工落成', function () {
   }
   return { note: '队列 ' + before + ' → ' + ((G.state.queues.build || []).length) + '（用时基推进）' };
 });
-step('升级 · 校场（写清造价与阻拦原因）', function () {
+step('升级 · 练兵场（写清造价与阻拦原因）', function () {
   var i0 = -1;
   A.cells.forEach(function (c, i) { if (i0 < 0 && c.build && c.build.id === 'junying') i0 = i; });
   if (i0 < 0) return { ok: false, msg: '本城无军营（跳过）' };
@@ -152,7 +152,7 @@ step('升级 · 校场（写清造价与阻拦原因）', function () {
 });
 
 /* ══════════ ② 募兵链 ══════════ */
-head('② 募兵链（校场人马上限 → 募兵 → 队列 → 兵账）');
+head('② 募兵链（练兵场人马上限 → 募兵 → 队列 → 兵账）');
 step('入口：train / canTrain / marchCapOf 齐备', function () {
   if (typeof G.train !== 'function') throw new Error('无 GAME.train');
   if (!G.battle || typeof G.battle.marchCapOf !== 'function') throw new Error('无 marchCapOf');
@@ -160,30 +160,30 @@ step('入口：train / canTrain / marchCapOf 齐备', function () {
 });
 var menBefore = 0;
 Object.keys(A.army).forEach(function (k) { menBefore += A.army[k]; });
-step('募兵 · 民兵 ×2000（受校场人马上限约束）', function () {
+step('募兵 · 步行机 ×2000（受练兵场人马上限约束）', function () {
   if (ARMY_IDX < 0) return { ok: false, msg: '本城无军营格（探针未铺）' };
-  var r = G.train('yibing', 2000, A.id, ARMY_IDX);
+  var r = G.train('buxingji', 2000, A.id, ARMY_IDX);
   if (!r.ok) return r;
   menBefore = 0;
   Object.keys(A.army).forEach(function (k) { menBefore += A.army[k]; });
-  return { note: '民兵 +2000（存量 ' + U.fmt(menBefore) + ' 人）' };
+  return { note: '步行机 +2000（存量 ' + U.fmt(menBefore) + ' 人）' };
 });
-step('校场人马上限：超额募兵必被拦（唯一出口 = 校场等级 × 1 万）', function () {
+step('练兵场人马上限：超额募兵必被拦（唯一出口 = 练兵场等级 × 1 万）', function () {
   var cap = G.battle.marchCapOf(A);
-  var r = G.train('yibing', 2000000, A.id, ARMY_IDX);
+  var r = G.train('buxingji', 2000000, A.id, ARMY_IDX);
   if (r.ok) throw new Error('超上限竟然放过（cap=' + cap + '）');
   return { note: '上限 ' + U.fmt(cap) + ' 人；超额被拦："' + String(r.msg).slice(0, 40) + '"' };
 });
-step('解散归农：兵 → 人口（100% 回补）', function () {
+step('解散归农：兵 → 幸存者（100% 回补）', function () {
   var pop0 = G.res(A).pop;
-  var men0 = (A.army.yibing || 0);
-  var r = G.disbandAt(A.id, 'yibing', 500);
+  var men0 = (A.army.buxingji || 0);
+  var r = G.disbandAt(A.id, 'buxingji', 500);
   if (!r.ok) return r;
   var pop1 = G.res(A).pop;
-  var men1 = (A.army.yibing || 0);
-  if (!(pop1 > pop0)) throw new Error('人口没回补（' + pop0 + ' → ' + pop1 + '）');
+  var men1 = (A.army.buxingji || 0);
+  if (!(pop1 > pop0)) throw new Error('幸存者没回补（' + pop0 + ' → ' + pop1 + '）');
   if (!(men1 < men0)) throw new Error('兵没减（' + men0 + ' → ' + men1 + '）');
-  return { note: '民兵 ' + men0 + ' → ' + men1 + ' · 人口 +' + (pop1 - pop0) };
+  return { note: '步行机 ' + men0 + ' → ' + men1 + ' · 幸存者 +' + (pop1 - pop0) };
 });
 
 /* ══════════ ③ 出征链 ══════════ */
@@ -204,7 +204,7 @@ step('目标解析：resolveTarget 给出守军/等级', function () {
   return { note: t.kind + ' 「' + t.name + '」 Lv' + (t.level || t.lv || 1) + '（挑最低等级的，波次少）' };
 });
 step('行军派出：march.dispatch 扣兵 + 建在途档', function () {
-  var army = { qingji: 1200, gongjian: 800 };
+  var army = { fujiche: 1200, daodanche: 800 };
   var r = G.march.dispatch(tgt, 'raid', army, st.generals[0].id);
   if (!r.ok) return r;
   var m = (G.state.marches || [])[0];
@@ -235,11 +235,11 @@ step('攻城至破防（连打 3 波，与真实玩法同路）', function () {
   if (!tgt) return { ok: false, msg: '无目标' };
   var broke = false, waves = 0;
   for (var i = 0; i < 3 && !broke; i++) {
-    /* ⚠ 这里要**保留搬运工**：调运链在后，靠它挑担子（攻城只补战兵） */
-    A.army = { qingji: 4000, gongjian: 3000, yibing: 3000, minfu: 1200 };
+    /* ⚠ 这里要**保留板车**：调运链在后，靠它拉货（攻城只补战兵） */
+    A.army = { fujiche: 4000, daodanche: 3000, buxingji: 3000, banche: 1200 };
     st.generals[0].status = 'idle';
     st.generals[0].energy = 100; st.generals[0].sta = 100;
-    var r = G.battle.expedition(tgt, 'occupy', { qingji: 4000, gongjian: 3000, yibing: 3000 }, st.generals[0].id);
+    var r = G.battle.expedition(tgt, 'occupy', { fujiche: 4000, daodanche: 3000, buxingji: 3000 }, st.generals[0].id);
     waves++;
     if (r && r.ok !== false) broke = true;
   }
@@ -264,13 +264,13 @@ step('出发：doTransferCargo 扣兵扣货', function () {
   if (!B) return { ok: false, msg: '无分城（跳过）' };
   B.res.grain = 0; B.res.gold = 0;
   var g0 = A.res.grain;
-  /* 运力 = Σ(兵数 × 兵种载重)：200 搬运工 × 200 = 4 万 —— 运 3 万（留余量），
-     超载会被明确拦下并给出"多带搬运工/运输车"的指引（上一步已实测过那条规则）。 */
-  var r = G.doTransferCargo(A.id, B.id, { minfu: 200 }, st.generals[1].id, { grain: 30000 });
+  /* 运力 = Σ(兵数 × 兵种载重)：200 板车 × 500 = 10 万 —— 运 3 万（留余量），
+     超载会被明确拦下并给出"多带板车/运输平台"的指引（上一步已实测过那条规则）。 */
+  var r = G.doTransferCargo(A.id, B.id, { banche: 200 }, st.generals[1].id, { grain: 30000 });
   if (!r.ok) return r;
   if (!(A.res.grain < g0)) throw new Error('出发城粮没扣（在途能二次花）');
   transferDispatched = true;
-  return { note: '粮 30,000 起运（在途 1 支 · 载重 4 万）' };
+  return { note: '净水 30,000 起运（在途 1 支 · 载重 4 万）' };
 });
 step('抵达：目标城按损耗落账', function () {
   if (!B) return { ok: false, msg: '无分城' };
@@ -286,18 +286,18 @@ step('抵达：目标城按损耗落账', function () {
   G.march.rushAll();
   var moved = B.res.grain - g0;
   if (!(moved > 0)) throw new Error('抵达了但分城没涨粮（' + moved + '）');
-  return { note: '分城粮 +' + U.fmt(moved) + '（已扣途中损耗）' };
+  return { note: '分城净水 +' + U.fmt(moved) + '（已扣途中损耗）' };
 });
 
-/* ══════════ ⑥ 将领链 ══════════ */
-head('⑥ 将领链（招募 → 赏赐 → 出阵）');
-step('客栈招募（recruitRandomGeneral）', function () {
+/* ══════════ ⑥ 英雄链 ══════════ */
+head('⑥ 英雄链（招募 → 赏赐 → 出阵）');
+step('酒馆招募（recruitRandomGeneral）', function () {
   var n0 = st.generals.length;
   var r = null;
   try { r = G.recruitRandomGeneral ? G.recruitRandomGeneral('normal') : null; } catch (e) { r = { ok: false, msg: e.message }; }
   if (!r) return { ok: false, msg: '无 recruitRandomGeneral' };
   if (r.ok === false) return r;
-  return { note: '将领 ' + n0 + ' → ' + st.generals.length };
+  return { note: '英雄 ' + n0 + ' → ' + st.generals.length };
 });
 step('赏赐忠诚（doGenGift：宝物 → 忠诚）', function () {
   var g = st.generals[0];
@@ -323,37 +323,39 @@ step('就地使用（神农锄：无对象道具）', function () {
   if (n1 >= n0) throw new Error('用了但库存没减（' + n0 + ' → ' + n1 + '）');
   return { note: '库存 ' + n0 + ' → ' + n1 };
 });
-step('对将领使用（练兵经验：有对象道具）', function () {
+step('对英雄使用（练兵经验：有对象道具）', function () {
   var g = st.generals[0], e0 = g.exp || 0;
   var r = G.doUseItem('lianbing_jingyan', g.id, 2);
   if (r && r.ok === false) return r;
   if ((g.exp || 0) <= e0 && g.level === 1) return { note: '经验道具已消耗（经验 ' + e0 + ' → ' + (g.exp || 0) + '）' };
   return { note: '经验 ' + e0 + ' → ' + (g.exp || 0) };
 });
-step('移民令：每次 +上限 25%（增量语义）', function () {
+step('移民令：每次 +上限 25%（增量语义 · 上限 = 有效上限/民心折算 · v89.185）', function () {
   var c = G.res(A);
-  var cap = G.maxPopOf(A);
+  /* v89.230 工具同步：v89.185（老板 6）起封顶改 **有效上限**（effPopCapOf · 民心折算），
+     原写 maxPopOf（满额上限）→ 民心 <100% 时实测值必然对不上（假红）。 */
+  var cap = G.effPopCapOf(A);
   c.pop = Math.floor(cap * 0.2);
   var before = c.pop;
   var r = G.doUseItem('yiminling');
   if (r && r.ok === false) return r;
   var add = Math.floor(cap * 0.25);
   var want = Math.min(cap, before + add);
-  if (Math.abs(c.pop - want) > 1) throw new Error('人口 ' + c.pop + ' ≠ ' + before + ' + ' + add + '（' + want + '）');
-  return { note: '人口 ' + U.fmt(before) + ' → ' + U.fmt(c.pop) + '（+' + U.fmt(c.pop - before) + '，上限 ' + U.fmt(cap) + '）' };
+  if (Math.abs(c.pop - want) > 1) throw new Error('幸存者 ' + c.pop + ' ≠ ' + before + ' + ' + add + '（' + want + '）');
+  return { note: '幸存者 ' + U.fmt(before) + ' → ' + U.fmt(c.pop) + '（+' + U.fmt(c.pop - before) + '，上限 ' + U.fmt(cap) + '）' };
 });
 
 /* ══════════ ⑧ 经济链 ══════════ */
 head('⑧ 经济链（市场 → 通商券寄售 → 价格衰减）');
-step('寄售战利品：consignList 有货、doConsign 落金', function () {
+step('寄售战利品：consignList 有货、doConsign 落旧币', function () {
   if (!G.systems || typeof G.systems.consignList !== 'function') throw new Error('无 consignList 出口');
   var list = G.systems.consignList();
   if (!list.length) return { ok: false, msg: '暂无可寄售（未授予宝物）' };
   var gold0 = G.res(A).gold;
   var r = G.doConsign(list[0].id);
   if (r && r.ok === false) return r;
-  if (!(G.res(A).gold > gold0)) throw new Error('寄售了但金没涨');
-  return { note: list.length + ' 种可售；售 1 种 → 金 ' + U.fmt(gold0) + ' → ' + U.fmt(G.res(A).gold) };
+  if (!(G.res(A).gold > gold0)) throw new Error('寄售了但旧币没涨');
+  return { note: list.length + ' 种可售；售 1 种 → 旧币 ' + U.fmt(gold0) + ' → ' + U.fmt(G.res(A).gold) };
 });
 step('价格衰减出口（mktSlipText 可读）', function () {
   if (typeof G.mktSlipText !== 'function') throw new Error('无 mktSlipText');
@@ -401,9 +403,9 @@ step('自动研究（autoResearch）', function () {
   G.autoResearch();
   return { note: '调用成功' };
 });
-step('自动出征（autoMarchOnce：先指定执行将领，再出征一次）', function () {
+step('自动出征（autoMarchOnce：先指定执行英雄，再出征一次）', function () {
   var idle = st.generals.filter(function (g) { return !g.status || g.status === 'idle'; });
-  if (!idle.length) return { ok: false, msg: '无空闲将领' };
+  if (!idle.length) return { ok: false, msg: '无空闲英雄' };
   G.doSetAutoMarch('genId', idle[0].id);
   var r = G.autoMarchOnce(null);
   if (r && r.ok === false) return r;
@@ -449,7 +451,7 @@ step('主城爵位解锁建筑上限（rankBuildCapOf）', function () {
   G.state.mainCityId = A.id;
   var lift = G.rankBuildCapOf(A);
   var cap = G.buildCapOf(A, 'minfang');
-  return { note: '解锁 +' + lift + ' 级 → 民房上限 Lv' + cap };
+  return { note: '解锁 +' + lift + ' 级 → 居所上限 Lv' + cap };
 });
 step('节钺（jieyueClaim：稀缺资源唯一出口）', function () {
   if (typeof G.jieyueClaim !== 'function') throw new Error('无 jieyueClaim');

@@ -213,7 +213,7 @@
     } else if (g.type === 'cities') {
       cur = s.cities.length;
     } else if (g.type === 'pop') {
-      /* v60（需求 4）：时代之志是**全境**目标，人口要走 GAME.totalPop
+      /* v60（需求 4）：时代之志是**全境**目标，幸存者要走 GAME.totalPop
          （s.res.pop 现在只代表当前城） */
       cur = Math.floor(GAME.totalPop());
     } else if (g.type === 'techTotal') {
@@ -239,14 +239,14 @@
     var bonus = { gold: 20000 * (w.eraIndex + 1), rep: 500 * (w.eraIndex + 1) };
     s.res.gold = (s.res.gold || 0) + bonus.gold;
     s.rep = (s.rep || 0) + bonus.rep;
-    if (GAME.log) GAME.log.task('🏆 时代之志达成：' + era.goal.text + '（+' + bonus.gold + '金 / +' + bonus.rep + '声望）');
+    if (GAME.log) GAME.log.task('🏆 时代之志达成：' + era.goal.text + '（+' + bonus.gold + '旧币 / +' + bonus.rep + '声望）');
   };
 
   /* ============================================================
    * 三、名将羁绊（后台静默生效，不提示）
    * ============================================================ */
 
-  /* 玩家拥有的将领名集合 */
+  /* 玩家拥有的英雄名集合 */
   STORY._ownedNames = function () {
     var s = GAME.state, m = {};
     (s.generals || []).forEach(function (g) { m[g.name] = true; });

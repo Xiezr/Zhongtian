@@ -2,13 +2,13 @@
  * play_600x.js — v89.90 「600× × 6h 全权限推演」驾驶舱
  * ------------------------------------------------------------
  * 目标：以游戏原生最高速档 600× 实跑 6 现实小时（= 225 游戏年），
- *       由一个「种田流玩家脑」驱动：建造 / 募兵 / 采集 / 秘境种田 /
+ *       由一个「种田流玩家脑」驱动：建造 / 募兵 / 采集 / 基因实验室种田 /
  *       任务 / 门派 / 扩张 / 自动出征 / 战斗观战（一键自动）。
  *
  * 关键口径（与真人游玩一致）：
  *   · 1 tick = 现实 1 秒；每 tick 时间倍率 600×（tickOnce 内读 settings）
  *   · U.now / Date.now 重写为 **SIM 时钟**（+1s/tick）——使「按现实时间节流」
- *     的系统（自动出征 5 分钟、客栈批次、每日任务、岁贡）与真人 6 小时
+ *     的系统（自动出征 5 分钟、酒馆批次、每日任务、岁贡）与真人 6 小时
  *     在线时一致地流逝
  *   · 地图 seed 固定（20260921）· 天气/掉落等保持真随机（真实游玩）
  *   · 战斗：观战挂起 → 让它在表上自然走数十秒 → 一键自动（真人点「自动战斗」）
@@ -119,7 +119,7 @@ amc.mode = 'raid'; amc.everyMin = 5; amc.radius = 14; amc.dailyMax = 0;
 RUN('=== v89.90 600× 推演开始（HARNESS v2） ===');
 RUN('建局：北辰 · 「灰岗」· 碎垣 · mapSeed=20260921 · 600× · 目标 ' + MAXT + ' tick（' + (MAXT / 96).toFixed(1) + ' 游戏年）');
 RUN('城坐标 (' + city0.x + ',' + city0.y + ') · 初始将 ' + st.generals.map(function (g) { return g.name; }).join('、'));
-RUN('初始资源 粮木石铁金各 2 万 · 人口 200 · 城外预设 2田1木1石1铁');
+RUN('初始资源 净水/生物质/电能/废钢/旧币各 2 万 · 幸存者 200 · 城外预设 2净化厂 1水培温室 1发电站 1电弧熔炉');
 
 /* ---------- 4. 工具函数 ---------- */
 function yNow() { return (st.world.elapsed || 0) / 57600; }
@@ -253,7 +253,7 @@ function setCity(c) { G.ui._cityId = c.id; }
 /* ---------- 5. 玩家脑：各系统动作 ---------- */
 /* 5.1 建造（空位 → 关键建筑）*/
 var BUILD_PRIO = [
-  /* v2：顺序按依赖链修正 —— v1 实测「招贤馆 需客栈 Lv2」，客栈必须先建 */
+  /* v2：顺序按依赖链修正 —— v1 实测「招贤馆 需酒馆 Lv2」，酒馆必须先建 */
   { bid: 'junying', want: 1 }, { bid: 'shuyuan', want: 1 }, { bid: 'kezhan', want: 1 },
   { bid: 'zhaoxianguan', want: 1 }, { bid: 'cangku', want: 1 }, { bid: 'shichang', want: 1 },
   { bid: 'honglusi', want: 1 }, { bid: 'fenghuotai', want: 1 }, { bid: 'yizhan', want: 1 },
@@ -301,21 +301,21 @@ function tryBuildExt() {
     return;
   }
 }
-/* 5.3 城墙 */
+/* 5.3 围墙 */
 function tryWall() {
   var city = st.cities[0];
-  /* v89.126 跟随：城墙并入建筑体系，wallPendingOf/buildWall/wallLv 退役 */
+  /* v89.126 跟随：围墙并入建筑体系，wallPendingOf/buildWall/wallLv 退役 */
   var lv = G.buildingLevel(city, 'chengqiang') || 0;
   if (city.wall && city.wall.pending) return;
   if (lv >= G.buildCapOf(city, 'chengqiang')) return;
   var r = safeCall('wall', function () {
     return lv > 0 ? G.upgradeAt(city.id, 'wall') : G.buildAt(city.id, 'wall', 'chengqiang');
   });
-  if (r && r.ok) RUN('🧱 城墙 → Lv' + (lv + 1) + ' 开建');
+  if (r && r.ok) RUN('🧱 围墙 → Lv' + (lv + 1) + ' 开建');
   if (r && !r.ok) noteSoft('wall', r.msg);
 }
 /* 5.4 募兵 */
-var TROOP_ORDER = ['tieji', 'qingji', 'changqiang', 'daodun', 'gongjian', 'yibing'];
+var TROOP_ORDER = ['zhuzhan', 'fujiche', 'buxingji', 'dunwei', 'daodanche'];
 function armyTarget() {
   var y = yNow();
   if (y < 0.25) return 300;
@@ -353,7 +353,7 @@ function tryTrain() {
 }
 /* v2：编队取兵 —— 按 prefer 顺序从城内抽 n 名（不超实有） */
 function takeArmy(city, n, order) {
-  order = order || ['tieji', 'qingji', 'changqiang', 'daodun', 'gongjian', 'yibing'];
+  order = order || ['zhuzhan', 'fujiche', 'buxingji', 'dunwei', 'daodanche'];
   var out = {}, need = n;
   order.forEach(function (tid) {
     if (need <= 0) return;
@@ -376,7 +376,7 @@ function tryGather() {
   if (!spot) { noteSoft('gather.spot', '暂无自家野地可采（待占领）'); return; }
   var c0 = st.cities[0];
   setCity(c0);
-  var tkG = takeArmy(c0, 300, ['minfu', 'yibing', 'changqiang', 'daodun', 'gongjian', 'qingji']);
+  var tkG = takeArmy(c0, 300, ['banche', 'buxingji', 'dunwei', 'daodanche', 'fujiche']);
   if (tkG.total < 50) { noteSoft('gather.noarmy', '城内取不出采集兵（清点各兵种）'); return; }
   var army = tkG.army;
   var r = safeCall('gather.dispatch', function () { return G.dispatchGather(spot.x, spot.y, gen.id, army); });
@@ -454,12 +454,12 @@ function tryReinforce() {
   }
 }
 
-/* 5.5d 市场售粮换金（设计内的黄金入口：粮→金，平价恒定 ≈ 1 金 / 6.7 粮） */
+/* 5.5d 市场售粮换旧币（设计内的旧币入口：粮→旧币，平价恒定 ≈ 1 旧币 / 6.7 粮） */
 var SELL_LAST = -1e9;
 function tryMarketSell() {
   if (tNow - SELL_LAST < 240) return;
   var gold = st.res.gold || 0;
-  if (gold > 150000) return;                 /* 金够用就不卖 */
+  if (gold > 150000) return;                 /* 旧币够用就不卖 */
   var grain = st.res.grain || 0;
   if (grain < 900000) return;                /* 先保 60 万粮底 */
   var amount = Math.min(grain - 600000, 800000);
@@ -470,7 +470,7 @@ function tryMarketSell() {
   if (r && !r.ok) noteSoft('market.sellfail', r.msg);
 }
 
-/* 5.6 秘境种田 */
+/* 5.6 基因实验室种田 */
 var FARM_ROT = 0;
 function tryFarm() {
   var hr = safeCall('farm.harvestAll', function () { return G.farmHarvestAll(); });
@@ -499,7 +499,7 @@ function tryFarm() {
     if (!planted) break;
   }
 }
-/* 5.7 商城（种子快购） */
+/* 5.7 游商（种子快购） */
 function tryShop() {
   if ((st.items.seed_fan || 0) < 2 && (st.res.gold || 0) > 120000 && G.farmOf().plots.some(function (p) { return !p; })) {
     var r = safeCall('shop.seed', function () { return G.doShopping('seed_fan', 4); });
@@ -525,7 +525,7 @@ function trySect() {
     if (r2 && r2.ok) noteSoft('sect.chores', r2.msg);
     if (r2 && !r2.ok) { SECT_CHORE_MAXED = true; RUN('☁️ 门派杂役今日已满：' + r2.msg); }
   }
-  /* 偶尔捐资测试出口（金 > 40 万一次） */
+  /* 偶尔捐资测试出口（旧币 > 40 万一次） */
   if (!DUMPED.sectDonate && (st.res.gold || 0) > 400000 && yNow() > 2) {
     DUMPED.sectDonate = 1;
     var r3 = safeCall('sect.donate', function () { return G.doSectTask('donate'); });
@@ -606,17 +606,17 @@ var MILE = [
       if (r && !r.ok) { noteSoft('fort1', r.msg); return 'wait'; }
   } },
   { id: 'scout1', at: 2400, done: false, retries: 0, fn: function () {
-      var chk = safeCall('scout.train', function () { return G.maxTrainCount('chihou', st.cities[0].id, (cellOf(st.cities[0], 'junying') || {}).idx); });
+      var chk = safeCall('scout.train', function () { return G.maxTrainCount('zhencha', st.cities[0].id, (cellOf(st.cities[0], 'junying') || {}).idx); });
       var n = (typeof chk === 'number') ? chk : Number(chk && (chk.n || chk.count || chk.max) || 0);
       if (n <= 0) return 'wait';
       var jy = cellOf(st.cities[0], 'junying');
       setCity(st.cities[0]);
       var c0 = st.cities[0];
-      if (!c0.army.chihou || c0.army.chihou < 10) {
-        var t = safeCall('scout.tr', function () { return G.train('chihou', 10, c0.id, jy.idx); });
+      if (!c0.army.zhencha || c0.army.zhencha < 10) {
+        var t = safeCall('scout.tr', function () { return G.train('zhencha', 10, c0.id, jy.idx); });
         if (t && !t.ok) { noteSoft('scout.tr', t.msg); return 'wait'; }
       }
-      if ((c0.army.chihou || 0) < 10) return 'wait';
+      if ((c0.army.zhencha || 0) < 10) return 'wait';
       /* 找最近名城 */
       var npc = null;
       for (var rr = 5; rr <= 30 && !npc; rr++) {
@@ -628,7 +628,7 @@ var MILE = [
       }
       if (!npc) return 'wait';
       var gen = idleGen(true); if (!gen) return 'wait';
-      var r = G.march.dispatch({ kind: 'city', id: npc.id, npc: npc }, 'scout', { chihou: 10 }, gen.id);
+      var r = G.march.dispatch({ kind: 'city', id: npc.id, npc: npc }, 'scout', { zhencha: 10 }, gen.id);
       if (r && r.ok) { RUN('🦅 侦查名城：' + npc.name + '（' + r.msg + '）'); return 'ok'; }
       if (r && !r.ok) { noteSoft('scout1', r.msg); return 'wait'; }
   } },
@@ -856,7 +856,7 @@ for (tNow = 1; tNow <= MAXT; tNow++) {
     flushEv();
     var perf = (_RealNow() - T0) / 1000;
     RUN('进度 ' + tNow + '/' + MAXT + ' · 第 ' + yNow().toFixed(1) + ' 游戏年 · 用时 ' + perf.toFixed(0) + 's'
-      + ' · 城' + st.cities.length + ' · 军 ' + fmtNum(totalArmy()) + ' · 金 ' + fmtNum(st.res.gold)
+      + ' · 城' + st.cities.length + ' · 军 ' + fmtNum(totalArmy()) + ' · 旧币 ' + fmtNum(st.res.gold)
       + ' · 将 ' + st.generals.length + ' · 日志 ' + (EVFLUSHED + EV.length) + ' · 错 ' + ERRN);
   }
   if (tNow % 2400 === 0) {
@@ -876,7 +876,7 @@ var errTop = Object.keys(ERRS).map(function (k) { return { k: k, n: ERRS[k].n };
   .sort(function (a, b) { return b.n - a.n; }).slice(0, 12);
 RUN('=== 推演结束 ===');
 RUN('终态：第 ' + yNow().toFixed(1) + ' 游戏年 · 城 ' + st.cities.length + ' · 军 ' + fmtNum(totalArmy())
-  + ' · 金 ' + fmtNum(st.res.gold) + ' · 将 ' + st.generals.length + ' · 战报 ' + (st.reports || []).length + ' 份');
+  + ' · 旧币 ' + fmtNum(st.res.gold) + ' · 将 ' + st.generals.length + ' · 战报 ' + (st.reports || []).length + ' 份');
 RUN('错误合计 ' + ERRN + ' 次；Top: ' + errTop.map(function (x) { return x.k.slice(0, 60) + '×' + x.n; }).join(' || '));
 RUN('输出目录：' + OUT);
 flushRun();

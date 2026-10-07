@@ -1,23 +1,23 @@
 /* ============================================================
- * v89.91 GOLD 策略脑（黄金流对照）—— 与种田基线 play_600x.js 的唯一差异
+ * v89.91 GOLD 策略脑（旧币流对照）—— 与种田基线 play_600x.js 的唯一差异
  * ------------------------------------------------------------
- * 老板假说：金换批招高资质 → 金买经验书升将 → 用光自由点 →
- *           金提速（建造/生产/募兵）→ 增长应是指数级。
+ * 老板假说：旧币换批招高资质 → 旧币买经验书升将 → 用光自由点 →
+ *           旧币提速（建造/生产/募兵）→ 增长应是指数级。
  * 本段如实实现该策略，全部走游戏既有出口（不新增任何游戏规则）：
  *   goldSell   全资源溢出套现（基线只卖粮）     → GAME.marketSell
- *   goldInn    客栈花金换批直到出英杰           → GAME.innReroll + innAuto（门槛=英杰）
+ *   goldInn    酒馆花旧币换批直到出进化体           → GAME.innReroll + innAuto（门槛=进化体）
  *   goldBooks  最优档经验书喂「高潜将」         → GAME.doShopping + systems.useItemMany
  *   goldPoints 用光全部自由点                   → GAME.addFreePoint
- *   goldRush   建造/科技队列花金立成            → GAME.queueRushPay
- *   goldTrainRush 募兵队列花金买时间            → GAME.trainRush
- *   goldGuards 各城守将 = 本城最高内政者        → GAME.assignGeneral
+ *   goldRush   建造/科技队列花旧币立成            → GAME.queueRushPay
+ *   goldTrainRush 募兵队列花旧币买时间            → GAME.trainRush
+ *   goldGuards 各城守将 = 本城最高治理者        → GAME.assignGeneral
  *   goldHerbs  灵草升档（给高潜将）             → systems.useItem（rank_up 分支）
- *   goldNeigong 守卫修内功（内政 +6/重）        → GAME.doShopping + systems.useItem
+ *   goldNeigong 守卫修内功（治理 +6/重）        → GAME.doShopping + systems.useItem
  *   goldLord   君主练功 + 突破                  → GAME.doLordTrain / doLordBreak
  * ============================================================ */
 var GOLD = {
   version: 'GOLD v1',
-  reserve: 300000,                                  /* 金保留下限（不动） */
+  reserve: 300000,                                  /* 旧币保留下限（不动） */
   spends: { inn: 0, books: 0, build: 0, tech: 0, train: 0, neigong: 0 },
   rerolls: 0, recruits: 0, booksUsed: 0,
   salesCount: 0, goldSold: 0, freePts: 0,
@@ -56,7 +56,7 @@ function goldSell() {
   richCity();
 }
 
-/* ---------- ② 客栈：花金换批 → 自动招英杰 ---------- */
+/* ---------- ② 酒馆：花旧币换批 → 自动招进化体 ---------- */
 var GI_LAST = -1e9;
 function goldInn() {
   if (tNow - GI_LAST < 90) return;
@@ -66,7 +66,7 @@ function goldInn() {
   cfg.min = (GOLD.recruits < 6 && yNow() < 120) ? 'ying' : 'liang';
   st.cities.slice().sort(function (a, b) { return (G.res(b).gold || 0) - (G.res(a).gold || 0); })
     .forEach(function (city) {
-      if ((G.innLevel(city) || 0) < 6) return;        /* 客栈太低不出货，等升上来 */
+      if ((G.innLevel(city) || 0) < 6) return;        /* 酒馆太低不出货，等升上来 */
       if (G.genFreeOf(city) <= 0) return;
       setCity(city);
       var budget = Math.min((G.res(city).gold || 0) - 200000, 450000);
@@ -83,8 +83,8 @@ function goldInn() {
           GOLD.recruits++;
           var ng = st.generals[st.generals.length - 1];
           if (ng) {
-            noteSoft('gold.recruit', '客栈录用 ' + ng.name + '（' + G.rankOf(ng).name + '）');
-            if (rankIdxOf(ng) >= 2) gml('firstElite', '客栈录得高资质：' + ng.name + '（' + G.rankOf(ng).name + '）');
+            noteSoft('gold.recruit', '酒馆录用 ' + ng.name + '（' + G.rankOf(ng).name + '）');
+            if (rankIdxOf(ng) >= 2) gml('firstElite', '酒馆录得高资质：' + ng.name + '（' + G.rankOf(ng).name + '）');
           }
         }
       }
@@ -113,8 +113,8 @@ function goldBookTarget() {
   return null;
 }
 function gmlLv(g, lv) {
-  [{ l: 60, t: '首位 Lv60' }, { l: 100, t: '首位 Lv100' }, { l: 140, t: '首位 Lv140（英杰满级）' },
-   { l: 180, t: '首位 Lv180（名世满级）' }, { l: 240, t: '首位 Lv240（天授满级）' }].forEach(function (x) {
+  [{ l: 60, t: '首位 Lv60' }, { l: 100, t: '首位 Lv100' }, { l: 140, t: '首位 Lv140（进化体满级）' },
+   { l: 180, t: '首位 Lv180（觉醒体满级）' }, { l: 240, t: '首位 Lv240（天启体满级）' }].forEach(function (x) {
     if (lv >= x.l) gml('lv' + x.l, x.t + '：' + g.name + '（' + G.rankOf(g).name + '）Lv' + lv);
   });
 }
@@ -123,7 +123,7 @@ function goldBooks() {
   GB_LAST = tNow;
   var tgt = goldBookTarget();
   if (!tgt) return;
-  /* 档位按「每金经验」效率从高到低；买得起哪档用哪档（大宗优惠口径） */
+  /* 档位按「每旧币经验」效率从高到低；买得起哪档用哪档（大宗优惠口径） */
   var tiers = [['bingsheng', 400000], ['taigong_bingshu', 330000], ['bingxian_yipian', 240000],
     ['mingjiang_xinchuan', 156000], ['dudu_bingfa', 84000], ['jiangjun_zhanlu', 45000]];
   var guard = 0;
@@ -135,7 +135,7 @@ function goldBooks() {
     for (var i = 0; i < tiers.length; i++) { if (budget >= tiers[i][1]) { tier = tiers[i]; break; } }
     if (!tier) break;
     /* v2 修 bug：**按需购买（一次一本）** —— v1 按预算买 120 本/次，超出目标上限
-       的部分全堆进背包（实测终局积压 570 本千古兵圣 = 2.28 亿金存货，报表失真）。
+       的部分全堆进背包（实测终局积压 570 本千古兵圣 = 2.28 亿旧币存货，报表失真）。
        现在：背包有同档存货先用存货；否则买 1 本 → 用 1 本 → 循环。 */
     var use = null;
     var bagN = st.items[tier[0]] || 0;
@@ -157,7 +157,7 @@ function goldBooks() {
   }
 }
 
-/* ---------- ④ 自由点：全部用光（守将/高潜 → 内政；其余 → 勇武） ---------- */
+/* ---------- ④ 自由点：全部用光（守将/高潜 → 治理；其余 → 武力） ---------- */
 function goldPoints() {
   var list = (st.generals || []).filter(function (g) { return !g.isLord; });
   list.sort(function (a, b) {
@@ -179,7 +179,7 @@ function goldPoints() {
   });
 }
 
-/* ---------- ⑤ 队列金提速（建造 / 科技） ---------- */
+/* ---------- ⑤ 队列旧币提速（建造 / 科技） ---------- */
 function goldRush() {
   var rich = richCity();
   var minKeep = GOLD.reserve + 150000;
@@ -200,7 +200,7 @@ function goldRush() {
   }
 }
 
-/* ---------- ⑥ 募兵花金买时间（高水位才动 —— 大兵力批次很贵） ---------- */
+/* ---------- ⑥ 募兵花旧币买时间（高水位才动 —— 大兵力批次很贵） ---------- */
 function goldTrainRush() {
   var rich = richCity();
   var minKeep = GOLD.reserve + 600000;
@@ -217,7 +217,7 @@ function goldTrainRush() {
   });
 }
 
-/* ---------- ⑦ 守将：本城最高内政者（带滞后带，防来回换） ---------- */
+/* ---------- ⑦ 守将：本城最高治理者（带滞后带，防来回换） ---------- */
 function goldGuards() {
   if ((st.generals || []).length < 3) return;
   st.cities.forEach(function (city) {
@@ -239,7 +239,7 @@ function goldGuards() {
   });
 }
 
-/* ---------- ⑧ 灵草升档（秘境产；优先给守将/高等级） ---------- */
+/* ---------- ⑧ 灵草升档（基因实验室产；优先给守将/高等级） ---------- */
 function goldHerbs() {
   ['tianshouguo', 'hualongshen', 'xisuizhi', 'yunlingcao'].forEach(function (hid) {
     var guard = 0;
@@ -253,7 +253,7 @@ function goldHerbs() {
         var sc = (g.level || 1) + ((g.status === 'guard') ? 1000 : 0);
         if (sc > bs) { bs = sc; tgt = g; }
       });
-      if (!tgt) { noteSoft('gold.herbno', hid + '：无适用资质的将领（from=' + item.from + '）'); break; }
+      if (!tgt) { noteSoft('gold.herbno', hid + '：无适用资质的英雄（from=' + item.from + '）'); break; }
       var r = safeCall('gold.rankup', function () { return G.systems.useItem(hid, tgt.id); });
       if (!r || !r.ok) { if (r && !r.ok) noteSoft('gold.rankupfail', r.msg); break; }
       gml('rankup1', '🧬 灵草升档：' + r.msg);
@@ -261,7 +261,7 @@ function goldHerbs() {
   });
 }
 
-/* ---------- ⑨ 内功（守卫修尉缭子·内政 +6/重；君主修三略·勇武 +6/重） ---------- */
+/* ---------- ⑨ 内功（守卫修尉缭子·治理 +6/重；君主修三略·武力 +6/重） ---------- */
 var GNG_LAST = -1e9;
 function goldNeigong() {
   if (tNow - GNG_LAST < 300) return;
@@ -310,9 +310,9 @@ function goldLord() {
 
 /* ---------- ⑪ 状态行 ---------- */
 function goldLine() {
-  return '💰 黄金流：累卖 ' + fmtNum(GOLD.goldSold) + ' 金/' + GOLD.salesCount + ' 笔'
+  return '💰 旧币流：累卖 ' + fmtNum(GOLD.goldSold) + ' 旧币/' + GOLD.salesCount + ' 笔'
     + ' · 书耗 ' + fmtNum(GOLD.spends.books) + '（' + GOLD.booksUsed + ' 本）'
-    + ' · 换批 ' + GOLD.rerolls + ' 次/招 ' + GOLD.recruits + ' 人（英杰 ' + eliteCount() + '）'
+    + ' · 换批 ' + GOLD.rerolls + ' 次/招 ' + GOLD.recruits + ' 人（进化体 ' + eliteCount() + '）'
     + ' · 提速 建' + fmtNum(GOLD.spends.build) + '/科' + fmtNum(GOLD.spends.tech) + '/兵' + fmtNum(GOLD.spends.train) + '/内功' + fmtNum(GOLD.spends.neigong)
     + ' · 最高将 Lv' + maxGenLv();
 }

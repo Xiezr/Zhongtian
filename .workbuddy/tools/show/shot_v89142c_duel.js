@@ -1,7 +1,7 @@
 'use strict';
 /* v89.142 实机验证（真浏览器）：需求 7 —— 战前斗将在回合战况播报
    （拆自 shot_v89142b：组合脚本在 1920×1080 + 三连截图后渲染进程会崩，
-    本脚本单主题、1440×900、兵力 ≤ 校场容量。）
+    本脚本单主题、1440×900、兵力 ≤ 练兵场容量。）
    跑法：node .workbuddy/tools/show/shot_v89142c_duel.js */
 module.paths.unshift('C:/Users/18811/.workbuddy/binaries/node/workspace/node_modules');
 var pw = require('playwright-core');

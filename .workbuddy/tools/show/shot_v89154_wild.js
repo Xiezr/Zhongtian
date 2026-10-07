@@ -44,7 +44,7 @@ function chk(name, ok, extra) {
     st.wilds[4].garrison = { troops: { changqiang: 5000 }, cityId: c.id, genId: gen.id };
     G.startGather(938, 938, { changqiang: 5000 }, { cityId: c.id });       /* 938 = 采集中 */
     st.wilds[3].garrison = { troops: { changqiang: 500 }, cityId: c.id }; /* 939 = 有驻军 */
-    /* 改建造局：0 号地块 = 农田 Lv2 + 资源充足 */
+    /* 改建造局：0 号地块 = 净化厂 Lv2 + 资源充足 */
     G.extGridOf(c)[0] = { type: 'farm', lv: 2 };
     c.res.grain = 5e5; c.res.wood = 5e5; c.res.stone = 5e5; c.res.iron = 5e5; c.res.gold = 5e5;
   });
@@ -145,12 +145,12 @@ function chk(name, ok, extra) {
     var seg = document.querySelector('#modal-root').innerHTML;
     var panel = document.querySelector('#modal-root .inner-panel') || document.querySelector('#modal-root .modal');
     return {
-      title: seg.indexOf('改建 · 农田') >= 0,
+      title: seg.indexOf('改建 · 净化厂') >= 0,
       cost: seg.indexOf('改建费') >= 0,
       overflow: panel ? panel.scrollHeight - panel.clientHeight : -1
     };
   });
-  chk('改建选择面板（标题含「改建 · 农田」+ 改建费）', r4.title && r4.cost);
+  chk('改建选择面板（标题含「改建 · 净化厂」+ 改建费）', r4.title && r4.cost);
   chk('改建面板无纵向溢出', r4.overflow <= 0, 'overflow=' + r4.overflow);
   await p.locator('#modal-root .modal').screenshot({ path: OUT + 'v89154-convert-panel.png' });
   /* 整页对照图（弹窗打开 = 有遮罩态）—— 与"关闭后"的 convert-back 做亮度对照 */

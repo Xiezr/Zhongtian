@@ -1,5 +1,5 @@
 /* v89.179 实机验证（真浏览器）：「克制全撤」后的战场兵牌悬停
-   ① 出征 → 进战场 → 悬停 长枪兵兵牌（曾经的"克制行大户"）→ 富浮层截图
+   ① 出征 → 进战场 → 悬停 步行机兵牌（曾经的"克制行大户"）→ 富浮层截图
    ② 量：浮层五段纸面面板在；**克制/抗性/被克 与 cnt- 类全无**；战场 DOM 零残留
    运行：NODE_PATH="C:/Users/18811/.workbuddy/binaries/node/workspace/node_modules" node .workbuddy/tools/show/shot_v89179_hover.js */
 module.paths.unshift('C:/Users/18811/.workbuddy/binaries/node/workspace/node_modules');
@@ -48,7 +48,7 @@ function chk(name, cond, extra) {
     var wd = G.wildDefenseAt(wt.x, wt.y, wlv2);
     var send = {};
     for (var gk in (wd.army || {})) send[gk] = wd.army[gk];
-    /* v89.179：确保阵中有"长枪兵"（演示"曾经的克制行大户"） */
+    /* v89.179：确保阵中有"步行机"（演示"曾经的克制行大户"） */
     send.changqiang = (send.changqiang || 0) + 2000;
     c.army = {};
     for (var gk2 in send) c.army[gk2] = send[gk2];
@@ -70,7 +70,7 @@ function chk(name, cond, extra) {
   chk('② 进入战场界面', inBt);
   await p.waitForTimeout(400);
 
-  /* ③ 悬停 长枪兵兵牌（没有就退回首张） */
+  /* ③ 悬停 步行机兵牌（没有就退回首张） */
   var diag = await p.evaluate(function () {
     var u = document.querySelector('#bt-field .bt-unit');
     return {

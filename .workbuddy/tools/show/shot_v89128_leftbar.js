@@ -1,4 +1,4 @@
-/* v89.128 需求 7/8 实机图：左栏统计（人口行/按钮统一/野地行/人口道具弹窗）+ 对齐复验 */
+/* v89.128 需求 7/8 实机图：左栏统计（幸存者行/按钮统一/野地行/幸存者道具弹窗）+ 对齐复验 */
 'use strict';
 module.paths.unshift('C:/Users/18811/.workbuddy/binaries/node/workspace/node_modules');
 var pw = require('playwright-core');
@@ -47,11 +47,11 @@ var pw = require('playwright-core');
     };
   });
   console.log('资源行 num-rate 右缘:', m.resRate && m.resRate[1], ' plus 右缘:', m.resPlus && m.resPlus[1]);
-  console.log('人口行 num-rate 右缘:', m.popRate && m.popRate[1], ' plus 右缘:', m.popPlus && m.popPlus[1]);
-  console.log('人口行含 cap:', m.atHasCap, '（期望 false） · 资源含 item-badge:', m.hasBadge, '（期望 false）');
+  console.log('幸存者行 num-rate 右缘:', m.popRate && m.popRate[1], ' plus 右缘:', m.popPlus && m.popPlus[1]);
+  console.log('幸存者行含 cap:', m.atHasCap, '（期望 false） · 资源含 item-badge:', m.hasBadge, '（期望 false）');
   console.log('属性区文字:', m.lbls);
 
-  /* 点人口 "+" → 弹窗 */
+  /* 点幸存者 "+" → 弹窗 */
   await p.click('#city-attrs .pop-line .plus-btn');
   await p.waitForTimeout(400);
   await p.screenshot({ path: 'E:/Deepseekdb/.workbuddy/shots/v89128-popitems.png' });

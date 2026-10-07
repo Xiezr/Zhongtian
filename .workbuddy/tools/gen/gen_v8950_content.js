@@ -83,7 +83,7 @@
   out.push('   * 数值口径（与旧套同一把尺）：');
   out.push('   *   · 套装件 = **同品质同槽位散件 ×1.12** + 每套"特色属性"（详见生成器）');
   out.push('   *   · 套装加成 = 3/5/7/11 四档**累计**（DATA.SET_TIERS 单一来源），每套有一档带体力');
-  out.push('   *   · 物品价 = 既有同类物品的价位阶梯（`price` 单位 = 100 金，商城 ×100）');
+  out.push('   *   · 物品价 = 既有同类物品的价位阶梯（`price` 单位 = 100 旧币，商城 ×100）');
   out.push('   * 生成器：`.workbuddy/tools/gen/gen_v8950_content.js`（改数值先改它，别手改此处）');
   out.push('   * ============================================================ */');
   out.push('  (function () {');
@@ -188,7 +188,7 @@
   /* 军事 */
   [['pozhengu', '破阵鼓', { atk: 0.15 }, 14], ['xuezhanqi', '血战旗', { atk: 0.25 }, 26],
    ['mieguogu', '灭国鼓', { atk: 0.35 }, 45], ['tiebit_tu', '铁壁图', { def: 0.15 }, 14],
-   ['jincheng_tu', '金城图', { def: 0.25 }, 26], ['taishan_tu', '太山图', { def: 0.35 }, 45],
+   ['jincheng_tu', '旧币城图', { def: 0.25 }, 26], ['taishan_tu', '太山图', { def: 0.35 }, 45],
    ['xuming_shu', '续命书', { wound: 0.45 }, 130], ['yisheng_shu', '医圣书', { wound: 0.6 }, 200],
    ['dajiang_qi', '大将旗', { cap: 0.4 }, 28], ['jiezhi_ling', '节制令', { cap: 0.6 }, 50],
    ['gongshou_fu', '攻守符', { atk: 0.15, def: 0.15 }, 34],
@@ -226,13 +226,13 @@
    ['taigong_bingshu', '太公兵书', 5000000, 50000], ['bingsheng', '千古兵圣', 20000000, 150000]]
     .forEach(function (x) { it(x[0], x[1], 'exp', x[3], '将领经验+' + x[2], 'amount: ' + x[2]); });
   /* 体力 */
-  [['xingjun_san', '行军散', 0.05, 3], ['jinchuang_san', '金疮散', 0.15, 8], ['shengji_gao', '生肌膏', 0.35, 18],
+  [['xingjun_san', '行军散', 0.05, 3], ['jinchuang_san', '旧币疮散', 0.15, 8], ['shengji_gao', '生肌膏', 0.35, 18],
    ['huiqi_dan', '回气丹', 0.5, 26], ['peiyuan_dan', '培元丹', 0.75, 42], ['guben_dan', '固本丹', 0.9, 60],
    ['daluo_dan', '大罗金丹', 1.0, 85], ['shengxin_wan', '生息丸', 0.2, 11],
    ['jingxin_dan', '静心丹', 0.6, 34], ['huanhun_lu', '还魂露', 0.95, 70]]
     .forEach(function (x) { it(x[0], x[1], 'stamina', x[3], '恢复将领体力' + Math.round(x[2] * 100) + '%', 'amount: ' + x[2]); });
   /* 坐骑（速度 1h） */
-  [['yule_maju', '玉勒马具', 8, 130], ['jinan', '金鞍', 12, 200], ['zhaoye_an', '照夜玉鞍', 20, 330],
+  [['yule_maju', '玉勒马具', 8, 130], ['jinan', '旧币鞍', 12, 200], ['zhaoye_an', '照夜玉鞍', 20, 330],
    ['taxue_an', '踏雪鞍', 30, 500], ['zhuifeng_an', '追风鞍', 45, 800], ['tianma_pei', '天马辔', 60, 1200]]
     .forEach(function (x) { it(x[0], x[1], 'mount_buff', x[3], '将领速度+' + x[2] + '（1h）', 'amount: ' + x[2]); });
   /* 宝箱 */

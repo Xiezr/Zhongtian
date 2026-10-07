@@ -33,8 +33,8 @@ function chk(name, ok, extra) {
     G.log('任务完成：屯田（可领取）', 'task');
     G.log('🎏 改元 建安：时代之志，抚民以德', 'task', 'era');
     G.log('天时：大雨（行军迟缓）', 'sys', 'weather');
-    G.log('建筑完成：民房 升级', 'sys', 'build');
-    G.log('📦 采集收获（湖泊 Lv8）：粮食 +60.0万；珠宝 蚌珠×2', 'sys', 'gather');
+    G.log('建筑完成：居所 升级', 'sys', 'build');
+    G.log('📦 采集收获（湖泊 Lv8）：净水 +60.0万；珠宝 蚌珠×2', 'sys', 'gather');
     G.log('江湖：有人在酒馆提起你的名字');
     /* 采集（供收获 toast） */
     var RESOK = G.DATA.GATHER.resOf || {};

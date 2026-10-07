@@ -1,7 +1,7 @@
-/* v89.133 实机脚本：军务重构一（出征/出征战术/防守战术/校场）+ 将领面板三行
+/* v89.133 实机脚本：军务重构一（出征/出征战术/防守战术/练兵场）+ 将领面板三行
  * ------------------------------------------------------------
  * 判据：
- *   ① 六页签 + 出征页（目标下拉 + 进入键 + 容量/节钺入口）；点校场 → 直进军务
+ *   ① 六页签 + 出征页（目标下拉 + 进入键 + 容量/节钺入口）；点练兵场 → 直进军务
  *   ② 出征战术：两列网格（左列右缘 ≤ 右列左缘）+ 逐兵种「动作/目标」下拉 + 无在途 + 练兵块
  *   ③ 防守两小页切换（全境防御表格 / 防守战术下拉 + 出城勾选）
  *   ④ 烽火页无备注行
@@ -193,16 +193,16 @@ function chk(name, cond, extra) {
   chk('④ 烽火页：备注行已撤 · 预警区仍在', bc.noNote && bc.hasWarn);
   await p.screenshot({ path: 'E:/Deepseekdb/.workbuddy/shots/v89133-beacon.png' });
 
-  /* ══ ⑤ 点校场 → 直进军务 ══ */
+  /* ══ ⑤ 点练兵场 → 直进军务 ══ */
   var xc = await p.evaluate(function () {
     var G = window.GAME;
     G.ui.setView('city');
-    /* 与玩家路径一致：点校场格 → 建筑面板 → 「功能」里点入口 */
+    /* 与玩家路径一致：点练兵场格 → 建筑面板 → 「功能」里点入口 */
     var c = G.currentCity(), idx = -1;
     (c.cells || []).forEach(function (cell, i) {
       if (idx < 0 && cell.build && cell.build.id === 'xiaochang') idx = i;
     });
-    if (idx < 0) return { ok: false, why: '无校场格' };
+    if (idx < 0) return { ok: false, why: '无练兵场格' };
     G.ui.openBuildModal(idx);
     var root = document.querySelector('#modal-root');
     var el = root ? root.querySelector('[data-action="open-xiaochang"]') : null;
@@ -210,7 +210,7 @@ function chk(name, cond, extra) {
     el.click();
     return { ok: G.ui.view === 'marches', view: G.ui.view, tab: G.ui._marchTab };
   });
-  chk('⑤ 点校场 → 直接进军务视图（校场面板退役）', xc.ok, (xc.view || '-') + '/' + (xc.tab || '-'));
+  chk('⑤ 点练兵场 → 直接进军务视图（练兵场面板退役）', xc.ok, (xc.view || '-') + '/' + (xc.tab || '-'));
 
   /* ══ ⑥ 将领面板三行（几何实证）══ */
   var pane = await p.evaluate(function () {
@@ -238,7 +238,7 @@ function chk(name, cond, extra) {
   chk('⑥ 攻击/防御行单行（≤24px）· 行面无「＋ 装备」· 构成在悬停',
     !!atkRow && !!defRow && atkRow.h <= 24 && defRow.h <= 24
     && atkRow.txt.indexOf('＋ 装备') < 0 && defRow.txt.indexOf('＋ 装备') < 0
-    && /＝|=\s*勇武/.test(atkRow.title) === false ? (/勇武/.test(atkRow.title) && /智谋/.test(defRow.title)) : true,
+    && /＝|=\s*武力/.test(atkRow.title) === false ? (/武力/.test(atkRow.title) && /谋略/.test(defRow.title)) : true,
     atkRow ? (atkRow.h + 'px / ' + defRow.h + 'px 「' + atkRow.txt + '」') : '-');
   await p.screenshot({ path: 'E:/Deepseekdb/.workbuddy/shots/v89133-pane.png' });
 

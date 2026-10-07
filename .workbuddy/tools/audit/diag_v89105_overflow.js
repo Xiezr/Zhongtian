@@ -19,12 +19,12 @@ var pw = require('playwright-core');
     G.ui._cityId = c.id;
     ['grain', 'wood', 'stone', 'iron', 'gold'].forEach(function (k) { c.res[k] = 9e6; });
     c.res.pop = 42000;
-    c.army = { yibing: 12000, gongjian: 4200, qingji: 1800 };
+    c.army = { buxingji: 12000, daodanche: 4200, fujiche: 1800 };
     c.cells.forEach(function (x) { if (x.build) x.build.lvl = Math.max(x.build.lvl || 1, 7); });
     try { G.buildCityAt(c.x + 3, c.y + 1); } catch (e) {}
     st.items = st.items || {};
     ['shennongchu', 'zengminling', 'yiminling', 'bengzhu', 'lianbing_jingyan', 'chest_tong'].forEach(function (id) { st.items[id] = 4; });
-    st.wounded = 5200; st.woundedArmy = { yibing: 3600 };
+    st.wounded = 5200; st.woundedArmy = { buxingji: 3600 };
     st.reports = st.reports || [];
     for (var i = 0; i < 6; i++) st.reports.push({ t: Date.now() - i * 1e5, type: 'war', title: '战报 ' + i, body: 'x', win: true });
     G.ui.enterGame(); G.ui.setView('city'); G.refreshAll();

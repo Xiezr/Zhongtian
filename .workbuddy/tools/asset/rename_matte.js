@@ -7,7 +7,7 @@ fs.mkdirSync(UI, { recursive: true });
 
 /* 按生成时间排序 → 映射 id（生成顺序即此表顺序） */
 const ORDER = ['guanfu', 'infantry_tmp', 'minfang', 'shuyuan', 'junying', 'xiaochang'];
-const CN_NAME = { guanfu: '官府', infantry_tmp: '汉代甲士(样本)', minfang: '民房', shuyuan: '书院', junying: '兵营', xiaochang: '校场' };
+const CN_NAME = { guanfu: '官府', infantry_tmp: '汉代甲士(样本)', minfang: '居所', shuyuan: '书院', junying: '兵营', xiaochang: '练兵场' };
 
 const files = fs.readdirSync(RAW).filter(f => f.endsWith('.png'))
   .map(f => ({ f, t: fs.statSync(RAW + f).mtimeMs }))

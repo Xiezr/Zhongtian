@@ -1,0 +1,35 @@
+# .gitignore —— 什么不进版本库，判据见 docs/项目地图.md 第二节「素材拆解」
+#
+# 总原则：只跟踪「运行期需要的」+ 代码 + 文档 + 工具。
+# 运行期 = 双击 index.html 就能玩所需的全部文件，约 37MB。
+# 其余 200MB 里的绝大部分是原料，排除。
+
+# ─────────── 原料：非运行期，不可再生，请另用独立介质备份 ───────────
+# assets/icons/raw         4 个 / 约 14MB    AI 图集原图（废土批 W-B1/W-B6/W-B7 在用；
+#                                           Sep 13 旧图集源 1~4.png 已于 v89.235 清理）
+# assets/icons/英雄及头像   38 个 / 约 187MB  英雄头像 AI 素材（待处理 · v89.237 入）
+# assets/portraits/_raw    28 个 / 约 41MB   名将 AI 原图
+# assets/portraits/pd_src  29 个 / 约 3MB    公版画像（已备未启用）
+# 合计约 269MB（含英雄头像 187MB）。这些是生成素材的源，不是游戏运行需要的图。
+# ⚠️ AI 生成不可复现 —— 本仓库不保护它们，务必单独备份（3-2-1）。
+assets/icons/raw/
+assets/icons/英雄及头像/
+assets/portraits/_raw/
+assets/portraits/pd_src/
+
+# ─────────── 过程产物 ───────────
+# 一次性探针放这里，用完即清（约定见 docs/项目地图.md）
+.workbuddy/tmp/
+# WorkBuddy 内部自动生成的会话记忆/状态，非项目产物
+.workbuddy/memory/
+
+# ─────────── 系统垃圾 ───────────
+Thumbs.db
+desktop.ini
+.DS_Store
+*~
+
+# ─────────── 运行期素材（明确保留，勿加进来）───────────
+# assets/icons/ui/          91 张，bitmaps.js 注册表就是这个目录的映射
+# assets/portraits/pool/    40 张，通用头像池
+# assets/portraits/hero_*.webp  30 张，名将回退层
