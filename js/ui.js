@@ -6889,6 +6889,19 @@
     ui._pages['forge'] = 1;
     ui.openForge();
   };
+  /* v90.56（老板）：锻造间**部位筛选**（唯一出口；点部位 chip 或从装备更换进来定位）。 */
+  ui.setForgeSlot = function (sl) {
+    ui._forgeSlot = String(sl || '');
+    ui._pages['forge'] = 1;
+    ui.openForge();
+  };
+  /* 从装备更换「该部位无货」入口 → 关掉更换窗、开锻造间并定位到该部位。 */
+  ui.openForgeAtSlot = function (slot) {
+    ui.closeModal();                 /* 先关「更换」窗（回落到英雄面板），再开锻造间 */
+    ui._forgeSlot = String(slot || '');
+    ui._pages['forge'] = 1;
+    ui.openForge();
+  };
   /* ⛔ v89.204（老板 2）：「打造界面不要'套装效果一览'」——
      ui.forgeSetNote / ui.openForgeSetInfo / 底部按钮 / case 'forge-setinfo' 整条退役。
      沿革：v38 建（打造面板正文）→ v51 移独立小窗（正文腾 105px）→ v89.204 整条删。
@@ -7011,6 +7024,20 @@
     });
     if (setIdCur && setIdsInPool.indexOf(setIdCur) < 0) { setIdCur = ''; ui._forgeSet = ''; }
     if (kind === 'set' && setIdCur) pool = pool.filter(function (f) { return f.item.set === setIdCur; });
+    /* v90.56（老板）：**部位筛选** —— 从装备更换「该部位无货」入口进来时定位到该部位。 */
+    var slotCur = ui._forgeSlot || '';
+    var slotsInPool = [];
+    pool.forEach(function (f) { var sl = f.item && f.item.slot; if (sl && slotsInPool.indexOf(sl) < 0) slotsInPool.push(sl); });
+    if (slotCur && slotsInPool.indexOf(slotCur) < 0) { slotCur = ''; ui._forgeSlot = ''; }
+    if (slotCur) pool = pool.filter(function (f) { return f.item.slot === slotCur; });
+    var slotRow = slotsInPool.length > 1
+      ? '<span class="ff-k">部位</span><span class="shop-cats">' +
+        [['', '全部']].concat(slotsInPool.map(function (sl) { return [sl, (DATA.EQUIP_SLOT_NAMES[sl] || sl)]; }))
+          .map(function (k) {
+            return '<span class="shop-cat' + (slotCur === k[0] ? ' on' : '') +
+              '" data-action="forge-slot" data-s="' + k[0] + '">' + U.escape(k[1]) + '</span>';
+          }).join('') + '</span>'
+      : '';
     var kindHtml = [['all', '全部', list.length], ['set', '套装', setsOnly.length], ['solo', '散件', soloOnly.length]]
       .map(function (k) {
         return '<span class="shop-cat' + (kind === k[0] ? ' on' : '') +
@@ -7074,6 +7101,7 @@
       body: '<div class="forge-filter">' +
           '<span class="ff-k">类别</span><span class="shop-cats">' + kindHtml + '</span>' +
           setRow +
+          slotRow +
           '<span class="ff-k">品质</span><span class="shop-cats">' + tabHtml + '</span>' +
           /* v51：两段常驻说明搬进帮助入口（原本占正文 146px，约等于一整行卡片，
              而正文高度是这条面板最稀缺的资源 —— 一屏能不能放两行就卡在这）。
@@ -8834,6 +8862,12 @@
                     ? '　（迁都需 ' + U.fmt(((DATA.MAIN_CITY || {}).moveCost || {}).gold || 0) + ' 旧币）'
                     : '　（首设免费）')) +
               '">🏛 设为主城</button>') +
+          /* v90.62（老板）：**放弃城池**选项并入政务厅要务（原只在城池操作弹窗）——
+             仍需二次确认；最后一座城 / 尚有军队驻外时由 abandonCityCheck 拒绝。 */
+          ((s.cities || []).length > 1
+            ? '<button class="btn sm red" data-action="city-abandon-ask" data-city="' + c.id +
+              '" title="放弃本城（不可逆）：照表清理附属于本城的数据，该格归还地图">🗑 放弃城池</button>'
+            : '') +
         '</div>' +
         (sp135 ? '<div class="attr"><span class="k">本城特产</span><span class="v">' + U.escape(m135) +
           '（' + sp135.tier + ' 阶）' +
@@ -11254,6 +11288,12 @@
     }
     if (!cand.length) {
       html += '<div class="note">背包中没有该部位的' + (isLing ? '改造' : '') + '装备。</div>';
+      /* v90.56（老板）：该部位无货 → 直接引到**锻造间**、并定位到本部位。 */
+      if (!isLing) {
+        html += '<div style="text-align:center;margin-top:10px;">'
+          + '<button class="btn gold" data-action="forge-open-slot" data-slot="' + slot + '">'
+          + '⚒ 去锻造间打造「' + slotName2 + '」</button></div>';
+      }
     } else {
       html += '<div class="bag-sec">背包可选 <span class="n">' + cand.length + ' 件</span></div>';
       html += '<div class="bag-grid">' + cand.map(function (inst) {
@@ -12704,7 +12744,7 @@
       '<div class="note">迁址后：**原坐标那格归还地图**，新坐标成为你的城池。' +
         '只可迁到**平原**空地（界内 0 ~ ' + GAME.COORD_MAX + '）。名城地望固定，不可迁。</div>' +
       '<div class="attr"><span class="k">当前坐标</span><span class="v">' +
-        GAME.coordText(c) + ' / 500×500</span></div>' +
+        GAME.coordText(c) + '（球系）</span></div>' +
       (movable
         ? '<div class="attr"><span class="k">迁往</span><span class="v">' +
             'X <input type="number" id="move-x" class="qty-input" style="width:76px;" min="0" max="' +
@@ -12954,7 +12994,7 @@
     var def = GAME.defensePowerOf ? (GAME.defensePowerOf(city) || 0) : 0;
     ui.openShell({
       title: '🏯 新城落成 · ' + U.escape(city.name),
-      sub: '(' + city.x + ',' + city.y + ')　守备力 ' + U.fmt(def),
+      sub: GAME.coordText(city) + '　守备力 ' + U.fmt(def),
       size: 'sm',
       body:
         '<div class="note-warn">⚠️ 新城当前守备力 <b>' + U.fmt(def) +

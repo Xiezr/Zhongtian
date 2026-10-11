@@ -276,14 +276,50 @@
   GAME.map._fortBlocked = function (x, y) {
     return !!GAME.map._fortBlockSet()[y * DATA.MAP_W + x];
   };
+  /* ============================================================
+   * v90.58（老板三条）：据点放置规则升级（唯一判据）
+   *   · 密度：陆地 = F.density；**海面（地形 lake）减半** = F.density/2。
+   *   · **不相邻**：一格成为据点，当且仅当它是 3×3 邻域内**哈希最小**且过阈值的格
+   *     （确定性贪心 → 任意两个据点**不会落在相邻地块**）。
+   *   · **不与名城同格**：排除 NPC 名城所在格（以及其 3×3 保护区，见 _fortBlockSet）。
+   *   位置**固定**（哈希 + seed，与每日等级无关）；每日等级仍走 _fortLevelAt。
+   * ============================================================ */
+  GAME.map._fortActive = function (x, y) {
+    var s = GAME.state, F = DATA.FORT;
+    if (!F || !s.map || !s.map.grid) return false;
+    if (GAME.map._fortBlocked(x, y)) return false;
+    var W = DATA.MAP_W, H = DATA.MAP_H;
+    var th = GAME.map._fortThr(x, y);
+    var h = GAME.map._fortHash(x, y, 1);
+    if (h >= th) return false;
+    /* 3×3 邻域取**哈希最小**者 → 保证不相邻（同域内两格会各自衰减不会同时胜出） */
+    for (var dy = -1; dy <= 1; dy++) {
+      var ny = y + dy; if (ny < 0 || ny >= H) continue;
+      for (var dx = -1; dx <= 1; dx++) {
+        if (dx === 0 && dy === 0) continue;
+        var nx = x + dx; if (nx < 0 || nx >= W) continue;
+        var t2 = s.map.grid[ny][nx];
+        if (!t2 || t2.terrain === 'city') continue;
+        if (GAME.map._fortBlocked(nx, ny)) continue;
+        if (GAME.map._fortHash(nx, ny, 1) >= GAME.map._fortThr(nx, ny)) continue;   /* 邻格本身不合格 */
+        if (GAME.map._fortHash(nx, ny, 1) < h) return false;                        /* 邻格哈希更小 → 本格让位 */
+      }
+    }
+    return true;
+  };
+  /* 某格的据点密度阈值：海面（lake）减半（老板）。 */
+  GAME.map._fortThr = function (x, y) {
+    var F = DATA.FORT, s = GAME.state;
+    var t = (s && s.map && s.map.grid) ? s.map.grid[y] && s.map.grid[y][x] : null;
+    return (t && t.terrain === 'lake') ? F.density / 2 : F.density;
+  };
   /* 是否生有野外城池（确定性；**位置固定** —— 与"等级每日变化"各管一头） */
   GAME.map.hasFort = function (x, y) {
     var s = GAME.state, F = DATA.FORT;
     if (!F || !s.map.grid) return false;
     var t = GAME.map.tile(x, y);
     if (!t || t.terrain === 'city') return false;
-    if (GAME.map._fortBlocked(x, y)) return false;
-    return GAME.map._fortHash(x, y, 1) < F.density;
+    return GAME.map._fortActive(x, y);
   };
   /* ============================================================
    * v89.88（老板需求 3）：据点等级 —— **构造性配额分布**
@@ -313,7 +349,7 @@
         t = row[x];
         if (!t || t.terrain === 'city') continue;
         if (bset[y * W + x]) continue;
-        if (GAME.map._fortHash(x, y, 1) >= F.density) continue;
+        if (!GAME.map._fortActive(x, y)) continue;   /* v90.58：统一走放置判据（密度/海面减半/不相邻/不共名城） */
         list.push(y * W + x);
       }
     }

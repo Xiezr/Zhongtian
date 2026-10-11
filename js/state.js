@@ -395,6 +395,13 @@
   GAME.registerCity = function (city) {
     var s = GAME.state;
     if (!s || !city) return city;
+    /* v90.59（老板「新城3/新城4 叠在一个地块上」）：**同一地块不重复入库** ——
+       已有一座**别**城占着 (x,y) → 拒收并留痕（防"两城同格"这种脏档）。 */
+    var dup = (s.cities || []).filter(function (c) { return c.id !== city.id && c.x === city.x && c.y === city.y; })[0];
+    if (dup) {
+      GAME.log && GAME.log('⚠ 城池落位冲突：' + city.name + ' 与 ' + dup.name + ' 同在 (' + city.x + ',' + city.y + ')，已拒收', 'sys', 'admin');
+      return null;
+    }
     s.cities.push(city);
     GAME.attachGold(s, { keepCityGold: true });   /* 自带旧币（缴获 / 预置）并进池子 */
     return city;
@@ -1378,6 +1385,38 @@
       }
     });
     st.troopMig229 = 1;
+  };
+
+  /* v90.60（老板）：老档"**多城同格**"修复 —— 同一 (x,y) 上的多座城，保留第一座，
+     其余**就近移到最近的空闲格**并改写坐标（内部逻辑/存档仍是平面格，坐标数值即改）。
+     判据：目标格未被任何城/名城占（地形不判 —— 城址落地后该格由 s.cities 标记为城）。 */
+  GAME.migrateCityCells = function (st) {
+    if (!st || !st.cities || st.cities.length < 2) return 0;
+    var W = (GAME.DATA && GAME.DATA.MAP_W) || 500, H = (GAME.DATA && GAME.DATA.MAP_H) || 500;
+    var at = {};
+    st.cities.forEach(function (c) { if (c && c.x != null) at[c.x + ',' + c.y] = c; });
+    var npcAt = {};
+    ((GAME.DATA && GAME.DATA.NPC_CITIES) || []).forEach(function (n) { npcAt[n.x + ',' + n.y] = 1; });
+    var moved = 0;
+    st.cities.forEach(function (c) {
+      if (!c || c.x == null) return;
+      if (at[c.x + ',' + c.y] === c) return;                 /* 该格第一座城 → 保留原位 */
+      for (var r = 1; r <= 60; r++) {
+        var found = false;
+        for (var dy = -r; dy <= r && !found; dy++) {
+          for (var dx = -r; dx <= r && !found; dx++) {
+            if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;   /* 只走第 r 圈 */
+            var nx = c.x + dx, ny = c.y + dy;
+            if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+            var k2 = nx + ',' + ny;
+            if (at[k2] || npcAt[k2]) continue;
+            c.x = nx; c.y = ny; at[k2] = c; moved++; found = true;
+          }
+        }
+        if (found) break;
+      }
+    });
+    return moved;
   };
 
   GAME.rankBuildCapOf = function (city) {
@@ -2434,6 +2473,10 @@
       st.map.cities = null;
       /* 存档不含地形，用 seed 重建（确定性，与存档前完全一致） */
       if (!st.map.grid && GAME.map && GAME.map.generate) GAME.map.generate();
+      /* v90.60（老板）：老档"多城同格"修复 —— 就近挪到空闲格并改写坐标（地形已重建，可判平原） */
+      if (GAME.migrateCityCells && GAME.migrateCityCells(st) > 0) {
+        (st.cities || []).forEach(function (c) { var t = GAME.map.tile(c.x, c.y); if (t) t.terrain = 'city'; });
+      }
       /* 叙事层补字段（旧档可能缺 world/chronicle） */
       if (GAME.story) GAME.story.init();
       /* 英雄资质补字段（v11 前的存档没有 rank/style，按四维反推并写回） */

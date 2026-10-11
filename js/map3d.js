@@ -132,7 +132,8 @@
     M._globeMat = globe.material;
     scene.add(globe);
     var wg = new THREE.SphereGeometry(R + 0.4, 96, 64);
-    water = new THREE.Mesh(wg, new THREE.MeshBasicMaterial({ color: 0x4a7fa0, transparent: true, opacity: 0.9 }));   /* 无光照 · 亮度一致 */
+    /* v90.58（老板「星球不透明，背面的城市不要看到」）：海面球**不透明**（原 transparent 0.9 会透出背面）。 */
+    water = new THREE.Mesh(wg, new THREE.MeshBasicMaterial({ color: 0x4a7fa0 }));
     scene.add(water);
   }
 
@@ -380,15 +381,19 @@
     var provCent = sphereKmeans(dirs, 12, 10);
     var provOf = new Int16Array(nv).fill(-1), provMembers = [];
     for (var js = 0; js < provCent.length; js++) provMembers.push([]);
-    for (var d = 0; d < dirs.length; d++) { var a = weightedNearest(dirs[d], provCent, PD, 4100 + seed); provOf[idxs[d]] = a; }
-    repairConn(provOf, idxs);                                  /* 省 connectivity */
+    /* v90.58（老板「海面也应该有行政划分，归入行省管理范围」）：
+       行省归属**覆盖全球**（陆 + 海）—— 海面按**最近省心**并入行省；省界因此延伸到海面。
+       市/区仍只划在陆地（下方按 provMembers=陆地成员 分市）。 */
+    for (var dj = 0; dj < nv; dj++) { var _vd = M._vdirs[dj]; if (!_vd) continue; provOf[dj] = weightedNearest(_vd, provCent, PD, 4100 + seed); }
+    repairConn(provOf, idxs);                                  /* 省 connectivity（只修陆地；海面 Voronoi 本就连通） */
     for (var d2 = 0; d2 < idxs.length; d2++) if (provOf[idxs[d2]] >= 0) provMembers[provOf[idxs[d2]]].push(idxs[d2]);
     var marketCent = [], marketOf = new Int16Array(nv).fill(-1), districtCent = [], districtOf = new Int16Array(nv).fill(-1);
     var table = { old: null, prov: [], market: [], district: [] };
     var lc = [0, 0, 0], ln = 0;
     for (var i2 = 0; i2 < dirs.length; i2++) if (sphElev(dirs[i2]) > 0.4) { lc[0] += dirs[i2][0]; lc[1] += dirs[i2][1]; lc[2] += dirs[i2][2]; ln++; }
     if (ln) { var L = Math.hypot(lc[0], lc[1], lc[2]) || 1; lc = [lc[0] / L, lc[1] / L, lc[2] / L]; } else lc = dirs[0];
-    table.old = { name: '灰烬城', cent: lc };
+    table.old = null;   /* v90.59（老板「怎么有 2 个灰烬城」）：旧都是 **NPC 名城 灰烬城**（NPC_CITIES.cap），
+                           行政层不再另造一个同名「灰烬城」中心（原 addAdm('old') 位置由质心算出、与 NPC 城错位 → 重名两款）。 */
     /* 各省分市（市数 = MC[p]）；**市面积 ∝ 该市区数 DC[p][q]** · 市在本省内（连通修复限同省）*/
     for (var p = 0; p < provCent.length; p++) {
       var pm = provMembers[p]; if (!pm.length) continue;
@@ -431,8 +436,10 @@
       c.maxArmy = c.garrison;
       admCities.push(c);
     }
-    addAdm('old', '灰烬城', lc, 0);
-    for (var pa = 0; pa < provCent.length; pa++) {
+    /* v90.59（老板「怎么有 2 个灰烬城」）：旧都 = **NPC 名城 灰烬城**（NPC_CITIES.cap）——
+       行政层不再另造同名「灰烬城」中心（原 addAdm('old') 按质心算出、与 NPC 城错位 → 重名两款）。 */
+    var pa;
+    for (pa = 0; pa < provCent.length; pa++) {
       var pv2 = table.prov[pa]; if (!pv2) continue;
       addAdm('prov', pv2.name + '府', pv2.cent, pa);
       pv2.markets.forEach(function (mi) { var m = table.market[mi]; addAdm('market', m.name, m.cent, mi); });
@@ -537,16 +544,18 @@
     function floatName(dir, text, colHex) {
       var r = R + Math.max(0, sphElev(dir)) * HSC;
       var g0 = [dir[0] * r, dir[1] * r, dir[2] * r];                 /* 地面点 */
-      var g1 = [dir[0] * (r + 34), dir[1] * (r + 34), dir[2] * (r + 34)];   /* 悬浮点 */
+      var g1 = [dir[0] * (r + 46), dir[1] * (r + 46), dir[2] * (r + 46)];   /* 悬浮点 */
       lp.push(g0[0], g0[1], g0[2], g1[0], g1[1], g1[2]);
-      var spr = nameSprite(text, colHex || '#ffffff', 22);
+      var spr = nameSprite(text, colHex || '#ffffff');
       spr.position.set(g1[0], g1[1], g1[2]);
       grp.add(spr);
     }
     (GAME.DATA.NPC_CITIES || []).forEach(function (c) { if (c.type === 'capital' || c.type === 'zhou') floatName(dirOfCell(c.x, c.y), c.name || '', '#ffd76a'); });
     var ol = M.admCities || [];
     ol.forEach(function (c) { if (c.admLevel === 'old' || c.admLevel === 'prov') floatName(c._cent, c.name, c.admLevel === 'old' ? '#ffd76a' : '#cfe6ff'); });
-    if (lp.length) { var lg = new THREE.BufferGeometry(); lg.setAttribute('position', new THREE.Float32BufferAttribute(lp, 3)); grp.add(new THREE.LineSegments(lg, new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.45, depthWrite: false }))); }
+    /* v90.57（老板）：**己方城池**也引出名称（像名城一样）—— 亮蓝＝己方色。 */
+    (GAME.state.cities || []).forEach(function (c) { floatName(dirOfCell(c.x, c.y), c.name || '城', '#8fd4ff'); });
+    if (lp.length) { var lg = new THREE.BufferGeometry(); lg.setAttribute('position', new THREE.Float32BufferAttribute(lp, 3)); grp.add(new THREE.LineSegments(lg, new THREE.LineBasicMaterial({ color: 0x0b0f14, transparent: true, opacity: 0.92, depthWrite: false }))); }
     M._labels = grp; scene.add(grp);
   }
   /* 平面格 (x,y) → 球面方向（走 GAME.map 的**球系坐标单一出口**）*/
@@ -555,18 +564,41 @@
     return GAME.map.dirOf(c.lon, c.lat);
   }
 
-  /* 名称标签（画布文字 → 贴图 → Sprite）*/
-  function nameSprite(text, color, px) {
+  /* 名称标签（画布文字 → 贴图 → Sprite）。
+     v90.57（老板）：canvas **按文字裁宽**（长名不挤）；屏幕尺寸由 `scaleLabels()` 每帧按相机距离归一
+     → **不随星球缩放变大小**（恒定可读）。
+     v90.58（老板）：字号**减半**、**去粗体**；`depthTest:true` 让**星球遮挡背面**的名称（背面城市不再透出来）。 */
+  function nameSprite(text, color) {
     var c = document.createElement('canvas');
-    var fs = 22; c.width = 256; c.height = 44;
+    var fs = 15;
+    var probe = c.getContext('2d');
+    probe.font = fs + 'px sans-serif';
+    var tw = Math.max(40, Math.ceil(probe.measureText(text).width) + 16);
+    c.width = tw; c.height = 26;
     var g = c.getContext('2d');
-    g.font = 'bold ' + fs + 'px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.lineWidth = 4; g.strokeStyle = 'rgba(10,14,20,.9)'; g.strokeText(text, 128, 22);
-    g.fillStyle = color || '#ffffff'; g.fillText(text, 128, 22);
+    g.font = fs + 'px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.lineWidth = 3; g.strokeStyle = 'rgba(10,14,20,.92)'; g.strokeText(text, tw / 2, 13);
+    g.fillStyle = color || '#ffffff'; g.fillText(text, tw / 2, 13);
     var tx = new THREE.CanvasTexture(c);
-    var spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: tx, transparent: true, depthWrite: false, depthTest: false }));
-    var s = px || 26; spr.scale.set(s, s * 44 / 256, 1);
+    var spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: tx, transparent: true, depthWrite: false, depthTest: true }));
+    spr.userData = { asp: tw / 26 };   /* 宽高比 —— scaleLabels 按屏高定尺寸时用 */
     return spr;
+  }
+  /* v90.57（老板）：把名称 Sprite 的**屏幕尺寸钉死**（不随星球缩放变大小）——
+     世界尺寸 ∝ 相机到标签的距离（透视下 = 恒定屏幕占比）。每帧调用。 */
+  function scaleLabels() {
+    if (!cam) return;
+    var frac = 0.028;                                   /* 标签高 ≈ 屏幕高的 2.8%（v90.58 老板：再小一半） */
+    var k = 2 * Math.tan(cam.fov * Math.PI / 360) * frac;
+    [M._labels, M._hl].forEach(function (grp) {
+      if (!grp || !grp.children) return;
+      grp.children.forEach(function (ch) {
+        if (!ch.isSprite) return;
+        var d = cam.position.distanceTo(ch.position);
+        var hW = k * d;
+        ch.scale.set(hW * ((ch.userData && ch.userData.asp) || 5.3), hW, 1);
+      });
+    });
   }
   /* 某层级中心的球面世界点（贴地形 + 抬升）*/
   function centerWorld(centDir, H) {
@@ -667,8 +699,10 @@
     if (!built) { buildGlobe(); buildTiles(TILE_SUB); buildRegions(); buildMarkers(); built = true; }
     placeCamera();
     /* 地块数**固定**（老板）：不再随缩放切换级别 —— 恒定 TILE_SUB（= 40962 块）。*/
-    /* 城市/据点增减（占领/迁移/放弃）→ 重建标记：被占地块覆盖、迁走地块露出地形（恢复野地）*/
-    var _mkVer = (GAME.state.cities || []).length * 131072 + _tileSub;
+    /* 城市/据点增减/迁移（占领/迁址/放弃）→ 重建标记。v90.62（老板「移动后新城2 无色块/名称」）：
+       旧判据只数**城池条数** —— 迁址时条数不变 → 标记不重建 → 旧色块/名称留在原地。
+       改：把各城的 **id + 坐标** 拼进版本号，任一城移动即触发重建（色块与连线随城走）。 */
+    var _mkVer = (GAME.state.cities || []).map(function (c) { return c.id + ':' + c.x + ',' + c.y; }).join('|') + '#' + _tileSub;
     if (_mkVer !== M._mkVer) { M._mkVer = _mkVer; buildMarkers(); }
     /* 线框随相机拉近**渐隐**：远看网格，近看透明消失（好观察地形）*/
     if (M._shellMat) {
@@ -677,6 +711,7 @@
       M._shellMat.opacity = o;
       if (tiles) tiles.visible = o > 0.02;
     }
+    scaleLabels();   /* v90.57：名称标签**钉死屏幕尺寸**（不随缩放变大小），每帧归一 */
     R3.render(scene, cam);
     var ctx = target2d.getContext('2d');
     ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, cw, ch);

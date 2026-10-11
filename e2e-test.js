@@ -3752,7 +3752,7 @@ async function runTests(dom, URL) {
     G.ui.renderCityAttrs(cur, st);
     /* v71（老板）：「即使只有一个城池，也保留下拉框，在这里可以显示区镇落坐标」 */
     check('单城时也出现城池下拉框（选项 = 区镇落 + 坐标）',
-      single === 1 && singleTxt.indexOf('(') >= 0 && singleTxt.indexOf(G.coordText(cur)) >= 0, single + ' 个选项');
+      single === 1 && /\d+°E \d+°N/.test(singleTxt) && singleTxt.indexOf(G.coordText(cur)) >= 0, single + ' 个选项');
     /* v45（需求 3）：判据由"芯片个数"改为"下拉框选项数" —— 已有城池都是可选项 */
     check('多城时城池清单给出城池下拉框（已有城池均为选项）', multi >= 2, multi + ' 个选项');
     /* v71（老板）：选项文案 = 区镇落全称 + 坐标（在哪建城，这里可鉴） */

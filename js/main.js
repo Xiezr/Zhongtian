@@ -548,6 +548,9 @@
       case 'forge-clear': ui.forgeClear(); break;
       case 'forge-allset': ui.forgeAllSet(); break;
       case 'forge-set': ui.setForgeSet(el.dataset.s); break;
+      /* v90.56（老板）：锻造间部位筛选 + 从装备更换「该部位无货」定位入口 */
+      case 'forge-slot': ui.setForgeSlot(el.dataset.s); break;
+      case 'forge-open-slot': ui.openForgeAtSlot(el.dataset.slot); break;
       case 'bag-eq-f': ui.setBagEqFilter(el.dataset.k, el.dataset.v); break;
       case 'open-hostel': ui.openHostel(); break;
       case 'open-market': ui.openMarket(); break;

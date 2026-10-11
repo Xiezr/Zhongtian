@@ -5160,6 +5160,8 @@
   GAME.COORD_MAX = (DATA.MAP_W || 500) - 1;
   GAME.coordText = function (city) {
     if (!city) return '—';
+    /* v90.59（老板）：**界面一律显示球系坐标**（经纬度）；内部逻辑/存档仍存平面 (x,y)。 */
+    if (GAME.map && GAME.map.coordText && city.x != null && city.y != null) return GAME.map.coordText(city.x, city.y);
     return '(' + city.x + ', ' + city.y + ')';
   };
   /* 可迁判据：自建城才可迁（名城 = 地理固定） */
@@ -6358,11 +6360,17 @@
        恢复路径 = 珠宝赏赐（+5~+36/颗，见 gen-gift-pick）；君主豁免（忠诚恒 100 本不适用，防老档脏值）。 */
     var loy194 = (g.loyalty == null ? 70 : g.loyalty);
     if (loy194 <= 0 && !(GAME.isLordGeneral && GAME.isLordGeneral(g))) return '忠诚已尽（赏赐珠宝可安抚）';
-    /* 硬拦只有两条：城主 / 守将（老板原话「城主和守将不能执行出征动作」）。
-       ⚠️ 「出征中 / 采集中」**不硬拦** —— 那是**本轮之前就存在**的行为（同一主将
-       可以带第二支队伍），本轮不动它；界面另有软提示（marchBusyOf）。 */
+    /* 硬拦（v90.62 老板）：「行军/派遣中将领不能接受其他调遣」——
+       出征中 / 采集中 / 驻守野地 / 征战中 一律**硬拦**（此前只在界面软提示、可绕过 →
+       玩家能把同一员将同时派去两处）。城主 / 守将（驻城理政）仍硬拦。 */
     if (st === 'mayor') return '城主（驻城理政，不可出征）';
     if (st === 'guard') return '守将（镇守本城，不可出征）';
+    /* v90.62（老板）：「行军/派遣中将领不能接受其他调遣」——**确有在途行军**（s.marches 里有本将的活条目）
+       才硬拦；仅有 'march' 标记、却无对应在途条目 = **孤儿状态**（旧档/异常残留）→ 不拦（视为可调遣）。 */
+    if (st === 'march') {
+      var _live = (GAME.state.marches || []).some(function (m) { return m && m.genId === g.id; });
+      if (_live) return '正在行军/派遣（不可另接调遣）';
+    }
     return null;
   };
   /* 界面软提示（不硬拦）：他此刻其实不在城里 —— 置灰并写明，但不阻断既有玩法 */

@@ -6632,9 +6632,9 @@
        单城不再收起；两侧选项都带坐标（区镇落全称在上，坐标在后）。 */
     return /<select class="city-select" data-action="switch-city"/.test(multi)
       && /<option value="[^"]+" selected>/.test(multi)
-      && /\(\d+, \d+\)/.test(multi)
+      && /\d+°E \d+°N/.test(multi)
       && /<select class="city-select" data-action="switch-city"/.test(single)
-      && /\(\d+, \d+\)/.test(single)
+      && /\d+°E \d+°N/.test(single)
       && sepOk;
   })());
   /* v53（老板：\"点出来列表马上收回去\"）：**下拉框不得被每秒重绘重建**。
@@ -15316,8 +15316,8 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
 
     /* ================= ③ 坐标与迁址 ================= */
     console.log('  --- ③ 城池坐标与迁址 ---');
-    check('坐标口径：500×500 → 0~499；coordText 形如 (x, y)',
-      G.COORD_MAX === 499 && G.coordText({ x: 3, y: 4 }) === '(3, 4)');
+    check('坐标口径：内部 0~499；界面 coordText 为**球系**（N°E M°N · v90.59）',
+      G.COORD_MAX === 499 && /^\d+°E \d+°N$/.test(G.coordText({ x: 3, y: 4 })));
 
     check('★ 可迁判据：自建城可迁 / 名城（含攻占来的）不可迁', (function () {
       return G.isMovableCity({ type: 'self' }) === true
@@ -23208,13 +23208,25 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
 
     /* ---------- ⑨ 需求 2：城主 / 守将不可出征 ---------- */
     console.log('  --- ⑨ 需求 2：城主 / 守将不可出征 ---');
-    check('② 唯一出口：marchBlockOf 只挡城主/守将，出征中/采集中不硬拦', (function () {
-      var mk = function (st) { return { id: 'g1', name: '张三', status: st }; };
-      return G.marchBlockOf(mk('mayor')) && G.marchBlockOf(mk('guard'))
-        && G.marchBlockOf(mk('idle')) === null
-        && G.marchBlockOf(mk('march')) === null && G.marchBlockOf(mk('gather')) === null
-        && G.marchBlockOf(mk('mayor')).indexOf('城主') >= 0
-        && G.marchBlockOf(mk('guard')).indexOf('守将') >= 0;
+    check('② 唯一出口：marchBlockOf 挡城主/守将，且**行军/派遣中不接受其他调遣**（v90.62 老板）', (function () {
+      var keep = G.state;
+      try {
+        var mk = function (st) { return { id: 'gx1', name: '张三', status: st }; };
+        var base = G.marchBlockOf(mk('mayor')) && G.marchBlockOf(mk('guard'))
+          && G.marchBlockOf(mk('idle')) === null
+          && G.marchBlockOf(mk('mayor')).indexOf('城主') >= 0
+          && G.marchBlockOf(mk('guard')).indexOf('守将') >= 0;
+        if (!base) return false;
+        /* 确有一条在途行军（该将）→ 硬拦；无在途条目（孤儿状态）→ 不拦。 */
+        var st = G.newGame({ name: 'mb', cityName: '灰岗' });
+        G.state = st;
+        var g = st.generals[0]; g.status = 'march';
+        st.marches = [];
+        var orphanOk = G.marchBlockOf(g) === null;
+        st.marches = [{ id: 'm', genId: g.id, totalTime: 10, elapsed: 0 }];
+        var liveBlk = G.marchBlockOf(g);
+        return orphanOk && !!liveBlk && liveBlk.indexOf('行军') >= 0;
+      } finally { G.state = keep; }
     })());
     check('② 界面用 marchIssueOf（硬拦 + 软提示），expGeneralsOf 只给可出征者', (function () {
       var keep = G.state;
@@ -24498,10 +24510,14 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     var armyBefore110 = c110.army.banche || 0;
     /* 补将：无将驻军 + 带将 → 走行军（出发即扣兵；抵达由 wildGarrisonAdd 补 genId） */
     var r3d = G.march.dispatch({ kind: 'wild', x: 3, y: 3 }, 'station', { banche: 100 }, g110g.id);
-    /* 已有驻将 → ① 无将增援允许；② 带将增援接受但硬闸忽略（不带将、不顶驻将） */
+    /* 已有驻将 → ① 无将增援允许；② 带将增援接受但硬闸忽略（不带将、不顶驻将）。
+       v90.62：g110g 已在 r3d 行军 → 按新规「行军/派遣中不可另接调遣」，此处改用**另一名空闲将**验证同一条"忽略 genId"。 */
     w110.garrison.genId = g110g2.id;
+    var g110g3 = st110.generals.filter(function (g) { return g.status !== 'march' && g.id !== g110g2.id; })[0];
+    if (!g110g3) { g110g3 = G.makeGeneral('v110补将', 10, 'idle', c110.id, false); st110.generals.push(g110g3); }
+    g110g3.status = 'idle'; g110g3.cityId = c110.id;
     var r3b = G.march.dispatch({ kind: 'wild', x: 3, y: 3 }, 'station', { banche: 100 }, '');
-    var r3c = G.march.dispatch({ kind: 'wild', x: 3, y: 3 }, 'station', { banche: 100 }, g110g.id);
+    var r3c = G.march.dispatch({ kind: 'wild', x: 3, y: 3 }, 'station', { banche: 100 }, g110g3.id);
     /* 推进 3 条行军抵达 → 并兵落账；驻将必须**仍是 g110g2**（未被后来的将顶掉） */
     (G.state.marches || []).forEach(function (mm) { mm.elapsed = mm.totalTime; });
     G.march.tick();
