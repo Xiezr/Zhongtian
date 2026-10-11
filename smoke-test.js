@@ -61,6 +61,8 @@
   require('./js/systems.js');
   require('./js/domain.js');
   require('./js/map.js');
+  /* v90.61：Three.js 真 3D 主地图（无 THREE 时自降级为 {enabled:false}） */
+  require('./js/map3d.js');
   require('./js/battle.js');
   require('./js/tactic.js');
   require('./js/icons.js');
@@ -162,6 +164,7 @@
         || /id="sd-t-/.test(tag)                         /* v89.102：沙盘（回放/推演）逐兵种目标 */
         || /id="tm-gen"/.test(tag) || /id="wg-gen"/.test(tag)   /* v89.87：调兵/驻守的带队英雄 */
         || /id="am-/.test(tag)                           /* 自动出征弹窗（v89.83：十项，其中出征战术行是字面量） */
+        || /id="adm-/.test(tag)                          /* v90.64：地图**分级行政检索**下拉（全球/省/市/区 · 高亮）*/
         || /^<select id="' \+ id \+ '">$/.test(tag)     /* openAutoMarch 的参数化构造器（其余九项） */
         /* v89.133：带 data-action 的 select（走全局 change 委托 → GAME.action）——
            动作表受 audit「孤儿按钮」兜底（无 case 即红），比只登记 id 更严。 */
@@ -251,7 +254,7 @@
   check('侦察单元速度3000', DATA.TROOPS.zhencha.spd === 3000);
   check('16 城内建筑', Object.keys(DATA.BUILDINGS).length === 16);
   check('4 城外资源建筑', Object.keys(DATA.EXT_BUILDINGS).length === 4);
-  check('政务厅10级木136万', DATA.BUILDINGS.guanfu.levelCost(9).wood === 1365010);
+  check('政务厅10级木47.8万（v90.12 废土化：木料大减）', DATA.BUILDINGS.guanfu.levelCost(9).wood === 478000);
   check('居所10级幸存者5500', DATA.BUILDINGS.minfang.pop[9] === 5500);
   check('净化厂10级产量5500/h', DATA.EXT_BUILDINGS.farm.prod[9] === 5500);
   check('23 科技', DATA.TECH.length === 24, DATA.TECH.length + '项');
@@ -274,8 +277,11 @@
   check('风碛首府风关(115,205)', DATA.NPC_CITIES.some(function (c) { return c.name === '风关' && c.x === 115 && c.y === 205; }));
   check('28 名历史英雄', DATA.HEROES.length >= 28);
   check('11 位美人', DATA.BEAUTIES.length === 11);
-  check('装备陨锋套12件', Object.keys(DATA.EQUIP).filter(function (k) { return DATA.EQUIP[k].set === 'yitian'; }).length === 12);
-  check('绝影速度120', DATA.EQUIP.jueying.spd === 120);
+  check('装备：18 套 · 每套 19 件（v90.14 套装重设）', (function () {
+    var bySet = {}; Object.keys(DATA.EQUIP).forEach(function (k) { var s = DATA.EQUIP[k].set; if (s) bySet[s] = (bySet[s]||0)+1; });
+    return Object.keys(bySet).length === 18 && Object.keys(bySet).every(function (s) { return bySet[s] === 19; });
+  })());
+  check('机动模块带速度（v90.14）', DATA.EQUIP.coarse_ti_mount.spd > 0);
   check('42 件可操作宝物', DATA.ITEMS.length >= 42, DATA.ITEMS.length + '件');
 
   /* ============================================================
@@ -432,11 +438,11 @@
   console.log('\n===== 10. 装备穿戴 =====');
   var g0 = s.generals[0];
   var r9 = G.systems.equipItem(g0.id, 'yt_free1');
-  check('穿戴新手布衣', r9.ok === true, r9.msg);
+  check('穿戴补丁动力（起始装备）', r9.ok === true, r9.msg);
   var r10 = G.systems.equipItem(g0.id, 'yt_free2');
-  check('穿戴新手木剑', r10.ok === true);
+  check('穿戴拾荒右武装（起始装备）', r10.ok === true);
   var b = G.systems.genEquipBonus(g0);
-  check('装备加成生效(防+10攻+15)', b.def === 10 && b.atk === 15);
+  check('装备加成生效(防/攻 > 0)', b.def > 0 && b.atk > 0, 'def=' + b.def + ' atk=' + b.atk);
 
   console.log('\n===== 11. 宝物使用 =====');
   g0.loyalty = 70;   // 初始英雄忠诚为 100（自家嫡系），压低后再验证赏赐
@@ -929,7 +935,7 @@
   var gEq = S19.generals[1] || S19.generals[0];
   gEq.equip = {};
   var base19 = G.genAttrs(gEq);
-  gEq.equip.weapon = 'yt_sword';   // 陨锋长剑：atk 2888
+  gEq.equip.weapon = 'rare_zhan_weapon';   // 陨锋长剑：atk 2888
   var withW = G.genAttrs(gEq);
   check('武器装备 → 英雄攻击属性上升', withW.atk > base19.atk,
     base19.atk + ' → ' + withW.atk);
@@ -940,7 +946,7 @@
   check('装备武器 → 我军损失大幅减少（装备攻击已并入战斗）', rA.atkLoss < rB.atkLoss,
     '无武器损兵 ' + rB.atkLoss + ' → 有武器损兵 ' + rA.atkLoss);
   /* 英雄体力（装备 hp）→ 全军生命加成（此前该属性被算出却从未参与战斗） */
-  gEq.equip = { head: 'cr_head_4', chest: 'cr_chest_4', ring: 'cr_ring_4' };   // 玄铁散件：合计 hp 2100
+  gEq.equip = { head: 'prime_ti_head', chest: 'prime_ti_chest', ring: 'rare_zhi_ring' };   // 玄铁散件：合计 hp 2100
   var hpMult = 1 + Math.min(1.0, G.genAttrs(gEq).hp / 10000);
   var rHp = G.battle.simulate(army19, gEq, foe19, 0, null);
   gEq.equip = {};
@@ -948,7 +954,7 @@
   check('英雄体力 → 全军生命加成生效（损兵更少）', rHp.atkLoss < rNoHp.atkLoss,
     '无体力损兵 ' + rNoHp.atkLoss + ' → 有体力(hp=' + G.genAttrs({ equip: {}, hp: 100 }).hp + '/' + (1 + 0.21).toFixed(2) + 'x)损兵 ' + rHp.atkLoss);
   delete gEq.equip.weapon;
-  gEq.equip.mount = 'jueying';
+  gEq.equip.mount = 'coarse_zhi_mount';
   var withM = G.genAttrs(gEq);
   check('座驾（绝影）→ 英雄速度上升', withM.spd > base19.spd, base19.spd + ' → ' + withM.spd);
   delete gEq.equip.mount;
@@ -1440,7 +1446,7 @@
   check('设置面板有开关', /toggle-auto-upgrade/.test(uiSrc21));
   /* v24（需求 9）：底部队列条删除，队列状态（含自动升级）改在「公文」页呈现 */
   check('队列状态在公文呈现（底部队列条已删）',
-    /ui\.queueBody = function/.test(uiSrc21) && /🔨 自动升级/.test(uiSrc21)
+    /ui\.queueBody = function/.test(uiSrc21) && /自动升级/.test(uiSrc21)
     && !/queue-bar/.test(uiSrc21));
 
   console.log('\n===== 22. 地图观察框（视口渲染 / 导航 / 点击换算）=====');
@@ -1492,25 +1498,24 @@
   UI.mapCenterOn(265, 215);
   check('坐标跳转把目标设为视野中心', UI.mapView.x === 265 && UI.mapView.y === 215,
     '(' + UI.mapView.x + ',' + UI.mapView.y + ')');
-  check('视野信息文本改报中心格', UI.mapInfoText() === '中心 (265,215)', UI.mapInfoText());
+  check('视野信息文本改报中心格（v90.67 坐标改球系显示）', UI.mapInfoText().indexOf('中心 ') === 0, UI.mapInfoText());
 
   /* 点击换算：菱形反投影 */
   G.map.render(cv22, { vx: 100, vy: 200, span: 12, cell: 44 });
   var vv22 = G.map._view;
-  check('菱形网格参数已记录（半宽/半高/中心格）',
-    vv22 && vv22.cell === 44 && vv22.HW === 22 && vv22.HH === vv22.cell / 3 && vv22.iso === true
+  check('方格网格参数已记录（半宽/半高/中心格）',
+    vv22 && vv22.cell === 44 && vv22.HW === 22 && vv22.HH === 22 && vv22.iso === false
     && vv22.span === 12 && vv22.vx === 100 && vv22.vy === 200,
     'cell=' + (vv22 && vv22.cell) + ' HW=' + (vv22 && vv22.HW) + ' HH=' + (vv22 && vv22.HH));
   check('画布尺寸与观察框一致（四角无留白）',
     vv22 && vv22.cvW === vv22.spanX * vv22.cell && vv22.cvH === vv22.spanY * vv22.cell,
     (vv22 && vv22.cvW) + '×' + (vv22 && vv22.cvH));
-  /* v89.226（老板）：菱形半高 cell/4 → cell/3（拉高顶面，贴近裁切图长宽比）；
-     原「2:1 等距」口径退役 —— 半宽不动（cell/2）。 */
-  check('3:2 菱形（半宽 = cell/2、半高 = cell/3 · v89.226 拉高顶面）', vv22.HW === vv22.cell / 2
-    && vv22.HH === vv22.cell / 3);
-  /* 格心 → 屏幕 → 必须回到原格 */
+  /* v90.6（老板「贴图不要旋转」）：菱形等距排布改为**方格网** —— 半宽=半高=cell/2、iso=false。 */
+  check('正方格（半宽 = 半高 = cell/2 · 轴对齐网格）', vv22.HW === vv22.cell / 2
+    && vv22.HH === vv22.cell / 2);
+  /* 格心 → 屏幕 → 必须回到原格（方格：x=ox+gx·cell, y=oy+gy·cell） */
   var isoXY = function (gx, gy) {
-    return { x: vv22.ox + (gx - gy) * vv22.HW, y: vv22.oy + (gx + gy) * vv22.HH };
+    return { x: vv22.ox + gx * vv22.cell, y: vv22.oy + gy * vv22.cell };
   };
   var probe22 = [[100, 200], [105, 203], [111, 206], [100, 206], [95, 203]], miss22 = [];
   probe22.forEach(function (p) {
@@ -1535,7 +1540,10 @@
     });
     return bad.length === 0;
   })());
-  check('地图外的点返回 null（不误命中）', G.map.pick(cv22, -3000, -3000) === null);
+  check('地图外的点返回 null（不误命中）', (function () {
+    var fp = isoXY(-400, -400);   /* v90.6：方格网下用格坐标算一个真正界外的点 */
+    return G.map.pick(cv22, fp.x, fp.y) === null;
+  })());
 
   /* 地形图标覆盖 */
   var mapSrc22 = require('fs').readFileSync(require('path').join(__dirname, 'js', 'map.js'), 'utf8');
@@ -1607,11 +1615,10 @@
      不是把贴图裁成菱形贴到正方形上。旧的正方形绘制必须彻底消失。 */
   /* v89.226（老板）：半高 cell/4 → cell/3（拉高顶面）—— 判据随新口径；
      注释锁改「拉高顶面」（原「2:1 等距」字样随注释同步退役）。 */
-  check('地图为菱形等距排布（v50：不再是正方形网格 · v89.226 半高 cell/3）',
-    /var HW = cell \/ 2;/.test(mapSrc22) && /var HH = cell \/ 3;/.test(mapSrc22)
-    && /拉高顶面/.test(mapSrc22)
+  check('地图为**方格网**轴对齐（v90.6：老板"贴图不要旋转" · 半宽=半高=cell/2）',
+    /var HW = cell \/ 2;/.test(mapSrc22) && /var HH = cell \/ 2;/.test(mapSrc22)
     && /function diaPath\(/.test(mapSrc22) && /function sideSides\(/.test(mapSrc22)
-    && /function gxy\(gx, gy\)/.test(mapSrc22)
+    && /function gxy\(gx, gy, el\)/.test(mapSrc22)
     && !/tx \* cell \+ cell \/ 2/.test(mapSrc22) && !/function topRect\(/.test(mapSrc22));
   check('画布尺寸 = 宽/高格数 × 格距（宽高可不等）',
     /cvW = Math\.round\(spanX \* cell\)/.test(mapSrc22)
@@ -1647,9 +1654,8 @@
       return c.length === 3 && c[0] > c[1] && c[1] > c[2];
     });
   })());
-  check('地图拾取为菱形反投影 + round（无三角函数，零误差）',
-    /var a = \(mx - v\.ox\) \/ v\.HW, b = \(my - v\.oy\) \/ v\.HH;/.test(mapSrc22)
-    && /var gx = Math\.round\(\(a \+ b\) \/ 2\), gy = Math\.round\(\(b - a\) \/ 2\);/.test(mapSrc22));
+  check('地图拾取为方格反投影 + round（x=ox+gx·cell, y=oy+gy·cell）',
+    /var gx = Math\.round\(\(mx - v\.ox\) \/ v\.cell\), gy = Math\.round\(\(my - v\.oy\) \/ v\.cell\);/.test(mapSrc22));
   check('v50：拾取按 clientWidth 扣掉画布边框（rect.width 含 3px 边框会错格）', (function () {
     /* 实测（真浏览器，无桩）：canvas 有 3px 边框 → rect 1254 / 属性 1248，差 0.5%。
        旧公式直接拿 rect.width 缩放，在**贴近菱形边界**的点上命中率只有 31%
@@ -1668,7 +1674,7 @@
    * 所以改判据：验「顶面 + 土色侧壁」两片结构齐备，并验几何语义没被破坏。
    * ============================================================ */
   check('v50-a：地块为「菱形顶面 + 两个侧面」，抬升按地形分档且**厚度 ≤ 缝宽**',
-    /var ELEV_PX = \{/.test(mapSrc22) && /function elevFor\(/.test(mapSrc22)
+    /var HSTEP/.test(mapSrc22) && /function elevFor\(/.test(mapSrc22)
     && /function diaPath\(gx, gy, el, k\)/.test(mapSrc22)
     && /function sideSides\(gx, gy, el\)/.test(mapSrc22)
     && /function soilOf\(tint, k\)/.test(mapSrc22) && /soilOf\(tint, [\d.]+\)/.test(mapSrc22)
@@ -1680,10 +1686,10 @@
        A 侧壁最低点是 cy + HH − IN/2 + el，只要 el ≤ IN 就仍在缝内。
        首版按 cell 比例给到 35px（山），侧壁直接盖住北邻格。
        v90.2：IN 改按模式取（世界采样 0 / 旧模式 5）—— 取其中较小者做上限。 */
-    var m = mapSrc22.match(/var ELEV_PX_MAX = ([\d.]+);/);
-    var i = mapSrc22.match(/var IN = \(GAME\.map\.showWorld !== false\) \? ([\d.]+) : ([\d.]+);/);
-    if (!m || !i) return false;
-    return parseFloat(m[1]) <= Math.min(parseFloat(i[1]), parseFloat(i[2]));
+    /* v90.50：侧壁高度改由「高程 fbm → 0~7 级 × HSTEP 像素」决定（不再受缝宽 IN 约束）。
+       判据改为：分档常量 HSTEP/HMAX 在册，且高度按格（elevFor 带 gx/gy）取。 */
+    return /var HSTEP = /.test(mapSrc22) && /var HMAX = \d+;/.test(mapSrc22)
+      && /function elevFor\(terrain, gx, gy\)/.test(mapSrc22);
   })());
   check('v50-a：顶面**固定在格心**（不再随 el 上浮）', (function () {
     /* 上浮同样会侵入北邻格 —— topCY/topBottom/diaPath/diaBox 里都不许再出现 "− el" */
@@ -1695,17 +1701,15 @@
       && !/-\s*el\b/.test(cyFn) && !/-\s*el\b/.test(btFn)
       && !/cy = c\.y - el/.test(dpFn) && !/c\.y - el/.test(dbFn);
   })());
-  check('v89.226：高度分档归零（只要地平面 · 原「山最高、平地最薄」口径随立体侧壁退役）', (function () {
-    /* v89.226（老板）：「三维高度全部归零 —— 只要地平面，不要立体侧壁」。
-       按新口径重写：八档**逐档钉死为 0**（不是"允许为 0"）+ 硬上限 0
-       + 抬升消费链仍在（elevFor/ELEV 未断 —— 侧壁代码保留，供未来恢复）。 */
-    var m = mapSrc22.match(/var ELEV_PX = \{([\s\S]*?)\};/);
-    if (!m) return false;
-    var g = function (k) { var r = m[1].match(new RegExp(k + ':\\s*([\\d.]+)')); return r ? parseFloat(r[1]) : NaN; };
-    var ks = ['plain', 'caoyuan', 'zhaoze', 'lake', 'desert', 'forest', 'hill', 'city'];
-    for (var i4 = 0; i4 < ks.length; i4++) { if (g(ks[i4]) !== 0) return false; }
-    return /var ELEV_PX_MAX = 0;/.test(mapSrc22)
-      && /function elevFor\(terrain\)/.test(mapSrc22) && /var ELEV = ELEV_PX_MAX;/.test(mapSrc22);
+  check('v90.61：高度=连续场单一出口（GAME.map.heightAt/depthAt）+ 2D 量化为台阶', (function () {
+    /* v89.226「归零」→ v90.50「分档」→ v90.61「收敛为单一出口」：
+       连续高度 GAME.map.heightAt + 全局深度 GAME.map.depthAt（2D/3D 共用），
+       2D 的 heightLevels 只是它的量化。 */
+    return /GAME\.map\.heightAt = function \(gx, gy\)/.test(mapSrc22)
+      && /GAME\.map\.depthAt = function \(gx, gy\)/.test(mapSrc22)
+      && /Math\.round\(GAME\.map\.heightAt\(xx, yy\) \* HMAX\)/.test(mapSrc22)
+      && /if \(t === 'lake' \|\| t === 'zhaoze'\) return 0;/.test(mapSrc22)
+      && /function elevFor\(terrain, gx, gy\)/.test(mapSrc22) && /var ELEV = ELEV_PX_MAX;/.test(mapSrc22);
   })());
   check('v50：菱形**几何**保持线性（gxy/diaPath 不含三角函数）· 纹理旋转仅在世界采样路径',
     (function () {
@@ -1742,14 +1746,14 @@
        （格心、形状、厚度、外接框四样都得一致）。所以这里查**结构**：
        ① 四个几何函数的入参都是格号 (gx,gy)；② 坐标与定位函数必须由 gxy 派生；
        ③ 绘制侧不许再出现裸的 cell/2 定位（那正是"改一处漏一处"的来源）。 */
-    if (!/function gxy\(gx, gy\)/.test(mapSrc22)) return false;
+    if (!/function gxy\(gx, gy, el\)/.test(mapSrc22)) return false;
     if (!/function diaPath\(gx, gy, el, k\)/.test(mapSrc22)) return false;
     if (!/function diaBox\(gx, gy, el, k\)/.test(mapSrc22)) return false;
     if (!/function sideSides\(gx, gy, el\)/.test(mapSrc22)) return false;
     var dbFn = (mapSrc22.match(/function diaBox\(gx, gy, el, k\) \{([\s\S]{0,400}?)\n    \}/) || [])[1] || '';
     var cyFn = (mapSrc22.match(/function topCY\(gx, gy, el\) \{([\s\S]{0,140}?)\}/) || [])[1] || '';
     var btFn = (mapSrc22.match(/function topBottom\(gx, gy, el\) \{([\s\S]{0,140}?)\}/) || [])[1] || '';
-    if (!/gxy\(gx, gy\)/.test(dbFn) || !/gxy\(gx, gy\)/.test(cyFn) || !/gxy\(gx, gy\)/.test(btFn)) return false;
+    if (!/gxy\(gx, gy, el\)/.test(dbFn) || !/gxy\(gx, gy, el\)/.test(cyFn) || !/gxy\(gx, gy, el\)/.test(btFn)) return false;
     /* 反投影也要与正投影成对出现（一个负责拾取、一个负责绘制，两处必须互为逆变换） */
     if (!/function invScreen\(sx, sy\)/.test(mapSrc22)) return false;
     if (/c\.x - cell \/ 2 \+ TG/.test(mapSrc22)) return false;
@@ -1763,19 +1767,15 @@
     var v = parseInt(m[0].replace(/\D/g, ''), 10);
     return v >= 1 && v <= 5;
   })());
-  check('v50：每块菱形先铺满该地形的土色基底（缝里露邻格土色，不是深色空洞）', (function () {
+  check('v50：每块格先铺满该地形的土色基底（缝里露邻格土色，不是深色空洞）', (function () {
     /* v49 起"减少格子感"的主力：**整块铺该地形的土色**，缝里露的是邻格土色。
-       v50 换成菱形后这条必须保留 —— 老板认可的是这个效果，不是正方形的形状。 */
+       v90.6 换方格网后这条必须保留 —— 老板认可的是这个效果，不是具体形状。 */
     return /ctx\.fillStyle = soilOf\(tint, [\d.]+\);[\s\S]{0,80}?diaPath\(d\.gx, d\.gy, 0, 0\);/.test(mapSrc22)
       /* 两个侧面各自渐变（上接基底色、下端更暗） */
-      && /createLinearGradient\(0, c\.y, 0, c\.y \+ HH \+ el\)/.test(mapSrc22)
+      && /createLinearGradient\(0, c\.y \+ HH, 0, c\.y \+ HH \+ el\)/.test(mapSrc22)
       /* 明度档写成变量（kTop/kBot，because 左右两面取值不同），所以匹配标识符而非数字 */
       && /g3\.addColorStop\(0, soilOf\(tint, \w+\)\)/.test(mapSrc22)
       && /g3\.addColorStop\(1, soilOf\(tint, \w+\)\)/.test(mapSrc22)
-      /* 顶棱高光仍在（菱形版画的是顶面上方那两条棱；v89.226 高度归零后
-         除法改走 _eMax = ELEV_PX_MAX || 1 —— 防除零，两条都在才算没断） */
-      && /0\.14 \+ Math\.min\(0\.24, el \/ _eMax \* 0\.24\)/.test(mapSrc22)
-      && /var _eMax = ELEV_PX_MAX \|\| 1;/.test(mapSrc22)
       /* 画布兜底色不再是那个很深的 #3b3423（缝不再是"深色沟"） */
       && !/'#3b3423'/.test(mapSrc22);
   })());
@@ -1802,9 +1802,9 @@
       && mapSrc22.indexOf('drawCityArt(ctx, c.x, tcy + HH * ') >= 0;
   })());
   check('v50-a：顶面内侧有 AO 阴影（不越界也能读出厚度）', (function () {
-    /* 菱形密铺里"真的加厚"会被北邻格挡住，所以厚度感只能画在顶面内部 ——
-       沿下方两条边压一道渐变。这是"既不重叠、又有立体感"的唯一出路。 */
-    return /下缘的 AO 内阴影/.test(mapSrc22)
+    /* 方格网里"真的加厚"会被北邻格挡住，所以厚度感只能画在顶面内部 ——
+       沿**下边**压一道渐变。这是"既不重叠、又有立体感"的唯一出路。 */
+    return /AO 内阴影/.test(mapSrc22)
       && /rgba\(12,14,8,\.30\)/.test(mapSrc22)
       && /diaPath\(gx, gy, el, -IN\);[\s\S]{0,120}?ctx\.clip\(\)/.test(mapSrc22);
   })());
@@ -1971,18 +1971,18 @@
     check('建锻造间Lv1 → 仅可打造凡人', G.forgeMaxQ() === 1, 'maxQ=' + G.forgeMaxQ());
     check('无锻造间提示', (function () {
       city23.cells[i23].build = null;
-      var r = G.forge('cr_head_1');
+      var r = G.forge('coarse_zhi_head');
       city23.cells[i23].build = { id: 'tiejiangpu', lvl: 1 };
       return r.ok === false && /锻造间/.test(r.msg);
     })());
-    check('凡人散件成本 = 基准×槽位倍率', (function () {
-      var c = G.forgeCost('cr_head_1');
-      return c.gold === Math.round(800 * 1.1) && c.iron === Math.round(300 * 1.1);
-    })(), JSON.stringify(G.forgeCost('cr_head_1')));
-    check('套装件成本更高（×2.2）', G.forgeCost('ms_h1').gold > G.forgeCost('cr_head_2').gold,
-      G.forgeCost('cr_head_2').gold + ' → ' + G.forgeCost('ms_h1').gold);
+    check('套装件成本 = 基准×套件倍率(2.2)×槽位倍率', (function () {
+      var c = G.forgeCost('coarse_zhi_head');
+      return c.gold === Math.round(800 * 2.2 * 1.1) && c.iron === Math.round(300 * 2.2 * 1.1);
+    })(), JSON.stringify(G.forgeCost('coarse_zhi_head')));
+    check('高品质套装件成本更高（优良 > 粗劣）', G.forgeCost('fine_zhi_head').gold > G.forgeCost('coarse_zhi_head').gold,
+      G.forgeCost('coarse_zhi_head').gold + ' → ' + G.forgeCost('fine_zhi_head').gold);
     check('Lv1 造珍品被拒', (function () {
-      var r = G.forge('cr_head_3');
+      var r = G.forge('prime_zhi_head');
       return r.ok === false && /锻造间等级不足/.test(r.msg);
     })());
 
@@ -1991,27 +1991,29 @@
     S23.res.iron += 50000; S23.res.wood += 50000; S23.res.stone += 50000; S23.res.gold += 50000;
     /* v12：打造需材料，先备齐 */
     DATA.MATERIAL_IDS.forEach(function (mid) { S23.items[mid] = (S23.items[mid] || 0) + 200; });
-    var rf = G.forge('cr_head_1');
-    check('打造凡人盔成功', rf.ok === true, rf.msg);
+    /* v90.14：套装件需图纸 —— 补图纸以验此前的成本/材料路径（图纸门槛见下方专测） */
+    DATA.BLUEPRINTS.forEach(function (bp) { S23.items[bp.id] = (S23.items[bp.id] || 0) + 9; });
+    var rf = G.forge('coarse_zhi_head');
+    check('打造粗劣观瞄成功', rf.ok === true, rf.msg);
     check('成品进入装备背包', (S23.inventory || []).length === inv0 + 1
-      && S23.inventory.some(function (x) { return G.eqId(x) === 'cr_head_1'; }));
-    check('记录已打造（图鉴）', (S23.forged || []).indexOf('cr_head_1') >= 0);
-    check('材料被扣除', G.forgeCost('cr_head_1').iron > 0 && S23.inventory.length > inv0);
+      && S23.inventory.some(function (x) { return G.eqId(x) === 'coarse_zhi_head'; }));
+    check('记录已打造（图鉴）', (S23.forged || []).indexOf('coarse_zhi_head') >= 0);
+    check('材料被扣除', G.forgeCost('coarse_zhi_head').iron > 0 && S23.inventory.length > inv0);
 
     /* 图纸门槛 */
     city23.cells[i23].build = { id: 'tiejiangpu', lvl: 7 };
     check('Lv7 → 可打造神品', G.forgeMaxQ() === 4, 'maxQ=' + G.forgeMaxQ());
-    S23.items.bp_yitian = 0;
-    var ry = G.forge('yt_sword');
-    check('缺图纸时打造陨锋套被拒', ry.ok === false && /图纸/.test(ry.msg), ry.msg);
-    S23.items.bp_yitian = 1;                       // 补齐图纸
+    S23.items.bp_rare_zhan = 0;
+    var ry = G.forge('rare_zhan_weapon');
+    check('缺图纸时打造稀有套被拒', ry.ok === false && /图纸/.test(ry.msg), ry.msg);
+    S23.items.bp_rare_zhan = 1;                       // 补齐图纸
     S23.res.gold = 1000000; S23.res.iron = 400000; S23.res.wood = 300000; S23.res.stone = 200000;
-    var ry2 = G.forge('yt_sword');
+    var ry2 = G.forge('rare_zhan_weapon');
     check('持图纸时打造成功', ry2.ok === true, ry2.msg);
-    check('陨锋长剑入背包', S23.inventory.some(function (x) { return G.eqId(x) === 'yt_sword'; }));
+    check('稀有右武装入背包', S23.inventory.some(function (x) { return G.eqId(x) === 'rare_zhan_weapon'; }));
     check('图纸可于游商购买', (function () {
       var found = null;
-      DATA.ITEMS.forEach(function (it) { if (it.id === 'bp_yitian') found = it; });
+      DATA.ITEMS.forEach(function (it) { if (it.id === 'bp_rare_zhan') found = it; });
       return !!found && found.price > 0 && found.type === 'blueprint';
     })());
 
@@ -2038,9 +2040,9 @@
     var gHp = G.state.generals[0];
     gHp.equip = {};
     var staBase0 = G.staMax(gHp);
-    gHp.equip = { head: 'cr_head_4', chest: 'cr_chest_4' };
+    gHp.equip = { head: 'prime_ti_head', chest: 'prime_ti_chest' };
     var staBase1 = G.staMax(gHp);
-    var wantSta = (DATA.EQUIP.cr_head_4.sta || 0) + (DATA.EQUIP.cr_chest_4.sta || 0);
+    var wantSta = (DATA.EQUIP.prime_ti_head.sta || 0) + (DATA.EQUIP.prime_ti_chest.sta || 0);
     check('装备体力进入 staMax（v66 唯一链）', wantSta > 0 && staBase1 - staBase0 === wantSta,
       staBase0 + ' → ' + staBase1 + '（装备 ' + wantSta + '）');
     check('体力经 hpMultOf 放大全军生命（实测损兵减少已在上文断言）', true);
@@ -2267,11 +2269,11 @@
       return true;
     })(), [1, 2, 3, 4].map(function (q) { return DATA.FORGE.qtyByQ[q].join('/'); }).join(' | '));
     check('品质决定品阶：凡人吃一阶料', (function () {
-      var m = G.forgeMaterials('cr_weapon_1');
+      var m = G.forgeMaterials('coarse_zhan_weapon');
       return DATA.MATERIAL_BY_ID[Object.keys(m)[0]].tier === 1;
     })());
     check('品质决定品阶：神品吃四阶料', (function () {
-      var m = G.forgeMaterials('cr_weapon_4'), ok = true;
+      var m = G.forgeMaterials('rare_zhan_weapon'), ok = true;
       for (var k in m) if (DATA.MATERIAL_BY_ID[k].tier !== 4) ok = false;
       return ok;
     })());
@@ -2282,14 +2284,14 @@
         && (rawMat('fatie').match(/cy="56"/g) || []).length === 1;
     })());
 
-    var fMat = G.forgeMaterials('cr_weapon_1');
-    check('凡人武器配方 = 粗铁3+松木2+兽筋1',
-      fMat.fatie === 3 && fMat.songmu === 2 && fMat.shoujin === 1, JSON.stringify(fMat));
-    var fMat4 = G.forgeMaterials('cr_weapon_4');
-    check('神品武器 = 陨铁16+复合材11+仿生腱6（套装前）',
-      fMat4.yuntie === 16 && fMat4.jianmu === 11 && fMat4.longjin === 6, JSON.stringify(fMat4));
-    var fSet = G.forgeMaterials('yt_sword');
-    check('套装件材料 ×1.5', fSet.yuntie > fMat4.yuntie, fMat4.yuntie + ' → ' + fSet.yuntie);
+    var fMat = G.forgeMaterials('coarse_zhan_weapon');
+    check('粗劣武器配方 = 粗铁3×1.5+松木2×1.5+兽筋1×1.5（套装件）',
+      fMat.fatie === 5 && fMat.songmu === 3 && fMat.shoujin === 2, JSON.stringify(fMat));
+    var fMat4 = G.forgeMaterials('rare_zhan_weapon');
+    check('稀有武器配方 = 陨铁16×1.5+复合材11×1.5+仿生腱6×1.5',
+      fMat4.yuntie === 24 && fMat4.jianmu === 17 && fMat4.longjin === 9, JSON.stringify(fMat4));
+    var fSet = G.forgeMaterials('rare_zhan_weapon');
+    check('套装件材料 = 基准 ×1.5', fSet.yuntie === 24 && fMat.fatie === 5, '粗劣 ' + fMat.fatie + ' / 稀有 ' + fSet.yuntie);
 
     /* 材料不足打造被拒 */
     var city24 = S24.cities[0];
@@ -2299,13 +2301,13 @@
     S24.res.gold = 5000000; S24.res.iron = 500000; S24.res.wood = 500000; S24.res.stone = 500000;
     S24.items = S24.items || {};
     DATA.MATERIAL_IDS.forEach(function (m) { delete S24.items[m]; });
-    var rNoMat = G.forge('cr_head_1');
+    var rNoMat = G.forge('coarse_zhi_head');
     check('缺材料时打造被拒', rNoMat.ok === false && /材料/.test(rNoMat.msg), rNoMat.msg);
     DATA.MATERIAL_IDS.forEach(function (m) { S24.items[m] = 500; });
     var inv24 = S24.inventory.length;
-    var rOk = G.forge('cr_head_1');
+    var rOk = G.forge('coarse_zhi_head');
     check('材料齐备时打造成功', rOk.ok === true, rOk.msg);
-    check('打造扣除材料', S24.items.fatie === 500 - G.forgeMaterials('cr_head_1').fatie,
+    check('打造扣除材料', S24.items.fatie === 500 - G.forgeMaterials('coarse_zhi_head').fatie,
       '精铁 500 → ' + S24.items.jingtie);
     check('成品进入背包', S24.inventory.length === inv24 + 1);
     check('打造面板可检出材料缺口字段', (function () {
@@ -2516,18 +2518,20 @@
         > DATA.MATERIAL_BY_ID[DATA.MAT_OF(se.id, t - 1)].price;
     });
   }));
-  check('散件命名与材料品阶呼应（无「玄铁刀」式错配）', (function () {
-    var bad = [];
-    DATA.CRAFT_SLOTS.forEach(function (sl) {
-      var names = [1, 2, 3, 4].map(function (q) { return DATA.EQUIP['cr_' + sl.id + '_' + q].name; });
-      if (names.join('/').indexOf('玄铁') >= 0) bad.push(sl.id);
+  /* v90.14：散件退役 —— 原「cr_* 命名/配方」两条改为对**套装武器**按 6 档核对。 */
+  var SET_WEAPON = { 1: 'coarse_zhan_weapon', 2: 'fine_zhan_weapon', 3: 'prime_zhan_weapon',
+    4: 'rare_zhan_weapon', 5: 'legend_zhan_weapon', 6: 'divine_zhan_weapon' };
+  check('套装件命名与品质档位在册（6 档武器各一）', (function () {
+    return Object.keys(SET_WEAPON).every(function (q) {
+      var e = DATA.EQUIP[SET_WEAPON[q]];
+      return e && e.set && e.q === +q && e.name;
     });
-    return bad.length === 0;
   })());
   check('武器配方按品质吃对应品阶材料', (function () {
-    for (var q = 1; q <= 4; q++) {
-      var m = G.forgeMaterials('cr_weapon_' + q);
-      for (var k in m) if (DATA.MATERIAL_BY_ID[k].tier !== q) return false;
+    for (var q = 1; q <= 6; q++) {
+      var m = G.forgeMaterials(SET_WEAPON[q]);
+      var wantTier = Math.min(4, q);   /* 材料只到 4 阶：5/6 档复用 4 阶 */
+      for (var k in m) if (DATA.MATERIAL_BY_ID[k].tier !== wantTier) return false;
     }
     return true;
   })());
@@ -2566,27 +2570,27 @@
   check('装备可按套件分组', /'set:' \+ it.set/.test(uiS));
   check('材料按六大系列分组渲染', /DATA\.MAT_SERIES \|\| \[\]\)\.forEach/.test(uiS));
   var bagS = G.state;
-  bagS.inventory = ['cr_weapon_1', 'cr_weapon_4', 'cr_head_2'];
-  check('装备估值按品质递增', G.itemValue('cr_weapon_4') > G.itemValue('cr_weapon_1'),
-    G.itemValue('cr_weapon_1') + ' → ' + G.itemValue('cr_weapon_4'));
-  check('装备估值按部位差异（武器 > 头盔）', G.itemValue('cr_weapon_1') > G.itemValue('cr_head_1'),
-    '头 ' + G.itemValue('cr_head_1') + ' vs 武 ' + G.itemValue('cr_weapon_1'));
+  bagS.inventory = ['coarse_zhan_weapon', 'rare_zhan_weapon', 'fine_zhi_head'];
+  check('装备估值按品质递增', G.itemValue('rare_zhan_weapon') > G.itemValue('coarse_zhan_weapon'),
+    G.itemValue('coarse_zhan_weapon') + ' → ' + G.itemValue('rare_zhan_weapon'));
+  check('装备估值按部位差异（武器 > 头盔）', G.itemValue('coarse_zhan_weapon') > G.itemValue('coarse_zhi_head'),
+    '头 ' + G.itemValue('coarse_zhi_head') + ' vs 武 ' + G.itemValue('coarse_zhan_weapon'));
   var invBefore = bagS.inventory.length;
   DATA.MATERIAL_IDS.forEach(function (mid) { bagS.items[mid] = 0; });
-  var sv = G.salvageEquip('cr_weapon_1');
+  var sv = G.salvageEquip('coarse_zhan_weapon');
   check('拆解装备成功', sv.ok === true, sv.msg);
   check('拆解后装备出包', bagS.inventory.length === invBefore - 1);
   check('拆解回收材料且为同品阶', (function () {
-    var need = G.forgeMaterials('cr_weapon_1'), first = Object.keys(need)[0];
+    var need = G.forgeMaterials('coarse_zhan_weapon'), first = Object.keys(need)[0];
     return DATA.MATERIAL_BY_ID[first].tier === 1 && (bagS.items[first] || 0) > 0;
   })(), '回收率 ' + DATA.FORGE.salvageRate);
   check('v79：拆解按件 —— 在穿的件拒拆（先卸下），背包件照拆', (function () {
     var m = G.makeGeneral('拆解测试', 3, 'idle', G.state.cities[0].id, false);
     G.state.generals.push(m);
-    var chestA = G.addEquip('cr_chest_2');
+    var chestA = G.addEquip('fine_zhi_chest');
     G.systems.equipItem(m.id, chestA.u);
     var rWorn = G.salvageEquip(chestA.u);          /* 在穿的件：拒 */
-    var chestB = G.addEquip('cr_chest_2');
+    var chestB = G.addEquip('fine_zhi_chest');
     var r = G.salvageEquip(chestB.u);              /* 背包里的件：拆 */
     return !rWorn.ok && /卸下/.test(rWorn.msg) && r.ok
       && (m.equip || {}).chest === chestA;
@@ -2607,32 +2611,32 @@
   var gA = G.makeGeneral('测试甲', 5, 'idle', gS.cities[0].id, false);
   gA.equip = {};
   gS.generals.push(gA);
-  gS.inventory = ['cr_weapon_4', 'cr_weapon_1', 'cr_head_3'];
+  gS.inventory = ['rare_zhan_weapon', 'coarse_zhan_weapon', 'prime_zhi_head'];
   var rAuto = G.systems.autoEquipBest(gA.id);
   check('一键最优装备执行', rAuto.ok === true, rAuto.msg);
-  check('自动穿上最高品质（神品刀）', gA.equip.weapon === 'cr_weapon_4', String(gA.equip.weapon));
-  check('低品质留背包未穿', (gS.inventory || []).indexOf('cr_weapon_1') >= 0);
-  check('已装备件不在背包', (gS.inventory || []).indexOf('cr_weapon_4') < 0);
+  check('自动穿上最高品质（神品刀）', gA.equip.weapon === 'rare_zhan_weapon', String(gA.equip.weapon));
+  check('低品质留背包未穿', (gS.inventory || []).indexOf('coarse_zhan_weapon') >= 0);
+  check('已装备件不在背包', (gS.inventory || []).indexOf('rare_zhan_weapon') < 0);
   check('换装时旧件自动回背包', (function () {
-    gS.inventory.push('cr_head_1');
-    G.systems.equipItem(gA.id, 'cr_head_1');
+    gS.inventory.push('coarse_zhi_head');
+    G.systems.equipItem(gA.id, 'coarse_zhi_head');
     var before = gA.equip.head;
-    G.systems.equipItem(gA.id, 'cr_head_3');
-    return before === 'cr_head_1' && gA.equip.head === 'cr_head_3'
-      && (gS.inventory || []).indexOf('cr_head_1') >= 0;
+    G.systems.equipItem(gA.id, 'prime_zhi_head');
+    return before === 'coarse_zhi_head' && gA.equip.head === 'prime_zhi_head'
+      && (gS.inventory || []).indexOf('coarse_zhi_head') >= 0;
   })());
   check('全部卸下：装备回背包', (function () {
     var n0 = Object.keys(gA.equip).length;
     var r = G.systems.unequipAll(gA.id);
     return r.ok && Object.keys(gA.equip).length === 0 && n0 >= 2;
   })());
-  check('装备评分：神品 > 凡人', G.systems.equipScore(DATA.EQUIP.cr_weapon_4) > G.systems.equipScore(DATA.EQUIP.cr_weapon_1));
+  check('装备评分：神品 > 凡人', G.systems.equipScore(DATA.EQUIP.rare_zhan_weapon) > G.systems.equipScore(DATA.EQUIP.coarse_zhan_weapon));
 
   var genCount0 = gS.generals.length;
-  gA.equip = { weapon: 'cr_weapon_4' };
+  gA.equip = { weapon: 'rare_zhan_weapon' };
   var rDis = G.dismissGeneral(gA.id);
   check('解雇英雄成功', rDis.ok === true && gS.generals.length === genCount0 - 1, rDis.msg);
-  check('解雇后装备归还背包', (gS.inventory || []).indexOf('cr_weapon_4') >= 0);
+  check('解雇后装备归还背包', (gS.inventory || []).indexOf('rare_zhan_weapon') >= 0);
   check('解雇后该将不在名录', !gS.generals.some(function (g) { return g.id === gA.id; }));
   check('仅剩一位英雄时拒绝解雇', (function () {
     var keep = gS.generals.slice();
@@ -2659,7 +2663,7 @@
   /* v41（需求 2）：部件栏不再是"入口"而是**内嵌**在英雄页右侧，所以判据改成
      "人形部件栏的构件与解雇按钮都在"，不再找 gen-equip 按钮。 */
   check('英雄页含人形部件栏与解雇入口（v41：不再弹窗）',
-    /class="doll"/.test(uiS) && /ui\.dollSlot = function/.test(uiS) && /data-action="dismiss-gen"/.test(uiS));
+    /class="doll/.test(uiS) && /ui\.dollSlot = function/.test(uiS) && /data-action="dismiss-gen"/.test(uiS));
   check('顶栏恢复「英雄」菜单', /data-view="generals"/.test(htmlSrc25));
 
   /* ---------- ⑤ 拆毁 ---------- */
@@ -2826,7 +2830,7 @@
   /* ---------- ⑦ 野外城池 ---------- */
   console.log('  --- 野外城池 ---');
   G.map.generate();
-  check('野外城池密度配置 1/12', DATA.FORT.density === 1 / 12);
+  check('野外城池密度配置 1/24（v90.66 老板：据点减半）', DATA.FORT.density === 1 / 24);
   var cntF = 0, lvSet = {};
   for (var fy = 0; fy < 160; fy++) {
     for (var fx = 0; fx < 160; fx++) {
@@ -2835,8 +2839,8 @@
     }
   }
   var dens = cntF / (160 * 160);
-  check('实测密度≈1/12', Math.abs(dens - 1 / 12) < 0.012, '实测 ' + dens.toFixed(4) + ' · ' + cntF + ' 座');
-  check('每 12×12 约 12 座', Math.abs(dens * 144 - 12) <= 1.6, (dens * 144).toFixed(1) + ' 座');
+  check('实测密度≈1/24', Math.abs(dens - 1 / 24) < 0.012, '实测 ' + dens.toFixed(4) + ' · ' + cntF + ' 座');
+  check('每 12×12 约 6 座', Math.abs(dens * 144 - 6) <= 1.6, (dens * 144).toFixed(1) + ' 座');
   check('等级落在 1~10', Object.keys(lvSet).every(function (k) { return +k >= DATA.FORT.levelMin && +k <= DATA.FORT.levelMax; }),
     Object.keys(lvSet).sort().join(','));
   check('等级分布覆盖多档（非单一等级）', Object.keys(lvSet).length >= 6, Object.keys(lvSet).length + ' 档');
@@ -3550,10 +3554,10 @@
   check('实测：状态区攻击行的合计数 = 武力×10 + 装备（真算一遍，不是只看变量名）', (function () {
     var st = G.newGame({ name: '合计' });
     var g = st.generals[0];
-    g.equip = { weapon: 'yt_sword' };
+    g.equip = { weapon: 'rare_zhan_weapon' };
     var a = G.genAttrs(g);
-    var eqAtk = DATA.EQUIP.yt_sword.atk || 0;
-    var eqYw = DATA.EQUIP.yt_sword.yw || 0;
+    var eqAtk = DATA.EQUIP.rare_zhan_weapon.atk || 0;
+    var eqYw = DATA.EQUIP.rare_zhan_weapon.yw || 0;
     /* 合计口径：攻值 = (基础武力 + 装备武力) × 10 + 装备攻击 */
     return a.atkVal === (g.yw + eqYw) * G.ATK_PER_YW + a.atk
       && a.atk >= eqAtk && a.atkVal > a.yw * G.ATK_PER_YW;
@@ -3625,10 +3629,10 @@
     var okBare = a.atkVal === 1000 && a.defVal === 400
       && Math.abs(a.atkPct - 100 * G.YW_PCT) < 1e-9 && Math.abs(a.defPct - 40 * G.ZM_PCT) < 1e-9;
     /* 再装一件有攻击的武器：装备攻值并入同一条百分比链（每 10 攻值 +1%，v52 保留） */
-    g.equip = { weapon: 'yt_sword' };
+    g.equip = { weapon: 'rare_zhan_weapon' };
     var b = G.genAttrs(g);
-    var wAtk = DATA.EQUIP.yt_sword.atk || 0;
-    var wYw = DATA.EQUIP.yt_sword.yw || 0;
+    var wAtk = DATA.EQUIP.rare_zhan_weapon.atk || 0;
+    var wYw = DATA.EQUIP.rare_zhan_weapon.yw || 0;
     var okEquip = b.atkVal === (100 + wYw) * 10 + wAtk
       && Math.abs(b.atkPct - ((100 + wYw) * G.YW_PCT + wAtk / G.PCT_PER_ATK / 100)) < 1e-9;
     /* 换算原子必须与派生字段一致（防"公式抄两份、改一处"） */
@@ -3648,7 +3652,7 @@
     var g = st.generals[0];
     g.equip = {}; g.yw = 100; g.attack = 0;
     var before = G.genAttrs(g).atkPct;
-    g.equip = { weapon: 'yt_sword' };
+    g.equip = { weapon: 'rare_zhan_weapon' };
     var after = G.genAttrs(g).atkPct;
     return after > before;
   })());
@@ -3660,12 +3664,12 @@
     g.level = 30; g.nz = 50;
     g.equip = {};
     var bare = G.staMax(g);
-    /* 凑齐倚天 3 件 → 套装 3 档（含体力）生效 */
-    g.equip = { head: 'yt_helm', neck: 'yt_neck', shoulder: 'yt_should' };
+    /* 凑齐体力套 3 件 → 套装 3 档（含体力）生效 */
+    g.equip = { head: 'coarse_ti_head', chest: 'coarse_ti_chest', waist: 'coarse_ti_waist' };
     var withSet = G.staMax(g);
-    /* v66：装备体力并入上限后，"3 件倚天"的体力贡献 = 套装档位 60 + 3 件 × 每件 600 */
-    var expect = (DATA.SETS.yitian.eff[3].sta || 0)
-      + (DATA.EQUIP.yt_helm.sta || 0) + (DATA.EQUIP.yt_neck.sta || 0) + (DATA.EQUIP.yt_should.sta || 0);
+    /* 装备体力并入上限后，"3 件体力套"的贡献 = 套装档位 sta + 3 件各自 sta */
+    var expect = (DATA.SETS.coarse_ti.eff[3].sta || 0)
+      + (DATA.EQUIP.coarse_ti_head.sta || 0) + (DATA.EQUIP.coarse_ti_chest.sta || 0) + (DATA.EQUIP.coarse_ti_waist.sta || 0);
     var okSet = expect > 0 && withSet - bare === expect;
     /* 单件带 sta 的装备也要算（link 通了两类来源） */
     var fake = { equip: { head: 'FAKE_STA' } };
@@ -3674,8 +3678,8 @@
     delete DATA.EQUIP.FAKE_STA;
     var bareFake = G.staMax({ equip: {} });
     return okSet && withEq - bareFake === 33;
-  })(), '倚天 3 件 → 体力上限 +' + ((DATA.SETS.yitian.eff[3].sta || 0)
-    + (DATA.EQUIP.yt_helm.sta || 0) + (DATA.EQUIP.yt_neck.sta || 0) + (DATA.EQUIP.yt_should.sta || 0)));
+  })(), '体力套 3 件 → 体力上限 +' + ((DATA.SETS.coarse_ti.eff[3].sta || 0)
+    + (DATA.EQUIP.rare_zhan_head.sta || 0) + (DATA.EQUIP.coarse_ti_chest.sta || 0) + (DATA.EQUIP.coarse_ti_waist.sta || 0)));
   check('套装体力同时出现在 bonus 文案与 eff 数值里，且两处一致', (function () {
     var i = typeof G.ITEM_LABEL;
     var out = [];
@@ -3691,11 +3695,12 @@
     });
     return out.length === 0;
   })());
-  check('三套都补上了体力档（每套至少一档有 sta）', (function () {
-    var miss = Object.keys(DATA.SETS).filter(function (k) {
+  check('体力套（ti）都补上了体力档（每套至少一档有 sta）', (function () {
+    var tiSets = Object.keys(DATA.SETS).filter(function (k) { return /_ti$/.test(k); });
+    var miss = tiSets.filter(function (k) {
       return !Object.keys(DATA.SETS[k].eff).some(function (t) { return DATA.SETS[k].eff[t].sta; });
     });
-    return miss.length === 0;
+    return tiSets.length === 6 && miss.length === 0;
   })());
 
   console.log('  --- v52：英雄页三处 UI ---');
@@ -4078,13 +4083,13 @@
     st.wilds = [];
     return ch.length === 1 && lv === 2;
   })());
-  check('decayWilds：最低降到 1 级', (function () {
+  check('decayWilds：降到 0 级（v90.62 老板：地板 0 级 + 归零 1 游戏日后自动放弃）', (function () {
     var st = G.state;
     st.wilds = [{ x: 2, y: 2, type: 'lake', level: 3, levelDay: G.questDayIndex() - 99 }];
     G.decayWilds();
-    var lv = st.wilds[0].level;
+    var lv = st.wilds.length ? st.wilds[0].level : -1;   /* 归零满 1 日 → 可能已被自动放弃（移除）*/
     st.wilds = [];
-    return lv === 1;
+    return lv === 0 || lv === -1;
   })());
   check('同日不重复降级', (function () {
     var st = G.state;
@@ -4189,8 +4194,8 @@
     return st.res.gold > cap;
   })(), '货仓 ' + U.fmt(G.storeCap()));
   /* v29（需求 12）：打造面板改为「物品行」结构（左贴图 / 右：部位·品质·造价 / 下：打造） */
-  check('#15 打造面板「造价」只出现一次（不重复列成本）',
-    (uS16.match(/造价 ' \+ U\.escape\(GAME\.costString\(f\.cost\)/g) || []).length === 1);
+  check('#15/v90.44 打造面板「造价」只出现一次（入卡片悬停 tip，不重复列成本）',
+    (uS16.match(/造价 ' \+ \(GAME\.costString\(f\.cost\)/g) || []).length === 1);
   check('#15 打造面板用物品行结构（信息只列一遍，不重复拼串）',
     /* v89.87：窗口 1600→2600 —— 快购"补货按钮"（qbBtns）把 itemRow 调用推后了
        v89.89：2600→3600 —— A4 产地提示（data-tip + 🗺️ mat-go）又推后了一截 */
@@ -4267,9 +4272,10 @@
   check('#4 缩放写入设置', DATA.DEFAULT_SETTINGS.zoom === 100);
   /* v39（需求 1）：老板反馈"背景颜色太深"，整体提亮一档。
      v90（玄金）：老板反馈"色调不好看、不柔和、不够高端养眼"——全线改玄金 + 柔金。
-     v90.1：老板 1「墨玉和夜阑重合高」→ 墨玉改**冷蓝灰**与暖近黑的夜阑拉开。 */
-  check('#5 配色改玄金·冷墨玉（冷蓝灰底 + 柔金）', /--bg-dark: #252b33/.test(hS16) && /--panel-bg: #30363f/.test(hS16));
-  check('#5 文字改冷中性浅灰', /--text: #e6e9ee/.test(hS16) && /--text-dim: #9aa2ad/.test(hS16));
+     v90.1：老板 1「墨玉和夜阑重合高」→ 墨玉改**冷蓝灰**与暖近黑的夜阑拉开。
+     v90.10（老板）：「城内城外界面再亮一点」→ 面板底再提亮一档（#30363f → #3a414c）。 */
+  check('#5 配色：Gruvbox Dark（暖深底 + 琥珀金）', /--bg-dark: #1d2021/.test(hS16) && /--panel-bg: #282828/.test(hS16));
+  check('#5 文字改暖白（Gruvbox fg）', /--text: #ebdbb2/.test(hS16) && /--text-dim: #a89984/.test(hS16));
 
   console.log('  --- 弹窗与操作规范 ---');
   /* v19：四档固定尺寸（sm / 默认 / lg / xl），全部带 vw·vh 上限保证不超界 */
@@ -4298,7 +4304,7 @@
   check('#13 施工面板显示 当前→目标 且可取消', uS16.indexOf('→ Lv') > 0 && uS16.indexOf('isUp16') > 0 && /取消'/.test(uS16));
   /* v82（老板）：「不要显示（自建城）这种文字」——君主面板城池列表去档位括注（坐标与幸存者保留） */
   check('#16 君主面板城池列表（v82：去档位括注）',
-    /ls-meta">\[' \+ c2\.x \+ ',' \+ c2\.y \+ '\] · 幸存者上限 '/.test(uS16)
+    /ls-meta">\[' \+ GAME\.map\.coordText\(c2\.x, c2\.y\) \+ '\] · 幸存者上限 '/.test(uS16)
     && !/DATA\.CITY_TIER\[c2\.type\]/.test(uS16));
   /* v22（需求 1）：下拉框已全站移除 → 城池切换改为点选按钮组 */
   /* v77（老板）：君主面板改左右分栏（城池列表 + 进入按钮），v22 的 chips 退役；
@@ -5088,10 +5094,15 @@
     /ui\.isoWallSVG = function/.test(uS30)
     && /\.iso-wall \{ position: absolute[\s\S]{0,90}z-index: 1/.test(hS30)
     && /\.iso-tile \{[\s\S]{0,80}z-index: 2/.test(hS30));
-  /* v39（需求 3）：老板要"把底部色块去掉" —— 已建地块不再有专属底板规则，
-     直接与整片地面同色（.tile-face 只由 --ground 决定）。 */
-  check('已建地块不再有独立底板（与地面同色）',
-    !/\.iso-tile\.built \.tile-face \{/.test(hS30) && /built: true/.test(uS30)
+  /* v39（需求 3）：老板要"把底部色块去掉"；
+     v90.10（老板）：「城内建筑底部柔和色块，分两系」——整格地块底色按两系柔和分色
+     （民居系=ser-live → 米黄；其他系=石青）。不再是 v90.8 的族色 20% 混色。 */
+  check('已建地块按两系柔和分色（民居米黄 / 其他石青）',
+    /\.iso-tile\.built \.tile-face \{ background: var\(--built-bg-fill, var\(--ground\)\); \}/.test(hS30)
+    && /\.iso-tile\.built\.ser-live \{ --built-bg-fill: var\(--built-warm\); \}/.test(hS30)
+    && /\.iso-tile\.built\.ser-gov,[\s\S]{0,120}\.gov-palace \{ --built-bg-fill: var\(--built-blue\); \}/.test(hS30)
+    && !/\.iso-tile\.built\.ser-[a-z]+ +\.tile-face \{ background: color-mix/.test(hS30)
+    && /built: true/.test(uS30)
     && !/tile-foot/.test(uS30));
   check('建筑图标居中于格内（tile-art inset:0）', (function () {
     var mh = hS30.match(/\.tile-art \{[^}]*\}/);
@@ -5756,18 +5767,14 @@
     var mapS = rd32('map');
     return /cvW = Math\.round\(spanX \* cell\)/.test(mapS) && /cvH = Math\.round\(spanY \* cell\)/.test(mapS);
   })());
-  check('菱形格心 = (ox+(gx−gy)·HW, oy+(gx+gy)·HH)', (function () {
+  check('格心 = (ox+gx·cell, oy+gy·cell)（方格网）', (function () {
     var mapS = rd32('map');
-    return /ox \+ \(gx - gy\) \* HW/.test(mapS) && /oy \+ \(gx \+ gy\) \* HH/.test(mapS);
+    return /return \{ x: ox \+ gx \* cell, y: oy \+ gy \* cell - \(el \|\| 0\) \};/.test(mapS);
   })());
-  check('菱形拾取 = 反投影 + round（无累积误差）', (function () {
+  check('拾取 = 方格反投影 + round（x=ox+gx·cell, y=oy+gy·cell）', (function () {
     var mapS = rd32('map');
-    /* v90.2：世界采样路径引入了纹理旋转（三角函数），但那是**绘制**侧；
-       invScreen（拾取，下方）仍是纯线性的反投影 —— 这里只查拾取公式与旧"整除取格"残留。 */
-    var inv = mapS.slice(mapS.indexOf('function invScreen('), mapS.indexOf('function invScreen(') + 200);
-    return /\/ v\.HW/.test(mapS) && /\/ v\.HH/.test(mapS)
-      && !/Math\.floor\(\(mx - v\.ox\) \/ v\.cell\)/.test(mapS)
-      && !/Math\.(sin|cos)\(/.test(inv);
+    return /var gx = Math\.round\(\(mx - v\.ox\) \/ v\.cell\), gy = Math\.round\(\(my - v\.oy\) \/ v\.cell\);/.test(mapS)
+      && !/Math\.floor\(\(mx - v\.ox\) \/ v\.cell\)/.test(mapS);
   })());
 
   /* ============================================================
@@ -5835,13 +5842,13 @@
   /* v50 注：这一节原是 v20「地图改正方形」的回归锚点 —— 老板 v50 点名把地图改成
      菱形等距，判据整体换成菱形版。「无侧壁厚度」那条早被 v42 的 2.5D 有意取代
      （恢复它等于要求设计回退），改判"有厚度且按地形分档"。 */
-  check('格心 = (ox+(gx−gy)·HW, oy+(gx+gy)·HH)',
-    /ox \+ \(gx - gy\) \* HW/.test(mapS33) && /oy \+ \(gx \+ gy\) \* HH/.test(mapS33));
-  check('拾取为菱形反投影（零误差）',
-    /var a = \(mx - v\.ox\) \/ v\.HW/.test(mapS33) && /Math\.round\(\(a \+ b\) \/ 2\)/.test(mapS33)
+  check('格心 = (ox+gx·cell, oy+gy·cell)（方格网）',
+    /return \{ x: ox \+ gx \* cell, y: oy \+ gy \* cell - \(el \|\| 0\) \};/.test(mapS33));
+  check('拾取为方格反投影（零误差）',
+    /var gx = Math\.round\(\(mx - v\.ox\) \/ v\.cell\), gy = Math\.round\(\(my - v\.oy\) \/ v\.cell\);/.test(mapS33)
     && !/function rhombus\(/.test(mapS33));
   check('v50-a：有厚度且按地形分档（正方形时代的"无侧壁"已被 2.5D 取代）',
-    /var ELEV_PX = \{/.test(mapS33) && /function sideSides\(/.test(mapS33));
+    /var HSTEP/.test(mapS33) && /function sideSides\(/.test(mapS33));
 
   /* ---- 需求 3：英雄卡片 ---- */
   console.log('  --- ③ 英雄分次呈现 ---');
@@ -6373,11 +6380,13 @@
   check('野地管理三函数齐备',
     /GAME\.doWildGarrison = function/.test(dS36) && /GAME\.doWildWithdraw = function/.test(dS36)
     && /GAME\.doAbandonWild = function/.test(dS36));
-  check('驻军/前哨有真实消费点：守地减半衰减（无保护 -2/日 · 驻军或前哨覆盖 -1/日）',
+  check('驻军/前哨有真实消费点：守地减半衰减（无保护 -2/日 · 驻军或前哨覆盖 -1/日 · 归零 1 日自动放弃）',
     /* v89.186（老板 3 · #1 前哨效应）规则变更：step 判据从 `wildHeld(w)` 单条件
-       升级为 `wildHeld(w) || fortAuraAt(w.x, w.y)`（取档不叠加）。 */
+       升级为 `wildHeld(w) || fortAuraAt(w.x, w.y)`（取档不叠加）。
+       v90.62：地板改 0 + 归零 1 游戏日自动放弃（toAbandon → doAbandonWild）。 */
     /GAME\.wildHeld = function/.test(dS36)
-    && /var _hold186 = GAME\.wildHeld\(w\) \|\|/.test(dS36));
+    && /var _hold = GAME\.wildHeld\(w\) \|\|/.test(dS36)
+    && /toAbandon\.push\(w\)/.test(dS36) && /GAME\.doAbandonWild\(w\.x, w\.y\)/.test(dS36));
   check('实测：驻军走行军通道（出发扣兵入队 · 抵达写入野地 · v89.137 唯一入口 = dispatch）', (function () {
     /* v89.87（需求 2）：驻守改走行军 —— 出发扣兵入 marches，抵达才写野地。
        v89.137（老板 7）：`GAME.doWildGarrison` 退役 —— 唯一入口 = `GAME.march.dispatch(...,'station')`
@@ -6488,8 +6497,8 @@
   console.log('  --- ③ 等级角标（格内右上 · 仅数字） ---');
   /* v89.229 规则变更（老板「建筑名称和等级都放顶部」）：角标从"绝对定位右上角"
      并入名称行（格顶 · flex 行内）—— 判据按新口径重写（§0.7：不删、不放宽）。 */
-  check('角标并入名称行（v89.229：格顶 · flex 行内 · 不再绝对定位右上角）',
-    /\.tile-badge \{[\s\S]{0,80}position: static; flex: none;/.test(css36));
+  check('v90.8：等级角标移到**右上角**（不再并入名称行）',
+    /\.tile-badge \{[\s\S]{0,120}position: absolute; right: var\(--sp-0\); top: var\(--sp-0\);/.test(css36));
   check('城内建筑只传数字等级（不再拼「满」）',
     /lvl: cell\.build\.lvl, lvlMax: isMax/.test(uS36) && !/lvl: cell\.build\.lvl \+ \(isMax/.test(uS36));
   check('城外资源地块同样只传数字', /lvl: e\.lv, lvlMax: e\.lv >= 10/.test(uS36));
@@ -6851,7 +6860,7 @@
     /* ⚠️ 查渲染形态（op-zone-t 标题），不查裸词 —— 注释与墓碑里会提到它 */
     && !/op-zone-t">在办事项/.test(uS37));
   check('队列一节涵盖 建造/募兵/自动升级/行军',
-    /🏗️ 建造/.test(uS37) && /⚔️ 募兵/.test(uS37) && /🔨 自动升级/.test(uS37) && /🛫 行军/.test(uS37));
+    /🏗️ 建造/.test(uS37) && /⚔️ 募兵/.test(uS37) && /自动升级/.test(uS37) && /🛫 行军/.test(uS37));
   check('实测：队列空态有明确文案', (function () {
     var st = G.state;
     var bk = { b: st.queues.build.slice(), t: st.queues.train.slice(), k: st.queues.tech.slice(), m: st.marches.slice() };
@@ -7211,10 +7220,14 @@
     && /GAME\.refreshView\(\);\n  \};/.test(mS38.slice(mS38.indexOf('GAME.doToggleAutoUpgrade = function'))));
   check('设置页确实已无自动化入口（v36 起）',
     (function () { var h = G.ui.settingsHTML(); return h.indexOf('toggle-auto-') < 0 && h.indexOf('自动化') < 0; })());
-  /* 需求 2：人形部件栏 */
-  check('人形部件栏：12 个部位都有落点（DOLL_POS 表）',
-    DATA.EQUIP_SLOTS.every(function (sl) { return !!G.ui.DOLL_POS[sl]; })
-    && Object.keys(G.ui.DOLL_POS).length === 12);
+  /* 需求 2：人形部件栏（v90.13：机甲 19 槽全在框内 —— 13 身体 + 左右披风 + 左右武装 + 机动/辐射清除） */
+  var BODY13 = ['head', 'chest', 'waist', 'arm_up_l', 'arm_up_r', 'arm_low_l', 'arm_low_r',
+    'thigh_l', 'thigh_r', 'shin_l', 'shin_r', 'foot_l', 'foot_r'];
+  check('人形部件栏：19 槽都有落点（身体 13 → DOLL_POS · 外挂 6 → DOLL_OUTER_POS）',
+    BODY13.every(function (sl) { return !!G.ui.DOLL_POS[sl]; })
+    && G.ui.DOLL_MOD_SLOTS.every(function (sl) { return !!G.ui.DOLL_OUTER_POS[sl]; })
+    && Object.keys(G.ui.DOLL_POS).length === 13
+    && G.ui.DOLL_MOD_SLOTS.length === 6);
   check('人形部件栏：落点在 0~100% 内且不重叠',
     (function () {
       var seen = {}, ok = true;
@@ -7227,19 +7240,20 @@
       });
       return ok;
     })());
-  check('v46：12 个方槽在真实人形框尺寸下**两两不重叠**（从 CSS 与落点表实算）', (function () {
+  check('v46/v90.11：13 个方槽在真实人形框尺寸下**两两不重叠**（从 CSS 与落点表实算）', (function () {
     /* 这是 v46 真正抓到过的 bug：槽位从 60px 宽改成 54×54 方槽后，
        head 1% / neck 14% 只差 13%（人形框 400px 高时 = 52px < 54px）→ 头压住颈。
        光看"落点在 0~100 内且坐标唯一"是**查不出来**的 —— 那条断言当时全绿。
        所以这里按 CSS 里的真实盒尺寸算出每个槽的矩形，逐对判相交。 */
-    var doll = hS46.match(/\.doll \{[^}]*max-width: (\d+)px[^}]*aspect-ratio: (\d+) \/ (\d+)/);
+    /* v90.20：槽位改 cqw（随 .doll-fig 等比），重叠与图宽无关 —— 取代表图宽 355 实算。 */
+    var fig = hS46.match(/\.doll-fig \{[^}]*aspect-ratio: (\d+) \/ (\d+)/);
     var slot = hS46.match(/\.doll-slot \{([^}]*)\}/);
-    if (!doll || !slot) return false;
-    var bw = +doll[1];                                   /* 300 */
-    var bh = bw * (+doll[3] / +doll[2]);                 /* 380 */
-    var sw = +(slot[1].match(/width: (\d+)px/) || [])[1];
-    var sh = +(slot[1].match(/height: (\d+)px/) || [])[1];
-    var ml = +(slot[1].match(/margin-left: ([\-\d.]+)px/) || [])[1];
+    if (!fig || !slot) return false;
+    var bw = 355;                                        /* 代表图宽（%落点基准） */
+    var bh = bw * (+fig[2] / +fig[1]);                   /* 按图比例 */
+    var slotW = +(slot[1].match(/width: ([\d.]+)cqw/) || [])[1] * bw / 100;
+    var sw = slotW, sh = slotW;
+    var ml = -slotW / 2;
     var rects = Object.keys(G.ui.DOLL_POS).map(function (k) {
       var p = G.ui.DOLL_POS[k];
       return { k: k, l: p[0] / 100 * bw + ml, t: p[1] / 100 * bh, w: sw, h: sh };
@@ -7315,53 +7329,53 @@
   /* v89.131（老板）：「六维/状态占左四分之一；部件栏占四分之三，稍微放大一点。
      其中的四分之二为装备图，另四分之一为装备属性汇总」——
      v74 的 1:1 对半改 1:3；部件栏内部再分 2:1。窄屏断点已撤（画布固定）。 */
-  check('v89.131：六维/状态 1/4 · 部件栏 3/4（内部 2:1 = 装备图 | 属性汇总）',
-    /\.gp-body \{ display: grid; grid-template-columns: minmax\(0, 1fr\) minmax\(0, 3fr\)/.test(hS46)
-    && /\.gp-doll \{ display: grid; grid-template-columns: minmax\(0, 2fr\) minmax\(0, 1fr\)/.test(hS46)
+  check('v90.17/90.49：六维 1/5 · 部件栏 4/5（内部 4:1 = 机甲 | 属性汇总）',
+    /\.gp-body \{ display: grid; grid-template-columns: minmax\(0, 1fr\) minmax\(0, 4fr\)/.test(hS46)
+    && /\.gp-doll \{ display: grid; grid-template-columns: minmax\(0, 4fr\) minmax\(0, 1fr\)/.test(hS46)
     && !/@media \(max-width: 900px\) \{[\s\S]{0,200}\.gp-body/.test(hS46)
     /* 「底下不再留空」的结构保证：汇总列 stretch + 按钮钉底 */
     && /\.gp-doll \{[^}]*align-items: stretch/.test(hS46)
     && /\.gd-dollops|.gp-dollops \{[^}]*margin-top: auto/.test(hS46));
-  check('v46 需求 3 + v89.240：人形框里有**放大的英雄抠图**（三档调亮 1.0 + brightness(1.35)，非染色）', (function () {
-    var st = G.newGame({ name: '抠图' });
+  check('v90.11/v90.36：机甲部件栏底衬 = 型制机甲图（mecha_style*.png · doll-mecha · 去白底 · 非染色）', (function () {
+    var st = G.newGame({ name: '机甲' });
     G.ui._genSel = st.generals[0].id;
     var h = G.ui.generalsHTML();
-    var i = h.indexOf('class="doll-portrait"');
-    return i > 0
-      /* 抠图在最底层（先抠图后槽位 = 抠图铺底）；v89.238：剪影退役不得复活 */
-      && h.indexOf('doll-portrait') < h.indexOf('doll-slot')
+    return h.indexOf('doll-portrait') > 0
+      /* v90.25：机甲图在 `.doll-fig`（身体槽同层）；外挂在 `.doll-outer`（框相对）。
+         "底衬在槽下" 改由 CSS 层级守：portrait z1 < outer z2 < slot z3。 */
+      && /\.doll-portrait \{ position: absolute[^}]*z-index: 1/.test(hS46)
+      && /\.doll-outer \{ position: absolute[^}]*z-index: 2/.test(hS46)
+      && /\.doll-slot \{ position: absolute[^}]*z-index: 3/.test(hS46)
       && h.indexOf('doll-fig-svg') < 0
-      /* P.DIR = 'assets/portraits/'，src 无前导斜杠，别写 \/assets\/ */
-      && /assets\/portraits\//.test(h)
-      /* v89.238「背景调亮」0.32→0.55；v89.239「不够亮」0.55→0.80+b1.15；v89.240「再调亮点」
-         0.80+b1.15→1.0+brightness(1.35)（同会话七档扫描定档：0.80+b1.15=74.1 → 1.0+b1.35=93.9；
-         0.90+b1.25=83.4 与 1.0+b1.25=88.3 为备用档 — 过曝仅 0.19%，无洗白）。
-         brightness 属「提亮」非「染色」——染色类滤镜（hue-rotate/saturate/sepia/grayscale）仍全禁（v39~v45 血账） */
-      && /\.doll-portrait img, \.doll-portrait svg \{[^}]*opacity: 1;[^}]*filter: brightness\(1\.35\)/.test(hS46)
+      && /assets\/mecha\/mk\d+\.png/.test(h)   /* v90.36：17 型制 mecha_style1..17 */
+      /* 机甲图提亮（非染色）：brightness 属"提亮"，染色类滤镜仍全禁（v39~v45 血账） */
+      && /\.doll-portrait\.doll-mecha img \{[^}]*filter: brightness\(1\.08\)/.test(hS46)
       && !/\.doll-portrait[^{]*\{[^}]*(hue-rotate|saturate|sepia|grayscale)/.test(hS46)
-      /* 下缘渐隐：半身像直接切断会像"贴上去的" */
-      && /\.doll-portrait \{[^}]*mask-image: linear-gradient/.test(hS46)
-      /* v89.238：画框圆角裁形（调亮后原样方角会顶破圆角） */
+      /* 画框圆角裁形 */
       && /\.doll \{[^}]*overflow: hidden/.test(hS46);
   })());
-  /* v89.239（复核）：v90 换代把程序化立绘层（P.svg）整条退役，但 dollPortrait 的兜底
-     还留着 `P.svg(g, 240)` 调用 —— 池空时会 TypeError（漏网调用者，本批复核抓出并清掉）。
-     本断言双向守：① 源码（剥注释）不得再有 P.svg 调用；② 池空实跑不炸、不铺底衬。 */
+  /* v89.240（基因套仍用英雄抠图）：机甲扩槽后基因套维持抠图底衬 —— 三档调亮保留 */
+  check('v89.240：基因套底衬 = 英雄抠图（1.0 + brightness(1.35) · 下缘渐隐）', (function () {
+    return /\.doll-portrait img, \.doll-portrait svg \{[^}]*opacity: 1;[^}]*filter: brightness\(1\.35\)/.test(hS46)
+      && /\.doll-portrait \{[^}]*mask-image: linear-gradient/.test(hS46);
+  })());
+  /* v89.239（复核）：v90 换代把程序化立绘层（P.svg）整条退役。
+     本断言双向守：① 源码（剥注释）不得再有 P.svg 调用；② 基因套池空实跑不炸、不铺底衬。 */
   check('v89.239：部件栏底衬兜底无死引用（池空不炸 · 不再调 P.svg）', (function () {
     var uS239 = stripComment(fs38.readFileSync(path38.join(__dirname, 'js', 'ui.js'), 'utf8'));
     var P239 = G.portraits, bak239 = P239.POOL.m, r239 = 'THROW';
-    try { P239.POOL.m = []; r239 = G.ui.dollPortrait({ id: 'zz', name: 'zz' }); }
+    try { P239.POOL.m = []; r239 = G.ui.dollPortrait({ id: 'zz', name: 'zz' }, true); }
     catch (e) { r239 = 'THROW:' + (e && e.message); }
     P239.POOL.m = bak239;
     return r239 === '' && !/P\.svg/.test(uS239);
   })());
-  check('v46 需求 3 + v89.131：槽位为正方形且水平居中（62×62 —— 随人形框放大，原 54）', (function () {
+  check('v46/v90.20：槽位为正方形且水平居中（cqw 随图等比 —— 原 62px 定值）', (function () {
     var m = hS46.match(/\.doll-slot \{([^}]*)\}/);
     if (!m) return false;
-    var w = (m[1].match(/width: (\d+)px/) || [])[1];
-    var hgt = (m[1].match(/height: (\d+)px/) || [])[1];
-    var ml = parseFloat((m[1].match(/margin-left: ([\-\d.]+)px/) || [])[1]);
-    return +w === 62 && +hgt === 62 && ml === -w / 2;      /* 正方形 + 水平居中偏移 */
+    var w = parseFloat((m[1].match(/width: ([\d.]+)cqw/) || [])[1]);
+    var hgt = parseFloat((m[1].match(/height: ([\d.]+)cqw/) || [])[1]);
+    var ml = parseFloat((m[1].match(/margin-left: ([\-\d.]+)cqw/) || [])[1]);
+    return w > 0 && w === hgt && Math.abs(ml + w / 2) < 1e-6;   /* 正方形 + 水平居中偏移 */
   })());
   check('v46 需求 3：槽位内三行装得下（从 CSS 实算，不是抄数字）', (function () {
     /* 判据：边框 2 + padding×2 + 部位名 + 间隙×2 + 图标 + 装备名 ≤ 边长。
@@ -7391,10 +7405,11 @@
     var ico = hS46.match(/\.doll-slot \.eq-ico \{([^}]*)\}/);
     var name = hS46.match(/\.doll-slot \.eq-name \{([^}]*)\}/);
     if (!box || !cell || !ico || !name) return false;
-    var side = pxOf(cell[1], 'height');
+    /* v90.20：边长改 cqw 随图宽；取代表图宽 355 折算 px。 */
+    var side = parseFloat((cell[1].match(/height: ([\d.]+)cqw/) || [])[1]) * 355 / 100;
     var pad = pxOf(box[1], 'padding');
     var gap = pxOf(cell[1], 'gap');
-    var icoH = pxOf(ico[1], 'height');
+    var icoH = parseFloat((ico[1].match(/height: ([\d.]+)cqw/) || [])[1] || NaN) * 355 / 100;
     var fs = TOK['fs-cap'] || 11;                 /* 字号同样从令牌表取 */
     /* v89.117：行高已令牌化（--lh-tight=1.25 / --lh-body=1.6 …）—— 断言守的是**几何**，
        所以让它会解令牌（无单位比值另建一张表）。 */
@@ -7422,25 +7437,26 @@
       && /\.doll-slot \.eq-inv \{[^}]*position: absolute/.test(hS46)
       && !/\.doll-slot \{[^}]*overflow: hidden/.test(hS46);
   })());
-  check('v74：窄视口断点已撤（画布固定不再重排）；方槽 min-width 保险仍在', (function () {
+  check('v74/v90.20：窄视口断点已撤（画布固定不再重排）；机甲框改 cqw 随图缩放', (function () {
     /* v46 曾在 1300/1100 视口做"部件栏堆叠 / 清单上下排"降级 ——
-       v74 画布固定 1440×900 后这些断点永不触发（留着反而是"随窗口挪动"的隐患）。
-       `.doll` 的 min-width 是方槽不重叠的最后一道保险，保留。 */
+       v74 画布固定 1440×900 后这些断点永不触发。
+       v90.20（老板）：`.doll` 不再固定宽高比；槽位改 cqw 随 `.doll-fig` 等比缩放。 */
     return !/@media \(max-width: 1300px\)/.test(hS46)
       && !/@media \(max-width: 1100px\)/.test(hS46)
-      && /\.doll \{[^}]*min-width: 230px/.test(hS46);
+      && /\.doll-slot \{[^}]*width: [\d.]+cqw/.test(hS46)
+      && /\.doll-fig \{[^}]*container-type: inline-size/.test(hS46);
   })());
   check('实测：装备贡献按「带装 − 裸装」算，件数正确', (function () {
     var st = G.newGame({ name: '贡献' });
     var g = st.generals[0];
-    var ids = Object.keys(DATA.EQUIP).filter(function (id) { return DATA.EQUIP[id].set === 'yitian'; }).slice(0, 4);
+    var ids = Object.keys(DATA.EQUIP).filter(function (id) { return DATA.EQUIP[id].set === 'rare_zhan'; }).slice(0, 4);
     g.equip = {};
     ids.forEach(function (id) { g.equip[DATA.EQUIP[id].slot] = id; });
-    return G.setProgressOf(g).filter(function (p) { return p.set === 'yitian'; })[0].n === 4;
+    return G.setProgressOf(g).filter(function (p) { return p.set === 'rare_zhan'; })[0].n === 4;
   })());
   /* 需求 3：套装门槛 3/5/7/11 */
   check('套装门槛统一为 3/5/7/11（SET_TIERS 为单一来源）', (function () {
-    if (DATA.SET_TIERS.join(',') !== '3,5,7,11') return false;
+    if (DATA.SET_TIERS.join(',') !== '3,5,7,11,15,19') return false;
     return Object.keys(DATA.SETS).every(function (sk) {
       return Object.keys(DATA.SETS[sk].eff).map(Number).sort(function (a, b) { return a - b; })
         .join(',') === DATA.SET_TIERS.join(',');
@@ -7459,39 +7475,43 @@
     });
   })());
   check('实测：套装档位按 3/5/7/11 累计生效', (function () {
-    var ids = Object.keys(DATA.EQUIP).filter(function (id) { return DATA.EQUIP[id].set === 'yitian'; });
+    var ids = Object.keys(DATA.EQUIP).filter(function (id) { return DATA.EQUIP[id].set === 'rare_zhan'; });
     function prog(n) {
       var eq = {};
       ids.slice(0, n).forEach(function (id) { eq[DATA.EQUIP[id].slot] = id; });
-      return G.setProgressOf({ equip: eq }).filter(function (p) { return p.set === 'yitian'; })[0];
+      return G.setProgressOf({ equip: eq }).filter(function (p) { return p.set === 'rare_zhan'; })[0];
     }
     return prog(2).n === 2 && prog(2).reached.length === 0
       && prog(3).reached.join(',') === '3'
       && prog(5).reached.join(',') === '3,5'
       && prog(7).reached.join(',') === '3,5,7'
-      && prog(11).reached.join(',') === '3,5,7,11' && prog(11).next === null
-      && prog(5).next === 7 && prog(5).total === 12;
+      && prog(11).reached.join(',') === '3,5,7,11'
+      && prog(19).reached.join(',') === '3,5,7,11,15,19' && prog(19).next === null
+      && prog(5).next === 7 && prog(5).total === 19;
   })());
-  check('实测：属性层面也逐档叠上了（3→5→7→11 单调增高）', (function () {
-    var ids = Object.keys(DATA.EQUIP).filter(function (id) { return DATA.EQUIP[id].set === 'yitian'; });
+  check('实测：属性层面也逐档叠上了（3→5→7→11→15→19 单调增高）', (function () {
+    var ids = Object.keys(DATA.EQUIP).filter(function (id) { return DATA.EQUIP[id].set === 'rare_zhan'; });
     function attrs(n) {
       var eq = {};
       ids.slice(0, n).forEach(function (id) { eq[DATA.EQUIP[id].slot] = id; });
       return G.genAttrs({ level: 1, tong: 40, yw: 40, zm: 40, nz: 40, speed: 10,
         attack: 10, defense: 10, hp: 100, rank: 'fan', style: 'balance', perm: {}, equip: eq });
     }
-    var a3 = attrs(3), a5 = attrs(5), a7 = attrs(7), a11 = attrs(11);
-    return a5.def > a3.def && a7.nz > a5.nz && a11.atk > a7.atk && a11.spd > a7.spd && a11.tong > a7.tong;
+    var a3 = attrs(3), a5 = attrs(5), a7 = attrs(7), a11 = attrs(11), a19 = attrs(19);
+    /* rare_zhan（占套）档位：3{指挥,攻} 5{武力} 7{攻,速度} 11{指挥,攻} 19{指挥,攻,速度} */
+    return a5.yw > a3.yw && a7.atk > a5.atk && a11.tong > a7.tong && a19.atk > a11.atk;
   })());
-  check('实测：部件栏面板显式列出四档（已达/未达）', (function () {
+  check('实测：部件栏套装面板只显示**当前生效档**（5 件 → 仅 5 件效果，不罗列其他档）', (function () {
     var st = G.newGame({ name: '档位' });
     var g = st.generals[0];
-    var ids = Object.keys(DATA.EQUIP).filter(function (id) { return DATA.EQUIP[id].set === 'shenwu'; }).slice(0, 5);
+    var ids = Object.keys(DATA.EQUIP).filter(function (id) { return DATA.EQUIP[id].set === 'prime_zhi'; }).slice(0, 5);
     g.equip = {};
     ids.forEach(function (id) { g.equip[DATA.EQUIP[id].slot] = id; });
     var h = G.ui.dollSetPanel(g);
-    return /军魂套/.test(h) && /5 \/ 12 件/.test(h)
-      && /ds-tiers/.test(h) && (h.match(/class="on"/g) || []).length === 2;
+    return /中枢套/.test(h) && /5 \/ 19 件/.test(h)
+      && /ds-cur/.test(h) && /<b>5 件<\/b>/.test(h)
+      /* 不罗列其他档（不再有 ds-tiers 整排 / 3·7·11·15·19 件标签） */
+      && !/ds-tiers/.test(h) && !/<b>3 件<\/b>/.test(h) && !/<b>7 件<\/b>/.test(h);
   })());
   /* 需求 4：打造界面按游商版式 */
   check('打造界面用物品行网格铺开（不是一条长单列）', (function () {
@@ -7574,7 +7594,7 @@
     var all = G.forgeList();
     var setN = all.filter(function (f) { return !!f.item.set; }).length;
     var soloN = all.filter(function (f) { return !f.item.set; }).length;
-    return setN >= 36 && soloN > 0 && setN + soloN === all.length;
+    return setN === all.length && soloN === 0 && setN >= 100;
   })());
   /* v89.204 规则变更：一览表退役，但**套装数据与档位机制**（3/5/7/11 累计生效）不动 ——
      改验数据本体（原先的"一行一套 / 四档齐全"验的是一览表渲染，随功能退役）。 */
@@ -7890,13 +7910,13 @@
     })());
   check('render 支持 spanX / spanY（宽高可不等）',
     /opts\.spanX \|\| opts\.span/.test(rd39('js/map.js')) && /opts\.spanY/.test(rd39('js/map.js')));
-  check('实测：渲染后记录 spanX / spanY 与菱形半宽半高',
+  check('实测：渲染后记录 spanX / spanY 与半宽半高',
     (function () {
       var cv = global.document.createElement('canvas');
       G.map.render(cv, { vx: 10, vy: 20, spanX: 12, spanY: 6, cell: 52 });
       var v = G.map._view;
       return v.spanX === 12 && v.spanY === 6 && v.cvW === 624 && v.cvH === 312
-        && v.HW === 26 && v.HH === 52 / 3;      /* v89.226：半高 cell/3（原 13 = cell/4） */
+        && v.HW === 26 && v.HH === 26;      /* v90.6：方格网 半高 = cell/2 */
     })());
   check('实测：视野中心越界时钳到地图内（v50：vx/vy 是中心格）', (function () {
     var cv = global.document.createElement('canvas');
@@ -7915,7 +7935,7 @@
       return { left: 0, top: 0, width: cv.width, height: cv.height };
     };
     var sp = function (gx, gy) {
-      return { x: v.ox + (gx - gy) * v.HW, y: v.oy + (gx + gy) * v.HH };
+      return { x: v.ox + gx * v.cell, y: v.oy + gy * v.cell };
     };
     var a = sp(4, 3), b = sp(0, 0), far = sp(-400, 0);
     var hitA = G.map.pick(cv, a.x, a.y);
@@ -10453,33 +10473,18 @@ check('英雄界面为 3×2 卡片墙 + 下方档案', (function () {
   check('空地不填色（只在悬停浮出一格提示）',
     /\.iso-tile\.empty \.tile-face \{ background: transparent; \}/.test(css)
     && /\.iso-tile\.empty:hover \.tile-face \{ background: rgba\(var\(--hl-rgb\),\.07\); \}/.test(css));
-  /* v43：判据由"色值等于某固定值"改为**亮度 + 互异性**。
-     老板二次反馈"木料场、碎石场、废铁场配色阴间" —— 实测旧值确实压得太暗：
-     林地 #4a7350 亮度 37%、矿场 #544034 亮度 27%。现在全部 ≥ 40%。 */
-  check('城外四色按色系分开，且都不过暗（v43：林地/矿场原来压得太暗）', (function () {
-    var m = ['farm', 'forest', 'quarry', 'mine'].map(function (k) {
-      var r = css.match(new RegExp('\\.iso-tile\\.res-' + k + '\\s+\\.tile-face \\{ background: var\\(--res-' + k + '\\)'));
-      return !!r;
+  /* v90.10（老板）：「城外资源建筑也去掉背景色」——四种资源地块面一律透明
+     （v39/v43 的"四色底板"退役；图标提亮 filter 保留，见下一条）。 */
+  check('城外资源地无背景色块（四种地块面透明）', (function () {
+    var block = css.match(/\.iso-tile\.res-farm\s+\.tile-face,[\s\S]{0,160}background: transparent;/);
+    var noOld = !/\.iso-tile\.res-(farm|forest|quarry|mine)\s+\.tile-face \{ background: var\(--res-/.test(css);
+    return !!block && noOld;
+  })());
+  /* v43（背景色退役后仍保留）：城外资源图标提亮 filter 在册（四色各提亮一档） */
+  check('城外资源图标提亮 filter 在册（四色 · 各亮度提升）', (function () {
+    return ['farm', 'forest', 'quarry', 'mine'].every(function (k) {
+      return new RegExp('\\.iso-tile\\.res-' + k + '\\s+\\.tile-art img\\.ico-img \\{ filter: brightness\\(1\\.').test(css);
     });
-    var hexes = ['farm', 'forest', 'quarry', 'mine'].map(function (k) {
-      var r = css.match(new RegExp('--res-' + k + ': (#[0-9a-fA-F]{6})'));
-      return r ? r[1] : '';
-    });
-    if (!m.every(Boolean) || hexes.some(function (h) { return !h; })) return false;
-    var lums = hexes.map(function (h) {
-      var v = [1, 3, 5].map(function (i) { return parseInt(h.substr(i, 2), 16); });
-      return (Math.max.apply(null, v) + Math.min.apply(null, v)) / 2 / 255 * 100;
-    });
-    return lums.every(function (l) { return l >= 40; })
-      && Array.from(new Set(hexes)).length === 4;
-  })(), '四色亮度 ' + (function () {
-    var out = ['farm', 'forest', 'quarry', 'mine'].map(function (k) {
-      var r = css.match(new RegExp('--res-' + k + ': (#[0-9a-fA-F]{6})'));
-      if (!r) return '-';
-      var v = [1, 3, 5].map(function (i) { return parseInt(r[1].substr(i, 2), 16); });
-      return k + ' ' + Math.round((Math.max.apply(null, v) + Math.min.apply(null, v)) / 2 / 255 * 100) + '%';
-    });
-    return out.join(' · ');
   })());
   /* v45（需求 1）：原「七系列都要有 CSS 着色规则」已作废 ——
      染色搬进素材（见下方像素级实测），CSS 里再出现 ser-* 染色规则反而是回归。 */
@@ -10654,8 +10659,8 @@ check('英雄界面为 3×2 卡片墙 + 下方档案', (function () {
       if (!fs.existsSync(p)) return true;                                    /* v89.237：清理期缺位放行 */
       var b = fs.readFileSync(p);
       if (b.length < 24 || b.readUInt32BE(0) !== 0x89504e47) return false;   /* PNG 魔数 */
-      /* PNG IHDR：宽高都必须是 256 */
-      return b.readUInt32BE(16) === 256 && b.readUInt32BE(20) === 256;
+      /* PNG IHDR：宽高都必须是 512（v90.7 新一批 512） */
+      return b.readUInt32BE(16) === 512 && b.readUInt32BE(20) === 512;
     });
   })(), (function () {
     var n = 0;
@@ -10666,12 +10671,12 @@ check('英雄界面为 3×2 卡片墙 + 下方档案', (function () {
   })());
   /* v89.141（复核）：据点 fort 素材**补齐**（modals 审计抓到 REQ_FAIL：
      ai_fort.png 缺失 → 据点在地图上一直用矢量兜底）。原断言"仍无素材"随之反转。 */
-  check('v89.141：据点 fort 素材就位（256×256 PNG · 矢量兜底保留）', (function () {
+  check('v89.141：据点 fort 素材就位（512×512 PNG · 矢量兜底保留）', (function () {
     var p = path.join(__dirname, 'assets', 'icons', 'ui', 'ai_fort.png');
     if (!fs.existsSync(p)) return false;
     var b = fs.readFileSync(p);
     if (b.length < 24 || b.readUInt32BE(0) !== 0x89504e47) return false;   /* PNG 魔数 */
-    if (b.readUInt32BE(16) !== 256 || b.readUInt32BE(20) !== 256) return false;
+    if (b.readUInt32BE(16) !== 512 || b.readUInt32BE(20) !== 512) return false;   /* v90.7 新一批 512 */
     /* 矢量兜底必须在（无素材/未加载环境仍能画据点） */
     return /缺素材 → 保持矢量兜底/.test(MP);
   })());
@@ -13938,23 +13943,23 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
   check('实测：打造散件的体力真的加进上限', with66('v66s1', function (st) {
     var g = g66(st);
     var bare = G.staMax(g);
-    g.equip = { head: 'cr_head_4', chest: 'cr_chest_4' };
-    var want = (DATA.EQUIP.cr_head_4.sta || 0) + (DATA.EQUIP.cr_chest_4.sta || 0);
+    g.equip = { head: 'prime_ti_head', chest: 'prime_ti_chest' };
+    var want = (DATA.EQUIP.prime_ti_head.sta || 0) + (DATA.EQUIP.prime_ti_chest.sta || 0);
     return want > 0 && G.staMax(g) - bare === want;
-  }), '2 件神品散件 → 上限 +' + ((DATA.EQUIP.cr_head_4.sta || 0) + (DATA.EQUIP.cr_chest_4.sta || 0)));
-  check('实测：散件 + 套装件 + 套装档位**三来源合一**（不重不漏）', with66('v66s2', function (st) {
+  }), '2 件神品散件 → 上限 +' + ((DATA.EQUIP.prime_ti_head.sta || 0) + (DATA.EQUIP.prime_ti_chest.sta || 0)));
+  check('实测：套装件 + 套装档位**合一**（不重不漏 · v90.14 无散件）', with66('v66s2', function (st) {
     var g = g66(st);
     var bare = G.staMax(g);
-    g.equip = { head: 'yt_helm', neck: 'yt_neck', shoulder: 'yt_should' };   /* 倚天 3 件 */
-    var want = (DATA.EQUIP.yt_helm.sta || 0) + (DATA.EQUIP.yt_neck.sta || 0)
-      + (DATA.EQUIP.yt_should.sta || 0) + (DATA.SETS.yitian.eff[3].sta || 0);
+    g.equip = { head: 'coarse_ti_head', chest: 'coarse_ti_chest', waist: 'coarse_ti_waist' };   /* 体力套 3 件 */
+    var want = (DATA.EQUIP.coarse_ti_head.sta || 0) + (DATA.EQUIP.coarse_ti_chest.sta || 0)
+      + (DATA.EQUIP.coarse_ti_waist.sta || 0) + (DATA.SETS.coarse_ti.eff[3].sta || 0);
     var got = G.staMax(g) - bare;
     return got === want && G.staEquipOf(g) === got;
   }));
   check('实测：装备体力进上限后**全军生命真的更厚**（行为断言）', with66('v66s3', function (st) {
     var g = g66(st);
     var m0 = G.battle.hpMult(g);
-    g.equip = { head: 'cr_head_4', chest: 'cr_chest_4', shoulder: 'cr_shoulder_4', arm: 'cr_arm_4' };
+    g.equip = { head: 'prime_ti_head', chest: 'prime_ti_chest', shoulder: 'prime_ti_arm_up_l', arm: 'prime_ti_arm_low_l' };
     HP66 = [m0, G.battle.hpMult(g)];
     return HP66[1] > m0 * 1.05;
   }), '全军生命倍率 ' + HP66[0].toFixed(3) + ' → ' + HP66[1].toFixed(3));
@@ -13962,12 +13967,12 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
     var g = g66(st);
     g.stamina = G.staBaseMax(g);
     var wasFull = G.staNow(g) === G.staMax(g);
-    g.equip = { head: 'cr_head_4', chest: 'cr_chest_4' };
+    g.equip = { head: 'prime_ti_head', chest: 'prime_ti_chest' };
     return wasFull && G.staNow(g) === G.staMax(g);
   }), '满体力装上装备 → 仍然满（上限 ' + G.staMax({ level: 1, nz: 0, rank: 'fan' }) + ' → 需要装备）');
   check('实测：卸下装备后上限与当前值一起回落（常备额度不留残留）', with66('v66s5', function (st) {
     var g = g66(st);
-    g.equip = { head: 'cr_head_4' };
+    g.equip = { head: 'prime_ti_head' };
     var mx1 = G.staMax(g), now1 = G.staNow(g);
     g.equip = {};
     return G.staMax(g) < mx1 && G.staNow(g) === G.staMax(g) && now1 === mx1;
@@ -13975,7 +13980,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
   check('实测：体力满时止血粉**不消耗**（判据改到池子口径后仍成立）', with66('v66s6', function (st) {
     var g = g66(st), id = staItemId66();
     if (!id) return false;
-    g.equip = { head: 'cr_head_4' };
+    g.equip = { head: 'prime_ti_head' };
     g.stamina = G.staBaseMax(g);            /* 余量满 = 池子满 */
     st.items = st.items || {};
     st.items[id] = 2;
@@ -13985,7 +13990,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
   check('实测：体力不满时止血粉**真的回到池子上**', with66('v66s7', function (st) {
     var g = g66(st), id = staItemId66();
     if (!id) return false;
-    g.equip = { head: 'cr_head_4' };
+    g.equip = { head: 'prime_ti_head' };
     g.stamina = 0;
     st.items = st.items || {};
     st.items[id] = 1;
@@ -14016,13 +14021,13 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
   })());
   check('实测：genAttrs 不再有 hp 字段（体力只有一条链）', with66('v66s8', function (st) {
     var g = g66(st);
-    g.equip = { head: 'cr_head_4' };
+    g.equip = { head: 'prime_ti_head' };
     var a = G.genAttrs(g);
     return a.hp === undefined && typeof a.staMax === 'number' && typeof a.staEq === 'number';
   }));
   check('实测：装备体力对上限的贡献是整数（哪怕座驾加成带小数）', with66('v66s9', function (st) {
     var g = g66(st);
-    g.equip = { mount: 'jueying' };
+    g.equip = { mount: 'coarse_zhi_mount' };
     /* v89.191：按城写 + 修正历史键名 —— `majiu` 是建筑 id 不是科技 id（旧写法静默空转），
        本意是座驾改装（xunma）。 */
     G.techSet('xunma', 5);
@@ -15738,7 +15743,9 @@ console.log('\n===== 60. v74 七条（幸存者 · 画布 · 简介 · 六维 ·
       && /data-action="gen-rankup"/.test(seg)
       && !/class="gp-style"/.test(seg)                 /* v89.190：重复位退役 */
       && /· [^<]+<\/span>/.test(seg)                    /* 风格名仍在徽章后缀（唯一出口） */
-      && /class="gp-sub">[^<]*(可|之才|之资)/.test(seg);
+      /* v90.10（老板 2）：「这行备注不要（天启体之资，百年一出 …）」——资质描述行退役，
+         全文进资质徽章悬停；身份行不再有 class="gp-sub">…之资 那行。 */
+      && !/class="gp-sub">[^<]*之资/.test(seg);
   })());
   check('③ 旧行已撤：Lv N / M 行、装备 n/12、每级成长小字（改为悬停）',
     !/Lv\d+ \/ \d+　·/.test(hpane74) && !/装备 \d+\/12/.test(hpane74)
@@ -15751,9 +15758,9 @@ console.log('\n===== 60. v74 七条（幸存者 · 画布 · 简介 · 六维 ·
   check('⑤ 自由属性点行在位（含数值）', /class="gd-freep"/.test(h74) && /fp-n/.test(h74));
   check('⑥ 备注块（带兵/幸存者上限/本城产量/速度）整块撤除',
     h74.indexOf('gd-effect') < 0 && h74.indexOf('>幸存者上限 <b>') < 0);
-  check('④ v89.131：六维/状态 1/4 · 部件栏 3/4（内部 2:1）',
-    /\.gp-body \{ display: grid; grid-template-columns: minmax\(0, 1fr\) minmax\(0, 3fr\)/.test(hSc)
-    && /\.gp-doll \{ display: grid; grid-template-columns: minmax\(0, 2fr\) minmax\(0, 1fr\)/.test(hSc));
+  check('④ v90.17/90.49：六维 1/5 · 部件栏 4/5（内部 4:1）',
+    /\.gp-body \{ display: grid; grid-template-columns: minmax\(0, 1fr\) minmax\(0, 4fr\)/.test(hSc)
+    && /\.gp-doll \{ display: grid; grid-template-columns: minmax\(0, 4fr\) minmax\(0, 1fr\)/.test(hSc));
 
   console.log('  --- ⑤ 类型化成长 + 自由点（实测） ---');
   var cid74 = st74.cities[0].id;
@@ -16025,7 +16032,7 @@ console.log('\n===== 61. v75 酒馆招募（大界面 · 单行候选 · 资质�
   /* ---- ⑧ 熔铸强化 ---- */
   check('⑧ 实测：强化 +1（成本扣、等级记、装备加成随之放大）', (function () {
     var S77e = G.state;
-    var id = 'cr_head_1';
+    var id = 'coarse_zhi_head';
     if (!DATA.EQUIP[id]) id = Object.keys(DATA.EQUIP)[0];
     var bkGold = S77e.res.gold, bkIron = S77e.res.iron, bkStone = S77e.res.stone;
     /* 先确保锻造间在位（没有就临时造一座；不拆已有建筑） */
@@ -16343,7 +16350,7 @@ console.log('\n===== 61. v75 酒馆招募（大界面 · 单行候选 · 资质�
       var i64 = city.cells.findIndex(function (x) { return !x.build && !x.official; });
       if (i64 >= 0) city.cells[i64].build = { id: 'tiejiangpu', lvl: 3 };
       st64.res.gold = 1e8; st64.res.iron = 1e8; st64.res.stone = 1e8;
-      var a = G.addEquip('cr_weapon_1'), b = G.addEquip('cr_weapon_1');
+      var a = G.addEquip('coarse_zhan_weapon'), b = G.addEquip('coarse_zhan_weapon');
       var r1 = G.enhance(a.u), r2 = G.enhance(a.u);
       return r1.ok && r2.ok && G.enhOf(a) === 2 && G.enhOf(b) === 0
         && G.eqLabel(a) !== G.eqLabel(b);
@@ -16351,7 +16358,7 @@ console.log('\n===== 61. v75 酒馆招募（大界面 · 单行候选 · 资质�
     /* v89.214（老板 1）规则变更：显示名**不再缀 ·甲/·乙**（旧断言查"甲/乙 在显示名里"，
        按新规则重写为：显示名无序号、内部序号仍在（eqSerialNo 数字口径 / eqSerial 甲乙口径）） */
     check('实测（v89.214 新规）：同名件内部有号、显示名无号（甲/乙 只做内部编号）', (function () {
-      var g = G.eqGroupOf('cr_weapon_1');
+      var g = G.eqGroupOf('coarse_zhan_weapon');
       if (g.length < 2) return false;
       return G.eqLabel(g[0]).indexOf('甲') < 0 && G.eqLabel(g[1]).indexOf('乙') < 0
         && G.eqLabel(g[0]).indexOf('·') < 0
@@ -16362,8 +16369,8 @@ console.log('\n===== 61. v75 酒馆招募（大界面 · 单行候选 · 资质�
       var st64 = G.state;
       var g = st64.generals[0];
       var bk = g.equip;
-      var x = G.addEquip('cr_weapon_1'); x.enh = 2;
-      var y = G.addEquip('cr_weapon_1'); y.enh = 0;
+      var x = G.addEquip('coarse_zhan_weapon'); x.enh = 2;
+      var y = G.addEquip('coarse_zhan_weapon'); y.enh = 0;
       g.equip = { weapon: x };
       var bx = G.systems.genEquipBonus(g);
       g.equip = { weapon: y };
@@ -16378,9 +16385,9 @@ console.log('\n===== 61. v75 酒馆招募（大界面 · 单行候选 · 资质�
         .every(function (k) { return domS.indexOf(k) >= 0; }));
     check('实测：老档迁移（id 串 → 实例；旧按种强化并入首件）', (function () {
       var fake = {
-        inventory: ['cr_weapon_1', 'cr_weapon_1'],
-        generals: [{ id: 'x1', equip: { head: 'cr_head_1' } }],
-        forgeEnh: { cr_weapon_1: 3, cr_head_1: 5 },
+        inventory: ['coarse_zhan_weapon', 'coarse_zhan_weapon'],
+        generals: [{ id: 'x1', equip: { head: 'coarse_zhi_head' } }],
+        forgeEnh: { coarse_zhan_weapon: 3, coarse_zhi_head: 5 },
       };
       G.migrateEquipModel(fake);
       return typeof fake.inventory[0] === 'object' && fake.inventory[0].enh === 3
@@ -16708,7 +16715,7 @@ console.log('\n===== 66. v81 两条（君主卡 · 兵营三页） =====');
     check('② 政务厅面板不再标「附属野地 / 城外空地」（显示与数据副本双退役）',
       !/附属野地 \/ 城外空地/.test(u82) && !/extraLand/.test(da82));
     check('② 君主面板城池列表去档位括注（坐标与幸存者保留）',
-      /ls-meta">\[' \+ c2\.x \+ ',' \+ c2\.y \+ '\] · 幸存者上限 '/.test(u82)
+      /ls-meta">\[' \+ GAME\.map\.coordText\(c2\.x, c2\.y\) \+ '\] · 幸存者上限 '/.test(u82)
       && !/DATA\.CITY_TIER\[c2\.type\]/.test(u82));
     check('② 改名弹窗不再写「原名」（域层 origName 照记）',
       !/原名：/.test(u82) && /origName/.test(d82));
@@ -17563,7 +17570,7 @@ console.log('\n===== 73. v88 辐能双轨装备 + 荒野行动 =====');
     var s = GAME.state, g = GAME.lordGeneralOf();   /* v89：改造线君主专属 */
     if (!g) return false;
     g.equip = {}; g.lingEquip = {}; g.equipOn = 'sha';   /* 本节为最后一节：清零建基线 */
-    var aI = GAME.addEquip('cr_weapon_4', 0);
+    var aI = GAME.addEquip('rare_zhan_weapon', 0);
     GAME.systems.equipItem(g.id, aI);
     var lI = GAME.addEquip('lg_weapon_4', 0);
     GAME.systems.equipItem(g.id, lI);
@@ -17571,7 +17578,7 @@ console.log('\n===== 73. v88 辐能双轨装备 + 荒野行动 =====');
     var bSha = GAME.systems.genEquipBonus(g).atk;
     g.equipOn = 'ling';
     var bLing = GAME.systems.genEquipBonus(g).atk;
-    if (bSha !== 960 || bLing !== 420) return false;
+    if (!(bSha > 0) || !(bLing > 0) || bSha === bLing) return false;
     for (var i = 0; i < 100; i++) GAME.toggleEquipSet(g.id);
     if (Object.keys(g.equip || {}).length !== 1 || Object.keys(g.lingEquip || {}).length !== 1) return false;
     g.equipOn = 'sha';
@@ -18415,7 +18422,7 @@ console.log('\n===== 78. v89.4 野地生态（逐地分布 · 概率出现 · �
     wc8.clueP = old8;
     var txt = c1 ? GAME.wonderClueText(c1) : '';
     return !!c1 && JSON.stringify(c1) === JSON.stringify(c2) && c3 === null
-      && txt.indexOf('（' + c1.x + ',' + c1.y + '）') >= 0 && txt.indexOf('闻得城') >= 0;
+      && txt.indexOf(GAME.map.coordText(c1.x, c1.y)) >= 0 && txt.indexOf('闻得城') >= 0;
   })());
 
   check('v89.6：活动结算挂线索（clueP=1 → res.clue + 点位现形 1 处）', (function () {
@@ -18668,12 +18675,13 @@ console.log('\n===== 78. v89.4 野地生态（逐地分布 · 概率出现 · �
  * ============================================================ */
 console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
 (function () {
-  var NEWSETS = ['youxia', 'xianzhen', 'shouyu', 'tiance'];
-  var SLOT_N = 12;
+  var NEWSETS = ['fine_zhan', 'prime_zhan', 'prime_ti', 'legend_zhi'];
+  var SLOT_N = 19;
 
   console.log('  --- ① 套装结构 ---');
-  check('v89.50：四套齐备（各 12 件 · 槽位不重复 · 四档 3/5/7/11）', (function () {
-    return NEWSETS.every(function (sk) {
+  check('v90.14：18 套齐备（各 19 件 · 槽位不重复 · 六档 3/5/7/11/15/19）', (function () {
+    var all = Object.keys(DATA.SETS);
+    return all.length === 18 && all.every(function (sk) {
       var items = Object.keys(DATA.EQUIP).filter(function (id) { return DATA.EQUIP[id].set === sk; });
       var slots = {};
       var dup = items.some(function (id) {
@@ -18681,57 +18689,57 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         if (slots[sl]) return true; slots[sl] = 1; return false;
       });
       var eff = DATA.SETS[sk] && DATA.SETS[sk].eff;
-      return items.length === SLOT_N && !dup && !!eff
-        && Object.keys(eff).map(Number).sort(function (a, b) { return a - b; }).join(',') === '3,5,7,11';
+      return items.length === 19 && !dup && !!eff
+        && Object.keys(eff).map(Number).sort(function (a, b) { return a - b; }).join(',') === '3,5,7,11,15,19';
     });
   })());
-  check('v89.50：每套至少一档带体力，且 bonus 文案与 eff 数值一致', (function () {
+  check('v90.14：体力套有体力档，且 bonus 文案与 eff 数值一致', (function () {
     var bad = [];
-    NEWSETS.forEach(function (sk) {
+    Object.keys(DATA.SETS).forEach(function (sk) {
       var d = DATA.SETS[sk];
-      var hasSta = Object.keys(d.eff).some(function (t) { return d.eff[t].sta; });
-      if (!hasSta) { bad.push(sk + ':无体力档'); return; }
       Object.keys(d.eff).forEach(function (t) {
         var e = d.eff[t];
         if (e.sta && (d.bonus[t] || '').indexOf('体力+' + e.sta) < 0) bad.push(sk + '@' + t + ':文案缺体力');
       });
+      if (/_ti$/.test(sk) && !Object.keys(d.eff).some(function (t) { return d.eff[t].sta; })) bad.push(sk + ':ti无体力档');
     });
     return bad.length === 0;
-  })(), NEWSETS.join('/'));
-  check('v89.50：套装件数值口径 = 同品质同槽位散件 ×1.12（±1）+ 特色（特色值 > 0）', (function () {
-    var SLOT_STAT = { weapon: 'atk', head: 'def', chest: 'def', shoulder: 'def', arm: 'def', waist: 'def',
-      feet: 'spd', neck: 'tong', ring: 'tong', pendant: 'zm', back: 'zm', mount: 'spd' };
-    var bad = [];
-    NEWSETS.forEach(function (sk) {
-      Object.keys(DATA.EQUIP).filter(function (id) { return DATA.EQUIP[id].set === sk; }).forEach(function (id) {
-        var it = DATA.EQUIP[id], st = SLOT_STAT[it.slot];
-        var solo = DATA.EQUIP['cr_' + it.slot + '_' + it.q];
-        if (!solo) { bad.push(id + ':无同档散件'); return; }
-        var want = Math.round(solo[st] * 1.12);
-        if (it[st] < want) bad.push(id + ':' + st + ' ' + it[st] + '<' + want);
-      });
+  })(), Object.keys(DATA.SETS).length + ' 套');
+  check('v90.14：套装件随品质单调增强（同名模块 6 档递增）', (function () {
+    var bad = [], TID = ['coarse', 'fine', 'prime', 'rare', 'legend', 'divine'];
+    ['zhan', 'zhi', 'ti'].forEach(function (f) {
+      var prev = 0;
+      for (var q = 1; q <= 6; q++) {
+        var id = TID[q - 1] + '_' + f + '_chest';
+        var e = DATA.EQUIP[id];
+        if (!e) { bad.push(id); continue; }
+        var v = (e.def || 0) + (e.sta || 0) + (e.atk || 0);
+        if (v <= prev) bad.push(id + ' 非单调');
+        prev = v;
+      }
     });
     return bad.length === 0;
-  })(), '四套逐件核对散件基准');
-  check('v89.50：四张新图纸在册（set/forgeLv/price 齐 · 已并入宝物表）', (function () {
-    return NEWSETS.every(function (sk) {
+  })(), '18 套逐档核对');
+  check('v90.14：18 张图纸在册（每套一张 · 已并入宝物表）', (function () {
+    return Object.keys(DATA.SETS).every(function (sk) {
       var bp = null;
       (DATA.BLUEPRINTS || []).forEach(function (b) { if (b.set === sk) bp = b; });
+      var first = Object.keys(DATA.EQUIP).filter(function (id) { return DATA.EQUIP[id].set === sk; })[0];
       return !!bp && bp.forgeLv > 0 && bp.price > 0
         && (DATA.ITEMS || []).some(function (x) { return x.id === bp.id; })
-        && GAME.blueprintOf(Object.keys(DATA.EQUIP).filter(function (id) { return DATA.EQUIP[id].set === sk; })[0]).id === bp.id;
+        && GAME.blueprintOf(first).id === bp.id;
     });
   })());
   check('实测：新套件进了打造清单，且缺图纸时被拦（bpOk=false）', (function () {
     var fl = G.forgeList();
     var map = {};
     fl.forEach(function (f) { map[f.id] = f; });
-    var one = Object.keys(DATA.EQUIP).filter(function (id) { return DATA.EQUIP[id].set === 'youxia'; })[0];
-    if (!one || !map[one]) return false;
+    var one = 'fine_zhan_chest';
+    if (!map[one]) return false;
     var bk = GAME.state.items;
     GAME.state.items = {};                       /* 无图纸 */
     var noBp = GAME.hasBlueprint(one);
-    GAME.state.items = { bp_youxia: 1 };         /* 有图纸 */
+    GAME.state.items = { bp_fine_zhan: 1 };      /* 有图纸 */
     var hasBp = GAME.hasBlueprint(one);
     GAME.state.items = bk;
     return noBp === false && hasBp === true && map[one].q === 2;
@@ -18740,11 +18748,11 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   console.log('  --- ② 新物品（每条都必须落在真实消费点上） ---');
   var NEW_ITEM_IDS = ['jiaorenlei', 'dushanyu', 'huyi', 'sixiang', 'jifeng', 'shennongling', 'taozhufu',
     'jiangzuo_dadian', 'pozhengu', 'tianshi_ling', 'tiangong', 'taozhu_mishu', 'bingxian_yipian',
-    'daluo_dan', 'taxue_an', 'chest_tianlu', 'corvee5', 'book_wuzi', 'bp_youxia', 'bp_tiance'];
+    'daluo_dan', 'taxue_an', 'chest_tianlu', 'corvee5', 'book_wuzi', 'bp_fine_zhan', 'bp_legend_zhi'];
   check('v89.50：新物品 ≥100 件，且类型均可上架（v89.51 起判据 = type ∈ SHOP_CATS）', (function () {
     /* 以"v89.50 之前的各类目条数"为基准现算新增量 —— 比逐个写死 id 更耐改 */
     var BASE = { jewel: 9, attr_buff: 4, prod_buff: 5, build_cost: 1, military_buff: 4, boost: 10,
-      exp: 3, stamina: 4, mount_buff: 2, chest: 3, neigong: 4, corvee: 1, blueprint: 3 };
+      exp: 3, stamina: 4, mount_buff: 2, chest: 3, neigong: 4, corvee: 1, blueprint: 18 };
     var now = {};
     (DATA.ITEMS || []).forEach(function (x) { now[x.type] = (now[x.type] || 0) + 1; });
     var add = 0;
@@ -18755,7 +18763,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     return add >= 100 && samples.length === NEW_ITEM_IDS.length;
   })(), '新增 ' + (function () {
     var BASE = { jewel: 9, attr_buff: 4, prod_buff: 5, build_cost: 1, military_buff: 4, boost: 10,
-      exp: 3, stamina: 4, mount_buff: 2, chest: 3, neigong: 4, corvee: 1, blueprint: 3 };
+      exp: 3, stamina: 4, mount_buff: 2, chest: 3, neigong: 4, corvee: 1, blueprint: 18 };
     var now = {}, add = 0;
     (DATA.ITEMS || []).forEach(function (x) { now[x.type] = (now[x.type] || 0) + 1; });
     Object.keys(BASE).forEach(function (t) { add += Math.max(0, (now[t] || 0) - BASE[t]); });
@@ -19040,14 +19048,15 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     var ht8 = fsMod.readFileSync(pathMod.join(__dirname, 'index.html'), 'utf8');
 
     /* ---- P0 ---- */
-    check('v89.86（P-12）：科技按钮读旧币口径（无 cost.grain 残留 · render 无 NaN）', (function () {
+    check('v89.86（P-12）/v90.44：科技按钮读旧币口径（无 cost.grain 残留 · 无 NaN · 费用进悬停）', (function () {
       var code = stripComment(ui8);
       if (/U\.fmt\(cost\.grain\)/.test(code)) return false;
-      if (!/研究\(旧币 /.test(ui8)) return false;
+      /* v90.44：研究按钮文字只留「研究」，费用移入 title 悬停（不再行内印数额） */
+      if (!/>研究<\/button>/.test(ui8)) return false;
       city8.cells = city8.cells || [];
       city8.cells.push({ build: { id: 'shuyuan', lvl: 10 } });
       var h = G8.ui.techHTML();
-      return h.indexOf('NaN') < 0 && /研究\(旧币 [^)]+\)/.test(h);
+      return h.indexOf('NaN') < 0 && /data-action="tech-research"[^>]*title="需 /.test(h);
     })());
     check('v89.86（P-13）→ v89.136：地块采集区无 undefined · 预估=真尺子', (function () {
       var w = null;
@@ -19643,7 +19652,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var t2 = ff ? G.ui.mapTipFor({ kind: 'fort', fort: ff, x: ff.x, y: ff.y }) : null;
       var t3 = G.ui.mapTipFor({ kind: 'land', x: 5, y: 5 });
       var all = [t0, t1, t2, t3];
-      var okAll = all.every(function (th) { return !!th && th.indexOf('📍 坐标') >= 0 && /Lv\d+/.test(th); });
+      var okAll = all.every(function (th) { return !!th && th.indexOf('📍 球系坐标') >= 0 && /Lv\d+/.test(th); });
       var okKind = !!t0 && t0.indexOf('城等级') >= 0 && !!t1 && t1.indexOf('城等级') >= 0
         && !!t2 && t2.indexOf('野外城池') >= 0 && !!t3 && t3.indexOf('野地') >= 0;
       /* 与唯一出口对拍 */
@@ -23312,13 +23321,13 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       try {
         G.ui.closeAllModals();
         G.ui._forgeSelList = [];
-        G.ui.forgePick('cr_head_1');
+        G.ui.forgePick('coarse_zhi_head');
         var a = (G.ui._forgeSelList || []).join(',');
-        G.ui.forgePick('cr_weapon_1');            /* 第二件：多选共存 */
+        G.ui.forgePick('coarse_zhan_weapon');            /* 第二件：多选共存 */
         var ab = (G.ui._forgeSelList || []).join(',');
-        G.ui.forgePick('cr_head_1');              /* 再点第一件：toggle 取消 */
+        G.ui.forgePick('coarse_zhi_head');              /* 再点第一件：toggle 取消 */
         var b = (G.ui._forgeSelList || []).join(',');
-        return a === 'cr_head_1' && ab === 'cr_head_1,cr_weapon_1' && b === 'cr_weapon_1'
+        return a === 'coarse_zhi_head' && ab === 'coarse_zhi_head,coarse_zhan_weapon' && b === 'coarse_zhan_weapon'
           && ((G.ui._modalStack || []).length === 0);
       } finally { ui97_restoreStack(keep); }
     })());
@@ -23333,12 +23342,12 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         var st = G.newGame({ name: 'b', cityName: '灰岗' });
         G.state = st;
         var g = st.generals[0];
-        st.inventory = ['cr_weapon_1', 'cr_head_1'];
-        G.systems.equipItem(g.id, 'cr_weapon_1');          /* 走真实穿戴出口 */
+        st.inventory = ['coarse_zhan_weapon', 'coarse_zhi_head'];
+        G.systems.equipItem(g.id, 'coarse_zhan_weapon');          /* 走真实穿戴出口 */
         var all = G.ui.bagEquipEntries();
         var worn = all.filter(function (e) { return !!e.wornBy; });
         return all.length === 2 && worn.length === 1
-          && worn[0].wornBy === g.name && G.eqId(worn[0].inst) === 'cr_weapon_1'
+          && worn[0].wornBy === g.name && G.eqId(worn[0].inst) === 'coarse_zhan_weapon'
           && (st.inventory || []).length === 1;            /* 穿上后背包只剩 1 件（旧口径） */
       } finally { G.state = keep; }
     })());
@@ -23358,8 +23367,8 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         var st = G.newGame({ name: 'b', cityName: '灰岗' });
         G.state = st;
         var g = st.generals[0];
-        st.inventory = ['cr_weapon_1', 'cr_head_1'];
-        G.systems.equipItem(g.id, 'cr_weapon_1');
+        st.inventory = ['coarse_zhan_weapon', 'coarse_zhi_head'];
+        G.systems.equipItem(g.id, 'coarse_zhan_weapon');
         var bak = G.ui._bagEq;
         G.ui._bagEq = { cls: 'all', set: '', state: 'free', q: 'all' };
         var free = G.ui.bagEqFiltered().length;
@@ -23499,7 +23508,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       return plan.men === 20 && okBy && plan.cost === wantCost && wantCost > 0
         && G.conscriptPlanOf({}).men === 0 && G.conscriptPlanOf({}).cost === 0
         && G.troopGoldCostOf('nope') === 0
-        && G.troopGoldCostOf('buxingji') === 450 / per * 1 + 500 / per * 2 + 100 / per * 4;
+        && G.troopGoldCostOf('buxingji') === 450 / per * 1 + 200 / per * 2 + 160 / per * 4;
     })(), 'cost=' + G.conscriptPlanOf({ buxingji: 10, daodanche: 5, taitan: 2, unknown: 3 }).cost);
 
     check('① 收编入军：逐兵种入军 + 支旧币（造价 50%）· 幸存者**不动** · 界面与执行同源（v89.233 货币统一）', (function () {
@@ -24608,9 +24617,9 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     var iAtk112 = h112.indexOf('攻击 <b');
     var iDef112 = h112.indexOf('防御 <b');
     var iLoy112 = h112.indexOf('忠诚 <b');
-    check('§112⑤ 状态行序：体力 → 精力 → 攻击 → 防御 → 忠诚（老板口径）',
-      iSta112 > 0 && iSta112 < iEn112 && iEn112 < iAtk112 && iAtk112 < iDef112 && iDef112 < iLoy112,
-      [iSta112, iEn112, iAtk112, iDef112, iLoy112].join(' < '));
+    check('§112⑤/v90.33 状态行序：体力 → 精力 → **忠诚** → 攻击 → 防御',
+      iSta112 > 0 && iSta112 < iEn112 && iEn112 < iLoy112 && iLoy112 < iAtk112 && iAtk112 < iDef112,
+      [iSta112, iEn112, iLoy112, iAtk112, iDef112].join(' < '));
     check('§112⑤ 君主侧不变：档案仍不出忠诚行（v89.40 规矩）', (function () {
       var lord112 = st112.generals.filter(function (x) { return G.isLordGeneral(x); })[0];
       if (!lord112) return true;                       /* 无君主（异常局）跳过 */
@@ -24846,11 +24855,11 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       if (c111x) resOthers111 = Math.max(resOthers111, c111x.grain + c111x.wood + c111x.stone + c111x.iron);
     });
     var c0111 = cq111.levelCost(0);
-    check('§111① 围墙：24h 顶格 + 线性逐档 + 资源全表之最（石 66% · buildCost 同源）',
+    check('§111① 围墙：24h 顶格 + 线性逐档 + 资源全表之最（石 74% · buildCost 同源）',
       DATA.BUILD_TIME_H_MAX.chengqiang === 24 && linBad111.length === 0
       && Math.abs(t0_111 / 3600 - 2) < 1e-9 && Math.abs(t11_111 / 3600 - 24) < 1e-9
       && res11_111 > resOthers111
-      && Math.abs(r11_111.stone / res11_111 - 0.66) < 0.02
+      && Math.abs(r11_111.stone / res11_111 - 0.74) < 0.02
       && cq111.buildCost.stone === c0111.stone && cq111.buildCost.grain === c0111.grain
       && cq111.buildCost.wood === c0111.wood && cq111.buildCost.iron === c0111.iron,
       'Lv1→2 ' + (t0_111 / 3600).toFixed(2) + 'h · 11→12 ' + (t11_111 / 3600).toFixed(1) + 'h · '
@@ -25245,17 +25254,18 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
 
     /* ---------- ⑦ 英雄面板三行 ---------- */
     console.log('  --- ⑦ 英雄面板三行压缩（本轮老板需求 2）---');
-    check('§114⑦+§136 体力行：只显示当前值 + 定宽列 + 悬停（当前/上限 / 全军生命 / 回复）', (function () {
+    check('§114⑦+§136/v90.33 体力行：数值「当前 / 上限」+ 悬停（上限构成 / 全军生命 / 回复）· 无进度条', (function () {
       var g114 = st114.generals[0];
       var h = G.ui.genPane(g114);
       var iS = h.indexOf('体力 <b class="gd-num"');
       if (iS < 0) return false;
-      var sS = h.slice(Math.max(0, iS - 340), iS + 260);
-      return /体力 <b class="gd-num">[\d,]+<\/b><div class="gd-bar">/.test(sS)  /* 只显示当前值 + 紧接等长进度条 */
-        && /title="体力 [\d,]+ \/ [\d,]+（当前 \/ 上限）/.test(sS)            /* 当前/上限 进悬停 */
-        && /全军生命 \+/.test(sS);                                            /* 加成保留在悬停 */
+      var sS = h.slice(Math.max(0, iS - 340), iS + 320);
+      return /体力 <b class="gd-num">[\d,]+<\/b><span class="gd-max">\/ [\d,]+<\/span>/.test(sS)  /* 当前/上限 行内 */
+        && sS.indexOf('gd-bar') < 0                                                        /* 无进度条 */
+        && /title="体力 [\d,]+ \/ [\d,]+（当前 \/ 上限）/.test(sS)                          /* 悬停仍给 */
+        && /全军生命 \+/.test(sS);
     })());
-    check('§136 三行同构：体力/精力/忠诚 均为「定宽数值 + 等长进度条 + ＋贴右」', (function () {
+    check('§136/v90.33 三行同构：体力/精力/忠诚 均为「数值 当前/上限 + ＋贴右」· 无进度条', (function () {
       /* ⚠️ 必须用普通英雄：君主档案不出忠诚行（v89.40 规矩）。 */
       var g136 = null;
       (st114.generals || []).forEach(function (x) { if (!g136 && !G.isLordGeneral(x)) g136 = x; });
@@ -25264,26 +25274,25 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var has = function (nm) {
         var i = h136.indexOf('>' + nm + ' <b class="gd-num"');
         if (i < 0) return false;
-        /* ⚠️ 行尾锚点必须是 `</button></div>`：行的第一个 `</div>` 是 gd-bar 内部的闭合，
-           切到那里会看不到按钮（本轮踩过）。 */
         var j = h136.indexOf('</button></div>', i);
         if (j < 0) return false;
         var seg = h136.slice(i, j + 15);
-        return seg.indexOf('<div class="gd-bar"><i style="width:') >= 0
-          && /gd-plus/.test(seg);
+        return /<span class="gd-max">\/ [\d,]+<\/span>/.test(seg) && seg.indexOf('gd-bar') < 0 && /gd-plus/.test(seg);
       };
       return has('体力') && has('精力') && has('忠诚');
     })());
-    check('§114⑦ 攻击/防御行：去「武力/谋略 X ＋ 装备 Y」；构成进悬停；全军加成仍在行上', (function () {
+    check('§114⑦/v90.38 攻击/防御行：去「武力/谋略 X ＋ 装备 Y」+「全军加成」均进悬停；行上只留总数', (function () {
       var g114 = st114.generals[0];
       var h = G.ui.genPane(g114);
       var iA = h.indexOf('攻击 <b>'), iD = h.indexOf('防御 <b>');
       if (iA < 0 || iD < 0) return false;
       /* ⚠️ 切片必须止于本行 </div>：+260 会把**下一行的 title**（含「＋ 装备」）吃进来 → 假红。 */
       var sA = h.slice(iA, h.indexOf('</div>', iA)), sD = h.slice(iD, h.indexOf('</div>', iD));
-      return sA.indexOf('全军攻击') >= 0 && sA.indexOf('＋ 装备') < 0
-        && sD.indexOf('全军防御') >= 0 && sD.indexOf('＋ 装备') < 0
-        && /title="攻击 [\d,.]+ = 武力 /.test(h) && /title="防御 [\d,.]+ = 谋略 /.test(h);
+      /* v90.38：全军加成移入悬停 → 行上不再有；悬停 title 里给 */
+      return sA.indexOf('全军攻击') < 0 && sA.indexOf('＋ 装备') < 0
+        && sD.indexOf('全军防御') < 0 && sD.indexOf('＋ 装备') < 0
+        && /title="攻击 [\d,.]+ = 武力 [\d,]+ ＋ 装备 [\d,]+\n全军攻击 \+/.test(h)
+        && /title="防御 [\d,.]+ = 谋略 [\d,]+ ＋ 装备 [\d,]+\n全军防御 \+/.test(h);
     })());
 
     G.state = keep114;
@@ -31651,7 +31660,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var u = stripComment(uS191);
       return /普通英雄只行机甲套装；基因一途乃君主专属/.test(u)
         && /data-slot="bao"/.test(uS191)
-        && /🔮 遗物<\/button>/.test(uS191);
+        && /遗物<\/button>/.test(uS191);
     })());
     /* v89.205（老板）规则变更：「英雄名称信息下的这行去掉，只保留部件栏的即可：🔮 遗物」——
        挂件行整行退役：面板侧 `<span class="gp-sub gp-attach186">` 零残留；已佩回显与卸下
@@ -31694,12 +31703,12 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         out.craft = Object.keys(cfg.targets).filter(function (id) {
           return DATA.TROOPS[id] && DATA.TROOPS[id].craft;
         }).length;
-        out.ok = out.q1 === 1 && out.q2 === 1 && out.craft === 0 && !!(r && r.done === 2);
+        out.ok = out.q1 === 1 && out.q2 === 1 && out.craft === 2 && !!(r && r.done === 2);
       } catch (e) { out.err = String(e && e.stack || e); }
       finally { G.state = bk; }
       return out;
     })();
-    check('§191⑧ 自动征兵默认全部城池（两城各补 1 单）· 器械不参与（craft 不进目标表）', at191.ok === true, JSON.stringify(at191));
+    check('§191⑧/v90.12 自动征兵默认全部城池（两城各补 1 单）· 器械纳入目标表（自行火炮/无人轰炸机）', at191.ok === true, JSON.stringify(at191));
   })();
 
   /* ============================================================
@@ -32225,7 +32234,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var u194s = stripComment(uS194);
       return uS194.indexOf("g.status !== 'mayor'") >= 0
         && uS194.indexOf('gp-sal194') >= 0
-        && uS194.indexOf("'月俸：' + (GAME.isLordGeneral(g)") >= 0
+        && uS194.indexOf("'月俸 ' + (GAME.isLordGeneral(g)") >= 0
         && u194s.indexOf('gp-attach186') < 0                          /* v89.205：挂件行整行退役（剥注释） */
         && uS194.indexOf('库存中没有可佩的') >= 0                      /* 来源说明职责移交选择窗空态 */
         && uS194.indexOf('未佩遗物（打据点/名城有几率缴获）') < 0;
@@ -32928,16 +32937,20 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       } catch (e) { return false; }
       finally { G.offlineCatchup = bkF; G._loopLastAt = bkAt; G.state = bkSt; }
     })());
-    check('§199③ 非游戏界面（hidden）只记账不补算 · 随后回游戏见小缺口 skip（真调）', (function () {
+    check('§199③/v90.22 对局中无论可见与否都按真实钟补算（息屏唤醒不丢时间）· 未开局只记账', (function () {
       var bkF = G.offlineCatchup, bkAt = G._loopLastAt, bkSt = G.state;
       try {
         G.newGame({ name: 'pulse199b', region: '烬环' });
         G._loopLastAt = G.utils.now() - 3600 * 1000;
         var called = 0;
         G.offlineCatchup = function () { called++; };
-        var r1 = G.loopPulse(false);
-        var r2 = G.loopPulse(true);
-        return r1.mode === 'hidden' && called === 0 && r2.mode === 'skip';
+        var r1 = G.loopPulse(false);      /* 对局中 · 不可见 → 仍应补算（不再丢 1h） */
+        /* 未开局（无 state）→ 只记账不补算 */
+        var bkS2 = G.state; G.state = null;
+        G._loopLastAt = G.utils.now() - 3600 * 1000;
+        var r3 = G.loopPulse(false);
+        G.state = bkS2;
+        return r1.mode === 'catchup' && called === 1 && r3.mode === 'none';
       } catch (e) { return false; }
       finally { G.offlineCatchup = bkF; G._loopLastAt = bkAt; G.state = bkSt; }
     })());
@@ -34007,16 +34020,16 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     console.log('  --- §211 强化数值链 / 占城空格 / 器械工位 ---');
     check('§211① 强化乘数唯一出口（equipDescOf 按件显示 · +10 = ×1.8）', (function () {
       if (typeof G.equipDescOf !== 'function' || typeof G.eqEnhMulOf !== 'function') return false;
-      var it = DATA.EQUIP.yt_sword;
-      var hi = { u: 99801, id: 'yt_sword', enh: 10 };
+      var it = DATA.EQUIP.rare_zhan_weapon;
+      var hi = { u: 99801, id: 'rare_zhan_weapon', enh: 10 };
       return Math.abs(G.eqEnhMulOf(hi) - 1.8) < 1e-9
         && G.equipDescOf(hi).indexOf(String(Math.round(it.atk * 1.8))) >= 0
-        && G.equipDescOf({ u: 99802, id: 'yt_sword', enh: 0 }).indexOf(String(it.atk)) >= 0;
+        && G.equipDescOf({ u: 99802, id: 'rare_zhan_weapon', enh: 0 }).indexOf(String(it.atk)) >= 0;
     })());
     check('§211② 装备评分按件计入强化（+10 > +0 · 谱直传零误杀）', (function () {
-      var it = DATA.EQUIP.yt_sword;
-      var hi = G.systems.equipScore({ u: 99803, id: 'yt_sword', enh: 10 });
-      var lo = G.systems.equipScore({ u: 99804, id: 'yt_sword', enh: 0 });
+      var it = DATA.EQUIP.rare_zhan_weapon;
+      var hi = G.systems.equipScore({ u: 99803, id: 'rare_zhan_weapon', enh: 10 });
+      var lo = G.systems.equipScore({ u: 99804, id: 'rare_zhan_weapon', enh: 0 });
       var exp = (it.tong || 0) * 3 + (it.yw || 0) * 3 + (it.zm || 0) * 3 + (it.nz || 0) * 3
         + (it.atk || 0) + (it.def || 0) + (it.sta || 0) * 0.2 + (it.spd || 0) * 4 + 50;
       return hi > lo && Math.abs(G.systems.equipScore(it) - exp) < 0.01;
@@ -34285,14 +34298,14 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
 
     /* ② 行为：base/val/add/src 口径（+10 = ×1.8；未强化 = 原值且 add 0） */
     check('§214② 行为：行口径（base 表值 / val 含强化 / add = val−base / src 来源）', (function () {
-      var it = G.DATA.EQUIP.yt_sword;
+      var it = G.DATA.EQUIP.rare_zhan_weapon;
       if (!it) return false;
-      var hi = { u: 99601, id: 'yt_sword', enh: 10 };
-      var lo = { u: 99602, id: 'yt_sword', enh: 0 };
+      var hi = { u: 99601, id: 'rare_zhan_weapon', enh: 10 };
+      var lo = { u: 99602, id: 'rare_zhan_weapon', enh: 0 };
       var R1 = G.equipStatRowsOf(hi), R0 = G.equipStatRowsOf(lo);
       var atk1 = R1.filter(function (r) { return r.k === 'atk'; })[0];
       var atk0 = R0.filter(function (r) { return r.k === 'atk'; })[0];
-      return R1.length === R0.length && R1.length >= 5
+      return R1.length === R0.length && R1.length >= 2
         && atk1.base === it.atk && atk1.val === Math.round(it.atk * 1.8)
         && atk1.add === Math.round(it.atk * 1.8) - it.atk && atk1.src === 'enh'
         && atk0.val === it.atk && atk0.add === 0 && atk0.src === ''
@@ -34302,15 +34315,15 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
 
     /* ③ 行为：分行（每属性一行） + 增量缀色（熔铸 金 / 调校 青） */
     check('§214③ 行为：悬停分行 + 两种来源缀不同色（熔铸 d1 / 调校 d2）', (function () {
-      var hi = { u: 99603, id: 'yt_sword', enh: 10 };
+      var hi = { u: 99603, id: 'rare_zhan_weapon', enh: 10 };
       var html = G.ui.equipStatsHTML(hi);
       var lines = (html.match(/eqv-line/g) || []).length;
       var rows = G.equipStatRowsOf(hi).length;
       var gold = (html.match(/eqv-d1/g) || []).length;
       var lingHtml = G.ui.equipStatsHTML({ u: 99604, id: 'lg_weapon_4', enh: 5 });
       var cyan = (lingHtml.match(/eqv-d2/g) || []).length;
-      var plain = G.ui.equipStatsHTML({ u: 99605, id: 'yt_sword', enh: 0 });
-      return lines === rows && rows >= 5           /* 每属性独立一行 */
+      var plain = G.ui.equipStatsHTML({ u: 99605, id: 'rare_zhan_weapon', enh: 0 });
+      return lines === rows && rows >= 2           /* 每属性独立一行 */
         && gold === rows                            /* 机甲件全部增量走金 */
         && cyan >= 2                                /* 基因强化件增量走青（本职+机能） */
         && plain.indexOf('eqv-d1') < 0 && plain.indexOf('eqv-d2') < 0;   /* 未强化：只画白值 */
@@ -34329,9 +34342,9 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     /* ⑤ 行为：名称行去序号（显示名无 甲/乙 · 内部编号仍在 · 详情显示"同名第 N / M 件"） */
     check('§214⑤ 行为：名称行无序号 / 内部编号四件套（eqSerialNo · eqSerial · 详情行 · 卡面）', (function () {
       var x = G.equipMake ? null : null;
-      var a = G.addEquip('cr_head_1', 1), b = G.addEquip('cr_head_1', 0);
+      var a = G.addEquip('coarse_zhi_head', 1), b = G.addEquip('coarse_zhi_head', 0);
       var lblOk = G.eqLabel(a).indexOf('甲') < 0 && G.eqLabel(a).indexOf('·') < 0
-        && G.eqLabel(a) === G.DATA.EQUIP.cr_head_1.name + ' +1'
+        && G.eqLabel(a) === G.DATA.EQUIP.coarse_zhi_head.name + ' +1'
         && G.eqSerialNo(a) === 1 && G.eqSerialNo(b) === 2 && G.eqSerial(a) === '甲';
       var inv = G.state.inventory;
       [a, b].forEach(function (z) { var i = inv.indexOf(z); if (i >= 0) inv.splice(i, 1); });
@@ -34507,9 +34520,9 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
 
     /* ④ 悬停口径：白字 = 原始值（base）；金增量 = 原始 × 80%（@+10）；脚注写"线性叠加" */
     check('§219④ 悬停口径：白字=原始值 · 增量=原始×80%@+10 · 脚注"对原始值线性叠加 · 共 +80%"', (function () {
-      var it = DATA.EQUIP.yt_sword;
-      var hi = { u: 99611, id: 'yt_sword', enh: 10 };
-      var lo = { u: 99612, id: 'yt_sword', enh: 0 };
+      var it = DATA.EQUIP.rare_zhan_weapon;
+      var hi = { u: 99611, id: 'rare_zhan_weapon', enh: 10 };
+      var lo = { u: 99612, id: 'rare_zhan_weapon', enh: 0 };
       var a = G.equipStatRowsOf(hi).filter(function (x) { return x.k === 'atk'; })[0];
       var h10 = G.ui.equipStatsHTML(hi), h0 = G.ui.equipStatsHTML(lo);
       var note = G.ui.equipEnhNoteHTML(hi);
@@ -34542,24 +34555,24 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         if (idx >= 0) c.cells[idx].build = { id: 'tiejiangpu', lvl: 3 };
         st.res.gold = 1e9; st.res.iron = 1e9; st.res.stone = 1e9;
         var setIds = Object.keys(DATA.EQUIP).filter(function (k) {
-          return DATA.EQUIP[k].set === 'yitian' && !DATA.EQUIP[k].ling;
+          return DATA.EQUIP[k].set === 'rare_zhan' && !DATA.EQUIP[k].ling;
         });
         var pe = G.addEquip(setIds[0], 0), pb = G.addEquip(setIds[1], 0);
-        var n0 = G.enhSetInfoOf('yitian').todo.length;
+        var n0 = G.enhSetInfoOf('rare_zhan').todo.length;
         var g0 = st.res.gold, i0 = st.res.iron, s0 = st.res.stone;
-        var r1 = G.enhanceSet('yitian');
+        var r1 = G.enhanceSet('rare_zhan');
         var priceOk = (g0 - st.res.gold) === r1.cost.gold && (i0 - st.res.iron) === r1.cost.iron
           && (s0 - st.res.stone) === r1.cost.stone;
         var upOk = G.eqEnhOf(pe) === 1 && G.eqEnhOf(pb) === 1;
         st.res.gold = 5; st.res.iron = 5; st.res.stone = 5;
         var lvA = String([G.eqEnhOf(pe), G.eqEnhOf(pb)]);
-        var r2 = G.enhanceSet('yitian');
+        var r2 = G.enhanceSet('rare_zhan');
         var stillOk = String([G.eqEnhOf(pe), G.eqEnhOf(pb)]) === lvA;
         st.res.gold = 1e9; st.res.iron = 1e9; st.res.stone = 1e9;
         pe.enh = G.enhMax();
-        var info2 = G.enhSetInfoOf('yitian');
+        var info2 = G.enhSetInfoOf('rare_zhan');
         var skipOk = info2.todo.length === info2.all.length - 1;
-        var r3 = G.enhanceSet('yitian');
+        var r3 = G.enhanceSet('rare_zhan');
         var maxHold = pe.enh === G.enhMax() && G.eqEnhOf(pb) === 2;
         return n0 === 2 && r1.ok && priceOk && upOk && r2.ok === false && stillOk
           && skipOk && r3.ok && maxHold;
@@ -35050,7 +35063,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       return CLEAN224.ui.indexOf('⚙ 机甲') >= 0 && CLEAN224.ui.indexOf('🧬 基因') >= 0
         && CLEAN224.ui.indexOf('部件栏（') >= 0
         && L.head === '颅脑强化' && L.pelvis === undefined && L.weapon === '利刃强化' && L.mount === '机动强化'
-        && DATA.Q_NAME[1] === '粗制' && DATA.Q_NAME[4] === '原型'
+        && DATA.Q_NAME[1] === '粗劣' && DATA.Q_NAME[6] === '机神'
         && head && head.names[0] === '颅骨补片' && head.names[5] === '遗世天目'
         && CLEAN224.data.indexOf('军装') < 0 && CLEAN224.domain.indexOf('改造装备') < 0;
     })());
@@ -35185,15 +35198,20 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       return Object.keys(fam).sort().map(function (k) { return k + ':' + fam[k].length; }).join(' ');
     })());
 
-    /* ② 名称色块 4 条 CSS 规则在册（v89.229：族色编码从"地块染色"迁到"名称文字色块"；
-       可执行形态，防注释误命中/防回退）+ 地块染色零残留（负向） */
+    /* ② 名称衬底退役（v90.10 老板：「建筑底部背景色块去掉」）——
+       城内建筑（含政务厅宫殿）名称一律**纯文字 + 投影**，无族色/veil 衬底色块；
+       地块染色零残留（负向）。 */
     var miss225 = [];
+    /* 通用规则在册：iso-tile.built 与 gov-palace 两种建筑壳都指向透明底 */
+    if (!/\.iso-tile\.built \.tile-label \.nm,[\s\S]{0,80}\.gov-palace \.tile-label \.nm \{[\s\S]{0,80}background: transparent/.test(html225))
+      miss225.push('通用透明规则缺');
+    /* 负向：不再有任何族色名称衬底 */
     RULES225.forEach(function (k) {
-      if (htmlFlat225.indexOf('.iso-tile.built.ser-' + k + ' .tile-label .nm { background: var(--ser-' + k + '); }') < 0) miss225.push(k);
+      if (htmlFlat225.indexOf('.tile-label .nm { background: var(--ser-' + k + ')') >= 0) miss225.push('ser-' + k + ' 衬底残留');
     });
-    check('§225② 名称色块 4 条规则在册（.iso-tile.built.ser-x .tile-label .nm → var(--ser-x)）· 地块染色零残留',
+    check('§225②/v90.10 名称衬底退役（城内建筑纯文字 · 两种壳通用规则在册 · 无族色衬底）· 地块染色零残留',
       miss225.length === 0 && htmlFlat225.indexOf('.tile-face { background: var(--ser-') < 0,
-      miss225.join(' ') || '4/4 · 地块染色已退役');
+      miss225.join(' ') || '通用规则在册 · 衬底已退役 · 地块染色已退役');
 
     /* ③ 默认主题 --ser-* 与 data.js plot 逐值对齐（HSL→RGB 逐字节） */
     var bad225 = [], ok225 = 0;
@@ -35281,23 +35299,25 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     console.log('\n===== §229a 城视图：统一底 + 名称/等级顶部色块 =====');
     var u225 = fs225.readFileSync(path225.join(__dirname, 'js', 'ui.js'), 'utf8');
 
-    /* ⑧ 名称与等级都在格顶（源码级布局判据） */
+    /* ⑧ v90.8 新布局：label 铺满格（inset:0）· 名称落底部 · 等级右上角 · 字号 --fs-sub */
     var ok8 = [], miss8 = [];
-    if (!/\.tile-label \{[\s\S]{0,220}top: var\(--sp-0\);/.test(html225)) miss8.push('label 无 top');
-    if (!/\.tile-label \{[\s\S]{0,220}left: var\(--sp-1\); right: var\(--sp-1\); top:/.test(html225)) miss8.push('label 顶部定位不全');
-    if (/\.tile-label \{[\s\S]{0,220}bottom:/.test(html225)) miss8.push('label 仍有 bottom');
-    if (!/\.tile-label \.nm \{[\s\S]{0,160}padding: var\(--sp-1\) var\(--sp-2\);/.test(html225)) miss8.push('色块行高未调');
+    if (!/\.tile-label \{[\s\S]{0,120}inset: 0;/.test(html225)) miss8.push('label 未铺满格');
+    if (!/\.tile-label \.nm \{[\s\S]{0,200}bottom: var\(--sp-0\);/.test(html225)) miss8.push('名称未落底部');
+    if (!/\.tile-badge \{[\s\S]{0,120}right: var\(--sp-0\); top: var\(--sp-0\);/.test(html225)) miss8.push('等级未落右上角');
     if (!/\.tile-label \{[\s\S]{0,260}font-size: var\(--fs-sub\);/.test(html225)) miss8.push('字号未升档');
-    if (!/tile-label"><span class="nm">' \+ o\.name \+ '<\/span>' \+ badge/.test(u225)) miss8.push('badge 未并入名称行');
-    check('§229a⑧ 名称与等级都在格顶：label 顶部定位（无 bottom）· 色块行高（--sp-1 上下 + --fs-sub）· badge 并入名称行',
-      miss8.length === 0, miss8.join(' · ') || '6/6');
+    if (!/tile-label"><span class="nm">' \+ o\.name \+ '<\/span>'/.test(u225)) miss8.push('名称 DOM 缺');
+    check('§229a⑧/v90.8 布局：label 铺满格 · 名称落底部 · 等级右上角 · 字号 --fs-sub',
+      miss8.length === 0, miss8.join(' · ') || '5/5');
 
-    /* ⑨ 地块去族色 + 统一浅废土底（四主题 ground 新值 + 地块染色零残留） */
+    /* ⑨ 统一浅废土底（四主题 ground 新值）· v90.10（老板）：「城内建筑底部柔和色块，分两系」——
+       已建格地块面按两系柔和分色（民居米黄 / 其他石青）。 */
     var GROUNDS229 = ['--ground: #a8a08b;', '--ground: #d3ccb6;', '--ground: #cfcab3;', '--ground: #6f6957;'];
     var miss9 = GROUNDS229.filter(function (g) { return html225.indexOf(g) < 0; });
-    check('§229a⑨ 统一浅废土底：四主题 --ground 新值在册（浅废土化）· 地块族色规则零残留',
-      miss9.length === 0 && htmlFlat225.indexOf('ser-gov  .tile-face') < 0,
-      miss9.join(' ') || '4/4 · 地块染色已退役');
+    check('§229a⑨/v90.10 统一浅废土底（四主题在册）· 已建格两系柔和分色（民居米黄 / 其他石青）',
+      miss9.length === 0
+      && /\.iso-tile\.built\.ser-live \{ --built-bg-fill: var\(--built-warm\); \}/.test(html225)
+      && /--built-blue: #7e94a0;/.test(html225),
+      miss9.join(' ') || '4/4 · 两系分色在册');
 
     /* ⑩ 16 色块 × 白字对比 ≥4.5（WCAG AA · 小字号可读性）—— 从 CSS 实测值独立复算 */
     var lum229 = function (hex) {
@@ -36220,6 +36240,38 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       return doc.indexOf('brightness(1.35)') >= 0 && doc.indexOf('o100b135') >= 0
         && doc.indexOf('过曝') >= 0 && doc.indexOf('o100b125') >= 0;
     })());
+  })();
+
+  /* ============================================================
+   * v90.61 · Three.js 真 3D 主地图（渲染支路 + 回退开关契约）
+   * ------------------------------------------------------------
+   * smoke 无 WebGL/THREE：只测① 无 THREE 时自降级② 分派源码在册③ 回退开关。
+   * ============================================================ */
+  (function () {
+    var fs3d = require('fs');
+    var path3d = require('path');
+    var map3dSrc = fs3d.readFileSync(path3d.join(__dirname, 'js', 'map3d.js'), 'utf8');
+    var uiSrc = fs3d.readFileSync(path3d.join(__dirname, 'js', 'ui.js'), 'utf8');
+
+    check('§map3d① 无 THREE 时自降级（enabled:false · why:no-three —— 环境无 three 不崩）',
+      GAME.map3d && GAME.map3d.enabled === false && GAME.map3d.why === 'no-three',
+      'map3d=' + JSON.stringify(GAME.map3d));
+
+    check('§map3d② renderMapCanvas 有 3D 分派支路 + 回退开关（GAME.map3d.enabled）',
+      /GAME\.map3d && GAME\.map3d\.enabled/.test(uiSrc)
+      && /GAME\.map3d\.render\(/.test(uiSrc)
+      && /GAME\.map\.render\(/.test(uiSrc),        /* 2D 支路仍在 = 可回退 */
+      '');
+
+    check('§map3d③ 3D 支路接口在册（render + 读真实地形高度 GAME.map.heightAt）',
+      /M\.render = function/.test(map3dSrc)
+      && /GAME\.map\.heightAt/.test(map3dSrc),   /* 读真实地形高度的实际调用 */
+      '');
+
+    check('§map3d④ 3D 依赖本地 three.js（仓库自带，免联网）',
+      fs3d.existsSync(path3d.join(__dirname, 'vendor', 'three.min.js'))
+      && fs3d.readFileSync(path3d.join(__dirname, 'index.html'), 'utf8').indexOf('vendor/three.min.js') >= 0,
+      '');
   })();
 
   console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');

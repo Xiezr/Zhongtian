@@ -1324,7 +1324,7 @@
     }
     var cur = GAME.currentCity && GAME.currentCity();
     var d = cur ? Math.max(Math.abs(cur.x - hit.x), Math.abs(cur.y - hit.y)) : null;
-    line('📍 坐标 <b>(' + hit.x + ', ' + hit.y + ')</b>'
+    line('📍 球系坐标 <b>' + (GAME.map.coordText ? GAME.map.coordText(hit.x, hit.y) : ('(' + hit.x + ', ' + hit.y + ')')) + '</b>'
       + (d == null ? '' : '　距 ' + U.escape(cur.name) + ' ' + d + ' 格'));
     return '<div class="tip-t">' + head + '</div>' + rows.join('');
   };
@@ -1533,7 +1533,7 @@
     /* ③ 自动升级（只在开启时出现） */
     if (s.settings && s.settings.autoUpgrade) {
       var as2 = s.autoState || {};
-      rows.push({ kind: '🔨 自动升级', what: U.escape(as2.msg || '待命'), pct: -1 });
+      rows.push({ kind: '自动升级', what: U.escape(as2.msg || '待命'), pct: -1 });
     }
     /* ④ 行军 */
     (s.marches || []).forEach(function (m) {
@@ -1589,10 +1589,10 @@
       '<div class="wb-head">' +
         '<span class="wb-t">🏥 伤兵营</span>' +
         '<span class="wb-n">' + U.numText(n, 0) + ' 名</span></div>' +
-      '<div class="attr"><span class="k">治疗费</span><span class="v">' +
-        (n ? (U.numText(fee, 0) + ' 旧币') : '—') + '</span></div>' +
+      /* v90.44（老板）：治疗费不再内联，移入按钮悬停。 */
       '<div class="wb-act">' +
-        '<button class="btn' + (n ? ' gold' : '') + '" data-action="go-affairs">🏥 去军务处' +
+        '<button class="btn' + (n ? ' gold' : '') + '" data-action="go-affairs"'
+          + ' title="' + (n ? ('治疗费 ' + U.numText(fee, 0) + ' 旧币') : '暂无伤兵') + '">🏥 去军务处' +
           (n ? '（治疗 / 逐兵种清单）' : '（伤兵营）') + '</button>' +
       '</div></div>';
   };
@@ -2815,7 +2815,7 @@
       var t = DATA.TERRAIN[w.type] || { name: w.type };
       var gn = GAME.wildGarrisonTotal(w.garrison);
       by.ownwild.targets.push({ d: dist(w.x, w.y),
-        label: '🌾 ' + t.name + ' Lv' + w.level + '（' + w.x + ',' + w.y + '）'
+        label: '🌾 ' + t.name + ' Lv' + w.level + '（' + GAME.map.coordText(w.x, w.y) + '）'
           + (gn > 0 ? '　· 驻军 ' + U.numText(gn, 0) : '　· 无驻军'),
         tg: { kind: 'wild', x: w.x, y: w.y } });
     });
@@ -2838,7 +2838,7 @@
         var lv = GAME.map.wildLevelNow ? GAME.map.wildLevelNow(x, y) : 0;
         if (!(lv > 0)) continue;
         by.wild.targets.push({ d: Math.max(Math.abs(dx), Math.abs(dy)),
-          label: '🗺️ 野地 Lv' + lv + '（' + x + ',' + y + '）',
+          label: '🗺️ 野地 Lv' + lv + '（' + GAME.map.coordText(x, y) + '）',
           tg: { kind: 'wild', x: x, y: y } });
       }
     }
@@ -3492,7 +3492,7 @@
       return '<option value="' + i + '"' + (i === sel ? ' selected' : '') + ' title="' +
         ((t ? t.name : w.type) + ' Lv' + w.level + (w.garrison ? '　驻军 ' + U.fmt(GAME.wildGarrisonTotal(w.garrison)) : '') +
           (_inGather137 ? '　⛏ 采集中' : '')) + '">' +
-        (t ? t.name : w.type) + ' Lv' + w.level + '（' + w.x + ',' + w.y + '）' +
+        (t ? t.name : w.type) + ' Lv' + w.level + '（' + GAME.map.coordText(w.x, w.y) + '）' +
         (_inGather137 ? ' ⛏' : '') + '</option>';
     }).join('') || '<option value="">暂无野地</option>';
     /* v89.128（老板）：「附属野地改成野地，现在换行了有点难看」——短标签 + 小按钮，一行放得下。 */
@@ -3542,6 +3542,40 @@
         '<span class="gb-c">' + U.numText(n, 0) + '</span></div>';
     }).join('') + '</div>';
     el.innerHTML = head + body;
+  };
+
+  /* v90.31（老板）：「提供一个建筑明细清单」—— 城内建筑一览（全部建筑 · 等级 · 升级造价 · 效果 · 前置）。 */
+  ui.openBuildingList = function () {
+    var c = GAME.currentCity();
+    if (!c) { ui.toast('未选中城池'); return; }
+    var ids = (DATA.BUILD_ORDER || Object.keys(DATA.BUILDINGS)).slice();
+    /* 政务厅（随城自带、无 buildCost）排最前 */
+    ids.sort(function (a, b2) {
+      if (a === 'guanfu') return -1; if (b2 === 'guanfu') return 1;
+      return (DATA.BUILDINGS[a].series || '').localeCompare(DATA.BUILDINGS[b2].series || '');
+    });
+    var rows = ids.map(function (id) {
+      var b = DATA.BUILDINGS[id]; if (!b) return '';
+      var lv = GAME.buildingLevel(c, id);
+      var cap = (GAME.buildCapOf ? GAME.buildCapOf(c, id) : (b.maxLevel || 12)) || 12;
+      var next = (lv < cap && b.levelCost) ? b.levelCost(lv) : null;
+      var costStr = next ? GAME.costString({ grain: next.grain, wood: next.wood, stone: next.stone, iron: next.iron }) : '—';
+      var inCity = (c.cells || []).some(function (x) { return x.build && x.build.id === id; });
+      var seriesZh = (DATA.SERIES && DATA.SERIES[b.series]) ? DATA.SERIES[b.series].name : (b.series || '');
+      return '<tr' + (inCity ? '' : ' style="opacity:.55;"') + '>' +
+        '<td><b>' + U.escape(b.name) + '</b> <span class="ui-sub">' + U.escape(seriesZh) + '</span>' +
+          (inCity ? '' : ' <span class="ui-sub">（未建）</span>') + '</td>' +
+        '<td class="ctr">' + lv + ' / ' + cap + '</td>' +
+        '<td class="num" style="font-size:var(--fs-cap);">' + U.escape(costStr) + '</td>' +
+        '<td style="font-size:var(--fs-cap);color:var(--text-dim);">' + U.escape(b.desc || '') + '</td>' +
+        '</tr>';
+    }).join('');
+    ui.openModal('<div class="gold-heading">🏗 城内建筑明细 · ' + U.escape(c.name) + '</div>' +
+      '<div class="ui-sub" style="text-align:center;margin-bottom:6px;">全部建筑 · 当前等级 / 上限 · 下一级造价 · 效果（灰显 = 本城未建）</div>' +
+      '<div class="modal-scroll"><table class="tbl"><thead><tr>' +
+        '<th>建筑</th><th class="ctr">等级</th><th class="num">下一级造价</th><th>效果</th>' +
+      '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
+      '<div class="m-foot"><button class="btn" data-action="close-modal">关闭</button></div>');
   };
 
   /* 城池名 + 等级标注（v29 · 需求 9）：
@@ -3633,6 +3667,8 @@
             ? '<button class="btn sm" data-action="city-random" title="一键随机：迁到一处空闲平原">🎲</button>' +
               '<button class="btn sm" data-action="city-move-ask" title="坐标切换：输入坐标迁址">📍</button>'
             : '<span style="opacity:.7">名城固定</span>') +
+          /* v90.31（老板）：「提供一个建筑明细清单」—— 城内建筑一览入口（等级/造价/效果/前置） */
+          '<button class="btn sm" data-action="open-bldg-list" title="城内建筑明细清单（全部建筑 · 等级 · 造价 · 效果）">🏗</button>' +
         '</span></div>' +
       /* v26（需求 3）：天时已移到顶栏 —— 它是全局信息，不该占城池属性的位置 */
       /* v28（需求 3）：民心与民怨合并成一行「xx / xx」——
@@ -3944,7 +3980,8 @@
         '<div style="display:flex;justify-content:space-between;align-items:center;">' +
           '<span style="font-weight:700;color:var(--gold-light);">' + it.name + ' <span style="color:var(--text-dim);font-size:var(--fs-cap);">持有 ' + have + '</span></span>' +
           (have ? '<button class="btn sm gold" data-action="use-item-quick" data-item="' + it.id + '">使用</button>'
-                : '<button class="btn sm gold" data-action="shop-buy" data-item="' + it.id + '">购买 ' + U.fmt(it.price * 100) + '旧币</button>') +
+                : '<button class="btn sm gold" data-action="shop-buy" data-item="' + it.id + '" title="单价 ' +
+                  U.numText(it.price * 100, 0) + ' 旧币">购买</button>') +
         '</div>' +
         '<div style="color:var(--text-dim);font-size:var(--fs-sub);margin-top:4px;">' + it.desc + '</div>' +
       '</div>';
@@ -4148,7 +4185,7 @@
     );
   };
 
-  ui.openEquipPanel = function () { ui.openPanel('equip', null, 'xxl'); };   /* v89.112：选择器分页后仍 900+，升 xxl */
+  ui.openEquipPanel = function () { ui.openPanel('equip', null, 'max'); };   /* v90.18（老板「装备界面不够宽」）：xxl → max 满幅 */
   ui.openItemsPanel = function () { ui.openPanel('items'); };
 
   /* ============================================================
@@ -4165,8 +4202,11 @@
   var BAG_TABS = [['equip', '装备'], ['treasure', '宝物']];
   /* 二级分类的默认值：全部（= 材料 + 宝物 + 图纸，分三段） */
   ui._bagSub = ui._bagSub || 'all';
-  var EQUIP_SLOT_ORDER = ['weapon', 'head', 'chest', 'shoulder', 'arm', 'waist',
-    'feet', 'back', 'neck', 'ring', 'pendant', 'mount'];
+  /* v90.11：机甲 19 槽（身体 13 + 外挂 6）—— 顺序即部件栏/背包的分组序 */
+  var EQUIP_SLOT_ORDER = ['weapon', 'head', 'chest', 'waist',
+    'arm_up_l', 'arm_up_r', 'arm_low_l', 'arm_low_r',
+    'thigh_l', 'thigh_r', 'shin_l', 'shin_r', 'foot_l', 'foot_r',
+    'back', 'neck', 'ring', 'pendant', 'mount'];
   var BAG_SORT_OPTS = {
     equip: [['q', '品质'], ['val', '价值'], ['set', '套件'], ['slot', '部位']],
     /* 宝物页四类排序：材料看系列/品阶，宝物看类型/价值，通用"数量"两端都能用 */
@@ -4217,7 +4257,7 @@
       '<div class="gold-heading">🎒 背包 · ' + (t === 'treasure' ? '宝物' : '装备') +
         ui.help('悬停格子看属性\n点格子开详情\n' +
           '宝物页顶部的分类条按**游商分类**切分（只列有货的）—— 材料 / 珠宝 / 符类…\n' +
-          '装备可穿戴，也可拆解回收材料') +
+          '装备可穿戴，也可拆解回收材料 · 未穿戴的件可点「售」换旧币') +
       '</div>' + html + '</div>';
   };
   ui.openBag = function (tab) {
@@ -4471,7 +4511,7 @@
         '" data-v="' + v + '">' + label + ' <i>' + n + '</i></span>';
     }
     var cnt = function (pred) { return all.filter(pred).length; };
-    var qsIn = [1, 2, 3, 4].filter(function (q) {
+    var qsIn = [1, 2, 3, 4, 5, 6].filter(function (q) {
       return all.some(function (e) { return (DATA.EQUIP[GAME.eqId(e.inst)] || {}).q === q; });
     });
     /* 第 4 主类「全部」的激活态 = 三个维度都处于"全部"（即当前显示的就是全部装备） */
@@ -4579,6 +4619,8 @@
           /* 穿戴件点击 = 开详情（卸下/强化/分解都在那里）；背包件保持"一键穿上"。
              —— 已穿在身上的再"穿上"没有意义，详情才是要去的下一级。 */
           act: e.wornBy ? 'bag-detail' : 'open-bag-equip', key: (u != null ? u : id),
+          /* v90.55（老板）：未穿戴件 → 格上「售」按钮（出售换旧币；已穿戴不可售）。 */
+          sellKey: e.wornBy ? null : (u != null ? u : id),
         });
       });
       rows = rows.concat(ui.bagRows(
@@ -4850,6 +4892,8 @@
       (!o.noStar && o.q ? '<span class="bag-q">' + '★'.repeat(Math.min(4, o.q)) + '</span>' : '') +
       (o.cnt ? '<span class="bag-cnt">×' + o.cnt + '</span>' : '') +
       (o.worn ? '<span class="bag-worn" title="' + U.escape(o.worn) + ' 着">' + U.escape(o.worn) + '</span>' : '') +
+      /* v90.55（老板）：可售件（背包中未穿戴）→ 角上「售」按钮（自带 data-action，点击优先于格子动作）。 */
+      (o.sellKey != null ? '<span class="bag-sell" data-action="sell-equip-ask" data-key="' + o.sellKey + '" title="出售换旧币">售</span>' : '') +
       '<span class="bag-ico">' + o.ico + '</span>' +
       '<span class="bag-name">' + U.escape(o.name) + '</span>' +
       '<div class="bag-tip"><div class="tip-t">' + U.escape(o.title) + '</div>' +
@@ -4921,11 +4965,14 @@
         mtx.push((DATA.MATERIAL_BY_ID[mk] ? DATA.MATERIAL_BY_ID[mk].name : mk)
           + '×' + Math.max(1, Math.floor(mats[mk] * (DATA.FORGE.salvageRate || 0.4))));
       }
-      html += '<div class="note" style="margin-top:12px;">拆解可回收 40% 打造材料：' + mtx.join('、') + '</div>';
+      html += '<div class="note" style="margin-top:12px;">拆解可回收 40% 打造材料：' + mtx.join('、') + '<br>'
+        + '出售可换旧币 <b>' + U.fmt(GAME.equipSellPrice(itemId)) + '</b>（估值 60%）。</div>';
       html += '<div style="text-align:center;margin-top:10px;">' +
         '<button class="btn sm gold" data-action="open-enhance" style="margin-right:6px;">⚒ 前往锻造间强化</button>' +
         /* v89.110：拆解 = 销毁该件（不可逆）—— 改走二次确认（ui.openSalvageConfirm）。 */
-        '<button class="btn red" data-action="salvage-equip-ask" data-key="' + key + '">拆解回收</button></div>';
+        '<button class="btn red" data-action="salvage-equip-ask" data-key="' + key + '">拆解回收</button>' +
+        /* v90.55（老板）：出售装备换旧币（二次确认 ui.openSellConfirm）。 */
+        '<button class="btn" style="margin-left:6px;" data-action="sell-equip-ask" data-key="' + key + '">出售</button></div>';
     } else if (inst) {
       html += '<div class="note">此件正穿在 ' + U.escape(wornBy || '英雄') + ' 身上。可在「英雄」面板卸下（强化等级随件保留）。</div>';
     } else {
@@ -5108,7 +5155,7 @@
                   '<span class="ls-nm">🏯 ' + U.escape(c2.name) +
                     (GAME.isMainCity(c2) ? ' <span class="city-tier mt">主城</span>' : '') + '</span>' +
                   /* v82（老板）：「不要显示（自建城）这种文字」—— 档位文字撤下，坐标与幸存者保留 */
-                  '<span class="ls-meta">[' + c2.x + ',' + c2.y + '] · 幸存者上限 ' + U.fmt(GAME.effPopCapOf ? GAME.effPopCapOf(c2) : GAME.maxPopOf(c2)) + '</span>' +
+                  '<span class="ls-meta">[' + GAME.map.coordText(c2.x, c2.y) + '] · 幸存者上限 ' + U.fmt(GAME.effPopCapOf ? GAME.effPopCapOf(c2) : GAME.maxPopOf(c2)) + '</span>' +
                   '<button class="btn sm gold" data-action="lord-city-enter" data-city="' + c2.id + '">进入</button>' +
                   '</div>';
               }).join('')
@@ -5339,7 +5386,8 @@
       var afford = (GAME.state.res.gold || 0) >= cost;
       return '<button class="btn sm' + (afford ? ' gold' : ' dim') + '" data-action="train-rush"'
         + ' data-pct="' + st.pct + '" data-idx="' + bIdx + '" data-kind="' + kind + '"'
-        + (afford ? '' : ' disabled data-why="旧币不足：需 ' + U.numText(cost, 0) + ' 旧币"') + '>' + st.label + '<br><span class="tr-cost">' + U.numText(cost, 0) + ' 旧币</span></button>';
+        + ' title="花旧币缩短训练时间：需 ' + U.numText(cost, 0) + ' 旧币　·　持有 ' + U.numText(GAME.state.res.gold || 0, 0) + '"'
+        + (afford ? '' : ' disabled data-why="旧币不足：需 ' + U.numText(cost, 0) + ' 旧币"') + '>' + st.label + '</button>';
     }).join('');
     /* ---- ② 宝物加速 ---- */
     var list = GAME.systems.trainBoostItems();
@@ -5667,7 +5715,7 @@
     var we = (GAME.story && GAME.story.currentWeather) ? GAME.story.currentWeather() : null;
     var se = (GAME.story && GAME.story.currentSeason) ? GAME.story.currentSeason() : null;
     var meta = [];
-    if (tdef.name) meta.push(U.escape(tdef.name) + '（' + fx.chk.x + ',' + fx.chk.y + '）');
+    if (tdef.name) meta.push(U.escape(tdef.name) + '（' + GAME.map.coordText(fx.chk.x, fx.chk.y) + '）');
     meta.push('野地 Lv' + fx.chk.lv);
     meta.push('第 ' + dayN + ' 日' + (se && se.name ? ' · ' + U.escape(se.name) : ''));
     if (we) meta.push(we.icon + U.escape(we.name || ''));
@@ -5841,7 +5889,7 @@
     if (pending.length) {
       h += '<div class="jnl-list">';
       pending.slice(0, 10).forEach(function (it) {
-        h += '<div class="jnl-row"><span class="jnl-nm">' + it.x + ',' + it.y + ' · ' +
+        h += '<div class="jnl-row"><span class="jnl-nm">' + GAME.map.coordText(it.x, it.y) + ' · ' +
           GAME.wonderBandName(it.band) + '</span>' +
           '<button class="btn sm wnr-btn" data-action="journal-go" data-x="' + it.x + '" data-y="' + it.y + '">前往</button></div>';
       });
@@ -6034,7 +6082,7 @@
         (s.generals || []).forEach(function (g0) { if (g0.id === _garW.genId) _genW = g0; });
       }
       return '<tr' + ((pgW.from + wi) === (ui._wildSel || 0) ? ' style="background:rgba(201,162,75,.10);"' : '') +
-        '><td>' + (t ? t.name : w.type) + '</td><td class="ctr">' + w.x + ',' + w.y + '</td>' +
+        '><td>' + (t ? t.name : w.type) + '</td><td class="ctr">' + GAME.map.coordText(w.x, w.y) + '</td>' +
         '<td class="ctr">Lv' + w.level + '</td><td class="ctr">' + resStr + '</td>' +
         '<td class="ctr" style="color:' + (ga ? 'var(--gold-light)' : 'var(--green-ok)') + ';">' + addStr + '</td>' +
         '<td class="ctr">' + (_genW ? U.escape(_genW.name) : '<span style="color:var(--text-dim);">—</span>') + '</td>' +
@@ -6146,7 +6194,7 @@
       var fx = GAME.fortEffectOf(f);
       var own = GAME.cityById(f.cityId);
       return '<tr><td>' + U.escape(f.name || '?') + '</td>' +
-        '<td class="ctr">' + f.x + ',' + f.y + '</td>' +
+        '<td class="ctr">' + GAME.map.coordText(f.x, f.y) + '</td>' +
         '<td class="ctr">Lv' + (f.lv || 1) + '</td>' +
         '<td class="ctr">' + fx.radius + ' 格</td>' +
         '<td>采×' + fx.gatherMul + ' · 宝+' + Math.round(fx.treasureAdd * 100) + '% · 驻×' + fx.garrisonCapMul +
@@ -6222,7 +6270,7 @@
     var maxN = ((DATA.FORT_AURA || {}).maxPerCity) || 5;
     ui.openShell({
       title: '🗑️ 放弃前哨 · ' + U.escape(f.name || '?'),
-      sub: 'Lv' + (f.lv || 1) + '　(' + f.x + ',' + f.y + ')'
+      sub: 'Lv' + (f.lv || 1) + '　' + GAME.map.coordText(f.x, f.y)
         + (own ? '　归属 ' + U.escape(own.name) : ''),
       size: 'sm',
       body:
@@ -6298,8 +6346,10 @@
         tail = '<div class="col-lock">🔒 ' + U.escape(cd.name) + ' ≥ ' + U.fmt(cd.n) +
           '<i>最高 ' + U.fmt(cd.cur) + ' / ' + U.fmt(cd.n) + '</i></div>';
       } else {
-        tail = '<div class="col-buy"><span class="col-price">' + U.fmt(x.it.price) + ' 旧币</span>' +
+        /* v90.44（老板）：激活费不再内联（col-price 退役），移入「激活」按钮悬停。 */
+        tail = '<div class="col-buy">' +
           '<button class="btn sm' + (can ? ' gold' : ' dim') + '" data-action="collect-buy" data-item="' + x.it.id + '"' +
+          ' title="激活费：' + U.escape(U.fmt(x.it.price)) + ' 旧币"' +
           (can ? '' : ' disabled data-why="旧币不足：需 ' + U.fmt(x.it.price) + ' 旧币"') + '>激活</button></div>';
       }
       return '<div class="col-card' + (have ? ' owned' : (unlocked ? '' : ' locked')) + '">' +
@@ -6641,7 +6691,9 @@
     /* v89.117：可选**整行点选**（锻造间把"逐卡打造键"收成"选一件 + 底部一个键"）——
        只有传了 pickAction 才挂 data-action，既有调用点不受影响。 */
     var pick = o.pickAction ? ' data-action="' + o.pickAction + '" data-item="' + o.pickItem + '"' : '';
-    return '<div class="item-row' + (o.cls ? ' ' + o.cls : '') + (o.sel ? ' on' : '') + '"' + pick + '>' +
+    /* v90.44（老板）：卡片级悬停提示（费用等"数额"走这里，不占版面）。 */
+    var tip = o.tip ? ' title="' + U.escape(String(o.tip).replace(/<[^>]+>/g, '')) + '"' : '';
+    return '<div class="item-row' + (o.cls ? ' ' + o.cls : '') + (o.sel ? ' on' : '') + '"' + pick + tip + '>' +
       '<div class="ir-art">' + ui.itemArt(o.kind, o.id, o.q) + '</div>' +
       /* v89.140（老板 6）：「物品简介改**悬停显示**」——hoverDesc 时 desc 走 title
          （卡片内不再占一行 → 卡片等高、位置固定）。 */
@@ -6747,19 +6799,18 @@
       return ui.itemRow({
         kind: 'item', id: it.id, q: 1,
         name: U.escape(it.name),
-        /* v51：meta 只留两个不断变化的数 —— 单价与持有。
-           删掉「分类名」（当前分类在标题和页签上都写着，卡内第三遍）与
-           「可买 N」（老板点名：游商不显示可买数量；上限仍在，"最多"按钮照用）。 */
-        meta: '单价 <b>' + U.numText(price, 0) + '</b> 旧币　持有 ' + U.numText(have, 0),
+        /* v90.44（老板）：「耗费资源的操作不要直接显示数额，改为悬停显示」——
+           单价从行上撤下（只留「持有」），改挂**购买按钮**悬停。 */
+        meta: '持有 ' + U.numText(have, 0),
         desc: GAME.itemEffect(it) || '',
         hoverDesc: true,          /* v89.140（老板 6）：简介悬停显示（卡片固定高、位置固定） */
         /* v89.145（老板 1）：「购买数量那里不要**最多**这个功能 —— 总不能那点旧币
            全买了同一件商品，日子还过不过了」。第 5 参 noMax=true → 不渲染「最多」键；
            −/＋ 与直接键入都在（数量上限 data-cap 仍守着 qtySync 的越界钳制）。 */
         qtyHtml: ui.qtyInput(inputId, 1, price, cap, true),
-        totalHtml: '<span class="ir-total" id="' + inputId + '-total" data-label="合计">合计 ' +
-          U.numText(price, 0) + ' 旧币</span>',
+        /* v90.44（老板）：「不要直接显示数额」——「合计 N 旧币」一并撤除（单价在购买按钮悬停）。 */
         actHtml: '<button class="btn' + (canBuy ? ' gold' : ' dim') + '" data-action="shop-buy" data-item="' + it.id + '"' +
+          ' title="单价 ' + U.numText(price, 0) + ' 旧币　·　持有旧币 ' + U.numText(s.res.gold || 0, 0) + '"' +
           (canBuy ? '' : ' disabled data-why="旧币不足：需 ' + U.numText(price, 0) + ' 旧币"') + '>购买</button>',
       });
     }).join('');
@@ -6906,8 +6957,9 @@
         (it.set && DATA.SETS[it.set]
           ? '<span class="ir-tag set">' + U.escape(DATA.SETS[it.set].name) + '</span>'
           : '<span class="ir-tag">散件</span>'),
-      meta: slotName + '　' + U.escape(GAME.equipDesc(it) || '') +
-        '<br>造价 ' + U.escape(GAME.costString(f.cost) || '—'),
+      /* v90.44（老板）：「造价」不再内联（数额入卡片悬停）；材料名（品类）保留。 */
+      meta: slotName + '　' + U.escape(GAME.equipDesc(it) || ''),
+      tip: '造价 ' + (GAME.costString(f.cost) || '—'),
       /* v51：卡片瘦身两处 —— 都是"同一条信息已有别的出处"，删掉不丢东西：
          ① meta 里原有一行「套装门槛 x/y/z 件」：套装的 tag 已标出套名，
             底部的「套装效果」表也逐档列了门槛与加成，这里第三遍；
@@ -6974,7 +7026,7 @@
             '" data-action="forge-set" data-s="' + k[0] + '">' + U.escape(k[1]) + '<i>' + k[2] + '</i></span>';
         }).join('') + '</span>';
     var curQ = ui._forgeQ;
-    var qs = [1, 2, 3, 4].filter(function (q) { return pool.some(function (f) { return f.q === q; }); });
+    var qs = [1, 2, 3, 4, 5, 6].filter(function (q) { return pool.some(function (f) { return f.q === q; }); });
     if (qs.indexOf(curQ) < 0) { curQ = qs[0] || 1; ui._forgeQ = curQ; }
     var rows = pool.filter(function (f) { return f.q === curQ; });
     /* v51（老板：**稍微放大一点、调节一下、搞成翻页**）：
@@ -7414,7 +7466,7 @@
     var c = GAME.autoTrainCfg();
     if (!c) return '';
     var on = !!(s.settings && s.settings.autoTrain);
-    var ids = Object.keys(DATA.TROOPS).filter(function (id) { return !DATA.TROOPS[id].craft; });
+    var ids = Object.keys(DATA.TROOPS);
     var rows = ids.map(function (id) {
       var t = DATA.TROOPS[id], tg = c.targets[id] || { min: 0, max: 0 };
       var part = (tg.max || 0) > 0;
@@ -7422,7 +7474,8 @@
       (s.cities || []).forEach(function (c0) { have += (c0.army && c0.army[id]) || 0; });
       ((s.queues && s.queues.train) || []).forEach(function (q) { if (q.troopId === id) queued += (q.count || 0); });
       return '<tr' + (part ? ' class="at-on"' : '') + '>' +
-        '<td>' + t.icon + ' ' + U.escape(t.name) + '</td>' +
+        '<td>' + t.icon + ' ' + U.escape(t.name) +
+          (t.craft ? ' <span class="ui-sub">🏭 机工坊</span>' : '') + '</td>' +
         '<td class="ctr"><input type="number" class="at-num" min="0" max="9999999" value="' + (tg.min || 0) +
           '" data-action="autotrain-set" data-k="min" data-troop="' + id + '"></td>' +
         '<td class="ctr"><input type="number" class="at-num" min="0" max="9999999" value="' + (tg.max || 0) +
@@ -7435,15 +7488,16 @@
       var plan = GAME.autoTrainPlanOf(c0);
       var gaps = plan.needs.filter(function (n) { return n.need > 0; })
         .map(function (n) { return ((DATA.TROOPS[n.troopId] || {}).name || n.troopId) + ' 差 ' + U.fmt(n.need); });
-      var slotTxt = plan.bars.length
-        ? '训练营 ' + plan.bars.length + ' 座　空位 <b>' + plan.left + ' / ' + plan.total + '</b>'
-        : '<span class="ui-sub">无训练营 —— 不参与</span>';
+      var slotTxt = (plan.bars.length || plan.craftBars.length)
+        ? (plan.bars.length ? '训练营 ' + plan.bars.length + ' 座　空位 <b>' + plan.left + ' / ' + plan.total + '</b>' : '')
+          + (plan.craftBars.length ? (plan.bars.length ? '　·　' : '') + '机工坊 ' + plan.craftBars.length + ' 座　空位 <b>' + plan.craftLeft + ' / ' + plan.craftTotal + '</b>' : '')
+        : '<span class="ui-sub">无训练营 / 机工坊 —— 不参与</span>';
       /* v89.199（老板 2）：「待补」清单逐项累积（每个参与的兵种一项）——wrap-ok =
          换行许可；不加时 nowrap 会把本行撑到上千 px、连锁撑宽整页（实测 1408→2383）。 */
       return '<div class="res-line wrap-ok"><span class="lbl">' + U.escape(c0.name) + '</span><span class="val">' + slotTxt +
         (gaps.length
-          ? '　待补：' + gaps.join('、') +
-            (plan.left <= 0 ? '　<span style="color:var(--amber);">队列满（消化后自动继续）</span>' : '')
+          ? '　待补：' + gaps.join('、')
+            + (plan.left <= 0 && plan.craftLeft <= 0 ? '　<span style="color:var(--amber);">队列满（消化后自动继续）</span>' : '')
           : (plan.needs.length ? '　<span style="color:var(--green-ok);">已达标</span>' : '')) +
         '</span></div>';
     }).join('');
@@ -7460,8 +7514,8 @@
         : '已关闭 —— 配置会保留，重开即用。') + '</div>' +
       '<div class="auto-line"><span class="al-k">触发条件</span><span>某城某兵种（驻军 + 在训）<b>低于「触发线」</b>即自动补单（触发线设 0 = 低于目标就补）</span></div>' +
       '<div class="auto-line"><span class="al-k">停止条件</span><span>达到<b>「目标」</b>即停 · <b>旧币 / 净水低于保底</b>即停（暂停不关开关）· 训练营队列满则等待（消化后自动继续）</span></div>' +
-      '<div class="auto-line"><span class="al-k">执行范围</span><span>全境统一规则、<b>逐城独立执行</b>（各用各的城池资源与训练营队列）；器械（无人轰炸机 / 自行火炮 / 自行火炮）走机工坊队列，不在此列</span></div>' +
-      '<div class="auto-line"><span class="al-k">可用栏位</span><span>只往<b>有空位</b>的训练营放单 —— 空位 = Σ 训练营（队列位 − 已占），与募兵面板同一把尺（trainSlotsLeft 唯一出口）</span></div>' +
+      '<div class="auto-line"><span class="al-k">执行范围</span><span>全境统一规则、<b>逐城独立执行</b>（各用各的城池资源与队列）；器械（无人轰炸机 / 自行火炮）走<b>机工坊队列</b>，与训练营队列分开排空位</span></div>' +
+      '<div class="auto-line"><span class="al-k">可用栏位</span><span>只往<b>有空位</b>的队列放单 —— 训练营位 = Σ 训练营（队列位 − 已占）、机工坊位同理；与募兵面板同一把尺（trainQueueSlots 唯一出口）</span></div>' +
       '<table class="tbl" style="margin-top:var(--sp-3);"><thead><tr><th>目标兵种</th><th class="ctr">触发线（低于）</th><th class="ctr">目标（补到）</th><th class="num">全境现状</th></tr></thead><tbody>' +
         rows + '</tbody></table>' +
       '<div class="auto-line" style="margin-top:var(--sp-3);"><span class="al-k">资源保底</span>' +
@@ -7533,11 +7587,13 @@
         '<td class="num" title="每 7 游戏日结算一次（按等级、属性与资质定价）">' +
           U.fmt(GAME.genSalaryOf(c)) + '</td>' +
         '<td><span class="inn-act">' +
-          '<span class="inn-cost' + ((s.res.gold || 0) >= c.cost ? '' : ' short') + '">' + U.fmt(c.cost) + ' 旧币</span>' +
+          /* v90.44（老板）：招募费不再内联，移入「招募」按钮悬停。 */
           '<button class="btn sm' + (can ? ' gold' : '') + '" data-action="inn-recruit" data-id="' + c.id + '"' +
+            /* v89.86（整改 P-15）：按钮旁给出禁用原因（无空位 → 升级引导；缺旧币 → 旧币不足）
+               v90.44：费用恒在悬停（招募费）；禁用时再附原因。 */
+            ' title="' + U.escape('招募费：' + U.fmt(c.cost) + ' 旧币'
+              + (can ? '' : '\n' + (slotGuide || chk.msg || ('旧币不足（需 ' + U.fmt(c.cost) + '）')))) + '"' +
             (can ? '' : ' disabled') +
-            /* v89.86（整改 P-15）：按钮旁给出禁用原因（无空位 → 升级引导；缺旧币 → 旧币不足） */
-            (can ? '' : ' title="' + U.escape(slotGuide || chk.msg || ('旧币不足（需 ' + U.fmt(c.cost) + '）')) + '"') +
             /* v89.188（老板 3）：全站统一「招募」（「相亲」话术退役） */
             '>招募</button>' +
         '</span></td></tr>';
@@ -8362,7 +8418,9 @@
    * ============================================================ */
   ui.lvlScale = function (lv) {
     var n = Math.max(1, Math.min(12, Number(lv) || 1));
-    return (1 + (n - 1) * 0.018).toFixed(3);
+    /* v90.12（老板 3）：「城内部分建筑物大了一点，超出地块了」——
+       原每级 +1.8%（满级 ×1.198）会让建筑图标顶出地块；收到每级 +0.6%（满级 ×1.066）。 */
+    return (1 + (n - 1) * 0.006).toFixed(3);
   };
 
   ui.isoCell = function (o) {
@@ -8615,8 +8673,10 @@
     for (var k in unit) if ((R[k] || 0) < unit[k]) afford = false;
     var chips = room > 0
       ? [[1, '造 1 座'], [5, '造 5 座'], [999, '造满（' + room + ' 座）']].map(function (p) {
+          /* v90.44（老板）：造价不再独立成行 —— 移入 chip 悬停。 */
           return '<span class="chip" data-action="tower-build" data-city="' + c.id +
-            '" data-n="' + p[0] + '" data-idx="' + (ui._workshopIdx == null ? '' : ui._workshopIdx) + '">' +
+            '" data-n="' + p[0] + '" data-idx="' + (ui._workshopIdx == null ? '' : ui._workshopIdx) + '"' +
+            ' title="每座造价：' + U.escape(costStr) + '">' +
             p[1] + '</span>';
         }).join('')
       : '';
@@ -8636,7 +8696,7 @@
           fromDef + ' ＋ 作坊自建 ' + built + '）</span></span></div>' +
         '<div class="attr"><span class="k">自建上限</span><span class="v">' +
           built + ' / ' + cap + '　<span class="ui-sub">作坊每级 +' + TW.buildMaxPerLv + ' 座</span></span></div>' +
-        '<div class="attr"><span class="k">每座造价</span><span class="v">' + costStr + '</span></div>' +
+        /* v90.44：每座造价独立行撤除 —— 已进上方 chip 悬停 */
         '<div class="attr"><span class="k">本城守备力</span><span class="v good">' +
           GAME.cityDefense(c) + '　<span class="ui-sub">每座自建箭塔 +' + TW.homeDef + '</span></span></div>' +
         '<div class="op-zone" style="margin-top:8px;"><div class="op-hint">' +
@@ -9475,8 +9535,13 @@
         /* v89.179c 的原因机制 v89.189 收编：灰卡带 data-why，点击由委托统一弹
            「无法执行」窗（原因与浮层里那行 `chk.msg` 同源 · 唯一出口 GAME.canTrain）。 */
         (unlocked ? '' : ' data-why="' + U.escape(chk.msg || '') + '"') + ' data-tip-el="1">' +
-        '<div class="ticon">' + GAME.icons.forTroop(t.id) + '</div><div class="tname">' + t.name + '</div>' +
+        /* v90.12（老板 6）：「兵种的小图标怎么是这种迷你的，去掉」——卡面去掉迷你图，
+           只留兵种名；图像改在**悬停浮层**里放大显示（tcard-tip 顶部 troop-tip-fig）。 */
+        '<div class="tname">' + t.name + '</div>' +
         '<div class="tcard-tip tip-src">' +
+          /* v90.12（老板 6）：悬停浮层顶部放**放大的兵种图**（原卡面迷你图）。
+             ⛔ 卡面不再显示迷你图（见下方 ticon 退役）。 */
+          '<div class="troop-tip-fig">' + GAME.icons.forTroop(t.id) + '</div>' +
           '<div class="tip-t">' + U.escape(t.name) + ' · 兵种属性</div>' +
           '<div class="tip-l">血 ' + t.hp + '　攻 ' + t.atk + '　防 ' + t.def +
             '　射程 ' + t.range + '　速度 ' + t.spd + '</div>' +
@@ -9780,6 +9845,49 @@
       '<div class="modal-scroll">' + rows + ui.baojuFuseBoxHTML() + '</div>' +
       '<div class="m-foot"><button class="btn" data-action="close-modal">关闭</button></div>');
   };
+  /* v90.16：机甲型制选择窗（多型制缩略图 → 点选更换本品外观） */
+  ui.openMechaStylePick = function (genId) {
+    var g = null;
+    (GAME.state.generals || []).forEach(function (x) { if (x.id === genId) g = x; });
+    if (!g) { ui.toast('英雄不存在'); return; }
+    var cur = ui.mechaStyleOf(g);
+    var rows = ui.MECHA_STYLES.map(function (st) {
+      var on = st.id === cur.id;
+      return '<div class="mt-card' + (on ? ' on' : '') + '" data-action="mecha-style-do" data-gen="' + genId +
+        '" data-style="' + st.id + '">' +
+        '<img src="' + st.file + '" alt="">' +
+        '<span class="mt-nm">' + U.escape(st.name) + (on ? ' ·在役' : '') + '</span></div>';
+    }).join('');
+    ui.openModal('<div class="gold-heading">机甲型制 · ' + U.escape(g.name) + '</div>' +
+      '<div class="ui-sub" style="text-align:center;">点选更换本品机甲外观（不影响数值）</div>' +
+      '<div class="mecha-style-grid">' + rows + '</div>' +
+      '<div class="m-foot"><button class="btn" data-action="close-modal">关闭</button></div>', { size: 'lg' });
+  };
+  /* v90.53（老板）：**按套装装备**选择窗 —— 按品阶列出各套装与已拥有件数，点选即整套装上（避免逐槽混搭）。 */
+  ui.openEquipSetPick = function (genId) {
+    var g = null;
+    (GAME.state.generals || []).forEach(function (x) { if (x.id === genId) g = x; });
+    if (!g) { ui.toast('英雄不存在'); return; }
+    var prog = GAME.setProgressOf(g);   /* 唯一来源：每套 {set,name,n,total,...} */
+    var rows = (DATA.SET_RANKS || []).map(function (rk) {
+      var sets = prog.filter(function (p) { return p.set.indexOf(rk.id) === 0; });
+      if (!sets.length) return '';
+      var cards = sets.map(function (p) {
+        var full = p.n >= p.total;
+        return '<div class="set-pick-card' + (full ? ' on' : '') + '" data-action="equip-set-do"'
+          + ' data-gen="' + genId + '" data-set="' + p.set + '"'
+          + ' title="' + U.escape(p.name) + '：已拥有 ' + p.n + '/' + p.total + ' 件，点选整套装备">'
+          + '<span class="sp-name">' + U.escape(p.name) + '</span>'
+          + '<span class="sp-n">' + p.n + ' / ' + p.total + '</span></div>';
+      }).join('');
+      return '<div class="set-pick-rank"><span class="spr-lb">' + rk.name + '</span>'
+        + '<div class="set-pick-row">' + cards + '</div></div>';
+    }).join('');
+    ui.openModal('<div class="gold-heading">按套装装备 · ' + U.escape(g.name) + '</div>' +
+      '<div class="ui-sub" style="text-align:center;">点选一套 → 该套**已拥有**的件整套装上（未拥有的槽保留现件），避免逐槽混搭</div>' +
+      '<div class="set-pick-grid">' + rows + '</div>' +
+      '<div class="m-foot"><button class="btn" data-action="close-modal">关闭</button></div>', { size: 'lg' });
+  };
   ui.genPane = function (g) {
     if (!g) {
       return '<div class="gen-pane">' +
@@ -9922,26 +10030,15 @@
                并去掉行尾重复的「均衡」位（徽章后缀已显示风格名）。 */
             (rankBtn186 ? '<span class="gp-rankops190">' + rankBtn186 + '</span>' : '') +
           '</span>' +
-          '<span class="gp-sub">' + U.escape(rkDesc74) +
-            (atCap ? '　<span class="gd-warn">已达资质上限</span>' : '') + '</span>' +
-          /* v89.188（老板 2）：资质晋升整行退休 —— 按钮已进资质行（见 .gp-rankrow） */
+          /* v90.10（老板 2）：「这行备注不要，目前已有悬停显示：天启体之资，百年一出。已达资质上限」
+             ⛔ 原资质描述行（rkDesc74 + 达上限告警）**整行退役** —— 二者均已在悬停中
+             （资质徽章 title = 资质 desc；经验「＋」title = 已达资质上限提示）。
+             rkDesc74 变量保留（其替换逻辑仍在，便于回溯），此处不再渲染。 */
           ngLine77 +
           /* ⛔ v89.205：attachLines186（挂件行）已整行退役 —— 入口在部件栏「🔮 遗物」按钮
              （点开选择窗：佩 / 换 / 卸 / 合成；详见上方墓碑）。 */
-          /* v89.194（老板）：「改一个月俸备注：月俸：XXXX。城主、守将月俸*1.5」——
-             读数唯一出口 GAME.genSalaryOf（已含资质倍率与城主/守将 ×1.5）；悬停给构成与结算规则。 */
-          '<span class="gp-sub gp-sal194" title="' + U.escape(
-            '每 7 游戏日随月俸一并结算（从所在城府库扣；府库不足则欠俸）。\n'
-            + '构成：底俸 ' + ((DATA.GEN_SALARY || {}).base || 0) + ' ＋ 等级×' + ((DATA.GEN_SALARY || {}).perLevel || 0)
-            + ' ＋ 四维和×' + ((DATA.GEN_SALARY || {}).perAttr || 0) + '，再乘资质倍率'
-            + (g.status === 'mayor' || g.status === 'guard'
-              ? '；在任城主/守将另 ×' + ((DATA.GEN_SALARY || {}).dutyMul || 1.5) : '')
-            + '。\n欠俸的城：该城英雄忠诚 −10/期（封顶 −20），可用珠宝赏赐安抚。') + '">'
-            + '月俸：' + (GAME.isLordGeneral(g)
-              ? '—（君主不领俸）'
-              : ('<b>' + U.fmt(GAME.genSalaryOf(g)) + '</b> 旧币　·　城主、守将 ×'
-                + ((DATA.GEN_SALARY || {}).dutyMul || 1.5)))
-            + '</span>' +
+          /* v90.10（老板 3）：「月俸这行备注放在下方状态菜单的底部」——
+             月俸行**迁出身份行**，改由 salLine194 在「状态」区末行渲染（见下方）。 */
           '<span class="gp-exprow">' +
             '<span class="gd-expbar" title="经验 ' + U.numText(g.exp || 0, 0) + ' / ' +
               U.numText(expNeed, 0) + '"><i style="width:' + pct + '%;"></i></span>' +
@@ -10055,58 +10152,64 @@
     });
     var enHave = 0;
     enItems.forEach(function (it) { enHave += (s.items[it.id] || 0); });
+    /* v90.10（老板 3）：「月俸这行备注放在下方状态菜单的底部」——
+       由身份行迁来，渲染在「状态」区**末行**。读数唯一出口 GAME.genSalaryOf
+       （已含资质倍率与城主/守将 ×1.5）；悬停给构成与结算规则。 */
+    var salLine194 = '<div class="gd-line gp-sal194" title="' + U.escape(
+      '每 7 游戏日随月俸一并结算（从所在城府库扣；府库不足则欠俸）。\n'
+      + '构成：底俸 ' + ((DATA.GEN_SALARY || {}).base || 0) + ' ＋ 等级×' + ((DATA.GEN_SALARY || {}).perLevel || 0)
+      + ' ＋ 四维和×' + ((DATA.GEN_SALARY || {}).perAttr || 0) + '，再乘资质倍率。\n'
+      /* v90.38（老板）：「城主守将乘 1.5 这句也加入悬停显示」—— 恒在悬停（不再挂行内） */
+      + '在任城主 / 守将：另 ×' + ((DATA.GEN_SALARY || {}).dutyMul || 1.5)
+      + (g.status === 'mayor' || g.status === 'guard' ? '（本将现任，已计）' : '') + '。\n'
+      + '欠俸的城：该城英雄忠诚 −10/期（封顶 −20），可用珠宝赏赐安抚。') + '">'
+      + '月俸 ' + (GAME.isLordGeneral(g)
+        ? '—（君主不领俸）'
+        : ('<b>' + U.fmt(GAME.genSalaryOf(g)) + '</b> 旧币'))
+      + '</div>';
     /* v89.131（老板）：「体力，精力列在攻击，防御上方。…忠诚列在最下方」
-       —— 新行序：体力 → 精力 → 攻击 → 防御 → 忠诚（君主不适用忠诚行）。 */
+       —— 新行序：体力 → 精力 → 攻击 → 防御 → 忠诚 → 月俸（君主不适用忠诚行）。 */
     html += '<div class="gp-sec">状态</div>' +
-      /* v20（需求 5）的规矩在这里同样适用：**页面只放信息型内容**，
-         "出征消耗 / 低于 25 不可出征 / 侦查消耗"这类**规则解说**不常驻页面。
-         v89.133（老板）：「英雄的生命，体力行压缩成 1 行」；v89.136（老板 3）：
-         「体力精力**只显示当前值**，进度条和加号按钮 —— 体力、精力和忠诚的进度条按钮等长，
-         位置统一（不因数值变化而变化，给数值预留足够位置），加号显示在最右端」——
-         定稿形态 = 三行同构：`标签 [当前值·定宽 60px] [进度条·定长 132px] …… [＋·贴右]`，
-         上限/构成/全军生命/回复规则全部在悬停（.gd-num / .gd-line .gd-bar 见 index.html）。 */
+      /* v90.33（老板）：「体力/精力/忠诚不再显示进度条，直接数值显示：当前/上限；忠诚放在攻击上方」——
+         行序改为 体力 → 精力 → 忠诚 → 攻击 → 防御；三条去掉进度条、改「当前 / 上限」。 */
       '<div class="gd-line" title="体力 ' + U.numText(staNow, 0) + ' / ' + U.numText(staMx, 0)
         + '（当前 / 上限）\n上限 = 等级/资质/治理 ' + U.numText(staMx - staEqNow, 0)
         + ' ＋ 装备 ' + U.numText(staEqNow, 0)
         + '\n全军生命 +' + hpBonus + '%（体力直接决定全军生命的厚度）'
         + '\n回复：现实时间 ' + (DATA.GEN_COST.recoverHours || 24) + ' 小时回满（与倍速无关）">体力 <b class="gd-num">'
-        + U.numText(staNow, 0) + '</b>' + bar(staPct, '#6a9a4a') +
+        + U.numText(staNow, 0) + '</b><span class="gd-max">/ ' + U.numText(staMx, 0) + '</span>' +
         '<button class="btn sm gd-plus' + (staItems.length ? ' gold' : ' dim') + '" data-action="gen-sta-pick"' +
           ' data-gen="' + genId + '"' + (staItems.length ? '' : ' disabled') +
           ' title="' + (staItems.length ? '使用体力道具：背包 ' + staItems.length + ' 种 / ' + staHave + ' 件'
             : '背包中暂无体力道具。游商「体力」页签可购') + '">＋</button></div>' +
-      /* 精力：主数字 = 当前值；上限由六维公式给出（悬停给逐项分解，同源 energyPartsOf） */
-      /* v89.135（老板 6）：「体力，精力行参考忠诚，前方数值，后方进度条和加号，只占一行空间」——
-         精力行去掉了重复的「121 / 291」灰色尾巴（它把行挤到折行），上限并进主数字 = 与体力行完全同构。 */
       '<div class="gd-line" title="' + U.escape('精力 ' + U.numText(enNow, 0) + ' / ' + U.numText(enMx, 0)
         + '（当前 / 上限）\n' + energyTip) + '">精力 <b class="gd-num">' + U.numText(enNow, 0) + '</b>' +
-        bar(enNow / Math.max(1, enMx) * 100, '#4a9be0') +
+        '<span class="gd-max">/ ' + U.numText(enMx, 0) + '</span>' +
         '<button class="btn sm gd-plus' + (enItems.length ? ' gold' : ' dim') + '" data-action="gen-energy-pick"' +
           ' data-gen="' + genId + '"' + (enItems.length ? '' : ' disabled') +
           ' title="' + (enItems.length ? '使用精力道具：背包 ' + enItems.length + ' 种 / ' + enHave + ' 件'
             : '背包中暂无精力道具。游商「精力」页签可购') + '">＋</button></div>' +
-      /* 攻击 / 防御：v89.133（老板）：「'武力 18,890 ＋ 装备 685'这个备注不要」——
-         构成（武力/谋略 × 系数 ＋ 装备）移入**悬停**；行上只留总数 + 全军加成。
-         防御行为对称处理（同族同改，一并压回单行）。 */
-      '<div class="gd-line" title="攻击 ' + U.numText(a.atkVal, 0) + ' = 武力 '
-        + U.numText(a.yw * GAME.ATK_PER_YW, 0) + ' ＋ 装备 ' + U.numText(a.atk, 0) + '">攻击 <b>'
-        + U.numText(a.atkVal, 0) + '</b>' +
-        '<span class="gd-hint">全军攻击 <b style="color:var(--green-ok);">+' + atkShow + '%</b></span></div>' +
-      '<div class="gd-line" title="防御 ' + U.numText(a.defVal, 0) + ' = 谋略 '
-        + U.numText(a.zm * GAME.DEF_PER_ZM, 0) + ' ＋ 装备 ' + U.numText(a.def, 0) + '">防御 <b>'
-        + U.numText(a.defVal, 0) + '</b>' +
-        '<span class="gd-hint">全军防御 <b style="color:var(--green-ok);">+' + defShow + '%</b></span></div>' +
-      /* v89.131（老板）：「忠诚列在最下方」—— 行序末位；赏赐入口仍在它右侧。 */
+      /* v90.33：忠诚**上移到攻击之前**；去掉进度条，显示「当前 / 100」。 */
       (isLordGen ? '' :
-      /* v89.136（老板 3）：「体力，精力和忠诚的进度条按钮等长，位置统一，加号显示在最右端」——
-         忠诚行与另两行完全同构：数值定宽 + 条等长 + 右端「＋」（原「🎁 赏赐」收进悬停说明）。 */
       '<div class="gd-line" title="忠诚 ' + loy + ' / 100（当前 / 上限）\n赏赐珠宝可提升忠诚'
-        + (loy < DATA.LOYALTY.warnAt ? '；当前偏低，谨防离心' : '') + '">忠诚 <b class="gd-num" style="color:' + loyColor + '">' + loy + '</b>' + bar(loy, loyColor) +
+        + (loy < DATA.LOYALTY.warnAt ? '；当前偏低，谨防离心' : '') + '">忠诚 <b class="gd-num" style="color:' + loyColor + '">' + loy + '</b><span class="gd-max">/ 100</span>' +
         (loy < DATA.LOYALTY.warnAt ? '<span class="gd-warn">⚠ 偏低</span>' : '') +
         '<button class="btn sm gd-plus' + (jewels.length ? ' gold' : ' dim') + '" data-action="gen-gift-pick"' +
           ' data-gen="' + genId + '"' + (jewels.length ? '' : ' disabled') +
           ' title="' + (jewels.length ? '赏赐珠宝提升忠诚：可赏赐 ' + jewels.length + ' 种（共 ' +
-            jewelTotal + ' 件）' : '背包中暂无珠宝。攻打城池缴获或游商购买') + '">＋</button></div>');
+            jewelTotal + ' 件）' : '背包中暂无珠宝。攻打城池缴获或游商购买') + '">＋</button></div>') +
+      /* 攻击 / 防御：v89.133 构成进悬停；v90.38（老板）：「全军效果占位置太大，加入悬停显示」——
+         「全军攻击/防御 +X%」由行内移到悬停，行上只留总数。 */
+      '<div class="gd-line" title="攻击 ' + U.numText(a.atkVal, 0) + ' = 武力 '
+        + U.numText(a.yw * GAME.ATK_PER_YW, 0) + ' ＋ 装备 ' + U.numText(a.atk, 0)
+        + '\n全军攻击 +' + atkShow + '%">攻击 <b>'
+        + U.numText(a.atkVal, 0) + '</b></div>' +
+      '<div class="gd-line" title="防御 ' + U.numText(a.defVal, 0) + ' = 谋略 '
+        + U.numText(a.zm * GAME.DEF_PER_ZM, 0) + ' ＋ 装备 ' + U.numText(a.def, 0)
+        + '\n全军防御 +' + defShow + '%">防御 <b>'
+        + U.numText(a.defVal, 0) + '</b></div>' +
+      /* v90.10（老板 3）：月俸行钉在「状态」区底部（君主也显示 —— 只是文案为"君主不领俸"）。 */
+      salLine194;
 
     /* ---------- ③ 右侧：部件栏（人形，**内嵌**，不再开弹窗） ---------- */
     html += '</div><div class="gp-col-r">';
@@ -10152,7 +10255,7 @@
 
     /* v89：双轨 tab 只给君主（改造线君主专属）；普通英雄整块切换行不渲染 */
     html += '<div class="gp-sec" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">' +
-      '部件栏（' + eqCnt + ' / 12）' +
+      '部件栏（' + eqCnt + ' / ' + (isLing ? 12 : 19) + '）' +
       ui.help(isCult
         ? '机甲部件用于攻城野战；基因强化用于野地征战（机能判定）。\n两套独立养成、整套切换生效 —— 点右侧按钮切换当前生效套。'
         : '机甲部件用于攻城野战。\n基因一途乃君主专属，不假他人。') +
@@ -10163,21 +10266,35 @@
          基因为君主专属（闸门 canCultivate，v89 既定），普通将不出现该按钮。 */
       '<span style="margin-left:auto;display:inline-flex;gap:4px;">' +
         (isCult
-          ? '<button class="btn sm mini' + (isLing ? '' : ' gold') + '" data-action="toggle-equip-set" data-gen="' + genId + '" data-set="sha">⚙ 机甲</button>' +
-            '<button class="btn sm mini' + (isLing ? ' gold' : '') + '" data-action="toggle-equip-set" data-gen="' + genId + '" data-set="ling">🧬 基因</button>'
-          : '<span class="btn sm mini gold" title="普通英雄只行机甲套装；基因一途乃君主专属">⚙ 机甲</span>') +
+          ? '<button class="btn sm mini' + (isLing ? '' : ' gold') + '" data-action="toggle-equip-set" data-gen="' + genId + '" data-set="sha">机甲</button>' +
+            '<button class="btn sm mini' + (isLing ? ' gold' : '') + '" data-action="toggle-equip-set" data-gen="' + genId + '" data-set="ling">基因</button>'
+          : '<span class="btn sm mini gold" title="普通英雄只行机甲套装；基因一途乃君主专属">机甲</span>') +
+        (isLing ? '' :
+          '<button class="btn sm mini" data-action="mecha-style" data-gen="' + genId + '"'
+          + ' title="切换机甲型制（' + U.escape(ui.mechaStyleOf(g).name) + '）：点选更换本品外观">型制·' + U.escape(ui.mechaStyleOf(g).name) + '</button>') +
         '<button class="btn sm mini' + (GAME.attachOf(g, 'bao') ? ' gold' : '') + '" data-action="attach-pick"'
           + ' data-gen="' + genId + '" data-slot="bao"'
-          + ' title="遗物：与装备并行的增幅挂件（打据点 / 名城缴获）。点开可佩 / 换 / 卸（窗内已佩件可卸下）；窗内可合成 2 低=中 · 2 中=高">🔮 遗物</button>' +
+          + ' title="遗物：与装备并行的增幅挂件（打据点 / 名城缴获）。点开可佩 / 换 / 卸（窗内已佩件可卸下）；窗内可合成 2 低=中 · 2 中=高">遗物</button>' +
       '</span>' +
       '</div>' +
       '<div class="gp-doll">' +
-        '<div class="doll">' +
-          /* v46（需求 3）：人形栏加**放大的英雄抠图**（浅色底衬）—— 让人一眼看出"这是谁的装备"。
-             v89.238（老板）：「装备那里那个小人一样的简陋图去掉」—— 几何剪影（dollFigure）
-             整条退役，抠图直接作底衬；下方槽位照旧。 */
-          ui.dollPortrait(g) +
-          DATA.EQUIP_SLOTS.map(function (slot) { return ui.dollSlot(g, genId, slot, inv); }).join('') +
+        '<div class="doll-col">' +
+        '<div class="doll' + (isLing ? '' : ' doll-mechamode') + '">' +
+          /* v46（需求 3）：机甲套底衬 = 机甲图；槽位 = 19 部件（对齐机甲轮廓）。
+             v90.13：外挂槽落点；v90.20：`.doll-fig` 按框高自适应；
+             v90.25（老板）：机甲图只承载**身体 13 槽**（cqw 随图等比）；披风 + 外挂 6 槽
+             移到**框相对**的 `.doll-outer` 层 —— 用足左右留白（机甲是竖图、框有余宽）。 */
+          '<span class="doll-outer">' +
+            (isLing ? '' :
+              ui.DOLL_MOD_SLOTS.map(function (slot) { return ui.dollSlot(g, genId, slot, inv, false, true); }).join('')) +
+          '</span>' +
+          '<span class="doll-fig">' +
+            ui.dollPortrait(g, isLing) +
+            (isLing ? DATA.LING_SLOTS_ID : DATA.EQUIP_SLOTS.filter(function (s2) {
+              return !ui.DOLL_MOD_ART[s2];   /* 外挂槽在 outer 层，不进 fig */
+            })).map(function (slot) { return ui.dollSlot(g, genId, slot, inv); }).join('') +
+          '</span>' +
+        '</div>' +
         '</div>' +
         '<div class="doll-side">' +
           '<div class="eq-gain">部件提供</div>' +
@@ -10185,7 +10302,8 @@
             : '<div class="eq-gain"><span class="none">尚未装备任何部位</span></div>') +
           ui.dollSetPanel(g) +
           '<div class="gp-dollops">' +
-            '<button class="btn sm gold" data-action="gen-auto-equip" data-gen="' + genId + '">一键最优装备</button>' +
+            '<button class="btn sm gold" data-action="gen-auto-equip" data-gen="' + genId + '">一键装备</button>' +
+            '<button class="btn sm" data-action="gen-equip-set-pick" data-gen="' + genId + '">按套装装备</button>' +
             '<button class="btn sm" data-action="gen-unequip-all" data-gen="' + genId + '">全部卸下</button>' +
             (isLing ? '<button class="btn sm" data-action="ling-temper-open">☯ 调校</button>' : '') +
           '</div>' +
@@ -10506,14 +10624,14 @@
       return '<div class="xc-row">' +
         '<div class="xc-ico">' + GAME.icons.forExt(eid) + '</div>' +
         '<div class="xc-info"><b>' + eb.name + '</b>' +
-          '<span class="xc-prod">Lv' + e.lv + ' 产量 ' + U.perHourText(eb.prod[e.lv - 1]) + '/时</span>' +
-          '<span class="xc-cost">改建费 ' + GAME.costString(cost) + '</span></div>' +
+          /* v90.44（老板）：改建费不再内联，移入「改建」按钮悬停。 */
+          '<span class="xc-prod">Lv' + e.lv + ' 产量 ' + U.perHourText(eb.prod[e.lv - 1]) + '/时</span></div>' +
         /* v89.188（老板 6）：「改建有时候点不了」——材料不足的按钮不再 disabled
            （灰按钮点不动、又不说为什么 = "点不了"的根因）。保留 dim 视觉但**可点**：
            点后走 GAME.convertExt，材料不足由域层返回精确原因 toast（不扣费）；
            按钮悬停给出"材料不足"提示。 */
         '<button class="btn sm' + (afford ? ' gold' : ' dim') + '" data-action="ext-convert" data-idx="' + idx + '" data-eid="' + eid + '"'
-          + ' title="' + U.escape(afford
+          + ' title="改建费：' + U.escape(GAME.costString(cost)) + '\n' + U.escape(afford
               ? ('改建为 ' + eb.name + '（等级保留）')
               : ('本城材料不足（跨城需走「本境调运」）—— 点击后可见提示')) + '">改建</button>' +
         '</div>';
@@ -10618,19 +10736,64 @@
      横向留出槽位半宽（54/2 = 27px）的余量（实测 300px 宽人形框）：
        11% → 33−27 = 6 ≥ 0；78% → 234−27+54 = 261 ≤ 300。
      ⚠️ 改槽位边长或人形框尺寸，都要回来核这两组数（smoke 有一条断言按此复算两两不重叠）。 */
+  /* v90.13（老板 2）：机甲 19 槽全部落进机甲图框内（左上角法）。
+     身体 13（fig 相对 %）+ 外挂 6（框相对 %，见 DOLL_OUTER_POS）。
+     v90.25（老板）：身体槽随机甲图（`.doll-fig`，cqw）；披风 + 外挂 6 槽放到**框相对**的
+     `.doll-outer` 层，用足左右留白（机甲竖图、框有余宽）。 */
   ui.DOLL_POS = {
-    head: [50, 0.8],
-    neck: [50, 21.6], shoulder: [22, 21.6], back: [78, 21.6],
-    chest: [50, 42.4], arm: [11, 42.4],
-    waist: [50, 63.2], ring: [11, 63.2], pendant: [78, 63.2],
-    feet: [50, 83.9], weapon: [11, 83.9], mount: [78, 83.9],
+    head: [50, 2], chest: [50, 18], waist: [50, 34],
+    arm_up_l: [21, 16], arm_up_r: [79, 16],
+    arm_low_l: [15, 42], arm_low_r: [85, 42],
+    thigh_l: [37, 49], thigh_r: [63, 49],
+    shin_l: [37, 70], shin_r: [63, 70],
+    foot_l: [37, 87], foot_r: [63, 87],
   };
-  /* v46（需求 3）：人形框里的**大号英雄抠图**（浅色底衬）。
-     不走 P.html 的原因：那里把尺寸写死在行内 style 上（width/height 像素），
-     这里必须让 CSS 用百分比接管，才能跟着人形框一起缩放。
-     抠图本身是 512×512 透明 webp，宽高比已统一，所以 `height:auto` 不会变形。 */
-  ui.dollPortrait = function (g) {
+  /* 外挂 6 槽：**框相对**落点（铺进左右留白）。 */
+  ui.DOLL_MOD_SLOTS = ['back', 'ring', 'weapon', 'pendant', 'mount', 'neck'];
+  /* v90.26（老板）：外挂项**左右各成一竖列**、大小一致 —— 左列 x=13.5%、右列 x=86.5%，
+     上（披风）/中（武装）/下（机动·辐射清除）三点同列线。 */
+  /* v90.49（老板 3）：外挂 6 模块改**浮层小方框** —— 贴左右两列，上/中/下三行，
+     **中间留给机甲本体**；浮于 `.doll-fig`（z2 > z1）。
+     v90.51（老板「机甲还是小」）：机甲按高撑满后变宽，模块**再贴到最边**（x≈6%/94%），
+     与机甲双臂槽错开，互不遮挡。 */
+  ui.DOLL_OUTER_POS = {
+    back: [6, 15], ring: [94, 15],
+    pendant: [6, 51], weapon: [94, 51],
+    neck: [6, 84], mount: [94, 84],
+  };
+  /* 外挂模块**固定小图**（v90.49：来自散件图标，按类型固定，不随装备变 —— 见 tools/normalize_mods.py）。
+     back/ring（披风）共用一张对称披风图。 */
+  ui.DOLL_MOD_ART = {
+    weapon: 'mod_weapon.png', pendant: 'mod_weapon.png',
+    mount: 'mod_mobility.png', neck: 'mod_purge.png',
+    back: 'mod_cloak.png', ring: 'mod_cloak.png',
+  };
+  /* 外挂模块图目录（v90.49：与旧 assets/icons/ui 分离） */
+  ui.DOLL_MOD_DIR = 'assets/icons/mecha_mod/';
+  /* 机甲外挂 6 槽（在机甲图下方排一条） */
+  ui.DOLL_ATTACH = ['weapon', 'pendant', 'mount', 'back', 'ring', 'neck'];
+  /* v90.16（老板）：「不同型制的机甲，可以按此前导入装备栏」——机甲 4 型制，
+     每将通过 g.mechaStyle 选（1~4）；缺省 1（制式军绿）。 */
+  ui.MECHA_STYLES = (function () {
+    var names = ['制式', '重装', '装甲', '猩红', '暗红', '联邦', '蓝图', '军绿', '疾风',
+      '熔岩', '铁卫', '霜蓝', '曜光', '夜幕', '苍蓝', '赤甲', '斗篷',
+      '铁裔', '沙狼', '夜枭', '玄武', '赤鸢', '幽兰', '雷纹', '霜牙'];   /* v90.49：17 → 25 */
+    var arr = [];
+    for (var i = 1; i <= 25; i++) arr.push({ id: i, name: 'MK-' + i + '·' + (names[i - 1] || ''),
+      file: 'assets/mecha/mk' + (i < 10 ? '0' + i : i) + '.png' });   /* v90.37：标准件目录 assets/mecha/ */
+    return arr;
+  })();
+  ui.mechaStyleOf = function (g) {
+    var s = Number(g && g.mechaStyle) || 1;
+    return ui.MECHA_STYLES.filter(function (x) { return x.id === s; })[0] || ui.MECHA_STYLES[0];
+  };
+  ui.dollPortrait = function (g, isLing) {
     if (!g) return '';
+    if (!isLing) {
+      return '<span class="doll-portrait doll-mecha" aria-hidden="true">' +
+        '<img src="' + ui.mechaStyleOf(g).file + '" alt="">' +
+      '</span>';
+    }
     var P = GAME.portraits;
     if (!P) return '';
     var src = P.fileOf ? P.fileOf(g) : '';
@@ -10649,8 +10812,27 @@
      小人一样的简陋图去掉」。原实现（v38 建 · v46 与抠图叠加，纯几何 SVG）见
      .workbuddy/backup/v89238/ui.js.before；样式 .doll-fig-svg 同步删除。
      底衬改由 .doll-portrait 独立承担（v89.238 同时调亮至 .55 + 画框圆角裁形）。 */
-  ui.dollSlot = function (g, genId, slot, inv) {
-    var pos = ui.DOLL_POS[slot] || [50, 50];
+  /* 基因强化 12 槽落点（旧人形布局，机甲扩槽后基因套维持原样） */
+  ui.GENE_POS = {
+    head: [50, 0.8],
+    neck: [50, 21.6], shoulder: [22, 21.6], back: [78, 21.6],
+    chest: [50, 42.4], arm: [11, 42.4],
+    waist: [50, 63.2], ring: [11, 63.2], pendant: [78, 63.2],
+    feet: [50, 83.9], weapon: [11, 83.9], mount: [78, 83.9],
+  };
+  ui.dollSlot = function (g, genId, slot, inv, inline, outer) {
+    /* v90.11：机甲 13 身体槽走 DOLL_POS（对齐机甲图）；基因 12 槽走 GENE_POS。
+       v90.25：outer=true = 外挂 6 槽（框相对落点，`.doll-outer` 层）。
+       inline=true = 旧外挂条里的流式小槽（已退役，保留兼容）。 */
+    var isLing0 = (g.equipOn === 'ling') && GAME.canCultivate(g);
+    var pos = inline ? [0, 0]
+      : (isLing0 ? (ui.GENE_POS[slot] || [50, 50]) : ui.dollPosOf(slot));   /* v90.31：机甲走 dollPosOf（套编辑器覆盖） */
+    if (!isLing0 && !inline && !outer && !ui.DOLL_POS[slot]) return '';   /* 身体 13 槽之外、且非外挂层 */
+    var modSlot = outer && !isLing0;
+    /* v90.31：编辑器改过的尺寸（%宽=高）内联覆盖 */
+    ui.dollLayoutLoad();
+    var _lo = ui._dollLayout[slot];
+    var osize = (_lo && _lo.w != null) ? _lo.w : 0;
     /* v88：按**当前生效套**渲染（机甲/改造各 12 槽；槽名/图标/品质色/强化标全同步）。
        附带修复 v79 按件改造的一处遗漏：这里原先直接把实例对象当 DATA.EQUIP 的键
        （装着装备时 it 恒为 null → 格子丢品质色显示 empty 类）。统一走 eqId 规范化。 */
@@ -10662,13 +10844,23 @@
     var slotName = ((isLing ? DATA.LING_SLOT_NAMES : DATA.EQUIP_SLOT_NAMES) || {})[slot] || slot;
     var invN = inv[slot] || 0;
     var setNm = it && it.set && DATA.SETS[it.set] ? DATA.SETS[it.set].name : '';
-    return '<div class="eq-cell doll-slot' + (it ? ' q' + it.q : ' empty') + '"' +
-      ' style="left:' + pos[0] + '%;top:' + pos[1] + '%"' +
+    /* v90.49（老板 3/4）：
+       · 外挂槽 = 固定**模块图**（mod_*.png，来自 DOLL_MOD_DIR），不随装备变；
+       · 身体槽**不再显示所装备件的图案**（去掉 eq-ico）—— 只留部位名 + 装备名（文字）；
+         所着件的图/属性只在悬停 tip 里给（tip 见下）。 */
+    var isMod = modSlot && !!ui.DOLL_MOD_ART[slot];
+    var modArt = isMod ? ((ui.DOLL_MOD_DIR || 'assets/icons/mecha_mod/') + ui.DOLL_MOD_ART[slot]) : '';
+    var inner = isMod
+      ? '<img class="eq-mod-img" src="' + modArt + '" alt="">'
+      : ('<span class="eq-slotname">' + slotName + '</span>' +
+         '<span class="eq-name' + (it ? '' : ' none') + '">' + (inst ? U.escape(GAME.eqLabel(inst)) : '未着') + '</span>');
+    return '<div class="eq-cell doll-slot' + (inline ? ' doll-slot-inline' : '') + (isMod ? ' doll-slot-mod' : '') +
+      (it ? ' q' + it.q : ' empty') + '"' +
+      (inline ? '' : ' style="left:' + pos[0] + '%;top:' + pos[1] + '%"' +
+        (osize ? ';width:' + osize + '%;height:' + osize + '%;margin-left:' + (-osize / 2) + '%;margin-top:' + (-osize / 2) + '%' : '')) +
       ' data-action="eq-slot" data-gen="' + genId + '" data-slot="' + slot + '" data-tip-el="1">' +
-      '<span class="eq-slotname">' + slotName + '</span>' +
-      '<span class="eq-ico">' + (GAME.icons.forEquip ? GAME.icons.forEquip(slot) : '') + '</span>' +
-      '<span class="eq-name' + (it ? '' : ' none') + '">' + (inst ? U.escape(GAME.eqLabel(inst)) : '未着') + '</span>' +
-      (invN ? '<span class="eq-inv">+' + invN + '</span>' : '') +
+      inner +
+      /* v90.50（老板 1）：机甲部件上不再显示「+N」（可供更换的件数）—— 该数字移到悬停 tip 里。 */
       /* 悬停走全站唯一的 #tip-layer（v37）—— 不在这里自己绝对定位 */
       '<span class="eq-slot-tip tip-src"><div class="tip-t">' + slotName + (inst ? ' · ' + U.escape(GAME.eqLabel(inst)) : '') + '</div>' +
         /* v89.211：按件描述（强化/调校计入；equipDescOf 为唯一出口）
@@ -10678,7 +10870,110 @@
         (invN ? '<div class="tip-a">背包另有 ' + invN + ' 件可换</div>' : '') +
       '</span></div>';
   };
-  /* v88：基因强化件面板（机能 / 总调校 / 精华余额）—— dollSetPanel 的改造分支 */
+  /* ============================================================
+   * v90.31（老板：「能不能直接在界面上移动/缩放」）—— **开发用布局编辑器**。
+   * 拖拽移位 / 滚轮缩放每个部件槽，落 localStorage（渲染时套用），可一键输出数值固化进代码。
+   * 开关：控制台 `ui.dollEdit(true/false)`，或 URL 带 `?dollEdit=1`。
+   * 输出：编辑器工具条「📋 输出布局」→ 打印到控制台 + 复制到剪贴板。
+   * ⚠️ 仅开发期使用；玩家不触发（不进设置/界面入口）。
+   * ============================================================ */
+  ui.dollDefPos = function (slot) {
+    return ((ui.DOLL_MOD_SLOTS || []).indexOf(slot) >= 0 ? ui.DOLL_OUTER_POS : ui.DOLL_POS)[slot];
+  };
+  ui._dollLayout = null;
+  ui.dollLayoutLoad = function () {
+    if (ui._dollLayout) return ui._dollLayout;
+    try { ui._dollLayout = JSON.parse((window.localStorage || {}).getItem('biztrip_doll_layout') || '{}') || {}; }
+    catch (e) { ui._dollLayout = {}; }
+    return ui._dollLayout;
+  };
+  ui.dollLayoutSave = function () {
+    try { window.localStorage.setItem('biztrip_doll_layout', JSON.stringify(ui._dollLayout || {})); } catch (e) {}
+  };
+  ui.dollPosOf = function (slot) {
+    ui.dollLayoutLoad();
+    var o = ui._dollLayout[slot];
+    if (o && o.x != null) return [o.x, o.y];
+    return ui.dollDefPos(slot) || [50, 50];
+  };
+  ui.dollEdit = function (on) {
+    var wrap = document.querySelector('.gp-doll .doll');
+    if (ui._dollEditCleanup) { ui._dollEditCleanup(); ui._dollEditCleanup = null; }
+    if (!on || !wrap) return;
+    ui.dollLayoutLoad();
+    var slots = [].slice.call(wrap.querySelectorAll('.doll-slot'));
+    var handlers = [];
+    slots.forEach(function (el) {
+      var slot = el.getAttribute('data-slot');
+      el.style.pointerEvents = 'auto'; el.style.cursor = 'move';
+      el.style.outline = '1px dashed rgba(var(--gold-rgb),.7)';
+      var drag = null;
+      var md = function (ev) {
+        ev.preventDefault(); ev.stopPropagation();
+        var r = wrap.getBoundingClientRect();
+        var lo = ui._dollLayout[slot] || {};
+        var cur = ui.dollPosOf(slot);
+        drag = { px: ev.clientX, py: ev.clientY, x: cur[0], y: cur[1], rw: r.width, rh: r.height, el: el };
+        window.addEventListener('mousemove', mm); window.addEventListener('mouseup', mu);
+      };
+      var mm = function (ev) {
+        if (!drag) return;
+        var nx = Math.round((drag.x + (ev.clientX - drag.px) / drag.rw * 100) * 10) / 10;
+        var ny = Math.round((drag.y + (ev.clientY - drag.py) / drag.rh * 100) * 10) / 10;
+        ui._dollLayout[slot] = ui._dollLayout[slot] || {};
+        ui._dollLayout[slot].x = nx; ui._dollLayout[slot].y = ny;
+        drag.el.style.left = nx + '%'; drag.el.style.top = ny + '%';
+      };
+      var mu = function () { drag = null; window.removeEventListener('mousemove', mm); window.removeEventListener('mouseup', mu); ui.dollLayoutSave(); };
+      var wh = function (ev) {
+        ev.preventDefault();
+        var o = ui._dollLayout[slot] = ui._dollLayout[slot] || {};
+        var base = o.w || parseFloat((el.style.width) || '0') || 0;
+        var w = Math.max(4, Math.min(60, (base || 22) * (ev.deltaY < 0 ? 1.06 : 0.94)));
+        o.w = Math.round(w * 10) / 10;
+        el.style.width = o.w + '%'; el.style.height = o.w + '%';
+        el.style.marginLeft = (-o.w / 2) + '%'; el.style.marginTop = (-o.w / 2) + '%';
+        ui.dollLayoutSave();
+      };
+      el.addEventListener('mousedown', md);
+      el.addEventListener('wheel', wh, { passive: false });
+      handlers.push([el, md, wh]);
+    });
+    ui._dollEditCleanup = function () { handlers.forEach(function (h) { h[0].removeEventListener('mousedown', h[1]); h[0].removeEventListener('wheel', h[2]); }); };
+    /* 工具条 */
+    var bar = document.createElement('div');
+    bar.style.cssText = 'position:fixed;right:10px;bottom:10px;z-index:99999;background:#1a1f24;border:1px solid #c9a24b;'
+      + 'border-radius:8px;padding:8px 10px;font:12px/1.6 "Microsoft YaHei";color:#e8e2d4;display:flex;gap:8px;align-items:center;';
+    bar.innerHTML = '<b>布局编辑</b> 拖拽移位 · 滚轮缩放'
+      + '<button id="dl-dump" style="padding:2px 8px;cursor:pointer;">📋 输出布局</button>'
+      + '<button id="dl-reset" style="padding:2px 8px;cursor:pointer;">↩ 清除</button>'
+      + '<button id="dl-off" style="padding:2px 8px;cursor:pointer;">✕ 关闭</button>';
+    document.body.appendChild(bar); ui._dollEditBar = bar;
+    bar.querySelector('#dl-off').onclick = function () { ui.dollEdit(false); GAME.refreshView(); };
+    bar.querySelector('#dl-reset').onclick = function () { ui._dollLayout = {}; ui.dollLayoutSave(); GAME.refreshView(); setTimeout(function () { ui.dollEdit(true); }, 50); };
+    bar.querySelector('#dl-dump').onclick = function () { ui.dollEditDump(); };
+  };
+  ui.dollEditDump = function () {
+    ui.dollLayoutLoad();
+    var body = ['/* ===== 布局编辑器输出（固化进 ui.DOLL_POS / DOLL_OUTER_POS + 尺寸 CSS）====='];
+    var posBody = [], outBody = [];
+    Object.keys(ui._dollLayout).forEach(function (slot) {
+      var o = ui._dollLayout[slot]; if (o.x == null) return;
+      var line = "    " + slot + ": [" + o.x + ", " + o.y + "],";
+      ((ui.DOLL_MOD_SLOTS || []).indexOf(slot) >= 0 ? outBody : posBody).push(line);
+    });
+    if (posBody.length) body.push('  ui.DOLL_POS = {', posBody.join('\n'), '  };');
+    if (outBody.length) body.push('  ui.DOLL_OUTER_POS = {', outBody.join('\n'), '  };');
+    var sz = Object.keys(ui._dollLayout).filter(function (k) { return ui._dollLayout[k].w != null; })
+      .map(function (k) { return '    ' + k + ": " + ui._dollLayout[k].w + "%,  /* 宽=高 */"; });
+    if (sz.length) body.push('  /* 尺寸（%宽=高，见 .doll-slot-mod / .doll-cape-slot） */', sz.join('\n'));
+    var text = body.join('\n');
+    console.log(text);
+    try { navigator.clipboard.writeText(text); } catch (e) {}
+    if (ui.toast) ui.toast('布局已输出（控制台 + 剪贴板）');
+  };
+  /* URL ?dollEdit=1 自动开（开发用） */
+  try { if (/[?&]dollEdit=1/.test((window.location || {}).search || '')) setTimeout(function () { ui.dollEdit(true); }, 800); } catch (e) {}
   ui.dollLingPanel = function (g) {
     var s = GAME.state;
     var ess = (s.items || {}).lingsui || 0;
@@ -10710,15 +11005,17 @@
         + (DATA.SET_TIERS || []).join(' / ') + '</b> 件逐档加成，效果累计。</div>';
     }
     active.forEach(function (p) {
+      /* v90.32（老板）：「只显示当前生效的属性即可，比如满足 7 件，仅展示 7 件的套装效果，
+         其他更低级或高级的效果不罗列」—— 取已达成档位里**最高**那个，只显示它。 */
+      var reached = (p.tiers || []).filter(function (t) { return p.n >= t; });
+      var curT = reached.length ? reached[reached.length - 1] : 0;
       out += '<div class="ds-block">' +
         '<div class="ds-head"><span class="ds-name">' + p.name + '</span>' +
-          '<span class="ds-n">' + p.n + ' / ' + p.total + ' 件</span>' +
-          (p.next ? '<span class="ds-next">再 ' + (p.next - p.n) + ' 件 → ' + p.bonus[p.next] + '</span>'
-                  : '<span class="ds-next done">已满档</span>') +
-        '</div>' +
-        '<div class="ds-tiers">' + p.tiers.map(function (t) {
-          return '<i class="' + (p.n >= t ? 'on' : '') + '"><b>' + t + ' 件</b>' + p.bonus[t] + '</i>';
-        }).join('') + '</div></div>';
+          '<span class="ds-n">' + p.n + ' / ' + p.total + ' 件</span></div>' +
+        (curT
+          ? '<div class="ds-cur"><i class="on"><b>' + curT + ' 件</b>' + p.bonus[curT] + '</i></div>'
+          : '<div class="ds-empty">未满 ' + ((p.tiers || [])[0] || '?') + ' 件，暂无档位加成</div>') +
+        '</div>';
     });
     /* v52（老板：「装备那里不需要列出其余套装的备注」）：
        这里原本还会列一段「其余套装：佣兵套（11 件）…加成…」—— 把没穿的套装也铺出来，
@@ -10849,7 +11146,24 @@
       + '<button class="btn" data-action="close-modal">取消</button></div>';
     ui.openModal(html);
   };
-
+  /* v90.55（老板）：出售装备二次确认 —— 该件从背包消失、换回旧币（入当前城）。 */
+  ui.openSellConfirm = function (ref) {
+    var inst = GAME.eqFind(ref);
+    if (!inst) { ui.toast('背包中没有这件装备'); return; }
+    var itemId = GAME.eqId(inst), it = DATA.EQUIP[itemId];
+    if (!it) { ui.toast('无此装备'); return; }
+    var price = GAME.equipSellPrice(itemId);
+    var key = GAME.eqUidOf(inst) != null ? GAME.eqUidOf(inst) : itemId;
+    var city = GAME.currentCity();
+    var html = '<div class="gold-heading">💰 出售 · ' + U.escape(GAME.eqLabel(inst)) + '</div>';
+    html += '<div class="attr"><span class="k">可得</span><span class="v good">' + U.fmt(price) + ' 旧币</span></div>';
+    html += '<div class="attr"><span class="k">入账</span><span class="v">' + (city ? U.escape(city.name) : '当前城') + '</span></div>';
+    html += '<div class="note">售出后该件从背包消失（不可撤销）。想换成材料请改用<b>拆解回收</b>。</div>';
+    html += '<div class="panel-foot">'
+      + '<button class="btn gold" data-action="sell-equip-do" data-key="' + key + '">确定出售</button>'
+      + '<button class="btn" data-action="close-modal">取消</button></div>';
+    ui.openModal(html);
+  };
   /* 撤回采集（无收益）—— 兵力归还、本轮采集作废 */
   /* ============================================================
    * ⛔ v89.138（老板 0）：`ui.openGatherAbandonAsk`（撤回采集队确认面板）整条退役 ——
@@ -10880,21 +11194,22 @@
   /* 随机任务换新（单条 / 全部）—— 付工本费、旧任务作废 */
   ui.openRerollRandAsk = function (qid) {
     var html = '<div class="gold-heading">🔄 放弃并换一条</div>';
-    html += '<div class="attr"><span class="k">工本费</span><span class="v">' + U.fmt(GAME.randQuestRerollCost()) + ' 旧币</span></div>';
+    /* v90.44（老板）：工本费不再成行显示，移入确认按钮悬停。 */
     html += '<div class="note">该任务作废，立刻抽取一条新的随机任务。是否确定？</div>';
     html += '<div class="panel-foot">'
-      + '<button class="btn red" data-action="reroll-rand-quest-do" data-q="' + qid + '">确定换一条</button>'
+      + '<button class="btn red" data-action="reroll-rand-quest-do" data-q="' + qid + '"'
+      + ' title="工本费 ' + U.numText(GAME.randQuestRerollCost(), 0) + ' 旧币">确定换一条</button>'
       + '<button class="btn" data-action="close-modal">取消</button></div>';
     ui.openModal(html);
   };
   ui.openRerollAllAsk = function () {
     var s = GAME.state, n = ((s && s.quests && s.quests.pool) || []).length;
     var html = '<div class="gold-heading">🔄 全部换新</div>';
-    html += '<div class="attr"><span class="k">工本费</span><span class="v">' + U.fmt(GAME.randQuestRerollAllCost()) + ' 旧币</span></div>';
     html += '<div class="attr"><span class="k">换新数量</span><span class="v">' + n + ' 项（全部作废重抽）</span></div>';
     html += '<div class="note">当前 ' + n + ' 项随机任务将<b>全部作废</b>并重新抽取。是否确定？</div>';
     html += '<div class="panel-foot">'
-      + '<button class="btn red" data-action="reroll-all-rand-do">确定全部换新</button>'
+      + '<button class="btn red" data-action="reroll-all-rand-do"'
+      + ' title="工本费 ' + U.numText(GAME.randQuestRerollAllCost(), 0) + ' 旧币">确定全部换新</button>'
       + '<button class="btn" data-action="close-modal">取消</button></div>';
     ui.openModal(html);
   };
@@ -10993,7 +11308,8 @@
     var gIsLing = (g.equipOn === 'ling') && GAME.canCultivate(g);
     var gBag = (gIsLing ? g.lingEquip : g.equip) || {};
     var gSlotNames = gIsLing ? DATA.LING_SLOT_NAMES : DATA.EQUIP_SLOT_NAMES;
-    var slotRows = DATA.EQUIP_SLOTS.map(function (slot) {
+    /* v90.11：机甲 19 槽 / 基因 12 槽 —— 总览按当前套取槽列表 */
+    var slotRows = (gIsLing ? DATA.LING_SLOTS_ID : DATA.EQUIP_SLOTS).map(function (slot) {
       var inst = gBag[slot];
       var item = inst ? DATA.EQUIP[GAME.eqId(inst)] : null;
       return '<div class="res-line"><span class="lbl">' + (gSlotNames[slot] || slot) + '</span>' +
@@ -11033,7 +11349,7 @@
         ui.genChips({ store: '_equipGen', refresh: 'view', value: g.id || (ui._equipGen || ''),
           per: 12, modal: true, key: 'gchips_eq', wide: true }) + '</div>' +
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">' +
-        '<div><div style="color:var(--gold-light);font-weight:700;margin-bottom:6px;">已装配（' + Object.keys(gBag).length + '/12）' + (gIsLing ? '　🧬 基因' : '　⚙ 机甲') + '</div>' + slotRows + '</div>' +
+        '<div><div style="color:var(--gold-light);font-weight:700;margin-bottom:6px;">已装配（' + Object.keys(gBag).length + '/' + (gIsLing ? 12 : 19) + '）' + (gIsLing ? '　🧬 基因' : '　⚙ 机甲') + '</div>' + slotRows + '</div>' +
         '<div><div style="color:var(--gold-light);font-weight:700;margin-bottom:6px;">加成汇总</div>' +
           '<div class="res-line"><span class="lbl">指挥</span><span class="val">+' + bonus.tong + '</span></div>' +
           '<div class="res-line"><span class="lbl">武力</span><span class="val">+' + bonus.yw + '</span></div>' +
@@ -11050,7 +11366,8 @@
         '</div>' +
       '</div>' +
       '<div style="margin-top:12px;"><div style="color:var(--gold-light);font-weight:700;margin-bottom:6px;">装备背包（点击穿戴）</div>' +
-      '<div class="troop-grid" style="grid-template-columns:repeat(4,1fr);">' + inv + '</div>' +
+      /* v90.18：自适应列宽铺满 —— 满幅弹窗（1424px）下 4 列会留大片空白，改 auto-fill 依宽度铺开。 */
+      '<div class="troop-grid" style="grid-template-columns:repeat(auto-fill,minmax(200px,1fr));">' + inv + '</div>' +
       eqPager + '</div>' +
 
       '</div>';
@@ -11161,12 +11478,11 @@
       var btn = full ? '<span style="color:var(--text-dim);">已满级</span>' :
         locked ? '<span style="color:var(--red-light);">需研习所Lv' + t.lv + '</span>' :
         miss.length ? '<span style="color:var(--red-light);">需' + miss.join('、') + '</span>' :
-        /* v89.86（整改 P-12）：v16 改旧币口径后 `DATA.techCost` 只返回 {gold,wood,stone}，
-           这里仍旧读 `cost.grain` → 每个按钮都印成「研究(NaN粮)」。
-           现在：主项旧币短写上屏，完整三项费用进 title 悬停（走 GAME.costString 唯一渲染口）。 */
+        /* v90.44（老板）：「耗费资源的操作不要直接显示数额，改为悬停显示」——
+           研究按钮文字去掉「(旧币 N)」，费用全在 title 悬停（GAME.costString 唯一渲染口）。 */
         '<button class="btn sm" data-action="tech-research" data-tech="' + t.id + '"'
           + ' title="需 ' + GAME.costString(cost) + '"'
-          + (cur ? ' disabled data-why="本城研习所正在研究其他科技（每城同时仅 1 项）"' : '') + '>研究(旧币 ' + U.fmt(cost.gold) + ')</button>';
+          + (cur ? ' disabled data-why="本城研习所正在研究其他科技（每城同时仅 1 项）"' : '') + '>研究</button>';
       return '<tr><td>' + t.name + '</td><td class="ctr">' + lv + '/' + cap + '</td>' +
         '<td style="font-size:var(--fs-sub);color:var(--text-dim);">' + t.desc + '</td>' +
         '<td class="ctr">' + btn + '</td></tr>';
@@ -11193,8 +11509,7 @@
         (function () {
           var _c = GAME.queueRushCost(cur);
           return '　<button class="btn sm gold" data-action="rush-tech"'
-            + ' title="花旧币立即完成（研究费 20% × 剩余比例，约 ' + U.fmt(_c) + ' 旧币）">⚡ 提速'
-            + (_c ? ' −' + U.fmt(_c) : '') + '</button>';
+            + ' title="花旧币立即完成（研究费 20% × 剩余比例，约 ' + U.fmt(_c) + ' 旧币）">⚡ 提速</button>';
         })() + '</div>' : '') +
       '<table class="tbl"><thead><tr><th>科技</th><th>等级</th><th>效果</th><th>操作</th></tr></thead><tbody>' + rows + '</tbody></table>' +
       '</div>';
@@ -11495,7 +11810,49 @@
       '</div>');
     return '<div class="map-wrap">' +
       '<canvas id="mapCanvas"></canvas>' +
+      /* v90.64（老板）：右上角**分级行政检索** —— 全球→省→市→区；选省/市显示下一级边界+首府+名称 */
+      '<div id="adm-search" class="adm-search">' +
+        '<select id="adm-planet"><option value="0">全球 · 星球 1</option></select>' +
+        '<select id="adm-prov"></select>' +
+        '<select id="adm-market"></select>' +
+        '<select id="adm-district"></select>' +
+      '</div>' +
       '</div>';
+  };
+  /* 分级行政检索（级联）：全球 → 省 → 市 → 区；选中即高亮 + 显示下一级边界/首府/名称 */
+  ui.fillAdmSearch = function () {
+    var T = GAME.map3d && GAME.map3d._settle && GAME.map3d._settle.table;
+    var g = function (id) { return document.getElementById && document.getElementById(id); };
+    var provEl = g('adm-prov'), mktEl = g('adm-market'), distEl = g('adm-district'), plEl = g('adm-planet');
+    if (!provEl || !T) return;
+    var st = ui._adm = ui._adm || { prov: -1, market: -1, district: -1 };
+    if (st.prov >= T.prov.length) st = ui._adm = { prov: -1, market: -1, district: -1 };
+    /* 省 */
+    var po = ['<option value="-1">选择行省…</option>'];
+    T.prov.forEach(function (pv, i) { po.push('<option value="' + i + '"' + (i === st.prov ? ' selected' : '') + '>省 · ' + U.escape(pv.name) + '</option>'); });
+    provEl.innerHTML = po.join('');
+    /* 市（随省）*/
+    var mo = ['<option value="-1">选择市…</option>'];
+    if (st.prov >= 0) T.prov[st.prov].markets.forEach(function (mi) { mo.push('<option value="' + mi + '"' + (mi === st.market ? ' selected' : '') + '>市 · ' + U.escape(T.market[mi].name) + '</option>'); });
+    mktEl.innerHTML = mo.join('');
+    /* 区（随市）*/
+    var dlist = ['<option value="-1">选择区…</option>'];
+    if (st.market >= 0) T.market[st.market].districts.forEach(function (di) { dlist.push('<option value="' + di + '"' + (di === st.district ? ' selected' : '') + '>区 · ' + U.escape(T.district[di].name) + '</option>'); });
+    distEl.innerHTML = dlist.join('');
+
+    function apply() {
+      if (st.district >= 0) GAME.map3d.setHighlight({ level: 'district', index: st.district });
+      else if (st.market >= 0) GAME.map3d.setHighlight({ level: 'market', index: st.market });
+      else if (st.prov >= 0) GAME.map3d.setHighlight({ level: 'prov', index: st.prov });
+      else GAME.map3d.setHighlight(null);
+    }
+    if (!ui._admBound) {
+      ui._admBound = true;
+      plEl && plEl.addEventListener('change', function () { ui._adm = { prov: -1, market: -1, district: -1 }; GAME.map3d.setHighlight(null); ui.fillAdmSearch(); });
+      provEl.addEventListener('change', function () { st.prov = +provEl.value; st.market = -1; st.district = -1; ui.fillAdmSearch(); apply(); });
+      mktEl.addEventListener('change', function () { st.market = +mktEl.value; st.district = -1; ui.fillAdmSearch(); apply(); });
+      distEl.addEventListener('change', function () { st.district = +distEl.value; apply(); });
+    }
   };
 
   /* ============================================================
@@ -11512,6 +11869,24 @@
     '#7a6ac0', '#c05a8a', '#5ac0a0', '#c0a040', '#6a9a40', '#c06040'
   ];
   ui._miniOff = null; ui._miniSeed = null;
+  /* v90.50 · 大地图 LOD（远景层）开关 —— **默认关**。
+     关：缩略图/「天下大势」仍走**逐格平色**（原路径，逐字节不变 · 可回滚）。
+     开：以烘焙的 500×500 全域**连续整图**（assets/icons/ui/bigmap_world.png）当底图，
+         区界/镇界/城点照旧叠在其上 —— 这就是 LOD 的"远景"一级。
+     回滚：`GAME.ui.useBigmap = false; GAME.ui._bigImg = null;` 即退回原观感。 */
+  ui.useBigmap = false;
+  ui._bigImg = null; ui._bigTried = false;
+  ui.loadBigmap = function () {
+    if (ui._bigTried) return;
+    ui._bigTried = true;
+    if (typeof Image === 'undefined') return;
+    var im = new Image();
+    im.addEventListener('load', function () {
+      ui._bigImg = im;
+      ui._miniOff = null; ui._miniSeed = null;    /* 失效缓存 → 下次重画改用整图底 */
+    });
+    im.src = 'assets/icons/ui/bigmap_world.png';
+  };
   ui.mixHex = function (a, b, k) {        /* 十六进制色混合：a×(1-k) + b×k */
     var pa = parseInt(a.slice(1), 16), pb = parseInt(b.slice(1), 16);
     var r = Math.round((pa >> 16) * (1 - k) + (pb >> 16) * k);
@@ -11542,6 +11917,13 @@
         baseLUT[si][tk] = ui.mixHex(tc, ui.MINI_TINT[si], 0.16);
       }
     }
+    /* v90.50：大地图底 —— 开则用连续整图当底（地形不再逐格平色）。*/
+    ui.loadBigmap();
+    var useBig = !!(ui.useBigmap && ui._bigImg);
+    if (useBig) {
+      ctx.drawImage(ui._bigImg, 0, 0, ui.MINI_PX, ui.MINI_PX);
+      img = ctx.getImageData(0, 0, ui.MINI_PX, ui.MINI_PX);   /* 以整图像素为底，仅再叠界线 */
+    }
     var px = img.data;
     var put = function (mx, my, v) {
       var o = (my * ui.MINI_PX + mx) * 4;
@@ -11565,8 +11947,8 @@
           put(X, Y + 1, 0xf0d060); put(X + 1, Y + 1, 0xf0d060);
         } else if (rJn !== jn || dJn !== jn) {                 /* 镇界：灰白细线（对角 2px） */
           put(X + 1, Y, 0xcfcfc0); put(X, Y + 1, 0xcfcfc0);
-          put(X, Y, col); put(X + 1, Y + 1, col);
-        } else {
+          if (!useBig) { put(X, Y, col); put(X + 1, Y + 1, col); }
+        } else if (!useBig) {                                  /* 大地图底：地形来自整图，不覆盖 */
           put(X, Y, col); put(X + 1, Y, col); put(X, Y + 1, col); put(X + 1, Y + 1, col);
         }
       }
@@ -12070,7 +12452,7 @@
     ui.closeModal();
     if (ui.view !== 'map') ui.setView('map');
     ui.mapCenterOn(x, y);
-    ui.toast('已定位至 (' + x + ',' + y + ')');
+    ui.toast('已定位至 ' + GAME.map.coordText(x, y));
   };
   ui.bindMiniPick = function (canvas) {
     var el = canvas || $('#mini-big');
@@ -12157,7 +12539,7 @@
     var p = ui.mapPick;
     if (!p) return '点选 —';
     var tag = ({ player: '我城', npc: '名城', wild: '野地', fort: '据点', land: '空地' })[p.kind] || '';
-    var out = '点选 ' + tag + ' (' + p.x + ',' + p.y + ')';
+    var out = '点选 ' + tag + ' ' + GAME.map.coordText(p.x, p.y);
     /* v89.5：野地补一句荒野事 —— 有事报数（灵机者加标），无事报荒僻；
        非野地地形（平原 / 城）没有荒野活动之说，不补后缀。 */
     /* v89.45：野地荒野行动呈现层受 GAME.jianghuWildMounted 控制（false=剥离） */
@@ -12192,6 +12574,19 @@
       });
     }
     var fr = ui.mapFrame;
+    /* v90.61（老板）：「地图画面直接是这个样子」—— 走 Three.js 真 3D 沙盘。
+       关掉 GAME.map3d.enabled 即退回 2D 方格图。 */
+    if (GAME.map3d && GAME.map3d.enabled) {
+      var _cw = Math.round(fr.spanX * fr.cell), _chh = Math.round(fr.spanY * fr.cell);
+      if (canvas.width !== _cw) canvas.width = _cw;
+      if (canvas.height !== _chh) canvas.height = _chh;
+      if (GAME.map3d.bindControls) GAME.map3d.bindControls(canvas);   /* 左键拖动平移 · 右键转向 · 滚轮缩放 */
+      GAME.map3d.render(canvas, ui.mapView.x, ui.mapView.y, fr.spanX, fr.spanY);
+      var _pe = document.getElementById && document.getElementById('adm-prov');
+      if (_pe && !_pe.options.length) ui.fillAdmSearch();   /* 首次填充分级检索（不每帧重建）*/
+      ui.syncMapInfo();
+      return;
+    }
     GAME.map.render(canvas, { vx: ui.mapView.x, vy: ui.mapView.y,
       spanX: fr.spanX, spanY: fr.spanY, cell: fr.cell,
       showLabels: ui._mapShowLabels !== false });
@@ -12203,8 +12598,8 @@
         var vw = GAME.map._view;
         var mctx = canvas.getContext && canvas.getContext('2d');
         if (vw && vw.HW && mctx && mctx.beginPath) {
-          var cx = vw.ox + (mk.x - mk.y) * vw.HW;
-          var cy = vw.oy + (mk.x + mk.y) * vw.HH;
+          var cx = vw.ox + mk.x * vw.cell;
+          var cy = vw.oy + mk.y * vw.cell;
           var phase = Math.floor(Date.now() / 450) % 2 === 0;
           mctx.save();
           mctx.lineWidth = 3;
@@ -12228,7 +12623,7 @@
   ui.mapInfoText = function () {
     /* v50：视野不再是矩形，"左上—右下"那对坐标已无意义，改报**中心格**。 */
     var v = ui.mapView;
-    return '中心 (' + v.x + ',' + v.y + ')';
+    return '中心 ' + (GAME.map.coordText ? GAME.map.coordText(v.x, v.y) : ('(' + v.x + ',' + v.y + ')'));
   };
 
   ui.mapPan = function (dx, dy) {
@@ -12247,6 +12642,8 @@
        菱形视野不是矩形，不再需要"减去半屏"；保留形参只为兼容旧调用。 */
     ui.mapView.x = U.clamp(Math.round(x), 0, DATA.MAP_W - 1);
     ui.mapView.y = U.clamp(Math.round(y), 0, DATA.MAP_H - 1);
+    /* v90.67：3D 下同时把**相机对准该格**（回主城/回本城/灰烬城 → 球面转到该处）*/
+    if (GAME.map3d && GAME.map3d.enabled && GAME.map3d.centerOn) GAME.map3d.centerOn(ui.mapView.x, ui.mapView.y);
     ui.renderMapCanvas();
   };
 
@@ -12254,7 +12651,7 @@
     var pc = GAME.map.playerCity();
     if (!pc) return;
     ui.mapCenterOn(pc.x, pc.y);
-    ui.toast('已回到主城 (' + pc.x + ',' + pc.y + ')');
+    ui.toast('已回到主城 ' + GAME.map.coordText(pc.x, pc.y));
   };
 
   /* v89.192（老板 1）：回本城 —— 视野中心跳到**当前操作城池**所在位置
@@ -12263,7 +12660,7 @@
     var c = GAME.currentCity();
     if (!c) { ui.toast('尚无城池'); return; }
     ui.mapCenterOn(c.x, c.y);
-    ui.toast('已回到本城（' + (c.name || '') + '）(' + c.x + ',' + c.y + ')');
+    ui.toast('已回到本城（' + (c.name || '') + '）' + GAME.map.coordText(c.x, c.y));
   };
 
   ui.mapGoto = function () {
@@ -12274,7 +12671,7 @@
       return;
     }
     ui.mapCenterOn(gx, gy);
-    ui.toast('已定位至 (' + gx + ',' + gy + ')');
+    ui.toast('已定位至 ' + GAME.map.coordText(gx, gy));
   };
 
 
@@ -12342,7 +12739,7 @@
       /* v89.135（老板 7）：逐秒刷新（驻军/资源/幸存者实时；有输入焦点时自动跳过） */
       live: function () { ui.openCityPanel(city); },
       title: (isOwn ? '🏯 ' : '🏙 ') + U.escape(city.name),
-      sub: ui.cityTierName(city.type) + '　政务厅 Lv' + lv + '　(' + city.x + ',' + city.y + ')' +
+      sub: ui.cityTierName(city.type) + '　政务厅 Lv' + lv + '　' + GAME.map.coordText(city.x, city.y) +
         (GAME.isFamousCity(city) ? '　·　名城' : ''),
       body:
         /* 档位优势（需求 5）：名城与自建城的差别写在这里 —— 玩家点开一座城
@@ -12665,15 +13062,27 @@
     var wsurvLine = wsurv6 > 0
       ? '<div class="wnr-line wnr-new">📜 环顾四周，探得异迹 ' + wsurv6 + ' 处 —— 已记于见闻（图中寻「✦」往探）</div>'
       : '';
-    var lv = GAME.map.wildLevelNow ? GAME.map.wildLevelNow(x, y) : GAME.map.wildLevel(x, y);
+    var lv = (GAME.map._wildLvOverride != null) ? GAME.map._wildLvOverride
+      : (GAME.map.wildLevelNow ? GAME.map.wildLevelNow(x, y) : GAME.map.wildLevel(x, y));
+    GAME.map._wildLvOverride = null;
     /* v89.139 加固（唯一出口）：**已占野地的地形以野地记录为准** ——
        采集记录（startGather 的 `type: w.type`）、产量加成（wildAddOf 传 w.type）、
        珠宝表都读野地记录；面板若读 tile.terrain，一旦两者不一致
        （老档 / 外部写入 / 造局），面板会显示"平原"而没有采集区 —— 实测踩到过。
        未占野地（无记录）仍读地图格地形（它才是"这里是什么地形"的权威）。 */
     var _wRec139 = GAME.map.wildAt(x, y);
-    var _terKey139 = (_wRec139 && _wRec139.type) ? _wRec139.type : tile.terrain;
+    /* v90.62：3D 星球点击会带**球面地块地形**（_terrOverride）—— 球面原生地形与旧 500×500 不符，
+       以点击地块的地形为准（按地形最大近似分配）。无 override 时照旧（野地记录 > 地图格）。 */
+    var _terKey139 = GAME.map._terrOverride || ((_wRec139 && _wRec139.type) ? _wRec139.type : tile.terrain);
+    GAME.map._terrOverride = null;
     var ter = DATA.TERRAIN[_terKey139];
+    /* v90.65（老板）：地块**行政区归属**（3D 星球点击带入）—— 显示省/市/区 */
+    var _reg = GAME.map._regionOverride; GAME.map._regionOverride = null;
+    GAME.map._coordOverride = null;   /* 坐标改由 coordText(x,y) 现算（全局单一出口） */
+    var coordLine = GAME.map.coordText ? ('<div style="text-align:center;color:var(--text-dim);font-size:var(--fs-sub);margin-bottom:4px;">' +
+      '🧭 球系坐标 ' + GAME.map.coordText(x, y) + '</div>') : '';
+    var admLine = coordLine + ((_reg && _reg.prov) ? ('<div class="adm-line" style="text-align:center;color:var(--text-dim);font-size:var(--fs-sub);margin-bottom:6px;">' +
+      '🏛 ' + U.escape(_reg.prov) + ' · ' + U.escape(_reg.market) + ' · ' + U.escape(_reg.district) + '</div>') : '');
     /* v15：加成按「每级 × 等级」线性计算 */
     /* v89.152：加成数据源统一为 _terKey139（野地记录优先）—— 与结算侧（state.js 读 w.type）同源 */
     var add = GAME.wildAddOf(_terKey139, lv) || {};
@@ -12744,7 +13153,7 @@
         (tile.terrain === 'plain' ? '<div class="q-empty">💡 平原：占领后可在其上筑新城</div>' : '') +
         '</div>';
       ui.openModal(
-        '<div class="gold-heading">🏕️ ' + ter.name + ' Lv' + lv + '</div>' +
+        '<div class="gold-heading">🏕️ ' + ter.name + ' Lv' + lv + '</div>' + admLine +
         '<div style="text-align:center;color:var(--text-dim);font-size:var(--fs-body);margin-bottom:8px;">守军约 ' +
           base.toLocaleString() + ' 名</div>' +
         prodBox +
@@ -12876,7 +13285,7 @@
        v89.152（老板 5）：**已占野地不显示产出行**（产出是"要不要打"的决策信息，
        已在占领那一刻完成使命）—— 原 note 整行退役。 */
     ui.openModal(
-      '<div class="gold-heading">🏕️ ' + ter.name + ' Lv' + lv + '</div>' +
+      '<div class="gold-heading">🏕️ ' + ter.name + ' Lv' + lv + '</div>' + admLine +
       wsurvLine + (GAME.jianghuWildMounted ? ui.jianghuHTML(x, y) : '') +
       stat + gatherBox + ops +
       '<div class="modal-foot"><button class="btn" data-action="close-modal">关闭</button></div>',
@@ -12955,7 +13364,7 @@
     ui.openShell({
       title: '🗑️ 放弃 ' + U.escape(city.name),
       sub: ui.cityTierName(city.type) + '　政务厅 Lv' + (GAME.buildingLevel(city, 'guanfu') || 1) +
-        '　(' + city.x + ',' + city.y + ')',
+        '　' + GAME.map.coordText(city.x, city.y),
       size: 'sm',
       body:
         '<div class="note">放弃后这座城与它之上的一切<b>永久失去</b>：建筑、围墙、外城地块、' +
@@ -14619,7 +15028,7 @@
     var _myc = GAME.currentCity();
     var _dist = _myc ? (Math.abs(_myc.x - npcCity.x) + Math.abs(_myc.y - npcCity.y)) : null;
     html += '<div style="text-align:center;color:var(--text-dim);font-size:var(--fs-body);margin-bottom:8px;">' +
-      '📍 坐标 (' + npcCity.x + ', ' + npcCity.y + ')' +
+      '📍 球系坐标 ' + (GAME.map.coordText ? GAME.map.coordText(npcCity.x, npcCity.y) : ('(' + npcCity.x + ', ' + npcCity.y + ')')) +
       (_dist != null ? '　·　距主城 ' + _dist + ' 格' : '') +
       '　·　守军约 ' + gNum.toLocaleString() + ' 名　·　城防 <b style="color:var(--gold-light)">' +
       (npcCity.def || 0) + '</b></div>';
@@ -16499,14 +16908,13 @@
     }
     return '';
   };
-  /* 左侧清单（简洁：图标 + 名称 + 圆点 + 摘要） */
+  /* 左侧清单（v90.15 老板：「小图标没有比有好」——去图标，只留状态点 + 名称 + 摘要） */
   ui.autoSideHTML = function () {
     return ui.AUTO_ITEMS.map(function (it) {
       var on = ui.autoOnOf(it.id);
       return '<div class="auto-item' + (on ? ' on' : '') + (ui._autoSel === it.id ? ' sel' : '') + '"' +
         ' data-action="auto-pick" data-key="' + it.id + '">' +
         '<span class="ai-dot"></span>' +
-        '<span class="ai-ico">' + it.icon + '</span>' +
         '<span class="ai-main"><b class="ai-name">' + it.name + '</b>' +
           '<span class="ai-sub">' + U.escape(ui.autoMsgOf(it.id)) + '</span></span>' +
         '</div>';
@@ -16574,7 +16982,7 @@
         '<div class="auto-note"><b>红线（不可关闭）</b>：' +
           '① 只派<b>空闲</b>英雄，出征中/守将/采集中一律跳过；' +
           '② 体力不足以支付本次出征就不出发；' +
-          '③ 器械（无人轰炸机/自行火炮/自行火炮）、侦察单元、辎重<b>不编入</b>自动队伍 —— ' +
+          '③ 器械（无人轰炸机/自行火炮）、侦察单元、辎重<b>不编入</b>自动队伍 —— ' +
           '它们拖慢行军，且是守城家底；' +
           '④ 只从<b>当前城池</b>取兵；' +
           '⑤ 已占野地与今日已攻破的据点不会被重复打。</div>';

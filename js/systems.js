@@ -33,17 +33,25 @@
     return null;
   };
 
-  /* 当前研究中的科技 */
-  S.researching = function () {
+  /* 当前研究中的科技（v90.54：**按城** —— 该城在办的科技；该城无在研则 null）。
+     多城经营时，各城研习所**并行**研究、互不阻塞（与建造/训练队列同构）。 */
+  S.researching = function (city) {
     var s = GAME.state;
-    return (s.queues.tech && s.queues.tech.length) ? s.queues.tech[0] : null;
+    var q = (s && s.queues && s.queues.tech) || [];
+    var ct = city || (GAME.currentCity && GAME.currentCity());
+    var cid = ct && ct.id;
+    if (cid) { for (var i = 0; i < q.length; i++) if (q[i].cityId === cid) return q[i]; return null; }
+    return q.length ? q[0] : null;   /* 无城上下文（全局查询）→ 首条兜底 */
   };
 
   S.canResearch = function (techId, cityId) {
     var s = GAME.state, t = S.techInfo(techId);
     if (!t) return { ok: false, msg: '未知科技' };
-    if (S.researching()) return { ok: false, msg: '研习所正在研究其他科技' };
     var city = (cityId ? GAME.cityById(cityId) : null) || GAME.currentCity() || s.cities[0];
+    /* v90.54（老板）：研习所**按城**占用 —— 只拦本城（别城在研不阻塞本城），每城同时在研 ≤1 项。 */
+    var _act = 0;
+    (s.queues.tech || []).forEach(function (q) { if (q.cityId === (city && city.id)) _act++; });
+    if (_act > 0) return { ok: false, msg: '本城研习所正在研究其他科技' };
     var shuyuanLv = GAME.buildingLevel(city, 'shuyuan');
     if (shuyuanLv < t.lv) return { ok: false, msg: '需要研习所 Lv' + t.lv };
     /* v89.191（老板 3-③）：**建筑不达标则无法研究** —— 科技可带 req（建筑 → 等级）。 */
@@ -318,7 +326,8 @@
     var bag = isLing ? (g.lingEquip = g.lingEquip || {}) : (g.equip = g.equip || {});
     s.inventory = s.inventory || [];
     var changed = [];
-    DATA.EQUIP_SLOTS.forEach(function (slot) {
+    /* v90.11：机甲 19 槽 / 基因 12 槽 —— 按当前套选槽列表（机甲扩了腿与右肢，基因不变） */
+    (isLing ? DATA.LING_SLOTS_ID : DATA.EQUIP_SLOTS).forEach(function (slot) {
       var curInst = bag[slot] || null;
       var bestInst = curInst, bestScore = S.equipScore(curInst ? DATA.EQUIP[GAME.eqId(curInst)] : null);
       s.inventory.forEach(function (inst) {
@@ -340,6 +349,46 @@
     GAME.statBump('autoEquip', 1);
     GAME.log(g.name + ' 换装：' + changed.join('、'), 'sys', 'staff');
     return { ok: true, msg: '已换装 ' + changed.length + ' 件：' + changed.join('、') };
+  };
+
+  /* v90.53（老板）：按**整套**装备 —— 把指定套装的件一件件换上（同槽旧件回背包），避免逐槽取最优而混搭。
+     规则：所有**已拥有**该套件照槽装上；未拥有的槽**保留当前件**；结果不混入他套件（除未拥有槽保留的旧件）。 */
+  S.equipSet = function (genId, setId) {
+    var s = GAME.state, g = null;
+    s.generals.forEach(function (x) { if (x.id === genId) g = x; });
+    if (!g) return { ok: false, msg: '英雄不存在' };
+    if (!setId || !DATA.SETS[setId]) return { ok: false, msg: '未知套装' };
+    var isLing = (g.equipOn === 'ling') && GAME.canCultivate(g);
+    if (isLing) return { ok: false, msg: '套装仅适用于机甲部件' };
+    var bag = (g.equip = g.equip || {});
+    s.inventory = s.inventory || [];
+    var changed = 0, missing = 0;
+    DATA.EQUIP_SLOTS.forEach(function (slot) {
+      /* 该槽**已拥有**的此套件（背包里的实例） */
+      var cand = null;
+      for (var i = 0; i < s.inventory.length; i++) {
+        var it = DATA.EQUIP[GAME.eqId(s.inventory[i])];
+        if (it && it.set === setId && it.slot === slot) { cand = s.inventory[i]; break; }
+      }
+      if (cand) {
+        var cur = bag[slot];
+        var curIt = cur ? DATA.EQUIP[GAME.eqId(cur)] : null;
+        if (curIt && curIt.set === setId) return;   /* 已是此套件 */
+        if (cur) s.inventory.push(cur);
+        var idx = s.inventory.indexOf(cand); if (idx >= 0) s.inventory.splice(idx, 1);
+        bag[slot] = cand; changed++;
+      } else {
+        /* 未拥有该槽此套件 → 保留现件（计数缺口） */
+        var cur2 = bag[slot] ? DATA.EQUIP[GAME.eqId(bag[slot])] : null;
+        if (!(cur2 && cur2.set === setId)) missing++;
+      }
+    });
+    if (!changed && !missing) return { ok: true, msg: '已是此套' };
+    GAME.statBump('autoEquip', 1);
+    var nm = DATA.SETS[setId].name;
+    GAME.log(g.name + ' 换装为「' + nm + '」' + changed + ' 件'
+      + (missing ? '（尚缺 ' + missing + ' 件）' : ''), 'sys', 'staff');
+    return { ok: true, msg: '已换装「' + nm + '」' + changed + ' 件' + (missing ? '，尚缺 ' + missing + ' 件（保留原件）' : '') };
   };
 
   /* 全部卸下（装备回背包） */

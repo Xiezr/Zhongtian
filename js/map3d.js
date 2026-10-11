@@ -1,0 +1,784 @@
+/* ============================================================
+ * map3d.js — Three.js **星球 3D 地图**（cube-sphere 地形 + 等面积地块）
+ * ------------------------------------------------------------
+ * 老板口径：地形卷成**球形**（星球表面地形）；地形与地块都**不在两极收敛**；
+ *   地块**等面积**、随数量缩小；地块**依附地形高度**（距球心 = 海平面 R + 地形高）。
+ * 地形：**cube-sphere**（立方体 6 面细分投影球面 → 顶点全球均匀，无极性挤压）。
+ * 地块：**斐波那契球面均匀分布**（等面积 · 无极性收敛）。
+ * 数据：高度/深度来自 GAME.map.heightAt / depthAt（单一出口）；地形读 GAME.map.tile。
+ * 相机：轨道（左键拖动转向 · 滚轮缩放）。回退：GAME.map3d.enabled=false → 二维。
+ * ============================================================ */
+(function () {
+  'use strict';
+  var GAME = window.GAME = window.GAME || {};
+  if (typeof THREE === 'undefined') { GAME.map3d = { enabled: false, why: 'no-three' }; return; }
+  var M = GAME.map3d = { enabled: true };
+
+  var R = 300;                   /* 星球海平面半径 */
+  var HSC = 26;                  /* 高度 → 世界单位（山≈40 · 陆地≈5）*/
+  var K = 200;                   /* cube-sphere 每面细分（更细 → 放大看得到地形细节）*/
+  var TILE_SUB = 6;              /* 地块细分（固定）：icosphere 顶点数 = 10×4^6+2 = **40962 个地块** */
+
+  function mw() { return (GAME.DATA && GAME.DATA.MAP_W) || 500; }
+  function mh() { return (GAME.DATA && GAME.DATA.MAP_H) || 500; }
+
+  /* ---- 球面原生 3D 噪声（地形直接在球面生成 · 连续无缝 · 不来自平面地图）---- */
+  function h3(i, j, k, salt) {
+    var h = Math.imul(i | 0, 0x27d4eb2d) ^ Math.imul(j | 0, 0x165667b1) ^ Math.imul(k | 0, 0x9e3779b1) ^ Math.imul(salt | 0, 0x2545f491);
+    h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d); h ^= h >>> 13; return (h >>> 8) / 16777216;
+  }
+  function n3(x, y, z, s) {
+    var xi = Math.floor(x), yi = Math.floor(y), zi = Math.floor(z);
+    var xf = x - xi, yf = y - yi, zf = z - zi;
+    var u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf), w = zf * zf * (3 - 2 * zf);
+    function L(a, b, t) { return a + (b - a) * t; }
+    var c000 = h3(xi, yi, zi, s), c100 = h3(xi + 1, yi, zi, s), c010 = h3(xi, yi + 1, zi, s), c110 = h3(xi + 1, yi + 1, zi, s);
+    var c001 = h3(xi, yi, zi + 1, s), c101 = h3(xi + 1, yi, zi + 1, s), c011 = h3(xi, yi + 1, zi + 1, s), c111 = h3(xi + 1, yi + 1, zi + 1, s);
+    var x00 = L(c000, c100, u), x10 = L(c010, c110, u), x01 = L(c001, c101, u), x11 = L(c011, c111, u);
+    return L(L(x00, x10, v), L(x01, x11, v), w);
+  }
+  function fbm3(d, f, s) {
+    var v = 0, a = 0.5, sum = 0;
+    for (var i = 0; i < 8; i++) { v += a * n3(d[0] * f, d[1] * f, d[2] * f, s + i * 131); sum += a; a *= 0.5; f *= 2.03; }
+    return v / sum;
+  }
+  function seed3() { return ((GAME.state && GAME.state.map && GAME.state.map.seed) || 1) | 0; }
+  var SEA = 0.52;
+  function sphElev(d) {
+    var s = seed3();
+    var cont = fbm3(d, 1.1, s + 11);                      /* 大陆/海洋（低频）*/
+    var ridged = 1 - Math.abs(2 * fbm3(d, 2.8, s + 77) - 1);
+    var land = Math.max(0, cont - SEA);
+    var e = (cont - SEA) * 3.0 + ridged * ridged * 1.5 * land * 3.2;   /* 山脉（脊状 · 更强）*/
+    var det = (fbm3(d, 6.5, s + 191) - 0.5) * 0.5 * land;
+    var fine = (fbm3(d, 16.0, s + 331) - 0.5) * 0.35 * land;            /* 高频细节（放大可见）*/
+    return Math.max(-0.6, e + det + fine);
+  }
+  /* 球面原生生物群系色（按高度 + 纬度）—— 连续、无接缝。*/
+  function sphBiome(e, dy) {
+    var lat = Math.abs(dy), temp = 1 - lat * lat;
+    if (e < 0) return e < -0.15 ? [22, 50, 84] : [40, 84, 126];           /* 深海 / 浅海 */
+    if (e < 0.05) return [226, 214, 158];                  /* 滩 */
+    var m = ramp(Math.min(1, e / 1.15));
+    if (temp < 0.28 && e < 0.5) m = [m[0] * 0.8 + 44, m[1] * 0.8 + 40, m[2] * 0.8 + 36];   /* 苔原 */
+    else if (temp > 0.68 && e < 0.3) m = [m[0] * 0.78 + 74, m[1] * 0.78 + 58, m[2] * 0.78 + 8]; /* 沙 */
+    return m;
+  }
+
+  /* 高度色带（海蓝 → 滩 → 草 → 黄 → 岩 → 雪）*/
+  function hx(c) { return [parseInt(c.substr(1, 2), 16), parseInt(c.substr(3, 2), 16), parseInt(c.substr(5, 2), 16)]; }
+  var RAMP = [[0, hx('#3a6ea5')], [0.02, hx('#e8dfae')], [0.06, hx('#6a9a44')], [0.22, hx('#4f8a38')],
+    [0.42, hx('#b3ab6a')], [0.62, hx('#a07a52')], [0.82, hx('#9c8f7e')], [1.0, hx('#eef2f2')]];
+  function ramp(h) {
+    for (var i = 1; i < RAMP.length; i++) if (h <= RAMP[i][0]) {
+      var a = RAMP[i - 1][1], b = RAMP[i][1], t = (h - RAMP[i - 1][0]) / (RAMP[i][0] - RAMP[i - 1][0]);
+      return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+    }
+    return RAMP[RAMP.length - 1][1];
+  }
+  var R3, scene, cam, globe, water, tiles, wcv, built = false, _tileSub = 0;
+  var camO = { yaw: 0.8, pitch: 0.42, dist: R * 2.9 };
+  M.camO = camO;                                          /* 暴露以便脚本/调试设视角 */
+
+  function ensure() {
+    if (R3) return;
+    wcv = document.createElement('canvas');
+    R3 = new THREE.WebGLRenderer({ canvas: wcv, antialias: true, preserveDrawingBuffer: true });
+    R3.setPixelRatio(1);
+    if (THREE.SRGBColorSpace) R3.outputColorSpace = THREE.SRGBColorSpace;
+    if (THREE.ACESFilmicToneMapping != null) { R3.toneMapping = THREE.ACESFilmicToneMapping; R3.toneMappingExposure = 1.05; }
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0a1020);
+    cam = new THREE.PerspectiveCamera(42, 1, 1, 6000);
+    scene.add(new THREE.AmbientLight(0xdfe8f0, 0.30));
+    scene.add(new THREE.HemisphereLight(0xd8e4f0, 0x2a2a30, 0.26));
+    var sun = new THREE.DirectionalLight(0xffe6b8, 2.9);
+    sun.position.set(-800, 500, -500); scene.add(sun); M._sun = sun;
+  }
+
+  /* cube-sphere 地形（**球面原生噪声 · 连续无缝**）：顶点全球均匀，地形直接在球面生成。*/
+  function buildGlobe() {
+    var VW = K + 1;
+    var FACES = [
+      function (u, v) { return [1, v, u]; }, function (u, v) { return [-1, v, -u]; },
+      function (u, v) { return [u, 1, -v]; }, function (u, v) { return [u, -1, v]; },
+      function (u, v) { return [u, v, 1]; }, function (u, v) { return [-u, v, -1]; }
+    ];
+    var pos = [], col = [], nor = [], idx = [];
+    FACES.forEach(function (fn) {
+      var base = pos.length / 3;
+      for (var j = 0; j < VW; j++) for (var i = 0; i < VW; i++) {
+        var u = -1 + 2 * i / K, v = -1 + 2 * j / K, p = fn(u, v);
+        var L = Math.sqrt(p[0] * p[0] + p[1] * p[1] + p[2] * p[2]);
+        var dx = p[0] / L, dy = p[1] / L, dz = p[2] / L;
+        var e = sphElev([dx, dy, dz]);                     /* 球面原生高度（连续 · 无接缝 · 不来自平面地图）*/
+        var rr = R + Math.max(0, e) * HSC;
+        pos.push(dx * rr, dy * rr, dz * rr);
+        nor.push(dx, dy, dz);                              /* 法线=位置方向（球面朝外 · 不受绕向影响）*/
+        var c = sphBiome(e, dy);
+        col.push(c[0] / 255, c[1] / 255, c[2] / 255);
+      }
+      for (var z = 0; z < K; z++) for (var x = 0; x < K; x++) {
+        var a = base + z * VW + x, b = a + 1, c2 = a + VW, d = c2 + 1;
+        idx.push(a, c2, b, b, c2, d);
+      }
+    });
+    var geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    geo.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+    geo.setIndex(idx);
+    globe = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide }));   /* 无光照 → 球面亮度一致 */
+    M._globeMat = globe.material;
+    scene.add(globe);
+    var wg = new THREE.SphereGeometry(R + 0.4, 96, 64);
+    water = new THREE.Mesh(wg, new THREE.MeshBasicMaterial({ color: 0x4a7fa0, transparent: true, opacity: 0.9 }));   /* 无光照 · 亮度一致 */
+    scene.add(water);
+  }
+
+  /* 星球地块 —— **六边球**（icosphere 对偶 = Goldberg 多面体）：
+     每条边由相邻两格**共享** → 真正**边嵌合**（缩放时缝隙不变）。透明六边线框，衬在彩色地形上。*/
+  function icoSpheres(sub) {
+    var t = (1 + Math.sqrt(5)) / 2, V, F, cache;
+    V = [[-1, t, 0], [1, t, 0], [-1, -t, 0], [1, -t, 0], [0, -1, t], [0, 1, t], [0, -1, -t], [0, 1, -t], [t, 0, -1], [t, 0, 1], [-t, 0, -1], [-t, 0, 1]]
+      .map(function (p) { var l = Math.hypot(p[0], p[1], p[2]); return [p[0] / l, p[1] / l, p[2] / l]; });
+    F = [[0, 11, 5], [0, 5, 1], [0, 1, 7], [0, 7, 10], [0, 10, 11], [1, 5, 9], [5, 11, 4], [11, 10, 2], [10, 7, 6], [7, 1, 8], [3, 9, 4], [3, 4, 2], [3, 2, 6], [3, 6, 8], [3, 8, 9], [4, 9, 5], [2, 4, 11], [6, 2, 10], [8, 6, 7], [9, 8, 1]];
+    cache = {};
+    function mid(a, b) {
+      var k = a < b ? a + '_' + b : b + '_' + a; if (cache[k] != null) return cache[k];
+      var p = [(V[a][0] + V[b][0]) / 2, (V[a][1] + V[b][1]) / 2, (V[a][2] + V[b][2]) / 2];
+      var l = Math.hypot(p[0], p[1], p[2]); V.push([p[0] / l, p[1] / l, p[2] / l]); return (cache[k] = V.length - 1);
+    }
+    for (var s = 0; s < sub; s++) {
+      var NF = [];
+      for (var i = 0; i < F.length; i++) {
+        var a = F[i][0], b = F[i][1], c = F[i][2], ab = mid(a, b), bc = mid(b, c), ca = mid(c, a);
+        NF.push([a, ab, ca], [b, bc, ab], [c, ca, bc], [ab, bc, ca]);
+      }
+      F = NF;
+    }
+    return { V: V, F: F };
+  }
+  /* 星球地块 —— **六边球**（Goldberg 对偶）：每格一个六边（**只声明地块 · 不上色**），
+     边由相邻两格共享 → 永远嵌合；随密度按钮增删。另建 Mesh 碰撞体供 Raycaster 拾取。
+     城池/据点另用**抽象城池贴图**（Sprite）标在球面。*/
+  /* 球面地块 → **游戏 7 地形**（按高度+纬度**最大近似分配**）：湖泊/沼泽/平原/草原/森林/荒漠/山地。*/
+  var TYPE_NAME = { lake: '湖泊', zhaoze: '沼泽', plain: '平地', caoyuan: '草原', forest: '森林', desert: '荒漠', hill: '山地' };
+  function cellType(e, dy, emax) {
+    var en = emax > 0 ? e / emax : 0;                     /* 归一化高度 0~1 */
+    if (e < 0) return 'lake';                             /* 海 → 湖泊 */
+    if (e < 0.025) return 'zhaoze';                       /* 低平湿岸 → 沼泽 */
+    var temp = 1 - dy * dy;
+    if (en < 0.16) return 'plain';
+    if (en < 0.34) return (temp > 0.62 && e < 0.25) ? 'desert' : 'caoyuan';   /* 低纬干热 → 荒漠 */
+    if (en < 0.56) return 'forest';
+    return 'hill';                                        /* 高 → 山地 */
+  }
+
+  function buildTiles(sub) {
+    if (tiles) { scene.remove(tiles); if (tiles.geometry) tiles.geometry.dispose(); }
+    if (M._collider) { scene.remove(M._collider); if (M._collider.geometry) M._collider.geometry.dispose(); }
+    if (M._fill) { scene.remove(M._fill); if (M._fill.geometry) M._fill.geometry.dispose(); }
+    var Rsh = R + 16;
+    var ico = icoSpheres(sub);
+    var V = ico.V, F = ico.F, nf = F.length, f, nv = V.length;
+    var cent = [];
+    for (f = 0; f < nf; f++) {
+      var a = V[F[f][0]], b = V[F[f][1]], c = V[F[f][2]];
+      var px = (a[0] + b[0] + c[0]) / 3, py = (a[1] + b[1] + c[1]) / 3, pz = (a[2] + b[2] + c[2]) / 3;
+      var l = Math.hypot(px, py, pz); cent.push([px / l, py / l, pz / l]);
+    }
+    var vf = {}, adj = new Array(nv);
+    for (var vi = 0; vi < nv; vi++) adj[vi] = [];
+    for (f = 0; f < nf; f++) {
+      var T = F[f];
+      for (var k = 0; k < 3; k++) { var vv = T[k]; (vf[vv] = vf[vv] || []).push(f); }
+      adj[T[0]].push(T[1], T[2]); adj[T[1]].push(T[0], T[2]); adj[T[2]].push(T[0], T[1]);
+    }
+    /* 类型 + 等级（BFS：同类区域内，离异类越远越高）*/
+    var typ = new Array(nv), lvl = new Int16Array(nv), eArr = new Float32Array(nv), emax = 0.01;
+    for (vi = 0; vi < nv; vi++) { eArr[vi] = sphElev(V[vi]); if (eArr[vi] > emax) emax = eArr[vi]; }
+    for (vi = 0; vi < nv; vi++) {
+      var e = eArr[vi];
+      typ[vi] = cellType(e, V[vi][1], emax); lvl[vi] = -1;
+      V[vi]._e = e;
+    }
+    var q = [];
+    for (vi = 0; vi < nv; vi++) {
+      var an = adj[vi];
+      for (var m2 = 0; m2 < an.length; m2++) if (typ[an[m2]] !== typ[vi]) { lvl[vi] = 0; q.push(vi); break; }
+    }
+    var head = 0;
+    while (head < q.length) {
+      var cur = q[head++];
+      for (var n2 = 0; n2 < adj[cur].length; n2++) {
+        var w = adj[cur][n2];
+        if (typ[w] === typ[cur] && lvl[w] === -1) { lvl[w] = lvl[cur] + 1; q.push(w); }
+      }
+    }
+    var upos = [], fpos = [], cells = [], off = 0;
+    function cross(a, b) { return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]; }
+    function dot(a, b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
+    /* 地块**贴地形**：某方向的表面半径 = 海平面 + max(0, 球面高度)×HSC + 微抬升 */
+    function terrainR(d) { return R + Math.max(0, sphElev(d)) * HSC + 0.5; }
+    for (var vs in vf) {
+      vi = +vs; var n = V[vi], fs = vf[vs];
+      if (fs.length < 3) continue;
+      var up = Math.abs(n[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0];
+      var tx = cross(up, n), tl = Math.hypot(tx[0], tx[1], tx[2]); tx = [tx[0] / tl, tx[1] / tl, tx[2] / tl];
+      var ty2 = cross(n, tx);
+      fs.sort(function (A, B) { var cA = cent[A], cB = cent[B]; return Math.atan2(dot(cA, ty2), dot(cA, tx)) - Math.atan2(dot(cB, ty2), dot(cB, tx)); });
+      var rn = terrainR(n), P = [n[0] * rn, n[1] * rn, n[2] * rn];      /* 顶点坐在地形高度上 */
+      var mm = fs.length, RIM = [];
+      for (var i2 = 0; i2 < mm; i2++) { var cc = cent[fs[i2]], rr2 = terrainR(cc); RIM.push([cc[0] * rr2, cc[1] * rr2, cc[2] * rr2]); }
+      for (var e2 = 0; e2 < mm; e2++) { var r1 = RIM[e2], r2 = RIM[(e2 + 1) % mm]; upos.push(r1[0], r1[1], r1[2], r2[0], r2[1], r2[2]); }
+      var dep = lvl[vi] < 0 ? 0 : lvl[vi];
+      var lv = 6 + Math.min(4, dep);                       /* 6~10 级：中央(离异类边界远)高、边缘低 */
+      for (var t2 = 0; t2 < mm; t2++) {
+        var s1 = RIM[t2], s2 = RIM[(t2 + 1) % mm];
+        fpos.push(P[0], P[1], P[2], s1[0], s1[1], s1[2], s2[0], s2[1], s2[2]);
+      }
+      /* 球系坐标（经纬度）+ 平面格坐标（接游戏数据）*/
+      var lonDeg = (Math.atan2(n[2], n[0]) * 180 / Math.PI + 360) % 360;
+      var latDeg = Math.asin(Math.max(-1, Math.min(1, n[1]))) * 180 / Math.PI;
+      var cgx = Math.round(lonDeg / 360 * mw()) % mw();
+      var cgy = Math.round((latDeg / 180 + 0.5) * mh()) % mh();
+      cells[vi] = { dir: n, pos: P, rim: RIM, type: typ[vi], name: TYPE_NAME[typ[vi]], level: lv, e: n._e,
+        off: off, nt: mm, lon: lonDeg, lat: latDeg,
+        x: ((cgx % mw()) + mw()) % mw(), y: ((cgy % mh()) + mh()) % mh() };
+      off += mm;
+    }
+    /* 地块 = **纯线框**（老板：不要地块上色）· 只声明地块边界 */
+    var ugeo = new THREE.BufferGeometry();
+    ugeo.setAttribute('position', new THREE.Float32BufferAttribute(upos, 3));
+    var mat = new THREE.LineBasicMaterial({ color: 0x8fb4d6, transparent: true, opacity: 0.6, depthWrite: false });
+    M._shellMat = mat;
+    tiles = new THREE.LineSegments(ugeo, mat);
+    scene.add(tiles);
+    /* 拾取碰撞体（隐形填充几何 · 供 Raycaster · 不上色）*/
+    var fgeo = new THREE.BufferGeometry();
+    fgeo.setAttribute('position', new THREE.Float32BufferAttribute(fpos, 3));
+    M._collider = new THREE.Mesh(fgeo, new THREE.MeshBasicMaterial({ visible: false, side: THREE.DoubleSide }));
+    M._collider.cells = cells; M._collider.nv = nv;
+    M._collider.faceCell = (function () { var a = new Int32Array(fpos.length / 9); for (var c in cells) if (cells[c]) for (var j = 0; j < cells[c].nt; j++) a[cells[c].off + j] = +c; return a; })();
+    scene.add(M._collider);
+    _tileSub = sub; _tileCells = cells; M._vdirs = V; M._cent = cent; M._icoF = F;
+  }
+  var _tileCells = [];
+
+  /* ============================================================
+   * 球面聚落层级：1 旧都（全球）→ 12 行省 → 36 市 → 240 区
+   *   自然划分（球面 k-means）· 按面积分配（州下市数 ∝ 州面积、市下区数 ∝ 市面积）。
+   * ============================================================ */
+  function dot3(a, b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
+  function sphereKmeans(dirs, k, iters) {
+    k = Math.min(k, dirs.length); if (k <= 0) return [];
+    var cent = [];
+    for (var i = 0; i < k; i++) cent.push(dirs[Math.floor((i + 0.5) / k * dirs.length)]);
+    for (var it = 0; it < (iters || 8); it++) {
+      var sums = [], cnt = [];
+      for (var j = 0; j < k; j++) { sums.push([0, 0, 0]); cnt.push(0); }
+      for (var d = 0; d < dirs.length; d++) {
+        var best = 0, bd = -2, D = dirs[d];
+        for (var j2 = 0; j2 < k; j2++) { var dt = dot3(D, cent[j2]); if (dt > bd) { bd = dt; best = j2; } }
+        sums[best][0] += D[0]; sums[best][1] += D[1]; sums[best][2] += D[2]; cnt[best]++;
+      }
+      for (var j3 = 0; j3 < k; j3++) { var s = sums[j3], L = Math.hypot(s[0], s[1], s[2]) || 1; cent[j3] = [s[0] / L, s[1] / L, s[2] / L]; }
+    }
+    return cent;
+  }
+  /* 域扭曲：用一个**平滑噪声**微调方向（相邻格扭曲相近 → 边界平滑蜿蜒，不逐格乱跳）*/
+  function warpDir(dir, salt) {
+    var F = 3.5, A = 0.45;
+    return [dir[0] + (n3(dir[0] * F, dir[1] * F, dir[2] * F, salt) - 0.5) * A,
+      dir[1] + (n3(dir[0] * F + 7.7, dir[1] * F + 3.1, dir[2] * F + 5.5, salt + 11) - 0.5) * A,
+      dir[2] + (n3(dir[0] * F + 2.3, dir[1] * F + 9.9, dir[2] * F + 1.7, salt + 22) - 0.5) * A];
+  }
+  function nearestCentNoisy(dir, cent, salt) {
+    var wd = warpDir(dir, salt), best = 0, bd = -9;
+    for (var j = 0; j < cent.length; j++) { var dt = dot3(wd, cent[j]); if (dt > bd) { bd = dt; best = j; } }
+    return best;
+  }
+  function nearestCell(dir) {
+    var v = M._vdirs; if (!v) return -1;
+    var best = -1, bd = -2;
+    for (var i = 0; i < v.length; i++) { var d = v[i]; if (!d) continue; var dt = dot3(d, dir); if (dt > bd) { bd = dt; best = i; } }
+    return best;
+  }
+  /* 层级聚落：**嵌套分区**（省→市在其省内分 → 区在其市内分），成员数组保证不重叠、边界连续。*/
+  /* 废土风地名池（前缀×后缀，组合足够多 → 48市+139区 不撞名）*/
+  var WAS_PRE = '灰烬 锈铁 焦土 残垣 断壁 死寂 荒漠 骸骨 血砂 断岭 哑雷 幽谷 裂隙 熔炉 钢渣 尘沙 寒霜 暗礁 枯枝 腐沼 孤崖 湮墟 碎穹 蚀岸 烬渡 砾城 塌方 荒冢 蚀骨 噬风 焦关 铁砧 血锈 哑钟 残炉 险滩 流沙'.split(' ');
+  var WAS_SUF = '堡 垒 坞 镇 驿 哨 坑 场 关 陉 坡 陲 墟 垠 岬 望 台 仓 栈 洼 隘'.split(' ');
+  function genSettlements() {
+    if (M._settle && M._settleSeed === seed3()) return M._settle;
+    var nv = (M._vdirs || []).length, idxs = [], dirs = [];
+    for (var i = 0; i < nv; i++) if (M._vdirs[i] && sphElev(M._vdirs[i]) >= 0.05) { idxs.push(i); dirs.push(M._vdirs[i]); }   /* 只分陆地 */
+    var empty = { old: [0, 1, 0], provCent: [], marketCent: [], districtCent: [],
+      provOf: new Int16Array(0), marketOf: new Int16Array(0), districtOf: new Int16Array(0), table: { old: null, prov: [], market: [], district: [] } };
+    if (!dirs.length) return empty;
+    var seed = seed3();
+    function rh(a, b) { var h = Math.imul(a | 0, 0x27d4eb2d) ^ Math.imul(b | 0, 0x9e3779b1); h = Math.imul(h ^ (h >>> 15), 0x2545f491); h ^= h >>> 13; return (h >>> 8) / 16777216; }
+    var PROV_NAMES = (GAME.DATA.START_STATES || []).slice(0);
+    var ni = 0, _nameUsed = {};
+    function genName() {                                  /* 废土名 · 前后缀快速轮换（自然混合）· 唯一 */
+      var ln = WAS_PRE.length * WAS_SUF.length;
+      for (var tries = 0; tries < ln; tries++) {
+        var n = WAS_PRE[(ni * 7) % WAS_PRE.length] + WAS_SUF[(ni * 13) % WAS_SUF.length];
+        ni++;
+        if (!_nameUsed[n]) { _nameUsed[n] = 1; return n; }
+      }
+      return '废邑' + (ni++);
+    }
+    /* 加权就近：权重越大 → 该区面积越大（面积 ∝ 权重）· 域扭曲 → 边界平滑 */
+    function weightedNearest(dir, cent, wts, salt) {
+      var wd = warpDir(dir, salt), best = 0, bs = 1e9;
+      for (var j = 0; j < cent.length; j++) {
+        var d = 1 - dot3(wd, cent[j]) + 0.02;
+        var s = d / wts[j];
+        if (s < bs) { bs = s; best = j; }
+      }
+      return best;
+    }
+    /* 先定 **市数(2~6)** 与 **每市区数(2~4)** → 得省总区数 → **按区数分配省/市面积** */
+    var MC = []; for (var q0 = 0; q0 < 12; q0++) MC.push(2);
+    var pool = 48 - 12 * 2;
+    for (var jj = 0; pool > 0; jj++) { var ix = Math.floor(rh(100 + jj, seed) * 12); if (MC[ix] < 6) { MC[ix]++; pool--; } }
+    var DC = [], PD = [];
+    for (var pp = 0; pp < 12; pp++) { var arr = [], tot = 0; for (var qq = 0; qq < MC[pp]; qq++) { var dv = 2 + Math.floor(rh((pp * 97 + qq) * 13 + 5, seed) * 3); arr.push(dv); tot += dv; } DC.push(arr); PD.push(tot); }
+    /* 顶点邻接（供连通性修复）*/
+    var adj = new Array(nv);
+    for (var ai = 0; ai < nv; ai++) adj[ai] = [];
+    var fAdj = M._icoF || [];
+    for (var af = 0; af < fAdj.length; af++) {
+      var TF = fAdj[af];
+      adj[TF[0]].push(TF[1], TF[2]); adj[TF[1]].push(TF[0], TF[2]); adj[TF[2]].push(TF[0], TF[1]);
+    }
+    /* 连通性修复：把每级的**孤岛碎片**并进相邻最大区（保证每省/市/区**相邻连续**）。
+       parent = 上级归属数组（市/区修复时只在**同一父区**内合并，不破坏辖地嵌套）。*/
+    function repairConn(mem, land, parent) {
+      var groups = {};
+      for (var li = 0; li < land.length; li++) { var g = mem[land[li]]; if (g < 0) continue; (groups[g] = groups[g] || []).push(land[li]); }
+      for (var gk in groups) {
+        var gid = +gk, members = groups[gk], seen = {}, comps = [];
+        for (var mi = 0; mi < members.length; mi++) {
+          var ci = members[mi]; if (seen[ci]) continue;
+          var stack = [ci], comp = []; seen[ci] = 1;
+          while (stack.length) { var c = stack.pop(); comp.push(c); var anb = adj[c]; for (var k = 0; k < anb.length; k++) { var nb = anb[k]; if (!seen[nb] && mem[nb] === gid && (!parent || parent[nb] === parent[c])) { seen[nb] = 1; stack.push(nb); } } }
+          comps.push(comp);
+        }
+        if (comps.length <= 1) continue;
+        comps.sort(function (a, b) { return b.length - a.length; });
+        for (var kk = 1; kk < comps.length; kk++) {
+          var isl = comps[kk], cnt = {}, bg = -1, bc = 0;
+          for (var ii = 0; ii < isl.length; ii++) { var an2 = adj[isl[ii]]; for (var q = 0; q < an2.length; q++) { var n2 = an2[q]; if (mem[n2] !== gid && mem[n2] >= 0 && (!parent || parent[n2] === parent[isl[ii]])) { cnt[mem[n2]] = (cnt[mem[n2]] || 0) + 1; } } }
+          for (var g2 in cnt) if (cnt[g2] > bc) { bc = cnt[g2]; bg = +g2; }
+          for (var i3 = 0; i3 < isl.length; i3++) mem[isl[i3]] = bg;
+        }
+      }
+    }
+    /* 省 12（互相接壤、覆盖全陆）—— **省面积 ∝ 省总区数 PD** */
+    var provCent = sphereKmeans(dirs, 12, 10);
+    var provOf = new Int16Array(nv).fill(-1), provMembers = [];
+    for (var js = 0; js < provCent.length; js++) provMembers.push([]);
+    for (var d = 0; d < dirs.length; d++) { var a = weightedNearest(dirs[d], provCent, PD, 4100 + seed); provOf[idxs[d]] = a; }
+    repairConn(provOf, idxs);                                  /* 省 connectivity */
+    for (var d2 = 0; d2 < idxs.length; d2++) if (provOf[idxs[d2]] >= 0) provMembers[provOf[idxs[d2]]].push(idxs[d2]);
+    var marketCent = [], marketOf = new Int16Array(nv).fill(-1), districtCent = [], districtOf = new Int16Array(nv).fill(-1);
+    var table = { old: null, prov: [], market: [], district: [] };
+    var lc = [0, 0, 0], ln = 0;
+    for (var i2 = 0; i2 < dirs.length; i2++) if (sphElev(dirs[i2]) > 0.4) { lc[0] += dirs[i2][0]; lc[1] += dirs[i2][1]; lc[2] += dirs[i2][2]; ln++; }
+    if (ln) { var L = Math.hypot(lc[0], lc[1], lc[2]) || 1; lc = [lc[0] / L, lc[1] / L, lc[2] / L]; } else lc = dirs[0];
+    table.old = { name: '灰烬城', cent: lc };
+    /* 各省分市（市数 = MC[p]）；**市面积 ∝ 该市区数 DC[p][q]** · 市在本省内（连通修复限同省）*/
+    for (var p = 0; p < provCent.length; p++) {
+      var pm = provMembers[p]; if (!pm.length) continue;
+      var pNode = { name: PROV_NAMES[p] || ('行省' + (p + 1)), cent: provCent[p], markets: [] };
+      var mn = Math.max(1, Math.min(MC[p], pm.length));
+      var pmd = pm.map(function (ci) { return M._vdirs[ci]; });
+      var mc = sphereKmeans(pmd, mn, 6), mdc = DC[p].slice(0, mn);
+      var mBase = marketCent.length;
+      for (var t = 0; t < pm.length; t++) { var ci2 = pm[t], a2 = weightedNearest(M._vdirs[ci2], mc, mdc, 7300 + seed); marketOf[ci2] = mBase + a2; }
+      repairConn(marketOf, pm, provOf);                        /* 市 connectivity（限同省）*/
+      var mm = [];
+      for (var q2 = 0; q2 < mn; q2++) mm.push([]);
+      for (var t2b = 0; t2b < pm.length; t2b++) { var ci2b = pm[t2b], a2b = marketOf[ci2b] - mBase; if (a2b >= 0 && a2b < mn) mm[a2b].push(ci2b); else { /* 越界兜底：并入最近 */ mm[Math.max(0, Math.min(mn - 1, a2b))].push(ci2b); marketOf[ci2b] = mBase + Math.max(0, Math.min(mn - 1, a2b)); } }
+      for (var q3 = 0; q3 < mn; q3++) {
+        var mIdx = marketCent.length; marketCent.push(mc[q3]);
+        var mmb = mm[q3] || [], mNode = { name: genName(), cent: mc[q3], prov: p, districts: [] };
+        var dn = Math.max(1, Math.min(mdc[q3], mmb.length || 1));
+        if (mmb.length) {
+          var mmd = mmb.map(function (ci) { return M._vdirs[ci]; });
+          var dc = sphereKmeans(mmd, dn, 5), dBase = districtCent.length;
+          for (var t3 = 0; t3 < mmb.length; t3++) districtOf[mmb[t3]] = dBase + nearestCentNoisy(M._vdirs[mmb[t3]], dc, 9500 + seed);
+          repairConn(districtOf, mmb, marketOf);               /* 区 connectivity（限同市）*/
+          for (var q4 = 0; q4 < dc.length; q4++) { districtCent.push(dc[q4]); mNode.districts.push(districtCent.length - 1); table.district.push({ name: genName(), cent: dc[q4], market: mIdx }); }
+        }
+        pNode.markets.push(table.market.length); table.market.push(mNode);
+      }
+      table.prov.push(pNode);
+    }
+    M.adminTable = table;
+    /* 行政中心**城对象**（旧都/省府/市府/区）—— 占据地块、可点弹出征界面 */
+    var admCities = [], EGT = { old: 22, prov: 18, market: 14, district: 9 };
+    function tierOf(lv) { return lv === 'old' ? 'capital' : lv === 'prov' ? 'zhou' : lv === 'market' ? 'jun' : 'county'; }
+    function addAdm(lv, name, cent, idx) {
+      var ci = nearestCell(cent); if (ci < 0) return;
+      var cell = _tileCells[ci]; if (!cell) return;
+      var tier = tierOf(lv), lvl = EGT[lv];
+      var c = { id: 'adm_' + lv + '_' + idx, name: name, x: cell.x, y: cell.y,
+        type: tier, owner: 'npc', level: lvl, admLevel: lv, admIndex: idx, _cent: cent };
+      c.garrison = GAME.genGarrison ? GAME.genGarrison(c) : {};   /* 旧设定：按城档守军 */
+      c.maxArmy = c.garrison;
+      admCities.push(c);
+    }
+    addAdm('old', '灰烬城', lc, 0);
+    for (var pa = 0; pa < provCent.length; pa++) {
+      var pv2 = table.prov[pa]; if (!pv2) continue;
+      addAdm('prov', pv2.name + '府', pv2.cent, pa);
+      pv2.markets.forEach(function (mi) { var m = table.market[mi]; addAdm('market', m.name, m.cent, mi); });
+      pv2.markets.forEach(function (mi) { table.market[mi].districts.forEach(function (di) { var d = table.district[di]; addAdm('district', d.name, d.cent, di); }); });
+    }
+    M.admCities = admCities;
+    M._settle = { old: lc, oldName: '灰烬城', provCent: provCent, marketCent: marketCent, districtCent: districtCent,
+      provOf: provOf, marketOf: marketOf, districtOf: districtOf, table: table, admCities: admCities };
+    M._settleSeed = seed;
+    return M._settle;
+  }
+
+  /* ---- 区域 **边界线**：只画"两侧地块属于不同区"的共享六边形边（对偶边 = 干净连续单线）
+     parent/target 给定 → 只画**该父区内**的子级边界（选省时只画本省内的市界）。---- */
+  function regionLineSegs(mem, parent, target) {
+    var F = M._icoF, cent = M._cent;
+    if (!F || !cent) return [];
+    function cp(f) { var d = cent[f], r = R + Math.max(0, sphElev(d)) * HSC + 2.2; return [d[0] * r, d[1] * r, d[2] * r]; }
+    var emap = {}, seg = [];
+    for (var f = 0; f < F.length; f++) {
+      var T = F[f];
+      for (var e = 0; e < 3; e++) {
+        var i = T[e], j = T[(e + 1) % 3], key = i < j ? i + '_' + j : j + '_' + i;
+        if (emap[key] === undefined) { emap[key] = f; continue; }
+        if (mem[i] < 0 || mem[j] < 0) continue;           /* 海/无分区 → 不画 */
+        if (mem[i] === mem[j]) continue;                 /* 同区 → 非边界 */
+        if (parent && (parent[i] !== target || parent[j] !== target)) continue;   /* 限父区内部 */
+        var a = cp(emap[key]), b = cp(f);                /* 共享边两侧两面的对偶点 = 六边形边 */
+        seg.push(a[0], a[1], a[2], b[0], b[1], b[2]);
+      }
+    }
+    return seg;
+  }
+  function buildRegions() {
+    if (M._regions) { scene.remove(M._regions); M._regions = null; }
+    if (!M._vdirs || !M._icoF) return;
+    var lv = M.regionLevel == null ? 3 : M.regionLevel;   /* 分级显示：1=仅省界 2=+市 3=+区（逐步生成）*/
+    var S = genSettlements();
+    var grp = new THREE.Group();
+    function addLines(mem, col, op) {
+      var seg = regionLineSegs(mem); if (!seg.length) return;
+      var g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(seg, 3));
+      grp.add(new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: col, transparent: true, opacity: op, depthWrite: false })));
+    }
+    addLines(S.provOf, 0x2a6fff, 1.0);                        /* 行省界 = 强蓝 */
+    if (lv >= 2) addLines(S.marketOf, 0xff40c0, 0.9);        /* 市界 = 品红 */
+    if (lv >= 3) addLines(S.districtOf, 0x156a26, 0.6);      /* 区界 = 深绿 */
+    M._regions = grp; scene.add(grp);
+  }
+
+  /* 据点(黄) / 城市(红) / 己方城(蓝) —— 各自地块的抬升点位（中心小六边）。*/
+  /* 聚落层级柱子尺寸：旧都最大 → 省府 → 市 → 区 逐渐缩小 */
+  function buildMarkers() {
+    if (M._markers) { scene.remove(M._markers); M._markers = null; }
+    if (M._labels) { scene.remove(M._labels); M._labels = null; }
+    if (!_tileCells || !_tileCells.length || !M._vdirs) return;
+    var S = genSettlements(); if (!S) return;
+    var mark = {};                                          /* cellIndex → [r,g,b]（平涂地块）*/
+    /* 地块**属性索引**：每格 = 野地 / 城市 / 据点（明确区分）*/
+    var cellKind = {}, cellRef = {};
+    for (var vi0 = 0; vi0 < M._vdirs.length; vi0++) if (M._vdirs[vi0] && S.provOf[vi0] >= 0) { cellKind[vi0] = 'wild'; }   /* 默认：陆地块 = 野地 */
+    /* 据点 = 黄 */
+    for (var fi = 0; fi < _tileCells.length; fi++) { var fc = _tileCells[fi]; if (fc && GAME.map.fortAt(fc.x, fc.y)) { mark[fi] = [226, 202, 64]; cellKind[fi] = 'fort'; } }
+    /* NPC 名城 = 红 */
+    (GAME.DATA.NPC_CITIES || []).forEach(function (c) { var d = dirOfCell(c.x, c.y); c.lon = (Math.atan2(d[2], d[0]) * 180 / Math.PI + 360) % 360; c.lat = Math.asin(Math.max(-1, Math.min(1, d[1]))) * 180 / Math.PI; var ci = nearestCell(d); if (ci >= 0) { mark[ci] = [220, 70, 60]; cellKind[ci] = 'npc'; cellRef[ci] = c; } });
+    /* 行政中心城 = 紫色 */
+    (M.admCities || []).forEach(function (c) { var ci = nearestCell(c._cent); if (ci >= 0) { mark[ci] = [180, 120, 210]; cellKind[ci] = 'adm'; cellRef[ci] = c; } });
+    /* 己方城 = 蓝：放在其**球系坐标**（由 (x,y) 确定性推出的 lon/lat）——与逻辑一致 */
+    M._ownCells = {};
+    (GAME.state.cities || []).forEach(function (c) {
+      var d = dirOfCell(c.x, c.y);
+      c.lon = (Math.atan2(d[2], d[0]) * 180 / Math.PI + 360) % 360;
+      c.lat = Math.asin(Math.max(-1, Math.min(1, d[1]))) * 180 / Math.PI;
+      var ci = nearestCell(d); if (ci < 0) return;
+      mark[ci] = [80, 150, 230]; cellKind[ci] = 'own'; cellRef[ci] = c; M._ownCells[ci] = c;
+    });
+    M.cellKind = cellKind; M.cellRef = cellRef;
+    /* 平涂：每格六边形填色（贴地形 · 微抬）*/
+    var pos = [], col = [], idx = [], base = 0;
+    for (var ci2 in mark) {
+      var c = _tileCells[ci2]; if (!c || !c.rim) continue;
+      var rim = c.rim, mm = rim.length, P = c.pos, up = null, cL = Math.hypot(P[0], P[1], P[2]) || 1; up = [P[0] / cL, P[1] / cL, P[2] / cL];
+      var rgb2 = mark[ci2], lift = 0.4;
+      pos.push(P[0] + up[0] * lift, P[1] + up[1] * lift, P[2] + up[2] * lift); col.push(rgb2[0] / 255, rgb2[1] / 255, rgb2[2] / 255);
+      var start = base, apex = base;
+      for (var j = 0; j < mm; j++) { var p = rim[j], L = Math.hypot(p[0], p[1], p[2]) || 1; pos.push(p[0] + p[0] / L * lift, p[1] + p[1] / L * lift, p[2] + p[2] / L * lift); col.push(rgb2[0] / 255, rgb2[1] / 255, rgb2[2] / 255); }
+      for (var t = 0; t < mm; t++) idx.push(apex, apex + 1 + t, apex + 1 + (t + 1) % mm);
+      base = apex + 1 + mm;
+    }
+    if (pos.length) {
+      var geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+      geo.setIndex(idx);
+      M._markers = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide }));
+      scene.add(M._markers);
+    }
+    /* 名城：**指示线 + 悬浮名称**（在球外悬浮）*/
+    var grp = new THREE.Group();
+    var lp = [];
+    function floatName(dir, text, colHex) {
+      var r = R + Math.max(0, sphElev(dir)) * HSC;
+      var g0 = [dir[0] * r, dir[1] * r, dir[2] * r];                 /* 地面点 */
+      var g1 = [dir[0] * (r + 34), dir[1] * (r + 34), dir[2] * (r + 34)];   /* 悬浮点 */
+      lp.push(g0[0], g0[1], g0[2], g1[0], g1[1], g1[2]);
+      var spr = nameSprite(text, colHex || '#ffffff', 22);
+      spr.position.set(g1[0], g1[1], g1[2]);
+      grp.add(spr);
+    }
+    (GAME.DATA.NPC_CITIES || []).forEach(function (c) { if (c.type === 'capital' || c.type === 'zhou') floatName(dirOfCell(c.x, c.y), c.name || '', '#ffd76a'); });
+    var ol = M.admCities || [];
+    ol.forEach(function (c) { if (c.admLevel === 'old' || c.admLevel === 'prov') floatName(c._cent, c.name, c.admLevel === 'old' ? '#ffd76a' : '#cfe6ff'); });
+    if (lp.length) { var lg = new THREE.BufferGeometry(); lg.setAttribute('position', new THREE.Float32BufferAttribute(lp, 3)); grp.add(new THREE.LineSegments(lg, new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.45, depthWrite: false }))); }
+    M._labels = grp; scene.add(grp);
+  }
+  /* 平面格 (x,y) → 球面方向（走 GAME.map 的**球系坐标单一出口**）*/
+  function dirOfCell(x, y) {
+    var c = GAME.map.lonlatOf(x, y);
+    return GAME.map.dirOf(c.lon, c.lat);
+  }
+
+  /* 名称标签（画布文字 → 贴图 → Sprite）*/
+  function nameSprite(text, color, px) {
+    var c = document.createElement('canvas');
+    var fs = 22; c.width = 256; c.height = 44;
+    var g = c.getContext('2d');
+    g.font = 'bold ' + fs + 'px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.lineWidth = 4; g.strokeStyle = 'rgba(10,14,20,.9)'; g.strokeText(text, 128, 22);
+    g.fillStyle = color || '#ffffff'; g.fillText(text, 128, 22);
+    var tx = new THREE.CanvasTexture(c);
+    var spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: tx, transparent: true, depthWrite: false, depthTest: false }));
+    var s = px || 26; spr.scale.set(s, s * 44 / 256, 1);
+    return spr;
+  }
+  /* 某层级中心的球面世界点（贴地形 + 抬升）*/
+  function centerWorld(centDir, H) {
+    var r = R + Math.max(0, sphElev(centDir)) * HSC + (H || 7);
+    return [centDir[0] * r, centDir[1] * r, centDir[2] * r];
+  }
+  /* ---- 检索高亮：选定 省/市/区 → 该区地块增亮、其余地形调暗；
+     并显示**下一级**内部边界 + 首府点 + 名称。---- */
+  function buildHighlight() {
+    if (M._hl) { scene.remove(M._hl); M._hl = null; }
+    if (M._globeMat) M._globeMat.color.setHex(0xffffff);
+    var S = genSettlements(); if (!S) return;
+    var sel = M._region; if (!sel) return;
+    if (M._globeMat) M._globeMat.color.setHex(0x5a5a5a);       /* 其余地形调暗 */
+    var T = S.table, V = M._vdirs, F = M._icoF; if (!V || !F) return;
+    var grp = new THREE.Group();
+    /* ① 亮层（选中区顶盖）*/
+    var mem = sel.level === 'prov' ? S.provOf : sel.level === 'market' ? S.marketOf : S.districtOf;
+    var tgt = sel.index;
+    var pos = [], idx = [], base = 0, H = 5, cent = M._cent;
+    var vor = {};
+    for (var f = 0; f < F.length; f++) for (var k = 0; k < 3; k++) { var vv = F[f][k]; (vor[vv] = vor[vv] || []).push(f); }
+    function cross(a, b) { return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]; }
+    function dt(a, b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
+    for (var vs in vor) {
+      var vi = +vs; if (mem[vi] !== tgt) continue;
+      var n = V[vi], fs = vor[vi]; if (fs.length < 3) continue;
+      var up = Math.abs(n[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0];
+      var tx2 = cross(up, n), tl = Math.hypot(tx2[0], tx2[1], tx2[2]) || 1; tx2 = [tx2[0] / tl, tx2[1] / tl, tx2[2] / tl];
+      var ty = cross(n, tx2);
+      fs.sort(function (A, B) { var cA = cent[A], cB = cent[B]; return Math.atan2(dt(cA, ty), dt(cA, tx2)) - Math.atan2(dt(cB, ty), dt(cB, tx2)); });
+      var rn = R + Math.max(0, sphElev(n)) * HSC, P = [n[0] * rn, n[1] * rn, n[2] * rn];
+      var mm = fs.length, start = base;
+      for (var j = 0; j < mm; j++) { var p = cent[fs[j]], rr = R + Math.max(0, sphElev(p)) * HSC; pos.push(p[0] * rr, p[1] * rr, p[2] * rr); }
+      for (var j2 = 0; j2 < mm; j2++) pos.push(pos[(start + j2) * 3] + n[0] * H, pos[(start + j2) * 3 + 1] + n[1] * H, pos[(start + j2) * 3 + 2] + n[2] * H);
+      for (var t = 1; t < mm - 1; t++) idx.push(base + mm, base + mm + t, base + mm + t + 1);
+      base += mm * 2;
+    }
+    if (pos.length) {
+      var geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geo.setIndex(idx);
+      grp.add(new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: 0xffe070, side: THREE.DoubleSide, transparent: true, opacity: 0.85 })));
+    }
+    /* ② 下一级：边界线 + 首府点 + 名称 */
+    function addChildLines(segArr, col, op) {
+      if (!segArr.length) return;
+      var g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(segArr, 3));
+      grp.add(new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: col, transparent: true, opacity: op, depthWrite: false })));
+    }
+    function addCapitalPoint(centDir, col, sz) {
+      var P = centerWorld(centDir, 5), g = new THREE.SphereGeometry(sz, 8, 8);
+      var m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: col }));
+      m.position.set(P[0], P[1], P[2]); grp.add(m);
+    }
+    function addText(centDir, text) {
+      var P = centerWorld(centDir, 12), spr = nameSprite(text); spr.position.set(P[0], P[1], P[2]); grp.add(spr);
+    }
+    if (sel.level === 'prov') {
+      addChildLines(regionLineSegs(S.marketOf, S.provOf, tgt), 0xff40c0, 0.9);   /* 本省内的市界 */
+      var pv = T.prov[tgt];
+      pv.markets.forEach(function (mi) { var m = T.market[mi]; addCapitalPoint(m.cent, 0xff40c0, 2.2); addText(m.cent, m.name); });
+    } else if (sel.level === 'market') {
+      addChildLines(regionLineSegs(S.districtOf, S.marketOf, tgt), 0x156a26, 0.9);   /* 本市内的区界 */
+      var mk = T.market[tgt];
+      mk.districts.forEach(function (di) { var dd = T.district[di]; addCapitalPoint(dd.cent, 0x156a26, 1.8); addText(dd.cent, dd.name); });
+    }
+    M._hl = grp; scene.add(grp);
+  }
+  M.setHighlight = function (sel) {                          /* sel: null 或 {level,index} */
+    M._region = sel || null;
+    buildHighlight();
+    /* 相机**自动转到该区域正面**（该区中心朝向相机）*/
+    if (sel) {
+      var S = genSettlements(), T = S && S.table, c = null;
+      if (T) c = sel.level === 'prov' ? T.prov[sel.index] && T.prov[sel.index].cent
+        : sel.level === 'market' ? T.market[sel.index] && T.market[sel.index].cent
+          : T.district[sel.index] && T.district[sel.index].cent;
+      if (c) {
+        var latA = Math.asin(Math.max(-1, Math.min(1, c[1])));
+        camO.yaw = Math.atan2(c[0], c[2]);                 /* 水平角 → 首府朝向相机 */
+        camO.pitch = Math.max(-1.35, Math.min(1.35, latA));/* 俯角 = 首府纬度 → 首府居中 */
+        camO.dist = sel.level === 'district' ? R * 1.8 : sel.level === 'market' ? R * 2.03 : R * 2.3;
+      }
+    }
+    if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
+  };
+
+  function placeCamera() {
+    var cp = Math.cos(camO.pitch), sp = Math.sin(camO.pitch);
+    cam.position.set(camO.dist * cp * Math.sin(camO.yaw), camO.dist * sp, camO.dist * cp * Math.cos(camO.yaw));
+    cam.lookAt(0, 0, 0);
+  }
+
+  M.render = function (target2d) {
+    try { ensure(); } catch (e) { M.enabled = false; return false; }
+    var cw = target2d.width, ch = target2d.height;
+    if (wcv.width !== cw || wcv.height !== ch) { wcv.width = cw; wcv.height = ch; R3.setSize(cw, ch, false); cam.aspect = cw / ch; cam.updateProjectionMatrix(); }
+    if (!built) { buildGlobe(); buildTiles(TILE_SUB); buildRegions(); buildMarkers(); built = true; }
+    placeCamera();
+    /* 地块数**固定**（老板）：不再随缩放切换级别 —— 恒定 TILE_SUB（= 40962 块）。*/
+    /* 城市/据点增减（占领/迁移/放弃）→ 重建标记：被占地块覆盖、迁走地块露出地形（恢复野地）*/
+    var _mkVer = (GAME.state.cities || []).length * 131072 + _tileSub;
+    if (_mkVer !== M._mkVer) { M._mkVer = _mkVer; buildMarkers(); }
+    /* 线框随相机拉近**渐隐**：远看网格，近看透明消失（好观察地形）*/
+    if (M._shellMat) {
+      var near = R * 1.45, far = R * 2.7;
+      var o = Math.max(0, Math.min(0.6, 0.6 * (camO.dist - near) / (far - near)));
+      M._shellMat.opacity = o;
+      if (tiles) tiles.visible = o > 0.02;
+    }
+    R3.render(scene, cam);
+    var ctx = target2d.getContext('2d');
+    ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, cw, ch);
+    ctx.drawImage(wcv, 0, 0, cw, ch);
+    /* 点击选中 → 画信息条（地块类型 + 等级）*/
+    if (M._cell) {
+      var _kname = { wild: '野地', fort: '据点', npc: '名城', adm: '行政城', own: '己方城' }[M._cellKind] || '野地';
+      var txt = '【' + _kname + '】' + M._cell.name + ' · 等级 ' + M._cell.level
+        + ' · 球系坐标 ' + (GAME.map.coordText ? GAME.map.coordText(M._cell.x, M._cell.y) : (Math.round(M._cell.lon) + '°E ' + Math.round(M._cell.lat) + '°'));
+      ctx.font = 'bold 20px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+      var tw = ctx.measureText(txt).width;
+      ctx.fillStyle = 'rgba(10,14,20,.78)'; ctx.fillRect(16, 16, tw + 28, 40);
+      ctx.strokeStyle = 'rgba(200,230,255,.7)'; ctx.lineWidth = 2; ctx.strokeRect(16, 16, tw + 28, 40);
+      ctx.fillStyle = '#eaf4ff'; ctx.fillText(txt, 30, 26);
+    }
+    return true;
+  };
+
+  M.bindControls = function (canvas) {
+    if (!canvas || canvas._m3dBound) return;
+    canvas._m3dBound = true;
+    var drag = 0, lx = 0, ly = 0, moved = false;
+    function redraw() { if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas(); }
+    canvas.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+    canvas.addEventListener('mousedown', function (e) { drag = 1; moved = false; lx = e.clientX; ly = e.clientY; e.preventDefault(); });
+    window.addEventListener('mousemove', function (e) {
+      if (!drag) return;
+      var dx = e.clientX - lx, dy = e.clientY - ly; lx = e.clientX; ly = e.clientY;
+      if (Math.abs(dx) + Math.abs(dy) > 3) moved = true;
+      camO.yaw -= dx * 0.006;
+      camO.pitch = Math.max(-1.4, Math.min(1.4, camO.pitch + dy * 0.006));
+      redraw();
+    });
+    window.addEventListener('mouseup', function (e) {
+      var wasDrag = drag; drag = 0;
+      if (wasDrag && !moved) M.pickAt(canvas, e.clientX, e.clientY);   /* 没拖动 = 点击 → 选地块 */
+    });
+    canvas.addEventListener('wheel', function (e) {
+      e.preventDefault();
+      camO.dist = Math.max(R * 1.2, Math.min(R * 8, camO.dist * (e.deltaY < 0 ? 0.9 : 1.11)));
+      redraw();
+    }, { passive: false });
+  };
+
+  /* 地块 → 行政归属（省/市/区）；vi = 地块顶点索引 */
+  M.regionAt = function (vi) {
+    var S = M._settle; if (!S || !S.table || vi == null) return null;
+    var T = S.table, pi = S.provOf[vi], mi = S.marketOf[vi], di = S.districtOf[vi];
+    if (pi < 0) return null;
+    return {
+      prov: T.prov[pi] ? T.prov[pi].name : '', market: (mi >= 0 && T.market[mi]) ? T.market[mi].name : '',
+      district: (di >= 0 && T.district[di]) ? T.district[di].name : '', provIndex: pi, marketIndex: mi, districtIndex: di
+    };
+  };
+  /* 行政中心城（旧都/省府/市府/区）by 格坐标 */
+  M.admCityAt = function (x, y) {
+    var list = M.admCities; if (!list) return null;
+    for (var i = 0; i < list.length; i++) if (list[i].x === x && list[i].y === y) return list[i];
+    return null;
+  };
+  /* 点击拾取：Raycaster 打到地块填充 → 取格类型/等级 → 存为选中（画在画布上）*/
+  M.pickAt = function (canvas, clientX, clientY) {
+    if (!M._collider) return;
+    var r = canvas.getBoundingClientRect();
+    if (!r.width) return;
+    var nx = ((clientX - r.left) / r.width) * 2 - 1, ny = -((clientY - r.top) / r.height) * 2 + 1;
+    var rc = new THREE.Raycaster();
+    rc.setFromCamera(new THREE.Vector2(nx, ny), cam);
+    var hit = rc.intersectObject(M._collider, false);
+    if (!hit.length) { M._cell = null; if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas(); return; }
+    var face = hit[0].face, ci = M._collider.faceCell[face.a / 3 | 0];
+    var cell = M._collider.cells[ci];
+    if (!cell) return;
+    M._cell = cell;
+    var kind = (M.cellKind && M.cellKind[ci]) || 'wild';   /* 地块属性：野地/城市/据点/行政城/己方城 */
+    M._cellKind = kind;
+    var reg = M.regionAt(ci);                                  /* 该地块的省/市/区归属 */
+    /* 链接到游戏弹窗（照抄 main.js:2534 的 2D 分发）*/
+    var x = cell.x, y = cell.y, ui = GAME.ui;
+    if (ui) {
+      var ref = M.cellRef && M.cellRef[ci];
+      GAME.map._coordOverride = { lon: cell.lon, lat: cell.lat };   /* 球系坐标 → 弹窗 */
+      if (kind === 'own' && ref && ui.openCityPanel) ui.openCityPanel(ref);
+      else if (kind === 'npc' && ref && ui.openAttackModal) ui.openAttackModal(ref);
+      else if (kind === 'adm' && ref && ui.openAttackModal) ui.openAttackModal(ref);
+      else if (kind === 'fort' && GAME.map.fortAt) { var ff = GAME.map.fortAt(x, y); if (ff && ui.openFortModal) ui.openFortModal(ff); else if (ui.openLandModal) { GAME.map._terrOverride = cell.type; GAME.map._wildLvOverride = cell.level; GAME.map._regionOverride = reg; ui.openLandModal(x, y); } }
+      else if (ui.openLandModal) {
+        /* 野地：球面地块地形/等级 + 行政区归属 + 球系坐标 */
+        GAME.map._terrOverride = cell.type; GAME.map._wildLvOverride = cell.level;
+        GAME.map._regionOverride = reg;
+        ui.openLandModal(x, y);
+      }
+    }
+    if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
+  };
+
+  M.centerOn = function (x, y) {                            /* 相机对准某格（回主城/回本城/灰烬城）· 不高亮 */
+    var c = GAME.map.lonlatOf(x, y), d = GAME.map.dirOf(c.lon, c.lat);
+    camO.yaw = Math.atan2(d[0], d[2]);
+    camO.pitch = Math.max(-1.35, Math.min(1.35, c.lat * Math.PI / 180));
+    camO.dist = R * 1.9;
+    if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
+  };
+  M.rebuild = function () { built = false; _tileSub = -1; };
+})();

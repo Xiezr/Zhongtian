@@ -21,7 +21,7 @@ const path = require('path');
 
 const FS = require('fs');
 const JSDIR = path.join(__dirname, 'js');
-const MODULES = ['data', 'state', 'questdata', 'systems', 'domain', 'map', 'battle', 'icons', 'story', 'ui', 'main'];
+const MODULES = ['data', 'state', 'questdata', 'systems', 'domain', 'map', 'battle', 'icons', 'story', 'ui', 'map3d', 'main'];
 
 const src = {};
 MODULES.forEach(m => { src[m] = fs.readFileSync(path.join(JSDIR, m + '.js'), 'utf8'); });
@@ -289,7 +289,7 @@ const REF_OK = {
 /* 本节的模块清单**独立于①的 MODULES**：引用扫描要把 tactic / gicons / bitmaps /
    portraits 也算进来（它们也是 GAME.* 的生产者与消费者）。 */
 const REF_MODULES = ['data', 'state', 'questdata', 'systems', 'domain', 'map', 'battle', 'tactic',
-  'icons', 'gicons', 'bitmaps', 'portraits', 'story', 'ui', 'main'];
+  'icons', 'gicons', 'bitmaps', 'portraits', 'story', 'ui', 'map3d', 'main'];
 /* 剥注释（audit.js 里没有共用版；注释里提到旧名不应算引用 —— 本项目踩过多次） */
 const stripC = s => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '');
 const refSrc = {};

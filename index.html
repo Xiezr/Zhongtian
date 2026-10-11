@@ -14,30 +14,30 @@
      * 老板 1：「墨玉和夜阑色系重合有点高」——墨玉改为**冷蓝灰**（原暖炭），
      * 与暖近黑的夜阑拉开；保留柔金作暖点缀（冷底 + 暖金 = 高级）。
      * ============================================================ */
-    --bg-dark: #252b33;
-    --panel-bg: #30363f;
-    --wood: #3f4a56;
-    --wood-light: #55616f;
-    --wood-dark: #2b333d;
-    --gold: #c8a869;
+    --bg-dark: #1d2021;
+    --panel-bg: #282828;              /* v90.17（老板 2）废土×科技：冷钢灰底（原暖褐土，偏麻） */
+    --wood: #3c3836;
+    --wood-light: #504945;
+    --wood-dark: #282828;
+    --gold: #d79921;                  /* 琥珀/锈金点缀（冷钢底上的暖点） */
     /* v41（需求 4）：公文新战报提醒 —— 图标闪黄的底色与同色系深字 */
-    --alert-gold: #ffd84d; --alert-ink: #3a2c06;
-    --gold-light: #e6cf9a;
-    --gold-dark: #8a6f3c;
-    --parchment: #f0e8d6;
-    --parchment-dark: #dccdb2;
+    --alert-gold: #ffcf4d; --alert-ink: #3a2c06;
+    --gold-light: #fabd2f;            /* 亮琥珀 */
+    --gold-dark: #7c5d10;             /* 边框：暗锈褐 */
+    --parchment: #fbf1c7;
+    --parchment-dark: #d5c4a1;
     /* v89.136（老板 3）：战斗播报里"我方动作"片段的纯白（与暖白 --parchment 区分开） */
     --white: #fff;
     --teal: #3e6b5e;
     --teal-light: #4f8574;
-    --red: #a8564a;
-    --red-light: #c07a72;
-    --text: #e6e9ee;
-    --text-dim: #9aa2ad;
-    --text-dark: #2a2318;
+    --red: #cc241d;
+    --red-light: #fb4934;
+    --text: #ebdbb2;                  /* 冷白（科技感） */
+    --text-dim: #a89984;
+    --text-dark: #282828;
     --on-block: #fff;              /* v89.229：名称色块上的文字（色块四主题均为中深色 → 恒用白 · 对比 ≥4.5） */
-    --green-ok: #8bb08a;
-    --blue-info: #88aecb;
+    --green-ok: #98971a;
+    --blue-info: #458588;
 
     /* ============================================================
      * 排版令牌（v21）——**全界面唯一字号来源**
@@ -135,7 +135,7 @@
 
     /* 浅金/柔金（与 --gold-light 同族的 alpha 合成基色）：
        实装里 rgba(var(--gold-soft-rgb),α) 出现 9 处的裸值，集中到一处 */
-    --gold-soft-rgb: 232,206,136;
+    --gold-soft-rgb: 226,176,115;
     --beauty-tag-rgb: 224,138,176;   /* = --beauty-tag #e08ab0，本轮补（美人的红边） */
     /* v89.105：以下三元组由上面的命名色自动派生（alpha 合成的唯一来源） */
     --alert-gold-rgb: 255,216,77;
@@ -163,8 +163,8 @@
     /* 渐变（同类渐变只此一份；各处此前各写一份字面量） */
     --grad-progress: linear-gradient(90deg, #7ee08a, #4fbf6a);   /* 进度条（绿） */
     --grad-exp: linear-gradient(90deg, #6f8f3e, #c9d96a);        /* 经验条（黄绿） */
-    --grad-gold: linear-gradient(180deg, #e8ce88, #c9a24b);      /* 金色选中面 */
-    --grad-gold-deep: linear-gradient(180deg,#e8c878,#9a7430);   /* 金色加号钮 */
+    --grad-gold: linear-gradient(180deg, #e2b073, #a06a2e);      /* 金色选中面 */
+    --grad-gold-deep: linear-gradient(180deg,#d8a35c,#7e5220);   /* 金色加号钮 */
     --grad-dim: linear-gradient(180deg, #5a5648, #454236);       /* 灰化按钮面 */
 
     /* 青钮的暗部（边框 / 底部投影）——与 --teal 同族的两个固定档 */
@@ -208,20 +208,20 @@
     --tile-add-rgb: 48,76,14;                                /* 空地加号 */
 
     /* 层级分隔线：暗色界面用发丝级半透明白，不用不透明深灰 */
-    --line: rgba(var(--hl-rgb),.09);
+    --line: rgba(var(--hl-rgb),.12);
 
     /* ---- 语义色（v21）：散落的近似色收敛为命名变量，**色值不变** ----
        用色规则：金色系=标题与强调 · 米白=名称与关键数值 · 中性灰=次要信息
                  绿=正向/成功 · 红=危险/损失 · 琥珀=提醒 · 蓝=信息
                  品质色(q1~q4)与资质色(rank-*)是**辨识用色板**，保持区分度 */
-    --text-strong: #f4ebd4;
+    --text-strong: #fbf1c7;
     --ink-on-gold: #2a2318;
     --warn: #e6a400;
     --amber: #e0a83c;
-    --hero-tag: #e6b800;
-    --beauty-tag: #e08ab0;   /* v29：美人标（原写死在 .gcard-tag.beauty 里） */
+    --hero-tag: #d8b45c;
+    --beauty-tag: #d88aa8;   /* v29：美人标（原写死在 .gcard-tag.beauty 里） */
     --lord-tag: #e0b23c;     /* v70：君主标（玩家角色本人） */
-    --beauty: #e58aa8;
+    --beauty: #d88aa8;
     --q1: #b9b4a8; --q2: #6fbf7a; --q3: #5aa0d8; --q4: #d8a83c;
     --rank-fan: #9c9c8c; --rank-liang: #5fbf6a; --rank-ying: #4a9be0; --rank-ming: #b06fd8;
     /* 任务分类标签色板（8 类集中一处） */
@@ -229,11 +229,11 @@
     --cinnabar: #a83a2c; --strip-troop: #d8b04e; --strip-gap: #3c4148;
     --tag-growth: #d8b04e; --tag-military: #c9705a;    --tag-war: #b8412f;
     --tag-build: #7fa85a; --tag-govern: #d8c46a; --tag-forge: #c9a06a;
-    --wonder: #c9a2ff; --wonder-rgb: 201,162,255;   /* v89.6 奇遇（青莲紫）：奇缘星 / 见闻录 / 线索 */
+    --wonder: #9a7ad0; --wonder-rgb: 154,122,208;   /* v89.6 奇遇（青莲紫）：奇缘星 / 见闻录 / 线索 */
 
 
-    --line-strong: rgba(var(--hl-rgb),.15);
-    --sep-gold: rgba(var(--gold-rgb),.28);
+    --line-strong: rgba(var(--hl-rgb),.18);
+    --sep-gold: rgba(215,153,33,.28);
 
     /* ============================================================
      * 主题层（v39 · 需求 1）—— 换肤的唯一开关
@@ -246,9 +246,9 @@
      * ============================================================ */
     --sh-rgb: 0,0,0;              /* 阴影/暗面基色 */
     --hl-rgb: 255,255,255;        /* 高光/描边基色 */
-    --gold-rgb: 200,168,105;      /* 金色线条基色（浅底上要加深） */
-    --bg-2: #2b323b;              /* 页底渐变中段 */
-    --bg-3: #1e232a;              /* 页底渐变末段 / 底部固定条 */
+    --gold-rgb: 215,153,33;       /* 锈铜线条基色（废土风；原暖金 200,168,105） */
+    --bg-2: #3c3836;              /* 页底渐变中段 */
+    --bg-3: #1d2021;              /* 页底渐变末段 / 底部固定条 */
     --surface-2: #3a414b;         /* 卡片/格子顶（原 #262931） */
     --surface-3: #30363f;         /* 卡片/格子底（原 #1c1f26） */
     --surface-2b: #434b57;        /* 次级卡顶（原 #31343d） */
@@ -261,7 +261,7 @@
     --btn-face-2: #323840;        /* 木钮底（原 #252832） */
     --btn-hi-1: #4c5a68;          /* 木钮悬停顶（原 #4c4c3a） */
     --btn-hi-2: #3e4750;          /* 木钮悬停底（原 #33332a） */
-    --scrim: rgba(var(--sh-rgb),.62);     /* 弹窗遮罩 */
+    --scrim: rgba(0,0,0,.62);     /* 弹窗遮罩 */
 
     /* ---- 地面与野地色（v39 · 需求 2/3）----
        地块不再逐格画渐变与花纹，改铺**纯色**；颜色随主题走：
@@ -270,6 +270,8 @@
        「净化厂偏黄 / 温室偏青绿 / 电站偏灰 / 熔炉偏棕黑」。 */
     --ground: #a8a08b;            /* 城内地面（一整片）· v89.229 浅废土沙色（原灰绿 #8b9a78） */
     --ground-busy: #a09580;       /* 施工工地（土色） */
+    --built-warm: #c8b98e;        /* v90.10（老板）：民居系（无操作系）建筑底——米黄 */
+    --built-blue: #7e94a0;        /* v90.10（老板）：其他系建筑底——石青 */
     /* v89.225：建筑地块按"族"染色（族旗退役 → 族色编码落在地块底色上；同类型建筑同色）。
        值 = data.js DATA.SERIES[].plot 在默认主题的渲染色（smoke §225 逐值对齐）；
        其余三主题（silk / bamboo / night）各有对应一版（见下方主题块）。
@@ -300,80 +302,80 @@
    * ============================================================ */
   /* ---- 素绢：暖米低饱和浅色（长玩首选 · v90.1 降亮去晃眼）---- */
   html[data-theme="silk"] {
-    --bg-dark: #dcd7cd; --bg-2: #d5d0c5; --bg-3: #cbc5b8;
-    --panel-bg: #eae6de;
+    --bg-dark: #ebdbb2; --bg-2: #e0d8b0; --bg-3: #d5c4a1;
+    --panel-bg: #fbf1c7;              /* v90.10（老板）：「城内城外界面再亮一点」（原 #eae6de） */
     --surface-2: #f1eee8; --surface-3: #e4e0d6;
     --surface-2b: #eeeae3; --surface-2c: #e7e3da; --surface-3b: #ddd8cc;
     --slab-1: #dcd7cd; --slab-2: #d0cabd; --slab-3: #e0dbd0;
     --btn-face-1: #cbbd9c; --btn-face-2: #b8a783;
     --btn-hi-1: #d8caab; --btn-hi-2: #c3b28f;
-    --wood: #a2845b; --wood-light: #bf9d74; --wood-dark: #776040;
-    --gold: #94773b; --gold-light: #a98a48; --gold-dark: #6e5828;
-    --text: #443e38; --text-dim: #797266; --text-strong: #302b24;
-    --green-ok: #5a8550; --blue-info: #587a8b; --warn: #a87400; --amber: #9a7018;
-    --red: #a24e3b; --red-light: #8a4434;
-    --parchment: #f5f1e7; --parchment-dark: #e0d6be;
+    --wood: #a89984; --wood-light: #bdae93; --wood-dark: #7c6f64;
+    --gold: #b57614; --gold-light: #d79921; --gold-dark: #8f6711;
+    --text: #3c3836; --text-dim: #7c6f64; --text-strong: #282828;
+    --green-ok: #79740e; --blue-info: #076678; --warn: #a87400; --amber: #9a7018;
+    --red: #9d0006; --red-light: #cc241d;
+    --parchment: #fbf1c7; --parchment-dark: #e0d8b0;
     --q1: #8a857a; --q2: #3f7f48; --q3: #2f6f9a; --q4: #9a7018;
     --rank-fan: #7a7a6c; --rank-liang: #3f8a45; --rank-ying: #2f6f9a; --rank-ming: #7a4a9a;
-    --cinnabar: #9a3428; --hero-tag: #a87400; --beauty-tag: #a04468; --beauty: #a04468;
+    --cinnabar: #9a3428; --hero-tag: #966c00; --beauty-tag: #96436a; --beauty: #96436a;
     --tag-growth: #9a7018; --tag-military: #a04a32; --tag-war: #9a3428;
     --tag-build: #4f7a38; --tag-govern: #8a7418; --tag-forge: #95683a;
     --wonder: #7a53b8; --wonder-rgb: 122,83,184;
     --strip-troop: #b08a2c; --strip-gap: #cdc4ae;
-    --sh-rgb: 96,79,50; --hl-rgb: 92,76,46; --gold-rgb: 148,119,59;
-    --scrim: rgba(78,64,40,.42);
+    --sh-rgb: 60,56,54; --hl-rgb: 60,56,54; --gold-rgb: 181,118,20;
+    --scrim: rgba(60,56,54,.42);
     --line: rgba(var(--hl-rgb),.16); --line-strong: rgba(var(--hl-rgb),.28);
-    --sep-gold: rgba(var(--gold-rgb),.30);
+    --sep-gold: rgba(181,118,20,.30);
     --ground: #d3ccb6; --ground-busy: #cdc3ae;      /* v89.229：浅废土沙（原 #c6cbb3 绿灰） */
     --ser-gov: #897024; --ser-live: #904c37; --ser-mil: #3d5794; --ser-ops: #347f70;
     --res-farm: #ded08a; --res-forest: #9dba9c; --res-quarry: #c9c9c0; --res-mine: #b0a396;
   }
   /* ---- 青竹：暖调微绿浅色（低对比、耐看 · v90.1 降亮去晃眼）---- */
   html[data-theme="bamboo"] {
-    --bg-dark: #d9dacf; --bg-2: #d2d4c7; --bg-3: #c6c9ba;
-    --panel-bg: #e6e8df;
+    --bg-dark: #efebd4; --bg-2: #e6e2cc; --bg-3: #ddd8c0;
+    --panel-bg: #fdf6e3;              /* v90.10（老板）：「城内城外界面再亮一点」（原 #e6e8df） */
     --surface-2: #eef0e8; --surface-3: #e0e3d8;
     --surface-2b: #eaede3; --surface-2c: #e2e5da; --surface-3b: #d8dbcf;
     --slab-1: #d9dacf; --slab-2: #ccd0c2; --slab-3: #dde0d5;
     --btn-face-1: #c2c7b2; --btn-face-2: #aeb49e;
     --btn-hi-1: #ced3bf; --btn-hi-2: #babfab;
-    --wood: #8a7453; --wood-light: #a68d6b; --wood-dark: #66543a;
-    --gold: #7c672e; --gold-light: #947e3a; --gold-dark: #5c4b1e;
-    --text: #313830; --text-dim: #5b6056; --text-strong: #212820;
-    --green-ok: #4a8042; --blue-info: #446f7a; --warn: #966c00; --amber: #8a6818;
-    --red: #944637; --red-light: #843f30;
-    --parchment: #f4f5ec; --parchment-dark: #dadfcf;
+    --wood: #859289; --wood-light: #9da9a0; --wood-dark: #5c6a72;
+    --gold: #8da101; --gold-light: #a7c080; --gold-dark: #6c7a00;
+    --text: #5c6a72; --text-dim: #829181; --text-strong: #475258;
+    --green-ok: #8da101; --blue-info: #3a94c5; --warn: #966c00; --amber: #8a6818;
+    --red: #f85552; --red-light: #e66868;
+    --parchment: #fdf6e3; --parchment-dark: #efebd4;
     --q1: #7d857f; --q2: #3a7a45; --q3: #2c6b95; --q4: #8f6a18;
     --rank-fan: #71807a; --rank-liang: #3a8442; --rank-ying: #2c6b95; --rank-ming: #6f469a;
-    --cinnabar: #8f3226; --hero-tag: #966c00; --beauty-tag: #96436a; --beauty: #96436a;
+    --cinnabar: #8f3226; --hero-tag: #7d6c14; --beauty-tag: #96436a; --beauty: #96436a;
     --tag-growth: #8f6a18; --tag-military: #96472f; --tag-war: #8f3226;
     --tag-build: #467334; --tag-govern: #7d6c14; --tag-forge: #8a6238;
     --wonder: #6f4aa8; --wonder-rgb: 111,74,168;
     --strip-troop: #9c7d2a; --strip-gap: #c2cdc0;
-    --sh-rgb: 80,86,64; --hl-rgb: 70,80,58; --gold-rgb: 124,103,46;
-    --scrim: rgba(64,72,50,.42);
+    --sh-rgb: 92,106,114; --hl-rgb: 92,106,114; --gold-rgb: 141,161,1;
+    --scrim: rgba(92,106,114,.42);
     --line: rgba(var(--hl-rgb),.18); --line-strong: rgba(var(--hl-rgb),.30);
-    --sep-gold: rgba(var(--gold-rgb),.32);
+    --sep-gold: rgba(141,161,1,.32);
     --ground: #cfcab3; --ground-busy: #c9c4ad;      /* v89.229：浅废土沙（原 #c2ccbc 绿灰） */
     --ser-gov: #897024; --ser-live: #904c37; --ser-mil: #3d5794; --ser-ops: #347f70;
     --res-farm: #d6cd8e; --res-forest: #93b295; --res-quarry: #c4c8c0; --res-mine: #a9a094;
   }
   /* ---- 夜阑：暖近黑（夜间 / 暗房 · v90.1 更深，与墨玉拉开）---- */
   html[data-theme="night"] {
-    --bg-dark: #0f0b08; --bg-2: #130f0b; --bg-3: #0b0806;
-    --panel-bg: #191410;
+    --bg-dark: #16161e; --bg-2: #1f2335; --bg-3: #16161e;
+    --panel-bg: #1a1b26;              /* v90.10（老板）：「城内城外界面再亮一点」（原 #191410） */
     --surface-2: #241e18; --surface-3: #1d1813;
     --surface-2b: #29231c; --surface-2c: #241e18; --surface-3b: #15110d;
     --slab-1: #14100c; --slab-2: #201a14; --slab-3: #201a14;
     --btn-face-1: #282217; --btn-face-2: #1b1611;
     --btn-hi-1: #352d1c; --btn-hi-2: #282217;
-    --wood: #33261b; --wood-light: #4a3626; --wood-dark: #201812;
-    --gold: #c09a58; --gold-light: #d8bd80; --gold-dark: #7a5c28;
-    --text: #e6ddd1; --text-dim: #948a7d; --text-strong: #efe3c8;
-    --sh-rgb: 0,0,0; --hl-rgb: 220,210,190; --gold-rgb: 192,154,88;
-    --scrim: rgba(var(--sh-rgb),.72);
-    --line: rgba(var(--hl-rgb),.07); --line-strong: rgba(var(--hl-rgb),.12);
-    --sep-gold: rgba(var(--gold-rgb),.24);
+    --wood: #292e42; --wood-light: #3b4261; --wood-dark: #16161e;
+    --gold: #7aa2f7; --gold-light: #7dcfff; --gold-dark: #3d59a1;
+    --text: #c0caf5; --text-dim: #565f89; --text-strong: #c0caf5;
+    --sh-rgb: 0,0,0; --hl-rgb: 192,202,245; --gold-rgb: 122,162,247;
+    --scrim: rgba(0,0,0,.72);
+    --line: rgba(var(--hl-rgb),.10); --line-strong: rgba(var(--hl-rgb),.16);
+    --sep-gold: rgba(122,162,247,.28);
     --ground: #6f6957; --ground-busy: #6a6352;      /* v89.229：深废土土灰（原 #5c6b52 暗绿） */
     --ser-gov: #8c742c; --ser-live: #9a5642; --ser-mil: #47619e; --ser-ops: #397f71;
     --res-farm: #9c934e; --res-forest: #50694f; --res-quarry: #8a8a82; --res-mine: #5a4a3a;
@@ -957,6 +959,11 @@
   .bag-cell .bag-q { position: absolute; left: 4px; top: 3px; font-size: var(--fs-cap); font-weight: 800; }
   .bag-cell.q1 .bag-q { color: var(--q1); } .bag-cell.q2 .bag-q { color: var(--q2); }
   .bag-cell.q3 .bag-q { color: var(--q3); } .bag-cell.q4 .bag-q { color: var(--q4); }
+  /* v90.55（老板）：背包可售件角上的「售」按钮（换旧币；已穿戴件不显示）。 */
+  .bag-cell .bag-sell { position: absolute; right: 3px; bottom: 3px; width: 20px; height: 20px; line-height: 18px;
+    text-align: center; border-radius: 50%; font-size: var(--fs-cap); font-weight: 800; cursor: pointer;
+    color: var(--gold-light); background: rgba(var(--sh-rgb),.78); border: 1px solid rgba(var(--gold-rgb),.55); z-index: 4; }
+  .bag-cell .bag-sell:hover { background: rgb(var(--gold-rgb)); color: var(--sh-rgb); }
   /* ============================================================
    * 悬停浮层（v37 · 需求 2）：**全站唯一一层**
    * ------------------------------------------------------------
@@ -1133,15 +1140,32 @@
      三次迁址的终点：族旗（v89.107·图标上小旗）→ 地块（v89.225）→ **名称色块（v89.229）**
      —— 编码要小面积、名称要居顶（大面积染 = 老板两次投诉"视觉负担/不好区分"的真身）。
      施工/升级中的格子不带 ser 类，名称自动落暗色 veil 底（与旧观感一致）。 */
-  .iso-tile.built.ser-gov  .tile-label .nm { background: var(--ser-gov); }
-  .iso-tile.built.ser-live .tile-label .nm { background: var(--ser-live); }
-  .iso-tile.built.ser-mil  .tile-label .nm { background: var(--ser-mil); }
-  .iso-tile.built.ser-ops  .tile-label .nm { background: var(--ser-ops); }
-  /* ---- 城外资源地（v39 · 需求 2）：老板点名的四种色系 ---- */
-  .iso-tile.res-farm   .tile-face { background: var(--res-farm); }
-  .iso-tile.res-forest .tile-face { background: var(--res-forest); }
-  .iso-tile.res-quarry .tile-face { background: var(--res-quarry); }
-  .iso-tile.res-mine   .tile-face { background: var(--res-mine); }
+  /* v90.10（老板）：「建筑底部背景色块去掉」——名称衬底色块整体退役，
+     各系一律纯文字 + 投影保证任何地形上可读。 */
+  .iso-tile.built .tile-label .nm,
+  .gov-palace .tile-label .nm {
+    background: transparent; padding: 0 var(--sp-hair);
+    text-shadow: 0 1px 3px rgba(var(--sh-rgb),.95), 0 0 3px rgba(var(--sh-rgb),.85);
+  }
+  /* v90.10（老板）：「城内建筑底部柔和色块，分两系」——
+     整格地块底色按两系铺一层**柔和色**（低饱和、半透明，不抢建筑图标）：
+       · 民居系（无操作系：居所 / 车库 / 补给站 / 货仓 = ser-live）→ 米黄
+       · 其他系（gov / mil / ops）→ 石青
+     名字解析：--built-bg-fill 由 ser-* 决定，--built-bg（色值）由下方基类决定；
+     施工/升级中的格子不带 ser 类 → fill 为空 → 地块面退回 --ground（旧观感）。 */
+  .iso-tile.built.ser-live { --built-bg-fill: var(--built-warm); }
+  .iso-tile.built.ser-gov,
+  .iso-tile.built.ser-mil,
+  .iso-tile.built.ser-ops,
+  .gov-palace { --built-bg-fill: var(--built-blue); }
+  .iso-tile.built .tile-face { background: var(--built-bg-fill, var(--ground)); }
+  .gov-palace .tile-face { background: var(--built-bg-fill, var(--ground)); }
+  /* ---- 城外资源地（v39 · 需求 2 · v90.10 老板：「城外资源建筑也去掉背景色」）：
+     地块面不再铺四种色系底块，资源建筑直接落在地面上（图标本身即识别）。 ---- */
+  .iso-tile.res-farm   .tile-face,
+  .iso-tile.res-forest .tile-face,
+  .iso-tile.res-quarry .tile-face,
+  .iso-tile.res-mine   .tile-face { background: transparent; }
   /* 悬停：只提亮一格，不描边 */
   .iso-tile:hover .tile-face { filter: brightness(1.10); }
   .iso-tile:hover { z-index: 5; }
@@ -1167,7 +1191,9 @@
     /* v25（需求 6）：原先留 15px 给标签、图标只占 58% —— 看着"小得可怜"。
        现在图标占满整格（标签条是绝对定位的浮层，本就压在图标下沿，
        不必为它预留布局空间），图标只比地块小一点点。 */
-    padding: var(--sp-1) var(--sp-1) var(--sp-3);
+    /* v90.8（老板）：「图标稍放大」—— 名称/等级改绝对定位浮层后不再占布局空间，
+       图标铺满整格并再放大一点。 */
+    padding: 0;
     /* v39：建筑"长高"的落点 —— 实际缩放加在图标上（见 ser-* 规则），
        容器只做过渡，标签与进度条不受缩放影响。 */
     transition: transform .18s ease-out;
@@ -1241,17 +1267,17 @@
        色块高 ≈23px（旧标签 ≈20px），更醒目；
      · 白字 + 描边（色块饱和 40~55，白字对比全部 ≥4.5，见 smoke §229）。 */
   .tile-label {
-    position: absolute; left: var(--sp-1); right: var(--sp-1); top: var(--sp-0);
-    display: flex; align-items: center; justify-content: center; gap: var(--sp-hair);
-    background: transparent;
+    position: absolute; inset: 0;               /* v90.8：铺满格 —— 名称落底部、等级落右上角 */
+    pointer-events: none;
     font-size: var(--fs-sub); font-weight: 700; line-height: var(--lh-tight);
-    white-space: nowrap; overflow: hidden;
   }
   .tile-label .nm {
-    min-width: 0; color: var(--on-block);
+    position: absolute; left: 50%; bottom: var(--sp-0); transform: translateX(-50%);
+    max-width: calc(100% - var(--sp-2));
+    color: var(--on-block);
     background: rgba(var(--tile-veil-rgb),.62);
     padding: var(--sp-1) var(--sp-2); border-radius: var(--r-sm);
-    overflow: hidden; text-overflow: ellipsis;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     text-shadow: 0 1px 2px rgba(var(--sh-rgb),.6);
   }
   .iso-tile.empty .tile-label { display: none; }
@@ -1653,14 +1679,49 @@
      而框高 = 宽 × 19/15，所以宽度低于 250px 时行间距会被压到负数。
      宁可让人形框顶出格子，也不能让方槽叠一起。
      ⚠️ 高度变则 DOLL_POS 的百分比全部要重排（详见 js/ui.js 里那张表）。 */
-  .doll { position: relative; width: 100%; max-width: 400px; min-width: 230px;
-    margin: 0 auto; aspect-ratio: 15 / 19;
-    /* v46（需求 3）：人形框有了自己的底 —— 放大的英雄抠图要有个"画框"才不像浮在空中。
-       v89.238（老板）：剪影（原第 2 层）已去；抠图调亮后方角会顶破圆角，
-       故补 overflow: hidden —— 画框圆角对子元素一并生效（槽位/角标全在框内，不误裁）。
-       层级：抠图（1）→ 12 个方形槽位（3）。 */
+  /* v90.18（老板「装备界面不够宽·展示不全」）：机甲框按列宽放大（右栏 851px 原只用到 360），
+     上限取"整只机甲 + 下方按钮都放得下"的值（宽 ~400 → 高 ~629，右侧信息栏也在同高内）。 */
+  /* v90.20（老板「谁规定了长宽比例固定？」）：**取消 .doll 的固定宽高比** ——
+     框宽度随列自适应（不再 max-width 卡死），机甲图（.doll-fig）**按框能给的
+     最大高度**在里面自适应居中；19 个点击位改用**容器单位 cqw**（随图缩放），
+     于是"框填满列宽、机甲尽量大且完整"两者兼得。 */
+  /* v90.51：机甲图框高回到 **560**（不超高、英雄页无滚动条）；因图比例已加宽到 1280/1472，
+     机甲本体仍比旧制大 ~37%（560 高 × 1280/1472 ≈ 487dp 宽，旧制仅 355dp）。 */
+  .doll { position: relative; width: 100%; min-height: 560px;
+    display: flex; align-items: stretch; justify-content: center;
     background: radial-gradient(ellipse at 50% 26%, rgba(var(--hl-rgb),.06), transparent 70%), rgba(var(--sh-rgb),.24);
     border: 1px solid var(--line); border-radius: var(--r-xl); overflow: hidden; }
+  /* 机甲图容器：比例 = 原图 1280:1472（v90.51 加宽，机甲按高撑满、显大），高度撑满框、宽度由高度派生，水平居中；
+     container-type:inline-size → 内部槽位用 cqw 按图宽等比缩放。 */
+  .doll-fig { position: relative; aspect-ratio: 1280 / 1472; height: 100%;
+    margin: 0 auto; container-type: inline-size; }
+  /* v90.25（老板）：外挂层（披风 + 外挂 6 槽）——**框相对**绝对定位，用足左右留白。
+     落点/槽尺寸走 %（相对整个框，不是窄机甲图），左右空间才用得上。 */
+  .doll-outer { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
+  .doll-outer > * { pointer-events: auto; }
+  /* v90.11：机甲背景（去白底爆炸图）—— 提亮一点、不透底 */
+  .doll-portrait.doll-mecha img { filter: brightness(1.08); }
+  .doll-portrait.doll-mecha {
+    -webkit-mask-image: none; mask-image: none; }
+  /* v90.49（老板 3）：外挂 6 模块改**统一小方框**（浮于机甲上层 `.doll-outer` z2），
+     贴左右两列、中间留给机甲本体；框内为**固定模块图**（mod_*.png，不随装备变，见 DOLL_MOD_ART）；
+     空/着只改边框（虚线/实线）。 */
+  .doll-mechamode .eq-cell.doll-slot-mod {
+    width: 11%; height: 11%; margin-left: -5.5%; margin-top: -5.5%;
+    border: 1px dashed rgba(var(--gold-soft-rgb),.45); background: rgba(var(--slab-0-rgb),.5);
+    border-radius: var(--r-md); }
+  .doll-mechamode .eq-cell.doll-slot-mod:not(.empty) {
+    border-style: solid; border-color: rgba(var(--gold-rgb),.72); }
+  .doll-slot-mod .eq-mod-img { width: 100%; height: 100%; object-fit: contain; display: block;
+    padding: 9%; filter: brightness(1.06) drop-shadow(0 1px 3px rgba(var(--sh-rgb),.5)); }
+  .doll-slot-mod .eq-ico-fit { width: 100%; height: 100%; }
+  .doll-slot-mod .eq-ico-fit .ico { width: 100%; height: 100%; object-fit: contain; }
+  /* v90.11：机甲列（机甲框 + 下方外挂条） */
+  .doll-col { display: flex; flex-direction: column; gap: var(--sp-3); min-width: 0; }
+  .doll-attach { display: flex; flex-wrap: wrap; gap: var(--sp-1); justify-content: center; }
+  /* 外挂条里的小槽：流式（不绝对定位）—— 特异性要盖过后面那条 `.doll-slot` 的绝对定位规则 */
+  .doll-attach .doll-slot-inline { position: static; width: 56px; height: 56px; margin: 0; }
+  .doll-attach .doll-slot-inline .eq-ico { width: 26px; height: 26px; }
   /* v46（需求 3）：大号英雄抠图，**浅色**显示（低透明 + 下缘渐隐，不许用滤镜染色）。
      v89.238（老板）：「背景图太暗了…背景调亮」—— 0.32 → 0.55；
      v89.239（老板）：「不够亮」—— 0.55 → 0.80 并叠 brightness(1.15) 提亮；
@@ -1705,12 +1766,16 @@
      于是它一直当作普通流内元素占掉一整行（实测给 chest 多撑出 18px）。 */
   .doll-slot.eq-cell { padding: var(--sp-0); border-radius: var(--r-md); }
   /* v89.131：方槽 54→62、图标 22→28（跟随人形框放大；排版预算见下方
-     "槽位内三行装得下" 的实算：2+4+11+1+28+1+11 = 58 ≤ 62，余 4px）。 */
-  .doll-slot { position: absolute; width: 62px; height: 62px; margin-left: -31px;
+     "槽位内三行装得下" 的实算：2+4+11+1+28+1+11 = 58 ≤ 62，余 4px）。
+     v90.20（老板）：改**容器单位 cqw** —— 机甲图 `.doll-fig` 是 inline-size 容器，
+     槽随图宽等比缩放（机器套图 ~355 宽时 1cqw≈3.55px，62px≈17.5cqw）。
+     v90.51：图比例加宽到 1250/1472 → cqw 变大，**cqw 值按比例缩小**（17.5→15cqw），
+     槽的绝对尺寸与原制相当、行距与出框仍满足（实算 slack 2.8px）。 */
+  .doll-slot { position: absolute; width: 15cqw; height: 15cqw; margin-left: -7.5cqw;
     min-height: 0; gap: var(--sp-hair); z-index: 3; }
   /* ⚠ 这里**不能**加 overflow: hidden —— 背包存货角标（.eq-inv，right/bottom −3px）
      本来就设计成压在边框外，裁了就看不出"这件还有几件可换"。 */
-  .doll-slot .eq-ico { width: 28px; height: 28px; margin-top: 0; }
+  .doll-slot .eq-ico { width: 5cqw; height: 5cqw; margin-top: 0; }
   .doll-slot .eq-slotname { position: static; font-size: var(--fs-cap); line-height: var(--lh-1); letter-spacing: 0; }
   /* 字号一律走令牌（七档），不写裸像素 —— 槽位窄，用最小档 + 省略号 */
   .doll-slot .eq-name { font-size: var(--fs-cap); line-height: var(--lh-1); max-width: 100%; overflow: hidden;
@@ -1724,28 +1789,61 @@
   .doll-slot .eq-inv { position: absolute; right: -3px; bottom: -3px; line-height: var(--lh-body);
     font-size: var(--fs-cap); padding: 0 var(--sp-1); border-radius: var(--r-md);
     background: rgba(var(--gold-rgb),.22); border: 1px solid rgba(var(--gold-rgb),.45); opacity: 1; }
-  .eq-gain { text-align: center; font-size: var(--fs-cap); color: var(--text-dim); margin-bottom: var(--sp-3); }
+  /* v90.12（老板 1）：机甲套 —— 槽位 = 机甲**部件轮廓**本身（无边框、无文字）。
+     部位名 / 装备名不预写（悬停已有）；空槽只是不可见的点击热区。
+     （放在 `.doll-slot` 基规则**之后**，特异性 0-2-0 盖过基规则。） */
+  .doll-mechamode .eq-cell.doll-slot { border: none; background: transparent; box-shadow: none; }
+  .doll-mechamode .eq-cell.doll-slot .eq-slotname,
+  .doll-mechamode .eq-cell.doll-slot .eq-name { display: none; }
+  .doll-mechamode .eq-cell.doll-slot.empty .eq-ico { opacity: .18; }
+  .doll-mechamode .eq-cell.doll-slot:hover { transform: none; }
+  /* v90.16：机甲型制选择窗 */
+  .mecha-style-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--sp-3); padding: var(--sp-3); max-height: 560px; overflow-y: auto; }
+  .mt-card { border: 1px solid var(--line); border-radius: var(--r-md); background: rgba(var(--sh-rgb),.3);
+    cursor: pointer; padding: var(--sp-2); text-align: center; transition: border-color .14s, transform .14s; }
+  .mt-card:hover { border-color: rgba(var(--gold-soft-rgb),.7); transform: translateY(-2px); }
+  .mt-card.on { border-color: rgb(var(--gold-rgb)); box-shadow: 0 0 0 2px rgba(var(--gold-rgb),.3); }
+  .mt-card img { width: 100%; height: 120px; object-fit: contain; display: block; }
+  .mt-card .mt-nm { display: block; margin-top: var(--sp-2); font-size: var(--fs-sub); font-weight: 700; color: var(--parchment); }
+  /* v90.53（老板）：按套装装备选择窗 */
+  .set-pick-grid { padding: var(--sp-3); max-height: 560px; overflow-y: auto; }
+  .set-pick-rank { display: flex; align-items: flex-start; gap: var(--sp-3); margin-bottom: var(--sp-2); }
+  .set-pick-rank .spr-lb { flex: none; width: 44px; text-align: right; padding-top: var(--sp-2);
+    font-size: var(--fs-cap); color: var(--gold-light); }
+  .set-pick-row { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+  .set-pick-card { border: 1px solid var(--line); border-radius: var(--r-md); background: rgba(var(--sh-rgb),.3);
+    cursor: pointer; padding: var(--sp-2) var(--sp-3); text-align: center; min-width: 96px; transition: border-color .14s, transform .14s; }
+  .set-pick-card:hover { border-color: rgba(var(--gold-soft-rgb),.7); transform: translateY(-2px); }
+  .set-pick-card.on { border-color: rgb(var(--gold-rgb)); box-shadow: 0 0 0 2px rgba(var(--gold-rgb),.3); }
+  .set-pick-card .sp-name { display: block; font-size: var(--fs-sub); font-weight: 700; color: var(--parchment); }
+  .set-pick-card .sp-n { display: block; margin-top: var(--sp-hair); font-size: var(--fs-cap); color: var(--text-dim); font-variant-numeric: tabular-nums; }
+  /* v90.49（老板 2）：右侧信息列收窄 → **压缩**（字号已 fs-cap，这里收紧行距与留白）。 */
+  .eq-gain { text-align: center; font-size: var(--fs-cap); color: var(--text-dim); margin-bottom: var(--sp-1); }
   .eq-gain i { font-style: normal; color: var(--green-ok); margin: 0 var(--sp-1); }
   .eq-gain .none { opacity: .7; }
   /* v60（需求 2）：装备提供的属性**逐行**显示（统帅 +775.5 / 武力 +752.5 …）
      —— 老板原话「右侧把装备提供的属性分行显示即可」。
      数值一律右对齐，好一眼比出"哪一项是这件装备给的大头"。 */
-  .eq-grows { display: flex; flex-direction: column; gap: var(--sp-0); margin-bottom: var(--sp-3); }
+  .eq-grows { display: flex; flex-direction: column; gap: var(--sp-0); margin-bottom: var(--sp-2); }
   .eq-grow { display: flex; justify-content: space-between; align-items: baseline;
-    font-size: var(--fs-cap); padding: var(--sp-hair) var(--sp-2); border-radius: var(--r-sm); background: var(--slab-1); }
+    font-size: var(--fs-cap); padding: var(--sp-hair) var(--sp-1); border-radius: var(--r-sm); background: var(--slab-1); }
   .eq-grow .k { color: var(--text-dim); }
   .eq-grow .v { color: var(--green-ok); font-weight: 700; font-variant-numeric: tabular-nums; }
   /* 套装进度 */
-  .doll-set { border-top: 1px solid var(--sep-gold); padding-top: var(--sp-3); }
-  .ds-empty { font-size: var(--fs-sub); color: var(--text-dim); }
+  .doll-set { border-top: 1px solid var(--sep-gold); padding-top: var(--sp-2); }
+  .ds-empty { font-size: var(--fs-cap); color: var(--text-dim); }
   .ds-empty b { color: var(--gold-light); }
-  .ds-block { margin-bottom: var(--sp-3); }
+  .ds-block { margin-bottom: var(--sp-1); }
   .ds-head { display: flex; align-items: baseline; gap: var(--sp-2); flex-wrap: wrap; margin-bottom: var(--sp-1); }
   .ds-name { font-size: var(--fs-body); font-weight: 800; color: var(--hero-tag); }
   .ds-n { font-size: var(--fs-cap); color: var(--text-dim); font-variant-numeric: tabular-nums; }
   .ds-next { font-size: var(--fs-cap); color: var(--amber); margin-left: auto; }
   .ds-next.done { color: var(--green-ok); }
   .ds-tiers { display: flex; flex-direction: column; gap: var(--sp-0); }
+  /* v90.32（老板）：套装面板只显示**当前生效档** —— 单行强调 */
+  .ds-cur { display: flex; flex-direction: column; }
+  .ds-cur i { font-style: normal; font-size: var(--fs-cap); color: var(--green-ok); line-height: var(--lh-body); }
+  .ds-cur i b { color: inherit; font-weight: 700; margin-right: var(--sp-1); }
   .ds-tiers i { font-style: normal; font-size: var(--fs-cap); color: var(--text-dim); line-height: var(--lh-body); opacity: .62; }
   .ds-tiers i b { color: inherit; font-weight: 700; margin-right: var(--sp-1); }
   .ds-tiers i.on { color: var(--green-ok); opacity: 1; }
@@ -1916,6 +2014,10 @@
     /* v89.88：大地图整块可点（点城池/据点/野地都会出面板）——
        原来用的是默认箭头光标，"能不能点"全靠猜。 */
     cursor: pointer; }
+  /* v90.64（老板）：右上角**行政检索**下拉（选省/市/区 → 增亮该区、其余调暗） */
+  .adm-search { position: absolute; top: 14px; right: 20px; z-index: 5; display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; max-width: 60%; }
+  .adm-search select { padding: var(--sp-1) var(--sp-3); font-size: var(--fs-sub); max-width: 150px;
+    background: var(--slab-1); color: var(--text); border: 1px solid var(--gold-dark); border-radius: var(--r-sm); }
   /* ============ v85（老板）：底部缩略地图 + 天下大势面板 ============ */
   /* 为条尾缩略图提供定位上下文（单独成条，不动原 .bottombar 块的 46px 高度） */
   .bottombar { position: relative; padding-right: 56px; }
@@ -2435,6 +2537,9 @@
   /* v89.136（老板 3）：体力/精力/忠诚三行同构 —— 数值列固定宽（位数变化不挪位）、
      进度条等长（v89.157 起 106px）；按钮贴右沿用既有 .gd-line .gd-plus（margin-left:auto）。 */
   .gd-line .gd-num { flex: none; width: 60px; }
+  /* v90.33（老板）：体力/精力/忠诚 去进度条，行内显示「当前 / 上限」——上限那半灰色。 */
+  /* v90.38（老板）：「上限数字字体不一样」——当前值(--fs-body)与上限(曾 --fs-cap)同字号。 */
+  .gd-line .gd-max { flex: none; color: var(--text-dim); font-size: var(--fs-body); font-weight: 400; }
   .gd-line .gd-bar { flex: none; width: 106px; }   /* v89.157（老板 2）：132→106 —— 实测列宽 266px，132 时整行超出折成 2 行 */
   .gd-hint { color: var(--text-dim); font-size: var(--fs-sub); }
   .gd-warn { color: var(--red-light, #e08a7a); font-size: var(--fs-sub); }
@@ -2479,6 +2584,10 @@
   .troop-card.bldg-pick .ticon .ico { width: auto; height: 84px; max-width: 100%; object-fit: contain; }
   .troop-card .tname { font-size: var(--fs-body); font-weight: 700; color: var(--parchment); margin-top: var(--sp-1); }
   .troop-card .tstat { font-size: var(--fs-cap); color: var(--text-dim); margin-top: var(--sp-1); line-height: var(--lh-body); }
+  /* v90.12（老板 6）：兵种图改在悬停浮层里放大显示（卡面迷你图退役）。 */
+  .troop-tip-fig { display: flex; justify-content: center; margin-bottom: var(--sp-2); }
+  .troop-tip-fig .ico { width: auto; height: 96px; max-width: 100%; object-fit: contain; }
+  .troop-card.bldg-pick .troop-tip-fig .ico { height: 96px; }
 
   /* ============ 英雄卡片（v20 · 需求 3：分次呈现）============
      旧版 .gen-card（.gavatar/.ginfo 结构，v11 遗留）已废弃并删除 ——
@@ -2605,7 +2714,8 @@
   /* v89.131（老板）：「六维/状态占左四分之一；部件栏占四分之三，稍微放大一点。
      其中的四分之二为装备图，另四分之一为装备属性汇总」——
      列宽三段合起来 = 4 份：.gp-body 给 1:3，.gp-doll 内部再给 2:1。 */
-  .gp-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 3fr);
+  /* v90.17（老板 1）：左（六维）收一档、右（部件栏）放一档 → 1:4（原 1:3）。 */
+  .gp-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 4fr);
     gap: var(--sp-5); align-items: start; }
   .gp-col-l, .gp-col-r { min-width: 0; display: flex; flex-direction: column; }
   /* 每栏的第一个分区标题不再上留白 —— 上方的 gp-head 已经给了分隔线 */
@@ -2673,7 +2783,9 @@
      （老板报的「装备的界面没有占满，底下有留空的一块」就是它：汇总列内容只到 186px，
      而人形框 358px —— 下缘一大片空）。按钮组改 `margin-top:auto` 钉到列底，
      于是汇总列目视从顶到底都排满。 */
-  .gp-doll { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: var(--sp-4);
+  /* v90.17（老板 1）：机甲框放大、套装属性列收窄（套装属性信息少）——机甲:信息 由 2:1 → 3:1
+     v90.49（老板 2「装备框再放大、压缩右侧」）：3:1 → **4:1**（机甲框更宽、右侧更窄）。 */
+  .gp-doll { display: grid; grid-template-columns: minmax(0, 4fr) minmax(0, 1fr); gap: var(--sp-4);
     align-items: stretch; margin-top: var(--sp-3); }
   .gp-dollops { display: flex; gap: var(--sp-2); margin-top: auto; padding-top: var(--sp-3); }
   .gp-dollops .btn { flex: 1; }
@@ -3172,19 +3284,20 @@
      v23~v89.228：绝对定位在格内右上角的独立角标；v89.229 老板令「名称和等级都放顶部」
      —— 名称行移到格顶后，角标并入该行（flex 行内），与色块同排、随名称居中。 */
   .tile-badge {
-    position: static; flex: none;
-    min-width: 17px; height: 17px; line-height: 17px; padding: 0 var(--sp-1);
-    border-radius: var(--r-lg); text-align: center;
+    position: absolute; right: var(--sp-0); top: var(--sp-0);   /* v90.8：等级移到右上角 */
+    min-width: 14px; height: 17px; line-height: 17px; padding: 0 var(--sp-hair);
+    text-align: center;
     font-size: var(--fs-cap); font-weight: 800; font-variant-numeric: tabular-nums;
-    color: var(--ink-on-gold);
-    background: linear-gradient(180deg, var(--gold-light), var(--gold));
-    box-shadow: 0 1px 3px rgba(var(--sh-rgb), .55);
+    color: var(--on-block);                                     /* v90.9：等级文字也白色 */
+    background: transparent;                                    /* v90.9：去衬底，只要文字 */
+    text-shadow: 0 1px 3px rgba(var(--sh-rgb),.95), 0 0 2px rgba(var(--sh-rgb),.9);
   }
-  .tile-badge.max { color: var(--ink-on-gold); background: linear-gradient(180deg, #a8e59a, var(--green-ok)); }
+  .tile-badge.max { color: var(--green-ok); }
 
   /* ---- 政务厅宫殿（v23 · 需求 4）：4 格融合成一座建筑 ---- */
   .gov-palace { position: absolute; z-index: 3; cursor: pointer; transition: z-index 0s; }
   .gov-palace .tile-face { inset: 2px; border-radius: var(--r-xl); }
+  /* v90.10：政务厅底由 `.gov-palace .tile-face`（§城内建筑）按系给色（其他系=石青） */
   .gov-palace .gov-art {
     position: absolute; inset: 0; display: flex; align-items: flex-end; justify-content: center;
     padding-bottom: var(--sp-5); pointer-events: none; z-index: 4;
@@ -4396,27 +4509,30 @@
 </div><!-- /#app-scale -->
 </div><!-- /#app-fit -->
 
-<!-- BUILD 9100 -->
-<script src="js/data.js?v=9100"></script>
-<script src="js/state.js?v=9100"></script>
-<script src="js/questdata.js?v=9100"></script>
-<script src="js/systems.js?v=9100"></script>
-<script src="js/domain.js?v=9100"></script>
-<script src="js/map.js?v=9100"></script>
-<script src="js/battle.js?v=9100"></script>
+<!-- BUILD 9127 -->
+<script src="js/data.js?v=9127"></script>
+<script src="js/state.js?v=9127"></script>
+<script src="js/questdata.js?v=9127"></script>
+<script src="js/systems.js?v=9127"></script>
+<script src="js/domain.js?v=9127"></script>
+<script src="js/map.js?v=9127"></script>
+<!-- v90.61：Three.js 真 3D 主地图（vendor 本地，离线可用） -->
+<script src="vendor/three.min.js?v=9127"></script>
+<script src="js/map3d.js?v=9127"></script>
+<script src="js/battle.js?v=9127"></script>
 <!-- v27（需求 5）：回合制文字战场。放在 battle.js 之后 —— simulate 由它接管 -->
-<script src="js/tactic.js?v=9100"></script>
-<script src="js/icons.js?v=9100"></script>
+<script src="js/tactic.js?v=9127"></script>
+<script src="js/icons.js?v=9127"></script>
 <!-- v32（需求「采用网图」）：game-icons 开源图标素材层。必须在 icons.js 之后 ——
      icons.js 内的取图函数用 typeof GICONS 延迟绑定，渲染时才真正查表。 -->
-<script src="js/gicons.js?v=9100"></script>
+<script src="js/gicons.js?v=9127"></script>
 <!-- v35：AI 位图素材登记表（汉代风，最高优先级）。同样在 icons.js 之后 ——
      取图函数用 typeof BITMAPS 延迟绑定；未登记的 id 自动回退矢量层。 -->
-<script src="js/bitmaps.js?v=9100"></script>
-<script src="js/portraits.js?v=9100"></script>
-<script src="js/story.js?v=9100"></script>
+<script src="js/bitmaps.js?v=9127"></script>
+<script src="js/portraits.js?v=9127"></script>
+<script src="js/story.js?v=9127"></script>
 <!-- ⛔ v89.218（老板「故事全部去除」）：84 卷故事库（story/）整目录删除，脚本标签同步撤除。 -->
-<script src="js/ui.js?v=9100"></script>
-<script src="js/main.js?v=9100"></script>
+<script src="js/ui.js?v=9127"></script>
+<script src="js/main.js?v=9127"></script>
 </body>
 </html>

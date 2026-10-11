@@ -771,10 +771,10 @@ async function runTests(dom, URL) {
       })());
       /* v41（需求 2）：人形部件栏内嵌在右侧档案里
          v89.238（老板）规则变更：几何剪影退役（dollFigure 零残留）；抠图底衬在岗 */
-      check('人形部件栏内嵌在右侧档案（12 槽，不开弹窗 · v89.238 剪影已去）',
+      check('人形部件栏内嵌在右侧档案（19 槽：13 身体 + 6 外挂 · 不开弹窗 · v89.238 剪影已去）',
         !document.querySelector('#view-container .gen-pane .doll .doll-fig-svg')
         && !!document.querySelector('#view-container .gen-pane .doll .doll-portrait')
-        && document.querySelectorAll('#view-container .gen-pane .doll-slot').length === 12
+        && document.querySelectorAll('#view-container .gen-pane .doll-slot').length === 19
         && document.querySelectorAll('#modal-root .doll-slot').length === 0);
     }
     s.generals.pop();
@@ -1179,23 +1179,24 @@ async function runTests(dom, URL) {
     G.map._view && G.map._view.spanX === 9 && G.map._view.spanY === 8
     && G.map._view.cell >= 34 && G.map._view.cell <= 88,
     G.map._view.spanX + '×' + G.map._view.spanY + ' cell=' + G.map._view.cell);
-  check('地图为菱形等距（半宽 = cell/2、半高 = cell/3 · v89.226 拉高顶面、视口中心为 vx/vy）',
+  check('地图为方格网（半宽 = 半高 = cell/2 · iso=false · v90.6 老板"贴图不要旋转"）',
     G.map._view && G.map._view.HW === G.map._view.cell / 2
-    && G.map._view.HH === G.map._view.cell / 3 && G.map._view.iso === true
+    && G.map._view.HH === G.map._view.cell / 2 && G.map._view.iso === false
     && !G.map._view.W && !G.map._view.thick,
     'cell=' + (G.map._view && G.map._view.cell) + ' HW=' + (G.map._view && G.map._view.HW));
-  check('地图拾取为菱形反投影（格心与菱形内多个点都命中本格）', (function () {
+  check('地图拾取为方格反投影（格心与格内多个点都命中本格）', (function () {
     var v = G.map._view;
     /* jsdom 里 canvas 的 getBoundingClientRect 全 0，pick 会除零 —— 必须先注入桩 */
     var old = cv19.getBoundingClientRect;
     cv19.getBoundingClientRect = function () { return { left: 0, top: 0, width: cv19.width, height: cv19.height }; };
-    var at = function (gx, gy) { return { x: v.ox + (gx - gy) * v.HW, y: v.oy + (gx + gy) * v.HH }; };
+    /* v90.6 方格网：格心 = (ox + gx·cell, oy + gy·cell) */
+    var at = function (gx, gy) { return { x: v.ox + gx * v.cell, y: v.oy + gy * v.cell }; };
     var a = at(v.vx + 3, v.vy + 5), b = at(v.vx + 8, v.vy + 2);
     var h1 = G.map.pick(cv19, a.x, a.y);
     var h2 = G.map.pick(cv19, b.x, b.y);
-    /* 菱形内的斜向偏移（半宽 0.4 倍）也必须落在同一格 —— 这正是"斜投影必然对不齐"的反证 */
-    var h3 = G.map.pick(cv19, a.x + v.HW * 0.4, a.y);
-    var h4 = G.map.pick(cv19, a.x, a.y + v.HH * 0.8);
+    /* 格内的轴对齐偏移（半格 0.4 倍）也必须落在同一格 —— 反投影对齐的反证 */
+    var h3 = G.map.pick(cv19, a.x + v.cell * 0.4, a.y);
+    var h4 = G.map.pick(cv19, a.x, a.y + v.cell * 0.4);
     cv19.getBoundingClientRect = old;
     return h1 && h1.x === v.vx + 3 && h1.y === v.vy + 5
       && h2 && h2.x === v.vx + 8 && h2.y === v.vy + 2
@@ -1283,7 +1284,7 @@ async function runTests(dom, URL) {
     G.ui.mapView.x = q19b.x; G.ui.mapView.y = q19b.y;
     G.ui.renderMapCanvas();
     const v = G.map._view;
-    const sx = v.ox + (q19b.x - q19b.y) * v.HW, sy = v.oy + (q19b.x + q19b.y) * v.HH;
+    const sx = v.ox + q19b.x * v.cell, sy = v.oy + q19b.y * v.cell;
     if (!(sx > 0 && sy > 0 && sx < cv19.width && sy < cv19.height)) return false;
     const oldRect = cv19.getBoundingClientRect;
     cv19.getBoundingClientRect = function () { return { left: 0, top: 0, width: cv19.width, height: cv19.height }; };
@@ -1493,8 +1494,8 @@ async function runTests(dom, URL) {
   const forge20 = document.querySelector('#modal-root').innerHTML;
   check('打造面板渲染', forge20.length > 500, forge20.length + ' 字符');
   check('标题显示可打造等级', forge20.indexOf('可打造至') >= 0);
-  check('按品质分组（粗制/标准/精良/原型）',
-    forge20.indexOf('粗制') >= 0 && forge20.indexOf('原型') >= 0);
+  check('按品质分组（粗劣/优良/精品/稀有）',
+    forge20.indexOf('粗劣') >= 0 && forge20.indexOf('稀有') >= 0);
   /* v29（需求 12）：材料逐项列出，并标出**出产区**（缺料时最想知道的那件事） */
   check('列出材料成本（含出产州）', forge20.indexOf('材料') >= 0 && forge20.indexOf('特产') >= 0);
   /* v51：卡片瘦身时删掉了「条件齐备，可以打造」——它只是复述按钮状态
@@ -1562,13 +1563,13 @@ async function runTests(dom, URL) {
        前序用例的残留选中会让底键显示「打造 N 件」，无件名）。 */
     G.ui._forgeSelList = [];
     const saveItems = G.state.items, saveRes = G.state.res;
-    const it = G.DATA.EQUIP.cr_head_1;
+    const it = G.DATA.EQUIP.coarse_zhi_head;
     G.state.items = Object.assign({}, saveItems);
     (G.DATA.MATERIALS || []).forEach((m) => { G.state.items[m.id] = 999; });
     G.state.res = Object.assign({}, saveRes, { gold: 9e8, iron: 9e8, wood: 9e8, stone: 9e8,
       grain: 9e8, cloth: 9e8, horse: 9e8 });
     G.ui.openForge();
-    const row = document.querySelector('#modal-root .item-row[data-action="forge-pick"][data-item="cr_head_1"]');
+    const row = document.querySelector('#modal-root .item-row[data-action="forge-pick"][data-item="coarse_zhi_head"]');
     if (!row) { G.state.items = saveItems; G.state.res = saveRes; G.ui.openForge(); return false; }
     row.click();
     const b3 = document.querySelector('#modal-root [data-action="forge-item"]');
@@ -1590,18 +1591,19 @@ async function runTests(dom, URL) {
   (function () {
     const saveItems = G.state.items, saveRes = G.state.res;
     (G.DATA.MATERIALS || []).forEach((m) => { G.state.items[m.id] = 999; });
+    (G.DATA.BLUEPRINTS || []).forEach((b) => { G.state.items[b.id] = 9; });  /* v90.14：套装需图纸 */
     G.state.res = Object.assign({}, saveRes, { gold: 9e8, iron: 9e8, wood: 9e8, stone: 9e8 });
   })();
   const invBefore = (G.state.inventory || []).length;
   /* v89.117：先把筛选复位（前面的子用例切到过「套装」类别），再**逐页找** ——
-     凡人不止 6 件，`cr_head_1` 可能在第 2 页；翻页走与玩家同一条路
+     凡人不止 6 件，`coarse_zhi_head` 可能在第 2 页；翻页走与玩家同一条路
      （改 ui._pages['forge'] + 重开面板）。 */
   G.ui._forgeKind = 'all'; G.ui._forgeSet = ''; G.ui._forgeQ = 1; G.ui._forgeSelList = [];
   let pickRow = null;
   for (let pi = 1; pi <= 8 && !pickRow; pi++) {
     G.ui._pages['forge'] = pi;
     G.ui.openForge();
-    pickRow = document.querySelector('#modal-root .item-row[data-action="forge-pick"][data-item="cr_head_1"]');
+    pickRow = document.querySelector('#modal-root .item-row[data-action="forge-pick"][data-item="coarse_zhi_head"]');
   }
   check('找到凡人盔（可点选 · 逐页可达）', !!pickRow);
   if (pickRow) { pickRow.click(); }
@@ -1611,7 +1613,7 @@ async function runTests(dom, URL) {
   await sleep(90);
   check('点击打造后进入背包', (G.state.inventory || []).length === invBefore + 1,
     invBefore + ' → ' + (G.state.inventory || []).length);
-  check('打造后记录已造', (G.state.forged || []).indexOf('cr_head_1') >= 0);
+  check('打造后记录已造', (G.state.forged || []).indexOf('coarse_zhi_head') >= 0);
   G.ui.closeAllModals();
 
   /* ⑤ 装备面板：体力作用说明 + 获取指引 */
@@ -1647,7 +1649,7 @@ async function runTests(dom, URL) {
   /* 切到「图纸」分类 → 应列出陨锋套图纸 */
   G.ui.setShopCat('blueprint');
   await sleep(60);
-  check('切分类后列出陨锋套图纸', document.querySelector('#view-container').innerHTML.indexOf('陨锋套图纸') >= 0);
+  check('切分类后列出拾荒套图纸', document.querySelector('#view-container').innerHTML.indexOf('拾荒套图纸') >= 0);
   /* 切到「珠宝」分类 → 低档珠宝可购买（v89.152：珍珠 -> 珍珠） */
   G.ui.setShopCat('jewel');
   await sleep(60);
@@ -1664,15 +1666,14 @@ async function runTests(dom, URL) {
   const pgB = document.querySelector('#bottom-bar .pg-info').textContent;
   check('翻页生效（页码变化）', pgA !== pgB, pgA + ' → ' + pgB);
   /* 数量输入框：−/＋ 与「最多」真的连到买家 */
-  check('数量输入框可加减且合计随之变化', (function () {
+  check('数量输入框可加减（v90.44：合计文字已撤，改悬停显示单价）', (function () {
     var inp = document.querySelector('#view-container .qty-input input');
     if (!inp) return false;
     var plus = inp.parentNode.querySelector('[data-action="qty-step"][data-d="1"]');
     var before = Number(inp.value);
     if (plus) plus.click();
     var after = Number(inp.value);
-    var tot = document.getElementById(inp.id + '-total');
-    return after === before + 1 && !!tot && tot.textContent.indexOf('合计') >= 0;
+    return after === before + 1;
   })());
   G.ui.setView('city');
   await sleep(40);
@@ -1801,8 +1802,8 @@ async function runTests(dom, URL) {
 
   /* ⑤ 背包：每行 5 格 + 悬停属性 */
   /* v79：同名两件走 addEquip（实例）—— 序号（甲/乙）即"区分办法" */
-  G.addEquip('cr_head_1'); G.addEquip('cr_head_1');
-  G.state.inventory.push('cr_weapon_2', 'yt_sword', 'jueying', 'cr_arm_1');
+  G.addEquip('coarse_zhi_head'); G.addEquip('coarse_zhi_head');
+  G.state.inventory.push('fine_zhan_weapon', 'rare_zhan_weapon', 'coarse_zhi_mount', 'coarse_zhi_arm_low_l');
   DATA.MATERIAL_IDS.forEach((m) => { G.state.items[m] = (G.state.items[m] || 0) + 9; });
   G.ui.openBag('equip');
   await sleep(80);
@@ -1822,7 +1823,7 @@ async function runTests(dom, URL) {
      旧断言查"·甲/·乙 在 HTML 里"，按新规则重写为：名称行无序号 + 内部编号仍在。 */
   check('v89.214：同名件名称行**无**序号（·甲/·乙 不再入名）',
     !/·[甲乙丙丁]/.test(bagH.innerHTML)
-    && G.eqSerialNo(bagH.querySelectorAll('.bag-cell').length ? G.state.inventory.filter(function (x) { return x && x.id === 'cr_head_1'; })[0] : null) >= 1,
+    && G.eqSerialNo(bagH.querySelectorAll('.bag-cell').length ? G.state.inventory.filter(function (x) { return x && x.id === 'coarse_zhi_head'; })[0] : null) >= 1,
     'names=' + (bagH.innerHTML.match(/bag-name"[^>]*>[^<]*/g) || []).slice(0, 6).join('|'));
   /* 材料（宝物 · 材料分类）—— v89.115：两类页签 + 二级分类条 */
   await bagTabTo('material');
@@ -2137,7 +2138,7 @@ async function runTests(dom, URL) {
   G.ui.closeAllModals();
 
   /* ---- ③ 背包：四页签 / 排序切换 ---- */
-  s.inventory = ['cr_weapon_1', 'cr_weapon_4', 'cr_head_2', 'cr_head_1'];
+  s.inventory = ['coarse_zhan_weapon', 'rare_zhan_weapon', 'fine_zhi_head', 'coarse_zhi_head'];
   DATA.MATERIAL_IDS.forEach(function (mid, i3) { s.items[mid] = (i3 + 1) * 3; });
   G.ui.openBag('equip');
   await sleep(90);
@@ -2165,7 +2166,7 @@ async function runTests(dom, URL) {
 
   /* ---- ④ 装备拆解（真实点击） ---- */
   const inv22 = s.inventory.length;
-  G.ui.openEquipDetail('cr_weapon_1');
+  G.ui.openEquipDetail('coarse_zhan_weapon');
   await sleep(80);
   const eqHtml = document.querySelector('#modal-root').innerHTML;
   check('v78：装备详情不再有「穿给谁」（穿戴走英雄侧）',
@@ -2183,7 +2184,7 @@ async function runTests(dom, URL) {
   click(document.querySelector('#modal-root [data-action="close-modal"]'));
   await sleep(70);
   check('取消拆解后装备数不变（误触不销毁）', s.inventory.length === inv22, inv22 + ' 件仍在');
-  G.ui.openEquipDetail('cr_weapon_1');
+  G.ui.openEquipDetail('coarse_zhan_weapon');
   await sleep(70);
   click(document.querySelector('#modal-root [data-action="salvage-equip-ask"]'));
   await sleep(70);
@@ -2253,13 +2254,13 @@ async function runTests(dom, URL) {
   /* ---- ⑤ 英雄部件栏 ---- */
   const gen22 = s.generals[0];
   gen22.equip = {};
-  s.inventory.push('cr_weapon_4', 'cr_chest_3');
+  s.inventory.push('rare_zhan_weapon', 'prime_zhi_chest');
   G.ui._genSel = gen22.id;
   G.ui.setView('generals');
   await sleep(90);
   /* v41（需求 2）：部件栏与解雇都在右侧档案内，不再有弹窗入口 */
-  check('英雄页内嵌人形部件栏（12 槽）',
-    vc.querySelectorAll('.gen-pane .doll-slot').length === 12,
+  check('英雄页内嵌人形部件栏（19 槽：13 身体 + 6 外挂）',
+    vc.querySelectorAll('.gen-pane .doll-slot').length === 19,
     vc.querySelectorAll('.gen-pane .doll-slot').length + ' 槽');
   check('解雇按钮就在右侧档案内（不再开弹窗）',
     vc.querySelectorAll('.gen-pane [data-action="dismiss-gen"]').length >= 1);
@@ -3691,13 +3692,13 @@ async function runTests(dom, URL) {
     cv26 ? cv26.width + '×' + cv26.height + ' cell=' + G.map._view.cell : 'n/a');
   check('视野信息改报中心格（v50：菱形视野不是矩形）', (function () {
     const v = G.map._view, txt = document.querySelector('#map-info').textContent;
-    return txt === '中心 (' + v.vx + ',' + v.vy + ')';
+    return txt === '中心 ' + G.map.coordText(v.vx, v.vy);   /* v90.67：坐标改球系显示 */
   })(), document.querySelector('#map-info').textContent);
   check('菱形视野四角可见格都可拾取、地图外为空', (function () {
     const v = G.map._view;
     const old = cv26.getBoundingClientRect;
     cv26.getBoundingClientRect = () => ({ left: 0, top: 0, width: cv26.width, height: cv26.height });
-    const at = (gx, gy) => ({ x: v.ox + (gx - gy) * v.HW, y: v.oy + (gx + gy) * v.HH });
+    const at = (gx, gy) => ({ x: v.ox + gx * v.cell, y: v.oy + gy * v.cell });
     /* 从中心格沿两轴各走 ±5 —— 在菱形排布里正是屏幕的四个方向 */
     const p = at(v.vx + 5, v.vy - 5), q = at(v.vx - 5, v.vy + 5);
     const hp = G.map.pick(cv26, p.x, p.y), hq = G.map.pick(cv26, q.x, q.y);
@@ -4644,7 +4645,7 @@ async function runTests(dom, URL) {
     G.ui.setView('generals');
     await sleep(80);
     const bareMax = G.staMax(g);
-    g.equip = { head: 'cr_head_4', chest: 'cr_chest_4' };
+    g.equip = { head: 'rare_zhi_head', chest: 'rare_zhi_chest' };
     /* 夹具必须让「当前值 != 上限」：破坏测试里把主数字改回 staNow 时曾零反应，
        原因是满体力时两者相等 —— 判据与被测对象成了同一个数。 */
     g.stamina = 10;
@@ -4710,7 +4711,7 @@ async function runTests(dom, URL) {
   await (async function () {
     const s = G.state, g = s.generals[0];
     const keepEq = g.equip;
-    g.equip = { head: 'cr_head_4' };
+    g.equip = { head: 'rare_zhi_head' };
     G.ui._equipGen = g.id;
     G.ui.setView('equip');
     await sleep(60);
@@ -5155,7 +5156,7 @@ if (svBtn) {
       if (i79 >= 0) city79.cells[i79].build = { id: 'tiejiangpu', lvl: 3 };
     }
     G.state.res.gold = 100000000; G.state.res.iron = 100000000; G.state.res.stone = 100000000;
-    const pA79 = G.addEquip('cr_weapon_1'), pB79 = G.addEquip('cr_weapon_1');
+    const pA79 = G.addEquip('coarse_zhan_weapon'), pB79 = G.addEquip('coarse_zhan_weapon');
     const enhA79 = G.enhance(pA79.u);
     G.ui.openEnhance();
     await sleep(190);
@@ -5792,7 +5793,7 @@ if (svBtn) {
   {
     const g88 = G.lordGeneralOf();   /* v89：改造线君主专属 */
     /* 备好两套装备（各一件武器）与精华 */
-    const aI88 = G.addEquip('cr_weapon_4', 0);
+    const aI88 = G.addEquip('rare_zhan_weapon', 0);
     G.systems.equipItem(g88.id, aI88);
     const lI88 = G.addEquip('lg_weapon_4', 0);
     G.systems.equipItem(g88.id, lI88);
@@ -5807,10 +5808,10 @@ if (svBtn) {
       return !!vc.querySelector('[data-action="toggle-equip-set"][data-set="sha"]')
         && !!vc.querySelector('[data-action="toggle-equip-set"][data-set="ling"]');
     })());
-    check('v88：机甲模式槽名（武器）+ 12 格', (function () {
+    check('v88/v90.11：机甲模式槽名（右武装模块）+ 19 格', (function () {
       const vc = document.querySelector('#view-container');
-      return vc.querySelectorAll('.gen-pane .doll-slot').length === 12
-        && vc.querySelector('.gen-pane .doll-slot[data-slot="weapon"]').textContent.indexOf('武器') >= 0;
+      return vc.querySelectorAll('.gen-pane .doll-slot').length === 19
+        && vc.querySelector('.gen-pane .doll-slot[data-slot="weapon"]').textContent.indexOf('右武装模块') >= 0;
     })());
 
     click(document.querySelector('#view-container [data-action="toggle-equip-set"][data-set="ling"]'));
@@ -5845,10 +5846,11 @@ if (svBtn) {
     /* 切回机甲（槽名回「武器」） */
     click(document.querySelector('#view-container [data-action="toggle-equip-set"][data-set="sha"]'));
     await sleep(260);
-    check('v88：切回机甲（槽名回「武器」+ 套装面板在）', (function () {
+    check('v88：切回机甲（槽名回「右武装模块」+ 套装面板在）', (function () {
       const vc = document.querySelector('#view-container');
       const slot = vc.querySelector('.gen-pane .doll-slot[data-slot="weapon"]');
-      return !!slot && slot.textContent.indexOf('武器') >= 0 && slot.textContent.indexOf('陨铁战刃') >= 0;
+      return !!slot && slot.textContent.indexOf('右武装模块') >= 0
+        && vc.querySelectorAll('.gen-pane .doll-slot').length === 19;
     })());
 
     /* 荒野行动（野地弹窗：区块 + 执行 + 回显） */
@@ -6238,11 +6240,11 @@ if (svBtn) {
     /* v89.204（老板 2）：「套装效果一览」整条退役（函数/按钮/case 全删）——
        改验**数据本体**：七套在册且各有名称（v89.50 的"新套可见"语义由数据侧承载，
        一览表渲染随功能退役）。 */
-    check('v89.204：套装效果一览已退役 · 套装数据仍在（7 套）', (function () {
-      const names = ['陨锋套', '佣兵套', '军魂套', '游猎套', '冲锋套', '壁垒套', '智囊套'];
+    check('v89.204/v90.14：套装效果一览已退役 · 套装数据仍在（18 套）', (function () {
+      const names = ['拾荒套', '补丁套', '铁皮套', '天罚套', '神谕套', '机体套'];
       const gone = typeof G.ui.forgeSetNote !== 'function' && typeof G.ui.openForgeSetInfo !== 'function';
       const ids = Object.keys(G.DATA.SETS);
-      return gone && ids.length === 7
+      return gone && ids.length === 18
         && names.every((n) => ids.some((k) => G.DATA.SETS[k].name === n));
     })());
     /* v89.86：旧估数 190；现行口径（v89.51 起 = price>0 且 type ∈ SHOP_CATS）实测 187 ——
@@ -6261,10 +6263,10 @@ if (svBtn) {
       G.ui.setView('shop');
       return document.body.innerHTML.indexOf('翼锋芯片') >= 0;
     })());
-    check('v89.50：打造清单含新套件（游侠/陷阵/守御/天策 各 12 件）', (function () {
+    check('v89.50/v90.11：打造清单含新套件（游侠/陷阵/守御/天策 各 19 件）', (function () {
       const fl = G.forgeList();
-      return ['youxia', 'xianzhen', 'shouyu', 'tiance'].every(function (sk) {
-        return fl.filter((f) => f.item.set === sk).length === 12;
+      return ['fine_zhan', 'prime_zhan', 'prime_ti', 'legend_zhi'].every(function (sk) {
+        return fl.filter((f) => f.item.set === sk).length === 19;
       });
     })());
     /* ③ v89.50 顺带修复：符类真的加属性 */
@@ -6372,8 +6374,11 @@ if (svBtn) {
     G.ui.openPanel('tech');
     await sleep(90);
     const th86 = document.querySelector('#modal-root').innerHTML;
-    check('v89.86（P-12）：科技面板按钮 =「研究(旧币 …)」且无 NaN',
-      th86.indexOf('NaN') < 0 && /研究\(旧币 [^)]+\)/.test(th86));
+    check('v89.86（P-12）/v90.44：科技面板研究按钮无 NaN · 费用进悬停', (function () {
+      var btn = document.querySelector('#modal-root [data-action="tech-research"]');
+      return th86.indexOf('NaN') < 0 && !!btn && /需 /.test(btn.getAttribute('title') || '')
+        && !/\(旧币/.test(btn.textContent);
+    })());
     G.ui.closeAllModals();
     await sleep(40);
 
@@ -6684,14 +6689,14 @@ if (svBtn) {
         { bubbles: true, cancelable: true, view: window, clientX: x, clientY: y }));
 
       /* ① 悬停主城格：浮层出现（己方 + 坐标 + 城等级） */
-      const sx91 = v.ox + (pc91.x - pc91.y) * v.HW, sy91 = v.oy + (pc91.x + pc91.y) * v.HH;
+      const sx91 = v.ox + pc91.x * v.cell, sy91 = v.oy + pc91.y * v.cell;
       mov(sx91, sy91);
       await sleep(40);
       const tipEl = document.querySelector('#tip-layer');
       const th1 = tipEl ? tipEl.innerHTML : '';
       check('v89.88（悬浮）：主城格浮层（己方 · 坐标 · 城等级）',
         !!tipEl && tipEl.classList.contains('on')
-          && th1.indexOf('己方') >= 0 && th1.indexOf('(' + pc91.x + ', ' + pc91.y + ')') >= 0
+          && th1.indexOf('己方') >= 0 && th1.indexOf(G.map.coordText(pc91.x, pc91.y)) >= 0
           && th1.indexOf('Lv' + G.cityLvOf(pc91)) >= 0,
         th1.replace(/<[^>]*>/g, ' ').trim().slice(0, 80));
 
@@ -6716,7 +6721,7 @@ if (svBtn) {
         mov(sx91 + 2, sy91 + 1);
         mov(sx91 + 4, sy91 + 2);                       /* 仍在主城格内 */
         const sameCellCalls = tipCalls;
-        mov(v.ox + (wt91.x - wt91.y) * v.HW, v.oy + (wt91.x + wt91.y) * v.HH);   /* 换格 */
+        mov(v.ox + wt91.x * v.cell, v.oy + wt91.y * v.cell);   /* 换格 */
         const changeCalls = tipCalls - sameCellCalls;
         G.ui.tipShow = origTipShow;
         check('v89.88（悬浮）：同格节流（同格 0 次重绘 · 换格恰好 1 次）',
@@ -6731,7 +6736,7 @@ if (svBtn) {
         const th2 = tipEl ? tipEl.innerHTML : '';
         check('v89.88（悬浮）：野地格浮层（野地等级 · 坐标）',
           th2.indexOf('野地') >= 0 && th2.indexOf('Lv' + G.map.wildLevelNow(wt91.x, wt91.y)) >= 0
-            && th2.indexOf('(' + wt91.x + ', ' + wt91.y + ')') >= 0,
+            && th2.indexOf(G.map.coordText(wt91.x, wt91.y)) >= 0,
           th2.replace(/<[^>]*>/g, ' ').trim().slice(0, 80));
       } else {
         check('v89.88（悬浮）：野地格浮层（野地等级 · 坐标）', false, '主城周边未找到空野地格');
@@ -6966,7 +6971,7 @@ if (svBtn) {
       const coords154 = Array.from(document.querySelectorAll('#modal-root table tbody tr'))
         .map(function (tr) { return (tr.children[1] || {}).textContent || ''; });
       check('v89.154①：附属野地排序 = 采集 → 驻军 → 无驻军（地形序 → 等级降序）',
-        gatherOk154 && coords154.slice(0, 5).join('|') === '938,938|939,939|942,942|940,940|941,941',
+        gatherOk154 && coords154.slice(0, 5).join('|') === [938,939,942,940,941].map(function (n) { return G.map.coordText(n, n); }).join('|'),
         'gatherOk=' + gatherOk154 + ' seq=' + coords154.slice(0, 5).join('|'));
 
       let askBtn154 = document.querySelector('#modal-root [data-action="wild-abandon-ask"]');
@@ -8570,7 +8575,7 @@ console.log('\n--- §180. 拆械与 live 滚动（v89.180） ---');
         c203.cells[i203].build = { id: 'tiejiangpu', lvl: 10 };
       }
       st203.res.gold = 9e8; st203.res.iron = 9e8; st203.res.stone = 9e8;
-      G.addEquip('cr_head_1'); G.addEquip('cr_head_1');
+      G.addEquip('coarse_zhi_head'); G.addEquip('coarse_zhi_head');
       G.ui._enhSel = null; G.ui._enhFilter = 'all'; G.ui._pages['enh'] = 1;
       G.ui.closeAllModals();
       G.ui.openEnhance();
@@ -8612,7 +8617,7 @@ console.log('\n--- §180. 拆械与 live 滚动（v89.180） ---');
         const i204 = c204.cells.findIndex((x) => !x.build && !x.official);
         c204.cells[i204].build = { id: 'tiejiangpu', lvl: 10 };
       }
-      for (let i204 = 0; i204 < 20; i204++) { G.addEquip('cr_head_1'); }
+      for (let i204 = 0; i204 < 20; i204++) { G.addEquip('coarse_zhi_head'); }
       st204.res.gold = 9e8; st204.res.iron = 9e8; st204.res.stone = 9e8;
       G.ui._enhSel = ''; G.ui._enhFilter = 'all'; G.ui._pages['enh'] = 1;
       G.ui.closeAllModals();
@@ -8823,7 +8828,7 @@ console.log('\n--- §180. 拆械与 live 滚动（v89.180） ---');
         c204.cells[i204].build = { id: 'tiejiangpu', lvl: 10 };
       }
       st204.res.gold = 9e8; st204.res.iron = 9e8; st204.res.stone = 9e8;
-      G.addEquip('cr_head_1');
+      G.addEquip('coarse_zhi_head');
       G.ui._enhSel = ''; G.ui._enhFilter = 'all'; G.ui._pages['enh'] = 1;
       G.ui.closeAllModals();
       G.ui.openEnhance();
@@ -9333,13 +9338,13 @@ console.log('\n--- §180. 拆械与 live 滚动（v89.180） ---');
       g211e.equip = g211e.equip || {};
       const keepW211 = g211e.equip.weapon || null;
       if (keepW211) { const ix0 = G.state.inventory.indexOf(keepW211); if (ix0 >= 0) G.state.inventory.splice(ix0, 1); }
-      const it211e = G.addEquip('yt_sword', 10);
+      const it211e = G.addEquip('rare_zhan_weapon', 10);
       g211e.equip.weapon = it211e;
       G.ui._equipGen = g211e.id;
       G.ui.openEquipPanel();
       await sleep(240);
       const mrT211 = (document.querySelector('#modal-root') || {}).textContent || '';
-      const atk211 = Math.round(DATA.EQUIP.yt_sword.atk * 1.8);
+      const atk211 = Math.round(DATA.EQUIP.rare_zhan_weapon.atk * 1.8);
       check('§211e④ 装备面板槽位行显示强化后攻值（攻' + atk211 + '）', mrT211.indexOf('攻' + atk211) >= 0,
         mrT211.slice(0, 90));
       G.ui.closeAllModals();
@@ -9454,7 +9459,7 @@ console.log('\n--- §180. 拆械与 live 滚动（v89.180） ---');
     const bk = G.state;
     const st = G.newGame({ name: 'v219e2e', region: '烬环', mapSeed: 20261019 });
     G.state = st;
-    const setIds = Object.keys(G.DATA.EQUIP).filter((k) => G.DATA.EQUIP[k].set === 'yitian' && !G.DATA.EQUIP[k].ling);
+    const setIds = Object.keys(G.DATA.EQUIP).filter((k) => G.DATA.EQUIP[k].set === 'rare_zhan' && !G.DATA.EQUIP[k].ling);
     const a = G.addEquip(setIds[0], 0), b = G.addEquip(setIds[1], 0);
     try {
       const c = G.currentCity();
@@ -9470,7 +9475,7 @@ console.log('\n--- §180. 拆械与 live 滚动（v89.180） ---');
       check('§219E① 整套键出现（套装件选中 + 已拥有 2 件）', !!setBtn(),
         'set=' + !!setBtn() + ' btn=' + !!btn());
       /* ② 非套装件不出现整套键 */
-      G.ui._enhSel = G.ui.enhKeyOf(G.addEquip('cr_weapon_1', 0));
+      G.ui._enhSel = G.ui.enhKeyOf(G.addEquip('coarse_zhan_weapon', 0));
       G.ui.openEnhance();
       await sleep(60);
       check('§219E② 非套装件不出现整套键', !setBtn());

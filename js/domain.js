@@ -1493,7 +1493,7 @@
   /* ============================================================
    * 机工坊（v29 · 需求 13）
    * ------------------------------------------------------------
-   * 器械（无人轰炸机 / 自行火炮 / 自行火炮）不再跟募兵挤同一条队列：
+   * 器械（无人轰炸机 / 自行火炮）不再跟募兵挤同一条队列：
    *   · 队列位由**作坊等级**决定（与训练营同一套阶梯：1 / Lv5 +1 / Lv10 +1 / 建筑专精 +1）
    *   · 队列挂在**作坊格位**上，与训练营队列互不占位
    * 实现上仍然共用 `s.queues.train` 这一条数组，靠条目上的 `kind` 分组 ——
@@ -3579,7 +3579,7 @@
    * 狂猎·主战机甲 10 / 泰坦机甲 12），于是：
    *   · 同样 5000 人，板车产 10000 采力、主战机甲产 45000 —— 一个精锐顶四个板车；
    *   · 达到同一采力上限所需的人更少，好兵可以省下来打仗；
-   *   · 器械（无人轰炸机/自行火炮/自行火炮）不善耕作，只有 2。
+   *   · 器械（无人轰炸机/自行火炮）不善耕作，只有 2。
    * 兼容：老存档 / 只记了人数的采集队按板车基准（basePerHour）折算。
    * ============================================================ */
   GAME.gatherPowerOf = function (g) {
@@ -3638,6 +3638,63 @@
       if (best) f.cityId = best.id;
     }
     s.fortsMig193 = true;
+    return true;
+  };
+
+  /* v90.11（老板）：「机甲 19 槽」—— 老档 g.equip/g.lingEquip 按**老 12 槽键**存已穿装备，
+     新槽位扩了腿与右肢。就近映射（DATA.EQUIP_SLOT_MIGRATE：肩→左上臂、臂→左前臂、足→左脚掌…）
+     把老键挪到新键，读档不丢装；幂等（equipSlotsMig11 标记）。 */
+  GAME.migrateEquipSlots11 = function () {
+    var s = GAME.state;
+    if (!s || s.equipSlotsMig11) return false;
+    var MAP = (GAME.DATA && GAME.DATA.EQUIP_SLOT_MIGRATE) || {};
+    (s.generals || []).forEach(function (g) {
+      ['equip', 'lingEquip'].forEach(function (bagKey) {
+        var bag = g[bagKey];
+        if (!bag) return;
+        var out = {};
+        Object.keys(bag).forEach(function (sl) {
+          var ns = MAP[sl] || sl;
+          if (!(ns in out)) out[ns] = bag[sl];   /* 老键 → 新键；新键原样保留 */
+        });
+        g[bagKey] = out;
+      });
+    });
+    s.equipSlotsMig11 = true;
+    return true;
+  };
+
+  /* v90.16（老板）：老装备 id → 新套装件 id 的读档迁移 —— 套装重设后老档里 87 件旧装备
+     （yt_/ms_/sw_/yx_/xz_/sy_/tc_/cr_ 及杂项）已不在 DATA.EQUIP，读档即"变（装备）"。
+     按 DATA.EQUIP_ID_MIG（旧 id → 同品质同槽占套件）改写：背包件 + 各将已穿（equip/lingEquip）。
+     幂等（equipIdMig16 标记）。 */
+  GAME.migrateEquipIds16 = function (st) {
+    var s = st || GAME.state;
+    if (!s || s.equipIdMig16) return false;
+    var MAP = (GAME.DATA && GAME.DATA.EQUIP_ID_MIG) || {};
+    var hit = function (id) {
+      if (!id || DATA.EQUIP[id]) return id;       /* 仍存在（新件/基因件/宝物）不动 */
+      return MAP[id] || id;                        /* 旧件 → 同品质同槽占套件；无映射则原样 */
+    };
+    if (Array.isArray(s.inventory)) {
+      s.inventory = s.inventory.map(function (x) {
+        if (x && typeof x === 'object' && x.id) { x.id = hit(x.id); return x; }
+        if (typeof x === 'string') return hit(x);
+        return x;
+      });
+    }
+    (s.generals || []).forEach(function (g) {
+      ['equip', 'lingEquip'].forEach(function (bk) {
+        var bag = g[bk];
+        if (!bag) return;
+        for (var sl in bag) {
+          var v = bag[sl];
+          if (v && typeof v === 'object' && v.id) v.id = hit(v.id);
+          else if (typeof v === 'string') bag[sl] = hit(v);
+        }
+      });
+    });
+    s.equipIdMig16 = true;
     return true;
   };
   /* ============================================================
@@ -4156,8 +4213,9 @@
    * ============================================================ */
   GAME.autoTrainDefault = function () {
     var o = { targets: {}, goldKeep: 0, grainKeep: 0, log: [], msg: '', at: 0 };
+    /* v90.12（老板 5）：自动征兵纳入**器械**（自行火炮 / 无人轰炸机）—— 走机工坊队列 */
     Object.keys(DATA.TROOPS || {}).forEach(function (id) {
-      if (!DATA.TROOPS[id].craft) o.targets[id] = { min: 0, max: 0 };
+      o.targets[id] = { min: 0, max: 0 };
     });
     return o;
   };
@@ -4168,7 +4226,6 @@
     var c = s.autoTrain;
     if (!c.targets) c.targets = {};
     Object.keys(DATA.TROOPS || {}).forEach(function (id) {
-      if (DATA.TROOPS[id].craft) return;
       if (!c.targets[id]) c.targets[id] = { min: 0, max: 0 };
       if (c.targets[id].min == null) c.targets[id].min = 0;
       if (c.targets[id].max == null) c.targets[id].max = 0;
@@ -4194,7 +4251,8 @@
   };
   /* 逐城判别（唯一出口）：训练营空位 + 各目标兵种的缺口。界面与执行共读。 */
   GAME.autoTrainPlanOf = function (city) {
-    var out = { city: city, bars: [], left: 0, total: 0, needs: [] };
+    var out = { city: city, bars: [], left: 0, total: 0, needs: [],
+      craftBars: [], craftLeft: 0, craftTotal: 0 };
     if (!city) return out;
     var c = GAME.autoTrainCfg();
     GAME.barracksOf(city).forEach(function (b) {
@@ -4204,10 +4262,18 @@
       out.total += slots;
       out.left += Math.max(0, slots - used);
     });
-    /* 在训（含排队）：逐兵种汇总本城全部训练营的队列 */
+    /* v90.12：器械走**机工坊**队列（与训练营分开排空位） */
+    GAME.craftWorkshopsOf(city).forEach(function (b) {
+      var slots = GAME.trainQueueSlots(b.lvl, city);
+      var used = GAME.trainQueuesOf(city, b.idx, 'craft').length;
+      out.craftBars.push({ idx: b.idx, lvl: b.lvl, slots: slots, used: used, left: Math.max(0, slots - used) });
+      out.craftTotal += slots;
+      out.craftLeft += Math.max(0, slots - used);
+    });
+    /* 在训（含排队）：逐兵种汇总本城队列（训练营 + 机工坊各算各的） */
     var queued = {};
     ((GAME.state || {}).queues && (GAME.state.queues.train || [])).forEach(function (q) {
-      if (q.cityId !== city.id || GAME.queueKindOf(q.kind) !== 'train') return;
+      if (q.cityId !== city.id) return;
       queued[q.troopId] = (queued[q.troopId] || 0) + (q.count || 0);
     });
     if (!c) return out;
@@ -4220,7 +4286,8 @@
       var min = Math.max(0, Math.floor((c.targets[id] || {}).min || 0));
       var need = 0;
       if (cur < (min > 0 ? min : max)) need = max - cur;   /* 触发线缺省 = 目标（低于就补） */
-      out.needs.push({ troopId: id, have: have, queued: qn, cur: cur, min: min, max: max, need: Math.max(0, need) });
+      out.needs.push({ troopId: id, have: have, queued: qn, cur: cur, min: min, max: max,
+        need: Math.max(0, need), craft: !!(DATA.TROOPS[id] && DATA.TROOPS[id].craft) });
     });
     return out;
   };
@@ -4241,11 +4308,15 @@
     var rKeep = Math.max(0, Math.floor(c.grainKeep || 0));
     (s.cities || []).forEach(function (ct) {
       var plan = GAME.autoTrainPlanOf(ct);
-      if (!plan.bars.length || !plan.needs.length) return;   /* 无训练营 / 无参与兵种 */
+      if (!plan.bars.length && !plan.craftBars.length) return;   /* 无训练营也无机工坊 */
+      if (!plan.needs.length) return;
       var pending = plan.needs.filter(function (n) { return n.need > 0; });
       if (!pending.length) return;                           /* 已达标 */
-      if (plan.left <= 0) { notes.push(ct.name + ' 队列已满'); return; }
       pending.forEach(function (nd) {
+        var isCraft = !!nd.craft;
+        var bars = isCraft ? plan.craftBars : plan.bars;
+        var leftSlots = isCraft ? plan.craftLeft : plan.left;
+        if (leftSlots <= 0) { notes.push(ct.name + ' ' + (isCraft ? '机工坊' : '训练营') + ' 队列已满'); return; }
         var left = nd.need;
         var guard = 0;
         while (left > 0 && guard++ < 12) {
@@ -4253,8 +4324,8 @@
           if (gKeep > 0 && (GAME.goldOf ? GAME.goldOf() : 0) < gKeep) { notes.push('旧币低于保底'); return; }
           if (rKeep > 0 && ((GAME.res(ct).grain || 0) < rKeep)) { notes.push(ct.name + ' 净水低于保底'); return; }
           var bar = null;
-          for (var i = 0; i < plan.bars.length; i++) { if (plan.bars[i].left > 0) { bar = plan.bars[i]; break; } }
-          if (!bar) { notes.push(ct.name + ' 队列已满'); return; }
+          for (var i = 0; i < bars.length; i++) { if (bars[i].left > 0) { bar = bars[i]; break; } }
+          if (!bar) { notes.push(ct.name + ' ' + (isCraft ? '机工坊' : '训练营') + ' 队列已满'); return; }
           var lim = GAME.trainLimitOf(nd.troopId, ct);
           var cnt = Math.min(left, lim.cap);
           if (!(cnt > 0)) {
@@ -4424,25 +4495,34 @@
     if (!s || !s.wilds || !s.wilds.length) return [];
     var WD_ = DATA.WILD_DECAY || { perDay: 2, heldPerDay: 1 };
     var today = GAME.questDayIndex ? GAME.questDayIndex() : Math.floor(Date.now() / 86400000);
-    var changed = [];
+    var changed = [], toAbandon = [];
     s.wilds.forEach(function (w) {
       if (w.levelDay == null) { w.levelDay = today; return; }
-      /* v89.185（老板 3）：「有驻军嚯嚯，等级确实应该降低更快，每个现实日降 2 级」——
-         驻军不再"免衰减"（v23 旧口径：1 兵驻军即可白嫖保鲜），改为**减半**（2 → 1）；
-         且**任何保护都不能把衰减降到 0** —— 老板第 5 条：「即使这样，我还是建议等级衰竭每天-1」。 */
-      /* v89.186（老板 3 · #1 前哨效应）：据点覆盖内衰减**减半**（-2 → -1）——
-         与驻军同档、**取档不叠加**（两者都在时仍是 -1，不为 0 —— 「至少 -1/日」口径）。 */
-      var _hold186 = GAME.wildHeld(w) || (GAME.fortAuraAt && GAME.fortAuraAt(w.x, w.y));
-      var step = _hold186 ? Math.max(1, WD_.heldPerDay) : Math.max(1, WD_.perDay);
+      /* v90.62（老板）：**只有被占领的地块会逐渐降级** —— 有驻军/前哨覆盖 -1/日，否则 -2/日；
+         **地板改为 0**（原为 1）；降到 0 后满 **1 游戏日** 未回升 → 自动放弃（驻军/采集自动返回）。 */
+      var _hold = GAME.wildHeld(w) || (GAME.fortAuraAt && GAME.fortAuraAt(w.x, w.y));
+      var step = _hold ? Math.max(1, WD_.heldPerDay) : Math.max(1, WD_.perDay);
       var days = today - w.levelDay;
-      if (days <= 0) return;
-      var nl = Math.max(1, (w.level || 1) - days * step);
-      w.levelDay = today;
-      if (nl !== w.level) { w.level = nl; changed.push(w); }
+      if (days > 0) {
+        var nl = Math.max(0, (w.level == null ? 1 : w.level) - days * step);
+        w.levelDay = today;
+        if (nl !== w.level) { w.level = nl; changed.push(w); }
+      }
+      if (w.level <= 0) {
+        if (w.zeroDay == null) w.zeroDay = today;
+        if (today - w.zeroDay >= 1) toAbandon.push(w);        /* 0 级满 1 游戏日 → 自动放弃 */
+      } else { w.zeroDay = null; }
     });
+    /* 自动放弃（0 级超期）：复用 doAbandonWild —— 它自带撤驻军回城 + 停采 */
+    toAbandon.forEach(function (w) {
+      if (GAME.doAbandonWild) GAME.doAbandonWild(w.x, w.y);
+    });
+    if (toAbandon.length) {
+      GAME.log('🏚️ ' + toAbandon.length + ' 块野地等级归零超 1 日，已自动放弃（驻军/采集已返回）');
+    }
     if (changed.length) {
       GAME.log('⚠️ 久据之下野地渐荒：' + changed.length + ' 块野地等级下降（每现实日 -' + (WD_.perDay || 2)
-        + ' 级 · 有驻军/前哨覆盖 -' + (WD_.heldPerDay || 1) + ' 级 · 需轮换争夺）');
+        + ' 级 · 有驻军/前哨覆盖 -' + (WD_.heldPerDay || 1) + ' 级 · 归零 1 日后自动放弃）');
     }
     return changed;
   };
@@ -4637,7 +4717,7 @@
   GAME.queueAt = function (kind, ref) {
     var s = GAME.state;
     var out = null;
-    if (kind === 'tech') return (s.queues.tech || [])[0] || null;
+    if (kind === 'tech') return (GAME.systems.researching && GAME.systems.researching()) || (s.queues.tech || [])[0] || null;
     (s.queues.build || []).forEach(function (q) {
       if (out) return;
       if (kind === 'city' && (q.type === 'build' || q.type === 'upgrade') && GAME.slotEq(q.gridIndex, ref)) out = q;
@@ -4682,7 +4762,7 @@
    * 红线（写死在实现里，不进设置）：
    *   ① 只派**空闲**英雄 —— 出征中/守将/采集中的一律跳过；
    *   ② 体力不足该出征方式的门槛就不出发（不会把将跑废）；
-   *   ③ 器械（无人轰炸机/自行火炮/自行火炮）、侦察单元、辎重**不编入**自动队伍 ——
+   *   ③ 器械（无人轰炸机/自行火炮）、侦察单元、辎重**不编入**自动队伍 ——
    *      它们拖慢行军且是守城家底；
    *   ④ 只从**当前城池**的驻军里取兵，不抽空别的城；
    *   ⑤ 目标必须是"离当前城最近的、符合条件的那一块"，
@@ -4969,24 +5049,16 @@
     return r;
   };
 
-  GAME.autoResearch = function () {
+  /* v90.54（老板）：自动研究**逐城遍历**（与 autoUpgrade 同构）—— 各城研习所**并行**研究、互不阻塞。
+     每城：已在研 → 跳过；否则挑该城最便宜的候选开研（受该城研习所等级 / techCapOf / 建筑 req 约束）。 */
+  GAME._autoResearchCity = function (city) {
     var s = GAME.state;
-    if (!s || !s.settings || !s.settings.autoResearch) return null;
-    var city = GAME.currentCity() || s.cities[0];
-    if (!city) return null;
     var shuLv = GAME.buildingLevel(city, 'shuyuan');
-    if (shuLv <= 0) { s.autoTechState = { paused: true, msg: '需先建造研习所' }; return null; }
-    if ((s.queues.tech || []).length > 0) {
-      var cur = s.queues.tech[0];
-      var cn = cur.techId;
-      (DATA.TECH || []).forEach(function (t) { if (t.id === cur.techId) cn = t.name; });
-      s.autoTechState = { msg: '正在研究 ' + cn };
-      return null;
-    }
-    /* v89.86（整改 P-18）：自动研究**等级上限**（settings.autoTechMaxLv，0=不限） */
+    if (shuLv <= 0) return { blocked: '需先建造研习所' };
+    var act = false;
+    (s.queues.tech || []).forEach(function (q) { if (q.cityId === city.id) act = true; });
+    if (act) return 'resumed';
     var capLv18 = (s.settings && s.settings.autoTechMaxLv) || 0;
-    /* v89.191（老板 3-④）：自动研究也**按城** —— 等级读该城、上限走 techCapOf（主城 20）、
-       req 建筑不满足的科技直接不进候选（研究也会被拒）。 */
     var _cap191 = GAME.techCapOf ? GAME.techCapOf(city) : 10;
     var cands = (DATA.TECH || []).filter(function (t) {
       var lv = GAME.systems.techLevel(t.id, city);
@@ -4999,25 +5071,29 @@
       var la = GAME.systems.techLevel(a.id, city), lb = GAME.systems.techLevel(b.id, city);
       return la - lb || a.lv - b.lv;
     });
-    if (!cands.length) {
-      s.autoTechState = { done: true, msg: capLv18 > 0
-        ? '科技已到自动研究上限（Lv' + capLv18 + '）'
-        : '科技已全部满级（或受研习所等级限制）' };
-      return null;
-    }
-    /* v89.86（整改 P-18）：预算闸门（与自动升级同一条线） */
-    var gatedT = 0, gatedMsgT = '';
     for (var i = 0; i < cands.length; i++) {
-      /* v89.104：预算闸门退役 —— 资源不足只跳过当项 */
       var r = GAME.systems.research(cands[i].id, city.id);
-      if (r && r.ok) { s.autoTechState = { msg: '正在研究 ' + cands[i].name }; GAME.log('自动研究：' + cands[i].name, 'sys', 'admin'); return r; }
-      if (r && /不足/.test(r.msg)) { s.autoTechState = { paused: true, want: cands[i].name, msg: r.msg }; return r; }
+      if (r && r.ok) { GAME.log('自动研究：' + city.name + ' → ' + cands[i].name, 'sys', 'admin'); return 'started'; }
+      if (r && /不足/.test(r.msg)) return { blocked: r.msg };
     }
-    if (gatedT && gatedT === cands.length) {
-      s.autoTechState = { paused: true, gated: true, msg: gatedMsgT };
-      return null;
-    }
-    s.autoTechState = { msg: '暂无可研究项' };
+    return 'done';
+  };
+  GAME.autoResearch = function () {
+    var s = GAME.state;
+    if (!s || !s.settings || !s.settings.autoResearch) return null;
+    var cities = s.cities || [];
+    if (!cities.length) return null;
+    var started = 0, resumed = 0, blockedMsg = '';
+    cities.forEach(function (city) {
+      var st = GAME._autoResearchCity(city);
+      if (st === 'started') started++;
+      else if (st === 'resumed') resumed++;
+      else if (st && st.blocked) blockedMsg = st.blocked;
+    });
+    if (started) { s.autoTechState = { msg: '自动研究：本回开启 ' + started + ' 城' }; return { ok: true }; }
+    if (resumed) { s.autoTechState = { msg: '正在研究（' + resumed + ' 城在研）' }; return null; }
+    if (blockedMsg) { s.autoTechState = { paused: true, msg: blockedMsg }; return null; }
+    s.autoTechState = { done: true, msg: '各城科技已满级或受研习所限制' };
     return null;
   };
 
@@ -5448,6 +5524,33 @@
     return { ok: true, msg: '已拆解 ' + label + '，回收 ' + got.join('、'), got: got };
   };
 
+  /* v90.55（老板）：**出售装备** —— 把背包里的装备换旧币（售价 = 估值 × EQUIP_SELL.rate，入**当前城**）。
+     与拆解并列（拆解回收材料 / 出售换旧币）；正穿在英雄身上的不可出售（先卸下）。 */
+  GAME.equipSellPrice = function (itemId) {
+    var it = DATA.EQUIP[itemId];
+    if (!it) return 0;
+    var rate = (DATA.EQUIP_SELL || {}).rate; if (rate == null) rate = 0.6;
+    return Math.max(1, Math.round(GAME.itemValue(itemId) * rate));
+  };
+  GAME.sellEquip = function (ref) {
+    var s = GAME.state;
+    var inst = GAME.eqFind(ref);
+    if (!inst) return { ok: false, msg: '背包中没有这件装备' };
+    var itemId = GAME.eqId(inst), it = DATA.EQUIP[itemId];
+    if (!it) return { ok: false, msg: '无此装备' };
+    var idx = (s.inventory || []).indexOf(inst);
+    if (idx < 0) return { ok: false, msg: '该件不在背包（正穿在英雄身上，先卸下）' };
+    var gold = GAME.equipSellPrice(itemId);
+    var city = GAME.currentCity();
+    var R = GAME.res(city);
+    s.inventory.splice(idx, 1);
+    R.gold = (R.gold || 0) + gold;
+    GAME.statBump('trades', 1);
+    var label = GAME.eqLabel(inst);
+    GAME.log('💰 出售 ' + label + ' → 得旧币 ' + U.fmt(gold) + (city ? '（' + city.name + '）' : ''), 'sys', 'trade');
+    return { ok: true, msg: '已出售 ' + label + '，得旧币 ' + U.fmt(gold), gold: gold };
+  };
+
   /* 配方解析（v13）：部位 → 系列组合；品质 → 品阶（1~4）
    * 例：武器 = 铁系+木系+筋系，神品(q4) 即 陨铁×16 + 复合材×11 + 泰坦筋×6 */
   GAME.forgeMaterials = function (itemId, city) {
@@ -5510,7 +5613,12 @@
         forged: (GAME.state.forged || []).indexOf(id) >= 0,
       });
     });
-    out.sort(function (a, b) { return a.q - b.q || (a.item.slot < b.item.slot ? -1 : 1); });
+    /* v90.11：按**槽位规范序**（身体→外挂，见 DATA.EQUIP_SLOTS）排列 —— 原按槽名字母序，
+       扩到 19 槽后 head/chest 被挤到后面页，找件困难。 */
+    var ORD = DATA.EQUIP_SLOTS || [];
+    out.sort(function (a, b) {
+      return a.q - b.q || (ORD.indexOf(a.item.slot) - ORD.indexOf(b.item.slot));
+    });
     return out;
   };
   GAME.forge = function (itemId) {

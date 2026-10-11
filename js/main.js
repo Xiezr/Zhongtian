@@ -22,6 +22,7 @@
 
       /* v70（老板需求 3/4）：城池坐标 —— 一键随机 / 坐标切换 */
       case 'city-move-ask': ui.openCityMoveAsk(); break;
+      case 'open-bldg-list': ui.openBuildingList(); break;
       case 'city-move-do': GAME.doCityMove(); break;
       case 'city-random': GAME.doRandomCityMove(); break;
       case 'view': ui.setView(el.dataset.view); break;
@@ -405,7 +406,7 @@
         ui.closeModal();
         if (ui.view !== 'map') ui.setView('map');
         ui.mapCenterOn(Number(el.dataset.x), Number(el.dataset.y));
-        ui.toast('已至线索所指（' + el.dataset.x + ',' + el.dataset.y + '）—— 点该格探奇');
+        ui.toast('已至线索所指 ' + GAME.map.coordText(+el.dataset.x, +el.dataset.y) + '—— 点该格探奇');
         break;
       /* ⛔ v89.137（老板 7）：case wg-step / wg-max / wg-fill / wg-clear / wild-garrison-do
          随派驻面板整条退役（面板已删，见 ui.js 同款墓碑）；
@@ -479,6 +480,9 @@
       /* v89.110：拆解 = 销毁该件 —— 两段式（确认弹窗由 ui.openSalvageConfirm 渲染） */
       case 'salvage-equip-ask': ui.openSalvageConfirm(el.dataset.key); break;
       case 'salvage-equip-do': GAME.doSalvage(el.dataset.key); break;
+      /* v90.55（老板）：出售装备换旧币 —— 两段式（确认弹窗 ui.openSellConfirm） */
+      case 'sell-equip-ask': ui.openSellConfirm(el.dataset.key); break;
+      case 'sell-equip-do': GAME.doSellEquip(el.dataset.key); break;
       case 'use-bag-item': {
         /* v29（需求 14）：使用数量取本行输入框 */
         var qf = el.getAttribute('data-qty-from');
@@ -732,6 +736,8 @@
       case 'gen-equip-item': GAME.doGenEquipItem(el.dataset.gen, el.dataset.key); break;
       case 'gen-unequip': GAME.doGenUnequip(el.dataset.gen, el.dataset.slot); break;
       case 'gen-auto-equip': GAME.doGenAutoEquip(el.dataset.gen); break;
+      case 'gen-equip-set-pick': ui.openEquipSetPick(el.dataset.gen); break;
+      case 'equip-set-do': GAME.doGenEquipSet(el.dataset.gen, el.dataset.set); break;
       case 'gen-unequip-all': GAME.doGenUnequipAll(el.dataset.gen); break;
       case 'dismiss-gen': ui.openDismissConfirm(el.dataset.gen); break;
       case 'dismiss-gen-do': GAME.doDismissGen(el.dataset.gen); break;
@@ -769,6 +775,8 @@
       case 'bao-fuse': GAME.doBaoFuse(el.dataset.q); break;
       /* v89.186（老板 1）：挂件（遗物）——选择窗 / 装上 / 卸下 */
       case 'attach-pick': ui.openAttachPick(el.dataset.gen, el.dataset.slot); break;
+      case 'mecha-style': ui.openMechaStylePick(el.dataset.gen); break;
+      case 'mecha-style-do': GAME.doSetMechaStyle(el.dataset.gen, el.dataset.style); break;
       case 'attach-on': GAME.doAttach(el.dataset.gen, el.dataset.slot, el.dataset.item); break;
       case 'attach-off': GAME.doDetach(el.dataset.gen, el.dataset.slot); break;
 
@@ -1079,7 +1087,7 @@
       /* 出征（城/野地） */
       case 'exp-open': GAME.doOpenExp(el.dataset.kind, el.dataset.mode); break;
       case 'fort-exp': GAME.doOpenFortExp(el.dataset.mode); break;
-      case 'fort-goto': ui.mapCenterOn(Number(el.dataset.x), Number(el.dataset.y)); ui.toast('已定位 (' + el.dataset.x + ',' + el.dataset.y + ')'); break;
+      case 'fort-goto': ui.mapCenterOn(Number(el.dataset.x), Number(el.dataset.y)); ui.toast('已定位 ' + GAME.map.coordText(+el.dataset.x, +el.dataset.y)); break;
       /* v89.193（老板 2）：前哨总览（入口：地图导航栏「🚩 前哨」/ 前哨面板） */
       case 'open-outposts': ui.openOutposts(); break;
       /* v89.195（老板 1）：前哨放手 —— 确认窗 → 红键一击执行（v89.156 口径：
@@ -1660,6 +1668,12 @@
     ui.toast(r.msg);
     if (r.ok) { ui.openGenEquip(genId); GAME.refreshAll(); }
   };
+  /* v90.53（老板）：按套装整套装备（选择窗点选）→ 装完关窗并刷新。 */
+  GAME.doGenEquipSet = function (genId, setId) {
+    var r = GAME.systems.equipSet(genId, setId);
+    ui.toast(r.msg);
+    if (r.ok) { ui.closeModal(); ui.openGenEquip(genId); GAME.refreshAll(); }
+  };
   GAME.doGenUnequipAll = function (genId) {
     var r = GAME.systems.unequipAll(genId);
     ui.toast(r.msg);
@@ -1670,6 +1684,16 @@
     var r = GAME.toggleEquipSet(genId, want);
     ui.toast(r.msg);
     if (r.ok) { ui.openGenEquip(genId); GAME.refreshAll(); }
+  };
+  /* v90.16：机甲型制切换（纯外观，写 g.mechaStyle） */
+  GAME.doSetMechaStyle = function (genId, style) {
+    var g = null;
+    (GAME.state.generals || []).forEach(function (x) { if (x.id === genId) g = x; });
+    if (!g) return;
+    g.mechaStyle = Number(style) || 1;
+    ui.toast('机甲型制已更换');
+    ui.closeAllModals();
+    if (ui.view === 'generals') GAME.refreshView(); else GAME.refreshAll();
   };
   /* v88：调校（基因强化件强化；面板原地重开显示新等级与精华余额） */
   GAME.doLingTemper = function (key) {
@@ -1726,6 +1750,12 @@
     var r = GAME.salvageEquip(itemId);
     ui.toast(r.msg);
     if (r.ok) { ui.openBag('equip'); GAME.refreshAll(); }
+  };
+  /* v90.55（老板）：出售装备（选择/详情点「出售」→ 确认 → 换旧币入当前城）。 */
+  GAME.doSellEquip = function (ref) {
+    var r = GAME.sellEquip(ref);
+    ui.toast(r.msg);
+    if (r.ok) { ui.closeModal(); ui.openBag('equip'); GAME.refreshAll(); }
   };
 
   GAME.doBagEquip = function (itemId) {
@@ -2106,7 +2136,7 @@
     ui.renderMapCanvas();
     ui.toast(nm + '：「' + t.state + '」特产' +
       (t.owned ? '（已据）' : '（未据 —— 首府「' + t.name + '」）') +
-      ' —— 已定位(' + t.x + ',' + t.y + ')');
+      ' —— 已定位 ' + GAME.map.coordText(t.x, t.y));
   };
   GAME.doClaimQuest = function (qid) {
     var r = GAME.claimQuest(qid);

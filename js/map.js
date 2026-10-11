@@ -967,8 +967,80 @@
   var TERRAIN_NAME = { plain: '平地', caoyuan: '草原', zhaoze: '沼泽', lake: '湖泊',
     forest: '森林', desert: '荒漠', hill: '山地', city: '城' };
   GAME.map.terrainName = function (t) { return TERRAIN_NAME[t] || ''; };
+  /* ============================================================
+   * v90.67 · **球系坐标全局映射**（老板）——
+   *   存储/逻辑仍用**平面 (x,y)**（存档、战斗、行军、距离全按 x,y）；
+   *   **界面显示球系坐标**（lon/lat）；三维按此映射放置。
+   *   (x,y) ↔ (lon,lat) **确定性双向**（x→lon 东经、y→lat 纬度）。
+   * ============================================================ */
+  GAME.map.lonlatOf = function (x, y) {
+    var W = DATA.MAP_W, H = DATA.MAP_H;
+    return { lon: ((x / W) * 360 + 360) % 360, lat: (0.5 - y / H) * 180 };
+  };
+  /* 经纬 → 单位球方向（3D 放置用） */
+  GAME.map.dirOf = function (lon, lat) {
+    var a = lat * Math.PI / 180, b = lon * Math.PI / 180, cl = Math.cos(a);
+    return [cl * Math.cos(b), Math.sin(a), cl * Math.sin(b)];
+  };
+  /* 球系坐标显示文本（界面统一口径） */
+  GAME.map.coordText = function (x, y) {
+    var c = GAME.map.lonlatOf(x, y);
+    return Math.round(c.lon) + '°E ' + Math.round(c.lat) + '°N';
+  };
+  /* ============================================================
+   * v90.61 · 地形高度 —— **单一出口**（2D 量化台阶 / 3D 连续网格 共用）
+   * ------------------------------------------------------------
+   * `heightAt`：连续高度场（地形绑定：山必然高、平原必然低 + fbm 微起伏 +
+   *   山穹顶=到最近异类地形的距离 → 中间高）。0~约 2.7。
+   * `depthAt`：每格到最近异类地形的 BFS 距离（按 seed 缓存，山穹顶/配色共用）。
+   * ⚠️ 必须定义在**模块顶层**（渲染外）—— 3D 渲图时 2D render 不跑，若定义在
+   *   render 内，3D 取高度会拿到 undefined → 全平（踩过）。
+   * ============================================================ */
+  var _dcache = null, _dseed = null;
+  GAME.map.depthAt = function (gx, gy) {
+    if (gx < 0 || gy < 0 || gx >= DATA.MAP_W || gy >= DATA.MAP_H) return 0;
+    var s2 = GAME.state;
+    if (!s2 || !s2.map) return 0;
+    var seed = (s2.map.seed || 1) | 0;
+    if (!_dcache || _dseed !== seed) {
+      var w = DATA.MAP_W, h = DATA.MAP_H, grid = s2.map.grid || [], d = new Int16Array(w * h);
+      var q = [], i;
+      for (var y = 0; y < h; y++) for (var x = 0; x < w; x++) {
+        var tt = (grid[y] && grid[y][x] && grid[y][x].terrain) || 'plain', edge = false;
+        if (x === 0 || y === 0 || x === w - 1 || y === h - 1) edge = true;
+        else if (((grid[y][x - 1] || {}).terrain || 'plain') !== tt || ((grid[y][x + 1] || {}).terrain || 'plain') !== tt
+          || ((grid[y - 1][x] || {}).terrain || 'plain') !== tt || ((grid[y + 1][x] || {}).terrain || 'plain') !== tt) edge = true;
+        if (edge) { d[y * w + x] = 0; q.push(y * w + x); } else d[y * w + x] = -1;
+      }
+      var head = 0;
+      while (head < q.length) {
+        i = q[head++]; var ix = i % w, iy = (i / w) | 0, nd = d[i] + 1;
+        var nb = [i - 1, i + 1, i - w, i + w];
+        if (ix === 0) nb[0] = -1; if (ix === w - 1) nb[1] = -1;
+        for (var k = 0; k < 4; k++) { var ni = nb[k]; if (ni >= 0 && ni < w * h && d[ni] === -1) { d[ni] = nd; q.push(ni); } }
+      }
+      _dcache = d; _dseed = seed;
+    }
+    return _dcache[gy * DATA.MAP_W + gx];
+  };
+  GAME.map.heightAt = function (gx, gy) {
+    if (gx < 0 || gy < 0 || gx >= DATA.MAP_W || gy >= DATA.MAP_H) return 0;
+    var s2 = GAME.state;
+    if (!s2 || !s2.map) return 0;
+    var grid = s2.map.grid || [];
+    var t = (grid[gy] && grid[gy][gx] && grid[gy][gx].terrain) || 'plain';
+    if (t === 'lake' || t === 'zhaoze') return 0;
+    var seed = (s2.map.seed || 1) | 0;
+    var base = fbm(gx, gy, seed * 7 + 11);
+    var bias = { plain: 0.16, caoyuan: 0.20, desert: 0.22, forest: 0.29, hill: 0.46, city: 0.18 }[t];
+    if (bias == null) bias = 0.20;
+    var hh = base * 0.22 + bias;
+    if (t === 'hill') hh += Math.pow(Math.min(1, GAME.map.depthAt(gx, gy) / 10), 0.6) * 1.0;   /* 穹顶：缓而大的锥 */
+    return Math.max(0, hh);
+  };
   /* v41（需求 1）：可显示名称与等级的地形 —— 平地没有图标，不挂标签 */
-  var WILD_TERRAINS = { caoyuan: 1, zhaoze: 1, lake: 1, forest: 1, desert: 1, hill: 1 };
+  /* v90.60（老板）：「地形名称和等级在方块中间」—— **每个地形都挂标签**（含平地）。 */
+  var WILD_TERRAINS = { plain: 1, caoyuan: 1, zhaoze: 1, lake: 1, forest: 1, desert: 1, hill: 1 };
 
   /* ---- 草地纹理（v30）已在 v42 撤除 ----
      v30 用 64px 离屏草皮 pattern 垫在整张画布下，靠它区分相邻格；
@@ -1088,32 +1160,31 @@
      地形贴图本身 256px：预缩放不再缩小它，采样窗（中心 45%）≈ 显示尺寸（104×52），
      整条链路只经一次 drawImage 重采样，像素风细节不再被二次缩放磨掉。 */
   var ART_MAX = 1024;   /* v90.4：贴图源提升到 1024（原图像素充足）—— 让一张大图铺满区域、少重复 */
-  /* v90.6（老板选 B + 「交界按边长 1/4 交融」）：
-     地形当**轴对齐平铺背景**（原方向、等比、不被菱形裁）。
-     每格画成轴对齐矩形窗口，边缘按**边长 1/4** 的带宽 alpha 渐隐；
-     相邻格在交叠区交叉淡入（后画者盖前画者），交界过渡带 ≈ 边长 1/4。 */
-  var _TILE = null, _MASK = null;
-  function rectMask(F, cell) {
+  /* v90.7（老板）：「只在不同地形之间有融合过渡」——
+     每格**四边各自**决定：邻居**同地形** → 该边不透明（与邻格无缝拼接）；
+     邻居**不同地形**（或城池/地图外）→ 该边按**边长 1/4** 羽化，与邻格交叉淡入。 */
+  var _TILE = null, _MASK = {};   /* 缓存：按边组合键存遮罩（最多 16 种） */
+  function rectMask(F, cell, nS, eS, sS, wS) {
     if (typeof document === 'undefined') return null;
-    if (_MASK && _MASK._F === F && _MASK._cell === cell) return _MASK;
+    var key = F + '|' + cell + '|' + (nS ? 1 : 0) + (eS ? 1 : 0) + (sS ? 1 : 0) + (wS ? 1 : 0);
+    if (_MASK[key]) return _MASK[key];
     var m = document.createElement('canvas'); m.width = F; m.height = F;
     var mc = m.getContext('2d'), img = mc.createImageData(F, F);
-    var b = F / 2 - cell / 2;                 /* 本格在 tile 空间里的左上角 */
-    var fade = Math.max(1, cell * 0.25);      /* 羽化带 = 边长 1/4 */
+    var fade = Math.max(1, cell / 3);         /* v90.10：过渡带 = 边长 1/3（原 1/2 · 更早 1/4） */
     for (var j = 0; j < F; j++) {
       for (var i = 0; i < F; i++) {
-        var dX = Math.min(i + 0.5 - b, (b + cell) - (i + 0.5));
-        var dY = Math.min(j + 0.5 - b, (b + cell) - (j + 0.5));
-        var a = Math.min(dX / fade, dY / fade, 1);
-        a = Math.max(0, Math.min(1, a));
+        var aL = wS ? 1 : (i + 0.5) / fade;
+        var aR = eS ? 1 : (F - 0.5 - i) / fade;
+        var aT = nS ? 1 : (j + 0.5) / fade;
+        var aB = sS ? 1 : (F - 0.5 - j) / fade;
+        var a = Math.min(aL, aR, aT, aB, 1); if (a < 0) a = 0;
         var ix = (j * F + i) * 4;
         img.data[ix] = 255; img.data[ix + 1] = 255; img.data[ix + 2] = 255;
         img.data[ix + 3] = Math.round(a * 255);
       }
     }
     mc.putImageData(img, 0, 0);
-    m._F = F; m._cell = cell;
-    _MASK = m;
+    _MASK[key] = m;
     return m;
   }
   var _artTried = false;
@@ -1146,6 +1217,9 @@
   /* v90.2（老板）：「用超大写实图按地块边缘切割 → 同类地形连成片」——
      地形贴图改**世界坐标采样**（默认开）。设 false 退回旧的"每格整图铺贴"。 */
   GAME.map.showWorld = true;
+  /* v90.50（老板）：**高度模式** —— 地形按高程 fbm 分层抬升、露出垂直崖壁（阶梯方块）。
+     开：平涂色顶面 + 崖壁（不再逐格铺写实贴图）；关：退回 v89.226 的平铺贴图。 */
+  GAME.map.useHeight = true;
 
   /* v89.42：逐格贴图镜像变体（0 原样 / 1 横镜像 / 2 竖镜像 / 3 双镜像）。
      确定性 hash —— 同一格每次渲染的变体固定（截图与回归可复现）；
@@ -1189,6 +1263,16 @@
       cw = w / k2; ch = h / k2;
     }
     ctx.drawImage(c, (c.width - cw) / 2, (c.height - ch) / 2, cw, ch, x, y, w, h);
+    return true;
+  }
+
+  /* v90.8（老板）：「野外据点/名城图标再放大到边」——
+     用位图图标（含透明底）按**底边居中**画，宽度极限到地块边（isoSpan 的 1.04 倍，
+     左右几乎贴边）。返回是否画成功（false 时上层退回矢量绘制）。 */
+  function drawMarkIcon(ctx, key, cx, baseY, w, h) {
+    var c = ART[key];
+    if (!c) return false;
+    ctx.drawImage(c, 0, 0, c.width, c.height, cx - w / 2, baseY - h, w, h);
     return true;
   }
 
@@ -1237,96 +1321,118 @@
        所以"地块厚度"能吃掉的只有**缝**。首版按 cell 比例给到 35px（山），
        侧壁直接盖住了北邻格的顶面（老板："地块都叠在一起了"）。
        现在分档压进缝里（1.2 ~ 5px），保留"山最厚、平地最薄"的语义。 */
-    var ELEV_PX = {
-      /* v89.226（老板）：**三维高度全部归零** —— 只要地平面，不要立体侧壁。
-         （原值：plain 1.2 · caoyuan 3.2 · zhaoze 3.8 · lake 2.2 · desert 2.6 · forest 4.4 · hill 5.0 · city 1.6） */
-      plain: 0, caoyuan: 0, zhaoze: 0, lake: 0,
-      desert: 0, forest: 0, hill: 0, city: 0,
-    };
-    /* 硬上限 = 缝宽（IN）；现在是"零高度"，上限保留供旧调用点读 */
-    var ELEV_PX_MAX = 0;
-    function elevFor(terrain) {
-      var v = ELEV_PX[terrain];
-      if (v == null) v = 3.2;
-      return Math.min(ELEV_PX_MAX, v);
+    /* v90.50 · 高度系统（老板：地形要有高低错落，像我的世界，不要平铺贴图）——
+       ① 高度场 = 生成时的**高程 fbm**（与地形分类同源），离散成 0~7 级台阶；
+       ② 每级 = STEP 像素；渲染时按高度把顶面上移，相邻高度差露出**垂直崖壁**；
+       ③ 高度按 seed 缓存（`s.map.heights`），不改存档、不改 pick 反投影。 */
+    var HSTEP = Math.max(6, Math.round(cell * 0.30));   /* 每级高度的屏幕像素（随格距缩放） */
+    var HMAX = 7;                           /* 最高级（2D 台阶数） */
+    var _hcache = null, _hseed = null;
+    function heightLevels() {
+      var s2 = GAME.state, seed = (s2.map.seed || 1) | 0;
+      if (_hcache && _hseed === seed) return _hcache;
+      var w = DATA.MAP_W, h = DATA.MAP_H, lv = new Uint8Array(w * h);
+      for (var yy = 0; yy < h; yy++) for (var xx = 0; xx < w; xx++) {
+        /* 2D = 连续高度场的**量化台阶**（山≈4~7 · 平原≈1~2 · 水=0） */
+        var l = Math.round(GAME.map.heightAt(xx, yy) * HMAX);
+        if (l < 0) l = 0; else if (l > HMAX) l = HMAX;
+        lv[yy * w + xx] = l;
+      }
+      _hcache = lv; _hseed = seed;
+      return lv;
     }
-    /* 最厚的那一档 —— `_view.elev` 需要一个确定的数（调试/测试用）。
-       实际绘制一律按格取 elevFor()，不要再引用这个常量。 */
+    function levelOf(gx, gy) {
+      if (gx < 0 || gy < 0 || gx >= DATA.MAP_W || gy >= DATA.MAP_H) return 0;
+      return heightLevels()[gy * DATA.MAP_W + gx];
+    }
+    var ELEV_PX_MAX = HMAX * HSTEP;
+    function elevFor(terrain, gx, gy) {
+      if (gx == null) return HSTEP;           /* 无坐标的旧调用（画小树等）：给一级 */
+      return levelOf(gx, gy) * HSTEP;
+    }
     var ELEV = ELEV_PX_MAX;
+    /* 地形纯色（按 3D 图调色板）—— 每个地形一个基色；同地形按**深度**渐变：
+       边界淡（偏白）、中部浓（基色压深）→ "同类地形中部更浓郁" + 自然过渡。 */
+    var H_FLAT = {
+      plain: [150, 172, 120], caoyuan: [168, 186, 104], forest: [79, 127, 58],
+      desert: [212, 186, 120], hill: [158, 146, 118], zhaoze: [104, 124, 100],
+      lake: [70, 138, 176], city: [198, 162, 118]
+    };
+    var _hlen = [235, 233, 220];   /* 边界淡色 */
+    var _hflat = {};
+    function heightColorOf(depth, terrain) {
+      var key = terrain + '|' + (depth > 8 ? 8 : depth);
+      if (_hflat[key]) return _hflat[key];
+      var b = H_FLAT[terrain] || H_FLAT.plain;
+      var f = Math.min(1, depth / 7);                 /* 0=边界 → 1=深中部 */
+      var r = 0, g = 0, bl = 0;
+      [0, 1, 2].forEach(function (i) {
+        var edge = b[i] + (_hlen[i] - b[i]) * 0.30;    /* 边界：提亮 */
+        var mid = b[i] * 0.72;                         /* 中部：压深（浓郁）*/
+        var v = edge + (mid - edge) * f;
+        if (i === 0) r = v; else if (i === 1) g = v; else bl = v;
+      });
+      return (_hflat[key] = 'rgb(' + (r | 0) + ',' + (g | 0) + ',' + (bl | 0) + ')');
+    }
     /* ============================================================
-     * v50：地块改为**菱形侧向分布**（等距投影）—— 老板点名的方向。
-     * ------------------------------------------------------------
-     * 屏幕坐标：格 (gx,gy) 的格心在
-     *     x = ox + (gx − gy) · HW
-     *     y = oy + (gx + gy) · HH
-     * 每块地是宽 cell、高 2·cell/3 的**菱形**（v89.226 拉高顶面 = 3:2；原 2:1 等距）；
-     * 向下挤出 el 之后能看到**两个侧面**（左下 / 右下）—— 立体感天然就有，
-     * 这正是"正方形 + 单片侧壁"时代最缺的那一项。
-     *
-     * ⛔ v16/v18 两次在斜投影上翻车，根因不是"斜"本身，而是**同一份几何被抄到多处**：
-     *    "图标要立正"就得反向补偿偏移量，补偿量散落在六七处，改一处漏一处。
-     * ✅ 本次硬约束：菱形几何**只由本节四个函数给出**，别处不许再出现裸算式：
-     *      gxy()       格心 —— 唯一的坐标出口
-     *      diaPath()   顶面菱形 —— 唯一的形状出口
-     *      sideSides() 侧壁两面 —— 唯一的厚度出口
-     *      diaBox()    菱形外接矩形 —— 贴图 / 名带 / 角标的定位框
-     *    贴图、图标、名带、等级角标、金框、顶棱全部由这四个派生。
+     * v90.6（老板）：「贴图不要旋转」——根因是**地图底子是等距菱形网格**，
+     * 地块中心/边界斜着排，看着像整片被转了。改为**方格网**：
+     *      x = ox + gx · cell,  y = oy + gy · cell
+     * 每块地是轴对齐的 cell×cell 正方形。贴图轴对齐平铺 → 方向完全一致。
      * ============================================================ */
-    var HW = cell / 2;              /* 菱形半宽 */
-    var HH = cell / 3;              /* 菱形半高（v89.226 老板：拉高顶面，贴近裁切图的长宽比；原 cell/4 = 2:1） */
+    var HW = cell / 2;              /* 半宽（正方格） */
+    var HH = cell / 2;              /* 半高（正方格） */
     /* 视野中心格 (vx,vy) 落在画布正中 —— ox/oy 即"格 (0,0) 的格心"在屏幕上的位置 */
-    ox = cvW / 2 - (vx - vy) * HW;
-    oy = cvH / 2 - (vx + vy) * HH;
+    ox = cvW / 2 - vx * cell;
+    oy = cvH / 2 - vy * cell;
     GAME.map._view = { vx: vx, vy: vy, spanX: spanX, spanY: spanY, elev: ELEV,
       span: spanX, cell: cell, ox: ox, oy: oy, cvW: cvW, cvH: cvH,
-      HW: HW, HH: HH, iso: true };
+      HW: HW, HH: HH, iso: false };
 
     ctx.clearRect(0, 0, cvW, cvH);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
-    /* 格心 —— **唯一的坐标出口**。gx/gy 是地图绝对格号，可以越界（调用方负责裁剪）。 */
-    function gxy(gx, gy) {
-      return { x: ox + (gx - gy) * HW, y: oy + (gx + gy) * HH };
+    /* 格心 —— **唯一的坐标出口**（方格网）。el = 本格抬升像素（顶面上移）。 */
+    function gxy(gx, gy, el) {
+      return { x: ox + gx * cell, y: oy + gy * cell - (el || 0) };
     }
     /* 屏幕 → 格坐标（浮点）。inverse 与 gxy 是一对，pick 与绘制范围共用。 */
     function invScreen(sx, sy) {
-      var a = (sx - ox) / HW, b = (sy - oy) / HH;   /* a = gx−gy, b = gx+gy */
-      return { i: (a + b) / 2, j: (b - a) / 2 };
+      return { i: (sx - ox) / cell, j: (sy - oy) / cell };
     }
-    /* 顶面菱形路径。k 为向外(+) / 向内(−) 的偏移量；纵向按 1:2 跟着缩，保持形状相似。 */
+    /* 顶面方框路径。k 为向外(+) / 向内(−) 的偏移量。 */
     function diaPath(gx, gy, el, k) {
-      var c = gxy(gx, gy);
+      var c = gxy(gx, gy, el);
       k = k || 0;
-      /* v50-a：顶面固定在格心（不再减 el）——减 el 会压到北邻格 */
-      var hw = HW + k, hh = HH + k * 0.5, cy = c.y;
+      var hw = HW + k, hh = HH + k, cy = c.y;
       ctx.beginPath();
-      ctx.moveTo(c.x, cy - hh);
-      ctx.lineTo(c.x + hw, cy);
-      ctx.lineTo(c.x, cy + hh);
-      ctx.lineTo(c.x - hw, cy);
+      ctx.moveTo(c.x - hw, cy - hh);
+      ctx.lineTo(c.x + hw, cy - hh);
+      ctx.lineTo(c.x + hw, cy + hh);
+      ctx.lineTo(c.x - hw, cy + hh);
       ctx.closePath();
     }
-    /* 顶面菱形的外接矩形 —— 贴图铺贴 / 名带 / 角标的定位框（k = 内缩量） */
+    /* 顶面方框的外接矩形（= 方框本身） */
     function diaBox(gx, gy, el, k) {
-      var c = gxy(gx, gy);
+      var c = gxy(gx, gy, el);
       k = k || 0;
-      /* v89.226：高度跟随 HH（原写死 cell/2 = 2:1 菱形高；拉高后菱形高 = 2·HH，
-         写死会让贴图框比菱形矮 1/3 → 底部那截铺不到，"横切一刀"）。 */
-      return { x: c.x - HW + k, y: c.y - HH + k * 0.5, w: cell - k * 2, h: HH * 2 - k,
+      return { x: c.x - HW - k, y: c.y - HH - k, w: cell + k * 2, h: cell + k * 2,
         cx: c.x, cy: c.y };
     }
     /* 侧壁：**顶面下方那两条边（左下 / 右下）向下平移 el** 得到的两个平行四边形。
        光源取左上方 → 左面受光稍亮、右面背光稍暗。
        ⚠️ 最低点 y = cy + HH − IN/2 + el，只要 el ≤ IN 就仍在"缝"以内，
        不会碰到南邻格的顶面（其上尖角在 cy + HH + IN/2）。 */
+    /* 侧壁：顶面方框向下挤出 el 像素 → 可见的左/右两个平行四边形。
+       顶面已上移 el，故壁从顶面下边 (cy+HH) 一直画到地表 (cy+HH+el)。 */
     function sideSides(gx, gy, el) {
-      var c = gxy(gx, gy);
-      var hw = HW - IN, hh = HH - IN * 0.5;
-      var bot = c.y + hh;
+      if (!el) return null;
+      var c = gxy(gx, gy, el);
+      var hw = HW, top = c.y + HH, bot = top + el;
       return {
-        left: [[c.x - hw, c.y], [c.x, bot], [c.x, bot + el], [c.x - hw, c.y + el]],
-        right: [[c.x + hw, c.y], [c.x, bot], [c.x, bot + el], [c.x + hw, c.y + el]],
+        left: [[c.x - hw, top], [c.x, top], [c.x, bot], [c.x - hw, bot]],
+        right: [[c.x, top], [c.x + hw, top], [c.x + hw, bot], [c.x, bot]],
       };
     }
     function polyPath(pts) {
@@ -1361,41 +1467,33 @@
        ⚠️ 两者都**不再随 el 变化** —— 顶面固定在格心（见上面 IN 的几何说明：
        菱形密铺里本格下尖角与南邻上尖角共点，垂直方向没有空间可让）。
        el 参数保留是为了不动调用点，它只影响侧壁厚度。 */
-    function topCY(gx, gy, el) { return gxy(gx, gy).y; }
-    function topBottom(gx, gy, el) { return gxy(gx, gy).y + HH - IN * 0.5; }
-    /* 顶棱：菱形顶面**上方那两条棱**（左上 → 上 → 右上）加一道受光高光。
-       抬得越高越亮 —— 高低差靠这一道就能读出来。必须画在贴图之后。 */
+    function topCY(gx, gy, el) { return gxy(gx, gy, el).y; }
+    function topBottom(gx, gy, el) { return gxy(gx, gy, el).y + HH - IN * 0.5; }
+    /* 顶面**上/左边**受光高光 + **下边** AO 内阴影（方格版）。必须画在贴图之后。 */
     function edgeOf(gx, gy, el, at) {
-      var c = gxy(gx, gy), hw = HW - IN, hh = HH - IN * 0.5;
+      var c = gxy(gx, gy), hw = HW - IN, hh = HH - IN;
       var T = at ? at(gx, gy) : null;
-      /* v90.2：同地形内部不描边 —— 只在与邻格不同地形处画交界线 */
-      var bN = !T || (at(gx, gy - 1) !== T);   /* 左上边（北邻） */
-      var bE = !T || (at(gx + 1, gy) !== T);   /* 右上边（东邻） */
-      /* 顶棱（上方两条边）：受光高光 —— 仅地形交界处 */
-      if (bE || bN) {
-        var _eMax = ELEV_PX_MAX || 1;
-        ctx.strokeStyle = 'rgba(255,255,255,' +
-          (0.14 + Math.min(0.24, el / _eMax * 0.24)).toFixed(2) + ')';
+      var bN = !T || (at(gx, gy - 1) !== T);   /* 上边（北邻） */
+      var bW = !T || (at(gx - 1, gy) !== T);   /* 左边（西邻） */
+      var bS = !T || (at(gx, gy + 1) !== T);   /* 下边（南邻） */
+      if (bN || bW) {
+        ctx.strokeStyle = 'rgba(255,255,255,0.16)';
         ctx.lineWidth = 1.2;
         ctx.beginPath();
-        if (bN) { ctx.moveTo(c.x - hw, c.y + 0.5); ctx.lineTo(c.x, c.y - hh + 0.5); }
-        else { ctx.moveTo(c.x - hw, c.y + 0.5); }
-        if (bE) { ctx.lineTo(c.x, c.y - hh + 0.5); ctx.lineTo(c.x + hw, c.y + 0.5); }
-        else { ctx.lineTo(c.x, c.y - hh + 0.5); }
+        if (bN) { ctx.moveTo(c.x - hw, c.y - hh + 0.5); ctx.lineTo(c.x + hw, c.y - hh + 0.5); }
+        if (bW) { ctx.moveTo(c.x - hw + 0.5, c.y - hh); ctx.lineTo(c.x - hw + 0.5, c.y + hh); }
         ctx.stroke();
       }
-      /* 顶面**下缘的 AO 内阴影**（厚度感）：与邻格不同地形处才压暗 */
-      var bS = !T || (at(gx, gy + 1) !== T);   /* 左下边（南邻） */
-      var bW = !T || (at(gx - 1, gy) !== T);   /* 右下边（西邻） */
-      if (bS || bW) {
-        var sh = ctx.createLinearGradient(0, c.y + hh * 0.2, 0, c.y + hh);
+      /* 下边 AO 内阴影（厚度感）：与南邻不同地形处才压暗 */
+      if (bS) {
+        var sh = ctx.createLinearGradient(0, c.y + hh * 0.4, 0, c.y + hh);
         sh.addColorStop(0, 'rgba(12,14,8,0)');
         sh.addColorStop(1, 'rgba(12,14,8,.30)');
         ctx.save();
         diaPath(gx, gy, el, -IN);
         ctx.clip();
         ctx.fillStyle = sh;
-        ctx.fillRect(c.x - hw, c.y + hh * 0.2 - 1, hw * 2, hh * 0.8 + 2);
+        ctx.fillRect(c.x - hw, c.y + hh * 0.4 - 1, hw * 2, hh * 0.6 + 2);
         ctx.restore();
       }
     }
@@ -1444,23 +1542,22 @@
 
     drawList.forEach(function (d) {
       var tint = TERRAIN_TINT[d.terrain] || TERRAIN_TINT.plain;
-      var el = elevFor(d.terrain);
-      var c = gxy(d.gx, d.gy);
+      var el = elevFor(d.terrain, d.gx, d.gy);
+      var c = gxy(d.gx, d.gy, el);
       d.el = el; d.c = c; d.tint = tint;
       /* ① 基底：整块菱形铺该地形的土色（v49 减少格子感）—— 缝里露的是**邻格土色**，
          而不是画布底那个深色空洞，地形读起来才连续。 */
       ctx.fillStyle = soilOf(tint, 0.70);
       diaPath(d.gx, d.gy, 0, 0);
       ctx.fill();
-      /* ② 侧壁：菱形向下挤出 el 后可见的两个面。
-         光源取左上方 → 左面受光（偏亮）、右面背光（偏暗），中缝自然形成一条竖脊。
-         两个面都沿屏幕竖直做渐变：上端接顶面色、下端接地更暗。 */
+      /* ② 侧壁：顶面方框向下挤出 el → 左面受光稍亮、右面背光稍暗，
+         崖壁整体比顶面暗一档 → 高低错落一眼可读。 */
       if (el > 0.4) {
         var ss = sideSides(d.gx, d.gy, el);
-        ['left', 'right'].forEach(function (which) {
-          var kTop = which === 'left' ? 0.62 : 0.46;
-          var kBot = which === 'left' ? 0.40 : 0.22;
-          var g3 = ctx.createLinearGradient(0, c.y, 0, c.y + HH + el);
+        if (ss) ['left', 'right'].forEach(function (which) {
+          var kTop = which === 'left' ? 0.50 : 0.34;
+          var kBot = which === 'left' ? 0.26 : 0.12;
+          var g3 = ctx.createLinearGradient(0, c.y + HH, 0, c.y + HH + el);
           g3.addColorStop(0, soilOf(tint, kTop));
           g3.addColorStop(1, soilOf(tint, kBot));
           polyPath(ss[which]);
@@ -1468,13 +1565,9 @@
           ctx.fill();
         });
       }
-      /* ③ 顶面：菱形，竖向渐变（不透明）。贴图会盖在上面，这层是贴图缺席时的兜底。
-         v50-a：渐变范围也跟着"顶面固定在格心"走（原来按 c.y−el 定位，会整体上移）。 */
-      var g2 = ctx.createLinearGradient(0, c.y - HH, 0, c.y + HH);
-      g2.addColorStop(0, tint[0]);
-      g2.addColorStop(1, tint[1]);
-      ctx.fillStyle = g2;
+      /* ③ 顶面：**地形纯色方块**（按地形取色，实心、无过渡、无光照） */
       diaPath(d.gx, d.gy, el, -IN);
+      ctx.fillStyle = heightColorOf(levelOf(d.gx, d.gy), d.terrain);
       ctx.fill();
     });
 
@@ -1484,8 +1577,14 @@
        城池**不参与**逐格镜像：建筑有朝向，镜像会左右反。 */
     drawList.forEach(function (d) {
       var isCity = d.terrain === 'city';
-      var aKey = isCity ? GAME.map.cityArtKeyAt(d.gx, d.gy) : 'terrain_' + d.terrain;
-      if (!aKey) return;                       /* 城但取不到 tier → 底色 + marks 段矢量城 */
+      /* v90.8：城池不再把建筑位图当**地面院落**铺（新图是建筑立绘）——
+         地形底色照铺，建筑图标在 marks 段按位图画（放大到边）。 */
+      if (isCity) return;
+      /* v90.50 高度模式：地形层改由 ① 底层块的「平涂色顶面 + 崖壁」呈现，
+         不再逐格铺写实贴图（老板：「拿各种地形图片贴图，不好看不自然」）。 */
+      if (GAME.map.useHeight) return;
+      var aKey = 'terrain_' + d.terrain;
+      if (!aKey) return;
       /* v90.2（老板）：「用超大写实图按地块边缘切割 → 同类地形连成片」——
          非城池地形走**世界坐标采样**：把贴图平铺在整张地图上，每个菱形只取它
          对应的那一小块（斜切 45° + 纵向压扁 = 等距地面投影）。相邻同地形格取到
@@ -1495,11 +1594,11 @@
       if (!isCity && ART[aKey] && GAME.map.showWorld !== false) {
         /* v90.6（老板选 B）：「贴图不旋转、不按菱形边裁；交界按边长 1/4 交融」——
            每格画成**轴对齐 cell×cell 方块**（不裁菱形、不做斜切），
-           贴图原方向等比放大铺满；边缘按**边长 1/4** 的带宽羽化，与邻格交叉淡入。 */
+           贴图原方向等比放大铺满；边缘按**边长 1/3**（v90.10 老板）的带宽羽化，与邻格交叉淡入。 */
         var Wt = 20;                            /* 一张贴图覆盖的格数（等比）：4 倍 */
         var tex = ART[aKey].width || 1024;
         var sc = Wt * cell / tex;               /* 等比放大（屏幕 px / 贴图 px） */
-        var fade = cell * 0.25;                 /* 交界过渡带宽 = 边长 1/4 */
+        var fade = cell / 3;                    /* 交界过渡带宽 = 边长 1/3（v90.10 老板，原 1/4） */
         var F = Math.round(cell + 2 * fade);
         var cf = gxy(d.gx, d.gy);
         var fx = Math.round(cf.x - F / 2), fy = Math.round(cf.y - F / 2);
@@ -1519,7 +1618,11 @@
           var u1 = (F - (ox - fx)) / sc, v1 = (F - (oy - fy)) / sc;
           tctx.fillStyle = pat;
           tctx.fillRect(u0, v0, u1 - u0, v1 - v0);
-          var mask = rectMask(F, cell);          /* 轴对齐羽化遮罩（1/4 边长） */
+          /* v90.7：四边各自决定 —— 邻居**同地形** → 该边不透明（无缝拼接）；
+             邻居不同地形 / 城池 / 地图外 → 该边按边长 1/4 羽化（只在不同地形之间过渡）。 */
+          var _tt = GAME.map.tile, _ter = d.terrain;
+          function _same(dx, dy) { var t = _tt(d.gx + dx, d.gy + dy); return !!(t && t.terrain === _ter); }
+          var mask = rectMask(F, cell, _same(0, -1), _same(1, 0), _same(0, 1), _same(-1, 0));
           if (mask) {
             tctx.setTransform(1, 0, 0, 1, 0, 0);
             tctx.globalCompositeOperation = 'destination-in';
@@ -1566,6 +1669,25 @@
       if (GAME.map.showWorld !== false && d.terrain !== 'city') return;   /* v90.5：世界采样下交界由羽化处理，不再画硬 AO/描边（否则残留"X"格纹） */
       edgeOf(d.gx, d.gy, d.el, _terrAt);
     });
+
+    /* v90.7（老板）：「地块线条可以有，隐约一点」—— 方格网铺一层**极淡的格线**，
+       同地形之间也画（只作隐约的网格暗示，不抢地形）。 */
+    if (GAME.map.showWorld !== false) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(28,22,12,.16)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (var _ix = gx0; _ix <= gx1 + 1; _ix++) {
+        var _xx = Math.round(ox + _ix * cell) + 0.5;
+        ctx.moveTo(_xx, oy + gy0 * cell); ctx.lineTo(_xx, oy + (gy1 + 1) * cell);
+      }
+      for (var _iy = gy0; _iy <= gy1 + 1; _iy++) {
+        var _yy = Math.round(oy + _iy * cell) + 0.5;
+        ctx.moveTo(ox + gx0 * cell, _yy); ctx.lineTo(ox + (gx1 + 1) * cell, _yy);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
 
     /* ============================================================
      * v41（需求 5）：野地信息层
@@ -1640,51 +1762,48 @@
          否则换名规则时地图与别处会不一致 */
       var nm = GAME.map.terrainName(d.terrain);
       if (!nm) return;
-      /* 名称：菱形顶面的**下半部**（下顶点上方）底衬条 + 居中文字。
-         菱形没有"格内下方"这种矩形概念，所以位置一律从 topBottom（下顶点）往回退。 */
-      var ly = topBottom(d.gx, d.gy, d.el) - 10;
-      var w = nm.length * 11 + 14, h = 14;
-      var lg = ctx.createLinearGradient(d.c.x - w / 2, 0, d.c.x + w / 2, 0);
+      /* v90.8（老板）：「野外地块名称位于该地块正中间，一行为等级，下一行为名称」——
+         居中两行：上行等级、下行名称。 */
+      var cx = d.c.x, cy = d.c.y;
+      var lv = GAME.map.wildLevelNow(d.gx, d.gy);
+      /* 上行：等级 */
+      if (lv >= 0) {
+        var lvTxt = String(lv);
+        ctx.font = 'bold 11px sans-serif';
+        var lw = 18, lh = 15;
+        ctx.fillStyle = lv >= 9 ? 'rgba(150,40,28,.92)' : 'rgba(28,36,20,.84)';
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(cx - lw / 2, cy - 20, lw, lh, 4);
+        else ctx.rect(cx - lw / 2, cy - 20, lw, lh);
+        ctx.fill();
+        ctx.strokeStyle = lv >= 9 ? 'rgba(255,214,160,.9)' : 'rgba(232,220,170,.65)';
+        ctx.lineWidth = 1; ctx.stroke();
+        ctx.fillStyle = lv >= 9 ? '#ffd9c8' : '#f0e6bf';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(lvTxt, cx, cy - 12.5);
+        if (GAME.jianghuWildMounted) {
+          var jhM5 = GAME.jianghuSpotInfo(d.gx, d.gy);
+          if (jhM5 && jhM5.mark) drawJhPennant(ctx, cx, cy - 12);
+        }
+        var wd6 = GAME.wonderSiteOf ? GAME.wonderSiteOf(d.gx, d.gy) : null;
+        if (wd6 && wd6.revealed && !wd6.done) drawWonderStar(ctx, cx, cy - 12);
+      }
+      /* 下行：名称（居中，带底衬） */
+      var w = nm.length * 11 + 14, h = 15;
+      var lg = ctx.createLinearGradient(cx - w / 2, 0, cx + w / 2, 0);
       lg.addColorStop(0, 'rgba(18,24,14,.10)');
-      lg.addColorStop(.22, 'rgba(18,24,14,.62)');
-      lg.addColorStop(.78, 'rgba(18,24,14,.62)');
+      lg.addColorStop(.22, 'rgba(18,24,14,.66)');
+      lg.addColorStop(.78, 'rgba(18,24,14,.66)');
       lg.addColorStop(1, 'rgba(18,24,14,.10)');
       ctx.fillStyle = lg;
       ctx.beginPath();
-      if (ctx.roundRect) ctx.roundRect(d.c.x - w / 2, ly - h / 2, w, h, 7);
-      else ctx.rect(d.c.x - w / 2, ly - h / 2, w, h);
+      if (ctx.roundRect) ctx.roundRect(cx - w / 2, cy + 4, w, h, 7);
+      else ctx.rect(cx - w / 2, cy + 4, w, h);
       ctx.fill();
-      ctx.font = 'bold 11px sans-serif';
+      ctx.font = 'bold 12px sans-serif';
       ctx.fillStyle = '#f3f6ea';
-      ctx.fillText(nm, d.c.x, ly + 0.5);
-      /* 等级角标：菱形**上半部居中**。
-         ⚠️ 不能沿用"格内右上角"—— 菱形没有那个角。而且菱形很扁（高只有宽的一半），
-         21×15 的角标贴着斜边放必然出界（实测贴右顶点时四角有 1.13 倍越界），
-         所以取上半部中轴：上边余量由 `|-HH·0.36 − 7.5| / HH` 约束，44px 半宽下舒适。 */
-      var lv = GAME.map.wildLevelNow(d.gx, d.gy);
-      if (lv >= 0) {
-        var bx = d.c.x, by = d.c.y - HH * 0.36;
-        ctx.fillStyle = lv >= 9 ? 'rgba(150,40,28,.92)' : 'rgba(28,36,20,.84)';
-        ctx.beginPath();
-        if (ctx.roundRect) ctx.roundRect(bx - 10, by - 7, 21, 15, 4);
-        else ctx.rect(bx - 10, by - 7, 21, 15);
-        ctx.fill();
-        ctx.strokeStyle = lv >= 9 ? 'rgba(255,214,160,.9)' : 'rgba(232,220,170,.65)';
-        ctx.lineWidth = 1;
-        ctx.stroke();
-        ctx.font = 'bold 10px sans-serif';
-        ctx.fillStyle = lv >= 9 ? '#ffd9c8' : '#f0e6bf';
-        ctx.fillText(String(lv), bx, by + 0.5);
-        /* v89.5：灵机之地 —— 事数 × 等级 达阈者，角标侧悬青旗（荒野事地标）。
-           v89.45：受 GAME.jianghuWildMounted 控制（false=剥离野地荒野行动呈现层）。 */
-        if (GAME.jianghuWildMounted) {
-          var jhM5 = GAME.jianghuSpotInfo(d.gx, d.gy);
-          if (jhM5 && jhM5.mark) drawJhPennant(ctx, bx, by);
-        }
-        /* v89.6：奇遇点位（已现形未探）—— 角标左侧缀一颗「奇缘星」 */
-        var wd6 = GAME.wonderSiteOf ? GAME.wonderSiteOf(d.gx, d.gy) : null;
-        if (wd6 && wd6.revealed && !wd6.done) drawWonderStar(ctx, bx, by);
-      }
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(nm, cx, cy + 12);
     });
 
     /* 取某格地形（供 at() 换算抬升量） */
@@ -1701,7 +1820,7 @@
       if (gx < 0 || gy < 0 || gx >= DATA.MAP_W || gy >= DATA.MAP_H) return false;
       var c = gxy(gx, gy);
       if (c.x < -cell || c.x > cvW + cell || c.y < -cell || c.y > cvH + cell) return false;
-      fn(gx, gy, c, elevFor(terrainAt(gx, gy)));
+      fn(gx, gy, c, elevFor(terrainAt(gx, gy), gx, gy));
       return true;
     }
 
@@ -1797,10 +1916,11 @@
       at(m.gx, m.gy, function (gx, gy, c, el) {
         var tcy = topCY(gx, gy, el);
         var ah = diaBox(gx, gy, el, 0).h;
-        var isoSpan = (cell - IN * 2) * 0.97;   /* 菱形顶面宽（等距变换后的外接宽） */
+        var isoSpan = (cell - IN * 2) * 1.04;   /* v90.8：图标极限到边（原 0.97 收着） */
         if (m.kind === 'fort') {
-          /* v89.5：野外据点 = 木质营寨（矮墙 + 院内泥地 + 四角角楼 + 中央望楼 + 红旗）。
-             底面中心放在地块中心稍下（菱形下尖方向），读起来才"站"在地上。 */
+          /* v90.8：野外据点优先用**位图图标**（放大到边、底边居中）；
+             素材缺席才退回矢量木寨。 */
+          if (drawMarkIcon(ctx, 'fort', c.x, tcy + HH * 0.72, isoSpan, isoSpan)) return;
           drawFortArt(ctx, c.x, tcy + HH * 0.16, isoSpan * 0.74);
           return;
         }
@@ -1808,10 +1928,18 @@
         var own = m.kind === 'own';
         var isCap = !own && o.type === 'capital', isZhou = !own && o.type === 'zhou';
         var isJun = !own && o.type === 'jun';
-        /* v89.43+：城池位图已在 ② 段铺满菱形（作"围墙院落"地面），
-           这里再叠一座**矢量立体城**（墙 + 角楼 + 主楼 + 四坡顶），
-           缩到留出一圈贴图院落 → 读起来是"有城池的城"，不是一块平铺色块。
-           ART 素材缺席时同样走这里（地面退回纯色，语义不变）。 */
+        /* v90.8：名城优先用**位图图标**（按档位放大到边）；素材缺席才退回矢量立体城。 */
+        var tier = isCap ? 'capital' : isZhou ? 'zhou' : isJun ? 'jun' : 'county';
+        if (drawMarkIcon(ctx, 'city_' + tier, c.x, tcy + HH * 0.72, isoSpan, isoSpan)) {
+          if (own) {
+            var fy2 = tcy - HH * 0.98;      /* 玩家城绿旗立到图标顶 */
+            ctx.strokeStyle = '#f0f4e8'; ctx.lineWidth = 1.2;
+            ctx.beginPath(); ctx.moveTo(c.x, fy2); ctx.lineTo(c.x, fy2 - isoSpan * 0.24); ctx.stroke();
+            polyFill(ctx, [[c.x, fy2 - isoSpan * 0.24], [c.x + isoSpan * 0.095, fy2 - isoSpan * 0.195],
+              [c.x, fy2 - isoSpan * 0.15]], '#7bc96f');
+          }
+          return;
+        }
         var bw = isoSpan * (isCap ? 0.72 : isZhou ? 0.68 : isJun ? 0.62 : 0.56);
         ctx.save();
         drawCityArt(ctx, c.x, tcy + HH * 0.18, bw,
@@ -1951,8 +2079,8 @@
     var bt = Math.max(0, ((canvas.offsetHeight || ch) - ch) / 2);
     var mx = ((clientX - rect.left) / _k150 - bl) / cw * canvas.width;
     var my = ((clientY - rect.top) / _k150 - bt) / ch * canvas.height;
-    var a = (mx - v.ox) / v.HW, b = (my - v.oy) / v.HH;
-    var gx = Math.round((a + b) / 2), gy = Math.round((b - a) / 2);
+    /* v90.6：方格网反投影 —— x = ox + gx·cell, y = oy + gy·cell。 */
+    var gx = Math.round((mx - v.ox) / v.cell), gy = Math.round((my - v.oy) / v.cell);
     if (gx < 0 || gy < 0 || gx >= DATA.MAP_W || gy >= DATA.MAP_H) return null;
     /* 自己的城（含第二座起）优先于 NPC 判定 */
     var own = GAME.map.ownCityAt(gx, gy);

@@ -53,7 +53,7 @@
   function spdMultOf(t) {
     var m = 1 + TB('march');
     if (!t) return m;
-    if (t.craft) return m * (1 + TB('wheel'));                    // 器械（无人轰炸机/自行火炮/自行火炮）
+    if (t.craft) return m * (1 + TB('wheel'));                    // 器械（无人轰炸机/自行火炮）
     if (t.ride) {
       /* v89.229：id 模式匹配（/qi$|tieqi|qingji/）退役 —— 兵种重构后 id 无此规律，
          改读 TROOPS 的显式字段 `ride`（原 cav 类的显式化）。 */
@@ -1542,8 +1542,12 @@
       var lo = rule.q[0], hi = rule.q[1];
       var q = lo + Math.floor(Math.random() * (hi - lo + 1));
       var pool = [];
-      DATA.CRAFT_SLOTS.forEach(function (sl) { pool.push('cr_' + sl.id + '_' + q); });
-      DATA.HEROES.forEach(function (h) { if (h.city === npcCity.name) pool.push('jueying'); });
+      /* v90.14：散件退役 —— 缴获改为**套装件**（按品质 q 取同档任意套装件）。 */
+      Object.keys(DATA.EQUIP).forEach(function (k) {
+        var e = DATA.EQUIP[k];
+        if (e && e.set && e.q === q) pool.push(k);
+      });
+      if (!pool.length) pool.push('coarse_ti_chest');
       var id = pool[Math.floor(Math.random() * pool.length)];
       if (DATA.EQUIP[id]) {
         GAME.addEquip(id);   /* v79：缴获入包走实例唯一出口 */
@@ -2345,6 +2349,15 @@
     if (!p.ok) return p;
     var t = p.t, gen = p.gen, city = p.city;
     var _di = GAME.battle.defenseInputsOf(t, modeId, { scheme: opts.scheme });
+    /* v90.16 修复（§210③c）：实战在**开打前**扣本场体力（`_expeditionRun` 的
+       setStaNow(gen, staNow − staCostOf)），体力经 cover 影响战果；推演原先不扣 →
+       推演按满体力算、实战按扣后算，两者对不上（实测 atkLoss 121 vs 122）。
+       此处对**副本**扣同一笔，令推演与实战逐字节同源（原件不动 —— 推演零副作用）。 */
+    var genPrev = gen ? U.deep(gen) : null;
+    if (genPrev && GAME.staCostOf) {
+      GAME.setStaNow(genPrev, GAME.staNow(genPrev) - GAME.staCostOf(p.mode, opts.scheme));
+      genPrev.energy = Math.max(0, (genPrev.energy || 0) - (p.mode.energy || 0));
+    }
     /* 与 expedition 同款：科技读点钉在出发城（set-if-unset + try/finally 还原） */
     var Sys210 = GAME.systems;
     var bak210 = Sys210 ? Sys210._techCtx : null;
@@ -2353,7 +2366,7 @@
     try {
       var boost = GAME.battle.boostSnapshot(city);
       var result = GAME.battle.withBoost(boost, function () {
-        return GAME.battle.simulate(U.deep(atkArmy), gen ? U.deep(gen) : null,
+        return GAME.battle.simulate(U.deep(atkArmy), genPrev,
           _di.scArmy, _di.scVal, _di.scGen, _di.simOpts);
       });
       return { ok: true, t: t, gen: gen, city: city, boost: boost,

@@ -326,7 +326,14 @@
     return function (lv) {
       var r = (lv >= freezeAt) ? rows[freezeAt - 1] : rows[lv];   /* 资源封顶：用「12→13」那一档 */
       if (!r) return null;
-      var o = { grain: r[0], wood: r[1], stone: r[2], iron: r[3] };
+      /* v90.12（老板 1）：废土化 —— 建筑升级同样**少木料、重废钢**（与 buildCost 同一系数），
+         否则等级表与首建表倒挂。 */
+      var _rw = function (v, f) {
+        var n = v * f;
+        return n < 100 ? Math.round(n) : n < 1000 ? Math.round(n / 5) * 5
+          : n < 10000 ? Math.round(n / 50) * 50 : Math.round(n / 500) * 500;
+      };
+      var o = { grain: r[0], wood: _rw(r[1], 0.35), stone: _rw(r[2], 1.35), iron: _rw(r[3], 1.8) };
       o.time = buildTimeSec(bid, lv);   /* v89.128：时间列 = 曲线（唯一出口） */
       /* v89.194（老板 S1）：Lv9 起升级需营造旧币 —— 唯一出口 DATA.buildGoldAt */
       var _g194 = buildGoldAt(lv + 1);
@@ -361,7 +368,7 @@
     },
     minfang: {
       id: 'minfang', series: 'live', name: '居所', icon: '🏠', desc: '安身立命之所，烟火所聚 —— 提供幸存者上限。',
-      buildCost: { grain: 100, wood: 500, stone: 125, iron: 100 }, maxLevel: 12, prod: null,
+      buildCost: { grain: 100, wood: 175, stone: 170, iron: 180 }, maxLevel: 12, prod: null,
       levelCost: costTable([[100,500,125,100,150],[210,1040,260,210,335],[425,2125,530,425,725],[870,4305,1080,865,1530],[1750,8615,2165,1740,3170],[3480,17010,4285,3455,6405],[6845,33175,8380,6775,12620],[13325,63860,16195,13140,24230],[25635,121335,30895,25175,45310],[48760,227500,58210,47655,82460]], 'minfang'),
       /* v28：11/12 级幸存者（沿用末段约 ×1.18、×1.2 的节奏）
          v54：再按同一节奏续到 24 —— 居所在旧都能盖到 24，表短了幸存者上限就是 NaN。 */
@@ -370,29 +377,29 @@
     },
     shuyuan: {
       id: 'shuyuan', series: 'ops', name: '研习所', icon: '📜', desc: '聚拢旧世知识，研习技艺 —— 等级决定可研究的科技上限（每城同时研究 1 项）。',
-      buildCost: { grain: 120, wood: 2500, stone: 1500, iron: 200 }, maxLevel: 12, prod: null,
+      buildCost: { grain: 120, wood: 875, stone: 2000, iron: 360 }, maxLevel: 12, prod: null,
       levelCost: costTable([[120,2500,1500,200,960],[250,5190,3115,415,2130],[515,10635,6390,855,4625],[1045,21535,12960,1735,9805],[2100,43070,25970,3480,20295],[4175,85060,51420,6905,40995],[8215,165870,100575,13550,80760],[15990,319300,194315,26275,155065],[30765,606670,370750,50345,289970],[58515,1137510,698495,95305,527740]], 'shuyuan'),
     },
     junying: {
       id: 'junying', series: 'mil', name: '训练营', icon: '⚔️', desc: '募兵练卒之所 —— 等级决定可训练的兵种。',
-      buildCost: { grain: 800, wood: 1200, stone: 1500, iron: 1000 }, maxLevel: 12, prod: null,
+      buildCost: { grain: 800, wood: 420, stone: 2000, iron: 1800 }, maxLevel: 12, prod: null,
       levelCost: costTable([[800,1200,1500,1000,600],[1660,2490,3115,2075,1330],[3420,5105,6390,4265,2890],[6950,10335,12960,8665,6130],[13985,20675,25970,17400,12685],[27835,40830,51420,34535,25625],[54780,79620,100575,67760,50475],[106600,153265,194315,131385,96915],[205100,291200,370750,251735,181230],[390100,546005,698495,476535,329840]], 'junying'),
     },
     xiaochang: {
       id: 'xiaochang', series: 'mil', name: '练兵场', icon: '🏹', desc: '点兵演武之地 —— N 级 = N 支出征队列，每队 N×1 万人马（按人数计，不占幸存者）。',
-      buildCost: { grain: 100, wood: 600, stone: 2000, iron: 150 }, maxLevel: 12, prod: null,
+      buildCost: { grain: 100, wood: 210, stone: 2700, iron: 270 }, maxLevel: 12, prod: null,
       levelCost: costTable([[100,600,2000,150,60],[210,1245,4150,310,135],[425,2550,8520,640,305],[870,5170,17280,1300,655],[1750,10335,34625,2610,1370],[3480,20415,68560,5180,2775],[6845,39810,134100,10165,5440],[13325,76630,259085,19710,10310],[25635,145600,494335,37760,18870],[48760,273000,931325,71480,33300]], 'xiaochang'),
     },
     shichang: {
       /* v89.62（老板「交易站去除商队计数和限制，去除相应标注」）：
          描述里的"每级+1商队"随概念一并退场 —— 交易站等级的作用是**降低折损**。 */
       id: 'shichang', series: 'ops', name: '交易站', icon: '🏪', desc: '通有无、平物价 —— 交易四种资源与旧币；等级越高折损越小（无交易站亦可交易，折损最重）。',
-      buildCost: { grain: 1000, wood: 1000, stone: 1000, iron: 1000 }, maxLevel: 12, prod: null,
+      buildCost: { grain: 1000, wood: 350, stone: 1350, iron: 1800 }, maxLevel: 12, prod: null,
       levelCost: costTable([[1000,1000,1000,1000,1500],[2080,2075,2075,2075,3330],[4270,4255,4260,4265,7225],[8690,8615,8640,8665,15320],[17485,17230,17315,17400,31710],[34795,34025,34280,34535,64055],[68475,66350,67050,67760,126190],[133250,127720,129540,131385,242285],[256375,242670,247165,251735,453075],[487625,455005,465660,476535,824595]], 'shichang'),
     },
     cangku: {
       id: 'cangku', series: 'live', name: '货仓', icon: '🏚️', desc: '储备即是生存 —— 保护资源不被掠夺；一旦城破，护佑即失。',
-      buildCost: { grain: 100, wood: 1500, stone: 1000, iron: 500 }, maxLevel: 12, prod: null,
+      buildCost: { grain: 100, wood: 525, stone: 1350, iron: 900 }, maxLevel: 12, prod: null,
       levelCost: costTable([[100,1500,1000,500,1200],[210,3115,2075,1040,2665],[425,6380,4260,2135,5780],[870,12920,8640,4330,12255],[1750,25840,17315,8700,25370],[3480,51035,34280,17270,51245],[6845,99520,67050,33880,100955],[13325,191580,129540,65695,193830],[25635,364000,247165,125865,362460],[48760,682505,465660,238265,659680]], 'cangku'),
       /* v54：货仓保护上限同兵力表一个节奏，续到 24 级 */
       cap: growRatio([10000, 30000, 60000, 100000, 150000, 210000, 280000, 360000, 450000, 550000, 660000, 780000],
@@ -406,7 +413,7 @@
            · 电能 66% / 生物质 14% / 净水 12% / 废钢 8% —— 能量护墙工程，电能绝对主导；
            · 资源/小时（145 万/时）落在体系带内（训练营 68 万 ~ 补给站 294 万）；
            · `buildCost` 与 `levelCost(0)` 逐字一致（项目惯例，两条路同一笔账）。 */
-      buildCost: { grain: 2000, wood: 2400, stone: 11200, iron: 1400 }, maxLevel: 12, prod: null,
+      buildCost: { grain: 2000, wood: 840, stone: 15000, iron: 2500 }, maxLevel: 12, prod: null,
       levelCost: costTable([
         [2000, 2400, 11200, 1400], [4100, 4800, 22400, 2700], [8200, 9500, 44900, 5400],
         [16300, 19000, 89800, 10900], [32600, 38100, 179500, 21800], [65300, 76200, 359000, 43500],
@@ -417,29 +424,29 @@
     },
     yizhan: {
       id: 'yizhan', series: 'live', name: '补给站', icon: '🏇', desc: '设站补给，通达四方 —— 己方城池间行军提速（1.5 倍起步）。',
-      buildCost: { grain: 1500, wood: 5000, stone: 4500, iron: 500 }, maxLevel: 12, prod: null,
+      buildCost: { grain: 1500, wood: 1750, stone: 6100, iron: 900 }, maxLevel: 12, prod: null,
       levelCost: costTable([[1500,5000,4500,500,3600],[3000,10000,9000,1000,7990],[6000,20000,18000,2000,17345],[12000,40000,36000,4000,36765],[24000,80000,72000,8000,76105],[48000,160000,144000,16000,153735],[96000,320000,288000,32000,302860],[192000,640000,576000,64000,581485],[384000,1280000,1152000,128000,1087380],[768000,2560000,2304000,256000,1979035]], 'yizhan'),
       /* v54：补给站速度是等差（每级 +0.5），续到 24 级 */
       speed: growStep([1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5, 6, 6.5, 7], DATA.MAX_LEVEL_ABS, 0.5),
     },
     fenghuotai: {
       id: 'fenghuotai', series: 'mil', name: '瞭望塔', icon: '🔥', desc: '高塔相望，警讯千里 —— 侦察：8 级看兵力、9 级看英雄、10 级看科技；满级 27×27 范围内行军 +50%。',
-      buildCost: { grain: 150, wood: 1500, stone: 500, iron: 1500 }, maxLevel: 12, prod: null,
+      buildCost: { grain: 150, wood: 525, stone: 675, iron: 2700 }, maxLevel: 12, prod: null,
       levelCost: costTable([[150,1500,500,1500,1080],[300,3000,1000,3000,2400],[600,6000,2000,6000,5205],[1200,12000,4000,12000,11030],[2400,24000,8000,24000,22830],[4800,48000,16000,48000,46120],[9600,96000,32000,96000,90855],[19200,192000,64000,192000,174445],[38400,384000,128000,384000,326215],[76800,768000,256000,768000,593710]], 'fenghuotai'),
     },
     majiu: {
       id: 'majiu', series: 'live', name: '车库', icon: '🐎', desc: '改装与养护机车 —— 座驾改装之地，机车线之根本。',
-      buildCost: { wood: 2000, stone: 800, iron: 1000, grain: 1200 }, maxLevel: 12, prod: null,
+      buildCost: { wood: 700, stone: 1100, iron: 1800, grain: 1200 }, maxLevel: 12, prod: null,
       levelCost: costTable([[2000,800,1000,1200,540],[4000,1600,2000,2400,1200],[8000,3200,4000,4800,2600],[16000,6400,8000,9600,5515],[32000,12800,16000,19200,11415],[64000,25600,32000,38400,23060],[128000,51200,64000,76800,45430],[256000,102400,128000,153600,87225],[512000,204800,256000,307200,163105],[1024000,409600,512000,614400,296855]], 'majiu'),
     },
     kezhan: {
       id: 'kezhan', series: 'ops', name: '酒馆', icon: '🍶', desc: '三教九流汇聚之所 —— 招募英雄（每级 +1 停留英雄）；市井传闻可查强手坐标。',
-      buildCost: { grain: 300, wood: 2000, stone: 1000, iron: 400 }, maxLevel: 12, prod: null,
+      buildCost: { grain: 300, wood: 700, stone: 1350, iron: 720 }, maxLevel: 12, prod: null,
       levelCost: costTable(lerpCost([300,2000,1000,400,480], [146285,910005,465660,190615,263870], 10), 'kezhan'),
     },
     zhaoxianguan: {
       id: 'zhaoxianguan', series: 'ops', name: '招募站', icon: '🎎', desc: '收拢各处幸存者 —— 英雄居所（每级 +1 房间），无空房不可招新。',
-      buildCost: { grain: 400, wood: 2500, stone: 1200, iron: 700 }, maxLevel: 12, prod: null,
+      buildCost: { grain: 400, wood: 875, stone: 1600, iron: 1250 }, maxLevel: 12, prod: null,
       levelCost: costTable(lerpCost([400,2500,1200,700,720], [195050,1137510,558795,333575,395805], 10), 'zhaoxianguan'),
     },
     /* v89.74（老板：「鸿胪寺已拆除，将其替换名称为派系，并提供至建造名单」）——
@@ -455,17 +462,17 @@
     honglusi: {
       id: 'honglusi', series: 'gov', name: '基因实验室', icon: '🧬',
       desc: '旧世研究设施残存 —— 立项研发材料、调试基因序列；派系也在此聚议。',
-      buildCost: { grain: 250, wood: 2000, stone: 500, iron: 300 }, maxLevel: 12, prod: null,
+      buildCost: { grain: 250, wood: 700, stone: 675, iron: 540 }, maxLevel: 12, prod: null,
       levelCost: costTable(lerpCost([250,2000,500,300,1440], [121905,910005,232830,142960,791615], 10), 'honglusi'),
     },
     tiejiangpu: {
       id: 'tiejiangpu', series: 'ops', name: '锻造间', icon: '⚒️', desc: '炉火照夜，锻铁成兵 —— 打造武器与装备强化。',
-      buildCost: { grain: 350, wood: 1000, stone: 600, iron: 1200 }, maxLevel: 12, prod: null,
+      buildCost: { grain: 350, wood: 350, stone: 810, iron: 2150 }, maxLevel: 12, prod: null,
       levelCost: costTable(lerpCost([350,1000,600,1200,360], [170670,455005,279395,571840,197905], 10), 'tiejiangpu'),
     },
     gongjiangzuofang: {
       id: 'gongjiangzuofang', series: 'ops', name: '机工坊', icon: '🛠️', desc: '百工群集，匠心营器 —— 制造攻守城器械。',
-      buildCost: { grain: 450, wood: 1500, stone: 500, iron: 1500 }, maxLevel: 12, prod: null,
+      buildCost: { grain: 450, wood: 525, stone: 675, iron: 2700 }, maxLevel: 12, prod: null,
       levelCost: costTable(lerpCost([450,1500,500,1500,1080], [219430,682505,232830,714800,593710], 10), 'gongjiangzuofang'),
     },
   };
@@ -994,26 +1001,26 @@
      * 解锁：buxingji 继承步行机的 junying:1 入门位（保开局可战）；其余按主原型全套。
      * 老档迁移：GAME.migrateTroops229（18 项映射表 · 读档幂等并入，见 state.js）。
      * ============================================================ */
-    banche:    { id: 'banche', grp: 1, name: '板车', ab: '板', icon: '🛞', hp: 600, atk: 5, def: 10, range: 10, spd: 180, gather: 2, load: 500, pop: 1, time: 15, cost: { grain: 150, wood: 150, iron: 10 }, unlock: { junying: 1 }, desc: '拼装板车，转运物资；战力孱弱，可运输' },
-    fujiche:   { id: 'fujiche', grp: 1, name: '伏击车', ab: '伏', icon: '🏍️', hp: 3720, atk: 340, def: 180, range: 80, spd: 1000, gather: 6, load: 250, pop: 2, ride: true, time: 70, cost: { grain: 3000, wood: 600, iron: 500 }, unlock: { junying: 5, majiu: 1, tech: { zhandou: 1, xingjun: 1, jiayu: 1 } }, desc: '机动伏击，捕俘主力（需车库 + 战斗条令/机动行军/机车操控）' },
-    zhencha:   { id: 'zhencha', grp: 1, name: '侦察单元', ab: '侦', icon: '🛸', hp: 600, atk: 20, def: 20, range: 20, spd: 3000, gather: 1, load: 30, pop: 1, nocombat: true, time: 20, cost: { grain: 360, wood: 200, iron: 150 }, unlock: { junying: 2, shuyuan: 2, tech: { zhencha: 1 } }, desc: '小巧飞行器，极限速度，侦察/截援必备（需侦察网络）' },
-    yunshu:    { id: 'yunshu', grp: 1, name: '运输平台', ab: '运', icon: '🚚', hp: 4200, atk: 10, def: 60, range: 10, spd: 150, gather: 1, load: 20000, pop: 4, mech: true, ride: true, time: 110, cost: { grain: 1800, wood: 1500, iron: 350 }, unlock: { junying: 5, tech: { fuzhong: 1 } }, desc: '专属运资，负重冠绝全军（需载重优化）' },
-    buxingji:  { id: 'buxingji', grp: 2, name: '步行机', ab: '步', icon: '🤖', hp: 1800, atk: 150, def: 150, range: 50, spd: 300, gather: 4, load: 60, pop: 1, time: 30, cost: { grain: 450, wood: 500, iron: 100 }, unlock: { junying: 1 }, desc: '双足步进机甲，攻守均衡，列阵之基' },
-    dunwei:    { id: 'dunwei', grp: 2, name: '盾卫', ab: '盾', icon: '🛡️', hp: 2400, atk: 130, def: 250, range: 30, spd: 275, gather: 4, load: 50, pop: 1, time: 35, cost: { grain: 600, wood: 150, iron: 400 }, unlock: { junying: 3, shuyuan: 3, tech: { fanghu: 1 } }, desc: '高防御，炮灰首选（需装甲强化）' },
-    daodanche: { id: 'daodanche', grp: 2, name: '导弹车', ab: '弹', icon: '🚀', hp: 1920, atk: 220, def: 50, range: 1200, spd: 250, gather: 5, load: 45, pop: 2, ride: true, time: 60, cost: { grain: 900, wood: 350, iron: 300 }, unlock: { junying: 4, shuyuan: 4, tech: { paoshe: 1 } }, desc: '远程主力，射程1200（需弹道校正）' },
-    wuzhi:     { id: 'wuzhi', grp: 2, name: '武装直升机', ab: '直', icon: '🚁', hp: 3840, atk: 330, def: 150, range: 1000, spd: 450, gather: 7, load: 120, pop: 2, ride: true, time: 65, cost: { grain: 3600, wood: 500, iron: 800 }, unlock: { junying: 9, shuyuan: 7, majiu: 3, city: 'hebei', tech: { paoshe: 5, jiayu: 5 } }, desc: '低空火力，射程1000（需弹道校正/机车操控）' },
-    zhuzhan:   { id: 'zhuzhan', grp: 2, name: '主战机甲', ab: '主', icon: '🦾', hp: 8400, atk: 700, def: 400, range: 80, spd: 750, gather: 10, load: 220, pop: 4, ride: true, time: 150, cost: { grain: 5400, wood: 700, iron: 2000 }, unlock: { junying: 7, shuyuan: 6, majiu: 3, tech: { jiayu: 2, fanghu: 2 } }, desc: '主战序列，攻700防400，攻守兼备（需车库3 + 机车操控/装甲强化）' },
-    kuanglie:  { id: 'kuanglie', grp: 3, name: '狂猎', ab: '狂', icon: '⚔️', hp: 5400, atk: 510, def: 280, range: 70, spd: 850, gather: 10, load: 150, pop: 3, ride: true, time: 70, cost: { grain: 4500, wood: 800, iron: 1200 }, unlock: { junying: 9, shuyuan: 8, majiu: 4, city: 'sili', tech: { tongshuai: 9, lianbing: 7 } }, desc: '旧军猎团，冲击力冠绝全军（需霜脊首府）' },
-    dianci:    { id: 'dianci', grp: 3, name: '电磁盾卫', ab: '磁', icon: '🔋', hp: 3600, atk: 340, def: 350, range: 60, spd: 300, gather: 5, load: 55, pop: 2, time: 35, cost: { grain: 1800, wood: 300, iron: 500 }, unlock: { junying: 8, shuyuan: 7, city: 'yizhou', tech: { fanghu: 8 } }, desc: '电磁护盾，防350，刀枪不入（惧火 · 需雾谷首府）' },
-    huopao:    { id: 'huopao', grp: 3, name: '自行火炮', ab: '炮', icon: '💥', hp: 6600, atk: 950, def: 200, range: 1600, spd: 100, gather: 2, load: 30, pop: 4, craft: true, mech: true, time: 5830, cost: { grain: 15000, wood: 5000, stone: 8000, iron: 1200 }, unlock: { junying: 10, shuyuan: 10, gongjiangzuofang: 7 }, desc: '攻950射程1600，攻城巨炮（机工坊制造）' },
-    wuren:     { id: 'wuren', grp: 3, name: '无人轰炸机', ab: '轰', icon: '🛩️', hp: 5400, atk: 500, def: 160, range: 1400, spd: 120, gather: 2, load: 20, pop: 3, craft: true, mech: true, vsMech: 3, time: 2910, cost: { grain: 7500, wood: 3000, iron: 1800 }, unlock: { junying: 8, shuyuan: 8, gongjiangzuofang: 3 }, desc: '强力远程，拆械破车，攻城必带（机工坊制造）' },
+    banche:    { id: 'banche', grp: 1, name: '板车', ab: '板', icon: '🛞', hp: 600, atk: 5, def: 10, range: 10, spd: 180, gather: 2, load: 500, pop: 1, time: 15, cost: { grain: 150, wood: 60, iron: 16 }, unlock: { junying: 1 }, desc: '拼装板车，转运物资；战力孱弱，可运输' },
+    fujiche:   { id: 'fujiche', grp: 1, name: '伏击车', ab: '伏', icon: '🏍️', hp: 3720, atk: 340, def: 180, range: 80, spd: 1000, gather: 6, load: 250, pop: 2, ride: true, time: 70, cost: { grain: 3000, wood: 240, iron: 800 }, unlock: { junying: 5, majiu: 1, tech: { zhandou: 1, xingjun: 1, jiayu: 1 } }, desc: '机动伏击，捕俘主力（需车库 + 战斗条令/机动行军/机车操控）' },
+    zhencha:   { id: 'zhencha', grp: 1, name: '侦察单元', ab: '侦', icon: '🛸', hp: 600, atk: 20, def: 20, range: 20, spd: 3000, gather: 1, load: 30, pop: 1, nocombat: true, time: 20, cost: { grain: 360, wood: 80, iron: 240 }, unlock: { junying: 2, shuyuan: 2, tech: { zhencha: 1 } }, desc: '小巧飞行器，极限速度，侦察/截援必备（需侦察网络）' },
+    yunshu:    { id: 'yunshu', grp: 1, name: '运输平台', ab: '运', icon: '🚚', hp: 4200, atk: 10, def: 60, range: 10, spd: 150, gather: 1, load: 20000, pop: 4, mech: true, ride: true, time: 110, cost: { grain: 1800, wood: 600, iron: 560 }, unlock: { junying: 5, tech: { fuzhong: 1 } }, desc: '专属运资，负重冠绝全军（需载重优化）' },
+    buxingji:  { id: 'buxingji', grp: 2, name: '步行机', ab: '步', icon: '🤖', hp: 1800, atk: 150, def: 150, range: 50, spd: 300, gather: 4, load: 60, pop: 1, time: 30, cost: { grain: 450, wood: 200, iron: 160 }, unlock: { junying: 1 }, desc: '双足步进机甲，攻守均衡，列阵之基' },
+    dunwei:    { id: 'dunwei', grp: 2, name: '盾卫', ab: '盾', icon: '🛡️', hp: 2400, atk: 130, def: 250, range: 30, spd: 275, gather: 4, load: 50, pop: 1, time: 35, cost: { grain: 600, wood: 60, iron: 640 }, unlock: { junying: 3, shuyuan: 3, tech: { fanghu: 1 } }, desc: '高防御，炮灰首选（需装甲强化）' },
+    daodanche: { id: 'daodanche', grp: 2, name: '导弹车', ab: '弹', icon: '🚀', hp: 1920, atk: 220, def: 50, range: 1200, spd: 250, gather: 5, load: 45, pop: 2, ride: true, time: 60, cost: { grain: 900, wood: 140, iron: 480 }, unlock: { junying: 4, shuyuan: 4, tech: { paoshe: 1 } }, desc: '远程主力，射程1200（需弹道校正）' },
+    wuzhi:     { id: 'wuzhi', grp: 2, name: '武装直升机', ab: '直', icon: '🚁', hp: 3840, atk: 330, def: 150, range: 1000, spd: 450, gather: 7, load: 120, pop: 2, ride: true, time: 65, cost: { grain: 3600, wood: 200, iron: 1300 }, unlock: { junying: 9, shuyuan: 7, majiu: 3, city: 'hebei', tech: { paoshe: 5, jiayu: 5 } }, desc: '低空火力，射程1000（需弹道校正/机车操控）' },
+    zhuzhan:   { id: 'zhuzhan', grp: 2, name: '主战机甲', ab: '主', icon: '🦾', hp: 8400, atk: 700, def: 400, range: 80, spd: 750, gather: 10, load: 220, pop: 4, ride: true, time: 150, cost: { grain: 5400, wood: 280, iron: 3200 }, unlock: { junying: 7, shuyuan: 6, majiu: 3, tech: { jiayu: 2, fanghu: 2 } }, desc: '主战序列，攻700防400，攻守兼备（需车库3 + 机车操控/装甲强化）' },
+    kuanglie:  { id: 'kuanglie', grp: 3, name: '狂猎', ab: '狂', icon: '⚔️', hp: 5400, atk: 510, def: 280, range: 70, spd: 850, gather: 10, load: 150, pop: 3, ride: true, time: 70, cost: { grain: 4500, wood: 320, iron: 1900 }, unlock: { junying: 9, shuyuan: 8, majiu: 4, city: 'sili', tech: { tongshuai: 9, lianbing: 7 } }, desc: '旧军猎团，冲击力冠绝全军（需霜脊首府）' },
+    dianci:    { id: 'dianci', grp: 3, name: '电磁盾卫', ab: '磁', icon: '🔋', hp: 3600, atk: 340, def: 350, range: 60, spd: 300, gather: 5, load: 55, pop: 2, time: 35, cost: { grain: 1800, wood: 120, iron: 800 }, unlock: { junying: 8, shuyuan: 7, city: 'yizhou', tech: { fanghu: 8 } }, desc: '电磁护盾，防350，刀枪不入（惧火 · 需雾谷首府）' },
+    huopao:    { id: 'huopao', grp: 3, name: '自行火炮', ab: '炮', icon: '💥', hp: 6600, atk: 950, def: 200, range: 1600, spd: 100, gather: 2, load: 30, pop: 4, craft: true, mech: true, time: 5830, cost: { grain: 15000, wood: 2000, stone: 8000, iron: 1900 }, unlock: { junying: 10, shuyuan: 10, gongjiangzuofang: 7 }, desc: '攻950射程1600，攻城巨炮（机工坊制造）' },
+    wuren:     { id: 'wuren', grp: 3, name: '无人轰炸机', ab: '轰', icon: '🛩️', hp: 5400, atk: 500, def: 160, range: 1400, spd: 120, gather: 2, load: 20, pop: 3, craft: true, mech: true, vsMech: 3, time: 2910, cost: { grain: 7500, wood: 1200, iron: 2900 }, unlock: { junying: 8, shuyuan: 8, gongjiangzuofang: 3 }, desc: '强力远程，拆械破车，攻城必带（机工坊制造）' },
     /* v89.230 链路修复（兵种链体检抓出）：本兵种 unlock.tech 原为 `yiliao: 8` —— 即参考
        数据里一栏旧代兵种的「医疗技巧 Lv8」，而该科技在本作 24 项表中**从未存在**（v67 基线
        起即悬空 → 泰坦机甲门禁自始不可达，报错还会显示原始 id）。
        现按"救治向科技"改指 **再生技术（weixiu · 伤兵回收率 +3%/级）**，仍取 Lv8
        （weixiu 上限 Lv9 可达）。要改口径只动这一个键；链体检工具
        `.workbuddy/tools/audit/audit_v89229b_troopchain.js` 守着"tech 键必须 ∈ DATA.TECH"。 */
-    taitan:    { id: 'taitan', grp: 3, name: '泰坦机甲', ab: '泰', icon: '👾', hp: 15000, atk: 620, def: 300, range: 70, spd: 400, gather: 12, load: 800, pop: 5, ride: true, time: 300, cost: { grain: 9000, wood: 1000, iron: 2500 }, unlock: { junying: 9, shuyuan: 8, city: 'yizhou', tech: { weixiu: 8, zhandou: 7 } }, desc: '辐射变异的巨兽机甲，血厚守坚，凭蛮力硬拼（需雾谷首府）' },
+    taitan:    { id: 'taitan', grp: 3, name: '泰坦机甲', ab: '泰', icon: '👾', hp: 15000, atk: 620, def: 300, range: 70, spd: 400, gather: 12, load: 800, pop: 5, ride: true, time: 300, cost: { grain: 9000, wood: 400, iron: 4000 }, unlock: { junying: 9, shuyuan: 8, city: 'yizhou', tech: { weixiu: 8, zhandou: 7 } }, desc: '辐射变异的巨兽机甲，血厚守坚，凭蛮力硬拼（需雾谷首府）' },
   };
 
   /* ============================================================
@@ -1210,7 +1217,7 @@
      * 若自动给它们加 24 座箭塔，攻城难度会凭空跳一档（v59 已标定的平衡会漂）。
      * ============================================================ */
     buildMaxPerLv: 2,                    // 作坊每级可造 2 座（12 级 → 24 座）
-    buildCost: { wood: 2000, stone: 3000, iron: 800 },   // 每座造价
+    buildCost: { wood: 700, stone: 4050, iron: 1450 },   // 每座造价
     homeDef: 2,                          // 每座自建箭塔给本城守备力的贡献
   };
 
@@ -1293,8 +1300,35 @@
    * 装备（报告3.2/3.3/3.6/3.7）
    * slot: 部位；套装成套加成按件数
    * ============================================================ */
-  DATA.EQUIP_SLOTS = ['head', 'neck', 'shoulder', 'chest', 'back', 'waist', 'arm', 'feet', 'ring', 'pendant', 'weapon', 'mount'];
-  DATA.EQUIP_SLOT_NAMES = { head: '头盔', neck: '坠饰', shoulder: '肩铠', chest: '战铠', back: '披风', waist: '腰甲', arm: '臂甲', feet: '战靴', ring: '戒指', pendant: '佩饰', weapon: '武器', mount: '座驾' };
+  /* v90.11（老板）：「机甲 13 部件（左右独立）+ 6 外挂 = 19 槽」——
+     机甲身体 13：头/胸/腰 + 左·右上臂 + 左·右前臂 + 左·右大腿 + 左·右小腿 + 左·右脚掌；
+     外挂 6：右武装(weapon) / 左武装(pendant) / 机动(mount) / 左披风(back) / 右披风(ring) / 辐射清除(neck)。
+     命名一律「XX模块」；外挂沿用老 id（weapon/mount/back/ring/pendant/neck）→ 老档键零改。 */
+  DATA.EQUIP_SLOTS = [
+    'head', 'chest', 'waist',
+    'arm_up_l', 'arm_up_r', 'arm_low_l', 'arm_low_r',
+    'thigh_l', 'thigh_r', 'shin_l', 'shin_r', 'foot_l', 'foot_r',
+    'weapon', 'mount', 'back', 'ring', 'pendant', 'neck',
+  ];
+  DATA.EQUIP_SLOT_NAMES = {
+    head: '观瞄模块', chest: '动力模块', waist: '平衡模块',
+    arm_up_l: '左驱动臂模块', arm_up_r: '右驱动臂模块',
+    arm_low_l: '左操作臂模块', arm_low_r: '右操作臂模块',
+    thigh_l: '左承载腿模块', thigh_r: '右承载腿模块',
+    shin_l: '左支撑腿模块', shin_r: '右支撑腿模块',
+    foot_l: '左抓地足模块', foot_r: '右抓地足模块',
+    weapon: '右武装模块', mount: '机动模块', back: '左披风模块',
+    ring: '右披风模块', pendant: '左武装模块', neck: '辐射清除模块',
+  };
+  /* v90.11：老 12 槽 → 新 19 槽 的**就近映射**（旧档 g.equip/g.lingEquip 键迁移用）。
+     单肩/单臂/单足 就近落**左侧**（肩铠→左上臂、臂甲→左前臂、战靴→左脚掌）；
+     其余同名键不动。右侧臂/足与双腿为**新槽**（初始空，见 DATA.EQUIP 新建件）。 */
+  DATA.EQUIP_SLOT_MIGRATE = {
+    head: 'head', chest: 'chest', waist: 'waist',
+    shoulder: 'arm_up_l', arm: 'arm_low_l', feet: 'foot_l',
+    neck: 'neck', back: 'back', ring: 'ring', pendant: 'pendant',
+    weapon: 'weapon', mount: 'mount',
+  };
   /* ⛔ v89.134 移除：`DATA.EQUIP_QUALITY`（旧 6 档色名）——
      装备品质名的唯一来源是 `DATA.Q_NAME`（4 档 粗制/标准/精良/原型）；
      本表长期零引用（v89.134 盘点器抓出）。 */
@@ -1309,87 +1343,392 @@
    *   v66 把这一列**并入体力上限**（`GAME.staMax`），并把字段名改回 `sta` ——
    *   现在"装备体力"与"体力上限"是一条链，不再有两套说法。
    * ============================================================ */
+  /* v90.14（老板）：套装重设 —— 6 档（粗劣/优良/精品/稀有/传奇/机神）× 3 侧重（占/治/体）
+     = 18 套 · 每套 19 件（覆盖全部机甲槽）。**散件退役**（锻造间只造套装件）。
+     老 7 套整体替换；数值参照旧套同品质量级。 */
+  DATA.SET_RANKS = [
+    { id: 'coarse', name: '粗劣', q: 1 },
+    { id: 'fine', name: '优良', q: 2 },
+    { id: 'prime', name: '精品', q: 3 },
+    { id: 'rare', name: '稀有', q: 4 },
+    { id: 'legend', name: '传奇', q: 5 },
+    { id: 'divine', name: '机神', q: 6 },
+  ];
+  DATA.SET_TIERS = [3, 5, 7, 11, 15, 19];
+  /* v90.16：老装备 id → 新套装件 id 的**读档迁移表**（老档 87 件旧装备 ↦ 同品质同槽占套件）。
+     老槽就近：shoulder→arm_up_l / arm→arm_low_l / feet→foot_l；q1~4 → coarse/fine/prime/rare。
+     迁移在 loadFrom 里跑一次（幂等），老档已穿装备/背包件不丢。 */
+  DATA.EQUIP_ID_MIG = {yt_helm:"rare_zhan_head",yt_neck:"rare_zhan_neck",yt_should:"rare_zhan_arm_up_l",yt_chest:"rare_zhan_chest",yt_back:"rare_zhan_back",yt_waist:"rare_zhan_waist",yt_arm:"rare_zhan_arm_low_l",yt_feet:"rare_zhan_foot_l",yt_ring:"rare_zhan_ring",yt_pend:"rare_zhan_pendant",yt_sword:"rare_zhan_weapon",jueying:"rare_zhan_mount",ms_h1:"fine_zhan_head",ms_c1:"fine_zhan_chest",ms_s1:"fine_zhan_arm_up_l",ms_ar1:"fine_zhan_arm_low_l",ms_wa1:"fine_zhan_waist",ms_f1:"fine_zhan_foot_l",ms_b1:"fine_zhan_back",ms_n1:"fine_zhan_neck",ms_r1:"fine_zhan_ring",ms_p1:"fine_zhan_pendant",ms_w1:"fine_zhan_weapon",ms_m1:"fine_zhan_mount",sw_h1:"prime_zhan_head",sw_c1:"prime_zhan_chest",sw_s1:"prime_zhan_arm_up_l",sw_ar1:"prime_zhan_arm_low_l",sw_wa1:"prime_zhan_waist",sw_f1:"prime_zhan_foot_l",sw_b1:"prime_zhan_back",sw_n1:"prime_zhan_neck",sw_r1:"prime_zhan_ring",sw_p1:"prime_zhan_pendant",sw_w1:"prime_zhan_weapon",sw_m1:"prime_zhan_mount",yt_free1:"coarse_zhan_chest",yt_free2:"coarse_zhan_weapon",yt_free3:"coarse_zhan_mount",yx_h:"fine_zhan_head",yx_n:"fine_zhan_neck",yx_s:"fine_zhan_arm_up_l",yx_c:"fine_zhan_chest",yx_b:"fine_zhan_back",yx_w:"fine_zhan_waist",yx_a:"fine_zhan_arm_low_l",yx_f:"fine_zhan_foot_l",yx_r:"fine_zhan_ring",yx_p:"fine_zhan_pendant",yx_x:"fine_zhan_weapon",yx_m:"fine_zhan_mount",xz_h:"prime_zhan_head",xz_n:"prime_zhan_neck",xz_s:"prime_zhan_arm_up_l",xz_c:"prime_zhan_chest",xz_b:"prime_zhan_back",xz_w:"prime_zhan_waist",xz_a:"prime_zhan_arm_low_l",xz_f:"prime_zhan_foot_l",xz_r:"prime_zhan_ring",xz_p:"prime_zhan_pendant",xz_x:"prime_zhan_weapon",xz_m:"prime_zhan_mount",sy_h:"prime_zhan_head",sy_n:"prime_zhan_neck",sy_s:"prime_zhan_arm_up_l",sy_c:"prime_zhan_chest",sy_b:"prime_zhan_back",sy_w:"prime_zhan_waist",sy_a:"prime_zhan_arm_low_l",sy_f:"prime_zhan_foot_l",sy_r:"prime_zhan_ring",sy_p:"prime_zhan_pendant",sy_x:"prime_zhan_weapon",sy_m:"prime_zhan_mount",tc_h:"rare_zhan_head",tc_n:"rare_zhan_neck",tc_s:"rare_zhan_arm_up_l",tc_c:"rare_zhan_chest",tc_b:"rare_zhan_back",tc_w:"rare_zhan_waist",tc_a:"rare_zhan_arm_low_l",tc_f:"rare_zhan_foot_l",tc_r:"rare_zhan_ring",tc_p:"rare_zhan_pendant",tc_x:"rare_zhan_weapon",tc_m:"rare_zhan_mount"};
+  DATA.Q_NAME = { 1: '粗劣', 2: '优良', 3: '精品', 4: '稀有', 5: '传奇', 6: '机神' };
+  /* v90.16：18 套 × 19 件 —— **每件都给六维**（按侧重分配），每档套装总六维 =
+     500/750/1125/1688/2531/3797（凡品 500，逐档 ×1.5）；武器给攻、装甲给防。 */
   DATA.EQUIP = {
-    /* 陨锋套 11件 + 绝影（报告3.7 完整单件 · 每件体力 600） */
-    yt_helm:  { id: 'yt_helm', name: '陨锋战盔', set: 'yitian', slot: 'head', q: 4, tong: 65, nz: 39, yw: 46, zm: 52, sta: 600, spd: 1, atk: 0 },
-    yt_neck:  { id: 'yt_neck', name: '陨锋坠饰', set: 'yitian', slot: 'neck', q: 4, tong: 55, nz: 31, yw: 62, zm: 67, sta: 600, spd: 1 },
-    yt_should:{ id: 'yt_should', name: '陨锋肩铠', set: 'yitian', slot: 'shoulder', q: 4, tong: 55, nz: 31, yw: 62, zm: 67, sta: 600, spd: 1 },
-    yt_chest: { id: 'yt_chest', name: '陨锋战铠', set: 'yitian', slot: 'chest', q: 4, tong: 59, nz: 29, yw: 65, zm: 50, sta: 600, spd: 1 },
-    yt_back:  { id: 'yt_back', name: '陨锋披风', set: 'yitian', slot: 'back', q: 4, tong: 55, nz: 31, yw: 62, zm: 67, sta: 600, spd: 1 },
-    yt_waist: { id: 'yt_waist', name: '陨锋腰甲', set: 'yitian', slot: 'waist', q: 4, tong: 46, nz: 35, yw: 45, zm: 38, sta: 600, spd: 1 },
-    yt_arm:   { id: 'yt_arm', name: '陨锋臂甲', set: 'yitian', slot: 'arm', q: 4, tong: 52, nz: 39, yw: 50, zm: 42, sta: 600, spd: 1 },
-    yt_feet:  { id: 'yt_feet', name: '陨锋长靴', set: 'yitian', slot: 'feet', q: 4, tong: 38, nz: 36, yw: 66, zm: 28, sta: 600, spd: 5 },
-    yt_ring:  { id: 'yt_ring', name: '陨锋玺戒', set: 'yitian', slot: 'ring', q: 4, tong: 57, nz: 40, yw: 57, zm: 46, sta: 600, spd: 1 },
-    yt_pend:  { id: 'yt_pend', name: '陨锋佩饰', set: 'yitian', slot: 'pendant', q: 4, tong: 48, nz: 24, yw: 48, zm: 60, sta: 600, spd: 1 },
-    yt_sword: { id: 'yt_sword', name: '陨锋长剑', set: 'yitian', slot: 'weapon', q: 4, tong: 52, nz: 57, yw: 31, zm: 31, sta: 600, spd: 8, atk: 2888 },
-    jueying:  { id: 'jueying', name: '绝影', set: 'yitian', slot: 'mount', q: 4, tong: 29, nz: 31, yw: 39, zm: 31, sta: 600, spd: 120 },
-    /* ============================================================
-     * 佣兵套 / 军魂套（v38 · 需求 3 · 旧称「名将套 / 神武套」）：由各 3 件补足到 **12 件（全槽位）**
-     * ------------------------------------------------------------
-     * 原状：两套各只有 头/武器/座驾 3 件，而门槛写着 5/7/9/11/13/16 ——
-     * 玩家永远只能拿到首档，后面的档位是纯摆设（军魂套首档 4 件更是
-     * 一档都拿不到）。补齐到 12 件后 3/5/7/11 四档全部可达。
-     * 数值基准 = **同品质同槽位散件 ×1.12**，再加一条套装特色属性；
-     * 旧 6 件也一并提到同一标准（原先远弱于散件，套装没有打造价值）。
-     * ============================================================ */
-    /* 佣兵套（q2 精良）：头/胸/肩/臂/腰/足/背/颈/戒/佩/武/骑 */
-    ms_h1:  { id: 'ms_h1',  name: '佣兵盔',     set: 'mingjiang', slot: 'head',     q: 2, sta: 260, def: 270, yw: 12 },
-    ms_c1:  { id: 'ms_c1',  name: '佣兵战铠',   set: 'mingjiang', slot: 'chest',    q: 2, sta: 260, def: 370 },
-    ms_s1:  { id: 'ms_s1',  name: '佣兵肩铠',   set: 'mingjiang', slot: 'shoulder', q: 2, sta: 260, def: 270 },
-    ms_ar1: { id: 'ms_ar1', name: '佣兵臂甲',   set: 'mingjiang', slot: 'arm',      q: 2, sta: 260, def: 246, yw: 8 },
-    ms_wa1: { id: 'ms_wa1', name: '佣兵腰甲',   set: 'mingjiang', slot: 'waist',    q: 2, sta: 260, def: 246 },
-    ms_f1:  { id: 'ms_f1',  name: '佣兵战靴',   set: 'mingjiang', slot: 'feet',     q: 2, sta: 260, spd: 26 },
-    ms_b1:  { id: 'ms_b1',  name: '佣兵披风',   set: 'mingjiang', slot: 'back',     q: 2, sta: 260, zm: 26 },
-    ms_n1:  { id: 'ms_n1',  name: '佣兵项坠',   set: 'mingjiang', slot: 'neck',     q: 2, sta: 260, tong: 26 },
-    ms_r1:  { id: 'ms_r1',  name: '佣兵指环',   set: 'mingjiang', slot: 'ring',     q: 2, sta: 260, tong: 26 },
-    ms_p1:  { id: 'ms_p1',  name: '佣兵玉佩',   set: 'mingjiang', slot: 'pendant',  q: 2, sta: 260, zm: 26 },
-    ms_w1:  { id: 'ms_w1',  name: '雌雄双剑',   set: 'mingjiang', slot: 'weapon',   q: 2, sta: 260, atk: 296, yw: 10 },
-    ms_m1:  { id: 'ms_m1',  name: '佣兵座驾',   set: 'mingjiang', slot: 'mount',    q: 2, sta: 260, spd: 44 },
-    /* 军魂套（q3 稀有） */
-    sw_h1:  { id: 'sw_h1',  name: '军魂盔',     set: 'shenwu', slot: 'head',     q: 3, sta: 470, def: 572, yw: 15 },
-    sw_c1:  { id: 'sw_c1',  name: '军魂战铠',   set: 'shenwu', slot: 'chest',    q: 3, sta: 470, def: 784 },
-    sw_s1:  { id: 'sw_s1',  name: '军魂肩铠',   set: 'shenwu', slot: 'shoulder', q: 3, sta: 470, def: 572 },
-    sw_ar1: { id: 'sw_ar1', name: '军魂臂甲',   set: 'shenwu', slot: 'arm',      q: 3, sta: 470, def: 520 },
-    sw_wa1: { id: 'sw_wa1', name: '军魂腰甲',   set: 'shenwu', slot: 'waist',    q: 3, sta: 470, def: 520 },
-    sw_f1:  { id: 'sw_f1',  name: '军魂战靴',   set: 'shenwu', slot: 'feet',     q: 3, sta: 470, spd: 52 },
-    sw_b1:  { id: 'sw_b1',  name: '军魂披风',   set: 'shenwu', slot: 'back',     q: 3, sta: 470, zm: 44 },
-    sw_n1:  { id: 'sw_n1',  name: '军魂项坠',   set: 'shenwu', slot: 'neck',     q: 3, sta: 470, tong: 44 },
-    sw_r1:  { id: 'sw_r1',  name: '军魂指环',   set: 'shenwu', slot: 'ring',     q: 3, sta: 470, tong: 44 },
-    sw_p1:  { id: 'sw_p1',  name: '军魂玉佩',   set: 'shenwu', slot: 'pendant',  q: 3, sta: 470, zm: 44 },
-    sw_w1:  { id: 'sw_w1',  name: '军魂刀',     set: 'shenwu', slot: 'weapon',   q: 3, sta: 470, atk: 625, yw: 12 },
-    sw_m1:  { id: 'sw_m1',  name: '军魂马',     set: 'shenwu', slot: 'mount',    q: 3, sta: 470, spd: 92 },
-    yt_free1: { id: 'yt_free1', name: '新手布衣', slot: 'chest', q: 1, def: 10, sta: 100 },
-    yt_free2: { id: 'yt_free2', name: '新手木剑', slot: 'weapon', q: 1, atk: 15 },
-    yt_free3: { id: 'yt_free3', name: '枣红马', slot: 'mount', q: 1, spd: 20 },
+    coarse_zhan_head: { id: 'coarse_zhan_head', name: '拾荒火控观瞄', set: 'coarse_zhan', slot: 'head', q: 1, tong: 5, nz: 1, yw: 11, zm: 1, spd: 4, sta: 4, def: 240 },
+    coarse_zhan_chest: { id: 'coarse_zhan_chest', name: '拾荒动力引擎', set: 'coarse_zhan', slot: 'chest', q: 1, tong: 5, nz: 1, yw: 11, zm: 1, spd: 4, sta: 4, def: 240 },
+    coarse_zhan_waist: { id: 'coarse_zhan_waist', name: '拾荒速控平衡环', set: 'coarse_zhan', slot: 'waist', q: 1, tong: 5, nz: 1, yw: 11, zm: 1, spd: 4, sta: 4, def: 240 },
+    coarse_zhan_arm_up_l: { id: 'coarse_zhan_arm_up_l', name: '拾荒左强袭展臂', set: 'coarse_zhan', slot: 'arm_up_l', q: 1, tong: 5, nz: 1, yw: 11, zm: 1, spd: 4, sta: 4, def: 240 },
+    coarse_zhan_arm_up_r: { id: 'coarse_zhan_arm_up_r', name: '拾荒右强袭展臂', set: 'coarse_zhan', slot: 'arm_up_r', q: 1, tong: 5, nz: 1, yw: 11, zm: 1, spd: 4, sta: 4, def: 240 },
+    coarse_zhan_arm_low_l: { id: 'coarse_zhan_arm_low_l', name: '拾荒左突击操作臂', set: 'coarse_zhan', slot: 'arm_low_l', q: 1, tong: 5, nz: 1, yw: 11, zm: 1, spd: 4, sta: 4, def: 240 },
+    coarse_zhan_arm_low_r: { id: 'coarse_zhan_arm_low_r', name: '拾荒右突击操作臂', set: 'coarse_zhan', slot: 'arm_low_r', q: 1, tong: 5, nz: 1, yw: 11, zm: 1, spd: 4, sta: 4, def: 240 },
+    coarse_zhan_thigh_l: { id: 'coarse_zhan_thigh_l', name: '拾荒左疾行承载腿', set: 'coarse_zhan', slot: 'thigh_l', q: 1, tong: 5, nz: 1, yw: 11, zm: 1, spd: 4, sta: 4, def: 240 },
+    coarse_zhan_thigh_r: { id: 'coarse_zhan_thigh_r', name: '拾荒右疾行承载腿', set: 'coarse_zhan', slot: 'thigh_r', q: 1, tong: 5, nz: 1, yw: 11, zm: 1, spd: 4, sta: 4, def: 240 },
+    coarse_zhan_shin_l: { id: 'coarse_zhan_shin_l', name: '拾荒左疾行支撑腿', set: 'coarse_zhan', slot: 'shin_l', q: 1, tong: 5, nz: 1, yw: 11, zm: 1, spd: 4, sta: 4, def: 240 },
+    coarse_zhan_shin_r: { id: 'coarse_zhan_shin_r', name: '拾荒右疾行支撑腿', set: 'coarse_zhan', slot: 'shin_r', q: 1, tong: 5, nz: 1, yw: 11, zm: 1, spd: 4, sta: 4, def: 240 },
+    coarse_zhan_foot_l: { id: 'coarse_zhan_foot_l', name: '拾荒左疾行抓地足', set: 'coarse_zhan', slot: 'foot_l', q: 1, tong: 5, nz: 1, yw: 11, zm: 1, spd: 4, sta: 4, def: 240 },
+    coarse_zhan_foot_r: { id: 'coarse_zhan_foot_r', name: '拾荒右疾行抓地足', set: 'coarse_zhan', slot: 'foot_r', q: 1, tong: 5, nz: 1, yw: 11, zm: 1, spd: 4, sta: 4, def: 240 },
+    coarse_zhan_weapon: { id: 'coarse_zhan_weapon', name: '拾荒右强袭炮', set: 'coarse_zhan', slot: 'weapon', q: 1, tong: 5, nz: 1, yw: 11, zm: 1, spd: 4, sta: 4, atk: 260 },
+    coarse_zhan_mount: { id: 'coarse_zhan_mount', name: '拾荒突进推进器', set: 'coarse_zhan', slot: 'mount', q: 1, tong: 5, nz: 1, yw: 11, zm: 1, spd: 90, sta: 4 },
+    coarse_zhan_back: { id: 'coarse_zhan_back', name: '拾荒左突击翼', set: 'coarse_zhan', slot: 'back', q: 1, tong: 5, nz: 1, yw: 11, zm: 1, spd: 4, sta: 4 },
+    coarse_zhan_ring: { id: 'coarse_zhan_ring', name: '拾荒右突击翼', set: 'coarse_zhan', slot: 'ring', q: 1, tong: 5, nz: 1, yw: 11, zm: 1, spd: 4, sta: 4 },
+    coarse_zhan_pendant: { id: 'coarse_zhan_pendant', name: '拾荒左副炮', set: 'coarse_zhan', slot: 'pendant', q: 1, tong: 5, nz: 1, yw: 11, zm: 1, spd: 4, sta: 4 },
+    coarse_zhan_neck: { id: 'coarse_zhan_neck', name: '拾荒战地净化器', set: 'coarse_zhan', slot: 'neck', q: 1, tong: 5, nz: 1, yw: 11, zm: 1, spd: 4, sta: 4 },
+    coarse_zhi_head: { id: 'coarse_zhi_head', name: '补丁测控观瞄', set: 'coarse_zhi', slot: 'head', q: 1, tong: 3, nz: 10, yw: 1, zm: 5, spd: 3, sta: 4, def: 240 },
+    coarse_zhi_chest: { id: 'coarse_zhi_chest', name: '补丁指挥中枢', set: 'coarse_zhi', slot: 'chest', q: 1, tong: 3, nz: 10, yw: 1, zm: 5, spd: 3, sta: 4, def: 240 },
+    coarse_zhi_waist: { id: 'coarse_zhi_waist', name: '补丁稳态陀螺环', set: 'coarse_zhi', slot: 'waist', q: 1, tong: 3, nz: 10, yw: 1, zm: 5, spd: 3, sta: 4, def: 240 },
+    coarse_zhi_arm_up_l: { id: 'coarse_zhi_arm_up_l', name: '补丁左精密展臂', set: 'coarse_zhi', slot: 'arm_up_l', q: 1, tong: 3, nz: 10, yw: 1, zm: 5, spd: 3, sta: 4, def: 240 },
+    coarse_zhi_arm_up_r: { id: 'coarse_zhi_arm_up_r', name: '补丁右精密展臂', set: 'coarse_zhi', slot: 'arm_up_r', q: 1, tong: 3, nz: 10, yw: 1, zm: 5, spd: 3, sta: 4, def: 240 },
+    coarse_zhi_arm_low_l: { id: 'coarse_zhi_arm_low_l', name: '补丁左精细操作臂', set: 'coarse_zhi', slot: 'arm_low_l', q: 1, tong: 3, nz: 10, yw: 1, zm: 5, spd: 3, sta: 4, def: 240 },
+    coarse_zhi_arm_low_r: { id: 'coarse_zhi_arm_low_r', name: '补丁右精细操作臂', set: 'coarse_zhi', slot: 'arm_low_r', q: 1, tong: 3, nz: 10, yw: 1, zm: 5, spd: 3, sta: 4, def: 240 },
+    coarse_zhi_thigh_l: { id: 'coarse_zhi_thigh_l', name: '补丁左稳态承载腿', set: 'coarse_zhi', slot: 'thigh_l', q: 1, tong: 3, nz: 10, yw: 1, zm: 5, spd: 3, sta: 4, def: 240 },
+    coarse_zhi_thigh_r: { id: 'coarse_zhi_thigh_r', name: '补丁右稳态承载腿', set: 'coarse_zhi', slot: 'thigh_r', q: 1, tong: 3, nz: 10, yw: 1, zm: 5, spd: 3, sta: 4, def: 240 },
+    coarse_zhi_shin_l: { id: 'coarse_zhi_shin_l', name: '补丁左稳态支撑腿', set: 'coarse_zhi', slot: 'shin_l', q: 1, tong: 3, nz: 10, yw: 1, zm: 5, spd: 3, sta: 4, def: 240 },
+    coarse_zhi_shin_r: { id: 'coarse_zhi_shin_r', name: '补丁右稳态支撑腿', set: 'coarse_zhi', slot: 'shin_r', q: 1, tong: 3, nz: 10, yw: 1, zm: 5, spd: 3, sta: 4, def: 240 },
+    coarse_zhi_foot_l: { id: 'coarse_zhi_foot_l', name: '补丁左稳态抓地足', set: 'coarse_zhi', slot: 'foot_l', q: 1, tong: 3, nz: 10, yw: 1, zm: 5, spd: 3, sta: 4, def: 240 },
+    coarse_zhi_foot_r: { id: 'coarse_zhi_foot_r', name: '补丁右稳态抓地足', set: 'coarse_zhi', slot: 'foot_r', q: 1, tong: 3, nz: 10, yw: 1, zm: 5, spd: 3, sta: 4, def: 240 },
+    coarse_zhi_weapon: { id: 'coarse_zhi_weapon', name: '补丁右精准炮', set: 'coarse_zhi', slot: 'weapon', q: 1, tong: 3, nz: 10, yw: 1, zm: 5, spd: 3, sta: 4, atk: 260 },
+    coarse_zhi_mount: { id: 'coarse_zhi_mount', name: '补丁悬浮单元', set: 'coarse_zhi', slot: 'mount', q: 1, tong: 3, nz: 10, yw: 1, zm: 5, spd: 89, sta: 4 },
+    coarse_zhi_back: { id: 'coarse_zhi_back', name: '补丁左侦察翼', set: 'coarse_zhi', slot: 'back', q: 1, tong: 3, nz: 10, yw: 1, zm: 5, spd: 3, sta: 4 },
+    coarse_zhi_ring: { id: 'coarse_zhi_ring', name: '补丁右侦察翼', set: 'coarse_zhi', slot: 'ring', q: 1, tong: 3, nz: 10, yw: 1, zm: 5, spd: 3, sta: 4 },
+    coarse_zhi_pendant: { id: 'coarse_zhi_pendant', name: '补丁左辅助炮', set: 'coarse_zhi', slot: 'pendant', q: 1, tong: 3, nz: 10, yw: 1, zm: 5, spd: 3, sta: 4 },
+    coarse_zhi_neck: { id: 'coarse_zhi_neck', name: '补丁精测净化器', set: 'coarse_zhi', slot: 'neck', q: 1, tong: 3, nz: 10, yw: 1, zm: 5, spd: 3, sta: 4 },
+    coarse_ti_head: { id: 'coarse_ti_head', name: '铁皮装甲观瞄', set: 'coarse_ti', slot: 'head', q: 1, tong: 4, nz: 4, yw: 3, zm: 3, spd: 1, sta: 11, def: 240 },
+    coarse_ti_chest: { id: 'coarse_ti_chest', name: '铁皮重装躯干', set: 'coarse_ti', slot: 'chest', q: 1, tong: 4, nz: 4, yw: 3, zm: 3, spd: 1, sta: 11, def: 240 },
+    coarse_ti_waist: { id: 'coarse_ti_waist', name: '铁皮承重腰腹', set: 'coarse_ti', slot: 'waist', q: 1, tong: 4, nz: 4, yw: 3, zm: 3, spd: 1, sta: 11, def: 240 },
+    coarse_ti_arm_up_l: { id: 'coarse_ti_arm_up_l', name: '铁皮左重甲展臂', set: 'coarse_ti', slot: 'arm_up_l', q: 1, tong: 4, nz: 4, yw: 3, zm: 3, spd: 1, sta: 11, def: 240 },
+    coarse_ti_arm_up_r: { id: 'coarse_ti_arm_up_r', name: '铁皮右重甲展臂', set: 'coarse_ti', slot: 'arm_up_r', q: 1, tong: 4, nz: 4, yw: 3, zm: 3, spd: 1, sta: 11, def: 240 },
+    coarse_ti_arm_low_l: { id: 'coarse_ti_arm_low_l', name: '铁皮左重装操作臂', set: 'coarse_ti', slot: 'arm_low_l', q: 1, tong: 4, nz: 4, yw: 3, zm: 3, spd: 1, sta: 11, def: 240 },
+    coarse_ti_arm_low_r: { id: 'coarse_ti_arm_low_r', name: '铁皮右重装操作臂', set: 'coarse_ti', slot: 'arm_low_r', q: 1, tong: 4, nz: 4, yw: 3, zm: 3, spd: 1, sta: 11, def: 240 },
+    coarse_ti_thigh_l: { id: 'coarse_ti_thigh_l', name: '铁皮左重装承载腿', set: 'coarse_ti', slot: 'thigh_l', q: 1, tong: 4, nz: 4, yw: 3, zm: 3, spd: 1, sta: 11, def: 240 },
+    coarse_ti_thigh_r: { id: 'coarse_ti_thigh_r', name: '铁皮右重装承载腿', set: 'coarse_ti', slot: 'thigh_r', q: 1, tong: 4, nz: 4, yw: 3, zm: 3, spd: 1, sta: 11, def: 240 },
+    coarse_ti_shin_l: { id: 'coarse_ti_shin_l', name: '铁皮左重装支撑腿', set: 'coarse_ti', slot: 'shin_l', q: 1, tong: 4, nz: 4, yw: 3, zm: 3, spd: 1, sta: 11, def: 240 },
+    coarse_ti_shin_r: { id: 'coarse_ti_shin_r', name: '铁皮右重装支撑腿', set: 'coarse_ti', slot: 'shin_r', q: 1, tong: 4, nz: 4, yw: 3, zm: 3, spd: 1, sta: 11, def: 240 },
+    coarse_ti_foot_l: { id: 'coarse_ti_foot_l', name: '铁皮左重装抓地足', set: 'coarse_ti', slot: 'foot_l', q: 1, tong: 4, nz: 4, yw: 3, zm: 3, spd: 1, sta: 11, def: 240 },
+    coarse_ti_foot_r: { id: 'coarse_ti_foot_r', name: '铁皮右重装抓地足', set: 'coarse_ti', slot: 'foot_r', q: 1, tong: 4, nz: 4, yw: 3, zm: 3, spd: 1, sta: 11, def: 240 },
+    coarse_ti_weapon: { id: 'coarse_ti_weapon', name: '铁皮右重炮', set: 'coarse_ti', slot: 'weapon', q: 1, tong: 4, nz: 4, yw: 3, zm: 3, spd: 1, sta: 11, atk: 260 },
+    coarse_ti_mount: { id: 'coarse_ti_mount', name: '铁皮重装推进器', set: 'coarse_ti', slot: 'mount', q: 1, tong: 4, nz: 4, yw: 3, zm: 3, spd: 87, sta: 11 },
+    coarse_ti_back: { id: 'coarse_ti_back', name: '铁皮左重装翼', set: 'coarse_ti', slot: 'back', q: 1, tong: 4, nz: 4, yw: 3, zm: 3, spd: 1, sta: 11 },
+    coarse_ti_ring: { id: 'coarse_ti_ring', name: '铁皮右重装翼', set: 'coarse_ti', slot: 'ring', q: 1, tong: 4, nz: 4, yw: 3, zm: 3, spd: 1, sta: 11 },
+    coarse_ti_pendant: { id: 'coarse_ti_pendant', name: '铁皮左副重炮', set: 'coarse_ti', slot: 'pendant', q: 1, tong: 4, nz: 4, yw: 3, zm: 3, spd: 1, sta: 11 },
+    coarse_ti_neck: { id: 'coarse_ti_neck', name: '铁皮重装净化器', set: 'coarse_ti', slot: 'neck', q: 1, tong: 4, nz: 4, yw: 3, zm: 3, spd: 1, sta: 11 },
+    fine_zhan_head: { id: 'fine_zhan_head', name: '巡逻火控观瞄', set: 'fine_zhan', slot: 'head', q: 2, tong: 8, nz: 2, yw: 15, zm: 2, spd: 6, sta: 6, def: 570 },
+    fine_zhan_chest: { id: 'fine_zhan_chest', name: '巡逻动力引擎', set: 'fine_zhan', slot: 'chest', q: 2, tong: 8, nz: 2, yw: 15, zm: 2, spd: 6, sta: 6, def: 570 },
+    fine_zhan_waist: { id: 'fine_zhan_waist', name: '巡逻速控平衡环', set: 'fine_zhan', slot: 'waist', q: 2, tong: 8, nz: 2, yw: 15, zm: 2, spd: 6, sta: 6, def: 570 },
+    fine_zhan_arm_up_l: { id: 'fine_zhan_arm_up_l', name: '巡逻左强袭展臂', set: 'fine_zhan', slot: 'arm_up_l', q: 2, tong: 8, nz: 2, yw: 15, zm: 2, spd: 6, sta: 6, def: 570 },
+    fine_zhan_arm_up_r: { id: 'fine_zhan_arm_up_r', name: '巡逻右强袭展臂', set: 'fine_zhan', slot: 'arm_up_r', q: 2, tong: 8, nz: 2, yw: 15, zm: 2, spd: 6, sta: 6, def: 570 },
+    fine_zhan_arm_low_l: { id: 'fine_zhan_arm_low_l', name: '巡逻左突击操作臂', set: 'fine_zhan', slot: 'arm_low_l', q: 2, tong: 8, nz: 2, yw: 15, zm: 2, spd: 6, sta: 6, def: 570 },
+    fine_zhan_arm_low_r: { id: 'fine_zhan_arm_low_r', name: '巡逻右突击操作臂', set: 'fine_zhan', slot: 'arm_low_r', q: 2, tong: 8, nz: 2, yw: 15, zm: 2, spd: 6, sta: 6, def: 570 },
+    fine_zhan_thigh_l: { id: 'fine_zhan_thigh_l', name: '巡逻左疾行承载腿', set: 'fine_zhan', slot: 'thigh_l', q: 2, tong: 8, nz: 2, yw: 15, zm: 2, spd: 6, sta: 6, def: 570 },
+    fine_zhan_thigh_r: { id: 'fine_zhan_thigh_r', name: '巡逻右疾行承载腿', set: 'fine_zhan', slot: 'thigh_r', q: 2, tong: 8, nz: 2, yw: 15, zm: 2, spd: 6, sta: 6, def: 570 },
+    fine_zhan_shin_l: { id: 'fine_zhan_shin_l', name: '巡逻左疾行支撑腿', set: 'fine_zhan', slot: 'shin_l', q: 2, tong: 8, nz: 2, yw: 15, zm: 2, spd: 6, sta: 6, def: 570 },
+    fine_zhan_shin_r: { id: 'fine_zhan_shin_r', name: '巡逻右疾行支撑腿', set: 'fine_zhan', slot: 'shin_r', q: 2, tong: 8, nz: 2, yw: 15, zm: 2, spd: 6, sta: 6, def: 570 },
+    fine_zhan_foot_l: { id: 'fine_zhan_foot_l', name: '巡逻左疾行抓地足', set: 'fine_zhan', slot: 'foot_l', q: 2, tong: 8, nz: 2, yw: 15, zm: 2, spd: 6, sta: 6, def: 570 },
+    fine_zhan_foot_r: { id: 'fine_zhan_foot_r', name: '巡逻右疾行抓地足', set: 'fine_zhan', slot: 'foot_r', q: 2, tong: 8, nz: 2, yw: 15, zm: 2, spd: 6, sta: 6, def: 570 },
+    fine_zhan_weapon: { id: 'fine_zhan_weapon', name: '巡逻右强袭炮', set: 'fine_zhan', slot: 'weapon', q: 2, tong: 8, nz: 2, yw: 15, zm: 2, spd: 6, sta: 6, atk: 620 },
+    fine_zhan_mount: { id: 'fine_zhan_mount', name: '巡逻突进推进器', set: 'fine_zhan', slot: 'mount', q: 2, tong: 8, nz: 2, yw: 15, zm: 2, spd: 212, sta: 6 },
+    fine_zhan_back: { id: 'fine_zhan_back', name: '巡逻左突击翼', set: 'fine_zhan', slot: 'back', q: 2, tong: 8, nz: 2, yw: 15, zm: 2, spd: 6, sta: 6 },
+    fine_zhan_ring: { id: 'fine_zhan_ring', name: '巡逻右突击翼', set: 'fine_zhan', slot: 'ring', q: 2, tong: 8, nz: 2, yw: 15, zm: 2, spd: 6, sta: 6 },
+    fine_zhan_pendant: { id: 'fine_zhan_pendant', name: '巡逻左副炮', set: 'fine_zhan', slot: 'pendant', q: 2, tong: 8, nz: 2, yw: 15, zm: 2, spd: 6, sta: 6 },
+    fine_zhan_neck: { id: 'fine_zhan_neck', name: '巡逻战地净化器', set: 'fine_zhan', slot: 'neck', q: 2, tong: 8, nz: 2, yw: 15, zm: 2, spd: 6, sta: 6 },
+    fine_zhi_head: { id: 'fine_zhi_head', name: '工坊测控观瞄', set: 'fine_zhi', slot: 'head', q: 2, tong: 4, nz: 15, yw: 2, zm: 8, spd: 4, sta: 6, def: 570 },
+    fine_zhi_chest: { id: 'fine_zhi_chest', name: '工坊指挥中枢', set: 'fine_zhi', slot: 'chest', q: 2, tong: 4, nz: 15, yw: 2, zm: 8, spd: 4, sta: 6, def: 570 },
+    fine_zhi_waist: { id: 'fine_zhi_waist', name: '工坊稳态陀螺环', set: 'fine_zhi', slot: 'waist', q: 2, tong: 4, nz: 15, yw: 2, zm: 8, spd: 4, sta: 6, def: 570 },
+    fine_zhi_arm_up_l: { id: 'fine_zhi_arm_up_l', name: '工坊左精密展臂', set: 'fine_zhi', slot: 'arm_up_l', q: 2, tong: 4, nz: 15, yw: 2, zm: 8, spd: 4, sta: 6, def: 570 },
+    fine_zhi_arm_up_r: { id: 'fine_zhi_arm_up_r', name: '工坊右精密展臂', set: 'fine_zhi', slot: 'arm_up_r', q: 2, tong: 4, nz: 15, yw: 2, zm: 8, spd: 4, sta: 6, def: 570 },
+    fine_zhi_arm_low_l: { id: 'fine_zhi_arm_low_l', name: '工坊左精细操作臂', set: 'fine_zhi', slot: 'arm_low_l', q: 2, tong: 4, nz: 15, yw: 2, zm: 8, spd: 4, sta: 6, def: 570 },
+    fine_zhi_arm_low_r: { id: 'fine_zhi_arm_low_r', name: '工坊右精细操作臂', set: 'fine_zhi', slot: 'arm_low_r', q: 2, tong: 4, nz: 15, yw: 2, zm: 8, spd: 4, sta: 6, def: 570 },
+    fine_zhi_thigh_l: { id: 'fine_zhi_thigh_l', name: '工坊左稳态承载腿', set: 'fine_zhi', slot: 'thigh_l', q: 2, tong: 4, nz: 15, yw: 2, zm: 8, spd: 4, sta: 6, def: 570 },
+    fine_zhi_thigh_r: { id: 'fine_zhi_thigh_r', name: '工坊右稳态承载腿', set: 'fine_zhi', slot: 'thigh_r', q: 2, tong: 4, nz: 15, yw: 2, zm: 8, spd: 4, sta: 6, def: 570 },
+    fine_zhi_shin_l: { id: 'fine_zhi_shin_l', name: '工坊左稳态支撑腿', set: 'fine_zhi', slot: 'shin_l', q: 2, tong: 4, nz: 15, yw: 2, zm: 8, spd: 4, sta: 6, def: 570 },
+    fine_zhi_shin_r: { id: 'fine_zhi_shin_r', name: '工坊右稳态支撑腿', set: 'fine_zhi', slot: 'shin_r', q: 2, tong: 4, nz: 15, yw: 2, zm: 8, spd: 4, sta: 6, def: 570 },
+    fine_zhi_foot_l: { id: 'fine_zhi_foot_l', name: '工坊左稳态抓地足', set: 'fine_zhi', slot: 'foot_l', q: 2, tong: 4, nz: 15, yw: 2, zm: 8, spd: 4, sta: 6, def: 570 },
+    fine_zhi_foot_r: { id: 'fine_zhi_foot_r', name: '工坊右稳态抓地足', set: 'fine_zhi', slot: 'foot_r', q: 2, tong: 4, nz: 15, yw: 2, zm: 8, spd: 4, sta: 6, def: 570 },
+    fine_zhi_weapon: { id: 'fine_zhi_weapon', name: '工坊右精准炮', set: 'fine_zhi', slot: 'weapon', q: 2, tong: 4, nz: 15, yw: 2, zm: 8, spd: 4, sta: 6, atk: 620 },
+    fine_zhi_mount: { id: 'fine_zhi_mount', name: '工坊悬浮单元', set: 'fine_zhi', slot: 'mount', q: 2, tong: 4, nz: 15, yw: 2, zm: 8, spd: 210, sta: 6 },
+    fine_zhi_back: { id: 'fine_zhi_back', name: '工坊左侦察翼', set: 'fine_zhi', slot: 'back', q: 2, tong: 4, nz: 15, yw: 2, zm: 8, spd: 4, sta: 6 },
+    fine_zhi_ring: { id: 'fine_zhi_ring', name: '工坊右侦察翼', set: 'fine_zhi', slot: 'ring', q: 2, tong: 4, nz: 15, yw: 2, zm: 8, spd: 4, sta: 6 },
+    fine_zhi_pendant: { id: 'fine_zhi_pendant', name: '工坊左辅助炮', set: 'fine_zhi', slot: 'pendant', q: 2, tong: 4, nz: 15, yw: 2, zm: 8, spd: 4, sta: 6 },
+    fine_zhi_neck: { id: 'fine_zhi_neck', name: '工坊精测净化器', set: 'fine_zhi', slot: 'neck', q: 2, tong: 4, nz: 15, yw: 2, zm: 8, spd: 4, sta: 6 },
+    fine_ti_head: { id: 'fine_ti_head', name: '装卸装甲观瞄', set: 'fine_ti', slot: 'head', q: 2, tong: 6, nz: 6, yw: 4, zm: 4, spd: 2, sta: 17, def: 570 },
+    fine_ti_chest: { id: 'fine_ti_chest', name: '装卸重装躯干', set: 'fine_ti', slot: 'chest', q: 2, tong: 6, nz: 6, yw: 4, zm: 4, spd: 2, sta: 17, def: 570 },
+    fine_ti_waist: { id: 'fine_ti_waist', name: '装卸承重腰腹', set: 'fine_ti', slot: 'waist', q: 2, tong: 6, nz: 6, yw: 4, zm: 4, spd: 2, sta: 17, def: 570 },
+    fine_ti_arm_up_l: { id: 'fine_ti_arm_up_l', name: '装卸左重甲展臂', set: 'fine_ti', slot: 'arm_up_l', q: 2, tong: 6, nz: 6, yw: 4, zm: 4, spd: 2, sta: 17, def: 570 },
+    fine_ti_arm_up_r: { id: 'fine_ti_arm_up_r', name: '装卸右重甲展臂', set: 'fine_ti', slot: 'arm_up_r', q: 2, tong: 6, nz: 6, yw: 4, zm: 4, spd: 2, sta: 17, def: 570 },
+    fine_ti_arm_low_l: { id: 'fine_ti_arm_low_l', name: '装卸左重装操作臂', set: 'fine_ti', slot: 'arm_low_l', q: 2, tong: 6, nz: 6, yw: 4, zm: 4, spd: 2, sta: 17, def: 570 },
+    fine_ti_arm_low_r: { id: 'fine_ti_arm_low_r', name: '装卸右重装操作臂', set: 'fine_ti', slot: 'arm_low_r', q: 2, tong: 6, nz: 6, yw: 4, zm: 4, spd: 2, sta: 17, def: 570 },
+    fine_ti_thigh_l: { id: 'fine_ti_thigh_l', name: '装卸左重装承载腿', set: 'fine_ti', slot: 'thigh_l', q: 2, tong: 6, nz: 6, yw: 4, zm: 4, spd: 2, sta: 17, def: 570 },
+    fine_ti_thigh_r: { id: 'fine_ti_thigh_r', name: '装卸右重装承载腿', set: 'fine_ti', slot: 'thigh_r', q: 2, tong: 6, nz: 6, yw: 4, zm: 4, spd: 2, sta: 17, def: 570 },
+    fine_ti_shin_l: { id: 'fine_ti_shin_l', name: '装卸左重装支撑腿', set: 'fine_ti', slot: 'shin_l', q: 2, tong: 6, nz: 6, yw: 4, zm: 4, spd: 2, sta: 17, def: 570 },
+    fine_ti_shin_r: { id: 'fine_ti_shin_r', name: '装卸右重装支撑腿', set: 'fine_ti', slot: 'shin_r', q: 2, tong: 6, nz: 6, yw: 4, zm: 4, spd: 2, sta: 17, def: 570 },
+    fine_ti_foot_l: { id: 'fine_ti_foot_l', name: '装卸左重装抓地足', set: 'fine_ti', slot: 'foot_l', q: 2, tong: 6, nz: 6, yw: 4, zm: 4, spd: 2, sta: 17, def: 570 },
+    fine_ti_foot_r: { id: 'fine_ti_foot_r', name: '装卸右重装抓地足', set: 'fine_ti', slot: 'foot_r', q: 2, tong: 6, nz: 6, yw: 4, zm: 4, spd: 2, sta: 17, def: 570 },
+    fine_ti_weapon: { id: 'fine_ti_weapon', name: '装卸右重炮', set: 'fine_ti', slot: 'weapon', q: 2, tong: 6, nz: 6, yw: 4, zm: 4, spd: 2, sta: 17, atk: 620 },
+    fine_ti_mount: { id: 'fine_ti_mount', name: '装卸重装推进器', set: 'fine_ti', slot: 'mount', q: 2, tong: 6, nz: 6, yw: 4, zm: 4, spd: 208, sta: 17 },
+    fine_ti_back: { id: 'fine_ti_back', name: '装卸左重装翼', set: 'fine_ti', slot: 'back', q: 2, tong: 6, nz: 6, yw: 4, zm: 4, spd: 2, sta: 17 },
+    fine_ti_ring: { id: 'fine_ti_ring', name: '装卸右重装翼', set: 'fine_ti', slot: 'ring', q: 2, tong: 6, nz: 6, yw: 4, zm: 4, spd: 2, sta: 17 },
+    fine_ti_pendant: { id: 'fine_ti_pendant', name: '装卸左副重炮', set: 'fine_ti', slot: 'pendant', q: 2, tong: 6, nz: 6, yw: 4, zm: 4, spd: 2, sta: 17 },
+    fine_ti_neck: { id: 'fine_ti_neck', name: '装卸重装净化器', set: 'fine_ti', slot: 'neck', q: 2, tong: 6, nz: 6, yw: 4, zm: 4, spd: 2, sta: 17 },
+    prime_zhan_head: { id: 'prime_zhan_head', name: '猎杀火控观瞄', set: 'prime_zhan', slot: 'head', q: 3, tong: 12, nz: 3, yw: 23, zm: 3, spd: 9, sta: 9, def: 1300 },
+    prime_zhan_chest: { id: 'prime_zhan_chest', name: '猎杀动力引擎', set: 'prime_zhan', slot: 'chest', q: 3, tong: 12, nz: 3, yw: 23, zm: 3, spd: 9, sta: 9, def: 1300 },
+    prime_zhan_waist: { id: 'prime_zhan_waist', name: '猎杀速控平衡环', set: 'prime_zhan', slot: 'waist', q: 3, tong: 12, nz: 3, yw: 23, zm: 3, spd: 9, sta: 9, def: 1300 },
+    prime_zhan_arm_up_l: { id: 'prime_zhan_arm_up_l', name: '猎杀左强袭展臂', set: 'prime_zhan', slot: 'arm_up_l', q: 3, tong: 12, nz: 3, yw: 23, zm: 3, spd: 9, sta: 9, def: 1300 },
+    prime_zhan_arm_up_r: { id: 'prime_zhan_arm_up_r', name: '猎杀右强袭展臂', set: 'prime_zhan', slot: 'arm_up_r', q: 3, tong: 12, nz: 3, yw: 23, zm: 3, spd: 9, sta: 9, def: 1300 },
+    prime_zhan_arm_low_l: { id: 'prime_zhan_arm_low_l', name: '猎杀左突击操作臂', set: 'prime_zhan', slot: 'arm_low_l', q: 3, tong: 12, nz: 3, yw: 23, zm: 3, spd: 9, sta: 9, def: 1300 },
+    prime_zhan_arm_low_r: { id: 'prime_zhan_arm_low_r', name: '猎杀右突击操作臂', set: 'prime_zhan', slot: 'arm_low_r', q: 3, tong: 12, nz: 3, yw: 23, zm: 3, spd: 9, sta: 9, def: 1300 },
+    prime_zhan_thigh_l: { id: 'prime_zhan_thigh_l', name: '猎杀左疾行承载腿', set: 'prime_zhan', slot: 'thigh_l', q: 3, tong: 12, nz: 3, yw: 23, zm: 3, spd: 9, sta: 9, def: 1300 },
+    prime_zhan_thigh_r: { id: 'prime_zhan_thigh_r', name: '猎杀右疾行承载腿', set: 'prime_zhan', slot: 'thigh_r', q: 3, tong: 12, nz: 3, yw: 23, zm: 3, spd: 9, sta: 9, def: 1300 },
+    prime_zhan_shin_l: { id: 'prime_zhan_shin_l', name: '猎杀左疾行支撑腿', set: 'prime_zhan', slot: 'shin_l', q: 3, tong: 12, nz: 3, yw: 23, zm: 3, spd: 9, sta: 9, def: 1300 },
+    prime_zhan_shin_r: { id: 'prime_zhan_shin_r', name: '猎杀右疾行支撑腿', set: 'prime_zhan', slot: 'shin_r', q: 3, tong: 12, nz: 3, yw: 23, zm: 3, spd: 9, sta: 9, def: 1300 },
+    prime_zhan_foot_l: { id: 'prime_zhan_foot_l', name: '猎杀左疾行抓地足', set: 'prime_zhan', slot: 'foot_l', q: 3, tong: 12, nz: 3, yw: 23, zm: 3, spd: 9, sta: 9, def: 1300 },
+    prime_zhan_foot_r: { id: 'prime_zhan_foot_r', name: '猎杀右疾行抓地足', set: 'prime_zhan', slot: 'foot_r', q: 3, tong: 12, nz: 3, yw: 23, zm: 3, spd: 9, sta: 9, def: 1300 },
+    prime_zhan_weapon: { id: 'prime_zhan_weapon', name: '猎杀右强袭炮', set: 'prime_zhan', slot: 'weapon', q: 3, tong: 12, nz: 3, yw: 23, zm: 3, spd: 9, sta: 9, atk: 1400 },
+    prime_zhan_mount: { id: 'prime_zhan_mount', name: '猎杀突进推进器', set: 'prime_zhan', slot: 'mount', q: 3, tong: 12, nz: 3, yw: 23, zm: 3, spd: 475, sta: 9 },
+    prime_zhan_back: { id: 'prime_zhan_back', name: '猎杀左突击翼', set: 'prime_zhan', slot: 'back', q: 3, tong: 12, nz: 3, yw: 23, zm: 3, spd: 9, sta: 9 },
+    prime_zhan_ring: { id: 'prime_zhan_ring', name: '猎杀右突击翼', set: 'prime_zhan', slot: 'ring', q: 3, tong: 12, nz: 3, yw: 23, zm: 3, spd: 9, sta: 9 },
+    prime_zhan_pendant: { id: 'prime_zhan_pendant', name: '猎杀左副炮', set: 'prime_zhan', slot: 'pendant', q: 3, tong: 12, nz: 3, yw: 23, zm: 3, spd: 9, sta: 9 },
+    prime_zhan_neck: { id: 'prime_zhan_neck', name: '猎杀战地净化器', set: 'prime_zhan', slot: 'neck', q: 3, tong: 12, nz: 3, yw: 23, zm: 3, spd: 9, sta: 9 },
+    prime_zhi_head: { id: 'prime_zhi_head', name: '中枢测控观瞄', set: 'prime_zhi', slot: 'head', q: 3, tong: 6, nz: 23, yw: 3, zm: 12, spd: 6, sta: 9, def: 1300 },
+    prime_zhi_chest: { id: 'prime_zhi_chest', name: '中枢指挥中枢', set: 'prime_zhi', slot: 'chest', q: 3, tong: 6, nz: 23, yw: 3, zm: 12, spd: 6, sta: 9, def: 1300 },
+    prime_zhi_waist: { id: 'prime_zhi_waist', name: '中枢稳态陀螺环', set: 'prime_zhi', slot: 'waist', q: 3, tong: 6, nz: 23, yw: 3, zm: 12, spd: 6, sta: 9, def: 1300 },
+    prime_zhi_arm_up_l: { id: 'prime_zhi_arm_up_l', name: '中枢左精密展臂', set: 'prime_zhi', slot: 'arm_up_l', q: 3, tong: 6, nz: 23, yw: 3, zm: 12, spd: 6, sta: 9, def: 1300 },
+    prime_zhi_arm_up_r: { id: 'prime_zhi_arm_up_r', name: '中枢右精密展臂', set: 'prime_zhi', slot: 'arm_up_r', q: 3, tong: 6, nz: 23, yw: 3, zm: 12, spd: 6, sta: 9, def: 1300 },
+    prime_zhi_arm_low_l: { id: 'prime_zhi_arm_low_l', name: '中枢左精细操作臂', set: 'prime_zhi', slot: 'arm_low_l', q: 3, tong: 6, nz: 23, yw: 3, zm: 12, spd: 6, sta: 9, def: 1300 },
+    prime_zhi_arm_low_r: { id: 'prime_zhi_arm_low_r', name: '中枢右精细操作臂', set: 'prime_zhi', slot: 'arm_low_r', q: 3, tong: 6, nz: 23, yw: 3, zm: 12, spd: 6, sta: 9, def: 1300 },
+    prime_zhi_thigh_l: { id: 'prime_zhi_thigh_l', name: '中枢左稳态承载腿', set: 'prime_zhi', slot: 'thigh_l', q: 3, tong: 6, nz: 23, yw: 3, zm: 12, spd: 6, sta: 9, def: 1300 },
+    prime_zhi_thigh_r: { id: 'prime_zhi_thigh_r', name: '中枢右稳态承载腿', set: 'prime_zhi', slot: 'thigh_r', q: 3, tong: 6, nz: 23, yw: 3, zm: 12, spd: 6, sta: 9, def: 1300 },
+    prime_zhi_shin_l: { id: 'prime_zhi_shin_l', name: '中枢左稳态支撑腿', set: 'prime_zhi', slot: 'shin_l', q: 3, tong: 6, nz: 23, yw: 3, zm: 12, spd: 6, sta: 9, def: 1300 },
+    prime_zhi_shin_r: { id: 'prime_zhi_shin_r', name: '中枢右稳态支撑腿', set: 'prime_zhi', slot: 'shin_r', q: 3, tong: 6, nz: 23, yw: 3, zm: 12, spd: 6, sta: 9, def: 1300 },
+    prime_zhi_foot_l: { id: 'prime_zhi_foot_l', name: '中枢左稳态抓地足', set: 'prime_zhi', slot: 'foot_l', q: 3, tong: 6, nz: 23, yw: 3, zm: 12, spd: 6, sta: 9, def: 1300 },
+    prime_zhi_foot_r: { id: 'prime_zhi_foot_r', name: '中枢右稳态抓地足', set: 'prime_zhi', slot: 'foot_r', q: 3, tong: 6, nz: 23, yw: 3, zm: 12, spd: 6, sta: 9, def: 1300 },
+    prime_zhi_weapon: { id: 'prime_zhi_weapon', name: '中枢右精准炮', set: 'prime_zhi', slot: 'weapon', q: 3, tong: 6, nz: 23, yw: 3, zm: 12, spd: 6, sta: 9, atk: 1400 },
+    prime_zhi_mount: { id: 'prime_zhi_mount', name: '中枢悬浮单元', set: 'prime_zhi', slot: 'mount', q: 3, tong: 6, nz: 23, yw: 3, zm: 12, spd: 472, sta: 9 },
+    prime_zhi_back: { id: 'prime_zhi_back', name: '中枢左侦察翼', set: 'prime_zhi', slot: 'back', q: 3, tong: 6, nz: 23, yw: 3, zm: 12, spd: 6, sta: 9 },
+    prime_zhi_ring: { id: 'prime_zhi_ring', name: '中枢右侦察翼', set: 'prime_zhi', slot: 'ring', q: 3, tong: 6, nz: 23, yw: 3, zm: 12, spd: 6, sta: 9 },
+    prime_zhi_pendant: { id: 'prime_zhi_pendant', name: '中枢左辅助炮', set: 'prime_zhi', slot: 'pendant', q: 3, tong: 6, nz: 23, yw: 3, zm: 12, spd: 6, sta: 9 },
+    prime_zhi_neck: { id: 'prime_zhi_neck', name: '中枢精测净化器', set: 'prime_zhi', slot: 'neck', q: 3, tong: 6, nz: 23, yw: 3, zm: 12, spd: 6, sta: 9 },
+    prime_ti_head: { id: 'prime_ti_head', name: '重装装甲观瞄', set: 'prime_ti', slot: 'head', q: 3, tong: 9, nz: 9, yw: 6, zm: 6, spd: 3, sta: 26, def: 1300 },
+    prime_ti_chest: { id: 'prime_ti_chest', name: '重装重装躯干', set: 'prime_ti', slot: 'chest', q: 3, tong: 9, nz: 9, yw: 6, zm: 6, spd: 3, sta: 26, def: 1300 },
+    prime_ti_waist: { id: 'prime_ti_waist', name: '重装承重腰腹', set: 'prime_ti', slot: 'waist', q: 3, tong: 9, nz: 9, yw: 6, zm: 6, spd: 3, sta: 26, def: 1300 },
+    prime_ti_arm_up_l: { id: 'prime_ti_arm_up_l', name: '重装左重甲展臂', set: 'prime_ti', slot: 'arm_up_l', q: 3, tong: 9, nz: 9, yw: 6, zm: 6, spd: 3, sta: 26, def: 1300 },
+    prime_ti_arm_up_r: { id: 'prime_ti_arm_up_r', name: '重装右重甲展臂', set: 'prime_ti', slot: 'arm_up_r', q: 3, tong: 9, nz: 9, yw: 6, zm: 6, spd: 3, sta: 26, def: 1300 },
+    prime_ti_arm_low_l: { id: 'prime_ti_arm_low_l', name: '重装左重装操作臂', set: 'prime_ti', slot: 'arm_low_l', q: 3, tong: 9, nz: 9, yw: 6, zm: 6, spd: 3, sta: 26, def: 1300 },
+    prime_ti_arm_low_r: { id: 'prime_ti_arm_low_r', name: '重装右重装操作臂', set: 'prime_ti', slot: 'arm_low_r', q: 3, tong: 9, nz: 9, yw: 6, zm: 6, spd: 3, sta: 26, def: 1300 },
+    prime_ti_thigh_l: { id: 'prime_ti_thigh_l', name: '重装左重装承载腿', set: 'prime_ti', slot: 'thigh_l', q: 3, tong: 9, nz: 9, yw: 6, zm: 6, spd: 3, sta: 26, def: 1300 },
+    prime_ti_thigh_r: { id: 'prime_ti_thigh_r', name: '重装右重装承载腿', set: 'prime_ti', slot: 'thigh_r', q: 3, tong: 9, nz: 9, yw: 6, zm: 6, spd: 3, sta: 26, def: 1300 },
+    prime_ti_shin_l: { id: 'prime_ti_shin_l', name: '重装左重装支撑腿', set: 'prime_ti', slot: 'shin_l', q: 3, tong: 9, nz: 9, yw: 6, zm: 6, spd: 3, sta: 26, def: 1300 },
+    prime_ti_shin_r: { id: 'prime_ti_shin_r', name: '重装右重装支撑腿', set: 'prime_ti', slot: 'shin_r', q: 3, tong: 9, nz: 9, yw: 6, zm: 6, spd: 3, sta: 26, def: 1300 },
+    prime_ti_foot_l: { id: 'prime_ti_foot_l', name: '重装左重装抓地足', set: 'prime_ti', slot: 'foot_l', q: 3, tong: 9, nz: 9, yw: 6, zm: 6, spd: 3, sta: 26, def: 1300 },
+    prime_ti_foot_r: { id: 'prime_ti_foot_r', name: '重装右重装抓地足', set: 'prime_ti', slot: 'foot_r', q: 3, tong: 9, nz: 9, yw: 6, zm: 6, spd: 3, sta: 26, def: 1300 },
+    prime_ti_weapon: { id: 'prime_ti_weapon', name: '重装右重炮', set: 'prime_ti', slot: 'weapon', q: 3, tong: 9, nz: 9, yw: 6, zm: 6, spd: 3, sta: 26, atk: 1400 },
+    prime_ti_mount: { id: 'prime_ti_mount', name: '重装重装推进器', set: 'prime_ti', slot: 'mount', q: 3, tong: 9, nz: 9, yw: 6, zm: 6, spd: 469, sta: 26 },
+    prime_ti_back: { id: 'prime_ti_back', name: '重装左重装翼', set: 'prime_ti', slot: 'back', q: 3, tong: 9, nz: 9, yw: 6, zm: 6, spd: 3, sta: 26 },
+    prime_ti_ring: { id: 'prime_ti_ring', name: '重装右重装翼', set: 'prime_ti', slot: 'ring', q: 3, tong: 9, nz: 9, yw: 6, zm: 6, spd: 3, sta: 26 },
+    prime_ti_pendant: { id: 'prime_ti_pendant', name: '重装左副重炮', set: 'prime_ti', slot: 'pendant', q: 3, tong: 9, nz: 9, yw: 6, zm: 6, spd: 3, sta: 26 },
+    prime_ti_neck: { id: 'prime_ti_neck', name: '重装重装净化器', set: 'prime_ti', slot: 'neck', q: 3, tong: 9, nz: 9, yw: 6, zm: 6, spd: 3, sta: 26 },
+    rare_zhan_head: { id: 'rare_zhan_head', name: '战团火控观瞄', set: 'rare_zhan', slot: 'head', q: 4, tong: 18, nz: 4, yw: 37, zm: 4, spd: 13, sta: 13, def: 2600 },
+    rare_zhan_chest: { id: 'rare_zhan_chest', name: '战团动力引擎', set: 'rare_zhan', slot: 'chest', q: 4, tong: 18, nz: 4, yw: 37, zm: 4, spd: 13, sta: 13, def: 2600 },
+    rare_zhan_waist: { id: 'rare_zhan_waist', name: '战团速控平衡环', set: 'rare_zhan', slot: 'waist', q: 4, tong: 18, nz: 4, yw: 37, zm: 4, spd: 13, sta: 13, def: 2600 },
+    rare_zhan_arm_up_l: { id: 'rare_zhan_arm_up_l', name: '战团左强袭展臂', set: 'rare_zhan', slot: 'arm_up_l', q: 4, tong: 18, nz: 4, yw: 37, zm: 4, spd: 13, sta: 13, def: 2600 },
+    rare_zhan_arm_up_r: { id: 'rare_zhan_arm_up_r', name: '战团右强袭展臂', set: 'rare_zhan', slot: 'arm_up_r', q: 4, tong: 18, nz: 4, yw: 37, zm: 4, spd: 13, sta: 13, def: 2600 },
+    rare_zhan_arm_low_l: { id: 'rare_zhan_arm_low_l', name: '战团左突击操作臂', set: 'rare_zhan', slot: 'arm_low_l', q: 4, tong: 18, nz: 4, yw: 37, zm: 4, spd: 13, sta: 13, def: 2600 },
+    rare_zhan_arm_low_r: { id: 'rare_zhan_arm_low_r', name: '战团右突击操作臂', set: 'rare_zhan', slot: 'arm_low_r', q: 4, tong: 18, nz: 4, yw: 37, zm: 4, spd: 13, sta: 13, def: 2600 },
+    rare_zhan_thigh_l: { id: 'rare_zhan_thigh_l', name: '战团左疾行承载腿', set: 'rare_zhan', slot: 'thigh_l', q: 4, tong: 18, nz: 4, yw: 37, zm: 4, spd: 13, sta: 13, def: 2600 },
+    rare_zhan_thigh_r: { id: 'rare_zhan_thigh_r', name: '战团右疾行承载腿', set: 'rare_zhan', slot: 'thigh_r', q: 4, tong: 18, nz: 4, yw: 37, zm: 4, spd: 13, sta: 13, def: 2600 },
+    rare_zhan_shin_l: { id: 'rare_zhan_shin_l', name: '战团左疾行支撑腿', set: 'rare_zhan', slot: 'shin_l', q: 4, tong: 18, nz: 4, yw: 37, zm: 4, spd: 13, sta: 13, def: 2600 },
+    rare_zhan_shin_r: { id: 'rare_zhan_shin_r', name: '战团右疾行支撑腿', set: 'rare_zhan', slot: 'shin_r', q: 4, tong: 18, nz: 4, yw: 37, zm: 4, spd: 13, sta: 13, def: 2600 },
+    rare_zhan_foot_l: { id: 'rare_zhan_foot_l', name: '战团左疾行抓地足', set: 'rare_zhan', slot: 'foot_l', q: 4, tong: 18, nz: 4, yw: 37, zm: 4, spd: 13, sta: 13, def: 2600 },
+    rare_zhan_foot_r: { id: 'rare_zhan_foot_r', name: '战团右疾行抓地足', set: 'rare_zhan', slot: 'foot_r', q: 4, tong: 18, nz: 4, yw: 37, zm: 4, spd: 13, sta: 13, def: 2600 },
+    rare_zhan_weapon: { id: 'rare_zhan_weapon', name: '战团右强袭炮', set: 'rare_zhan', slot: 'weapon', q: 4, tong: 18, nz: 4, yw: 37, zm: 4, spd: 13, sta: 13, atk: 2800 },
+    rare_zhan_mount: { id: 'rare_zhan_mount', name: '战团突进推进器', set: 'rare_zhan', slot: 'mount', q: 4, tong: 18, nz: 4, yw: 37, zm: 4, spd: 946, sta: 13 },
+    rare_zhan_back: { id: 'rare_zhan_back', name: '战团左突击翼', set: 'rare_zhan', slot: 'back', q: 4, tong: 18, nz: 4, yw: 37, zm: 4, spd: 13, sta: 13 },
+    rare_zhan_ring: { id: 'rare_zhan_ring', name: '战团右突击翼', set: 'rare_zhan', slot: 'ring', q: 4, tong: 18, nz: 4, yw: 37, zm: 4, spd: 13, sta: 13 },
+    rare_zhan_pendant: { id: 'rare_zhan_pendant', name: '战团左副炮', set: 'rare_zhan', slot: 'pendant', q: 4, tong: 18, nz: 4, yw: 37, zm: 4, spd: 13, sta: 13 },
+    rare_zhan_neck: { id: 'rare_zhan_neck', name: '战团战地净化器', set: 'rare_zhan', slot: 'neck', q: 4, tong: 18, nz: 4, yw: 37, zm: 4, spd: 13, sta: 13 },
+    rare_zhi_head: { id: 'rare_zhi_head', name: '议会测控观瞄', set: 'rare_zhi', slot: 'head', q: 4, tong: 9, nz: 36, yw: 4, zm: 18, spd: 9, sta: 13, def: 2600 },
+    rare_zhi_chest: { id: 'rare_zhi_chest', name: '议会指挥中枢', set: 'rare_zhi', slot: 'chest', q: 4, tong: 9, nz: 36, yw: 4, zm: 18, spd: 9, sta: 13, def: 2600 },
+    rare_zhi_waist: { id: 'rare_zhi_waist', name: '议会稳态陀螺环', set: 'rare_zhi', slot: 'waist', q: 4, tong: 9, nz: 36, yw: 4, zm: 18, spd: 9, sta: 13, def: 2600 },
+    rare_zhi_arm_up_l: { id: 'rare_zhi_arm_up_l', name: '议会左精密展臂', set: 'rare_zhi', slot: 'arm_up_l', q: 4, tong: 9, nz: 36, yw: 4, zm: 18, spd: 9, sta: 13, def: 2600 },
+    rare_zhi_arm_up_r: { id: 'rare_zhi_arm_up_r', name: '议会右精密展臂', set: 'rare_zhi', slot: 'arm_up_r', q: 4, tong: 9, nz: 36, yw: 4, zm: 18, spd: 9, sta: 13, def: 2600 },
+    rare_zhi_arm_low_l: { id: 'rare_zhi_arm_low_l', name: '议会左精细操作臂', set: 'rare_zhi', slot: 'arm_low_l', q: 4, tong: 9, nz: 36, yw: 4, zm: 18, spd: 9, sta: 13, def: 2600 },
+    rare_zhi_arm_low_r: { id: 'rare_zhi_arm_low_r', name: '议会右精细操作臂', set: 'rare_zhi', slot: 'arm_low_r', q: 4, tong: 9, nz: 36, yw: 4, zm: 18, spd: 9, sta: 13, def: 2600 },
+    rare_zhi_thigh_l: { id: 'rare_zhi_thigh_l', name: '议会左稳态承载腿', set: 'rare_zhi', slot: 'thigh_l', q: 4, tong: 9, nz: 36, yw: 4, zm: 18, spd: 9, sta: 13, def: 2600 },
+    rare_zhi_thigh_r: { id: 'rare_zhi_thigh_r', name: '议会右稳态承载腿', set: 'rare_zhi', slot: 'thigh_r', q: 4, tong: 9, nz: 36, yw: 4, zm: 18, spd: 9, sta: 13, def: 2600 },
+    rare_zhi_shin_l: { id: 'rare_zhi_shin_l', name: '议会左稳态支撑腿', set: 'rare_zhi', slot: 'shin_l', q: 4, tong: 9, nz: 36, yw: 4, zm: 18, spd: 9, sta: 13, def: 2600 },
+    rare_zhi_shin_r: { id: 'rare_zhi_shin_r', name: '议会右稳态支撑腿', set: 'rare_zhi', slot: 'shin_r', q: 4, tong: 9, nz: 36, yw: 4, zm: 18, spd: 9, sta: 13, def: 2600 },
+    rare_zhi_foot_l: { id: 'rare_zhi_foot_l', name: '议会左稳态抓地足', set: 'rare_zhi', slot: 'foot_l', q: 4, tong: 9, nz: 36, yw: 4, zm: 18, spd: 9, sta: 13, def: 2600 },
+    rare_zhi_foot_r: { id: 'rare_zhi_foot_r', name: '议会右稳态抓地足', set: 'rare_zhi', slot: 'foot_r', q: 4, tong: 9, nz: 36, yw: 4, zm: 18, spd: 9, sta: 13, def: 2600 },
+    rare_zhi_weapon: { id: 'rare_zhi_weapon', name: '议会右精准炮', set: 'rare_zhi', slot: 'weapon', q: 4, tong: 9, nz: 36, yw: 4, zm: 18, spd: 9, sta: 13, atk: 2800 },
+    rare_zhi_mount: { id: 'rare_zhi_mount', name: '议会悬浮单元', set: 'rare_zhi', slot: 'mount', q: 4, tong: 9, nz: 36, yw: 4, zm: 18, spd: 942, sta: 13 },
+    rare_zhi_back: { id: 'rare_zhi_back', name: '议会左侦察翼', set: 'rare_zhi', slot: 'back', q: 4, tong: 9, nz: 36, yw: 4, zm: 18, spd: 9, sta: 13 },
+    rare_zhi_ring: { id: 'rare_zhi_ring', name: '议会右侦察翼', set: 'rare_zhi', slot: 'ring', q: 4, tong: 9, nz: 36, yw: 4, zm: 18, spd: 9, sta: 13 },
+    rare_zhi_pendant: { id: 'rare_zhi_pendant', name: '议会左辅助炮', set: 'rare_zhi', slot: 'pendant', q: 4, tong: 9, nz: 36, yw: 4, zm: 18, spd: 9, sta: 13 },
+    rare_zhi_neck: { id: 'rare_zhi_neck', name: '议会精测净化器', set: 'rare_zhi', slot: 'neck', q: 4, tong: 9, nz: 36, yw: 4, zm: 18, spd: 9, sta: 13 },
+    rare_ti_head: { id: 'rare_ti_head', name: '壁垒装甲观瞄', set: 'rare_ti', slot: 'head', q: 4, tong: 13, nz: 13, yw: 9, zm: 9, spd: 4, sta: 41, def: 2600 },
+    rare_ti_chest: { id: 'rare_ti_chest', name: '壁垒重装躯干', set: 'rare_ti', slot: 'chest', q: 4, tong: 13, nz: 13, yw: 9, zm: 9, spd: 4, sta: 41, def: 2600 },
+    rare_ti_waist: { id: 'rare_ti_waist', name: '壁垒承重腰腹', set: 'rare_ti', slot: 'waist', q: 4, tong: 13, nz: 13, yw: 9, zm: 9, spd: 4, sta: 41, def: 2600 },
+    rare_ti_arm_up_l: { id: 'rare_ti_arm_up_l', name: '壁垒左重甲展臂', set: 'rare_ti', slot: 'arm_up_l', q: 4, tong: 13, nz: 13, yw: 9, zm: 9, spd: 4, sta: 41, def: 2600 },
+    rare_ti_arm_up_r: { id: 'rare_ti_arm_up_r', name: '壁垒右重甲展臂', set: 'rare_ti', slot: 'arm_up_r', q: 4, tong: 13, nz: 13, yw: 9, zm: 9, spd: 4, sta: 41, def: 2600 },
+    rare_ti_arm_low_l: { id: 'rare_ti_arm_low_l', name: '壁垒左重装操作臂', set: 'rare_ti', slot: 'arm_low_l', q: 4, tong: 13, nz: 13, yw: 9, zm: 9, spd: 4, sta: 41, def: 2600 },
+    rare_ti_arm_low_r: { id: 'rare_ti_arm_low_r', name: '壁垒右重装操作臂', set: 'rare_ti', slot: 'arm_low_r', q: 4, tong: 13, nz: 13, yw: 9, zm: 9, spd: 4, sta: 41, def: 2600 },
+    rare_ti_thigh_l: { id: 'rare_ti_thigh_l', name: '壁垒左重装承载腿', set: 'rare_ti', slot: 'thigh_l', q: 4, tong: 13, nz: 13, yw: 9, zm: 9, spd: 4, sta: 41, def: 2600 },
+    rare_ti_thigh_r: { id: 'rare_ti_thigh_r', name: '壁垒右重装承载腿', set: 'rare_ti', slot: 'thigh_r', q: 4, tong: 13, nz: 13, yw: 9, zm: 9, spd: 4, sta: 41, def: 2600 },
+    rare_ti_shin_l: { id: 'rare_ti_shin_l', name: '壁垒左重装支撑腿', set: 'rare_ti', slot: 'shin_l', q: 4, tong: 13, nz: 13, yw: 9, zm: 9, spd: 4, sta: 41, def: 2600 },
+    rare_ti_shin_r: { id: 'rare_ti_shin_r', name: '壁垒右重装支撑腿', set: 'rare_ti', slot: 'shin_r', q: 4, tong: 13, nz: 13, yw: 9, zm: 9, spd: 4, sta: 41, def: 2600 },
+    rare_ti_foot_l: { id: 'rare_ti_foot_l', name: '壁垒左重装抓地足', set: 'rare_ti', slot: 'foot_l', q: 4, tong: 13, nz: 13, yw: 9, zm: 9, spd: 4, sta: 41, def: 2600 },
+    rare_ti_foot_r: { id: 'rare_ti_foot_r', name: '壁垒右重装抓地足', set: 'rare_ti', slot: 'foot_r', q: 4, tong: 13, nz: 13, yw: 9, zm: 9, spd: 4, sta: 41, def: 2600 },
+    rare_ti_weapon: { id: 'rare_ti_weapon', name: '壁垒右重炮', set: 'rare_ti', slot: 'weapon', q: 4, tong: 13, nz: 13, yw: 9, zm: 9, spd: 4, sta: 41, atk: 2800 },
+    rare_ti_mount: { id: 'rare_ti_mount', name: '壁垒重装推进器', set: 'rare_ti', slot: 'mount', q: 4, tong: 13, nz: 13, yw: 9, zm: 9, spd: 937, sta: 41 },
+    rare_ti_back: { id: 'rare_ti_back', name: '壁垒左重装翼', set: 'rare_ti', slot: 'back', q: 4, tong: 13, nz: 13, yw: 9, zm: 9, spd: 4, sta: 41 },
+    rare_ti_ring: { id: 'rare_ti_ring', name: '壁垒右重装翼', set: 'rare_ti', slot: 'ring', q: 4, tong: 13, nz: 13, yw: 9, zm: 9, spd: 4, sta: 41 },
+    rare_ti_pendant: { id: 'rare_ti_pendant', name: '壁垒左副重炮', set: 'rare_ti', slot: 'pendant', q: 4, tong: 13, nz: 13, yw: 9, zm: 9, spd: 4, sta: 41 },
+    rare_ti_neck: { id: 'rare_ti_neck', name: '壁垒重装净化器', set: 'rare_ti', slot: 'neck', q: 4, tong: 13, nz: 13, yw: 9, zm: 9, spd: 4, sta: 41 },
+    legend_zhan_head: { id: 'legend_zhan_head', name: '诸神火控观瞄', set: 'legend_zhan', slot: 'head', q: 5, tong: 27, nz: 7, yw: 52, zm: 7, spd: 20, sta: 20, def: 4800 },
+    legend_zhan_chest: { id: 'legend_zhan_chest', name: '诸神动力引擎', set: 'legend_zhan', slot: 'chest', q: 5, tong: 27, nz: 7, yw: 52, zm: 7, spd: 20, sta: 20, def: 4800 },
+    legend_zhan_waist: { id: 'legend_zhan_waist', name: '诸神速控平衡环', set: 'legend_zhan', slot: 'waist', q: 5, tong: 27, nz: 7, yw: 52, zm: 7, spd: 20, sta: 20, def: 4800 },
+    legend_zhan_arm_up_l: { id: 'legend_zhan_arm_up_l', name: '诸神左强袭展臂', set: 'legend_zhan', slot: 'arm_up_l', q: 5, tong: 27, nz: 7, yw: 52, zm: 7, spd: 20, sta: 20, def: 4800 },
+    legend_zhan_arm_up_r: { id: 'legend_zhan_arm_up_r', name: '诸神右强袭展臂', set: 'legend_zhan', slot: 'arm_up_r', q: 5, tong: 27, nz: 7, yw: 52, zm: 7, spd: 20, sta: 20, def: 4800 },
+    legend_zhan_arm_low_l: { id: 'legend_zhan_arm_low_l', name: '诸神左突击操作臂', set: 'legend_zhan', slot: 'arm_low_l', q: 5, tong: 27, nz: 7, yw: 52, zm: 7, spd: 20, sta: 20, def: 4800 },
+    legend_zhan_arm_low_r: { id: 'legend_zhan_arm_low_r', name: '诸神右突击操作臂', set: 'legend_zhan', slot: 'arm_low_r', q: 5, tong: 27, nz: 7, yw: 52, zm: 7, spd: 20, sta: 20, def: 4800 },
+    legend_zhan_thigh_l: { id: 'legend_zhan_thigh_l', name: '诸神左疾行承载腿', set: 'legend_zhan', slot: 'thigh_l', q: 5, tong: 27, nz: 7, yw: 52, zm: 7, spd: 20, sta: 20, def: 4800 },
+    legend_zhan_thigh_r: { id: 'legend_zhan_thigh_r', name: '诸神右疾行承载腿', set: 'legend_zhan', slot: 'thigh_r', q: 5, tong: 27, nz: 7, yw: 52, zm: 7, spd: 20, sta: 20, def: 4800 },
+    legend_zhan_shin_l: { id: 'legend_zhan_shin_l', name: '诸神左疾行支撑腿', set: 'legend_zhan', slot: 'shin_l', q: 5, tong: 27, nz: 7, yw: 52, zm: 7, spd: 20, sta: 20, def: 4800 },
+    legend_zhan_shin_r: { id: 'legend_zhan_shin_r', name: '诸神右疾行支撑腿', set: 'legend_zhan', slot: 'shin_r', q: 5, tong: 27, nz: 7, yw: 52, zm: 7, spd: 20, sta: 20, def: 4800 },
+    legend_zhan_foot_l: { id: 'legend_zhan_foot_l', name: '诸神左疾行抓地足', set: 'legend_zhan', slot: 'foot_l', q: 5, tong: 27, nz: 7, yw: 52, zm: 7, spd: 20, sta: 20, def: 4800 },
+    legend_zhan_foot_r: { id: 'legend_zhan_foot_r', name: '诸神右疾行抓地足', set: 'legend_zhan', slot: 'foot_r', q: 5, tong: 27, nz: 7, yw: 52, zm: 7, spd: 20, sta: 20, def: 4800 },
+    legend_zhan_weapon: { id: 'legend_zhan_weapon', name: '诸神右强袭炮', set: 'legend_zhan', slot: 'weapon', q: 5, tong: 27, nz: 7, yw: 52, zm: 7, spd: 20, sta: 20, atk: 5200 },
+    legend_zhan_mount: { id: 'legend_zhan_mount', name: '诸神突进推进器', set: 'legend_zhan', slot: 'mount', q: 5, tong: 27, nz: 7, yw: 52, zm: 7, spd: 1753, sta: 20 },
+    legend_zhan_back: { id: 'legend_zhan_back', name: '诸神左突击翼', set: 'legend_zhan', slot: 'back', q: 5, tong: 27, nz: 7, yw: 52, zm: 7, spd: 20, sta: 20 },
+    legend_zhan_ring: { id: 'legend_zhan_ring', name: '诸神右突击翼', set: 'legend_zhan', slot: 'ring', q: 5, tong: 27, nz: 7, yw: 52, zm: 7, spd: 20, sta: 20 },
+    legend_zhan_pendant: { id: 'legend_zhan_pendant', name: '诸神左副炮', set: 'legend_zhan', slot: 'pendant', q: 5, tong: 27, nz: 7, yw: 52, zm: 7, spd: 20, sta: 20 },
+    legend_zhan_neck: { id: 'legend_zhan_neck', name: '诸神战地净化器', set: 'legend_zhan', slot: 'neck', q: 5, tong: 27, nz: 7, yw: 52, zm: 7, spd: 20, sta: 20 },
+    legend_zhi_head: { id: 'legend_zhi_head', name: '智囊测控观瞄', set: 'legend_zhi', slot: 'head', q: 5, tong: 13, nz: 53, yw: 7, zm: 27, spd: 13, sta: 20, def: 4800 },
+    legend_zhi_chest: { id: 'legend_zhi_chest', name: '智囊指挥中枢', set: 'legend_zhi', slot: 'chest', q: 5, tong: 13, nz: 53, yw: 7, zm: 27, spd: 13, sta: 20, def: 4800 },
+    legend_zhi_waist: { id: 'legend_zhi_waist', name: '智囊稳态陀螺环', set: 'legend_zhi', slot: 'waist', q: 5, tong: 13, nz: 53, yw: 7, zm: 27, spd: 13, sta: 20, def: 4800 },
+    legend_zhi_arm_up_l: { id: 'legend_zhi_arm_up_l', name: '智囊左精密展臂', set: 'legend_zhi', slot: 'arm_up_l', q: 5, tong: 13, nz: 53, yw: 7, zm: 27, spd: 13, sta: 20, def: 4800 },
+    legend_zhi_arm_up_r: { id: 'legend_zhi_arm_up_r', name: '智囊右精密展臂', set: 'legend_zhi', slot: 'arm_up_r', q: 5, tong: 13, nz: 53, yw: 7, zm: 27, spd: 13, sta: 20, def: 4800 },
+    legend_zhi_arm_low_l: { id: 'legend_zhi_arm_low_l', name: '智囊左精细操作臂', set: 'legend_zhi', slot: 'arm_low_l', q: 5, tong: 13, nz: 53, yw: 7, zm: 27, spd: 13, sta: 20, def: 4800 },
+    legend_zhi_arm_low_r: { id: 'legend_zhi_arm_low_r', name: '智囊右精细操作臂', set: 'legend_zhi', slot: 'arm_low_r', q: 5, tong: 13, nz: 53, yw: 7, zm: 27, spd: 13, sta: 20, def: 4800 },
+    legend_zhi_thigh_l: { id: 'legend_zhi_thigh_l', name: '智囊左稳态承载腿', set: 'legend_zhi', slot: 'thigh_l', q: 5, tong: 13, nz: 53, yw: 7, zm: 27, spd: 13, sta: 20, def: 4800 },
+    legend_zhi_thigh_r: { id: 'legend_zhi_thigh_r', name: '智囊右稳态承载腿', set: 'legend_zhi', slot: 'thigh_r', q: 5, tong: 13, nz: 53, yw: 7, zm: 27, spd: 13, sta: 20, def: 4800 },
+    legend_zhi_shin_l: { id: 'legend_zhi_shin_l', name: '智囊左稳态支撑腿', set: 'legend_zhi', slot: 'shin_l', q: 5, tong: 13, nz: 53, yw: 7, zm: 27, spd: 13, sta: 20, def: 4800 },
+    legend_zhi_shin_r: { id: 'legend_zhi_shin_r', name: '智囊右稳态支撑腿', set: 'legend_zhi', slot: 'shin_r', q: 5, tong: 13, nz: 53, yw: 7, zm: 27, spd: 13, sta: 20, def: 4800 },
+    legend_zhi_foot_l: { id: 'legend_zhi_foot_l', name: '智囊左稳态抓地足', set: 'legend_zhi', slot: 'foot_l', q: 5, tong: 13, nz: 53, yw: 7, zm: 27, spd: 13, sta: 20, def: 4800 },
+    legend_zhi_foot_r: { id: 'legend_zhi_foot_r', name: '智囊右稳态抓地足', set: 'legend_zhi', slot: 'foot_r', q: 5, tong: 13, nz: 53, yw: 7, zm: 27, spd: 13, sta: 20, def: 4800 },
+    legend_zhi_weapon: { id: 'legend_zhi_weapon', name: '智囊右精准炮', set: 'legend_zhi', slot: 'weapon', q: 5, tong: 13, nz: 53, yw: 7, zm: 27, spd: 13, sta: 20, atk: 5200 },
+    legend_zhi_mount: { id: 'legend_zhi_mount', name: '智囊悬浮单元', set: 'legend_zhi', slot: 'mount', q: 5, tong: 13, nz: 53, yw: 7, zm: 27, spd: 1746, sta: 20 },
+    legend_zhi_back: { id: 'legend_zhi_back', name: '智囊左侦察翼', set: 'legend_zhi', slot: 'back', q: 5, tong: 13, nz: 53, yw: 7, zm: 27, spd: 13, sta: 20 },
+    legend_zhi_ring: { id: 'legend_zhi_ring', name: '智囊右侦察翼', set: 'legend_zhi', slot: 'ring', q: 5, tong: 13, nz: 53, yw: 7, zm: 27, spd: 13, sta: 20 },
+    legend_zhi_pendant: { id: 'legend_zhi_pendant', name: '智囊左辅助炮', set: 'legend_zhi', slot: 'pendant', q: 5, tong: 13, nz: 53, yw: 7, zm: 27, spd: 13, sta: 20 },
+    legend_zhi_neck: { id: 'legend_zhi_neck', name: '智囊精测净化器', set: 'legend_zhi', slot: 'neck', q: 5, tong: 13, nz: 53, yw: 7, zm: 27, spd: 13, sta: 20 },
+    legend_ti_head: { id: 'legend_ti_head', name: '不朽装甲观瞄', set: 'legend_ti', slot: 'head', q: 5, tong: 20, nz: 20, yw: 13, zm: 13, spd: 7, sta: 60, def: 4800 },
+    legend_ti_chest: { id: 'legend_ti_chest', name: '不朽重装躯干', set: 'legend_ti', slot: 'chest', q: 5, tong: 20, nz: 20, yw: 13, zm: 13, spd: 7, sta: 60, def: 4800 },
+    legend_ti_waist: { id: 'legend_ti_waist', name: '不朽承重腰腹', set: 'legend_ti', slot: 'waist', q: 5, tong: 20, nz: 20, yw: 13, zm: 13, spd: 7, sta: 60, def: 4800 },
+    legend_ti_arm_up_l: { id: 'legend_ti_arm_up_l', name: '不朽左重甲展臂', set: 'legend_ti', slot: 'arm_up_l', q: 5, tong: 20, nz: 20, yw: 13, zm: 13, spd: 7, sta: 60, def: 4800 },
+    legend_ti_arm_up_r: { id: 'legend_ti_arm_up_r', name: '不朽右重甲展臂', set: 'legend_ti', slot: 'arm_up_r', q: 5, tong: 20, nz: 20, yw: 13, zm: 13, spd: 7, sta: 60, def: 4800 },
+    legend_ti_arm_low_l: { id: 'legend_ti_arm_low_l', name: '不朽左重装操作臂', set: 'legend_ti', slot: 'arm_low_l', q: 5, tong: 20, nz: 20, yw: 13, zm: 13, spd: 7, sta: 60, def: 4800 },
+    legend_ti_arm_low_r: { id: 'legend_ti_arm_low_r', name: '不朽右重装操作臂', set: 'legend_ti', slot: 'arm_low_r', q: 5, tong: 20, nz: 20, yw: 13, zm: 13, spd: 7, sta: 60, def: 4800 },
+    legend_ti_thigh_l: { id: 'legend_ti_thigh_l', name: '不朽左重装承载腿', set: 'legend_ti', slot: 'thigh_l', q: 5, tong: 20, nz: 20, yw: 13, zm: 13, spd: 7, sta: 60, def: 4800 },
+    legend_ti_thigh_r: { id: 'legend_ti_thigh_r', name: '不朽右重装承载腿', set: 'legend_ti', slot: 'thigh_r', q: 5, tong: 20, nz: 20, yw: 13, zm: 13, spd: 7, sta: 60, def: 4800 },
+    legend_ti_shin_l: { id: 'legend_ti_shin_l', name: '不朽左重装支撑腿', set: 'legend_ti', slot: 'shin_l', q: 5, tong: 20, nz: 20, yw: 13, zm: 13, spd: 7, sta: 60, def: 4800 },
+    legend_ti_shin_r: { id: 'legend_ti_shin_r', name: '不朽右重装支撑腿', set: 'legend_ti', slot: 'shin_r', q: 5, tong: 20, nz: 20, yw: 13, zm: 13, spd: 7, sta: 60, def: 4800 },
+    legend_ti_foot_l: { id: 'legend_ti_foot_l', name: '不朽左重装抓地足', set: 'legend_ti', slot: 'foot_l', q: 5, tong: 20, nz: 20, yw: 13, zm: 13, spd: 7, sta: 60, def: 4800 },
+    legend_ti_foot_r: { id: 'legend_ti_foot_r', name: '不朽右重装抓地足', set: 'legend_ti', slot: 'foot_r', q: 5, tong: 20, nz: 20, yw: 13, zm: 13, spd: 7, sta: 60, def: 4800 },
+    legend_ti_weapon: { id: 'legend_ti_weapon', name: '不朽右重炮', set: 'legend_ti', slot: 'weapon', q: 5, tong: 20, nz: 20, yw: 13, zm: 13, spd: 7, sta: 60, atk: 5200 },
+    legend_ti_mount: { id: 'legend_ti_mount', name: '不朽重装推进器', set: 'legend_ti', slot: 'mount', q: 5, tong: 20, nz: 20, yw: 13, zm: 13, spd: 1740, sta: 60 },
+    legend_ti_back: { id: 'legend_ti_back', name: '不朽左重装翼', set: 'legend_ti', slot: 'back', q: 5, tong: 20, nz: 20, yw: 13, zm: 13, spd: 7, sta: 60 },
+    legend_ti_ring: { id: 'legend_ti_ring', name: '不朽右重装翼', set: 'legend_ti', slot: 'ring', q: 5, tong: 20, nz: 20, yw: 13, zm: 13, spd: 7, sta: 60 },
+    legend_ti_pendant: { id: 'legend_ti_pendant', name: '不朽左副重炮', set: 'legend_ti', slot: 'pendant', q: 5, tong: 20, nz: 20, yw: 13, zm: 13, spd: 7, sta: 60 },
+    legend_ti_neck: { id: 'legend_ti_neck', name: '不朽重装净化器', set: 'legend_ti', slot: 'neck', q: 5, tong: 20, nz: 20, yw: 13, zm: 13, spd: 7, sta: 60 },
+    divine_zhan_head: { id: 'divine_zhan_head', name: '天罚火控观瞄', set: 'divine_zhan', slot: 'head', q: 6, tong: 40, nz: 10, yw: 80, zm: 10, spd: 30, sta: 30, def: 8300 },
+    divine_zhan_chest: { id: 'divine_zhan_chest', name: '天罚动力引擎', set: 'divine_zhan', slot: 'chest', q: 6, tong: 40, nz: 10, yw: 80, zm: 10, spd: 30, sta: 30, def: 8300 },
+    divine_zhan_waist: { id: 'divine_zhan_waist', name: '天罚速控平衡环', set: 'divine_zhan', slot: 'waist', q: 6, tong: 40, nz: 10, yw: 80, zm: 10, spd: 30, sta: 30, def: 8300 },
+    divine_zhan_arm_up_l: { id: 'divine_zhan_arm_up_l', name: '天罚左强袭展臂', set: 'divine_zhan', slot: 'arm_up_l', q: 6, tong: 40, nz: 10, yw: 80, zm: 10, spd: 30, sta: 30, def: 8300 },
+    divine_zhan_arm_up_r: { id: 'divine_zhan_arm_up_r', name: '天罚右强袭展臂', set: 'divine_zhan', slot: 'arm_up_r', q: 6, tong: 40, nz: 10, yw: 80, zm: 10, spd: 30, sta: 30, def: 8300 },
+    divine_zhan_arm_low_l: { id: 'divine_zhan_arm_low_l', name: '天罚左突击操作臂', set: 'divine_zhan', slot: 'arm_low_l', q: 6, tong: 40, nz: 10, yw: 80, zm: 10, spd: 30, sta: 30, def: 8300 },
+    divine_zhan_arm_low_r: { id: 'divine_zhan_arm_low_r', name: '天罚右突击操作臂', set: 'divine_zhan', slot: 'arm_low_r', q: 6, tong: 40, nz: 10, yw: 80, zm: 10, spd: 30, sta: 30, def: 8300 },
+    divine_zhan_thigh_l: { id: 'divine_zhan_thigh_l', name: '天罚左疾行承载腿', set: 'divine_zhan', slot: 'thigh_l', q: 6, tong: 40, nz: 10, yw: 80, zm: 10, spd: 30, sta: 30, def: 8300 },
+    divine_zhan_thigh_r: { id: 'divine_zhan_thigh_r', name: '天罚右疾行承载腿', set: 'divine_zhan', slot: 'thigh_r', q: 6, tong: 40, nz: 10, yw: 80, zm: 10, spd: 30, sta: 30, def: 8300 },
+    divine_zhan_shin_l: { id: 'divine_zhan_shin_l', name: '天罚左疾行支撑腿', set: 'divine_zhan', slot: 'shin_l', q: 6, tong: 40, nz: 10, yw: 80, zm: 10, spd: 30, sta: 30, def: 8300 },
+    divine_zhan_shin_r: { id: 'divine_zhan_shin_r', name: '天罚右疾行支撑腿', set: 'divine_zhan', slot: 'shin_r', q: 6, tong: 40, nz: 10, yw: 80, zm: 10, spd: 30, sta: 30, def: 8300 },
+    divine_zhan_foot_l: { id: 'divine_zhan_foot_l', name: '天罚左疾行抓地足', set: 'divine_zhan', slot: 'foot_l', q: 6, tong: 40, nz: 10, yw: 80, zm: 10, spd: 30, sta: 30, def: 8300 },
+    divine_zhan_foot_r: { id: 'divine_zhan_foot_r', name: '天罚右疾行抓地足', set: 'divine_zhan', slot: 'foot_r', q: 6, tong: 40, nz: 10, yw: 80, zm: 10, spd: 30, sta: 30, def: 8300 },
+    divine_zhan_weapon: { id: 'divine_zhan_weapon', name: '天罚右强袭炮', set: 'divine_zhan', slot: 'weapon', q: 6, tong: 40, nz: 10, yw: 80, zm: 10, spd: 30, sta: 30, atk: 9000 },
+    divine_zhan_mount: { id: 'divine_zhan_mount', name: '天罚突进推进器', set: 'divine_zhan', slot: 'mount', q: 6, tong: 40, nz: 10, yw: 80, zm: 10, spd: 3030, sta: 30 },
+    divine_zhan_back: { id: 'divine_zhan_back', name: '天罚左突击翼', set: 'divine_zhan', slot: 'back', q: 6, tong: 40, nz: 10, yw: 80, zm: 10, spd: 30, sta: 30 },
+    divine_zhan_ring: { id: 'divine_zhan_ring', name: '天罚右突击翼', set: 'divine_zhan', slot: 'ring', q: 6, tong: 40, nz: 10, yw: 80, zm: 10, spd: 30, sta: 30 },
+    divine_zhan_pendant: { id: 'divine_zhan_pendant', name: '天罚左副炮', set: 'divine_zhan', slot: 'pendant', q: 6, tong: 40, nz: 10, yw: 80, zm: 10, spd: 30, sta: 30 },
+    divine_zhan_neck: { id: 'divine_zhan_neck', name: '天罚战地净化器', set: 'divine_zhan', slot: 'neck', q: 6, tong: 40, nz: 10, yw: 80, zm: 10, spd: 30, sta: 30 },
+    divine_zhi_head: { id: 'divine_zhi_head', name: '神谕测控观瞄', set: 'divine_zhi', slot: 'head', q: 6, tong: 20, nz: 80, yw: 10, zm: 40, spd: 20, sta: 30, def: 8300 },
+    divine_zhi_chest: { id: 'divine_zhi_chest', name: '神谕指挥中枢', set: 'divine_zhi', slot: 'chest', q: 6, tong: 20, nz: 80, yw: 10, zm: 40, spd: 20, sta: 30, def: 8300 },
+    divine_zhi_waist: { id: 'divine_zhi_waist', name: '神谕稳态陀螺环', set: 'divine_zhi', slot: 'waist', q: 6, tong: 20, nz: 80, yw: 10, zm: 40, spd: 20, sta: 30, def: 8300 },
+    divine_zhi_arm_up_l: { id: 'divine_zhi_arm_up_l', name: '神谕左精密展臂', set: 'divine_zhi', slot: 'arm_up_l', q: 6, tong: 20, nz: 80, yw: 10, zm: 40, spd: 20, sta: 30, def: 8300 },
+    divine_zhi_arm_up_r: { id: 'divine_zhi_arm_up_r', name: '神谕右精密展臂', set: 'divine_zhi', slot: 'arm_up_r', q: 6, tong: 20, nz: 80, yw: 10, zm: 40, spd: 20, sta: 30, def: 8300 },
+    divine_zhi_arm_low_l: { id: 'divine_zhi_arm_low_l', name: '神谕左精细操作臂', set: 'divine_zhi', slot: 'arm_low_l', q: 6, tong: 20, nz: 80, yw: 10, zm: 40, spd: 20, sta: 30, def: 8300 },
+    divine_zhi_arm_low_r: { id: 'divine_zhi_arm_low_r', name: '神谕右精细操作臂', set: 'divine_zhi', slot: 'arm_low_r', q: 6, tong: 20, nz: 80, yw: 10, zm: 40, spd: 20, sta: 30, def: 8300 },
+    divine_zhi_thigh_l: { id: 'divine_zhi_thigh_l', name: '神谕左稳态承载腿', set: 'divine_zhi', slot: 'thigh_l', q: 6, tong: 20, nz: 80, yw: 10, zm: 40, spd: 20, sta: 30, def: 8300 },
+    divine_zhi_thigh_r: { id: 'divine_zhi_thigh_r', name: '神谕右稳态承载腿', set: 'divine_zhi', slot: 'thigh_r', q: 6, tong: 20, nz: 80, yw: 10, zm: 40, spd: 20, sta: 30, def: 8300 },
+    divine_zhi_shin_l: { id: 'divine_zhi_shin_l', name: '神谕左稳态支撑腿', set: 'divine_zhi', slot: 'shin_l', q: 6, tong: 20, nz: 80, yw: 10, zm: 40, spd: 20, sta: 30, def: 8300 },
+    divine_zhi_shin_r: { id: 'divine_zhi_shin_r', name: '神谕右稳态支撑腿', set: 'divine_zhi', slot: 'shin_r', q: 6, tong: 20, nz: 80, yw: 10, zm: 40, spd: 20, sta: 30, def: 8300 },
+    divine_zhi_foot_l: { id: 'divine_zhi_foot_l', name: '神谕左稳态抓地足', set: 'divine_zhi', slot: 'foot_l', q: 6, tong: 20, nz: 80, yw: 10, zm: 40, spd: 20, sta: 30, def: 8300 },
+    divine_zhi_foot_r: { id: 'divine_zhi_foot_r', name: '神谕右稳态抓地足', set: 'divine_zhi', slot: 'foot_r', q: 6, tong: 20, nz: 80, yw: 10, zm: 40, spd: 20, sta: 30, def: 8300 },
+    divine_zhi_weapon: { id: 'divine_zhi_weapon', name: '神谕右精准炮', set: 'divine_zhi', slot: 'weapon', q: 6, tong: 20, nz: 80, yw: 10, zm: 40, spd: 20, sta: 30, atk: 9000 },
+    divine_zhi_mount: { id: 'divine_zhi_mount', name: '神谕悬浮单元', set: 'divine_zhi', slot: 'mount', q: 6, tong: 20, nz: 80, yw: 10, zm: 40, spd: 3020, sta: 30 },
+    divine_zhi_back: { id: 'divine_zhi_back', name: '神谕左侦察翼', set: 'divine_zhi', slot: 'back', q: 6, tong: 20, nz: 80, yw: 10, zm: 40, spd: 20, sta: 30 },
+    divine_zhi_ring: { id: 'divine_zhi_ring', name: '神谕右侦察翼', set: 'divine_zhi', slot: 'ring', q: 6, tong: 20, nz: 80, yw: 10, zm: 40, spd: 20, sta: 30 },
+    divine_zhi_pendant: { id: 'divine_zhi_pendant', name: '神谕左辅助炮', set: 'divine_zhi', slot: 'pendant', q: 6, tong: 20, nz: 80, yw: 10, zm: 40, spd: 20, sta: 30 },
+    divine_zhi_neck: { id: 'divine_zhi_neck', name: '神谕精测净化器', set: 'divine_zhi', slot: 'neck', q: 6, tong: 20, nz: 80, yw: 10, zm: 40, spd: 20, sta: 30 },
+    divine_ti_head: { id: 'divine_ti_head', name: '机体装甲观瞄', set: 'divine_ti', slot: 'head', q: 6, tong: 30, nz: 30, yw: 20, zm: 20, spd: 10, sta: 90, def: 8300 },
+    divine_ti_chest: { id: 'divine_ti_chest', name: '机体重装躯干', set: 'divine_ti', slot: 'chest', q: 6, tong: 30, nz: 30, yw: 20, zm: 20, spd: 10, sta: 90, def: 8300 },
+    divine_ti_waist: { id: 'divine_ti_waist', name: '机体承重腰腹', set: 'divine_ti', slot: 'waist', q: 6, tong: 30, nz: 30, yw: 20, zm: 20, spd: 10, sta: 90, def: 8300 },
+    divine_ti_arm_up_l: { id: 'divine_ti_arm_up_l', name: '机体左重甲展臂', set: 'divine_ti', slot: 'arm_up_l', q: 6, tong: 30, nz: 30, yw: 20, zm: 20, spd: 10, sta: 90, def: 8300 },
+    divine_ti_arm_up_r: { id: 'divine_ti_arm_up_r', name: '机体右重甲展臂', set: 'divine_ti', slot: 'arm_up_r', q: 6, tong: 30, nz: 30, yw: 20, zm: 20, spd: 10, sta: 90, def: 8300 },
+    divine_ti_arm_low_l: { id: 'divine_ti_arm_low_l', name: '机体左重装操作臂', set: 'divine_ti', slot: 'arm_low_l', q: 6, tong: 30, nz: 30, yw: 20, zm: 20, spd: 10, sta: 90, def: 8300 },
+    divine_ti_arm_low_r: { id: 'divine_ti_arm_low_r', name: '机体右重装操作臂', set: 'divine_ti', slot: 'arm_low_r', q: 6, tong: 30, nz: 30, yw: 20, zm: 20, spd: 10, sta: 90, def: 8300 },
+    divine_ti_thigh_l: { id: 'divine_ti_thigh_l', name: '机体左重装承载腿', set: 'divine_ti', slot: 'thigh_l', q: 6, tong: 30, nz: 30, yw: 20, zm: 20, spd: 10, sta: 90, def: 8300 },
+    divine_ti_thigh_r: { id: 'divine_ti_thigh_r', name: '机体右重装承载腿', set: 'divine_ti', slot: 'thigh_r', q: 6, tong: 30, nz: 30, yw: 20, zm: 20, spd: 10, sta: 90, def: 8300 },
+    divine_ti_shin_l: { id: 'divine_ti_shin_l', name: '机体左重装支撑腿', set: 'divine_ti', slot: 'shin_l', q: 6, tong: 30, nz: 30, yw: 20, zm: 20, spd: 10, sta: 90, def: 8300 },
+    divine_ti_shin_r: { id: 'divine_ti_shin_r', name: '机体右重装支撑腿', set: 'divine_ti', slot: 'shin_r', q: 6, tong: 30, nz: 30, yw: 20, zm: 20, spd: 10, sta: 90, def: 8300 },
+    divine_ti_foot_l: { id: 'divine_ti_foot_l', name: '机体左重装抓地足', set: 'divine_ti', slot: 'foot_l', q: 6, tong: 30, nz: 30, yw: 20, zm: 20, spd: 10, sta: 90, def: 8300 },
+    divine_ti_foot_r: { id: 'divine_ti_foot_r', name: '机体右重装抓地足', set: 'divine_ti', slot: 'foot_r', q: 6, tong: 30, nz: 30, yw: 20, zm: 20, spd: 10, sta: 90, def: 8300 },
+    divine_ti_weapon: { id: 'divine_ti_weapon', name: '机体右重炮', set: 'divine_ti', slot: 'weapon', q: 6, tong: 30, nz: 30, yw: 20, zm: 20, spd: 10, sta: 90, atk: 9000 },
+    divine_ti_mount: { id: 'divine_ti_mount', name: '机体重装推进器', set: 'divine_ti', slot: 'mount', q: 6, tong: 30, nz: 30, yw: 20, zm: 20, spd: 3010, sta: 90 },
+    divine_ti_back: { id: 'divine_ti_back', name: '机体左重装翼', set: 'divine_ti', slot: 'back', q: 6, tong: 30, nz: 30, yw: 20, zm: 20, spd: 10, sta: 90 },
+    divine_ti_ring: { id: 'divine_ti_ring', name: '机体右重装翼', set: 'divine_ti', slot: 'ring', q: 6, tong: 30, nz: 30, yw: 20, zm: 20, spd: 10, sta: 90 },
+    divine_ti_pendant: { id: 'divine_ti_pendant', name: '机体左副重炮', set: 'divine_ti', slot: 'pendant', q: 6, tong: 30, nz: 30, yw: 20, zm: 20, spd: 10, sta: 90 },
+    divine_ti_neck: { id: 'divine_ti_neck', name: '机体重装净化器', set: 'divine_ti', slot: 'neck', q: 6, tong: 30, nz: 30, yw: 20, zm: 20, spd: 10, sta: 90 },
   };
-  /* ============================================================
-   * 套装加成（v38 · 需求 3 重定门槛）
-   * ------------------------------------------------------------
-   * 统一为 **3 / 5 / 7 / 11 件** 四档，**累计生效**（达到即叠上，不替换）。
-   * 旧门槛有三个真问题（实测）：
-   *   · 陨锋套门槛 13/15/16 —— 槽位只有 12 个，**永远达不到**
-   *   · 佣兵套/军魂套各只有 3 件，5/7/9/11/13/16 全是死门槛
-   *   · 军魂套首档就是 4 件 > 3 件总量 → **整套加成一档都拿不到**
-   * 门槛列在 DATA.SET_TIERS 里作为单一来源，测试会校验三套与它一致。
-   * ============================================================ */
-  DATA.SET_TIERS = [3, 5, 7, 11];
+  /* v90.16：新手起始装备（散件退役后挂粗劣套件，id 沿用旧存档键防丢） */
+  DATA.EQUIP.yt_free1 = { id: 'yt_free1', name: '补丁动力', slot: 'chest', q: 1, nz: 11, sta: 4, def: 9 };
+  DATA.EQUIP.yt_free2 = { id: 'yt_free2', name: '拾荒右武装', slot: 'weapon', q: 1, yw: 11, spd: 4, atk: 10 };
+  DATA.EQUIP.yt_free3 = { id: 'yt_free3', name: '补丁机动', slot: 'mount', q: 1, nz: 7, spd: 7, sta: 3 };
   DATA.SETS = {
-    /* v52：三套补上**体力（sta）**加成 —— 老板：「体力都没加上套装的体力」。
-       放在 3 件档：体力是"续航"属性（还驱动全军生命加成），早拿到早有感；
-       数值按套装强度递增（佣兵 25 / 军魂 40 / 陨锋 60）。
-       参考基准：体力上限 Lv1 = 100、Lv60 凡人 ≈162、Lv240 天启体 ≈2108
-       —— 所以 +60 对低级将很显著，对满级将约 +3%。
-       ⚠️ `bonus`（文案）与 `eff`（真值）是两份，改一份必须改另一份；
-       smoke 有一条断言按 eff 现算文案并与 bonus 比对（"改一处忘一处"会被拦下）。 */
-    yitian: { name: '陨锋套',
-      bonus: { 3: '武力+100　体力+60', 5: '防御+650', 7: '治理+100', 11: '指挥+150　攻击+650　速度+7' },
-      eff: { 3: { yw: 100, sta: 60 }, 5: { def: 650 }, 7: { nz: 100 }, 11: { tong: 150, atk: 650, spd: 7 } } },
-    mingjiang: { name: '佣兵套',
-      bonus: { 3: '防御+60　体力+25', 5: '攻击+50', 7: '治理+20　谋略+18', 11: '指挥+40　武力+30　速度+12' },
-      eff: { 3: { def: 60, sta: 25 }, 5: { atk: 50 }, 7: { nz: 20, zm: 18 }, 11: { tong: 40, yw: 30, spd: 12 } } },
-    shenwu: { name: '军魂套',
-      bonus: { 3: '防御+120　体力+40', 5: '攻击+150', 7: '武力+40　谋略+30', 11: '指挥+60　攻击+300　速度+4' },
-      eff: { 3: { def: 120, sta: 40 }, 5: { atk: 150 }, 7: { yw: 40, zm: 30 }, 11: { tong: 60, atk: 300, spd: 4 } } },
+    coarse_zhan: { name: '拾荒套', bonus: {3: '指挥+100　治理+25　武力+200　谋略+25　速度+75　体力+75　攻+20　防+18', 5: '指挥+150　治理+38　武力+300　谋略+38　速度+112　体力+112　攻+30　防+27', 7: '指挥+225　治理+56　武力+450　谋略+56　速度+169　体力+169　攻+40　防+36', 11: '指挥+338　治理+84　武力+676　谋略+84　速度+253　体力+253　攻+50　防+45', 15: '指挥+506　治理+127　武力+1011　谋略+127　速度+380　体力+380　攻+60　防+54', 19: '指挥+759　治理+190　武力+1518　谋略+190　速度+570　体力+570　攻+70　防+63'}, eff: {3: {tong: 100, nz: 25, yw: 200, zm: 25, spd: 75, sta: 75, atk: 20, def: 18}, 5: {tong: 150, nz: 38, yw: 300, zm: 38, spd: 112, sta: 112, atk: 30, def: 27}, 7: {tong: 225, nz: 56, yw: 450, zm: 56, spd: 169, sta: 169, atk: 40, def: 36}, 11: {tong: 338, nz: 84, yw: 676, zm: 84, spd: 253, sta: 253, atk: 50, def: 45}, 15: {tong: 506, nz: 127, yw: 1011, zm: 127, spd: 380, sta: 380, atk: 60, def: 54}, 19: {tong: 759, nz: 190, yw: 1518, zm: 190, spd: 570, sta: 570, atk: 70, def: 63}} },
+    coarse_zhi: { name: '补丁套', bonus: {3: '指挥+50　治理+200　武力+25　谋略+100　速度+50　体力+75　攻+20　防+18', 5: '指挥+75　治理+300　武力+38　谋略+150　速度+75　体力+112　攻+30　防+27', 7: '指挥+112　治理+451　武力+56　谋略+225　速度+112　体力+169　攻+40　防+36', 11: '指挥+169　治理+675　武力+84　谋略+338　速度+169　体力+253　攻+50　防+45', 15: '指挥+253　治理+1012　武力+127　谋略+506　速度+253　体力+380　攻+60　防+54', 19: '指挥+380　治理+1518　武力+190　谋略+759　速度+380　体力+570　攻+70　防+63'}, eff: {3: {tong: 50, nz: 200, yw: 25, zm: 100, spd: 50, sta: 75, atk: 20, def: 18}, 5: {tong: 75, nz: 300, yw: 38, zm: 150, spd: 75, sta: 112, atk: 30, def: 27}, 7: {tong: 112, nz: 451, yw: 56, zm: 225, spd: 112, sta: 169, atk: 40, def: 36}, 11: {tong: 169, nz: 675, yw: 84, zm: 338, spd: 169, sta: 253, atk: 50, def: 45}, 15: {tong: 253, nz: 1012, yw: 127, zm: 506, spd: 253, sta: 380, atk: 60, def: 54}, 19: {tong: 380, nz: 1518, yw: 190, zm: 759, spd: 380, sta: 570, atk: 70, def: 63}} },
+    coarse_ti: { name: '铁皮套', bonus: {3: '指挥+75　治理+75　武力+50　谋略+50　速度+25　体力+225　攻+20　防+18', 5: '指挥+112　治理+112　武力+75　谋略+75　速度+38　体力+338　攻+30　防+27', 7: '指挥+169　治理+169　武力+112　谋略+112　速度+56　体力+507　攻+40　防+36', 11: '指挥+253　治理+253　武力+169　谋略+169　速度+84　体力+760　攻+50　防+45', 15: '指挥+380　治理+380　武力+253　谋略+253　速度+127　体力+1138　攻+60　防+54', 19: '指挥+570　治理+570　武力+380　谋略+380　速度+190　体力+1707　攻+70　防+63'}, eff: {3: {tong: 75, nz: 75, yw: 50, zm: 50, spd: 25, sta: 225, atk: 20, def: 18}, 5: {tong: 112, nz: 112, yw: 75, zm: 75, spd: 38, sta: 338, atk: 30, def: 27}, 7: {tong: 169, nz: 169, yw: 112, zm: 112, spd: 56, sta: 507, atk: 40, def: 36}, 11: {tong: 253, nz: 253, yw: 169, zm: 169, spd: 84, sta: 760, atk: 50, def: 45}, 15: {tong: 380, nz: 380, yw: 253, zm: 253, spd: 127, sta: 1138, atk: 60, def: 54}, 19: {tong: 570, nz: 570, yw: 380, zm: 380, spd: 190, sta: 1707, atk: 70, def: 63}} },
+    fine_zhan: { name: '巡逻套', bonus: {3: '指挥+100　治理+25　武力+200　谋略+25　速度+75　体力+75　攻+60　防+54', 5: '指挥+150　治理+38　武力+300　谋略+38　速度+112　体力+112　攻+90　防+81', 7: '指挥+225　治理+56　武力+450　谋略+56　速度+169　体力+169　攻+120　防+108', 11: '指挥+338　治理+84　武力+676　谋略+84　速度+253　体力+253　攻+150　防+135', 15: '指挥+506　治理+127　武力+1011　谋略+127　速度+380　体力+380　攻+180　防+162', 19: '指挥+759　治理+190　武力+1518　谋略+190　速度+570　体力+570　攻+210　防+189'}, eff: {3: {tong: 100, nz: 25, yw: 200, zm: 25, spd: 75, sta: 75, atk: 60, def: 54}, 5: {tong: 150, nz: 38, yw: 300, zm: 38, spd: 112, sta: 112, atk: 90, def: 81}, 7: {tong: 225, nz: 56, yw: 450, zm: 56, spd: 169, sta: 169, atk: 120, def: 108}, 11: {tong: 338, nz: 84, yw: 676, zm: 84, spd: 253, sta: 253, atk: 150, def: 135}, 15: {tong: 506, nz: 127, yw: 1011, zm: 127, spd: 380, sta: 380, atk: 180, def: 162}, 19: {tong: 759, nz: 190, yw: 1518, zm: 190, spd: 570, sta: 570, atk: 210, def: 189}} },
+    fine_zhi: { name: '工坊套', bonus: {3: '指挥+50　治理+200　武力+25　谋略+100　速度+50　体力+75　攻+60　防+54', 5: '指挥+75　治理+300　武力+38　谋略+150　速度+75　体力+112　攻+90　防+81', 7: '指挥+112　治理+451　武力+56　谋略+225　速度+112　体力+169　攻+120　防+108', 11: '指挥+169　治理+675　武力+84　谋略+338　速度+169　体力+253　攻+150　防+135', 15: '指挥+253　治理+1012　武力+127　谋略+506　速度+253　体力+380　攻+180　防+162', 19: '指挥+380　治理+1518　武力+190　谋略+759　速度+380　体力+570　攻+210　防+189'}, eff: {3: {tong: 50, nz: 200, yw: 25, zm: 100, spd: 50, sta: 75, atk: 60, def: 54}, 5: {tong: 75, nz: 300, yw: 38, zm: 150, spd: 75, sta: 112, atk: 90, def: 81}, 7: {tong: 112, nz: 451, yw: 56, zm: 225, spd: 112, sta: 169, atk: 120, def: 108}, 11: {tong: 169, nz: 675, yw: 84, zm: 338, spd: 169, sta: 253, atk: 150, def: 135}, 15: {tong: 253, nz: 1012, yw: 127, zm: 506, spd: 253, sta: 380, atk: 180, def: 162}, 19: {tong: 380, nz: 1518, yw: 190, zm: 759, spd: 380, sta: 570, atk: 210, def: 189}} },
+    fine_ti: { name: '装卸套', bonus: {3: '指挥+75　治理+75　武力+50　谋略+50　速度+25　体力+225　攻+60　防+54', 5: '指挥+112　治理+112　武力+75　谋略+75　速度+38　体力+338　攻+90　防+81', 7: '指挥+169　治理+169　武力+112　谋略+112　速度+56　体力+507　攻+120　防+108', 11: '指挥+253　治理+253　武力+169　谋略+169　速度+84　体力+760　攻+150　防+135', 15: '指挥+380　治理+380　武力+253　谋略+253　速度+127　体力+1138　攻+180　防+162', 19: '指挥+570　治理+570　武力+380　谋略+380　速度+190　体力+1707　攻+210　防+189'}, eff: {3: {tong: 75, nz: 75, yw: 50, zm: 50, spd: 25, sta: 225, atk: 60, def: 54}, 5: {tong: 112, nz: 112, yw: 75, zm: 75, spd: 38, sta: 338, atk: 90, def: 81}, 7: {tong: 169, nz: 169, yw: 112, zm: 112, spd: 56, sta: 507, atk: 120, def: 108}, 11: {tong: 253, nz: 253, yw: 169, zm: 169, spd: 84, sta: 760, atk: 150, def: 135}, 15: {tong: 380, nz: 380, yw: 253, zm: 253, spd: 127, sta: 1138, atk: 180, def: 162}, 19: {tong: 570, nz: 570, yw: 380, zm: 380, spd: 190, sta: 1707, atk: 210, def: 189}} },
+    prime_zhan: { name: '猎杀套', bonus: {3: '指挥+100　治理+25　武力+200　谋略+25　速度+75　体力+75　攻+170　防+155', 5: '指挥+150　治理+38　武力+300　谋略+38　速度+112　体力+112　攻+255　防+232', 7: '指挥+225　治理+56　武力+450　谋略+56　速度+169　体力+169　攻+340　防+310', 11: '指挥+338　治理+84　武力+676　谋略+84　速度+253　体力+253　攻+425　防+387', 15: '指挥+506　治理+127　武力+1011　谋略+127　速度+380　体力+380　攻+510　防+465', 19: '指挥+759　治理+190　武力+1518　谋略+190　速度+570　体力+570　攻+595　防+542'}, eff: {3: {tong: 100, nz: 25, yw: 200, zm: 25, spd: 75, sta: 75, atk: 170, def: 155}, 5: {tong: 150, nz: 38, yw: 300, zm: 38, spd: 112, sta: 112, atk: 255, def: 232}, 7: {tong: 225, nz: 56, yw: 450, zm: 56, spd: 169, sta: 169, atk: 340, def: 310}, 11: {tong: 338, nz: 84, yw: 676, zm: 84, spd: 253, sta: 253, atk: 425, def: 387}, 15: {tong: 506, nz: 127, yw: 1011, zm: 127, spd: 380, sta: 380, atk: 510, def: 465}, 19: {tong: 759, nz: 190, yw: 1518, zm: 190, spd: 570, sta: 570, atk: 595, def: 542}} },
+    prime_zhi: { name: '中枢套', bonus: {3: '指挥+50　治理+200　武力+25　谋略+100　速度+50　体力+75　攻+170　防+155', 5: '指挥+75　治理+300　武力+38　谋略+150　速度+75　体力+112　攻+255　防+232', 7: '指挥+112　治理+451　武力+56　谋略+225　速度+112　体力+169　攻+340　防+310', 11: '指挥+169　治理+675　武力+84　谋略+338　速度+169　体力+253　攻+425　防+387', 15: '指挥+253　治理+1012　武力+127　谋略+506　速度+253　体力+380　攻+510　防+465', 19: '指挥+380　治理+1518　武力+190　谋略+759　速度+380　体力+570　攻+595　防+542'}, eff: {3: {tong: 50, nz: 200, yw: 25, zm: 100, spd: 50, sta: 75, atk: 170, def: 155}, 5: {tong: 75, nz: 300, yw: 38, zm: 150, spd: 75, sta: 112, atk: 255, def: 232}, 7: {tong: 112, nz: 451, yw: 56, zm: 225, spd: 112, sta: 169, atk: 340, def: 310}, 11: {tong: 169, nz: 675, yw: 84, zm: 338, spd: 169, sta: 253, atk: 425, def: 387}, 15: {tong: 253, nz: 1012, yw: 127, zm: 506, spd: 253, sta: 380, atk: 510, def: 465}, 19: {tong: 380, nz: 1518, yw: 190, zm: 759, spd: 380, sta: 570, atk: 595, def: 542}} },
+    prime_ti: { name: '重装套', bonus: {3: '指挥+75　治理+75　武力+50　谋略+50　速度+25　体力+225　攻+170　防+155', 5: '指挥+112　治理+112　武力+75　谋略+75　速度+38　体力+338　攻+255　防+232', 7: '指挥+169　治理+169　武力+112　谋略+112　速度+56　体力+507　攻+340　防+310', 11: '指挥+253　治理+253　武力+169　谋略+169　速度+84　体力+760　攻+425　防+387', 15: '指挥+380　治理+380　武力+253　谋略+253　速度+127　体力+1138　攻+510　防+465', 19: '指挥+570　治理+570　武力+380　谋略+380　速度+190　体力+1707　攻+595　防+542'}, eff: {3: {tong: 75, nz: 75, yw: 50, zm: 50, spd: 25, sta: 225, atk: 170, def: 155}, 5: {tong: 112, nz: 112, yw: 75, zm: 75, spd: 38, sta: 338, atk: 255, def: 232}, 7: {tong: 169, nz: 169, yw: 112, zm: 112, spd: 56, sta: 507, atk: 340, def: 310}, 11: {tong: 253, nz: 253, yw: 169, zm: 169, spd: 84, sta: 760, atk: 425, def: 387}, 15: {tong: 380, nz: 380, yw: 253, zm: 253, spd: 127, sta: 1138, atk: 510, def: 465}, 19: {tong: 570, nz: 570, yw: 380, zm: 380, spd: 190, sta: 1707, atk: 595, def: 542}} },
+    rare_zhan: { name: '战团套', bonus: {3: '指挥+100　治理+25　武力+200　谋略+25　速度+75　体力+75　攻+460　防+420', 5: '指挥+150　治理+38　武力+300　谋略+38　速度+112　体力+112　攻+690　防+630', 7: '指挥+225　治理+56　武力+450　谋略+56　速度+169　体力+169　攻+920　防+840', 11: '指挥+338　治理+84　武力+676　谋略+84　速度+253　体力+253　攻+1150　防+1050', 15: '指挥+506　治理+127　武力+1011　谋略+127　速度+380　体力+380　攻+1380　防+1260', 19: '指挥+759　治理+190　武力+1518　谋略+190　速度+570　体力+570　攻+1610　防+1470'}, eff: {3: {tong: 100, nz: 25, yw: 200, zm: 25, spd: 75, sta: 75, atk: 460, def: 420}, 5: {tong: 150, nz: 38, yw: 300, zm: 38, spd: 112, sta: 112, atk: 690, def: 630}, 7: {tong: 225, nz: 56, yw: 450, zm: 56, spd: 169, sta: 169, atk: 920, def: 840}, 11: {tong: 338, nz: 84, yw: 676, zm: 84, spd: 253, sta: 253, atk: 1150, def: 1050}, 15: {tong: 506, nz: 127, yw: 1011, zm: 127, spd: 380, sta: 380, atk: 1380, def: 1260}, 19: {tong: 759, nz: 190, yw: 1518, zm: 190, spd: 570, sta: 570, atk: 1610, def: 1470}} },
+    rare_zhi: { name: '议会套', bonus: {3: '指挥+50　治理+200　武力+25　谋略+100　速度+50　体力+75　攻+460　防+420', 5: '指挥+75　治理+300　武力+38　谋略+150　速度+75　体力+112　攻+690　防+630', 7: '指挥+112　治理+451　武力+56　谋略+225　速度+112　体力+169　攻+920　防+840', 11: '指挥+169　治理+675　武力+84　谋略+338　速度+169　体力+253　攻+1150　防+1050', 15: '指挥+253　治理+1012　武力+127　谋略+506　速度+253　体力+380　攻+1380　防+1260', 19: '指挥+380　治理+1518　武力+190　谋略+759　速度+380　体力+570　攻+1610　防+1470'}, eff: {3: {tong: 50, nz: 200, yw: 25, zm: 100, spd: 50, sta: 75, atk: 460, def: 420}, 5: {tong: 75, nz: 300, yw: 38, zm: 150, spd: 75, sta: 112, atk: 690, def: 630}, 7: {tong: 112, nz: 451, yw: 56, zm: 225, spd: 112, sta: 169, atk: 920, def: 840}, 11: {tong: 169, nz: 675, yw: 84, zm: 338, spd: 169, sta: 253, atk: 1150, def: 1050}, 15: {tong: 253, nz: 1012, yw: 127, zm: 506, spd: 253, sta: 380, atk: 1380, def: 1260}, 19: {tong: 380, nz: 1518, yw: 190, zm: 759, spd: 380, sta: 570, atk: 1610, def: 1470}} },
+    rare_ti: { name: '壁垒套', bonus: {3: '指挥+75　治理+75　武力+50　谋略+50　速度+25　体力+225　攻+460　防+420', 5: '指挥+112　治理+112　武力+75　谋略+75　速度+38　体力+338　攻+690　防+630', 7: '指挥+169　治理+169　武力+112　谋略+112　速度+56　体力+507　攻+920　防+840', 11: '指挥+253　治理+253　武力+169　谋略+169　速度+84　体力+760　攻+1150　防+1050', 15: '指挥+380　治理+380　武力+253　谋略+253　速度+127　体力+1138　攻+1380　防+1260', 19: '指挥+570　治理+570　武力+380　谋略+380　速度+190　体力+1707　攻+1610　防+1470'}, eff: {3: {tong: 75, nz: 75, yw: 50, zm: 50, spd: 25, sta: 225, atk: 460, def: 420}, 5: {tong: 112, nz: 112, yw: 75, zm: 75, spd: 38, sta: 338, atk: 690, def: 630}, 7: {tong: 169, nz: 169, yw: 112, zm: 112, spd: 56, sta: 507, atk: 920, def: 840}, 11: {tong: 253, nz: 253, yw: 169, zm: 169, spd: 84, sta: 760, atk: 1150, def: 1050}, 15: {tong: 380, nz: 380, yw: 253, zm: 253, spd: 127, sta: 1138, atk: 1380, def: 1260}, 19: {tong: 570, nz: 570, yw: 380, zm: 380, spd: 190, sta: 1707, atk: 1610, def: 1470}} },
+    legend_zhan: { name: '诸神套', bonus: {3: '指挥+100　治理+25　武力+200　谋略+25　速度+75　体力+75　攻+1200　防+1090', 5: '指挥+150　治理+38　武力+300　谋略+38　速度+112　体力+112　攻+1800　防+1635', 7: '指挥+225　治理+56　武力+450　谋略+56　速度+169　体力+169　攻+2400　防+2180', 11: '指挥+338　治理+84　武力+676　谋略+84　速度+253　体力+253　攻+3000　防+2725', 15: '指挥+506　治理+127　武力+1011　谋略+127　速度+380　体力+380　攻+3600　防+3270', 19: '指挥+759　治理+190　武力+1518　谋略+190　速度+570　体力+570　攻+4200　防+3815'}, eff: {3: {tong: 100, nz: 25, yw: 200, zm: 25, spd: 75, sta: 75, atk: 1200, def: 1090}, 5: {tong: 150, nz: 38, yw: 300, zm: 38, spd: 112, sta: 112, atk: 1800, def: 1635}, 7: {tong: 225, nz: 56, yw: 450, zm: 56, spd: 169, sta: 169, atk: 2400, def: 2180}, 11: {tong: 338, nz: 84, yw: 676, zm: 84, spd: 253, sta: 253, atk: 3000, def: 2725}, 15: {tong: 506, nz: 127, yw: 1011, zm: 127, spd: 380, sta: 380, atk: 3600, def: 3270}, 19: {tong: 759, nz: 190, yw: 1518, zm: 190, spd: 570, sta: 570, atk: 4200, def: 3815}} },
+    legend_zhi: { name: '智囊套', bonus: {3: '指挥+50　治理+200　武力+25　谋略+100　速度+50　体力+75　攻+1200　防+1090', 5: '指挥+75　治理+300　武力+38　谋略+150　速度+75　体力+112　攻+1800　防+1635', 7: '指挥+112　治理+451　武力+56　谋略+225　速度+112　体力+169　攻+2400　防+2180', 11: '指挥+169　治理+675　武力+84　谋略+338　速度+169　体力+253　攻+3000　防+2725', 15: '指挥+253　治理+1012　武力+127　谋略+506　速度+253　体力+380　攻+3600　防+3270', 19: '指挥+380　治理+1518　武力+190　谋略+759　速度+380　体力+570　攻+4200　防+3815'}, eff: {3: {tong: 50, nz: 200, yw: 25, zm: 100, spd: 50, sta: 75, atk: 1200, def: 1090}, 5: {tong: 75, nz: 300, yw: 38, zm: 150, spd: 75, sta: 112, atk: 1800, def: 1635}, 7: {tong: 112, nz: 451, yw: 56, zm: 225, spd: 112, sta: 169, atk: 2400, def: 2180}, 11: {tong: 169, nz: 675, yw: 84, zm: 338, spd: 169, sta: 253, atk: 3000, def: 2725}, 15: {tong: 253, nz: 1012, yw: 127, zm: 506, spd: 253, sta: 380, atk: 3600, def: 3270}, 19: {tong: 380, nz: 1518, yw: 190, zm: 759, spd: 380, sta: 570, atk: 4200, def: 3815}} },
+    legend_ti: { name: '不朽套', bonus: {3: '指挥+75　治理+75　武力+50　谋略+50　速度+25　体力+225　攻+1200　防+1090', 5: '指挥+112　治理+112　武力+75　谋略+75　速度+38　体力+338　攻+1800　防+1635', 7: '指挥+169　治理+169　武力+112　谋略+112　速度+56　体力+507　攻+2400　防+2180', 11: '指挥+253　治理+253　武力+169　谋略+169　速度+84　体力+760　攻+3000　防+2725', 15: '指挥+380　治理+380　武力+253　谋略+253　速度+127　体力+1138　攻+3600　防+3270', 19: '指挥+570　治理+570　武力+380　谋略+380　速度+190　体力+1707　攻+4200　防+3815'}, eff: {3: {tong: 75, nz: 75, yw: 50, zm: 50, spd: 25, sta: 225, atk: 1200, def: 1090}, 5: {tong: 112, nz: 112, yw: 75, zm: 75, spd: 38, sta: 338, atk: 1800, def: 1635}, 7: {tong: 169, nz: 169, yw: 112, zm: 112, spd: 56, sta: 507, atk: 2400, def: 2180}, 11: {tong: 253, nz: 253, yw: 169, zm: 169, spd: 84, sta: 760, atk: 3000, def: 2725}, 15: {tong: 380, nz: 380, yw: 253, zm: 253, spd: 127, sta: 1138, atk: 3600, def: 3270}, 19: {tong: 570, nz: 570, yw: 380, zm: 380, spd: 190, sta: 1707, atk: 4200, def: 3815}} },
+    divine_zhan: { name: '天罚套', bonus: {3: '指挥+100　治理+25　武力+200　谋略+25　速度+75　体力+75　攻+2900　防+2630', 5: '指挥+150　治理+38　武力+300　谋略+38　速度+112　体力+112　攻+4350　防+3945', 7: '指挥+225　治理+56　武力+450　谋略+56　速度+169　体力+169　攻+5800　防+5260', 11: '指挥+338　治理+84　武力+676　谋略+84　速度+253　体力+253　攻+7250　防+6575', 15: '指挥+506　治理+127　武力+1011　谋略+127　速度+380　体力+380　攻+8700　防+7890', 19: '指挥+759　治理+190　武力+1518　谋略+190　速度+570　体力+570　攻+10150　防+9205'}, eff: {3: {tong: 100, nz: 25, yw: 200, zm: 25, spd: 75, sta: 75, atk: 2900, def: 2630}, 5: {tong: 150, nz: 38, yw: 300, zm: 38, spd: 112, sta: 112, atk: 4350, def: 3945}, 7: {tong: 225, nz: 56, yw: 450, zm: 56, spd: 169, sta: 169, atk: 5800, def: 5260}, 11: {tong: 338, nz: 84, yw: 676, zm: 84, spd: 253, sta: 253, atk: 7250, def: 6575}, 15: {tong: 506, nz: 127, yw: 1011, zm: 127, spd: 380, sta: 380, atk: 8700, def: 7890}, 19: {tong: 759, nz: 190, yw: 1518, zm: 190, spd: 570, sta: 570, atk: 10150, def: 9205}} },
+    divine_zhi: { name: '神谕套', bonus: {3: '指挥+50　治理+200　武力+25　谋略+100　速度+50　体力+75　攻+2900　防+2630', 5: '指挥+75　治理+300　武力+38　谋略+150　速度+75　体力+112　攻+4350　防+3945', 7: '指挥+112　治理+451　武力+56　谋略+225　速度+112　体力+169　攻+5800　防+5260', 11: '指挥+169　治理+675　武力+84　谋略+338　速度+169　体力+253　攻+7250　防+6575', 15: '指挥+253　治理+1012　武力+127　谋略+506　速度+253　体力+380　攻+8700　防+7890', 19: '指挥+380　治理+1518　武力+190　谋略+759　速度+380　体力+570　攻+10150　防+9205'}, eff: {3: {tong: 50, nz: 200, yw: 25, zm: 100, spd: 50, sta: 75, atk: 2900, def: 2630}, 5: {tong: 75, nz: 300, yw: 38, zm: 150, spd: 75, sta: 112, atk: 4350, def: 3945}, 7: {tong: 112, nz: 451, yw: 56, zm: 225, spd: 112, sta: 169, atk: 5800, def: 5260}, 11: {tong: 169, nz: 675, yw: 84, zm: 338, spd: 169, sta: 253, atk: 7250, def: 6575}, 15: {tong: 253, nz: 1012, yw: 127, zm: 506, spd: 253, sta: 380, atk: 8700, def: 7890}, 19: {tong: 380, nz: 1518, yw: 190, zm: 759, spd: 380, sta: 570, atk: 10150, def: 9205}} },
+    divine_ti: { name: '机体套', bonus: {3: '指挥+75　治理+75　武力+50　谋略+50　速度+25　体力+225　攻+2900　防+2630', 5: '指挥+112　治理+112　武力+75　谋略+75　速度+38　体力+338　攻+4350　防+3945', 7: '指挥+169　治理+169　武力+112　谋略+112　速度+56　体力+507　攻+5800　防+5260', 11: '指挥+253　治理+253　武力+169　谋略+169　速度+84　体力+760　攻+7250　防+6575', 15: '指挥+380　治理+380　武力+253　谋略+253　速度+127　体力+1138　攻+8700　防+7890', 19: '指挥+570　治理+570　武力+380　谋略+380　速度+190　体力+1707　攻+10150　防+9205'}, eff: {3: {tong: 75, nz: 75, yw: 50, zm: 50, spd: 25, sta: 225, atk: 2900, def: 2630}, 5: {tong: 112, nz: 112, yw: 75, zm: 75, spd: 38, sta: 338, atk: 4350, def: 3945}, 7: {tong: 169, nz: 169, yw: 112, zm: 112, spd: 56, sta: 507, atk: 5800, def: 5260}, 11: {tong: 253, nz: 253, yw: 169, zm: 169, spd: 84, sta: 760, atk: 7250, def: 6575}, 15: {tong: 380, nz: 380, yw: 253, zm: 253, spd: 127, sta: 1138, atk: 8700, def: 7890}, 19: {tong: 570, nz: 570, yw: 380, zm: 380, spd: 190, sta: 1707, atk: 10150, def: 9205}} },
   };
 
   /* ============================================================
@@ -2113,7 +2452,7 @@
   DATA.APP_SCALE = { min: 0.6, max: 1.6 };
 
   DATA.FORT = {
-    density: 1 / 12,
+    density: 1 / 24,                                             /* v90.66（老板）：据点数量减半（1/12 → 1/24）*/
     /* v89.88（老板需求 3「普通城 8，9，10 级城分别占 30%」）：等级上限 8 → 10 ——
        补齐 9/10 两档（自动出征的等级候选早已是 1~10，此前这两档永远筛不出目标）。 */
     levelMin: 1, levelMax: 10,
@@ -2675,16 +3014,18 @@
    * 锻造间等级决定可打造品质；套装件需对应「图纸」
    * ============================================================ */
   DATA.FORGE = {
-    /* 锻造间等级 → 可打造的最高品质 */
-    tierLv: [1, 3, 5, 7],
-    /* 各品质基准成本 */
+    /* 锻造间等级 → 可打造的最高品质（v90.14：6 档） */
+    tierLv: [1, 3, 5, 7, 8, 9],
+    /* 各品质基准成本（v90.14：6 档） */
     costByQ: {
       1: { gold: 800, iron: 300, wood: 200, stone: 100 },
       2: { gold: 4000, iron: 1500, wood: 1000, stone: 500 },
       3: { gold: 20000, iron: 7000, wood: 4500, stone: 2200 },
       4: { gold: 90000, iron: 30000, wood: 20000, stone: 10000 },
+      5: { gold: 320000, iron: 110000, wood: 72000, stone: 36000 },
+      6: { gold: 1100000, iron: 380000, wood: 250000, stone: 125000 },
     },
-    setMul: 2.2,          // 套装件成本倍率（散件更便宜）
+    setMul: 2.2,          // 套装件成本倍率
     slotMul: { weapon: 1.6, mount: 2.0, chest: 1.25, head: 1.1 },
     slotMulDef: 1.0,
   };
@@ -2707,51 +3048,33 @@
     stoneMul: 0.22,
   };
 
-  /* 可打造散件（12 槽位 × 4 品质，脚本生成；套装件另见 EQUIP 表） */
-  /* 四档命名（与所用材料品阶呼应；主系列见 FORGE.matBySlot）——
-     v89.228 名录换代（旧「宝刀/神兵/明光铠/吞肩甲/护心臂/蟠龙带/踏云靴/龙驹」，见映射表） */
-  DATA.CRAFT_SLOTS = [
-    { id: 'weapon',   primary: 'iron',    names: ['铁刀', '钢刀', '钢锭战刀', '陨铁战刃'],       stat: 'atk', v: [78, 264, 558, 960] },
-    { id: 'head',     primary: 'iron',    names: ['皮盔', '铁盔', '钢锭盔', '陨铁盔'],   stat: 'def', v: [72, 242, 511, 880] },
-    { id: 'chest',    primary: 'iron',    names: ['皮甲', '铁甲', '钢锭铠', '陨铁铠'],   stat: 'def', v: [98, 330, 700, 1200] },
-    { id: 'shoulder', primary: 'iron',    names: ['皮肩', '铁肩铠', '钢锭肩铠', '陨铁肩'], stat: 'def', v: [72, 242, 511, 880] },
-    { id: 'arm',      primary: 'iron',    names: ['皮臂', '铁臂甲', '钢锭臂甲', '陨铁臂'], stat: 'def', v: [66, 220, 464, 800] },
-    { id: 'waist',    primary: 'leather', names: ['皮带', '熟皮带', '硬甲皮带', '变异皮带'], stat: 'def', v: [66, 220, 464, 800] },
-    { id: 'feet',     primary: 'leather', names: ['草鞋', '皮靴', '硬甲皮靴', '变异皮靴'],   stat: 'spd', v: [5, 20, 44, 78] },
-    { id: 'neck',     primary: 'jade',    names: ['碎晶坠', '晶坯坠', '纯晶坠', '源晶坠'], stat: 'tong', v: [10, 22, 38, 56] },
-    { id: 'ring',     primary: 'jade',    names: ['碎晶戒', '晶坯戒', '纯晶戒', '源晶戒'], stat: 'tong', v: [10, 22, 38, 56] },
-    { id: 'pendant',  primary: 'jade',    names: ['木佩', '晶坯佩', '纯晶佩', '源晶佩'],  stat: 'zm', v: [10, 22, 38, 56] },
-    { id: 'back',     primary: 'silk',    names: ['帆布披风', '细布披风', '高强披风', '光学披风'], stat: 'zm', v: [10, 22, 38, 56] },
-    { id: 'mount',    primary: 'leather', names: ['驽马', '良马', '骏马', '战马'],       stat: 'spd', v: [9, 36, 82, 146] },
-  ];
-  /* 品阶 → 打造散件的**体力**（源数据表的「体力」列；v66 起并进体力上限） */
-  DATA.Q_STA = { 1: 80, 2: 220, 3: 420, 4: 700 };
-  DATA.Q_NAME = { 1: '粗制', 2: '标准', 3: '精良', 4: '原型' };
-  /* 品阶 → 该品阶主材料名（用于「部位未写 names 时」的兜底命名）。
-     此前该表被引用却从未定义，只因所有 CRAFT_SLOTS 都写了 names 才没炸 ——
-     属潜伏地雷：新增一个漏写 names 的部位就会崩在下面那行。 */
+  /* ⛔ v90.14（老板）：「不再有散件」—— 原 CRAFT_SLOTS → cr_* 散件生成**整体退役**。
+     锻造间只造套装件（见 GAME.forgeList：it.set 即可造）。
+     v90.53：`DATA.CRAFT_SLOTS` / `DATA.Q_STA` 两表已**删除**（零引用死表 · 数据表卫生审计报孤儿）——
+     槽位/属性参照已由 EQUIP/SET 体系承接，此处不留空壳。 */
+  /* v90.14：Q_NAME 已在套装重设块按 6 档给出（粗劣/优良/精品/稀有/传奇/机神），此处不再覆盖。 */
   DATA.Q_MAT = { 1: '粗铁', 2: '精铁', 3: '钢锭', 4: '陨铁' };
-  (function () {
-    DATA.CRAFT_SLOTS.forEach(function (sl) {
-      for (var q = 1; q <= 4; q++) {
-        var id = 'cr_' + sl.id + '_' + q;
-        if (DATA.EQUIP[id]) continue;
-        var it = { id: id, name: (sl.names && sl.names[q - 1]) || (DATA.Q_MAT[q] + sl.name),
-          slot: sl.id, q: q, sta: DATA.Q_STA[q], craft: true };
-        it[sl.stat] = sl.v[q - 1];
-        DATA.EQUIP[id] = it;
-      }
-    });
-  })();
 
-  /* 装备图纸（q3/q4 套装件的前置） */
+  /* v90.14：18 套图纸（对应 6 档 × 3 侧重）—— 打造该套的前置 */
   DATA.BLUEPRINTS = [
-    { id: 'bp_mingjiang', name: '佣兵套图纸', type: 'blueprint', set: 'mingjiang', price: 60, forgeLv: 3,
-      desc: '凭此可在锻造间打造「佣兵套」（需锻造间 Lv3）' },
-    { id: 'bp_shenwu', name: '军魂套图纸', type: 'blueprint', set: 'shenwu', price: 110, forgeLv: 5,
-      desc: '凭此可在锻造间打造「军魂套」（需锻造间 Lv5）' },
-    { id: 'bp_yitian', name: '陨锋套图纸', type: 'blueprint', set: 'yitian', price: 320, forgeLv: 7,
-      desc: '凭此可在锻造间打造「陨锋套」（需锻造间 Lv7）' },
+    { id: 'bp_coarse_zhan', name: '拾荒套图纸', type: 'blueprint', set: 'coarse_zhan', price: 20, forgeLv: 1, desc: '凭此可在锻造间打造「拾荒套」' },
+    { id: 'bp_coarse_zhi', name: '补丁套图纸', type: 'blueprint', set: 'coarse_zhi', price: 20, forgeLv: 1, desc: '凭此可在锻造间打造「补丁套」' },
+    { id: 'bp_coarse_ti', name: '铁皮套图纸', type: 'blueprint', set: 'coarse_ti', price: 20, forgeLv: 1, desc: '凭此可在锻造间打造「铁皮套」' },
+    { id: 'bp_fine_zhan', name: '巡逻套图纸', type: 'blueprint', set: 'fine_zhan', price: 60, forgeLv: 3, desc: '凭此可在锻造间打造「巡逻套」' },
+    { id: 'bp_fine_zhi', name: '工坊套图纸', type: 'blueprint', set: 'fine_zhi', price: 60, forgeLv: 3, desc: '凭此可在锻造间打造「工坊套」' },
+    { id: 'bp_fine_ti', name: '装卸套图纸', type: 'blueprint', set: 'fine_ti', price: 60, forgeLv: 3, desc: '凭此可在锻造间打造「装卸套」' },
+    { id: 'bp_prime_zhan', name: '猎杀套图纸', type: 'blueprint', set: 'prime_zhan', price: 110, forgeLv: 5, desc: '凭此可在锻造间打造「猎杀套」' },
+    { id: 'bp_prime_zhi', name: '中枢套图纸', type: 'blueprint', set: 'prime_zhi', price: 110, forgeLv: 5, desc: '凭此可在锻造间打造「中枢套」' },
+    { id: 'bp_prime_ti', name: '重装套图纸', type: 'blueprint', set: 'prime_ti', price: 110, forgeLv: 5, desc: '凭此可在锻造间打造「重装套」' },
+    { id: 'bp_rare_zhan', name: '战团套图纸', type: 'blueprint', set: 'rare_zhan', price: 200, forgeLv: 7, desc: '凭此可在锻造间打造「战团套」' },
+    { id: 'bp_rare_zhi', name: '议会套图纸', type: 'blueprint', set: 'rare_zhi', price: 200, forgeLv: 7, desc: '凭此可在锻造间打造「议会套」' },
+    { id: 'bp_rare_ti', name: '壁垒套图纸', type: 'blueprint', set: 'rare_ti', price: 200, forgeLv: 7, desc: '凭此可在锻造间打造「壁垒套」' },
+    { id: 'bp_legend_zhan', name: '诸神套图纸', type: 'blueprint', set: 'legend_zhan', price: 320, forgeLv: 8, desc: '凭此可在锻造间打造「诸神套」' },
+    { id: 'bp_legend_zhi', name: '智囊套图纸', type: 'blueprint', set: 'legend_zhi', price: 320, forgeLv: 8, desc: '凭此可在锻造间打造「智囊套」' },
+    { id: 'bp_legend_ti', name: '不朽套图纸', type: 'blueprint', set: 'legend_ti', price: 320, forgeLv: 8, desc: '凭此可在锻造间打造「不朽套」' },
+    { id: 'bp_divine_zhan', name: '天罚套图纸', type: 'blueprint', set: 'divine_zhan', price: 500, forgeLv: 9, desc: '凭此可在锻造间打造「天罚套」' },
+    { id: 'bp_divine_zhi', name: '神谕套图纸', type: 'blueprint', set: 'divine_zhi', price: 500, forgeLv: 9, desc: '凭此可在锻造间打造「神谕套」' },
+    { id: 'bp_divine_ti', name: '机体套图纸', type: 'blueprint', set: 'divine_ti', price: 500, forgeLv: 9, desc: '凭此可在锻造间打造「机体套」' },
   ];
 
   /* 图纸并入宝物表（可入背包、可游商购买、可掉落） */
@@ -2850,21 +3173,28 @@
    * 例：武器 = 铁系 + 木系 + 筋系，品质4 则吃 陨铁 + 复合材 + 仿生腱
    * ------------------------------------------------------------ */
   DATA.FORGE.matBySlot = {
-    weapon:   ['iron', 'wood', 'sinew'],
-    head:     ['iron', 'leather'],
-    chest:    ['iron', 'leather'],
-    shoulder: ['iron', 'leather'],
-    arm:      ['iron', 'leather'],
-    waist:    ['leather', 'iron'],
-    back:     ['silk', 'leather'],
-    feet:     ['leather', 'sinew'],
-    neck:     ['jade', 'iron'],
-    ring:     ['jade', 'iron'],
-    pendant:  ['jade', 'silk'],
-    mount:    ['leather', 'sinew', 'silk'],
+    weapon:    ['iron', 'wood', 'sinew'],
+    head:      ['iron', 'leather'],
+    chest:     ['iron', 'leather'],
+    waist:     ['leather', 'iron'],
+    arm_up_l:  ['iron', 'leather'],
+    arm_up_r:  ['iron', 'leather'],
+    arm_low_l: ['iron', 'leather'],
+    arm_low_r: ['iron', 'leather'],
+    thigh_l:   ['iron', 'leather'],
+    thigh_r:   ['iron', 'leather'],
+    shin_l:    ['iron', 'leather'],
+    shin_r:    ['iron', 'leather'],
+    foot_l:    ['leather', 'sinew'],
+    foot_r:    ['leather', 'sinew'],
+    neck:      ['jade', 'iron'],
+    ring:      ['jade', 'iron'],
+    pendant:   ['jade', 'silk'],
+    back:      ['silk', 'leather'],
+    mount:     ['leather', 'sinew', 'silk'],
   };
   /* 品质 → 各系列需求量（主料 / 次料 / 辅料） */
-  DATA.FORGE.qtyByQ = { 1: [3, 2, 1], 2: [6, 4, 2], 3: [10, 7, 4], 4: [16, 11, 6] };
+  DATA.FORGE.qtyByQ = { 1: [3, 2, 1], 2: [6, 4, 2], 3: [10, 7, 4], 4: [16, 11, 6], 5: [26, 18, 10], 6: [42, 29, 16] };
   DATA.FORGE.setMatMul = 1.5;    // 套装件材料 ×1.5
   DATA.FORGE.salvageRate = 0.4;  // 拆解装备时回收的比例
   DATA.DEMOLISH_RATE = 0.5;      // 拆毁建筑返还累计投入的比例
@@ -3265,6 +3595,9 @@
    * 调平衡只改本配置（UI / 探针 / 推演全从这里读，别处不许另算价）。
    * ============================================================ */
   DATA.ITEM_SELL = { rate: 0.75 };
+  /* v90.55（老板）：**装备出售**回收率 —— 售价 = 估值（itemValue）× rate，换旧币（入**当前城**）。
+     与拆解并列：拆解回收 40% 材料，出售直接给旧币、按估值 60%。 */
+  DATA.EQUIP_SELL = { rate: 0.6 };
 
   /* ============================================================
    * 募兵提速 · 花旧币买时间（v89.49 · 老板「募兵队列怎么不可加速了？」）
@@ -4293,6 +4626,11 @@
   DATA.LING_STA = [40, 100, 200, 370, 620, 1020];
   /* 12 部位 x 6 阶散件（脚本生成）。主属性值 = 机甲同级精神的 75% 量级，
      4 阶武器 420 对齐机甲精良 558 x 0.75 = 419。数值待实测定。 */
+  /* v90.11：机甲槽位扩到 19（身体 13 + 外挂 6），基因强化仍为 12 槽 ——
+     两者分道：槽列表用 DATA.EQUIP_SLOTS（机甲）/ DATA.LING_SLOTS_ID（基因）。 */
+  DATA.LING_SLOTS_ID = ['weapon', 'head', 'chest', 'shoulder', 'arm', 'waist',
+    'feet', 'neck', 'ring', 'pendant', 'back', 'mount'];
+
   DATA.LING_SLOTS = [
     { id: 'weapon',   names: ['废钢爪', '刀爪', '制式骨刃', '军规骨刃', '动力骨刃', '遗世利爪'],       stat: 'atk', v: [50, 120, 230, 420, 710, 1090] },
     { id: 'head',     names: ['颅骨补片', '接目镜', '战术义眼', '装甲义眼', '观瞄义脑', '遗世天目'],       stat: 'def', v: [45, 105, 210, 385, 650, 1000] },
@@ -4391,7 +4729,7 @@
       outcomes: [
         { w: 30, t: '第一层便有所获', gold: [1500, 3500] },
         { w: 28, t: '第二层遗藏', mats: [2, 4] },
-        { w: 16, t: '第三层秘宝（佣兵套图纸）', item: 'bp_mingjiang' },
+        { w: 16, t: '第三层秘宝（优良套图纸）', item: 'bp_fine_zhan' },
         { w: 12, t: '探得珠宝', jewel: { n: [1, 3] } },
         { w: 14, t: '地宫塌方，负伤逃出', wound: 12 },
       ] },
@@ -5122,12 +5460,12 @@
       /* 游猎套（q2 标准）—— 速度+14　体力+25 … 指挥+30　速度+12 */
       yx_h: { id: 'yx_h', name: '游猎头巾', set: 'youxia', slot: 'head', q: 2, sta: 250, def: 271, yw: 8 },
       yx_n: { id: 'yx_n', name: '游猎项坠', set: 'youxia', slot: 'neck', q: 2, sta: 250, tong: 25 },
-      yx_s: { id: 'yx_s', name: '游猎肩披', set: 'youxia', slot: 'shoulder', q: 2, sta: 250, def: 271 },
+      yx_s: { id: 'yx_s', name: '游猎肩披', set: 'youxia', slot: 'arm_up_l', q: 2, sta: 250, def: 271 },
       yx_c: { id: 'yx_c', name: '游猎短打', set: 'youxia', slot: 'chest', q: 2, sta: 250, def: 370 },
       yx_b: { id: 'yx_b', name: '游猎披风', set: 'youxia', slot: 'back', q: 2, sta: 250, zm: 25, yw: 6 },
       yx_w: { id: 'yx_w', name: '游猎束带', set: 'youxia', slot: 'waist', q: 2, sta: 250, def: 246 },
-      yx_a: { id: 'yx_a', name: '游猎护臂', set: 'youxia', slot: 'arm', q: 2, sta: 250, def: 246, yw: 6 },
-      yx_f: { id: 'yx_f', name: '游猎快靴', set: 'youxia', slot: 'feet', q: 2, sta: 250, spd: 38 },
+      yx_a: { id: 'yx_a', name: '游猎护臂', set: 'youxia', slot: 'arm_low_l', q: 2, sta: 250, def: 246, yw: 6 },
+      yx_f: { id: 'yx_f', name: '游猎快靴', set: 'youxia', slot: 'foot_l', q: 2, sta: 250, spd: 38 },
       yx_r: { id: 'yx_r', name: '游猎指环', set: 'youxia', slot: 'ring', q: 2, sta: 250, tong: 25, spd: 4 },
       yx_p: { id: 'yx_p', name: '游猎玉佩', set: 'youxia', slot: 'pendant', q: 2, sta: 250, zm: 25, yw: 6 },
       yx_x: { id: 'yx_x', name: '游猎短剑', set: 'youxia', slot: 'weapon', q: 2, sta: 250, atk: 296, yw: 14 },
@@ -5135,12 +5473,12 @@
       /* 冲锋套（q3 珍品）—— 武力+20　攻击+240 … 指挥+50　攻击+430　速度+5 */
       xz_h: { id: 'xz_h', name: '冲锋铁盔', set: 'xianzhen', slot: 'head', q: 3, sta: 470, def: 572, yw: 12 },
       xz_n: { id: 'xz_n', name: '冲锋坠饰', set: 'xianzhen', slot: 'neck', q: 3, sta: 470, tong: 43 },
-      xz_s: { id: 'xz_s', name: '冲锋肩铠', set: 'xianzhen', slot: 'shoulder', q: 3, sta: 470, def: 572 },
+      xz_s: { id: 'xz_s', name: '冲锋肩铠', set: 'xianzhen', slot: 'arm_up_l', q: 3, sta: 470, def: 572 },
       xz_c: { id: 'xz_c', name: '冲锋重铠', set: 'xianzhen', slot: 'chest', q: 3, sta: 470, def: 874 },
       xz_b: { id: 'xz_b', name: '冲锋战袍', set: 'xianzhen', slot: 'back', q: 3, sta: 470, zm: 43 },
       xz_w: { id: 'xz_w', name: '冲锋铁带', set: 'xianzhen', slot: 'waist', q: 3, sta: 470, def: 520 },
-      xz_a: { id: 'xz_a', name: '冲锋臂甲', set: 'xianzhen', slot: 'arm', q: 3, sta: 470, def: 520, yw: 10 },
-      xz_f: { id: 'xz_f', name: '冲锋战靴', set: 'xianzhen', slot: 'feet', q: 3, sta: 470, spd: 55, yw: 8 },
+      xz_a: { id: 'xz_a', name: '冲锋臂甲', set: 'xianzhen', slot: 'arm_low_l', q: 3, sta: 470, def: 520, yw: 10 },
+      xz_f: { id: 'xz_f', name: '冲锋战靴', set: 'xianzhen', slot: 'foot_l', q: 3, sta: 470, spd: 55, yw: 8 },
       xz_r: { id: 'xz_r', name: '冲锋指环', set: 'xianzhen', slot: 'ring', q: 3, sta: 470, tong: 43 },
       xz_p: { id: 'xz_p', name: '冲锋玉佩', set: 'xianzhen', slot: 'pendant', q: 3, sta: 470, zm: 43 },
       xz_x: { id: 'xz_x', name: '冲锋长戟', set: 'xianzhen', slot: 'weapon', q: 3, sta: 470, atk: 745, yw: 18 },
@@ -5148,12 +5486,12 @@
       /* 壁垒套（q3 珍品）—— 防御+280　体力+60 … 指挥+60　体力+150 */
       sy_h: { id: 'sy_h', name: '壁垒兜鍪', set: 'shouyu', slot: 'head', q: 3, sta: 470, def: 672 },
       sy_n: { id: 'sy_n', name: '壁垒坠饰', set: 'shouyu', slot: 'neck', q: 3, sta: 470, tong: 43 },
-      sy_s: { id: 'sy_s', name: '壁垒肩铠', set: 'shouyu', slot: 'shoulder', q: 3, sta: 470, def: 672 },
+      sy_s: { id: 'sy_s', name: '壁垒肩铠', set: 'shouyu', slot: 'arm_up_l', q: 3, sta: 470, def: 672 },
       sy_c: { id: 'sy_c', name: '壁垒重铠', set: 'shouyu', slot: 'chest', q: 3, sta: 470, def: 964 },
       sy_b: { id: 'sy_b', name: '壁垒披风', set: 'shouyu', slot: 'back', q: 3, sta: 470, zm: 43, def: 60 },
       sy_w: { id: 'sy_w', name: '壁垒腰甲', set: 'shouyu', slot: 'waist', q: 3, sta: 470, def: 620 },
-      sy_a: { id: 'sy_a', name: '壁垒臂甲', set: 'shouyu', slot: 'arm', q: 3, sta: 470, def: 610 },
-      sy_f: { id: 'sy_f', name: '壁垒战靴', set: 'shouyu', slot: 'feet', q: 3, sta: 470, spd: 49, def: 40 },
+      sy_a: { id: 'sy_a', name: '壁垒臂甲', set: 'shouyu', slot: 'arm_low_l', q: 3, sta: 470, def: 610 },
+      sy_f: { id: 'sy_f', name: '壁垒战靴', set: 'shouyu', slot: 'foot_l', q: 3, sta: 470, spd: 49, def: 40 },
       sy_r: { id: 'sy_r', name: '壁垒指环', set: 'shouyu', slot: 'ring', q: 3, sta: 470, tong: 43 },
       sy_p: { id: 'sy_p', name: '壁垒玉佩', set: 'shouyu', slot: 'pendant', q: 3, sta: 470, zm: 43 },
       sy_x: { id: 'sy_x', name: '壁垒刀盾', set: 'shouyu', slot: 'weapon', q: 3, sta: 470, atk: 705, def: 120 },
@@ -5161,20 +5499,19 @@
       /* 智囊套（q4 神品）—— 治理+30　体力+30 … 治理+40　谋略+40　攻击+300 */
       tc_h: { id: 'tc_h', name: '智囊冠', set: 'tiance', slot: 'head', q: 4, sta: 620, def: 986, nz: 12 },
       tc_n: { id: 'tc_n', name: '智囊璎珞', set: 'tiance', slot: 'neck', q: 4, sta: 620, tong: 87 },
-      tc_s: { id: 'tc_s', name: '智囊云肩', set: 'tiance', slot: 'shoulder', q: 4, sta: 620, def: 986, nz: 10 },
+      tc_s: { id: 'tc_s', name: '智囊云肩', set: 'tiance', slot: 'arm_up_l', q: 4, sta: 620, def: 986, nz: 10 },
       tc_c: { id: 'tc_c', name: '智囊战袍', set: 'tiance', slot: 'chest', q: 4, sta: 620, def: 1344, nz: 16 },
       tc_b: { id: 'tc_b', name: '智囊披风', set: 'tiance', slot: 'back', q: 4, sta: 620, zm: 87 },
       tc_w: { id: 'tc_w', name: '智囊玉带', set: 'tiance', slot: 'waist', q: 4, sta: 620, def: 896, nz: 8 },
-      tc_a: { id: 'tc_a', name: '智囊护腕', set: 'tiance', slot: 'arm', q: 4, sta: 620, def: 896, nz: 8 },
-      tc_f: { id: 'tc_f', name: '智囊战靴', set: 'tiance', slot: 'feet', q: 4, sta: 620, spd: 99, nz: 6 },
+      tc_a: { id: 'tc_a', name: '智囊护腕', set: 'tiance', slot: 'arm_low_l', q: 4, sta: 620, def: 896, nz: 8 },
+      tc_f: { id: 'tc_f', name: '智囊战靴', set: 'tiance', slot: 'foot_l', q: 4, sta: 620, spd: 99, nz: 6 },
       tc_r: { id: 'tc_r', name: '智囊玉戒', set: 'tiance', slot: 'ring', q: 4, sta: 620, tong: 87 },
       tc_p: { id: 'tc_p', name: '智囊玉佩', set: 'tiance', slot: 'pendant', q: 4, sta: 620, zm: 87 },
       tc_x: { id: 'tc_x', name: '智囊宝剑', set: 'tiance', slot: 'weapon', q: 4, sta: 620, atk: 1135, zm: 10 },
       tc_m: { id: 'tc_m', name: '智囊良驹', set: 'tiance', slot: 'mount', q: 4, sta: 620, spd: 182, tong: 8 },
     };
-    for (var ek in NEW_EQUIP) DATA.EQUIP[ek] = NEW_EQUIP[ek];
-
-    /* ---------- ② 四套加成（3/5/7/11 累计） ---------- */
+    /* ⛔ v90.14：NEW_EQUIP 整块退役（老 4 套被 18 新套取代）—— 不再写入 DATA.EQUIP。
+       （保留字面量仅为历史参照，不 apply。） */
     var NEW_SETS = {
       youxia: { name: '游猎套',
         bonus: { 3: '速度+14　体力+25', 5: '武力+40', 7: '攻击+130', 11: '指挥+30　速度+12' },
@@ -5189,16 +5526,11 @@
         bonus: { 3: '治理+30　体力+30', 5: '谋略+30', 7: '指挥+50', 11: '治理+40　谋略+40　攻击+300' },
         eff: { 3: { nz: 30, sta: 30 }, 5: { zm: 30 }, 7: { tong: 50 }, 11: { atk: 300, nz: 40, zm: 40 } } },
     };
-    for (var sk in NEW_SETS) DATA.SETS[sk] = NEW_SETS[sk];
+    /* ⛔ v90.14：NEW_SETS 不再 apply（18 新套已在 SETS 重设块给出）。 */
+    void NEW_SETS;
 
-    /* ---------- ③ 四张新图纸（锻造间前置；forgeList 自动收录新套） ---------- */
-    [      { id: 'bp_youxia', name: '游猎套图纸', type: 'blueprint', set: 'youxia', price: 70, forgeLv: 3, desc: '凭此可在锻造间打造「游猎套」（需锻造间 Lv3）' },
-          { id: 'bp_xianzhen', name: '冲锋套图纸', type: 'blueprint', set: 'xianzhen', price: 130, forgeLv: 5, desc: '凭此可在锻造间打造「冲锋套」（需锻造间 Lv5）' },
-          { id: 'bp_shouyu', name: '壁垒套图纸', type: 'blueprint', set: 'shouyu', price: 130, forgeLv: 5, desc: '凭此可在锻造间打造「壁垒套」（需锻造间 Lv5）' },
-          { id: 'bp_tiance', name: '智囊套图纸', type: 'blueprint', set: 'tiance', price: 360, forgeLv: 7, desc: '凭此可在锻造间打造「智囊套」（需锻造间 Lv7）' }].forEach(function (bp) {
-      DATA.BLUEPRINTS.push(bp);
-      if (!DATA.ITEMS.some(function (x) { return x.id === bp.id; })) DATA.ITEMS.push(bp);
-    });
+    /* ---------- ③ 四张新图纸 ---------- */
+    /* ⛔ v90.14：老 4 套图纸退役（对应套装已删）。 */
 
     /* ---------- ④ 新物品 101 件（type 全都落在既有消费点上） ---------- */
     var NEW_ITEMS = [

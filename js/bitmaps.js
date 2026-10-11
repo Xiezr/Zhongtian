@@ -14,6 +14,10 @@ var BITMAPS = (function () {
   F["ai_buxingji.png"] = 1;
   F["ai_cangku.png"] = 1;
   F["ai_chengqiang.png"] = 1;
+  F["ai_city_capital.png"] = 1;
+  F["ai_city_county.png"] = 1;
+  F["ai_city_jun.png"] = 1;
+  F["ai_city_zhou.png"] = 1;
   F["ai_daodanche.png"] = 1;
   F["ai_dianci.png"] = 1;
   F["ai_dunwei.png"] = 1;
@@ -74,16 +78,23 @@ var BITMAPS = (function () {
   F["ai_quarry.png"] = 1;
   F["ai_shichang.png"] = 1;
   F["ai_shuyuan.png"] = 1;
-  F["ai_slot_arm.png"] = 1;
+  F["ai_slot_arm_low_l.png"] = 1;
+  F["ai_slot_arm_low_r.png"] = 1;
+  F["ai_slot_arm_up_l.png"] = 1;
+  F["ai_slot_arm_up_r.png"] = 1;
   F["ai_slot_back.png"] = 1;
   F["ai_slot_chest.png"] = 1;
-  F["ai_slot_feet.png"] = 1;
+  F["ai_slot_foot_l.png"] = 1;
+  F["ai_slot_foot_r.png"] = 1;
   F["ai_slot_head.png"] = 1;
   F["ai_slot_mount.png"] = 1;
   F["ai_slot_neck.png"] = 1;
   F["ai_slot_pendant.png"] = 1;
   F["ai_slot_ring.png"] = 1;
-  F["ai_slot_shoulder.png"] = 1;
+  F["ai_slot_shin_l.png"] = 1;
+  F["ai_slot_shin_r.png"] = 1;
+  F["ai_slot_thigh_l.png"] = 1;
+  F["ai_slot_thigh_r.png"] = 1;
   F["ai_slot_waist.png"] = 1;
   F["ai_slot_weapon.png"] = 1;
   F["ai_stone.png"] = 1;
@@ -105,6 +116,12 @@ var BITMAPS = (function () {
   F["ai_zhaoxianguan.png"] = 1;
   F["ai_zhencha.png"] = 1;
   F["ai_zhuzhan.png"] = 1;
+  F["bigmap_world.png"] = 1;
+  F["cape_L.png"] = 1;
+  F["cape_R.png"] = 1;
+  F["mecha_mount.png"] = 1;
+  F["mecha_purge.png"] = 1;
+  F["mecha_wpn.png"] = 1;
   var PREFIX = {
     "terrain": "ai_terrain_",
     "city": "ai_city_",
@@ -126,7 +143,7 @@ var BITMAPS = (function () {
     has: function (f) { return !!F[f]; },
     fileOf: fileOf,
     src: function (group, id) { var f = fileOf(group, id); return f ? DIR + f : ''; },
-    count: 95,
+    count: 112,
   };
 })();
 

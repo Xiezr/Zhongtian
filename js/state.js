@@ -2233,9 +2233,14 @@
   GAME.loopPulse = function (checkVisible) {
     var now = GAME.utils.now();
     var gap = (now - (GAME._loopLastAt || now)) / 1000;
+    /* v90.22（老板：「开着界面 + 息屏几天，回来募兵没进度」）：
+       旧实现「不可见 → 只记账不补算」会**把息屏/AI 挂起期间的整段真实时间丢掉**
+       （`_loopLastAt = now` 无条件前移，缺口被逐拍吞掉 —— 换机位/息屏唤醒后
+       队列看似停在原位）。改为：**只要已有对局（GAME.state 存在），无论可见与否
+       都按真实钟补算**（这是挂机游戏，时间本就该走）；只有"未开局"（创角/无 state）
+       才只记账不补算，避免把"无游戏时段"算进缺口。 */
+    if (!GAME.state) { GAME._loopLastAt = now; return { mode: 'none', gap: gap }; }
     GAME._loopLastAt = now;
-    if (!GAME.state) return { mode: 'none', gap: gap };
-    if (checkVisible === false) return { mode: 'hidden', gap: gap };
     var r = _gapCatchupOf(gap);
     r.gap = gap;
     return r;
@@ -2477,6 +2482,8 @@
       if (GAME.migrateJewels152) GAME.migrateJewels152();
       /* v89.193：老档前哨归属迁移 —— 无 cityId 的旧前哨→最近的己方城（详见 GAME.migrateForts193） */
       if (GAME.migrateForts193) GAME.migrateForts193();
+      /* v90.11：老档装备槽 12→19 就近映射（肩→左上臂 / 臂→左前臂 / 足→左脚掌…） */
+      if (GAME.migrateEquipSlots11) GAME.migrateEquipSlots11();
       /* v89.186：伤兵商品语义反转（替换 → 加法）——旧档 buff 里的 wound 是"绝对值"
          （0.30~0.60），若按新"加值"解释会得到 0.75+0.6 = 超强（顶到 cap）。
          处置：直接作废该键（幂等）。代价极小 —— buff 最长 24h；且旧值本就"低于基础=负收益"。 */
@@ -2661,6 +2668,8 @@
       if (!st.workRate) st.workRate = { grain: 100, wood: 100, stone: 100, iron: 100 };
       /* v79：装备单件化迁移（旧 id 串 → 实例；旧"按种"强化并入首件） */
       if (GAME.migrateEquipModel) GAME.migrateEquipModel(st);
+      /* v90.16：老装备 id → 新套装件 id（套装重设后老档旧装备不丢） */
+      if (GAME.migrateEquipIds16) GAME.migrateEquipIds16(st);
       /* v89：基因线君主专属 —— 旧档里非君主身上的辐能装备归还背包、归位机甲 */
       if (GAME.migrateLordLing) GAME.migrateLordLing(st);
       /* v89.211（老板 2）：占城"围墙格释放成空格"的存量补齐（紧签名 · 一次性） */
@@ -4657,7 +4666,7 @@
     var dir = (ew + ns) || '近处';
     var dist = Math.round(Math.sqrt(dx * dx + dy * dy) * 3);
     return '闻得城' + dir + '约 ' + dist + ' 里 ' + GAME.wonderBandName(site.band) +
-      ' 之地（' + site.x + ',' + site.y + '），似有异象 —— 或可一探';
+      ' 之地' + GAME.map.coordText(site.x, site.y) + '，似有异象 —— 或可一探';
   };
   /* 线索挂到结算结果（三处 return 共用出口；线索是边角料，出错不拖累活动结算） */
   GAME._jhClueAttach = function (res, chk) {
@@ -4665,7 +4674,7 @@
       var site = GAME.wonderClueRoll(chk.x, chk.y, chk.actId, chk.day);
       if (site) {
         res.clue = '📜 ' + GAME.wonderClueText(site);
-        GAME.log('📜 闻得异迹（' + site.x + ',' + site.y + '）—— 疑有奇物');
+        GAME.log('📜 闻得异迹 ' + GAME.map.coordText(site.x, site.y) + '—— 疑有奇物');
       }
     } catch (e) { /* 线索失败不影响活动结算 */ }
     return res;
