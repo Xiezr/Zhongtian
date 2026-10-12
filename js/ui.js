@@ -13754,7 +13754,7 @@
       /* ① 自身城池（城池间操作入口） */
       (s.cities || []).forEach(function (mc) {
         if (mc.id === city.id) return;
-        push({ kind: 'own', id: mc.id }, Math.max(Math.abs(mc.x - city.x), Math.abs(mc.y - city.y)));
+        push({ kind: 'own', id: mc.id }, GAME.cityDist(mc, city));
       });
       /* ② 同一聚落下的普通城池（聚落 / 重镇；名城首府·旧都排除） */
       (s.map.cities || []).forEach(function (nc) {
@@ -13762,7 +13762,7 @@
         var rgc = GAME.regionOf ? GAME.regionOf(nc.x, nc.y) : null;
         var cid = (rgc && rgc.countyCity) ? rgc.countyCity.id : null;
         if (myCounty != null && cid != null && cid !== myCounty) return;   /* 不同聚落 → 不列 */
-        push({ kind: 'city', id: nc.id, npc: nc }, Math.max(Math.abs(nc.x - city.x), Math.abs(nc.y - city.y)));
+        push({ kind: 'city', id: nc.id, npc: nc }, GAME.cityDist(nc, city));
       });
       /* ③ 附近野外据点（原有能力保留，排在同聚落池之后） */
       var R = 14;

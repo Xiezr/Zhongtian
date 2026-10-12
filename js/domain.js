@@ -2541,14 +2541,14 @@
    * 目的：解开「三/四阶材料只在首府(12)/旧都(1) 一次掉落后占完即断供」的断层，
    *       让「打哪里」直接决定「能造什么装备」。
    * ============================================================ */
-  /* 城池区属：显式字段优先；玩家自建城按坐标就近认领最近的首府/旧都 */
+  /* 城池区属：显式字段优先；玩家自建城按**球面六边环数**就近认领最近的首府/旧都（v90.70） */
   GAME.stateOfCity = function (city) {
     if (!city) return null;
     if (city.state) return city.state;
-    var best = null, bd = 1e9;
+    var best = null, bd = Infinity;
     (DATA.NPC_CITIES || []).forEach(function (c) {
       if (c.type !== 'zhou' && c.type !== 'capital') return;
-      var d = Math.abs(c.x - (city.x || 0)) + Math.abs(c.y - (city.y || 0));
+      var d = GAME.cityDist(c, city);
       if (d < bd) { bd = d; best = c; }
     });
     return best ? best.state : null;
@@ -2567,16 +2567,17 @@
    * ============================================================ */
   GAME.regionOf = function (x, y) {
     var best = null, bd = Infinity;
+    var pt = { x: x, y: y };
     (DATA.NPC_CITIES || []).forEach(function (c) {
       if (c.type !== 'county') return;
-      var d = Math.abs(c.x - x) + Math.abs(c.y - y);
+      var d = GAME.cityDist(c, pt);           /* v90.70：球面六边环数 */
       if (d < bd) { bd = d; best = c; }
     });
     if (!best) return null;
     var jun = null, jd = Infinity;
     (DATA.NPC_CITIES || []).forEach(function (c) {
       if (c.type !== 'jun' || c.state !== best.state) return;
-      var d = Math.abs(c.x - best.x) + Math.abs(c.y - best.y);
+      var d = GAME.cityDist(c, best);
       if (d < jd) { jd = d; jun = c; }
     });
     return {
@@ -3632,7 +3633,7 @@
       if (!f || f.cityId) continue;
       var best = null, bd = Infinity;
       cities.forEach(function (c) {
-        var d = Math.abs((c.x || 0) - (f.x || 0)) + Math.abs((c.y || 0) - (f.y || 0));
+        var d = GAME.cityDist(c, f);          /* v90.70：球面六边环数 */
         if (d < bd || (d === bd && best && String(c.id) < String(best.id))) { bd = d; best = c; }
       });
       if (best) f.cityId = best.id;
@@ -4862,7 +4863,7 @@
         /* v89.79：城等级口径 = 档位值（12/16/20/24），筛选走唯一出口 */
     if (GAME.cityLvOf(npc) > cfg.maxLevel) return;
         if (skipRing && GAME.autoMarchRingHas(cfg, npc)) return;
-        var d = Math.max(Math.abs(npc.x - city.x), Math.abs(npc.y - city.y));
+        var d = GAME.cityDist(npc, city);       /* v90.70：球面六边环数取最近 */
         if (d < bestD) { bestD = d; best = { kind: 'city', id: npc.id, x: npc.x, y: npc.y, lv: GAME.cityLvOf(npc), d: d, name: npc.name }; }
       });
       return best;
