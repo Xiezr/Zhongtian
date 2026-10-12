@@ -61,6 +61,8 @@
   require('./js/systems.js');
   require('./js/domain.js');
   require('./js/map.js');
+  /* v90.69：球面世界内核（纯 JS · 拓扑/地形 SSOT）—— index.html 加载序同此（map 之后、map3d 之前） */
+  require('./js/sphere.js');
   /* v90.61：Three.js 真 3D 主地图（无 THREE 时自降级为 {enabled:false}） */
   require('./js/map3d.js');
   require('./js/battle.js');
@@ -6459,20 +6461,20 @@
     return ok;
   })());
   /* v89.152（老板 1/5）：产出改在未占面板**分行呈现**（资源/产量加成/材料/珠宝）；
-     平地的"无采集价值"落在产出行里（"无可采之物（平原不可采集）"+ 筑城提示）。 */
-  check('平地可筑城且写明无采集价值（v89.152 产出行版）',
-    /无可采之物（平原不可采集）/.test(uS36) && /占领后可在其上筑新城/.test(uS36)
+     平地的"无采集价值"落在产出行里（"无可采之物（平原不可采集）"+ 建城提示）。 */
+  check('平地可建城且写明无采集价值（v89.152 产出行版）',
+    /无可采之物（平原不可采集）/.test(uS36) && /占领后可在其上建新城/.test(uS36)
     && /data-action="build-city"/.test(uS36));
   /* v89.83（老板「已占领的野地，其入口操作应只保留派驻」）：
      已占野地的地块操作收敛为「派驻 / 增派驻军 · 驻军开采 · 召回驻军」，
      两条重复入口退役：⚔️ 出兵（占领即驻军后与派驻同义）、📦 派军采集（搬去采集面板）。 */
-  check('v89.83/v89.136：地块操作只留派驻/增派/召回/筑城（采集独立成区）', (function () {
+  check('v89.83/v89.136：地块操作只留派驻/增派/召回/建城（采集独立成区）', (function () {
     var i = uS36.indexOf('ui.openLandModal = function');
     var land = uS36.slice(i, uS36.indexOf('派驻面板（v23 起叫', i));
     return /data-action="wild-garrison-open"/.test(land)          /* 派驻（唯一入口） */
       && /🛡️ 派驻<\/button>/.test(land) && /🛡️ 增派驻军/.test(land)
       && /ui\.wildWdBtnHTML\(x, y/.test(land)   /* v89.155：召回走唯一出口（文案在出口表） */
-      && /🏯 筑城/.test(land) && /🗑️ 放弃该野地/.test(land)
+      && /🏯 建城/.test(land) && /🗑️ 放弃该野地/.test(land)
       /* 采集不再挤在地块操作里（独立「采集」区），历史重复入口不得复活 */
       && /op-zone-t">采集/.test(land)
       && !/data-action="exp-open" data-kind="wild">⚔️ 出兵/.test(land)

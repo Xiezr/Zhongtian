@@ -1,6 +1,6 @@
 # 《热血三国·单机版》项目交接文档
 
-> 交接时点：**2026-10-12** · 版本：**BUILD 9143**（v90.68）· 面向**下一位接手的会话（人或 AI）**：先读本文，再动手。
+> 交接时点：**2026-10-12** · 版本：**BUILD 9144**（v90.69）· 面向**下一位接手的会话（人或 AI）**：先读本文，再动手。
 
 ---
 
@@ -16,7 +16,7 @@
 ## 二、架构速览
 
 **加载序**（`index.html` 底部 `<script>`，顺序不可乱）：
-`data → state → questdata → systems → domain → map → map3d → battle → tactic → icons → gicons → bitmaps → portraits → story → ui → main`
+`data → state → questdata → systems → domain → map → sphere → map3d → battle → tactic → icons → gicons → bitmaps → portraits → story → ui → main`
 
 | 模块 | 职责 |
 |---|---|
@@ -25,7 +25,8 @@
 | `systems.js` | 玩法系统（装备/科技/招募/研究…）。`S.*` 挂到 `GAME.systems`。 |
 | `domain.js` | 领域逻辑（城建/出征入口/弃城/装备详情…）。`GAME.*`。 |
 | `map.js` | **2D 方格地图** + 据点/名城/野地逻辑 + `pick`。`DATA.MAP_W=MAP_H=500`。 |
-| `map3d.js` | **3D 星球地图**（Three.js，`vendor/three.min.js`）：cube-sphere 地形 + 40962 六边地块 + 行政体系。**当前主地图用这个**（`GAME.map3d.enabled`）。 |
+| `sphere.js` | **球面世界内核**（纯 JS · 无 THREE）：icosphere 拓扑 + 六边 `cells` + 球面原生地形（`sphElev/cellType`）+ `nearestCell`。`GAME.sphere`。**地形判据的唯一出口** `GAME.sphere.terrainAt(x,y)`。 |
+| `map3d.js` | **3D 星球地图**（Three.js，`vendor/three.min.js`）：只做**渲染**（材质/光照/贴图/相机/标注/拾取），拓扑/地形/几何一律读 `GAME.sphere`。**当前主地图用这个**（`GAME.map3d.enabled`）。 |
 | `battle.js` / `tactic.js` | 战斗引擎 / 战术。 |
 | `icons.js` / `gicons.js` / `bitmaps.js` | 图标出口（矢量兜底 / game-icons / **AI 位图注册表**）。`ICON.forXxx()`、`ICON.bmBuildingTier()`。 |
 | `ui.js` | **全部界面**（视图 + 弹窗）。`ui.*`。 |

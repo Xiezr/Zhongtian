@@ -12609,8 +12609,9 @@
     }
     var fr = ui.mapFrame;
     /* v90.61（老板）：「地图画面直接是这个样子」—— 走 Three.js 真 3D 沙盘。
-       关掉 GAME.map3d.enabled 即退回 2D 方格图。 */
-    if (GAME.map3d && GAME.map3d.enabled) {
+       关掉 GAME.map3d.enabled 即退回 2D 方格图。
+       v90.69：3D 依赖球面内核 GAME.sphere（无 THREE 的 node 测试环境无此模块 → 自动退回 2D）。 */
+    if (GAME.map3d && GAME.map3d.enabled && GAME.sphere) {
       var _cw = Math.round(fr.spanX * fr.cell), _chh = Math.round(fr.spanY * fr.cell);
       if (canvas.width !== _cw) canvas.width = _cw;
       if (canvas.height !== _chh) canvas.height = _chh;
@@ -13107,7 +13108,12 @@
     var _wRec139 = GAME.map.wildAt(x, y);
     /* v90.62：3D 星球点击会带**球面地块地形**（_terrOverride）—— 球面原生地形与旧 500×500 不符，
        以点击地块的地形为准（按地形最大近似分配）。无 override 时照旧（野地记录 > 地图格）。 */
-    var _terKey139 = GAME.map._terrOverride || ((_wRec139 && _wRec139.type) ? _wRec139.type : tile.terrain);
+    /* v90.69（老板「平原不能建城」）：地形**唯一出口** = 球面（所见即所得）——
+       球面地块地形与平面 s.map.grid 无关（3D 星球地形是球面原生生成）。
+       改为：override（点选带入）> 野地记录 > **球面地块地形** > 平面格兜底。 */
+    var _sph139 = GAME.sphere && GAME.sphere.terrainAt ? GAME.sphere.terrainAt(x, y) : null;
+    var _terKey139 = GAME.map._terrOverride || ((_wRec139 && _wRec139.type) ? _wRec139.type
+      : ((_sph139 && _sph139.type) || tile.terrain));
     GAME.map._terrOverride = null;
     var ter = DATA.TERRAIN[_terKey139];
     /* v90.65（老板）：地块**行政区归属**（3D 星球点击带入）—— 显示省/市/区 */
@@ -13137,7 +13143,9 @@
       return DATA.MATERIAL_BY_ID[mid] ? DATA.MATERIAL_BY_ID[mid].name : mid;
     }).join('、');
     ui._buildCityXY = { x: x, y: y };   // v16：平原筑城用
-    ui._expTarget = { kind: 'wild', x: x, y: y };
+    /* v90.69：把**该格地形**（与面板同源 _terKey139）随出征目标带上 —— 占领时按它记野地类型
+       （所见即所得），不再靠平面格或坐标反查。3D 点选/2D 点选一致。 */
+    ui._expTarget = { kind: 'wild', x: x, y: y, terrain: _terKey139 };
     ui._expMode = 'occupy';
 
     /* v89.135（老板「为啥没有珠宝（比如湖泊里有珍珠等等）」）：可采清单里的**珠宝行** */
@@ -13184,7 +13192,7 @@
             ? '<b style="color:var(--gold-light)">' + jewelNames135.join(' · ') + '</b>' + jewelLvHint139
             : '<span class="ui-sub">—</span>') +
         '</span></div>' +
-        (tile.terrain === 'plain' ? '<div class="q-empty">💡 平原：占领后可在其上筑新城</div>' : '') +
+        (_terKey139 === 'plain' ? '<div class="q-empty">💡 平原：占领后可在其上建新城</div>' : '') +
         '</div>';
       ui.openModal(
         '<div class="gold-heading">🏕️ ' + ter.name + ' Lv' + lv + '</div>' + admLine +
@@ -13305,8 +13313,8 @@
         ? '<button class="btn" data-action="wild-fortintel" data-x="' + x + '" data-y="' + y +
           '" title="我方前哨覆盖：查看该地块情报（我方驻军明细 / 衰减提示）">🏯 据点情报</button>'
         : '') +
-      (tile.terrain === 'plain'
-        ? '<button class="btn gold" data-action="build-city">🏯 筑城（净水/生物质/电能/废钢/旧币 各 1 万）</button>' : '') +
+      (_terKey139 === 'plain'
+        ? '<button class="btn gold" data-action="build-city">🏯 建城（净水/生物质/电能/废钢/旧币 各 1 万）</button>' : '') +
       '</div></div>' +
       '<div class="op-zone danger op-zone-eq"><div class="op-zone-t">危险操作</div><div class="op-row">' +
       '<button class="btn red" data-action="wild-abandon-ask" data-x="' + x + '" data-y="' + y + '">🗑️ 放弃该野地</button>' +

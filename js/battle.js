@@ -1741,14 +1741,19 @@
       var tile = GAME.map.tile(target.x, target.y);
       if (!tile) return { ok: false, msg: '坐标越界' };
       if (tile.terrain === 'city') return { ok: false, msg: '该处为城池，请点击城池出征' };
+      /* v90.69（老板「平原不能建城」）：野地**地形口径 = 球面**（所见即所得）——
+         优先用点选时带入的 target.terrain（与面板同源，精确）；无则按坐标查球面地块；再兜底平面格。
+         占领记录/建城判据/产量加成/采集全读它，与 3D 星球一致。 */
+      var _sphT = (!target.terrain && GAME.sphere && GAME.sphere.terrainAt) ? GAME.sphere.terrainAt(target.x, target.y) : null;
+      var _wildTerr = target.terrain || (_sphT && _sphT.type) || tile.terrain;
       var lv = GAME.map.wildLevelNow ? GAME.map.wildLevelNow(target.x, target.y) : GAME.map.wildLevel(target.x, target.y);
       /* v27（需求 3）：守军改由 wildDefenseAt 按 (坐标, 现实日) 确定性生成 ——
          同一天内"侦查看到的"与"打起来遇到的"必然是同一支军队。
          守将一并带出：野地也可能有将，有将就真的吃英雄加成。 */
       var wd = GAME.wildDefenseAt(target.x, target.y, lv);
       return { ok: true, kind: 'wild', x: target.x, y: target.y, lv: lv,
-        name: (DATA.TERRAIN[tile.terrain] ? DATA.TERRAIN[tile.terrain].name : '野地') + ' Lv' + lv,
-        terrain: tile.terrain, garrison: wd.army, guard: wd.gen, def: 0, defDay: wd.day };
+        name: (DATA.TERRAIN[_wildTerr] ? DATA.TERRAIN[_wildTerr].name : '野地') + ' Lv' + lv,
+        terrain: _wildTerr, garrison: wd.army, guard: wd.gen, def: 0, defDay: wd.day };
     }
     if (target.kind === 'fort' && GAME.map.fortAt) {
       var f = GAME.map.fortAt(target.x, target.y);

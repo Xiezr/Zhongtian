@@ -69,6 +69,9 @@
   /* 生成地形网格（可复现 seed） */
   GAME.map.generate = function () {
     var s = GAME.state;
+    /* v90.69：地形判据的**唯一出口**是球面内核（GAME.sphere）—— 逻辑（占领/建城/采集）
+       读球面地形而非平面 s.map.grid。此处顺带确保内核已建（幂等；随 seed 缓存）。 */
+    if (GAME.sphere && GAME.sphere.ensure) GAME.sphere.ensure();
     if (!s.map.grid) {
       var w = DATA.MAP_W, h = DATA.MAP_H;
       var grid = [];
