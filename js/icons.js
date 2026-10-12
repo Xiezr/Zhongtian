@@ -2073,7 +2073,8 @@
    * ============================================================ */
   ICON.bmBuildingTier = function (id, lvl) {
     var n = Number(lvl) || 1;
-    var suffix = n >= 10 ? '_t3' : (n >= 5 ? '_t2' : '');
+    /* v90.63（老板「6、12 级获得新皮肤」）：Lv<6 = 档1 基础皮肤；Lv6~11 = 档2（_t2）；Lv12+ = 档3（_t3）。 */
+    var suffix = n >= 12 ? '_t3' : (n >= 6 ? '_t2' : '');
     if (!suffix) return '';
     return bmOf('building', id + suffix);   /* 无档位图 → ''（调用方回退基础图） */
   };
