@@ -41,29 +41,14 @@
     var t0 = a + (b - a) * tx, t1 = c + (d - c) * tx;
     return t0 + (t1 - t0) * ty;
   }
-  /* fBm：三层叠加。
-     波长口径（实测标定，探针 tools/probe/probe_terrain_size.js）：
-       主波长 64 时团块平均 435 格（≈20×20）、最大 3700 —— 一屏 13×7 只剩一种地形，
-       看着像"色块分区"而不是地形；收到 32 后团块均值实测 274（连片度 0.907）。
-       v89.46（老板：「同类型地块太大，缩到 1/2~1/3」）：主波长 32 → 21，
-       团块均值 274 → 139（≈1/2）、连片度 0.907 → 0.867；一屏可见更多片不同地形，
-       既有走势又不单调。候选档位（探针实测）已记录在 AI工作备忘 §68。 */
-  var FIELD_OCT = [[21, 0.55], [11, 0.30], [6, 0.15]];
+  var FIELD_OCT = [[21, 0.55], [11, 0.30], [6, 0.15]];   /* 高度场波长（heightAt 用）；平面平台地形生成已退役 v90.76 */
+  /* fBm：三层叠加（heightAt 高度场用）。 */
   function fbm(x, y, salt) {
     var v = 0;
     for (var i = 0; i < FIELD_OCT.length; i++) {
       v += FIELD_OCT[i][1] * vnoise(x, y, FIELD_OCT[i][0], salt + i * 101);
     }
     return v;
-  }
-  /* 直方图分位点（bins 个桶，frac 为累计占比） */
-  function qOf(hist, total, frac) {
-    var want = total * frac, acc = 0;
-    for (var i = 0; i < hist.length; i++) {
-      acc += hist[i];
-      if (acc >= want) return (i + 0.5) / hist.length;
-    }
-    return 1;
   }
 
   /* 生成地形网格（可复现 seed） */
@@ -73,78 +58,22 @@
        读球面地形而非平面 s.map.grid。此处顺带确保内核已建（幂等；随 seed 缓存）。 */
     if (GAME.sphere && GAME.sphere.ensure) GAME.sphere.ensure();
     if (!s.map.grid) {
-      var w = DATA.MAP_W, h = DATA.MAP_H;
+      /* ============================================================
+       * v90.76：地形**彻底单一出口** —— 平面 s.map.grid 由**球面内核投影**而来（不再独立 2D 噪声）。
+       *   平面 (x,y) 只是显示/主键的投影视图；地形一律 = 球面地块 terrain（所见即所得）。
+       *   出生点脚下强制平原在此按投影覆盖（保证开局可拓，逻辑与球面 3D 一致）。
+       * ============================================================ */
+      var w = DATA.MAP_W, h = DATA.MAP_H, SPg = GAME.sphere;
+      var sp0 = s.map.startPos || DATA.START_POS, sx = sp0.x, sy = sp0.y;
       var grid = [];
-      /* ---- ① 连续场（按 2 格步长采样后双线性插值：25 万格只算 6 万次 fBm） ---- */
-      var ST = 2, gw = Math.ceil(w / ST) + 1, gh = Math.ceil(h / ST) + 1;
-      var seed0 = (s.map.seed || 1) | 0;
-      var fe = new Float32Array(gw * gh), fm = new Float32Array(gw * gh);
-      for (var gy2 = 0; gy2 < gh; gy2++) {
-        for (var gx2 = 0; gx2 < gw; gx2++) {
-          var px = gx2 * ST, py = gy2 * ST, kk = gy2 * gw + gx2;
-          fe[kk] = fbm(px, py, seed0 * 7 + 11);      /* 高程场 */
-          fm[kk] = fbm(px, py, seed0 * 7 + 77);      /* 湿度场 */
-        }
-      }
-      function sampleF(arr, x, y) {
-        var fx = x / ST, fy = y / ST;
-        var ix = fx | 0, iy = fy | 0;
-        var tx = fx - ix, ty = fy - iy;
-        var x1 = Math.min(gw - 1, ix + 1), y1 = Math.min(gh - 1, iy + 1);
-        var a = arr[iy * gw + ix], b = arr[iy * gw + x1];
-        var c = arr[y1 * gw + ix], d = arr[y1 * gw + x1];
-        var t0 = a + (b - a) * tx, t1 = c + (d - c) * tx;
-        return t0 + (t1 - t0) * ty;
-      }
-      var elev = new Float32Array(w * h), moist = new Float32Array(w * h);
-      var BINS = 512, eh = new Int32Array(BINS), mh = new Int32Array(BINS);
-      for (var yy = 0; yy < h; yy++) {
-        for (var xx = 0; xx < w; xx++) {
-          var id2 = yy * w + xx;
-          var e = sampleF(fe, xx, yy), m = sampleF(fm, xx, yy);
-          elev[id2] = e; moist[id2] = m;
-          eh[Math.min(BINS - 1, (e * BINS) | 0)]++;
-        }
-      }
-      /* ---- ② 按目标占比取分位点（场决定形状、权重决定多少） ---- */
-      var TW = DATA.TERRAIN_WEIGHTS, WM = {};
-      for (var wi = 0; wi < TW.length; wi++) WM[TW[wi][0]] = TW[wi][1];
-      var total2 = w * h;
-      var qLake = qOf(eh, total2, WM.lake);
-      var qWater = qOf(eh, total2, WM.lake + WM.zhaoze);
-      var qHill = qOf(eh, total2, 1 - WM.hill);
-      /* 陆地（非水非山）单独建湿度直方图 —— 占比要按陆地数折算 */
-      var landN = 0, landFrac = 1 - WM.lake - WM.zhaoze - WM.hill;
-      for (var i2 = 0; i2 < total2; i2++) {
-        if (elev[i2] >= qWater && elev[i2] < qHill) { mh[Math.min(BINS - 1, (moist[i2] * BINS) | 0)]++; landN++; }
-      }
-      var qDes = qOf(mh, landN, WM.desert / landFrac);
-      var qFor = qOf(mh, landN, 1 - WM.forest / landFrac);
-      var qCao = qOf(mh, landN, 1 - (WM.forest + WM.caoyuan) / landFrac);
-
       for (var y = 0; y < h; y++) {
         var row = [];
         for (var x = 0; x < w; x++) {
-          var id3 = y * w + x, e3 = elev[id3], m3 = moist[id3], terrain;
-          if (e3 < qLake) terrain = 'lake';
-          else if (e3 < qWater) terrain = 'zhaoze';
-          else if (e3 >= qHill) terrain = 'hill';
-          else if (m3 < qDes) terrain = 'desert';
-          else if (m3 >= qFor) terrain = 'forest';
-          else if (m3 >= qCao) terrain = 'caoyuan';
-          else terrain = 'plain';
-          /* 出生点脚下一小片强制平原。
-             ------------------------------------------------------------------
-             为何要有这段：玩家开局只有一座城，而**只有平原才能筑新城**（P2-10）；
-             若出生点恰好被湖泊/山地围住，会陷入"无地可拓"的死局。
-             但原范围是 ±5（11×11 = 121 格），在 500×500 地图上一眼看过去
-             "周边全是平地"、显得地图很假 —— 现收紧到 ±2（5×5 = 25 格），
-             只保证城池脚下与紧邻一圈可用，四周立刻恢复真实地形。 */
-          /* v70：出生点随"所选区"走（state.map.startPos）；旧档回退固定点 */
-          var sp0 = s.map.startPos || DATA.START_POS;
-          var sx = sp0.x, sy = sp0.y;
-          if (Math.abs(x - sx) <= 2 && Math.abs(y - sy) <= 2) terrain = 'plain';
-          row.push({ x: x, y: y, terrain: terrain });
+          var ci = (SPg && SPg.ciOfXY) ? SPg.ciOfXY(x, y) : -1;
+          var cell = (ci >= 0 && SPg.cells[ci]) ? SPg.cells[ci] : null;
+          var terrain = cell ? cell.type : 'plain';
+          if (Math.abs(x - sx) <= 2 && Math.abs(y - sy) <= 2) terrain = 'plain';   /* 出生圈强制平原 */
+          row.push({ x: x, y: y, terrain: terrain, ci: ci });
         }
         grid.push(row);
       }

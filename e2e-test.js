@@ -8142,8 +8142,9 @@ console.log('\n--- §180. 拆械与 live 滚动（v89.180） ---');
     G.map.generate();
     const c195 = G.currentCity();
     let px195 = null, py195 = null;
-    for (let yy = 4; yy < 40 && px195 == null; yy++) {
-      for (let xx = 4; xx < 40; xx++) {
+    /* v90.76：地形改球面投影后，极冠（x,y 小）全是海 → 全图找一个非城非水的陆地块。 */
+    for (let yy = 3; yy < 497 && px195 == null; yy += 3) {
+      for (let xx = 3; xx < 497; xx += 3) {
         const tl = G.map.tile(xx, yy);
         if (tl && tl.terrain !== 'city' && tl.terrain !== 'water' && tl.terrain !== 'lake'
           && (Math.abs(xx - c195.x) > 3 || Math.abs(yy - c195.y) > 3)) { px195 = xx; py195 = yy; break; }

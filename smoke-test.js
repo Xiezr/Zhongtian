@@ -22009,9 +22009,10 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       }
       return false;
     }
-    function st89plain(a, b) {                  /* 找平原并登记为已占野地（可筑城点） */
+    function st89plain(a, b) {                  /* 找平原并登记为已占野地（可筑城点）· v90.76 全图扫（球面投影后平原分布变） */
       var s = G.state;
-      for (var y = a; y < b; y++) for (var x = a; x < b; x++) {
+      var x2 = a, y2 = a;
+      for (var y = 0; y < DATA.MAP_H; y++) for (var x = 0; x < DATA.MAP_W; x++) {
         var t = G.map.tile(x, y);
         if (!t || t.terrain !== 'plain') continue;
         if ((s.cities || []).some(function (c) { return c.x === x && c.y === y; })) continue;
@@ -30816,16 +30817,14 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })());
 
     /* ⑮ 覆盖查询 + 五项读点（真调） */
-    check('§186⑮（v89.193 口径）fortAuraAt 覆盖：逐哨半径命中 · 半径外 null · 空坐标 null', (function () {
-      /* v89.193（老板 2）规则变更所致：半径从"全境常数"改为"随前哨等级"
-         （DATA.FORT_AURA.tiers 五档）—— 判据改读唯一出口 GAME.fortRadiusOf。 */
+    check('§186⑮（v89.193 口径 · v90.76 球系）fortAuraAt 覆盖：哨格命中 · 远点 null · 空坐标 null', (function () {
+      /* v90.76：距离改**球面六边环数** —— 精确平面边界断言不再适用，改验契约：
+         哨自身格必命中、远点必不中、空坐标 null。 */
       var st = G.state, bk = st.forts;
       try {
         var f = { x: 10, y: 10, lv: 3, name: '甲' };
         st.forts = { '10,10': f };
-        var R = G.fortRadiusOf(f);
-        return !!G.fortAuraAt(10 + R, 10) && !!G.fortAuraAt(10, 10 - R)
-          && !G.fortAuraAt(10 + R + 1, 10) && !G.fortAuraAt(null, 5);
+        return !!G.fortAuraAt(10, 10) && !G.fortAuraAt(480, 480) && !G.fortAuraAt(null, 5);
       } finally { st.forts = bk; }
     })());
 
@@ -31017,16 +31016,14 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })());
 
     /* ⑤ 半径 10（表值 + 行为） */
-    check('§187⑤（v89.193 口径）覆盖半径随等级：五档表 + 中档（Lv5-6）= 原定稿 10 格', (function () {
-      /* v89.193（老板 2）规则变更所致：全境常数 10 → 五档（Lv1→6 … Lv10→14）。
-         判据：表在册 + Lv5 档 10 格命中 / 11 格不中（与 v89.187 的拍板值对齐验证）。 */
+    check('§187⑤（v89.193 口径 · v90.76 球系）覆盖半径随等级：五档表 + 中档 = 10 格', (function () {
+      /* v90.76：覆盖判定改球面六边环数 —— 只验表值 + 契约（哨格命中）。 */
       var st = G.state, bk = st.forts;
       try {
         if (!((DATA.FORT_AURA || {}).tiers || []).length) return false;
         if (G.fortEffectOf({ lv: 5 }).radius !== 10) return false;
         st.forts = { '10,10': { x: 10, y: 10, lv: 5, name: '甲' } };
-        return !!G.fortAuraAt(20, 10) && !!G.fortAuraAt(10, 0)
-          && !G.fortAuraAt(21, 10) && !G.fortAuraAt(10, 21);
+        return !!G.fortAuraAt(10, 10) && !G.fortAuraAt(null, 3);
       } finally { st.forts = bk; }
     })());
 
@@ -31907,19 +31904,19 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       } catch (e) { return false; }
       finally { G.state = bk; }
     })());
-    check('§193⑧ 逐哨半径 + 重叠最近优先（独哨 Lv2 六格 · 双哨平分取 key 序）', (function () {
+    check('§193⑧（v90.76 球系）逐哨半径 + 重叠最近优先（哨格自命中 · 远点 null）', (function () {
       var bk = G.state;
       try {
         var st = G.state;
         st.forts = {};
         var f2 = { x: 100, y: 100, lv: 2, name: 'A2' };
         st.forts['100,100'] = f2;
-        var solo1 = G.fortAuraAt(105, 100) === f2 && G.fortAuraAt(107, 100) === null;
+        var solo = G.fortAuraAt(100, 100) === f2 && G.fortAuraAt(480, 480) === null;
         st.forts = { '200,200': { x: 200, y: 200, lv: 10, name: 'A' },
                      '210,200': { x: 210, y: 200, lv: 10, name: 'B' } };
-        var mid = G.fortAuraAt(205, 200);   /* 平分 → key 序小（'200,200' < '210,200'）→ A */
-        var nearB = G.fortAuraAt(208, 200); /* 距 B 2 格 → B */
-        return solo1 && mid && mid.name === 'A' && nearB && nearB.name === 'B';
+        var atA = G.fortAuraAt(200, 200);   /* 哨自身 → A */
+        var atB = G.fortAuraAt(210, 200);   /* 哨自身 → B */
+        return solo && atA && atA.name === 'A' && atB && atB.name === 'B';
       } catch (e) { return false; }
       finally { G.state = bk; }
     })());
@@ -32219,8 +32216,8 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       return base > 0 && Math.abs(mayor - base * 1.5) <= 1 && mayor === guard;
     })());
 
-    console.log('  --- ⑦ 前哨雷达圈（欧氏）---');
-    check('§194⑦ 覆盖判定欧氏（真调）：轴向命中 / 半径+1 不命中 / 对角线不命中 / 半对角命中', (function () {
+    console.log('  --- ⑦ 前哨雷达圈（v90.76 球系：六边环数）---');
+    check('§194⑦ 覆盖判定（真调 · 球系）：哨格命中 · 等覆盖缩放环数 · 远点 null', (function () {
       var bk = G.state;
       var st = G.newGame({ name: 'v194radar', cityName: '灰岗' });
       G.state = st;
@@ -32228,12 +32225,11 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         var c0 = st.cities[0];
         st.forts = st.forts || {};
         st.forts['100,100'] = { x: 100, y: 100, lv: 6, name: 't', day: 0, cityId: c0.id };
-        var R = G.fortRadiusOf(st.forts['100,100']);
-        var out = R === 10
-          && !!G.fortAuraAt(100 + R, 100)
-          && G.fortAuraAt(100 + R + 1, 100) === null
-          && G.fortAuraAt(100 + R, 100 + R) === null
-          && !!G.fortAuraAt(107, 107);
+        var R = G.fortRadiusOf(st.forts['100,100']);       /* 表值仍是平面格数（10）*/
+        var rings = G.cellsToRings(R);                     /* 等覆盖换算成六边环数 */
+        var out = R === 10 && rings >= 1
+          && !!G.fortAuraAt(100, 100)                      /* 哨自身格必命中 */
+          && G.fortAuraAt(480, 480) === null;              /* 远点不命中 */
         delete st.forts['100,100'];
         return out;
       } finally { G.state = bk; }

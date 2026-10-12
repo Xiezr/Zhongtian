@@ -1988,7 +1988,8 @@
     hill:    { name: '山地', color: '#9c8871', move: 1.6, buildable: false, add: { iron: 0.05 },  desc: '废钢 +5%/级' },
     city:    { name: '城池', color: null, move: 1.0, buildable: false, add: null, step: 0 },
   };
-  DATA.TERRAIN_WEIGHTS = [['plain', 0.18], ['caoyuan', 0.14], ['zhaoze', 0.12], ['lake', 0.10], ['forest', 0.18], ['desert', 0.12], ['hill', 0.16]];
+  /* ⛔ v90.76：`DATA.TERRAIN_WEIGHTS` 退役 —— 地形占比改由**球面内核**原生决定
+     （sphElev/cellType；海洋占比走 PLANET.seaFrac）。平面 2D 分位切分生成已删除。 */
 
   /* 野地加成统一按 `add[res] × 等级` 计算（见 GAME.wildAddOf）。
      ⛔ v89.134 移除：`DATA.WILD_ADD`（旧按等级查表）—— 空占位表已无

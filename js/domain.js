@@ -3750,26 +3750,28 @@
     if (x == null || y == null) return null;
     return GAME.fortsOf()[x + ',' + y] || null;
   };
+  /* v90.76：平面格数 → 球面六边环数的换算（等覆盖面积）。
+     星球 40962 地块 vs 平面 500×500=25 万格 → 半径按 √(40962/250000)≈0.405 缩。 */
+  GAME.RING_SCALE = Math.sqrt(40962 / 250000);
+  GAME.cellsToRings = function (cells) { return Math.max(1, Math.round((cells || 0) * GAME.RING_SCALE)); };
   GAME.fortAuraAt = function (x, y) {
     if (x == null || y == null) return null;
-    var fs = GAME.fortsOf();
+    var fs = GAME.fortsOf(), SP = GAME.sphere;
     var best = null, bd = Infinity, bestKey = '';
+    var pci = (SP && SP.cells) ? SP.ciOfXY(x, y) : -1;
     for (var k in fs) {
       var f = fs[k];
-      /* v89.193（老板 2）：半径随前哨等级（6~14 格）—— 逐哨取自己的半径
-         （旧版全境一个常数；"辐射范围随等级不同"就落在这里）。
-         重叠区取**最近**的哨（切比雪夫距离；平局按 key 序——确定性）：
-         旧行为是"for-in 第一个命中"，顺序对玩家不可见；等级化后重叠区
-         可能取到弱哨的加成（Lv2 罩住 Lv9 的边），"离哪个近用哪个"才是
-         可预期的语义。 */
-      /* v89.194（老板「渲染一个圆形雷达扫描圈」）：覆盖判定由**切比雪夫（方阵）改欧氏（圆）**——
-         与地图雷达圈"显示 = 判定"（圆圈画多大、覆盖就多大；旧方阵的四个角在圈外却有效）。
-         ⚠️ 口径变更：同档半径的覆盖面积由 (2r+1)² 缩为 πr²（约 -29%）；半径档位数值未动。
-         若要回退：把本段换回 max(|dx|,|dy|) 比较 + map.js 雷达圈改画菱形（见 docs/_史料/交付/v89194-营造金藏珍阁与雷达圈.md）。 */
-      var _dx194 = (f.x || 0) - x, _dy194 = (f.y || 0) - y;
-      var d = _dx194 * _dx194 + _dy194 * _dy194;      /* 距离平方（整数，无浮点误差） */
-      var _R194 = GAME.fortRadiusOf(f);
-      if (d > _R194 * _R194) continue;
+      /* v89.193：半径随前哨等级。v90.76：距离改**球面六边环数**（等覆盖：平面格数 × RING_SCALE）。 */
+      var _R194 = GAME.cellsToRings(GAME.fortRadiusOf(f));
+      var d;
+      if (SP && SP.cells && pci >= 0) {
+        var fci = (f.ci != null && f.ci >= 0) ? f.ci : SP.ciOfXY(f.x, f.y);
+        d = GAME.sphere.hexDist(fci, pci);
+      } else {
+        var _dx194 = (f.x || 0) - x, _dy194 = (f.y || 0) - y;
+        d = Math.round(Math.sqrt(_dx194 * _dx194 + _dy194 * _dy194));
+      }
+      if (d > _R194) continue;
       if (d < bd || (d === bd && (best === null || k < bestKey))) { bd = d; best = f; bestKey = k; }
     }
     return best;

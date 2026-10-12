@@ -232,6 +232,7 @@
     SP.upos = upos; SP.fpos = fpos; SP.faceCell = faceCell; SP.nv = nv;
     _builtSub = sub; _builtSeed = sd;
     SP.sub = sub;
+    _grid = null;                                    /* 空间哈希随之失效（V 已换）*/
     return SP;
   }
   SP.build = build;
@@ -256,11 +257,30 @@
     return true;
   };
 
-  /* 方向 → 最近格索引（0..nv-1） */
+  /* 方向 → 最近格索引（0..nv-1）· **空间哈希加速**（v90.76：供平面投影/距离大量查询）。 */
+  var _grid = null, _GS = 0.04;
+  function _gkey(d) { return Math.floor(d[0] / _GS) + ',' + Math.floor(d[1] / _GS) + ',' + Math.floor(d[2] / _GS); }
+  function _buildGrid() {
+    _grid = {}; var v = SP.V, n = v.length;
+    for (var i = 0; i < n; i++) { var d = v[i]; if (!d) continue; var k = _gkey(d); (_grid[k] = _grid[k] || []).push(i); }
+  }
   function nearestCell(dir) {
     var v = SP.V; if (!v) return -1;
+    if (!_grid) _buildGrid();
+    var ix = Math.floor(dir[0] / _GS), iy = Math.floor(dir[1] / _GS), iz = Math.floor(dir[2] / _GS);
     var best = -1, bd = -2;
-    for (var i = 0; i < v.length; i++) { var d = v[i]; if (!d) continue; var dt = d[0] * dir[0] + d[1] * dir[1] + d[2] * dir[2]; if (dt > bd) { bd = dt; best = i; } }
+    for (var R = 0; R <= 3; R++) {
+      for (var dx = -R; dx <= R; dx++) for (var dy = -R; dy <= R; dy++) for (var dz = -R; dz <= R; dz++) {
+        if (R > 0 && Math.max(Math.abs(dx), Math.abs(dy), Math.abs(dz)) !== R) continue;   /* 只扫第 R 层壳 */
+        var arr = _grid[(ix + dx) + ',' + (iy + dy) + ',' + (iz + dz)];
+        if (!arr) continue;
+        for (var j = 0; j < arr.length; j++) { var c = v[arr[j]]; var dt = c[0] * dir[0] + c[1] * dir[1] + c[2] * dir[2]; if (dt > bd) { bd = dt; best = arr[j]; } }
+      }
+      if (best >= 0 && R >= 1) break;   /* 至少扫到 1 层壳（含对角近邻）后即信任 */
+    }
+    if (best < 0) {                     /* 兜底：全扫（极罕见） */
+      for (var i = 0; i < v.length; i++) { var d = v[i]; if (!d) continue; var t2 = d[0] * dir[0] + d[1] * dir[1] + d[2] * dir[2]; if (t2 > bd) { bd = t2; best = i; } }
+    }
     return best;
   }
   SP.nearestCell = nearestCell;
