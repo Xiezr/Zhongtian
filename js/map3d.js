@@ -920,5 +920,22 @@
     camO.dist = R * 1.9;
     if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
   };
+  /* v90.68（老板）：**定位光束** —— 从某格**向外射出一道**提示玩家 + 相机对准该格。
+     换目标先清旧束；传 null 清除。 */
+  M.beamTo = function (x, y) {
+    if (M._beam) { scene.remove(M._beam); if (M._beam.geometry) M._beam.geometry.dispose(); M._beam = null; }
+    if (x == null || y == null) { if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas(); return; }
+    try {
+      var c = GAME.map.lonlatOf(x, y), d = GAME.map.dirOf(c.lon, c.lat);
+      var r = R + Math.max(0, sphElev(d)) * HSC;
+      var g0 = [d[0] * r, d[1] * r, d[2] * r];
+      var g1 = [d[0] * (r + 160), d[1] * (r + 160), d[2] * (r + 160)];   /* 向外射出一道 */
+      var geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute([g0[0], g0[1], g0[2], g1[0], g1[1], g1[2]], 3));
+      M._beam = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xffe070, transparent: true, opacity: 0.95, depthWrite: false }));
+      scene.add(M._beam);
+    } catch (e) { /* 忽略 */ }
+    M.centerOn(x, y);
+  };
   M.rebuild = function () { built = false; _tileSub = -1; };
 })();

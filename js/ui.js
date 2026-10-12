@@ -11783,19 +11783,27 @@
     return '<div class="map-wrap">' +
       '<canvas id="mapCanvas"></canvas>' +
       /* v90.64（老板）：右上角**分级行政检索** —— 全球→省→市→区；选省/市显示下一级边界+首府+名称 */
-      '<div id="adm-search" class="adm-search">' +
-        '<select id="adm-planet"><option value="0">全球 · 星球 1</option></select>' +
-        '<select id="adm-prov"></select>' +
-        '<select id="adm-market"></select>' +
-        '<select id="adm-district"></select>' +
-        /* v90.66（老板 0a）：**地形检索** —— 选中某地形，全星该地形高亮。 */
-        '<select id="adm-terrain" title="地形高亮：选中一类地形，全星该地形地块高亮">' +
-          '<option value="">地形高亮…</option>' +
-          '<option value="hill">山地</option><option value="forest">森林</option>' +
-          '<option value="plain">平地</option><option value="caoyuan">草原</option>' +
-          '<option value="desert">荒漠</option><option value="zhaoze">沼泽</option>' +
-          '<option value="lake">湖泊/海</option>' +
-        '</select>' +
+      /* v90.68（老板）：加「己方城市 / 己方野地」检索（选中 → 光束定位）；并加**收纳按钮**：
+         静止 10 秒后把这一排筛选收进侧边（只留一个按钮），点按钮再展开。 */
+      '<div id="adm-search" class="adm-search open">' +
+        '<button class="adm-toggle" id="adm-toggle" title="检索栏：展开 / 收起">🔍</button>' +
+        '<div class="adm-fields">' +
+          '<select id="adm-planet"><option value="0">全球 · 星球 1</option></select>' +
+          '<select id="adm-prov"></select>' +
+          '<select id="adm-market"></select>' +
+          '<select id="adm-district"></select>' +
+          /* v90.66（老板 0a）：**地形检索** —— 选中某地形，全星该地形高亮。 */
+          '<select id="adm-terrain" title="地形高亮：选中一类地形，全星该地形地块高亮">' +
+            '<option value="">地形高亮…</option>' +
+            '<option value="hill">山地</option><option value="forest">森林</option>' +
+            '<option value="plain">平地</option><option value="caoyuan">草原</option>' +
+            '<option value="desert">荒漠</option><option value="zhaoze">沼泽</option>' +
+            '<option value="lake">湖泊/海</option>' +
+          '</select>' +
+          /* v90.68：己方城市 / 己方野地 —— 选中即射出一道提示光束并定位。 */
+          '<select id="adm-owncity" title="定位己方城市：选中一座，射出光束提示并定位"></select>' +
+          '<select id="adm-ownwild" title="定位己方野地：选中一处，射出光束提示并定位"></select>' +
+        '</div>' +
       '</div>' +
       '</div>';
   };
@@ -11819,6 +11827,22 @@
     var dlist = ['<option value="-1">选择区…</option>'];
     if (st.market >= 0) T.market[st.market].districts.forEach(function (di) { dlist.push('<option value="' + di + '"' + (di === st.district ? ' selected' : '') + '>区 · ' + U.escape(T.district[di].name) + '</option>'); });
     distEl.innerHTML = dlist.join('');
+    /* v90.68：己方城市 / 己方野地 选项（不每帧重建 —— 只在选项为空或数量变化时填）。 */
+    var cityEl = g('adm-owncity'), wildEl = g('adm-ownwild');
+    var _cities = (GAME.state.cities || []), _wilds = (GAME.state.wilds || []);
+    if (cityEl && cityEl.getAttribute('data-n') !== String(_cities.length)) {
+      cityEl.setAttribute('data-n', String(_cities.length));
+      cityEl.innerHTML = '<option value="">定位己方城市…</option>' + _cities.map(function (c) {
+        return '<option value="' + c.x + ',' + c.y + '">' + U.escape(c.name) + '（' + GAME.coordText(c) + '）</option>';
+      }).join('');
+    }
+    if (wildEl && wildEl.getAttribute('data-n') !== String(_wilds.length)) {
+      wildEl.setAttribute('data-n', String(_wilds.length));
+      wildEl.innerHTML = '<option value="">定位己方野地…</option>' + _wilds.map(function (w, i) {
+        var nm = (GAME.qNameOf ? GAME.qNameOf({ x: w.x, y: w.y }) : '') || (GAME.map.terrainName ? GAME.map.terrainName(w.type) : '野地');
+        return '<option value="' + w.x + ',' + w.y + '">' + U.escape(nm || ('野地' + (i + 1))) + ' Lv' + (w.level || 0) + '（' + GAME.map.coordText(w.x, w.y) + '）</option>';
+      }).join('');
+    }
 
     function apply() {
       if (st.district >= 0) GAME.map3d.setHighlight({ level: 'district', index: st.district });
@@ -11826,8 +11850,12 @@
       else if (st.prov >= 0) GAME.map3d.setHighlight({ level: 'prov', index: st.prov });
       else GAME.map3d.setHighlight(null);
     }
-    if (!ui._admBound) {
-      ui._admBound = true;
+    /* v90.68：绑定**挂在当前检索栏元素上**（每次进地图 mapHTML 会重建 → 重绑），
+       而不是全局一次性标记（那样重进地图后计时器指向已卸载的旧元素）。 */
+    var box = g('adm-search');
+    if (box && !box._admBound) {
+      box._admBound = true;
+      var _box = box;                                          /* 捕获当前元素 */
       plEl && plEl.addEventListener('change', function () { ui._adm = { prov: -1, market: -1, district: -1 }; GAME.map3d.setHighlight(null); ui.fillAdmSearch(); });
       provEl.addEventListener('change', function () { st.prov = +provEl.value; st.market = -1; st.district = -1; ui.fillAdmSearch(); apply(); });
       mktEl.addEventListener('change', function () { st.market = +mktEl.value; st.district = -1; ui.fillAdmSearch(); apply(); });
@@ -11837,7 +11865,28 @@
       terEl && terEl.addEventListener('change', function () {
         if (GAME.map3d.setTerrainHighlight) GAME.map3d.setTerrainHighlight(terEl.value || null);
       });
+      /* v90.68：己方城市 / 己方野地 —— 选中即光束定位。 */
+      var ocEl = g('adm-owncity'), owEl = g('adm-ownwild');
+      function _beam(v) { if (!v) { GAME.map3d.beamTo(null); return; } var p = v.split(','); GAME.map3d.beamTo(+p[0], +p[1]); }
+      ocEl && ocEl.addEventListener('change', function () { _beam(ocEl.value); });
+      owEl && owEl.addEventListener('change', function () { _beam(owEl.value); });
+      /* v90.68：收纳按钮 —— 静止 10 秒（无任何下拉操作）自动收进侧边；点按钮展开/收起。 */
+      var tog = g('adm-toggle');
+      ui._admIdle = function () {                              /* 触碰筛选栏 → 展开并重置 10s 计时 */
+        if (_box) _box.classList.add('open');
+        if (ui._admIdleT) { clearTimeout(ui._admIdleT); ui._admIdleT = null; }
+        ui._admIdleT = setTimeout(function () { if (_box) _box.classList.remove('open'); }, 10000);
+      };
+      tog && tog.addEventListener('click', function (e) {
+        e.stopPropagation();
+        if (_box.classList.contains('open')) {                 /* 收起（清计时） */
+          _box.classList.remove('open');
+          if (ui._admIdleT) { clearTimeout(ui._admIdleT); ui._admIdleT = null; }
+        } else { ui._admIdle(); }                              /* 展开（重置 10s 计时） */
+      });
+      _box.addEventListener('change', ui._admIdle);            /* 操作任一筛选 → 重置计时 */
     }
+    if (ui._admIdle) ui._admIdle();                            /* 起一次 10s 计时（静止即收起） */
   };
 
   /* ============================================================

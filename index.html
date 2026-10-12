@@ -2015,9 +2015,16 @@
        原来用的是默认箭头光标，"能不能点"全靠猜。 */
     cursor: pointer; }
   /* v90.64（老板）：右上角**行政检索**下拉（选省/市/区 → 增亮该区、其余调暗） */
-  .adm-search { position: absolute; top: 14px; right: 20px; z-index: 5; display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; max-width: 60%; }
+  .adm-search { position: absolute; top: 14px; right: 20px; z-index: 5; display: flex; gap: 6px; align-items: flex-start; }
   .adm-search select { padding: var(--sp-1) var(--sp-3); font-size: var(--fs-sub); max-width: 150px;
     background: var(--slab-1); color: var(--text); border: 1px solid var(--gold-dark); border-radius: var(--r-sm); }
+  /* v90.68（老板 0a）：检索栏**收纳按钮** —— 静止 10s 把筛选收进侧边，只留按钮；点按钮展开。 */
+  .adm-search .adm-toggle { flex: none; width: 30px; height: 30px; padding: 0; border-radius: 50%; cursor: pointer;
+    background: rgba(var(--sh-rgb),.72); color: var(--gold-light); border: 1px solid rgba(var(--gold-rgb),.5); font-size: var(--fs-body); }
+  .adm-search .adm-toggle:hover { background: rgb(var(--gold-rgb)); color: var(--sh-rgb); }
+  .adm-search .adm-fields { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; max-width: 62vw;
+    transition: max-width .25s ease, opacity .2s ease, margin .2s ease; overflow: hidden; }
+  .adm-search:not(.open) .adm-fields { max-width: 0; opacity: 0; margin-left: -6px; }
   /* ============ v85（老板）：底部缩略地图 + 天下大势面板 ============ */
   /* 为条尾缩略图提供定位上下文（单独成条，不动原 .bottombar 块的 46px 高度） */
   .bottombar { position: relative; padding-right: 56px; }
@@ -4532,30 +4539,30 @@
 </div><!-- /#app-scale -->
 </div><!-- /#app-fit -->
 
-<!-- BUILD 9139 -->
-<script src="js/data.js?v=9139"></script>
-<script src="js/state.js?v=9139"></script>
-<script src="js/questdata.js?v=9139"></script>
-<script src="js/systems.js?v=9139"></script>
-<script src="js/domain.js?v=9139"></script>
-<script src="js/map.js?v=9139"></script>
+<!-- BUILD 9143 -->
+<script src="js/data.js?v=9143"></script>
+<script src="js/state.js?v=9143"></script>
+<script src="js/questdata.js?v=9143"></script>
+<script src="js/systems.js?v=9143"></script>
+<script src="js/domain.js?v=9143"></script>
+<script src="js/map.js?v=9143"></script>
 <!-- v90.61：Three.js 真 3D 主地图（vendor 本地，离线可用） -->
-<script src="vendor/three.min.js?v=9139"></script>
-<script src="js/map3d.js?v=9139"></script>
-<script src="js/battle.js?v=9139"></script>
+<script src="vendor/three.min.js?v=9143"></script>
+<script src="js/map3d.js?v=9143"></script>
+<script src="js/battle.js?v=9143"></script>
 <!-- v27（需求 5）：回合制文字战场。放在 battle.js 之后 —— simulate 由它接管 -->
-<script src="js/tactic.js?v=9139"></script>
-<script src="js/icons.js?v=9139"></script>
+<script src="js/tactic.js?v=9143"></script>
+<script src="js/icons.js?v=9143"></script>
 <!-- v32（需求「采用网图」）：game-icons 开源图标素材层。必须在 icons.js 之后 ——
      icons.js 内的取图函数用 typeof GICONS 延迟绑定，渲染时才真正查表。 -->
-<script src="js/gicons.js?v=9139"></script>
+<script src="js/gicons.js?v=9143"></script>
 <!-- v35：AI 位图素材登记表（汉代风，最高优先级）。同样在 icons.js 之后 ——
      取图函数用 typeof BITMAPS 延迟绑定；未登记的 id 自动回退矢量层。 -->
-<script src="js/bitmaps.js?v=9139"></script>
-<script src="js/portraits.js?v=9139"></script>
-<script src="js/story.js?v=9139"></script>
+<script src="js/bitmaps.js?v=9143"></script>
+<script src="js/portraits.js?v=9143"></script>
+<script src="js/story.js?v=9143"></script>
 <!-- ⛔ v89.218（老板「故事全部去除」）：84 卷故事库（story/）整目录删除，脚本标签同步撤除。 -->
-<script src="js/ui.js?v=9139"></script>
-<script src="js/main.js?v=9139"></script>
+<script src="js/ui.js?v=9143"></script>
+<script src="js/main.js?v=9143"></script>
 </body>
 </html>
