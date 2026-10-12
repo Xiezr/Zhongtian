@@ -32,7 +32,11 @@
 | `ui.js` | **全部界面**（视图 + 弹窗）。`ui.*`。 |
 | `main.js` | 启动 + **点击事件总派发**（`data-action` → `case`）+ `GAME.doXxx` 动作。 |
 
-**关键坐标口径**：**存储/逻辑用平面 (x,y)**（存档、战斗、行军、距离全按 x,y）；**界面一律显示球系经纬**（`GAME.map.coordText(x,y)` → `N°E M°N`，`coordText(city)` 已走球系）。两者经 `GAME.map.lonlatOf` / `GAME.map.dirOf` 确定性互转。
+**关键坐标/地形口径（v90.75+ · 球系化）**：
+- **地形 SSOT = 球面内核 `GAME.sphere`**（`js/sphere.js`）：`cells[]`（4 万六边格，含 `type/level/ci`）+ `terrainAt(x,y)`/`ciOfXY`/`hexDist`/`hopsWithin`。**逻辑一切地形/距离读它**。
+- **平面 `(x,y)`** 仍作**存储/主键/显示**（存档、UI、坐标），但**由球面投影而来**（`s.map.grid` 每格 terrain = `sphere.ciOfXY(x,y).type`，非独立噪声）。**界面显示球系经纬**（`GAME.map.coordText(x,y)` → `N°E M°N`）。
+- **据点/前哨/距离**全在球面：据点=六边格哈希+环邻接（`_fortHashCi/_fortActive`）；距离=六边环数（`GAME.cityDist`/`sphere.distOf`）；前哨覆盖=球面环数（`GAME.cellsToRings`）。
+- ⚠️ **别读 `s.map.grid` 判地形/距离**——它只是球面的投影视图；判地形走 `sphere.terrainAt`、判距离走 `GAME.cityDist`。
 
 **设计画布**：1440×900，整体 `transform: scale(0.8533)` 适配窗口。布局锁死在这张画布上——**改尺寸前先量边界**（见 §四）。
 
