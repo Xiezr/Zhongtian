@@ -44,25 +44,58 @@
   }
   function seed3() { return ((GAME.state && GAME.state.map && GAME.state.map.seed) || 1) | 0; }
   var SEA = 0.52;
+  /* v90.67（老板 2）：**星球规格** —— 地形生成参数集中一处，换参数=换一颗星球的环境（单星球）。
+     seaFrac = 目标海洋占比（用 fbm 分布的均值反推海平面 → 占比稳定，不再随种子 18%~77% 漂）。 */
+  M.PLANET = { seaFrac: 0.45, ridge: 1.5, detail: 0.7, temp: 1.0 };
+  var _seaCache = null, _seaSeed = null;
+  function seaLevel() {
+    var s = seed3();
+    if (_seaCache != null && _seaSeed === s) return _seaCache;
+    /* 16²·6 面粗采样估 cont 的均值+标准差 → 海平面 ≈ 均值 + k·σ 使约 seaFrac 的格在海面下。 */
+    var sum = 0, sum2 = 0, n = 0;
+    for (var f = 0; f < 6; f++) {
+      var u0 = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]][f];
+      /* 在每面附近随机撒点（用方向近似；fbm 只需方向）*/
+      for (var i = 0; i < 256; i++) {
+        var a = (i * 0.618) % 1, b = (i * 0.382 + f * 0.13) % 1;
+        var d = [u0[0] + (a - .5) * 2, u0[1] + (b - .5) * 2, u0[2] + ((a + b) - 1)];
+        var L = Math.hypot(d[0], d[1], d[2]) || 1; d = [d[0] / L, d[1] / L, d[2] / L];
+        var c = fbm3(d, 1.1, s + 11); sum += c; sum2 += c * c; n++;
+      }
+    }
+    var mean = sum / n, sd = Math.sqrt(Math.max(1e-6, sum2 / n - mean * mean));
+    var sf = (M.PLANET && M.PLANET.seaFrac) || 0.45;
+    var z = sf < 0.5 ? -(0.5 - sf) * 2.6 : (sf - 0.5) * 2.6;   /* 目标占比→分位数→海平面 */
+    _seaCache = mean + z * sd; _seaSeed = s;
+    return _seaCache;
+  }
   function sphElev(d) {
     var s = seed3();
     var cont = fbm3(d, 1.1, s + 11);                      /* 大陆/海洋（低频）*/
     var ridged = 1 - Math.abs(2 * fbm3(d, 2.8, s + 77) - 1);
-    var land = Math.max(0, cont - SEA);
-    var e = (cont - SEA) * 3.0 + ridged * ridged * 1.5 * land * 3.2;   /* 山脉（脊状 · 更强）*/
+    var sea = seaLevel(), P = M.PLANET || {};
+    var land = Math.max(0, cont - sea);
+    var e = (cont - sea) * 3.0 + ridged * ridged * 1.5 * land * 3.2 * (P.ridge == null ? 1.5 : P.ridge) / 1.5;   /* 山脉（脊状 · 更强）*/
     var det = (fbm3(d, 6.5, s + 191) - 0.5) * 0.5 * land;
     var fine = (fbm3(d, 16.0, s + 331) - 0.5) * 0.35 * land;            /* 高频细节（放大可见）*/
     return Math.max(-0.6, e + det + fine);
   }
   /* 球面原生生物群系色（按高度 + 纬度）—— 连续、无接缝。*/
-  function sphBiome(e, dy) {
-    var lat = Math.abs(dy), temp = 1 - lat * lat;
+  function sphBiome(e, dy, d) {
+    var s = seed3();
+    var lat = Math.abs(dy), temp = (1 - lat * lat) * (M.PLANET && M.PLANET.temp != null ? M.PLANET.temp : 1);
     if (e < 0) return e < -0.15 ? [22, 50, 84] : [40, 84, 126];           /* 深海 / 浅海 */
     if (e < 0.05) return [226, 214, 158];                  /* 滩 */
     var m = ramp(Math.min(1, e / 1.15));
     if (temp < 0.28 && e < 0.5) m = [m[0] * 0.8 + 44, m[1] * 0.8 + 40, m[2] * 0.8 + 36];   /* 苔原 */
-    else if (temp > 0.68 && e < 0.3) m = [m[0] * 0.78 + 74, m[1] * 0.78 + 58, m[2] * 0.78 + 8]; /* 沙 */
-    return m;
+    else if (temp > 0.68 && e < 0.32) m = [m[0] * 0.78 + 74, m[1] * 0.78 + 58, m[2] * 0.78 + 8]; /* 沙 / 荒漠 */
+    /* v90.67（老板 1）：高频**颗粒斑驳** —— 近看有花草 / 岩石细节（顶点级，无贴图）。 */
+    if (d) {
+      var spk = fbm3(d, 55.0, s + 701) - 0.5;
+      var k = 1 + spk * (M.PLANET && M.PLANET.detail != null ? M.PLANET.detail : 0.7) * 0.6;
+      m = [m[0] * k, m[1] * k, m[2] * k];
+    }
+    return [Math.max(0, Math.min(255, m[0])), Math.max(0, Math.min(255, m[1])), Math.max(0, Math.min(255, m[2]))];
   }
 
   /* 高度色带（海蓝 → 滩 → 草 → 黄 → 岩 → 雪）*/
@@ -96,6 +129,33 @@
     sun.position.set(-800, 500, -500); scene.add(sun); M._sun = sun;
   }
 
+  /* v90.67（老板 1 · 方案B）：**细节纹理** —— 可平铺的多倍频值噪声，乘到地形顶点色上，
+     近看有"花草 / 岩石"颗粒（比纯顶点色强一档；cube 面间因纹理可平铺而无缝）。*/
+  function makeDetailTex() {
+    var N = 384, L8 = null, L16 = null, L32 = null;
+    function lattice(g, salt) { var a = new Float32Array(g * g); for (var i = 0; i < g * g; i++) a[i] = h3(i % g, (i / g) | 0, salt, 13); return a; }
+    L8 = lattice(8, 11); L16 = lattice(16, 22); L32 = lattice(32, 33);
+    function samp(L, g, x, y) {
+      var gx = x * g, gy = y * g, x0 = Math.floor(gx), y0 = Math.floor(gy);
+      var fx = gx - x0, fy = gy - y0, x1 = (x0 + 1) % g, y1 = (y0 + 1) % g, x0m = ((x0 % g) + g) % g, y0m = ((y0 % g) + g) % g;
+      var v00 = L[y0m * g + x0m], v10 = L[y0m * g + x1], v01 = L[y1 * g + x0m], v11 = L[y1 * g + x1];
+      var u = fx * fx * (3 - 2 * fx), v = fy * fy * (3 - 2 * fy);
+      var t = v00 + (v10 - v00) * u, b = v01 + (v11 - v01) * u;
+      return t + (b - t) * v;
+    }
+    var cv = document.createElement('canvas'); cv.width = N; cv.height = N;
+    var cx = cv.getContext('2d'); var img = cx.createImageData(N, N);
+    for (var yy = 0; yy < N; yy++) for (var xx = 0; xx < N; xx++) {
+      var x = xx / N, y = yy / N;
+      var n = samp(L8, 8, x, y) * 0.5 + samp(L16, 16, x, y) * 0.3 + samp(L32, 32, x, y) * 0.2;
+      var c = Math.round((0.74 + n * 0.26) * 255);
+      var o = (yy * N + xx) * 4; img.data[o] = c; img.data[o + 1] = c; img.data[o + 2] = c; img.data[o + 3] = 255;
+    }
+    cx.putImageData(img, 0, 0);
+    var t = new THREE.CanvasTexture(cv); t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    return t;
+  }
+
   /* cube-sphere 地形（**球面原生噪声 · 连续无缝**）：顶点全球均匀，地形直接在球面生成。*/
   function buildGlobe() {
     var VW = K + 1;
@@ -104,7 +164,7 @@
       function (u, v) { return [u, 1, -v]; }, function (u, v) { return [u, -1, v]; },
       function (u, v) { return [u, v, 1]; }, function (u, v) { return [-u, v, -1]; }
     ];
-    var pos = [], col = [], nor = [], idx = [];
+    var pos = [], col = [], nor = [], idx = [], uv = [];
     FACES.forEach(function (fn) {
       var base = pos.length / 3;
       for (var j = 0; j < VW; j++) for (var i = 0; i < VW; i++) {
@@ -115,7 +175,8 @@
         var rr = R + Math.max(0, e) * HSC;
         pos.push(dx * rr, dy * rr, dz * rr);
         nor.push(dx, dy, dz);                              /* 法线=位置方向（球面朝外 · 不受绕向影响）*/
-        var c = sphBiome(e, dy);
+        uv.push(i / K, j / K);
+        var c = sphBiome(e, dy, [dx, dy, dz]);
         col.push(c[0] / 255, c[1] / 255, c[2] / 255);
       }
       for (var z = 0; z < K; z++) for (var x = 0; x < K; x++) {
@@ -127,8 +188,14 @@
     geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
     geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
     geo.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
     geo.setIndex(idx);
     globe = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide }));   /* 无光照 → 球面亮度一致 */
+    /* v90.67（方案B）：细节纹理**乘**到顶点色上（MeshBasicMaterial: color×vertexColor×map）——近看有颗粒。 */
+    try {
+      var dtex = makeDetailTex(); dtex.repeat.set(7, 7);
+      globe.material.map = dtex; globe.material.needsUpdate = true;
+    } catch (e) { /* 纹理生成失败 → 退回纯顶点色 */ }
     M._globeMat = globe.material;
     scene.add(globe);
     var wg = new THREE.SphereGeometry(R + 0.4, 96, 64);
@@ -170,8 +237,10 @@
     if (e < 0) return 'lake';                             /* 海 → 湖泊 */
     if (e < 0.025) return 'zhaoze';                       /* 低平湿岸 → 沼泽 */
     var temp = 1 - dy * dy;
+    /* v90.67（老板 1）：荒漠先于平地判（原 `en<0.16 → plain` 在前 + `e<0.25` 与量纲冲突 → 荒漠恒 0）。 */
+    if (temp > 0.62 && en < 0.34) return 'desert';        /* 低纬干热 → 荒漠 */
     if (en < 0.16) return 'plain';
-    if (en < 0.34) return (temp > 0.62 && e < 0.25) ? 'desert' : 'caoyuan';   /* 低纬干热 → 荒漠 */
+    if (en < 0.34) return 'caoyuan';
     if (en < 0.56) return 'forest';
     return 'hill';                                        /* 高 → 山地 */
   }
