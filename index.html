@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>热血三国·单机版</title>
+<title>我在废土有座城</title>
 <!-- v89.86（整改 P-02）：补 favicon（data URI，国风红旗 + 金杆）——
      此前每次会话固定一条 404（浏览器自动请求 /favicon.ico），真机上看着像故障。 -->
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%231e222b'/%3E%3Cpath d='M8 26V6h3v20z' fill='%23cfa856'/%3E%3Cpath d='M11 7h13l-3.4 4.6L24 16.2H11z' fill='%23b8342b'/%3E%3C/svg%3E">
@@ -1980,7 +1980,8 @@
   /* ---- 地图（v24 · 需求 2/3）：版面只留棋盘，导航与坐标收进右下角浮标 ---- */
   /* v26（需求 4）：观察框改 12×8，画布变矮，浮标让位也随之收窄 */
   /* v76（老板）：导航迁入底部条后，这里不再需要为右下浮标让位（78px 撤） */
-  .map-wrap { position: relative; padding: var(--sp-5); }
+  /* v90.71（老板）：地图**贴边占满** —— 去内边距，画布撑满大界面（视野更宽）。 */
+  .map-wrap { position: relative; padding: 0; width: 100%; height: 100%; box-sizing: border-box; }
   /* v76（老板）：「把地图的导航栏（上下左右，坐标之类）放到这个导航范围内」——
      地图导航迁入**底部固定导航条**（.bottombar，由 ui.mapHTML 登记、paintBottom 落画），
      改为静态排布、融入条内（条高 46px，v44 的"一行"布局原样保留）。
@@ -2009,8 +2010,9 @@
     font-variant-numeric: tabular-nums; white-space: nowrap; }
   /* 点选坐标用信息蓝，和"视野区间"（金）区分开 */
   .map-info.mk-pick { color: var(--blue-info); }
-  #mapCanvas { display: block; margin: 0 auto; max-width: 100%; border: 3px solid var(--gold-dark); border-radius: var(--r-lg);
-    background: var(--map-ground); box-shadow: 0 6px 18px rgba(var(--sh-rgb),.5), inset 0 0 0 1px rgba(var(--sh-rgb),.45);
+  /* v90.71（老板）：贴边占满 —— 画布撑满 .map-wrap，去掉内边距与圆角，视野更宽。 */
+  #mapCanvas { display: block; width: 100%; height: 100%; max-width: none; border: 0; border-radius: 0;
+    background: var(--map-ground); box-shadow: inset 0 0 0 1px rgba(var(--sh-rgb),.45);
     /* v89.88：大地图整块可点（点城池/据点/野地都会出面板）——
        原来用的是默认箭头光标，"能不能点"全靠猜。 */
     cursor: pointer; }
@@ -2566,11 +2568,17 @@
   /* v80（老板）：「页面分成步兵，机车两个界面，翻页」—— 两页切换（选中页走 .btn.gold） */
   /* v90.64/90.65（老板）：募兵营改**左列兵种清单 / 右侧选中展示栏**（原分页网格退役）。
      v90.65：满高 flex —— 上方「列表 + 展示」占 ~¾，下方「数量/训练/解散」固定 ~¼。 */
-  .troops-page { display: flex; flex-direction: column; height: 100%; min-height: 400px; }
+  .troops-page { display: flex; flex-direction: column; height: 100%; box-sizing: border-box; padding: var(--sp-4); min-height: 400px; }
+  /* v90.71（老板 2）：上方「列表+展示」吃满剩余高度（flex:1），下方操作区按内容自然高、落到**底边**（不再居中留白）。 */
   .troop-split { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(0, 2.1fr); gap: var(--sp-4);
-    align-items: stretch; flex: 3 1 0; min-height: 0; }
-  .troop-list { display: flex; flex-direction: column; gap: var(--sp-2); overflow-y: auto; padding-right: var(--sp-1); }
-  .troop-list .troop-card { text-align: center; padding: var(--sp-2) var(--sp-3); }
+    align-items: stretch; flex: 1 1 auto; min-height: 0; }
+  .troop-list { display: flex; flex-direction: column; overflow-y: auto; padding-right: var(--sp-1); }
+  /* v90.71（老板 3）：左列兵种列表**去浮动框** —— 简洁行（无卡片底/边框），仅底部分隔线；选中=整行高亮。 */
+  .troop-list .troop-card { background: none; border: none; border-bottom: 1px solid rgba(var(--sh-rgb),.28);
+    border-radius: 0; text-align: left; padding: var(--sp-2) var(--sp-3); transition: background .12s, color .12s; }
+  .troop-list .troop-card:hover { transform: none; background: rgba(var(--gold-rgb),.12); }
+  .troop-list .troop-card.selected { background: rgba(var(--gold-rgb),.22); border-bottom-color: var(--gold-light); box-shadow: none; }
+  .troop-list .troop-card.selected .tname { color: var(--gold-light); }
   .troop-list .troop-card .tname { margin-top: 0; }
   .troop-detail { min-width: 0; display: flex; }
   .troop-detail-head { display: flex; flex-direction: column; gap: var(--sp-3); align-items: center; justify-content: center;
@@ -2584,8 +2592,8 @@
   .troop-detail-head .tdh-sub { font-size: var(--fs-cap); color: var(--text-dim); margin-top: var(--sp-1); }
   .troop-detail-head .tdh-cost { font-size: var(--fs-cap); color: var(--text-dim); margin-top: var(--sp-hair); }
   .troop-detail-head .tdh-warn { font-size: var(--fs-cap); color: var(--red-light); margin-top: var(--sp-1); }
-  /* 下方操作区：数量 / 训练 / 解散（老板：统一下方四分之一） */
-  .troop-ops { flex: 1 1 0; min-height: 0; margin-top: var(--sp-3); padding: var(--sp-3);
+  /* 下方操作区：数量 / 训练 / 解散（v90.71 老板 2：按内容自然高、落到面板底边，不再居中留白） */
+  .troop-ops { flex: 0 0 auto; margin-top: var(--sp-3); padding: var(--sp-3);
     background: rgba(var(--sh-rgb),.25); border: 1px solid var(--line); border-radius: var(--r-lg);
     display: flex; flex-direction: column; justify-content: center; }
   .troop-ops-row { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; justify-content: center; }
@@ -2628,7 +2636,7 @@
      ------------------------------------------------------------
      旧的 .gen-grid 是 3 列卡片墙、每页 9 个：一屏装不下要看翻页，
      每张卡片竖排五行、信息密度极低。现在一条英雄只占一行。
-     v41 后 .gen-card 已彻底无引用（仅 .gcard-tag 仍用于名字旁的名将/美人标）——
+     v41 后 .gen-card 已彻底无引用（仅 .gcard-tag 仍用于名字旁的英雄/美人标）——
      但列表页不再引用它，避免两套样式互相顶掉（本项目踩过这个坑）。
      ============================================================ */
   /* ---- 下方档案 ---- */
@@ -2819,7 +2827,7 @@
     align-items: stretch; margin-top: var(--sp-3); }
   .gp-dollops { display: flex; gap: var(--sp-2); margin-top: auto; padding-top: var(--sp-3); }
   .gp-dollops .btn { flex: 1; }
-  /* 仍在使用：名字旁的「名将 / 美人」小标 */
+  /* 仍在使用：名字旁的「英雄 / 美人」小标 */
   .gcard-tag { flex: none; font-size: var(--fs-cap); font-weight: 400; padding: 0 var(--sp-1); border-radius: var(--r-sm);
     border: 1px solid currentColor; }
   .gcard-tag.hero { color: var(--hero-tag); }
@@ -3349,7 +3357,7 @@
    * 竹简卷轴（v25 · 需求 14）：统计 / 公文 的美术底
    * ------------------------------------------------------------
    * 明确不用"数据座舱"式看板：那种一屏彩色卡片 + 圆角阴影，
-   * 放在三国题材里是两张皮。这里改用**竹简 + 朱印**：
+   * 与废土题材是两张皮。这里改用**竹简 + 朱印**：
    *   · 竖向简纹（repeating-linear-gradient 画出片片竹简的缝）
    *   · 上下两根卷轴木轴（伪元素，带两端轴头）
    *   · 朱印作为标题标点，数值用朱笔/金笔大字
@@ -4539,32 +4547,32 @@
 </div><!-- /#app-scale -->
 </div><!-- /#app-fit -->
 
-<!-- BUILD 9147 -->
-<script src="js/data.js?v=9147"></script>
-<script src="js/state.js?v=9147"></script>
-<script src="js/questdata.js?v=9147"></script>
-<script src="js/systems.js?v=9147"></script>
-<script src="js/domain.js?v=9147"></script>
-<script src="js/map.js?v=9147"></script>
+<!-- BUILD 9148 -->
+<script src="js/data.js?v=9148"></script>
+<script src="js/state.js?v=9148"></script>
+<script src="js/questdata.js?v=9148"></script>
+<script src="js/systems.js?v=9148"></script>
+<script src="js/domain.js?v=9148"></script>
+<script src="js/map.js?v=9148"></script>
 <!-- v90.69：球面世界内核（纯 JS · 拓扑/地形/几何 SSOT）—— 逻辑与 3D 渲染共用，无 THREE -->
-<script src="js/sphere.js?v=9147"></script>
+<script src="js/sphere.js?v=9148"></script>
 <!-- v90.61：Three.js 真 3D 主地图（vendor 本地，离线可用） -->
-<script src="vendor/three.min.js?v=9147"></script>
-<script src="js/map3d.js?v=9147"></script>
-<script src="js/battle.js?v=9147"></script>
+<script src="vendor/three.min.js?v=9148"></script>
+<script src="js/map3d.js?v=9148"></script>
+<script src="js/battle.js?v=9148"></script>
 <!-- v27（需求 5）：回合制文字战场。放在 battle.js 之后 —— simulate 由它接管 -->
-<script src="js/tactic.js?v=9147"></script>
-<script src="js/icons.js?v=9147"></script>
+<script src="js/tactic.js?v=9148"></script>
+<script src="js/icons.js?v=9148"></script>
 <!-- v32（需求「采用网图」）：game-icons 开源图标素材层。必须在 icons.js 之后 ——
      icons.js 内的取图函数用 typeof GICONS 延迟绑定，渲染时才真正查表。 -->
-<script src="js/gicons.js?v=9147"></script>
+<script src="js/gicons.js?v=9148"></script>
 <!-- v35：AI 位图素材登记表（汉代风，最高优先级）。同样在 icons.js 之后 ——
      取图函数用 typeof BITMAPS 延迟绑定；未登记的 id 自动回退矢量层。 -->
-<script src="js/bitmaps.js?v=9147"></script>
-<script src="js/portraits.js?v=9147"></script>
-<script src="js/story.js?v=9147"></script>
+<script src="js/bitmaps.js?v=9148"></script>
+<script src="js/portraits.js?v=9148"></script>
+<script src="js/story.js?v=9148"></script>
 <!-- ⛔ v89.218（老板「故事全部去除」）：84 卷故事库（story/）整目录删除，脚本标签同步撤除。 -->
-<script src="js/ui.js?v=9147"></script>
-<script src="js/main.js?v=9147"></script>
+<script src="js/ui.js?v=9148"></script>
+<script src="js/main.js?v=9148"></script>
 </body>
 </html>

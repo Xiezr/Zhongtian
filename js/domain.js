@@ -2124,8 +2124,8 @@
    * 高资质出现概率低，但属性区间与成长都更夸张 —— 拉开档次差异 */
   function makeCandidate(lv, owned) {
     var isBeauty = Math.random() < 0.30;
-    /* v73（老板「限制高资质英雄的直接获取，概率再降 10 倍」）：名将直取
-       0.30 → 0.03。池内史实名将按 HERO_RANK_LINE 皆是进化体以上的高资质，
+    /* v73（老板「限制高资质英雄的直接获取，概率再降 10 倍」）：英雄直取
+       0.30 → 0.03。池内史实英雄按 HERO_RANK_LINE 皆是进化体以上的高资质，
        与 DATA.GEN_RANKS 权重再 ÷10 是一套组合拳 —— 高资质英雄从此以
        「基因实验室血清养成」为主路（见 DATA.FARM）。 */
     if (lv >= 5 && Math.random() < 0.03) {
@@ -2134,7 +2134,7 @@
         var h = pick(pool);
         owned[h.name] = true;
         var sum = (h.tong || 0) + (h.yw || 0) + (h.zm || 0) + (h.nz || 0);
-        /* v89.73：史实名将**也过酒馆资质上限** —— 否则"李逵天启体"照样从酒馆走出来 */
+        /* v89.73：史实英雄**也过酒馆资质上限** —— 否则"李逵天启体"照样从酒馆走出来 */
         var hrk = GAME.innCapRank(GAME.heroRank(sum));
         var mul = isBeauty ? 1.25 : 1.0;
         return {
@@ -5856,7 +5856,7 @@
     return { ok: true, msg: '已更换头像（第 ' + (idx + 1) + ' 张）' };
   };
 
-  /* --------- 解雇英雄（装备全数归还；名将离去损声望） --------- */
+  /* --------- 解雇英雄（装备全数归还；英雄离去损声望） --------- */
   GAME.dismissGeneral = function (genId) {
     var s = GAME.state;
     if ((s.generals || []).length <= 1) return { ok: false, msg: '帐下至少须留一位英雄' };
@@ -6023,7 +6023,7 @@
     /* v28（需求 1）：围墙建筑专精 —— 城防 +25%/档（v89.137：三档 = ×1.25 / ×1.5 / ×1.75） */
     var _dm137 = GAME.mastery('defPct', city);
     if (_dm137 > 0) base = Math.round(base * (1 + _dm137));
-    if (GAME.story) base = Math.round(base * GAME.story.cityDefMult()); // 名将羁绊：守御
+    if (GAME.story) base = Math.round(base * GAME.story.cityDefMult()); // 英雄羁绊：守御
     /* v89.113（老板需求 3）：城防的谋略项迁往**城主**（守将从此只管征兵与对阵） */
     var mbc = GAME.mayorBonus(city);
     /* v89.164：曲线自带边界，二次截断（旧 min 1.0）退役 */
@@ -6155,7 +6155,7 @@
      为什么要归一化：席位是"按城"算的（`generalsIn` 走 `genCityOf`），
      而 `genCityOf` 对 cityId 为空的人会**回落到当前城** ——
      那样这个人会随"我现在在看哪座城"飘来飘去，席位统计自然跟着飘。
-     实名的来源只有两处：名将归降（`battle.grantHero` 现在会带出发城）
+     实名的来源只有两处：英雄归降（`battle.grantHero` 现在会带出发城）
      与老存档（v64 之前降将的 cityId 是 null）。 */
   GAME.normalizeGenCities = function () {
     var s = GAME.state;

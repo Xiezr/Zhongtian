@@ -488,19 +488,25 @@
      → **不随星球缩放变大小**（恒定可读）。
      v90.58（老板）：字号**减半**、**去粗体**；`depthTest:true` 让**星球遮挡背面**的名称（背面城市不再透出来）。 */
   function nameSprite(text, color) {
+    /* v90.71（老板）：名称清晰化 —— 画布**超采样 3×**（纹理分辨率 ≫ 屏幕尺寸 → 缩小后锐利）；
+       字体换**清晰 CJK 字族**（雅黑/苹方/系统 UI）；仍不加粗（老板："可以不加粗看看"）。 */
+    var SS = 3, fs = 15 * SS, pad = 10 * SS, h = 26 * SS;
+    var FONT = '"Microsoft YaHei","PingFang SC","Noto Sans SC","Segoe UI",sans-serif';
     var c = document.createElement('canvas');
-    var fs = 15;
     var probe = c.getContext('2d');
-    probe.font = fs + 'px sans-serif';
-    var tw = Math.max(40, Math.ceil(probe.measureText(text).width) + 16);
-    c.width = tw; c.height = 26;
+    probe.font = fs + 'px ' + FONT;
+    var tw = Math.max(40 * SS, Math.ceil(probe.measureText(text).width) + pad * 2);
+    c.width = tw; c.height = h;
     var g = c.getContext('2d');
-    g.font = fs + 'px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.lineWidth = 3; g.strokeStyle = 'rgba(10,14,20,.92)'; g.strokeText(text, tw / 2, 13);
-    g.fillStyle = color || '#ffffff'; g.fillText(text, tw / 2, 13);
+    g.font = fs + 'px ' + FONT; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.lineWidth = 3 * SS; g.lineJoin = 'round';
+    g.strokeStyle = 'rgba(10,14,20,.92)'; g.strokeText(text, tw / 2, h / 2);
+    g.fillStyle = color || '#ffffff'; g.fillText(text, tw / 2, h / 2);
     var tx = new THREE.CanvasTexture(c);
+    tx.minFilter = THREE.LinearMipmapLinearFilter; tx.generateMipmaps = true;
+    if (THREE.SRGBColorSpace) tx.colorSpace = THREE.SRGBColorSpace;
     var spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: tx, transparent: true, depthWrite: false, depthTest: true }));
-    spr.userData = { asp: tw / 26 };   /* 宽高比 —— scaleLabels 按屏高定尺寸时用 */
+    spr.userData = { asp: tw / h };   /* 宽高比 —— scaleLabels 按屏高定尺寸时用 */
     return spr;
   }
   /* v90.57（老板）：把名称 Sprite 的**屏幕尺寸钉死**（不随星球缩放变大小）——
@@ -528,10 +534,11 @@
      并显示**下一级**内部边界 + 首府点 + 名称。---- */
   function buildHighlight() {
     if (M._hl) { scene.remove(M._hl); M._hl = null; }
-    if (M._globeMat) M._globeMat.color.setHex(0xffffff);
+    /* v90.71：地形高亮在时，星球调暗由它掌管（勿被省市区高亮复位）。 */
+    if (M._globeMat && !M._terrainHl) M._globeMat.color.setHex(0xffffff);
     var S = genSettlements(); if (!S) return;
     var sel = M._region; if (!sel) return;
-    if (M._globeMat) M._globeMat.color.setHex(0x5a5a5a);       /* 其余地形调暗 */
+    if (M._globeMat && !M._terrainHl) M._globeMat.color.setHex(0x5a5a5a);       /* 其余地形调暗 */
     var T = S.table, V = M._vdirs, F = M._icoF; if (!V || !F) return;
     var grp = new THREE.Group();
     /* ① 亮层（选中区顶盖）*/
@@ -588,6 +595,7 @@
   }
   M.setHighlight = function (sel) {                          /* sel: null 或 {level,index} */
     M._region = sel || null;
+    if (sel) M.clearBeam();   /* v90.71：选省/市/区 = 其他操作 → 定位线消失 */
     buildHighlight();
     /* 相机**自动转到该区域正面**（该区中心朝向相机）*/
     if (sel) {
@@ -605,18 +613,27 @@
     if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
   };
 
-  /* v90.66（老板 0a）：**地形高亮** —— 选中某地形，把全星该地形的六边形地块**叠一层描边 + 半透填充**。 */
+  /* v90.66（老板 0a）：**地形高亮**。
+     v90.71（老板 6）：改为**选中地形提亮 · 其余区域整体调暗**（类似省/市/区选择效果）——
+     把整颗星球材质调暗，再把该地形的地块**亮色满铺**叠上去 → 选中地形是亮块、其余沉下去。 */
   var _TERRAIN_HL_COLOR = {
     lake: 0x4aa6e0, zhaoze: 0x6f8f4a, plain: 0xd8cfa0, caoyuan: 0x9db24a,
     forest: 0x3f8a52, desert: 0xd9b45c, hill: 0x9a8f82,
   };
+  function resetGlobeDim() {
+    if (!M._globeMat) return;
+    M._globeMat.color.setHex(M._region ? 0x5a5a5a : 0xffffff);
+  }
   M.setTerrainHighlight = function (type) {                  /* type: 地形 key 或 null/'' = 清除 */
     M._terrainHl = type || null;
+    if (M._terrainHl) M.clearBeam();   /* v90.71：选地形 = 其他操作 → 定位线消失 */
     if (M._thl) { scene.remove(M._thl); if (M._thl.geometry) M._thl.geometry.dispose(); M._thl = null; }
     if (!M._terrainHl || !_tileCells || !_tileCells.length) {
+      resetGlobeDim();                  /* 清除：星球恢复原亮度（省市区高亮若在则保留其调暗）*/
       if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
       return;
     }
+    if (M._globeMat) M._globeMat.color.setHex(0x454545);   /* 其余区域整体调暗 */
     var col = _TERRAIN_HL_COLOR[M._terrainHl] || 0xffffff;
     var pos = [], idx = [], base = 0;
     for (var i = 0; i < _tileCells.length; i++) {
@@ -634,7 +651,8 @@
       var geo = new THREE.BufferGeometry();
       geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
       geo.setIndex(idx);
-      M._thl = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: false }));
+      /* 选中地形满铺亮块（0.92 不透）+ 细描边 → 「亮块 vs 暗底」对比强烈。 */
+      M._thl = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.92, side: THREE.DoubleSide, depthWrite: false }));
       scene.add(M._thl);
     }
     if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
@@ -666,6 +684,14 @@
       if (tiles) tiles.visible = o > 0.02;
     }
     scaleLabels();   /* v90.57：名称标签**钉死屏幕尺寸**（不随缩放变大小），每帧归一 */
+    /* v90.71（老板 7）：定位光束远端发光点**红光脉动闪烁**（每帧按世界时间调制大小/透明度）。*/
+    if (M._beamPos) {
+      var ph = (Date.now() % 900) / 900;                       /* 0~1 周期 0.9s */
+      var k = 0.5 + 0.5 * Math.sin(ph * Math.PI * 2);          /* 0~1 脉动 */
+      var base = Math.max(5, camO.dist * 0.02);
+      M._beamPos.scale.set(base * (0.6 + 0.7 * k), base * (0.6 + 0.7 * k), 1);
+      if (M._beamPos.material) M._beamPos.material.opacity = 0.4 + 0.6 * k;
+    }
     R3.render(scene, cam);
     var ctx = target2d.getContext('2d');
     ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, cw, ch);
@@ -729,6 +755,7 @@
   };
   /* 点击拾取：Raycaster 打到地块填充 → 取格类型/等级 → 存为选中（画在画布上）*/
   M.pickAt = function (canvas, clientX, clientY) {
+    M.clearBeam();   /* v90.71（老板 7）：点选其他地块 = 其他操作 → 定位指示线消失 */
     if (!M._collider) return;
     var r = canvas.getBoundingClientRect();
     if (!r.width) return;
@@ -771,9 +798,25 @@
     if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
   };
   /* v90.68（老板）：**定位光束** —— 从某格**向外射出一道**提示玩家 + 相机对准该格。
+     v90.71（老板 7）：远端加**红光持续闪烁**的发光点（醒目好找）；做其他操作后指示线消失。
      换目标先清旧束；传 null 清除。 */
-  M.beamTo = function (x, y) {
+  function glowSprite() {
+    var N = 128, cv = document.createElement('canvas'); cv.width = N; cv.height = N;
+    var g = cv.getContext('2d'), gr = g.createRadialGradient(N / 2, N / 2, 0, N / 2, N / 2, N / 2);
+    gr.addColorStop(0, 'rgba(255,120,100,1)'); gr.addColorStop(0.32, 'rgba(255,52,40,.85)');
+    gr.addColorStop(0.66, 'rgba(210,30,20,.32)'); gr.addColorStop(1, 'rgba(190,16,10,0)');
+    g.fillStyle = gr; g.fillRect(0, 0, N, N);
+    var tx = new THREE.CanvasTexture(cv); tx.needsUpdate = true;
+    var spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: tx, transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending }));
+    spr.userData.glow = true;
+    return spr;
+  }
+  M.clearBeam = function () {
     if (M._beam) { scene.remove(M._beam); if (M._beam.geometry) M._beam.geometry.dispose(); M._beam = null; }
+    if (M._beamPos) { scene.remove(M._beamPos); if (M._beamPos.material) M._beamPos.material.dispose(); M._beamPos = null; }
+  };
+  M.beamTo = function (x, y) {
+    M.clearBeam();
     if (x == null || y == null) { if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas(); return; }
     try {
       var c = GAME.map.lonlatOf(x, y), d = GAME.map.dirOf(c.lon, c.lat);
@@ -782,8 +825,11 @@
       var g1 = [d[0] * (r + 160), d[1] * (r + 160), d[2] * (r + 160)];   /* 向外射出一道 */
       var geo = new THREE.BufferGeometry();
       geo.setAttribute('position', new THREE.Float32BufferAttribute([g0[0], g0[1], g0[2], g1[0], g1[1], g1[2]], 3));
-      M._beam = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xffe070, transparent: true, opacity: 0.95, depthWrite: false }));
+      M._beam = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xff5236, transparent: true, opacity: 0.97, depthWrite: false }));
       scene.add(M._beam);
+      M._beamPos = glowSprite();                     /* 远端发光点（红光闪烁，见 render 每帧脉动）*/
+      M._beamPos.position.set(g1[0], g1[1], g1[2]);
+      scene.add(M._beamPos);
     } catch (e) { /* 忽略 */ }
     M.centerOn(x, y);
   };

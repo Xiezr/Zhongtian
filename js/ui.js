@@ -5118,7 +5118,7 @@
     var s = GAME.state;
     var totalPop = GAME.totalPopCap();   /* v60：全境幸存者上限（唯一出口） */
     var popNow = GAME.totalPop();
-    /* v89.188（老板 3）：「（名将 N）」计数撤下（所有英雄标识统一）——heroCount 随之清零 */
+    /* v89.188（老板 3）：「（英雄 N）」计数撤下（所有英雄标识统一）——heroCount 随之清零 */
     var cur = GAME.systems.rankInfo(s.rank);
     var next = GAME.systems.nextRank();
     var chk = next ? GAME.systems.canPromote() : null;
@@ -6368,7 +6368,7 @@
     });
     var headDesc = cur
       ? (cur.icon + ' ' + U.escape(cur.name) + ' —— ' + U.escape(cur.desc || ''))
-      : '成系列收藏名将与佳人的珍品 —— 集齐一系可得声望。';
+      : '成系列收藏英雄与佳人的珍品 —— 集齐一系可得声望。';
     return '<div class="ui-page col-page">' +
       '<div class="gold-heading">🏛 陈列馆' +
         ui.help('成就型收藏：完成特定任务后藏品【解锁】，再花旧币【激活】入藏。\n' +
@@ -7601,7 +7601,7 @@
       return '<tr class="inn-tr' + (can ? '' : ' off') + '">' +
         '<td><span class="inn-face-cell"><span class="inn-avatar">' + ui.faceOf(
           { name: c.name, rank: c.rank, beauty: c.beauty, portraitSeed: c.portraitSeed }, 28) + '</span>' +
-          /* v80（老板）：招募行去「史实名将」标；v89.188（老板 3）：全站撤 hero/beauty
+          /* v80（老板）：招募行去「史实英雄」标；v89.188（老板 3）：全站撤 hero/beauty
              标签与「相亲」话术（所有英雄标识统一 —— 招募行只留姓名）。 */
           '<span class="inn-name" style="white-space:nowrap;">' + U.escape(c.name) + '</span></span></td>' +
         '<td class="ctr">Lv' + c.level + '</td>' +
@@ -9156,7 +9156,7 @@
 
       ui.openModal(
         /* v73（老板）：顶部图标不留（旧 emoji 图标本就不如棋盘位图，索性撤下）。
-           v76（老板）：「这种备注去掉：招募英雄…市井传闻查名将坐标」—— 那时撤的是
+           v76（老板）：「这种备注去掉：招募英雄…市井传闻查英雄坐标」—— 那时撤的是
            **纯功能罗列**（功能各面板都已写明）；v89.113（老板）：「在各建筑名称下
            合适的地方写一个简要的说明…写得有历史感，大气沧桑一点」—— 现将
            **历史感的一句 + 功能要点**（DATA.BUILDINGS[].desc 已整体重写）加回标题正下方，
@@ -9708,7 +9708,7 @@
           /* v89.80（老板）：姓名后加 Lv 徽标（一眼可比强弱）；
              v89.188（老板 4）：「为名称预留 5 个中文字符位置」——姓名包进定宽 5em 的
              .grow-nm（超出省略、title 给全名），Lv 徽标从此对**所有英雄**横位一致；
-             老板 3：撤「美人 / 名将」标签（hero/beauty 字段保留：立绘与机制仍在用）。 */
+             老板 3：撤「美人 / 英雄」标签（hero/beauty 字段保留：立绘与机制仍在用）。 */
           '<span class="grow-nm" title="' + U.escape(g.name) + '">' + U.escape(g.name) + '</span>' +
           '<span class="grow-lv">Lv' + (g.level || 1) + '</span>' +
           (GAME.isLordGeneral(g) ? '<span class="gcard-tag lord">君主</span>' : '') + '</b>' +
@@ -10554,7 +10554,7 @@
     /* v73（老板）：「英雄的界面顶部，怎么有个头像加一个飞机啊？不要搞
        （本城 2 / 11 席 · 全境 2 / 11 席）这些文字，直接英雄加本城/全境切换按钮就行」
        —— 标题只留「英雄」二字 + 本城/全境 chips：🧑‍✈️（人+飞机）/ 席位文字 /
-       名将计数一律撤下（席位口径仍在 ⓘ 里说明，具体数字去招募站面板看）。 */
+       英雄计数一律撤下（席位口径仍在 ⓘ 里说明，具体数字去招募站面板看）。 */
     return '<div class="ui-page">' +
       '<div class="gold-heading">英雄' + scopeChips +
         ui.help('左侧点姓名切换英雄；右侧即其**全部**档案与部件栏（不再另开弹窗）\n' +
@@ -11052,7 +11052,7 @@
     html += '<div class="attr"><span class="k">等级</span><span class="v">Lv' + g.level + '</span></div>';
     html += '<div class="attr"><span class="k">四维</span><span class="v">统' + a.tong + ' 勇' + a.yw + ' 智' + a.zm + ' 政' + a.nz + '</span></div>';
     html += '<div class="note">离去后其装备（' + (eq.length ? eq.join('、') : '无') + '）将全数归还背包。<br>'
-      /* v89.188（老板 3）：文案中性化（「名将」字样撤；扣声望 −50 的机制与告知保留） */
+      /* v89.188（老板 3）：文案中性化（「英雄」字样撤；扣声望 −50 的机制与告知保留） */
       + (g.hero ? '<b style="color:var(--red-light)">其声望素著，离去将折损声望 −50。</b><br>' : '')
       + '民心 −2。此操作不可撤销，是否确定？</div>';
     html += '<div class="panel-foot">'
@@ -12612,7 +12612,11 @@
        关掉 GAME.map3d.enabled 即退回 2D 方格图。
        v90.69：3D 依赖球面内核 GAME.sphere（无 THREE 的 node 测试环境无此模块 → 自动退回 2D）。 */
     if (GAME.map3d && GAME.map3d.enabled && GAME.sphere) {
-      var _cw = Math.round(fr.spanX * fr.cell), _chh = Math.round(fr.spanY * fr.cell);
+      /* v90.71（老板）：画布**贴边占满** .map-wrap（读容器内框尺寸，去四周/下方留白）——
+         退回 fr.spanX×cell 兜底（容器未布局时）。 */
+      var _wrap = document.querySelector('.map-wrap');
+      var _cw = (_wrap && _wrap.clientWidth) ? _wrap.clientWidth : Math.round(fr.spanX * fr.cell);
+      var _chh = (_wrap && _wrap.clientHeight) ? _wrap.clientHeight : Math.round(fr.spanY * fr.cell);
       if (canvas.width !== _cw) canvas.width = _cw;
       if (canvas.height !== _chh) canvas.height = _chh;
       if (GAME.map3d.bindControls) GAME.map3d.bindControls(canvas);   /* 左键拖动平移 · 右键转向 · 滚轮缩放 */

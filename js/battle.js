@@ -113,7 +113,7 @@
       if (GAME.sectBonus) atkMult *= (1 + GAME.sectBonus('atkPct'));
       /* 宝物：冲锋号 */
       if (GAME.systems.buffActive('military') && s.buffs.military.atk) atkMult *= (1 + s.buffs.military.atk);
-      /* 名将羁绊 + 当世年号（后台静默加成，界面不提示） */
+      /* 英雄羁绊 + 当世年号（后台静默加成，界面不提示） */
       if (GAME.story) atkMult *= GAME.story.atkMult();
       /* 远程白嫖：射程远超时首轮伤害加成（模拟"后退射杀"） */
       var dmg = cnt * t.atk * atkMult;
@@ -211,7 +211,7 @@
        一乘 0.1 就远超 0.6 上限，导致**聚落与旧都的城防效果完全相同**，
        城防梯度被彻底抹平。改为 /200 线性：聚落 0.20 / 重镇 0.30 / 首府 0.45 / 旧都 0.55。 */
     var defBonus = Math.min(0.85, (defVal || 0) / 200);
-    /* 名将羁绊：守御之力（后台静默）—— 唯一来源 STORY.defMult() */
+    /* 英雄羁绊：守御之力（后台静默）—— 唯一来源 STORY.defMult() */
     if (GAME.story && GAME.story.defMult) defBonus = Math.min(0.9, defBonus + GAME.story.defMult());
     if (defGen) {
       /* v52：守将的防御加成同样走「谋略→防御值→百分比」这条链（含装备/套装防御），
@@ -1233,7 +1233,7 @@
     if (GAME.artGain) {
       GAME.artGain(((DATA.ARTIFACT || {}).capturePts || {})[npcCity.type] || 40, '开疆拓土 · ' + npcCity.name);
     }
-    /* 名将必降：按城匹配（城名一致，或坐标邻近 ±3 格） */
+    /* 英雄必降：按城匹配（城名一致，或坐标邻近 ±3 格） */
     var hero = GAME.battle.grantHero(npcCity, fromCity);
     /* v86：挑拨离间 —— 守将忠诚 ≤25（累计施计 ≥3 次）时，战胜后 50% 倒戈归降。
        种子不用随机数：同一个城同一局结果稳定（照 invasionRoll 先例，
@@ -1557,7 +1557,7 @@
     return got;
   };
 
-  /* 攻占名城 → 镇守名将必定投降 */
+  /* 攻占名城 → 镇守英雄必定投降 */
   GAME.battle.grantHero = function (npcCity, fromCity) {
     var s = GAME.state;
     /* v64：降将也要有归属城（席位按城算，无主之将会随"当前在看哪座城"飘）。

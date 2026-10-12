@@ -543,7 +543,7 @@
          指向当前城池的库存（`city.res`）。这里写字面量反而会盖掉 getter。 */
       cities: [city],
       /* v70（老板）：君主本人也是一位英雄 —— 排在末尾，不动既有索引口径
-         （`generals[0]` 仍是开局名将，测试与旧档迁移都按原样） */
+         （`generals[0]` 仍是开局英雄，测试与旧档迁移都按原样） */
       generals: [gen, GAME.makeLordGeneral(rulerOpts, lordSeed, city.id)],
       queues: { build: [], train: [], tech: [] },
       marches: [],
@@ -802,7 +802,7 @@
     return g;
   };
 
-  /* 生成历史名将（野地抓将/占领名城必降） */
+  /* 生成历史英雄（野地抓将/占领名城必降） */
   GAME.makeHero = function (h, level) {
     var sum = (h.tong || 0) + (h.yw || 0) + (h.zm || 0) + (h.nz || 0);
     var rk = GAME.heroRank(sum);
@@ -821,12 +821,12 @@
       rank: rk.id, style: 'balance',
       hero: true,
     };
-    /* v22：史实名将挂上专属 AI 头像的 key（文件缺失时自动回退立绘） */
+    /* v22：史实英雄挂上专属 AI 头像的 key（文件缺失时自动回退立绘） */
     if (GAME.portraits) GAME.portraits.assign(g);
     return g;
   };
 
-  /* 史实名将的资质：按四维总和判定 */
+  /* 史实英雄的资质：按四维总和判定 */
   GAME.heroRank = function (sum) {
     var line = DATA.HERO_RANK_LINE || [];
     for (var i = 0; i < line.length; i++) if (sum >= line[i].min) return DATA.GEN_RANK_BY_ID[line[i].id];
@@ -1030,8 +1030,8 @@
      酒馆候选的**资质上限** —— 唯一出口。
        · 凡人 / 突变体 / 进化体 可以出；觉醒体 / 天启体**只能靠血清升档**（GAME.rankUpUse）。
      为什么用"截断"而不是"把权重改成 0"：`rankWeights` 还服务着别的入口
-     （基因实验室、史实名将等），动表会把它们一起封死；截断只作用于酒馆这条链。
-     两条候选链都要过这里：普通掷档（pickRank）与史实名将直取（heroRank）——
+     （基因实验室、史实英雄等），动表会把它们一起封死；截断只作用于酒馆这条链。
+     两条候选链都要过这里：普通掷档（pickRank）与史实英雄直取（heroRank）——
      漏掉后者的后果是"关羽照样带着天启体从酒馆走出来"，等于没改。 */
   GAME.INN_RANK_CAP = 'ying';
   GAME.innCapRank = function (rk) {
@@ -2518,7 +2518,7 @@
         /* v89.131：老档缺 energy → 给**新口径的满值**（六维公式算出，非写死 100） */
         if (g.energy == null) g.energy = GAME.energyMaxOf ? GAME.energyMaxOf(g) : 100;
         if (g.loyalty == null) g.loyalty = 70;
-        /* v22（需求 2）：旧档英雄补肖像 seed / 名将头像 key（按名字确定性推导） */
+        /* v22（需求 2）：旧档英雄补肖像 seed / 英雄头像 key（按名字确定性推导） */
         if (GAME.portraits) GAME.portraits.ensure(g);
         /* v26（需求 2）：速度升为五维之前，普通英雄的出身脚力是 0（当时没人在意）；
            一次性补齐到 GEN_BASE.speed，否则老档英雄的速度会比新招的低一截。
@@ -3151,7 +3151,7 @@
       g.stamina = Math.min(staMx, (g.stamina == null ? staMx : g.stamina) + staMx * rateRec131 * dtReal);
       var enMx131 = GAME.energyMaxOf(g);
       g.energy = Math.min(enMx131, (g.energy == null ? enMx131 : g.energy) + enMx131 * rateRec131 * dtReal);
-      /* 忠诚极低：有概率离去（名将更难留，但概率仍很低）
+      /* 忠诚极低：有概率离去（英雄更难留，但概率仍很低）
          v70：君主除外 —— 「不可解雇」的另一半是"自己不会走" */
       if (!GAME.isLordGeneral(g) && (g.loyalty == null ? 70 : g.loyalty) < lo.desertAt) {
         var chance = lo.desertChancePerHour * gameHours * (g.hero ? 1.6 : 1);
