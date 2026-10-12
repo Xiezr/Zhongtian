@@ -9643,6 +9643,65 @@
       '<div class="troop-detail">' + detailHead + '</div></div>' + opsHTML + '</div>';
   };
 
+  /* ============================================================
+   * v90.73（老板 9）：**星球生成器**（底部导航入口）
+   * ------------------------------------------------------------
+   * 玩家给要素参数 → 生成一颗新星球，作为**独立副本**（不与其他星球同屏）。
+   * 副本列表可切「进入」；各星球 spawn 独立，星球间距默认 GAME.STAR_DIST（10000 六边格）作征距参考。
+   * 参数（写进副本的 params，灌入 GAME.sphere.PLANET）：海洋占比 / 山脉强度 / 颗粒细节 / 气候。
+   * ============================================================ */
+  ui.openPlanetGen = function () {
+    var S = GAME.state;
+    var P = (GAME.sphere && GAME.sphere.PLANET) || {};
+    var def = { seaFrac: P.seaFrac != null ? P.seaFrac : 0.45, ridge: P.ridge != null ? P.ridge : 1.5,
+      detail: P.detail != null ? P.detail : 0.7, temp: P.temp != null ? P.temp : 1.0 };
+    var ps = GAME.planetsOf(), act = GAME.activePlanetOf();
+    var listRows = ps.map(function (p) {
+      var on = act && p.id === act.id;
+      return '<div class="attr"><span class="k">' + (on ? '🪐 ' : '· ') + U.escape(p.name) +
+        '　<span class="ui-sub">#' + p.id + ' · 种子 ' + p.seed + '</span></span>' +
+        '<span class="v">' + (on ? '<span style="color:var(--gold-light);">当前</span>'
+          : '<button class="btn sm" data-action="planet-load" data-pid="' + p.id + '">进入</button>') + '</span></div>';
+    }).join('');
+    var slider = function (id, label, min, max, step, val, hint) {
+      return '<div class="attr"><span class="k">' + label + '</span><span class="v">' +
+        '<input type="range" id="' + id + '" min="' + min + '" max="' + max + '" step="' + step + '" value="' + val + '" ' +
+          'style="width:200px;vertical-align:-4px;" ' +
+          'oninput="var b=this.closest(\'.attr\').querySelector(\'.pgen-val\');if(b)b.textContent=this.value;"> ' +
+        '<b class="pgen-val" style="color:var(--gold-light);font-variant-numeric:tabular-nums;">' + val + '</b>' +
+        (hint ? '　<span class="ui-sub">' + hint + '</span>' : '') + '</span></div>';
+    };
+    ui.openModal(
+      '<div class="gold-heading">🪐 星球生成器</div>' +
+      '<div style="text-align:center;color:var(--text-dim);font-size:var(--fs-sub);margin-bottom:8px;">' +
+        '各星球作**独立副本**（不同屏展示）· 星球间距约 <b>' + U.numText(GAME.STAR_DIST, 0) + '</b> 六边格（出征距离参考）</div>' +
+      '<div class="op-zone"><div class="op-zone-t">星球副本</div>' + listRows + '</div>' +
+      '<div class="op-zone"><div class="op-zone-t">生成新星球 · 要素参数</div>' +
+        slider('pgen-sea', '海洋占比', 0.10, 0.80, 0.01, def.seaFrac, '海陆比（0.10 少水 … 0.80 多海）') +
+        slider('pgen-ridge', '山脉强度', 0.5, 3.0, 0.1, def.ridge, '脊状山脉起伏') +
+        slider('pgen-detail', '颗粒细节', 0.0, 1.5, 0.1, def.detail, '地表颗粒/斑驳') +
+        slider('pgen-temp', '气候', 0.5, 1.5, 0.1, def.temp, '纬度温差（影响荒漠/苔原）') +
+        '<div class="attr"><span class="k">种子</span><span class="v">' +
+          '<input type="number" id="pgen-seed" value="' + ((U.now() % 900000) || 1) + '" style="width:120px;padding:5px;background:var(--slab-1);border:1px solid var(--gold-dark);color:var(--text);border-radius:4px;text-align:center;">' +
+          '　<span class="ui-sub">同种子同星球</span></span></div>' +
+        '<div class="op-row" style="margin-top:8px;">' +
+          '<button class="btn gold" data-action="planet-create">✨ 生成并进入</button>' +
+          '<button class="btn" data-action="planet-create-stay">生成（不进入）</button>' +
+        '</div>' +
+      '</div>' +
+      '<div class="modal-foot"><button class="btn" data-action="close-modal">关闭</button></div>'
+    );
+  };
+  /* 读参数框 → params 对象 */
+  ui._planetParamsFrom = function () {
+    function v(id, d) { var e = document.getElementById(id); return e ? Number(e.value) : d; }
+    return { seaFrac: v('pgen-sea', 0.45), ridge: v('pgen-ridge', 1.5), detail: v('pgen-detail', 0.7), temp: v('pgen-temp', 1.0) };
+  };
+  ui._planetSeedFrom = function () {
+    var e = document.getElementById('pgen-seed');
+    return e ? (Math.round(Number(e.value)) || 1) : 1;
+  };
+
   /* --------- 英雄 --------- */
   /* --------- 英雄 --------- */
   /* ============================================================
@@ -15197,7 +15256,10 @@
       '">🏷 ' + (show ? '隐藏名称' : '显示名称') + '</button>';
     var warBtn = '<button class="bb-war" data-action="battle-list-open" ' +
       'title="指挥战斗：查看正在进行的战斗与行军中的军队（有战斗待指挥时闪烁）">⚔ 指挥战斗</button>';
-    bar.innerHTML = '<div class="bb-tools">' + lblBtn + warBtn + '</div>'
+    /* v90.73（老板 9）：底部导航加**星球生成器**入口 —— 调参生成星球，作为副本（不与其他星球同屏）。 */
+    var planetBtn = '<button class="bb-planet" data-action="planet-gen-open" ' +
+      'title="星球生成器：设置要素参数生成新星球（各星球作独立副本，不同屏展示）">🪐 星球生成器</button>';
+    bar.innerHTML = '<div class="bb-tools">' + lblBtn + warBtn + planetBtn + '</div>'
       + (arr.length ? arr.join('')
       : '<span class="bb-hint">—</span>')
       + '<button class="bb-mini" data-action="open-minimap" title="缩略地图：点击看天下大势">'

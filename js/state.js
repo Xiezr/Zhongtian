@@ -554,6 +554,11 @@
          都读 `map.startPos`（见 map.js），旧档缺字段则回退 DATA.START_POS。 */
       map: { seed: mapSeed, cities: GAME.buildNpcCities(mapSeed), wilds: null,
         startPos: { x: startPos.x, y: startPos.y } },
+      /* v90.73（老板 9）：**多星球副本** —— 每颗星球一份 {seed, params}；activePlanet 指向当前。
+         默认星球 = 本局的 mapSeed + SP.PLANET 默认参数。 */
+      planets: [{ id: 0, name: '老家', seed: mapSeed,
+        params: (GAME.sphere && GAME.sphere.PLANET) ? { seaFrac: GAME.sphere.PLANET.seaFrac, ridge: GAME.sphere.PLANET.ridge, detail: GAME.sphere.PLANET.detail, temp: GAME.sphere.PLANET.temp } : { seaFrac: 0.45, ridge: 1.5, detail: 0.7, temp: 1.0 } }],
+      activePlanet: 0,
       rep: 0,
       rank: 0,
       mainCityId: null,          // v79：主城（政务厅里设；驻跸加成 + 【主城】标识）
@@ -605,6 +610,56 @@
     GAME.syncSeq();            // 发号起点对齐（防新将撞号）
     return GAME.state;
   };
+
+  /* ============================================================
+   * v90.73（老板 9）：**多星球副本**
+   * ------------------------------------------------------------
+   * 每颗星球 = 一份 {id, name, seed, params}，与主世界**同构**（独立地形/城/野地）。
+   * 不同星球**不再同屏**展示 —— 切到某星球才载入它。星球之间默认间距 STAR_DIST（六边格数）
+   * 作为**出征距离参考**（跨星球出征的里程基准）。
+   * 单副本模型：同一时刻 activePlanet 标出当前星球；其 seed/params 灌入 GAME.sphere。
+   * ============================================================ */
+  GAME.STAR_DIST = 10000;      /* 星球间默认距离（六边形拓扑格数）—— 出征距离参考 */
+  GAME.planetsOf = function () { var s = GAME.state; if (!s) return []; s.planets = s.planets || []; return s.planets; };
+  GAME.activePlanetOf = function () { var s = GAME.state; if (!s) return null; var ps = GAME.planetsOf(); return ps[s.activePlanet || 0] || ps[0] || null; };
+  /* 载入某星球 —— 把其 seed/params 灌入内核并重建；activePlanet 记档。 */
+  GAME.loadPlanet = function (id) {
+    var s = GAME.state; if (!s) return { ok: false, msg: '无存档' };
+    var ps = GAME.planetsOf();
+    var p = null; ps.forEach(function (x) { if (x.id === id) p = x; });
+    if (!p) return { ok: false, msg: '星球不存在' };
+    s.activePlanet = p.id;
+    if (GAME.sphere && GAME.sphere.setPlanet) GAME.sphere.setPlanet(p.seed, p.params);
+    return { ok: true, planet: p };
+  };
+  /* 生成新星球（附到副本池）：返回 {id}。seed 缺省现摇（在边界注入以求确定）。 */
+  GAME.addPlanet = function (opts) {
+    var s = GAME.state; if (!s) return null;
+    opts = opts || {};
+    var ps = GAME.planetsOf();
+    var id = (ps.reduce(function (m, x) { return Math.max(m, x.id || 0); }, 0) || 0) + 1;
+    var p = { id: id, name: opts.name || ('星球 ' + (id + 1)), seed: (opts.seed != null ? (opts.seed | 0) : ((U.now() % 900000) || 1)),
+      params: opts.params || (GAME.sphere && GAME.sphere.PLANET ? { seaFrac: GAME.sphere.PLANET.seaFrac, ridge: GAME.sphere.PLANET.ridge, detail: GAME.sphere.PLANET.detail, temp: GAME.sphere.PLANET.temp } : { seaFrac: 0.45, ridge: 1.5, detail: 0.7, temp: 1.0 }) };
+    ps.push(p);
+    return p;
+  };
+  /* 星球生成器「生成」动作（UI 读框 → 建副本 → 可选进入）。 */
+  GAME._planetDoCreate = function (enter) {
+    var ui = GAME.ui;
+    var params = ui && ui._planetParamsFrom ? ui._planetParamsFrom() : null;
+    var seed = ui && ui._planetSeedFrom ? ui._planetSeedFrom() : ((U.now() % 900000) || 1);
+    var p = GAME.addPlanet({ seed: seed, params: params });
+    if (!p) { if (ui) ui.toast('生成失败'); return; }
+    if (enter) {
+      GAME.loadPlanet(p.id);
+      GAME.map.generate();
+      if (ui) { ui.closeModal(); GAME.refreshAll(); if (ui.view !== 'map') ui.setView('map'); else ui.renderMapCanvas(); ui.toast('🪐 生成并进入 ' + p.name + '（种子 ' + p.seed + '）'); }
+    } else {
+      if (ui) { ui.toast('🪐 已生成 ' + p.name + '（种子 ' + p.seed + '）—— 可在列表「进入」'); ui.openPlanetGen(); }
+    }
+  };
+
+  /* ---------------- 读档 ---------------- */
 
   /* 累计统计（供任务指标读取） */
   GAME.statBump = function (key, n) {

@@ -228,6 +228,15 @@
           ui.openNewCityNotice(r.city);
         }
       })(); break;
+      /* v90.73（老板 9）：**星球生成器** —— 打开参数面板 / 生成副本 / 进入副本 */
+      case 'planet-gen-open': ui.openPlanetGen(); break;
+      case 'planet-load': (function () {
+        var r = GAME.loadPlanet(Number(el.dataset.pid));
+        ui.toast(r.ok ? ('🪐 已进入 ' + r.planet.name) : ('⚠️ ' + r.msg));
+        if (r.ok) { GAME.map.generate(); ui.closeModal(); GAME.refreshAll(); if (ui.view !== 'map') ui.setView('map'); else ui.renderMapCanvas(); }
+      })(); break;
+      case 'planet-create': GAME._planetDoCreate(true); break;
+      case 'planet-create-stay': GAME._planetDoCreate(false); break;
       /* v89.86（P-26）：新城提示里的"从主城调兵" —— 复用跨城调兵出口（openTroopMove） */
       case 'newcity-send-troop': {
         var _ncFrom = GAME.cityById(el.dataset.from);

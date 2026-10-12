@@ -47,8 +47,19 @@
     return v / sum;
   }
   SP.h3 = h3; SP.n3 = n3; SP.fbm3 = fbm3;
-  function seed3() { return ((GAME.state && GAME.state.map && GAME.state.map.seed) || 1) | 0; }
+  function seed3() {
+    if (SP._seedOverride != null) return SP._seedOverride | 0;      /* v90.73：星球生成器注入的种子 */
+    return ((GAME.state && GAME.state.map && GAME.state.map.seed) || 1) | 0;
+  }
   SP.seed3 = seed3;
+  /* v90.73（老板 9）：星球生成器 —— 用指定 seed + 参数重建内核（换一颗星球）。
+     参数缺省项沿用当前 SP.PLANET。传 null 清覆盖 → 回到存档种子。 */
+  SP.setPlanet = function (seed, planet) {
+    if (seed == null) SP._seedOverride = null; else SP._seedOverride = (seed | 0) || 1;
+    if (planet) SP.PLANET = { seaFrac: planet.seaFrac, ridge: planet.ridge, detail: planet.detail, temp: planet.temp };
+    _seaCache = null;                                   /* 海平面随 seed/seaFrac 重算 */
+    build(SP.sub);                                      /* 重建（seed 变 → 缓存失效）*/
+  };
   var _seaCache = null, _seaSeed = null;
   function seaLevel() {
     var s = seed3();
