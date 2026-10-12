@@ -154,6 +154,17 @@
       typ[vi] = cellType(e, V[vi][1], emax); lvl[vi] = -1;
       V[vi]._e = e;
     }
+    /* v90.71（老板 10）：**网格浮起成球壳** —— 六边网格铺在一个**平均海拔半径**的球面上
+       （构成包裹球系的完球体）；地形/建筑高于该半径的部分自然**穿出网格**。
+       shellH = shellFrac × 平均陆地高程 × HSC（距球心高度）。 */
+    var _msum = 0, _mcnt = 0;
+    for (vi = 0; vi < nv; vi++) { var _le = eArr[vi]; if (_le >= 0) { _msum += _le; _mcnt++; } }
+    var _meanLand = _mcnt ? _msum / _mcnt : 0;
+    /* 地块壳半径 = R + shellFrac × 平均陆地高程 × HSC。shellFrac=1 → 恰在平均海拔面上；
+       取略大于 1 让它**浮在平均面之上**（地形/建筑高于此者穿出网格）。可调 SP.shellFrac。 */
+    var _shellH = (SP.shellFrac == null ? 1.5 : SP.shellFrac) * _meanLand * HSC;
+    var _shellR = R + _shellH + 0.3;
+    SP.meanLand = _meanLand; SP.shellH = _shellH; SP.shellR = _shellR;
     var q = [];
     for (vi = 0; vi < nv; vi++) {
       var an = adj[vi];
@@ -179,10 +190,14 @@
       var tx = cross(up, n), tl = Math.hypot(tx[0], tx[1], tx[2]); tx = [tx[0] / tl, tx[1] / tl, tx[2] / tl];
       var ty2 = cross(n, tx);
       fs.sort(function (A, B) { var cA = cent[A], cB = cent[B]; return Math.atan2(dot(cA, ty2), dot(cA, tx)) - Math.atan2(dot(cB, ty2), dot(cB, tx)); });
-      var rn = terrainR(n), P = [n[0] * rn, n[1] * rn, n[2] * rn];      /* 顶点坐在地形高度上 */
+      var rn = terrainR(n), P = [n[0] * rn, n[1] * rn, n[2] * rn];      /* 顶点坐在地形高度上（拾取碰撞体用）*/
       var mm = fs.length, RIM = [];
       for (var i2 = 0; i2 < mm; i2++) { var cc = cent[fs[i2]], rr2 = terrainR(cc); RIM.push([cc[0] * rr2, cc[1] * rr2, cc[2] * rr2]); }
-      for (var e2 = 0; e2 < mm; e2++) { var r1 = RIM[e2], r2 = RIM[(e2 + 1) % mm]; upos.push(r1[0], r1[1], r1[2], r2[0], r2[1], r2[2]); }
+      /* v90.71（老板 10）：网格线框顶点落在 **平均海拔球壳**（_shellR）上 —— 浮起成完球体包裹球系 */
+      for (var e2 = 0; e2 < mm; e2++) {
+        var s1c = cent[fs[e2]], s2c = cent[fs[(e2 + 1) % mm]];
+        upos.push(s1c[0] * _shellR, s1c[1] * _shellR, s1c[2] * _shellR, s2c[0] * _shellR, s2c[1] * _shellR, s2c[2] * _shellR);
+      }
       var dep = lvl[vi] < 0 ? 0 : lvl[vi];
       var lv = 6 + Math.min(4, dep);                       /* 6~10 级：中央(离异类边界远)高、边缘低 */
       for (var t2 = 0; t2 < mm; t2++) {
