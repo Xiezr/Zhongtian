@@ -1426,6 +1426,26 @@
     return moved;
   };
 
+  /* v90.70（老板「统一坐标系」）：老档**补写 ci**（球面六边格索引）——
+     城池/野地/前哨/采集/行军都按 (x,y) 现算一次 ci 并写回，之后全项目统一读 ci。
+     幂等（st.sphereMig70 标记）。deps 未就绪（无内核）时跳过。 */
+  GAME.migrateSphereCi70 = function (st) {
+    if (!st || st.sphereMig70) return 0;
+    if (!GAME.sphere || !GAME.sphere.ciOfXY || !GAME.sphere.cells) return 0;
+    var n = 0;
+    function tag(o) { if (o && o.x != null && o.y != null) { var ci = GAME.sphere.ciOfXY(o.x, o.y); if (ci >= 0 && o.ci !== ci) { o.ci = ci; n++; } } }
+    (st.cities || []).forEach(tag);
+    (st.wilds || []).forEach(tag);
+    (st.gathers || []).forEach(tag);
+    (st.marches || []).forEach(tag);
+    /* s.forts 是 { 'x,y': {x,y,...} } 字典 */
+    var fs = st.forts || {};
+    for (var k in fs) tag(fs[k]);
+    (GAME.DATA && GAME.DATA.NPC_CITIES || []).forEach(tag);
+    st.sphereMig70 = 1;
+    return n;
+  };
+
   GAME.rankBuildCapOf = function (city) {
     var s = GAME.state;
     if (!s || !GAME.isMainCity(city)) return 0;
@@ -2484,6 +2504,8 @@
       if (GAME.migrateCityCells && GAME.migrateCityCells(st) > 0) {
         (st.cities || []).forEach(function (c) { var t = GAME.map.tile(c.x, c.y); if (t) t.terrain = 'city'; });
       }
+      /* v90.70：老档补写 ci（球面六边格索引）—— 城/野地/前哨/采集/行军统一读 ci（幂等） */
+      if (GAME.migrateSphereCi70) GAME.migrateSphereCi70(st);
       /* 叙事层补字段（旧档可能缺 world/chronicle） */
       if (GAME.story) GAME.story.init();
       /* 英雄资质补字段（v11 前的存档没有 rank/style，按四维反推并写回） */

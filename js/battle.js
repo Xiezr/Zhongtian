@@ -2884,9 +2884,11 @@
           } else {
             s.wilds = s.wilds || [];
             if (!GAME.map.wildAt(t.x, t.y)) {
-              /* v15：记录占领时的等级与日期，此后每现实日 -1 级（见 GAME.decayWilds） */
+              /* v15：记录占领时的等级与日期，此后每现实日 -1 级（见 GAME.decayWilds）
+                 v90.70：附 ci（球面六边格索引）—— 与城/据点统一按球系身份 */
               s.wilds.push({
                 x: t.x, y: t.y, type: t.terrain, level: t.lv,
+                ci: (GAME.sphere && GAME.sphere.ciOfXY) ? GAME.sphere.ciOfXY(t.x, t.y) : -1,
                 levelDay: GAME.questDayIndex ? GAME.questDayIndex() : Math.floor(Date.now() / 86400000),
               });
             }
