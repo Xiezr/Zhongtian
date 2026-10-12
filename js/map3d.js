@@ -407,17 +407,28 @@
     for (var vi0 = 0; vi0 < M._vdirs.length; vi0++) if (M._vdirs[vi0] && S.provOf[vi0] >= 0) { cellKind[vi0] = 'wild'; }   /* 默认：陆地块 = 野地 */
     /* 据点 = 黄 */
     for (var fi = 0; fi < _tileCells.length; fi++) { var fc = _tileCells[fi]; if (fc && GAME.map.fortAt(fc.x, fc.y)) { mark[fi] = [226, 202, 64]; cellKind[fi] = 'fort'; } }
+    /* v90.70：实体 → 六边格索引。带 .ci 直用（球系唯一身份）；否则按 (x,y) 现算（旧档/未标注）。 */
+    function ciOfRef(ref) {
+      if (!ref) return -1;
+      if (ref.ci != null && ref.ci >= 0 && SP.cells && SP.cells[ref.ci]) return ref.ci;
+      if (ref.x == null || ref.y == null) return -1;
+      return nearestCell(dirOfCell(ref.x, ref.y));
+    }
     /* NPC 名城 = 红 */
-    (GAME.DATA.NPC_CITIES || []).forEach(function (c) { var d = dirOfCell(c.x, c.y); c.lon = (Math.atan2(d[2], d[0]) * 180 / Math.PI + 360) % 360; c.lat = Math.asin(Math.max(-1, Math.min(1, d[1]))) * 180 / Math.PI; var ci = nearestCell(d); if (ci >= 0) { mark[ci] = [220, 70, 60]; cellKind[ci] = 'npc'; cellRef[ci] = c; } });
-    /* 行政中心城 = 紫色 */
+    (GAME.DATA.NPC_CITIES || []).forEach(function (c) {
+      if (c.lon == null || c.lat == null) { var d = dirOfCell(c.x, c.y); c.lon = (Math.atan2(d[2], d[0]) * 180 / Math.PI + 360) % 360; c.lat = Math.asin(Math.max(-1, Math.min(1, d[1]))) * 180 / Math.PI; }
+      var ci = ciOfRef(c); if (ci >= 0) { mark[ci] = [220, 70, 60]; cellKind[ci] = 'npc'; cellRef[ci] = c; }
+    });
+    /* 行政中心城 = 紫色（按球面质心方向取格）*/
     (M.admCities || []).forEach(function (c) { var ci = nearestCell(c._cent); if (ci >= 0) { mark[ci] = [180, 120, 210]; cellKind[ci] = 'adm'; cellRef[ci] = c; } });
-    /* 己方城 = 蓝：放在其**球系坐标**（由 (x,y) 确定性推出的 lon/lat）——与逻辑一致 */
+    /* 己方城 = 蓝：落在其**球面六边格索引 ci**（球系唯一身份，免 (x,y) 往返） */
     M._ownCells = {};
     (GAME.state.cities || []).forEach(function (c) {
-      var d = dirOfCell(c.x, c.y);
-      c.lon = (Math.atan2(d[2], d[0]) * 180 / Math.PI + 360) % 360;
-      c.lat = Math.asin(Math.max(-1, Math.min(1, d[1]))) * 180 / Math.PI;
-      var ci = nearestCell(d); if (ci < 0) return;
+      var ci = ciOfRef(c);
+      var dir = (ci >= 0 && SP.cells[ci]) ? SP.cells[ci].dir : dirOfCell(c.x, c.y);
+      c.lon = (Math.atan2(dir[2], dir[0]) * 180 / Math.PI + 360) % 360;
+      c.lat = Math.asin(Math.max(-1, Math.min(1, dir[1]))) * 180 / Math.PI;
+      if (ci < 0) return;
       mark[ci] = [80, 150, 230]; cellKind[ci] = 'own'; cellRef[ci] = c; M._ownCells[ci] = c;
     });
     M.cellKind = cellKind; M.cellRef = cellRef;
@@ -453,7 +464,12 @@
       spr.position.set(g1[0], g1[1], g1[2]);
       grp.add(spr);
     }
-    (GAME.DATA.NPC_CITIES || []).forEach(function (c) { if (c.type === 'capital' || c.type === 'zhou') floatName(dirOfCell(c.x, c.y), c.name || '', '#ffd76a'); });
+    /* v90.70：名称引线也走 ci（= 标记所在格），免 (x,y) 往返；无 ci 的旧档回退 dirOfCell。 */
+    function dirOfRef(ref) {
+      var ci = ciOfRef(ref);
+      return (ci >= 0 && SP.cells[ci]) ? SP.cells[ci].dir : dirOfCell(ref.x, ref.y);
+    }
+    (GAME.DATA.NPC_CITIES || []).forEach(function (c) { if (c.type === 'capital' || c.type === 'zhou') floatName(dirOfRef(c), c.name || '', '#ffd76a'); });
     var ol = M.admCities || [];
     ol.forEach(function (c) { if (c.admLevel === 'old' || c.admLevel === 'prov') floatName(c._cent, c.name, c.admLevel === 'old' ? '#ffd76a' : '#cfe6ff'); });
     /* v90.57（老板）：**己方城池**也引出名称（像名城一样）—— 亮蓝＝己方色。 */

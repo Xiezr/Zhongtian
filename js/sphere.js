@@ -249,12 +249,61 @@
      逻辑层（占领记录/建城判据/建城按钮）读它，永不读平面 s.map.grid。 */
   SP.terrainAt = function (worldX, worldY) {
     if (!SP.cells || worldX == null || worldY == null) return null;
-    var W = (GAME.DATA && GAME.DATA.MAP_W) || 500, H = (GAME.DATA && GAME.DATA.MAP_H) || 500;
-    var lon = ((worldX / W) * 360 + 360) % 360, lat = (0.5 - worldY / H) * 180;
-    var ci = nearestCell(SP.dirOfLonLat(lon, lat));
+    var ci = SP.ciOfXY(worldX, worldY);
     var c = ci >= 0 && SP.cells[ci];
     return c ? { ci: ci, type: c.type, level: c.level } : null;
   };
   /* 格索引 → 经纬 */
   SP.dirOf = function (ci) { var c = SP.cells && SP.cells[ci]; return c ? c.dir : null; };
+
+  /* ============================================================
+   * 六边相邻距离（环数）—— 世界距离的唯一出口。
+   * 在 icosphere 六边格图上 BFS：两个格的**相邻跳数**（"隔几格"）。
+   * 复用距离/戳数组，按调用自增戳 → 免清空（O(访问) 而非 O(nv)）。
+   * ============================================================ */
+  var _dArr = null, _dStamp = null, _dVer = 0;
+  function hexDist(a, b) {
+    if (a === b) return 0;
+    var adj = SP.adj, nv = SP.nv;
+    if (!adj || a < 0 || b < 0 || a >= nv || b >= nv) return 0;
+    if (!_dArr) { _dArr = new Int32Array(nv); _dStamp = new Int32Array(nv); }
+    var stamp = ++_dVer;
+    var q = [a], head = 0; _dArr[a] = 0; _dStamp[a] = stamp;
+    while (head < q.length) {
+      var cur = q[head++];
+      if (cur === b) return _dArr[cur];
+      var an = adj[cur], d = _dArr[cur] + 1;
+      for (var i = 0; i < an.length; i++) {
+        var nb = an[i];
+        if (_dStamp[nb] !== stamp) { _dStamp[nb] = stamp; _dArr[nb] = d; q.push(nb); }
+      }
+    }
+    return -1;
+  }
+  SP.hexDist = hexDist;
+  /* 世界格坐标 → 六边格索引（地形查询同一映射）。带 memo（nearestCell 为 O(nv)，
+     行军距离预览等会重复问同一点）。*/
+  var _xyCi = null;
+  SP.ciOfXY = function (worldX, worldY) {
+    if (!SP.cells || worldX == null || worldY == null) return -1;
+    var W = (GAME.DATA && GAME.DATA.MAP_W) || 500, H = (GAME.DATA && GAME.DATA.MAP_H) || 500;
+    var lon = ((worldX / W) * 360 + 360) % 360, lat = (0.5 - worldY / H) * 180;
+    if (!_xyCi) _xyCi = {};
+    var key = worldX + ',' + worldY;
+    var v = _xyCi[key];
+    if (v === undefined) { v = _xyCi[key] = nearestCell(SP.dirOfLonLat(lon, lat)); }
+    return v;
+  };
+  /* 两点（世界格坐标）的六边环数距离；无内核时回退切比雪夫（与旧口径一致）。 */
+  SP.hexDistAt = function (x1, y1, x2, y2) {
+    var a = SP.ciOfXY(x1, y1), b = SP.ciOfXY(x2, y2);
+    if (a < 0 || b < 0) return Math.max(Math.abs((x1 || 0) - (x2 || 0)), Math.abs((y1 || 0) - (y2 || 0)));
+    return hexDist(a, b);
+  };
+  /* 两个实体（城/野地/据点，含 .ci 则直用，否则按 x,y 反查）的六边环数。 */
+  SP.distOf = function (e1, e2) {
+    if (!e1 || !e2) return 1;
+    if (e1.ci != null && e1.ci >= 0 && e2.ci != null && e2.ci >= 0) return hexDist(e1.ci, e2.ci);
+    return SP.hexDistAt(e1.x, e1.y, e2.x, e2.y);
+  };
 })();

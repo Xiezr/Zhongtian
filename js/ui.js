@@ -1323,7 +1323,7 @@
       line('野地 <b>Lv' + lv + '</b>' + (lv > 0 ? ' · 点击可出征' : ' · 无守军'));
     }
     var cur = GAME.currentCity && GAME.currentCity();
-    var d = cur ? Math.max(Math.abs(cur.x - hit.x), Math.abs(cur.y - hit.y)) : null;
+    var d = cur ? GAME.cityDist(cur, hit) : null;
     line('📍 球系坐标 <b>' + (GAME.map.coordText ? GAME.map.coordText(hit.x, hit.y) : ('(' + hit.x + ', ' + hit.y + ')')) + '</b>'
       + (d == null ? '' : '　距 ' + U.escape(cur.name) + ' ' + d + ' 格'));
     return '<div class="tip-t">' + head + '</div>' + rows.join('');
@@ -2793,7 +2793,7 @@
     c = c || GAME.currentCity();
     if (!c) return [];
     var N = ui.ACT_LIST_N;
-    var dist = function (x, y) { return Math.max(Math.abs(x - c.x), Math.abs(y - c.y)); };
+    var dist = function (x, y) { return GAME.cityDist({ x: x, y: y }, c); };
     var groups = [
       { key: 'owncity', label: '🏯 我方城池', targets: [] },
       { key: 'ownwild', label: '🌾 我方野地', targets: [] },
@@ -13470,7 +13470,7 @@
     var g = GAME.map.fortGarrison(f.level), gNum = 0, parts = [];
     for (var k in g) { gNum += g[k]; if (g[k] > 0) parts.push((DATA.TROOPS[k] ? DATA.TROOPS[k].name : k) + ' ' + U.fmt(g[k])); }
     var c = GAME.currentCity();
-    var dist = Math.abs(c.x - f.x) + Math.abs(c.y - f.y);
+    var dist = GAME.cityDist(c, f);
     /* v89.193（老板 2）：本城前哨占用（每城上限 5 —— 满员时"拔除并收为前哨"受阻提示） */
     var _fn193 = GAME.fortsOfCity(c).length;
     var _fm193 = (DATA.FORT_AURA || {}).maxPerCity || 5;
@@ -14796,7 +14796,7 @@
     var from = { x: city.x, y: city.y, cityId: city.id };
     if (t.x == null || t.y == null) { box.innerHTML = '🛫 目标无坐标，无法估算行军'; return; }
     var to = { x: t.x, y: t.y };
-    var dist = Math.max(Math.abs(from.x - to.x), Math.abs(from.y - to.y));
+    var dist = GAME.cityDist(from, to);
     /* v26（需求 2）：主将速度参与行军，预估必须带上这名英雄，否则与实际耗时不符 */
     var egEl = document.getElementById('exp-gen');
     var eGen = null;
@@ -15068,7 +15068,7 @@
        （v71 那条"城池属性不显示坐标"说的是**自己的城池面板**，与这里的
         "点地图上别人家的城"是两回事，不冲突。） */
     var _myc = GAME.currentCity();
-    var _dist = _myc ? (Math.abs(_myc.x - npcCity.x) + Math.abs(_myc.y - npcCity.y)) : null;
+    var _dist = _myc ? GAME.cityDist(_myc, npcCity) : null;
     html += '<div style="text-align:center;color:var(--text-dim);font-size:var(--fs-body);margin-bottom:8px;">' +
       '📍 球系坐标 ' + (GAME.map.coordText ? GAME.map.coordText(npcCity.x, npcCity.y) : ('(' + npcCity.x + ', ' + npcCity.y + ')')) +
       (_dist != null ? '　·　距主城 ' + _dist + ' 格' : '') +

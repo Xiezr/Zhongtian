@@ -435,6 +435,8 @@
       name: opts.name || '新城池',
       x: opts.x != null ? opts.x : DATA.START_POS.x,
       y: opts.y != null ? opts.y : DATA.START_POS.y,
+      /* v90.70：记录**球面六边格索引**（球系化的稳定身份；x,y 为派生显示坐标）*/
+      ci: GAME.sphere && GAME.sphere.ciOfXY ? GAME.sphere.ciOfXY(opts.x != null ? opts.x : DATA.START_POS.x, opts.y != null ? opts.y : DATA.START_POS.y) : -1,
       level: 1,
       def: 0,
       col: 8, row: 6,          /* v40：6 行 8 列 */
@@ -498,6 +500,9 @@
     var mapSeed = (rulerOpts && rulerOpts.mapSeed != null)
       ? ((Math.round(Number(rulerOpts.mapSeed)) % 100000) || 1)
       : (U.now() % 100000);
+    /* v90.70：先建球面内核（随 seed）—— 城/名城的球面六边格索引（ci）与地形判据都要它。
+       幂等（同 seed 不重算）。 */
+    if (GAME.sphere && GAME.sphere.ensure) GAME.sphere.ensure();
     /* v70（老板需求 5）：出生坐标按**所选区**落位（首府近旁的平原空地），
        烬环以灰烬城为锚；落不到才回退旧口径的固定点。出生城写明所属区 ——
        展示、岁贡、辖区特产都读同一份归属。 */
@@ -1143,6 +1148,8 @@
       c.owner = 'npc';
       c.garrison = GAME.genGarrison(c);
       c.maxArmy = c.garrison;
+      /* v90.70：附上球面六边格索引（标记直接落格，免 (x,y)→dir 往返）*/
+      c.ci = (GAME.sphere && GAME.sphere.ciOfXY) ? GAME.sphere.ciOfXY(c.x, c.y) : -1;
       return c;
     });
   };
@@ -4707,7 +4714,8 @@
     var ns = (dy < -adx * 0.5) ? '北' : ((dy > adx * 0.5) ? '南' : '');
     var ew = (dx > ady * 0.5) ? '东' : ((dx < -ady * 0.5) ? '西' : '');
     var dir = (ew + ns) || '近处';
-    var dist = Math.round(Math.sqrt(dx * dx + dy * dy) * 3);
+    /* v90.70：距离 = 球面六边环数（里 = 环数 × 3，保留原换算） */
+    var dist = Math.round(GAME.cityDist(site, home) * 3);
     return '闻得城' + dir + '约 ' + dist + ' 里 ' + GAME.wonderBandName(site.band) +
       ' 之地' + GAME.map.coordText(site.x, site.y) + '，似有异象 —— 或可一探';
   };

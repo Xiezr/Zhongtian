@@ -7694,11 +7694,15 @@
     (DATA.RESOURCES || []).forEach(function (r) { if (r.key === key) n = r.name; });
     return n;
   };
-  /* 城距：切比雪夫距离（与地图行军的口径一致 —— 菱形网格两轴各走 N 格） */
+  /* 城距：**球面六边相邻环数**（v90.70 · 与地图行军同一口径）。
+     实体带 .ci 直用；否则按 x,y 反查六边格；无内核 → 回退切比雪夫（旧口径）。 */
   GAME.cityDist = function (a, b) {
     if (!a || !b) return 0;
+    if (GAME.sphere && GAME.sphere.distOf) return GAME.sphere.distOf(a, b);
     return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
   };
+  /* 别名：世界距离**唯一出口**（坐标对版，语义化名） */
+  GAME.cellDist = GAME.cityDist;
   /* 从 from 运往 to 的损耗率（0~1）。唯一出口，界面与结算都读它。 */
   GAME.transportLossOf = function (from, to) {
     var T = DATA.TRANSPORT || {};

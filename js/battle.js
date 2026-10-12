@@ -3770,7 +3770,11 @@
   /* 行军耗时（单位：游戏秒，与建造/训练队列口径一致） */
   GAME.march.travelTime = function (from, to, army, secPerTile, gen) {
     var ts = GAME.timeScale();
-    var dist = Math.max(Math.abs((from.x || 0) - (to.x || 0)), Math.abs((from.y || 0) - (to.y || 0)));
+    /* v90.70（老板「统一坐标系·不再以平面坐标转接」）：距离口径 = **球面六边相邻环数**
+       （step-dist / Honeycomb），非平面切比雪夫。无内核时回退旧口径。 */
+    var dist = (GAME.sphere && GAME.sphere.distOf)
+      ? GAME.sphere.distOf(from, to)
+      : Math.max(Math.abs((from.x || 0) - (to.x || 0)), Math.abs((from.y || 0) - (to.y || 0)));
     if (dist <= 0) dist = 1;
     var fac = GAME.march.speedFactor(army, from, to, gen);
     var gameSec = dist * (secPerTile || GAME.march.secPerTile()) / Math.max(0.05, fac);

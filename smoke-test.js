@@ -4971,7 +4971,8 @@
   })());
   check('补给站提速（1.5~6 倍）', (function () {
     var c0 = st30.cities[0];
-    var from = { x: c0.x, y: c0.y, cityId: c0.id }, to = { x: c0.x + 20, y: c0.y };
+    /* v90.70：距离口径改球面六边环数（+60y ≈ 23 环，避开近距 minRealSec 保底） */
+    var from = { x: c0.x, y: c0.y, cityId: c0.id }, to = { x: c0.x, y: c0.y + 60 };
     function setYz(lv) {
       var placed = false;
       c0.cells.forEach(function (c) { if (c.build && c.build.id === 'yizhan') { c.build.lvl = lv; placed = true; } });
@@ -4984,7 +4985,8 @@
   })());
   check('天气影响行军速度（雪天最慢）', (function () {
     var c0 = st30.cities[0];
-    var from = { x: c0.x, y: c0.y, cityId: c0.id }, to = { x: c0.x + 20, y: c0.y };
+    /* v90.70：距离口径改球面六边环数（+60y ≈ 23 环） */
+    var from = { x: c0.x, y: c0.y, cityId: c0.id }, to = { x: c0.x, y: c0.y + 60 };
     var w0 = G.state.world.weather;
     G.state.world.weather = 'clear'; var a = G.march.travelTime(from, to, { buxingji: 10000 });
     G.state.world.weather = 'snow';  var b = G.march.travelTime(from, to, { buxingji: 10000 });
@@ -7790,9 +7792,11 @@
     var slow = { level: 1, tong: 40, yw: 40, zm: 40, nz: 40, speed: 10,
       attack: 10, defense: 10, hp: 100, equip: {}, rank: 'fan', style: 'balance', perm: {} };
     var fast = JSON.parse(JSON.stringify(slow)); fast.speed = 310;
-    var t1 = G.march.travelTime({ x: 0, y: 0 }, { x: 10, y: 0 }, army, null, slow);
-    var t2 = G.march.travelTime({ x: 0, y: 0 }, { x: 10, y: 0 }, army, null, fast);
-    var noGen = G.march.travelTime({ x: 0, y: 0 }, { x: 10, y: 0 }, army);
+    /* v90.70：距离口径改球面六边环数 —— (0,0)→(10,0) 是**北极**（同格 dist=0），改用赤道向的远距对 */
+    var A = { x: 100, y: 250 }, B = { x: 160, y: 250 };
+    var t1 = G.march.travelTime(A, B, army, null, slow);
+    var t2 = G.march.travelTime(A, B, army, null, fast);
+    var noGen = G.march.travelTime(A, B, army);
     return t2 < t1 && t1 > 0 && noGen > 0;
   })(), '慢将 / 快将的抵达时间应不同');
   check('公式注释与实现一致（a += spd，不再是 ×(1+spd/200)）',
