@@ -1205,9 +1205,9 @@ async function runTests(dom, URL) {
   })());
   check('地图画出野外城池（据点立牌）', cv19 && /drawFortArt/.test(G.map.render.toString()));
   /* v24（需求 1/3）：地形图例与说明整段删除（地形本身由画布绘制，不受影响） */
-  check('地图不再渲染图例与说明文字',
-    !/湖泊/.test(mapHtml) && !/森林/.test(mapHtml) && !/荒漠/.test(mapHtml) && !/山地/.test(mapHtml)
-    && !/天下大势/.test(mapHtml) && !/观察框/.test(mapHtml) && !/名城（红=旧都/.test(mapHtml));
+  check('地图不再渲染图例与说明文字（v90.66：地形改右上角下拉高亮）',
+    !/天下大势/.test(mapHtml) && !/观察框/.test(mapHtml) && !/名城（红=旧都/.test(mapHtml)
+    && /adm-terrain/.test(mapHtml));
   check('地图导航在底部条内（含方向键；v76）', bb19.indexOf('map-dock') >= 0 && bb19.indexOf('map-pad') >= 0);
   /* 真实点击右移按钮。v45（需求 2）：步长由 1 格改为常量 ui.MAP_STEP_X（12） */
   const x0 = G.ui.mapView.x;
@@ -3125,10 +3125,11 @@ async function runTests(dom, URL) {
   G.ui.setView('map');
   await sleep(90);
   const m24 = vc.innerHTML;
-  check('地图只渲染棋盘；导航在底部导航条（v76）',
+  check('地图只渲染棋盘（+右上检索）；导航在底部导航条（v76/v90.66）',
     !!document.querySelector('#bottom-bar .map-dock') && !!vc.querySelector('#mapCanvas')
-    && m24.indexOf('天下大势') < 0 && m24.indexOf('湖泊') < 0
-    && m24.indexOf('已占野地') < 0 && m24.indexOf('点击城池可出征') < 0);
+    && m24.indexOf('天下大势') < 0
+    && m24.indexOf('已占野地') < 0 && m24.indexOf('点击城池可出征') < 0
+    && !!vc.querySelector('#adm-terrain'));
   check('导航在底部条内（方向键 + 坐标框）',
     document.querySelectorAll('#bottom-bar .map-dock [data-action="map-pan"]').length === 4
     && !!document.querySelector('#map-gx') && !!document.querySelector('#map-gy'));

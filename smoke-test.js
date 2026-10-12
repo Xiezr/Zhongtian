@@ -6585,13 +6585,14 @@
   check('地图不再有横占整行的控制条', !/\.map-bar \{/.test(hS37) && !/\.map-head \{/.test(hS37));
   check('图例色块样式一并删除（不留死样式）',
     !/\.lg-lake/.test(hS37) && !/\.map-title \{/.test(hS37) && !/\.map-head \{/.test(hS37));
-  check('实测：地图 HTML 只剩棋盘；导航登记到底部条（v76）', (function () {
+  check('实测：地图 HTML 只剩棋盘（+右上检索）；导航登记到底部条（v76/v90.66）', (function () {
     var h = G.ui.mapHTML();
     var bar = G.ui._bottom.join('');
     return h.indexOf('mapCanvas') >= 0 && h.indexOf('map-dock') < 0
       && bar.indexOf('map-dock') >= 0 && bar.indexOf('map-pad') >= 0
-      && h.indexOf('天下大势') < 0 && h.indexOf('湖泊') < 0 && h.indexOf('已占野地') < 0
-      && h.indexOf('观察框') < 0;
+      && h.indexOf('天下大势') < 0 && h.indexOf('已占野地') < 0
+      && h.indexOf('观察框') < 0
+      && h.indexOf('adm-terrain') >= 0;   /* v90.66：右上角地形高亮下拉 */
   })());
 
   /* ---- 需求 4/5：征收入政务厅 ---- */

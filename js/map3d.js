@@ -686,6 +686,41 @@
     if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
   };
 
+  /* v90.66（老板 0a）：**地形高亮** —— 选中某地形，把全星该地形的六边形地块**叠一层描边 + 半透填充**。 */
+  var _TERRAIN_HL_COLOR = {
+    lake: 0x4aa6e0, zhaoze: 0x6f8f4a, plain: 0xd8cfa0, caoyuan: 0x9db24a,
+    forest: 0x3f8a52, desert: 0xd9b45c, hill: 0x9a8f82,
+  };
+  M.setTerrainHighlight = function (type) {                  /* type: 地形 key 或 null/'' = 清除 */
+    M._terrainHl = type || null;
+    if (M._thl) { scene.remove(M._thl); if (M._thl.geometry) M._thl.geometry.dispose(); M._thl = null; }
+    if (!M._terrainHl || !_tileCells || !_tileCells.length) {
+      if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
+      return;
+    }
+    var col = _TERRAIN_HL_COLOR[M._terrainHl] || 0xffffff;
+    var pos = [], idx = [], base = 0;
+    for (var i = 0; i < _tileCells.length; i++) {
+      var c = _tileCells[i];
+      if (!c || c.type !== M._terrainHl || !c.rim) continue;
+      var rim = c.rim, mm = rim.length, P = c.pos, L = Math.hypot(P[0], P[1], P[2]) || 1;
+      var lift = 0.9;                                        /* 微抬，浮在底面之上不 z-fight */
+      pos.push(P[0] + P[0] / L * lift, P[1] + P[1] / L * lift, P[2] + P[2] / L * lift);
+      var apex = base;
+      for (var j = 0; j < mm; j++) { var p = rim[j], l2 = Math.hypot(p[0], p[1], p[2]) || 1; pos.push(p[0] + p[0] / l2 * lift, p[1] + p[1] / l2 * lift, p[2] + p[2] / l2 * lift); }
+      for (var t = 0; t < mm; t++) idx.push(apex, apex + 1 + t, apex + 1 + (t + 1) % mm);
+      base = apex + 1 + mm;
+    }
+    if (pos.length) {
+      var geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      geo.setIndex(idx);
+      M._thl = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: false }));
+      scene.add(M._thl);
+    }
+    if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
+  };
+
   function placeCamera() {
     var cp = Math.cos(camO.pitch), sp = Math.sin(camO.pitch);
     cam.position.set(camO.dist * cp * Math.sin(camO.yaw), camO.dist * sp, camO.dist * cp * Math.cos(camO.yaw));
@@ -721,11 +756,12 @@
       var _kname = { wild: '野地', fort: '据点', npc: '名城', adm: '行政城', own: '己方城' }[M._cellKind] || '野地';
       var txt = '【' + _kname + '】' + M._cell.name + ' · 等级 ' + M._cell.level
         + ' · 球系坐标 ' + (GAME.map.coordText ? GAME.map.coordText(M._cell.x, M._cell.y) : (Math.round(M._cell.lon) + '°E ' + Math.round(M._cell.lat) + '°'));
-      ctx.font = 'bold 20px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+      /* v90.66（老板）：字号缩到与底部导航栏一致（原 bold 20px 偏大）。 */
+      ctx.font = '13px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
       var tw = ctx.measureText(txt).width;
-      ctx.fillStyle = 'rgba(10,14,20,.78)'; ctx.fillRect(16, 16, tw + 28, 40);
-      ctx.strokeStyle = 'rgba(200,230,255,.7)'; ctx.lineWidth = 2; ctx.strokeRect(16, 16, tw + 28, 40);
-      ctx.fillStyle = '#eaf4ff'; ctx.fillText(txt, 30, 26);
+      ctx.fillStyle = 'rgba(10,14,20,.78)'; ctx.fillRect(14, 12, tw + 22, 28);
+      ctx.strokeStyle = 'rgba(200,230,255,.7)'; ctx.lineWidth = 1.5; ctx.strokeRect(14, 12, tw + 22, 28);
+      ctx.fillStyle = '#eaf4ff'; ctx.fillText(txt, 25, 20);
     }
     return true;
   };

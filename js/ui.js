@@ -11788,6 +11788,14 @@
         '<select id="adm-prov"></select>' +
         '<select id="adm-market"></select>' +
         '<select id="adm-district"></select>' +
+        /* v90.66（老板 0a）：**地形检索** —— 选中某地形，全星该地形高亮。 */
+        '<select id="adm-terrain" title="地形高亮：选中一类地形，全星该地形地块高亮">' +
+          '<option value="">地形高亮…</option>' +
+          '<option value="hill">山地</option><option value="forest">森林</option>' +
+          '<option value="plain">平地</option><option value="caoyuan">草原</option>' +
+          '<option value="desert">荒漠</option><option value="zhaoze">沼泽</option>' +
+          '<option value="lake">湖泊/海</option>' +
+        '</select>' +
       '</div>' +
       '</div>';
   };
@@ -11824,6 +11832,11 @@
       provEl.addEventListener('change', function () { st.prov = +provEl.value; st.market = -1; st.district = -1; ui.fillAdmSearch(); apply(); });
       mktEl.addEventListener('change', function () { st.market = +mktEl.value; st.district = -1; ui.fillAdmSearch(); apply(); });
       distEl.addEventListener('change', function () { st.district = +distEl.value; apply(); });
+      /* v90.66（老板 0a）：地形高亮下拉（与行政检索并列，各自独立操作）。 */
+      var terEl = g('adm-terrain');
+      terEl && terEl.addEventListener('change', function () {
+        if (GAME.map3d.setTerrainHighlight) GAME.map3d.setTerrainHighlight(terEl.value || null);
+      });
     }
   };
 
