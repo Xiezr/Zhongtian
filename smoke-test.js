@@ -2234,7 +2234,7 @@
     var mapSrc24 = require('fs').readFileSync(require('path').join(__dirname, 'js', 'map.js'), 'utf8');
     check('城内地块改用 SVG 图标', /GAME\.icons\.forBuilding\(cell\.build\.id\)/.test(uiSrc24));
     check('城外地块改用 SVG 图标', /GAME\.icons\.forExt\(e\.type\)/.test(uiSrc24));
-    check('兵种卡改用 SVG 图标', /GAME\.icons\.forTroop\(t\.id\)/.test(uiSrc24));
+    check('兵种卡改用 SVG 图标', /GAME\.icons\.forTroop\((t|sel)\.id\)/.test(uiSrc24));
     check('地图野地改为矢量绘制', /function drawTerrainArt/.test(mapSrc24) && !/TERRAIN_ICON/.test(mapSrc24));
     check('城池为矢量绘制', /function drawCityArt/.test(mapSrc24));
     var htmlSrc24 = require('fs').readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
@@ -7116,41 +7116,20 @@
   /* ---- 需求 1/2/3（v37） ---- */
   console.log('  --- ⓪ 兵种卡瘦身 / 浮层唯一层 / 图标尺寸 ----');
   /* 需求 1：募兵资源移入悬停、图标放大 */
-  check('募兵兵种卡不再常驻募兵资源（移入悬停浮层）', (function () {
-    /* v81：兵种卡在分组页（首页是募兵队列）；v89.229：组 1 = 后勤支援（4 张） */
-    var bkTab = G.ui._trainTab; G.ui._trainTab = 'g1';
+  check('v90.65：募兵兵种卡只留居中兵种名（悬停浮层退役）', (function () {
     var h = G.ui.troopsHTML();
-    G.ui._trainTab = bkTab;
-    /* 逐卡判定（整页有 4 张卡，不是 1 张）：
-       ① 卡面 .tstat 行数：v37 由 3 行降 2 行；v84 再降 1 行（拥有行退役）；
-          **v89.114（老板「兵种的属性不再直接列出，改悬浮显示」）→ 0 行**
-          （属性整行进悬停浮层，卡面只剩图标 + 名字）
-       ② 卡面不再出现"耗粮"（成本移入浮层，不是删掉）
-       ③ 浮层内容源仍在，且四要素齐备 */
-    var cards = h.split('class="troop-card').slice(1);
-    if (!cards.length) return false;
-    var ok = cards.every(function (c) {
-      var face = c.replace(/<div class="tcard-tip tip-src">[\s\S]*?<\/div><\/div>/, '');
-      var stats = face.match(/<div class="tstat">[\s\S]*?<\/div>/g) || [];
-      return stats.length === 0 && face.indexOf('耗粮') < 0 && face.indexOf('拥有') < 0;
-    });
-    var tip = h.match(/<div class="tcard-tip tip-src">([\s\S]*?)<\/div><\/div>/);
-    return ok && !!tip
-      && /募兵消耗/.test(tip[1]) && /幸存者 /.test(tip[1]) && /单兵耗时/.test(tip[1])
-      && /血 /.test(tip[1]) && /负重 /.test(tip[1])   /* v89.114：属性（含负重）也在浮层 */
-      && tip[1].indexOf('耗粮') < 0   /* v89.36：军粮维持退役，悬停不再列耗粮 */
-      && /\.troop-card \.ticon \.ico \{[\s\S]{0,140}max-width: 84px/.test(hS38);
+    /* 卡面已无 tstat / tcard-tip（属性/消耗改在右侧展示栏）。 */
+    var ok = h.indexOf('tstat') < 0 && h.indexOf('tcard-tip') < 0 && h.indexOf('耗粮') < 0;
+    var cards = (h.match(/class="troop-card/g) || []).length;
+    var dh = (h.match(/<div class="troop-detail-head">([\s\S]*?)<\/div><\/div>/) || ['', ''])[1];
+    return ok && cards >= 12 && h.indexOf('troop-detail') >= 0
+      && /血 /.test(dh) && /募兵消耗/.test(dh) && /幸存者 /.test(dh) && /单兵耗时/.test(dh);
   })());
   /* ---- 需求 2：浮层唯一层 + 落位夹进视口 ---- */
-  check('实测：悬停内容含消耗/幸存者/耗时（耗粮已随军粮维持退役）', (function () {
-    /* v81：兵种卡在分组页（首页是募兵队列）；v89.229：组 1 = 后勤支援 */
-    var bkTab = G.ui._trainTab; G.ui._trainTab = 'g1';
+  check('v90.65：募兵详情栏含消耗/幸存者/耗时（原悬停内容已并入右栏）', (function () {
     var h = G.ui.troopsHTML();
-    G.ui._trainTab = bkTab;
-    var m = h.match(/<div class="tcard-tip tip-src">([\s\S]*?)<\/div><\/div>/);
-    if (!m) return false;
-    return /募兵消耗/.test(m[0]) && /幸存者 /.test(m[0]) && /单兵耗时/.test(m[0])
-      && m[0].indexOf('耗粮') < 0;
+    var dh = (h.match(/<div class="troop-detail-head">([\s\S]*?)<\/div><\/div>/) || ['', ''])[1];
+    return /募兵消耗/.test(dh) && /幸存者 /.test(dh) && /单兵耗时/.test(dh) && dh.indexOf('耗粮') < 0;
   })());
   check('悬停浮层为全站唯一层（v89.150：absolute + 画布坐标系 + 最高层级）',
     /\.tip-layer \{[\s\S]{0,600}position: absolute/.test(hS38)
@@ -16824,18 +16803,13 @@ console.log('\n===== 69. v84 卡面去拥有行 · 步兵/机车分类对调 ===
     /* v89.114：卡面属性行（.tstat）整行退役 —— 属性全部进悬停浮层 */
     return th.indexOf('拥有') < 0 && th.indexOf('tstat') < 0;
   })());
-  check('v84：未解锁原因仍在悬停浮层，读数变量退役', (function () {
+  check('v84/v90.65：未解锁原因改由卡片 data-why（悬停浮层退役）· 读数变量退役', (function () {
     var th = codeOf(uS84v, 'ui.troopsHTML = function');
-    return /tip-a/.test(th) && /chk\.msg/.test(th) && th.indexOf('var own') < 0;
+    return /data-why/.test(th) && /chk\.msg/.test(th) && th.indexOf('var own') < 0
+      && th.indexOf('tcard-tip') < 0;
   })());
-  check('实测：三个分组页卡面 HTML 均无「拥有」（v89.229：g1/g2/g3）', (function () {
-    var bkT = G.ui._trainTab, bkS = G.ui._trainSel;
-    var ok = ['g1', 'g2', 'g3'].every(function (tab) {
-      G.ui._trainTab = tab;
-      return G.ui.troopsHTML().indexOf('拥有') < 0;
-    });
-    G.ui._trainTab = bkT; G.ui._trainSel = bkS;
-    return ok;
+  check('实测：卡面 HTML 无「拥有」（v90.65：14 兵种一列）', (function () {
+    return G.ui.troopsHTML().indexOf('拥有') < 0;
   })());
 
   console.log('  --- ② 步兵/机车分类对调（运输平台→机车 / 侦察单元→步兵） ---');
@@ -21945,7 +21919,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       return bad.length === 0;
     })());
     /* ③ 实测渲染：训练与解散之间必须隔着「危险操作」区 */
-    check('③ 实测渲染：训练与解散之间隔着「危险操作」区（不再同行紧邻）', (function () {
+    check('③ 实测渲染：训练与解散同在下方操作区（troop-ops）', (function () {
       var bak = G.state;
       try {
         var stT = G.newGame({ name: '危3', cityName: '灰岗', mapSeed: 20260923 });
@@ -21958,12 +21932,14 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         cT.cells[bi].build = { id: 'junying', lvl: 1 };
         cT.army = cT.army || {};
         Object.keys(DATA.TROOPS).forEach(function (tid) { cT.army[tid] = 100; });
-        G.ui._trainBIdx = bi; G.ui._trainTab = 'g1';
+        G.ui._trainBIdx = bi;
         var h = G.ui.troopsHTML();
         var a = h.indexOf('data-action="confirm-train"');
         var b = h.indexOf('data-action="troop-disband-ask"');
-        if (a < 0 || b < 0) { console.log('     训练锚=' + a + ' 解散锚=' + b); return false; }
-        return b > a && /op-zone danger/.test(h.slice(a, b));
+        var ops = h.indexOf('class="troop-ops"');
+        if (a < 0 || b < 0 || ops < 0) { console.log('     训练锚=' + a + ' 解散锚=' + b + ' ops=' + ops); return false; }
+        /* 两键都在**下方操作区**内（ops 起始在 a/b 之前） */
+        return ops < a && a < b;
       } finally { G.state = bak; }
     })());
     /* ④ 实测：解散确认弹窗内容 + do 载荷 */
@@ -22436,22 +22412,17 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       okE2E94, dbg94 || 'ok');
 
     console.log('  --- ② 兵营卡属性悬浮（需求 2）---');
-    check('② 实测：卡面零 .tstat 行、浮层含血/攻/防/射速/负重与消耗', (function () {
-      var bkT = G.ui._trainTab;
-      G.ui._trainTab = 'g1';                       /* v89.229：filter 参退役 · 组 1 后勤支援 */
+    check('② 实测：卡面无 .tstat 行、详情栏含血/攻/防/射程/速度/负重与消耗', (function () {
       var h = G.ui.troopsHTML();
-      G.ui._trainTab = bkT;
-      var face = (h.split('class="troop-card').slice(1)[0] || '')
-        .replace(/<div class="tcard-tip tip-src">[\s\S]*?<\/div><\/div>/, '');
-      var tip = (h.match(/<div class="tcard-tip tip-src">([\s\S]*?)<\/div><\/div>/) || ['', ''])[1];
-      return face.indexOf('tstat') < 0
-        && /血 /.test(tip) && /攻 /.test(tip) && /防 /.test(tip) && /射程 /.test(tip)
-        && /速度 /.test(tip) && /负重 /.test(tip) && /募兵消耗/.test(tip);
+      var dh = (h.match(/<div class="troop-detail-head">([\s\S]*?)<\/div><\/div>/) || ['', ''])[1];
+      return h.indexOf('tstat') < 0 && h.indexOf('tcard-tip') < 0
+        && /血 /.test(dh) && /攻 /.test(dh) && /防 /.test(dh) && /射程 /.test(dh)
+        && /速度 /.test(dh) && /负重 /.test(dh) && /募兵消耗/.test(dh);
     })());
     check('② 源码：卡面不再拼属性行（.tstat 整段退役，不留死代码）', (function () {
       var body = codeOf(fs94.readFileSync(path94.join(__dirname, 'js', 'ui.js'), 'utf8'),
         'ui.troopsHTML = function');
-      return body.indexOf('class="tstat"') < 0 && /tcard-tip tip-src/.test(body);
+      return body.indexOf('class="tstat"') < 0 && /troop-detail-head/.test(body);
     })());
 
     console.log('  --- ③ 关闭键统一右上角（需求 3）---');

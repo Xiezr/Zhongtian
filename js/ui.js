@@ -9552,22 +9552,12 @@
       var t = DATA.TROOPS[id];
       var chk = GAME.canTrain(id);
       var unlocked = chk.ok;
-      /* 卡面只留兵种名；属性/消耗/未解锁原因全在悬停浮层（#tip-layer）。 */
+      /* v90.65（老板）：左侧列表**去掉悬停弹窗**，只留居中的兵种名（属性改在右侧展示栏看）。 */
       return '<div class="troop-card' + (unlocked ? '' : ' disabled') + (ui._trainSel === id ? ' selected' : '') + '" ' +
         (unlocked ? 'data-action="select-train"' : '') + ' data-troop="' + id + '"' +
-        (unlocked ? '' : ' data-why="' + U.escape(chk.msg || '') + '"') + ' data-tip-el="1">' +
+        (unlocked ? '' : ' data-why="' + U.escape(chk.msg || '') + '"') + '>' +
         '<div class="tname">' + t.name + '</div>' +
-        '<div class="tcard-tip tip-src">' +
-          '<div class="troop-tip-fig">' + GAME.icons.forTroop(t.id) + '</div>' +
-          '<div class="tip-t">' + U.escape(t.name) + ' · 兵种属性</div>' +
-          '<div class="tip-l">血 ' + t.hp + '　攻 ' + t.atk + '　防 ' + t.def +
-            '　射程 ' + t.range + '　速度 ' + t.spd + '</div>' +
-          '<div class="tip-l">负重 ' + t.load + '<span style="opacity:.65;">（随军运力 / 掠夺搬运）</span></div>' +
-          '<div class="tip-l">募兵消耗：' + GAME.costString(t.cost) + '</div>' +
-          '<div class="tip-l">幸存者 ' + t.pop + ' · 单兵耗时 ' + U.dur(t.time) + '</div>' +
-          (t.vsMech ? '<div class="tip-l">拆械 对器械伤害 ×' + t.vsMech + '</div>' : '') +
-          (unlocked ? '' : '<div class="tip-a" style="color:var(--red-light)">' + U.escape(chk.msg || '') + '</div>') +
-        '</div></div>';
+        '</div>';
     }).join('');
     var sel = DATA.TROOPS[ui._trainSel];
     var afford = GAME.canTrain(ui._trainSel).ok;
@@ -9582,52 +9572,42 @@
     var barLine = bar ? ''
       : '<div class="q-empty">本城尚未建造' + (kind === 'craft' ? '机工坊，无法制造器械。' : '训练营，无法募兵。') + '</div>';
     var listHTML = '<div class="troop-list">' + cards + '</div>';
-    /* v90.64（老板）：右侧 = 选中兵种的**展示栏**（大图 + 属性 + 驻军）。 */
+    /* v90.65（老板）：右侧 = 选中兵种的**展示栏**（大图 + 属性 + 驻军/上限/消耗；**纯展示，无控件**）。 */
     var detailHead = !sel ? '' :
       '<div class="troop-detail-head">' +
         '<div class="tdh-fig">' + GAME.icons.forTroop(sel.id) + '</div>' +
         '<div class="tdh-info">' +
           '<div class="tdh-nm">' + U.escape(sel.name) + '</div>' +
           '<div class="tdh-stats">血 ' + sel.hp + '　攻 ' + sel.atk + '　防 ' + sel.def +
-            '　射程 ' + sel.range + '　速度 ' + sel.spd + '　负重 ' + sel.load + '</div>' +
-          '<div class="tdh-sub">单兵耗时 ' + U.dur(sel.time) + '　·　幸存者 ' + sel.pop +
-            '　·　本城驻军 <b>' + U.numText(haveN, 0) + '</b></div>' +
-          '<div class="tdh-cost">募兵消耗：' + GAME.costString(sel.cost) + '</div>' +
+            '　射程 ' + sel.range + '　速度 ' + sel.spd + '　负重 ' + sel.load +
+            (sel.vsMech ? '　拆械 ×' + sel.vsMech : '') + '</div>' +
+          '<div class="tdh-sub">单兵耗时 ' + U.dur(sel.time) + '　·　幸存者 ' + sel.pop + '　·　本城驻军 <b>' + U.numText(haveN, 0) + '</b></div>' +
+          '<div class="tdh-cost">募兵消耗：' + GAME.costString(sel.cost) + '　·　可募上限 ' + U.numText(maxN, 0) + '</div>' +
           ((maxN <= 0 && limN) ? '<div class="tdh-warn">' + (limN.reason === 'pop'
             ? '⚠️ 可征幸存者不足 —— 建居所或等待增长'
             : (limN.reason === 'res' ? '⚠️ 资源不足' : '当前不可募')) + '</div>' : '') +
         '</div>' +
       '</div>';
-    var detailHTML = '<div class="troop-detail">' + detailHead + barLine +
-      '<div style="margin-top:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:center;background:rgba(var(--sh-rgb),.25);border-radius:8px;padding:12px;">' +
+    /* v90.65（老板）：**下方整块=数量 / 训练 / 解散**；右侧只展示。 */
+    var opsHTML = '<div class="troop-ops">' + barLine +
+      '<div class="troop-ops-row">' +
         '<span style="color:var(--gold-light);font-weight:700;">' + (sel ? sel.icon + ' ' + sel.name : '—') + '</span>' +
         '<label style="color:var(--text-dim);">数量</label>' +
-        /* v80（老板）：「数量目前是-10，+10这样设计，可以直接输入，上限这个按钮保留」——
-           ±10 按钮退役：数量直接输入（input 事件实时同步 ui._trainCount，不重绘、不跳顶）。 */
         '<input type="number" id="train-count" min="1" value="' + qty + '" style="width:96px;padding:6px;background:var(--slab-1);border:1px solid var(--gold-dark);color:var(--text);border-radius:4px;text-align:center;">' +
-        /* v28（需求 5）：上限按钮 —— 一次填到"幸存者与资源的短板" */
         '<button class="btn sm" data-action="train-max" title="按可用幸存者与资源填到最大可募数">上限</button>' +
-        '<span class="ui-sub">上限 <b style="color:var(--gold-light);font-variant-numeric:tabular-nums;">'
-          + U.numText(maxN, 0) + '</b></span>' +
-        '<span class="ui-sub">驻军 <b style="color:var(--gold-light);font-variant-numeric:tabular-nums;">'
-          + U.numText(haveN, 0) + '</b></span>' +
-        /* v89.86（整改 P-19）：上限 0 → 当场归因（幸存者不足 / 资源不足），不再"静默归零" */
+        '<span class="ui-sub">上限 <b style="color:var(--gold-light);font-variant-numeric:tabular-nums;">' + U.numText(maxN, 0) + '</b></span>' +
+        '<span class="ui-sub">驻军 <b style="color:var(--gold-light);font-variant-numeric:tabular-nums;">' + U.numText(haveN, 0) + '</b></span>' +
         ((maxN <= 0 && limN)
           ? '<span class="ui-sub" style="color:var(--red-light);">' +
               (limN.reason === 'pop'
-                ? '⚠️ 可征幸存者不足（劳作占用 ' + U.fmt(GAME.popLaborOf(GAME.currentCity()))
-                    + ' 不可征兵）—— 建居所或等待幸存者增长'
+                ? '⚠️ 可征幸存者不足（劳作占用 ' + U.fmt(GAME.popLaborOf(GAME.currentCity())) + ' 不可征兵）—— 建居所或等待增长'
                 : (limN.reason === 'res'
                     ? '⚠️ 资源不足 —— 缺 ' + ((limN.lack || []).map(function (k) { return GAME.resName(k); }).join('、') || '募兵所需资源')
                     : '当前不可募')) +
             '</span>'
           : '') +
-        /* v89.86（整改 P-05）：募兵吃幸存者的说明常驻（此前零提示，"200→140"一脸问号）。
-           v89.89（E3 · 100+ 轮实玩期待）：升级为**三段条**（可征 / 上限 / 增势）+ 进度条 ——
-           幸存者与兵源的关系一眼可见；增势走 GAME.popGrowthOf 唯一出口（与 tickOnce 同源）。 */
         (sel ? (function () {
-          var avail = GAME.popFreeOf(c);   /* v89.126：可征 = 幸存者 − 劳作占用（唯一出口） */
-          /* v89.185（老板 6）：面板"上限"与幸存者行同源（民心折算的有效上限） */
+          var avail = GAME.popFreeOf(c);
           var capP = GAME.effPopCapOf(c) || 0;
           var grow = Math.round(GAME.popGrowthOf(c));
           var pct = capP > 0 ? Math.min(100, Math.round(avail / capP * 100)) : 0;
@@ -9647,9 +9627,6 @@
             '<span class="p3-note">每兵占幸存者 ' + sel.pop + (capP > 0 && avail > capP ? '　· 超上限不增长' : '') + '</span>' +
             '</span>';
         })() : '') +
-        /* v89.99（老板「设计兵种解散」）：解散 = 归农（幸存者返还、军资不退）。
-           v89.110（老板「危险按钮能放训练旁边吗？这种人机交互理念符合常理吗」）：
-           解散**移出本行** —— 收进下方独立「危险操作」区（红 + 二次确认）。 */
         '<button class="btn gold" data-action="confirm-train" data-troop="' + ui._trainSel + '"' +
           (slotsLeft > 0 ? '' : ' disabled data-why="本营训练队列已满：等待一个队列完成，或升级训练营解锁等待位"') + '>' + (kind === 'craft' ? '制造' : '训练') + '</button>' +
         '<span style="color:var(--text-dim);font-size:var(--fs-sub);">约' + timeStr + '</span>' +
@@ -9657,20 +9634,13 @@
           ? '<span class="ui-sub">队列空位 ' + slotsLeft + '</span>'
           : '<span class="ui-sub" style="color:var(--amber);">' + (kind === 'craft' ? '本作坊' : '本营') + '队列已满' +
             (bar && GAME.trainNextSlotLv(bar.lvl) ? '（Lv' + GAME.trainNextSlotLv(bar.lvl) + ' 解锁下一个等待位）' : '') + '</span>') +
+        '<button class="btn sm red" data-action="troop-disband-ask" data-troop="' + ui._trainSel + '"' +
+          (haveN > 0 ? '' : ' disabled') +
+          ' title="解散本城驻军并归农（返还幸存者、军资不退；需二次确认）">解散所选兵种</button>' +
       '</div>' +
-      /* v89.110（老板）：**危险操作独立成区** —— 红框 + 红按钮 + 二次确认，与训练（金）
-         之间隔开一整行；确认弹窗写清"失去什么、返还什么"（openDisbandConfirm）。 */
-      '<div class="op-zone danger" style="margin-top:var(--sp-mid);padding:var(--sp-2) var(--sp-mid);">' +
-        '<div class="op-row">' +
-          '<span style="color:var(--red-light);font-size:var(--fs-sub);font-weight:700;">⚠️ 危险操作</span>' +
-          '<button class="btn sm red" data-action="troop-disband-ask" data-troop="' + ui._trainSel + '"' +
-            (haveN > 0 ? '' : ' disabled') +
-            ' title="解散本城驻军并归农（返还幸存者、军资不退；需二次确认）">解散所选兵种</button>' +
-          '<span class="op-hint">归农返还幸存者 · 军资不退 · 需二次确认</span>' +
-        '</div>' +
-      '</div>' +
-      '</div>';   /* 收 .troop-detail */
-    return '<div class="ui-page"><div class="troop-split">' + listHTML + detailHTML + '</div></div>';
+    '</div>';
+    return '<div class="ui-page troops-page"><div class="troop-split">' + listHTML +
+      '<div class="troop-detail">' + detailHead + '</div></div>' + opsHTML + '</div>';
   };
 
   /* --------- 英雄 --------- */

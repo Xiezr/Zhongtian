@@ -2213,8 +2213,9 @@ async function runTests(dom, URL) {
       const dH110 = document.querySelector('#modal-root').innerHTML;
       const ia110 = dH110.indexOf('data-action="confirm-train"');
       const ib110 = dH110.indexOf('data-action="troop-disband-ask"');
-      check('v89.110：训练与解散之间隔着「危险操作」区（不再同行紧邻）',
-        ia110 > 0 && ib110 > ia110 && /op-zone danger/.test(dH110.slice(ia110, ib110)));
+      const iops110 = dH110.indexOf('class="troop-ops"');
+      check('v90.65：训练与解散同在下方操作区（troop-ops）',
+        iops110 > 0 && ia110 > iops110 && ib110 > ia110);
       const ask110 = document.querySelector('#modal-root [data-action="troop-disband-ask"]');
       const selT110 = ask110 && ask110.dataset.troop;
       const pop0110 = G.res(cD110).pop || 0;
@@ -7875,14 +7876,13 @@ console.log('\n--- §180. 拆械与 live 滚动（v89.180） ---');
   }
   G.ui.openTroops(fIdx180);
   await sleep(150);
-  /* v89.229：统一面板入场落「募兵队列」页 —— 器械兵在组 3，先切页再看卡 */
-  click(document.querySelector('#modal-root [data-action="train-tab"][data-page="g3"]'));
+  /* v90.65：14 兵种一列全列（无分页）；选中器械兵 → 右详情含拆械行 */
+  G.ui._trainSel = 'wuren'; G.ui.renderTroopsModal();
   await sleep(180);
-  const card180 = document.querySelector('#modal-root .troop-card[data-troop="wuren"]');
-  const tip180 = card180 ? card180.querySelector('.tcard-tip') : null;
-  const txt180 = tip180 ? (tip180.textContent || '') : '';
-  check('§180a 器械页无人轰炸机卡悬停含「拆械 对器械伤害 ×3」（真 DOM）',
-    !!card180 && txt180.indexOf('拆械') >= 0 && txt180.indexOf('×3') >= 0, txt180.slice(0, 90));
+  const det180 = document.querySelector('#modal-root .troop-detail-head');
+  const txt180 = det180 ? (det180.textContent || '') : '';
+  check('§180a 器械页无人轰炸机详情含「拆械 ×3」（真 DOM）',
+    !!det180 && txt180.indexOf('拆械') >= 0 && txt180.indexOf('×3') >= 0, txt180.slice(0, 90));
 
   /* live 每秒重建：.panel-body 滚动位必须保留（v89.180 修复的 flaky 根因 ·
      快照/回填选择器原缺 panel-body —— 上一版靠"恰好时序"才绿） */

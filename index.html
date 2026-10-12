@@ -2557,21 +2557,31 @@
 
   /* ============ 军队 / 兵种卡 ============ */
   /* v80（老板）：「页面分成步兵，机车两个界面，翻页」—— 两页切换（选中页走 .btn.gold） */
-  /* v90.64（老板）：募兵营改**左列兵种清单 / 右侧选中展示栏**（原分页网格退役）。 */
-  .troop-split { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(0, 2.1fr); gap: var(--sp-4); align-items: start; }
-  .troop-list { display: flex; flex-direction: column; gap: var(--sp-2); max-height: 470px; overflow-y: auto; padding-right: var(--sp-1); }
-  .troop-list .troop-card { text-align: left; padding: var(--sp-2) var(--sp-3); }
-  .troop-detail { min-width: 0; }
-  .troop-detail-head { display: flex; gap: var(--sp-4); align-items: center; padding: var(--sp-3);
-    background: rgba(var(--sh-rgb),.22); border: 1px solid var(--line); border-radius: var(--r-lg); margin-bottom: var(--sp-2); }
+  /* v90.64/90.65（老板）：募兵营改**左列兵种清单 / 右侧选中展示栏**（原分页网格退役）。
+     v90.65：满高 flex —— 上方「列表 + 展示」占 ~¾，下方「数量/训练/解散」固定 ~¼。 */
+  .troops-page { display: flex; flex-direction: column; height: 100%; min-height: 400px; }
+  .troop-split { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(0, 2.1fr); gap: var(--sp-4);
+    align-items: stretch; flex: 3 1 0; min-height: 0; }
+  .troop-list { display: flex; flex-direction: column; gap: var(--sp-2); overflow-y: auto; padding-right: var(--sp-1); }
+  .troop-list .troop-card { text-align: center; padding: var(--sp-2) var(--sp-3); }
+  .troop-list .troop-card .tname { margin-top: 0; }
+  .troop-detail { min-width: 0; display: flex; }
+  .troop-detail-head { display: flex; flex-direction: column; gap: var(--sp-3); align-items: center; justify-content: center;
+    padding: var(--sp-4); width: 100%;
+    background: rgba(var(--sh-rgb),.22); border: 1px solid var(--line); border-radius: var(--r-lg); }
   .troop-detail-head .tdh-fig { flex: none; display: flex; align-items: center; justify-content: center; }
-  .troop-detail-head .tdh-fig .ico { width: auto; height: 120px; max-width: 160px; object-fit: contain; }
-  .troop-detail-head .tdh-info { min-width: 0; }
-  .troop-detail-head .tdh-nm { font-size: var(--fs-lead); font-weight: 800; color: var(--parchment); }
-  .troop-detail-head .tdh-stats { font-size: var(--fs-sub); color: var(--text); margin-top: var(--sp-1); line-height: var(--lh-body); }
+  .troop-detail-head .tdh-fig .ico { width: auto; height: 210px; max-width: 100%; object-fit: contain; }
+  .troop-detail-head .tdh-info { min-width: 0; text-align: center; }
+  .troop-detail-head .tdh-nm { font-size: var(--fs-num); font-weight: 800; color: var(--parchment); }
+  .troop-detail-head .tdh-stats { font-size: var(--fs-sub); color: var(--text); margin-top: var(--sp-2); line-height: var(--lh-body); }
   .troop-detail-head .tdh-sub { font-size: var(--fs-cap); color: var(--text-dim); margin-top: var(--sp-1); }
   .troop-detail-head .tdh-cost { font-size: var(--fs-cap); color: var(--text-dim); margin-top: var(--sp-hair); }
   .troop-detail-head .tdh-warn { font-size: var(--fs-cap); color: var(--red-light); margin-top: var(--sp-1); }
+  /* 下方操作区：数量 / 训练 / 解散（老板：统一下方四分之一） */
+  .troop-ops { flex: 1 1 0; min-height: 0; margin-top: var(--sp-3); padding: var(--sp-3);
+    background: rgba(var(--sh-rgb),.25); border: 1px solid var(--line); border-radius: var(--r-lg);
+    display: flex; flex-direction: column; justify-content: center; }
+  .troop-ops-row { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; justify-content: center; }
   .troop-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--sp-4); }
   .troop-card {
     background: linear-gradient(180deg, var(--surface-2), var(--surface-3b));
@@ -4522,30 +4532,30 @@
 </div><!-- /#app-scale -->
 </div><!-- /#app-fit -->
 
-<!-- BUILD 9136 -->
-<script src="js/data.js?v=9136"></script>
-<script src="js/state.js?v=9136"></script>
-<script src="js/questdata.js?v=9136"></script>
-<script src="js/systems.js?v=9136"></script>
-<script src="js/domain.js?v=9136"></script>
-<script src="js/map.js?v=9136"></script>
+<!-- BUILD 9137 -->
+<script src="js/data.js?v=9137"></script>
+<script src="js/state.js?v=9137"></script>
+<script src="js/questdata.js?v=9137"></script>
+<script src="js/systems.js?v=9137"></script>
+<script src="js/domain.js?v=9137"></script>
+<script src="js/map.js?v=9137"></script>
 <!-- v90.61：Three.js 真 3D 主地图（vendor 本地，离线可用） -->
-<script src="vendor/three.min.js?v=9136"></script>
-<script src="js/map3d.js?v=9136"></script>
-<script src="js/battle.js?v=9136"></script>
+<script src="vendor/three.min.js?v=9137"></script>
+<script src="js/map3d.js?v=9137"></script>
+<script src="js/battle.js?v=9137"></script>
 <!-- v27（需求 5）：回合制文字战场。放在 battle.js 之后 —— simulate 由它接管 -->
-<script src="js/tactic.js?v=9136"></script>
-<script src="js/icons.js?v=9136"></script>
+<script src="js/tactic.js?v=9137"></script>
+<script src="js/icons.js?v=9137"></script>
 <!-- v32（需求「采用网图」）：game-icons 开源图标素材层。必须在 icons.js 之后 ——
      icons.js 内的取图函数用 typeof GICONS 延迟绑定，渲染时才真正查表。 -->
-<script src="js/gicons.js?v=9136"></script>
+<script src="js/gicons.js?v=9137"></script>
 <!-- v35：AI 位图素材登记表（汉代风，最高优先级）。同样在 icons.js 之后 ——
      取图函数用 typeof BITMAPS 延迟绑定；未登记的 id 自动回退矢量层。 -->
-<script src="js/bitmaps.js?v=9136"></script>
-<script src="js/portraits.js?v=9136"></script>
-<script src="js/story.js?v=9136"></script>
+<script src="js/bitmaps.js?v=9137"></script>
+<script src="js/portraits.js?v=9137"></script>
+<script src="js/story.js?v=9137"></script>
 <!-- ⛔ v89.218（老板「故事全部去除」）：84 卷故事库（story/）整目录删除，脚本标签同步撤除。 -->
-<script src="js/ui.js?v=9136"></script>
-<script src="js/main.js?v=9136"></script>
+<script src="js/ui.js?v=9137"></script>
+<script src="js/main.js?v=9137"></script>
 </body>
 </html>
