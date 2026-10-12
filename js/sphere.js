@@ -307,6 +307,19 @@
     return -1;
   }
   SP.hexDist = hexDist;
+  /* 与某格相距 ≤hops 环的全部格（含自身）—— 据点保护区 / 半径族用。 */
+  SP.hopsWithin = function (ci, hops) {
+    var adj = SP.adj, nv = SP.nv, out = [];
+    if (!adj || ci < 0 || ci >= nv || hops < 0) return out;
+    if (!_dArr) { _dArr = new Int32Array(nv); _dStamp = new Int32Array(nv); }
+    var stamp = ++_dVer, q = [ci], head = 0; _dArr[ci] = 0; _dStamp[ci] = stamp; out.push(ci);
+    while (head < q.length) {
+      var cur = q[head++], d = _dArr[cur] + 1; if (d > hops) break;
+      var an = adj[cur];
+      for (var i = 0; i < an.length; i++) { var nb = an[i]; if (_dStamp[nb] !== stamp) { _dStamp[nb] = stamp; _dArr[nb] = d; q.push(nb); out.push(nb); } }
+    }
+    return out;
+  };
   /* 世界格坐标 → 六边格索引（地形查询同一映射）。带 memo（nearestCell 为 O(nv)，
      行军距离预览等会重复问同一点）。*/
   var _xyCi = null;

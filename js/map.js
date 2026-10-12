@@ -239,90 +239,86 @@
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
   /* ============================================================
-   * 据点「保护区」（出生点半径 + 名城 3×3）—— 唯一判据
+   * 据点「保护区」（出生点半径 + 名城 1 环）—— 唯一判据 · **v90.75 球系化**
    * ------------------------------------------------------------
-   * 全图枚举时不可能逐格遍历城市表（25 万格 × 174 城 = 4300 万次比较），
-   * 先把保护区摊成一个集合，枚举时 O(1) 查询。判据与旧内联循环逐字等价：
-   *   · 出生点：|dx| ≤ safeRadius && |dy| ≤ safeRadius
-   *   · 名城：  |dx| ≤ 1 && |dy| ≤ 1
-   * 按 (seed, 出生点) 缓存 —— 出生点随所选区走（v70），seed 相同、区不同
-   * 也会得到不同的保护区。
+   * 改前对 500×500 平面格摊集合；现**直接建在球面六边格上**（Set of ci）：
+   *   · 出生点：距出生格 ≤ safeRadius 环（SP.hopsWithin）
+   *   · 名城：距名城格 ≤ 1 环
+   * 按 (seed) 缓存。
    * ============================================================ */
   GAME.map._fortBlockSet = function () {
-    var s = GAME.state, F = DATA.FORT, W = DATA.MAP_W, H = DATA.MAP_H;
-    var sp = (s.map && s.map.startPos) || DATA.START_POS;
-    var seed = s.map.seed || 1;
+    var s = GAME.state, F = DATA.FORT, SP = GAME.sphere;
+    var seed = (s.map && s.map.seed) || 1;
     var cch = GAME.map._fortBlocks;
-    if (cch && cch.seed === seed && cch.spx === sp.x && cch.spy === sp.y) return cch.set;
-    var set = {}, x, y, i, c, R = F.safeRadius;
-    for (y = sp.y - R; y <= sp.y + R; y++) {
-      if (y < 0 || y >= H) continue;
-      for (x = sp.x - R; x <= sp.x + R; x++) {
-        if (x < 0 || x >= W) continue;
-        set[y * W + x] = 1;
-      }
-    }
+    if (cch && cch.seed === seed) return cch.set;
+    var set = {};
+    GAME.map._fortBlocks = { seed: seed, set: set };
+    if (!SP || !SP.cells || !SP.hopsWithin) return set;
+    var sp = (s.map && s.map.startPos) || DATA.START_POS;
+    var spCi = SP.ciOfXY(sp.x, sp.y);
+    if (spCi >= 0) SP.hopsWithin(spCi, F.safeRadius || 1).forEach(function (ci) { set[ci] = 1; });
     var cs = (s.map && s.map.cities) || [];
-    for (i = 0; i < cs.length; i++) {
-      c = cs[i];
-      for (y = c.y - 1; y <= c.y + 1; y++) {
-        if (y < 0 || y >= H) continue;
-        for (x = c.x - 1; x <= c.x + 1; x++) {
-          if (x < 0 || x >= W) continue;
-          set[y * W + x] = 1;
-        }
-      }
+    for (var i = 0; i < cs.length; i++) {
+      var c = cs[i]; var ci = (c.ci != null && c.ci >= 0) ? c.ci : SP.ciOfXY(c.x, c.y);
+      if (ci >= 0) SP.hopsWithin(ci, 1).forEach(function (x) { set[x] = 1; });
     }
-    GAME.map._fortBlocks = { seed: seed, spx: sp.x, spy: sp.y, set: set };
     return set;
   };
-  GAME.map._fortBlocked = function (x, y) {
-    return !!GAME.map._fortBlockSet()[y * DATA.MAP_W + x];
+  /* 六边格版据点哈希（**放置/等级的唯一随机源** · 与位置/等级判据同族） */
+  GAME.map._fortHashCi = function (ci, salt) {
+    var seed = (GAME.state.map.seed || 1) | 0;
+    var h = (Math.imul(ci | 0, 73856093) ^ Math.imul(seed, 2654435761) ^ Math.imul(salt | 0, 83492791)) >>> 0;
+    var a = h || 1;
+    a = (a + 0x6D2B79F5) | 0;
+    var t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
   /* ============================================================
-   * v90.58（老板三条）：据点放置规则升级（唯一判据）
-   *   · 密度：陆地 = F.density；**海面（地形 lake）减半** = F.density/2。
-   *   · **不相邻**：一格成为据点，当且仅当它是 3×3 邻域内**哈希最小**且过阈值的格
-   *     （确定性贪心 → 任意两个据点**不会落在相邻地块**）。
-   *   · **不与名城同格**：排除 NPC 名城所在格（以及其 3×3 保护区，见 _fortBlockSet）。
-   *   位置**固定**（哈希 + seed，与每日等级无关）；每日等级仍走 _fortLevelAt。
+   * v90.58（老板三条）+ v90.75 球系化：据点放置规则（唯一判据 · 六边格）
+   *   · 密度：陆地 = F.density；**海面（lake）减半**。
+   *   · **不相邻**：一格成为据点，当且仅当其**六边邻格**里没有哈希更小的合格据点格。
+   *   · **不与名城/出生点同格**：_fortBlockSet（球面环）。
    * ============================================================ */
-  GAME.map._fortActive = function (x, y) {
-    var s = GAME.state, F = DATA.FORT;
-    if (!F || !s.map || !s.map.grid) return false;
-    if (GAME.map._fortBlocked(x, y)) return false;
-    var W = DATA.MAP_W, H = DATA.MAP_H;
-    var th = GAME.map._fortThr(x, y);
-    var h = GAME.map._fortHash(x, y, 1);
-    if (h >= th) return false;
-    /* 3×3 邻域取**哈希最小**者 → 保证不相邻（同域内两格会各自衰减不会同时胜出） */
-    for (var dy = -1; dy <= 1; dy++) {
-      var ny = y + dy; if (ny < 0 || ny >= H) continue;
-      for (var dx = -1; dx <= 1; dx++) {
-        if (dx === 0 && dy === 0) continue;
-        var nx = x + dx; if (nx < 0 || nx >= W) continue;
-        var t2 = s.map.grid[ny][nx];
-        if (!t2 || t2.terrain === 'city') continue;
-        if (GAME.map._fortBlocked(nx, ny)) continue;
-        if (GAME.map._fortHash(nx, ny, 1) >= GAME.map._fortThr(nx, ny)) continue;   /* 邻格本身不合格 */
-        if (GAME.map._fortHash(nx, ny, 1) < h) return false;                        /* 邻格哈希更小 → 本格让位 */
-      }
+  GAME.map._fortActive = function (ci) {
+    var F = DATA.FORT, SP = GAME.sphere;
+    if (!F || !SP || !SP.cells || !SP.cells[ci]) return false;
+    if (GAME.map._fortBlockSet()[ci]) return false;
+    var h = GAME.map._fortHashCi(ci, 1);
+    if (h >= GAME.map._fortThr(ci)) return false;
+    var nb = SP.adj[ci];
+    for (var i = 0; i < nb.length; i++) {
+      var nci = nb[i]; if (!SP.cells[nci]) continue;
+      if (GAME.map._fortBlockSet()[nci]) continue;
+      if (GAME.map._fortHashCi(nci, 1) >= GAME.map._fortThr(nci)) continue;
+      if (GAME.map._fortHashCi(nci, 1) < h) return false;
     }
     return true;
   };
-  /* 某格的据点密度阈值：海面（lake）减半（老板）。 */
-  GAME.map._fortThr = function (x, y) {
-    var F = DATA.FORT, s = GAME.state;
-    var t = (s && s.map && s.map.grid) ? s.map.grid[y] && s.map.grid[y][x] : null;
-    return (t && t.terrain === 'lake') ? F.density / 2 : F.density;
+  /* 某格据点密度阈值：海面（lake）减半（老板）。 */
+  GAME.map._fortThr = function (ci) {
+    var F = DATA.FORT, SP = GAME.sphere;
+    var c = SP && SP.cells && SP.cells[ci];
+    return (c && c.type === 'lake') ? F.density / 2 : F.density;
+  };
+  /* 该六边格是否有一座城（我方或名城）—— 据点不在城格生成 */
+  GAME.map._cellHasCity = function (ci) {
+    var s = GAME.state, SP = GAME.sphere; if (!SP) return false;
+    var arr = (s.cities || []).concat((s.map && s.map.cities) || []);
+    for (var i = 0; i < arr.length; i++) {
+      var c = arr[i]; if (!c) continue;
+      var cci = (c.ci != null && c.ci >= 0) ? c.ci : SP.ciOfXY(c.x, c.y);
+      if (cci === ci) return true;
+    }
+    return false;
   };
   /* 是否生有野外城池（确定性；**位置固定** —— 与"等级每日变化"各管一头） */
   GAME.map.hasFort = function (x, y) {
-    var s = GAME.state, F = DATA.FORT;
-    if (!F || !s.map.grid) return false;
-    var t = GAME.map.tile(x, y);
-    if (!t || t.terrain === 'city') return false;
-    return GAME.map._fortActive(x, y);
+    var F = DATA.FORT, SP = GAME.sphere;
+    if (!F || !SP || !SP.cells) return false;
+    var ci = SP.ciOfXY(x, y); if (ci < 0) return false;
+    if (GAME.map._cellHasCity(ci)) return false;
+    return GAME.map._fortActive(ci);
   };
   /* ============================================================
    * v89.88（老板需求 3）：据点等级 —— **构造性配额分布**
@@ -337,43 +333,39 @@
    * ⚠️ 日 = 现实日（`GAME.questDayIndex`），与"据点次日重置 / 掠夺限一次"同一把尺子。
    * ============================================================ */
   GAME.map._fortCandidates = function () {
-    var s = GAME.state, F = DATA.FORT, W = DATA.MAP_W, H = DATA.MAP_H;
-    if (!s || !s.map || !s.map.grid) return [];        /* 地图未生成 → 无候选 */
-    var sp = (s.map && s.map.startPos) || DATA.START_POS;
-    var seed = s.map.seed || 1;
+    var s = GAME.state, SP = GAME.sphere;
+    if (!s || !SP || !SP.cells) return [];             /* 内核未建 → 无候选 */
+    var seed = (s.map && s.map.seed) || 1;
     var cch = GAME.map._fortCand;
-    if (cch && cch.seed === seed && cch.spx === sp.x && cch.spy === sp.y && cch.list) return cch.list;
-    var g = s.map.grid, bset = GAME.map._fortBlockSet();
-    var list = [], x, y, t;
-    for (y = 0; y < H; y++) {
-      var row = g[y];
-      if (!row) continue;
-      for (x = 0; x < W; x++) {
-        t = row[x];
-        if (!t || t.terrain === 'city') continue;
-        if (bset[y * W + x]) continue;
-        if (!GAME.map._fortActive(x, y)) continue;   /* v90.58：统一走放置判据（密度/海面减半/不相邻/不共名城） */
-        list.push(y * W + x);
-      }
+    if (cch && cch.seed === seed && cch.list) return cch.list;
+    /* **球系化（v90.75）**：候选 = 全星六边格（~4 万，O(nv)），逐个走放置判据。
+       改前对 500×500=25 万平面格哈希；现直接枚举球面地块，与地形/距离/标记同源。 */
+    var list = [], cells = SP.cells;
+    for (var ci = 0; ci < cells.length; ci++) {
+      if (!cells[ci]) continue;
+      if (GAME.map._cellHasCity(ci)) continue;              /* 城格不生成据点 */
+      if (!GAME.map._fortActive(ci)) continue;             /* 海面由 _fortThr 折半（非排除） */
+      list.push(ci);
     }
-    GAME.map._fortCand = { seed: seed, spx: sp.x, spy: sp.y, list: list };
+    GAME.map._fortCand = { seed: seed, list: list };
     return list;
   };
   GAME.map._fortLevelTable = function (day) {
-    var s = GAME.state, F = DATA.FORT, W = DATA.MAP_W;
-    if (!s || !s.map || !s.map.grid) return {};        /* 地图未生成 → 空表 */
-    var sp = (s.map && s.map.startPos) || DATA.START_POS;
-    var seed = s.map.seed || 1;
+    var s = GAME.state, F = DATA.FORT, SP = GAME.sphere;
+    if (!s || !SP || !SP.cells) return {};   /* 内核未建 → 空表 */
+    var seed = (s.map && s.map.seed) || 1;
     var cch = GAME.map._fortLv;
-    if (cch && cch.seed === seed && cch.spx === sp.x && cch.spy === sp.y && cch.day === day) return cch.map;
+    if (cch && cch.seed === seed && cch.day === day) return cch.map;
     /* v89.197（老板 2）：「5 级以上占 80% · 等级越高比例越高」——
        按**累计占比边界**逐级切段（构造性：排序后切段，不是掷点；v89.72 教训）。
-       边界 = round(n × 累计权重 / 总权重)，最后一级吃满 —— 总数恒 = 候选数；
-       各档占比与权重表逐级一致（smoke 有逐级 ±0.003 判据）。 */
+       边界 = round(n × 累计权重 / 总权重)，最后一级吃满 —— 总数恒 = 候选数。 */
     var Wt = (F.levelDist && F.levelDist.weights) || null;
-    /* 排序键先算好再排序（比较器里现算哈希 = 每次比较两个闭包，20k 规模直接卡顿） */
-    var arr = GAME.map._fortCandidates().map(function (k) {
-      return { k: k, r: GAME.map._fortHash(k % W, (k / W) | 0, 9001 + day) };
+    /* 键 = 该六边格的**代表世界格 (x,y)**（不是 ci）—— 使 fortAt(x,y) 精确命中，
+       免 ci↔(x,y) 往返在格边界处漂移。 */
+    var cells = SP.cells;
+    var arr = GAME.map._fortCandidates().map(function (ci) {
+      var c = cells[ci];
+      return { k: c.x + ',' + c.y, r: GAME.map._fortHashCi(ci, 9001 + day) };
     });
     arr.sort(function (a, b) { return a.r - b.r; });
     var n = arr.length, map = {}, idx = 0, k;
@@ -388,15 +380,14 @@
         for (; idx < end; idx++) { k = arr[idx].k; map[k] = lv2; }
       });
     } else {
-      /* 表缺失兜底：全 levelMin（防手抖；正常永不走到 —— smoke 断表在册） */
       for (; idx < n; idx++) { map[arr[idx].k] = F.levelMin; }
     }
-    GAME.map._fortLv = { seed: seed, spx: sp.x, spy: sp.y, day: day, map: map };
+    GAME.map._fortLv = { seed: seed, day: day, map: map };
     return map;
   };
-  /* 某格在指定日的据点等级（0 = 不是据点格）—— 测试与读档恢复都读它 */
+  /* 某格在指定日的据点等级（0 = 不是据点格）—— 按世界格 (x,y) 精确查 */
   GAME.map._fortLevelAt = function (day, x, y) {
-    return GAME.map._fortLevelTable(day)[y * DATA.MAP_W + x] || 0;
+    return GAME.map._fortLevelTable(day)[x + ',' + y] || 0;
   };
   /* 今日是否仍在（被攻取的据点次日重置） */
   /* ============================================================
@@ -467,20 +458,19 @@
     return (s.fortsRazed || {})[x + ',' + y] === day;
   };
   GAME.map.fortAt = function (x, y) {
-    var s = GAME.state, F = DATA.FORT;
-    if (!F || !s.map.grid) return null;
+    var s = GAME.state, F = DATA.FORT, SP = GAME.sphere;
+    if (!F || !SP || !SP.cells) return null;
     if (GAME.map.fortRazedToday(x, y)) return null;
     /* v89.103（老板「拔除据点可以占据该据点」）：已据为己有的格子**永久**不再生成据点 ——
        与 fortsRazed（当日标记，次日重置）不同：那一格现在是我方一座城（s.cities 里）。 */
     if ((s.fortsTaken || {})[x + ',' + y]) return null;
-    var t = GAME.map.tile(x, y);
-    if (!t || t.terrain === 'city') return null;
     var day = GAME.questDayIndex ? GAME.questDayIndex() : 0;
-    var level = GAME.map._fortLevelAt(day, x, y);   /* 等级表 = 据点存在的唯一事实 */
+    var level = GAME.map._fortLevelAt(day, x, y);   /* 等级表 = 据点存在的唯一事实（已排除城/海） */
     if (!level) return null;
-    var a = Math.floor(GAME.map._fortHash(x, y, 7) * F.nameA.length);
-    var b = Math.floor(GAME.map._fortHash(x, y, 13) * F.nameB.length);
-    return { x: x, y: y, level: level, name: F.nameA[a] + F.nameB[b], kind: 'fort' };
+    var ci = SP.ciOfXY(x, y);
+    var a = Math.floor(GAME.map._fortHashCi(ci, 7) * F.nameA.length);
+    var b = Math.floor(GAME.map._fortHashCi(ci, 13) * F.nameB.length);
+    return { x: x, y: y, ci: ci, level: level, name: F.nameA[a] + F.nameB[b], kind: 'fort' };
   };
   GAME.map.fortGarrison = function (lv) {
     var F = DATA.FORT;
@@ -523,7 +513,7 @@
     /* 确定性 rng 流：同一 (x,y,level) 每次产出同一个人（含四维）。
        level 混进种子 —— 每个"据点形态"是一位独立的守备官
        （不同等级不再是"同一个人忽高忽低"，而是不同规模的守备军官）。 */
-    var rand = U.rng((Math.floor(GAME.map._fortHash(fort.x, fort.y, 23) * 4294967295) ^ (lv * 83492791)) >>> 0);
+    var rand = U.rng((Math.floor(GAME.map._fortHashCi((fort.ci != null ? fort.ci : (GAME.sphere ? GAME.sphere.ciOfXY(fort.x, fort.y) : 0)), 23) * 4294967295) ^ (lv * 83492791)) >>> 0);
     var rk = DATA.GEN_RANKS[GAME.guardRankIdxOf('fort', lv)];   /* v89.129：唯一出口 */
     /* v89.185（老板 2）：「据点则为觉醒体，等级60起步-150级」—— DATA.FORT_GUARD_LV */
     var LG = DATA.FORT_GUARD_LV || { base: 60, perLv: 10, jit: 10 };

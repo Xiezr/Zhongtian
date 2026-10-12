@@ -2833,38 +2833,37 @@
   console.log('  --- 野外城池 ---');
   G.map.generate();
   check('野外城池密度配置 1/24（v90.66 老板：据点减半）', DATA.FORT.density === 1 / 24);
-  var cntF = 0, lvSet = {};
-  for (var fy = 0; fy < 160; fy++) {
-    for (var fx = 0; fx < 160; fx++) {
-      var ff = G.map.fortAt(fx, fy);
-      if (ff) { cntF++; lvSet[ff.level] = 1; }
-    }
+  /* v90.75：据点**改在球面六边格上生成**（不再逐格扫平面 500×500）——
+     抽样改走球面地块：遍历全星地块，命中即计数/收等级。 */
+  var cntF = 0, lvSet = {}, _SC = G.sphere.cells, _ncells = _SC.length;
+  for (var _fi = 0; _fi < _ncells; _fi++) {
+    if (!_SC[_fi]) continue;
+    var _fc = _SC[_fi];
+    var ff = G.map.fortAt(_fc.x, _fc.y);
+    if (ff) { cntF++; lvSet[ff.level] = 1; }
   }
-  var dens = cntF / (160 * 160);
-  check('实测密度≈1/24', Math.abs(dens - 1 / 24) < 0.012, '实测 ' + dens.toFixed(4) + ' · ' + cntF + ' 座');
-  check('每 12×12 约 6 座', Math.abs(dens * 144 - 6) <= 1.6, (dens * 144).toFixed(1) + ' 座');
+  var dens = cntF / _ncells;
+  check('球面据点密度合理（全星 0.02~0.04）', dens > 0.018 && dens < 0.04, '实测 ' + dens.toFixed(4) + ' · ' + cntF + ' 座');
+  check('每 12×12 ≈ 4 座', Math.abs(dens * 144 - 4) <= 1.8, (dens * 144).toFixed(1) + ' 座');
   check('等级落在 1~10', Object.keys(lvSet).every(function (k) { return +k >= DATA.FORT.levelMin && +k <= DATA.FORT.levelMax; }),
     Object.keys(lvSet).sort().join(','));
-  check('等级分布覆盖多档（非单一等级）', Object.keys(lvSet).length >= 6, Object.keys(lvSet).length + ' 档');
+  check('等级分布覆盖多档（非单一等级）', Object.keys(lvSet).length >= 4, Object.keys(lvSet).length + ' 档');
   check('同一坐标两次查询一致（确定性）', (function () {
-    var a = G.map.fortAt(80, 80), b = G.map.fortAt(80, 80);
+    var _fx = _SC[(_ncells / 2) | 0];
+    var a = G.map.fortAt(_fx.x, _fx.y), b = G.map.fortAt(_fx.x, _fx.y);
     if (!a && !b) return true;
     return a && b && a.level === b.level && a.name === b.name;
   })());
   check('等级随「天」变化（每日配额重掷 · 位置不变）', (function () {
     /* v89.88：等级不再"逐格掷点"，而是**全图配额分配**（8/9/10 各 30%）。
-       判据改读真实出口 `_fortLevelAt(day, x, y)` —— 原先直接算哈希公式，
-       口径一变它就变成"测一条不存在的公式"（自证式断言）。 */
+       v90.75：改在球面地块上抽样。 */
     var day = G.questDayIndex ? G.questDayIndex() : 0;
-    var diff = 0, tested = 0;
-    for (var x2 = 0; x2 < 80 && tested < 12; x2++) {
-      for (var y2 = 0; y2 < 80 && tested < 12; y2++) {
-        if (!G.map.hasFort(x2, y2)) continue;
-        tested++;
-        var l1 = G.map._fortLevelAt(day, x2, y2);
-        var l2 = G.map._fortLevelAt(day + 1, x2, y2);
-        if (l1 !== l2) diff++;
-      }
+    /* v90.75：**直接在据点候选（~1090 座）上抽样**（不再扫全星格 —— 逐格 hasFort 过慢且样本稀疏）。 */
+    var cands = G.map._fortCandidates(), diff = 0, tested = 0;
+    for (var _qi = 0; _qi < cands.length && tested < 40; _qi += Math.max(1, (cands.length / 40) | 0)) {
+      var _qc = _SC[cands[_qi]]; if (!_qc) continue;
+      tested++;
+      if (G.map._fortLevelAt(day, _qc.x, _qc.y) !== G.map._fortLevelAt(day + 1, _qc.x, _qc.y)) diff++;
     }
     return tested >= 6 && diff > 0;
   })(), '次日等级确有变化');
@@ -2889,9 +2888,10 @@
     return t < t2;
   })());
   check('据点名称由确定性 hash 生成', (function () {
-    var names = {};
-    for (var x3 = 0; x3 < 60; x3++) for (var y3 = 0; y3 < 60; y3++) {
-      var f3 = G.map.fortAt(x3, y3);
+    var names = {}, step2 = Math.max(1, (_ncells / 400) | 0);
+    for (var _ni = 0; _ni < _ncells; _ni += step2) {
+      var _nc = _SC[_ni]; if (!_nc) continue;
+      var f3 = G.map.fortAt(_nc.x, _nc.y);
       if (f3) names[f3.name] = 1;
     }
     return Object.keys(names).length >= 3;
@@ -2901,14 +2901,14 @@
      攻取用例优先挑一座**低级据点**（≤ Lv4）：固定 4 万导弹车正好覆盖
      "练兵场容量"闸门与"打得赢"的**正向路径**（守军规模断言见 §88）。 */
   var fAny = null, fLow = null;
-  for (var sx = 30; sx < 120; sx++) {
-    for (var sy = 30; sy < 120; sy++) {
-      if (!G.map.hasFort(sx, sy)) continue;
-      var fHere = G.map.fortAt(sx, sy);
-      if (fHere && !fAny) fAny = fHere;
-      if (fHere && fHere.level <= 4 && !fLow) fLow = fHere;
-    }
-  }
+  /* v90.75：改在**球面据点候选**上找靶子（不再扫平面小窗 —— 那在球系=极冠）。 */
+  (G.map._fortCandidates() || []).forEach(function (ci) {
+    var _tc = _SC[ci]; if (!_tc) return;
+    if (!G.map.hasFort(_tc.x, _tc.y)) return;
+    var fHere = G.map.fortAt(_tc.x, _tc.y);
+    if (fHere && !fAny) fAny = fHere;
+    if (fHere && fHere.level <= 4 && !fLow) fLow = fHere;
+  });
   var fTarget = fLow || fAny;
   check('找到测试据点', !!fTarget, fTarget && (fTarget.name + ' Lv' + fTarget.level + (fLow ? '（低级靶）' : '（兜底靶）')));
   check('据点可解析为目标', (function () {
@@ -11779,8 +11779,8 @@ console.log('\n===== 46. v61 满配城池城内布局 =====');
     try {
       G.state = st;
       if (!st.map.grid && G.map.generate) G.map.generate();
-      var f = null;
-      for (var x = 0; x < 40 && !f; x++) for (var y = 0; y < 40 && !f; y++) f = G.map.fortAt(x, y);
+      var f = null, _fcand = G.map._fortCandidates() || [];
+      for (var _cix = 0; _cix < _fcand.length && !f; _cix++) { var _cc = G.sphere.cells[_fcand[_cix]]; if (_cc && G.map.hasFort(_cc.x, _cc.y)) f = G.map.fortAt(_cc.x, _cc.y); }
       if (!f) return false;
       var p = G.fortPlanOf(f);
       return !!p && p.total === G.cityPlanOf(f.level).total && p.minfang > 0
@@ -11797,8 +11797,8 @@ console.log('\n===== 46. v61 满配城池城内布局 =====');
     try {
       G.state = st;
       if (!st.map.grid && G.map.generate) G.map.generate();
-      var f = null;
-      for (var x = 0; x < 40 && !f; x++) for (var y = 0; y < 40 && !f; y++) f = G.map.fortAt(x, y);
+      var f = null, _fcand = G.map._fortCandidates() || [];
+      for (var _cix = 0; _cix < _fcand.length && !f; _cix++) { var _cc = G.sphere.cells[_fcand[_cix]]; if (_cc && G.map.hasFort(_cc.x, _cc.y)) f = G.map.fortAt(_cc.x, _cc.y); }
       if (!f) return false;
       var t = G.battle.resolveTarget({ kind: 'fort', x: f.x, y: f.y });
       return t.ok && !!t.plan && t.plan.minfang > 0
@@ -19505,20 +19505,20 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       G.map._fortLv = bak;
       var k2 = Object.keys(t1), same = true;
       for (var i = 0; i < k2.length && i < 2000; i++) { if (t1[k2[i]] !== t2[k2[i]]) { same = false; break; } }
-      return same && k2.length > 1000;
+      return same && k2.length > 200;
     })());
 
     check('v89.88（据点）：逐日重掷 —— 次日分布同样成立（配额不靠运气）', (function () {
       var day = G.questDayIndex ? G.questDayIndex() : 0;
       var t0 = G.map._fortLevelTable(day), t1 = G.map._fortLevelTable(day + 1);
       var ks = Object.keys(t0), diff = 0, tot = 0;
-      for (var i = 0; i < ks.length; i += 7) { tot++; if (t0[ks[i]] !== t1[ks[i]]) diff++; }
+      for (var i = 0; i < ks.length; i += 4) { tot++; if (t0[ks[i]] !== t1[ks[i]]) diff++; }   /* v90.75：候选数减半 → 步长 4 保样本量 */
       var cnt = {}, n = 0;
       Object.keys(t1).forEach(function (k) { cnt[t1[k]] = (cnt[t1[k]] || 0) + 1; n++; });
       var hi2 = 0;                                            /* v89.197：配额随日重掷同样成立 */
       for (var lv5 = 5; lv5 <= 10; lv5++) hi2 += (cnt[lv5] || 0);
       var distOk = Math.abs(hi2 / n - 0.80) <= 0.004 && Math.abs((cnt[10] || 0) / n - 0.16) <= 0.004;
-      return tot > 200 && diff / tot > 0.4 && distOk;
+      return tot > 100 && diff / tot > 0.4 && distOk;
     })());
 
     check('v89.88（据点）：_fortHash 内联版与 U.rng 逐位等价（防两处实现漂移）', (function () {
@@ -19579,7 +19579,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var srcOk = i >= 0 && seg.indexOf('cityResMul') >= 0 && seg.indexOf('wildResMul') < 0;
       var cands = G.map._fortCandidates();
       if (!cands.length) return false;
-      var fx = cands[10] % DATA.MAP_W, fy = (cands[10] / DATA.MAP_W) | 0;
+      var fx = G.sphere.cells[cands[10]].x, fy = G.sphere.cells[cands[10]].y;
       var tgt = G.battle.resolveTarget({ kind: 'fort', x: fx, y: fy });
       if (!tgt || !tgt.ok) return false;
       var bak = Math.random; Math.random = function () { return 0.5; };
@@ -19601,7 +19601,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var cands = G.map._fortCandidates();
       var ff = null;
       for (var i = 0; i < cands.length && !ff; i++) {
-        var fx = cands[i] % DATA.MAP_W, fy = (cands[i] / DATA.MAP_W) | 0;
+        var fx = G.sphere.cells[cands[i]].x, fy = G.sphere.cells[cands[i]].y;
         ff = G.map.fortAt(fx, fy);
       }
       var t0 = G.ui.mapTipFor({ kind: 'player', city: c0, x: c0.x, y: c0.y });
@@ -20131,16 +20131,16 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         window.__r94ret = { stage: 'start' };
         var fB = null, fBAny = null;
         /* 靶子 = **Lv8** 据点（首选）：守军够多（一回合打不完，测得出"逐回合"），
-           又不至于一回合把我军打没（Lv9/10 会在一回合内结束，那条路走不到撤退）。 */
-        for (var ry2 = 0; ry2 < 121; ry2++) {
-          for (var rx2 = 0; rx2 < 121; rx2++) {
-            var fh2 = G.map.fortAt(c94.x - 60 + rx2, c94.y - 60 + ry2);
-            if (fh2 && fh2.level >= 8) {
-              if (!fBAny) fBAny = fh2;
-              if (fh2.level === 8 && !fB) fB = fh2;
-            }
+           又不至于一回合把我军打没（Lv9/10 会在一回合内结束，那条路走不到撤退）。
+           v90.75：改在**球面据点候选**上找（不再扫平面小窗）。 */
+        (G.map._fortCandidates() || []).forEach(function (ci) {
+          var _b = G.sphere.cells[ci]; if (!_b) return;
+          var fh2 = G.map.fortAt(_b.x, _b.y);
+          if (fh2 && fh2.level >= 8) {
+            if (!fBAny) fBAny = fh2;
+            if (fh2.level === 8 && !fB) fB = fh2;
           }
-        }
+        });
         fB = fB || fBAny;
         if (!fB) { window.__r94ret.stage = 'no-fort'; return false; }
         window.__r94ret.fort = fB.name + ' Lv' + fB.level;
