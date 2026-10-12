@@ -4211,11 +4211,11 @@
       && /GAME\.ui\.openWhyAsk\(tw189\);/.test(mS16);
   })());
   /* v80（老板）：「『N / M 种』解锁计数这种备注也不要」—— 计数行退役；判据换成兵种分页 */
-  check('#7 面板分页（v80 两页 → v81 三页 → v89.229 四页：队列 / 后勤支援 / 主力战斗 / 尖端武装）', (function () {
+  check('#7 募兵营布局（v90.64：左列兵种清单 / 右侧详情；分页退役）', (function () {
     var th = codeOf(uS16, 'ui.troopsHTML = function');
-    return /data-action="train-tab"/.test(th) && /data-page="que"/.test(th)
-      && /data-page="g1"/.test(th) && /data-page="g2"/.test(th) && /data-page="g3"/.test(th)
-      && th.indexOf('ids.filter') < 0;
+    return /troop-list/.test(th) && /troop-detail/.test(th)
+      && th.indexOf('data-action="train-tab"') < 0
+      && th.indexOf('ids.filter') < 0;   /* 不再按组过滤：14 兵种全列 */
   })());
 
   console.log('  --- 城内布局（围墙 / 政务厅 / 贴地）---');
@@ -5634,16 +5634,13 @@
         var ix = s.queues.build.indexOf(q); if (ix >= 0) s.queues.build.splice(ix, 1);
       }
     }
-    /* v81：兵种卡在分组页（首页是募兵队列）；v89.229：三组分页 g1/g2/g3，filter 参退役 ——
-       卡数按**本组表项**数、可点选数按唯一出口 canTrain（界面与门槛同源）。 */
-    var bkTab = G.ui._trainTab; G.ui._trainTab = 'g2';
+    /* v90.64：左列兵种清单 = **全部 14 兵种**（不分页）；可点选数 = canTrain 通过数（唯一出口）。 */
     var html = G.ui.troopsHTML();
-    G.ui._trainTab = bkTab;
-    var ids2 = Object.keys(DATA.TROOPS).filter(function (id) { return DATA.TROOPS[id].grp === 2; });
-    var cards = (html.match(/class="troop-card/g) || []).length;   /* 两个按钮也带 data-troop → 按卡类名数 */
+    var allIds = Object.keys(DATA.TROOPS);
+    var cards = (html.match(/class="troop-card/g) || []).length;
     var okN = (html.match(/data-action="select-train"/g) || []).length;
-    var expN = ids2.filter(function (id) { return G.canTrain(id).ok; }).length;
-    return cards === ids2.length && okN === expN && okN >= 1;
+    var expN = allIds.filter(function (id) { return G.canTrain(id).ok; }).length;
+    return cards === allIds.length && okN === expN && okN >= 1;
   })());
   check('切换兵种会改变选中项（_trainSel 随点击变化）', (function () {
     G.ui._trainSel = 'buxingji';
@@ -5913,14 +5910,12 @@
         var ix = s.queues.build.indexOf(q); if (ix >= 0) s.queues.build.splice(ix, 1);
       }
     }
-    /* v81：兵种卡在分组页（首页是募兵队列）；v89.229：三组分页，filter 参退役 */
-    var bkTab = G.ui._trainTab; G.ui._trainTab = 'g1';
+    /* v90.64：14 兵种全列（不再分组）。 */
     var h1 = G.ui.troopsHTML();
-    G.ui._trainTab = bkTab;
-    var ids1 = Object.keys(DATA.TROOPS).filter(function (id) { return DATA.TROOPS[id].grp === 1; });
+    var allIds1 = Object.keys(DATA.TROOPS);
     var ok1 = (h1.match(/data-action="select-train"/g) || []).length;
-    var exp1 = ids1.filter(function (id) { return G.canTrain(id).ok; }).length;
-    return ok1 === exp1 && (h1.match(/class="troop-card/g) || []).length === ids1.length;
+    var exp1 = allIds1.filter(function (id) { return G.canTrain(id).ok; }).length;
+    return ok1 === exp1 && (h1.match(/class="troop-card/g) || []).length === allIds1.length;
   })());
 
   /* ---- 需求 5/12 ---- */
@@ -6529,11 +6524,11 @@
   check('政务厅优先用位图、手写 SVG 退为兜底',
     /GAME\.icons\.bitmapSrc\('building', 'guanfu'\)/.test(uS36)
     && /class="ico ico-img gov-img"/.test(uS36) && /\n\s*: svg;/.test(uS36));
-  check('实测：政务厅产出 <img> 位图（不再只有手写 SVG）', (function () {
+  check('实测：政务厅产出 <img> 位图（不再只有手写 SVG · v90.64 按等级取皮肤）', (function () {
     var s = G.state, c = s.cities[0];
     var M = { W: 88, H: 88, x: function (col) { return col * 88; }, y: function (row) { return row * 88; } };
     var h = G.ui.govPalaceHTML(c, M);
-    return /img class="ico ico-img gov-img"[^>]*ai_guanfu\.png/.test(h);
+    return /img class="ico ico-img gov-img"[^>]*ai_guanfu(_t2|_t3)?\.png/.test(h);
   })());
   /* v36（需求 2）：自动化只在「自动」菜单 —— 设置页不得残留开关 */
   check('设置页已无自动化开关（只在自动菜单）', (function () {
@@ -16465,19 +16460,19 @@ console.log('\n===== 65. v80 三条（酒馆 · 建筑底栏 · 兵营） ====='
     return bad === 0 && g[1] + g[2] + g[3] === 14 && g[1] > 0 && g[2] > 0 && g[3] > 0
       && craft === 2;
   })());
-  check('v80：兵营页重排（重复标题 / 工位行 / 解锁计数全撤，空态保留）', (function () {
+  check('v80/v90.64：兵营页重排（重复标题 / 工位行 / 解锁计数全撤，空态保留；分页退役）', (function () {
     var th = codeOf(uS, 'ui.troopsHTML = function');
     return th.indexOf('gold-heading') < 0 && th.indexOf('ids.filter') < 0
       && th.indexOf('q-sec-n') < 0 && th.indexOf('本城尚未建造') >= 0
-      && /data-action="train-tab"/.test(th) && /data-page="g1"/.test(th)
-      && /data-page="g2"/.test(th) && /data-page="g3"/.test(th);
+      && th.indexOf('data-action="train-tab"') < 0
+      && /troop-list/.test(th) && /troop-detail/.test(th);
   })());
-  check('v80：数量直输（±10 退役 / 上限保留 / 输入框在）', (function () {
+  check('v80/v90.64：数量直输（±10 退役 / 上限保留 / 输入框在；分页动作退役）', (function () {
     var th = codeOf(uS, 'ui.troopsHTML = function');
     return /id="train-count"/.test(th) && th.indexOf('train-qty') < 0
       && th.indexOf('data-action="train-max"') >= 0
       && mS.indexOf('train-qty') < 0 && mS.indexOf('adjustTrainQty') < 0
-      && /case 'train-tab':/.test(mS);
+      && mS.indexOf("case 'train-tab'") < 0;
   })());
   check('v80：重绘不跳顶（openTroops 存/还两级滚动位）', (function () {
     var fn = codeOf(uS, 'ui.openTroops = function');
@@ -16520,42 +16515,28 @@ console.log('\n===== 66. v81 两条（君主卡 · 兵营三页） =====');
 
   /* ---------- ② 兵营三页 ---------- */
   console.log('  --- ② 兵营三页：队列 / 步兵 / 机车 ---');
-  check('v81：分页初始态为 que（第一页 = 募兵队列）', /ui\._trainTab = 'que';/.test(uS));
-  check('v81：三页切换键与队列页分支齐备', (function () {
-    var th = codeOf(uS, 'ui.troopsHTML = function');
-    return /data-page="que"/.test(th) && /data-page="g1"/.test(th) && /data-page="g2"/.test(th)
-      && /data-page="g3"/.test(th)
-      && /isQueueTab/.test(th) && /ui\.trainQueueBlock\(_bTrain, c, 'train'\)/.test(th);
-  })());
-  check('v81：main.js 三页白名单分发',
-    /case 'train-tab': ui\._trainTab = \(\['que', 'g1', 'g2', 'g3'\]\.indexOf\(el\.dataset\.page\) >= 0\)/.test(mS));
-  check('实测：队列页只出队列 / 步兵页只出卡面与控件', (function () {
-    var keep = G.state, keepCity = G.ui._cityId;
-    var keepTab = G.ui._trainTab, keepBIdx = G.ui._trainBIdx;
+  check('v90.64：募兵营分页退役（troopsHTML 无 train-tab / 无 _trainTab 依赖）',
+    G.ui._trainTab === undefined
+    && (function () { var th = codeOf(uS, 'ui.troopsHTML = function'); return th.indexOf('train-tab') < 0 && th.indexOf('_trainTab') < 0; })());
+  check('实测：募兵面板出左列清单 + 右侧详情，队列不在面板内', (function () {
+    var keep = G.state, keepCity = G.ui._cityId, keepBIdx = G.ui._trainBIdx;
     var ok = false;
     try {
-      var st = G.newGame({ name: 'v81' });
+      var st = G.newGame({ name: 'v9064' });
       G.state = st;
       var c = st.cities[0];
       G.ui._cityId = c.id;
       var ci = c.cells.findIndex(function (x) { return !x.build && !x.official; });
       if (ci >= 0) c.cells[ci] = { build: { id: 'junying', lvl: 5 }, pending: null };
       G.ui._trainBIdx = null;
-      G.ui._trainTab = 'g1';                    /* v89.229：filter 参退役 · 组 1 后勤支援 */
-      var inf = G.ui.troopsHTML();
-      G.ui._trainTab = 'que';
-      var que = G.ui.troopsHTML();
-      ok = inf.indexOf('本营募兵队列') < 0 && inf.indexOf('id="train-count"') >= 0
-        && inf.indexOf('troop-grid') >= 0
-        && que.indexOf('本营募兵队列') >= 0 && que.indexOf('id="train-count"') < 0
-        && que.indexOf('troop-grid') < 0;
+      var h = G.ui.troopsHTML();
+      ok = h.indexOf('troop-list') >= 0 && h.indexOf('troop-detail') >= 0 && h.indexOf('troop-grid') < 0
+        && h.indexOf('id="train-count"') >= 0
+        && h.indexOf('本营募兵队列') < 0 && h.indexOf('trainQueueBlock') < 0;   /* 队列移出面板 */
     } catch (e) { ok = false; }
-    finally {
-      G.ui._trainTab = keepTab; G.ui._trainBIdx = keepBIdx;
-      G.state = keep; G.ui._cityId = keepCity;
-    }
+    finally { G.ui._trainBIdx = keepBIdx; G.state = keep; G.ui._cityId = keepCity; }
     return ok;
-  })(), '兵种页不带队列 / 队列页只带队列');
+  })(), '左列清单 + 右详情 · 队列不在面板内');
 })();
 
   /* ============================================================
@@ -16862,17 +16843,12 @@ console.log('\n===== 69. v84 卡面去拥有行 · 步兵/机车分类对调 ===
     !('cat' in DATA.TROOPS.zhencha) && !('cat' in DATA.TROOPS.yunshu)
     && DATA.TROOPS.zhencha.grp === 1 && DATA.TROOPS.yunshu.grp === 1
     && DATA.TROOPS.buxingji.grp === 2 && DATA.TROOPS.taitan.grp === 3);
-  check('实测：每个兵种只出现在本组页（三页互斥 · v89.229 分组）', (function () {
-    var bkT = G.ui._trainTab, bkS = G.ui._trainSel;
-    var card = function (h, id) {
-      return new RegExp('<div class="troop-card[^>]*data-troop="' + id + '"').test(h);
-    };
-    var at = function (tab) { G.ui._trainTab = tab; return G.ui.troopsHTML(); };
-    var h1 = at('g1'), h2 = at('g2'), h3 = at('g3');
-    G.ui._trainTab = bkT; G.ui._trainSel = bkS;
-    return card(h1, 'banche') && !card(h2, 'banche') && !card(h3, 'banche')
-      && card(h2, 'buxingji') && !card(h1, 'buxingji') && !card(h3, 'buxingji')
-      && card(h3, 'taitan') && !card(h1, 'taitan') && !card(h2, 'taitan');
+  check('实测：14 兵种全部在同一份清单里（v90.64 不再分组）', (function () {
+    var bkS = G.ui._trainSel;
+    var h = G.ui.troopsHTML();
+    G.ui._trainSel = bkS;
+    var card = function (id) { return new RegExp('<div class="troop-card[^>]*data-troop="' + id + '"').test(h); };
+    return card('banche') && card('buxingji') && card('taitan') && card('huopao');
   })());
 })();
 
@@ -35586,11 +35562,12 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })(), window.__r229c3 || '');
 
     /* ④ 分页链：grp 驱动 + 白名单四页 + 单参入口 + 退役字段零赋值 */
-    check('§229c④ 分页链：troopsHTML 按 grp 过滤 · main.js 白名单四页 · openTroops 单参', (function () {
-      return /DATA\.TROOPS\[id\]\.grp === grpN/.test(u229)
-        && /\['que', 'g1', 'g2', 'g3'\]/.test(m229)
+    check('§229c④/v90.64：募兵面板改列表/详情（分页链退役）· openTroops 单参', (function () {
+      return /troop-list/.test(u229) && /troop-detail/.test(u229)
+        && u229.indexOf("case 'train-tab'") < 0
         && /ui\.openTroops = function \(idx[,)]/.test(u229)
-        && !/ui\._trainFilter = /.test(u229);
+        && !/ui\._trainFilter = /.test(u229)
+        && !/ui\._trainTab = /.test(u229);   /* 源码不再定义分页态 */
     })());
 
     /* ⑤ 派生表随换代（**本轮真 bug 的回归守卫**）：据点守军逐级键必须都在 DATA.TROOPS */

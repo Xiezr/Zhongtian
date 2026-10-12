@@ -713,7 +713,7 @@
       /* v80（老板）：「步兵 / 机车」翻页（±10 退役，数量改直输 —— 见 troopsHTML）；
          v81（老板）：「做成3页，第一页为募兵队列」；v89.229 兵种重构：分页改
          **que / g1 / g2 / g3** 四页（募兵队列 + 三组）—— 白名单见下 */
-      case 'train-tab': ui._trainTab = (['que', 'g1', 'g2', 'g3'].indexOf(el.dataset.page) >= 0) ? el.dataset.page : 'que'; ui.renderTroopsModal(); break;
+      /* v90.64：`train-tab` 分页动作整条退役（募兵营改列表/详情，无分页）。 */
       case 'confirm-train': GAME.doTrain(el.dataset.troop); break;
       /* v89.99（老板「设计兵种解散」）：解散归农 —— 数量取同一输入框。
          v89.110（老板「危险按钮不能放容易误触的位置」）：改**两段式** ——

@@ -3039,8 +3039,8 @@ async function runTests(dom, URL) {
   check('政务厅渲染为一座跨格宫殿（需求 4）',
     !!palace23 && !!palace23.querySelector('svg.gov-svg, img.gov-img'));
   /* v36（需求 1）：政务厅曾是唯一绕过图标层的建筑（专属手写 SVG）→ AI 位图接不进来 */
-  check('政务厅已改用 AI 位图（不再只有手写 SVG）',
-    !!vc.querySelector('.gov-palace img.gov-img[src*="ai_guanfu.png"]'));
+  check('政务厅已改用 AI 位图（不再只有手写 SVG · v90.64 按等级取皮肤）',
+    !!vc.querySelector('.gov-palace img.gov-img[src*="ai_guanfu"]'));
   check('宫殿尺寸覆盖 2×2 格', (function () {
     if (!palace23) return false;
     const w = parseInt(palace23.style.width, 10), h = parseInt(palace23.style.height, 10);
@@ -3229,10 +3229,10 @@ async function runTests(dom, URL) {
     const tm24 = document.querySelector('#modal-root').innerHTML;
     /* v80（老板）：「募兵训练营 城内第 46 格 · Lv11 · 队列位 3 这个也不需要」——
        面板不再标所属工位；重复标题也撤除（只留弹窗标题一处） */
-    check('v80：募兵面板不再标所属训练营 / 重复标题',
+    check('v90.64：募兵面板不再标所属训练营 / 重复标题（队列移出面板）',
       tm24.indexOf('募兵训练营') < 0 && tm24.indexOf('队列位') < 0
+      && tm24.indexOf('本营募兵队列') < 0
       && (tm24.match(/兵种整备/g) || []).length === 1);
-    check('募兵面板列出本营队列一节', tm24.indexOf('本营募兵队列') >= 0);
     /* 通过真实入口按钮进入，确认 data-idx 被带进去 */
     G.ui.closeAllModals();
     await sleep(50);
@@ -3292,13 +3292,11 @@ async function runTests(dom, URL) {
   })());
   G.state.settings.autoTrain = false;                       /* 用完还原，防污染后续用例 */
   G.autoTrainCfg().targets.buxingji.max = 0;
-  check('v89.190：募兵面板（队列页）带「自动征兵设置」入口 → 点它进入自动页', (function () {
-    G.ui.openTroops(null, 'normal');
+  check('v90.64：募兵面板不含队列（队列移入训练营菜单）', (function () {
+    G.ui.openTroops(null);
     var rt = document.querySelector('#modal-root');
-    var btn = rt && rt.querySelector('[data-action="go-auto-train"]');
-    if (!btn) return false;
-    btn.click();
-    return G.ui._autoSel === 'train' && !!document.querySelector('[data-action="toggle-auto-train"]');
+    return !!rt && rt.innerHTML.indexOf('本营募兵队列') < 0
+      && !!rt.querySelector('.troop-list') && !!rt.querySelector('.troop-detail');
   })());
   G.ui.setView('auto');                                     /* 还原视图（后续用例按上一段约定从 auto 起） */
   check('v89.190：兜底扫掠 —— 非两大通道注入的 disabled 按钮被软化（可点+原因+暗态）', (function () {
@@ -4100,13 +4098,10 @@ async function runTests(dom, URL) {
   st28.res.pop = Math.max(st28.res.pop, 20000);
   const tr28b = G.train('buxingji', 60, c28.id, ji28);
   check('本营募兵已受理（后续加速断言的前提）', !!tr28b.ok, tr28b.msg);
-  G.ui.openTroops(ji28, 'normal');
-  await sleep(80);
-  /* v81：队列独立成页 —— 切回队列页（上一步在步兵页） */
-  click(document.querySelector('#modal-root [data-action="train-tab"][data-page="que"]'));
+  G.ui.openBuildModal(ji28);                  /* v90.64：队列移入**训练营菜单**首页 */
   await sleep(80);
   const qHtml28 = document.querySelector('#modal-root').innerHTML;
-  check('募兵界面显示本营队列（v81：队列独立页）', qHtml28.indexOf('本营募兵队列') >= 0);
+  check('募兵队列在训练营菜单首页（v90.64：移出募兵面板）', qHtml28.indexOf('本营募兵队列') >= 0);
   const boostBtn28 = document.querySelector('#modal-root [data-action="train-boost"]');
   check('执行中的队列有「加速」按钮', !!boostBtn28);
   if (boostBtn28 && G.trainQueuesOf(c28, ji28).length) {
@@ -5241,18 +5236,12 @@ if (svBtn) {
       (mr80.innerHTML.match(/兵种整备/g) || []).length === 1
       && mr80.textContent.indexOf('募兵训练营') < 0 && mr80.textContent.indexOf('队列位') < 0
       && mr80.textContent.indexOf('已解锁') < 0);
-    check('v89.229：四页切换按钮（募兵队列 / 后勤支援 / 主力战斗 / 尖端武装）', (function () {
-      const tabs = Array.prototype.map.call(
-        mr80.querySelectorAll('[data-action="train-tab"]'), (t) => t.dataset.page);
-      return tabs.length === 4 && tabs[0] === 'que'
-        && tabs.indexOf('g1') >= 0 && tabs.indexOf('g2') >= 0 && tabs.indexOf('g3') >= 0;
-    })());
-    click(mr80.querySelector('[data-action="train-tab"][data-page="g2"]'));
-    await sleep(150);
-    check('v80：翻到主力战斗页（首卡属组 2）', (function () {
-      const card = document.querySelector('#modal-root .troop-grid .troop-card');
-      const tid = card && card.getAttribute('data-troop');
-      return !!tid && DATA.TROOPS[tid].grp === 2;
+    check('v90.64：募兵营左列清单 / 右详情（无分页键）', (function () {
+      return !mr80.querySelector('[data-action="train-tab"]')
+        && !!mr80.querySelector('.troop-list')
+        && !!mr80.querySelector('.troop-detail')
+        && mr80.querySelectorAll('.troop-list .troop-card').length >= 12
+        && !!mr80.querySelector('.troop-detail-head .tdh-fig');
     })());
     check('v80：±10 退役（输入框直输 + 上限保留）',
       !document.querySelector('#modal-root [data-action="train-qty"]')
@@ -5305,32 +5294,15 @@ if (svBtn) {
       j81 = c81.cells.findIndex((x) => !x.build && !x.official);
       if (j81 >= 0) c81.cells[j81] = { build: { id: 'junying', lvl: 8 }, pending: null };
     }
-    G.ui._trainTab = 'que';                 /* 模拟新会话初始态（第一页 = 募兵队列） */
     G.ui.openTroops(j81 < 0 ? undefined : j81);
     await sleep(140);
     const mr81 = document.querySelector('#modal-root');
-    check('v89.229：四页切换键齐备（募兵队列 / 后勤支援 / 主力战斗 / 尖端武装）', (function () {
-      const tabs = Array.prototype.map.call(
-        mr81.querySelectorAll('[data-action="train-tab"]'), (t) => t.dataset.page);
-      return tabs.length === 4 && tabs[0] === 'que'
-        && tabs.indexOf('g1') >= 0 && tabs.indexOf('g2') >= 0 && tabs.indexOf('g3') >= 0;
-    })());
-    check('v81：首页为募兵队列（队列在、兵种卡不在）',
-      !!mr81.querySelector('.q-sec') && !mr81.querySelector('.troop-grid'));
-    click(mr81.querySelector('[data-action="train-tab"][data-page="g1"]'));
-    await sleep(140);
-    const mr81b = document.querySelector('#modal-root');
-    check('v81：后勤支援页有卡面与训练控件、队列不跟来', (function () {
-      const card = mr81b.querySelector('.troop-grid .troop-card');
-      const tid = card && card.getAttribute('data-troop');
-      return !!tid && DATA.TROOPS[tid].grp === 1
-        && !!mr81b.querySelector('#train-count') && !mr81b.querySelector('.q-sec');
-    })());
-    click(mr81b.querySelector('[data-action="train-tab"][data-page="que"]'));
-    await sleep(140);
-    check('v81：切回队列页（队列重现、控件退场）', (function () {
-      const m = document.querySelector('#modal-root');
-      return !!m.querySelector('.q-sec') && !m.querySelector('#train-count');
+    check('v90.64：募兵营左列清单（14 卡）+ 右侧详情（选中兵种大图/控件，队列不在面板内）', (function () {
+      const cards = mr81.querySelectorAll('.troop-list .troop-card');
+      const picked = mr81.querySelector('.troop-list .troop-card.selected');
+      return cards.length >= 12 && !!picked
+        && !!mr81.querySelector('.troop-detail-head .tdh-fig')
+        && !!mr81.querySelector('#train-count') && !mr81.querySelector('.q-sec');
     })());
     G.ui.closeAllModals();
     await sleep(60);
@@ -5391,25 +5363,20 @@ if (svBtn) {
       j84 = c84.cells.findIndex((x) => !x.build && !x.official);
       if (j84 >= 0) c84.cells[j84] = { build: { id: 'junying', lvl: 8 }, pending: null };
     }
-    /* v89.229：filter 参退役 · 队列页入场 → 先切组 1（后勤支援，含侦察单元） */
-    G.ui._trainTab = 'g1';
+    /* v90.64：14 兵种一列全列（不再分组/分页） */
     G.ui.openTroops(j84 < 0 ? undefined : j84);
     await sleep(160);
-    check('v89.229：侦察单元卡在组 1（后勤支援）', !!document.querySelector('#modal-root .troop-card[data-troop="zhencha"]'));
+    check('v90.64：兵种清单含侦察单元（14 兵种全列）', !!document.querySelector('#modal-root .troop-card[data-troop="zhencha"]'));
     check('v84：全部兵种卡面无「拥有」字样', (function () {
-      const cards = document.querySelectorAll('#modal-root .troop-grid .troop-card');
+      const cards = document.querySelectorAll('#modal-root .troop-list .troop-card');
       if (!cards.length) return false;
       return Array.prototype.every.call(cards, (cd) => cd.textContent.indexOf('拥有') < 0);
     })());
-    /* v89.229（兵种重构）：侦察单元与运输平台**同归组 1**（后勤支援）——
-       旧的"两页互斥"不再成立，改为"同组同页 + 跨组互斥"。 */
-    click(document.querySelector('#modal-root [data-action="train-tab"][data-page="g2"]'));
-    await sleep(150);
-    check('v89.229：跨组互斥（组 2 页无侦察单元/运输平台 · 有步行机）', (function () {
+    check('v90.64：14 兵种同屏（不再跨组互斥 —— 侦察/运输/步行机都在）', (function () {
       const m84 = document.querySelector('#modal-root');
       return !!m84.querySelector('.troop-card[data-troop="buxingji"]')
-        && !m84.querySelector('.troop-card[data-troop="zhencha"]')
-        && !m84.querySelector('.troop-card[data-troop="yunshu"]');
+        && !!m84.querySelector('.troop-card[data-troop="zhencha"]')
+        && !!m84.querySelector('.troop-card[data-troop="yunshu"]');
     })());
     G.ui.closeAllModals();
     await sleep(60);

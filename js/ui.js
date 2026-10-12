@@ -4067,9 +4067,8 @@
         })[0];
         if (_first) ui._trainSel = _first;    /* 从哪座建筑打开 → 预置该类首个兵种 */
       }
-      /* 页签**沿用**已有取值（v81 立"入场先看队列"= 初值 'que'；调用方若已显式指定组页则尊重）——
-         只有取值非法时才回落 'que'。 */
-      if (['que', 'g1', 'g2', 'g3'].indexOf(ui._trainTab) < 0) ui._trainTab = 'que';
+      /* v90.64（老板）：募兵营改「左列清单 / 右详情」，**不再有分页**（14 兵种一列全列）；
+         旧 `_trainTab` 取值一律退役，仅保留选中兵种 `_trainSel`。 */
     }
     ui._trainBIdx = _idx0;
     /* v89.211（老板 3）：入场工位**归一** —— 陈旧/跨类 idx（如上次点的是训练营格）在这里
@@ -8613,7 +8612,12 @@
      * 修复方式与图标层保持一致：位图优先、手写 SVG 退为兜底
      * （没生成位图 / 位图层未加载时，仍是原来那座宫殿，不会开天窗）。
      * ============================================================ */
-    var bmSrc = (GAME.icons && GAME.icons.bitmapSrc) ? GAME.icons.bitmapSrc('building', 'guanfu') : '';
+    /* v90.64（老板「政务厅 12 级没更新贴图」）：政务厅**按等级取皮肤** ——
+       此前恒取基础图 `bitmapSrc('building','guanfu')`，Lv≥6/≥12 的 _t2/_t3 从不生效。 */
+    var _bmBase = (GAME.icons && GAME.icons.bitmapSrc) ? GAME.icons.bitmapSrc('building', 'guanfu') : '';
+    var _bmTier = (GAME.icons && GAME.icons.bmBuildingTier) ? GAME.icons.bmBuildingTier('guanfu', lvl) : '';
+    var _bmTierSrc = _bmTier ? ((String(_bmTier).match(/src="([^"]+)"/) || [])[1] || '') : '';
+    var bmSrc = _bmTierSrc || _bmBase;
     var art = bmSrc
       ? '<img class="ico ico-img gov-img" src="' + bmSrc + '" alt="" draggable="false">'
       : svg;
@@ -9536,45 +9540,24 @@
   ui._trainCount = 10;
   /* v89.229（兵种重构）：旧 `_trainFilter`（兵营/机工坊分流）**退役** ——
      统一面板后由选中兵种的 craft 字段决定工位；从哪座建筑打开只影响初始选中。 */
-  /* v80/v81（分页沿革）：v80 立"步兵/机车分页" → v81"3 页制（队列/步兵/机车）"
-     → **v89.229 新三组制**：que 募兵队列 / g1 后勤支援 / g2 主力战斗 / g3 尖端武装。
-     分组由 TROOPS 的 grp 字段驱动 —— 加兵种只填 grp，分页自动收纳（可扩展框架）。 */
-  ui._trainTab = 'que';
+  /* v90.64（老板）：募兵营改**左列清单 / 右详情**，`ui._trainTab` 分页态**整条退役**。 */
   ui.troopsHTML = function () {
     var s = GAME.state, c = GAME.currentCity();
     if (!DATA.TROOPS[ui._trainSel]) ui._trainSel = 'buxingji';   // 兜底：选中项必须存在
-    /* v89.229（兵种重构）三组分页：que 募兵队列（首页）/ g1 后勤支援 /
-       g2 主力战斗 / g3 尖端武装（grp 字段驱动，见 DATA.TROOPS）。
-       器械兵（craft）与常备兵同屏：选中后工位自动解析（trainBarracks）。 */
-    var isQueueTab = (ui._trainTab === 'que');
-    var grpN = Number(String(ui._trainTab).replace('g', '')) || 0;
-    var ids = Object.keys(DATA.TROOPS).filter(function (id) {
-      if (isQueueTab) return false;                 /* 队列页不出兵种卡 */
-      return DATA.TROOPS[id].grp === grpN;
-    });
-    if (ids.length && ids.indexOf(ui._trainSel) < 0) ui._trainSel = ids[0];
+    /* v90.64（老板）：募兵营改**左列兵种清单 / 右侧详情**；
+       14 兵种一列全列（不再分组分页）；
+       **队列移出本面板**（改放训练营菜单首页 —— 见 openBuildModal 的 junying 段 barQueue）。 */
+    var ids = Object.keys(DATA.TROOPS);
     var cards = ids.map(function (id) {
       var t = DATA.TROOPS[id];
       var chk = GAME.canTrain(id);
       var unlocked = chk.ok;
-      /* v37（需求 1）：募兵资源**从卡面移到悬停浮层**（成本是决策信息，不必常驻卡面）。
-         v89.114（老板「兵营招募界面，兵种的属性不再直接列出，改悬浮显示」）：
-         卡面再撤一行 —— **连属性行一起进悬停浮层**，卡面只剩图标 + 名字；
-         属性（含**负重**）与消耗、幸存者、耗时、未解锁原因全在浮层里，
-         走全站唯一的 #tip-layer（v37），不另造弹窗。 */
+      /* 卡面只留兵种名；属性/消耗/未解锁原因全在悬停浮层（#tip-layer）。 */
       return '<div class="troop-card' + (unlocked ? '' : ' disabled') + (ui._trainSel === id ? ' selected' : '') + '" ' +
-        /* v89.189（老板 1）：灰卡不再挂死掉的 train-locked（case 已退役）—— 无 data-action、
-           带 data-why，点击由委托统一弹「无法执行」窗（原因 = canTrain 的 msg）。 */
         (unlocked ? 'data-action="select-train"' : '') + ' data-troop="' + id + '"' +
-        /* v89.179c 的原因机制 v89.189 收编：灰卡带 data-why，点击由委托统一弹
-           「无法执行」窗（原因与浮层里那行 `chk.msg` 同源 · 唯一出口 GAME.canTrain）。 */
         (unlocked ? '' : ' data-why="' + U.escape(chk.msg || '') + '"') + ' data-tip-el="1">' +
-        /* v90.12（老板 6）：「兵种的小图标怎么是这种迷你的，去掉」——卡面去掉迷你图，
-           只留兵种名；图像改在**悬停浮层**里放大显示（tcard-tip 顶部 troop-tip-fig）。 */
         '<div class="tname">' + t.name + '</div>' +
         '<div class="tcard-tip tip-src">' +
-          /* v90.12（老板 6）：悬停浮层顶部放**放大的兵种图**（原卡面迷你图）。
-             ⛔ 卡面不再显示迷你图（见下方 ticon 退役）。 */
           '<div class="troop-tip-fig">' + GAME.icons.forTroop(t.id) + '</div>' +
           '<div class="tip-t">' + U.escape(t.name) + ' · 兵种属性</div>' +
           '<div class="tip-l">血 ' + t.hp + '　攻 ' + t.atk + '　防 ' + t.def +
@@ -9582,62 +9565,40 @@
           '<div class="tip-l">负重 ' + t.load + '<span style="opacity:.65;">（随军运力 / 掠夺搬运）</span></div>' +
           '<div class="tip-l">募兵消耗：' + GAME.costString(t.cost) + '</div>' +
           '<div class="tip-l">幸存者 ' + t.pop + ' · 单兵耗时 ' + U.dur(t.time) + '</div>' +
-          /* v89.180（老板 1）：拆械特性（无人轰炸机专属 · 有才显示） */
           (t.vsMech ? '<div class="tip-l">拆械 对器械伤害 ×' + t.vsMech + '</div>' : '') +
           (unlocked ? '' : '<div class="tip-a" style="color:var(--red-light)">' + U.escape(chk.msg || '') + '</div>') +
         '</div></div>';
     }).join('');
     var sel = DATA.TROOPS[ui._trainSel];
     var afford = GAME.canTrain(ui._trainSel).ok;
-    /* v20：数量取自状态，不再读 DOM */
     var qty = Math.max(1, Math.floor(Number(ui._trainCount) || 1));
     var timeStr = sel ? U.dur((sel.time * qty) / GAME.timeScale()) : '';
-    /* v28（需求 5）：按当前幸存者与资源算出的**可募上限**
-       v89.86（整改 P-19）：上限为 0 时要**说清谁卡住**（幸存者 vs 资源）——
-       归因走 GAME.trainLimitOf 唯一出口（maxTrainCount 是它的 cap 字段）。 */
     var limN = (sel && GAME.trainLimitOf) ? GAME.trainLimitOf(sel.id) : null;
     var maxN = sel ? GAME.maxTrainCount(sel.id, c.id, ui._trainBIdx) : 0;
     var haveN = (sel && c.army && c.army[sel.id]) || 0;   /* v89.99：本城驻军（解散的门槛） */
-    /* v89.229：工位类由选中兵种决定（craft → 机工坊；其余 → 训练营）——
-       面板归属于**某座工位建筑**，并列出它自己的队列 */
     var kind = (sel && sel.craft) ? 'craft' : 'train';
     var bar = ui.trainBarracks();
     var slotsLeft = bar ? GAME.trainSlotsLeft(c, bar.idx, kind) : 0;
     var barLine = bar ? ''
       : '<div class="q-empty">本城尚未建造' + (kind === 'craft' ? '机工坊，无法制造器械。' : '训练营，无法募兵。') + '</div>';
-    var tabsHtml = '<div class="train-tabs">' +
-        '<button class="btn sm' + (ui._trainTab === 'que' ? ' gold' : '') + '" data-action="train-tab" data-page="que">📜 募兵队列</button>' +
-        '<button class="btn sm' + (ui._trainTab === 'g1' ? ' gold' : '') + '" data-action="train-tab" data-page="g1">🧰 后勤支援</button>' +
-        '<button class="btn sm' + (ui._trainTab === 'g2' ? ' gold' : '') + '" data-action="train-tab" data-page="g2">⚔ 主力战斗</button>' +
-        '<button class="btn sm' + (ui._trainTab === 'g3' ? ' gold' : '') + '" data-action="train-tab" data-page="g3">💠 尖端武装</button>' +
-      '</div>';
-    /* v81（老板）：队列独占「第一页」；v89.229：队列页展示**两工位各自的队列**
-       （训练营 + 机工坊）。工位**优先取当前解析的那一座**（`ui._trainBIdx`）——
-       否则"队列挂在第二座训练营"时，队列页会显示首座的空队列（e2e 真点抓出）。 */
-    if (isQueueTab) {
-      var _bars = GAME.barracksOf(c) || [], _shops = GAME.craftWorkshopsOf(c) || [];
-      var _pickBar = function (list) {
-        if (ui._trainBIdx != null) {
-          for (var _i = 0; _i < list.length; _i++) if (list[_i].idx === ui._trainBIdx) return list[_i];
-        }
-        return list.length ? list[0] : null;
-      };
-      var _bTrain = _pickBar(_bars), _bCraft = _pickBar(_shops);
-      var _qblk = (_bTrain ? ui.trainQueueBlock(_bTrain, c, 'train')
-        : '<div class="q-empty">本城尚未建造训练营，无法募兵。</div>')
-        + (_bCraft ? ui.trainQueueBlock(_bCraft, c, 'craft') : '');
-      return '<div class="ui-page">' + tabsHtml + _qblk +
-        /* v89.190（老板 2）：自动征兵入口（设置正文在「自动」菜单 · 右详情 ——
-           那里与自动升级/治疗等同处一地；这里给募兵场景一个直达快捷键）。 */
-        '<div style="text-align:center;margin-top:var(--sp-mid);">' +
-          '<button class="btn sm" data-action="go-auto-train" title="自动征兵：按「触发线/目标」逐城自动补单（训练营队列判别 · 可设资源保底）">🤖 自动征兵设置' +
-            ((GAME.state.settings && GAME.state.settings.autoTrain) ? '（已开启）' : '') + '</button>' +
+    var listHTML = '<div class="troop-list">' + cards + '</div>';
+    /* v90.64（老板）：右侧 = 选中兵种的**展示栏**（大图 + 属性 + 驻军）。 */
+    var detailHead = !sel ? '' :
+      '<div class="troop-detail-head">' +
+        '<div class="tdh-fig">' + GAME.icons.forTroop(sel.id) + '</div>' +
+        '<div class="tdh-info">' +
+          '<div class="tdh-nm">' + U.escape(sel.name) + '</div>' +
+          '<div class="tdh-stats">血 ' + sel.hp + '　攻 ' + sel.atk + '　防 ' + sel.def +
+            '　射程 ' + sel.range + '　速度 ' + sel.spd + '　负重 ' + sel.load + '</div>' +
+          '<div class="tdh-sub">单兵耗时 ' + U.dur(sel.time) + '　·　幸存者 ' + sel.pop +
+            '　·　本城驻军 <b>' + U.numText(haveN, 0) + '</b></div>' +
+          '<div class="tdh-cost">募兵消耗：' + GAME.costString(sel.cost) + '</div>' +
+          ((maxN <= 0 && limN) ? '<div class="tdh-warn">' + (limN.reason === 'pop'
+            ? '⚠️ 可征幸存者不足 —— 建居所或等待增长'
+            : (limN.reason === 'res' ? '⚠️ 资源不足' : '当前不可募')) + '</div>' : '') +
         '</div>' +
-        '</div>';
-    }
-    return '<div class="ui-page">' + tabsHtml +
-      barLine +
-      '<div class="troop-grid">' + cards + '</div>' +
+      '</div>';
+    var detailHTML = '<div class="troop-detail">' + detailHead + barLine +
       '<div style="margin-top:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:center;background:rgba(var(--sh-rgb),.25);border-radius:8px;padding:12px;">' +
         '<span style="color:var(--gold-light);font-weight:700;">' + (sel ? sel.icon + ' ' + sel.name : '—') + '</span>' +
         '<label style="color:var(--text-dim);">数量</label>' +
@@ -9708,7 +9669,8 @@
           '<span class="op-hint">归农返还幸存者 · 军资不退 · 需二次确认</span>' +
         '</div>' +
       '</div>' +
-      '</div>';
+      '</div>';   /* 收 .troop-detail */
+    return '<div class="ui-page"><div class="troop-split">' + listHTML + detailHTML + '</div></div>';
   };
 
   /* --------- 英雄 --------- */
