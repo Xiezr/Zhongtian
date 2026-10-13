@@ -3455,55 +3455,10 @@
     var s = GAME.state, c = GAME.currentCity();
     if (!s || !c) return;
     ui.renderCityAttrs(c, s);
-    ui.renderWildPick(c, s);
     ui.renderResBar(c, s);
     ui.renderGarrison(c, s);
   };
 
-  /* ============================================================
-   * 附属野地下拉框（v77 · 老板）
-   * ------------------------------------------------------------
-   * 资源区一行：「附属野地」+ 下拉框（地形 等级（坐标））+「进入」。
-   * 进入 = openWilds（野地界面：加成一览 / 采集队 / 定位）。
-   * 签名不变则不重绘 —— 下拉展开与选择不会被每秒刷新合上（同 #city-switch-host 套路）。
-   * ============================================================ */
-  ui._wildSig = null;   /* null 而非 ''：首帧必然渲染（哪怕"暂无野地"） */
-  ui._wildSel = 0;
-  ui.renderWildPick = function (c, s) {
-    var box = $('#wild-pick-host');
-    if (!box) return;
-    if (ui.hoverHold(box)) return;     /* v89.158：悬停保护（下拉展开/悬停期间不重绘） */
-    /* v89.154（老板 3）：下拉框与「附属野地面板」**同用** ui.wildSortedOf（唯一排序出口）——
-       两处顺序一致，ui._wildSel 的显示序下标语义才一致（否则「进入」高亮会指错行）。 */
-    var wilds = ui.wildSortedOf(s && s.wilds);
-    /* v89.137（清单①）：采集"在采"状态在此可见 —— 选项带 ⛏ 标记；
-       签名把"是否在采 + 是否驻军（都影响排序档位）"也算进去（否则开/停时下拉不刷新）。 */
-    var _gatherFlag137 = function (w) { return (GAME.gatherAt && GAME.gatherAt(w.x, w.y)) ? 'g' : ''; };
-    var _garFlag154 = function (w) { return (GAME.wildGarrisonTotal(GAME.wildGarrisonAt(w.x, w.y)) > 0) ? 'G' : ''; };
-    var sig = wilds.map(function (w) { return w.x + ',' + w.y + ',' + w.level + _gatherFlag137(w) + _garFlag154(w); }).join('|');
-    if (sig === ui._wildSig) return;
-    ui._wildSig = sig;
-    if (ui._wildSel >= wilds.length) ui._wildSel = 0;
-    var sel = ui._wildSel || 0;
-    var opts = wilds.map(function (w, i) {
-      var t = DATA.TERRAIN[w.type];
-      var _inGather137 = !!_gatherFlag137(w);
-      return '<option value="' + i + '"' + (i === sel ? ' selected' : '') + ' title="' +
-        ((t ? t.name : w.type) + ' Lv' + w.level + (w.garrison ? '　驻军 ' + U.fmt(GAME.wildGarrisonTotal(w.garrison)) : '') +
-          (_inGather137 ? '　⛏ 采集中' : '')) + '">' +
-        (t ? t.name : w.type) + ' Lv' + w.level + '（' + GAME.map.coordText(w.x, w.y) + '）' +
-        (_inGather137 ? ' ⛏' : '') + '</option>';
-    }).join('') || '<option value="">暂无野地</option>';
-    /* v89.128（老板）：「附属野地改成野地，现在换行了有点难看」——短标签 + 小按钮，一行放得下。 */
-    box.innerHTML = '<div class="res-line" title="已占野地（政务厅等级决定上限）。选一块点「进入」查看加成与采集。">' +
-      '<span class="lbl">野地</span>' +
-      '<span class="val" style="display:flex;align-items:center;gap:6px;">' +
-        '<select class="city-select wild-select" id="wild-pick" data-action="wild-pick"' +
-          (wilds.length ? '' : ' disabled') + '>' + opts + '</select>' +
-        /* v89.128（老板）：「进入按钮太大了点，适当缩小」 */
-        '<button class="btn sm gold wild-go" data-action="open-wilds">进入</button>' +
-      '</span></div>';
-  };
 
   /* ============================================================
    * 城池操作栏（v22 · 需求 3）
@@ -3892,9 +3847,8 @@
     if (ui.hoverHold(box)) return;
     var prodAll = GAME.productionPerSec();
     var prodCity = GAME.cityProdPerSec(c);
-    /* v77（老板）：「资源这里的备注：本城 新城池改成附属野地 下拉框」——
-       原「本城 · 城名」表头退役；附属野地选择器在独立静态节点
-       #wild-pick-host（ui.renderWildPick 渲染），不会被每秒重绘打断。 */
+    /* v77（老板）：原「本城 · 城名」表头退役。
+       v90.90（老板）：附属野地清单**移入君主左侧**（资源区下拉退役）。 */
     var html = '';
     DATA.RES_ORDER.forEach(function (k) {   /* v89.134：读 DATA.RES_ORDER */
       var meta = null;
@@ -5112,6 +5066,69 @@
     return it.desc || '';
   };
 
+  /* ============================================================
+   * v90.90（老板）：**帝国全境**的城/据点/野地（跨所有星球）—— 君主左侧清单用。
+   * 经 mapSlices 取每颗星球的城/野地/前哨（含当前星球活态）。返回 [{pid,name,seed,cities,wilds,forts}]。
+   * ============================================================ */
+  GAME.empireItems = function () {
+    var s = GAME.state; if (!s) return [];
+    var act = s.activePlanet, slices = s.mapSlices || {}, out = [];
+    (s.planets || []).forEach(function (p) {
+      if (p.id === act) {
+        var fo = {}; var fm = GAME.fortsOf(); for (var k in fm) if (fm[k] && fm[k].cityId) fo[k] = fm[k];
+        out.push({ pid: p.id, name: p.name, seed: p.seed, active: true,
+          cities: s.cities || [], wilds: s.wilds || [], forts: fo });
+      } else {
+        var sl = slices[p.id] || {};
+        out.push({ pid: p.id, name: p.name, seed: p.seed, active: false,
+          cities: sl.cities || [], wilds: sl.wilds || [], forts: sl.forts || {} });
+      }
+    });
+    /* 老档无 planets 时兜底：只有当前世界 */
+    if (!out.length) {
+      var fo2 = GAME.fortsOf(); out.push({ pid: 0, name: '老家', seed: 0, active: true,
+        cities: s.cities || [], wilds: s.wilds || [], forts: fo2 });
+    }
+    return out;
+  };
+  /* 君主左侧：一个清单（城/据点/野地）按星球分组 + 顶部星球下拉 */
+  ui._estListHTML = function (kind, list) {
+    var selKey = '_estSel_' + kind;
+    var sel = ui[selKey] || 'all';
+    var opts = '<option value="all"' + (sel === 'all' ? ' selected' : '') + '>全部星球（' + list.length + '）</option>' +
+      list.map(function (P) {
+        var n = kind === 'city' ? P.cities.length : (kind === 'wild' ? P.wilds.length : Object.keys(P.forts).length);
+        return '<option value="' + P.pid + '"' + (String(sel) === String(P.pid) ? ' selected' : '') + '>' +
+          U.escape(P.name) + '（' + n + '）</option>';
+      }).join('');
+    var shown = (sel === 'all') ? list : list.filter(function (P) { return String(P.pid) === String(sel); });
+    var rows = shown.map(function (P) {
+      var items = kind === 'city' ? P.cities.map(function (c) {
+          return '<div class="lord-city' + (c.id === ui._cityId ? ' cur' : '') + '" data-action="lord-city-enter" data-city="' + c.id + '" data-pid="' + P.pid + '" title="进入该城">' +
+            U.escape(c.name) + ' · ' + GAME.map.coordText(c.x, c.y) + '</div>';
+        }).join('')
+        : kind === 'wild' ? P.wilds.map(function (w) {
+          var t = DATA.TERRAIN[w.type];
+          return '<div class="lord-city" data-action="lord-wild-go" data-x="' + w.x + '" data-y="' + w.y + '" data-pid="' + P.pid + '" title="定位该野地">' +
+            (t ? t.name : w.type) + ' Lv' + w.level + ' · ' + GAME.map.coordText(w.x, w.y) + '</div>';
+        }).join('')
+        : Object.keys(P.forts).map(function (fk) {
+          var f = P.forts[fk];
+          return '<div class="lord-city" data-action="lord-fort-go" data-x="' + f.x + '" data-y="' + f.y + '" data-pid="' + P.pid + '" title="定位该前哨">' +
+            U.escape(f.name || '前哨') + ' Lv' + (f.lv || f.level || '') + ' · ' + GAME.map.coordText(f.x, f.y) + '</div>';
+        }).join('');
+      return '<div class="est-planet"><div class="est-pname">' + (P.active ? '🪐 ' : '· ') + U.escape(P.name) + '</div>' +
+        (items || '<div class="est-empty">— 无 —</div>') + '</div>';
+    }).join('');
+    return '<div class="est-head">' +
+        '<select class="est-sel" data-action="lord-est-sel" data-kind="' + kind + '">' + opts + '</select>' +
+        '<span class="est-n">' + (kind === 'city' ? shown.reduce(function (a, P) { return a + P.cities.length; }, 0)
+          : kind === 'wild' ? shown.reduce(function (a, P) { return a + P.wilds.length; }, 0)
+          : shown.reduce(function (a, P) { return a + Object.keys(P.forts).length; }, 0)) + ' 条</span>' +
+      '</div>' +
+      '<div class="est-body">' + (rows || '<div class="gb-empty">暂无</div>') + '</div>';
+  };
+
   /* 君主信息弹窗（原版「君主」按钮） */
     ui.openLordInfo = function () {
     var s = GAME.state;
@@ -5146,24 +5163,13 @@
       sub: (cur ? cur.name : '幸存者') + ' · 声望 ' + U.fmt(s.rep) + ' · ' + s.cities.length + ' 城',
       size: 'xxl',      /* v89.105：实测 690px —— xl(700) 只差 10px，但正文会冒滚动条；升一档 */
       body: '<div class="lord-split">' +
-        '<div class="ls-left"><div class="m-sec">城池一览（' + s.cities.length + '）</div>' +
-          (s.cities.length
-            ? (function () {
-                /* v90.88（老板）：城池列表 = 「星球名 · 城市名 · 坐标」；**主城恒列第 1 位**（不再打「主城」标）；
-                   整行可点 = 进入/切换该城。 */
-                var _pname = (GAME.activePlanetOf ? (GAME.activePlanetOf() || {}).name : '') || '';
-                return s.cities.slice().sort(function (a, b) {
-                  return (GAME.isMainCity(a) ? 0 : 1) - (GAME.isMainCity(b) ? 0 : 1);
-                }).map(function (c2) {
-                  return '<div class="lord-city' + (c2.id === curCity.id ? ' cur' : '') + '"' +
-                    ' data-action="lord-city-enter" data-city="' + c2.id + '"' +
-                    ' title="点击进入/切换此城">' +
-                    '<span class="ls-nm">' + (_pname ? U.escape(_pname) + ' · ' : '') + U.escape(c2.name) +
-                      ' · ' + GAME.map.coordText(c2.x, c2.y) + '</span>' +
-                    '</div>';
-                }).join('');
-              })()
-            : '<div class="gb-empty" style="height:110px;">当前无城池</div>') +
+        '<div class="ls-left">' + (function () {
+            /* v90.90（老板）：左侧三份清单 —— 城池 / 据点 / 野地；每份顶部**星球下拉** + 按星球分组。 */
+            var items = GAME.empireItems();
+            return '<div class="est-sec"><div class="m-sec">🏯 城池清单</div>' + ui._estListHTML('city', items) + '</div>' +
+              '<div class="est-sec"><div class="m-sec">🏯 据点清单</div>' + ui._estListHTML('fort', items) + '</div>' +
+              '<div class="est-sec"><div class="m-sec">🌿 附属野地清单</div>' + ui._estListHTML('wild', items) + '</div>';
+          })() +
         '</div>' +
         '<div class="ls-right"><div class="m-sec">君主信息</div>' +
         '<table class="tbl lord-tbl"><tbody>' +

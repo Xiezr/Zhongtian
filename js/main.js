@@ -313,12 +313,33 @@
       case 'close-avatar-pick': ui.openLordInfo(); break;
       /* v77（老板）：君主面板 —— 进入城池（直跳该城城内界面）/ 晋升 / 改名 */
       case 'lord-city-enter': (function () {
-        /* v89.166：与「城池面板 · 进入城池」**统一出口**（同一语义同一手法）——
-           改前用 closeModal（有上级时只弹一层 → 仍停在别的菜单里）；全关才等于"进入"。 */
+        /* v89.166：与「城池面板 · 进入城池」**统一出口**。v90.90：若该城在**别的星球** → 先切星球。 */
+        var pid = el.dataset.pid, cid = el.dataset.city;
         ui.closeAllModals();
-        ui.setCity(el.dataset.city);
+        if (pid != null && Number(pid) !== GAME.state.activePlanet && GAME.enterPlanet) {
+          GAME.enterPlanet(Number(pid));
+        }
+        ui.setCity(cid);
         ui.setView('city');
         GAME.refreshAll();
+      })(); break;
+      /* v90.90（老板）：君主左侧清单 —— 星球下拉切换 / 野地·据点定位 */
+      case 'lord-est-sel': ui['_estSel_' + el.dataset.kind] = el.value; ui.openLordInfo(); break;
+      case 'lord-wild-go': (function () {
+        var pid = el.dataset.pid;
+        ui.closeAllModals();
+        if (pid != null && Number(pid) !== GAME.state.activePlanet && GAME.enterPlanet) GAME.enterPlanet(Number(pid));
+        ui.setView('map'); GAME.refreshAll();
+        if (GAME.map3d && GAME.map3d.beamTo) GAME.map3d.beamTo(Number(el.dataset.x), Number(el.dataset.y));
+        ui.toast('已定位野地 ' + GAME.map.coordText(Number(el.dataset.x), Number(el.dataset.y)));
+      })(); break;
+      case 'lord-fort-go': (function () {
+        var pid = el.dataset.pid;
+        ui.closeAllModals();
+        if (pid != null && Number(pid) !== GAME.state.activePlanet && GAME.enterPlanet) GAME.enterPlanet(Number(pid));
+        ui.setView('map'); GAME.refreshAll();
+        if (GAME.map3d && GAME.map3d.beamTo) GAME.map3d.beamTo(Number(el.dataset.x), Number(el.dataset.y));
+        ui.toast('已定位前哨 ' + GAME.map.coordText(Number(el.dataset.x), Number(el.dataset.y)));
       })(); break;
       case 'lord-promote': GAME.doLordPromote(); break;
       /* v89.65（老板「君主练功然后突破」）：两个动作都就地重开君主面板，
@@ -335,8 +356,7 @@
       })(); break;
       case 'open-rename-lord': ui.openRenameLord(); break;
       case 'do-rename-lord': GAME.doRenameLord(); break;
-      /* v77：附属野地下拉框（资源区）—— 选择即记录，进入按钮开野地界面 */
-      case 'wild-pick': ui._wildSel = Number(el.value) || 0; break;
+      /* v90.90：资源区附属野地下拉框退职（清单移入君主左侧）—— wild-pick 已删。 */
       /* v26：同上，「背包」已是顶栏视图（data-view="bag"）。ui.openBag 仍有调用点。 */
       /* v29（需求 16）：点席位卡切换"下方档案"的对象（不开弹窗，就地换内容） */
       case 'gen-pick': ui._genSel = el.dataset.gen; GAME.refreshView(); break;

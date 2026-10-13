@@ -4282,19 +4282,17 @@
     /cell\.build\.lvl = q\.targetLevel;[\s\S]{0,260}cell\.pending = null;/.test(stS16));
   check('#13 施工面板显示 当前→目标 且可取消', uS16.indexOf('→ Lv') > 0 && uS16.indexOf('isUp16') > 0 && /取消'/.test(uS16));
   /* v82（老板）：「不要显示（自建城）这种文字」——君主面板城池列表去档位括注（坐标与幸存者保留） */
-  check('#16 君主面板城池列表（v90.88：星球·城名·坐标 · 主城恒第 1 位 · 去「主城」标）',
-    /lord-city-enter/.test(uS16)
-    && /· ' \+ GAME\.map\.coordText\(c2\.x, c2\.y\)/.test(uS16)
-    && !/ls-meta/.test(uS16)
-    && /isMainCity\(a\) \? 0 : 1/.test(uS16)          /* 主城排序到首位 */
-    && !/DATA\.CITY_TIER\[c2\.type\]/.test(uS16));
+  check('#16 君主面板左侧三清单（v90.90：城池/据点/野地 + 星球分组 + 下拉）',
+    /_estListHTML = function/.test(uS16) && /empireItems = function/.test(uS16)
+    && /lord-city-enter/.test(uS16) && /lord-est-sel/.test(uS16) && /lord-wild-go/.test(uS16)
+    && /GAME\.map\.coordText\(c\.x, c\.y\)/.test(uS16));
   /* v22（需求 1）：下拉框已全站移除 → 城池切换改为点选按钮组 */
   /* v77（老板）：君主面板改左右分栏（城池列表 + 进入按钮），v22 的 chips 退役；
      城池切换仍是下拉框一处（v45）。 */
   check('v77：城池切换走下拉框 + 君主面板「进入」按钮（v22 chips 退役）',
     /data-action="switch-city"/.test(uS16) && /after === 'city'/.test(mS16)
     && /lord-city-enter/.test(uS16) && /lord-city-enter/.test(mS16));
-  check('#16 无城池时占位空白', /当前无城池/.test(uS16));
+  check('#16 无城池/无野地时占位', /est-empty/.test(uS16) && /gb-empty/.test(uS16));
   check('#17 侧栏驻军栏（资源下方）', /garrison-bar/.test(hS16) && /ui\.renderGarrison = function/.test(uS16));
   /* ⛔ v89.215（老板）规则变更：「驻军，不再设置下拉，直接显示，直接按固定位置和顺序列出
      所有兵种和数量，暂无的数量则为 0」——
@@ -6193,7 +6191,6 @@
     var chk = selectsRegistered(all);
     return chk.bad.length === 0
       && /class="city-select" data-action="switch-city"/.test(all)
-      && /class="city-select wild-select"/.test(all) && /data-action="wild-pick"/.test(all)
       && /id="exp-gen"/.test(all) && /id="exp-target"/.test(all)
       && /id="exp-plan"/.test(all) && /id="exp-tactic"/.test(all) && /id="exp-scheme-sel"/.test(all)
       && /id="exp-mode"/.test(all)
@@ -8391,7 +8388,7 @@
     var strip = function (s) { return s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, ''); };
     var all = strip(uS40 + hS40 + mS40);
     return selectsRegistered(all).bad.length === 0
-      && /data-action="switch-city"/.test(all) && /data-action="wild-pick"/.test(all)
+      && /data-action="switch-city"/.test(all)
       && /id="exp-gen"/.test(all) && /id="exp-target"/.test(all)
       && /id="exp-plan"/.test(all) && /id="exp-tactic"/.test(all) && /id="exp-scheme-sel"/.test(all)
       && /id="exp-mode"/.test(all)
@@ -9251,7 +9248,7 @@ check('数量改为输入框（带加减号），不靠下拉框（下拉框全�
        v53：**先剥注释再计数** —— 注释里解释".map 会把下拉框换掉"时写了标签名，
        计数就会多出 1（第 7 次踩同一个坑）。 */
     && selectsRegistered(u).bad.length === 0
-    && /class="city-select"/.test(u) && /wild-select/.test(u) && /id="exp-gen"/.test(u) && !/ui\.qtyBar = function/.test(u);
+    && /class="city-select"/.test(u) && /id="exp-gen"/.test(u) && !/ui\.qtyBar = function/.test(u);
 })());
 check('数量以本行输入框为准（不再有全局"购买/使用数量"档位）', (function () {
   var m = require('fs').readFileSync(require('path').join(__dirname, 'js', 'main.js'), 'utf8');
@@ -10321,7 +10318,7 @@ check('数量输入框带加减号与「最多」，不走下拉框（下拉框�
   return /ui\.qtyInput = function/.test(u) && /data-action="qty-step"/.test(u)
     && /data-action="qty-max"/.test(u)
     && selectsRegistered(u).bad.length === 0 && /class="city-select"/.test(u)
-    && /wild-select/.test(u) && /id="exp-gen"/.test(u);
+    && /id="exp-gen"/.test(u);
 })());
 
 /* ---- 需求 6/7/8/15/16 ---- */
@@ -15908,11 +15905,10 @@ console.log('\n===== 61. v75 酒馆招募（大界面 · 单行候选 · 资质�
     }
   })());
 
-  /* ---- ③ 野地下拉框 ---- */
-  check('③ 资源区附属野地下拉框（宿主 + 渲染 + 进入 → openWilds）',
-    /wild-pick-host/.test(hS77) && /renderWildPick = function/.test(uS77)
-    && /data-action="wild-pick"/.test(uS77) && /data-action="open-wilds"/.test(uS77)
-    && /'wild-pick'/.test(mS77));
+  /* ---- ③ 野地下拉框（v90.90：移入君主左侧，资源区退役） ---- */
+  check('③ 资源区附属野地下拉框已退役（清单移入君主左侧 · v90.90）',
+    !/wild-pick-host/.test(hS77) && !/renderWildPick = function/.test(uS77)
+    && /_estListHTML = function/.test(uS77) && /empireItems/.test(uS77));
   check('③ 资源区「本城 · 城名」表头退役（res-scope 清空）', uS77.indexOf('res-scope') < 0);
 
   /* ---- ④ 三按钮退役 ---- */
@@ -16654,9 +16650,8 @@ console.log('\n===== 66. v81 两条（君主卡 · 兵营三页） =====');
     })());
     check('② 政务厅面板不再标「附属野地 / 城外空地」（显示与数据副本双退役）',
       !/附属野地 \/ 城外空地/.test(u82) && !/extraLand/.test(da82));
-    check('② 君主面板城池列表（v90.88：星球·城名·坐标 · 主城恒第 1 位）',
-      /lord-city-enter/.test(u82) && /· ' \+ GAME\.map\.coordText\(c2\.x, c2\.y\)/.test(u82)
-      && !/ls-meta/.test(u82) && !/DATA\.CITY_TIER\[c2\.type\]/.test(u82));
+    check('② 君主面板左侧三清单（v90.90：城池/据点/野地 + 星球分组）',
+      /lord-city-enter/.test(u82) && /_estListHTML = function/.test(u82) && /empireItems/.test(u82));
     check('② 改名弹窗不再写「原名」（域层 origName 照记）',
       !/原名：/.test(u82) && /origName/.test(d82));
 
@@ -23965,11 +23960,8 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     check('§109③ 民心/税率/幸存者行去图标（❤️/💰/👥 不再作 lbl 前缀）',
       at109.indexOf('<span class="lbl">❤️') < 0 && at109.indexOf('<span class="lbl">💰') < 0
       && at109.indexOf('<span class="lbl">👥') < 0);
-    check('§109④ 野地行 label=「野地」+「进入」按钮走 wild-go（缩小）',
-      (function () {
-        G.ui.renderWildPick(c109, st109);
-        var wp = (global.document.querySelector('#wild-pick-host') || {}).innerHTML || '';
-        return wp.indexOf('<span class="lbl">野地</span>') >= 0 && wp.indexOf('wild-go') >= 0;
+    check('§109④ 野地清单移入君主左侧（v90.90）', (function () {
+        return typeof GAME.empireItems === 'function' && typeof GAME.ui._estListHTML === 'function';
       })());
     G.ui.openQuickPop();
     var m109 = (global.document.querySelector('#modal-root') || {}).innerHTML || '';
@@ -25161,9 +25153,8 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     if (global._d118) console.log('   [dbg §118⑤] ' + global._d118);
 
     /* ---- ⑥ 积压清单：采集可见性 + 细分标记 ---------- */
-    check('§118⑥ 采集可见性：资源区下拉 ⛏ 标记（签名含在采状态）+ 大地图绿点', (function () {
-      return /_gatherFlag137/.test(uc) && /⛏/.test(uc)
-        && /GAME\.gatherAt\(w\.x, w\.y\)\) \{/.test(pc)
+    check('§118⑥ 采集可见性：大地图绿点（资源区下拉已退役 · v90.90 清单移入君主）', (function () {
+      return /GAME\.gatherAt\(w\.x, w\.y\)\) \{/.test(pc)
         && /'#3ad07a'/.test(pc) && /diaBox\(gx, gy, el, 0\)/.test(pc);
     })());
     check('§118⑥ 战术细分：跟随通用 / 细分 小标（ownSub137 判据 = 细分表有记录）', (function () {
@@ -27180,9 +27171,9 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     var m154 = fs154.readFileSync(p154.join(__dirname, 'js', 'main.js'), 'utf8');
 
     /* ---- ① 排序出口（唯一 + 两处调用） ---- */
-    check('§154① 排序出口 ui.wildSortedOf：定义唯一 · 两处调用（面板 + 下拉框，下标语义一致）', (function () {
+    check('§154① 排序出口 ui.wildSortedOf：定义唯一 · ≥1 处调用（v90.90：资源区下拉退役，面板仍在用）', (function () {
       return (u154.match(/ui\.wildSortedOf = function/g) || []).length === 1
-        && (u154.match(/ui\.wildSortedOf\(/g) || []).length === 2;
+        && (u154.match(/ui\.wildSortedOf\(/g) || []).length >= 1;
     })(), 'def=' + (u154.match(/ui\.wildSortedOf = function/g) || []).length
       + ' call=' + (u154.match(/ui\.wildSortedOf\(/g) || []).length);
 
@@ -27794,8 +27785,8 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         return G.ui.hoverHold({ contains: function () { return false; } }) === false;
       } finally { G.ui._tickPaint = bkA; G.ui._hoverOf = bkH; }
     })());
-    check('§158② 六处接入（1 定义 + 6 调用 · 源码级）',
-      (uS158.match(/ui\.hoverHold\(/g) || []).length === 6);
+    check('§158② 六处接入（1 定义 + 5 调用 · 源码级 · v90.90 去 renderWildPick）',
+      (uS158.match(/ui\.hoverHold\(/g) || []).length === 5);
     check('§158② 主循环置 _tickPaint + 两处视图保护（main.js 源码级）', (function () {
       var mS158 = fs158.readFileSync(p158.join(__dirname, 'js', 'main.js'), 'utf8');
       return /ui\._tickPaint = true;/.test(mS158) && /\} finally \{ ui\._tickPaint = false; \}/.test(mS158)
@@ -27805,7 +27796,6 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var pairs = [['ui.renderResBar = function', 'hoverHold(box)'],
         ['ui.renderGarrison = function', 'hoverHold(el)'],
         ['ui.renderCityAttrs = function', 'hoverHold(box)'],
-        ['ui.renderWildPick = function', 'hoverHold(box)'],
         ['ui.renderLog = function', 'hoverHold(el)']];
       var ok = true;
       pairs.forEach(function (pr) {
