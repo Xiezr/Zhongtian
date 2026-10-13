@@ -17,7 +17,9 @@ var fs = require('fs');
 var path = require('path');
 var R = 'E:/Deepseekdb/';
 eval(fs.readFileSync(path.join(R, '.workbuddy/tmp/smoke_env_head.js'), 'utf8'));
-['data', 'state', 'questdata', 'systems', 'domain', 'map', 'battle', 'tactic', 'icons',
+/* 加载列表与 index.html 同源：v90.73 起产品含 sphere.js（球系化）——
+   缺它 GAME.sphere 为空，据点/地图类链路会假红（v90.87 复核修复）。 */
+['data', 'state', 'questdata', 'systems', 'domain', 'map', 'sphere', 'battle', 'tactic', 'icons',
  'gicons', 'bitmaps', 'portraits', 'story', 'ui', 'main'].forEach(function (f) {
   require(path.join(R, 'js', f + '.js'));
 });
@@ -211,13 +213,18 @@ step('行军派出：march.dispatch 扣兵 + 建在途档', function () {
   if (!m) throw new Error('派出后无在途档');
   return { note: '在途 1 支 → ' + m.name + '（' + m.modeId + '）' };
 });
-step('抵达结算：expedition 出结果（胜/负/破防）', function () {
+step('抵达结算：march.tick 推进到抵达（唯一推进出口 · 先出队再结算）', function () {
   var m = (G.state.marches || [])[0];
   if (!m) return { ok: false, msg: '无在途档（上一步被拦）' };
-  var r = G.battle.expedition(m.target, m.modeId, m.army, m.genId,
-    { arrived: true, cityId: m.cityId, ops: 'assault' });
-  if (r && r.ok === false) return r;
-  return { note: '回合 ' + (r.rounds || '-') + ' · ' + String(r.msg || '').slice(0, 46) };
+  /* ⛔ v90.87（复核）：必须走 **march.tick** —— 真实链路是"时间到 → tick 先把该档移出
+     s.marches → 再调 arrive"。若直接调 arrive（条目仍在队列），将领被 marchBlockOf
+     正确硬拦（"正在行军/派遣，不可另接调遣"）→ 工具假红（产品行为是对的）。 */
+  m.elapsed = m.totalTime + 1;        /* 时间到（真实玩法由主循环推进） */
+  G.march.tick();                     /* 唯一推进出口 */
+  var rep = null;
+  (G.state.reports || []).forEach(function (x) { if (!rep && x.type === 'war') rep = x; });
+  if (!rep) throw new Error('抵达了但没有战报落公文');
+  return { note: '战报已落公文 · 在途 ' + ((G.state.marches || []).length) + ' 支' };
 });
 step('战报落公文 + 带沙盘配方（可逐帧回放）', function () {
   var rep = null;

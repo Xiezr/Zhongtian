@@ -1067,7 +1067,11 @@
         } catch (e191) { }
         break;
       }
-      case 'go-auto-train': ui._autoSel = 'train'; ui.closeAllModals(); ui.setView('auto'); break;
+      /* ⛔ v90.87（复核轮 · 零产品逻辑改动）：`go-auto-train` 整条退役。
+         退役依据：全仓**零发射点**（audit「不可达分支」长期提示，v89.190 立 case 后从未接线）。
+         能力未丢失：它只做「切到自动化视图的征兵页」，而该页已由自动化视图左名单的
+         `auto-pick`（AUTO_ITEMS 的 train 项 → ui._autoSel='train'）完整覆盖。
+         若日后要「从校场直达自动征兵」，重建此 case 并在校场面板挂同名动作即可（一行）。 */
       case 'toggle-auto-invasion': GAME.doToggleInvasionAccept(); break;   /* v89.118：外敌来犯 */
       case 'go-beacon': ui._marchTab = 'beacon'; ui.setView('marches'); break;   /* 自动化 → 警报页 */
       case 'forge-kind': ui.setForgeKind(el.dataset.k); break;

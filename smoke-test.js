@@ -30816,7 +30816,16 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         && (uS190.match(/data-action="autotrain-set"/g) || []).length >= 3
         && /case 'toggle-auto-train': GAME\.doToggleAutoTrain\(\); break;/.test(mS190)
         && /case 'autotrain-set':/.test(mS190)
-        && /case 'go-auto-train':/.test(mS190)
+        /* v90.87 口径变更（§0.7「规则变更须按新口径重写，不许删不许放宽」）：
+           原文锁的是 `case 'go-auto-train'` 在册。该 case 经复核确认**全仓零发射点**
+           （v89.190 立 case 后从未接线；历史发射按钮 .workbuddy/tmp/old_js/ui.js:9490 早已随版本移除），
+           本轮按“不许死代码”整条退役并留墓碑（main.js:1070）。
+           故这一环由“它在”改写为“它已不在 + 墓碑在位 + 能力仍由真出口 auto-pick 承接”——
+           链路依旧逐条锁死，只是把死环换成活环，不是放宽。 */
+        && !/case 'go-auto-train':/.test(mS190)
+        && /`go-auto-train` 整条退役/.test(mS190)
+        && /case 'auto-pick': ui\._autoSel = el\.dataset\.key;/.test(mS190)
+        && /data-action="auto-pick" data-key="/.test(uS190)
         && /GAME\.doToggleAutoTrain = function/.test(mS190)
         && /GAME\.autoTrainTick = function/.test(dS190)
         && /if \(GAME\.autoTrainTick\) GAME\.autoTrainTick\(\);/.test(stS190)   /* 主循环挂钩 */
@@ -35783,6 +35792,131 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       fs3d.existsSync(path3d.join(__dirname, 'vendor', 'three.min.js'))
       && fs3d.readFileSync(path3d.join(__dirname, 'index.html'), 'utf8').indexOf('vendor/three.min.js') >= 0,
       '');
+  })();
+
+  /* ============================================================
+   * §241（v90.87 复核轮）：覆盖缺口补齐 —— 宝具挂件 / 爵位晋升
+   *   起因：systemmatrix 长期报这两个系统 smoke=0 / e2e=0
+   *         （功能实测完好，但**零常驻断言** → 退化不会被发现）。
+   *   来源：v90.87 复核探针 probe_v9087_pendant_rank.js（23 条）折成常驻断言。
+   *   口径：走**用户真实链路**（挂件 = attachEquip/attachUnequip；爵位 = systems.promote
+   *         —— 与主界面 doAttach/卸下、`promote` case 同一出口），不直调内层函数（§43.5）。
+   *   造局：固定 mapSeed（防随机地图 flaky）；用完把 state 与 ui._cityId 还原（§24.6）。
+   * ============================================================ */
+  (function () {
+    var _bkSt241 = G.state, _bkCity241 = G.ui._cityId;
+    var n241 = 0, bad241 = [];
+    function c241(name, cond, extra) {
+      n241++;
+      check(name, !!cond, extra || '');
+      if (!cond) bad241.push(name);
+    }
+    try {
+      var st241 = G.newGame({ name: '复核87', cityName: '灰岗', region: '碎垣', mapSeed: 20260924, portraitSeed: 20260924 });
+      if (!st241.map.grid) G.map.generate();
+      var A241 = st241.cities[0];
+      G.ui._cityId = A241.id;
+      var g241 = st241.generals[0];
+
+      /* ── A · 宝具挂件（挂件体系 · 遗物是第一个模块） ── */
+      var slot241 = (G.DATA.ATTACH_SLOTS || [])[0];
+      c241('§241A① 宝具挂件：挂件槽位表在册（DATA.ATTACH_SLOTS）', !!slot241,
+        slot241 ? ('slot=' + slot241.id + ' · itemType=' + slot241.itemType) : '无 ATTACH_SLOTS');
+      var bao241 = (G.DATA.ITEMS || []).filter(function (it) { return it.type === 'bao'; })[0];
+      c241('§241A② 宝具挂件：遗物物品在册（type=bao）', !!bao241, bao241 ? (bao241.id + ' ' + bao241.name) : '无');
+      var nA241 = 0;
+      if (slot241 && bao241) {
+        st241.items = st241.items || {};
+        st241.items[bao241.id] = 2;                       /* 2 件：一件佩、一件留着验替换守恒 */
+        var b0_241 = G.attachBonusOf(g241);
+        var s0_241 = Object.keys(b0_241).reduce(function (a, k) { return a + (b0_241[k] || 0); }, 0);
+        var r1_241 = G.attachEquip(g241, slot241.id, bao241.id);
+        c241('§241A③ 宝具挂件：佩上走唯一出口 attachEquip', !!(r1_241 && r1_241.ok), (r1_241 && r1_241.msg) || ''); nA241++;
+        var got241 = G.attachOf(g241, slot241.id);
+        c241('§241A④ 宝具挂件：在位 —— attachOf 回读到同一件', !!got241 && got241.id === bao241.id, got241 ? got241.name : 'null'); nA241++;
+        c241('§241A⑤ 宝具挂件：扣库 —— 库存 2 → 1', (st241.items[bao241.id] || 0) === 1, 'items=' + (st241.items[bao241.id] || 0)); nA241++;
+        var b1_241 = G.attachBonusOf(g241);
+        var s1_241 = Object.keys(b1_241).reduce(function (a, k) { return a + (b1_241[k] || 0); }, 0);
+        c241('§241A⑥ 宝具挂件：加成汇总真的变了（非平凡解）', s1_241 !== s0_241, 'sum ' + s0_241 + ' → ' + s1_241); nA241++;
+        /* 并入唯一合并点：genAttrs（装备之上再相加） */
+        var eb241 = G.genAttrs(g241), linked241 = false, d241 = [];
+        Object.keys(b1_241).forEach(function (k) {
+          if ((b1_241[k] || 0) !== 0) {
+            var pure241 = G.systems.genEquipBonus(g241)[k] || 0;
+            if ((eb241[k] || 0) > pure241) { linked241 = true; d241.push(k + ':纯装' + pure241 + '→含挂件' + eb241[k]); }
+          }
+        });
+        c241('§241A⑦ 宝具挂件：加成并入英雄总属性（genAttrs 在装备之上再相加）', linked241, d241.join(' ')); nA241++;
+        var r2_241 = G.attachUnequip(g241, slot241.id);
+        c241('§241A⑧ 宝具挂件：卸下走唯一出口 attachUnequip', !!(r2_241 && r2_241.ok), (r2_241 && r2_241.msg) || ''); nA241++;
+        c241('§241A⑨ 宝具挂件：归库守恒（库存回到 2）', (st241.items[bao241.id] || 0) === 2, 'items=' + (st241.items[bao241.id] || 0)); nA241++;
+        c241('§241A⑩ 宝具挂件：槽位已空', !G.attachOf(g241, slot241.id), ''); nA241++;
+        var bao2_241 = (G.DATA.ITEMS || []).filter(function (it) { return it.type === 'bao' && it.id !== bao241.id; })[0];
+        if (bao2_241) {
+          st241.items[bao241.id] = 1; st241.items[bao2_241.id] = 1;
+          G.attachEquip(g241, slot241.id, bao241.id);
+          var r3_241 = G.attachEquip(g241, slot241.id, bao2_241.id);
+          c241('§241A⑪ 宝具挂件：换件守恒（新件扣库、旧件归库）', !!(r3_241 && r3_241.ok)
+            && (st241.items[bao241.id] || 0) === 1 && (st241.items[bao2_241.id] || 0) === 0,
+            'A=' + (st241.items[bao241.id] || 0) + ' B=' + (st241.items[bao2_241.id] || 0)); nA241++;
+          c241('§241A⑫ 宝具挂件：换后回读 = 新件', (G.attachOf(g241, slot241.id) || {}).id === bao2_241.id, ''); nA241++;
+        }
+      }
+      c241('§241A⑬ 基数自证：挂件链真跑 ≥10 条（防「槽位/物品缺失 → 全跳过」的平凡通过）', nA241 >= 10, 'nA=' + nA241);
+
+      /* ── B · 爵位晋升（威望 RANK） ── */
+      var S241 = G.systems;
+      var nr241 = S241.nextRank();
+      c241('§241B① 爵位晋升：威望表在册 + 有下一档', !!nr241, nr241 ? ('next=' + nr241.name) : '已登顶');
+      var nB241 = 0;
+      if (nr241) {
+        var s241 = G.state;
+        s241.rank = 0;
+        var cur241 = G.DATA.RANK[s241.rank];
+        c241('§241B② 爵位晋升：前置闸会拦（条件不齐时 canPromote=false）', !S241.canPromote().ok, S241.canPromote().msg || ''); nB241++;
+        while (s241.cities.length < cur241.city) {
+          var src241 = s241.cities[0], cp241 = JSON.parse(JSON.stringify(src241));
+          cp241.id = 'probe87_' + s241.cities.length; cp241.name = '演武城' + s241.cities.length;
+          s241.cities.push(cp241);
+        }
+        s241.rep = nr241.rep;
+        s241.res.gold = nr241.gold + 100000;
+        Object.keys(nr241.jewel || {}).forEach(function (j) { if ((s241.items[j] || 0) < nr241.jewel[j]) s241.items[j] = nr241.jewel[j]; });
+        c241('§241B③ 爵位晋升：前置造齐后 canPromote=true', !!S241.canPromote().ok, S241.canPromote().msg || ''); nB241++;
+        var gold0_241 = s241.res.gold, jewel0_241 = {}, rank0_241 = s241.rank;
+        Object.keys(nr241.jewel || {}).forEach(function (j) { jewel0_241[j] = s241.items[j] || 0; });
+        var pr241 = S241.promote();
+        c241('§241B④ 爵位晋升：走唯一出口 promote（主界面同款）', !!(pr241 && pr241.ok), (pr241 && pr241.msg) || ''); nB241++;
+        c241('§241B⑤ 爵位晋升：档位 +1', s241.rank === rank0_241 + 1, rank0_241 + ' → ' + s241.rank); nB241++;
+        c241('§241B⑥ 爵位晋升：旧币真扣（= 下一档 gold 价）', gold0_241 - s241.res.gold === nr241.gold, '扣 ' + (gold0_241 - s241.res.gold)); nB241++;
+        var jewelOk241 = Object.keys(nr241.jewel || {}).every(function (j) { return (jewel0_241[j] - (s241.items[j] || 0)) === nr241.jewel[j]; });
+        c241('§241B⑦ 爵位晋升：珠宝真扣（逐项等于价目）', jewelOk241,
+          Object.keys(nr241.jewel || {}).map(function (j) { return j + ':' + jewel0_241[j] + '→' + (s241.items[j] || 0); }).join(' ')); nB241++;
+        /* 特权：主城建造上限 lift（产品口径：仅主城享受） */
+        if (!s241.mainCityId) s241.mainCityId = A241.id;
+        var mainC241 = s241.cities.filter(function (c) { return GAME.isMainCity(c); })[0] || null;
+        var lift241 = mainC241 ? GAME.rankBuildCapOf(mainC241) : null;
+        var slope241 = (G.DATA.MAIN_CITY || {}).buildCapPerRank || 0;
+        var exp241 = Math.max(0, Math.min(G.DATA.RANK_BUILD_LIFT_MAX || 0, Math.round(s241.rank * slope241)));
+        c241('§241B⑧ 爵位晋升：特权随档生效（主城 lift = 档位×每档）', lift241 === exp241 && exp241 > 0,
+          'lift=' + lift241 + ' expect=' + exp241 + '（rank=' + s241.rank + '）'); nB241++;
+        var nonMain241 = s241.cities.filter(function (c) { return c !== mainC241; })[0];
+        c241('§241B⑨ 爵位晋升：口径边界 —— 非主城不享受 lift', !nonMain241 || GAME.rankBuildCapOf(nonMain241) === 0,
+          nonMain241 ? ('非主城 lift=' + GAME.rankBuildCapOf(nonMain241)) : '无第二城'); nB241++;
+        c241('§241B⑩ 爵位晋升：俸禄随档（salary 读当前档）', S241.salary() === (G.DATA.RANK[s241.rank].salary || 0), 'salary=' + S241.salary()); nB241++;
+        s241.rank = G.DATA.RANK.length - 1;
+        c241('§241B⑪ 爵位晋升：顶档边界（nextRank=null 且 canPromote 拒绝）', !S241.nextRank() && !S241.canPromote().ok, S241.canPromote().msg || ''); nB241++;
+      }
+      c241('§241B⑫ 基数自证：爵位链真跑 ≥10 条', nB241 >= 10, 'nB=' + nB241);
+    } catch (e241) {
+      check('§241 造局/链路异常（不应发生）', false, 'err=' + ((e241 && e241.message) || e241));
+    } finally {
+      G.state = _bkSt241;
+      G.ui._cityId = _bkCity241;
+    }
+    check('§241 汇总：宝具挂件 + 爵位晋升 全链无失败（v90.87 覆盖缺口补齐）',
+      n241 >= 24 && bad241.length === 0,
+      'n=' + n241 + (bad241.length ? (' 失败: ' + bad241.join(' / ')) : ''));
   })();
 
   console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');

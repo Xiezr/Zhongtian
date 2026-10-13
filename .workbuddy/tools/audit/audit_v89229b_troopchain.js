@@ -371,7 +371,10 @@ function printArt() {
 
 if (require.main === module) {
   try { eval(fs.readFileSync(path.join(ROOT, '.workbuddy', 'tmp', 'smoke_env_head.js'), 'utf8')); } catch (e) { /* 无引导头也能跑 */ }
-  ['data', 'state', 'questdata', 'systems', 'domain', 'map', 'battle', 'tactic', 'icons', 'gicons',
+  /* v90.87（复核修复）：加载清单与 index.html 同源 —— v90.69 起 map.js 地形/据点判据
+       唯一出口是球面内核 GAME.sphere，漏它则本工具跑在降级环境（口径不一致）。
+       map3d.js 需 three.js/WebGL（渲染层·逻辑不依赖）→ 维持不加载。 */
+  ['data', 'state', 'questdata', 'systems', 'domain', 'map', 'sphere', 'battle', 'tactic', 'icons', 'gicons',
     'bitmaps', 'portraits', 'story', 'ui', 'main'].forEach(function (f) {
     try { require(path.join(ROOT, 'js', f + '.js')); } catch (e) { /* 逐文件容错 */ }
   });

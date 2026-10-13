@@ -12,7 +12,8 @@ var fs = require('fs');
 var path = require('path');
 var R = 'E:/Deepseekdb/';
 eval(fs.readFileSync(path.join(R, '.workbuddy/tmp/smoke_env_head.js'), 'utf8'));
-['data', 'state', 'questdata', 'systems', 'domain', 'map', 'battle', 'tactic', 'icons',
+/* v90.87（复核修复）：与 index.html 同源（v90.69 起 map.js 地形/据点判据走 GAME.sphere）。 */
+['data', 'state', 'questdata', 'systems', 'domain', 'map', 'sphere', 'battle', 'tactic', 'icons',
  'gicons', 'bitmaps', 'portraits', 'story', 'ui', 'main'].forEach(function (f) {
   require(path.join(R, 'js', f + '.js'));
 });

@@ -17,7 +17,11 @@ var fs = require('fs');
 var path = require('path');
 var R = 'E:/Deepseekdb/';
 eval(fs.readFileSync(path.join(R, '.workbuddy/tmp/smoke_env_head.js'), 'utf8'));
-['data', 'state', 'questdata', 'systems', 'domain', 'map', 'battle', 'tactic', 'icons',
+/* v90.87（复核修复）：加载清单与 index.html 同源 —— v90.69 起 map.js 的地形判据
+   唯一出口是球面内核 GAME.sphere（map.js:57~66 等），battle/domain/state/ui 亦有引用；
+   漏它会让探针跑在降级环境里（功能"完好"的结论就不成立）。
+   map3d.js 需 three.js/WebGL（渲染层·逻辑不依赖）→ 维持不加载。 */
+['data', 'state', 'questdata', 'systems', 'domain', 'map', 'sphere', 'battle', 'tactic', 'icons',
  'gicons', 'bitmaps', 'portraits', 'story', 'ui', 'main'].forEach(function (f) {
   require(path.join(R, 'js', f + '.js'));
 });
@@ -102,13 +106,28 @@ if (PART === 'A1' || PART === 'ALL') {
     bao: '缴获(据点/名城·遗物掉落表)',   /* v89.230：遗物渠道随工具同步 */
   };
   var CH_BY_ID = {};
+  /* v89.224：DATA.SEED_DROP 已退役（种子体系删除）—— 保留此行仅为兼容旧档口径，读到 undefined 即空跑。 */
   ((DATA.SEED_DROP || {}).table || []).forEach(function (r) { CH_BY_ID[r.id] = '采集/缴获(种子掉落表)'; });
+  /* v90.87（复核修复）：v89.179c 起 pct≥0.5 的高阶加速宝物（dropOnly）移出游商、
+     改走 DATA.BOOST_DROP（采集归来主渠 / 出征缴获次渠 · 唯一出口 GAME.grantBoostDrop）。
+     探针渠道表未同步 → 9 件被误标"游商"并买失败（假红断链）。与 smoke §102② 同口径补齐。 */
+  ((DATA.BOOST_DROP || {}).table || []).forEach(function (r) { CH_BY_ID[r.id] = '采集/缴获(加速宝物掉落表)'; });
   CH_BY_ID['corvee'] = '宝箱 tier3(小概率)';
   CH_BY_ID['mabian'] = '游历(草原牧马)';
   CH_BY_ID['jinang'] = '游历/逸闻';
   CH_BY_ID['bp_mingjiang'] = '游历(地宫三层)/缴获';
   ['tongshang_quan', 'mojia_canjuan', 'xianzhenzhangu', 'jixingjunling', 'hufu'].forEach(function (id) { CH_BY_ID[id] = '任务/逸闻奖励'; });
-  function inShop(it) { return it.price > 0 && !it.noShop && !!(G.ui.SHOP_CATS || {})[it.type]; }
+  /* v90.87（复核修复）：在售判据改用产品唯一出口 `GAME.ui.shopItems()`（已排除 dropOnly / noShop）——
+     raw `price>0 && !noShop` 会把 dropOnly 件误当"在售"（盲区，smoke §102② 早就点过）。
+     探针必须跟随产品口径，不另起第二套判据。 */
+  var _ONSALE87 = null;
+  function inShop(it) {
+    if (_ONSALE87 === null) {
+      _ONSALE87 = {};
+      (G.ui.shopItems() || []).forEach(function (x) { _ONSALE87[x.id] = 1; });
+    }
+    return !!_ONSALE87[it.id];
+  }
   function channelOf(it) {
     if (inShop(it)) return '游商';
     if (CH_BY_ID[it.id]) return CH_BY_ID[it.id];
@@ -378,6 +397,17 @@ if (PART === 'A2' || PART === 'ALL') {
   var sc2 = buildScene();
   var st2 = sc2.st, A2 = sc2.A;
   var gen2 = st2.generals[0];
+  /* v90.87（复核修复）：探针原把建筑钉在 Lv8，够不到产品最高阶 ——
+     `DATA.FORGE.tierLv = [1,3,5,7,8,9]` 第 6 阶（神装）需 Lv9，
+     导致 57 件神装全被"锻造间等级不足"拦下（假红）。
+     改按产品自己的表取最高阶所需等级，不钉魔法数。 */
+  (function () {
+    var needLv = (DATA.FORGE && DATA.FORGE.tierLv && DATA.FORGE.tierLv.length)
+      ? DATA.FORGE.tierLv[DATA.FORGE.tierLv.length - 1] : 9;
+    var hit = 0;
+    A2.cells.forEach(function (c) { if (c.build && c.build.id === 'tiejiangpu') { c.build.lvl = needLv; hit++; } });
+    if (!hit) throw new Error('A2 场景找不到锻造间（tiejiangpu）—— 探针场景构造过期');
+  })();
   var FORGEABLE = Object.keys(DATA.EQUIP).filter(function (id) {
     var e = DATA.EQUIP[id];
     return e && !e.ling && (e.craft === true || !!e.set) && !!DATA.FORGE;
