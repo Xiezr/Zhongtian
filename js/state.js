@@ -604,6 +604,9 @@
       savedAt: U.now(),
     };
     GAME.attachRes(GAME.state);   // v60：挂上「当前城池库存」访问器（必须在 story.init 之前）
+    /* v90.84（老板 2）：**星球分片** —— 城/野地/据点/行军/队列 按星球各存一份（帝国英雄/资源全局共享）。
+       开局这套初始城/野地 = 默认星球（id 0）的分片，先归档。 */
+    GAME._savePlanetSlice(0);
     /* v89.161（老板 5）：旧币上收玩家池 —— 开局库存里的旧币（INITIAL_RES.gold）并进 s.gold */
     GAME.attachGold(GAME.state, { keepCityGold: true });
     if (GAME.story) GAME.story.init();
@@ -672,17 +675,82 @@
       if (ui) { ui._planetForm = null; ui._planetTab = 'list'; ui.openPlanetGen(); ui.toast('🪐 已生成 ' + p.name + '（宜居 ' + (report ? report.habit : '?') + '）—— 副本列表「进入」'); }
     }
   };
-  /* v90.78：**进入某星球** —— 载入其种子/规格 + 清掉一切随星球派生的缓存 + 重投影平面网格。
-     调用方（生成/进入）共用此出口；否则换星球后旧网格/据点缓存不刷新（"看着没生成"）。 */
+  /* ============================================================
+   * v90.84（老板 2）：**星球分片** —— 每颗星球独有的世界状态。
+   * ------------------------------------------------------------
+   * 全局共享（跨星球）：英雄 / 资源 / 科技 / 背包 / 任务 / 统计（即"帝国"）。
+   * 分片（随星球）：城 / 野地 / 据点（占/掠/毁）/ 采集队 / 行军 / 队列。
+   * 换星球 = 存当前片 + 载目标片（目标片空 = 毛胚）。消费点读的永远是"当前星球"的
+   * s.cities/s.wilds/...（它们就是当前片），故各消费点无需改动。
+   * ============================================================ */
+  GAME.SLICE_KEYS = ['cities', 'wilds', 'forts', 'fortsRazed', 'fortsTaken', 'fortRaids', 'gathers', 'marches',
+    'battles', 'queues', 'sieges', 'mainCityId', 'startPos', 'yieldDay'];
+  GAME._savePlanetSlice = function (pid) {
+    var s = GAME.state; if (!s) return;
+    if (!s.mapSlices) s.mapSlices = {};
+    var sl = {};
+    GAME.SLICE_KEYS.forEach(function (k) {
+      if (k === 'startPos') sl.startPos = s.map && s.map.startPos ? s.map.startPos : null;
+      else sl[k] = s[k];
+    });
+    s.mapSlices[pid] = sl;
+  };
+  GAME._loadPlanetSlice = function (pid) {
+    var s = GAME.state; if (!s) return;
+    s.mapSlices = s.mapSlices || {};
+    var sl = s.mapSlices[pid];
+    if (!sl) {                                             /* 目标星球无分片 = 毛胚：全清（帝国不动）*/
+      sl = { cities: [], wilds: [], fortsRazed: {}, fortsTaken: {}, fortRaids: {}, gathers: [],
+        marches: [], battles: [], queues: { build: [], train: [], tech: [] }, sieges: {}, mainCityId: null, yieldDay: null, startPos: null };
+      s.mapSlices[pid] = sl;
+    }
+    GAME.SLICE_KEYS.forEach(function (k) {
+      if (k === 'startPos') return;                        /* 单列处理（在 map 里）*/
+      s[k] = sl[k];
+    });
+    if (s.map) s.map.startPos = sl.startPos || null;
+  };
+  /* v90.78：**进入某星球** —— 存旧片/载新片 + 载入种子/规格 + 清派生缓存 + 重投影平面网格。 */
   GAME.enterPlanet = function (id) {
-    var r = GAME.loadPlanet(id);
+    var s0 = GAME.state;
+    if (s0) GAME._savePlanetSlice(s0.activePlanet || 0);   /* 先存当前星球的片 */
+    var r = GAME.loadPlanet(id);                          /* 载种子/规格 + setPlanet 重建内核 */
     if (!r.ok) return r;
     var s = GAME.state;
-    s.map.grid = null; s.map.cities = null;                 /* 清投影网格 → 重投影 + 重建 NPC 城 */
+    GAME._loadPlanetSlice(id);                            /* 载目标星球的片（空=毛胚）*/
+    s.map.grid = null; s.map.cities = null;               /* 清投影网格 → 重投影 + 重建 NPC 城 */
     GAME.map._fortCand = null; GAME.map._fortLv = null; GAME.map._fortBlocks = null; GAME.map._fortRing = null;
     GAME.map._cntyF = null;   /* 区域场（最近聚落 BFS）随星球失效 */
     GAME.map.generate();
+    if (GAME.attachRes) GAME.attachRes(s);                /* 资源访问器指向当前城（换片后重挂）*/
+    /* v90.84：进入的是**毛胚**星球（分片无城）→ 给一个落地前哨城（否则 currentCity 为 null，无法操作）。
+       该星球的 NPC 城/野地/据点/奇观由 seed 自动派生（已在 map.generate + 内核里）。 */
+    if (!s.cities.length) GAME.seedFoothold(id, r.planet);
+    /* UI 选城指针重指到本星球首城（否则仍指旧星球某城 id → 界面异常）*/
+    if (GAME.ui) { var _c0 = s.cities[0]; GAME.ui._cityId = _c0 ? _c0.id : null; }
     return r;
+  };
+  /* 毛胚星球落地前哨：在球面找一块平原立城 + 周边几块野地 */
+  GAME.seedFoothold = function (pid, planet) {
+    var s = GAME.state, SP = GAME.sphere;
+    var x = DATA.START_POS.x, y = DATA.START_POS.y;
+    if (SP && SP.cells) {
+      var found = -1;
+      for (var i = 0; i < SP.cells.length; i++) { var c = SP.cells[i]; if (c && c.type === 'plain') { found = i; break; } }
+      if (found < 0) for (var j = 0; j < SP.cells.length; j++) { if (SP.cells[j]) { found = j; break; } }
+      if (found >= 0) { x = SP.cells[found].x; y = SP.cells[found].y; }
+    }
+    var city = GAME.makeCity({
+      id: 'fp' + pid, name: (planet && planet.name ? planet.name : '星球') + '·前哨', x: x, y: y, type: 'self',
+      initialExt: 'new', res: DATA.NEW_CITY_RES || DATA.INITIAL_RES,
+    });
+    s.cities = [city];
+    s.mainCityId = city.id;
+    s.wilds = [];
+    if (s.map) s.map.startPos = { x: x, y: y };
+    (s.mapSlices || (s.mapSlices = {}))[pid] = null;      /* 占位：下次 _savePlanetSlice 会覆盖 */
+    GAME._savePlanetSlice(pid);
+    GAME.log('🪐 登陆「' + (planet && planet.name) + '」—— 落地前哨「' + city.name + '」已建立，四周待拓。', 'sys', 'admin');
   };
 
   /* ---------------- 读档 ---------------- */
@@ -2587,6 +2655,9 @@
       }
       /* v90.70：老档补写 ci（球面六边格索引）—— 城/野地/前哨/采集/行军统一读 ci（幂等） */
       if (GAME.migrateSphereCi70) GAME.migrateSphereCi70(st);
+      /* v90.84（老板 2）：**星球分片迁移** —— 老档无 mapSlices 时，把当前城/野地/据点等
+         归为"当前星球"的分片（老档只有一颗星球，其世界状态即当前片）。 */
+      if (!st.mapSlices) { st.mapSlices = {}; GAME._savePlanetSlice(st.activePlanet || 0); }
       /* 叙事层补字段（旧档可能缺 world/chronicle） */
       if (GAME.story) GAME.story.init();
       /* 英雄资质补字段（v11 前的存档没有 rank/style，按四维反推并写回） */
