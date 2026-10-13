@@ -1155,10 +1155,8 @@ async function runTests(dom, URL) {
   const mapHtml = vc.innerHTML;
   /* v76（老板）：地图导航迁入底部固定导航条 —— 相关元素改从 #bottom-bar 取 */
   const bb19 = document.querySelector('#bottom-bar').innerHTML;
-  check('地图含方向导航栏（v76：在底部导航条）', bb19.indexOf('map-pad') >= 0 && bb19.indexOf('map-btn') >= 0);
-  const padBtns = document.querySelectorAll('#bottom-bar [data-action="map-pan"]');
-  check('方向按钮共 4 个', padBtns.length === 4, padBtns.length + ' 个');
-  check('含坐标输入框', !!document.querySelector('#map-gx') && !!document.querySelector('#map-gy'));
+  check('地图导航在底部条（v90.88：去方向键）', bb19.indexOf('map-dock') >= 0 && bb19.indexOf('map-pad') < 0);
+  check('地图坐标输入改**球系**（经纬度）', !!document.querySelector('#map-lon') && !!document.querySelector('#map-lat') && !document.querySelector('#map-gx'));
   check('含视野信息', !!document.querySelector('#map-info'), (document.querySelector('#map-info') || {}).textContent);
   const cv19 = vc.querySelector('#mapCanvas');
   check('地图 canvas 存在', !!cv19);
@@ -1208,26 +1206,17 @@ async function runTests(dom, URL) {
   check('地图不再渲染图例与说明文字（v90.66：地形改右上角下拉高亮）',
     !/天下大势/.test(mapHtml) && !/观察框/.test(mapHtml) && !/名城（红=旧都/.test(mapHtml)
     && /adm-terrain/.test(mapHtml));
-  check('地图导航在底部条内（含方向键；v76）', bb19.indexOf('map-dock') >= 0 && bb19.indexOf('map-pad') >= 0);
-  /* 真实点击右移按钮。v45（需求 2）：步长由 1 格改为常量 ui.MAP_STEP_X（12） */
-  const x0 = G.ui.mapView.x;
-  const rightBtn = Array.prototype.slice.call(padBtns)
-    .filter((b) => Number(b.dataset.dx) === G.ui.MAP_STEP_X)[0];
-  check('找到右移按钮', !!rightBtn);
-  click(rightBtn);
-  await sleep(60);
-  check('点击右移后视野变化（一次一屏）', G.ui.mapView.x === x0 + G.ui.MAP_STEP_X,
-    x0 + ' → ' + G.ui.mapView.x);
+  check('地图导航在底部条内（v90.88：去方向键）', bb19.indexOf('map-dock') >= 0 && bb19.indexOf('map-pad') < 0);
   check('视野信息同步刷新', (document.querySelector('#map-info') || {}).textContent === G.ui.mapInfoText(),
     (document.querySelector('#map-info') || {}).textContent);
-  /* 坐标跳转 */
-  document.querySelector('#map-gx').value = '265';
-  document.querySelector('#map-gy').value = '215';
+  /* 球系坐标跳转（v90.88）：经度/纬度 → 世界格 → 视野中心 */
+  document.querySelector('#map-lon').value = '190';
+  document.querySelector('#map-lat').value = '20';
   click(document.querySelector('[data-action="map-goto"]'));
   await sleep(60);
-  check('坐标跳转生效（v50：目标即视野中心）',
-    G.ui.mapView.x === 265 && G.ui.mapView.y === 215,
-    '(' + G.ui.mapView.x + ',' + G.ui.mapView.y + ')');
+  check('球系坐标跳转生效（经纬 → 视野中心）',
+    G.ui.mapView.x === Math.round(190 / 360 * 500) && G.ui.mapView.y === Math.round((0.5 - 20 / 180) * 500),
+    '(' + G.ui.mapView.x + ',' + G.ui.mapView.y + ') 期望 (' + Math.round(190 / 360 * 500) + ',' + Math.round((0.5 - 20 / 180) * 500) + ')');
   /* 回主城 */
   const pc19 = G.map.playerCity();
   click(document.querySelector('[data-action="map-center"]'));
@@ -3053,23 +3042,18 @@ async function runTests(dom, URL) {
     && m24.indexOf('天下大势') < 0
     && m24.indexOf('已占野地') < 0 && m24.indexOf('点击城池可出征') < 0
     && !!vc.querySelector('#adm-terrain'));
-  check('导航在底部条内（方向键 + 坐标框）',
-    document.querySelectorAll('#bottom-bar .map-dock [data-action="map-pan"]').length === 4
-    && !!document.querySelector('#map-gx') && !!document.querySelector('#map-gy'));
+  check('导航在底部条内（v90.88：无方向键 · 球系坐标输入）',
+    document.querySelectorAll('#bottom-bar .map-dock [data-action="map-pan"]').length === 0
+    && !!document.querySelector('#map-lon') && !!document.querySelector('#map-lat') && !document.querySelector('#map-gx'));
   check('地图版面里没有横占整行的控制条', !vc.querySelector('.map-bar') && !vc.querySelector('.map-head'));
-  /* 浮标里的按钮真的能推动视野。
-     v45（需求 2）：步长由 1 格改为「左右 12 / 上下 8」，且浮标改为**水平居中**。
-     判据先归零到一个确定位置，免得在边界上因钳制而假失败。 */
-  G.ui.mapView.x = 100;
-  G.ui.mapView.y = 100;
-  G.ui.renderMapCanvas();
-  const panX0 = G.ui.mapView.x;
-  click(Array.prototype.slice.call(document.querySelectorAll('#bottom-bar .map-dock [data-action="map-pan"]'))
-    .filter((b) => b.dataset.dx === String(G.ui.MAP_STEP_X))[0]);
+  /* v90.88：球系坐标跳转生效（经纬 → 视野中心）。 */
+  document.querySelector('#map-lon').value = '216';
+  document.querySelector('#map-lat').value = '36';
+  click(document.querySelector('[data-action="map-goto"]'));
   await sleep(60);
-  check('底栏方向键生效（一次右移一屏 = 12 格）',
-    G.ui.mapView.x === Math.min(panX0 + G.ui.MAP_STEP_X, G.DATA.MAP_W - G.ui.mapFrame.spanX),
-    'x ' + panX0 + '→' + G.ui.mapView.x);
+  check('底栏球系坐标跳转生效',
+    G.ui.mapView.x === Math.round(216 / 360 * 500) && G.ui.mapView.y === Math.round((0.5 - 36 / 180) * 500),
+    'x→' + G.ui.mapView.x + ' y→' + G.ui.mapView.y);
   (function () {
     const dock = document.querySelector('#bottom-bar .map-dock');
     if (!dock) { check('导航条挂在底部导航条内（v76）', false); return; }
@@ -4700,9 +4684,9 @@ async function runTests(dom, URL) {
     /* 君主面板：左城池列表（进入）/ 右信息表（含月俸支出、晋升悬停） */
     G.ui.openLordInfo();
     await sleep(60);
-    check('v77：君主面板左右分栏（城池列表带进入 + 信息表含月俸支出）',
+    check('v77：君主面板左右分栏（城池列表整行可进入 + 信息表含月俸支出）',
       !!root75.querySelector('.lord-split')
-      && !!root75.querySelector('.lord-city [data-action="lord-city-enter"]')
+      && !!root75.querySelector('.lord-city[data-action="lord-city-enter"]')
       && root75.innerHTML.indexOf('月俸支出') >= 0, '');
     const pbtn77 = root75.querySelector('[data-action="lord-promote"]');
     check('v77：晋升按钮悬停带条件（声望 / 旧币）',

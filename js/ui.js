@@ -5148,15 +5148,21 @@
       body: '<div class="lord-split">' +
         '<div class="ls-left"><div class="m-sec">城池一览（' + s.cities.length + '）</div>' +
           (s.cities.length
-            ? s.cities.map(function (c2) {
-                return '<div class="lord-city' + (c2.id === curCity.id ? ' cur' : '') + '">' +
-                  '<span class="ls-nm">🏯 ' + U.escape(c2.name) +
-                    (GAME.isMainCity(c2) ? ' <span class="city-tier mt">主城</span>' : '') + '</span>' +
-                  /* v82（老板）：「不要显示（自建城）这种文字」—— 档位文字撤下，坐标与幸存者保留 */
-                  '<span class="ls-meta">[' + GAME.map.coordText(c2.x, c2.y) + '] · 幸存者上限 ' + U.fmt(GAME.effPopCapOf ? GAME.effPopCapOf(c2) : GAME.maxPopOf(c2)) + '</span>' +
-                  '<button class="btn sm gold" data-action="lord-city-enter" data-city="' + c2.id + '">进入</button>' +
-                  '</div>';
-              }).join('')
+            ? (function () {
+                /* v90.88（老板）：城池列表 = 「星球名 · 城市名 · 坐标」；**主城恒列第 1 位**（不再打「主城」标）；
+                   整行可点 = 进入/切换该城。 */
+                var _pname = (GAME.activePlanetOf ? (GAME.activePlanetOf() || {}).name : '') || '';
+                return s.cities.slice().sort(function (a, b) {
+                  return (GAME.isMainCity(a) ? 0 : 1) - (GAME.isMainCity(b) ? 0 : 1);
+                }).map(function (c2) {
+                  return '<div class="lord-city' + (c2.id === curCity.id ? ' cur' : '') + '"' +
+                    ' data-action="lord-city-enter" data-city="' + c2.id + '"' +
+                    ' title="点击进入/切换此城">' +
+                    '<span class="ls-nm">' + (_pname ? U.escape(_pname) + ' · ' : '') + U.escape(c2.name) +
+                      ' · ' + GAME.map.coordText(c2.x, c2.y) + '</span>' +
+                    '</div>';
+                }).join('');
+              })()
             : '<div class="gb-empty" style="height:110px;">当前无城池</div>') +
         '</div>' +
         '<div class="ls-right"><div class="m-sec">君主信息</div>' +
@@ -11693,12 +11699,7 @@
        · 估行列时的目标格距要放大到 1.41 倍 —— 菱形面积只有同宽正方形的一半
          （cell²/4），不放大就成了"满地碎菱"，既看不清也点不准。 */
   var MAP_SPAN_X = 12, MAP_SPAN_Y = 6;
-  /* v45（需求 2）：方向键**一次移动的格数** —— 老板指定"上下 8 格、左右 12 格"。
-     v50 菱形下这两个数沿**网格轴**生效，屏幕位移是它们的对角合成：
-       左右 → i 轴 +12 / j 轴 −12 → 屏幕水平移 12 个菱形宽（≈一屏宽）
-       上下 → 两轴各 +8          → 屏幕垂直移 4 个菱形高 */
-  ui.MAP_STEP_X = 12;
-  ui.MAP_STEP_Y = 8;
+  /* v90.88（老板）：方向键退役（地图由拖拽/缩放/球系坐标输入导航）——MAP_STEP_X/Y 已删。 */
   /* 格距按窗口算；jsdom 无布局时回落到基准值 */
   var MAP_CELL = 52;
   ui.MAP_TARGET_CELL = 88;       /* 正方形时代的理想格距（保留：图标尺寸仍按它对齐） */
@@ -11849,9 +11850,6 @@
       ui.mapView.x = U.clamp(ui.mapView.x, 0, DATA.MAP_W - 1);
       ui.mapView.y = U.clamp(ui.mapView.y, 0, DATA.MAP_H - 1);
     }
-    var mkBtn = function (cls, dx, dy, txt) {
-      return '<button class="map-btn ' + cls + '" data-action="map-pan" data-dx="' + dx + '" data-dy="' + dy + '">' + txt + '</button>';
-    };
     /* v24（需求 1/2/3）：地图页只留**棋盘**，其余一律清掉 ——
        原先顶部有「🗺️ 天下大势 · 观察框 12×12 格 · 全图 500×500 · 109 座名城」、
        底部有 9 项地形图例、末尾还有一行操作提示：三段都是备注型文字，
@@ -11863,27 +11861,21 @@
     /* v76（老板）：「底下有一个导航栏，可以考虑把地图的导航栏（上下左右，坐标之类）
        放到这个导航范围内」—— 导航不再挂地图页浮标，改登记到本帧的**底部固定导航条**
        （ui._bottom → paintBottom）；地图页本身只剩棋盘。 */
+    /* v90.88（老板）：**去掉上下左右**方向键 + 平面 (x,y) 双输入框；
+       改为**球系坐标**（经度/纬度）单一输入 + 前往。其余导航键（回主城/回本城/前哨/灰烬城）保留。 */
     ui._bottom.push('<div class="map-dock">' +
-        '<div class="map-pad">' +
-          mkBtn('left', -ui.MAP_STEP_X, 0, '◀') + mkBtn('up', 0, -ui.MAP_STEP_Y, '▲') +
-          mkBtn('down', 0, ui.MAP_STEP_Y, '▼') + mkBtn('right', ui.MAP_STEP_X, 0, '▶') +
-        '</div>' +
-        '<span class="mk-sep"></span>' +
         '<span class="map-info" id="map-info">' + ui.mapInfoText() + '</span>' +
         '<span class="map-info mk-pick" id="map-pick-info">' + ui.mapPickText() + '</span>' +
         '<span class="mk-sep"></span>' +
-        '<span class="mk-lbl">坐标</span>' +
-        '<input id="map-gx" type="number" min="1" max="' + DATA.MAP_W + '" value="' + pc.x + '">' +
-        '<span class="mk-lbl">,</span>' +
-        '<input id="map-gy" type="number" min="1" max="' + DATA.MAP_H + '" value="' + pc.y + '">' +
+        '<span class="mk-lbl">球系坐标</span>' +
+        '<input id="map-lon" type="number" min="0" max="360" step="1" placeholder="经度">' +
+        '<span class="mk-lbl">°E</span>' +
+        '<input id="map-lat" type="number" min="-90" max="90" step="1" placeholder="纬度">' +
+        '<span class="mk-lbl">°N</span>' +
         '<button class="btn sm gold" data-action="map-goto">前往</button>' +
         '<button class="btn sm" data-action="map-center">回主城</button>' +
-        /* v89.192（老板 1）：「地图导航栏增加一个回本城的按钮，在回主城右边。
-           功能是在地图上回到当前城池所在位置」—— 回主城回的是**首城**
-           （map.playerCity = cities[0]，首都/发家城）；回本城回的是**当前操作城池**
-           （GAME.currentCity = ui._cityId，切城后"我此刻在管的那座城"）。 */
+        /* v89.192（老板 1）：「地图导航栏增加一个回本城的按钮」—— 回本城 = 当前操作城池（ui._cityId）*/
         '<button class="btn sm" data-action="map-mycity">回本城</button>' +
-        /* v89.193（老板 2）：前哨总览（同附属野地的汇总管理弹窗）—— 放"回本城"右侧 */
         '<button class="btn sm" data-action="open-outposts">🚩 前哨</button>' +
         '<button class="btn sm" data-action="map-capital">灰烬城</button>' +
       '</div>');
@@ -12090,7 +12082,7 @@
     }
     GAME.map.render(canvas, { vx: ui.mapView.x, vy: ui.mapView.y,
       spanX: fr.spanX, spanY: fr.spanY, cell: fr.cell,
-      showLabels: ui._mapShowLabels !== false });
+      showLabels: true });   /* v90.88（老板）：名称开关**不再关联地图** —— 地图标注恒显 */
     /* v89.89（A4）：定位标记 —— 材料产地跳转等「已定位」场景的醒目提示。
        双色圆环（金/朱红按 450ms 相位交替），主循环每秒重绘负责"闪"；6 秒自灭。 */
     var mk = ui._mapMark;
@@ -12127,17 +12119,7 @@
     return '中心 ' + (GAME.map.coordText ? GAME.map.coordText(v.x, v.y) : ('(' + v.x + ',' + v.y + ')'));
   };
 
-  ui.mapPan = function (dx, dy) {
-    /* v50：菱形下方向键必须按**屏幕方向**走 —— 把两轴位移对角合成：
-         右 → i 轴 +Δ、j 轴 −Δ（屏幕水平右移）　下 → 两轴同 +Δ（屏幕垂直下移）
-       这样"按右键画面就向右走"，而不是沿网格轴斜着走。 */
-    var dgx = (dx || 0) + (dy || 0);
-    var dgy = (dy || 0) - (dx || 0);
-    ui.mapView.x = U.clamp((ui.mapView.x || 0) + dgx, 0, DATA.MAP_W - 1);
-    ui.mapView.y = U.clamp((ui.mapView.y || 0) + dgy, 0, DATA.MAP_H - 1);
-    ui.renderMapCanvas();      /* v44：状态行的刷新已收口到 renderMapCanvas */
-  };
-
+  /* v90.88：ui.mapPan（方向键平移）随方向键退役。 */
   ui.mapCenterOn = function (x, y) {
     /* v50：视野中心格 = (x,y)。旧签名后两个参数（spanX/spanY）已无意义 ——
        菱形视野不是矩形，不再需要"减去半屏"；保留形参只为兼容旧调用。 */
@@ -12165,14 +12147,19 @@
   };
 
   ui.mapGoto = function () {
-    var gx = Number(($('#map-gx') || {}).value);
-    var gy = Number(($('#map-gy') || {}).value);
-    if (!gx || !gy || gx < 1 || gy < 1 || gx > DATA.MAP_W || gy > DATA.MAP_H) {
-      ui.toast('请输入 1~' + DATA.MAP_W + ' 之间的坐标');
+    /* v90.88（老板）：输入改**球系坐标**（经纬度）→ 反解为世界格 (x,y) → 定位。 */
+    var lon = Number(($('#map-lon') || {}).value);
+    var lat = Number(($('#map-lat') || {}).value);
+    if (isNaN(lon) || isNaN(lat) || ($('#map-lon') || {}).value === '' || ($('#map-lat') || {}).value === '' ||
+      lon < 0 || lon > 360 || lat < -90 || lat > 90) {
+      ui.toast('请输入球系坐标：经度 0~360°E · 纬度 -90~90°N');
       return;
     }
-    ui.mapCenterOn(gx, gy);
-    ui.toast('已定位至 ' + GAME.map.coordText(gx, gy));
+    var W = DATA.MAP_W, H = DATA.MAP_H;
+    var x = U.clamp(Math.round(lon / 360 * W), 0, W - 1);
+    var y = U.clamp(Math.round((0.5 - lat / 180) * H), 0, H - 1);
+    ui.mapCenterOn(x, y);
+    ui.toast('已定位至 ' + GAME.map.coordText(x, y));
   };
 
 
@@ -14650,8 +14637,8 @@
     var show = ui._mapShowLabels !== false;
     var lblBtn = '<button class="bb-label-toggle' + (show ? ' on' : '') +
       '" data-action="map-toggle-labels" title="' + (show
-        ? '点击隐藏：野地 · 据点 · 城内建筑 的名称与等级（城池名称与等级永远显示，不受影响）'
-        : '当前已隐藏 —— 点击恢复显示：野地 · 据点 · 城内建筑 的名称与等级') +
+        ? '点击隐藏：城内建筑 · 城外资源建筑的名称与等级（**地图标注不受影响**）'
+        : '当前已隐藏 —— 点击恢复显示：城内建筑 · 城外资源建筑的名称与等级') +
       '">🏷 ' + (show ? '隐藏名称' : '显示名称') + '</button>';
     var warBtn = '<button class="bb-war" data-action="battle-list-open" ' +
       'title="指挥战斗：查看正在进行的战斗与行军中的军队（有战斗待指挥时闪烁）">⚔ 指挥战斗</button>';

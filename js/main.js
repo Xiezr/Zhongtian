@@ -533,7 +533,7 @@
       case 'exp-scheme-pick': ui.doExpSchemePick(el.dataset.v); break;
       case 'city-scheme': ui.openCityScheme(); break;
       case 'city-scheme-pick': ui.doCitySchemePick(el.dataset.v); break;
-      case 'map-pan': ui.mapPan(Number(el.dataset.dx), Number(el.dataset.dy)); break;
+      /* v90.88：方向键 map-pan 随方向键退役（地图由拖拽/缩放/球系坐标导航）。 */
       /* v89.52（老板：底部导航栏最左按钮）：切换名称/等级标注层并重绘。
          v89.61：改为走唯一出口 ui.applyLabelSwitch —— 一次同时管
          ① 地图 canvas 标注层 ② 城内视图建筑名/等级 ③ 城外视图建筑名/等级。 */

@@ -1480,21 +1480,7 @@
   G.map.render(cv22, { vx: -50, vy: -50, span: 12, cell: 44 });
   check('负坐标钳制为 0', G.map._view.vx === 0 && G.map._view.vy === 0);
 
-  /* 平移（UI 层）：菱形下按**屏幕方向**把两轴位移对角合成 */
-  UI.mapView.x = 100; UI.mapView.y = 100;
-  UI.renderMapCanvas();
-  var vx0 = UI.mapView.x, vy0 = UI.mapView.y;
-  UI.mapPan(1, 0);
-  check('向右平移 = i+1 / j−1（屏幕水平右移一格宽）',
-    UI.mapView.x === vx0 + 1 && UI.mapView.y === vy0 - 1,
-    '(' + vx0 + ',' + vy0 + ') → (' + UI.mapView.x + ',' + UI.mapView.y + ')');
-  UI.mapPan(0, -2);
-  check('向上平移 = 两轴各 −2（屏幕垂直上移）',
-    UI.mapView.x === vx0 - 1 && UI.mapView.y === vy0 - 3,
-    '(' + UI.mapView.x + ',' + UI.mapView.y + ')');
-  UI.mapView.x = 0; UI.mapView.y = 0;
-  UI.mapPan(-5, -5);
-  check('平移不越左/上边界', UI.mapView.x === 0 && UI.mapView.y === 0);
+  /* v90.88（老板）：方向键平移退役 —— 地图由拖拽/缩放/球系坐标导航（mapPan 已删）。 */
 
   /* 坐标跳转：v50 直接把目标设为**视野中心**（菱形视野不是矩形，不必再减半屏） */
   UI.mapCenterOn(265, 215);
@@ -1818,18 +1804,9 @@
 
   /* 导航 UI */
   var uiSrc22 = require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8');
-  check('地图有四个方向按钮', /map-pan/.test(uiSrc22) && /'▲'/.test(uiSrc22) && /'◀'/.test(uiSrc22) &&
-    /'▼'/.test(uiSrc22) && /'▶'/.test(uiSrc22));
-  check('v45/v50：方向键步长 = 上下 8 格 / 左右 12 格（沿网格轴，常量单一定义）',
-    G.ui.MAP_STEP_X === 12 && G.ui.MAP_STEP_Y === 8
-    && /mkBtn\('left', -ui\.MAP_STEP_X, 0, '◀'\)/.test(uiSrc22)
-    && /mkBtn\('up', 0, -ui\.MAP_STEP_Y, '▲'\)/.test(uiSrc22)
-    && (uiSrc22.match(/ui\.MAP_STEP_X = 12/g) || []).length === 1);
-  /* 菱形下方向键必须按**屏幕方向**走：把两轴位移对角合成，而不是沿单轴。 */
-  check('v50：方向键按屏幕方向对角合成（右 = i+Δ/j−Δ，下 = 两轴同 +Δ）',
-    /var dgx = \(dx \|\| 0\) \+ \(dy \|\| 0\);/.test(uiSrc22)
-    && /var dgy = \(dy \|\| 0\) - \(dx \|\| 0\);/.test(uiSrc22));
-  check('地图有坐标输入框', /map-gx/.test(uiSrc22) && /map-gy/.test(uiSrc22));
+  /* v90.88（老板）：方向键 + 平面坐标输入退役 → 改**球系坐标**输入（map-lon/map-lat）。 */
+  check('地图无方向键（map-pan 已退役）', !/data-action="map-pan"/.test(uiSrc22) && !/ui\.MAP_STEP_X\s*=/.test(uiSrc22));
+  check('地图坐标输入改**球系坐标**', /id="map-lon"/.test(uiSrc22) && /id="map-lat"/.test(uiSrc22) && !/map-gx/.test(uiSrc22));
   check('地图有回主城/旧都快捷', /map-center/.test(uiSrc22) && /map-capital/.test(uiSrc22));
 
   /* 地块渲染：建筑直接成画（v12 起不再用色块 + emoji） */
@@ -4305,8 +4282,11 @@
     /cell\.build\.lvl = q\.targetLevel;[\s\S]{0,260}cell\.pending = null;/.test(stS16));
   check('#13 施工面板显示 当前→目标 且可取消', uS16.indexOf('→ Lv') > 0 && uS16.indexOf('isUp16') > 0 && /取消'/.test(uS16));
   /* v82（老板）：「不要显示（自建城）这种文字」——君主面板城池列表去档位括注（坐标与幸存者保留） */
-  check('#16 君主面板城池列表（v82：去档位括注）',
-    /ls-meta">\[' \+ GAME\.map\.coordText\(c2\.x, c2\.y\) \+ '\] · 幸存者上限 '/.test(uS16)
+  check('#16 君主面板城池列表（v90.88：星球·城名·坐标 · 主城恒第 1 位 · 去「主城」标）',
+    /lord-city-enter/.test(uS16)
+    && /· ' \+ GAME\.map\.coordText\(c2\.x, c2\.y\)/.test(uS16)
+    && !/ls-meta/.test(uS16)
+    && /isMainCity\(a\) \? 0 : 1/.test(uS16)          /* 主城排序到首位 */
     && !/DATA\.CITY_TIER\[c2\.type\]/.test(uS16));
   /* v22（需求 1）：下拉框已全站移除 → 城池切换改为点选按钮组 */
   /* v77（老板）：君主面板改左右分栏（城池列表 + 进入按钮），v22 的 chips 退役；
@@ -6592,7 +6572,7 @@
     var h = G.ui.mapHTML();
     var bar = G.ui._bottom.join('');
     return h.indexOf('mapCanvas') >= 0 && h.indexOf('map-dock') < 0
-      && bar.indexOf('map-dock') >= 0 && bar.indexOf('map-pad') >= 0
+      && bar.indexOf('map-dock') >= 0 && bar.indexOf('map-pad') < 0   /* v90.88：方向键 map-pad 退役 */
       && h.indexOf('天下大势') < 0 && h.indexOf('已占野地') < 0
       && h.indexOf('观察框') < 0
       && h.indexOf('adm-terrain') >= 0;   /* v90.66：右上角地形高亮下拉 */
@@ -11942,16 +11922,12 @@ console.log('\n===== 46. v61 满配城池城内布局 =====');
       && !/&& SHOW_LB\)/.test(mapSrc22)
       && mapSrc22.indexOf('ctx.fillText(o.name, c.x, tb + 6)') < 0;   /* ④ 单一出口 */
   })());
-  check('v89.67：开关仍管野地与据点（没有被一刀切成"永远全显"）', (function () {
-    /* 反向守卫：城池常显**不等于**开关失效 —— 野地走 !SHOW_LB 提前返回，
-       据点（fort）标注也仍在 SHOW_LB 门控内（v89.54 那条守卫继续生效）。 */
+  check('v90.88：名称开关**不管地图**（地图标注恒显）· 野地/据点/城池均不受开关影响', (function () {
+    /* v90.88（老板）：开关不再关联地图 —— renderMapCanvas 恒传 showLabels:true（图内标注恒显）。 */
     return /var SHOW_LB = opts\.showLabels !== false;/.test(mapSrc22)
-      && /if \(!SHOW_LB\) return;/.test(mapSrc22)
-      && /m\.kind === 'fort'[\s\S]*?if \(!SHOW_LB\) return;/.test(mapSrc22)
-      /* renderMapCanvas 仍把开关传进画布（只是图内对城池不再生效） */
-      && /showLabels: ui\._mapShowLabels !== false/.test(uS);
+      && /showLabels: true/.test(uS);
   })());
-  check('v89.61：名称总开关一处管三块（地图 canvas + 城内视图 + 城外视图）', (function () {
+  check('v90.88：名称开关 = **只对城内/城外建筑**（不再关联地图 canvas）', (function () {
     var rd = function (f) { return stripComment(require('fs').readFileSync(require('path').join(__dirname, 'js', f), 'utf8')); };
     var u = rd('ui.js'), m = rd('main.js');
     var html = require('fs').readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
@@ -11961,9 +11937,8 @@ console.log('\n===== 46. v61 满配城池城内布局 =====');
       /* main.js：按钮只调唯一出口 —— 不再自己写一份 .on 判断 */
       && /ui\.applyLabelSwitch\(\)/.test(m)
       && !/bb-label-toggle'\)[\s\S]{0,60}classList\.toggle\('on'/.test(m)
-      /* canvas 侧仍收 showLabels（图内对城池不再生效，见 v89.67 守卫） */
-      && /showLabels: ui\._mapShowLabels !== false/.test(u)
-      /* ⛔ v90.77：缩略图城名层随「天下大势」退役（drawMini 已删），该出口不再断言。 */
+      /* v90.88：地图 canvas 恒显（不再收开关） */
+      && /showLabels: true/.test(u)
       /* 城内/城外视图的建筑名与等级角标：同一根类名关掉（DOM 节点保留） */
       && /body\.labels-off \.tile-label/.test(html)
       && /body\.labels-off \.tile-badge/.test(html);
@@ -16679,9 +16654,9 @@ console.log('\n===== 66. v81 两条（君主卡 · 兵营三页） =====');
     })());
     check('② 政务厅面板不再标「附属野地 / 城外空地」（显示与数据副本双退役）',
       !/附属野地 \/ 城外空地/.test(u82) && !/extraLand/.test(da82));
-    check('② 君主面板城池列表去档位括注（坐标与幸存者保留）',
-      /ls-meta">\[' \+ GAME\.map\.coordText\(c2\.x, c2\.y\) \+ '\] · 幸存者上限 '/.test(u82)
-      && !/DATA\.CITY_TIER\[c2\.type\]/.test(u82));
+    check('② 君主面板城池列表（v90.88：星球·城名·坐标 · 主城恒第 1 位）',
+      /lord-city-enter/.test(u82) && /· ' \+ GAME\.map\.coordText\(c2\.x, c2\.y\)/.test(u82)
+      && !/ls-meta/.test(u82) && !/DATA\.CITY_TIER\[c2\.type\]/.test(u82));
     check('② 改名弹窗不再写「原名」（域层 origName 照记）',
       !/原名：/.test(u82) && /origName/.test(d82));
 
