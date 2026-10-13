@@ -9222,6 +9222,181 @@ console.log('\n--- §180. 拆械与 live 滚动（v89.180） ---');
     }
   })();
 
+  /* ============================================================
+   * §241E（v90.87b 清账轮 · 真实 DOM）：宝具挂件 / 爵位晋升
+   *   来源：`audit_v89208_systemmatrix.js` 的「e2e = 0 的系统」原话里含
+   *   「宝具挂件 · 爵位晋升」—— 本条闭合这两个系统（smoke 侧已在 §241 补齐）。
+   *   链路（§43.5 · 走用户真链路，不直调内层函数）：
+   *     · 宝具挂件：底栏「英雄」tab → 部件栏「🔮 遗物」→ 选择窗「佩上」/「卸下」
+   *     · 爵位晋升：底栏「君主」→ 君主面板「晋升：X」→ 真点
+   *   造局后还原 state / _genSel / _cityId / view（§24.6）。
+   * ============================================================ */
+  await (async function () {
+    const bkSt = G.state, bkV = G.ui.view, bkSel = G.ui._genSel, bkCity = G.ui._cityId;
+    let nA = 0, nB = 0; const bad241E = [];
+    const cA = (name, cond, extra) => { nA++; check(name, !!cond, extra || ''); if (!cond) bad241E.push(name); };
+    const cB = (name, cond, extra) => { nB++; check(name, !!cond, extra || ''); if (!cond) bad241E.push(name); };
+    try {
+      const st = G.newGame({ name: 'v9087b-e2e', region: '碎垣', mapSeed: 20261013 });
+      G.state = st;
+      if (st.map && !st.map.grid) G.map.generate();
+      G.ui._cityId = st.cities[0].id;
+      const slot = (G.DATA.ATTACH_SLOTS || [])[0];
+      const baoIds = slot ? (G.DATA.ITEMS || []).filter((x) => x.type === slot.itemType).map((x) => x.id) : [];
+
+      /* ---------- A · 宝具挂件（真链路：英雄页 → 遗物 → 佩上 / 卸下） ---------- */
+      cA('§241E-A① 挂件槽位表在册（DATA.ATTACH_SLOTS · 选择窗数据源）',
+        !!slot && !!slot.itemType, slot ? (slot.id + ' · itemType=' + slot.itemType) : '无');
+      cA('§241E-A② 该槽可用遗物 ≥2 件（防单件平凡解 · 换件守恒才验得动）',
+        baoIds.length >= 2, 'n=' + baoIds.length);
+      st.items = st.items || {};
+      baoIds.forEach((id) => { st.items[id] = (st.items[id] || 0) + 1; });
+      const tabG = document.querySelector('#topnav .tab[data-view="generals"]');
+      cA('§241E-A③ 底栏「英雄」tab 在位（真导航入口 · 非直调 setView）', !!tabG);
+      if (tabG) { tabG.click(); await sleep(120); }
+      /* 选中者以**渲染后**的 _genSel 为准（清单按等级降序，首行未必是 generals[0]） */
+      const gA = st.generals.filter((x) => x.id === G.ui._genSel)[0] || st.generals[0];
+      const pickBtn = () => document.querySelector('#view-container [data-action="attach-pick"]');
+      cA('§241E-A④ 部件栏「🔮 遗物」入口在位（挂件链的起点）',
+        !!pickBtn(), pickBtn() ? ('slot=' + pickBtn().getAttribute('data-slot')) : '无');
+      cA('§241E-A⑤ 入口指向的正是右侧档案那位英雄（选中与部件栏同源）',
+        !!pickBtn() && pickBtn().getAttribute('data-gen') === gA.id, 'sel=' + gA.id);
+      if (pickBtn()) { pickBtn().click(); await sleep(120); }
+      const onSel = () => document.querySelectorAll('#modal-root [data-action="attach-on"][data-slot="' + slot.id + '"]');
+      cA('§241E-A⑥ 选择窗真打开且列出可佩遗物（按钮数 = 库存有货件数）',
+        onSel().length === baoIds.length, '按钮 ' + onSel().length + ' / 有货 ' + baoIds.length);
+      const b1 = onSel()[0] || null;
+      const id1 = b1 ? b1.getAttribute('data-item') : '';
+      const have1 = id1 ? (st.items[id1] || 0) : -1;
+      if (b1) { b1.click(); await sleep(150); }
+      cA('§241E-A⑦ 真点「佩上」→ 挂件入档（attachOf 回读同件）',
+        !!id1 && !!G.attachOf(gA, slot.id) && G.attachOf(gA, slot.id).id === id1,
+        id1 + ' → ' + ((G.attachOf(gA, slot.id) || {}).id || 'null'));
+      cA('§241E-A⑧ 库存守恒：装 −1（扣的正是这一件）',
+        !!id1 && (st.items[id1] || 0) === have1 - 1, 'items=' + (id1 ? (st.items[id1] || 0) : '?'));
+      cA('§241E-A⑨ 装完自动关窗（选择窗内执行 → 回英雄页）',
+        document.querySelectorAll('#modal-root [data-action="attach-on"]').length === 0);
+      cA('§241E-A⑩ 部件栏入口高亮（已佩 → gold）',
+        !!pickBtn() && /\bgold\b/.test(pickBtn().getAttribute('class') || ''),
+        pickBtn() ? pickBtn().getAttribute('class') : '无');
+      const bNow = G.attachBonusOf(gA);
+      const keys5 = Object.keys(bNow).filter((k) => (bNow[k] || 0) !== 0);
+      const ebA = G.genAttrs(gA);
+      cA('§241E-A⑪ 挂件加成非零（前置 · 防「全 0 也算通过」的平凡解）',
+        keys5.length > 0, 'keys=' + keys5.join(','));
+      cA('§241E-A⑫ 挂件加成**并入**英雄总属性 genAttrs（在装备之上再相加）',
+        keys5.length > 0 && keys5.every((k) => (ebA[k] || 0) > (G.systems.genEquipBonus(gA)[k] || 0)),
+        keys5.map((k) => k + ':纯装' + (G.systems.genEquipBonus(gA)[k] || 0) + '→含挂件' + (ebA[k] || 0)).join(' '));
+      /* 真链路 2：重开选择窗 → 窗内「当前件」行的卸下键 */
+      if (pickBtn()) { pickBtn().click(); await sleep(120); }
+      const offBtn = document.querySelector('#modal-root [data-action="attach-off"][data-slot="' + slot.id + '"]');
+      cA('§241E-A⑬ 选择窗「当前件」行给出「卸下」（v89.205 迁入本窗）', !!offBtn);
+      if (offBtn) { offBtn.click(); await sleep(150); }
+      cA('§241E-A⑭ 真点「卸下」→ 槽位已空（attachOf = null）', !G.attachOf(gA, slot.id));
+      cA('§241E-A⑮ 归库守恒：库存回到原值', !!id1 && (st.items[id1] || 0) === have1,
+        'items=' + (id1 ? (st.items[id1] || 0) : '?'));
+      /* 换件守恒：窗内连点两件（A → B）—— 旧件归库、新件扣库 */
+      const idA = baoIds[0], idB = baoIds[1];
+      const onA = document.querySelector('#modal-root [data-action="attach-on"][data-item="' + idA + '"]');
+      if (onA) { onA.click(); await sleep(150); }
+      if (pickBtn()) { pickBtn().click(); await sleep(120); }
+      const onB = document.querySelector('#modal-root [data-action="attach-on"][data-item="' + idB + '"]');
+      if (onB) { onB.click(); await sleep(150); }
+      cA('§241E-A⑯ 换件守恒：新件扣库、旧件归库、回读 = 新件',
+        !!(G.attachOf(gA, slot.id) && G.attachOf(gA, slot.id).id === idB)
+        && (st.items[idA] || 0) === 1 && (st.items[idB] || 0) === 0,
+        'A=' + (st.items[idA] || 0) + ' B=' + (st.items[idB] || 0) + ' 佩=' + ((G.attachOf(gA, slot.id) || {}).id || 'null'));
+      cA('§241E-A⑰ 基数自证：挂件链真跑断言 ≥16 条（防「入口缺失 → 全跳过」的平凡通过）',
+        nA >= 16, 'n=' + nA);
+
+      /* ---------- B · 爵位晋升（真链路：底栏「君主」→ 君主面板「晋升」） ---------- */
+      const s = G.state;
+      s.rank = 0;
+      const nr = G.systems.nextRank();
+      const lordBtn = () => document.querySelector('[data-action="open-lord"]');
+      const proBtn = () => document.querySelector('#modal-root [data-action="lord-promote"]');
+      const ttl = () => (proBtn() ? (proBtn().getAttribute('title') || '') : '');
+      cB('§241E-B① 威望表在册且有下一档（DATA.RANK）', !!nr,
+        nr ? ('next=' + nr.name + ' 声望≥' + G.utils.fmt(nr.rep) + ' 旧币≥' + G.utils.fmt(nr.gold)) : '已登顶');
+      cB('§241E-B② 底栏「君主」入口在位（真导航入口 · 非直调 openLordInfo）', !!lordBtn());
+      if (lordBtn()) { lordBtn().click(); await sleep(150); }
+      cB('§241E-B③ 君主面板打开且「晋升」按钮在册', !!proBtn());
+      cB('§241E-B④ 条件不齐：悬停说「条件未满足」且出口 canPromote = false',
+        !!proBtn() && ttl().indexOf('条件：') >= 0 && ttl().indexOf('（条件已满足）') < 0
+        && !G.systems.canPromote().ok,
+        (ttl().slice(-30) || G.systems.canPromote().msg));
+      cB('§241E-B⑤ 条件不齐时**真点无效**（出口闸拦截 · 档位不动）', (function () {
+        const r0 = s.rank;
+        if (proBtn()) proBtn().click();
+        return s.rank === r0;
+      })(), 'rank=' + s.rank);
+      /* 前置造齐（逐项造 —— 顺带证明闸确实在拦） */
+      const cur0 = G.DATA.RANK[s.rank] || G.DATA.RANK[0];
+      while (s.cities.length < cur0.city) {
+        const cp = JSON.parse(JSON.stringify(s.cities[0]));
+        cp.id = 'e2e_city_' + s.cities.length; cp.name = '演武城' + s.cities.length;
+        s.cities.push(cp);
+      }
+      if (nr) {
+        s.rep = nr.rep;
+        s.res.gold = nr.gold + 100000;
+        Object.keys(nr.jewel || {}).forEach((j) => { if ((s.items[j] || 0) < nr.jewel[j]) s.items[j] = nr.jewel[j]; });
+      }
+      if (!s.mainCityId) s.mainCityId = s.cities[0].id;
+      if (lordBtn()) { lordBtn().click(); await sleep(150); }   /* 同级重绘刷新按钮态 */
+      cB('§241E-B⑥ 条件造齐后 canPromote = true（前置闸真能放行）',
+        !!G.systems.canPromote().ok, G.systems.canPromote().msg || '');
+      cB('§241E-B⑦ 面板同步放行：悬停改口「条件已满足」+ 按钮转 gold',
+        !!proBtn() && ttl().indexOf('（条件已满足）') >= 0
+        && /\bgold\b/.test(proBtn().getAttribute('class') || ''), ttl().slice(-24));
+      cB('§241E-B⑧ 按钮文案 = 下一档名（面板与出口同读一张表）',
+        !!proBtn() && !!nr && proBtn().textContent.indexOf(nr.name) >= 0,
+        proBtn() ? proBtn().textContent.trim() : '无');
+      const gold0 = s.res.gold, rank0 = s.rank;
+      const jewel0 = {};
+      if (nr) Object.keys(nr.jewel || {}).forEach((j) => { jewel0[j] = s.items[j] || 0; });
+      if (proBtn()) { proBtn().click(); await sleep(200); }
+      cB('§241E-B⑨ 真点「晋升」→ 档位 +1',
+        s.rank === rank0 + 1, rank0 + ' → ' + s.rank + '（' + ((G.DATA.RANK[s.rank] || {}).name) + '）');
+      cB('§241E-B⑩ 旧币真扣 = 下一档价目', !!nr && gold0 - s.res.gold === nr.gold,
+        '扣 ' + G.utils.fmt(gold0 - s.res.gold));
+      cB('§241E-B⑪ 珠宝真扣（逐项等于价目）',
+        !!nr && Object.keys(nr.jewel || {}).every((j) => (jewel0[j] - (s.items[j] || 0)) === nr.jewel[j]),
+        nr ? Object.keys(nr.jewel || {}).map((j) => j + ':' + jewel0[j] + '→' + (s.items[j] || 0)).join(' ') : '无珠宝项');
+      cB('§241E-B⑫ 俸禄随档（salary 读当前档）',
+        G.systems.salary() === (G.DATA.RANK[s.rank].salary || 0), 'salary=' + G.systems.salary());
+      const mainC = s.cities.filter((x) => G.isMainCity(x))[0] || null;
+      const slope = (G.DATA.MAIN_CITY || {}).buildCapPerRank || 0;
+      const liftExp = Math.max(0, Math.min(G.DATA.RANK_BUILD_LIFT_MAX || 0, Math.round(s.rank * slope)));
+      cB('§241E-B⑬ 特权随档：主城建造上限 lift = 档位 × 每档',
+        !!mainC && G.rankBuildCapOf(mainC) === liftExp && liftExp > 0,
+        'lift=' + (mainC ? G.rankBuildCapOf(mainC) : '无主城') + ' expect=' + liftExp + '（rank=' + s.rank + '）');
+      const nonMain = s.cities.filter((x) => x !== mainC)[0];
+      cB('§241E-B⑭ 口径边界：非主城不享受 lift（隔离正确）',
+        !nonMain || G.rankBuildCapOf(nonMain) === 0,
+        nonMain ? ('非主城 lift=' + G.rankBuildCapOf(nonMain)) : '无第二城');
+      /* 顶档边界：面板改口「已登顶」、晋升按钮撤下 */
+      s.rank = G.DATA.RANK.length - 1;
+      if (lordBtn()) { lordBtn().click(); await sleep(150); }
+      const lordTxt = (document.querySelector('#modal-root') || {}).textContent || '';
+      cB('§241E-B⑮ 顶档边界：按钮撤下 + 面板显示「已登顶」+ nextRank = null',
+        !proBtn() && !G.systems.nextRank() && !G.systems.canPromote().ok && lordTxt.indexOf('已登顶') >= 0,
+        'nextRank=' + !!G.systems.nextRank() + ' · 文案含已登顶=' + (lordTxt.indexOf('已登顶') >= 0));
+      cB('§241E-B⑯ 基数自证：爵位链真跑断言 ≥15 条（防「入口缺失 → 全跳过」的平凡通过）',
+        nB >= 15, 'n=' + nB);
+    } catch (e241E) {
+      check('§241E 段异常（不应发生）', false, String((e241E && e241E.message) || e241E));
+    } finally {
+      try { G.ui.closeAllModals(); } catch (e) { }
+      G.ui._genSel = bkSel; G.ui._cityId = bkCity;
+      G.state = bkSt;
+      try { G.ui.setView(bkV || 'city'); } catch (e) { }
+    }
+    check('§241E 汇总：宝具挂件 + 爵位晋升 真实 DOM 端到端全链无失败（v90.87b 覆盖缺口收口）',
+      nA >= 16 && nB >= 15 && bad241E.length === 0,
+      'A=' + nA + ' B=' + nB + (bad241E.length ? (' 失败: ' + bad241E.join(' / ')) : ''));
+  })();
+
   return finish();
 }
 
