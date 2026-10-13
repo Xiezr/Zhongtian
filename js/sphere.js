@@ -233,6 +233,7 @@
     _builtSub = sub; _builtSeed = sd;
     SP.sub = sub;
     _grid = null;                                    /* 空间哈希随之失效（V 已换）*/
+    _xyCi = null;                                    /* (x,y)→ci 记忆随之失效（地形已换）*/
     return SP;
   }
   SP.build = build;

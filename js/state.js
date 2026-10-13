@@ -651,12 +651,23 @@
     var p = GAME.addPlanet({ seed: seed, params: params });
     if (!p) { if (ui) ui.toast('生成失败'); return; }
     if (enter) {
-      GAME.loadPlanet(p.id);
-      GAME.map.generate();
+      GAME.enterPlanet(p.id);
       if (ui) { ui.closeModal(); GAME.refreshAll(); if (ui.view !== 'map') ui.setView('map'); else ui.renderMapCanvas(); ui.toast('🪐 生成并进入 ' + p.name + '（种子 ' + p.seed + '）'); }
     } else {
       if (ui) { ui.toast('🪐 已生成 ' + p.name + '（种子 ' + p.seed + '）—— 可在列表「进入」'); ui.openPlanetGen(); }
     }
+  };
+  /* v90.78：**进入某星球** —— 载入其种子/规格 + 清掉一切随星球派生的缓存 + 重投影平面网格。
+     调用方（生成/进入）共用此出口；否则换星球后旧网格/据点/奇观缓存不刷新（"看着没生成"）。 */
+  GAME.enterPlanet = function (id) {
+    var r = GAME.loadPlanet(id);
+    if (!r.ok) return r;
+    var s = GAME.state;
+    s.map.grid = null; s.map.cities = null;                 /* 清投影网格 → 重投影 + 重建 NPC 城 */
+    GAME.map._fortCand = null; GAME.map._fortLv = null; GAME.map._fortBlocks = null; GAME.map._fortRing = null;
+    GAME.map._wonderSites = null;
+    GAME.map.generate();
+    return r;
   };
 
   /* ---------------- 读档 ---------------- */

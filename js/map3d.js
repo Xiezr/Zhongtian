@@ -103,6 +103,9 @@
 
   /* cube-sphere 地形（**球面原生噪声 · 连续无缝**）：顶点全球均匀，地形直接在球面生成。*/
   function buildGlobe() {
+    /* v90.78：重建安全 —— 换星球时先移除旧的星球网格与海面（否则会**叠加**多颗球）。 */
+    if (globe) { scene.remove(globe); if (globe.geometry) globe.geometry.dispose(); globe = null; }
+    if (water) { scene.remove(water); if (water.geometry) water.geometry.dispose(); water = null; }
     var VW = K + 1;
     var FACES = [
       function (u, v) { return [1, v, u]; }, function (u, v) { return [-1, v, -u]; },
@@ -668,6 +671,11 @@
     try { ensure(); } catch (e) { M.enabled = false; return false; }
     var cw = target2d.width, ch = target2d.height;
     if (wcv.width !== cw || wcv.height !== ch) { wcv.width = cw; wcv.height = ch; R3.setSize(cw, ch, false); cam.aspect = cw / ch; cam.updateProjectionMatrix(); }
+    /* v90.78（老板「换星球后地图没变」）：**星球身份**变（种子/规格/细分）→ 强制重建几何。
+       改前 built 恒 true → 换星球后 3D 球不重建 → 看着"没生成"。 */
+    var _pver = (SP.seed3 ? SP.seed3() : 0) + '|' + (SP.sub || 0) + '|'
+      + (SP.PLANET ? (SP.PLANET.seaFrac + ',' + SP.PLANET.ridge + ',' + SP.PLANET.detail + ',' + SP.PLANET.temp) : '');
+    if (_pver !== M._pver) { M._pver = _pver; built = false; M._mkVer = null; M.region = null; M.clearBeam(); }
     if (!built) { buildGlobe(); buildTiles(TILE_SUB); buildRegions(); buildMarkers(); built = true; }
     placeCamera();
     /* 地块数**固定**（老板）：不再随缩放切换级别 —— 恒定 TILE_SUB（= 40962 块）。*/
