@@ -679,6 +679,16 @@
       if (M._sun && SP.PLANET && SP.PLANET.starColor != null) M._sun.color.setHex(SP.PLANET.starColor);   /* 恒星色温 → 光色 */
     }
     if (!built) { buildGlobe(); buildTiles(TILE_SUB); buildRegions(); buildMarkers(); built = true; }
+    /* v90.81（老板 4 · L0 自转）：地图页**静止 10 秒无操作** → 星球自动旋转（周期 = PLANET.spinSec）。
+       仅在地图页 + 已进入游戏时；任何交互（拖/滚/点）即时归零计时。 */
+    var _now = Date.now();
+    if (M._lastAct == null) M._lastAct = _now;
+    if (GAME.ui && GAME.ui.view === 'map' && GAME.state) {
+      if (_now - M._lastAct > 10000) {
+        var _spin = (SP.PLANET && SP.PLANET.spinSec) || 10;
+        camO.yaw += (2 * Math.PI / _spin) * 0.016;           /* ~60fps 步进（周期=spinSec 秒一圈）*/
+      }
+    }
     placeCamera();
     /* 地块数**固定**（老板）：不再随缩放切换级别 —— 恒定 TILE_SUB（= 40962 块）。*/
     /* 城市/据点增减/迁移（占领/迁址/放弃）→ 重建标记。v90.62（老板「移动后新城2 无色块/名称」）：
@@ -718,6 +728,16 @@
       ctx.strokeStyle = 'rgba(200,230,255,.7)'; ctx.lineWidth = 1.5; ctx.strokeRect(14, 12, tw + 22, 28);
       ctx.fillStyle = '#eaf4ff'; ctx.fillText(txt, 25, 20);
     }
+    /* v90.81：自转时自调度重绘（链式 rAF）—— 非自转态取消。 */
+    var _spinning = (GAME.ui && GAME.ui.view === 'map' && GAME.state && (Date.now() - M._lastAct > 10000));
+    if (_spinning) {
+      if (!M._spinRAF && window.requestAnimationFrame) M._spinRAF = window.requestAnimationFrame(function () {
+        M._spinRAF = null; if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
+      });
+    } else if (M._spinRAF) {
+      if (window.cancelAnimationFrame) window.cancelAnimationFrame(M._spinRAF);
+      M._spinRAF = null;
+    }
     return true;
   };
 
@@ -726,15 +746,16 @@
     canvas._m3dBound = true;
     var drag = 0, lx = 0, ly = 0, moved = false;
     function redraw() { if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas(); }
+    function touch() { M._lastAct = Date.now(); }            /* v90.81：无操作计时（自转）*/
     canvas.addEventListener('contextmenu', function (e) { e.preventDefault(); });
-    canvas.addEventListener('mousedown', function (e) { drag = 1; moved = false; lx = e.clientX; ly = e.clientY; e.preventDefault(); });
+    canvas.addEventListener('mousedown', function (e) { drag = 1; moved = false; lx = e.clientX; ly = e.clientY; touch(); e.preventDefault(); });
     window.addEventListener('mousemove', function (e) {
       if (!drag) return;
       var dx = e.clientX - lx, dy = e.clientY - ly; lx = e.clientX; ly = e.clientY;
       if (Math.abs(dx) + Math.abs(dy) > 3) moved = true;
       camO.yaw -= dx * 0.006;
       camO.pitch = Math.max(-1.4, Math.min(1.4, camO.pitch + dy * 0.006));
-      redraw();
+      touch(); redraw();
     });
     window.addEventListener('mouseup', function (e) {
       var wasDrag = drag; drag = 0;
@@ -743,7 +764,7 @@
     canvas.addEventListener('wheel', function (e) {
       e.preventDefault();
       camO.dist = Math.max(R * 1.2, Math.min(R * 8, camO.dist * (e.deltaY < 0 ? 0.9 : 1.11)));
-      redraw();
+      touch(); redraw();
     }, { passive: false });
   };
 
