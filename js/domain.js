@@ -7828,8 +7828,20 @@
   GAME.genCityOf = function (g) {
     var s = GAME.state;
     if (!g) return null;
-    var c = g.cityId ? GAME.cityById(g.cityId) : null;
-    if (c) return c;
+    if (g.cityId) {
+      var c = GAME.cityById(g.cityId);
+      if (c) return c;
+      /* v90.91：本星球找不到 → 搜**其他星球**的分片（将领可归属别星球的城）。
+         改前直接回退"当前城" → 别星球的将领被判成当前城 → **泄漏进本城名单**（老板："将领界面出现所有将领"）。 */
+      var act = s.activePlanet, sl = s.mapSlices || {};
+      for (var pid in sl) {
+        if (+pid === act) continue;
+        var cs = sl[pid].cities || [];
+        for (var i = 0; i < cs.length; i++) if (cs[i].id === g.cityId) return cs[i];
+      }
+      return null;                       /* cityId 有值但查无（未载入星球/已销毁）→ 不归属当前城 */
+    }
+    /* 无 cityId（未分配）→ 归当前城（默认口径，名单不丢人） */
     return GAME.currentCity() || (s && s.cities && s.cities[0]) || null;
   };
   /* ============================================================
