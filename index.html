@@ -2038,6 +2038,21 @@
     /* v89.88：大地图整块可点（点城池/据点/野地都会出面板）——
        原来用的是默认箭头光标，"能不能点"全靠猜。 */
     cursor: pointer; }
+  /* v90.85（老板）：星球切换**读条屏** —— 盖在画布上，进度条走到 100% 再消失（确认切换成功）。 */
+  .planet-loading { position: absolute; inset: 0; z-index: 20; display: none;
+    align-items: center; justify-content: center; background: rgba(var(--sh-rgb),.82); backdrop-filter: blur(2px); }
+  .planet-loading.on { display: flex; }
+  .planet-loading .pl-inner { width: min(420px, 70%); text-align: center;
+    background: var(--panel-bg); border: 1px solid var(--gold-dark); border-radius: var(--r-lg);
+    padding: var(--sp-7) var(--sp-7); box-shadow: inset 0 0 0 1px rgba(var(--cyan-rgb),.10), 0 8px 30px rgba(var(--sh-rgb),.6); }
+  .planet-loading .pl-title { font-size: var(--fs-h2); font-weight: 800; letter-spacing: 1px; color: var(--gold-light); }
+  .planet-loading .pl-name { margin: 6px 0 12px; color: var(--text-dim); font-size: var(--fs-sub); }
+  .planet-loading .pl-bar { height: 12px; border-radius: var(--r-md); background: var(--slab-1);
+    border: 1px solid var(--gold-dark); overflow: hidden; }
+  .planet-loading .pl-bar i { display: block; height: 100%; width: 0;
+    background: linear-gradient(180deg, var(--cyan), var(--gold)); box-shadow: 0 0 8px rgba(var(--cyan-rgb),.6);
+    transition: width .18s ease; }
+  .planet-loading .pl-pct { margin-top: 8px; color: var(--cyan); font-variant-numeric: tabular-nums; font-size: var(--fs-sub); }
   /* v90.64（老板）：右上角**行政检索**下拉（选省/市/区 → 增亮该区、其余调暗） */
   .adm-search { position: absolute; top: 14px; right: 20px; z-index: 5; display: flex; gap: 6px; align-items: flex-start; }
   .adm-search select { padding: var(--sp-1) var(--sp-3); font-size: var(--fs-sub); max-width: 150px;
@@ -4466,32 +4481,32 @@
 </div><!-- /#app-scale -->
 </div><!-- /#app-fit -->
 
-<!-- BUILD 9163 -->
-<script src="js/data.js?v=9163"></script>
-<script src="js/state.js?v=9163"></script>
-<script src="js/questdata.js?v=9163"></script>
-<script src="js/systems.js?v=9163"></script>
-<script src="js/domain.js?v=9163"></script>
-<script src="js/map.js?v=9163"></script>
+<!-- BUILD 9164 -->
+<script src="js/data.js?v=9164"></script>
+<script src="js/state.js?v=9164"></script>
+<script src="js/questdata.js?v=9164"></script>
+<script src="js/systems.js?v=9164"></script>
+<script src="js/domain.js?v=9164"></script>
+<script src="js/map.js?v=9164"></script>
 <!-- v90.69：球面世界内核（纯 JS · 拓扑/地形/几何 SSOT）—— 逻辑与 3D 渲染共用，无 THREE -->
-<script src="js/sphere.js?v=9163"></script>
+<script src="js/sphere.js?v=9164"></script>
 <!-- v90.61：Three.js 真 3D 主地图（vendor 本地，离线可用） -->
-<script src="vendor/three.min.js?v=9163"></script>
-<script src="js/map3d.js?v=9163"></script>
-<script src="js/battle.js?v=9163"></script>
+<script src="vendor/three.min.js?v=9164"></script>
+<script src="js/map3d.js?v=9164"></script>
+<script src="js/battle.js?v=9164"></script>
 <!-- v27（需求 5）：回合制文字战场。放在 battle.js 之后 —— simulate 由它接管 -->
-<script src="js/tactic.js?v=9163"></script>
-<script src="js/icons.js?v=9163"></script>
+<script src="js/tactic.js?v=9164"></script>
+<script src="js/icons.js?v=9164"></script>
 <!-- v32（需求「采用网图」）：game-icons 开源图标素材层。必须在 icons.js 之后 ——
      icons.js 内的取图函数用 typeof GICONS 延迟绑定，渲染时才真正查表。 -->
-<script src="js/gicons.js?v=9163"></script>
+<script src="js/gicons.js?v=9164"></script>
 <!-- v35：AI 位图素材登记表（汉代风，最高优先级）。同样在 icons.js 之后 ——
      取图函数用 typeof BITMAPS 延迟绑定；未登记的 id 自动回退矢量层。 -->
-<script src="js/bitmaps.js?v=9163"></script>
-<script src="js/portraits.js?v=9163"></script>
-<script src="js/story.js?v=9163"></script>
+<script src="js/bitmaps.js?v=9164"></script>
+<script src="js/portraits.js?v=9164"></script>
+<script src="js/story.js?v=9164"></script>
 <!-- ⛔ v89.218（老板「故事全部去除」）：84 卷故事库（story/）整目录删除，脚本标签同步撤除。 -->
-<script src="js/ui.js?v=9163"></script>
-<script src="js/main.js?v=9163"></script>
+<script src="js/ui.js?v=9164"></script>
+<script src="js/main.js?v=9164"></script>
 </body>
 </html>

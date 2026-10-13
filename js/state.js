@@ -662,12 +662,17 @@
     p.report = report; p.artifact = artifact;
     if (p.params) p.params.artifact = artifact;
     if (enter) {
-      GAME.enterPlanet(p.id);
-      if (ui) {
+      /* v90.85：走读条屏（确认切换成功）—— 先关菜单，让读条屏盖在地图上可见 */
+      if (ui && ui.switchPlanet) {
         ui._planetForm = null; ui._planetTab = 'list';
-        ui.closeModal(); GAME.refreshAll();
-        if (ui.view !== 'map') ui.setView('map'); else ui.renderMapCanvas();
-        ui.toast('🪐 ' + p.name + ' 生成并进入 · 宜居 ' + (report ? report.habit : '?') + '/100 · 奇观「' + artifact + '」');
+        ui.closeModal();
+        GAME.refreshAll(); if (ui.view !== 'map') ui.setView('map');
+        ui.switchPlanet(p.id, function () {
+          GAME.refreshAll(); ui.renderMapCanvas();
+          ui.toast('🪐 ' + p.name + ' 生成并进入 · 宜居 ' + (report ? report.habit : '?') + '/100 · 奇观「' + artifact + '」');
+        });
+      } else {
+        GAME.enterPlanet(p.id);
       }
     } else {
       /* 不进则还原当前球（否则"看着切走了"）*/

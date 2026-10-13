@@ -9724,6 +9724,33 @@
     var f = ui._planetFormCollect();
     return Math.round(Number(f.seed)) || ((U.now() % 900000) || 1);
   };
+  /* ============================================================
+   * v90.85（老板）：**星球切换读条屏** —— 盖读条 → 后台完成切换 → 走到 100% 再撤，
+   * 让玩家**确认切换成功**（也顺带遮住换球瞬间的重算）。
+   * 收尾回调 after() 在隐藏读条后执行（用于关弹窗/toast/刷新）。 */
+  ui.switchPlanet = function (pid, after) {
+    var ov = (document.getElementById && document.getElementById('planet-loading'));
+    var fill = (document.getElementById && document.getElementById('pl-fill'));
+    var pctE = (document.getElementById && document.getElementById('pl-pct'));
+    var nameE = (document.getElementById && document.getElementById('pl-name'));
+    var pl = null; try { GAME.planetsOf().forEach(function (x) { if (x.id === pid) pl = x; }); } catch (e) {}
+    if (nameE) nameE.textContent = pl ? ('目标：🪐 ' + pl.name + ' · 种子 ' + pl.seed) : ('星球 #' + pid);
+    var pct = 0, done = false;
+    function paint() { if (fill) fill.style.width = pct + '%'; if (pctE) pctE.textContent = pct + '%'; }
+    function finish() { if (done) return; done = true; pct = 100; paint();
+      setTimeout(function () { if (ov) ov.classList.remove('on'); if (after) after(); }, 260); }
+    if (ov) ov.classList.add('on'); paint();
+    var t = setInterval(function () { if (pct < 90) { pct += 9; paint(); } }, 60);
+    /* 切换是同步重算 → 先让读条画一帧（~170ms），再执行；执行完走到 100%。 */
+    setTimeout(function () {
+      var r = { ok: false };
+      try { r = GAME.enterPlanet(pid) || r; } catch (e) {}
+      clearInterval(t);
+      if (r && r.ok) finish();
+      else { clearInterval(t); if (ov) ov.classList.remove('on'); if (GAME.ui) GAME.ui.toast('⚠️ ' + ((r && r.msg) || '切换失败')); }
+    }, 170);
+    return true;   /* 异步：完成后 after() 触发 */
+  };
   /* --------- 英雄 --------- */
   /* --------- 英雄 --------- */
   /* ============================================================
@@ -11862,6 +11889,13 @@
       '</div>');
     return '<div class="map-wrap">' +
       '<canvas id="mapCanvas"></canvas>' +
+      /* v90.85（老板）：「星球切换读条屏」—— 切星球时盖一层进度条，让玩家**确认切换成功**。 */
+      '<div id="planet-loading" class="planet-loading"><div class="pl-inner">' +
+        '<div class="pl-title">🪐 正在进入星球…</div>' +
+        '<div class="pl-name" id="pl-name"></div>' +
+        '<div class="pl-bar"><i id="pl-fill"></i></div>' +
+        '<div class="pl-pct" id="pl-pct">0%</div>' +
+      '</div></div>' +
       /* v90.64（老板）：右上角**分级行政检索** —— 全球→省→市→区；选省/市显示下一级边界+首府+名称 */
       /* v90.68（老板）：加「己方城市 / 己方野地」检索（选中 → 光束定位）；并加**收纳按钮**：
          静止 10 秒后把这一排筛选收进侧边（只留一个按钮），点按钮再展开。 */
@@ -11950,11 +11984,13 @@
       plEl && plEl.addEventListener('change', function () {
         var pid = Number(plEl.value);
         if (pid < 0) return;                                     /* "全球 · 星球…" 占位项不切 */
-        var r = GAME.enterPlanet(pid);
-        ui._adm = { prov: -1, market: -1, district: -1 };
         if (GAME.map3d && GAME.map3d.setHighlight) GAME.map3d.setHighlight(null);
-        if (r && r.ok) { GAME.refreshAll(); ui.toast('🪐 已进入 ' + r.planet.name); }
-        ui.fillAdmSearch();
+        ui._adm = { prov: -1, market: -1, district: -1 };
+        /* v90.85：读条屏切换到该星球 */
+        ui.switchPlanet(pid, function () {
+          var pl = GAME.activePlanetOf();
+          GAME.refreshAll(); ui.fillAdmSearch(); ui.toast('🪐 已进入 ' + (pl ? pl.name : '星球'));
+        });
       });
       provEl.addEventListener('change', function () { st.prov = +provEl.value; st.market = -1; st.district = -1; ui.fillAdmSearch(); apply(); });
       mktEl.addEventListener('change', function () { st.market = +mktEl.value; st.district = -1; ui.fillAdmSearch(); apply(); });

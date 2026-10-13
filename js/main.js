@@ -231,9 +231,14 @@
       /* v90.73（老板 9）：**星球生成器** —— 打开参数面板 / 生成副本 / 进入副本 */
       case 'planet-gen-open': ui.openPlanetGen(); break;
       case 'planet-load': (function () {
-        var r = GAME.enterPlanet(Number(el.dataset.pid));
-        ui.toast(r.ok ? ('🪐 已进入 ' + r.planet.name) : ('⚠️ ' + r.msg));
-        if (r.ok) { ui.closeModal(); GAME.refreshAll(); if (ui.view !== 'map') ui.setView('map'); else ui.renderMapCanvas(); }
+        var pid = Number(el.dataset.pid);
+        /* v90.85：走读条屏（确认切换成功）*/
+        ui.switchPlanet(pid, function () {
+          var pl = GAME.activePlanetOf();
+          ui.closeModal(); GAME.refreshAll();
+          if (ui.view !== 'map') ui.setView('map'); else ui.renderMapCanvas();
+          ui.toast('🪐 已进入 ' + (pl ? pl.name : '星球'));
+        });
       })(); break;
       case 'planet-create': GAME._planetDoCreate(true); break;
       case 'planet-create-stay': GAME._planetDoCreate(false); break;
