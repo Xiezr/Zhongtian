@@ -9643,7 +9643,7 @@
     var genHTML =
       '<div class="op-zone"><div class="op-zone-t">L0 骨架</div>' +
         slider('pg-radius', 'radius', '半径', 200, 460, 10, 300, '星球大小') +
-        slider('pg-spin', 'spinSec', '自转周期', 4, 30, 1, 10, '秒（无操作自转）') +
+        slider('pg-spin', 'spinSec', '自转周期', 20, 180, 10, 60, '秒/圈（无操作 10s 后起转）') +
         slider('pg-tilt', 'tilt', '轴倾角', 0, 90, 1, 23, '度') +
         slider('pg-atmo', 'atmo', '大气', 0.0, 2.0, 0.1, 1.0, '浓密度') +
         sel('pg-star', 'starColor', '恒星色温', ui.STAR_COLORS.map(function(c) { return [c[0], c[1]]; }), 0xffe6b8) +

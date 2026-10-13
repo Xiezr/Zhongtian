@@ -679,16 +679,9 @@
       if (M._sun && SP.PLANET && SP.PLANET.starColor != null) M._sun.color.setHex(SP.PLANET.starColor);   /* 恒星色温 → 光色 */
     }
     if (!built) { buildGlobe(); buildTiles(TILE_SUB); buildRegions(); buildMarkers(); built = true; }
-    /* v90.81（老板 4 · L0 自转）：地图页**静止 10 秒无操作** → 星球自动旋转（周期 = PLANET.spinSec）。
-       仅在地图页 + 已进入游戏时；任何交互（拖/滚/点）即时归零计时。 */
-    var _now = Date.now();
-    if (M._lastAct == null) M._lastAct = _now;
-    if (GAME.ui && GAME.ui.view === 'map' && GAME.state) {
-      if (_now - M._lastAct > 10000) {
-        var _spin = (SP.PLANET && SP.PLANET.spinSec) || 10;
-        camO.yaw += (2 * Math.PI / _spin) * 0.016;           /* ~60fps 步进（周期=spinSec 秒一圈）*/
-      }
-    }
+    /* v90.81（老板 4 · L0 自转）：地图页静止 10s 无操作 → 星球按 PLANET.spinSec 自动旋转。
+       见下方 insetInterval 驱动器（每 33ms 步进 + 重绘）。 */
+    if (M._lastAct == null) M._lastAct = Date.now();
     placeCamera();
     /* 地块数**固定**（老板）：不再随缩放切换级别 —— 恒定 TILE_SUB（= 40962 块）。*/
     /* 城市/据点增减/迁移（占领/迁址/放弃）→ 重建标记。v90.62（老板「移动后新城2 无色块/名称」）：
@@ -716,6 +709,19 @@
     var ctx = target2d.getContext('2d');
     ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, cw, ch);
     ctx.drawImage(wcv, 0, 0, cw, ch);
+    /* v90.83：**当前星球标识**（左下常驻）—— 换球后一眼可辨"现在是哪颗"（生成/进入星球后即时更新）。
+       放左下：右上被地形/行政检索栏占用。 */
+    if (GAME.state && GAME.state.planets) {
+      var _ap = GAME.activePlanetOf ? GAME.activePlanetOf() : null;
+      if (_ap) {
+        var _pt = '🪐 ' + _ap.name + ' · 种子 ' + _ap.seed;
+        ctx.font = '13px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+        var _pw = ctx.measureText(_pt).width;
+        ctx.fillStyle = 'rgba(10,14,20,.78)'; ctx.fillRect(14, ch - 40, _pw + 22, 28);
+        ctx.strokeStyle = 'rgba(255,215,106,.7)'; ctx.lineWidth = 1.5; ctx.strokeRect(14, ch - 40, _pw + 22, 28);
+        ctx.fillStyle = '#ffd76a'; ctx.fillText(_pt, 25, ch - 32);
+      }
+    }
     /* 点击选中 → 画信息条（地块类型 + 等级）*/
     if (M._cell) {
       var _kname = { wild: '野地', fort: '据点', npc: '名城', adm: '行政城', own: '己方城' }[M._cellKind] || '野地';
@@ -728,16 +734,19 @@
       ctx.strokeStyle = 'rgba(200,230,255,.7)'; ctx.lineWidth = 1.5; ctx.strokeRect(14, 12, tw + 22, 28);
       ctx.fillStyle = '#eaf4ff'; ctx.fillText(txt, 25, 20);
     }
-    /* v90.81：自转时自调度重绘（链式 rAF）—— 非自转态取消。 */
-    var _spinning = (GAME.ui && GAME.ui.view === 'map' && GAME.state && (Date.now() - M._lastAct > 10000));
-    if (_spinning) {
-      if (!M._spinRAF && window.requestAnimationFrame) M._spinRAF = window.requestAnimationFrame(function () {
-        M._spinRAF = null; if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
-      });
-    } else if (M._spinRAF) {
-      if (window.cancelAnimationFrame) window.cancelAnimationFrame(M._spinRAF);
-      M._spinRAF = null;
+    /* v90.81：自转驱动器 —— 地图页静止 10s 后**每 33ms 步进 + 重绘**（setInterval，稳）。
+       非自转态（有操作 / 非地图页）自动停。 */
+    function _spinTick() {
+      var ok = GAME.ui && GAME.ui.view === 'map' && GAME.state && (Date.now() - (M._lastAct || 0) > 10000);
+      if (!ok) {
+        if (M._spinTimer) { clearInterval(M._spinTimer); M._spinTimer = null; }
+        return;
+      }
+      var _spin = (SP.PLANET && SP.PLANET.spinSec) || 60;
+      camO.yaw += (2 * Math.PI / _spin) * 0.033;             /* 每 33ms 一步 → spinSec 秒一圈 */
+      if (GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
     }
+    if (!M._spinTimer && typeof setInterval !== 'undefined') M._spinTimer = setInterval(_spinTick, 33);
     return true;
   };
 

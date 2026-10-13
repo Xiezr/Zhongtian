@@ -33,7 +33,7 @@
     cloud: 1.0,             /* L2 云量 */
     detail: 0.7,            /* 颗粒细节 */
     /* L0 骨架 */
-    radius: 300, spinSec: 10, tilt: 23, atmo: 1.0, starColor: 0xffe6b8, impact: 0,
+    radius: 300, spinSec: 60, tilt: 23, atmo: 1.0, starColor: 0xffe6b8, impact: 0,
     /* L3 生态标签（3 轴 + 经典）*/
     ecoNature: '', ecoCiv: '', ecoMood: '', ecoClassic: '',
     /* L4 游戏性 */
