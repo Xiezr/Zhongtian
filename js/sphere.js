@@ -480,5 +480,6 @@
   }
 
   GAME.createSphere = makeSphere;
-  GAME.sphere = makeSphere();   /* 逻辑球面默认实例（地图球面由启动/切换时创建）*/
+  GAME.sphere = makeSphere();       /* 逻辑球面（当前"经营城"所在星球）—— 城市/建造/科技/距离 读它 */
+  GAME.mapSphere = makeSphere();    /* 地图球面（地图在看/渲染/出征选址）—— map3d 读它；切地图星球不碰逻辑球面 */
 })();
