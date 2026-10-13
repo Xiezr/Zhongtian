@@ -44,7 +44,7 @@
    * 现在：
    *   · `canAffordIn(city, cost)` / `payCostIn(city, cost)` = **唯一收支出口**：
    *       货品（粮木石铁）查/扣**该城**库存；旧币查/扣玩家池；珠宝查 `s.items`（宝物）。
-   *   · `canAfford/payCost`（不传城）= 当前城 —— 留给"当前城语境"的流程（募兵 / 科技 / 派系…）。
+   *   · `canAfford/payCost`（不传城）= 当前城 —— 留给"当前城语境"的流程（募兵 / 科技…）。
    *   · 跨城要资源 → 走「本境调运」（资源运输）—— 这正是它的存在意义。
    * 判据唯一：界面提示（费用悬停）与内核拦截都读同一份 cost 对象，不另算一遍。
    * ============================================================ */
@@ -359,12 +359,9 @@
     return { ok: true, msg: '解散 ' + t.name + ' ×' + U.fmt(n) + '　归农 +' + U.fmt(back) + ' 幸存者', n: n, pop: back };
   };
 
-  /* --------- 城内建筑统计 --------- */
-  GAME.numBuilding = function (city, bid) {
-    var n = 0;
-    city.cells.forEach(function (c) { if (c.build && c.build.id === bid) n++; });
-    return n;
-  };
+  /* ⛔ v90.92 退役：`GAME.numBuilding`（城内某建筑计数）——
+     唯一消费点原为 `GAME.questMetric('bldCount')`，随任务系统移除后成为无引用死函数。
+     同类需求现走 `GAME.buildingLevelSum`（多建建筑等级求和）或现地 forEach。 */
   /* 同类建筑等级**求和**（v19：货仓等多建建筑用；buildingLevel 只取最高级） */
   GAME.buildingLevelSum = function (city, bid) {
     if (!city) return 0;
@@ -1652,8 +1649,6 @@
        （v89.137：三档 = −15% / −30% / −45%，上限 0.9 兜底） */
     var _ct137 = GAME.mastery('craftTimePct', city);
     if (t.craft && _ct137 > 0) totalTime = Math.round(totalTime * (1 - Math.min(0.9, _ct137)));
-    /* 派系被动（v89.86 · 玄机阁「器械打造耗时 −15%」）—— 仅器械（craft）生效 */
-    if (t.craft && GAME.sectBonus) totalTime = Math.round(totalTime * (1 - Math.min(0.5, GAME.sectBonus('craftCut'))));
     if (s.buffs && s.buffs.trainRed && s.buffs.trainRed.until > U.now()) {
       totalTime = Math.round(totalTime * (1 - s.buffs.trainRed.eff));
     }
@@ -2979,7 +2974,8 @@
       case 'fort': cur = GAME.stat('forts'); break;
       case 'rank': cur = (s.rank || 0); break;
       case 'lordLv': var lg = GAME.lordGeneralOf ? GAME.lordGeneralOf() : null; cur = lg ? (lg.level || 1) : 0; break;
-      case 'bldg': cur = GAME.questMetric ? GAME.questMetric('bldLevel', 'guanfu') : 0; break;
+      /* v90.92：原借 GAME.questMetric('bldLevel') 求值 → 内联等价（各城 guanfu 等级取最高）。 */
+      case 'bldg': cur = 0; (s.cities || []).forEach(function (c) { cur = Math.max(cur, GAME.buildingLevel(c, 'guanfu') || 0); }); break;
       case 'rep': cur = (s.rep || 0); break;
       case 'itemKind': cur = Object.keys(s.items || {}).length; break;
       case 'recruited': cur = GAME.stat('recruited'); break;
@@ -4685,7 +4681,7 @@
    * v89.86（整改 P-07）：建造 / 科技队列的**花旧币提速** —— 旧币消耗出口
    * ------------------------------------------------------------
    * 背景：后期旧币 30 万+闲置；v89.49 已给募兵队列开「花旧币买时间」，
-   *       交易站有旧币→资源、派系有捐资 —— 这里把同一把尺子接到**建造 / 科技**队列：
+   *       交易站有旧币→资源 —— 这里把同一把尺子接到**建造 / 科技**队列：
    *   立即完成价 = 工程价值 × 20% × 剩余比例（不足 1 旧币按 1 旧币）。
    * 入口：建筑面板（城内 / 城外 / 围墙施工中）与科技面板「研究中」行的 ⚡。
    * ============================================================ */
@@ -7056,14 +7052,13 @@
   /* ============================================================
    * v89.177（老板「君主的突破要求更高……综合考验」）：**综合考验唯一出口** ——
    * 返回 { n, rows:[{key,label,cur,goal,ok}], ok }；null = 未配该项（视为无考验）。
-   * 五关口径见 DATA.LORD_BREAK.trials 注释（政/城/军/资/宝）。
+   * 四关口径见 DATA.LORD_BREAK.trials 注释（城/军/资/宝）。
    * ============================================================ */
   GAME.lordTrialOf = function (g) {
     var B = DATA.LORD_BREAK, n = GAME.lordBreaksOf(g) + 1;   /* 第 n 次突破 */
     var tr = (B.trials || [])[n - 1];
     if (!tr) return null;
     var s = GAME.state;
-    var doneQ = Object.keys((s.quests && s.quests.done) || {}).length;
     var cities = (s.cities || []).length;
     var army = 0;
     (s.cities || []).forEach(function (c) { army += (GAME.armyTotal ? GAME.armyTotal(c) : 0); });
@@ -7075,7 +7070,6 @@
       if (jewelIds[k2] && (s.items[k2] || 0) > 0) jk++;
     });
     var rows = [
-      { key: 'quests', label: '政务（任务）', cur: doneQ, goal: tr.quests, ok: doneQ >= tr.quests },
       { key: 'cities', label: '城池', cur: cities, goal: tr.cities, ok: cities >= tr.cities },
       { key: 'army', label: '军队（兵力）', cur: army, goal: tr.army, ok: army >= tr.army },
       { key: 'gold', label: '资源（持旧币）', cur: gold, goal: tr.gold, ok: gold >= tr.gold },
@@ -7277,372 +7271,20 @@
     return GAME.staHpPct(GAME.staNow(g));
   };
 
-  /* --------- 任务进度（v12 指标驱动） --------- */
-  /* ---------- 指标求值 ---------- */
-  GAME.questMetric = function (metric, sub) {
-    var s = GAME.state;
-    if (!s) return 0;
-    var sst = s.stats || {};
-    var i, t, k;
-    switch (metric) {
-      case 'bldCount':
-        t = 0; (s.cities || []).forEach(function (c) { t += GAME.numBuilding(c, sub); });
-        return t;
-      case 'bldLevel':
-        t = 0; (s.cities || []).forEach(function (c) { t = Math.max(t, GAME.buildingLevel(c, sub) || 0); });
-        return t;
-      case 'bldTotal':
-        t = 0; (s.cities || []).forEach(function (c) { t += c.cells.filter(function (x) { return x.build; }).length; });
-        return t;
-      case 'extCount':
-        t = 0; (s.cities || []).forEach(function (c) {
-          (c.extGrid || []).forEach(function (e) { if (e.type === sub) t += 1; });
-        });
-        return t;
-      case 'extLevel':
-        t = 0; (s.cities || []).forEach(function (c) {
-          (c.extGrid || []).forEach(function (e) { if (e.type === sub) t = Math.max(t, e.lv); });
-        });
-        return t;
-      case 'extTotal':
-        t = 0; (s.cities || []).forEach(function (c) {
-          (c.extGrid || []).forEach(function (e) { if (e.type && !e.pending) t += 1; });
-        });
-        return t;
-      /* v89.191（老板 3-④）：科技按城 ——
-         · techLevel（任务指标"某科技等级"）取**各城最高**（有一座城到了就算到）；
-         · techTotal（势力总科技值）取**各城之和**（城越多、铺得越广，总值越高）。 */
-      case 'techLevel':
-        t = 0; (s.cities || []).forEach(function (c) { t = Math.max(t, (c.techs && c.techs[sub]) || 0); });
-        return t;
-      case 'techTotal':
-        t = 0; (s.cities || []).forEach(function (c) {
-          for (var _kk191 in (c.techs || {})) t += c.techs[_kk191];
-        });
-        return t;
-      case 'troopCount':
-        t = 0; (s.cities || []).forEach(function (c) { t += (c.army && c.army[sub]) || 0; });
-        return t;
-      case 'armyTotal':
-        t = 0; (s.cities || []).forEach(function (c) { t += GAME.armyTotal(c); });
-        return t;
-      case 'genCount': return (s.generals || []).length;
-      case 'heroCount': return (s.generals || []).filter(function (g) { return g.hero; }).length;
-      case 'cityCount': return (s.cities || []).length;
-      case 'rank': return s.rank || 0;
-      case 'rep': return s.rep || 0;
-      case 'hearts': return s.hearts || 0;
-      case 'pop': return s.res.pop || 0;
-      case 'popCap':
-        /* v89.185（老板 6）：任务口径 = **实际幸存者上限**（民心折算）——"面板写 60000、实际只能到 48000"的落差不再出现 */
-        t = 0; (s.cities || []).forEach(function (c) { t += (GAME.effPopCapOf ? GAME.effPopCapOf(c) : GAME.maxPopOf(c)); });
-        return t;
-      case 'res': return s.res[sub] || 0;
-      case 'gold': return s.res.gold || 0;
-      case 'itemOwn': return (s.items || {})[sub] || 0;
-      case 'matTotal':
-        t = 0; (DATA.MATERIAL_IDS || []).forEach(function (id) { t += (s.items || {})[id] || 0; });
-        return t;
-      case 'equipCount':
-        /* v88：机甲 + 基因两套都计入 */
-        t = 0; (s.generals || []).forEach(function (g) { t += Object.keys(g.equip || {}).length + Object.keys(g.lingEquip || {}).length; });
-        return t;
-      case 'invCount': return (s.inventory || []).length;
-      case 'forgeKinds': return (s.forged || []).length;
-      case 'wildCount': return (s.wilds || []).length;
-      case 'conquerCount': return sst.conquer || 0;
-      case 'winCount': return sst.wins || 0;
-      case 'buildDone': return sst.buildDone || 0;
-      case 'techDone': return sst.techDone || 0;
-      case 'trainTotal': return sst.trained || 0;
-      case 'forgeTotal': return sst.forgedCount || 0;
-      case 'recruitCount': return sst.recruited || 0;
-      case 'tradeCount': return sst.trades || 0;
-      default: return 0;
-    }
-  };
-
-  /* ============================================================
-   * 指标 → 人话（v25 · 需求 11）
-   * ------------------------------------------------------------
-   * 任务详情要把"需求"讲清楚，而 metric 是 `bldLevel + sub` 这种机器口径。
-   * 这里做一张模板表：不是给玩家看代码，而是给一句能读懂的军令。
-   * ============================================================ */
-  GAME.QUEST_METRIC_NEED = {
-    bldCount: '城内「{x}」达到 {g} 座', bldLevel: '「{x}」达到 {g} 级', bldTotal: '城内建筑共达 {g} 座',
-    extCount: '城外「{x}」达到 {g} 块', extLevel: '城外「{x}」达到 {g} 级', extTotal: '城外已开发 {g} 块',
-    techLevel: '科技「{x}」达到 {g} 级', techTotal: '科技总等级达 {g} 级',
-    troopCount: '「{x}」达到 {g} 名', armyTotal: '总兵力达到 {g}',
-    genCount: '麾下英雄达 {g} 人', heroCount: '麾下英雄达 {g} 人',   /* v89.188（老板 3）：任务文案中性化 */ cityCount: '据有城池 {g} 座',
-    rank: '威望达到「{r}」', rep: '声望达到 {g}', hearts: '民心达到 {g}', pop: '幸存者达到 {g}',
-    popCap: '幸存者上限达到 {g}', res: '{x} 存量达到 {g}', gold: '旧币达到 {g}',
-    itemOwn: '持有「{x}」×{g}', matTotal: '打造材料共 {g} 件', equipCount: '已穿戴装备 {g} 件',
-    invCount: '背包装备达 {g} 件', forgeKinds: '打造出 {g} 种装备', wildCount: '占领野地 {g} 块',
-    conquerCount: '累计攻占 {g} 座城池', winCount: '累计获胜 {g} 场', buildDone: '累计建造/升级 {g} 次',
-    techDone: '累计完成 {g} 项科技', trainTotal: '累计募兵 {g} 名', forgeTotal: '累计打造 {g} 件',
-    recruitCount: '累计招募英雄 {g} 人', tradeCount: '累计市易 {g} 次',
-  };
-  /* sub 的中文名（建筑/城外/兵种/科技/资源/材料/宝物 通查一遍） */
-  GAME.subName = function (id) {
-    if (!id) return '';
-    var hit = null;
-    function find(arr, key) {
-      (arr || []).forEach(function (x) { var v = x[key]; if (v === id) hit = x.name; });
-    }
-    if (DATA.BUILDINGS[id]) return DATA.BUILDINGS[id].name;
-    if (DATA.EXT_BUILDINGS[id]) return DATA.EXT_BUILDINGS[id].name;
-    if (DATA.TROOPS[id]) return DATA.TROOPS[id].name;
-    if (DATA.MATERIAL_BY_ID[id]) return DATA.MATERIAL_BY_ID[id].name;
-    find(DATA.TECH, 'id'); if (hit) return hit;
-    find(DATA.RESOURCES, 'key'); if (hit) return hit;
-    find(DATA.ITEMS, 'id'); if (hit) return hit;
-    return id;
-  };
-  /* 需求文案：一句"要什么"，外加当前进度 */
-  GAME.questNeedText = function (def) {
-    if (!def) return '';
-    var tpl = GAME.QUEST_METRIC_NEED[def.metric];
-    var g = GAME.questGoal(def);
-    if (!tpl) return (DATA.QUEST_METRIC_DESC[def.metric] || def.metric) + ' 达到 ' + g;
-    return tpl.split('{x}').join(GAME.subName(def.sub))
-      .split('{g}').join(String(g))
-      .split('{r}').join((DATA.RANK[g] || {}).name || String(g));
-  };
-
-  /* ---------- 成长型任务 ---------- */
-  GAME.questAmount = function (q) { return GAME.questMetric(q.metric, q.sub); };
-  GAME.questGoal = function (q) { return q.goal || 1; };
-  GAME.questReady = function (q) {
-    return !GAME.state.quests.done[q.id] && GAME.questAmount(q) >= GAME.questGoal(q);
-  };
-  GAME.questDone = function (q) { return !!GAME.state.quests.done[q.id]; };
-
-  GAME.claimQuest = function (qid) {
-    var s = GAME.state, q = null;
-    (DATA.QUESTS || []).forEach(function (x) { if (x.id === qid) q = x; });
-    if (!q) return { ok: false, msg: '未知任务' };
-    if (s.quests.done[qid]) return { ok: false, msg: '任务已领取' };
-    if (GAME.questAmount(q) < GAME.questGoal(q)) return { ok: false, msg: '任务尚未完成' };
-    s.quests.done[qid] = true;
-    GAME.grantReward(q.reward);
-    s.quests.log = s.quests.log || [];
-    s.quests.log.unshift({ id: q.id, title: q.title, kind: 'growth', t: U.now() });
-    GAME.log.task('完成任务：' + q.title);
-    return { ok: true, msg: '获得奖励！' };
-  };
-
-  GAME.grantReward = function (reward) {
-    var s = GAME.state;
-    if (!reward) return;
-    for (var k in reward) {
-      if (k === 'rep') { s.rep = (s.rep || 0) + reward[k]; continue; }
-      if (DATA.MATERIAL_BY_ID && DATA.MATERIAL_BY_ID[k]) {
-        s.items = s.items || {};
-        s.items[k] = (s.items[k] || 0) + reward[k];
-        continue;
-      }
-      if (!DATA.RESOURCES.some(function (r) { return r.key === k; })) {
-        /* 其余视为宝物 id */
-        s.items = s.items || {};
-        s.items[k] = (s.items[k] || 0) + reward[k];
-        continue;
-      }
-      s.res[k] = (s.res[k] || 0) + reward[k];
-    }
-  };
-
-
-  /* ---------- 随机型任务 ---------- */
-  var RQ_BY_ID = {};
-  (DATA.RANDOM_QUESTS || []).forEach(function (q) { RQ_BY_ID[q.id] = q; });
-  GAME.randomQuestDef = function (id) { return RQ_BY_ID[id] || null; };
+  /* ⛔ v90.92 退役：任务系统整条删除 —— 老板「去掉纪事剧本」中的「任务系统」。
+     本段移除出口：questMetric / QUEST_METRIC_NEED / subName /
+     questNeedText / questAmount / questGoal / questReady / questDone /
+     claimQuest / randomQuestDef / RQ_BY_ID。
+     数据目录 js/questdata.js 整文件已删；界面见 ui.js 墓碑。
+     注：GAME.questDayIndex 不随本次退役（它是通用现实日索引，
+     被战斗/野地/据点/岁贡等 20+ 处非任务用途引用）。 */
 
   GAME.questDayIndex = function () { return Math.floor(Date.now() / 86400000); };
 
-  /* 随机任务进度：abs 类读绝对值，其余读「自接取以来的增量」 */
-  GAME.randQuestAmount = function (entry) {
-    var def = RQ_BY_ID[entry.id];
-    if (!def) return 0;
-    var v = GAME.questMetric(def.metric, def.sub);
-    if (def.abs) return v;
-    return Math.max(0, v - (entry.base || 0));
-  };
-  GAME.randQuestReady = function (entry) {
-    var def = RQ_BY_ID[entry.id];
-    return !!def && GAME.randQuestAmount(entry) >= def.goal;
-  };
-
-  /* v89.86（整改 P-08）：随机任务的**可达性过滤** —— 目标必须落在当前进度够得着的范围内。
-     实测反例：幸存者上限 200 时刷出「养兵之资 0/500」（armyTotal 500），目标脱离进度。
-     判据（保守，只砍明确不可达的）：
-       · armyTotal        —— 目标 ≤ 全境幸存者上限合计（拥兵上限即幸存者上限）
-       · troopCount(sub)  —— 该兵种**已解锁**（未解锁的兵种刷出来只能干瞪眼）
-       · bldCount(sub)    —— 唯一建筑已建成时，不再刷"再建一座"
-     全部生成路径（每日刷新 / 单条换新 / 全部换新）都走 rollBatch —— 拦在这一处即可。 */
-  GAME.questReachable = function (def) {
-    if (!def) return true;
-    var s = GAME.state;
-    if (!s) return true;
-    var city = GAME.currentCity() || (s.cities || [])[0];
-    if (!city) return false;
-    if (def.metric === 'armyTotal') {
-      var popCap = 0;
-      (s.cities || []).forEach(function (ct) { popCap += (GAME.effPopCapOf ? GAME.effPopCapOf(ct) : 0) || 0; });
-      return (def.goal || 0) <= Math.max(1, popCap);
-    }
-    if (def.metric === 'troopCount' && def.sub) {
-      var t = DATA.TROOPS[def.sub];
-      if (!t) return false;
-      var u = t.unlock || {};
-      for (var k in u) {
-        if ((GAME.buildingLevel(city, k) || 0) < u[k]) return false;
-      }
-      return true;
-    }
-    if (def.metric === 'bldCount' && def.sub) {
-      var UNIQ = GAME.UNIQUE_BUILDINGS || {};
-      if (UNIQ[def.sub]) {
-        return (GAME.buildingLevel(city, def.sub) || 0) <= 0;   /* 唯一建筑已建成 → 不可达 */
-      }
-      return true;
-    }
-    return true;
-  };
-
-  /* 抽一批随机任务：同批内类型互不相同 */
-  function rollBatch(count, pool) {
-    var usedType = {}, usedId = {};
-    pool.forEach(function (e) {
-      var d = RQ_BY_ID[e.id];
-      if (d) usedType[d.type] = true;
-      usedId[e.id] = true;
-    });
-    var out = [];
-    for (var i = 0; i < count; i++) {
-      var cands = DATA.RANDOM_QUESTS.filter(function (q) {
-        return !usedType[q.type] && !usedId[q.id] && GAME.questReachable(q);   /* v89.86（P-08） */
-      });
-      if (!cands.length) {
-        cands = DATA.RANDOM_QUESTS.filter(function (q) { return !usedId[q.id] && GAME.questReachable(q); });
-      }
-      if (!cands.length) break;
-      var q = cands[Math.floor(Math.random() * cands.length)];
-      usedType[q.type] = true; usedId[q.id] = true;
-      out.push(q);
-    }
-    return out;
-  }
-
-  function makeEntry(def) {
-    return {
-      id: def.id,
-      day: GAME.questDayIndex(),
-      base: GAME.questMetric(def.metric, def.sub),
-      at: U.now(),
-    };
-  }
-
-  /* 每日刷新（tick 内调用，幂等） */
-  GAME.ensureDailyQuests = function (force) {
-    var s = GAME.state;
-    if (!s || !DATA.RANDOM_QUESTS) return 0;
-    s.quests.pool = s.quests.pool || [];
-    var today = GAME.questDayIndex();
-    if (!force && s.quests.poolDay === today) return 0;
-    var last = s.quests.poolDay == null ? today : s.quests.poolDay;
-    var daily = DATA.QUEST_DAILY;
-    /* 清理过保留期的陈年项 */
-    s.quests.pool = s.quests.pool.filter(function (e) {
-      return today - (e.day == null ? today : e.day) < (daily.keepDays || 7);
-    });
-    /* 同时在手上限（默认 5）：满则不再新增，未完成的不会被顶掉 */
-    var cap = daily.maxActive || daily.perDay || 5;
-    var days = Math.max(1, today - last);
-    var budget = (daily.perDay || 5) * days;
-    var room = Math.max(0, cap - s.quests.pool.length);
-    var want = Math.min(budget, room);
-    var batch = rollBatch(want, s.quests.pool);
-    batch.forEach(function (d2) { s.quests.pool.push(makeEntry(d2)); });
-    s.quests.poolDay = today;
-    if (batch.length) GAME.log.task('📜 新增随机任务 ' + batch.length + ' 项（每日 5 项，同时在手上限 ' + cap + '）');
-    return batch.length;
-  };
-
-  /* 换新：单条 3000 旧币；全部换新按条数计价（避免靠点击无限刷任务） */
-  GAME.randQuestRerollCost = function () { return 3000; };
-  GAME.randQuestRerollAllCost = function () {
-    var s = GAME.state;
-    return (s.quests.pool || []).length * GAME.randQuestRerollCost();
-  };
-  GAME.rerollAllRandomQuests = function () {
-    var s = GAME.state;
-    var pool = s.quests.pool || [];
-    if (!pool.length) return { ok: false, msg: '当前没有随机任务' };
-    var cost = GAME.randQuestRerollAllCost();
-    if ((s.res.gold || 0) < cost) return { ok: false, msg: '旧币不足（需 ' + U.fmt(cost) + '）' };
-    s.res.gold -= cost;
-    var batch = rollBatch(pool.length, []);
-    s.quests.pool = batch.map(function (d) { return makeEntry(d); });
-    return { ok: true, msg: '已换新 ' + batch.length + ' 项随机任务（-' + U.fmt(cost) + '旧币）' };
-  };
-  GAME.rerollRandomQuest = function (entryId) {
-    var s = GAME.state;
-    var idx = -1;
-    (s.quests.pool || []).forEach(function (e, i) { if (e.id === entryId) idx = i; });
-    if (idx < 0) return { ok: false, msg: '任务不存在' };
-    var cost = GAME.randQuestRerollCost();
-    if ((s.res.gold || 0) < cost) return { ok: false, msg: '旧币不足（需 ' + U.fmt(cost) + '）' };
-    s.res.gold -= cost;
-    var batch = rollBatch(1, s.quests.pool);
-    if (!batch.length) return { ok: false, msg: '暂无可换任务' };
-    s.quests.pool[idx] = makeEntry(batch[0]);
-    return { ok: true, msg: '已换新任务：' + batch[0].title + '（-' + U.fmt(cost) + '旧币）' };
-  };
-
-  GAME.claimRandomQuest = function (entryId) {
-    var s = GAME.state;
-    var idx = -1;
-    (s.quests.pool || []).forEach(function (e, i) { if (e.id === entryId) idx = i; });
-    if (idx < 0) return { ok: false, msg: '任务不存在或已过期' };
-    var entry = s.quests.pool[idx], def = RQ_BY_ID[entry.id];
-    if (!def) return { ok: false, msg: '未知任务' };
-    if (!GAME.randQuestReady(entry)) return { ok: false, msg: '任务尚未完成' };
-    s.quests.pool.splice(idx, 1);
-    GAME.grantReward(def.reward);
-    s.quests.log = s.quests.log || [];
-    s.quests.log.unshift({ id: def.id, title: def.title, kind: 'random', t: U.now() });
-    if (s.quests.log.length > 200) s.quests.log.length = 200;
-    GAME.log.task('完成随机任务：' + def.title);
-    return { ok: true, msg: '随机任务完成：' + def.title };
-  };
-
-  /* 兼容旧接口 */
-  GAME.advanceQuestTrain = function (troopId, count) {
-    var s = GAME.state;
-    s.quests.stash = s.quests.stash || {};
-    s.quests.stash[troopId] = (s.quests.stash[troopId] || 0) + count;
-  };
-
-  /* 供旧接口调用（攻打城池计数） */
-  GAME.advanceConquer = function () {
-    var s = GAME.state;
-    s.quests.conquerCount = (s.quests.conquerCount || 0) + 1;
-    GAME.statBump('conquer', 1);
-  };
-  GAME.checkProgressQuests = function () { };
-
-  /* ---------- 汇总（UI / 侧栏红点） ---------- */
-  GAME.questSummary = function () {
-    var s = GAME.state;
-    var growthReady = (DATA.QUESTS || []).filter(function (q) { return GAME.questReady(q); }).length;
-    var growthUndone = (DATA.QUESTS || []).filter(function (q) { return !GAME.questDone(q); }).length;
-    var randReady = (s.quests.pool || []).filter(function (e) { return GAME.randQuestReady(e); }).length;
-    return {
-      growthReady: growthReady, growthUndone: growthUndone,
-      randReady: randReady, randTotal: (s.quests.pool || []).length,
-      ready: growthReady + randReady,
-    };
-  };
+  /* ⛔ v90.92 退役：随机任务与任务汇总整条删除。
+     移除出口：randQuestAmount / randQuestReady / questReachable / ensureDailyQuests /
+     randQuestRerollCost / randQuestRerollAllCost / rerollAllRandomQuests / rerollRandomQuest /
+     claimRandomQuest / advanceQuestTrain / advanceConquer / checkProgressQuests / questSummary。 */
 
 
   /* --------- 建造进度查询（供格子/弹窗实时刷新） --------- */
@@ -8203,199 +7845,12 @@
     return { ok: true, msg: '提取 ' + got.join('、') };
   };
 
-  /* ============================================================
-   * 派系系统（v89.74 · P0）
-   * ------------------------------------------------------------
-   * 数据模型 `s.sect = { id, rep, founder, tasks:{'day':n}, leftAt }`：
-   *   · **读出口带兜底**（GAME.sectState）→ 老档不需要迁移脚本
-   *     （与君主 breaks/cultiv 同一套办法，见 v89.65 的取舍）；
-   *   · 写入只有下面这几个函数，别处不许直接改 `s.sect` 字段；
-   *   · 派系声望与君主声望**分家**：这里只碰 `sect.rep`，`s.rep` 一个字都不动。
-   * P0 零平衡影响：不给任何战斗/产量加成（那是 P1），所以没有"写进去不生效"的死数值。
-   * 门槛/费用/任务全部读 DATA（SECT_JOIN / SECT_FOUND / SECT_LEAVE / SECT_TASKS）。
-   * ============================================================ */
-  GAME.sectState = function () {
-    var s = GAME.state;
-    if (!s) return { id: null, rep: 0, founder: false, tasks: {}, leftAt: 0 };
-    if (!s.sect) s.sect = { id: null, rep: 0, founder: false, tasks: {}, leftAt: 0 };
-    var t = s.sect;
-    if (t.id === undefined) t.id = null;
-    if (t.rep == null) t.rep = 0;
-    if (t.founder == null) t.founder = false;
-    if (!t.tasks) t.tasks = {};
-    if (t.leftAt == null) t.leftAt = 0;
-    return t;
-  };
-  GAME.sectOf = function () {
-    var st = GAME.sectState();
-    return st.id ? (DATA.SECT_BY_ID[st.id] || null) : null;
-  };
-  /* v89.86（派系 P1 · 老板拍板实装）：派系被动加成 —— **唯一出口**（界面只读它，消费点只调它）。
-     加成全部落在既有消费链上（不新增战斗公式/资源类型）：
-       marchPct  行军速度      → GAME.march.speedFactor
-       atkPct    部队攻击      → battle 伤害链 atkMult（与科技/宝物/羁绊相乘）
-       siegePct  攻城伤害      → battle siegeMult（仅攻城）
-       woundPct  战后伤兵回复  → battle.returnArmy 的回收率
-       craftCut  器械打造耗时  → GAME.train（仅 craft 器械）
-       mountPct  座驾装备属性  → systems 装备汇总（与座驾改装同链相乘）
-     无派系 / 无该键 → 0 —— 无派系时各链与今日**逐字节一致**（关键回归判据）。 */
-  GAME.sectBonus = function (key) {
-    var sc = GAME.sectOf();
-    var t = sc && sc.trait;
-    if (!t || !key || t.key !== key) return 0;
-    return t.val || 0;
-  };
-  /* 派系被动文案（派系面板读取；别处不要再拼一遍） */
-  GAME.sectTraitText = function (sc) {
-    sc = sc || GAME.sectOf();
-    return (sc && sc.trait && sc.trait.text) || '—';
-  };
-  /* 品阶**不存档、由声望实时推**（拍板："品阶不存档"）——
-     免得出现"存档写着掌门、声望却不够"的自相矛盾。 */
-  GAME.sectRankIndex = function () {
-    var st = GAME.sectState(), R = DATA.SECT_RANKS || [], n = 0;
-    for (var i = 0; i < R.length; i++) if (st.rep >= R[i].rep) n = i;
-    return n;
-  };
-  GAME.sectRankOf = function () { return (DATA.SECT_RANKS || [])[GAME.sectRankIndex()] || null; };
-  GAME.sectNextRankOf = function () { return (DATA.SECT_RANKS || [])[GAME.sectRankIndex() + 1] || null; };
-  /* 当前城池的派系驻地等级（0 = 未建）。入口条件全都读它，别处不要自己查建筑。 */
-  GAME.sectBldLv = function () {
-    var c = GAME.currentCity();
-    return c ? (GAME.buildingLevel(c, 'honglusi') || 0) : 0;
-  };
-  GAME.sectTaskLeftToday = function () {
-    var st = GAME.sectState(), day = GAME.questDayIndex();
-    return Math.max(0, (DATA.SECT_TASK_PER_DAY || 0) - (st.tasks[day] || 0));
-  };
-  /* 派系费用文案：**不走** `GAME.costString` —— 那个出口挂在 ui 层
-     （`GAME.costString = ui.costString`），而冒烟测试不加载 ui.js，
-     走它会在无 ui 环境下 undefined。与 domain.js:3510 的取舍一致。 */
-  function sectCostText(cost) {
-    var parts = [];
-    for (var k in (cost || {})) {
-      if (k === 'time') continue;
-      parts.push((GAME.resName ? GAME.resName(k) : k) + ' ' + U.fmt(cost[k]));
-    }
-    return parts.length ? parts.join('　') : '无偿';
-  }
-  /* 入口体检：UI 与内核共用这一份（"两个出口"是本项目最经典的失效模式） */
-  GAME.sectChk = function () {
-    var st = GAME.sectState(), lv = GAME.sectBldLv();
-    if (lv <= 0) return { ok: false, msg: '本城尚未建造基因实验室' };
-    if (st.id) return { ok: false, msg: '你已身属' + ((GAME.sectOf() || {}).name || '派系') + '，须先退派' };
-    var cd = GAME.sectLeaveCd();
-    if (cd > 0) return { ok: false, msg: '退派未满 ' + DATA.SECT_LEAVE.cooldownDay + ' 日（余 ' + cd + ' 日）' };
-    return { ok: true, lv: lv };
-  };
-  /* 退派冷却余日（0 = 可入派） */
-  GAME.sectLeaveCd = function () {
-    var st = GAME.sectState();
-    if (!st.leftAt) return 0;
-    var pass = GAME.questDayIndex() - st.leftAt;
-    return Math.max(0, (DATA.SECT_LEAVE.cooldownDay || 0) - pass);
-  };
-  GAME.doSectJoin = function (id) {
-    var sc = DATA.SECT_BY_ID[id];
-    if (!sc) return { ok: false, msg: '没有这个派系' };
-    var chk = GAME.sectChk();
-    if (!chk.ok) return chk;
-    if (chk.lv < (DATA.SECT_JOIN.bldLv || 1)) {
-      return { ok: false, msg: '基因实验室需 Lv' + DATA.SECT_JOIN.bldLv + '（现 Lv' + chk.lv + '）' };
-    }
-    var st = GAME.sectState();
-    st.id = sc.id; st.rep = 0; st.founder = false;
-    GAME.log('入' + sc.name + '为' + (DATA.SECT_RANKS[0] || {}).name + '。');
-    return { ok: true, msg: '已入' + sc.name + '（门中品阶：' + (GAME.sectRankOf() || {}).name + '）', sect: sc };
-  };
-  GAME.doSectFound = function (id) {
-    var sc = DATA.SECT_BY_ID[id];
-    if (!sc) return { ok: false, msg: '没有这个派系' };
-    var chk = GAME.sectChk();
-    if (!chk.ok) return chk;
-    var F = DATA.SECT_FOUND;
-    if (chk.lv < (F.bldLv || 1)) {
-      return { ok: false, msg: '立派须基因实验室 Lv' + F.bldLv + '（现 Lv' + chk.lv + '）' };
-    }
-    if (!GAME.canAfford(F.cost)) return { ok: false, msg: '立派本钱不足（' + sectCostText(F.cost) + '）' };
-    GAME.payCost(F.cost);
-    var st = GAME.sectState();
-    st.id = sc.id; st.rep = 0; st.founder = true;
-    GAME.log('⚔️ 开山立派：' + sc.name + '（开山祖师）。');
-    return { ok: true, msg: '已开' + sc.name + '，你是开山祖师（任务声望 ×1.5）', sect: sc };
-  };
-  GAME.doSectLeave = function () {
-    var st = GAME.sectState();
-    var sc = GAME.sectOf();
-    if (!sc) return { ok: false, msg: '你尚未入派' };
-    st.id = null; st.rep = 0; st.founder = false; st.leftAt = GAME.questDayIndex();
-    GAME.log('退出' + sc.name + '（声望清零，' + DATA.SECT_LEAVE.cooldownDay + ' 日内不可再入派）。');
-    return { ok: true, msg: '已退出' + sc.name + '：声望清零，' + DATA.SECT_LEAVE.cooldownDay + ' 日内不可再入派' };
-  };
-  /* v89.89（老板拍板 · C3）：派系声望**唯一发放出口** ——
-     派系系统规则 §六："声望来源（全部走 sectRepGain，逐条给权重，便于审计）"。
-     来源标识 src：'task'（派系任务）/ 'conquer'（开疆拓土）……
-     返回 { ok, gain, rankUp }：rankUp = 本次跨过新阶门槛时的品阶名（无则 null）。
-     未入派一律不给（没有派系，哪来派系声望）。 */
-  GAME.sectRepGain = function (src, n) {
-    var st = GAME.sectState();
-    n = Math.max(0, Math.round(Number(n) || 0));
-    if (!st.id || !n) return { ok: false, gain: 0, rankUp: null };
-    var before = GAME.sectRankIndex();
-    st.rep += n;
-    var after = GAME.sectRankIndex();
-    return {
-      ok: true, gain: n,
-      rankUp: (after > before) ? ((DATA.SECT_RANKS || [])[after] || {}).name : null,
-    };
-  };
-
-  GAME.doSectTask = function (tid) {
-    var st = GAME.sectState(), sc = GAME.sectOf();
-    if (!sc) return { ok: false, msg: '须先入派或立派' };
-    var def = null;
-    (DATA.SECT_TASKS || []).forEach(function (x) { if (x.id === tid) def = x; });
-    if (!def) return { ok: false, msg: '没有这项派系任务' };
-    if (GAME.sectTaskLeftToday() <= 0) {
-      return { ok: false, msg: '今日派系任务已满 ' + DATA.SECT_TASK_PER_DAY + ' 件，明日再来' };
-    }
-    if (!GAME.canAfford(def.cost)) return { ok: false, msg: '不敷所费（' + sectCostText(def.cost) + '）' };
-    GAME.payCost(def.cost);
-    /* 开山祖师：任务声望 ×1.5（拍板里"立派"与"入派"的唯一实质差别，P0 只此一项） */
-    var gain = st.founder ? Math.round(def.rep * 1.5) : def.rep;
-    var day = GAME.questDayIndex();
-    /* v89.89（C3）：声望发放与晋升检测统一走 sectRepGain（与占城同一出口） */
-    var g = GAME.sectRepGain('task', gain);
-    st.tasks[day] = (st.tasks[day] || 0) + 1;
-    var up = g.rankUp ? '　🎉 晋升「' + g.rankUp + '」' : '';
-    return { ok: true, msg: def.name + '　声望 +' + gain + '（共 ' + U.fmt(st.rep) + '）' + up, rep: gain };
-  };
-
-  /* v89.86（整改 P-21）：派系任务**连做**入口 —— 复用单次出口逐次调用，
-     停止条件三重：次数用尽（n）/ 日额用尽 / 资源不够（以实际结算为准，不预检保证口径一致）。
-     n <= 0 视为「一键做完」= 按当前剩余日额。 */
-  GAME.doSectTaskBulk = function (tid, n) {
-    var left0 = GAME.sectTaskLeftToday();
-    var max = (Number(n) > 0) ? Math.min(Math.floor(Number(n)), left0) : left0;
-    if (max <= 0) return { ok: false, count: 0, rep: 0, msg: '今日派系任务已满 ' + DATA.SECT_TASK_PER_DAY + ' 件，明日再来' };
-    var done = 0, rep = 0, stopReason = '', promo = '';
-    for (var i = 0; i < max; i++) {
-      var r = GAME.doSectTask(tid);
-      if (!r.ok) { stopReason = r.msg; break; }
-      done++; rep += (r.rep || 0);
-      if (r.msg.indexOf('晋升') >= 0) {
-        var pm = r.msg.match(/🎉\s*晋升「([^」]+)」/);
-        if (pm) promo = '🎉 晋升「' + pm[1] + '」';
-      }
-    }
-    var def = null;
-    (DATA.SECT_TASKS || []).forEach(function (x) { if (x.id === tid) def = x; });
-    var name = def ? def.name : tid;
-    if (!done) return { ok: false, count: 0, rep: 0, msg: stopReason || '未能完成' };
-    return { ok: true, count: done, rep: rep, stopped: !!stopReason, stopReason: stopReason,
-      msg: name + ' ×' + done + '　声望 +' + rep
-        + (promo ? '　' + promo : '')
-        + (stopReason ? '（' + stopReason + '）' : '') };
-  };
+  /* ⛔ v90.92 退役：派系（门派）系统整条删除 —— 老板「去掉门派」。
+     移除出口：sectState / sectOf / sectBonus / sectTraitText / sectRankIndex /
+     sectRankOf / sectNextRankOf / sectBldLv / sectTaskLeftToday / sectCostText /
+     sectChk / sectLeaveCd / doSectJoin / doSectFound / doSectLeave /
+     sectRepGain / doSectTask / doSectTaskBulk。
+     消费点（战斗 atkPct/siegePct/woundPct/marchPct、器械 craftCut、座驾 mountPct）
+     的 sectBonus 项已一并摘除；数据表见 data.js 墓碑。 */
 
 })();

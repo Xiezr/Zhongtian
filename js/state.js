@@ -591,7 +591,7 @@
          ⛔ v89.218：chronicle / chronicleDone / eraHistory 三字段随史册退役
          （老档残留不再读取，随下次存档自然消失）。 */
       world: null,                              // 由 GAME.story.init() 填充
-      quests: { done: {}, stash: {}, pool: [], poolDay: null, log: [] },
+      /* v90.92：任务系统整条退役 —— s.quests 字段移除 */
       /* 累计统计（任务指标来源，跨存档保留） */
       stats: { buildDone: 0, techDone: 0, trained: 0, forgedCount: 0, recruited: 0,
                trades: 0, wins: 0, conquer: 0, itemsUsed: 0 },
@@ -728,6 +728,16 @@
      · 修复 B：某非 0 分片与老家**城完全相同**（共用/别名，早期迁移 + 导航所致）→ 清掉非 0 的那份。 */
   GAME._planetsMigrate84 = function (st) {
     st.mapSlices = st.mapSlices || {};
+    st.planets = st.planets || [];
+    /* v90.91b：**确保老家（id 0）存在** —— 老档（v90.73 前）无 planets 字段时，
+       planetsOf() 空 → addPlanet 从 1 开始编号 → **老家凭空消失**（"初始星球不见了"）。
+       此处补一个 id 0 的老家（种子 = 存档地图种子）。 */
+    var hasHome = false;
+    st.planets.forEach(function (p) { if (p && p.id === 0) hasHome = true; });
+    if (!hasHome) {
+      st.planets.unshift({ id: 0, name: '老家', seed: (st.map && st.map.seed) || 1,
+        params: (GAME.sphere && GAME.sphere.PLANET_DEFAULT) ? U.deep(GAME.sphere.PLANET_DEFAULT) : { seaFrac: 0.45, ridge: 1.5, detail: 0.7, temp: 1.0 } });
+    }
     var S = st.mapSlices, keys = Object.keys(S);
     function nCit(k) { return ((S[k] && S[k].cities) || []).length; }
     function keyOf(k) { return ((S[k] && S[k].cities) || []).map(function (c) { return c.id; }).sort().join(','); }
@@ -1532,7 +1542,7 @@
    * 映射表（唯一来源）：旧 id → 新 id。合并项（多个旧 id 落同一位）**数量相加**；
    * 队列/战术/战报等"引用型"字段**改指新 id**（同值不并）。幂等：st.troopMig229。
    * 覆盖容器：城池驻军 / 训练队列 / 行军 / 挂起战斗（atkArmy+sim.scArmy）/
-   *   采集队 / 野地驻守 / 任务储备（quests.stash）/ 战术设置表 / 战报四表。
+   *   采集队 / 野地驻守 / 战术设置表 / 战报四表。
    * 容器缺项即跳过（防御式——结构随版本演进）。
    * ============================================================ */
   GAME.TROOP_MAP_229 = {
@@ -1572,7 +1582,7 @@
     (st.wilds || []).forEach(function (w) {
       if (w && w.garrison && w.garrison.troops) fixArmy(w.garrison.troops);
     });
-    if (st.quests && st.quests.stash) fixArmy(st.quests.stash);
+    /* v90.92：任务储备（st.quests.stash）随任务系统退役（无此容器）。 */
     (function () {
       var t = st.tactics;
       if (!t || typeof t !== 'object') return;
@@ -2779,9 +2789,7 @@
       delete st.extGrid;
       /* v12 补字段：累计统计、随机任务池、材料背包 */
       if (!st.stats) st.stats = { buildDone: 0, techDone: 0, trained: 0, forgedCount: 0, recruited: 0, trades: 0, wins: 0, conquer: 0, itemsUsed: 0 };
-      if (!st.quests.pool) st.quests.pool = [];
-      if (st.quests.poolDay == null) st.quests.poolDay = null;
-      if (!st.quests.log) st.quests.log = [];
+      /* v90.92：任务系统退役 —— quests.pool/poolDay/log 老档补字段已无意义 */
       st.items = st.items || {};
       if (st.wilds === undefined) st.wilds = [];
       if (st.yieldDay === undefined) st.yieldDay = null;   // v14 岁贡：旧档首次只登记日期，不补发
@@ -3455,8 +3463,7 @@
        设计意图不符（那不是让玩家睡一觉回来发现兵没了）。 */
     if (GAME.autoMarch) GAME.autoMarch();
 
-    /* 9c) 随机任务：每现实日刷新 5 个（未完成可累积，上限 5 天） */
-    if (GAME.ensureDailyQuests) GAME.ensureDailyQuests();
+    /* 9c) ⛔ v90.92 退役：随机任务每日刷新（ensureDailyQuests）随任务系统一并移除。 */
 
     /* 9d) 辖区岁贡：按现实日结算占城的持续收益（辖区特产材料 / 旧币 / 声望） */
     if (GAME.settleDailyYield) GAME.settleDailyYield();
@@ -3480,7 +3487,7 @@
     /* 11b) v89.186（老板 3 · #6）：商旅税所 —— 我方前哨每游戏日结商税（同"游戏秒锚点"约定） */
     if (GAME.fortTaxSettle) GAME.fortTaxSettle();
 
-    GAME.checkProgressQuests();
+    /* v90.92：任务系统退役 —— 原 checkProgressQuests（进度任务检查）已删。 */
   };
 
   /* 每秒产量（含加成链：科技/宝物/英雄/野地） */
@@ -3549,7 +3556,7 @@
     if (mbProd.prod) list.push({ name: '城主治理', d: mbProd.prod });
     var wr = (s.workRate && s.workRate[r] != null) ? s.workRate[r] : 100;
     if (wr !== 100) list.push({ name: '开工率 ' + wr + '%', d: wr / 100 - 1 });
-    /* v28（需求 1）：车库/派系驻地/锻造间满级专精 —— 全城产量 +6%（逐座叠加）
+    /* v28（需求 1）：车库/基因实验室/锻造间满级专精 —— 全城产量 +6%（逐座叠加）
        （建筑 id 仍是 honglusi，v89.74 只改了显示名） */
     if (GAME.mastery) {
       var mp = (mpGlobal != null) ? mpGlobal : GAME.mastery('prodPct', null);
@@ -4030,7 +4037,7 @@
     /* v89.113（老板「守城为什么没有伤兵」）：守城战与出征**同源伤兵回收** ——
        阵亡者按 woundedRate 折算为伤兵入营（可花旧币治疗归队）。
        改前这里直接 `-= nl` 就完了，伤兵营永远空着 —— 老板实际看到的就是"守城没有伤兵"。
-       v89.186：率走**唯一出口** GAME.woundedRateOf —— 守城也吃商品/科技/派系
+       v89.186：率走**唯一出口** GAME.woundedRateOf —— 守城也吃商品/科技
        （改前只读 base，玩家买的伤兵书在守城不生效）。 */
     var wRate = GAME.woundedRateOf ? GAME.woundedRateOf(null) : 0.75;
     if (result) {
@@ -4406,7 +4413,6 @@
     var city = GAME.cityById(t.cityId);
     if (!city) return;
     city.army[t.troopId] = (city.army[t.troopId] || 0) + t.count;
-    GAME.advanceQuestTrain(t.troopId, t.count);
     GAME.statBump('trained', t.count);
     GAME.log('训练完成：' + (DATA.TROOPS[t.troopId] ? DATA.TROOPS[t.troopId].name : t.troopId) + ' ×' + t.count, 'sys', 'admin');
   };

@@ -57,7 +57,8 @@
   /* ---- 加载游戏模块（模拟 index.html 加载顺序） ---- */
   require('./js/data.js');
   require('./js/state.js');
-  require('./js/questdata.js');
+  /* ⛔ v90.92 退役：任务系统整条删除 —— js/questdata.js（任务目录分包）已删，
+     原 require('./js/questdata.js'); 一并撤除。 */
   require('./js/systems.js');
   require('./js/domain.js');
   require('./js/map.js');
@@ -205,7 +206,7 @@
 
   console.log('\n===== 0. 模块引用完整性（静态扫描）=====');
   var fsMod = require('fs'), pathMod = require('path');
-  ['data', 'state', 'questdata', 'systems', 'domain', 'map', 'battle', 'tactic', 'icons', 'portraits', 'story', 'ui', 'main'].forEach(function (f) {
+  ['data', 'state', 'systems', 'domain', 'map', 'battle', 'tactic', 'icons', 'portraits', 'story', 'ui', 'main'].forEach(function (f) {
     var src = fsMod.readFileSync(pathMod.join(__dirname, 'js', f + '.js'), 'utf8');
     var usesDollar = /(^|[^.\w$])\$\(/.test(src);
     var definesDollar = /var\s+\$\s*=/.test(src) || /function\s+\$\(/.test(src);
@@ -216,7 +217,7 @@
      「背包点击物品」等分支触发，测试若不走那条路径就发现不了。
      这里改为编译期扫描：凡出现 X. 用法，必须有 var X = 声明。 */
   ['U', 'DATA'].forEach(function (sym) {
-    ['data', 'state', 'questdata', 'systems', 'domain', 'map', 'battle', 'tactic', 'icons', 'portraits', 'story', 'ui', 'main'].forEach(function (f) {
+    ['data', 'state', 'systems', 'domain', 'map', 'battle', 'tactic', 'icons', 'portraits', 'story', 'ui', 'main'].forEach(function (f) {
       var src = fsMod.readFileSync(pathMod.join(__dirname, 'js', f + '.js'), 'utf8');
       var re = new RegExp('(^|[^.\\w$])' + sym + '\\.');
       var uses = re.test(src);
@@ -534,11 +535,12 @@
     ['城内', UI.cityHTML()], ['城外', UI.extHTML()], ['军队', UI.troopsHTML()],
     ['英雄', UI.generalsHTML()], ['装备', UI.equipHTML()], ['科技', UI.techHTML()],
     ['宝物', UI.itemsHTML()], ['威望', UI.rankHTML()], ['地图', UI.mapHTML()],
-    ['任务', UI.tasksHTML()], ['设置', UI.settingsHTML()],
+    ['设置', UI.settingsHTML()],
   ];
   var panelOk = panels.every(function (p) { return typeof p[1] === 'string' && p[1].length > 50; });
   /* v89.104：统计页退役 → 12 个主面板 */
-  check('12 个主面板全部可渲染', panelOk, panels.map(function (p) { return p[0] + ':' + p[1].length; }).join(' '));
+  /* v90.92：任务页退役 → 11 → 10 个主面板。 */
+  check('10 个主面板全部可渲染（v90.92：任务页退役）', panelOk, panels.map(function (p) { return p[0] + ':' + p[1].length; }).join(' '));
   /* v77（老板）：资源生产 / 建筑信息两个入口退役（随城池属性右三按钮）；
      附属野地保留（改由资源区下拉框「进入」触发）。 */
   var modals = [
@@ -2315,92 +2317,32 @@
     var got24 = G.battle.grantMaterials(DATA.WILD_MATERIAL.forest, 1, null);
     check('grantMaterials 实际发放材料', got24.length > 0 && S24.items.songmu > 0, got24.join('、'));
 
-    /* ---------- ③ 任务体系 ---------- */
-    console.log('  --- 任务体系（成长 + 随机） ---');
-    check('成长型任务 ≥ 50 条', DATA.QUESTS.length >= 50, DATA.QUESTS.length + ' 条');
-    check('随机型任务 ≥ 35 条', DATA.RANDOM_QUESTS.length >= 35, DATA.RANDOM_QUESTS.length + ' 条');
-    check('任务总数 ≥ 60（用户要求）', DATA.QUESTS.length + DATA.RANDOM_QUESTS.length >= 60,
-      (DATA.QUESTS.length + DATA.RANDOM_QUESTS.length) + ' 条');
-    check('成长任务全部一次性（无 repeat 字段）', DATA.QUESTS.every(function (q) { return !q.repeat; }));
-    check('每条任务都有 metric/goal/reward', DATA.QUESTS.concat(DATA.RANDOM_QUESTS).every(function (q) {
-      return q.metric && q.goal > 0 && q.reward && Object.keys(q.reward).length > 0;
-    }));
-    check('指标求值函数覆盖全部任务指标', (function () {
-      var bad = [];
-      DATA.QUESTS.concat(DATA.RANDOM_QUESTS).forEach(function (q) {
-        if (typeof G.questMetric(q.metric, q.sub) !== 'number') bad.push(q.metric);
-      });
-      return bad.length === 0;
-    })());
-    var rtypes = {};
-    DATA.RANDOM_QUESTS.forEach(function (q) { rtypes[q.type] = true; });
-    check('随机任务类型 ≥ 7 类（类型不一）', Object.keys(rtypes).length >= 7, Object.keys(rtypes).join(' '));
-    check('每类都有对应中文名', Object.keys(rtypes).every(function (t) { return !!DATA.QUEST_TYPES[t]; }));
-
-    /* 每日刷新 */
-    S24.quests.pool = [];
-    S24.quests.poolDay = null;
-    var added = G.ensureDailyQuests();
-    check('首次刷新补齐 5 项', added === 5 && S24.quests.pool.length === 5, added + ' 项');
-    check('同日重复调用不重复发放', G.ensureDailyQuests() === 0 && S24.quests.pool.length === 5);
-    check('同批内类型互不相同', (function () {
-      var t = {};
-      for (var i = 0; i < S24.quests.pool.length; i++) {
-        var d = G.randomQuestDef(S24.quests.pool[i].id);
-        if (t[d.type]) return false;
-        t[d.type] = true;
-      }
-      return true;
-    })(), S24.quests.pool.map(function (e) { return G.randomQuestDef(e.id).type; }).join(','));
-    check('刷新带基线（用于增量统计）', S24.quests.pool.every(function (e) { return typeof e.base === 'number'; }));
-    check('规则：每日 5 项 · 同时在手上限 5 项', DATA.QUEST_DAILY.perDay === 5 && DATA.QUEST_DAILY.maxActive === 5,
-      '上限 ' + DATA.QUEST_DAILY.maxActive + ' 项');
-
-    /* 累积：离线 3 天也不超过同时在手上限 */
-    S24.quests.poolDay = G.questDayIndex() - 3;
-    S24.quests.pool = [];
-    var a3 = G.ensureDailyQuests();
-    check('离线 3 天最多补至 5 项（在手上限）', a3 === 5, a3 + ' 项');
-    check('补后等于在手上限', S24.quests.pool.length === 5, S24.quests.pool.length + ' 项');
-    S24.quests.poolDay = G.questDayIndex() - 30;
-    var aCap = G.ensureDailyQuests();
-    check('满 5 项后不再新增', aCap === 0 && S24.quests.pool.length === 5, '新增 ' + aCap + '，现有 ' + S24.quests.pool.length);
-    check('未完成的随机任务不会被顶掉', S24.quests.pool.length === 5 && S24.quests.pool.every(function (e) { return !!G.randomQuestDef(e.id); }));
-
-    /* 增量型进度 */
-    var entry = S24.quests.pool[0];
-    var def = G.randomQuestDef(entry.id);
-    check('随机任务进度为增量（绝对值不会直接完成）',
-      def.abs ? G.randQuestAmount(entry) === G.questMetric(def.metric, def.sub)
-        : G.randQuestAmount(entry) === 0,
-      def.title + ' → ' + G.randQuestAmount(entry) + '/' + def.goal);
-
-    /* 全量换新计费 */
-    var goldBefore = S24.res.gold;
-    var rAll = G.rerollAllRandomQuests();
-    check('全部换新按条数计费', rAll.ok === true && S24.res.gold < goldBefore,
-      U.fmt(goldBefore) + ' → ' + U.fmt(S24.res.gold));
-    check('换新后池大小不变（不产生额外任务）', S24.quests.pool.length === aCap || S24.quests.pool.length <= 25,
-      S24.quests.pool.length + ' 项');
-
-    /* 成长任务领取与「已完成」分离 */
-    S24.res.wood = 0;
-    var q24 = DATA.QUESTS[0];
-    check('成长任务进度可读', typeof G.questAmount(q24) === 'number', q24.title + ' ' + G.questAmount(q24) + '/' + G.questGoal(q24));
-    var claimable = DATA.QUESTS.filter(function (q) { return G.questReady(q); })[0];
-    if (claimable) {
-      var before = S24.rep;
-      var cl = G.claimQuest(claimable.id);
-      check('领取成长任务奖励', cl.ok === true, claimable.title);
-      check('领取后进入 done 表（与进行中分离）', G.questDone(claimable));
-      check('领取记入已完成列表日志', (S24.quests.log || []).some(function (x) { return x.id === claimable.id; }));
-    } else {
-      check('（无满足条件的成长任务，跳过领取）', true);
-    }
-    check('questSummary 区分成长/随机', (function () {
-      var sm = G.questSummary();
-      return typeof sm.growthReady === 'number' && typeof sm.randReady === 'number' && typeof sm.ready === 'number';
-    })());
+    /* ---------- ③ 任务体系（v90.92 退役 · 零残留守卫） ---------- */
+    /* ⛔ v90.92 退役：任务系统整条删除（老板「去掉纪事剧本（任务系统）」。
+       原 ③ 段（成长 ≥50 / 随机 ≥35 / 每日刷新 5 项 / 换新计费 / 领取与 done 分离 /
+       questSummary 三分口径）整段随系统移除。本段改为**零残留守卫**：数据表、出口、
+       界面形态都不许回魂；GAME.questDayIndex（现实日锚点）**必须保留**。 */
+    console.log('  --- 任务体系（v90.92 退役 · 零残留守卫） ---');
+    check('§24③ v90.92：任务数据表整条退役（QUESTS / RANDOM_QUESTS / QUEST_TYPES / QUEST_DAILY 均无）',
+      typeof DATA.QUESTS === 'undefined' && typeof DATA.RANDOM_QUESTS === 'undefined'
+      && typeof DATA.QUEST_TYPES === 'undefined' && typeof DATA.QUEST_DAILY === 'undefined');
+    check('§24③ v90.92：任务出口整条退役（questMetric / questSummary / ensureDailyQuests / claimQuest / randomQuestDef 均无）',
+      typeof G.questMetric === 'undefined' && typeof G.questSummary === 'undefined'
+      && typeof G.ensureDailyQuests === 'undefined' && typeof G.claimQuest === 'undefined'
+      && typeof G.randomQuestDef === 'undefined' && typeof G.randQuestAmount === 'undefined'
+      && typeof G.questNeedText === 'undefined' && typeof G.questReachable === 'undefined');
+    check('§24③ v90.92：任务面板出口整条退役（ui.tasksHTML / ui.openQuestDetail / ui.questJumpOf 剥注释后无定义）',
+      (function () {
+        var uu = stripComment(uiSrc24);
+        return uu.indexOf('ui.tasksHTML = function') < 0
+          && uu.indexOf('ui.openQuestDetail = function') < 0
+          && uu.indexOf('ui.questJumpOf = function') < 0
+          && uu.indexOf('ui.msgTaskSummaryHTML = function') < 0;
+      })());
+    /* v90.92 保留说明：GAME.questDayIndex 是**现实日锚点**（存档日刷新 / 野外升级计时 /
+       据点次日重置），20+ 处非任务用途引用 —— 不随任务系统删除。正向钉住，防误删。 */
+    check('§24③ v90.92：GAME.questDayIndex 保留（现实日锚点 · 非任务专用）',
+      typeof G.questDayIndex === 'function' && typeof G.questDayIndex() === 'number');
 
     /* ---------- ④ 面板与菜单 ---------- */
     console.log('  --- 菜单去重 / 背包 / 会话日志 ---');
@@ -2448,18 +2390,15 @@
       return /GAME\.sessionLog = \[\]/.test(stSrc) && !/sessionLog/.test(stSrc.slice(stSrc.indexOf('GAME.saveGame'), stSrc.indexOf('GAME.saveGame') + 900));
     })());
     check('信息流可滚动', /\.bb-log \{ flex: 1; min-width: 0; max-height: 76px; overflow-y: auto/.test(htmlSrc24b));
-    /* v89.221（老板）规则变更：「任务有完成的任务不需要加数字显示，参考公文菜单的闪烁」——
-     数字徽标退役、任务页签改挂 .fresh。旧判据（查 tab-badge-task 元素）按新口径重写。 */
-  check('任务页签闪烁（v89.221：去数字 · 仿公文 .fresh）', (function () {
-    if (/tab-badge-task/.test(htmlSrc24b)) return false;
-    if (!/data-view="tasks"/.test(htmlSrc24b)) return false;
+    /* v90.92 退役：任务系统整条删除 —— 原 v89.221「任务页签闪烁（去数字 · 仿公文 .fresh）」
+       断言读 GAME.questSummary()，随系统移除。本判据改为**零残留守卫**。 */
+  check('v90.92：任务页签整条退役（导航无 data-view="tasks" · 闪烁钩子无 questSummary）', (function () {
+    if (/tab-badge-task/.test(stripComment(htmlSrc24b))) return false;
+    if (/data-view="tasks"/.test(stripComment(htmlSrc24b))) return false;
     var i0 = uiSrc24.indexOf('ui.syncBadges = function');
     var i1 = uiSrc24.indexOf('ui.paintNav = function');
     if (i0 < 0 || i1 <= i0) return false;
-    var blk = uiSrc24.slice(i0, i1);
-    /* ⚠ 负向判据查**可执行形态**（注释里写了"#tab-badge-task 退役"是说明，不是代码） */
-    return /classList\.toggle\('fresh', GAME\.questSummary\(\)\.ready > 0\)/.test(blk)
-      && !/\$\('#tab-badge-task'\)/.test(blk);
+    return stripComment(uiSrc24.slice(i0, i1)).indexOf('questSummary') < 0;
   })());
 
     /* 清理 */
@@ -2980,21 +2919,13 @@
     return hi > lo;
   }));
 
-  /* ---------- ⑨ 随机任务上限 5 ---------- */
-  console.log('  --- 随机任务上限 ---');
-  check('同时在手上限 = 5', DATA.QUEST_DAILY.maxActive === 5, String(DATA.QUEST_DAILY.maxActive));
-  check('每日仍刷 5 项', DATA.QUEST_DAILY.perDay === 5);
-  check('面板文案改为「同时在手上限」', /同时在手上限/.test(uiS) && !/可累积 ' \+ daily\.keepDays/.test(uiS));
-  check('满额后不再新增', (function () {
-    var s3 = G.state;
-    s3.quests.pool = [];
-    s3.quests.poolDay = G.questDayIndex() - 10;
-    G.ensureDailyQuests();
-    var n1 = s3.quests.pool.length;
-    s3.quests.poolDay = G.questDayIndex() - 20;
-    var added = G.ensureDailyQuests();
-    return n1 === 5 && added === 0 && s3.quests.pool.length === 5;
-  })());
+  /* ---------- ⑨ 随机任务上限（v90.92 退役） ---------- */
+  console.log('  --- 随机任务上限（v90.92 退役） ---');
+  check('v90.92：随机任务数据表与刷新出口退役（QUEST_DAILY · ensureDailyQuests 均无）',
+    typeof DATA.QUEST_DAILY === 'undefined' && typeof G.ensureDailyQuests === 'undefined'
+    && typeof G.questDayIndex === 'function');
+  check('v90.92：「同时在手上限」文案随任务面板整页退役（剔注释后无）',
+    stripComment(uiS).indexOf('同时在手上限') < 0);
 
   /* ---------- ⑩ 等距地块渲染（v16 重制） ---------- */
   console.log('  --- 等距地块（v16：建筑贴地 + 围墙环绕）---');
@@ -3150,9 +3081,10 @@
     var sum = G.extSummary();
     return sum.towns === 2 && sum.used === usedA0 && sum.cap === 30;
   })(), '城' + G.extSummary().towns + ' 用' + G.extSummary().used + ' 上限' + G.extSummary().cap);
-  check('任务指标 ext 系按全境合计', G.questMetric('extCount', 'farm') ===
-    V14.cities[0].extGrid.filter(function (e) { return e.type === 'farm'; }).length,
-    '净化厂 ' + G.questMetric('extCount', 'farm') + ' 块');
+  /* v90.92：任务系统退役 —— 原读 GAME.questMetric('extCount','farm')。
+     全境 ext 口径**唯一出口**是 G.extSummary()，此处改钉它（防口径漂移回魂）。 */
+  check('全境 ext 口径唯一出口 = G.extSummary（v90.92：questMetric 已退役）',
+    typeof G.questMetric === 'undefined' && G.extSummary().cap === 30 && G.extSummary().towns === 2);
 
   /* 生产遍历所有城池 */
   V14.cities[0].extGrid[0] = { id: 'e1', type: 'farm', lv: 10, pending: null };
@@ -3394,14 +3326,14 @@
     return ret === '' && /data-action="page"/.test(bar) && /第 1\/10 页/.test(bar);
   })());
   check('page 动作已注册', /case 'page': ui\.setPage/.test(mainSrc26));
-  check('任务面板接入分页（成长 / 已完成）', /ui\.pageOf\('growth'/.test(uiS) && /ui\.pageOf\('done'/.test(uiS));
-  /* v69：「可领取」浮到顶块后，成长区按**剩余项**分页 ——
-     分页口径必须三处同源（pageOf / slice / pagerHTML 都吃 growthWait），
-     否则页码数与实际行数会对不上。 */
-  check('任务卡片按页切片（不再一次铺满 50 条）',
-    /growthWait\.slice\(gp\.from, gp\.to\)/.test(uiS)
-    && /ui\.pageOf\('growth', growthWait\.length, 10\)/.test(uiS)
-    && /ui\.pagerHTML\('growth', growthWait\.length, 10\)/.test(uiS));
+  /* v90.92：任务面板整页退役 —— 原「任务面板接入分页 / 任务卡片按页切片」两条
+     （读 ui.pageOf('growth'/'done') 与 growthWait 三处同源）随系统移除。
+     改为**零残留守卫**：源码形态与出口都不许回魂。 */
+  check('v90.92：任务面板分页口径退役（pageOf(growth/done) / growthWait / tasksHTML 剥注释后无）',
+    stripComment(uiS).indexOf("pageOf('growth'") < 0
+    && stripComment(uiS).indexOf("pageOf('done'") < 0
+    && stripComment(uiS).indexOf('growthWait') < 0
+    && typeof G.ui.tasksHTML === 'undefined');
 
   /* --- ⑤ 忠诚：只降不涨的旧机制已移除 --- */
   console.log('  --- 忠诚机制 ---');
@@ -4334,13 +4266,13 @@
   check('#6 新增「行军」菜单', /data-view="marches"/.test(hS16) && /ui\.marchesHTML = function/.test(uS16));
   /* v25（需求 10）：任务与统计相邻；威望退出顶栏（并入君主）；
      游商/背包成为视图；每个菜单带手绘线描图标 */
-  check('#6 菜单分组顺序：城池·地图 ‖ 英雄·军务·任务 ‖ 游商·背包 ‖ 公文 ‖ 自动·设置（v89.218：史册/故事集退役）',
+  check('#6 菜单分组顺序：城池·地图 ‖ 英雄·军务 ‖ 游商·背包 ‖ 公文 ‖ 自动·设置（v90.92：任务页签退役）',
     (function () {
       /* v89.104（老板）：「将英雄，军务，任务放一起」＋删「统计」——
          v89.218（老板「不再保留史册，故事集」）：两页签退役 —— 新顺序：
          城池·地图 ‖ 英雄·军务·任务（三者相邻）‖ 游商·背包 ‖ 公文 ‖ 自动·设置 */
       var order = ['data-view="city"', 'data-view="map"', 'nav-sep', 'data-view="generals"', 'data-view="marches"',
-        'data-view="tasks"', 'nav-sep', 'data-view="shop"', 'data-view="bag"',
+        'nav-sep', 'data-view="shop"', 'data-view="bag"',
         'nav-sep', 'data-view="reports"', 'nav-sep', 'data-view="auto"', 'data-view="settings"'];
       var at = -1;
       for (var i = 0; i < order.length; i++) {
@@ -4378,10 +4310,11 @@
     st.settings.autoResearch = false;
     return r === null && !!(st.autoTechState && st.autoTechState.paused);
   })(), (G.state.autoTechState || {}).msg);
-  check('#9 已完成任务区块浮到最上方', (function () {
-    var iDone = uS16.indexOf('已完成</span>');
-    var iRand = uS16.indexOf('随机任务</span>');
-    return iDone > 0 && iRand > 0 && iDone < iRand;
+  /* v90.92：任务区块标题整条退役 —— 原「#9 已完成任务区块浮到最上方」读三个区块标题。 */
+  check('#9 v90.92：任务区块标题退役（已完成/随机任务/成长任务 · 剥注释后无）', (function () {
+    var uu = stripComment(uS16);
+    return uu.indexOf('已完成</span>') < 0 && uu.indexOf('随机任务</span>') < 0
+      && uu.indexOf('成长任务 · 进行中') < 0;
   })());
   check('#14 器械兵种标记 craft', !!(DATA.TROOPS.wuren.craft && DATA.TROOPS.huopao.craft && DATA.TROOPS.huopao.craft));
   check('#14 器械要求机工坊等级', ['wuren', 'huopao', 'huopao'].every(function (id) {
@@ -5312,11 +5245,11 @@
   check('公文页不再有队列一节（v29：队列迁入政务厅 · 在办事项）',
     !/ui\.sealH\('队列'/.test(uS31) && !/id="doc-queues"/.test(uS31)
     && /ui\.queueBody = function/.test(uS31) && /在办事项/.test(uS31));
-  check('菜单顺序：场景→军事（英雄/军务/任务相邻）→商背→公文→系统（v89.218：史册/故事集退役）', (function () {
+  check('菜单顺序：场景→军事（英雄/军务相邻）→商背→公文→系统（v90.92：任务页签退役）', (function () {
     /* v89.104：删「统计」+ 英雄/军务/任务相邻（老板原话见 patch 注释）
        v89.218：史册 / 故事集两页签退役 */
     var order = ['data-view="city"', 'data-view="map"', 'nav-sep', 'data-view="generals"', 'data-view="marches"',
-      'data-view="tasks"', 'nav-sep', 'data-view="shop"', 'data-view="bag"',
+      'nav-sep', 'data-view="shop"', 'data-view="bag"',
       'nav-sep', 'data-view="reports"', 'nav-sep', 'data-view="auto"', 'data-view="settings"'];
     var at = -1;
     for (var i = 0; i < order.length; i++) {
@@ -5449,7 +5382,10 @@
   /* ---- ⑨ 任务占位文案 ---- */
   console.log('  --- ⑨ 任务文案 ---');
   check('「已完成的任务收在这里…」已删除', !/已完成的任务收在这里/.test(uS31));
-  check('已完成区块标题与展开按钮仍在', /已完成<\/span>/.test(uS31) && /toggle-done-quests/.test(uS31));
+  /* v90.92：任务系统退役 → 原「已完成区块标题与展开按钮仍在」改为退役守卫。 */
+  check('v90.92：已完成区块（标题 + 展开按钮）随任务面板退役（剥注释后无）',
+    stripComment(uS31).indexOf('已完成</span>') < 0
+    && stripComment(uS31).indexOf('toggle-done-quests') < 0);
 
   /* ---- ⑩ 货仓解除数量限制 ---- */
   console.log('  --- ⑩ 货仓多建 ---');
@@ -6526,9 +6462,11 @@
 
   /* ---- 需求 5：侧栏只讲当前城 · 统计承载全局 ---- */
   console.log('  --- ⑤ 侧栏当前城 + 统计菜单 ---');
-  check('菜单顺序：英雄 → 军务 → 任务 三者相邻（统计菜单已删）',
-    /data-view="generals"[\s\S]{0,220}data-view="marches"[\s\S]{0,220}data-view="tasks"/.test(hS36)
-    && !/data-view="stats"/.test(hS36));
+  /* v90.92：任务页签退役 —— 原「英雄 → 军务 → 任务 三者相邻」改为英雄/军务相邻。 */
+  check('菜单顺序：英雄 → 军务 两者相邻（统计/任务菜单已删）',
+    /data-view="generals"[\s\S]{0,220}data-view="marches"/.test(hS36)
+    && !/data-view="stats"/.test(hS36)
+    && !/data-view="tasks"/.test(stripComment(hS36)));
   check('侧栏不再混入全境汇总', !/全境 ' \+ extAll\.towns/.test(uS36));
   /* v89.104（老板）：「统计这个菜单好像没啥用，删掉吧，将英雄，军务，任务放一起」
      —— 统计页（黄册）整体退役。判据改成"**退役门禁**"：
@@ -7056,9 +6994,10 @@
   /* v89.104：统计菜单删掉（图标 key 由 11 个减为 10 个 + auto 新位） */
   check('图标是线描且取 currentColor（跟文字同色）',
     /stroke="currentColor"/.test(iS38) && /fill="none"/.test(iS38));
-  check('英雄/军务/任务三者相邻；威望退出顶栏（统计菜单已删）',
-    /data-view="generals"[\s\S]{0,240}data-view="marches"[\s\S]{0,240}data-view="tasks"/.test(hS38)
+  check('英雄/军务两者相邻；威望退出顶栏（统计/任务菜单已删）',
+    /data-view="generals"[\s\S]{0,240}data-view="marches"/.test(hS38)
     && !/data-view="stats"/.test(hS38)
+    && !/data-view="tasks"/.test(stripComment(hS38))
     && !/data-view="rank"/.test(hS38));
   /* v77（老板）：「君主界面分左右两半……右边两列的信息表（姓名/威望/声望/幸存者/英雄/状态）」
      —— 威望区块（rankBlock）并入新面板，整块退役。 */
@@ -7073,25 +7012,19 @@
     return h.indexOf('威望') >= 0 && h.indexOf('lord-promote') >= 0 && h.indexOf('lord-split') >= 0;
   })());
 
-  /* ---- 需求 11：任务清单 + 详情弹窗 ---- */
-  console.log('  --- ⑪ 任务详情 ---');
-  check('任务列表每项只有名称与进度（不再有卡片墙）',
-    /class="q-row/.test(uS38) && /data-action="quest-detail"/.test(uS38)
-    && !/ui\.questCard = function/.test(uS38));
-  check('任务详情弹窗是固定版式（背景/需求/奖励/放弃）',
-    /ui\.openQuestDetail = function/.test(uS38)
-    && /任务背景/.test(uS38) && /任务需求/.test(uS38) && /任务奖励/.test(uS38)
-    && /size: 'sm'/.test(uS38.slice(uS38.indexOf('ui.openQuestDetail = function'),
-      uS38.indexOf('ui.openQuestDetail = function') + 3200)));
-  check('指标能翻译成人话（questNeedText + 模板表）',
-    /GAME\.QUEST_METRIC_NEED = \{/.test(dS38) && /GAME\.questNeedText = function/.test(dS38));
-  check('实测：需求文案是人话', (function () {
-    var q = DATA.QUESTS[0];
-    var txt = G.questNeedText(q);
-    return /达到|达/.test(txt) && txt.indexOf('undefined') < 0 && txt.indexOf('metric') < 0;
-  })(), G.questNeedText(DATA.QUESTS[0]));
-  check('放弃任务：随机可换、成长不可放弃（说明原因）',
-    /放弃并换一条/.test(uS38) && /成长任务不可放弃/.test(uS38));
+  /* ---- 需求 11：任务清单 + 详情弹窗（v90.92 退役 · 零残留守卫）---- */
+  console.log('  --- ⑪ 任务详情（v90.92 退役）---');
+  check('v90.92：任务清单/详情出口整条退役（q-row · quest-detail · openQuestDetail · questNeedText）', (function () {
+    var uu = stripComment(uS38), dd = stripComment(dS38);
+    return uu.indexOf('class="q-row') < 0 && uu.indexOf('data-action="quest-detail"') < 0
+      && uu.indexOf('ui.openQuestDetail = function') < 0
+      && uu.indexOf('ui.questCard = function') < 0
+      && dd.indexOf('GAME.questNeedText = function') < 0
+      && dd.indexOf('GAME.QUEST_METRIC_NEED = {') < 0
+      && typeof G.questNeedText === 'undefined' && typeof G.questMetric === 'undefined';
+  })());
+  check('v90.92：任务数据表退役（DATA.QUESTS / RANDOM_QUESTS 均无）',
+    typeof DATA.QUESTS === 'undefined' && typeof DATA.RANDOM_QUESTS === 'undefined');
 
   /* ---- 需求 12/13：信息分层 ---- */
   /* ---- 需求 1/2/3（v37） ---- */
@@ -7566,9 +7499,10 @@
     && /case 'show-help'/.test(mS38));
   check('游商不再常驻"当前旧币/单价/共 n 件"整行',
     !/当前旧币 ' \+ U\.numHTML/.test(uS38) && !/单价 = 元宝价 × 100 旧币　·　分 /.test(uS38));
-  check('游商/背包/任务的说明收进 ⓘ', (function () {
-    var sh = G.ui.shopHTML(), bh = G.ui.bagHTML(), th = G.ui.tasksHTML();
-    return /help-chip/.test(sh) && /help-chip/.test(bh) && /help-chip/.test(th);
+  /* v90.92：任务页退役；本条只留游商/背包。 */
+  check('游商/背包的说明收进 ⓘ', (function () {
+    var sh = G.ui.shopHTML(), bh = G.ui.bagHTML();
+    return /help-chip/.test(sh) && /help-chip/.test(bh);
   })());
   check('实测：ⓘ 同时带 tooltip 与点击兜底（平板无 hover）',
     /data-tip="/.test(G.ui.help('测试')) && /data-action="show-help"/.test(G.ui.help('测试')));
@@ -12526,75 +12460,36 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
     return typeof GAME.SG === 'undefined'
       && !require('fs').existsSync(require('path').join(__dirname, 'story'));
   })());
-  check('v89.74：派系 P0 骨架（六派 · 五阶 · 声望分家 · 日限 · 退派冷却 · 品阶实时推）', (function () {
-    /* 老板拍板：「5 阶（可升阶，难度极大）· 有派系专属声望与君主声望区分开」。
-       P0 零平衡影响（不给任何战斗/产量加成），所以这里全验"归属/声望/品阶/任务"。 */
-    var S = DATA.SECTS || [], R = DATA.SECT_RANKS || [];
-    if (S.length !== 6 || R.length !== 5) return false;
-    /* v89.89（C3）：门槛重估后同步（0/1000/6000/25000/60000） —— 逐阶递增校验 */
-    if (R[0].rep !== 0 || R[1].rep !== 1000 || R[2].rep !== 6000 || R[3].rep !== 25000 || R[4].rep !== 60000) return false;
-    if (!(R[0].rep < R[1].rep && R[1].rep < R[2].rep && R[2].rep < R[3].rep && R[3].rep < R[4].rep)) return false;
-    var city = G.currentCity();
-    if (!city) return false;
-    var st = G.sectState();
-    st.id = null; st.rep = 0; st.founder = false; st.tasks = {}; st.leftAt = 0;
-    /* 找一个格子临时放基因实验室（honglusi）（与 v89.48 交易站守卫同一手法：改完必还原） */
-    var cell = null;
-    (city.cells || []).forEach(function (c) { if (!cell && !c.build) cell = c; });
-    if (!cell) (city.cells || []).forEach(function (c) { if (!cell) cell = c; });
-    if (!cell) return false;
-    var saved = cell.build;
-    /* ① 没建基因实验室 → 入派与立派都必须拒（入口条件只有一个出口 GAME.sectBldLv） */
-    cell.build = null;
-    if (G.sectBldLv() !== 0) return false;
-    if (G.doSectJoin('xuanhe').ok || G.doSectFound('xuanhe').ok) return false;
-    /* ② Lv1 可入派；立派仍拒（须 Lv2） */
-    cell.build = { id: 'honglusi', lvl: 1 };
-    var j1 = G.doSectJoin('xuanhe');
-    if (!j1.ok || st.id !== 'xuanhe' || st.founder !== false) return false;
-    if (G.doSectFound('qingfeng').ok) return false;
-    /* ③ 派系声望与**君主声望分家**：做任务只动 sect.rep */
-    var lordBefore = G.state.rep || 0;
-    var t1 = G.doSectTask('chores');
-    if (!t1.ok || st.rep !== 12 || (G.state.rep || 0) !== lordBefore) return false;
-    /* ④ 每日总次数上限（否则五阶门槛形同虚设） */
-    st.tasks[G.questDayIndex()] = DATA.SECT_TASK_PER_DAY;
-    if (G.doSectTask('chores').ok) return false;
-    st.tasks = {};
-    /* ⑤ 退派：声望清零 + 3 日冷却期内不可再入派 */
-    st.rep = 5000;
-    var lv1 = G.doSectLeave();
-    if (!lv1.ok || st.rep !== 0 || st.id !== null || G.sectLeaveCd() <= 0) return false;
-    if (G.doSectJoin('xuanhe').ok) return false;
-    st.leftAt = 0;
-    /* ⑥ 开山立派：Lv2 + 本钱 → founder，且派系任务声望 ×1.5（立派与入派的唯一实质差别） */
-    G.state.res.gold = 600000; G.state.res.wood = 40000;
-    G.state.res.stone = 40000; G.state.res.iron = 20000;
-    cell.build.lvl = 2;
-    var f1 = G.doSectFound('qingfeng');
-    if (!f1.ok || !st.founder || st.id !== 'qingfeng') return false;
-    if (!G.doSectTask('chores').ok || st.rep !== 18) return false;   /* 12 × 1.5 */
-    /* ⑦ 品阶**不存档、由声望实时推**（拍板）：直接改 rep 就能看到品阶跟着走 */
-    st.rep = 60000;                       /* v89.89（C3）：新长老门槛 */
-    var rk = G.sectRankOf();
-    if (G.sectRankIndex() !== 4 || !rk || rk.name !== '长老') return false;
-    /* 还原 */
-    st.id = null; st.rep = 0; st.founder = false; st.tasks = {}; st.leftAt = 0;
-    cell.build = saved;
-    return true;
-  })());
-  check('v89.74 / v89.224：派系入口挂在建筑面板（→ open-sect）· 实验室入口同格（→ open-lab）', (function () {
-    var mS2 = require('fs').readFileSync(require('path').join(__dirname, 'js', 'main.js'), 'utf8');
-    return /honglusi:\s*\[\{\s*label: "🧬 基因实验室",\s*act: "open-lab"\s*\},\s*\{ label: "⚔️ 派系",\s*act: "open-sect"\s*\}\]/.test(uS)
-      && /ui\.openSect = function/.test(uS)
-      && /GAME\.sectState = function/.test(dmS) && /GAME\.sectChk = function/.test(dmS)
-      && /case 'open-sect'/.test(mS2) && /case 'open-lab'/.test(mS2)
-      && /case 'sect-join'/.test(mS2) && /case 'sect-found'/.test(mS2)
-      && /case 'sect-task'/.test(mS2) && /case 'sect-leave'/.test(mS2)
-      /* v89.86（老板拍板 · 派系 P1）：被动加成**已实装** —— 原 P0 的"零平衡"判据
-         升级为"由 sectBonus 唯一发放 + 无派系时全 0"的向后兼容判据
-         （消费点接线与 ×1.08 实测见 §85 派系P1 断言）。 */
-      && /GAME\.sectBonus = function/.test(dmS) && /GAME\.sectTraitText = function/.test(dmS);
+  check('v90.92：派系（门派）系统整条退役（数据表/出口/界面入口/消费点全清 · 墓碑在位）', (function () {
+    /* 老板「去掉门派」。按 §0.7 以**零残留守卫**重写原三条断言：
+       v89.74 P0 骨架 / v89.74·v89.224 入口挂建筑面板 / v89.86 派系P1 消费点接线。 */
+    var noDead = typeof DATA.SECTS === 'undefined' && typeof DATA.SECT_RANKS === 'undefined'
+      && typeof DATA.SECT_TASKS === 'undefined' && typeof DATA.SECT_JOIN === 'undefined'
+      && typeof DATA.SECT_FOUND === 'undefined' && typeof DATA.SECT_LEAVE === 'undefined'
+      && typeof DATA.SECT_CONQUER_REP === 'undefined' && typeof DATA.SECT_TASK_PER_DAY === 'undefined';
+    var noApi = typeof G.sectState === 'undefined' && typeof G.sectOf === 'undefined'
+      && typeof G.sectBonus === 'undefined' && typeof G.sectTraitText === 'undefined'
+      && typeof G.sectRankOf === 'undefined' && typeof G.sectBldLv === 'undefined'
+      && typeof G.doSectJoin === 'undefined' && typeof G.doSectFound === 'undefined'
+      && typeof G.doSectTask === 'undefined' && typeof G.doSectTaskBulk === 'undefined'
+      && typeof G.doSectLeave === 'undefined' && typeof G.sectRepGain === 'undefined';
+    /* 源码级（剥注释，防墓碑自证）：出口/入口/消费点都不得复活 */
+    var strip = function (x) { return String(x).replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, ''); };
+    var mSrc3 = require('fs').readFileSync(require('path').join(__dirname, 'js', 'main.js'), 'utf8');
+    var bNo = strip(require('fs').readFileSync(require('path').join(__dirname, 'js', 'battle.js'), 'utf8'));
+    var syNo = strip(require('fs').readFileSync(require('path').join(__dirname, 'js', 'systems.js'), 'utf8'));
+    var noSrc = !/GAME\.sect\w*\s*=\s*function/.test(strip(dmS))
+      && !/ui\.openSect\s*=/.test(strip(uS))
+      && !/sectBonus/.test(bNo) && !/sectBonus/.test(syNo)
+      && !/case 'open-sect'/.test(mSrc3) && !/case 'sect-/.test(mSrc3)
+      && !/data-action="sect-/.test(strip(uS));
+    /* 墓碑在位（三处）+ 建筑 honglusi（基因实验室）保留 */
+    var tomb = /v90\.92 .*派系（门派）系统整条删除/.test(dS)
+      && /v90\.92 .*派系（门派）系统整条删除/.test(dmS)
+      && /v90\.92 .*退役：ui\.openSect/.test(uS);
+    var keepBldg = /honglusi: \{ label: "🧬 基因实验室", act: "open-lab" \}/.test(uS)
+      && /case 'open-lab'/.test(mSrc3);
+    return noDead && noApi && noSrc && tomb && keepBldg;
   })());
   check('v89.79：档位守军 = 老板目标值（都 300万 / 州 200万 / 郡 100万 / 县 50万），梯队单调', (function () {
     var B = DATA.NPC_CITY_RES.garrisonByTier;
@@ -15017,120 +14912,23 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
         return fn(st57);
       } finally { G.state = keep; }
     };
-    withState57('任务置顶', function (st) {
-      G.ensureDailyQuests(true);
-      var pool = st.quests.pool;
-
-      /* 夹具：找一条非绝对值的随机任务（可用 base 打桩达标）
-         v83 修复（存量 flake，2~3%）：跳过 bldCount/minfang 类（r18「多盖两间」）——
-         打桩口按 (metric, sub) 拦截、无法对同一组指标返回两个值（g01/g02 已占用该指标），
-         抽中同类任务时下面四条断言会连锁假红。 */
-      var rq = null, rdef = null;
-      for (var i = 0; i < pool.length; i++) {
-        var d = G.randomQuestDef(pool[i].id);
-        if (d && !d.abs && !(d.metric === 'bldCount' && d.sub === 'minfang')) { rq = pool[i]; rdef = d; break; }
-      }
-      if (!rq) {   /* 退化兜底：万一池里只剩同指标任务，退回旧口径（不再扩大范围） */
-        for (var i2 = 0; i2 < pool.length; i2++) {
-          var d2 = G.randomQuestDef(pool[i2].id);
-          if (d2 && !d2.abs) { rq = pool[i2]; rdef = d2; break; }
-        }
-      }
-      check('夹具就绪：手上有一条非绝对值随机任务', !!rq, pool.length + ' 项在手');
-
-      /* 指标打桩：g01 居所 3 座（恰好达标）；g02 居所 6 座（未达标）；该随机任务恰好达标 */
-      var real = G.questMetric;
-      G.questMetric = function (m, sub) {
-        if (m === 'bldCount' && sub === 'minfang') return 3;
-        if (rdef && m === rdef.metric && (rdef.sub == null || sub === rdef.sub)) return rdef.goal + (rq.base || 0);
-        return 0;
-      };
-      try {
-        var html = G.ui.tasksHTML();
-        var iReady = html.indexOf('✅ 可领取奖励');
-        var iDone = html.indexOf('已完成</span>');
-        var iRand = html.indexOf('随机任务</span>');
-        var iGrowth = html.indexOf('成长任务 · 进行中');
-
-        check('★ 达标任务自动置顶（可领取块在「已完成」与各区块之上）',
-          iReady > 0 && iReady < iDone && iDone < iRand && iRand < iGrowth,
-          'ready@' + iReady + ' / done@' + iDone + ' / rand@' + iRand + ' / growth@' + iGrowth);
-
-        check('★ 顶块装的是达标项（g01 残垣立命 + 随机 ' + (rdef ? rdef.title : '—') + '）', (function () {
-          var blk = html.slice(iReady, iDone);
-          return blk.indexOf('残垣立命') >= 0 && (!rdef || blk.indexOf(rdef.title) >= 0)
-            && blk.indexOf('data-action="quest-detail"') >= 0;
-        })());
-
-        check('★ 顶块每行右侧都有「领取」按钮（按 kind 分派两个既有 action）',
-          html.indexOf('data-action="claim-quest" data-q="g01"') >= 0
-          && (!rq || html.indexOf('data-action="claim-rand-quest" data-q="' + rq.id + '"') >= 0)
-          && /<span class="q-row-act"><button class="btn gold sm"/.test(html));
-
-        check('★ 浮上去的项不再在原区块重复出现（一处占位）',
-          (html.match(/data-id="g01"/g) || []).length === 1
-          && (!rq || (html.match(new RegExp('data-id="' + rq.id + '"', 'g')) || []).length === 1));
-
-        check('未达标项不带领取按钮（g02 人烟渐聚 无 data-q）',
-          html.indexOf('人烟渐聚') >= 0 && html.indexOf('data-q="g02"') < 0);
-
-        check('顶块按钮数 == 汇总口径（单一口径，防两处算法漂移）', (function () {
-          var n = (html.match(/data-action="claim-(?:rand-)?quest" data-q=/g) || []).length;
-          return n === G.questSummary().ready;
-        })(), (html.match(/data-action="claim-(?:rand-)?quest" data-q=/g) || []).length + ' 按钮 / 汇总 ' + G.questSummary().ready + ' 项');
-
-        /* ---- 真领取：走业务函数（与按钮同一条链） ---- */
-        var r1 = rq ? G.claimRandomQuest(rq.id) : { ok: false };
-        check('★ 领取随机任务（离池 + 入流水）',
-          r1.ok === true
-          && !G.state.quests.pool.some(function (e) { return e.id === rq.id; })
-          && !!(G.state.quests.log[0] && G.state.quests.log[0].id === rq.id));
-
-        var r2 = G.claimQuest('g01');
-        check('★ 领取成长任务（标记已领取）', r2.ok === true && !!G.state.quests.done.g01);
-
-        var html2 = G.ui.tasksHTML();
-        check('★ 领取后自动从顶块与列表消失',
-          html2.indexOf('data-q="g01"') < 0
-          && html2.indexOf('data-kind="growth" data-id="g01"') < 0
-          && (!rq || (html2.indexOf('data-q="' + rq.id + '"') < 0
-            && html2.indexOf('data-kind="random" data-id="' + rq.id + '"') < 0)));
-
-        /* ---- 全部达标：原区块不重复渲染、空态指路顶块 ---- */
-        G.questMetric = function () { return 1e9; };
-        var html3 = G.ui.tasksHTML();
-        check('★ 全部达标时：原区块不重复行、空态指向顶块', (function () {
-          var n = (html3.match(/data-action="claim-(?:rand-)?quest" data-q=/g) || []).length;
-          return /本批 \d+ 项均已可领取/.test(html3)
-            && html3.indexOf('进行中的任务均已可领取') >= 0
-            && n === G.questSummary().ready;
-        })());
-
-        G.questMetric = function () { return 0; };
-        var html4 = G.ui.tasksHTML();
-        check('★ 无可领取时顶块整块隐藏（不留空壳）',
-          html4.indexOf('✅ 可领取奖励') < 0 && html4.indexOf('data-q=') < 0);
-      } finally {
-        G.questMetric = real;
-      }
-
-      /* ---- 源码层守卫 ---- */
-      check('顶块由唯一出口产出（readyItems 一处拼接：随机在前、成长在后）',
-        /var readyItems = randItems\.filter\(function \(o\) \{ return o\.ready; \}\)[\s\S]{0,80}\.concat\(growthItems\.filter/.test(u57));
-
-      check('行内按钮复用既有 action（不新造；main.js 两个 case 都在）',
-        /o\.kind === 'random' \? 'claim-rand-quest' : 'claim-quest'/.test(u57)
-        && /case 'claim-rand-quest'/.test(m57) && /case 'claim-quest'/.test(m57));
-
-      check('CSS：按钮右推 + 置顶标题着色',
-        /\.q-row-act \{[^}]*margin-left: auto/.test(h57) && /\.q-sec-ready \.q-sec-t/.test(h57));
-
-      check('帮助文案同步（置顶 + 直接领取入说明）',
-        /已完成的任务自动置顶/.test(u57) && /同时在手上限/.test(u57));
-
-      check('主循环挂了「可领取数变化→重绘任务面板」的钩子（真·自动）',
-        /GAME\._lastQuestReady/.test(m57) && /ui\.view === 'tasks'/.test(m57)
-        && /GAME\._lastQuestReady = 0;/.test(m57));
+    /* ⛔ v90.92 退役：任务系统整条删除 —— 原 §57「任务置顶」整段
+       （夹具 / 达标置顶 / 行内领取 / 主循环重绘钩子）随系统移除。
+       本段改为**零残留守卫**：状态容器、出口、源码形态都不许回魂。 */
+    withState57('任务置顶（v90.92 退役守卫）', function (st) {
+      check('v90.92：任务状态容器退役（st.quests 不再由新档创建）',
+        typeof st.quests === 'undefined');
+      check('v90.92：任务面板出口无定义（tasksHTML / openQuestDetail / questSummary）',
+        typeof G.ui.tasksHTML === 'undefined' && typeof G.ui.openQuestDetail === 'undefined'
+        && typeof G.questSummary === 'undefined' && typeof G.ensureDailyQuests === 'undefined');
+      check('v90.92：顶块源码形态清零（readyItems / claim-quest / _lastQuestReady 剔注释后无）',
+        u57.indexOf('var readyItems = randItems') < 0
+        && u57.indexOf("o.kind === 'random' ? 'claim-rand-quest' : 'claim-quest'") < 0
+        && u57.indexOf('q-sec-ready') < 0
+        && m57.indexOf("case 'claim-rand-quest'") < 0 && m57.indexOf("case 'claim-quest'") < 0
+        && m57.indexOf('_lastQuestReady') < 0);
+      check('v90.92：任务页签退役（index.html 无 data-view="tasks"）',
+        h57.indexOf('data-view="tasks"') < 0);
     });
   })();
 
@@ -18730,23 +18528,12 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       return typeof G8.autoBudgetCheck === 'undefined' && typeof G8.autoReservePct === 'undefined'
         && !/doSetAutoFin\s*=\s*function/.test(mNo) && !/autoReserveLine\s*=\s*function/.test(uNo);
     })());
-    check('v89.86（P-21）：派系任务连做（×10 计数/日额封顶/资源中止）', (function () {
-      var c = city8; c.cells = c.cells || [];
-      c.cells[9] = { build: { id: 'honglusi', lvl: 1 } };
-      st8.sect = null; G8.sectState();
-      var j = G8.doSectJoin('qingfeng');
-      if (!j.ok) return false;
-      var sst = G8.sectState();
-      sst.tasks = {}; sst.rep = 0; st8.res.gold = 5000000;
-      var day = G8.questDayIndex();
-      var r1 = G8.doSectTaskBulk('chores', 10);
-      if (!r1.ok || r1.count !== 10 || (sst.tasks[day] || 0) !== 10) return false;
-      var r2 = G8.doSectTaskBulk('chores', 0);
-      if (!r2.ok || (sst.tasks[day] || 0) !== 40) return false;
-      var r3 = G8.doSectTaskBulk('chores', 1);
-      if (r3.ok) return false;
-      if (!/data-action="sect-task-bulk"/.test(ui8)) return false;
-      return true;
+    check('v90.92（原 v89.86 P-21）：派系任务连做整条退役（doSectTaskBulk / 界面入口零残留）', (function () {
+      var uiNo = String(ui8).replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+      var mnNo = String(mn8).replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+      return typeof G8.doSectTaskBulk === 'undefined' && typeof G8.doSectTask === 'undefined'
+        && typeof G8.sectState === 'undefined'
+        && !/data-action="sect-task-bulk"/.test(uiNo) && !/case 'sect-task/.test(mnNo);
     })());
     /* v89.104（老板）：「离线推进上限解除，设置里不要这个」——
        口径改为**一律不限**：offlineCapDays 恒返回 0，补算不再截断。 */
@@ -18769,35 +18556,15 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         && global.document.querySelectorAll('#tab-badge-story').length === 0
         && ht8.indexOf('tab-badge-story') < 0;
     })());
-    check('v89.86（P-03）：任务「前往」（映射 + 建筑类定位 + 按钮）', (function () {
-      var g01 = null; (DATA.QUESTS || []).forEach(function (q) { if (q.id === 'g01') g01 = q; });
-      if (!g01) return false;
-      var j = G8.ui.questJumpOf(g01);
-      if (!j || j.view !== 'city') return false;
-      city8.cells.forEach(function (c2, i) { if (c2 && c2.build && c2.build.id === 'minfang') city8.cells[i] = {}; });
-      G8.ui.doQuestGo('growth', 'g01');
-      var h = global.document.querySelector('#modal-root').innerHTML;
-      if (h.indexOf('选择要建造的建筑') < 0) return false;
-      G8.ui.closeModal();
-      return /case 'quest-go'/.test(mn8) && /data-action="quest-go"/.test(ui8);
-    })());
-    check('v89.86（P-08）：随机任务可达性（过滤 + 生成侧无不可达 + sub 对齐）', (function () {
-      var defArmy = null; (DATA.RANDOM_QUESTS || []).forEach(function (q) { if (q.metric === 'armyTotal') defArmy = q; });
-      if (!defArmy) return false;
-      var origMaxPop = G8.maxPopOf;
-      G8.maxPopOf = function () { return 200; };
-      var bad = G8.questReachable(defArmy);
-      G8.maxPopOf = function () { return 6000; };
-      var good = G8.questReachable(defArmy);
-      G8.maxPopOf = origMaxPop;
-      /* sub 全量对齐（r07 tieqi→zhuzhan / r09 toushiche→huopao 的真 bug 守卫） */
-      var mis = 0, seenTroop = 0;
-      (DATA.RANDOM_QUESTS || []).concat(DATA.QUESTS || []).forEach(function (q) {
-        if (q.metric !== 'troopCount' || !q.sub) return;
-        seenTroop++;
-        if (!DATA.TROOPS[q.sub]) mis++;
-      });
-      return bad === false && good === true && seenTroop > 0 && mis === 0;
+    /* ⛔ v90.92 退役：任务系统整条删除 —— 原 v89.86 P-03「任务前往」/ P-08「随机任务可达性」
+       两条断言（读 DATA.QUESTS / RANDOM_QUESTS / questJumpOf / doQuestGo / questReachable）随系统移除。 */
+    check('v90.92：任务「前往」与「随机任务可达」整条退役（出口 / case / data-action 剔注释后无）', (function () {
+      var uu = stripComment(ui8), mm = stripComment(mn8);
+      return typeof G8.ui.questJumpOf === 'undefined' && typeof G8.ui.doQuestGo === 'undefined'
+        && typeof G8.questReachable === 'undefined'
+        && uu.indexOf('data-action="quest-go"') < 0
+        && mm.indexOf("case 'quest-go'") < 0
+        && typeof DATA.QUESTS === 'undefined' && typeof DATA.RANDOM_QUESTS === 'undefined';
     })());
     check('v89.86（P-07）：建造/科技队列花金提速（计价 = 20%×剩余 · 支付 · 不足拒绝）', (function () {
       st8.queues = st8.queues || { build: [], tech: [], train: [] };
@@ -18824,29 +18591,13 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })());
 
     /* ---- 派系 P1 ---- */
-    check('v89.86（派系P1）：六派被动数据齐 · 无派系全 0 · 消费点接线', (function () {
-      var miss = 0;
-      (DATA.SECTS || []).forEach(function (x) { if (!x.trait || !x.trait.key || !(x.trait.val > 0) || !x.trait.text) miss++; });
-      st8.sect = { id: null, rep: 0, founder: false, tasks: {}, leftAt: 0 };
-      var zeroAll = ['marchPct', 'atkPct', 'siegePct', 'woundPct', 'craftCut', 'mountPct']
-        .every(function (k) { return G8.sectBonus(k) === 0; });
-      var btSrc2 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'battle.js'), 'utf8');
-      var sySrc2 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'systems.js'), 'utf8');
-      var wired = /GAME\.sectBonus\('marchPct'\)/.test(btSrc2) && /GAME\.sectBonus\('atkPct'\)/.test(btSrc2)
-        && /GAME\.sectBonus\('siegePct'\)/.test(btSrc2) && /GAME\.sectBonus\('woundPct'\)/.test(btSrc2)
-        && /GAME\.sectBonus\('craftCut'\)/.test(dm8) && /GAME\.sectBonus\('mountPct'\)/.test(sySrc2);
-      return miss === 0 && zeroAll && wired;
-    })());
-    check('v89.86（派系P1）：玄鹤门行军 ×1.08（实测）', (function () {
-      var c = city8; c.cells = c.cells || [];
-      c.cells[9] = { build: { id: 'honglusi', lvl: 1 } };
-      st8.sect = { id: null, rep: 0, founder: false, tasks: {}, leftAt: 0 };
-      var gen8 = st8.generals[0]; gen8.spd = 0;
-      var base = G8.march.speedFactor({ buxingji: 100 }, { cityId: c.id }, { x: c.x + 3, y: c.y }, gen8);
-      var j = G8.doSectJoin('xuanhe');
-      if (!j.ok) return false;
-      var with8 = G8.march.speedFactor({ buxingji: 100 }, { cityId: c.id }, { x: c.x + 3, y: c.y }, gen8);
-      return Math.abs(with8 / base - 1.08) < 1e-6;
+    /* ---- v90.92：派系（门派）整条退役（原 v89.86 派系P1 两条断言） ---- */
+    check('v90.92（原 v89.86 派系P1）：被动加成消费链已摘除（战斗/器械/座驾零残留）', (function () {
+      var strip = function (x) { return String(x).replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, ''); };
+      var btSrc2 = strip(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'battle.js'), 'utf8'));
+      var sySrc2 = strip(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'systems.js'), 'utf8'));
+      return typeof G8.sectBonus === 'undefined'
+        && !/sectBonus/.test(btSrc2) && !/sectBonus/.test(sySrc2) && !/sectBonus/.test(strip(dm8));
     })());
   })();
 
@@ -19224,33 +18975,13 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     var city89 = S89.cities[0];
 
     /* ---- ① C3：派系晋升（占城来源 + 门槛重估 + 唯一出口） ---- */
-    check('v89.89（C3）：派系声望来源扩容（占城分档）+ 门槛重估（长老 60000）', (function () {
-      var R = DATA.SECT_RANKS, CQ = DATA.SECT_CONQUER_REP;
-      var okR = !!R && R.length === 5 && R[0].rep === 0 && R[1].rep === 1000 && R[2].rep === 6000
-        && R[3].rep === 25000 && R[4].rep === 60000;
-      var okC = !!CQ && CQ.county === 1500 && CQ.jun === 4000 && CQ.zhou === 12000 && CQ.capital === 30000;
-      if (!okR || !okC) return false;
-      if (!/GAME\.sectRepGain = function/.test(dS89) || !/GAME\.sectRepGain\('task', gain\)/.test(dS89)) return false;
-      if (!/GAME\.sectRepGain\('conquer'/.test(bS89)) return false;
-      /* 行为：未入派拒发 */
-      var st = G.sectState(), bak = { id: st.id, rep: st.rep, founder: st.founder };
-      st.id = null; st.rep = 0;
-      var r0 = G.sectRepGain('conquer', 5000);
-      var okReject = r0.ok === false && st.rep === 0;
-      /* 行为：入派（临时驻地）→ 发放 + 晋升检测（800+400 跨 1000） */
-      var cell = null;
-      (city89.cells || []).forEach(function (c) { if (!cell && !c.build) cell = c; });
-      if (!cell) return false;
-      var saved = cell.build;
-      cell.build = { id: 'honglusi', lvl: 1 };
-      var j = G.doSectJoin('xuanhe');
-      var r1 = G.sectRepGain('conquer', 800);
-      var r2 = G.sectRepGain('conquer', 400);
-      var okGain = j.ok && r1.ok && r1.gain === 800 && r2.rankUp === '外门弟子';
-      /* 还原 */
-      st.id = bak.id; st.rep = bak.rep; st.founder = bak.founder; st.tasks = {}; st.leftAt = 0;
-      cell.build = saved;
-      return okReject && okGain;
+    /* ---- ① v90.92：派系晋升整条退役（原 v89.89 C3 占城来源 + 门槛重估） ---- */
+    check('v90.92（原 v89.89 C3）：派系晋升整条退役（声望来源/门槛/唯一出口全清）', (function () {
+      var strip = function (x) { return String(x).replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, ''); };
+      return typeof DATA.SECT_RANKS === 'undefined' && typeof DATA.SECT_CONQUER_REP === 'undefined'
+        && typeof G.sectState === 'undefined' && typeof G.sectRepGain === 'undefined'
+        && !/sectRepGain/.test(strip(dS89)) && !/sectRepGain/.test(strip(bS89))
+        && !/SECT_CONQUER_REP/.test(strip(bS89));
     })());
 
     /* ---- ② A2：离线归来报告（快照归集 + 分类弹窗） ---- */
@@ -19290,23 +19021,14 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       return !!t && typeof t.x === 'number' && typeof t.y === 'number';
     })());
 
-    /* ---- ⑤ B1：任务一键全领（复用出口 · 无新结算路径 · 防重领） ---- */
-    check('v89.89（B1）：任务一键全领（复用 claimQuest / claimRandomQuest 出口）', (function () {
-      if (!/GAME\.doClaimAllQuests = function/.test(mS89)) return false;
-      if (!/case 'quest-claim-all': GAME\.doClaimAllQuests\(\); break;/.test(mS89)) return false;
-      if (!/data-action="quest-claim-all"/.test(uS89)) return false;
-      /* 复用两出口的证据 */
-      if (!/GAME\.claimQuest\(q\.id\)/.test(mS89) || !/GAME\.claimRandomQuest\(entry\.id\)/.test(mS89)) return false;
-      /* 行为（无副作用版）：全部标记已领 + 空池 → 一键跑不崩、不新增 */
-      var s = S89;
-      var bakDone = JSON.stringify(s.quests.done || {}), bakPool = s.quests.pool;
-      s.quests.pool = [];
-      (DATA.QUESTS || []).forEach(function (q2) { s.quests.done[q2.id] = true; });
-      var n0 = JSON.stringify(s.quests.done);
-      G.doClaimAllQuests();
-      var ok = JSON.stringify(s.quests.done) === n0;      /* 无新入账 */
-      s.quests.done = JSON.parse(bakDone); s.quests.pool = bakPool;
-      return ok;
+    /* ---- ⑤ B1：任务一键全领（v90.92 退役 · 零残留守卫）---- */
+    check('v90.92：任务一键全领整条退役（doClaimAllQuests / quest-claim-all 剔注释后无）', (function () {
+      var uu = stripComment(uS89), mm = stripComment(mS89);
+      return typeof G.doClaimAllQuests === 'undefined'
+        && typeof G.doClaimQuest === 'undefined' && typeof G.doClaimRandQuest === 'undefined'
+        && mm.indexOf('GAME.doClaimAllQuests = function') < 0
+        && mm.indexOf("case 'quest-claim-all'") < 0
+        && uu.indexOf('data-action="quest-claim-all"') < 0;
     })());
 
     /* ---- ⑥ D4：战报筛选 + 收藏 ---- */
@@ -20977,10 +20699,11 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })());
 
     console.log('  --- ⑧ 菜单与军务 ---');
-    check('⑧ 菜单：删「统计」、史册/故事集退役（v89.218）、英雄/军务/任务相邻', (function () {
+    check('⑧ 菜单：删「统计」、史册/故事集/任务退役、英雄/军务相邻', (function () {
       return !/data-view="stats"/.test(h4) && !/data-view="stories"/.test(h4)
         && !/data-view="story"/.test(h4)
-        && /data-view="generals"[\s\S]{0,260}data-view="marches"[\s\S]{0,260}data-view="tasks"/.test(h4);
+        && !/data-view="tasks"/.test(stripComment(h4))
+        && /data-view="generals"[\s\S]{0,260}data-view="marches"/.test(h4);
     })());
     check('⑧ 军务四页签：总览 / 出征 / 防守 / 军务处（动作全接既有出口）', (function () {
       return /ui\.MARCH_TABS = \[\['over'/.test(u4) && /ui\.marchTabHTML = function/.test(u4)
@@ -21478,11 +21201,11 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   (function () {
     var uD = stripComment(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'ui.js'), 'utf8'));
     var mD = stripComment(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'main.js'), 'utf8'));
-    /* v89.138（老板 0）：gather-abandon 退役（召回统一走 wild-withdraw）——
-       清单改为 5 个 ask+do 对 + 1 个"同 case 上膛式"（wild-withdraw / city-abandon-arm）。 */
-    var PAIRS = ['troop-disband', 'salvage-equip', 'cancel-build',
-      'reroll-rand-quest', 'reroll-all-rand'];
-    check('① 六个销毁性动作全部两段式（ask+do 双 case · 无裸入口 · do 只在确认弹窗里）', (function () {
+    /* v89.138（老板 0）：gather-abandon 退役（召回统一走 wild-withdraw）。
+       v90.92：任务系统退役 → reroll-rand-quest / reroll-all-rand 两个危险动作随任务页移除。
+       清单 = 3 个 ask+do 对 + 2 个"同 case 上膛式"（wild-withdraw / city-abandon-arm）。 */
+    var PAIRS = ['troop-disband', 'salvage-equip', 'cancel-build'];
+    check('① 五个销毁性动作全部两段式（ask+do 双 case · 无裸入口 · do 只在确认弹窗里）', (function () {
       var bad = [];
       PAIRS.forEach(function (b) {
         if (!new RegExp("case '" + b + "-ask'").test(mD)) bad.push(b + ' 缺 ask');
@@ -21496,9 +21219,9 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       if (bad.length) console.log('     ' + bad.join('，'));
       return bad.length === 0;
     })());
-    check('② 确认弹窗唯一出口齐备（v89.138：openGatherAbandonAsk 退役 → 五件套 + 两个上膛式）', (function () {
+    check('② 确认弹窗唯一出口齐备（v89.138 五件套 → v90.92 任务退役后三件套 + 两个上膛式）', (function () {
       var need = ['openDisbandConfirm', 'openSalvageConfirm',
-        'openCancelBuildAsk', 'openRerollRandAsk', 'openRerollAllAsk'];
+        'openCancelBuildAsk'];
       var bad = need.filter(function (f) { return !new RegExp('ui\\.' + f + ' = function').test(uD); });
       if (bad.length) console.log('     缺：' + bad.join('，'));
       return bad.length === 0;
@@ -21837,7 +21560,9 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var dense = ['.res-line', '.attr', '.notice-box .nt-row'];
       /* v89.218：'.chron-item'（纪事条目）随史册退役 → 换 '.sv-row'（存档行 · 同为标准条目档）。 */
       var mid = ['.doc-bar', '.sv-row', '.store-row'];
-      var card = ['.q-row', '.item-row', '.bag-cell'];
+      /* v90.92：'.q-row'（任务行）随任务页退役 → 换 '.xc-row'（练兵场演武选将行，
+         同属卡片族 `padding: var(--sp-3)`；见 index.html 卡片族合并规则）。 */
+      var card = ['.xc-row', '.item-row', '.bag-cell'];
       var all = dense.concat(mid).concat(card);
       var vals = all.map(function (s0) { return vpadOf(s0); });
       if (vals.indexOf(null) >= 0) return false;
@@ -24808,7 +24533,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   (function () {
     var fs115 = require('fs'), path115 = require('path');
     var dS115 = fs115.readFileSync(path115.join(__dirname, 'js', 'data.js'), 'utf8');
-    var qS115 = fs115.readFileSync(path115.join(__dirname, 'js', 'questdata.js'), 'utf8');
+    /* v90.92：任务系统退役 —— js/questdata.js 已删，原 qS115 读取撤除。 */
     var sS115 = fs115.readFileSync(path115.join(__dirname, 'js', 'state.js'), 'utf8');
     var uS115 = fs115.readFileSync(path115.join(__dirname, 'js', 'ui.js'), 'utf8');
     var bS115 = fs115.readFileSync(path115.join(__dirname, 'js', 'battle.js'), 'utf8');
@@ -24823,19 +24548,18 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       && typeof DATA.ZOOM_LEVELS === 'undefined' && typeof DATA.WILD_ADD === 'undefined'
       && typeof DATA.QUEST_TYPE_ORDER === 'undefined');
 
-    check('§115① 墓碑在位（改表的人能找到去向与理由）',
+    check('§115① 墓碑在位（改表的人能找到去向与理由 · v90.92 任务目录退役）',
       dS115.indexOf('v89.134 移除') >= 0
-      && dS115.indexOf('唯一来源是 questdata.js') >= 0
-      && qS115.indexOf('v89.134 移除') >= 0);
+      && dS115.indexOf('v90.92 退役：任务目录 js/questdata.js 整文件已删') >= 0
+      && !fs115.existsSync(path115.join(__dirname, 'js', 'questdata.js')));
 
-    /* ---------- ② QUESTS 单一来源 ---------- */
-    console.log('  --- ② QUESTS 单一来源（旧双定义陷阱清除）---');
-    check('§115② DATA.QUESTS 唯一写点 = questdata.js（data.js 无写点 · 旧版 q1 已清零）',
+    /* ---------- ② 任务数据表（v90.92 退役 · 零残留守卫） ---------- */
+    console.log('  --- ② 任务数据表（v90.92 退役）---');
+    check('§115② v90.92：任务数据表整条退役（data.js 无写点 · DATA.QUESTS/RANDOM_QUESTS 均无）',
       dS115.indexOf('DATA.QUESTS = ') < 0
-      && qS115.indexOf('DATA.QUESTS = ') >= 0
       && dS115.indexOf("id: 'q1'") < 0
-      && (DATA.QUESTS || []).length >= 50
-      && DATA.QUESTS.every(function (q) { return !!q.metric; }));
+      && typeof DATA.QUESTS === 'undefined'
+      && typeof DATA.RANDOM_QUESTS === 'undefined');
 
     /* ---------- ③ RES_ORDER 唯一数据源 ---------- */
     console.log('  --- ③ RES_ORDER = 资源集唯一数据源（字面量清零）---');
@@ -24961,11 +24685,10 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     var g117 = _fs117.readFileSync(_p117.join(__dirname, '.workbuddy', 'tools', 'git', 'gate.py'), 'utf8');
     var t117 = _fs117.readFileSync(_p117.join(__dirname, '.workbuddy', 'tools', 'audit', 'audit_v89134_tables.js'), 'utf8');
 
-    check('§117① live 续铺：锻造间/酒馆/派系/交易站/野地总览 五处声明（合计 ≥9 处）', (function () {
+    check('§117① live 续铺：锻造间/酒馆/交易站/野地总览 四处声明（合计 ≥8 处）', (function () {
       var n = (u117.match(/live: function \(\) \{ ui\.open/g) || []).length;
-      return n >= 9 && /live: function \(\) \{ ui\.openForge\(\); \}/.test(u117)
+      return n >= 8 && /live: function \(\) \{ ui\.openForge\(\); \}/.test(u117)
         && /live: function \(\) \{ ui\.openInn\(\); \}/.test(u117)
-        && /live: function \(\) \{ ui\.openSect\(\); \}/.test(u117)
         && /live: function \(\) \{ ui\.openMarket\(\); \}/.test(u117)
         && /live: function \(\) \{ ui\.openWilds\(\); \}/.test(u117);
     })(), 'live 声明 ' + ((u117.match(/live: function \(\) \{ ui\.open/g) || []).length) + ' 处');
@@ -27103,7 +26826,9 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })());
 
     /* ---- ③ 系统页渲染：chips + 主题色 + 任务摘要 + 筛选 ---- */
-    check('§153③ 系统页：小标签（全部 + 有消息的）· 字体色 = 主题色 · 任务摘要 · 切标签生效', (function () {
+    /* v90.92：任务摘要（ui.msgTaskSummaryHTML）随任务系统退役 —— 本条的「任务 · 可领取」
+       两处读数改为**退役守卫**；小标签 + 主题色两项照旧。 */
+    check('§153③ 系统页：小标签（全部 + 有消息的）· 字体色 = 主题色 · 任务摘要已退役 · 切标签生效', (function () {
       var body = G.ui.docBodyHTML('sys');
       var colorOk = body.indexOf('style="color:' + DATA.MSG_SUB_BY.era.color) >= 0
         && body.indexOf('style="color:' + DATA.MSG_TAG_COLOR.war) >= 0;
@@ -27112,8 +26837,9 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var eraBody = G.ui.docBodyHTML('sys');
       G.ui._msgTag = bkTag;
       return body.indexOf('data-action="msg-tag" data-v="all"') >= 0
-        && body.indexOf('任务 · 可领取') >= 0 && colorOk
-        && eraBody.indexOf('任务 · 可领取') < 0;          /* 切标签后摘要不显示（只在 全部/任务） */
+        && body.indexOf('任务 · 可领取') < 0 && eraBody.indexOf('任务 · 可领取') < 0
+        && typeof G.ui.msgTaskSummaryHTML === 'undefined'
+        && colorOk;
     })());
 
     /* ---- ④ 采集收获明细（老板 3）---- */
@@ -27300,18 +27026,20 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       return (u155.match(/ui\.docPerOf = function/g) || []).length === 1
         && (u155.match(/ui\.docPerOf\(/g) || []).length === 5;
     })());
-    check('§157① 实测：每页条数按高度铺满（sys 25 / 单标签 29 / war 21 · v89.157 布局 px 修正，旧 21/25/18）', (function () {
+    /* v90.92：任务摘要区（DOC_TASK_H = 93px）随任务系统退役 → 系统页预算回升一层：
+       (787 − 114 − 19) / 22.2 = 29 条（原扣 93px 时 = 25 条）。战报页 = 21 份不变。 */
+    check('§157① 实测：每页条数按高度铺满（sys 29 / 单标签 29 / war 21 · v90.92 去任务摘要区）', (function () {
       var bk = G.ui._msgTag;
       G.ui._msgTag = 'gather';
       var a = G.ui.docPerOf('sys');
       G.ui._msgTag = bk;
       var b = G.ui.docPerOf('sys'), c = G.ui.docPerOf('war');
-      return a === 29 && b === 25 && c === 21 && G.ui.MSG_PER === 15 && G.ui.DOC_PER === 10;
+      return a === 29 && b === 29 && c === 21 && G.ui.MSG_PER === 15 && G.ui.DOC_PER === 10;
     })());
-    check('§157① 行高/头高常量 = 实测量（布局 px；v89.157 与 clientHeight 同尺）',
+    check('§157① 行高/头高常量 = 实测量（布局 px；v89.157 与 clientHeight 同尺 · v90.92 DOC_TASK_H 退役）',
       G.ui.DOC_LINE_H.sys === 22.2 && G.ui.DOC_LINE_H.war === 30.0
-        && G.ui.DOC_HEAD_H === 114 && G.ui.DOC_TASK_H === 93 && G.ui.DOC_FOOT_H === 19
-        && G.ui.DOC_GUARD_H === 4);
+        && G.ui.DOC_HEAD_H === 114 && G.ui.DOC_FOOT_H === 19
+        && G.ui.DOC_GUARD_H === 4 && typeof G.ui.DOC_TASK_H === 'undefined');
 
     /* ---- ② 采集消息归位（老板 1·后半：「重合，整合区分」） ---- */
     check('§155② 自动采集/收获归「采集收获」（原误落军情）+ 老档迁移归系统', (function () {
@@ -29634,15 +29362,18 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
 
     /* ⑤ 君主突破综合考验 */
     console.log('  --- ⑤ 综合考验 ---');
-    check('§177⑤ ★ lordTrialOf：五关行（政务/城池/军队/资源/宝物）+ 口径读表', (function () {
+    /* v90.92：任务系统退役 → 考验表去掉 quests 项，五关改四关（城池/军队/资源/宝物）。
+       ⚠️ 下一步（批次D）突破改爵位门槛时本段还会再动；此处只钉「任务项已摘除」。 */
+    check('§177⑤ ★ lordTrialOf：四关行（城池/军队/资源/宝物）+ 口径读表（v90.92：政务关退役）', (function () {
       var lord = null;
       (G.state.generals || []).forEach(function (g) { if (g.isLord) lord = g; });
       if (!lord) { lord = G.makeGeneral('测试君主', 1, 'idle', G.state.cities[0].id, false); lord.isLord = true; }
       var tr = G.lordTrialOf(lord);
       var keys = tr.rows.map(function (r) { return r.key; }).join(',');
       var tbl = (DATA.LORD_BREAK.trials || [])[0];
-      return tr.n === 1 && keys === 'quests,cities,army,gold,treasure'
-        && tr.rows[0].goal === tbl.quests && tr.rows[4].goal === tbl.treasure
+      return tr.n === 1 && keys === 'cities,army,gold,treasure'
+        && tr.rows[0].goal === tbl.cities && tr.rows[3].goal === tbl.treasure
+        && tbl.quests === undefined
         && typeof tr.ok === 'boolean';
     })());
     check('§177⑤b 考验表在册（trials 三段 · 逐段递增）', (function () {
@@ -31086,7 +30817,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       finally { G.state = bk; }
     })());
 
-    check('§191⑤d 科技聚合口径：techTotal=各城之和 · techLevel=各城最高（任务/叙事同读 questMetric）', (function () {
+    check('§191⑤d 科技聚合口径：techTotal=各城之和 · techLevel=各城最高（v90.92：系统层出口）', (function () {
       var bk = G.state;
       try {
         G.newGame({ name: 'agg191', region: '烬环' });
@@ -31094,13 +30825,25 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         var c2 = G.makeCity({ id: 'aggc2', name: '聚合城', x: c1.x + 3, y: c1.y + 3 });
         G.registerCity(c2);
         G.techSet('zhongzhi', 3, c1); G.techSet('zhongzhi', 5, c2);
-        return G.questMetric('techTotal') === 8 && G.questMetric('techLevel', 'zhongzhi') === 5;
+        /* v90.92：任务系统退役 —— 原读 GAME.questMetric；改钉**系统层**同口径：
+           techTotal = 各城科技等级之和；techLevel = 各城最高（逐城取 max）。
+           ⚠️ G.systems.techLevel(id) 不带 city 时读**当前城** —— 故「各城最高」须逐城取。 */
+        var sum = 0, mx = 0;
+        G.state.cities.forEach(function (c) {
+          var t = c.techs || {};
+          for (var k in t) sum += t[k];
+          var v = t.zhongzhi || 0; if (v > mx) mx = v;
+        });
+        return typeof G.questMetric === 'undefined' && sum === 8 && mx === 5
+          && G.systems.techLevel('zhongzhi', c1) === 3;      /* 按城读：发起城 = 3，不被别城污染 */
       } catch (e) { return false; }
       finally { G.state = bk; }
     })());
-    check('§191⑤e story 科技求和走 questMetric（防「引用不存在的成员」回魂 · audit ⑥ 同案）', (function () {
-      var y191 = fs191.readFileSync(path191.join(__dirname, 'js', 'story.js'), 'utf8');
-      return /GAME\.questMetric\('techTotal'\)/.test(y191) && y191.indexOf('GAME.statOf') < 0;
+    check('§191⑤e story 科技求和不再依赖已删的任务出口（内联等价 · 防「引用不存在的成员」回魂）', (function () {
+      /* ⚠️ story.js 的墓碑注释里写着 GAME.questMetric —— 必须先剥注释再查。 */
+      var y191 = stripComment(fs191.readFileSync(path191.join(__dirname, 'js', 'story.js'), 'utf8'));
+      return y191.indexOf('GAME.questMetric') < 0 && y191.indexOf('GAME.statOf') < 0
+        && y191.indexOf('c.techs') >= 0;
     })());
 
     /* ⑥ 主城 20 级 + 尾段价 + 面板按城 */
@@ -34296,7 +34039,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   (function () {
     var fs221 = require('fs'), path221 = require('path');
     var rd221 = function (rel) { return fs221.readFileSync(path221.join(__dirname, rel), 'utf8'); };
-    var js221 = ['data', 'state', 'domain', 'battle', 'ui', 'main', 'map', 'tactic', 'icons', 'questdata', 'systems', 'story']
+    var js221 = ['data', 'state', 'domain', 'battle', 'ui', 'main', 'map', 'tactic', 'icons', 'systems', 'story']
       .map(function (f) { return rd221('js/' + f + '.js'); }).join('\n');
     var html221 = rd221('index.html');
 
@@ -34326,24 +34069,44 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         && js221.indexOf('贼寇') < 0;
     })());
 
-    /* ④ 兵种旧缩写：玩家可见面零泄漏（车库解锁行 / 任务卡 / 天气 / 战术占位） */
-    check('§221④ 兵种旧缩写：可见面零泄漏（车库行/任务卡/天气/战术占位）', (function () {
-      var uiSrc = rd221('js/ui.js'), qd = rd221('js/questdata.js'), d221 = rd221('js/data.js');
+    /* ④ 兵种旧缩写：玩家可见面零泄漏（车库行 / 天气 / 战术占位）
+       v90.92：原第四项在 js/questdata.js（任务卡文案）里查旧缩写 —— 该文件已随任务系统删除，
+       此项改由「文件不存在」承担（不留平凡解）。 */
+    check('§221④ 兵种旧缩写：可见面零泄漏（车库行/天气/战术占位 · 任务文件已退役）', (function () {
+      var uiSrc = rd221('js/ui.js'), d221 = rd221('js/data.js');
       return uiSrc.indexOf('伏击车需1级 · 主战机甲/武装直升机需3级') >= 0
         && uiSrc.indexOf('战术名（如：导弹车后退）') >= 0
         && d221.indexOf('弓兵射程') < 0
-        && ['长枪', '铁骑', '轻骑', '投石', '刀盾', '藤甲', '青州', '西凉', '虎豹', '突骑', '弓箭', '象兵']
-          .every(function (w) { return qd.indexOf(w) < 0; });
+        && !fs221.existsSync(path221.join(__dirname, 'js', 'questdata.js'));
     })());
 
-    /* ⑤ 任务页签闪烁的数据源接线（有可领取任务 → .fresh） */
-    check('§221⑤ 任务页签：syncBadges 挂 .fresh（可领取 > 0）· 徽标元素已退役', (function () {
-      var uiSrc = rd221('js/ui.js');
+    /* ④b 产品面旧缩写零残留 —— v90.92：任务文件（js/questdata.js）退役后这一面**不许留白**，
+       改为逐产品文件剥注释扫全表（原第 4 项只查任务文件，现已无意义）。
+       ⚠️ 按**带引号 token** 匹配：裸词会误伤正文（data.js 里有含旧词字样的合法道具名与风味文案）。 */
+    check('§221④b 产品面旧缩写零残留（data/ui/main/index.html 剥注释 · 引号 token 全扫）', (function () {
+      var F = ['js/data.js', 'js/ui.js', 'js/main.js', 'index.html'];
+      var T = F.map(function (rel) { return stripComment(rd221(rel)); });
+      var Q = ["'", '"'];
+      return T.length === 4
+        && ['长枪', '铁骑', '轻骑', '投石', '刀盾', '藤甲', '青州', '西凉', '虎豹', '突骑', '弓箭', '象兵']
+          .every(function (w) {
+            return T.every(function (t) {
+              return Q.every(function (q) { return t.indexOf(q + w + q) < 0; });
+            });
+          });
+    })());
+
+    /* ⑤ 任务页签闪烁（v90.92 退役） */
+    check('§221⑤ v90.92：任务页签整条退役（导航无 data-view="tasks" · syncBadges 无 questSummary）', (function () {
+      var uiSrc = stripComment(rd221('js/ui.js'));
       var i0 = uiSrc.indexOf('ui.syncBadges = function');
-      var blk = uiSrc.slice(i0, uiSrc.indexOf('ui.paintNav = function'));
-      return /data-view="tasks"/.test(blk)
-        && /questSummary\(\)\.ready > 0/.test(blk)
-        && html221.indexOf('tab-badge-task') < 0;
+      var i1 = uiSrc.indexOf('ui.paintNav = function');
+      if (i0 < 0 || i1 <= i0) return false;
+      var blk = uiSrc.slice(i0, i1);
+      return stripComment(html221).indexOf('data-view="tasks"') < 0
+        && blk.indexOf('data-view="tasks"') < 0
+        && blk.indexOf('questSummary') < 0
+        && stripComment(html221).indexOf('tab-badge-task') < 0;
     })());
   })();
 
@@ -34479,12 +34242,11 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         && s223.indexOf("G.troopAbOf('taitan') === '兽'") >= 0;
     })(), '');
 
-    check('§223④/§229④ 产品侧收尾在册：任务文案换代（导弹车/自行火炮）· icons 换「泰坦机甲」', (function () {
-      var q223 = rd223('js/questdata.js'), ic223 = rd223('js/icons.js');
-      /* v89.229：任务文案随兵种重构换代（弩手 → 导弹车；旧「强弩之利」→「炮火破城」） */
-      return q223.indexOf("title: '导弹列阵'") >= 0 && q223.indexOf('补足导弹车') >= 0
-        && q223.indexOf("title: '炮火破城'") >= 0 && q223.indexOf('炮火之威，可碎城楼') >= 0
-        && ic223.indexOf('/* 泰坦机甲 */') >= 0 && ic223.indexOf('/* 战象 */') < 0;
+    check('§223④/§229④ 产品侧收尾在册：icons 换「泰坦机甲」 · 任务文案随系统退役', (function () {
+      var ic223 = rd223('js/icons.js');
+      /* v90.92：任务文案（导弹列阵/炮火破城）随 js/questdata.js 删除；此处只留 icons 侧。 */
+      return ic223.indexOf('/* 泰坦机甲 */') >= 0 && ic223.indexOf('/* 战象 */') < 0
+        && !fs223.existsSync(path223.join(__dirname, 'js', 'questdata.js'));
     })(), '');
 
     check('§223⑤ 版本与档案在册（v89.223 · 老板原文关键句逐字）', (function () {
@@ -34835,7 +34597,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     var fs229b = require('fs'), path229b = require('path');
     var d9 = fs229b.readFileSync(path229b.join(__dirname, 'js', 'data.js'), 'utf8');
     var u9 = fs229b.readFileSync(path229b.join(__dirname, 'js', 'ui.js'), 'utf8');
-    var q9 = fs229b.readFileSync(path229b.join(__dirname, 'js', 'questdata.js'), 'utf8');
+    /* v90.92：任务系统退役 —— js/questdata.js 已删，原 q9 读取撤除。 */
     var m9 = fs229b.readFileSync(path229b.join(__dirname, 'js', 'main.js'), 'utf8');
     var st9 = fs229b.readFileSync(path229b.join(__dirname, 'js', 'state.js'), 'utf8');
     function strip229b(s) { return s.replace(/\/\*[\s\S]*?\*\//g, ''); }
@@ -34853,16 +34615,16 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })());
 
     /* ⑫ 旧词剥注释零残留（五文件）——沿革注释豁免（剥注释后查） */
-    check('§229b⑫ 旧词剥注释零残留（木料场/碎石场/废铁场/集水场/「木料」写法 · 五文件）', (function () {
+    check('§229b⑫ 旧词剥注释零残留（木料场/碎石场/废铁场/集水场/「木料」写法 · 四文件）', (function () {
       var bad = [];
-      [['data', d9], ['ui', u9], ['quest', q9], ['main', m9], ['state', st9]].forEach(function (it) {
+      [['data', d9], ['ui', u9], ['main', m9], ['state', st9]].forEach(function (it) {
         var src = strip229b(it[1]);
         ['木料场', '碎石场', '废铁场', '集水场', "'木料'"].forEach(function (w) {
           if (src.indexOf(w) >= 0) bad.push(it[0] + ':' + w);
         });
       });
       return bad.length === 0;
-    })(), '五文件剥注释后零残留（沿革注释豁免）');
+    })(), '四文件剔注释后零残留（任务文件已退役 · 沿革注释豁免）');
 
     /* ⑬ ui.RES_NAME / RES_ICON 与资源换代同源（单字层跟随：水/生/电/钢） */
     check('§229b⑬ ui.RES_NAME/RES_ICON 与资源换代同源（水/生/电/钢/币 · v89.233 货币统一）', (function () {
@@ -34886,7 +34648,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     var fs228 = require('fs'), path228 = require('path');
     var d228 = fs228.readFileSync(path228.join(__dirname, 'js', 'data.js'), 'utf8');
     var u228 = fs228.readFileSync(path228.join(__dirname, 'js', 'ui.js'), 'utf8');
-    var q228 = fs228.readFileSync(path228.join(__dirname, 'js', 'questdata.js'), 'utf8');
+    /* v90.92：任务系统退役 —— js/questdata.js 已删，原 q228 读取撤除。 */
     var m228 = fs228.readFileSync(path228.join(__dirname, 'js', 'main.js'), 'utf8');
     var self228 = fs228.readFileSync(path228.join(__dirname, 'smoke-test.js'), 'utf8');
     var doc228 = fs228.readFileSync(path228.join(__dirname, 'docs', '设计规范.md'), 'utf8');
@@ -34904,9 +34666,9 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         if (dn.indexOf(OLD8[j]) >= 0) return '旧名残留(剥注释) ' + OLD8[j];
         if (d228.indexOf(OLD8[j]) < 0) return '旧名沿革注释缺失 ' + OLD8[j];
       }
-      /* v89.233：任务名随文风批换代（'利刃初铸'→'初炉出品'）；
-         顺修：原 `return '连带缺失（奇遇/任务）'` 在 `if (cond)` 下为 truthy —— 该检查从未生效。 */
-      if (d228.indexOf('遗落战刃') < 0 || q228.indexOf('初炉出品') < 0) return false;
+      /* v90.92：任务系统退役 —— 原后半句读 js/questdata.js 的「初炉出品」随文件删除，
+         此处只留装备侧（data.js 的「遗落战刃」）。 */
+      if (d228.indexOf('遗落战刃') < 0) return false;
       return true;
     })());
 
@@ -35012,7 +34774,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     /* ② 退役 id 的**产品侧零残留**（剥注释 · 只查"可执行形态"：对象键 / 字符串字面量）
        —— 本轮真漏点：map.js 的 fortGarrison 五键全是退役 id → 据点守军整支为空。 */
     check('§229c② 退役 id 产品侧零残留（剥注释 · 除 state.js 迁移表外无键/字面量）', (function () {
-      var files = ['data', 'domain', 'map', 'battle', 'tactic', 'systems', 'ui', 'questdata', 'icons', 'main'];
+      var files = ['data', 'domain', 'map', 'battle', 'tactic', 'systems', 'ui', 'icons', 'main'];
       var bad = [], base = 0;
       files.forEach(function (f) {
         var src = strip229(fs229.readFileSync(path229.join(__dirname, 'js', f + '.js'), 'utf8'));
@@ -35350,14 +35112,14 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   (function () {
     var fs233 = require('fs'), path233 = require('path');
     var FILES = ['data.js', 'ui.js', 'main.js', 'systems.js', 'domain.js', 'state.js',
-      'battle.js', 'story.js', 'questdata.js', 'map.js', 'tactic.js', 'icons.js'];
+      'battle.js', 'story.js', 'map.js', 'tactic.js', 'icons.js'];
     var raw = {};
     FILES.forEach(function (f) { raw[f] = fs233.readFileSync(path233.join(__dirname, 'js', f), 'utf8'); });
-    var q233 = raw['questdata.js'];
+    /* v90.92：任务系统退役 —— js/questdata.js 已删，原 q233 读取撤除。 */
     var d233 = raw['data.js'];
 
     /* ① 货币统一：保护词以外，「金」零残留（全文 —— 含注释；基数自证防扫描器坏） */
-    check('§233① 货币统一：「金」保护外零残留（12 文件 · 保护词基数自证）', (function () {
+    check('§233① 货币统一：「金」保护外零残留（11 文件 · 任务文件已退役 · 保护词基数自证）', (function () {
       var PROTECT = ['金蝉脱壳', '金殿', '金创', '金印', '金声', '金银', '千金', '金玉', '黄金',
         '鸣金', '金城', '合金', '鎏金', '金属', '冶金', '古钱币', '金币', '金琉璃', '金色',
         '金光', '金鳞', '金框', '金边', '金叉', '金头', '金杆', '金匾', '金线', '金实',
@@ -35381,20 +35143,13 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       return left.length === 0 && guardN >= 30;   /* 基数自证：保护词必须真命中（扫描器坏即 0 → 红） */
     })(), window.__r233a || '');
 
-    /* ② 任务文风：86 条 · 旧标题零残留 · 新标题两两唯一 · 新名抽查 */
-    check('§233② 任务文风：86 条在册 · 老标题零残留 · 新标题两两唯一（v89.233 口径）', (function () {
-      var titles = (q233.match(/title: '[^']+'/g) || []).map(function (x) { return x.slice(9, -1); });
-      var OLD = ['立锥之地', '民居渐稠', '广厦万间', '衙署初立', '一方之治', '雄踞一方', '格物致知',
-        '百家之学', '博览群书', '厉兵秣马', '甲兵初成', '铁流三千', '攻城之器', '求贤若渴', '座上之宾',
-        '将星璀璨', '逐鹿中原', '列土封疆', '山泽之利', '家给人足', '百战之师', '屯田积谷', '聚财通商',
-        '安民抚众', '礼贤下士', '兴学讲艺', '金城汤池', '受衔队长', '学不可以已', '仓廪实而知礼节'];
-      var oldLeft = OLD.filter(function (w) { return q233.indexOf(w) >= 0; });
-      var uniq = {}, dup = 0;
-      titles.forEach(function (t) { if (uniq[t]) dup++; uniq[t] = 1; });
-      window.__r233b = 'n=' + titles.length + ' 旧名残留=' + (oldLeft.join(',') || '0') + ' 重复=' + dup;
-      return titles.length === 86 && oldLeft.length === 0 && dup === 0
-        && q233.indexOf('残垣立命') >= 0 && q233.indexOf('铁壁初成') >= 0
-        && q233.indexOf('清源有道') >= 0;
+    /* ② 任务文风（v90.92 退役 · 零残留守卫）：86 条任务目录随系统删除，
+       本条改为「文件不存在 + DATA.QUESTS 无」双重守卫。 */
+    check('§233② v90.92：任务目录退役（questdata.js 不存在 · DATA.QUESTS 无）', (function () {
+      window.__r233b = 'questdata=' + fs233.existsSync(path233.join(__dirname, 'js', 'questdata.js'))
+        + ' QUESTS=' + (typeof DATA.QUESTS);
+      return !fs233.existsSync(path233.join(__dirname, 'js', 'questdata.js'))
+        && typeof DATA.QUESTS === 'undefined';
     })(), window.__r233b || '');
 
     /* ③ 语义描述：垂钓/行猎顺滑在册 · 旧叙述零残留 · analyze 正则与产品日志对齐 */

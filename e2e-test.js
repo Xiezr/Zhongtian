@@ -507,7 +507,8 @@ async function runTests(dom, URL) {
   await sleep(60);
 
   console.log('\n--- 10. 标签页渲染（真实 DOM） ---');
-  const views = ['city', 'ext', 'map', 'generals', 'troops', 'tech', 'equip', 'items', 'rank', 'tasks', 'stats', 'story', 'settings', 'shop', 'bag'];
+  /* v90.92：任务页整条退役 → 视图清单摘除 'tasks'。 */
+  const views = ['city', 'ext', 'map', 'generals', 'troops', 'tech', 'equip', 'items', 'rank', 'stats', 'story', 'settings', 'shop', 'bag'];
   for (const v of views) {
     try {
       G.ui.setView(v);
@@ -864,28 +865,19 @@ async function runTests(dom, URL) {
   check('关闭键真实可点（关闭生效）', !!mx);
   if (mx) { mx.click(); await sleep(60); check('点右上角 × 后弹窗关闭', document.querySelector('#modal-root').innerHTML === ''); }
 
-  /* ④ 分页：任务面板 */
-  G.ui.setPage('growth', 1);
-  G.ui.setView('tasks');
-  await sleep(80);
-  const taskHtml1 = vc.innerHTML;
-  check('任务面板正文不再内嵌分页条（v29：翻页控件移出内容区）', taskHtml1.indexOf('class="pager"') < 0);
-  const pgBtns = document.querySelectorAll('#bottom-bar .pager [data-action="page"]');
-  check('底部固定条出现可点页码', pgBtns.length > 0, pgBtns.length + ' 个');
-  if (pgBtns.length) {
-    const next = Array.prototype.slice.call(pgBtns).find((b) => b.getAttribute('data-n') === '2');
-    if (next) {
-      next.click();
-      await sleep(80);
-      check('点页码可翻页', G.ui._pages.growth === 2, '当前第 ' + G.ui._pages.growth + ' 页');
-      check('翻页后内容变化', vc.innerHTML !== taskHtml1);
-      G.ui.setPage('growth', 1);
-    } else {
-      check('点页码可翻页（本局仅一页，跳过）', true);
-      check('翻页后内容变化（本局仅一页，跳过）', true);
-    }
-  }
-
+  /* ④ 分页：任务面板（v90.92 退役 · 零残留守卫）
+     ⛔ 原用 'growth' 分页键验证「底部固定条出现可点页码」；任务面板退役后该键失去来源。
+     分页机制本身由 §21（材料页按格分页 / 页码可点）继续覆盖。 */
+  let threwPage19 = false;
+  try { G.ui.setPage('growth', 1); G.ui.setView('tasks'); } catch (e) { threwPage19 = true; }
+  await sleep(60);
+  check('v90.92：任务分页键整条退役（切视图不抛错 · 任务出口无定义 · 无 growth 分页键）',
+    !threwPage19
+    && typeof G.ui.tasksHTML === 'undefined'
+    && typeof G.ui.questJumpOf === 'undefined'
+    && !document.querySelector('#bottom-bar .pager [data-action="page"]'));
+  G.ui.setView('city');
+  await sleep(40);
   console.log('\n--- 20. 野地采集全流程（v15）---');
   /* 找一块可采野地并直接占领（等价于出征占领的结果） */
   let g20 = null;
@@ -1012,42 +1004,17 @@ async function runTests(dom, URL) {
   await sleep(40);
   const hostHtml = document.querySelector('#modal-root').innerHTML;
   check('招募站弹窗显示房间数', hostHtml.indexOf('房间') >= 0, hostHtml.length + ' 字符');
-  /* v89.74（老板：「鸿胪寺已拆除 → 派系驻地；点击地块时提供可选项」）：
-     真实点击链：临时放一座基因实验室（honglusi） → 开面板 → 点「入派」→ 归属落库 → 做一次派系任务。
-     P0 是"零平衡影响"的骨架，所以这里只验归属/品阶/声望分家，**不验**数值加成（那是 P1）。 */
+  /* v90.92：派系（门派）系统整条退役 —— 原 v89.74「自动点地块→入派→做任务」真实点击链
+     （openSect / sect-join / sect-task / sectState / sectOf）随系统一并移除；
+     按 §0.7 改为**零残留 + 入口不可达**守卫。建筑 honglusi（基因实验室）保留。 */
   {
-    const pc = G.currentCity();
-    let cell = null;
-    (pc.cells || []).forEach(function (c) { if (!cell && !c.build) cell = c; });
-    const savedBuild = cell ? cell.build : null;
-    if (cell) cell.build = { id: 'honglusi', lvl: 1 };
-    G.sectState().id = null; G.sectState().rep = 0; G.sectState().founder = false;
-    G.sectState().tasks = {}; G.sectState().leftAt = 0;
-    G.ui.openSect();
-    await sleep(40);
-    const scHtml = document.querySelector('#modal-root').innerHTML;
-    const joinBtn = document.querySelector('#modal-root [data-action="sect-join"]');
-    check('v89.74：派系面板列出六派与「入派」入口',
-      scHtml.indexOf('荒野六派') >= 0 && !!joinBtn,
-      (scHtml.match(/data-action="sect-join"/g) || []).length + ' 个入派按钮');
-    if (joinBtn) click(joinBtn);
-    await sleep(80);
-    check('v89.74：点「入派」真的入派（归属落库 · 品阶为门客）',
-      !!G.sectOf() && (G.sectRankOf() || {}).name === '门客',
-      G.sectOf() ? G.sectOf().name : '未入派');
-    const lordRep0 = G.state.rep || 0;
-    const taskBtn = document.querySelector('#modal-root [data-action="sect-task"][data-v="chores"]');
-    if (taskBtn) click(taskBtn);
-    await sleep(80);
-    check('v89.74：派系任务只涨派系声望（君主声望一分不动）',
-      G.sectState().rep === 12 && (G.state.rep || 0) === lordRep0,
-      '派系声望 ' + G.sectState().rep + ' · 君主声望 ' + (G.state.rep || 0));
-    /* 还原：派系状态与那座临时建筑 */
-    G.sectState().id = null; G.sectState().rep = 0; G.sectState().founder = false;
-    G.sectState().tasks = {}; G.sectState().leftAt = 0;
-    if (cell) cell.build = savedBuild;
-    G.ui.closeAllModals();
-    await sleep(20);
+    check('v90.92：派系整条退役（出口/入口零残留 · openSect 不可达）',
+      typeof G.sectState === 'undefined' && typeof G.sectOf === 'undefined'
+        && typeof G.sectBonus === 'undefined' && typeof G.sectRankOf === 'undefined'
+        && typeof G.ui.openSect === 'undefined'
+        && (!DATA || typeof DATA.SECTS === 'undefined'),
+      'openSect=' + typeof G.ui.openSect + ' · sectState=' + typeof G.sectState
+        + ' · SECTS=' + (DATA ? typeof DATA.SECTS : 'noDATA'));
   }
   G.ui.openMarket();
   await sleep(40);
@@ -1668,8 +1635,9 @@ async function runTests(dom, URL) {
     tabs21.indexOf('troops') < 0 && tabs21.indexOf('tech') < 0 && tabs21.indexOf('equip') < 0 && tabs21.indexOf('items') < 0,
     tabs21.join(','));
   check('顶栏保留城池入口', tabs21.indexOf('city') >= 0);
-  check('任务页签在册且无数字徽标（v89.221：改建 .fresh 闪烁）',
-    !!document.querySelector('#topnav .tab[data-view="tasks"]') && !document.querySelector('#tab-badge-task'));
+  /* v90.92：任务页签整条退役 → 判据从「在册」翻转为「不在册 + 无徽标残留」。 */
+  check('v90.92：任务页签已退役（顶栏无 data-view="tasks" · 无 tab-badge-task）',
+    !document.querySelector('#topnav .tab[data-view="tasks"]') && !document.querySelector('#tab-badge-task'));
 
   /* ④ 建筑弹窗 → 功能面板（带关闭按钮） */
   const c21 = G.state.cities[0];
@@ -1776,128 +1744,25 @@ async function runTests(dom, URL) {
   G.ui.setView('city');
   await sleep(40);
 
-  /* ⑥ 任务面板：随机 / 成长进行中 / 已完成 三分区 */
-  G.ensureDailyQuests(true);
-  G.ui.setView('tasks');
-  await sleep(100);
-  const tk21 = vc.innerHTML;
-  check('任务面板三分区齐全',
-    tk21.indexOf('随机任务') >= 0 && tk21.indexOf('成长任务 · 进行中') >= 0 && tk21.indexOf('已完成') >= 0);
-  /* v25（需求 11）：列表只给名称，领取/放弃按钮在详情弹窗里 */
-  const questRows21 = vc.querySelectorAll('[data-action="quest-detail"]').length;
-  check('任务清单渲染（每项只一行名称）', questRows21 > 0, questRows21 + ' 行');
-  const firstQ = vc.querySelector('[data-action="quest-detail"]');
-  click(firstQ);
-  await sleep(90);
-  const qDet21 = document.querySelector('#modal-root').innerHTML;
-  check('点任务名称弹出固定格式详情',
-    qDet21.indexOf('任务背景') >= 0 && qDet21.indexOf('任务需求') >= 0 && qDet21.indexOf('任务奖励') >= 0);
-  check('详情含放弃或不可放弃说明',
-    qDet21.indexOf('放弃') >= 0);
-  G.ui.closeAllModals();
-  await sleep(40);
-  check('随机任务带类型标签', /q-tag t-(military|war|build|tech|govern|talent|forge)/.test(tk21));
-  check('成长任务卡渲染', /q-tag t-growth/.test(tk21));
-  /* v19（需求 9）：去掉「已完成的任务收在这里…」占位文案 —— 收起时保持简洁，
-     区块标题与「展开」按钮仍在，不与待办混排这一语义由结构保证。 */
-  check('已完成区默认收起（无占位文案）',
-    tk21.indexOf('已完成的任务收在这里') < 0 && tk21.indexOf('已完成') >= 0);
-  click(vc.querySelector('[data-action="toggle-done-quests"]'));
-  await sleep(80);
-  check('展开后显示已完成列表', /q-done-box/.test(vc.innerHTML));
-  click(vc.querySelector('[data-action="toggle-done-quests"]'));
+  /* ⑥ 任务面板（v90.92 退役 · 零残留守卫）
+     ⛔ 原 ⑥ / ⑥.5 / ⑥.6 三段（三分区渲染 / 详情弹窗 / 达标置顶 / 主循环自动浮起）
+     整段随任务系统移除（老板「去掉纪事剧本（任务系统）」）。
+     真实 DOM 层守卫：导航、出口、任务页签、数据表都不许回魂。 */
+  let threwTask6 = false;
+  try { G.ui.setView('tasks'); } catch (e) { threwTask6 = true; }
   await sleep(60);
-
-  /* ⑥.5 可领取任务置顶 + 行内一键领取（v69 老板） */
-  {
-    let rq57 = null, rdef57 = null;
-    for (const e57 of G.state.quests.pool) {          /* 首选：非绝对值且尚未达标 */
-      const d57 = G.randomQuestDef(e57.id);
-      if (d57 && !d57.abs && !G.randQuestReady(e57)) { rq57 = e57; rdef57 = d57; break; }
-    }
-    for (const e57 of G.state.quests.pool) {          /* 兜底：任意非绝对值 */
-      if (rq57) break;
-      const d57 = G.randomQuestDef(e57.id);
-      if (d57 && !d57.abs) { rq57 = e57; rdef57 = d57; }
-    }
-    check('夹具：手上有一条可打桩的随机任务', !!rq57, rq57 ? rq57.id : '（无）');
-    if (rq57) {
-      rq57.base = -1e9;                       /* 直接达标（base 只对增量型有意义） */
-      G.ui.setView('tasks');
-      await sleep(90);
-      /* 按 **rq57 自己的 id** 取按钮 —— 不取"第一个"：
-         此处已是发育过的档，别的任务可能本来就达标，它们的按钮会排在它前面，
-         "取第一个"会让断言随卡池随机波动（实测同一份代码两次运行一红一绿）。 */
-      const btn57 = vc.querySelector('[data-action="claim-rand-quest"][data-q="' + rq57.id + '"]');
-      const bib57 = btn57 ? btn57.closest('.q-list') : null;
-      const inTop57 = !!(bib57 && bib57.previousElementSibling
-        && bib57.previousElementSibling.classList.contains('q-sec-ready'));
-      check('★ 达标任务浮到顶块，右侧带「领取」按钮',
-        !!btn57 && inTop57 && btn57.textContent.indexOf('领取') >= 0);
-      if (btn57) {
-        const before57 = G.state.quests.pool.length;
-        const gold57 = G.state.res.gold;
-        click(btn57);
-        await sleep(160);
-        check('★ 点「领取」一步到位（不弹详情窗）',
-          document.querySelector('#modal-root').innerHTML.indexOf('任务背景') < 0);
-        check('★ 领取生效：离池 + 记流水 + 发奖',
-          G.state.quests.pool.length === before57 - 1
-          && G.state.quests.log.some((x) => x.id === rq57.id)
-          && G.state.res.gold >= gold57 + (rdef57.reward.gold || 0));
-        check('★ 领取后按钮随之消失（列表已刷新）',
-          !vc.querySelector('[data-action="claim-rand-quest"][data-q="' + rq57.id + '"]'));
-      }
-    }
-  }
-
-  /* ⑥.6 「达标即置顶」是真·自动：改达标后**不碰视图**，等主循环自己浮上去 */
-  {
-    let rq58 = null;
-    for (const e58 of G.state.quests.pool) {
-      const d58 = G.randomQuestDef(e58.id);
-      /* v89.6：**统一钉死** base=1e9 造"未达标" —— 只在扫描时判"未达标"不够：
-         任务指标（金/粮…）在真实时间里增长，80ms 窗口内可能跨过目标，渲染时已达标 →
-         had58 变真、断言假红（门禁实测 2/3）。钉死后 amount ≡ 0，确定性未达标。 */
-      if (d58 && !d58.abs && !G.randQuestReady(e58)) { rq58 = e58; rq58.base = 1e9; break; }
-    }
-    /* v85 顺手修存量 flake：本段之前已发育 + 打桩，池里可能"全员达标"——
-       直接在池里找"未达标"会随任务随机抽取假红（同 §57 r18 族）。兜底：挑一条
-       非绝对值型任务、把 base 拉高**确定性造出未达标**（换标的、不放宽判据）。 */
-    if (!rq58) {
-      for (const e58 of G.state.quests.pool) {
-        const d58 = G.randomQuestDef(e58.id);
-        if (d58 && !d58.abs) { rq58 = e58; rq58.base = 1e9; break; }
-      }
-    }
-    check('夹具：还有一条未达标的随机任务（供实时置顶验证）', !!rq58);
-    if (rq58) {
-      G.ui.setView('tasks');
-      await sleep(80);
-      const had58 = !!vc.querySelector('[data-action="claim-rand-quest"][data-q="' + rq58.id + '"]');
-      /* v89.6：翻牌前先等主循环「采样追平」（_lastQuestReady == 当前计数）——
-         主循环的重绘是**变化门**：last 可能因套件此前的快速领取而携带陈旧值，
-         恰等于"翻转后"的计数时就检测不到变化、永不重绘（存量假红的真因）。
-         这里只等循环采样、不碰视图，语义不变。 */
-      for (let iw = 0; iw < 15 && G._lastQuestReady !== G.questSummary().ready; iw++) {
-        await sleep(200);
-      }
-      rq58.base = -1e9;                    /* 达标 —— 不切视图、不手动重绘 */
-      /* v89.6：固定 sleep(1500) 改**轮询** —— 主循环 1s 一拍，原等待只留 0.5 拍余量，
-         门禁（python subprocess + capture）环境下实测 3/3 假红；最长等 5s，语义不变：
-         达标后不手动刷新，等循环自己浮上来。 */
-      let now58 = false;
-      for (let i58 = 0; i58 < 25 && !now58; i58++) {
-        await sleep(200);
-        now58 = !!vc.querySelector('[data-action="claim-rand-quest"][data-q="' + rq58.id + '"]');
-      }
-      const dbg58 = 'had58=' + had58 + ' now58=' + now58
-        + ' ready=' + G.questSummary().ready + ' last=' + G._lastQuestReady
-        + ' view=' + G.ui.view + ' inPool=' + G.state.quests.pool.some((e) => e === rq58)
-        + ' amt=' + Math.round(G.randQuestAmount(rq58)) + '/goal=' + G.questGoal(G.randomQuestDef(rq58.id));
-      check('★ 达标后无需手动刷新，主循环自动把它浮上去', !had58 && now58, dbg58);
-    }
-  }
+  check('v90.92：任务面板整条退役（切视图不抛错 · 出口无定义 · 无任务页签）',
+    !threwTask6
+    && !document.querySelector('#topnav .tab[data-view="tasks"]')
+    && typeof G.ui.tasksHTML === 'undefined'
+    && typeof G.ui.openQuestDetail === 'undefined'
+    && typeof G.ui.questJumpOf === 'undefined'
+    && typeof G.ensureDailyQuests === 'undefined'
+    && typeof G.randomQuestDef === 'undefined'
+    && typeof G.questSummary === 'undefined'
+    && typeof G.DATA.QUESTS === 'undefined');
+  G.ui.setView('city');
+  await sleep(40);
 
   /* ⑦ 消息流（v16：已整合进公文，且写入存档） */
   for (let i = 0; i < 20; i++) G.log('验收提示 ' + i);
@@ -2541,8 +2406,8 @@ async function runTests(dom, URL) {
     check('公告不再单独占菜单', !nav24.querySelector('[data-action="open-notice"]'));
     /* v89.104：删「统计」、英雄/军务/任务三者相邻、新增「故事集」独立页与「自动」
        顺序取自 index.html 的 #topnav 实装（分隔线 = null） */
-    check('菜单分组顺序正确（场景→军事[英雄/军务/任务]→商背→公文→系统 · v89.218 史册/故事集退役）', (function () {
-      const order = ['city', 'ext', 'map', null, 'generals', 'marches', 'tasks', null,
+    check('菜单分组顺序正确（场景→军事[英雄/军务]→商背→公文→系统 · v90.92 任务页签退役）', (function () {
+      const order = ['city', 'ext', 'map', null, 'generals', 'marches', null,
         'shop', 'bag', 'collection', null, 'reports', null, 'auto', 'settings'];
       const els = Array.from(nav24.children).filter((e) => e.classList.contains('tab') || e.classList.contains('nav-sep'));
       let k = 0;
@@ -2689,11 +2554,16 @@ async function runTests(dom, URL) {
     check('储量随货仓数叠加', G.buildingLevelSum(c24, 'cangku') === before24 + 2 && G.storeCap() > capBefore24,
       G.utils.fmt(capBefore24) + ' → ' + G.utils.fmt(G.storeCap()));
 
-    /* ---- ⑨ 任务页占位文案已删 ---- */
-    G.ui.setView('tasks');
-    await sleep(100);
-    check('任务页不再出现「已完成的任务收在这里」占位',
-      document.querySelector('#view-container').innerHTML.indexOf('已完成的任务收在这里') < 0);
+    /* ---- ⑨ 任务页（v90.92 退役 · 零残留守卫）---- */
+    let threwTask24 = false;
+    try { G.ui.setView('tasks'); } catch (e) { threwTask24 = true; }
+    await sleep(60);
+    check('v90.92：任务页整条退役（切视图不抛错 · 出口无定义 · 占位文案不在产品源）',
+      !threwTask24
+      && typeof G.ui.tasksHTML === 'undefined'
+      && typeof G.ui.questJumpOf === 'undefined'
+      && require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8')
+        .indexOf('已完成的任务收在这里') < 0);
     G.ui.setView('city');
     await sleep(60);
   }
@@ -3416,21 +3286,17 @@ async function runTests(dom, URL) {
   G.ui.closeAllModals();
   await sleep(40);
 
-  /* ⑪ 任务：清单 + 详情弹窗 */
-  G.ensureDailyQuests(true);
-  G.ui.setView('tasks');
-  await sleep(100);
-  check('任务为清单式（一行一项）',
-    vc.querySelectorAll('.q-row').length > 0 && vc.querySelectorAll('.q-card').length === 0,
-    vc.querySelectorAll('.q-row').length + ' 行');
-  click(vc.querySelector('.q-row'));
-  await sleep(90);
-  const qd25 = document.querySelector('#modal-root');
-  check('点名称弹出固定格式详情（背景/需求/奖励）',
-    qd25.innerHTML.indexOf('任务背景') >= 0 && qd25.innerHTML.indexOf('任务需求') >= 0
-    && qd25.innerHTML.indexOf('任务奖励') >= 0 && !!qd25.querySelector('.modal-sm'));
-  check('详情写明放弃规则', qd25.textContent.indexOf('放弃') >= 0);
-  G.ui.closeAllModals();
+  /* ⑪ 任务清单 + 详情弹窗（v90.92 退役 · 零残留守卫） */
+  let threwTask25 = false;
+  try { G.ui.setView('tasks'); } catch (e) { threwTask25 = true; }
+  await sleep(60);
+  check('v90.92：任务清单/详情整条退役（切视图不抛错 · 无 .q-row 渲染 · 出口无定义）',
+    !threwTask25
+    && vc.querySelectorAll('.q-row').length === 0
+    && typeof G.ui.tasksHTML === 'undefined'
+    && typeof G.ui.openQuestDetail === 'undefined'
+    && typeof G.questNeedText === 'undefined');
+  G.ui.setView('city');
   await sleep(40);
 
   /* ⑧ 改名：真实点击流程 */
@@ -6124,17 +5990,10 @@ if (svBtn) {
     G.ui.closeAllModals();
     await sleep(40);
 
-    /* 派系 P1：名录六派被动全部可读（真实渲染） */
-    if (!c86.cells.some((x) => x && x.build && x.build.id === 'honglusi')) {
-      for (let i = 0; i < c86.cells.length; i++) { if (!c86.cells[i].build) { c86.cells[i] = { build: { id: 'honglusi', lvl: 1 } }; break; } }
-    }
-    G.state.sect = { id: null, rep: 0, founder: false, tasks: {}, leftAt: 0 };
-    G.ui.openSect();
-    await sleep(80);
-    const sec86 = document.querySelector('#modal-root').innerHTML;
-    check('v89.86（派系P1）：名录六派被动全部可读（行军速度/部队攻击/伤兵回复/攻城伤害/器械耗时/座驾属性）',
-      ['行军速度 +8%', '部队攻击 +6%', '战后伤兵回复 +15%', '攻城伤害 +8%', '器械打造耗时 −15%', '座驾装备属性 +20%']
-        .every((t) => sec86.indexOf(t) >= 0));
+    /* v90.92：派系（门派）整条退役 —— 原 v89.86「名录六派被动全部可读」渲染断言随系统移除 */
+    check('v90.92：派系名录面板已不可达（openSect 删除 · 六派被动文案零残留）',
+      typeof G.ui.openSect === 'undefined' && typeof G.sectState === 'undefined',
+      'openSect=' + typeof G.ui.openSect);
     G.ui.closeAllModals();
     await sleep(30);
   })();
@@ -6480,28 +6339,13 @@ if (svBtn) {
     await sleep(40);
     G._offlineReport = null;
 
-    /* ② B1 一键全领：任务页渲染 + 真实点击（mock 两条达标任务） */
-    const og92 = G.questGoal, oa92 = G.questAmount;
-    const q1_92 = G.DATA.QUESTS[0], q2_92 = G.DATA.QUESTS[1];
-    G.ui.setView('tasks');
-    await sleep(60);
-    G.questGoal = (q) => (q === q1_92 || q === q2_92) ? 5 : og92(q);
-    G.questAmount = (q) => (q === q1_92 || q === q2_92) ? 9 : oa92(q);
-    G.ui.renderView('tasks');
-    await sleep(60);
-    const allBtn92 = document.querySelector('[data-action="quest-claim-all"]');
-    check('v89.89（B1）：任务页「一键全领」按钮在场', !!allBtn92);
-    if (allBtn92) {
-      const before92 = Object.keys(s92.quests.done || {}).length;
-      click(allBtn92);
-      await sleep(80);
-      const after92 = Object.keys(s92.quests.done || {}).length;
-      check('v89.89（B1）：一键全领入账（done 增加 ≥ 2）', after92 - before92 >= 2,
-        before92 + ' → ' + after92);
-    } else {
-      check('v89.89（B1）：一键全领入账（done 增加 ≥ 2）', false, '按钮缺失');
-    }
-    G.questGoal = og92; G.questAmount = oa92;
+    /* ② B1 一键全领（v90.92 退役 · 零残留守卫）：
+       ⛔ 原用 mock 达标任务 + 真实点击验「一键全领」；任务系统退役后整条移除。 */
+    check('v90.92：任务一键全领整条退役（doClaimAllQuests / quest-claim-all 均无）',
+      typeof G.doClaimAllQuests === 'undefined'
+      && typeof G.doClaimQuest === 'undefined'
+      && typeof G.doClaimRandQuest === 'undefined'
+      && !document.querySelector('[data-action="quest-claim-all"]'));
 
     /* ③ D4 战报筛选 + 收藏（真实 DOM 点击） */
     s92.reports.unshift({ t: Date.now(), title: 'E2E 胜报甲', body: 'x', win: true });
@@ -6584,7 +6428,6 @@ if (svBtn) {
     ['交易站', function () { G.ui.openMarket(); }],
     /* v90.80：「见闻/日志」随奇遇系统退役（openJournal 已删） */
     ['君主', function () { G.ui.openLordInfo(); }],
-    ['派系', function () { G.ui.openSect(); }],
     ['自动出征配置', function () { G.ui.openAutoMarch(); }],
     ['装备', function () { G.ui.openEquipPanel(); }],
     ['出征', function () { G.ui.openExpModal({ kind: 'wild', x: G.state.cities[0].x + 2, y: G.state.cities[0].y + 2 }); }],

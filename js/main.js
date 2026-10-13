@@ -188,7 +188,6 @@
         if (rr.ok) { ui.closeModal(); GAME.refreshAll(); }
         break;
       }
-      case 'quest-detail': ui.openQuestDetail(el.dataset.kind, el.dataset.id); break;
       /* v89.86（整改 P-07）：建造 / 科技队列花旧币提速（旧币消耗出口） */
       case 'rush-build': {
         var _rq1 = GAME.queueRushPay(GAME.queueAt('city', el.dataset.idx), '营造工程');
@@ -214,8 +213,6 @@
         ui.openPanel('tech');
         break;
       }
-      /* v89.86（整改 P-03）：任务「前往」（建筑类定位到城池对应格；其余切视图） */
-      case 'quest-go': ui.doQuestGo(el.dataset.kind, el.dataset.id); break;
       /* v82：征收退役 —— do-levy 分发随功能撤除（政务厅面板不再产出该按钮）。 */
       /* v89.86（整改 P-26）：筑城成功 → 守备 0 风险提示 + 一键调兵（此前"裸城无提示"） */
       case 'build-city': (function () {
@@ -538,13 +535,6 @@
       }
       case 'open-bag-equip': GAME.doBagEquip(el.dataset.key); break;
       case 'bag-detail': GAME.doBagDetail(el.dataset.key); break;
-      case 'claim-rand-quest': GAME.doClaimRandQuest(el.dataset.q); break;
-      /* v89.110：换任务 = 付工本费 + 旧任务作废 —— 两段式 */
-      case 'reroll-rand-quest-ask': ui.openRerollRandAsk(el.dataset.q); break;
-      case 'reroll-rand-quest-do': GAME.doRerollRandQuest(el.dataset.q); ui.closeModal(); break;
-      case 'reroll-all-rand-ask': ui.openRerollAllAsk(); break;
-      case 'reroll-all-rand-do': GAME.doRerollAllRand(); ui.closeModal(); break;
-      case 'toggle-done-quests': ui._showDone = !ui._showDone; ui.renderView('tasks'); break;
       /* v77（老板）：建筑信息 / 资源生产两个入口随城池属性右三按钮一并退役；
          「附属野地」改由资源区下拉框的「进入」按钮触发（动作名不变）。 */
       case 'open-wilds': ui.openWilds(); break;
@@ -592,33 +582,8 @@
       case 'bag-eq-f': ui.setBagEqFilter(el.dataset.k, el.dataset.v); break;
       case 'open-hostel': ui.openHostel(); break;
       case 'open-market': ui.openMarket(); break;
-      /* v89.74：派系驻地（P0）—— 面板 + 入派/立派/派系任务/退派。
-         四个动作都"成功就重开面板"（与酒馆/交易站同一惯例），失败只弹提示不重开。 */
-      case 'open-sect': ui.openSect(); break;
-      case 'sect-join': {
-        var _sj = GAME.doSectJoin(el.dataset.v); ui.toast(_sj.msg);
-        if (_sj.ok) { GAME.refreshAll(); ui.openSect(); } break;
-      }
-      case 'sect-found': {
-        var _sf = GAME.doSectFound(el.dataset.v); ui.toast(_sf.msg);
-        if (_sf.ok) { GAME.refreshAll(); ui.openSect(); } break;
-      }
-      case 'sect-task': {
-        var _sk = GAME.doSectTask(el.dataset.v); ui.toast(_sk.msg);
-        if (_sk.ok) { GAME.refreshAll(); ui.openSect(); } break;
-      }
-      /* v89.86（整改 P-21）：派系任务连做（×10 / 一键做完）—— 汇总一条 toast，面板重开刷次数 */
-      case 'sect-task-bulk': {
-        var _rb = GAME.doSectTaskBulk(el.dataset.v, Number(el.dataset.n) || 0);
-        ui.toast((_rb.ok ? '✅ ' : '⏸ ') + _rb.msg);
-        if (_rb.ok) GAME.refreshAll();
-        ui.openSect();
-        break;
-      }
-      case 'sect-leave': {
-        var _sl = GAME.doSectLeave(); ui.toast(_sl.msg);
-        if (_sl.ok) { GAME.refreshAll(); ui.openSect(); } break;
-      }
+      /* ⛔ v90.92 退役：派系（门派）动作整条删除 —— open-sect / sect-join / sect-found /
+         sect-task / sect-task-bulk / sect-leave 六个 case 一并移除。 */
       case 'open-store': ui.openStore(); break;
       /* v89.210（规划三）：环境状态条 chip 点击 → 跳对应页 / 面板（data-go / data-city） */
       case 'sky-go': {
@@ -1124,10 +1089,6 @@
          出兵入口 = 地图点选 / 「军务 · 出征」页。 */
       case 'heal-wounded': GAME.doHeal(); break;
 
-      /* 任务 */
-      case 'claim-quest': GAME.doClaimQuest(el.dataset.q); break;
-      /* v89.89（B1）：任务一键全领 */
-      case 'quest-claim-all': GAME.doClaimAllQuests(); break;
 
       /* 出征（城/野地） */
       case 'exp-open': GAME.doOpenExp(el.dataset.kind, el.dataset.mode); break;
@@ -1812,22 +1773,6 @@
     if (r.ok) { ui.openBag('equip'); GAME.refreshAll(); }
   };
 
-  /* ---------- 随机任务 ---------- */
-  GAME.doClaimRandQuest = function (id) {
-    var r = GAME.claimRandomQuest(id);
-    ui.toast(r.msg);
-    ui.renderView('tasks'); GAME.refreshAll();
-  };
-  GAME.doRerollRandQuest = function (id) {
-    var r = GAME.rerollRandomQuest(id);
-    ui.toast(r.msg);
-    if (r.ok) ui.renderView('tasks');
-  };
-  GAME.doRerollAllRand = function () {
-    var r = GAME.rerollAllRandomQuests();
-    ui.toast(r.msg);
-    if (r.ok) ui.renderView('tasks');
-  };
 
   /* 锻造间打造 */
   GAME.doForge = function (itemId) {
@@ -2182,30 +2127,6 @@
     ui.toast(nm + '：「' + t.state + '」特产' +
       (t.owned ? '（已据）' : '（未据 —— 首府「' + t.name + '」）') +
       ' —— 已定位 ' + GAME.map.coordText(t.x, t.y));
-  };
-  GAME.doClaimQuest = function (qid) {
-    var r = GAME.claimQuest(qid);
-    ui.toast(r.msg);
-    GAME.refreshAll();
-  };
-  /* v89.89（B1 · 100+ 轮实玩期待）：任务一键全领 ——
-     逐条复用 claimQuest / claimRandomQuest 同一对出口（既有校验/结算/防重领全保留），
-     汇总一条 toast；不新造批量结算路径（"第二次结算"是本项目最经典失效模式）。 */
-  GAME.doClaimAllQuests = function () {
-    var s = GAME.state;
-    var n = 0;
-    (DATA.QUESTS || []).forEach(function (q) {
-      if (!GAME.questReady(q)) return;
-      var r = GAME.claimQuest(q.id);
-      if (r.ok) n++;
-    });
-    (s.quests.pool || []).slice().forEach(function (entry) {
-      if (!GAME.randQuestReady(entry)) return;
-      var r = GAME.claimRandomQuest(entry.id);
-      if (r.ok) n++;
-    });
-    ui.toast(n ? ('一键领取 ' + n + ' 项任务奖励') : '暂无可领取的任务奖励');
-    if (n) { ui.renderView('tasks'); GAME.refreshAll(); }
   };
   /* 打开统一出征面板 */
   GAME.doOpenExp = function (kind, mode) {
@@ -2933,14 +2854,7 @@
           GAME._buildDirty = false;
           if (ui.view === 'city' || ui.view === 'ext') ui.renderView(ui.view);
         }
-        /* v69（老板「已完成的任务自动浮动到最上方」）：可领取数量一变，
-           正开着任务面板就立即重绘 —— 让"达标即置顶"是真·自动，
-           口径与导航徽标（syncBadges 每秒读同一汇总）保持一致。 */
-        var qr = GAME.questSummary().ready;
-        if (GAME._lastQuestReady !== qr) {
-          GAME._lastQuestReady = qr;
-          if (ui.view === 'tasks') ui.renderView('tasks');
-        }
+        /* v90.92：任务面板重绘钩子随任务系统退役（无 tasks 视图）。 */
         ui.renderLog();
         ui.renderSide();
         ui.syncHeader();
@@ -3093,7 +3007,6 @@
     bindEvents();
     GAME._lastBuildCount = 0;
     GAME._buildDirty = false;   /* v89.174：完成脏标记初值 */
-    GAME._lastQuestReady = 0;   /* v69：可领取数变化时重绘任务面板的基准值 */
     var demo = /[?&]demo=1/.test(location.search);
     if (demo) {
       GAME._demo = true;

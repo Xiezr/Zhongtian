@@ -28,10 +28,10 @@ var KNOWN_BUILDS = {
   'MAX_LEVEL_ABS': '基准值 + 加成推导（同一 IIFE 内多步赋值）',
   'RANK_BUILD_LIFT_MAX': '定值 + 自校正（爵位档数扩容时向上修正）',
 };
-/* ② 合法跨文件写域（除 data.js 外） */
-var LEGAL_EXTRA_WRITERS = {
-  'js/questdata.js': '任务数据分包（v12 起 · 加载序在 data.js 之后，覆盖是设计）',
-};
+/* ② 合法跨文件写域（除 data.js 外）
+ * v90.92：任务系统退役 —— 原 'js/questdata.js'（任务数据分包）已删除，
+ *         合法域回归「只有 data.js」。 */
+var LEGAL_EXTRA_WRITERS = {};
 /* ③ 孤儿白名单（每条必须有理由 · 目前为空）
  * 说明：CITY_PERK_KEYS 曾在 v1/v2 白名单里 —— v89.134 接线后它已被
  * smoke §115⑤ 真实消费（引用计数 ≥1），**撤出白名单**：它若再变孤儿就该报警。 */
@@ -222,7 +222,7 @@ if (require.main === module) {
   console.log('写点文件分布:', JSON.stringify(A.writeFiles));
   console.log('扫描范围:', A.scanCount, '个文件（js/ 全部 + smoke/e2e/audit）');
   console.log('');
-  console.log('--- ⛔ 跨文件写（合法域：data.js / questdata.js）---');
+  console.log('--- ⛔ 跨文件写（唯一合法域：data.js）---');
   if (!A.crossWrite.length) console.log('  （无）✔');
   A.crossWrite.forEach(function (c) {
     console.log('  ' + c.name + ': ' + c.at.map(function (a) { return a.file + ':' + a.line; }).join(', '));

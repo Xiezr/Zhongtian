@@ -43,7 +43,8 @@ var SYS = [
   { n: '忠诚月俸', d: ['GEN_SALARY', 'LOYALTY'], g: ['salary', 'loyalty'], u: ['gp-sal194'], t: ['忠诚', '月俸'] },
   { n: '精力体力', d: ['STAMINA', 'ENERGY'], g: ['energyMaxOf', 'staMax'], u: ['energy'], t: ['体力', '精力'] },
   { n: '爵位晋升', d: ['RANK', 'RANK_BONUS'], g: ['rankOf', 'cityCapOf'], u: ['rankBadge'], t: ['爵位'] },
-  { n: '门派', d: ['SECTS', 'SECT_TASKS', 'SECT_JOIN'], g: ['sect'], u: ['sect', '门派'], t: ['门派'] },
+  /* v90.92：「门派（派系）」整系统退役 —— 四链核对行移除（防重跑误报假缺口）。
+     注：建筑 honglusi（显示名「基因实验室」）保留，其系统条目见上「基因实验室」。 */
   { n: '声望', d: ['REP_RULE', 'REP_PENALTY'], g: ['rep'], u: ['rep'], t: ['声望'] },
   { n: '宝物收藏', d: ['COLLECT', 'JEWEL_LADDER', 'JEWEL_COST'], g: ['collectCondMetOf', 'collectBuySeries'], u: ['openCollect', '陈列馆'], t: ['收藏', '藏珍'] },
   /* v90.80：「奇观/奇遇」整系统退役 —— 四链核对行移除（防重跑误报假缺口） */
@@ -85,7 +86,7 @@ var SYS_CK = {
   '忠诚月俸': /^loyal|^salary|^gift/,
   '精力体力': /^energy|^sta-|^heal/,
   '爵位晋升': /^rank-|^jieyue/,
-  '门派': /^sect/,
+  /* v90.92：'门派' 动作面路由项移除（无 sect-* 动作） */
   '声望': /^rep-|^fame/,
   '宝物收藏': /^collect|^jewel|^treasure/,
   /* v90.80：'奇观/奇遇' 整系统退役（动作面路由项移除） */
@@ -95,7 +96,7 @@ var SYS_CK = {
   '存档': /^save|^load|^slot|^theme|^set-/,
   '离线补偿': /^loop|^offline/,
   '沙盘推演': /^sd-sim|^sandbox|^sim-/,
-  '纪事剧本': /^story|^chronicle|^quest/,
+  '纪事剧本': /^story|^chronicle/,   /* v90.92：任务系统退役 → 'quest' 路由项移除 */
   '城外建筑': /^ext|^land|^farm-|^field/,
 };
 var ALL_ACTIONS = (function () {

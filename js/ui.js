@@ -1070,11 +1070,7 @@
   /* 导航提醒：有事情等你处理 → 页签图标闪黄 */
   ui.syncBadges = function () {
     if (!GAME.state) return;
-    /* v89.221（老板）：「任务有完成的任务不需要加数字显示，参考公文菜单的闪烁」——
-       数字徽标（#tab-badge-task）退役：有可领取任务时，任务页签图标闪黄
-       （.fresh，与公文 tab 的 docBlink 同款；领完清零自动熄）。 */
-    var taskTab = document.querySelector('#topnav .tab[data-view="tasks"]');
-    if (taskTab) taskTab.classList.toggle('fresh', GAME.questSummary().ready > 0);
+    /* ⛔ v90.92：任务页签（#topnav .tab[data-view="tasks"] 及 .fresh 闪烁）随任务系统退役。 */
     /* v41（需求 3）：行军角标**已撤**。老板原话「不要给在行军这个菜单名上产生数值」——
        顶栏提醒的语义是"有事情等你处理"（任务可领取）；行军只是"部队在外面"，
        属状态不属待办，挂在菜单名上会误导。队列数在行军菜单里本来就有。
@@ -3097,7 +3093,7 @@
     if (kind === 'wounded') {
       var wn = s.wounded || 0;
       var fee = GAME.healFeeOf ? GAME.healFeeOf(wn) : wn * 10;
-      /* v89.186：显示**当前实际回收率**（走唯一出口 —— 含商品/维修科技/派系） */
+      /* v89.186：显示**当前实际回收率**（走唯一出口 —— 含商品/维修科技） */
       var wr = Math.round((GAME.woundedRateOf ? GAME.woundedRateOf(null)
         : ((DATA.EXPEDITION || {}).woundedRate || 0.75)) * 100);
       return '<div class="camp-card"><div class="wb-head"><span class="wb-t">🏥 伤兵营</span>' +
@@ -7604,99 +7600,9 @@
      UI 不再暴露 —— 卖粮得旧币再买木，口径统一到这一张表里。
      口径**只读出口**：卖价 marketSellGold / 买价 marketBuyGoldFor，界面不自己算
      （"算第二遍"是本项目最经典的失效模式）。 */
-  /* ============================================================
-   * 派系驻地 · 派系面板（v89.74 · P0）
-   * ------------------------------------------------------------
-   * 入口 = 城内**派系建筑格的建筑面板** → 「⚔️ 派系」按钮（见 BLDG_FUNC.honglusi）。
-   * 老板原话是「点击地块时提供可选项」，所以**不新造入口**，挂在既有的建筑面板上 ——
-   * 全站建筑都是这个走法，派系不该例外。
-   * 三种形态：未入派（六派名录 + 开山立派）/ 已入派（品阶 · 声望 · 派系任务）/ 退派（底栏危险操作）。
-   * 文案口径：派系声望与**君主声望分家**（前者定品阶，不参与威望）——两套数字不许互相折算。
-   * ============================================================ */
-  ui.openSect = function () {
-    var S = DATA.SECTS || [], st = GAME.sectState(), sc = GAME.sectOf();
-    var lv = GAME.sectBldLv();
-    var rk = GAME.sectRankOf(), nx = GAME.sectNextRankOf();
-    var cd = GAME.sectLeaveCd();
-    var F = DATA.SECT_FOUND || {};
-    /* v89.105：这条说明原占 55px（整段 q-empty）—— 派系面板本就"六派 + 开山"两节，
-       多这 55px 就装不下。收进标题旁的 ?；面板同时升到 xxl（两列后 790px）。 */
-    var html = '<div class="gold-heading">⚔️ 派系' + (lv ? ' · Lv' + lv : '') +
-      ui.help('派系声望与君主声望各记各的：前者定你在门中的品阶，不参与威望。') + '</div>';
-
-    if (!sc) {
-      if (cd > 0) {
-        html += '<div class="note-warn">退派未满 ' + DATA.SECT_LEAVE.cooldownDay + ' 日（余 ' + cd + ' 日），暂不可入派。</div>';
-      }
-      var chkLv = lv >= (F.bldLv || 1), chkCost = GAME.canAfford(F.cost);
-      /* v89.105（老板「内容紧凑有序」）：六派此前纵向各占一行（实测 517px），
-         加上"开山立派"一节共 703px —— 默认档(620)装不下、必冒滚动条。
-         改**两列网格**：六派 → 三行，517 → 约 260px，一眼看全，也更好比。 */
-      html += '<div class="op-zone"><div class="op-zone-t">荒野六派 · 择一入派</div>' +
-        '<div class="sect-grid">';
-      S.forEach(function (x) {
-        html += '<div class="op-row sect-card">' +
-          '<div><b>' + x.icon + ' ' + U.escape(x.name) + '</b>　<span class="ui-sub">' + U.escape(x.style) + '</span></div>' +
-          /* v89.86（派系 P1）：被动加成上架 —— 入派前就能看见将得到什么 */
-          '<div class="op-hint">被动：<b style="color:var(--gold-light);">' + U.escape(GAME.sectTraitText(x)) + '</b>　·　' +
-            U.escape(x.desc) + '</div>' +
-          '<button class="btn gold" data-action="sect-join" data-v="' + x.id + '"' + (cd > 0 ? ' disabled data-why="退派冷却中，暂不可入派（刚退派需等待冷却）"' : '') + '>入派</button>' +
-          '</div>';
-      });
-      html += '</div></div>';
-      html += '<div class="op-zone"><div class="op-zone-t">开山立派</div>' +
-        '<div class="op-hint">自成一门：你是开山祖师，派系任务声望 <b>×1.5</b>。' +
-          '须基因实验室 <b>Lv' + F.bldLv + '</b>（现 Lv' + lv + '）　·　本钱 ' + GAME.costString(F.cost) + '</div>' +
-        '<div class="op-row">' + S.map(function (x) {
-          return '<button class="btn" data-action="sect-found" data-v="' + x.id + '"' +
-            ((cd > 0 || !chkLv) ? ' disabled data-why="' + (cd > 0 ? '冷却中：暂不可立派（退派冷却）' : '基因实验室等级不足') + '"' : '') + '>' + x.icon + ' 立' + U.escape(x.name) + '</button>';
-        }).join('') + '</div>' +
-        (cd > 0 ? '<div class="op-hint">冷却中，暂不可立派。</div>' : '') +
-        ((cd > 0 || chkLv) ? '' : '<div class="op-hint">基因实验室 Lv 不足。</div>') +
-        (chkCost ? '' : '<div class="op-hint">本钱不足。</div>') +
-        '</div>';
-    } else {
-      html += '<div class="op-zone"><div class="op-zone-t">' + sc.icon + ' ' + U.escape(sc.name) +
-        (st.founder ? '（开山祖师）' : '') + '</div>' +
-        '<div class="op-hint">' + U.escape(sc.desc) + '</div>' +
-        '<div class="op-row"><span class="op-kv">门中品阶 <b>' + U.escape((rk && rk.name) || '') + '</b></span>' +
-          '<span class="op-kv">派系声望 <b>' + U.fmt(st.rep) + '</b></span></div>' +
-        /* v89.86（派系 P1）：派系被动 —— 加成已实装（走既有消费链） */
-        '<div class="op-hint">派系被动：<b style="color:var(--gold-light);">' + U.escape(GAME.sectTraitText(sc)) + '</b></div>' +
-        (nx ? '<div class="op-hint">晋「' + U.escape(nx.name) + '」还需 ' +
-              U.fmt(Math.max(0, nx.rep - st.rep)) + ' 声望。</div>'
-            : '<div class="op-hint">已至门中最高品阶。</div>') +
-        /* v89.89（C3）：声望来源透明化 —— 来源扩容后明示两条来路（任务 / 占城） */
-        '<div class="op-hint" style="color:var(--text-dim);">声望来源：派系任务（每日）· 开疆拓土（占城一次性入账）</div>' +
-        '</div>';
-      html += '<div class="op-zone"><div class="op-zone-t">派系任务（今日余 ' +
-        GAME.sectTaskLeftToday() + ' / ' + DATA.SECT_TASK_PER_DAY + '）</div>';
-      (DATA.SECT_TASKS || []).forEach(function (t) {
-        var gain = st.founder ? Math.round(t.rep * 1.5) : t.rep;
-        var can = GAME.canAfford(t.cost) && GAME.sectTaskLeftToday() > 0;
-        html += '<div class="op-row" style="display:block;">' +
-          '<div><b>' + U.escape(t.name) + '</b>　<span class="ui-sub">声望 +' + gain +
-            '　·　' + GAME.costString(t.cost) + '</span></div>' +
-          '<div class="op-hint">' + U.escape(t.desc) + '</div>' +
-          /* v89.86（整改 P-21）：连做 —— 复用「去做」同一出口逐次调用，结算汇总一条 toast */
-          '<span style="display:inline-flex;gap:6px;align-items:center;">' +
-          '<button class="btn' + (can ? ' gold' : '') + '" data-action="sect-task" data-v="' + t.id + '"' +
-            (can ? '' : ' disabled data-why="资源不足，或今日派系任务次数已尽"') + '>去做</button>' +
-          '<button class="btn sm" data-action="sect-task-bulk" data-v="' + t.id + '" data-n="10"' +
-            (can ? '' : ' disabled data-why="资源不足，或今日派系任务次数已尽"') + '>连做 ×10</button>' +
-          '<button class="btn sm" data-action="sect-task-bulk" data-v="' + t.id + '" data-n="0"' +
-            (can ? '' : ' disabled data-why="资源不足，或今日派系任务次数已尽"') + ' title="按今日剩余次数连续执行，直到日额用尽或资源不够">一键做完</button>' +
-          '</span>' +
-          '</div>';
-      });
-      html += '</div>';
-      html += '<div class="bldg-foot"><button class="btn sm red" data-action="sect-leave">退出' +
-        U.escape(sc.name) + '（声望清零）</button></div>';
-    }
-    html += '<div class="m-foot"><button class="btn" data-action="close-modal">关闭</button></div>';
-    ui.openModal(html, { size: 'xxl', live: function () { ui.openSect(); } });
-    /* v89.105：六派两列后实测 790px；v89.136（清单①）：live 逐秒刷新（声望/任务/冷却实时） */
-  };
+  /* ⛔ v90.92 退役：ui.openSect（派系面板）整条删除 —— 老板「去掉门派」。
+     原入口 = 建筑 honglusi 建筑面板的「⚔️ 派系」按钮（已从 BLDG_FUNC 摘除）。
+     三种形态（未入派名录 / 已入派品阶声望任务 / 退派）随系统一并移除。 */
 
   ui.openMarket = function () {
     var s = GAME.state;
@@ -8008,7 +7914,6 @@
     else if (v === 'bag') box.innerHTML = ui.bagHTML();
     /* v89.194（老板 S3）：收藏（陈列馆）—— 与游商 / 背包并列的整页视图 */
     else if (v === 'collection') box.innerHTML = ui.collectHTML();
-    else if (v === 'tasks') box.innerHTML = ui.tasksHTML();
     else if (v === 'reports') box.innerHTML = ui.reportsHTML();
     else if (v === 'settings') box.innerHTML = ui.settingsHTML();
     /* v29（需求 5）：自动化独立成菜单（自动升级 / 研究 / 出征） */
@@ -8598,11 +8503,9 @@
     tiejiangpu: [{ label: "⚒️ 打造", act: "open-forge" },
       { label: "⚒️ 熔铸强化", act: "open-enhance" }],
     gongjiangzuofang: { label: "🛠️ 器械 · 箭塔", act: "open-workshop", withIdx: true },
-    /* v89.74：派系驻地有了门（入派 / 立派 / 派系任务 / 品阶声望）。
-       v89.224（老板 1）：本格改为**基因实验室的建筑载体** —— 新增「🧬 基因实验室」
-       入口（原在政务厅要务段，已撤）；「⚔️ 派系」入口保留。 */
-    honglusi: [{ label: "🧬 基因实验室", act: "open-lab" },
-      { label: "⚔️ 派系", act: "open-sect" }],
+    /* v89.224（老板 1）：本格为**基因实验室的建筑载体**（原在政务厅要务段，已撤）。
+       v90.92：原「⚔️ 派系」入口随门派系统整条退役而移除。 */
+    honglusi: { label: "🧬 基因实验室", act: "open-lab" },
     /* v85（老板）：「居所不需要幸存者统计功能」—— 居所入口退役；
        「幸存者统计」面板本身保留（城防统计仍由此进入）。 */
     chengqiang: { label: "🧱 城防统计", act: "open-panel", view: "stats" }
@@ -11277,30 +11180,8 @@
     ui.openModal(html);
   };
 
-  /* 随机任务换新（单条 / 全部）—— 付工本费、旧任务作废 */
-  ui.openRerollRandAsk = function (qid) {
-    var html = '<div class="gold-heading">🔄 放弃并换一条</div>';
-    /* v90.44（老板）：工本费不再成行显示，移入确认按钮悬停。 */
-    html += '<div class="note">该任务作废，立刻抽取一条新的随机任务。是否确定？</div>';
-    html += '<div class="panel-foot">'
-      + '<button class="btn red" data-action="reroll-rand-quest-do" data-q="' + qid + '"'
-      + ' title="工本费 ' + U.numText(GAME.randQuestRerollCost(), 0) + ' 旧币">确定换一条</button>'
-      + '<button class="btn" data-action="close-modal">取消</button></div>';
-    ui.openModal(html);
-  };
-  ui.openRerollAllAsk = function () {
-    var s = GAME.state, n = ((s && s.quests && s.quests.pool) || []).length;
-    var html = '<div class="gold-heading">🔄 全部换新</div>';
-    html += '<div class="attr"><span class="k">换新数量</span><span class="v">' + n + ' 项（全部作废重抽）</span></div>';
-    html += '<div class="note">当前 ' + n + ' 项随机任务将<b>全部作废</b>并重新抽取。是否确定？</div>';
-    html += '<div class="panel-foot">'
-      + '<button class="btn red" data-action="reroll-all-rand-do"'
-      + ' title="工本费 ' + U.numText(GAME.randQuestRerollAllCost(), 0) + ' 旧币">确定全部换新</button>'
-      + '<button class="btn" data-action="close-modal">取消</button></div>';
-    ui.openModal(html);
-  };
+  /* ⛔ v90.92 退役：随机任务换新弹窗（openRerollRandAsk / openRerollAllAsk）随任务系统删除。 */
 
-  /* 单槽位更换（v88：按**当前生效套**过滤候选与槽名；基因强化件附「调校」入口） */
   ui.openEqSlot = function (genId, slot) {
     var s = GAME.state, g = null;
     s.generals.forEach(function (x) { if (x.id === genId) g = x; });
@@ -14193,7 +14074,7 @@
    * v89.186（老板 2/4）：出征「伤兵回收」提示行 + 就地快购 ——
    *   · 苦战判定 = 我方**最好情形**仍弱于守军（ratioHi < 1.0；与军师估算同一份数据）——
    *     优势仗不打扰（v89.178 老板已嫌信息噪音）；
-   *   · 数字走唯一出口 GAME.woundedRateOf（含商品/维修科技/派系），
+   *   · 数字走唯一出口 GAME.woundedRateOf（含商品/维修科技），
    *     商品可及上限从商品表读（改价/改值自动跟，不写死）；
    *   · 「快购兵书」= 既有快购通道（qb-cat + scope='wound'，零新 case）；
    *     出征常驻的「🛒 战备快购」（exp-foot）列军事宝物全类。
@@ -14568,7 +14449,6 @@
 
   /* --------- 任务 --------- */
   /* ================= 任务（随机任务 + 成长任务 + 已完成） ================= */
-  ui._showDone = false;
 
   /* v25（需求 11）：旧的卡片墙渲染器已删除 —— 任务列表只给一行名称，
      领取/放弃/进度全部进详情弹窗，卡片不再有使用场景。 */
@@ -14718,284 +14598,15 @@
     };
   };
 
-  /* ============================================================
-   * 任务（v25 · 需求 11）
-   * ------------------------------------------------------------
-   * 改前是"卡片墙"：每张卡上塞了标题 / 类型 / 说明 / 进度条 / 奖励 / 按钮 /
-   * 小字引导，一屏八九张，扫一眼全是小字。
-   * 改后：**列表只给名称与状态**，点名称弹出一个**固定尺寸的详情窗**，
-   * 版式统一为「背景 → 需求 → 奖励 → 操作」，看哪一条都一样大。
-   * ============================================================ */
-  ui.tasksHTML = function () {
-    var s = GAME.state;
-    var sum = GAME.questSummary();
-    var pool = s.quests.pool || [];
-    var cap = (DATA.QUEST_DAILY && DATA.QUEST_DAILY.maxActive) || 5;
+  /* ⛔ v90.92 退役：任务页（ui.tasksHTML）与任务详情弹窗整条删除 ——
+     老板「去掉纪事剧本」中的「任务系统」。
+     移除：tasksHTML / questJumpOf / doQuestGo / openQuestDetail。
+     注：公文消息的 'task' 类标签（改元等）不属本系统，保留。 */
 
-    /* 列表行（点名称进详情） */
-    var rowHtml = function (o) {
-      return '<div class="q-row" data-action="quest-detail"'
-        + ' data-kind="' + o.kind + '" data-id="' + o.id + '">'
-        + '<span class="q-row-n">' + U.escape(o.title) + '</span>'
-        + (o.tag ? '<span class="q-tag ' + (o.tagCls || '') + '">' + o.tag + '</span>' : '')
-        + '<span class="q-row-p">' + o.cur + ' / ' + o.goal + '</span>'
-        + '</div>';
-    };
-    /* v69（老板「已完成的任务自动浮动到最上方，右侧直接添加领取按钮」）：
-       达标任务浮到顶部「可领取奖励」块，行右侧直接挂「领取」——
-       一步领取，不必再进详情；行本身仍可点（想看背景 / 奖励明细照旧）。
-       按钮复用既有 action（claim-quest / claim-rand-quest），不新造出口。 */
-    var readyRowHtml = function (o) {
-      return '<div class="q-row ready" data-action="quest-detail"'
-        + ' data-kind="' + o.kind + '" data-id="' + o.id + '">'
-        + '<span class="q-row-n">' + U.escape(o.title) + '</span>'
-        + (o.tag ? '<span class="q-tag ' + (o.tagCls || '') + '">' + o.tag + '</span>' : '')
-        + '<span class="q-row-act"><button class="btn gold sm" data-action="'
-        + (o.kind === 'random' ? 'claim-rand-quest' : 'claim-quest')
-        + '" data-q="' + o.id + '">领取</button></span>'
-        + '</div>';
-    };
-    var notReady = function (o) { return !o.ready; };
-
-    /* ① 随机任务（每日 5 项） */
-    var randItems = pool.map(function (entry) {
-      var def = GAME.randomQuestDef(entry.id);
-      if (!def) return null;
-      return {
-        kind: 'random', id: entry.id, title: def.title,
-        tag: (DATA.QUEST_TYPES[def.type] || def.type), tagCls: 't-' + def.type,
-        cur: GAME.randQuestAmount(entry), goal: def.goal, ready: GAME.randQuestReady(entry),
-      };
-    }).filter(function (o) { return !!o; });
-
-    /* ② 成长任务（进行中） */
-    var undone = (DATA.QUESTS || []).filter(function (q) { return !GAME.questDone(q); });
-    var growthItems = undone.map(function (q) {
-      return {
-        kind: 'growth', id: q.id, title: q.title, tag: '成长', tagCls: 't-growth',
-        cur: GAME.questAmount(q), goal: GAME.questGoal(q), ready: GAME.questReady(q),
-      };
-    });
-
-    /* ③ 可领取（自动置顶 · 唯一出口）：随机在前、成长在后（与下方区块同序）。
-       浮上去的项**不再**在各自区块重复出现 —— 一处占位，杜绝"同一件事看两遍"。 */
-    var readyItems = randItems.filter(function (o) { return o.ready; })
-      .concat(growthItems.filter(function (o) { return o.ready; }));
-    var readyBlock = readyItems.length
-      ? '<div class="q-sec q-sec-ready"><span class="q-sec-t">✅ 可领取奖励</span>'
-        + '<span class="q-sec-n">' + readyItems.length + ' 项</span>'
-        /* v89.89（B1 · 100+ 轮实玩期待）：一键全领 —— 逐条复用「领取」同一对出口
-           （claimQuest / claimRandomQuest），汇总一条 toast，不新造结算路径。 */
-        + '<button class="btn gold sm" style="margin-left:auto;" data-action="quest-claim-all">'
-        + '一键全领</button></div>'
-        + '<div class="q-list">' + readyItems.map(readyRowHtml).join('') + '</div>'
-      : '';
-
-    /* ④ 随机任务（剩余 · 未达标） */
-    var randWait = randItems.filter(notReady);
-    var randRows = randWait.map(rowHtml).join('') || (randItems.length
-      ? '<div class="q-empty">本批 ' + randItems.length + ' 项均已可领取 —— 见上方「可领取奖励」。</div>'
-      : '<div class="q-empty">今日随机任务已全部完成，明日再来。</div>');
-
-    /* ⑤ 成长任务（剩余 · 未达标 · 分页） */
-    var growthWait = growthItems.filter(notReady);
-    var gp = ui.pageOf('growth', growthWait.length, 10);
-    var growthRows = growthWait.slice(gp.from, gp.to).map(rowHtml).join('') || (undone.length
-      ? '<div class="q-empty">进行中的任务均已可领取 —— 见上方「可领取奖励」。</div>'
-      : '<div class="q-empty">成长任务已全部完成 —— 功业已成。</div>');
-
-    /* ⑥ 已完成（折叠 · 分页） */
-    var log = s.quests.log || [];
-    var doneRows = (DATA.QUESTS || []).filter(function (q) { return GAME.questDone(q); })
-      .map(function (q) { return { title: q.title, kind: '成长', cls: 't-growth', right: GAME.rewardString(q.reward) }; })
-      .concat(log.filter(function (x) { return x.kind === 'random'; })
-        .map(function (x) { return { title: x.title, kind: '随机', cls: '', right: ui.timeAgo(x.t) }; }));
-    var dp = ui.pageOf('done', doneRows.length, 14);
-    var doneList = doneRows.slice(dp.from, dp.to).map(function (r) {
-      return '<div class="q-log-row"><span class="q-log-t">' + U.escape(r.title) + '</span>' +
-        '<span class="q-tag ' + r.cls + '">' + r.kind + '</span><span class="q-log-r dim">' + r.right + '</span></div>';
-    }).join('');
-
-    return '<div class="ui-page">' +
-      '<div class="gold-heading">📜 任务' +
-        ui.help('点任务名称查看详情（背景 / 需求 / 奖励 / 放弃）\n已完成的任务自动置顶，点右侧「领取」直接领奖\n随机任务每日 5 项，同时在手上限 ' + cap + ' 项') +
-        '<span style="font-size:var(--fs-body);color:var(--text-dim);font-weight:400;">　可领取 ' + sum.ready + ' 项</span>' +
-      '</div>' +
-
-      /* v69：可领取块在最顶 —— 有奖可领优先于历史记录 */
-      readyBlock +
-
-      /* 区块顺序沿用 v16 #9 定下的「已完成 → 随机 → 成长」（v69 起可领取块置其前），
-         只是把每项从"卡片墙"压成一行名称（详情进弹窗）。 */
-      '<div class="q-sec"><span class="q-sec-t">已完成</span>' +
-        '<span class="q-sec-n">共 ' + doneRows.length + ' 项</span>' +
-        '<button class="btn sm" data-action="toggle-done-quests" style="margin-left:auto;">' + (ui._showDone ? '收起' : '展开') + '</button></div>' +
-      (ui._showDone
-        ? '<div class="q-done-box">' + (doneList || '<div class="q-empty">尚无已完成任务。</div>') + '</div>' + ui.pagerHTML('done', doneRows.length, 14)
-        : '') +
-
-      '<div class="q-sec" style="margin-top:16px;"><span class="q-sec-t">随机任务</span>' +
-        '<span class="q-sec-n">待完成 ' + randWait.length + ' 项 · 当前 ' + pool.length + ' / ' + cap + ' 项</span>' +
-        '<button class="btn sm" data-action="reroll-all-rand-ask" style="margin-left:auto;">全部换新（' + U.fmt(GAME.randQuestRerollAllCost()) + '旧币）</button></div>' +
-      '<div class="q-list">' + randRows + '</div>' +
-
-      '<div class="q-sec" style="margin-top:16px;"><span class="q-sec-t">成长任务 · 进行中</span>' +
-        '<span class="q-sec-n">' + growthWait.length + ' 项待完成 / 共 ' + (DATA.QUESTS || []).length + ' 项</span></div>' +
-      '<div class="q-list">' + growthRows + '</div>' + ui.pagerHTML('growth', growthWait.length, 10) +
-      '</div>';
-  };
-
-  /* ============================================================
-   * 任务详情（v25 · 需求 11）：固定尺寸 + 固定版式
-   *   任务背景 → 任务需求 → 任务奖励 → 操作（领取 / 放弃）
-   * ============================================================ */
-  /* v89.86（整改 P-03）：任务「前往」的去处映射 —— 一处归表，入口与执行共用。
-     建筑类能精确定位就精确定位（见 doQuestGo），其余按 metric 归到对应视图。 */
-  ui.questJumpOf = function (def) {
-    var m = (def && def.metric) || '';
-    var CITY = { bldCount: 1, bldLevel: 1, buildDone: 1, res: 1, pop: 1, hearts: 1, gold: 1,
-                 matTotal: 1, forgeTotal: 1, equipCount: 1, forgeKinds: 1 };
-    var GEN = { recruitCount: 1, genCount: 1, heroCount: 1, rank: 1 };
-    if (CITY[m]) return { view: 'city', msg: '前往城池（城内建筑 / 侧栏资源）' };
-    if (m === 'extCount' || m === 'extTotal' || m === 'extLevel') return { view: 'ext', msg: '前往城外地块' };
-    if (m === 'techLevel' || m === 'techTotal' || m === 'techDone') return { view: 'tech', msg: '前往研习所 · 科技' };
-    if (m === 'trainTotal' || m === 'troopCount' || m === 'armyTotal') return { view: 'troops', msg: '前往训练营 · 募兵' };
-    if (m === 'conquerCount' || m === 'winCount' || m === 'wildCount' || m === 'cityCount') return { view: 'map', msg: '前往地图（选目标出征）' };
-    if (GEN[m]) return { view: 'generals', msg: '前往英雄' };
-    if (m === 'tradeCount') return { view: 'shop', msg: '前往游商' };
-    return null;
-  };
-  /* 「前往」执行：建筑类 → 城池对应格（已有该建筑直开该格；否则开建造选择器）；其余 → 切视图 + 指引 */
-  ui.doQuestGo = function (kind, id) {
-    var s = GAME.state;
-    var def = null;
-    if (kind === 'random') {
-      var entry = null;
-      (s.quests.pool || []).forEach(function (e) { if (e.id === id) entry = e; });
-      if (entry && GAME.randomQuestDef) def = GAME.randomQuestDef(entry.id);
-    } else {
-      (DATA.QUESTS || []).forEach(function (q) { if (q.id === id) def = q; });
-    }
-    if (!def) { ui.toast('任务不存在'); return; }
-    var j = ui.questJumpOf(def);
-    ui.closeModal();
-    if (!j) { ui.toast('按指引进行：' + (def.guide || '—')); return; }
-    if (j.view === 'city' && def.sub && DATA.BUILDINGS[def.sub]) {
-      var city = GAME.currentCity();
-      var hit = -1, empty = -1;
-      (city.cells || []).forEach(function (c, i) {
-        if (c && c.build && c.build.id === def.sub && hit < 0) hit = i;
-        if (c && !c.build && empty < 0) empty = i;
-      });
-      ui.setView('city');
-      var pick = hit >= 0 ? hit : empty;
-      if (pick >= 0) {
-        ui.openBuildModal(pick);
-        ui.toast('已定位：' + (hit >= 0 ? ((DATA.BUILDINGS[def.sub]).name + ' 所在格') : '城内空地 —— 选择要建造的建筑'));
-      } else {
-        ui.toast(j.msg + '（' + (def.guide || '按任务指引进行') + '）');
-      }
-      return;
-    }
-    ui.setView(j.view);
-    ui.toast(j.msg + (def.guide ? '　' + def.guide : ''));
-  };
-
-  ui.openQuestDetail = function (kind, id) {
-    var s = GAME.state;
-    var def = null, entry = null;
-    if (kind === 'random') {
-      (s.quests.pool || []).forEach(function (e) { if (e.id === id) entry = e; });
-      if (!entry) { ui.toast('该任务已过期'); return; }
-      def = GAME.randomQuestDef(entry.id);
-    } else {
-      (DATA.QUESTS || []).forEach(function (q) { if (q.id === id) def = q; });
-    }
-    if (!def) { ui.toast('任务不存在'); return; }
-
-    var isRandom = (kind === 'random');
-    var cur = isRandom ? GAME.randQuestAmount(entry) : GAME.questAmount(def);
-    var goal = GAME.questGoal(def);
-    var ready = isRandom ? GAME.randQuestReady(entry) : GAME.questReady(def);
-    var claimed = !isRandom && GAME.questDone(def);
-    var pct = Math.max(0, Math.min(100, Math.round(cur / Math.max(1, goal) * 100)));
-    var tname = isRandom ? (DATA.QUEST_TYPES[def.type] || def.type) : '成长';
-
-    var body =
-      '<div class="q-det-hero">' +
-        '<span class="q-tag ' + (isRandom ? 't-' + def.type : 't-growth') + '">' + tname + '</span>' +
-        '<span class="q-det-title">' + U.escape(def.title) + '</span>' +
-      '</div>' +
-
-      '<div class="q-det-sec">任务背景</div>' +
-      '<div class="q-det-txt">' + U.escape(def.desc || '（无记载）') + '</div>' +
-
-      '<div class="q-det-sec">任务需求</div>' +
-      '<div class="q-det-txt">' + U.escape(GAME.questNeedText(def)) +
-        '<span class="q-det-prog">　当前 ' + U.numText(cur, 0) + ' / ' + U.numText(goal, 0) + '</span></div>' +
-      '<div class="q-bar"><i style="width:' + pct + '%"></i></div>' +
-      (def.guide ? '<div class="q-det-tip">' + U.escape(def.guide) + '</div>' : '') +
-
-      '<div class="q-det-sec">任务奖励</div>' +
-      '<div class="q-det-txt good">' + GAME.rewardString(def.reward) + '</div>';
-
-    var foot = '<div class="m-foot">';
-    /* v89.86（整改 P-03）：任务「前往」—— 建筑类定位到城池对应格，其余切到该管事的视图 */
-    if (!claimed && ui.questJumpOf(def)) {
-      foot += '<button class="btn gold" data-action="quest-go" data-kind="' + (isRandom ? 'random' : 'growth')
-        + '" data-id="' + def.id + '">🧭 前往</button>';
-    }
-    if (claimed) {
-      foot += '<span class="ui-sub">已领取</span>';
-    } else if (ready) {
-      foot += isRandom
-        ? '<button class="btn gold" data-action="claim-rand-quest" data-q="' + def.id + '">领取奖励</button>'
-        : '<button class="btn gold" data-action="claim-quest" data-q="' + def.id + '">领取奖励</button>';
-    }
-    /* 放弃任务：随机任务可以换一条（收工本费）；成长任务不可放弃 —— 它是"功业进程" */
-    if (isRandom && entry) {
-      foot += '<button class="btn red" data-action="reroll-rand-quest-ask" data-q="' + def.id + '">放弃并换一条（'
-        + U.fmt(GAME.randQuestRerollCost()) + '旧币）</button>';
-    } else if (!claimed) {
-      foot += '<span class="ui-sub">成长任务不可放弃（它记的是功业进程）</span>';
-    }
-    foot += '<button class="btn" data-action="close-modal">关闭</button></div>';
-
-    ui.openShell({
-      title: '📜 ' + def.title,
-      sub: tname + (isRandom ? ' · 今日随机' : ' · 成长过程'),
-      size: 'sm',
-      body: body,
-      foot: foot,
-    });
-  };
-
-  /* 相对时间（用于已完成列表） */
-  ui.timeAgo = function (t) {
-    if (!t) return '';
-    var d = Math.max(0, Math.round((U.now() - t) / 1000));
-    if (d < 60) return d + ' 秒前';
-    if (d < 3600) return Math.round(d / 60) + ' 分钟前';
-    if (d < 86400) return Math.round(d / 3600) + ' 小时前';
-    return Math.round(d / 86400) + ' 天前';
-  };
-
-  GAME.rewardString = function (reward) {
-    var parts = [];
-    for (var k in reward) {
-      if (!reward[k]) continue;
-      var name = '';
-      if (k === 'rep') name = '声望';
-      else {
-        DATA.RESOURCES.forEach(function (r) { if (r.key === k) name = r.name; });
-        if (!name && DATA.MATERIAL_BY_ID && DATA.MATERIAL_BY_ID[k]) name = DATA.MATERIAL_BY_ID[k].name;
-        if (!name) (DATA.ITEMS || []).forEach(function (it) { if (it.id === k) name = it.name; });
-        if (!name) name = k;
-      }
-      parts.push(name + ' +' + U.fmt(reward[k]));
-    }
-    return parts.join(' · ') || '—';
-  };
+  /* ⛔ v90.92 退役：`ui.timeAgo`（相对时间）与 `GAME.rewardString`（奖励成文案）——
+     二者**唯一消费点**是任务页 / 任务详情弹窗（已完成列表时间戳 · 奖励行），
+     随任务系统整条移除后成为无引用死函数（审计实测）→ 按「零死代码」口径删除。
+     将来别处若需要，从 git 历史取回（v90.92 前 ui.js 同段）。 */
 
   /* --------- 统计 --------- */
   /* ============================================================
@@ -15055,17 +14666,17 @@
    *   预算被低估 ≈11% → 每页少排 4 行、底部空 127px（实测）。
    * 实测（1600×1000 实机 · **布局值**，v89.157 重量）：
    *   #view-container 高 787px；标题+页签+chips 到消息区顶 = 114px；
-   *   系统页消息行高 22.4px（任务摘要区另占 ≈93px）；
+   *   系统页消息行高 22.4px；
    *   战报/侦查行（.doc-bar）高 30.0px；底注（"共 N 条"）保留 19px。
-   * → 系统页默认（含摘要）= (787−114−19−93)/22.2 = 25 条（余 6px · 底注贴底 ≈5px，实测）；
+   * → 系统页默认 = (787−114−19)/22.2 = 29 条（v90.92：原任务摘要区 ≈93px 已退役）（余 6px · 底注贴底 ≈5px，实测）；
    *   切到单主题标签（无摘要）= 29 条；战报页 = (787−114−19)/30 = 21 份（余 22px · 底距 26px）。
-   * 口径：per = floor((视图高 − 头 − 底注 − 摘要) / 行高)，下限 8 / 上限 60；
+   * 口径：per = floor((视图高 − 头 − 底注) / 行高)，下限 8 / 上限 60；
    *   余量 < 4px 时让掉一行（GUARD_H）—— 防字体度量抖动撑出滚动条（目标：底注贴底 ≤20px）。
    *   拿不到布局（桩 / jsdom）→ 回落 MSG_PER / DOC_PER（旧值保留为兜底）。
    *   ⚠️ 头/摘要/底注是**实测量值** —— 改公文版式后重跑量测并更新（改动点集中在本段）。
    * ============================================================ */
   ui.DOC_HEAD_H = 114;      /* 标题 + 页签 + chips 到消息区顶（布局 px · 实测 113.7） */
-  ui.DOC_TASK_H = 93;       /* 任务摘要区（布局 px · 实测 92.8，仅「全部/任务」标签出现） */
+  /* ⛔ v90.92：DOC_TASK_H（任务摘要区 93px）随任务系统退役。 */
   ui.DOC_FOOT_H = 19;       /* 底注"共 N 条"保留高度（布局 px）；.ui-page 底内边距 14px 会随之滚出 ——
                                视图页允许滚动（§30.3），且容器常驻 12px 滚动槽（scrollbar-gutter），观感不变 */
   ui.DOC_GUARD_H = 4;       /* 余量守卫：除不尽时的最小余量（不足则让掉一行，防抖动溢出） */
@@ -15079,7 +14690,6 @@
     } catch (e) { vcH = 0; }
     if (!vcH) vcH = 787;      /* 标准画布（1440×900）的实测值兜底 */
     var avail = vcH - ui.DOC_HEAD_H - ui.DOC_FOOT_H;
-    if (kind === 'sys' && (ui._msgTag === 'all' || ui._msgTag === 'task')) avail -= ui.DOC_TASK_H;
     if (avail < 120) return fb;                       /* 布局异常（窗口畸形）→ 兜底 */
     var _lh = ui.DOC_LINE_H[kind] || 26;
     var _per = Math.floor(avail / _lh);
@@ -15096,7 +14706,7 @@
    *   战报 = s.reports 里的战报（全部/胜/败/收藏 筛选 + 分页）
    *   侦查 = s.reports 里 type==='scout' 的回报（v89.73 起的结构化工文）
    *   警报 = kind==='beacon' 的消息（犯境预警 / 击退或被破 / 防守计）
-   *   任务 = 可领取摘要 + kind==='task' 的消息
+   *   任务 = kind==='task' 的消息（v90.92：可领取摘要随任务系统退役）
    *   系统 = kind==='sys' 的其余提示
    * 单一来源：类别表 `DATA.MSG_KINDS`（页签名/图标/**顺序**都由它派生 ——
    *   加一行就多一个页签）；消息类别在**发射点**声明（state.js 的 GAME.log）。
@@ -15223,27 +14833,7 @@
     ui._pages['docsys'] = 1;                    /* 切标签回第 1 页（同页签/背包口径） */
     ui.renderView('reports');
   };
-  /* 任务可领取摘要（原「任务」页内容 · v89.153 并入系统页） */
-  ui.msgTaskSummaryHTML = function () {
-    var s = GAME.state, out = [];
-    var sum = GAME.questSummary();
-    out.push('<div class="bb-line task" style="color:' + ui.msgTagColorOf('task') + '"><b>任务 · 可领取 ' +
-      sum.ready + ' 项</b>（成长 ' + sum.growthReady + ' · 随机 ' + sum.randReady + '）</div>');
-    (DATA.QUESTS || []).forEach(function (q) {
-      if (!GAME.questDone(q) && GAME.questReady(q)) {
-        out.push('<div class="bb-line task" style="color:' + ui.msgTagColorOf('task') + '">· ' +
-          U.escape(q.title) + '</div>');
-      }
-    });
-    (s.quests.pool || []).forEach(function (e) {
-      var d = GAME.randomQuestDef(e.id);
-      if (d && GAME.randQuestReady(e)) {
-        out.push('<div class="bb-line task" style="color:' + ui.msgTagColorOf('task') + '">· [随机] ' +
-          U.escape(d.title) + '</div>');
-      }
-    });
-    return '<div class="msg-log" id="msg-task">' + out.join('') + '</div>';
-  };
+  /* ⛔ v90.92 退役：任务可领取摘要（ui.msgTaskSummaryHTML）随任务系统删除。 */
   /* 消息流水行（警报 / 侦查页用）：一行 = 时刻 + 文本，按类别上色
      （沿用 .bb-line 既有配色；时刻只到分 —— 一屏 15 行要扫得动） */
   ui.docLinesHTML = function (id) {
@@ -15265,8 +14855,8 @@
     if (K && K.doc === false) {
       /* v89.153：task 并入系统页；beacon 另有落点（军务 · 警报）—— 按类别给不同指引 */
       if (K.id === 'task') {
-        return '<div class="q-empty">📜 「任务」已并入「系统」页（v89.153）——' +
-          '点上方「系统」页签，可选「任务」小标签筛选。</div>';
+        return '<div class="q-empty">📜 「任务」类消息已并入「系统」页 ——' +
+          '点上方「系统」页签可按「任务」小标签筛选。</div>';
       }
       return '<div class="q-empty">🔥 「' + U.escape(K.name) + '」已移出公文 —— 预警与来袭流水在' +
         '「军务 · 警报」页（点上方页签可回到公文其它板块）。</div>';
@@ -15320,8 +14910,6 @@
       var hit = (tag === 'all') ? feed
         : feed.filter(function (r) { return GAME.msgSubOf(r) === tag; });
       var h = ui.msgTagChipsHTML(feed);
-      /* 任务可领取摘要（原「任务」页内容）—— 只在「全部 / 任务」标签下置顶 */
-      if (tag === 'all' || tag === 'task') h += ui.msgTaskSummaryHTML();   /* #msg-task：摘要区 */
       if (!feed.length) {
         return h + '<div class="q-empty">暂无消息 —— 军情 / 任务 / 治理与其余提示都会汇总到这里。</div>';
       }

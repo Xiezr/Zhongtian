@@ -887,70 +887,10 @@
     color: var(--text-dim); background: rgba(var(--sh-rgb),.22); border: 1px solid var(--gold-dark); border-radius: var(--r-md); }
   .subtabs .sub.active { color: var(--ink-on-gold); background: linear-gradient(180deg, var(--gold-light), var(--gold)); border-color: var(--gold-light); }
 
-  /* 任务卡 */
-  .q-sec { display: flex; align-items: center; gap: var(--sp-4); margin: var(--sp-5) 0 var(--sp-3); padding-bottom: var(--sp-1);
-    border-bottom: 1px solid var(--sep-gold); }
-  .q-sec-t { color: var(--gold-light); }   /* v82：字号/字重/字距走分区标题共享 */
-  .q-sec-n { font-size: var(--fs-sub); color: var(--text-dim); }
-  .q-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--sp-3); }
-  /* ---- 任务清单（v25 · 需求 11）：只给名称与状态，详情进弹窗 ---- */
-  .q-list { display: flex; flex-direction: column; gap: var(--sp-1); }
-  .q-row {
-    display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-3) var(--sp-mid); cursor: pointer;
-    background: rgba(var(--sh-rgb),.22); border: 1px solid var(--line); border-radius: var(--r-md);
-    border-left: 3px solid rgba(var(--hl-rgb),.10); transition: background .12s, border-color .12s;
-  }
-  .q-row:hover { background: rgba(var(--gold-soft-rgb),.07); border-color: rgba(var(--gold-soft-rgb),.45); }
-  .q-row.ready { border-left-color: var(--green-ok); }
-  .q-row-n { font-size: var(--fs-lead); font-weight: 700; color: var(--gold-light); }
-  .q-row-p { margin-left: auto; font-size: var(--fs-sub); color: var(--text-dim); font-variant-numeric: tabular-nums; }
-  .q-row-p b { color: var(--green-ok); }
-  /* v69（老板「右侧直接添加领取按钮」）：可领取行 —— 按钮推到最右，一步领取 */
-  .q-sec-ready .q-sec-t { color: var(--green-ok); }
-  .q-row-act { margin-left: auto; display: inline-flex; align-items: center; }
-  /* 任务详情：固定版式 */
-  .q-det-hero { display: flex; align-items: center; gap: var(--sp-3); padding-bottom: var(--sp-4);
-    border-bottom: 1px solid var(--sep-gold); margin-bottom: var(--sp-1); }
-  .q-det-title { color: var(--gold-light); }   /* v82：字号/字重走文末「标题外观共享」 */
-  .q-det-sec { color: var(--gold-light); margin: var(--sp-mid) 0 var(--sp-1); }   /* v82：字号/字重/字距走分区标题共享 */
-  .q-det-sec::before { content: '◆'; font-size: var(--fs-cap); color: var(--gold); margin-right: var(--sp-1); }
-  .q-det-txt { font-size: var(--fs-body); line-height: var(--lh-loose); color: var(--text); }
-  .q-det-txt.good { color: var(--green-ok); font-weight: 700; }
-  .q-det-prog { color: var(--text-dim); font-size: var(--fs-sub); }
-  .q-det-tip { font-size: var(--fs-sub); color: var(--text-dim); margin-top: var(--sp-2); }
-  /* v74：视口断点已撤（@media (max-width: 900px) .q-grid）——画布固定，不做窄窗重排 */
-  .q-card { background: rgba(var(--sh-rgb),.24); border: 1px solid var(--line); border-radius: var(--r-lg); padding: var(--sp-4) var(--sp-mid);
-    transition: border-color .15s, box-shadow .15s; }
-  .q-card.q-ready { border-color: rgba(var(--gold-soft-rgb),.7); box-shadow: 0 0 12px rgba(var(--gold-soft-rgb),.15); }
-  .q-card.q-done { opacity: .55; }
-  .q-head { display: flex; align-items: center; gap: var(--sp-2); }
-  .q-title { font-size: var(--fs-lead); font-weight: 800; color: var(--gold-light); }
-  .q-tag { font-size: var(--fs-cap); font-weight: 700; padding: var(--sp-hair) var(--sp-2); border-radius: var(--r-sm); border: 1px solid currentColor; }
-  .q-tag.t-growth { color: var(--tag-growth); }
-  .q-tag.t-military { color: var(--tag-military); }
-  .q-tag.t-war { color: var(--tag-war); }
-  .q-tag.t-build { color: var(--tag-build); }
-  .q-tag.t-tech { color: var(--q3); }
-  .q-tag.t-govern { color: var(--tag-govern); }
-  .q-tag.t-talent { color: var(--rank-ming); }
-  .q-tag.t-forge { color: var(--tag-forge); }
-  .q-state { margin-left: auto; font-size: var(--fs-sub); font-weight: 700; color: var(--text-dim); }
-  .q-card.q-ready .q-state { color: var(--green-ok); }
-  .q-desc { font-size: var(--fs-sub); color: var(--text-dim); margin: var(--sp-2) 0 0; line-height: var(--lh-body); }
-  .q-bar { height: 5px; margin: var(--sp-3) 0 var(--sp-1); background: rgba(var(--sh-rgb),.5); border-radius: var(--r-sm); overflow: hidden; }
-  .q-bar i { display: block; height: 100%; background: var(--grad-exp); border-radius: var(--r-sm);
-    transition: width .4s ease; }
-  .q-foot { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; }
-  .q-reward { font-size: var(--fs-sub); color: var(--gold-light); }
-  .q-foot .btn { margin-left: auto; }
-  .q-empty { text-align: center; color: var(--text-dim); font-size: var(--fs-sub); padding: var(--sp-6); }
-  .q-done-box { background: rgba(var(--sh-rgb),.2); border: 1px solid var(--line); border-radius: var(--r-lg); padding: var(--sp-2) var(--sp-4);
-    max-height: 320px; overflow-y: auto; }
-  .q-log-row { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-1) var(--sp-0); font-size: var(--fs-sub);
-    border-bottom: 1px dashed rgba(var(--gold-rgb),.16); }
-  .q-log-t { color: var(--text); font-weight: 700; }
-  .q-log-r { margin-left: auto; color: var(--gold-light); font-size: var(--fs-sub); }
-  .q-log-r.dim { color: var(--text-dim); }
+  /* ⛔ v90.92：任务系统整条退役 —— 任务卡 / 任务清单 / 任务详情
+     （.q-card / .q-bar / .q-tag / .q-row / .q-det-* / .q-log-* 等）样式随之失去引用。
+     保留说明：.q-empty（通用空态，公文消息页等 70+ 处复用）、
+     .q-sec / .q-sec-t / .q-sec-n（分区标题，仍被其他列表页复用）不删。 */
 
   /* 背包：每行 5 格 */
   /* v39（需求 6）：5 列 → 4 列。老板要"跟游商同步搞成 4 行"，
@@ -3224,13 +3164,6 @@
 
   /* ---- 页脚规格已收进上文「弹窗操作栏只有一条定义」（v89.105） ---- */
 
-  /* ---- 派系六派：两列卡片（v89.105）----
-     卡片内是"名称 + 被动 + 入派键"三段，纵向排；grid 让六派三行铺满。 */
-  .sect-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-3); }
-  .sect-grid .sect-card { display: block; padding: var(--sp-3) var(--sp-4); }
-  .sect-grid .sect-card .op-hint { margin: var(--sp-1) 0 var(--sp-3); }
-  .sect-grid .sect-card .btn { width: 100%; }
-
   /* ---- 设置项卡片（5 处重复的 inline 写法抽成一处）---- */
   .set-card {
     background: rgba(var(--sh-rgb), .20);
@@ -4371,9 +4304,8 @@
          菜单名上产生数值」。顶栏徽标的语义是"有事情等你处理"（如任务可领取）；
          行军只是"部队在外面"，属状态不属待办。队列数在行军菜单里本来就有。 -->
     <div class="tab" data-view="marches"><i class="ti" data-nav="march"></i>军务</div>
-    <!-- v89.104（老板）：「将英雄，军务，任务放一起」—— 三者之间**不再插分隔条**；
-         同时删掉「统计」菜单（见 ui.js 的退役注释）。 -->
-    <div class="tab" data-view="tasks"><i class="ti" data-nav="quest"></i>任务</div>
+    <!-- ⛔ v90.92：任务系统整条退役 —— 「任务」页签摘除。
+         (v89.104 原：「将英雄，军务，任务放一起」，三者之间不插分隔条；现只剩英雄/军务。) -->
     <span class="nav-sep"></span>
     <div class="tab" data-view="shop"><i class="ti" data-nav="shop"></i>游商</div>
     <div class="tab" data-view="bag"><i class="ti" data-nav="bag"></i>背包</div>
@@ -4480,7 +4412,6 @@
 <!-- BUILD 9172 -->
 <script src="js/data.js?v=9172"></script>
 <script src="js/state.js?v=9172"></script>
-<script src="js/questdata.js?v=9172"></script>
 <script src="js/systems.js?v=9172"></script>
 <script src="js/domain.js?v=9172"></script>
 <script src="js/map.js?v=9172"></script>

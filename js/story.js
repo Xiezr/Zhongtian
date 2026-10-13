@@ -218,7 +218,12 @@
       cur = Math.floor(GAME.totalPop());
     } else if (g.type === 'techTotal') {
       /* v89.191（老板 3-④）：科技按城 —— 总值走唯一出口 statOf('techTotal')（各城之和）。 */
-      cur = GAME.questMetric ? GAME.questMetric('techTotal') : 0;
+      /* v90.92：任务系统退役，原借 GAME.questMetric 求值 → 内联等价实现
+         （各城科技等级之和，与原 techTotal 口径一致）。 */
+      cur = 0;
+      (s.cities || []).forEach(function (c) {
+        for (var _tk92 in (c.techs || {})) cur += c.techs[_tk92];
+      });
     } else if (g.type === 'rep') {
       cur = Math.floor(s.rep || 0);
     } else if (g.type === 'govLevel') {

@@ -180,8 +180,8 @@
     var bag = S.equipBagOf(g);
     var isLing = (g.equipOn === 'ling') && GAME.canCultivate(g);
     /* 座驾改装：座驾部件属性 +5%/级（仅机甲侧 —— 基因强化件独立体系不吃它）
-       v89.86（派系 P1）：牧云庄「座驾装备属性 +20%」并入同一条乘链（唯一出口 sectBonus） */
-    var horseMul = (1 + S.techBonus('horse')) * (1 + (GAME.sectBonus ? GAME.sectBonus('mountPct') : 0));
+       v90.92：原并入的派系「座驾装备 +20%」随门派系统退役而摘除。 */
+    var horseMul = (1 + S.techBonus('horse'));
     for (var slot in bag) {
       var inst = bag[slot];
       var item = DATA.EQUIP[GAME.eqId ? GAME.eqId(inst) : inst];

@@ -219,7 +219,7 @@ function auditTroopChain(G, DATA, opt) {
 
   /* ⑥ 反向：退役 id 的**产品侧可执行形态零残留**（剥注释；state.js 迁移表是唯一合法去处） */
   var REV_FILES = ['js/data.js', 'js/domain.js', 'js/map.js', 'js/battle.js', 'js/tactic.js', 'js/systems.js',
-    'js/ui.js', 'js/questdata.js', 'js/icons.js', 'js/gicons.js', 'js/main.js', 'index.html'];
+    'js/ui.js', 'js/icons.js', 'js/gicons.js', 'js/main.js', 'index.html'];
   REV_FILES.forEach(function (rel) {
     var src = strip(read(rel));
     RETIRED.forEach(function (rid) {
@@ -273,7 +273,7 @@ function printReport(rep) {
 function printRefs(id) {
   var read = makeReader(ROOT);
   var files = ['js/data.js', 'js/state.js', 'js/domain.js', 'js/map.js', 'js/battle.js', 'js/tactic.js',
-    'js/systems.js', 'js/ui.js', 'js/questdata.js', 'js/icons.js', 'js/gicons.js', 'js/bitmaps.js',
+    'js/systems.js', 'js/ui.js', 'js/icons.js', 'js/gicons.js', 'js/bitmaps.js',
     'js/main.js', 'index.html', 'smoke-test.js', 'e2e-test.js'];
   var re = new RegExp('\\b' + id + '\\b');
   var n = 0;
@@ -374,7 +374,7 @@ if (require.main === module) {
   /* v90.87（复核修复）：加载清单与 index.html 同源 —— v90.69 起 map.js 地形/据点判据
        唯一出口是球面内核 GAME.sphere，漏它则本工具跑在降级环境（口径不一致）。
        map3d.js 需 three.js/WebGL（渲染层·逻辑不依赖）→ 维持不加载。 */
-  ['data', 'state', 'questdata', 'systems', 'domain', 'map', 'sphere', 'battle', 'tactic', 'icons', 'gicons',
+  ['data', 'state', 'systems', 'domain', 'map', 'sphere', 'battle', 'tactic', 'icons', 'gicons',
     'bitmaps', 'portraits', 'story', 'ui', 'main'].forEach(function (f) {
     try { require(path.join(ROOT, 'js', f + '.js')); } catch (e) { /* 逐文件容错 */ }
   });

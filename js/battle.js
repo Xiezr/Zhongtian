@@ -109,8 +109,6 @@
       }
       /* 科技 */
       atkMult *= (1 + GAME.systems.techBonus('atk'));
-      /* 派系被动（v89.86 · 青锋阁「部队攻击 +6%」）—— 与科技/宝物/羁绊同链相乘 */
-      if (GAME.sectBonus) atkMult *= (1 + GAME.sectBonus('atkPct'));
       /* 宝物：冲锋号 */
       if (GAME.systems.buffActive('military') && s.buffs.military.atk) atkMult *= (1 + s.buffs.military.atk);
       /* 英雄羁绊 + 当世年号（后台静默加成，界面不提示） */
@@ -231,8 +229,6 @@
        否则"切换引擎"等于换了一套规则。 */
     var siegeMult = 1;
     if (opts.sieging && GAME.story && GAME.story.siegeMult) siegeMult = GAME.story.siegeMult();
-    /* 派系被动（v89.86 · 虎啸营「攻城伤害 +8%」）—— 仅攻城生效 */
-    if (opts.sieging && GAME.sectBonus) siegeMult *= (1 + GAME.sectBonus('siegePct'));
     var craftN = 0;
     if (opts.sieging) {
       for (var ck in atkArmy) {
@@ -315,13 +311,13 @@
    * 改前口径散在三处、且互不一致（probe_v89186a 取证）：
    *   · returnArmy（出征）：base 0.45 + schemeKeep + buff（**替换**） + tech × + sect ×
    *   · applyWounded（旧口/测试）：base + tech ×（缺 schemeKeep / sect）
-   *   · state.js 守城战：**只有 base**（商品/科技/派系全不吃 —— 守城买的伤兵书没用）
+   *   · state.js 守城战：**只有 base**（商品/科技全不吃 —— 守城买的伤兵书没用）
    * 且 buff 走替换语义：救护手册 0.30 低于当时基础 0.45 → 买了反而亏；医疗手册 0.45 = 没买。
    * 本出口统一口径（老板拍板：**提高固定伤兵比例** + 商品改**加法提升**）：
    *   base（DATA.EXPEDITION.woundedRate = 0.75）
    *   + schemeKeep（金蝉脱壳：战败额外保全）
    *   + buff.wound（商品：+5% / +10% / +15% —— 加法，见商品表）
-   *   → × (1 + 再生技术) × (1 + 派系百草堂)，全程以 woundCap（0.9）封顶。
+   *   → × (1 + 再生技术)，全程以 woundCap（0.9）封顶。
    * 三处消费点（returnArmy / applyWounded / 守城）+ 界面显示 全读它。
    * ============================================================ */
   GAME.woundedRateOf = function (result) {
@@ -338,8 +334,6 @@
     rate = Math.min(cap, rate);
     /* 再生技术：伤兵回收率 +3%/级（乘法链） */
     if (GAME.systems && GAME.systems.techBonus) rate = Math.min(cap, rate * (1 + GAME.systems.techBonus('repair')));
-    /* 派系被动（v89.86 · 百草堂「战后伤兵回复 +15%」）—— 与维修科技同链 */
-    if (GAME.sectBonus) rate = Math.min(cap, rate * (1 + GAME.sectBonus('woundPct')));
     return rate;
   };
   /* 伤兵营：阵亡者按回收率折为伤兵（存伤兵营，花旧币治疗） */
@@ -1204,14 +1198,6 @@
     var repGain = Math.round((npcCity.rep || 10) * (GAME.story && GAME.story.repMult ? GAME.story.repMult() : 1)
       * (1 + GAME.artifactBonusNum('repPct')));   /* v79：传国玉玺 —— 声望获得 +5%/级 */
     s.rep += repGain;
-    /* v89.89（老板拍板 · C3）：开疆拓土 → **派系声望**（派系系统规则 §六"占城"来源）。
-       一次性按城档发（DATA.SECT_CONQUER_REP），未入派自动拒（sectRepGain 内部守卫）。 */
-    var _sg = GAME.sectRepGain ? GAME.sectRepGain('conquer',
-      (DATA.SECT_CONQUER_REP || {})[npcCity.type] || 0) : { ok: false };
-    if (_sg.ok) {
-      GAME.log.war('🎋 派系声望 +' + _sg.gain + '（开疆拓土 · ' + npcCity.name + '）'
-        + (_sg.rankUp ? '　🎉 晋升「' + _sg.rankUp + '」' : ''));
-    }
     /* 从 NPC 列表移除 */
     var idx = -1;
     for (var i = 0; i < s.map.cities.length; i++) if (s.map.cities[i].id === npcCity.id) { idx = i; break; }
@@ -1258,7 +1244,7 @@
     })();
     /* 美人 50% 几率（攻占重镇/首府） */
     if (npcCity.type !== 'capital' && Math.random() < 0.5) GAME.battle.grantBeauty(npcCity);
-    GAME.advanceConquer();
+    /* v90.92：任务系统退役 —— 原 advanceConquer（已占城计数）已删。 */
     GAME.log.war('占领新城池：' + npcCity.name + '！（威望 +' + repGain + '）');
     /* v89.93（整改 E5）：**占城演出** —— 核心目标达成，值一张卡（此前只有一行日志） */
     if (GAME.ui && GAME.ui.moment) {
@@ -3175,7 +3161,7 @@
        原先这里另算一份 keep；两处算法各自演化，就会出现"搬货按 A、归队按 B"。
        归队与搬货的差别只在 rate（伤兵回收率）：归队把阵亡者的一部分折成伤兵。 */
     var surv = GAME.battle.survivedArmyOf(sentArmy, result);
-    /* v89.186：率走**唯一出口**（base + 金蝉脱壳 + 商品 + 维修科技 + 派系）——
+    /* v89.186：率走**唯一出口**（base + 金蝉脱壳 + 商品 + 维修科技）——
        原实现四段散在此处、且商品是替换语义（详见 GAME.woundedRateOf 注释）。 */
     var rate = GAME.woundedRateOf(result);
     var back = {}, wounded = {}, wTotal = 0;
@@ -3809,8 +3795,6 @@
     /* ③ 天气：雨 −20% / 雪 −50% / 雾 −30% / 大风 +10% */
     if (GAME.story && GAME.story.combatMod) m *= (GAME.story.combatMod().move || 1);
 
-    /* ③c 派系被动（v89.86 · 玄鹤门「行军速度 +8%」）—— 唯一出口 sectBonus */
-    if (GAME.sectBonus) m *= (1 + GAME.sectBonus('marchPct'));
 
     /* ③ 己方城池的补给站：城池间行军提速 1.5~6 倍 */
     var fc = from && from.cityId ? GAME.cityById(from.cityId) : null;
