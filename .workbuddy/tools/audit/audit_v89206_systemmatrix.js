@@ -31,7 +31,7 @@ var SYS = [
   { n: '内功修炼', d: ['NEIGONG', 'LING_SLOTS', 'LING_TEMPER'], g: ['lingTemper', 'canCultivate'], u: ['ling-temper'], t: ['内功', '蕴养'] },
   { n: '忠诚月俸', d: ['GEN_SALARY', 'LOYALTY'], g: ['salary', 'loyalty'], u: ['gp-sal194'], t: ['忠诚', '月俸'] },
   { n: '精力体力', d: ['STAMINA', 'ENERGY'], g: ['energyMaxOf', 'staMax'], u: ['energy'], t: ['体力', '精力'] },
-  { n: '爵位晋升', d: ['RANK', 'RANK_BONUS'], g: ['rankOf', 'cityCapOf'], u: ['rankBadge'], t: ['爵位'] },
+  { n: '威望晋升', d: ['RANK', 'RANK_BONUS'], g: ['rankOf', 'cityCapOf'], u: ['rankBadge'], t: ['威望'] },
   { n: '门派', d: ['SECTS', 'SECT_TASKS', 'SECT_JOIN'], g: ['sect'], u: ['sect', '门派'], t: ['门派'] },
   { n: '声望', d: ['REP_RULE', 'REP_PENALTY'], g: ['rep'], u: ['rep'], t: ['声望'] },
   { n: '宝物收藏', d: ['COLLECT', 'JEWEL_LADDER', 'JEWEL_COST'], g: ['collectCondMetOf', 'collectBuySeries'], u: ['openCollect', '陈列馆'], t: ['收藏', '藏珍'] },

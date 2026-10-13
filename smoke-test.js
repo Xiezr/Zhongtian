@@ -16396,17 +16396,17 @@ console.log('\n===== 66. v81 两条（君主卡 · 兵营三页） =====');
           return r.ok === false && /体力/.test(r.msg);
         });
       }());
-      check('v90.94：突破须"段顶 + 爵位够"（未到顶拒 / 爵位不足拒 / 满足则跨段）', function () {
+      check('v90.94：突破须"段顶 + 威望够"（未到顶拒 / 威望不足拒 / 满足则跨段）', function () {
         return withLord(function (lord, city) {
           if (!lord) return false;
           var bkRank = G.state.rank;
           /* ① 未到段顶：拒 */
           lord.breaks = 0; lord.level = 10; lord.exp = 0; G.state.rank = 9;
           if (G.doLordBreak().ok !== false) return false;
-          /* ② 段顶但爵位不足：拒（第 1 次突破需 3 档威望 · rankStep=3） */
+          /* ② 段顶但威望不足：拒（第 1 次突破需 3 档威望 · rankStep=3） */
           lord.level = 60; G.state.rank = 2;
           if (G.doLordBreak().ok !== false) return false;
-          /* ③ v89.177（老板「综合考验」）：段顶 + 爵位够，但四关不过 → **拒**（提示综合考验） */
+          /* ③ v89.177（老板「综合考验」）：段顶 + 威望够，但四关不过 → **拒**（提示综合考验） */
           G.state.rank = G.lordRankNeed(lord);
           var r0 = G.doLordBreak();
           if (r0.ok !== false || !/综合考验/.test(r0.msg)) return false;
@@ -16441,7 +16441,7 @@ console.log('\n===== 66. v81 两条（君主卡 · 兵营三页） =====');
           return ok;
         });
       }());
-      check('v90.94：三突破到天启体上限后不再有突破（爵位门槛用尽 → null）', function () {
+      check('v90.94：三突破到天启体上限后不再有突破（威望门槛用尽 → null）', function () {
         return withLord(function (lord) {
           if (!lord) return false;
           lord.breaks = 3; lord.level = 240;
@@ -29158,7 +29158,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     /* ⑤ 君主突破综合考验 */
     console.log('  --- ⑤ 综合考验 ---');
     /* v90.92：任务系统退役 → 考验表去掉 quests 项，五关改四关（城池/军队/资源/宝物）。
-       ⚠️ 下一步（批次D）突破改爵位门槛时本段还会再动；此处只钉「任务项已摘除」。 */
+       ⚠️ 下一步（批次D）突破改威望门槛时本段还会再动；此处只钉「任务项已摘除」。 */
     check('§177⑤ ★ lordTrialOf：四关行（城池/军队/资源/宝物）+ 口径读表（v90.92：政务关退役）', (function () {
       var lord = null;
       (G.state.generals || []).forEach(function (g) { if (g.isLord) lord = g; });
@@ -32008,6 +32008,20 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       if (!m6) return false;
       var arc6 = fs6.readFileSync(p6.join(__dirname, '需求档案.md'), 'utf8');
       return arc6.indexOf(m6[1]) >= 0;
+    })());
+    check('§199⑦ 旧称呼退役：活代码与在岗审计不得再现「爵位」（v90.95 · 老板「不再用爵位这个旧称呼」）', (function () {
+      /* v90.95：产品与现行口径一律称「威望」（= s.rank 威望档）。史料/参考区/档案历史行保留旧称呼。
+         本守卫钉住**活代码与在岗审计**：一旦有人把旧称呼写回去（或新代码抄了旧文档的词），这里红。 */
+      var fs7 = require('fs'), p7 = require('path');
+      var files7 = ['js/data.js', 'js/domain.js', 'js/ui.js', 'js/state.js', 'js/battle.js', 'js/main.js', 'index.html',
+                    '.workbuddy/tools/audit/audit_v89206_systemmatrix.js',
+                    '.workbuddy/tools/audit/audit_v89208_systemmatrix.js'];
+      for (var i7 = 0; i7 < files7.length; i7++) {
+        var f7 = p7.join(__dirname, files7[i7]);
+        if (!fs7.existsSync(f7)) return false;                 /* 文件缺失 = 结构变了，显式红 */
+        if (fs7.readFileSync(f7, 'utf8').indexOf('爵位') >= 0) return false;
+      }
+      return true;
     })());
   })();
 
@@ -35338,11 +35352,11 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   })();
 
   /* ============================================================
-   * §241（v90.87 复核轮）：覆盖缺口补齐 —— 宝具挂件 / 爵位晋升
+   * §241（v90.87 复核轮）：覆盖缺口补齐 —— 宝具挂件 / 威望晋升
    *   起因：systemmatrix 长期报这两个系统 smoke=0 / e2e=0
    *         （功能实测完好，但**零常驻断言** → 退化不会被发现）。
    *   来源：v90.87 复核探针 probe_v9087_pendant_rank.js（23 条）折成常驻断言。
-   *   口径：走**用户真实链路**（挂件 = attachEquip/attachUnequip；爵位 = systems.promote
+   *   口径：走**用户真实链路**（挂件 = attachEquip/attachUnequip；威望 = systems.promote
    *         —— 与主界面 doAttach/卸下、`promote` case 同一出口），不直调内层函数（§43.5）。
    *   造局：固定 mapSeed（防随机地图 flaky）；用完把 state 与 ui._cityId 还原（§24.6）。
    * ============================================================ */
@@ -35407,16 +35421,16 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       }
       c241('§241A⑬ 基数自证：挂件链真跑 ≥10 条（防「槽位/物品缺失 → 全跳过」的平凡通过）', nA241 >= 10, 'nA=' + nA241);
 
-      /* ── B · 爵位晋升（威望 RANK） ── */
+      /* ── B · 威望晋升（威望 RANK） ── */
       var S241 = G.systems;
       var nr241 = S241.nextRank();
-      c241('§241B① 爵位晋升：威望表在册 + 有下一档', !!nr241, nr241 ? ('next=' + nr241.name) : '已登顶');
+      c241('§241B① 威望晋升：威望表在册 + 有下一档', !!nr241, nr241 ? ('next=' + nr241.name) : '已登顶');
       var nB241 = 0;
       if (nr241) {
         var s241 = G.state;
         s241.rank = 0;
         var cur241 = G.DATA.RANK[s241.rank];
-        c241('§241B② 爵位晋升：前置闸会拦（条件不齐时 canPromote=false）', !S241.canPromote().ok, S241.canPromote().msg || ''); nB241++;
+        c241('§241B② 威望晋升：前置闸会拦（条件不齐时 canPromote=false）', !S241.canPromote().ok, S241.canPromote().msg || ''); nB241++;
         while (s241.cities.length < cur241.city) {
           var src241 = s241.cities[0], cp241 = JSON.parse(JSON.stringify(src241));
           cp241.id = 'probe87_' + s241.cities.length; cp241.name = '演武城' + s241.cities.length;
@@ -35425,15 +35439,15 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         s241.rep = nr241.rep;
         s241.res.gold = nr241.gold + 100000;
         Object.keys(nr241.jewel || {}).forEach(function (j) { if ((s241.items[j] || 0) < nr241.jewel[j]) s241.items[j] = nr241.jewel[j]; });
-        c241('§241B③ 爵位晋升：前置造齐后 canPromote=true', !!S241.canPromote().ok, S241.canPromote().msg || ''); nB241++;
+        c241('§241B③ 威望晋升：前置造齐后 canPromote=true', !!S241.canPromote().ok, S241.canPromote().msg || ''); nB241++;
         var gold0_241 = s241.res.gold, jewel0_241 = {}, rank0_241 = s241.rank;
         Object.keys(nr241.jewel || {}).forEach(function (j) { jewel0_241[j] = s241.items[j] || 0; });
         var pr241 = S241.promote();
-        c241('§241B④ 爵位晋升：走唯一出口 promote（主界面同款）', !!(pr241 && pr241.ok), (pr241 && pr241.msg) || ''); nB241++;
-        c241('§241B⑤ 爵位晋升：档位 +1', s241.rank === rank0_241 + 1, rank0_241 + ' → ' + s241.rank); nB241++;
-        c241('§241B⑥ 爵位晋升：旧币真扣（= 下一档 gold 价）', gold0_241 - s241.res.gold === nr241.gold, '扣 ' + (gold0_241 - s241.res.gold)); nB241++;
+        c241('§241B④ 威望晋升：走唯一出口 promote（主界面同款）', !!(pr241 && pr241.ok), (pr241 && pr241.msg) || ''); nB241++;
+        c241('§241B⑤ 威望晋升：档位 +1', s241.rank === rank0_241 + 1, rank0_241 + ' → ' + s241.rank); nB241++;
+        c241('§241B⑥ 威望晋升：旧币真扣（= 下一档 gold 价）', gold0_241 - s241.res.gold === nr241.gold, '扣 ' + (gold0_241 - s241.res.gold)); nB241++;
         var jewelOk241 = Object.keys(nr241.jewel || {}).every(function (j) { return (jewel0_241[j] - (s241.items[j] || 0)) === nr241.jewel[j]; });
-        c241('§241B⑦ 爵位晋升：珠宝真扣（逐项等于价目）', jewelOk241,
+        c241('§241B⑦ 威望晋升：珠宝真扣（逐项等于价目）', jewelOk241,
           Object.keys(nr241.jewel || {}).map(function (j) { return j + ':' + jewel0_241[j] + '→' + (s241.items[j] || 0); }).join(' ')); nB241++;
         /* 特权：主城建造上限 lift（产品口径：仅主城享受） */
         if (!s241.mainCityId) s241.mainCityId = A241.id;
@@ -35441,23 +35455,23 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         var lift241 = mainC241 ? GAME.rankBuildCapOf(mainC241) : null;
         var slope241 = (G.DATA.MAIN_CITY || {}).buildCapPerRank || 0;
         var exp241 = Math.max(0, Math.min(G.DATA.RANK_BUILD_LIFT_MAX || 0, Math.round(s241.rank * slope241)));
-        c241('§241B⑧ 爵位晋升：特权随档生效（主城 lift = 档位×每档）', lift241 === exp241 && exp241 > 0,
+        c241('§241B⑧ 威望晋升：特权随档生效（主城 lift = 档位×每档）', lift241 === exp241 && exp241 > 0,
           'lift=' + lift241 + ' expect=' + exp241 + '（rank=' + s241.rank + '）'); nB241++;
         var nonMain241 = s241.cities.filter(function (c) { return c !== mainC241; })[0];
-        c241('§241B⑨ 爵位晋升：口径边界 —— 非主城不享受 lift', !nonMain241 || GAME.rankBuildCapOf(nonMain241) === 0,
+        c241('§241B⑨ 威望晋升：口径边界 —— 非主城不享受 lift', !nonMain241 || GAME.rankBuildCapOf(nonMain241) === 0,
           nonMain241 ? ('非主城 lift=' + GAME.rankBuildCapOf(nonMain241)) : '无第二城'); nB241++;
-        c241('§241B⑩ 爵位晋升：俸禄随档（salary 读当前档）', S241.salary() === (G.DATA.RANK[s241.rank].salary || 0), 'salary=' + S241.salary()); nB241++;
+        c241('§241B⑩ 威望晋升：俸禄随档（salary 读当前档）', S241.salary() === (G.DATA.RANK[s241.rank].salary || 0), 'salary=' + S241.salary()); nB241++;
         s241.rank = G.DATA.RANK.length - 1;
-        c241('§241B⑪ 爵位晋升：顶档边界（nextRank=null 且 canPromote 拒绝）', !S241.nextRank() && !S241.canPromote().ok, S241.canPromote().msg || ''); nB241++;
+        c241('§241B⑪ 威望晋升：顶档边界（nextRank=null 且 canPromote 拒绝）', !S241.nextRank() && !S241.canPromote().ok, S241.canPromote().msg || ''); nB241++;
       }
-      c241('§241B⑫ 基数自证：爵位链真跑 ≥10 条', nB241 >= 10, 'nB=' + nB241);
+      c241('§241B⑫ 基数自证：威望链真跑 ≥10 条', nB241 >= 10, 'nB=' + nB241);
     } catch (e241) {
       check('§241 造局/链路异常（不应发生）', false, 'err=' + ((e241 && e241.message) || e241));
     } finally {
       G.state = _bkSt241;
       G.ui._cityId = _bkCity241;
     }
-    check('§241 汇总：宝具挂件 + 爵位晋升 全链无失败（v90.87 覆盖缺口补齐）',
+    check('§241 汇总：宝具挂件 + 威望晋升 全链无失败（v90.87 覆盖缺口补齐）',
       n241 >= 24 && bad241.length === 0,
       'n=' + n241 + (bad241.length ? (' 失败: ' + bad241.join(' / ')) : ''));
   })();

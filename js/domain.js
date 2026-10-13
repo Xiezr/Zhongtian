@@ -6870,7 +6870,7 @@
   GAME.lordStageCap = function (g) {
     return DATA.LORD_BREAK.step * (1 + GAME.lordBreaksOf(g));
   };
-  /* 下一次突破所需爵位（威望档 = s.rank 索引）；null = 已至顶（天启体 240 之上无更上层） */
+  /* 下一次突破所需威望（威望档 = s.rank 索引）；null = 已至顶（天启体 240 之上无更上层） */
   GAME.lordRankNeed = function (g) {
     var B = DATA.LORD_BREAK, n = GAME.lordBreaksOf(g);
     return (n < B.realms.length - 1) ? (B.rankStep * (n + 1)) : null;
@@ -6979,8 +6979,8 @@
     s.autoLordState = { ok: r.ok, msg: r.msg, at: now };
     return r;
   };
-  /* 突破：须在段顶 + 爵位够 + 四关过 → 上限 +60、境界进一阶、发自由点
-     （v90.94：门槛由「修为」改为「爵位（威望档）」） */
+  /* 突破：须在段顶 + 威望够 + 四关过 → 上限 +60、境界进一阶、发自由点
+     （v90.94：门槛由「修为」改为「威望（威望档）」） */
   GAME.doLordBreak = function () {
     var g = GAME.lordGeneralOf ? GAME.lordGeneralOf() : null;
     if (!g) return { ok: false, msg: '君主不在帐下' };
@@ -6993,9 +6993,9 @@
     }
     var curRank = (GAME.state && GAME.state.rank) || 0;
     if (curRank < need) {
-      return { ok: false, msg: '爵位不足（需 ' + need + ' 档，现 ' + curRank + ' 档）—— 先晋升威望' };
+      return { ok: false, msg: '威望不足（需 ' + need + ' 档，现 ' + curRank + ' 档）—— 先晋升威望档' };
     }
-    /* v89.177（老板「君主的突破要求更高……综合考验」）：爵位之外，还须过
+    /* v89.177（老板「君主的突破要求更高……综合考验」）：威望之外，还须过
        "城/军/资/宝"四关（DATA.LORD_BREAK.trials）——缺哪关提示哪关。 */
     var _trial = GAME.lordTrialOf(g);
     if (_trial && !_trial.ok) {

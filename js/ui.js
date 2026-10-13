@@ -5223,7 +5223,7 @@
             var bRank = (s.rank || 0), atTop = (lg.level || 1) >= bCap;
             var canBreak = atTop && bNeed != null && bRank >= bNeed;
             /* v89.177（老板「综合考验」）：四关进度（城/军/资/宝 · v90.92 政关随任务系统退役）——未过项红字。
-               口径 = GAME.lordTrialOf（唯一出口）；按钮高亮仍看爵位（界面不预判全部门槛）。 */
+               口径 = GAME.lordTrialOf（唯一出口）；按钮高亮仍看威望（界面不预判全部门槛）。 */
             var _trial177 = GAME.lordTrialOf ? GAME.lordTrialOf(lg) : null;
             var _trialHTML177 = _trial177 ? ('<div class="ui-sub">突破考验（第 ' + _trial177.n + ' 次 · '
               + (_trial177.ok ? '四关俱过' : '未过') + '）：'
@@ -5234,11 +5234,11 @@
             return '<tr><td class="k">君主领兵</td><td>Lv' + lg.level + ' / ' + bCap + ' · ' +
               ui.genStatusName(lg) + '（不可解雇）</td></tr>' +
               '<tr><td class="k">君主修行</td><td>境界 <b>' + GAME.lordRealmOf(lg) + '</b>' +
-              '　爵位 <b>' + bRank + '</b>' + (bNeed == null ? '（已至顶）' : ' / ' + bNeed + ' 档') +
+              '　威望 <b>' + bRank + '</b>' + (bNeed == null ? '（已至顶）' : ' / ' + bNeed + ' 档') +
               '　<button class="btn sm' + (canBreak ? ' gold' : '') + '" data-action="lord-break">⚡ 突破</button>' +
               '<div class="ui-sub">每 ' + DATA.LORD_BREAK.step + ' 级一段：每升高 ' + DATA.LORD_BREAK.rankStep
-              + ' 个爵位可突破一次，段顶须突破方可续升' +
-              (bNeed == null ? '　·　已至天启体上限' : ('（下一段 Lv' + (bCap + DATA.LORD_BREAK.step) + ' 需爵位 ' + bNeed + ' 档）')) +
+              + ' 个威望档可突破一次，段顶须突破方可续升' +
+              (bNeed == null ? '　·　已至天启体上限' : ('（下一段 Lv' + (bCap + DATA.LORD_BREAK.step) + ' 需威望 ' + bNeed + ' 档）')) +
               '</div>' + _trialHTML177 +
               '</td></tr>';
           })() : '') +
