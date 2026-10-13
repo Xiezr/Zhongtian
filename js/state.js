@@ -715,6 +715,19 @@
     });
     if (s.map) s.map.startPos = sl.startPos || null;
   };
+  /* v90.86：星球分片**读档迁移/修复**。
+     · 首迁（老档无分片）：现有世界状态 = **老家（0 号星球）**（不是"当前星球"——老档只有一颗星）。
+     · 修复：曾误把现有世界存到非 0 号（旧迁移用了 activePlanet）→ 唯一分片若在非 0 号，搬回 0 号。 */
+  GAME._planetsMigrate84 = function (st) {
+    st.mapSlices = st.mapSlices || {};
+    var keys = Object.keys(st.mapSlices);
+    if (keys.length === 0) { st.activePlanet = 0; GAME._savePlanetSlice(0); return true; }
+    if (keys.length === 1 && keys[0] !== '0') {
+      st.mapSlices[0] = st.mapSlices[keys[0]]; delete st.mapSlices[keys[0]];
+      st.activePlanet = 0; GAME._loadPlanetSlice(0); return true;
+    }
+    return false;
+  };
   /* v90.78：**进入某星球** —— 存旧片/载新片 + 载入种子/规格 + 清派生缓存 + 重投影平面网格。 */
   GAME.enterPlanet = function (id) {
     var s0 = GAME.state;
@@ -2660,9 +2673,9 @@
       }
       /* v90.70：老档补写 ci（球面六边格索引）—— 城/野地/前哨/采集/行军统一读 ci（幂等） */
       if (GAME.migrateSphereCi70) GAME.migrateSphereCi70(st);
-      /* v90.84（老板 2）：**星球分片迁移** —— 老档无 mapSlices 时，把当前城/野地/据点等
-         归为"当前星球"的分片（老档只有一颗星球，其世界状态即当前片）。 */
-      if (!st.mapSlices) { st.mapSlices = {}; GAME._savePlanetSlice(st.activePlanet || 0); }
+      /* v90.84（老板 2）：**星球分片迁移** —— 老档无 mapSlices → 现有世界归**老家（0 号）**；
+         v90.86：修复旧迁移误把世界存到非 0 号的档（唯一分片搬回 0 号）。 */
+      if (GAME._planetsMigrate84) GAME._planetsMigrate84(st);
       /* 叙事层补字段（旧档可能缺 world/chronicle） */
       if (GAME.story) GAME.story.init();
       /* 英雄资质补字段（v11 前的存档没有 rank/style，按四维反推并写回） */
