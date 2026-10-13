@@ -13,7 +13,15 @@
 (function () {
   'use strict';
   var GAME = window.GAME = window.GAME || {};
-  var SP = GAME.sphere = {};
+  /* ============================================================
+   * v90.96（老板 · 城市/地图解耦）：**可多实例工厂** —— 同一份拓扑/地形代码可造**多颗球面**：
+   *   · GAME.sphere     = **逻辑球面**（当前"经营城"所在星球）—— 城市/建造/科技/募兵/距离 读它；
+   *   · GAME.mapSphere  = **地图球面**（地图正在看的星球）—— map3d 渲染/拾取/出征选址 读它。
+   * 两者**各带全套可变态**（PLANET / _seedOverride / _seaCache / _built* / _grid / _xyCi / _dArr…），
+   * 故切地图星球不碰逻辑球面（城市界面保持）。纯函数（h3/n3/fbm3/icoSpheres…）各实例各一份，无副作用。
+   * ============================================================ */
+  function makeSphere() {
+    var SP = {};
 
   var SUB = 6;                    /* icosphere 细分（固定）：顶点/地块数 = 10×4^6+2 = 40962 */
   SP.sub = SUB;
@@ -468,4 +476,9 @@
     var re = SP.report(); if (!re) return '无名奇观';
     return _ART[(SP.seed3() + Math.round(re.danger)) % _ART.length];
   };
+    return SP;
+  }
+
+  GAME.createSphere = makeSphere;
+  GAME.sphere = makeSphere();   /* 逻辑球面默认实例（地图球面由启动/切换时创建）*/
 })();
