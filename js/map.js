@@ -513,6 +513,61 @@
     return out;
   };
 
+  /* ============================================================
+   * v90.79（性能）：**区域场（最近聚落多源 BFS）** —— 一次性把全星每格归到最近的「聚落(county)」格。
+   * 背景：`regionOf` 逐点跑六边 BFS（每次 O(全星)），`expTargetCandidates` 对 ~150 城各调一次
+   *   = O(150 × 全星) ≈ **5.5 秒** —— 出征面板"卡死"的根因。
+   * 改：这里从所有聚落格**一次性多源 BFS** 铺一张 `ci → 最近聚落 ci` 的表（约 150ms，随 seed 缓存），
+   *   `regionOf` 变成 O(1) 查表；后续最远聚落/镇/区仍由该表派生。
+   * ============================================================ */
+  GAME.map._countyField = function () {
+    var s = GAME.state, SP = GAME.sphere;
+    if (!s || !SP || !SP.cells || !SP.adj) return null;
+    var seed = (s.map && s.map.seed) || 1;
+    var cch = GAME.map._cntyF;
+    if (cch && cch.seed === seed) return cch.field;
+    var nv = SP.nv, field = new Int32Array(nv);
+    for (var i = 0; i < nv; i++) field[i] = -1;
+    var adj = SP.adj, srcs = [], byCi = {};
+    (DATA.NPC_CITIES || []).forEach(function (c) {
+      if (c.type !== 'county') return;
+      var ci = (c.ci != null && c.ci >= 0) ? c.ci : SP.ciOfXY(c.x, c.y);
+      if (ci >= 0 && field[ci] === -1) { field[ci] = ci; srcs.push(ci); byCi[ci] = c; }
+    });
+    /* 多源 BFS：每格继承最近聚落格的归属 */
+    var head = 0, q = srcs.slice();
+    while (head < q.length) {
+      var cur = q[head++], owner = field[cur], nb = adj[cur];
+      for (var k = 0; k < nb.length; k++) {
+        var w = nb[k];
+        if (field[w] === -1) { field[w] = owner; q.push(w); }
+      }
+    }
+    GAME.map._cntyF = { seed: seed, field: field, byCi: byCi, junOf: {} };
+    return field;
+  };
+  /* 世界格 (x,y) 所属**聚落格索引**（最近聚落；无 → -1）。O(1)。 */
+  GAME.map.countyCiAt = function (x, y) {
+    var SP = GAME.sphere; if (!SP) return -1;
+    var f = GAME.map._countyField(); if (!f) return -1;
+    var ci = SP.ciOfXY(x, y);
+    return (ci >= 0 && ci < f.length) ? f[ci] : -1;
+  };
+  /* 聚落 ci → 该聚落城的**近邻重镇**（同州最近 jun，按聚落缓存）。O(1) 摊还。 */
+  GAME.map._junOfCounty = function (countyCity) {
+    var cache = GAME.map._cntyF && GAME.map._cntyF.junOf;
+    if (!countyCity) return null;
+    if (cache && cache[countyCity.id] !== undefined) return cache[countyCity.id];
+    var jun = null, jd = Infinity;
+    (DATA.NPC_CITIES || []).forEach(function (c) {
+      if (c.type !== 'jun' || c.state !== countyCity.state) return;
+      var d = GAME.cityDist(c, countyCity);
+      if (d < jd) { jd = d; jun = c; }
+    });
+    if (cache) cache[countyCity.id] = jun;
+    return jun;
+  };
+
   /* ------------------------------------------------------------
    * 野地等级（v15：动态）
    *  · 无主野地：基础 hash + 现实日 —— **每日 +1 级**（模 11 循环），

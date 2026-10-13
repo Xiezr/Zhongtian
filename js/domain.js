@@ -2566,20 +2566,24 @@
    * 两个坐标落在同一个聚落 → 永远同一结果，可断言、可缓存。
    * ============================================================ */
   GAME.regionOf = function (x, y) {
-    var best = null, bd = Infinity;
-    var pt = { x: x, y: y };
-    (DATA.NPC_CITIES || []).forEach(function (c) {
-      if (c.type !== 'county') return;
-      var d = GAME.cityDist(c, pt);           /* v90.70：球面六边环数 */
-      if (d < bd) { bd = d; best = c; }
-    });
+    /* v90.79：O(1) 走**区域场**（多源 BFS 最近聚落）—— 免逐点六边 BFS（旧 O(全星)/次）。
+       先确保场地已建（首调 ~150ms，随后缓存）。 */
+    var best = null;
+    var cf = GAME.map._countyField ? GAME.map._countyField() : null;
+    if (cf && GAME.map._cntyF && GAME.map._cntyF.byCi) {
+      var ownerCi = GAME.map.countyCiAt(x, y);
+      if (ownerCi >= 0) best = GAME.map._cntyF.byCi[ownerCi] || null;
+    }
+    if (!best) {                               /* 兜底（无内核 / 无场地）：线性扫描最近聚落 */
+      var pt = { x: x, y: y }, bd = Infinity;
+      (DATA.NPC_CITIES || []).forEach(function (c) {
+        if (c.type !== 'county') return;
+        var d = GAME.cityDist(c, pt);
+        if (d < bd) { bd = d; best = c; }
+      });
+    }
     if (!best) return null;
-    var jun = null, jd = Infinity;
-    (DATA.NPC_CITIES || []).forEach(function (c) {
-      if (c.type !== 'jun' || c.state !== best.state) return;
-      var d = GAME.cityDist(c, best);
-      if (d < jd) { jd = d; jun = c; }
-    });
+    var jun = GAME.map._junOfCounty ? GAME.map._junOfCounty(best) : null;
     return {
       state: best.state, county: best.name, countyCity: best,
       jun: jun ? jun.name : null, junCity: jun,

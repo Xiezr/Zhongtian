@@ -665,7 +665,7 @@
     var s = GAME.state;
     s.map.grid = null; s.map.cities = null;                 /* 清投影网格 → 重投影 + 重建 NPC 城 */
     GAME.map._fortCand = null; GAME.map._fortLv = null; GAME.map._fortBlocks = null; GAME.map._fortRing = null;
-    GAME.map._wonderSites = null;
+    GAME.map._wonderSites = null; GAME.map._cntyF = null;   /* 区域场（最近聚落 BFS）随星球失效 */
     GAME.map.generate();
     return r;
   };

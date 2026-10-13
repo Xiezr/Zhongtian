@@ -14584,11 +14584,13 @@
     var warBtn = '<button class="bb-war" data-action="battle-list-open" ' +
       'title="指挥战斗：查看正在进行的战斗与行军中的军队（有战斗待指挥时闪烁）">⚔ 指挥战斗</button>';
     /* v90.73（老板 9）：底部导航加**星球生成器**入口 —— 调参生成星球，作为副本（不与其他星球同屏）。 */
+    /* v90.79（老板 1）：星球生成器移到底栏**最右**（与「隐藏名称」同款图标按钮样式）。 */
     var planetBtn = '<button class="bb-planet" data-action="planet-gen-open" ' +
       'title="星球生成器：设置要素参数生成新星球（各星球作独立副本，不同屏展示）">🪐 星球生成器</button>';
-    bar.innerHTML = '<div class="bb-tools">' + lblBtn + warBtn + planetBtn + '</div>'
+    bar.innerHTML = '<div class="bb-tools">' + lblBtn + warBtn + '</div>'
       + (arr.length ? arr.join('')
-      : '<span class="bb-hint">—</span>');
+      : '<span class="bb-hint">—</span>')
+      + '<div class="bb-tools bb-tools-r">' + planetBtn + '</div>';
     ui.paintWarBeacon();
   };
   /* v89.151（老板 3）：「指挥战斗（有正在进行的战斗时发生闪烁）」——

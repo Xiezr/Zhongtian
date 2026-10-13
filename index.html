@@ -2372,6 +2372,7 @@
    *     一屏装不下就得先滚到底）。
    * ============================================================ */
   .bottombar {
+    position: relative;   /* v90.79：.bb-tools 左右两角定位上下文 */
     flex: none; height: 46px; display: flex; align-items: center; justify-content: center;
     /* v89.52：左留白给最左的「🏷 名称」按钮（绝对定位），避免与居中分页/导航重叠。
        v89.213（老板「页码集中在中部」）：左 92 / 右 12 不对称会让居中内容整体右偏
@@ -2393,13 +2394,15 @@
     position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
     display: flex; gap: var(--sp-2); align-items: center;
   }
-  .bb-label-toggle, .bb-war {
+  /* v90.79（老板 1）：星球生成器贴底栏**最右**（同款按钮样式，与左侧 .bb-tools 镜像）。 */
+  .bb-tools.bb-tools-r { left: auto; right: 10px; }
+  .bb-label-toggle, .bb-war, .bb-planet {
     padding: var(--sp-1) var(--sp-4); font-size: var(--fs-sub); font-weight: 800; letter-spacing: 1px;
     color: var(--text-dim); cursor: pointer; border-radius: var(--r-md);
     background: linear-gradient(180deg, var(--btn-face-1), var(--btn-face-2));
     border: 1px solid var(--gold-dark); box-shadow: inset 0 1px 0 rgba(var(--hl-rgb),.1);
   }
-  .bb-label-toggle:hover, .bb-war:hover { filter: brightness(1.2); }
+  .bb-label-toggle:hover, .bb-war:hover, .bb-planet:hover { filter: brightness(1.2); }
   .bb-label-toggle.on { color: var(--gold-light); border-color: var(--gold);
     background: var(--grad-bb-toggle); box-shadow: 0 0 10px rgba(var(--gold-soft-rgb),.3); }
   /* 「指挥战斗」闪烁态：有战斗待指挥时脉冲（角标级提示，不抢读秒/战斗界面） */
@@ -4498,32 +4501,32 @@
 </div><!-- /#app-scale -->
 </div><!-- /#app-fit -->
 
-<!-- BUILD 9156 -->
-<script src="js/data.js?v=9156"></script>
-<script src="js/state.js?v=9156"></script>
-<script src="js/questdata.js?v=9156"></script>
-<script src="js/systems.js?v=9156"></script>
-<script src="js/domain.js?v=9156"></script>
-<script src="js/map.js?v=9156"></script>
+<!-- BUILD 9158 -->
+<script src="js/data.js?v=9158"></script>
+<script src="js/state.js?v=9158"></script>
+<script src="js/questdata.js?v=9158"></script>
+<script src="js/systems.js?v=9158"></script>
+<script src="js/domain.js?v=9158"></script>
+<script src="js/map.js?v=9158"></script>
 <!-- v90.69：球面世界内核（纯 JS · 拓扑/地形/几何 SSOT）—— 逻辑与 3D 渲染共用，无 THREE -->
-<script src="js/sphere.js?v=9156"></script>
+<script src="js/sphere.js?v=9158"></script>
 <!-- v90.61：Three.js 真 3D 主地图（vendor 本地，离线可用） -->
-<script src="vendor/three.min.js?v=9156"></script>
-<script src="js/map3d.js?v=9156"></script>
-<script src="js/battle.js?v=9156"></script>
+<script src="vendor/three.min.js?v=9158"></script>
+<script src="js/map3d.js?v=9158"></script>
+<script src="js/battle.js?v=9158"></script>
 <!-- v27（需求 5）：回合制文字战场。放在 battle.js 之后 —— simulate 由它接管 -->
-<script src="js/tactic.js?v=9156"></script>
-<script src="js/icons.js?v=9156"></script>
+<script src="js/tactic.js?v=9158"></script>
+<script src="js/icons.js?v=9158"></script>
 <!-- v32（需求「采用网图」）：game-icons 开源图标素材层。必须在 icons.js 之后 ——
      icons.js 内的取图函数用 typeof GICONS 延迟绑定，渲染时才真正查表。 -->
-<script src="js/gicons.js?v=9156"></script>
+<script src="js/gicons.js?v=9158"></script>
 <!-- v35：AI 位图素材登记表（汉代风，最高优先级）。同样在 icons.js 之后 ——
      取图函数用 typeof BITMAPS 延迟绑定；未登记的 id 自动回退矢量层。 -->
-<script src="js/bitmaps.js?v=9156"></script>
-<script src="js/portraits.js?v=9156"></script>
-<script src="js/story.js?v=9156"></script>
+<script src="js/bitmaps.js?v=9158"></script>
+<script src="js/portraits.js?v=9158"></script>
+<script src="js/story.js?v=9158"></script>
 <!-- ⛔ v89.218（老板「故事全部去除」）：84 卷故事库（story/）整目录删除，脚本标签同步撤除。 -->
-<script src="js/ui.js?v=9156"></script>
-<script src="js/main.js?v=9156"></script>
+<script src="js/ui.js?v=9158"></script>
+<script src="js/main.js?v=9158"></script>
 </body>
 </html>
