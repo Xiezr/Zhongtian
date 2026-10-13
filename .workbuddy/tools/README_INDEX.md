@@ -14,13 +14,13 @@
 | `git/` | 3 | **收尾同步的唯一入口**。`sync.py` 默认干跑、`--apply` 才落盘（干跑先行是本项目铁律）；`gate.py` 是三件套门禁的**唯一出口**（pre-commit 钩子与 sync 都调它）；`install_hooks.py` 把 `hooks/` 里的钩子装进 `.git/hooks/`。 |
 | `git/hooks/` | 2 | 存这里是为了**进版本库** —— `.git/hooks/` 不被 git 跟踪，换台机器克隆后必须跑 `install_hooks.py` 重装。⚠️ **行尾必须 LF**，CRLF 会让 `#!/bin/sh` 失效。 |
 | `mem/` | 10 | MEMORY.md 必须 < 9600 字符（超出会被会话注入截断，尾部规则等于不存在）。`slim_memory_template.py` = 把超限整段 cut 到 `docs/` 的模板。 |
-| `patch/` | 1203 | **事实上的变更日志**：按断言名 `grep -rl "<断言名>" tools/patch/` 就能找到当初是哪次改的。"同一条消息里对同一文件的多次 Edit 会互相覆盖"，所以补丁一律脚本化并留档。 |
+| `patch/` | 1218 | **事实上的变更日志**：按断言名 `grep -rl "<断言名>" tools/patch/` 就能找到当初是哪次改的。"同一条消息里对同一文件的多次 Edit 会互相覆盖"，所以补丁一律脚本化并留档。 |
 | `play/` | 4 | **不在 gate 三件套内，按需手动跑**。`lifecycle_v89121.js` = 全玩法链路体检（渠道 / 锻造 / 宝物等分组核验，交付文档的复现命令指向它 → **视同在岗**）；`repro_v89174*` = 三条一次性复现。 |
 | `playtest/` | 22 | v89.x 时代的 600×/1× 长时压测与收益分析（`play_600x.js` 等，单次几分钟到几十分钟）。结论已沉淀进交付文档；**不复用为口径**，新压测请基于 `probe/` 的在岗模板重写。 |
 | `probe/` | 270 | jsdom 没有布局引擎 → 尺寸/重叠/溢出/折行只能在**真浏览器**量。`probe60_geom.js` 是可复用模板，`probe66_ui.js` 有"逐行折行"量法，`probe67_save3.js` 量存档体积与配额。**其余带版本号的（`probe_v89101_explore.js` 等）= 一次性探针**，判据见 `is_one_off()`：名字里带版本号就是"一轮用完即退役"。 |
 | `show/` | 175 | 给老板看的对照图 / 曲线校准 / 素材巡视。 |
 | `tmp/` | 20 | 一次会话里用完即弃的 diag / check / pack / sim 脚本。留着是为了让交付文档里"当时怎么量的"能回查；**不再维护、不引用为口径**。 |
-| **合计** | **1894** | |
+| **合计** | **1909** | |
 
 ## asset/（素材处理）
 
@@ -266,6 +266,7 @@ MEMORY.md 必须 < 9600 字符（超出会被会话注入截断，尾部规则�
 - `bump_version.py`（6KB）　— 发版脚本（v90.94 治理版）：一次同步三处版本标识里的「代码侧两处」。
 - `check_v89226_confirm.py`（2KB）　— v89.226 复核：素材层三证复跑（apply 完整性 + 切分确定性）。
 - `check_v89226_themes.py`（4KB）　— v89.226 复核：地块染色 4 主题 × 8 族 全量逐字节复验。
+- `check_v9094_cachebust_compare.py`（1KB）　— 对照实验：证明旧 cachebust.js 的正则前缀约束 (js|story)/ 会漏掉 vendor/three.min.js。
 - `design_v89225_plot.py`（6KB）　— v89.225 地块色设计 · ΔE00 矩阵实测（**v1 草稿** —— 保留作迭代起点）
 - `design_v89227_plot.py`（5KB）　— v89.227 城内地块族色 v2 设计：8 族 → 4 族 + 整体降饱和（老板：「族有点多了」「太显眼，视觉负担大」）。
 - `design_v89229_block.py`（5KB）　— v89.229 设计脚本：城内地块文字色块配色（4 族 × 4 主题）
@@ -290,6 +291,11 @@ MEMORY.md 必须 < 9600 字符（超出会被会话注入截断，尾部规则�
 - `fix216_archive_revert.py`（3KB）　— v89.216：把**读档案的断言**里被换皮词表改过的串，还原成老板原文（档案不参与换皮）。
 - `fix8940_smoke_lord.py`（3KB）　— 修正 smoke 的君主运行时断言：现场补临时君主/对照将（打完移除），保证不放空。
 - `fixnum_v89228.py`（1KB）　— v89.228 口径修正：docs 同步量 1260 → 1380 处（实测 711+270+83+141+23+19+17+7+18+2+9+0=1300 + C2 77 =…
+- `patchC2_core.py`（14KB）　— v90.93 批次C2：全屏剧本（荒野场景流程）整条退役。
+- `patchC2_deadcfg.py`（8KB）　— v90.93 批次C1/C2 遗留清理：
+- `patchC2_e2e.py`（10KB）　— v90.93 批次C2：e2e 剧本用例段 → 一次性结算 + 退役守卫
+- `patchC2_smokefix.py`（6KB）　— v90.93 批次C2：修 smoke 两条越界守卫
+- `patchC2_tests.py`（11KB）　— v90.93 批次C2 配套：smoke 口径同步（全屏剧本退役）。
 - `patch_build_gate.py`（11KB）　— v68 · 逐步探索：建造前置规则（老板 2026-09-14 需求）
 - `patch_build_gate_fix.py`（8KB）　— v68 修正：buildPrereqOf 支持"新建语义"，并适配受影响的既有测试。
 - `patch_build_gate_fix2.py`（3KB）　— v68 修正 2：govMax 作用域提升。
@@ -1261,6 +1267,15 @@ MEMORY.md 必须 < 9600 字符（超出会被会话注入截断，尾部规则�
 - `patch_v9087_lifecycle_boostdrop.py`（5KB）
 - `patch_v9087_lifecycle_forgelv.py`（4KB）
 - `patch_v9087_lifecycle_loadlist.py`（3KB）
+- `patch_v9094_archive.py`（20KB）　— P1：三份档案补录 v90.87 / v90.87b / v90.92 / v90.93 / v90.94 版本行（含详细章节）。
+- `patch_v9094_docs.py`（6KB）　— v90.94：活文档同步 —— 发版脚本已从 .workbuddy/tmp/ 迁至 tools/patch/，文档必须跟上。
+- `patch_v9094_e2elord.py`（3KB）　— v90.94：e2e 补一条「练功条在面板最下方 + 真点一步」真 DOM 用例（清单第 6 条）。
+- `patch_v9094_fill.py`（4KB）　— v90.94：把门禁终跑数字回填档案与交付文档（并销掉两条已完成的挂账）。
+- `patch_v9094_guards.py`（4KB）　— v90.94：版本守卫升级。
+- `patch_v9094_lianTiao.py`（3KB）　— v90.94 补丁2：练功条从「右栏最下方」挪到「整个面板最下方（横贯）」
+- `patch_v9094_lordbreak.py`（20KB）　— v90.94 批次D：练功移位 + 突破改爵位门槛
+- `patch_v9094_verreg.py`（1KB）　— v90.94：把「版本与档案在册」一组守卫里的版本正则由 v89\\.\\d+ 放宽为 v\\d+\\.\\d+。
+- `patch_v9094_wuguan.py`（2KB）
 - `precheck_v89223.py`（6KB）　— v89.223 锚点预检：所有补丁锚点逐条计数 + repr（逐字节）。
 - `probe_v89223a_ab.py`（6KB）　— v89.223 探针 A：兵牌简称（ab）现状 + 产品侧旧词粗扫 + 工具目录计数。
 - `probe_v89223b_ctx.py`（5KB）　— v89.223 探针 B：上下文取证 + 产品广扫 + 工具目录分类 + 版本线索。
