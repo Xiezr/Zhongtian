@@ -237,6 +237,18 @@
       })(); break;
       case 'planet-create': GAME._planetDoCreate(true); break;
       case 'planet-create-stay': GAME._planetDoCreate(false); break;
+      /* v90.81（老板 2/4）：星球菜单分类切换 + 经典生态填入三轴 */
+      case 'planet-tab': ui._planetFormCollect(); ui._planetTab = el.dataset.ptab || 'gen'; ui.openPlanetGen(); break;
+      case 'planet-classic': (function () {
+        ui._planetFormCollect();
+        var c = (ui.ECO_CLASSIC || [])[Number(el.dataset.idx)];
+        if (!c) return;
+        var f = ui._planetForm || {};
+        f.ecoNatureSub = c.n; f.ecoCivSub = c.c; f.ecoMood = c.m;
+        ui._planetForm = f; ui._planetTab = 'gen';
+        ui.openPlanetGen();
+        ui.toast('已套用经典生态：' + c.n + ' · ' + c.c + ' · ' + c.m);
+      })(); break;
       /* v89.86（P-26）：新城提示里的"从主城调兵" —— 复用跨城调兵出口（openTroopMove） */
       case 'newcity-send-troop': {
         var _ncFrom = GAME.cityById(el.dataset.from);

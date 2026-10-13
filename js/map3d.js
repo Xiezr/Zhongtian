@@ -672,10 +672,12 @@
     var cw = target2d.width, ch = target2d.height;
     if (wcv.width !== cw || wcv.height !== ch) { wcv.width = cw; wcv.height = ch; R3.setSize(cw, ch, false); cam.aspect = cw / ch; cam.updateProjectionMatrix(); }
     /* v90.78（老板「换星球后地图没变」）：**星球身份**变（种子/规格/细分）→ 强制重建几何。
-       改前 built 恒 true → 换星球后 3D 球不重建 → 看着"没生成"。 */
-    var _pver = (SP.seed3 ? SP.seed3() : 0) + '|' + (SP.sub || 0) + '|'
-      + (SP.PLANET ? (SP.PLANET.seaFrac + ',' + SP.PLANET.ridge + ',' + SP.PLANET.detail + ',' + SP.PLANET.temp) : '');
-    if (_pver !== M._pver) { M._pver = _pver; built = false; M._mkVer = null; M.region = null; M.clearBeam(); }
+       v90.81：规格含全部要素（大陆数/山脉成因/海深/恒星色温…）→ 序列化比对。 */
+    var _pver = (SP.seed3 ? SP.seed3() : 0) + '|' + (SP.sub || 0) + '|' + (SP.PLANET ? JSON.stringify(SP.PLANET) : '');
+    if (_pver !== M._pver) {
+      M._pver = _pver; built = false; M._mkVer = null; M.region = null; M.clearBeam();
+      if (M._sun && SP.PLANET && SP.PLANET.starColor != null) M._sun.color.setHex(SP.PLANET.starColor);   /* 恒星色温 → 光色 */
+    }
     if (!built) { buildGlobe(); buildTiles(TILE_SUB); buildRegions(); buildMarkers(); built = true; }
     placeCamera();
     /* 地块数**固定**（老板）：不再随缩放切换级别 —— 恒定 TILE_SUB（= 40962 块）。*/

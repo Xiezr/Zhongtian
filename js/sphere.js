@@ -20,8 +20,25 @@
   var R = 300;                    /* 星球海平面半径（世界单位） */
   var HSC = 26;                   /* 高度 → 世界单位（山≈40 · 陆地≈5）*/
   SP.R = R; SP.HSC = HSC;
-  /* 星球规格（单星球）：换参数=换一颗星球的环境（海陆比/山脉/颗粒/气候）。*/
-  SP.PLANET = { seaFrac: 0.45, ridge: 1.5, detail: 0.7, temp: 1.0 };
+  /* 星球规格（单星球）：换参数=换一颗星球的环境（海陆比/山脉/颗粒/气候）。
+     v90.81（老板 4）：扩到 L0~L4 分层的完整要素（旧四参 seaFrac/ridge/detail/temp 兼容保留）。*/
+  SP.PLANET = {
+    seaFrac: 0.45,          /* L1 海洋占比 */
+    contCount: 0,           /* L1 大陆数量（0=自然；少=超大陆，多=碎陆 → 气候差极大）*/
+    ridge: 1.5,             /* L1 山脉强度 */
+    mountain: 'fold',       /* L1 山脉成因：fold 褶皱 / volcano 火山 / block 断块 / impact 撞击 */
+    oceanDepth: 1.0,        /* L1 海深剖面（0.4 浅…1.6 深）*/
+    temp: 1.0,              /* L2 气候（纬度温差）*/
+    tempBands: 3,           /* L2 温度带数量 */
+    cloud: 1.0,             /* L2 云量 */
+    detail: 0.7,            /* 颗粒细节 */
+    /* L0 骨架 */
+    radius: 300, spinSec: 10, tilt: 23, atmo: 1.0, starColor: 0xffe6b8, impact: 0,
+    /* L3 生态标签（3 轴 + 经典）*/
+    ecoNature: '', ecoCiv: '', ecoMood: '', ecoClassic: '',
+    /* L4 游戏性 */
+    artifact: ''            /* 奇观 */
+  };
 
   function mw() { return (GAME.DATA && GAME.DATA.MAP_W) || 500; }
   function mh() { return (GAME.DATA && GAME.DATA.MAP_H) || 500; }
@@ -52,18 +69,30 @@
     return ((GAME.state && GAME.state.map && GAME.state.map.seed) || 1) | 0;
   }
   SP.seed3 = seed3;
+  SP.PLANET_DEFAULT = JSON.parse(JSON.stringify(SP.PLANET));
   /* v90.73（老板 9）：星球生成器 —— 用指定 seed + 参数重建内核（换一颗星球）。
-     参数缺省项沿用当前 SP.PLANET。传 null 清覆盖 → 回到存档种子。 */
+     v90.81：参数**合并**到默认（缺省项沿用默认可选值；可只传部分）。*/
   SP.setPlanet = function (seed, planet) {
     if (seed == null) SP._seedOverride = null; else SP._seedOverride = (seed | 0) || 1;
-    if (planet) SP.PLANET = { seaFrac: planet.seaFrac, ridge: planet.ridge, detail: planet.detail, temp: planet.temp };
+    var base = JSON.parse(JSON.stringify(SP.PLANET_DEFAULT));
+    if (planet) for (var k in planet) { if (planet[k] != null) base[k] = planet[k]; }
+    SP.PLANET = base;
     _seaCache = null;                                   /* 海平面随 seed/seaFrac 重算 */
     build(SP.sub);                                      /* 重建（seed 变 → 缓存失效）*/
   };
   var _seaCache = null, _seaSeed = null;
+  /* 大陆场（掩膜后）：fbm 大陆 + N 块掩膜。seaLevel 与 sphElev **共用同一份** → 海洋占比才准。 */
+  function contField(d, s) {
+    var c = fbm3(d, 1.1, s + 11);
+    var N = (SP.PLANET && SP.PLANET.contCount) | 0;
+    if (N >= 1) { var cm = contMask(d, N, s); c = c * 0.55 + cm * 0.9 - 0.3; }
+    return c;
+  }
   function seaLevel() {
     var s = seed3();
-    if (_seaCache != null && _seaSeed === s) return _seaCache;
+    var N = (SP.PLANET && SP.PLANET.contCount) | 0;
+    var key = s + '|' + N + '|' + ((SP.PLANET && SP.PLANET.seaFrac) || 0.45);
+    if (_seaCache != null && _seaSeed === key) return _seaCache;
     /* 各面粗采样估 cont 的均值+标准差 → 海平面 ≈ 均值 + k·σ 使约 seaFrac 的格在海面下。 */
     var sum = 0, sum2 = 0, n = 0;
     for (var f = 0; f < 6; f++) {
@@ -72,26 +101,64 @@
         var a = (i * 0.618) % 1, b = (i * 0.382 + f * 0.13) % 1;
         var d = [u0[0] + (a - .5) * 2, u0[1] + (b - .5) * 2, u0[2] + ((a + b) - 1)];
         var L = Math.hypot(d[0], d[1], d[2]) || 1; d = [d[0] / L, d[1] / L, d[2] / L];
-        var c = fbm3(d, 1.1, s + 11); sum += c; sum2 += c * c; n++;
+        var c = contField(d, s); sum += c; sum2 += c * c; n++;
       }
     }
     var mean = sum / n, sd = Math.sqrt(Math.max(1e-6, sum2 / n - mean * mean));
     var sf = (SP.PLANET && SP.PLANET.seaFrac) || 0.45;
     var z = sf < 0.5 ? -(0.5 - sf) * 2.6 : (sf - 0.5) * 2.6;   /* 目标占比→分位数→海平面 */
-    _seaCache = mean + z * sd; _seaSeed = s;
+    _seaCache = mean + z * sd; _seaSeed = key;
     return _seaCache;
   }
   SP.seaLevel = seaLevel;
+  /* v90.81（老板 4）：大陆掩膜 —— 取 N 个种子中心方向，靠中心处抬高 → 大约 N 块大陆。
+     N<=0 = 自然（纯 fbm，不加掩膜，与旧口径一致）。 */
+  function _ctrDir(s, i) {
+    var a = h3(i * 7 + 1, i * 13 + 3, s, 991), b = h3(i * 5 + 2, i * 11 + 7, s, 883);
+    var z = a * 2 - 1, t = b * 2 * Math.PI, r = Math.sqrt(Math.max(0, 1 - z * z));
+    return [r * Math.cos(t), z, r * Math.sin(t)];
+  }
+  function contMask(d, N, s) {
+    if (!(N >= 1)) return 0;
+    var best = -2;
+    for (var i = 0; i < N; i++) {
+      var c = _ctrDir(s, i), dt = d[0] * c[0] + d[1] * c[1] + d[2] * c[2];
+      if (dt > best) best = dt;
+    }
+    return (best + 1) / 2;                                /* 0..1（靠中心高）*/
+  }
+  /* v90.81：山脉成因 —— 不同形态明显不同。
+     fold 褶皱（脊状）· volcano 火山（尖峰簇）· block 断块（阶梯平顶）· impact 撞击（陨坑环）*/
+  function mountainField(d, type, s, land, P) {
+    var ridgeW = (P.ridge == null ? 1.5 : P.ridge);
+    if (type === 'volcano') {
+      var v = fbm3(d, 3.4, s + 55); v = Math.max(0, v - 0.42); return v * v * 22 * land * ridgeW / 1.5;
+    }
+    if (type === 'block') {
+      var r = 1 - Math.abs(2 * fbm3(d, 2.4, s + 77) - 1);
+      r = Math.floor(r * 5) / 5;                           /* 阶梯 → 平顶断块 */
+      return r * 4.2 * land * ridgeW / 1.5;
+    }
+    if (type === 'impact') {
+      var q = fbm3(d, 4.2, s + 66);                        /* 撞击：坑 + 环 */
+      var ring = Math.abs(Math.sin(q * Math.PI * 3));
+      return (1 - ring) * 3.4 * land * ridgeW / 1.5;
+    }
+    var ridged = 1 - Math.abs(2 * fbm3(d, 2.8, s + 77) - 1);   /* fold 褶皱（默认）*/
+    return ridged * ridged * 1.5 * land * 3.2 * ridgeW / 1.5;
+  }
   function sphElev(d) {
     var s = seed3();
-    var cont = fbm3(d, 1.1, s + 11);                      /* 大陆/海洋（低频）*/
-    var ridged = 1 - Math.abs(2 * fbm3(d, 2.8, s + 77) - 1);
-    var sea = seaLevel(), P = SP.PLANET || {};
+    var P = SP.PLANET || {};
+    var cont = contField(d, s);                           /* 大陆场（含 N 块掩膜；与 seaLevel 同源）*/
+    var sea = seaLevel();
     var land = Math.max(0, cont - sea);
-    var e = (cont - sea) * 3.0 + ridged * ridged * 1.5 * land * 3.2 * (P.ridge == null ? 1.5 : P.ridge) / 1.5;   /* 山脉（脊状 · 更强）*/
+    var e = (cont - sea) * 3.0 + mountainField(d, P.mountain || 'fold', s, land, P);
     var det = (fbm3(d, 6.5, s + 191) - 0.5) * 0.5 * land;
-    var fine = (fbm3(d, 16.0, s + 331) - 0.5) * 0.35 * land;            /* 高频细节（放大可见）*/
-    return Math.max(-0.6, e + det + fine);
+    var fine = (fbm3(d, 16.0, s + 331) - 0.5) * 0.35 * land;            /* 高频细节 */
+    e = e + det + fine;
+    if (e < 0) e *= (P.oceanDepth == null ? 1 : P.oceanDepth);          /* v90.81：海深剖面 */
+    return Math.max(-0.6, e);
   }
   SP.sphElev = sphElev;
 
@@ -137,11 +204,12 @@
   SP.icoSpheres = icoSpheres;
 
   /* ---- 构建（幂等 · 随 seed 与 sub 重建）---- */
-  var _builtSub = -1, _builtSeed = null;
+  var _builtSub = -1, _builtSeed = null, _builtPver = null;
   function build(sub) {
     sub = sub == null ? SUB : sub;
     var sd = seed3();
-    if (SP.cells && _builtSub === sub && _builtSeed === sd) return SP;
+    var pver = JSON.stringify(SP.PLANET);            /* v90.81：参数变（同 seed）也要重建 */
+    if (SP.cells && _builtSub === sub && _builtSeed === sd && _builtPver === pver) return SP;
     var ico = icoSpheres(sub);
     var V = ico.V, F = ico.F, nf = F.length, f, nv = V.length;
     var cent = [];
@@ -230,7 +298,7 @@
 
     SP.V = V; SP.F = F; SP.cent = cent; SP.adj = adj; SP.cells = cells;
     SP.upos = upos; SP.fpos = fpos; SP.faceCell = faceCell; SP.nv = nv;
-    _builtSub = sub; _builtSeed = sd;
+    _builtSub = sub; _builtSeed = sd; _builtPver = pver;
     SP.sub = sub;
     _grid = null;                                    /* 空间哈希随之失效（V 已换）*/
     _xyCi = null;                                    /* (x,y)→ci 记忆随之失效（地形已换）*/
@@ -365,5 +433,39 @@
     if (!e1 || !e2) return 1;
     if (e1.ci != null && e1.ci >= 0 && e2.ci != null && e2.ci >= 0) return hexDist(e1.ci, e2.ci);
     return SP.hexDistAt(e1.x, e1.y, e2.x, e2.y);
+  };
+
+  /* ============================================================
+   * v90.81（老板 4）：**星球体检报告** + **自动生态标签** + **自动奇观**。
+   * 生成星球后即时计算（不缓存，按当前 cells 现算）。
+   * ============================================================ */
+  var _NAT = [['lake', '以水为主'], ['zhaoze', '以水为主'], ['desert', '以地貌为主'],
+    ['hill', '以地貌为主'], ['forest', '以生命为主'], ['caoyuan', '以生命为主']];
+  SP.ecoNatureOf = function () {
+    var cnt = {}, tot = 0;
+    for (var i = 0; i < SP.cells.length; i++) { var c = SP.cells[i]; if (c) { cnt[c.type] = (cnt[c.type] || 0) + 1; tot++; } }
+    var mx = '', mn = -1; for (var k in cnt) if (cnt[k] > mn) { mn = cnt[k]; mx = k; }
+    var nat = '以水为主';
+    _NAT.forEach(function (p) { if (p[0] === mx) nat = p[1]; });
+    var domCell = { lake: '海洋世界', desert: '沙丘之海', hill: '台地方山', forest: '丛林世界', caoyuan: '草原世界', plain: '群岛世界', zhaoze: '沼泽湿地' };
+    return { nature: nat, dominant: domCell[mx] || '未知', domKey: mx, landPct: Math.round((1 - (cnt.lake || 0) / tot) * 100) };
+  };
+  SP.report = function () {
+    if (!SP.cells || !SP.cells.length) return null;
+    var cnt = {}, tot = 0, eMax = 0.01, hillN = 0;
+    for (var i = 0; i < SP.cells.length; i++) { var c = SP.cells[i]; if (!c) continue; cnt[c.type] = (cnt[c.type] || 0) + 1; if (c.e > eMax) eMax = c.e; if (c.type === 'hill') hillN++; tot++; }
+    var land = tot - (cnt.lake || 0), P = SP.PLANET || {};
+    var plainPct = (cnt.plain || 0) / tot, seaPct = (cnt.lake || 0) / tot, domHill = hillN / tot;
+    var habit = Math.round(Math.max(0, Math.min(100, 40 + plainPct * 300 - domHill * 120 - Math.abs(seaPct - 0.4) * 120)));
+    var colon = Math.round(Math.max(0, Math.min(100, (land / tot) * 100 + plainPct * 80)));
+    var danger = Math.round(Math.max(0, Math.min(100, domHill * 260 + (P.impact || 0) * 30 + (P.mountain === 'volcano' ? 25 : 0))));
+    var res = Math.round(Math.max(0, Math.min(100, plainPct * 200 + domHill * 90 + (cnt.desert || 0) / tot * 120)));
+    var note = habit >= 60 ? '温润宜居，移民乐土。' : (danger >= 60 ? '凶险异常，非精锐不可涉足。' : (res >= 60 ? '矿藏丰饶，值得开采。' : '中规中矩的一颗星。'));
+    return { habit: habit, colon: colon, danger: danger, res: res, note: note, landPct: Math.round((land / tot) * 100), eMax: eMax };
+  };
+  var _ART = ['戴森残片', '上古神殿', '陨落母舰', '巨构水晶', '沉没方舟', '千柱圣殿', '坠星峡谷', '永动熔炉'];
+  SP.artifactOf = function () {
+    var re = SP.report(); if (!re) return '无名奇观';
+    return _ART[(SP.seed3() + Math.round(re.danger)) % _ART.length];
   };
 })();

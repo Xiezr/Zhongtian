@@ -166,6 +166,7 @@
         || /id="tm-gen"/.test(tag) || /id="wg-gen"/.test(tag)   /* v89.87：调兵/驻守的带队英雄 */
         || /id="am-/.test(tag)                           /* 自动出征弹窗（v89.83：十项，其中出征战术行是字面量） */
         || /id="adm-/.test(tag)                          /* v90.64：地图**分级行政检索**下拉（全球/省/市/区 · 高亮）*/
+        || /data-pf="/.test(tag)                          /* v90.81：星球菜单生成器**参数化**下拉（恒星色温/山脉成因/生态）*/
         || /^<select id="' \+ id \+ '">$/.test(tag)     /* openAutoMarch 的参数化构造器（其余九项） */
         /* v89.133：带 data-action 的 select（走全局 change 委托 → GAME.action）——
            动作表受 audit「孤儿按钮」兜底（无 case 即红），比只登记 id 更严。 */

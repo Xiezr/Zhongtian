@@ -643,18 +643,33 @@
     ps.push(p);
     return p;
   };
-  /* 星球生成器「生成」动作（UI 读框 → 建副本 → 可选进入）。 */
+  /* 星球生成器「生成」动作（UI 读框 → 建副本 → 出体检报告 + 自动奇观 → 可选进入）。 */
   GAME._planetDoCreate = function (enter) {
     var ui = GAME.ui;
-    var params = ui && ui._planetParamsFrom ? ui._planetParamsFrom() : null;
+    var params = ui && ui._planetParamsFrom ? ui._planetParamsFrom() : {};
     var seed = ui && ui._planetSeedFrom ? ui._planetSeedFrom() : ((U.now() % 900000) || 1);
     var p = GAME.addPlanet({ seed: seed, params: params });
     if (!p) { if (ui) ui.toast('生成失败'); return; }
+    /* v90.81：生成后**即时**算体检报告 + 自动奇观（临时把内核切到新球算完再还原）*/
+    var report = null, artifact = null;
+    if (GAME.sphere && GAME.sphere.setPlanet) {
+      GAME.sphere.setPlanet(p.seed, p.params);
+      report = GAME.sphere.report(); artifact = GAME.sphere.artifactOf();
+    }
+    p.report = report; p.artifact = artifact;
+    if (p.params) p.params.artifact = artifact;
     if (enter) {
       GAME.enterPlanet(p.id);
-      if (ui) { ui.closeModal(); GAME.refreshAll(); if (ui.view !== 'map') ui.setView('map'); else ui.renderMapCanvas(); ui.toast('🪐 生成并进入 ' + p.name + '（种子 ' + p.seed + '）'); }
+      if (ui) {
+        ui._planetForm = null; ui._planetTab = 'list';
+        ui.closeModal(); GAME.refreshAll();
+        if (ui.view !== 'map') ui.setView('map'); else ui.renderMapCanvas();
+        ui.toast('🪐 ' + p.name + ' 生成并进入 · 宜居 ' + (report ? report.habit : '?') + '/100 · 奇观「' + artifact + '」');
+      }
     } else {
-      if (ui) { ui.toast('🪐 已生成 ' + p.name + '（种子 ' + p.seed + '）—— 可在列表「进入」'); ui.openPlanetGen(); }
+      /* 不进则还原当前球（否则"看着切走了"）*/
+      GAME.enterPlanet(GAME.state.activePlanet);
+      if (ui) { ui._planetForm = null; ui._planetTab = 'list'; ui.openPlanetGen(); ui.toast('🪐 已生成 ' + p.name + '（宜居 ' + (report ? report.habit : '?') + '）—— 副本列表「进入」'); }
     }
   };
   /* v90.78：**进入某星球** —— 载入其种子/规格 + 清掉一切随星球派生的缓存 + 重投影平面网格。

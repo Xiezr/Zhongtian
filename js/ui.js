@@ -9565,64 +9565,165 @@
   };
 
   /* ============================================================
-   * v90.73（老板 9）：**星球生成器**（底部导航入口）
+   * v90.81（老板 4）：**星球生成器 · 要素设计器**
    * ------------------------------------------------------------
-   * 玩家给要素参数 → 生成一颗新星球，作为**独立副本**（不与其他星球同屏）。
-   * 副本列表可切「进入」；各星球 spawn 独立，星球间距默认 GAME.STAR_DIST（10000 六边格）作征距参考。
-   * 参数（写进副本的 params，灌入 GAME.sphere.PLANET）：海洋占比 / 山脉强度 / 颗粒细节 / 气候。
+   * 分层要素 L0 骨架 / L1 形貌 / L2 气候 / L3 生态 / L4 游戏性。
+   * #2：多星球作**副本**（不同分类视图），单副本渲染（只载入当前球，防同时跑多个球崩）。
+   * #4：要素具体化 + 生态标签（3 轴 + 经典组合）+ 生成后自动奇观 + 星球体检报告。
    * ============================================================ */
+  /* 生态三轴（老板原文）*/
+  ui.ECO_A = { '': '— 自然生态 —', '以水为主': '以水为主', '以温度为主': '以温度为主', '以地貌为主': '以地貌为主', '以生命为主': '以生命为主' };
+  ui.ECO_A_SUB = ['海洋世界', '群岛世界', '沼泽湿地', '潮间带世界', '冰封世界', '干涸海床', '熔岩世界', '温室世界', '苔原世界', '极寒世界', '阴阳脸世界', '沟壑纵横', '沙丘之海', '火山世界', '撞击荒漠', '台地方山', '石林尖塔', '行星级裂谷', '晶体荒原', '洞穴世界', '浮空群岛', '丛林世界', '草原世界', '真菌世界', '发光生态', '礁岩世界', '化能生态', '有机世界'];
+  ui.ECO_B = { '': '— 文明开发 —', '军事': '军事', '工业': '工业', '居住': '居住', '科研与遗迹': '科研与遗迹', '状态演进': '状态演进', '特殊': '特殊' };
+  ui.ECO_B_SUB = ['行星要塞', '战争前线', '封锁世界', '采矿世界', '铸造世界', '蜂巢都市', '花园世界', '田园世界', '殖民边疆', '游牧世界', '研究站', '上古遗迹', '神殿圣地', '陵墓世界', '戴森残片', '改造中', '改造失败', '乌托邦', '末日后废土', '复苏中', '流放世界', '禁区', '失落世界'];
+  ui.ECO_C = ['', '科技未来', '废土末日', '赛博霓虹', '工业粗野', '蒸汽朋克', '生物朋克', '宗教神圣', '暗黑哥特', '极简纯白', '复古未来', '超现实荒诞', '田园牧歌'];
+  /* 经典生态组合（老板给的 11 例）*/
+  ui.ECO_CLASSIC = [
+    { n: '荒漠', c: '行星要塞', m: '科技未来', d: '沙丘之间嵌着巨型护盾穹顶与轨道炮台，要塞的冷白灯光在沙暴里像灯塔。', p: '塔图因 × 帝国基地' },
+    { n: '荒漠', c: '游牧世界', m: '废土末日', d: '移动车队追着仅存的水脉跑，锈蚀的巨型机械残骸是唯一的地标。', p: '疯狂的麦克斯' },
+    { n: '沟壑纵横', c: '采矿世界', m: '工业粗野', d: '天然沟壑被矿坑加深成悬崖城市，传送带横跨峡谷，空气里全是粉尘。', p: '剥离矿坑 × 垂直贫民窟' },
+    { n: '冰封世界', c: '研究站', m: '极简纯白', d: '一栋孤独的白色建筑插在冰原上，方圆千公里只有风雪和读数。', p: '南极站 × 雪国列车' },
+    { n: '熔岩世界', c: '铸造世界', m: '宗教神圣', d: '岩浆被当作神迹，烟囱森林之间立着巨型圣像，工人们边祷告边投料。', p: '机械教熔炉世界' },
+    { n: '海洋世界', c: '蜂巢都市', m: '赛博霓虹', d: '没有陆地，城市是插进海里的巨型桩柱群，霓虹倒影在永不停歇的雨里。', p: '水上垂直都市 × 雨夜霓虹' },
+    { n: '丛林世界', c: '上古遗迹', m: '宗教神圣', d: '石造巨构被树根撑裂，藤蔓盖住铭文，朝圣者仍在废墟里点灯。', p: '吴哥窟 × 幽灵公主' },
+    { n: '阴阳脸世界', c: '殖民边疆', m: '科技未来', d: '殖民地只能建在永昼与永夜的夹缝里，那条暮光带是整颗星球唯一能住人的地方。', p: '潮汐锁定宜居环带' },
+    { n: '浮空群岛', c: '失落世界', m: '复古未来', d: '岛屿漂浮在浓密的橙色大气里，居民用飞艇往来，已经忘了自己住在天上。', p: '云上遗民 × 蒸汽飞艇' },
+    { n: '干涸海床', c: '陵墓世界', m: '暗黑哥特', d: '整片盐原曾经是海，如今立满墓塔。盐柱是死去海水的墓碑。', p: '盐原墓园' },
+    { n: '洞穴世界', c: '禁区', m: '生物朋克', d: '地表一片死寂，地下溶洞里长满湿润的发光组织，没人知道那是不是生命。', p: '地下菌毯生态' },
+    { n: '晶体荒原', c: '采矿世界', m: '超现实荒诞', d: '晶簇会缓慢生长，把采矿设备连同矿工一起包进透明结晶里。', p: '会吞噬的晶体地貌' }
+  ];
+  ui.STAR_COLORS = [[0xffe6b8, '黄白（类太阳）'], [0xffc890, '橙红（红矮星）'], [0xcfe0ff, '青白（蓝巨星）'], [0xff9a6a, '暗红（红巨星）'], [0xe8fff0, '翠绿（异星）']];
+  ui._planetTab = 'gen';
+  ui._planetForm = null;   /* 生成器表单现值（跨标签保留）*/
   ui.openPlanetGen = function () {
-    var S = GAME.state;
-    var P = (GAME.sphere && GAME.sphere.PLANET) || {};
-    var def = { seaFrac: P.seaFrac != null ? P.seaFrac : 0.45, ridge: P.ridge != null ? P.ridge : 1.5,
-      detail: P.detail != null ? P.detail : 0.7, temp: P.temp != null ? P.temp : 1.0 };
     var ps = GAME.planetsOf(), act = GAME.activePlanetOf();
+    var tab = ui._planetTab || 'gen';
+    /* 副本列表（一屏一球，切「进入」）*/
     var listRows = ps.map(function (p) {
       var on = act && p.id === act.id;
+      var rep = (p.report || null);
       return '<div class="attr"><span class="k">' + (on ? '🪐 ' : '· ') + U.escape(p.name) +
-        '　<span class="ui-sub">#' + p.id + ' · 种子 ' + p.seed + '</span></span>' +
+        '　<span class="ui-sub">#' + p.id + ' · 种子 ' + p.seed + (rep ? ' · 宜居 ' + rep.habit : '') + '</span></span>' +
         '<span class="v">' + (on ? '<span style="color:var(--gold-light);">当前</span>'
           : '<button class="btn sm" data-action="planet-load" data-pid="' + p.id + '">进入</button>') + '</span></div>';
     }).join('');
-    var slider = function (id, label, min, max, step, val, hint) {
+    var rep = (GAME.sphere && GAME.sphere.report) ? GAME.sphere.report() : null;
+    var eco = (GAME.sphere && GAME.sphere.ecoNatureOf) ? GAME.sphere.ecoNatureOf() : null;
+    var curName = act ? act.name : '—';
+    var bar = function(v, label, col) {
       return '<div class="attr"><span class="k">' + label + '</span><span class="v">' +
-        '<input type="range" id="' + id + '" min="' + min + '" max="' + max + '" step="' + step + '" value="' + val + '" ' +
-          'style="width:200px;vertical-align:-4px;" ' +
+        '<span style="display:inline-block;width:160px;height:9px;background:var(--slab-1);border:1px solid var(--gold-dark);border-radius:4px;overflow:hidden;vertical-align:-1px;margin-right:6px;"><i style="display:block;height:100%;width:' + v + '%;background:' + (col || 'linear-gradient(180deg,var(--gold-light),var(--gold-dark))') + ';"></i></span>' +
+        '<b style="color:var(--gold-light);font-variant-numeric:tabular-nums;">' + v + '</b> / 100</span></div>';
+    };
+    var curHTML = rep ? (
+      '<div class="op-zone"><div class="op-zone-t">🪐 ' + U.escape(curName) + ' · 星球体检</div>' +
+        '<div style="text-align:center;color:var(--text-dim);font-size:var(--fs-sub);margin-bottom:6px;">' +
+          '宜居 · ' + U.escape(rep.note) + (eco ? ('　｜　' + eco.nature + ' · 主导 ' + eco.dominant + ' · 陆 ' + eco.landPct + '%') : '') + '</div>' +
+        bar(rep.habit, '宜居度') + bar(rep.colon, '可殖民性') + bar(rep.danger, '危险等级', 'linear-gradient(180deg,var(--red-light),var(--red))') + bar(rep.res, '资源潜力', 'linear-gradient(180deg,var(--green-ok),#3a6d36)') +
+        '<div class="attr"><span class="k">奇观</span><span class="v"><b style="color:var(--gold-light);">✨ ' + U.escape(GAME.sphere.artifactOf ? GAME.sphere.artifactOf() : '—') + '</b>　<span class="ui-sub">本星球必产 1 处</span></span></div>' +
+      '</div>') : '';
+    var F = ui._planetForm || {};
+    var get = function(k, d) { return F[k] != null ? F[k] : d; };
+    var slider = function(id, key, label, min, max, step, dflt, hint) {
+      var val = get(key, dflt);
+      return '<div class="attr"><span class="k">' + label + '</span><span class="v">' +
+        '<input type="range" id="' + id + '" data-pf="' + key + '" min="' + min + '" max="' + max + '" step="' + step + '" value="' + val + '" style="width:180px;vertical-align:-4px;" ' +
           'oninput="var b=this.closest(\'.attr\').querySelector(\'.pgen-val\');if(b)b.textContent=this.value;"> ' +
         '<b class="pgen-val" style="color:var(--gold-light);font-variant-numeric:tabular-nums;">' + val + '</b>' +
         (hint ? '　<span class="ui-sub">' + hint + '</span>' : '') + '</span></div>';
     };
-    ui.openModal(
-      '<div class="gold-heading">🪐 星球生成器</div>' +
-      '<div style="text-align:center;color:var(--text-dim);font-size:var(--fs-sub);margin-bottom:8px;">' +
-        '各星球作**独立副本**（不同屏展示）· 星球间距约 <b>' + U.numText(GAME.STAR_DIST, 0) + '</b> 六边格（出征距离参考）</div>' +
-      '<div class="op-zone"><div class="op-zone-t">星球副本</div>' + listRows + '</div>' +
-      '<div class="op-zone"><div class="op-zone-t">生成新星球 · 要素参数</div>' +
-        slider('pgen-sea', '海洋占比', 0.10, 0.80, 0.01, def.seaFrac, '海陆比（0.10 少水 … 0.80 多海）') +
-        slider('pgen-ridge', '山脉强度', 0.5, 3.0, 0.1, def.ridge, '脊状山脉起伏') +
-        slider('pgen-detail', '颗粒细节', 0.0, 1.5, 0.1, def.detail, '地表颗粒/斑驳') +
-        slider('pgen-temp', '气候', 0.5, 1.5, 0.1, def.temp, '纬度温差（影响荒漠/苔原）') +
+    var sel = function(id, key, label, opts, dflt) {
+      var val = get(key, dflt);
+      return '<div class="attr"><span class="k">' + label + '</span><span class="v">' +
+        '<select id="' + id + '" data-pf="' + key + '" style="padding:4px;background:var(--slab-1);color:var(--text);border:1px solid var(--gold-dark);border-radius:4px;">' +
+        opts.map(function(o) { var v = o[0], t = o[1]; return '<option value="' + v + '"' + (String(val) === String(v) ? ' selected' : '') + '>' + t + '</option>'; }).join('') +
+        '</select></span></div>';
+    };
+    function optPairs(obj) { return Object.keys(obj).map(function(k) { return [k, obj[k]]; }); }
+    var genHTML =
+      '<div class="op-zone"><div class="op-zone-t">L0 骨架</div>' +
+        slider('pg-radius', 'radius', '半径', 200, 460, 10, 300, '星球大小') +
+        slider('pg-spin', 'spinSec', '自转周期', 4, 30, 1, 10, '秒（无操作自转）') +
+        slider('pg-tilt', 'tilt', '轴倾角', 0, 90, 1, 23, '度') +
+        slider('pg-atmo', 'atmo', '大气', 0.0, 2.0, 0.1, 1.0, '浓密度') +
+        sel('pg-star', 'starColor', '恒星色温', ui.STAR_COLORS.map(function(c) { return [c[0], c[1]]; }), 0xffe6b8) +
+        slider('pg-impact', 'impact', '撞击史', 0, 1, 0.1, 0, '陨击痕迹') +
+      '</div>' +
+      '<div class="op-zone"><div class="op-zone-t">L1 形貌</div>' +
+        slider('pgen-sea', 'seaFrac', '海洋占比', 0.10, 0.80, 0.01, 0.45, '海陆比') +
+        slider('pg-cont', 'contCount', '大陆数量', 0, 12, 1, 0, '0=自然；少=超大陆，多=碎陆') +
+        slider('pgen-ridge', 'ridge', '山脉强度', 0.5, 3.0, 0.1, 1.5, '起伏') +
+        sel('pg-mtn', 'mountain', '山脉成因', [['fold', '褶皱'], ['volcano', '火山'], ['block', '断块'], ['impact', '撞击']], 'fold') +
+        slider('pg-ocean', 'oceanDepth', '海深剖面', 0.4, 1.6, 0.1, 1.0, '浅…深') +
+        slider('pgen-detail', 'detail', '颗粒细节', 0.0, 1.5, 0.1, 0.7, '地表斑驳') +
+      '</div>' +
+      '<div class="op-zone"><div class="op-zone-t">L2 气候</div>' +
+        slider('pgen-temp', 'temp', '纬度温差', 0.5, 1.5, 0.1, 1.0, '两极…赤道') +
+        slider('pg-bands', 'tempBands', '温度带数量', 1, 8, 1, 3, '气候带') +
+        slider('pg-cloud', 'cloud', '云量', 0.0, 2.0, 0.1, 1.0, '覆盖') +
+      '</div>' +
+      '<div class="op-zone"><div class="op-zone-t">L3 生态</div>' +
+        sel('pg-ecoA', 'ecoNature', '自然生态', optPairs(ui.ECO_A), '') +
+        sel('pg-ecoAsub', 'ecoNatureSub', '　└ 具体', [['']].concat(ui.ECO_A_SUB.map(function(x) { return [x, x]; })), '') +
+        sel('pg-ecoB', 'ecoCiv', '文明开发', optPairs(ui.ECO_B), '') +
+        sel('pg-ecoBsub', 'ecoCivSub', '　└ 具体', [['']].concat(ui.ECO_B_SUB.map(function(x) { return [x, x]; })), '') +
+        sel('pg-ecoC', 'ecoMood', '氛围调性', ui.ECO_C.map(function(x) { return [x, x || '— 氛围 —']; }), '') +
+      '</div>' +
+      '<div class="op-zone"><div class="op-zone-t">L4 游戏性</div>' +
         '<div class="attr"><span class="k">种子</span><span class="v">' +
-          '<input type="number" id="pgen-seed" value="' + ((U.now() % 900000) || 1) + '" style="width:120px;padding:5px;background:var(--slab-1);border:1px solid var(--gold-dark);color:var(--text);border-radius:4px;text-align:center;">' +
+          '<input type="number" id="pg-seed" data-pf="seed" value="' + get('seed', (U.now() % 900000) || 1) + '" style="width:130px;padding:5px;background:var(--slab-1);border:1px solid var(--gold-dark);color:var(--text);border-radius:4px;text-align:center;">' +
           '　<span class="ui-sub">同种子同星球</span></span></div>' +
+        '<div class="attr"><span class="k">奇观</span><span class="v"><span class="ui-sub">生成时自动产 1 处（按地形/危险度）</span></span></div>' +
         '<div class="op-row" style="margin-top:8px;">' +
           '<button class="btn gold" data-action="planet-create">✨ 生成并进入</button>' +
           '<button class="btn" data-action="planet-create-stay">生成（不进入）</button>' +
         '</div>' +
-      '</div>' +
-      '<div class="modal-foot"><button class="btn" data-action="close-modal">关闭</button></div>'
+      '</div>';
+    var clHTML = '<div class="op-zone"><div class="op-zone-t">经典生态（点选把三轴填入生成器表单）</div>' +
+      ui.ECO_CLASSIC.map(function(c, i) {
+        return '<div class="attr" style="cursor:pointer;" data-action="planet-classic" data-idx="' + i + '">' +
+          '<span class="k"><b style="color:var(--gold-light);">' + c.n + ' · ' + c.c + ' · ' + c.m + '</b></span>' +
+          '<span class="v ui-sub">' + U.escape(c.d) + '　<i>原型 ' + U.escape(c.p) + '</i></span></div>';
+      }).join('') + '</div>';
+    var body = tab === 'list' ? ('<div class="op-zone"><div class="op-zone-t">星球副本（单副本渲染 · 只载入当前球）</div>' + listRows + '</div>' + curHTML)
+      : tab === 'classic' ? clHTML
+      : (curHTML + genHTML);
+    var tabBtn = function(id, label, on) {
+      return '<button class="btn' + (on ? ' gold' : ' sm') + '" data-action="planet-tab" data-ptab="' + id + '">' + label + '</button>';
+    };
+    ui.openModal(
+      '<div class="gold-heading">🪐 星球菜单</div>' +
+      '<div style="text-align:center;margin-bottom:8px;">' +
+        tabBtn('gen', '生成', tab === 'gen') + tabBtn('list', '副本', tab === 'list') + tabBtn('classic', '经典生态', tab === 'classic') +
+        '<div style="color:var(--text-dim);font-size:var(--fs-sub);margin-top:6px;">各星球作循环**副本**（不同分类视图，杜绝同时跑多个球）· 间距约 <b>' + U.numText(GAME.STAR_DIST, 0) + '</b> 六边格</div>' +
+      '</div>' + body +
+      '<div class="modal-foot"><button class="btn" data-action="close-modal">关闭</button></div>',
+      'max'
     );
   };
-  /* 读参数框 → params 对象 */
+  /* 生成器表单现值 → params（含 L0~L4）。从 DOM 读（含 data-pf 的 range/select/number）。*/
+  ui._planetFormCollect = function () {
+    var f = ui._planetForm || {}, root = document.getElementById('modal-root');
+    (root ? root.querySelectorAll('[data-pf]') : []).forEach(function(e) {
+      var k = e.getAttribute('data-pf');
+      f[k] = (e.type === 'number' || e.type === 'range') ? Number(e.value) : e.value;
+    });
+    ui._planetForm = f;
+    return f;
+  };
   ui._planetParamsFrom = function () {
-    function v(id, d) { var e = document.getElementById(id); return e ? Number(e.value) : d; }
-    return { seaFrac: v('pgen-sea', 0.45), ridge: v('pgen-ridge', 1.5), detail: v('pgen-detail', 0.7), temp: v('pgen-temp', 1.0) };
+    var f = ui._planetFormCollect();
+    return {
+      radius: f.radius, spinSec: f.spinSec, tilt: f.tilt, atmo: f.atmo, starColor: Number(f.starColor), impact: f.impact,
+      seaFrac: f.seaFrac, contCount: f.contCount | 0, ridge: f.ridge, mountain: f.mountain, oceanDepth: f.oceanDepth, detail: f.detail,
+      temp: f.temp, tempBands: f.tempBands | 0, cloud: f.cloud,
+      ecoNature: f.ecoNatureSub || f.ecoNature || '', ecoCiv: f.ecoCivSub || f.ecoCiv || '', ecoMood: f.ecoMood || ''
+    };
   };
   ui._planetSeedFrom = function () {
-    var e = document.getElementById('pgen-seed');
-    return e ? (Math.round(Number(e.value)) || 1) : 1;
+    var f = ui._planetFormCollect();
+    return Math.round(Number(f.seed)) || ((U.now() % 900000) || 1);
   };
-
   /* --------- 英雄 --------- */
   /* --------- 英雄 --------- */
   /* ============================================================
