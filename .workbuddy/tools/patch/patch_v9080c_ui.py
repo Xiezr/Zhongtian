@@ -28,6 +28,7 @@ def drop_line(s, text):
 def main():
     apply = '--apply' in sys.argv
     s = rd(P)
+    s0 = s
     if 'ui.doWonder（探奇）随奇遇系统整条退役' in s:
         print('[skip] 已落盘')
         return 0
@@ -131,11 +132,16 @@ def main():
               'do-wonder', 'open-journal', 'journal-go', 'wnr-', '--wonder', 'sxf-clue',
               'ui.doWonder = function', 'ui.openJournal = function', 'ui.journalHTML = function']:
         assert f not in s, 'leftover ' + f
-    code = re.sub(r'/\*[\s\S]*?\*/', '', s)
-    code = re.sub(r'(^|[^:\\])//[^\n]*', r'\1', code)
-    code = re.sub(r"'(?:[^'\\]|\\.)*'", "''", code)
-    code = re.sub(r'"(?:[^"\\]|\\.)*"', '""', code)
-    assert code.count('{') == code.count('}'), 'brace %d/%d' % (code.count('{'), code.count('}'))
+    # 花括号差值法（剥注释 + 剥字符串；ui.js 含正则字面量，剥器有已知偏差 → 只验"删的 { 与 } 数相等"）
+    def _braces(x):
+        c = re.sub(r'/\*[\s\S]*?\*/', '', x)
+        c = re.sub(r'(^|[^:\\])//[^\n]*', r'\1', c)
+        c = re.sub(r"'(?:[^'\\]|\\.)*'", "''", c)
+        c = re.sub(r'"(?:[^"\\]|\\.)*"', '""', c)
+        return c.count('{'), c.count('}')
+    bo, bc = _braces(s0)
+    ao2, ac2 = _braces(s)
+    assert (bo - ao2) == (bc - ac2), 'brace delta %d/%d' % (bo - ao2, bc - ac2)
 
     if not apply:
         print('\n'.join(logs))

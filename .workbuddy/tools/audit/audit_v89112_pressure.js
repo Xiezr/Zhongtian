@@ -35,7 +35,7 @@ var MODALS = [
   ['锻造', 'ui.openForge()'],
   ['作坊', 'ui.openWorkshop()'],
   ['书简/帮助', 'ui.openHelp()'],
-  ['见闻/日志', 'ui.openJournal(1)'],
+  /* v90.80：「见闻/日志」随奇遇系统退役（openJournal 已删） */
   ['君主', 'ui.openLordInfo()'],
   ['存档管理', 'ui.openSaveManager()'],
   ['门派', 'ui.openSect()'],

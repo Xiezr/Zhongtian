@@ -10,12 +10,17 @@ def rd(p):
 def wr(p, s):
     io.open(p, 'w', encoding='utf-8', newline='').write(s)
 
-def brace_ok(s, tag):
+def braces(s):
     code = re.sub(r'/\*[\s\S]*?\*/', '', s)
     code = re.sub(r'(^|[^:\\])//[^\n]*', r'\1', code)
     code = re.sub(r"'(?:[^'\\]|\\.)*'", "''", code)
     code = re.sub(r'"(?:[^"\\]|\\.)*"', '""', code)
-    assert code.count('{') == code.count('}'), tag + ' brace %d/%d' % (code.count('{'), code.count('}'))
+    return code.count('{'), code.count('}')
+
+def brace_delta(before, after, tag):
+    bo, bc = braces(before)
+    ao, ac = braces(after)
+    assert (bo - ao) == (bc - ac), tag + ' brace delta %d/%d' % (bo - ao, bc - ac)
 
 apply = '--apply' in sys.argv
 logs = []
@@ -25,6 +30,7 @@ buffers = []   # (path, content) —— 全部段落检毕后统一写盘（原�
 P1 = 'js/data.js'
 MARK1 = 'v90.80（老板「去除奇遇系统」）：v89.6「奇遇 · 见闻录」数据整族退役'
 s1 = rd(P1)
+s1_0 = s1
 if MARK1 in s1:
     logs.append('[skip] data.js 已落盘')
 else:
@@ -39,7 +45,7 @@ else:
              '   DATA.WONDER（三带密度 / 探奇消耗 / 三档奖励 / 出口文案）与 DATA.WONDERS（24 条三档剧本）一并清除。\n'
              '   引擎 / UI / 地图 / main 动作 / 测试同步退役（见 smoke §80 零残留守卫）。 */')
     s1 = s1[:i] + TOMB1 + '\n\n' + s1[j:]
-    brace_ok(s1, 'data')
+    brace_delta(s1_0, s1, 'data')
     assert 'DATA.WONDER =' not in s1 and 'DATA.WONDERS =' not in s1
     logs.append('[ok] data.js 数据块（%d 字符）' % len(seg))
     buffers.append((P1, s1))
@@ -48,6 +54,7 @@ else:
 P2 = 'js/map.js'
 MARK2 = 'v90.80（老板「去除奇遇系统」）：奇缘星'
 s2 = rd(P2)
+s2_0 = s2
 if MARK2 in s2:
     logs.append('[skip] map.js 已落盘')
 else:
@@ -64,7 +71,7 @@ else:
     c = s2.count(old2)
     assert c == 1, 'map call count=' + str(c)
     s2 = s2.replace(old2, '')
-    brace_ok(s2, 'map')
+    brace_delta(s2_0, s2, 'map')
     assert 'function drawWonderStar' not in s2 and 'GAME.wonderSiteOf' not in s2
     logs.append('[ok] map.js 悬星（%d 字符）+ 调用点' % len(seg2))
     buffers.append((P2, s2))
@@ -73,6 +80,7 @@ else:
 P3 = 'js/main.js'
 MARK3 = 'v90.80（老板「去除奇遇系统」）：case do-wonder / open-journal / journal-go'
 s3 = rd(P3)
+s3_0 = s3
 if MARK3 in s3:
     logs.append('[skip] main.js 已落盘')
 else:
@@ -94,7 +102,8 @@ else:
     i0 = s3.index("case 'journal-go':")
     i = s3.rindex('\n', 0, i0) + 1
     j0 = s3.index('点该格探奇')
-    j = s3.index('\n', 0, s3.index('break;', j0)) + 1
+    b0 = s3.index('break;', j0)
+    j = s3.index('\n', b0) + 1
     segC = s3[i:j]
     assert "case 'journal-go':" in segC and '点该格探奇' in segC and 'break;' in segC
     s3 = s3[:i] + s3[j:]
@@ -103,7 +112,7 @@ else:
     c = s3.count(oldB5)
     assert c == 1, 'main 2136 count=' + str(c)
     s3 = s3.replace(oldB5, '；时序沿用既有地图定位惯例')
-    brace_ok(s3, 'main')
+    brace_delta(s3_0, s3, 'main')
     for f in ["case 'do-wonder'", "case 'open-journal'", "case 'journal-go'"]:
         assert f not in s3, 'main leftover ' + f
     logs.append('[ok] main.js 三 case + 两注释')

@@ -1293,86 +1293,9 @@ async function runTests(dom, URL) {
     return (document.querySelector('#map-pick-info') || {}).textContent.indexOf('灵机') >= 0;
   })());
 
-  /* v89.6：奇遇 · 见闻录（隐藏点位 → 就近探察 → 探奇 → 图鉴） */
-  console.log('\n--- 19c. v89.6 奇遇 · 见闻录 ---');
-  check('v89.6：底栏含「见闻录」入口', !!document.querySelector('#bottom-bar [data-action="open-journal"]'));
-  const wSite19c = (function () {
-    const list = G.wonderSites();
-    for (let i = 0; i < list.length; i++) {
-      if (!G.map.fortAt(list[i].x, list[i].y)) return list[i];
-    }
-    return null;
-  })();
-  check('v89.6：找到奇遇点位', !!wSite19c, wSite19c ? '(' + wSite19c.x + ',' + wSite19c.y + ') ' + wSite19c.wid : '未找到');
-  const WILD19c = { caoyuan: 1, zhaoze: 1, lake: 1, forest: 1, desert: 1, hill: 1 };
-  G.wonderState().r = {}; G.wonderState().d = {}; G.wonderState().j = {};
-  const farT19c = (function () {
-    if (!wSite19c) return null;
-    for (let d = 3; d <= 12; d++) {
-      const x = wSite19c.x + d, y = wSite19c.y;
-      if (x >= G.DATA.MAP_W) break;
-      const tl = G.map.tile(x, y);
-      if (tl && WILD19c[tl.terrain] && !G.wonderSiteOf(x, y)) return { x: x, y: y };
-    }
-    return null;
-  })();
-  check('v89.6：找到距点位 3+ 格的无奇对照格', !!farT19c, farT19c ? '(' + farT19c.x + ',' + farT19c.y + ')' : '未找到');
-  if (farT19c) {
-    G.ui.openLandModal(farT19c.x, farT19c.y);
-    await sleep(60);
-    const tF = (document.querySelector('#modal-root') || {}).textContent || '';
-    check('v89.6：远处开格 —— 无「探奇」暗示（隐藏点真隐藏）', tF.indexOf('探奇') < 0);
-    check('v89.6：点位仍未现形', G.wonderSiteOf(wSite19c.x, wSite19c.y).revealed === false);
-    G.ui.closeAllModals();
-    await sleep(40);
-  }
-  const nearX19c = wSite19c.x + 1 <= G.DATA.MAP_W - 1 ? wSite19c.x + 1 : wSite19c.x - 1;
-  G.ui.openLandModal(nearX19c, wSite19c.y);
-  await sleep(60);
-  const tN = (document.querySelector('#modal-root') || {}).textContent || '';
-  check('v89.6：就近探察 —— 「探得异迹」提示 + 点位现形',
-    tN.indexOf('探得异迹') >= 0 && G.wonderSiteOf(wSite19c.x, wSite19c.y).revealed === true);
-  G.ui.closeAllModals();
-  await sleep(40);
-  G.ui.openLandModal(wSite19c.x, wSite19c.y);
-  await sleep(60);
-  check('v89.6：已现形 → 弹窗有「探奇」入口',
-    ((document.querySelector('#modal-root') || {}).textContent || '').indexOf('探奇') >= 0);
-  const lg19c = G.lordGeneralOf();
-  if (lg19c) { lg19c.energy = 100; G.setStaNow(lg19c, 100); }
-  click(document.querySelector('#modal-root [data-action="do-wonder"]'));
-  await sleep(140);
-  check('v89.6：探奇 → 全屏奇遇（#scene-fx · kind=wonder）',
-    !!document.querySelector('#scene-fx') && !!G.sceneFx && G.sceneFx.kind === 'wonder');
-  const hero19c = document.querySelector('#scene-fx .sxf-hero');
-  check('v89.6：奇遇横幅「奇缘紫」底纹（--wonder-rgb）',
-    !!hero19c && hero19c.outerHTML.indexOf('wonder-rgb') >= 0);
-  let guard19c = 0;
-  while (guard19c < 8 && document.querySelector('#scene-fx [data-action="sxf-choice"]')) {
-    click(document.querySelector('#scene-fx [data-action="sxf-choice"]'));
-    await sleep(90);
-    guard19c++;
-  }
-  const rT19c = (document.querySelector('#scene-fx') || {}).textContent || '';
-  check('v89.6：结算屏（专属退出 + 见闻录收录行）',
-    !!document.querySelector('#scene-fx [data-action="sxf-exit"]') && rT19c.indexOf('见闻录收录') >= 0);
-  check('v89.6：见闻录已录 1 类', Object.keys(G.wonderState().j).length === 1,
-    Object.keys(G.wonderState().j).join(','));
-  click(document.querySelector('#scene-fx [data-action="sxf-exit"]'));
-  await sleep(140);
-  const tA = (document.querySelector('#modal-root') || {}).textContent || '';
-  check('v89.6：回归弹窗显示「已探」', tA.indexOf('已探') >= 0);
-  G.ui.closeAllModals();
-  await sleep(40);
-  check('v89.6：重复探奇被拒', G.wonderCheck(wSite19c.x, wSite19c.y, (lg19c || {}).id).ok === false);
-  G.ui.openJournal();
-  await sleep(60);
-  const jT19c = (document.querySelector('#modal-root') || {}).textContent || '';
-  const wName19c = (G.DATA.WONDERS[wSite19c.wid] || {}).name || '';
-  check('v89.6：见闻录 —— 已录显名 · 未录？？？ · 进度 1/24',
-    jT19c.indexOf(wName19c) >= 0 && jT19c.indexOf('？？？') >= 0 && /已录见闻\s*1\s*\/\s*24/.test(jT19c));
-  G.ui.closeAllModals();
-  G.jianghuWildMounted = jhWasA;   /* v89.86：还原剥离状态 */
+  /* ⛔ v90.80（老板「去除奇遇系统」）：原 19c 段（v89.6 奇遇 · 见闻录 —— 底栏入口 / 点位 /
+     现形 / 探奇 / 见闻录 共 14 条断言）整段退役，替换为 smoke §80 的零残留守卫。 */
+  G.jianghuWildMounted = jhWasA;   /* v89.86：还原剥离状态（原 19c 收尾；19b 起显式挂载了该层） */
 
   console.log('\n--- 20. 资质分级 / 锻造间打造 / 死属性修复 ---');
   /* 给当前城配齐酒馆、招募站、锻造间 */
@@ -6664,7 +6587,7 @@ if (svBtn) {
    * v89.105（老板「全面测评，全功能链路复核」+「界面及弹窗界面要好看，
    *          内容紧凑有序，间隔尽量固定而内容有序填充」）
    * ------------------------------------------------------------
-   * ① 弹窗不溢出闸门（7 档抽样 · 全量见 .workbuddy/tools/audit/audit_v89105_modals.js）
+   * ① 弹窗不溢出闸门（6 档抽样 · 全量见 .workbuddy/tools/audit/audit_v89105_modals.js）
    * ② 沙盘回放：逐兵种逐帧 + 逐帧推进
    * ③ 本境调运：辎重区（资源及数量框）+ 运力实时
    * ============================================================ */
@@ -6673,7 +6596,7 @@ if (svBtn) {
   /* ① 弹窗不溢出：内容装得下就不该冒滚动条（项目硬规矩） */
   const OVER_CASES = [
     ['交易站', function () { G.ui.openMarket(); }],
-    ['见闻/日志', function () { G.ui.openJournal(1); }],
+    /* v90.80：「见闻/日志」随奇遇系统退役（openJournal 已删） */
     ['君主', function () { G.ui.openLordInfo(); }],
     ['派系', function () { G.ui.openSect(); }],
     ['自动出征配置', function () { G.ui.openAutoMarch(); }],

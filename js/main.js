@@ -406,17 +406,10 @@
       case 'sxf-exit': ui.closeSceneFx(); break;
       /* ⛔ v89.218：故事相关动作（story-pick / story-read / story-read-at /
          story-drop / story-exit）随故事系统退役。 */
-      /* v89.6：奇遇 · 见闻录 */
-      case 'do-wonder': ui.doWonder(Number(el.dataset.x), Number(el.dataset.y)); break;
-      case 'open-journal': ui.openJournal(); break;
-      /* v89.89（A4）：材料产地跳转 —— 关面板 → 切地图 → 居中 → 标记（照 journal-go 时序） */
+      /* ⛔ v90.80（老板「去除奇遇系统」）：case do-wonder / open-journal / journal-go
+         随「奇遇 · 见闻录」整条退役（见 smoke §80 退役记录）。 */
+      /* v89.89（A4）：材料产地跳转 —— 关面板 → 切地图 → 居中 → 标记（时序沿用地图定位惯例） */
       case 'mat-go': GAME.doMatGo(el.dataset.mat); break;
-      case 'journal-go':
-        ui.closeModal();
-        if (ui.view !== 'map') ui.setView('map');
-        ui.mapCenterOn(Number(el.dataset.x), Number(el.dataset.y));
-        ui.toast('已至线索所指 ' + GAME.map.coordText(+el.dataset.x, +el.dataset.y) + '—— 点该格探奇');
-        break;
       /* ⛔ v89.137（老板 7）：case wg-step / wg-max / wg-fill / wg-clear / wild-garrison-do
          随派驻面板整条退役（面板已删，见 ui.js 同款墓碑）；
          「派驻 / 增派驻军」入口改走 case 'wild-garrison-open'（下方向征界面下发）。 */
@@ -2133,7 +2126,7 @@
     if (k === 'marches') ui.openMarches();
   };
   /* v89.89（A4 · 100+ 轮实玩期待）：材料产地一键定位 ——
-     "读'材料不足'后要自己想起去哪弄" → 就地给坐标跳转；时序照 journal-go
+     "读'材料不足'后要自己想起去哪弄" → 就地给坐标跳转；时序沿用既有地图定位惯例
      （关面板 → 切地图 → 居中 → 提示），另加 6 秒定位标记。 */
   GAME.doMatGo = function (mk) {
     var md = DATA.MATERIAL_BY_ID ? DATA.MATERIAL_BY_ID[mk] : null;

@@ -35,7 +35,7 @@ var SYS = [
   { n: '门派', d: ['SECTS', 'SECT_TASKS', 'SECT_JOIN'], g: ['sect'], u: ['sect', '门派'], t: ['门派'] },
   { n: '声望', d: ['REP_RULE', 'REP_PENALTY'], g: ['rep'], u: ['rep'], t: ['声望'] },
   { n: '宝物收藏', d: ['COLLECT', 'JEWEL_LADDER', 'JEWEL_COST'], g: ['collectCondMetOf', 'collectBuySeries'], u: ['openCollect', '陈列馆'], t: ['收藏', '藏珍'] },
-  { n: '奇观', d: ['WONDER', 'WONDERS'], g: ['wonder'], u: ['wonder', '奇观'], t: ['wonder'] },
+  /* v90.80：「奇观/奇遇」整系统退役 —— 四链核对行移除（防重跑误报假缺口） */
   { n: '季节天气', d: ['SEASONS', 'WEATHERS'], g: ['season', 'weather'], u: ['season'], t: ['季节', '天气'] },
   { n: '道具材料', d: ['ITEMS', 'MATERIALS', 'BLUEPRINTS'], g: ['useItem', 'addItem'], u: ['openBag', 'openMarket'], t: ['道具', '游商'] },
   { n: '战报消息', d: ['MSG_KINDS', 'SCHEMES'], g: ['notify', 'moment'], u: ['openReport', 'openMessage'], t: ['战报'] },

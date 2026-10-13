@@ -5,25 +5,25 @@
 
 | 目录 | 个数 | 干什么 |
 |---|---|---|
-| `asset/` | 101 | 抠底必须连通域洪水填充（BFS）；**绝不用 CSS 滤镜染色**，一律像素级 HSL 重映射写进 PNG。 |
+| `asset/` | 115 | 抠底必须连通域洪水填充（BFS）；**绝不用 CSS 滤镜染色**，一律像素级 HSL 重映射写进 PNG。 |
 | `asset/__pycache__/` | 15 | **待归类**：确认用途后放进上面的某个目录。 |
 | `audit/` | 38 | 结构 / 颜色 / 落盘 / 引用 / 删除 的核对工具。`verify_v66_edits.py` = **落盘核验**模板；`audit_refs.py` = 搬迁前查引用点；`read_recycle.py` = 解析回收站 `$I` 元数据核实删了什么；`trash_paths.py` = 逐项+回查的删除模板。 |
 | `audit/__pycache__/` | 13 | **待归类**：确认用途后放进上面的某个目录。 |
-| `break/` | 21 | 逐类注入故障，确认断言**真的会红**（红不了的就是装饰）。铁律：先校验断言在文件里、注入后连"是否中断"一起看、收尾 md5 比对还原。 |
+| `break/` | 22 | 逐类注入故障，确认断言**真的会红**（红不了的就是装饰）。铁律：先校验断言在文件里、注入后连"是否中断"一起看、收尾 md5 比对还原。 |
 | `gen/` | 10 | 素材/索引的**唯一来源**。`gen_bitmaps.js` 扫描 `assets/icons/ui/` 生成 `js/bitmaps.js`（勿手改产物）；`gen_tools_index.py` 生成本索引。 |
 | `gen/__pycache__/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
 | `git/` | 3 | **收尾同步的唯一入口**。`sync.py` 默认干跑、`--apply` 才落盘（干跑先行是本项目铁律）；`gate.py` 是三件套门禁的**唯一出口**（pre-commit 钩子与 sync 都调它）；`install_hooks.py` 把 `hooks/` 里的钩子装进 `.git/hooks/`。 |
 | `git/hooks/` | 2 | 存这里是为了**进版本库** —— `.git/hooks/` 不被 git 跟踪，换台机器克隆后必须跑 `install_hooks.py` 重装。⚠️ **行尾必须 LF**，CRLF 会让 `#!/bin/sh` 失效。 |
 | `mem/` | 10 | MEMORY.md 必须 < 9600 字符（超出会被会话注入截断，尾部规则等于不存在）。`slim_memory_template.py` = 把超限整段 cut 到 `docs/` 的模板。 |
-| `patch/` | 1185 | **事实上的变更日志**：按断言名 `grep -rl "<断言名>" tools/patch/` 就能找到当初是哪次改的。"同一条消息里对同一文件的多次 Edit 会互相覆盖"，所以补丁一律脚本化并留档。 |
+| `patch/` | 1194 | **事实上的变更日志**：按断言名 `grep -rl "<断言名>" tools/patch/` 就能找到当初是哪次改的。"同一条消息里对同一文件的多次 Edit 会互相覆盖"，所以补丁一律脚本化并留档。 |
 | `play/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
-| `playtest/` | 21 | **待归类**：确认用途后放进上面的某个目录。 |
+| `playtest/` | 22 | **待归类**：确认用途后放进上面的某个目录。 |
 | `playtest/__pycache__/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
 | `probe/` | 270 | jsdom 没有布局引擎 → 尺寸/重叠/溢出/折行只能在**真浏览器**量。`probe60_geom.js` 是可复用模板，`probe66_ui.js` 有"逐行折行"量法，`probe67_save3.js` 量存档体积与配额。 |
-| `show/` | 159 | 给老板看的对照图 / 曲线校准 / 素材巡视。 |
+| `show/` | 175 | 给老板看的对照图 / 曲线校准 / 素材巡视。 |
 | `show/__pycache__/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
 | `tmp/` | 20 | **待归类**：确认用途后放进上面的某个目录。 |
-| **合计** | **1884** | |
+| **合计** | **1925** | |
 
 ## asset/（素材处理）
 
@@ -118,11 +118,25 @@
 - `flatten_block.py`（3KB）　— 形态校正：把 isometric 立体块的**顶面菱形**反投影成正方形材质（256×256），
 - `gallery31.js`（4KB）　— 图标画廊截图：把全部图标以 96px 网格渲染成单页，便于统一评估设计感
 - `gallery33.js`（6KB）　— v33 最终验收：99 图标几何验证（getBoundingClientRect，不受承台干扰）+ 总览图 + 城内统计
+- `gen_names_v9017.py`（3KB）　— v90.17（老板 4）：套装部件名多元化 —— 14 槽 × 3 侧重各给专属名（占=战斗/治=测控/体=重装），
+- `gen_sets_eff_v9016.py`（2KB）　— v90.16 套装六维重算：每级(件数档)总六维 = 凡品 500，逐级 ×1.5。
+- `gen_sets_v9014.py`（6KB）　— v90.14 套装重设：6 档 × 3 侧重 = 18 套 · 每套 19 件。去散件。
+- `gen_v9016_full.py`（4KB）　— v90.16 完整重生成：18 套 × 19 件，**每件都给六维加成**（按侧重分配），
 - `grade_tiles.py`（4KB）　— 废土调色 —— 给现有地图贴图统一上「废土·余烬纪元」色调（**只变色，不动几何**）。
 - `make_portrait_refs.py`（4KB）　— 将领肖像 · 参考图套件生成。
 - `matte.js`（3KB）　— v35-b：AI 生成图的背景检测 + 抠底（四角采样 → 距离阈值 → alpha 归零）
+- `mecha_clean_split.py`（4KB）　— 去白底（更干净：把抗锯齿灰边一并算背景）+ 机甲整体 / 披风左右分割导出。
+- `mecha_data_finish.py`（4KB）　— data.js 收尾：19 槽锻造蓝本 + 锻造材料映射 + 基因槽列表解耦。
+- `mecha_gen_equip.py`（3KB）　— 为每套机甲装备生成缺失的 7 槽件（右臂/右前臂/右脚 + 左·右大腿 + 左·右小腿）。
+- `mecha_label13.py`（3KB）　— 机甲部件切分 · 第四步：在原图上叠 13 部位名称（供老板确认对应关系）
+- `mecha_split13.py`（5KB）　— 机甲部件切分 · 第三步：13 部位（小腿/脚掌在脚踝处再切）+ 命名对照图
+- `mecha_split_export.py`（2KB）　— 机甲部件切分 · 第二步：把各连通域导出为透明 PNG + 拼对照图（供老板确认）
+- `mecha_split_probe.py`（2KB）　— 机甲部件切分 · 第一步：去白底 + 连通域标注 + 出对照图（供老板确认）
 - `portrait_gallery.js`（2KB）　— 头像画廊：渲染多种资质+性别的程序化头像
 - `portrait_pool.py`（5KB）　— 英雄肖像建池 —— 去背景（**凸包保留半身**）+ 缩 512 WebP + 分类打标。
+- `rebalance_wasteland.py`（2KB）　— v90.12（老板 1）：废土化资源重设 —— 建筑/兵种「少木料、重废钢」。
+- `redesign_themes_v9019.py`（4KB）　— v90.19：四主题重设计 —— 保留令牌角色，只换色值（每主题一套完整调色板）。
+- `redesign_themes_v9021.py`（4KB）　— v90.21：四主题改用**公认配色**（非自创）——只换色值，保留令牌角色。
 - `rename_matte.js`（3KB）　— v35-c：AI 原图 → 按 id 重命名 → 抠底 → 输出 ui/；并做风格一致性复检
 - `split_atlas.py`（6KB）　— v89.107 建筑图标重绘 · 第二步：图集 → 体检 → 切分 → 抠底 → 统一裁切 → 出对照图。
 - `verify_v89102_troop_icons.js`（4KB）
@@ -222,6 +236,7 @@
 - `break_gov_center.py`（4KB）　— 破坏测试：确认第 55 节（官府居中 + 迁移）的核心断言**真的会红**。
 - `break_hooks.py`（3KB）　— 端到端破坏测试：确认 pre-commit 钩子**真的会拦住**坏提交（拦不住就是装饰）。
 - `break_invasion.py`（5KB）　— 破坏测试：确认第 53 节（定期来袭）的三条核心断言**真的会红**。
+- `break_map3d.py`（3KB）　— v90.61 破坏测试：往 3D 主地图注入 bug，验证 §map3d 护栏**真的会红**。
 - `break_quest_ready.py`（5KB）　— 破坏测试：确认第 57 节（可领取任务置顶 + 行内领取）的核心断言**真的会红**。
 - `break_v60.py`（7KB）　— v60 破坏测试：往生产代码注入 15 类 bug，验证新护栏**逐条变红**。
 - `break_v61.py`（5KB）　— v61 破坏测试：注入 10 类 bug，验证护栏逐条变红。
@@ -1094,6 +1109,7 @@ MEMORY.md 必须 < 9600 字符（超出会被会话注入截断，尾部规则�
 - `patch_v89237_archive.py`（4KB）　— v89.237 档案补录：总览行 + 明细段（幂等双守）
 - `patch_v89238_archive.py`（3KB）　— v89.238 需求档案补录：总览行 + 明细段（LF 保持 · 幂等 · 写后自检）
 - `patch_v89239_archive.py`（5KB）　— v89.239 档案补录：总览表行 + 明细段
+- `patch_v89240_archive.py`（4KB）　— v89.240 档案补录：总览表行 + 明细段
 - `patch_v8928_theme_check.py`（2KB）　— v89.28 题材线（江湖 / 修炼 / 四夷）· check.py 判据 12 扩展
 - `patch_v8928_theme_docs.py`（17KB）　— v89.28 题材线文档补录（README / 需求档案 / 设计规范 / 工作备忘 / 工作记忆）
 - `patch_v8928_theme_wire.py`（10KB）　— v89.28 题材线接线：index.html 装载 + smoke 断言 + e2e 真实点击
@@ -1279,6 +1295,14 @@ MEMORY.md 必须 < 9600 字符（超出会被会话注入截断，尾部规则�
 - `patch_v89_main.py`（2KB）　— v89 事件（main.js）：sxf-choice / sxf-escape / sxf-exit 分发 + doScene 包装。探针幂等。
 - `patch_v89_tests.py`（10KB）　— v89 测试（smoke-test.js）：§73 君主化（generals[0] -> 君主） + §74 新段（君主闸门 + 全屏剧本）。探针幂等。
 - `patch_v89_ui.py`（9KB）　— v89 全屏场景 UI（ui.js）：活动按钮 → 全屏剧本 → 专属退出结算屏。探针幂等。
+- `patch_v9080a_state.py`（5KB）　— v90.80 奇遇系统退役 · 脚本 A：js/state.js
+- `patch_v9080b_data_map_main.py`（5KB）　— v90.80 奇遇系统退役 · 脚本 B：js/data.js + js/map.js + js/main.js
+- `patch_v9080c_ui.py`（6KB）　— v90.80 奇遇系统退役 · 脚本 C：js/ui.js
+- `patch_v9080d_html.py`（2KB）　— v90.80 奇遇系统退役 · 脚本 D：index.html（CSS 四族 + BUILD 9147→9158）
+- `patch_v9080e_smoke.py`（6KB）　— v90.80 奇遇系统退役 · 脚本 E：smoke-test.js（§80 十一条 → 零残留守卫七条）
+- `patch_v9080f_e2e.py`（3KB）　— v90.80 奇遇系统退役 · 脚本 F：e2e-test.js（19c 段退役 + OVER_CASES 去项）
+- `patch_v9080g_tools.py`（3KB）　— v90.80 奇遇系统退役 · 脚本 G：四个审计工具同步
+- `patch_v9080h_docs.py`（6KB）　— v90.80 奇遇系统退役 · 脚本 H：需求档案.md（总览行 + 明细段）+ 台账（回合节）
 - `precheck_v89223.py`（6KB）　— v89.223 锚点预检：所有补丁锚点逐条计数 + repr（逐字节）。
 - `probe_v89223a_ab.py`（6KB）　— v89.223 探针 A：兵牌简称（ab）现状 + 产品侧旧词粗扫 + 工具目录计数。
 - `probe_v89223b_ctx.py`（5KB）　— v89.223 探针 B：上下文取证 + 产品广扫 + 工具目录分类 + 版本线索。
@@ -1517,6 +1541,7 @@ MEMORY.md 必须 < 9600 字符（超出会被会话注入截断，尾部规则�
 - `play_rush_1x.js`（108KB）　— RUSH v1 (v89.98) —— 1× 300h 全系统极限流
 - `play_strat_600x.js`（73KB）　— STRAT v1 (v89.92)
 - `play_v89118.js`（84KB）　— v89.118 试玩评测驾驶舱
+- `r600_playtest.js`（5KB）　— 最小 DOM 桩（同 smoke-test.js 口径）
 
 ## playtest/__pycache__/（未归类）
 
@@ -1805,8 +1830,12 @@ jsdom 没有布局引擎 → 尺寸/重叠/溢出/折行只能在**真浏览器*
 
 给老板看的对照图 / 曲线校准 / 素材巡视。
 
+- `bake_bigmap.js`（4KB）　— 大地图烘焙 + 改前基线实机图
+- `bigmap_rollback.py`（3KB）　— 大地图 LOD 改动一键回滚（干跑先行 · 本项目铁律）。
 - `compare34.js`（9KB）　— v34 风格对比：同一批元素，四种画风 —— 现状(西方奇幻金属) / 中国色木刻 / MingCute / IconPark
 - `dbg_v89191_autotrain.js`（5KB）　— v89.191 实机取证（真浏览器 · 真点真填）：
+- `diag_height.js`（3KB）
+- `diag_tex.js`（2KB）
 - `diag_v89132_grid.js`（2KB）　— 诊断：军务处两营 grid 列宽为何不等（1098 vs 272）
 - `diag_v89132_reddot.js`（3KB）　— 诊断：满界面缩略图上我城红点为什么读不到（v89132）
 - `diag_v89133_probe.js`（4KB）　— v89.133 取证：将领面板行（老板点名三处）+ 军务页现状
@@ -1822,10 +1851,17 @@ jsdom 没有布局引擎 → 尺寸/重叠/溢出/折行只能在**真浏览器*
 - `measure_v89190_btns.js`（6KB）　— v89.190 实机量测（真浏览器 · 只读量测，不改产品）：
 - `measure_v89191_btns.js`（3KB）　— v89.191 实机量测（真浏览器）：解雇/晋升 两按钮的几何 —— 老板「稍微错开，上下不重叠，等下点错了」
 - `measure_v89192_panes.js`（6KB）　— v89.192 量测：沙盘弹窗 vs 战场界面（铺满参考）· 含极端载荷（8 兵种）
+- `render3d.js`（8KB）　— 真·3D 地形渲染（用游戏地图的真实地形数据）
+- `render3d_full.js`（9KB）　— 全量 500×500 真·3D 地形渲染（每格细分 2×2 = 1000×1000 面片）
 - `review_guide.py`（4KB）　— v89.42 定稿验收图：改前/改后 + 2x 放大 + 7 块贴图 + 中文说明，合成单图。
 - `review_guide_b.py`（5KB）　— v89.42b 验收指南：v89.42a(推翻) vs v89.42b(重做) + 2x 放大 + 7 块新贴图，合成单图。
+- `sample_height.js`（7KB）　— 地形高度风格小样对比（离线渲染）
 - `scan6.js`（4KB）
+- `shot_ab.js`（2KB）
+- `shot_bigmap_lod.js`（3KB）　— 大地图 LOD 远景层 —— 实机对照（默认关 / 开启）
 - `shot_compare.py`（7KB）　— v89.42 前后对比：逐格"两翼"采样（避开等级角标/名称条）→ 报告 + 拼图。
+- `shot_height.js`（2KB）　— 主地图 · 高度模式实机截图
+- `shot_map3d.js`（2KB）
 - `shot_v89102_sandbox.js`（7KB）
 - `shot_v89102b_rankcap.js`（4KB）
 - `shot_v89103.js`（9KB）
@@ -1962,8 +1998,13 @@ jsdom 没有布局引擎 → 尺寸/重叠/溢出/折行只能在**真浏览器*
 - `shot_v89235_gov.js`（7KB）　— v89.235 实机验证：① 政务厅格等级角标位置（与普通格子同构 · 都在格顶名称行内）
 - `shot_v89238_doll.js`（4KB）　— v89.238 实机脚本：英雄页 people 部件栏（doll）人形图与背景亮度 —— 改前/改后对照
 - `shot_v89239_after.js`（2KB）　— v89.239 定档后实机图（读【真文件】CSS · 无注入）——与 v89238 对照图同机位同局
+- `shot_v89240_after.js`（2KB）　— v89.239 定档后实机图（读【真文件】CSS · 无注入）——与 v89238 对照图同机位同局
+- `shot_v9080_wonderless.js`（4KB）　— v90.80 实机验证：奇遇系统退役后的真实渲染（真浏览器）
 - `sweep_v89239_bright.js`（4KB）　— v89.239 亮度对比 v2（干净版）：全量覆盖 opacity+filter，各档稳定 700ms；
+- `sweep_v89240_bright.js`（4KB）　— v89.240 三档调亮扫描：当前 .80+b1.15（live）之上再探 6 档
+- `three3d.js`（8KB）　— Three.js 真 3D 地形原型（用游戏真实地形数据）
 - `tile_show.js`（3KB）　— v35-f：批量拼图（可复用）—— 传 id:中文列表，输出总览图
+- `verify_v9069_buildcity.js`（4KB）　— v90.69 实机验收：3D 星球主地图 + 附属平地「建城」按钮（需求 1/2）+ 球面地形口径。
 
 ## show/__pycache__/（未归类）
 
