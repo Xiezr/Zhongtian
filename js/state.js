@@ -624,7 +624,15 @@
    * ============================================================ */
   GAME.STAR_DIST = 10000;      /* 星球间默认距离（六边形拓扑格数）—— 出征距离参考 */
   GAME.planetsOf = function () { var s = GAME.state; if (!s) return []; s.planets = s.planets || []; return s.planets; };
-  GAME.activePlanetOf = function () { var s = GAME.state; if (!s) return null; var ps = GAME.planetsOf(); return ps[s.activePlanet || 0] || ps[0] || null; };
+  GAME.activePlanetOf = function () {
+    var s = GAME.state; if (!s) return null; var ps = GAME.planetsOf();
+    /* v90.89：`activePlanet` 是**星球 id**（非数组下标）—— 按 id 严格查找。
+       改前用 `ps[s.activePlanet]` 当**下标**取：id 与下标错位时会取到**另一颗**星球
+       （"在星球2 却显示星球3 / 单击无效"的根因）。id 不存在则回退首个。 */
+    var aid = s.activePlanet || 0, byId = null;
+    ps.forEach(function (x) { if (x.id === aid) byId = x; });
+    return byId || ps[0] || null;
+  };
   /* 载入某星球 —— 把其 seed/params 灌入内核并重建；activePlanet 记档。 */
   GAME.loadPlanet = function (id) {
     var s = GAME.state; if (!s) return { ok: false, msg: '无存档' };
@@ -749,18 +757,24 @@
     return { cities: [], wilds: [], forts: {}, fortsRazed: {}, fortsTaken: {}, fortRaids: {}, gathers: [],
       marches: [], battles: [], queues: { build: [], train: [], tech: [] }, sieges: {}, mainCityId: null, yieldDay: null, startPos: null };
   };
-  /* v90.78：**进入某星球** —— 存旧片/载新片 + 载入种子/规格 + 清派生缓存 + 重投影平面网格。 */
-  GAME.enterPlanet = function (id) {
+  /* v90.78：**进入某星球** —— 存旧片/载新片 + 载入种子/规格 + 清派生缓存 + 重投影平面网格。
+     skipSlice（v90.89）：读档迁移时用——s 的 cities/slices 刚由迁移链建好，
+     **只载目标星球的球面内核 + 重投影网格，不换分片**（否则用 s.mapSlices 覆盖掉刚迁移好的活态）。 */
+  GAME.enterPlanet = function (id, skipSlice) {
     var s0 = GAME.state;
-    if (s0) GAME._savePlanetSlice(s0.activePlanet || 0);   /* 先存当前星球的片 */
+    if (s0 && !skipSlice) GAME._savePlanetSlice(s0.activePlanet || 0);   /* 先存当前星球的片 */
     var r = GAME.loadPlanet(id);                          /* 载种子/规格 + setPlanet 重建内核 */
     if (!r.ok) return r;
     var s = GAME.state;
-    GAME._loadPlanetSlice(id);                            /* 载目标星球的片（空=毛胚）*/
+    if (!skipSlice) GAME._loadPlanetSlice(id);            /* 载目标星球的片（空=毛胚）*/
     s.map.grid = null; s.map.cities = null;               /* 清投影网格 → 重投影 + 重建 NPC 城 */
     GAME.map._fortCand = null; GAME.map._fortLv = null; GAME.map._fortBlocks = null; GAME.map._fortRing = null;
     GAME.map._cntyF = null;   /* 区域场（最近聚落 BFS）随星球失效 */
     GAME.map.generate();
+    if (skipSlice) {                                      /* 读档：活态分片已就位，只是球面换了 */
+      if (GAME.ui) { var _c0 = s.cities[0]; GAME.ui._cityId = _c0 ? _c0.id : null; }
+      return r;
+    }
     if (GAME.attachRes) GAME.attachRes(s);                /* 资源访问器指向当前城（换片后重挂）*/
     /* v90.84：进入的是**毛胚**星球（分片无城）→ 给一个落地前哨城（否则 currentCity 为 null，无法操作）。
        该星球的 NPC 城/野地/据点/奇观由 seed 自动派生（已在 map.generate + 内核里）。 */
@@ -2592,6 +2606,9 @@
   GAME.saveGame = function () {
     if (!GAME.state) return false;
     GAME.state.savedAt = U.now();
+    /* v90.89：**当前分片同步** —— 活态在 s.cities/s.wilds/...，而当前星球分片是"上次切换时"的快照。
+       存前把活态写回当前星球分片，否则存档读到的是**切换前**的旧快照（近期改动丢失）。 */
+    if (GAME._savePlanetSlice) GAME._savePlanetSlice(GAME.state.activePlanet || 0);
     try {
       /* 【派生数据一律不入档】同类历史问题已发生两次：
          · map.grid    —— 500×500=25 万格地形（JSON 约 9MB），曾撑爆 localStorage 的 5MB 配额，
@@ -2971,6 +2988,15 @@
       if (elapsed > 5) {
         GAME.offlineCatchup(elapsed);
         GAME.state.savedAt = U.now();
+      }
+      /* v90.89（根因修复）：**载入当前星球球面**。`SP._seedOverride` 不入档 → 读档后内核默认
+         用 map.seed（老家）。若 activePlanet 不是老家，球面与 activePlanet 不符。此处只把球面
+         切到 activePlanet + 重投影网格（不动分片/资源访问器 —— 那些已由本迁移链建好）。 */
+      var _ap89 = GAME.activePlanetOf && GAME.activePlanetOf();
+      if (_ap89 && GAME.sphere && GAME.sphere.setPlanet) {
+        GAME.sphere.setPlanet(_ap89.seed, _ap89.params);
+        st.map.grid = null;
+        if (GAME.map.generate) GAME.map.generate();
       }
       return st;
     } catch (e209) {
