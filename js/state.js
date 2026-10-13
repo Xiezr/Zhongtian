@@ -695,8 +695,8 @@
     if (!s.mapSlices) s.mapSlices = {};
     var sl = {};
     GAME.SLICE_KEYS.forEach(function (k) {
-      if (k === 'startPos') sl.startPos = s.map && s.map.startPos ? s.map.startPos : null;
-      else sl[k] = s[k];
+      if (k === 'startPos') sl.startPos = U.deep(s.map && s.map.startPos ? s.map.startPos : null);
+      else sl[k] = U.deep(s[k]);                          /* v90.87：深拷贝 —— 杜绝片间**共享同一对象**（"城共用"根因）*/
     });
     s.mapSlices[pid] = sl;
   };
@@ -705,28 +705,49 @@
     s.mapSlices = s.mapSlices || {};
     var sl = s.mapSlices[pid];
     if (!sl) {                                             /* 目标星球无分片 = 毛胚：全清（帝国不动）*/
-      sl = { cities: [], wilds: [], fortsRazed: {}, fortsTaken: {}, fortRaids: {}, gathers: [],
-        marches: [], battles: [], queues: { build: [], train: [], tech: [] }, sieges: {}, mainCityId: null, yieldDay: null, startPos: null };
+      sl = GAME._blankSlice();
       s.mapSlices[pid] = sl;
     }
     GAME.SLICE_KEYS.forEach(function (k) {
       if (k === 'startPos') return;                        /* 单列处理（在 map 里）*/
-      s[k] = sl[k];
+      s[k] = U.deep(sl[k]);                                /* v90.87：深拷贝（独立对象，改一片不串另一片）*/
     });
-    if (s.map) s.map.startPos = sl.startPos || null;
+    if (s.map) s.map.startPos = sl.startPos ? U.deep(sl.startPos) : null;
   };
-  /* v90.86：星球分片**读档迁移/修复**。
-     · 首迁（老档无分片）：现有世界状态 = **老家（0 号星球）**（不是"当前星球"——老档只有一颗星）。
-     · 修复：曾误把现有世界存到非 0 号（旧迁移用了 activePlanet）→ 唯一分片若在非 0 号，搬回 0 号。 */
+  /* v90.86/87：星球分片**读档迁移/修复**（幂等）。
+     · 首迁（老档无分片）：现有世界状态 = **老家（0 号星球）**。
+     · 修复 A：老家(0) 空/无城，但别的星球分片里有城 → 那些城本是老家的，**搬回 0 号**。
+     · 修复 B：某非 0 分片与老家**城完全相同**（共用/别名，早期迁移 + 导航所致）→ 清掉非 0 的那份。 */
   GAME._planetsMigrate84 = function (st) {
     st.mapSlices = st.mapSlices || {};
-    var keys = Object.keys(st.mapSlices);
+    var S = st.mapSlices, keys = Object.keys(S);
+    function nCit(k) { return ((S[k] && S[k].cities) || []).length; }
+    function keyOf(k) { return ((S[k] && S[k].cities) || []).map(function (c) { return c.id; }).sort().join(','); }
     if (keys.length === 0) { st.activePlanet = 0; GAME._savePlanetSlice(0); return true; }
-    if (keys.length === 1 && keys[0] !== '0') {
-      st.mapSlices[0] = st.mapSlices[keys[0]]; delete st.mapSlices[keys[0]];
-      st.activePlanet = 0; GAME._loadPlanetSlice(0); return true;
+    var withCities = keys.filter(function (k) { return nCit(k) > 0; });
+    /* 修复 A：老家只有 0 座（空）或 1 座且是**落地前哨**（id 以 fp 开头），
+       而别的星球城更多 → 那些城本是老家的，搬回 0 号。（精确判据：避免误搬真布局）*/
+    var home0 = S['0'] || { cities: [] };
+    var isFootholdOnly = home0.cities.length === 1 && /^fp/.test(String(home0.cities[0].id));
+    if ((nCit('0') === 0 || isFootholdOnly) && withCities.length > 0) {
+      var best = withCities.slice().sort(function (a, b) { return nCit(b) - nCit(a); })[0];
+      if (best && best !== '0' && nCit(best) > nCit('0')) {
+        S['0'] = U.deep(S[best]); delete S[best];
+        st.activePlanet = 0; GAME._loadPlanetSlice(0); return true;
+      }
     }
-    return false;
+    /* 修复 B：非 0 分片与老家城完全相同 → 是同一批城的副本，清掉 */
+    var k0 = keyOf('0'), fixed = false;
+    keys.forEach(function (k) {
+      if (k === '0' || nCit(k) === 0) return;
+      if (k0 && (nCit('0') > 0) && keyOf(k) === k0) { S[k] = GAME._blankSlice(); fixed = true; }
+    });
+    return fixed;
+  };
+  /* 空分片（毛胚）*/
+  GAME._blankSlice = function () {
+    return { cities: [], wilds: [], forts: {}, fortsRazed: {}, fortsTaken: {}, fortRaids: {}, gathers: [],
+      marches: [], battles: [], queues: { build: [], train: [], tech: [] }, sieges: {}, mainCityId: null, yieldDay: null, startPos: null };
   };
   /* v90.78：**进入某星球** —— 存旧片/载新片 + 载入种子/规格 + 清派生缓存 + 重投影平面网格。 */
   GAME.enterPlanet = function (id) {
