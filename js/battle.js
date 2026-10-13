@@ -111,7 +111,7 @@
       atkMult *= (1 + GAME.systems.techBonus('atk'));
       /* 宝物：冲锋号 */
       if (GAME.systems.buffActive('military') && s.buffs.military.atk) atkMult *= (1 + s.buffs.military.atk);
-      /* 英雄羁绊 + 当世年号（后台静默加成，界面不提示） */
+      /* 英雄羁绊（后台静默加成，界面不提示；v90.93：年号项退役） */
       if (GAME.story) atkMult *= GAME.story.atkMult();
       /* 远程白嫖：射程远超时首轮伤害加成（模拟"后退射杀"） */
       var dmg = cnt * t.atk * atkMult;
@@ -223,7 +223,7 @@
        等于这两项完全废弃。v52：攻方的防御也走同一条链（含谋略与装备）。 */
     var atkDefBonus = Math.min(0.85, TB('def') + (atkGen ? GAME.genAttrs(atkGen).defPct : 0));
 
-    /* 攻城伤害：羁绊「白衣渡江」+ 赛季国策（青龙·大兴土木 / 景元·大将西征）
+    /* 攻城伤害：羁绊「白衣渡江」（v90.93：赛季国策项随年号纪元退役）
        v28（需求 0）：再乘**攻城器械的内建倍率**，并让器械拆城。
        旧引擎保留作回退，但数值口径不能与主引擎（tactic.js）漂移 ——
        否则"切换引擎"等于换了一套规则。 */
@@ -409,7 +409,7 @@
        否则史实（结算读 genSim）与重放（读原件）在英雄属性上差一个 +10%，verify 必假红。 */
     var _genSimD = rec.sim.genSim || gen;
     var env = null;
-    /* v89.179b·P1-3：会话建立 + 逐回合重放读的是"现在"的全局加成（科技/天时/年号/羁绊/战鼓），
+    /* v89.179b·P1-3：会话建立 + 逐回合重放读的是"现在"的全局加成（科技/天时/羁绊/战鼓），
        而史实是开打那一刻的 → 读档/挂起重放会漂。包 withBoost(rec.sim.boost) 装回史实快照。 */
     GAME.battle.withBoost(rec.sim.boost, function () {
       env = GAME.tactic.begin(rec.atkArmy, _genSimD, rec.sim.scArmy || {}, rec.sim.scVal || 0,
@@ -1194,8 +1194,8 @@
     var eq = GAME.battle.rollEquipLoot(npcCity);
     if (eq.length) GAME.log.war('缴获军械：' + eq.join('、'));
     GAME.registerCity(newCity);   /* v89.161：入库唯一出口（缴获的旧币并进玩家池） */
-    /* 声望（受赛季国策「人心思附」加成） */
-    var repGain = Math.round((npcCity.rep || 10) * (GAME.story && GAME.story.repMult ? GAME.story.repMult() : 1)
+    /* ⛔ v90.93：声望的赛季国策增益（STORY.repMult）随年号纪元退役。 */
+    var repGain = Math.round((npcCity.rep || 10)
       * (1 + GAME.artifactBonusNum('repPct')));   /* v79：传国玉玺 —— 声望获得 +5%/级 */
     s.rep += repGain;
     /* 从 NPC 列表移除 */
@@ -2030,7 +2030,7 @@
    * 带伏击车（pop 2）比带步行机（pop 1）少吃一半容量，与"练兵场点兵"的
    * 直觉完全相反（练兵场点的是**人头**）。
    * 现在：容量 = 练兵场等级 × 10000（**人马**），再乘三条加成链
-   * （建筑专精 / 年号 / 军事增益）。
+   * （建筑专精 / 军事增益）。
    * ⚠️ 幸存者仍是**募兵**时的消耗（GAME.train / trainLimitOf 一字不动）——
    *    改的只是"出征这道门"的量纲。
    * 唯一出口：出征校验 / 调兵校验 / 抵达复验 / 界面提示 / 测试全读这里，
@@ -3238,7 +3238,8 @@
        放手时恢复（GAME.abandonFort 唯一出口）。`rec.terrain0 ||` 保证只记最早那一次。 */
     if (tile) { rec.terrain0 = rec.terrain0 || tile.terrain; tile.terrain = 'city'; }   /* 据点仍占该格（视觉可见） */
     GAME.statBump('forts', 1);
-    var repF = Math.round((20 + lv * 5) * (GAME.story && GAME.story.repMult ? GAME.story.repMult() : 1));
+    /* ⛔ v90.93：STORY.repMult（年号国策）随年号纪元退役。 */
+    var repF = Math.round(20 + lv * 5);
     s.rep = (s.rep || 0) + repF;
     GAME.log.war('🚩 拔除 ' + f.name + '（野外城池 Lv' + lv + '）—— 收为**我方前哨**（声望 +' + repF + '）：'
       + '周边 ' + RR + ' 格内野地：衰减减半 · 采集×' + fx193.gatherMul + ' · 驻军上限 ×'
@@ -3473,7 +3474,7 @@
    * v89.118（600×30h 试玩）：「战斗加成快照」—— 沙盘保真度的根因修复
    * ------------------------------------------------------------
    * 引擎在结算/重跑时读**全局**加成：`systems.techBonus`（科技）、
-   * `STORY.combatMod()`（天时 weather + 年号 era）、`STORY.atkMult/siegeMult/
+   * `STORY.combatMod()`（天时 weather）、`STORY.atkMult/siegeMult/
    * cityDefMult`（羁绊）、`state.buffs`（战鼓 buff）。这些在 30 小时里都会漂移 ——
    * 于是**重跑读"现在"、史实读"那一刻"**，verify 必然出现假不一致（实测 23 场）。
    *
@@ -3493,9 +3494,9 @@
            （出征 = 出发城 / 守城 = 被攻城；无城 → 空表，纯 NPC 场景不吃科技）——
            与 v89.118 同一机制，只是内容从"全境表"换成"该城表"，史实与重跑依旧同源。 */
         techs: U.deep((city && city.techs) || {}),   /* → systems.techBonus（TB 全部 type） */
-        world: U.deep(st.world || {}),            /* → STORY.combatMod（天时/年号，由 world 推导） */
+        world: U.deep(st.world || {}),            /* → STORY.combatMod（天时，由 world 推导） */
         buffs: U.deep(st.buffs || {}),            /* → systems.buffActive + st.buffs.military */
-        atkMult: (S.atkMult ? S.atkMult() : 1),   /* 羁绊「攻」× 年号 atkEra */
+        atkMult: (S.atkMult ? S.atkMult() : 1),   /* 羁绊「攻」（v90.93：年号 atkEra 已随年号纪元退役） */
         siegeMult: (S.siegeMult ? S.siegeMult() : 1),
         cityDefMult: (S.cityDefMult ? S.cityDefMult() : 1),
         defAdd: (S.defMult ? S.defMult() : 0),    /* 羁绊「守御」（战役层也读） */
@@ -3560,7 +3561,7 @@
          `wall`：围墙示意（等级 + 箭塔数），只有守城仗才有。 */
       ourSide: (extra.ourSide === 'def') ? 'def' : 'atk',
       wall: extra.wall || null,
-      /* v89.118：**战斗加成快照**（开打那一刻的科技/天时/年号/羁绊/战鼓）——
+      /* v89.118：**战斗加成快照**（开打那一刻的科技/天时/羁绊/战鼓）——
          重跑靠它把全局读点装回史实那一刻（否则 30h 后重跑必然 verify=false）。 */
       boost: extra.boost || null,
       /* 史实结果（校验沙盘忠实度的锚点，不参与画面） */
@@ -3579,7 +3580,7 @@
     var rc = rep && rep.sandbox;
     if (!rc || !GAME.tactic || !GAME.tactic.begin) return null;
     /* v89.118：重跑期间把**史实那一刻的加成快照**装回全局读点 —— 否则读的是"现在"
-       的科技/天时/年号/羁绊/战鼓，与史实不同源（30h 试玩实测 23 场假不一致）。 */
+       的科技/天时/羁绊/战鼓，与史实不同源（30h 试玩实测 23 场假不一致）。 */
     return GAME.battle.withBoost(rc.boost || null, function () {
       return GAME.battle._sandboxBuild(rc);
     });

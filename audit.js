@@ -204,19 +204,23 @@ function consumed(name) {
   MODULES.forEach(m => { const s = src[m].replace(defLine, ''); n += (s.match(re) || []).length; });
   return n;
 }
+/* v90.93：`trainMult`（训练加速）与 `repMult` 随年号纪元整函数删除 ——
+   留在清单里会把「已删的函数」当成「死函数」误报。 */
 const storyFns = ['prodMult', 'atkMult', 'defMult', 'siegeMult', 'researchMult',
-  'leadMult', 'trainMult', 'cityDefMult', 'heartsPerHour', 'combatMod'];
+  'leadMult', 'cityDefMult', 'heartsPerHour', 'combatMod'];
 const deadStory = storyFns.filter(f => consumed(f) === 0);
 console.log('  STORY 修正函数 ' + storyFns.length + ' 个 · 无消费点 ' + deadStory.length);
 if (deadStory.length) deadStory.forEach(f => console.log('     ⚠ STORY.' + f + '()'));
 else console.log('  ✅ 全部有消费点');
 
-/* 国策 boon 键 */
-const boonKeys = [...new Set((src.data.match(/boon: \{[^}]*\}/g) || [])
-  .flatMap(s => (s.match(/[a-z_]+: [0-9.]+/g) || []).map(x => x.split(':')[0])))].filter(k => k !== 'text');
-const deadBoon = boonKeys.filter(k => !new RegExp("boon\\." + k).test(allJs) && !new RegExp("boon\\['" + k + "'\\]").test(allJs) && !new RegExp("'" + k + "'").test(allJs.replace(src.data, '')));
-console.log('  国策 boon 键 ' + boonKeys.length + ' 个（' + boonKeys.join('/') + '）· 无消费 ' + deadBoon.length);
-if (deadBoon.length) deadBoon.forEach(k => console.log('     ⚠ boon.' + k));
+/* 国策 boon 键 —— ⛔ v90.93：年号纪元（DATA.ERAS）退役后，全仓已无 `boon: {}`。
+   原“无消费 boon 键”检查对空集合永远绿色（平凡解）—— 改为**零残留守卫**：
+   声明了 boon 就必须有读点（反之亦然：既不再声明，就不应再有读点）。 */
+const boonDecl = (src.data.match(/boon\s*:\s*\{/g) || []).length;
+const boonRead = ((src.data + src.domain + src.story + src.ui + src.main + src.battle)
+  .match(/boon[.[]/g) || []).length;
+console.log('  国策 boon 声明 ' + boonDecl + ' 处 · 读点 ' + boonRead + ' 处 '
+  + (boonDecl === 0 && boonRead === 0 ? '✅ 零残留（v90.93 年号纪元退役）' : '⚠ 存在声明但无读点的可能'));
 
 /* 天气字段 */
 /* 天气字段：只看是否被「读取」，且要排除「重新打包」行。

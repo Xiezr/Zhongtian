@@ -1641,7 +1641,7 @@
     var totalTime = count * t.time;
     var trainRed = GAME.systems.techBonus('train', city);   /* v89.191：按城读 */
     totalTime = Math.round(totalTime * (1 - Math.min(0.6, trainRed)));
-    if (GAME.story) totalTime = Math.round(totalTime / GAME.story.trainMult()); // 年号：训练加速
+    /* ⛔ v90.93：训练加速（GAME.story.trainMult，年号国策）随年号纪元退役。 */
     /* v63（老板）：征兵加速取**本城**守将的武力（改前吃全境守将之和） */
     var gbT = GAME.guardBonus(city);
     if (gbT.train) totalTime = Math.round(totalTime / (1 + Math.min(1.5, gbT.train))); // 守将武力：征兵加速
@@ -2813,8 +2813,7 @@
     }
     /* 岁贡旧币是货币，不受货仓上限约束 */
     s.res.gold = (s.res.gold || 0) + gold;
-    /* 声望（受赛季国策「人心思附」加成） */
-    rep = Math.round(rep * (GAME.story && GAME.story.repMult ? GAME.story.repMult() : 1));
+    /* ⛔ v90.93：声望的赛季国策增益（STORY.repMult）随年号纪元退役。 */
     s.rep = (s.rep || 0) + rep;
     s.items = s.items || {};
     var got = [];
@@ -6871,16 +6870,17 @@
   GAME.lordStageCap = function (g) {
     return DATA.LORD_BREAK.step * (1 + GAME.lordBreaksOf(g));
   };
-  /* 下一次突破所需修为；null = 已至顶（天启体 240 之上无更上层） */
-  GAME.lordCultivNeed = function (g) {
+  /* 下一次突破所需爵位（威望档 = s.rank 索引）；null = 已至顶（天启体 240 之上无更上层） */
+  GAME.lordRankNeed = function (g) {
     var B = DATA.LORD_BREAK, n = GAME.lordBreaksOf(g);
-    return (n < B.needs.length - 1) ? B.needs[n + 1] : null;
+    return (n < B.realms.length - 1) ? (B.rankStep * (n + 1)) : null;
   };
   GAME.lordRealmOf = function (g) {
     var B = DATA.LORD_BREAK, n = GAME.lordBreaksOf(g);
     return B.realms[Math.min(n, B.realms.length - 1)];
   };
-  /* 练功一次：扣体力 + 粮 → 产修为（常产）+ 经验（未到段顶才给） */
+  /* 练功一次：扣体力 + 粮 → 产经验（未到段顶才给）
+     · v90.94：不再产「修为」（练功与突破已解耦 · 见 DATA.LORD_BREAK 注释） */
   GAME.doLordTrain = function () {
     var g = GAME.lordGeneralOf ? GAME.lordGeneralOf() : null;
     if (!g) return { ok: false, msg: '君主不在帐下' };
@@ -6899,8 +6899,6 @@
     }
     city.res.grain -= grain;
     GAME.setStaNow(g, GAME.staNow(g) - B.trainSta);          /* v66：体力唯一写入口 */
-    var gain = Math.round(B.cultivBase + (g.level || 1) * B.cultivPerLv);
-    g.cultiv = (g.cultiv || 0) + gain;
     var tail;
     if ((g.level || 1) < cap) {
       var rr = GAME.battle.gainExp(g, need0 * B.expPct, '练功');   /* v26：经验唯一入口 */
@@ -6909,9 +6907,9 @@
     } else {
       tail = '　（已在本段顶 Lv' + cap + '，经验不再累积）';
     }
-    GAME.log('🧘 ' + g.name + ' 练功：修为 +' + gain + '（现 ' + g.cultiv + '）' + tail, 'sys', 'staff');
-    return { ok: true, gain: gain, cultiv: g.cultiv,
-      msg: '练功完成：修为 +' + gain + '（现 ' + g.cultiv + '）' + tail };
+    var say = tail.replace(/^　/, '');
+    GAME.log('🧘 ' + g.name + ' 练功（耗体力 ' + B.trainSta + '）：' + say, 'sys', 'staff');
+    return { ok: true, msg: '练功完成：' + say };
   };
   /* ============================================================
    * v89.83（老板「再加入其他自动化选项」）：自动练功 —— 君主体力过半时自动练一次
@@ -6981,30 +6979,30 @@
     s.autoLordState = { ok: r.ok, msg: r.msg, at: now };
     return r;
   };
-  /* 突破：须在段顶且修为够 → 上限 +60、境界进一阶、发自由点 */
+  /* 突破：须在段顶 + 爵位够 + 四关过 → 上限 +60、境界进一阶、发自由点
+     （v90.94：门槛由「修为」改为「爵位（威望档）」） */
   GAME.doLordBreak = function () {
     var g = GAME.lordGeneralOf ? GAME.lordGeneralOf() : null;
     if (!g) return { ok: false, msg: '君主不在帐下' };
-    var B = DATA.LORD_BREAK, cap = GAME.genLevelCap(g), need = GAME.lordCultivNeed(g);
+    var B = DATA.LORD_BREAK, cap = GAME.genLevelCap(g), need = GAME.lordRankNeed(g);
     if (need == null) {
       return { ok: false, msg: '已至「' + GAME.lordRealmOf(g) + '」，天启体之上再无更高境界' };
     }
     if ((g.level || 1) < cap) {
       return { ok: false, msg: '须先练至本段顶 Lv' + cap + '（现 Lv' + g.level + '）方可突破' };
     }
-    var cur = g.cultiv || 0;
-    if (cur < need) {
-      return { ok: false, msg: '修为不足（需 ' + need + '，现 ' + cur + '），继续练功' };
+    var curRank = (GAME.state && GAME.state.rank) || 0;
+    if (curRank < need) {
+      return { ok: false, msg: '爵位不足（需 ' + need + ' 档，现 ' + curRank + ' 档）—— 先晋升威望' };
     }
-    /* v89.177（老板「君主的突破要求更高……综合考验」）：修为之外，还须过
-       "政/城/军/资/宝"五关（DATA.LORD_BREAK.trials）——缺哪关提示哪关。 */
+    /* v89.177（老板「君主的突破要求更高……综合考验」）：爵位之外，还须过
+       "城/军/资/宝"四关（DATA.LORD_BREAK.trials）——缺哪关提示哪关。 */
     var _trial = GAME.lordTrialOf(g);
     if (_trial && !_trial.ok) {
       var miss = _trial.rows.filter(function (r2) { return !r2.ok; })
         .map(function (r2) { return r2.label + '（' + U.fmt(r2.cur) + '/' + U.fmt(r2.goal) + '）'; });
       return { ok: false, msg: '综合考验未过：' + miss.join('、') + ' —— 详见君主面板' };
     }
-    g.cultiv = cur - need;
     g.breaks = GAME.lordBreaksOf(g) + 1;
     var fp = B.freePts[Math.min(g.breaks, B.freePts.length - 1)] || 0;
     if (fp) g.freePts = (g.freePts || 0) + fp;
@@ -7099,8 +7097,8 @@
        实际上该去突破。同一件事的两处文案必须与真实原因一致。 */
     if (g.isLord) {
       return g.name + ' 已达本段上限 Lv' + cap + '（君主每 '
-        + DATA.LORD_BREAK.step + ' 级一段）—— 须在君主面板「练功」攒够修为后「突破」方可续升'
-        + (GAME.lordCultivNeed(g) == null ? '；已至天启体上限，无更高境界' : '');
+        + DATA.LORD_BREAK.step + ' 级一段）—— 须在君主面板「突破」方可续升'
+        + (GAME.lordRankNeed(g) == null ? '；已至天启体上限，无更高境界' : '');
     }
     var rk = GAME.rankOf ? GAME.rankOf(g) : null;
     return g.name + ' 已达' + ((rk && rk.name) || '') + '上限 Lv' + cap

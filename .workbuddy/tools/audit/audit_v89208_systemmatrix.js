@@ -54,7 +54,8 @@ var SYS = [
   { n: '存档', d: ['DEFAULT_SETTINGS'], g: ['savePayload', 'adoptState'], u: ['openSettings', '存档'], t: ['存档'] },
   { n: '离线补偿', d: ['LOOP_GAP'], g: ['offlineCatchup', 'loopPulse'], u: ['loopPulse'], t: ['离线'] },
   { n: '沙盘推演', d: ['SANDBOX', 'SMART_PLAN'], g: ['simulate'], u: ['sandbox', '推演'], t: ['推演'] },
-  { n: '纪事剧本', d: ['CHRONICLE_RULES', 'ERAS'], g: ['chronicle'], u: ['chronicle', '纪事'], t: ['纪事'] },
+  /* v90.93：「纪事剧本」整系统退役（任务系统 v90.92 + 全屏剧本 / 年号纪元 v90.93）——
+     四链核对行移除（防重跑误报假缺口，同 v90.80 奇观/奇遇、v90.92 门派先例）。 */
   { n: '城外建筑', d: ['EXT_BUILDINGS', 'EXT_PLAN_BY_LV'], g: ['extGridOf', 'extCap'], u: ['openLandModal', 'extHTML'], t: ['城外', '田地'] },
 ];
 
@@ -96,7 +97,7 @@ var SYS_CK = {
   '存档': /^save|^load|^slot|^theme|^set-/,
   '离线补偿': /^loop|^offline/,
   '沙盘推演': /^sd-sim|^sandbox|^sim-/,
-  '纪事剧本': /^story|^chronicle/,   /* v90.92：任务系统退役 → 'quest' 路由项移除 */
+  /* v90.93：'纪事剧本' 动作面路由项移除（story-* / chronicle-* 已无发射点） */
   '城外建筑': /^ext|^land|^farm-|^field/,
 };
 var ALL_ACTIONS = (function () {

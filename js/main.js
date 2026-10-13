@@ -433,11 +433,8 @@
       case 'ling-pick': ui.lingPick(el.dataset.key); break;
       case 'ling-filter': ui.setLingFilter(el.dataset.k); break;
       case 'do-jianghu': ui.doJianghu(Number(el.dataset.x), Number(el.dataset.y), el.dataset.act); break;
-      /* v89：全屏荒野剧本（选择 / 中途退出 / 收尾关闭） */
-      case 'sxf-choice': GAME.doScenePick(Number(el.dataset.i)); break;
-      case 'sxf-escape': GAME.doSceneEscape(); break;
-      case 'sxf-stop': ui.sxfTimingStop(); break;   /* v89.2：时机条停手 */
-      case 'sxf-exit': ui.closeSceneFx(); break;
+      /* ⛔ v90.93：case sxf-choice / sxf-escape / sxf-stop / sxf-exit
+         随全屏剧本（荒野场景流程）整条退役（见 ui.doJianghu 同款墓碑）。 */
       /* ⛔ v89.218：故事相关动作（story-pick / story-read / story-read-at /
          story-drop / story-exit）随故事系统退役。 */
       /* ⛔ v90.80（老板「去除奇遇系统」）：case do-wonder / open-journal / journal-go
@@ -1709,17 +1706,8 @@
     if (r.ok) { GAME.refreshAll(); ui.reopenKeepScroll(ui.openLingTemper); }
     return r;
   };
-  /* v89：全屏剧本 —— 选择 / 中途退出（结算屏由 ui.renderSceneFx 就地重绘） */
-  GAME.doScenePick = function (i) {
-    var r = GAME.scenePick(i);
-    if (!r.ok) { if (r.msg) ui.toast(r.msg); return; }
-    ui.renderSceneFx();
-  };
-  GAME.doSceneEscape = function () {
-    var r = GAME.sceneEscape();
-    if (!r.ok) { if (r.msg) ui.toast(r.msg); return; }
-    ui.renderSceneFx();
-  };
+  /* ⛔ v90.93：GAME.doScenePick / GAME.doSceneEscape（全屏剧本的选择与中途退出）
+     随全屏剧本整条退役 —— 荒野活动现走 ui.doJianghu 的一次性结算。 */
   /* 解雇（二次确认） */
   /* v70（老板需求 3/4）：迁址（坐标切换）与一键随机 —— 唯一执行都走 GAME.moveCityTo */
   GAME.doCityMove = function () {
@@ -2994,7 +2982,7 @@
      浏览器把已打开的页面留在内存里：更新文件后，**长开不刷新的页面仍跑旧会话代码**
      （这解释了"改了却说没生效"的观感）。老板若发现版本 ≠ 最新交付，按 Ctrl+F5
      强制刷新即获得新代码。⚠️ 每轮迭代更新此字面量（写入交付流程）。 */
-  GAME.VERSION = 'v89.240';
+  GAME.VERSION = 'v90.94';
   function boot() {
     fitAppSize();
     try {

@@ -123,7 +123,7 @@
     /* v28（需求 1）：研习所满级专精 —— 研究速度 +25% */
     var _mt = GAME.mastery ? GAME.mastery('techPct', null) : 0;
     if (_mt > 0) time = Math.round(time / (1 + _mt));
-    if (GAME.story) time = Math.round(time / GAME.story.researchMult()); // 英雄羁绊/年号加速
+    if (GAME.story) time = Math.round(time / GAME.story.researchMult()); // 英雄羁绊加速（v90.93：年号项退役）
     /* v89.113（老板需求 3）：研究加速走**城主**谋略（守将不再管研究） */
     if (GAME.mayorBonus) {
       var _gcity = (cityId ? GAME.cityById(cityId) : null) || GAME.currentCity();

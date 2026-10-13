@@ -5309,32 +5309,27 @@ if (svBtn) {
         && !!root.querySelector('[data-action="do-jianghu"][data-act="hill_scene"]')
         && root.textContent.indexOf('地形专属') < 0;
     })());
+    const eBef1 = G.lordGeneralOf().energy;
     click(document.querySelector('#modal-root [data-action="do-jianghu"][data-act="hill_scene"]'));
     await sleep(260);
-    check('v88.1/v89（v89.216 换皮）：「废墟探访」进入全屏剧本（第 1 幕 + 选择项 + 退出钮）', (function () {
+    /* v90.93（老板「去掉纪事剧本」中的「全屏剧本」）：荒野活动按钮 → **一次性结算**（one-shot）。
+       原「进入全屏剧本（第 1 幕 + 选择项 + 退出钮）/ 终幕结算屏 / 剧本收尾回显」三层的正向断言，
+       按 §0.7 翻转为**零残留守卫 + 结算实证**。 */
+    check('v90.93：「废墟探访」不再进全屏剧本（#scene-fx 零残留 · sxf-* 动作全清）', (function () {
       const el = document.getElementById('scene-fx');
-      return !!el && el.style.display !== 'none'
-        && el.textContent.indexOf('废墟探访') >= 0
-        && el.querySelectorAll('[data-action="sxf-choice"]').length >= 2
-        && !!el.querySelector('[data-action="sxf-escape"]');
+      return (!el || el.style.display === 'none')
+        && !document.querySelector('[data-action="sxf-choice"]')
+        && !document.querySelector('[data-action="sxf-escape"]')
+        && !document.querySelector('[data-action="sxf-stop"]')
+        && !document.querySelector('[data-action="sxf-exit"]');
     })());
-    click(document.querySelector('#scene-fx [data-action="sxf-choice"]'));
-    await sleep(120);
-    click(document.querySelector('#scene-fx [data-action="sxf-choice"]'));
-    await sleep(120);
-    /* v89.2：末幕是「时机判定」——点「抱拳！」停手（而不是再点选择） */
-    click(document.querySelector('#scene-fx [data-action="sxf-stop"]'));
-    await sleep(200);
-    check('v88.1/v89：终幕结算屏（专属退出按钮出现）', (function () {
-      const el = document.getElementById('scene-fx');
-      return !!el && !!el.querySelector('[data-action="sxf-exit"]');
+    check('v90.93：「废墟探访」一次性结算 —— 君主精力实扣', (function () {
+      return G.lordGeneralOf().energy < eBef1 - 0.01;
     })());
-    click(document.querySelector('#scene-fx [data-action="sxf-exit"]'));
-    await sleep(280);
-    check('v88.1：剧本收尾 → 回野地弹窗原地回显（今日已做）', (function () {
+    check('v88.1：结算 → 回野地弹窗原地回显（今日已做 · 不可再入）', (function () {
       const root = document.querySelector('#modal-root');
-      const el = document.getElementById('scene-fx');
-      return (!el || el.style.display === 'none') && !!root && root.textContent.indexOf('今日已做') >= 0;
+      return !!root && root.textContent.indexOf('今日已做') >= 0
+        && !G.jianghuCheck(hp.x, hp.y, G.lordGeneralOf().id, 'hill_scene').ok;
     })());
     /* 已占分支同样只有新区块 */
     G.state.wilds.push({ x: hp.x, y: hp.y, type: 'hill', level: 4 });
@@ -5440,25 +5435,13 @@ if (svBtn) {
     const before88 = G.state.items.lingsui || 0;
     click(document.querySelector('#modal-root [data-action="do-jianghu"][data-act="xiu"]'));
     await sleep(260);
-    check('v88/v89（v89.216 换皮）：静修活动进入全屏剧本', (function () {
+    /* v90.93：静修同样改走一次性结算（原「进入全屏剧本 / 结算屏含辐能核心与专属退出」
+       两条正向断言 → 零残留守卫 + 收益实证）。 */
+    check('v90.93：静修不再进全屏剧本（#scene-fx 零残留）', (function () {
       const el = document.getElementById('scene-fx');
-      return !!el && el.style.display !== 'none'
-        && (el.textContent.indexOf('静修') >= 0 || el.textContent.indexOf('改造') >= 0);
+      return !el || el.style.display === 'none';
     })());
-    click(document.querySelector('#scene-fx [data-action="sxf-choice"]'));
-    await sleep(120);
-    click(document.querySelector('#scene-fx [data-action="sxf-choice"]'));
-    await sleep(120);
-    /* v89.2：末幕是「时机判定」——点「收功！」停手 */
-    click(document.querySelector('#scene-fx [data-action="sxf-stop"]'));
-    await sleep(200);
-    check('v88/v89：结算屏含收获（辐能核心）与专属退出', (function () {
-      const el = document.getElementById('scene-fx');
-      return !!el && el.textContent.indexOf('辐能核心') >= 0 && !!el.querySelector('[data-action="sxf-exit"]');
-    })());
-    click(document.querySelector('#scene-fx [data-action="sxf-exit"]'));
-    await sleep(280);
-    check('v88：结算后得精华 + 弹窗回显「今日已做」', (function () {
+    check('v88：一次性结算后得精华 + 弹窗回显「今日已做」', (function () {
       const root = document.querySelector('#modal-root');
       const gained = (G.state.items.lingsui || 0) - before88;
       return gained > 0 && !!root && root.textContent.indexOf('今日已做') >= 0;
@@ -5499,7 +5482,9 @@ if (svBtn) {
     })());
     if (ng89.name === '验士甲') G.state.generals = G.state.generals.filter(x => x.id !== ng89.id);
 
-    /* ② 全屏剧本：逃（未动身免费 / 动身后计入） */
+    /* ② 荒野活动「一次性结算」（v90.93：全屏剧本退役）
+       原三层语义（进入全屏第 1 幕 / 未动身免费退出 / 动身后退出计入）
+       随剧本整条退役 —— 一次性结算 = 点即 commit，不存在可反悔的中间态。 */
     let hp89 = null;
     for (let y = 3; y < 200 && !hp89; y++) {
       for (let x = 3; x < 200; x++) {
@@ -5512,48 +5497,27 @@ if (svBtn) {
     G.ui._jhGen = null;
     G.ui.openLandModal(hp89.x, hp89.y);
     await sleep(200);
+    const e089 = lg89.energy;
     click(document.querySelector('#modal-root [data-action="do-jianghu"][data-act="tao"]'));
     await sleep(240);
-    check('v89：讨伐进入全屏（对话·事件第 1 幕）· 有「鸣金收兵」', (function () {
+    check('v90.93：讨伐不再进全屏剧本（#scene-fx 零残留 · sxf-* 四层动作全清）', (function () {
       const el = document.getElementById('scene-fx');
-      return !!el && el.style.display !== 'none'
-        && el.textContent.indexOf('侦察单元') >= 0
-        && !!el.querySelector('[data-action="sxf-escape"]');
+      return (!el || el.style.display === 'none')
+        && !document.querySelector('[data-action="sxf-choice"]')
+        && !document.querySelector('[data-action="sxf-escape"]')
+        && !document.querySelector('[data-action="sxf-stop"]')
+        && !document.querySelector('[data-action="sxf-exit"]');
     })());
-    const e089 = lg89.energy;
-    click(document.querySelector('#scene-fx [data-action="sxf-escape"]'));
-    await sleep(200);
-    check('v89：未动身退出 —— 免费（结算屏明示）', (function () {
-      const el = document.getElementById('scene-fx');
-      return !!el && el.textContent.indexOf('未有任何消耗') >= 0;
+    check('v90.93：一次性结算即 commit（君主精力实扣 · 今日落锁）', (function () {
+      return lg89.energy < e089 - 0.01
+        && !G.jianghuCheck(hp89.x, hp89.y, lg89.id, 'tao').ok;
     })());
-    click(document.querySelector('#scene-fx [data-action="sxf-exit"]'));
-    await sleep(220);
-    check('v89：免费退出后可再入（energy 未扣 · 锁未落）', (function () {
-      /* ⚠ 精力是「连续再生值（浮点）」：只能断言"未减少"，不能严格相等 ——
-         毫秒级再生会在两次读取之间加出小数（v89.1 实测 85.0666 抓出的脆弱点） */
-      return lg89.energy >= e089 - 0.01 && G.jianghuCheck(hp89.x, hp89.y, lg89.id, 'tao').ok;
-    })());
-
-    /* ③ 动身后退出：所耗不返、今日计入 */
-    click(document.querySelector('#modal-root [data-action="do-jianghu"][data-act="tao"]'));
-    await sleep(200);
-    const ePre89 = lg89.energy;
-    click(document.querySelector('#scene-fx [data-action="sxf-choice"]'));
-    await sleep(160);
-    /* 同上：按「扣费前后差 ≈ 15」断言（容差 3 —— 再生量远小于此；双扣 30 / 未扣 0 必被抓住） */
-    check('v89：首次选择即扣精力（15）', Math.abs((ePre89 - lg89.energy) - 15) < 3);
-    click(document.querySelector('#scene-fx [data-action="sxf-escape"]'));
-    await sleep(160);
-    click(document.querySelector('#scene-fx [data-action="sxf-exit"]'));
-    await sleep(280);
-    check('v89：动身后退出 —— 今日计入（不可再入）+ 回弹窗', (function () {
+    check('v89：结算后回野地弹窗原地回显（今日已做）', (function () {
       const root = document.querySelector('#modal-root');
-      return !G.jianghuCheck(hp89.x, hp89.y, lg89.id, 'tao').ok
-        && !!root && root.textContent.indexOf('今日已做') >= 0;
+      return !!root && root.textContent.indexOf('今日已做') >= 0;
     })());
 
-    /* ④ 走完一局（地宫探险：全屏 3 幕 → 专属结算 → 收尾） */
+    /* ③ 地宫探险（地形专属活动）：同样一次性结算 + 场景视觉层零残留 */
     let fp89 = null;
     for (let y = 3; y < 200 && !fp89; y++) {
       for (let x = 3; x < 200; x++) {
@@ -5566,65 +5530,28 @@ if (svBtn) {
     await sleep(80);
     G.ui.openLandModal(fp89.x, fp89.y);
     await sleep(200);
+    const eFp89 = lg89.energy;
     click(document.querySelector('#modal-root [data-action="do-jianghu"][data-act="desert_scene"]'));
-    await sleep(240);
-    check('v89：地宫探险进入全屏（第 1 幕）', (function () {
+    await sleep(260);
+    check('v90.93：地宫探险一次性结算（不再进全屏 · 精力实扣）', (function () {
       const el = document.getElementById('scene-fx');
-      return !!el && el.style.display !== 'none' && el.textContent.indexOf('地宫') >= 0;
+      return (!el || el.style.display === 'none') && lg89.energy < eFp89 - 0.01;
     })());
-    check('v89.2：场景画布 + 热点点选（在画里选点，不是点按钮）', (function () {
-      const el = document.getElementById('scene-fx');
-      const spots = el.querySelectorAll('.sxf-spot');
-      return !!el.querySelector('canvas.sxf-canvas')
-        && spots.length >= 2
-        && spots.length === el.querySelectorAll('[data-action="sxf-choice"]').length
-        && (spots[0].getAttribute('style') || '').indexOf('left:') >= 0
-        && el.textContent.indexOf('点画中之处') >= 0;
+    check('v90.93：场景视觉层整族退役（画布 / 横幅 / 时机条 / 结算卡 零残留）', (function () {
+      return !document.querySelector('canvas.sxf-canvas')
+        && !document.querySelector('.sxf-spot') && !document.querySelector('.sxf-hero')
+        && !document.querySelector('.sxf-tk') && !document.querySelector('.sxf-mark')
+        && !document.querySelector('.sxf-emblem') && !document.querySelector('.sxf-loot')
+        && !document.querySelector('.sxf-tl-item') && !document.querySelector('.sxf-hero-alias')
+        && document.body.textContent.indexOf('点画中之处') < 0;
     })());
-    check('v89.1：幕景横幅（水印 · 幕题 · 倾向徽章 · 选项齐）', (function () {
-      const el = document.getElementById('scene-fx');
-      const f = G.DATA.SCENE_FLOW.desert_scene;
-      const tt = el.querySelector('.sxf-stage-tt');
-      return !!el.querySelector('.sxf-hero') && !!el.querySelector('.sxf-hero-art')
-        && (el.querySelector('.sxf-hero-art').textContent || '').length >= 1
-        && !!tt && tt.textContent === f.stages[0].s
-        && el.querySelectorAll('.sxf-bdg').length >= 1
-        && el.querySelectorAll('.sxf-opt').length >= 2
-        && el.textContent.indexOf('第 1 / ' + f.stages.length + ' 幕') >= 0;
+    check('v90.93：剧本消费点零残留（GAME.scene* / DATA.SCENE_FLOW / map.paintScene）', (function () {
+      return typeof G.sceneFx === 'undefined' && typeof G.sceneBegin === 'undefined'
+        && typeof G.sceneStart === 'undefined' && typeof G.scenePick === 'undefined'
+        && typeof G.sceneEscape === 'undefined' && typeof G.DATA.SCENE_FLOW === 'undefined'
+        && typeof G.map.paintScene === 'undefined' && typeof G.map.SCENE_KEYS === 'undefined'
+        && typeof G.ui.openSceneFx === 'undefined' && typeof G.ui.renderSceneFx === 'undefined';
     })());
-    check('v89.3（v89.216 换皮）：横幅文案统一（雅名「旧堡探幽」· 门类章「探险」）', (function () {
-      const al = document.querySelector('#scene-fx .sxf-hero-alias');
-      const kd = document.querySelector('#scene-fx .sxf-hero-kind');
-      return !!al && al.textContent === '旧堡探幽' && !!kd && kd.textContent === '探险';
-    })());
-    click(document.querySelector('#scene-fx [data-action="sxf-choice"]'));
-    await sleep(120);
-    check('v89.1：行程时间线随选择累积（幕题 + 抉择）', (function () {
-      const el = document.getElementById('scene-fx');
-      return el.querySelectorAll('.sxf-tl-item').length === 1
-        && el.textContent.indexOf('行程') >= 0;
-    })());
-    click(document.querySelector('#scene-fx [data-action="sxf-choice"]'));
-    await sleep(120);
-    check('v89.2：末幕时机条（轨道 · 指针 · 停手钮）', (function () {
-      const el = document.getElementById('scene-fx');
-      return !!el.querySelector('.sxf-tk') && !!el.querySelector('.sxf-mark')
-        && !!el.querySelector('[data-action="sxf-stop"]');
-    })());
-    click(document.querySelector('#scene-fx [data-action="sxf-stop"]'));
-    await sleep(220);
-    check('v89：结算屏出现（专属退出「出宫回城」）', (function () {
-      const el = document.getElementById('scene-fx');
-      return !!el && !!el.querySelector('[data-action="sxf-exit"]') && el.textContent.indexOf('出宫回城') >= 0;
-    })());
-    check('v89.1：结算卡（光晕徽记 · 战果面板 · 耗用账单）', (function () {
-      const el = document.getElementById('scene-fx');
-      return !!el.querySelector('.sxf-emblem') && !!el.querySelector('.sxf-loot')
-        && el.textContent.indexOf('耗：精力') >= 0
-        && el.textContent.indexOf('余：精力') >= 0;
-    })());
-    click(document.querySelector('#scene-fx [data-action="sxf-exit"]'));
-    await sleep(240);
     G.ui.closeAllModals();
     await sleep(60);
   }
@@ -7421,13 +7348,47 @@ if (svBtn) {
     return txt.indexOf('民心 / 民怨') >= 0 && txt.indexOf('鼓舞民心') >= 0
       && txt.indexOf('消减民怨') >= 0 && !!b1 && !!b2;
   })());
-  check('v89.177 君主面板「突破考验」五关清单（真 DOM · 打开君主面板）', (function () {
+  check('v89.177 君主面板「突破考验」四关清单（真 DOM · 打开君主面板）', (function () {
     G.ui.closeAllModals();
     if (!G.lordGeneralOf || !G.lordGeneralOf()) return 'SKIP-无条件';
     G.ui.openLordInfo();
     const txt = document.querySelector('#modal-root').textContent || '';
     G.ui.closeAllModals();
     return txt.indexOf('突破考验') >= 0 && txt.indexOf('宝物（珠宝）') >= 0;
+  })());
+  check('v90.94 君主面板「练功」条在面板最下方（真 DOM · 真点一步 · 体力与净水双降）', (function () {
+    /* 老板「给君主界面的最下方加一条练功菜单」+「去除练功与君主突破之间的关联」：
+       ① 位置自证：练功条必须出现在「突破考验」**之后**（面板最下方）
+       ② 真点一步：体力与净水必须**都严格下降**（防平凡解：0===0 不算过） */
+    if (!G.lordGeneralOf || !G.lordGeneralOf()) return 'SKIP-无条件';
+    const g = G.lordGeneralOf();
+    const city = (G.currentCity && G.currentCity()) || G.state.cities[0];
+    if (!city) return false;
+    const bak = { sta: G.staNow(g), grain: (city.res || {}).grain };
+    try {
+      G.ui.closeAllModals();
+      G.ui.openLordInfo();
+      const root = document.querySelector('#modal-root');
+      const txt = root.textContent || '';
+      const btn = root.querySelector('[data-action="lord-train"]');
+      if (!btn) return false;
+      const iTrain = txt.indexOf('练功');
+      const iTrial = txt.indexOf('突破考验');
+      if (!(iTrain >= 0 && iTrial >= 0 && iTrain > iTrial)) return false;
+      /* 造局：体力与净水给足，确保「练得成」（否则测的是"体力不足"分支） */
+      G.setStaNow(g, 999);
+      city.res = city.res || {};
+      city.res.grain = 999999;
+      const sta0 = G.staNow(g), grain0 = city.res.grain;
+      btn.click();
+      const sta1 = G.staNow(g), grain1 = city.res.grain;
+      return sta1 < sta0 && grain1 < grain0;
+    } catch (e) { return false; }
+    finally {
+      G.ui.closeAllModals();
+      G.setStaNow(g, bak.sta);
+      if (city.res) city.res.grain = bak.grain;
+    }
   })());
 })();
 

@@ -698,15 +698,17 @@
     && U.amtText(99999999) === '10000.0万' && U.amtText(1e8) === '1.00亿',
     [U.amtText(9999), U.amtText(10000), U.amtText(1e8)].join(' | '));
 
-  console.log('\n===== 18. 叙事层（天时 / 年号 / 史册 / 羁绊 / 战力）=====');
+  console.log('\n===== 18. 叙事层（天时 / 羁绊 / 奇遇 / 战力）=====');
   var S18 = G.state, ST = G.story;
   check('story 模块加载', !!ST && typeof ST.tick === 'function');
-  /* v89.218：CHRONICLE_RULES（纪事规则）/ TITLES（称号评定）随史册退役 —— 判据收窄为三张表。 */
-  check('三张数据表齐全（v89.218：纪事/称号两表已退役）',
-    DATA.BONDS.length >= 8 && DATA.ERAS.length >= 10 && DATA.ENCOUNTERS.length >= 8 &&
+  /* v89.218：CHRONICLE_RULES（纪事规则）/ TITLES（称号评定）随史册退役。
+     v90.93：ERAS（年号纪元）随「纪事剧本」退役 —— 判据收窄为四张表 + 三处零残留。 */
+  check('数据表齐全（v89.218 纪事/称号已退役；v90.93 年号表已退役）',
+    DATA.BONDS.length >= 8 && DATA.ENCOUNTERS.length >= 8 &&
     DATA.SEASONS.length === 4 && Object.keys(DATA.WEATHERS).length === 5
-    && DATA.CHRONICLE_RULES === undefined && DATA.TITLES === undefined,
-    '羁绊' + DATA.BONDS.length + '/年号' + DATA.ERAS.length + '/奇遇' + DATA.ENCOUNTERS.length);
+    && DATA.CHRONICLE_RULES === undefined && DATA.TITLES === undefined
+    && DATA.ERAS === undefined,
+    '羁绊' + DATA.BONDS.length + '/奇遇' + DATA.ENCOUNTERS.length);
   var hasNeg = DATA.BONDS.some(function (b) {
     return Object.keys(b.bonus).some(function (k) { return b.bonus[k] < 0; });
   });
@@ -720,8 +722,19 @@
   check('累计历法时间增加', S18.world.elapsed > e0, Math.round(S18.world.elapsed) + ' 游戏秒');
   check('季节在合法范围', S18.world.season >= 0 && S18.world.season < 4, '季：' + ST.seasonName(S18.world.season));
   check('当前天时可描述', ST.skyLine().length > 4, ST.skyLine());
-  check('年号名可取', ST.currentEra().name.length > 0, ST.currentEra().name);
-  check('年序名合古文', /^(元|[一二三四五六七八九十]+)$/.test(ST.yearName()), ST.yearName() + '年');
+  /* v90.93（老板「去掉纪事剧本」中的「年号纪元」）：原「年号名可取 / 年序名合古文」
+     两条正向断言翻转为**零残留守卫**（§0.7：退役后断言不许删，只按新口径重写）。 */
+  check('v90.93：年号纪元出口零残留（currentEra / yearName / checkEra / settleEraGoal）',
+    typeof ST.currentEra === 'undefined' && typeof ST.yearName === 'undefined'
+    && typeof ST.checkEra === 'undefined' && typeof ST.eraAdvance === 'undefined'
+    && typeof ST.eraGoalProgress === 'undefined' && typeof ST.settleEraGoal === 'undefined'
+    && DATA.ERAS === undefined
+    && typeof S18.world.eraIndex === 'undefined'
+    && typeof S18.world.eraStartYear === 'undefined'
+    && typeof S18.world.eraGoalDone === 'undefined'
+    && typeof S18.world.eraGoalClaimed === 'undefined');
+  check('天时行改为「第 N 年 季 天候」（年号前缀已去）',
+    /^第 \d+ 年 /.test(ST.skyLine()), ST.skyLine());
 
   console.log('  --- 天时影响 ---');
   var pm = ST.prodMult('grain');
@@ -767,17 +780,17 @@
   });
   check('多个羁绊可叠加', ST.activeBonds().length >= 2, ST.activeBonds().length + ' 个');
 
-  console.log('  --- 年号纪元（赛季） ---');
-  check('时代之志可读进度', !!ST.eraGoalProgress() && typeof ST.eraGoalProgress().ratio === 'number',
-    ST.eraGoalProgress().cur + '/' + ST.eraGoalProgress().target);
-  var era0 = S18.world.eraIndex;
-  S18.world.eraStartYear = S18.world.year - DATA.ERAS[era0].years - 1;
-  ST.checkEra();
-  check('年号期满自动改元', S18.world.eraIndex !== era0,
-    DATA.ERAS[era0].name + ' → ' + ST.currentEra().name);
-  check('改元写入公文（v89.218：原写入史册；改元播报仍可见）',
-    (S18.msgLog || []).some(function (m) { return /改元/.test(m.msg); }));
-  check('新时代有增益说明', !!(ST.currentEra().boon && ST.currentEra().boon.text), ST.currentEra().boon.text);
+  /* v90.93：原「年号纪元（赛季）」五条正向断言（进度 / 改元 / 公报 / 增益）
+     整段翻转为零残留守卫 —— 赛季机制已不存在（§0.7：断言不许删，只按新口径重写）。 */
+  console.log('  --- 年号纪元（v90.93 退役守卫） ---');
+  check('v90.93：赛季机制零残留（天时无年号三键 · 年号表已删）', (function () {
+    var cm2 = ST.combatMod();
+    return DATA.ERAS === undefined
+      && typeof cm2.atkEra === 'undefined' && typeof cm2.siegeEra === 'undefined'
+      && typeof cm2.researchEra === 'undefined' && typeof cm2.move === 'number';
+  })());
+  check('v90.93：声望 / 训练乘数随年号退役（repMult / trainMult 已删）',
+    typeof ST.repMult === 'undefined' && typeof ST.trainMult === 'undefined');
 
   console.log('  --- 奇遇遗迹 ---');
   S18.world.luck = 0;
@@ -980,16 +993,18 @@
   check('索引含离线计算关键字段（gameElapsed）',
     meta19 && typeof meta19.gameElapsed === 'number' && meta19.gameElapsed > 0,
     Math.round(meta19.gameElapsed) + ' 游戏秒');
-  check('索引含年号/季节/天时',
-    !!(meta19.era && meta19.season && meta19.weather),
-    meta19.era + '·' + meta19.yearName + '年 ' + meta19.season + ' ' + meta19.weather);
+  /* v90.93：年号纪元退役 —— 索引不再记 era / yearName，改为普通年序 year。 */
+  check('索引含年序/季节/天时（v90.93：年号两字段已退役）',
+    typeof meta19.era === 'undefined' && typeof meta19.yearName === 'undefined'
+    && !!meta19.year && !!meta19.season && !!meta19.weather,
+    '第 ' + meta19.year + ' 年 ' + meta19.season + ' ' + meta19.weather);
   check('索引含城池/兵力概要', meta19.cities > 0 && typeof meta19.army === 'number',
     '城' + meta19.cities + ' 兵' + meta19.army);
   var rulerBefore = JSON.stringify(S19.ruler);
   var parsed19 = JSON.parse(localStorage.getItem('sanguo_save_v3'));
   var m19 = G.metaOf(parsed19);
   check('metaOf 为纯函数（不污染运行中 state）', JSON.stringify(S19.ruler) === rulerBefore);
-  check('metaOf 可从主档独立推算', !!m19 && m19.era === meta19.era);
+  check('metaOf 可从主档独立推算', !!m19 && m19.year === meta19.year);
   check('索引体积远小于主档', JSON.stringify(meta19).length < 2000,
     JSON.stringify(meta19).length + ' B vs 主档 ' +
     Math.round(localStorage.getItem('sanguo_save_v3').length / 1024) + ' KB');
@@ -4707,19 +4722,20 @@
   console.log('  --- ④ 攻城伤害链与胜利判定 ---');
   check('siegeMult 已被战斗读取', /siegeMult\(\)/.test(bS29) && /opts\.sieging/.test(bS29));
   check('出征按目标类型传 sieging', /sieging: t\.kind === 'city'/.test(bS29));
-  check('赛季国策 siege 生效（青龙 +20%）', (function () {
-    var oldIdx = G.state.world.eraIndex;
-    var qi = null;
-    DATA.ERAS.forEach(function (e, i) { if (e.id === 'qinglong') qi = i; });
-    G.state.world.eraIndex = qi;
-    var m = G.story.siegeMult();
-    G.state.world.eraIndex = oldIdx;
-    return m > 1;
+  /* v90.93：原「赛季国策 siege 生效（青龙 +20%）」正向断言 → 退役守卫。 */
+  check('v90.93：赛季国策项零残留（siegeMult 不再乘 cm.siegeEra）', (function () {
+    var src = stripComment(yS29.slice(0));
+    return !/cm\.siegeEra/.test(src) && !/cm\.atkEra/.test(src) && !/cm\.researchEra/.test(src);
   })());
   check('羁绊「白衣渡江」进入攻城链',
-    /return \(1 \+ STORY\.bondBonus\('siege'\)\) \* cm\.siegeEra;/.test(yS29));
-  check('rep_gain 国策已接（STORY.repMult）',
-    typeof G.story.repMult === 'function' && /STORY\.repMult/.test(yS29));
+    /return 1 \+ STORY\.bondBonus\('siege'\);/.test(yS29));
+  /* v90.93：repMult（声望获取倍率）随年号纪元整函数删除 → 断言翻转为零残留。 */
+  check('v90.93：声望乘数出口已退役（STORY.repMult 零残留）', (function () {
+    return typeof G.story.repMult === 'undefined'
+      && !/STORY\.repMult/.test(stripComment(yS29.slice(0)))
+      && !/STORY\.repMult/.test(stripComment(bS29.slice(0)))
+      && !/STORY\.repMult/.test(stripComment(dS29.slice(0)));
+  })());
   check('checkVictory 已被调用（攻占灰烬城→天下一统）',
     /if \(GAME\.checkVictory\) GAME\.checkVictory\(\);/.test(bS29));
   check('defMult 改为单一来源（不再两份实现）',
@@ -4767,7 +4783,7 @@
     ['GAME.battle.armySpeedOf', G.battle.armySpeedOf], ['GAME.battle.firstStrike', G.battle.firstStrike],
     ['GAME.map.generate', G.map.generate], ['GAME.map.wildLevelNow', G.map.wildLevelNow],
     ['GAME.systems.techBonus', G.systems.techBonus], ['GAME.systems.research', G.systems.research],
-    ['STORY.combatMod', G.story.combatMod], ['STORY.siegeMult', G.story.siegeMult], ['STORY.repMult', G.story.repMult]
+    ['STORY.combatMod', G.story.combatMod], ['STORY.siegeMult', G.story.siegeMult]
   ];
   var lostApi = CORE_API.filter(function (x) { return typeof x[1] !== 'function'; })
     .map(function (x) { return x[0]; });
@@ -11231,9 +11247,11 @@ console.log('\n===== 45. v60 城池归属与名城专有 =====');
   })());
   check('结构：军粮维持已退役（v89.36：不再有按城耗粮出口）',
     !/foodPerSecOf/.test(stripComment(stS)) && !/feedC/.test(stripComment(stS)));
-  check('结构：全境幸存者收口到 totalPop（不许直读 s.res.pop）', (function () {
+  check('结构：全境幸存者收口到 totalPop（v90.93：story 侧已无全境人口读点）', (function () {
+    /* 年号「时代之志」原读 GAME.totalPop()（全境人口）—— 随年号纪元退役后
+       story.js 不再需要全境人口；唯一出口仍在 state.js，由下方实测（各城之和）锚住。 */
     return /GAME\.totalPop = function/.test(stS)
-      && rd('story').indexOf('GAME.totalPop()') >= 0;
+      && rd('story').indexOf('GAME.totalPop') < 0;
   })());
   check('实测：totalPop = 各城之和（不是当前城那一份）', (function () {
     var a = V.cities[0], b = null;
@@ -16344,7 +16362,7 @@ console.log('\n===== 66. v81 两条（君主卡 · 兵营三页） =====');
         return out;
       };
 
-      check('v89.65：练功产修为 + 经验（未到段顶）', function () {
+      check('v90.94：练功产经验（练功与突破已解耦 · 不再产修为）', function () {
         return withLord(function (lord, city) {
           if (!lord || !city) return false;
           lord.level = 10; lord.breaks = 0; lord.exp = 0; lord.cultiv = 0;
@@ -16352,19 +16370,20 @@ console.log('\n===== 66. v81 两条（君主卡 · 兵营三页） =====');
           city.res.grain = 1e9;
           var grain0 = city.res.grain, sta0 = G.staNow(lord);
           var r = G.doLordTrain();
-          return r.ok === true && lord.cultiv > 0 && lord.exp > 0
+          return r.ok === true && lord.exp > 0
+            && !(lord.cultiv > 0)               /* v90.94：修为不再产出 */
             && city.res.grain < grain0          /* 真扣了粮 */
             && G.staNow(lord) === sta0 - DATA.LORD_BREAK.trainSta;
         });
       }());
-      check('v89.65：到段顶后练功只产修为（经验不再累积）', function () {
+      check('v90.94：到段顶后练功不给经验（且仍不产修为）', function () {
         return withLord(function (lord, city) {
           if (!lord || !city) return false;
           lord.breaks = 0; lord.level = G.genLevelCap(lord);   /* = 60 */
           lord.exp = 0; lord.cultiv = 0;
           G.setStaNow(lord, 100); city.res.grain = 1e9;
           var r = G.doLordTrain();
-          return r.ok === true && lord.cultiv > 0 && lord.exp === 0;
+          return r.ok === true && lord.exp === 0 && !(lord.cultiv > 0);
         });
       }());
       check('v89.65：体力不足时练功被拒（不白扣）', function () {
@@ -16374,27 +16393,26 @@ console.log('\n===== 66. v81 两条（君主卡 · 兵营三页） =====');
           G.setStaNow(lord, 0);
           city.res.grain = 1e9;
           var r = G.doLordTrain();
-          return r.ok === false && lord.cultiv === 0 && /体力/.test(r.msg);
+          return r.ok === false && /体力/.test(r.msg);
         });
       }());
-      check('v89.65：突破须"段顶 + 修为够"（未到顶拒 / 修为不足拒 / 满足则跨段）', function () {
+      check('v90.94：突破须"段顶 + 爵位够"（未到顶拒 / 爵位不足拒 / 满足则跨段）', function () {
         return withLord(function (lord, city) {
           if (!lord) return false;
+          var bkRank = G.state.rank;
           /* ① 未到段顶：拒 */
-          lord.breaks = 0; lord.level = 10; lord.cultiv = 1e9; lord.exp = 0;
+          lord.breaks = 0; lord.level = 10; lord.exp = 0; G.state.rank = 9;
           if (G.doLordBreak().ok !== false) return false;
-          /* ② 段顶但修为不足：拒 */
-          lord.level = 60; lord.cultiv = 0;
+          /* ② 段顶但爵位不足：拒（第 1 次突破需 3 档威望 · rankStep=3） */
+          lord.level = 60; G.state.rank = 2;
           if (G.doLordBreak().ok !== false) return false;
-          /* ③ v89.177（老板「综合考验」）：段顶 + 修为够，但五关不过 → **拒**（提示综合考验） */
-          var need = G.lordCultivNeed(lord);
-          lord.cultiv = need;
+          /* ③ v89.177（老板「综合考验」）：段顶 + 爵位够，但四关不过 → **拒**（提示综合考验） */
+          G.state.rank = G.lordRankNeed(lord);
           var r0 = G.doLordBreak();
           if (r0.ok !== false || !/综合考验/.test(r0.msg)) return false;
-          /* ③b 灌满五关（政务 3 / 城池 2 / 兵力 5k / 持金 5w / 珠宝 2 种）→ 跨段。
+          /* ③b 灌满四关（城池 2 / 兵力 5k / 持金 5w / 珠宝 2 种）→ 跨段。
                  ⚠️ 用例改状态要还原（§131 纪律）——失败前也要恢复。 */
           var bk = {
-            done: G.state.quests.done,
             cities: G.state.cities.slice(),
             army: G.state.cities.map(function (c) { return c.army; }),
             items: JSON.parse(JSON.stringify(G.state.items || {})),
@@ -16402,7 +16420,6 @@ console.log('\n===== 66. v81 两条（君主卡 · 兵营三页） =====');
           };
           var ok = false;
           try {
-            G.state.quests.done = { qa: 1, qb: 1, qc: 1 };
             var c2 = JSON.parse(JSON.stringify(G.state.cities[0]));
             c2.id = 'p2-test'; c2.army = { buxingji: 3000 };
             G.state.cities.forEach(function (c) { c.army = { buxingji: 3000 }; });
@@ -16412,10 +16429,10 @@ console.log('\n===== 66. v81 两条（君主卡 · 兵营三页） =====');
             G.state.items.mila = 1;
             var fp0 = lord.freePts || 0;
             var r = G.doLordBreak();
-            ok = r.ok === true && lord.breaks === 1 && lord.cultiv === 0
+            ok = r.ok === true && lord.breaks === 1
               && G.genLevelCap(lord) === 120 && (lord.freePts || 0) > fp0;
           } finally {
-            G.state.quests.done = bk.done;
+            G.state.rank = bkRank;
             G.state.cities = bk.cities;
             bk.cities.forEach(function (c, i2) { c.army = bk.army[i2]; });
             G.state.items = bk.items;
@@ -16424,11 +16441,11 @@ console.log('\n===== 66. v81 两条（君主卡 · 兵营三页） =====');
           return ok;
         });
       }());
-      check('v89.65：三突破到天启体上限后不再有突破（needs 用尽 → null）', function () {
+      check('v90.94：三突破到天启体上限后不再有突破（爵位门槛用尽 → null）', function () {
         return withLord(function (lord) {
           if (!lord) return false;
-          lord.breaks = 3; lord.level = 240; lord.cultiv = 1e9;
-          if (G.lordCultivNeed(lord) !== null) return false;
+          lord.breaks = 3; lord.level = 240;
+          if (G.lordRankNeed(lord) !== null) return false;
           if (G.genLevelCap(lord) !== 240) return false;
           var r = G.doLordBreak();
           return r.ok === false && lord.breaks === 3;      /* 没被加一层 */
@@ -17132,7 +17149,8 @@ console.log('\n===== 74. v89 君主专属 + 全屏荒野剧本 =====');
       }
     }
     if (!p) return false;
-    return okBag && !GAME.jianghuDo(p.x, p.y, ng.id, 'cai').ok && !GAME.sceneStart(p.x, p.y, ng.id, 'cai').ok;
+    /* v90.93：全屏剧本退役 —— 非君主在「探索」上同样走 jianghuDo（闸门在 jianghuCheck）。 */
+    return okBag && !GAME.jianghuDo(p.x, p.y, ng.id, 'cai').ok;
   })());
   check('实测：迁移归还（非君主辐能件 → 背包 · 归位机甲）', (function () {
     var s = GAME.state, ng = null;
@@ -17147,32 +17165,26 @@ console.log('\n===== 74. v89 君主专属 + 全屏荒野剧本 =====');
     return (s.inventory || []).indexOf(mI) >= 0 && !ng.lingEquip && ng.equipOn === 'sha';
   })());
 
-  console.log('  --- ② 全屏剧本数据与引擎 ---');
-  check('v89：SCENE_FLOW 齐（12 活动 · 幕≥2 · 选项/退出/文案齐全 · 键合法）', (function () {
-    var F = DATA.SCENE_FLOW || {};
-    var keys = Object.keys(DATA.LING_ACT || {});
-    if (keys.length !== 12) return false;
-    var n = 0;
-    for (var i = 0; i < keys.length; i++) {
-      var f = F[keys[i]];
-      if (!f || !f.escLabel || !f.backLabel || !f.exits || !f.exits.win || !f.exits.escape) return false;
-      if (!f.stages || f.stages.length < 2) return false;
-      n++;
-      for (var j = 0; j < f.stages.length; j++) {
-        var st2 = f.stages[j];
-        if (!st2.t || !st2.o || !st2.o.length) return false;
-        for (var k2 = 0; k2 < st2.o.length; k2++) {
-          var o = st2.o[k2];
-          if (!o.l) return false;
-          for (var ek in (o.e || {})) {
-            if (['pow', 'reward', 'wound', 'luck'].indexOf(ek) < 0) return false;
-          }
-        }
-      }
-    }
-    return n === 12;
+  console.log('  --- ② 全屏剧本（v90.93 退役守卫） ---');
+  /* v90.93（老板「去掉纪事剧本」中的「全屏剧本」）：
+     原本这里的三条正向断言（SCENE_FLOW 表齐 / 三段引擎 / 可复现）
+     按 §0.7 翻转为**零残留守卫** + 一条「一次性结算真调」实测。 */
+  check('v90.93：全屏剧本整条退役（数据 · 引擎 · UI · 动作 全清）', (function () {
+    return DATA.SCENE_FLOW === undefined
+      && typeof GAME.sceneFx === 'undefined'
+      && typeof GAME.sceneBegin === 'undefined' && typeof GAME.sceneStart === 'undefined'
+      && typeof GAME.scenePick === 'undefined' && typeof GAME.sceneEscape === 'undefined'
+      && typeof GAME.ui.openSceneFx === 'undefined'
+      && typeof GAME.ui.sceneFxHTML === 'undefined'
+      && typeof GAME.ui.renderSceneFx === 'undefined'
+      && typeof GAME.ui.closeSceneFx === 'undefined'
+      && typeof GAME.ui.sxfBadges === 'undefined'
+      && typeof GAME.ui.sxfTimingStop === 'undefined'
+      && typeof GAME.doScenePick === 'undefined' && typeof GAME.doSceneEscape === 'undefined'
+      && typeof GAME.map.paintScene === 'undefined'
+      && !/case 'sxf-/.test(stripComment(mS89.slice(0)));
   })());
-  check('实测：三段引擎（未选不扣 · 首选定扣 · 末幕结算 grade · 锁落地）', (function () {
+  check('实测：荒野活动走一次性结算（内核实调 · 扣费/落锁/结果齐）', (function () {
     var s = GAME.state, lg = GAME.lordGeneralOf();
     var p = null;
     for (var yy = 3; yy < 200 && !p; yy++) {
@@ -17185,71 +17197,21 @@ console.log('\n===== 74. v89 君主专属 + 全屏荒野剧本 =====');
     if (!p) return false;
     s.jianghu = {};
     lg.energy = 100; GAME.setStaNow(lg, 100);
-    var st0 = GAME.sceneStart(p.x, p.y, lg.id, 'cai');
-    if (!st0.ok || !st0.fx || lg.energy !== 100) return false;
-    var esc = GAME.sceneEscape();
-    if (!esc.ok || !GAME.sceneFx.result.escaped || lg.energy !== 100) return false;   /* 未动身：免费 */
-    if (GAME.jianghuDone(s, p.x, p.y, 'cai', st0.fx.chk.day)) return false;          /* 且不落锁 */
-    GAME.sceneFx = null;
-    var st1 = GAME.sceneStart(p.x, p.y, lg.id, 'cai');
-    if (!GAME.scenePick(0).ok || lg.energy !== 92) return false;                     /* 首选定扣（采集 8） */
-    GAME.scenePick(0);
-    var st3 = GAME.scenePick(0);
-    var fx = GAME.sceneFx;
-    if (!st3.resolved || fx.phase !== 'result' || !fx.result || !fx.result.grade) return false;
-    if (['win', 'partial', 'lose'].indexOf(fx.grade) < 0) return false;
-    if (!GAME.jianghuDone(s, p.x, p.y, 'cai', st1.fx.chk.day)) return false;         /* 结算后锁在 */
-    GAME.sceneFx = null;
-    return true;
+    var day = Math.floor(((s.world && s.world.elapsed) || 0) / 86400);
+    var r = GAME.jianghuDo(p.x, p.y, lg.id, 'cai');
+    if (!r.ok || !r.name || typeof r.text !== 'string' || typeof r.bad !== 'boolean') return false;
+    if (lg.energy !== 92) return false;                                 /* 采集 8：直接扣费 */
+    if (!GAME.jianghuDone(s, p.x, p.y, 'cai', day)) return false;       /* 落锁 */
+    return GAME.jianghuDo(p.x, p.y, lg.id, 'cai').ok === false;         /* 今日已做 → 拒 */
   })());
-  check('实测：可复现（同选择同结果）+ 选择累计修正 + 已动身退出计入', (function () {
-    var s = GAME.state, lg = GAME.lordGeneralOf();
-    var p = null;
-    for (var yy = 3; yy < 200 && !p; yy++) {
-      for (var xx = 3; xx < 200; xx++) {
-        var tl = GAME.map.tile(xx, yy);
-        if (tl && tl.terrain === 'hill' && !GAME.map.fortAt(xx, yy)
-            && GAME.jianghuActsAt(xx, yy).some(function (k) { return k.id === 'tao'; })) { p = { x: xx, y: yy }; break; }
-      }
-    }
-    if (!p) return false;
-    var run = function (picks) {
-      s.jianghu = {};
-      lg.energy = 100; GAME.setStaNow(lg, 100);
-      GAME.sceneStart(p.x, p.y, lg.id, 'tao');
-      picks.forEach(function (i) { GAME.scenePick(i); });
-      var fx = GAME.sceneFx;
-      var out = { name: fx.result.name, text: fx.result.text, mods: JSON.stringify(fx.mods) };
-      GAME.sceneFx = null;
-      return out;
-    };
-    var a = run([0, 0, 0]);
-    var b = run([0, 0, 0]);
-    if (a.name !== b.name || a.text !== b.text) return false;
-    var c = run([0, 1, 0]);
-    if (!(JSON.parse(c.mods).pow > JSON.parse(a.mods).pow)) return false;
-    s.jianghu = {};
-    lg.energy = 100; GAME.setStaNow(lg, 100);
-    GAME.sceneStart(p.x, p.y, lg.id, 'tao');
-    GAME.scenePick(0);
-    var eMid = lg.energy;
-    GAME.sceneEscape();
-    if (lg.energy !== eMid) return false;                                            /* 所耗不返 */
-    if (!GAME.jianghuDone(s, p.x, p.y, 'tao', GAME.sceneFx.chk.day)) return false;   /* 今日计入 */
-    GAME.sceneFx = null;
-    return true;
-  })());
-
   console.log('  --- ③ UI 挂点 ---');
-  check('v89：全屏层与事件挂点齐（#scene-fx · 三案件 · 兜底 one-shot 保留）', (function () {
-    return uS89.indexOf('ui.openSceneFx = function') >= 0
-      && uS89.indexOf("'scene-fx'") >= 0
-      && uS89.indexOf('ui.sceneFxHTML = function') >= 0
-      && uS89.indexOf('ui.closeSceneFx = function') >= 0
-      && mS89.indexOf("case 'sxf-choice'") >= 0
-      && mS89.indexOf("case 'sxf-escape'") >= 0
-      && mS89.indexOf("case 'sxf-exit'") >= 0
-      && uS89.indexOf('GAME.jianghuDo(x, y, gid, actId)') >= 0;
+  /* v90.93：原「全屏层与事件挂点齐」正向断言 → 退役守卫
+     （全屏层与三案件已随剧本移除；one-shot 出口仍在岗）。 */
+  check('v90.93：全屏层与剧本案件零残留（#scene-fx / sxf-* case 全清）', (function () {
+    var u = stripComment(uS89.slice(0)), m = stripComment(mS89.slice(0));
+    return u.indexOf('scene-fx') < 0 && u.indexOf('ui.openSceneFx = function') < 0
+      && m.indexOf('sxf-') < 0
+      && u.indexOf('GAME.jianghuDo(x, y, gid, actId)') >= 0;   /* 底层出口保留 */
   })());
   check('v89：君主专属 UI 收口（切换行只给君主 · 非君主文案 · 调校闸门）', (function () {
     return uS89.indexOf('var isCult = GAME.canCultivate(g);') >= 0
@@ -17259,241 +17221,66 @@ console.log('\n===== 74. v89 君主专属 + 全屏荒野剧本 =====');
   })());
 })();
 
-console.log('\n===== 75. v89.1 剧本视觉化（幕景 / 幕题 / 徽章 / 结算卡） =====');
+console.log('\n===== 75. v89.1 剧本视觉化（v90.93 随全屏剧本退役） =====');
 (function () {
-  var uS1 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'ui.js'), 'utf8');
   var hS1 = fsMod.readFileSync(pathMod.join(__dirname, 'index.html'), 'utf8');
-  var css1 = hS1.match(/<style[^>]*>([\s\S]*?)<\/style>/)[1];
+  var css1 = stripComment(hS1.match(/<style[^>]*>([\s\S]*?)<\/style>/)[1]);
+  var uS1 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'ui.js'), 'utf8');
 
-  console.log('  --- ① 数据：幕景与幕题 ---');
-  check('v89.1：12 活动各有幕景水印 · 36 幕各有幕题（2~8 字）', (function () {
-    var F = DATA.SCENE_FLOW || {};
-    var acts = Object.keys(DATA.LING_ACT || {});
-    if (acts.length !== 12) return false;
-    var n = 0;
-    for (var i = 0; i < acts.length; i++) {
-      var f = F[acts[i]];
-      if (!f || !f.art) return false;
-      for (var j = 0; j < f.stages.length; j++) {
-        var s2 = f.stages[j].s;
-        if (!s2 || s2.length < 2 || s2.length > 8) return false;
-        n++;
-      }
-    }
-    return n === 36;
+  check('v90.93：剧本视觉化样式族整族移除（.sxf-* / #scene-fx / sxf 动画）', (function () {
+    var fams = ['.sxf-wrap', '.sxf-hero', '.sxf-narr', '.sxf-opts', '.sxf-bdg',
+      '.sxf-result', '.sxf-emblem', '.sxf-loot', '.sxf-cost', '.sxf-scene',
+      '.sxf-canvas', '.sxf-spots', '.sxf-sc-tip', '.sxf-timing', '.sxf-tk',
+      '.sxf-mark', '.sxf-opt-ic', '.sxf-tl-cap'];
+    return fams.every(function (t) { return css1.indexOf(t) < 0; })
+      && css1.indexOf('scene-fx') < 0
+      && !/@keyframes sxf(In|Pop|Ping)/.test(css1);
   })());
-
-  console.log('  --- ② 辅助函数（徽章 / 对白） ---');
-  check('v89.1：倾向徽章映射（攻/获/险/稳/缘 · 无修正不出徽章）', (function () {
-    if (!GAME.ui.sxfBadges) return false;
-    if (GAME.ui.sxfBadges({}).length !== 0) return false;
-    var s2 = GAME.ui.sxfBadges({ pow: 1.08, reward: 1.15, wound: 0.6, luck: 0.08 });
-    if (s2.indexOf('攻 +8%') < 0 || s2.indexOf('获 +15%') < 0) return false;
-    if (s2.indexOf('稳 -40%') < 0 || s2.indexOf('缘 +8') < 0 || s2.indexOf('险') >= 0) return false;
-    return GAME.ui.sxfBadges({ wound: 1.2 }).indexOf('险 +20%') >= 0;
-  })());
-  check('v89.1：对白高亮（「」成段 · 先转义后切分）', (function () {
-    if (!GAME.ui.sxfQuote) return false;
-    var s2 = GAME.ui.sxfQuote('甲喝道：「来将通名！」乙笑。');
-    if (s2.indexOf('<span class="sxf-q">「来将通名！」</span>') < 0) return false;
-    if (s2.indexOf('甲喝道：') < 0) return false;
-    return GAME.ui.sxfQuote('<b>「x」</b>').indexOf('&lt;b&gt;') >= 0;
-  })());
-
-  console.log('  --- ③ UI 挂点与样式 ---');
-  check('v89.1：横幅 / 幕题 / 行程 / 徽章 / 结算卡均接线', (function () {
-    return uS1.indexOf('sxf-hero') >= 0 && uS1.indexOf('sxf-hero-art') >= 0
-      && uS1.indexOf('sxf-stage-tt') >= 0 && uS1.indexOf('sxf-timeline') >= 0
-      && uS1.indexOf('sxf-bdg') >= 0 && uS1.indexOf('sxf-emblem') >= 0
-      && uS1.indexOf('fly.art ||') >= 0 && uS1.indexOf('st.s ?') >= 0;
-  })());
-  check('v89.1：样式与动效齐（.sxf-* 五类 + sxfIn / sxfPop）', (function () {
-    return ['.sxf-wrap {', '.sxf-hero {', '.sxf-emblem {', '.sxf-timeline {', '.sxf-bdg {'].every(function (t) {
-      return css1.indexOf(t) >= 0;
-    }) && /@keyframes sxfIn/.test(css1) && /@keyframes sxfPop/.test(css1);
-  })());
-  check('v89.1：markup 用到的 sxf-* 类全部有样式接线（防漏字）', (function () {
-    /* 注意：ui.js 里有的类是「字符串拼接」出来的（class="sxf-dot' + (…) + '"），
-       so 抓到的 token 先按 /^sxf-[a-z-]+$/ 过滤，脏 token（带引号/加号）不算数 */
-    var cls = {};
-    (uS1.match(/class="sxf-[^"]*"/g) || []).forEach(function (m) {
-      m.replace(/class="([^"]+)"/, '$1').split(/\s+/).forEach(function (c) {
-        if (/^sxf-[a-z-]+$/.test(c)) cls[c] = 1;
-      });
-    });
-    var keys = Object.keys(cls);
-    var miss = keys.filter(function (c) { return css1.indexOf('.' + c) < 0; });
-    return keys.length >= 30 && miss.length === 0;
+  check('v90.93：剧本 UI 出口整族移除（ui.sxf* / *SceneFx / SXF_* 常量）', (function () {
+    var gone = ['sxfBadges', 'sxfQuote', 'sxfOptIcon', 'sxfStageMode', 'sxfTimingGrade',
+      'sxfTimingPos', 'sxfTimingStart', 'sxfTimingClear', 'sxfTimingStop',
+      'openSceneFx', 'renderSceneFx', 'sceneFxHTML', 'paintSceneFx', 'closeSceneFx'];
+    return gone.every(function (k) { return typeof GAME.ui[k] === 'undefined'; })
+      && GAME.ui.SXF_KIND === undefined && GAME.ui.SXF_ANCHORS === undefined
+      && GAME.ui._sceneFx === undefined
+      && stripComment(uS1).indexOf('ui.openSceneFx') < 0;
   })());
 })();
 
-console.log('\n===== 76. v89.2 场景化（场景画布 / 热点点选 / 时机条） =====');
+console.log('\n===== 76. v89.2 场景化（v90.93 随全屏剧本退役） =====');
 (function () {
   var uS2 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'ui.js'), 'utf8');
   var mS2 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'main.js'), 'utf8');
-  var hS2 = fsMod.readFileSync(pathMod.join(__dirname, 'index.html'), 'utf8');
-  var css2 = hS2.match(/<style[^>]*>([\s\S]*?)<\/style>/)[1];
+  var mpS2 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'map.js'), 'utf8');
 
-  console.log('  --- ① 场景插画（12 幅全可绘制） ---');
-  check('v89.2：paintScene 出口 + 12 场景名册', (function () {
-    return !!GAME.map.paintScene && (GAME.map.SCENE_KEYS || []).length === 12;
+  check('v90.93：场景画布出口整族移除（paintScene / SCENE_KEYS / SCENE_W|H）', (function () {
+    var mp = stripComment(mpS2);
+    return GAME.map.paintScene === undefined && GAME.map.SCENE_KEYS === undefined
+      && GAME.map.SCENE_W === undefined && GAME.map.SCENE_H === undefined
+      && mp.indexOf('SCENE_PAINT') < 0 && mp.indexOf('paintScene') < 0;
   })());
-  check('v89.2：12 幅场景全部绘制无异常（记录式桩 ctx）', (function () {
-    function mkCtx2() {
-      var grad = { addColorStop: function () {} };
-      var c2 = {};
-      ['beginPath', 'closePath', 'moveTo', 'lineTo', 'quadraticCurveTo', 'bezierCurveTo',
-        'arc', 'ellipse', 'rect', 'fill', 'stroke', 'fillRect', 'strokeRect', 'clearRect',
-        'save', 'restore', 'translate', 'scale', 'rotate', 'setTransform', 'clip',
-        'fillText', 'strokeText', 'setLineDash'].forEach(function (n) { c2[n] = function () {}; });
-      c2.measureText = function () { return { width: 8 }; };
-      c2.createLinearGradient = function () { return grad; };
-      c2.createRadialGradient = function () { return grad; };
-      return c2;
-    }
-    var all = true;
-    (GAME.map.SCENE_KEYS || []).forEach(function (k) {
-      try { if (GAME.map.paintScene(mkCtx2(), k, 123) !== true) all = false; }
-      catch (e) { all = false; }
-    });
-    return all && GAME.map.paintScene(null, 'lake', 1) === false;
-  })());
-  check('v89.2：每个活动都有一幅对应的场景画（scene × 12 · 全名册内）', (function () {
-    var F = DATA.SCENE_FLOW || {}, keys = Object.keys(DATA.LING_ACT || {});
-    var names = GAME.map.SCENE_KEYS || [];
-    var n = 0;
-    keys.forEach(function (k) { if (F[k] && F[k].scene && names.indexOf(F[k].scene) >= 0) n++; });
-    return n === 12;
-  })());
-
-  console.log('  --- ② 时机幕（三档结局） ---');
-  check('v89.2：12 处时机幕（t2 + 三档：首档增益 / 末档折损）', (function () {
-    var F = DATA.SCENE_FLOW || {}, keys = Object.keys(DATA.LING_ACT || []);
-    var n = 0, bad = 0;
-    keys.forEach(function (k) {
-      var f = F[k]; if (!f) return;
-      f.stages.forEach(function (st) {
-        if (!st.t2) return;
-        n++;
-        var g0 = st.o[0].e || {}, g2 = st.o[2].e || {};
-        var up = (g0.pow > 1) || (g0.reward > 1);
-        var down = (g2.pow < 1) || (g2.reward < 1);
-        if (st.o.length !== 3 || !up || !down) bad++;
-      });
-    });
-    return n === 12 && bad === 0;
-  })());
-  check('v89.2：时机判定纯函数（正中 0.5 → 0 · 其余 → 1 · 边缘 → 2）', (function () {
-    var f = GAME.ui.sxfTimingGrade;
-    if (!f) return false;
-    return f(0.5) === 0 && f(0.44) === 0 && f(0.56) === 0
-      && f(0.35) === 1 && f(0.7) === 1 && f(0.1) === 2 && f(0.9) === 2;
-  })());
-
-  console.log('  --- ③ 渲染与接线（三种交互各就各位） ---');
-  check('v89.2：三种交互分别渲染（第 1 幕热点 / 次幕按钮 / 末幕时机条）', (function () {
-    var s2 = GAME.state, lg = GAME.lordGeneralOf();
-    var p = null;
-    for (var yy = 3; yy < 200 && !p; yy++) {
-      for (var xx = 3; xx < 200; xx++) {
-        var tl = GAME.map.tile(xx, yy);
-        if (tl && tl.terrain === 'hill' && !GAME.map.fortAt(xx, yy)
-            && GAME.jianghuActsAt(xx, yy).some(function (k) { return k.id === 'tao'; })) { p = { x: xx, y: yy }; break; }
-      }
-    }
-    if (!p) return false;
-    s2.jianghu = {};
-    lg.energy = 100; GAME.setStaNow(lg, 100);
-    var st0 = GAME.sceneStart(p.x, p.y, lg.id, 'tao');
-    if (!st0.ok) return false;
-    var h0 = GAME.ui.sceneFxHTML(GAME.sceneFx);
-    var isSpot = h0.indexOf('sxf-canvas') >= 0 && h0.indexOf('sxf-spots') >= 0
-      && h0.indexOf('sxf-spot-lb') >= 0 && (h0.match(/data-action="sxf-choice"/g) || []).length === 3
-      && h0.indexOf('点画中之处') >= 0;
-    GAME.scenePick(0);
-    var h1 = GAME.ui.sceneFxHTML(GAME.sceneFx);
-    var isChoice = h1.indexOf('sxf-opt-ic') >= 0 && h1.indexOf('sxf-spots') < 0
-      && (h1.match(/data-action="sxf-choice"/g) || []).length === 3;
-    GAME.scenePick(0);
-    var h2 = GAME.ui.sceneFxHTML(GAME.sceneFx);
-    var isTiming = h2.indexOf('sxf-timing') >= 0 && h2.indexOf('sxf-tk') >= 0
-      && h2.indexOf('sxf-mark') >= 0 && h2.indexOf('data-action="sxf-stop"') >= 0
-      && h2.indexOf('击鼓！') >= 0 && h2.indexOf('sxf-spots') < 0;
-    GAME.sceneFx = null;
-    return isSpot && isChoice && isTiming;
-  })());
-  check('v89.2：sxf-stop 接线 + 绘制/计时器收口', (function () {
-    return mS2.indexOf("case 'sxf-stop'") >= 0 && mS2.indexOf('ui.sxfTimingStop') >= 0
-      && uS2.indexOf('ui.sxfTimingClear') >= 0 && uS2.indexOf('ui.paintSceneFx') >= 0
-      && uS2.indexOf('GAME.map.paintScene') >= 0
-      && /ui\.sxfTimingStop = function \(pos\) \{\r?\n    var fx = ui\._sceneFx;/.test(uS2);
-  })());
-  check('v89.2：样式齐（画布 / 热点 / 时机条 / 图标 + sxfPing）', (function () {
-    return ['.sxf-scene {', '.sxf-canvas {', '.sxf-spots {', '.sxf-spot-hit {',
-      '.sxf-tk {', '.sxf-mark {', '.sxf-opt-ic {', '.sxf-sc-tip {'].every(function (t) {
-      return css2.indexOf(t) >= 0;
-    }) && /@keyframes sxfPing/.test(css2);
+  check('v90.93：时机条与剧本动作接线移除（case sxf-stop / ui.sxfTimingStop 零残留）', (function () {
+    var u = stripComment(uS2), m = stripComment(mS2);
+    return m.indexOf('sxf-stop') < 0 && m.indexOf('ui.sxfTimingStop') < 0
+      && u.indexOf('ui.sxfTimingClear') < 0 && u.indexOf('ui.paintSceneFx') < 0
+      && u.indexOf('GAME.map.paintScene') < 0 && u.indexOf('sxf-canvas') < 0;
   })());
 })();
 
-console.log('\n===== 77. v89.3 文案统一（灵物志 / 雅名 / 门类章） =====');
+console.log('\n===== 77. v89.3 文案统一（v90.93 随全屏剧本退役） =====');
 (function () {
-  var uS3 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'ui.js'), 'utf8');
-  var css3 = fsMod.readFileSync(pathMod.join(__dirname, 'index.html'), 'utf8').match(/<style[^>]*>([\s\S]*?)<\/style>/)[1];
-
-  console.log('  --- ① 灵物命名（鹿非鹿 · 鱼非鱼） ---');
-  check('v89.3：灵物名就位（肥鱼 / 白鹿 / 灵蛇 / 良驹）', (function () {
-    var f = DATA.SCENE_FLOW;
-    var s1 = f.lake_scene.stages[1].s + f.lake_scene.stages[1].t;
-    var s2 = f.forest_scene.stages[1].s + f.forest_scene.stages[1].t;
-    var s3 = f.cai.stages[1].t;
-    var s4 = f.caoyuan_scene.stages[0].t + f.caoyuan_scene.stages[1].t;
-    return s1.indexOf('肥鱼') >= 0 && s2.indexOf('白鹿') >= 0
-      && s3.indexOf('灵蛇') >= 0 && s4.indexOf('良驹') >= 0;
-  })());
-  check('v89.3：灵物旧称清退（花蛇 / 野物 / 大物 / 兽迹 / 小鱼 / 烈马 / 马群 / 良马）', (function () {
-    var d3 = JSON.stringify(DATA.SCENE_FLOW) + JSON.stringify(DATA.LING_ACT);
-    return ['花蛇', '野物', '大物', '兽迹', '小鱼', '烈马', '马群', '良马'].every(function (w3) {
-      return d3.indexOf(w3) < 0;
-    });
-  })());
-
-  console.log('  --- ② 活动命名（通用 2 字 · 招牌 4 字 · 雅名与门类章） ---');
-  check('v89.3：地形招牌名统一 4 字（垂钓 → 临湖垂钓）', (function () {
+  check('v89.3（保留）：活动命名口径（地形招牌 4 字 · 通用 2 字）', (function () {
     var keys = ['hill_scene', 'lake_scene', 'zhaoze_scene', 'desert_scene', 'forest_scene', 'caoyuan_scene'];
-    return keys.every(function (k3) { return DATA.LING_ACT[k3].name.length === 4; })
+    return keys.every(function (k) { return DATA.LING_ACT[k] && DATA.LING_ACT[k].name.length === 4; })
       && DATA.LING_ACT.lake_scene.name === '临湖垂钓'
-      && ['tao', 'qie', 'shi', 'cai', 'xiu', 'bai'].every(function (k3) { return DATA.LING_ACT[k3].name.length === 2; });
+      && ['tao', 'qie', 'shi', 'cai', 'xiu', 'bai'].every(function (k) {
+        return DATA.LING_ACT[k] && DATA.LING_ACT[k].name.length === 2; });
   })());
-  check('v89.3：12 活动门类章（cat 2 字）与雅名（alias 4 字）齐全且唯一', (function () {
-    var keys = ['tao', 'qie', 'shi', 'cai', 'xiu', 'bai', 'hill_scene', 'lake_scene', 'zhaoze_scene', 'desert_scene', 'forest_scene', 'caoyuan_scene'];
-    var cats = {}, aliases = {};
-    for (var i3 = 0; i3 < keys.length; i3++) {
-      var a3 = DATA.LING_ACT[keys[i3]];
-      if (!a3 || !a3.cat || !a3.alias) return false;
-      if (a3.cat.length !== 2 || a3.alias.length !== 4) return false;
-      if (cats[a3.cat] || aliases[a3.alias]) return false;
-      cats[a3.cat] = 1; aliases[a3.alias] = 1;
-    }
-    return true;
-  })());
-
-  console.log('  --- ③ 渲染接线（横幅雅名 + 样式） ---');
-  check('v89.3：横幅渲染雅名与门类章（临湖垂钓 · 金鳞之约 · 垂钓 —— v89.216 门类章随换皮改名）', (function () {
-    var lg3 = GAME.lordGeneralOf();
-    var fx3 = { chk: { act: DATA.LING_ACT.lake_scene, gen: lg3, x: 3, y: 3, day: 0, lv: 1 },
-      fly: DATA.SCENE_FLOW.lake_scene, actId: 'lake_scene',
-      stage: 0, picks: [], mods: { pow: 1, reward: 1, wound: 1, luck: 0 },
-      spent: false, phase: 'stage', result: null, grade: null };
-    var h3 = GAME.ui.sceneFxHTML(fx3);
-    return h3.indexOf('sxf-hero-alias') >= 0 && h3.indexOf('金鳞之约') >= 0
-      && h3.indexOf('临湖垂钓') >= 0 && h3.indexOf('不似凡鱼') >= 0
-      && /sxf-hero-kind[^>]*>垂钓</.test(h3);
-  })());
-  check('v89.3：样式与接线齐（.sxf-hero-alias + ui 消费 a.cat / a.alias）', (function () {
-    return css3.indexOf('.sxf-hero-alias {') >= 0
-      && uS3.indexOf('sxf-hero-alias') >= 0
-      && uS3.indexOf('a.cat || ui.SXF_KIND[a.kind]') >= 0;
+  check('v90.93：横幅专属文案层退役（cat 门类章 / alias 雅名 零残留）', (function () {
+    var A = DATA.LING_ACT || {}, keys = Object.keys(A);
+    return keys.length === 12 && keys.every(function (k) {
+      return A[k].cat === undefined && A[k].alias === undefined;
+    }) && DATA.SCENE_FLOW === undefined;
   })());
 })();
 
@@ -17847,10 +17634,14 @@ console.log('\n===== 78. v89.4 野地生态（逐地分布 · 概率出现 · �
       && hi80.indexOf('sxf-clue') < 0;
   })());
 
-  check('§80⑥ 保留面在岗：场景机（荒野活动共用）与荒野弹窗不受伤', (function () {
-    return typeof GAME.sceneBegin === 'function' && typeof GAME.sceneStart === 'function'
-      && typeof GAME.scenePick === 'function' && typeof GAME.jianghuCheck === 'function'
-      && typeof GAME.jianghuRoll === 'function'
+  check('§80⑥ 保留面在岗：荒野内核与荒野弹窗不受伤（v90.93：场景机随全屏剧本退役）', (function () {
+    /* v90.93（老板「去掉纪事剧本」中的「全屏剧本」）：原共用面「场景机」三出口已随剧本整条退役，
+       本守卫按 §0.7 翻转为**双侧口径** —— 保留面在岗（荒野内核 + 弹窗入口） + 退役面零残留。 */
+    return typeof GAME.jianghuCheck === 'function' && typeof GAME.jianghuRoll === 'function'
+      && typeof GAME.jianghuDo === 'function'
+      && typeof GAME.sceneBegin === 'undefined' && typeof GAME.sceneStart === 'undefined'
+      && typeof GAME.scenePick === 'undefined' && typeof GAME.sceneEscape === 'undefined'
+      && typeof GAME.sceneFx === 'undefined'
       && /ui\.doJianghu = function/.test(u80);
   })());
 
@@ -17913,11 +17704,11 @@ console.log('\n===== 78. v89.4 野地生态（逐地分布 · 概率出现 · �
       && typeof G.story.evaluateTitle === 'undefined'
       && st.indexOf('chronicleAdd') < 0 && st.indexOf('onActionDone') < 0;
   })());
-  check('⑦ 保留下来的世界层仍在岗（天时 / 年号 / 羁绊 / 奇遇 / 战力尺）', (function () {
+  check('⑦ 保留下来的世界层仍在岗（天时 / 羁绊 / 奇遇 / 战力尺；v90.93 年号项已退役）', (function () {
     return typeof G.story.tick === 'function' && typeof G.story.combatMod === 'function'
       && typeof G.story.prodMult === 'function' && typeof G.story.skyLine === 'function'
       && typeof G.story.encounterRoll === 'function' && typeof G.story.troopPower === 'function'
-      && typeof G.story.settleEraGoal === 'function' && (G.DATA.BONDS || []).length >= 8;
+      && typeof G.story.settleEraGoal === 'undefined' && (G.DATA.BONDS || []).length >= 8;
   })());
   check('⑧ 数字键续号已收窄：Shift+1~3（公文/自动/设置）', (function () {
     var m = sc81(m81);
@@ -26440,13 +26231,17 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       _r130b = '外壳' + (okHtml ? '✓' : '✗') + ' 遮罩/浮层' + (okAbs ? '✓' : '✗') + ' k公式' + (okK ? '✓' : '✗') + ' 无裸vh' + (okNoVh ? '✓' : '✗');
       return okHtml && okAbs && okK && okNoVh;
     })(), _r130b);
-    check('§130② 浮层换算出口（toCanvasXY / layerRoot / canvasSize）+ 动态层挂画布坐标系', (function () {
+    check('§130② 浮层换算出口（toCanvasXY / layerRoot / canvasSize）+ 动态层挂画布坐标系（v90.93：剧本浮层退役 · 消费 4→3）', (function () {
       var ok = /ui\.toCanvasXY = function/.test(u130) && /ui\.layerRoot = function/.test(u130)
         && /ui\.canvasSize = function/.test(u130) && /GAME\.appKOf = function/.test(m130c);
-      var okUse = (u130.match(/ui\.layerRoot\(\)/g) || []).length >= 4
-        && /ui\.toCanvasXY\(r\.left \+ r\.width \/ 2, r\.top\)/.test(u130);
+      /* v90.93：第 4 个消费点原在全屏剧本画布层（ui.renderSceneFx），随剧本整条退役 → 下限 4→3；
+         同步加「退役面零残留」守卫，防止门槛被无声放水。 */
+      var useN = (u130.match(/ui\.layerRoot\(\)/g) || []).length;
+      var okUse = useN >= 3
+        && /ui\.toCanvasXY\(r\.left \+ r\.width \/ 2, r\.top\)/.test(u130)
+        && stripComment(u130).indexOf('renderSceneFx') < 0;
       var okMap = /GAME\.appKOf \? GAME\.appKOf\(\) : 1/.test(fs130.readFileSync(p130.join(__dirname, 'js', 'map.js'), 'utf8'));
-      _r130b = '出口' + (ok ? '✓' : '✗') + ' 消费' + (u130.match(/ui\.layerRoot\(\)/g) || []).length + '处 · map ' + (okMap ? '✓' : '✗');
+      _r130b = '出口' + (ok ? '✓' : '✗') + ' 消费' + useN + '处 · map ' + (okMap ? '✓' : '✗');
       return ok && okUse && okMap;
     })(), _r130b);
 
@@ -29394,7 +29189,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       check('§177⑥b main.js：hearts-boost / hearts-soothe 动作 + doSetTax 重算',
         mS.indexOf("case 'hearts-boost'") >= 0 && mS.indexOf("case 'hearts-soothe'") >= 0
         && mS.indexOf('GAME.applyHearts()') >= 0);
-      check('§177⑥c 君主面板考验清单在册（_trialHTML177 · 五关逐条）',
+      check('§177⑥c 君主面板考验清单在册（_trialHTML177 · 四关逐条 · v90.92 政关退役）',
         uS.indexOf('_trialHTML177') >= 0 && uS.indexOf('突破考验（第') >= 0);
       check('§177⑥d HEARTS 表在册（安抚上限/衰减/两措施）',
         DATA.HEARTS.comfortCap === 50 && DATA.HEARTS.decayPerHour === 0.5
@@ -30839,11 +30634,14 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       } catch (e) { return false; }
       finally { G.state = bk; }
     })());
-    check('§191⑤e story 科技求和不再依赖已删的任务出口（内联等价 · 防「引用不存在的成员」回魂）', (function () {
-      /* ⚠️ story.js 的墓碑注释里写着 GAME.questMetric —— 必须先剥注释再查。 */
+    check('§191⑤e story 侧零任务出口依赖（v90.93：内联科技求和随年号纪元一并退役）', (function () {
+      /* ⚠️ story.js 的墓碑注释里写着 GAME.questMetric —— 必须先剥注释再查。
+         原断言要求“内联等价实现在位（c.techs）”，但该内联处属于
+         eraGoalProgress（年号“时代之志”）—— 随年号纪元整段删除，
+         story 侧不再有科技求和（聚合口径仍在 systems.techTotal / techLevel，见 ⑤d）。 */
       var y191 = stripComment(fs191.readFileSync(path191.join(__dirname, 'js', 'story.js'), 'utf8'));
       return y191.indexOf('GAME.questMetric') < 0 && y191.indexOf('GAME.statOf') < 0
-        && y191.indexOf('c.techs') >= 0;
+        && y191.indexOf('c.techs') < 0 && y191.indexOf('eraGoalProgress') < 0;
     })());
 
     /* ⑥ 主城 20 级 + 尾段价 + 面板按城 */
@@ -32181,10 +31979,35 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       } catch (e) { return false; }
       finally { G.offlineCatchup = bkF; G._loopLastAt = bkAt; G.state = bkSt; }
     })());
-    check('§199④ 版本标识：GAME.VERSION 在册 + 设置页显示 + 强制刷新指引', (function () {
-      return /GAME\.VERSION = 'v89\.240'/.test(mS199)   /* v89.223：版本号每轮迭代更新（本条随轮升级） */
+    check('§199④ 版本标识：GAME.VERSION 在册 + 格式合法 + 设置页显示 + 强制刷新指引', (function () {
+      /* v90.94：由「锁死字面量 v89.240」改为「锁格式」—— 升版本不必再改测试
+         （先例 §139.5 / §229c⑧：历史断言放宽为 v\d+\.\d+）。
+         具体版本号的自洽改由 §199⑥ 保证（必须已录进需求档案）。 */
+      return /GAME\.VERSION = 'v\d+\.\d+';/.test(mS199)
         && uS199.indexOf('🧩 运行版本') >= 0
         && uS199.indexOf('Ctrl + F5') >= 0;
+    })());
+    check('§199⑤ 发版脚本在岗（版本三连的唯一出口 · 防「机制蒸发」）', (function () {
+      /* v90.94（老板「形成一个更加稳健的解决方案」）：`?v=` 只在**值变化**时才击穿浏览器缓存，
+         值不变 = 浏览器继续吃旧文件 —— 这一步只能靠机制，不能靠人记得按 Ctrl+F5
+         （v89.77 老板连报三轮「还是不对」的根因）。
+         旧脚本躺在 .workbuddy/tmp/（会被清理）且有 3 处缺陷，故本条钉「新脚本在岗且已修好」。 */
+      var fs5 = require('fs'), p5 = require('path');
+      var f5 = p5.join(__dirname, '.workbuddy', 'tools', 'patch', 'bump_version.py');
+      if (!fs5.existsSync(f5)) return false;
+      var s5 = fs5.readFileSync(f5, 'utf8');
+      return s5.indexOf('def find_root') >= 0     /* 自定位仓库根（不写死路径） */
+        && s5.indexOf('未写盘') >= 0               /* 自检未过 → 不落盘 */
+        && s5.indexOf('(?:js|story)') < 0          /* 已去掉漏 vendor/three.min.js 的前缀约束 */
+        && s5.indexOf('GAME.VERSION') >= 0         /* 代管第 ① 处 */
+        && s5.indexOf('MIN_TAGS') >= 0;            /* 断言带下限（防平凡解） */
+    })());
+    check('§199⑥ 版本三处自洽：GAME.VERSION 必须已录进需求档案（防「代码升了、档案没升」）', (function () {
+      var fs6 = require('fs'), p6 = require('path');
+      var m6 = /GAME\.VERSION = '(v\d+\.\d+)';/.exec(mS199);
+      if (!m6) return false;
+      var arc6 = fs6.readFileSync(p6.join(__dirname, '需求档案.md'), 'utf8');
+      return arc6.indexOf(m6[1]) >= 0;
     })());
   })();
 
@@ -34252,7 +34075,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     check('§223⑤ 版本与档案在册（v89.223 · 老板原文关键句逐字）', (function () {
       var a = fs223.readFileSync(path223.join(__dirname, '需求档案.md'), 'utf8');
       var m = rd223('js/main.js');
-      return /GAME\.VERSION = 'v89\.\d+'/.test(m)
+      return /GAME\.VERSION = 'v\d+\.\d+'/.test(m)
         && a.indexOf('v89.223') >= 0 && a.indexOf('兵牌简称') >= 0
         && a.indexOf('新的类似替换需求无需进一步批准') >= 0;
     })(), '');
@@ -34379,7 +34202,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var m = RAW224.main;
       var a = fs224.readFileSync(path224.join(__dirname, '需求档案.md'), 'utf8');
       var mp = fs224.readFileSync(path224.join(__dirname, 'docs', '废土术语映射表.md'), 'utf8');
-      return /GAME\.VERSION = 'v89\.\d+'/.test(m)
+      return /GAME\.VERSION = 'v\d+\.\d+'/.test(m)
         && a.indexOf('v89.224') >= 0 && a.indexOf('英雄') >= 0 && a.indexOf('基因实验室') >= 0
         && a.indexOf('机甲部件') >= 0 && a.indexOf('从根子上是废土') >= 0
         && mp.indexOf('唯一映射源') >= 0 && mp.indexOf('颅脑强化') >= 0;
@@ -34721,7 +34544,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
 
     /* ⑥ 版本与档案在册（v89.228 · 老板原话 + 映射表） */
     check('§228⑥ 版本与档案在册（v89.228 · 老板原话 + 映射表）', (function () {
-      return /GAME\.VERSION = 'v89\.\d+'/.test(m228)
+      return /GAME\.VERSION = 'v\d+\.\d+'/.test(m228)
         && a228.indexOf('v89.228') >= 0 && a228.indexOf('旧币') >= 0
         && a228.indexOf('幸存者') >= 0 && a228.indexOf('钢锭战刀') >= 0
         && mp228.indexOf('旧币') >= 0 && mp228.indexOf('遗落战刃') >= 0;
@@ -34866,7 +34689,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     /* ⑧ 版本与档案在册（本段自证 · 防"段被删空也全绿"） */
     check('§229c⑧ 版本与档案在册（v89.229 · 老板原话关键句逐字）', (function () {
       var self2 = self229.slice(0, self229.indexOf('§229c'));
-      return /GAME\.VERSION = 'v89\.\d+'/.test(m229)   /* 现行版本号由 §199④ 逐轮锁（v89.230 起本处置宽松 · 只证"在册"） */
+      return /GAME\.VERSION = 'v\d+\.\d+'/.test(m229)   /* 现行版本号由 §199④ 锁格式（同 §199⑥ 档案自洽）（v89.230 起本处置宽松 · 只证"在册"） */
         && a229.indexOf('v89.229') >= 0 && a229.indexOf('兵种重构') >= 0
         && a229.indexOf('泰坦机甲') >= 0 && self2.length > 100000;
     })());
@@ -34946,7 +34769,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     /* ⑤ 版本与档案在册（v89.230 · 老板原话关键句逐字） */
     check('§230⑤ 版本与档案在册（v89.230 · 老板原话逐字）', (function () {
       var self2 = self230.slice(0, self230.indexOf('§230'));
-      return /GAME\.VERSION = 'v89\.\d+'/.test(m230)   /* v89.231：现行版本由 §199④ 逐轮锁（同 §229c⑧ 口径 · 本处置宽松只证在册） */
+      return /GAME\.VERSION = 'v\d+\.\d+'/.test(m230)   /* v89.231：现行版本由 §199④ 锁格式（同 §199⑥ 档案自洽）（同 §229c⑧ 口径 · 本处置宽松只证在册） */
         && a230.indexOf('v89.230') >= 0
         && a230.indexOf('确保链路通畅') >= 0
         && a230.indexOf('方便挂载/去除特定兵种') >= 0
@@ -35088,7 +34911,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
 
     /* ⑤ 版本与档案在册 */
     check('§231⑤ 版本与档案在册（v89.231 · 老板原话 + 映射表「科技体系」节）', (function () {
-      var ok = /GAME\.VERSION = 'v89\.\d+'/.test(main231)
+      var ok = /GAME\.VERSION = 'v\d+\.\d+'/.test(main231)
         && a231.indexOf('v89.231') >= 0
         && a231.indexOf('调整科技体系') >= 0
         && mp231.indexOf('科技体系') >= 0 && mp231.indexOf('募兵整训') >= 0
@@ -35183,12 +35006,12 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     /* ⑤ 版本与档案在册（v89.233） */
     check('§233⑤ 版本与档案在册（v89.233 · 老板四词批复逐字）', (function () {
       var arc = fs233.readFileSync(path233.join(__dirname, '需求档案.md'), 'utf8');
-      /* v89.234：「当前版本号」由 §199④ 逐轮锁（§139.5 口径）；
+      /* v89.234：「当前版本号」由 §199④ 锁格式（同 §199⑥ 档案自洽）（§139.5 口径）；
          本条只查「v89.233 的交付档案在册」（历史记录不许丢）。 */
-      var ok = /GAME\.VERSION = 'v89\.\d+'/.test(raw['main.js'])
+      var ok = /GAME\.VERSION = 'v\d+\.\d+'/.test(raw['main.js'])
         && arc.indexOf('v89.233') >= 0
         && arc.indexOf('语义描述改') >= 0;
-      window.__r233e = 'ver=' + /GAME\.VERSION = 'v89\.\d+'/.test(raw['main.js'])
+      window.__r233e = 'ver=' + /GAME\.VERSION = 'v\d+\.\d+'/.test(raw['main.js'])
         + ' 档案=' + (arc.indexOf('v89.233') >= 0);
       return ok;
     })(), window.__r233e || '');
@@ -35308,10 +35131,10 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     /* ⑥ 版本与档案在册（v89.235 · 老板三条逐字） */
     check('§235⑥ 版本与档案在册（v89.235 · 老板三条逐字）', (function () {
       var arc = fs235.readFileSync(path235.join(__dirname, '需求档案.md'), 'utf8');
-      var ok = /GAME\.VERSION = 'v89\.\d+'/.test(m235)   /* v89.238：现行版本号由 §199④ 逐轮锁（同 §229c⑧ 口径 · 本处置宽松只证"在册"） */
+      var ok = /GAME\.VERSION = 'v\d+\.\d+'/.test(m235)   /* v89.238：现行版本号由 §199④ 锁格式（同 §199⑥ 档案自洽）（同 §229c⑧ 口径 · 本处置宽松只证"在册"） */
         && arc.indexOf('v89.235') >= 0
         && arc.indexOf('政务厅等级位置不对') >= 0;
-      window.__r235f = 'ver=' + /GAME\.VERSION = 'v89\.\d+'/.test(m235)
+      window.__r235f = 'ver=' + /GAME\.VERSION = 'v\d+\.\d+'/.test(m235)
         + ' 档案=' + (arc.indexOf('v89.235') >= 0);
       return ok;
     })(), window.__r235f || '');
@@ -35392,7 +35215,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     check('§236⑤ 版本与档案在册（v89.236 · 老板原话逐字）', (function () {
       var m236 = fs236.readFileSync(path236.join(__dirname, 'js', 'main.js'), 'utf8');
       var a236 = fs236.readFileSync(path236.join(__dirname, '需求档案.md'), 'utf8');
-      return /GAME\.VERSION = 'v89\.\d+'/.test(m236)
+      return /GAME\.VERSION = 'v\d+\.\d+'/.test(m236)
         && a236.indexOf('v89.236') >= 0
         && a236.indexOf('对文档（内容）进行分类，整合') >= 0
         && a236.indexOf('资产类的梳理保留') >= 0
@@ -35414,7 +35237,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     check('§238① 版本与档案在册（v89.238 · 老板原话逐字）', (function () {
       var m238 = fs238.readFileSync(path238.join(__dirname, 'js', 'main.js'), 'utf8');
       var a238 = fs238.readFileSync(path238.join(__dirname, '需求档案.md'), 'utf8');
-      return /GAME\.VERSION = 'v89\.\d+'/.test(m238)
+      return /GAME\.VERSION = 'v\d+\.\d+'/.test(m238)
         && a238.indexOf('v89.238') >= 0
         && a238.indexOf('装备那里那个小人一样的简陋图去掉') >= 0
         && a238.indexOf('背景调亮') >= 0;
@@ -35435,7 +35258,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     check('§239① 版本与档案在册（v89.239 · 老板原话逐字）', (function () {
       var m239 = fs239.readFileSync(path239.join(__dirname, 'js', 'main.js'), 'utf8');
       var a239 = fs239.readFileSync(path239.join(__dirname, '需求档案.md'), 'utf8');
-      return /GAME\.VERSION = 'v89\.\d+'/.test(m239)
+      return /GAME\.VERSION = 'v\d+\.\d+'/.test(m239)
         && a239.indexOf('v89.239') >= 0
         && a239.indexOf('不够亮') >= 0
         && a239.indexOf('头像链路复核') >= 0;
@@ -35465,7 +35288,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     check('§240① 版本与档案在册（v89.240 · 老板原话逐字）', (function () {
       var m240 = fs240.readFileSync(path240.join(__dirname, 'js', 'main.js'), 'utf8');
       var a240 = fs240.readFileSync(path240.join(__dirname, '需求档案.md'), 'utf8');
-      return /GAME\.VERSION = 'v89\.\d+'/.test(m240)
+      return /GAME\.VERSION = 'v\d+\.\d+'/.test(m240)
         && a240.indexOf('v89.240') >= 0
         && a240.indexOf('再调亮点') >= 0
         && a240.indexOf('三档调亮') >= 0;

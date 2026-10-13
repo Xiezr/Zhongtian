@@ -880,7 +880,7 @@
     if (btnC) btnC.classList.toggle('hidden', !meta);
     if (note) {
       note.innerHTML = meta
-        ? ('上一次：' + U.escape(meta.name) + '　' + meta.era + '·' + meta.yearName + '年　城' + meta.cities + '座　兵 ' + U.fmt(meta.army) + '<br><span style="opacity:.7">' + meta.savedAt + '</span>')
+        ? ('上一次：' + U.escape(meta.name) + '　第 ' + (meta.year || 1) + ' 年　城' + meta.cities + '座　兵 ' + U.fmt(meta.army) + '<br><span style="opacity:.7">' + meta.savedAt + '</span>')
         : '尚无存档，输入君主之名开始新的征程';
       if (meta && meta.savedAt && GAME.metaTimeText) {
         note.innerHTML = note.innerHTML.replace(String(meta.savedAt), GAME.metaTimeText(meta.savedAt));
@@ -907,8 +907,8 @@
       '<div class="note">读取后，**当前进度会被这一份完全替换**。' +
         '如果当前进度还没存过，返回值前先「存入」一个空槽位。</div>' +
       (m ? '<div class="attr"><span class="k">君主</span><span class="v">' + U.escape(m.name) + '</span></div>' +
-           '<div class="attr"><span class="k">进度</span><span class="v">' + (m.era || '') + '·' + (m.yearName || '') +
-             '年　城 ' + m.cities + '　将 ' + m.gens + '</span></div>' +
+           '<div class="attr"><span class="k">进度</span><span class="v">第 ' + (m.year || 1) +
+             ' 年　城 ' + m.cities + '　将 ' + m.gens + '</span></div>' +
            '<div class="attr"><span class="k">存档时间</span><span class="v">' +
              (GAME.metaTimeText ? GAME.metaTimeText(m.savedAt) : m.savedAt) + '</span></div>'
          : '<div class="note">这个槽位是空的。</div>') +
@@ -1343,7 +1343,7 @@
    * ------------------------------------------------------------
    * 目标（v89.208 梳理点名的"0 动作面系统"可发现性）：把"由环境驱动、玩家不会
    * 主动去玩"的三类**可报状态**显示在顶栏天时块右侧：来犯 / 民心低 / 逾溢折损。
-   * （天候不进 chips —— 「天时」行本来就显示 季节/天候/年号，同屏双显违"不重复"原则。）
+   * （天候不进 chips —— 「天时」行本来就显示 年序/季节/天候，同屏双显违"不重复"原则。）
    * 规则：**默认 / 正常态不显示**（没有消息就是正常 —— 防信息噪音）；只读现成
    * 唯一出口、零新状态；点 chip = 跳到对应页 / 面板（data-action=sky-go）。
    * 优先级（超 3 枚按此截断）：① 来犯 ② 民心低 ③ 逾溢。
@@ -1393,7 +1393,7 @@
             + '%，再败即尽 · 点击查看该城' });
       }
     } catch (e2) { }
-    /* ③ 天候**不进 chips**（v89.210 落地后调整）：「天时」行本就显示 季节/天候/年号，
+    /* ③ 天候**不进 chips**（v89.210 落地后调整）：「天时」行本就显示 年序/季节/天候，
        同屏双显违"不重复"原则 —— 原 sky-weather 档位一并退役（CSS 同步撤）。
        余下三类可报状态：来犯 / 民心低 / 逾溢（至多 3 枚 = 全部可同显）。 */
     /* ④ 逾溢折损：任一城有资源超出仓容（正在被天灾慢慢吃掉） */
@@ -1441,7 +1441,7 @@
       if (av._sig !== _avSig) { av._sig = _avSig; av.innerHTML = GAME.portraits.html(rulerGen, 68); }
     }
     /* v26（需求 3）：顶栏天时。放在 syncHeader 里而不是单独定时器 ——
-       主循环每秒都会调 syncHeader，季节/天候/年号一切换这里就跟着变。 */
+       主循环每秒都会调 syncHeader，年序/季节/天候一切换这里就跟着变。 */
     var sky = $('#nav-sky');
     if (sky) {
       var line = GAME.story ? GAME.story.skyLine() : '';
@@ -5219,14 +5219,14 @@
             /* v89.65（老板「君主练功然后突破」）：修行行 —— 境界 / 修为 / 两个动作。
                「能不能按」一律交给出口去判（按了不可行会返回原因并 toast），
                界面不预判 —— 否则就是"界面判一遍、后端判一遍"两个出口。 */
-            var bCap = GAME.genLevelCap(lg), bNeed = GAME.lordCultivNeed(lg);
-            var bCur = Math.round(lg.cultiv || 0), atTop = (lg.level || 1) >= bCap;
-            var canBreak = atTop && bNeed != null && bCur >= bNeed;
-            /* v89.177（老板「综合考验」）：五关进度（政/城/军/资/宝）——未过项红字。
-               口径 = GAME.lordTrialOf（唯一出口）；按钮高亮仍只看修为（界面不预判全部门槛）。 */
+            var bCap = GAME.genLevelCap(lg), bNeed = GAME.lordRankNeed(lg);
+            var bRank = (s.rank || 0), atTop = (lg.level || 1) >= bCap;
+            var canBreak = atTop && bNeed != null && bRank >= bNeed;
+            /* v89.177（老板「综合考验」）：四关进度（城/军/资/宝 · v90.92 政关随任务系统退役）——未过项红字。
+               口径 = GAME.lordTrialOf（唯一出口）；按钮高亮仍看爵位（界面不预判全部门槛）。 */
             var _trial177 = GAME.lordTrialOf ? GAME.lordTrialOf(lg) : null;
             var _trialHTML177 = _trial177 ? ('<div class="ui-sub">突破考验（第 ' + _trial177.n + ' 次 · '
-              + (_trial177.ok ? '五关俱过' : '未过') + '）：'
+              + (_trial177.ok ? '四关俱过' : '未过') + '）：'
               + _trial177.rows.map(function (r2) {
                 return '<span style="color:' + (r2.ok ? 'var(--green-ok)' : 'var(--red-light)') + ';">'
                   + r2.label + ' ' + U.fmt(r2.cur) + '/' + U.fmt(r2.goal) + (r2.ok ? '✓' : '✗') + '</span>';
@@ -5234,17 +5234,30 @@
             return '<tr><td class="k">君主领兵</td><td>Lv' + lg.level + ' / ' + bCap + ' · ' +
               ui.genStatusName(lg) + '（不可解雇）</td></tr>' +
               '<tr><td class="k">君主修行</td><td>境界 <b>' + GAME.lordRealmOf(lg) + '</b>' +
-              '　修为 <b>' + U.fmt(bCur) + '</b>' + (bNeed == null ? '（已至顶）' : ' / ' + U.fmt(bNeed)) +
-              '　<button class="btn sm' + (atTop ? '' : ' gold') + '" data-action="lord-train">🧘 练功</button>' +
-              ' <button class="btn sm' + (canBreak ? ' gold' : '') + '" data-action="lord-break">⚡ 突破</button>' +
-              '<div class="ui-sub">每 ' + DATA.LORD_BREAK.step + ' 级一段：练功攒修为，段顶须突破方可续升' +
-              (bNeed == null ? '　·　已至天启体上限' : ('（下一段 Lv' + (bCap + DATA.LORD_BREAK.step) + ' 需修为 ' + U.fmt(bNeed) + '）')) +
+              '　爵位 <b>' + bRank + '</b>' + (bNeed == null ? '（已至顶）' : ' / ' + bNeed + ' 档') +
+              '　<button class="btn sm' + (canBreak ? ' gold' : '') + '" data-action="lord-break">⚡ 突破</button>' +
+              '<div class="ui-sub">每 ' + DATA.LORD_BREAK.step + ' 级一段：每升高 ' + DATA.LORD_BREAK.rankStep
+              + ' 个爵位可突破一次，段顶须突破方可续升' +
+              (bNeed == null ? '　·　已至天启体上限' : ('（下一段 Lv' + (bCap + DATA.LORD_BREAK.step) + ' 需爵位 ' + bNeed + ' 档）')) +
               '</div>' + _trialHTML177 +
               '</td></tr>';
           })() : '') +
           '<tr><td class="k">状态</td><td>正常</td></tr>' +
-        '</tbody></table></div>' +
-      '</div>',
+        '</tbody></table>' +
+        '</div>' +
+      '</div>' +
+      /* v90.94（老板「给君主界面的最下方加一条练功菜单」）：练功条独立到**面板最下方**（横贯）——
+         与突破解耦（练功只涨经验，不再是突破门槛）。按不按得成由出口判（doLordTrain）。 */
+      (lg ? (function () {
+        var st = Math.round(GAME.staNow(lg));
+        var stMax = Math.round((GAME.genAttrs(lg) || {}).staMax || 0);
+        return '<div class="m-sec" style="margin-top:10px;">🧘 练功</div>' +
+          '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">' +
+          '<span>君主 Lv' + (lg.level || 1) + '　体力 <b>' + st + '</b> / ' + stMax + '</span>' +
+          '<button class="btn sm gold" data-action="lord-train">🧘 练功一次</button>' +
+          '<span class="ui-sub">耗体力 ' + DATA.LORD_BREAK.trainSta + ' + 少量净水：涨经验，助君主升级</span>' +
+          '</div>';
+      })() : ''),
       foot: '<div class="m-foot"><button class="btn" data-action="close-modal">关闭</button></div>'
     });
   };
@@ -5520,327 +5533,33 @@
     h += '</div>';
     return h;
   };
-  /* v89（老板）：「为每项活动做专属全屏交互界面 + 特定退出」——
-     活动按钮 → 全屏剧本（对话 / 事件 2~3 幕）→ 专属退出结算屏。
-     全屏层 #scene-fx 挂在 body 上（z=1500：高于弹窗 1000、低于 toast 2000），
-     不占 modal-root —— 弹窗是单根替换系统，两者互不干扰。 */
-  ui._sceneFx = null;
+  /* v90.93（老板「去掉纪事剧本」中的「全屏剧本」）：
+     活动按钮 → **一次性结算**（one-shot）。
+     原「专属全屏交互 + 特定退出」的全屏剧本（#scene-fx：2~3 幕对话 /
+     选择累计修正系数 / 场景画布与热点 / 时机条 / 专属结算屏）整条退役：
+       · ui：_sceneFx / openSceneFx / renderSceneFx / closeSceneFx / sceneFxHTML /
+         paintSceneFx / sxfBadges / sxfQuote / sxfOptIcon / SXF_KIND / SXF_ANCHORS /
+         sxfStageMode / sxfTimingGrade / sxfTimingPos / sxfTimingStart /
+         sxfTimingClear / sxfTimingStop（与 .sxf-* 样式族、#scene-fx 全屏层）；
+       · 引擎：GAME.sceneFx / sceneBegin / sceneStart / scenePick / sceneEscape；
+       · 数据：DATA.SCENE_FLOW；地图：GAME.map.paintScene / SCENE_KEYS。
+     内核（jianghuCheck / jianghuSpend / jianghuRoll）原样保留 ——
+     下面这段就是它原本就有的「无剧本兜底」出口。 */
   ui.doJianghu = function (x, y, actId) {
     var gsel = document.getElementById('jh-gen');
     var gid = gsel ? gsel.value : ui._jhGen;
     if (gid) ui._jhGen = gid;
     var lg = GAME.lordGeneralOf();       /* v89：君主专属（闸门在 jianghuCheck，这里便于兜底） */
     if (lg && (!gid || gid !== lg.id)) gid = lg.id;
-    if (!(DATA.SCENE_FLOW || {})[actId]) {
-      /* 无剧本兜底（未来新增活动）：直接一次性结算 —— one-shot 出口保留 */
-      var r0 = GAME.jianghuDo(x, y, gid, actId);
-      if (!r0.ok) { ui.toast(r0.msg); return; }
-      ui._jhResult = { xy: x + ',' + y, name: r0.name, text: r0.text, bad: r0.bad };
-      ui.toast('☯ ' + r0.name + (r0.text ? '（' + r0.text + '）' : ''));
-      GAME.refreshAll();
-      ui.openLandModal(x, y);
-      return;
-    }
-    var r = GAME.sceneStart(x, y, gid, actId);
-    if (!r.ok) { ui.toast(r.msg); return; }
-    if (!r.fx) { ui.toast('剧本缺失'); return; }
-    ui.openSceneFx(r.fx);
+    var r0 = GAME.jianghuDo(x, y, gid, actId);
+    if (!r0.ok) { ui.toast(r0.msg); return; }
+    ui._jhResult = { xy: x + ',' + y, name: r0.name, text: r0.text, bad: r0.bad };
+    ui.toast('☯ ' + r0.name + (r0.text ? '（' + r0.text + '）' : ''));
+    GAME.refreshAll();
+    ui.openLandModal(x, y);
   };
   /* ⛔ v90.80：ui.doWonder（探奇）随奇遇系统整条退役。 */
-  ui.openSceneFx = function (fx) { ui._sceneFx = fx; ui.renderSceneFx(); };
-  ui.renderSceneFx = function () {
-    var fx = ui._sceneFx;
-    if (!fx) return;
-    var el = document.getElementById('scene-fx');
-    if (!el) {
-      el = document.createElement('div');
-      el.id = 'scene-fx';
-      /* v89.150（老板 2）：fixed → absolute（挂缩放容器 = 画布坐标系，铺满画布） */
-      el.style.cssText = 'position:absolute;left:0;top:0;width:100%;height:100%;z-index:1500;overflow:auto;'
-        + 'background:linear-gradient(180deg,var(--bg-dark) 0%,var(--bg-2) 55%,var(--bg-3) 100%);color:var(--text);';
-      var _root150d = ui.layerRoot();
-      if (_root150d && _root150d.appendChild) _root150d.appendChild(el);
-    }
-    el.style.display = 'block';
-    el.innerHTML = ui.sceneFxHTML(fx);
-    el.scrollTop = 0;
-    /* v89.2：把场景画到画布上；时机幕启动指针计时器 */
-    ui.paintSceneFx();
-    ui.sxfTimingClear();
-    if (fx.phase === 'stage') {
-      var st0 = fx.fly.stages[fx.stage];
-      if (st0 && st0.t2) ui.sxfTimingStart();
-    }
-  };
-  /* v89.1（老板：「只有文字，能不能再丰富一点」）——
-     剧本视觉化：幕景横幅（地形染色 + 大字水印 + 活动徽记 + 君主头像 + 天时日号）、
-     行程时间线、幕题条、对白高亮、选项倾向徽章、专属退出结算卡（光晕 + 战果 + 账单）。
-     全部复用现有素材与主题变量（地形色 / 天气 / 头像），零新资源。 */
-  ui.SXF_KIND = { fight: '征伐', trial: '试炼', gather: '采集', cultivate: '静修', visit: '拜访', scene: '探索' };
-  /* 选项倾向徽章：由修正系数直接生成（攻/获 = 增益 · 险/稳 = 负伤变化 · 缘 = 小幸运） */
-  ui.sxfBadges = function (e) {
-    e = e || {};
-    var out = [];
-    var pct = function (x) { return (x > 1 ? ' +' : ' -') + Math.abs(Math.round((x - 1) * 100)) + '%'; };
-    if (e.pow && e.pow !== 1) out.push('<span class="sxf-bdg" style="color:var(--gold-light);">攻' + pct(e.pow) + '</span>');
-    if (e.reward && e.reward !== 1) out.push('<span class="sxf-bdg" style="color:var(--green-ok);">获' + pct(e.reward) + '</span>');
-    if (e.wound && e.wound !== 1) {
-      out.push(e.wound > 1
-        ? '<span class="sxf-bdg" style="color:var(--red-light);">险' + pct(e.wound) + '</span>'
-        : '<span class="sxf-bdg" style="color:var(--blue-info);">稳' + pct(e.wound) + '</span>');
-    }
-    if (e.luck) out.push('<span class="sxf-bdg" style="color:var(--amber);">缘 +' + Math.round(e.luck * 100) + '</span>');
-    return out.join('');
-  };
-  /* 对白高亮：先转义、再把「……」独立成段（避免注入） */
-  ui.sxfQuote = function (t) {
-    return U.escape(t).replace(/「[^」]*」/g, '<span class="sxf-q">$&</span>');
-  };
-  /* v89.2（老板「纯选择，缺少场景交互 …… 我想看见个湖，而不是一行字」）——
-     两个新交互原语（数据驱动、引擎零改动）：
-       · spot   —— 第 1 幕变成**场景热点**：在画里点地点，而不是读三个按钮；
-       · timing —— 关键一幕变成**时机条**：看准了再停手，命中三档（正中/不错/脱手）。
-     选项编号仍是 scenePick(i) 的 i，三档即三个选项 —— 可复现不变式保持。 */
-  ui.SXF_ANCHORS = {
-    lake:    [[0.13, 0.62], [0.53, 0.56], [0.86, 0.60]],
-    fort:    [[0.31, 0.62], [0.62, 0.50], [0.86, 0.58]],
-    array:   [[0.27, 0.60], [0.52, 0.54], [0.76, 0.58]],
-    meadow:  [[0.22, 0.54], [0.52, 0.68], [0.80, 0.56]],
-    grove:   [[0.28, 0.62], [0.55, 0.52], [0.78, 0.60]],
-    cottage: [[0.37, 0.60], [0.56, 0.50], [0.80, 0.62]],
-    road:    [[0.30, 0.62], [0.50, 0.54], [0.80, 0.60]],
-    marsh:   [[0.22, 0.58], [0.52, 0.50], [0.80, 0.62]],
-    ruin:    [[0.42, 0.58], [0.62, 0.58], [0.82, 0.64]],
-    hunt:    [[0.25, 0.62], [0.52, 0.54], [0.80, 0.64]],
-    steppe:  [[0.26, 0.58], [0.55, 0.50], [0.80, 0.60]],
-    yard:    [[0.28, 0.60], [0.55, 0.52], [0.78, 0.62]]
-  };
-  /* 一幕用哪种交互：时机 > 场景热点（第 1 幕，2~3 个选项）> 常规按钮 */
-  ui.sxfStageMode = function (fly, idx, st) {
-    if (st && st.t2) return 'timing';
-    if (idx === 0 && st && st.o && st.o.length >= 2 && st.o.length <= 3
-        && ui.SXF_ANCHORS[fly.scene]) return 'spot';
-    return 'choice';
-  };
-  /* 时机判定（纯函数）：正中 / 不错 / 脱手 → 选项 0 / 1 / 2 */
-  ui.sxfTimingGrade = function (pos) {
-    if (pos >= 0.44 && pos <= 0.56) return 0;
-    if (pos >= 0.28 && pos <= 0.72) return 1;
-    return 2;
-  };
-  ui._sxfTick = null; ui._sxfT0 = 0; ui._sxfPos = 0;
-  /* 指针位置：三角波 0→1→0，周期 1.6 秒 */
-  ui.sxfTimingPos = function () {
-    var per = 1600, t = (Date.now() - ui._sxfT0) % (per * 2);
-    if (t < 0) t += per * 2;
-    return t <= per ? t / per : (per * 2 - t) / per;
-  };
-  ui.sxfTimingStart = function () {
-    ui._sxfT0 = Date.now(); ui._sxfPos = 0;
-    if (ui._sxfTick) return;
-    ui._sxfTick = setInterval(function () {
-      var el = document.getElementById('sxf-mark');
-      if (!el) return;
-      ui._sxfPos = ui.sxfTimingPos();
-      el.style.left = (4 + ui._sxfPos * 92) + '%';
-    }, 40);
-  };
-  ui.sxfTimingClear = function () {
-    if (ui._sxfTick) { clearInterval(ui._sxfTick); ui._sxfTick = null; }
-  };
-  /* 停手 → 按命中档选对应选项（pos 可注入：测试用） */
-  ui.sxfTimingStop = function (pos) {
-    var fx = ui._sceneFx;
-    if (!fx || fx.phase !== 'stage') return;        /* 防误触：流程已结束 */
-    var st = fx.fly.stages[fx.stage];
-    if (!st || !st.t2) return;                      /* 只在时机幕生效（连点不越幕） */
-    var p = (typeof pos === 'number') ? pos : ui.sxfTimingPos();
-    ui.sxfTimingClear();
-    GAME.doScenePick(ui.sxfTimingGrade(p));
-  };
-  /* 选项图标：由修正系数派生，让同一幕几个选项一眼不同 */
-  ui.sxfOptIcon = function (e) {
-    e = e || {};
-    if (e.wound && e.wound > 1) return '🔥';
-    if (e.wound && e.wound < 1) return '🛡️';
-    if (e.pow && e.pow > 1) return '⚔️';
-    if (e.reward && e.reward > 1) return '🎁';
-    if (e.luck) return '🍀';
-    return '·';
-  };
-  /* 把当前场景画到画布上（ctx 缺失时静默跳过：测试桩环境安全） */
-  ui.paintSceneFx = function () {
-    var el = document.getElementById('scene-fx');
-    var fx = ui._sceneFx;
-    if (!el || !fx || !GAME.map || !GAME.map.paintScene) return;
-    var cv = el.querySelector ? el.querySelector('canvas.sxf-canvas') : null;
-    if (!cv || !cv.getContext) return;
-    var ctx = null;
-    try { ctx = cv.getContext('2d'); } catch (e) { ctx = null; }
-    if (!ctx) return;
-    GAME.map.paintScene(ctx, fx.fly.scene || 'meadow', fx.chk.x * 31 + fx.chk.y * 17);
-  };
-  ui.sceneFxHTML = function (fx) {
-    var a = fx.chk.act;
-    var fly = fx.fly;
-    var gen = fx.chk.gen;
-    var tile = GAME.map.tile(fx.chk.x, fx.chk.y) || {};
-    var tdef = DATA.TERRAIN[tile.terrain] || {};
-    var total = fly.stages.length;
-    var dayN = (fx.chk.day || 0) + 1;
-    /* 幕景横幅底纹：地形染色（hex → rgba；无颜色定义时退回面板色） */
-    var tint = '';
-    if (tdef.color) {
-      var v = parseInt(tdef.color.slice(1), 16);
-      var rgb = (v >> 16) + ',' + ((v >> 8) & 255) + ',' + (v & 255);
-      tint = 'background:linear-gradient(135deg,rgba(' + rgb + ',.24),rgba(' + rgb + ',.04) 62%),var(--panel-bg);';
-    }
-    /* ⛔ v90.80：奇遇横幅「奇缘紫」底纹随奇遇系统退役。 */
-    /* 天时（story 缺席时静默省略） */
-    var we = (GAME.story && GAME.story.currentWeather) ? GAME.story.currentWeather() : null;
-    var se = (GAME.story && GAME.story.currentSeason) ? GAME.story.currentSeason() : null;
-    var meta = [];
-    if (tdef.name) meta.push(U.escape(tdef.name) + '（' + GAME.map.coordText(fx.chk.x, fx.chk.y) + '）');
-    meta.push('野地 Lv' + fx.chk.lv);
-    meta.push('第 ' + dayN + ' 日' + (se && se.name ? ' · ' + U.escape(se.name) : ''));
-    if (we) meta.push(we.icon + U.escape(we.name || ''));
-    var st = (fx.phase === 'stage') ? fly.stages[fx.stage] : null;
-    var mode = st ? ui.sxfStageMode(fly, fx.stage, st) : '';
-
-    var h = '<div class="sxf-wrap">';
-    /* —— 顶栏：活动 / 门类 / 君主 / 天时 —— */
-    h += '<div class="sxf-hero"' + (tint ? ' style="' + tint + '"' : '') + '>';
-    h += '<span class="sxf-hero-art" aria-hidden="true">' + (fly.art || '📜') + '</span>';
-    h += '<div class="sxf-hero-top">';
-    h += '<span class="sxf-act-ic">' + a.icon + '</span>';
-    h += '<span class="sxf-hero-name">' + U.escape(a.name) + '</span>';
-    /* v89.3：雅名（alias）与门类章（cat 兜底 kind）—— 命名体系统一 */
-    if (a.alias) h += '<span class="sxf-hero-alias">' + U.escape(a.alias) + '</span>';
-    h += '<span class="sxf-hero-kind">' + U.escape(a.cat || ui.SXF_KIND[a.kind] || '荒野') + '</span>';
-    h += '<span class="sxf-hero-lord">' + ui.faceOf(gen, 44) +
-      '<span class="sxf-lord-meta"><b>' + U.escape(gen.name) + '</b>' +
-      '<span class="sxf-lord-sub">机能 ' + GAME.lingPowerOf(gen) + ' · 精力 ' + Math.round(gen.energy || 0) +
-      ' · 体力 ' + Math.round(GAME.staNow(gen)) + '</span></span></span>';
-    h += '</div>';
-    h += '<div class="sxf-hero-meta">' + meta.join('　·　') + '</div>';
-    if (fx.phase === 'stage') {
-      var dots = '';
-      for (var i = 0; i < total; i++) dots += '<span class="sxf-dot' + (i <= fx.stage ? ' on' : '') + '">' + (i <= fx.stage ? '◆' : '◇') + '</span>';
-      h += '<div class="sxf-hero-foot"><span class="sxf-dots">' + dots + '</span>' +
-        '<button class="btn sm" data-action="sxf-escape">' + U.escape(fly.escLabel || '就此离去') + '</button></div>';
-    }
-    h += '</div>';
-    /* —— v89.2 场景插画（看见湖，而不是一行字；第 1 幕直接点画选点）—— */
-    h += '<div class="sxf-scene' + (fx.phase === 'result' ? ' is-done' : '') + '">';
-    h += '<canvas class="sxf-canvas" width="1720" height="520" aria-hidden="true"></canvas>';
-    if (mode === 'spot') {
-      var anchors = ui.SXF_ANCHORS[fly.scene] || [];
-      h += '<div class="sxf-spots">';
-      for (var si = 0; si < st.o.length; si++) {
-        var op0 = st.o[si];
-        var pt = anchors[si] || [0.25 + si * 0.25, 0.62];
-        h += '<button class="btn sxf-opt sxf-spot" data-action="sxf-choice" data-i="' + si + '"' +
-          ' style="left:' + (pt[0] * 100).toFixed(1) + '%;top:' + (pt[1] * 100).toFixed(1) + '%;"' +
-          ' title="' + U.escape(op0.d || op0.l) + '">' +
-          '<span class="sxf-spot-hit" aria-hidden="true"></span>' +
-          '<span class="sxf-spot-lb"><b>' + U.escape(op0.l) + '</b>' + ui.sxfBadges(op0.e) + '</span>' +
-          '</button>';
-      }
-      h += '</div>';
-      h += '<div class="sxf-sc-tip">点画中之处 —— 落子于此</div>';
-    }
-    h += '</div>';
-    /* —— 行程时间线（已走过的幕题与当时抉择）—— */
-    if (fx.picks.length) {
-      h += '<div class="sxf-timeline"><span class="sxf-tl-cap">行程</span>';
-      for (var pi = 0; pi < fx.picks.length; pi++) {
-        var stDef = fly.stages[pi] || {};
-        h += '<span class="sxf-tl-item">' + U.escape(stDef.s || ('第' + (pi + 1) + '幕')) +
-          '<span class="sxf-tl-l">' + U.escape(fx.picks[pi].l) + '</span></span>';
-        if (pi < fx.picks.length - 1) h += '<span class="sxf-tl-sep">›</span>';
-      }
-      h += '</div>';
-    }
-    if (fx.phase === 'stage') {
-      /* —— 当前幕：幕题条 + 叙事卡 + 交互区（热点 / 时机 / 按钮）—— */
-      h += '<div class="sxf-stage">';
-      h += '<div class="sxf-stage-tag"><span class="sxf-stage-no">第 ' + (fx.stage + 1) + ' / ' + total + ' 幕</span>' +
-        (st.s ? '<span class="sxf-stage-tt">' + U.escape(st.s) + '</span>' : '') + '</div>';
-      h += '<div class="sxf-narr">' + ui.sxfQuote(st.t) + '</div>';
-      if (mode === 'timing') {
-        h += '<div class="sxf-timing">' +
-          '<div class="sxf-tk"><span class="sxf-zone sxf-zone-g" aria-hidden="true"></span>' +
-          '<span class="sxf-zone sxf-zone-p" aria-hidden="true"></span>' +
-          '<span class="sxf-mark" id="sxf-mark" aria-hidden="true"></span></div>' +
-          '<div class="sxf-tm-row">' +
-          '<span class="sxf-tm-hint">看准时机 —— 正中者事半功倍，脱手者得不偿失</span>' +
-          '<button class="btn gold lg" data-action="sxf-stop">' + U.escape(st.t2 || '就是现在！') + '</button>' +
-          '</div></div>';
-      } else if (mode === 'choice') {
-        h += '<div class="sxf-opts">' + st.o.map(function (op, oi) {
-          return '<button class="btn sxf-opt" data-action="sxf-choice" data-i="' + oi + '">' +
-            '<span class="sxf-opt-ic" aria-hidden="true">' + ui.sxfOptIcon(op.e) + '</span>' +
-            '<span class="sxf-opt-l"><b>' + U.escape(op.l) + '</b>' +
-            (op.d ? '<span class="sxf-opt-d">' + U.escape(op.d) + '</span>' : '') + '</span>' +
-            '<span class="sxf-opt-b">' + ui.sxfBadges(op.e) + '</span></button>';
-        }).join('') + '</div>';
-      }
-      h += '<div class="sxf-note">' +
-        (fx.spent ? '已动身 —— 中途罢手，所耗精力体力不返；此地此事今日即算已过。'
-                  : '尚未动身 —— 此时离去，无任何消耗。') + '</div>';
-      h += '</div>';
-    } else {
-      /* —— 专属退出结算卡 —— */
-      var ex = fly.exits[fx.grade] || fly.exits.win || fly.exits.escape;
-      var res = fx.result || {};
-      var gcol = fx.grade === 'win' ? 'var(--gold)' : (fx.grade === 'lose' ? 'var(--red-light)' : 'var(--text-dim)');
-      h += '<div class="sxf-result">';
-      h += '<div class="sxf-emblem" style="color:' + gcol + ';">' + ex.ic + '</div>';
-      h += '<div class="sxf-exit-t" style="color:' + gcol + ';">' + U.escape(ex.t) + '</div>';
-      h += '<div class="sxf-exit-s">' + U.escape(ex.s || '') + '</div>';
-      h += '<div class="sxf-loot">';
-      if (res.escaped) {
-        h += '<div class="sxf-loot-row' + (fx.spent ? ' bad' : '') + '">' +
-          (fx.spent ? '审时度势，中途罢手 —— 所耗不返，此地此事今日已计入。'
-                    : '尚未动身，转身离去 —— 未有任何消耗。') + '</div>';
-      } else if (res.ok) {
-        if (res.name) h += '<div class="sxf-loot-hd">' + U.escape(res.name) + '</div>';
-        if (res.text) h += res.text.split('、').map(function (t2) {
-          return '<div class="sxf-loot-row' + (res.bad ? ' bad' : '') + '">' + U.escape(t2) + '</div>';
-        }).join('');
-      }
-      h += '</div>';
-      if (!res.escaped || fx.spent) {
-        h += '<div class="sxf-cost">耗：精力 -' + a.energy + ' · 体力 -' + a.stam +
-          '　│　余：精力 ' + Math.round(gen.energy || 0) + ' · 体力 ' + Math.round(GAME.staNow(gen)) +
-          (res.escaped ? '　（所耗不返）' : '') + '</div>';
-      }
-      h += '<div class="sxf-exit-row"><button class="btn gold lg" data-action="sxf-exit">' + U.escape(fly.backLabel || '打道回府') + '</button></div>';
-      h += '</div>';
-    }
-    h += '</div>';
-    return h;
-  };
-  ui.closeSceneFx = function () {
-    var fx = ui._sceneFx;
-    ui._sceneFx = null;
-    GAME.sceneFx = null;
-    ui.sxfTimingClear();          /* v89.2：时机条计时器随层关闭清零 */
-    var el = document.getElementById('scene-fx');
-    if (el) el.style.display = 'none';
-    if (!fx || !fx.chk) return;
-    if (fx.result && fx.result.escaped && !fx.spent) return;   /* 未动身退出：状态无变化，原地不动 */
-    if (fx.result) {
-      ui._jhResult = {
-        xy: fx.chk.x + ',' + fx.chk.y,
-        name: fx.result.escaped ? '中途罢手' : fx.result.name,
-        text: fx.result.escaped ? '所耗不返，今日已计入' : fx.result.text,
-        bad: fx.result.escaped ? true : fx.result.bad
-      };
-    }
-    GAME.refreshAll();
-    ui.openLandModal(fx.chk.x, fx.chk.y);   /* 原地回野地弹窗（显示结果与「今日已做」） */
-  };
+  /* ⛔ v90.80：ui.doWonder（探奇）随奇遇系统整条退役。 */
 
   /* ⛔ v90.80（老板「去除奇遇系统」）：见闻录面板（ui.openJournal / ui.journalHTML）随奇遇系统整条退役。 */
 
@@ -7375,7 +7094,7 @@
   /* ⛔ v89.218（老板）：「不再保留史册，故事集」——
      ui.storyHTML（史册：天时/时代之志/实力折算/当前评定 + 待阅逸闻）与
      ui.storiesHTML（故事集：收集与回看）两视图整条退役；顶栏页签一并移除。
-     天时/年号仍在顶栏天时行（story.skyLine）与公文播报中可见。 */
+     天时（年/季/天气）仍在顶栏天时行（story.skyLine）与公文播报中可见。 */
 
   /* ================= 酒馆：招募（v89.188：统一话术） ================= */
   /* v89.62（老板「增加自动招募按钮，可设置当酒馆刷新出什么品质的时候自动招募，
@@ -16170,7 +15889,7 @@
       : (s.kind === 'auto' ? '自动备份' : '手动'));
     var sum;
     if (m) {
-      sum = U.escape(m.name) + '　' + (m.era || '') + '·' + (m.yearName || '') + '年　' +
+      sum = U.escape(m.name) + '　第 ' + (m.year || 1) + ' 年　' +
         '城 ' + m.cities + '　将 ' + m.gens + '　' + (m.size / 1024).toFixed(1) + 'KB';
       if (m.savedAt && GAME.metaTimeText) sum += '　' + GAME.metaTimeText(m.savedAt);
     } else {

@@ -3734,114 +3734,12 @@
   .enh-card .ec-lv i { font-size: var(--fs-cap); color: var(--text-dim); font-weight: 400; font-style: normal; }
   /* ⛔ v89.204（老板 2）：「强化界面的资源要求请以悬停显示，而不是直接占用位置」——
      .ec-cost（卡面成本行）退役：成本并入 title（熔铸/调校两处同改，见 js/ui.js）。 */
-  /* ---------- v89.1 全屏剧本视觉化（幕景横幅 / 幕题 / 徽章 / 结算卡） ---------- */
-  .sxf-wrap { --sxf-art-sz: 118px; --sxf-act-sz: 40px; --sxf-emb-sz: 52px;
-    max-width: 860px; margin: 0 auto; padding: var(--sp-6) var(--sp-5) 72px;
-    animation: sxfIn .38s ease-out both; }
-  .sxf-hero { position: relative; overflow: hidden; border: 1px solid var(--sep-gold);
-    border-radius: var(--r-xl); padding: var(--sp-5) var(--sp-6) var(--sp-4); background: var(--panel-bg); }
-  .sxf-hero-art { position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
-    font-size: var(--sxf-art-sz); line-height: var(--lh-1); opacity: .10; pointer-events: none; }
-  .sxf-hero-top { position: relative; display: flex; align-items: center; gap: var(--sp-4); }
-  .sxf-act-ic { font-size: var(--sxf-act-sz); line-height: var(--lh-1); }
-  .sxf-hero-name { font-size: var(--fs-h1); font-weight: 800; color: var(--gold-light); }
-  .sxf-hero-kind { color: var(--text-dim); font-size: var(--fs-cap); border: 1px solid var(--line-strong);
-    border-radius: 999px; padding: var(--sp-hair) var(--sp-3); }
-  .sxf-hero-alias { color: var(--gold); font-size: var(--fs-sub); opacity: .92; }
-  .sxf-hero-lord { margin-left: auto; display: flex; align-items: center; gap: var(--sp-3); }
-  .sxf-lord-meta { display: flex; flex-direction: column; align-items: flex-end; }
-  .sxf-lord-meta b { color: var(--text-strong); }
-  .sxf-lord-sub { color: var(--text-dim); font-size: var(--fs-cap); white-space: nowrap; }
-  .sxf-hero-meta { position: relative; color: var(--text-dim); font-size: var(--fs-sub); margin-top: var(--sp-2); }
-  .sxf-hero-foot { position: relative; display: flex; align-items: center; margin-top: var(--sp-4);
-    border-top: 1px solid var(--line); padding-top: var(--sp-4); }
-  .sxf-dots { letter-spacing: 5px; }
-  .sxf-dot { color: var(--text-dim); }
-  .sxf-dot.on { color: var(--gold); }
-  .sxf-hero-foot .btn { margin-left: auto; }
-  .sxf-timeline { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-4);
-    color: var(--text-dim); font-size: var(--fs-sub); }
-  .sxf-tl-cap { color: var(--gold-light); }
-  .sxf-tl-item { color: var(--text-strong); }
-  .sxf-tl-l { color: var(--text-dim); margin-left: var(--sp-1); }
-  .sxf-tl-sep { color: var(--text-dim); }
-  .sxf-stage { margin-top: var(--sp-4); }
-  .sxf-stage-tag { display: flex; align-items: baseline; gap: var(--sp-4); margin-bottom: var(--sp-3); }
-  .sxf-stage-no { color: var(--gold-light); font-size: var(--fs-sub); letter-spacing: 1px; }
-  .sxf-stage-tt { color: var(--text-strong); font-size: var(--fs-h3); font-weight: 700; }
-  .sxf-narr { background: var(--panel-bg); border: 1px solid var(--sep-gold); border-radius: var(--r-lg);
-    padding: var(--sp-5) var(--sp-6); font-size: var(--fs-lead); line-height: var(--lh-loose); color: var(--text); }
-  .sxf-q { color: var(--gold-light); }
-  .sxf-opts { margin-top: var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-3); }
-  .btn.sxf-opt { display: flex; align-items: center; gap: var(--sp-4); text-align: left; padding: var(--sp-4) var(--sp-5);
-    font-size: var(--fs-lead); }
-  .sxf-opt-l { flex: 1 1 auto; min-width: 0; }
-  .sxf-opt-l b { color: var(--gold-light); }
-  .sxf-opt-d { color: var(--text-dim); font-weight: 400; margin-left: var(--sp-4); font-size: var(--fs-sub); }
-  .sxf-opt-b { flex: 0 0 auto; display: inline-flex; gap: var(--sp-2); }
-  .sxf-bdg { border: 1px solid; border-radius: 999px; padding: var(--sp-hair) var(--sp-2); font-size: var(--fs-cap);
-    white-space: nowrap; line-height: var(--lh-body); }
-  .sxf-note { margin-top: var(--sp-4); color: var(--text-dim); font-size: var(--fs-cap); }
-  .sxf-result { text-align: center; margin-top: var(--sp-5); }
-  .sxf-emblem { width: 96px; height: 96px; margin: 0 auto; display: flex; align-items: center;
-    justify-content: center; font-size: var(--sxf-emb-sz); border: 1px solid; border-radius: 50%;
-    background: var(--panel-bg); box-shadow: 0 0 26px rgba(var(--gold-rgb), .18);
-    animation: sxfPop .5s cubic-bezier(.2,.9,.3,1.35) both; }
-  .sxf-exit-t { font-size: var(--fs-h1); font-weight: 800; margin-top: var(--sp-4); }
-  .sxf-exit-s { color: var(--text-dim); font-size: var(--fs-sub); margin-top: var(--sp-1); }
-  .sxf-loot { background: var(--panel-bg); border: 1px solid var(--sep-gold); border-radius: var(--r-lg);
-    padding: var(--sp-4) var(--sp-6); margin-top: var(--sp-5); text-align: left; }
-  .sxf-loot-hd { color: var(--text-dim); font-size: var(--fs-body); margin-bottom: var(--sp-2); }
-  .sxf-loot-row { font-size: var(--fs-lead); line-height: var(--lh-loose); color: var(--green-ok); }
-  .sxf-loot-row.bad { color: var(--red-light); }
-  .sxf-loot-row::before { content: '◆ '; font-size: var(--fs-cap); }
-  .sxf-cost { color: var(--text-dim); font-size: var(--fs-cap); margin-top: var(--sp-4); }
-  .sxf-exit-row { margin-top: var(--sp-6); }
-  @keyframes sxfIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
-  @keyframes sxfPop { from { opacity: 0; transform: scale(.6); } to { opacity: 1; transform: scale(1); } }
-
-  /* ---------- v89.2 场景化（场景画布 / 热点点选 / 时机条） ---------- */
-  .sxf-scene { position: relative; margin-top: var(--sp-4); border: 1px solid var(--sep-gold);
-    border-radius: var(--r-xl); overflow: hidden; background: var(--slab-1);
-    box-shadow: inset 0 0 44px rgba(var(--sh-rgb), .30); animation: sxfIn .4s ease-out both; }
-  .sxf-canvas { display: block; width: 100%; height: auto; }
-  .sxf-scene.is-done .sxf-canvas { opacity: .84; filter: saturate(.85); }
-  .sxf-spots { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
-  .btn.sxf-opt.sxf-spot { position: absolute; transform: translate(-50%, -50%);
-    display: inline-flex; flex-direction: column; align-items: center; gap: var(--sp-1);
-    width: auto; padding: 0; background: none; border: none; box-shadow: none; }
-  .sxf-spot-hit { width: 22px; height: 22px; border-radius: 50%;
-    background: rgba(var(--gold-rgb), .92); border: 2px solid rgba(var(--hl-rgb), .85);
-    box-shadow: 0 0 0 0 rgba(var(--gold-rgb), .55), 0 2px 6px rgba(var(--sh-rgb), .5);
-    animation: sxfPing 1.8s ease-out infinite; }
-  .btn.sxf-opt.sxf-spot:hover .sxf-spot-hit { background: var(--gold); }
-  .sxf-spot-lb { display: inline-flex; align-items: center; gap: var(--sp-2); white-space: nowrap;
-    background: rgba(var(--sh-rgb), .62); border: 1px solid var(--sep-gold);
-    border-radius: 999px; padding: var(--sp-0) var(--sp-4); font-size: var(--fs-cap); color: var(--parchment); }
-  .sxf-spot-lb b { color: var(--gold-light); }
-  .sxf-sc-tip { position: absolute; left: var(--sp-4); bottom: var(--sp-3); z-index: 2;
-    font-size: var(--fs-cap); color: var(--parchment); background: rgba(var(--sh-rgb), .55);
-    border-radius: 999px; padding: var(--sp-0) var(--sp-4); letter-spacing: 1px; }
-  .sxf-timing { margin-top: var(--sp-4); background: var(--panel-bg); border: 1px solid var(--sep-gold);
-    border-radius: var(--r-lg); padding: var(--sp-4) var(--sp-5); }
-  .sxf-tk { position: relative; height: 26px; border-radius: 999px; overflow: hidden;
-    background: linear-gradient(180deg, rgba(var(--sh-rgb), .55), rgba(var(--sh-rgb), .30));
-    border: 1px solid var(--line-strong); }
-  .sxf-zone { position: absolute; top: 0; height: 100%; }
-  .sxf-zone-g { left: 28%; width: 44%; background: rgba(var(--hl-rgb), .08); }
-  .sxf-zone-p { left: 44%; width: 12%; background: rgba(var(--gold-rgb), .38); }
-  .sxf-mark { position: absolute; top: 2px; left: 4%; width: 4px; height: 20px; border-radius: var(--r-sm);
-    background: var(--gold-light); box-shadow: 0 0 8px rgba(var(--gold-rgb), .8); }
-  .sxf-tm-row { display: flex; align-items: center; gap: var(--sp-4); margin-top: var(--sp-3); }
-  .sxf-tm-hint { flex: 1 1 auto; color: var(--text-dim); font-size: var(--fs-cap); }
-  .sxf-opt-ic { flex: 0 0 auto; width: 26px; height: 26px; border-radius: 50%;
-    display: inline-flex; align-items: center; justify-content: center;
-    background: rgba(var(--hl-rgb), .08); font-size: var(--fs-body); }
-  @keyframes sxfPing {
-    0% { box-shadow: 0 0 0 0 rgba(var(--gold-rgb), .55), 0 2px 6px rgba(var(--sh-rgb), .5); }
-    70% { box-shadow: 0 0 0 14px rgba(var(--gold-rgb), 0), 0 2px 6px rgba(var(--sh-rgb), .5); }
-    100% { box-shadow: 0 0 0 0 rgba(var(--gold-rgb), 0), 0 2px 6px rgba(var(--sh-rgb), .5); }
-  }
+  /* ⛔ v90.93 退役：全屏剧本视觉化样式整族 ——
+     .sxf-wrap / .sxf-hero* / .sxf-timeline / .sxf-stage* / .sxf-narr / .sxf-q / .sxf-opts /
+     .sxf-opt* / .sxf-bdg / .sxf-note / .sxf-result / .sxf-emblem / .sxf-exit* / .sxf-loot* /
+     .sxf-cost / .sxf-scene / .sxf-canvas / .sxf-spots / .sxf-spot* / .sxf-sc-tip /
+     .sxf-timing / .sxf-tk / .sxf-zone* / .sxf-mark / .sxf-tm* / @keyframes sxfIn|sxfPop|sxfPing
+     与 #scene-fx 全屏层一并清除（老板「去掉纪事剧本」中的「全屏剧本」）。 */
 
   /* ⛔ v90.80（老板「去除奇遇系统」）：奇遇 · 见闻录样式整族退役 —— .wnr-* / .sxf-clue / .jnl-* 与 --wonder 令牌一并清除。 */
   /* ⛔ v89.218（老板「故事全部去除」）：#story-fx 阅读器样式（.sgr-* 全族）退役 ——
@@ -4409,31 +4307,31 @@
 </div><!-- /#app-scale -->
 </div><!-- /#app-fit -->
 
-<!-- BUILD 9172 -->
-<script src="js/data.js?v=9172"></script>
-<script src="js/state.js?v=9172"></script>
-<script src="js/systems.js?v=9172"></script>
-<script src="js/domain.js?v=9172"></script>
-<script src="js/map.js?v=9172"></script>
+<!-- BUILD 9173 -->
+<script src="js/data.js?v=9173"></script>
+<script src="js/state.js?v=9173"></script>
+<script src="js/systems.js?v=9173"></script>
+<script src="js/domain.js?v=9173"></script>
+<script src="js/map.js?v=9173"></script>
 <!-- v90.69：球面世界内核（纯 JS · 拓扑/地形/几何 SSOT）—— 逻辑与 3D 渲染共用，无 THREE -->
-<script src="js/sphere.js?v=9172"></script>
+<script src="js/sphere.js?v=9173"></script>
 <!-- v90.61：Three.js 真 3D 主地图（vendor 本地，离线可用） -->
-<script src="vendor/three.min.js?v=9172"></script>
-<script src="js/map3d.js?v=9172"></script>
-<script src="js/battle.js?v=9172"></script>
+<script src="vendor/three.min.js?v=9173"></script>
+<script src="js/map3d.js?v=9173"></script>
+<script src="js/battle.js?v=9173"></script>
 <!-- v27（需求 5）：回合制文字战场。放在 battle.js 之后 —— simulate 由它接管 -->
-<script src="js/tactic.js?v=9172"></script>
-<script src="js/icons.js?v=9172"></script>
+<script src="js/tactic.js?v=9173"></script>
+<script src="js/icons.js?v=9173"></script>
 <!-- v32（需求「采用网图」）：game-icons 开源图标素材层。必须在 icons.js 之后 ——
      icons.js 内的取图函数用 typeof GICONS 延迟绑定，渲染时才真正查表。 -->
-<script src="js/gicons.js?v=9172"></script>
+<script src="js/gicons.js?v=9173"></script>
 <!-- v35：AI 位图素材登记表（汉代风，最高优先级）。同样在 icons.js 之后 ——
      取图函数用 typeof BITMAPS 延迟绑定；未登记的 id 自动回退矢量层。 -->
-<script src="js/bitmaps.js?v=9172"></script>
-<script src="js/portraits.js?v=9172"></script>
-<script src="js/story.js?v=9172"></script>
+<script src="js/bitmaps.js?v=9173"></script>
+<script src="js/portraits.js?v=9173"></script>
+<script src="js/story.js?v=9173"></script>
 <!-- ⛔ v89.218（老板「故事全部去除」）：84 卷故事库（story/）整目录删除，脚本标签同步撤除。 -->
-<script src="js/ui.js?v=9172"></script>
-<script src="js/main.js?v=9172"></script>
+<script src="js/ui.js?v=9173"></script>
+<script src="js/main.js?v=9173"></script>
 </body>
 </html>

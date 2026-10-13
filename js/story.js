@@ -8,12 +8,19 @@
  *   故事库引擎（GAME.SG）与阅读器（#story-fx）已从 state.js / ui.js 移除，
  *   内容层 `story/` 目录（84 卷）与「史册 / 故事集」两个视图一并删除。
  *
- *   保留的是**玩法数值层**（四件事，全部后台运行）：
+ *   保留的是**玩法数值层**（三件事，全部后台运行）：
  *     1) 历法天时 —— 年 / 季 / 天气推进，产出与战斗受其影响
- *     2) 年号纪元 —— 赛季制，每个年号立「时代之志」，达成给赏
- *        （进度页随史册退役；改元 / 达成仍写入公文播报）
- *     3) 英雄羁绊 —— 组合判定后静默并入各项加成，界面不作提示
- *     4) 奇遇遗迹（巡野拾获）· 奖励结算 · 战力尺（troopPower）
+ *     2) 英雄羁绊 —— 组合判定后静默并入各项加成，界面不作提示
+ *     3) 奇遇遗迹（巡野拾获）· 奖励结算 · 战力尺（troopPower）
+ *
+ * ⛔ v90.93（老板「去掉纪事剧本」中的「年号纪元」）：
+ *   `DATA.ERAS`（11 个年号）与 `STORY.currentEra / checkEra / eraAdvance /
+ *   eraGoalProgress / settleEraGoal / yearName` 整条移除；world 里的
+ *   `eraIndex / eraStartYear / eraGoalDone / eraGoalClaimed` 四字段随之作废。
+ *   受连带的乘数：`prodMult / combatMod` 去掉年号项；`heartsPerHour /
+ *   researchMult / atkMult / siegeMult` 只余羁绊；`repMult`（声望获取倍率）
+ *   与 `trainMult`（训练加速）**整函数删除**（年号是二者唯一的加成来源）。
+ *   天时（年/季/天气）**保留**；skyLine 改为「第 N 年 季 天候」。
  *
  * 文件名沿用 story.js：加载链（index.html / smoke / e2e / 全仓 200+ 工具探针）
  * 的引用面过大，重命名零功能收益 —— 迁移说明记于此，勿再按名索骥。
@@ -39,10 +46,7 @@
         season: 0,
         weather: 'clear',
         weatherLeft: DATA.CALENDAR.secPerYear / 4,
-        eraIndex: 0,
-        eraStartYear: 1,
-        eraGoalDone: false,
-        eraGoalClaimed: false,
+        /* v90.93：eraIndex / eraStartYear / eraGoalDone / eraGoalClaimed 随年号纪元退役 */
       };
     }
     STORY.rollWeather(true);
@@ -50,12 +54,6 @@
 
   STORY.seasonName = function (i) {
     return ['春', '夏', '秋', '冬'][i % 4] || '春';
-  };
-
-  STORY.currentEra = function () {
-    var s = GAME.state;
-    if (!s || !s.world) return DATA.ERAS[0];
-    return DATA.ERAS[Math.min(s.world.eraIndex, DATA.ERAS.length - 1)];
   };
 
   STORY.currentSeason = function () {
@@ -91,14 +89,13 @@
 
   /* 天时对资源的乘数 */
   STORY.prodMult = function (res) {
-    var se = STORY.currentSeason(), we = STORY.currentWeather(), era = STORY.currentEra();
+    /* v90.93：年号纪元退役 —— 只剩季节与天气两项（原「年号增益」的全资源产量 / 旧币收入两项已移除）。 */
+    var se = STORY.currentSeason(), we = STORY.currentWeather();
     var m = 1;
     if (res === 'grain') {
       m *= (1 + (se.grain || 0));
       m *= (1 + (we.grain || 0));
     }
-    if (era && era.boon && era.boon.prod) m *= (1 + era.boon.prod);
-    if (res === 'gold' && era && era.boon && era.boon.gold) m *= (1 + era.boon.gold);
     return m;
   };
 
@@ -107,7 +104,9 @@
 
   /* 天时对战斗的修正（供 battle.js 调用） */
   STORY.combatMod = function () {
-    var we = STORY.currentWeather(), era = STORY.currentEra();
+    /* v90.93：年号纪元退役 —— 当初再拼入的三个“年号倍率键”（全军攻击 / 攻城 / 研究）
+       一并移除 —— 它们原先只在 atkMult / siegeMult 内被读过。 */
+    var we = STORY.currentWeather();
     return {
       weather: we,
       archerRange: 1 + (we.archerRange || 0),
@@ -115,30 +114,16 @@
       ambush: we.ambush || 1,
       scout: we.scout !== false,
       move: we.move || 1,
-      atkEra: (era && era.boon && era.boon.atk) ? 1 + era.boon.atk : 1,
-      siegeEra: (era && era.boon && era.boon.siege) ? 1 + era.boon.siege : 1,
-      researchEra: (era && era.boon && era.boon.research) ? 1 + era.boon.research : 1,
     };
   };
 
   /* 天时描述行（用于界面显示） */
   STORY.skyLine = function () {
+    /* v90.93：年号纪元退役 —— 天时行改为「第 N 年 季 天候」（年号与年序名一并去掉）。 */
     var s = GAME.state;
     if (!s || !s.world) return '';
-    var era = STORY.currentEra(), se = STORY.currentSeason(), we = STORY.currentWeather();
-    return era.name + '·' + STORY.yearName() + '年 ' + se.name + ' ' + we.icon + we.name;
-  };
-
-  /* 年序名（元年/二年/三年…，仿古文） */
-  STORY.yearName = function () {
-    var s = GAME.state;
-    if (!s || !s.world) return '元';
-    var yy = s.world.year - s.world.eraStartYear + 1;
-    if (yy <= 1) return '元';
-    var cn = ['', '一', '二', '三', '四', '五', '六', '七', '八', '九', '十'];
-    if (yy <= 10) return cn[yy];
-    if (yy < 20) return '十' + cn[yy - 10];
-    return String(yy);
+    var se = STORY.currentSeason(), we = STORY.currentWeather();
+    return '第 ' + (s.world.year || 1) + ' 年 ' + se.name + ' ' + we.icon + we.name;
   };
 
   /* 每秒推进 */
@@ -146,8 +131,6 @@
     var s = GAME.state;
     if (!s || !s.world) return;
     var w = s.world;
-    var prevYear = w.year, prevSeason = w.season, prevEra = w.eraIndex;
-
     w.elapsed += ts;
 
     var Y = DATA.CALENDAR.secPerYear;
@@ -158,94 +141,20 @@
     w.weatherLeft -= ts;
     if (w.weatherLeft <= 0) STORY.rollWeather();
 
-    /* 年号推进 */
-    STORY.checkEra();
-
-    /* 换年：结算时代之志（⛔ v89.218：里程碑 / 逐年快照随史册退役，不再记账） */
-    if (w.year !== prevYear) {
-      STORY.settleEraGoal();
-    }
+    /* ⛔ v90.93：年号推进（STORY.checkEra）与换年结算（STORY.settleEraGoal）
+       随年号纪元整条退役 —— 这里只剩历法天时（年 / 季 / 天气）推进。 */
   };
 
   /* ============================================================
-   * 二、年号纪元（赛季制）
+   * 二、年号纪元（赛季制）—— ⛔ v90.93 整段退役
+   * ------------------------------------------------------------
+   * `STORY.checkEra`（到期改元）/ `STORY.eraAdvance`（换年号 + 公文播报）/
+   * `STORY.eraGoalProgress`（各年号的“时代之志”进度）/ `STORY.settleEraGoal`（达成给赏）
+   * 四个出口与 `DATA.ERAS` 表一并删除。
+   * 沿革：牌面修正系数原走 era.boon（prod / gold / atk / siege /
+   * 研究 / 民心 / 声望获取 / 训练速度 八项）—— 现已逐项从各乘数里取消；
+   * 年号进度页已在 v89.218 随史册退役，改元/达成的公文播报随本次一并消失。
    * ============================================================ */
-
-  STORY.checkEra = function () {
-    var s = GAME.state, w = s.world;
-    var yearsInEra = w.year - w.eraStartYear;
-    var era = DATA.ERAS[w.eraIndex];
-    if (!era) return;
-    if (yearsInEra >= era.years) {
-      STORY.eraAdvance();
-    }
-  };
-
-  STORY.eraAdvance = function () {
-    var s = GAME.state, w = s.world;
-    if (w.eraIndex >= DATA.ERAS.length - 1) {
-      /* 年号用尽：循环并加速，作为长线延续 */
-      w.eraIndex = 0;
-      w.eraStartYear = w.year;
-      w.eraGoalDone = false;
-      return;
-    }
-    w.eraIndex += 1;
-    w.eraStartYear = w.year;
-    w.eraGoalDone = false;
-    var era = DATA.ERAS[w.eraIndex];
-    /* v89.153（老板 2）：主题 = 改元（系统页小标签；大类仍是 task——任务并入系统页） */
-    if (GAME.log) GAME.log('🎏 改元 ' + era.name + '：' + era.boon.text, 'task', 'era');
-  };
-
-  /* 时代目标当前进度（返回 {cur,target,text,ratio,ok}） */
-  STORY.eraGoalProgress = function () {
-    var s = GAME.state, era = STORY.currentEra();
-    if (!s || !era) return null;
-    var g = era.goal, cur = 0;
-    if (g.type === 'buildings') {
-      s.cities.forEach(function (c) { c.cells.forEach(function (cell) { if (cell.build) cur++; }); });
-    } else if (g.type === 'heroes') {
-      cur = s.generals.length;
-    } else if (g.type === 'army') {
-      cur = 0;
-      s.cities.forEach(function (c) { for (var id in (c.army || {})) cur += c.army[id]; });
-    } else if (g.type === 'cities') {
-      cur = s.cities.length;
-    } else if (g.type === 'pop') {
-      /* v60（需求 4）：时代之志是**全境**目标，幸存者要走 GAME.totalPop
-         （s.res.pop 现在只代表当前城） */
-      cur = Math.floor(GAME.totalPop());
-    } else if (g.type === 'techTotal') {
-      /* v89.191（老板 3-④）：科技按城 —— 总值走唯一出口 statOf('techTotal')（各城之和）。 */
-      /* v90.92：任务系统退役，原借 GAME.questMetric 求值 → 内联等价实现
-         （各城科技等级之和，与原 techTotal 口径一致）。 */
-      cur = 0;
-      (s.cities || []).forEach(function (c) {
-        for (var _tk92 in (c.techs || {})) cur += c.techs[_tk92];
-      });
-    } else if (g.type === 'rep') {
-      cur = Math.floor(s.rep || 0);
-    } else if (g.type === 'govLevel') {
-      cur = GAME.buildingLevel(GAME.currentCity(), 'guanfu') || 1;
-    } else if (g.type === 'hearts') {
-      cur = Math.floor(s.hearts || 0);
-    }
-    return { cur: cur, target: g.n, text: g.text, ratio: g.n ? Math.min(1, cur / g.n) : 0, ok: cur >= g.n };
-  };
-
-  /* 达成即给赏（每时代一次） */
-  STORY.settleEraGoal = function () {
-    var s = GAME.state, w = s.world, era = STORY.currentEra();
-    if (!era || w.eraGoalDone) return;
-    var p = STORY.eraGoalProgress();
-    if (!p || !p.ok) return;
-    w.eraGoalDone = true;
-    var bonus = { gold: 20000 * (w.eraIndex + 1), rep: 500 * (w.eraIndex + 1) };
-    s.res.gold = (s.res.gold || 0) + bonus.gold;
-    s.rep = (s.rep || 0) + bonus.rep;
-    if (GAME.log) GAME.log.task('🏆 时代之志达成：' + era.goal.text + '（+' + bonus.gold + '旧币 / +' + bonus.rep + '声望）');
-  };
 
   /* ============================================================
    * 三、英雄羁绊（后台静默生效，不提示）
@@ -275,58 +184,44 @@
     return m;
   };
 
-  /* ---- 供其他模块调用的聚合接口（羁绊 + 年号，均后台静默生效） ---- */
+  /* ---- 供其他模块调用的聚合接口（v90.93 起只余羁绊，后台静默生效） ---- */
 
   STORY.heartsPerHour = function () {
-    var era = STORY.currentEra();
-    var m = STORY.bondBonus('hearts');
-    if (era && era.boon && era.boon.hearts) m += era.boon.hearts;
-    return m;
+    /* v90.93：年号纪元退役 —— 只余羁绊（原「年号增益」的民心每小时项已移除）。 */
+    return STORY.bondBonus('hearts');
   };
 
   STORY.researchMult = function () {
-    var era = STORY.currentEra();
-    var m = 1 + STORY.bondBonus('research');
-    if (era && era.boon && era.boon.research) m *= (1 + era.boon.research);
-    return m;
-  };
-
-  /* 声望获取倍率（赛季国策「人心思附：声望获取 +20%」）
-     —— 此前该 boon 定义了却无任何读取点，等于奖项为空 */
-  STORY.repMult = function () {
-    var era = STORY.currentEra();
-    var m = 1;
-    if (era && era.boon && era.boon.rep_gain) m *= (1 + era.boon.rep_gain);
-    return m;
+    /* v90.93：年号纪元退役 —— 只余羁绊（原「年号增益」的研究加速项已移除）。 */
+    return 1 + STORY.bondBonus('research');
   };
 
   STORY.leadMult = function () {
     return 1 + STORY.bondBonus('lead');
   };
 
-  STORY.trainMult = function () {
-    var era = STORY.currentEra();
-    return (era && era.boon && era.boon.train) ? 1 + era.boon.train : 1;
-  };
+  /* ⛔ v90.93 退役：`STORY.repMult`（声望获取倍率）与 `STORY.trainMult`（训练加速）——
+     二者的**唯一**加成来源都是年号国策（「人心思附：声望获取 +20%」与
+     「制度维新：训练速度 +15%」），
+     年号纪元移除后恒为 1（空转）→ 整函数删除；消费点已同步去掉该乘数
+     （battle.js 攻城/野地声望、domain.js 训练耗时、domain.js 岁贡声望）。 */
 
   STORY.cityDefMult = function () {
     return 1 + STORY.bondBonus('cityDef');
   };
 
-  /* 全军攻击 / 防御 / 攻城乘数（羁绊 + 年号 + 天时） */
+  /* 全军攻击 / 防御 / 攻城乘数（v90.93 起：羁绊；天时另由 combatMod 单列读取） */
   STORY.atkMult = function () {
-    var cm = STORY.combatMod();
-    return (1 + STORY.bondBonus('atk')) * cm.atkEra;
+    return 1 + STORY.bondBonus('atk');
   };
   /* 羁绊「守御」的加算值（由调用方负责封顶）。
      原先返回 1+该值，与战斗里内联的封顶版本形成两份实现 → 统一为单一来源。 */
   STORY.defMult = function () {
     return STORY.bondBonus('def');
   };
-  /* 攻城伤害倍率 = 羁绊「白衣渡江」× 赛季国策（青龙·大兴土木 / 景元·大将西征） */
+  /* 攻城伤害倍率 = 羁绊「白衣渡江」（v90.93：赛季国策项随年号纪元退役） */
   STORY.siegeMult = function () {
-    var cm = STORY.combatMod();
-    return (1 + STORY.bondBonus('siege')) * cm.siegeEra;
+    return 1 + STORY.bondBonus('siege');
   };
 
   /* ============================================================

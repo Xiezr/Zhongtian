@@ -587,9 +587,11 @@
       fortRaids: {},                            // 今日已掠夺的野外城池 { 'x,y': dayIndex }
       yieldDay: null,                           // 上次辖区岁贡结算的现实日（null = 尚未结算过）
       gathers: [],                              // 野地采集队（v15）：{ id,x,y,type,level,genId,army,troops,cityId,elapsed }
-      /* 叙事层（story.js）：世界历法 / 年号纪元
+      /* 叙事层（story.js）：世界历法（年 / 季 / 天气）
          ⛔ v89.218：chronicle / chronicleDone / eraHistory 三字段随史册退役
-         （老档残留不再读取，随下次存档自然消失）。 */
+         （老档残留不再读取，随下次存档自然消失）。
+         ⛔ v90.93：world 里的 eraIndex / eraStartYear / eraGoalDone /
+         eraGoalClaimed 四字段随年号纪元退役（同理：老档残留不再读取）。 */
       world: null,                              // 由 GAME.story.init() 填充
       /* v90.92：任务系统整条退役 —— s.quests 字段移除 */
       /* 累计统计（任务指标来源，跨存档保留） */
@@ -996,9 +998,9 @@
     g.portraitSeed = (seed != null) ? seed : GAME.portraits.seedOf(g);
     g.loyalty = 100;                   /* 永不离去（离职判定另有两处守卫） */
     g.salary = 0;                      /* 君主不领俸禄 */
-    /* v89.65（老板「君主练功然后突破」）：修为与突破次数随身携带。
-       老档读不到即视为 0（读出口一律 `g.breaks || 0`），**不需要迁移脚本**。 */
-    g.cultiv = 0;
+    /* v89.65（老板「君主练功然后突破」）：突破次数随身携带。
+       老档读不到即视为 0（读出口一律 `g.breaks || 0`），**不需要迁移脚本**。
+       ⛔ v90.94：修为字段（原修为积累）随练功-突破解耦退役 —— 不再写出（老档有值亦无害）。 */
     g.breaks = 0;
     /* 六维取资质区间的**中值**（不掷骰、不吃 Math.random）：
        君主是玩家本人 —— 随机会让"老档迁移"读一次变一次，也无从比较两局；
@@ -2248,12 +2250,8 @@
       for (var id in (c.army || {})) army += c.army[id];
     });
     var w = st.world || {};
-    var eras = DATA.ERAS || [];
-    var era = eras[Math.min(w.eraIndex || 0, Math.max(0, eras.length - 1))] || { name: '' };
+    /* ⛔ v90.93：年号纪元退役 —— 存档索引不再记 era / yearName（只留普通年序 year）。 */
     var seasons = ['春', '夏', '秋', '冬'];
-    var cn = ['', '一', '二', '三', '四', '五', '六', '七', '八', '九', '十'];
-    var yy = (w.year || 1) - (w.eraStartYear || 1) + 1;
-    var yearName = yy <= 1 ? '元' : (yy <= 10 ? cn[yy] : (yy < 20 ? '十' + cn[yy - 10] : String(yy)));
     var we = (DATA.WEATHERS || {})[w.weather || 'clear'] || { name: '晴', icon: '☀' };
     return {
       version: st.version || SAVE_VERSION,
@@ -2263,9 +2261,7 @@
       army: army,
       rep: Math.floor(st.rep || 0),
       rank: st.rank || 0,
-      era: era.name,
       year: w.year || 1,
-      yearName: yearName,
       season: seasons[(w.season || 0) % 4],
       weather: we.icon + we.name,
       gameElapsed: Math.round(w.elapsed || 0),
@@ -2320,7 +2316,7 @@
   var OFFLINE_EXACT_MAX = 3600;   // 逐秒补算上限（现实秒）
 
   /* v89.86（整改 P-17）：离线推进上限 —— 单位=游戏日；0=不限（默认 7 日）。
-     老板实测：离线 10.16 小时 = 游戏内约 80 年（120×）—— 改元/月俸/神器连跳，
+     老板实测：离线 10.16 小时 = 游戏内约 80 年（120×）—— 历法/月俸/神器连跳，
      "离线一夜、人间百年"，长线经营的年代感被冲淡。 */
   GAME.offlineCapDays = function () {
     /* v89.104（老板）："离线推进上限解除，设置里不要这个" ——
@@ -2331,7 +2327,7 @@
   /* 超限时间段的**五折折算**（v89.86 · P-17）——
      资源 = 产量 × 现实秒 × 0.5（受仓容约束，旧币不设上限，与既有口径一致）；
      供奉值 = 游戏时 × 速率 × 0.5（走 artGain 唯一入口）。
-     不推进历法/年号/月俸/入侵/队列 —— 这正是"上限"的本体。 */
+     不推进历法/月俸/入侵/队列 —— 这正是"上限"的本体。 */
   GAME.simulateOfflineOverflow = function (secReal) {
     var s = GAME.state, ts = GAME.timeScale();
     if (!s || secReal <= 0) return;
@@ -3087,7 +3083,7 @@
       var s = GAME.slotOf(id) || {};
       idx[id] = {
         id: id, slot: s.name || id, kind: s.kind || 'manual',
-        name: m.name || '无名君主', era: m.era || '', yearName: m.yearName || '',
+        name: m.name || '无名君主',
         cities: m.cities || 0, army: m.army || 0,
         gens: (st.generals || []).length,
         year: (st.world && st.world.year) || 1,
@@ -3395,7 +3391,7 @@
     /* 4) 民心（v89.177 公式口径）：民心 = clamp(100 − 税率×100 + 安抚, 0, 100)。
        改动三处：① 旧的"税率>50% 逐时衰减"整段退役（公式已含税率影响，且是即时的）；
                  ② 安抚（heartsComfort）每游戏小时向 0 回落（decayPerHour）；
-                 ③ 羁绊/年号（story.heartsPerHour）改为**安抚供给**（叠加后一起钳制）。 */
+                  ③ 羁绊（story.heartsPerHour）改为**安抚供给**（叠加后一起钳制）。 */
     if (GAME.story) {
       var hAdd = GAME.story.heartsPerHour();
       if (hAdd) s.heartsComfort = (s.heartsComfort || 0) + hAdd / 3600 * ts;
@@ -3478,7 +3474,7 @@
     /* 9f) 行军队列推进（抵达即结算 —— 见 battle.js GAME.march） */
     if (GAME.march && GAME.march.tick) GAME.march.tick();
 
-    /* 10) 历法天时推进 + 年号纪元（story.js；史册记账随 v89.218 退役） */
+    /* 10) 历法天时推进（story.js；年号纪元随 v90.93 退役，史册记账随 v89.218 退役） */
     if (GAME.story) GAME.story.tick(ts);
 
     /* 11) 逾溢折损（v89.160 · 老板 1）——**放在历法推进之后**：锚点读的是刚推进过的
@@ -3544,7 +3540,7 @@
     if (wildMult[r]) list.push({ name: '野地', d: wildMult[r] });
     if (GAME.story) {
       var sm = GAME.story.prodMult(r);
-      if (sm && Math.abs(sm - 1) > 1e-9) list.push({ name: '天时（季/天候/年号）', d: sm - 1 });
+      if (sm && Math.abs(sm - 1) > 1e-9) list.push({ name: '天时（季/天候）', d: sm - 1 });
     }
     /* v63（老板）：「守将属性只对当前城池起加成作用」——
        这里改成**读本城守将**（唯一出口 `GAME.guardBonus(city)`）。
@@ -3671,7 +3667,7 @@
       /* 宝物/天时对**税收部分**：结算为加法（v89.157），逐项展开 —— 各项之和 = 总值 */
       var _taxAll162 = _taxBase162 + _taxCity162 + _taxMayor162;
       if (itemM.gold) rows.push({ name: '宝物加成 +' + Math.round(itemM.gold * 100) + '%', val: _taxAll162 * itemM.gold / 3600 * ts });
-      if (GAME.story && Math.abs(smg - 1) > 1e-9) rows.push({ name: '天时（季/天候/年号）' + (smg >= 1 ? '+' : '') + Math.round((smg - 1) * 100) + '%', val: _taxAll162 * (smg - 1) / 3600 * ts });
+      if (GAME.story && Math.abs(smg - 1) > 1e-9) rows.push({ name: '天时（季/天候）' + (smg >= 1 ? '+' : '') + Math.round((smg - 1) * 100) + '%', val: _taxAll162 * (smg - 1) / 3600 * ts });
       return rows;
     }
     var base = ((city ? GAME.prodBasePerHourOf(city)[r] : GAME.prodBasePerHour()[r]) || 0) / 3600 * ts;
@@ -3996,7 +3992,7 @@
       wallLv: wallLv, towers: towers, playerDef: true,
     };
     var result = null;
-    /* v89.118：与出征同办 —— **开打那一刻的加成快照**（科技/天时/年号/羁绊/战鼓）。
+    /* v89.118：与出征同办 —— **开打那一刻的加成快照**（科技/天时/羁绊/战鼓）。
        守城的战报沙盘也要靠它才能与史实同源（30h 试玩实测：守城一路同样 verify=false）。 */
     var _boost118 = GAME.battle.boostSnapshot ? GAME.battle.boostSnapshot(city) : null;
     try {
@@ -4485,7 +4481,7 @@
        未声明 / 写错 → 落 sys（系统消息）：分类值域见 DATA.MSG_KINDS（唯一来源）。 */
     var k = (kind && DATA.MSG_KIND_BY && DATA.MSG_KIND_BY[kind]) ? kind : 'sys';
     var rec = { t: U.now(), gt: gt, msg: msg, k: k };
-    /* v89.153（老板 2）：第三参数 = **主题**（改元/天时/建造/采集收获……）——
+    /* v89.153（老板 2）：第三参数 = **主题**（天时/建造/采集收获……）——
        系统页小标签按它筛（读取走唯一出口 GAME.msgSubOf）；非法值不落库（宁缺勿错）。 */
     if (sub && DATA.MSG_SUB_BY && DATA.MSG_SUB_BY[sub]) rec.sub = sub;
     GAME.sessionLog.push(rec);
@@ -4520,7 +4516,7 @@
    * v89.153：消息**主题**与**系统页池**（两个唯一出口）
    * ------------------------------------------------------------
    *   · `GAME.msgSubOf(rec)` —— 一条消息在系统页里属于哪个小标签：
-   *       有 sub 按 sub（改元 / 天时 / 建造 / 采集收获）；
+   *       有 sub 按 sub（天时 / 建造 / 采集收获……）；
    *       否则按 kind：war → 军情 · task → 任务 · sys → 系统。
    *     标签 id **就是返回值**（era/weather/build/gather/war/task/sys）——
    *     界面 chips、筛选、颜色三处全读它，不另立映射表。
@@ -5074,60 +5070,11 @@
     return { ok: true, name: a.name + ' · ' + title, text: body, bad: bad, grade: grade };
   };
 
-  /* --------- v89 · 全屏荒野场景流程（老板：「专属全屏界面 + 特定退出」） --------- */
-  GAME.sceneFx = null;
-  /* 进入流程：只校验不扣费（「未动身离去免费」的根基）；无剧本 → fx:null 由调用方兜底 */
-  /* 剧本开场内核抽成共用出口 —— 荒野活动各幕共用同一套场景机 */
-  GAME.sceneBegin = function (chk, fly, extra) {
-    GAME.sceneFx = {
-      chk: chk, fly: fly, actId: chk.actId,
-      stage: 0, picks: [],
-      mods: { pow: 1, reward: 1, wound: 1, luck: 0 },
-      spent: false, phase: 'stage', result: null, grade: null
-    };
-    if (extra) { for (var k6 in extra) GAME.sceneFx[k6] = extra[k6]; }
-    return { ok: true, fx: GAME.sceneFx };
-  };
-  GAME.sceneStart = function (x, y, genId, actId) {
-    var chk = GAME.jianghuCheck(x, y, genId, actId);
-    if (!chk.ok) return chk;
-    var fly = (DATA.SCENE_FLOW || {})[actId];
-    if (!fly) return { ok: true, fx: null };
-    return GAME.sceneBegin(chk, fly, null);
-  };
-  /* ⛔ v90.80：探奇开场（wonderStart）随奇遇系统整条退役。 */
-  /* 选一幕（首次选择才真正扣费+落锁）；末幕选择即结算 */
-  GAME.scenePick = function (idx) {
-    var fx = GAME.sceneFx;
-    if (!fx || fx.phase !== 'stage') return { ok: false, msg: '流程已结束' };
-    var st = fx.fly.stages[fx.stage];
-    var op = (st && st.o) ? st.o[idx] : null;
-    if (!op) return { ok: false, msg: '无此选项' };
-    if (!fx.spent) { GAME.jianghuSpend(fx.chk); fx.spent = true; }
-    fx.picks.push({ l: op.l, d: op.d || '' });
-    var e = op.e || {};
-    if (e.pow) fx.mods.pow *= e.pow;
-    if (e.reward) fx.mods.reward *= e.reward;
-    if (e.wound) fx.mods.wound *= e.wound;
-    if (e.luck) fx.mods.luck += e.luck;
-    fx.stage += 1;
-    var resolved = fx.stage >= fx.fly.stages.length;
-    if (resolved) {
-      fx.result = GAME.jianghuRoll(fx.chk, fx.mods);
-      fx.grade = fx.result.grade || (fx.result.bad ? 'lose' : 'win');
-      fx.phase = 'result';
-    }
-    return { ok: true, resolved: resolved, fx: fx };
-  };
-  /* 中途退出：未动身 → 零消耗（锁都未落）；已动身 → 所耗不返、今日计入 */
-  GAME.sceneEscape = function () {
-    var fx = GAME.sceneFx;
-    if (!fx || fx.phase !== 'stage') return { ok: false, msg: '流程已结束' };
-    fx.phase = 'result';
-    fx.grade = 'escape';
-    fx.result = { ok: true, name: fx.fly.escLabel || '就此离去', text: '', bad: true, escaped: true, grade: 'escape' };
-    return { ok: true, fx: fx };
-  };
+  /* ⛔ v90.93 退役：**全屏剧本**（荒野场景流程）整条 ——
+     老板「去掉纪事剧本」中的「全屏剧本」。
+     现行口径：荒野活动按钮 → **一次性结算**（one-shot，ui.doJianghu）。
+     内核（jianghuCheck / jianghuSpend / jianghuRoll）原样保留 ——
+     一次性结算本就是它原本就有的「无剧本兜底」出口。 */
   /* ============================================================
    * ⛔ v89.218（老板）：「故事全部去除，不再保留史册，故事集」——
    * 故事库引擎（GAME.SG：清单 / 待阅 / 掷骰 / 动作触发 / 结算）整条退役；
