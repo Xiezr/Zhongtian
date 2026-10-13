@@ -5406,190 +5406,9 @@ if (svBtn) {
     G.ui.closeAllModals();
     await sleep(60);
 
-    /* ② 底部导航栏缩略图 → 天下大势面板 */
-    G.ui.paintBottom();
-    await sleep(40);
-    check('v85：底部条固定拼缩略图（38px canvas）',
-      !!document.querySelector('#bottom-bar .bb-mini #mini-canvas'));
-    click(document.querySelector('#bottom-bar .bb-mini'));
-    await sleep(160);
-    check('v85：点击展开「天下大势」（缩略图 + 州镇界图例）', (function () {
-      const root = document.querySelector('#modal-root');
-      return !!root && !!root.querySelector('#mini-big')
-        && root.textContent.indexOf('天下大势') >= 0
-        && root.textContent.indexOf('区界') >= 0 && root.textContent.indexOf('镇界') >= 0;
-    })());
-    check('v85：缩略数据（13 州 · 25 万格 · 边界线存在）', (function () {
-      const d = G.map.miniBuild();
-      if (!d || d.stName.length !== 13 || d.state.length !== 250000) return false;
-      let e1 = 0, e2 = 0;
-      for (let y = 0; y < 500; y += 7) {
-        for (let x = 0; x < 499; x += 7) {
-          const i = y * 500 + x;
-          if (d.state[i] !== d.state[i + 1]) e1++;
-          else if (d.jun[i] !== d.jun[i + 1]) e2++;
-        }
-      }
-      return e1 > 10 && e2 > 10;
-    })());
-    check('v85.1：174 城零错位（城格色块 = 城自身州 · 复核修复）', (function () {
-      const d = G.map.miniBuild();
-      const idx = {};
-      d.stName.forEach((n, i) => { idx[n] = i; });
-      let mis = 0;
-      (G.DATA.NPC_CITIES || []).forEach((c) => { if (d.state[c.y * 500 + c.x] !== idx[c.state]) mis++; });
-      return mis === 0;
-    })());
-    G.ui.closeAllModals();
-    await sleep(60);
   }
 
-  /* ============================================================
-   * v89.47（老板三条）：天下大势 —— 满界面 / 大写城名 / 点选跳转（真实 DOM）
-   * ------------------------------------------------------------
-   * ① 满界面：面板宽高 ≈ 视口（留 8px）；画布 CSS 边长 ≥ 视口高 − 200。
-   * ② 城名：只有旧都/首府/重镇落笔（聚落不标）—— 以画布内部尺寸与标签表核对。
-   * ③ 点选：真点画布中心 → 面板关闭 + 主地图居中到对应格（±1 格容差）。
-   * ============================================================ */
-  console.log('\n--- v89.47. 天下大势：满界面 / 城名 / 点选跳转（真实 DOM） ---');
-  {
-    G.ui.openMinimap();
-    await sleep(220);
-    const panel = document.querySelector('#modal-root .modal');
-    const big = document.querySelector('#mini-big');
-    /* ⚠️ v89.86：jsdom 没有布局引擎（rect 全 0），原先三条"量尺寸"断言在此**永远红** ——
-       改为判"满界面档位 + 画布内部边长 = fitMini 侧长 + 分辨率按 css 宽 × dpr 对齐"
-       （任何一处写死 1000 / 不随视口放大都会红）；真机像素级复核走几何探针。 */
-    check('v89.47：面板挂「满界面」档（modal-max）', (function () {
-      if (!panel || !big) return false;
-      return panel.classList.contains('modal-max');
-    })(), panel ? panel.className : 'no panel');
-    check('v89.47：缩略图画布按视口放大（内部边长 = fitMini 侧长 · 方）', (function () {
-      if (!big) return false;
-      const side = G.ui.fitMini();
-      return big.width === side && big.height === side && big.width >= 400;
-    })(), big ? ('side=' + big.width) : 'no canvas');
-    check('v89.47：画布内部分辨率 1:1 跟随显示尺寸（非固定 1000）', (function () {
-      if (!big) return false;
-      const cssW = parseFloat(big.style.width) || 0;
-      const dpr = Math.min(2, window.devicePixelRatio || 1);
-      return cssW > 0 && Math.abs(big.width - Math.round(cssW * dpr)) <= 2 && big.width !== 1000;
-    })(), big ? (big.width + ' vs css ' + (big.style ? big.style.width : '')) : '');
-    check('v89.47：点选提示行在（图例尾「点图上任意一处」）',
-      !!document.querySelector('#modal-root .mini-hit')
-      && document.querySelector('#modal-root').textContent.indexOf('主地图直达') >= 0);
-    /* 真点一次：画布中心 → 世界中心格 (250,250)
-       v89.86：jsdom rect 全 0 会让 miniPick 直接返回 null —— 注入 rect 桩再点（其余用例同法）。 */
-    const oldRectB = big.getBoundingClientRect;
-    big.getBoundingClientRect = () => ({ left: 0, top: 0, width: big.width, height: big.height });
-    const br = big.getBoundingClientRect();
-    big.dispatchEvent(new window.MouseEvent('click', {
-      bubbles: true, cancelable: true, view: window,
-      clientX: br.left + br.width / 2, clientY: br.top + br.height / 2
-    }));
-    big.getBoundingClientRect = oldRectB;
-    await sleep(200);
-    check('v89.47：点选后关闭面板并跳到该格（中心 → 约 250,250）', (function () {
-      const gone = !document.querySelector('#modal-root #mini-big');
-      const v = G.ui.mapView;
-      return gone && G.ui.view === 'map'
-        && Math.abs(v.x - 250) <= 1 && Math.abs(v.y - 250) <= 1;
-    })(), JSON.stringify(G.ui.mapView));
-  }
 
-  /* ============================================================
-   * v89.68（老板）：缩略图三级下钻筛选 首府 / 重镇 / 聚落（真实 DOM）
-   * ------------------------------------------------------------
-   * 老板：「缩略图加一个筛选按钮，当选择'首府'时…；选择'重镇'时，增加一个可选框
-   *   选定某个首府，然后仅显示该区…；同理选'聚落'时，逐级选择辖区，仅显示该镇地图…」
-   * 这里走**真实 change 事件 + 真实重开面板**，校验级联出现与取景窗真的缩小。
-   * ⚠️ jsdom 里派发事件必须用 window.Event（Node 的 new Event 会抛跨 realm 错，
-   *    而且会中断整个 e2e —— 见 §89 备忘）。
-   * ============================================================ */
-  console.log('\n--- v89.68. 缩略图三级下钻筛选（真实 DOM） ---');
-  {
-    const fire = (el, v) => {
-      el.value = v;
-      el.dispatchEvent(new window.Event('change', { bubbles: true }));
-    };
-    /* 复位到"全部" */
-    G.ui._miniFilter = { level: '', state: '', jun: '' };
-    G.ui._miniViewCache = null;
-    G.ui.openMinimap();
-    await sleep(80);
-    const mroot = () => document.querySelector('#modal-root');
-    check('v89.68：筛选行在册（层级下拉）', !!mroot() && !!mroot().querySelector('#mini-level'));
-    check('v89.68：「全部」档不给州/郡下拉（级联未展开）', (function () {
-      return !mroot().querySelector('#mini-state') && !mroot().querySelector('#mini-jun');
-    })());
-    const sideAll = G.ui.miniView().win.side;
-
-    /* ① 首府档：全图取景，只标 旧都/首府 */
-    fire(mroot().querySelector('#mini-level'), 'zhou');
-    await sleep(80);
-    const vZ = G.ui.miniView();
-    check('v89.68：「首府」档 = 全图 + 只标注旧都/首府', (function () {
-      return vZ.level === 'zhou' && vZ.win.side === sideAll
-        && vZ.list.length > 0
-        && vZ.list.every((c) => c.type === 'zhou' || c.type === 'capital');
-    })(), 'list=' + vZ.list.length + ' side=' + vZ.win.side);
-
-    /* ② 重镇档：出现「区」下拉；选区后取景窗缩小，且该区重镇全在窗内 */
-    fire(mroot().querySelector('#mini-level'), 'jun');
-    await sleep(80);
-    check('v89.68：「重镇」档出现「区」下拉（尚无「镇」下拉）', (function () {
-      return !!mroot().querySelector('#mini-state') && !mroot().querySelector('#mini-jun');
-    })());
-    check('v89.68：选区后仅显示该区（取景窗缩小 + 该区重镇全在窗内）', (function () {
-      const st = mroot().querySelector('#mini-state').value;
-      fire(mroot().querySelector('#mini-state'), st);
-      const v = G.ui.miniView();
-      const juns = G.ui.miniJunsOf(st);
-      const inside = juns.every((c) => c.x >= v.win.x0 && c.x < v.win.x0 + v.win.side
-        && c.y >= v.win.y0 && c.y < v.win.y0 + v.win.side);
-      return v.win.side < sideAll && v.win.side > 0 && inside
-        && v.list.length === juns.length;
-    })());
-    await sleep(60);
-
-    /* ③ 聚落档：再出现「镇」下拉；选定后只标该镇聚落（空镇则明写原因） */
-    fire(mroot().querySelector('#mini-level'), 'county');
-    await sleep(80);
-    const junSel = mroot().querySelector('#mini-jun');
-    check('v89.68：「聚落」档逐级出现「区」+「镇」两个下拉（v89.219 机构词）', !!mroot().querySelector('#mini-state') && !!junSel);
-    check('v89.219：镇下拉带「（N 聚落）」标注（空镇一眼可辨 · 原 v89.68「N 县」口径）', (function () {
-      return /（\d+ 聚落）/.test(mroot().querySelector('#mini-jun').textContent || '');
-    })(), (junSel && junSel.textContent) ? junSel.textContent.trim().slice(0, 60) : '无郡');
-    check('v89.68：选定镇后只标注该镇聚落（列表与 regionOf 归属一致）', (function () {
-      /* 挑一个"有聚落"的重镇来验，并用返回码说明空镇的处理 */
-      const opts = Array.prototype.slice.call(junSel.querySelectorAll('option'));
-      const withC = opts.filter((o) => !/（0 聚落）/.test(o.textContent))[0];
-      if (!withC) return false;
-      fire(junSel, withC.value);
-      const v = G.ui.miniView();
-      const j = G.ui.miniJunsOf(G.ui._miniFilter.state).filter((x) => x.id === withC.value)[0];
-      const want = G.ui.miniCountiesOf(j);
-      return v.list.length === want.length && want.length > 0
-        && v.list.every((c) => c.type === 'county') && v.anchor === j;
-    })());
-    await sleep(60);
-    check('v89.68：点选换算反解取景窗（放大后同一屏幕点 → 不同世界格）', (function () {
-      const el = document.querySelector('#mini-big');
-      if (!el) return false;
-      const br = el.getBoundingClientRect();
-      /* jsdom 无布局：拿不到真实尺寸就直接用 ui.miniPick 的纯函数面（传假 rect） */
-      const fake = { getBoundingClientRect: () => ({ left: 0, top: 0, width: 400, height: 400 }) };
-      const a = G.ui.miniPick(200, 200, fake);
-      const v = G.ui.miniView();
-      return !!a && a.x >= v.win.x0 && a.x < v.win.x0 + v.win.side
-        && a.y >= v.win.y0 && a.y < v.win.y0 + v.win.side
-        && (br.width === 0 || true);
-    })());
-    G.ui._miniFilter = { level: '', state: '', jun: '' };
-    G.ui._miniViewCache = null;
-    G.ui.closeAllModals();
-    await sleep(60);
-  }
 
   /* ============================================================
    * v86（老板「按计划进行」· G1）：计谋（真实 DOM）
@@ -9387,12 +9206,12 @@ console.log('\n--- §180. 拆械与 live 滚动（v89.180） ---');
       const tools213 = bar213.querySelector('.bb-tools');
       const lbl213 = bar213.querySelector('.bb-label-toggle');
       const war213 = bar213.querySelector('.bb-war');
-      const mini213 = bar213.querySelector('.bb-mini');
-      check('§213e① 底栏分页三段齐（l → 页码 → r）·「隐藏名称/指挥战斗」/ 缩略图同屏',
+      /* v90.77：底部条缩略图（.bb-mini）随「天下大势」退役，不再断言。 */
+      check('§213e① 底栏分页三段齐（l → 页码 → r）·「隐藏名称/指挥战斗」同屏',
         !!pg213 && !!l213 && !!m213 && !!r213 && (m213.textContent || '').indexOf('页') >= 0
-        && !!tools213 && !!lbl213 && !!war213 && !!mini213,
+        && !!tools213 && !!lbl213 && !!war213,
         'pg=' + !!pg213 + ' l=' + !!l213 + ' m=' + !!m213 + ' r=' + !!r213
-        + ' tools=' + !!tools213 + ' lbl=' + !!lbl213 + ' war=' + !!war213 + ' mini=' + !!mini213);
+        + ' tools=' + !!tools213 + ' lbl=' + !!lbl213 + ' war=' + !!war213);
 
       /* ② 底栏「下页」真点生效（1 → 2） */
       G.ui._pages['shop-items'] = 1;

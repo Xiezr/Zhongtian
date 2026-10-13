@@ -138,7 +138,6 @@ var BITMAPS = (function () {
   F["ai_zhaoxianguan_t3.png"] = 1;
   F["ai_zhencha.png"] = 1;
   F["ai_zhuzhan.png"] = 1;
-  F["bigmap_world.png"] = 1;
   F["cape_L.png"] = 1;
   F["cape_R.png"] = 1;
   F["mecha_mount.png"] = 1;
@@ -165,7 +164,7 @@ var BITMAPS = (function () {
     has: function (f) { return !!F[f]; },
     fileOf: fileOf,
     src: function (group, id) { var f = fileOf(group, id); return f ? DIR + f : ''; },
-    count: 134,
+    count: 133,
   };
 })();
 

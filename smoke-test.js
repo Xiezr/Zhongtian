@@ -159,7 +159,6 @@
       var tag = m[0];
       var ok = /class="city-select[ "]/.test(tag)       /* 城池切换 与 附属野地（后者带 wild-select 两个类） */
         || /id="exp-/.test(tag)                          /* 出征面板七项 */
-        || /id="mini-/.test(tag)                         /* 缩略图三级筛选 */
         || /id="xc-/.test(tag)                           /* 练兵场演武的选将框（v89.80） */
         || /id="bt-t-/.test(tag)                         /* 战场界面逐兵种目标（v89.87） */
         || /id="bt-s-/.test(tag)                         /* v89.116：战场界面动作下拉（前进/驻守/后退） */
@@ -4290,7 +4289,7 @@
     && /\.modal-lg \{ width: \d+px; height: \d+px;[\s\S]{0,120}max-width: calc\(var\(--app-w\) - 20px\); max-height: calc\(var\(--app-h\) - 20px\); \}/.test(hS16)
     && /\.modal-xl \{ width: \d+px; height: \d+px;[\s\S]{0,120}max-width: calc\(var\(--app-w\) - 20px\); max-height: calc\(var\(--app-h\) - 20px\); \}/.test(hS16));
   check('#4/5 三段式弹窗格局（m-head / m-body / m-foot）',
-    /\.m-head \{/.test(hS16) && /\.m-body \{/.test(hS16) && /\.m-foot \{/.test(hS16));
+    /\.m-head \{/.test(hS16) && /\.m-body \{/.test(hS16) && /(\.m-foot|\.modal-foot)[ ,]/.test(hS16));
   check('#4/5 ui.modalShell 已提供且被四个主弹窗使用', /ui\.modalShell = function/.test(uS16)
     && (uS16.match(/ui\.openShell\(\{/g) || []).length >= 3,
     (uS16.match(/ui\.openShell\(\{/g) || []).length + ' 处');
@@ -5297,7 +5296,7 @@
       && !/@media \(max-height: 860px\)/.test(css) && !/max-width: 96vw/.test(css);
   })());
   check('三段式格局样式齐备（m-head/m-body/m-foot）',
-    /\.m-head \{/.test(hS31) && /\.m-body \{/.test(hS31) && /\.m-foot \{/.test(hS31));
+    /\.m-head \{/.test(hS31) && /\.m-body \{/.test(hS31) && /(\.m-foot|\.modal-foot)[ ,]/.test(hS31));
   check('shell 布局：标题与操作栏固定、仅内容区滚动',
     /\.modal \.inner-shell \{ display: flex; flex-direction: column; overflow: hidden; \}/.test(hS31)
     && /\.m-body \{ flex: 1; min-height: 0; overflow-y: auto/.test(hS31));
@@ -6225,9 +6224,8 @@
       /* v89.140（老板 7'）：单次兵力退役 → 逐兵种输入框（am-a-<tid>） */
       && /id="am-a-' \+ id \+ '"/.test(all) && /bind\('am-radius', 'radius'\)/.test(all)
       && /bind\('am-scheme', 'scheme'\)/.test(all)          /* v89.83：留守退役，补计略 */
-      && /bind\('am-freq', 'everyMin'\)/.test(all) && /bind\('am-daily', 'dailyMax'\)/.test(all)
-      /* 缩略图三级筛选（v89.68）：三项实名在册 */
-      && /id="mini-level"/.test(all) && /id="mini-state"/.test(all) && /id="mini-jun"/.test(all);
+      && /bind\('am-freq', 'everyMin'\)/.test(all) && /bind\('am-daily', 'dailyMax'\)/.test(all);
+      /* v90.77：缩略图三级筛选（mini-level/state/jun）随「天下大势」整簇退役。 */
   })(), (function () {
     /* 诊断信息：把"没在册"的 <select> 原样打出来（strip 是上面 IIFE 的局部函数，
        这里必须自己再剥一次 —— 别引用不到还照样跑） */
@@ -11964,8 +11962,7 @@ console.log('\n===== 46. v61 满配城池城内布局 =====');
       && !/bb-label-toggle'\)[\s\S]{0,60}classList\.toggle\('on'/.test(m)
       /* canvas 侧仍收 showLabels（图内对城池不再生效，见 v89.67 守卫） */
       && /showLabels: ui\._mapShowLabels !== false/.test(u)
-      /* v89.67：缩略图的城名层改回**常开**（它画的全是名城名称 = 地图骨架） */
-      && /drawMini\(big, side, \{ labels: true \}\)/.test(u)
+      /* ⛔ v90.77：缩略图城名层随「天下大势」退役（drawMini 已删），该出口不再断言。 */
       /* 城内/城外视图的建筑名与等级角标：同一根类名关掉（DOM 节点保留） */
       && /body\.labels-off \.tile-label/.test(html)
       && /body\.labels-off \.tile-badge/.test(html);
@@ -16871,285 +16868,6 @@ console.log('\n===== 70. v85 地图自适应 · 缩略地图 =====');
       && cell >= 34 && cell <= G.ui.MAP_CELL_MAX;
   })());
 
-  console.log('  --- ③ 缩略地图数据层 ---');
-  check('v85：miniBuild 派生 + 缓存（结构）',
-    /GAME\.map\.miniBuild = function/.test(mS85) && /GAME\.map\._mini/.test(mS85));
-  check('实测：归属 25 万格 · 13 州 · 灰烬城格=烬环 · 边界存在 · 缓存命中', (function () {
-    var d = G.map.miniBuild();
-    if (!d || d.state.length !== 250000 || d.stName.length !== 13) return false;
-    if (d.state[215 * 500 + 265] !== 0) return false;      /* 灰烬城（265,215）→ 烬环 id=0 */
-    var edgeN = 0, jedgeN = 0;
-    for (var y = 0; y < 500; y++) {
-      for (var x = 0; x < 499; x++) {
-        var i = y * 500 + x;
-        if (d.state[i] !== d.state[i + 1]) edgeN++;
-        else if (d.jun[i] !== d.jun[i + 1]) jedgeN++;
-      }
-    }
-    return edgeN > 500 && jedgeN > 500 && G.map.miniBuild() === d;
-  })());
-  check('实测：174 城零错位（城格色块 = 城自身州 · v85.1 复核修复）', (function () {
-    var d = G.map.miniBuild();
-    var idx = {};
-    d.stName.forEach(function (n, i) { idx[n] = i; });
-    var mis = 0;
-    (DATA.NPC_CITIES || []).forEach(function (c) {
-      if (d.state[c.y * 500 + c.x] !== idx[c.state]) mis++;
-    });
-    return mis === 0;
-  })());
-
-  console.log('  --- ④ 渲染层与底部条 ---');
-  check('v85：渲染层齐备（离屏/绘制/面板/底部小图）',
-    /ui\.miniOff = function/.test(uS85) && /ui\.drawMini = function/.test(uS85)
-    && /ui\.openMinimap = function/.test(uS85) && /ui\.paintMiniBottom = function/.test(uS85));
-  check('v85：界线两档样式（区界金 / 镇界灰）', /0xf0d060/.test(uS85) && /0xcfcfc0/.test(uS85));
-  check('v85：paintBottom 固定拼装缩略图（不被 _bottom 覆盖）', (function () {
-    var fn = codeOf(uS85, 'ui.paintBottom = function');
-    return fn.indexOf('open-minimap') >= 0 && fn.indexOf('mini-canvas') >= 0;
-  })());
-  check('实测：paintBottom 后底部条含缩略图按钮（stub DOM）', (function () {
-    G.ui.paintBottom();
-    var el = global.document.querySelector('#bottom-bar');
-    return !!el && String(el.innerHTML || '').indexOf('open-minimap') >= 0
-      && String(el.innerHTML || '').indexOf('mini-canvas') >= 0;
-  })());
-
-  /* --------- v89.47（老板三条）：满界面 · 大字城名 · 点选跳转 --------- */
-  console.log('  --- ⑤ v89.47 天下大势：满界面 / 城名 / 点选 ---');
-  check('v89.47：openMinimap 满界面档（modal-max + mini-full 容器 + 点选提示行）', (function () {
-    var fn = codeOf(uS85, 'ui.openMinimap = function');
-    return /'max'/.test(fn) && /mini-full/.test(fn) && /mini-hit/.test(fn)
-      && /ui\.fitMini\(\)/.test(fn) && /ui\.bindMiniPick\(/.test(fn)
-      /* v89.67（老板「名城的名称永不消失」）：满界面档的城名层改回**常开** ——
-         这一层画的全是名城（都/州/郡）名称，就是"地图骨架"本身；
-         跟着开关收掉，缩略图只剩色块，等于把这层功能删了。 */
-      && /labels: true/.test(fn);
-  })());
-  /* --------- v89.68（老板）：缩略图三级下钻筛选 首府 / 重镇 / 聚落 --------- */
-  console.log('  --- ⑤b v89.68 缩略图三级筛选 ---');
-  check('v89.68：首府档 —— 全图取景 + 只标注 旧都/首府', (function () {
-    var keep = G.ui._miniFilter;
-    G.ui._miniFilter = { level: '', state: '', jun: '' }; G.ui._miniViewCache = null;
-    var base = G.ui.miniView();
-    var baseOk = base.level === '' && base.win.side === DATA.MAP_W && base.list.length === 0;
-    G.ui._miniFilter = { level: 'zhou', state: '', jun: '' }; G.ui._miniViewCache = null;
-    var v = G.ui.miniView();
-    var want = (DATA.NPC_CITIES || []).filter(function (c) {
-      return c.type === 'zhou' || c.type === 'capital';
-    }).length;
-    var ok = v.win.side === DATA.MAP_W && v.list.length === want && v.anchor === null
-      && v.list.every(function (c) { return c.type === 'zhou' || c.type === 'capital'; })
-      && v.hint.indexOf(String(want)) >= 0;
-    G.ui._miniFilter = keep; G.ui._miniViewCache = null;
-    return baseOk && ok;
-  })());
-  check('v89.68：重镇档 —— 仅显示该区（窗缩小 · 标该区重镇 · 锚点=首府）', (function () {
-    var keep = G.ui._miniFilter;
-    var st = G.ui.miniStates()[0];
-    G.ui._miniFilter = { level: 'jun', state: st, jun: '' }; G.ui._miniViewCache = null;
-    var v = G.ui.miniView();
-    var juns = G.ui.miniJunsOf(st);
-    /* 取景窗必须把该区所有重镇**全包住**（漏一个 = 下钻看不到自己点的那座城） */
-    var inside = juns.every(function (c) {
-      return c.x >= v.win.x0 && c.x < v.win.x0 + v.win.side
-        && c.y >= v.win.y0 && c.y < v.win.y0 + v.win.side;
-    });
-    var ok = v.win.side > 0 && v.win.side < DATA.MAP_W          /* 真的缩小了 */
-      && v.list.length === juns.length && inside
-      && v.list.every(function (c) { return c.type === 'jun' && c.state === st; })
-      && !!v.anchor && v.anchor.state === st
-      && (v.anchor.type === 'zhou' || v.anchor.type === 'capital');
-    G.ui._miniFilter = keep; G.ui._miniViewCache = null;
-    return ok;
-  })());
-  check('v89.68：聚落档 —— 逐级州→郡（标该郡聚落 · 锚点=重镇 · 空郡明写原因）', (function () {
-    var keep = G.ui._miniFilter;
-    var st = G.ui.miniStates()[0];
-    var withC = null, emptyJ = null;
-    G.ui.miniJunsOf(st).forEach(function (j) {
-      var n = G.ui.miniCountiesOf(j).length;
-      if (n && !withC) withC = j;
-      if (!n && !emptyJ) emptyJ = j;
-    });
-    if (!withC) return false;
-    G.ui._miniFilter = { level: 'county', state: st, jun: withC.id }; G.ui._miniViewCache = null;
-    var v = G.ui.miniView();
-    var want = G.ui.miniCountiesOf(withC);
-    var ok = want.length > 0 && v.list.length === want.length && v.anchor === withC
-      && v.list.every(function (c) { return c.type === 'county'; })
-      && v.win.side >= 30 && v.win.side <= DATA.MAP_W
-      && v.hint.indexOf(String(want.length)) >= 0;
-    /* 无县的郡（全图 96 郡里 43 郡如此）：列表空**但必须给原因**，不许静默空图 */
-    var emptyOk = true;
-    if (emptyJ) {
-      G.ui._miniFilter = { level: 'county', state: st, jun: emptyJ.id }; G.ui._miniViewCache = null;
-      var v2 = G.ui.miniView();
-      emptyOk = v2.list.length === 0 && v2.anchor === emptyJ && /暂无聚落/.test(v2.hint);
-    }
-    G.ui._miniFilter = keep; G.ui._miniViewCache = null;
-    return ok && emptyOk;
-  })());
-  check('v89.68：唯一起点 —— 县归属走 regionOf（不另立就近规则）', (function () {
-    var fn = codeOf(uS85, 'ui.miniCountiesOf = function');
-    return /GAME\.regionOf\(/.test(fn) && /rg\.junCity\.id === junCity\.id/.test(fn)
-      && !/Math\.abs\(/.test(fn);              /* 自己算距离 = 第二个出口，禁止 */
-  })());
-  check('v89.68：点选换算**反解取景窗**（放大后点选不偏 —— 最易漏的一处）', (function () {
-    var keep = G.ui._miniFilter;
-    var fake = { getBoundingClientRect: function () { return { left: 0, top: 0, width: 400, height: 400 }; } };
-    G.ui._miniFilter = { level: '', state: '', jun: '' }; G.ui._miniViewCache = null;
-    var a = G.ui.miniPick(200, 200, fake);                    /* 全图：中心 → 地图中心 */
-    var st = G.ui.miniStates()[0];
-    G.ui._miniFilter = { level: 'jun', state: st, jun: '' }; G.ui._miniViewCache = null;
-    var v = G.ui.miniView();
-    var b = G.ui.miniPick(200, 200, fake);                    /* 同一屏幕点 → 世界格必须落在窗内 */
-    var inWin = !!b && b.x >= v.win.x0 && b.x < v.win.x0 + v.win.side
-      && b.y >= v.win.y0 && b.y < v.win.y0 + v.win.side;
-    G.ui._miniFilter = keep; G.ui._miniViewCache = null;
-    return !!a && a.x === Math.floor(DATA.MAP_W / 2) && inWin
-      && (b.x !== a.x || b.y !== a.y);
-  })());
-  check('v89.68：取景窗必为正方形 + 钳在地图内 + 有放大下限', (function () {
-    var fn = codeOf(uS85, 'ui.miniWindowOf = function');
-    return /Math\.max\(x1 - x0, y1 - y0\)/.test(fn)          /* 取长边 → 正方（非方会横向拉伸） */
-      && /U\.clamp\(cx - side \/ 2, 0, W - side\)/.test(fn)
-      && /Math\.max\(side, 30\)/.test(fn);
-  })());
-  check('v89.68：drawMini 按取景窗裁切 + 下钻走独立标注层', (function () {
-    var fn = codeOf(uS85, 'ui.drawMini = function');
-    return /ui\.miniView\(\)/.test(fn) && /v\.win\.x0 \* P/.test(fn) && /v\.win\.side \* P/.test(fn)
-      && /if \(v\.level\) ui\.miniFocusLabels\(ctx, size, v\)/.test(fn);
-  })());
-  /* v89.219 规则变更：行政后缀（县/郡）随机构词退役 —— 层级辨识改由**字形分级**
-     （旧都 > 首府 > 重镇 > 聚落）与筛选器承担。旧「按类型补 县/郡 后缀」判据按新口径重写
-     （不是放宽：补上"后缀补法零残留"的反向断言）。 */
-  check('v89.219：聚焦标注不再补行政后缀（层级由字形分级承担 · v89.68 口径退役）', (function () {
-    var fn = codeOf(uS85, 'ui.miniFocusLabels = function');
-    return /v\.anchor/.test(fn)                                  /* 上级锚点必须画（沿用） */
-      && fn.indexOf("+= '县'") < 0 && fn.indexOf("+= '郡'") < 0     /* 旧后缀补法零残留 */
-      && !/\[县道\]/.test(fn) && !/\[郡国\]/.test(fn);
-  })());
-  check('v89.68：天下大势面板含筛选行（层级 + 级联 州/郡 下拉框）', (function () {
-    var keep = G.ui._miniFilter, keepState = GAME.state, ok = false;
-    var html = function () { return (global.document.querySelector('#modal-root') || {}).innerHTML || ''; };
-    try {
-      G.newGame({ name: '缩略图', cityName: '灰岗' });
-      G.ui._miniFilter = { level: '', state: '', jun: '' }; G.ui._miniViewCache = null;
-      G.ui.openMinimap();
-      var lvOnly = html().indexOf('id="mini-level"') >= 0
-        && html().indexOf('id="mini-state"') < 0 && html().indexOf('id="mini-jun"') < 0;
-      G.ui.setMiniFilter('level', 'jun');                   /* 重镇档：出现「区」 */
-      var junLv = html().indexOf('id="mini-state"') >= 0 && html().indexOf('id="mini-jun"') < 0;
-      G.ui.setMiniFilter('level', 'county');                /* 聚落档：再出现「镇」（逐级） */
-      var ctyLv = html().indexOf('id="mini-state"') >= 0 && html().indexOf('id="mini-jun"') >= 0;
-      ok = lvOnly && junLv && ctyLv;
-    } catch (e) { ok = false; }
-    finally { G.ui._miniFilter = keep; G.ui._miniViewCache = null; GAME.state = keepState; }
-    return ok;
-  })());
-  check('v89.47：CSS 满界面档就位（modal-max · :has(> .mini-full) · crosshair）', (function () {
-    var css = fsMod.readFileSync(pathMod.join(__dirname, 'index.html'), 'utf8');
-    return /\.modal-max \{/.test(css)
-      && /\.inner-panel:has\(> \.mini-full\)/.test(css)
-      && /cursor: crosshair/.test(css)
-      && /\.mini-hit \{/.test(css);
-  })());
-  /* 记录式 ctx：真跑一遍城名层，数「被画出来的名字」与示意点 */
-  function recCtx() {
-    var rec = { texts: [], fills: [], rects: 0 };
-    var c = {
-      beginPath: function () {}, closePath: function () {}, moveTo: function () {}, lineTo: function () {},
-      quadraticCurveTo: function () {}, bezierCurveTo: function () {}, arc: function () {}, ellipse: function () {},
-      rect: function () {}, roundRect: function () {}, fill: function () {}, stroke: function () {},
-      fillRect: function () { rec.rects++; }, strokeRect: function () {}, clearRect: function () {},
-      save: function () {}, restore: function () {}, translate: function () {}, scale: function () {}, rotate: function () {},
-      clip: function () {}, fillText: function (t) { rec.texts.push(String(t)); }, strokeText: function () {},
-      setLineDash: function () {}, measureText: function () { return { width: 10 }; },
-      drawImage: function () {}, createPattern: function () { return null; },
-      createLinearGradient: function () { return { addColorStop: function () {} }; },
-      createRadialGradient: function () { return { addColorStop: function () {} }; },
-      createImageData: function (w, h) { return { data: new Uint8ClampedArray(w * h * 4) }; },
-      getImageData: function (x, y, w, h) { return { data: new Uint8ClampedArray(w * h * 4) }; },
-      putImageData: function () {},
-      font: '', textAlign: '', textBaseline: '', lineWidth: 1, globalAlpha: 1, fillStyle: '', strokeStyle: ''
-    };
-    return { ctx: c, rec: rec };
-  }
-  var T947 = recCtx();
-  var drawn947 = G.ui.miniLabels(T947.ctx, 1000);
-  var want947 = (DATA.NPC_CITIES || []).filter(function (c) {
-    return c.type === 'capital' || c.type === 'zhou' || c.type === 'jun';
-  });
-  check('实测：城名层只在都/州/郡落笔（' + want947.length + ' 座 · 县不标）', (function () {
-    if (drawn947 !== want947.length) return false;
-    if (T947.rec.texts.length !== want947.length) return false;
-    var want = {};
-    want947.forEach(function (c) { want[c.name] = 1; });
-    var countyOnly = (DATA.NPC_CITIES || []).filter(function (c) { return c.type === 'county'; });
-    var bad = countyOnly.filter(function (c) { return !want[c.name] && T947.rec.texts.indexOf(c.name) >= 0; });
-    return bad.length === 0 && T947.rec.rects >= want947.length * 2;   /* 每座：描边方点 + 亮方点 */
-  })());
-  check('实测：字号与示意点按画布边长缩放（分级 都2.7%/州2.3%/郡2.0%）', (function () {
-    var a = recCtx(), b = recCtx();
-    G.ui.miniLabels(a.ctx, 1000); G.ui.miniLabels(b.ctx, 900);
-    var K = G.ui.MINI_LABEL.fontK;
-    var tier = K.capital === 0.027 && K.zhou === 0.023 && K.jun === 0.020;
-    /* 最后一个落笔的是「重镇」（排序：旧都→首府→重镇），故结束时 font 反映重镇档 */
-    /* v89.132（老板「笔画太厚」）：bold → normal（字号分级不变） —— 判据钉住 normal */
-    return tier && a.ctx.font === 'normal 20px sans-serif' && b.ctx.font === 'normal 18px sans-serif'
-      && Math.round(1000 * G.ui.MINI_LABEL.dotK.capital) === 30
-      && Math.round(1000 * G.ui.MINI_LABEL.dotK.jun) === 15;
-  })());
-  check('实测：城名分级（都字号 > 州 > 郡 · 逐档独立设字体）', (function () {
-    var fonts = {};
-    var c = recCtx();
-    var oldFont = null;
-    /* 包一层 ctx：每次 fillText 记下当时的 font，按城名归档 */
-    var proxy = Object.create(c.ctx);
-    Object.defineProperty(proxy, 'font', {
-      get: function () { return oldFont; },
-      set: function (v) { oldFont = v; if (!fonts[v]) fonts[v] = 0; }
-    });
-    var origFill = c.ctx.fillText;
-    proxy.fillText = function (t) { fonts[oldFont] = (fonts[oldFont] || 0) + 1; return origFill.apply(c.ctx, arguments); };
-    G.ui.miniLabels(proxy, 1000);
-    var keys = Object.keys(fonts).sort();
-    return keys.length === 3
-      && keys[0] === 'normal 20px sans-serif' && keys[1] === 'normal 23px sans-serif'
-      && keys[2] === 'normal 27px sans-serif'            /* v89.132：去 bold（同一档字号） */
-      && fonts['normal 27px sans-serif'] === 1;          /* 旧都只有一座（灰烬城） */
-  })());
-  check('实测：miniPick 屏幕坐标 → 世界格（四角 + 中心 + 域外 null）', (function () {
-    var el = global.document.createElement('canvas');
-    el.width = 500; el.height = 500;                    /* stub 的 rect 用 width/height */
-    var c = G.ui.miniPick(250, 250, el);
-    var tl = G.ui.miniPick(0, 0, el);
-    var br = G.ui.miniPick(499, 499, el);
-    var out = G.ui.miniPick(-5, 10, el);
-    return c && c.x === 250 && c.y === 250
-      && tl.x === 0 && tl.y === 0
-      && br.x === 499 && br.y === 499        /* (499/500)×500 = 499 → 末格 */
-      && out === null;
-  })());
-  check('实测：miniGo 关闭面板 → 切地图视图 → 居中（journal-go 同时序）', (function () {
-    var oldView = G.ui.view;
-    G.ui.view = 'city';
-    G.ui.openMinimap();                                  /* 先真的开一次（stub 环境下不应抛） */
-    var opened = G.ui.modalVisible();
-    G.ui.miniGo(123, 77);
-    var ok = !G.ui.modalVisible() && G.ui.view === 'map'
-      && G.ui.mapView.x === 123 && G.ui.mapView.y === 77;
-    G.ui.view = oldView;
-    return opened && ok;
-  })());
-  check('v89.47：点选接线（openMinimap 绑 bindMiniPick · 一处 _miniBound 防重绑）', (function () {
-    var fn = codeOf(uS85, 'ui.bindMiniPick = function');
-    var pick = codeOf(uS85, 'ui.miniPick = function');
-    return /_miniBound/.test(fn) && /addEventListener\('click'/.test(fn)
-      && /ui\.miniPick\(e\.clientX, e\.clientY/.test(fn) && /ui\.miniGo\(/.test(fn)
-      && /DATA\.MAP_W/.test(pick) && /U\.clamp/.test(pick);
-  })());
 })();
 
 
@@ -24967,53 +24685,6 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       return /ui\.campCard = function \(kind\) \{/.test(uS113)
         && uS113.indexOf('compact: true') < 0;
     })());
-
-    /* ---------- ② 缩略地图 ---------- */
-    console.log('  --- ② 缩略图（字细 / 我城红点 / 当前城波纹 · 底部闪烁）---');
-    check('§113② 城名层去 bold + 描边减细（0.12fs）', (function () {
-      return uS113.indexOf("'bold ' + fs + 'px sans-serif'") < 0
-        && uS113.indexOf("'normal ' + fs + 'px sans-serif'") >= 0
-        && uS113.indexOf('fs * 0.12') >= 0;
-    })());
-    var FAKE113 = function () {
-      var rec = { arcs: [], strokes: 0, fills: [] };
-      return {
-        rec: rec,
-        set fillStyle(v) { rec.lastFill = v; }, get fillStyle() { return rec.lastFill; },
-        set strokeStyle(v) { }, set lineWidth(v) { }, set globalAlpha(v) { },
-        set font(v) { }, set textAlign(v) { }, set textBaseline(v) { },
-        beginPath: function () { }, arc: function (x, y, r) { rec.arcs.push([x, y, r, rec.lastFill]); },
-        fill: function () { rec.fills.push(rec.lastFill); }, stroke: function () { rec.strokes++; },
-        fillRect: function () { }, clearRect: function () { }, drawImage: function () { },
-        strokeText: function () { }, fillText: function () { }, save: function () { },
-        restore: function () { }, ellipse: function () { }
-      };
-    };
-    check('§113② 我城红点（miniMeDot）：小档 r=size/100、底部小图大号 r≥3× · 色为朱红', (function () {
-      var f = FAKE113();
-      G.ui.miniMeDot(f, 100, 100, 1000, false);
-      G.ui.miniMeDot(f, 100, 100, 1000, true);
-      var rs = f.rec.arcs[0][2], rb = f.rec.arcs[1][2];
-      /* ⚠️ fillStyle 在 arc **之后**才设置 —— 取色要看 fill 那一刻（fills） */
-      var isRed = String(f.rec.fills[0] || '').toLowerCase() === '#ff3a2a';
-      return rb > rs * 3 && isRed;
-    })());
-    check('§113② 波纹（miniMeWave）真画 2 圈；动画层（paintMiniPulse + mini-pulse 画布 + 自灭）', (function () {
-      var f = FAKE113();
-      G.ui.miniMeWave(f, 100, 100, 1000, 500);
-      var two = f.rec.arcs.length === 2 && f.rec.strokes === 2;
-      return two && typeof G.ui.paintMiniPulse === 'function'
-        && uS113.indexOf("id=\"mini-pulse\"") >= 0
-        && uS113.indexOf('ui._miniPulseTimer = null') >= 0
-        && mS113.indexOf('ui.paintMiniBottom();') >= 0
-        && uS113.indexOf('{ meBig: true, meBlink: true }') >= 0;
-    })());
-    check('§113② 我城名称层（miniMeLabels）· 图例「我城」色改红（同源）', (function () {
-      return typeof G.ui.miniMeLabels === 'function'
-        && uS113.indexOf('ui.miniMeLabels(ctx, size, v, _win)') >= 0
-        && hS113.indexOf('--lg-me: #ff3a2a') >= 0;
-    })());
-
     /* ---------- ③ 节钺开拓 ---------- */
     console.log('  --- ③ 节钺开拓（三族扩编 city/xc/gen）---');
     var C113 = DATA.JIEYUE;
@@ -25994,23 +25665,6 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       return ok;
     })());
 
-    /* ---- ⑧ 缩略图我城档（老板 6） ---------- */
-    check('§120⑧ 缩略图：筛选加「我城」档 · 默认只标当前城 · 我城档画全部', (function () {
-      return /\['mine', '我城'\]/.test(uc)
-        && /if \(v\.level === 'mine'\)/.test(uc)
-        && /v\.list = \(GAME\.state\.cities \|\| \[\]\)\.slice\(\)/.test(uc)
-        && /var _allMine139 = \(v\.level === 'mine'\);/.test(uc)
-        && /if \(!_allMine139 && c\.id !== ui\._cityId\) return;/.test(uc)
-        && /var _allMine = \(v && v\.level === 'mine'\);/.test(uc);
-    })());
-    check('§120⑧ 实测：默认档红点计数 = 1（当前城）· 我城档 = 我方城池数', (function () {
-      /* 复用 canvas stub？—— 桩没有真 ctx.arc 计数能力，改为直读过滤判据的等价式。
-         真浏览器量测见 .workbuddy/tools/show/measure_v89139_*.js（红点像素 3 城 vs 1 城）。 */
-      var st = G.state;
-      var n = (st.cities || []).length;
-      var v0 = G.ui.miniView();
-      return n >= 1 && v0.level === '' && v0.win.side === DATA.MAP_W;
-    })());
 
     /* ---- ⑨ 需求档案在册 ---------- */
     check('§120⑨ 需求档案在册（v89.139 · 老板原文关键句逐字）', (function () {

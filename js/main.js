@@ -537,7 +537,6 @@
         break;
       }
       case 'map-goto': ui.mapGoto(); break;
-      case 'open-minimap': ui.openMinimap(); break;
       case 'map-center': ui.mapCenter(); break;
       case 'map-mycity': ui.mapMyCity(); break;             /* v89.192（老板 1）：回本城 */
       case 'map-capital': ui.mapCenterOn(265, 215); ui.toast('已定位至旧都灰烬城 (265,215)'); break;
@@ -2912,9 +2911,7 @@
         ui.renderSide();
         ui.syncHeader();
         ui.syncBadges();
-        /* v89.132（老板「当前玩家所在城池的点出现闪烁…提示当前所在位置」）：
-           底部条缩略图每秒重绘 —— 我城红点随秒交替明暗（1Hz 闪烁）。 */
-        ui.paintMiniBottom();
+        /* v90.77：底部条缩略图（天下大势）已退役，不再每秒重绘。 */
         /* v89.151（老板 3）：底栏「⚔ 指挥战斗」的闪烁态每秒核对一次 ——
            只切 class（不重建 DOM），有 state==='live' 的战斗即闪烁。 */
         ui.paintWarBeacon();

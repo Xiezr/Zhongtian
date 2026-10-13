@@ -2052,80 +2052,6 @@
   .adm-search .adm-fields { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; max-width: 62vw;
     transition: max-width .25s ease, opacity .2s ease, margin .2s ease; overflow: hidden; }
   .adm-search:not(.open) .adm-fields { max-width: 0; opacity: 0; margin-left: -6px; }
-  /* ============ v85（老板）：底部缩略地图 + 天下大势面板 ============ */
-  /* 为条尾缩略图提供定位上下文（单独成条，不动原 .bottombar 块的 46px 高度） */
-  .bottombar { position: relative; padding-right: 56px; }
-  .bb-mini {
-    position: absolute; right: 10px; top: 3px; width: 40px; height: 40px; padding: 0;
-    background: var(--slab-0); border: 1px solid var(--gold-dark); border-radius: var(--r-md);
-    cursor: pointer; overflow: hidden; line-height: 0;
-    box-shadow: 0 2px 6px rgba(var(--sh-rgb), .45);
-  }
-  .bb-mini:hover { border-color: var(--gold-light); }
-  .bb-mini canvas { width: 38px; height: 38px; display: block; }
-  /* 天下大势：方形缩略图（内部 1000×1000 高清背衬，显示 ≤500px） */
-  .mini-wrap { display: flex; justify-content: center; margin: var(--sp-3) 0 var(--sp-1);
-    position: relative; }   /* v89.132：波纹层（.mini-pulse）的定位上下文 */
-  .mini-wrap canvas {
-    width: min(500px, calc(var(--app-w) * .68)); height: auto; aspect-ratio: 1 / 1;
-    border: 2px solid var(--gold-dark); border-radius: var(--r-md); background: var(--slab-0);
-  }
-  .mini-legend {
-    text-align: center; font-size: var(--fs-sub); color: var(--text-dim);
-    margin: var(--sp-2) 0 var(--sp-0); letter-spacing: .04em;
-  }
-  .mini-legend { --lg-state: #f0d060; --lg-jun: #cfcfc0; --lg-cap: #ff5a40;
-                 --lg-zhou: #ffd76a; --lg-jun-c: #f2ead0; --lg-cty: #9fe08a;
-                 --lg-me: #ff3a2a; }   /* v89.132：我城点金→红（与 miniMeDot 同色） */
-  .mini-legend b { font-weight: 700; }
-  .mini-legend .lg-state { color: var(--lg-state); }
-  .mini-legend .lg-jun { color: var(--lg-jun); }
-  .mini-legend .lg-cap { color: var(--lg-cap); }
-  .mini-legend .lg-zhou { color: var(--lg-zhou); }
-  .mini-legend .lg-jun-c { color: var(--lg-jun-c); }
-  .mini-legend .lg-cty { color: var(--lg-cty); }
-  .mini-legend .lg-me { color: var(--lg-me); }
-
-  /* v89.68（老板：缩略图加筛选按钮，三级下钻 首府/重镇/聚落）——
-     筛选行放在标题与地图之间：层级永远在，州/郡下拉**按层级级联出现**（不占空位）。 */
-  .mini-filter { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-4);
-    justify-content: center; margin: var(--sp-1) 0 var(--sp-2); font-size: var(--fs-sub); }
-  .mini-filter > label { color: var(--text-dim); }
-  .mini-filter > select { padding: var(--sp-0) var(--sp-2); background: var(--slab-1); color: var(--text);
-    border: 1px solid var(--gold-dark); border-radius: var(--r-sm); font-size: var(--fs-sub); max-width: 240px; }
-  .mini-filter .mf-hint { color: var(--gold-light); }
-
-  /* ============ v89.47（老板三条）：天下大势 —— 满界面 / 大字城名 / 点选跳转 ============
-     ① 满界面：新增 modal-max 档（铺满视口，只留 8px 呼吸）。
-        画布是正方形、世界也是正方形 —— **高是瓶颈**，所以边长按可用高度反推，
-        不去撑宽度（撑了也会留白，还挤出滚动条）。
-     ② 城名与示意点：尺寸由 JS 按画布边长的比例给（ui.MINI_LABEL），CSS 不管字号 ——
-        一处口径，38px 小图与满界面档共用。
-     ③ 点选：cursor: crosshair + 图例尾的提示。
-     `:has(> .mini-full)` 是让内容区变成 flex 列、画布才能吃掉剩余高度
-     （与文件里 .bldg-foot / .bldg-bottom 同一套写法）。
-     ⚠ modal-max 档位规则在下方「弹窗尺寸档位」处（必须排在 .modal 之后才不会被打回 660×620）。 */
-  .modal .inner-panel:has(> .mini-full) { display: flex; flex-direction: column; }
-  .modal .inner-panel:has(> .mini-full) > .gold-heading,
-  .modal .inner-panel:has(> .mini-full) > .m-foot { flex: none; }
-  .mini-full { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-  .mini-full .mini-wrap { flex: 1; min-height: 0; margin: var(--sp-0) 0; }
-  /* 画布边长 = min(容器宽, 视口高 − 弹窗上下件高度 190px)。190 = 框 10 + 内边距 24
-     + 标题 56 + 图例 20 + 页脚 50 + 间隙 30（见 ui.fitMini 的同款反推，JS 才是准的，
-     这里只是首帧/无 JS 时的兜底）。 */
-  .mini-full .mini-wrap canvas {
-    width: min(100%, calc(var(--app-h) - 190px)); height: auto; aspect-ratio: 1 / 1;
-    cursor: crosshair; border-width: 3px;
-  }
-  /* v89.132（老板）：波纹层 —— 盖在底图上、居中对称；border/背景一概去掉，
-     否则会继承上方两条 canvas 规则的金框（同特异性时本条后定义者胜）。 */
-  .mini-wrap canvas.mini-pulse {
-    position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
-    pointer-events: none; border: none; background: transparent;
-  }
-  .mini-full .mini-legend { margin: var(--sp-0) 0 0; }
-  .mini-hit { color: var(--gold-light); margin-left: var(--sp-4); }
-
   /* v27（需求 6）：数字输入框的原生上下箭头也去掉 —— 它同样是个"小下拉"，
      在暗色界面里尤其突兀；数量增减交给面板上的「最大」「+/-」按钮，
      或直接键盘输入。 */
@@ -2449,8 +2375,8 @@
     flex: none; height: 46px; display: flex; align-items: center; justify-content: center;
     /* v89.52：左留白给最左的「🏷 名称」按钮（绝对定位），避免与居中分页/导航重叠。
        v89.213（老板「页码集中在中部」）：左 92 / 右 12 不对称会让居中内容整体右偏
-       40px（内容盒中轴 760 ≠ 屏幕中轴 720）——改**左右对称**，内容轴回到屏幕正中；
-       右侧顺带为 40px 缩略图（right:10px）留出更大余量。 */
+       40px（内容盒中轴 760 ≠ 屏幕中轴 720）——改**左右对称**，内容轴回到屏幕正中。
+       v90.77：右侧缩略图（天下大势）退役，右侧留白仍保留对称（左「名称」按钮宽度）。 */
     padding: 0 92px; border-top: 1px solid var(--line-strong);
     background: linear-gradient(180deg, rgba(var(--sh-rgb),.28), rgba(var(--sh-rgb),.55));
   }
@@ -4572,32 +4498,32 @@
 </div><!-- /#app-scale -->
 </div><!-- /#app-fit -->
 
-<!-- BUILD 9154 -->
-<script src="js/data.js?v=9154"></script>
-<script src="js/state.js?v=9154"></script>
-<script src="js/questdata.js?v=9154"></script>
-<script src="js/systems.js?v=9154"></script>
-<script src="js/domain.js?v=9154"></script>
-<script src="js/map.js?v=9154"></script>
+<!-- BUILD 9155 -->
+<script src="js/data.js?v=9155"></script>
+<script src="js/state.js?v=9155"></script>
+<script src="js/questdata.js?v=9155"></script>
+<script src="js/systems.js?v=9155"></script>
+<script src="js/domain.js?v=9155"></script>
+<script src="js/map.js?v=9155"></script>
 <!-- v90.69：球面世界内核（纯 JS · 拓扑/地形/几何 SSOT）—— 逻辑与 3D 渲染共用，无 THREE -->
-<script src="js/sphere.js?v=9154"></script>
+<script src="js/sphere.js?v=9155"></script>
 <!-- v90.61：Three.js 真 3D 主地图（vendor 本地，离线可用） -->
-<script src="vendor/three.min.js?v=9154"></script>
-<script src="js/map3d.js?v=9154"></script>
-<script src="js/battle.js?v=9154"></script>
+<script src="vendor/three.min.js?v=9155"></script>
+<script src="js/map3d.js?v=9155"></script>
+<script src="js/battle.js?v=9155"></script>
 <!-- v27（需求 5）：回合制文字战场。放在 battle.js 之后 —— simulate 由它接管 -->
-<script src="js/tactic.js?v=9154"></script>
-<script src="js/icons.js?v=9154"></script>
+<script src="js/tactic.js?v=9155"></script>
+<script src="js/icons.js?v=9155"></script>
 <!-- v32（需求「采用网图」）：game-icons 开源图标素材层。必须在 icons.js 之后 ——
      icons.js 内的取图函数用 typeof GICONS 延迟绑定，渲染时才真正查表。 -->
-<script src="js/gicons.js?v=9154"></script>
+<script src="js/gicons.js?v=9155"></script>
 <!-- v35：AI 位图素材登记表（汉代风，最高优先级）。同样在 icons.js 之后 ——
      取图函数用 typeof BITMAPS 延迟绑定；未登记的 id 自动回退矢量层。 -->
-<script src="js/bitmaps.js?v=9154"></script>
-<script src="js/portraits.js?v=9154"></script>
-<script src="js/story.js?v=9154"></script>
+<script src="js/bitmaps.js?v=9155"></script>
+<script src="js/portraits.js?v=9155"></script>
+<script src="js/story.js?v=9155"></script>
 <!-- ⛔ v89.218（老板「故事全部去除」）：84 卷故事库（story/）整目录删除，脚本标签同步撤除。 -->
-<script src="js/ui.js?v=9154"></script>
-<script src="js/main.js?v=9154"></script>
+<script src="js/ui.js?v=9155"></script>
+<script src="js/main.js?v=9155"></script>
 </body>
 </html>
