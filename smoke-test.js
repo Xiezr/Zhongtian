@@ -36049,6 +36049,31 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })());
   })();
 
+  /* ============================================================
+   * §261. v91.25 君主突破考验：城池/军队走**帝国口径**（跨星球）
+   * ============================================================ */
+  (function () {
+    console.log('\n===== 261. v91.25 突破考验帝国口径 =====');
+    check('§261 突破考验「城池」行 = 帝国口径（含他星分片城）', (function () {
+      var bak = G.state;
+      try {
+        var st = G.newGame({ name: 'trial261', region: '烬环' });
+        G.state = st;
+        var lord = (st.generals || []).filter(function (g) { return g.isLord; })[0] || st.generals[0];
+        lord.level = GAME.lordStageCap(lord);              /* 拉到段顶 → 有下一段考验 */
+        /* 造一他星分片（1 城）——不得进 s.cities，只进 mapSlices */
+        st.mapSlices = st.mapSlices || {};
+        st.mapSlices[9] = { cities: [{ id: 'x9', name: '他星城' }], wilds: [], forts: {} };
+        var tr = GAME.lordTrialOf(lord);
+        if (!tr) return true;                              /* 无考验表数据 → 跳过记账 */
+        var row = tr.rows.filter(function (r) { return r.key === 'cities'; })[0];
+        var same = row && row.cur === (G.empireCityCount ? GAME.empireCityCount() : 1)
+          && row.cur > (st.cities || []).length;          /* 严格大于当前星球城数 = 确实算了帝国 */
+        return !!same;
+      } finally { G.state = bak; }
+    })());
+  })();
+
   console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');
   process.exit(FAIL ? 1 : 0);
 })();

@@ -5116,7 +5116,7 @@
        旧版（单列 + chips + 城池表 + rankBlock）整段退役；威望区块并入右表。 */
     ui.openShell({
       title: '👤 君主',
-      sub: (cur ? cur.name : '幸存者') + ' · 声望 ' + U.fmt(s.rep) + ' · ' + s.cities.length + ' 城',
+      sub: (cur ? cur.name : '幸存者') + ' · 声望 ' + U.fmt(s.rep) + ' · ' + (GAME.empireCityCount ? GAME.empireCityCount() : s.cities.length) + ' 城（帝国）',
       /* v90.97（老板）：君主面板**去左半三清单**（城池/据点/野地 → 移入「行政」菜单）——
          只保留君主相关信息，面板收窄一档（xxl 1200 → xl 960）。 */
       size: 'xl',

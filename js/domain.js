@@ -7139,9 +7139,14 @@
     var tr = (B.trials || [])[n - 1];
     if (!tr) return null;
     var s = GAME.state;
-    var cities = (s.cities || []).length;
+    /* v91.25（老板）：「君主突破的城池要求应是**帝国口径**（所有星球）——此前只数当前星球」。
+       军队同款：跨星球求和（与城池同源，避免"两部口径"）。 */
+    var cities = GAME.empireCityCount ? GAME.empireCityCount() : (s.cities || []).length;
     var army = 0;
-    (s.cities || []).forEach(function (c) { army += (GAME.armyTotal ? GAME.armyTotal(c) : 0); });
+    var _allCities = (s.cities || []).slice();
+    var _act = s.activePlanet || 0, _sl = s.mapSlices || {};
+    Object.keys(_sl).forEach(function (pid) { if (+pid === _act) return; var cs = (_sl[pid] || {}).cities || []; for (var i = 0; i < cs.length; i++) _allCities.push(cs[i]); });
+    _allCities.forEach(function (c) { army += (GAME.armyTotal ? GAME.armyTotal(c) : 0); });
     var gold = GAME.goldOf();
     var jewelIds = {};
     (DATA.ITEMS || []).forEach(function (it) { if (it.type === 'jewel') jewelIds[it.id] = true; });
