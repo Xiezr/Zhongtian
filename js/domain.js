@@ -5297,8 +5297,8 @@
      LEVY_RES_RATE / LEVY_MAT_QTY / LEVY_HEARTS + city.lastLevy）整段退役。
      特产展示改读 GAME.specialtyOf / GAME.stateOfCity（岁贡与首府加成的口径不变）。 */
   /* ============================================================
-   * 锻造间打造（装备获取的主要途径）
-   * ① 锻造间等级决定可打造品质（1/3/5/7 级 → 凡/良/珍/神品）
+   * 制造厂打造（装备获取的主要途径）
+   * ① 制造厂等级决定可打造品质（1/3/5/7 级 → 凡/良/珍/神品）
    * ② 消耗旧币 + 铁 + 木 + 石；套装件成本 ×2.2
    * ③ 套装件需先持有该套「图纸」（游商购买 / 攻城缴获 / 奇遇）
    * ============================================================ */
@@ -5306,7 +5306,7 @@
     var c = GAME.currentCity();
     return GAME.buildingLevel(c, 'tiejiangpu') || 0;
   };
-  /* 锻造间等级 → 可打造的最高品质 */
+  /* 制造厂等级 → 可打造的最高品质 */
   GAME.forgeMaxQ = function () {
     var lv = GAME.forgeLevel(), t = DATA.FORGE.tierLv, out = 0;
     for (var i = 0; i < t.length; i++) if (lv >= t[i]) out = i + 1;
@@ -5688,12 +5688,12 @@
     var s = GAME.state, it = DATA.EQUIP[itemId];
     if (!it) return { ok: false, msg: '未知装备' };
     var canCraft = it.craft === true || !!it.set;
-    if (!canCraft) return { ok: false, msg: '此物非锻造间所能打造' };
-    if (GAME.forgeLevel() <= 0) return { ok: false, msg: '需先建造锻造间' };
+    if (!canCraft) return { ok: false, msg: '此物非制造厂所能打造' };
+    if (GAME.forgeLevel() <= 0) return { ok: false, msg: '需先建造制造厂' };
     var maxQ = GAME.forgeMaxQ();
     if (it.q > maxQ) {
       var needLv = DATA.FORGE.tierLv[it.q - 1] || 7;
-      return { ok: false, msg: '锻造间等级不足（打造' + (DATA.Q_NAME[it.q] || '') + '需 Lv' + needLv + '）' };
+      return { ok: false, msg: '制造厂等级不足（打造' + (DATA.Q_NAME[it.q] || '') + '需 Lv' + needLv + '）' };
     }
     var bp = GAME.blueprintOf(itemId);
     if (bp && !GAME.hasBlueprint(itemId)) return { ok: false, msg: '缺少「' + bp.name + '」（奇观探索产出，或攻占名城缴获）' };
@@ -5723,12 +5723,12 @@
     s.forged = s.forged || [];
     if (s.forged.indexOf(itemId) < 0) s.forged.push(itemId);
     GAME.statBump('forgedCount', 1);
-    GAME.log('锻造间打造：' + it.name + '（' + (DATA.Q_NAME[it.q] || '') + '）', 'sys', 'admin');
+    GAME.log('制造厂打造：' + it.name + '（' + (DATA.Q_NAME[it.q] || '') + '）', 'sys', 'admin');
     return { ok: true, msg: '打造完成：' + it.name, itemId: itemId };
   };
 
   /* ============================================================
-   * 锻造间 · 熔铸强化（v77 立项 / v79 改**按件** · v89.227 更名，原名「百炼强化」）
+   * 制造厂 · 熔铸强化（v77 立项 / v79 改**按件** · v89.227 更名，原名「百炼强化」）
    * ------------------------------------------------------------
    * 老板第 4 条：「装备强化是针对单件装备的，同名装备搞个区分办法」——
    * 强化等级从 s.forgeEnh[itemId]（按种共享）迁到**实例** inst.enh（按件）：
@@ -5774,7 +5774,7 @@
     if (!it) return { ok: false, msg: '未知装备' };
     /* v88：基因强化件不熔铸（导流到「调校」——材料与体系独立） */
     if (it.ling) return { ok: false, msg: '「' + it.name + '」是基因强化件，请用调校（辐能核心）' };
-    if (GAME.forgeLevel() <= 0) return { ok: false, msg: '需先建造锻造间' };
+    if (GAME.forgeLevel() <= 0) return { ok: false, msg: '需先建造制造厂' };
     var lv = GAME.enhOf(inst);
     var label0 = GAME.eqLabel(inst);
     if (lv >= GAME.enhMax()) return { ok: false, msg: '「' + label0 + '」已至 +' + GAME.enhMax() + '（满级）' };
@@ -5782,7 +5782,7 @@
     if (!GAME.canAfford(cost)) return { ok: false, msg: '资材不足（需 ' + GAME.costString(cost) + '）' };
     GAME.payCost(cost);
     if (inst && typeof inst === 'object') inst.enh = lv + 1;   /* 按件 +1 */
-    GAME.log('锻造间熔铸：' + label0 + ' → +' + (lv + 1), 'sys', 'admin');
+    GAME.log('制造厂熔铸：' + label0 + ' → +' + (lv + 1), 'sys', 'admin');
     return { ok: true, msg: '「' + GAME.eqLabel(inst) + '」强化 +' + (lv + 1)
       + '（装备属性 +' + Math.round((lv + 1) * ((DATA.ENHANCE || {}).perLv || 0.08) * 100) + '%）' };
   };
@@ -5818,7 +5818,7 @@
   GAME.enhanceSet = function (setId) {
     var info = GAME.enhSetInfoOf(setId);
     if (!info) return { ok: false, n: 0, msg: '未知套装' };
-    if (GAME.forgeLevel() <= 0) return { ok: false, n: 0, msg: '需先建造锻造间' };
+    if (GAME.forgeLevel() <= 0) return { ok: false, n: 0, msg: '需先建造制造厂' };
     if (!info.all.length) return { ok: false, n: 0, msg: '「' + info.def.name + '」一件都还没有（先打造 / 缴获几件）' };
     if (!info.todo.length) return { ok: false, n: 0, msg: '「' + info.def.name + '」整套已至 +' + info.maxE + '（满级）' };
     if (!GAME.canAfford(info.cost)) {
@@ -5827,7 +5827,7 @@
     }
     GAME.payCost(info.cost);
     info.todo.forEach(function (x) { x.enh = GAME.eqEnhOf(x) + 1; });   /* 按件 +1 */
-    GAME.log('锻造间熔铸：' + info.def.name + ' 整套 +1（' + info.todo.length + ' 件，耗 ' + GAME.costString(info.cost) + '）', 'sys', 'admin');
+    GAME.log('制造厂熔铸：' + info.def.name + ' 整套 +1（' + info.todo.length + ' 件，耗 ' + GAME.costString(info.cost) + '）', 'sys', 'admin');
     return { ok: true, n: info.todo.length, cost: info.cost,
       msg: '「' + info.def.name + '」整套 +1 —— ' + info.todo.length + ' 件（共耗 ' + GAME.costString(info.cost) + '）' };
   };
@@ -7770,7 +7770,7 @@
    * ------------------------------------------------------------
    * 链条（v89.224 · 老板 2：「不要播种 / 种子」）：
    *   立项（不消耗道具）→ 游戏时间研发 → 提取产物
-   *      ├─ 材料研发 → 3 阶主产（有机率出 4 阶）→ 锻造间高阶打造
+   *      ├─ 材料研发 → 3 阶主产（有机率出 4 阶）→ 制造厂高阶打造
    *      └─ 基因调试 → 激活 / 蜕变 / 觉醒 / 天启血清 → 资质逐档提升
    * 数据全在 DATA.FARM（加项目 = 加一行）；研发吃**游戏时间**：
    * 与建造 / 研究同一把尺 —— 在线主循环与离线补算各推一次（tickFarm），

@@ -601,7 +601,7 @@
       case 'map-capital': ui.mapCapitalCity(); break;   /* v90.99：母星专属，别星地图断开 */
       case 'open-inn': ui.openInn(); break;
       case 'open-forge': ui.openForge(); break;
-      /* v77：百炼强化（锻造间底栏入口 + 装备详情入口） */
+      /* v77：百炼强化（制造厂底栏入口 + 装备详情入口） */
       case 'open-enhance': ui.openEnhance(); break;
       case 'enhance-item': GAME.doEnhance(el.dataset.item); break;
       /* v89.219（老板 1）：套装整体强化（选中件属套装时底栏出现的「整套 +1」键） */
@@ -615,7 +615,7 @@
       case 'forge-clear': ui.forgeClear(); break;
       case 'forge-allset': ui.forgeAllSet(); break;
       case 'forge-set': ui.setForgeSet(el.dataset.s); break;
-      /* v90.56（老板）：锻造间部位筛选 + 从装备更换「该部位无货」定位入口 */
+      /* v90.56（老板）：制造厂部位筛选 + 从装备更换「该部位无货」定位入口 */
       case 'forge-slot': ui.setForgeSlot(el.dataset.s); break;
       case 'forge-open-slot': ui.openForgeAtSlot(el.dataset.slot); break;
       case 'bag-eq-f': ui.setBagEqFilter(el.dataset.k, el.dataset.v); break;
@@ -701,7 +701,7 @@
         if (_csr194.ok) ui.renderCollect();
         break;
       }
-      /* v29（需求 12）：锻造间品质页签 */
+      /* v29（需求 12）：制造厂品质页签 */
       case 'forge-q': ui.setForgeQ(el.dataset.q); break;
       /* v89.107（老板）：公文五类独立页签 —— 只换正文，动作全复用既有出口 */
       case 'doc-tab': ui.setDocTab(el.dataset.v); break;
@@ -1880,7 +1880,7 @@
   };
 
 
-  /* 锻造间打造 */
+  /* 制造厂打造 */
   GAME.doForge = function (itemId) {
     /* v89.201（老板 2）：「打造套装可以多选套件，一次性打造」——
        无参（底部唯一键）= 取**选中集**（ui._forgeSelList，保序）逐件结算；

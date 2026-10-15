@@ -1960,19 +1960,19 @@
     var hero23 = G.makeHero(DATA.HEROES[0], 20);
     check('makeHero 带资质字段', !!hero23.rank, hero23.name + ' → ' + hero23.rank);
 
-    /* ---------- ② 锻造间打造 ---------- */
-    console.log('  --- 锻造间打造（装备获取主途径） ---');
+    /* ---------- ② 制造厂打造 ---------- */
+    console.log('  --- 制造厂打造（装备获取主途径） ---');
     S23.queues.build.length = 0;
     S23.queues.train.length = 0;
     S23.queues.tech.length = 0;
     var i23 = city23.cells.findIndex(function (c) { return !c.build && !c.official; });
     city23.cells[i23].build = { id: 'tiejiangpu', lvl: 1 };
-    check('建锻造间Lv1 → 仅可打造凡人', G.forgeMaxQ() === 1, 'maxQ=' + G.forgeMaxQ());
-    check('无锻造间提示', (function () {
+    check('建制造厂Lv1 → 仅可打造凡人', G.forgeMaxQ() === 1, 'maxQ=' + G.forgeMaxQ());
+    check('无制造厂提示', (function () {
       city23.cells[i23].build = null;
       var r = G.forge('coarse_zhi_head');
       city23.cells[i23].build = { id: 'tiejiangpu', lvl: 1 };
-      return r.ok === false && /锻造间/.test(r.msg);
+      return r.ok === false && /制造厂/.test(r.msg);
     })());
     check('套装件成本 = 基准×套件倍率(2.2)×槽位倍率', (function () {
       var c = G.forgeCost('coarse_zhi_head');
@@ -1982,7 +1982,7 @@
       G.forgeCost('coarse_zhi_head').gold + ' → ' + G.forgeCost('fine_zhi_head').gold);
     check('Lv1 造珍品被拒', (function () {
       var r = G.forge('prime_zhi_head');
-      return r.ok === false && /锻造间等级不足/.test(r.msg);
+      return r.ok === false && /制造厂等级不足/.test(r.msg);
     })());
 
     /* 打造成功 */
@@ -2174,13 +2174,11 @@
        v89.50：数量改**结构断言** —— 原先写死 9（珠宝种数），
        加一批新珠宝（v89.50 一次加了 6 种）就会假红。判据改成
        「至少 9 种 · 每种都可购（price>0）且都带忠诚值」+「档位覆盖到 100」。 */
-    check('v91.30 珠宝改奇观产（≥9 种 · price>0 忠诚值 · 覆盖至 100 · 带 wonderOnly）', (function () {
+    check('v91.30 珠宝价×5 + 新增奇观产出（仍可在游商买 · 非 wonderOnly）', (function () {
       var js = DATA.ITEMS.filter(function (i) { return i.type === 'jewel' && i.loyalty > 0; });
-      /* 珠宝 + 奇观材料同为 jewel：验"有忠诚值的真珠宝"≥9 且价>0，且均在售下架（wonderOnly）。 */
       return js.length >= 9
-        && js.every(function (i) { return i.price > 0; })
-        && js.some(function (i) { return i.loyalty >= 100; })
-        && js.every(function (i) { return i.wonderOnly === true; });
+        && js.every(function (i) { return i.price > 0 && !i.wonderOnly; })   /* 珠宝不作 wonderOnly */
+        && js.some(function (i) { return i.loyalty >= 100; });
     })(), DATA.ITEMS.filter(function (i) { return i.type === 'jewel' && i.loyalty > 0; }).length + ' 种');
 
     /* 3.6 旧字段 potential 已废弃 */
@@ -2384,7 +2382,7 @@
     check('军营入口指向募兵面板并带军营下标',
       /junying: \{ label: "⚔️ 募兵 · 兵种", act: "open-troops", withIdx: true \}/.test(uiSrc24));
     check('科研中心入口指向科技面板', /shuyuan: \{ label: "📜 科技 · 研究", act: "open-panel", view: "tech" \}/.test(uiSrc24));
-    check('锻造间入口 = 打造 + 熔铸强化（v89.140 老板 4：双按钮）',
+    check('制造厂入口 = 打造 + 熔铸强化（v89.140 老板 4：双按钮）',
       /tiejiangpu: \[\{ label: "⚒️ 打造", act: "open-forge" \}/.test(uiSrc24)
       && /"⚒️ 熔铸强化", act: "open-enhance"/.test(uiSrc24));
     check('新增背包面板 openBag', /ui\.openBag = function/.test(uiSrc24));
@@ -3664,7 +3662,7 @@
     && /case 'gen-gift-do'/.test(mainSrc26) && !/case 'gen-detail'/.test(mainSrc26)
     /* 旧的"每个珠宝一个按钮"必须彻底消失（否则就是两套入口并存） */
     && !/data-action="gen-gift"/.test(uiS));
-  /* v41（需求 2）：英雄详情已改整页（不再是弹窗），'lg' 档位仍由锻造间等面板使用 */
+  /* v41（需求 2）：英雄详情已改整页（不再是弹窗），'lg' 档位仍由制造厂等面板使用 */
   /* v89.204（老板 2）规则变更：size:'lg' 的最后使用者（套装一览小窗）随功能退役 ——
      判据改用最高档 xxl（"大尺寸档位仍在使用"的语义不变）。 */
   check('大尺寸档位仍在使用（英雄已改整页，不再有详情弹窗）',
@@ -6085,7 +6083,7 @@
   var GONE34 = ['行军速度由', '出征耗粮=在城×2', '野地规则（v15）', '指挥×100=带兵上限',
     '装备获取途径', '按「由弱到强」抽调', '每城科研中心同时研究1项', '珠宝=赏赐忠诚',
     '点击地块弹出操作', '1现实秒 = N游戏秒', '税率>50% 时民心', '一阶料采于野地',
-    '新建建筑需等待完工后才能使用', '可去锻造间打造，或攻占城市缴获',
+    '新建建筑需等待完工后才能使用', '可去制造厂打造，或攻占城市缴获',
     '幸存者不足时可降低次要资源开工率'];
   check('攻略 / 机制说明已清除', (function () {
     /* 只在 **JS 字符串字面量** 范围内检索：注释里出现同名描述属正常代码注释，
@@ -10260,8 +10258,8 @@ check('背包装备/宝物各二级分类都分页（分页 key 随分类区分�
     && /'bag-item-' \+ \(onlyType/.test(u);
 })());
 
-/* ---- 需求 12/14：锻造间弹窗 / 物品行 ---- */
-check('锻造间为游商样弹窗（品质页签 + 物品行 + 固定尺寸）', (function () {
+/* ---- 需求 12/14：制造厂弹窗 / 物品行 ---- */
+check('制造厂为游商样弹窗（品质页签 + 物品行 + 固定尺寸）', (function () {
   var u = require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8');
   /* v38 / v51：原来用固定字符窗口定位 openForge，注释一多就假红
      （1800 → 3200 → 4200 的加数历史）。改用按结构取函数体。 */
@@ -11593,7 +11591,7 @@ console.log('\n===== 46. v61 满配城市城内布局 =====');
       /* 行5（idx32-39）= 战储仓×3·交易站·科研中心·居所×3 */
       && PLACE.fixed[32] === 'cangku' && PLACE.fixed[33] === 'cangku' && PLACE.fixed[34] === 'cangku'
       && PLACE.fixed[35] === 'shichang' && PLACE.fixed[36] === 'shuyuan'
-      /* 行6（idx40-47）= 基因·征召大厅·英雄枢纽·锻造间·机工坊·练兵场·军营×2 */
+      /* 行6（idx40-47）= 基因·征召大厅·英雄枢纽·制造厂·机工坊·练兵场·军营×2 */
       && PLACE.fixed[40] === 'honglusi' && PLACE.fixed[41] === 'kezhan' && PLACE.fixed[42] === 'zhaoxianguan'
       && PLACE.fixed[43] === 'tiejiangpu' && PLACE.fixed[44] === 'gongjiangzuofang' && PLACE.fixed[45] === 'xiaochang'
       && PLACE.fixed[46] === 'junying' && PLACE.fixed[47] === 'junying';
@@ -14610,7 +14608,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
    * 老板三条 + 补充规则，全部走 GAME.buildPrereqOf 单一出口：
    *   ① 其他建筑等级不能超过政务厅（总闸：buildCapOf 与 prereq 同一判据）
    *   ② 先征召大厅后英雄枢纽（英雄枢纽需征召大厅 Lv2）
-   *   ③ 锻造间 Lv3 才能建机工坊
+   *   ③ 制造厂 Lv3 才能建机工坊
    *   ④~⑥ 练兵场/传送站/鸿胪寺/载具研究所
    * 建造与升级同一把尺；新建按 1 级算（可多建建筑不被误判为升级）。
    * ============================================================ */
@@ -14690,18 +14688,18 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
         p5.ok === false && /征召大厅/.test(p5.msg || ''), p5.msg);
       c54.cells[k1].build.lvl = 2;
 
-      /* ---- ③ 锻造间 → 机工坊 ---- */
+      /* ---- ③ 制造厂 → 机工坊 ---- */
       var t1 = free54();
       var q1g = G.buildAt(c54.id, t1, 'gongjiangzuofang');
-      check('★ 无锻造间时机工坊被拦', q1g.ok === false && /锻造间/.test(q1g.msg || ''), q1g.msg);
+      check('★ 无制造厂时机工坊被拦', q1g.ok === false && /制造厂/.test(q1g.msg || ''), q1g.msg);
       var t2 = free54(t1);
       G.buildAt(c54.id, t2, 'tiejiangpu'); fin54();
       c54.cells[t2].build.lvl = 2;
       var q2g = G.buildAt(c54.id, t1, 'gongjiangzuofang');
-      check('锻造间 Lv2 仍不够（需 Lv3）', q2g.ok === false, q2g.msg);
+      check('制造厂 Lv2 仍不够（需 Lv3）', q2g.ok === false, q2g.msg);
       c54.cells[t2].build.lvl = 3;
       var q3g = G.buildAt(c54.id, t1, 'gongjiangzuofang');
-      check('★ 锻造间到 Lv3 后机工坊可建', q3g.ok === true, q3g.msg);
+      check('★ 制造厂到 Lv3 后机工坊可建', q3g.ok === true, q3g.msg);
       fin54();
 
       /* ---- ④ 可多建建筑的新建不被误判为升级（真缺陷回归）---- */
@@ -15723,9 +15721,9 @@ console.log('\n===== 61. v75 征召大厅招募（大界面 · 单行候选 · �
      'book_yuenv', 'corvee'].every(function (id) {
       return (DATA.ITEMS || []).some(function (x) { return x.id === id; });
     }));
-  check('⑥ 游商分类齐备（宝箱 / 政令；v91.30 残卷页签退役 → 战技残页走奇观产）',
-    G.ui.SHOP_CATS.chest === '宝箱' && G.ui.SHOP_CATS.corvee === '政令'
-    && G.ui.SHOP_CATS.neigong === undefined);
+  check('⑥ 游商分类齐备（宝箱 / 珠宝 / 政令；残卷页签退役）',
+    G.ui.SHOP_CATS.chest === '宝箱' && G.ui.SHOP_CATS.jewel === '珠宝'
+    && G.ui.SHOP_CATS.corvee === '政令' && G.ui.SHOP_CATS.neigong === undefined);
   check('⑥ 实测：开宝箱（旧币入账、宝箱 -1、有战利品文案）', (function () {
     var S77b = G.state;
     var bkGold = S77b.res.gold, bkItem = S77b.items.chest_tong;
@@ -15776,7 +15774,7 @@ console.log('\n===== 61. v75 征召大厅招募（大界面 · 单行候选 · �
     var id = 'coarse_zhi_head';
     if (!DATA.EQUIP[id]) id = Object.keys(DATA.EQUIP)[0];
     var bkGold = S77e.res.gold, bkIron = S77e.res.iron, bkStone = S77e.res.stone;
-    /* 先确保锻造间在位（没有就临时造一座；不拆已有建筑） */
+    /* 先确保制造厂在位（没有就临时造一座；不拆已有建筑） */
     var c77 = G.currentCity();
     var plantedIdx = -1;
     if (G.forgeLevel() <= 0) {
@@ -15806,7 +15804,7 @@ console.log('\n===== 61. v75 征召大厅招募（大界面 · 单行候选 · �
     if (plantedIdx >= 0) delete c77.cells[plantedIdx].build;
     return okAll;
   })(), '');
-  check('⑧ 强化界面与入口（锻造间底栏 + 装备详情）',
+  check('⑧ 强化界面与入口（制造厂底栏 + 装备详情）',
     /ui\.openEnhance = function/.test(uS77) && /data-action="open-enhance"/.test(uS77)
     && /data-action="enhance-item"/.test(uS77) && /'enhance-item'/.test(mS77));
 
@@ -18019,12 +18017,12 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     return bad.length === 0;
   })(), '全 19 类无死路');
 
-  /* ② 专属消耗口：talis→计谋 · material/blueprint→锻造间 · essence→调校
+  /* ② 专属消耗口：talis→计谋 · material/blueprint→制造厂 · essence→调校
      （v89.224：seed→基因实验室 一行随种子退役删除） */
   check('v89.51：专属消耗口（封存匣/材料/图纸/辐能核心）都给出「去哪儿用」', (function () {
     var s = GAME.state, bk = s.items, rep = {};
     (DATA.ITEMS || []).forEach(function (it) { if (!rep[it.type]) rep[it.type] = it.id; });
-    var need = { talis: '计略', material: '锻造间', blueprint: '锻造间', essence: '调校' };
+    var need = { talis: '计略', material: '制造厂', blueprint: '制造厂', essence: '调校' };
     var ok = true;
     Object.keys(need).forEach(function (t) {
       s.items = {}; s.items[rep[t]] = 1;
@@ -19696,9 +19694,9 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
 
     console.log('  --- A 价格与资格：唯一出口 systems.consign* ---');
     var rate100 = (DATA.ITEM_SELL || {}).rate;
-    check('A1 配置：回收率 0.45（DATA.ITEM_SELL.rate · v91.30 珠宝×5 后调）', rate100 === 0.45, 'rate=' + rate100);
-    check('v91.30 A2 单价 = price×100×rate（珍珠 ×5=10 → 10×100×0.45=450）',
-      G.systems.consignPriceOf('bengzhu') === Math.floor(10 * 100 * 0.45),
+    check('A1 配置：回收率 0.75（DATA.ITEM_SELL.rate）', rate100 === 0.75, 'rate=' + rate100);
+    check('A2 单价 = price×100×rate（珍珠 ×5=10 → 10×100×0.75=750）',
+      G.systems.consignPriceOf('bengzhu') === Math.floor(10 * 100 * 0.75),
       'bengzhu=' + G.systems.consignPriceOf('bengzhu'));
     check('A3 无购买价道具不可寄售（辐能核心 price 0）',
       G.systems.consignPriceOf('lingsui') === 0, 'lingsui=' + G.systems.consignPriceOf('lingsui'));
@@ -19709,7 +19707,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     S100.items.bengzhu = 2;
     var g100 = S100.res.gold;
     var rB100 = G.systems.consignItem('bengzhu', 1);
-    check('B1 寄售 1 件珍珠（×5=10）：金 +450', rB100.ok === true && S100.res.gold === g100 + 450,
+    check('B1 寄售 1 件珍珠（×5=10 · 率0.75）：金 +750', rB100.ok === true && S100.res.gold === g100 + 750,
       'gold ' + g100 + ' → ' + S100.res.gold);
     check('B2 库存 2 → 1', S100.items.bengzhu === 1);
     var rB2 = G.systems.consignItem('bengzhu', 0);        /* 0 = 全部 */
@@ -22183,7 +22181,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
 
   /* ============================================================
    * 97. v89.117（老板八条：需求档案 / 俘虏营可见 / 城主守将不出征 /
-   *     字体体系 / 锻造间单键 / 背包列全 / 弹窗栈与去闪 / 战斗界面）
+   *     字体体系 / 制造厂单键 / 背包列全 / 弹窗栈与去闪 / 战斗界面）
    * ============================================================ */
   console.log('\n===== 97. v89.117 八条 =====');
   (function () {
@@ -22338,8 +22336,8 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       && /--fs-h3:\s*13px/.test(h97) && /--fs-body:\s*13px/.test(h97)
       && /--fs-sub:\s*12px/.test(h97) && /--fs-cap:\s*11px/.test(h97));
 
-    /* ---------- ⑪ 需求 4：锻造间 ---------- */
-    console.log('  --- ⑪ 需求 4：锻造间单键 + 套装筛选 ---');
+    /* ---------- ⑪ 需求 4：制造厂 ---------- */
+    console.log('  --- ⑪ 需求 4：制造厂单键 + 套装筛选 ---');
     check('④ 卡片不再有打造键（改整卡点选 forge-pick）', (function () {
       var body = u97.slice(u97.indexOf('ui.forgeRow = function'));
       var seg = body.slice(0, body.indexOf('ui.openForge = function'));
@@ -24462,7 +24460,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     var g117 = _fs117.readFileSync(_p117.join(__dirname, '.workbuddy', 'tools', 'git', 'gate.py'), 'utf8');
     var t117 = _fs117.readFileSync(_p117.join(__dirname, '.workbuddy', 'tools', 'audit', 'audit_v89134_tables.js'), 'utf8');
 
-    check('§117① live 续铺：锻造间/征召大厅/交易站/野地总览 四处声明（合计 ≥8 处）', (function () {
+    check('§117① live 续铺：制造厂/征召大厅/交易站/野地总览 四处声明（合计 ≥8 处）', (function () {
       var n = (u117.match(/live: function \(\) \{ ui\.open/g) || []).length;
       return n >= 8 && /live: function \(\) \{ ui\.openForge\(\); \}/.test(u117)
         && /live: function \(\) \{ ui\.openInn\(\); \}/.test(u117)
@@ -25035,7 +25033,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
 
 
   /* ============================================================
-   * 121. v89.140（战场两行制 / 距离比例式 / 军务兵种表 / 练兵场关菜单 / 锻造间双按钮 /
+   * 121. v89.140（战场两行制 / 距离比例式 / 军务兵种表 / 练兵场关菜单 / 制造厂双按钮 /
    *      游商固定 / 宝物 7 列 / 自动出征逐兵种 / 附属野地两列 / 夜光珠全地形）
    * ============================================================ */
   console.log('\n===== 121. v89.140（战场两行制 · 珠宝全地形 · 游商/背包固定规格） =====');
@@ -25091,8 +25089,8 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       return /case 'open-xiaochang': ui\.closeAllModals\(\); ui\.setView\('marches'\)/.test(mc);
     })());
 
-    /* ---- ④ 锻造间：建筑菜单双按钮 + 分页到底 + 卡片固定 ---------- */
-    check('§121④ 锻造间建筑菜单 = 打造 + 熔铸强化（数组条目）· 打造面板底部不再有熔铸', (function () {
+    /* ---- ④ 制造厂：建筑菜单双按钮 + 分页到底 + 卡片固定 ---------- */
+    check('§121④ 制造厂建筑菜单 = 打造 + 熔铸强化（数组条目）· 打造面板底部不再有熔铸', (function () {
       /* v89.204：openForgeSetInfo 随套装一览退役 —— 边界改下一个稳定标记 */
       var s2 = uc.slice(uc.indexOf('ui.openForge = function'), uc.indexOf('ui.ENH_PER_PAGE'));
       return /tiejiangpu: \[\{ label: "⚒️ 打造", act: "open-forge" \}/.test(uc)
@@ -25100,7 +25098,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         && s2.indexOf('data-action="open-enhance"') < 0
         && /foot: '<div class="m-foot">' \+ \(rows\.length \? pg\.pager : ''\)/.test(s2);
     })());
-    check('§121④ 锻造间/游商卡片固定尺寸（grid-auto-rows 215 / 116）', (function () {
+    check('§121④ 制造厂/游商卡片固定尺寸（grid-auto-rows 215 / 116）', (function () {
       /* ⚠️ 正则不能跨行（第一版直接抄了多行 CSS → SyntaxError）——拆成"选择器 + 行高"两段查 */
       return (/\.forge-rows \{ display: grid; grid-template-columns: repeat\(3, minmax\(0, 1fr\)\); gap: var\(--sp-4\);/.test(h)
         && /grid-auto-rows: 215px; align-content: start; \}/.test(h))
@@ -32116,7 +32114,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   })();
 
   /* ============================================================
-   * §201（v89.201）侦查单页化 · 锻造间多选打造 · 熔铸专属界面 + 滚动保留
+   * §201（v89.201）侦查单页化 · 制造厂多选打造 · 熔铸专属界面 + 滚动保留
    * ============================================================ */
   (function () {
     console.log('  --- §201 侦查单页 / 多选打造 / 熔铸专属界面 ---');

@@ -469,7 +469,7 @@
       levelCost: costTable(lerpCost([250,2000,500,300,1440], [121905,910005,232830,142960,791615], 10), 'honglusi'),
     },
     tiejiangpu: {
-      id: 'tiejiangpu', series: 'ops', name: '锻造间', icon: '⚒️', desc: '炉火照夜，锻铁成兵 —— 打造武器与装备强化。',
+      id: 'tiejiangpu', series: 'ops', name: '制造厂', icon: '⚒️', desc: '炉火照夜，锻铁成兵 —— 打造武器与装备强化。',
       buildCost: { grain: 350, wood: 350, stone: 810, iron: 2150 }, maxLevel: 12, prod: null,
       levelCost: costTable(lerpCost([350,1000,600,1200,360], [170670,455005,279395,571840,197905], 10), 'tiejiangpu'),
     },
@@ -499,7 +499,7 @@
   DATA.BUILD_PREREQ = {
     /* v68 原 6 条：**建造与升级同一把尺**（升到任何等级都看它）—— 沿用不动。 */
     zhaoxianguan:     { kezhan: 2 },     // 先征召大厅后英雄枢纽：有安顿来客之处，方可设馆纳贤
-    gongjiangzuofang: { tiejiangpu: 3 }, // 机工坊：器械以铁作底，锻造间 Lv3 起步
+    gongjiangzuofang: { tiejiangpu: 3 }, // 机工坊：器械以铁作底，制造厂 Lv3 起步
     xiaochang:        { junying: 2 },    // 先募兵（军营）再练兵（练兵场）
     yizhan:           { shichang: 2 },   // 驿传通商：先有交易站才有驿路
     honglusi:         { kezhan: 3 },     // 基因实验室：线索与人力来自征召大厅 Lv3
@@ -515,7 +515,7 @@
     shuyuan:          { minfang: 3 },   // 科研中心：聚居渐盛方谈研学
     cangku:           { minfang: 2 },   // 战储仓：依民居而设
     shichang:         { minfang: 3 },   // 交易站：要有集市人气
-    tiejiangpu:       { junying: 2 },   // 锻造间：炉火为军械而燃
+    tiejiangpu:       { junying: 2 },   // 制造厂：炉火为军械而燃
     fenghuotai:       { junying: 2 },   // 瞭望塔：隶属军务
   };
 
@@ -571,7 +571,7 @@
    *   每条链最终落在"无 req 的科技"（科研中心只按 t.lv 解锁）上，不会互为前置成环：
    *   练兵场→zhandou→军营→lianbing（无 req）；传送站→xingjun→载具研究所→xunma（无 req）；
    *   围墙/居所→jianzhu→机工坊→chelun（无 req）；作坊→chelun（无 req）；
-   *   锻造间→dazao（无 req）；战储仓→chucun（无 req）；瞭望塔→zhencha→传送站→…
+   *   制造厂→dazao（无 req）；战储仓→chucun（无 req）；瞭望塔→zhencha→传送站→…
    * ============================================================ */
   DATA.BUILD_TECH_REQ = {
     junying:          { tech: 'lianbing', div: 3 },   // 军营：募兵整训（募兵之本）
@@ -580,7 +580,7 @@
     /* ⛔ 居所不设科技闸（v89.191 决策）：基础居所直连幸存者与劳作 —— 早期就被卡会
        连带卡死征兵/产量，与"体系化"的初衷相反。营造类门槛由围墙承担。 */
     gongjiangzuofang: { tech: 'chelun',   div: 3 },   // 机工坊：传动系统（器械）
-    tiejiangpu:       { tech: 'dazao',    div: 3 },   // 锻造间：锻造工艺
+    tiejiangpu:       { tech: 'dazao',    div: 3 },   // 制造厂：锻造工艺
     majiu:            { tech: 'xunma',    div: 3 },   // 载具研究所：座驾改装
     yizhan:           { tech: 'xingjun',  div: 3 },   // 传送站：机动行军（驿传）
     cangku:           { tech: 'chucun',   div: 3 },   // 战储仓：仓储扩容
@@ -685,7 +685,7 @@
      * v91.17（老板 1）：**城内建筑固定栏位** —— 所有城（自建 + 系统名城 + 攻占）用**同一套**格子布局：
      *   行 1 末三：载具研究所 · 传送站 · 瞭望塔
      *   行 5：战储仓×3 · 交易站 · 科研中心 · 居所×3   （v91.17 老板：名城默认战储仓 3）
-     *   行 6：基因实验室 · 征召大厅 · 英雄枢纽 · 锻造间 · 机工坊 · 练兵场 · 军营 ×2
+     *   行 6：基因实验室 · 征召大厅 · 英雄枢纽 · 制造厂 · 机工坊 · 练兵场 · 军营 ×2
      *   其余（含政务厅 4 格区）= 居所填充；政务厅独占 2×2（自建城/系统城同位置，见 govCellsOf）。
      * ⚠️ 口径：这是**固定**布局 —— 与级别无关（级别只定各建筑**等级**）。允许拆除重建成其他建筑
      *   （居所/战储仓/军营数量可变），故布局是"默认落位"而非"锁死"。
@@ -703,7 +703,7 @@
       'minfang', 'minfang', 'minfang', 'minfang', 'minfang', 'minfang', 'minfang', 'minfang',
       /* 行5 (idx 32-39)：战储仓×3 · 交易站 · 科研中心 · 居所×3 */
       'cangku', 'cangku', 'cangku', 'shichang', 'shuyuan', 'minfang', 'minfang', 'minfang',
-      /* 行6 (idx 40-47)：基因实验室 · 征召大厅 · 英雄枢纽 · 锻造间 · 机工坊 · 练兵场 · 军营×2 */
+      /* 行6 (idx 40-47)：基因实验室 · 征召大厅 · 英雄枢纽 · 制造厂 · 机工坊 · 练兵场 · 军营×2 */
       'honglusi', 'kezhan', 'zhaoxianguan', 'tiejiangpu', 'gongjiangzuofang', 'xiaochang', 'junying', 'junying',
     ],
   };
@@ -1391,7 +1391,7 @@
    *   现在"装备体力"与"体力上限"是一条链，不再有两套说法。
    * ============================================================ */
   /* v90.14（老板）：套装重设 —— 6 档（粗劣/优良/精品/稀有/传奇/机神）× 3 侧重（占/治/体）
-     = 18 套 · 每套 19 件（覆盖全部机甲槽）。**散件退役**（锻造间只造套装件）。
+     = 18 套 · 每套 19 件（覆盖全部机甲槽）。**散件退役**（制造厂只造套装件）。
      老 7 套整体替换；数值参照旧套同品质量级。 */
   DATA.SET_RANKS = [
     { id: 'coarse', name: '粗劣', q: 1 },
@@ -1819,24 +1819,24 @@
          稀有：琉璃珠(湖) / 天珠(草) / 龙涎香(沼) / 沉香(森) / 夜光珠(荒) / 独山玉(山)
        旧 15 种（珍珠/珊瑚/琉璃/琥珀/玛瑙/水晶/翡翠/玉石/夜光珠/血珊瑚/龙涎珠/蓝田玉/
        凤羽/和氏璧/传国玉玺）整批退役 —— 老档库存按 DATA.JEWEL_MIG152 等值换算。 */
-    { id: 'bengzhu', name: '珍珠', type: 'jewel', loyalty: 5, price: 10, wonderOnly: true, desc: '赏赐忠诚 +5（湖泊所产）' },
-    { id: 'mila', name: '琥珀', type: 'jewel', loyalty: 10, price: 20, wonderOnly: true, desc: '赏赐忠诚 +10（草原所产）' },
-    { id: 'meiyu', name: '煤玉', type: 'jewel', loyalty: 15, price: 35, wonderOnly: true, desc: '赏赐忠诚 +15（沼泽所产）' },
-    { id: 'puyu', name: '璞玉', type: 'jewel', loyalty: 20, price: 50, wonderOnly: true, desc: '赏赐忠诚 +20（森林所产 · 未雕之原石）' },
-    { id: 'zijin', name: '紫晶', type: 'jewel', loyalty: 24, price: 60, wonderOnly: true, desc: '赏赐忠诚 +24（荒漠所产）' },
-    { id: 'lvsongshi', name: '绿松石', type: 'jewel', loyalty: 28, price: 70, wonderOnly: true, desc: '赏赐忠诚 +28（山地所产）' },
-    { id: 'hongshanhu', name: '红珊瑚', type: 'jewel', loyalty: 32, price: 80, wonderOnly: true, desc: '赏赐忠诚 +32（湖泊所产）' },
-    { id: 'yusui', name: '玉髓', type: 'jewel', loyalty: 36, price: 95, wonderOnly: true, desc: '赏赐忠诚 +36（草原所产）' },
-    { id: 'yinchenmu', name: '阴沉木', type: 'jewel', loyalty: 42, price: 130, wonderOnly: true, desc: '赏赐忠诚 +42（沼泽所产）' },
-    { id: 'cuiyu', name: '翠玉', type: 'jewel', loyalty: 48, price: 180, wonderOnly: true, desc: '赏赐忠诚 +48（森林所产）' },
-    { id: 'danbaishi', name: '蛋白石', type: 'jewel', loyalty: 54, price: 240, wonderOnly: true, desc: '赏赐忠诚 +54（荒漠所产）' },
-    { id: 'bixi', name: '碧玺', type: 'jewel', loyalty: 60, price: 290, wonderOnly: true, desc: '赏赐忠诚 +60（山地所产）' },
-    { id: 'jiaorenlei', name: '琉璃珠', type: 'jewel', loyalty: 65, price: 300, wonderOnly: true, desc: '赏赐忠诚 +65（湖泊所产）' },
-    { id: 'tianzhu', name: '天珠', type: 'jewel', loyalty: 72, price: 375, wonderOnly: true, desc: '赏赐忠诚 +72（草原所产）' },
-    { id: 'longxianxiang', name: '龙涎香', type: 'jewel', loyalty: 78, price: 450, wonderOnly: true, desc: '赏赐忠诚 +78（沼泽所产）' },
-    { id: 'chenxiang', name: '沉香', type: 'jewel', loyalty: 85, price: 550, wonderOnly: true, desc: '赏赐忠诚 +85（森林所产）' },
-    { id: 'yemingzhu', name: '夜光珠', type: 'jewel', loyalty: 92, price: 750, wonderOnly: true, desc: '赏赐忠诚 +92（荒漠所产 · 全地形偶得）' },
-    { id: 'dushanyu', name: '独山玉', type: 'jewel', loyalty: 100, price: 1200, wonderOnly: true, desc: '赏赐忠诚 +100（山地所产 · 玉中君子）' },
+    { id: 'bengzhu', name: '珍珠', type: 'jewel', loyalty: 5, price: 10, desc: '赏赐忠诚 +5（湖泊所产）' },
+    { id: 'mila', name: '琥珀', type: 'jewel', loyalty: 10, price: 20, desc: '赏赐忠诚 +10（草原所产）' },
+    { id: 'meiyu', name: '煤玉', type: 'jewel', loyalty: 15, price: 35, desc: '赏赐忠诚 +15（沼泽所产）' },
+    { id: 'puyu', name: '璞玉', type: 'jewel', loyalty: 20, price: 50, desc: '赏赐忠诚 +20（森林所产 · 未雕之原石）' },
+    { id: 'zijin', name: '紫晶', type: 'jewel', loyalty: 24, price: 60, desc: '赏赐忠诚 +24（荒漠所产）' },
+    { id: 'lvsongshi', name: '绿松石', type: 'jewel', loyalty: 28, price: 70, desc: '赏赐忠诚 +28（山地所产）' },
+    { id: 'hongshanhu', name: '红珊瑚', type: 'jewel', loyalty: 32, price: 80, desc: '赏赐忠诚 +32（湖泊所产）' },
+    { id: 'yusui', name: '玉髓', type: 'jewel', loyalty: 36, price: 95, desc: '赏赐忠诚 +36（草原所产）' },
+    { id: 'yinchenmu', name: '阴沉木', type: 'jewel', loyalty: 42, price: 130, desc: '赏赐忠诚 +42（沼泽所产）' },
+    { id: 'cuiyu', name: '翠玉', type: 'jewel', loyalty: 48, price: 180, desc: '赏赐忠诚 +48（森林所产）' },
+    { id: 'danbaishi', name: '蛋白石', type: 'jewel', loyalty: 54, price: 240, desc: '赏赐忠诚 +54（荒漠所产）' },
+    { id: 'bixi', name: '碧玺', type: 'jewel', loyalty: 60, price: 290, desc: '赏赐忠诚 +60（山地所产）' },
+    { id: 'jiaorenlei', name: '琉璃珠', type: 'jewel', loyalty: 65, price: 300, desc: '赏赐忠诚 +65（湖泊所产）' },
+    { id: 'tianzhu', name: '天珠', type: 'jewel', loyalty: 72, price: 375, desc: '赏赐忠诚 +72（草原所产）' },
+    { id: 'longxianxiang', name: '龙涎香', type: 'jewel', loyalty: 78, price: 450, desc: '赏赐忠诚 +78（沼泽所产）' },
+    { id: 'chenxiang', name: '沉香', type: 'jewel', loyalty: 85, price: 550, desc: '赏赐忠诚 +85（森林所产）' },
+    { id: 'yemingzhu', name: '夜光珠', type: 'jewel', loyalty: 92, price: 750, desc: '赏赐忠诚 +92（荒漠所产 · 全地形偶得）' },
+    { id: 'dushanyu', name: '独山玉', type: 'jewel', loyalty: 100, price: 1200, desc: '赏赐忠诚 +100（山地所产 · 玉中君子）' },
     /* v91.30 奇观特产材料（9 种 · 全局玩家级 · 只产自奇观 · type:'jewel' 以便并入 cost.jewel 消耗）*/
     { id: 'w_stariron', name: '星铁同位素', type: 'wmat', price: 40, wonderOnly: true, desc: '奇观特产 · 永动熔炉：天启体改造 / 高阶建筑升级' },
     { id: 'w_he3', name: '氦-3', type: 'wmat', price: 30, wonderOnly: true, desc: '奇观特产 · 戴森残片/交椅星环：电能提速 / 星际切换燃料' },
@@ -3071,10 +3071,10 @@
 
   /* ============================================================
    * 装备打造（v11）：装备获取的主要途径
-   * 锻造间等级决定可打造品质；套装件需对应「图纸」
+   * 制造厂等级决定可打造品质；套装件需对应「图纸」
    * ============================================================ */
   DATA.FORGE = {
-    /* 锻造间等级 → 可打造的最高品质（v90.14：6 档） */
+    /* 制造厂等级 → 可打造的最高品质（v90.14：6 档） */
     tierLv: [1, 3, 5, 7, 8, 9],
     /* 各品质基准成本（v90.14：6 档） */
     costByQ: {
@@ -3091,7 +3091,7 @@
   };
 
   /* ============================================================
-   * 锻造间 · 熔铸强化（v77 · 老板「装备可进行强化」· v89.227 更名，原名「百炼强化」）
+   * 制造厂 · 熔铸强化（v77 · 老板「装备可进行强化」· v89.227 更名，原名「百炼强化」）
    * ------------------------------------------------------------
    * 模型（v79 改）：强化等级记在**单件**上（inst.enh = 0..max，同名各升各的；见 GAME.enhance）——
    *   本项目装备是"同一图纸的量产件"（背包/穿戴都存 id、不存实例），
@@ -3109,7 +3109,7 @@
   };
 
   /* ⛔ v90.14（老板）：「不再有散件」—— 原 CRAFT_SLOTS → cr_* 散件生成**整体退役**。
-     锻造间只造套装件（见 GAME.forgeList：it.set 即可造）。
+     制造厂只造套装件（见 GAME.forgeList：it.set 即可造）。
      v90.53：`DATA.CRAFT_SLOTS` / `DATA.Q_STA` 两表已**删除**（零引用死表 · 数据表卫生审计报孤儿）——
      槽位/属性参照已由 EQUIP/SET 体系承接，此处不留空壳。 */
   /* v90.14：Q_NAME 已在套装重设块按 6 档给出（粗劣/优良/精品/稀有/传奇/机神），此处不再覆盖。 */
@@ -3117,24 +3117,24 @@
 
   /* v90.14：18 套图纸（对应 6 档 × 3 侧重）—— 打造该套的前置 */
   DATA.BLUEPRINTS = [
-    { id: 'bp_coarse_zhan', name: '拾荒套图纸', type: 'blueprint', wonderOnly: true, set: 'coarse_zhan', price: 20, forgeLv: 1, desc: '凭此可在锻造间打造「拾荒套」' },
-    { id: 'bp_coarse_zhi', name: '补丁套图纸', type: 'blueprint', wonderOnly: true, set: 'coarse_zhi', price: 20, forgeLv: 1, desc: '凭此可在锻造间打造「补丁套」' },
-    { id: 'bp_coarse_ti', name: '铁皮套图纸', type: 'blueprint', wonderOnly: true, set: 'coarse_ti', price: 20, forgeLv: 1, desc: '凭此可在锻造间打造「铁皮套」' },
-    { id: 'bp_fine_zhan', name: '巡逻套图纸', type: 'blueprint', wonderOnly: true, set: 'fine_zhan', price: 60, forgeLv: 3, desc: '凭此可在锻造间打造「巡逻套」' },
-    { id: 'bp_fine_zhi', name: '工坊套图纸', type: 'blueprint', wonderOnly: true, set: 'fine_zhi', price: 60, forgeLv: 3, desc: '凭此可在锻造间打造「工坊套」' },
-    { id: 'bp_fine_ti', name: '装卸套图纸', type: 'blueprint', wonderOnly: true, set: 'fine_ti', price: 60, forgeLv: 3, desc: '凭此可在锻造间打造「装卸套」' },
-    { id: 'bp_prime_zhan', name: '猎杀套图纸', type: 'blueprint', wonderOnly: true, set: 'prime_zhan', price: 110, forgeLv: 5, desc: '凭此可在锻造间打造「猎杀套」' },
-    { id: 'bp_prime_zhi', name: '中枢套图纸', type: 'blueprint', wonderOnly: true, set: 'prime_zhi', price: 110, forgeLv: 5, desc: '凭此可在锻造间打造「中枢套」' },
-    { id: 'bp_prime_ti', name: '重装套图纸', type: 'blueprint', wonderOnly: true, set: 'prime_ti', price: 110, forgeLv: 5, desc: '凭此可在锻造间打造「重装套」' },
-    { id: 'bp_rare_zhan', name: '战团套图纸', type: 'blueprint', wonderOnly: true, set: 'rare_zhan', price: 200, forgeLv: 7, desc: '凭此可在锻造间打造「战团套」' },
-    { id: 'bp_rare_zhi', name: '议会套图纸', type: 'blueprint', wonderOnly: true, set: 'rare_zhi', price: 200, forgeLv: 7, desc: '凭此可在锻造间打造「议会套」' },
-    { id: 'bp_rare_ti', name: '壁垒套图纸', type: 'blueprint', wonderOnly: true, set: 'rare_ti', price: 200, forgeLv: 7, desc: '凭此可在锻造间打造「壁垒套」' },
-    { id: 'bp_legend_zhan', name: '诸神套图纸', type: 'blueprint', wonderOnly: true, set: 'legend_zhan', price: 320, forgeLv: 8, desc: '凭此可在锻造间打造「诸神套」' },
-    { id: 'bp_legend_zhi', name: '智囊套图纸', type: 'blueprint', wonderOnly: true, set: 'legend_zhi', price: 320, forgeLv: 8, desc: '凭此可在锻造间打造「智囊套」' },
-    { id: 'bp_legend_ti', name: '不朽套图纸', type: 'blueprint', wonderOnly: true, set: 'legend_ti', price: 320, forgeLv: 8, desc: '凭此可在锻造间打造「不朽套」' },
-    { id: 'bp_divine_zhan', name: '天罚套图纸', type: 'blueprint', wonderOnly: true, set: 'divine_zhan', price: 500, forgeLv: 9, desc: '凭此可在锻造间打造「天罚套」' },
-    { id: 'bp_divine_zhi', name: '神谕套图纸', type: 'blueprint', wonderOnly: true, set: 'divine_zhi', price: 500, forgeLv: 9, desc: '凭此可在锻造间打造「神谕套」' },
-    { id: 'bp_divine_ti', name: '机体套图纸', type: 'blueprint', wonderOnly: true, set: 'divine_ti', price: 500, forgeLv: 9, desc: '凭此可在锻造间打造「机体套」' },
+    { id: 'bp_coarse_zhan', name: '拾荒套图纸', type: 'blueprint', wonderOnly: true, set: 'coarse_zhan', price: 20, forgeLv: 1, desc: '凭此可在制造厂打造「拾荒套」' },
+    { id: 'bp_coarse_zhi', name: '补丁套图纸', type: 'blueprint', wonderOnly: true, set: 'coarse_zhi', price: 20, forgeLv: 1, desc: '凭此可在制造厂打造「补丁套」' },
+    { id: 'bp_coarse_ti', name: '铁皮套图纸', type: 'blueprint', wonderOnly: true, set: 'coarse_ti', price: 20, forgeLv: 1, desc: '凭此可在制造厂打造「铁皮套」' },
+    { id: 'bp_fine_zhan', name: '巡逻套图纸', type: 'blueprint', wonderOnly: true, set: 'fine_zhan', price: 60, forgeLv: 3, desc: '凭此可在制造厂打造「巡逻套」' },
+    { id: 'bp_fine_zhi', name: '工坊套图纸', type: 'blueprint', wonderOnly: true, set: 'fine_zhi', price: 60, forgeLv: 3, desc: '凭此可在制造厂打造「工坊套」' },
+    { id: 'bp_fine_ti', name: '装卸套图纸', type: 'blueprint', wonderOnly: true, set: 'fine_ti', price: 60, forgeLv: 3, desc: '凭此可在制造厂打造「装卸套」' },
+    { id: 'bp_prime_zhan', name: '猎杀套图纸', type: 'blueprint', wonderOnly: true, set: 'prime_zhan', price: 110, forgeLv: 5, desc: '凭此可在制造厂打造「猎杀套」' },
+    { id: 'bp_prime_zhi', name: '中枢套图纸', type: 'blueprint', wonderOnly: true, set: 'prime_zhi', price: 110, forgeLv: 5, desc: '凭此可在制造厂打造「中枢套」' },
+    { id: 'bp_prime_ti', name: '重装套图纸', type: 'blueprint', wonderOnly: true, set: 'prime_ti', price: 110, forgeLv: 5, desc: '凭此可在制造厂打造「重装套」' },
+    { id: 'bp_rare_zhan', name: '战团套图纸', type: 'blueprint', wonderOnly: true, set: 'rare_zhan', price: 200, forgeLv: 7, desc: '凭此可在制造厂打造「战团套」' },
+    { id: 'bp_rare_zhi', name: '议会套图纸', type: 'blueprint', wonderOnly: true, set: 'rare_zhi', price: 200, forgeLv: 7, desc: '凭此可在制造厂打造「议会套」' },
+    { id: 'bp_rare_ti', name: '壁垒套图纸', type: 'blueprint', wonderOnly: true, set: 'rare_ti', price: 200, forgeLv: 7, desc: '凭此可在制造厂打造「壁垒套」' },
+    { id: 'bp_legend_zhan', name: '诸神套图纸', type: 'blueprint', wonderOnly: true, set: 'legend_zhan', price: 320, forgeLv: 8, desc: '凭此可在制造厂打造「诸神套」' },
+    { id: 'bp_legend_zhi', name: '智囊套图纸', type: 'blueprint', wonderOnly: true, set: 'legend_zhi', price: 320, forgeLv: 8, desc: '凭此可在制造厂打造「智囊套」' },
+    { id: 'bp_legend_ti', name: '不朽套图纸', type: 'blueprint', wonderOnly: true, set: 'legend_ti', price: 320, forgeLv: 8, desc: '凭此可在制造厂打造「不朽套」' },
+    { id: 'bp_divine_zhan', name: '天罚套图纸', type: 'blueprint', wonderOnly: true, set: 'divine_zhan', price: 500, forgeLv: 9, desc: '凭此可在制造厂打造「天罚套」' },
+    { id: 'bp_divine_zhi', name: '神谕套图纸', type: 'blueprint', wonderOnly: true, set: 'divine_zhi', price: 500, forgeLv: 9, desc: '凭此可在制造厂打造「神谕套」' },
+    { id: 'bp_divine_ti', name: '机体套图纸', type: 'blueprint', wonderOnly: true, set: 'divine_ti', price: 500, forgeLv: 9, desc: '凭此可在制造厂打造「机体套」' },
   ];
 
   /* 图纸并入宝物表（可入背包、可游商购买、可掉落） */
@@ -3655,7 +3655,7 @@
    *   · 装备实例不在此列（走「拆解」回收打造材料，见 salvageEquip）
    * 调平衡只改本配置（UI / 探针 / 推演全从这里读，别处不许另算价）。
    * ============================================================ */
-  DATA.ITEM_SELL = { rate: 0.45 };   /* v91.30：珠宝价×5 → 率从 0.75 降到 0.45（寄售价 10×100×0.45=450）*/
+  DATA.ITEM_SELL = { rate: 0.75 };
   /* v90.55（老板）：**装备出售**回收率 —— 售价 = 估值（itemValue）× rate，换旧币（入**当前城**）。
      与拆解并列：拆解回收 40% 材料，出售直接给旧币、按估值 60%。 */
   DATA.EQUIP_SELL = { rate: 0.6 };
@@ -3736,7 +3736,7 @@
    * ------------------------------------------------------------
    * v89.224（老板 2）：「不要播种 / 种子」—— 六座培养舱直接**立项研发**：
    *   立项（不消耗道具）→ 游戏时间研发 → 提取产物。
-   *        ├─ 材料研发 ×6 → 3 阶主产（有机率出 4 阶）→ 锻造间打造
+   *        ├─ 材料研发 ×6 → 3 阶主产（有机率出 4 阶）→ 制造厂打造
    *        └─ 基因调试 ×4 → 激活 / 蜕变 / 觉醒 / 天启血清 → 英雄资质逐档提升
    *
    * 数值全表化（加项目 = 加一行；调时长只改本表）：
@@ -4458,7 +4458,7 @@
   DATA.SERIES = {
     /* v89.227：8 族 → 4 族（老板：「族有点多了…其他限制在 2 族以内，官府单独一族」）——
        官府（政务厅/基因实验室）· 民生（居所/战储仓/载具研究所/传送站 —— "无特定菜单操作"类）·
-       军事（军营/练兵场/围墙/瞭望塔）· 城务（征召大厅/英雄枢纽/科研中心/交易站/锻造间/机工坊）。
+       军事（军营/练兵场/围墙/瞭望塔）· 城务（征召大厅/英雄枢纽/科研中心/交易站/制造厂/机工坊）。
        旧 5 族 key 退役：store / edu / biz / road / recruit。
        v89.229：plot 语义 = **名称文字色块**的目标色（鲜明档，白字可读 ≥4.5）。
        HSL 值经"渲染复现"求解 —— smoke 逐字节对齐（rgbOfHsl 舍入往返零误差）。 */

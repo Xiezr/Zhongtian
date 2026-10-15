@@ -2945,7 +2945,7 @@
          （0.30~0.60），若按新"加值"解释会得到 0.75+0.6 = 超强（顶到 cap）。
          处置：直接作废该键（幂等）。代价极小 —— buff 最长 24h；且旧值本就"低于基础=负收益"。 */
       if (st.buffs && st.buffs.military && st.buffs.military.wound > 0.2) delete st.buffs.military.wound;
-      if (!st.forged) st.forged = [];   // 锻造间已打造记录（用于图鉴）
+      if (!st.forged) st.forged = [];   // 制造厂已打造记录（用于图鉴）
       /* ---- v14 迁移：外城地块从 state.extGrid（全局单份）搬到各城 city.extGrid ---- */
       var legacyExt = st.extGrid || null;
       (st.cities || []).forEach(function (c, i) {
@@ -3734,7 +3734,7 @@
     if (mbProd.prod) list.push({ name: '城主治理', d: mbProd.prod });
     var wr = (s.workRate && s.workRate[r] != null) ? s.workRate[r] : 100;
     if (wr !== 100) list.push({ name: '开工率 ' + wr + '%', d: wr / 100 - 1 });
-    /* v28（需求 1）：载具研究所/基因实验室/锻造间满级专精 —— 全城产量 +6%（逐座叠加）
+    /* v28（需求 1）：载具研究所/基因实验室/制造厂满级专精 —— 全城产量 +6%（逐座叠加）
        （建筑 id 仍是 honglusi，v89.74 只改了显示名） */
     if (GAME.mastery) {
       var mp = (mpGlobal != null) ? mpGlobal : GAME.mastery('prodPct', null);

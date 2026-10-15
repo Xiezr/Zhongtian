@@ -313,7 +313,7 @@
    *      mask 的入场动画（mModalIn .13s + mModalRise .15s）每次重播；
    *      实测"连点 4 次换页/换类" → mask 被重建 4 次（4 次闪）。
    *   ② **层级丢失**：没有"层"的概念 —— 从 A 面板点进 B 面板，B 一关就清空
-   *      modal-root，直接落到城市视图（实测：锻造间 → 套装效果 → 关闭 → 弹窗全没）。
+   *      modal-root，直接落到城市视图（实测：制造厂 → 套装效果 → 关闭 → 弹窗全没）。
    *
    * 改法（**不动上百个调用点**，判别放在唯一入口）：
    *   · 已开窗时**只换内容**：mask 与 .modal 元素**保留**（元素还在 → 动画不重播）；
@@ -4000,7 +4000,7 @@
    * 功能归属建筑（避免顶部菜单与建筑入口重复）
    * ============================================================ */
   ui.PANEL_TITLE = {
-    troops: '⚔️ 军队（军营）', tech: '📜 科技（科研中心）', equip: '🎽 装备（锻造间）',
+    troops: '⚔️ 军队（军营）', tech: '📜 科技（科研中心）', equip: '🎽 装备（制造厂）',
     items: '💎 宝物', generals: '🧑‍✈️ 英雄（英雄枢纽）', stats: '📊 统计',
     rank: '🏅 威望', ext: '🌾 城外',
   };
@@ -4216,7 +4216,7 @@
     /* 二级分类条（仅宝物页）—— 参考游商分类，只列有货的（快速检索）；
        v89.143：进页先归一（删「全部」后，失效值一律落到第一个有货分类）。 */
     if (t === 'treasure') { ui._bagSub = ui.bagSubNorm(ui._bagSub); html += ui.bagSubChipsHTML(); }
-    /* v89.117（老板「参考锻造间分类，增加更细致的划分」）：装备页三排筛选 */
+    /* v89.117（老板「参考制造厂分类，增加更细致的划分」）：装备页三排筛选 */
     if (t === 'equip') html += ui.bagEqChipsHTML();
     /* 排序条 */
     html += '<div class="bag-sortbar"><span class="lb">排序</span>' +
@@ -4543,7 +4543,7 @@
       var anyEq = ui.bagEquipEntries().length;
       return '<div class="q-empty">' + (anyEq
         ? '当前筛选下没有装备 —— 换一档筛选试试（类别 / 状态 / 品质）。'
-        : '尚无装备。点城内「锻造间」打造，或攻占城市缴获。') + '</div>';
+        : '尚无装备。点城内「制造厂」打造，或攻占城市缴获。') + '</div>';
     }
     var inv = entries;
     /* 分组（按部位 / 按套装）—— 组内按件排 */
@@ -4641,14 +4641,14 @@
       return '<div class="q-empty">尚无装备图纸。<br>来源：游商购买 · 攻占名城缴获（重镇 18% / 首府 40% / 旧都 80%）· 遗迹古冢</div>';
     }
     return ui.pageBag('bag-bp', ui.bagRows(
-      '<div class="bag-sec">装备图纸 <span class="n">凭图纸可于锻造间打造对应套装</span></div>', 'bp',
+      '<div class="bag-sec">装备图纸 <span class="n">凭图纸可于制造厂打造对应套装</span></div>', 'bp',
       arr.map(function (b) {
         var q = b.forgeLv >= 7 ? 4 : b.forgeLv >= 5 ? 3 : 2;
         return ui.bagCell({
           cls: 'q' + q,
           ico: GAME.icons.forItem ? GAME.icons.forItem('blueprint', b.id) : '📜',
           name: b.name, cnt: items[b.id], q: q, noStar: true,
-          title: b.name, lore: '需锻造间 Lv' + b.forgeLv + ' · 持有 ' + items[b.id],
+          title: b.name, lore: '需制造厂 Lv' + b.forgeLv + ' · 持有 ' + items[b.id],
           attr: b.desc, act: 'open-bp-detail', key: b.id,
         });
       })));
@@ -4950,7 +4950,7 @@
       html += '<div class="note" style="margin-top:12px;">拆解可回收 40% 打造材料：' + mtx.join('、') + '<br>'
         + '出售可换旧币 <b>' + U.fmt(GAME.equipSellPrice(itemId)) + '</b>（估值 60%）。</div>';
       html += '<div style="text-align:center;margin-top:10px;">' +
-        '<button class="btn sm gold" data-action="open-enhance" style="margin-right:6px;">⚒ 前往锻造间强化</button>' +
+        '<button class="btn sm gold" data-action="open-enhance" style="margin-right:6px;">⚒ 前往制造厂强化</button>' +
         /* v89.110：拆解 = 销毁该件（不可逆）—— 改走二次确认（ui.openSalvageConfirm）。 */
         '<button class="btn red" data-action="salvage-equip-ask" data-key="' + key + '">拆解回收</button>' +
         /* v90.55（老板）：出售装备换旧币（二次确认 ui.openSellConfirm）。 */
@@ -6025,7 +6025,7 @@
   ui._shopCat = null;
   ui.SHOP_PER_PAGE = 16;
   ui.SHOP_CATS = {
-    material: '材料', /* v91.30：珠宝/图纸/残卷/民生 页签退役（转奇观产）；生产/营造仍有低档在售 */ attr_buff: '符类', prod_buff: '生产',
+    material: '材料', jewel: '珠宝', /* v91.30：图纸/残卷/民生 页签退役；珠宝/生产/营造仍有在售 */ attr_buff: '符类', prod_buff: '生产',
     military_buff: '军事', boost: '加速', exp: '经验', stamina: '体力',
     perm: '丹药', mount_buff: '座驾',
     /* v77（老板「丰富商场道具」）：宝箱 / 战技残卷 / 政令（征调令）三类新货 */
@@ -6301,7 +6301,7 @@
    * 不像一堆固定档位的 chip 那样"想买 37 个就只能买 50 个"。
    * ============================================================ */
   ui.itemRow = function (o) {
-    /* v89.117：可选**整行点选**（锻造间把"逐卡打造键"收成"选一件 + 底部一个键"）——
+    /* v89.117：可选**整行点选**（制造厂把"逐卡打造键"收成"选一件 + 底部一个键"）——
        只有传了 pickAction 才挂 data-action，既有调用点不受影响。 */
     var pick = o.pickAction ? ' data-action="' + o.pickAction + '" data-item="' + o.pickItem + '"' : '';
     /* v90.44（老板）：卡片级悬停提示（费用等"数额"走这里，不占版面）。 */
@@ -6444,7 +6444,7 @@
   };
 
   /* ============================================================
-   * 锻造间 · 打造（v29 · 需求 12）
+   * 制造厂 · 打造（v29 · 需求 12）
    * ------------------------------------------------------------
    * 改前：一个 48 件的长列表塞在弹窗里，每件一行小字 + 一颗按钮，
    *   品质、材料、图纸三种"能不能造"的原因挤在同一段文字里，
@@ -6502,15 +6502,15 @@
     ui._pages['forge'] = 1;
     ui.openForge();
   };
-  /* v90.56（老板）：锻造间**部位筛选**（唯一出口；点部位 chip 或从装备更换进来定位）。 */
+  /* v90.56（老板）：制造厂**部位筛选**（唯一出口；点部位 chip 或从装备更换进来定位）。 */
   ui.setForgeSlot = function (sl) {
     ui._forgeSlot = String(sl || '');
     ui._pages['forge'] = 1;
     ui.openForge();
   };
-  /* 从装备更换「该部位无货」入口 → 关掉更换窗、开锻造间并定位到该部位。 */
+  /* 从装备更换「该部位无货」入口 → 关掉更换窗、开制造厂并定位到该部位。 */
   ui.openForgeAtSlot = function (slot) {
-    ui.closeModal();                 /* 先关「更换」窗（回落到英雄面板），再开锻造间 */
+    ui.closeModal();                 /* 先关「更换」窗（回落到英雄面板），再开制造厂 */
     ui._forgeSlot = String(slot || '');
     ui._pages['forge'] = 1;
     ui.openForge();
@@ -6556,7 +6556,7 @@
         (md ? md.name : mk) + ' ' + have + '/' + need + src + mgo + '</span>';
     });
     var blockers = [];
-    if (!f.tierOk) blockers.push('需锻造间 Lv' + (DATA.FORGE.tierLv[f.q - 1] || 7));
+    if (!f.tierOk) blockers.push('需制造厂 Lv' + (DATA.FORGE.tierLv[f.q - 1] || 7));
     if (!f.bpOk) blockers.push('缺图纸「' + (f.bp ? f.bp.name : '') + '」');
     if (!f.matsOk) blockers.push('材料不足');
     if (!GAME.canAfford(f.cost)) blockers.push('资材不足');
@@ -6611,8 +6611,8 @@
     var lv = GAME.forgeLevel();
     if (lv <= 0) {
       ui.openShell({
-        title: '⚒️ 锻造间', size: 'sm',
-        body: '<div class="q-empty">尚未建造锻造间。<br>在城内空地上建造「锻造间」后即可打造装备。</div>',
+        title: '⚒️ 制造厂', size: 'sm',
+        body: '<div class="q-empty">尚未建造制造厂。<br>在城内空地上建造「制造厂」后即可打造装备。</div>',
         foot: '<div class="m-foot"><button class="btn" data-action="close-modal">关闭</button></div>'
       });
       return;
@@ -6687,7 +6687,7 @@
     var blockList = [];
     selIds.forEach(function (id) {
       var f2 = listById[id], b2 = [];
-      if (!f2.tierOk) b2.push('需锻造间 Lv' + (DATA.FORGE.tierLv[f2.q - 1] || 7));
+      if (!f2.tierOk) b2.push('需制造厂 Lv' + (DATA.FORGE.tierLv[f2.q - 1] || 7));
       if (!f2.bpOk) b2.push('缺图纸');
       if (!f2.matsOk) b2.push('材料不足');
       if (!GAME.canAfford(f2.cost)) b2.push('资材不足');
@@ -6706,7 +6706,7 @@
     ui.openShell({
       /* v89.136（上轮清单① live 续铺）：逐秒刷新（旧币/铁/木/石随打造即时变） */
       live: function () { ui.openForge(); },
-      title: '⚒️ 锻造间 · Lv' + lv,
+      title: '⚒️ 制造厂 · Lv' + lv,
       sub: '可打造至「' + (DATA.Q_NAME[maxQ] || '—') + '」　旧币 ' + U.numText(s.res.gold || 0, 0) +
         '　废钢 ' + U.numText(s.res.iron || 0, 0) + '　生物质 ' + U.numText(s.res.wood || 0, 0) +
         '　电能 ' + U.numText(s.res.stone || 0, 0),
@@ -6732,7 +6732,7 @@
          动作名仍叫 `forge-item`（既有派发与选择器零改动），件号改从 ui._forgeSelList 取。 */
       /* v89.140（老板 5）：「翻页设置放在当前界面的**底部**」——分页条从正文末尾
          挪到 foot（弹窗下沿固定区），翻页不用再滚到底。
-         v89.140（老板 4）：底部的「熔铸强化」按钮**删去**（已搬到锻造间建筑菜单上）。 */
+         v89.140（老板 4）：底部的「熔铸强化」按钮**删去**（已搬到制造厂建筑菜单上）。 */
       foot: '<div class="m-foot">' + (rows.length ? pg.pager : '') +
         '<button class="btn' + (selOk ? ' gold' : ' dim') + '" data-action="forge-item"' +
           (selOk ? '' : ' disabled data-why="' + U.escape(selIds.length
@@ -6751,7 +6751,7 @@
 
 
   /* ============================================================
-   * 熔铸强化（v77 · 老板「锻造间加入装备强化系统，装备可进行强化」· v89.227 更名，原名「百炼强化」）
+   * 熔铸强化（v77 · 老板「制造厂加入装备强化系统，装备可进行强化」· v89.227 更名，原名「百炼强化」）
    * ------------------------------------------------------------
    * 列出**已拥有**的装备（背包 + 已穿戴；GAME.enhList）。
    * 等级与效果都走唯一出口（GAME.enhOf / genEquipBonus），这里只做呈现。
@@ -6789,7 +6789,7 @@
     if (GAME.forgeLevel() <= 0) {
       ui.openShell({
         title: '⚒ 熔铸强化', size: 'sm',
-        body: '<div class="q-empty">尚未建造锻造间。<br>在城内空地上建造「锻造间」后即可打造与强化装备。</div>',
+        body: '<div class="q-empty">尚未建造制造厂。<br>在城内空地上建造「制造厂」后即可打造与强化装备。</div>',
         foot: '<div class="m-foot"><button class="btn" data-action="close-modal">关闭</button></div>'
       });
       return;
@@ -6836,7 +6836,7 @@
           '<span class="ec-lv">+' + lv + ' <i>/' + maxE + '</i></span>' +
         '</span></div>';
     }).join('') || '<div class="q-empty">' + (filt === 'todo' ? '全部装备都到满级了。'
-      : (filt === 'done' ? '还没有满级装备。' : '背包与穿戴中还没有可强化的装备（先在锻造间打造几件）。')) + '</div>';
+      : (filt === 'done' ? '还没有满级装备。' : '背包与穿戴中还没有可强化的装备（先在制造厂打造几件）。')) + '</div>';
     /* 底键状态（与结算同一把尺：成本读 GAME.enhCost、资材读 GAME.canAfford） */
     var selLv = selInst ? GAME.enhOf(selInst) : -1;
     var selCost = (selInst && selLv < maxE) ? GAME.enhCost(selInst) : null;
@@ -7568,7 +7568,7 @@
     });
   };
 
-  /* ================= 锻造间 · 打造 ================= */
+  /* ================= 制造厂 · 打造 ================= */
   /* ============================================================
    * v90.97（老板）**行政大菜单**（顶栏「军务」右侧）
    * ------------------------------------------------------------
@@ -8363,9 +8363,9 @@
        且"座驾"只是装备的一个部位，不值得在建筑里单开一个入口。
        撤掉后点载具研究所格只显示**属性行**（机车解锁 / 建筑专精），不再有功能按钮。
        装备与座驾仍走两条既有的路：英雄档案点部位换装、背包「装备」页选将穿戴。 */
-    /* v89.140（老板 4）：「锻造间建筑菜单界面，**新增一行增加一个百炼强化按钮**，
+    /* v89.140（老板 4）：「制造厂建筑菜单界面，**新增一行增加一个百炼强化按钮**，
        与打造菜单格式相同。将打造界面里的百炼强化按钮删去」——
-       锻造间格上直接出现两颗功能键（打造 / 熔铸强化），打造面板底部不再挂它。 */
+       制造厂格上直接出现两颗功能键（打造 / 熔铸强化），打造面板底部不再挂它。 */
     tiejiangpu: [{ label: "⚒️ 打造", act: "open-forge" },
       { label: "⚒️ 熔铸强化", act: "open-enhance" }],
     gongjiangzuofang: { label: "🛠️ 器械 · 箭塔", act: "open-workshop", withIdx: true },
@@ -8675,7 +8675,7 @@
       /* v19：升级是**纯后台过程** —— 施工期间该建筑的功能照常可用。
          只有「新建」（地块上还没建筑）才没有任何功能可进。
          判据：cell.build 存在即视为升级（targetLevel>1），
-         于是军营施工中仍可募兵、科研中心施工中仍可研究、锻造间施工中仍可打造。 */
+         于是军营施工中仍可募兵、科研中心施工中仍可研究、制造厂施工中仍可打造。 */
       var isUpgrade = !!(cell.build && (cell.pending.targetLevel || 1) > 1);
       var pr16 = GAME.buildProgress('city', idx);
       var progBlock =
@@ -8890,7 +8890,7 @@
            ② 操作三键**同排**、等宽，每键带一行小字说明后果（费用 / 降级去向 / 用途）；
            ③ 关闭单独一行、钉在弹窗最底部。 */
         (function () {
-          /* v89.140：条目可以是**单条**或**数组**（锻造间 = 打造 + 熔铸强化两颗） */
+          /* v89.140：条目可以是**单条**或**数组**（制造厂 = 打造 + 熔铸强化两颗） */
           var fs = [].concat(BLDG_FUNC[b.id] || []);
           if (!fs.length) return '';
           return '<div class="op-zone">' +
@@ -10877,7 +10877,7 @@
     });
     /* v52（老板：「装备那里不需要列出其余套装的备注」）：
        这里原本还会列一段「其余套装：佣兵套（11 件）…加成…」—— 把没穿的套装也铺出来，
-       信息量大但**与本将无关**（要凑别的套是另一回事，去锻造间的套装表看）。
+       信息量大但**与本将无关**（要凑别的套是另一回事，去制造厂的套装表看）。
        整段删掉，只留本将**已着**套装件的进度。 */
     return out + '</div>';
   };
@@ -11092,11 +11092,11 @@
     }
     if (!cand.length) {
       html += '<div class="note">背包中没有该部位的' + (isLing ? '改造' : '') + '装备。</div>';
-      /* v90.56（老板）：该部位无货 → 直接引到**锻造间**、并定位到本部位。 */
+      /* v90.56（老板）：该部位无货 → 直接引到**制造厂**、并定位到本部位。 */
       if (!isLing) {
         html += '<div style="text-align:center;margin-top:10px;">'
           + '<button class="btn gold" data-action="forge-open-slot" data-slot="' + slot + '">'
-          + '⚒ 去锻造间打造「' + slotName2 + '」</button></div>';
+          + '⚒ 去制造厂打造「' + slotName2 + '」</button></div>';
       }
     } else {
       html += '<div class="bag-sec">背包可选 <span class="n">' + cand.length + ' 件</span></div>';
@@ -16543,7 +16543,7 @@
       '<div class="op-zone"><div class="op-zone-t">研发与去向</div>' +
         '<div class="attr"><span class="k">材料研发</span><span class="v">3 阶打造主料（钢锭 / 铁木 / 硬甲皮 / 巨兽筋 / 纯晶 / 高强纤维），有机率出 4 阶</span></div>' +
         '<div class="attr"><span class="k">基因调试</span><span class="v">激活 / 蜕变 / 觉醒 / 天启血清 —— 英雄资质逐档提升</span></div>' +
-        '<div class="attr"><span class="k">去向</span><span class="v">材料 → 锻造间打造；血清 → 宝物背包 → 选英雄使用</span></div>' +
+        '<div class="attr"><span class="k">去向</span><span class="v">材料 → 制造厂打造；血清 → 宝物背包 → 选英雄使用</span></div>' +
       '</div>';
   };
   /* 立项弹窗：列出全部研发项目（6 材料 + 4 基因调试）—— 直接立项，不消耗道具 */

@@ -527,7 +527,7 @@ async function runTests(dom, URL) {
   /* v77（老板）：建筑信息 / 资源生产退役；附属野地保留（资源区下拉框进入）。 */
   const modals = [['君主', 'openLordInfo'], ['附属野地', 'openWilds'],
     ['征召大厅', 'openInn'], ['英雄枢纽', 'openHostel'], ['市集', 'openMarket'], ['战储仓', 'openStore'],
-    ['锻造间', 'openForge']];
+    ['制造厂', 'openForge']];
   for (const [label, fn] of modals) {
     if (typeof G.ui[fn] !== 'function') { check('弹窗 ' + label, false, fn + ' 未定义'); continue; }
     try {
@@ -1264,8 +1264,8 @@ async function runTests(dom, URL) {
      现形 / 探奇 / 见闻录 共 14 条断言）整段退役，替换为 smoke §80 的零残留守卫。 */
   G.jianghuWildMounted = jhWasA;   /* v89.86：还原剥离状态（原 19c 收尾；19b 起显式挂载了该层） */
 
-  console.log('\n--- 20. 资质分级 / 锻造间打造 / 死属性修复 ---');
-  /* 给当前城配齐征召大厅、英雄枢纽、锻造间 */
+  console.log('\n--- 20. 资质分级 / 制造厂打造 / 死属性修复 ---');
+  /* 给当前城配齐征召大厅、英雄枢纽、制造厂 */
   const c20 = G.state.cities[0];
   const put20 = (id, lv) => {
     const ex = c20.cells.find((c) => c.build && c.build.id === id);
@@ -1378,7 +1378,7 @@ async function runTests(dom, URL) {
     G.refreshAll();
   })();
 
-  /* ④ 锻造间打造面板 */
+  /* ④ 制造厂打造面板 */
   G.ui.openForge();
   await sleep(70);
   const forge20 = document.querySelector('#modal-root').innerHTML;
@@ -1395,13 +1395,13 @@ async function runTests(dom, URL) {
      ② 齐备的卡片不再出现复述文字。 */
   /* v89.117（老板「太多打造按钮了，统一成一个放在底部」）：
      口径变了 —— **逐卡打造键退役**，改「点选一件 + 底部唯一打造键（与熔铸强化同栏）」。 */
-  check('v89.117 锻造间：卡片不再带打造键（整卡可点选 data-action="forge-pick"）', (function () {
+  check('v89.117 制造厂：卡片不再带打造键（整卡可点选 data-action="forge-pick"）', (function () {
     const cards = Array.prototype.slice.call(document.querySelectorAll('#modal-root .item-row[data-action="forge-pick"]'));
     const picks = document.querySelectorAll('#modal-root .ir-pick').length;
     return cards.length > 0 && picks === cards.length
       && document.querySelectorAll('#modal-root .item-row [data-action="forge-item"]').length === 0;
   })(), document.querySelectorAll('#modal-root .item-row').length + ' 张卡');
-  check('v89.140 锻造间：底部只有 1 个打造键；熔铸强化已搬去**建筑菜单**', (function () {
+  check('v89.140 制造厂：底部只有 1 个打造键；熔铸强化已搬去**建筑菜单**', (function () {
     const btns = document.querySelectorAll('#modal-root [data-action="forge-item"]');
     const foot = document.querySelector('#modal-root .m-foot');
     return btns.length === 1 && !!foot && !!foot.querySelector('[data-action="forge-item"]')
@@ -1409,7 +1409,7 @@ async function runTests(dom, URL) {
       /* 分页条（v89.140 老板 5：翻页放底部）——单页时可能为空，只要求 foot 里出现 pager 容器或单页 */
       && (!!foot.querySelector('.mpage, .pager') || true);
   })());
-  check('v89.117 锻造间：未选中时打造键受阻（dim + data-why · v89.189 软化）', (function () {
+  check('v89.117 制造厂：未选中时打造键受阻（dim + data-why · v89.189 软化）', (function () {
     const b = document.querySelector('#modal-root [data-action="forge-item"]');
     return !!b && !b.hasAttribute('disabled') && b.classList.contains('dim')
       && !!b.getAttribute('data-why') && /点选/.test(b.textContent);
@@ -1428,7 +1428,7 @@ async function runTests(dom, URL) {
     G.ui.openForge();                       /* 复位，后续用例继续 */
     return ok;
   })());
-  check('v89.117 锻造间：点选后底部键写明件名 + 缺什么写在卡上', (function () {
+  check('v89.117 制造厂：点选后底部键写明件名 + 缺什么写在卡上', (function () {
     /* 先造出阻塞（清空材料）→ 点选一件 → 底部键禁用且面板给出原因；验完恢复 */
     const saveItems = G.state.items;
     G.state.items = {};
@@ -1441,13 +1441,13 @@ async function runTests(dom, URL) {
     const selRow = document.querySelector('#modal-root .item-row.on');
     /* v89.189：软化后 disabled 属性被摘除 —— 判据改用 data-why 受阻说明。 */
     const okBlocked = !!b2 && !b2.hasAttribute('disabled') && !!b2.getAttribute('data-why')
-      && !!hint && /材料不足|缺图纸|需锻造间|资材不足/.test(hint.textContent)
-      && !!selRow && /材料不足|缺图纸|需锻造间|资材不足/.test(selRow.textContent);
+      && !!hint && /材料不足|缺图纸|需制造厂|资材不足/.test(hint.textContent)
+      && !!selRow && /材料不足|缺图纸|需制造厂|资材不足/.test(selRow.textContent);
     G.state.items = saveItems;
     G.ui.openForge();
     return okBlocked;
   })());
-  check('v89.117 锻造间：选中件可打造时底部键启用（金色 + 写明件名）', (function () {
+  check('v89.117 制造厂：选中件可打造时底部键启用（金色 + 写明件名）', (function () {
     /* 恢复到"哪件都能造"：补满资材与图纸，再点选凡人盔 */
     /* v89.201：选中改多选 —— 本用例验"**单件**选中 → 底键写明件名"，先清空选集（否则
        前序用例的残留选中会让底键显示「打造 N 件」，无件名）。 */
@@ -1467,7 +1467,7 @@ async function runTests(dom, URL) {
       && b3.textContent.indexOf(it.name) >= 0;
     return ok;
   })());
-  check('v89.117 锻造间：类别条可切「套装」，且出现**具体套装**子条', (function () {
+  check('v89.117 制造厂：类别条可切「套装」，且出现**具体套装**子条', (function () {
     const setCat = document.querySelector('#modal-root [data-action="forge-kind"][data-k="set"]');
     if (!setCat) return false;
     setCat.click();
@@ -1540,10 +1540,10 @@ async function runTests(dom, URL) {
   G.ui.setShopCat('material');
   await sleep(60);
   check('切分类后列出材料', document.querySelector('#view-container').innerHTML.indexOf('铁') >= 0);
-  G.ui.setShopCat('perm');
+  G.ui.setShopCat('jewel');
   await sleep(60);
   const shopJ = document.querySelector('#view-container').innerHTML;
-  check('切分类后丹药可购买（血清）', shopJ.indexOf('血清') >= 0);
+  check('切分类后珠宝可购买（珍珠）', shopJ.indexOf('珍珠') >= 0 && shopJ.indexOf('赏赐忠诚') >= 0);
   /* 分页：材料 24 件 → 3 页（每页 8 行），翻页条在底部固定条里 */
   G.ui.setShopCat('material');
   await sleep(60);
@@ -6937,7 +6937,7 @@ if (svBtn) {
       st160.settings.autoUpgrade = true;
       st160.queues.build = [];
       const r160 = G.autoUpgrade();
-      check('v89.160② 真环境：顺延过贵的（锻造间）→ 命中便宜的（居所）',
+      check('v89.160② 真环境：顺延过贵的（制造厂）→ 命中便宜的（居所）',
         !!(r160 && r160.ok && r160.target && r160.target.idx === 1 && /居所/.test(r160.target.name || '')),
         r160 && r160.target ? r160.target.name + ' idx' + r160.target.idx : '无动作');
     } finally {
@@ -8031,7 +8031,7 @@ console.log('\n--- §180. 拆械与 live 滚动（v89.180） ---');
     }
   }
   /* ============================================================
-   * §201（v89.201）侦查单页 / 锻造间多选打造 / 熔铸专属界面 + 滚动保留
+   * §201（v89.201）侦查单页 / 制造厂多选打造 / 熔铸专属界面 + 滚动保留
    * ============================================================ */
   console.log('\n--- §201. v89.201 三改（真实 DOM） ---');
   {
