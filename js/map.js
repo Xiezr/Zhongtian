@@ -486,7 +486,7 @@
     /* v89.185（老板 2）：「据点则为觉醒体，等级60起步-150级」—— DATA.FORT_GUARD_LV */
     var LG = DATA.FORT_GUARD_LV || { base: 60, perLv: 10, jit: 10 };
     var gLv = LG.base + Math.max(0, lv - 1) * LG.perLv + Math.floor(rand() * LG.jit);
-    /* 名字走守备军官系池（城守/武卫一系；与野地劫掠者、酒馆招募都不重名） */
+    /* 名字走守备军官系池（城守/武卫一系；与野地劫掠者、征召大厅招募都不重名） */
     var sn = DATA.NPC_GUARD_SURNAME, gv = DATA.NPC_GUARD_GIVEN, tt = DATA.NPC_GUARD_TITLE;
     var name = sn[Math.floor(rand() * sn.length)] + gv[Math.floor(rand() * gv.length)];
     /* 特性：抽一门（与 npcCityGuard 同款权重抽签 —— 猛将/智将有偏科，战报有戏） */

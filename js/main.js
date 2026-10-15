@@ -289,8 +289,8 @@
       }
       /* 机工坊 → 器械募兵面板（#14）
          v89.211（老板 3）：用**本作坊自己的 idx**（按钮已带 data-idx）——
-         原传 ui._trainBIdx 是"上次点的训练营格"，siege 面板显示回落掩盖了它，
-         提交时 craftLevel(城, 训练营格)=0 → 明明有作坊却报"本城尚无机工坊"。 */
+         原传 ui._trainBIdx 是"上次点的军营格"，siege 面板显示回落掩盖了它，
+         提交时 craftLevel(城, 军营格)=0 → 明明有作坊却报"本城尚无机工坊"。 */
       case 'open-siege': ui.openTroops(el.dataset.idx); break;
       /* v62（老板）：机工坊 → 器械与工事（含造箭塔）。
          建造后重开面板：数量、上限、守备力三个数都要跟着刷新。 */
@@ -301,7 +301,7 @@
         if (tbR.ok) { GAME.refreshAll(); ui.openWorkshop(el.dataset.idx); }
         break;
       }
-      /* v24（需求 8）：从某座训练营进入募兵 —— 队列挂在它身上 */
+      /* v24（需求 8）：从某座军营进入募兵 —— 队列挂在它身上 */
       case 'open-troops': ui.openTroops(Number(el.dataset.idx)); break;
       /* ⛔ v89.215（老板）：「驻军，不再设置下拉，直接显示」—— 折叠开关整条退役：
          `toggle-garrison` 动作随之删除（连同 ui._garrisonOpen / .gb-arrow / index.html 的
@@ -623,7 +623,7 @@
       case 'open-panel': ui.openPanel(el.dataset.view); break;
       case 'inn-recruit': GAME.doInnRecruit(el.dataset.id); break;
       case 'inn-reroll': GAME.doInnReroll(); break;
-      /* v89.73（老板）：自动招募从酒馆搬到「自动」菜单 —— 改完就地重绘**自动页** */
+      /* v89.73（老板）：自动招募从征召大厅搬到「自动」菜单 —— 改完就地重绘**自动页** */
       case 'auto-recruit-toggle': { var _ia = GAME.innAutoToggle(); ui.toast(_ia.msg); ui.renderView('auto'); break; }
       case 'auto-recruit-min': { var _ib = GAME.innAutoMinSet(el.dataset.v); ui.toast(_ib.msg); ui.renderView('auto'); break; }
       /* 数量预设：data-target 指定输入框（v89.60 交易站合并后只剩共用的 mk-amount） */
@@ -1716,7 +1716,7 @@
     s.settings.autoResearch = !s.settings.autoResearch;
     if (s.settings.autoResearch) {
       s.autoTechState = { paused: false, msg: '已开启，待命' };
-      ui.toast('📜 自动研究已开启（从研习所可研究的科技里挑最便宜的）');
+      ui.toast('📜 自动研究已开启（从科研中心可研究的科技里挑最便宜的）');
       if (GAME.autoResearch) GAME.autoResearch();
     } else {
       s.autoTechState = null;
@@ -1885,9 +1885,9 @@
     ui.reopenKeepScroll(ui.openForge);   /* v89.201：重开保留滚动位（不再"点一次跳回顶部"） */
   };
 
-  /* 酒馆招募（v89.188：统一话术） */
+  /* 征召大厅招募（v89.188：统一话术） */
   GAME.doInnRecruit = function (cid) {
-    /* v64：把**当前城**传进去 —— 酒馆在城里，席位也在城里 */
+    /* v64：把**当前城**传进去 —— 征召大厅在城里，席位也在城里 */
     var c = GAME.currentCity();
     var r = GAME.innRecruit(cid, c ? c.id : null);
     ui.toast(r.msg);
@@ -1955,9 +1955,9 @@
   };
   GAME.doTrain = function (troopId) {
     var count = Math.max(1, Math.floor(Number(ui._trainCount) || 1));
-    /* v24（需求 8）：队列归属具体训练营 —— 面板里选中的那一座。
+    /* v24（需求 8）：队列归属具体军营 —— 面板里选中的那一座。
        v89.211（老板 3）：提交读**解析后**工位（与显示同一份 resolver）——
-       改前直传 ui._trainBIdx，陈旧值（如上次点的训练营格）到这里就变成
+       改前直传 ui._trainBIdx，陈旧值（如上次点的军营格）到这里就变成
        "本城尚无机工坊"的假报（老板实测）。 */
     var _bar211 = ui.trainBarracks();
     var _bidx211 = _bar211 ? _bar211.idx : null;
@@ -2299,7 +2299,7 @@
     }
     ui._expForceArmed = false;
     /* v18：出征改为**行军队列** —— 校验/扣除在出发时完成，战斗在抵达时才打。
-       于是「速度」这条属性、补给站、瞭望塔、天气、机动行军、急行军令才真正有意义。 */
+       于是「速度」这条属性、传送站、瞭望塔、天气、机动行军、急行军令才真正有意义。 */
     /* ⛔ v89.198（老板「清除战法这个玩法」）：战法出行校验随玩法全撤退役。 */
     /* ============================================================
      * v89.137（老板 7）：己方野地 + 已有驻将 → **纯增援**（不带将、不带计）。

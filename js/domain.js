@@ -148,7 +148,7 @@
    * v89.137（老板 5）：改名"建筑专精" + **三档阶梯** ——
    *   Lv12 / Lv24 / Lv36 各记一档（`DATA.MASTERY_TIERS`），
    *   效果 = `DATA.MASTERY[].val × 档数`（第一档保持原值，不推翻已上线数值）。
-   * 加成一律**按当前城**判定 —— "这座城的居所满级" 与 "别城的货仓满级" 是两回事；
+   * 加成一律**按当前城**判定 —— "这座城的居所满级" 与 "别城的战储仓满级" 是两回事；
    * 只有全局口径的量（如建造队列、仓储存量）由调用方决定用全境还是本城，
    * 所以这里只提供"取值"这一件事，不给默认口径。
    *
@@ -362,7 +362,7 @@
   /* ⛔ v90.92 退役：`GAME.numBuilding`（城内某建筑计数）——
      唯一消费点原为 `GAME.questMetric('bldCount')`，随任务系统移除后成为无引用死函数。
      同类需求现走 `GAME.buildingLevelSum`（多建建筑等级求和）或现地 forEach。 */
-  /* 同类建筑等级**求和**（v19：货仓等多建建筑用；buildingLevel 只取最高级） */
+  /* 同类建筑等级**求和**（v19：战储仓等多建建筑用；buildingLevel 只取最高级） */
   GAME.buildingLevelSum = function (city, bid) {
     if (!city) return 0;
     var n = 0;
@@ -458,7 +458,7 @@
     };
   };
   /* ============================================================
-   * v89.191（老板 3-③）：**建筑升级 × 研习所科技**（研究等级不达标无法建筑）。
+   * v89.191（老板 3-③）：**建筑升级 × 科研中心科技**（研究等级不达标无法建筑）。
    * 需要等级 `floor(next / div)`（div=3 → 升到 3/4/5 级需 Lv1、6~8 需 Lv2、9~12 需 Lv3/4）。
    * 科技取**本城**（各城科技独立生效）。cap = (lv+1)×div − 1（由 need 公式反推，唯一来源）。
    * ============================================================ */
@@ -571,10 +571,10 @@
       var govCap = (DATA.BUILDINGS.guanfu.maxLevel || DATA.MAX_BLEVEL)
         + GAME.cityBuildBonus(city) + lift;
       /* nextLv：本次动作要到达的等级。
-         新建（buildAt）显式传 1 —— 可多建建筑（货仓/居所…）已有等级时，
+         新建（buildAt）显式传 1 —— 可多建建筑（战储仓/居所…）已有等级时，
          不能用 buildingLevel+1，否则"新建第二座"会被当成"升到 N+1"误拦。
          ⛔ v89.159（老板 2 的真 bug）：**升级必须传"本座的目标等级"** ——
-         不传时 `buildingLevel` 取的是全城**最高**一座（居所/训练营/货仓可多建），
+         不传时 `buildingLevel` 取的是全城**最高**一座（居所/军营/战储仓可多建），
          于是"另一座已 Lv4、本座 Lv3"时被按 4→5 的门槛拦下（报「需政务厅 Lv5」）。 */
       var next = nextLv || (GAME.buildingLevel(city, bid) + 1);
       /* v89.159（老板 2 拍板「严格 ≤ 政务厅」）：要升到 next 级，政务厅必须 ≥ next。
@@ -597,7 +597,7 @@
       }
     }
     /* v89.191（老板 3-①②）：**配对建筑**等级差 ≤ 2 —— 升级目标不得甩开对方 2 级以上
-       （围墙↔机工坊 · 补给站↔车库；只能追、不能甩，老档大差距由落后一方自然收敛）。 */
+       （围墙↔机工坊 · 传送站↔载具研究所；只能追、不能甩，老档大差距由落后一方自然收敛）。 */
     var _pgp191 = GAME.pairGapOf(city, bid);
     if (_pgp191) {
       var _nxp191 = nextLv || (GAME.buildingLevel(city, bid) + 1);
@@ -625,7 +625,7 @@
         if (_btp191.lv < _need191) {
           list.push({ bid: bid, name: _btp191.name, need: _need191, cur: _btp191.lv, techGate: true,
             why: '需先研究「' + _btp191.name + '」至 Lv' + _need191 + '（本城现 Lv' + _btp191.lv
-              + '）—— 建筑升级与研习所科技互为条件' });
+              + '）—— 建筑升级与科研中心科技互为条件' });
         }
       }
     }
@@ -713,7 +713,7 @@
    *     募兵名额 / 练兵收益仍由建筑等级决定，不随之膨胀）—— v89.132 新增；
    *   · 招揽人才（gen） ：本城英雄席位 +1（进 genSlotsOf 唯一出口）—— v89.132 新增。
    * 判据、消耗、进度（used/max）全走 jieyueExpandOf；界面只读它，不许各算一份。
-   * 前置：xc 须有练兵场、gen 须有招募站（没建筑就谈不上"扩编"）。
+   * 前置：xc 须有练兵场、gen 须有英雄枢纽（没建筑就谈不上"扩编"）。
    * ============================================================ */
   GAME.JIEYUE_KIND = {
     city: { field: 'jieyueSlots', max: 'citySlotMax', label: '城建扩编' },
@@ -730,7 +730,7 @@
       return { ok: false, used: used, max: max, msg: '本城尚无练兵场 —— 先建练兵场，再谈扩编' };
     }
     if (kind === 'gen' && !(GAME.buildingLevel(city, 'zhaoxianguan') > 0)) {
-      return { ok: false, used: used, max: max, msg: '本城尚无招募站 —— 先建招募站，再谈纳士' };
+      return { ok: false, used: used, max: max, msg: '本城尚无英雄枢纽 —— 先建英雄枢纽，再谈纳士' };
     }
     if (used >= max) {
       return { ok: false, used: used, max: max,
@@ -1047,10 +1047,10 @@
     return { ok: true, msg: '开始升级 ' + eb.name };
   };
 
-  /* 唯一建筑（城内只能建1座，居所/训练营/货仓可多建）。围墙不占格，已移出此表。
-     v19（需求 10）：货仓移出 —— 允许多建，储量按各货仓等级求和叠加。
+  /* 唯一建筑（城内只能建1座，居所/军营/战储仓可多建）。围墙不占格，已移出此表。
+     v19（需求 10）：战储仓移出 —— 允许多建，储量按各战储仓等级求和叠加。
      ⚠ 这份表**必须唯一**：ui.js 曾自行复制一份，改 domain 却漏改 ui，
-     结果后端放行、前端仍把货仓标成「已建造(唯一)」并禁用按钮。
+     结果后端放行、前端仍把战储仓标成「已建造(唯一)」并禁用按钮。
      现在统一走 GAME.UNIQUE_BUILDINGS 单一数据源。 */
   GAME.UNIQUE_BUILDINGS = { shuyuan: 1, xiaochang: 1, shichang: 1, kezhan: 1, zhaoxianguan: 1, honglusi: 1, tiejiangpu: 1, gongjiangzuofang: 1, majiu: 1, yizhan: 1, fenghuotai: 1 };
   var UNIQUE_BUILDINGS = GAME.UNIQUE_BUILDINGS;
@@ -1367,7 +1367,7 @@
   GAME.canTrain = function (troopId, city) {
     var s = GAME.state, t = DATA.TROOPS[troopId];
     if (!t) return { ok: false, msg: '未知兵种' };
-    /* v89.190：可选城参数（自动征兵逐城判别用：训练营/研习所等门槛按**该城**算；
+    /* v89.190：可选城参数（自动征兵逐城判别用：军营/科研中心等门槛按**该城**算；
        不传 = 当前城 —— 与旧口径逐字一致）。
        v89.191（老板 3-④）：`unlock.tech` 也改**按城**读 —— 各城科技独立生效，
        本城没研究出来的兵种就是本城造不了（换有该科技的城造，或先在本城研究）。
@@ -1397,8 +1397,8 @@
           }
         }
       } else {
-        /* v29（需求 13）：器械由**机工坊**制造 —— "造自行火炮要先有 8 级训练营"
-           既不合逻辑，也让作坊等级形同虚设。其余门槛（研习所、作坊）照旧。 */
+        /* v29（需求 13）：器械由**机工坊**制造 —— "造自行火炮要先有 8 级军营"
+           既不合逻辑，也让作坊等级形同虚设。其余门槛（科研中心、作坊）照旧。 */
         if (t.craft && k === 'junying') continue;
         var lv = GAME.buildingLevel(city, k);
         if (lv < u[k]) fails.push('需' + (DATA.BUILDINGS[k] ? DATA.BUILDINGS[k].name : k) + ' Lv' + u[k]);
@@ -1410,17 +1410,17 @@
 
 
   /* ============================================================
-   * 训练营与募兵队列位（v24 · 需求 8）
+   * 军营与募兵队列位（v24 · 需求 8）
    * ------------------------------------------------------------
-   * 募兵不再"全城共用一个队列"，而是**每座训练营各一条**：
+   * 募兵不再"全城共用一个队列"，而是**每座军营各一条**：
    *   · 队列位 = 1（执行）+ (Lv≥5 ? 1 : 0) + (Lv≥10 ? 1 : 0)，最多 3 条
-   *   · 同一训练营只有**最早的一条**在走倒计时，其余排队等待
+   *   · 同一军营只有**最早的一条**在走倒计时，其余排队等待
    *   · 执行中完成 → 下一条自动开跑
    * bIdx = 城内格子下标，旧档队列没有 bIdx 时由读档迁移补上。
    * ============================================================ */
   GAME.trainQueueSlots = function (lv, city) {
     lv = Number(lv) || 0;
-    /* v28（需求 1）：训练营建筑专精再 +1 位/档（v89.137：12/24/36 三档 = +1/+2/+3）。
+    /* v28（需求 1）：军营建筑专精再 +1 位/档（v89.137：12/24/36 三档 = +1/+2/+3）。
        city 可选 —— 不传时按"当前城"判定；调用方若已知是哪座城，务必传进来。
        v60（需求 5）：**名城档位优势**再 +troopSlot（旧都 +1）——
        perks 里"募兵队列 +1"那项的落地点（不加这句它就是死属性）。 */
@@ -1505,7 +1505,7 @@
     GAME.barracksOf(city).forEach(function (b) { if (b.idx === idx) l = b.lvl; });
     return l;
   };
-  /* 默认训练营（无 bIdx 时兜底）；本城无训练营返回 -1 */
+  /* 默认军营（无 bIdx 时兜底）；本城无军营返回 -1 */
   GAME.firstBarracksIdx = function (city) {
     var list = GAME.barracksOf(city);
     return list.length ? list[0].idx : -1;
@@ -1514,8 +1514,8 @@
    * 机工坊（v29 · 需求 13）
    * ------------------------------------------------------------
    * 器械（无人轰炸机 / 自行火炮）不再跟募兵挤同一条队列：
-   *   · 队列位由**作坊等级**决定（与训练营同一套阶梯：1 / Lv5 +1 / Lv10 +1 / 建筑专精 +1）
-   *   · 队列挂在**作坊格位**上，与训练营队列互不占位
+   *   · 队列位由**作坊等级**决定（与军营同一套阶梯：1 / Lv5 +1 / Lv10 +1 / 建筑专精 +1）
+   *   · 队列挂在**作坊格位**上，与军营队列互不占位
    * 实现上仍然共用 `s.queues.train` 这一条数组，靠条目上的 `kind` 分组 ——
    * 于是推进逻辑（GAME.advanceTrainQueues）一行都不用改，
    * 也不会出现"两套推进代码各自漂移"的老问题。
@@ -1539,7 +1539,7 @@
     var list = GAME.craftWorkshopsOf(city);
     return list.length ? list[0].idx : -1;
   };
-  /* 队列键：**含 kind**，于是训练营组与作坊组天然分开推进 */
+  /* 队列键：**含 kind**，于是军营组与作坊组天然分开推进 */
   GAME.trainQueueKey = function (q) {
     return (q.kind || 'train') + '|' + (q.cityId || '') + '#' + (q.bIdx == null ? -1 : q.bIdx);
   };
@@ -1547,7 +1547,7 @@
   /* ============================================================
    * 募兵队列推进 —— **唯一实现**，在线 tickOnce 与离线 simulateBulk 共用。
    * ------------------------------------------------------------
-   * 规则：按训练营分组，每组只有**最早一条**吃时间；它完成后，剩余时间
+   * 规则：按军营分组，每组只有**最早一条**吃时间；它完成后，剩余时间
    * 结转给同组的下一条（不是重新按整段推进，否则离线补算会凭空多出兵）。
    * 曾经两处各写一份：只改了离线那份，实测仍然是"所有队列齐步走"。
    * ============================================================ */
@@ -1584,7 +1584,7 @@
       list.forEach(function (q) { q.waiting = (q !== running); });
     });
   };
-  /* 该训练营当前的募兵队列（按入队顺序） */
+  /* 该军营当前的募兵队列（按入队顺序） */
   GAME.trainQueuesOf = function (city, bIdx) {
     var s = GAME.state;
     if (!s || !city) return [];
@@ -1596,7 +1596,7 @@
         && q.cityId === city.id && (q.bIdx == null ? -1 : q.bIdx) === bIdx;
     });
   };
-  /* 该训练营 / 该作坊还剩几个空位 */
+  /* 该军营 / 该作坊还剩几个空位 */
   GAME.trainSlotsLeft = function (city, bIdx, kind) {
     kind = GAME.queueKindOf(kind);
     var lv = kind === 'craft' ? GAME.craftLevel(city, bIdx) : GAME.barracksLevel(city, bIdx);
@@ -1615,9 +1615,9 @@
     if (count > 500000) return { ok: false, msg: '单次训练不超过 50 万（可分多次训练）' };
     var chk = GAME.canTrain(troopId, city);   /* v89.190：门槛按目标城（跨城自动征兵同源） */
     if (!chk.ok) return chk;
-    /* v24（需求 8）：募兵归属**具体一座训练营**，队列位由该训练营等级决定。
+    /* v24（需求 8）：募兵归属**具体一座军营**，队列位由该军营等级决定。
        放在数量与解锁校验**之后** —— 否则填错数量时会得到"队列已满"这种驴唇不对马嘴的提示。 */
-    /* v29（需求 13）：器械走**机工坊**的队列，募兵走训练营的队列 —— 两不相干 */
+    /* v29（需求 13）：器械走**机工坊**的队列，募兵走军营的队列 —— 两不相干 */
     var kind = t.craft ? 'craft' : 'train';
     if (bIdx == null || bIdx === '') {
       bIdx = kind === 'craft' ? GAME.firstWorkshopIdx(city) : GAME.firstBarracksIdx(city);
@@ -1627,7 +1627,7 @@
     var bLv = kind === 'craft' ? GAME.craftLevel(city, bIdx) : GAME.barracksLevel(city, bIdx);
     /* v89.211（老板 3）防御回落：指定工位对不上（陈旧/跨类 idx）而本城该级建筑存在时，
        回落首座 —— 与界面解析（ui.trainBarracks）同一口径。否则下面那句
-       "本城尚无机工坊"就是假报（明明有作坊，只因提交带的是上次点的训练营格）。
+       "本城尚无机工坊"就是假报（明明有作坊，只因提交带的是上次点的军营格）。
        真无作坊的城仍走原拒绝（提示与实际情况相符）。 */
     if (bLv <= 0) {
       var _fb211 = kind === 'craft' ? GAME.firstWorkshopIdx(city) : GAME.firstBarracksIdx(city);
@@ -1639,12 +1639,12 @@
     if (bLv <= 0) {
       return { ok: false, msg: kind === 'craft'
         ? '本城尚无机工坊，无法制造器械（先建机工坊）'
-        : '本城尚无训练营，无法募兵（先建训练营）' };
+        : '本城尚无军营，无法募兵（先建军营）' };
     }
     if (GAME.trainSlotsLeft(city, bIdx, kind) <= 0) {
       var nx = GAME.trainNextSlotLv(bLv);
       return { ok: false, msg: (kind === 'craft' ? '本作坊制造队列已满' : '本营募兵队列已满')
-        + (nx ? '（' + (kind === 'craft' ? '作坊 ' : '训练营 ') + nx + ' 级解锁下一个等待位）' : '') };
+        + (nx ? '（' + (kind === 'craft' ? '作坊 ' : '军营 ') + nx + ' 级解锁下一个等待位）' : '') };
     }
     /* 练兵场出征容量提示（造兵只需资源+幸存者，出征时练兵场才限制） */
     var xc = GAME.buildingLevel(city, 'xiaochang') || 0;
@@ -1862,22 +1862,22 @@
   };
 
   /* ============================================================
-   * 酒馆 / 招募站 / 货仓 / 交易站（建筑功能实现）
+   * 征召大厅 / 英雄枢纽 / 战储仓 / 交易站（建筑功能实现）
    * 原则：每座功能建筑都要有实际作用，且其等级应构成其他玩法的门槛。
    * ============================================================ */
 
-  /* --------- 招募站：英雄席位（**按城**，唯一出口） ---------
-   * v64（老板）：「英雄归属于城市，根据**该城的招募站等级**有相应空位」。
-   * 改前 `GAME.generalCap()` 读的是**当前城**的招募站等级，却拿去约束**全境总数**，
+  /* --------- 英雄枢纽：英雄席位（**按城**，唯一出口） ---------
+   * v64（老板）：「英雄归属于城市，根据**该城的英雄枢纽等级**有相应空位」。
+   * 改前 `GAME.generalCap()` 读的是**当前城**的英雄枢纽等级，却拿去约束**全境总数**，
    * 于是两件事都说不通：
-   *   · 多城经营时席位不随城数增加（第二座城的招募站白建）；
-   *   · 切到招募站小的城，反而连一个人都不许招 —— "到底哪个城的容量"没法回答。
+   *   · 多城经营时席位不随城数增加（第二座城的英雄枢纽白建）；
+   *   · 切到英雄枢纽小的城，反而连一个人都不许招 —— "到底哪个城的容量"没法回答。
    * 现在席位跟着城走，且**只由一个出口给出**：
-   *   `genSlotsOf(city)` = 该城招募站等级 +（该城招募站建筑专精 ? 2 : 0）。
+   *   `genSlotsOf(city)` = 该城英雄枢纽等级 +（该城英雄枢纽建筑专精 ? 2 : 0）。
    * 超编不会赶人走，但**不许再进人**（招募 / 派遣 / 归降之外一律拦）。 */
   GAME.genSlotsOf = function (city) {
     if (!city) return 0;
-    /* v28：招募站建筑专精 —— 房间 +2/档（v89.137：三档 = +2/+4/+6）
+    /* v28：英雄枢纽建筑专精 —— 房间 +2/档（v89.137：三档 = +2/+4/+6）
        v79：+ 威望 / 主城 的英雄席位加成（cityBonusNum 汇总口） */
     return (GAME.buildingLevel(city, 'zhaoxianguan') || 0)
       + GAME.mastery('genRoom', city)
@@ -1906,7 +1906,7 @@
     return (((s && s.cities) || [])).reduce(function (a, c) { return a + GAME.genSlotsOf(c); }, 0);
   };
 
-  /* --------- 货仓：资源容量上限 --------- */
+  /* --------- 战储仓：资源容量上限 --------- */
   /* v89.81：基准常量移到 `DATA.BASE_STORE`（唯一出口）—— 名城库藏派生
      （DATA.NPC_CITY_RES.resByTier = 满配仓容）也要用它，写两份必然漂移。 */
   GAME.storeCap = function () {
@@ -1964,13 +1964,13 @@
   };
   /* ============================================================
    * v89.158（老板 1「左侧资源统计的容量显示仍然不对」）：**仓容分账**（唯一出口）——
-   *   把 storeCapOf 的算式拆成"账目自洽"的部件，供 悬停 / 货仓面板 / 建造面板 同源展示：
-   *     · base  = 货仓体系部分（含储存科技 / 仓专精 / 名城·威望·主城·神器加成）
-   *               —— **未建货仓时即"基础储量"（DATA.BASE_STORE）**
+   *   把 storeCapOf 的算式拆成"账目自洽"的部件，供 悬停 / 战储仓面板 / 建造面板 同源展示：
+   *     · base  = 战储仓体系部分（含储存科技 / 仓专精 / 名城·威望·主城·神器加成）
+   *               —— **未建战储仓时即"基础储量"（DATA.BASE_STORE）**
    *     · ext   = 城外堆场（纯加法，不吃仓储加成）
    *     · total = base + ext（= storeCapOf 的返回值）
    *     · lv    = 本城仓等级**之和**（多仓叠加口径；buildingLevel 只给"最高一座"，
-   *               两把尺会出现"货仓 Lv1 却有 3 级容量"的显示错位）
+   *               两把尺会出现"战储仓 Lv1 却有 3 级容量"的显示错位）
    *   改前三处显示各拼各的 → 出现"上限 366.7万 / 其中堆场 +166.7万"、
    *   而另外 200 万（基础）没有出处的账目（老板原话口径："仍然不对"）。改后 = 分账相加。
    * ============================================================ */
@@ -1978,8 +1978,8 @@
     city = city || GAME.currentCity();
     var BASE = DATA.BASE_STORE || 2000000;
     if (!city) return { base: BASE, ext: 0, total: BASE, lv: 0 };
-    /* v19：货仓可多建 —— 储量按**本城各仓等级之和**计（一座 Lv5 = 五座 Lv1）。
-       仓储扩容 +5%/级；货仓建筑专精再 +50%；名城档位优势再 +storePct（旧都 +50%）。 */
+    /* v19：战储仓可多建 —— 储量按**本城各仓等级之和**计（一座 Lv5 = 五座 Lv1）。
+       仓储扩容 +5%/级；战储仓建筑专精再 +50%；名城档位优势再 +storePct（旧都 +50%）。 */
     var lv = GAME.buildingLevelSum(city, 'cangku');
     var raw = lv > 0 ? BASE * lv : BASE;
     /* v89.81：建筑专精的值改读 `DATA.MASTERY` —— 原先这里硬编码 0.5，而表里写着 0.50：
@@ -1989,7 +1989,7 @@
       * (1 + mStore)
       * (1 + GAME.cityBonusNum(city, 'storePct')));   /* v79：+ 威望/主城/神器 仓储 */
     /* v89.141（老板 0）：「城外资源建筑还自带一点上限容量」——
-       **纯加法**（不吃仓储加成：露天堆场与货仓体系解耦，见 DATA.EXT_STORE_PER_LV）。 */
+       **纯加法**（不吃仓储加成：露天堆场与战储仓体系解耦，见 DATA.EXT_STORE_PER_LV）。 */
     var ext = GAME.extStoreCapOf(city);
     /* v89.212（老板 1）：按资源分账 —— extByRes（各类堆场）/ capByRes（各类实际上限）。
        capByRes[k] = base + extByRes[k]：**哪种资源的地块多，哪种的储存上限就大**
@@ -2079,7 +2079,7 @@
   };
   /* 城外资源建筑的露天堆场容量（v89.141 建 · v89.148 改口径 · 唯一出口）：
      Σ（已建地块等级）× DATA.BASE_STORE ÷ DATA.EXT_STORE_DIV ——
-     即**每块 = 同级货仓容量的 1/6**（老板 v89.148 口径；货仓容量 = BASE_STORE × 仓等级）。
+     即**每块 = 同级战储仓容量的 1/6**（老板 v89.148 口径；战储仓容量 = BASE_STORE × 仓等级）。
      未建地块不计；已建地块按**当前等级**计入（v89.158 纠偏注释：升级施工期间 e.type 仍在、
      按升级前等级计 —— 等级在完工时才更新，故施工中不会提前给新等级的容量）。
      v89.212（老板 1「各资源地块数量不同，但最终储存上限一样；应该地块多的存的多」）：
@@ -2137,7 +2137,7 @@
   };
 
   /* ============================================================
-   * 酒馆：候选生成 / 招募（v89.188：「相亲」话术退役，全站统一为「招募」）
+   * 征召大厅：候选生成 / 招募（v89.188：「相亲」话术退役，全站统一为「招募」）
    * ============================================================ */
   /* v91.11（老板 13）：「新将领名称太老气」—— 名池换代：**废土/星际/生化/科技**风。
      前缀=废土地名/化学元素/星体代号；名=硬核器物/冷冽字。名池唯一出口不动（pick 轮换逻辑不变）。 */
@@ -2151,7 +2151,7 @@
   function pick(a) { return a[Math.floor(Math.random() * a.length)]; }
   function randInt(lo, hi) { return lo + Math.floor(Math.random() * (hi - lo + 1)); }
 
-  /* 酒馆等级（按城；不传则当前城）—— 招募的名额就在这座城的酒馆里 */
+  /* 征召大厅等级（按城；不传则当前城）—— 招募的名额就在这座城的征召大厅里 */
   GAME.innLevel = function (city) {
     var s = GAME.state;
     city = city || GAME.currentCity() || (s && s.cities[0]);
@@ -2159,21 +2159,21 @@
     return GAME.buildingLevel(city, 'kezhan') || 0;
   };
 
-  /* 这座城还能不能在酒馆招人（v64：按城判，不再拿当前城的容量卡全境） */
+  /* 这座城还能不能在征召大厅招人（v64：按城判，不再拿当前城的容量卡全境） */
   GAME.canRecruitGeneral = function (city) {
     city = city || GAME.currentCity();
     if (!city) return { ok: false, msg: '无城市可招贤' };
-    if (GAME.innLevel(city) <= 0) return { ok: false, msg: city.name + ' 需先建造酒馆（城内空地可建）' };
+    if (GAME.innLevel(city) <= 0) return { ok: false, msg: city.name + ' 需先建造征召大厅（城内空地可建）' };
     var cap = GAME.genSlotsOf(city), used = GAME.generalsIn(city).length;
-    if (cap <= 0) return { ok: false, msg: city.name + ' 需先建造招募站（每级 +1 席位）' };
+    if (cap <= 0) return { ok: false, msg: city.name + ' 需先建造英雄枢纽（每级 +1 席位）' };
     if (used >= cap) {
-      return { ok: false, msg: city.name + ' 招募站已无空位（' + used + '/' + cap
-        + '）—— 可升级招募站，或把英雄派往他城' };
+      return { ok: false, msg: city.name + ' 英雄枢纽已无空位（' + used + '/' + cap
+        + '）—— 可升级英雄枢纽，或把英雄派往他城' };
     }
     return { ok: true, city: city, cap: cap, used: used };
   };
 
-  /* 生成一位候选：资质分档（凡人/突变体/进化体/觉醒体/天启体），酒馆等级越高越易出高资质。
+  /* 生成一位候选：资质分档（凡人/突变体/进化体/觉醒体/天启体），征召大厅等级越高越易出高资质。
    * 高资质出现概率低，但属性区间与成长都更夸张 —— 拉开档次差异 */
   function makeCandidate(lv, owned) {
     var isBeauty = Math.random() < 0.30;
@@ -2187,7 +2187,7 @@
         var h = pick(pool);
         owned[h.name] = true;
         var sum = (h.tong || 0) + (h.yw || 0) + (h.zm || 0) + (h.nz || 0);
-        /* v89.73：史实英雄**也过酒馆资质上限** —— 否则"李逵天启体"照样从酒馆走出来 */
+        /* v89.73：史实英雄**也过征召大厅资质上限** —— 否则"李逵天启体"照样从征召大厅走出来 */
         var hrk = GAME.innCapRank(GAME.heroRank(sum));
         var mul = isBeauty ? 1.25 : 1.0;
         return {
@@ -2201,12 +2201,12 @@
         };
       }
     }
-    var rk = GAME.innCapRank(GAME.pickRank(lv));   /* v89.73：酒馆封顶进化体（觉醒体/天启体只走血清升档） */
+    var rk = GAME.innCapRank(GAME.pickRank(lv));   /* v89.73：征召大厅封顶进化体（觉醒体/天启体只走血清升档） */
     var st = GAME.pickStyle(rk);
     var rand = U.rng((U.now() + (GAME._cndSeq || 0) * 7919 + Math.floor(Math.random() * 1e7)) >>> 0);
     function roll() { return U.randInt(rand, rk.base[0], rk.base[1]); }
     var nm = pick(INN_SURNAME) + (isBeauty ? pick(INN_GIVEN_F) : pick(INN_GIVEN_M));
-    /* v91.20（老板 A3）：「不管酒馆等级，而是英雄自身等级 —— 1 级和 10 级给同样基础属性，合理吗？」
+    /* v91.20（老板 A3）：「不管征召大厅等级，而是英雄自身等级 —— 1 级和 10 级给同样基础属性，合理吗？」
        → 候选基础属性**随其等级成长**（与升级链 `applyLevelGrowth` **同口径**）：
        每级自动加点 = 资质成长 × 类型权重（归一化）。Lv1 候选 = 纯 roll；Lv10 = roll + 9 级成长。 */
     var gLv = Math.max(1, lv + randInt(-1, 1));
@@ -2230,11 +2230,11 @@
   var INN_FRESH_MS = 5 * 60 * 1000;   // 候选 5 分钟自动更换一批
 
   /* 取候选列表（必要时自动刷新）。force=true 强制换一批。
-     ⚠️ v89.108（老板）：「分城的酒馆只有 Lv2，但是有 14 个候选英雄，应该跟随建筑等级
+     ⚠️ v89.108（老板）：「分城的征召大厅只有 Lv2，但是有 14 个候选英雄，应该跟随建筑等级
      提供候选数量」—— 旧实现 `s.inn.candidates` 是**全局一份池**：主城刷出 14 位贤士，
      切到分城照样显示（且 5 分钟内不换批）；`innSlots()` 里还漏传 city（拿当前城算）。
-     现在：**池按城独立**（`s.inn.byCity[cityId]`），候选数 = **该城酒馆等级** + 专精。 */
-  /* 酒馆候选位数（v28）：**该城**酒馆等级 + 建筑专精 +2/档（v89.137：三档 = +2/+4/+6） */
+     现在：**池按城独立**（`s.inn.byCity[cityId]`），候选数 = **该城征召大厅等级** + 专精。 */
+  /* 征召大厅候选位数（v28）：**该城**征召大厅等级 + 建筑专精 +2/档（v89.137：三档 = +2/+4/+6） */
   GAME.innSlots = function (city) {
     city = city || GAME.currentCity();
     var lv = GAME.innLevel(city);          /* v89.108 修：原来漏传 city，拿的是当前城 */
@@ -2276,7 +2276,7 @@
     var owned = {};
     (s.generals || []).forEach(function (g) { owned[g.name] = true; });
     var list = [];
-    for (var i = 0; i < lv; i++) list.push(makeCandidate(lv, owned));   // 酒馆 N 级 = N 位候选
+    for (var i = 0; i < lv; i++) list.push(makeCandidate(lv, owned));   // 征召大厅 N 级 = N 位候选
     pool.candidates = list;
     pool.at = now;
     /* v89.62：新一批到手 → 立刻按「自动招募」设置过一遍（老板需求）。
@@ -2300,7 +2300,7 @@
   /* 花旧币立即换一批 */
   GAME.innReroll = function () {
     var lv = GAME.innLevel();
-    if (lv <= 0) return { ok: false, msg: '需先建造酒馆' };
+    if (lv <= 0) return { ok: false, msg: '需先建造征召大厅' };
     var s = GAME.state;
     var cost = GAME.innRefreshCost();
     if ((s.res.gold || 0) < cost) return { ok: false, msg: '旧币不足（需 ' + U.fmt(cost) + '）' };
@@ -2312,7 +2312,7 @@
   /* 招募（v89.188：「相亲」话术退役） */
   GAME.innRecruit = function (cid, cityId) {
     var s = GAME.state;
-    /* v64：招贤以**酒馆所在城**为准 —— 名额按该城算、旧币从该城扣、人落在该城 */
+    /* v64：招贤以**征召大厅所在城**为准 —— 名额按该城算、旧币从该城扣、人落在该城 */
     var city = (cityId && GAME.cityById(cityId)) || GAME.currentCity();
     if (!city) return { ok: false, msg: '无城市可招贤' };
     var chk = GAME.canRecruitGeneral(city);
@@ -2343,15 +2343,15 @@
   };
 
   /* ============================================================
-   * 酒馆自动招募（v89.62 · 老板「增加自动招募按钮，可设置当酒馆刷新出什么
-   *   品质的时候自动招募，直至达到招募站空位上限」）
+   * 征召大厅自动招募（v89.62 · 老板「增加自动招募按钮，可设置当征召大厅刷新出什么
+   *   品质的时候自动招募，直至达到英雄枢纽空位上限」）
    * ------------------------------------------------------------
    * 口径唯一：开关/门槛/执行三处都只读 `s.settings.innAuto`，界面只写这一个对象，
    *   不另存第二份状态（本项目最经典的失效模式就是"同一件事存两份"）。
    * 执行时机 = **候选换批之后**（自动 5 分钟换批与"花旧币另请"都经过 GAME.innRefresh），
    *   所以在 innRefresh 生成新批后统一调一次 innAutoRun ——
    *   主循环里**不加轮询**，避免每帧扫全表。
-   * 择优策略：达到门槛者里**资质最高**的先招；招到招募站满位 / 旧币不够 / 无合格者为止。
+   * 择优策略：达到门槛者里**资质最高**的先招；招到英雄枢纽满位 / 旧币不够 / 无合格者为止。
    *   循环带硬上限（64 次），任何异常都不会死循环。
    * ============================================================ */
   GAME.innAutoCfg = function () {
@@ -2373,7 +2373,7 @@
     if (!city || GAME.innLevel(city) <= 0) return { ok: false, n: 0, names: [] };
     var minIdx = GAME.rankIndex(c.min), n = 0, names = [];
     for (var guard = 0; guard < 64; guard++) {
-      if (!GAME.canRecruitGeneral(city).ok) break;         /* 招募站满位 / 无空房 → 停 */
+      if (!GAME.canRecruitGeneral(city).ok) break;         /* 英雄枢纽满位 / 无空房 → 停 */
       var list = GAME.innRefresh(false, city) || [];       /* 命中缓存即返回同一批，不会重复换批（v89.108：按城取池） */
       var pick = null;
       for (var i = 0; i < list.length; i++) {
@@ -2878,7 +2878,7 @@
         }
       });
     }
-    /* 岁贡旧币是货币，不受货仓上限约束 */
+    /* 岁贡旧币是货币，不受战储仓上限约束 */
     s.res.gold = (s.res.gold || 0) + gold;
     /* ⛔ v90.93：声望的赛季国策增益（STORY.repMult）随年号纪元退役。 */
     s.rep = (s.rep || 0) + rep;
@@ -4260,14 +4260,14 @@
    * ------------------------------------------------------------
    * 老板原话：「自动征兵。构思界面，提供设置，包括触发条件，停止条件，
    *   目标兵种，可用栏位（与对应城市内可用兵营募兵队列相关，提供判别机制）等等」。
-   * 口径（全境统一规则、逐城独立执行 —— 各用各的城市资源与训练营队列）：
+   * 口径（全境统一规则、逐城独立执行 —— 各用各的城市资源与军营队列）：
    *   · 触发条件：某城某兵种（驻军 + 在训 + 排队）低于「触发线 min」→ 补单
    *     （min 设 0 = 只要低于「目标 max」就补）；
    *   · 停止条件：达到 max 即停 · 旧币低于 goldKeep / 本城粮低于 grainKeep 即停 ·
-   *     训练营队列满 → 本轮跳过（消化后自动继续；开关不会自己关）；
+   *     军营队列满 → 本轮跳过（消化后自动继续；开关不会自己关）；
    *   · 目标兵种：非器械全兵种（器械走机工坊队列，本系统不碰）；
-   *   · 可用栏位：逐训练营判别空位（trainQueueSlots / trainQueuesOf 唯一出口），
-   *     只往有空位的训练营放单；单笔数量 ≤「缺口 / 可募上限」（trainLimitOf 城版）。
+   *   · 可用栏位：逐军营判别空位（trainQueueSlots / trainQueuesOf 唯一出口），
+   *     只往有空位的军营放单；单笔数量 ≤「缺口 / 可募上限」（trainLimitOf 城版）。
    * 执行 = GAME.autoTrainTick（主循环挂钩 · 节流 DATA.AUTO_TRAIN.gapMs · 无事不写日志）。
    * ============================================================ */
   GAME.autoTrainDefault = function () {
@@ -4308,7 +4308,7 @@
     }
     return { ok: false, msg: '未知设置项' };
   };
-  /* 逐城判别（唯一出口）：训练营空位 + 各目标兵种的缺口。界面与执行共读。 */
+  /* 逐城判别（唯一出口）：军营空位 + 各目标兵种的缺口。界面与执行共读。 */
   GAME.autoTrainPlanOf = function (city) {
     var out = { city: city, bars: [], left: 0, total: 0, needs: [],
       craftBars: [], craftLeft: 0, craftTotal: 0 };
@@ -4321,7 +4321,7 @@
       out.total += slots;
       out.left += Math.max(0, slots - used);
     });
-    /* v90.12：器械走**机工坊**队列（与训练营分开排空位） */
+    /* v90.12：器械走**机工坊**队列（与军营分开排空位） */
     GAME.craftWorkshopsOf(city).forEach(function (b) {
       var slots = GAME.trainQueueSlots(b.lvl, city);
       var used = GAME.trainQueuesOf(city, b.idx, 'craft').length;
@@ -4329,7 +4329,7 @@
       out.craftTotal += slots;
       out.craftLeft += Math.max(0, slots - used);
     });
-    /* 在训（含排队）：逐兵种汇总本城队列（训练营 + 机工坊各算各的） */
+    /* 在训（含排队）：逐兵种汇总本城队列（军营 + 机工坊各算各的） */
     var queued = {};
     ((GAME.state || {}).queues && (GAME.state.queues.train || [])).forEach(function (q) {
       if (q.cityId !== city.id) return;
@@ -4367,7 +4367,7 @@
     var rKeep = Math.max(0, Math.floor(c.grainKeep || 0));
     (s.cities || []).forEach(function (ct) {
       var plan = GAME.autoTrainPlanOf(ct);
-      if (!plan.bars.length && !plan.craftBars.length) return;   /* 无训练营也无机工坊 */
+      if (!plan.bars.length && !plan.craftBars.length) return;   /* 无军营也无机工坊 */
       if (!plan.needs.length) return;
       var pending = plan.needs.filter(function (n) { return n.need > 0; });
       if (!pending.length) return;                           /* 已达标 */
@@ -4375,7 +4375,7 @@
         var isCraft = !!nd.craft;
         var bars = isCraft ? plan.craftBars : plan.bars;
         var leftSlots = isCraft ? plan.craftLeft : plan.left;
-        if (leftSlots <= 0) { notes.push(ct.name + ' ' + (isCraft ? '机工坊' : '训练营') + ' 队列已满'); return; }
+        if (leftSlots <= 0) { notes.push(ct.name + ' ' + (isCraft ? '机工坊' : '军营') + ' 队列已满'); return; }
         var left = nd.need;
         var guard = 0;
         while (left > 0 && guard++ < 12) {
@@ -4384,7 +4384,7 @@
           if (rKeep > 0 && ((GAME.res(ct).grain || 0) < rKeep)) { notes.push(ct.name + ' 净水低于保底'); return; }
           var bar = null;
           for (var i = 0; i < bars.length; i++) { if (bars[i].left > 0) { bar = bars[i]; break; } }
-          if (!bar) { notes.push(ct.name + ' ' + (isCraft ? '机工坊' : '训练营') + ' 队列已满'); return; }
+          if (!bar) { notes.push(ct.name + ' ' + (isCraft ? '机工坊' : '军营') + ' 队列已满'); return; }
           var lim = GAME.trainLimitOf(nd.troopId, ct);
           var cnt = Math.min(left, lim.cap);
           if (!(cnt > 0)) {
@@ -4599,7 +4599,7 @@
   /* ⛔ v89.104（老板）：「自动界面无需预算阀门及其相关逻辑，不要这个功能组件」
      —— `autoReservePct` / `autoBudgetCheck` 两件套连同两处调用（自动升级 / 自动研究）
      整体退役。为什么不再需要：自动化现在**只做玩家点过的事**（升级候选来自建造队列、
-     研究候选来自研习所），资源不足本来就只跳过当项、不掏空家底；
+     研究候选来自科研中心），资源不足本来就只跳过当项、不掏空家底；
      阀门那层"近似保险"反而制造了"明明有钱却不干活"的困惑。
      ⚠️ `settings.autoReservePct` / `autoTechMaxLv` 两个入档字段保留（旧档可读，值为历史遗留），
      但**全库不再有人读它们** —— 见 data.js 的同名注释。 */
@@ -5109,12 +5109,12 @@
     return r;
   };
 
-  /* v90.54（老板）：自动研究**逐城遍历**（与 autoUpgrade 同构）—— 各城研习所**并行**研究、互不阻塞。
-     每城：已在研 → 跳过；否则挑该城最便宜的候选开研（受该城研习所等级 / techCapOf / 建筑 req 约束）。 */
+  /* v90.54（老板）：自动研究**逐城遍历**（与 autoUpgrade 同构）—— 各城科研中心**并行**研究、互不阻塞。
+     每城：已在研 → 跳过；否则挑该城最便宜的候选开研（受该城科研中心等级 / techCapOf / 建筑 req 约束）。 */
   GAME._autoResearchCity = function (city) {
     var s = GAME.state;
     var shuLv = GAME.buildingLevel(city, 'shuyuan');
-    if (shuLv <= 0) return { blocked: '需先建造研习所' };
+    if (shuLv <= 0) return { blocked: '需先建造科研中心' };
     var act = false;
     (s.queues.tech || []).forEach(function (q) { if (q.cityId === city.id) act = true; });
     if (act) return 'resumed';
@@ -5153,7 +5153,7 @@
     if (started) { s.autoTechState = { msg: '自动研究：本回开启 ' + started + ' 城' }; return { ok: true }; }
     if (resumed) { s.autoTechState = { msg: '正在研究（' + resumed + ' 城在研）' }; return null; }
     if (blockedMsg) { s.autoTechState = { paused: true, msg: blockedMsg }; return null; }
-    s.autoTechState = { done: true, msg: '各城科技已满级或受研习所限制' };
+    s.autoTechState = { done: true, msg: '各城科技已满级或受科研中心限制' };
     return null;
   };
 
@@ -5955,7 +5955,7 @@
    *   · 产量   → `GAME.prodFactors(r, city)` / `cityProdPerSec(city)`
    *   · 建造   → `GAME.cityBuildMult(city)`
    *   · 征兵   → `GAME.guardBonus(city).train`
-   *   · 研究   → 研究由某城的研习所发起，取**发起城**的守将（`S.research(id, cityId)`）
+   *   · 研究   → 研究由某城的科研中心发起，取**发起城**的守将（`S.research(id, cityId)`）
    * ------------------------------------------------------------ */
   /* 城市建造加速系数（**城主**治理 1 点 → 建造速度 +1%，最多加速 60%）——
      **按城取**：传哪座城就只吃哪座城的城主。
@@ -7678,7 +7678,7 @@
      抵达入城（`gen.cityId = 目标城`，见 expedition 的 owncity 分支）。
      ⚠️ 原函数里的两道闸**已迁移，不是丢掉**：
        · 「守将/城主先解任」→ `prepare` 的 `GAME.marchBlockOf(gen)`（同一出口）；
-       · 「目标城招募站席位」→ `prepare` 的 transfer 分支（v89.138 新增，见 battle.js）。
+       · 「目标城英雄枢纽席位」→ `prepare` 的 transfer 分支（v89.138 新增，见 battle.js）。
      如需恢复：本段代码见 `backup/v89138/domain.js`。 */
 
   /* ============================================================

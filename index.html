@@ -86,7 +86,7 @@
        语义：--fs-num = 行内重点数字（倒计时/大数值）；--isz-* = **元素尺寸**（emoji/SVG
        图标、头像），不是排版字号 —— 单独立族，免得后人拿字号令牌去量图标。 */
     --fs-num: 17px;         /* 重点数字（战场倒计时等） */
-    --isz-xs: 20px;         /* 行内小图标（酒馆头像位） */
+    --isz-xs: 20px;         /* 行内小图标（征召大厅头像位） */
     --isz-sm: 22px;         /* 卡片小图标（空地块 +） */
     --isz-md: 26px;         /* 标准图标（背包格 / 地块装饰 / 头像导航箭头） */
     --isz-lg: 34px;         /* 大图标（兵种卡图标位） */
@@ -791,7 +791,7 @@
   .prog { height: 9px; background: rgba(var(--sh-rgb),.45); border: 1px solid var(--gold-dark); border-radius: var(--r-md); overflow: hidden; }
   .prog > i { display: block; height: 100%; background: linear-gradient(90deg, #9a7430, var(--gold-light)); transition: width .5s linear; }
   /* ⛔ v89.218：纪事条目样式（.chron-list / .chron-item 七行）随史册退役 —— 早在 v89.104 已无消费点。 */
-  /* ============ 酒馆 / 市集 / 仓储 / 招募站 ============ */
+  /* ============ 征召大厅 / 市集 / 仓储 / 英雄枢纽 ============ */
   /* v75（老板）：候选改**单行紧凑**版式（「尽量单个英雄一行显示」）。
      列表不再自带滚动 —— 整页滚动只留 .m-body 一处，避免旧版"列表 + 面板"双滚动条。 */
   .inn-list { padding-right: var(--sp-1); }
@@ -1112,7 +1112,7 @@
   }
   /* v90.10（老板）：「城内建筑底部柔和色块，分两系」——
      整格地块底色按两系铺一层**柔和色**（低饱和、半透明，不抢建筑图标）：
-       · 民居系（无操作系：居所 / 车库 / 补给站 / 货仓 = ser-live）→ 米黄
+       · 民居系（无操作系：居所 / 载具研究所 / 传送站 / 战储仓 = ser-live）→ 米黄
        · 其他系（gov / mil / ops）→ 石青
      名字解析：--built-bg-fill 由 ser-* 决定，--built-bg（色值）由下方基类决定；
      施工/升级中的格子不带 ser 类 → fill 为空 → 地块面退回 --ground（旧观感）。 */
@@ -2094,7 +2094,7 @@
   }
   .tbl td { padding: var(--sp-3); border: 1px solid var(--line); background: rgba(var(--sh-rgb),.15); vertical-align: middle; }
   .tbl tr:nth-child(even) td { background: rgba(var(--sh-rgb),.05); }
-  /* v89.231：研习所科技分组标题行（DATA.TECH_CATS · 每节一行，四列合 colspan） */
+  /* v89.231：科研中心科技分组标题行（DATA.TECH_CATS · 每节一行，四列合 colspan） */
   .tbl .tech-cat td {
     background: rgba(var(--sh-rgb),.5);
     color: var(--gold-light);
@@ -2831,9 +2831,9 @@
      v51 曾按"矮屏 min(700px, 88vh)"折衷；v74 画布固定后不再随视口缩（兜底同 md/lg）。 */
   .modal-xl { width: 960px; height: 700px;
     max-width: calc(var(--app-w) - 20px); max-height: calc(var(--app-h) - 20px); }
-  /* xxl（v75 酒馆招募；v89.112 再扩）：**1200×850** —— 老板「充分利用界面版面。
+  /* xxl（v75 征召大厅招募；v89.112 再扩）：**1200×850** —— 老板「充分利用界面版面。
      画布 1440×900：左右各留 120px、上下各留 25px —— 相比旧 1020×840（左右各 210px）
-     多出 18% 面积。坐在这一档的是"内容确实多"的面板（交易站/酒馆/见闻/君主/出征/
+     多出 18% 面积。坐在这一档的是"内容确实多"的面板（交易站/征召大厅/见闻/君主/出征/
      全境营造/战报详情…），加宽后原本靠滚动条苟着的段（出兵表/候选表）多数能一屏站直。
      兜底规则同其余档位。 */
   .modal-xxl { width: 1200px; height: 850px;
@@ -3203,7 +3203,7 @@
   .q-card, .item-row, .bag-cell, .eq-cell, .inn-card, .story-card, .xc-row {
     border-color: var(--line);
   }
-  /* v75（老板）：「尽量所有候选都能在同一页」——酒馆候选行**紧凑几何**：
+  /* v75（老板）：「尽量所有候选都能在同一页」——征召大厅候选行**紧凑几何**：
      共用基线给的 10px 内衬对"一页装下"太厚，这里就地收窄
      （同权重、写在基线之后者胜）；配 28px 头像 → 行高实测 36px。 */
   .inn-card { padding: var(--sp-1) var(--sp-4); margin-bottom: var(--sp-1); }
@@ -3532,7 +3532,7 @@
   /* v27（需求 6）：英雄选择原先是一条**只有 96px 高的滚动列表** ——
      实际效果和下拉框一模一样（要滚才能看到后面的英雄），
      而且滚动条还挂在弹窗里（弹窗本来就要求不出现滚动条）。
-     英雄上限 = 招募站等级（≤10 位），改成两列网格后全部一次呈现，不需要滚动。 */
+     英雄上限 = 英雄枢纽等级（≤10 位），改成两列网格后全部一次呈现，不需要滚动。 */
   .chips.gen-chips { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-1); padding: var(--sp-hair); }
   /* v89.112：**宽版 4 列** —— 装备/宝物面板的选择器。
      166 位英雄 × 2 列 = 83 行 = 2356px 的高墙（"小小弹窗一屏全是人名"）。
@@ -3702,7 +3702,7 @@
      v77（老板）
      ------------------------------------------------------------
      ① 资源区：附属野地下拉框（原「本城 · 城名」表头退役）
-     ② 酒馆招募：表格版式（表头 + 单行数据，含月俸列）
+     ② 征召大厅招募：表格版式（表头 + 单行数据，含月俸列）
      ③ 君主面板：左右分栏（左城市列表 / 右信息表）
      ④ 锻造间：熔铸强化列表
      ============================================================ */
@@ -4404,31 +4404,31 @@
 </div><!-- /#app-scale -->
 </div><!-- /#app-fit -->
 
-<!-- BUILD 9223 -->
-<script src="js/data.js?v=9223"></script>
-<script src="js/state.js?v=9223"></script>
-<script src="js/systems.js?v=9223"></script>
-<script src="js/domain.js?v=9223"></script>
-<script src="js/map.js?v=9223"></script>
+<!-- BUILD 9224 -->
+<script src="js/data.js?v=9224"></script>
+<script src="js/state.js?v=9224"></script>
+<script src="js/systems.js?v=9224"></script>
+<script src="js/domain.js?v=9224"></script>
+<script src="js/map.js?v=9224"></script>
 <!-- v90.69：球面世界内核（纯 JS · 拓扑/地形/几何 SSOT）—— 逻辑与 3D 渲染共用，无 THREE -->
-<script src="js/sphere.js?v=9223"></script>
+<script src="js/sphere.js?v=9224"></script>
 <!-- v90.61：Three.js 真 3D 主地图（vendor 本地，离线可用） -->
-<script src="vendor/three.min.js?v=9223"></script>
-<script src="js/map3d.js?v=9223"></script>
-<script src="js/battle.js?v=9223"></script>
+<script src="vendor/three.min.js?v=9224"></script>
+<script src="js/map3d.js?v=9224"></script>
+<script src="js/battle.js?v=9224"></script>
 <!-- v27（需求 5）：回合制文字战场。放在 battle.js 之后 —— simulate 由它接管 -->
-<script src="js/tactic.js?v=9223"></script>
-<script src="js/icons.js?v=9223"></script>
+<script src="js/tactic.js?v=9224"></script>
+<script src="js/icons.js?v=9224"></script>
 <!-- v32（需求「采用网图」）：game-icons 开源图标素材层。必须在 icons.js 之后 ——
      icons.js 内的取图函数用 typeof GICONS 延迟绑定，渲染时才真正查表。 -->
-<script src="js/gicons.js?v=9223"></script>
+<script src="js/gicons.js?v=9224"></script>
 <!-- v35：AI 位图素材登记表（汉代风，最高优先级）。同样在 icons.js 之后 ——
      取图函数用 typeof BITMAPS 延迟绑定；未登记的 id 自动回退矢量层。 -->
-<script src="js/bitmaps.js?v=9223"></script>
-<script src="js/portraits.js?v=9223"></script>
-<script src="js/story.js?v=9223"></script>
+<script src="js/bitmaps.js?v=9224"></script>
+<script src="js/portraits.js?v=9224"></script>
+<script src="js/story.js?v=9224"></script>
 <!-- ⛔ v89.218（老板「故事全部去除」）：84 卷故事库（story/）整目录删除，脚本标签同步撤除。 -->
-<script src="js/ui.js?v=9223"></script>
-<script src="js/main.js?v=9223"></script>
+<script src="js/ui.js?v=9224"></script>
+<script src="js/main.js?v=9224"></script>
 </body>
 </html>

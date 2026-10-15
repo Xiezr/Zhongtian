@@ -409,11 +409,11 @@ async function runTests(dom, URL) {
   const modal = document.querySelector('#modal-root');
   check('建造弹窗打开', modal.innerHTML.length > 100, modal.innerHTML.length + ' 字符');
   const bookBtn = modal.querySelector('[data-build="shuyuan"]');
-  check('弹窗含研习所选项', !!bookBtn);
+  check('弹窗含科研中心选项', !!bookBtn);
   if (bookBtn) {
     click(bookBtn);
     await sleep(50);
-    check('研习所入队', s.queues.build.length === 1, s.queues.build.length + ' 队列');
+    check('科研中心入队', s.queues.build.length === 1, s.queues.build.length + ' 队列');
     check('格子进入 pending', !!city.cells[emptyIdx].pending);
     check('队列有 totalTime', s.queues.build[0] && s.queues.build[0].totalTime > 0,
       s.queues.build[0] ? s.queues.build[0].totalTime + ' 游戏秒' : '无');
@@ -526,7 +526,7 @@ async function runTests(dom, URL) {
   console.log('\n--- 11. 原版式弹窗（真实函数名） ---');
   /* v77（老板）：建筑信息 / 资源生产退役；附属野地保留（资源区下拉框进入）。 */
   const modals = [['君主', 'openLordInfo'], ['附属野地', 'openWilds'],
-    ['酒馆', 'openInn'], ['招募站', 'openHostel'], ['市集', 'openMarket'], ['货仓', 'openStore'],
+    ['征召大厅', 'openInn'], ['英雄枢纽', 'openHostel'], ['市集', 'openMarket'], ['战储仓', 'openStore'],
     ['锻造间', 'openForge']];
   for (const [label, fn] of modals) {
     if (typeof G.ui[fn] !== 'function') { check('弹窗 ' + label, false, fn + ' 未定义'); continue; }
@@ -562,7 +562,7 @@ async function runTests(dom, URL) {
   s.settings.timeScale = 600;
   s.res.grain += 200000; s.res.wood += 200000; s.res.stone += 200000; s.res.iron += 200000;
   s.res.gold += 100000; s.res.pop += 5000;
-  await sleep(2200); // 高倍率下让在建研习所先完工（后续科技研究依赖它）
+  await sleep(2200); // 高倍率下让在建科研中心先完工（后续科技研究依赖它）
   const act = (label, fn) => {
     try { const r = fn(); check(label, r === undefined || r === null || r.ok !== false, r && r.msg ? r.msg : 'ok'); return r; }
     catch (e) { check(label, false, '抛错: ' + e.message); return null; }
@@ -982,32 +982,32 @@ async function runTests(dom, URL) {
     const html = document.querySelector('#modal-root').innerHTML;
     modalOk17 = html.indexOf('募兵') >= 0;
     funcBtnText = (html.match(/⚔️ 募兵/) || [''])[0];
-    check('训练营弹窗含「募兵」功能入口', modalOk17, funcBtnText);
-    check('训练营弹窗显示可募兵种数', html.indexOf('可募兵种') >= 0);
+    check('军营弹窗含「募兵」功能入口', modalOk17, funcBtnText);
+    check('军营弹窗显示可募兵种数', html.indexOf('可募兵种') >= 0);
     G.ui.closeAllModals();
     break;
   }
-  check('训练营格子可点击', modalOk17 || funcBtnText !== '');
+  check('军营格子可点击', modalOk17 || funcBtnText !== '');
   G.ui.openInn();
   await sleep(40);
   const innHtml = document.querySelector('#modal-root').innerHTML;
-  check('酒馆弹窗渲染', innHtml.length > 300, innHtml.length + ' 字符');
+  check('征召大厅弹窗渲染', innHtml.length > 300, innHtml.length + ' 字符');
   /* 候选按游戏日刷新，可能恰好为空 → 有候选验属性、无候选验空态（两者都是正确渲染） */
   /* 候选可能是「美人」（按钮显示"相亲"），所以判据用动作名 inn-recruit 而不是按钮文案 ——
      原先只认"招募"，一旦当天候选全是美人就误报失败（偶发假红） */
-  check('酒馆渲染候选（含属性）或空态',
+  check('征召大厅渲染候选（含属性）或空态',
     (innHtml.indexOf('指挥') >= 0 && innHtml.indexOf('inn-recruit') >= 0) || innHtml.indexOf('暂无贤士') >= 0,
     innHtml.indexOf('指挥') >= 0 ? '有候选' : '空态');
-  /* v64（老板）：「根据**该城的招募站等级**有相应空位」——
-     文案从"空房"改为"<城名> 招募站空位 N/M"，所以判据要连**城名与席位比**一起看 */
-  check('酒馆显示本城招募站席位（城名 + N/M）', (function () {
+  /* v64（老板）：「根据**该城的英雄枢纽等级**有相应空位」——
+     文案从"空房"改为"<城名> 英雄枢纽空位 N/M"，所以判据要连**城名与席位比**一起看 */
+  check('征召大厅显示本城英雄枢纽席位（城名 + N/M）', (function () {
     var nm = G.currentCity().name;                 /* 城名**现取**，不写死（改名/换城都不假红） */
-    return /招募站空位 \d+\/\d+/.test(innHtml) && innHtml.indexOf(nm) >= 0;
-  })(), (innHtml.match(/招募站空位 \d+\/\d+/) || ['未找到'])[0] + ' · ' + G.currentCity().name);
+    return /英雄枢纽空位 \d+\/\d+/.test(innHtml) && innHtml.indexOf(nm) >= 0;
+  })(), (innHtml.match(/英雄枢纽空位 \d+\/\d+/) || ['未找到'])[0] + ' · ' + G.currentCity().name);
   G.ui.openHostel();
   await sleep(40);
   const hostHtml = document.querySelector('#modal-root').innerHTML;
-  check('招募站弹窗显示房间数', hostHtml.indexOf('房间') >= 0, hostHtml.length + ' 字符');
+  check('英雄枢纽弹窗显示房间数', hostHtml.indexOf('房间') >= 0, hostHtml.length + ' 字符');
   /* v90.92：派系（门派）系统整条退役 —— 原 v89.74「自动点地块→入派→做任务」真实点击链
      （openSect / sect-join / sect-task / sectState / sectOf）随系统一并移除；
      按 §0.7 改为**零残留 + 入口不可达**守卫。建筑 honglusi（基因实验室）保留。 */
@@ -1075,7 +1075,7 @@ async function runTests(dom, URL) {
   G.ui.openStore();
   await sleep(40);
   const stHtml = document.querySelector('#modal-root').innerHTML;
-  check('货仓弹窗显示储量上限', stHtml.indexOf('储量上限') >= 0 || stHtml.indexOf('货仓') >= 0);
+  check('战储仓弹窗显示储量上限', stHtml.indexOf('储量上限') >= 0 || stHtml.indexOf('战储仓') >= 0);
   G.ui.closeAllModals();
 
   console.log('\n--- 18. 自动升级（真实交互） ---');
@@ -1258,7 +1258,7 @@ async function runTests(dom, URL) {
   G.jianghuWildMounted = jhWasA;   /* v89.86：还原剥离状态（原 19c 收尾；19b 起显式挂载了该层） */
 
   console.log('\n--- 20. 资质分级 / 锻造间打造 / 死属性修复 ---');
-  /* 给当前城配齐酒馆、招募站、锻造间 */
+  /* 给当前城配齐征召大厅、英雄枢纽、锻造间 */
   const c20 = G.state.cities[0];
   const put20 = (id, lv) => {
     const ex = c20.cells.find((c) => c.build && c.build.id === id);
@@ -1273,11 +1273,11 @@ async function runTests(dom, URL) {
   /* v12：打造需材料，先备齐 */
   DATA.MATERIAL_IDS.forEach((mid) => { G.state.items[mid] = (G.state.items[mid] || 0) + 300; });
 
-  /* ① 酒馆（v75 改版）：资质徽章 + 悬停成长备注 + 单行候选 + 无概率表（老板） */
+  /* ① 征召大厅（v75 改版）：资质徽章 + 悬停成长备注 + 单行候选 + 无概率表（老板） */
   G.ui.openInn();
   await sleep(70);
   const inn20 = document.querySelector('#modal-root').innerHTML;
-  check('酒馆面板渲染', inn20.length > 400, inn20.length + ' 字符');
+  check('征召大厅面板渲染', inn20.length > 400, inn20.length + ' 字符');
   check('候选显示资质徽章', /class="rank-badge r-/.test(inn20));
   check('v75：成长备注不再写行内（收进徽章悬停）',
     inn20.indexOf('｜成长 +') < 0 && /rank-badge r-\w+" title="[^"]*每级属性成长 \+/.test(inn20));
@@ -1286,13 +1286,13 @@ async function runTests(dom, URL) {
   check('v75：候选单行版式（动作横排 inn-act）', /class="inn-act"/.test(inn20));
   G.ui.closeAllModals();
 
-  /* ② 招募站：v29（需求 15）起只讲房间数与升级路径，不再重复英雄名录 */
+  /* ② 英雄枢纽：v29（需求 15）起只讲房间数与升级路径，不再重复英雄名录 */
   G.ui.openHostel();
   await sleep(60);
   const host20 = document.querySelector('#modal-root').innerHTML;
-  check('招募站不再有英雄名录（不重复「英雄」菜单）',
+  check('英雄枢纽不再有英雄名录（不重复「英雄」菜单）',
     host20.indexOf('inn-card') < 0 && host20.indexOf('房间') >= 0);
-  check('招募站指向「英雄」菜单看名录', host20.indexOf('英雄') >= 0);
+  check('英雄枢纽指向「英雄」菜单看名录', host20.indexOf('英雄') >= 0);
   G.ui.closeAllModals();
   /* 资质徽章改在「英雄」菜单验证 */
   G.ui.setView('generals');
@@ -1660,25 +1660,25 @@ async function runTests(dom, URL) {
   G.ui.openBuildModal(idxJY);
   await sleep(60);
   const bm = document.querySelector('#modal-root');
-  check('训练营弹窗含「募兵 · 兵种」入口', bm.innerHTML.indexOf('募兵 · 兵种') >= 0);
-  /* v24（需求 8）：入口带 data-idx（队列要挂到具体那座训练营） */
+  check('军营弹窗含「募兵 · 兵种」入口', bm.innerHTML.indexOf('募兵 · 兵种') >= 0);
+  /* v24（需求 8）：入口带 data-idx（队列要挂到具体那座军营） */
   const entryBtn = bm.querySelector('[data-action="open-troops"][data-idx]');
-  check('找到功能入口按钮（带训练营下标）', !!entryBtn, entryBtn ? 'idx=' + entryBtn.dataset.idx : '未找到');
+  check('找到功能入口按钮（带军营下标）', !!entryBtn, entryBtn ? 'idx=' + entryBtn.dataset.idx : '未找到');
   click(entryBtn);
   await sleep(90);
   const panelHtml = document.querySelector('#modal-root').innerHTML;
   check('军队以弹窗打开（不再切标签页）', panelHtml.length > 400 && document.querySelector('#modal-root').querySelector('[data-action="close-modal"]') !== null,
     panelHtml.length + ' 字符');
-  check('面板标题标明归属建筑', panelHtml.indexOf('训练营') >= 0);
+  check('面板标题标明归属建筑', panelHtml.indexOf('军营') >= 0);
   check('切标签页未发生（仍在城市视图）', G.ui.view === 'city', 'view=' + G.ui.view);
   click(document.querySelector('#modal-root [data-action="close-modal"]'));
   await sleep(60);
   /* v89.117（老板「关闭的时候不回到上一级界面…这个操作逻辑很别扭」）：
-     从下级面板（军队）点 ✕ = **返回上一级**（训练营面板）；再点一次才全关。
+     从下级面板（军队）点 ✕ = **返回上一级**（军营面板）；再点一次才全关。
      这条断言把"层"的行为钉在真 DOM 上（smoke 里另有结构化断言）。 */
   const afterOne = document.querySelector('#modal-root').innerHTML;
-  check('v89.117：下级点 ✕ → 回到上一级（训练营面板，不是全关）',
-    afterOne.length > 100 && afterOne.indexOf('训练营') >= 0, afterOne.length + ' 字符');
+  check('v89.117：下级点 ✕ → 回到上一级（军营面板，不是全关）',
+    afterOne.length > 100 && afterOne.indexOf('军营') >= 0, afterOne.length + ' 字符');
   click(document.querySelector('#modal-root [data-action="close-modal"]'));
   await sleep(60);
   check('关闭按钮生效（顶层 ✕ → 全关）', document.querySelector('#modal-root').innerHTML.length < 20,
@@ -1980,7 +1980,7 @@ async function runTests(dom, URL) {
     let bIdx110 = -1;
     (cD110.cells || []).forEach((x, i) => { if (!x.build && !x.official && bIdx110 < 0) bIdx110 = i; });
     if (bIdx110 < 0) {
-      check('v89.110：解散两段式（找不到空位摆训练营）', false);
+      check('v89.110：解散两段式（找不到空位摆军营）', false);
     } else {
       const bakB110 = cD110.cells[bIdx110].build || null;
       const bakA110 = JSON.parse(JSON.stringify(cD110.army || {}));
@@ -2280,7 +2280,7 @@ async function runTests(dom, URL) {
 
   /* ============================================================
    * 24. v19 十项体验修复：升级不锁功能 / 菜单分组 / 行军菜单 /
-   *     弹窗统一 / 侧栏精简 / 建筑移动与改建 / 货仓多建
+   *     弹窗统一 / 侧栏精简 / 建筑移动与改建 / 战储仓多建
    * ============================================================ */
   console.log('\n--- 24. v19 体验修复（真实 DOM）---');
   {
@@ -2312,7 +2312,7 @@ async function runTests(dom, URL) {
     await sleep(80);
     let mh24 = document.querySelector('#modal-root').innerHTML;
     check('升级中面板显示「升级中」与目标等级', mh24.indexOf('升级中') >= 0 && /Lv1 → Lv2/.test(mh24));
-    check('升级中面板保留功能入口（训练营→募兵）',
+    check('升级中面板保留功能入口（军营→募兵）',
       mh24.indexOf('募兵') >= 0 && !!document.querySelector('#modal-root [data-action="open-troops"]'));
     check('升级中面板可取消升级（v89.110：走二次确认）', !!document.querySelector('#modal-root [data-action="cancel-build-ask"]'));
     /* v72（老板报障「政务厅升级中点击被撑爆」）→ v73（老板「顶部的图标也不要留」）：
@@ -2334,7 +2334,7 @@ async function runTests(dom, URL) {
     const tr24 = G.train('buxingji', 50, c24.id);
     check('升级中仍可发起募兵', tr24.ok, tr24.msg);
     finishAll24();
-    /* 判据用「该格等级」：全城可能已有多座训练营，buildingLevel() 取的是最高级 */
+    /* 判据用「该格等级」：全城可能已有多座军营，buildingLevel() 取的是最高级 */
     check('升级完成后该格等级生效 Lv2', c24.cells[junI].build && c24.cells[junI].build.lvl === 2,
       '该格 Lv' + (c24.cells[junI].build && c24.cells[junI].build.lvl));
     check('升级完成清空施工标记', !c24.cells[junI].pending);
@@ -2543,7 +2543,7 @@ async function runTests(dom, URL) {
     check('改建成功且等级保留', grid24[ei24].type === tType && grid24[ei24].lv === 3,
       grid24[ei24].type + ' Lv' + grid24[ei24].lv);
 
-    /* ---- ⑧ 货仓可多建（前端不再禁用） ---- */
+    /* ---- ⑧ 战储仓可多建（前端不再禁用） ---- */
     G.ui.setView('city');
     await sleep(80);
     const emptyForCk = findEmpty24();
@@ -2552,7 +2552,7 @@ async function runTests(dom, URL) {
       await sleep(80);
       const cangkuCard = Array.from(document.querySelectorAll('#modal-root .troop-card'))
         .find((el) => el.getAttribute('data-build') === 'cangku');
-      check('货仓在建造列表中可选（不再标「已建造(唯一)」）',
+      check('战储仓在建造列表中可选（不再标「已建造(唯一)」）',
         !!cangkuCard && !cangkuCard.classList.contains('disabled'),
         cangkuCard ? (cangkuCard.className || 'ok') : '未找到卡片');
       G.ui.closeAllModals();
@@ -2563,8 +2563,8 @@ async function runTests(dom, URL) {
     finishAll24();
     const ck2 = G.buildAt(c24.id, findEmpty24(), 'cangku');
     finishAll24();
-    check('可连建多座货仓', ck1.ok && ck2.ok, (ck1.msg || '') + ' / ' + (ck2.msg || ''));
-    check('储量随货仓数叠加', G.buildingLevelSum(c24, 'cangku') === before24 + 2 && G.storeCap() > capBefore24,
+    check('可连建多座战储仓', ck1.ok && ck2.ok, (ck1.msg || '') + ' / ' + (ck2.msg || ''));
+    check('储量随战储仓数叠加', G.buildingLevelSum(c24, 'cangku') === before24 + 2 && G.storeCap() > capBefore24,
       G.utils.fmt(capBefore24) + ' → ' + G.utils.fmt(G.storeCap()));
 
     /* ---- ⑨ 任务页（v90.92 退役 · 零残留守卫）---- */
@@ -3019,10 +3019,10 @@ async function runTests(dom, URL) {
     click(document.querySelector('#modal-root [data-action="train-tab"][data-page="que"]'));
     await sleep(90);
     const tm24 = document.querySelector('#modal-root').innerHTML;
-    /* v80（老板）：「募兵训练营 城内第 46 格 · Lv11 · 队列位 3 这个也不需要」——
+    /* v80（老板）：「募兵军营 城内第 46 格 · Lv11 · 队列位 3 这个也不需要」——
        面板不再标所属工位；重复标题也撤除（只留弹窗标题一处） */
-    check('v90.64：募兵面板不再标所属训练营 / 重复标题（队列移出面板）',
-      tm24.indexOf('募兵训练营') < 0 && tm24.indexOf('队列位') < 0
+    check('v90.64：募兵面板不再标所属军营 / 重复标题（队列移出面板）',
+      tm24.indexOf('募兵军营') < 0 && tm24.indexOf('队列位') < 0
       && tm24.indexOf('本营募兵队列') < 0
       && (tm24.match(/兵种整备/g) || []).length === 1);
     /* 通过真实入口按钮进入，确认 data-idx 被带进去 */
@@ -3031,11 +3031,11 @@ async function runTests(dom, URL) {
     G.ui.openBuildModal(junI24);
     await sleep(70);
     const jBtn = document.querySelector('#modal-root [data-action="open-troops"]');
-    check('训练营弹窗的募兵入口带 data-idx', !!jBtn && String(jBtn.dataset.idx) === String(junI24),
+    check('军营弹窗的募兵入口带 data-idx', !!jBtn && String(jBtn.dataset.idx) === String(junI24),
       jBtn ? 'idx=' + jBtn.dataset.idx : '未找到');
     click(jBtn);
     await sleep(90);
-    check('点击后打开的是该训练营的募兵面板',
+    check('点击后打开的是该军营的募兵面板',
       G.ui._trainBIdx === junI24
       && document.querySelector('#modal-root').innerHTML.indexOf('兵种整备') >= 0);
     G.ui.closeAllModals();
@@ -3048,7 +3048,7 @@ async function runTests(dom, URL) {
   check('自动化界面：左名单九项 + 右详情（v89.115 分栏 · v89.118 外敌来犯 · v89.128 采集 · v89.190 自动征兵）', (function () {
     /* v89.115：整合成「左 1/3 名单 + 右 2/3 详情」，新增「🏥 自动治疗」；
        v89.118：再加「🔥 外敌来犯」（开关 + 介绍 + 警报流水，从军务·警报迁来）。
-       v89.190（老板 2）：再加「🛡️ 自动征兵」（兵营募兵；与「🧲 自动招募」= 酒馆招将并列）。 */
+       v89.190（老板 2）：再加「🛡️ 自动征兵」（兵营募兵；与「🧲 自动招募」= 征召大厅招将并列）。 */
     var items = vc.querySelectorAll('.auto-item');
     return items.length === 9 && !!vc.querySelector('.auto-pane')
       && !!vc.querySelector('[data-action="auto-pick"][data-key="heal"]')
@@ -3084,7 +3084,7 @@ async function runTests(dom, URL) {
   })());
   G.state.settings.autoTrain = false;                       /* 用完还原，防污染后续用例 */
   G.autoTrainCfg().targets.buxingji.max = 0;
-  check('v90.64：募兵面板不含队列（队列移入训练营菜单）', (function () {
+  check('v90.64：募兵面板不含队列（队列移入军营菜单）', (function () {
     G.ui.openTroops(null);
     var rt = document.querySelector('#modal-root');
     return !!rt && rt.innerHTML.indexOf('本营募兵队列') < 0
@@ -3783,7 +3783,7 @@ async function runTests(dom, URL) {
   /* ============================================================
    * v28（需求 0-8）真实 DOM 验证
    * ============================================================ */
-  console.log('\n--- v28. 数值 / 12 级专精 / 12 席 / 训练营队列 / 批次（真实 DOM） ---');
+  console.log('\n--- v28. 数值 / 12 级专精 / 12 席 / 军营队列 / 批次（真实 DOM） ---');
 
   /* ① 英雄 3×2 卡片墙（v29 · 需求 16） */
   G.ui._pages = G.ui._pages || {}; G.ui._pages.gens = 1;
@@ -3823,7 +3823,7 @@ async function runTests(dom, URL) {
   check('城市属性「民心 / 民怨」合并为一行 xx / xx',
     attrs28.indexOf('民心 / 民怨') >= 0 && attrs28.indexOf('民怨') === attrs28.lastIndexOf('民怨'));
 
-  /* ③ 训练营面板：本营队列 + 上限按钮 + 加速 */
+  /* ③ 军营面板：本营队列 + 上限按钮 + 加速 */
   const c28 = G.currentCity();
   let ji28 = -1;
   c28.cells.forEach((x, i) => { if (x.build && x.build.id === 'junying') ji28 = i; });
@@ -3835,12 +3835,12 @@ async function runTests(dom, URL) {
   G.ui.openBuildModal(ji28);
   await sleep(90);
   const bd28 = document.querySelector('#modal-root');
-  check('训练营面板列出本营募兵队列',
+  check('军营面板列出本营募兵队列',
     bd28.textContent.indexOf('本营募兵队列') >= 0);
-  check('训练营面板有队列位说明', bd28.textContent.indexOf('队列位') >= 0);
+  check('军营面板有队列位说明', bd28.textContent.indexOf('队列位') >= 0);
   /* 面板里的「募兵」按钮要能进募兵界面 */
   const bt28 = bd28.querySelector('[data-action="open-troops"]');
-  check('训练营面板有「募兵 · 兵种」入口', !!bt28);
+  check('军营面板有「募兵 · 兵种」入口', !!bt28);
   click(bt28);
   await sleep(100);
   /* v81：默认落在「募兵队列」页 —— 训练控件在步兵页，先切页 */
@@ -3886,10 +3886,10 @@ async function runTests(dom, URL) {
   st28.res.pop = Math.max(st28.res.pop, 20000);
   const tr28b = G.train('buxingji', 60, c28.id, ji28);
   check('本营募兵已受理（后续加速断言的前提）', !!tr28b.ok, tr28b.msg);
-  G.ui.openBuildModal(ji28);                  /* v90.64：队列移入**训练营菜单**首页 */
+  G.ui.openBuildModal(ji28);                  /* v90.64：队列移入**军营菜单**首页 */
   await sleep(80);
   const qHtml28 = document.querySelector('#modal-root').innerHTML;
-  check('募兵队列在训练营菜单首页（v90.64：移出募兵面板）', qHtml28.indexOf('本营募兵队列') >= 0);
+  check('募兵队列在军营菜单首页（v90.64：移出募兵面板）', qHtml28.indexOf('本营募兵队列') >= 0);
   const boostBtn28 = document.querySelector('#modal-root [data-action="train-boost"]');
   check('执行中的队列有「加速」按钮', !!boostBtn28);
   if (boostBtn28 && G.trainQueuesOf(c28, ji28).length) {
@@ -4188,8 +4188,8 @@ async function runTests(dom, URL) {
     G.refreshAll();
   })();
 
-  /* --- 英雄席位按城：英雄页 / 招募站 / 派遣三处都要写清楚 ---
-     ⚠️ 先造一座**有招募站的副城** —— 否则"本城席位"与"全境合计"恰好相等，
+  /* --- 英雄席位按城：英雄页 / 英雄枢纽 / 派遣三处都要写清楚 ---
+     ⚠️ 先造一座**有英雄枢纽的副城** —— 否则"本城席位"与"全境合计"恰好相等，
      把 cap 写成全境合计也测不出来（破坏测试第 11 类第一版就是这样零反应）。 */
   const city64 = G.currentCity();
   const side64 = G.makeCity({ id: 'e2e64c', name: '侧城', x: 12, y: 12, type: 'county',
@@ -4230,9 +4230,9 @@ async function runTests(dom, URL) {
   G.ui.openHostel();
   await sleep(80);
   const hostHtml64 = document.querySelector('#modal-root').innerHTML;
-  check('招募站面板写「房间（本城英雄席位）」+ 各城合计',
+  check('英雄枢纽面板写「房间（本城英雄席位）」+ 各城合计',
     hostHtml64.indexOf('本城英雄席位') >= 0 && hostHtml64.indexOf('各城合计') >= 0);
-  check('招募站提示席位按城（不再说"升级招募站"就够）',
+  check('英雄枢纽提示席位按城（不再说"升级英雄枢纽"就够）',
     hostHtml64.indexOf('本城') >= 0 && /派遣/.test(hostHtml64));
   G.ui.closeAllModals();
   await sleep(50);
@@ -4266,7 +4266,7 @@ async function runTests(dom, URL) {
     _g.cityId = _a.id; _g.status = 'idle';
     var sl = G.genSlotsOf(_b), used = G.generalsIn(_b).length;
     var rr = G.battle.prepare({ kind: 'owncity', id: _b.id }, 'transfer', {}, _g.id, {});
-    return typeof sl === 'number' && (used < sl ? rr.ok === true : /招募站/.test(rr.msg || ''));
+    return typeof sl === 'number' && (used < sl ? rr.ok === true : /英雄枢纽/.test(rr.msg || ''));
   })());
   G.ui.closeAllModals();
   await sleep(50);
@@ -4414,10 +4414,10 @@ async function runTests(dom, URL) {
   await sleep(60);
 
   /* ============================================================
-   * v66：经验封顶 / 装备体力入上限 / 酒馆高资质下调（真实 DOM）
+   * v66：经验封顶 / 装备体力入上限 / 征召大厅高资质下调（真实 DOM）
    * 注意：`#modal-root` 每次 openModal 都换内容 —— 断言必须紧跟自己的那次打开。
    * ============================================================ */
-  console.log('\n  --- v66：经验封顶 / 装备体力 / 酒馆概率 ---');
+  console.log('\n  --- v66：经验封顶 / 装备体力 / 征召大厅概率 ---');
 
   /* ① 英雄页「状态 · 体力」主数字 = 上限（含装备贡献） */
   await (async function () {
@@ -4513,7 +4513,7 @@ async function runTests(dom, URL) {
     await sleep(40);
   })();
 
-  /* ④ v75（老板）：酒馆改大界面 —— 全量渲染 / 无资质一览 / 无美人标 /
+  /* ④ v75（老板）：征召大厅改大界面 —— 全量渲染 / 无资质一览 / 无美人标 /
         天启体权重口径没动（只是不再展示；数值口径由 smoke 兜底） */
   await (async function () {
     const c75 = G.currentCity();
@@ -4534,7 +4534,7 @@ async function runTests(dom, URL) {
     const cards75 = root75.querySelectorAll('.inn-tr');   /* v77：候选改表格行 */
     const cls75 = modal75 ? modal75.className : '';
     const slots75 = G.innSlots() || 0;
-    check('v75：酒馆升为最大尺寸档 xxl（大界面）', cls75.indexOf('modal-xxl') >= 0, cls75);
+    check('v75：征召大厅升为最大尺寸档 xxl（大界面）', cls75.indexOf('modal-xxl') >= 0, cls75);
     check('v75：候选全量渲染（' + slots75 + ' 位），一人一行',
       cards75.length === slots75 && slots75 >= 12, cards75.length + ' / ' + slots75);
     check('v75：不再显示资质一览（无 rk-box / 无「四维 」）',
@@ -4549,8 +4549,8 @@ async function runTests(dom, URL) {
     const pct75 = v75 / t75 * 100;
     check('v75：天启体权重口径没动（仍 <1%，只是不再展示）', pct75 < 1, '天启体 ' + pct75.toFixed(2) + '%');
 
-    /* ---- v77（老板）：酒馆表格化 / 君主面板 / 野地下拉框 ---- */
-    check('v77：酒馆表格化（表头 + 每人一行 + 月俸列）',
+    /* ---- v77（老板）：征召大厅表格化 / 君主面板 / 野地下拉框 ---- */
+    check('v77：征召大厅表格化（表头 + 每人一行 + 月俸列）',
       !!root75.querySelector('.inn-tbl thead') && root75.innerHTML.indexOf('月俸') >= 0
       && cards75.length === slots75,
       cards75.length + ' / ' + slots75);
@@ -4977,12 +4977,12 @@ if (svBtn) {
   }
 
   /* ============================================================
-   * v80（老板三条）：酒馆固定表 / 建筑吸底操作区 / 兵营分页直输（真实 DOM）
+   * v80（老板三条）：征召大厅固定表 / 建筑吸底操作区 / 兵营分页直输（真实 DOM）
    * ============================================================ */
-  console.log('\n--- v80. 酒馆固定表 · 建筑底栏 · 兵营分页（真实 DOM） ---');
+  console.log('\n--- v80. 征召大厅固定表 · 建筑底栏 · 兵营分页（真实 DOM） ---');
   {
     const c80 = G.currentCity();
-    /* ① 酒馆：固定列宽 + 去「史实名将」标 */
+    /* ① 征召大厅：固定列宽 + 去「史实名将」标 */
     let inn80 = c80.cells.findIndex((x) => x.build && x.build.id === 'kezhan');
     if (inn80 < 0) {
       inn80 = c80.cells.findIndex((x) => !x.build && !x.official);
@@ -4992,7 +4992,7 @@ if (svBtn) {
     G.ui.openInn();
     await sleep(130);
     const tbl80 = document.querySelector('#modal-root .inn-tbl');
-    check('v80：酒馆表固定列宽（table-layout: fixed + colgroup ×10）',
+    check('v80：征召大厅表固定列宽（table-layout: fixed + colgroup ×10）',
       !!tbl80 && window.getComputedStyle(tbl80).tableLayout === 'fixed'
       && tbl80.querySelectorAll('colgroup col').length === 10);
     const colsA80 = tbl80 ? Array.from(tbl80.querySelectorAll('colgroup col')).map((c) => c.getAttribute('class')).join(',') : '';
@@ -5042,7 +5042,7 @@ if (svBtn) {
     const mr80 = document.querySelector('#modal-root');
     check('v80：兵营页只剩一处标题（重复标题 / 工位行 / 解锁计数全撤）',
       (mr80.innerHTML.match(/兵种整备/g) || []).length === 1
-      && mr80.textContent.indexOf('募兵训练营') < 0 && mr80.textContent.indexOf('队列位') < 0
+      && mr80.textContent.indexOf('募兵军营') < 0 && mr80.textContent.indexOf('队列位') < 0
       && mr80.textContent.indexOf('已解锁') < 0);
     check('v90.64：募兵营左列清单 / 右详情（无分页键）', (function () {
       return !mr80.querySelector('[data-action="train-tab"]')
@@ -5888,7 +5888,7 @@ if (svBtn) {
 
     const c86 = G.currentCity();
     c86.cells = c86.cells || [];
-    /* P-12：研习所科技面板 —— 按钮「研究(旧币 …)」无 NaN（真实渲染） */
+    /* P-12：科研中心科技面板 —— 按钮「研究(旧币 …)」无 NaN（真实渲染） */
     if (!c86.cells.some((x) => x && x.build && x.build.id === 'shuyuan')) {
       for (let i = 0; i < c86.cells.length; i++) { if (!c86.cells[i].build) { c86.cells[i] = { build: { id: 'shuyuan', lvl: 10 } }; break; } }
     }
@@ -6780,7 +6780,7 @@ if (svBtn) {
 
     /* ② 容量悬停分账（真渲染 title） */
     const tip158 = document.querySelector('#res-bar .res-line .amt').getAttribute('title') || '';
-    check('v89.158① 容量悬停分账（真渲染：上限 + 基础/货仓 + 现有）',
+    check('v89.158① 容量悬停分账（真渲染：上限 + 基础/战储仓 + 现有）',
       tip158.indexOf('上限') >= 0 && tip158.indexOf('现有') >= 0
         && (tip158.indexOf('基础储量') >= 0 || tip158.indexOf('级合计') >= 0),
       tip158.split('\n').join(' | '));
@@ -6873,14 +6873,14 @@ if (svBtn) {
 
   console.log('\n--- §160. 逾溢折损 / 自动升级顺延（v89.160 · 真实 DOM） ---');
   {
-    /* ① 真渲染：货仓面板给出折损规则与"当前超出上限" */
+    /* ① 真渲染：战储仓面板给出折损规则与"当前超出上限" */
     const c160 = G.currentCity();
     const cap160 = G.storeCapOf(c160, 'grain');   /* v89.212（老板 1）：按资源上限（堆场分账） */
     const bkG160 = c160.res.grain, bkAt160 = G.state.overflowAt, bkW160 = G.state.world.elapsed;
     c160.res.grain = cap160 + 123456;
     G.ui.openStore();
     let m160 = document.querySelector('#modal-root').innerHTML;
-    check('v89.160① 货仓面板真渲染「逾溢折损」规则（含现实换算）+ 当前超出上限',
+    check('v89.160① 战储仓面板真渲染「逾溢折损」规则（含现实换算）+ 当前超出上限',
       m160.indexOf('逾溢折损') >= 0 && m160.indexOf('当前超出上限') >= 0
       && m160.indexOf('游戏日（现实约') >= 0 && m160.indexOf('折损 25%') >= 0);
     G.ui.closeAllModals();
@@ -8849,7 +8849,7 @@ console.log('\n--- §180. 拆械与 live 滚动（v89.180） ---');
     ['grain', 'wood', 'stone', 'iron'].forEach((k) => { c211.res[k] = Math.max(c211.res[k] || 0, 9999999); });
     const q0_211 = G.trainQueuesOf(c211, w211, 'craft').length;
     /* v89.229（兵种重构）：面板**统一**（器械兵与常备兵同屏，按组分页）——
-       旧的"传陈旧训练营格 → 硬回落到作坊"语义随 filter 参退役：
+       旧的"传陈旧军营格 → 硬回落到作坊"语义随 filter 参退役：
        器械路径 = 从作坊打开（组 3 尖端武装）；工位仍由选中兵种 craft 解析。 */
     G.ui.openTroops(w211);
     await sleep(220);
@@ -8905,7 +8905,7 @@ console.log('\n--- §180. 拆械与 live 滚动（v89.180） ---');
 
   /* ============================================================
    * §212e（v89.212 · 老板 1）：堆场按资源分账（真 DOM）——
-   * 货仓面板四行各显各的上限 / 城外面板「另加<资源>上限」
+   * 战储仓面板四行各显各的上限 / 城外面板「另加<资源>上限」
    * ============================================================ */
   try {
     const c212e = G.currentCity() || G.state.cities[0];
@@ -8915,11 +8915,11 @@ console.log('\n--- §180. 拆械与 live 滚动（v89.180） ---');
       g212e.length = 0;
       g212e.push({ id: 'x1', type: 'farm', lv: 2 }, { id: 'x2', type: 'forest', lv: 1 },
         { id: 'x3', type: 'quarry', lv: 1 }, { id: 'x4', type: 'mine', lv: 1 });
-      /* ① 货仓面板：四行资源各显各的上限（粮 2 块 > 木/石/铁 各 1 块） */
+      /* ① 战储仓面板：四行资源各显各的上限（粮 2 块 > 木/石/铁 各 1 块） */
       G.ui.openStore();
       await sleep(320);
       const caps212e = Array.from(document.querySelectorAll('#modal-root .store-row .cap')).map((el) => el.textContent);
-      check('§212e① 货仓面板：四行资源各显各的上限（粮 ≠ 木 = 石 = 铁）', caps212e.length === 4
+      check('§212e① 战储仓面板：四行资源各显各的上限（粮 ≠ 木 = 石 = 铁）', caps212e.length === 4
         && !!caps212e[0] && !!caps212e[1] && caps212e[0] !== caps212e[1]
         && caps212e[1] === caps212e[2] && caps212e[2] === caps212e[3],
         JSON.stringify(caps212e));

@@ -368,7 +368,7 @@
   B.majiu = function (k) {
     var s = thatch(24, 22, 28, 9, k);
     s += wallBlock(11, 31, 26, 16, k) +
-      /* 车库栅栏开口 */
+      /* 载具研究所栅栏开口 */
       '<rect x="15" y="36" width="18" height="11" fill="' + P.woodLo + '" opacity=".55"/>' +
       '<g stroke="' + P.woodMd + '" stroke-width="1.2">' +
       '<line x1="18" y1="36" x2="18" y2="47"/><line x1="24" y1="36" x2="24" y2="47"/><line x1="30" y1="36" x2="30" y2="47"/></g>' +

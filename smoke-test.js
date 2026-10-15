@@ -390,16 +390,16 @@
   for (var ip = 0; ip < 60; ip++) G.tickOnce(); // 交易站1级1500s = 50现实秒@30×
   check('交易站建成且 pending 清除', s.cities[0].cells[idxP].build && s.cities[0].cells[idxP].build.id === 'shichang' && s.cities[0].cells[idxP].pending === null);
 
-  console.log('\n===== 5. 城内建造（训练营/研习所）=====');
+  console.log('\n===== 5. 城内建造（军营/科研中心）=====');
   var idxJ = s.cities[0].cells.findIndex(function (c) { return !c.build && !c.pending; });
   var r4a = G.buildAt(s.cities[0].id, idxJ, 'junying');
-  check('建造训练营', r4a.ok === true, r4a.msg);
+  check('建造军营', r4a.ok === true, r4a.msg);
   var idxS = s.cities[0].cells.findIndex(function (c) { return !c.build && !c.pending; });
   var r4b = G.buildAt(s.cities[0].id, idxS, 'shuyuan');
-  check('建造研习所', r4b.ok === true, r4b.msg);
-  for (var i4 = 0; i4 < 40; i4++) G.tickOnce(); // 训练营600s+研习所960s = 52现实秒@30×
-  check('训练营建成', s.cities[0].cells[idxJ].build && s.cities[0].cells[idxJ].build.id === 'junying');
-  check('研习所建成', s.cities[0].cells[idxS].build && s.cities[0].cells[idxS].build.id === 'shuyuan');
+  check('建造科研中心', r4b.ok === true, r4b.msg);
+  for (var i4 = 0; i4 < 40; i4++) G.tickOnce(); // 军营600s+科研中心960s = 52现实秒@30×
+  check('军营建成', s.cities[0].cells[idxJ].build && s.cities[0].cells[idxJ].build.id === 'junying');
+  check('科研中心建成', s.cities[0].cells[idxS].build && s.cities[0].cells[idxS].build.id === 'shuyuan');
 
   console.log('\n===== 6. 科技研究 =====');
   var r5 = G.systems.research('zhongzhi');
@@ -417,7 +417,7 @@
   for (var i6 = 0; i6 < 10; i6++) G.tickOnce();
   check('步行机入城', s.cities[0].army.buxingji === 10);
   var r7 = G.train('zhencha', 1, s.cities[0].id);
-  check('侦察单元需研习所2级未满足', r7.ok === false, r7.msg);
+  check('侦察单元需科研中心2级未满足', r7.ok === false, r7.msg);
 
   console.log('\n===== 8. 战斗模拟 =====');
   var res = G.battle.simulate({ daodanche: 1500, dunwei: 100 }, null, { buxingji: 2000, buxingji: 500 }, 0, null);
@@ -1036,7 +1036,7 @@
   check('聚合补算能结算队列完成', S19.queues.build.length <= q19 + 1,
     '队列 ' + S19.queues.build.length + ' 个');
 
-  console.log('\n===== 20. 建筑功能（酒馆/招募站/货仓/交易站/车库）=====');
+  console.log('\n===== 20. 建筑功能（征召大厅/英雄枢纽/战储仓/交易站/载具研究所）=====');
   var S20 = G.state;
   var fs20 = require('fs'), path20 = require('path');
   var c20 = S20.cities[0];
@@ -1048,17 +1048,17 @@
     return true;
   }
 
-  console.log('  --- 酒馆招募 ---');
+  console.log('  --- 征召大厅招募 ---');
   S20.generals.length = 1;                    // 只留初始英雄
-  check('无酒馆时不可招募', (function () {
+  check('无征召大厅时不可招募', (function () {
     c20.cells.forEach(function (c) { if (c.build && c.build.id === 'kezhan') c.build = null; });
     return !G.canRecruitGeneral().ok;
   })(), G.canRecruitGeneral().msg);
 
-  check('建造酒馆与招募站', putBldg('kezhan', 3) && putBldg('zhaoxianguan', 5));
-  check('酒馆等级可读', G.innLevel() === 3, 'Lv' + G.innLevel());
+  check('建造征召大厅与英雄枢纽', putBldg('kezhan', 3) && putBldg('zhaoxianguan', 5));
+  check('征召大厅等级可读', G.innLevel() === 3, 'Lv' + G.innLevel());
   var cands20 = G.innRefresh();
-  check('候选数 = 酒馆等级（每级1位）', cands20.length === 3, cands20.length + ' 位');
+  check('候选数 = 征召大厅等级（每级1位）', cands20.length === 3, cands20.length + ' 位');
   check('候选含四维属性', cands20[0].tong > 0 && cands20[0].nz > 0 && cands20[0].yw > 0 && cands20[0].zm > 0,
     '统' + cands20[0].tong + ' 内' + cands20[0].nz + ' 勇' + cands20[0].yw + ' 智' + cands20[0].zm);
   check('候选带资质字段', !!DATA.GEN_RANK_BY_ID[cands20[0].rank], cands20[0].rank);
@@ -1098,14 +1098,14 @@
   check('花金可另请一批', rr20.ok === true, rr20.msg);
   check('候选数量恢复', G.innRefresh(true).length === 3);
 
-  /* v89.62（老板）：「增加自动招募按钮，可设置当酒馆刷新出什么品质的时候自动招募，
-     直至达到招募站空位上限」—— 这条**真跑一遍**（源断言抓不到运行时错误）：
+  /* v89.62（老板）：「增加自动招募按钮，可设置当征召大厅刷新出什么品质的时候自动招募，
+     直至达到英雄枢纽空位上限」—— 这条**真跑一遍**（源断言抓不到运行时错误）：
      手工注入 3 位候选（凡人 / 进化体 / 觉醒体），门槛设"进化体"，
-     则应招走进化体与觉醒体（2 人）、凡人留下（未达门槛），且不超招募站容量。 */
-  check('v89.64：酒馆在**后台**也会换批（tickOnce 挂 innRefresh → 自动招募才可能被触发）', (function () {
+     则应招走进化体与觉醒体（2 人）、凡人留下（未达门槛），且不超英雄枢纽容量。 */
+  check('v89.64：征召大厅在**后台**也会换批（tickOnce 挂 innRefresh → 自动招募才可能被触发）', (function () {
     var st = stripComment(require('fs').readFileSync(require('path').join(__dirname, 'js', 'state.js'), 'utf8'));
     var tick = codeOf(st, 'GAME.tickOnce = function');
-    /* 老板「酒馆出现相应要求的英雄时触发招募」——若只在打开酒馆时才换批，
+    /* 老板「征召大厅出现相应要求的英雄时触发招募」——若只在打开征召大厅时才换批，
        后台永远不会"出现相应要求的英雄"，自动招募也就永远不触发。 */
     return /GAME\.innRefresh\(\)/.test(tick) && /GAME\.innAutoRun/.test(tick);
   })());
@@ -1140,28 +1140,28 @@
     return r.n === 2 && left.length === 1 && left[0] === 'fan' && inCity <= cap;
   })(), '招走 ' + 2 + ' 人 · 门槛外留下凡人 1 人');
 
-  console.log('  --- 招募站容量 ---');
-  /* v64（老板）：「根据**该城的招募站等级**有相应空位」——
+  console.log('  --- 英雄枢纽容量 ---');
+  /* v64（老板）：「根据**该城的英雄枢纽等级**有相应空位」——
      `generalCap()`（当前城一格卡全境）已删，改为按城的 `genSlotsOf(city)`。 */
-  check('英雄席位 = 该城招募站等级', G.genSlotsOf(c20) === 5 && G.genSlotsTotal() >= 5,
+  check('英雄席位 = 该城英雄枢纽等级', G.genSlotsOf(c20) === 5 && G.genSlotsTotal() >= 5,
     '本城 ' + G.genSlotsOf(c20) + ' 席 · 全境合计 ' + G.genSlotsTotal() + ' 席');
   var keep20 = S20.generals.slice();
   while (S20.generals.length < 5) S20.generals.push(G.makeGeneral('测试将' + S20.generals.length, 1, 'idle', c20.id, false));
   var full20 = G.canRecruitGeneral();
   check('满员时拒绝招募', full20.ok === false, full20.msg);
-  check('满员提示指向招募站', /招募站/.test(full20.msg));
+  check('满员提示指向英雄枢纽', /英雄枢纽/.test(full20.msg));
   S20.generals.length = 0; keep20.forEach(function (g) { S20.generals.push(g); });
 
-  console.log('  --- 货仓储量 ---');
-  check('无货仓时为基础储量', (function () {
+  console.log('  --- 战储仓储量 ---');
+  check('无战储仓时为基础储量', (function () {
     c20.cells.forEach(function (c) { if (c.build && c.build.id === 'cangku') c.build = null; });
     /* v79：储量吃"名城/威望/主城/神器"加成 —— 期望值同步走唯一汇总口 */
     /* v89.141：容量多一项"城外露天"（纯加法）——期望值同步加 extStoreCapOf */
     return G.storeCap() === Math.round(2000000 * (1 + G.cityBonusNum(G.currentCity(), 'storePct')))
       + G.extStoreCapOf(G.currentCity());
   })(), U.fmt(G.storeCap()));
-  check('建造货仓', putBldg('cangku', 3));
-  check('货仓提升储量上限（每级+200万）',
+  check('建造战储仓', putBldg('cangku', 3));
+  check('战储仓提升储量上限（每级+200万）',
     G.storeCap() === Math.round(6000000 * (1 + G.cityBonusNum(G.currentCity(), 'storePct')))
       + G.extStoreCapOf(G.currentCity()), U.fmt(G.storeCap()));
   /* v89.212（老板 1）：两项均改**粮自己的**上限口径（城外堆场按资源分账）——
@@ -1308,20 +1308,20 @@
       && /case 'mk-scale'/.test(m);
   })());
 
-  console.log('  --- 车库作为机车前置 ---');
-  check('伏击车需车库1级', DATA.TROOPS.fujiche.unlock.majiu === 1);
-  check('主战机甲需车库3级', DATA.TROOPS.zhuzhan.unlock.majiu === 3);
-  check('狂猎需车库4级', DATA.TROOPS.kuanglie.unlock.majiu === 4);
+  console.log('  --- 载具研究所作为机车前置 ---');
+  check('伏击车需载具研究所1级', DATA.TROOPS.fujiche.unlock.majiu === 1);
+  check('主战机甲需载具研究所3级', DATA.TROOPS.zhuzhan.unlock.majiu === 3);
+  check('狂猎需载具研究所4级', DATA.TROOPS.kuanglie.unlock.majiu === 4);
   var chkM20 = G.canTrain('fujiche');
-  check('未建车库时伏击车不可训练', chkM20.ok === false && /车库/.test(chkM20.msg), chkM20.msg);
+  check('未建载具研究所时伏击车不可训练', chkM20.ok === false && /载具研究所/.test(chkM20.msg), chkM20.msg);
 
   console.log('  --- 功能归属与自动存档 ---');
   var uiSrc20 = fs20.readFileSync(path20.join(__dirname, 'js', 'ui.js'), 'utf8');
   var mainSrc20 = fs20.readFileSync(path20.join(__dirname, 'js', 'main.js'), 'utf8');
   check('建筑功能入口表存在', /BLDG_FUNC/.test(uiSrc20));
-  /* v89.80（老板）：「车库去除"座驾装备"的建筑菜单及相应内容」——
+  /* v89.80（老板）：「载具研究所去除"座驾装备"的建筑菜单及相应内容」——
      majiu 从"必须有菜单"的名单里移出，并**反向钉住**（无菜单项 → 缺 BLDG_FUNC 项时
-     "功能"整块不渲染，这正是老板要的：点车库格只剩属性行）。 */
+     "功能"整块不渲染，这正是老板要的：点载具研究所格只剩属性行）。 */
   ['junying', 'xiaochang', 'shuyuan', 'kezhan', 'zhaoxianguan', 'shichang', 'cangku'].forEach(function (bid) {
     check('功能归属：' + bid, new RegExp(bid + ':').test(uiSrc20.match(/var BLDG_FUNC = \{[\s\S]*?\};/)[0]));
   });
@@ -1382,7 +1382,7 @@
   check('优先升级等级最低者（v89.126：围墙占格后，未建不参与候选 —— 与其它建筑一致）', (function () {
     if (!(au1 && au1.target) || au1.target.lv !== wantLv) return false;
     /* 旧口径：围墙"永远存在（Lv0）"必然最低 → 自动升级先修墙；
-       新口径：围墙占格、未建则不在候选里（和研习所/练兵场等一样，需玩家先建）——
+       新口径：围墙占格、未建则不在候选里（和科研中心/练兵场等一样，需玩家先建）——
        自动升级只做"升级"，不代建未建建筑。 */
     var anyWallCell = S21.cities.some(function (ct) {
       return (ct.cells || []).some(function (x) { return x.build && x.build.id === 'chengqiang'; });
@@ -1870,18 +1870,18 @@
       return true;
     })(), DATA.GEN_RANKS.map(function (r) { return r.price + 'x'; }).join(' '));
 
-    /* 权重随酒馆等级倾斜：高级酒馆更容易出高资质 */
+    /* 权重随征召大厅等级倾斜：高级征召大厅更容易出高资质 */
     var w1 = G.rankWeights(1), w10 = G.rankWeights(10);
     function pctOf(ws, id) {
       var t = 0; ws.forEach(function (x) { t += x.w; });
       var v = 0; ws.forEach(function (x) { if (x.rank.id === id) v = x.w; });
       return v / t * 100;
     }
-    /* v66（老板）：「酒馆天启体级英雄出现概率降低 10 倍，其他高资质降低 8、6 啥的」
+    /* v66（老板）：「征召大厅天启体级英雄出现概率降低 10 倍，其他高资质降低 8、6 啥的」
        v73（老板）：「限制高资质英雄的直接获取，概率再降 10 倍」—— 累计口径：
        天启体 ÷100 · 觉醒体 ÷80 · 进化体 ÷60（v66 的 ÷10/8/6 之后再各 ÷10），低资质两轮不动。
        断言写成"倍率"而不是写死数字，将来老板再调档位时只改 CUT 一处。 */
-    /* v89.62（老板）：「觉醒体、天启体的酒馆刷新频率还是太高了，再降低 5 倍概率」
+    /* v89.62（老板）：「觉醒体、天启体的征召大厅刷新频率还是太高了，再降低 5 倍概率」
        —— 仍在 v66/v73 的"倍率"口径上加码：天启体 ÷500 · 觉醒体 ÷400 · 进化体不动（÷60）。
        断言写成倍率（不是写死数字），老板再调档位时仍只改 CUT 一处。 */
     var CUT = { tian: 500, ming: 400, ying: 60 };
@@ -1901,21 +1901,21 @@
       DATA.GEN_RANKS.forEach(function (r) { w[r.id] = r.w; });
       return w.fan === 50 && w.liang === 27;
     })());
-    check('实测：酒馆1级 天启体概率 ≈0.005%（v66·v73·v89.62 三轮共 ÷500）',
+    check('实测：征召大厅1级 天启体概率 ≈0.005%（v66·v73·v89.62 三轮共 ÷500）',
       Math.abs(pctOf(w1, 'tian') - 0.005) < 0.002,
       pctOf(w1, 'tian').toFixed(3) + '%');
     check('结构：权重下限不再吃掉这次下调（旧写法 Math.max(0.5, …) 会把 0.2 抬回 0.5）', (function () {
       var t = null;
       G.rankWeights(1).forEach(function (x) { if (x.rank.id === 'tian') t = x; });
       return !!t && t.w < 0.3;
-    })(), '酒馆1级 天启体权重 ' + (function () {
+    })(), '征召大厅1级 天启体权重 ' + (function () {
       var t = null;
       G.rankWeights(1).forEach(function (x) { if (x.rank.id === 'tian') t = x; });
       return t ? t.w.toFixed(2) : '?';
     })());
-    check('酒馆10级 天启体概率上升', pctOf(w10, 'tian') > pctOf(w1, 'tian'),
+    check('征召大厅10级 天启体概率上升', pctOf(w10, 'tian') > pctOf(w1, 'tian'),
       pctOf(w1, 'tian').toFixed(2) + '% → ' + pctOf(w10, 'tian').toFixed(2) + '%');
-    check('酒馆10级 凡人概率下降', pctOf(w10, 'fan') < pctOf(w1, 'fan'),
+    check('征召大厅10级 凡人概率下降', pctOf(w10, 'fan') < pctOf(w1, 'fan'),
       pctOf(w1, 'fan').toFixed(1) + '% → ' + pctOf(w10, 'fan').toFixed(1) + '%');
 
     /* 抽样：统计各资质实际出现率 */
@@ -2378,10 +2378,10 @@
       && /data-view="ext"[\s\S]{0,90}城外/.test(htmlSrc24b));
     check('中央不再有子页签那一行', !/id="subtabs"/.test(htmlSrc24b) && !/data-action="city-sub"/.test(htmlSrc24b));
     check('openPanel 生成的弹窗带关闭按钮', /data-action="close-modal"/.test(uiSrc24.slice(uiSrc24.indexOf('ui.openPanel = function'), uiSrc24.indexOf('ui.openPanel = function') + 1400)));
-    /* v24（需求 8）：训练营入口要带"哪一座训练营"，否则队列不知道挂给谁 */
-    check('训练营入口指向募兵面板并带训练营下标',
+    /* v24（需求 8）：军营入口要带"哪一座军营"，否则队列不知道挂给谁 */
+    check('军营入口指向募兵面板并带军营下标',
       /junying: \{ label: "⚔️ 募兵 · 兵种", act: "open-troops", withIdx: true \}/.test(uiSrc24));
-    check('研习所入口指向科技面板', /shuyuan: \{ label: "📜 科技 · 研究", act: "open-panel", view: "tech" \}/.test(uiSrc24));
+    check('科研中心入口指向科技面板', /shuyuan: \{ label: "📜 科技 · 研究", act: "open-panel", view: "tech" \}/.test(uiSrc24));
     check('锻造间入口 = 打造 + 熔铸强化（v89.140 老板 4：双按钮）',
       /tiejiangpu: \[\{ label: "⚒️ 打造", act: "open-forge" \}/.test(uiSrc24)
       && /"⚒️ 熔铸强化", act: "open-enhance"/.test(uiSrc24));
@@ -4108,9 +4108,9 @@
   console.log('  --- 三个 bug 修复 ---');
   /* v89.158：口径从"排除 gold"改成"gold 分支放行"（只封增长不削存量）——
      三条结算路径（在线 tick / 离线 bulk / 离线溢出五折）都要有 gold 分支。 */
-  check('#10 旧币不受货仓上限（三条结算路径均按 gold 分支放行 · v89.158 新形态）',
+  check('#10 旧币不受战储仓上限（三条结算路径均按 gold 分支放行 · v89.158 新形态）',
     (stS16.match(/=== 'gold'/g) || []).length >= 3);
-  check('#10 实测：旧币可突破货仓上限', (function () {
+  check('#10 实测：旧币可突破战储仓上限', (function () {
     /* v73：改为**直接压测上限豁免** —— 旧写法依赖"产金 > 俸禄"的净流入，
        旧币闸门收紧后新城的净流入可正可负（税收 30/h vs 俸禄 40/h），
        与"旧币是否受仓容约束"这个待测点无关。现在：先放到 cap 之上，跑两 tick，
@@ -4121,7 +4121,7 @@
     st.res.gold = cap + 500000;
     G.tickOnce(); G.tickOnce();
     return st.res.gold > cap;
-  })(), '货仓 ' + U.fmt(G.storeCap()));
+  })(), '战储仓 ' + U.fmt(G.storeCap()));
   /* v29（需求 12）：打造面板改为「物品行」结构（左贴图 / 右：部位·品质·造价 / 下：打造） */
   check('#15/v90.44 打造面板「造价」只出现一次（入卡片悬停 tip，不重复列成本）',
     (uS16.match(/造价 ' \+ \(GAME\.costString\(f\.cost\)/g) || []).length === 1);
@@ -4319,7 +4319,7 @@
   console.log('  --- 自动研究 / 任务 / 兵种归属 ---');
   check('#8 自动研究已实现并接入主循环', typeof G.autoResearch === 'function' && /if \(GAME\.autoResearch\) GAME\.autoResearch\(\)/.test(stS16));
   check('#8 开关与自动建造同列', /toggle-auto-research/.test(uS16));
-  check('#8 无研习所时暂停（不报错）', (function () {
+  check('#8 无科研中心时暂停（不报错）', (function () {
     var st = G.state;
     st.settings.autoResearch = true;
     st.queues.tech = [];
@@ -4448,7 +4448,7 @@
     var a = total(0), b = total(10); G.techSet('dazao', 0);
     return b < a;
   })());
-  check('仓储扩容 → 货仓存量上升', (function () {
+  check('仓储扩容 → 战储仓存量上升', (function () {
     var c0 = stS.cities[0];
     c0.cells.forEach(function (c) { if (c.build && c.build.id === 'cangku') c.build.lvl = 5; });
     G.techSet('chucun', 0); var a = G.storeCap();
@@ -4645,7 +4645,7 @@
           if (!c.cells[k2].build && !c.cells[k2].official) { c.cells[k2].build = { id: 'junying', lvl: 5 }; bi = k2; break; }
         }
       }
-      if (bi < 0) return true;                  /* 无空格可造训练营 → 跳过（本测试不负责建城） */
+      if (bi < 0) return true;                  /* 无空格可造军营 → 跳过（本测试不负责建城） */
       if (c.cells[bi].build.lvl < 5) c.cells[bi].build.lvl = 5;
       c.res.grain = 5e6; c.res.wood = 5e6; c.res.iron = 5e6; c.res.pop = 5e4;
       var before = c.res.grain;
@@ -4898,7 +4898,7 @@
     var slow = G.march.travelTime(from, to, { fujiche: 10000, huopao: 1000 });
     return slow > fast;
   })());
-  check('补给站提速（1.5~6 倍）', (function () {
+  check('传送站提速（1.5~6 倍）', (function () {
     var c0 = st30.cities[0];
     /* v90.70：距离口径改球面六边环数（+60y ≈ 23 环，避开近距 minRealSec 保底） */
     var from = { x: c0.x, y: c0.y, cityId: c0.id }, to = { x: c0.x, y: c0.y + 60, ci: _ciOf(c0.x, c0.y + 60) };
@@ -5132,7 +5132,7 @@
 
   /* ============================================================
    * 31. v19：十项体验修复（升级不锁功能 / 侧栏精简 / 弹窗统一 /
-   *     菜单分组 / 行军菜单 / 建筑移动与改建 / 货仓多建）
+   *     菜单分组 / 行军菜单 / 建筑移动与改建 / 战储仓多建）
    * ============================================================ */
   console.log('\\n===== 31. v19：十项体验修复 =====');
   var st31 = G.newGame({ name: 'v19验收', cityName: '灰岗' });
@@ -5148,9 +5148,9 @@
   check('建造面板不再写「需等完工」备注（需求 5）', !/新建建筑需等待完工后才能使用/.test(uS31));
   check('城外地块升级中标注「施工中不停产」', /施工中不停产/.test(uS31));
   check('城外地块升级仍展示当前产量', /当前产出（施工中不停产）/.test(uS31));
-  check('实测：升级中训练营仍可募兵', (function () {
+  check('实测：升级中军营仍可募兵', (function () {
     var s = G.state, c = s.cities[0];
-    govMax(c);   /* v68：政务厅拉满 —— 本段专注"升级中的训练营"，不测总闸；防 if(!r.ok)return true 静默弱化 */
+    govMax(c);   /* v68：政务厅拉满 —— 本段专注"升级中的军营"，不测总闸；防 if(!r.ok)return true 静默弱化 */
     s.res.grain = 1e8; s.res.wood = 1e8; s.res.stone = 1e8; s.res.iron = 1e8;
     var i = -1;
     for (var k = 0; k < c.cells.length; k++) { if (!c.official && !c.cells[k].build && !c.cells[k].pending) { i = k; break; } }
@@ -5410,15 +5410,15 @@
     stripComment(uS31).indexOf('已完成</span>') < 0
     && stripComment(uS31).indexOf('toggle-done-quests') < 0);
 
-  /* ---- ⑩ 货仓解除数量限制 ---- */
-  console.log('  --- ⑩ 货仓多建 ---');
-  check('货仓已移出唯一建筑表', (function () {
+  /* ---- ⑩ 战储仓解除数量限制 ---- */
+  console.log('  --- ⑩ 战储仓多建 ---');
+  check('战储仓已移出唯一建筑表', (function () {
     return !!G.UNIQUE_BUILDINGS && !G.UNIQUE_BUILDINGS.cangku;
   })(), '唯一建筑 ' + Object.keys(G.UNIQUE_BUILDINGS || {}).length + ' 项');
   check('唯一建筑表为单一份数据源（ui 不再复制）',
     /var UNIQUE = GAME\.UNIQUE_BUILDINGS;/.test(uS31) && !/var UNIQUE = \{[^}]*cangku/.test(uS31));
   check('GAME.buildingLevelSum 已实现（多建建筑求和）', typeof G.buildingLevelSum === 'function');
-  check('storeCap 按本城货仓等级求和（v60 · v89.158 拆账在 storePartsOf · v89.212 按资源带 key）',
+  check('storeCap 按本城战储仓等级求和（v60 · v89.158 拆账在 storePartsOf · v89.212 按资源带 key）',
     /GAME\.storeCapOf = function/.test(dS31)
     && /buildingLevelSum\(city, 'cangku'\)/.test(codeOf(dS31, 'GAME.storePartsOf = function'))
     /* v89.212（老板 1）：storeCapOf 带 key（按资源分账）—— 转发形态 = sp + 按 key 取 capByRes
@@ -5426,7 +5426,7 @@
     && /var sp = GAME\.storePartsOf\(city\)/.test(codeOf(dS31, 'GAME.storeCapOf = function'))
     && /sp\.capByRes\[key\]/.test(codeOf(dS31, 'GAME.storeCapOf = function'))
     && /storeCapOf\(GAME\.currentCity\(\)\)/.test(codeOf(dS31, 'GAME.storeCap = function')));
-  check('实测：连建两座货仓成功', (function () {
+  check('实测：连建两座战储仓成功', (function () {
     var s = G.state, c = s.cities[0];
     s.res.grain = 1e8; s.res.wood = 1e8; s.res.stone = 1e8; s.res.iron = 1e8;
     c.cells.forEach(function (x) { if (x.build && x.build.id === 'minfang') x.build.lvl = Math.max(5, x.build.lvl || 1); });   /* v89.224：新前置夹具（居所 Lv5） */
@@ -5443,7 +5443,7 @@
     }
     return ok === 2;
   })());
-  check('实测：储量随货仓等级叠加', (function () {
+  check('实测：储量随战储仓等级叠加', (function () {
     var s = G.state, c = s.cities[0];
     var sum = G.buildingLevelSum(c, 'cangku');
     var cap = G.storeCap();
@@ -5451,8 +5451,8 @@
       + G.extStoreCapOf(c);   /* v89.141：加法项 */
   })());
   /* v89.158（老板 1）：文案升级 —— "本仓储量"改**本座**口径、"全境"改"本城"（v60 起按城），
-     并加"分账"（悬停/货仓面板同读 GAME.storePartsOf）。 */
-  check('货仓面板区分「本座」与「本城」储量（v89.158 口径）',
+     并加"分账"（悬停/战储仓面板同读 GAME.storePartsOf）。 */
+  check('战储仓面板区分「本座」与「本城」储量（v89.158 口径）',
     /本座储量/.test(uS31) && /本城储量上限/.test(uS31) && /多仓叠加/.test(uS31));
 
   /* ---- 需求 4b：会长长的视图接分页（固定界面尺寸） ---- */
@@ -5467,7 +5467,7 @@
     && /ui\.pagerHTML\('gen', pool\.length, ui\.GEN_PER\)/.test(uS31)
     && /for \(var i = 0; i < ui\.GEN_PER; i\+\+\)/.test(uS31));
   check('空席也渲染（看得出还差几位、能不能再招）',
-    /class="gen-row empty"/.test(uS31) && /招募站需 /.test(uS31));
+    /class="gen-row empty"/.test(uS31) && /英雄枢纽需 /.test(uS31));
   /* v89.112（老板「小小弹窗一堆下拉条」）：每页 10 → **ui.EQUIP_PER = 8**
      （4 列 × 2 行满排，10 件时第 3 行顶出 85px）；且弹窗模式改**弹窗内翻页**
      （旧 ui.pagerHTML 画到屏幕底部条，在弹窗里被遮罩盖住、点不到 —— 真 bug）。 */
@@ -5558,7 +5558,7 @@
   check('select-train 重绘**弹窗**（此前只重绘中央视图 → 点了没反应）',
     /case 'select-train': ui\._trainSel = el\.dataset\.troop; ui\.renderTroopsModal\(\); break;/.test(mS32));
   check('ui.renderTroopsModal 已实现', /ui\.renderTroopsModal = function/.test(uS32));
-  check('募兵面板有可点选的兵种卡（有训练营时）', (function () {
+  check('募兵面板有可点选的兵种卡（有军营时）', (function () {
     var s = G.state, c = s.cities[0];
     s.res.grain = 1e8; s.res.wood = 1e8; s.res.stone = 1e8; s.res.iron = 1e8;
     c.cells.forEach(function (x) { if (x.build && x.build.id === 'minfang') x.build.lvl = Math.max(5, x.build.lvl || 1); });   /* v89.224：新前置夹具（居所 Lv5） */
@@ -5834,7 +5834,7 @@
       && !/adjustTrainQty/.test(stripComment(mS33))
       && /data-action="train-max"/.test(uS33));
   check('输入框变更同步状态', /GAME\.syncTrainQty/.test(mS33) && /syncTrainQty\(e\.target\.value\)/.test(mS33));
-  check('实测：可点选兵种卡随训练营等级出现', (function () {
+  check('实测：可点选兵种卡随军营等级出现', (function () {
     var s = G.state, c = s.cities[0];
     s.res.grain = 1e8; s.res.wood = 1e8; s.res.stone = 1e8; s.res.iron = 1e8;
     c.cells.forEach(function (x) { if (x.build && x.build.id === 'minfang') x.build.lvl = Math.max(5, x.build.lvl || 1); });   /* v89.224：新前置夹具（居所 Lv5） */
@@ -5897,9 +5897,9 @@
     /ui\.setForgeQ = function/.test(uS33) && /data-action="forge-q"/.test(uS33)
     && !/ui\.modalPage\('forge' \+ q/.test(uS33));
   check('建造选择列表分页（9/页）', /ui\.modalPage\('buildpick', all, 9/.test(uS33));
-  /* v29（需求 15）：招募站不再重复一份英雄名录（顶栏「英雄」菜单已有），
+  /* v29（需求 15）：英雄枢纽不再重复一份英雄名录（顶栏「英雄」菜单已有），
      只讲它自己负责的房间数与升级路径 */
-  check('招募站不再有名录（不重复英雄菜单）', (function () {
+  check('英雄枢纽不再有名录（不重复英雄菜单）', (function () {
     var i = uS33.indexOf('ui.openHostel = function');
     if (i < 0) return false;
     var seg = uS33.slice(i, i + 3200);   /* v89.137：专精三档显示加长了两行 → 窗口随之放宽 */
@@ -6081,7 +6081,7 @@
   /* ---- 需求 5：备注型信息清理 ---- */
   console.log('  --- ⑤ 备注型信息清理 ---');
   var GONE34 = ['行军速度由', '出征耗粮=在城×2', '野地规则（v15）', '指挥×100=带兵上限',
-    '装备获取途径', '按「由弱到强」抽调', '每城研习所同时研究1项', '珠宝=赏赐忠诚',
+    '装备获取途径', '按「由弱到强」抽调', '每城科研中心同时研究1项', '珠宝=赏赐忠诚',
     '点击地块弹出操作', '1现实秒 = N游戏秒', '税率>50% 时民心', '一阶料采于野地',
     '新建建筑需等待完工后才能使用', '可去锻造间打造，或攻占城市缴获',
     '幸存者不足时可降低次要资源开工率'];
@@ -6233,8 +6233,8 @@
     var h = P35.html({ name: '铁枭', gender: 'male' }, 40);
     return /portrait-img/.test(h) && /portraits\/pool\/m_[a-z]+_\d+\.webp/.test(h) && h.indexOf('<svg') < 0;
   })());
-  /* v41（需求 2）：三处仍是三处，尺寸随版式变了 —— 清单行 40 / 右侧档案 84 / 酒馆 */
-  check('肖像接入三处显示（姓名清单 / 右侧档案 / 酒馆）',
+  /* v41（需求 2）：三处仍是三处，尺寸随版式变了 —— 清单行 40 / 右侧档案 84 / 征召大厅 */
+  check('肖像接入三处显示（姓名清单 / 右侧档案 / 征召大厅）',
     /ui\.faceOf\(g, 30\)/.test(uS35) && /ui\.faceOf\(g, 84\)/.test(uS35)
     && /ui\.faceOf\(\s*\{ name: c\.name/.test(uS35));
   check('肖像入口有防御（模块缺席退回 emoji，不崩）',
@@ -6686,7 +6686,7 @@
       && html.indexOf('data-action="ext-locked"') >= 0;
   })());
 
-  /* ---- 需求 8：每座训练营一条独立募兵队列 ---- */
+  /* ---- 需求 8：每座军营一条独立募兵队列 ---- */
   console.log('  --- ⑧ 兵营募兵队列 ---');
   check('队列位：1 + Lv5解锁 + Lv10解锁 = 1/2/3',
     G.trainQueueSlots(1) === 1 && G.trainQueueSlots(4) === 1 && G.trainQueueSlots(5) === 2
@@ -6695,9 +6695,9 @@
   check('下一个等待位解锁等级的提示正确',
     G.trainNextSlotLv(1) === 5 && G.trainNextSlotLv(5) === 10
     && G.trainNextSlotLv(10) === 12 && G.trainNextSlotLv(12) === 0);
-  check('队列按「城 + 训练营格」分组', /GAME\.trainQueueKey = function/.test(dS37)
+  check('队列按「城 + 军营格」分组', /GAME\.trainQueueKey = function/.test(dS37)
     && /q\.cityId === city\.id && \(q\.bIdx == null \? -1 : q\.bIdx\) === bIdx/.test(dS37));
-  check('每座训练营只有最早一条推进（其余 waiting）',
+  check('每座军营只有最早一条推进（其余 waiting）',
     /GAME\.advanceTrainQueues = function/.test(dS37)
     && /list\.forEach\(function \(q\) \{ q\.waiting = \(q !== running\); \}\)/.test(dS37));
   check('完成一条后剩余时间结转给下一条（不按整段重复推进）',
@@ -6708,19 +6708,19 @@
     (stS37.match(/GAME\.advanceTrainQueues\(/g) || []).length === 2
     && !/t\.elapsed \+= dtReal \* ts;/.test(stS37));
   check('旧档队列补 bIdx（读档迁移）', /q\.bIdx = GAME\.firstBarracksIdx \? GAME\.firstBarracksIdx\(c\) : -1;/.test(stS37));
-  check('募兵面板显示所属工位与本工位队列（v89.229：训练营 / 机工坊各一块）',
+  check('募兵面板显示所属工位与本工位队列（v89.229：军营 / 机工坊各一块）',
     /ui\.trainQueueBlock = function/.test(uS37) && /本营募兵队列/.test(uS37)
     && /本作坊制造队列/.test(uS37));
-  check('训练营入口带 data-idx（队列要知道挂给哪座）',
+  check('军营入口带 data-idx（队列要知道挂给哪座）',
     /withIdx: true/.test(uS37) && /case 'open-troops'/.test(mS37));
-  check('实测：同一训练营第二条排队（elapsed 保持 0）', (function () {
+  check('实测：同一军营第二条排队（elapsed 保持 0）', (function () {
     var st = G.state, c = st.cities[0];
     var bkQ = st.queues.train.slice();
     var bkArmy = JSON.stringify(c.army);
-    /* 找一座训练营并临时升到 Lv5（2 个队列位） */
+    /* 找一座军营并临时升到 Lv5（2 个队列位） */
     var bi = -1;
     for (var k = 0; k < c.cells.length; k++) if (c.cells[k].build && c.cells[k].build.id === 'junying') { bi = k; break; }
-    if (bi < 0) { st.queues.train = bkQ; return true; }   // 无训练营时跳过（本测试不负责建训练营）
+    if (bi < 0) { st.queues.train = bkQ; return true; }   // 无军营时跳过（本测试不负责建军营）
     var bkLv = c.cells[bi].build.lvl;
     c.cells[bi].build.lvl = 5;
     st.queues.train = [];
@@ -8395,7 +8395,7 @@
 /* ============================================================================
  * 第 41 节 · v28（需求 0-8）
  * ========================================================================== */
-console.log('\n--- 41. v28：数值口径 / 12 级专精 / 12 席英雄 / 训练营队列 / 批次 ---');
+console.log('\n--- 41. v28：数值口径 / 12 级专精 / 12 席英雄 / 军营队列 / 批次 ---');
 
 /* ---- 需求 0：数值口径 ---- */
 console.log('  --- ⓿ 战斗与行军数值 ---');
@@ -8558,7 +8558,7 @@ check('11/12 级造价由 costTable 按末段增速外推（不是逐张手写�
     && require('fs').readFileSync(require('path').join(__dirname, 'js', 'data.js'), 'utf8')
       .indexOf('function extRows(rows, n)') >= 0;
 })());
-check('等级驱动数组都补到 MAX_LEVEL_ABS 项（幸存者/仓储/补给站/城外产量/城外上限）', (function () {
+check('等级驱动数组都补到 MAX_LEVEL_ABS 项（幸存者/仓储/传送站/城外产量/城外上限）', (function () {
   /* v54：上限从"一律 12"变成"基准 12 + 名城加成"（旧都到 24），
      所以判据从"恰好 12 项"改成"**至少覆盖到最高可能等级**"——
      表短一级就是 `prod[23] === undefined` → 产量/幸存者直接 NaN。 */
@@ -8665,7 +8665,7 @@ check('最高等级只有一个出口：buildCapOf 的调用点不许被"改回�
   var d = stripComment(require('fs').readFileSync(require('path').join(__dirname, 'js', 'domain.js'), 'utf8'));
   var u = stripComment(require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8'));
   /* domain 5 处（围墙 / 城外升级 / 城内升级 / 自动建造城内 / 自动建造城外）
-     ui 7 处（城内弹窗 / 城外弹窗 / 招募站 / 城内格角标 / 政务厅角标 / 围墙弹窗 ×2） */
+     ui 7 处（城内弹窗 / 城外弹窗 / 英雄枢纽 / 城内格角标 / 政务厅角标 / 围墙弹窗 ×2） */
   return (d.match(/GAME\.buildCapOf\(/g) || []).length >= 5
     && (u.match(/GAME\.buildCapOf\(/g) || []).length >= 7
     /* 升级守卫里不许再有裸上限判断（专精档数判定走 domain 的唯一出口，另行计算） */
@@ -8702,7 +8702,7 @@ check('实测：满级（12）比 10 级多出真实的加成', (function () {
      否则这条断言会因"城是空的"而误报失败。 */
   var bkCells = c.cells.map(function (x) { return x.build ? JSON.parse(JSON.stringify(x.build)) : null; });
   var bkWall = c.wall ? JSON.parse(JSON.stringify(c.wall)) : null;   /* v89.128：环城槽快照 */
-  /* 训练营也要建出来 —— trainQueueSlots 的满级专精靠它，缺了它这条判据会假红 */
+  /* 军营也要建出来 —— trainQueueSlots 的满级专精靠它，缺了它这条判据会假红 */
   ['zhaoxianguan', 'cangku', 'minfang', 'junying'].forEach(function (bid) {
     var has = c.cells.some(function (x) { return x.build && x.build.id === bid; });
     if (has) return;
@@ -8735,7 +8735,7 @@ check('英雄左清单渲染整页 12 席，空席写明原因（v76）', (funct
   var html = G.ui.generalsHTML();
   var n = (html.match(/<div class="gen-row[\s"']/g) || []).length;
   return n >= G.ui.GEN_SLOTS && html.indexOf('class="gen-row empty"') >= 0
-    && html.indexOf('招募站需 ') >= 0;
+    && html.indexOf('英雄枢纽需 ') >= 0;
 })());
 check('实测：30 位英雄 → 每页 12 席、翻页可见（v76）', (function () {
   var s = G.state, backup = s.generals;
@@ -8764,9 +8764,9 @@ check('城市属性民心/民怨合并为一行', (function () {
   return h.indexOf('民心 / 民怨') >= 0 && h.indexOf('💢 民怨') < 0;
 })());
 
-/* ---- 需求 4/5：训练营队列 / 上限 ---- */
-console.log('  --- ④⑤ 训练营队列与募兵上限 ---');
-check('训练营建筑面板会列出本营队列（不再只有"可募兵种 N/18"）', (function () {
+/* ---- 需求 4/5：军营队列 / 上限 ---- */
+console.log('  --- ④⑤ 军营队列与募兵上限 ---');
+check('军营建筑面板会列出本营队列（不再只有"可募兵种 N/18"）', (function () {
   var u = require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8');
   return /var barQueue = '';/.test(u) && /barQueue = ui\.trainQueueBlock\(\{ idx: idx, lvl: bLv \}, c\)/.test(u)
     && /barQueue \+/.test(u);
@@ -8794,7 +8794,7 @@ check('实测：maxTrainCount 口径与 train 的校验一致（不会"按了上
 })());
 
 /* ---- 需求 8：募兵加速 ---- */
-console.log('  --- ⑧ 募兵加速 ---');check('加速按「城 + 训练营格」定位到那一条队列', (function () {
+console.log('  --- ⑧ 募兵加速 ---');check('加速按「城 + 军营格」定位到那一条队列', (function () {
   var y = require('fs').readFileSync(require('path').join(__dirname, 'js', 'systems.js'), 'utf8');
   return /S\.boostTrainQueue = function \(itemId, cityId, bIdx\)/.test(y)
     && /GAME\.trainQueuesOf\(city, bIdx\)/.test(y)
@@ -8805,9 +8805,9 @@ check('「每队列限 1 次」已落地（操典残页标了 once）', (functio
   (DATA.ITEMS || []).forEach(function (x) { if (x.id === 'hanxin_sanpian') it = x; });
   return !!it && it.once === true;
 })());
-check('实测：加速只影响指定训练营，另一营不受影响', (function () {
+check('实测：加速只影响指定军营，另一营不受影响', (function () {
   var c = G.state.cities[0], s = G.state;
-  /* 造两座训练营 */
+  /* 造两座军营 */
   var idxs = [];
   c.cells.forEach(function (x, i) { if (x.build && x.build.id === 'junying') idxs.push(i); });
   if (idxs.length < 2) {
@@ -10021,13 +10021,13 @@ check('作坊有独立的队列查询口与格位', (function () {
   return typeof G.craftWorkshopsOf === 'function' && typeof G.craftLevel === 'function'
     && typeof G.firstWorkshopIdx === 'function';
 })());
-check('器械不看训练营等级（造自行火炮不必先有 8 级训练营）', (function () {
+check('器械不看军营等级（造自行火炮不必先有 8 级军营）', (function () {
   var u = DATA.TROOPS.huopao.unlock;
   return !!u.junying && !!u.gongjiangzuofang
     && !/t\.craft && k === 'junying'\) continue/.test('') === true
     && /if \(t\.craft && k === 'junying'\) continue;/.test(require('fs').readFileSync(require('path').join(__dirname, 'js', 'domain.js'), 'utf8'));
 })());
-check('实测：器械入作坊队列、募兵入训练营队列，互不占位', (function () {
+check('实测：器械入作坊队列、募兵入军营队列，互不占位', (function () {
   var c = G.currentCity(), s = G.state;
   var bkCells = JSON.parse(JSON.stringify(c.cells));
   var wIdx = -1, sIdx = -1, bIdx = -1;
@@ -10309,7 +10309,7 @@ check('侧栏资源与驻军随所选城市变化', (function () {
   return /GAME\.cityProdPerSec\(c\)/.test(u) && /GAME\.cityFullName/.test(u)
     && typeof G.cityProdPerSec === 'function' && typeof G.prodBasePerHourOf === 'function';
 })());
-check('招募站不再重复英雄名录', (function () {
+check('英雄枢纽不再重复英雄名录', (function () {
   var u = require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8');
   var i = u.indexOf('ui.openHostel = function');
   var seg = u.slice(i, i + 2400);
@@ -11331,8 +11331,8 @@ console.log('\n===== 45. v60 城市归属与名城专有 =====');
     var a = V.cities[0], b = null;
     V.cities.forEach(function (c) { if (c.id === 'v60b') b = c; });
     if (!b) return false;
-    /* v64（老板）：「根据该城的招募站等级有相应空位」——
-       目标城**先把招募站建起来**（没有招募站 = 0 席 = 一个人也放不下） */
+    /* v64（老板）：「根据该城的英雄枢纽等级有相应空位」——
+       目标城**先把英雄枢纽建起来**（没有英雄枢纽 = 0 席 = 一个人也放不下） */
     if (!G.buildingLevel(b, 'zhaoxianguan')) {
       for (var i = 0; i < b.cells.length; i++) {
         if (!b.cells[i].official && !b.cells[i].build) { b.cells[i].build = { id: 'zhaoxianguan', lvl: 5 }; break; }
@@ -11346,12 +11346,12 @@ console.log('\n===== 45. v60 城市归属与名城专有 =====');
     var _m = (V.marches || [])[V.marches.length - 1];
     if (r.ok && _m) { _m.elapsed = _m.totalTime; G.march.tick(); }
     return r.ok && g.cityId === b.id && G.genCityOf(g).id === b.id;
-  })(), '目标城 5 级招募站 → 5 席');
+  })(), '目标城 5 级英雄枢纽 → 5 席');
   check('实测：目标城无空位时派遣被拦（席位按城）', (function () {
     var a = V.cities[0], b = null;
     V.cities.forEach(function (c) { if (c.id === 'v60b') b = c; });
     if (!b) return false;
-    /* 把 b 城的招募站降到 1 级 → 只 1 席；塞满后再派必被拒 */
+    /* 把 b 城的英雄枢纽降到 1 级 → 只 1 席；塞满后再派必被拒 */
     var zi = -1;
     b.cells.forEach(function (x, i) { if (x.build && x.build.id === 'zhaoxianguan') zi = i; });
     if (zi < 0) return false;
@@ -11561,7 +11561,7 @@ console.log('\n===== 45. v60 城市归属与名城专有 =====');
  *   兵营2个，其他建居所，位置也相对固定一下。城市的地块数量根据等级，数量你来定」
  *
  * 护栏分三层：
- *   ① **规则**：各 1 座 / 训练营 2 座 / 余为居所 —— 逐项数出来（不是看有没有"铺满"）；
+ *   ① **规则**：各 1 座 / 军营 2 座 / 余为居所 —— 逐项数出来（不是看有没有"铺满"）；
  *   ② **固定**：同等级逐格一致、跨等级同规则；政务厅落位与玩家城同公式；
  *   ③ **接线**：野外城市的弹窗/出征面板都要能看到，攻占后建筑与格数就地转正。
  * ============================================================ */
@@ -11577,18 +11577,18 @@ console.log('\n===== 46. v61 满配城市城内布局 =====');
     return m;
   }
 
-  console.log('  --- 规则：各 1 座 / 训练营 2 座 / 余为居所 ---');
+  console.log('  --- 规则：各 1 座 / 军营 2 座 / 余为居所 ---');
   /* v65（老板）：「城内建筑按照 6*8，政务厅靠右居中位置固定，怎么现在变成 4*8 了？」
      → 格数**不再按等级分档**，`sizeByLevel` 已删，改为唯一来源 `PLACE.size`。 */
   check('配置：CITY_PLAN 统一的 8×6 + **固定栏位 fixed（48 格）**', (function () {
     return !!PLACE && PLACE.size[0] === 8 && PLACE.size[1] === 6 && PLACE.sizeByLevel === undefined
       && PLACE.fixed instanceof Array && PLACE.fixed.length === 48
-      /* 行1（idx0-7）末三 = 车库·补给站·瞭望塔 */
+      /* 行1（idx0-7）末三 = 载具研究所·传送站·瞭望塔 */
       && PLACE.fixed[5] === 'majiu' && PLACE.fixed[6] === 'yizhan' && PLACE.fixed[7] === 'fenghuotai'
-      /* 行5（idx32-39）= 货仓×3·交易站·研习所·居所×3 */
+      /* 行5（idx32-39）= 战储仓×3·交易站·科研中心·居所×3 */
       && PLACE.fixed[32] === 'cangku' && PLACE.fixed[33] === 'cangku' && PLACE.fixed[34] === 'cangku'
       && PLACE.fixed[35] === 'shichang' && PLACE.fixed[36] === 'shuyuan'
-      /* 行6（idx40-47）= 基因·酒馆·招募站·锻造间·机工坊·练兵场·训练营×2 */
+      /* 行6（idx40-47）= 基因·征召大厅·英雄枢纽·锻造间·机工坊·练兵场·军营×2 */
       && PLACE.fixed[40] === 'honglusi' && PLACE.fixed[41] === 'kezhan' && PLACE.fixed[42] === 'zhaoxianguan'
       && PLACE.fixed[43] === 'tiejiangpu' && PLACE.fixed[44] === 'gongjiangzuofang' && PLACE.fixed[45] === 'xiaochang'
       && PLACE.fixed[46] === 'junying' && PLACE.fixed[47] === 'junying';
@@ -11597,7 +11597,7 @@ console.log('\n===== 46. v61 满配城市城内布局 =====');
     for (var lv = 1; lv <= 10; lv++) { if (countOf(G.cityPlanOf(lv)).guanfu !== 4) return false; }
     return true;
   })());
-  check('实测：固定布局计数（训练营×2 · 货仓×3 · 各功能建筑不缺）', (function () {
+  check('实测：固定布局计数（军营×2 · 战储仓×3 · 各功能建筑不缺）', (function () {
     var want = DATA.BUILD_ORDER.filter(function (b) { return b !== 'minfang' && b !== 'chengqiang'; });
     for (var lv = 1; lv <= 10; lv++) {
       var c = countOf(G.cityPlanOf(lv));
@@ -11616,7 +11616,7 @@ console.log('\n===== 46. v61 满配城市城内布局 =====');
       var plan = G.cityPlanOf(lv), c = countOf(plan);
       var empty = plan.cells.filter(function (x) { return !x.build; }).length;
       if (empty !== 0) return false;
-      if (c.minfang !== plan.total - 20) return false;   /* 政务厅4 + 车库/补给/瞭望3 + 货仓3/交易/研习5 + 基因…训练营×2=8 */
+      if (c.minfang !== plan.total - 20) return false;   /* 政务厅4 + 载具研究所/补给/瞭望3 + 战储仓3/交易/研习5 + 基因…军营×2=8 */
     }
     return true;
   })());
@@ -11639,7 +11639,7 @@ console.log('\n===== 46. v61 满配城市城内布局 =====');
   })());
   check('实测：固定栏位落点精确（各建筑在布局指定的格）', (function () {
     var plan = G.cityPlanOf(8), idAt = function (i) { return plan.cells[i].build && plan.cells[i].build.id; };
-    /* 车库/补给站/瞭望塔 = idx5/6/7；货仓×3+交易+研习 = idx32-36；行6 = idx40-47 */
+    /* 载具研究所/传送站/瞭望塔 = idx5/6/7；战储仓×3+交易+研习 = idx32-36；行6 = idx40-47 */
     return idAt(5) === 'majiu' && idAt(7) === 'fenghuotai'
       && idAt(32) === 'cangku' && idAt(35) === 'shichang' && idAt(36) === 'shuyuan'
       && idAt(40) === 'honglusi' && idAt(47) === 'junying';
@@ -11735,7 +11735,7 @@ console.log('\n===== 46. v61 满配城市城内布局 =====');
       /* v89.211 规则变更（老板 2）：围墙从影子格提取到环城槽（不占 cells）后，
          原墙格**补建居所** —— 居所 26→27（= total−21）；等级保留在槽。 */
       return nc.cells.length === want.total && nc.col === want.col && nc.row === want.row
-        && c.junying === 2 && c.cangku === 3 && c.minfang === want.total - 20   /* v91.19：货仓3 · 功能20格 */
+        && c.junying === 2 && c.cangku === 3 && c.minfang === want.total - 20   /* v91.19：战储仓3 · 功能20格 */
         && !!(nc.wall && nc.wall.build && nc.wall.build.id === 'chengqiang'
           && nc.wall.build.lvl === G.npcBuildLvOf(tgt))
         && nc.cells.filter(function (x) { return x.build && x.build.id === 'chengqiang'; }).length === 0;
@@ -11751,8 +11751,8 @@ console.log('\n===== 46. v61 满配城市城内布局 =====');
   })());
   check('实测：布局呈现含建筑名、居所数、地块与幸存者', (function () {
     var html = G.ui.planHTML(G.fortPlanOf({ x: 1, y: 1, level: 8, name: '青石营' }));
-    /* v70：货仓 1→4 之后 30 → 27；v89.126：围墙占格后 27 → 26 */
-    return html.indexOf('训练营 ×2') >= 0 && html.indexOf('货仓 ×3') >= 0
+    /* v70：战储仓 1→4 之后 30 → 27；v89.126：围墙占格后 27 → 26 */
+    return html.indexOf('军营 ×2') >= 0 && html.indexOf('战储仓 ×3') >= 0
       && html.indexOf('居所 ×28') >= 0
       && html.indexOf('8 × 6 = 48 格') >= 0 && html.indexOf('幸存者上限') >= 0;
   })());
@@ -12270,12 +12270,12 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
     }
     return bad.length === 0;
   })(), '1~10 级全为 8×6 = 48 格');
-  check('实测：48 格装得下"政务厅4 + 训练营2 + 其余13 种各1座（含围墙）"', (function () {
+  check('实测：48 格装得下"政务厅4 + 军营2 + 其余13 种各1座（含围墙）"', (function () {
     var cells = G.cityPlanOf(1).cells, c2 = {};
     cells.forEach(function (x) { if (x.build) c2[x.build.id] = (c2[x.build.id] || 0) + 1; });
     return c2.guanfu === 4 && c2.junying === 2 && c2.cangku === 3
       && Object.keys(c2).filter(function (k2) { return k2 !== 'minfang'; }).length === 14;
-  })(), '政务厅4 · 训练营2 · 货仓3 · 其余各1 · 居所28（固定栏位）');
+  })(), '政务厅4 · 军营2 · 战储仓3 · 其余各1 · 居所28（固定栏位）');
   check('结构：野外城市面板与一览表都写出格数（否则玩家只能猜）', (function () {
     var plan = codeOf(uS, 'ui.planHTML = function');
     var forts = codeOf(uS, 'ui.openForts = function');
@@ -12496,7 +12496,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
       return DATA.CITY_PERK[ty].name + ' ' + of(ty).toLocaleString();
     }).join(' · ');
   })());
-  /* ================= v89.80（老板五条：君主备注 / 英雄栏 Lv+排序 / 车库菜单 / 练兵场练兵 / 侦查分层） ================= */
+  /* ================= v89.80（老板五条：君主备注 / 英雄栏 Lv+排序 / 载具研究所菜单 / 练兵场练兵 / 侦查分层） ================= */
   check('v89.80：英雄栏默认按**等级从大到小**（直接验渲染行序，不重算排序）', (function () {
     /* ⚠️ 上一版判据是"拿同样的比较函数重排一遍，看首位是否一致"—— 那是**自证**：
        把产品的比较函数照抄一遍，产品写错也跟着错，等于没测。
@@ -12528,7 +12528,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
       for (var k = 1; k < lvs.length; k++) if (lvs[k] > lvs[k - 1]) return false;
       return lvs[0] === 41 && lvs[lvs.length - 1] === 1;   /* 最高在首、最低在末 */
     } finally { s.generals = backup; if (bakPage != null) G.ui._pages['gen'] = bakPage; }
-  })());  check('v89.80：车库菜单项已撤（点车库只剩属性行，装备仍走英雄档案/背包）', (function () {
+  })());  check('v89.80：载具研究所菜单项已撤（点载具研究所只剩属性行，装备仍走英雄档案/背包）', (function () {
     var tbl = (uS.match(/var BLDG_FUNC = \{[\s\S]*?\};/) || [''])[0];
     return tbl.indexOf('majiu') < 0
       && /if \(b\.id === 'majiu'\) extra/.test(uS);      /* 属性行保留 */
@@ -12613,7 +12613,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
   check('v89.81：库藏基准 = 该城**满配仓容**（满科技 + 满建筑 + 专精 + 档位 · 实算比对）', (function () {
     /* 老板：「为什么库藏只有这么点……资源应当按照其满科技，满建筑，建筑专精等所有加成的上限」
        判据：拿"仓储扩容拉满 + 满配影子城"**实算** storeCapOf，与 resByTier 逐档比对。
-       这条守卫是防"两套数各自漂移"的关键 —— 改了 BASE_STORE / 货仓座数 / 科技上限 /
+       这条守卫是防"两套数各自漂移"的关键 —— 改了 BASE_STORE / 战储仓座数 / 科技上限 /
        专精 / storePct 而忘了重算 resByTier 时，它会立刻红（否则库藏会悄悄失准）。 */
     var s = G.state, bad = [];
     try {
@@ -12692,15 +12692,15 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
   })());
   /* ================= v89.73（老板四条） ================= */
 
-  /* ① 酒馆封顶进化体 —— 觉醒体 / 天启体只能靠药草升档 */
-  check('v89.73：酒馆资质封顶进化体（普通掷档 + 史实名将直取两条链都过闸）', (function () {
+  /* ① 征召大厅封顶进化体 —— 觉醒体 / 天启体只能靠药草升档 */
+  check('v89.73：征召大厅资质封顶进化体（普通掷档 + 史实名将直取两条链都过闸）', (function () {
     if (typeof G.innCapRank !== 'function' || G.INN_RANK_CAP !== 'ying') return false;
     /* 上界：觉醒体 / 天启体一律截到进化体；下界：进化体及以下原样放行 */
     if (G.innCapRank(DATA.GEN_RANK_BY_ID.tian).id !== 'ying') return false;
     if (G.innCapRank(DATA.GEN_RANK_BY_ID.ming).id !== 'ying') return false;
     if (G.innCapRank(DATA.GEN_RANK_BY_ID.ying).id !== 'ying') return false;
     if (G.innCapRank(DATA.GEN_RANK_BY_ID.fan).id !== 'fan') return false;
-    /* 实测：酒馆满级掷 3000 次，一次都不许越界（只测函数不够 —— 漏接线照样过） */
+    /* 实测：征召大厅满级掷 3000 次，一次都不许越界（只测函数不够 —— 漏接线照样过） */
     var capI = G.rankIndex('ying'), bad = 0;
     for (var i = 0; i < 3000; i++) {
       if (G.rankIndex(G.innCapRank(G.pickRank(10)).id) > capI) bad++;
@@ -13049,8 +13049,8 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
  * ------------------------------------------------------------
  * 老板两条：
  *   ① 「围墙纳入自动建筑中」；
- *   ② 「英雄归属于城市，根据该城的招募站等级有相应空位，
- *       可自行在酒馆招募，也可其他自己的城市派遣」。
+ *   ② 「英雄归属于城市，根据该城的英雄枢纽等级有相应空位，
+ *       可自行在征召大厅招募，也可其他自己的城市派遣」。
  * ============================================================ */
 (function () {
   var fs = require('fs'), path = require('path');
@@ -13178,7 +13178,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
   /* ------------------------------------------------------------
    * ②  英雄席位按城
    * ------------------------------------------------------------ */
-  console.log('  --- ② 英雄席位按城（招募站等级） ---');
+  console.log('  --- ② 英雄席位按城（英雄枢纽等级） ---');
   check('结构：全境一格卡全境的 generalCap 已删除（不留后门）',
     stripComment(dmS).indexOf('generalCap') < 0
     && stripComment(uS).indexOf('generalCap') < 0);
@@ -13187,13 +13187,13 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
     var code = stripComment(uS);
     return /GAME\.genSlotsOf = function/.test(dmS) && /GAME\.generalsIn = function/.test(dmS)
       && /GAME\.genFreeOf = function/.test(dmS) && /GAME\.genSlotsTotal = function/.test(dmS)
-      /* 酒馆 / 招募站 / 英雄页 / 派遣 四处 */
-      /* v89.138：「派遣」面板退役后调用点从 4 处降到 3 处（酒馆 / 招募站 / 英雄页） */
+      /* 征召大厅 / 英雄枢纽 / 英雄页 / 派遣 四处 */
+      /* v89.138：「派遣」面板退役后调用点从 4 处降到 3 处（征召大厅 / 英雄枢纽 / 英雄页） */
       && (code.match(/GAME\.genSlotsOf\(/g) || []).length >= 3
       && (code.match(/GAME\.generalsIn\(/g) || []).length >= 3
       && !/s\.generals\.length >= cap/.test(code);
   })());
-  check('实测：席位 = **该城**招募站等级（两座城各算各的）', (function () {
+  check('实测：席位 = **该城**英雄枢纽等级（两座城各算各的）', (function () {
     return withState('v64slot', function (st) {
       var a = st.cities[0];
       var b = G.makeCity({ id: 'v64c', name: '副城', x: 9, y: 9, type: 'county',
@@ -13212,7 +13212,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
       st.cities.push(b);
       setBldg(a, 'zhaoxianguan', 7);
       setBldg(b, 'zhaoxianguan', 2);
-      return '7 级招募站 → ' + G.genSlotsOf(a) + ' 席 ｜ 2 级 → ' + G.genSlotsOf(b)
+      return '7 级英雄枢纽 → ' + G.genSlotsOf(a) + ' 席 ｜ 2 级 → ' + G.genSlotsOf(b)
         + ' 席 ｜ 全境合计 ' + G.genSlotsTotal();
     });
   })());
@@ -13304,12 +13304,12 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
         : ('未成：' + r.msg);
     });
   })());
-  check('实测：没有招募站（0 席）时招募被拒，提示里带**城名**', (function () {
+  check('实测：没有英雄枢纽（0 席）时招募被拒，提示里带**城名**', (function () {
     return withState('v64zero', function (st) {
       var c = st.cities[0];
-      setBldg(c, 'kezhan', 3);            /* 有酒馆、没招募站 */
+      setBldg(c, 'kezhan', 3);            /* 有征召大厅、没英雄枢纽 */
       var chk = G.canRecruitGeneral(c);
-      return chk.ok === false && chk.msg.indexOf(c.name) >= 0 && /招募站/.test(chk.msg);
+      return chk.ok === false && chk.msg.indexOf(c.name) >= 0 && /英雄枢纽/.test(chk.msg);
     });
   })());
   check('实测：派遣到满员城被拦、有空位就放行', (function () {
@@ -13665,9 +13665,9 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
 
 
   /* ============================================================
-   * 50. v66：经验封顶 / 装备体力入上限 / 酒馆高资质下调
+   * 50. v66：经验封顶 / 装备体力入上限 / 征召大厅高资质下调
    * ============================================================ */
-  console.log('\n===== 50. v66：经验封顶 / 装备体力入上限 / 酒馆降资质 =====');
+  console.log('\n===== 50. v66：经验封顶 / 装备体力入上限 / 征召大厅降资质 =====');
   function rd66(f) { return fsMod.readFileSync(pathMod.join(__dirname, 'js', f + '.js'), 'utf8'); }
   var dmS66 = rd66('domain'), syS66 = rd66('systems'), bS66 = rd66('battle'),
       uS66 = rd66('ui'), stS66 = rd66('state');
@@ -13869,8 +13869,8 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
     return a.staMax === Math.round(a.staMax) && a.staEq === Math.round(a.staEq);
   }));
 
-  /* ---------- ③ 酒馆高资质降幅 ---------- */
-  console.log('  --- ③ 酒馆高资质降幅 ---');
+  /* ---------- ③ 征召大厅高资质降幅 ---------- */
+  console.log('  --- ③ 征召大厅高资质降幅 ---');
   check('实测：天启体 / 觉醒体 / 进化体 权重按累计 ÷500 / ÷400 / ÷60 下调（v89.62 名下再 ÷5）', (function () {
     var CUT = { tian: 500, ming: 400, ying: 60 }, ORIG = { tian: 2, ming: 6, ying: 15 };
     var bad = [];
@@ -13882,7 +13882,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
   })(), '天启体 ' + DATA.GEN_RANKS[4].w + ' · 觉醒体 ' + DATA.GEN_RANKS[3].w + ' · 进化体 ' + DATA.GEN_RANKS[2].w);
   check('实测：低资质（凡人 50 / 突变体 27）不动', DATA.GEN_RANKS[0].w === 50 && DATA.GEN_RANKS[1].w === 27,
     DATA.GEN_RANKS[0].w + ' / ' + DATA.GEN_RANKS[1].w);
-  check('实测：酒馆1级 天启体概率 ≈0.005%（v89.62 再 ÷5）', (function () {
+  check('实测：征召大厅1级 天启体概率 ≈0.005%（v89.62 再 ÷5）', (function () {
     var ws = G.rankWeights(1), t = 0, v = 0;
     ws.forEach(function (x) { t += x.w; if (x.rank.id === 'tian') v = x.w; });
     return Math.abs(v / t * 100 - 0.005) < 0.002;
@@ -13891,7 +13891,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
     var body = codeOf(stS66, 'GAME.rankWeights = function');
     return /Math\.max\(r\.w \* 0\.05/.test(body) && body.indexOf('Math.max(0.5') < 0;
   })());
-  check('实测：酒馆1级 天启体权重不再被下限抬回 0.5', (function () {
+  check('实测：征召大厅1级 天启体权重不再被下限抬回 0.5', (function () {
     var t = null;
     G.rankWeights(1).forEach(function (x) { if (x.rank.id === 'tian') t = x; });
     return !!t && t.w < 0.3;
@@ -14604,9 +14604,9 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
    * ------------------------------------------------------------
    * 老板三条 + 补充规则，全部走 GAME.buildPrereqOf 单一出口：
    *   ① 其他建筑等级不能超过政务厅（总闸：buildCapOf 与 prereq 同一判据）
-   *   ② 先酒馆后招募站（招募站需酒馆 Lv2）
+   *   ② 先征召大厅后英雄枢纽（英雄枢纽需征召大厅 Lv2）
    *   ③ 锻造间 Lv3 才能建机工坊
-   *   ④~⑥ 练兵场/补给站/鸿胪寺/车库
+   *   ④~⑥ 练兵场/传送站/鸿胪寺/载具研究所
    * 建造与升级同一把尺；新建按 1 级算（可多建建筑不被误判为升级）。
    * ============================================================ */
   console.log('\n--- 第 54 节：建造前置（逐步探索） ---');
@@ -14647,14 +14647,14 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
       check('政务厅 Lv1 时：新建筑（1级）可建', b1.ok === true, b1.msg);
       fin54();
       var u1 = G.upgradeAt(c54.id, g1);
-      check('★ 政务厅 Lv1 时训练营升 2 级被拦（总闸生效，提示指向政务厅）',
+      check('★ 政务厅 Lv1 时军营升 2 级被拦（总闸生效，提示指向政务厅）',
         u1.ok === false && /政务厅/.test(u1.msg || ''), u1.msg);
       var gu1 = G.upgradeAt(c54.id, govIdx54);
       check('★ 政务厅自身不受总闸（它可以先升）', gu1.ok === true, gu1.msg);
       fin54();
       setGov54(2);
       var u2 = G.upgradeAt(c54.id, g1);
-      check('★ 政务厅 Lv2 后训练营可升 2 级（总闸打开）', u2.ok === true, u2.msg);
+      check('★ 政务厅 Lv2 后军营可升 2 级（总闸打开）', u2.ok === true, u2.msg);
       fin54();
       setGov54(12);
       /* v89.157：新门槛（升政务厅需围墙 ≥ 目标−2）—— 本用例测"政务厅自己的硬顶"，先给足墙 */
@@ -14663,26 +14663,26 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
       check('政务厅 12 级是它自己的硬顶（报「最高等级」而不是政务厅）',
         gu2.ok === false && /最高等级/.test(gu2.msg || ''), gu2.msg);
 
-      /* ---- ② 先酒馆后招募站 ---- */
+      /* ---- ② 先征召大厅后英雄枢纽 ---- */
       var z1 = free54();
       var p1 = G.buildAt(c54.id, z1, 'zhaoxianguan');
-      check('★ 无酒馆时招募站被拦（先酒馆后招募站）',
-        p1.ok === false && /酒馆/.test(p1.msg || ''), p1.msg);
+      check('★ 无征召大厅时英雄枢纽被拦（先征召大厅后英雄枢纽）',
+        p1.ok === false && /征召大厅/.test(p1.msg || ''), p1.msg);
       var k1 = free54(z1);
       var p2 = G.buildAt(c54.id, k1, 'kezhan');
-      check('酒馆可建（v89.224 新前置=居所 Lv2 · 夹具已足）', p2.ok === true, p2.msg);
+      check('征召大厅可建（v89.224 新前置=居所 Lv2 · 夹具已足）', p2.ok === true, p2.msg);
       fin54();
       var p3 = G.buildAt(c54.id, z1, 'zhaoxianguan');
-      check('酒馆 Lv1 仍不够（需 Lv2）', p3.ok === false, p3.msg);
+      check('征召大厅 Lv1 仍不够（需 Lv2）', p3.ok === false, p3.msg);
       c54.cells[k1].build.lvl = 2;
       var p4 = G.buildAt(c54.id, z1, 'zhaoxianguan');
-      check('★ 酒馆到 Lv2 后招募站可建', p4.ok === true, p4.msg);
+      check('★ 征召大厅到 Lv2 后英雄枢纽可建', p4.ok === true, p4.msg);
       fin54();
-      /* 升级同受前置：把酒馆压回 Lv1 */
+      /* 升级同受前置：把征召大厅压回 Lv1 */
       c54.cells[k1].build.lvl = 1;
       var p5 = G.upgradeAt(c54.id, z1);
-      check('★ 升级同受前置（酒馆降级后招募站不能升）',
-        p5.ok === false && /酒馆/.test(p5.msg || ''), p5.msg);
+      check('★ 升级同受前置（征召大厅降级后英雄枢纽不能升）',
+        p5.ok === false && /征召大厅/.test(p5.msg || ''), p5.msg);
       c54.cells[k1].build.lvl = 2;
 
       /* ---- ③ 锻造间 → 机工坊 ---- */
@@ -14702,11 +14702,11 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
       /* ---- ④ 可多建建筑的新建不被误判为升级（真缺陷回归）---- */
       var ck1 = free54();
       var c1b = G.buildAt(c54.id, ck1, 'cangku');
-      check('货仓第 1 座可建', c1b.ok === true, c1b.msg);
+      check('战储仓第 1 座可建', c1b.ok === true, c1b.msg);
       fin54();
       var ck2 = free54(ck1);
       var c2b = G.buildAt(c54.id, ck2, 'cangku');
-      check('★ 货仓第 2 座可建（新建按 1 级算，不被误当升级）', c2b.ok === true, c2b.msg);
+      check('★ 战储仓第 2 座可建（新建按 1 级算，不被误当升级）', c2b.ok === true, c2b.msg);
       fin54();
 
       /* ---- ⑤ 表与出口的收口 ---- */
@@ -14805,7 +14805,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
       check('★ 迁移：政务厅自动从右侧移到正中', govIdxOf(mc) === '19,20,27,28', govIdxOf(mc));
       check('★ 迁移：政务厅等级保留（5 级不丢）',
         !!(mc.cells[19].build && mc.cells[19].build.id === 'guanfu' && mc.cells[19].build.lvl === 5));
-      check('★ 迁移：中央的建筑与旧位对调（居所/训练营不丢）',
+      check('★ 迁移：中央的建筑与旧位对调（居所/军营不丢）',
         !!(mc.cells[22].build && mc.cells[22].build.id === 'minfang' && mc.cells[22].build.lvl === 3
           && mc.cells[23].build && mc.cells[23].build.id === 'junying' && mc.cells[23].build.lvl === 4));
       check('★ 迁移：在建项与 pending 一起换位（队列索引重映射）',
@@ -14867,7 +14867,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
     /* v89.135（老板 10）：政务厅事务按钮退役 —— 政务厅格没有「功能」按钮（功能直接显示） */
     check('★ 操作命名：政务厅事务按钮退役（v89.135 · 政务厅格功能直显）', !/guanfu: \{ label:/.test(u56));
 
-    check('操作命名：多功能面板用「用途A · 用途B」（训练营 / 作坊）',
+    check('操作命名：多功能面板用「用途A · 用途B」（军营 / 作坊）',
       /junying: \{ label: "[^"]+ · [^"]+"/.test(u56)
       && /gongjiangzuofang: \{ label: "[^"]+ · [^"]+"/.test(u56));
 
@@ -14992,8 +14992,8 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
       return a.county === b.county && a.jun === b.jun && a.state === b.state;
     })());
 
-    /* ================= ② 满配：货仓 4 + 城外数量表 ================= */
-    console.log('  --- ② 满配数量（城内货仓 4 / 城外数量表）---');
+    /* ================= ② 满配：战储仓 4 + 城外数量表 ================= */
+    console.log('  --- ② 满配数量（城内战储仓 4 / 城外数量表）---');
     check('★ 城外数量表逐档合计 == 上限表（1..MAX_LEVEL_ABS 全档）', (function () {
       for (var lv = 1; lv <= (DATA.MAX_LEVEL_ABS || 24); lv++) {
         var row = DATA.EXT_PLAN_BY_LV[lv - 1];
@@ -15042,7 +15042,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
       });
     })());
 
-    check('城内满配里货仓恰好 3 座（v91.19 老板：固定栏位货仓×3）', (function () {
+    check('城内满配里战储仓恰好 3 座（v91.19 老板：固定栏位战储仓×3）', (function () {
       for (var lv = 1; lv <= 10; lv++) {
         var c = 0;
         G.cityPlanOf(lv).cells.forEach(function (x) { if (x.build && x.build.id === 'cangku') c++; });
@@ -15290,7 +15290,7 @@ console.log('\n===== 59. v73 五条（旧币 · 资质 · 遗迹 · 英雄头 ·
     rows.forEach(function (r) { sum += r.val; });
     return Math.abs(sum - p.gold) <= Math.max(1e-6, p.gold * 1e-9);
   })());
-  check('实测：旧币不受货仓上限夹制（放到 cap 之上，跑两 tick 不被夹回）', (function () {
+  check('实测：旧币不受战储仓上限夹制（放到 cap 之上，跑两 tick 不被夹回）', (function () {
     var st = G.newGame({ name: '上限测试', region: '烬环' });
     var cap = G.storeCap();
     st.res.gold = cap + 500000;
@@ -15306,7 +15306,7 @@ console.log('\n===== 59. v73 五条（旧币 · 资质 · 遗迹 · 英雄头 ·
     return Math.abs(w.ying - 0.25) < 1e-9 && Math.abs(w.ming - 0.015) < 1e-9 && Math.abs(w.tian - 0.004) < 1e-9;
   })(), '进化体 ' + DATA.GEN_RANK_BY_ID.ying.w + ' · 觉醒体 ' + DATA.GEN_RANK_BY_ID.ming.w + ' · 天启体 ' + DATA.GEN_RANK_BY_ID.tian.w);
   check('结构：名将直取概率 0.30 → 0.03（组合拳的另一半）', /lv >= 5 && Math\.random\(\) < 0\.03/.test(dS73));
-  check('实测：酒馆1级 天启体概率 ≈0.005%（三轮共 ÷500）', (function () {
+  check('实测：征召大厅1级 天启体概率 ≈0.005%（三轮共 ÷500）', (function () {
     var ws = G.rankWeights(1), t = 0, v = 0;
     ws.forEach(function (x) { t += x.w; if (x.rank.id === 'tian') v = x.w; });
     return Math.abs(v / t * 100 - 0.005) < 0.002;
@@ -15581,9 +15581,9 @@ console.log('\n===== 60. v74 七条（幸存者 · 画布 · 简介 · 六维 ·
 })();
 
 /* ============================================================
- * ===== 61. v75：酒馆招募界面（老板）—— 大界面 / 单行 / 悬停 / 无概率表 =====
+ * ===== 61. v75：征召大厅招募界面（老板）—— 大界面 / 单行 / 悬停 / 无概率表 =====
  * ============================================================ */
-console.log('\n===== 61. v75 酒馆招募（大界面 · 单行候选 · 资质悬停 · 无概率表） =====');
+console.log('\n===== 61. v75 征召大厅招募（大界面 · 单行候选 · 资质悬停 · 无概率表） =====');
 (function () {
   var rd = function (f) { return fsMod.readFileSync(pathMod.join(__dirname, 'js', f + '.js'), 'utf8'); };
   var uS1 = stripComment(rd('ui'));
@@ -15595,7 +15595,7 @@ console.log('\n===== 61. v75 酒馆招募（大界面 · 单行候选 · 资质�
     var b = cssBlock(hS1, '.modal-xxl {');
     return /width: 1200px; height: 850px/.test(b) && /max-width: calc\(var\(--app-w\) - 20px\)/.test(b);
   })(), cssBlock(hS1, '.modal-xxl {').replace(/\s+/g, ' ').slice(0, 72));
-  check('① 酒馆走三段式 + xxl 档（标题/按钮固定，只有候选区滚动）',
+  check('① 征召大厅走三段式 + xxl 档（标题/按钮固定，只有候选区滚动）',
     /ui\.openShell\(\{/.test(inn1) && /size: 'xxl'/.test(inn1));
 
   /* ---------- ②③ 单行候选 + 成长备注进悬停 ---------- */
@@ -15634,7 +15634,7 @@ console.log('\n===== 61. v75 酒馆招募（大界面 · 单行候选 · 资质�
 })();
 
   /* ============================================================
-   * 62. v77：月俸体系 / 酒馆表格 / 君主面板 / 野地下拉 / 新货 / 强化 / 战技
+   * 62. v77：月俸体系 / 征召大厅表格 / 君主面板 / 野地下拉 / 新货 / 强化 / 战技
    * ============================================================ */
   console.log('\n===== 62. v77 老板八条（月俸/表格/君主/野地/新货/强化/战技） =====');
   var uS77 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'ui.js'), 'utf8');
@@ -15645,8 +15645,8 @@ console.log('\n===== 61. v75 酒馆招募（大界面 · 单行候选 · 资质�
   var hS77 = fsMod.readFileSync(pathMod.join(__dirname, 'index.html'), 'utf8');
   var daS77 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'data.js'), 'utf8');
 
-  /* ---- ① 酒馆表格 ---- */
-  check('① 酒馆候选改表格（表头 + 每人一行 + 月俸列）',
+  /* ---- ① 征召大厅表格 ---- */
+  check('① 征召大厅候选改表格（表头 + 每人一行 + 月俸列）',
     /inn-tbl/.test(uS77) && /月俸/.test(uS77) && /inn-tr/.test(uS77)
     && /genSalaryOf\(c\)/.test(uS77));
 
@@ -16142,9 +16142,9 @@ console.log('\n===== 61. v75 酒馆招募（大界面 · 单行候选 · 资质�
   })();
 
 /* ============================================================
- * ===== 65. v80：酒馆固定表 / 建筑吸底操作区 / 兵营分页直输（老板三条） =====
+ * ===== 65. v80：征召大厅固定表 / 建筑吸底操作区 / 兵营分页直输（老板三条） =====
  * ============================================================ */
-console.log('\n===== 65. v80 三条（酒馆 · 建筑底栏 · 兵营） =====');
+console.log('\n===== 65. v80 三条（征召大厅 · 建筑底栏 · 兵营） =====');
 (function () {
   var rd = function (f) { return fsMod.readFileSync(pathMod.join(__dirname, 'js', f + '.js'), 'utf8'); };
   var uRaw = rd('ui');
@@ -16152,10 +16152,10 @@ console.log('\n===== 65. v80 三条（酒馆 · 建筑底栏 · 兵营） ====='
   var mS = stripComment(rd('main'));
   var hS = fsMod.readFileSync(pathMod.join(__dirname, 'index.html'), 'utf8');
 
-  /* ---------- ① 酒馆 ---------- */
-  console.log('  --- ① 酒馆固定表 ---');
+  /* ---------- ① 征召大厅 ---------- */
+  console.log('  --- ① 征召大厅固定表 ---');
   check('v80→v89.188：全站零「美人 / 名将」标签（招募行与档案一并撤；君主标保留）', (function () {
-    /* v89.188（老板 3）：「不再采用『美人』『名将』标签，从酒馆，英雄等所有地方同步去除，
+    /* v89.188（老板 3）：「不再采用『美人』『名将』标签，从征召大厅，英雄等所有地方同步去除，
        所有英雄标识统一」—— hero/beauty 的 gcard-tag 全站退役（字段保留供立绘与机制）。 */
     var inn = codeOf(uS, 'ui.openInn = function');
     return inn.indexOf('tag-hero') < 0
@@ -18274,8 +18274,8 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       })());
     check('v89.86（P-02）：favicon 为 data-URI（消除固定 404）',
       /<link rel="icon" href="data:image\/svg\+xml,/.test(ht8));
-    check('v89.86（P-15）：酒馆无空位 → 升级引导（单步 + 政务厅压顶两步链）',
-      ui8.indexOf('升招募站至 Lv') >= 0 && ui8.indexOf('先升政务厅至 Lv') >= 0
+    check('v89.86（P-15）：征召大厅无空位 → 升级引导（单步 + 政务厅压顶两步链）',
+      ui8.indexOf('升英雄枢纽至 Lv') >= 0 && ui8.indexOf('先升政务厅至 Lv') >= 0
       && /data-action="inn-recruit"[^>]*title="[^"]*"/.test(ui8));
     check('v89.86（P-26）：新城落成守备提示 + 调兵入口（复用 openTroopMove）',
       /ui\.openNewCityNotice = function/.test(ui8) && /ui\.openNewCityNotice\(r\.city\)/.test(mn8)
@@ -18409,7 +18409,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     /* ---- 需求 2：派兵统一走行军 ---- */
     check('v89.87（派兵）：调兵走行军（出发留途 · 抵达入城 · 将随军）', (function () {
       var c2 = G.makeCity({ id: 'c87b', name: '副城', x: c87.x + 3, y: c87.y + 3 });
-      /* v89.138：transfer 的**席位预检**已迁到 prepare —— 目标城得有招募站才能安置随军英雄 */
+      /* v89.138：transfer 的**席位预检**已迁到 prepare —— 目标城得有英雄枢纽才能安置随军英雄 */
       c2.cells[0].build = { id: 'zhaoxianguan', lvl: 5 };
       S87.cities.push(c2);
       var gen87 = S87.generals[0];
@@ -20808,11 +20808,11 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   })();
 
   /* ============================================================
-   * 89. v89.108（老板）：**领地上限随威望解封** + **酒馆候选按城**
+   * 89. v89.108（老板）：**领地上限随威望解封** + **征召大厅候选按城**
    * ------------------------------------------------------------
    * 老板两句：
    *   ① 「限制城市数量，参考威望和主城等级设置，可建造控制的城市数量随威望解封」；
-   *   ② 「分城的酒馆只有 Lv2，但是有 14 个候选英雄，应该跟随建筑等级提供候选数量」。
+   *   ② 「分城的征召大厅只有 Lv2，但是有 14 个候选英雄，应该跟随建筑等级提供候选数量」。
    * 钉子（防漂移）：
    *   · ⛔ v89.203（老板 4）口径变更：上限 = **本档管理数**（RANK[i].city，9..30 · 幸存者 9 起）；
    *     晋升城市门槛 = **打满本档上限**（同值）—— 旧口径"下一档门槛（幸存者 2 座起）"随本轮退役。
@@ -20821,7 +20821,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
    *     "上限恒 ≥ 门槛"这条性质逐档核验（门槛=上限，天然合一）；
    *   · 三条得城路径（建城 / 占城 / 据点转正）都读 `GAME.cityCapChk`（唯一出口）；
    *   · 老档**只拦新增、不削已有**；
-   *   · 酒馆候选池**按城独立**：数量 = 该城酒馆等级 + 专精，两池互不串。
+   *   · 征召大厅候选池**按城独立**：数量 = 该城征召大厅等级 + 专精，两池互不串。
    * ============================================================ */
 
   /* ============================================================
@@ -21055,7 +21055,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })());
   })();
 
-  console.log('\n===== 89. v89.108/v203 领地上限（随威望解封 · 幸存者 9 起）+ 酒馆候选按城 =====');
+  console.log('\n===== 89. v89.108/v203 领地上限（随威望解封 · 幸存者 9 起）+ 征召大厅候选按城 =====');
   (function () {
     var bak89 = G.state;
     function st89bldg(city, bid, lv) {          /* 城内某建筑设为 lv（摆场景用） */
@@ -21166,8 +21166,8 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
           && st89.cities.length === 10 && r1.ok === false;
       })(), '10 座 > 上限 9：城还在、增不了');
 
-      /* ---- ⑤ 酒馆按城：6 / 2 位，两池互不串 + 老档迁移 ---- */
-      check('v89.108：酒馆候选数随**该城**酒馆等级（6/2 位）且两池互不串', (function () {
+      /* ---- ⑤ 征召大厅按城：6 / 2 位，两池互不串 + 老档迁移 ---- */
+      check('v89.108：征召大厅候选数随**该城**征召大厅等级（6/2 位）且两池互不串', (function () {
         var A = st89.cities[0], B = st89.cities[1];
         if (!A || !B) return false;
         st89bldg(A, 'kezhan', 6);
@@ -24033,9 +24033,9 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     check('§113③ 数据表新增 xcMax / genMax（各 2 次）', C113.xcMax === 2 && C113.genMax === 2);
     var preX113 = G.jieyueExpandOf(c113, 'xc');
     var preG113 = G.jieyueExpandOf(c113, 'gen');
-    check('§113③ 前置：无练兵场 / 无招募站 → 拒（提示点名前置）',
+    check('§113③ 前置：无练兵场 / 无英雄枢纽 → 拒（提示点名前置）',
       preX113.ok === false && preX113.msg.indexOf('练兵场') >= 0
-      && preG113.ok === false && preG113.msg.indexOf('招募站') >= 0,
+      && preG113.ok === false && preG113.msg.indexOf('英雄枢纽') >= 0,
       'xc=「' + preX113.msg + '」gen=「' + preG113.msg + '」');
     var put113 = function (bid) {
       var idx = -1;
@@ -24074,7 +24074,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     var rc113 = G.jieyueExpand('city', c113.id);
     check('§113③ 城建扩编（旧链）走同一出口：建造位 +1',
       rc113.ok === true && G.buildSlots(c113) === bs0_113 + 1);
-    check('§113③ 三项入口按钮真渲染（出征页 / 招募站面板 + 节钺行可点）', (function () {
+    check('§113③ 三项入口按钮真渲染（出征页 / 英雄枢纽面板 + 节钺行可点）', (function () {
       var hx = '', hz = '', hl = '';
       var keepTab113 = G.ui._marchTab;
       try {
@@ -24445,7 +24445,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     var g117 = _fs117.readFileSync(_p117.join(__dirname, '.workbuddy', 'tools', 'git', 'gate.py'), 'utf8');
     var t117 = _fs117.readFileSync(_p117.join(__dirname, '.workbuddy', 'tools', 'audit', 'audit_v89134_tables.js'), 'utf8');
 
-    check('§117① live 续铺：锻造间/酒馆/交易站/野地总览 四处声明（合计 ≥8 处）', (function () {
+    check('§117① live 续铺：锻造间/征召大厅/交易站/野地总览 四处声明（合计 ≥8 处）', (function () {
       var n = (u117.match(/live: function \(\) \{ ui\.open/g) || []).length;
       return n >= 8 && /live: function \(\) \{ ui\.openForge\(\); \}/.test(u117)
         && /live: function \(\) \{ ui\.openInn\(\); \}/.test(u117)
@@ -24700,7 +24700,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         && uc.indexOf('data-action="city-dispatch"') < 0;
     })());
     check('§119② 守卫迁移（不是丢失）：席位预检进 prepare · 守将拦截走 marchBlockOf', (function () {
-      return /_slots138/.test(bc) && /招募站无空位/.test(bc) && /GAME\.marchBlockOf\(gen\)/.test(bc);
+      return /_slots138/.test(bc) && /英雄枢纽无空位/.test(bc) && /GAME\.marchBlockOf\(gen\)/.test(bc);
     })());
     check('§119② 实测：派遣 0 兵可发（只派将）· 抵达入城', (function () {
       var st = G.state, c = st.cities[0];
@@ -25192,7 +25192,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })());
 
     /* ---- ② 城外露天容量（唯一出口 + 打表 + 纯加法） ---------- */
-    check('§122②/§148 城外露天容量（extStoreCapOf 唯一出口 · **同级货仓的 1/6** · 纯加法不吃加成）', (function () {
+    check('§122②/§148 城外露天容量（extStoreCapOf 唯一出口 · **同级战储仓的 1/6** · 纯加法不吃加成）', (function () {
       var div = DATA.EXT_STORE_DIV;
       if (div !== 6 || DATA.EXT_STORE_PER_LV != null) return false;   /* v89.148：旧常量不得复活 */
       /* v89.158：算式搬进 storePartsOf —— ext 仍为**纯加法**项（total = base + ext）；
@@ -25835,7 +25835,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   })();
 
   /* ═══════════════════════════════════════════════════════════
-   * §128（v89.148）：老板 3 条 —— 露天容量 = 货仓 1/6 / 斗将单处播报 /
+   * §128（v89.148）：老板 3 条 —— 露天容量 = 战储仓 1/6 / 斗将单处播报 /
    *   战斗界面定高布局（播报底部 1/2 · 示意图固定 · 表头去队数）
    * ═══════════════════════════════════════════════════════════ */
   (function () {
@@ -25845,8 +25845,8 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     var u128 = strip128(uS128);
     var h128 = fs128.readFileSync(p128.join(__dirname, 'index.html'), 'utf8');
 
-    /* ---- ① 露天容量 = 同级货仓的 1/6（常量 + 公式 + 打表） ---- */
-    check('§128① 露天容量 = 同级货仓的 1/6（EXT_STORE_DIV=6 · 旧常量退役 · 单块打表）', (function () {
+    /* ---- ① 露天容量 = 同级战储仓的 1/6（常量 + 公式 + 打表） ---- */
+    check('§128① 露天容量 = 同级战储仓的 1/6（EXT_STORE_DIV=6 · 旧常量退役 · 单块打表）', (function () {
       var st = G.state, bkId = G.ui._cityId;
       var c = G.currentCity() || (st.cities || [])[0];
       if (!c) return false;
@@ -27230,14 +27230,14 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         && /'已满' : '已占 ' \+ _pct/.test(seg)
         && seg.indexOf('var extCap') < 0;   /* 旧变量整条不再存在（负向：查变量声明形态） */
     })());
-    check('§158① 货仓面板：基础/堆场分账 + 等级和标题（源码级）', (function () {
+    check('§158① 战储仓面板：基础/堆场分账 + 等级和标题（源码级）', (function () {
       var i = uS158.indexOf('ui.openStore = function');
       var seg = i < 0 ? '' : uS158.slice(i, uS158.indexOf('\n  };', i));
-      return /未建货仓：仅保有基础储量 ' \+ U\.fmt\(sp\.base\)/.test(seg)
+      return /未建战储仓：仅保有基础储量 ' \+ U\.fmt\(sp\.base\)/.test(seg)
         && /'Lv' \+ lv \+ '（多仓叠加）'/.test(seg);
     })());
 
-    /* ---- ① 不削存量（离线补算口径；在线在 §货仓段已覆盖） ---- */
+    /* ---- ① 不削存量（离线补算口径；在线在 §战储仓段已覆盖） ---- */
     check('§158① 离线补算：超上限存量不被削（只封增长）', (function () {
       var st = G.state, c = st.cities[0];
       var cap = G.storeCapOf(c, 'stone');   /* v89.212（老板 1）：按资源上限（堆场分账） */
@@ -27613,7 +27613,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     check('§160① 挂钩：tickOnce 与 simulateBulk **同一个**结算函数（在线/离线不各写一份）',
       /GAME\.settleOverflowRot\(\)/.test(sS160)
       && (sS160.match(/GAME\.settleOverflowRot\(\)/g) || []).length === 2);
-    check('§160① 界面出口：侧栏悬停折损行 + 货仓面板折损行（机制可见）',
+    check('§160① 界面出口：侧栏悬停折损行 + 战储仓面板折损行（机制可见）',
       /超出部分每游戏日折损/.test(uS160) && /逾溢折损：超出仓容上限的部分/.test(uS160)
       && /当前超出上限/.test(uS160));
 
@@ -30188,7 +30188,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     /* ①c 关键场景文案在册（抽查 8 处高频受阻） */
     check('§189①c 受阻原因文案在册（出征/治疗/加速/购买/打造/训练/研究/投降）', (function () {
       var keys = ['尚未选择出征目标', '伤兵营已空', '本队列本日已用过该加速', '旧币不足：需',
-        '先在下方点选一件要打造的装备', '本营训练队列已满', '本城研习所正在研究其他科技'];
+        '先在下方点选一件要打造的装备', '本营训练队列已满', '本城科研中心正在研究其他科技'];
       return keys.every(function (k) { return uS189.indexOf(k) >= 0; });
     })());
 
@@ -30442,7 +30442,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         && /\.gp-rankops190 \{ flex: none; display: flex; margin-left: calc\(var\(--gp-ops-shift\) \+ var\(--gp-ops-stagger\)\); \}/.test(hS191);
     })());
 
-    /* ③ 配对闸（真调）：围墙↔机工坊 · 补给站↔车库 */
+    /* ③ 配对闸（真调）：围墙↔机工坊 · 传送站↔载具研究所 */
     var pg191 = (function () {
       var bk = G.state, out = { err: 'unset' };
       try {
@@ -30460,7 +30460,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         if (idx < 0) throw new Error('无空格');
         c.cells[idx].build = { id: 'gongjiangzuofang', lvl: 4 };
         out.capB = G.buildCapOf(c, 'chengqiang');                 /* 作坊 4 → cap = 6 */
-        out.gapYz = G.pairGapOf(c, 'yizhan').cap;                 /* 车库 0 → 补给站 cap = 2 */
+        out.gapYz = G.pairGapOf(c, 'yizhan').cap;                 /* 载具研究所 0 → 传送站 cap = 2 */
         out.ok = out.capA === 2 && out.capB === 6 && out.gapYz === 2
           && /相差不得超过 2 级/.test(out.preA);
       } catch (e) { out.err = String(e && e.message || e); }
@@ -30489,14 +30489,14 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         }
         if (placed < 2) throw new Error('无空格');
         c.cells.forEach(function (x) { if (x && x.build && x.build.id === 'guanfu') x.build.lvl = 12; });   /* 排除政务厅总闸，本用例只验科技闸 */
-        var rA = G.systems.canResearch('zhandou', c.id);            /* req 训练营3 未达 → 拦 */
-        var pA = G.buildPrereqOf(c, 'junying', 3);                  /* 训练营升3 需募兵整训1 → 拦 */
+        var rA = G.systems.canResearch('zhandou', c.id);            /* req 军营3 未达 → 拦 */
+        var pA = G.buildPrereqOf(c, 'junying', 3);                  /* 军营升3 需募兵整训1 → 拦 */
         G.techSet('lianbing', 1, c);
         var pB = G.buildPrereqOf(c, 'junying', 3);                  /* 研究后放行 */
         c.cells.forEach(function (x) { if (x && x.build && x.build.id === 'junying') x.build.lvl = 3; });
         c.res.gold = 9e8; c.res.wood = 9e8; c.res.stone = 9e8;
-        var rB = G.systems.canResearch('zhandou', c.id);            /* 训练营到位 → 受理 */
-        out.rA = rA.ok === false && /训练营/.test(rA.msg);
+        var rB = G.systems.canResearch('zhandou', c.id);            /* 军营到位 → 受理 */
+        out.rA = rA.ok === false && /军营/.test(rA.msg);
         out.pA = pA.ok === false && /募兵整训/.test(pA.msg);
         out.pB = pB.ok === true;
         out.rB = rB.ok === true;
@@ -30619,7 +30619,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       try {
         G.newGame({ name: 'cap191', region: '烬环' });
         var c = G.state.cities[0];
-        /* 研究需研习所（t.lv=1）—— 摆一座（本用例验的是上限与 11 级受理） */
+        /* 研究需科研中心（t.lv=1）—— 摆一座（本用例验的是上限与 11 级受理） */
         for (var i = 0; i < c.cells.length; i++) {
           var cl = c.cells[i];
           if (cl && !cl.build && !cl.pending && !cl.official) { cl.build = { id: 'shuyuan', lvl: 3 }; break; }
@@ -33111,7 +33111,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         c0.res.pop = 500000;
         G.goldAdd(9999999);
         c0.res.grain = 9999999; c0.res.wood = 9999999; c0.res.stone = 9999999; c0.res.iron = 9999999;
-        var r1 = G.train('huopao', 1, c0.id, 18);   /* 陈旧训练营格 → 应回落作坊 22 */
+        var r1 = G.train('huopao', 1, c0.id, 18);   /* 陈旧军营格 → 应回落作坊 22 */
         var ok1 = r1.ok === true && G.trainQueuesOf(c0, 22, 'craft').length === 1
           && G.trainQueuesOf(c0, 18, 'craft').length === 0;
         var c1 = G.makeCity({ id: 'p2x', name: '无作坊', x: c0.x + 9, y: c0.y + 9 });
@@ -33679,7 +33679,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         var gen = st.generals[0];
         var c2 = G.makeCity({ id: 'v220c2', name: 'v220二城', x: c1.x + 5, y: c1.y, type: 'self', level: 1 });
         G.registerCity(c2);
-        /* 二城：小练兵场（cap 1.25 万）+ 超容驻军 5 万 + 招募站（调兵带将的席位闸） */
+        /* 二城：小练兵场（cap 1.25 万）+ 超容驻军 5 万 + 英雄枢纽（调兵带将的席位闸） */
         var fi = -1, si = -1;
         c2.cells.forEach(function (x, i) {
           if (!x.build && !x.official) {
@@ -33860,10 +33860,10 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         && js221.indexOf('贼寇') < 0;
     })());
 
-    /* ④ 兵种旧缩写：玩家可见面零泄漏（车库行 / 天气 / 战术占位）
+    /* ④ 兵种旧缩写：玩家可见面零泄漏（载具研究所行 / 天气 / 战术占位）
        v90.92：原第四项在 js/questdata.js（任务卡文案）里查旧缩写 —— 该文件已随任务系统删除，
        此项改由「文件不存在」承担（不留平凡解）。 */
-    check('§221④ 兵种旧缩写：可见面零泄漏（车库行/天气/战术占位 · 任务文件已退役）', (function () {
+    check('§221④ 兵种旧缩写：可见面零泄漏（载具研究所行/天气/战术占位 · 任务文件已退役）', (function () {
       var uiSrc = rd221('js/ui.js'), d221 = rd221('js/data.js');
       return uiSrc.indexOf('伏击车需1级 · 主战机甲/武装直升机需3级') >= 0
         && uiSrc.indexOf('战术名（如：导弹车后退）') >= 0
@@ -34181,7 +34181,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
    * §225（v89.225 立 · v89.227 修订）：族旗退役 → 城内地块染色 → 4 族降饱和
    * ------------------------------------------------------------
    * 老板原话（v89.225）：「建筑前边的带颜色棋子是什么，能否用地块颜色区分，不然好突兀。
-   *   同类型建筑地块颜色相同，比如酒馆和招募站，训练营和练兵场等」。
+   *   同类型建筑地块颜色相同，比如征召大厅和英雄枢纽，军营和练兵场等」。
    * 老板原话（v89.227）：「城内地块，族有点多了，最好是民居，仓库这种无特定菜单操作的一族，
    *   其他限制在2族以内，官府单独一族。而且整体颜色太显眼了，视觉负担大」。
    * 口径：族色编码从"图标上的小旗"迁到"建筑地块的底色"；v89.227 起 8 族 → 4 族（官府/民生/
@@ -34214,7 +34214,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
 
     /* ① 四族分组在册（v89.227 老板：「民居、仓库这种无特定菜单操作的一族，其他限制在2族以内，
        官府单独一族」）——逐建筑断言归属 + 总数 ≤4，防漂移/回潮。 */
-    check('§225① 四族分组：官府=政务厅/实验室 · 民生含居所/货仓/车库 · 点名两对（酒馆+招募站 / 训练营+练兵场）同族 · 总数 ≤4', (function () {
+    check('§225① 四族分组：官府=政务厅/实验室 · 民生含居所/战储仓/载具研究所 · 点名两对（征召大厅+英雄枢纽 / 军营+练兵场）同族 · 总数 ≤4', (function () {
       var B = DATA.BUILDINGS;
       var want = {
         guanfu: 'gov', honglusi: 'gov',
@@ -34753,7 +34753,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
    * 本段守五类：
    *   ① 24 项术语换代逐项对表（20 新名 · 资源四项保持 · 旧名活代码零残留）
    *   ② 分组齐备（DATA.TECH_CATS 5 组 · 计数 4/6/5/6/3 · 每项 cat 合法 · 无孤儿）
-   *   ③ 研习所面板分节渲染（五组标题在屏 · 真渲染）
+   *   ③ 科研中心面板分节渲染（五组标题在屏 · 真渲染）
    *   ④ 引用链完好（兵种 unlock.tech + 建筑 BUILD_TECH_REQ 全 ∈ TECH · 无悬空 id）
    *   ⑤ 版本与档案在册（v89.231 · 老板原话 + 映射表「科技体系」节）
    * ============================================================ */
@@ -34811,13 +34811,13 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
        （「战斗/行军/驾驭技巧」共用后缀式写法）无效，改用逐字钉守（改文案须同步此表）。 */
     check('§231①b 兵种 desc 科技括注逐字对表（7 条 · 防缩写残形）', (function () {
       var WANT = {
-        fujiche: '机动伏击，捕俘主力（需车库 + 战斗条令/机动行军/机车操控）',
+        fujiche: '机动伏击，捕俘主力（需载具研究所 + 战斗条令/机动行军/机车操控）',
         zhencha: '小巧飞行器，极限速度，侦察/截援必备（需侦察网络）',
         yunshu: '专属运资，负重冠绝全军（需载重优化）',
         dunwei: '高防御，炮灰首选（需装甲强化）',
         daodanche: '远程主力，射程1200（需弹道校正）',
         wuzhi: '低空火力，射程1000（需弹道校正/机车操控）',
-        zhuzhan: '主战序列，攻700防400，攻守兼备（需车库3 + 机车操控/装甲强化）',
+        zhuzhan: '主战序列，攻700防400，攻守兼备（需载具研究所3 + 机车操控/装甲强化）',
       };
       var bad = [];
       Object.keys(WANT).forEach(function (k) {
@@ -34849,7 +34849,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })(), window.__r231b || '');
 
     /* ③ 面板分节渲染（真渲染） */
-    check('§231③ 研习所面板分节渲染（五组标题在屏 · 24 数据行 · 真渲染）', (function () {
+    check('§231③ 科研中心面板分节渲染（五组标题在屏 · 24 数据行 · 真渲染）', (function () {
       var h = G.ui.techHTML();
       var names = ['资源产出', '军事武装', '工程建设', '机动后勤', '情报指挥'];
       var missG = names.filter(function (n) { return h.indexOf('>' + n + '<') < 0; });
@@ -35921,7 +35921,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     try {
       c('§256① 守将名池换代（不再三国味 · 含废土/化学风）',
         /NPC_GUARD_SURNAME = \['铁', '星'/.test(d) && d.indexOf("'荀'") < 0);
-      c('§256② 酒馆名池换代（域内 INN_ 池含废土/元素字）',
+      c('§256② 征召大厅名池换代（域内 INN_ 池含废土/元素字）',
         /var INN_SURNAME = \['铁', '星', '荒'/.test(dm) && dm.indexOf("'王', '李', '张'") < 0);
       c('§256③ 守将头衔换代（武装督长/巡察使…）',
         /NPC_GUARD_TITLE = \['城守', '武装督长'/.test(d));

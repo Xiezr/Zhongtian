@@ -563,7 +563,7 @@
    * 弹窗统一格局（v19 · 需求 4/5）
    *   modalShell({ title, sub, body, foot, size, noClose })
    * 统一：标题栏 / 内容区 / 操作栏三段式；尺寸走固定档位（与 CSS 同源）
-   *   sm 440×420 · 默认 660×620 · lg 860×600 · xl 960×700 · xxl 980×800（v75 酒馆）
+   *   sm 440×420 · 默认 660×620 · lg 860×600 · xl 960×700 · xxl 980×800（v75 征召大厅）
    * 目的：君主、背包、游商、公文等所有弹窗**格局一致**，
    *      且尺寸不随内容变化、任何视口下都不超出边界。
    * ============================================================ */
@@ -1419,7 +1419,7 @@
         out.push({ id: 'rot', cls: 'sky-rot', go: 'store',
           txt: '🔥 逾溢折损',
           tip: '仓廪逾溢：' + rotCity.name + ' 有资源超出仓容上限 —— 超出部分每游戏日折损 25%'
-            + '（现实约 ' + ui.rotPeriodRealText() + '）· 点击打开货仓' });
+            + '（现实约 ' + ui.rotPeriodRealText() + '）· 点击打开战储仓' });
       }
     } catch (e4) { }
     return out.slice(0, 3);
@@ -1512,7 +1512,7 @@
         pct: Math.min(100, Math.floor((q.elapsed || 0) / q.totalTime * 100)),
       });
     });
-    /* ② 募兵：按训练营分列，标明执行中 / 排队等待 */
+    /* ② 募兵：按军营分列，标明执行中 / 排队等待 */
     var byBar = {};
     (s.queues.train || []).forEach(function (q) {
       var k = GAME.trainQueueKey(q);
@@ -1529,7 +1529,7 @@
         rows.push({
           kind: '⚔️ 募兵',
           what: (city ? U.escape(city.name) + ' · ' : '') +
-            (bIdx >= 0 ? '训练营' + (lv ? ' Lv' + lv : '') + '（城内第 ' + (bIdx + 1) + ' 格） · ' : '') +
+            (bIdx >= 0 ? '军营' + (lv ? ' Lv' + lv : '') + '（城内第 ' + (bIdx + 1) + ' 格） · ' : '') +
             (t ? t.name : q.troopId) + ' ×' + U.numText(q.count, 0) +
             (i === 0 ? '' : '<span class="ui-sub">（排队第 ' + (i + 1) + '）</span>'),
           pct: i === 0 ? Math.min(100, Math.floor((q.elapsed || 0) / q.totalTime * 100)) : -1,
@@ -3903,13 +3903,13 @@
       var rateHtml = '<span class="rate-wrap" data-tip="' + U.escape(tipLines.join('\n')) + '">'
         + U.rateHTML(perSec) + '</span>';
       /* v89.158（老板 1「左侧资源统计的容量显示仍然不对」）：容量悬停改**分账**——
-         上限 = 货仓/基础 + 城外堆场，两行相加自洽（唯一出口 GAME.storePartsOf）；
+         上限 = 战储仓/基础 + 城外堆场，两行相加自洽（唯一出口 GAME.storePartsOf）；
          改前只写"其中城外堆场 +Y"，另外的 200 万基础没有出处（账对不上）。
          已占 ≥100% 显示"已满"（不再出现"已占 123%"这类读数）。
-         旧币是货币，不受货仓上限约束（同前口径）。 */
+         旧币是货币，不受战储仓上限约束（同前口径）。 */
       var sp = GAME.storePartsOf ? GAME.storePartsOf(GAME.currentCity()) : null;
       /* v89.212（老板 1）：城外堆场按资源分账 —— 本行上限取**本资源自己的** cap
-         （净水 = 货仓 + 净化厂堆场 / 生物质 = 货仓 + 温室堆场……「地块多的存的多」）。 */
+         （净水 = 战储仓 + 净化厂堆场 / 生物质 = 战储仓 + 温室堆场……「地块多的存的多」）。 */
       var cap = (k === 'gold') ? 0
         : ((sp && sp.capByRes && sp.capByRes[k] != null) ? sp.capByRes[k]
           : (sp ? sp.total : (GAME.storeCap ? GAME.storeCap() : 0)));
@@ -3921,7 +3921,7 @@
         : ((meta ? meta.name : k) + '　上限 ' + U.amtText(cap)
           + '（' + (_pct >= 100 ? '已满' : '已占 ' + _pct + '%') + '）'
           + '\n· ' + ((sp && sp.lv > 0)
-              ? ('货仓（' + sp.lv + ' 级合计）：' + U.amtText(sp.base))
+              ? ('战储仓（' + sp.lv + ' 级合计）：' + U.amtText(sp.base))
               : ('基础储量：' + U.amtText(sp ? sp.base : cap)))
           + ((sp && sp.extByRes && sp.extByRes[k] > 0)
               ? ('\n· 城外堆场（本类地块）：+' + U.amtText(sp.extByRes[k])
@@ -4000,8 +4000,8 @@
    * 功能归属建筑（避免顶部菜单与建筑入口重复）
    * ============================================================ */
   ui.PANEL_TITLE = {
-    troops: '⚔️ 军队（训练营）', tech: '📜 科技（研习所）', equip: '🎽 装备（锻造间）',
-    items: '💎 宝物', generals: '🧑‍✈️ 英雄（招募站）', stats: '📊 统计',
+    troops: '⚔️ 军队（军营）', tech: '📜 科技（科研中心）', equip: '🎽 装备（锻造间）',
+    items: '💎 宝物', generals: '🧑‍✈️ 英雄（英雄枢纽）', stats: '📊 统计',
     rank: '🏅 威望', ext: '🌾 城外',
   };
   /* 募兵面板的**弹窗级重绘**（v20）
@@ -4010,8 +4010,8 @@
      选中兵种/改数量后必须重绘弹窗本体。 */
   /* ============================================================
    * 募兵面板（v24 · 需求 8）
-   * 入口一律带**训练营下标** —— 募兵是某座训练营的行为，队列也挂在它身上。
-   * idx == null 时兜底取本城第一座训练营（旧入口 / 中央视图直达）。
+   * 入口一律带**军营下标** —— 募兵是某座军营的行为，队列也挂在它身上。
+   * idx == null 时兜底取本城第一座军营（旧入口 / 中央视图直达）。
    * ============================================================ */
   ui.openTroops = function (idx, opts) {
     /* v80（老板）：「目前选择数量后会跳回到页面顶端，要求取消跳转这个动作」——
@@ -4029,7 +4029,7 @@
        （trainBarracks 读 sel.craft）。
        ⛔ 入口语义与**重绘语义必须分开**（`opts.keepState`）：
          · 用户入口（从建筑/裸入口打开）→ 落「募兵队列」页（v81 老板：队列独占第一页）+
-           按建筑类型预置选中项（机工坊 → 首个器械兵 / 训练营 → 首个常备兵）；
+           按建筑类型预置选中项（机工坊 → 首个器械兵 / 军营 → 首个常备兵）；
          · 面板内重绘（切页 / 点兵种卡 / 数量变更 / renderTroopsModal）→ **保持**当前页与选中项。
        不分开的后果（v89.229 实机抓出）：`renderTroopsModal()` 走 `openTroops(_trainBIdx)` →
        每次都把 _trainTab 与 _trainSel 重置回"入口默认值" → 切页点不动、点卡也点不动
@@ -4049,7 +4049,7 @@
          旧 `_trainTab` 取值一律退役，仅保留选中兵种 `_trainSel`。 */
     }
     ui._trainBIdx = _idx0;
-    /* v89.211（老板 3）：入场工位**归一** —— 陈旧/跨类 idx（如上次点的是训练营格）在这里
+    /* v89.211（老板 3）：入场工位**归一** —— 陈旧/跨类 idx（如上次点的是军营格）在这里
        回落本类首座，显示（trainBarracks）与提交（doTrain）此后读同一份。
        改前 siege 面板显示正常（有回落），提交却把旧 idx 原样交给 GAME.train →
        明明有作坊却报"本城尚无机工坊"（老板实测）。 */
@@ -4068,7 +4068,7 @@
   ui.renderTroopsModal = function () { ui.openTroops(ui._trainBIdx, { keepState: true }); };
 
   /* 当前面板的**工位**（v89.229：统一面板后按**选中兵种**解析 —— 器械兵 → 机工坊，
-     常备兵 → 训练营）。显示（troopsHTML）与提交（doTrain）读同一份。
+     常备兵 → 军营）。显示（troopsHTML）与提交（doTrain）读同一份。
      找不到时回退该类的第一座。 */
   ui.trainBarracks = function () {
     var c = GAME.currentCity();
@@ -5349,8 +5349,8 @@
       /* v89.49：也可能是机工坊（器械队列）—— 两套队列共用本面板 */
       GAME.craftWorkshopsOf(c).forEach(function (x) { if (x.idx === bIdx) { bar = x; kind = 'craft'; } });
     }
-    if (!bar) { ui.toast('未找到该训练营'); return; }
-    var label = kind === 'craft' ? '机工坊' : '训练营';
+    if (!bar) { ui.toast('未找到该军营'); return; }
+    var label = kind === 'craft' ? '机工坊' : '军营';
     var run = GAME.trainRunningOf(c.id, bIdx, kind);
     var head = '<div class="gold-heading">⚡ 提速 · 城内第 ' + (bIdx + 1) + ' 格' + label + '</div>';
     /* v89.49：队列刚好走完、还没被主循环扫走时（remain = 0）也按空态显示 ——
@@ -7062,15 +7062,15 @@
      ui.storiesHTML（故事集：收集与回看）两视图整条退役；顶栏页签一并移除。
      天时（年/季/天气）仍在顶栏天时行（story.skyLine）与公文播报中可见。 */
 
-  /* ================= 酒馆：招募（v89.188：统一话术） ================= */
-  /* v89.62（老板「增加自动招募按钮，可设置当酒馆刷新出什么品质的时候自动招募，
-     直至达到招募站空位上限」）—— 酒馆面板顶部的自动招募条：
+  /* ================= 征召大厅：招募（v89.188：统一话术） ================= */
+  /* v89.62（老板「增加自动招募按钮，可设置当征召大厅刷新出什么品质的时候自动招募，
+     直至达到英雄枢纽空位上限」）—— 征召大厅面板顶部的自动招募条：
        开关（点按钮翻转）+ 资质门槛（点选 chip，从突变体起，不新增下拉框）。
      执行与择优全在 GAME.innAutoRun（唯一出口），界面只写 s.settings.innAuto 这一个对象。 */
   ui.autoRecruitHTML = function () {
-    /* v89.73（老板：「自动招募做到顶部的『自动』菜单下，不要放酒馆里」）
-       —— 从酒馆搬到「自动」页，与自动升级/研究/出征同处（都是"挂机自动"这一族）。
-       门槛只列**酒馆出得到的档位**（≤ 进化体）：v89.73 起酒馆封顶进化体，
+    /* v89.73（老板：「自动招募做到顶部的『自动』菜单下，不要放征召大厅里」）
+       —— 从征召大厅搬到「自动」页，与自动升级/研究/出征同处（都是"挂机自动"这一族）。
+       门槛只列**征召大厅出得到的档位**（≤ 进化体）：v89.73 起征召大厅封顶进化体，
        若还把觉醒体/天启体列出来，那就是两个**永远招不到的死选项**，
        开了自动招募会静默地永不触发 —— 比没有这个开关更糟。 */
     var c = GAME.innAutoCfg();
@@ -7082,8 +7082,8 @@
     });
     /* v89.115：去外壳（.auto-card / 标题 / 开关按钮）—— 新的自动化界面由右侧详情 pane
        统一提供外壳与开关（ui.autoPaneHTML），这里只出**设置正文**，避免两个开关并排。 */
-    return '<div class="auto-state">开启后：酒馆每批候选到手即自动招募<b>达到门槛者</b>，资质高者优先，' +
-          '直至招募站空位满 / 旧币不足为止。</div>' +
+    return '<div class="auto-state">开启后：征召大厅每批候选到手即自动招募<b>达到门槛者</b>，资质高者优先，' +
+          '直至英雄枢纽空位满 / 旧币不足为止。</div>' +
         '<div class="auto-line"><span class="al-k">资质门槛</span>' +
           '<div class="chips chips-xs" style="justify-content:flex-start;">' +
             ranks.map(function (r) {
@@ -7091,7 +7091,7 @@
                 '" data-action="auto-recruit-min" data-v="' + r.id + '">' + r.name + '及以上</span>';
             }).join('') +
           '</div></div>' +
-        '<div class="auto-state">酒馆候选资质上限 <b>' + capName +
+        '<div class="auto-state">征召大厅候选资质上限 <b>' + capName +
           '</b>　·　觉醒体 / 天启体不直接招募，只能靠<b>血清升档</b>。</div>';
   };
   /* ============================================================
@@ -7130,9 +7130,9 @@
       var gaps = plan.needs.filter(function (n) { return n.need > 0; })
         .map(function (n) { return ((DATA.TROOPS[n.troopId] || {}).name || n.troopId) + ' 差 ' + U.fmt(n.need); });
       var slotTxt = (plan.bars.length || plan.craftBars.length)
-        ? (plan.bars.length ? '训练营 ' + plan.bars.length + ' 座　空位 <b>' + plan.left + ' / ' + plan.total + '</b>' : '')
+        ? (plan.bars.length ? '军营 ' + plan.bars.length + ' 座　空位 <b>' + plan.left + ' / ' + plan.total + '</b>' : '')
           + (plan.craftBars.length ? (plan.bars.length ? '　·　' : '') + '机工坊 ' + plan.craftBars.length + ' 座　空位 <b>' + plan.craftLeft + ' / ' + plan.craftTotal + '</b>' : '')
-        : '<span class="ui-sub">无训练营 / 机工坊 —— 不参与</span>';
+        : '<span class="ui-sub">无军营 / 机工坊 —— 不参与</span>';
       /* v89.199（老板 2）：「待补」清单逐项累积（每个参与的兵种一项）——wrap-ok =
          换行许可；不加时 nowrap 会把本行撑到上千 px、连锁撑宽整页（实测 1408→2383）。 */
       return '<div class="res-line wrap-ok"><span class="lbl">' + U.escape(c0.name) + '</span><span class="val">' + slotTxt +
@@ -7154,9 +7154,9 @@
         ? '已开启 —— 每 ' + gapS + ' 现实秒检查一轮：逐城判别、自动补单（下表为「触发线 / 目标」逐兵种设置）。'
         : '已关闭 —— 配置会保留，重开即用。') + '</div>' +
       '<div class="auto-line"><span class="al-k">触发条件</span><span>某城某兵种（驻军 + 在训）<b>低于「触发线」</b>即自动补单（触发线设 0 = 低于目标就补）</span></div>' +
-      '<div class="auto-line"><span class="al-k">停止条件</span><span>达到<b>「目标」</b>即停 · <b>旧币 / 净水低于保底</b>即停（暂停不关开关）· 训练营队列满则等待（消化后自动继续）</span></div>' +
-      '<div class="auto-line"><span class="al-k">执行范围</span><span>全境统一规则、<b>逐城独立执行</b>（各用各的城市资源与队列）；器械（无人轰炸机 / 自行火炮）走<b>机工坊队列</b>，与训练营队列分开排空位</span></div>' +
-      '<div class="auto-line"><span class="al-k">可用栏位</span><span>只往<b>有空位</b>的队列放单 —— 训练营位 = Σ 训练营（队列位 − 已占）、机工坊位同理；与募兵面板同一把尺（trainQueueSlots 唯一出口）</span></div>' +
+      '<div class="auto-line"><span class="al-k">停止条件</span><span>达到<b>「目标」</b>即停 · <b>旧币 / 净水低于保底</b>即停（暂停不关开关）· 军营队列满则等待（消化后自动继续）</span></div>' +
+      '<div class="auto-line"><span class="al-k">执行范围</span><span>全境统一规则、<b>逐城独立执行</b>（各用各的城市资源与队列）；器械（无人轰炸机 / 自行火炮）走<b>机工坊队列</b>，与军营队列分开排空位</span></div>' +
+      '<div class="auto-line"><span class="al-k">可用栏位</span><span>只往<b>有空位</b>的队列放单 —— 军营位 = Σ 军营（队列位 − 已占）、机工坊位同理；与募兵面板同一把尺（trainQueueSlots 唯一出口）</span></div>' +
       '<table class="tbl" style="margin-top:var(--sp-3);"><thead><tr><th>目标兵种</th><th class="ctr">触发线（低于）</th><th class="ctr">目标（补到）</th><th class="num">全境现状</th></tr></thead><tbody>' +
         rows + '</tbody></table>' +
       '<div class="auto-line" style="margin-top:var(--sp-3);"><span class="al-k">资源保底</span>' +
@@ -7174,8 +7174,8 @@
     var city = GAME.currentCity();
     var lv = GAME.innLevel(city);
     if (lv <= 0) {
-      ui.openModal('<div class="gold-heading">🍶 酒馆</div>' +
-        '<div class="q-empty">尚未建造酒馆</div>' +
+      ui.openModal('<div class="gold-heading">🍶 征召大厅</div>' +
+        '<div class="q-empty">尚未建造征召大厅</div>' +
         '<div style="text-align:center;margin-top:12px;"><button class="btn" data-action="close-modal">关闭</button></div>');
       return;
     }
@@ -7195,12 +7195,12 @@
       var govLv15 = GAME.buildingLevel(city, 'guanfu') || 0;
       var govCap15 = GAME.buildCapOf(city, 'guanfu');
       if (zxgLv15 < zxgCap15) {
-        slotGuide = '升招募站至 Lv' + (zxgLv15 + 1) + ' 可添 1 席';
+        slotGuide = '升英雄枢纽至 Lv' + (zxgLv15 + 1) + ' 可添 1 席';
       } else if (govLv15 < govCap15) {
-        /* v68 规则：城内建筑等级被政务厅压顶 —— 招募站想再升，得政务厅先升 */
-        slotGuide = '先升政务厅至 Lv' + (govLv15 + 1) + '，再升招募站可添 1 席';
+        /* v68 规则：城内建筑等级被政务厅压顶 —— 英雄枢纽想再升，得政务厅先升 */
+        slotGuide = '先升政务厅至 Lv' + (govLv15 + 1) + '，再升英雄枢纽可添 1 席';
       } else {
-        slotGuide = '招募站已至上顶（Lv' + zxgCap15 + '）—— 可把英雄派往他城腾位';
+        slotGuide = '英雄枢纽已至上顶（Lv' + zxgCap15 + '）—— 可把英雄派往他城腾位';
       }
     }
 
@@ -7238,25 +7238,25 @@
             /* v89.188（老板 3）：全站统一「招募」（「相亲」话术退役） */
             '>招募</button>' +
         '</span></td></tr>';
-    }).join('') || '<tr><td colspan="10" style="text-align:center;color:var(--text-dim);padding:var(--sp-5);">酒馆中暂无贤士，稍候再来。</td></tr>';
+    }).join('') || '<tr><td colspan="10" style="text-align:center;color:var(--text-dim);padding:var(--sp-5);">征召大厅中暂无贤士，稍候再来。</td></tr>';
 
-    /* v75（老板）：「酒馆的招募界面大一点，尽量所有候选都能在同一页」
+    /* v75（老板）：「征召大厅的招募界面大一点，尽量所有候选都能在同一页」
        「地下的各资质四维，成长和概率也不显示」——
        ① 改走三段式（v19 的 m-head / m-body / m-foot）：标题与按钮固定，只有候选区滚动
           （旧版「列表 414px 上限 + 面板滚动」两道滚动条并存，这里收敛成一处）；
-       ② 尺寸用新档 xxl（980×800）：候选行紧凑单行（36px），14 位（酒馆 Lv12 + 专精 2）
+       ② 尺寸用新档 xxl（980×800）：候选行紧凑单行（36px），14 位（征召大厅 Lv12 + 专精 2）
           与 16 位（聚落上限）真机一页装下；
        ③ 资质一览（rk-box / rankTable）整块退役。 */
     ui.openShell({
       /* v89.136（清单①）：逐秒刷新（候选/空位/刷新次数实时） */
       live: function () { ui.openInn(); },
-      title: '🍶 酒馆 · Lv' + lv,
-      sub: '每级 1 位候选　|　' + U.escape(city.name) + ' 招募站空位 ' + usedIn + '/' + cap +
+      title: '🍶 征召大厅 · Lv' + lv,
+      sub: '每级 1 位候选　|　' + U.escape(city.name) + ' 英雄枢纽空位 ' + usedIn + '/' + cap +
         '　|　' + leftTxt,
       body:
         (chk.ok ? '' : '<div class="note-warn">' + U.escape(chk.msg) + (slotGuide ? '　·　' + slotGuide : '') + '</div>') +
-        /* v89.73（老板）：自动招募条**从酒馆搬到「自动」菜单** —— 见 ui.autoRecruitHTML。
-           酒馆只管"这一批候选、招谁"，挂机自动化统一归「自动」页。 */
+        /* v89.73（老板）：自动招募条**从征召大厅搬到「自动」菜单** —— 见 ui.autoRecruitHTML。
+           征召大厅只管"这一批候选、招谁"，挂机自动化统一归「自动」页。 */
         /* v80（老板）：「招募界面的表格行宽相对固定，根据字串长度搞个适合的固定表，
            在换人时框架不动，只有英雄信息变动」——colgroup + table-layout: fixed，
            列宽只认表头这一次声明，换批只动内容（列宽表在 index.html 的 .inn-tbl 段）。 */
@@ -7386,21 +7386,21 @@
   };
 
 
-  /* ================= 货仓：储量上限 ================= */
+  /* ================= 战储仓：储量上限 ================= */
   ui.openStore = function () {
     var s = GAME.state;
     /* v89.158（老板 1）：口径统一 —— ① 等级取**等级和**（多仓叠加才是容量口径；
        改前 buildingLevel 只给"最高一座"，2 座 Lv1 显示 Lv1 而容量按 2 级算，两把尺）；
-       ② "基础储量"拆账（不再把城外堆场算进"基础"）；③ 标题按有无货仓分形态。 */
+       ② "基础储量"拆账（不再把城外堆场算进"基础"）；③ 标题按有无战储仓分形态。 */
     var sp = GAME.storePartsOf(GAME.currentCity());
     var lv = sp.lv;
     /* v89.212（老板 1）：堆场按资源分账 —— 逐行上限取自己的 cap（不再有"全局 cap"）；
-       空货仓提示改为按资源列账（账目 = 基础 + 本类堆场，逐项自洽）。 */
+       空战储仓提示改为按资源列账（账目 = 基础 + 本类堆场，逐项自洽）。 */
     var _extParts212 = [];
     DATA.RESOURCES.forEach(function (r) {
       if (sp.extByRes && sp.extByRes[r.key] > 0) _extParts212.push(r.name + ' +' + U.fmt(sp.extByRes[r.key]));
     });
-    var near = lv > 0 ? '' : ('<div class="note-warn">未建货仓：仅保有基础储量 ' + U.fmt(sp.base)
+    var near = lv > 0 ? '' : ('<div class="note-warn">未建战储仓：仅保有基础储量 ' + U.fmt(sp.base)
       + (_extParts212.length ? ('；城外堆场按资源分账：' + _extParts212.join(' · ')) : '')
       + '（超出部分将停止增长）</div>');
     /* v89.160（老板 1）：逾溢折损（唯一出口 GAME.overflowRotOf / DATA.OVERFLOW）——
@@ -7415,17 +7415,17 @@
       var meta = null;
       DATA.RESOURCES.forEach(function (r) { if (r.key === k) meta = r; });
       var v = s.res[k] || 0;
-      /* v89.212（老板 1）：逐行用**本资源自己的**上限（货仓 base + 本类地块堆场），悬停给分解 */
+      /* v89.212（老板 1）：逐行用**本资源自己的**上限（战储仓 base + 本类地块堆场），悬停给分解 */
       var capK = (sp.capByRes && sp.capByRes[k] != null) ? sp.capByRes[k] : sp.total;
       var exK = (sp.extByRes && sp.extByRes[k]) || 0;
       var pct = Math.min(100, Math.round(v / capK * 100));
       return '<div class="store-row"><span class="lbl">' + (meta ? meta.icon + meta.name : k) + '</span>' +
         '<span class="prog" style="flex:1;margin:0 10px;"><i style="width:' + pct + '%' + (pct > 90 ? ';background:linear-gradient(90deg,#a33,#e66)' : '') + '"></i></span>' +
-        '<span class="val">' + U.numHTML(v, 0) + ' <span class="cap" title="货仓 ' + U.fmt(sp.base)
+        '<span class="val">' + U.numHTML(v, 0) + ' <span class="cap" title="战储仓 ' + U.fmt(sp.base)
           + (exK > 0 ? (' + 城外堆场 ' + U.fmt(exK)) : '') + '">/ ' + U.numText(capK, 0) + '</span></span></div>';
     }).join('');
     ui.openModal(
-      '<div class="gold-heading">🏚️ 货仓 · ' + (lv > 0 ? ('Lv' + lv + '（多仓叠加）') : '未建') + '</div>' +
+      '<div class="gold-heading">🏚️ 战储仓 · ' + (lv > 0 ? ('Lv' + lv + '（多仓叠加）') : '未建') + '</div>' +
       '<div style="color:var(--text-dim);font-size:var(--fs-sub);text-align:center;margin-bottom:8px;">每级 +' + U.fmt(GAME.DATA.BASE_STORE || 2000000) + ' 储量上限</div>' +
       near + rotNote + rows +
       '<div style="text-align:center;margin-top:12px;"><button class="btn" data-action="close-modal">关闭</button></div>'
@@ -7453,14 +7453,14 @@
   /* v75（老板）：「地下的各资质四维，成长和概率也不显示」——
      资质一览（ui.rankTable / .rk-box）整块退役：候选行的资质徽章 + 悬停备注已够用。 */
 
-  /* ================= 招募站：英雄名录 ================= */
+  /* ================= 英雄枢纽：英雄名录 ================= */
   /* ============================================================
-   * 招募站（v29 · 需求 15）
+   * 英雄枢纽（v29 · 需求 15）
    * ------------------------------------------------------------
    * 改前：这里是**英雄名录** —— 与顶栏「英雄」菜单一字不差地重复一份。
    * 同一份数据摆两个入口，代价是"改了一处忘另一处"（两边的排序、分页、
    * 忠诚告警都要各维护一遍），收益为零。
-   * 现在招募站只讲它**自己**负责的事：房间数（英雄容量）、建筑专精、
+   * 现在英雄枢纽只讲它**自己**负责的事：房间数（英雄容量）、建筑专精、
    * 缺房时该怎么办。要看谁在帐下 → 去「英雄」菜单。
    * ============================================================ */
   /* ============================================================
@@ -7496,7 +7496,7 @@
       '<div class="res-line"><span class="lbl">① 问鼎天启体</span><span class="val">1 枚 / 将 —— 觉醒体 → 天启体（英雄面板 · 资质晋升）</span></div>' +
       '<div class="res-line"><span class="lbl">② 城建扩编</span><span class="val">1 枚 / 次 —— 建造位 +1（城市面板 · 每城 ≤' + (C.citySlotMax || 2) + ' 次）</span></div>' +
       '<div class="res-line"><span class="lbl">③ 练兵场扩编</span><span class="val">1 枚 / 次 —— 出征容量 +1 万人马（练兵场面板 · 每城 ≤' + (C.xcMax || 2) + ' 次）</span></div>' +
-      '<div class="res-line"><span class="lbl">④ 招揽人才</span><span class="val">1 枚 / 次 —— 英雄席位 +1（招募站面板 · 每城 ≤' + (C.genMax || 2) + ' 次）</span></div>' +
+      '<div class="res-line"><span class="lbl">④ 招揽人才</span><span class="val">1 枚 / 次 —— 英雄席位 +1（英雄枢纽面板 · 每城 ≤' + (C.genMax || 2) + ' 次）</span></div>' +
       '<div class="res-line"><span class="lbl">全境扩编</span><span class="val">已用 ' + used + ' / 上限 ' + max + ' 次</span></div>';
     ui.openShell({
       title: (C.icon || '🪓') + ' 节钺',
@@ -7526,7 +7526,7 @@
         used + '</b> / ' + cap + '</span></div>' +
       '<div class="attr"><span class="k">本馆等级</span><span class="v">Lv' + lv + ' / ' + maxLv + '</span></div>' +
       '<div class="attr"><span class="k">每级房间</span><span class="v">+1 席</span></div>' +
-      /* v89.132（老板「节钺设计再开拓一下」）：节钺 · 招揽人才入口（唯一落点 = 招募站面板） */
+      /* v89.132（老板「节钺设计再开拓一下」）：节钺 · 招揽人才入口（唯一落点 = 英雄枢纽面板） */
       '<div class="auto-line"><button class="btn" data-action="jieyue-gen" data-city="' + c.id +
         '" title="' + U.escape((GAME.jieyueTextOf ? GAME.jieyueTextOf() + '　·　' : '')
           + ((DATA.JIEYUE || {}).desc || '')) + '">🪓 节钺 · 招揽人才（' +
@@ -7544,20 +7544,20 @@
           + 'Lv' + ((DATA.MASTERY_TIERS || [12])[0]) + ' 起：房间 +2（每档 +2）</span></div>') +
       '<div class="attr"><span class="k">全境席位</span><span class="v">' +
         GAME.generalsIn(c).length + ' / ' + cap + '　（各城合计 ' + GAME.genSlotsTotal() + ' 席）</span></div>' +
-      '<div class="note" style="margin-top:10px;">招募站决定<b>本城能容纳多少英雄</b>；' +
+      '<div class="note" style="margin-top:10px;">英雄枢纽决定<b>本城能容纳多少英雄</b>；' +
         (full
-          ? '现已满员，<b>升级招募站</b>才能继续招募新将，或把英雄派往他城。'
-          : '尚有空位，可去<b>酒馆</b>招募新将，也可从别城<b>派遣</b>过来。') +
-        '<br>席位**按城**计：每座城的招募站只管自己这座城的人。名录见顶栏「英雄」菜单。</div>' +
+          ? '现已满员，<b>升级英雄枢纽</b>才能继续招募新将，或把英雄派往他城。'
+          : '尚有空位，可去<b>征召大厅</b>招募新将，也可从别城<b>派遣</b>过来。') +
+        '<br>席位**按城**计：每座城的英雄枢纽只管自己这座城的人。名录见顶栏「英雄」菜单。</div>' +
       (full && lv < maxLv && zIdx >= 0
         ? '<div style="text-align:center;margin-top:12px;">' +
             /* 走既有的 confirm-upgrade —— 升级只认「当前城市的格位序号」，
-               所以这里必须现算招募站在第几格，不能凭"建筑 id"假设点得到。 */
+               所以这里必须现算英雄枢纽在第几格，不能凭"建筑 id"假设点得到。 */
             '<button class="btn gold" data-action="confirm-upgrade" data-idx="' + zIdx +
-            '">升级招募站 → Lv' + (lv + 1) + '</button></div>'
+            '">升级英雄枢纽 → Lv' + (lv + 1) + '</button></div>'
         : '');
     ui.openShell({
-      title: '🎎 招募站 · Lv' + lv,
+      title: '🎎 英雄枢纽 · Lv' + lv,
       sub: '本城席位 ' + used + ' / ' + cap,
       /* v89.141（复核修复）：sm(433×414) 在基准态溢出 4px；更糟的是"满员可升级"
          分支还要再加一行升级按钮（≈ +42px）→ 那个分支会溢出 ~46px。
@@ -8347,7 +8347,7 @@
        · 格式：图标 + 用途短语；多功能面板写「用途A · 用途B」；
        · **名字要覆盖面板的全部内容**（点了名不副实就是误导）——
          例：政务厅入口原叫「征收」，面板里却有征调民力 / 本城特产 / 岁贡 / 改名，
-         已改「政务厅事务」；练兵场/训练营/作坊去掉与建筑名重复的抬头词。 */
+         已改「政务厅事务」；练兵场/军营/作坊去掉与建筑名重复的抬头词。 */
   var BLDG_FUNC = {
     /* ⛔ v89.135 移除：guanfu 条目（"政务厅事务"按钮）—— 老板 10：「不再设置多一个
        '政务厅事务'按钮」：改名 / 主城 / 基因实验室**直接显示**在政务厅格的建筑面板（见政务厅要务段）。 */
@@ -8361,7 +8361,7 @@
     /* v89.80（老板）：「马概（厩）去除"座驾装备"的建筑菜单及相应内容」——
        原菜单项点开的是「装备」总页（view: equip），与英雄档案里的部件栏重复，
        且"座驾"只是装备的一个部位，不值得在建筑里单开一个入口。
-       撤掉后点车库格只显示**属性行**（机车解锁 / 建筑专精），不再有功能按钮。
+       撤掉后点载具研究所格只显示**属性行**（机车解锁 / 建筑专精），不再有功能按钮。
        装备与座驾仍走两条既有的路：英雄档案点部位换装、背包「装备」页选将穿戴。 */
     /* v89.140（老板 4）：「锻造间建筑菜单界面，**新增一行增加一个百炼强化按钮**，
        与打造菜单格式相同。将打造界面里的百炼强化按钮删去」——
@@ -8591,7 +8591,7 @@
               '<span class="v">Lv' + (gg.level || 1) + (st91 ? ' · ' + U.escape(st91) : '') + '</span></div>';
           }).join('');
           return '<div class="m-sec" style="margin-top:10px;">🧑‍✈️ 本城英雄（' + gs91.length + '）</div>' +
-            (rows91 || '<div class="note" style="margin:0;">本城暂无英雄 —— 到酒馆招募、或从别城「英雄派遣」调入。</div>');
+            (rows91 || '<div class="note" style="margin:0;">本城暂无英雄 —— 到征召大厅招募、或从别城「英雄派遣」调入。</div>');
         })() +
         '</div>';
     }
@@ -8675,7 +8675,7 @@
       /* v19：升级是**纯后台过程** —— 施工期间该建筑的功能照常可用。
          只有「新建」（地块上还没建筑）才没有任何功能可进。
          判据：cell.build 存在即视为升级（targetLevel>1），
-         于是训练营施工中仍可募兵、研习所施工中仍可研究、锻造间施工中仍可打造。 */
+         于是军营施工中仍可募兵、科研中心施工中仍可研究、锻造间施工中仍可打造。 */
       var isUpgrade = !!(cell.build && (cell.pending.targetLevel || 1) > 1);
       var pr16 = GAME.buildProgress('city', idx);
       var progBlock =
@@ -8770,9 +8770,9 @@
       if (b.id === 'chengqiang') extra = '<div class="attr"><span class="k">耐久</span><span class="v">' + (100 * cell.build.lvl) + '万</span></div>' +
         '<div class="attr"><span class="k">守军防御</span><span class="v">+' + (10 * cell.build.lvl) + '%</span></div>';
       var bLv = cell.build.lvl;
-      /* v28（需求 4/5）：训练营面板必须列出**本营**的队列 ——
-         玩家点开训练营，看到的却是"可募兵种 12/18"，队列得去别处找。
-         （队列数据本来就是按训练营分的，只是这里从来没显示过。） */
+      /* v28（需求 4/5）：军营面板必须列出**本营**的队列 ——
+         玩家点开军营，看到的却是"可募兵种 12/18"，队列得去别处找。
+         （队列数据本来就是按军营分的，只是这里从来没显示过。） */
       var barQueue = '';
       if (b.id === 'junying') {
         barQueue = ui.trainQueueBlock({ idx: idx, lvl: bLv }, c) +
@@ -8794,7 +8794,7 @@
       if (b.id === 'kezhan') extra = '<div class="attr"><span class="k">同时候选</span><span class="v">' + bLv + ' 位（每级+1）</span></div>';
       if (b.id === 'zhaoxianguan') extra = '<div class="attr"><span class="k">英雄容量</span><span class="v">' + s.generals.length + ' / ' + bLv + '</span></div>';
       /* v89.158（老板 1）：① "本仓储量"改**本座**口径 —— 改前把上限总额 ÷ 等级和，
-         还把城外堆场摊了进来（无货仓时干脆显示全额），数字对不上；
+         还把城外堆场摊了进来（无战储仓时干脆显示全额），数字对不上；
          ② "全境储量上限"标签错（v60 起仓储**按城**）→ 改"本城储量上限"。 */
       if (b.id === 'cangku') {
         var _sp158 = GAME.storePartsOf(c);
@@ -8948,7 +8948,7 @@
         if (!GAME.canAfford(b.buildCost)) { afford = ' disabled'; lockMsg = '材料不足'; tip += '｜材料不足'; }
         if (UNIQUE[bid] && GAME.buildingLevel(c, bid) > 0) { afford = ' disabled'; lockMsg = '已建造(唯一)'; tip += '｜本城已建有（唯一建筑）'; }
         if (bid === 'guanfu') { afford = ' disabled'; lockMsg = '政务厅初始自带'; tip += '｜政务厅初始自带'; }
-        /* v68 · 逐步探索：前置不满足 → 置灰并写明原因（"需酒馆 Lv2"）
+        /* v68 · 逐步探索：前置不满足 → 置灰并写明原因（"需征召大厅 Lv2"）
            v89.86（P-04）：前置升级中改报动态文案（ui.prereqText），不再像永久锁。 */
         var preB = GAME.buildPrereqOf(c, bid, 1);
         if (!preB.ok) {
@@ -8989,7 +8989,7 @@
      其他'在办事项 · 建造 / 募兵 / 自动 / 行军'这种不需要，已有专门菜单。」
      · 改名 / 主城 / 基因实验室 / 全境营造总览 → 政务厅格建筑面板的「政务厅要务」段（openBuildModal）；
      · 本城特产 / 岁贡 → 同段的两行 attr（信息不丢）；
-     · 「在办事项」整块退役（建造队列看建筑面板 / 募兵看训练营 / 行军看军务总览 —— 各有专门菜单）；
+     · 「在办事项」整块退役（建造队列看建筑面板 / 募兵看军营 / 行军看军务总览 —— 各有专门菜单）；
      · 威望解锁的上限说明原在 liftLine → 早已由 openBuildModal 的 `_lift` 行承接。 */
 
 
@@ -9285,7 +9285,7 @@
     if (!DATA.TROOPS[ui._trainSel]) ui._trainSel = 'buxingji';   // 兜底：选中项必须存在
     /* v90.64（老板）：募兵营改**左列兵种清单 / 右侧详情**；
        14 兵种一列全列（不再分组分页）；
-       **队列移出本面板**（改放训练营菜单首页 —— 见 openBuildModal 的 junying 段 barQueue）。 */
+       **队列移出本面板**（改放军营菜单首页 —— 见 openBuildModal 的 junying 段 barQueue）。 */
     var ids = Object.keys(DATA.TROOPS);
     var cards = ids.map(function (id) {
       var t = DATA.TROOPS[id];
@@ -9309,7 +9309,7 @@
     var bar = ui.trainBarracks();
     var slotsLeft = bar ? GAME.trainSlotsLeft(c, bar.idx, kind) : 0;
     var barLine = bar ? ''
-      : '<div class="q-empty">本城尚未建造' + (kind === 'craft' ? '机工坊，无法制造器械。' : '训练营，无法募兵。') + '</div>';
+      : '<div class="q-empty">本城尚未建造' + (kind === 'craft' ? '机工坊，无法制造器械。' : '军营，无法募兵。') + '</div>';
     var listHTML = '<div class="troop-list">' + cards + '</div>';
     /* v90.65（老板）：右侧 = 选中兵种的**展示栏**（大图 + 属性 + 驻军/上限/消耗；**纯展示，无控件**）。 */
     var detailHead = !sel ? '' :
@@ -9341,7 +9341,7 @@
         '<button class="btn sm" data-action="train-max" title="按可用幸存者与资源填到最大可募数">上限</button>' +
         '<span style="flex:1 1 auto;"></span>' +
         '<button class="btn gold" data-action="confirm-train" data-troop="' + ui._trainSel + '"' +
-          (slotsLeft > 0 ? '' : ' disabled data-why="本营训练队列已满：等待一个队列完成，或升级训练营解锁等待位"') + '>' + (kind === 'craft' ? '制造' : '训练') + '</button>' +
+          (slotsLeft > 0 ? '' : ' disabled data-why="本营训练队列已满：等待一个队列完成，或升级军营解锁等待位"') + '>' + (kind === 'craft' ? '制造' : '训练') + '</button>' +
         '<span style="flex:1 1 auto;"></span>' +
         '<span style="color:var(--text-dim);font-size:var(--fs-sub);">约 ' + timeStr + (slotsLeft > 0 ? '' : '　· 队列已满') + '</span>' +
       '</div>' +
@@ -9590,7 +9590,7 @@
         '<span class="grow-main">' +
           '<b class="grow-name">第 ' + (idx + 1) + ' 席</b>' +
           '<span class="grow-sub">' + (idx >= cap
-            ? '招募站需 ' + (idx + 1) + ' 级（现 ' + cap + ' 席）' : '空位 · 可在酒馆招募') + '</span>' +
+            ? '英雄枢纽需 ' + (idx + 1) + ' 级（现 ' + cap + ' 席）' : '空位 · 可在征召大厅招募') + '</span>' +
         '</span></div>';
     }
     var a = GAME.genAttrs(g);
@@ -9817,7 +9817,7 @@
        Lv 挪进经验行；状态非空闲时以小签挂在名字后（出征中 / 守将 这类需要一眼看到）。 */
     /* ⛔ v89.190（老板 1）退役：styleName74（资质行尾的风格名）—— 与资质徽章内的
        「· 均衡」重复，老板令「均衡这个备注位重复了，去掉」。
-       风格名唯一出口 = ui.rankBadge 里的后缀（列表 / 酒馆 / 详情页同源）。 */
+       风格名唯一出口 = ui.rankBadge 里的后缀（列表 / 征召大厅 / 详情页同源）。 */
     var rkDesc74 = String(rk.desc || '').replace(/等级上限 \d+。?/, '').trim();
     /* v89.194（老板）：「在右侧英雄详情界面不要城主·XX城这个标签」——
        城主状态不再挂小签（城主身份由下方「解除城主」按钮体现；工资口径另见月俸行 ×1.5）。
@@ -9842,7 +9842,7 @@
       }
     }
     /* v89.93（整改 E14）：**资质晋升**一行 —— 下一档 / 所需血清 / 持有数 / 一步到位。
-       改前资质链在界面上没有任何入口（酒馆只写"觉醒体/天启体只能靠血清升档"，
+       改前资质链在界面上没有任何入口（征召大厅只写"觉醒体/天启体只能靠血清升档"，
        却不说血清从哪来）。 */
     /* ⛔ v89.205（老板）：「英雄名称信息下的这行去掉，只保留部件栏的即可：🔮 遗物」
        —— 挂件行（.gp-sub.gp-attach186）**整行退役**：已佩回显 / 佩上 / 更换 / 卸下
@@ -10326,7 +10326,7 @@
         size: 'sm',
         body: '<div class="q-empty">' + U.escape(blk) + '。' +
           ui.help('提升上限只能换更高资质的英雄：凡人 60 · 突变体 100 · 进化体 140 · 觉醒体 180 · 天启体 240。'
-            + '\n⚠️ 酒馆只招得到**进化体及以下**；觉醒体 / 天启体要用**血清升档**（基因实验室产出）。'
+            + '\n⚠️ 征召大厅只招得到**进化体及以下**；觉醒体 / 天启体要用**血清升档**（基因实验室产出）。'
             + '\n手里的经验道具留着给别的英雄。') + '</div>',
         foot: '<div class="m-foot"><button class="btn" data-action="close-modal">关闭</button></div>'
       });
@@ -10420,7 +10420,7 @@
       return ((b.level || 1) - (a.level || 1))
         || String(a.name || '').localeCompare(String(b.name || ''), 'zh');
     });
-    /* v64（老板）：「根据**该城的招募站等级**有相应空位」—— 席位按城。 */
+    /* v64（老板）：「根据**该城的英雄枢纽等级**有相应空位」—— 席位按城。 */
     var cap = GAME.genSlotsOf(cur);
     /* v76（老板）：「12个空格每页…超过12个英雄自动翻页」—— 每页固定 12 席。 */
     var pg = ui.pageOf('gen', pool.length, ui.GEN_PER);
@@ -10441,9 +10441,9 @@
       '<div class="gold-heading">英雄' +
         ui.help('左侧点姓名切换英雄；右侧即其**全部**档案与部件栏（不再另开弹窗）\n' +
           '**只列本城英雄**：英雄归属城市，派遣（出征→调兵）改变归属 —— 调到别城则在本城消失、在彼城出现\n' +
-          '席位**按城算**：每座城的上限 = 该城招募站等级（+建筑专精：每档 +2，满三档 +6）；0 级 = 0 席\n' +
-          '已超编不会清退现有英雄，但**招募/调入**须先建或升级招募站\n' +
-          '英雄先在酒馆招募（本城酒馆 + 本城空位），也可「城市面板 → 英雄派遣」从别城调入\n' +
+          '席位**按城算**：每座城的上限 = 该城英雄枢纽等级（+建筑专精：每档 +2，满三档 +6）；0 级 = 0 席\n' +
+          '已超编不会清退现有英雄，但**招募/调入**须先建或升级英雄枢纽\n' +
+          '英雄先在征召大厅招募（本城征召大厅 + 本城空位），也可「城市面板 → 英雄派遣」从别城调入\n' +
           '左侧清单每页 12 席；超过 12 位英雄时在底部导航条翻页') +
       '</div>' +
       '<div class="gen-split">' +
@@ -11311,13 +11311,13 @@
       });
       var cost = DATA.techCost(t, lv + 1);
       var btn = full ? '<span style="color:var(--text-dim);">已满级</span>' :
-        locked ? '<span style="color:var(--red-light);">需研习所Lv' + t.lv + '</span>' :
+        locked ? '<span style="color:var(--red-light);">需科研中心Lv' + t.lv + '</span>' :
         miss.length ? '<span style="color:var(--red-light);">需' + miss.join('、') + '</span>' :
         /* v90.44（老板）：「耗费资源的操作不要直接显示数额，改为悬停显示」——
            研究按钮文字去掉「(旧币 N)」，费用全在 title 悬停（GAME.costString 唯一渲染口）。 */
         '<button class="btn sm" data-action="tech-research" data-tech="' + t.id + '"'
           + ' title="需 ' + GAME.costString(cost) + '"'
-          + (cur ? ' disabled data-why="本城研习所正在研究其他科技（每城同时仅 1 项）"' : '') + '>研究</button>';
+          + (cur ? ' disabled data-why="本城科研中心正在研究其他科技（每城同时仅 1 项）"' : '') + '>研究</button>';
       return '<tr><td>' + t.name + '</td><td class="ctr">' + lv + '/' + cap + '</td>' +
         '<td style="font-size:var(--fs-sub);color:var(--text-dim);">' + t.desc + '</td>' +
         '<td class="ctr">' + btn + '</td></tr>';
@@ -11332,7 +11332,7 @@
       return head + inner;
     }).join('');
     return '<div class="ui-page">' +
-      '<div class="gold-heading">📜 研习所科技（' + bookLv + '级研习所 · ' + DATA.TECH.length + '项）</div>' +
+      '<div class="gold-heading">📜 科研中心科技（' + bookLv + '级科研中心 · ' + DATA.TECH.length + '项）</div>' +
       /* v89.191：上限按城提示（主城 20 / 别城 10）—— 玩家一眼知道本城的天花板与出路。 */
       '<div style="text-align:center;color:var(--text-dim);font-size:var(--fs-sub);margin-bottom:4px;">'
         + (isMain
@@ -12723,7 +12723,7 @@
       '<div style="text-align:center;color:var(--text-dim);font-size:var(--fs-body);margin-bottom:8px;">守军约 ' + gNum.toLocaleString() + ' 名 · 距主城 ' + dist + ' 格</div>' +
       ui.planHTML(plan) +
       '<div class="note">守军：' + parts.join('　') + '<br>' +
-        '据点等级<b style="color:var(--gold-light)">每日变化</b>，位置固定；城内建筑按等级<b>建满</b>（训练营两座，其余为居所）。掠夺可获厚利（材料、资源、珠宝），据点次日重置。<br>' +
+        '据点等级<b style="color:var(--gold-light)">每日变化</b>，位置固定；城内建筑按等级<b>建满</b>（军营两座，其余为居所）。掠夺可获厚利（材料、资源、珠宝），据点次日重置。<br>' +
         (raided
           ? '<b style="color:var(--red-light);">今日已掠夺此据点 —— 每处每日限一次，明日可再来。</b><br>'
           : '掠夺<b>每日每处限一次</b>（得手才计数）。<br>') +
@@ -13559,7 +13559,7 @@
     /* v89.64（老板「将目前所有兵种都列上，做好分列，列间距固定，好看点」）：
        ① **全部兵种**都上表（DATA.TROOPS 全列，不再只看"城内有的"）——
           没有的也列出来、置灰并禁用，一眼看清"这个兵我还没有"；
-       ② 走**表格 + colgroup + table-layout:fixed**（与酒馆候选表 `.inn-tbl` 同一套做法）：
+       ② 走**表格 + colgroup + table-layout:fixed**（与征召大厅候选表 `.inn-tbl` 同一套做法）：
           列宽只认表头这一次声明，换内容/换城时列**纹丝不动** —— 这正是"列间距固定"；
        ③ 整块搬去**右列**独占（老板：「右边只留兵种及数量」）。 */
     /* v89.144（老板 2）：「上限和清空……放在每个兵种行后边，对单独兵种数量进行操作」——
@@ -15882,7 +15882,7 @@
     /* v89.128（需求 5）：自动采集/收获（每 24 游戏小时一轮） */
     { id: 'gather', icon: '🌾', name: '自动采集/收获', act: 'toggle-auto-gather' },
     { id: 'recruit', icon: '🧲', name: '自动招募', act: 'auto-recruit-toggle' },
-    /* v89.190（老板 2）：自动征兵（兵营募兵 · 与「自动招募」= 酒馆招将并列） */
+    /* v89.190（老板 2）：自动征兵（兵营募兵 · 与「自动招募」= 征召大厅招将并列） */
     { id: 'train', icon: '🛡️', name: '自动征兵', act: 'toggle-auto-train' },
     { id: 'heal', icon: '🏥', name: '自动治疗', act: 'toggle-auto-heal' },
     /* v89.118（老板需求 3）：外敌来犯的**接受开关** + 介绍 + 警报流水（从军务·警报迁来） */
@@ -15993,7 +15993,7 @@
         '某项资源不足就<b>顺延试下一项</b>，全部试遍都升不动才暂停（开关不关，资源恢复后自动继续）；' +
         '全部满级则停止。只升级已有建筑，不会替你新建（免得程序改动你的布局）。</div>';
     } else if (it.id === 'research') {
-      body = '<div class="auto-note">从研习所当前能研究的科技里挑最便宜的一项；' +
+      body = '<div class="auto-note">从科研中心当前能研究的科技里挑最便宜的一项；' +
         '资源不足则暂停等待，不影响开关状态。</div>';
     } else if (it.id === 'march') {
       body = '<div class="auto-line" style="margin-top:2px;">' +

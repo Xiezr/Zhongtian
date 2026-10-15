@@ -9,7 +9,7 @@
   var S = GAME.systems = {};
 
   /* ============================================================
-   * 科技研究（研习所 · 23项）
+   * 科技研究（科研中心 · 23项）
    * ============================================================ */
   /* ============================================================
    * v89.191（老板 3-④）：**科技按城** —— 读点的唯一入口。
@@ -34,7 +34,7 @@
   };
 
   /* 当前研究中的科技（v90.54：**按城** —— 该城在办的科技；该城无在研则 null）。
-     多城经营时，各城研习所**并行**研究、互不阻塞（与建造/训练队列同构）。 */
+     多城经营时，各城科研中心**并行**研究、互不阻塞（与建造/训练队列同构）。 */
   S.researching = function (city) {
     var s = GAME.state;
     var q = (s && s.queues && s.queues.tech) || [];
@@ -48,24 +48,24 @@
     var s = GAME.state, t = S.techInfo(techId);
     if (!t) return { ok: false, msg: '未知科技' };
     var city = (cityId ? GAME.cityById(cityId) : null) || GAME.currentCity() || s.cities[0];
-    /* v90.54（老板）：研习所**按城**占用 —— 只拦本城（别城在研不阻塞本城），每城同时在研 ≤1 项。 */
+    /* v90.54（老板）：科研中心**按城**占用 —— 只拦本城（别城在研不阻塞本城），每城同时在研 ≤1 项。 */
     var _act = 0;
     (s.queues.tech || []).forEach(function (q) { if (q.cityId === (city && city.id)) _act++; });
-    if (_act > 0) return { ok: false, msg: '本城研习所正在研究其他科技' };
+    if (_act > 0) return { ok: false, msg: '本城科研中心正在研究其他科技' };
     var shuyuanLv = GAME.buildingLevel(city, 'shuyuan');
-    if (shuyuanLv < t.lv) return { ok: false, msg: '需要研习所 Lv' + t.lv };
+    if (shuyuanLv < t.lv) return { ok: false, msg: '需要科研中心 Lv' + t.lv };
     /* v89.191（老板 3-③）：**建筑不达标则无法研究** —— 科技可带 req（建筑 → 等级）。 */
     var req = t.req || {};
     for (var rk in req) {
       var rl = GAME.buildingLevel(city, rk);
       if (rl < req[rk]) {
         return { ok: false, msg: '需先建「' + ((DATA.BUILDINGS[rk] || {}).name || rk) + '」至 Lv' + req[rk]
-          + '（本城现 Lv' + rl + '）—— 建筑与研习所科技互为条件' };
+          + '（本城现 Lv' + rl + '）—— 建筑与科研中心科技互为条件' };
       }
     }
     var cur = S.techLevel(techId, city);
     /* v89.81：上限唯一出口；v89.191（老板 3-④）：**按城** —— 主城 20、别城 10
-       （GAME.techCapOf；货仓容量"满配"口径仍读 DATA.TECH_MAX_LV，互不影响）。 */
+       （GAME.techCapOf；战储仓容量"满配"口径仍读 DATA.TECH_MAX_LV，互不影响）。 */
     var cap = GAME.techCapOf ? GAME.techCapOf(city) : (DATA.TECH_MAX_LV || 10);
     if (cur >= cap) {
       return { ok: false, msg: cap > (DATA.TECH_MAX_LV || 10) ? ('已满级（主城上限 Lv' + cap + '）') : '已满级' };
@@ -106,7 +106,7 @@
   };
 
   /* 逆向工程（v63 · 老板：「守将属性只对当前城市起加成作用」）：
-     研究由**某城的研习所**发起，所以谋略加速取**发起城**的守将（不传则按当前城）。
+     研究由**某城的科研中心**发起，所以谋略加速取**发起城**的守将（不传则按当前城）。
      研究本身仍是全境科技（`s.queues.tech` 无 cityId、全境共享）——
      但"加成从哪来"必须能指到一座城，否则又变成全境加成。 */
   S.research = function (techId, cityId) {
@@ -120,7 +120,7 @@
     var cost = DATA.techCost(t, cur + 1);
     if (GAME.payCostIn) GAME.payCostIn(city, cost); else GAME.payCost(cost);
     var time = Math.round(60 * Math.pow(2, cur) * (1 - S.studyMult(city))); // 游戏秒
-    /* v28（需求 1）：研习所满级专精 —— 研究速度 +25% */
+    /* v28（需求 1）：科研中心满级专精 —— 研究速度 +25% */
     var _mt = GAME.mastery ? GAME.mastery('techPct', null) : 0;
     if (_mt > 0) time = Math.round(time / (1 + _mt));
     if (GAME.story) time = Math.round(time / GAME.story.researchMult()); // 英雄羁绊加速（v90.93：年号项退役）
@@ -272,7 +272,7 @@
     var item = DATA.EQUIP[GAME.eqId(inst)];
     if (!item) return { ok: false, msg: '未知装备' };
     if ((GAME.state.inventory || []).indexOf(inst) < 0) return { ok: false, msg: '该件不在背包' };
-    /* 座驾需车库/油门拉杆等条件简化：等级不做硬约束 */
+    /* 座驾需载具研究所/油门拉杆等条件简化：等级不做硬约束 */
     return { ok: true, item: item, inst: inst };
   };
 
@@ -793,10 +793,10 @@
    * ------------------------------------------------------------
    * 「操典残页 −30% / 操典全卷 −50%」这两件宝物的 target 一直是 train，
    * 但 S._boost 的 train 分支写的是 `s.queues.train[0]` —— **全局第一条**。
-   * 在"每座训练营各有自己的队列"（v24 需求 8）之后，这条就点不到玩家看着的那一条：
+   * 在"每座军营各有自己的队列"（v24 需求 8）之后，这条就点不到玩家看着的那一条：
    * 在 B 营点加速，可能加速的是 A 营。而且界面上从来就没有加速入口，
    * 等于这两个道具的功能根本不存在。
-   * 现在按「城 + 训练营格」定位到该营**正在执行**的那一条。
+   * 现在按「城 + 军营格」定位到该营**正在执行**的那一条。
    * ============================================================ */
   S.boostTrainQueue = function (itemId, cityId, bIdx) {
     var s = GAME.state, item = S.itemInfo(itemId);
