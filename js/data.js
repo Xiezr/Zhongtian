@@ -3852,9 +3852,47 @@
       desc: '大崩坏前的中枢智识，至今仍在运转。每级：英雄经验 +6%、仓储 +1%' },
   ];
 
+  /* ============================================================
+   * v91.30 奇观定义表（每星球 1 个 · 每现实日随机刷新）
+   * ------------------------------------------------------------
+   * 9 种（去黑洞）。`adapt` = 适配驱动的 report 维度（高者优先选）。
+   * `acts` = 探索行动（分类名 + 是否需军 + 产出倾向）。
+   * `mat` = 主产奇观材料 id；`out` = 额外产出（珠宝/芯片/图纸/残页 id）。
+   * 产出统一落**全局背包 s.items**（玩家级）。
+   * ============================================================ */
+  DATA.WONDER_DEFS = [
+    { id: 'crystal', name: '巨构水晶', body: '发光晶簇', icon: '💠', adapt: 'res',
+      mat: 'w_crystal', acts: ['collect', 'search'], out: ['w_meteor'] },
+    { id: 'chairring', name: '交椅星环', body: '巨型环', icon: '💫', adapt: 'resDanger',
+      mat: 'w_singularity', acts: ['search', 'deep'], out: ['w_he3', 'bp_legend_zhan'] },
+    { id: 'crater', name: '坠星峡谷', body: '陨击坑熔岩', icon: '☄️', adapt: 'danger',
+      mat: 'w_meteor', acts: ['search', 'deep'], out: ['bp_rare_zhan'] },
+    { id: 'ark', name: '沉没方舟', body: '半潜方舟', icon: '🚢', adapt: 'habit',
+      mat: 'w_tidesalt', acts: ['collect', 'rescue'], out: ['w_coldcrystal'] },
+    { id: 'pillars', name: '千柱圣殿', body: '列柱环廊', icon: '🏛️', adapt: 'civ',
+      mat: 'w_spore', acts: ['study', 'collect'], out: ['book_wuzi'] },
+    { id: 'mothership', name: '陨落母舰', body: '半沉舰体', icon: '🛸', adapt: 'default',
+      mat: 'w_stariron', acts: ['search', 'collect'], out: ['w_crystal'] },
+    { id: 'dyson', name: '戴森残片', body: '环状能量板', icon: '🔆', adapt: 'default',
+      mat: 'w_he3', acts: ['collect', 'search'], out: [] },
+    { id: 'temple', name: '上古神殿', body: '悬浮神殿', icon: '🛕', adapt: 'default',
+      mat: 'w_humus', acts: ['study', 'rescue'], out: ['book_liutao'] },
+    { id: 'forge', name: '永动熔炉', body: '喷焰工业巨构', icon: '🏭', adapt: 'default',
+      mat: 'w_stariron', acts: ['collect', 'deep'], out: ['w_meteor'] },
+  ];
+  /* 探索行动表（分类名 · 需军 · 冒险损兵概率 · 产出倍率） */
+  DATA.WONDER_ACT_DEFS = {
+    collect: { name: '采集', needArmy: false, risk: 0, mul: 1.0, desc: '小队采集，安稳取料' },
+    search: { name: '派军搜查', needArmy: true, risk: 0.15, mul: 1.6, desc: '派军搜掠，产出更多但可能损兵' },
+    deep: { name: '深潜攻坚', needArmy: true, risk: 0.30, mul: 2.4, desc: '精锐攻坚，顶级产出、风险最高' },
+    study: { name: '圣殿研读', needArmy: false, risk: 0, mul: 1.0, banner: 'page', desc: '研读残页，得战技' },
+    rescue: { name: '方舟救援', needArmy: false, risk: 0, mul: 1.0, banner: 'pop', desc: '救援幸存者' },
+  };
+  /* 奇观探索参数 */
+  DATA.WONDER_CFG = { dailyMax: 5, marchRealSec: 3600, exploreRealSec: 3600 };
+
   /* 取某城的档位加成（唯一出口：别处不要再按 type 分支） */
   DATA.CITY_PERK_KEYS = ['prodPct', 'taxPct', 'buildSlot', 'storePct', 'troopSlot'];
-
   /* ③ 名城专属选项（面板上的额外操作）。
    * 冷却走**游戏日**（与"每日产出"同一把尺子），cost 从**本城**库存扣。 */
   DATA.CITY_OPTS = [
@@ -4775,7 +4813,7 @@
   };
 
   /* ⛔ v90.80（老板「去除奇遇系统」）：v89.6「奇遇 · 见闻录」数据整族退役 ——
-   DATA.WONDER（三带密度 / 探奇消耗 / 三档奖励 / 出口文案）与 DATA.WONDERS（24 条三档剧本）一并清除。
+   DATA.WONDER（三带密度 / 探奇消耗 / 三档奖励 / 出口文案）与 DATA.WONDER_DEFS（24 条三档剧本）一并清除。
    引擎 / UI / 地图 / main 动作 / 测试同步退役（见 smoke §80 零残留守卫）。 */
 
 /* ⛔ v90.93 退役：`DATA.SCENE_FLOW`（v89 全屏荒野场景剧本，12 活动 × 2~3 幕）整族清除 ——

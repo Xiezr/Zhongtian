@@ -36110,6 +36110,49 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })());
   })();
 
+  /* ============================================================
+   * §263. v91.30 奇观：日刷新决定论 / 每日上限 / 探索产 s.items
+   * ============================================================ */
+  (function () {
+    console.log('\n===== 263. v91.30 奇观核心 =====');
+    check('§263① 出口齐：wonderOf / wonderLeftToday / wonderExplore / wonderTick', (function () {
+      return typeof GAME.wonderOf === 'function' && typeof GAME.wonderLeftToday === 'function'
+        && typeof GAME.wonderExplore === 'function' && typeof GAME.wonderTick === 'function'
+        && (DATA.WONDER_DEFS || []).length === 9;
+    })());
+    check('§263② wonderOf 决定论（同日同结果 · 必在场 · 属 9 表）', (function () {
+      var pid = (GAME.state.activePlanet) || 1;
+      var a = GAME.wonderOf(pid), b = GAME.wonderOf(pid);
+      return !!a && a.id === b.id && (DATA.WONDER_DEFS || []).some(function (d) { return d.id === a.id; });
+    })());
+    check('§263③ 每日上限：探索 5 次后第 6 次被拒', (function () {
+      var bk = GAME.state;
+      try {
+        var st = G.newGame({ name: 'w263', cityName: '灰岗', region: '烬环', mapSeed: 7 });
+        G.state = st;
+        var pl = GAME._planetOf(st.activePlanet);
+        pl.wonderLimit = null;
+        var c = st.cities[0]; c.army = { buxingji: 99999 };
+        var okN = 0;
+        for (var i = 0; i < 6; i++) { var r = GAME.wonderExplore(st.activePlanet, 'collect', c.id, {}); if (r.ok) okN++; }
+        return okN === 5 && GAME.wonderLeftToday(st.activePlanet) === 0;
+      } finally { G.state = bk; }
+    })());
+    check('§263④ 结算产奇观材料落全局 s.items', (function () {
+      var bk = GAME.state;
+      try {
+        var st = G.newGame({ name: 'w263b', cityName: '灰岗', region: '烬环', mapSeed: 8 });
+        G.state = st;
+        var pl = GAME._planetOf(st.activePlanet);
+        var wd = GAME.wonderOf(st.activePlanet);
+        st.items = st.items || {};
+        var before = st.items[wd.mat] || 0;
+        GAME._wonderSettle(pl, { act: 'collect', cityId: st.cities[0].id, army: {} });
+        return (st.items[wd.mat] || 0) > before;
+      } finally { G.state = bk; }
+    })());
+  })();
+
   console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');
   process.exit(FAIL ? 1 : 0);
 })();

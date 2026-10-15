@@ -156,6 +156,18 @@
       /* ⛔ v89.135 移除：`case 'open-guanfu'` —— 政务厅面板退役（功能直接进政务厅格建筑面板）。 */
       /* v73（老板需求 3）：基因实验室。v89.224：入口迁到城内建筑「基因实验室」格；
          立项 / 提取后**留在实验室里刷新** —— 状态变化要立刻看得见。 */
+      /* v91.30：奇观菜单 + 探索 */
+      case 'wonder-open': ui.openWonder(Number(el.dataset.pid)); break;
+      case 'wonder-go': {
+        var _pid = Number(el.dataset.pid), _act = el.dataset.act;
+        var _paid = { buxingji: 2000 };   /* 派军行动默认派 2000 步兵（可后续做编队） */
+        var _ad = (DATA.WONDER_ACT_DEFS || {})[_act] || {};
+        var _r = GAME.wonderExplore(_pid, _act, GAME.currentCity() && GAME.currentCity().id,
+          _ad.needArmy ? _paid : {}, null);
+        ui.toast(_r.msg);
+        if (_r.ok) { GAME.refreshAll(); }
+        break;
+      }
       case 'open-lab':
         /* v91.26（老板）：基因实验室 = **主城专属设施**（状态是全局 s.farm）——
            只在主城使用；别城该格保留建造位但不启用。 */

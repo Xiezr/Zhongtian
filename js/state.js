@@ -3654,6 +3654,7 @@
 
     /* 9f) 行军队列推进（抵达即结算 —— 见 battle.js GAME.march） */
     if (GAME.march && GAME.march.tick) GAME.march.tick();
+    if (GAME.wonderTick) GAME.wonderTick();   /* v91.30：奇观探索推进（现实时间锚点 · 离线补算） */
 
     /* 10) 历法天时推进（story.js；年号纪元随 v90.93 退役，史册记账随 v89.218 退役） */
     if (GAME.story) GAME.story.tick(ts);

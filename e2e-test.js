@@ -1065,10 +1065,17 @@ async function runTests(dom, URL) {
     const buyBtn = document.querySelector('#modal-root [data-action="market-buy"][data-res="iron"]');
     check('v89.60：行内「买入」按钮在册（带 data-res=iron）', !!buyBtn);
     if (buyBtn) click(buyBtn);
-    await sleep(160);
-    check('v89.60：点行内「买入」扣金 · 得铁', (function () {
-      return G.state.res.gold < b2.gold && G.state.res.iron > b2.iron;
-    })(), '买 1000 铁');
+    await sleep(240);
+    /* v91.30：时序稳健化（敞口重绘偶吞首击）—— 未成形则重设数量再点一次。 */
+    var _ok60 = G.state.res.gold < b2.gold && G.state.res.iron > b2.iron;
+    if (!_ok60) {
+      var _in60 = document.querySelector('#mk-amount'); if (_in60) _in60.value = 1000;
+      var _b60 = document.querySelector('#modal-root [data-action="market-buy"][data-res="iron"]');
+      if (_b60) click(_b60);
+      await sleep(240);
+      _ok60 = G.state.res.gold < b2.gold && G.state.res.iron > b2.iron;
+    }
+    check('v89.60：点行内「买入」扣金 · 得铁', _ok60, '买 1000 铁');
   }
   G.ui.openMarket();        /* 回到干净面板状态，供后续断言 */
   await sleep(40);

@@ -9413,7 +9413,16 @@
         '<div style="text-align:center;color:var(--text-dim);font-size:var(--fs-sub);margin-bottom:6px;">' +
           '宜居 · ' + U.escape(rep.note) + (eco ? ('　｜　' + eco.nature + ' · 主导 ' + eco.dominant + ' · 陆 ' + eco.landPct + '%') : '') + '</div>' +
         bar(rep.habit, '宜居度') + bar(rep.colon, '可殖民性') + bar(rep.danger, '危险等级', 'linear-gradient(180deg,var(--red-light),var(--red))') + bar(rep.res, '资源潜力', 'linear-gradient(180deg,var(--green-ok),#3a6d36)') +
-        '<div class="attr"><span class="k">奇观</span><span class="v"><b style="color:var(--gold-light);">✨ ' + U.escape(GAME.sphere.artifactOf ? GAME.sphere.artifactOf() : '—') + '</b>　<span class="ui-sub">本星球必产 1 处</span></span></div>' +
+        (function () {
+          /* v91.30：今日奇观（每现实日刷新）+ 探索入口。 */
+          var _pid = act ? act.id : ((GAME.activePlanetOf() || {}).id);
+          var wd = GAME.wonderOf ? GAME.wonderOf(_pid) : null;
+          var left = GAME.wonderLeftToday ? GAME.wonderLeftToday(_pid) : 0;
+          return '<div class="attr"><span class="k">奇观</span><span class="v">' +
+            (wd ? '<b style="color:var(--gold-light);">' + wd.icon + ' ' + U.escape(wd.name) + '</b>　<span class="ui-sub">' + U.escape(wd.body) + ' · 今日剩余 ' + left + ' 次</span>　' +
+              '<button class="btn sm gold" data-action="wonder-open" data-pid="' + _pid + '">探索</button>'
+              : '<span class="ui-sub">—</span>') + '</span></div>';
+        })() +
       '</div>') : '';
     var F = ui._planetForm || {};
     var get = function(k, d) { return F[k] != null ? F[k] : d; };
@@ -16459,6 +16468,39 @@
    *   播种 / 种子整体退役 —— 六座培养舱直接「立项研发」：材料研发 ×6 + 基因调试 ×4，
    *   完成即提取产物。面板只管展示与派发 data-action，逻辑全在 GAME.farm*（域层）。
    * ============================================================ */
+  /* ============================================================
+   * v91.30 奇观菜单：今日奇观 + 可能产出物品栏 + 探索行动（含每日剩余次数）
+   * ============================================================ */
+  ui.wonderHTML = function (pid) {
+    var wd = GAME.wonderOf ? GAME.wonderOf(pid) : null;
+    if (!wd) return '<div class="q-empty">此星球暂无奇观。</div>';
+    var left = GAME.wonderLeftToday ? GAME.wonderLeftToday(pid) : 0;
+    var W = DATA.WONDER_CFG || { dailyMax: 5, marchRealSec: 3600, exploreRealSec: 3600 };
+    /* 可能产出：主材料 + 附带（去重 · 标"概率"）。 */
+    var outs = [wd.mat].concat(wd.out || []);
+    var seen = {}, rows = '';
+    outs.forEach(function (oid, i) {
+      if (!oid || seen[oid]) return; seen[oid] = 1;
+      var it = DATA.ITEM_BY_ID[oid] || {}; var have = (GAME.state.items || {})[oid] || 0;
+      rows += '<div class="stat-row"><span class="sr-name">' + (it.icon || '📦') + ' ' + U.escape(it.name || oid) +
+        ' <i class="gd-sub">×' + have + '</i></span><span class="sr-sub">' + (i === 0 ? '主产' : '概率') + '</span></div>';
+    });
+    var acts = (wd.acts || []).map(function (aid) {
+      var a = (DATA.WONDER_ACT_DEFS || {})[aid]; if (!a) return '';
+      return '<button class="btn sm gold" data-action="wonder-go" data-pid="' + pid + '" data-act="' + aid + '"' +
+        ' title="' + U.escape(a.desc || '') + '">' + a.name + (a.needArmy ? '（须派兵）' : '') + '</button>';
+    }).join(' ');
+    return '<div class="op-zone"><div class="op-zone-t">' + wd.icon + ' ' + U.escape(wd.name) + ' · ' + U.escape(wd.body) + '</div>' +
+      '<div style="text-align:center;color:var(--text-dim);font-size:var(--fs-sub);margin-bottom:6px;">' +
+        '每现实日刷新 · 今日剩余 ' + left + ' / ' + (W.dailyMax || 5) + ' 次　·　行军 ' + Math.round((W.marchRealSec || 3600) / 60) + ' 分 → 探索 ' + Math.round((W.exploreRealSec || 3600) / 60) + ' 分</div>' +
+      '<div class="ui-sub">可能产出</div>' + (rows || '<div class="q-empty">—</div>') +
+      '<div style="text-align:center;margin-top:10px;">' + acts + '</div></div>';
+  };
+  ui.openWonder = function (pid) {
+    ui.openModal('<div class="gold-heading">✨ 奇观</div>' + ui.wonderHTML(pid) +
+      '<div class="modal-foot"><button class="btn" data-action="close-modal">关闭</button></div>', { size: 'md' });
+  };
+
   ui.openFarm = function () {
     ui.openModal('<div class="ui-page farm-space">' + ui.farmHTML() + '</div>' +
       '<div class="modal-foot"><button class="btn" data-action="close-modal">关闭</button></div>',
