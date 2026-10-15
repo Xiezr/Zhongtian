@@ -340,6 +340,8 @@
       if (_g194 > 0) o.gold = _g194;
       var jw = DATA.jewelCostAt(lv);
       if (jw) o.jewel = jw;
+      /* v91.30：**Lv16 及以上**建筑升级追加奇观材料「星铁同位素」（走 jewel 键）。 */
+      if (lv >= 16) { o.jewel = o.jewel || {}; o.jewel.w_stariron = (o.jewel.w_stariron || 0) + (lv - 15); }
       return o;
     };
   }

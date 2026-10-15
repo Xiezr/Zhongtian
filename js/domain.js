@@ -5319,12 +5319,15 @@
     var m = (it.set ? DATA.FORGE.setMul : 1) * (DATA.FORGE.slotMul[it.slot] || DATA.FORGE.slotMulDef);
     /* 量产工艺：打造旧币消耗 −3%/级（封顶 −50%）—— v89.191：按城读（不传 = 当前城） */
     var goldDisc = Math.min(0.5, techB('synth', city));
-    return {
+    var out = {
       gold: Math.round(base.gold * m * (1 - goldDisc)),
       iron: Math.round(base.iron * m),
       wood: Math.round(base.wood * m),
       stone: Math.round(base.stone * m),
     };
+    /* v91.30：**顶级打造（q≥5）** 追加奇观材料「晶核」（走 cost.jewel 键 · 自动接入校验/扣费）。 */
+    if (it.q >= 5) out.jewel = { w_crystal: (it.q - 4) * 2 };
+    return out;
   };
   /* 该装备所需材料（按部位定种类，按品质定数量） */
   /* --------- 物品估值（背包排序与展示用） --------- */
@@ -5693,7 +5696,7 @@
       return { ok: false, msg: '锻造间等级不足（打造' + (DATA.Q_NAME[it.q] || '') + '需 Lv' + needLv + '）' };
     }
     var bp = GAME.blueprintOf(itemId);
-    if (bp && !GAME.hasBlueprint(itemId)) return { ok: false, msg: '缺少「' + bp.name + '」（游商可购，或攻占名城缴获）' };
+    if (bp && !GAME.hasBlueprint(itemId)) return { ok: false, msg: '缺少「' + bp.name + '」（奇观探索产出，或攻占名城缴获）' };
     var cost = GAME.forgeCost(itemId);
     if (!GAME.canAfford(cost)) return { ok: false, msg: '资材不足（需 ' + GAME.costString(cost) + '）' };
     var mats = GAME.forgeMaterials(itemId);
@@ -5741,11 +5744,14 @@
     var base = (DATA.FORGE.costByQ || {})[it.q] || DATA.FORGE.costByQ[1];
     var lv = GAME.enhOf(x);
     var C = DATA.ENHANCE || {};
-    return {
+    var out = {
       gold: Math.round((base.gold || 0) * (C.goldMul || 0.35) * (lv + 1)),
       iron: Math.round((base.iron || 0) * (C.ironMul || 0.22) * (lv + 1)),
       stone: Math.round((base.stone || 0) * (C.stoneMul || 0.22) * (lv + 1)),
     };
+    /* v91.30：**+8 级以上**强化需奇观材料「陨尘」（走 cost.jewel 键 —— 自动接校验/扣费/显示）。 */
+    if (lv >= 7) out.jewel = { w_meteor: (lv - 6) };
+    return out;
   };
   /* 可强化清单：背包 + 穿戴里的**机甲件**（品质高、已强化者在前）
      v88：过滤掉基因强化件 —— 它们走「调校」（lingTemperList），互不越界 */

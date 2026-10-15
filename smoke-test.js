@@ -36153,6 +36153,38 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })());
   })();
 
+  /* ============================================================
+   * §264. v91.30 奇观材料去路（sink）：建筑升级 / 装备强化 / 顶级打造
+   * ============================================================ */
+  (function () {
+    console.log('\n===== 264. v91.30 奇观材料 sink =====');
+    check('§264① 建筑 Lv16+ 升级追加「星铁同位素」（jewel 键）', (function () {
+      var b = DATA.BUILDINGS.guanfu || DATA.BUILDINGS.minfang;
+      var c16 = b.levelCost(16), c15 = b.levelCost(15);
+      return c16 && c16.jewel && (c16.jewel.w_stariron || 0) > 0
+        && (!c15 || !c15.jewel || !c15.jewel.w_stariron);
+    })());
+    check('§264② 装备 +8 及以上强化追加「陨尘」（enhCost）', (function () {
+      /* 夹具 = { id: 装备id, enh: 强化级 }（eqId 读 .id / enhOf 读 .enh）。 */
+      var tid = null; Object.keys(DATA.EQUIP).forEach(function (k) { if (!tid && DATA.EQUIP[k].q >= 1 && !DATA.EQUIP[k].ling) tid = DATA.EQUIP[k].id; });
+      if (!tid) return true;
+      var low = GAME.enhCost({ id: tid, enh: 6 });
+      var high = GAME.enhCost({ id: tid, enh: 8 });
+      return high && high.jewel && (high.jewel.w_meteor || 0) > 0
+        && (!low || !low.jewel || !low.jewel.w_meteor);
+    })());
+    check('§264③ 顶级打造（q≥5）追加「晶核」（forgeCost jewel 键）', (function () {
+      var hi = null; Object.keys(DATA.EQUIP).forEach(function (k) { if (!hi && DATA.EQUIP[k].q >= 5) hi = DATA.EQUIP[k]; });
+      if (!hi) return true;
+      var c = GAME.forgeCost(hi.id);
+      return c && c.jewel && (c.jewel.w_crystal || 0) > 0;
+    })());
+    check('§264④ 9 种奇观材料均在册（type wmat · 走 jewel 键可消耗）', (function () {
+      var ms = (DATA.ITEMS || []).filter(function (x) { return x.type === 'wmat'; });
+      return ms.length === 9 && ms.every(function (x) { return x.id.indexOf('w_') === 0; });
+    })());
+  })();
+
   console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');
   process.exit(FAIL ? 1 : 0);
 })();
