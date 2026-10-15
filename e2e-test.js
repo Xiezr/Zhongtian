@@ -696,8 +696,7 @@ async function runTests(dom, URL) {
   /* v71（老板）：「城池属性不要显示坐标和所在区，只显示城池命名即可」——
      本断言自 v70 翻转：只验城名在、坐标与区全称**不在** */
   check('侧栏城池属性只显城名（不含坐标 / 不含区全称）',
-    attrs18.indexOf('泽乡') >= 0
-    && attrs18.indexOf('500×500') < 0
+    attrs18.indexOf('500×500') < 0
     && attrs18.indexOf(G.coordText(conq18)) < 0
     && attrs18.indexOf('政务厅Lv') < 0
     && (G.cityFullName(conq18).indexOf(' · ') < 0
@@ -2823,8 +2822,8 @@ async function runTests(dom, URL) {
      单城时整块收起 */
   check('侧栏不再有 征收/显示比例/岁贡（板块已删）',
     toolsV24.indexOf('征收') < 0 && toolsV24.indexOf('显示比例') < 0 && toolsV24.indexOf('岁贡') < 0);
-  check('侧栏「城池属性」首行是城池身份',
-    (document.querySelector('#city-attrs') || {}).innerHTML.indexOf('🏯') >= 0);
+  check('侧栏身份信息移入下拉行（v91.25：城名在 #city-switch-host）',
+    ((document.querySelector('#city-switch-host') || {}).innerHTML || '').indexOf('星球') >= 0);
 
   /* ================= v23：地块管理 / 角标 / 宫殿 / 统计 ================= */
   console.log('\n--- v23 地块管理与界面细化 ---');
@@ -2862,8 +2861,8 @@ async function runTests(dom, URL) {
   })());
   G.ui.setCity(extraCity23.id);
   await sleep(80);
-  check('切入第二座城后侧栏跟随该城',
-    (document.querySelector('#city-attrs') || {}).innerHTML.indexOf('测试二城') >= 0);
+  check('切入第二座城后侧栏跟随该城（城名在下拉行）',
+    ((document.querySelector('#city-switch-host') || {}).innerHTML || '').indexOf('测试二城') >= 0);
   check('第二座城的政务厅宫殿正常渲染', !!vc.querySelector('.gov-palace'));
   G.state.cities.pop();
   G.ui.setCity(G.state.cities[0].id);
@@ -3331,7 +3330,7 @@ async function runTests(dom, URL) {
   await sleep(120);
   check('改名生效并回到政务厅面板', rnCity.name === '泊城',
     rnCity.name);
-  check('侧栏城池名同步', (document.querySelector('#city-attrs') || {}).textContent.indexOf('泊城') >= 0);
+  check('侧栏城池名同步', ((document.querySelector('#city-switch-host') || {}).textContent || '').indexOf('泊城') >= 0);
   G.renameCity(rnCity.id, bkName25);
   rnCity.type = bkType25;
   G.ui.closeAllModals();
@@ -3538,13 +3537,13 @@ async function runTests(dom, URL) {
     st.cities = bak;
     G.ui.renderCityAttrs(cur, st);
     /* v71（老板）：「即使只有一个城池，也保留下拉框，在这里可以显示区镇落坐标」 */
-    check('单城时也出现城池下拉框（选项 = 区镇落 + 坐标）',
-      single === 1 && /\d+°E \d+°N/.test(singleTxt) && singleTxt.indexOf(G.coordText(cur)) >= 0, single + ' 个选项');
+    check('单城时也出现城池下拉框（选项 = 星球P·城名）',
+      single === 1 && singleTxt.indexOf('星球') >= 0 && singleTxt.indexOf(cur.name) >= 0, single + ' 个选项');
     /* v45（需求 3）：判据由"芯片个数"改为"下拉框选项数" —— 已有城池都是可选项 */
     check('多城时城池清单给出城池下拉框（已有城池均为选项）', multi >= 2, multi + ' 个选项');
     /* v71（老板）：选项文案 = 区镇落全称 + 坐标（在哪建城，这里可鉴） */
-    check('下拉框选项含区镇落全称与坐标（v71：选址信息出口）',
-      multiTxt.indexOf(G.cityFullName(cur)) >= 0 && multiTxt.indexOf(G.coordText(cur)) >= 0, multiTxt.slice(0, 80));
+    check('下拉框选项 = 星球P·城名（v91.25：去区镇落与坐标）',
+      multiTxt.indexOf('星球') >= 0 && multiTxt.indexOf(cur.name) >= 0, multiTxt.slice(0, 80));
     /* v53（老板："点出来列表马上收回去了"）：这条才是那个 bug 的直接判据 ——
        原生下拉列表挂在 <select> 元素上，元素被重绘换掉 = 列表立刻合上。
        造出多城 → 连点三次 renderCityAttrs（主循环每秒就这么干）→
@@ -4737,19 +4736,19 @@ if (svBtn) {
   G.ui.setView('city');
   await sleep(90);
   /* v71（老板）：只显示城池命名 —— 坐标文字已撤，迁址两入口保留 */
-  check('★ 城池属性栏只显城名（无坐标），两个迁址入口保留', (function () {
-    const h = document.querySelector('#city-attrs').innerHTML;
+  check('★ 城池属性栏只显城名（无坐标），迁址/建筑入口在下拉行', (function () {
+    /* v91.25（老板）：身份行退役 —— 城名/操作移入「城池」下拉行（#city-switch-host）。 */
+    const host = (document.querySelector('#city-switch-host') || {}).innerHTML || '';
+    const attrs = document.querySelector('#city-attrs').innerHTML;
     const c0 = G.currentCity();
-    const full = G.cityFullName(c0);
-    return h.indexOf(c0.name) >= 0
-      && h.indexOf('500×500') < 0 && h.indexOf(G.coordText(c0)) < 0
-      && (full.indexOf(' · ') < 0 || h.indexOf(full) < 0)
-      && h.indexOf('data-action="city-random"') >= 0 && h.indexOf('data-action="city-move-ask"') >= 0;
+    return attrs.indexOf('500×500') < 0 && attrs.indexOf(G.coordText(c0)) < 0
+      && host.indexOf('星球') >= 0 && host.indexOf(c0.name) >= 0
+      && host.indexOf('data-action="city-random"') >= 0 && host.indexOf('data-action="city-move-ask"') >= 0;
   })());
   {
     const c70 = G.currentCity();
     const from70 = { x: c70.x, y: c70.y, ci: _ciOf(c70.x, c70.y) };
-    click(document.querySelector('#city-attrs [data-action="city-random"]'));
+    click(document.querySelector('#city-switch-host [data-action="city-random"]'));
     await sleep(200);
     check('★ 一键随机：坐标已变、新格是平原',
       (c70.ci !== from70.ci)
@@ -4758,7 +4757,7 @@ if (svBtn) {
   }
   {
     const c71 = G.currentCity();
-    click(document.querySelector('#city-attrs [data-action="city-move-ask"]'));
+    click(document.querySelector('#city-switch-host [data-action="city-move-ask"]'));
     await sleep(90);
     const mh70 = document.querySelector('#modal-root').innerHTML;
     check('★ 迁址弹窗：坐标输入 + 确认按钮（按弹窗规范）',

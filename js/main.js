@@ -828,6 +828,16 @@
       /* v60（需求 4）：城池面板与城池间调拨 ——
          地图上点自家城池先弹面板（不直接进城），面板里再进 / 运 / 派 / 改名。
          chips 一律"只切 class + 写选择"，需要刷新数字的走 ui.syncTransportEst。 */
+      /* v91.25（老板）：侧栏「星球」下拉 —— 切换当前经营的星球（载入目标星球分片）。 */
+      case 'switch-planet': {
+        var _spid = Number(el.value);
+        if (_spid && _spid !== GAME.state.activePlanet && GAME.enterPlanet) {
+          GAME.enterPlanet(_spid);
+          ui.toast('已切换到 ' + ((GAME.activePlanetOf() || {}).name || ('星球 ' + _spid)));
+          GAME.refreshAll();
+        }
+        break;
+      }
       case 'city-enter': {
         var ceId = el.dataset.city, ceC = GAME.cityById(ceId);
         if (!ceC) { ui.toast('城池不存在'); break; }

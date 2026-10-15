@@ -3578,18 +3578,37 @@
        v45（需求 3）：由 chips 改为**原生下拉框** ——
        城池数会随进程不断增长，chips 在窄侧栏里折行会把城池属性挤下去；
        下拉框恒定一行，且"我有哪些城"一眼看全。 */
-    /* v71（老板）：「即使只有一个城池，也保留这个城池下拉框，在这里可以显示区镇落坐标」
-       —— 城池属性行瘦身后（只显城名），下拉框升格为「选址信息」的出口：
-       单城也照常渲染；选项文案 = 区镇落全称 + 坐标（在哪建城，一眼可鉴）。 */
-    var switcher = '<div class="city-switch"><span class="cs-lbl">城池</span>' +
+    /* v71（老板）：「即使只有一个城池，也保留这个城池下拉框…」
+       v91.25（老板）：「去掉区镇落坐标多余信息，只显示 星球N·城名；在城池下拉框上加星球下拉框」。
+       选项文案 = `星球{P}·{城名}`（去全称与经纬）；多星球时其上加**星球下拉**。 */
+    var _pid = s.activePlanet || 0;
+    var _planets = GAME.planetsOf ? GAME.planetsOf() : [];
+    var planetSel = _planets.length > 1
+      ? '<div class="city-switch"><span class="cs-lbl">星球</span>' +
+        '<select class="city-select" data-action="switch-planet" title="切换当前经营的星球">' +
+        _planets.map(function (p) {
+          return '<option value="' + p.id + '"' + (+p.id === +_pid ? ' selected' : '') + '>' +
+            U.escape(p.name || ('星球 ' + p.id)) + '</option>';
+        }).join('') + '</select></div>'
+      : '';
+    var switcher = planetSel +
+      '<div class="city-switch"><span class="cs-lbl">城池</span>' +
       '<select class="city-select" data-action="switch-city" title="切换当前经营的城池">' +
       s.cities.map(function (x) {
         return '<option value="' + x.id + '"' + (x.id === c.id ? ' selected' : '') + '>' +
-          U.escape(GAME.cityFullName(x))
+          '星球' + _pid + '·' + U.escape(x.name || '城')
           + ((GAME.isMainCity && GAME.isMainCity(x)) ? '【主城】' : '')
-          + ' ' + U.escape(GAME.coordText(x)) + '</option>';
+          + '</option>';
       }).join('') +
-      '</select></div>';
+      '</select>' +
+      /* 城名旁的三个操作入口（从原「城池身份行」并入本行，去重复展示） */
+      '<span class="city-switch-ops">' +
+        (GAME.isMovableCity(c)
+          ? '<button class="btn sm" data-action="city-random" title="一键随机：迁到一处空闲平原">🎲</button>' +
+            '<button class="btn sm" data-action="city-move-ask" title="迁址：输入格索引 ci">📍</button>'
+          : '') +
+        '<button class="btn sm" data-action="open-bldg-list" title="城内建筑明细清单（全部建筑 · 等级 · 造价 · 效果）">🏗</button>' +
+      '</span></div>';
     /* v53（老板："点出来列表马上收回去了"）：**城池清单必须与每秒重绘解耦**。
        主循环每秒调一次 renderSide → renderCityAttrs，改前 switcher 拼在下面的 html 里，
        `box.innerHTML = html` 会把 <select> 整块销毁重建 ——
@@ -3602,8 +3621,8 @@
     /* v71（老板）：选项文案含城名 / 坐标 —— 签名跟着文案走，
        改名、迁址后下一帧即刷新；否则下拉框会停在旧文案上。 */
     var sig = (s.cities || []).map(function (x) {
-      return x.id + ':' + (x.name || '') + ':' + x.x + ',' + x.y;
-    }).join(',') + '|' + c.id + '|' + (s.mainCityId || '');   /* v79：主城变更也要刷新 */
+      return x.id + ':' + (x.name || '') + ':' + x.ci;
+    }).join(',') + '|' + c.id + '|' + (s.mainCityId || '') + '|' + _pid;   /* v91.25：星球变更也要刷新 */
     if (host) {
       if (ui._citySwSig !== sig) {         /* 没变 → 一个字节都不碰这个 select */
         ui._citySwSig = sig;
@@ -3614,23 +3633,8 @@
       if (typeof console !== 'undefined') console.warn('renderCityAttrs: 缺少 #city-switch-host，城池清单未渲染');
     }
     var html = '' +
-      /* v22（需求 3）：城池身份从棋盘上方下沉到这里 */
-      '<div class="res-line" style="border-bottom:1px solid var(--sep-gold);padding-bottom:5px;margin-bottom:3px;">' +
-        '<span class="lbl" style="color:var(--gold-light);font-weight:700;">🏯 ' +
-          ui.cityLabelHTML(c, true) + '</span>' +
-        /* v70（老板）：「城池的主界面提供其坐标……一键随机……坐标切换（除名城，名城固定）」。
-           v71（老板）：「城池属性不要显示坐标和所在区，只显示城池命名即可」——
-           坐标 / 政务厅 Lv 文字从本行撤下（迁址弹窗里仍能看到当前坐标）；
-           🎲/📍 两个**操作入口**保留（它们不是"显示"），名城仍只标注不可迁。
-           两钮都走唯一出口 GAME.canCityMoveTo。 */
-        '<span class="val" style="font-weight:400;color:var(--text-dim);">' +
-          (GAME.isMovableCity(c)
-            ? '<button class="btn sm" data-action="city-random" title="一键随机：迁到一处空闲平原">🎲</button>' +
-              '<button class="btn sm" data-action="city-move-ask" title="坐标切换：输入坐标迁址">📍</button>'
-            : '<span style="opacity:.7">名城固定</span>') +
-          /* v90.31（老板）：「提供一个建筑明细清单」—— 城内建筑一览入口（等级/造价/效果/前置） */
-          '<button class="btn sm" data-action="open-bldg-list" title="城内建筑明细清单（全部建筑 · 等级 · 造价 · 效果）">🏗</button>' +
-        '</span></div>' +
+      /* v91.25（老板）：城池身份行**删除** —— 城名已在「城池」下拉框显示、🎲/📍/🏗 已并入下拉行，
+         此处展示重复。城池属性正文直接从「民心 / 民怨」开始。 */
       /* v26（需求 3）：天时已移到顶栏 —— 它是全局信息，不该占城池属性的位置 */
       /* v28（需求 3）：民心与民怨合并成一行「xx / xx」——
          两者本是同一枚硬币（民怨 = 100 − 民心），各占一行纯粹浪费侧栏高度。 */

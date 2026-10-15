@@ -6256,8 +6256,11 @@
   check('侧栏「城池操作」板块已删除（切城并入城池属性）',
     !/ui\.renderCityTools/.test(uS35) && !/id="city-tools"/.test(hS35)
     && /city-switch/.test(uS35));
-  check('城池属性含身份行与城外地块', /* v71（老板）：身份行只留城池命名 —— 「政务厅Lv」随坐标一并撤下 */
-    /ui\.cityLabelHTML\(c, true\)/.test(uS35)
+  check('城池属性：身份信息并入下拉行（v91.25：去重复，城名/操作在「城池」下拉行）',
+    /* v91.25（老板）：原「城池身份行」（🏯城名 + 🎲/📍/🏗）删除 —— 城名已在下拉框、
+       操作并入下拉行。判据：下拉选项带「星球P·城名」；🧱/🗺/🏗 三入口在 switcher 内。 */
+    /星球' \+ _pid \+ '·'/.test(uS35)
+    && /data-action="open-bldg-list"/.test(uS35)
     && !/政务厅Lv/.test(uS35.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, ''))
     && /城外地块/.test(uS35));
   check('renderCityTools 与 #city-tools 已彻底移除',
@@ -6566,11 +6569,12 @@
     /* v45（需求 3）：chips → 原生 <select>；且当前城必须是 selected 的那一项 */
     /* v71（老板）：「即使只有一个城池，也保留下拉框，在这里可以显示区镇落坐标」——
        单城不再收起；两侧选项都带坐标（区镇落全称在上，坐标在后）。 */
+    /* v91.25（老板）：选项文案 = 「星球P·城名」（去全称与经纬）；星球下拉在位时排在其上。 */
     return /<select class="city-select" data-action="switch-city"/.test(multi)
       && /<option value="[^"]+" selected>/.test(multi)
-      && /\d+°E \d+°N/.test(multi)
+      && /星球\d+·/.test(multi)
+      && !/\d+°E/.test(multi)
       && /<select class="city-select" data-action="switch-city"/.test(single)
-      && /\d+°E \d+°N/.test(single)
       && sepOk;
   })());
   /* v53（老板：\"点出来列表马上收回去\"）：**下拉框不得被每秒重绘重建**。
@@ -10219,12 +10223,11 @@ check('已拥有的城池一律可改名，原名另存 origName', (function () 
 })());
 check('城池名走单一取值口（改名同步所有引用）', (function () {
   var u = require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8');
-  return /ui\.cityLabelHTML = function \(c, short\)/.test(u) && (u.match(/ui\.cityLabelHTML\(/g) || []).length >= 1
-    && /GAME\.cityFullName\(x\)/.test(u)
-    /* v71：侧栏走短名；v77 资源区表头退役；v89.104 统计表（唯一用全称的地方）随统计页退役
-       —— 现在只剩侧栏一处（短名）。这条断言只保证"取值口仍在、短名仍在用"。 */
-    && (u.match(/ui\.cityLabelHTML\s*\(/g) || []).length >= 1
-    && (u.match(/ui\.cityLabelHTML\(c, true\)/g) || []).length >= 1;
+  return /ui\.cityLabelHTML = function \(c, short\)/.test(u)
+    && typeof G.cityFullName === 'function'
+    /* v71：侧栏走短名；v91.25（老板）：侧栏身份行退役 → cityLabelHTML 生产侧不再调用
+       （仅存档/兼容保留定义）。判据只验两出口仍定义、全称出口在册。 */
+    ;
 })());
 
 /* ---- 需求 1/3/4：底部固定导航条 / 地图满屏 / 背包分页 ---- */
@@ -10303,7 +10306,7 @@ check('统计页（黄册）已整页退役 —— 视图函数与菜单条目�
 })());
 check('侧栏资源与驻军随所选城池变化', (function () {
   var u = require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8');
-  return /GAME\.cityProdPerSec\(c\)/.test(u) && /ui\.cityLabelHTML\s*\(/.test(u)
+  return /GAME\.cityProdPerSec\(c\)/.test(u) && /GAME\.cityFullName/.test(u)
     && typeof G.cityProdPerSec === 'function' && typeof G.prodBasePerHourOf === 'function';
 })());
 check('招募站不再重复英雄名录', (function () {
