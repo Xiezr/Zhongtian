@@ -1957,6 +1957,16 @@
   /* v76（老板）：导航迁入底部条后，这里不再需要为右下浮标让位（78px 撤） */
   /* v90.71（老板）：地图**贴边占满** —— 去内边距，画布撑满大界面（视野更宽）。 */
   .map-wrap { position: relative; padding: 0; width: 100%; height: 100%; box-sizing: border-box; }
+  /* v91.30：**雷霆大箭头** —— 指向今日奇观的大标记（脉动 + 光晕），点它开奇观菜单。 */
+  .wonder-arrow {
+    position: absolute; z-index: 6; pointer-events: auto; cursor: pointer;
+    width: 64px; height: 64px; margin: 0; transform-origin: 50% 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: var(--fs-h1); line-height: var(--lh-1); color: var(--gold-light);
+    text-shadow: 0 0 8px var(--gold-dark);
+    animation: wonderPulse 1.1s ease-in-out infinite;
+  }
+  @keyframes wonderPulse { 0%,100% { opacity: .75; } 50% { opacity: 1; } }
   /* v76（老板）：「把地图的导航栏（上下左右，坐标之类）放到这个导航范围内」——
      地图导航迁入**底部固定导航条**（.bottombar，由 ui.mapHTML 登记、paintBottom 落画），
      改为静态排布、融入条内（条高 46px，v44 的"一行"布局原样保留）。
@@ -4289,7 +4299,6 @@
          ④ 游商 / 背包由弹窗改为**整页视图**，与其他菜单一致 -->
     <div class="tab active" data-view="city"><i class="ti" data-nav="city"></i>城市</div>
     <div class="tab" data-view="ext"><i class="ti" data-nav="ext"></i>城外</div>
-    <div class="tab" data-view="galaxy"><i class="ti" data-nav="galaxy"></i>星系</div>
     <div class="tab" data-view="map"><i class="ti" data-nav="map"></i>地图</div>
     <span class="nav-sep"></span>
     <div class="tab" data-view="generals"><i class="ti" data-nav="general"></i>英雄</div>
@@ -4405,32 +4414,32 @@
 </div><!-- /#app-scale -->
 </div><!-- /#app-fit -->
 
-<!-- BUILD 9242 -->
-<script src="js/data.js?v=9242"></script>
-<script src="js/state.js?v=9242"></script>
-<script src="js/systems.js?v=9242"></script>
-<script src="js/domain.js?v=9242"></script>
-<script src="js/map.js?v=9242"></script>
+<!-- BUILD 9246 -->
+<script src="js/data.js?v=9246"></script>
+<script src="js/state.js?v=9246"></script>
+<script src="js/systems.js?v=9246"></script>
+<script src="js/domain.js?v=9246"></script>
+<script src="js/map.js?v=9246"></script>
 <!-- v90.69：球面世界内核（纯 JS · 拓扑/地形/几何 SSOT）—— 逻辑与 3D 渲染共用，无 THREE -->
-<script src="js/sphere.js?v=9242"></script>
+<script src="js/sphere.js?v=9246"></script>
 <!-- v90.61：Three.js 真 3D 主地图（vendor 本地，离线可用） -->
-<script src="vendor/three.min.js?v=9242"></script>
-<script src="js/gltf.js?v=9242"></script>
-<script src="js/map3d.js?v=9242"></script>
-<script src="js/battle.js?v=9242"></script>
+<script src="vendor/three.min.js?v=9246"></script>
+<script src="js/gltf.js?v=9246"></script>
+<script src="js/map3d.js?v=9246"></script>
+<script src="js/battle.js?v=9246"></script>
 <!-- v27（需求 5）：回合制文字战场。放在 battle.js 之后 —— simulate 由它接管 -->
-<script src="js/tactic.js?v=9242"></script>
-<script src="js/icons.js?v=9242"></script>
+<script src="js/tactic.js?v=9246"></script>
+<script src="js/icons.js?v=9246"></script>
 <!-- v32（需求「采用网图」）：game-icons 开源图标素材层。必须在 icons.js 之后 ——
      icons.js 内的取图函数用 typeof GICONS 延迟绑定，渲染时才真正查表。 -->
-<script src="js/gicons.js?v=9242"></script>
+<script src="js/gicons.js?v=9246"></script>
 <!-- v35：AI 位图素材登记表（汉代风，最高优先级）。同样在 icons.js 之后 ——
      取图函数用 typeof BITMAPS 延迟绑定；未登记的 id 自动回退矢量层。 -->
-<script src="js/bitmaps.js?v=9242"></script>
-<script src="js/portraits.js?v=9242"></script>
-<script src="js/story.js?v=9242"></script>
+<script src="js/bitmaps.js?v=9246"></script>
+<script src="js/portraits.js?v=9246"></script>
+<script src="js/story.js?v=9246"></script>
 <!-- ⛔ v89.218（老板「故事全部去除」）：84 卷故事库（story/）整目录删除，脚本标签同步撤除。 -->
-<script src="js/ui.js?v=9242"></script>
-<script src="js/main.js?v=9242"></script>
+<script src="js/ui.js?v=9246"></script>
+<script src="js/main.js?v=9246"></script>
 </body>
 </html>

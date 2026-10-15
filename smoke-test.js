@@ -36196,6 +36196,11 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     check('§265② galaxyHTML 含 canvas#galaxyCanvas（恒星/星球由 canvas 绘）', (function () {
       return GAME.ui.galaxyHTML().indexOf('id="galaxyCanvas"') >= 0;
     })());
+    check('§265②b 星系入口 = **地图底部**（非顶部菜单）+ 雷霆箭头指向奇观', (function () {
+      /* dock 走 ui._bottom 推送、不在 mapHTML 返回值里 → 用**源码**检查两处挂点。 */
+      var src = String(GAME.ui.mapHTML) + String(GAME.ui.syncWonderArrow);
+      return src.indexOf('galaxy-open') >= 0 && src.indexOf('wonder-arrow') >= 0;
+    })());
     check('§265③ 渲染后命中记录建立（ui._galaxyPlanets 与星球数一致）', (function () {
       GAME.ui._galaxyW = 900; GAME.ui._galaxyH = 560;
       var cv = global.document.createElement('canvas'); cv.id = 'galaxyCanvas';

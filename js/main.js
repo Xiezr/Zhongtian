@@ -158,6 +158,8 @@
          立项 / 提取后**留在实验室里刷新** —— 状态变化要立刻看得见。 */
       /* v91.30：奇观菜单 + 探索 */
       case 'wonder-open': ui.openWonder(Number(el.dataset.pid)); break;
+      /* v91.30：星系总览（地图底部入口 · 后续再拓展玩法）。 */
+      case 'galaxy-open': ui.setView('galaxy'); GAME.refreshAll(); break;
       case 'wonder-go': {
         var _pid = Number(el.dataset.pid), _act = el.dataset.act;
         var _paid = { buxingji: 2000 };   /* 派军行动默认派 2000 步兵（可后续做编队） */

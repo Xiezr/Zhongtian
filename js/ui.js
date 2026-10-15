@@ -11714,11 +11714,14 @@
         '<button class="btn sm gold" data-action="map-goto">前往</button>' +
         _nav99('', 'map-center', '回主城', _onAct99, '地图在看别颗星球 —— 回主城需先切回本城所在星球') +
         _nav99('', 'map-mycity', '回本城', _onAct99, '本城不在当前地图星球上 —— 回本城需先切回本城所在星球') +
+        '<button class="btn sm" data-action="galaxy-open" title="星系总览（太阳 + 各星球绕行 · 点星球进入）">🌌 星系</button>' +
         '<button class="btn sm" data-action="open-outposts">🚩 前哨</button>' +
         _nav99('', 'map-capital', '灰烬城', _cap99, '灰烬城在母星 —— 当前地图非母星，不可定位') +
       '</div>');
     return '<div class="map-wrap">' +
       '<canvas id="mapCanvas"></canvas>' +
+      /* v91.30：**雷霆大箭头** —— 屏幕内指向今日奇观（可点开奇观菜单）。 */
+      '<div id="wonder-arrow" class="wonder-arrow" data-action="wonder-open" style="display:none;" title="今日奇观 —— 点击查看">⚡</div>' +
       /* v90.85（老板）：「星球切换读条屏」—— 切星球时盖一层进度条，让玩家**确认切换成功**。 */
       '<div id="planet-loading" class="planet-loading"><div class="pl-inner">' +
         '<div class="pl-title">🪐 正在进入星球…</div>' +
@@ -11895,6 +11898,30 @@
     if (b) b.textContent = ui.mapPickText();
   };
 
+  /* 雷霆箭头：把今日奇观的球面位置投影到屏幕 → 定位大片箭头（外向/边缘夹取）。 */
+  ui.syncWonderArrow = function (canvas) {
+    var el = document.getElementById('wonder-arrow'); if (!el) return;
+    var pid = (GAME.state && GAME.state.mapPlanetId != null) ? GAME.state.mapPlanetId : (GAME.state && GAME.state.activePlanet);
+    var wd = GAME.wonderOf ? GAME.wonderOf(pid) : null;
+    if (!wd || !(GAME.map3d && GAME.map3d.wonderScreen)) { el.style.display = 'none'; return; }
+    var sc = GAME.map3d.wonderScreen();
+    if (!sc) { el.style.display = 'none'; return; }
+    var W = canvas.width, H = canvas.height;
+    var x = (sc.ndcX * 0.5 + 0.5) * W, y = (-sc.ndcY * 0.5 + 0.5) * H;
+    var behind = sc.behind;
+    /* 背面/出屏 → 夹到边缘并转箭头朝外（像"往那边看"）。 */
+    var pad = 40, cx = W / 2, cy = H / 2, ang = 0, edge = false;
+    if (behind) { var dx0 = x - cx, dy0 = y - cy; var L0 = Math.hypot(dx0, dy0) || 1; x = cx + dx0 / L0 * Math.min(W, H) * 0.42; y = cy + dy0 / L0 * Math.min(W, H) * 0.42; ang = Math.atan2(dy0, dx0) * 180 / Math.PI; edge = true; }
+    else if (x < pad || x > W - pad || y < pad || y > H - pad) {
+      var lx = Math.max(pad, Math.min(W - pad, x)), ly = Math.max(pad, Math.min(H - pad, y));
+      ang = Math.atan2(y - cy, x - cx) * 180 / Math.PI; x = lx; y = ly; edge = true;
+    }
+    el.style.display = 'block';
+    el.style.left = x + 'px'; el.style.top = y + 'px';
+    /* 在屏幕上指向奇观：无夹角则指下（▼）；边缘态按角度转。 */
+    el.style.transform = 'translate(-50%,-50%) rotate(' + (edge ? ang + 90 : 0) + 'deg) scale(2.4)';
+    el.dataset.pid = pid;
+  };
   ui.renderMapCanvas = function () {
     var canvas = $('#mapCanvas');
     if (!canvas) return;
@@ -11923,6 +11950,7 @@
       if (canvas.height !== _chh) canvas.height = _chh;
       if (GAME.map3d.bindControls) GAME.map3d.bindControls(canvas);   /* 左键拖动平移 · 右键转向 · 滚轮缩放 */
       GAME.map3d.render(canvas, ui.mapView.x, ui.mapView.y, fr.spanX, fr.spanY);
+      ui.syncWonderArrow(canvas);   /* v91.30：雷霆箭头指向今日奇观 */
       var _pe = document.getElementById && document.getElementById('adm-prov');
       if (_pe && !_pe.options.length) ui.fillAdmSearch();   /* 首次填充分级检索（不每帧重建）*/
       ui.syncMapInfo();
