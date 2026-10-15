@@ -3863,23 +3863,23 @@
    * 产出统一落**全局背包 s.items**（玩家级）。
    * ============================================================ */
   DATA.WONDER_DEFS = [
-    { id: 'crystal', name: '巨构水晶', body: '发光晶簇', icon: '💠', adapt: 'res',
+    { id: 'crystal', name: '巨构水晶', body: '发光晶簇', icon: '💠', adapt: 'res', place: 'land',
       mat: 'w_crystal', acts: ['collect', 'search'], out: ['w_meteor'] },
-    { id: 'chairring', name: '交椅星环', body: '巨型环', icon: '💫', adapt: 'resDanger',
+    { id: 'chairring', name: '交椅星环', body: '巨型环', icon: '💫', adapt: 'resDanger', place: 'space',
       mat: 'w_singularity', acts: ['search', 'deep'], out: ['w_he3', 'bp_legend_zhan'] },
-    { id: 'crater', name: '坠星峡谷', body: '陨击坑熔岩', icon: '☄️', adapt: 'danger',
+    { id: 'crater', name: '坠星峡谷', body: '陨击坑熔岩', icon: '☄️', adapt: 'danger', place: 'land',
       mat: 'w_meteor', acts: ['search', 'deep'], out: ['bp_rare_zhan'] },
-    { id: 'ark', name: '沉没方舟', body: '半潜方舟', icon: '🚢', adapt: 'habit',
+    { id: 'ark', name: '沉没方舟', body: '半潜方舟', icon: '🚢', adapt: 'habit', place: 'water',
       mat: 'w_tidesalt', acts: ['collect', 'rescue'], out: ['w_coldcrystal'] },
-    { id: 'pillars', name: '千柱圣殿', body: '列柱环廊', icon: '🏛️', adapt: 'civ',
+    { id: 'pillars', name: '千柱圣殿', body: '列柱环廊', icon: '🏛️', adapt: 'civ', place: 'land',
       mat: 'w_spore', acts: ['study', 'collect'], out: ['book_wuzi'] },
-    { id: 'mothership', name: '陨落母舰', body: '半沉舰体', icon: '🛸', adapt: 'default',
+    { id: 'mothership', name: '陨落母舰', body: '半沉舰体', icon: '🛸', adapt: 'default', place: 'land',
       mat: 'w_stariron', acts: ['search', 'collect'], out: ['w_crystal'] },
-    { id: 'dyson', name: '戴森残片', body: '环状能量板', icon: '🔆', adapt: 'default',
+    { id: 'dyson', name: '戴森残片', body: '环状能量板', icon: '🔆', adapt: 'default', place: 'space',
       mat: 'w_he3', acts: ['collect', 'search'], out: [] },
-    { id: 'temple', name: '上古神殿', body: '悬浮神殿', icon: '🛕', adapt: 'default',
+    { id: 'temple', name: '上古神殿', body: '悬浮神殿', icon: '🛕', adapt: 'default', place: 'land',
       mat: 'w_humus', acts: ['study', 'rescue'], out: ['book_liutao'] },
-    { id: 'forge', name: '永动熔炉', body: '喷焰工业巨构', icon: '🏭', adapt: 'default',
+    { id: 'forge', name: '永动熔炉', body: '喷焰工业巨构', icon: '🏭', adapt: 'default', place: 'land',
       mat: 'w_stariron', acts: ['collect', 'deep'], out: ['w_meteor'] },
   ];
   /* 探索行动表（分类名 · 需军 · 冒险损兵概率 · 产出倍率） */

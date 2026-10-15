@@ -1094,17 +1094,33 @@
     /* 天体网格：几何缓存/异步载入 */
     function place(geo) {
       if (M._wonderId !== wd.id) return;
-      var R_W = R * 1.6, target = R * 0.30;   /* v91.30：天体 R 的 30%、轨道 1.6R —— 显著可见 */
+      var mode = wd.place || 'space';
+      M._wonderMode = mode;
       var mesh = new THREE.Mesh(geo, geo._mat);
-      mesh.scale.setScalar(target);                              /* 烘焙长边=1 → 目标 = R 的 11% */
       var body = new THREE.Group(); body.add(mesh);
-      /* 名称标签（浮在天体上方） */
+      if (mode === 'space') {
+        mesh.scale.setScalar(R * 0.32);                          /* 太空天体 R 的 32% */
+      } else {
+        /* 地表/海面：落在星球某格上 —— 贴地(海拔)+按法线立起，尺寸 R 的 15%。 */
+        var sc = _wonderSurfaceCell(mode);
+        var d = (sc && sc.dir) ? sc.dir : [0, 1, 0];
+        var surfR = R + Math.max(0, sphElev(d)) * HSC;
+        if (mode === 'water') surfR = R + 2.0;                   /* 浮在水面 */
+        var rr = surfR + R * 0.05;
+        M._wonderUp = d; M._wonderR = rr;
+        mesh.scale.setScalar(R * 0.15);
+        var tg = new THREE.Group(); tg.add(mesh);
+        tg.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(d[0], d[1], d[2]).normalize());
+        body.add(tg);
+        if (M._wonderBody) { /* no-op */ }
+      }
+      /* 名称标签（浮在主体上方） */
       var lbl = null;
-      try { lbl = nameSprite('✨ ' + wd.name, '#ffe6a8'); lbl.position.set(0, target * 0.85, 0); body.add(lbl); } catch (e) { }
+      try { lbl = nameSprite('✨ ' + wd.name, '#ffe6a8'); lbl.position.set(0, R * (mode === 'space' ? 0.2 : 0.12), 0); body.add(lbl); } catch (e) { }
       M._wonderBody = body;
       grp.add(body);
       M._wonderLam = lbl;
-      wonderStep();   /* v91.30：放置后**立即定位一次** —— 否则要等自转(静置10s)才移出原点（埋在球里不可见） */
+      wonderStep();   /* 放置后立即定位（否则等自转才移出原点，埋在球里不可见） */
     }
     var geo0 = M._wonderGeo[wd.id];
     if (geo0) { place(geo0); return; }
@@ -1121,14 +1137,44 @@
       if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
     }).catch(function () { /* 载入失败：静默缺席 */ });
   }
-  /* 每 33ms：轨行 + 出场动画（scale 0→1 约 0.6s）。 */
+  /* 地表/海面落点：按 place 在该星球球面找一格（决定论）。water→湖/沼；land→陆地形。 */
+  function _wonderSurfaceCell(kind) {
+    var SP2 = GAME.mapSphere && GAME.mapSphere.cells ? GAME.mapSphere : (GAME.sphere || null);
+    var cells = SP2 && SP2.cells; if (!cells) return null;
+    var want = (kind === 'water') ? ['lake', 'zhaoze'] : ['plain', 'caoyuan', 'forest', 'hill', 'desert'];
+    /* v91.30：**锚定到玩家出生地附近**（否则可能落在球背面不可见）——取离 startPos 格最近的合格格。 */
+    var baseCi = -1;
+    try {
+      var sp = (GAME.mapSliceOf && GAME.mapSliceOf()) ? GAME.mapSliceOf().startPos : null;
+      if (!sp && GAME.state && GAME.state.map) sp = GAME.state.map.startPos;
+      if (sp && SP2.ciOfXY) baseCi = SP2.ciOfXY(sp.x, sp.y);
+    } catch (e) { }
+    var best = null, bd = Infinity;
+    for (var i = 0; i < cells.length; i++) {
+      var c = cells[i]; if (!c || want.indexOf(c.type) < 0) continue;
+      var d = (baseCi >= 0 && SP2.hexDist) ? SP2.hexDist(baseCi, i) : Math.abs(i - (baseCi < 0 ? 0 : baseCi));
+      if (d < bd) { bd = d; best = c; }
+    }
+    return best;
+  }
+  /* 每 33ms：太空轨行 / 地表·海面微旋 + 出场 scale 动画。 */
   function wonderStep() {
     if (!M._wonderBody || !M._wonderGrp) return;
-    M._wonderAngle = (M._wonderAngle || 0) + 0.004;
-    var a = M._wonderAngle, R_W = R * 1.6;
-    var dir = [Math.cos(a), 0.22, Math.sin(a)];
-    var L = Math.hypot(dir[0], dir[1], dir[2]) || 1;
-    M._wonderBody.position.set(dir[0] / L * R_W, dir[1] / L * R_W, dir[2] / L * R_W);
+    var mode = M._wonderMode || 'space';
+    if (mode === 'space') {
+      M._wonderAngle = (M._wonderAngle || 0) + 0.004;
+      var a = M._wonderAngle, R_W = R * 1.6;
+      var dir = [Math.cos(a), 0.22, Math.sin(a)];
+      var L = Math.hypot(dir[0], dir[1], dir[2]) || 1;
+      M._wonderBody.position.set(dir[0] / L * R_W, dir[1] / L * R_W, dir[2] / L * R_W);
+    } else {
+      /* 地表/海面：位置固定（贴地/浮水），绕自身竖轴慢转（活气）。 */
+      var d = M._wonderUp || [0, 1, 0];
+      var r = M._wonderR || (R + 2);
+      M._wonderBody.position.set(d[0] * r, d[1] * r, d[2] * r);
+      var mesh = M._wonderBody.children[0];
+      if (mesh) mesh.rotation.y += 0.003;
+    }
     /* 出场：0.6s 内 scale 0→1（ease-out）。 */
     var t = (Date.now() - (M._wonderT0 || 0)) / 600; if (t > 1) t = 1;
     var e = 1 - Math.pow(1 - t, 3);
