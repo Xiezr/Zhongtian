@@ -3891,7 +3891,8 @@
     rescue: { name: '方舟救援', needArmy: false, risk: 0, mul: 1.0, banner: 'pop', desc: '救援幸存者' },
   };
   /* 奇观探索参数 */
-  DATA.WONDER_CFG = { dailyMax: 5, marchRealSec: 3600, exploreRealSec: 3600 };
+  /* v91.31：探查**不限次**；同时最多 maxActive 队在途；抵达后每 accrueSec 现实秒累计 1 份奖励。 */
+  DATA.WONDER_CFG = { maxActive: 3, marchRealSec: 3600, accrueSec: 600 };
 
   /* 取某城的档位加成（唯一出口：别处不要再按 type 分支） */
   DATA.CITY_PERK_KEYS = ['prodPct', 'taxPct', 'buildSlot', 'storePct', 'troopSlot'];

@@ -9417,9 +9417,11 @@
           /* v91.30：今日奇观（每现实日刷新）+ 探索入口。 */
           var _pid = act ? act.id : ((GAME.activePlanetOf() || {}).id);
           var wd = GAME.wonderOf ? GAME.wonderOf(_pid) : null;
-          var left = GAME.wonderLeftToday ? GAME.wonderLeftToday(_pid) : 0;
+          var present = GAME.wonderPresent ? GAME.wonderPresent(_pid) : true;
+          var active = GAME.wonderActiveCount ? GAME.wonderActiveCount(_pid) : 0;
           return '<div class="attr"><span class="k">奇观</span><span class="v">' +
-            (wd ? '<b style="color:var(--gold-light);">' + wd.icon + ' ' + U.escape(wd.name) + '</b>　<span class="ui-sub">' + U.escape(wd.body) + ' · 今日剩余 ' + left + ' 次</span>　' +
+            (wd ? '<b style="color:var(--gold-light);">' + wd.icon + ' ' + U.escape(wd.name) + '</b>　<span class="ui-sub">' + U.escape(wd.body) +
+              (present ? ' · 今日在场' : ' · <span style="color:var(--red-light);">今日未出现</span>') + ' · 在途 ' + active + ' 队</span>　' +
               '<button class="btn sm gold" data-action="wonder-open" data-pid="' + _pid + '">探索</button>'
               : '<span class="ui-sub">—</span>') + '</span></div>';
         })() +
@@ -16571,8 +16573,9 @@
   ui.wonderHTML = function (pid) {
     var wd = GAME.wonderOf ? GAME.wonderOf(pid) : null;
     if (!wd) return '<div class="q-empty">此星球暂无奇观。</div>';
-    var left = GAME.wonderLeftToday ? GAME.wonderLeftToday(pid) : 0;
-    var W = DATA.WONDER_CFG || { dailyMax: 5, marchRealSec: 3600, exploreRealSec: 3600 };
+    var W = DATA.WONDER_CFG || { maxActive: 3, marchRealSec: 3600, accrueSec: 600 };
+    var present = GAME.wonderPresent ? GAME.wonderPresent(pid) : true;
+    var active = GAME.wonderActiveCount ? GAME.wonderActiveCount(pid) : 0;
     /* 可能产出（去重）：材料「主产」/ 附带「概率」；**悬停统一说明采集 vs 派军搜查的差异**。 */
     var DIFF_TIP = '采集：不派兵、安稳取**少量**材料；派军搜查/深潜攻坚：**出征界面**选将选兵，'
       + '按**军力**给更多材料，并可能获图纸/珠宝（有损兵风险）。';
@@ -16586,7 +16589,9 @@
     });
     return '<div class="op-zone"><div class="op-zone-t">' + wd.icon + ' ' + U.escape(wd.name) + ' · ' + U.escape(wd.body) + '</div>' +
       '<div style="text-align:center;color:var(--text-dim);font-size:var(--fs-sub);margin-bottom:6px;">' +
-        '每现实日刷新 · 今日剩余 ' + left + ' / ' + (W.dailyMax || 5) + ' 次　·　行军 ' + Math.round((W.marchRealSec || 3600) / 60) + ' 分 → 探索 ' + Math.round((W.exploreRealSec || 3600) / 60) + ' 分</div>' +
+        (present ? '今日在场' : '<span style="color:var(--red-light);">今日未出现</span>') +
+        '　·　在途 ' + active + ' / ' + (W.maxActive || 3) + ' 队　·　行军 ' + Math.round((W.marchRealSec || 3600) / 60) +
+        ' 分抵达后**持续累计**（每 ' + Math.round((W.accrueSec || 600) / 60) + ' 分 +1 份）</div>' +
       '<div class="ui-sub" title="' + U.escape(DIFF_TIP) + '">可能产出　<span style="color:var(--text-dim);">（悬停看「采集 / 派军搜查」差异）</span></div>' +
       (rows || '<div class="q-empty">—</div>') + '</div>';
   };
@@ -16594,7 +16599,8 @@
   ui.wonderActsHTML = function (pid) {
     var wd = GAME.wonderOf ? GAME.wonderOf(pid) : null;
     if (!wd) return '';
-    var left = GAME.wonderLeftToday ? GAME.wonderLeftToday(pid) : 0;
+    var active = GAME.wonderActiveCount ? GAME.wonderActiveCount(pid) : 0;
+    var W = DATA.WONDER_CFG || { maxActive: 3 };
     return (wd.acts || []).map(function (aid) {
       var a = (DATA.WONDER_ACT_DEFS || {})[aid]; if (!a) return '';
       if (a.needArmy) {   /* 派军：走出征界面（选将/选兵/自由定数量） */
@@ -16603,13 +16609,37 @@
       }
       return '<button class="btn" data-action="wonder-go" data-pid="' + pid + '" data-act="' + aid + '"'
         + ' title="' + U.escape(a.desc) + '">' + a.name + '</button>';
-    }).join(' ') + '<span class="ui-sub" style="margin-left:8px;">今日剩 ' + left + ' 次</span>';
+    }).join(' ') + '<span class="ui-sub" style="margin-left:8px;">在途 ' + active + ' / ' + (W.maxActive || 3) + ' 队</span>';
+  };
+  /* 探查中队列：将领 · 军力 · 计时 · 累计奖励（每现实秒刷新）。 */
+  ui.wonderQueueHTML = function (pid) {
+    var pl = GAME._planetOf ? GAME._planetOf(pid) : null;
+    var list = (pl && pl.wonderExp) || [];
+    var now = U.now(), W = DATA.WONDER_CFG || { marchRealSec: 3600, accrueSec: 600 };
+    var h = '<div class="op-zone"><div class="op-zone-t">探查中队列（' + list.length + '）</div>';
+    if (!list.length) return h + '<div class="q-empty">暂无探查队 —— 派出后在此看进度与累计奖励。</div></div>';
+    list.forEach(function (e) {
+      var g = null; (GAME.state.generals || []).forEach(function (x) { if (x.id === e.genId) g = x; });
+      var city = GAME.cityById(e.cityId);
+      var accStr = (e.acc || []).map(function (x) { return ((DATA.ITEM_BY_ID[x.id] || {}).name || x.id) + '×' + x.n; }).join('、') || '—';
+      var phase, tsec;
+      if (e.returning) { phase = '↩︎ 返回中'; tsec = Math.max(0, (e.retArrive - now) / 1000); }
+      else if (now < e.arriveAt) { phase = '🛫 行军'; tsec = Math.max(0, (e.arriveAt - now) / 1000); }
+      else { phase = '⛏ 探查累计'; tsec = 0; }
+      h += '<div class="stat-row"><span class="sr-name">' + (g ? U.escape(g.name) + ' Lv' + g.level : '无将')
+        + (city ? '　<i class="gd-sub">' + U.escape(city.name) + '</i>' : '') + '</span>'
+        + '<span class="sr-sub">' + U.numText(e.troops || 0, 0) + ' 兵　·　' + phase
+        + (tsec > 0 ? ' ' + U.dur(tsec) : '') + '　·　累计 ' + (e.accrued || 0) + ' 份</span></div>';
+      h += '<div class="ui-sub" style="margin:-2px 0 4px;">　收获：' + U.escape(accStr) + '</div>';
+    });
+    return h + '</div>';
   };
   ui.openWonder = function (pid) {
-    ui.openModal('<div class="gold-heading">✨ 奇观</div>' + ui.wonderHTML(pid) +
+    ui.openModal('<div class="gold-heading">✨ 奇观</div>' + ui.wonderHTML(pid) + ui.wonderQueueHTML(pid) +
       /* v91.31（老板）：**点击性按钮放弹窗底部**。 */
       '<div class="m-foot" style="justify-content:center;flex-wrap:wrap;gap:8px;">' + ui.wonderActsHTML(pid) +
-      '<button class="btn" data-action="close-modal">关闭</button></div>', { size: 'md' });
+      '<button class="btn" data-action="close-modal">关闭</button></div>',
+      { size: 'md', live: function () { ui.openWonder(pid); } });
   };
 
   ui.openFarm = function () {

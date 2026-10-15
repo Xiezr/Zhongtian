@@ -7948,24 +7948,26 @@
      的 sectBonus 项已一并摘除；数据表见 data.js 墓碑。 */
 
   /* ============================================================
-   * v91.30 奇观核心（每星球 1 个 · 每现实日随机刷新 · 探索产奇观材料/珠宝/图纸/残页）
+   * v91.30/31 奇观核心（每星球 1 个 · 每现实日刷新 · 持续探查累计奖励）
    * ------------------------------------------------------------
-   * 状态挂**星球对象** `p.wonder*`（不入分片 —— 只看某星不需载其分片）：
+   * 状态挂**星球对象** `p.wonder*`：
    *   · `p.wonderDay`/`p.wonderId`：今日奇观（day 变即换种类）；
-   *   · `p.wonderExp = [{act,cityId,genId,army,t0,arriveAt,doneAt}]` 在途探索；
-   *   · `p.wonderLimit = {day,n}`：当日已探索次数（上限 DATA.WONDER_CFG.dailyMax）。
-   * 计时走**现实时间**（U.now() 锚点）—— 行军 1h → 原地探索 1h → 到点结算落 s.items。
-   * 全程后台推进（tick 遍历所有星球）；离线亦按真实钟补算（不丢时间）。
+   *   · `p.wonderExp = [{act,cityId,genId,army,troops,t0,arriveAt,acc[],accrued,returning,retArrive}]`。
+   * 规则（v91.31 老板）：**探查次数不限**，**同时最多 3 队在途**；抵达后**持续累计奖励**
+   * （每 accrueSec 现实秒 +1 份）；**奇观当日消失**（现实日确定性缺席）时，在途队**保留已累计奖励**、
+   * **原路返回**（返回耗时 = 已行进比例 × 行军时长）。
+   * 计时走**现实时间**（U.now）—— 后台推进、离线补算（不丢时间）。
    * ============================================================ */
   GAME._planetOf = function (pid) {
     var pl = null; (GAME.planetsOf() || []).forEach(function (p) { if (p.id === pid) pl = p; });
     return pl;
   };
-  /* 今日奇观：按星球适配（report）+ 现实日盐选 1 个（必在场）。 */
+  function _wday() { return GAME.questDayIndex ? GAME.questDayIndex() : 0; }
+  /* 今日奇观（按星球适配 + 现实日盐选 1 个）。 */
   GAME.wonderOf = function (pid) {
     var pl = GAME._planetOf(pid); if (!pl) return null;
     var defs = DATA.WONDER_DEFS || []; if (!defs.length) return null;
-    var day = GAME.questDayIndex ? GAME.questDayIndex() : 0;
+    var day = _wday();
     if (pl.wonderDay === day && pl.wonderId) {
       var d0 = null; defs.forEach(function (d) { if (d.id === pl.wonderId) d0 = d; });
       if (d0) return d0;
@@ -7981,21 +7983,29 @@
     pl.wonderId = out.id; pl.wonderDay = day;
     return out;
   };
-  /* 当日探索剩余次数。 */
-  GAME.wonderLeftToday = function (pid) {
-    var pl = GAME._planetOf(pid); if (!pl) return 0;
-    var day = GAME.questDayIndex ? GAME.questDayIndex() : 0;
-    var lim = pl.wonderLimit || {};
-    var used = (lim.day === day) ? (lim.n || 0) : 0;
-    return Math.max(0, (DATA.WONDER_CFG.dailyMax || 5) - used);
+  /* 今日奇观是否在场（现实日确定性：约每 5 天缺席 1 天 → 当日消失）。 */
+  GAME.wonderPresent = function (pid) {
+    var pl = GAME._planetOf(pid); if (!pl) return false;
+    var day = _wday();
+    if (pl.wonderPresDay === day && pl.wonderPresent != null) return pl.wonderPresent;
+    var pr = (((((day | 0) + ((pl.seed || 1) | 0)) % 5) + 5) % 5) !== 0;
+    pl.wonderPresDay = day; pl.wonderPresent = pr;
+    return pr;
   };
-  /* 派一支探索（行军 1h → 原地探索 1h）。需军队的行动须带兵。 */
+  /* 在途探查队数（同时上限 DATA.WONDER_CFG.maxActive=3）。 */
+  GAME.wonderActiveCount = function (pid) {
+    var pl = GAME._planetOf(pid); if (!pl || !pl.wonderExp) return 0;
+    return pl.wonderExp.length;
+  };
+  /* 派一支探查（行军 1 真实小时 → 抵达后**持续累计**奖励）。需军队的行动须带兵。 */
   GAME.wonderExplore = function (pid, actId, cityId, army, genId) {
     var pl = GAME._planetOf(pid); if (!pl) return { ok: false, msg: '星球不存在' };
     var def = GAME.wonderOf(pid); if (!def) return { ok: false, msg: '奇观不存在' };
-    var act = (DATA.WONDER_ACT_DEFS || {})[actId]; if (!act) return { ok: false, msg: '未知探索方式' };
+    if (!GAME.wonderPresent(pid)) return { ok: false, msg: '今日奇观未出现（该星球今日无奇观）' };
+    var act = (DATA.WONDER_ACT_DEFS || {})[actId]; if (!act) return { ok: false, msg: '未知探查方式' };
     if ((def.acts || []).indexOf(actId) < 0) return { ok: false, msg: '此奇观不支持「' + act.name + '」' };
-    if (GAME.wonderLeftToday(pid) <= 0) return { ok: false, msg: '今日探索次数已用尽（每日 ' + (DATA.WONDER_CFG.dailyMax || 5) + ' 次）' };
+    var W = DATA.WONDER_CFG || {};
+    if (GAME.wonderActiveCount(pid) >= (W.maxActive || 3)) return { ok: false, msg: '同时在途探查队已满（最多 ' + (W.maxActive || 3) + ' 队）' };
     var city = cityId ? GAME.cityById(cityId) : GAME.currentCity();
     if (!city) return { ok: false, msg: '无可用城市' };
     army = army || {};
@@ -8006,71 +8016,77 @@
       city.army[k2] = Math.max(0, (city.army[k2] || 0) - c);
     }
     var now = U.now();
-    var W = DATA.WONDER_CFG || { marchRealSec: 3600, exploreRealSec: 3600 };
     pl.wonderExp = pl.wonderExp || [];
     pl.wonderExp.push({
-      act: actId, cityId: city.id, genId: genId || null, army: U.deep(army),
-      troops: n,   /* v91.31：实派兵力 —— 结算按**军力**给奖励档 */
+      act: actId, cityId: city.id, genId: genId || null, army: U.deep(army), troops: n,
       t0: now, arriveAt: now + (W.marchRealSec || 3600) * 1000,
-      doneAt: now + ((W.marchRealSec || 3600) + (W.exploreRealSec || 3600)) * 1000,
+      acc: [], accrued: 0, returning: false, retArrive: 0,
     });
-    var day = GAME.questDayIndex ? GAME.questDayIndex() : 0;
-    if (!pl.wonderLimit || pl.wonderLimit.day !== day) pl.wonderLimit = { day: day, n: 0 };
-    pl.wonderLimit.n = (pl.wonderLimit.n || 0) + 1;
-    GAME.log('✨ 「' + city.name + '」派队探索「' + def.name + ' · ' + act.name + '」—— 行军 1h 后开工，再 1h 可收成', 'sys', 'wild');
-    /* 探索状态在星球对象 p 上（随 s.planets 存档）—— 不走 _savePlanetSlice（那只存当前片）。 */
-    return { ok: true, msg: '已派出：行军 1 小时 → 探索 1 小时' };
+    GAME.log('✨ 「' + city.name + '」派队探查「' + def.name + ' · ' + act.name + '」—— 行军 1h 抵达后持续开采（累计奖励）', 'sys', 'wild');
+    return { ok: true, msg: '已派出：行军 1 小时后抵达，持续累计奖励（同时上限 ' + (W.maxActive || 3) + ' 队）' };
   };
-  /* 结算一趟：产奇观材料（按行动倍率）+ 概率附带；兵按风险损耗，余部归城。 */
-  GAME._wonderSettle = function (pl, exp) {
-    var s = GAME.state;
-    var def = GAME.wonderOf(pl.id);
-    var act = (DATA.WONDER_ACT_DEFS || {})[exp.act] || { mul: 1, risk: 0, name: '探索' };
-    s.items = s.items || {};
-    function give(id, q) { if (id && q > 0) s.items[id] = (s.items[id] || 0) + q; }
-    var got = [];
-    /* v91.31（老板）：**按军力给奖励档** —— 兵力越多，材料数量越多（采力档位）。
-       0 兵（采集/研读/救援）= 基础档；带兵越多越高；再乘行动倍率。 */
+  /* 累计 1 份奖励（材料 + 概率附带）落该队 acc。 */
+  GAME._wonderAccrueItem = function (def, exp) {
+    var act = (DATA.WONDER_ACT_DEFS || {})[exp.act] || { mul: 1 };
     var troops = exp.troops || 0;
-    var tierMul = troops <= 0 ? 1 : Math.min(6, 1 + Math.log(1 + troops / 2000) / Math.LN2);  /* 2000→2x 4000→3x … 封顶 6x */
-    var base = 2 + Math.floor(Math.random() * 3);
-    var qty = Math.max(1, Math.round(base * (act.mul || 1) * tierMul));
-    if (def && def.mat) { give(def.mat, qty); got.push((DATA.ITEM_BY_ID[def.mat] || {}).name || def.mat); }
-    (def && def.out || []).forEach(function (oid) {
-      if (Math.random() < 0.35) { give(oid, 1); got.push((DATA.ITEM_BY_ID[oid] || {}).name || oid); }
-    });
-    if (act.banner === 'page') { var pg = ['book_wuzi', 'book_sima', 'book_sanlue', 'book_weiliu'][Math.floor(Math.random() * 4)]; give(pg, 1); got.push((DATA.ITEM_BY_ID[pg] || {}).name || pg); }
-    if (act.banner === 'pop') { var cc = GAME.cityById(exp.cityId); if (cc) { cc.pop = (cc.pop || 0) + 200; } }
+    var tierMul = troops <= 0 ? 1 : Math.min(6, 1 + Math.log(1 + troops / 2000) / Math.LN2);
+    var q = Math.max(1, Math.round((1 + Math.floor(Math.random() * 2)) * (act.mul || 1) * tierMul));
+    function add(id, n) { if (!id || n <= 0) return; var e = null; exp.acc.forEach(function (x) { if (x.id === id) e = x; }); if (e) e.n += n; else exp.acc.push({ id: id, n: n }); }
+    if (def && def.mat) add(def.mat, q);
+    (def && def.out || []).forEach(function (oid) { if (Math.random() < 0.12) add(oid, 1); });
+    if (act.banner === 'page' && Math.random() < 0.05) add(['book_wuzi', 'book_sima', 'book_sanlue', 'book_weiliu'][Math.floor(Math.random() * 4)], 1);
+    exp.accrued = (exp.accrued || 0) + 1;
+  };
+  /* 把一队的累计奖励落**全局背包**；兵按风险损耗，余部**归城**。 */
+  GAME._wonderBank = function (exp, def, note) {
+    var s = GAME.state; s.items = s.items || {};
+    (exp.acc || []).forEach(function (x) { if (x.id && x.n > 0) s.items[x.id] = (s.items[x.id] || 0) + x.n; });
+    var act = (DATA.WONDER_ACT_DEFS || {})[exp.act] || { risk: 0 };
     var city = GAME.cityById(exp.cityId);
     var loss = 0;
     if (city) {
       for (var k in (exp.army || {})) {
         var c0 = Math.max(0, Math.floor(exp.army[k] || 0)); if (c0 <= 0) continue;
-        var lost = Math.round(c0 * (act.risk || 0) * Math.random());
-        loss += lost;
-        city.army[k] = (city.army[k] || 0) + (c0 - lost);
+        var lost = act.risk ? Math.round(c0 * act.risk * Math.random()) : 0;
+        loss += lost; city.army[k] = (city.army[k] || 0) + (c0 - lost);
       }
     }
-    GAME.log('✨ 奇观「' + (def ? def.name : '?') + '」探索归来：得 ' + (got.join('、') || '少量补给')
-      + (loss ? '（损兵 ' + loss + '）' : ''), 'sys', 'wild');
-    return { got: got, loss: loss };
+    var names = (exp.acc || []).map(function (x) { return ((DATA.ITEM_BY_ID[x.id] || {}).name || x.id) + '×' + x.n; });
+    GAME.log('✨ 奇观「' + (def ? def.name : '?') + '」探查' + (note || '归来') + '：' + (names.join('、') || '无')
+      + (city ? ('　·　兵归「' + city.name + '」' + (loss ? '（损兵 ' + loss + '）' : '')) : ''), 'sys', 'wild');
   };
-  /* 主循环 tick：推进所有星球的奇观探索（现实时间锚点 · 到点即结算）。 */
+  /* 主循环 tick：推进所有星球奇观探查（现实时间锚点 · 累计 / 消失返还 / 返抵落账）。 */
   GAME.wonderTick = function () {
     var s = GAME.state; if (!s) return;
     var pls = s.planets || [];
-    /* 快路径：无任何在途探索 → 立即返回（零分配 · 不脏 tickOnce 热路径）。 */
     var any = false; for (var i = 0; i < pls.length; i++) { if (pls[i] && pls[i].wonderExp && pls[i].wonderExp.length) { any = true; break; } }
     if (!any) return;
-    var now = U.now();
+    var now = U.now(), W = DATA.WONDER_CFG || {}, ACC = (W.accrueSec || 600) * 1000;
     pls.forEach(function (pl) {
       if (!pl.wonderExp || !pl.wonderExp.length) return;
-      var done = [];
-      pl.wonderExp = pl.wonderExp.filter(function (e) {
-        if (now >= e.doneAt) { done.push(e); return false; }
-        return true;
+      var def = GAME.wonderOf(pl.id);
+      var present = GAME.wonderPresent(pl.id);
+      var keep = [];
+      pl.wonderExp.forEach(function (e) {
+        if (e.returning) {
+          if (now >= e.retArrive) { GAME._wonderBank(e, def, '（奇观消失 · 已累计）'); return; }
+          keep.push(e); return;
+        }
+        if (!present) {
+          e.returning = true;
+          var from = Math.max(e.t0, Math.min(now, e.arriveAt));
+          var frac = Math.max(0.05, Math.min(1, (from - e.t0) / Math.max(1, e.arriveAt - e.t0)));
+          e.retArrive = now + Math.round(frac * (W.marchRealSec || 3600) * 1000);
+          GAME.log('⚠ 奇观「' + (def ? def.name : '?') + '」今日消失 —— 在途探查队保留已累计奖励，原路返回中', 'sys', 'wild');
+          keep.push(e); return;
+        }
+        if (now >= e.arriveAt) {
+          var due = Math.floor((now - e.arriveAt) / ACC);
+          while ((e.accrued || 0) < due) GAME._wonderAccrueItem(def, e);
+        }
+        keep.push(e);
       });
-      done.forEach(function (e) { try { GAME._wonderSettle(pl, e); } catch (err) { } });
+      pl.wonderExp = keep;
     });
   };
 
