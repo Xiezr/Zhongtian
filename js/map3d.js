@@ -679,7 +679,7 @@
     if (!cam) return;
     var frac = 0.028;                                   /* 标签高 ≈ 屏幕高的 2.8%（v90.58 老板：再小一半） */
     var k = 2 * Math.tan(cam.fov * Math.PI / 360) * frac;
-    [M._labels, M._hl, M._flags].forEach(function (grp) {
+    [M._labels, M._hl, M._flags, M._wonderGrp ? { children: M._wonderBody ? [M._wonderBody] : [] } : null].forEach(function (grp) {
       if (!grp || !grp.children) return;
       grp.children.forEach(function (ch) {
         if (!ch.isSprite) return;
@@ -842,6 +842,7 @@
       if (M._sun && SP.PLANET && SP.PLANET.starColor != null) M._sun.color.setHex(SP.PLANET.starColor);   /* 恒星色温 → 光色 */
     }
     if (!built) { buildGlobe(); buildTiles(TILE_SUB); buildRegions(); buildMarkers(); buildFlags(); buildMarchArrows(); built = true; }
+    buildWonder();   /* v91.30：奇观天体（按当前地图星球 · 幂等） */
     /* v90.81（老板 4 · L0 自转）：地图页静止 10s 无操作 → 星球按 PLANET.spinSec 自动旋转。
        见下方 insetInterval 驱动器（每 33ms 步进 + 重绘）。 */
     if (M._lastAct == null) M._lastAct = Date.now();
@@ -921,6 +922,7 @@
       }
       var _spin = (SP.PLANET && SP.PLANET.spinSec) || 60;
       camO.yaw += (2 * Math.PI / _spin) * 0.033;             /* 每 33ms 一步 → spinSec 秒一圈 */
+      wonderStep();                                          /* v91.30：奇观轨行 + 出场/离场动画 */
       if (GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
     }
     if (!M._spinTimer && typeof setInterval !== 'undefined') M._spinTimer = setInterval(_spinTick, 33);
@@ -992,6 +994,11 @@
     var nx = ((clientX - r.left) / r.width) * 2 - 1, ny = -((clientY - r.top) / r.height) * 2 + 1;
     var rc = new THREE.Raycaster();
     rc.setFromCamera(new THREE.Vector2(nx, ny), cam);
+    /* v91.30：先判**奇观天体**（点击开奇观菜单）——比地块优先。 */
+    if (M._wonderBody) {
+      var wh = rc.intersectObject(M._wonderBody, true);
+      if (wh && wh.length && GAME.ui && GAME.ui.openWonder) { GAME.ui.openWonder(_wonderPid()); return; }
+    }
     var hit = rc.intersectObject(M._collider, false);
     if (!hit.length) { M._cell = null; if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas(); return; }
     var face = hit[0].face, ci = M._collider.faceCell[face.a / 3 | 0];
@@ -1062,5 +1069,76 @@
     } catch (e) { /* 忽略 */ }
     M.centerOn(x, y);
   };
-  M.rebuild = function () { built = false; _tileSub = -1; M._mkVer = null; M._flVer = null; M._arVer = null; };
+  /* ============================================================
+   * v91.30 奇观天体（绕星球轨道 · 出场/离场动画 · 点击开奇观菜单）
+   * ------------------------------------------------------------
+   * 今日奇观按**当前地图星球**取（GAME.wonderOf(mapPlanetId)）。.glb 经 gltf.js 极简解析，
+   * 几何缓存于 M._wonderGeo[id]（一次解析多次用）。载入失败/无 THREE → 静默缺席（不阻塞地图）。
+   * ⚠️ .glb 走 fetch：http 服务下正常；纯 file:// 双击可能被浏览器拦（届时天体缺席，地图不受影响）。
+   * ============================================================ */
+  M._wonderGeo = M._wonderGeo || {};
+  function _wonderPid() {
+    var s = GAME.state || {};
+    return (s.mapPlanetId != null) ? s.mapPlanetId : (s.activePlanet || 1);
+  }
+  function buildWonder() {
+    var pid = _wonderPid();
+    var wd = GAME.wonderOf ? GAME.wonderOf(pid) : null;
+    if (!wd) { if (M._wonderGrp) { scene.remove(M._wonderGrp); M._wonderGrp = null; M._wonderBody = null; M._wonderId = null; } return; }
+    if (M._wonderId === wd.id && M._wonderGrp) return;             /* 幂等：同星球同奇观不重建 */
+    if (M._wonderGrp) { scene.remove(M._wonderGrp); M._wonderGrp = null; M._wonderBody = null; }
+    M._wonderId = wd.id;
+    var grp = new THREE.Group();
+    M._wonderGrp = grp; M._wonderAngle = 0.6; M._wonderT0 = (GAME.utils && GAME.utils.now ? GAME.utils.now() : Date.now());
+    scene.add(grp);
+    /* 天体网格：几何缓存/异步载入 */
+    function place(geo) {
+      if (M._wonderId !== wd.id) return;
+      var R_W = R * 1.6, target = R * 0.30;   /* v91.30：天体 R 的 30%、轨道 1.6R —— 显著可见 */
+      var mesh = new THREE.Mesh(geo, geo._mat);
+      mesh.scale.setScalar(target);                              /* 烘焙长边=1 → 目标 = R 的 11% */
+      var body = new THREE.Group(); body.add(mesh);
+      /* 名称标签（浮在天体上方） */
+      var lbl = null;
+      try { lbl = nameSprite('✨ ' + wd.name, '#ffe6a8'); lbl.position.set(0, target * 0.85, 0); body.add(lbl); } catch (e) { }
+      M._wonderBody = body;
+      grp.add(body);
+      M._wonderLam = lbl;
+      wonderStep();   /* v91.30：放置后**立即定位一次** —— 否则要等自转(静置10s)才移出原点（埋在球里不可见） */
+    }
+    var geo0 = M._wonderGeo[wd.id];
+    if (geo0) { place(geo0); return; }
+    if (!window.fetch) return;
+    fetch('assets/wonders/' + wd.id + '.glb').then(function (r) { return r.arrayBuffer(); }).then(function (ab) {
+      if (!GAME.gltf) return;
+      var parsed = GAME.gltf.parse(ab);
+      if (!parsed.parts.length) return;
+      var part = parsed.parts[0];
+      var geo = GAME.gltf.bakeGeometry(part, THREE, 1);
+      geo._mat = GAME.gltf.buildMaterial(THREE, part, function () { if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas(); });
+      M._wonderGeo[wd.id] = geo;
+      place(geo);
+      if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
+    }).catch(function () { /* 载入失败：静默缺席 */ });
+  }
+  /* 每 33ms：轨行 + 出场动画（scale 0→1 约 0.6s）。 */
+  function wonderStep() {
+    if (!M._wonderBody || !M._wonderGrp) return;
+    M._wonderAngle = (M._wonderAngle || 0) + 0.004;
+    var a = M._wonderAngle, R_W = R * 1.6;
+    var dir = [Math.cos(a), 0.22, Math.sin(a)];
+    var L = Math.hypot(dir[0], dir[1], dir[2]) || 1;
+    M._wonderBody.position.set(dir[0] / L * R_W, dir[1] / L * R_W, dir[2] / L * R_W);
+    /* 出场：0.6s 内 scale 0→1（ease-out）。 */
+    var t = (Date.now() - (M._wonderT0 || 0)) / 600; if (t > 1) t = 1;
+    var e = 1 - Math.pow(1 - t, 3);
+    M._wonderBody.scale.setScalar(0.2 + 0.8 * e);
+    M._wonderBody.visible = e > 0.02;
+  }
+  M.wonderStep = wonderStep;
+  M.buildWonder = buildWonder;
+
+  M.rebuild = function () { built = false; _tileSub = -1; M._mkVer = null; M._flVer = null; M._arVer = null;
+    /* v91.30：清奇观天体 → 下次 M.render 按当前星球重建。 */
+    if (M._wonderGrp) { scene.remove(M._wonderGrp); M._wonderGrp = null; M._wonderBody = null; M._wonderLam = null; } };
 })();

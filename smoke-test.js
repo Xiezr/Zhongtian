@@ -65,7 +65,8 @@
   /* v90.69：球面世界内核（纯 JS · 拓扑/地形 SSOT）—— index.html 加载序同此（map 之后、map3d 之前） */
   require('./js/sphere.js');
   /* v90.61：Three.js 真 3D 主地图（无 THREE 时自降级为 {enabled:false}） */
-  require('./js/map3d.js');
+  require('./js/gltf.js');
+require('./js/map3d.js');
   require('./js/battle.js');
   require('./js/tactic.js');
   require('./js/icons.js');
@@ -35791,9 +35792,9 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         && /place\(fo\[k\], '#ffcf4d'\)/.test(m250) && /place\(w, '#7bd88f'\)/.test(m250));
       c250('§250③ 挂载点齐：rebuild 链 buildFlags + 版本键 _flVer + scaleLabels 归一',
         /buildMarkers\(\); buildFlags\(\);/.test(m250) && /_flVer !== M\._flVer/.test(m250)
-        && /\[M\._labels, M\._hl, M\._flags\]/.test(m250));
+        && /\[M\._labels, M\._hl, M\._flags/.test(m250));   /* v91.30：数组尾部追加奇观标签，故只匹前缀 */
       c250('§250④ rebuild 复位 _flVer（强制重建也刷旗）',
-        /M\.rebuild = function \(\) \{ built = false; _tileSub = -1; M\._mkVer = null; M\._flVer = null; M\._arVer = null; \}/.test(m250));
+        /M\.rebuild = function \(\) \{ built = false; _tileSub = -1; M\._mkVer = null; M\._flVer = null; M\._arVer = null;/.test(m250));   /* v91.30：尾部加清奇观 */
     } catch (e250) {
       check('§250 链路异常（不应发生）', false, 'err=' + ((e250 && e250.message) || e250));
     }

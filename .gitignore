@@ -17,6 +17,9 @@ assets/icons/英雄及头像/
 assets/portraits/_raw/
 assets/portraits/pd_src/
 
+# v91.30：奇观 3D 原始素材（832MB · 不可再生 · 独立备份）—— 只留优化版 assets/wonders/*.glb
+assets/wonders/_raw/
+
 # ─────────── 过程产物 ───────────
 # 一次性探针放这里，用完即清（约定见 docs/项目地图.md）
 .workbuddy/tmp/
