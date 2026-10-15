@@ -626,7 +626,7 @@
      改前有两处硬伤：
        ① 页面宽度被写死在 1024 —— 屏幕再大也只有 1024 宽，两侧白白留白；
        ② 中央视图写死 530px 高、侧栏却允许到 606px ——
-          **侧栏被允许比中央高 76px**，"左侧统计栏比右边城池页面长"因此成为必然（需求 8）。
+          **侧栏被允许比中央高 76px**，"左侧统计栏比右边城市页面长"因此成为必然（需求 8）。
      现在：
        · 页面撑满视口，主区用 flex 吃掉剩余高度，两栏**同高**（同一行、一起拉伸）；
        · 中央滚动、侧栏也滚动，但侧栏内容已按 820 高度精简过，正常不出滚动条；
@@ -680,11 +680,11 @@
      正常宽度时零影响）。 */
   .view-box { flex: 1; min-height: 0; overflow-y: auto; overflow-x: auto; scrollbar-gutter: stable; }
   .auth-side { min-height: 0; overflow-y: auto; scrollbar-gutter: stable;
-    /* v76（老板）：「城池的左侧统计框没有到底」——左栏改 flex 列，
+    /* v76（老板）：「城市的左侧统计框没有到底」——左栏改 flex 列，
        最后一段（资源+驻军）拉伸到栏底：消灭底部留白、与右侧棋盘区底线一致；
        内容超长时照旧整体滚动。 */
     display: flex; flex-direction: column; }
-  /* ⚠️ 左栏的"框"是那口**大卡**（.lord-card 里装着 君主头 + 城池属性段 + 资源段）——
+  /* ⚠️ 左栏的"框"是那口**大卡**（.lord-card 里装着 君主头 + 城市属性段 + 资源段）——
      铺满链必须从 lord-card 起（作者第一版挂在 .auth-side > .side-block 上，
      选择器压根匹配不到，真机一量才发现驻军框纹丝不动）。 */
   .auth-side .lord-card { flex: 1 1 auto; display: flex; flex-direction: column; }
@@ -733,7 +733,7 @@
   .lord-meta .row.mrow-name { line-height: var(--lh-tight); }
   .lord-meta .row.mrow-name span:first-child { color: var(--gold-light); }
 
-  /* ============ 侧栏三段式（君主/城池属性/资源）============ */
+  /* ============ 侧栏三段式（君主/城市属性/资源）============ */
   .side-btnrow {
     display: flex; gap: var(--sp-1); padding: var(--sp-2) var(--sp-3);
     background: rgba(var(--sh-rgb),.25); border-bottom: 1px solid var(--sep-gold);
@@ -1587,7 +1587,7 @@
   .exp-sel > select { flex: 1 1 auto; min-width: 0; padding: var(--sp-1) var(--sp-2); background: var(--slab-1);
     border: 1px solid var(--gold-dark); color: var(--text); border-radius: var(--r-sm); font-size: var(--fs-sub); }
   .exp-sel > select:disabled { opacity: .55; }
-  /* v89.144（老板 4）：目标下拉**固定位置与长度** —— label 定宽（以「我方城池」行为基准）、
+  /* v89.144（老板 4）：目标下拉**固定位置与长度** —— label 定宽（以「我方城市」行为基准）、
      下拉定宽 20 个中文（20em）；5 行起点/长度完全一致；行内不再有「共 N · 列最近 N」备注。 */
   .exp-sel.act-row { margin: 4px 0; }
   .exp-sel.act-row > label { min-width: 108px; }
@@ -1988,7 +1988,7 @@
   /* v90.71（老板）：贴边占满 —— 画布撑满 .map-wrap，去掉内边距与圆角，视野更宽。 */
   #mapCanvas { display: block; width: 100%; height: 100%; max-width: none; border: 0; border-radius: 0;
     background: var(--map-ground); box-shadow: inset 0 0 0 1px rgba(var(--sh-rgb),.45);
-    /* v89.88：大地图整块可点（点城池/据点/野地都会出面板）——
+    /* v89.88：大地图整块可点（点城市/据点/野地都会出面板）——
        原来用的是默认箭头光标，"能不能点"全靠猜。 */
     cursor: pointer; }
   /* v90.85（老板）：星球切换**读条屏** —— 盖在画布上，进度条走到 100% 再消失（确认切换成功）。 */
@@ -2219,7 +2219,7 @@
   /* 全局 hidden（JS 用 classList.toggle 控制显隐） */
   .hidden { display: none !important; }
 
-  /* 侧栏隐藏时主区独占整宽（需求 7：只有城池视图显示左侧统计栏） */
+  /* 侧栏隐藏时主区独占整宽（需求 7：只有城市视图显示左侧统计栏） */
   .main { transition: none; }
   .main.solo { grid-template-columns: 1fr; }
   .main.solo .auth-side { display: none; }
@@ -2276,7 +2276,7 @@
 
   /* ============================================================
    * v89.124（老板「幸存者增速也按小时显示。界面规划参考资源」）：
-   * 幸存者行（城池属性区）与资源行**同款三列对齐** —— 名称 | 存量·上限 | 增速。
+   * 幸存者行（城市属性区）与资源行**同款三列对齐** —— 名称 | 存量·上限 | 增速。
    * 列模板与资源行一致（56px 首列 + 增速列 72px 右对齐 + 1.1em 徽标空位），
    * 两行的增速列右缘因此逐像素对齐；增速列同样带发丝竖线分隔。 */
   #city-attrs .pop-line {
@@ -2381,11 +2381,11 @@
     0%, 100% { box-shadow: 0 0 3px rgba(var(--gold-soft-rgb), .2); }
     50% { box-shadow: 0 0 12px rgba(var(--gold-soft-rgb), .9); }
   }
-  /* v89.61（老板「名称按钮应同时控制 城池内 / 城外建筑 / 地图地块 3 大部分」）
+  /* v89.61（老板「名称按钮应同时控制 城市内 / 城外建筑 / 地图地块 3 大部分」）
      —— 「🏷 名称」关掉时，城内视图与城外视图的建筑名（.tile-label）与等级角标
      （.tile-badge）一并隐藏。用 display:none 而**不删节点**：DOM 结构与点击目标
      保留，既有按类名取节点的断言/交互零影响；一处类名，任何视图立即跟随。
-     地图 canvas 那三类（地块/城池/据点）由 map.render(showLabels) 控制，
+     地图 canvas 那三类（地块/城市/据点）由 map.render(showLabels) 控制，
      两边共用 ui._mapShowLabels 同一个状态（切换出口 ui.applyLabelSwitch）。 */
   body.labels-off .tile-label,
   body.labels-off .tile-badge { display: none !important; }
@@ -3350,7 +3350,7 @@
   .auto-pane .ap-state { font-size: var(--fs-sub); color: var(--text-dim); }
 
   /* v29（需求 7）：全境汇总左右分列 —— 同类同侧 */
-  /* v29（需求 9）：城池名后的等级标注 [旧都] / [首府] … */
+  /* v29（需求 9）：城市名后的等级标注 [旧都] / [首府] … */
   .city-tier { color: var(--gold-light); opacity: .85; font-size: var(--fs-cap); font-weight: 400; margin-left: var(--sp-0); }
   /* v79：【主城】标识（与档位标同族、金色描边更亮） */
   .city-tier.mt { color: var(--gold-light); opacity: 1; filter: brightness(1.3);
@@ -3546,7 +3546,7 @@
   .chips.gen-chips .chip { justify-content: center; text-align: center; }
   .chips.gen-chips.inline { width: auto; max-width: 100%; }
   .mk-pick { flex-wrap: wrap; }
-  /* v61（老板）：满配城的城内布局块（野外城池 / 未占据名城共用）——
+  /* v61（老板）：满配城的城内布局块（野外城市 / 未占据名城共用）——
      三行账册式排布，右列允许折行（14 项建筑名一行放不下）。 */
   .plan-box { background: rgba(var(--sh-rgb), .20); border: 1px solid var(--line);
     border-radius: var(--r-lg); padding: var(--sp-2) var(--sp-4); margin: var(--sp-2) 0; }
@@ -3563,14 +3563,14 @@
   .gd-face { display: flex; justify-content: center; }
   .inn-avatar { font-size: var(--isz-xs); width: 28px; display: flex; align-items: center; justify-content: center; }   /* v82：两条同名规则合并为一 */
 
-  /* ---- 城池视图（v22 · 需求 3）：中央只留棋盘 ----
-     城池名 / 幸存者驻军 / 征收 / 显示比例 / 岁贡 全部下沉到左侧栏，
+  /* ---- 城市视图（v22 · 需求 3）：中央只留棋盘 ----
+     城市名 / 幸存者驻军 / 征收 / 显示比例 / 岁贡 全部下沉到左侧栏，
      让「看的东西」占满中央、操作类控件待在侧栏。 */
   .city-pure { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100%; }
   .city-pure .city-iso { padding: 0; }
 
   /* ============================================================
-   * v45（需求 2）：城池/城外界面**消除滚动条**
+   * v45（需求 2）：城市/城外界面**消除滚动条**
    * ------------------------------------------------------------
    * 实机实测：`#view-container` 竖向溢出 **11px**，于是这两个"整屏棋盘"的界面
    * 永远挂着一条滚动条（老板说的"下拉框"）。
@@ -3580,18 +3580,18 @@
    * ============================================================ */
   .ui-page.city-pure { padding: 0; }
 
-  /* 城池下拉框（v45 需求 3）：侧栏顶部换城。
-     为什么这里破例用原生 <select>：可选项（城池数）随进程不断增长，
-     点选 chips 在窄侧栏里会折成好几行、把城池属性的位置挤下去；
+  /* 城市下拉框（v45 需求 3）：侧栏顶部换城。
+     为什么这里破例用原生 <select>：可选项（城市数）随进程不断增长，
+     点选 chips 在窄侧栏里会折成好几行、把城市属性的位置挤下去；
      下拉框恒定一行，且能一次看全"我有哪些城"。 */
   .city-switch { display: flex; align-items: center; gap: var(--sp-2); margin-bottom: var(--sp-1); }
-  /* v53：城池清单的**持久容器** —— 它只在"城池清单或当前城池变了"时才被重建，
+  /* v53：城市清单的**持久容器** —— 它只在"城市清单或当前城市变了"时才被重建，
      其余时间主循环一个字节都不碰，原生下拉列表才不会被每秒重绘冲合。
      单城时里面是空的，靠 :empty 收掉，不留空行。 */
   .city-switch-host { padding: var(--sp-2) var(--sp-4) 0; }
   .city-switch-host:empty { display: none; }
   .city-switch .cs-lbl { color: var(--text-dim); font-size: var(--fs-sub); flex: none; }
-  /* v91.25：城名旁的三个操作入口（🎲/📍/🏗）—— 从原「城池身份行」并入本行 */
+  /* v91.25：城名旁的三个操作入口（🎲/📍/🏗）—— 从原「城市身份行」并入本行 */
   .city-switch-ops { display: inline-flex; gap: var(--sp-1); flex: none; }
   .city-switch-ops .btn.sm { padding: 1px 6px; }
   .city-select {
@@ -3603,7 +3603,7 @@
   }
   .city-select:hover { border-color: var(--gold-light); }
   .city-select:focus { outline: none; border-color: var(--gold-light); box-shadow: 0 0 0 2px rgba(var(--gold-soft-rgb), .18); }
-  /* v82（老板）：「不需要显示原名 新城池」——政务厅面板的原名标注退役，
+  /* v82（老板）：「不需要显示原名 新城市」——政务厅面板的原名标注退役，
      对应样式随之撤除（域层 origName 照记：首府判定/战报仍按它对号）。 */
   .side-body .zoom-bar { margin: 0; justify-content: flex-start; }
 
@@ -3703,7 +3703,7 @@
      ------------------------------------------------------------
      ① 资源区：附属野地下拉框（原「本城 · 城名」表头退役）
      ② 酒馆招募：表格版式（表头 + 单行数据，含月俸列）
-     ③ 君主面板：左右分栏（左城池列表 / 右信息表）
+     ③ 君主面板：左右分栏（左城市列表 / 右信息表）
      ④ 锻造间：熔铸强化列表
      ============================================================ */
   /* v90.90：资源区附属野地下拉（宿主/选择器样式）随清单移入君主左侧而退役。 */
@@ -4218,7 +4218,7 @@
 <div class="create-screen" id="screen-create">
   <div class="create-box wood-frame">
     <div class="inner-panel">
-      <div class="gold-heading">创建城池</div>
+      <div class="gold-heading">创建城市</div>
       <div class="create-inner">
         <div>
           <div class="avatar-select">
@@ -4236,10 +4236,10 @@
         </div>
         <div class="create-form">
           <div class="field"><label>君主名字</label><input type="text" id="create-name" maxlength="12" placeholder="输入你的名字"></div>
-          <div class="field"><label>城池归属</label>
+          <div class="field"><label>城市归属</label>
             <!-- v22（需求 1）：下拉框改为点选按钮组；隐藏域保留原 id，读取端不用改 -->
             <input type="hidden" id="create-region" value="random">
-            <!-- v70（老板需求 5）：「城池归属应归属到首府所辖范围内，目前几个选项不太 OK」——
+            <!-- v70（老板需求 5）：「城市归属应归属到首府所辖范围内，目前几个选项不太 OK」——
                  旧的「北方/中原/江南」只是三句文案（从不影响落位）；现在给出**十三区**，
                  选哪个区，出生城就落在该区首府近旁（GAME.pickStartPos，就近归属同一判据）。 -->
             <span class="chips" style="flex:1;flex-wrap:wrap;">
@@ -4260,8 +4260,8 @@
             </span>
           </div>
           <div class="summary-box" id="create-summary">
-            君主数：0 &nbsp; 城池数：0 &nbsp; 拥挤度：0%<br>
-            <span id="create-map-preview">（选择归属后随机生成初始城池位置）</span>
+            君主数：0 &nbsp; 城市数：0 &nbsp; 拥挤度：0%<br>
+            <span id="create-map-preview">（选择归属后随机生成初始城市位置）</span>
           </div>
           <div class="create-actions">
             <button class="btn gold lg hidden" id="create-continue" data-action="create-continue">继续上次的游戏</button>
@@ -4280,14 +4280,14 @@
 <div id="screen-game" class="hidden">
   <!-- 顶部导航 -->
   <!-- v19：菜单按**类型分组**，同类型相邻、不同类型以竖线分隔
-       ① 场景：城池 / 地图   ② 军事：英雄 / 行军
+       ① 场景：城市 / 地图   ② 军事：英雄 / 行军
        ③ 成长：任务 / 游商 / 威望   ④ 记录：公文   ⑤ 系统：设置 / 存档 / 新游戏
        原「公告」菜单已取消，内容并入「公文」 -->
   <div class="topnav" id="topnav">
     <!-- v25（需求 10）：① 每个菜单加手绘线描图标（JS 填 <i class="ti">）
          ② 任务与统计相邻  ③「威望」不再是独立菜单，并入「君主」
          ④ 游商 / 背包由弹窗改为**整页视图**，与其他菜单一致 -->
-    <div class="tab active" data-view="city"><i class="ti" data-nav="city"></i>城池</div>
+    <div class="tab active" data-view="city"><i class="ti" data-nav="city"></i>城市</div>
     <div class="tab" data-view="ext"><i class="ti" data-nav="ext"></i>城外</div>
     <div class="tab" data-view="map"><i class="ti" data-nav="map"></i>地图</div>
     <span class="nav-sep"></span>
@@ -4317,17 +4317,17 @@
          顶栏再摆一份只是让右手边常年挂着两个危险按钮。 -->
     <div class="tab" data-view="auto"><i class="ti" data-nav="auto"></i>自动</div>
     <div class="tab" data-view="settings"><i class="ti" data-nav="settings"></i>设置</div>
-    <!-- v26（需求 3）：天时是**全局**信息（季节/天候/年号影响所有城池），
-         放在城池属性里不合逻辑；margin-left:auto 把它推到最右。 -->
+    <!-- v26（需求 3）：天时是**全局**信息（季节/天候/年号影响所有城市），
+         放在城市属性里不合逻辑；margin-left:auto 把它推到最右。 -->
     <div class="nav-sky" id="nav-sky" title="天时（季节 / 天候 / 年号）"></div>
   </div>
 
   <div class="main">
-    <!-- 左侧：君主栏 + 城池属性栏 + 资源栏（原版三段式信息区） -->
+    <!-- 左侧：君主栏 + 城市属性栏 + 资源栏（原版三段式信息区） -->
     <div class="auth-side">
       <div class="lord-card">
         <!-- ① 君主栏 -->
-        <!-- v25（需求 9）：头像换成程序化立绘（不再是 emoji）；「城池 N 城」这类统计从这一栏删掉。
+        <!-- v25（需求 9）：头像换成程序化立绘（不再是 emoji）；「城市 N 城」这类统计从这一栏删掉。
              v81（老板）：「官职这行放玩家名称，现在的名称位置去掉」—— 游戏里没有官职体系，
              该行退役、君主名并入信息表首行；旧的头像旁名称列一并撤除。
              v89.7（老板「头像可更换」）：头像本身成为更换入口（点它进头像池点选）。 -->
@@ -4344,32 +4344,32 @@
           <div class="sbtn" data-action="open-lord">君主</div>
         </div>
 
-        <!-- ② 城池属性栏 -->
+        <!-- ② 城市属性栏 -->
         <div class="side-block">
           <div class="side-title">
-            <span>城池属性</span>
-            <!-- v77（老板）：「城池属性右边的 3 个按钮以及相应的计算链就不要了
+            <span>城市属性</span>
+            <!-- v77（老板）：「城市属性右边的 3 个按钮以及相应的计算链就不要了
                  （建筑信息，资源生产，附属野地）」——三个入口整条退役。
-                 v90.90：附属野地清单移入君主左侧（城池/据点/野地 三份清单）。 -->
+                 v90.90：附属野地清单移入君主左侧（城市/据点/野地 三份清单）。 -->
             <span class="side-quick"></span>
           </div>
-          <!-- v53：城池清单**单独成一个静态节点**，不再拼进 #city-attrs 的 html ——
-               主循环每秒重绘城池属性，若把这个下拉框一起换掉，展开的列表会立刻合上
-               （老板："点出来列表马上收回去了"）。它只在城池清单/当前城池变化时才重建。 -->
+          <!-- v53：城市清单**单独成一个静态节点**，不再拼进 #city-attrs 的 html ——
+               主循环每秒重绘城市属性，若把这个下拉框一起换掉，展开的列表会立刻合上
+               （老板："点出来列表马上收回去了"）。它只在城市清单/当前城市变化时才重建。 -->
           <div class="city-switch-host" id="city-switch-host"></div>
           <div class="side-body" id="city-attrs"></div>
         </div>
 
-        <!-- v27（需求 1）：原「城池操作」板块已删除 ——
-             征收在政务厅、显示比例在设置、岁贡在名城政务厅，这一栏只剩"切换城池"；
-             而切城已经并进「城池属性」顶部（多城时才出现），
+        <!-- v27（需求 1）：原「城市操作」板块已删除 ——
+             征收在政务厅、显示比例在设置、岁贡在名城政务厅，这一栏只剩"切换城市"；
+             而切城已经并进「城市属性」顶部（多城时才出现），
              单独占一个带标题的板块既浪费纵向空间、又让侧栏出现滚动条。 -->
 
         <!-- ③ 资源栏（每项带 + 快捷道具） -->
         <div class="side-block">
           <div class="side-title"><span>资源</span><span class="side-quick" id="res-prod-hint"></span></div>
           <!-- v77（老板）：资源区曾在此放「附属野地」下拉框。
-               v90.90（老板）：附属野地清单**移入君主左侧**（城池/据点/野地 三份清单），此处退役。 -->
+               v90.90（老板）：附属野地清单**移入君主左侧**（城市/据点/野地 三份清单），此处退役。 -->
           <div class="side-body" id="res-bar"></div>
           <!-- v16：资源下方固定驻军栏 -->
           <div class="garrison-bar" id="garrison-bar"></div>
@@ -4379,7 +4379,7 @@
 
     <!-- 中央 -->
     <div class="central">
-      <!-- v26（需求 5）：城内 / 城外 已提升为顶栏菜单（城池=城内），
+      <!-- v26（需求 5）：城内 / 城外 已提升为顶栏菜单（城市=城内），
            中央不再需要子页签那一行 —— 它正是把棋盘往下挤的那 30px。 -->
       <div class="view-box" id="view-container"></div>
     </div>
@@ -4404,31 +4404,31 @@
 </div><!-- /#app-scale -->
 </div><!-- /#app-fit -->
 
-<!-- BUILD 9218 -->
-<script src="js/data.js?v=9218"></script>
-<script src="js/state.js?v=9218"></script>
-<script src="js/systems.js?v=9218"></script>
-<script src="js/domain.js?v=9218"></script>
-<script src="js/map.js?v=9218"></script>
+<!-- BUILD 9219 -->
+<script src="js/data.js?v=9219"></script>
+<script src="js/state.js?v=9219"></script>
+<script src="js/systems.js?v=9219"></script>
+<script src="js/domain.js?v=9219"></script>
+<script src="js/map.js?v=9219"></script>
 <!-- v90.69：球面世界内核（纯 JS · 拓扑/地形/几何 SSOT）—— 逻辑与 3D 渲染共用，无 THREE -->
-<script src="js/sphere.js?v=9218"></script>
+<script src="js/sphere.js?v=9219"></script>
 <!-- v90.61：Three.js 真 3D 主地图（vendor 本地，离线可用） -->
-<script src="vendor/three.min.js?v=9218"></script>
-<script src="js/map3d.js?v=9218"></script>
-<script src="js/battle.js?v=9218"></script>
+<script src="vendor/three.min.js?v=9219"></script>
+<script src="js/map3d.js?v=9219"></script>
+<script src="js/battle.js?v=9219"></script>
 <!-- v27（需求 5）：回合制文字战场。放在 battle.js 之后 —— simulate 由它接管 -->
-<script src="js/tactic.js?v=9218"></script>
-<script src="js/icons.js?v=9218"></script>
+<script src="js/tactic.js?v=9219"></script>
+<script src="js/icons.js?v=9219"></script>
 <!-- v32（需求「采用网图」）：game-icons 开源图标素材层。必须在 icons.js 之后 ——
      icons.js 内的取图函数用 typeof GICONS 延迟绑定，渲染时才真正查表。 -->
-<script src="js/gicons.js?v=9218"></script>
+<script src="js/gicons.js?v=9219"></script>
 <!-- v35：AI 位图素材登记表（汉代风，最高优先级）。同样在 icons.js 之后 ——
      取图函数用 typeof BITMAPS 延迟绑定；未登记的 id 自动回退矢量层。 -->
-<script src="js/bitmaps.js?v=9218"></script>
-<script src="js/portraits.js?v=9218"></script>
-<script src="js/story.js?v=9218"></script>
+<script src="js/bitmaps.js?v=9219"></script>
+<script src="js/portraits.js?v=9219"></script>
+<script src="js/story.js?v=9219"></script>
 <!-- ⛔ v89.218（老板「故事全部去除」）：84 卷故事库（story/）整目录删除，脚本标签同步撤除。 -->
-<script src="js/ui.js?v=9218"></script>
-<script src="js/main.js?v=9218"></script>
+<script src="js/ui.js?v=9219"></script>
+<script src="js/main.js?v=9219"></script>
 </body>
 </html>

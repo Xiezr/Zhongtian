@@ -108,7 +108,7 @@
     && !!G.icons.bitmapSrc('building', 'guanfu'),
     'gicons=' + typeof global.GICONS + ' bitmaps=' + typeof global.BITMAPS);
 
-  /* v14：外城地块按城池独立（state.extGrid → city.extGrid）。
+  /* v14：外城地块按城市独立（state.extGrid → city.extGrid）。
      extOf(state) 取该 state 首城的外城网格，让既有断言继续可用。 */
   function extOf(st) { return G.extGridOf(st.cities[0]); }
 
@@ -165,7 +165,7 @@
     var re = /<select[^>]*>/g, m, bad = [];
     while ((m = re.exec(src)) !== null) {
       var tag = m[0];
-      var ok = /class="city-select[ "]/.test(tag)       /* 城池切换 与 附属野地（后者带 wild-select 两个类） */
+      var ok = /class="city-select[ "]/.test(tag)       /* 城市切换 与 附属野地（后者带 wild-select 两个类） */
         || /id="exp-/.test(tag)                          /* 出征面板七项 */
         || /id="xc-/.test(tag)                           /* 练兵场演武的选将框（v89.80） */
         || /id="bt-t-/.test(tag)                         /* 战场界面逐兵种目标（v89.87） */
@@ -265,7 +265,7 @@
   check('23 科技', DATA.TECH.length === 24, DATA.TECH.length + '项');
   check('22 级威望', DATA.RANK.length === 22);
   check('废土之王声望10.48亿', DATA.RANK[21].rep === 1048576000);
-  check('174 座城池(1都+12州+96郡+65县)', DATA.NPC_CITIES.length === 174,
+  check('174 座城市(1都+12州+96郡+65县)', DATA.NPC_CITIES.length === 174,
     '旧都1 / 首府' + DATA.NPC_CITIES.filter(function (c) { return c.type === 'zhou'; }).length
     + ' / 重镇' + DATA.NPC_CITIES.filter(function (c) { return c.type === 'jun'; }).length
     + ' / 聚落' + DATA.NPC_CITIES.filter(function (c) { return c.type === 'county'; }).length);
@@ -273,7 +273,7 @@
      不再是 v89.72 那套 1~10 权重分布（已退役）。 */
   check('聚落为第三档（城防40；城等级 = 档位等级 12）', DATA.NPC_CITIES.filter(function (c) { return c.type === 'county'; })
     .every(function (c) { return c.def === 40 && c.level === DATA.NPC_TIER_LV.county; }));
-  check('城池坐标无冲突', (function () {
+  check('城市坐标无冲突', (function () {
     var seen = {}, bad = 0;
     DATA.NPC_CITIES.forEach(function (c) { var k = c.x + ',' + c.y; if (seen[k]) bad++; seen[k] = 1; });
     return bad === 0;
@@ -532,7 +532,7 @@
   console.log('\n===== 15. UI 渲染（原版三段式 + 面板函数）=====');
   var UI = G.ui, DC = global.document._cache;
   UI.renderSide();
-  check('城池属性栏渲染', (DC['#city-attrs'] && DC['#city-attrs'].innerHTML.indexOf('民心') >= 0), '含民心/民怨/税率');
+  check('城市属性栏渲染', (DC['#city-attrs'] && DC['#city-attrs'].innerHTML.indexOf('民心') >= 0), '含民心/民怨/税率');
   check('资源栏渲染带+快捷', (DC['#res-bar'] && DC['#res-bar'].innerHTML.indexOf('plus-btn') >= 0), '含+号快捷道具');
   var panels = [
     ['城内', UI.cityHTML()], ['城外', UI.extHTML()], ['军队', UI.troopsHTML()],
@@ -544,7 +544,7 @@
   /* v89.104：统计页退役 → 12 个主面板 */
   /* v90.92：任务页退役 → 11 → 10 个主面板。 */
   check('10 个主面板全部可渲染（v90.92：任务页退役）', panelOk, panels.map(function (p) { return p[0] + ':' + p[1].length; }).join(' '));
-  /* v77（老板）：资源生产 / 建筑信息两个入口退役（随城池属性右三按钮）；
+  /* v77（老板）：资源生产 / 建筑信息两个入口退役（随城市属性右三按钮）；
      附属野地保留（改由资源区下拉框「进入」触发）。 */
   var modals = [
     ['君主信息', UI.openLordInfo], ['附属野地', UI.openWilds],
@@ -563,7 +563,7 @@
     }
   });
   check('原版式弹窗全部可打开', modalOk, failName || '君主/野地');
-  /* v25（需求 2）：游商 / 背包改为整页视图（与城池/地图同级），不再是弹窗 */
+  /* v25（需求 2）：游商 / 背包改为整页视图（与城市/地图同级），不再是弹窗 */
   check('游商 / 背包已改为整页视图',
     /ui\.shopHTML = function/.test(uiSrcProbe) && /ui\.bagHTML = function/.test(uiSrcProbe)
     && /else if \(v === 'shop'\) box\.innerHTML = ui\.shopHTML\(\)/.test(uiSrcProbe)
@@ -1001,7 +1001,7 @@
     typeof meta19.era === 'undefined' && typeof meta19.yearName === 'undefined'
     && !!meta19.year && !!meta19.season && !!meta19.weather,
     '第 ' + meta19.year + ' 年 ' + meta19.season + ' ' + meta19.weather);
-  check('索引含城池/兵力概要', meta19.cities > 0 && typeof meta19.army === 'number',
+  check('索引含城市/兵力概要', meta19.cities > 0 && typeof meta19.army === 'number',
     '城' + meta19.cities + ' 兵' + meta19.army);
   var rulerBefore = JSON.stringify(S19.ruler);
   var parsed19 = JSON.parse(localStorage.getItem('sanguo_save_v3'));
@@ -1446,7 +1446,7 @@
     gfNow.length === 4 && gfNow.every(function (l) { return l === gfNow[0]; }),
     '等级 ' + gfNow.join(' / '));
 
-  /* 全部满级 → 停止（v14：自动升级遍历所有城池，需把所有城都升满） */
+  /* 全部满级 → 停止（v14：自动升级遍历所有城市，需把所有城都升满） */
   S21.queues.build.length = 0;
   S21.cities.forEach(function (ct) {
     ct.cells.forEach(function (c) {
@@ -1560,7 +1560,7 @@
   check('7 种地形各有矢量画法', ['plain', 'caoyuan', 'zhaoze', 'lake', 'forest', 'desert', 'hill'].every(function (t) {
     return mapSrc22.indexOf("case '" + t + "'") >= 0;
   }));
-  check('城池为等距立体绘制（等距盒体 + 四坡屋顶 + 门洞）',
+  check('城市为等距立体绘制（等距盒体 + 四坡屋顶 + 门洞）',
     /function drawCityArt/.test(mapSrc22) && /function isoRoof/.test(mapSrc22)
     && /function isoBox\(/.test(mapSrc22));
   check('玩家城与 NPC 城区分（玩家城插绿旗）',
@@ -1570,7 +1570,7 @@
    * v45（需求 1）：老板说「野地现在区分度不好」。
    * 旧值的问题不是"没上色"，而是**七种地形塌成了两个色族**：
    *   绿族 草原/沼泽/森林（色相 90~100°、亮度 48~60）
-   *   土族 荒漠/山地/城池（色相 35~45°、亮度 55~70）
+   *   土族 荒漠/山地/城市（色相 35~45°、亮度 55~70）
    * 这条断言把"区分度"变成可算的判据：**依次从源码读出真值**（不是抄一遍写法），
    * 算 HSL，要求任意两族至少在「色相 / 明度 / 饱和度」里有一维明显拉开。
    * 只查色相是不够的 —— 荒漠与山地就是**同色相**，靠饱和度分开的。
@@ -1633,13 +1633,13 @@
     && /cvH = Math\.round\(spanY \* cell\)/.test(mapSrc22));
   /* v50：落点一律由 topCY(gx,gy,el) 给出 —— 菱形下要**格号**才能算形状，
      所以比正方形版多一个参数（这正是斜投影最容易漏的地方：格心对了、形状还错着）。 */
-  check('地形/城池绘制在菱形顶面上（落点由 topCY 按格号给出）',
+  check('地形/城市绘制在菱形顶面上（落点由 topCY 按格号给出）',
     /topCY\(d\.gx, d\.gy, d\.el\) - S \* 0\.58/.test(mapSrc22)
     && /topCY\(gx, gy, el\)/.test(mapSrc22));
-  check('v50-c：城池/据点由**绘图**呈现立体感（等距盒体自下而上堆叠）', (function () {
+  check('v50-c：城市/据点由**绘图**呈现立体感（等距盒体自下而上堆叠）', (function () {
     /* 老板："通过绘图呈现立体感" —— 不再依赖位图素材，改为程序化绘制：
        每个构件是一个**等距盒体**（顶面菱形 + 左下 / 右下两个立面），
-       城池按 台基 → 围墙 → 角楼/门楼 → 主楼 → 四坡顶 逐层堆叠。
+       城市按 台基 → 围墙 → 角楼/门楼 → 主楼 → 四坡顶 逐层堆叠。
        立体感三要素：① 顶面 > 左面 > 右面 的明度差（光源在左上）
                      ② 构件之间的高低差（主楼高于角楼、角楼高于围墙）
                      ③ 每层顶面留一道受光亮线 */
@@ -1726,14 +1726,14 @@
     })());
   check('v50：按纵深 (gx+gy) 排序绘制（斜投影正确遮挡的前提）',
     /drawList\.sort\(function \(a, b\) \{ return \(a\.gx \+ a\.gy\) - \(b\.gx \+ b\.gy\); \}\)/.test(mapSrc22)
-    /* 据点/城池同理：三种物件必须合并排序，否则南北相邻时会互相"穿透" */
+    /* 据点/城市同理：三种物件必须合并排序，否则南北相邻时会互相"穿透" */
     && /marks\.sort\(function \(a, b\) \{ return \(a\.gx \+ a\.gy\) - \(b\.gx \+ b\.gy\); \}\)/.test(mapSrc22));
   /* ---- v45（需求 0）：地形贴图铺满地块 + 缝加宽 + 顶棱画在贴图之上 ---- */
   check('v50：地形贴图按**菱形裁切**、铺满菱形外接框（与顶面同一个来源）',
     /function blitArtRect/.test(mapSrc22)
     && /var ab = diaBox\(d\.gx, d\.gy, d\.el, IN\)/.test(mapSrc22)
     && /diaPath\(d\.gx, d\.gy, d\.el, -IN\)/.test(mapSrc22)
-    /* v89.43：入口改走 aKey（地形 + 城池共用同一管线），不再逐地形字面拼接 */
+    /* v89.43：入口改走 aKey（地形 + 城市共用同一管线），不再逐地形字面拼接 */
     && /blitArtRect\(ctx, aKey, ab\.x, ab\.y, ab\.w, ab\.h\)/.test(mapSrc22)
     /* v90.2：世界采样路径用 pattern.setTransform 旋转纹理（等距朝向）——
        旧"禁旋转/仿射"约束只适用于旧的正交铺贴路径（下方 !roundRect / !blitArt 守住那条）。 */
@@ -1798,15 +1798,15 @@
   })());
   check('v50：顶棱高光/菱形描边画在贴图**之后**（否则被铺满的贴图盖掉）',
     /function edgeOf\(gx, gy, el, at\)/.test(mapSrc22)
-    /* v90.5：世界采样下交界由羽化处理，edgeOf 跳过非城池格（避免残留"X"格纹） */
+    /* v90.5：世界采样下交界由羽化处理，edgeOf 跳过非城市格（避免残留"X"格纹） */
     && /drawList\.forEach\(function \(d\) \{[\s\S]{0,160}edgeOf\(d\.gx, d\.gy, d\.el, _terrAt\);[\s\S]{0,20}\}\)/.test(mapSrc22));
-  check('v50-a：城池格也有菱形描边（不再读成"一块方块"）', (function () {
-    /* 老板："城池怎么还是正方形的" —— 城池格不铺地形贴图，原来只有一个 ≈90px 的
+  check('v50-a：城市格也有菱形描边（不再读成"一块方块"）', (function () {
+    /* 老板："城市怎么还是正方形的" —— 城市格不铺地形贴图，原来只有一个 ≈90px 的
        大图标（比 104×52 的菱形还高），整块地读起来就是方块。
-       v50-a 把图标收进菱形（≤ 菱形外接框的 95%），并给城池格描一圈菱形边。 */
+       v50-a 把图标收进菱形（≤ 菱形外接框的 95%），并给城市格描一圈菱形边。 */
     return /diaPath\(gx, gy, el, -IN \* 0\.5\)/.test(mapSrc22)
       && /rgba\(214,204,168,\.5\)/.test(mapSrc22)
-      /* v50-c：城池改为程序化等距绘制（底面中心取地块中心稍下） */
+      /* v50-c：城市改为程序化等距绘制（底面中心取地块中心稍下） */
       && mapSrc22.indexOf('drawCityArt(ctx, c.x, tcy + HH * ') >= 0;
   })());
   check('v50-a：顶面内侧有 AO 阴影（不越界也能读出厚度）', (function () {
@@ -1816,7 +1816,7 @@
       && /rgba\(12,14,8,\.30\)/.test(mapSrc22)
       && /diaPath\(gx, gy, el, -IN\);[\s\S]{0,120}?ctx\.clip\(\)/.test(mapSrc22);
   })());
-  check('v50：野地金框/据点/城池都拿到「格号 + 格心 + 本格 el」，无残留写死 ELEV',
+  check('v50：野地金框/据点/城市都拿到「格号 + 格心 + 本格 el」，无残留写死 ELEV',
     !/cell - ELEV\b/.test(mapSrc22) && !/topCY\(c\.y\)/.test(mapSrc22)
     && !/topBottom\(c\.y\)/.test(mapSrc22)
     /* 菱形版必须拿到格号：只给格心画不出菱形 */
@@ -2235,7 +2235,7 @@
     check('城外地块改用 SVG 图标', /GAME\.icons\.forExt\(e\.type\)/.test(uiSrc24));
     check('兵种卡改用 SVG 图标', /GAME\.icons\.forTroop\((t|sel)\.id\)/.test(uiSrc24));
     check('地图野地改为矢量绘制', /function drawTerrainArt/.test(mapSrc24) && !/TERRAIN_ICON/.test(mapSrc24));
-    check('城池为矢量绘制', /function drawCityArt/.test(mapSrc24));
+    check('城市为矢量绘制', /function drawCityArt/.test(mapSrc24));
     var htmlSrc24 = require('fs').readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
     check('地块不再用彩色块（cat-* 已移除）', !/\.cat-gov/.test(htmlSrc24) && /\.tile-art \.ico/.test(htmlSrc24));
     check('地块底板为亮度分层（.tile-face），不用外投影',
@@ -2315,7 +2315,7 @@
     })());
 
     /* 材料掉落 */
-    console.log('  --- 材料掉落（野地/城池） ---');
+    console.log('  --- 材料掉落（野地/城市） ---');
     check('野地按地形掉料表完整', ['plain', 'caoyuan', 'zhaoze', 'lake', 'forest', 'desert', 'hill'].every(function (t) { return !!DATA.WILD_MATERIAL[t]; }));
     check('森林产松木', !!DATA.WILD_MATERIAL.forest.songmu);
     check('山地产粗铁', !!DATA.WILD_MATERIAL.hill.fatie);
@@ -2329,7 +2329,7 @@
       }
       return true;
     })());
-    check('城池按等级掉料', !!DATA.CITY_MATERIAL.jun && !!DATA.CITY_MATERIAL.zhou && !!DATA.CITY_MATERIAL.capital);
+    check('城市按等级掉料', !!DATA.CITY_MATERIAL.jun && !!DATA.CITY_MATERIAL.zhou && !!DATA.CITY_MATERIAL.capital);
     check('旧都掉最高级材料（陨铁）', !!DATA.CITY_MATERIAL.capital.yuntie);
     DATA.MATERIAL_IDS.forEach(function (m) { delete S24.items[m]; });
     var got24 = G.battle.grantMaterials(DATA.WILD_MATERIAL.forest, 1, null);
@@ -2371,10 +2371,10 @@
       return nav.indexOf('data-view="troops"') < 0 && nav.indexOf('data-view="tech"') < 0 &&
         nav.indexOf('data-view="equip"') < 0 && nav.indexOf('data-view="items"') < 0;
     })());
-    /* v26（需求 5）：城内/城外 由中央子页签提升为顶栏菜单，城池=城内 */
+    /* v26（需求 5）：城内/城外 由中央子页签提升为顶栏菜单，城市=城内 */
     /* 标签里还有 <i class="ti"> 图标节点，所以用"宽松邻接"而不是紧邻匹配 */
     check('城内 / 城外 已提升为顶栏菜单',
-      /data-view="city"[\s\S]{0,90}城池/.test(htmlSrc24b)
+      /data-view="city"[\s\S]{0,90}城市/.test(htmlSrc24b)
       && /data-view="ext"[\s\S]{0,90}城外/.test(htmlSrc24b));
     check('中央不再有子页签那一行', !/id="subtabs"/.test(htmlSrc24b) && !/data-action="city-sub"/.test(htmlSrc24b));
     check('openPanel 生成的弹窗带关闭按钮', /data-action="close-modal"/.test(uiSrc24.slice(uiSrc24.indexOf('ui.openPanel = function'), uiSrc24.indexOf('ui.openPanel = function') + 1400)));
@@ -2432,7 +2432,7 @@
 
 
 
-  console.log('\n===== 25. v13：材料系列 / 背包 / 三方式出征 / 野外城池 / 解雇 / 拆毁 =====');
+  console.log('\n===== 25. v13：材料系列 / 背包 / 三方式出征 / 野外城市 / 解雇 / 拆毁 =====');
   var htmlSrc25 = require('fs').readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
 
   /* ---------- ① 材料与配方 ---------- */
@@ -2477,7 +2477,7 @@
     }
     return true;
   })());
-  check('城池按档位产高阶材料(fort=1/county·jun=2/zhou=3/capital=4)', (function () {
+  check('城市按档位产高阶材料(fort=1/county·jun=2/zhou=3/capital=4)', (function () {
     var exp = { fort: 1, county: 2, jun: 2, zhou: 3, capital: 4 };
     for (var ct in exp) {
       var tbl = DATA.CITY_MATERIAL[ct];
@@ -2763,10 +2763,10 @@
   })());
   check('出征面板三选一 + 方式说明', /exp-mode/.test(uiS) && /ui\.setExpMode/.test(uiS) && /ui\.applyExpMode/.test(uiS));
 
-  /* ---------- ⑦ 野外城池 ---------- */
-  console.log('  --- 野外城池 ---');
+  /* ---------- ⑦ 野外城市 ---------- */
+  console.log('  --- 野外城市 ---');
   G.map.generate();
-  check('野外城池密度配置 1/24（v90.66 老板：据点减半）', DATA.FORT.density === 1 / 24);
+  check('野外城市密度配置 1/24（v90.66 老板：据点减半）', DATA.FORT.density === 1 / 24);
   /* v90.75：据点**改在球面六边格上生成**（不再逐格扫平面 500×500）——
      抽样改走球面地块：遍历全星地块，命中即计数/收等级。 */
   var cntF = 0, lvSet = {}, _SC = G.sphere.cells, _ncells = _SC.length;
@@ -2908,7 +2908,7 @@
   check('名城图纸概率优于聚落', DATA.LOOT_EQUIP.capital.blueprint > DATA.LOOT_EQUIP.county.blueprint,
     DATA.LOOT_EQUIP.county.blueprint + ' → ' + DATA.LOOT_EQUIP.capital.blueprint);
   check('聚落军械优于野外据点', DATA.LOOT_EQUIP.county.piece > DATA.LOOT_EQUIP.fort.piece);
-  /* v89.109（老板「10 级野外城池资源量那么少，必有错误」）：
+  /* v89.109（老板「10 级野外城市资源量那么少，必有错误」）：
      旧判据比的是"假想档位"（genLoot 里 jun/zhou/capital 的 mult 从未被真实调用 ——
      名城的掠夺走 npcLoot 库藏），既拦不住真 bug、又把据点压得抬不起头。
      改为两条**真实关系**：① 同等级 据点 > 野地；② 据点 Lv10 仍低于聚落实际掠夺的 1/5。 */
@@ -3029,7 +3029,7 @@
       && !/GAME\.buildWall = function/.test(srcW2) && !/GAME\.upgradeWall = function/.test(srcW2)
       && !/ui\.openWallModal = function/.test(uiS);
   })());
-  check('政务厅 4 格位于城池正中（col 3-4 × row 2-3，v68 老板）', (function () {
+  check('政务厅 4 格位于城市正中（col 3-4 × row 2-3，v68 老板）', (function () {
     var c = G.makeCity({ id: 'govpos', name: 'G' });
     var idx = [];
     c.cells.forEach(function (x, i) { if (x.official) idx.push(i); });
@@ -3104,10 +3104,10 @@
   check('全境 ext 口径唯一出口 = G.extSummary（v90.92：questMetric 已退役）',
     typeof G.questMetric === 'undefined' && G.extSummary().cap === 30 && G.extSummary().towns === 2);
 
-  /* 生产遍历所有城池 */
+  /* 生产遍历所有城市 */
   V14.cities[0].extGrid[0] = { id: 'e1', type: 'farm', lv: 10, pending: null };
   nCity.extGrid[0] = { id: 'e1', type: 'farm', lv: 10, pending: null };
-  check('产量遍历所有城池的地块（两城各 5500/h）', (function () {
+  check('产量遍历所有城市的地块（两城各 5500/h）', (function () {
     var p = G.productionPerSec();
     return p.grain > 0 && p.grain >= (5500 * 2) / 3600 * G.timeScale() * 0.5;
   })(), '粮/s=' + G.productionPerSec().grain.toFixed(2));
@@ -3190,18 +3190,18 @@
 
   /* --- UI --- */
   console.log('  --- 岁贡界面 ---');
-  check('城池面板含「辖区岁贡」', /辖区岁贡/.test(uiS));
+  check('城市面板含「辖区岁贡」', /辖区岁贡/.test(uiS));
   check('岁贡面板显示距下次结算', /距下次/.test(uiS));
   /* 需求 5 起：空态只陈述状态，不再写"去哪里怎么做" */
   check('岁贡空态只陈述状态、不写获取指引',
-    /尚无归属名城/.test(uiS) && !/攻占<b>聚落及以上<\/b>城池后/.test(uiS));
+    /尚无归属名城/.test(uiS) && !/攻占<b>聚落及以上<\/b>城市后/.test(uiS));
   check('材料来源文案含州岁贡', (function () {
     var m = DATA.MATERIAL_BY_ID[ DATA.STATE_SPECIALTY['泽心'].mat ];
     return /岁贡/.test(G.ui.matSourceText(m));
   })());
   /* v51：这句话从打造面板正文搬进了 ui.help()，markdown 下写的是 `已占**首府**`
      而不是 `<b>首府</b>` —— 改判语义（有没有讲清"首府岁贡供货"这件事），别锚在标签上。 */
-  check('缺料提示指向辖区特产城池', /岁贡/.test(uiS) && /首府/.test(uiS));
+  check('缺料提示指向辖区特产城市', /岁贡/.test(uiS) && /首府/.test(uiS));
 
   /* ============================================================
    * 26. v14.1：英雄 id 唯一 / 募兵参数 / 弹窗规范 / 分页 / 忠诚 / 英雄详情
@@ -3747,7 +3747,7 @@
     }
     return true;
   })());
-  check('城池地形无加成', G.wildAddOf('city', 5) === null);
+  check('城市地形无加成', G.wildAddOf('city', 5) === null);
   check('TERRAIN 已弃用 step 字段', DATA.TERRAIN.lake.step === undefined && DATA.TERRAIN.forest.step === undefined);
   check('wildMult 源码已无旧公式残留', !/t\.step/.test(stateSrc26));
   check('UI 源码已无旧公式残留', !/ter\.step|t\.step/.test(uiS));
@@ -3929,15 +3929,15 @@
   console.log('  --- 掠夺得资源 / 占领得地盘 ---');
   check('配置：野地占领资源倍率为 0', DATA.EXPEDITION.wildResMul.occupy === 0);
   check('配置：野地掠夺仍有资源', DATA.EXPEDITION.wildResMul.raid > 0);
-  /* v60（需求 4/6）：城池的财货口径整体重做 ——
+  /* v60（需求 4/6）：城市的财货口径整体重做 ——
      不再"按城档位凭空生成"，而是直接从该城 `GAME.npcCityRes` 的派生库存里按比例取。
      所以这两条旧口径（occupy 也发钱、raid 1.7 倍）必须跟着改：
-       · 占领不取现财（与"占领野地不取财货"同一铁律），城池与剩余库藏一起归我；
+       · 占领不取现财（与"占领野地不取财货"同一铁律），城市与剩余库藏一起归我；
        · 掠夺 0.5 = 拿走库藏的一半。 */
-  check('配置：城池占领不取现财（城与库藏一起归我）', DATA.EXPEDITION.cityResMul.occupy === 0);
+  check('配置：城市占领不取现财（城与库藏一起归我）', DATA.EXPEDITION.cityResMul.occupy === 0);
   check('配置：攻占后新城继承该城库存（cityInherit）',
     DATA.EXPEDITION.cityInherit > 0 && DATA.EXPEDITION.cityInherit <= 1);
-  check('配置：城池掠夺按库藏取走一半', DATA.EXPEDITION.cityResMul.raid === 0.5);
+  check('配置：城市掠夺按库藏取走一半', DATA.EXPEDITION.cityResMul.raid === 0.5);
   /* 用一份全新 state 跑一段逻辑，跑完恢复原 state（避免污染后续断言） */
   function withFreshState(name, fn) {
     var keep = G.state;
@@ -4173,7 +4173,7 @@
     G.state = keepW;
     return okW;
   })());
-  check('#2 政务厅 4 格位于城池正中', (function () {
+  check('#2 政务厅 4 格位于城市正中', (function () {
     var c = G.makeCity({ id: 'w2', name: 'W' });
     var idx = []; c.cells.forEach(function (x, i) { if (x.official) idx.push(i); });
     return idx.join(',') === '19,20,27,28';   /* v68：8 列坐标系下的正中央 */
@@ -4194,7 +4194,7 @@
   check('#4 缩放控件与动作',
     /ui\.zoomBarHTML = function/.test(uS16)
     && /after === 'zoom'/.test(mS16) && /GAME\.doSetZoom\(Number\(el\.dataset\.v\)\)/.test(mS16));
-  /* v22（需求 3）：缩放控件收进侧栏「城池操作」，城内/城外共用同一 zoomStyle */
+  /* v22（需求 3）：缩放控件收进侧栏「城市操作」，城内/城外共用同一 zoomStyle */
   check('#4 缩放为全局设置（城内/城外共用 zoomStyle，控件收在侧栏）',
     (uS16.match(/ui\.zoomStyle\(\)/g) || []).length === 2
     && (uS16.match(/ui\.zoomBarHTML\(\)/g) || []).length === 1);
@@ -4231,17 +4231,17 @@
   check('#13 升级完成清 pending（v89.220：中间插 hiLv · 窗口放宽）',
     /cell\.build\.lvl = q\.targetLevel;[\s\S]{0,260}cell\.pending = null;/.test(stS16));
   check('#13 施工面板显示 当前→目标 且可取消', uS16.indexOf('→ Lv') > 0 && uS16.indexOf('isUp16') > 0 && /取消'/.test(uS16));
-  /* v90.97（老板）：君主左侧三清单（城池/据点/野地）整条退役 → 移入「行政」菜单。 */
+  /* v90.97（老板）：君主左侧三清单（城市/据点/野地）整条退役 → 移入「行政」菜单。 */
   check('#16 行政菜单左 1/4 星球→城市分级树（v90.97）',
     /ui\.adminHTML = function/.test(uS16) && /adm-planet-toggle/.test(uS16) && /adm-city-pick/.test(uS16)
     && /GAME\.map\.coordText\(c\.x, c\.y\)/.test(uS16));
-  /* v22（需求 1）：下拉框已全站移除 → 城池切换改为点选按钮组 */
-  /* v77（老板）：君主面板改左右分栏（城池列表 + 进入按钮），v22 的 chips 退役；
-     城池切换仍是下拉框一处（v45）。v90.97：君主左清单退役，进入城池入口改由行政树。 */
-  check('v77：城池切换走下拉框 + 进入城池入口（v22 chips 退役；v90.97 行进入口改行政树）',
+  /* v22（需求 1）：下拉框已全站移除 → 城市切换改为点选按钮组 */
+  /* v77（老板）：君主面板改左右分栏（城市列表 + 进入按钮），v22 的 chips 退役；
+     城市切换仍是下拉框一处（v45）。v90.97：君主左清单退役，进入城市入口改由行政树。 */
+  check('v77：城市切换走下拉框 + 进入城市入口（v22 chips 退役；v90.97 行进入口改行政树）',
     /data-action="switch-city"/.test(uS16) && /after === 'city'/.test(mS16)
     && /adm-city-pick/.test(uS16) && /lord-city-enter/.test(mS16));
-  check('#16 无城池/无野地时占位', /adm-empty/.test(uS16) && /adm-empty/.test(hS16));
+  check('#16 无城市/无野地时占位', /adm-empty/.test(uS16) && /adm-empty/.test(hS16));
   check('#17 侧栏驻军栏（资源下方）', /garrison-bar/.test(hS16) && /ui\.renderGarrison = function/.test(uS16));
   /* ⛔ v89.215（老板）规则变更：「驻军，不再设置下拉，直接显示，直接按固定位置和顺序列出
      所有兵种和数量，暂无的数量则为 0」——
@@ -4283,11 +4283,11 @@
   check('#6 新增「行军」菜单', /data-view="marches"/.test(hS16) && /ui\.marchesHTML = function/.test(uS16));
   /* v25（需求 10）：任务与统计相邻；威望退出顶栏（并入君主）；
      游商/背包成为视图；每个菜单带手绘线描图标 */
-  check('#6 菜单分组顺序：城池·地图 ‖ 英雄·军务 ‖ 游商·背包 ‖ 公文 ‖ 自动·设置（v90.92：任务页签退役）',
+  check('#6 菜单分组顺序：城市·地图 ‖ 英雄·军务 ‖ 游商·背包 ‖ 公文 ‖ 自动·设置（v90.92：任务页签退役）',
     (function () {
       /* v89.104（老板）：「将英雄，军务，任务放一起」＋删「统计」——
          v89.218（老板「不再保留史册，故事集」）：两页签退役 —— 新顺序：
-         城池·地图 ‖ 英雄·军务·任务（三者相邻）‖ 游商·背包 ‖ 公文 ‖ 自动·设置 */
+         城市·地图 ‖ 英雄·军务·任务（三者相邻）‖ 游商·背包 ‖ 公文 ‖ 自动·设置 */
       var order = ['data-view="city"', 'data-view="map"', 'nav-sep', 'data-view="generals"', 'data-view="marches"',
         'nav-sep', 'data-view="shop"', 'data-view="bag"',
         'nav-sep', 'data-view="reports"', 'nav-sep', 'data-view="auto"', 'data-view="settings"'];
@@ -4376,7 +4376,7 @@
     var r = G.canBuildCityAt(wf.ci);
     return r.ok === false && /平原/.test(r.msg);
   })());
-  check('P2-10 筑城后入城池列表且野地转城池（v89.108：先抬爵解除领地上限）', (function () {
+  check('P2-10 筑城后入城市列表且野地转城市（v89.108：先抬爵解除领地上限）', (function () {
     var st = G.state, wp = null;
     for (var y = 80; y < 160 && !wp; y++) for (var x = 80; x < 160 && !wp; x++) {
       var t3 = G.map.tile(x, y);
@@ -4575,7 +4575,7 @@
   check('存档已降至 10KB 以内（原 55.9KB）', rawSave.length < 10 * 1024, (rawSave.length / 1024).toFixed(2) + ' KB');
   var parsedSave = JSON.parse(rawSave);
   check('map.cities 未写入存档', parsedSave.map.cities == null);
-  check('玩家城池仍写入存档', Array.isArray(parsedSave.cities) && parsedSave.cities.length >= 1);
+  check('玩家城市仍写入存档', Array.isArray(parsedSave.cities) && parsedSave.cities.length >= 1);
   check('存档中不含 NPC 城数据', rawSave.indexOf('灰烬城') < 0);
   var nNpcBefore = stS.map.cities.length;
   var gFirst = JSON.stringify(stS.map.cities[0].garrison);
@@ -4585,7 +4585,7 @@
   check('loadGame 无条件丢弃旧副本（老档才能吃到新数值）', /st\.map\.cities = null;/.test(sS29));
   check('saveGame 不破坏内存中的地图（finally 复原）',
     /finally \{[\s\S]{0,160}GAME\.state\.map\.cities = keepCities;/.test(sS29));
-  check('重建后剔除已占城池（防复活）', (function () {
+  check('重建后剔除已占城市（防复活）', (function () {
     var st2 = G.newGame({ name: '复活检测', cityName: '灰岗' });
     if (!st2.map.grid) G.map.generate();
     var vic = st2.map.cities.filter(function (c) { return c.type === 'county'; })[0];
@@ -4659,7 +4659,7 @@
     } finally { G.state = keep; }
   })(), '步行机粮 180（v91.08）· 主战机甲粮 2200 · food 字段移除');
   /* v89.107（老板）：「左侧统计栏的警报警报（含策略布防）放到军务中，与出征防守等并列」——
-     断言**两头都查**：新家（军务·警报页）有预警 + 守备力 + 布防；老家（左侧城池属性）已清空。 */
+     断言**两头都查**：新家（军务·警报页）有预警 + 守备力 + 布防；老家（左侧城市属性）已清空。 */
   check('实测：警报预警与策略布防已搬进军务·警报页（老家的横幅已撤）', (function () {
     var keep = G.state;
     var bkNow9 = G._realNowOf, T9 = 1700000000000;
@@ -4826,7 +4826,7 @@
     return null;
   }
   check('returnArmy 已实现', typeof G.battle.returnArmy === 'function');
-  check('出征后幸存兵力归还城池', (function () {
+  check('出征后幸存兵力归还城市', (function () {
     var w = nearWild('lake'); if (!w) return true;
     var gen = st30.generals[0]; gen.stamina = 100; gen.energy = 100;
     st30.cities[0].army = { buxingji: 100000, dunwei: 50000 };
@@ -5087,7 +5087,7 @@
     && /case 'forge-q'/.test(mS30));
   check('购买后只重绘游商（保留分类与页码）', /ui\.renderShop\(\)/.test(mS30) && !/ui\.openShop\(\);          \/\/ 刷新游商面板/.test(mS30));
 
-  /* ---------- ⑥ 初始城池周边地形 ---------- */
+  /* ---------- ⑥ 初始城市周边地形 ---------- */
   console.log('  --- ⑥ 出生点地形 ---');
   check('强制平原范围已收紧到 ±2（原 ±5）', /Math\.abs\(x - sp\.x\) <= 2 && Math\.abs\(y - sp\.y\) <= 2/.test(mapS30));
   check('±3 之外已恢复真实地形（不再一片平原）', (function () {
@@ -5196,11 +5196,11 @@
   check('已删除「每小时（游戏时间）」产量提示', !/每小时（游戏时间）/.test(uS31) && !/res-foot/.test(uS31) && !/\.res-foot/.test(hS31));
   check('资源栏仍显示 /时 增速（与上面「已去掉每小时提示」并存：行内后缀，不是底栏）', /U\.rateHTML\(perSec\)/.test(uS31));
 
-  /* ---- ③ 城池属性去旧币 ---- */
-  console.log('  --- ③ 城池属性去重 ---');
+  /* ---- ③ 城市属性去旧币 ---- */
+  console.log('  --- ③ 城市属性去重 ---');
   /* v20（需求 5/12）：旧币、税收、可征幸存者 全部移除。
      注意：源码注释里仍会出现这些词，所以必须判定**运行时渲染结果**而非源码文本。 */
-  check('城池属性不再显示旧币 / 税收 / 可征幸存者', (function () {
+  check('城市属性不再显示旧币 / 税收 / 可征幸存者', (function () {
     var s = G.state, c = G.currentCity() || s.cities[0];
     G.ui.renderCityAttrs(c, s);
     /* smoke 用的是 DOM 桩：元素从 document._cache 取（无 getElementById） */
@@ -5212,7 +5212,7 @@
   })());
   /* v28（需求 3）：民心与民怨合并成一行「xx / xx」 */
   /* v89.128（老板「民心/税率/幸存者前边的小图标去掉」）：断言同步为**无图标**形态 */
-  check('城池属性：民心/民怨一行、税率与幸存者各一行（v89.128 起无图标前缀）',
+  check('城市属性：民心/民怨一行、税率与幸存者各一行（v89.128 起无图标前缀）',
     /<span class="lbl">民心 \/ 民怨<\/span>/.test(uS31)
     && /<span class="lbl">税率<\/span>/.test(uS31)
     && /<span class="lbl">幸存者<\/span>/.test(uS31)
@@ -5342,7 +5342,7 @@
     var r = G.moveBuilding(c.id, x, y);
     return r.ok && c.cells[x].build.id === iy && c.cells[y].build.id === ix;
   })());
-  check('政务厅不可移动（守护规则）', /政务厅为城池中枢，不可移动/.test(dS31));
+  check('政务厅不可移动（守护规则）', /政务厅为城市中枢，不可移动/.test(dS31));
   check('施工中的格子不可移动（防队列错位）', /有建筑正在施工，暂不可移动/.test(dS31));
   check('实测：政务厅移动被拒', (function () {
     var s = G.state, c = s.cities[0];
@@ -5617,9 +5617,9 @@
     return !!rep0 && rep0.body.indexOf('【战利品】') >= 0 && /净水 \+/.test(rep0.body) && rep0.loot.length > 0;
   })());
 
-  /* ---- 需求 5/12：城池属性精简 ---- */
-  console.log('  --- ⑤⑫ 城池属性精简 ---');
-  check('城池属性不含旧币/税收/可征幸存者（运行时渲染）', (function () {
+  /* ---- 需求 5/12：城市属性精简 ---- */
+  console.log('  --- ⑤⑫ 城市属性精简 ---');
+  check('城市属性不含旧币/税收/可征幸存者（运行时渲染）', (function () {
     var s = G.state, c = G.currentCity() || s.cities[0];
     G.ui.renderCityAttrs(c, s);
     /* DOM 桩：元素从 document._cache 取 */
@@ -5638,9 +5638,9 @@
   check('侧栏仅保留君主入口', /class="sbtn" data-action="open-lord">君主/.test(hS32));
   check('孤立的 open-quests 动作已移除', !/case 'open-quests'/.test(mS32));
 
-  /* ---- 需求 7：只有城池视图显示左侧统计栏 ---- */
+  /* ---- 需求 7：只有城市视图显示左侧统计栏 ---- */
   console.log('  --- ⑦ 侧栏按视图显隐 ---');
-  /* v26（需求 5）：城内 / 城外 是平级视图，两者都算"城池场景"，侧栏都保留 */
+  /* v26（需求 5）：城内 / 城外 是平级视图，两者都算"城市场景"，侧栏都保留 */
   check('setView 按视图切换侧栏显隐（城内/城外都显示）',
     /var isCity = \(v === 'city' \|\| v === 'ext'\);[\s\S]{0,120}classList\.toggle\('hidden', !isCity\)/.test(uS32));
   check('renderView 同步切换（防 setView 之外的路径漏掉）',
@@ -5860,8 +5860,8 @@
   })());
 
   /* ---- 需求 5/12 ---- */
-  console.log('  --- ⑤⑫ 城池属性 ---');
-  check('城池属性移除 旧币/税收/可征幸存者', (function () {
+  console.log('  --- ⑤⑫ 城市属性 ---');
+  check('城市属性移除 旧币/税收/可征幸存者', (function () {
     var s = G.state, c = G.currentCity() || s.cities[0];
     G.ui.renderCityAttrs(c, s);
     var el = DC['#city-attrs'];
@@ -5874,8 +5874,8 @@
   check('顶栏背包与游商相邻', /data-view="shop"[\s\S]{0,220}data-view="bag"/.test(hS33));
   check('侧栏去掉 背包/任务（与顶栏重复）',
     !/class="sbtn" data-action="open-bag"/.test(hS33) && !/class="sbtn" data-action="open-quests"/.test(hS33));
-  /* v26（需求 5）：判断收敛到 renderView 一处，且城内/城外都算城池场景 */
-  check('侧栏只在城池场景显示（城内/城外）',
+  /* v26（需求 5）：判断收敛到 renderView 一处，且城内/城外都算城市场景 */
+  check('侧栏只在城市场景显示（城内/城外）',
     /var isCity = \(v === 'city' \|\| v === 'ext'\);[\s\S]{0,120}classList\.toggle\('hidden', !isCity\)/.test(uS33));
   check('旧的「只有 city 显示侧栏」写法已彻底移除',
     !/classList\.toggle\('hidden', v !== 'city'\)/.test(uS33)
@@ -6083,7 +6083,7 @@
   var GONE34 = ['行军速度由', '出征耗粮=在城×2', '野地规则（v15）', '指挥×100=带兵上限',
     '装备获取途径', '按「由弱到强」抽调', '每城研习所同时研究1项', '珠宝=赏赐忠诚',
     '点击地块弹出操作', '1现实秒 = N游戏秒', '税率>50% 时民心', '一阶料采于野地',
-    '新建建筑需等待完工后才能使用', '可去锻造间打造，或攻占城池缴获',
+    '新建建筑需等待完工后才能使用', '可去锻造间打造，或攻占城市缴获',
     '幸存者不足时可降低次要资源开工率'];
   check('攻略 / 机制说明已清除', (function () {
     /* 只在 **JS 字符串字面量** 范围内检索：注释里出现同名描述属正常代码注释，
@@ -6122,9 +6122,9 @@
 
 
   /* ============================================================
-   * 35. v22：点选控件（去下拉框）· 英雄肖像 · 城池视图纯粹
+   * 35. v22：点选控件（去下拉框）· 英雄肖像 · 城市视图纯粹
    * ============================================================ */
-  console.log('--- 35. v22 点选控件 / 英雄肖像 / 城池视图 ---');
+  console.log('--- 35. v22 点选控件 / 英雄肖像 / 城市视图 ---');
   var uS35 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'ui.js'), 'utf8');
   var mS35 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'main.js'), 'utf8');
   var sS35 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'state.js'), 'utf8');
@@ -6132,11 +6132,11 @@
   var hS35 = fsMod.readFileSync(pathMod.join(__dirname, 'index.html'), 'utf8');
   var css35 = hS35.split('<style>')[1].split('</style>')[0];
 
-  /* ---- 需求 1：全站没有下拉框（v45 收窄为"只准城池切换一处"） ---- */
+  /* ---- 需求 1：全站没有下拉框（v45 收窄为"只准城市切换一处"） ---- */
   console.log('  --- ① 去下拉框 ---');
   check('下拉框**全部实名在册**（白名单判据，不再数数字）', (function () {
     /* v35 要求"全站已无 <select>"；此后老板多次**点名**要下拉框：
-       v45 城池切换 · v77 附属野地 · v89.52 出征主将 · v89.57 出征 目标/站位/计略 ·
+       v45 城市切换 · v77 附属野地 · v89.52 出征主将 · v89.57 出征 目标/站位/计略 ·
        v89.58 出征方式 · v89.65 自动出征弹窗 8 项 · v89.68 缩略图三级筛选 3 项。
        ⚠️ v89.68 改判据：原先是"全站恰好 N 处"的**计数**断言，但它连续三轮
        （8→9→12）因为**合法新增**而下调 —— 判据选错了：真正要守的是
@@ -6248,17 +6248,17 @@
   check('英雄清单行肖像在行内（整行可点 → 切换右侧档案）',
     /class="grow-face">' \+ ui\.faceOf\(g, 30\)/.test(uS35));
 
-  /* ---- 需求 3：城池视图纯粹 ---- */
-  console.log('  --- ③ 城池视图只留棋盘 ---');
+  /* ---- 需求 3：城市视图纯粹 ---- */
+  console.log('  --- ③ 城市视图只留棋盘 ---');
   check('城内与城外视图均为 city-pure（只有棋盘）',
     (uS35.match(/class="ui-page city-pure"/g) || []).length === 2);
-  check('城池视图不再出现标题行 / 征收 / 缩放 / 岁贡',
+  check('城市视图不再出现标题行 / 征收 / 缩放 / 岁贡',
     !/政务厅Lv' \+ guanfu/.test(uS35) && !/以民心换金（民心 -2）<\/span><\/div>'/.test(uS35));
-  check('侧栏「城池操作」板块已删除（切城并入城池属性）',
+  check('侧栏「城市操作」板块已删除（切城并入城市属性）',
     !/ui\.renderCityTools/.test(uS35) && !/id="city-tools"/.test(hS35)
     && /city-switch/.test(uS35));
-  check('城池属性：身份信息并入下拉行（v91.25：去重复，城名/操作在「城池」下拉行）',
-    /* v91.25（老板）：原「城池身份行」（🏯城名 + 🎲/📍/🏗）删除 —— 城名已在下拉框、
+  check('城市属性：身份信息并入下拉行（v91.25：去重复，城名/操作在「城市」下拉行）',
+    /* v91.25（老板）：原「城市身份行」（🏯城名 + 🎲/📍/🏗）删除 —— 城名已在下拉框、
        操作并入下拉行。判据：下拉选项带「星球P·城名」；🧱/🗺/🏗 三入口在 switcher 内。 */
     /data-action="open-bldg-list"/.test(uS35)
     && !/政务厅Lv/.test(uS35.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, ''))
@@ -6294,12 +6294,12 @@
   check('拾取时自己的城优先于 NPC 判定',
     /var own = GAME\.map\.ownCityAt\(pci\);[\s\S]{0,90}kind: 'player'/.test(mpS36)
     && mpS36.indexOf("ownCityAt(pci)") < mpS36.indexOf("npcAt(pci)"));
-  /* v60（需求 4）：老板明确要求「**不要一点击地图就直接进入城池**」——
+  /* v60（需求 4）：老板明确要求「**不要一点击地图就直接进入城市**」——
      改前点自己的城会立刻 setCity + setView('city')（副作用：当前城被换掉）。
-     现在弹「城池面板」，由玩家自己选 进入 / 运输 / 派遣 / 改名。 */
-  check('点自己的城 → 弹城池面板（不再直接进城，v60 需求 4）',
+     现在弹「城市面板」，由玩家自己选 进入 / 运输 / 派遣 / 改名。 */
+  check('点自己的城 → 弹城市面板（不再直接进城，v60 需求 4）',
     /hit\.kind === 'player'[\s\S]{0,240}ui\.openCityPanel\(hit\.city\)/.test(mS36));
-  check('城池面板动作（v89.138 老板 2：进入/派遣/运输/节钺扩编，度支归集·英雄派遣·改名已删）', (function () {
+  check('城市面板动作（v89.138 老板 2：进入/派遣/运输/节钺扩编，度支归集·英雄派遣·改名已删）', (function () {
     var u = stripComment(require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8'));
     var seg = codeOf(u, 'ui.openCityPanel = function');
     return /data-action="city-enter"/.test(seg) && /data-action="city-transport"/.test(seg)
@@ -6365,7 +6365,7 @@
     s.wilds = JSON.parse(bw); c.army = JSON.parse(ba);
     return ok;
   })());
-  check('实测：撤军把兵还给城池', (function () {
+  check('实测：撤军把兵还给城市', (function () {
     var s = G.state, c = G.currentCity();
     var bw = JSON.stringify(s.wilds), ba = JSON.stringify(c.army);
     s.wilds = [{ ci: _ciOf(-9, -9), x: -9, y: -9, type: 'lake', level: 5, garrison: { troops: { buxingji: 300 }, cityId: c.id } }];
@@ -6447,7 +6447,7 @@
   check('宫殿跨格渲染函数存在', /ui\.govPalaceHTML = function/.test(uS36));
   check('按 4 格包围盒定位与定尺寸',
     /M\.x\(c0, r0\)/.test(uS36) && /\(c1 - c0 \+ 1\) \* M\.W/.test(uS36) && /\(r1 - r0 \+ 1\) \* M\.H/.test(uS36));
-  check('城池视图跳过 official 格、改由宫殿整体渲染',
+  check('城市视图跳过 official 格、改由宫殿整体渲染',
     /if \(cell\.official\) return '';/.test(uS36) && /ui\.govPalaceHTML\(c, M\)/.test(uS36));
   check('宫殿含台基/檐柱/双层飞檐/屋脊鸱吻/金匾',
     /govBase/.test(uS36) && /檐柱/.test(uS36) && /屋脊 \+ 鸱吻/.test(uS36) && /govGold/.test(uS36));
@@ -6552,22 +6552,22 @@
     /① 辖区岁贡/.test(uS37) && /② 首府加成/.test(uS37) && !/政务厅征收/.test(uS37));
 
   /* v25（需求 3/5）：征收→政务厅、显示比例→设置、岁贡→名城政务厅，
-     侧栏不再有「城池操作」：切城并进城池属性（v71：单城也出现） */
-  check('城池清单单城也给出**城池下拉框**（v71 老板：含区镇落 + 坐标）', (function () {
+     侧栏不再有「城市操作」：切城并进城市属性（v71：单城也出现） */
+  check('城市清单单城也给出**城市下拉框**（v71 老板：含区镇落 + 坐标）', (function () {
     var st = G.state, c = G.currentCity();
     var hostOf = function () { return (global.document.querySelector('#city-switch-host') || {}).innerHTML || ''; };
     var bodyOf = function () { return (global.document.querySelector('#city-attrs') || {}).innerHTML || ''; };
     st.cities.push(G.makeCity({ id: 'sw_probe', name: '探针城', x: 300, y: 300 }));
     G.ui.renderCityAttrs(c, st);
     var multi = hostOf();
-    /* v53：城池清单**必须与城池属性正文分离** —— 正文每秒重绘，
+    /* v53：城市清单**必须与城市属性正文分离** —— 正文每秒重绘，
        下拉框若挂在正文里，展开的列表会被立刻冲合（老板报的 bug）。 */
     var sepOk = !/<select/.test(bodyOf()) && /class="city-switch"/.test(bodyOf()) === false;
     st.cities.pop();
     G.ui.renderCityAttrs(c, st);
     var single = hostOf();
     /* v45（需求 3）：chips → 原生 <select>；且当前城必须是 selected 的那一项 */
-    /* v71（老板）：「即使只有一个城池，也保留下拉框，在这里可以显示区镇落坐标」——
+    /* v71（老板）：「即使只有一个城市，也保留下拉框，在这里可以显示区镇落坐标」——
        单城不再收起；两侧选项都带坐标（区镇落全称在上，坐标在后）。 */
     /* v91.25（老板）：选项文案 = 「星球P·城名」（去全称与经纬）；星球下拉在位时排在其上。 */
     /* v91.25：选项文案 = 城名（+【主城】）—— 星球已有独立下拉，不再前缀星球；无经纬。 */
@@ -6580,7 +6580,7 @@
   /* v53（老板：\"点出来列表马上收回去\"）：**下拉框不得被每秒重绘重建**。
      改前 switcher 拼在 #city-attrs 的 html 里，主循环每秒 box.innerHTML = … 一遍，
      展开的原生列表元素随之销毁 → 立刻合上。这条断言钉住"重建只在清单变化时发生"。 */
-  check('城池清单只在清单/当前城变化时重建（不随每秒重绘重建）', (function () {
+  check('城市清单只在清单/当前城变化时重建（不随每秒重绘重建）', (function () {
     var u = codeOf(uS37, 'ui.renderCityAttrs = function');
     if (u.length < 300) return false;                    /* 取到函数体才算数 */
     return /ui\._citySwSig/.test(u)                    /* 有"签名没变就不重建"的守卫 */
@@ -6631,7 +6631,7 @@
 
   /* ---- 需求 6：侧栏只讲本城 ---- */
   console.log('  --- ⑥ 侧栏精简 ---');
-  check('侧栏城池属性不再出现 城防/驻军/城外地块',
+  check('侧栏城市属性不再出现 城防/驻军/城外地块',
     (function () {
       var bk = G.ui._cityId;
       G.ui.renderCityAttrs(G.currentCity(), G.state);
@@ -6945,8 +6945,8 @@
       uS38.indexOf('ui.renderGarrison = function'))));
 
   /* ---- v45 需求 4：改名不再是"非名城可改名"，而是"自家的城都能改" ---- */
-  console.log('  --- ⑧ 城池改名 ---');
-  check('改名 API 存在，且已拥有的城池都能改（含名城）', (function () {
+  console.log('  --- ⑧ 城市改名 ---');
+  check('改名 API 存在，且已拥有的城市都能改（含名城）', (function () {
     /* v45 语义反转：v29~v44 只放行 type==='self'，而开局城就是灰烬城（旧都），
        于是按钮永远置灰 → 老板以为"政务厅没有改名功能"。 */
     var zhou = { name: '盐井', type: 'zhou' }, self = { name: '旧炉', type: 'self' };
@@ -6991,7 +6991,7 @@
   /* ---- 需求 9：君主卡 ---- */
   console.log('  --- ⑨ 君主卡 ---');
   /* 只查"元素"与"对它的赋值"，不查字符串 —— 动作名 lord-city-goto 里也含这个词 */
-  check('君主卡不再有「城池 N 城」这一行',
+  check('君主卡不再有「城市 N 城」这一行',
     !/id="lord-city"/.test(hS38) && !/\$\('#lord-city'\)/.test(uS38));
   /* v45（需求 2）：老板要求"主角个人头像也随机选 20 个里边的一个" ——
      走与麾下英雄同一个池子（portraits.html），种子存 ruler.portraitSeed。 */
@@ -7003,7 +7003,7 @@
   check('v81：君主名并入信息表首行（官职行与旧名称列退役）',
     /class="row mrow-name"/.test(hS38) && /id="lord-name"/.test(hS38)
     && !/lord-name-row/.test(hS38) && !/lord-office/.test(hS38));
-  check('实测：syncHeader 把君主头像落到池中某一张（且不再写城池数）', (function () {
+  check('实测：syncHeader 把君主头像落到池中某一张（且不再写城市数）', (function () {
     G.ui.syncHeader();
     var av = global.document.querySelector('#lord-avatar');
     var h = (av && av.innerHTML) || '';
@@ -7794,7 +7794,7 @@
     /data-view="auto"/.test(hS39) && /ui\.autoHTML = function/.test(uS39)
     && /auto: '<path/.test(rd39('js/icons.js')));
   check('天时推到偏右（margin-left:auto）', /\.nav-sky \{[\s\S]{0,120}margin-left: auto/.test(hS39));
-  check('侧栏城池属性里不再有天时', (function () {
+  check('侧栏城市属性里不再有天时', (function () {
     /* 顶栏天时自己也含 "天时</span>"，所以只看 renderCityAttrs 那一段 */
     var i = uS39.indexOf('ui.renderCityAttrs = function');
     var seg = i < 0 ? '' : uS39.slice(i, uS39.indexOf('ui.renderResBar = function', i));
@@ -7873,8 +7873,8 @@
 
   /* ---- 需求 5：城内 / 城外 入顶栏 ---- */
   console.log('  --- ⑤ 城内城外入顶栏 ---');
-  check('顶栏含「城池」与「城外」两个平级菜单',
-    /data-view="city"[\s\S]{0,90}城池/.test(hS39) && /data-view="ext"[\s\S]{0,90}城外/.test(hS39));
+  check('顶栏含「城市」与「城外」两个平级菜单',
+    /data-view="city"[\s\S]{0,90}城市/.test(hS39) && /data-view="ext"[\s\S]{0,90}城外/.test(hS39));
   check('子页签与 city-sub 动作链已彻底移除', (function () {
     /* 注释里会解释"ui._citySub 已删除"，所以判据要指向**赋值与分支**，不是"出现过" */
     var code = uS39.replace(/\/\*[\s\S]*?\*\//g, '').split('\n')
@@ -7907,11 +7907,11 @@
   var bS40 = rd40('js/battle.js'), dS40 = rd40('js/domain.js'), tS40 = rd40('js/tactic.js');
   var dtS40 = rd40('js/data.js');
 
-  /* ---- 需求 1：去「城池操作」板块 + 城池属性紧凑 ---- */
+  /* ---- 需求 1：去「城市操作」板块 + 城市属性紧凑 ---- */
   console.log('  --- ① 侧栏 ---');
-  check('城池操作板块与 renderCityTools 已彻底移除',
+  check('城市操作板块与 renderCityTools 已彻底移除',
     !/id="city-tools"/.test(hS40) && !/ui\.renderCityTools/.test(uS40));
-  check('切城下拉框并进「城池属性」（v71 老板：单城也保留）', /city-switch/.test(uS40)
+  check('切城下拉框并进「城市属性」（v71 老板：单城也保留）', /city-switch/.test(uS40)
     && !/if \(\(s\.cities \|\| \[\]\)\.length > 1\)/.test(uS40));
   check('侧栏各块内层高度放宽（不再动不动出滚动条）',
     /\.side-body \{[^}]*max-height: 232px/.test(hS40.replace(/\/\*[\s\S]*?\*\//g, '')));
@@ -8585,7 +8585,7 @@ check('上限加成按名城档位（县0/郡4/州8/都12，自建城不加成�
     && DATA.MAX_LEVEL_ABS === DATA.MAX_BLEVEL + 12
       + DATA.RANK_BUILD_LIFT_MAX * DATA.MAIN_CITY_BUILD_PER_RANK;
 })());
-check('实测：五档城池的上限值（一律走唯一出口 buildCapOf）', (function () {
+check('实测：五档城市的上限值（一律走唯一出口 buildCapOf）', (function () {
   var got = ['self', 'county', 'jun', 'zhou', 'capital'].map(function (t) {
     return G.buildCapOf(govMax(G.makeCity({ id: 'v54_' + t, name: t, x: 1, y: 1, type: t })), 'minfang');
   });
@@ -8730,7 +8730,7 @@ check('实测：满级（12）比 10 级多出真实的加成', (function () {
 })());
 
 /* ---- 需求 2/3：12 席英雄 / 民心民怨一行 ---- */
-console.log('  --- ②③ 英雄 12 席 / 城池属性 ---');
+console.log('  --- ②③ 英雄 12 席 / 城市属性 ---');
 check('英雄左清单渲染整页 12 席，空席写明原因（v76）', (function () {
   var html = G.ui.generalsHTML();
   var n = (html.match(/<div class="gen-row[\s"']/g) || []).length;
@@ -8758,7 +8758,7 @@ check('实测：30 位英雄 → 每页 12 席、翻页可见（v76）', (functi
   G.ui._pages['gen'] = 1;
   return n === 12 && html.indexOf('V28将00') >= 0 && html2.indexOf('V28将12') >= 0;
 })());
-check('城池属性民心/民怨合并为一行', (function () {
+check('城市属性民心/民怨合并为一行', (function () {
   G.ui.renderCityAttrs(G.currentCity(), G.state);
   var h = (global.document.querySelector('#city-attrs') || {}).innerHTML || '';
   return h.indexOf('民心 / 民怨') >= 0 && h.indexOf('💢 民怨') < 0;
@@ -10212,7 +10212,7 @@ check('名城带等级标注，自建城不标', (function () {
     && G.cityLabel({ name: '旧炉', type: 'self' }) === '旧炉'
     && G.cityTierName({ name: 'x', type: 'self' }) === '';
 })());
-check('已拥有的城池一律可改名，原名另存 origName', (function () {
+check('已拥有的城市一律可改名，原名另存 origName', (function () {
   /* v45 语义反转（原：非名城才可改 —— 开局灰烬城是旧都，于是永远不可改） */
   /* 注意：canRenameCity 会把原名写在**传入的 city 对象**上，返回的是 {ok} ——
      断言必须查传入对象，不能查返回值（这里曾写错，白挂一次）。 */
@@ -10221,7 +10221,7 @@ check('已拥有的城池一律可改名，原名另存 origName', (function () 
   return a.ok === true && b.ok === true && c.ok === true
     && i1.origName === '旧炉' && i2.origName === '灰烬城' && i3.origName === '盐井';
 })());
-check('城池名走单一取值口（改名同步所有引用）', (function () {
+check('城市名走单一取值口（改名同步所有引用）', (function () {
   var u = require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8');
   return /ui\.cityLabelHTML = function \(c, short\)/.test(u)
     && typeof G.cityFullName === 'function'
@@ -10304,7 +10304,7 @@ check('统计页（黄册）已整页退役 —— 视图函数与菜单条目�
   return !/ui\.statsHTML = function/.test(u) && !/ui\.lgSec = function/.test(u)
     && !/data-view="stats"/.test(h);
 })());
-check('侧栏资源与驻军随所选城池变化', (function () {
+check('侧栏资源与驻军随所选城市变化', (function () {
   var u = require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8');
   return /GAME\.cityProdPerSec\(c\)/.test(u) && /GAME\.cityFullName/.test(u)
     && typeof G.cityProdPerSec === 'function' && typeof G.prodBasePerHourOf === 'function';
@@ -10509,8 +10509,8 @@ check('英雄界面为 3×2 卡片墙 + 下方档案', (function () {
   var H = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
   var css = H.match(/<style[^>]*>([\s\S]*?)<\/style>/)[1];
 
-  console.log('  --- 需求 0-a：地图野地 / 城池位图 ---');
-  check('地图位图层就位（12 个 key：地形 7 + 据点 + 城池 4 档）', (function () {
+  console.log('  --- 需求 0-a：地图野地 / 城市位图 ---');
+  check('地图位图层就位（12 个 key：地形 7 + 据点 + 城市 4 档）', (function () {
     var m = MP.match(/var ART_KEYS = \[([\s\S]*?)\];/);
     if (!m) return false;
     var keys = m[1].match(/'[a-z_]+'/g) || [];
@@ -10528,7 +10528,7 @@ check('英雄界面为 3×2 卡片墙 + 下方档案', (function () {
     var i = m.indexOf('function blitArtRect');
     var seg = i < 0 ? '' : m.slice(i, m.indexOf('\n  function', i + 10));
     var bail = seg.indexOf('if (!c) return false;') >= 0;
-    /* ② 位图成功就 return，失败继续往下画矢量（v89.43：入口是 aKey，地形/城池共用） */
+    /* ② 位图成功就 return，失败继续往下画矢量（v89.43：入口是 aKey，地形/城市共用） */
     var callIdx = m.indexOf('blitArtRect(ctx, aKey');
     var after = callIdx < 0 ? '' : m.slice(callIdx, callIdx + 200);
     var fallback = /return;/.test(after) && /drawTerrainArt\(ctx, d\.terrain/.test(m.slice(callIdx, callIdx + 900));
@@ -10536,7 +10536,7 @@ check('英雄界面为 3×2 卡片墙 + 下方档案', (function () {
   })());
   /* ⚠️ v89.42（老板）：从即梦三图（老三国像素风）裁切七地形贴图，野地 UI 重回位图质感。
      v67 的"一张都不剩"不变量随新决定退役，改护**新不变量**：
-     ① 七张地形贴图在（256×256 方形 PNG）；② 城池 / 据点 5 个 key 仍无素材（保持绘图）。 */
+     ① 七张地形贴图在（256×256 方形 PNG）；② 城市 / 据点 5 个 key 仍无素材（保持绘图）。 */
   var TERRAIN_7 = ['plain', 'caoyuan', 'zhaoze', 'lake', 'forest', 'desert', 'hill'];
   function terrainTexPath(t) { return path.join(__dirname, 'assets', 'icons', 'ui', 'ai_terrain_' + t + '.png'); }
   check('v89.42/v90.4：七张地形贴图就位（1024×1024 PNG —— 高分辨率大图覆盖）', (function () {
@@ -10563,12 +10563,12 @@ check('英雄界面为 3×2 卡片墙 + 下方档案', (function () {
     }
     return true;
   })());
-  /* v89.43（老板）：城池贴图也回归位图 —— 上一条"城池无素材"的口径随之退役：
-     四档城池（county/jun/zhou/capital）各有 256×256 贴图、铺满菱形顶面；
+  /* v89.43（老板）：城市贴图也回归位图 —— 上一条"城市无素材"的口径随之退役：
+     四档城市（county/jun/zhou/capital）各有 256×256 贴图、铺满菱形顶面；
      据点 fort 仍走程序化绘图（老板未要求，保持原状）。
      ⚠️ v89.237（老板素材清理期）：旧四图已移出素材区（17:40 回收站 · 待重制）——
      本断言改“存在即校验”：缺席放行（地图自动走矢量兜底），归位后自动恢复严格。 */
-  check('v89.43：四档城池贴图（v89.237 素材清理期 · 存在即校验 256×256 PNG）', (function () {
+  check('v89.43：四档城市贴图（v89.237 素材清理期 · 存在即校验 256×256 PNG）', (function () {
     var TIERS = ['county', 'jun', 'zhou', 'capital'];
     return TIERS.every(function (t) {
       var p = path.join(__dirname, 'assets', 'icons', 'ui', 'ai_city_' + t + '.png');
@@ -10596,7 +10596,7 @@ check('英雄界面为 3×2 卡片墙 + 下方档案', (function () {
     /* 矢量兜底必须在（无素材/未加载环境仍能画据点） */
     return /缺素材 → 保持矢量兜底/.test(MP);
   })());
-  check('v89.43：城池 tier 取值口（cityArtKeyAt）就位且真实可用', (function () {
+  check('v89.43：城市 tier 取值口（cityArtKeyAt）就位且真实可用', (function () {
     if (!/GAME\.map\.cityArtKeyAt = function/.test(MP)) return false;
     var mp = global.GAME && global.GAME.map;
     if (!mp || typeof mp.cityArtKeyAt !== 'function') return false;
@@ -10609,10 +10609,10 @@ check('英雄界面为 3×2 卡片墙 + 下方档案', (function () {
     if (!npc) return true;
     return mp.cityArtKeyAt(npc.ci) === 'city_' + npc.type;
   })());
-  check('v89.42：位图登记表已同步（地形七张在册 · 城池登记与磁盘一致）', (function () {
+  check('v89.42：位图登记表已同步（地形七张在册 · 城市登记与磁盘一致）', (function () {
     if (typeof BITMAPS === 'undefined' || !BITMAPS.has || !BITMAPS.fileOf) return false;
     if (!TERRAIN_7.every(function (t) { return !!BITMAPS.fileOf('terrain', t); })) return false;
-    /* v89.237（素材清理期）：城池贴图移出后改守“登记 ↔ 磁盘 一致”——
+    /* v89.237（素材清理期）：城市贴图移出后改守“登记 ↔ 磁盘 一致”——
        贴图归位必须重跑 gen_bitmaps.js 才会被登记（否则游戏走矢量兜底，本断言抓出）。 */
     return ['county', 'jun', 'zhou', 'capital'].every(function (t) {
       var onDisk = fs.existsSync(path.join(__dirname, 'assets', 'icons', 'ui', 'ai_city_' + t + '.png'));
@@ -10633,13 +10633,13 @@ check('英雄界面为 3×2 卡片墙 + 下方档案', (function () {
       && !/ctx\.rotate\(/.test(MP);
   })());
   check('v89.42：平地的「不铺贴图」卫兵下移到矢量兜底前（贴图阶段不再跳过平地）', (function () {
-    /* v89.43：入口改走 aKey（城池并入同一管线），平地卫兵与城池守卫合并成一行 */
+    /* v89.43：入口改走 aKey（城市并入同一管线），平地卫兵与城市守卫合并成一行 */
     var tex = MP.indexOf("if (ART[aKey])");
     var guard = MP.indexOf("if (isCity || d.terrain === 'plain') return;");
     return tex >= 0 && guard > tex;
   })());
-  check('地形贴图走位图，城池/据点保留**绘图兜底**（素材缺失也不会白屏）', (function () {
-    /* v89.43：位图入口是 aKey（地形 + 城池共用）；矢量兜底三件套仍在。
+  check('地形贴图走位图，城市/据点保留**绘图兜底**（素材缺失也不会白屏）', (function () {
+    /* v89.43：位图入口是 aKey（地形 + 城市共用）；矢量兜底三件套仍在。
        ⚠️ 判据一律用 indexOf：正则里的 `\(` 在批量写入脚本里容易被吃掉转义。 */
     var s = mapSrc22;
     return s.indexOf('blitArtRect(ctx, aKey') >= 0
@@ -11056,7 +11056,7 @@ check('英雄界面为 3×2 卡片墙 + 下方档案', (function () {
   check('旧币单独注明不受上限约束', /不受仓储上限约束/.test(UI));
 
   console.log('  --- 需求 2：城内 8×6 并填满界面 ---');
-  check('城池为 8 列 × 6 行', /col: 8, row: 6,/.test(ST));
+  check('城市为 8 列 × 6 行', /col: 8, row: 6,/.test(ST));
   check('政务厅 4 格落位走唯一出口 GAME.govCellsOf（居中，v68 老板）',
     /GAME\.applyFixedLayout = function/.test(ST) && /GAME\.govCellsOf = function/.test(ST)
     && /GAME\.govCellsOf\(col, row\)/.test(ST));
@@ -11088,7 +11088,7 @@ check('英雄界面为 3×2 卡片墙 + 下方档案', (function () {
  * 判据：函数名在**同一文件**里除定义外再无出现（剥掉注释后统计）。
  * ============================================================ */
 /* ============================================================
- * 45. v60：资源归属城池 / 运输与派遣 / 名城专有 / 未占据城池派生
+ * 45. v60：资源归属城市 / 运输与派遣 / 名城专有 / 未占据城市派生
  * ------------------------------------------------------------
  * 本轮的改动面很大（把"全境共享的府库"拆成"每城一份"），
  * 所以护栏按"三条腿"布：
@@ -11096,7 +11096,7 @@ check('英雄界面为 3×2 卡片墙 + 下方档案', (function () {
  *   ② **实测**：数值行为是否真的按城分开（切城、tick、存档、运输）；
  *   ③ **一致性**：派生值（NPC 库存/守将）在同一座城上是否恒定。
  * ============================================================ */
-console.log('\n===== 45. v60 城池归属与名城专有 =====');
+console.log('\n===== 45. v60 城市归属与名城专有 =====');
 (function () {
   var fs = require('fs'), path = require('path');
   function rd(f) { return fs.readFileSync(path.join(__dirname, 'js', f + '.js'), 'utf8'); }
@@ -11204,9 +11204,9 @@ console.log('\n===== 45. v60 城池归属与名城专有 =====');
   check('死函数 masteryListOf 已删（避免"没人用的壳"）',
     stripComment(dS).indexOf('masteryListOf') < 0);
 
-  /* ================= 需求 4：资源归属城池 ================= */
-  console.log('  --- 需求 4：资源归属城池 ---');
-  var V = G.newGame({ name: 'v60城池' });
+  /* ================= 需求 4：资源归属城市 ================= */
+  console.log('  --- 需求 4：资源归属城市 ---');
+  var V = G.newGame({ name: 'v60城市' });
   if (!V.map.grid && G.map.generate) G.map.generate();
 
   check('结构：GAME.res 是唯一取值口（函数）', typeof G.res === 'function');
@@ -11434,13 +11434,13 @@ console.log('\n===== 45. v60 城池归属与名城专有 =====');
       return r1.ok && c.res.grain > before && r2.ok === false && /日/.test(r2.msg);
     } finally { G.state = keep; }
   })());
-  check('结构：城池面板与 main 的按钮接线都在（city-opt 不是孤儿按钮）',
+  check('结构：城市面板与 main 的按钮接线都在（city-opt 不是孤儿按钮）',
     /data-action="city-opt"/.test(codeOf(uS, 'ui.openCityPanel = function'))
     && /case 'city-opt'/.test(mS)
     && /GAME\.doCityOpt\(/.test(mS));
 
-  /* ================= 需求 6：未占据城池派生 ================= */
-  console.log('  --- 需求 6：未占据城池派生 ---');
+  /* ================= 需求 6：未占据城市派生 ================= */
+  console.log('  --- 需求 6：未占据城市派生 ---');
   var npcs = (V.map.cities || []);
   var npcZhou = null, npcJun = null, npcCounty = null;
   /* v89.79（老板「城等级不是跟随政务厅等级吗」）：城等级 = **档位等级**
@@ -11489,7 +11489,7 @@ console.log('\n===== 45. v60 城池归属与名城专有 =====');
     G._npcCache = {};                          // 同上：清缓存才是真的重算
     var g2 = G.npcCityGuard(npcZhou);
     if (!g1 || g1.name !== g2.name || g1.tong !== g2.tong) return false;
-    /* v89.64（老板「英雄默认资质为天启体，等级根据城池级别设定范围，四维拉满」）：
+    /* v89.64（老板「英雄默认资质为天启体，等级根据城市级别设定范围，四维拉满」）：
        一律天启体档；等级落在**城档位区间**内（本例是首府 → 140~190）；
        四维 ≥ 该资质属性上限（140 = 天启体 base[1]）；自由点已全部加完（freePts=0）。 */
     var rng = DATA.NPC_GUARD_LV[npcZhou.type] || [60, 100];
@@ -11499,7 +11499,7 @@ console.log('\n===== 45. v60 城池归属与名城专有 =====');
     var g = G.npcCityGuard(npcZhou);
     return g.name + '（' + g.title + ' Lv' + g.level + ' 统' + g.tong + '）';
   })());
-  check('实测：未占据城池的库存**不入存档**（纯派生）', (function () {
+  check('实测：未占据城市的库存**不入存档**（纯派生）', (function () {
     var raw = JSON.stringify(V);
     /* NPC 城由 seed 重建，存档里根本不该出现 n.cityRes 之类的字段 */
     return raw.indexOf('npcCityRes') < 0 && raw.indexOf('"guard":') < 0;
@@ -11552,17 +11552,17 @@ console.log('\n===== 45. v60 城池归属与名城专有 =====');
 })();
 
 /* ============================================================
- * 46. v61：满配城池的城内布局（老板：野地里的城池默认建筑全满）
+ * 46. v61：满配城市的城内布局（老板：野地里的城市默认建筑全满）
  * ------------------------------------------------------------
- * 老板原话：「野地里的城池，应默认其建筑全都建满了，城内所有建筑各1个，
- *   兵营2个，其他建居所，位置也相对固定一下。城池的地块数量根据等级，数量你来定」
+ * 老板原话：「野地里的城市，应默认其建筑全都建满了，城内所有建筑各1个，
+ *   兵营2个，其他建居所，位置也相对固定一下。城市的地块数量根据等级，数量你来定」
  *
  * 护栏分三层：
  *   ① **规则**：各 1 座 / 训练营 2 座 / 余为居所 —— 逐项数出来（不是看有没有"铺满"）；
  *   ② **固定**：同等级逐格一致、跨等级同规则；政务厅落位与玩家城同公式；
- *   ③ **接线**：野外城池的弹窗/出征面板都要能看到，攻占后建筑与格数就地转正。
+ *   ③ **接线**：野外城市的弹窗/出征面板都要能看到，攻占后建筑与格数就地转正。
  * ============================================================ */
-console.log('\n===== 46. v61 满配城池城内布局 =====');
+console.log('\n===== 46. v61 满配城市城内布局 =====');
 (function () {
   var fs = require('fs'), path = require('path');
   function rd(f) { return fs.readFileSync(path.join(__dirname, 'js', f + '.js'), 'utf8'); }
@@ -11666,13 +11666,13 @@ console.log('\n===== 46. v61 满配城池城内布局 =====');
     return G.planPopCapOf(9) === c.minfang * per && G.planPopCapOf(9) > 0;
   })(), 'Lv9 居所 ×' + countOf(G.cityPlanOf(9)).minfang + ' → 幸存者 ' + G.planPopCapOf(9));
 
-  console.log('  --- 接线：野外城池与未占据名城 ---');
+  console.log('  --- 接线：野外城市与未占据名城 ---');
   check('结构：布局只有一个出口（不在别处铺格子）', (function () {
     var code = stripComment(stS);
     return /GAME\.cityPlanOf = function/.test(code)
       && (code.match(/GAME\.cityPlanOf\(/g) || []).length >= 2;   /* 定义 + 至少一处消费 */
   })());
-  check('实测：野外城池有自己的满配布局（格数/居所/幸存者/城防齐备）', (function () {
+  check('实测：野外城市有自己的满配布局（格数/居所/幸存者/城防齐备）', (function () {
     var keep = G.state, st = G.newGame({ name: 'v61fort' });
     try {
       G.state = st;
@@ -11685,12 +11685,12 @@ console.log('\n===== 46. v61 满配城池城内布局 =====');
         && p.popCap > 0 && p.def === G.fortDefOf(f) && p.items.length === 14;   /* v91.19：固定栏位无围墙格 → 14 种 */
     } finally { G.state = keep; }
   })());
-  check('实测：野外城池的城防走唯一出口（不再是写死的算式）', (function () {
+  check('实测：野外城市的城防走唯一出口（不再是写死的算式）', (function () {
     return /GAME\.fortDefOf = function/.test(stS)
       && /def: GAME\.fortDefOf\(f\)/.test(bS)
       && !/def: 10 \+ f\.level \* 4/.test(bS);
   })());
-  check('实测：出征野外城池时带上布局（面板看得到城内建了什么）', (function () {
+  check('实测：出征野外城市时带上布局（面板看得到城内建了什么）', (function () {
     var keep = G.state, st = G.newGame({ name: 'v61exp' });
     try {
       G.state = st;
@@ -11738,10 +11738,10 @@ console.log('\n===== 46. v61 满配城池城内布局 =====');
         && nc.cells.filter(function (x) { return x.build && x.build.id === 'chengqiang'; }).length === 0;
     } finally { G.state = keep; }
   })());
-  check('结构：呈现只有一个出口（ui.planHTML），仅野外城池弹窗调用', (function () {
+  check('结构：呈现只有一个出口（ui.planHTML），仅野外城市弹窗调用', (function () {
     var code = stripComment(uS);
     /* v89.64（老板「出征界面的目标不用显示任何备注性信息，不然还要侦察何用？」）：
-       出征面板**不再**渲染布防呈现 → 只剩野外城池弹窗这一处调用。
+       出征面板**不再**渲染布防呈现 → 只剩野外城市弹窗这一处调用。
        判据：定义在册 + 调用点至少 1 处（口径仍单一，没有第二份"呈现"实现）。 */
     return /ui\.planHTML = function/.test(code)
       && (code.match(/ui\.planHTML\(/g) || []).length >= 1;
@@ -11753,10 +11753,10 @@ console.log('\n===== 46. v61 满配城池城内布局 =====');
       && html.indexOf('居所 ×28') >= 0
       && html.indexOf('8 × 6 = 48 格') >= 0 && html.indexOf('幸存者上限') >= 0;
   })());
-  check('v89.64：布防呈现只在野外城池弹窗 —— 出征面板**不显示**目标情报', (function () {
+  check('v89.64：布防呈现只在野外城市弹窗 —— 出征面板**不显示**目标情报', (function () {
     var fort = codeOf(uS, 'ui.openFortModal = function');
     var exp = codeOf(uS, 'ui.openExpModal = function');
-    /* 老板：「目标这里不用显示目标野地/城池的任何备注性信息，不然还要侦察何用？」
+    /* 老板：「目标这里不用显示目标野地/城市的任何备注性信息，不然还要侦察何用？」
        —— 出征面板必须**没有**布防呈现、也没有守军/库藏/守将行。 */
     return /ui\.planHTML\(plan\)/.test(fort)
       && !/ui\.planHTML\(/.test(exp)
@@ -11820,14 +11820,14 @@ console.log('\n===== 46. v61 满配城池城内布局 =====');
     var fn = codeOf(mapSrc22, 'GAME.map.wildLevelBase = function');
     return /vnoise\(/.test(fn) && /tSalt/.test(fn) && !/1 - d/.test(fn) && !/MAP_W - 1\) \/ 2/.test(fn);
   })());
-  check('v89.67/v89.70：城池（名城/己方城）名称+等级**永不消失**且**画在最上层**', (function () {
+  check('v89.67/v89.70：城市（名城/己方城）名称+等级**永不消失**且**画在最上层**', (function () {
     /* 老板：「名城的名称永不消失（左下角名称菜单不影响名城的显示，不然地图上看不见了）」
-       判据四条（v89.70 起改为"专属最后一趟"，比"先判城池"更彻底）：
-         ① 标注趟**跳过**城池（`if (d.terrain === 'city') return;`）；
-         ② 存在**专属最后一趟**：drawList 里再跑一遍、只画城池；
+       判据四条（v89.70 起改为"专属最后一趟"，比"先判城市"更彻底）：
+         ① 标注趟**跳过**城市（`if (d.terrain === 'city') return;`）；
+         ② 存在**专属最后一趟**：drawList 里再跑一遍、只画城市；
          ③ 那一趟**不看 SHOW_LB**（开关只收野地与据点）—— 且位置在**最后一道 SHOW_LB 之后**
             （结构上最上层，任何图层都盖不住它：这是"改次序"而非"补判断"）；
-         ④ 档位药丸（旧都/首府）不得再挂 SHOW_LB；城池名仍只有一个出口。 */
+         ④ 档位药丸（旧都/首府）不得再挂 SHOW_LB；城市名仍只有一个出口。 */
     var iSkip = mapSrc22.indexOf("if (d.terrain === 'city') return;");
     var iPass = mapSrc22.indexOf("if (d.terrain === 'city') drawCityLabel(d);");
     var iLastGate = mapSrc22.lastIndexOf('SHOW_LB');
@@ -11841,7 +11841,7 @@ console.log('\n===== 46. v61 满配城池城内布局 =====');
       && !/&& SHOW_LB\)/.test(mapSrc22)
       && mapSrc22.indexOf('ctx.fillText(o.name, c.x, tb + 6)') < 0;   /* ④ 单一出口 */
   })());
-  check('v90.88：名称开关**不管地图**（地图标注恒显）· 野地/据点/城池均不受开关影响', (function () {
+  check('v90.88：名称开关**不管地图**（地图标注恒显）· 野地/据点/城市均不受开关影响', (function () {
     /* v90.88（老板）：开关不再关联地图 —— renderMapCanvas 恒传 showLabels:true（图内标注恒显）。 */
     return /var SHOW_LB = opts\.showLabels !== false;/.test(mapSrc22)
       && /showLabels: true/.test(uS);
@@ -11879,8 +11879,8 @@ console.log('\n===== 46. v61 满配城池城内布局 =====');
     return /id="exp-plan"/.test(u) && /id="exp-tactic"/.test(u)
       && /ui\.expPlanOptionsHTML = function/.test(u) && /ui\.expTacticOptionsHTML = function/.test(u)
       && /ui\.openPlanModal = function/.test(u) && /ui\.openTacticModal = function/.test(u)
-      /* 城池间操作：己方城池进目标 → 派驻/运输（v89.103：该小面板退役，
-         三件事各有更正入口 —— 出征界面本境调运 / 城池面板英雄派遣 / 新城补防） */
+      /* 城市间操作：己方城市进目标 → 派驻/运输（v89.103：该小面板退役，
+         三件事各有更正入口 —— 出征界面本境调运 / 城市面板英雄派遣 / 新城补防） */
       && /ui\.openTroopMove = function/.test(u)
       && /GAME\.doTransferTroops = function/.test(d) && /GAME\.doTransferCargo = function/.test(d)
       /* v89.138（老板 2）：「英雄派遣」面板整条退役（并进出征界面）—— 判据改为"已删净" */
@@ -11891,7 +11891,7 @@ console.log('\n===== 46. v61 满配城池城内布局 =====');
       && /GAME\.marketBuyGoldFor = function/.test(d)
       && /market-buy/.test(u) && /case 'market-buy'/.test(rd('main.js'));
   })());
-  check('结构：野外城池不被当成"名城"（无档位加成，只是共用派生公式）', (function () {
+  check('结构：野外城市不被当成"名城"（无档位加成，只是共用派生公式）', (function () {
     return DATA.CITY_PERK.fort && G.isFamousCity({ type: 'fort' }) === false
       && G.isFamousCity({ type: 'zhou' }) === true;
   })());
@@ -12218,7 +12218,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
  * 老板三条：
  *   ① 格数分档「没看懂」→ 改成每两级一档并在界面显示；
  *      野外城每日限掠一次；名城补满建筑（按其等级上限）、兵力 = 野外城 ×10、不耗粮草；
- *   ② 守将属性只对当前城池起加成作用，不同城市有不同的守将；
+ *   ② 守将属性只对当前城市起加成作用，不同城市有不同的守将；
  *   ③ 空地上选建筑时同步建筑图标，费用改悬停显示。
  * ============================================================ */
 (function () {
@@ -12273,7 +12273,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
     return c2.guanfu === 4 && c2.junying === 2 && c2.cangku === 3
       && Object.keys(c2).filter(function (k2) { return k2 !== 'minfang'; }).length === 14;
   })(), '政务厅4 · 训练营2 · 货仓3 · 其余各1 · 居所28（固定栏位）');
-  check('结构：野外城池面板与一览表都写出格数（否则玩家只能猜）', (function () {
+  check('结构：野外城市面板与一览表都写出格数（否则玩家只能猜）', (function () {
     var plan = codeOf(uS, 'ui.planHTML = function');
     var forts = codeOf(uS, 'ui.openForts = function');
     return /地块 \/ 幸存者/.test(plan) && /格/.test(plan)
@@ -12541,7 +12541,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
   })());
   /* ⛔ v89.136 移除：'v89.80 行为：演武真扣金与体力并发经验…' 整段 —— 练兵退役（老板第 4 条）。
      退役断言见上方「练兵整组退役」一条（域/界面/动作/数据四处墓碑，防回魂）。 */
-  check('v89.80 端到端：侦察网络 Lv10 → 侦查面板**不再出现锁定行**（城内库藏/城池规格都在）', (function () {
+  check('v89.80 端到端：侦察网络 Lv10 → 侦查面板**不再出现锁定行**（城内库藏/城市规格都在）', (function () {
     /* 老板第 5 条：「明明已经科技 Lv.10，为什么侦察还是"🔒 需侦察技巧 Lv3"」——
        历史上这条链断在**字段名**上（面板读 r.res/r.build，产出方给 resReport/buildReport），
        v89.73 已修；本守卫做**端到端**（科技→结算→面板渲染）而不是只看源码名字，
@@ -12594,10 +12594,10 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
       }
       G.ui.openScoutResult({ name: npc.name }, r, 1);
       var html = (global.document.querySelector('#modal-root') || {}).innerHTML || '';
-      var _okR = /城池规格/.test(html) && /城内库藏/.test(html) && !/需侦察网络/.test(html);
+      var _okR = /城市规格/.test(html) && /城内库藏/.test(html) && !/需侦察网络/.test(html);
       if (!_okR) console.log('    (侦查端到端诊断: npc=' + npc.name + ' tier=' + npc.type +
         ' 城等级=' + G.cityLvOf(npc) + ' 粮=' + (G.npcCityRes(npc).grain) +
-        ' html长度=' + html.length + ' 有城池规格=' + /城池规格/.test(html) +
+        ' html长度=' + html.length + ' 有城市规格=' + /城市规格/.test(html) +
         ' 有城内库藏=' + /城内库藏/.test(html) + ' 有锁定=' + /需侦察网络/.test(html) + ')');
       return _okR;
     } finally {
@@ -12794,7 +12794,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
     /* 自建城/据点不是名城 → 按自身等级，不许被"满配"污染 */
     return bad.length === 0 && G.npcBuildLvOf({ type: 'self', level: 6 }) === 6
       && G.npcBuildLvOf({ type: 'fort', level: 4 }) === 4
-      /* 城池界面那行仍走唯一出口；"满配"二字只在到顶时印 */
+      /* 城市界面那行仍走唯一出口；"满配"二字只在到顶时印 */
       && /城内建筑 Lv' \+ _blv/.test(uS) && /_blv >= _bcap \? '该档上限 · 满配'/.test(uS);
   })());
   check('v89.79：派生（守军/库藏/幸存者）全部按**档位**，且同一城可重复复现', (function () {
@@ -12833,7 +12833,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
     return freshState('v89food', function (st) {
       var npc = (st.map.cities || [])[0];
       if (!npc || !sumOf(npc.garrison)) return false;      // 分母为 0 的绿 = 什么都没测
-      if ((st.cities || []).indexOf(npc) >= 0) return false;  // NPC 城不该混进已占据城池
+      if ((st.cities || []).indexOf(npc) >= 0) return false;  // NPC 城不该混进已占据城市
       st.cities[0].army = { buxingji: 1000 };
       var g0 = G.res(st.cities[0]).grain;
       var raw = JSON.stringify(npc.garrison);
@@ -12848,9 +12848,9 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
 
 
   /* ------------------------------------------------------------
-   * ③  野外城池每日掠夺一次
+   * ③  野外城市每日掠夺一次
    * ------------------------------------------------------------ */
-  console.log('  --- ③ 野外城池每日限掠一次 ---');
+  console.log('  --- ③ 野外城市每日限掠一次 ---');
   check('结构：状态记录与拦截点齐全（s.fortRaids / fortRaidedToday / markFortRaided / prepare）',
     (function () {
       var code = stripComment(stS) + stripComment(rd('map')) + stripComment(bS);
@@ -12899,7 +12899,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
       && /ui\.expModeLockOf = function/.test(code)
       && /expModeLockOf\(m\.id\)/.test(code);
   })());
-  check('实测：锁定判据只认"掠夺 + 野外城池"（侦查/野地/名城都不受影响）', (function () {
+  check('实测：锁定判据只认"掠夺 + 野外城市"（侦查/野地/名城都不受影响）', (function () {
     return freshState('v63lock', function (st) {
       var f = findFort();
       if (!f) return false;
@@ -12921,7 +12921,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
   /* ------------------------------------------------------------
    * ④  守将属性只对本城加成
    * ------------------------------------------------------------ */
-  console.log('  --- ④ 守将只对当前城池加成 ---');
+  console.log('  --- ④ 守将只对当前城市加成 ---');
   check('结构：全境口径的 guardBonusTotal 已删除（不留后门）',
     stripComment(dmS).indexOf('guardBonusTotal') < 0
     && stripComment(stS).indexOf('guardBonusTotal') < 0);
@@ -13047,7 +13047,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
  * 老板两条：
  *   ① 「围墙纳入自动建筑中」；
  *   ② 「英雄归属于城市，根据该城的招募站等级有相应空位，
- *       可自行在酒馆招募，也可其他自己的城池派遣」。
+ *       可自行在酒馆招募，也可其他自己的城市派遣」。
  * ============================================================ */
 (function () {
   var fs = require('fs'), path = require('path');
@@ -13539,7 +13539,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
     /* v91.19：围墙走独立字段 wallLv（不占格）*/
     return badIn === 0 && badOut === 0 && sh.wallLv === bl;
   })());
-  check('实测：野外城池（非名城）按**自己的等级**；名城一律档位满配', (function () {
+  check('实测：野外城市（非名城）按**自己的等级**；名城一律档位满配', (function () {
     var fort = { id: 'f49', name: '据点', x: 3, y: 3, level: 4, type: 'fort' };
     /* v89.76：聚落 Lv4 也是建筑 Lv12（名城一律满配 12/16/20/24，与城等级无关）。 */
     return G.npcBuildLvOf(fort) === 4
@@ -13909,9 +13909,9 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
   })());
 
   /* ============================================================
-   * 51. v67：放弃城池 / 城池关联数据登记表 / 侧栏分列
+   * 51. v67：放弃城市 / 城市关联数据登记表 / 侧栏分列
    * ============================================================ */
-  console.log('\n===== 51. v67：放弃城池 + 关联数据清理 + 侧栏分列 =====');
+  console.log('\n===== 51. v67：放弃城市 + 关联数据清理 + 侧栏分列 =====');
   function rd67(f) { return fsMod.readFileSync(pathMod.join(__dirname, 'js', f + '.js'), 'utf8'); }
   var dmS67 = rd67('domain'), uS67 = rd67('ui'), mS67 = rd67('main');
   var hS67 = fsMod.readFileSync(pathMod.join(__dirname, 'index.html'), 'utf8');
@@ -13948,7 +13948,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
 
   /* ---------- ① 登记表：能把"挂在城上的数据"全找出来 ---------- */
   console.log('  --- ① 现存的关联数据（表格自检） ---');
-  check('实测：cityRefsOf 找得出英雄 / 建造 / 募兵 / 野地驻军 / 城池本体', with67('v67a', function (st) {
+  check('实测：cityRefsOf 找得出英雄 / 建造 / 募兵 / 野地驻军 / 城市本体', with67('v67a', function (st) {
     var o = cityFull67(st);
     var keys = G.cityRefsOf(o.c.id).map(function (r) { return r.key; }).sort().join(',');
     REFS67 = keys;
@@ -13974,7 +13974,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
 
   /* ---------- ② 不许放弃的情形 ---------- */
   console.log('  --- ② 拒绝的情形 ---');
-  check('实测：最后一座城池不许放弃（会无处落脚）', with67('v67c', function (st) {
+  check('实测：最后一座城市不许放弃（会无处落脚）', with67('v67c', function (st) {
     var r = G.abandonCityCheck(st.cities[0].id);
     return r.ok === false && /最后一座/.test(r.msg);
   }), MSG67B);
@@ -14001,7 +14001,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
     LEFT67 = G.cityRefsOf(o.c.id);
     return r.ok === true && LEFT67.length === 0;
   }), LEFT67.length ? ('残留：' + JSON.stringify(LEFT67)) : '0 项残留');
-  check('实测：城池本体从 s.cities 移除、cityById 查不到', with67('v67g', function (st) {
+  check('实测：城市本体从 s.cities 移除、cityById 查不到', with67('v67g', function (st) {
     var o = cityFull67(st);
     G.abandonCity(o.c.id);
     return st.cities.length === 1 && G.cityById(o.c.id) === null
@@ -14029,7 +14029,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
     return n1 === n0 + 777 && !wild.garrison
       && st.wilds.filter(function (w) { return w.x === wild.x && w.y === wild.y; }).length === 1;
   }));
-  check('实测：UI 的当前城池指针不再指向已删城', with67('v67k', function (st) {
+  check('实测：UI 的当前城市指针不再指向已删城', with67('v67k', function (st) {
     var o = cityFull67(st);
     G.ui._cityId = o.c.id;
     G.abandonCity(o.c.id);
@@ -14061,7 +14061,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
 
   /* ---------- ④ 界面入口 ---------- */
   console.log('  --- ④ 入口与确认框 ---');
-  check('结构：城池面板有「放弃城池」入口，且只在还有别的城时出现', (function () {
+  check('结构：城市面板有「放弃城市」入口，且只在还有别的城时出现', (function () {
     var pane = codeOf(uS67, 'ui.openCityPanel = function');
     return /city-abandon-ask/.test(pane) && /\(s\.cities \|\| \[\]\)\.length > 1/.test(pane);
   })());
@@ -14224,7 +14224,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
     check('导入正常存档 → 落到指定槽位', rOk.ok === true && rOk.slot === 's2' && !!G.slotMetaOf('s2'), rOk.msg);
 
     var back = G.loadFrom('s2');
-    check('从槽位读档 → 复现同一份（城池数一致、地形已重建）',
+    check('从槽位读档 → 复现同一份（城市数一致、地形已重建）',
       !!back && back.cities.length === pack.state.cities.length && !!back.map,
       back ? (back.cities.length + ' 城') : '读取失败');
 
@@ -14554,7 +14554,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
     var fired = G.invasionTick(1);
     check('到点必触发（一场）', fired === 1, 'fired=' + fired);
     check('同一场再推进不重复结算（一场只打一次）', G.invasionTick(0) === 0);
-    check('结算后城池数不变（loseCity=false 的结构保证）', st.cities.length === cityCount,
+    check('结算后城市数不变（loseCity=false 的结构保证）', st.cities.length === cityCount,
       st.cities.length + ' 城');
 
     /* ---- 边界：开关 ---- */
@@ -14978,7 +14978,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
       return G.cityFullName(hit);
     })());
 
-    check('★ 野外城池标识带所在县（fortLabelOf）', (function () {
+    check('★ 野外城市标识带所在县（fortLabelOf）', (function () {
       var lbl = G.fortLabelOf({ ci: _ciOf(120, 300), x: 120, y: 300, name: '青石营', level: 5 });
       var rg = G.regionOf(_ciOf(120, 300));
       return lbl.indexOf(G.countyNameOf(rg.county)) === 0 && lbl.indexOf('青石营') > 0;
@@ -15049,7 +15049,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
     })());
 
     /* ================= ③ 坐标与迁址 ================= */
-    console.log('  --- ③ 城池坐标与迁址 ---');
+    console.log('  --- ③ 城市坐标与迁址 ---');
     check('坐标口径：内部 0~499；界面 coordText 为**球系**（N°E M°N · v90.59）',
       G.COORD_MAX === 499 && /^\d+°E \d+°N$/.test(G.coordText({ x: 3, y: 4, ci: _ciOf(3, 4) })));
 
@@ -15060,7 +15060,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
         && G.isMovableCity({ type: 'capital' }) === false;
     })());
 
-    check('★ 迁址：旧格还平原、新格变城池、坐标落定', (function () {
+    check('★ 迁址：旧格还平原、新格变城市、坐标落定', (function () {
       return withState58('v70move', function (st) {
         var c = st.cities[0];
         var from = { x: c.x, y: c.y, ci: _ciOf(c.x, c.y) };
@@ -15107,7 +15107,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
 
     check('迁址写日志（可追溯）', /📍 迁址/.test(dm58) && /GAME\.log\('📍 迁址/.test(dm58));
 
-    /* v71（老板）：「城池属性不要显示坐标和所在区，只显示城池命名即可」 */
+    /* v71（老板）：「城市属性不要显示坐标和所在区，只显示城市命名即可」 */
     check('★ 短名模式：不含区全称，含城名与档位标（侧栏两处走它）', (function () {
       var c = { name: '泽乡', type: 'jun', state: '泽心', x: 5, y: 5 };
       var full = G.cityFullName(c);
@@ -15694,7 +15694,7 @@ console.log('\n===== 61. v75 酒馆招募（大界面 · 单行候选 · 资质�
   check('③ 资源区「本城 · 城名」表头退役（res-scope 清空）', uS77.indexOf('res-scope') < 0);
 
   /* ---- ④ 三按钮退役 ---- */
-  check('④ 城池属性右三按钮全退役（建筑信息 / 资源生产 / 附属野地按钮）',
+  check('④ 城市属性右三按钮全退役（建筑信息 / 资源生产 / 附属野地按钮）',
     !/open-bldg-info/.test(hS77) && !/open-prod-info/.test(hS77)
     && !/ui\.openProdInfo = function/.test(uS77) && !/ui\.openBldgInfo = function/.test(uS77)
     && !/'open-prod-info'/.test(mS77) && !/'open-bldg-info'/.test(mS77));
@@ -15705,7 +15705,7 @@ console.log('\n===== 61. v75 酒馆招募（大界面 · 单行候选 · 资质�
     && /open-rename-lord/.test(uS77) && /月俸支出/.test(uS77));
   check('⑤ 君主改名唯一出口（ruler 与君主英雄两处同源）',
     /GAME\.renameLord = function/.test(dS77) && /lg\.name = name/.test(dS77));
-  check('⑤ 晋升按钮悬停带条件（声望/城池/旧币）',
+  check('⑤ 晋升按钮悬停带条件（声望/城市/旧币）',
     /晋升「' \+ next\.name \+ '」条件/.test(uS77));
 
   /* ---- ⑥ 商场新货 ---- */
@@ -16376,7 +16376,7 @@ console.log('\n===== 66. v81 两条（君主卡 · 兵营三页） =====');
           G.state.rank = G.lordRankNeed(lord);
           var r0 = G.doLordBreak();
           if (r0.ok !== false || !/综合考验/.test(r0.msg)) return false;
-          /* ③b 灌满四关（城池 2 / 兵力 5k / 持金 5w / 珠宝 2 种）→ 跨段。
+          /* ③b 灌满四关（城市 2 / 兵力 5k / 持金 5w / 珠宝 2 种）→ 跨段。
                  ⚠️ 用例改状态要还原（§131 纪律）——失败前也要恢复。 */
           var bk = {
             cities: G.state.cities.slice(),
@@ -16663,7 +16663,7 @@ console.log('\n===== 71. v86 计谋 / 封存匣 =====');
     var it = (DATA.ITEMS || []).filter(function (x) { return x.id === 'jinang' && x.type === 'talis'; });
     return it.length === 1 && it[0].price > 0 && uS86.indexOf("talis: '封存匣'") >= 0;
   })());
-  check('v86：UI 挂点齐备（计略行 / 选择弹窗 / 城池布防 / 携计提交）', (function () {
+  check('v86：UI 挂点齐备（计略行 / 选择弹窗 / 城市布防 / 携计提交）', (function () {
     /* v89.107：`ui.citySchemeHTML`（左侧统计栏那行计略布防）已整体搬进
        军务 · 警报页 —— 判据改查新落点 ui.marchBeaconHTML（同一件事的新家）。 */
     return uS86.indexOf('ui.toggleExpScheme = function') >= 0
@@ -18202,7 +18202,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     check('v89.86（P-24 / v89.103→v89.186）：「拔除并收为前哨」文案（按钮 + 出征注 + 数据 desc）',
       /* v89.186（老板 3）规则变更：据点剥离 —— 三处文案同步为新语义（不转城市/不占名额）。 */
       /* v89.193 规则变更所致：文案去掉 markdown 星号（改「」）——判据同步。 */
-      ui8.indexOf('🚩 拔除并收为前哨') >= 0 && /「我方前哨」（不转城市、不占城池名额）/.test(ui8)
+      ui8.indexOf('🚩 拔除并收为前哨') >= 0 && /「我方前哨」（不转城市、不占城市名额）/.test(ui8)
       && /收为「我方前哨」/.test(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'data.js'), 'utf8')));
     check('v89.86（P-23）：兵力悬殊二次确认（首击不发兵 · 再击才发）', (function () {
       var fort = null;
@@ -18530,11 +18530,11 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   })();
 
   /* ============================================================
-   * 88. v89.88（老板需求 1~4）：野外城池改造（等级/守军/满配）+ 地图悬浮
+   * 88. v89.88（老板需求 1~4）：野外城市改造（等级/守军/满配）+ 地图悬浮
    * ------------------------------------------------------------
    * 独立建局（结尾恢复旧 state）。
    * ============================================================ */
-  console.log('\n--- 88. v89.88 野外城池改造 / 地图悬浮 ---');
+  console.log('\n--- 88. v89.88 野外城市改造 / 地图悬浮 ---');
   (function () {
     var oldState = G.state;
     var S88 = G.newGame({ name: 'v88', cityName: '灰岗' });
@@ -18699,7 +18699,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var all = [t0, t1, t2, t3];
       var okAll = all.every(function (th) { return !!th && th.indexOf('📍 球系坐标') >= 0 && /Lv\d+/.test(th); });
       var okKind = !!t0 && t0.indexOf('城等级') >= 0 && !!t1 && t1.indexOf('城等级') >= 0
-        && !!t2 && t2.indexOf('野外城池') >= 0 && !!t3 && t3.indexOf('野地') >= 0;
+        && !!t2 && t2.indexOf('野外城市') >= 0 && !!t3 && t3.indexOf('野地') >= 0;
       /* 与唯一出口对拍 */
       var okLv = t0.indexOf('Lv' + G.cityLvOf(c0)) >= 0
         && t1.indexOf('Lv' + G.cityLvOf(npc)) >= 0
@@ -19030,9 +19030,9 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     check('E1：守备值八件出口齐备（唯一出口，不许上层摸 s.sieges）', ['siegeScopeOf', 'siegeKeyOf', 'siegeStateOf',
       'siegeHoldOf', 'siegeScaleOf', 'siegeChipOf', 'siegeChipApply', 'siegeClear', 'siegeTextOf']
       .every(function (k) { return typeof G[k] === 'function'; }));
-    /* v89.204（老板 1）规则变更：「据点、城池占领以民心为基础」—— 全部城池纳入
+    /* v89.204（老板 1）规则变更：「据点、城市占领以民心为基础」—— 全部城市纳入
        （郡/州/都自本轮起同样走多波围攻，不再是决战制）；野地不在内（占领不磨民心）。 */
-    check('E1：范围 = 据点 + 全部城池（v89.204：名城纳入 · 野地不在内）', (function () {
+    check('E1：范围 = 据点 + 全部城市（v89.204：名城纳入 · 野地不在内）', (function () {
       return G.siegeScopeOf({ kind: 'fort', ci: _ciOf(1, 1) })
         && G.siegeScopeOf({ kind: 'city', cityType: 'county', npc: { id: 'cty_x' } })
         && G.siegeScopeOf({ kind: 'city', cityType: 'jun', npc: { id: 'jun_x' } })
@@ -19370,7 +19370,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       return bad.ok === false && bad.msg.indexOf('节钺不足') >= 0 && bad.msg.indexOf('攻占名城') >= 0
         && ok.ok === true && G.jieyueOf() === 1;
     })());
-    check('A1：城池扩编 = 建造位 +1，每城至多 2 次', (function () {
+    check('A1：城市扩编 = 建造位 +1，每城至多 2 次', (function () {
       S95.jieyue = 5;
       var b0 = G.buildSlots(c95);
       /* v89.132：扩编族收成唯一出口 jieyueExpand(kind, cityId) —— 旧名 jieyueExpandCity 退役 */
@@ -20069,8 +20069,8 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
 
   /* ============================================================
    * v89.103（老板三条令）：① 沙盘同场战斗 + 接触线推进
-   *                     ② 拔除据点 = 据为己有（成为自己的城池）
-   *                     ③ 资源运输走出征界面（辎重区）+ 老「城池不存在」bug 退场
+   *                     ② 拔除据点 = 据为己有（成为自己的城市）
+   *                     ③ 资源运输走出征界面（辎重区）+ 老「城市不存在」bug 退场
    * ============================================================ */
   (function () {
     console.log('\n===== v89.103：沙盘接触线 · 据点占据 · 本境调运 =====');
@@ -20160,7 +20160,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       G.state = old;
       return ok;
     })());
-    check('② 运行时：claimFort = 收为我方前哨（不造城 · s.forts 登记 · 不占城池名额）', (function () {
+    check('② 运行时：claimFort = 收为我方前哨（不造城 · s.forts 登记 · 不占城市名额）', (function () {
       /* v89.186（老板 3）规则变更：据点剥离 —— 旧 v89.103「就地转城（布局满配 + 幸存者归附）」
          口径退役；新判据 = 前哨登记 + 城市数不变 + 该格永久不再生成据点。 */
       var old = G.state;
@@ -20245,12 +20245,12 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         && /id="cg-/.test(ui103) && /GAME\.transportPlanOf\(from, to, k, qty\)/.test(ui103)
         && /case 'cg-max': ui\.cgFillMax/.test(_f103.readFileSync(_p103.join(__dirname, 'js/main.js'), 'utf8'));
     })());
-    check('③ 本境调运：己方城池目标**不再跳小面板**，方式锁定「调兵 · 辎重」', (function () {
+    check('③ 本境调运：己方城市目标**不再跳小面板**，方式锁定「调兵 · 辎重」', (function () {
       return /kind: 'owncity', id: target\.id/.test(ui103) && /ui\._expOwn/.test(ui103)
         && /if \(ui\._expOwn\) return m\.id === 'transfer';/.test(ui103)
         && /GAME\.doTransferCargo\(_from5\.id, _to5\.id, atk, genSel\.value, _cargo5\)/.test(_f103.readFileSync(_p103.join(__dirname, 'js/main.js'), 'utf8'));
     })());
-    check('③ 老入口整条退场（城池不存在的旧路不再有落脚点）', (function () {
+    check('③ 老入口整条退场（城市不存在的旧路不再有落脚点）', (function () {
       var m103 = _f103.readFileSync(_p103.join(__dirname, 'js/main.js'), 'utf8');
       return typeof G.ui.openTransport === 'undefined' && typeof G.ui.openInterCity === 'undefined'
         && typeof G.ui.doTransport === 'undefined' && typeof G.ui.TR_PCTS === 'undefined'
@@ -20807,11 +20807,11 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
    * 89. v89.108（老板）：**领地上限随威望解封** + **酒馆候选按城**
    * ------------------------------------------------------------
    * 老板两句：
-   *   ① 「限制城池数量，参考威望和主城等级设置，可建造控制的城池数量随威望解封」；
+   *   ① 「限制城市数量，参考威望和主城等级设置，可建造控制的城市数量随威望解封」；
    *   ② 「分城的酒馆只有 Lv2，但是有 14 个候选英雄，应该跟随建筑等级提供候选数量」。
    * 钉子（防漂移）：
    *   · ⛔ v89.203（老板 4）口径变更：上限 = **本档管理数**（RANK[i].city，9..30 · 幸存者 9 起）；
-   *     晋升城池门槛 = **打满本档上限**（同值）—— 旧口径"下一档门槛（幸存者 2 座起）"随本轮退役。
+   *     晋升城市门槛 = **打满本档上限**（同值）—— 旧口径"下一档门槛（幸存者 2 座起）"随本轮退役。
    *     取"下一档"是因为旧口径下"门槛=下一档"（本档值曾为幸存者 1 座，取本档会死锁）；
    *     本档值上调至 9 起后，门槛同步改为"打满本档"，死锁不复存在；
    *     "上限恒 ≥ 门槛"这条性质逐档核验（门槛=上限，天然合一）；
@@ -21122,7 +21122,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       })(), '幸存者 9 座：拦 · 晋队长：放行');
 
       /* ---- ③ 占城路径：prepare 拦（军令不发）；野地占领不受影响 ---- */
-      check('v89.108：达上限后出征「占领城池」被拦；野地占领不受影响；晋升放行', (function () {
+      check('v89.108：达上限后出征「占领城市」被拦；野地占领不受影响；晋升放行', (function () {
         var npc89 = (st89.map.cities || [])[0];
         if (!npc89) return false;
         var gen89 = G.makeGeneral('测将108', 30, 'idle', c89.id, false);
@@ -21149,7 +21149,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       })());
 
       /* ---- ④ 老档超编：只拦新增、不削已有 ---- */
-      check('v89.108：老档超编（超上限）→ 既往城池保留、禁止再扩张', (function () {
+      check('v89.108：老档超编（超上限）→ 既往城市保留、禁止再扩张', (function () {
         st89.rank = 0;
         while (st89.cities.length < 10) {
           st89.cities.push(G.makeCity({ id: 'old89_' + st89.cities.length, name: '旧城' + st89.cities.length, x: 320 + st89.cities.length, y: 320, type: 'self' }));
@@ -21208,7 +21208,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         return /领地上限/.test(lockAtCap || '') && lockFree === ''
           && /GAME\.cityCapChk/.test(uSrc)
           && /GAME\.onConquer[\s\S]{0,500}GAME\.cityCapChk/.test(bSrc)
-          /* v89.186（老板 3）：据点剥离 —— 占据不占城池名额 → claimFort **不再读领地闸**
+          /* v89.186（老板 3）：据点剥离 —— 占据不占城市名额 → claimFort **不再读领地闸**
              （改前是"转城"口径的正向判据；规则变更后反转为负向，防回潮）。 */
           && !/GAME\.claimFort[\s\S]{0,900}GAME\.cityCapChk/.test(bSrc)
           && /GAME\.cityCapChk/.test(dSrc);
@@ -21612,7 +21612,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var uField = G.tactic.unitsOf(army, 'def', gen, null)[0];
       return uDef.cover === 1 && uField.cover < 0.2 && uDef.atkPct === uField.atkPct;
     })());
-    check('② 城池面板守将行显示"守城全军加成 攻 +X% 防 +Y%"（与实战同一原子）', (function () {
+    check('② 城市面板守将行显示"守城全军加成 攻 +X% 防 +Y%"（与实战同一原子）', (function () {
       var src = fs95.readFileSync(path95.join(__dirname, 'js', 'ui.js'), 'utf8');
       return /守城全军加成：攻 \+/.test(src) && /ga\.atkPct/.test(src) && /ga\.defPct/.test(src);
     })());
@@ -21717,12 +21717,12 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     check('⑤ 预估区一律读 resolveTarget 解析后的目标（含 x/y —— 防空面板）', (function () {
       var src = fs95.readFileSync(path95.join(__dirname, 'js', 'ui.js'), 'utf8');
       var b = fs95.readFileSync(path95.join(__dirname, 'js', 'battle.js'), 'utf8');
-      /* 实机诊断：按 id 传城池目标时，`ui._expTarget` 没有坐标 → 行军/军师/搬运三框全空。
-         修法：面板读 `ui._expRes`（解析结果）+ resolveTarget 的城池分支补上 x/y。 */
+      /* 实机诊断：按 id 传城市目标时，`ui._expTarget` 没有坐标 → 行军/军师/搬运三框全空。
+         修法：面板读 `ui._expRes`（解析结果）+ resolveTarget 的城市分支补上 x/y。 */
       return /var t = ui\._expRes \|\| ui\._expTarget;/.test(src)
         && /x: npc\.x, y: npc\.y,/.test(b);
     })());
-    check('⑤ 实测：城池目标的解析结果带坐标（x/y 为有限数）', (function () {
+    check('⑤ 实测：城市目标的解析结果带坐标（x/y 为有限数）', (function () {
       var bak = G.state;
       try {
         var st95e = G.newGame({ name: '标', cityName: '灰岗', mapSeed: 21 });
@@ -23858,7 +23858,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
    * ------------------------------------------------------------
    * 需求 1：「围墙作为建筑，理应有独立的建造时间…结合现实里耗材，耗资，耗时的特点」
    *   → T_max 24h 顶格 + 独立**线性**曲线（2h→24h）+ 资源全表之最（3481.6 万、石 66%）；
-   * 需求 2：「任何野外目标（野地，城池，名城等）均应有英雄带领，根据等级配备相称资质
+   * 需求 2：「任何野外目标（野地，城市，名城等）均应有英雄带领，根据等级配备相称资质
    *   和等级的英雄，梳理当前设置」
    *   → ① 据点守将（补缺口：resolveTarget.fort.guard 非空 + 确定性 + 相称）；
    *     ② 相称尺子 recGenOf（三类型逐档 + "建议等级 === 守将等级下限"交叉核对）；
@@ -24048,7 +24048,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       U.fmt(capA113) + ' → ' + U.fmt(capB113) + '（差 ' + U.fmt(capB113 - capA113) + '）');
     var slA113 = G.genSlotsOf(c113);
     var rg1_113 = G.jieyueExpand('gen', c113.id);
-    check('§113③ 招贤纳士：真调 OK 且席位真 +1',
+    check('§113③ 招揽人才：真调 OK 且席位真 +1',
       rg1_113.ok === true && G.genSlotsOf(c113) === slA113 + 1,
       slA113 + ' → ' + G.genSlotsOf(c113));
     G.jieyueExpand('xc', c113.id); G.jieyueExpand('gen', c113.id);
@@ -24091,7 +24091,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       return hx.indexOf('data-action="jieyue-xc"') >= 0
         && hz.indexOf('data-action="jieyue-gen"') >= 0
         && hl.indexOf('data-action="open-jieyue"') >= 0
-        && hx.indexOf('练兵场扩编') >= 0 && hz.indexOf('招贤纳士') >= 0;
+        && hx.indexOf('练兵场扩编') >= 0 && hz.indexOf('招揽人才') >= 0;
     })());
     check('§113③ openJieyue 面板：余额 + 来源 + 四用途 + 全境进度（真渲染）', (function () {
       var t = '';
@@ -24102,7 +24102,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         G.ui.closeAllModals();
       } catch (e) { t = 'ERR:' + e.message; }
       return t.indexOf('节钺') >= 0 && t.indexOf('首占名城') >= 0 && t.indexOf('问鼎天启体') >= 0
-        && t.indexOf('练兵场扩编') >= 0 && t.indexOf('招贤纳士') >= 0 && t.indexOf('全境扩编') >= 0;
+        && t.indexOf('练兵场扩编') >= 0 && t.indexOf('招揽人才') >= 0 && t.indexOf('全境扩编') >= 0;
     })());
 
     G.state = keep113;
@@ -24201,7 +24201,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
 
     /* ---------- ④ 防守双小页 ---------- */
     console.log('  --- ④ 防守战术：两小页（第 14 条）---');
-    check('§114④ 防守页两小页：全境防御（城池清单）/ 防守战术（下拉 + 出城勾选）', (function () {
+    check('§114④ 防守页两小页：全境防御（城市清单）/ 防守战术（下拉 + 出城勾选）', (function () {
       var keepSub = G.ui._defSub;
       try {
         G.ui._defSub = 'over';
@@ -24653,9 +24653,9 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   })();
 
   /* ============================================================
-   * 119. v89.138（地图放大 / 城池菜单 / 提速 / 功能标题 / 召回统一 / 清单三条）
+   * 119. v89.138（地图放大 / 城市菜单 / 提速 / 功能标题 / 召回统一 / 清单三条）
    * ============================================================ */
-  console.log('\n===== 119. v89.138（地图铺满放大 · 城池菜单 · 提速关窗 · 召回统一） =====');
+  console.log('\n===== 119. v89.138（地图铺满放大 · 城市菜单 · 提速关窗 · 召回统一） =====');
   (function () {
     var _f = require('fs'), _p = require('path');
     var u = _f.readFileSync(_p.join(__dirname, 'js', 'ui.js'), 'utf8');
@@ -24678,8 +24678,8 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       return fr.spanX === 9 && fr.spanY === 8 && cell === 88;
     })());
 
-    /* ---- ② 城池菜单（老板 2） ---------- */
-    check('§119② 城池菜单：进入城池→城内视图 · 派遣/运输双入口（带 hint）· 弃城两段确认', (function () {
+    /* ---- ② 城市菜单（老板 2） ---------- */
+    check('§119② 城市菜单：进入城市→城内视图 · 派遣/运输双入口（带 hint）· 弃城两段确认', (function () {
       /* ⚠️ 不用 codeOf：fnBody 的括号配平会被 body 里 HTML 字符串的花括号打断（实测 seg 只到 5210） */
       var _i = uc.indexOf('ui.openCityPanel = function');
       var seg = uc.slice(_i, _i + 30000);   /* openCityPanel 体长 ~28K（含名城专属段） */
@@ -25350,7 +25350,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })());
 
     /* ---- ② 出征页：目标 5 类分行 + 按钮在底部（老板 2） ---- */
-    check('§123② 出征页目标 5 类分行（我方城池/我方野地/名城/野地/野外据点）+ 按钮在界面底部', (function () {
+    check('§123② 出征页目标 5 类分行（我方城市/我方野地/名城/野地/野外据点）+ 按钮在界面底部', (function () {
       var bkId = G.ui._cityId, bkPick = G.ui._actPick;
       try {
         var c = GAME.currentCity() || (GAME.state.cities || [])[0];
@@ -25361,7 +25361,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         var h = G.ui.marchActHTML();
         var iGo = h.indexOf('data-action="exp-act-go"');
         var iLast = h.lastIndexOf('data-action="exp-act-pick"');
-        var labelsOk = ['我方城池', '我方野地', '名城', '野地', '野外据点']
+        var labelsOk = ['我方城市', '我方野地', '名城', '野地', '野外据点']
           .every(function (nm) { return h.indexOf(nm) >= 0; });
         return keys === 'owncity,ownwild,npc,wild,fort' && labelsOk
           && iGo > iLast && iLast > 0
@@ -25635,7 +25635,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         G.ui._actPick = { grp: 'npc', idx: 0 };
         var h2 = G.ui.marchActHTML();
         var okMove = seg(h2, 'ownwild').indexOf('value="0" selected') < 0;
-        /* ③ 定宽 CSS（label 以我方城池为基准 / select 20 个中文）+ 选定后 live 刷新源码 */
+        /* ③ 定宽 CSS（label 以我方城市为基准 / select 20 个中文）+ 选定后 live 刷新源码 */
         var okCss = /\.exp-sel\.act-row > label \{ min-width: 108px; \}/.test(h124)
           && /\.exp-sel\.act-row > select\.act-sel \{ flex: 0 0 auto; width: 20em; max-width: 20em; \}/.test(h124);
         var okLive = /var g144 = el\.dataset\.grp/.test(m124) && /GAME\.refreshView\(\);/.test(m124)
@@ -26938,7 +26938,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       && u156.indexOf('_wildArm154') < 0);
 
     /* ---- ③ 出征界面结构（真渲染 · 桩捕获） ---- */
-    check('§156③ 出征（城池目标）：额度标签 + 限制容器 + 道具下拉（左列） + 预估（v89.200 移左列下方）', (function () {
+    check('§156③ 出征（城市目标）：额度标签 + 限制容器 + 道具下拉（左列） + 预估（v89.200 移左列下方）', (function () {
       var keep = { cid: G.ui._cityId, mode: G.ui._expMode, t: G.ui._expTarget, r: G.ui._expRes };
       var ok = false;
       try {
@@ -27786,7 +27786,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
 
   /* ============================================================
    * §162. v89.162（老板 2）：
-   *   ① 列举城主的六维对生产/战斗的加成（界面可查 · 六维悬停 + 城池面板）
+   *   ① 列举城主的六维对生产/战斗的加成（界面可查 · 六维悬停 + 城市面板）
    *   ② **内政对税收也应有加成**（新落点：mayorBonus.tax · 与产量/建造同率同封顶）
    *   ③ 顺修：税收分解与结算在"带税制加成"时分叉（分解少了 税制/城主 两项 = 显示两本账）
    * ============================================================ */
@@ -27881,7 +27881,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       return sS162.indexOf('var baseG = tax + salary;') < 0
         && /税制加成（名城\/威望\/主城\/神器）/.test(sS162);
     })());
-    check('§162 界面：六维悬停含"税收 +" · 城池面板城主行悬停给全部加成 · 防御体检文案', (function () {
+    check('§162 界面：六维悬停含"税收 +" · 城市面板城主行悬停给全部加成 · 防御体检文案', (function () {
       return /if \(mb\.tax\) p2\.push\('税收 \+'/.test(uS162)
         && /Math\.round\(mbC\.tax \* 100\)/.test(uS162)
         && /治理→产量\/建造\/税收、谋略→研究\/城防/.test(uS162);
@@ -28283,8 +28283,8 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   })();
 
   /* ============================================================
-   * §166（v89.166）：进入城池 = 菜单全关 + 直接显示城内大界面
-   * 老板原话：「地图上点击我方城市，点击进入城池，城市菜单界面应关闭，直接显示城内大界面」
+   * §166（v89.166）：进入城市 = 菜单全关 + 直接显示城内大界面
+   * 老板原话：「地图上点击我方城市，点击进入城市，城市菜单界面应关闭，直接显示城内大界面」
    * 改前取证：case 'city-enter' 关闭调用 **0 次**（弹窗盖着城内视图）；君主面板为 1 次（对照）。
    * ============================================================ */
   (function () {
@@ -28293,11 +28293,11 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     var segA166 = m166.slice(m166.indexOf("case 'city-enter'"), m166.indexOf("case 'city-transport'"));
     var segB166 = m166.slice(m166.indexOf("case 'lord-city-enter'"), m166.indexOf("case 'lord-promote'"));
 
-    console.log('\n===== §166 进入城池（菜单全关） =====');
-    check('§166① 城池面板·进入城池 → closeAllModals 在 setCity 之前（先关菜单再切城）',
+    console.log('\n===== §166 进入城市（菜单全关） =====');
+    check('§166① 城市面板·进入城市 → closeAllModals 在 setCity 之前（先关菜单再切城）',
       segA166.indexOf('ui.closeAllModals();') >= 0
       && segA166.indexOf('ui.closeAllModals();') < segA166.indexOf('ui.setCity('));
-    check('§166② 君主面板·进入城池 → 同一出口 closeAllModals（两入口统一）',
+    check('§166② 君主面板·进入城市 → 同一出口 closeAllModals（两入口统一）',
       segB166.indexOf('ui.closeAllModals();') >= 0);
     check('§166③ 负向：两段无裸 closeModal（单层出口退役）',
       segA166.indexOf('ui.closeModal();') < 0 && segB166.indexOf('ui.closeModal();') < 0);
@@ -28310,7 +28310,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
 
   /* ============================================================
    * §167（v89.167）：自动升级 —— **每城独立建造位**（逐城遍历、各自排满）
-   * 老板原话：「自动升级建造，应该每个城池均遍历，分别升级，而不是所有城池一起，
+   * 老板原话：「自动升级建造，应该每个城市均遍历，分别升级，而不是所有城市一起，
    *   总共只升级 3 个建筑」—— 改前闸门 = 全境队列总数 vs buildSlots(当前城)（=3）。
    * ============================================================ */
   (function () {
@@ -28687,7 +28687,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   })();
 
   /* ============================================================
-   * 174. v89.174（老板）：「在城池的官方界面，政务厅要务的下方，显示本城在建的建筑队列和
+   * 174. v89.174（老板）：「在城市的官方界面，政务厅要务的下方，显示本城在建的建筑队列和
    *      剩余时间。目前大界面上建筑的建造时间仍然不对，读秒完成后，状态还是在建造中。」
    *   —— 复现双根因：① 显示 round（"00:00 但未完成"窗口）；② 施工中弹窗没接 live。
    * ============================================================ */
@@ -28732,7 +28732,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         /ui\.openExtModal = function \(idx, cityId\)/.test(uS)
         && /liveFnE174/.test(ox)
         && (ox.match(/\{ live: liveFnE174 \}/g) || []).length === 2);
-      check('§174③c live 回调锁城（重开带 cityId）+ 城池失效自动关闭',
+      check('§174③c live 回调锁城（重开带 cityId）+ 城市失效自动关闭',
         /ui\.openBuildModal\(idx, c\.id\)/.test(ob) && /ui\.openExtModal\(idx, c\.id\)/.test(ox)
         && /if \(!GAME\.cityById\(c\.id\)\) \{ ui\.closeModal\(\); return; \}/.test(ob));
     })();
@@ -29122,9 +29122,9 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
 
     /* ⑤ 君主突破综合考验 */
     console.log('  --- ⑤ 综合考验 ---');
-    /* v90.92：任务系统退役 → 考验表去掉 quests 项，五关改四关（城池/军队/资源/宝物）。
+    /* v90.92：任务系统退役 → 考验表去掉 quests 项，五关改四关（城市/军队/资源/宝物）。
        ⚠️ 下一步（批次D）突破改威望门槛时本段还会再动；此处只钉「任务项已摘除」。 */
-    check('§177⑤ ★ lordTrialOf：四关行（城池/军队/资源/宝物）+ 口径读表（v90.92：政务关退役）', (function () {
+    check('§177⑤ ★ lordTrialOf：四关行（城市/军队/资源/宝物）+ 口径读表（v90.92：政务关退役）', (function () {
       var lord = null;
       (G.state.generals || []).forEach(function (g) { if (g.isLord) lord = g; });
       if (!lord) { lord = G.makeGeneral('测试君主', 1, 'idle', G.state.cities[0].id, false); lord.isLord = true; }
@@ -29935,7 +29935,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     /* ⑯ 界面在册（源码级） */
     check('§186⑯ 界面在册：据点文案（前哨）· 情报站文案 · 兵站传坐标', (function () {
       /* v89.193 规则变更所致：文案去 markdown 星号（改「」）。 */
-      return uSrc186.indexOf('「我方前哨」（不转城市、不占城池名额）') >= 0
+      return uSrc186.indexOf('「我方前哨」（不转城市、不占城市名额）') >= 0
         && uSrc186.indexOf('情报站覆盖：情报确凿') >= 0
         && uSrc186.indexOf('GAME.wildGarrisonCap(w.level, w.x, w.y)') >= 0;
     })());
@@ -30415,7 +30415,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
 
   /* ═══════════════════════════════════════════════════════════
    * §191（v89.191）：数值框可填 / 按钮错开 / 建筑配对闸 / 建筑↔科技体系 /
-   *   科技按城与主城 20 级 / 遗物并列入口 / 自动征兵全城池
+   *   科技按城与主城 20 级 / 遗物并列入口 / 自动征兵全城市
    * ═══════════════════════════════════════════════════════════ */
   (function () {
     var fs191 = require('fs'), path191 = require('path');
@@ -30664,7 +30664,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         && u.indexOf('gp-attach186') < 0;                             /* v89.205：挂件行退役 */
     })());
 
-    /* ⑧ 自动征兵：默认全部城池（逐城真调）· 器械（craft）不参与 */
+    /* ⑧ 自动征兵：默认全部城市（逐城真调）· 器械（craft）不参与 */
     var at191 = (function () {
       var bk = G.state, out = { err: 'unset' };
       try {
@@ -30699,7 +30699,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       finally { G.state = bk; }
       return out;
     })();
-    check('§191⑧/v90.12 自动征兵默认全部城池（两城各补 1 单）· 器械纳入目标表（自行火炮/无人轰炸机）', at191.ok === true, JSON.stringify(at191));
+    check('§191⑧/v90.12 自动征兵默认全部城市（两城各补 1 单）· 器械纳入目标表（自行火炮/无人轰炸机）', at191.ok === true, JSON.stringify(at191));
   })();
 
   /* ============================================================
@@ -32288,10 +32288,10 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   })();
 
   /* ============================================================
-   * §203（v89.203）防守全员前进 · 威望管理城池数（9..30）· toast 中上 · 占领反馈
+   * §203（v89.203）防守全员前进 · 威望管理城市数（9..30）· toast 中上 · 占领反馈
    * ============================================================ */
   (function () {
-    console.log('  --- §203 防守默认 / 城池上限 / toast / 占领反馈 ---');
+    console.log('  --- §203 防守默认 / 城市上限 / toast / 占领反馈 ---');
     var fs203 = require('fs'), path203 = require('path');
     var dS203 = fs203.readFileSync(path203.join(__dirname, 'js/data.js'), 'utf8');
     var doS203 = fs203.readFileSync(path203.join(__dirname, 'js/domain.js'), 'utf8');
@@ -32317,8 +32317,8 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         && !/攻城固守/.test(codeOf(uS203, 'ui.tacticBlockOf = function'));
     })());
 
-    /* ② 威望管理城池数（幸存者 9 · 每级 +1 · 封顶 30） */
-    check('§203③ 威望管理城池数逐档核验（9..30 · cap=本档 · 封顶 30）', (function () {
+    /* ② 威望管理城市数（幸存者 9 · 每级 +1 · 封顶 30） */
+    check('§203③ 威望管理城市数逐档核验（9..30 · cap=本档 · 封顶 30）', (function () {
       var bad = [];
       for (var i = 0; i < DATA.RANK.length; i++) {
         if (DATA.RANK[i].city !== 9 + i) bad.push(i + ':' + DATA.RANK[i].city);
@@ -32352,13 +32352,13 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         var blocked = G.systems.canPromote();
         st.cities.push(G.makeCity({ id: 'cap_c8', name: 'c8', x: 560, y: 560, type: 'self' }));
         var pass = G.systems.canPromote();
-        return blocked.ok === false && /城池/.test(blocked.msg || '')
+        return blocked.ok === false && /城市/.test(blocked.msg || '')
           && pass.ok === true;
       } finally { G.state = keep; }
     })());
-    check('§203⑤ 威望面板文案（管理城池列头 + 幸存者 9 座说明 · 源码在册）', (function () {
-      return /<th>威望<\/th><th>管理城池<\/th>/.test(uS203)
-        && uS203.indexOf('管理城池数 = 幸存者 9 座，每晋一档 +1（封顶 30 座）') >= 0;
+    check('§203⑤ 威望面板文案（管理城市列头 + 幸存者 9 座说明 · 源码在册）', (function () {
+      return /<th>威望<\/th><th>管理城市<\/th>/.test(uS203)
+        && uS203.indexOf('管理城市数 = 幸存者 9 座，每晋一档 +1（封顶 30 座）') >= 0;
     })());
 
     /* ③ toast 中上（弹窗打开时） */
@@ -32417,8 +32417,8 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
    * §204（v89.204 · 老板 1/2）：民心占领机制 + 弹窗版面
    * ------------------------------------------------------------
    * 老板原文：
-   *   1.「据点、城池占领以民心为基础，战斗成功，败方失去20点民心，民心为0时
-   *      可以被占领（如为我方，除主城不可被占领外，别的城池将会被敌方占领）」
+   *   1.「据点、城市占领以民心为基础，战斗成功，败方失去20点民心，民心为0时
+   *      可以被占领（如为我方，除主城不可被占领外，别的城市将会被敌方占领）」
    *   2.「任何多页内容弹窗，其页码固定显示位置为居中，其他菜单按钮位置合理排布。
    *      比如强化界面的资源要求请以悬停显示，而不是直接占用位置。打造界面
    *      不要"套装效果一览"。等等」
@@ -33490,7 +33490,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
    * 口径：
    *   ① 机构词：州城/州治→首府 · 郡城/郡治→重镇 · 县城→聚落 · 都城/帝都→旧都 ·
    *      州界/郡界→区界/镇界 · 行政区划 = 「区 · 重镇 · 聚落」；行政后缀（郡/县）退役；
-   *      NPC 守将头衔换代（太守系 → 城守系）；
+   *      NPC 守将头衔换代（长官系 → 城守系）；
    *   ② 悬停**白字 = 原始值（base）**、金/青 = 增量（add = 原始 × 80% @ +10）——
    *      改前白字画的是"现值"（+10 = 原始×1.8、金增量只有现值 44%），玩家验算 80% 对不上；
    *   ③ 整套强化 = 该套全部件各 +1（总价先校验、**整体不动**、满级件跳过）；长按 = 三键连发。
@@ -33516,11 +33516,11 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })());
 
     /* ② 机构词：旧词在**剥注释后的数据表**零残留（改的是名字，不是"某处漏改"） */
-    check('§219② 机构词：旧词零残留（州城/州治/郡城/郡治/县城/都城/太守）', (function () {
-      var olds = ['州城', '州治', '郡城', '郡治', '县城', '都城', '太守', '州郡岁贡'];
+    check('§219② 机构词：旧词零残留（州城/州治/郡城/郡治/县城/都城/长官）', (function () {
+      var olds = ['州城', '州治', '郡城', '郡治', '县城', '都城', '长官', '州郡岁贡'];
       var left = olds.filter(function (w) { return dtS219.indexOf(w) >= 0; });
       return left.length === 0;
-    })(), '残留=' + ['州城', '州治', '郡城', '郡治', '县城', '都城', '太守', '州郡岁贡']
+    })(), '残留=' + ['州城', '州治', '郡城', '郡治', '县城', '都城', '长官', '州郡岁贡']
       .filter(function (w) { return dtS219.indexOf(w) >= 0; }).join('/'));
 
     /* ③ 行政后缀退役：两个规范化出口原样返回 · 全称段数不变且不再补后缀 */
@@ -33619,7 +33619,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
    *   分城/占领城建筑科技闸存量宽限（拆后可升回 · 到不了不报）
    * ------------------------------------------------------------
    * 老板原文：「1.温室农场应该改，基因实验室不错
-   *            2.向己方城池派遣时，提示练兵场容量不足。练兵场有什么容量，出征才有出征兵力上限吧
+   *            2.向己方城市派遣时，提示练兵场容量不足。练兵场有什么容量，出征才有出征兵力上限吧
    *            3.对任何分城的建筑（尤其是被占领而获得的城市）进行复核，确认保留设计的条件限制
    *              和避免不合理限制」
    * 口径：
@@ -33910,7 +33910,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     /* 旧词全集（保留面：7 条读档案校验 / 旧词守卫清单 / §219 沿革映射） */
     var OLD222 = ['长枪', '轻骑', '铁骑', '虎豹', '突骑', '西凉', '象兵', '青州', '刀盾', '藤甲', '投石',
       '弓兵', '弓箭', '弓手', '枪兵', '骑兵', '床弩',
-      '州城', '州治', '郡城', '郡治', '县城', '都城', '帝都', '太守', '州郡',
+      '州城', '州治', '郡城', '郡治', '县城', '都城', '帝都', '长官', '州郡',
       '洛阳', '司隶', '宛县', '许都', '邺城', '渠帅', '贼首', '山君', '寨主', '渠魁', '豪帅', '贼寇'];
 
     check('§222① 用例文件旧词零残留（smoke · 仅保留面：档案校验/守卫清单/沿革映射）', (function () {
@@ -34912,7 +34912,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         '金光', '金鳞', '金框', '金边', '金叉', '金头', '金杆', '金匾', '金线', '金实',
         '亮金', '暖金', '暗金', '土金', '深金', '浅金', '柔金', '金点', '金方', '金底',
         '金甲', '金瓦', '金穗', '金饰', '金笔', '金增量', '悬停金', '琥珀金', '主题金',
-        '点金', '城池金', 'info 金', '金/火', '（金）', '中枢 · 金', '金滩', '金垒', '金刚',
+        '点金', '城市金', 'info 金', '金/火', '（金）', '中枢 · 金', '金滩', '金垒', '金刚',
         '金贵', '金额', '资金', '税金', ' / 金）', '金/青', '金/朱', '金/绿'];
       var left = [], guardN = 0;
       FILES.forEach(function (f) {
@@ -36050,11 +36050,11 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   })();
 
   /* ============================================================
-   * §261. v91.25 君主突破考验：城池/军队走**帝国口径**（跨星球）
+   * §261. v91.25 君主突破考验：城市/军队走**帝国口径**（跨星球）
    * ============================================================ */
   (function () {
     console.log('\n===== 261. v91.25 突破考验帝国口径 =====');
-    check('§261 突破考验「城池」行 = 帝国口径（含他星分片城）', (function () {
+    check('§261 突破考验「城市」行 = 帝国口径（含他星分片城）', (function () {
       var bak = G.state;
       try {
         var st = G.newGame({ name: 'trial261', region: '烬环' });

@@ -1804,7 +1804,7 @@
         '<rect x="14" y="16" width="36" height="32" rx="1" fill="' + P.clHi + '"/>' +
         /* 书脊（中线） */
         '<line x1="32" y1="14" x2="32" y2="50" stroke="' + P.woodLo + '" stroke-width="1.4"/>' +
-        /* 左页：城池图 */
+        /* 左页：城市图 */
         '<path d="M16 22 L26 22 L26 30 L20 30 L20 36 L26 36 L26 44 L16 44 Z" fill="none" stroke="' + P.woodLo + '" stroke-width=".8"/>' +
         '<path d="M22 22 L22 30 M16 30 L26 30 M20 30 L20 36" stroke="' + P.woodLo + '" stroke-width=".8"/>' +
         /* 右页：木榫卯图 */
@@ -2039,7 +2039,7 @@
    *   不套 wrap 就自然没有承台，也省掉一层 SVG 包装。
    *
    * 矢量路径（game-icons / 手绘）全部保留为**回退**：
-   *   BITMAPS 未登记该 id（如地形只出了城池/平原）时自动走矢量。
+   *   BITMAPS 未登记该 id（如地形只出了城市/平原）时自动走矢量。
    * ============================================================ */
   function bmImg(src) {
     return '<img class="ico ico-img" src="' + src + '" alt="" draggable="false">';

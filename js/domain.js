@@ -12,7 +12,7 @@
     return (GAME.systems && GAME.systems.techBonus) ? GAME.systems.techBonus(type, city) : 0;
   }
 
-  /* --------- 当前操作城池（支持多城，默认首城） --------- */
+  /* --------- 当前操作城市（支持多城，默认首城） --------- */
   GAME.currentCity = function () {
     var s = GAME.state;
     if (!s || !s.cities.length) return null;
@@ -36,7 +36,7 @@
     return out;
   };
   /* ============================================================
-   * v89.161（老板 5）：「**什么城池的建筑就用对应城池的**，不可跨城消耗资源，需要转运；
+   * v89.161（老板 5）：「**什么城市的建筑就用对应城市的**，不可跨城消耗资源，需要转运；
    *   只有旧币是玩家层级通用的」——
    * ------------------------------------------------------------
    * 改前：`canAfford/payCost` 读 `s.res`（= **当前城** 的 getter）——
@@ -340,7 +340,7 @@
   GAME.disbandAt = function (cityId, troopId, count) {
     var s = GAME.state;
     var city = GAME.cityById(cityId) || GAME.currentCity();
-    if (!city || (s.cities || []).indexOf(city) < 0) return { ok: false, msg: '只能在自己的城池解散部队' };
+    if (!city || (s.cities || []).indexOf(city) < 0) return { ok: false, msg: '只能在自己的城市解散部队' };
     var t = DATA.TROOPS[troopId];
     if (!t) return { ok: false, msg: '未知兵种' };
     count = Math.floor(Number(count));
@@ -711,14 +711,14 @@
    *   · 城建扩编（city）：建造位 +1（每城至多 citySlotMax）—— v89.95 既有；
    *   · 练兵场扩编（xc）  ：出征容量 +1 万人马（等效练兵场 +1 级；**只加容量口径**，
    *     募兵名额 / 练兵收益仍由建筑等级决定，不随之膨胀）—— v89.132 新增；
-   *   · 招贤纳士（gen） ：本城英雄席位 +1（进 genSlotsOf 唯一出口）—— v89.132 新增。
+   *   · 招揽人才（gen） ：本城英雄席位 +1（进 genSlotsOf 唯一出口）—— v89.132 新增。
    * 判据、消耗、进度（used/max）全走 jieyueExpandOf；界面只读它，不许各算一份。
    * 前置：xc 须有练兵场、gen 须有招募站（没建筑就谈不上"扩编"）。
    * ============================================================ */
   GAME.JIEYUE_KIND = {
     city: { field: 'jieyueSlots', max: 'citySlotMax', label: '城建扩编' },
     xc:   { field: 'jieyueXc',    max: 'xcMax',       label: '练兵场扩编' },
-    gen:  { field: 'jieyueGen',   max: 'genMax',      label: '招贤纳士' }
+    gen:  { field: 'jieyueGen',   max: 'genMax',      label: '招揽人才' }
   };
   GAME.jieyueExpandOf = function (city, kind) {
     var C = GAME.jieyueCfg();
@@ -755,7 +755,7 @@
         + c[K.field] + '/' + chk.max + '）',
       xc: c.name + ' 练兵场扩编：出征容量 +1 万人马（现 ' + U.fmt(GAME.battle.marchCapOf(c))
         + '，已用节钺 ' + c[K.field] + '/' + chk.max + '）',
-      gen: c.name + ' 招贤纳士：英雄席位 +1（现 ' + GAME.genSlotsOf(c) + ' 席，已用节钺 '
+      gen: c.name + ' 招揽人才：英雄席位 +1（现 ' + GAME.genSlotsOf(c) + ' 席，已用节钺 '
         + c[K.field] + '/' + chk.max + '）'
     }[kind];
     GAME.log('🪓 ' + msg);
@@ -800,7 +800,7 @@
     var qi = -1, q = null;
     for (var i = 0; i < s.queues.build.length; i++) {
       var x = s.queues.build[i];
-      /* 外城地块已按城池独立，同一下标在多城间会重复，必须同时匹配 cityId */
+      /* 外城地块已按城市独立，同一下标在多城间会重复，必须同时匹配 cityId */
       var hit = kind === 'city'
           ? (GAME.slotEq(x.gridIndex, idx) && (x.type === 'build' || x.type === 'upgrade') && (!cur || !x.cityId || x.cityId === cur.id))
           : (x.extIdx === idx && (x.type === 'ext_build' || x.type === 'ext_upgrade') && (!cur || !x.cityId || x.cityId === cur.id));
@@ -858,8 +858,8 @@
     return { ok: true, msg: '已取消建造，返还 ' + U.fmt(total) + ' 资源' };
   };
 
-  /* --------- 城外资源建筑（地块制 · v14 改为**按城池独立**） ---------
-   * 此前 state.extGrid 是全局单份，导致多占城池不增加资源地块，攻城只剩税收。
+  /* --------- 城外资源建筑（地块制 · v14 改为**按城市独立**） ---------
+   * 此前 state.extGrid 是全局单份，导致多占城市不增加资源地块，攻城只剩税收。
    * 现在每城各有一份外城网格，上限 = 12 + (本城政务厅等级-1)×3。
    * 统一入口 GAME.extGridOf(city)，不要再直接读 state.extGrid。
    * ------------------------------------------------------------------ */
@@ -1025,7 +1025,7 @@
   GAME.upgradeExt = function (extIdx, cityId) {
     var s = GAME.state;
     var city = cityId ? GAME.cityById(cityId) : GAME.currentCity();
-    if (!city) return { ok: false, msg: '城池不存在' };
+    if (!city) return { ok: false, msg: '城市不存在' };
     var e = GAME.extGridOf(city)[extIdx];
     if (!e || !e.type) return { ok: false, msg: '该地块未建造建筑' };
     var eb = DATA.EXT_BUILDINGS[e.type];
@@ -1058,7 +1058,7 @@
   /* --------- 城内建造 / 升级 / 拆除 --------- */
   GAME.buildAt = function (cityId, gridIndex, buildId) {
     var s = GAME.state, city = GAME.cityById(cityId);
-    if (!city) return { ok: false, msg: '城池不存在' };
+    if (!city) return { ok: false, msg: '城市不存在' };
     /* v89.128：'wall' = 环城槽（围墙不占格） */
     var cell = (gridIndex === 'wall') ? GAME.wallSlotOf(city) : city.cells[gridIndex];
     if (!cell || cell.build) return { ok: false, msg: gridIndex === 'wall' ? '围墙已修建（可升级）' : '该格已被占用' };
@@ -1125,7 +1125,7 @@
 
   GAME.upgradeAt = function (cityId, gridIndex) {
     var s = GAME.state, city = GAME.cityById(cityId);
-    if (!city) return { ok: false, msg: '城池不存在' };
+    if (!city) return { ok: false, msg: '城市不存在' };
     var cell = (gridIndex === 'wall') ? GAME.wallSlotOf(city) : city.cells[gridIndex];
     if (!cell || !cell.build) return { ok: false, msg: gridIndex === 'wall' ? '尚未修建围墙' : '空地无法升级' };
     /* v16：升级中必须有 pending 标记 —— 否则可对同一建筑重复排队，
@@ -1193,7 +1193,7 @@
   };
   GAME.demolishAt = function (cityId, gridIndex) {
     var s = GAME.state, city = GAME.cityById(cityId);
-    if (!city) return { ok: false, msg: '城池不存在' };
+    if (!city) return { ok: false, msg: '城市不存在' };
     var cell = GAME.cellOf(city, gridIndex);   /* v89.128：'wall' = 环城槽 */
     if (!cell || !cell.build) return { ok: false, msg: '空地块' };
     if (cell.official) return { ok: false, msg: '政务厅不可拆除' };
@@ -1231,7 +1231,7 @@
      政务厅不可拆（同 demolishAt）。 */
   GAME.demolishWhole = function (cityId, gridIndex) {
     var s = GAME.state, city = GAME.cityById(cityId);
-    if (!city) return { ok: false, msg: '城池不存在' };
+    if (!city) return { ok: false, msg: '城市不存在' };
     var cell = GAME.cellOf(city, gridIndex);
     if (!cell || !cell.build) return { ok: false, msg: '空地块' };
     if (cell.official) return { ok: false, msg: '政务厅不可拆除' };
@@ -1253,18 +1253,18 @@
   /* ============================================================
    * 城内建筑移形换位（v19 · 需求 8）
    *   规则：与空地「搬过去」、与另一个建筑「互换」；等级与状态随建筑走。
-   *   限制：政务厅是城池中枢（占 4 格且等级需四格同步），不可移动；
+   *   限制：政务厅是城市中枢（占 4 格且等级需四格同步），不可移动；
    *         任一方在施工中也不可移动 —— 否则建造队列的 gridIndex 会指向错位的格子。
    *   不收费：材料已在城中，只是重新规划地皮。
    * ============================================================ */
   GAME.moveBuilding = function (cityId, fromIdx, toIdx) {
     var s = GAME.state, city = GAME.cityById(cityId) || GAME.currentCity();
-    if (!city) return { ok: false, msg: '城池不存在' };
+    if (!city) return { ok: false, msg: '城市不存在' };
     if (fromIdx === toIdx) return { ok: false, msg: '起点与终点相同' };
     var a = city.cells[fromIdx], b = city.cells[toIdx];
     if (!a || !b) return { ok: false, msg: '地块不存在' };
     if (!a.build) return { ok: false, msg: '该地块没有建筑可移动' };
-    if (a.official || b.official) return { ok: false, msg: '政务厅为城池中枢，不可移动' };
+    if (a.official || b.official) return { ok: false, msg: '政务厅为城市中枢，不可移动' };
     if (a.pending || b.pending) return { ok: false, msg: '有建筑正在施工，暂不可移动（可先取消施工）' };
     var moved = a.build, swapped = b.build;
     a.build = swapped;
@@ -1301,7 +1301,7 @@
   };
   GAME.convertExt = function (extIdx, newType, cityId) {
     var s = GAME.state, city = cityId ? GAME.cityById(cityId) : GAME.currentCity();
-    if (!city) return { ok: false, msg: '城池不存在' };
+    if (!city) return { ok: false, msg: '城市不存在' };
     var e = GAME.extGridOf(city)[extIdx];
     if (!e || !e.type) return { ok: false, msg: '该地块没有建筑可改建' };
     if (e.pending) return { ok: false, msg: '施工中不可改建（可先取消施工）' };
@@ -1608,7 +1608,7 @@
     var s = GAME.state, t = DATA.TROOPS[troopId];
     var city = GAME.cityById(cityId || (s && s.cities[0] && s.cities[0].id));
     if (!t) return { ok: false, msg: '未知兵种（请先在上方选择要训练的兵种）' };
-    if (!city) return { ok: false, msg: '城池不存在' };
+    if (!city) return { ok: false, msg: '城市不存在' };
     count = Math.floor(Number(count));
     if (!count || count <= 0 || !isFinite(count)) return { ok: false, msg: '训练数量无效（请填写大于 0 的整数）' };
     /* 单次训练上限：防止误输入超大数量把队列时长撑到天量 */
@@ -1741,7 +1741,7 @@
   GAME.cancelTrain = function (cityId, bIdx, kind, i) {
     var s = GAME.state;
     var city = GAME.cityById(cityId) || GAME.currentCity();
-    if (!city || !s) return { ok: false, msg: '城池不存在' };
+    if (!city || !s) return { ok: false, msg: '城市不存在' };
     var kd = GAME.queueKindOf(kind);
     var q;
     if (i != null && isFinite(Number(i))) q = GAME.trainQueuesOf(city, bIdx, kd)[Number(i)];
@@ -1769,7 +1769,7 @@
   GAME.trainRush = function (cityId, bIdx, pct, kind) {
     var s = GAME.state;
     var city = GAME.cityById(cityId) || GAME.currentCity();
-    if (!city) return { ok: false, msg: '城池不存在' };
+    if (!city) return { ok: false, msg: '城市不存在' };
     var q = GAME.trainRunningOf(city.id, bIdx, kind);
     if (!q) return { ok: false, msg: '本营没有募兵任务' };
     /* v89.179c（BOOST_CAP）：花旧币买时间与宝物加速**共用同一封顶** ——
@@ -1799,15 +1799,15 @@
   };
 
   /* ============================================================
-   * 城池重命名（v25 · 需求 8）
+   * 城市重命名（v25 · 需求 8）
    * ------------------------------------------------------------
    * 只有**自己建的城**（type === 'self'）能改名 ——
    * 攻占的名城（灰烬城/泽乡…）名字是世界观的一部分，改了会让
    * 战报、岁贡、首府加成这些地方对不上号。
    * ============================================================ */
-  /* 城池名 + 等级标注（v29 · 需求 9）
+  /* 城市名 + 等级标注（v29 · 需求 9）
      ------------------------------------------------------------
-     地图、侧栏、统计、政务厅、战报抬头…… 到处都在显示城池名，但"这是旧都还是聚落"
+     地图、侧栏、统计、政务厅、战报抬头…… 到处都在显示城市名，但"这是旧都还是聚落"
      只写在数据里 —— 玩家得自己记住"灰烬城是旧都"。统一给一个取值口：
        · 自建城不标注（"自建城"三个字没有信息量，只添乱）；
        · 名城标注 [旧都] / [首府] / [重镇] / [聚落]。
@@ -1826,8 +1826,8 @@
 
   GAME.canRenameCity = function (city) {
     city = city || GAME.currentCity();
-    if (!city) return { ok: false, msg: '城池不存在' };
-    /* v45（需求 4）：**所有已拥有的城池都可改名**（含灰烬城这类旧都名城）。
+    if (!city) return { ok: false, msg: '城市不存在' };
+    /* v45（需求 4）：**所有已拥有的城市都可改名**（含灰烬城这类旧都名城）。
        改前只放行 `type === 'self'`，而玩家的开局城就是灰烬城（旧都）——
        于是按钮永远置灰，老板因此以为"政务厅根本没有改名功能"。
        名城改名不会破坏任何引用：原名在第一次改名时另存 `city.origName`，
@@ -1845,12 +1845,12 @@
     if (name === city.name) return { ok: false, msg: '名字未改动' };
     var dup = false;
     (GAME.state.cities || []).forEach(function (c) { if (c.id !== city.id && c.name === name) dup = true; });
-    if (dup) return { ok: false, msg: '已有同名城池' };
+    if (dup) return { ok: false, msg: '已有同名城市' };
     var old = city.name;
     /* 原名只记第一次 —— 反复改名时 origName 始终是"它本来是谁" */
     if (!city.origName) city.origName = old;
     city.name = name;
-    GAME.log('🏯 城池改名：' + old + ' → ' + name, 'sys', 'admin');
+    GAME.log('🏯 城市改名：' + old + ' → ' + name, 'sys', 'admin');
     return { ok: true, msg: '已改名为「' + name + '」' };
   };
 
@@ -1882,7 +1882,7 @@
     return (GAME.buildingLevel(city, 'zhaoxianguan') || 0)
       + GAME.mastery('genRoom', city)
       + GAME.cityBonusNum(city, 'genCap')
-      /* v89.132（老板「节钺设计再开拓一下」）：招贤纳士 —— 每城 +1 席（至多 genMax） */
+      /* v89.132（老板「节钺设计再开拓一下」）：招揽人才 —— 每城 +1 席（至多 genMax） */
       + Math.min(city.jieyueGen || 0, (DATA.JIEYUE || {}).genMax || 2);
   };
   /* 某城现有英雄 —— **与英雄页名单同源**（两边都走 `genCityOf`）。
@@ -1910,7 +1910,7 @@
   /* v89.81：基准常量移到 `DATA.BASE_STORE`（唯一出口）—— 名城库藏派生
      （DATA.NPC_CITY_RES.resByTier = 满配仓容）也要用它，写两份必然漂移。 */
   GAME.storeCap = function () {
-    /* v60（需求 4）：仓储上限**按城**（资源既然归属城池，仓容也跟着走）。
+    /* v60（需求 4）：仓储上限**按城**（资源既然归属城市，仓容也跟着走）。
        `storeCap` = 当前城的 cap，跨城看别人的仓容是上一版的 bug 来源。
        跨城调拨请用「资源运输」（见 GAME.doTransport）。 */
     return GAME.storeCapOf(GAME.currentCity());
@@ -2162,7 +2162,7 @@
   /* 这座城还能不能在酒馆招人（v64：按城判，不再拿当前城的容量卡全境） */
   GAME.canRecruitGeneral = function (city) {
     city = city || GAME.currentCity();
-    if (!city) return { ok: false, msg: '无城池可招贤' };
+    if (!city) return { ok: false, msg: '无城市可招贤' };
     if (GAME.innLevel(city) <= 0) return { ok: false, msg: city.name + ' 需先建造酒馆（城内空地可建）' };
     var cap = GAME.genSlotsOf(city), used = GAME.generalsIn(city).length;
     if (cap <= 0) return { ok: false, msg: city.name + ' 需先建造招募站（每级 +1 席位）' };
@@ -2314,7 +2314,7 @@
     var s = GAME.state;
     /* v64：招贤以**酒馆所在城**为准 —— 名额按该城算、旧币从该城扣、人落在该城 */
     var city = (cityId && GAME.cityById(cityId)) || GAME.currentCity();
-    if (!city) return { ok: false, msg: '无城池可招贤' };
+    if (!city) return { ok: false, msg: '无城市可招贤' };
     var chk = GAME.canRecruitGeneral(city);
     if (!chk.ok) return chk;
     /* v89.108：按**这座城**取池（旧实现拿全局池 —— 主城的候选能在分城被招走） */
@@ -2596,13 +2596,13 @@
   /* ============================================================
    * 辖区特产 & 名城岁贡（v14）
    * 按**现实日**结算的持续收益 —— 占城不再只有一次性战利品。
-   *   · 辖区特产：与地理绑定，占该辖区内城池即产该区独有材料
+   *   · 辖区特产：与地理绑定，占该辖区内城市即产该区独有材料
    *   · 岁贡：按城档位给 旧币 / 声望 / 特产材料
    *   · 首府加成：握有该区首府（烬环以旧都为治）时，本区特产 ×1.5
    * 目的：解开「三/四阶材料只在首府(12)/旧都(1) 一次掉落后占完即断供」的断层，
    *       让「打哪里」直接决定「能造什么装备」。
    * ============================================================ */
-  /* 城池区属：显式字段优先；玩家自建城按**球面六边环数**就近认领最近的首府/旧都（v90.70） */
+  /* 城市区属：显式字段优先；玩家自建城按**球面六边环数**就近认领最近的首府/旧都（v90.70） */
   GAME.stateOfCity = function (city) {
     if (!city) return null;
     if (city.state) return city.state;
@@ -2618,7 +2618,7 @@
    * 行政区划「区 · 镇 · 聚落」—— 唯一出口（v70 · 老板）
    * ------------------------------------------------------------
    * 老板原话：「每个名城按「区 · 重镇 · 聚落」标识（假设：盐岸区 · 霜堡 · 冰垒）……
-   *   其他野地城池的标识应写上其所在聚落」
+   *   其他野地城市的标识应写上其所在聚落」
    *
    * 判据 = **就近归属**（确定性，无随机）：
    *   · 聚落档 = 最近的**聚落**（65 座聚落铺满全图，任何坐标都归一个聚落）；
@@ -2661,8 +2661,8 @@
   GAME.countyNameOf = function (raw) {
     return String(raw == null ? '' : raw);
   };
-  /* 城池全称（区 · 镇 · 城名 链）。名城三级齐备；自建城给「区 · 城名」；
-     改过名的城用 origName 顶**行政层**（地名不随主公改名而变，参照 v45 的 origName 约定）。 */
+  /* 城市全称（区 · 镇 · 城名 链）。名城三级齐备；自建城给「区 · 城名」；
+     改过名的城用 origName 顶**行政层**（地名不随君主改名而变，参照 v45 的 origName 约定）。 */
   GAME.cityFullName = function (city) {
     if (!city) return '';
     var st = city.state || GAME.stateOfCity(city);
@@ -2676,8 +2676,8 @@
     }
     /* 末段 = 这座城的名字：
        未改名 → 走规范化出口（v89.219：行政后缀退役 · 原样返回）；
-       改过名 → **原样**用玩家起的名字（改名也必须立刻反映在侧栏 / 城池面板上 ——
-       e2e 的「侧栏城池名同步」盯着这条）。 */
+       改过名 → **原样**用玩家起的名字（改名也必须立刻反映在侧栏 / 城市面板上 ——
+       e2e 的「侧栏城市名同步」盯着这条）。 */
     var name = city.name;
     if (!renamed) {
       if (city.type === 'jun') name = GAME.junNameOf(name);
@@ -2686,7 +2686,7 @@
     parts.push(name);
     return parts.join(' · ');
   };
-  /* 野外城池的标识（v70 老板「标识应写上其所在聚落」）：`芦塘 · 青石营` */
+  /* 野外城市的标识（v70 老板「标识应写上其所在聚落」）：`芦塘 · 青石营` */
   GAME.fortLabelOf = function (fort) {
     if (!fort) return '';
     var rg = GAME.regionOf(fort.ci);
@@ -3377,7 +3377,7 @@
       n += c;
     }
     w.garrison = null;
-    if (!city) return { ok: true, msg: '驻军已解散（无城池可归）' };
+    if (!city) return { ok: true, msg: '驻军已解散（无城市可归）' };
     GAME.log.war('撤回驻军 ' + U.fmt(n) + ' 名' + (_wgen ? '（' + _wgen.name + ' 随军）' : '') + '，已归 ' + city.name);
     return { ok: true, msg: '撤回驻军 ' + U.fmt(n) + ' 名' + (_wgen ? '（英雄随军归城）' : '') };
   };
@@ -3408,13 +3408,13 @@
   };
 
   /* ============================================================
-   * 城池关联数据登记表（v67 · 老板）
+   * 城市关联数据登记表（v67 · 老板）
    * ------------------------------------------------------------
-   * 老板原话：「添加放弃城池的功能，注意梳理一下一切伴随城市产生的数据，
+   * 老板原话：「添加放弃城市的功能，注意梳理一下一切伴随城市产生的数据，
    *   既能便于对应产生，又能伴随放弃城市批量清除（本质上是搞好数据库表）」
    * 所以这里先立一张**表**，而不是散着写几个 filter：
    *   · 凡是"按城挂载"的数据，都在 GAME.CITY_SCOPED 里登记一行；
-   *   · 放弃城池**照表清理**（clean 按表顺序执行）；
+   *   · 放弃城市**照表清理**（clean 按表顺序执行）；
    *   · 测试照表检查：放弃之后 cityRefsOf 必须返回空 —— 漏清一项就红。
    * 新增一类按城挂载的数据时，往表里加一行即可；忘加会在测试里露出来，
    * 而不是变成线上"悬空引用"（某个队列还在指向已删的城）。
@@ -3465,8 +3465,8 @@
           GAME.doWildWithdraw(w.ci);
         });
       } },
-    /* ⚠️ 城池本体放最后：上面的清理还要用 city / recv */
-    { key: 'cities', path: 'id', label: '城池本体',
+    /* ⚠️ 城市本体放最后：上面的清理还要用 city / recv */
+    { key: 'cities', path: 'id', label: '城市本体',
       clean: function (s, city) {
         s.cities = (s.cities || []).filter(function (c) { return c.id !== city.id; });
       } },
@@ -3494,9 +3494,9 @@
   /* 能不能放弃（真实判据的**唯一出口** —— 界面与业务共用，不许各写一份） */
   GAME.abandonCityCheck = function (cityId) {
     var s = GAME.state, city = GAME.cityById(cityId);
-    if (!s || !city) return { ok: false, msg: '城池不存在' };
+    if (!s || !city) return { ok: false, msg: '城市不存在' };
     if ((s.cities || []).length <= 1) {
-      return { ok: false, msg: '这是最后一座城池 —— 放弃它就没有立足之地了' };
+      return { ok: false, msg: '这是最后一座城市 —— 放弃它就没有立足之地了' };
     }
     var refs = GAME.cityRefsOf(cityId);
     var hard = refs.filter(function (r) { return r.hard; });
@@ -3522,7 +3522,7 @@
     /* v91.25（球系）：地形由 `map.terrainAt` 从球面 + 城格集合现算 ——
        abandonCity 从 s.cities 移除该城后，terrainAt 自然不再返回 'city'，无需再改平面格。 */
   };
-  /* 放弃城池（唯一入口）：照 CITY_SCOPED 表批量清理，再把格子还给地图 */
+  /* 放弃城市（唯一入口）：照 CITY_SCOPED 表批量清理，再把格子还给地图 */
   GAME.abandonCity = function (cityId) {
     var s = GAME.state;
     var chk = GAME.abandonCityCheck(cityId);
@@ -3536,11 +3536,11 @@
     };
     GAME.CITY_SCOPED.forEach(function (e) { if (e.clean) e.clean(s, city, recv); });
     GAME.restoreCityTile(city);
-    /* UI 指针不许指向已删城（否则侧栏/城池视图会拿到一座不存在的城） */
+    /* UI 指针不许指向已删城（否则侧栏/城市视图会拿到一座不存在的城） */
     if (GAME.ui && GAME.ui._cityId === city.id) GAME.ui._cityId = recv.id;
     /* 自检：清完不该再有引用 —— 有的话就是登记表漏了一项（日志里能看见） */
     var left = GAME.cityRefsOf(city.id);
-    GAME.log('🗑️ 放弃城池：' + city.name + '（' + U.fmt(before.army) + ' 驻军、' + before.gens
+    GAME.log('🗑️ 放弃城市：' + city.name + '（' + U.fmt(before.army) + ' 驻军、' + before.gens
       + ' 英雄归 ' + recv.name + '；建造 ' + before.build + ' 项、募兵 ' + before.train
       + ' 项取消）' + (left.length ? '　⚠️ 残留引用 ' + left.length + ' 类：'
         + left.map(function (x) { return x.key; }).join(',') : '　清理干净'));
@@ -3551,7 +3551,7 @@
 
   /* v89.204（老板 1）：失城 → 地图上恢复/新增一座 NPC 城（敌占）。
      · 攻占来的城（有 origId）→ 从 DATA.NPC_CITIES 恢复原记录；
-     · 自建城 → 新造一条聚落档记录（敌方接管为据点级城池）。 */
+     · 自建城 → 新造一条聚落档记录（敌方接管为据点级城市）。 */
   GAME.lostCityToNpc = function (city) {
     var s = GAME.state;
     if (!s || !s.map || !city) return null;
@@ -3577,22 +3577,22 @@
     return rec;
   };
   /* ============================================================
-   * v89.204（老板 1）：**失城处置** —— 我方城池被敌方攻破（民心归零 + 城破）时，
+   * v89.204（老板 1）：**失城处置** —— 我方城市被敌方攻破（民心归零 + 城破）时，
    *   照 CITY_SCOPED 表批量清理（复用弃城框架：英雄/队列随表清，hard 项改属收容城），
-   *   城池变回地图上的 NPC 城（可再打回）。
+   *   城市变回地图上的 NPC 城（可再打回）。
    * ------------------------------------------------------------
    * 与 abandonCity（主动弃城）的差别：
    *   · 不拒绝：战败失城不是玩家选择 —— hard 引用（在途行军/在外采集）由表内 clean**改归属**；
    *   · 城内驻军随城失陷（战败损失，不返还）；
    *   · **主城保护**（双闸）：明设主城 s.mainCityId / 缺省首城 / 最后一座城 —— 均不可能失
-   *     （老板原话：「除主城不可被占领外，别的城池将会被敌方占领」）。
+   *     （老板原话：「除主城不可被占领外，别的城市将会被敌方占领」）。
    * 返回 { ok, receiver, msg }。
    * ============================================================ */
   GAME.cityFallen = function (city, srcName) {
     var s = GAME.state;
-    if (!s || !city) return { ok: false, msg: '城池不存在' };
+    if (!s || !city) return { ok: false, msg: '城市不存在' };
     var inList = (s.cities || []).some(function (c) { return c.id === city.id; });
-    if (!inList) return { ok: false, msg: '城池已不在治下' };
+    if (!inList) return { ok: false, msg: '城市已不在治下' };
     if (GAME.isMainCity && GAME.isMainCity(city)) return { ok: false, msg: '主城不可被占领' };
     var head = (s.cities || [])[0];
     if (!s.mainCityId && head && head.id === city.id) return { ok: false, msg: '主城不可被占领' };
@@ -3611,7 +3611,7 @@
     var msg = city.name + ' 民心尽失，为 ' + src + ' 所据';
     GAME.log.war('🏴 ' + msg + '！驻军 ' + U.fmt(before.army) + ' 人尽没，'
       + before.gens + ' 名英雄与残部退守 ' + recv.name
-      + (back ? '　（城池易主，整军可复）' : ''));
+      + (back ? '　（城市易主，整军可复）' : ''));
     if (GAME.ui && GAME.ui.notify) GAME.ui.notify('warn', '🏴 ' + msg + ' —— 可在出征界面讨还');
     if (GAME.ui && GAME.ui.moment) {
       GAME.ui.moment({ kind: 'card', icon: '🏴', title: '失地 · ' + city.name,
@@ -4063,7 +4063,7 @@
     for (var k in (army || {})) troops += Math.floor(army[k] || 0);
     if (troops <= 0) return { ok: false, msg: '请派遣兵力（兵越多收成越高）' };
     var city = (opts.cityId && GAME.cityById(opts.cityId)) || GAME.currentCity();
-    if (!city) return { ok: false, msg: '城池不存在' };
+    if (!city) return { ok: false, msg: '城市不存在' };
     var rec = {
       id: 'ga' + (s._gatherSeq = (s._gatherSeq || 0) + 1),
       ci: ci, type: w.type, level: w.level || 0,
@@ -4101,7 +4101,7 @@
     }
     var gen = null;
     s.generals.forEach(function (x) { if (x.id === g.genId) gen = x; });
-    /* v89.159：入账要按**这支采集队所属城池**的仓容（唯一出口的参数是城对象）——
+    /* v89.159：入账要按**这支采集队所属城市**的仓容（唯一出口的参数是城对象）——
        原先的 `GAME.storeCap()` 取的是"当前城"，与入账用的 `s.res`（也是当前城）虽然自洽，
        但队列归属城才是有语义的那一座；这里显式取一次，后面归还兵将也复用。 */
     var city159 = GAME.cityById(g.cityId) || GAME.currentCity();
@@ -4259,8 +4259,8 @@
    * v89.190（老板 2）：**自动征兵** —— 配置 / 判别 / 执行（唯一出口组）
    * ------------------------------------------------------------
    * 老板原话：「自动征兵。构思界面，提供设置，包括触发条件，停止条件，
-   *   目标兵种，可用栏位（与对应城池内可用兵营募兵队列相关，提供判别机制）等等」。
-   * 口径（全境统一规则、逐城独立执行 —— 各用各的城池资源与训练营队列）：
+   *   目标兵种，可用栏位（与对应城市内可用兵营募兵队列相关，提供判别机制）等等」。
+   * 口径（全境统一规则、逐城独立执行 —— 各用各的城市资源与训练营队列）：
    *   · 触发条件：某城某兵种（驻军 + 在训 + 排队）低于「触发线 min」→ 补单
    *     （min 设 0 = 只要低于「目标 max」就补）；
    *   · 停止条件：达到 max 即停 · 旧币低于 goldKeep / 本城粮低于 grainKeep 即停 ·
@@ -4616,10 +4616,10 @@
     var city = GAME.currentCity() || s.cities[0];
     if (!city) return null;
 
-    /* v89.167（老板）：「自动升级建造，应该每个城池均遍历，分别升级，而不是所有城池一起，
+    /* v89.167（老板）：「自动升级建造，应该每个城市均遍历，分别升级，而不是所有城市一起，
        总共只升级 3 个建筑」——
        改前闸门 = **全境队列总数** vs `buildSlots(当前城)`：全境一共只排 3 条
-       （3 = 单城基础建造位）就报"队列已满"，其余城池永远轮不上。
+       （3 = 单城基础建造位）就报"队列已满"，其余城市永远轮不上。
        改后 = **每城独立**：各城在办数 vs 各城自己的建造位（buildQueueUsed / buildSlots
        两个既有出口）；一次调用把所有城的空位尽量排满（逐城遍历、各自封顶）。 */
     var cityRoomOf = function (ct) {
@@ -4632,7 +4632,7 @@
       return null;
     }
 
-    /* 收集候选：城内 + 城外，两者均**遍历所有城池**（v14 支持多城经营） */
+    /* 收集候选：城内 + 城外，两者均**遍历所有城市**（v14 支持多城经营） */
     var multi = (s.cities || []).length > 1;
     var cands = [];
     (s.cities || []).forEach(function (ct) {
@@ -4823,7 +4823,7 @@
    *   ② 体力不足该出征方式的门槛就不出发（不会把将跑废）；
    *   ③ 器械（无人轰炸机/自行火炮）、侦察单元、辎重**不编入**自动队伍 ——
    *      它们拖慢行军且是守城家底；
-   *   ④ 只从**当前城池**的驻军里取兵，不抽空别的城；
+   *   ④ 只从**当前城市**的驻军里取兵，不抽空别的城；
    *   ⑤ 目标必须是"离当前城最近的、符合条件的那一块"，
    *      已占野地与今日已破的据点跳过（不做重复劳动）。
    * ============================================================ */
@@ -4914,7 +4914,7 @@
     /* v89.83：半径走唯一出口 autoMarchRadius（老板「目标的选择可以加上距离」） */
     var rad = GAME.autoMarchRadius(cfg);
     var best = null, bestD = Infinity;
-    /* 「名城」目标不在格里找，而是从已生成的 NPC 城池列表里挑最近的一座 */
+    /* 「名城」目标不在格里找，而是从已生成的 NPC 城市列表里挑最近的一座 */
     if (cfg.target === 'city') {
       ((GAME.state.map && GAME.state.map.cities) || []).forEach(function (npc) {
         if (!npc || npc.owner !== 'npc') return;
@@ -5000,7 +5000,7 @@
       return { ok: false, msg: '今日已达上限 ' + cfg.dailyMax + ' 次，明日再战' };
     }
     var city = GAME.currentCity();
-    if (!city) return { ok: false, msg: '无可用城池' };
+    if (!city) return { ok: false, msg: '无可用城市' };
     var gen = null;
     (s.generals || []).forEach(function (g) { if (g.id === cfg.genId) gen = g; });
     if (!gen) return { ok: false, msg: '请先指定执行自动出征的英雄' };
@@ -5063,7 +5063,7 @@
   GAME.autoMarchPreview = function (cfg) {
     var s = GAME.state, city = GAME.currentCity();
     cfg = cfg || GAME.autoMarchCfg();
-    if (!city || !cfg) return { ok: false, msg: '无可用城池' };
+    if (!city || !cfg) return { ok: false, msg: '无可用城市' };
     var gen = null;
     (s.generals || []).forEach(function (g) { if (g.id === cfg.genId) gen = g; });
     var t = GAME.autoMarchFindTargetRot(cfg, city);   /* v89.93（E9）：与实发同一取目标口径 */
@@ -5170,9 +5170,9 @@
       return { ok: false, msg: '只有**平原**可以筑城（' + tn + ' 不可）' };
     }
     for (var i = 0; i < (s.cities || []).length; i++) {
-      if (s.cities[i].ci === ci) return { ok: false, msg: '此处已是我方城池' };
+      if (s.cities[i].ci === ci) return { ok: false, msg: '此处已是我方城市' };
     }
-    /* v89.108（老板）：「可建造控制的城池数量随威望解封」。
+    /* v89.108（老板）：「可建造控制的城市数量随威望解封」。
        顺序：先地理（能不能在这建）→ 再资格（领地上限）→ 再资源 —— 逐层归因。 */
     var _cc108 = GAME.cityCapChk ? GAME.cityCapChk() : { ok: true };
     if (!_cc108.ok) return _cc108;
@@ -5194,27 +5194,27 @@
       initialExt: 'new',   /* v89.93（整改 E12）：自建城预置 6 块城外资源地，落地即可产 */
     });
     GAME.registerCity(city);   /* v89.161：入库唯一出口（含旧币池接线） */
-    /* 筑城后该野地转为城池地块，从附属野地中移除 */
+    /* 筑城后该野地转为城市地块，从附属野地中移除 */
     s.wilds = (s.wilds || []).filter(function (w) { return w.ci !== ci; });
     GAME.log('🏯 于 格#' + ci + ' 筑新城「' + city.name + '」（耗 净水/生物质/电能/废钢/旧币 各 ' + U.fmt(GAME.BUILD_CITY_COST.grain) + '）', 'sys', 'admin');
     return { ok: true, msg: '筑城成功：' + city.name, city: city };
   };
 
   /* ============================================================
-   * 城池坐标与迁址（v70 · 老板）
+   * 城市坐标与迁址（v70 · 老板）
    * ------------------------------------------------------------
    * 老板三条：
-   *   ① 「城池的主界面提供其坐标（500×500），自动确认」；
-   *   ② 「一键随机当前城池坐标位置（除名城，名城固定）」；
-   *   ③ 「为玩家城池提供坐标切换，移动到某坐标时，替换原地块建筑」
+   *   ① 「城市的主界面提供其坐标（500×500），自动确认」；
+   *   ② 「一键随机当前城市坐标位置（除名城，名城固定）」；
+   *   ③ 「为玩家城市提供坐标切换，移动到某坐标时，替换原地块建筑」
    *
    * 口径（唯一出口，界面与业务共用 —— 界面置灰与真执行读同一份判据）：
    *   · 可迁 = **自建城**（`type === 'self'`）。攻占来的各档名城带 origId，
    *     它的坐标是"历史上就在那里"的地理事实 → 固定（老板："除名城，名城固定"）。
    *   · 可迁入的坐标 = **平原**、界内（0~499）、且无任何占用
-   *     （我方城 / 系统城 / 野外城池 / 已占野地）。与「平原筑城」同一条地形约束 ——
+   *     （我方城 / 系统城 / 野外城市 / 已占野地）。与「平原筑城」同一条地形约束 ——
    *     自建城脚下必是平原，所以"旧地块还原"有确定答案：还回平原。
-   *   · 「替换原地块建筑」= 旧坐标那格归还地图（恢复地形），新坐标那格成为城池。
+   *   · 「替换原地块建筑」= 旧坐标那格归还地图（恢复地形），新坐标那格成为城市。
    * ============================================================ */
   GAME.COORD_MAX = (DATA.MAP_W || 500) - 1;
   GAME.coordText = function (city) {
@@ -5230,7 +5230,7 @@
   /* 目标格是否可迁入 —— **唯一判据**（球系：按格索引 ci） */
   GAME.canCityMoveTo = function (city, ci) {
     var s = GAME.state;
-    if (!s || !city) return { ok: false, msg: '城池不存在' };
+    if (!s || !city) return { ok: false, msg: '城市不存在' };
     if (!GAME.isMovableCity(city)) {
       return { ok: false, msg: '名城地望固定 —— 只有自建城可以迁址' };
     }
@@ -5241,11 +5241,11 @@
     }
     if (city.ci === ci) return { ok: false, msg: '已在目标格上' };
     var own = GAME.map.ownCityAt(ci);
-    if (own) return { ok: false, msg: '该格已有我方城池「' + own.name + '」' };
+    if (own) return { ok: false, msg: '该格已有我方城市「' + own.name + '」' };
     var npc = GAME.map.npcAt(ci);
     if (npc) return { ok: false, msg: '该格为名城「' + npc.name + '」所据，不可占用' };
     var fort = GAME.map.fortAt(ci);
-    if (fort) return { ok: false, msg: '该格是野外城池「' + fort.name + '」，需先攻取' };
+    if (fort) return { ok: false, msg: '该格是野外城市「' + fort.name + '」，需先攻取' };
     var w = GAME.map.wildAt(ci);
     if (w) return { ok: false, msg: '该格是已占野地，不可占用' };
     if (SP.cells[ci].type !== 'plain') {
@@ -5254,14 +5254,14 @@
     }
     return { ok: true };
   };
-  /* 迁址（唯一执行）：旧格归还地图 → 新址脚下变城池 → 格索引落定 */
+  /* 迁址（唯一执行）：旧格归还地图 → 新址脚下变城市 → 格索引落定 */
   GAME.moveCityTo = function (cityId, ci) {
     var city = cityId ? GAME.cityById(cityId) : GAME.currentCity();
     var chk = GAME.canCityMoveTo(city, ci);
     if (!chk.ok) return chk;
     ci = Math.round(Number(ci));
     var fromCi = city.ci;
-    /* ① 旧格归还：走「放弃城池」同一出口 restoreCityTile（自建城 → 还回平原） */
+    /* ① 旧格归还：走「放弃城市」同一出口 restoreCityTile（自建城 → 还回平原） */
     GAME.restoreCityTile(city);
     /* ② 落新址（ci = 身份；x/y/lon/lat 为派生缓存，必须同步刷新） */
     city.ci = ci;
@@ -5280,10 +5280,10 @@
     }
     return null;
   };
-  /* 一键随机（老板："一键随机当前城池坐标位置"） */
+  /* 一键随机（老板："一键随机当前城市坐标位置"） */
   GAME.randomMoveCity = function (cityId) {
     var city = cityId ? GAME.cityById(cityId) : GAME.currentCity();
-    if (!city) return { ok: false, msg: '城池不存在' };
+    if (!city) return { ok: false, msg: '城市不存在' };
     if (!GAME.isMovableCity(city)) return { ok: false, msg: '名城地望固定 —— 只有自建城可以迁址' };
     var c = GAME.randomCityCoord(city);
     if (!c) return { ok: false, msg: '星球上暂无可迁的平原空地' };
@@ -5706,7 +5706,7 @@
           lack.push((md ? md.name : mk) + ' ' + (sItems[mk] || 0) + '/' + mats[mk]);
         }
       }
-      return { ok: false, msg: '打造材料不足：' + lack.join('、') + '（攻打野地或城池可获）' };
+      return { ok: false, msg: '打造材料不足：' + lack.join('、') + '（攻打野地或城市可获）' };
     }
     GAME.payCost(cost);
     GAME.payMaterials(itemId);
@@ -5943,11 +5943,11 @@
       + (repCost ? '（声望 -' + repCost + '）' : '') };
   };
 
-  /* --------- 守将加成（城守对城池经营的作用） ---------
+  /* --------- 守将加成（城守对城市经营的作用） ---------
    * 报告 9.2：治理1点 = 产量+1%、建造速度+1%；武力1点 = 征兵速度+0.5%；
    *           谋略1点 = 研究速度+0.5%、城防+0.5%
    *
-   * v63（老板）：「守将属性**只对当前城池**起加成作用，不同城市有不同的守将」。
+   * v63（老板）：「守将属性**只对当前城市**起加成作用，不同城市有不同的守将」。
    * 改前是 `guardBonusTotal()` —— 把**全境所有守将**的加成累加起来，
    * 然后拿这个总数去算产量（`prodFactors`）、建造加速、征兵加速、研究加速。
    * 于是一个 B 城的守将也能给 A 城加成，甚至加成哪个城加起来都一样 ——
@@ -5957,7 +5957,7 @@
    *   · 征兵   → `GAME.guardBonus(city).train`
    *   · 研究   → 研究由某城的研习所发起，取**发起城**的守将（`S.research(id, cityId)`）
    * ------------------------------------------------------------ */
-  /* 城池建造加速系数（**城主**治理 1 点 → 建造速度 +1%，最多加速 60%）——
+  /* 城市建造加速系数（**城主**治理 1 点 → 建造速度 +1%，最多加速 60%）——
      **按城取**：传哪座城就只吃哪座城的城主。
      v89.113：原名 guardBuildMult（守将建造）—— 职能迁往城主后**改名对齐**
      （名与实不符的名字就是下一个 bug 的温床；全消费点已同步）。 */
@@ -6064,7 +6064,7 @@
 
   /* 全部守将加成累加（多城多守将则叠加）
    * ⛔ v63 已删 —— 它是"守将加成被当成全局数"的源头。
-   * 老板：「守将属性只对当前城池起加成作用」→ 需要加成的地方一律传城，
+   * 老板：「守将属性只对当前城市起加成作用」→ 需要加成的地方一律传城，
    * 走 `GAME.guardBonus(city)`（唯一出口）。留着这个函数就等于留了个后门，
    * 顺手改回全境口径只要一行 —— 所以按项目规矩**删掉**而不是留着不用。 */
   /* --------- 城防 --------- */
@@ -6138,7 +6138,7 @@
   GAME.buildTowers = function (cityId, n) {
     var s = GAME.state;
     var city = cityId ? GAME.cityById(cityId) : GAME.currentCity();
-    if (!s || !city) return { ok: false, msg: '城池不存在' };
+    if (!s || !city) return { ok: false, msg: '城市不存在' };
     var lv = GAME.buildingLevel(city, 'gongjiangzuofang');
     if (lv <= 0) return { ok: false, msg: city.name + '尚无机工坊，无从制造' };
     n = Math.floor(Number(n) || 0);
@@ -6148,7 +6148,7 @@
       return { ok: false, msg: '已达上限：作坊 Lv' + lv + ' 最多造 ' + GAME.towerCapOf(city) + ' 座箭塔' };
     }
     n = Math.min(n, room);
-    /* 费用从**该城**库存扣（v60 起资源归属城池）——
+    /* 费用从**该城**库存扣（v60 起资源归属城市）——
        ⚠️ 不要用 `canAfford`/`payCost`：那两个绑的是**当前城**的库存，
        在 B 城的界面上建设 A 城的箭塔就会扣错城。 */
     var R = GAME.res(city);
@@ -6271,7 +6271,7 @@
    *   + **防守侧专属**「是否出城迎战」（sortie）—— 出城迎战 = 前出到围墙之外迎敌，
    *     把前线前移、阻敌近墙（战场引擎里 adv 前移到 `T.SORTIE_ADV`）。
    * · 攻方：读玩家「军务 · 出征 / 练兵场 → 出征战术」的设置（side='atk'）；
-   * · 守方：**我方城池被攻打时**读玩家「军务 · 防守」的设置（side='def'，ctx.playerDef）；
+   * · 守方：**我方城市被攻打时**读玩家「军务 · 防守」的设置（side='def'，ctx.playerDef）；
    *   NPC 守方仍用默认动作（v89.203 起：野地/据点/名城一律**全员前进**）。
    * 非法值一律回落默认 —— 否则单位行位会变成 NaN，整场战斗静默跑坏。
    * ⚠️ 老档迁移：v89.109 前 `s.tactics` 是**单一表**（只服务出征）→ 归入 atk 侧，
@@ -6479,7 +6479,7 @@
   };
 
   /* ============================================================
-   * v89.129（老板：「任何野外目标（野地，城池，名城等）均应有英雄带领，
+   * v89.129（老板：「任何野外目标（野地，城市，名城等）均应有英雄带领，
    *   根据等级配备相称资质和等级的英雄」）
    * ------------------------------------------------------------
    * 野外目标守将的**资质档位映射**（唯一出口）—— 三处共用：
@@ -6728,8 +6728,8 @@
    *     等级 ≥ DATA.WILD_GUARD_LV 下限（v89.185：base + (lv−1)×perLv —— 与守将生成同尺）；
    *   · 据点：资质 = guardRankIdxOf('fort', lv)（与 fortGuardOf 同源）、
    *     等级 ≥ DATA.FORT_GUARD_LV 下限（v89.185：base + (lv−1)×perLv）；
-   *   · 城池/名城：资质天启体、等级 ≥ NPC_GUARD_LV[type] 下限
-   *     （与 npcCityGuard 同档 —— v89.64「英雄默认资质为天启体，等级根据城池级别设定范围」）。
+   *   · 城市/名城：资质天启体、等级 ≥ NPC_GUARD_LV[type] 下限
+   *     （与 npcCityGuard 同档 —— v89.64「英雄默认资质为天启体，等级根据城市级别设定范围」）。
    * 返回 { rankId, rankName, lv, text }；调兵（owncity）无建议 → null。
    * 等级建议与守将公式"下限同尺"由 smoke §112② 逐档交叉核对（防两处漂移）。
    * ============================================================ */
@@ -6965,7 +6965,7 @@
     var g = GAME.lordGeneralOf ? GAME.lordGeneralOf() : null;
     if (!g) return { ok: false, msg: '君主不在帐下' };
     var B = DATA.LORD_BREAK, city = GAME.currentCity();
-    if (!city) return { ok: false, msg: '无城池可供练功' };
+    if (!city) return { ok: false, msg: '无城市可供练功' };
     var cap = GAME.genLevelCap(g);
     if (GAME.staNow(g) < B.trainSta) {
       return { ok: false, msg: g.name + ' 体力不足（需 ' + B.trainSta + '，现 '
@@ -7137,8 +7137,8 @@
     var tr = (B.trials || [])[n - 1];
     if (!tr) return null;
     var s = GAME.state;
-    /* v91.25（老板）：「君主突破的城池要求应是**帝国口径**（所有星球）——此前只数当前星球」。
-       军队同款：跨星球求和（与城池同源，避免"两部口径"）。 */
+    /* v91.25（老板）：「君主突破的城市要求应是**帝国口径**（所有星球）——此前只数当前星球」。
+       军队同款：跨星球求和（与城市同源，避免"两部口径"）。 */
     var cities = GAME.empireCityCount ? GAME.empireCityCount() : (s.cities || []).length;
     var army = 0;
     var _allCities = (s.cities || []).slice();
@@ -7153,7 +7153,7 @@
       if (jewelIds[k2] && (s.items[k2] || 0) > 0) jk++;
     });
     var rows = [
-      { key: 'cities', label: '城池', cur: cities, goal: tr.cities, ok: cities >= tr.cities },
+      { key: 'cities', label: '城市', cur: cities, goal: tr.cities, ok: cities >= tr.cities },
       { key: 'army', label: '军队（兵力）', cur: army, goal: tr.army, ok: army >= tr.army },
       { key: 'gold', label: '资源（持旧币）', cur: gold, goal: tr.gold, ok: gold >= tr.gold },
       { key: 'treasure', label: '宝物（珠宝）', cur: jk, goal: tr.treasure, ok: jk >= tr.treasure },
@@ -7378,7 +7378,7 @@
     var cur = cityId ? GAME.cityById(cityId) : GAME.currentCity();
     for (var i = 0; i < s.queues.build.length; i++) {
       var q = s.queues.build[i];
-      /* v14：外城地块按城池独立，同一下标会在多城间重复，须同时匹配 cityId */
+      /* v14：外城地块按城市独立，同一下标会在多城间重复，须同时匹配 cityId */
       var sameCity = !cur || !q.cityId || q.cityId === cur.id;
       var hit = kind === 'city'
           ? (GAME.slotEq(q.gridIndex, idx) && (q.type === 'build' || q.type === 'upgrade') && sameCity)
@@ -7402,20 +7402,20 @@
   };
 
   /* ============================================================
-   * 城池间调拨（v60 · 需求 4）
+   * 城市间调拨（v60 · 需求 4）
    * ------------------------------------------------------------
-   * 老板：「城池之间，资源需要运输，英雄需要派遣，为自己占据的城池提供相关功能按钮」。
-   * 资源既然归属城池（见 GAME.res 的注释），就必须给出**搬运**的手段 ——
+   * 老板：「城市之间，资源需要运输，英雄需要派遣，为自己占据的城市提供相关功能按钮」。
+   * 资源既然归属城市（见 GAME.res 的注释），就必须给出**搬运**的手段 ——
    * 否则多城经营会变成"每座城各自为政、资源互不相通"的死局。
    *
    *   · 运输：即时结算（不做车队动画），按**距离**抽损耗 ——
    *     让"就近布局"有意义，也让"把后方的粮运到前线"有代价。
-   *     损耗可被【交易站】等级削减（城池经营对运输的回报）。
+   *     损耗可被【交易站】等级削减（城市经营对运输的回报）。
    *     目的地仓容不足时**原路带回**（不做静默丢弃）。
    *   · 派遣：一人一城，改 `g.cityId` 即可。守将必须先解任 ——
    *     否则会出现"人已被派走、守将加成还挂在原城"的静默失效（本项目老毛病）。
    * ============================================================ */
-  /* 可运输的资源：幸存者不在其列（幸存者随城池自然增长，不靠搬运）。
+  /* 可运输的资源：幸存者不在其列（幸存者随城市自然增长，不靠搬运）。
      v89.161（老板 5）：**旧币也不在其列** —— 旧币是玩家层级通用资源（唯一池 s.gold），
      运旧币等于"从池子搬到池子"，途中还要白白损耗一截（改前正是这样静默漏账）。 */
   GAME.TRANSPORT_KEYS = DATA.RES_ORDER.filter(function (k) { return k !== 'gold'; });
@@ -7448,7 +7448,7 @@
   /* ============================================================
    * v89.103（老板「资源运输应当采用出征界面」）：**随军辎重** —— 唯一出口组
    * ------------------------------------------------------------
-   * 玩法改动：城池之间运资源不再是"点一下就瞬移"的隔空搬运，而是**跟兵走**：
+   * 玩法改动：城市之间运资源不再是"点一下就瞬移"的隔空搬运，而是**跟兵走**：
    *   出征界面选好英雄 + 兵种 + 各方资源数量 → 大军押着辎重开拔
    *   → 抵达后兵力入城、辎重按既有运输口径落账（距离损耗 + 目的地仓容）。
    *   · 载重：`DATA.TROOPS[].load` 从此**真的**是"能挑多少"（此前是死字段）——
@@ -7538,7 +7538,7 @@
   /* ============================================================
    * ⛔ v89.138（老板 2）：「去掉度支归集这个菜单功能」——整条退役。
    * 删净：`GAME.budgetKeep` + `GAME.budgetGather`（跨城资金调剂）+
-   * 城池面板按钮 + `case 'budget-gather'`。
+   * 城市面板按钮 + `case 'budget-gather'`。
    * 资金调剂未丢：**运输**（出征界面 · 本境调运）可随军押运旧币以外的资源；
    * 旧币是货币、不走运输 —— 各城府库独立经营（这本就是"分城发展"的一部分）。
    * 如需恢复：本段代码见 `backup/v89138/domain.js`（判据：`GAME.budgetGather = function`）。
@@ -7549,7 +7549,7 @@
   /* 英雄所在城（v60 · 需求 4）：**唯一出口**。
      `g.cityId` 为空时（历史存档 / 刚被解任 / 测试构造）归到**当前城** ——
      不兜底的话，这些英雄会从英雄页的"本城"名单里凭空消失，
-     玩家会以为人丢了（这是"归属城池"改造最容易踩的坑）。 */
+     玩家会以为人丢了（这是"归属城市"改造最容易踩的坑）。 */
   GAME.genCityOf = function (g) {
     var s = GAME.state;
     if (!g) return null;
@@ -7570,14 +7570,14 @@
     return GAME.currentCity() || (s && s.cities && s.cities[0]) || null;
   };
   /* ============================================================
-   * v89.59（老板需求 3）：**军队派驻** —— 己方城池间转移军队
+   * v89.59（老板需求 3）：**军队派驻** —— 己方城市间转移军队
    * ------------------------------------------------------------
-   * 与「资源运输」（有损耗）/「英雄派遣」并列的第三条城池间操作。
+   * 与「资源运输」（有损耗）/「英雄派遣」并列的第三条城市间操作。
    * 即时结算（与英雄派遣一致）：**兵士行军不损耗**，损耗只发生在物资上。
    * 校验：两城都在、非同一城、各兵种库存充足、目标城练兵场容量可容纳。
    * ============================================================ */
   /* ============================================================
-   * v89.103（老板「任意自身城池向其他城池进行资源运输，应当采用出征界面」）
+   * v89.103（老板「任意自身城市向其他城市进行资源运输，应当采用出征界面」）
    * ------------------------------------------------------------
    * **本境调运**（唯一出口）：兵力 + 辎重一起走行军通道。
    *   · 校验：兵力足 → 目标城练兵场容量 → 带队英雄（人得在本城）→ **运力够不够**
@@ -7591,7 +7591,7 @@
     var s = GAME.state;
     if (!s) return { ok: false, msg: '尚未开局' };
     var from = GAME.cityById(fromId), to = GAME.cityById(toId);
-    if (!from || !to) return { ok: false, msg: '城池不存在' };
+    if (!from || !to) return { ok: false, msg: '城市不存在' };
     if (from.id === to.id) return { ok: false, msg: '不能派驻本城' };
     var moved = 0;
     for (var k in (army || {})) {
@@ -7603,7 +7603,7 @@
       moved += n;
     }
     if (!moved) return { ok: false, msg: '请先选择要派驻的兵力' };
-    /* ⛔ v89.220（老板 2）：「向己方城池派遣时，提示练兵场容量不足。练兵场有什么容量，
+    /* ⛔ v89.220（老板 2）：「向己方城市派遣时，提示练兵场容量不足。练兵场有什么容量，
        出征才有出征兵力上限吧」——**目标城容量闸整条退役**：
        练兵场容量只作为**出征**（从本城发兵）的兵力上限（prepare 的 mode.battle 闸）；
        驻军（调兵 / 派遣）不以目标城练兵场容量为限。v89.102～v89.219 曾按"与出征同一把尺"
@@ -7638,7 +7638,7 @@
     }
     /* ============================================================
      * v89.87（老板需求 2）：改走**行军通道**（原先瞬间到达直接改兵账）——
-     * "派兵只通过出征通道"（老板拍板，含自身城池/野地/其他城池统一出口）。
+     * "派兵只通过出征通道"（老板拍板，含自身城市/野地/其他城市统一出口）。
      * 校验（含目标城练兵场容量）仍在出发完成；抵达时再验一次，
      * 超容则大军整体折返（见 expedition 的 owncity 分支）。
      * "一律要选将"（老板拍板）：调兵也需带队英雄（随军入驻新城）。
@@ -7684,7 +7684,7 @@
    * 和"辖区特产岁贡"（专有资源）互补。
    *
    * 冷却按**游戏日**（与每日产出同一把尺子），代价从**本城**库存扣 ——
-   * 资源归属城池以后，"在 B 城征调却扣 A 城的粮"是不允许出现的。
+   * 资源归属城市以后，"在 B 城征调却扣 A 城的粮"是不允许出现的。
    * 数据源 DATA.CITY_OPTS：加一条新选项 = 加一行数据（不动业务代码）。
    * ============================================================ */
   GAME.cityOptsOf = function (city) {
@@ -7705,7 +7705,7 @@
   GAME.doCityOpt = function (cityId, optId) {
     var s = GAME.state;
     var city = GAME.cityById(cityId) || GAME.currentCity();
-    if (!s || !city) return { ok: false, msg: '城池不存在' };
+    if (!s || !city) return { ok: false, msg: '城市不存在' };
     var opt = null;
     (DATA.CITY_OPTS || []).forEach(function (o) { if (o.id === optId) opt = o; });
     if (!opt) return { ok: false, msg: '没有这项操作' };

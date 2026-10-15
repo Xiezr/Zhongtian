@@ -357,7 +357,7 @@
     if ((s.res.gold || 0) < gold) return { ok: false, msg: '旧币不足（需 ' + U.fmt(gold) + '）' };
     var city = (cityId && GAME.cityById(cityId)) || GAME.currentCity() || s.cities[0];
     s.res.gold -= gold;
-    /* 真正归队：按兵种把伤兵加回城池。
+    /* 真正归队：按兵种把伤兵加回城市。
        此前只是 `s.wounded = 0` 然后把「归队」写进日志 —— 兵没有回来，
        治疗纯粹是一笔没有回报的旧币消耗。 */
     var comp = s.woundedArmy || {}, back = 0, backBy = {};
@@ -955,7 +955,7 @@
      v60（需求 4/6）：新城**继承该城剩余的库藏** —— 未占据时那份库存是派生的，
      占领就地转正（× cityInherit）。不继承的话，打下一座 9 级首府只能得到一座
      "0 粮 0 旧币"的空城，与"这城本该有多少"完全脱节。
-     fromCity 是**出征的出发城**（战利品记在它头上，资源归属城池）。 */
+     fromCity 是**出征的出发城**（战利品记在它头上，资源归属城市）。 */
   /* ============================================================
    * v89.99（老板「幸存者不足就开发其他路径」）：**俘获溃卒** —— 唯一出口
    * 打胜时按敌军损失比例把溃卒收入**俘虏营**（s.captives，逐兵种）。
@@ -1074,7 +1074,7 @@
     var plan = GAME.conscriptPlanOf(s.captives);
     if (!plan.men) return { ok: false, msg: '俘虏营为空' };
     var city = (cityId && GAME.cityById(cityId)) || GAME.currentCity() || s.cities[0];
-    if (!city) return { ok: false, msg: '没有可安置的城池' };
+    if (!city) return { ok: false, msg: '没有可安置的城市' };
     var Rc = GAME.res(city);
     if ((Rc.gold || 0) < plan.cost) {
       return { ok: false, msg: '旧币不足（收编需 ' + U.fmt(plan.cost) + '，现有 ' +
@@ -1153,7 +1153,7 @@
     newCity.state = npcCity.state;      // 所属区
     newCity.origId = npcCity.id;        // 原 NPC id
     /* ============================================================
-     * v60（需求 6）：**建筑就地转正** —— 未占据城池的设定是"建筑默认全满、
+     * v60（需求 6）：**建筑就地转正** —— 未占据城市的设定是"建筑默认全满、
      * 均 N 级"（见 GAME.npcCityShadow），所以攻占一座 9 级城，拿到的就是
      * 一座 9 级满配城 + 围墙 + 满额外城地块。
      * 改前这里把非政务厅格**全部清空**、只补 2 座 1 级居所 ——
@@ -1181,10 +1181,10 @@
     });
     newCity.def = npcCity.def || 0;
     /* v60（需求 4）：**占领不再另发一次性战利品** ——
-       与「占领野地不取财货」同一铁律：城池连同剩余库藏（上面的 startRes）一起归你。
+       与「占领野地不取财货」同一铁律：城市连同剩余库藏（上面的 startRes）一起归你。
        原先这里还发一份 genLoot，与出征结算里的 cityResMul 是两个出口。
        材料与军械缴获不受影响（那是"城里存着的东西"，与财货不同）。 */
-    /* 打造材料：按城池等级掉落 */
+    /* 打造材料：按城市等级掉落 */
     GAME.battle.grantMaterials(DATA.CITY_MATERIAL[npcCity.type] || DATA.CITY_MATERIAL.jun, 1, '缴获物资');
     /* 军械战利品：图纸与成品装备（装备获取途径之一） */
     var eq = GAME.battle.rollEquipLoot(npcCity);
@@ -1240,13 +1240,13 @@
     /* 美人 50% 几率（攻占重镇/首府）—— v91.02：传出发城，女将归降该城（不再无归属） */
     if (npcCity.type !== 'capital' && Math.random() < 0.5) GAME.battle.grantBeauty(npcCity, fromCity);
     /* v90.92：任务系统退役 —— 原 advanceConquer（已占城计数）已删。 */
-    GAME.log.war('占领新城池：' + npcCity.name + '！（威望 +' + repGain + '）');
+    GAME.log.war('占领新城市：' + npcCity.name + '！（威望 +' + repGain + '）');
     /* v89.93（整改 E5）：**占城演出** —— 核心目标达成，值一张卡（此前只有一行日志） */
     if (GAME.ui && GAME.ui.moment) {
       GAME.ui.moment({
         kind: 'card', icon: '🏯', title: '克城 · ' + npcCity.name,
         /* v89.116：原读 `DATA.CITY_TIER_NAME`（不存在）→ 提示里显示原始英文键。
-           真口径 = `GAME.cityTierName`（读 DATA.CITY_TIER，与城池信息面板同源）。 */
+           真口径 = `GAME.cityTierName`（读 DATA.CITY_TIER，与城市信息面板同源）。 */
         sub: '威望 +' + repGain + '　·　' + (npcCity.state || '') + '　·　'
           + (GAME.cityTierName ? GAME.cityTierName({ type: npcCity.type }) : npcCity.type),
         lines: ['城防已破，府库入我囊中。', '「' + npcCity.name + '」自此易帜，天下侧目。']
@@ -1325,7 +1325,7 @@
     var tier = (c && c.type) ? c.type
       : (c && c.kind === 'wild' ? 'wild'
       : ((c && c.dropType) || 'county'));
-    /* v89.109（老板「10 级野外城池资源量那么少，必有错误」）：三处修正 ——
+    /* v89.109（老板「10 级野外城市资源量那么少，必有错误」）：三处修正 ——
        ① 据点曲线 1.35 → **2.15**：取证（probe_v89109_fortres.js）——
           旧口径下 Lv10 据点打 22.4 万守军只抢 44 万资源（掠夺/守军 = 1.97），
           而聚落同口径是 785 —— 打一场损兵成本就 ≥2000 万（1 万步行机 ≈ 1050 万资源），
@@ -1359,7 +1359,7 @@
       iron: Math.round(_rg189('iron', 8000, 15000) * mult),
       gold: Math.round(_rg189('gold', 200, 600) * mult),
     };
-    /* 珠宝：忠诚管理的补给来源（越高等级城池越多）。dry（估算）不掷骰、不落账 */
+    /* 珠宝：忠诚管理的补给来源（越高等级城市越多）。dry（估算）不掷骰、不落账 */
     if (!dry && rd() < 0.55) {
       var jewels = DATA.ITEMS.filter(function (it) { return it.type === 'jewel'; });
       var jTop = Math.min(jewels.length, mult + 3);
@@ -1556,7 +1556,7 @@
     g.loyalty = 60;
     if (home) g.cityId = home.id;
     s.generals.push(g);
-    GAME.log.war('守将 ' + h.name + ' 归降！（攻打城池必降）');   /* v89.188（老板 3）：文案中性化 */
+    GAME.log.war('守将 ' + h.name + ' 归降！（攻打城市必降）');   /* v89.188（老板 3）：文案中性化 */
     return g;
   };
 
@@ -1576,7 +1576,7 @@
     var home = fromCity || GAME.currentCity() || (s.cities && s.cities[0]) || null;
     if (home) g.cityId = home.id;
     s.generals.push(g);
-    GAME.log.war('获得女将 ' + b.name + '！（掠夺/占领野外城池50%几率）');   /* v89.188（老板 3）：文案中性化 */
+    GAME.log.war('获得女将 ' + b.name + '！（掠夺/占领野外城市50%几率）');   /* v89.188（老板 3）：文案中性化 */
     return g;
   };
 
@@ -1720,14 +1720,14 @@
     return { mul: Math.max(P.minMul, Math.pow(P.decay, gap)), need: need, wl: wl, gap: gap };
   };
 
-  /* 目标解析：野地 / 城池 / 野外城池（球系：按格索引 ci） */
+  /* 目标解析：野地 / 城市 / 野外城市（球系：按格索引 ci） */
   GAME.battle.resolveTarget = function (target) {
     var s = GAME.state;
     if (!target) return { ok: false, msg: '未指定目标' };
     if (target.kind === 'wild') {
       var tcell = (GAME.sphere && GAME.sphere.cells) ? GAME.sphere.cells[target.ci] : null;
       if (!tcell) return { ok: false, msg: '目标格越界' };
-      if (tcell.type === 'city') return { ok: false, msg: '该处为城池，请点击城池出征' };
+      if (tcell.type === 'city') return { ok: false, msg: '该处为城市，请点击城市出征' };
       /* v90.69：野地**地形口径 = 球面**（所见即所得）——优先用点选带入的 terrain；无则读球面地块。 */
       var _wildTerr = target.terrain || tcell.type;
       var lv = GAME.map.wildLevelNow ? GAME.map.wildLevelNow(target.ci) : GAME.map.wildLevel(target.ci);
@@ -1739,24 +1739,24 @@
     }
     if (target.kind === 'fort' && GAME.map.fortAt) {
       var f = GAME.map.fortAt(target.ci);
-      if (!f) return { ok: false, msg: '此处并无野外城池' };
+      if (!f) return { ok: false, msg: '此处并无野外城市' };
       var fg = GAME.map.fortGarrison(f.level);
-      /* v61：野地城池建筑全满；布局 GAME.fortPlanOf · 城防 GAME.fortDefOf · 守将 GAME.fortGuardOf。 */
-      return { ok: true, kind: 'fort', ci: f.ci, x: f.x, y: f.y, lon: f.lon, lat: f.lat, lv: f.level, name: f.name + '（野外城池 Lv' + f.level + '）',
+      /* v61：野地城市建筑全满；布局 GAME.fortPlanOf · 城防 GAME.fortDefOf · 守将 GAME.fortGuardOf。 */
+      return { ok: true, kind: 'fort', ci: f.ci, x: f.x, y: f.y, lon: f.lon, lat: f.lat, lv: f.level, name: f.name + '（野外城市 Lv' + f.level + '）',
         fort: f, garrison: fg, def: GAME.fortDefOf(f), plan: GAME.fortPlanOf(f),
         guard: GAME.fortGuardOf(f),
         cityType: 'fort', dropType: 'fort' };
     }
-    /* v89.87（老板需求 2）：调兵目标 —— 本境自家城池（走行军通道） */
+    /* v89.87（老板需求 2）：调兵目标 —— 本境自家城市（走行军通道） */
     if (target.kind === 'owncity') {
       var oc = GAME.cityById(target.id);
-      if (!oc) return { ok: false, msg: '目标城池不存在' };
+      if (!oc) return { ok: false, msg: '目标城市不存在' };
       return { ok: true, kind: 'owncity', id: oc.id, ci: oc.ci, x: oc.x, y: oc.y, lon: oc.lon, lat: oc.lat, name: oc.name, city: oc };
     }
     if (target.kind === 'city') {
-      var npc = target.npc || null;   // 允许直接传入城池对象（测试/临时目标）
+      var npc = target.npc || null;   // 允许直接传入城市对象（测试/临时目标）
       if (!npc) (s.map.cities || []).forEach(function (c) { if (c.id === target.id) npc = c; });
-      if (!npc) return { ok: false, msg: '目标城池不存在（可能已被攻占）' };
+      if (!npc) return { ok: false, msg: '目标城市不存在（可能已被攻占）' };
       var ng = GAME.npcCityGuard(npc);
       return { ok: true, kind: 'city', id: npc.id, lv: GAME.cityLvOf(npc), name: npc.name,
         x: npc.x, y: npc.y, ci: npc.ci, lon: npc.lon, lat: npc.lat,
@@ -1766,7 +1766,7 @@
     return { ok: false, msg: '未知目标类型' };
   };
 
-  /* 掉落档位：野外城池 / 系统城池（聚落、重镇）/ 名城（首府、旧都） */
+  /* 掉落档位：野外城市 / 系统城市（聚落、重镇）/ 名城（首府、旧都） */
   GAME.battle.dropTierOf = function (npc) {
     if (!npc) return 'county';
     if (npc.type === 'capital' || npc.type === 'zhou') return npc.type;
@@ -1800,7 +1800,7 @@
   };
 
   /* 目标城的**资源数量**情报（层 ②）。
-     城池（未占据名城）报它的库藏；据点没有库藏（掠夺所得是"打下来才有"的），
+     城市（未占据名城）报它的库藏；据点没有库藏（掠夺所得是"打下来才有"的），
      所以报**掠夺可得**的量 —— 两者都回答"这里有多少东西"。 */
   GAME.battle.resReportOf = function (t) {
     if (!t) return null;
@@ -2003,7 +2003,7 @@
       types: ['珠宝（赏赐英雄、提升忠诚）', '材料（打造高阶装备的主料）',
         '军械图纸（打造套装件的必需物）', '成品装备（直接佩戴）'],
       materials: matNames,
-      equip: (t.kind === 'fort' || t.kind === 'city') ? '按城池档次掉落图纸与成品装备' : '野地不掉军械',
+      equip: (t.kind === 'fort' || t.kind === 'city') ? '按城市档次掉落图纸与成品装备' : '野地不掉军械',
     } : null;
     return out;
   };
@@ -2029,7 +2029,7 @@
     for (var id in (army || {})) n += Math.floor(army[id] || 0);
     return n;
   };
-  /* 城池的出征容量（人马）。无练兵场 → 0（= 不设限，见调用处的 `cap > 0` 判据） */
+  /* 城市的出征容量（人马）。无练兵场 → 0（= 不设限，见调用处的 `cap > 0` 判据） */
   GAME.battle.marchCapOf = function (city) {
     if (!city) return 0;
     var xc = GAME.buildingLevel(city, 'xiaochang') || 0;
@@ -2056,7 +2056,7 @@
     var s = GAME.state;
     var mode = GAME.battle.modeOf(modeId);
     var city = (opts.cityId && GAME.cityById(opts.cityId)) || GAME.currentCity();
-    if (!city) return { ok: false, msg: '无城池可出兵' };
+    if (!city) return { ok: false, msg: '无城市可出兵' };
     var gen = null;
     for (var i = 0; i < s.generals.length; i++) if (s.generals[i].id === genId) gen = s.generals[i];
     /* v89.137（老板 7）：**station 增援允许不带将** ——
@@ -2087,7 +2087,7 @@
     if (!t.ok) return { ok: false, msg: t.msg || '目标无效' };
 
     /* v89.87（老板需求 2）：调兵 / 驻守 / 采集的前置校验（统一出口的口子） */
-    if (mode.id === 'transfer' && t.kind !== 'owncity') return { ok: false, msg: '调兵目标须为本境城池' };
+    if (mode.id === 'transfer' && t.kind !== 'owncity') return { ok: false, msg: '调兵目标须为本境城市' };
     /* ============================================================
      * v89.138（老板 2）：「英雄派遣」并进出征界面后，原 `GAME.doDispatch` 的
      * **目标城席位预检**迁移到这道唯一闸口（入场即拦，比"到了再发现住不下"好）——
@@ -2142,7 +2142,7 @@
 
     /* ⛔ v89.198（老板「清除战法这个玩法」）：战法出行校验随玩法全撤退役。 */
 
-    /* v89.108（老板）：**领地上限** —— 占领城池 / 拔除据点都会产出一座新城，先过这道闸。
+    /* v89.108（老板）：**领地上限** —— 占领城市 / 拔除据点都会产出一座新城，先过这道闸。
        拦在 `prepare` = 出征两条路（即时结算 / 行军队列）都拦得住；
        **抵达时（opts.arrived）同样拦**：出发后若别处先占了城，兵原路折返（军账守恒护栏
        在 march.arrive / _settleBattle 里），不会"白占一座超编城"。 */
@@ -2193,7 +2193,7 @@
   /* 出征主入口
    * opts.arrived = true 表示这是「行军队列抵达后」的结算：
    *   体力/精力/断粮/兵力校验与扣除都已在出发时完成，此处只负责打与归还。
-   * opts.cityId 指定出发城池（行军结算时城池可能已不是当前视图那座）。 */
+   * opts.cityId 指定出发城市（行军结算时城市可能已不是当前视图那座）。 */
   GAME.battle.expedition = function (target, modeId, atkArmy, genId, opts) {
     opts = opts || {};
     var p = GAME.battle.prepare(target, modeId, atkArmy, genId, opts);
@@ -2203,7 +2203,7 @@
      *   · set-if-unset：重放 / 沙盘已有更权威的快照上下文时不覆盖；
      *   · try/finally 还原（抛错也不漏）。
      * 覆盖范围 = 整段结算（战斗模拟走 withBoost 的快照，采集负重 / 掠夺 / 伤兵回收 /
-     * 侦察分层等**非模拟读点**由此获得正确城池）。
+     * 侦察分层等**非模拟读点**由此获得正确城市）。
      * ============================================================ */
     var Sys191 = GAME.systems;
     var bakCtx191 = Sys191 ? Sys191._techCtx : null;
@@ -2267,8 +2267,8 @@
     }
     /* ============================================================
      * ⛔ v89.198（老板「清除战法这个玩法」）：围困（行军×1.5 / 守军−12% / 城防疲敝 / 破防×1.5）
-     *   随玩法全撤退役；本段只剩**围攻**（据点/城池）：守军与城防按**当前民心**缩放 ——
-     *   民心越失、抵抗越弱（v89.204：民心口径 · 全部城池纳入）。
+     *   随玩法全撤退役；本段只剩**围攻**（据点/城市）：守军与城防按**当前民心**缩放 ——
+     *   民心越失、抵抗越弱（v89.204：民心口径 · 全部城市纳入）。
      * ⚠️ 必须发生在**观战挂起之前**：挂起时保存的 scArmy/scVal 是权威输入，
      *    重放读它（`opts._sim`）不重算 —— 否则同一场战斗两次结算结果会不同。
      * ⚠️ 缩放对**掠夺/占领都生效**（城破了就是破了），但**破防只有占领推进**。
@@ -2748,7 +2748,7 @@
       }
       /* 战利品（v15 按原版铁律重排）：
          · **野地**：掠夺有资源；**占领不给资源** —— 收益在长期加成与采集权
-         · **城池**：掠夺厚（1.7×），占领薄（0.8×，因城池本身会持续纳税） */
+         · **城市**：掠夺厚（1.7×），占领薄（0.8×，因城市本身会持续纳税） */
       var isWild = (t.kind === 'wild');
       var mulTbl = isWild ? (DATA.EXPEDITION.wildResMul || {}) : (DATA.EXPEDITION.cityResMul || {});
       var resMul = mulTbl[mode.id];
@@ -2768,7 +2768,7 @@
           var _ch = GAME.schemeOf('chenhuo');
           raidBonus *= 1 + (_ch ? _ch.eff.lootPct : 0);
         }
-        /* v60（需求 4/6）：**城池**用该城自己的派生库存做战利品来源
+        /* v60（需求 4/6）：**城市**用该城自己的派生库存做战利品来源
            （"侦查看到的数" = "打完搬回来的数"，一个出口）；
            野地/据点仍走 genLoot 的按档位生成。 */
         var loot = (t.kind === 'city' && t.npc)
@@ -2791,7 +2791,7 @@
         }
         loot = _haul.keep;
         gains.haul = _haul;
-        /* v60（需求 4）：战利品归**出征的出发城**（资源归属城池） */
+        /* v60（需求 4）：战利品归**出征的出发城**（资源归属城市） */
         var lootCity = city || GAME.currentCity();
         var Rloot = GAME.res(lootCity);
         for (var lk in loot) { if (loot[lk] > 0) Rloot[lk] = (Rloot[lk] || 0) + loot[lk]; }
@@ -2903,7 +2903,7 @@
          原来的线性公式对二次增长的升级需求，到后期是 750~840 场一级（实测）。 */
       var expR = GAME.battle.battleExp(result.defLossBy, gen);
       /* v83（老板）：「形成经验惩罚机制」——掠夺 / 占领野地时按台阶打折。
-         野地以外（城池 / 野外城池）不适用；打折后保底 1 点（不至于完全归零）。 */
+         野地以外（城市 / 野外城市）不适用；打折后保底 1 点（不至于完全归零）。 */
       if (t.kind === 'wild' && expR.gain > 0) {
         var penR = GAME.battle.expPenaltyOf(gen.level, t.lv);
         if (penR.mul < 1) {
@@ -3019,14 +3019,14 @@
       lootLines.push('战果：据而有之（占领不取财货，回报在此地长久的产量加成与采集权）');
     } else if (win && mode.occupy && t.kind === 'city') {
       /* v60（需求 4/6）：攻占的口径变了 —— 不再另发一笔财货，
-         而是**城池连同其中的库藏**（该城按等级派生的库存 × cityInherit）一起归我。 */
-      lootLines.push('战果：城池易主，其中库藏尽归我有（占领不取现财 —— 财货已在城中）');
+         而是**城市连同其中的库藏**（该城按等级派生的库存 × cityInherit）一起归我。 */
+      lootLines.push('战果：城市易主，其中库藏尽归我有（占领不取现财 —— 财货已在城中）');
     } else if (win && mode.occupy && t.kind === 'fort' && result.claimed) {
       /* v89.186（老板 3）：据点剥离 —— 占据 = **我方前哨**（不转城市；周边野地享 5 项之利）
          v89.193（老板 2）：半径与效果随前哨等级 —— 文案走唯一出口 fortEffectOf（不重算）。 */
       var _fx193r = GAME.fortEffectOf(result.claimed);
       lootLines.push('战果：**收为我方前哨** —— ' + t.name + '（Lv' + result.claimed.lv
-        + ' · 不占城池名额）；周边 ' + _fx193r.radius
+        + ' · 不占城市名额）；周边 ' + _fx193r.radius
         + ' 格内野地：衰减减半 · 采集×' + _fx193r.gatherMul + ' · 驻军上限 ×' + _fx193r.garrisonCapMul
         + ' · ' + (_fx193r.intelFull ? '情报确凿' : '情报半明') + ' · 商税 ' + _fx193r.tax + ' 旧币/现实日');
     }
@@ -3052,7 +3052,7 @@
         + (_cpl.length ? '（' + _cpl.join('、') + '）' : '')
         + '　·　军务处·俘虏营可收编入军（费旧币 = 兵种造价的 50%）');
     }
-    /* v63（老板）：野外城池每日限掠一次 —— 要么告诉玩家"本日额度已用尽"，
+    /* v63（老板）：野外城市每日限掠一次 —— 要么告诉玩家"本日额度已用尽"，
        要么他下次点掠夺被拦下来时会以为"功能坏了"。 */
     if (win && t.kind === 'fort' && mode.id === 'raid') {
       lootLines.push('备注：此据点今日已掠夺，**每日每处限一次**，明日可再来');
@@ -3131,7 +3131,7 @@
   /* 战后归队：幸存者按类型同比例回城；阵亡者按回收率折算为伤兵（另记兵种构成，治疗后再归队）
      ------------------------------------------------------------------
      此前**两条路径都没有归还**：
-       · expedition 只做了 `city.army[id] -= atkArmy[id]`，`result.atkRemain` 从未加回城池
+       · expedition 只做了 `city.army[id] -= atkArmy[id]`，`result.atkRemain` 从未加回城市
          → 派 10 万、零损失打一场，回来城内是 0，每次出征都在凭空蒸发军队
        · applyWounded 只累加 `s.wounded` 这个数字，heal() 也只是把它清零
          → 「伤兵归队」是空话，治疗成了一笔没有任何回报的旧币消耗
@@ -3178,7 +3178,7 @@
   /* ============================================================
    * v89.186（老板 3）：据点剥离 —— **占据 = 野外建筑 + 归属**（不再就地转城市）
    * ------------------------------------------------------------
-   * 沿革：v89.103 曾"拔除 = 就地转为我方一座城"（建筑转正 + 幸存者归附 + 占城池名额）；
+   * 沿革：v89.103 曾"拔除 = 就地转为我方一座城"（建筑转正 + 幸存者归附 + 占城市名额）；
    * 老板拍板改为：**不转城市** —— 占据后作为"我方前哨"（野外建筑）提供 buff：
    *   #1 前哨效应（覆盖内野地衰减减半）· #2 采集增产 · #3 兵站（驻军上限 +50%）
    *   · #5 情报站（守军/守将情报确凿）· #6 商旅税所（每游戏日商税）。
@@ -3194,7 +3194,7 @@
    * ============================================================ */
   GAME.claimFort = function (t, gen, fromCity, result) {
     var s = GAME.state;
-    if (!t || t.kind !== 'fort' || !t.fort) return { ok: false, msg: '不是野外城池' };
+    if (!t || t.kind !== 'fort' || !t.fort) return { ok: false, msg: '不是野外城市' };
     var f = t.fort;
     /* v90.100：fort 对象缺 ci 时由 (x,y) 派生（兼容旧夹具）。 */
     if ((f.ci == null || f.ci < 0) && f.x != null && GAME.sphere && GAME.sphere.ciOfXY) f.ci = GAME.sphere.ciOfXY(f.x, f.y);
@@ -3209,8 +3209,8 @@
     if (own193 && GAME.fortsOfCity(own193).length >= max193) {
       if (GAME.map.markFortTaken) GAME.map.markFortTaken(f.ci, key);
       if (GAME.map.razeFort) GAME.map.razeFort(f.ci);
-      GAME.log.war('🚩 拔除 ' + f.name + '（野外城池 Lv' + lv + '）—— 但「' + own193.name
-        + '」的前哨已满（' + max193 + ' 处），**未能设哨**（战利品照收；可先放手一处，或从其他城池出征）');
+      GAME.log.war('🚩 拔除 ' + f.name + '（野外城市 Lv' + lv + '）—— 但「' + own193.name
+        + '」的前哨已满（' + max193 + ' 处），**未能设哨**（战利品照收；可先放手一处，或从其他城市出征）');
       return { ok: false, full: true,
         msg: f.name + ' 已拔除，但本城前哨已满（' + max193 + ' 处）—— 未能设哨' };
     }
@@ -3233,12 +3233,12 @@
     /* ⛔ v90.93：STORY.repMult（年号国策）随年号纪元退役。 */
     var repF = Math.round(20 + lv * 5);
     s.rep = (s.rep || 0) + repF;
-    GAME.log.war('🚩 拔除 ' + f.name + '（野外城池 Lv' + lv + '）—— 收为**我方前哨**（声望 +' + repF + '）：'
+    GAME.log.war('🚩 拔除 ' + f.name + '（野外城市 Lv' + lv + '）—— 收为**我方前哨**（声望 +' + repF + '）：'
       + '周边 ' + RR + ' 格内野地：衰减减半 · 采集×' + fx193.gatherMul + ' · 驻军上限 ×'
       + fx193.garrisonCapMul + ' · ' + (fx193.intelFull ? '情报确凿' : '情报半明') + '，商税 '
       + fx193.tax + ' 旧币/现实日');
     return { ok: true, fort: rec, rep: repF, lv: lv,
-      msg: f.name + ' 已为我方前哨（周边 ' + RR + ' 格野地受益 · 商税 ' + fx193.tax + ' 旧币/日 · 不占城池名额）' };
+      msg: f.name + ' 已为我方前哨（周边 ' + RR + ' 格野地受益 · 商税 ' + fx193.tax + ' 旧币/日 · 不占城市名额）' };
   };
 
   /* --------- 经验升级（真实公式：等级²×100） --------- */
@@ -3731,7 +3731,7 @@
    * 出征不再瞬间抵达：按「距离 ÷ 兵种速度」算出行军时长，抵达时才结算。
    * 于是这些东西第一次真正有了意义：
    *   · 速度 spd（取队伍中最慢的兵种 —— 带器械会拖慢全军）
-   *   · 补给站（己方城池间提速 1.5~6 倍，按建筑等级）
+   *   · 补给站（己方城市间提速 1.5~6 倍，按建筑等级）
    *   · 瞭望塔 10 级（27×27 范围内行军 +50%）
    *   · 天气 move（雨 −20% / 雪 −50% / 雾 −30% / 大风 +10%）
    *   · 机动行军 / 机车操控 / 传动系统（按兵种类型分别提速）
@@ -3786,7 +3786,7 @@
     if (GAME.story && GAME.story.combatMod) m *= (GAME.story.combatMod().move || 1);
 
 
-    /* ③ 己方城池的补给站：城池间行军提速 1.5~6 倍 */
+    /* ③ 己方城市的补给站：城市间行军提速 1.5~6 倍 */
     var fc = from && from.cityId ? GAME.cityById(from.cityId) : null;
     if (fc) {
       var yz = GAME.buildingLevel(fc, 'yizhan') || 0;
@@ -3988,7 +3988,7 @@
       return null;
     }
     /* v89.86（整改 P-25）：军账守恒护栏 —— 详见 `_expArmySettled` 定义。
-       抵达结算失败（目标在途中熄灭：据点当日已拔除 / 城池被夺 …）或抛异常时，
+       抵达结算失败（目标在途中熄灭：据点当日已拔除 / 城市被夺 …）或抛异常时，
        把仍挂在行军账上的兵力原路退回，绝不让"派出去的兵"凭空消失。 */
     _expArmySettled = false;
     var r = null, err = null;

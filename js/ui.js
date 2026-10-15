@@ -17,7 +17,7 @@
   /* ============================================================
    * v89.93（整改 E5）：**里程碑演出层** —— ui.moment(spec)
    * ------------------------------------------------------------
-   * 改前：全站唯一有演出的地方是荒野剧本；攻占城池/威望晋升/时代之志
+   * 改前：全站唯一有演出的地方是荒野剧本；攻占城市/威望晋升/时代之志
    *       全部只有一行日志（"重大时刻零演出"）。
    * 三档：inline（横幅条 2.2s 自动过）· card（居中卡，手动关）·
    *       full（全屏，手动关）。全部复用既有令牌与金色系，不新增素材。
@@ -306,14 +306,14 @@
      opts 可为字符串（等价 size）或 { size:'sm'|'md'|'lg', noClose:true } */
   /* ============================================================
    * v89.117（老板「一些弹窗界面在点击操作时会闪烁…多层点击进入下级界面之后，
-   *   关闭的时候不回到上一级界面，而是会到城池内界面」）
+   *   关闭的时候不回到上一级界面，而是会到城市内界面」）
    * ------------------------------------------------------------
    * 探针实测（probe_v89117_flicker.js）两个机制性病根：
    *   ① **闪烁**：同级重绘走的是 `root.innerHTML = …` —— **整个 mask 被销毁重建**，
    *      mask 的入场动画（mModalIn .13s + mModalRise .15s）每次重播；
    *      实测"连点 4 次换页/换类" → mask 被重建 4 次（4 次闪）。
    *   ② **层级丢失**：没有"层"的概念 —— 从 A 面板点进 B 面板，B 一关就清空
-   *      modal-root，直接落到城池视图（实测：锻造间 → 套装效果 → 关闭 → 弹窗全没）。
+   *      modal-root，直接落到城市视图（实测：锻造间 → 套装效果 → 关闭 → 弹窗全没）。
    *
    * 改法（**不动上百个调用点**，判别放在唯一入口）：
    *   · 已开窗时**只换内容**：mask 与 .modal 元素**保留**（元素还在 → 动画不重播）；
@@ -586,7 +586,7 @@
   };
   ui.closeModal = function () {
     /* v89.135（老板 8）：closeAll 层（基因实验室这类"独立空间"）的关闭键 = **全关回视图** ——
-       "基因实验室关闭后直接会到城池界面才对"（而不是弹回进实验室前的建筑面板）。 */
+       "基因实验室关闭后直接会到城市界面才对"（而不是弹回进实验室前的建筑面板）。 */
     if (ui._modalCloseAll) { ui.closeAllModals(); return; }
     /* v89.117：**先弹栈** —— 有上级就回到上一级（老板：「关闭的时候不回到上一级界面」）；
        只有顶层关闭才真的清空 modal-root（并做收尾：战场转后台 / 回放·沙盘停表）。
@@ -1298,8 +1298,8 @@
    * ------------------------------------------------------------
    * 输入 = `GAME.map.pick` 的命中对象（与点击走**同一条**拾取路径）。
    * 等级一律走既有唯一出口，不另造一份：
-   *   · 城池     → `GAME.cityLvOf`（城等级 = 政务厅 = 建筑，一号到底）
-   *   · 野外城池 → `fort.level`（等级每日变化）
+   *   · 城市     → `GAME.cityLvOf`（城等级 = 政务厅 = 建筑，一号到底）
+   *   · 野外城市 → `fort.level`（等级每日变化）
    *   · 野地     → `GAME.map.wildLevelNow`（已占读记录值、无主读日盐值）
    * 输出用既有浮层类（.tip-t / .tip-l），与 data-tip 提示同一套样式 ——
    * 一层、一套定位规则（tipPos 四面夹进视口），不会飞出屏幕。
@@ -1312,14 +1312,14 @@
     function line(txt) { rows.push('<div class="tip-l">' + txt + '</div>'); }
     if (hit.kind === 'player' && hit.city) {
       head = '🏯 ' + U.escape(hit.city.name) + '（己方）';
-      line('城等级 <b>Lv' + GAME.cityLvOf(hit.city) + '</b> · 点击进入城池面板');
+      line('城等级 <b>Lv' + GAME.cityLvOf(hit.city) + '</b> · 点击进入城市面板');
     } else if (hit.kind === 'npc' && hit.city) {
       var tier = (DATA.CITY_TIER || {})[hit.city.type] || '名城';
       head = '🏯 ' + U.escape(GAME.cityFullName(hit.city));
       line('城等级 <b>Lv' + GAME.cityLvOf(hit.city) + '</b> · ' + U.escape(tier) + '　点击可出征');
     } else if (hit.kind === 'fort' && hit.fort) {
       head = '🏕 ' + U.escape(GAME.fortLabelOf(hit.fort));
-      line('野外城池 <b>Lv' + hit.fort.level + '</b> · 等级每日变化　点击可出征');
+      line('野外城市 <b>Lv' + hit.fort.level + '</b> · 等级每日变化　点击可出征');
     } else {
       var _hc = (GAME.sphere && GAME.sphere.cells) ? GAME.sphere.cells[_hci] : null;
       var ter = (_hc && DATA.TERRAIN[_hc.type]) || null;
@@ -2218,7 +2218,7 @@
         '<th>行军进度</th><th class="ctr">操作</th></tr></thead>' +
         '<tbody>' + ui.marchRowsHTML(mList) + '</tbody></table>';
     } else {
-      h += '<div class="q-empty">当前没有行军中军队（地图上对野地 / 据点 / 城池「出兵」即进入行军）</div>';
+      h += '<div class="q-empty">当前没有行军中军队（地图上对野地 / 据点 / 城市「出兵」即进入行军）</div>';
     }
     h += '</div>';
     return h;
@@ -2275,7 +2275,7 @@
       /* v89.120：三键已移到读秒行（.bt-acts，见 ui.btTopHTML）——
          底栏只留"后台运行"（它是关闭键，由 openModal 统一剥离） */
       foot: '<button class="btn" data-action="close-modal">后台运行</button>',
-      /* v89.150（老板 6）：「关闭战场后，不返回目标界面（野地或某城池）而会到点开弹窗的
+      /* v89.150（老板 6）：「关闭战场后，不返回目标界面（野地或某城市）而会到点开弹窗的
          大界面，在哪里点开就回到哪里（如地图，城内或城外）」——
          `closeAll` = 该层关闭键走 closeAllModals（一次关净 → 回视图层）；
          否则会弹回上一级面板（出征界面/野地面板那类"中间界面"）。 */
@@ -2740,7 +2740,7 @@
    * ------------------------------------------------------------
    * 口径：军务页顶部一条**页签**（军务总览 / 出征 / 防守 / 军务处）——
    *   · 总览 = 原来的内容（在城兵力 / 驻守野地 / 行军队列），一字未动；
-   *   · 出征 = 附近可打目标（据点/同聚落名城/己方城池）一键进**出征界面** + 在途队列；
+   *   · 出征 = 附近可打目标（据点/同聚落名城/己方城市）一键进**出征界面** + 在途队列；
    *   · 防守 = 逐城防御体检（驻军 / 围墙 / 箭塔 / 守将 / 防御力 + 风险提示）；
    *   · 军务处 = 两营左右分列（伤兵营 + 俘虏营，逐兵种清单；
    *     治疗 / 收编 / 释放都在这里）—— v89.132 起「兵源与征募」「军心」两卡退役。
@@ -2770,22 +2770,22 @@
    * v89.133（v89.128 第二批第 9/11 条 · 老板）：「增加一个新的'出征'菜单 ——
    *   这个菜单就是点击野地进行出征行动（掠夺，占领等）后弹出的军队行动界面，
    *   直接引用这个界面作为功能即可」＋「出征界面作为一切军事行动的入口，包括对外出征
-   *   或对内的城池/野地间操作。出征目标目前提供的是哪些目标，一定距离内吗」。
+   *   或对内的城市/野地间操作。出征目标目前提供的是哪些目标，一定距离内吗」。
    * ------------------------------------------------------------
    * 口径：**出征页 = 一切军事行动的入口** —— 先选目标（下拉），再进军队行动界面
    *   （`ui.openExpModal` **原样引用** —— 不另造第二套编队界面）。
    * 目标范围（回答老板「一定距离内吗」）：
-   *   · 我方野地 / 我方城池 —— **全境**（不限距离）；
-   *   · 同聚落普通城池 —— 同聚落（不限距离）；
+   *   · 我方野地 / 我方城市 —— **全境**（不限距离）；
+   *   · 同聚落普通城市 —— 同聚落（不限距离）；
    *   · 野外据点 —— 当前城 **14 格内**（半径在 `expTargetCandidates` 唯一出口里）;
    *   · 其余任意目标（名城 / 远据点 / 中立野地）—— **地图点选**（本页给指路，不另列）。
    * ============================================================ */
   /* ============================================================
-   * v89.142（老板 2）：「目标分成 5 类，分行显示：我方城池 / 我方野地 / 名城 /
+   * v89.142（老板 2）：「目标分成 5 类，分行显示：我方城市 / 我方野地 / 名城 /
    *   野地 / 野外据点。进入军事行动这个按钮放在界面底部」
    * ------------------------------------------------------------
    * **分组候选的唯一出口**（渲染 / 提交 / 探针 / 断言全读它，不许各列一份）：
-   *   · 我方城池 / 我方野地 —— **全境**（不限距离）；
+   *   · 我方城市 / 我方野地 —— **全境**（不限距离）；
    *   · 名城（NPC 聚落·重镇·首府·旧都）—— 按距离排序取**最近 N_LIST**处（全图百余座，全列没意义）；
    *   · 野地（中立）—— 本城周边（半径 SCAN）内按距离取**最近 N_LIST**处；
    *   · 野外据点 —— 本城 **14 格内**（与 expTargetCandidates 同一把尺），取最近 N_LIST。
@@ -2801,7 +2801,7 @@
     var N = ui.ACT_LIST_N;
     var dist = function (x, y) { return GAME.cityDist({ x: x, y: y }, c); };
     var groups = [
-      { key: 'owncity', label: '🏯 我方城池', targets: [] },
+      { key: 'owncity', label: '🏯 我方城市', targets: [] },
       { key: 'ownwild', label: '🌾 我方野地', targets: [] },
       { key: 'npc', label: '🏛️ 名城', targets: [] },
       { key: 'wild', label: '🗺️ 野地', targets: [] },
@@ -2809,11 +2809,11 @@
     ];
     var by = {};
     groups.forEach(function (g) { by[g.key] = g; });
-    /* ① 我方城池（全境）—— 派遣 / 运输都从这里发起 */
+    /* ① 我方城市（全境）—— 派遣 / 运输都从这里发起 */
     (s.cities || []).forEach(function (mc) {
       if (mc.id === c.id) return;
       by.owncity.targets.push({ d: dist(mc.x, mc.y),
-        label: '🏯 ' + mc.name + '（己方 · 城池间操作）',
+        label: '🏯 ' + mc.name + '（己方 · 城市间操作）',
         tg: { kind: 'own', id: mc.id } });
     });
     /* ② 我方野地（全境）—— 驻军 / 采集 / 撤回 */
@@ -2825,14 +2825,14 @@
           + (gn > 0 ? '　· 驻军 ' + U.numText(gn, 0) : '　· 无驻军'),
         tg: { kind: 'wild', ci: w.ci } });
     });
-    /* ③ 名城（NPC 城池 —— 聚落/重镇/首府/旧都，按距离取最近 N 处） */
+    /* ③ 名城（NPC 城市 —— 聚落/重镇/首府/旧都，按距离取最近 N 处） */
     (s.map.cities || []).forEach(function (nc) {
       by.npc.targets.push({ d: dist(nc.x, nc.y),
         label: ui.expTargetLabel({ kind: 'city', id: nc.id, npc: nc }),
         tg: { kind: 'city', id: nc.id, npc: nc } });
     });
     /* ④ 野地（中立）—— 本城周边扫一圈（半径 20），按距离取最近 N 处。
-       排除：我方野地格 / NPC 城池格 / 据点格（那些格子另有归组）。 */
+       排除：我方野地格 / NPC 城市格 / 据点格（那些格子另有归组）。 */
     var SCAN = 20;
     for (var dy = -SCAN; dy <= SCAN; dy++) {
       for (var dx = -SCAN; dx <= SCAN; dx++) {
@@ -2883,17 +2883,17 @@
   };
   ui.marchActHTML = function () {
     var c = GAME.currentCity();
-    if (!c) return '<div class="q-empty">尚无城池。</div>';
+    if (!c) return '<div class="q-empty">尚无城市。</div>';
     var groups = ui.actTargetGroups(c);
     var pick = ui.actPickOf();
     /* v89.144（老板 3）：本城出征容量与练兵场扩编的数据**整块随卡片搬去独立页签**
        （ui.marchExpandHTML）—— 本页只剩"选目标 → 进入军事行动"。 */
-    /* v89.142（老板 2）：目标**分 5 类、各占一行**（我方城池 / 我方野地 / 名城 /
+    /* v89.142（老板 2）：目标**分 5 类、各占一行**（我方城市 / 我方野地 / 名城 /
        野地 / 野外据点）—— 每类一个下拉，选中项落库 ui._actPick；
        「进入军事行动」按钮移到**界面底部**（页面最末）。 */
     /* v89.144（老板 4）：
        · **固定下拉框位置与长度** —— 5 行用同一结构（.act-row：label 定宽 + 下拉定宽 20 个中文），
-         起点一律对齐「我方城池」那行；
+         起点一律对齐「我方城市」那行；
        · **默认显示为空** —— 每行首项 = 空 option（不预选）；actPickOf 也不再兜底选第一个；
        · 去掉「共 N · 列最近 24」备注（目标只在（对应行的）下拉框里出现）；
        · 选定后立刻 live 刷新（main.js 的 exp-act-pick → GAME.refreshView）——
@@ -2913,12 +2913,12 @@
     return '<div class="ui-sub" style="text-align:center;margin:-2px 0 8px;">' +
       '一切军事行动的入口：选目标 → 进军队行动界面（编队 / 战术 / 计略都在里面）</div>' +
       '<div class="story-card"><div class="gold-heading">⚔️ 出征 · 目标' +
-        ui.help('目标按**五类分行**列出：\n· 我方城池 / 我方野地 —— 全境（不限距离）；\n'
+        ui.help('目标按**五类分行**列出：\n· 我方城市 / 我方野地 —— 全境（不限距离）；\n'
           + '· 名城（聚落·重镇·首府·旧都）/ 野地（中立）—— 按距离列出最近 ' + ui.ACT_LIST_N + ' 处；\n'
           + '· 野外据点 —— 本城 14 格内。\n'
           + '选定后进入**军队行动界面**（与地图点野地弹出的是同一个界面）。') + '</div>' +
       rows +
-      '<div class="ui-sub" style="margin-top:4px;">目标范围：我方城池 / 我方野地 —— <b>全境</b>；'
+      '<div class="ui-sub" style="margin-top:4px;">目标范围：我方城市 / 我方野地 —— <b>全境</b>；'
         + '名城 / 野地 —— 按距离取最近 ' + ui.ACT_LIST_N + ' 处；野外据点 —— 本城 <b>14 格内</b>；'
         + '其余远处目标仍可<b>在地图上点选</b>。</div></div>' +
       /* v89.144（老板 3）：原「编制 · 出战能力」卡片已搬去独立页签「军队练兵场扩容」
@@ -2944,7 +2944,7 @@
    * ============================================================ */
   ui.marchExpandHTML = function () {
     var c = GAME.currentCity();
-    if (!c) return '<div class="q-empty">尚无城池。</div>';
+    if (!c) return '<div class="q-empty">尚无城市。</div>';
     var cap = GAME.battle.marchCapOf(c);
     var xcLv = GAME.buildingLevel(c, 'xiaochang') || 0;
     var jx = GAME.jieyueExpandOf(c, 'xc');
@@ -2966,7 +2966,7 @@
 
   /* —— 出征页（v89.109 · 老板「军务的出征菜单不是给地址栏的，而是设置出征战术的地方」）：
      主体 = **出征战术设置**（全兵种 × 动作 × 首选歼敌目标）；在途队列保留（召回/急行军在那儿）。
-     "近处可打目标"列表已删 —— 出征目标在地图上点选（城池 / 据点 / 野地）。 —— */
+     "近处可打目标"列表已删 —— 出征目标在地图上点选（城市 / 据点 / 野地）。 —— */
   ui.marchExpHTML = function () {
     /* ============================================================
      * v89.133（v89.128 第二批第 13 条 · 老板）：「军务中出征战术……**不要在途的行军队列**」——
@@ -2974,7 +2974,7 @@
      * 页面 = 出征战术（两列下拉）+ 练兵块（练兵场面板退役后演武/阅兵的新家）。
      * ============================================================ */
     var c = GAME.currentCity();
-    if (!c) return '<div class="q-empty">尚无城池。</div>';
+    if (!c) return '<div class="q-empty">尚无城市。</div>';
     /* v89.136（老板 4）：「出征战术**细分掠夺，占领**，分别允许进行相应的默认战术设置」——
        本页改**两小页**（掠夺 / 占领，样式与「防守战术」页内小页同构）：
        每页只设该模式下的默认战术；未单独设置的兵种**沿用通用表**（老档数据所在）。
@@ -3006,8 +3006,8 @@
   ui.marchDefHTML = function () {
     /* ============================================================
      * v89.133（v89.128 第二批第 14 条 · 老板）：「军务的防守战术，在底下分两个小页面
-     *   （避免后边城池过多，显示不过来），第一个是目前的全境体检，改名为**全境防御**
-     *   （按目前方式显示城池清单）。第二个是**防守战术**，参考调整后的出征战术缩略显示」。
+     *   （避免后边城市过多，显示不过来），第一个是目前的全境体检，改名为**全境防御**
+     *   （按目前方式显示城市清单）。第二个是**防守战术**，参考调整后的出征战术缩略显示」。
      * 两小页共用页内切换（ui._defSub）—— 城多时体检表再长，也不再与战术设置互相顶屏。
      * ============================================================ */
     var s = GAME.state;
@@ -3020,7 +3020,7 @@
     if (sub === 'tac') {
       /* v89.142（老板 4）：「防守战术和全境防御按钮放在界面底部」—— 与出征战术页同款位置 */
       return '<div class="story-card"><div class="gold-heading">⚔️ 防守战术' +
-        ui.help('我方城池被攻打时，守军按**这套设置**作战（NPC 守方不用你的设置）。\n'
+        ui.help('我方城市被攻打时，守军按**这套设置**作战（NPC 守方不用你的设置）。\n'
           + '每兵种两栏下拉：动作 + 目标，与出征战术同一套控件。\n'
           + '「**出城迎战**」= 该兵种前出围墙之外迎敌：攻方必须先把它打完，才够得着围墙拆工事；\n'
           + '但它也吃不到围墙护佑 —— 是把前线前移的进攻性防御，代价与收益都归自己。') + '</div>' +
@@ -3036,7 +3036,7 @@
       if (army <= 0) risks.push('无驻军');
       if (wall <= 0) risks.push('无围墙');
       if (!guard) risks.push('未任命守将');
-      /* v89.113：城主缺席 = 治理/谋略加成为零（城池面板会写明），体检里点出来 */
+      /* v89.113：城主缺席 = 治理/谋略加成为零（城市面板会写明），体检里点出来 */
       var mayor = GAME.mayorGeneralOf ? GAME.mayorGeneralOf(ct) : null;
       if (!mayor) risks.push('未任命城主');
       return '<tr><td>' + U.escape(ct.name) + '</td>' +
@@ -3053,9 +3053,9 @@
       ui.help('防御力 = 驻军 × 兵种战力 × (1 + 围墙/城主谋略加成)（与来袭结算同一出口 defensePowerOf）。\n'
         + '城主（文治）= 治理→产量/建造/税收、谋略→研究/城防；守将（武功）= 武力→征兵、战时对阵。\n'
         + '"齐备"= 有驻军 + 有围墙 + 有城主 + 有守将；缺哪项就在那行里点出来。') +
-      '</div>' + (rows ? '<table class="tbl"><thead><tr><th>城池</th><th class="num">驻军</th><th class="num">围墙</th>' +
+      '</div>' + (rows ? '<table class="tbl"><thead><tr><th>城市</th><th class="num">驻军</th><th class="num">围墙</th>' +
         '<th class="num">箭塔</th><th>城主</th><th>守将</th><th class="num">防御力</th><th>风险</th></tr></thead><tbody>' + rows + '</tbody></table>'
-        : '<div class="q-empty">尚无城池。</div>') + '</div>' + tabs;
+        : '<div class="q-empty">尚无城市。</div>') + '</div>' + tabs;
   };
   /* —— 军务处：两营并列（v89.132 起只此两块；动作全部复用既有出口） —— */
   /* 逐兵种清单（两个营共用）：把 { 兵种: 数量 } 摊成若干行 ——
@@ -3163,7 +3163,7 @@
    * ------------------------------------------------------------
    * 老板令：「左侧统计栏的警报警报（含策略布防）放到军务中，与出征防守等并列，
    *          有警报时，建筑瞭望塔颜色明暗闪烁」。
-   * 于是左侧「城池属性」不再有警报横幅与「计略布防」行 —— 两者整体搬到这里：
+   * 于是左侧「城市属性」不再有警报横幅与「计略布防」行 —— 两者整体搬到这里：
    *   ① 预警 = 各城下次来袭（invasionDueAt 唯一出口）+ 守备力（defensePowerOf）
    *      + 是否在预警窗内（invasionAlertOf，与瞭望塔闪烁同源）+ 瞭望塔等级；
    *   ② 布防 = 空城计 / 坚壁清野（schemeDefOf 读状态，布防走既有 openCityScheme）；
@@ -3198,7 +3198,7 @@
       '<div class="res-line"><span class="lbl">触发点</span><span class="val">' +
         U.escape((I.sources || ['流寇']).join(' ／ ')) + '　（诸方势力轮番来犯）</span></div>' +
       '<div class="res-line"><span class="lbl">开战门槛</span><span class="val">拥有 <b>' +
-        (I.unlockCities == null ? 2 : I.unlockCities) + '</b> 座以上城池后，始有兵戈之扰</span></div>' +
+        (I.unlockCities == null ? 2 : I.unlockCities) + '</b> 座以上城市后，始有兵戈之扰</span></div>' +
       '<div class="res-line"><span class="lbl">时机</span><span class="val">每 <b>' + rMin0 +
         ' 分钟</b>一场（<b>现实时间</b> —— 与本作倍速无关）；目标城<b>按场轮转</b> —— 人人有份，可预判</span></div>' +
       '<div class="res-line"><span class="lbl">规模</span><span class="val">来袭战力约为全境战力的 <b>' +
@@ -3253,7 +3253,7 @@
         ' 分钟（现实）**只报一次**，警讯里含来袭剩余时间。\n进窗后：城内瞭望塔会明暗闪烁。\n' +
         '瞭望塔越高 → 警讯里的敌情越细（Lv1 +战力 · Lv2 +兵种明细）。') + '</div>';
     if (!rows.length) {
-      out += '<div class="q-empty">暂无排期 —— 拥有 2 座以上城池后，敌军每 ' + rMin +
+      out += '<div class="q-empty">暂无排期 —— 拥有 2 座以上城市后，敌军每 ' + rMin +
         ' 分钟（现实时间）来犯一场（目标城按场轮转）。</div></div>';
     } else {
       out += '<div class="ui-sub" style="text-align:center;margin-bottom:8px;">' +
@@ -3261,7 +3261,7 @@
             ' · 剩余 ' + U.dur(Math.max(0, next.left)) + '（现实时间）'
           : '最近一场：' + U.escape(next.ct.name) +
             ' · 剩余 ' + U.dur(Math.max(0, next.left)) + '（现实时间）') + '</div>' +
-        '<table class="tbl"><thead><tr><th>城池</th><th class="ctr">下次来袭</th>' +
+        '<table class="tbl"><thead><tr><th>城市</th><th class="ctr">下次来袭</th>' +
         '<th>来犯</th><th class="ctr">瞭望塔</th><th class="num">守备力</th><th class="ctr">状态</th></tr></thead><tbody>' +
         rows.slice(0, 12).map(function (r) {
           return '<tr><td>' + (r.al ? '🔥 ' : '') + U.escape(r.ct.name) + '</td>' +
@@ -3333,10 +3333,10 @@
         '<td class="num">' + U.fmt(GAME.armyTotal(ct)) + '</td>' + cells + '</tr>';
     }).join('');
     var cityBlock = (s.cities || []).length
-      ? '<table class="tbl mc-tbl"><thead><tr><th class="mc-name">城池</th><th class="num">合计</th>' +
+      ? '<table class="tbl mc-tbl"><thead><tr><th class="mc-name">城市</th><th class="num">合计</th>' +
         troopCols.map(function (tid) { return '<th class="num">' + U.escape(DATA.TROOPS[tid].name) + '</th>'; }).join('') +
         '</tr></thead><tbody>' + cityRows + '</tbody></table>'
-      : '<div class="q-empty">尚无城池。</div>';
+      : '<div class="q-empty">尚无城市。</div>';
 
     /* ⛔ v89.140（老板 2）：「军务总览中，**不再显示驻守野地和采集队菜单**」——
        两块（含各自的列表与合计）整段退役：驻军的唯一落点 = **附属野地界面**
@@ -3378,7 +3378,7 @@
     var marchBlock = list.length
       ? '<table class="tbl"><thead><tr><th>目标</th><th class="ctr">出发</th><th class="ctr">主将</th><th class="ctr">方式</th><th class="num">兵力</th><th>行军进度</th><th class="ctr">操作</th></tr></thead><tbody>' + rows + '</tbody></table>' +
         ui.marchRushAllBtn(list)
-      : '<div class="q-empty">当前没有在途行军队列。在地图上对野地 / 据点 / 城池点「出兵」即会进入行军。</div>';
+      : '<div class="q-empty">当前没有在途行军队列。在地图上对野地 / 据点 / 城市点「出兵」即会进入行军。</div>';
 
     /* v89.140（老板 2）：① 统计行（"在城 X · 驻守 Y · 采集 Z …"）**整行去掉**；
        ② 驻守野地 / 采集队两块去掉；③ 编号重排为 ① 城内 / ② 征战中 / ③ 行军。 */
@@ -3456,7 +3456,7 @@
     if (GAME.cityById(id)) { ui._cityId = id; ui.renderView('city'); ui.renderSide(); }
   };
 
-  /* 侧栏渲染（三段式：城池属性 / 资源 / 驻军）
+  /* 侧栏渲染（三段式：城市属性 / 资源 / 驻军）
      v16 起侧栏为常驻固定布局，不再有页签切换 */
   ui.renderSide = function () {
     var s = GAME.state, c = GAME.currentCity();
@@ -3468,15 +3468,15 @@
 
 
   /* ============================================================
-   * 城池操作栏（v22 · 需求 3）
+   * 城市操作栏（v22 · 需求 3）
    * 原先这些控件全挤在棋盘上方（征收旧币 / 显示比例 / 辖区岁贡），
    * 中央视图被压得只剩半屏。现在下沉到左侧栏 ——
    * 「看的」放中央，「操作的」放侧栏，界面才纯粹。
    * ============================================================ */
   /* v27（需求 1）：`renderCityTools` 整段删除。
-     原板块仅剩"切换城池"，且只有多城时才渲染 —— 空着的时候还占一个带标题的分区。
-     切城现在并进「城池属性」顶部（见 renderCityAttrs），侧栏从此只有三块：
-     君主卡 / 城池属性（含切城）/ 资源与驻军。 */
+     原板块仅剩"切换城市"，且只有多城时才渲染 —— 空着的时候还占一个带标题的分区。
+     切城现在并进「城市属性」顶部（见 renderCityAttrs），侧栏从此只有三块：
+     君主卡 / 城市属性（含切城）/ 资源与驻军。 */
 
   /* ============================================================
    * 侧栏驻军栏（v16 · 需求 #17 / v89.215 老板改版）
@@ -3508,7 +3508,7 @@
   /* v90.31（老板）：「提供一个建筑明细清单」—— 城内建筑一览（全部建筑 · 等级 · 升级造价 · 效果 · 前置）。 */
   ui.openBuildingList = function () {
     var c = GAME.currentCity();
-    if (!c) { ui.toast('未选中城池'); return; }
+    if (!c) { ui.toast('未选中城市'); return; }
     var ids = (DATA.BUILD_ORDER || Object.keys(DATA.BUILDINGS)).slice();
     /* 政务厅（随城自带、无 buildCost）排最前 */
     ids.sort(function (a, b2) {
@@ -3539,13 +3539,13 @@
       '<div class="m-foot"><button class="btn" data-action="close-modal">关闭</button></div>');
   };
 
-  /* 城池名 + 等级标注（v29 · 需求 9）：
+  /* 城市名 + 等级标注（v29 · 需求 9）：
      [旧都] / [首府] / [重镇] / [聚落]，自建城不标（"自建城"三个字没有信息量）。 */
   ui.cityLabelHTML = function (c, short) {
     if (!c) return '';
     var tn = GAME.cityTierName ? GAME.cityTierName(c) : '';
     /* v70（老板）：地名走**全称**（区 · 镇 · 城名，唯一出口 GAME.cityFullName）。
-       v71（老板）：「城池属性不要显示坐标和所在区，只显示城池命名即可」——
+       v71（老板）：「城市属性不要显示坐标和所在区，只显示城市命名即可」——
        窄处（侧栏）传 short=true 走**短名**：城名 + 档位标，与 GAME.cityLabel 同规则；
        全称仍供统计表格 / 出征目标等需要"这是哪一区的城"的地方使用。 */
     var name = short ? U.escape(c.name) : U.escape(GAME.cityFullName(c));
@@ -3554,11 +3554,11 @@
     return name + (tn ? '<span class="city-tier">[' + tn + ']</span>' : '') + mt;
   };
 
-  /* ② 城池属性栏：民心/民怨/税率/旧币/幸存者 */
+  /* ② 城市属性栏：民心/民怨/税率/旧币/幸存者 */
   ui.renderCityAttrs = function (c, s) {
     var box = $('#city-attrs');
     if (!box) return;
-    /* v89.158：悬停保护 —— 城池下拉/🎲📍 按钮/属性行的悬停态不被每秒重绘打断 */
+    /* v89.158：悬停保护 —— 城市下拉/🎲📍 按钮/属性行的悬停态不被每秒重绘打断 */
     if (ui.hoverHold(box)) return;
     /* v89.185（老板 6）：「实际幸存者上限=幸存者上限*民心/100」——
        幸存者行一律显示**有效上限**（民心折算）；基准值在悬停里给出对照。 */
@@ -3572,14 +3572,14 @@
       ? ' title="民心 = 基准 ' + Math.round(GAME.heartsOf()) + ' − 战争创伤 ' + Math.round(_hWar204)
         + '（每现实日恢复 ' + (((DATA.SIEGE || {}).repairPerDay) || 0) + '）"'
       : '';
-    /* v27（需求 1）：多城时的「切换城池」并入本栏顶部 ——
+    /* v27（需求 1）：多城时的「切换城市」并入本栏顶部 ——
        它本来就是"这座城的属性"的一部分（换城就是换一整套属性）。
        单城时不渲染，省一行高度。
        v45（需求 3）：由 chips 改为**原生下拉框** ——
-       城池数会随进程不断增长，chips 在窄侧栏里折行会把城池属性挤下去；
+       城市数会随进程不断增长，chips 在窄侧栏里折行会把城市属性挤下去；
        下拉框恒定一行，且"我有哪些城"一眼看全。 */
-    /* v71（老板）：「即使只有一个城池，也保留这个城池下拉框…」
-       v91.25（老板）：「去掉区镇落坐标多余信息，只显示 星球N·城名；在城池下拉框上加星球下拉框」。
+    /* v71（老板）：「即使只有一个城市，也保留这个城市下拉框…」
+       v91.25（老板）：「去掉区镇落坐标多余信息，只显示 星球N·城名；在城市下拉框上加星球下拉框」。
        选项文案 = `星球{P}·{城名}`（去全称与经纬）；多星球时其上加**星球下拉**。 */
     var _pid = s.activePlanet || 0;
     var _planets = GAME.planetsOf ? GAME.planetsOf() : [];
@@ -3592,8 +3592,8 @@
         }).join('') + '</select></div>'
       : '';
     var switcher = planetSel +
-      '<div class="city-switch"><span class="cs-lbl">城池</span>' +
-      '<select class="city-select" data-action="switch-city" title="切换当前经营的城池">' +
+      '<div class="city-switch"><span class="cs-lbl">城市</span>' +
+      '<select class="city-select" data-action="switch-city" title="切换当前经营的城市">' +
       s.cities.map(function (x) {
         return '<option value="' + x.id + '"' + (x.id === c.id ? ' selected' : '') + '>' +
           U.escape(x.name || '城')
@@ -3601,7 +3601,7 @@
           + '</option>';
       }).join('') +
       '</select>' +
-      /* 城名旁的三个操作入口（从原「城池身份行」并入本行，去重复展示） */
+      /* 城名旁的三个操作入口（从原「城市身份行」并入本行，去重复展示） */
       '<span class="city-switch-ops">' +
         (GAME.isMovableCity(c)
           ? '<button class="btn sm" data-action="city-random" title="一键随机：迁到一处空闲平原">🎲</button>' +
@@ -3609,14 +3609,14 @@
           : '') +
         '<button class="btn sm" data-action="open-bldg-list" title="城内建筑明细清单（全部建筑 · 等级 · 造价 · 效果）">🏗</button>' +
       '</span></div>';
-    /* v53（老板："点出来列表马上收回去了"）：**城池清单必须与每秒重绘解耦**。
+    /* v53（老板："点出来列表马上收回去了"）：**城市清单必须与每秒重绘解耦**。
        主循环每秒调一次 renderSide → renderCityAttrs，改前 switcher 拼在下面的 html 里，
        `box.innerHTML = html` 会把 <select> 整块销毁重建 ——
        原生下拉列表挂在那个元素上，元素一没、列表立刻合上，根本来不及选。
        （还有一处：点 select 展开时那个 click 会被共用委托 dispatch 掉，同样触发重绘；
         已在 main.js 的 click 委托里对 SELECT 直接放行。）
        现在它走**自己的静态节点** #city-switch-host，只在
-       "城池清单或当前城池变了"时才重建；城池属性正文照旧每帧重建（正文没有交互态）。 */
+       "城市清单或当前城市变了"时才重建；城市属性正文照旧每帧重建（正文没有交互态）。 */
     var host = $('#city-switch-host');
     /* v71（老板）：选项文案含城名 / 坐标 —— 签名跟着文案走，
        改名、迁址后下一帧即刷新；否则下拉框会停在旧文案上。 */
@@ -3630,12 +3630,12 @@
       }
     } else if (switcher) {
       /* 节点缺失只可能是 index.html 被改坏 —— 不许静默 */
-      if (typeof console !== 'undefined') console.warn('renderCityAttrs: 缺少 #city-switch-host，城池清单未渲染');
+      if (typeof console !== 'undefined') console.warn('renderCityAttrs: 缺少 #city-switch-host，城市清单未渲染');
     }
     var html = '' +
-      /* v91.25（老板）：城池身份行**删除** —— 城名已在「城池」下拉框显示、🎲/📍/🏗 已并入下拉行，
-         此处展示重复。城池属性正文直接从「民心 / 民怨」开始。 */
-      /* v26（需求 3）：天时已移到顶栏 —— 它是全局信息，不该占城池属性的位置 */
+      /* v91.25（老板）：城市身份行**删除** —— 城名已在「城市」下拉框显示、🎲/📍/🏗 已并入下拉行，
+         此处展示重复。城市属性正文直接从「民心 / 民怨」开始。 */
+      /* v26（需求 3）：天时已移到顶栏 —— 它是全局信息，不该占城市属性的位置 */
       /* v28（需求 3）：民心与民怨合并成一行「xx / xx」——
          两者本是同一枚硬币（民怨 = 100 − 民心），各占一行纯粹浪费侧栏高度。 */
       /* v89.128（老板）：「民心/税率/幸存者前边的小图标去掉」 */
@@ -3824,8 +3824,8 @@
         '· **防御**：原地不动，**受到的伤害减半**（远程原地对射就是选它）\n' +
         '· **后退**：每回合向己方后撤，用来躲开箭塔的**双倍攻击区**\n' +
         '目标：指定兵种在射程内就优先打它；选**箭塔**则专拆城防工事（拆完自动转为打守军）。\n' +
-        (isDef ? '我方城池被攻打时用**你设的这套**；NPC 守方用默认（全员前进）。'
-               : '守方（NPC 城池 / 野地）默认动作：**全员前进**（v89.203 起野地/据点/名城统一）。')),
+        (isDef ? '我方城市被攻打时用**你设的这套**；NPC 守方用默认（全员前进）。'
+               : '守方（NPC 城市 / 野地）默认动作：**全员前进**（v89.203 起野地/据点/名城统一）。')),
       body: body + pg.pager,
       foot: '<div class="m-foot">' +
         '<button class="btn" data-action="tactic-reset" data-tside="' + side + '">恢复默认</button>' +
@@ -3843,7 +3843,7 @@
    * v89.123（老板「资源产量以每小时产量呈现，过万以"万"显示」）：
    *   增速由「/秒」改「/时」（`U.rateHTML` 内换算，入参 *每秒* 口径不变），
    *   数值过万进「万」档（`U.perHourText` 唯一出口）；悬停明细与主显示同口径。
-   * v60（需求 4）：**存量也归属城池了** —— s.res 现在就是当前城的库存
+   * v60（需求 4）：**存量也归属城市了** —— s.res 现在就是当前城的库存
    *   （见 state.js 的 attachRes 访问器）。所以：
    *     · 栏首报"本城"；
    *     · 存量 = 本城库存（不是全境共享）；
@@ -3901,7 +3901,7 @@
           : (sp ? sp.total : (GAME.storeCap ? GAME.storeCap() : 0)));
       var _pct = (cap > 0) ? Math.round(val / cap * 100) : 0;
       var amtTip = (k === 'gold')
-        ? ('旧币：全境通用（各城共用这一口池子 —— 任何城池的建造 / 募兵 / 花销都从这里扣）'
+        ? ('旧币：全境通用（各城共用这一口池子 —— 任何城市的建造 / 募兵 / 花销都从这里扣）'
           + '\n货币，不受仓储上限约束；无需运输。'
           + '\n现有 ' + U.numText(val, 0))
         : ((meta ? meta.name : k) + '　上限 ' + U.amtText(cap)
@@ -4529,7 +4529,7 @@
       var anyEq = ui.bagEquipEntries().length;
       return '<div class="q-empty">' + (anyEq
         ? '当前筛选下没有装备 —— 换一档筛选试试（类别 / 状态 / 品质）。'
-        : '尚无装备。点城内「锻造间」打造，或攻占城池缴获。') + '</div>';
+        : '尚无装备。点城内「锻造间」打造，或攻占城市缴获。') + '</div>';
     }
     var inv = entries;
     /* 分组（按部位 / 按套装）—— 组内按件排 */
@@ -4601,7 +4601,7 @@
     if (sort === 'have') {
       var owned2 = DATA.MATERIALS.filter(function (m) { return items[m.id] > 0; })
         .sort(function (a, b) { return (items[b.id] || 0) - (items[a.id] || 0); });
-      if (!owned2.length) return '<div class="q-empty">尚无材料。攻打野地可按地形采集，攻占城池亦可缴获。</div>';
+      if (!owned2.length) return '<div class="q-empty">尚无材料。攻打野地可按地形采集，攻占城市亦可缴获。</div>';
       return ui.pageBag('bag-mat', ui.bagRows(
         '<div class="bag-sec">按持有量排序 <span class="n">' + owned2.length + ' 种</span></div>', 'have',
         owned2.map(function (m) { return ui.matCell(m, items[m.id], false, sort); })));
@@ -4624,7 +4624,7 @@
     var arr = (DATA.BLUEPRINTS || []).filter(function (b) { return items[b.id] > 0; });
     arr.sort(function (a, b) { return (b.price || 0) - (a.price || 0); });
     if (!arr.length) {
-      return '<div class="q-empty">尚无装备图纸。<br>来源：游商购买 · 攻占名城缴获（重镇 18% / 首府 40% / 旧都 80%）· 奇遇古冢</div>';
+      return '<div class="q-empty">尚无装备图纸。<br>来源：游商购买 · 攻占名城缴获（重镇 18% / 首府 40% / 旧都 80%）· 遗迹古冢</div>';
     }
     return ui.pageBag('bag-bp', ui.bagRows(
       '<div class="bag-sec">装备图纸 <span class="n">凭图纸可于锻造间打造对应套装</span></div>', 'bp',
@@ -4686,7 +4686,7 @@
     rank_up: { hint: '提升资质：请对英雄使用', view: 'generals', btn: '去英雄面板' },
     /* 有场景：去对应玩法界面 */
     essence: { hint: '请到调校界面使用', act: 'ling-temper-open', btn: '去调校' },
-    talis: { hint: '封存匣在出征时随计略消耗，无需手动使用', view: 'city', btn: '去城池' },
+    talis: { hint: '封存匣在出征时随计略消耗，无需手动使用', view: 'city', btn: '去城市' },
   };
   /* 某件道具的"去处"（未知类型一律当"无对象"处理 —— 宁可给个使用按钮，
      也不要让它变成一件看得见、点不动的死物） */
@@ -4978,11 +4978,11 @@
     for (var t in DATA.WILD_MATERIAL) {
       if (DATA.WILD_MATERIAL[t][m.id]) out.push((DATA.TERRAIN[t] ? DATA.TERRAIN[t].name : t) + '野地');
     }
-    var cityName = { fort: '野外城池', county: '聚落', jun: '重镇', zhou: '首府', capital: '旧都' };
+    var cityName = { fort: '野外城市', county: '聚落', jun: '重镇', zhou: '首府', capital: '旧都' };
     for (var ct in DATA.CITY_MATERIAL) {
       if (DATA.CITY_MATERIAL[ct][m.id]) out.push(cityName[ct] || ct);
     }
-    /* v14 辖区特产：占该辖区内城池可获持续岁贡（高阶材料的主要长期来源） */
+    /* v14 辖区特产：占该辖区内城市可获持续岁贡（高阶材料的主要长期来源） */
     var spStates = [];
     for (var st in DATA.STATE_SPECIALTY) {
       if (DATA.STATE_SPECIALTY[st].mat === m.id) spStates.push(st);
@@ -5033,7 +5033,7 @@
     html += '<div class="attr"><span class="k">持有</span><span class="v good">' + have + '</span></div>';
     html += '<div class="attr"><span class="k">用途</span><span class="v">解锁该套装的打造资格</span></div>';
     html += '<div class="note">' + U.escape(b.desc || '') + '</div>';
-    html += '<div class="note">来源：游商购买 · 攻占名城缴获（重镇 18% / 首府 40% / 旧都 80%）· 奇遇古冢<br>打造套装件<b>每件消耗图纸 1 张</b>（游商可购，亦可持续缴获）。</div>';
+    html += '<div class="note">来源：游商购买 · 攻占名城缴获（重镇 18% / 首府 40% / 旧都 80%）· 遗迹古冢<br>打造套装件<b>每件消耗图纸 1 张</b>（游商可购，亦可持续缴获）。</div>';
     html += '<div class="panel-foot"><button class="btn" data-action="close-modal">关闭</button></div>';
     ui.openModal(html);
   };
@@ -5080,7 +5080,7 @@
     return it.desc || '';
   };
 
-  /* ⛔ v90.97（老板）：君主左侧「城池/据点/野地 三清单」整条退役 —— 内容移入**行政菜单**
+  /* ⛔ v90.97（老板）：君主左侧「城市/据点/野地 三清单」整条退役 —— 内容移入**行政菜单**
      （星球→城市分级树 + 只读总览）。`GAME.empireItems` / `ui._estListHTML` 一并删除。
      对应的动作 `lord-city-enter / lord-wild-go / lord-fort-go` 已无 UI 出处（保留 case 不碍事，见 main.js）。 */
 
@@ -5103,7 +5103,7 @@
         return (it ? it.name : j) + ' ' + ((s.items && s.items[j]) || 0) + '/' + next.jewel[j];
       });
       condTitle = '晋升「' + next.name + '」条件：声望 ' + U.fmt(s.rep) + '/' + U.fmt(next.rep)
-        + '　城池 ' + (GAME.empireCityCount ? GAME.empireCityCount() : s.cities.length) + '/' + cur.city   /* v91.22：帝国口径 */
+        + '　城市 ' + (GAME.empireCityCount ? GAME.empireCityCount() : s.cities.length) + '/' + cur.city   /* v91.22：帝国口径 */
         + '　星球 ' + (GAME.planetsOwnedCount ? GAME.planetsOwnedCount() : 1) + '/' + (cur.planet || 1)
         + '　旧币 ' + U.fmt(s.res.gold || 0) + '/' + U.fmt(next.gold)
         + (jewParts.length ? '　珠宝 ' + jewParts.join('、') : '')
@@ -5111,13 +5111,13 @@
     }
     var lg = GAME.lordGeneralOf();
     var salaryTotal = GAME.genSalaryTotal ? GAME.genSalaryTotal() : 0;
-    /* v77（老板）：「君主界面分左右两半：左边城池列表（加进入按钮），右边两列信息表
+    /* v77（老板）：「君主界面分左右两半：左边城市列表（加进入按钮），右边两列信息表
        （姓名+改名 / 威望+晋升（悬停见条件）/ 声望 / 幸存者总和 / 英雄总和 / 状态）」。
-       旧版（单列 + chips + 城池表 + rankBlock）整段退役；威望区块并入右表。 */
+       旧版（单列 + chips + 城市表 + rankBlock）整段退役；威望区块并入右表。 */
     ui.openShell({
       title: '👤 君主',
       sub: (cur ? cur.name : '幸存者') + ' · 声望 ' + U.fmt(s.rep) + ' · ' + (GAME.empireCityCount ? GAME.empireCityCount() : s.cities.length) + ' 城（帝国）',
-      /* v90.97（老板）：君主面板**去左半三清单**（城池/据点/野地 → 移入「行政」菜单）——
+      /* v90.97（老板）：君主面板**去左半三清单**（城市/据点/野地 → 移入「行政」菜单）——
          只保留君主相关信息，面板收窄一档（xxl 1200 → xl 960）。 */
       size: 'xl',
       body: '<div class="ls-right"><div class="m-sec">君主信息</div>' +
@@ -5141,7 +5141,7 @@
           /* v79（老板）：威望加成 / 主城 / 神器 —— 三条新系统的入口与现况 */
           '<tr><td class="k">威望加成</td><td style="color:var(--green-ok);">' + GAME.rankBonusText() + '</td></tr>' +
           /* v89.131（老板「只有攻打名城才给的那什么'节X'，列出其设定」）：
-             节钺余额 + 一条式来源进表（此前只在城池面板的「扩编」按钮悬停里可见 ——
+             节钺余额 + 一条式来源进表（此前只在城市面板的「扩编」按钮悬停里可见 ——
              玩家看不到自己有几枚、从哪来）。悬停给 DATA.JIEYUE.desc 全文。 */
           /* v89.132（老板「节钺设计再开拓一下」）：整行改为**面板入口** ——
              余额 + 来源 + 四种用途 + 全境进度都在 ui.openJieyue 里。 */
@@ -5220,7 +5220,7 @@
    * ------------------------------------------------------------
    * 三件神器**共用一池供奉值**（s.artifacts.pts）：
    *   · 游戏时长（主要）—— 主循环与离线补算各推一次（GAME.artTick）
-   *   · 特殊活动（加速）—— 攻占城池 / 威望晋升大额入账（GAME.artGain）
+   *   · 特殊活动（加速）—— 攻占城市 / 威望晋升大额入账（GAME.artGain）
    * 等级 = 供奉值翻过的门槛数（DATA.ARTIFACT.pts）；加成走 GAME.artifactBonusNum。
    * ============================================================ */
   ui.openArtifacts = function () {
@@ -5243,7 +5243,7 @@
         '<div class="art-side">满级 Lv' + maxLv + '</div>' +
         '</div>';
     }).join('');
-    var srcLine = '供奉来源：游戏时长 +' + (A.perGameHour || 0) + '/游戏小时（主）　·　攻占城池 '
+    var srcLine = '供奉来源：游戏时长 +' + (A.perGameHour || 0) + '/游戏小时（主）　·　攻占城市 '
       + '（聚落 ' + ((A.capturePts || {}).county || 0) + ' / 重镇 ' + ((A.capturePts || {}).jun || 0)
       + ' / 首府 ' + ((A.capturePts || {}).zhou || 0) + ' / 旧都 ' + ((A.capturePts || {}).capital || 0)
       + '）　·　威望晋升 +' + (A.promotePts || 0);
@@ -5254,7 +5254,7 @@
         (next ? ('距 Lv' + (lv + 1) + '：' + U.fmt(pts) + ' / ' + U.fmt(next)) : '已至最高 Lv' + lv) +
       '</div>' +
       rows +
-      '<div class="note">三件神器共用一池供奉值，随游戏时间自动积累（离线同口径），攻占城池与威望晋升可大额加速。</div>' +
+      '<div class="note">三件神器共用一池供奉值，随游戏时间自动积累（离线同口径），攻占城市与威望晋升可大额加速。</div>' +
       '<div class="modal-foot"><button class="btn" data-action="close-modal">关闭</button></div>',
       /* v89.165：供奉值随游戏时间累积（3 点/游戏小时）—— 接入 live 每秒重开，
          总量与进度条随秒推进（120× 下约每 10 秒 +1 点，肉眼可见）。 */
@@ -5733,7 +5733,7 @@
     var fx = GAME.fortEffectOf(f);
     var own = GAME.cityById(f.cityId);
     var s = GAME.state;
-    /* 覆盖统计：覆盖内的我方野地（享受护持）/ 可驻地块（非城池水域） */
+    /* 覆盖统计：覆盖内的我方野地（享受护持）/ 可驻地块（非城市水域） */
     var nOwn = 0;
     (s.wilds || []).forEach(function (w) {
       if (Math.max(Math.abs((f.x || 0) - w.x), Math.abs((f.y || 0) - w.y)) <= fx.radius) nOwn++;
@@ -5748,7 +5748,7 @@
     ui.openModal(
       '<div class="gold-heading">🚩 我方前哨 · ' + U.escape(f.name || '?') + ' Lv' + (f.lv || 1) + '</div>' +
       '<div style="text-align:center;color:var(--text-dim);font-size:var(--fs-body);margin-bottom:8px;">辐射 <b>' + fx.radius +
-        '</b> 格 · 所属 ' + U.escape(own ? own.name : '（未定归属）') + ' · 不占城池名额</div>' +
+        '</b> 格 · 所属 ' + U.escape(own ? own.name : '（未定归属）') + ' · 不占城市名额</div>' +
       '<div class="op-zone op-zone-eq"><div class="op-zone-t">前哨护持（随据点等级）</div>' +
         '<div class="attr"><span class="k">衰减保护</span><span class="v">覆盖内野地 -1 级/现实日（与驻军同档，取档不叠加）</span></div>' +
         '<div class="attr"><span class="k">采集增产</span><span class="v">采力产出 <b>×' + fx.gatherMul +
@@ -5822,7 +5822,7 @@
         ? '<table class="tbl"><thead><tr><th>名称</th><th class="ctr">坐标</th><th class="ctr">等级</th><th class="ctr">辐射</th>' +
           '<th>护持（随等级）</th><th class="ctr">所属城</th><th class="ctr">操作</th></tr></thead>' +
           '<tbody>' + rows + '</tbody></table>'
-        : '<div class="q-empty">尚未占据任何前哨 —— 在地图点击野外城池，派兵「拔除并收为前哨」（不占城池名额）。</div>') +
+        : '<div class="q-empty">尚未占据任何前哨 —— 在地图点击野外城市，派兵「拔除并收为前哨」（不占城市名额）。</div>') +
       (list.length > 13 ? pgW.pager : '') +
       (cityLine ? '<div class="wild-total" style="margin-top:8px;">' + cityLine + '</div>' : '') +
       /* v89.195（老板 2）：「等级高功能强」——**等级档位一览**（口径直读唯一表
@@ -6707,8 +6707,8 @@
              搬走的是**参考资料**（材料去哪打、套装各档加多少），不是操作项：
              材料需求与缺料原因仍在每张卡片上；套名与门槛在卡片 tag 上。 */
           ui.help('打造是**一次一件**（套装件每件消耗图纸 1 张）。\n' +
-            '材料来源：攻打野地按地形采集 · 攻占城池缴获 · 已占**首府**的岁贡持续供应本区特产（三、四阶材料的主要活路）。\n' +
-            '套装件另需**图纸**：游商可购，攻占重镇 18% / 首府 40% / 旧都 80% 缴获，奇遇古冢亦有。') +
+            '材料来源：攻打野地按地形采集 · 攻占城市缴获 · 已占**首府**的岁贡持续供应本区特产（三、四阶材料的主要活路）。\n' +
+            '套装件另需**图纸**：游商可购，攻占重镇 18% / 首府 40% / 旧都 80% 缴获，遗迹古冢亦有。') +
         '</div>' +
         (rows.length ? '<div class="forge-rows">' + pg.slice.map(function (f) { return ui.forgeRow(f, lv); }).join('') + '</div>'
           : '<div class="q-empty">' + (kind === 'set' ? '该品质暂无套装件。'
@@ -6949,7 +6949,7 @@
     }).join('') || '<div class="q-empty">' + (filt === 'todo' ? '全部基因强化件都已圆满。'
       : (filt === 'done' ? '还没有圆满的基因强化件。'
         : (GAME.jianghuWildMounted
-          ? '还没有基因强化件。到野地「荒野行动」讨伐/试炼/采集，可得基因强化件与辐能核心。'
+          ? '还没有基因强化件。到野地「荒野行动」清剿/试炼/采集，可得基因强化件与辐能核心。'
           : '还没有基因强化件。'))) + '</div>';
     /* 底键状态（与结算同一把尺：成本读 GAME.lingTemperCost、精华读 s.items.lingsui） */
     var selLv = selInst ? GAME.eqEnhOf(selInst) : -1;
@@ -6999,10 +6999,10 @@
       GAME.state.repUnread = 0;
       ui.syncBadges();
     }
-    /* v20（需求 7）：左侧栏只在**城池场景**显示 ——
-       地图/英雄/任务等页面要的是整屏空间，挂一条城池资源栏既占地方又容易误读。
+    /* v20（需求 7）：左侧栏只在**城市场景**显示 ——
+       地图/英雄/任务等页面要的是整屏空间，挂一条城市资源栏既占地方又容易误读。
        v26：显隐判断**只在 renderView 里做一次** —— 原先 setView 与 renderView
-       各写一份，改"哪些视图算城池场景"时必然只改到一处（renderView 后跑，
+       各写一份，改"哪些视图算城市场景"时必然只改到一处（renderView 后跑，
        于是错误被掩盖，但另一处已成死逻辑）。 */
     $$('#topnav .tab[data-view]').forEach(function (el) {
       el.classList.toggle('active', el.dataset.view === v);
@@ -7084,7 +7084,7 @@
    * v89.190（老板 2）：**自动征兵**设置面板（自动化 · 右详情正文）
    * ------------------------------------------------------------
    * 老板原话：「自动征兵。构思界面，提供设置，包括触发条件，停止条件，
-   *   目标兵种，可用栏位（与对应城池内可用兵营募兵队列相关，提供判别机制）等等」。
+   *   目标兵种，可用栏位（与对应城市内可用兵营募兵队列相关，提供判别机制）等等」。
    * 本函数只画 —— 读数全走唯一出口（GAME.autoTrainCfg / autoTrainPlanOf）；
    * 数值输入走 change 委托（data-action="autotrain-set"）→ 落库 → 就地重绘本页。
    * ============================================================ */
@@ -7134,14 +7134,14 @@
       return '<div class="res-line wrap-ok"><span class="lbl">🕒 ' + U.pad(d.getHours()) + ':' + U.pad(d.getMinutes()) +
         '</span><span class="val">' + U.escape(r.city || '') + '　' + U.escape(r.troop || '') +
         ' ×' + U.numText(r.count || 0, 0) + '</span></div>';
-    }).join('') : '<div class="q-empty">暂无记录 —— 开启后每次真补单都会记一条（含城池 / 兵种 / 数量）</div>';
+    }).join('') : '<div class="q-empty">暂无记录 —— 开启后每次真补单都会记一条（含城市 / 兵种 / 数量）</div>';
     var gapS = Math.round(((DATA.AUTO_TRAIN || {}).gapMs || 10000) / 1000);
     return '<div class="auto-state">' + (on
         ? '已开启 —— 每 ' + gapS + ' 现实秒检查一轮：逐城判别、自动补单（下表为「触发线 / 目标」逐兵种设置）。'
         : '已关闭 —— 配置会保留，重开即用。') + '</div>' +
       '<div class="auto-line"><span class="al-k">触发条件</span><span>某城某兵种（驻军 + 在训）<b>低于「触发线」</b>即自动补单（触发线设 0 = 低于目标就补）</span></div>' +
       '<div class="auto-line"><span class="al-k">停止条件</span><span>达到<b>「目标」</b>即停 · <b>旧币 / 净水低于保底</b>即停（暂停不关开关）· 训练营队列满则等待（消化后自动继续）</span></div>' +
-      '<div class="auto-line"><span class="al-k">执行范围</span><span>全境统一规则、<b>逐城独立执行</b>（各用各的城池资源与队列）；器械（无人轰炸机 / 自行火炮）走<b>机工坊队列</b>，与训练营队列分开排空位</span></div>' +
+      '<div class="auto-line"><span class="al-k">执行范围</span><span>全境统一规则、<b>逐城独立执行</b>（各用各的城市资源与队列）；器械（无人轰炸机 / 自行火炮）走<b>机工坊队列</b>，与训练营队列分开排空位</span></div>' +
       '<div class="auto-line"><span class="al-k">可用栏位</span><span>只往<b>有空位</b>的队列放单 —— 训练营位 = Σ 训练营（队列位 − 已占）、机工坊位同理；与募兵面板同一把尺（trainQueueSlots 唯一出口）</span></div>' +
       '<table class="tbl" style="margin-top:var(--sp-3);"><thead><tr><th>目标兵种</th><th class="ctr">触发线（低于）</th><th class="ctr">目标（补到）</th><th class="num">全境现状</th></tr></thead><tbody>' +
         rows + '</tbody></table>' +
@@ -7152,7 +7152,7 @@
           '" data-action="autotrain-set" data-k="grainKeep"></span>' +
         '<span class="ui-sub">0 = 不设保底</span></div>' +
       '<div class="auto-note" style="margin-top:var(--sp-4);"><b>各城栏位与缺口</b>（逐城判别 · 实时）</div>' +
-        (cityLines || '<div class="q-empty">尚无城池</div>') +
+        (cityLines || '<div class="q-empty">尚无城市</div>') +
       '<div class="auto-note" style="margin-top:var(--sp-4);"><b>触发记录</b>（最近 ' + log.length + ' 单 · 逐单列出）</div>' + logRows;
   };
   ui.openInn = function () {
@@ -7332,7 +7332,7 @@
          多这两行就到不了头。压成一行摘要，细则挂标题旁的 ?（信息一字不删）。 */
       '<div class="ms-note">比价 <b>净水 1 : 生物质 2 : 电能 3 : 废钢 4</b>（净水最便宜）' +
         ui.help('卖出折损后系数 ×' + rate.toFixed(2) + '（交易站等级越高折损越小）\n'
-          + '买入再扣 ' + loss + '%（旧币 → 物资吃亏，城池间运输更划算，交易站只作应急）'
+          + '买入再扣 ' + loss + '%（旧币 → 物资吃亏，城市间运输更划算，交易站只作应急）'
           + (lv > 0 ? '' : '\n未建交易站：折损最大，建交易站可提高折损系数')) + '</div>' +
       /* v89.100：寄售战利品（按购买价 75% 回收）—— 价/校验全走 systems.consign* 出口 */
       (function () {
@@ -7480,9 +7480,9 @@
         (C.rankEvery || 4) + ' 档 +1（共 ' + rankN + ' 枚）</span></div>' +
       '<div class="gold-heading" style="margin-top:10px;">🛠️ 用途</div>' +
       '<div class="res-line"><span class="lbl">① 问鼎天启体</span><span class="val">1 枚 / 将 —— 觉醒体 → 天启体（英雄面板 · 资质晋升）</span></div>' +
-      '<div class="res-line"><span class="lbl">② 城建扩编</span><span class="val">1 枚 / 次 —— 建造位 +1（城池面板 · 每城 ≤' + (C.citySlotMax || 2) + ' 次）</span></div>' +
+      '<div class="res-line"><span class="lbl">② 城建扩编</span><span class="val">1 枚 / 次 —— 建造位 +1（城市面板 · 每城 ≤' + (C.citySlotMax || 2) + ' 次）</span></div>' +
       '<div class="res-line"><span class="lbl">③ 练兵场扩编</span><span class="val">1 枚 / 次 —— 出征容量 +1 万人马（练兵场面板 · 每城 ≤' + (C.xcMax || 2) + ' 次）</span></div>' +
-      '<div class="res-line"><span class="lbl">④ 招贤纳士</span><span class="val">1 枚 / 次 —— 英雄席位 +1（招募站面板 · 每城 ≤' + (C.genMax || 2) + ' 次）</span></div>' +
+      '<div class="res-line"><span class="lbl">④ 招揽人才</span><span class="val">1 枚 / 次 —— 英雄席位 +1（招募站面板 · 每城 ≤' + (C.genMax || 2) + ' 次）</span></div>' +
       '<div class="res-line"><span class="lbl">全境扩编</span><span class="val">已用 ' + used + ' / 上限 ' + max + ' 次</span></div>';
     ui.openShell({
       title: (C.icon || '🪓') + ' 节钺',
@@ -7512,10 +7512,10 @@
         used + '</b> / ' + cap + '</span></div>' +
       '<div class="attr"><span class="k">本馆等级</span><span class="v">Lv' + lv + ' / ' + maxLv + '</span></div>' +
       '<div class="attr"><span class="k">每级房间</span><span class="v">+1 席</span></div>' +
-      /* v89.132（老板「节钺设计再开拓一下」）：节钺 · 招贤纳士入口（唯一落点 = 招募站面板） */
+      /* v89.132（老板「节钺设计再开拓一下」）：节钺 · 招揽人才入口（唯一落点 = 招募站面板） */
       '<div class="auto-line"><button class="btn" data-action="jieyue-gen" data-city="' + c.id +
         '" title="' + U.escape((GAME.jieyueTextOf ? GAME.jieyueTextOf() + '　·　' : '')
-          + ((DATA.JIEYUE || {}).desc || '')) + '">🪓 节钺 · 招贤纳士（' +
+          + ((DATA.JIEYUE || {}).desc || '')) + '">🪓 节钺 · 招揽人才（' +
         (function () {
           var jg = GAME.jieyueExpandOf(c, 'gen');
           return (jg.used >= jg.max)
@@ -7537,7 +7537,7 @@
         '<br>席位**按城**计：每座城的招募站只管自己这座城的人。名录见顶栏「英雄」菜单。</div>' +
       (full && lv < maxLv && zIdx >= 0
         ? '<div style="text-align:center;margin-top:12px;">' +
-            /* 走既有的 confirm-upgrade —— 升级只认「当前城池的格位序号」，
+            /* 走既有的 confirm-upgrade —— 升级只认「当前城市的格位序号」，
                所以这里必须现算招募站在第几格，不能凭"建筑 id"假设点得到。 */
             '<button class="btn gold" data-action="confirm-upgrade" data-idx="' + zIdx +
             '">升级招募站 → Lv' + (lv + 1) + '</button></div>'
@@ -7591,7 +7591,7 @@
       var kids = cities.length ? cities.map(function (c) {
         var on = sel && sel.pid === p.id && sel.cityId === c.id;
         return '<div class="adm-city' + (on ? ' cur' : '') + '" data-action="adm-city-pick" data-pid="' + p.id + '" data-city="' + c.id + '" title="查看该城行政总览">' +
-          U.escape(c.name || '城池') + ' <span class="adm-cmeta">' + (GAME.map.coordText ? GAME.map.coordText(c.x, c.y) : '') + '</span></div>';
+          U.escape(c.name || '城市') + ' <span class="adm-cmeta">' + (GAME.map.coordText ? GAME.map.coordText(c.x, c.y) : '') + '</span></div>';
       }).join('') : '<div class="adm-empty">— 无城 —</div>';
       return head + '<div class="adm-kids">' + kids + '</div>';
     }).join('');
@@ -7609,7 +7609,7 @@
     return '<div class="ui-page"><div class="gold-heading">🏛 行政' +
         ui.help('左栏按「星球 → 城市」分级——默认只列星球，点星球展开其下辖城市。\n' +
           '选中城市后，右栏：**左列选分类**（管理英雄 / 据点 / 野地 / 在建 / 招募 / 研究…），**右侧看该分类的列表**（只读总览）。\n' +
-          '这里只做监控：具体操作仍在「城池 / 军务 / 英雄 / 地图」各页。') +
+          '这里只做监控：具体操作仍在「城市 / 军务 / 英雄 / 地图」各页。') +
       '</div>' +
       '<div class="adm-split">' +
         '<div class="adm-tree">' + (tree || '<div class="adm-empty">暂无星球</div>') + '</div>' +
@@ -7671,7 +7671,7 @@
     /* 星球名（非「当前」字样 —— 读该 pid 的星球） */
     var pl97 = null; (GAME.planetsOf ? GAME.planetsOf() : []).forEach(function (p) { if (p.id === pid) pl97 = p; });
     var isCur97 = (GAME.activePlanetOf && GAME.activePlanetOf() && GAME.activePlanetOf().id === pid);
-    return '<div class="adm-city-title">🏯 ' + U.escape(city.name || '城池') +
+    return '<div class="adm-city-title">🏯 ' + U.escape(city.name || '城市') +
         ' <span class="adm-cmeta">' + (GAME.map.coordText ? GAME.map.coordText(city.x, city.y) : '') +
         ' · 星球 ' + U.escape((pl97 && pl97.name) || ('#' + pid)) + (isCur97 ? '（当前城所在）' : '') + '</span>' +
         '<button class="btn sm' + (isCur97 ? '' : ' gold') + '" data-action="adm-city-enter" data-pid="' + pid + '" data-city="' + city.id + '"' +
@@ -7726,7 +7726,7 @@
        否则切到没有分页的页面时，底部还挂着上一个视图的页码（点下去会翻错列表）。 */
     ui._bottom = [];
     /* v26（需求 5）：城内（city）与城外（ext）现在是**平级视图**，
-       两者同属"我这座城"，所以侧栏（城池属性 / 资源 / 驻军）在两边都保留。 */
+       两者同属"我这座城"，所以侧栏（城市属性 / 资源 / 驻军）在两边都保留。 */
     var isCity = (v === 'city' || v === 'ext');
     var side2 = $('.auth-side');
     if (side2) side2.classList.toggle('hidden', !isCity);
@@ -7858,18 +7858,18 @@
       wallHit: true, wallAction: 'open-wall' });
     GAME.ensureExtGrid(c);
     /* ============================================================
-     * v22（需求 3）：**中央只留城池与地块**
-     * 原先棋盘上方堆了五样东西 —— 城池名/坐标/政务厅、幸存者·驻军·城防·城外、
+     * v22（需求 3）：**中央只留城市与地块**
+     * 原先棋盘上方堆了五样东西 —— 城市名/坐标/政务厅、幸存者·驻军·城防·城外、
      * 征收旧币+冷却、显示比例、辖区岁贡 —— 把唯一该看的东西压到屏幕下半截，
      * 而且截图里那句「就绪 · 以民心换旧币」既不是数据也不是操作提示，纯噪声。
-     * 现在：城池身份与数值 → 侧栏「城池属性」；征收/缩放/岁贡 → 侧栏「城池操作」。
+     * 现在：城市身份与数值 → 侧栏「城市属性」；征收/缩放/岁贡 → 侧栏「城市操作」。
      * 连"城内共 N 格 · 点击地块弹出详情"这类玩法说明也一并去掉（需求 5 的延续）。
      * ============================================================ */
     return '<div class="ui-page city-pure">' +
       '<div class="city-iso" style="' + ui.zoomStyle() + '">' + board + '</div>' +
       '</div>';
   };
-  /* 注意：GAME.extUsed(city) 已由 domain.js 提供（v14 按城池独立），此处不再重复定义 */
+  /* 注意：GAME.extUsed(city) 已由 domain.js 提供（v14 按城市独立），此处不再重复定义 */
 
   /* 建筑分类配色（城内）：让空格一眼能分出功能类型 */
   var BLDG_CAT = {
@@ -8503,11 +8503,11 @@
     /* v89.174：cityId 可选 —— 弹窗 **live 每秒重开**时必须**锁定"打开弹窗的那座城"**
        （否则玩家切城后，重开会把同号格子开到另一座城上）。 */
     var s = GAME.state, c = cityId ? GAME.cityById(cityId) : GAME.currentCity();
-    if (!c) return;                   /* 城池不存在（切档/拆除边界）：静默退出 */
+    if (!c) return;                   /* 城市不存在（切档/拆除边界）：静默退出 */
     var cell = GAME.cellOf(c, idx);   /* v89.128：'wall' = 环城槽（不占格） */
     ui._curGrid = idx;
     /* ============================================================
-     * v89.135（老板 10）：「政务厅界面简化，首页功能直接显示（城池名称修改，
+     * v89.135（老板 10）：「政务厅界面简化，首页功能直接显示（城市名称修改，
      *   主城设置，基因实验室入口）。不再设置多一个'政务厅事务'按钮」——
      * openGuanfu 整条退役，功能直接落进政务厅格的建筑面板（施工中/已建两分支共用，
      * 升级期间照常可用）；"在办事项"不搬（老板：已有专门菜单）。
@@ -8554,11 +8554,11 @@
                     ? '　（迁都需 ' + U.fmt(((DATA.MAIN_CITY || {}).moveCost || {}).gold || 0) + ' 旧币）'
                     : '　（首设免费）')) +
               '">🏛 设为主城</button>') +
-          /* v90.62（老板）：**放弃城池**选项并入政务厅要务（原只在城池操作弹窗）——
+          /* v90.62（老板）：**放弃城市**选项并入政务厅要务（原只在城市操作弹窗）——
              仍需二次确认；最后一座城 / 尚有军队驻外时由 abandonCityCheck 拒绝。 */
           ((s.cities || []).length > 1
             ? '<button class="btn sm red" data-action="city-abandon-ask" data-city="' + c.id +
-              '" title="放弃本城（不可逆）：照表清理附属于本城的数据，该格归还地图">🗑 放弃城池</button>'
+              '" title="放弃本城（不可逆）：照表清理附属于本城的数据，该格归还地图">🗑 放弃城市</button>'
             : '') +
         '</div>' +
         (sp135 ? '<div class="attr"><span class="k">本城特产</span><span class="v">' + U.escape(m135) +
@@ -8624,12 +8624,12 @@
           + '</span></div>' +
         '</div>';
     }
-    /* v89.174（老板 1）：「在城池的官方界面，政务厅要务的下方，显示本城在建的建筑队列和剩余时间」
+    /* v89.174（老板 1）：「在城市的官方界面，政务厅要务的下方，显示本城在建的建筑队列和剩余时间」
        —— 只挂政务厅格；行内倒计时挂 data-build-progress / data-ext-progress
        （updateProgress 每秒刷），整段由弹窗 live 重开跟随"完成 / 新增"。
        v89.174（老板 2）：「读秒完成后，状态还是在建造中」—— 施工中分支此前**没接 live**
        （正常态 v89.135 已接）：补上，完成瞬间弹窗自动换回功能面板；
-       回调统一走 liveFn174（**锁定城池** —— 切城后重开不会把同号格开到别城）。 */
+       回调统一走 liveFn174（**锁定城市** —— 切城后重开不会把同号格开到别城）。 */
     var queueBox174 = '';
     if (_gfBid135 === 'guanfu') {
       var qs174 = (s.queues.build || []).filter(function (q) { return q.cityId === c.id; });
@@ -8912,7 +8912,7 @@
         '</div>'
       , { live: liveFn174 });
       /* v89.135（老板 7）：live 逐秒刷新 —— 募兵/建造队列完成即变（"队列还在"病根）
-         v89.174：回调统一 liveFn174（锁城 + 城池失效自动关闭） */
+         v89.174：回调统一 liveFn174（锁城 + 城市失效自动关闭） */
     } else {
       /* 空地：选择建筑（弹窗式） */
       /* v19：**不再复制一份唯一建筑表**（曾因此出现「后端放行、前端禁用」的错位）。
@@ -8966,12 +8966,12 @@
    * 政务厅面板（v24 · 需求 4/5）：征收
    * ------------------------------------------------------------
    * 征收归属政务厅（不是侧栏统计）：
-   *   · 普通城池 → 5 大资源，以民力换物资
+   *   · 普通城市 → 5 大资源，以民力换物资
    *   · 名城     → 该区特产高阶材料
    * 顺便把「特产怎么来」讲清楚：岁贡（自动）+ 征收（手动）+ 首府加成。
    * ============================================================ */
   /* ⛔ v89.135 移除：`ui.openGuanfu`（政务厅面板）—— 老板 10：「政务厅界面简化，首页功能
-     直接显示，不再设置多一个'政务厅事务'按钮，功能包括城池名称修改，主城设置，基因实验室入口。
+     直接显示，不再设置多一个'政务厅事务'按钮，功能包括城市名称修改，主城设置，基因实验室入口。
      其他'在办事项 · 建造 / 募兵 / 自动 / 行军'这种不需要，已有专门菜单。」
      · 改名 / 主城 / 基因实验室 / 全境营造总览 → 政务厅格建筑面板的「政务厅要务」段（openBuildModal）；
      · 本城特产 / 岁贡 → 同段的两行 attr（信息不丢）；
@@ -8979,13 +8979,13 @@
      · 威望解锁的上限说明原在 liftLine → 早已由 openBuildModal 的 `_lift` 行承接。 */
 
 
-  /* 城池重命名（v25 · 需求 8）：固定小窗，一个输入框 + 两个按钮 */
+  /* 城市重命名（v25 · 需求 8）：固定小窗，一个输入框 + 两个按钮 */
   ui.openRenameCity = function () {
     var c = GAME.currentCity();
     var chk = GAME.canRenameCity(c);
     if (!chk.ok) { ui.toast(chk.msg); return; }
     ui.openShell({
-      title: '✎ 重命名城池',
+      title: '✎ 重命名城市',
       sub: '改名会同步到地图 / 侧栏 / 统计 / 战报等所有引用处',
       size: 'sm',
       body: '<div class="ui-sub" style="margin-bottom:6px;">新名字（12 字以内）</div>' +
@@ -8999,7 +8999,7 @@
     });
   };
 
-  /* v77（老板）：「君主姓名（给一个改名按钮）」—— 与城池改名同一套小弹窗版式。
+  /* v77（老板）：「君主姓名（给一个改名按钮）」—— 与城市改名同一套小弹窗版式。
      域侧唯一出口 GAME.renameLord（同时改 ruler.name 与君主英雄 g.name，两处同源）。 */
   /* v91.14（老板）：「星球可以命名」—— 行政星球名右侧 ✎ 按钮打开本窗。
      10 字以内；改名走唯一出口 GAME.renamePlanet（全仓读点同步）。 */
@@ -9124,7 +9124,7 @@
     }).join('') : '');
     var board = ui.isoBoard(COLS, ROWS, cells, {});
     /* v22（需求 3）：与城内一致 —— 中央只留地块；
-       城池名/块数在侧栏「城池属性」，显示比例与岁贡在侧栏「城池操作」。
+       城市名/块数在侧栏「城市属性」，显示比例与岁贡在侧栏「城市操作」。
        （all / used / cap 仍用于侧栏渲染，这里不再消费） */
     return '<div class="ui-page city-pure">' +
       '<div class="city-iso" style="' + ui.zoomStyle() + '">' + board + '</div>' +
@@ -9548,7 +9548,7 @@
    * 自此英雄只有**一个**界面，没有第二个弹窗。
    * ============================================================ */
   ui.GEN_SLOTS = 12;             /* 每页显示席位数（空着也画够 12 格） */
-  /* v76（老板）：「左侧英雄列表12个空格每页，平分空间吧，当城池超过12个英雄，
+  /* v76（老板）：「左侧英雄列表12个空格每页，平分空间吧，当城市超过12个英雄，
      自动在底部导航栏产生翻页菜单」—— v45 的"整段滚动"回归**每页 12 席 + 底部条翻页**：
      每页固定 12 行（不足补空席、12 行平分面板高度），超过 12 位英雄时
      翻页条登记到底部导航条（与其它长列表同一套机制）。 */
@@ -9799,7 +9799,7 @@
        —— 头部收成两行：
          ① 姓名 + 资质★（悬停 = 等级上限 / 每级成长）+ 类型（均衡 / 猛将…）
          ② 资质描述（截掉"等级上限 N。"那半句 —— 它已进悬停）
-       撤下：Lv 行、状态与城池、装备 n/12（装备数在右栏标题里）。
+       撤下：Lv 行、状态与城市、装备 n/12（装备数在右栏标题里）。
        Lv 挪进经验行；状态非空闲时以小签挂在名字后（出征中 / 守将 这类需要一眼看到）。 */
     /* ⛔ v89.190（老板 1）退役：styleName74（资质行尾的风格名）—— 与资质徽章内的
        「· 均衡」重复，老板令「均衡这个备注位重复了，去掉」。
@@ -10050,7 +10050,7 @@
         '<button class="btn sm gd-plus' + (jewels.length ? ' gold' : ' dim') + '" data-action="gen-gift-pick"' +
           ' data-gen="' + genId + '"' + (jewels.length ? '' : ' disabled') +
           ' title="' + (jewels.length ? '赏赐珠宝提升忠诚：可赏赐 ' + jewels.length + ' 种（共 ' +
-            jewelTotal + ' 件）' : '背包中暂无珠宝。攻打城池缴获或游商购买') + '">＋</button></div>') +
+            jewelTotal + ' 件）' : '背包中暂无珠宝。攻打城市缴获或游商购买') + '">＋</button></div>') +
       /* 攻击 / 防御：v89.133 构成进悬停；v90.38（老板）：「全军效果占位置太大，加入悬停显示」——
          「全军攻击/防御 +X%」由行内移到悬停，行上只留总数。 */
       '<div class="gd-line" title="攻击 ' + U.numText(a.atkVal, 0) + ' = 武力 '
@@ -10298,7 +10298,7 @@
     var items = (DATA.ITEMS || []).filter(function (it) {
       return it.type === 'exp' && (s.items || {})[it.id] > 0;
     });
-    var help = ui.help('经验来自出征、侦察、占领城池；也可在「游商 · 经验」购买练兵数据 / 治军手册 / 兵道遗篇 / 战史全典。'
+    var help = ui.help('经验来自出征、侦察、占领城市；也可在「游商 · 经验」购买练兵数据 / 治军手册 / 兵道遗篇 / 战史全典。'
       + '\n经验道具**不设等级限制**（v89.173）：任何等级都能用，一次加固定经验。');
     ui._modalKind = 'exp';             /* 认窗标记：用完道具要按新经验重画这一扇 */
     /* v66（老板）：「英雄等级到上限后不能再使用经验道具」——
@@ -10429,7 +10429,7 @@
           '**只列本城英雄**：英雄归属城市，派遣（出征→调兵）改变归属 —— 调到别城则在本城消失、在彼城出现\n' +
           '席位**按城算**：每座城的上限 = 该城招募站等级（+建筑专精：每档 +2，满三档 +6）；0 级 = 0 席\n' +
           '已超编不会清退现有英雄，但**招募/调入**须先建或升级招募站\n' +
-          '英雄先在酒馆招募（本城酒馆 + 本城空位），也可「城池面板 → 英雄派遣」从别城调入\n' +
+          '英雄先在酒馆招募（本城酒馆 + 本城空位），也可「城市面板 → 英雄派遣」从别城调入\n' +
           '左侧清单每页 12 席；超过 12 位英雄时在底部导航条翻页') +
       '</div>' +
       '<div class="gen-split">' +
@@ -11399,9 +11399,9 @@
       (next ? '<div style="background:rgba(var(--sh-rgb),.25);border-radius:8px;padding:12px;margin-bottom:12px;">' +
         '<div style="color:var(--gold-light);font-weight:700;margin-bottom:6px;">下一级：' + next.name + '</div>' +
         '<div class="res-line"><span class="lbl">声望</span><span class="val" style="color:' + (s.rep >= next.rep ? 'var(--green-ok)' : 'inherit') + ';">' + U.fmt(s.rep) + '/' + U.fmt(next.rep) + '</span></div>' +
-        /* v89.108（老板）：城池数现在是**硬上限**（随威望解封）——
+        /* v89.108（老板）：城市数现在是**硬上限**（随威望解封）——
            这一行同时是"晋升门槛进度"与"领地上限"（cap = next.city，二者天然同值）。 */
-        '<div class="res-line"><span class="lbl">城池（领地上限）</span><span class="val" style="color:' + ((GAME.empireCityCount ? GAME.empireCityCount() : s.cities.length) >= cur.city ? 'var(--green-ok)' : 'inherit') + ';">' + (GAME.empireCityCount ? GAME.empireCityCount() : s.cities.length) + '/' + cur.city + '</span></div>' +
+        '<div class="res-line"><span class="lbl">城市（领地上限）</span><span class="val" style="color:' + ((GAME.empireCityCount ? GAME.empireCityCount() : s.cities.length) >= cur.city ? 'var(--green-ok)' : 'inherit') + ';">' + (GAME.empireCityCount ? GAME.empireCityCount() : s.cities.length) + '/' + cur.city + '</span></div>' +
         /* v91.22（老板 3）：星球门槛行（每 4 档 +1 星球）。 */
         '<div class="res-line"><span class="lbl">占领星球</span><span class="val" style="color:' + ((GAME.planetsOwnedCount ? GAME.planetsOwnedCount() : 1) >= (cur.planet || 1) ? 'var(--green-ok)' : 'inherit') + ';">' + (GAME.planetsOwnedCount ? GAME.planetsOwnedCount() : 1) + '/' + (cur.planet || 1) + '</span></div>' +
         '<div class="res-line"><span class="lbl">旧币</span><span class="val" style="color:' + ((s.res.gold || 0) >= next.gold ? 'var(--green-ok)' : 'inherit') + ';">' + U.fmt(s.res.gold || 0) + '/' + U.fmt(next.gold) + '</span></div>' +
@@ -11409,9 +11409,9 @@
         '<div style="text-align:center;margin-top:12px;">' + promoteBtn + '</div></div>'
         /* v89.108：满档（无下一级）时也要看得到领地上限 */
         : '<div style="background:rgba(var(--sh-rgb),.25);border-radius:8px;padding:12px;margin-bottom:12px;color:var(--gold-light);">已登顶「' + cur.name + '」　·　领地上限 ' + GAME.cityCapOf() + ' 座（封顶）</div>') +
-      '<table class="tbl"><thead><tr><th>威望</th><th>管理城池</th><th>声望</th><th>旧币</th><th>珠宝需求</th><th>俸禄</th><th>加成</th></tr></thead><tbody>' + rows + '</tbody></table>' +
+      '<table class="tbl"><thead><tr><th>威望</th><th>管理城市</th><th>声望</th><th>旧币</th><th>珠宝需求</th><th>俸禄</th><th>加成</th></tr></thead><tbody>' + rows + '</tbody></table>' +
       '<div class="note">加成说明：产 = 全境产量 · 税 = 税收 · 储 = 仓储 · 造 = 同时建造 · 野 = 附属野地上限 · 席 = 每城英雄席位。<br>' +
-        '<b>领地上限随威望解封</b>：管理城池数 = 幸存者 9 座，每晋一档 +1（封顶 30 座）—— 打满本档上限即达晋升门槛。</div>' +
+        '<b>领地上限随威望解封</b>：管理城市数 = 幸存者 9 座，每晋一档 +1（封顶 30 座）—— 打满本档上限即达晋升门槛。</div>' +
       '</div>';
   };
 
@@ -11553,10 +11553,10 @@
   /* v89.52（老板：底部导航栏最左按钮一键显示建筑/野地名称与等级）：标注层总开关。
      默认开（沿用野地名称常显），点按在底部条「🏷 名称」上切换；关时整层不画，地图更干净。 */
   ui._mapShowLabels = true;
-  /* v89.61（老板「名称按钮应同时控制 城池内 / 城外建筑 / 地图地块 这 3 大部分」）：
+  /* v89.61（老板「名称按钮应同时控制 城市内 / 城外建筑 / 地图地块 这 3 大部分」）：
      总开关的**唯一出口** —— 一次切换管三处，别再在别处写第二份判断：
        ① 大地图 canvas 标注层（**野地 / 据点**）→ map.render 收 showLabels；
-       ② 城内视图（城池）与 ③ 城外视图的建筑名（.tile-label）+ 等级角标（.tile-badge）
+       ② 城内视图（城市）与 ③ 城外视图的建筑名（.tile-label）+ 等级角标（.tile-badge）
           → 由 body.labels-off 一处 CSS 关掉（DOM 节点保留，只是 display:none，
             这样按 id/类名取节点的既有断言与点击逻辑都不受影响）。
      为什么 DOM 侧走 CSS 而不是重渲染：切视图时重渲染会丢选中态、且要碰 4 处调用点；
@@ -11564,9 +11564,9 @@
 
      ⚠️ v89.67（老板「名城的名称永不消失（左下角名称菜单不影响名城的显示，不然地图上看不见了）」）
      —— 三处**例外**，它们**不受**这个开关控制：
-       · 大地图上的**城池**名称 + 等级角标 + 旧都/首府档位药丸（地图骨架，收掉就认不出哪座是哪座）；
+       · 大地图上的**城市**名称 + 等级角标 + 旧都/首府档位药丸（地图骨架，收掉就认不出哪座是哪座）；
        · 满界面缩略图的**城名层**（那层画的全是名城名称，同上理）；
-       · （城内/城外视图不变 —— 那里画的是自家城池的建筑，与名城无关。） */
+       · （城内/城外视图不变 —— 那里画的是自家城市的建筑，与名城无关。） */
   ui.applyLabelSwitch = function () {
     var on = ui._mapShowLabels !== false;
     if (document.body && document.body.classList) document.body.classList.toggle('labels-off', !on);
@@ -11905,12 +11905,12 @@
     ui.toast('已回到主城 ' + GAME.map.coordText(pc.x, pc.y));
   };
 
-  /* v89.192（老板 1）：回本城 —— 视野中心跳到**当前操作城池**所在位置
+  /* v89.192（老板 1）：回本城 —— 视野中心跳到**当前操作城市**所在位置
      （回主城 = 首城 / 回本城 = ui._cityId 指的那座；数值全走既有出口 mapCenterOn）。
      v90.99（老板）：**跨星球断开** —— 本城不在当前地图星球上时不可回（否则"回到别星球的坐标"没意义）。 */
   ui.mapMyCity = function () {
     var c = GAME.currentCity();
-    if (!c) { ui.toast('尚无城池'); return; }
+    if (!c) { ui.toast('尚无城市'); return; }
     if (!ui.mapOnActivePlanet()) { ui.toast('本城不在当前地图星球上 —— 回本城需先切回本城所在星球'); return; }
     ui.mapCenterOn(c.x, c.y);
     ui.toast('已回到本城（' + (c.name || '') + '）' + GAME.map.coordText(c.x, c.y));
@@ -11941,21 +11941,21 @@
 
   /* --------- 野地/出征 modal --------- */
   /* ============================================================
-   * 城池面板 / 资源运输 / 英雄派遣（v60 · 需求 4）
+   * 城市面板 / 资源运输 / 英雄派遣（v60 · 需求 4）
    * ------------------------------------------------------------
-   * 老板原话：「英雄，幸存者，资源等是归属于城池的数据，切换城池时，只统计、呈现
-   *   当前的数据即可。城池之间，资源需要运输，英雄需要派遣，为自己占据的城池
-   *   提供相关功能按钮，**不要一点击地图就直接进入城池**」。
+   * 老板原话：「英雄，幸存者，资源等是归属于城市的数据，切换城市时，只统计、呈现
+   *   当前的数据即可。城市之间，资源需要运输，英雄需要派遣，为自己占据的城市
+   *   提供相关功能按钮，**不要一点击地图就直接进入城市**」。
    *
-   * 所以点地图上的自家城池，弹的是这扇「城池面板」：先给一张摘要
+   * 所以点地图上的自家城市，弹的是这扇「城市面板」：先给一张摘要
    * （档位优势 / 本城库存 / 驻军 / 守将），再给四个动作 ——
-   * 进入城池 / 资源运输 / 英雄派遣 / 改名。
+   * 进入城市 / 资源运输 / 英雄派遣 / 改名。
    * "点一下地图"从此不再有副作用（原先直接 setView('city') 会连带换掉当前城）。
    * ============================================================ */
   ui.cityTierName = function (type) {
     return DATA.CITY_TIER ? (DATA.CITY_TIER[type] || '自建城') : (type || '');
   };
-  /* v70（老板）：「为玩家城池提供坐标切换」—— 输入坐标迁址（唯一入口）。
+  /* v70（老板）：「为玩家城市提供坐标切换」—— 输入坐标迁址（唯一入口）。
      判据与执行都在 GAME.canCityMoveTo / moveCityTo（界面不自己判一遍）。 */
   ui.openCityMoveAsk = function (city) {
     var c = city || GAME.currentCity();
@@ -11964,7 +11964,7 @@
     var movable = GAME.isMovableCity(c);
     ui.openModal(
       '<div class="gold-heading">📍 迁址 · ' + U.escape(c.name) + '</div>' +
-      '<div class="note">迁址后：**原格归还星球**，新格成为你的城池。' +
+      '<div class="note">迁址后：**原格归还星球**，新格成为你的城市。' +
         '只可迁到**平原**空地（球系：填格索引 ci）。名城地望固定，不可迁。</div>' +
       '<div class="attr"><span class="k">当前坐标</span><span class="v">' +
         GAME.coordText(c) + '（球系）</span></div>' +
@@ -11982,7 +11982,7 @@
   ui.openCityPanel = function (city) {
     var s = GAME.state;
     city = city || GAME.currentCity();
-    if (!s || !city) { ui.toast('城池不存在'); return; }
+    if (!s || !city) { ui.toast('城市不存在'); return; }
     var R = GAME.res(city);
     var perk = GAME.perkOf(city);
     var isOwn = (s.cities || []).some(function (c) { return c.id === city.id; });
@@ -12056,7 +12056,7 @@
       /* ============================================================
        * v89.138（老板 2）：「调兵·运输，英雄派遣**合并成"派遣"和"运输"**，均进入出征界面
        *   设定英雄和兵种以及携带的资源。**去掉度支归集**。…**去掉改名**菜单。
-       *   放弃城池菜单**增加二次确认**。」
+       *   放弃城市菜单**增加二次确认**。」
        * ------------------------------------------------------------
        * · 派遣 / 运输 = 同一出征界面的两个入口（带各自的操作提示，见 openExpModal 的 opts.hint）——
        *   派遣 = 兵/将随军入城（可不带货）；运输 = 押运资源（先选兵，再填辎重）；
@@ -12066,7 +12066,7 @@
        * ============================================================ */
       foot: '<div class="m-foot">' +
         (isOwn
-          ? '<button class="btn gold" data-action="city-enter" data-city="' + city.id + '">进入城池</button>' +
+          ? '<button class="btn gold" data-action="city-enter" data-city="' + city.id + '">进入城市</button>' +
             '<button class="btn" data-action="city-dispatch-exp" data-city="' + city.id + '"' +
               ' title="' + U.escape('派遣：把兵力 / 英雄调往本城 —— 在出征界面选主将 + 兵种，抵达即入城（不带货也可发）')
               + '">🛡️ 派遣</button>' +
@@ -12079,17 +12079,17 @@
                 + ((DATA.JIEYUE || {}).citySlotMax || 2) + ' 次）—— 消耗 1 枚「节钺」。\n'
                 + '节钺是君主符节（' + (GAME.jieyueTextOf ? GAME.jieyueTextOf() : '') + '）：旧币买不到，'
                 + '首占名城 / 完成特定功业才得；共 4 种用法 —— 觉醒体→天启体、城建扩编（本按钮）、'
-                + '练兵场扩编（出征容量 +1 万人马）、招贤纳士（英雄席位 +1）。')
+                + '练兵场扩编（出征容量 +1 万人马）、招揽人才（英雄席位 +1）。')
                 + '">🪓 节钺扩编 · 建造位 +1（' +
               ((city.jieyueSlots || 0) >= ((DATA.JIEYUE || {}).citySlotMax || 2)
                 ? '本城已满 ' + (city.jieyueSlots || 0) + '/' + ((DATA.JIEYUE || {}).citySlotMax || 2)
                 : '本城 ' + (city.jieyueSlots || 0) + '/' + ((DATA.JIEYUE || {}).citySlotMax || 2)
                   + '　持符 ' + GAME.jieyueOf()) + '</button>'
           : '') +
-        /* v67（老板）：放弃城池 —— 只在还有别的城可去时才出现（否则点了必被拒） */
+        /* v67（老板）：放弃城市 —— 只在还有别的城可去时才出现（否则点了必被拒） */
         (isOwn && (s.cities || []).length > 1
           ? '<button class="btn red" data-action="city-abandon-ask" data-city="' + city.id +
-            '">🗑️ 放弃城池</button>'
+            '">🗑️ 放弃城市</button>'
           : '') +
         '<button class="btn" data-action="close-modal">关闭</button></div>'
     });
@@ -12097,11 +12097,11 @@
 
   /* ⛔ v89.103 退役：**旧的「资源运输」面板**（openTransport / transportEstHTML /
      syncTransportEst / setTrTo / setTrKey / setTrPct / doTransport / TR_PCTS）——
-     老板「任意自身城池向其他城池进行资源运输，应当采用出征界面，完成英雄，兵种，
-     资源数量等确认」。现在：出征界面选己方城池 → 辎重区填资源数量 → 兵力押运、
+     老板「任意自身城市向其他城市进行资源运输，应当采用出征界面，完成英雄，兵种，
+     资源数量等确认」。现在：出征界面选己方城市 → 辎重区填资源数量 → 兵力押运、
      走行军通道抵达入城（见 ui.expCargoHTML / GAME.doTransferCargo）。
      ⚠️ 顺带消灭的老 bug：旧面板打开时 `ui._trTo[from.id]` **没有落默认值**，
-     而 `doTransport` 又只读它 —— 于是"主城 → 分城点运输"必然报「城池不存在」
+     而 `doTransport` 又只读它 —— 于是"主城 → 分城点运输"必然报「城市不存在」
      （对象是空 id）。整条路退场后，这类"面板显示 A、提交按 B"的错位不再有落脚点。 */
 
 
@@ -12117,12 +12117,12 @@
    * ============================================================ */
 
   /* ---------- 军队派驻（v89.59 · 老板需求 3）----------
-     第三条城池间操作：转移**军队**（资源走运输、英雄走派遣）。即时到达、兵士不损耗。 */
+     第三条城市间操作：转移**军队**（资源走运输、英雄走派遣）。即时到达、兵士不损耗。 */
   ui._tmTo = ui._tmTo || {};
   ui.openTroopMove = function (fromId) {
     var s = GAME.state;
     var from = GAME.cityById(fromId) || GAME.currentCity();
-    if (!s || !from) { ui.toast('城池不存在'); return; }
+    if (!s || !from) { ui.toast('城市不存在'); return; }
     var others = (s.cities || []).filter(function (c) { return c.id !== from.id; });
     ui._tmFrom = from.id;
     if (!others.length) {
@@ -12193,12 +12193,12 @@
     if (r.ok) { GAME.refreshAll(); ui.openTroopMove(from.id); }
   };
 
-  /* ⛔ v89.103 退役：**「城池间操作」小面板**（ui.openInterCity + ic-troop / ic-gen / ic-res）——
-     它的三件事现在各有更正的入口，留着只会多一条"目标选己方城池 → 跳小面板"的岔路：
-       · 派驻军队 / 辎重 / 资源 → **出征界面选己方城池**（本境调运，见 ui._expOwn）
-       · 派驻英雄 → 城池面板「英雄派遣」（ui.openDispatch）
+  /* ⛔ v89.103 退役：**「城市间操作」小面板**（ui.openInterCity + ic-troop / ic-gen / ic-res）——
+     它的三件事现在各有更正的入口，留着只会多一条"目标选己方城市 → 跳小面板"的岔路：
+       · 派驻军队 / 辎重 / 资源 → **出征界面选己方城市**（本境调运，见 ui._expOwn）
+       · 派驻英雄 → 城市面板「英雄派遣」（ui.openDispatch）
        · 跨城调兵 → 新城落成提示里的一键补防（ui.openTroopMove，v89.86 起）
-     老板原话：「任意自身城池向其他城池进行资源运输，应当采用出征界面」。 */
+     老板原话：「任意自身城市向其他城市进行资源运输，应当采用出征界面」。 */
 
 
   /* ============================================================
@@ -12219,7 +12219,7 @@
       size: 'sm',
       body:
         '<div class="note-warn">⚠️ 新城当前守备力 <b>' + U.fmt(def) +
-          '</b>（无驻军、无围墙）——若有兵马犯境会被攻破：损失资源与声望，<b>城池不会丢</b>。</div>' +
+          '</b>（无驻军、无围墙）——若有兵马犯境会被攻破：损失资源与声望，<b>城市不会丢</b>。</div>' +
         '<div class="res-line"><span class="lbl">建议</span><span class="val">尽快派驻军队 / 修建围墙；有条件先建瞭望塔延长预警</span></div>' +
         (from ? '<div class="res-line" style="border-bottom:0;"><span class="lbl">可调兵来源</span><span class="val">' +
           U.escape(from.name) + '　在城兵力 ' + U.numText(GAME.armyTotal(from), 0) + '</span></div>' : ''),
@@ -12313,7 +12313,7 @@
     /* ============================================================
      * v89.193（老板 2）：**我方前哨格专属面板** ——
      * 前哨格（占据后 terrain='city'、map.pick 落 kind='land'）此前掉进下方
-     * "未占领野地"分支：显示"🏕️ 城池 LvN" + 守军约 N 名 + 侦查/掠夺/占领按钮 ——
+     * "未占领野地"分支：显示"🏕️ 城市 LvN" + 守军约 N 名 + 侦查/掠夺/占领按钮 ——
      * 全是错误操作（这一格已属于我，"占领"自己的前哨没有意义）。
      * 现在：占据登记直接命中（GAME.fortOwnAt，不走覆盖半径）→ 走前哨面板。
      * ============================================================ */
@@ -12597,17 +12597,17 @@
     );
   };
 
-  /* 放弃城池二次确认（v67 · 老板）——
+  /* 放弃城市二次确认（v67 · 老板）——
      不可逆操作必须说清代价：与「放弃野地」同一套写法（note + 逐项 attr + 红按钮）。
      判据与业务共用 GAME.abandonCityCheck（不能放弃时只说明原因，不给确认按钮）。 */
   ui.openAbandonCityAsk = function (cityId) {
     ui._abandonArm138 = null;   /* v89.154：打开即复位 —— 关窗再开必须重新上膛（防误触漏洞一体修） */
     var s = GAME.state, city = GAME.cityById(cityId);
-    if (!city) { ui.toast('城池不存在'); return; }
+    if (!city) { ui.toast('城市不存在'); return; }
     var chk = GAME.abandonCityCheck(cityId);
     if (!chk.ok) {
       ui.openShell({
-        title: '🗑️ 放弃城池 · ' + U.escape(city.name),
+        title: '🗑️ 放弃城市 · ' + U.escape(city.name),
         size: 'sm',
         body: '<div class="q-empty">' + U.escape(chk.msg) + '</div>',
         foot: '<div class="m-foot"><button class="btn" data-action="close-modal">关闭</button></div>'
@@ -12632,7 +12632,7 @@
       size: 'sm',
       body:
         '<div class="note">放弃后这座城与它之上的一切<b>永久失去</b>：建筑、围墙、外城地块、' +
-          '库存与驻军。原地块恢复为无主之地；攻占来的城池会重新变成可被攻打的系统城。</div>' +
+          '库存与驻军。原地块恢复为无主之地；攻占来的城市会重新变成可被攻打的系统城。</div>' +
         '<div class="attr"><span class="k">失去库存</span><span class="v">' + resTxt + '</span></div>' +
         '<div class="attr"><span class="k">失去驻军</span><span class="v">' +
           U.numText(GAME.armyTotal(city), 0) + ' 名</span></div>' +
@@ -12643,7 +12643,7 @@
         ((nb || nt) ? '<div class="attr"><span class="k">在建 / 在募</span><span class="v">' +
           (nb ? nb + ' 项建造' : '') + (nb && nt ? '、' : '') + (nt ? nt + ' 项募兵' : '') +
           '　一并取消（材料不退）</span></div>' : ''),
-      /* v89.138（老板 2）：「放弃城池菜单**增加二次确认**」——
+      /* v89.138（老板 2）：「放弃城市菜单**增加二次确认**」——
          按钮改上膛式：点第一次只"上膛"（变文案、变红、toast 警告），**再点一次**才执行；
          执行仍走原出口 `GAME.abandonCity`（业务侧照 CITY_SCOPED 表批量清理）。 */
       foot: '<div class="m-foot">' +
@@ -12659,14 +12659,14 @@
      · 采集队上限的可见性：军务总览 ③ 采集队表头（N / maxActive 队）；
      · 派军采集（英雄带队）并入「带将驻军原地开工」（GAME.startGather 唯一形态）；
      · 采集队总览的"定位"能力：地块界面即野地本体（无需定位跳转）。 */
-  /* 野外城池弹窗 */
+  /* 野外城市弹窗 */
   /* ============================================================
    * 满配城的城内布局（v61 · 老板）
    * ------------------------------------------------------------
-   * 老板：「野地里的城池，应默认其建筑全都建满了，城内所有建筑各1个，
+   * 老板：「野地里的城市，应默认其建筑全都建满了，城内所有建筑各1个，
    *   兵营2个，其他建居所，位置也相对固定一下」。
    * 规则本身在 `DATA.CITY_PLAN` / `GAME.cityPlanOf`（唯一出口），这里只管呈现 ——
-   * **野外城池与未占据名城共用这一份**，免得两处各写一遍数字对不上。
+   * **野外城市与未占据名城共用这一份**，免得两处各写一遍数字对不上。
    * ⚠️ 这是"当前事实"（这城里有什么），不是"怎么运作"，所以留在正文而不进 ui.help。
    * ============================================================ */
   ui.planHTML = function (p) {
@@ -12703,9 +12703,9 @@
        否则玩家点掠夺被拦下来会以为功能坏了（真正的拦截在 battle.prepare）。 */
     var raided = GAME.map.fortRaidedToday && GAME.map.fortRaidedToday(f.ci);
     /* ⛔ v89.186（老板 3）退役：领地上限判据（cc108f）—— 据点剥离后占据=我方前哨，
-       **不转城市、不占城池名额** → 领地闸与本面板无关（旧 v89.108 的"置灰"随之退役）。 */
+       **不转城市、不占城市名额** → 领地闸与本面板无关（旧 v89.108 的"置灰"随之退役）。 */
     ui.openModal(
-      '<div class="gold-heading">🏕️ 野外城池 · ' + U.escape(GAME.fortLabelOf(f)) + ' Lv' + f.level + '</div>' +
+      '<div class="gold-heading">🏕️ 野外城市 · ' + U.escape(GAME.fortLabelOf(f)) + ' Lv' + f.level + '</div>' +
       '<div style="text-align:center;color:var(--text-dim);font-size:var(--fs-body);margin-bottom:8px;">守军约 ' + gNum.toLocaleString() + ' 名 · 距主城 ' + dist + ' 格</div>' +
       ui.planHTML(plan) +
       '<div class="note">守军：' + parts.join('　') + '<br>' +
@@ -12722,15 +12722,15 @@
            v89.193（老板 2）：每城上限 5 —— 满员时按"受阻"形态（可点弹原因，v89.189 机制）。 */
         (_full193
           ? '<button class="btn gold" data-action="fort-exp" data-mode="occupy" disabled data-why="「' + U.escape(c.name) +
-            '」的前哨已满（' + _fm193 + ' 处）：先放手一处，或从其他城池出征">🚩 拔除并收为前哨</button>'
+            '」的前哨已满（' + _fm193 + ' 处）：先放手一处，或从其他城市出征">🚩 拔除并收为前哨</button>'
           : '<button class="btn gold" data-action="fort-exp" data-mode="occupy">🚩 拔除并收为前哨</button>') +
         '<button class="btn" data-action="close-modal">取消</button></div>' +
-      '<div class="op-hint" style="text-align:center;margin-top:6px;">🚩 <b>拔除并收为前哨</b>：围攻夺其民心（胜者每战 −20）→ 民心一尽即归我（不转城市、不占城池名额）· 本城前哨 <b>'
+      '<div class="op-hint" style="text-align:center;margin-top:6px;">🚩 <b>拔除并收为前哨</b>：围攻夺其民心（胜者每战 −20）→ 民心一尽即归我（不转城市、不占城市名额）· 本城前哨 <b>'
         + _fn193 + '/' + _fm193 + '</b>（每城上限 ' + _fm193 + '）——辐射 6~14 格（随据点等级）内野地：衰减减半 / 采集增产 / 驻军上限加成 / 情报 / 商税（均随等级）</div>'
     );
   };
 
-  /* 已探明的野外城池一览（视口范围） */
+  /* 已探明的野外城市一览（视口范围） */
   ui.openForts = function () {
     var v = GAME.map._view || { vx: 0, vy: 0, span: 12 };
     var list = GAME.map.fortsInView();
@@ -12738,12 +12738,12 @@
     var day = GAME.questDayIndex ? GAME.questDayIndex() : 0;
     var razed = Object.keys(s.fortsRazed || {}).filter(function (k) { return s.fortsRazed[k] === day; });
     var raided = Object.keys(s.fortRaids || {}).filter(function (k) { return s.fortRaids[k] === day; });
-    var html = '<div class="gold-heading">🏕️ 周边野外城池（' + list.length + ' 座）</div>';
+    var html = '<div class="gold-heading">🏕️ 周边野外城市（' + list.length + ' 座）</div>';
     html += '<div style="color:var(--text-dim);font-size:var(--fs-sub);text-align:center;margin-bottom:8px;">' +
       '范围 (' + v.vx + ',' + v.vy + ') — (' + (v.vx + v.span - 1) + ',' + (v.vy + v.span - 1) + ')　' +
       '全图密度约 1/12（每 12×12 约 12 座）　今日已攻取 ' + razed.length + ' 处 · 今日已掠夺 ' + raided.length + ' 处</div>';
     if (!list.length) {
-      html += '<div class="q-empty">本视野内暂无野外城池，可用坐标框移动观察框后再看。</div>';
+      html += '<div class="q-empty">本视野内暂无野外城市，可用坐标框移动观察框后再看。</div>';
     } else {
       /* v63：加「地块」列 —— 老板问「现在都是32格的吧，没看懂」，
          格数档位是这轮刚统一的规则，那就该在列表里直接看得见（每两级一档）。
@@ -12797,7 +12797,7 @@
    * v86（老板「按计划进行」· G1）：计略选择（出征面板）
    * ------------------------------------------------------------
    * attack/march 计随出征携带（校验不通过给原因；含每日锁）；
-   * defense 计在「城池面板 → 布防计略」单独布防（见 ui.openCityScheme）。
+   * defense 计在「城市面板 → 布防计略」单独布防（见 ui.openCityScheme）。
    * ============================================================ */
   ui._expScheme = null;
   ui.expSchemeLabel = function () {
@@ -12852,7 +12852,7 @@
       box.classList.add('hidden');
     }
   };
-  /* 布防计略（城池面板）——防御计布在自己城上，持续期内自动生效 */
+  /* 布防计略（城市面板）——防御计布在自己城上，持续期内自动生效 */
   ui._csGen = null;
   ui.openCityScheme = function () {
     var c = GAME.currentCity();
@@ -12959,9 +12959,9 @@
   ui._expTargets = [];
   /* v89.59（老板需求 1/3）：目标候选三类 ——
      · 当前目标（置顶）
-     · **自身城池**（城池间操作：派驻 / 运输）
-     · **同一镇下的普通城池**（聚落 / 重镇；不含名城 首府·旧都）+ 附近野外据点
-     普通城池按老板要求**在标签上显示等级**。 */
+     · **自身城市**（城市间操作：派驻 / 运输）
+     · **同一镇下的普通城市**（聚落 / 重镇；不含名城 首府·旧都）+ 附近野外据点
+     普通城市按老板要求**在标签上显示等级**。 */
   ui.expTargetCandidates = function (city, cur) {
     var s = GAME.state, list = [], seen = {};
     function push(tg, d) {
@@ -12973,12 +12973,12 @@
     if (city) {
       var rg0 = GAME.regionOf ? GAME.regionOf(city.x, city.y) : null;
       var myCounty = (rg0 && rg0.countyCity) ? rg0.countyCity.id : null;
-      /* ① 自身城池（城池间操作入口） */
+      /* ① 自身城市（城市间操作入口） */
       (s.cities || []).forEach(function (mc) {
         if (mc.id === city.id) return;
         push({ kind: 'own', id: mc.id }, GAME.cityDist(mc, city));
       });
-      /* ② 同一聚落下的普通城池（聚落 / 重镇；名城首府·旧都排除） */
+      /* ② 同一聚落下的普通城市（聚落 / 重镇；名城首府·旧都排除） */
       (s.map.cities || []).forEach(function (nc) {
         if (nc.type === 'zhou' || nc.type === 'capital') return;
         var rgc = GAME.regionOf ? GAME.regionOf(nc.x, nc.y) : null;
@@ -13000,11 +13000,11 @@
     list.sort(function (a, b) { return a.d - b.d; });
     return list.slice(0, 40).map(function (o) { return o.tg; });
   };
-  /* 目标标签（v89.59）：普通城池 / 据点 一律带等级；自身城池标注「己方 · 城池间操作」 */
+  /* 目标标签（v89.59）：普通城市 / 据点 一律带等级；自身城市标注「己方 · 城市间操作」 */
   ui.expTargetLabel = function (tg) {
     if (tg.kind === 'own') {
       var mc = GAME.cityById(tg.id);
-      return mc ? ('🏯 ' + mc.name + '（己方 · 城池间操作）') : '（己方城池）';
+      return mc ? ('🏯 ' + mc.name + '（己方 · 城市间操作）') : '（己方城市）';
     }
     var t = GAME.battle.resolveTarget(tg);
     if (!t.ok) return '（不可达）';
@@ -13371,7 +13371,7 @@
    * **总人数上限的唯一出口**（按钮、探针、断言都读它）—— 返回 null 表示"不限"：
    *   · 目标 = 我方野地（驻守 · 增援）：野地派驻上限 − 现有驻军
    *       （与 prepare 的 station 预检、wildGarrisonAdd 的抵达闸**同一把尺**）；
-   *   · 目标 = 我方城池（调兵 · 辎重）：**不限**（v89.220 老板 2 —— 驻军不受目标城
+   *   · 目标 = 我方城市（调兵 · 辎重）：**不限**（v89.220 老板 2 —— 驻军不受目标城
    *       练兵场容量限制；原"目标城出征容量 − 现有兵力"口径整条退役）；
    *   · 其余（出征类）：本城出征容量 marchCapOf（练兵场 ×1 万 × 专精/年号/增益 —— 唯一出口）；
    *       无练兵场（cap = 0）→ **不限**（与 prepare 的 `cap > 0` 判据同规：没练兵场不设限）。
@@ -13410,7 +13410,7 @@
   /* v89.156（老板 2）：派遣兵力标题里的**额度标签**（唯一出口）——
      「练兵场出征上限」= 行内「上限」按钮的总额度（expFillCapOf），随方式/目标变：
        · 出征类：练兵场出征上限（marchCapOf × 各种加成）；
-       · 己方野地（驻守）：派驻上限余量；己方城池（调兵）：不设上限（v89.220）；
+       · 己方野地（驻守）：派驻上限余量；己方城市（调兵）：不设上限（v89.220）；
        · 无练兵场 = 不设上限。 */
   ui.expCapLabelOf = function (city, t, modeId) {
     var cap = ui.expFillCapOf(city, t, modeId);
@@ -13473,19 +13473,19 @@
        opts138.hint 给一行**入口专属提示**（讲清这次要填什么），不传则不显示。 */
     ui._expHint = (opts138 && opts138.hint) || '';
     /* ============================================================
-     * v89.103（老板「任意自身城池向其他城池进行资源运输，应当采用出征界面」
-     * ＋「目前主城向分城点击运输时提示城池不存在」）
+     * v89.103（老板「任意自身城市向其他城市进行资源运输，应当采用出征界面」
+     * ＋「目前主城向分城点击运输时提示城市不存在」）
      * ------------------------------------------------------------
-     * 自身城池**不再跳到「城池间操作」小面板** —— 就在出征界面完成：
+     * 自身城市**不再跳到「城市间操作」小面板** —— 就在出征界面完成：
      * 英雄 / 兵种 / 资源数量三确认，走**同一套行军通道**（有行军时间、可召回）。
-     * 老面板那条"点运输 → 城池不存在"的路（`ui._trTo` 没落过默认值，
+     * 老面板那条"点运输 → 城市不存在"的路（`ui._trTo` 没落过默认值，
      * 起运时按空 id 查城）随之整条退场 —— 货运现在只有这一个入口。
      * ============================================================ */
     if (target && target.kind === 'own') {
       var _ownTo = GAME.cityById(target.id);
       var _ownFrom = GAME.currentCity();
-      if (!_ownTo) { ui.toast('目标城池不存在'); return; }
-      if (_ownFrom && _ownFrom.id === _ownTo.id) { ui.toast('请选择另一座己方城池'); return; }
+      if (!_ownTo) { ui.toast('目标城市不存在'); return; }
+      if (_ownFrom && _ownFrom.id === _ownTo.id) { ui.toast('请选择另一座己方城市'); return; }
       target = { kind: 'owncity', id: target.id };     /* 交给既有 resolveTarget（同一出口） */
     }
     ui._expOwn = !!(target && target.kind === 'owncity');
@@ -13513,7 +13513,7 @@
     if (isOwnWild137 && ui._expMode !== 'station') ui._expMode = 'station';
     /* v89.138 修正（e2e 抓出）：`station` 与 `transfer` 都是**专用方式** ——
        离开对应目标类型时必须复位，否则会粘到下一次出征上
-       （实测：先走"运输"（transfer）再打无主野地 → prepare 连报两次"调兵目标须为本境城池"、
+       （实测：先走"运输"（transfer）再打无主野地 → prepare 连报两次"调兵目标须为本境城市"、
        兵根本没发出去）。 */
     if (!isOwnWild137 && !ui._expOwn && (ui._expMode === 'station' || ui._expMode === 'transfer')) {
       ui._expMode = 'occupy';
@@ -13579,10 +13579,10 @@
       '</tbody></table>';
 
     /* v89.87（需求 2）：调派类（调兵/驻守/采集）**不列出征面板** ——
-       三者各有自己的入口（城池间操作 / 派驻面板 / 采集面板），
+       三者各有自己的入口（城市间操作 / 派驻面板 / 采集面板），
        混进"出征方式"只会让每次出征都要先跳过三个无关项。 */
     var modes = ((DATA.EXPEDITION && DATA.EXPEDITION.modes) || []).filter(function (m) {
-      /* v89.103（老板「资源运输采用出征界面」）：目标是己方城池时，
+      /* v89.103（老板「资源运输采用出征界面」）：目标是己方城市时，
          方式只有一种 —— 调兵 · 辎重（transfer：兵力 + 资源一起走行军通道）。 */
       if (ui._expOwn) return m.id === 'transfer';
       /* v89.137（老板 7）：目标 = **己方野地** → 只出「驻守 · 增援」（station）。
@@ -13605,7 +13605,7 @@
       }).join('') + '</select>';
     var cur = GAME.battle.modeOf(ui._expMode);
 
-    /* v70（老板）：出征目标写**全称** —— 名城给区·镇·城名，野外城池带所在聚落 */
+    /* v70（老板）：出征目标写**全称** —— 名城给区·镇·城名，野外城市带所在聚落 */
     var _tTitle = (t.kind === 'fort' && t.fort) ? GAME.fortLabelOf(t.fort)
       : (t.npc ? GAME.cityFullName(t.npc) : t.name);
 
@@ -13626,7 +13626,7 @@
       ui.expSchemeOptionsHTML() + '</select><span class="exp-tac-link" data-action="exp-scheme">详情</span>';
 
     /* v89.52（老板：出征界面整合为单界面、紧凑有序）：
-       目标城池 / 主将+可用道具 / 派遣兵力 / 出征方式 / 战术·计略 / 预估 / 确认，
+       目标城市 / 主将+可用道具 / 派遣兵力 / 出征方式 / 战术·计略 / 预估 / 确认，
        六大块用标题小卡分区，一眼扫完；主将改下拉框，可用道具实时可见。 */
     var html = '<div class="gold-heading">⚔️ ' + U.escape(_tTitle) + '</div>';
     /* v89.138：派遣 / 运输 的入口提示（同一界面，两句话说清各自要填的东西） */
@@ -13639,7 +13639,7 @@
     }
     /* v89.55（老板：出征界面偏小、每区块占整行不紧凑）→ 改 2 列分区网格 + 弹窗升 xl：
        目标+主将并排、战术+预估并排，派遣兵力/出征方式占满整行（需宽度）。 */
-    /* v89.64（老板：「目标这里不用显示目标野地/城池的任何备注性信息，不然还要侦察何用？
+    /* v89.64（老板：「目标这里不用显示目标野地/城市的任何备注性信息，不然还要侦察何用？
        计略，方案，战术也放在左侧边，右边只留兵种及数量」）
        —— 于是版面改为**左列信息 / 右列兵力**两栏：
          左列：目标（只留名称与选择器）· 主将·道具 · 出征方式 · 计略 · 方案 · 出征战术 · 预估
@@ -13727,7 +13727,7 @@
     /* v89.186（老板 3）：据点剥离 —— 占领 = 收为**我方前哨**（不转城市、不占名额） */
     /* v89.197（老板 4）：据点说明改**悬停**（挂「出征方式」名称；内容=游戏内实情） */
     var fortModeNote = (t.kind === 'fort')
-      ? '据点：占领=拔除并收为「我方前哨」（不转城市、不占城池名额）——辐射 6~14 格（随据点等级）内野地：衰减减半 / 采集增产 / 驻军上限加成 / 情报 / 商税（均随后哨等级）。'
+      ? '据点：占领=拔除并收为「我方前哨」（不转城市、不占城市名额）——辐射 6~14 格（随据点等级）内野地：衰减减半 / 采集增产 / 驻军上限加成 / 情报 / 商税（均随后哨等级）。'
       : null;
     html += '<div class="exp-sec exp-a-modes">' + ui.expRowHTML('出征方式', modeSelHTML, fortModeNote) + '</div>';
 
@@ -13839,7 +13839,7 @@
       ui.refreshExpSchemeSel();          /* v89.57：英雄变 → 计略下拉可用性重算 */
     });
     /* v89.57：目标切换 → 重开面板（守军 / 库藏 / 计略可用性全变）
-       v89.103：切到己方城池 → 同样重开（本境调运：辎重区会随之出现） */
+       v89.103：切到己方城市 → 同样重开（本境调运：辎重区会随之出现） */
     var _tgtSel = document.getElementById('exp-target');
     if (_tgtSel) _tgtSel.addEventListener('change', function () {
       var tg = ui._expTargets[Number(_tgtSel.value)];
@@ -13905,7 +13905,7 @@
   };
   /* 军师估算（v89.94 · E2 改造）：**不再给一键正解** —— 给人一个区间。
      · 点估计 = 兵种加权（与来袭/家底同一把尺），守方含城防；
-     · 围攻目标（据点/城池）：守军与城防按**当前民心**折算（与战斗入参同一出口 · v89.204 口径）；
+     · 围攻目标（据点/城市）：守军与城防按**当前民心**折算（与战斗入参同一出口 · v89.204 口径）；
      · 误差 ±err 由侦察网络等级决定 —— 情报越细，区间越窄，"判断"才有价值。 */
   ui.expPowerOf = function () {
     var tp = (GAME.story && GAME.story.troopPower) ? GAME.story.troopPower : null;
@@ -14050,7 +14050,7 @@
     /* v74（老板：完善出征界面）：兵力总览 + 战力对比（估算）。
        v89.36：军粮维持退役 —— 总览不再列「耗粮 X/时」。
        战力走 STORY.troopPower（与来袭/家底评估同一出口）；
-       守军侧对城池/据点吃城防系数（与 defensePowerOf 同一个 defDivisor 常量）。 */
+       守军侧对城市/据点吃城防系数（与 defensePowerOf 同一个 defDivisor 常量）。 */
     /* v89.178（老板：「👥 共派遣 N 兵，这不明摆着吗」）——「共派遣」整行退役（#exp-sum 元素同删）；兵力在各兵种输入框上本就可数。 */
     var pow73 = $('#exp-power');
     if (pow73) {
@@ -14289,8 +14289,8 @@
   };
 
   /* 旧接口兼容 */
-  /* v89.58（老板「侦查/掠夺/占领 的选项做在 野地/城池/名城 的点击界面中」）：
-     点 NPC 城不再直进大面板，先给「城池点击界面」—— 摘要 + 三个方式按钮，选完再进出征面板。 */
+  /* v89.58（老板「侦查/掠夺/占领 的选项做在 野地/城市/名城 的点击界面中」）：
+     点 NPC 城不再直进大面板，先给「城市点击界面」—— 摘要 + 三个方式按钮，选完再进出征面板。 */
   ui.openAttackModal = function (npcCity) {
     ui._attackNpc = npcCity;
     ui._expMode = 'occupy';
@@ -14303,9 +14303,9 @@
     var ng = nci.guard;
     var html = '<div class="gold-heading">⚔️ ' + U.escape(GAME.cityFullName(npcCity)) +
       '（' + tier + ' · <b>城等级 Lv' + GAME.cityLvOf(npcCity) + '</b>）</div>';
-    /* v89.73（老板：「地图点选城池时，弹窗界面显示其坐标」）——
+    /* v89.73（老板：「地图点选城市时，弹窗界面显示其坐标」）——
        坐标 + 距主城格数一起给：前者用于报点/对齐，后者用于估行军耗时。
-       （v71 那条"城池属性不显示坐标"说的是**自己的城池面板**，与这里的
+       （v71 那条"城市属性不显示坐标"说的是**自己的城市面板**，与这里的
         "点地图上别人家的城"是两回事，不冲突。） */
     var _myc = GAME.currentCity();
     var _dist = _myc ? GAME.cityDist(_myc, npcCity) : null;
@@ -14525,8 +14525,8 @@
 
   /* --------- 统计 --------- */
   /* ============================================================
-   * 统计（v23 · 需求 5）：顶栏菜单，承载**所有城池的汇总**
-   * 侧栏只讲当前城池，全局数字集中到这里，两边不再打架。
+   * 统计（v23 · 需求 5）：顶栏菜单，承载**所有城市的汇总**
+   * 侧栏只讲当前城市，全局数字集中到这里，两边不再打架。
    * ============================================================ */
   /* 卷轴壳：上下木轴 + 竹简底 + 朱印标题（统计 / 公文共用） */
   ui.scrollOpen = function (seal, title, right) {
@@ -15903,7 +15903,7 @@
         if (!due) return;
         if (!soon || due < soon) soon = due;
       });
-      if (!soon) return '已接受 · 暂无排期（城池数不够）';
+      if (!soon) return '已接受 · 暂无排期（城市数不够）';
       return '已接受 · 下一场 ' +
         U.dur(Math.max(0, Math.round((soon - GAME.realNow()) / 1000))) + ' 后（现实时间）';
     }
@@ -15923,7 +15923,7 @@
   };
   /* 右侧详情（介绍 + 详细设置） */
   /* v89.116（老板「自动治疗下放一个触发记录，如果进行了自动治疗，显示具体兵种及数量」）
-     —— 触发记录：每条 = 时间 + 兵种 × 数量 + 治疗费 + 归入城池。
+     —— 触发记录：每条 = 时间 + 兵种 × 数量 + 治疗费 + 归入城市。
      数据在 `s.autoHealLog`（`GAME.autoHeal` 写入，上限 DATA.AUTO_HEAL_LOG_MAX），
      本函数只负责画（不在界面里另存一份状态）。 */
   ui.autoHealLogHTML = function () {
@@ -15985,7 +15985,7 @@
           '② 体力不足以支付本次出征就不出发；' +
           '③ 器械（无人轰炸机/自行火炮）、侦察单元、辎重<b>不编入</b>自动队伍 —— ' +
           '它们拖慢行军，且是守城家底；' +
-          '④ 只从<b>当前城池</b>取兵；' +
+          '④ 只从<b>当前城市</b>取兵；' +
           '⑤ 已占野地与今日已攻破的据点不会被重复打。</div>';
     } else if (it.id === 'lord') {
       body = '<div class="auto-note">君主<b>体力过半</b>时自动练一次（每 30 秒最多一次）：' +
@@ -16020,7 +16020,7 @@
         '<div class="auto-note">伤兵营有伤兵、旧币够治疗费 → <b>自动治完全部</b>' +
           '（花旧币一次结清，15 现实秒最多尝试一次）。' +
           '旧币不足时<b>暂停但不关开关</b>，旧币恢复后自动继续。' +
-          '治疗即归队：按兵种把伤兵加回城池，不是"清个数字"。</div>' +
+          '治疗即归队：按兵种把伤兵加回城市，不是"清个数字"。</div>' +
         ui.autoHealLogHTML();
     } else if (it.id === 'invasion') {
       var acc = GAME.invasionAcceptOn ? GAME.invasionAcceptOn() : true;
@@ -16037,7 +16037,7 @@
             ? (soonCt
               ? '最近一场：<b>' + U.escape(soonCt.name) + '</b> · 剩余 <b>' +
                 U.dur(Math.max(0, Math.round((soonDue - GAME.realNow()) / 1000))) + '</b>（现实时间）'
-              : '已接受 · 暂无排期（拥有 <b>' + need0 + '</b> 座以上城池后开始）')
+              : '已接受 · 暂无排期（拥有 <b>' + need0 + '</b> 座以上城市后开始）')
             : '已拒战：警报无排期、敌军不来（随时可重开）') + '</span>' +
           '<button class="btn" data-action="go-beacon">🔥 去警报页看预警与布防</button></div>' +
         '<div class="auto-note"><b>开关含义</b>：<b>开启</b> = 接受外敌来犯 —— ' +
@@ -16058,7 +16058,7 @@
       '<div class="gold-heading">🤖 自动化' +
         ui.help('左侧切换自动化功能，右侧看介绍与详细设置。\n' +
           '七项彼此独立；「暂停」只发生在资源/条件不足时 —— 开关不会自己关掉。\n' +
-          '自动出征只派空闲英雄、器械与侦察单元不编入，且只从当前城池取兵。') +
+          '自动出征只派空闲英雄、器械与侦察单元不编入，且只从当前城市取兵。') +
       '</div>' +
       '<div class="auto-grid">' +
         '<div class="auto-side">' + ui.autoSideHTML() + '</div>' +
@@ -16441,7 +16441,7 @@
     ui.openModal('<div class="ui-page farm-space">' + ui.farmHTML() + '</div>' +
       '<div class="modal-foot"><button class="btn" data-action="close-modal">关闭</button></div>',
       { size: 'xxl', closeAll: true });
-      /* v89.135（老板 8）：「基因实验室关闭后直接会到城池界面」—— closeAll 语义：
+      /* v89.135（老板 8）：「基因实验室关闭后直接会到城市界面」—— closeAll 语义：
          关闭键 = 全关回游戏视图（不弹回进实验室前的那层）。 */
   };
   ui.farmHTML = function () {

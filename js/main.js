@@ -20,7 +20,7 @@
       case 'create-start': ui.doCreate(); break;
       case 'create-continue': ui.doContinue(); break;
 
-      /* v70（老板需求 3/4）：城池坐标 —— 一键随机 / 坐标切换 */
+      /* v70（老板需求 3/4）：城市坐标 —— 一键随机 / 坐标切换 */
       case 'city-move-ask': ui.openCityMoveAsk(); break;
       case 'open-bldg-list': ui.openBuildingList(); break;
       case 'city-move-do': GAME.doCityMove(); break;
@@ -176,9 +176,9 @@
         if (far.ok) { GAME.refreshAll(); ui.openFarm(); }
         break;
       }
-      /* v45（需求 3）：城池下拉框（由 change 监听转交到此，见下方事件委托） */
+      /* v45（需求 3）：城市下拉框（由 change 监听转交到此，见下方事件委托） */
       case 'switch-city': ui.setCity(el.value); GAME.refreshAll(); break;
-      /* v25：说明浮层 / 城池改名 / 任务详情 */
+      /* v25：说明浮层 / 城市改名 / 任务详情 */
       case 'show-help': ui.openHelp(el.dataset.help || ''); break;
       case 'open-rename-city': ui.openRenameCity(); break;
       case 'do-rename-city': {
@@ -308,9 +308,9 @@
         ui.toast(avr.msg);
       })(); break;
       case 'close-avatar-pick': ui.openLordInfo(); break;
-      /* v77（老板）：君主面板 —— 进入城池（直跳该城城内界面）/ 晋升 / 改名 */
+      /* v77（老板）：君主面板 —— 进入城市（直跳该城城内界面）/ 晋升 / 改名 */
       case 'lord-city-enter': (function () {
-        /* v89.166：与「城池面板 · 进入城池」**统一出口**。v90.90：若该城在**别的星球** → 先切星球。 */
+        /* v89.166：与「城市面板 · 进入城市」**统一出口**。v90.90：若该城在**别的星球** → 先切星球。 */
         var pid = el.dataset.pid, cid = el.dataset.city;
         ui.closeAllModals();
         if (pid != null && Number(pid) !== GAME.state.activePlanet && GAME.enterPlanet) {
@@ -536,7 +536,7 @@
       }
       case 'open-bag-equip': GAME.doBagEquip(el.dataset.key); break;
       case 'bag-detail': GAME.doBagDetail(el.dataset.key); break;
-      /* v77（老板）：建筑信息 / 资源生产两个入口随城池属性右三按钮一并退役；
+      /* v77（老板）：建筑信息 / 资源生产两个入口随城市属性右三按钮一并退役；
          「附属野地」改由资源区下拉框的「进入」按钮触发（动作名不变）。 */
       case 'open-wilds': ui.openWilds(); break;
       /* v86（老板「按计划进行」· G1）：计略 */
@@ -818,15 +818,15 @@
       }
 
       /* 点选控件（v22 · 需求 1：全站不用下拉框）
-         v45 例外：**城池切换**改用原生 `<select>`（见上面的 change 监听）——
+         v45 例外：**城市切换**改用原生 `<select>`（见上面的 change 监听）——
          可选项会随游戏进程增长，窄侧栏里 chips 折行反而更占地方。
          除它之外仍然不用下拉框。 */
       /* v59：出征战术（练兵场入口 / 点选 / 恢复默认） */
       case 'open-tactic': ui.openTacticModal(ui._expMode === 'raid' ? 'raid' : 'occupy'); break;
       /* v89.136（老板 4）：出征战术细分小页切换（掠夺 / 占领） */
       case 'exp-tac-sub': ui._expTac = (el.dataset.v === 'raid') ? 'raid' : 'occupy'; GAME.refreshView(); break;
-      /* v60（需求 4）：城池面板与城池间调拨 ——
-         地图上点自家城池先弹面板（不直接进城），面板里再进 / 运 / 派 / 改名。
+      /* v60（需求 4）：城市面板与城市间调拨 ——
+         地图上点自家城市先弹面板（不直接进城），面板里再进 / 运 / 派 / 改名。
          chips 一律"只切 class + 写选择"，需要刷新数字的走 ui.syncTransportEst。 */
       /* v91.25（老板）：侧栏「星球」下拉 —— 切换当前经营的星球（载入目标星球分片）。 */
       case 'switch-planet': {
@@ -840,15 +840,15 @@
       }
       case 'city-enter': {
         var ceId = el.dataset.city, ceC = GAME.cityById(ceId);
-        if (!ceC) { ui.toast('城池不存在'); break; }
+        if (!ceC) { ui.toast('城市不存在'); break; }
         /* v89.166（老板）：「城市菜单界面应关闭，直接显示城内大界面」——
-           改前本 case **没有任何关闭调用**（取证：closeModal x0），点了"进入城池"
+           改前本 case **没有任何关闭调用**（取证：closeModal x0），点了"进入城市"
            弹窗仍盖在城内视图上，玩家得手动再关一次。
            出口用 closeAllModals（清栈 + 完整关闭 · 与「基因实验室关闭键 / 开练兵场」同款）——
-           "进入城池"的语义 = 离开全部菜单回主界面，单层/多层栈都关干净。 */
+           "进入城市"的语义 = 离开全部菜单回主界面，单层/多层栈都关干净。 */
         ui.closeAllModals();
         ui.setCity(ceId);
-        /* v89.138（老板 2）：「进入城池，**直接进入该城的城内界面**」——
+        /* v89.138（老板 2）：「进入城市，**直接进入该城的城内界面**」——
            改前只切了"当前城"、视图还停在地图上（玩家看不出"进去了"）。 */
         ui.setView('city');
         GAME.refreshAll();
@@ -856,13 +856,13 @@
         break;
       }
       /* v89.103（老板「资源运输应当采用出征界面」）：本城「资源运输」按钮
-         → 直接开出征界面（选目标 = 另一座己方城池），在那里填兵力与辎重。
-         旧面板（ui.openTransport）整条退场 —— 那个"点运输报城池不存在"的老 bug
+         → 直接开出征界面（选目标 = 另一座己方城市），在那里填兵力与辎重。
+         旧面板（ui.openTransport）整条退场 —— 那个"点运输报城市不存在"的老 bug
          也随之消失（见 ui.js 里的退役注释）。 */
       case 'city-transport': {
         var _ctFrom = GAME.currentCity();
         var _ctTo = el.dataset.city;
-        if (!_ctFrom || !_ctTo || _ctTo === _ctFrom.id) { ui.toast('请选择另一座己方城池'); break; }
+        if (!_ctFrom || !_ctTo || _ctTo === _ctFrom.id) { ui.toast('请选择另一座己方城市'); break; }
         /* v89.138：「运输」入口 —— 同一出征界面 + 押运提示 */
         ui.openExpModal({ kind: 'own', id: _ctTo }, { hint: 'cargo' });
         break;
@@ -887,7 +887,7 @@
         }
         break;
       }
-      /* v89.132（老板「节钺设计再开拓一下」）：练兵场扩编 / 招贤纳士 / 节钺面板 */
+      /* v89.132（老板「节钺设计再开拓一下」）：练兵场扩编 / 招揽人才 / 节钺面板 */
       case 'jieyue-xc': {
         var _jxR = GAME.jieyueExpand('xc', el.dataset.city);
         ui.toast((_jxR.ok ? '🪓 ' : '⚠️ ') + _jxR.msg);
@@ -932,9 +932,9 @@
         if (ruR.ok) { GAME.refreshAll(); }        /* 档案页随刷新重绘（晋升行自动更新） */
         break;
       }
-      /* ⛔ v89.138（老板 2）：「去掉改名菜单」——城池面板的改名入口退役；
+      /* ⛔ v89.138（老板 2）：「去掉改名菜单」——城市面板的改名入口退役；
          改名功能不丢：政务厅格面板的「📝 修改城名」（open-rename-city）仍在。 */
-      /* v67（老板）：放弃城池 —— 先二次确认（不可逆），确认后走 GAME.abandonCity
+      /* v67（老板）：放弃城市 —— 先二次确认（不可逆），确认后走 GAME.abandonCity
          （业务侧照 CITY_SCOPED 表批量清理，界面不自己动数据）。 */
       case 'city-abandon-ask': ui.openAbandonCityAsk(el.dataset.city); break;
       /* v89.138（老板 2）：弃城**两段确认** —— 第一次点"上膛"（改文案 + 警告），
@@ -1031,7 +1031,7 @@
         ui.setView('city');
         GAME.refreshAll();
         var aeC = GAME.cityById(aeCid);
-        ui.toast('已进入 ' + (aeC ? aeC.name : '城池'));
+        ui.toast('已进入 ' + (aeC ? aeC.name : '城市'));
         break;
       }
       case 'tactic-set': {
@@ -1232,8 +1232,8 @@
         break;
       }
 
-      /* ⛔ v89.103：ic-troop / ic-gen / ic-res 三个动作随「城池间操作」面板一并退役 ——
-         派驻军队/辎重/资源 → 出征界面选己方城池；派驻英雄 → 城池面板「英雄派遣」。 */
+      /* ⛔ v89.103：ic-troop / ic-gen / ic-res 三个动作随「城市间操作」面板一并退役 ——
+         派驻军队/辎重/资源 → 出征界面选己方城市；派驻英雄 → 城市面板「英雄派遣」。 */
       case 'tm-to': ui.setTmTo(el.dataset.i, el.dataset.v); break;
       case 'tm-max': { var _tm = document.getElementById('tm-' + el.dataset.troop); if (_tm) _tm.value = _tm.max; break; }
       case 'tm-do': ui.doTroopMove(); break;
@@ -1398,10 +1398,10 @@
     inp.click();
   };
 
-  /* 野外城池出征（三方式） */
+  /* 野外城市出征（三方式） */
   GAME.doOpenFortExp = function (mode) {
     var f = ui._fortTarget;
-    if (!f) { ui.toast('未选择野外城池'); return; }
+    if (!f) { ui.toast('未选择野外城市'); return; }
     if (mode) ui._expMode = mode;    /* v89.58：点击界面直选方式 */
     ui.openExpModal({ kind: 'fort', x: f.x, y: f.y });
   };
@@ -2197,7 +2197,7 @@
     if (mode) ui._expMode = mode;    /* v89.58：点击界面直选方式（侦查 / 掠夺 / 占领） */
     if (kind === 'city') {
       var npc = ui._attackNpc;
-      if (!npc) { ui.toast('请先点击目标城池'); return; }
+      if (!npc) { ui.toast('请先点击目标城市'); return; }
       ui.openExpModal({ kind: 'city', id: npc.id, npc: npc });
       return;
     }
@@ -2217,7 +2217,7 @@
     var atk = ui.expArmyOf ? ui.expArmyOf() : {};
     var md = GAME.battle.modeOf(mode);
     /* ============================================================
-     * v89.103（老板「任意自身城池向其他城池进行资源运输，应当采用出征界面，
+     * v89.103（老板「任意自身城市向其他城市进行资源运输，应当采用出征界面，
      * 完成英雄，兵种，资源数量等确认」）
      * ------------------------------------------------------------
      * 本境调运：兵 + 辎重一起走行军通道（GAME.doTransferCargo）——
@@ -2226,7 +2226,7 @@
     if (ui._expOwn) {
       var _from5 = GAME.currentCity();
       var _to5 = (ui._expRes && ui._expRes.city) || GAME.cityById(target.id);
-      if (!_from5 || !_to5) { ui.toast('城池不存在'); return; }
+      if (!_from5 || !_to5) { ui.toast('城市不存在'); return; }
       /* v89.138（老板 2）：本境调运**允许 0 兵**（只派将）——
          有辎重才必须有兵押运（运力随兵力），没辎重就纯调将。 */
       var _cargo5 = {};
@@ -2325,7 +2325,7 @@
        * v89.102（老板）：「侦查报告不要自动冒出来」
        * ------------------------------------------------------------
        * 改前这里 `ui.openScoutResult(...)` **自动弹面板** —— 玩家正在处理别的
-       * 城池（或读战报）也会被盖住，且一次出征带着侦察单元就弹一次。
+       * 城市（或读战报）也会被盖住，且一次出征带着侦察单元就弹一次。
        * 现在：只写一条 toast + 落公文（`battle.js` 里已把面板数据随公文存下），
        * 玩家要细看时在**公文页**点开该条 → 「展开侦查面板」。
        * v89.201：翻页锚点随面板单页化一并退役（不再需要"留一份供翻页"）。
@@ -2467,7 +2467,7 @@
     }
     if (it.got.build && !blind && r.buildReport) {
       var b = r.buildReport;
-      html += '<div class="attr"><span class="k">城池规格</span><span class="v">' +
+      html += '<div class="attr"><span class="k">城市规格</span><span class="v">' +
         b.col + '×' + b.row + '（' + b.total + ' 格）　建筑 Lv' + b.buildLv +
         '　围墙 Lv' + b.wallLv + '</span></div>' +
         '<div class="attr"><span class="k">城防 / 箭塔</span><span class="v">' +
@@ -2580,10 +2580,10 @@
         if (hit.kind === 'npc') {
           ui.openAttackModal(hit.city);
         } else if (hit.kind === 'player') {
-          /* v60（需求 4）：老板：「**不要一点击地图就直接进入城池**」。
+          /* v60（需求 4）：老板：「**不要一点击地图就直接进入城市**」。
              改前点自己的城会立刻 setView('city') + setCity（副作用：当前城被换掉、
              侧栏数据全变），玩家只想看一眼都得先"进去再出来"。
-             现在弹「城池面板」：先看摘要，再自己选 进入 / 运输 / 派遣 / 改名。 */
+             现在弹「城市面板」：先看摘要，再自己选 进入 / 运输 / 派遣 / 改名。 */
           ui.openCityPanel(hit.city);
         } else if (hit.kind === 'fort') {
           ui.openFortModal(hit.fort);

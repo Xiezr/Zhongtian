@@ -105,7 +105,7 @@
     return { ok: true, msg: '「' + item.name + '」×' + got + ' 已使用' + tail, count: got };
   };
 
-  /* 逆向工程（v63 · 老板：「守将属性只对当前城池起加成作用」）：
+  /* 逆向工程（v63 · 老板：「守将属性只对当前城市起加成作用」）：
      研究由**某城的研习所**发起，所以谋略加速取**发起城**的守将（不传则按当前城）。
      研究本身仍是全境科技（`s.queues.tech` 无 cityId、全境共享）——
      但"加成从哪来"必须能指到一座城，否则又变成全境加成。 */
@@ -554,7 +554,7 @@
          越早用越亏）；新口径是"增加"（任何时点都是 +ratio，与"移民来投"字面一致）。
          与招揽令（加速度）分工：这张是**存量**（贵、立刻见效、用完就没）。 */
       var _c5 = GAME.currentCity();
-      if (!_c5) return { ok: false, msg: '没有当前城池' };
+      if (!_c5) return { ok: false, msg: '没有当前城市' };
       /* v89.185（老板 6）：封顶 = **有效幸存者上限**（民心折算）——
          民心低时移民来投自然也少（与幸存者增长目标同一把尺）。 */
       var _cap5 = GAME.effPopCapOf(_c5);
@@ -804,7 +804,7 @@
     if (item.target !== 'train') return { ok: false, msg: '该宝物不能加速募兵' };
     if (!s.items[itemId]) return { ok: false, msg: '背包中没有该宝物' };
     var city = GAME.cityById(cityId) || GAME.currentCity();
-    if (!city) return { ok: false, msg: '城池不存在' };
+    if (!city) return { ok: false, msg: '城市不存在' };
     var list = GAME.trainQueuesOf(city, bIdx);
     if (!list.length) return { ok: false, msg: '本营没有募兵任务' };
     /* 只加速"正在执行"的那条 —— 排队的还没开始走表，加速它没有意义 */
@@ -999,12 +999,12 @@
     var s = GAME.state, next = S.nextRank();
     if (!next) return { ok: false, msg: '已达最高威望' };
     if (s.rep < next.rep) return { ok: false, msg: '声望不足（需 ' + U.fmt(next.rep) + '）' };
-    /* v89.203（老板 4）：城池门槛 = **打满本档领地上限**（= 本档管理数；与 cap 同值）。
+    /* v89.203（老板 4）：城市门槛 = **打满本档领地上限**（= 本档管理数；与 cap 同值）。
        v91.22（老板 3）：改**帝国口径** —— 数**所有星球**的城（s.cities 只当前星）。 */
     var _cur203 = DATA.RANK[s.rank] || DATA.RANK[0];
     var _ecc = GAME.empireCityCount ? GAME.empireCityCount() : s.cities.length;
     if (_ecc < _cur203.city) {
-      return { ok: false, msg: '需要 ' + _cur203.city + ' 座城池（打满本档领地上限，现 ' + _ecc + '）' };
+      return { ok: false, msg: '需要 ' + _cur203.city + ' 座城市（打满本档领地上限，现 ' + _ecc + '）' };
     }
     /* v91.22（老板 3）：新增**占领星球数**门槛 —— 每 4 档 +1 星球（DATA.RANK[].planet）。 */
     var _pNeed = _cur203.planet || 1;
