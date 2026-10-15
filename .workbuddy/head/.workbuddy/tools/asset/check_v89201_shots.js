@@ -1,0 +1,60 @@
+/* v89.201 截图像素体检（3 张：侦查单页 / 多选打造 / 百炼专属界面）
+   先量后定：首跑打印全量数字，据实测定阈值。 */
+module.paths.unshift('C:/Users/18811/.workbuddy/binaries/node/workspace/node_modules');
+var fs = require('fs');
+var PNG = require('pngjs').PNG;
+var OUT = 'E:/Deepseekdb/.workbuddy/shots/';
+var PASS = 0, FAIL = 0;
+function chk(name, ok, extra) {
+  if (ok) { PASS++; console.log('  ✅ ' + name + (extra ? '  [' + extra + ']' : '')); }
+  else { FAIL++; console.log('  ❌ ' + name + (extra ? '  [' + extra + ']' : '')); }
+}
+function scan(file, cb) {
+  var f = OUT + file;
+  if (!fs.existsSync(f)) return cb(null, { err: 'missing' });
+  var png = PNG.sync.read(fs.readFileSync(f));
+  var n = png.width * png.height, sum = 0, bright = 0, gold = 0;
+  for (var y = 0; y < png.height; y++) {
+    for (var x = 0; x < png.width; x++) {
+      var i = (y * png.width + x) * 4;
+      var r = png.data[i], g = png.data[i + 1], b = png.data[i + 2];
+      var L = 0.299 * r + 0.587 * g + 0.114 * b;
+      sum += L;
+      if (L > 90) bright++;
+      if (r > 150 && g > 110 && b < 110 && (r - b) > 60) gold++;
+    }
+  }
+  cb(null, { w: png.width, h: png.height, avg: sum / n, brightPct: bright / n * 100, gold: gold });
+}
+var shots = [
+  ['v89201-scout.png', '侦查单页（四板块 · 编制三栏 · 不溢出）', function (s) {
+    console.log('    [scout] avg=' + s.avg.toFixed(1) + ' bright%=' + s.brightPct.toFixed(2)
+      + ' gold=' + s.gold + ' 尺寸 ' + s.w + 'x' + s.h);
+    /* 实测基线：文字密集型面板（无金框卡片）——gold 基线 163，阈值取 100 留余量；
+       avg/bright 与其它面板同带（§76.3 暗色面板基线 25~60 / 0.5%~4%） */
+    return s.avg > 25 && s.avg < 60 && s.brightPct > 0.8 && s.gold >= 100;
+  }],
+  ['v89201-forge-multi.png', '多选打造（两张卡选中态 + 底键「打造 2 件」）', function (s) {
+    console.log('    [forge-multi] avg=' + s.avg.toFixed(1) + ' bright%=' + s.brightPct.toFixed(2)
+      + ' gold=' + s.gold + ' 尺寸 ' + s.w + 'x' + s.h);
+    return s.avg > 8 && s.brightPct > 0.8 && s.gold >= 300;
+  }],
+  ['v89201-enhance.png', '百炼专属界面（网格卡 + 筛选 + 底键 · 不溢出）', function (s) {
+    console.log('    [enhance] avg=' + s.avg.toFixed(1) + ' bright%=' + s.brightPct.toFixed(2)
+      + ' gold=' + s.gold + ' 尺寸 ' + s.w + 'x' + s.h);
+    return s.avg > 8 && s.brightPct > 0.8 && s.gold >= 300;
+  }],
+];
+(function next(i) {
+  if (i >= shots.length) {
+    console.log('\n像素体检：' + PASS + ' 通过 / ' + FAIL + ' 失败');
+    process.exit(FAIL ? 1 : 0);
+    return;
+  }
+  var s = shots[i];
+  scan(s[0], function (e, st) {
+    if (st.err) { chk(s[1] + '（缺图 ' + s[0] + '）', false); return next(i + 1); }
+    chk(s[1], s[2](st));
+    next(i + 1);
+  });
+})(0);

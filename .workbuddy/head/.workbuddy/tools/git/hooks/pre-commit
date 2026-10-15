@@ -1,0 +1,42 @@
+#!/bin/sh
+# Deepseekdb-managed-hook v1 —— 提交前跑三件套门禁
+# 唯一出口：.workbuddy/tools/git/gate.py（判据只此一份）
+#
+# 跳过这次      : SKIP_GATE=1 git commit ...
+# 强制三件套全量: GATE_FULL=1 git commit ...
+# 本文件由 .workbuddy/tools/git/install_hooks.py 安装到 .git/hooks/，
+# 要改请改这里再重装，别直接改 .git/hooks 里的副本。
+
+[ "$SKIP_GATE" = "1" ] && { echo "· 门禁已跳过（SKIP_GATE=1）"; exit 0; }
+
+# sync.py 已经跑过门禁并通过了，别重复跑（全量 47 秒，白等没意义）
+[ "$GIT_GATE_PASSED" = "1" ] && { echo "· 门禁已由 sync.py 跑过并通过，跳过重复执行"; exit 0; }
+
+ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+GATE="$ROOT/.workbuddy/tools/git/gate.py"
+if [ ! -f "$GATE" ]; then
+  echo "⚠ 找不到 $GATE —— 门禁未跑（不阻断提交）"
+  exit 0
+fi
+
+PY=""
+for c in \
+  "/c/Users/18811/.workbuddy/binaries/python/envs/default/Scripts/python.exe" \
+  "/c/Users/18811/.workbuddy/binaries/python/versions/3.13.12/python.exe"
+do
+  if [ -x "$c" ]; then PY="$c"; break; fi
+done
+if [ -z "$PY" ]; then
+  PY=$(command -v python3 2>/dev/null)
+  [ -z "$PY" ] && PY=$(command -v python 2>/dev/null)
+fi
+if [ -z "$PY" ]; then
+  echo "⚠ 找不到 python —— 门禁未跑（不阻断提交）"
+  exit 0
+fi
+
+if [ "$GATE_FULL" = "1" ]; then
+  exec "$PY" "$GATE" --staged --full
+else
+  exec "$PY" "$GATE" --staged
+fi

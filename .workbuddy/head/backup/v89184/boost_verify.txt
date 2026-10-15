@@ -1,0 +1,16 @@
+junying idx = 1 · CAP = 0.3
+train: {"ok":true,"msg":"开始训练 义兵 ×1000"}
+q: {"el":0,"tt":10000,"boosted":0}
+报价: rush(0.5)=23400 rush(1.0)=23400（额度 30% → 两者应相等）
+rush(0.5): {"ok":true,"msg":"花金 2.3万：义兵 缩短 25 秒"}
+扣金: 23400 期望 cost=23400
+q2: el=3000 tt=10000 boosted=3000
+  期望 el ≈ 3000.0 boosted ≈ 3000.0
+再 rush(1.0): {"ok":false,"msg":"该队列加速已达上限（最多 30%）"}（应被拒）
+q3.elapsed = 3000（应 == q2.elapsed）
+q3 报价(1.0) = 0（应为 0）
+
+=== S._boost（宝物）：研究队列 30% 封顶 ===
+测试宝物 = mojia_baodian
+用宝物 1: {"ok":{"ok":true,"msg":"研究时间缩短"},"msg":"研究时间缩短","gain":0} → tq.el=300 boosted=300
+用宝物 2: {"ok":{"ok":false,"msg":"加速已达上限（最多 30%）"},"msg":"加速已达上限（最多 30%）","gain":0} → tq.el=300 boosted=300

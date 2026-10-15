@@ -1,0 +1,74 @@
+======================================================================
+批 W-B5 · 装备 12 + 物品 11 · 23 图
+======================================================================
+
+─── 存成：assets/icons/raw/atlas_slot1_src.png
+Refined realistic game art, post-apocalyptic wasteland strategy game aesthetic (salvaged rusty steel, cracked concrete, tarp and scrap-metal, old-world tech ruins), in the polish class of Rise of Kingdoms / high-end mobile strategy games.
+Icons for a post-apocalyptic wasteland strategy game. A 2x2 grid of four separate icons, each centered in its own quadrant, evenly spaced, no dividing lines.
+Top-left, Top-right, Bottom-left, Bottom-right in order:
+  1) head —— 焊接废钢护面 + 防毒面具/护目镜 + 警示涂装
+  2) neck —— 金属牌/旧世界信物挂链
+  3) shoulder —— 铆钉护肩板 + 破布垫衬
+  4) chest —— 拼装钢板胸甲 + 铆钉 + 绑带
+ Use at least 4 clearly distinct materials per item.
+isolated on a plain solid pure white background (#ffffff), no text, no watermark, no frame, no border, no ground shadow, centered composition, slight three-quarter isometric view, warm golden light from upper left, soft ambient occlusion, highly detailed material textures, crisp clean edges suitable for a small UI icon
+Negative: no people face, no logo, no signature, no anime, no cartoon, no glossy plastic
+
+─── 存成：assets/icons/raw/atlas_slot2_src.png
+Refined realistic game art, post-apocalyptic wasteland strategy game aesthetic (salvaged rusty steel, cracked concrete, tarp and scrap-metal, old-world tech ruins), in the polish class of Rise of Kingdoms / high-end mobile strategy games.
+Icons for a post-apocalyptic wasteland strategy game. A 2x2 grid of four separate icons, each centered in its own quadrant, evenly spaced, no dividing lines.
+Top-left, Top-right, Bottom-left, Bottom-right in order:
+  1) arm —— 皮护臂 + 钢板条 + 腕部工具扣
+  2) waist —— 战术腰带 + 弹匣袋/工具挂 + 金属扣
+  3) feet —— 加固战靴/旧世军靴
+  4) back —— 褪色军旗披风（旧世界标志）
+ Use at least 4 clearly distinct materials per item.
+isolated on a plain solid pure white background (#ffffff), no text, no watermark, no frame, no border, no ground shadow, centered composition, slight three-quarter isometric view, warm golden light from upper left, soft ambient occlusion, highly detailed material textures, crisp clean edges suitable for a small UI icon
+Negative: no people face, no logo, no signature, no anime, no cartoon, no glossy plastic
+
+─── 存成：assets/icons/raw/atlas_slot3_src.png
+Refined realistic game art, post-apocalyptic wasteland strategy game aesthetic (salvaged rusty steel, cracked concrete, tarp and scrap-metal, old-world tech ruins), in the polish class of Rise of Kingdoms / high-end mobile strategy games.
+Icons for a post-apocalyptic wasteland strategy game. A 2x2 grid of four separate icons, each centered in its own quadrant, evenly spaced, no dividing lines.
+Top-left, Top-right, Bottom-left, Bottom-right in order:
+  1) ring —— 淬火钢环 / 旧世戒指
+  2) pendant —— 战术铭牌/遗物坠（旧世科技纹）
+  3) weapon —— 链锯剑 / 动力刃（机油与齿刃、旧世科技）
+  4) mount —— 越野机车装备（油箱、车把、前灯、加固件）
+ Use at least 4 clearly distinct materials per item.
+isolated on a plain solid pure white background (#ffffff), no text, no watermark, no frame, no border, no ground shadow, centered composition, slight three-quarter isometric view, warm golden light from upper left, soft ambient occlusion, highly detailed material textures, crisp clean edges suitable for a small UI icon
+Negative: no people face, no logo, no signature, no anime, no cartoon, no glossy plastic
+
+─── 存成：assets/icons/raw/atlas_item1_src.png
+Refined realistic game art, post-apocalyptic wasteland strategy game aesthetic (salvaged rusty steel, cracked concrete, tarp and scrap-metal, old-world tech ruins), in the polish class of Rise of Kingdoms / high-end mobile strategy games.
+Icons for a post-apocalyptic wasteland strategy game. A 2x2 grid of four separate icons, each centered in its own quadrant, evenly spaced, no dividing lines.
+Top-left, Top-right, Bottom-left, Bottom-right in order:
+  1) attr_buff —— 芯片 / 矩阵芯片（电路板形态）
+  2) prod_buff —— 生产装置件（集水塔/电锯组/破碎机，取一组）
+  3) military_buff —— 军事物件（冲锋号/掩体图/战地医典，取一组）
+  4) mount_buff —— 油门拉杆 / 强化底盘 / 动力核心组
+ Use at least 4 clearly distinct materials per item.
+isolated on a plain solid pure white background (#ffffff), no text, no watermark, no frame, no border, no ground shadow, centered composition, slight three-quarter isometric view, warm golden light from upper left, soft ambient occlusion, highly detailed material textures, crisp clean edges suitable for a small UI icon
+Negative: no people face, no logo, no signature, no anime, no cartoon, no glossy plastic
+
+─── 存成：assets/icons/raw/atlas_item2_src.png
+Refined realistic game art, post-apocalyptic wasteland strategy game aesthetic (salvaged rusty steel, cracked concrete, tarp and scrap-metal, old-world tech ruins), in the polish class of Rise of Kingdoms / high-end mobile strategy games.
+Icons for a post-apocalyptic wasteland strategy game. A 2x2 grid of four separate icons, each centered in its own quadrant, evenly spaced, no dividing lines.
+Top-left, Top-right, Bottom-left, Bottom-right in order:
+  1) boost —— 旧世计时器 / 加速模块
+  2) stamina —— 强效针剂 / 急救血清（针管与药瓶）
+  3) exp —— 练兵数据卡 / 军官手记
+  4) build_cost —— 旧世施工档案 / 工程数据
+ Use at least 4 clearly distinct materials per item.
+isolated on a plain solid pure white background (#ffffff), no text, no watermark, no frame, no border, no ground shadow, centered composition, slight three-quarter isometric view, warm golden light from upper left, soft ambient occlusion, highly detailed material textures, crisp clean edges suitable for a small UI icon
+Negative: no people face, no logo, no signature, no anime, no cartoon, no glossy plastic
+
+─── 存成：assets/icons/raw/atlas_item3_src.png
+Refined realistic game art, post-apocalyptic wasteland strategy game aesthetic (salvaged rusty steel, cracked concrete, tarp and scrap-metal, old-world tech ruins), in the polish class of Rise of Kingdoms / high-end mobile strategy games.
+Icons for a post-apocalyptic wasteland strategy game. A 2x2 grid with THREE icons: top-left, top-right, bottom-left; bottom-right quadrant stays empty pure white.
+Top-left, Top-right, Bottom-left in order:
+  1) blueprint —— 旧世工程蓝晒图 / 数据板
+  2) perm —— 军规代币 / 指挥芯片
+  3) jewel —— 珍珠/琥珀/琉璃珠/夜光珠串
+ Use at least 4 clearly distinct materials per item.
+isolated on a plain solid pure white background (#ffffff), no text, no watermark, no frame, no border, no ground shadow, centered composition, slight three-quarter isometric view, warm golden light from upper left, soft ambient occlusion, highly detailed material textures, crisp clean edges suitable for a small UI icon
+Negative: no people face, no logo, no signature, no anime, no cartoon, no glossy plastic

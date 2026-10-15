@@ -1,0 +1,68 @@
+  /* §223-guard */
+  /* ============================================================
+   * §223（v89.223）：兵牌简称（ab）换代 —— 旧世界单字（枪/弓/轻/铁/辎/冲/投/青/藤/虎/西/象/义）
+   * 全部退役为废土字（18 字两两唯一）：搬/民/斥/矛/盾/弩/摩/装/运/重/破/炮/旧/防/突/王/甲/兽。
+   * 老板原话：「继续全替换，新的类似替换需求无需进一步批准」（批准 v89.222 诚实缺口①）。
+   * ============================================================ */
+  (function () {
+    var fs223 = require('fs'), path223 = require('path');
+    var rd223 = function (rel) { return fs223.readFileSync(path223.join(__dirname, rel), 'utf8'); };
+    var MAP223 = { minfu: '搬', yibing: '民', chihou: '斥', changqiang: '矛', daodun: '盾', gongjian: '弩',
+      qingji: '摩', tieji: '装', zhouche: '运', chuangnu: '重', chongche: '破', toudan: '炮',
+      qingzhoubing: '旧', tengjiabing: '防', tuqibing: '突', hubaoqi: '王', xiliangtieqi: '甲', nanjiangxiangbing: '兽' };
+    var OLD223 = ['枪', '弓', '轻', '铁', '辎', '冲', '投', '青', '藤', '虎', '西', '象', '义'];
+    var _r223a = '';
+
+    check('§223① 兵牌简称换代逐字对表（18 兵种 · 两两唯一 · 旧字零残留 · 出口同源）', (function () {
+      var keys = Object.keys(MAP223), seen = {}, bad = [];
+      keys.forEach(function (id) {
+        var t = DATA.TROOPS[id];
+        if (!t) { bad.push('缺' + id); return; }
+        if (t.ab !== MAP223[id]) bad.push(id + ':' + t.ab + '≠' + MAP223[id]);
+        if (G.troopAbOf(id) !== MAP223[id]) bad.push('出口:' + id);
+      });
+      Object.keys(DATA.TROOPS).forEach(function (id) {
+        var ab = DATA.TROOPS[id].ab;
+        if (!ab || ab.length !== 1) bad.push('形:' + id);
+        if (seen[ab]) { bad.push('重:' + ab); } else { seen[ab] = 1; }
+      });
+      OLD223.forEach(function (c) { if (seen[c]) bad.push('旧字在用:' + c); });
+      _r223a = 'n=' + Object.keys(DATA.TROOPS).length + ' 表=' + keys.length
+        + ' 新=' + Object.keys(seen).join('') + (bad.length ? ' 坏=' + bad.join(',') : '');
+      /* 基数自证：18 项全在表内（防"表被删空也全绿"的平凡解） */
+      return bad.length === 0 && keys.length === 18
+        && Object.keys(DATA.TROOPS).length === keys.length;
+    })(), _r223a);
+
+    check('§223② data.js 可执行形态：旧字 ab 定义零残留 + 18 新字全在册', (function () {
+      var src = rd223('js/data.js'), bad = [], miss = [];
+      OLD223.forEach(function (c) { if (src.indexOf("ab: '" + c + "'") >= 0) bad.push(c); });
+      Object.keys(MAP223).forEach(function (id) {
+        if (src.indexOf("ab: '" + MAP223[id] + "'") < 0) miss.push(id + ':' + MAP223[id]);
+      });
+      return bad.length === 0 && miss.length === 0;
+    })(), '');
+
+    check('§223③ 镜像同步：bt-rnm 走唯一出口 · §129③/§151 期望已换（矛/兽）', (function () {
+      var u223 = rd223('js/ui.js'), s223 = rd223('smoke-test.js');
+      return u223.indexOf('GAME.troopAbOf(u.id)') >= 0
+        && s223.indexOf('>矛<span class="tip-src">') >= 0
+        && s223.indexOf("G.troopAbOf('changqiang') === '矛'") >= 0
+        && s223.indexOf("G.troopAbOf('nanjiangxiangbing') === '兽'") >= 0;
+    })(), '');
+
+    check('§223④ 产品侧收尾在册：任务文案换弩 · icons 换「变异巨兽」', (function () {
+      var q223 = rd223('js/questdata.js'), ic223 = rd223('js/icons.js');
+      return q223.indexOf("title: '弩手扩充'") >= 0 && q223.indexOf('补足弩手') >= 0
+        && q223.indexOf("title: '强弩之利'") >= 0 && q223.indexOf('强弩利矢') >= 0
+        && ic223.indexOf('/* 变异巨兽 */') >= 0 && ic223.indexOf('/* 战象 */') < 0;
+    })(), '');
+
+    check('§223⑤ 版本与档案在册（v89.223 · 老板原文关键句逐字）', (function () {
+      var a = fs223.readFileSync(path223.join(__dirname, '需求档案.md'), 'utf8');
+      var m = rd223('js/main.js');
+      return /GAME\.VERSION = 'v89\.223'/.test(m)
+        && a.indexOf('v89.223') >= 0 && a.indexOf('兵牌简称') >= 0
+        && a.indexOf('新的类似替换需求无需进一步批准') >= 0;
+    })(), '');
+  })();

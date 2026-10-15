@@ -1,0 +1,27 @@
+======================================================================
+批 W-B2 · 城外 4 资源产地（v89.237 重制 / v90 强化）· 1 图集 / 4 单位
+   净化厂（净水）· 水培温室（生物质）· 发电站（电能）· 电弧熔炉（废钢）
+   注：形制按 v89.229 新身份重写 —— 旧批「集水场 / 木料场 / 碎石场 / 废铁场」作废。
+   强化点：每座 ≥4 材质 + 高饱和点缀色（防"单色剪影"）+ 小尺寸可辨（见 AI图标生成清单-废土版 §三 铁律）。
+======================================================================
+
+─── 存成：assets/icons/raw/atlas_ext1_src.png
+Refined realistic game art, post-apocalyptic wasteland strategy game aesthetic (salvaged rusty steel, cracked concrete, tarp and scrap-metal, old-world tech ruins), in the polish class of Rise of Kingdoms / high-end mobile strategy games.
+
+A 2x2 grid of four separate building icons for a post-apocalyptic wasteland strategy game. Each building is ONE clear, readable structure in its own quadrant, centered, evenly spaced, no dividing lines. All four share one identical art style, camera angle, lighting and scale.
+Top-left, Top-right, Bottom-left, Bottom-right in order:
+  1) farm —— 净化厂：旧世水塔与滤罐阵列、沉降过滤池（净水蓝点缀）、阀门管道与压力泵、锈铁储水罐
+  2) forest —— 水培温室：钢架玻璃温室（碎玻璃与帆布补丁）、多层水培架（绿苗点缀）、生长灯组、营养液罐与塑管
+  3) quarry —— 发电站：旧世电厂厂房与冷却塔、变压器与瓷瓶阵列、高压输电塔架、蓄电池组（电火花点缀）
+  4) mine —— 电弧熔炉：电弧熔炼炉（电极臂与橙红熔光）、悬吊加料斗与废钢堆、钢水罐与轨道、火花四溅与烟囱管线
+
+Each structure must combine AT LEAST 4 clearly distinct materials (rusty steel / cracked concrete / glass / canvas-tarp / copper wiring / timber) so the internal color range is rich — AVOID any single-color silhouette. Add high-saturation wasteland accent color so the icon stays readable at small size: rust-red #a8543a, warning-yellow #d8b23c, wasteland-grass green #a8b06a, sunk-water teal #8fbcca, signal-cloth red #b23b2e.
+
+isolated on a plain solid pure white background (#ffffff), no text, no watermark, no frame, no border, no ground shadow, centered composition, slight three-quarter isometric view, warm golden light from upper left, soft ambient occlusion, highly detailed material textures, crisp clean edges suitable for a small UI icon
+Negative: no people face, no logo, no signature, no anime, no cartoon, no glossy plastic, no single-color silhouette
+
+─── 出图后（两条命令，照抄）：
+python .workbuddy/tools/gen/wasteland_batch.py --batch W-B2 --check
+python .workbuddy/tools/gen/wasteland_batch.py --batch W-B2 --apply
+（--check 通过再 --apply：自动切分/抠底/入库 + 重生成登记表 + 素材层校验）
+　※ 存 PNG（若出图工具只给 JPEG，先转 PNG 再落盘，否则管线找不到文件）。

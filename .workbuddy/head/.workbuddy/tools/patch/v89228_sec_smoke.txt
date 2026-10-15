@@ -1,0 +1,91 @@
+  /* ============================================================
+   * §228（v89.228）：装备名录换代 · 黄金→旧币 · 人口→幸存者 · docs 活文档同步
+   * ------------------------------------------------------------
+   * 老板（v89.227 挂账 → v89.228「继续进行，同意1，2，3」）：
+   *   ① 装备名录长尾（宝刀/神兵/明光铠/吞肩甲/护心臂/蟠龙带/踏云靴/龙驹 共 8 处）；
+   *   ② 黄金→旧币 / 人口→幸存者（全站换代 · 含报价文案与「万旧币」写法）；
+   *   ③ docs 活文档同步（设计规范等 12 份；史档按铁律不动）。
+   * 映射源：docs/废土术语映射表.md（唯一）。
+   * ============================================================ */
+  console.log('\n===== §228 装备名录换代 · 旧币/幸存者 · docs 同步 =====');
+  (function () {
+    var fs228 = require('fs'), path228 = require('path');
+    var d228 = fs228.readFileSync(path228.join(__dirname, 'js', 'data.js'), 'utf8');
+    var u228 = fs228.readFileSync(path228.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var q228 = fs228.readFileSync(path228.join(__dirname, 'js', 'questdata.js'), 'utf8');
+    var m228 = fs228.readFileSync(path228.join(__dirname, 'js', 'main.js'), 'utf8');
+    var self228 = fs228.readFileSync(path228.join(__dirname, 'smoke-test.js'), 'utf8');
+    var doc228 = fs228.readFileSync(path228.join(__dirname, 'docs', '设计规范.md'), 'utf8');
+    var a228 = fs228.readFileSync(path228.join(__dirname, '需求档案.md'), 'utf8');
+    var mp228 = fs228.readFileSync(path228.join(__dirname, 'docs', '废土术语映射表.md'), 'utf8');
+    function strip228(s) { return s.replace(/\/\*[\s\S]*?\*\//g, ''); }
+
+    /* ① 装备名录 8 项换代（新名在册 · 旧名剥注释后零残留 · 旧名沿革注释留档） */
+    check('§228① 装备名录换代：8 项新名在册 · 剥注释后旧名零残留（沿革注释留档 ×8）', (function () {
+      var NEW8 = ['钢锭战刀', '陨铁战刃', '钢锭铠', '钢锭肩铠', '钢锭臂甲', '硬甲皮带', '变异皮靴', '战马'];
+      var OLD8 = ['宝刀', '神兵', '明光铠', '吞肩甲', '护心臂', '蟠龙带', '踏云靴', '龙驹'];
+      var dn = strip228(d228);
+      for (var i = 0; i < NEW8.length; i++) { if (dn.indexOf(NEW8[i]) < 0) return '缺新名 ' + NEW8[i]; }
+      for (var j = 0; j < OLD8.length; j++) {
+        if (dn.indexOf(OLD8[j]) >= 0) return '旧名残留(剥注释) ' + OLD8[j];
+        if (d228.indexOf(OLD8[j]) < 0) return '旧名沿革注释缺失 ' + OLD8[j];
+      }
+      if (d228.indexOf('遗落战刃') < 0 || q228.indexOf('利刃初铸') < 0) return '连带缺失（奇遇/任务）';
+      return true;
+    })());
+
+    /* ② 黄金→旧币：RESOURCES + 唯一出口（costString）同源 · 剥注释后零残留 */
+    check('§228② 黄金→旧币：RESOURCES + 成本文案同源 · 剥注释后零残留', (function () {
+      var gold = null;
+      (DATA.RESOURCES || []).forEach(function (r) { if (r.key === 'gold') gold = r; });
+      if (!gold || gold.name !== '旧币') return 'RESOURCES = ' + (gold && gold.name);
+      var cs = GAME.costString({ grain: 100, gold: 3000 });
+      if (cs.indexOf('旧币 3,000') < 0) return 'costString=' + cs;
+      if (strip228(d228).indexOf('黄金') >= 0 || strip228(d228).indexOf('金币') >= 0) return 'data 残留';
+      if (strip228(u228).indexOf('黄金') >= 0 || strip228(u228).indexOf('金币') >= 0) return 'ui 残留';
+      if (strip228(m228).indexOf('黄金') >= 0) return 'main 残留';
+      return true;
+    })());
+
+    /* ③ 人口→幸存者：RESOURCES + 城面板真渲染（沿用侧栏渲染模式） */
+    check('§228③ 人口→幸存者：RESOURCES + 城面板真渲染含新词不含旧词', (function () {
+      var pop = null;
+      (DATA.RESOURCES || []).forEach(function (r) { if (r.key === 'pop') pop = r; });
+      if (!pop || pop.name !== '幸存者') return 'RESOURCES = ' + (pop && pop.name);
+      var bk = G.ui._cityId, h = '';
+      try {
+        G.ui.renderCityAttrs(G.currentCity(), G.state);
+        h = (global.document.querySelector('#city-attrs') || {}).innerHTML || '';
+      } finally { G.ui._cityId = bk; }
+      if (h.indexOf('幸存者') < 0) return '城面板未见新词';
+      if (h.indexOf('人口') >= 0) return '城面板仍有旧词';
+      return true;
+    })());
+
+    /* ④ 档案守卫保留：两条读档校验串按需求档案原文（逐字铁律 · 旧词保留）
+       ⚠️ 自引用防护：只扫 §228④ 标记之前的文件段（本段自身含同名字面量） */
+    check('§228④ 档案守卫保留：读档校验串按需求档案原文（逐字铁律 · 旧词保留）', (function () {
+      var h228 = self228.slice(0, self228.indexOf('§228④'));
+      if (h228.length < 100000) return '自证失败（切片过短）';
+      return h228.indexOf("'俘虏在被收编那一刻才加人口'") >= 0
+        && h228.indexOf("'只有黄金是玩家层级通用的'") >= 0;
+    })());
+
+    /* ⑤ docs 活文档同步：设计规范零旧词 + 新词在册 */
+    check('§228⑤ docs 同步：设计规范零旧词 + 新词在册（活文档 12 份之代表）', (function () {
+      var bad = ['将领', '黄金', '人口', '州城', '郡城', '县城', '都城', '商城', '军装', '百炼',
+                 '客栈', '校场', '仓库', '民房', '粮食', '金币', '长枪', '轻骑', '铁骑', '虎符'];
+      for (var i = 0; i < bad.length; i++) { if (doc228.indexOf(bad[i]) >= 0) return '残留 ' + bad[i]; }
+      if (doc228.indexOf('英雄') < 0 || doc228.indexOf('旧币') < 0 || doc228.indexOf('幸存者') < 0) return '新词缺失';
+      if (doc228.indexOf('v89.228 术语同步') < 0) return '同步横幅缺失';
+      return true;
+    })());
+
+    /* ⑥ 版本与档案在册（v89.228 · 老板原话 + 映射表） */
+    check('§228⑥ 版本与档案在册（v89.228 · 老板原话 + 映射表）', (function () {
+      return /GAME\.VERSION = 'v89\.228'/.test(m228)
+        && a228.indexOf('v89.228') >= 0 && a228.indexOf('旧币') >= 0
+        && a228.indexOf('幸存者') >= 0 && a228.indexOf('钢锭战刀') >= 0
+        && mp228.indexOf('旧币') >= 0 && mp228.indexOf('遗落战刃') >= 0;
+    })());
+  })();

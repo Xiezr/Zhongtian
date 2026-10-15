@@ -290,6 +290,7 @@ const REF_OK = {
   'GAME._realNowOf': '测试拨钟钩子（smoke/e2e 覆写它把"现实时间"固定住，见 GAME.realNow）',
   'GAME.icons': 'icons.js 挂载', 'GAME.gicons': 'gicons.js 挂载',
   'GAME.bitmaps': 'bitmaps.js 挂载', 'GAME.portraits': 'portraits.js 挂载',
+  'GAME.gltf': 'gltf.js 挂载（GLB 加载器）', 'GAME.gltfVersion': 'gltf.js 挂载锚',
 };
 /* 本节的模块清单**独立于①的 MODULES**：引用扫描要把 tactic / gicons / bitmaps /
    portraits 也算进来（它们也是 GAME.* 的生产者与消费者）。 */

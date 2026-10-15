@@ -1,0 +1,72 @@
+废土·余烬纪元 · 英雄（将领）肖像 prompt
+========================================
+用途：出 28 位英雄的半身像（1:1 来源：js/data.js DATA.HEROES）。
+风格：废土·余烬纪元（与建筑/兵种同一世界观）。
+配套：docs/AI肖像生成清单.md（原汉代版规格，可参考技术项与后处理管线）。
+
+⚠ 原规格书的风格尺参考图（ref-m06 等）是**汉代**肖像 —— 废土批**别用**它们
+（会把画风拉回汉代）。本批走**纯文本** prompt；或先另出几张废土肖像当新风格尺。
+
+
+─── 英雄名单（28，填进模板）───
+铁枭 火鸦 灰隼 石壁 荒岭 雾狼 断剑 赤旗 银枪 长刀 铁壁 星图 明灯 快帆 冷面
+疾风 白鸦 毒眼 狂刀 雷吼 双枪 神射 铁腕 铁牛 江河 长胜 金殿 黑塔
+
+
+─── ① 单框模板（单张 · 替换 <角色名> 与 <一句话>）───
+半身像：末日废土幸存者/指挥官 <角色名>（<一句话，如：独眼的老牌指挥官、衣衫褴褛的拾荒战士>），
+头至胸口干净截断，**人物填满画幅、头顶几乎触到上边缘（不留大片空背景）**，面部居中、微三分之四侧脸；
+写实半身像，半写实游戏原画质感（像 Rise of Kingdoms 那类），
+废土风：拼接护甲/磨损军装、防毒面具或护目镜（可挂额上）、暴露皮肤的伤疤、久经风霜的粗粝感；
+暖调低饱和（铁灰/锈红/褐/旧金）、左上方暖光单光源；
+纯浅暖灰**纯色平背景** #f2f0ee、无场景无渐变无投影；
+**绝对不要任何文字**：无名称、无标题、无标签、无说明、无编号、无签名、无logo、无字母汉字；
+一人、无边框、无装饰；写实不卡通、不日漫、不油腻3D。
+
+
+─── ② 四格批量模板（一张出 4 个 · 成本÷4）───
+四格拼图：4 张不同的末日废土人物半身像，2×2 均匀排布、格间留宽缝，
+每格一人（头至胸口、**填满格子、头顶近上边、横不触边**、不裁切、不跨格）。
+左上：<角色1>
+右上：<角色2>
+左下：<角色3>
+右下：<角色4>
+画风：半写实游戏原画（像 Rise of Kingdoms），末日废土风（拼接护甲/磨损军装、护目镜或面罩、
+伤疤、风霜感），暖调低饱和（铁灰/锈红/褐/旧金）、左上方暖光；
+整图背景（含缝）为纯浅暖灰**纯色** #f2f0ee，无渐变无场景；
+**绝对不要任何文字**：无名称标签、无标题、无编号、无水印、无签名、无logo、无字母汉字、无分隔线。
+
+四格分组建议（28 人 = 7 张）：
+  张1: 铁枭 火鸦 灰隼 石壁
+  张2: 荒岭 雾狼 断剑 赤旗
+  张3: 银枪 长刀 铁壁 星图
+  张4: 明灯 快帆 冷面 疾风
+  张5: 白鸦 毒眼 狂刀 雷吼
+  张6: 双枪 神射 铁腕 铁牛
+  张7: 江河 长胜 金殿 黑塔
+
+
+─── ③ 单框整段（复制即用 · 工具吃英文时）───
+Half-body bust portrait of <name>, a post-apocalyptic wasteland survivor/commander
+(<one line: e.g. a grizzled one-eyed commander, a ragged scavenger fighter>).
+Head to mid-chest, cleanly cut at the chest, face centered, **the figure fills the frame
+(the top of the head is near the top edge, NOT a big empty background area at the top)**,
+slight three-quarter face. Refined semi-realistic game art (Rise of Kingdoms class),
+NOT anime, NOT cartoon, NOT glossy 3D. Wasteland look: welded scrap armor / worn military
+clothing, gas mask or goggles (can rest on the forehead), weathered scars, gritty
+battle-worn feel. Warm muted desaturated palette (gunmetal / rust-red / brown / antique
+gold), warm key light from the upper left. Plain flat SOLID light warm-grey background
+(#f2f0ee), no gradient, no scenery, no shadow.
+ABSOLUTELY NO TEXT OF ANY KIND: no name, no title, no label, no caption, no number,
+no signature, no logo, no letters, no Chinese characters. One person only, no border. Terms
+
+
+─── ④ 后处理（复用现有管线，勿新写）───
+出图 → 切分/抠底/紧裁/512 WebP（.workbuddy/tools/asset/avatar_atlas.py）→
+按 docs/AI肖像生成清单.md §6/§7 验收（与现有池并排比色温/光影）。
+落位：assets/portraits/hero_<id>.webp 或 pool/{m,f}NN.webp。
+
+
+─── ⑤ 出图后存哪 ───
+  半身像成品 → assets/portraits/（512×512 WebP）
+  原始图　　→ assets/portraits/_raw/ 或 assets/英雄/（源图，已备目录？按需建）

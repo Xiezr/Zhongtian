@@ -1077,6 +1077,12 @@
    * ⚠️ .glb 走 fetch：http 服务下正常；纯 file:// 双击可能被浏览器拦（届时天体缺席，地图不受影响）。
    * ============================================================ */
   M._wonderGeo = M._wonderGeo || {};
+  /* base64 → ArrayBuffer（GLB 字节）。 */
+  function _wonderB64Buf(b64) {
+    var bin = atob(b64), n = bin.length, u = new Uint8Array(n);
+    for (var i = 0; i < n; i++) u[i] = bin.charCodeAt(i);
+    return u.buffer;
+  }
   function _wonderPid() {
     var s = GAME.state || {};
     return (s.mapPlanetId != null) ? s.mapPlanetId : (s.activePlanet || 1);
@@ -1124,18 +1130,29 @@
     }
     var geo0 = M._wonderGeo[wd.id];
     if (geo0) { place(geo0); return; }
-    if (!window.fetch) return;
-    fetch('assets/wonders/' + wd.id + '.glb').then(function (r) { return r.arrayBuffer(); }).then(function (ab) {
-      if (!GAME.gltf) return;
-      var parsed = GAME.gltf.parse(ab);
-      if (!parsed.parts.length) return;
-      var part = parsed.parts[0];
-      var geo = GAME.gltf.bakeGeometry(part, THREE, 1);
-      geo._mat = GAME.gltf.buildMaterial(THREE, part, function () { if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas(); });
-      M._wonderGeo[wd.id] = geo;
-      place(geo);
-      if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
-    }).catch(function () { /* 载入失败：静默缺席 */ });
+    if (!GAME.gltf) return;
+    function useBytes(ab) {
+      if (M._wonderId !== wd.id) return;
+      try {
+        var parsed = GAME.gltf.parse(ab);
+        if (!parsed.parts.length) return;
+        var part = parsed.parts[0];
+        var geo = GAME.gltf.bakeGeometry(part, THREE, 1);
+        geo._mat = GAME.gltf.buildMaterial(THREE, part, function () { if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas(); });
+        M._wonderGeo[wd.id] = geo;
+        place(geo);
+        if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
+      } catch (e) { /* 解析失败：静默缺席 */ }
+    }
+    /* v91.30：**按需注入 base64 模块**（`assets/wonders/<id>.glb.js` 设 window.__WONDER_GLB[id]）——
+       双击 file:// 也能出（<script> 不受 fetch 的 CORS 限制），且只加载当前奇观这一个（不拖首屏）。 */
+    var gb = window.__WONDER_GLB && window.__WONDER_GLB[wd.id];
+    if (gb) { useBytes(_wonderB64Buf(gb)); return; }
+    if (!document || !document.createElement) return;
+    var sc = document.createElement('script');
+    sc.src = 'assets/wonders/' + wd.id + '.glb.js';
+    sc.onload = function () { var b = window.__WONDER_GLB && window.__WONDER_GLB[wd.id]; if (b) useBytes(_wonderB64Buf(b)); };
+    (document.head || document.body || document.documentElement).appendChild(sc);
   }
   /* 地表/海面落点：按 place 在该星球球面找一格（决定论）。water→湖/沼；land→陆地形。 */
   function _wonderSurfaceCell(kind) {

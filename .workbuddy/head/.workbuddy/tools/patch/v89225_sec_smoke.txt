@@ -1,0 +1,66 @@
+  /* ============================================================
+   * §225（v89.225）：族旗退役 → 城内地块染色
+   * ------------------------------------------------------------
+   * 老板原话：「建筑前边的带颜色棋子是什么，能否用地块颜色区分，不然好突兀。
+   *   同类型建筑地块颜色相同，比如酒馆和招募站，训练营和练兵场等」。
+   * 口径：族色编码从"图标上的小旗"迁到"建筑地块的底色"——
+   *   · 族归属 = DATA.SERIES_OF（唯一来源；本段核老板点名的两对同类）；
+   *   · 色值 = DATA.SERIES[].plot（默认主题 HSL）→ index.html 的 --ser-*（4 主题各一版）；
+   *   · 素材层 = 16 张图标旗位无族旗色（墓碑色表；另见上文"逐张无旗"与 gate ③）。
+   * ============================================================ */
+  (function () {
+    var fs225 = require('fs'), path225 = require('path');
+    var html225 = fs225.readFileSync(path225.join(__dirname, 'index.html'), 'utf8');
+    var dsrc225 = fs225.readFileSync(path225.join(__dirname, 'js', 'data.js'), 'utf8');
+    var RULES225 = ['gov', 'live', 'store', 'edu', 'mil', 'biz', 'road', 'recruit'];
+
+    /* ① 换族在册（老板示例①：酒馆 + 招募站 同族；示例②：训练营 + 练兵场 同族） */
+    check('§225① 酒馆/招募站同族（recruit）· 训练营/练兵场同族（mil）—— 老板点名的两对同色', (function () {
+      var kz = DATA.BUILDINGS.kezhan, zm = DATA.BUILDINGS.zhaoxianguan;
+      var jy = DATA.BUILDINGS.junying, lc = DATA.BUILDINGS.xiaochang;
+      return !!(kz && zm && jy && lc
+        && kz.series === 'recruit' && zm.series === 'recruit'
+        && jy.series === 'mil' && lc.series === 'mil');
+    })(), (function () {
+      var kz = DATA.BUILDINGS.kezhan, zm = DATA.BUILDINGS.zhaoxianguan;
+      return [kz && kz.series, zm && zm.series, DATA.BUILDINGS.junying.series, DATA.BUILDINGS.xiaochang.series].join('/');
+    })());
+
+    /* ② 地块染色 8 条 CSS 规则在册（可执行形态，防注释误命中/防回退） */
+    var miss225 = [];
+    RULES225.forEach(function (k) {
+      if (html225.indexOf('.iso-tile.built.ser-' + k + ' .tile-face { background: var(--ser-' + k + '); }') < 0) miss225.push(k);
+    });
+    check('§225② 地块染色 8 条规则在册（.iso-tile.built.ser-x .tile-face → var(--ser-x)）',
+      miss225.length === 0, miss225.join(' ') || '8/8');
+
+    /* ③ 默认主题 --ser-* 与 data.js plot 逐值对齐（HSL→RGB 逐字节） */
+    var bad225 = [], ok225 = 0;
+    RULES225.forEach(function (k) {
+      var p2 = DATA.SERIES[k] && DATA.SERIES[k].plot;
+      if (!p2) { bad225.push(k + ' 无 plot'); return; }
+      var rgb = PIX.rgbOfHsl(p2.h, p2.s / 100, p2.l / 100).map(function (v) { return Math.round(v); });
+      var hex = '#' + rgb.map(function (v) { return (v < 16 ? '0' : '') + v.toString(16); }).join('');
+      if (html225.indexOf('--ser-' + k + ': ' + hex + ';') < 0) bad225.push(k + ' ' + hex);
+      else ok225++;
+    });
+    check('§225③ 默认主题 --ser-* 与 data.js plot 逐值对齐（HSL→RGB 逐字节）',
+      bad225.length === 0, bad225.join(' ') || (ok225 + '/8 对齐'));
+
+    /* ④ --ser-* 四主题齐备（每个变量各 4 版：默认 / silk / bamboo / night） */
+    var bad4 = [];
+    RULES225.forEach(function (k) {
+      var m = html225.match(new RegExp('--ser-' + k + ':', 'g'));
+      if (!m || m.length !== 4) bad4.push(k + ':' + (m ? m.length : 0));
+    });
+    check('§225④ --ser-* 四主题齐备（8 变量 × 4 版）', bad4.length === 0, bad4.join(' ') || '8×4');
+
+    /* ⑤ 族旗数据退役（可执行形态零残留）+ plot 8 族在册 + 死变量清退 */
+    var plotN = (dsrc225.match(/plot: \{ h:/g) || []).length;
+    check('§225⑤ 族旗数据退役：DATA.SERIES 无 flag 字段（可执行形态零残留）· plot 8 族在册',
+      dsrc225.indexOf('flag: { h:') < 0 && plotN === 8, 'plot 计数=' + plotN);
+    check('§225⑥ 零消费死变量清退：--ground-gov / --ground-sel 定义零残留（可执行形态）',
+      html225.indexOf('--ground-gov:') < 0 && html225.indexOf('--ground-sel:') < 0
+      && html225.indexOf('.iso-tile.gov .tile-face {') < 0,
+      '清退 3 类（v39 官署格 / 选中格 / 旧 gov 规则）');
+  })();

@@ -1,0 +1,75 @@
+======================================================================
+批 W-B4 · 材料 24 · 24 图
+======================================================================
+
+─── 存成：assets/icons/raw/atlas_mat_iron_src.png
+Refined realistic game art, post-apocalyptic wasteland strategy game aesthetic (salvaged rusty steel, cracked concrete, tarp and scrap-metal, old-world tech ruins), in the polish class of Rise of Kingdoms / high-end mobile strategy games.
+Icons for a post-apocalyptic wasteland strategy game. A 2x2 grid of four separate icons, each centered in its own quadrant, evenly spaced, no dividing lines.
+Top-left, Top-right, Bottom-left, Bottom-right in order:
+  1) fatie —— 铁锭/矿石块（粗铁 raw pig-iron ingot）
+  2) jingtie —— 铁锭/矿石块（精铁 refined steel ingot）
+  3) yuntie —— 铁锭/矿石块（陨铁 meteoric dark-silver metal with star pattern）
+  4) bintie —— 铁锭/矿石块（钢锭 folded layered steel ingot）
+ Use at least 4 clearly distinct materials per item.
+isolated on a plain solid pure white background (#ffffff), no text, no watermark, no frame, no border, no ground shadow, centered composition, slight three-quarter isometric view, warm golden light from upper left, soft ambient occlusion, highly detailed material textures, crisp clean edges suitable for a small UI icon
+Negative: no people face, no logo, no signature, no anime, no cartoon, no glossy plastic
+
+─── 存成：assets/icons/raw/atlas_mat_wood_src.png
+Refined realistic game art, post-apocalyptic wasteland strategy game aesthetic (salvaged rusty steel, cracked concrete, tarp and scrap-metal, old-world tech ruins), in the polish class of Rise of Kingdoms / high-end mobile strategy games.
+Icons for a post-apocalyptic wasteland strategy game. A 2x2 grid of four separate icons, each centered in its own quadrant, evenly spaced, no dividing lines.
+Top-left, Top-right, Bottom-left, Bottom-right in order:
+  1) nanmu —— 圆木段/板材（硬木 dense hardwood log）
+  2) songmu —— 圆木段/板材（松木 rough pine log）
+  3) tanmu —— 圆木段/板材（铁木 dark ironwood log）
+  4) jianmu —— 圆木段/板材（复合材 laminated composite wood with tech grain）
+ Use at least 4 clearly distinct materials per item.
+isolated on a plain solid pure white background (#ffffff), no text, no watermark, no frame, no border, no ground shadow, centered composition, slight three-quarter isometric view, warm golden light from upper left, soft ambient occlusion, highly detailed material textures, crisp clean edges suitable for a small UI icon
+Negative: no people face, no logo, no signature, no anime, no cartoon, no glossy plastic
+
+─── 存成：assets/icons/raw/atlas_mat_cloth_src.png
+Refined realistic game art, post-apocalyptic wasteland strategy game aesthetic (salvaged rusty steel, cracked concrete, tarp and scrap-metal, old-world tech ruins), in the polish class of Rise of Kingdoms / high-end mobile strategy games.
+Icons for a post-apocalyptic wasteland strategy game. A 2x2 grid of four separate icons, each centered in its own quadrant, evenly spaced, no dividing lines.
+Top-left, Top-right, Bottom-left, Bottom-right in order:
+  1) mabu —— 布卷（帆布 coarse canvas roll）
+  2) xijuan —— 布卷（细布 fine cloth roll）
+  3) shujin —— 布卷（织锦 woven brocade roll）
+  4) yunjin —— 布卷（云缎 cloud-satin with gold thread）
+ Use at least 4 clearly distinct materials per item.
+isolated on a plain solid pure white background (#ffffff), no text, no watermark, no frame, no border, no ground shadow, centered composition, slight three-quarter isometric view, warm golden light from upper left, soft ambient occlusion, highly detailed material textures, crisp clean edges suitable for a small UI icon
+Negative: no people face, no logo, no signature, no anime, no cartoon, no glossy plastic
+
+─── 存成：assets/icons/raw/atlas_mat_jade_src.png
+Refined realistic game art, post-apocalyptic wasteland strategy game aesthetic (salvaged rusty steel, cracked concrete, tarp and scrap-metal, old-world tech ruins), in the polish class of Rise of Kingdoms / high-end mobile strategy games.
+Icons for a post-apocalyptic wasteland strategy game. A 2x2 grid of four separate icons, each centered in its own quadrant, evenly spaced, no dividing lines.
+Top-left, Top-right, Bottom-left, Bottom-right in order:
+  1) yangzhi —— 玉璧/宝石（羊脂玉 creamy mutton-fat jade）
+  2) qingyu —— 玉璧/宝石（青玉 green jade）
+  3) kunshan —— 玉璧/宝石（昆山玉 luminous precious jade）
+  4) heshi —— 玉璧/宝石（河石 river stone）
+ Use at least 4 clearly distinct materials per item.
+isolated on a plain solid pure white background (#ffffff), no text, no watermark, no frame, no border, no ground shadow, centered composition, slight three-quarter isometric view, warm golden light from upper left, soft ambient occlusion, highly detailed material textures, crisp clean edges suitable for a small UI icon
+Negative: no people face, no logo, no signature, no anime, no cartoon, no glossy plastic
+
+─── 存成：assets/icons/raw/atlas_mat_leather_src.png
+Refined realistic game art, post-apocalyptic wasteland strategy game aesthetic (salvaged rusty steel, cracked concrete, tarp and scrap-metal, old-world tech ruins), in the polish class of Rise of Kingdoms / high-end mobile strategy games.
+Icons for a post-apocalyptic wasteland strategy game. A 2x2 grid of four separate icons, each centered in its own quadrant, evenly spaced, no dividing lines.
+Top-left, Top-right, Bottom-left, Bottom-right in order:
+  1) cuge —— 皮张卷（生皮 raw hide）
+  2) xige —— 皮张卷（硬甲皮 thick scaled armor hide）
+  3) jiaoge —— 皮张卷（变异皮 mutated hide with iridescent scales）
+  4) xiaoge —— 皮张卷（熟皮 tanned leather）
+ Use at least 4 clearly distinct materials per item.
+isolated on a plain solid pure white background (#ffffff), no text, no watermark, no frame, no border, no ground shadow, centered composition, slight three-quarter isometric view, warm golden light from upper left, soft ambient occlusion, highly detailed material textures, crisp clean edges suitable for a small UI icon
+Negative: no people face, no logo, no signature, no anime, no cartoon, no glossy plastic
+
+─── 存成：assets/icons/raw/atlas_mat_sinew_src.png
+Refined realistic game art, post-apocalyptic wasteland strategy game aesthetic (salvaged rusty steel, cracked concrete, tarp and scrap-metal, old-world tech ruins), in the polish class of Rise of Kingdoms / high-end mobile strategy games.
+Icons for a post-apocalyptic wasteland strategy game. A 2x2 grid of four separate icons, each centered in its own quadrant, evenly spaced, no dividing lines.
+Top-left, Top-right, Bottom-left, Bottom-right in order:
+  1) niujin —— 盘绕筋束（牛筋 ox sinew bundle）
+  2) jiaojin —— 盘绕筋束（巨兽筋 thick monster sinew）
+  3) longjin —— 盘绕筋束（泰坦筋 dark-gold titan sinew）
+  4) shoujin —— 盘绕筋束（兽筋 beast sinew bundle）
+ Use at least 4 clearly distinct materials per item.
+isolated on a plain solid pure white background (#ffffff), no text, no watermark, no frame, no border, no ground shadow, centered composition, slight three-quarter isometric view, warm golden light from upper left, soft ambient occlusion, highly detailed material textures, crisp clean edges suitable for a small UI icon
+Negative: no people face, no logo, no signature, no anime, no cartoon, no glossy plastic

@@ -1,0 +1,1 @@
+{ "name": "wonder-opt", "private": true, "dependencies": { "@gltf-transform/cli": "^4" } }
