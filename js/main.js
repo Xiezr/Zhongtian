@@ -185,7 +185,25 @@
         break;
       }
       /* v45（需求 3）：城市下拉框（由 change 监听转交到此，见下方事件委托） */
-      case 'switch-city': ui.setCity(el.value); GAME.refreshAll(); break;
+      /* v91.28（老板）：城市管理 / 地图管理解耦。
+         · 同星球选城 → 只切当前城；
+         · 跨星球选城 → **必须** enterPlanet（该星球的城市分片要就位），
+           但**地图星球保持不动**（切回原 mapPlanetId，地图不跟着跳）。 */
+      case 'switch-city': {
+        var _cid = el.value, _cp = el.dataset ? Number(el.dataset.pid) : 0;
+        if (_cid && _cp && _cp !== (GAME.state.activePlanet || 0) && GAME.enterPlanet) {
+          var _keepMap = GAME.state.mapPlanetId;
+          GAME.enterPlanet(_cp);
+          ui._cityId = _cid;
+          /* 地图仍是原来在看的那颗星（城市切换不改变地图） */
+          if (_keepMap != null && _keepMap !== GAME.state.mapPlanetId && GAME.setMapPlanet) GAME.setMapPlanet(_keepMap);
+        } else {
+          ui.setCity(_cid);
+        }
+        ui._swPlanetId = null;   /* 选城后星球筛选复位 = 该城所在星球 */
+        GAME.refreshAll();
+        break;
+      }
       /* v25：说明浮层 / 城市改名 / 任务详情 */
       case 'show-help': ui.openHelp(el.dataset.help || ''); break;
       case 'open-rename-city': ui.openRenameCity(); break;
@@ -836,17 +854,15 @@
       /* v60（需求 4）：城市面板与城市间调拨 ——
          地图上点自家城市先弹面板（不直接进城），面板里再进 / 运 / 派 / 改名。
          chips 一律"只切 class + 写选择"，需要刷新数字的走 ui.syncTransportEst。 */
-      /* v91.25（老板）：侧栏「星球」下拉 —— 切换当前经营的星球（载入目标星球分片）。 */
+      /* v91.28（老板）：侧栏「星球」下拉 —— **只切换本栏查看的城市清单**（本地筛选），
+         不 enterPlanet、不重建球面、不改变地图（城市管理 / 地图管理解耦）。 */
       case 'switch-planet': {
-        var _spid = Number(el.value);
-        if (_spid && _spid !== GAME.state.activePlanet && GAME.enterPlanet) {
-          GAME.enterPlanet(_spid);
-          ui.toast('已切换到 ' + ((GAME.activePlanetOf() || {}).name || ('星球 ' + _spid)));
-          GAME.refreshAll();
-        }
+        ui._swPlanetId = Number(el.value);
+        ui.renderSide();
         break;
       }
       case 'city-enter': {
+        ui._swPlanetId = null;   /* v91.28：进某城 → 侧栏星球筛选复位到该城所在星球 */
         var ceId = el.dataset.city, ceC = GAME.cityById(ceId);
         if (!ceC) { ui.toast('城市不存在'); break; }
         /* v89.166（老板）：「城市菜单界面应关闭，直接显示城内大界面」——

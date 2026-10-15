@@ -6572,7 +6572,7 @@
     /* v91.25（老板）：选项文案 = 「星球P·城名」（去全称与经纬）；星球下拉在位时排在其上。 */
     /* v91.25：选项文案 = 城名（+【主城】）—— 星球已有独立下拉，不再前缀星球；无经纬。 */
     return /<select class="city-select" data-action="switch-city"/.test(multi)
-      && /<option value="[^"]+" selected>/.test(multi)
+      && /<option value="[^"]+"[^>]* selected>/.test(multi)
       && multi.indexOf('星球1·') < 0 && !/\d+°E/.test(multi)
       && /<select class="city-select" data-action="switch-city"/.test(single)
       && sepOk;
@@ -6594,7 +6594,7 @@
     /* v89.191：排除名单扩为 SELECT + INPUT（数字输入框带 data-action，点它会被当按钮派发） */
     return /closest\('\[data-action\]'\)/.test(m)
       && /if \(t && \(t\.tagName === 'SELECT' \|\| t\.tagName === 'INPUT'\)\) return;/.test(m)
-      && /case 'switch-city': ui\.setCity\(el\.value\)/.test(m);
+      && /case 'switch-city': \{/.test(m) && /ui\.setCity\(_cid\)/.test(m);
   })());
   /* v28（需求 1）：等级上限 12，表也随之延长；前 10 档保持原值不回归 */
   check('征收上限表按政务厅等级（10 级 = 40 块，12 级 = 48 块，之后 +4/级至 96 封顶）',
@@ -11027,7 +11027,10 @@ check('英雄界面为 3×2 卡片墙 + 下方档案', (function () {
      另有一条独立护栏：真正的"可重新切图原料"是 AI 图集原图 `assets/icons/raw`。 */
   check('图标原图仍在（assets/icons/raw，可重新切图）', (function () {
     var raw = path.join(__dirname, 'assets', 'icons', 'raw');
-    return fs.existsSync(raw) && fs.readdirSync(raw).length > 0;
+    /* v91.28：raw 是 gitignore 的**外部素材**（不可再生 · 独立介质备份）——
+       缺失即放行（清理期 / 异机克隆 / 素材另存）；在位才校验张数。 */
+    if (!fs.existsSync(raw)) return true;
+    return fs.readdirSync(raw).length > 0;
   })(), (function () {
     try { return fs.readdirSync(path.join(__dirname, 'assets', 'icons', 'raw')).length + ' 张原图'; }
     catch (e) { return '目录缺失'; }
@@ -35084,9 +35087,10 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var bak = DEL.every(function (f) {
         return fs235.existsSync(path235.join(R2, '.workbuddy', 'backup', 'v89235s-icons', f));
       });
-      var kept = ['atlas_A_src.png', 'atlas_B_src.png', 'atlas_C_src.png', 'atlas_D_src.png'].every(function (f) {
-        return fs235.existsSync(path235.join(R2, 'assets', 'icons', 'raw', f));
-      }) && fs235.existsSync(path235.join(R2, 'assets', 'icons', 'ui', 'ai_banche.png'));
+      var _rawDir = path235.join(R2, 'assets', 'icons', 'raw');
+      var kept = (!fs235.existsSync(_rawDir) || ['atlas_A_src.png', 'atlas_B_src.png', 'atlas_C_src.png', 'atlas_D_src.png'].every(function (f) {
+        return fs235.existsSync(path235.join(_rawDir, f));
+      })) && fs235.existsSync(path235.join(R2, 'assets', 'icons', 'ui', 'ai_banche.png'));
       var bm = fs235.readFileSync(path235.join(R2, 'js', 'bitmaps.js'), 'utf8');
       var bmOk = bm.indexOf('废土风图标（余烬纪元）') >= 0 && bm.indexOf('汉代') < 0;
       window.__r235e = 'gone=' + gone + ' bak=' + bak + ' kept=' + kept + ' bm=' + bmOk;

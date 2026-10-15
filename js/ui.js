@@ -3579,27 +3579,41 @@
        城市数会随进程不断增长，chips 在窄侧栏里折行会把城市属性挤下去；
        下拉框恒定一行，且"我有哪些城"一眼看全。 */
     /* v71（老板）：「即使只有一个城市，也保留这个城市下拉框…」
-       v91.25（老板）：「去掉区镇落坐标多余信息，只显示 星球N·城名；在城市下拉框上加星球下拉框」。
-       选项文案 = `星球{P}·{城名}`（去全称与经纬）；多星球时其上加**星球下拉**。 */
-    var _pid = s.activePlanet || 0;
+       v91.28（老板）：**城市管理 / 地图管理解耦** —— 侧栏星球下拉只切"看哪个星球的城"
+       （本地筛选 `ui._swPlanetId`），**不** enterPlanet、**不**重建球面、**不**动地图
+       （避免切换星球耗资源换后台星球）。只有从**别的星球选城**才 enterPlanet（且地图保持）。 */
+    var _actPid = s.activePlanet || 0;
     var _planets = GAME.planetsOf ? GAME.planetsOf() : [];
+    var _swPid = ui._swPlanetId;
+    /* 星球清单变了（新增/删）→ 复位到当前星球 */
+    var _pIds = _planets.map(function (p) { return p.id; }).join(',');
+    if (ui._swPids !== _pIds) { ui._swPids = _pIds; _swPid = null; }
+    if (_swPid == null || !_planets.some(function (p) { return p.id === _swPid; })) _swPid = ui._swPlanetId = _actPid;
+    /* 该"查看星球"的城清单：当前星球走 s.cities（活态），他星走分片快照。 */
+    var _swCities = (+_swPid === +_actPid) ? s.cities
+      : (((GAME.sliceOf && GAME.sliceOf(_swPid)) || {}).cities || []);
+    /* 当前城不在"查看星球"清单里 → 复位到当前城所在星球（防持久值被换星球/换城搞脏）。 */
+    if (+_swPid !== +_actPid && !_swCities.some(function (x) { return x.id === c.id; })) {
+      _swPid = ui._swPlanetId = _actPid;
+      _swCities = s.cities;
+    }
     var planetSel = _planets.length > 1
       ? '<div class="city-switch"><span class="cs-lbl">星球</span>' +
-        '<select class="city-select" data-action="switch-planet" title="切换当前经营的星球">' +
+        '<select class="city-select" data-action="switch-planet" title="切换查看的星球（只影响本栏城市清单，不改变地图）">' +
         _planets.map(function (p) {
-          return '<option value="' + p.id + '"' + (+p.id === +_pid ? ' selected' : '') + '>' +
+          return '<option value="' + p.id + '"' + (+p.id === +_swPid ? ' selected' : '') + '>' +
             U.escape(p.name || ('星球 ' + p.id)) + '</option>';
         }).join('') + '</select></div>'
       : '';
     var switcher = planetSel +
       '<div class="city-switch"><span class="cs-lbl">城市</span>' +
       '<select class="city-select" data-action="switch-city" title="切换当前经营的城市">' +
-      s.cities.map(function (x) {
-        return '<option value="' + x.id + '"' + (x.id === c.id ? ' selected' : '') + '>' +
+      (_swCities.length ? _swCities.map(function (x) {
+        return '<option value="' + x.id + '" data-pid="' + _swPid + '"' + (x.id === c.id ? ' selected' : '') + '>' +
           U.escape(x.name || '城')
           + ((GAME.isMainCity && GAME.isMainCity(x)) ? '【主城】' : '')
           + '</option>';
-      }).join('') +
+      }).join('') : '<option value="">（该星球暂无城市）</option>') +
       '</select>' +
       /* 城名旁的三个操作入口（从原「城市身份行」并入本行，去重复展示） */
       '<span class="city-switch-ops">' +
@@ -3620,9 +3634,9 @@
     var host = $('#city-switch-host');
     /* v71（老板）：选项文案含城名 / 坐标 —— 签名跟着文案走，
        改名、迁址后下一帧即刷新；否则下拉框会停在旧文案上。 */
-    var sig = (s.cities || []).map(function (x) {
+    var sig = _swCities.map(function (x) {
       return x.id + ':' + (x.name || '') + ':' + x.ci;
-    }).join(',') + '|' + c.id + '|' + (s.mainCityId || '') + '|' + _pid;   /* v91.25：星球变更也要刷新 */
+    }).join(',') + '|' + c.id + '|' + (s.mainCityId || '') + '|' + _swPid;   /* v91.28：查看星球也进签名 */
     if (host) {
       if (ui._citySwSig !== sig) {         /* 没变 → 一个字节都不碰这个 select */
         ui._citySwSig = sig;
