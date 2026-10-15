@@ -218,6 +218,20 @@
     var sd = seed3();
     var pver = JSON.stringify(SP.PLANET);            /* v90.81：参数变（同 seed）也要重建 */
     if (SP.cells && _builtSub === sub && _builtSeed === sd && _builtPver === pver) return SP;
+    /* v91.30h（性能）：**同种子兄弟球复用**（mapSphere 与逻辑球面同星球时，地形/几何完全一致）——
+       直接共享对方已建的只读大数组（cells/V/F/cent/adj/upos/fpos/faceCell…），
+       免掉第二遍 40962 格噪声（~500ms）。内容同种子确定 → 无副作用。 */
+    var _twin = (GAME.sphere && GAME.sphere !== SP && GAME.sphere.cells && GAME.sphere._bSub === sub
+      && GAME.sphere._bSeed === sd && GAME.sphere._bPver === pver) ? GAME.sphere
+      : ((GAME.mapSphere && GAME.mapSphere !== SP && GAME.mapSphere.cells && GAME.mapSphere._bSub === sub
+        && GAME.mapSphere._bSeed === sd && GAME.mapSphere._bPver === pver) ? GAME.mapSphere : null);
+    if (_twin) {
+      SP.cells = _twin.cells; SP.V = _twin.V; SP.F = _twin.F; SP.cent = _twin.cent; SP.adj = _twin.adj;
+      SP.upos = _twin.upos; SP.fpos = _twin.fpos; SP.faceCell = _twin.faceCell; SP.nv = _twin.nv;
+      SP.vf = _twin.vf; SP.meanLand = _twin.meanLand; SP.shellH = _twin.shellH; SP.shellR = _twin.shellR;
+      _builtSub = sub; _builtSeed = sd; _builtPver = pver; SP._bSub = sub; SP._bSeed = sd; SP._bPver = pver;
+      return SP;
+    }
     var ico = icoSpheres(sub);
     var V = ico.V, F = ico.F, nf = F.length, f, nv = V.length;
     var cent = [];
@@ -309,7 +323,7 @@
 
     SP.V = V; SP.F = F; SP.cent = cent; SP.adj = adj; SP.cells = cells;
     SP.upos = upos; SP.fpos = fpos; SP.faceCell = faceCell; SP.nv = nv;
-    _builtSub = sub; _builtSeed = sd; _builtPver = pver;
+    _builtSub = sub; _builtSeed = sd; _builtPver = pver; SP._bSub = sub; SP._bSeed = sd; SP._bPver = pver;
     SP.sub = sub;
     _grid = null;                                    /* 空间哈希随之失效（V 已换）*/
     _xyCi = null;                                    /* (x,y)→ci 记忆随之失效（地形已换）*/
