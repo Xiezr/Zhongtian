@@ -54,51 +54,57 @@
   /* 生成地形网格（可复现 seed） */
   GAME.map.generate = function () {
     var s = GAME.state;
-    /* v90.69：地形判据的**唯一出口**是球面内核（GAME.sphere）—— 逻辑（占领/建城/采集）
-       读球面地形而非平面 s.map.grid。此处顺带确保内核已建（幂等；随 seed 缓存）。 */
+    /* v90.69：地形判据的**唯一出口**是球面内核（GAME.sphere）。此处确保内核已建（幂等）。 */
     if (GAME.sphere && GAME.sphere.ensure) GAME.sphere.ensure();
-    if (!s.map.grid) {
-      /* ============================================================
-       * v90.76：地形**彻底单一出口** —— 平面 s.map.grid 由**球面内核投影**而来（不再独立 2D 噪声）。
-       *   平面 (x,y) 只是显示/主键的投影视图；地形一律 = 球面地块 terrain（所见即所得）。
-       *   出生点脚下强制平原在此按投影覆盖（保证开局可拓，逻辑与球面 3D 一致）。
-       * ============================================================ */
-      var w = DATA.MAP_W, h = DATA.MAP_H, SPg = GAME.sphere;
-      var sp0 = s.map.startPos || DATA.START_POS, sx = sp0.x, sy = sp0.y;
-      var grid = [];
-      for (var y = 0; y < h; y++) {
-        var row = [];
-        for (var x = 0; x < w; x++) {
-          var ci = (SPg && SPg.ciOfXY) ? SPg.ciOfXY(x, y) : -1;
-          var cell = (ci >= 0 && SPg.cells[ci]) ? SPg.cells[ci] : null;
-          var terrain = cell ? cell.type : 'plain';
-          if (Math.abs(x - sx) <= 2 && Math.abs(y - sy) <= 2) terrain = 'plain';   /* 出生圈强制平原 */
-          row.push({ x: x, y: y, terrain: terrain, ci: ci });
-        }
-        grid.push(row);
-      }
-      s.map.grid = grid;
-      /* NPC 城由 seed 确定性重建（不入存档）。重建后要剔除**已被我方占领**的城，
-         否则读档后刚打下的城会「复活」成 NPC 城。
-         判定依据：玩家城池的 origId（onConquer 时写入）就是原 NPC 城 id。 */
-      if (!s.map.cities) {
-        s.map.cities = GAME.buildNpcCities(s.map.seed);
-        var taken = {};
-        (s.cities || []).forEach(function (c) { if (c.origId) taken[c.origId] = 1; });
-        s.map.cities = s.map.cities.filter(function (c) { return !taken[c.id]; });
-      }
-      /* 城格标记 */
-      s.cities.forEach(function (c) { var t = GAME.map.tile(c.x, c.y); if (t) t.terrain = 'city'; });
-      s.map.cities.forEach(function (c) { var t = GAME.map.tile(c.x, c.y); if (t) t.terrain = 'city'; });
+    /* v91.25（球系）：**不再构建平面投影网格 `s.map.grid`** —— 地形一律由
+       `map.terrainAt(x,y)` 从球面现算（grid 退役）。仅重建 NPC 城与出生点覆盖。 */
+    if (!s.map.cities) {
+      /* NPC 城由 seed 确定性重建（不入存档）。重建后剔除**已被我方占领**的城。 */
+      s.map.cities = GAME.buildNpcCities(s.map.seed);
+      var taken = {};
+      (s.cities || []).forEach(function (c) { if (c.origId) taken[c.origId] = 1; });
+      s.map.cities = s.map.cities.filter(function (c) { return !taken[c.id]; });
     }
-    return s.map.grid;
+    return null;
   };
 
+  /* ============================================================
+   * v91.25（球系）：**平面格地形唯一出口** `map.terrainAt(x,y)` —— 从**球面**现算，
+   *   不再依赖存储的投影网格 `s.map.grid`：
+   *     · 出生圈（startPos ±2）强制平原（保证开局可拓，与球面 3D 一致）；
+   *     · 城格（我方城 / NPC 名城）标为 'city'；
+   *     · 其余 = 该格球面地块 terrain（`sphere.ciOfXY` → cell.type）。
+   * ============================================================ */
+  GAME.map.terrainAt = function (x, y) {
+    var s = GAME.state;
+    if (x < 0 || y < 0 || x >= DATA.MAP_W || y >= DATA.MAP_H) return null;
+    var sp = (s.map && s.map.startPos) || DATA.START_POS;
+    if (sp && Math.abs(x - sp.x) <= 2 && Math.abs(y - sp.y) <= 2) return 'plain';
+    var SP = GAME.sphere, ci = (SP && SP.ciOfXY) ? SP.ciOfXY(x, y) : -1;
+    if (ci >= 0) {
+      if (GAME.map._cityCiSet()[ci]) return 'city';
+      var cell = SP.cells[ci];
+      return cell ? cell.type : 'plain';
+    }
+    return 'plain';
+  };
+  /* 城池格 ci 集合（我方城 + NPC 名城）—— 随城清单变化重建；供 terrainAt O(1) 判定。 */
+  GAME.map._cityCiSet = function () {
+    var s = GAME.state;
+    var cs = (s.cities || []).concat((s.map && s.map.cities) || []);
+    var sig = cs.length + '#' + cs.map(function (c) { return c.id || '?'; }).join(',');
+    if (GAME.map._ccs && GAME.map._ccs.sig === sig) return GAME.map._ccs.set;
+    var set = {};
+    cs.forEach(function (c) { if (c.ci != null && c.ci >= 0) set[c.ci] = 1; });
+    GAME.map._ccs = { sig: sig, set: set };
+    return set;
+  };
+  /* 平面格视图（兼容旧调用）—— 由 terrainAt + ciOfXY 现算，**不再是存储对象**。 */
   GAME.map.tile = function (x, y) {
     var s = GAME.state;
-    if (!s.map.grid) return null;
-    if (x < 0 || y < 0 || y >= s.map.grid.length || x >= s.map.grid[0].length) return null;
-    return s.map.grid[y][x];
+    if (x < 0 || y < 0 || x >= DATA.MAP_W || y >= DATA.MAP_H) return null;
+    var SP = GAME.sphere;
+    return { x: x, y: y, ci: (SP && SP.ciOfXY) ? SP.ciOfXY(x, y) : -1, terrain: GAME.map.terrainAt(x, y) };
   };
 
   GAME.map.playerCity = function () {
@@ -1056,13 +1062,13 @@
     if (!s2 || !s2.map) return 0;
     var seed = (s2.map.seed || 1) | 0;
     if (!_dcache || _dseed !== seed) {
-      var w = DATA.MAP_W, h = DATA.MAP_H, grid = s2.map.grid || [], d = new Int16Array(w * h);
+      var w = DATA.MAP_W, h = DATA.MAP_H, d = new Int16Array(w * h);
       var q = [], i;
       for (var y = 0; y < h; y++) for (var x = 0; x < w; x++) {
-        var tt = (grid[y] && grid[y][x] && grid[y][x].terrain) || 'plain', edge = false;
+        var tt = GAME.map.terrainAt(x, y) || 'plain', edge = false;
         if (x === 0 || y === 0 || x === w - 1 || y === h - 1) edge = true;
-        else if (((grid[y][x - 1] || {}).terrain || 'plain') !== tt || ((grid[y][x + 1] || {}).terrain || 'plain') !== tt
-          || ((grid[y - 1][x] || {}).terrain || 'plain') !== tt || ((grid[y + 1][x] || {}).terrain || 'plain') !== tt) edge = true;
+        else if ((GAME.map.terrainAt(x - 1, y) || 'plain') !== tt || (GAME.map.terrainAt(x + 1, y) || 'plain') !== tt
+          || (GAME.map.terrainAt(x, y - 1) || 'plain') !== tt || (GAME.map.terrainAt(x, y + 1) || 'plain') !== tt) edge = true;
         if (edge) { d[y * w + x] = 0; q.push(y * w + x); } else d[y * w + x] = -1;
       }
       var head = 0;
@@ -1080,8 +1086,7 @@
     if (gx < 0 || gy < 0 || gx >= DATA.MAP_W || gy >= DATA.MAP_H) return 0;
     var s2 = GAME.state;
     if (!s2 || !s2.map) return 0;
-    var grid = s2.map.grid || [];
-    var t = (grid[gy] && grid[gy][gx] && grid[gy][gx].terrain) || 'plain';
+    var t = GAME.map.terrainAt(gx, gy) || 'plain';
     if (t === 'lake' || t === 'zhaoze') return 0;
     var seed = (s2.map.seed || 1) | 0;
     var base = fbm(gx, gy, seed * 7 + 11);
@@ -1315,7 +1320,7 @@
   GAME.map.render = function (canvas, opts) {
     opts = opts || {};
     var s = GAME.state;
-    if (!s.map.grid) GAME.map.generate();
+    if (!s.map.cities) GAME.map.generate();
     /* v26（需求 4）：观察框由 12×12 改为 **12×8**（宽 12 格、高 8 格）——
        平板 1024×768 是可横可纵的屏，正方观察框上下留白太多、横向又不够看。
        spanX / spanY 分开后：画布不再是正方形，拾取、平移、边缘提示都要各用各的。
@@ -1565,13 +1570,11 @@
        （正方形时代只是按行扫，不需要排序；这是菱形带来的第一个结构性变化。） */
     var drawList = [];
     for (var gy2 = gy0; gy2 <= gy1; gy2++) {
-      var row2 = s.map.grid[gy2];
       for (var gx2 = gx0; gx2 <= gx1; gx2++) {
         var c0 = gxy(gx2, gy2);
         /* 屏幕包围盒外再放一格余量（菱形的四个尖角会伸出格心 ±HW/±HH） */
         if (c0.x < -cell || c0.x > cvW + cell || c0.y < -cell || c0.y > cvH + cell) continue;
-        var t2 = row2 ? row2[gx2] : null;
-        drawList.push({ gx: gx2, gy: gy2, terrain: t2 ? t2.terrain : 'plain', t: t2 });
+        drawList.push({ gx: gx2, gy: gy2, terrain: GAME.map.terrainAt(gx2, gy2) || 'plain' });
       }
     }
     drawList.sort(function (a, b) { return (a.gx + a.gy) - (b.gx + b.gy); });
@@ -1842,11 +1845,7 @@
     });
 
     /* 取某格地形（供 at() 换算抬升量） */
-    function terrainAt(gx, gy) {
-      var row = s.map.grid[gy];
-      var t = row ? row[gx] : null;
-      return t ? t.terrain : 'plain';
-    }
+    function terrainAt(gx, gy) { return GAME.map.terrainAt(gx, gy) || 'plain'; }
     /* 依次把「格号 / 格心 / 本格抬升量」交给回调。
        菱形版比正方形版**多给一个格号** —— 因为菱形路径由 (gx,gy) 决定，
        只给格心是画不出形状的（这也是斜投影最容易出错的地方：格心对了、形状还错着）。

@@ -525,8 +525,9 @@
   localStorage.setItem('sanguo_save_v2', '{"version":2,"ruler":{}}');
   var loaded = G.loadGame();
   check('旧档(v2)被作废', loaded !== null && loaded.version === 3, '旧档已清除');
-  check('读档后地形已按 seed 重建', !!G.state.map.grid && G.state.map.grid.length === DATA.MAP_H,
-    G.state.map.grid ? G.state.map.grid.length + '×' + G.state.map.grid[0].length : '未重建');
+  /* v91.25（球系）：平面投影网格退役 → 改验「地形由球面现算」（terrainAt 返回合法地形 + 内核就绪）。 */
+  check('读档后地形由球面现算（grid 退役）', !!G.sphere && !!G.sphere.cells
+    && typeof G.map.terrainAt === 'function' && (G.map.terrainAt(250, 250) != null));
 
   console.log('\n===== 15. UI 渲染（原版三段式 + 面板函数）=====');
   var UI = G.ui, DC = global.document._cache;
@@ -5088,7 +5089,7 @@
 
   /* ---------- ⑥ 初始城池周边地形 ---------- */
   console.log('  --- ⑥ 出生点地形 ---');
-  check('强制平原范围已收紧到 ±2（原 ±5）', /Math\.abs\(x - sx\) <= 2 && Math\.abs\(y - sy\) <= 2/.test(mapS30));
+  check('强制平原范围已收紧到 ±2（原 ±5）', /Math\.abs\(x - sp\.x\) <= 2 && Math\.abs\(y - sp\.y\) <= 2/.test(mapS30));
   check('±3 之外已恢复真实地形（不再一片平原）', (function () {
     var c0 = st30.cities[0], seen = {};
     for (var y = c0.y - 5; y <= c0.y + 5; y++) for (var x = c0.x - 5; x <= c0.x + 5; x++) {
@@ -14036,11 +14037,11 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
     G.ui._cityId = null;
     return ok;
   }));
-  check('实测：放弃后**这一格还给地图**（自建城 → 平原）', with67('v67l', function (st) {
+  check('实测：放弃后**这一格还给地图**（不再为城格）', with67('v67l', function (st) {
     var o = cityFull67(st);
     G.abandonCity(o.c.id);
     var t = G.map.tile(o.c.x, o.c.y);
-    return t && t.terrain === 'plain';
+    return t && t.terrain !== 'city';   /* v91.25：地形由球面现算，城格集合去城即还地图 */
   }));
   check('实测：放弃**攻占来的城** → 那座系统城回到地图（按 origId）', with67('v67m', function (st) {
     var npc = (st.map.cities || [])[0];

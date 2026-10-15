@@ -3519,10 +3519,8 @@
       (s.cities || []).forEach(function (c) { if (c.origId) taken[c.origId] = 1; });
       s.map.cities = GAME.buildNpcCities(s.map.seed).filter(function (c) { return !taken[c.id]; });
     }
-    /* 地形：攻占城的格子保持 'city'（回来的正是那座系统城，hasFort 也按 city 认）；
-       自建城只可能建在平原上（canBuildCityAt 的硬约束），还回平原。 */
-    var t = GAME.map.tile(city.x, city.y);
-    if (t && !city.origId) t.terrain = 'plain';
+    /* v91.25（球系）：地形由 `map.terrainAt` 从球面 + 城格集合现算 ——
+       abandonCity 从 s.cities 移除该城后，terrainAt 自然不再返回 'city'，无需再改平面格。 */
   };
   /* 放弃城池（唯一入口）：照 CITY_SCOPED 表批量清理，再把格子还给地图 */
   GAME.abandonCity = function (cityId) {

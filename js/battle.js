@@ -1198,8 +1198,7 @@
     var idx = -1;
     for (var i = 0; i < s.map.cities.length; i++) if (s.map.cities[i].id === npcCity.id) { idx = i; break; }
     if (idx >= 0) s.map.cities.splice(idx, 1);
-    var tile = GAME.map.tile(newCity.x, newCity.y);
-    if (tile) tile.terrain = 'city';
+    /* v91.25（球系）：新城入 s.cities 后 terrainAt 自然返回 'city'，无需改平面格。 */
     /* 英雄经验（v55 · 与野地战同一个出口）：
        原来写 `rep × 5`（聚落 300、旧都 2000）—— 与野地那套口径互不相干，
        而且比"打一块 10 级野地"还少，攻下名城的战功反而最不值钱。

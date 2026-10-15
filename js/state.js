@@ -2890,7 +2890,7 @@
          已占城池由 map.generate 依据 s.cities[].origId 剔除。 */
       st.map.cities = null;
       /* 存档不含地形，用 seed 重建（确定性，与存档前完全一致） */
-      if (!st.map.grid && GAME.map && GAME.map.generate) GAME.map.generate();
+      if (GAME.map && GAME.map.generate) GAME.map.generate();
       /* v90.60（老板）：老档"多城同格"修复 —— 就近挪到空闲格并改写坐标（地形已重建，可判平原） */
       if (GAME.migrateCityCells && GAME.migrateCityCells(st) > 0) {
         (st.cities || []).forEach(function (c) { var t = GAME.map.tile(c.x, c.y); if (t) t.terrain = 'city'; });
@@ -4971,6 +4971,8 @@
   GAME.jianghuActsAt = function (ci) {
     var cell = (GAME.sphere && GAME.sphere.cells) ? GAME.sphere.cells[ci] : null;
     if (!cell) return [];
+    /* v91.25：城格（我方城/NPC 名城）无荒野事 —— 与 map.terrainAt（=city）同口径。 */
+    if (GAME.map && ((GAME.map.ownCityAt && GAME.map.ownCityAt(ci)) || (GAME.map.npcAt && GAME.map.npcAt(ci)))) return [];
     var cands = GAME.jianghuCands(cell.type);
     if (!cands.length) return [];
     var sp = DATA.JH_SPREAD || {};
