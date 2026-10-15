@@ -15538,14 +15538,15 @@ console.log('\n===== 60. v74 七条（幸存者 · 画布 · 简介 · 六维 ·
     var rEnd = G.addFreePoint(g4, 'tong', 1);      /* 点已尽 → 拒绝 */
     return ok1 && ok2 && !rEnd.ok;
   })());
-  check('⑤ 自由点可投放速度/体力（独立加法位，不污染基础值）', (function () {
+  check('⑤ v91.27：自由点**不能**加 速度/体力（改走临时道具）', (function () {
     var g3 = G.makeGeneral('加点乙', 1, 'idle', cid74, false, 'liang', 'balance');
     g3.freePts = 2;
     var before = G.genAttrs(g3).spd, beforeSta = G.staMax(g3);
-    G.addFreePoint(g3, 'spd');
-    G.addFreePoint(g3, 'sta');
-    return G.genAttrs(g3).spd === before + 1 && G.staMax(g3) === beforeSta + 1
-      && g3.spdAdd === 1 && g3.staAdd === 1;
+    var r1 = G.addFreePoint(g3, 'spd'), r2 = G.addFreePoint(g3, 'sta');
+    /* 两条都被拒、自由点不动、属性不变；四维仍可加。 */
+    var r3 = G.addFreePoint(g3, 'tong');
+    return r1.ok === false && r2.ok === false && g3.freePts === 1 && r3.ok === true
+      && G.genAttrs(g3).spd === before && G.staMax(g3) === beforeSta;
   })());
   check('⑤ 结构：升级日志口径 =（自动加点 +X · 自由点 +X）', /自由点 \+' \+ step/.test(rd('battle').replace(/\s+/g, ' ')));
 

@@ -14186,41 +14186,49 @@
     var a = GAME.genAttrs(g);
     var fp = Math.round(g.freePts || 0);
     var curVal = (stat === 'spd') ? (a.spd || 0) : (stat === 'sta') ? (a.staMax || 0) : (a[stat] || 0);
+    /* v91.27（老板）：「自由点不能加速度/体力 —— 这两个只能用道具**临时**提升」。
+       → spd/sta 走 attr_buff 临时芯片；四维仍走自由点 + 永久血清。 */
+    var isTemp = (stat === 'spd' || stat === 'sta');
     var items = (DATA.ITEMS || []).filter(function (it) {
-      return it.type === 'perm' && it.attr === stat;
+      return isTemp ? (it.type === 'attr_buff' && it.eff && it.eff[stat] != null)
+        : (it.type === 'perm' && it.attr === stat);
     });
     var rows = items.length ? items.map(function (it) {
       var have = (s.items || {})[it.id] || 0;
-      var used = (g.perm || {})[it.attr] || 0;
-      var capped = used >= 50;
+      var used = isTemp ? 0 : ((g.perm || {})[it.attr] || 0);
+      var capped = !isTemp && used >= 50;
+      var amt = isTemp ? it.eff[stat] : 1;
       return '<div class="stat-row"><span class="sr-name">' + GAME.itemIcon(it) + ' ' + U.escape(it.name) +
         ' <i class="gd-sub">×' + have + '</i></span>' +
-        '<span class="sr-sub">已用 ' + used + ' / 50</span>' +
+        (isTemp ? '<span class="sr-sub">' + (it.dur || 24) + ' 小时</span>'
+          : '<span class="sr-sub">已用 ' + used + ' / 50</span>') +
         '<button class="btn sm' + (have > 0 && !capped ? ' gold' : ' dim') + '" data-action="stat-plus-item"' +
           ' data-gen="' + genId + '" data-stat="' + stat + '" data-item="' + it.id + '"' +
           (have > 0 && !capped ? '' : ' disabled') +
-          ' title="' + (capped ? '该英雄此项丹药已达上限 50'
-            : (have > 0 ? '使用 1 个：' + nm + ' +1（永久）' : '背包中没有该道具（游商有售）')) + '">＋1</button></div>';
-    }).join('') : '<div class="q-empty">此属性暂无对应道具（用自由属性点即可）。</div>';
+          ' title="' + (capped ? '该英雄此项已达上限 50'
+            : (have > 0 ? '使用 1 个：' + nm + ' +' + amt + (isTemp ? '（临时·' + (it.dur || 24) + ' 小时）' : '（永久）')
+              : '背包中没有该道具（游商有售）')) + '">＋1</button></div>';
+    }).join('') : ('<div class="q-empty">此属性暂无对应道具' + (isTemp ? '。' : '（用自由属性点即可）。') + '</div>');
     ui.openShell({
       title: '＋ ' + nm + ' · ' + U.escape(g.name),
-      sub: '自由属性点 ' + fp + '　·　' + nm + ' 现 ' + curVal +
-        ui.help('自由属性点：每升 1 级获得 = 资质成长值（凡人 +1 … 天启体 +8）。\n' +
-          '支持一次加多点：填数量（或点「最多」）后点「加点」；只能加、不能减。\n' +
-          '四项主属性另有永久丹药（游商 · 丹药），每将每项上限 50。'),
+      sub: (isTemp ? '' : '自由属性点 ' + fp + '　·　') + nm + ' 现 ' + curVal +
+        ui.help(isTemp
+          ? '速度 / 体力**不能用自由属性点加** —— 只能用道具**临时**提升（到期自动失效）。'
+          : '自由属性点：每升 1 级获得 = 资质成长值（凡人 +1 … 天启体 +8）。\n' +
+            '支持一次加多点：填数量（或点「最多」）后点「加点」；只能加、不能减。\n' +
+            '四项主属性另有永久血清（游商 · 血清），每将每项上限 50。'),
       size: 'sm',
-      body:
-        '<div class="ui-sub">自由属性点</div>' +
-        /* v89.40（老板）：「输入计划增加的数量，一次加点」—— ＋1 按钮升级为
-           数量框 +「加点」：单点默认 1 仍一键，批量填数或点「最多」后一次到账。 */
-        '<div class="stat-row"><span class="sr-name">🎯 一次加点</span>' +
-          '<span class="sr-sub">剩 ' + fp + ' 点</span>' +
-          ui.qtyInput('fp-add-' + genId, 1, 0, fp) +
-          '<button class="btn sm' + (fp > 0 ? ' gold' : ' dim') + '" data-action="stat-plus-free"' +
-            ' data-gen="' + genId + '" data-stat="' + stat + '" data-qty-from="fp-add-' + genId + '"' +
-            (fp > 0 ? '' : ' disabled') +
-            ' title="' + (fp > 0 ? nm + ' 一次加点（填数量或点「最多」，只增不减）' : '自由属性点不足：升级获得，每级 = 资质成长值') + '">加点</button></div>' +
-        '<div class="ui-sub" style="margin-top:10px;">道具</div>' + rows,
+      body: (isTemp
+        ? '<div class="ui-sub">临时道具（到期失效）</div>' + rows
+        : '<div class="ui-sub">自由属性点</div>' +
+          '<div class="stat-row"><span class="sr-name">🎯 一次加点</span>' +
+            '<span class="sr-sub">剩 ' + fp + ' 点</span>' +
+            ui.qtyInput('fp-add-' + genId, 1, 0, fp) +
+            '<button class="btn sm' + (fp > 0 ? ' gold' : ' dim') + '" data-action="stat-plus-free"' +
+              ' data-gen="' + genId + '" data-stat="' + stat + '" data-qty-from="fp-add-' + genId + '"' +
+              (fp > 0 ? '' : ' disabled') +
+              ' title="' + (fp > 0 ? nm + ' 一次加点（填数量或点「最多」，只增不减）' : '自由属性点不足：升级获得，每级 = 资质成长值') + '">加点</button></div>' +
+          '<div class="ui-sub" style="margin-top:10px;">道具</div>' + rows),
       foot: '<div class="m-foot"><button class="btn" data-action="close-modal">关闭</button></div>'
     });
   };

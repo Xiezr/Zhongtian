@@ -1414,14 +1414,14 @@
 
 
   /* 自由属性点分配（v74 · 老板需求 5 · **唯一出口**）：
-     六维都能加（指挥/治理/武力/谋略/速度/体力），**只能加、不能减**。
-     四项主属性走 g[stat]+=1；速度 / 体力另有独立加法位（spdAdd / staAdd），
-     由 genAttrs 与 staBaseMax 各自吃进去 —— 属性本身保持"基础值"不被污染。 */
-  /* v89.40（老板）：「输入计划增加的数量，一次加点」—— qty 缺省 1（单点口径不变），
-     超过余额按余额截断（回报实加的数字）。唯一出口不变，仍是本函数。 */
+     ⚠️ v91.27（老板）：「自由属性点**不能加**速度/体力 —— 这两个的加号按钮**只能用道具临时**改变属性」。
+     故本出口只收**四维**（指挥/治理/武力/谋略）；速度/体力 → 拒绝（改走临时道具）。
+     只能加、不能减。 */
   GAME.addFreePoint = function (g, stat, qty) {
-    if (!g || ['tong', 'nz', 'yw', 'zm', 'spd', 'sta'].indexOf(stat) < 0) {
-      return { ok: false, msg: '该属性不支持加点' };
+    if (!g || ['tong', 'nz', 'yw', 'zm'].indexOf(stat) < 0) {
+      return { ok: false, msg: (stat === 'spd' || stat === 'sta')
+        ? '速度 / 体力不能用自由属性点加 —— 只能用道具临时提升'
+        : '该属性不支持加点' };
     }
     var have = Math.floor(g.freePts || 0);
     if (have < 1) {
@@ -1430,25 +1430,9 @@
     var n = Math.floor(Number(qty) || 0);
     if (n < 1) n = 1;
     if (n > have) n = have;
-    /* v89.95（B2）：**速度的投放上限** = base + floor(等级 / perLevels)（与自然成长同口径）——
-       防止"把上千点自由点全砸速度"把速度变成决定性属性（老板点名的那条链）。 */
-    if (stat === 'spd') {
-      var _sc2 = DATA.SPD_CAP || { perLevels: 5, base: 10 };
-      var _lim = (_sc2.base || 0) + Math.floor((g.level || 1) / (_sc2.perLevels || 5));
-      var _have = (g.spdAdd || 0);
-      if (_have + n > _lim) {
-        n = Math.max(0, _lim - _have);
-        if (n <= 0) {
-          return { ok: false, msg: '速度已达上限 ' + _lim + '（每 ' + (_sc2.perLevels || 5)
-            + ' 级 +1；更高速度请靠装备与座驾）' };
-        }
-      }
-    }
     g.freePts -= n;
     var nm = { tong: '指挥', nz: '治理', yw: '武力', zm: '谋略', spd: '速度', sta: '体力' }[stat];
-    if (stat === 'spd') g.spdAdd = (g.spdAdd || 0) + n;
-    else if (stat === 'sta') g.staAdd = (g.staAdd || 0) + n;
-    else g[stat] = (g[stat] || 0) + n;
+    g[stat] = (g[stat] || 0) + n;
     GAME.log('🎯 ' + g.name + ' ' + nm + ' +' + n + '（自由点 -' + n + '，余 ' + g.freePts + '）');
     return { ok: true, msg: g.name + ' ' + nm + ' +' + n + '（余 ' + g.freePts + ' 点）' };
   };

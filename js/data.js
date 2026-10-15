@@ -4881,6 +4881,9 @@
     { id: 'sixiang', name: '矩阵芯片', type: 'attr_buff', eff: { tong_mult: 0.5, nz_mult: 0.5, yw_mult: 0.5, zm_mult: 0.5 }, dur: 24, price: 480, desc: '英雄 24 小时内：指挥+50%　治理+50%　武力+50%　谋略+50%' },
     { id: 'jifeng', name: '疾风芯片', type: 'attr_buff', eff: { spd: 20 }, dur: 24, price: 90, desc: '英雄 24 小时内：速度+20' },
     { id: 'zhuifeng', name: '追风芯片', type: 'attr_buff', eff: { spd: 50 }, dur: 24, price: 220, desc: '英雄 24 小时内：速度+50' },
+    /* v91.27（老板）：速度/体力**只能用道具临时提升**（自由属性点不可加）—— 补体力芯片族。 */
+    { id: 'naoli_chip', name: '续力芯片', type: 'attr_buff', eff: { sta: 30 }, dur: 24, price: 90, desc: '英雄 24 小时内：体力上限+30' },
+    { id: 'naoli_chip2', name: '强心芯片', type: 'attr_buff', eff: { sta: 80 }, dur: 24, price: 220, desc: '英雄 24 小时内：体力上限+80' },
     { id: 'baye', name: '霸业芯片', type: 'attr_buff', eff: { tong_mult: 1, yw_mult: 1 }, dur: 24, price: 400, desc: '英雄 24 小时内：指挥+100%　武力+100%' },
     { id: 'mingjing', name: '明镜芯片', type: 'attr_buff', eff: { zm_mult: 1 }, dur: 24, price: 280, desc: '英雄 24 小时内：谋略+100%' },
     { id: 'zhisu', name: '生产芯片', type: 'attr_buff', eff: { nz_mult: 1 }, dur: 24, price: 280, desc: '英雄 24 小时内：治理+100%' },

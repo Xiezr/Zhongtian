@@ -7234,9 +7234,14 @@
     var rk = GAME.rankOf ? GAME.rankOf(g) : null;
     var grow = (rk && rk.grow) || 1;
     var nz = g.nz || 0;
-    /* v74：自由点投放的 staAdd 计入上限（与等级/资质/治理同层） */
+    /* v91.27：**临时道具**的体力上限加成（同属性取最大，与速度芯片同口径）。 */
+    var _staBuf = 0, _s = GAME.state;
+    if (_s && _s.buffs && _s.buffs.gens && _s.buffs.gens[g.id]) {
+      var _now = U.now();
+      for (var _bid in _s.buffs.gens[g.id]) { var _b = _s.buffs.gens[g.id][_bid]; if ((_b.until > _now) && _b.sta > _staBuf) _staBuf = _b.sta; }
+    }
     return S.base + Math.max(0, (g.level || 1) - 1) * grow * S.perLevel * (1 + nz / S.nzDiv)
-      + (g.staAdd || 0);
+      + (g.staAdd || 0) + _staBuf;
   };
   /* 装备与套装贡献的体力（唯一出口：散件 sta + 套装件 sta + 套装档位 sta，
      三者已在 genEquipBonus 里合并成一个 b.sta） */
