@@ -1747,6 +1747,15 @@
         guard: GAME.fortGuardOf(f),
         cityType: 'fort', dropType: 'fort' };
     }
+    /* v91.31（老板）：**奇观探索目标** —— 「派军搜查/深潜攻坚」走出征界面（选将/选兵）。
+       结算走 GAME.wonderExplore（非战斗）；resolveTarget 只做面板解析。 */
+    if (target.kind === 'wonder') {
+      var wpid = (target.pid != null) ? target.pid : ((s.activePlanet) || 1);
+      var wd = GAME.wonderOf ? GAME.wonderOf(wpid) : null;
+      if (!wd) return { ok: false, msg: '该星球无奇观' };
+      return { ok: true, kind: 'wonder', pid: wpid, mode: target.mode || 'search',
+        name: wd.icon + ' ' + wd.name, garrison: {}, guard: null, def: 0 };
+    }
     /* v89.87（老板需求 2）：调兵目标 —— 本境自家城市（走行军通道） */
     if (target.kind === 'owncity') {
       var oc = GAME.cityById(target.id);

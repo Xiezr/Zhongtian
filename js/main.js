@@ -160,6 +160,13 @@
       case 'wonder-open': ui.openWonder(Number(el.dataset.pid)); break;
       /* v91.30：星系总览（地图底部入口 · 后续再拓展玩法）。 */
       case 'galaxy-open': ui.setView('galaxy'); GAME.refreshAll(); break;
+      /* v91.31（老板）：派军搜查/深潜 → 出征界面（选将选兵 · 自由定数量 · 按军力给奖励）。 */
+      case 'wonder-exp': {
+        ui.closeAllModals();
+        ui.openExpModal({ kind: 'wonder', pid: Number(el.dataset.pid), mode: el.dataset.act },
+          { hint: '奇观派遣：选主将与兵力 —— 按军力给奖励，可能有损兵' });
+        break;
+      }
       case 'wonder-go': {
         var _pid = Number(el.dataset.pid), _act = el.dataset.act;
         var _paid = { buxingji: 2000 };   /* 派军行动默认派 2000 步兵（可后续做编队） */
@@ -2259,6 +2266,15 @@
     if (!genSel) { ui.toast('请选择英雄'); return; }
     /* v89.103：兵力从输入框收 —— 与辎重运力的算法**同一个来源**（ui.expArmyOf） */
     var atk = ui.expArmyOf ? ui.expArmyOf() : {};
+    /* v91.31（老板）：**奇观探索**走出征界面 —— 选将/选兵 → 派队（非战斗，按军力给奖励）。
+       将领带队（genSel）如同常规出征。 */
+    if (target.kind === 'wonder') {
+      var _wgen = (GAME.state.generals || []).filter(function (g) { return g.id === genSel.value; })[0];
+      var _wr = GAME.wonderExplore(target.pid, target.mode || 'search', GAME.currentCity() && GAME.currentCity().id, atk, _wgen && _wgen.id);
+      ui.toast(_wr.msg);
+      if (_wr.ok) { ui.closeModal(); GAME.refreshAll(); if (ui.view === 'map' && ui.renderMapCanvas) ui.renderMapCanvas(); }
+      return;
+    }
     var md = GAME.battle.modeOf(mode);
     /* ============================================================
      * v89.103（老板「任意自身城市向其他城市进行资源运输，应当采用出征界面，

@@ -3626,6 +3626,9 @@
         已在 main.js 的 click 委托里对 SELECT 直接放行。）
        现在它走**自己的静态节点** #city-switch-host，只在
        "城市清单或当前城市变了"时才重建；城市属性正文照旧每帧重建（正文没有交互态）。 */
+    /* v91.31：城市属性里的「当前城市名」（下拉已上移）。 */
+    var _curNameEl = $('#city-cur-name');
+    if (_curNameEl) _curNameEl.innerHTML = '🏯 ' + U.escape(c.name || '城');
     var host = $('#city-switch-host');
     /* v71（老板）：选项文案含城名 / 坐标 —— 签名跟着文案走，
        改名、迁址后下一帧即刷新；否则下拉框会停在旧文案上。 */
@@ -16570,29 +16573,43 @@
     if (!wd) return '<div class="q-empty">此星球暂无奇观。</div>';
     var left = GAME.wonderLeftToday ? GAME.wonderLeftToday(pid) : 0;
     var W = DATA.WONDER_CFG || { dailyMax: 5, marchRealSec: 3600, exploreRealSec: 3600 };
-    /* 可能产出：主材料 + 附带（去重 · 标"概率"）。 */
+    /* 可能产出（去重）：材料「主产」/ 附带「概率」；**悬停统一说明采集 vs 派军搜查的差异**。 */
+    var DIFF_TIP = '采集：不派兵、安稳取**少量**材料；派军搜查/深潜攻坚：**出征界面**选将选兵，'
+      + '按**军力**给更多材料，并可能获图纸/珠宝（有损兵风险）。';
     var outs = [wd.mat].concat(wd.out || []);
     var seen = {}, rows = '';
     outs.forEach(function (oid, i) {
       if (!oid || seen[oid]) return; seen[oid] = 1;
       var it = DATA.ITEM_BY_ID[oid] || {}; var have = (GAME.state.items || {})[oid] || 0;
-      rows += '<div class="stat-row"><span class="sr-name">' + (it.icon || '📦') + ' ' + U.escape(it.name || oid) +
-        ' <i class="gd-sub">×' + have + '</i></span><span class="sr-sub">' + (i === 0 ? '主产' : '概率') + '</span></div>';
+      rows += '<div class="stat-row" title="' + U.escape(DIFF_TIP) + '"><span class="sr-name">' + (it.icon || '📦') + ' ' +
+        U.escape(it.name || oid) + ' <i class="gd-sub">×' + have + '</i></span><span class="sr-sub">' + (i === 0 ? '主产' : '概率') + '</span></div>';
     });
-    var acts = (wd.acts || []).map(function (aid) {
-      var a = (DATA.WONDER_ACT_DEFS || {})[aid]; if (!a) return '';
-      return '<button class="btn sm gold" data-action="wonder-go" data-pid="' + pid + '" data-act="' + aid + '"' +
-        ' title="' + U.escape(a.desc || '') + '">' + a.name + (a.needArmy ? '（须派兵）' : '') + '</button>';
-    }).join(' ');
     return '<div class="op-zone"><div class="op-zone-t">' + wd.icon + ' ' + U.escape(wd.name) + ' · ' + U.escape(wd.body) + '</div>' +
       '<div style="text-align:center;color:var(--text-dim);font-size:var(--fs-sub);margin-bottom:6px;">' +
         '每现实日刷新 · 今日剩余 ' + left + ' / ' + (W.dailyMax || 5) + ' 次　·　行军 ' + Math.round((W.marchRealSec || 3600) / 60) + ' 分 → 探索 ' + Math.round((W.exploreRealSec || 3600) / 60) + ' 分</div>' +
-      '<div class="ui-sub">可能产出</div>' + (rows || '<div class="q-empty">—</div>') +
-      '<div style="text-align:center;margin-top:10px;">' + acts + '</div></div>';
+      '<div class="ui-sub" title="' + U.escape(DIFF_TIP) + '">可能产出　<span style="color:var(--text-dim);">（悬停看「采集 / 派军搜查」差异）</span></div>' +
+      (rows || '<div class="q-empty">—</div>') + '</div>';
+  };
+  /* 奇观行动按钮（**放弹窗底部**）：采集/研读/救援 = 就地；派军搜查/深潜 = 走出征界面选将选兵。 */
+  ui.wonderActsHTML = function (pid) {
+    var wd = GAME.wonderOf ? GAME.wonderOf(pid) : null;
+    if (!wd) return '';
+    var left = GAME.wonderLeftToday ? GAME.wonderLeftToday(pid) : 0;
+    return (wd.acts || []).map(function (aid) {
+      var a = (DATA.WONDER_ACT_DEFS || {})[aid]; if (!a) return '';
+      if (a.needArmy) {   /* 派军：走出征界面（选将/选兵/自由定数量） */
+        return '<button class="btn gold" data-action="wonder-exp" data-pid="' + pid + '" data-act="' + aid + '"'
+          + ' title="' + U.escape(a.desc + '（出征界面选将选兵 · 按军力给奖励）') + '">' + a.name + '</button>';
+      }
+      return '<button class="btn" data-action="wonder-go" data-pid="' + pid + '" data-act="' + aid + '"'
+        + ' title="' + U.escape(a.desc) + '">' + a.name + '</button>';
+    }).join(' ') + '<span class="ui-sub" style="margin-left:8px;">今日剩 ' + left + ' 次</span>';
   };
   ui.openWonder = function (pid) {
     ui.openModal('<div class="gold-heading">✨ 奇观</div>' + ui.wonderHTML(pid) +
-      '<div class="modal-foot"><button class="btn" data-action="close-modal">关闭</button></div>', { size: 'md' });
+      /* v91.31（老板）：**点击性按钮放弹窗底部**。 */
+      '<div class="m-foot" style="justify-content:center;flex-wrap:wrap;gap:8px;">' + ui.wonderActsHTML(pid) +
+      '<button class="btn" data-action="close-modal">关闭</button></div>', { size: 'md' });
   };
 
   ui.openFarm = function () {

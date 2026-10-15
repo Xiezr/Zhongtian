@@ -3599,6 +3599,13 @@
      其余时间主循环一个字节都不碰，原生下拉列表才不会被每秒重绘冲合。
      单城时里面是空的，靠 :empty 收掉，不留空行。 */
   .city-switch-host { padding: var(--sp-2) var(--sp-4) 0; }
+  /* v91.31：城市属性里的「当前城市名」—— **定宽**（不随城名长短跳动·布局规整）。 */
+  .city-cur-name {
+    display: flex; align-items: center; gap: var(--sp-2);
+    padding: var(--sp-1) var(--sp-4) 0;
+    font-size: var(--fs-h2); font-weight: 700; color: var(--gold-light);
+    line-height: var(--lh-tight); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
   .city-switch-host:empty { display: none; }
   .city-switch .cs-lbl { color: var(--text-dim); font-size: var(--fs-sub); flex: none; }
   /* v91.25：城名旁的三个操作入口（🎲/📍/🏗）—— 从原「城市身份行」并入本行 */
@@ -4353,6 +4360,8 @@
         <div class="side-btnrow">
           <div class="sbtn" data-action="open-lord">君主</div>
         </div>
+        <!-- v91.31（老板）：星球 / 城市下拉移到「君主」按钮下方（脱离城市属性）；定宽对齐。 -->
+        <div class="city-switch-host" id="city-switch-host"></div>
 
         <!-- ② 城市属性栏 -->
         <div class="side-block">
@@ -4363,10 +4372,8 @@
                  v90.90：附属野地清单移入君主左侧（城市/据点/野地 三份清单）。 -->
             <span class="side-quick"></span>
           </div>
-          <!-- v53：城市清单**单独成一个静态节点**，不再拼进 #city-attrs 的 html ——
-               主循环每秒重绘城市属性，若把这个下拉框一起换掉，展开的列表会立刻合上
-               （老板："点出来列表马上收回去了"）。它只在城市清单/当前城市变化时才重建。 -->
-          <div class="city-switch-host" id="city-switch-host"></div>
+          <!-- v91.31（老板）：下拉已上移；此处改显**当前城市名**（定宽对齐）。 -->
+          <div class="city-cur-name" id="city-cur-name"></div>
           <div class="side-body" id="city-attrs"></div>
         </div>
 
@@ -4414,32 +4421,32 @@
 </div><!-- /#app-scale -->
 </div><!-- /#app-fit -->
 
-<!-- BUILD 9248 -->
-<script src="js/data.js?v=9248"></script>
-<script src="js/state.js?v=9248"></script>
-<script src="js/systems.js?v=9248"></script>
-<script src="js/domain.js?v=9248"></script>
-<script src="js/map.js?v=9248"></script>
+<!-- BUILD 9251 -->
+<script src="js/data.js?v=9251"></script>
+<script src="js/state.js?v=9251"></script>
+<script src="js/systems.js?v=9251"></script>
+<script src="js/domain.js?v=9251"></script>
+<script src="js/map.js?v=9251"></script>
 <!-- v90.69：球面世界内核（纯 JS · 拓扑/地形/几何 SSOT）—— 逻辑与 3D 渲染共用，无 THREE -->
-<script src="js/sphere.js?v=9248"></script>
+<script src="js/sphere.js?v=9251"></script>
 <!-- v90.61：Three.js 真 3D 主地图（vendor 本地，离线可用） -->
-<script src="vendor/three.min.js?v=9248"></script>
-<script src="js/gltf.js?v=9248"></script>
-<script src="js/map3d.js?v=9248"></script>
-<script src="js/battle.js?v=9248"></script>
+<script src="vendor/three.min.js?v=9251"></script>
+<script src="js/gltf.js?v=9251"></script>
+<script src="js/map3d.js?v=9251"></script>
+<script src="js/battle.js?v=9251"></script>
 <!-- v27（需求 5）：回合制文字战场。放在 battle.js 之后 —— simulate 由它接管 -->
-<script src="js/tactic.js?v=9248"></script>
-<script src="js/icons.js?v=9248"></script>
+<script src="js/tactic.js?v=9251"></script>
+<script src="js/icons.js?v=9251"></script>
 <!-- v32（需求「采用网图」）：game-icons 开源图标素材层。必须在 icons.js 之后 ——
      icons.js 内的取图函数用 typeof GICONS 延迟绑定，渲染时才真正查表。 -->
-<script src="js/gicons.js?v=9248"></script>
+<script src="js/gicons.js?v=9251"></script>
 <!-- v35：AI 位图素材登记表（汉代风，最高优先级）。同样在 icons.js 之后 ——
      取图函数用 typeof BITMAPS 延迟绑定；未登记的 id 自动回退矢量层。 -->
-<script src="js/bitmaps.js?v=9248"></script>
-<script src="js/portraits.js?v=9248"></script>
-<script src="js/story.js?v=9248"></script>
+<script src="js/bitmaps.js?v=9251"></script>
+<script src="js/portraits.js?v=9251"></script>
+<script src="js/story.js?v=9251"></script>
 <!-- ⛔ v89.218（老板「故事全部去除」）：84 卷故事库（story/）整目录删除，脚本标签同步撤除。 -->
-<script src="js/ui.js?v=9248"></script>
-<script src="js/main.js?v=9248"></script>
+<script src="js/ui.js?v=9251"></script>
+<script src="js/main.js?v=9251"></script>
 </body>
 </html>

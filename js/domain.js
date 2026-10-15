@@ -8010,6 +8010,7 @@
     pl.wonderExp = pl.wonderExp || [];
     pl.wonderExp.push({
       act: actId, cityId: city.id, genId: genId || null, army: U.deep(army),
+      troops: n,   /* v91.31：实派兵力 —— 结算按**军力**给奖励档 */
       t0: now, arriveAt: now + (W.marchRealSec || 3600) * 1000,
       doneAt: now + ((W.marchRealSec || 3600) + (W.exploreRealSec || 3600)) * 1000,
     });
@@ -8028,8 +8029,12 @@
     s.items = s.items || {};
     function give(id, q) { if (id && q > 0) s.items[id] = (s.items[id] || 0) + q; }
     var got = [];
+    /* v91.31（老板）：**按军力给奖励档** —— 兵力越多，材料数量越多（采力档位）。
+       0 兵（采集/研读/救援）= 基础档；带兵越多越高；再乘行动倍率。 */
+    var troops = exp.troops || 0;
+    var tierMul = troops <= 0 ? 1 : Math.min(6, 1 + Math.log(1 + troops / 2000) / Math.LN2);  /* 2000→2x 4000→3x … 封顶 6x */
     var base = 2 + Math.floor(Math.random() * 3);
-    var qty = Math.max(1, Math.round(base * (act.mul || 1)));
+    var qty = Math.max(1, Math.round(base * (act.mul || 1) * tierMul));
     if (def && def.mat) { give(def.mat, qty); got.push((DATA.ITEM_BY_ID[def.mat] || {}).name || def.mat); }
     (def && def.out || []).forEach(function (oid) {
       if (Math.random() < 0.35) { give(oid, 1); got.push((DATA.ITEM_BY_ID[oid] || {}).name || oid); }
