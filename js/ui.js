@@ -4694,10 +4694,12 @@
     energy: { hint: '恢复精力：请对英雄使用', view: 'generals', btn: '去英雄面板' },
     perm: { hint: '永久丹药：请对英雄使用', view: 'generals', btn: '去英雄面板' },
     mount_buff: { hint: '座驾道具：请对英雄使用', view: 'generals', btn: '去英雄面板' },
-    neigong: { hint: '残卷传授：请对英雄使用', view: 'generals', btn: '去英雄面板' },
+    neigong: { hint: '战技残页：请对英雄使用', view: 'generals', btn: '去英雄面板' },
     /* v89.186（老板 1）：遗物为英雄挂件 —— 背包不选人，去英雄面板佩 */
     bao: { hint: '遗物为英雄挂件：请到英雄面板佩上', view: 'generals', btn: '去英雄面板' },
     rank_up: { hint: '提升资质：请对英雄使用', view: 'generals', btn: '去英雄面板' },
+    /* v91.30：奇观材料 —— 无"使用"动作（作高阶升级/强化/打造的消耗料）。 */
+    wmat: { hint: '奇观材料：用于高阶升级 / 强化 / 打造（非消耗品）', view: 'city', btn: '去城市' },
     /* 有场景：去对应玩法界面 */
     essence: { hint: '请到调校界面使用', act: 'ling-temper-open', btn: '去调校' },
     talis: { hint: '封存匣在出征时随计略消耗，无需手动使用', view: 'city', btn: '去城市' },
@@ -4719,7 +4721,7 @@
     energy: '精力',
     rank_up: '血清（提升资质）',
     essence: '精华（调校基因强化件）',
-    chest: '宝箱', neigong: '残卷', corvee: '政令', talis: '封存匣', build_cost: '营造',
+    chest: '宝箱', neigong: '战技残页', corvee: '政令', talis: '封存匣', build_cost: '营造', wmat: '奇观材料',
     /* v89.99（老板「增加道具如招揽令」）：民生 —— 幸存者增速道具；
        v89.104：迁入令（一次性幸存者注入）同属民生族 */
     pop_boost: '民生（幸存者增速）',
@@ -6023,19 +6025,16 @@
   ui._shopCat = null;
   ui.SHOP_PER_PAGE = 16;
   ui.SHOP_CATS = {
-    material: '材料', jewel: '珠宝', attr_buff: '符类', prod_buff: '生产',
+    material: '材料', /* v91.30：珠宝/图纸/残卷/民生 页签退役（转奇观产）；生产/营造仍有低档在售 */ attr_buff: '符类', prod_buff: '生产',
     military_buff: '军事', boost: '加速', exp: '经验', stamina: '体力',
-    perm: '丹药', mount_buff: '座驾', blueprint: '图纸',
+    perm: '丹药', mount_buff: '座驾',
     /* v77（老板「丰富商场道具」）：宝箱 / 战技残卷 / 政令（征调令）三类新货 */
-    chest: '宝箱', neigong: '残卷', corvee: '政令',
+    chest: '宝箱', corvee: '政令',   /* v91.30：残卷页签退役（残页走奇观产，不进游商） */
     /* v86（老板「按计划进行」· G1）：封存匣 —— 施展计谋所需 */
     talis: '封存匣',
-    /* v89.51（老板「别买了用不了」）：营造 —— 工事图/规划纲要一类。
-       此前该类型不在任何页签里 → 有 price 却渲染不出来（玩家看不见也买不到）。 */
-    build_cost: '营造',
+    build_cost: '营造',   /* 低档营造仍在售（≥50% 的转奇观产） */
     /* ⛔ v89.224：种子货架退役（老板 2「不要播种 / 种子」）—— seed 页签整条删除。 */
-    /* v89.99（老板「增加道具如招揽令」）：民生 —— 幸存者类道具。 */
-    pop_boost: '民生',
+    /* v91.30：民生(pop_boost)页签退役（招揽令转奇观产）；pop_fill(迁入令)仍留民生。 */
     /* v89.121（全生命周期模拟抓出的断链）：**迁入令此前没有页签** ——
        它有价（120 元宝）、无 noShop 标记，但「在售 == 有页签」（v89.51 的判据）下
        **游商与快购都渲染不出来** → 有定价却永远买不到（"半上架"）。
@@ -6121,7 +6120,8 @@
       /* v89.179c：dropOnly 的宝物（pct ≥ 0.5 的高阶加速）只走采集/战役掉落，
          不上架游商（也不进快购）—— 与 noShop 不同：noShop 是"全网下架且不产出"，
          dropOnly 是"游商不卖但可掉落"（老板「移出游商，改采集/战役掉落」）。 */
-      return it.price > 0 && !it.noShop && !it.dropOnly && !!ui.SHOP_CATS[it.type];
+      /* v91.30：wonderOnly = 奇观产（珠宝/≥50%强效/图纸/战技残页/奇观材料）—— 游商与快购都不列。 */
+      return it.price > 0 && !it.noShop && !it.dropOnly && !it.wonderOnly && !!ui.SHOP_CATS[it.type];
     });
   };
   /* ============================================================

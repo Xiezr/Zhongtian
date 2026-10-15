@@ -1817,24 +1817,34 @@
          稀有：琉璃珠(湖) / 天珠(草) / 龙涎香(沼) / 沉香(森) / 夜光珠(荒) / 独山玉(山)
        旧 15 种（珍珠/珊瑚/琉璃/琥珀/玛瑙/水晶/翡翠/玉石/夜光珠/血珊瑚/龙涎珠/蓝田玉/
        凤羽/和氏璧/传国玉玺）整批退役 —— 老档库存按 DATA.JEWEL_MIG152 等值换算。 */
-    { id: 'bengzhu', name: '珍珠', type: 'jewel', loyalty: 5, price: 2, desc: '赏赐忠诚 +5（湖泊所产）' },
-    { id: 'mila', name: '琥珀', type: 'jewel', loyalty: 10, price: 4, desc: '赏赐忠诚 +10（草原所产）' },
-    { id: 'meiyu', name: '煤玉', type: 'jewel', loyalty: 15, price: 7, desc: '赏赐忠诚 +15（沼泽所产）' },
-    { id: 'puyu', name: '璞玉', type: 'jewel', loyalty: 20, price: 10, desc: '赏赐忠诚 +20（森林所产 · 未雕之原石）' },
-    { id: 'zijin', name: '紫晶', type: 'jewel', loyalty: 24, price: 12, desc: '赏赐忠诚 +24（荒漠所产）' },
-    { id: 'lvsongshi', name: '绿松石', type: 'jewel', loyalty: 28, price: 14, desc: '赏赐忠诚 +28（山地所产）' },
-    { id: 'hongshanhu', name: '红珊瑚', type: 'jewel', loyalty: 32, price: 16, desc: '赏赐忠诚 +32（湖泊所产）' },
-    { id: 'yusui', name: '玉髓', type: 'jewel', loyalty: 36, price: 19, desc: '赏赐忠诚 +36（草原所产）' },
-    { id: 'yinchenmu', name: '阴沉木', type: 'jewel', loyalty: 42, price: 26, desc: '赏赐忠诚 +42（沼泽所产）' },
-    { id: 'cuiyu', name: '翠玉', type: 'jewel', loyalty: 48, price: 36, desc: '赏赐忠诚 +48（森林所产）' },
-    { id: 'danbaishi', name: '蛋白石', type: 'jewel', loyalty: 54, price: 48, desc: '赏赐忠诚 +54（荒漠所产）' },
-    { id: 'bixi', name: '碧玺', type: 'jewel', loyalty: 60, price: 58, desc: '赏赐忠诚 +60（山地所产）' },
-    { id: 'jiaorenlei', name: '琉璃珠', type: 'jewel', loyalty: 65, price: 60, desc: '赏赐忠诚 +65（湖泊所产）' },
-    { id: 'tianzhu', name: '天珠', type: 'jewel', loyalty: 72, price: 75, desc: '赏赐忠诚 +72（草原所产）' },
-    { id: 'longxianxiang', name: '龙涎香', type: 'jewel', loyalty: 78, price: 90, desc: '赏赐忠诚 +78（沼泽所产）' },
-    { id: 'chenxiang', name: '沉香', type: 'jewel', loyalty: 85, price: 110, desc: '赏赐忠诚 +85（森林所产）' },
-    { id: 'yemingzhu', name: '夜光珠', type: 'jewel', loyalty: 92, price: 150, desc: '赏赐忠诚 +92（荒漠所产 · 全地形偶得）' },
-    { id: 'dushanyu', name: '独山玉', type: 'jewel', loyalty: 100, price: 240, desc: '赏赐忠诚 +100（山地所产 · 玉中君子）' },
+    { id: 'bengzhu', name: '珍珠', type: 'jewel', loyalty: 5, price: 10, wonderOnly: true, desc: '赏赐忠诚 +5（湖泊所产）' },
+    { id: 'mila', name: '琥珀', type: 'jewel', loyalty: 10, price: 20, wonderOnly: true, desc: '赏赐忠诚 +10（草原所产）' },
+    { id: 'meiyu', name: '煤玉', type: 'jewel', loyalty: 15, price: 35, wonderOnly: true, desc: '赏赐忠诚 +15（沼泽所产）' },
+    { id: 'puyu', name: '璞玉', type: 'jewel', loyalty: 20, price: 50, wonderOnly: true, desc: '赏赐忠诚 +20（森林所产 · 未雕之原石）' },
+    { id: 'zijin', name: '紫晶', type: 'jewel', loyalty: 24, price: 60, wonderOnly: true, desc: '赏赐忠诚 +24（荒漠所产）' },
+    { id: 'lvsongshi', name: '绿松石', type: 'jewel', loyalty: 28, price: 70, wonderOnly: true, desc: '赏赐忠诚 +28（山地所产）' },
+    { id: 'hongshanhu', name: '红珊瑚', type: 'jewel', loyalty: 32, price: 80, wonderOnly: true, desc: '赏赐忠诚 +32（湖泊所产）' },
+    { id: 'yusui', name: '玉髓', type: 'jewel', loyalty: 36, price: 95, wonderOnly: true, desc: '赏赐忠诚 +36（草原所产）' },
+    { id: 'yinchenmu', name: '阴沉木', type: 'jewel', loyalty: 42, price: 130, wonderOnly: true, desc: '赏赐忠诚 +42（沼泽所产）' },
+    { id: 'cuiyu', name: '翠玉', type: 'jewel', loyalty: 48, price: 180, wonderOnly: true, desc: '赏赐忠诚 +48（森林所产）' },
+    { id: 'danbaishi', name: '蛋白石', type: 'jewel', loyalty: 54, price: 240, wonderOnly: true, desc: '赏赐忠诚 +54（荒漠所产）' },
+    { id: 'bixi', name: '碧玺', type: 'jewel', loyalty: 60, price: 290, wonderOnly: true, desc: '赏赐忠诚 +60（山地所产）' },
+    { id: 'jiaorenlei', name: '琉璃珠', type: 'jewel', loyalty: 65, price: 300, wonderOnly: true, desc: '赏赐忠诚 +65（湖泊所产）' },
+    { id: 'tianzhu', name: '天珠', type: 'jewel', loyalty: 72, price: 375, wonderOnly: true, desc: '赏赐忠诚 +72（草原所产）' },
+    { id: 'longxianxiang', name: '龙涎香', type: 'jewel', loyalty: 78, price: 450, wonderOnly: true, desc: '赏赐忠诚 +78（沼泽所产）' },
+    { id: 'chenxiang', name: '沉香', type: 'jewel', loyalty: 85, price: 550, wonderOnly: true, desc: '赏赐忠诚 +85（森林所产）' },
+    { id: 'yemingzhu', name: '夜光珠', type: 'jewel', loyalty: 92, price: 750, wonderOnly: true, desc: '赏赐忠诚 +92（荒漠所产 · 全地形偶得）' },
+    { id: 'dushanyu', name: '独山玉', type: 'jewel', loyalty: 100, price: 1200, wonderOnly: true, desc: '赏赐忠诚 +100（山地所产 · 玉中君子）' },
+    /* v91.30 奇观特产材料（9 种 · 全局玩家级 · 只产自奇观 · type:'jewel' 以便并入 cost.jewel 消耗）*/
+    { id: 'w_stariron', name: '星铁同位素', type: 'wmat', price: 40, wonderOnly: true, desc: '奇观特产 · 永动熔炉：天启体改造 / 高阶建筑升级' },
+    { id: 'w_he3', name: '氦-3', type: 'wmat', price: 30, wonderOnly: true, desc: '奇观特产 · 戴森残片/交椅星环：电能提速 / 星际切换燃料' },
+    { id: 'w_crystal', name: '晶核', type: 'wmat', price: 45, wonderOnly: true, desc: '奇观特产 · 巨构水晶：稀有图纸打造 / 词条重铸' },
+    { id: 'w_humus', name: '幽壤', type: 'wmat', price: 35, wonderOnly: true, desc: '奇观特产 · 上古神殿：基因血清量产' },
+    { id: 'w_tidesalt', name: '潮盐素', type: 'wmat', price: 25, wonderOnly: true, desc: '奇观特产 · 沉没方舟：体力/精力上限' },
+    { id: 'w_meteor', name: '陨尘', type: 'wmat', price: 50, wonderOnly: true, desc: '奇观特产 · 坠星峡谷：装备强化（+8 级以上）' },
+    { id: 'w_coldcrystal', name: '冷晶', type: 'wmat', price: 28, wonderOnly: true, desc: '奇观特产 · 沉没方舟：冷却类 / 抑民怨' },
+    { id: 'w_spore', name: '生机孢子', type: 'wmat', price: 22, wonderOnly: true, desc: '奇观特产 · 千柱圣殿：人口暴增 / 幸存者转化' },
+    { id: 'w_singularity', name: '奇点碎屑', type: 'wmat', price: 80, wonderOnly: true, desc: '奇观特产 · 交椅星环：顶级套装件 / 终局件' },
     /* v86（老板「按计划进行」· 第四轮 G1）：封存匣 —— 施展计谋所需 */
     { id: 'jinang', name: '封存匣', type: 'talis', price: 15, desc: '施展计谋所需。妙计千条，藏于囊中。' },
     /* v88（辐能装备）：辐能核心 —— 调校基因强化件的专属材料（price 0 = 游商不售）。
@@ -1844,7 +1854,7 @@
        探索复挂后它仍是产出之一。 */
     { id: 'lingsui', name: '辐能核心', type: 'essence', price: 0, desc: '天地游离辐能凝成之物。调校基因强化件所需，于野地采集与征战中获得。' },
     /* 符类（英雄增益24h） */
-    { id: 'hufu', name: '指挥芯片', type: 'attr_buff', eff: { tong_mult: 0.5 }, dur: 24, price: 120, desc: '带兵人数+50%（24h）' },
+    { id: 'hufu', name: '指挥芯片', type: 'attr_buff', eff: { tong_mult: 0.5 }, dur: 24, price: 120, wonderOnly: true, desc: '带兵人数+50%（24h）' },
     { id: 'wenquxing', name: '智识芯片', type: 'attr_buff', eff: { nz_mult: 0.25 }, dur: 24, price: 60, desc: '英雄治理+25%（24h）' },
     { id: 'wuquxing', name: '战斗芯片', type: 'attr_buff', eff: { yw_mult: 0.25 }, dur: 24, price: 60, desc: '英雄武力+25%（24h）' },
     { id: 'zhiduoxing', name: '谋略芯片', type: 'attr_buff', eff: { zm_mult: 0.25 }, dur: 24, price: 60, desc: '英雄谋略+25%（24h）' },
@@ -1856,7 +1866,7 @@
     { id: 'shuilibian', name: '稽征令', type: 'prod_buff', res: 'gold', eff: 0.25, dur: 24, price: 10, desc: '旧币收入+25%（24h）' },
     /* v89.99（老板「增加道具如招揽令」）：**民生类** —— 幸存者增速道具。
        与生产类同纪律：同类只取最强（不叠加）+ 到期真消费（popBoostMult 读 until）。 */
-    { id: 'zengminling', name: '招揽令', type: 'pop_boost', eff: 2.0, dur: 24, price: 30,
+    { id: 'zengminling', name: '招揽令', type: 'pop_boost', eff: 2.0, dur: 24, price: 30, wonderOnly: true,
       desc: '幸存者增速 +200%（24h）—— 轻徭薄赋、劝课农桑，流民闻风来归' },
     /* v89.104（老板）：迁入令 —— 一次性大额幸存者注入（存量，不是加速度）+ 高定价（120 旧币）。
        v89.125（老板）：「迁入令改为**每次使用增加 25% 上限幸存者的人数**吧」——
@@ -1932,10 +1942,10 @@
     { id: 'chest_yin', name: '补给箱·合金', type: 'chest', tier: 2, price: 70, desc: '开启随机获得：丰厚资源 / 旧币 / 二阶材料（小概率图纸）' },
     { id: 'chest_jin', noShop: true, /* v89.104：游商下架（族内已有 4 档） */ name: '补给箱·军规', type: 'chest', tier: 3, price: 180, desc: '开启随机获得：高阶材料 / 图纸 / 珠宝（小概率征调令）' },
     /* 战技残卷：修习后随重数提供属性特性（每将一门，见 DATA.NEIGONG） */
-    { id: 'book_sunzi', name: '《筹算残卷》', type: 'neigong', teach: 'sunzi', price: 80, desc: '修习战技「筹算」：谋略随重数增长（最高 10 重）' },
-    { id: 'book_liutao', name: '《统御纲要》', type: 'neigong', teach: 'liutao', price: 80, desc: '修习战技「统御」：指挥随重数增长（最高 10 重）' },
-    { id: 'book_wuqin', name: '《体能操典》', type: 'neigong', teach: 'wuqin', price: 80, desc: '修习战技「强身」：治理随重数增长（最高 10 重）' },
-    { id: 'book_yuenv', name: '《白刃刀谱》', type: 'neigong', teach: 'yuenv', price: 80, desc: '修习战技「白刃」：武力随重数增长（最高 10 重）' },
+    { id: 'book_sunzi', name: '《筹算残页》', type: 'neigong', teach: 'sunzi', price: 80, wonderOnly: true, desc: '修习战技「筹算」：谋略随重数增长（最高 10 重）' },
+    { id: 'book_liutao', name: '《统御纲要》', type: 'neigong', teach: 'liutao', price: 80, wonderOnly: true, desc: '修习战技「统御」：指挥随重数增长（最高 10 重）' },
+    { id: 'book_wuqin', name: '《体能操典》', type: 'neigong', teach: 'wuqin', price: 80, wonderOnly: true, desc: '修习战技「强身」：治理随重数增长（最高 10 重）' },
+    { id: 'book_yuenv', name: '《白刃刀谱》', type: 'neigong', teach: 'yuenv', price: 80, wonderOnly: true, desc: '修习战技「白刃」：武力随重数增长（最高 10 重）' },
     /* 征调令：征发徭役，短时扩充营造队列（与政务厅专精/名城 perk 叠加） */
     { id: 'corvee', noShop: true, /* v89.104：游商下架（族内已有 4 档） */ name: '征调令', type: 'corvee', dur: 24, add: 3, price: 120, desc: '24 小时内同时建造队列 +3' },
   ];
@@ -3105,24 +3115,24 @@
 
   /* v90.14：18 套图纸（对应 6 档 × 3 侧重）—— 打造该套的前置 */
   DATA.BLUEPRINTS = [
-    { id: 'bp_coarse_zhan', name: '拾荒套图纸', type: 'blueprint', set: 'coarse_zhan', price: 20, forgeLv: 1, desc: '凭此可在锻造间打造「拾荒套」' },
-    { id: 'bp_coarse_zhi', name: '补丁套图纸', type: 'blueprint', set: 'coarse_zhi', price: 20, forgeLv: 1, desc: '凭此可在锻造间打造「补丁套」' },
-    { id: 'bp_coarse_ti', name: '铁皮套图纸', type: 'blueprint', set: 'coarse_ti', price: 20, forgeLv: 1, desc: '凭此可在锻造间打造「铁皮套」' },
-    { id: 'bp_fine_zhan', name: '巡逻套图纸', type: 'blueprint', set: 'fine_zhan', price: 60, forgeLv: 3, desc: '凭此可在锻造间打造「巡逻套」' },
-    { id: 'bp_fine_zhi', name: '工坊套图纸', type: 'blueprint', set: 'fine_zhi', price: 60, forgeLv: 3, desc: '凭此可在锻造间打造「工坊套」' },
-    { id: 'bp_fine_ti', name: '装卸套图纸', type: 'blueprint', set: 'fine_ti', price: 60, forgeLv: 3, desc: '凭此可在锻造间打造「装卸套」' },
-    { id: 'bp_prime_zhan', name: '猎杀套图纸', type: 'blueprint', set: 'prime_zhan', price: 110, forgeLv: 5, desc: '凭此可在锻造间打造「猎杀套」' },
-    { id: 'bp_prime_zhi', name: '中枢套图纸', type: 'blueprint', set: 'prime_zhi', price: 110, forgeLv: 5, desc: '凭此可在锻造间打造「中枢套」' },
-    { id: 'bp_prime_ti', name: '重装套图纸', type: 'blueprint', set: 'prime_ti', price: 110, forgeLv: 5, desc: '凭此可在锻造间打造「重装套」' },
-    { id: 'bp_rare_zhan', name: '战团套图纸', type: 'blueprint', set: 'rare_zhan', price: 200, forgeLv: 7, desc: '凭此可在锻造间打造「战团套」' },
-    { id: 'bp_rare_zhi', name: '议会套图纸', type: 'blueprint', set: 'rare_zhi', price: 200, forgeLv: 7, desc: '凭此可在锻造间打造「议会套」' },
-    { id: 'bp_rare_ti', name: '壁垒套图纸', type: 'blueprint', set: 'rare_ti', price: 200, forgeLv: 7, desc: '凭此可在锻造间打造「壁垒套」' },
-    { id: 'bp_legend_zhan', name: '诸神套图纸', type: 'blueprint', set: 'legend_zhan', price: 320, forgeLv: 8, desc: '凭此可在锻造间打造「诸神套」' },
-    { id: 'bp_legend_zhi', name: '智囊套图纸', type: 'blueprint', set: 'legend_zhi', price: 320, forgeLv: 8, desc: '凭此可在锻造间打造「智囊套」' },
-    { id: 'bp_legend_ti', name: '不朽套图纸', type: 'blueprint', set: 'legend_ti', price: 320, forgeLv: 8, desc: '凭此可在锻造间打造「不朽套」' },
-    { id: 'bp_divine_zhan', name: '天罚套图纸', type: 'blueprint', set: 'divine_zhan', price: 500, forgeLv: 9, desc: '凭此可在锻造间打造「天罚套」' },
-    { id: 'bp_divine_zhi', name: '神谕套图纸', type: 'blueprint', set: 'divine_zhi', price: 500, forgeLv: 9, desc: '凭此可在锻造间打造「神谕套」' },
-    { id: 'bp_divine_ti', name: '机体套图纸', type: 'blueprint', set: 'divine_ti', price: 500, forgeLv: 9, desc: '凭此可在锻造间打造「机体套」' },
+    { id: 'bp_coarse_zhan', name: '拾荒套图纸', type: 'blueprint', wonderOnly: true, set: 'coarse_zhan', price: 20, forgeLv: 1, desc: '凭此可在锻造间打造「拾荒套」' },
+    { id: 'bp_coarse_zhi', name: '补丁套图纸', type: 'blueprint', wonderOnly: true, set: 'coarse_zhi', price: 20, forgeLv: 1, desc: '凭此可在锻造间打造「补丁套」' },
+    { id: 'bp_coarse_ti', name: '铁皮套图纸', type: 'blueprint', wonderOnly: true, set: 'coarse_ti', price: 20, forgeLv: 1, desc: '凭此可在锻造间打造「铁皮套」' },
+    { id: 'bp_fine_zhan', name: '巡逻套图纸', type: 'blueprint', wonderOnly: true, set: 'fine_zhan', price: 60, forgeLv: 3, desc: '凭此可在锻造间打造「巡逻套」' },
+    { id: 'bp_fine_zhi', name: '工坊套图纸', type: 'blueprint', wonderOnly: true, set: 'fine_zhi', price: 60, forgeLv: 3, desc: '凭此可在锻造间打造「工坊套」' },
+    { id: 'bp_fine_ti', name: '装卸套图纸', type: 'blueprint', wonderOnly: true, set: 'fine_ti', price: 60, forgeLv: 3, desc: '凭此可在锻造间打造「装卸套」' },
+    { id: 'bp_prime_zhan', name: '猎杀套图纸', type: 'blueprint', wonderOnly: true, set: 'prime_zhan', price: 110, forgeLv: 5, desc: '凭此可在锻造间打造「猎杀套」' },
+    { id: 'bp_prime_zhi', name: '中枢套图纸', type: 'blueprint', wonderOnly: true, set: 'prime_zhi', price: 110, forgeLv: 5, desc: '凭此可在锻造间打造「中枢套」' },
+    { id: 'bp_prime_ti', name: '重装套图纸', type: 'blueprint', wonderOnly: true, set: 'prime_ti', price: 110, forgeLv: 5, desc: '凭此可在锻造间打造「重装套」' },
+    { id: 'bp_rare_zhan', name: '战团套图纸', type: 'blueprint', wonderOnly: true, set: 'rare_zhan', price: 200, forgeLv: 7, desc: '凭此可在锻造间打造「战团套」' },
+    { id: 'bp_rare_zhi', name: '议会套图纸', type: 'blueprint', wonderOnly: true, set: 'rare_zhi', price: 200, forgeLv: 7, desc: '凭此可在锻造间打造「议会套」' },
+    { id: 'bp_rare_ti', name: '壁垒套图纸', type: 'blueprint', wonderOnly: true, set: 'rare_ti', price: 200, forgeLv: 7, desc: '凭此可在锻造间打造「壁垒套」' },
+    { id: 'bp_legend_zhan', name: '诸神套图纸', type: 'blueprint', wonderOnly: true, set: 'legend_zhan', price: 320, forgeLv: 8, desc: '凭此可在锻造间打造「诸神套」' },
+    { id: 'bp_legend_zhi', name: '智囊套图纸', type: 'blueprint', wonderOnly: true, set: 'legend_zhi', price: 320, forgeLv: 8, desc: '凭此可在锻造间打造「智囊套」' },
+    { id: 'bp_legend_ti', name: '不朽套图纸', type: 'blueprint', wonderOnly: true, set: 'legend_ti', price: 320, forgeLv: 8, desc: '凭此可在锻造间打造「不朽套」' },
+    { id: 'bp_divine_zhan', name: '天罚套图纸', type: 'blueprint', wonderOnly: true, set: 'divine_zhan', price: 500, forgeLv: 9, desc: '凭此可在锻造间打造「天罚套」' },
+    { id: 'bp_divine_zhi', name: '神谕套图纸', type: 'blueprint', wonderOnly: true, set: 'divine_zhi', price: 500, forgeLv: 9, desc: '凭此可在锻造间打造「神谕套」' },
+    { id: 'bp_divine_ti', name: '机体套图纸', type: 'blueprint', wonderOnly: true, set: 'divine_ti', price: 500, forgeLv: 9, desc: '凭此可在锻造间打造「机体套」' },
   ];
 
   /* 图纸并入宝物表（可入背包、可游商购买、可掉落） */
@@ -3643,7 +3653,7 @@
    *   · 装备实例不在此列（走「拆解」回收打造材料，见 salvageEquip）
    * 调平衡只改本配置（UI / 探针 / 推演全从这里读，别处不许另算价）。
    * ============================================================ */
-  DATA.ITEM_SELL = { rate: 0.75 };
+  DATA.ITEM_SELL = { rate: 0.45 };   /* v91.30：珠宝价×5 → 率从 0.75 降到 0.45（寄售价 10×100×0.45=450）*/
   /* v90.55（老板）：**装备出售**回收率 —— 售价 = 估值（itemValue）× rate，换旧币（入**当前城**）。
      与拆解并列：拆解回收 40% 材料，出售直接给旧币、按估值 60%。 */
   DATA.EQUIP_SELL = { rate: 0.6 };
@@ -4868,38 +4878,38 @@
     /* ---------- ④ 新物品 101 件（type 全都落在既有消费点上） ---------- */
     var NEW_ITEMS = [
     /* v89.152：原「高级珠宝 6 种」整批退役 —— 体系并回 ITEMS 开头的新 18 种（等值换算见 DATA.JEWEL_MIG152）。 */
-    { id: 'huyi', name: '翼锋芯片', type: 'attr_buff', eff: { tong_mult: 0.75 }, dur: 24, price: 200, desc: '英雄 24 小时内：指挥+75%' },
-    { id: 'xuande', name: '统御芯片', type: 'attr_buff', eff: { nz_mult: 0.5 }, dur: 24, price: 130, desc: '英雄 24 小时内：治理+50%' },
-    { id: 'pojun', name: '破阵芯片', type: 'attr_buff', eff: { yw_mult: 0.5 }, dur: 24, price: 130, desc: '英雄 24 小时内：武力+50%' },
-    { id: 'wolong', name: '奇谋芯片', type: 'attr_buff', eff: { zm_mult: 0.5 }, dur: 24, price: 130, desc: '英雄 24 小时内：谋略+50%' },
-    { id: 'longxiang', name: '突击芯片', type: 'attr_buff', eff: { tong_mult: 1 }, dur: 24, price: 300, desc: '英雄 24 小时内：指挥+100%' },
-    { id: 'anmin', name: '安民芯片', type: 'attr_buff', eff: { nz_mult: 0.75 }, dur: 24, price: 200, desc: '英雄 24 小时内：治理+75%' },
-    { id: 'tianlang', name: '猎杀芯片', type: 'attr_buff', eff: { yw_mult: 0.75 }, dur: 24, price: 200, desc: '英雄 24 小时内：武力+75%' },
-    { id: 'guigu', name: '诡道芯片', type: 'attr_buff', eff: { zm_mult: 0.75 }, dur: 24, price: 200, desc: '英雄 24 小时内：谋略+75%' },
-    { id: 'wangzuo', name: '双核芯片', type: 'attr_buff', eff: { tong_mult: 0.5, nz_mult: 0.5 }, dur: 24, price: 260, desc: '英雄 24 小时内：指挥+50%　治理+50%' },
-    { id: 'hulang', name: '双联芯片', type: 'attr_buff', eff: { yw_mult: 0.5, zm_mult: 0.5 }, dur: 24, price: 260, desc: '英雄 24 小时内：武力+50%　谋略+50%' },
-    { id: 'sixiang', name: '矩阵芯片', type: 'attr_buff', eff: { tong_mult: 0.5, nz_mult: 0.5, yw_mult: 0.5, zm_mult: 0.5 }, dur: 24, price: 480, desc: '英雄 24 小时内：指挥+50%　治理+50%　武力+50%　谋略+50%' },
+    { id: 'huyi', name: '翼锋芯片', type: 'attr_buff', eff: { tong_mult: 0.75 }, dur: 24, price: 200, wonderOnly: true, desc: '英雄 24 小时内：指挥+75%' },
+    { id: 'xuande', name: '统御芯片', type: 'attr_buff', eff: { nz_mult: 0.5 }, dur: 24, price: 130, wonderOnly: true, desc: '英雄 24 小时内：治理+50%' },
+    { id: 'pojun', name: '破阵芯片', type: 'attr_buff', eff: { yw_mult: 0.5 }, dur: 24, price: 130, wonderOnly: true, desc: '英雄 24 小时内：武力+50%' },
+    { id: 'wolong', name: '奇谋芯片', type: 'attr_buff', eff: { zm_mult: 0.5 }, dur: 24, price: 130, wonderOnly: true, desc: '英雄 24 小时内：谋略+50%' },
+    { id: 'longxiang', name: '突击芯片', type: 'attr_buff', eff: { tong_mult: 1 }, dur: 24, price: 300, wonderOnly: true, desc: '英雄 24 小时内：指挥+100%' },
+    { id: 'anmin', name: '安民芯片', type: 'attr_buff', eff: { nz_mult: 0.75 }, dur: 24, price: 200, wonderOnly: true, desc: '英雄 24 小时内：治理+75%' },
+    { id: 'tianlang', name: '猎杀芯片', type: 'attr_buff', eff: { yw_mult: 0.75 }, dur: 24, price: 200, wonderOnly: true, desc: '英雄 24 小时内：武力+75%' },
+    { id: 'guigu', name: '诡道芯片', type: 'attr_buff', eff: { zm_mult: 0.75 }, dur: 24, price: 200, wonderOnly: true, desc: '英雄 24 小时内：谋略+75%' },
+    { id: 'wangzuo', name: '双核芯片', type: 'attr_buff', eff: { tong_mult: 0.5, nz_mult: 0.5 }, dur: 24, price: 260, wonderOnly: true, desc: '英雄 24 小时内：指挥+50%　治理+50%' },
+    { id: 'hulang', name: '双联芯片', type: 'attr_buff', eff: { yw_mult: 0.5, zm_mult: 0.5 }, dur: 24, price: 260, wonderOnly: true, desc: '英雄 24 小时内：武力+50%　谋略+50%' },
+    { id: 'sixiang', name: '矩阵芯片', type: 'attr_buff', eff: { tong_mult: 0.5, nz_mult: 0.5, yw_mult: 0.5, zm_mult: 0.5 }, dur: 24, price: 480, wonderOnly: true, desc: '英雄 24 小时内：指挥+50%　治理+50%　武力+50%　谋略+50%' },
     { id: 'jifeng', name: '疾风芯片', type: 'attr_buff', eff: { spd: 20 }, dur: 24, price: 90, desc: '英雄 24 小时内：速度+20' },
     { id: 'zhuifeng', name: '追风芯片', type: 'attr_buff', eff: { spd: 50 }, dur: 24, price: 220, desc: '英雄 24 小时内：速度+50' },
     /* v91.27（老板）：速度/体力**只能用道具临时提升**（自由属性点不可加）—— 补体力芯片族。 */
     { id: 'naoli_chip', name: '续力芯片', type: 'attr_buff', eff: { sta: 30 }, dur: 24, price: 90, desc: '英雄 24 小时内：体力上限+30' },
     { id: 'naoli_chip2', name: '强心芯片', type: 'attr_buff', eff: { sta: 80 }, dur: 24, price: 220, desc: '英雄 24 小时内：体力上限+80' },
-    { id: 'baye', name: '霸业芯片', type: 'attr_buff', eff: { tong_mult: 1, yw_mult: 1 }, dur: 24, price: 400, desc: '英雄 24 小时内：指挥+100%　武力+100%' },
-    { id: 'mingjing', name: '明镜芯片', type: 'attr_buff', eff: { zm_mult: 1 }, dur: 24, price: 280, desc: '英雄 24 小时内：谋略+100%' },
-    { id: 'zhisu', name: '生产芯片', type: 'attr_buff', eff: { nz_mult: 1 }, dur: 24, price: 280, desc: '英雄 24 小时内：治理+100%' },
-    { id: 'shennongling', name: '集水塔·改', type: 'prod_buff', res: 'grain', eff: 0.5, dur: 24, price: 12, desc: '净水产量+50%（24h）' },
-    { id: 'houji', name: '深井泵组', type: 'prod_buff', res: 'grain', eff: 1, dur: 24, price: 30, desc: '净水产量+100%（24h）' },
-    { id: 'lubanshen', name: '生长灯组·改', type: 'prod_buff', res: 'wood', eff: 0.5, dur: 24, price: 12, desc: '生物质产量+50%（24h）' },
-    { id: 'jumuling', name: '全自动培养舱', type: 'prod_buff', res: 'wood', eff: 1, dur: 24, price: 30, desc: '生物质产量+100%（24h）' },
-    { id: 'kaishanshen', name: '变流机组·改', type: 'prod_buff', res: 'stone', eff: 0.5, dur: 24, price: 12, desc: '电能产量+50%（24h）' },
-    { id: 'yugongling', name: '地热钻机组', type: 'prod_buff', res: 'stone', eff: 1, dur: 24, price: 30, desc: '电能产量+100%（24h）' },
-    { id: 'xuantieshen', name: '冶炼炉·改', type: 'prod_buff', res: 'iron', eff: 0.5, dur: 24, price: 12, desc: '废钢产量+50%（24h）' },
-    { id: 'ganjianglu', name: '高炉组', type: 'prod_buff', res: 'iron', eff: 1, dur: 24, price: 30, desc: '废钢产量+100%（24h）' },
-    { id: 'yantieling', name: '通商枢纽', type: 'prod_buff', res: 'gold', eff: 0.5, dur: 24, price: 20, desc: '旧币产量+50%（24h）' },
-    { id: 'taozhufu', name: '财税中枢', type: 'prod_buff', res: 'gold', eff: 1, dur: 24, price: 50, desc: '旧币产量+100%（24h）' },
+    { id: 'baye', name: '霸业芯片', type: 'attr_buff', eff: { tong_mult: 1, yw_mult: 1 }, dur: 24, price: 400, wonderOnly: true, desc: '英雄 24 小时内：指挥+100%　武力+100%' },
+    { id: 'mingjing', name: '明镜芯片', type: 'attr_buff', eff: { zm_mult: 1 }, dur: 24, price: 280, wonderOnly: true, desc: '英雄 24 小时内：谋略+100%' },
+    { id: 'zhisu', name: '生产芯片', type: 'attr_buff', eff: { nz_mult: 1 }, dur: 24, price: 280, wonderOnly: true, desc: '英雄 24 小时内：治理+100%' },
+    { id: 'shennongling', name: '集水塔·改', type: 'prod_buff', res: 'grain', eff: 0.5, dur: 24, price: 12, wonderOnly: true, desc: '净水产量+50%（24h）' },
+    { id: 'houji', name: '深井泵组', type: 'prod_buff', res: 'grain', eff: 1, dur: 24, price: 30, wonderOnly: true, desc: '净水产量+100%（24h）' },
+    { id: 'lubanshen', name: '生长灯组·改', type: 'prod_buff', res: 'wood', eff: 0.5, dur: 24, price: 12, wonderOnly: true, desc: '生物质产量+50%（24h）' },
+    { id: 'jumuling', name: '全自动培养舱', type: 'prod_buff', res: 'wood', eff: 1, dur: 24, price: 30, wonderOnly: true, desc: '生物质产量+100%（24h）' },
+    { id: 'kaishanshen', name: '变流机组·改', type: 'prod_buff', res: 'stone', eff: 0.5, dur: 24, price: 12, wonderOnly: true, desc: '电能产量+50%（24h）' },
+    { id: 'yugongling', name: '地热钻机组', type: 'prod_buff', res: 'stone', eff: 1, dur: 24, price: 30, wonderOnly: true, desc: '电能产量+100%（24h）' },
+    { id: 'xuantieshen', name: '冶炼炉·改', type: 'prod_buff', res: 'iron', eff: 0.5, dur: 24, price: 12, wonderOnly: true, desc: '废钢产量+50%（24h）' },
+    { id: 'ganjianglu', name: '高炉组', type: 'prod_buff', res: 'iron', eff: 1, dur: 24, price: 30, wonderOnly: true, desc: '废钢产量+100%（24h）' },
+    { id: 'yantieling', name: '通商枢纽', type: 'prod_buff', res: 'gold', eff: 0.5, dur: 24, price: 20, wonderOnly: true, desc: '旧币产量+50%（24h）' },
+    { id: 'taozhufu', name: '财税中枢', type: 'prod_buff', res: 'gold', eff: 1, dur: 24, price: 50, wonderOnly: true, desc: '旧币产量+100%（24h）' },
     { id: 'yingzao_fanglue', name: '规划纲要', type: 'build_cost', eff: 0.3, dur: 72, price: 160, desc: '建造成本-30%（72h）' },
     { id: 'jiangzuo_dadian', name: '工匠调度令', type: 'build_cost', eff: 0.4, dur: 24, price: 110, desc: '建造成本-40%（24h）' },
-    { id: 'zhuanshu_jiangzuo', name: '标准母尺', type: 'build_cost', eff: 0.5, dur: 24, price: 180, desc: '建造成本-50%（24h）' },
+    { id: 'zhuanshu_jiangzuo', name: '标准母尺', type: 'build_cost', eff: 0.5, dur: 24, price: 180, wonderOnly: true, desc: '建造成本-50%（24h）' },
     { id: 'pozhengu', name: '破阵号', type: 'military_buff', eff: { atk: 0.15 }, dur: 24, price: 14, desc: '24 小时内：全军攻击+15%' },
     { id: 'xuezhanqi', name: '血战旗', type: 'military_buff', eff: { atk: 0.25 }, dur: 24, price: 26, desc: '24 小时内：全军攻击+25%' },
     { id: 'mieguogu', name: '决战号', type: 'military_buff', eff: { atk: 0.35 }, dur: 24, price: 45, desc: '24 小时内：全军攻击+35%' },
@@ -4909,7 +4919,7 @@
     { id: 'xuming_shu', name: '医疗手册', type: 'military_buff', eff: { wound: 0.10 }, dur: 24, price: 120, desc: '24 小时内：伤兵回收率 +10%' },
     { id: 'yisheng_shu', name: '战地医典', type: 'military_buff', eff: { wound: 0.15 }, dur: 24, price: 150, desc: '24 小时内：伤兵回收率 +15%（最高至 90%）' },
     { id: 'dajiang_qi', name: '大将旗', type: 'military_buff', eff: { cap: 0.4 }, dur: 24, price: 28, desc: '24 小时内：出征上限+40%' },
-    { id: 'jiezhi_ling', name: '节制令', type: 'military_buff', eff: { cap: 0.6 }, dur: 24, price: 50, desc: '24 小时内：出征上限+60%' },
+    { id: 'jiezhi_ling', name: '节制令', type: 'military_buff', eff: { cap: 0.6 }, dur: 24, price: 50, wonderOnly: true, desc: '24 小时内：出征上限+60%' },
     { id: 'gongshou_fu', name: '攻守芯片', type: 'military_buff', eff: { atk: 0.15, def: 0.15 }, dur: 24, price: 34, desc: '24 小时内：全军攻击+15%　全军防御+15%' },
     { id: 'quanjun_ling', name: '全军令', type: 'military_buff', eff: { atk: 0.2, def: 0.2, cap: 0.2 }, dur: 24, price: 70, desc: '24 小时内：全军攻击+20%　全军防御+20%　出征上限+20%' },
     { id: 'wanquan_ce', name: '万全策', type: 'military_buff', eff: { atk: 0.2, def: 0.2, wound: 0.10 }, dur: 24, price: 200, desc: '24 小时内：全军攻击+20%　全军防御+20%　伤兵回收+10%' },
@@ -4976,10 +4986,10 @@
     { id: 'corvee2', name: '中征令', type: 'corvee', dur: 24, add: 2, price: 85, desc: '24 小时内同时建造队列 +2' },
     { id: 'corvee5', name: '重征令', type: 'corvee', dur: 24, add: 5, price: 200, desc: '24 小时内同时建造队列 +5' },
     { id: 'corvee3_48', name: '长征令', type: 'corvee', dur: 48, add: 3, price: 190, desc: '48 小时内同时建造队列 +3' },
-    { id: 'book_wuzi', name: '《治军手记》', type: 'neigong', teach: 'wuzi', price: 160, desc: '修习战技「治军」：谋略 +6/重（最高 10 重）' },
-    { id: 'book_sima', name: '《阵列教范》', type: 'neigong', teach: 'sima', price: 160, desc: '修习战技「阵列」：指挥 +6/重（最高 10 重）' },
-    { id: 'book_sanlue', name: '《奇袭战术》', type: 'neigong', teach: 'sanlue', price: 160, desc: '修习战技「奇袭」：武力 +6/重（最高 10 重）' },
-    { id: 'book_weiliu', name: '《敌情研判》', type: 'neigong', teach: 'weiliu', price: 160, desc: '修习战技「研判」：治理 +6/重（最高 10 重）' }
+    { id: 'book_wuzi', name: '《治军手记》', type: 'neigong', teach: 'wuzi', price: 160, wonderOnly: true, desc: '修习战技「治军」：谋略 +6/重（最高 10 重）' },
+    { id: 'book_sima', name: '《阵列教范》', type: 'neigong', teach: 'sima', price: 160, wonderOnly: true, desc: '修习战技「阵列」：指挥 +6/重（最高 10 重）' },
+    { id: 'book_sanlue', name: '《奇袭战术》', type: 'neigong', teach: 'sanlue', price: 160, wonderOnly: true, desc: '修习战技「奇袭」：武力 +6/重（最高 10 重）' },
+    { id: 'book_weiliu', name: '《敌情研判》', type: 'neigong', teach: 'weiliu', price: 160, wonderOnly: true, desc: '修习战技「研判」：治理 +6/重（最高 10 重）' }
     ];
     NEW_ITEMS.forEach(function (x) {
       if (!DATA.ITEMS.some(function (y) { return y.id === x.id; })) DATA.ITEMS.push(x);

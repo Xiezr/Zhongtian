@@ -1528,16 +1528,15 @@ async function runTests(dom, URL) {
       && !!first.querySelector('.qty-input input')
       && !!first.querySelector('[data-action="shop-buy"]');
   })(), document.querySelectorAll('#view-container .item-row').length + ' 行');
-  check('分类页签按类型计数', shop20.indexOf('图纸') >= 0);
-  /* 切到「图纸」分类 → 应列出陨锋套图纸 */
-  G.ui.setShopCat('blueprint');
+  /* v91.30：图纸/珠宝页签退役（转奇观产）→ 改验仍在售的「材料」「丹药」分类。 */
+  check('分类页签按类型计数', shop20.indexOf('材料') >= 0 && shop20.indexOf('图纸') < 0);
+  G.ui.setShopCat('material');
   await sleep(60);
-  check('切分类后列出拾荒套图纸', document.querySelector('#view-container').innerHTML.indexOf('拾荒套图纸') >= 0);
-  /* 切到「珠宝」分类 → 低档珠宝可购买（v89.152：珍珠 -> 珍珠） */
-  G.ui.setShopCat('jewel');
+  check('切分类后列出材料', document.querySelector('#view-container').innerHTML.indexOf('铁') >= 0);
+  G.ui.setShopCat('perm');
   await sleep(60);
   const shopJ = document.querySelector('#view-container').innerHTML;
-  check('切分类后珠宝可购买', shopJ.indexOf('珍珠') >= 0 && shopJ.indexOf('赏赐忠诚') >= 0);
+  check('切分类后丹药可购买（血清）', shopJ.indexOf('血清') >= 0);
   /* 分页：材料 24 件 → 3 页（每页 8 行），翻页条在底部固定条里 */
   G.ui.setShopCat('material');
   await sleep(60);
@@ -5774,15 +5773,17 @@ if (svBtn) {
        v89.104（老板「同类产品档次太多…最多分 4 档」）：冗余档位下架 → 实测 168。
        阈值随口径下调，**下限语义不变**：游商必须还在卖东西（不是被清空）。 */
     check('v89.50：游商物件数 ≥ 160（现行在售口径 · v89.104 收敛后）',
-      G.ui.shopItems().length >= 160, G.ui.shopItems().length + ' 件');
+      G.ui.shopItems().length >= 90, G.ui.shopItems().length + ' 件');   /* v91.30：珠宝/图纸/残卷/≥50%转奇观产 → 在售收敛 */
     check('v89.50：新货真在游商页上（切到「符类」类目可见新符）', (function () {
       const all = G.ui.shopItems();
-      const hasNew = all.some((it) => it.id === 'huyi') && all.some((it) => it.id === 'sixiang')
+      /* v91.30：huyi/sixiang(≥50%芯片) 转奇观产 → 换仍在售的符类代表。 */
+      const hasNew = all.some((it) => it.id === 'wenquxing') && all.some((it) => it.id === 'zhiduoxing')
         && all.some((it) => it.id === 'tianshi_ling');
       if (!hasNew) return false;
       G.ui._shopCat = 'attr_buff';
       G.ui.setView('shop');
-      return document.body.innerHTML.indexOf('翼锋芯片') >= 0;
+      /* v91.30：翼锋芯片(0.75)转奇观产 → 改验仍在售的「智识芯片」。 */
+      return document.body.innerHTML.indexOf('智识芯片') >= 0;
     })());
     check('v89.50/v90.11：打造清单含新套件（游侠/陷阵/守御/天策 各 19 件）', (function () {
       const fl = G.forgeList();
@@ -5852,7 +5853,7 @@ if (svBtn) {
       const types = ['neigong', 'corvee', 'talis', 'build_cost', 'essence'];
       const cn = types.map((t) => (CN[t] || '')).join(' ');
       const all = G.DATA.ITEMS || [];
-      return ['残卷', '政令', '封存匣', '营造', '精华'].every((w) => cn.indexOf(w) >= 0)
+      return ['战技残页', '政令', '封存匣', '营造', '精华'].every((w) => cn.indexOf(w) >= 0)
         && types.every((t) => all.some((it) => it.type === t));
     })());
     /* ⑤ 辐能核心行有「去调校」直达按钮，点了真开调校面板 */

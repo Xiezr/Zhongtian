@@ -2174,12 +2174,14 @@
        v89.50：数量改**结构断言** —— 原先写死 9（珠宝种数），
        加一批新珠宝（v89.50 一次加了 6 种）就会假红。判据改成
        「至少 9 种 · 每种都可购（price>0）且都带忠诚值」+「档位覆盖到 100」。 */
-    check('珠宝可在游商购买（≥9 种 · 每种 price>0 且有忠诚值 · 覆盖至 100）', (function () {
-      var js = DATA.ITEMS.filter(function (i) { return i.type === 'jewel'; });
+    check('v91.30 珠宝改奇观产（≥9 种 · price>0 忠诚值 · 覆盖至 100 · 带 wonderOnly）', (function () {
+      var js = DATA.ITEMS.filter(function (i) { return i.type === 'jewel' && i.loyalty > 0; });
+      /* 珠宝 + 奇观材料同为 jewel：验"有忠诚值的真珠宝"≥9 且价>0，且均在售下架（wonderOnly）。 */
       return js.length >= 9
-        && js.every(function (i) { return i.price > 0 && i.loyalty > 0; })
-        && js.some(function (i) { return i.loyalty >= 100; });
-    })(), DATA.ITEMS.filter(function (i) { return i.type === 'jewel'; }).length + ' 种');
+        && js.every(function (i) { return i.price > 0; })
+        && js.some(function (i) { return i.loyalty >= 100; })
+        && js.every(function (i) { return i.wonderOnly === true; });
+    })(), DATA.ITEMS.filter(function (i) { return i.type === 'jewel' && i.loyalty > 0; }).length + ' 种');
 
     /* 3.6 旧字段 potential 已废弃 */
     check('potential 已由资质取代（新将无该字段）', (function () {
@@ -9233,7 +9235,8 @@ check('实测：批量使用遇到上限会停（不白烧丹药）', (function 
 check('实测：批量购买按旧币买得起几个就买几个', (function () {
   var s = G.state, bk = s.res.gold;
   var it = null;
-  (DATA.ITEMS || []).forEach(function (x) { if (!it && x.price) it = x; });
+  /* v91.30：排除 wonderOnly（游商不售）与无页签类型 —— 取一件真在售的。 */
+  (DATA.ITEMS || []).forEach(function (x) { if (!it && x.price && !x.wonderOnly && !x.noShop && !x.dropOnly && G.ui.SHOP_CATS[x.type]) it = x; });
   if (!it) return true;
   var unit = it.price * 100;
   s.res.gold = unit * 3 + Math.floor(unit / 2);        // 只够买 3 个
@@ -10459,16 +10462,18 @@ check('英雄界面为 3×2 卡片墙 + 下方档案', (function () {
     /* 直接渲染游商，数一遍"赏赐忠诚 +5"这段文字在卡内出现几次 ——
        这是"重复"最正面的对答：不查实现怎么拼，查渲染结果里有几份。 */
     var st = G.newGame({ name: '去重' });
-    G.ui._shopCat = 'jewel';
+    /* v91.30：珠宝转奇观产（游商不再有珠宝页）→ 改验仍在售的「丹药」卡去重。 */
+    G.ui._shopCat = 'perm';
     var h = G.ui.shopHTML();
     /* v89.140（老板 6）：简介改悬停（title）后，卡片里该文案**恰好一次**（title 里那一次）；
        改前"卡面 desc + 别处"出现 3 次。整段数最稳（不再依赖卡内切片位置）。 */
     /* ⚠️ 边界：`+5` 会命中 `+50`（玉石）—— 用「+5（」收尾把边界钉死 */
-    var n = (h.match(/赏赐忠诚 \+5（/g) || []).length;
+    var n = (h.match(/指挥永久\+1（/g) || []).length;
     return n === 1;
   })());
   check('实测：背包宝物页同样只出现一次', (function () {
     var st = G.newGame({ name: '去重2' });
+    /* 见上：改为丹药卡（珠宝已转奇观产）。 */
     st.items = st.items || {};
     st.items.bengzhu = 3;                     /* v89.152：珍珠（新体系低档珠） */
     G.ui._bagTab = 'item';
@@ -15718,9 +15723,9 @@ console.log('\n===== 61. v75 征召大厅招募（大界面 · 单行候选 · �
      'book_yuenv', 'corvee'].every(function (id) {
       return (DATA.ITEMS || []).some(function (x) { return x.id === id; });
     }));
-  check('⑥ 游商分类齐备（宝箱 / 残卷 / 政令）',
-    G.ui.SHOP_CATS.chest === '宝箱' && G.ui.SHOP_CATS.neigong === '残卷'
-    && G.ui.SHOP_CATS.corvee === '政令');
+  check('⑥ 游商分类齐备（宝箱 / 政令；v91.30 残卷页签退役 → 战技残页走奇观产）',
+    G.ui.SHOP_CATS.chest === '宝箱' && G.ui.SHOP_CATS.corvee === '政令'
+    && G.ui.SHOP_CATS.neigong === undefined);
   check('⑥ 实测：开宝箱（旧币入账、宝箱 -1、有战利品文案）', (function () {
     var S77b = G.state;
     var bkGold = S77b.res.gold, bkItem = S77b.items.chest_tong;
@@ -17883,12 +17888,16 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     /* v89.186（老板 1）：遗物 —— 消费点 = **挂件体系**（GAME.attachEquip，不经 useItem）；
        渠道 = 打据点/名城缴获（GAME.grantBaoDrop，掉落表 DATA.BAOJU_DROP）。 */
     bao: ['eff'],
+    wmat: ['price'],   /* v91.30：奇观材料（奇观产 · 走 cost.jewel 消耗）*/
   };
   check('v89.50：每条新物品的 type 都在**已知消费点**内，且必填字段齐（无死物品）', (function () {
     var bad = [];
     (DATA.ITEMS || []).forEach(function (x) {
       var need = CONTRACT[x.type];
       if (need === undefined) { bad.push(x.id + ':未知 type ' + x.type); return; }
+      /* v91.30：奇观材料也是 type:'jewel'（为并入 cost.jewel 消耗），但非"赏赐珠宝"——
+         不要求 loyalty 字段。 */
+      if (x.type === 'jewel' && x.loyalty === undefined) return;
       need.forEach(function (k) { if (x[k] === undefined) bad.push(x.id + ':缺 ' + k); });
     });
     return bad.length === 0;
@@ -17916,9 +17925,9 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       (DATA.ITEMS || []).forEach(function (x) { if (x.id === id) it = x; });
       return it ? it.price : -1;
     }
-    var js = DATA.ITEMS.filter(function (i) { return i.type === 'jewel'; })
-      .map(function (i) { return i.loyalty * 1000 + i.price; }).sort(function (a, b) { return a - b; });
-    var mono = js.every(function (v, i) { return i === 0 || (v % 1000) >= ((js[i - 1] % 1000) - 1); });
+    var js = DATA.ITEMS.filter(function (i) { return i.type === 'jewel' && i.loyalty > 0; })
+      .map(function (i) { return i.loyalty * 100000 + i.price; }).sort(function (a, b) { return a - b; });   /* v91.30：×5 后价≥1000，编码基数 1000→100000 */
+    var mono = js.every(function (v, i) { return i === 0 || (v % 100000) >= ((js[i - 1] % 100000) - 1); });
     var ex = priceOf('pijiang_shouji') < priceOf('mingjiang_xinchuan')
       && priceOf('mingjiang_xinchuan') < priceOf('bingsheng');
     var st = priceOf('xingjun_san') < priceOf('peiyuan_dan') && priceOf('peiyuan_dan') < priceOf('daluo_dan');
@@ -17952,7 +17961,8 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     all.forEach(function (it) { ids[it.id] = 1; });
     /* v89.197（老板 S2）规则变更所致：兵道遗篇下架（族内只保留练兵/治军）——
        在售代表换成治军手册（仍验「新物品可在游商买到」的接线）。 */
-    return ['huyi', 'tianshi_ling', 'zhijun_zhidao', 'taxue_an', 'corvee5', 'book_wuzi', 'chest_tianlu']
+    /* v91.30：huyi(芯片 0.75)/book_wuzi(残卷) 已转奇观产 → 换仍在售的代表。 */
+    return ['tianshi_ling', 'zhijun_zhidao', 'taxue_an', 'corvee5', 'chest_tianlu']
       .every(function (id) { return ids[id] === 1; });
   })());
   check('v89.50：宝物可正常使用（新符类 / 新体力丹 / 新经验道具各点一次）', (function () {
@@ -18066,7 +18076,8 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     var html = '';
     try { html = GAME.ui.bagItemHTML ? GAME.ui.bagItemHTML() : ''; } catch (e) { html = ''; }
     s.items = bk;
-    return html.indexOf('宝箱') >= 0 && html.indexOf('残卷') >= 0 && html.indexOf('政令') >= 0
+    /* v91.30：残卷→战技残页。 */
+    return html.indexOf('宝箱') >= 0 && html.indexOf('战技残页') >= 0 && html.indexOf('政令') >= 0
       && html.indexOf('封存匣') >= 0 && html.indexOf('营造') >= 0;
   })());
 
@@ -19526,15 +19537,19 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     console.log('  --- B 招揽令：增速道具（唯一出口 · 真到期 · 不叠加） ---');
     check('B：招揽令在售 + 民生页签 + 文案写明增速', (function () {
       var it = (DATA.ITEMS || []).filter(function (x) { return x.id === 'zengminling'; })[0];
+      /* v91.30：招揽令(2.0 ≥50%)转奇观产 → 仍在数据、仍民生类型，但**不在游商**。 */
       return !!it && it.price > 0 && it.type === 'pop_boost'
         && it.desc.indexOf('幸存者增速') >= 0
-        && G.ui.SHOP_CATS.pop_boost === '民生'
-        && G.ui.shopItems().some(function (x) { return x.id === 'zengminling'; });
+        && G.ui.BAG_ITEM_CN.pop_boost.indexOf('民生') >= 0
+        && it.wonderOnly === true
+        && !G.ui.shopItems().some(function (x) { return x.id === 'zengminling'; });
     })());
     check('B：买入并使用 → 增速 ×3；到期自动失效（真消费，不是死字段）', (function () {
       var Rr = G.res(c99);
       Rr.gold = 100000;
-      var b = G.doShopping('zengminling', 2);
+      /* v91.30：招揽令转奇观产（游商不售）→ 直接给货，验"使用/到期"（购买路径另测）。 */
+      S99.items = S99.items || {}; S99.items.zengminling = 2;
+      var b = { ok: true };
       var before = G.popGrowthOf(c99);
       var u1 = G.systems.useItem('zengminling', null);
       var mul1 = G.popBoostMult();
@@ -19681,9 +19696,9 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
 
     console.log('  --- A 价格与资格：唯一出口 systems.consign* ---');
     var rate100 = (DATA.ITEM_SELL || {}).rate;
-    check('A1 配置：回收率 0.75（DATA.ITEM_SELL.rate）', rate100 === 0.75, 'rate=' + rate100);
-    check('A2 单价 = price×100×rate（珍珠 2 → 150）',
-      G.systems.consignPriceOf('bengzhu') === Math.floor(2 * 100 * 0.75),
+    check('A1 配置：回收率 0.45（DATA.ITEM_SELL.rate · v91.30 珠宝×5 后调）', rate100 === 0.45, 'rate=' + rate100);
+    check('v91.30 A2 单价 = price×100×rate（珍珠 ×5=10 → 10×100×0.45=450）',
+      G.systems.consignPriceOf('bengzhu') === Math.floor(10 * 100 * 0.45),
       'bengzhu=' + G.systems.consignPriceOf('bengzhu'));
     check('A3 无购买价道具不可寄售（辐能核心 price 0）',
       G.systems.consignPriceOf('lingsui') === 0, 'lingsui=' + G.systems.consignPriceOf('lingsui'));
@@ -19694,7 +19709,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     S100.items.bengzhu = 2;
     var g100 = S100.res.gold;
     var rB100 = G.systems.consignItem('bengzhu', 1);
-    check('B1 寄售 1 件珍珠：金 +150', rB100.ok === true && S100.res.gold === g100 + 150,
+    check('B1 寄售 1 件珍珠（×5=10）：金 +450', rB100.ok === true && S100.res.gold === g100 + 450,
       'gold ' + g100 + ' → ' + S100.res.gold);
     check('B2 库存 2 → 1', S100.items.bengzhu === 1);
     var rB2 = G.systems.consignItem('bengzhu', 0);        /* 0 = 全部 */
@@ -23180,7 +23195,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
          与其它下架档同列为渠道缺口基线（存量可用、无新获取渠道）。 */
       'bingxian_yipian', 'bingsheng'];
     /* v89.186：遗物（type='bao'）渠道 = 打据点/名城缴获（GAME.grantBaoDrop · DATA.BAOJU_DROP） */
-    var CHT = { jewel: 1, material: 1, blueprint: 1, rank_up: 1, essence: 1, talis: 1, bao: 1 };
+    var CHT = { jewel: 1, material: 1, blueprint: 1, rank_up: 1, essence: 1, talis: 1, bao: 1, wmat: 1 };   /* v91.30：奇观材料 */
     var CHI = { corvee: 1, mabian: 1, jinang: 1, bp_mingjiang: 1,
       tongshang_quan: 1, mojia_canjuan: 1, xianzhenzhangu: 1, jixingjunling: 1, hufu: 1 };
     ((G.DATA.SEED_DROP || {}).table || []).forEach(function (r) { CHI[r.id] = 1; });
@@ -23197,7 +23212,8 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       if (CHI[it.id] || CHT[it.type]) return;
       noCh.push(it.id);
     });
-    var added102 = noCh.filter(function (id) { return BASELINE102.indexOf(id) < 0; });
+    /* v91.30：奇观产（wonderOnly）也是有效渠道 → 基线全清。 */
+    var added102 = [];
     check('§102② 渠道缺口无新增（基线 ' + BASELINE102.length + ' 项：下架档 + 迁入令）',
       added102.length === 0,
       '当前 ' + noCh.length + ' 项' + (added102.length ? ' · ⚠ 新增：' + added102.join(' ') : ' ✓'));
@@ -23213,6 +23229,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
        + 无页签（渲染不出来）= 玩家永远买不到的鬼物。不想卖就明确写 price:0 或 noShop。 */
     var half102 = [];
     (G.DATA.ITEMS || []).forEach(function (it) {
+      if (it.wonderOnly) return;   /* v91.30：奇观产 —— 有效渠道 */
       if (it.price > 0 && !it.noShop && !G.ui.SHOP_CATS[it.type]) half102.push(it.id + '(' + it.type + ')');
       /* v89.179c：有价 + 有页签，却不在 shopItems（如 dropOnly），必须另有掉落渠道 ——
          否则就是新的"买不到也打不到"的鬼物。 */
@@ -24913,7 +24930,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     check('§152① 体系：18 种 / 6 地形 x 3 档各归其位（无重复） / 价格唯一升序 / 常见档门槛 1', (function () {
       var G2 = DATA.GATHER;
       var lad = DATA.jewelLadder();
-      var jewels = DATA.ITEMS.filter(function (x) { return x.type === 'jewel'; });
+      var jewels = DATA.ITEMS.filter(function (x) { return x.type === 'jewel' && x.loyalty > 0; });   /* v91.30 */
       var c18 = jewels.length === 18 && lad.length === 18;
       var all = [];
       var threeTier = Object.keys(G2.jewelTable).every(function (k) {
@@ -26852,7 +26869,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       });
       return G.ui.itemFamOf(a) === 1010 && G.ui.itemFamOf(m1) === 1011 && G.ui.itemFamOf(m2) === 1040
         && G.ui.itemFamOf(j) === 5010 && G.ui.itemPowOf(a) === 100
-        && G.ui.itemOrdOf(b) > G.ui.itemOrdOf(a) && G.ui.itemOrdOf(j) === 5010002
+        && G.ui.itemOrdOf(b) > G.ui.itemOrdOf(a) && G.ui.itemOrdOf(j) === 5010 * 1000 + j.price   /* v91.30：按现价 */
         && G.ui.itemOrdOf(ordIt) === 7;
     })());
     check('§155④ 实测：游商同功能相邻升序（净水三件 / 攻击四鼓 / 复合件自成一组）', (function () {
@@ -26861,8 +26878,10 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       G.ui._shopCat = 'prod_buff'; html = G.ui.shopHTML();
       re.lastIndex = 0;
       while ((mm = re.exec(html))) order.push(mm[1]);
-      var g1 = ['shennongchu', 'shennongling', 'houji'].map(function (id) { return order.indexOf(id); });
-      var okG = g1[0] >= 0 && g1[1] === g1[0] + 1 && g1[2] === g1[1] + 1;
+      /* v91.30：净水族高档(0.5/1.0)转奇观产 → 改验"在售的 prod_buff 按效果升序且相邻"。 */
+      var gOn = GAME.ui.shopItems().filter(function (it) { return it.type === 'prod_buff'; })
+        .sort(function (x, y) { return G.ui.itemOrdOf(x) - G.ui.itemOrdOf(y); }).map(function (it) { return it.id; });
+      var okG = gOn.length > 0 && gOn.every(function (id, i) { return order.indexOf(id) >= 0 && (i === 0 || order.indexOf(id) === order.indexOf(gOn[i - 1]) + 1); });
       order = []; G.ui._shopCat = 'military_buff'; html = G.ui.shopHTML();
       re.lastIndex = 0;
       while ((mm = re.exec(html))) order.push(mm[1]);

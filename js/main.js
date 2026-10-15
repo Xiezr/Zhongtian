@@ -1527,6 +1527,12 @@
       ui.toast(doMsg);
       return { ok: false, msg: doMsg };
     }
+    /* v91.30：wonderOnly = 奇观产 —— 游商硬闸拒绝（与 noShop/dropOnly 同形）。 */
+    if (item.wonderOnly) {
+      var woMsg = '「' + item.name + '」不在游商中贩卖 —— 只在**奇观**探索中获得';
+      ui.toast(woMsg);
+      return { ok: false, msg: woMsg };
+    }
     qty = Math.max(1, Math.floor(Number(qty) || 1));
     var price = (item.price || 0) * 100;
     /* v28（需求 6）：**买得起几个就买几个**，而不是"差一点就一口拒绝"。
