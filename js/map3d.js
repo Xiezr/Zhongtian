@@ -1105,7 +1105,7 @@
       var mesh = new THREE.Mesh(geo, geo._mat);
       var body = new THREE.Group(); body.add(mesh);
       if (mode === 'space') {
-        mesh.scale.setScalar(R * 0.32);                          /* 太空天体 R 的 32% */
+        mesh.scale.setScalar(R * 0.64);   /* v91.30g：×2 放大 */                          /* 太空天体 R 的 32% */
       } else {
         /* 地表/海面：落在星球某格上 —— 贴地(海拔)+按法线立起，尺寸 R 的 15%。 */
         var sc = _wonderSurfaceCell(mode);
@@ -1114,7 +1114,7 @@
         if (mode === 'water') surfR = R + 2.0;                   /* 浮在水面 */
         var rr = surfR + R * 0.05;
         M._wonderUp = d; M._wonderR = rr;
-        mesh.scale.setScalar(R * 0.15);
+        mesh.scale.setScalar(R * 0.30);   /* v91.30g：×2 放大 */
         var tg = new THREE.Group(); tg.add(mesh);
         tg.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(d[0], d[1], d[2]).normalize());
         body.add(tg);
@@ -1199,6 +1199,12 @@
     M._wonderBody.visible = e > 0.02;
   }
   M.wonderStep = wonderStep;
+  /* 奇观天体 → 屏幕坐标（相机投影）。返回 {ndcX,ndcY,behind} 或 null。 */
+  M.wonderScreen = function () {
+    if (!M._wonderBody || !cam) return null;
+    var v = new THREE.Vector3().copy(M._wonderBody.position).project(cam);
+    return { ndcX: v.x, ndcY: v.y, behind: v.z > 1 };
+  };
   M.buildWonder = buildWonder;
 
   M.rebuild = function () { built = false; _tileSub = -1; M._mkVer = null; M._flVer = null; M._arVer = null;

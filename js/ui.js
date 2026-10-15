@@ -3592,11 +3592,6 @@
     /* 该"查看星球"的城清单：当前星球走 s.cities（活态），他星走分片快照。 */
     var _swCities = (+_swPid === +_actPid) ? s.cities
       : (((GAME.sliceOf && GAME.sliceOf(_swPid)) || {}).cities || []);
-    /* 当前城不在"查看星球"清单里 → 复位到当前城所在星球（防持久值被换星球/换城搞脏）。 */
-    if (+_swPid !== +_actPid && !_swCities.some(function (x) { return x.id === c.id; })) {
-      _swPid = ui._swPlanetId = _actPid;
-      _swCities = s.cities;
-    }
     var planetSel = _planets.length > 1
       ? '<div class="city-switch"><span class="cs-lbl">星球</span>' +
         '<select class="city-select" data-action="switch-planet" title="切换查看的星球（只影响本栏城市清单，不改变地图）">' +
