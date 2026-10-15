@@ -156,7 +156,15 @@
       /* ⛔ v89.135 移除：`case 'open-guanfu'` —— 政务厅面板退役（功能直接进政务厅格建筑面板）。 */
       /* v73（老板需求 3）：基因实验室。v89.224：入口迁到城内建筑「基因实验室」格；
          立项 / 提取后**留在实验室里刷新** —— 状态变化要立刻看得见。 */
-      case 'open-lab': ui.openFarm(); break;
+      case 'open-lab':
+        /* v91.26（老板）：基因实验室 = **主城专属设施**（状态是全局 s.farm）——
+           只在主城使用；别城该格保留建造位但不启用。 */
+        (function () {
+          var _c = GAME.currentCity();
+          if (!_c || !GAME.isMainCity(_c)) { ui.toast('基因实验室为主城专属设施 —— 请到主城使用'); return; }
+          ui.openFarm();
+        })();
+        break;
       case 'farm-projects': ui.openFarmProjects(Number(el.dataset.idx)); break;
       case 'farm-start': {
         var fpr = GAME.farmPlant(Number(el.dataset.idx), el.dataset.crop);

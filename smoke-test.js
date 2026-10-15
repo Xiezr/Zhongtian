@@ -36074,6 +36074,18 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })());
   })();
 
+  /* ============================================================
+   * §262. v91.26 基因实验室主城专属
+   * ============================================================ */
+  (function () {
+    console.log('\n===== 262. v91.26 基因实验室主城专属 =====');
+    check('§262 open-lab 门禁：非主城拒绝 · 主城放行（源码级）', (function () {
+      var m = require('fs').readFileSync(require('path').join(__dirname, 'js', 'main.js'), 'utf8');
+      return /case 'open-lab':/.test(m) && /GAME\.isMainCity\(_c\)/.test(m)
+        && /主城专属设施/.test(m);
+    })());
+  })();
+
   console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');
   process.exit(FAIL ? 1 : 0);
 })();

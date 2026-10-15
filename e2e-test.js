@@ -4816,6 +4816,8 @@ if (svBtn) {
     G.state.res.gold = 3000000;
     /* v89.224：实验室入口在城内「基因实验室」（honglusi）建筑格 —— 临时放一座再点 */
     const pc73 = G.currentCity();
+    /* v91.26：基因实验室 = 主城专属 → 本段把当前城设为主城（否则 open-lab 被门禁拦）。 */
+    G.state.mainCityId = pc73.id;
     let labCell = null, labSaved = null;
     (pc73.cells || []).forEach(function (c) { if (!labCell && !c.build) labCell = c; });
     if (labCell) { labSaved = labCell.build; labCell.build = { id: 'honglusi', lvl: 1 }; }
