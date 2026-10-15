@@ -27,6 +27,11 @@ MAP = {
     "基因实验室": "honglusi",
     "工厂": "gongjiangzuofang",       # 机工坊
     "精密制造厂": "tiejiangpu",        # 锻造间
+    # v91.15（老板 2）：补齐新增素材映射（原缺 → _t2/_t3 未生成）。
+    "交易站": "shichang",
+    "补给站": "yizhan",
+    "货仓": "cangku",
+    "车库": "majiu",
 }
 
 
@@ -87,12 +92,16 @@ def main():
     n = 0
     for name, bid in MAP.items():
         for tier, suffix in ((1, ''), (2, '_t2'), (3, '_t3')):
-            src = os.path.join(SRC, "%s%d.png" % (name, tier))
-            if not os.path.exists(src):
-                print("缺源图:", src); continue
+            # v91.15：源图可能是 .png 或 .jpeg（新素材混入）—— 两种都试。
+            src = None
+            for ext in (".png", ".jpeg", ".jpg"):
+                cand = os.path.join(SRC, "%s%d%s" % (name, tier, ext))
+                if os.path.exists(cand): src = cand; break
+            if not src:
+                print("缺源图:", name, tier); continue
             out = os.path.join(OUT, "ai_%s%s.png" % (bid, suffix))
             norm(src).save(out)
-            print("ai_%s%s.png ← %s%d.png" % (bid, suffix, name, tier)); n += 1
+            print("ai_%s%s.png ← %s" % (bid, suffix, os.path.basename(src))); n += 1
     print("建筑皮肤标准化完成：", n, "件 →", OUT)
 
 

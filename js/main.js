@@ -372,7 +372,11 @@
       /* ⛔ v89.144（老板 2）退役：标题栏那对**全局**兵力键（「全带→上限」逐行分配 + 全局清空）——
          两个操作挪进**每个兵种行**（行内上限 = 下面的 exp-max 改语义；行内清空 = exp-zero）。 */
       case 'exp-pick-item': ui.setExpItem(el.dataset.gen, el.dataset.item); break;
-      case 'gen-exp-item': {
+      /* v91.09（老板 7）：**「用到升级」独立动作 + 可长按连升**（复用长按连发机制）——
+         改前与「用 1 个」共用 gen-exp-item，长按会把两枚按钮搞混（连发恒打第一枚 = 只用 1 个）。
+         现独立 data-action，并进 ui.HOLD_ACTS。 */
+      case 'gen-exp-item':
+      case 'gen-exp-till': {
         var rgex = GAME.systems.gainExpByItem(el.dataset.item, el.dataset.gen, el.dataset.mode);
         ui.toast(rgex.msg);
         /* v41（需求 2）：原先这里"重开详情弹窗"来刷新数字；弹窗已撤，
@@ -556,7 +560,7 @@
       case 'map-goto': ui.mapGoto(); break;
       case 'map-center': ui.mapCenter(); break;
       case 'map-mycity': ui.mapMyCity(); break;             /* v89.192（老板 1）：回本城 */
-      case 'map-capital': ui.mapCenterOn(265, 215); ui.toast('已定位至旧都灰烬城 (265,215)'); break;
+      case 'map-capital': ui.mapCapitalCity(); break;   /* v90.99：母星专属，别星地图断开 */
       case 'open-inn': ui.openInn(); break;
       case 'open-forge': ui.openForge(); break;
       /* v77：百炼强化（锻造间底栏入口 + 装备详情入口） */
@@ -688,6 +692,13 @@
       case 'confirm-upgrade': GAME.doUpgrade(GAME.slotKey(el.dataset.idx)); break;
       case 'demolish-ask': ui.openDemolishConfirm(el.dataset.kind, GAME.slotKey(el.dataset.idx)); break;
       case 'demolish-do': GAME.doDemolishDo(el.dataset.kind, GAME.slotKey(el.dataset.idx)); break;
+      /* v91.15（老板 3）：拆毁选项 —— 直接整座拆除。 */
+      case 'demolish-whole-do': {
+        var _dw = GAME.demolishWhole(GAME.currentCity().id, GAME.slotKey(el.dataset.idx));
+        ui.toast(_dw.msg);
+        if (_dw.ok) { ui.closeModal(); GAME.refreshAll(); }
+        break;
+      }
       /* v89.110：取消建造 = 扣 20% 与已耗时间 —— 两段式（先看退多少，再执行） */
       case 'cancel-build-ask': ui.openCancelBuildAsk(el.dataset.kind, GAME.slotKey(el.dataset.idx)); break;
       case 'cancel-build-do': GAME.doCancelBuild(el.dataset.kind, GAME.slotKey(el.dataset.idx)); break;
@@ -710,6 +721,15 @@
       case 'do-train-boost': GAME.doBoostTrain(el.dataset.item, Number(el.dataset.idx)); break;
       /* v89.49：花旧币买时间（募兵/制造队列提速的"永远可用"那条路） */
       case 'train-rush': GAME.doTrainRush(Number(el.dataset.pct), Number(el.dataset.idx), el.dataset.kind); break;
+      /* v91.13（老板 14）：取消募兵队列（返还 80%）。idx 缺 → 该营正在执行那条。 */
+      case 'train-cancel': {
+        var _tc = GAME.cancelTrain(GAME.currentCity() ? GAME.currentCity().id : null,
+          (el.dataset.idx === '' || el.dataset.idx == null) ? -1 : Number(el.dataset.idx), el.dataset.kind,
+          el.dataset.i === '' || el.dataset.i == null ? null : Number(el.dataset.i));
+        ui.toast(_tc.msg);
+        if (_tc.ok) GAME.refreshAll();
+        break;
+      }
       /* v80（老板）：「步兵 / 机车」翻页（±10 退役，数量改直输 —— 见 troopsHTML）；
          v81（老板）：「做成3页，第一页为募兵队列」；v89.229 兵种重构：分页改
          **que / g1 / g2 / g3** 四页（募兵队列 + 三组）—— 白名单见下 */
@@ -951,11 +971,57 @@
         if (hR177.ok) GAME.refreshAll();
         break;
       }
-      /* v60（需求 4）：英雄页的"本城 / 全境"范围切换 —— 名单变了必须重绘 */
-      case 'gen-scope': {
-        ui.chipSet(el);
-        ui._genScope = el.dataset.v;
-        ui.renderView('generals');
+      /* v90.97（老板）：行政菜单 —— 左栏分级树（星球展开 / 选城） */
+      case 'adm-planet-toggle': {
+        ui._admOpen = ui._admOpen || {};
+        var _apid = el.dataset.pid;
+        ui._admOpen[_apid] = !ui._admOpen[_apid];
+        if (ui.view === 'admin') GAME.refreshView();
+        break;
+      }
+      /* v91.14（老板）：「星球可以命名」—— 星球名右侧 ✎ 打开命名窗。 */
+      case 'adm-planet-rename': ui.openPlanetRename(Number(el.dataset.pid)); break;
+      /* v91.22（老板 2）：行政·野地「详情」→ 该野地单独管理界面（若在他星先切过去）。 */
+      case 'adm-wild-open': {
+        var _awPid = Number(el.dataset.pid);
+        var _awAct = GAME.activePlanetOf ? GAME.activePlanetOf() : null;
+        if (_awAct && _awPid !== _awAct.id) { GAME.enterPlanet(_awPid); }
+        var _awX = Number(el.dataset.x), _awY = Number(el.dataset.y);
+        ui.closeAllModals();
+        ui.setView('map');
+        ui.openLandModal(_awX, _awY);   /* 已占野地 → 单独管理界面（派驻/增援/召回/采集/出兵/筑城…） */
+        break;
+      }
+      case 'do-rename-planet': {
+        var _rpn = document.getElementById('rename-planet-input');
+        var _rpr = GAME.renamePlanet(ui._renamePid, _rpn ? _rpn.value : '');
+        ui.toast(_rpr.msg);
+        if (_rpr.ok) { ui.closeAllModals(); GAME.refreshAll(); }
+        break;
+      }
+      case 'adm-city-pick': {
+        ui._admSel = { pid: el.dataset.pid, cityId: el.dataset.city };
+        if (ui.view === 'admin') GAME.refreshView();
+        break;
+      }
+      /* v91.04（老板）：右栏分类清单点选（管理英雄/据点/野地/在建/招募/研究/已研） */
+      case 'adm-cat-pick': {
+        ui._admCat = el.dataset.cat;
+        if (ui.view === 'admin') GAME.refreshView();
+        break;
+      }
+      case 'adm-city-enter': {
+        /* v90.97（老板）：从行政树**进入该城** —— 城市界面切到该城所在星球
+           （跨星球则换 activePlanet + 分片；星球一致则只切当前城）。 */
+        var aePid = Number(el.dataset.pid), aeCid = el.dataset.city;
+        var aeAct = GAME.activePlanetOf ? GAME.activePlanetOf() : null;
+        if (aeAct && aePid !== aeAct.id) GAME.enterPlanet(aePid);
+        ui.closeAllModals();
+        ui.setCity(aeCid);
+        ui.setView('city');
+        GAME.refreshAll();
+        var aeC = GAME.cityById(aeCid);
+        ui.toast('已进入 ' + (aeC ? aeC.name : '城池'));
         break;
       }
       case 'tactic-set': {
@@ -2213,7 +2279,8 @@
     }
     var _genSend137 = _stGen137m ? '' : genSel.value;
     var _schemeSend137 = _stGen137m ? null : (ui._expScheme || null);
-    var r = GAME.march.dispatch(target, mode, atk, _genSend137, _schemeSend137);
+    var r = GAME.march.dispatch(target, mode, atk, _genSend137, _schemeSend137,
+      ui._expFrom ? { fromCityId: ui._expFrom } : null);   /* v91.21（老板 C1）：派出城 */
     ui.toast(r.msg);
     if (r.ok) {
       ui._expScheme = null;      /* v86：计已随军出发，面板状态清空 */
@@ -2595,6 +2662,16 @@
         e.preventDefault();
         return;
       }
+      /* v91.00（老板）：**点弹窗外区域 → 关闭弹窗**（提示性 / 否决性小窗都适用）。
+         · 仅命中「遮罩本身」（.modal-mask）才算点外面 —— 点 .modal 内容区不关；
+         · noClose 的窗不关（必须做选择才能继续：ui._noOutsideClose，由 openModal 注入）；
+         · 长按连发吞掉的那一次已在函数顶部 return，不会误触。 */
+      if (e.target && e.target.classList && e.target.classList.contains('modal-mask')
+          && GAME.ui._maskEl && GAME.ui._maskEl.isConnected && !GAME.ui._noOutsideClose) {
+        GAME.ui.closeModal();
+        if (GAME.refreshView) GAME.refreshView();
+        return;
+      }
       handleCanvasClick(e);
     });
     /* ============================================================
@@ -2606,7 +2683,7 @@
      *     持有旧节点 = 持有孤儿节点（点击不再冒泡、读到的也是旧值）。
      *   · 连发期间静音 toast（ui._holdMode）；松手后的那一次原生 click 由 ui._holdSuppress 吞掉。
      * ============================================================ */
-    ui.HOLD_ACTS = ['enhance-item', 'enhance-set', 'ling-temper-item'];
+    ui.HOLD_ACTS = ['enhance-item', 'enhance-set', 'ling-temper-item', 'gen-exp-till'];
     ui.HOLD_DELAY = 320;        /* 长按判定阈值（毫秒）——短点一下不触发连发 */
     ui.HOLD_EVERY = 180;        /* 连发间隔（毫秒） */
     ui._hold = null;
@@ -2981,8 +3058,9 @@
   /* v89.199（老板）：**运行时版本标识**（唯一来源）——设置页末卡显示它。
      浏览器把已打开的页面留在内存里：更新文件后，**长开不刷新的页面仍跑旧会话代码**
      （这解释了"改了却说没生效"的观感）。老板若发现版本 ≠ 最新交付，按 Ctrl+F5
-     强制刷新即获得新代码。⚠️ 每轮迭代更新此字面量（写入交付流程）。 */
-  GAME.VERSION = 'v90.95';
+     强制刷新即获得新代码。⚠️ 发版须走 **bump_version.py --bump --version vX.Y**（它同步 index.html 的 ?v=/BUILD
+     与这里的 GAME.VERSION 三处）—— 只手改 index.html 会让版本号冻住（v91.18 前的病灶）。 */
+  GAME.VERSION = 'v91.18';
   function boot() {
     fitAppSize();
     try {

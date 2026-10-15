@@ -1226,6 +1226,29 @@
     GAME.log('拆毁 ' + b.name + ' Lv' + lv + '，返还 ' + GAME.costString(back));
     return { ok: true, msg: '已拆毁 ' + b.name + ' Lv' + lv + '，返还 ' + GAME.costString(back), back: back };
   };
+  /* v91.15（老板 3）：拆除确认界面里加「拆毁」选项 —— **直接整座拆除**（不分级）。
+     返还 = 累计投入全量 × DEMOLISH_RATE（与逐级拆到 Lv1 的总返还同口径）；
+     政务厅不可拆（同 demolishAt）。 */
+  GAME.demolishWhole = function (cityId, gridIndex) {
+    var s = GAME.state, city = GAME.cityById(cityId);
+    if (!city) return { ok: false, msg: '城池不存在' };
+    var cell = GAME.cellOf(city, gridIndex);
+    if (!cell || !cell.build) return { ok: false, msg: '空地块' };
+    if (cell.official) return { ok: false, msg: '政务厅不可拆除' };
+    var b = DATA.BUILDINGS[cell.build.id];
+    var lv = cell.build.lvl;
+    var inv = GAME.investedIn(b, lv);
+    var back = GAME.scaledCost(inv, DATA.DEMOLISH_RATE);
+    GAME.refundCert(inv, DATA.DEMOLISH_RATE, city);
+    cell.build = null;
+    cell.pending = null;
+    s.queues.build = (s.queues.build || []).filter(function (q) {
+      return !(q.cityId === cityId && GAME.slotEq(q.gridIndex, gridIndex));
+    });
+    GAME.statBump('demolished', 1);
+    GAME.log('拆毁 ' + b.name + ' Lv' + lv + '（整座），返还 ' + GAME.costString(back));
+    return { ok: true, msg: '已拆毁 ' + b.name + ' Lv' + lv + '（整座），返还 ' + GAME.costString(back), back: back };
+  };
 
   /* ============================================================
    * 城内建筑移形换位（v19 · 需求 8）
@@ -1652,7 +1675,10 @@
     if (s.buffs && s.buffs.trainRed && s.buffs.trainRed.until > U.now()) {
       totalTime = Math.round(totalTime * (1 - s.buffs.trainRed.eff));
     }
+    /* v91.13（老板 14）：记录**本批实付**（取消时按 80% 返还）—— 改前队列不留成本，无从退。 */
     s.queues.train.push({ kind: kind, cityId: city.id, bIdx: bIdx, troopId: troopId, count: count,
+      qid: 'tq' + (GAME._tqSeq = (GAME._tqSeq || 0) + 1),
+      paidCost: U.deep(cost), paidAt: U.now(),
       elapsed: 0, totalTime: Math.max(2, totalTime), waiting: false });
     return { ok: true, msg: (kind === 'craft' ? '开始制造 ' : '开始训练 ') + t.name + ' ×' + count };
   };
@@ -1709,6 +1735,36 @@
     if (!list.length) return null;
     for (var i = 0; i < list.length; i++) if (!list[i].waiting) return list[i];
     return list[0];
+  };
+  /* v91.13（老板 14）：**取消募兵队列** —— 从队列移除，按**实付 × 80%** 返还（资源 + 幸存者）。
+     返还走唯一收支出口 payCostIn/资源对象（与扣除同源）；老档无 paidCost → 按兵种表现价 ×80% 兜底。 */
+  GAME.cancelTrain = function (cityId, bIdx, kind, i) {
+    var s = GAME.state;
+    var city = GAME.cityById(cityId) || GAME.currentCity();
+    if (!city || !s) return { ok: false, msg: '城池不存在' };
+    var kd = GAME.queueKindOf(kind);
+    var q;
+    if (i != null && isFinite(Number(i))) q = GAME.trainQueuesOf(city, bIdx, kd)[Number(i)];
+    if (!q) q = GAME.trainRunningOf(city.id, bIdx, kd);
+    if (!q) return { ok: false, msg: '本营没有募兵任务' };
+    var t = DATA.TROOPS[q.troopId] || {};
+    /* 实付：优先用队列记录的 paidCost；缺（老档）→ 按现价 × 数量兜底 */
+    var paid = q.paidCost;
+    if (!paid) {
+      paid = {}; var cnt = q.count || 0;
+      Object.keys(t.cost || {}).forEach(function (k) { paid[k] = (t.cost[k] || 0) * cnt; });
+      paid.pop = (t.pop || 0) * cnt;
+    }
+    var R = GAME.res(city), give = {};
+    Object.keys(paid).forEach(function (k) {
+      var back = Math.floor((paid[k] || 0) * 0.8);
+      if (back > 0) { R[k] = (R[k] || 0) + back; give[k] = back; }
+    });
+    /* 移除该条（按 qid；老档无 qid 则按对象引用） */
+    s.queues.train = (s.queues.train || []).filter(function (x) { return x !== q && (q.qid == null || x.qid !== q.qid); });
+    var gn = t.name || q.troopId;
+    GAME.log('♻️ 取消募兵：' + gn + ' ×' + (q.count || 0) + '（返还 80% 军资）', 'sys', 'admin');
+    return { ok: true, msg: '已取消 ' + gn + ' ×' + (q.count || 0) + '（返还 80% 军资）', refund: give };
   };
   GAME.trainRush = function (cityId, bIdx, pct, kind) {
     var s = GAME.state;
@@ -2083,12 +2139,14 @@
   /* ============================================================
    * 酒馆：候选生成 / 招募（v89.188：「相亲」话术退役，全站统一为「招募」）
    * ============================================================ */
-  var INN_SURNAME = ['王', '李', '张', '刘', '陈', '杨', '赵', '黄', '周', '吴', '徐', '孙', '马', '朱', '胡', '郭',
-    '何', '高', '林', '罗', '郑', '梁', '谢', '宋', '唐', '许', '韩', '冯', '邓', '曹', '彭', '曾', '萧', '田', '董', '潘'];
-  var INN_GIVEN_M = ['武', '霸', '雄', '烈', '毅', '刚', '勇', '猛', '威', '震', '远', '达', '通', '博', '文', '彦',
-    '德', '义', '信', '忠', '孝', '安', '宁', '泰', '康', '盛', '昌', '隆', '兴', '平', '靖', '桓', '峤', '琮', '玠', '绍'];
-  var INN_GIVEN_F = ['娥', '婵', '环', '姬', '婉', '姝', '媛', '娴', '云', '月', '兰', '芝', '玉', '珠', '环', '瑶',
-    '瑾', '琬', '莹', '翠', '秀', '英', '华', '芳', '倩', '绫', '罗', '绮', '纨', '素'];
+  /* v91.11（老板 13）：「新将领名称太老气」—— 名池换代：**废土/星际/生化/科技**风。
+     前缀=废土地名/化学元素/星体代号；名=硬核器物/冷冽字。名池唯一出口不动（pick 轮换逻辑不变）。 */
+  var INN_SURNAME = ['铁', '星', '荒', '烬', '雷', '霜', '磁', '硅', '碳', '硫', '铅', '钨', '铬', '钴', '镍', '锌',
+    '钛', '钒', '锆', '钼', '镭', '钚', '锶', '钡', '铯', '镓', '氙', '氩', '石', '崖', '壑', '屿', '汐', '暝', '曜', '罡'];
+  var INN_GIVEN_M = ['砧', '刃', '锋', '垣', '垒', '穹', '垠', '嶂', '峦', '渊', '涛', '焰', '鎏', '铠', '甲', '枭',
+    '隼', '獾', '峙', '峻', '峭', '嶙', '峋', '魁', '罡', '煞', '燎', '岩', '砺', '硎', '璋', '玦', '珩', '琮', '琰', '珪'];
+  var INN_GIVEN_F = ['岚', '霜', '烛', '嫣', '姝', '萤', '熠', '珑', '珀', '珂', '珺', '瑗', '璎', '霭', '霏', '霁',
+    '霓', '汐', '泠', '滢', '炘', '炆', '煐', '玥', '玳', '珞', '璆', '婠', '嫮', '婧'];
 
   function pick(a) { return a[Math.floor(Math.random() * a.length)]; }
   function randInt(lo, hi) { return lo + Math.floor(Math.random() * (hi - lo + 1)); }
@@ -2148,14 +2206,22 @@
     var rand = U.rng((U.now() + (GAME._cndSeq || 0) * 7919 + Math.floor(Math.random() * 1e7)) >>> 0);
     function roll() { return U.randInt(rand, rk.base[0], rk.base[1]); }
     var nm = pick(INN_SURNAME) + (isBeauty ? pick(INN_GIVEN_F) : pick(INN_GIVEN_M));
+    /* v91.20（老板 A3）：「不管酒馆等级，而是英雄自身等级 —— 1 级和 10 级给同样基础属性，合理吗？」
+       → 候选基础属性**随其等级成长**（与升级链 `applyLevelGrowth` **同口径**）：
+       每级自动加点 = 资质成长 × 类型权重（归一化）。Lv1 候选 = 纯 roll；Lv10 = roll + 9 级成长。 */
+    var gLv = Math.max(1, lv + randInt(-1, 1));
+    var _step = rk.grow || 1;
+    var _mSum = (st.mul.tong + st.mul.nz + st.mul.yw + st.mul.zm) || 4;
+    var _grow = (gLv - 1) * _step * (4 / _mSum);
+    var _base = roll() + _grow;
     return {
       id: 'cd' + (GAME._cndSeq = (GAME._cndSeq || 0) + 1),
       name: nm, hero: false, beauty: isBeauty, avatar: isBeauty ? '👩' : '🧔',
-      tong: Math.round(roll() * st.mul.tong),
-      nz: Math.round(roll() * (isBeauty ? st.mul.nz * 1.15 : st.mul.nz)),
-      yw: Math.round(roll() * (isBeauty ? st.mul.yw * 0.7 : st.mul.yw)),
-      zm: Math.round(roll() * (isBeauty ? st.mul.zm * 1.15 : st.mul.zm)),
-      level: Math.max(1, lv + randInt(-1, 1)), loyalty: 70,
+      tong: Math.round(_base * st.mul.tong),
+      nz: Math.round(_base * (isBeauty ? st.mul.nz * 1.15 : st.mul.nz)),
+      yw: Math.round(_base * (isBeauty ? st.mul.yw * 0.7 : st.mul.yw)),
+      zm: Math.round(_base * (isBeauty ? st.mul.zm * 1.15 : st.mul.zm)),
+      level: gLv, loyalty: 70,
       rank: rk.id, style: st.id,
       cost: Math.round(800 * lv * rk.price * (isBeauty ? 1.4 : 1.0)),
     };
@@ -5130,7 +5196,9 @@
     GAME.payCost(GAME.BUILD_CITY_COST);
     var stName = GAME.stateOfCity({ x: x, y: y });
     var city = GAME.makeCity({
-      id: 'new_' + x + '_' + y, name: '新城' + (s.cities.length + 1),
+      /* v91.03：城 id 带**星球前缀**（防跨星球同 id 撞：同坐标筑城不同星球 → 'new_x_y' 相同）。
+         与 battle.js 占城 id 同族处理。 */
+      id: 'new_p' + ((GAME.state && GAME.state.activePlanet) || 1) + '_' + x + '_' + y, name: '新城' + (s.cities.length + 1),
       x: x, y: y, type: 'self', state: stName,
       initialExt: 'new',   /* v89.93（整改 E12）：自建城预置 6 块城外资源地，落地即可产 */
     });
@@ -5471,10 +5539,10 @@
    * 一次性（`_wallCell211` 标记）；不动玩法数值，只补一块居所。
    * ============================================================ */
   GAME.wallPlanIdxOf = function () {
-    var p = GAME.cityPlanOf(1, 1);
-    for (var i = 0; i < p.cells.length; i++) {
-      if (p.cells[i].build && p.cells[i].build.id === 'chengqiang') return i;
-    }
+    /* v91.19（老板 1）：**固定栏位**下围墙**不再占格**（它是环城结构）——布局里没有围墙格，
+       故恒返回 -1：对应的"原墙格释放补居所"迁移随之整条失效（新占城不再有那一格空格）。 */
+    var F = (DATA.CITY_PLAN && DATA.CITY_PLAN.fixed) || [];
+    for (var i = 0; i < F.length; i++) if (F[i] === 'chengqiang') return i;
     return -1;
   };
   GAME.migrateWallCell211 = function (s) {
@@ -6163,11 +6231,35 @@
     if (!s || !s.generals || !s.cities || !s.cities.length) return 0;
     var ids = {};
     s.cities.forEach(function (c) { ids[c.id] = 1; });
+    /* v91.03（老板「英雄界面显示全部英雄」根因修复）：**所有星球**的城 id 都要认 ——
+       改前只认当前星球的 `s.cities`，于是**别星城的英雄**在每次读档时被判"无归属"→
+       通通改挂到首城（老板截图：一座城上 4 个城主 —— 别星的城主全被搬过来了）。
+       现把 mapSlices 里每颗星的城 id 一并并入；只有**全星球都查无**的才视为孤儿补首城。 */
+    var sl = s.mapSlices || {};
+    Object.keys(sl).forEach(function (pid) {
+      ((sl[pid] && sl[pid].cities) || []).forEach(function (c) { ids[c.id] = 1; });
+    });
     var home = s.cities[0].id, n = 0;
     s.generals.forEach(function (g) {
       if (!g.cityId || !ids[g.cityId]) { g.cityId = home; n++; }
     });
     return n;
+  };
+
+  /* v91.03：城主与守将同为「一城一任」—— 归一化守卫（读档跑）。原只归一化守将，
+     城主漏了 → 幽灵城主堆在同城（老板截图 4 个城主）。keep 首位、其余卸任。 */
+  GAME.normalizeMayors = function () {
+    var s = GAME.state;
+    if (!s || !s.generals) return [];
+    var keep = {}, out = [];
+    s.generals.forEach(function (g) {
+      if (g.status !== 'mayor' || !g.cityId) return;
+      if (!keep[g.cityId]) keep[g.cityId] = g.id;
+    });
+    Object.keys(keep).forEach(function (cid) {
+      out = out.concat(GAME.releaseMayorsOf(cid, keep[cid]));
+    });
+    return out;
   };
 
   GAME.normalizeGuards = function () {

@@ -1079,6 +1079,18 @@
   /* v89.142（老板 1）：**未解锁暗格** —— 棋盘 12×8 常显，新增地块从中心向周边亮起；
      暗格只是"预留位"的视觉表达（点了给解锁提示，不做悬停提亮、不参与高亮层级）。 */
   .iso-tile.locked { cursor: default; }
+  /* v91.19（老板 1）：**预留位**（固定栏位里"指定建筑"的空槽）—— 暗底虚线框 + 预定建筑名（暗字）；
+     满足前置（可建）时**地块边缘渐变闪烁**（脉动描边，提示"此处现可建"）。 */
+  .iso-tile.reserve .tile-face { background: rgba(var(--sh-rgb),.18); box-shadow: inset 0 0 0 1px rgba(var(--gold-soft-rgb),.28); }
+  .iso-tile.reserve .iso-reserve { position: absolute; left: 0; right: 0; bottom: 3px; text-align: center;
+    color: var(--text-dim); font-size: var(--fs-cap); letter-spacing: 0; opacity: .7; pointer-events: none; }
+  .iso-tile.reserve .iso-add { opacity: .5; }
+  .iso-tile.reserve.ready .tile-face { animation: reserveBlink 1.3s ease-in-out infinite; }
+  .iso-tile.reserve.ready .iso-add { opacity: 1; color: var(--gold-light); }
+  @keyframes reserveBlink {
+    0%, 100% { box-shadow: inset 0 0 0 1px rgba(var(--gold-soft-rgb),.28); }
+    50% { box-shadow: inset 0 0 0 2px rgba(var(--gold-rgb),.92), 0 0 12px rgba(var(--gold-soft-rgb),.45); }
+  }
   .iso-tile.locked .tile-face { background: rgba(var(--sh-rgb),.14); }
   .iso-tile.locked:hover .tile-face { filter: none; }
   .iso-tile.locked:hover { z-index: 2; }
@@ -1658,7 +1670,8 @@
      贴左右两列、中间留给机甲本体；框内为**固定模块图**（mod_*.png，不随装备变，见 DOLL_MOD_ART）；
      空/着只改边框（虚线/实线）。 */
   .doll-mechamode .eq-cell.doll-slot-mod {
-    width: 11%; height: 11%; margin-left: -5.5%; margin-top: -5.5%;
+    /* v91.06（老板「周围 6 个配件有点小，放大 1.2 倍看看」）：11% → 13.2%（×1.2） */
+    width: 15.84%; height: 15.84%; margin-left: -7.92%; margin-top: -7.92%;
     border: 1px dashed rgba(var(--gold-soft-rgb),.45); background: rgba(var(--slab-0-rgb),.5);
     border-radius: var(--r-md); }
   .doll-mechamode .eq-cell.doll-slot-mod:not(.empty) {
@@ -2348,6 +2361,10 @@
   }
   /* v90.79（老板 1）：星球生成器贴底栏**最右**（同款按钮样式，与左侧 .bb-tools 镜像）。 */
   .bb-tools.bb-tools-r { left: auto; right: 10px; }
+  /* v90.98（老板）：**地图视野缩放条**（底栏右侧 · 仅地图视图）—— 左=极小视野 · 右=极大视野 */
+  .bb-zoom { display: flex; align-items: center; gap: var(--sp-1); padding: 0 var(--sp-1); }
+  .bb-zoom .bzm-ico { font-size: var(--fs-sub); opacity: .8; }
+  .bb-zoom input[type="range"] { width: 120px; accent-color: var(--gold); cursor: pointer; }
   .bb-label-toggle, .bb-war, .bb-planet {
     padding: var(--sp-1) var(--sp-4); font-size: var(--fs-sub); font-weight: 800; letter-spacing: 1px;
     color: var(--text-dim); cursor: pointer; border-radius: var(--r-md);
@@ -2804,6 +2821,9 @@
   }
   .modal .modal-x:active { transform: scale(.9); }
   .modal-sm { width: 440px; height: 420px; }
+  /* v91.00（老板）：**否决性弹窗**（「⛔ 无法执行」—— 缺少条件 / 无法升级 / 无法跳转）用小档 xs ——
+     内容只有一句原因，比 sm 更紧凑；内容过长由 .inner-panel 既有滚动兜底。 */
+  .modal-xs { width: 420px; height: 230px; }
   .modal-lg { width: 860px; height: 600px;
     max-width: calc(var(--app-w) - 20px); max-height: calc(var(--app-h) - 20px); }
   /* xl（打造面板等）：960×700 定死 —— 卡片实测高 170px，2 行 340 + 筛选/分页/间隙 434，
@@ -3712,6 +3732,53 @@
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .lord-tbl td.k { width: 86px; color: var(--text-dim); white-space: nowrap; }
 
+  /* ============================================================
+     v90.97（老板）**行政菜单** —— 左 1/4 星球→城市分级树 · 右 3/4 城市只读总览。
+     固定 1440×900 画布：两栏各自内滚，整体限额，不撑破视图区。
+     ============================================================ */
+  .adm-split { display: grid; grid-template-columns: 1fr 3fr; gap: var(--sp-mid); align-items: start; }
+  .adm-tree { background: var(--slab-1); border: 1px solid var(--line-strong); border-radius: var(--r-md);
+    padding: var(--sp-2) var(--sp-2); max-height: 620px; overflow: auto; }
+  .adm-node { display: flex; align-items: center; gap: 6px; padding: 4px 6px; cursor: pointer;
+    border-radius: var(--r-md); color: var(--gold-light); font-weight: 700; }
+  .adm-node:hover { background: var(--slab-2); }
+  .adm-node .adm-caret { width: 12px; color: var(--text-dim); flex: 0 0 auto; }
+  .adm-node .adm-pname { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .adm-node .adm-n { color: var(--text-dim); font-weight: 400; font-size: var(--fs-sub); flex: 0 0 auto; }
+  /* v91.14：星球名右侧的「命名」小按钮（悬停才显，点它不触发展开）。 */
+  .adm-node .adm-rename { flex: 0 0 auto; padding: 0 var(--sp-1); line-height: var(--lh-1); opacity: 0; transition: opacity .12s; }
+  .adm-node:hover .adm-rename { opacity: .85; }
+  .adm-node .adm-rename:hover { opacity: 1; color: var(--gold-light); }
+  .adm-kids { margin: 0 0 var(--sp-1) 18px; border-left: 1px solid var(--sep-gold); padding-left: 8px; }
+  .adm-city { padding: 4px 6px; cursor: pointer; border-radius: var(--r-md); color: var(--text);
+    display: flex; align-items: center; gap: 6px; }
+  .adm-city:hover { background: var(--slab-2); }
+  .adm-city.cur { background: rgba(var(--gold-rgb), .12); color: var(--gold-light); font-weight: 700; }
+  .adm-city .adm-cmeta, .adm-cmeta { color: var(--text-dim); font-size: var(--fs-sub); font-weight: 400; }
+  .adm-detail { min-width: 0; }
+  .adm-city-title { display: flex; align-items: center; gap: 8px; color: var(--gold-light); font-weight: 700; font-size: var(--fs-body);
+    margin: 0 0 var(--sp-2); padding-bottom: 6px; border-bottom: 1px solid var(--sep-gold); }
+  .adm-city-title .btn { margin-left: auto; font-weight: 400; }
+  .adm-cat-split { display: grid; grid-template-columns: minmax(140px, 1fr) minmax(0, 2.6fr); gap: var(--sp-3);
+    max-height: 600px; min-height: 360px; }
+  .adm-cat-list { display: flex; flex-direction: column; overflow-y: auto; border-right: 1px solid var(--line-strong); padding-right: var(--sp-2); }
+  .adm-cat { display: flex; align-items: center; gap: var(--sp-1); padding: var(--sp-1) var(--sp-2); cursor: pointer;
+    border-radius: var(--r-md); color: var(--text); transition: background .12s, color .12s; }
+  .adm-cat:hover { background: var(--slab-2); }
+  .adm-cat.cur { background: rgba(var(--gold-rgb), .12); color: var(--gold-light); font-weight: 700; }
+  .adm-cat .adm-cat-ic { flex: 0 0 auto; }
+  .adm-cat .adm-cat-nm { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .adm-cat .adm-cat-n { color: var(--text-dim); flex: 0 0 auto; font-size: var(--fs-sub); }
+  .adm-cat.cur .adm-cat-n { color: var(--gold-light); }
+  .adm-cat-body { min-width: 0; display: flex; flex-direction: column; min-height: 0; }
+  .adm-cat-body-t { color: var(--gold-light); font-weight: 700; font-size: var(--fs-body);
+    margin-bottom: var(--sp-2); padding-bottom: 4px; border-bottom: 1px solid var(--sep-gold); }
+  .adm-cat-rows { overflow-y: auto; min-height: 0; }
+  .adm-row { display: flex; align-items: baseline; gap: 8px; padding: 2px 0; font-size: var(--fs-sub); }
+  .adm-row .adm-k { color: var(--text); flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .adm-row .adm-v { color: var(--text-dim); flex: 0 0 auto; }
+  .adm-empty { color: var(--text-dim); font-size: var(--fs-sub); padding: 2px 0; }
+
   /* ⛔ v89.202（老板 1「调校同款」）：.enh-list / .enh-row / .enh-nm / .enh-tag /
      .enh-cost 单列家族随调校面板改网格卡片（.enh-rows/.enh-card）整族退役 ——
      原"每行一颗调校键"的单列形态无第二消费方（全仓唯一用点=调校面板）。 */
@@ -4098,6 +4165,30 @@
     font-size: var(--fs-cap); color: var(--gold-light); pointer-events: none; }
   /* ③ 页签图标：透明度过渡（原来只有 hover/选中两态硬切） */
   .topnav .tab .nav-ico { transition: opacity .15s; }
+  /* ⑤ v91.01（老板「参考 game-feel / game-ui 系技能 · 匹配风格，改善交互」）：
+     **按压反馈统一** —— 审计发现全站只有 .btn / .map-btn 有 :active 下压，而
+     页签 / chips / 底栏按钮 / 背包格 / 英雄行 / 部队卡 / 部件槽 / 行政树 等一大批
+     可点元素**只有 hover、按下去毫无反馈**（游戏手感的第一缺口）。
+     按族补 :active（与既有 .btn:active 同一套手感词汇）+ 补齐漏掉的 cursor:pointer。
+     · 扁平"条 / 页"族 → 下压 1px（不缩放，避免条形元素抖动）；
+     · 卡片族 → scale(.97) 轻缩（有实体感）；.gen-row.empty 是占位席，排除。
+     · 与 .bag-cell:hover 的 translateY(-3px) 会互相顶：:active 同特异性、后出现取胜，
+       且 hover 的 transition 已含 transform → 回弹平滑。
+     ⚠ .exp-tac-link / .doll-slot **不在此列**：前者 base 带 transform:translateY(-50%)（缩放会破居中），
+       后者非可点元素（无 data-action）。 */
+  .topnav .tab:active, .chips .chip:active, .bb-label-toggle:active, .bb-war:active,
+  .bb-planet:active, .adm-node:active, .adm-city:active, .adm-cat:active { transform: translateY(1px); }
+  .bag-cell:active, .gen-row:not(.empty):active, .troop-card:active, .bt-sel:active,
+  .help-chip:active, .qi-btn:active, .bldg-act:active, .plus-btn:active,
+  .wild-drop:active, .city-select:active { transform: scale(.97); }
+  .topnav .tab, .bb-label-toggle, .bb-war, .bb-planet, .bt-sel { cursor: pointer; }
+  /* 让上面的按压**平滑回弹**：这些族原本的 transition 只含 color/border/background —— 补上 transform
+     （并保留原有几项）。.troop-list .troop-card 单独列出以压过它的同特异性旧规则。 */
+  .topnav .tab, .chips .chip, .bb-label-toggle, .bb-war, .bb-planet, .adm-node, .adm-city, .adm-cat,
+  .gen-row, .bt-sel, .help-chip, .qi-btn, .bldg-act, .plus-btn, .wild-drop, .city-select,
+  .troop-card, .troop-list .troop-card {
+    transition: transform .09s ease-out, color .14s, border-color .14s, background .14s, box-shadow .14s, filter .15s;
+  }
   /* ④ 动效降级：系统偏好"减少动态效果"→ 全站过渡/动画归零 */
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after {
@@ -4202,6 +4293,9 @@
          菜单名上产生数值」。顶栏徽标的语义是"有事情等你处理"（如任务可领取）；
          行军只是"部队在外面"，属状态不属待办。队列数在行军菜单里本来就有。 -->
     <div class="tab" data-view="marches"><i class="ti" data-nav="march"></i>军务</div>
+    <!-- v90.97（老板）：**行政大菜单** —— 军务右侧。左 1/4 = 星球→城市分级树；右 3/4 = 所选城市的
+         据点/占领野地/管理英雄/在建建筑/招募队列/研究中科技（只读总览）。 -->
+    <div class="tab" data-view="admin"><i class="ti" data-nav="admin"></i>行政</div>
     <!-- ⛔ v90.92：任务系统整条退役 —— 「任务」页签摘除。
          (v89.104 原：「将英雄，军务，任务放一起」，三者之间不插分隔条；现只剩英雄/军务。) -->
     <span class="nav-sep"></span>
@@ -4307,31 +4401,31 @@
 </div><!-- /#app-scale -->
 </div><!-- /#app-fit -->
 
-<!-- BUILD 9176 -->
-<script src="js/data.js?v=9176"></script>
-<script src="js/state.js?v=9176"></script>
-<script src="js/systems.js?v=9176"></script>
-<script src="js/domain.js?v=9176"></script>
-<script src="js/map.js?v=9176"></script>
+<!-- BUILD 9211 -->
+<script src="js/data.js?v=9211"></script>
+<script src="js/state.js?v=9211"></script>
+<script src="js/systems.js?v=9211"></script>
+<script src="js/domain.js?v=9211"></script>
+<script src="js/map.js?v=9211"></script>
 <!-- v90.69：球面世界内核（纯 JS · 拓扑/地形/几何 SSOT）—— 逻辑与 3D 渲染共用，无 THREE -->
-<script src="js/sphere.js?v=9176"></script>
+<script src="js/sphere.js?v=9211"></script>
 <!-- v90.61：Three.js 真 3D 主地图（vendor 本地，离线可用） -->
-<script src="vendor/three.min.js?v=9176"></script>
-<script src="js/map3d.js?v=9176"></script>
-<script src="js/battle.js?v=9176"></script>
+<script src="vendor/three.min.js?v=9211"></script>
+<script src="js/map3d.js?v=9211"></script>
+<script src="js/battle.js?v=9211"></script>
 <!-- v27（需求 5）：回合制文字战场。放在 battle.js 之后 —— simulate 由它接管 -->
-<script src="js/tactic.js?v=9176"></script>
-<script src="js/icons.js?v=9176"></script>
+<script src="js/tactic.js?v=9211"></script>
+<script src="js/icons.js?v=9211"></script>
 <!-- v32（需求「采用网图」）：game-icons 开源图标素材层。必须在 icons.js 之后 ——
      icons.js 内的取图函数用 typeof GICONS 延迟绑定，渲染时才真正查表。 -->
-<script src="js/gicons.js?v=9176"></script>
+<script src="js/gicons.js?v=9211"></script>
 <!-- v35：AI 位图素材登记表（汉代风，最高优先级）。同样在 icons.js 之后 ——
      取图函数用 typeof BITMAPS 延迟绑定；未登记的 id 自动回退矢量层。 -->
-<script src="js/bitmaps.js?v=9176"></script>
-<script src="js/portraits.js?v=9176"></script>
-<script src="js/story.js?v=9176"></script>
+<script src="js/bitmaps.js?v=9211"></script>
+<script src="js/portraits.js?v=9211"></script>
+<script src="js/story.js?v=9211"></script>
 <!-- ⛔ v89.218（老板「故事全部去除」）：84 卷故事库（story/）整目录删除，脚本标签同步撤除。 -->
-<script src="js/ui.js?v=9176"></script>
-<script src="js/main.js?v=9176"></script>
+<script src="js/ui.js?v=9211"></script>
+<script src="js/main.js?v=9211"></script>
 </body>
 </html>

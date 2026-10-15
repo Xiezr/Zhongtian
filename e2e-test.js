@@ -2020,7 +2020,8 @@ async function runTests(dom, URL) {
       const back110 = Math.floor(40 * (t110.pop || 0)
         * ((G.DATA.DISBAND || {}).popReturn == null ? 1 : G.DATA.DISBAND.popReturn));
       check('v89.110：确定解散 → 兵 100→60、幸存者 +' + back110 + '（真出口）',
-        cD110.army[sel2] === 60 && (G.res(cD110).pop || 0) === pop0110 + back110,
+        /* v91.19：固定栏位 28 居所 → 测试窗口内 pop 自然增长（分秒级小数）→ 容差判定。 */
+        cD110.army[sel2] === 60 && (G.res(cD110).pop || 0) >= pop0110 + back110 - 1e-6,
         '兵 ' + cD110.army[sel2] + ' · 幸存者 ' + pop0110 + ' → ' + G.res(cD110).pop);
       G.ui.closeAllModals();
       cD110.cells[bIdx110].build = bakB110;                   /* 还原场景，防污染后续用例 */
@@ -2213,8 +2214,16 @@ async function runTests(dom, URL) {
       if (btn) {
         click(btn);
         await sleep(140);
-        check('点击召回后队列清空', G.state.marches.length === 0, G.state.marches.length + ' 支');
-        check('召回后兵力归城', G.armyTotal(c23) === 20000, G.armyTotal(c23) + ' 兵');
+        /* v91.13（老板 15）：召回 = 折返（原路返回、耗时与距离相关）—— 下令后在途（returning），
+           兵力未立即归城；走完折返才归。此处验"下令后在途 + 走完归城"。 */
+        const mRet = G.state.marches[0];
+        check('点击召回后转为折返在途（returning · 兵力未归）',
+          G.state.marches.length === 1 && mRet && mRet.returning === true && G.armyTotal(c23) === 0,
+          G.state.marches.length + ' 支 · returning=' + !!(mRet && mRet.returning));
+        if (mRet) { mRet.returnElapsed = mRet.returnTotal; G.march.tick(); }
+        await sleep(40);
+        check('折返走完后队列清空', G.state.marches.length === 0, G.state.marches.length + ' 支');
+        check('折返走完后兵力归城', G.armyTotal(c23) === 20000, G.armyTotal(c23) + ' 兵');
       }
       G.ui.closeAllModals();
       await sleep(60);
@@ -2366,9 +2375,9 @@ async function runTests(dom, URL) {
       !!document.querySelector('#modal-root .m-head') && !!document.querySelector('#modal-root .m-body')
       && !!document.querySelector('#modal-root .modal-x[data-action="close-modal"]')
       && !document.querySelector('#modal-root .m-foot [data-action="close-modal"]'));
-    /* v89.105：实测 690px，xl(700) 会冒滚动条 → 升 xxl（左右分栏结构不变） */
-    check('君主弹窗用大档固定尺寸（v77 左右分栏 · v89.105 升 xxl）',
-      !!document.querySelector('#modal-root .modal-xxl'));
+    /* v90.97（老板）：君主面板去左三清单 → 单栏收窄，尺寸 xxl(1200) → xl(960)。 */
+    check('君主弹窗用大档固定尺寸（v77 分栏 · v90.97 收窄 xl）',
+      !!document.querySelector('#modal-root .modal-xl'));
     check('三段式弹窗内层为 flex 布局', !!document.querySelector('#modal-root .inner-panel.inner-shell'));
     G.ui.closeAllModals();
     /* v25（需求 2）：游商/背包改为整页视图 —— 与各"大界面"同格局（.ui-page 容器） */
@@ -3407,7 +3416,7 @@ async function runTests(dom, URL) {
        （调面额时会假红；旧判据查「最多至 LvN」已随 capLv 退役）。 */
     && !!lianbing26 && expModal.textContent.indexOf('+' + Math.round(lianbing26.amount / 10000) + '万') >= 0,
     '练兵数据 +' + (lianbing26 ? Math.round(lianbing26.amount / 10000) : '?') + '万');
-  const expBtn = expModal.querySelector('[data-action="gen-exp-item"][data-mode="till"]');
+  const expBtn = expModal.querySelector('[data-action="gen-exp-till"]');
   check('选择窗给「用 1 个 / 用到升级」两种用法',
     !!expBtn && !!expModal.querySelector('[data-action="gen-exp-item"][data-mode="one"]'));
   click(expBtn);
@@ -4191,28 +4200,28 @@ async function runTests(dom, URL) {
   check('本城席位与全境合计**必须能区分**（测试夹具自身的前提）',
     G.genSlotsTotal() > G.genSlotsOf(city64),
     '本城 ' + G.genSlotsOf(city64) + ' 席 / 全境 ' + G.genSlotsTotal() + ' 席');
-  /* v73（老板）：「不要搞（本城 2 / 11 席 · 全境 2 / 11 席）这些文字，
-     直接英雄加本城/全境切换按钮就行」—— 标题的席位文字已撤。
-     ⚠️ 旧断言的本意（本城栏 vs 全境栏**范围分得开**）不能跟着删 ——
-     改由**列表内容**实测：给别城塞一位英雄，本城栏不该出现、全境栏必须出现。 */
-  check('v73：英雄页标题精简（无席位文字；本城/全境切换 chips 在位）', (function () {
+  /* v73（老板）：「不要搞（本城 2 / 11 席 · 全境 2 / 11 席）这些文字…」
+     标题的席位文字已撤。v90.97（老板）：**只列本城** —— 旧「本城/全境」切换整条退役。
+     改由**列表内容**实测归属：别城英雄不出现在本城栏；调入本城后出现。 */
+  check('v73：英雄页标题精简（v90.97：仅本城，无本城/全境 chips）', (function () {
     return !/本城 \d+ \/ \d+ 席/.test(genHtml64) && genHtml64.indexOf('席 · 全境') < 0
-      && genHtml64.indexOf('gen-scope') >= 0 && genHtml64.indexOf('>英雄<') >= 0;
+      && genHtml64.indexOf('gen-scope') < 0 && genHtml64.indexOf('>英雄<') >= 0;
   })(), (genHtml64.match(/class="gold-heading">[^<]{0,24}/) || ['未找到'])[0]);
   const other73 = G.makeGeneral('侧城将', 1, 'idle', side64.id, false);
   G.state.generals.push(other73);
-  G.ui._genScope = 'city';
   G.ui.renderView('generals');
   await sleep(120);
   const cityHtml73 = document.querySelector('#view-container').innerHTML;
-  G.ui._genScope = 'all';
+  check('v73：英雄页只列本城（别城英雄不出现）',
+    cityHtml73.indexOf('侧城将') < 0);
+  /* 调入本城（改归属）→ 应出现（归属随派遣改变的核心口径） */
+  other73.cityId = G.currentCity().id;
   G.ui.renderView('generals');
   await sleep(120);
-  const allHtml73 = document.querySelector('#view-container').innerHTML;
-  G.ui._genScope = 'city';
+  const movedHtml73 = document.querySelector('#view-container').innerHTML;
+  check('v73：调入本城后英雄出现（归属随派遣改变）',
+    movedHtml73.indexOf('侧城将') >= 0);
   G.state.generals = G.state.generals.filter((g) => g.id !== other73.id);
-  check('v73：本城/全境两栏范围仍分得开（别城英雄只出现在全境栏）',
-    cityHtml73.indexOf('侧城将') < 0 && allHtml73.indexOf('侧城将') >= 0);
 
   G.ui.openHostel();
   await sleep(80);
@@ -4550,9 +4559,9 @@ async function runTests(dom, URL) {
     /* 君主面板：左城池列表（进入）/ 右信息表（含月俸支出、晋升悬停） */
     G.ui.openLordInfo();
     await sleep(60);
-    check('v77：君主面板左右分栏（城池列表整行可进入 + 信息表含月俸支出）',
-      !!root75.querySelector('.lord-split')
-      && !!root75.querySelector('.lord-city[data-action="lord-city-enter"]')
+    check('v77：君主面板单栏信息表（v90.97 去左城池列表 · 含月俸支出）',
+      !root75.querySelector('.lord-split')
+      && !!root75.querySelector('.ls-right')
       && root75.innerHTML.indexOf('月俸支出') >= 0, '');
     const pbtn77 = root75.querySelector('[data-action="lord-promote"]');
     check('v77：晋升按钮悬停带条件（声望 / 旧币）',
@@ -4572,16 +4581,34 @@ async function runTests(dom, URL) {
       && (!G.lordGeneralOf() || G.lordGeneralOf().name === '测试君主'), G.state.ruler.name);
     G.renameLord(oldLord77);
     G.ui.closeAllModals();
-    /* v90.90：君主左侧三清单（城池/据点/野地）+ 星球下拉 */
+    /* v90.97（老板）：君主左侧三清单退役 → 移入「行政」菜单（星球→城市分级树 + 只读总览）。 */
     G.ui.openLordInfo();
     await sleep(100);
-    check('v90.90：君主左侧三清单（城池/据点/野地）+ 星球下拉', (function () {
+    check('v90.97：君主面板去左三清单（单栏）', (function () {
       const root = document.querySelector('#modal-root');
       const t = root ? root.textContent : '';
-      return !!root && t.indexOf('城池清单') >= 0 && t.indexOf('据点清单') >= 0
-        && t.indexOf('附属野地清单') >= 0 && !!root.querySelector('[data-action="lord-est-sel"]');
+      return !!root && t.indexOf('城池清单') < 0 && t.indexOf('据点清单') < 0
+        && t.indexOf('附属野地清单') < 0 && !root.querySelector('[data-action="lord-est-sel"]');
     })());
     G.ui.closeAllModals();
+    /* 行政视图：顶栏菜单 → 左 1/4 星球→城市分级树 */
+    G.ui.setView('admin');
+    await sleep(120);
+    check('v90.97：行政菜单在册（左分级树 · 星球可展开 · 城市可选）', (function () {
+      const vc = document.querySelector('#view-container');
+      const html = vc ? vc.innerHTML : '';
+      const node = vc && vc.querySelector('[data-action="adm-planet-toggle"]');
+      let city = false;
+      if (node) { node.click(); }
+      return !!vc && html.indexOf('adm-split') >= 0 && html.indexOf('行政') >= 0 && !!node;
+    })());
+    await sleep(80);
+    check('v90.97：行政树点星球 → 展开下辖城市（可选）', (function () {
+      const vc = document.querySelector('#view-container');
+      return !!vc && !!vc.querySelector('[data-action="adm-city-pick"]');
+    })());
+    G.ui.setView('city');
+    await sleep(60);
   })();
 
   /* ============================================================
@@ -6325,15 +6352,19 @@ if (svBtn) {
         && !document.querySelector('#topnav [data-view="stories"]');
     })());
 
-    /* ⑤ E3 幸存者三段条（真实 DOM：募兵页兵种卡） */
+    /* ⑤ E3 幸存者三段条 → v91.18（老板 2）：按令**退役**（面板精简为两行）。 */
     G.ui._trainTab = 'g1';
     G.ui.setView('troops');
     await sleep(90);
     const pop3 = document.querySelector('.pop-3');
-    check('v89.89（E3）：募兵页幸存者三段条在场', !!pop3,
-      pop3 ? pop3.textContent.replace(/\s+/g, ' ').trim().slice(0, 60) : '缺失');
-    check('v89.89（E3）：三段文字齐（可征/上限/增势）',
-      !!pop3 && /可征/.test(pop3.textContent) && /上限/.test(pop3.textContent) && /增势/.test(pop3.textContent));
+    check('v91.18：募兵页幸存者三段条已退役（精简 · 去掉可征/上限/增势）', !pop3,
+      pop3 ? '仍存在' : '已退役');
+    check('v91.18：募兵面板改两行（数量框 + 训练 + 驻军 + 解散）', (function () {
+      const vc = document.querySelector('#view-container');
+      const t = vc ? vc.textContent : '';
+      return t.indexOf('驻军') >= 0 && !!vc && !!vc.querySelector('[data-action="confirm-train"]')
+        && !!vc.querySelector('#train-count');
+    })());
     G.ui._trainTab = 'que';
   }
 
@@ -6951,14 +6982,23 @@ if (svBtn) {
     if (btn163) {
       btn163.click();
       await sleep(80);
+      /* v91.13（老板 15）：召回 = 折返（原路返回、耗时相关）—— 点击后在途（returning），
+         清单仍列出该军（标「返回中」）→ 不跳窗、不丢行；走完折返才归城/清空。 */
+      const mR = G.state.marches[0];
       const mr2 = document.querySelector('#modal-root');
-      const gone = G.state.marches.length === 0;
       const stillWar = !!(mr2 && mr2.querySelector('.war-list'));
       const notMarchesPane = !(mr2 && mr2.textContent.indexOf('行军队列（') >= 0);
-      const emptyTip = !!(mr2 && mr2.textContent.indexOf('当前没有行军中军队') >= 0);
-      check('v89.163 清单内召回：兵力归城 + 原地重绘（不跳行军队列弹窗 · 不留幽灵行）',
-        gone && stillWar && notMarchesPane && emptyTip,
-        'gone=' + gone + ' stillWar=' + stillWar + ' emptyTip=' + emptyTip);
+      const returning = !!(mR && mR.returning === true);
+      check('v89.163 清单内召回：转「返回中」（不跳行军队列弹窗 · 原地重绘 · 仍在途）',
+        returning && stillWar && notMarchesPane,
+        'returning=' + returning + ' stillWar=' + stillWar);
+      /* 走完折返 → 兵力归城、清单清空 */
+      if (mR) { mR.returnElapsed = mR.returnTotal; G.march.tick(); G.ui.openBattleList(); await sleep(60); }
+      const mr3 = document.querySelector('#modal-root');
+      check('v89.163 折返走完：兵力归城 + 清单空（当前没有行军中军队）',
+        G.state.marches.length === 0 && G.armyTotal(c163) > 0
+        && !!(mr3 && mr3.textContent.indexOf('当前没有行军中军队') >= 0),
+        'marches=' + G.state.marches.length + ' 兵=' + G.armyTotal(c163));
     } else {
       check('v89.163 清单内召回：兵力归城 + 原地重绘', false, '未找到召回按钮');
     }

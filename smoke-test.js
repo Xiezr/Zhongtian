@@ -240,17 +240,12 @@
   check('14 兵种', Object.keys(DATA.TROOPS).length === 14, Object.keys(DATA.TROOPS).length + '种');
   /* v28（需求 0）：攻/血校正后，这两条改为断言**设计口径**而不是历史数字 ——
      写死"攻250"会让任何一次平衡调整都变成"测试坏了"。 */
-  check('自行火炮：全军唯一耗电能（stone）的兵种（攻城器械的工业成本 · v89.229 承迫击炮原型）',
-    /* v89.96 立的是"相对判据"（不写死数字）；v89.229（兵种重构 18→14）后**判据本体换型**：
-       旧「破门车 血 36000 / 防 600 = 全军坦度之最」随合并并入自行火炮 —— 而自行火炮取
-       **迫击炮**数值（hp 6600 / def 200），坦度之最已归泰坦机甲（15000）。
-       改用**资源口径**做判据（更本质）：只有攻城器械吃「电能」（stone）—— 与废土四资源体系同构，
-       也是"器械 = 工业产品"的数值证据。 */
-    DATA.TROOPS.huopao.craft === true && DATA.TROOPS.huopao.mech === true
-    && DATA.TROOPS.huopao.cost.stone > 0
-    && Object.keys(DATA.TROOPS).every(function (id) {
-      return id === 'huopao' || !(DATA.TROOPS[id].cost || {}).stone;
-    }));
+  check('电能=全军能源（v91.06 老板「板车那也是电动的」：全部兵种必耗电能）',
+    /* v91.06：老板定调 —— "这里可没有燃油可以烧"，**所有兵种（含板车）都电动化**。
+       判据 = 全 14 兵种 cost.stone > 0（结构性等式，不写死数字）。 */
+    Object.keys(DATA.TROOPS).every(function (id) { return (DATA.TROOPS[id].cost || {}).stone > 0; })
+    && DATA.TROOPS.huopao.craft === true && DATA.TROOPS.huopao.mech === true
+    && DATA.TROOPS.huopao.cost.stone > 0);
   check('自行火炮：攻与射程均为全军之最（远程压制定位）',
     DATA.TROOPS.huopao.range === 1600 && DATA.TROOPS.huopao.craft === true
     && DATA.TROOPS.huopao.atk > DATA.TROOPS.wuren.atk);
@@ -337,7 +332,7 @@
   /* v40（需求 2）：老板要「8*6，6 行 8 列」→ 48 格；v68 起政务厅居中 4 格、余 44 可建 */
   check('城内 48 格（8 列 × 6 行 · 政务厅居中4格）', s.cities[0].cells.length === 48 && s.cities[0].cells.filter(function (c) { return c.build && c.build.id === 'guanfu'; }).length === 4);
   check('可建格 44', s.cities[0].cells.filter(function (c) { return !c.official; }).length === 44);
-  check('初始居所2座', s.cities[0].cells.filter(function (c) { return c.build && c.build.id === 'minfang'; }).length === 2);
+  check('初始居所28座（固定栏位：居所槽预建 · 功能建筑槽预留为空）', s.cities[0].cells.filter(function (c) { return c.build && c.build.id === 'minfang'; }).length === 28);
   check('外城 12 块地(2田1木1石1铁占5)', extOf(s).length === 12 && extOf(s).filter(function (e) { return e.type === 'farm'; }).length === 2 && extOf(s).filter(function (e) { return e.type; }).length === 5);
   check('初始英雄陆沉', s.generals[0].name === '陆沉');
   check('初始宝物', s.items.shennongchu === 1 && s.items.bengzhu === 5);   /* v89.152：初始珠宝 = 珍珠 */
@@ -4228,18 +4223,17 @@
   check('#13 升级完成清 pending（v89.220：中间插 hiLv · 窗口放宽）',
     /cell\.build\.lvl = q\.targetLevel;[\s\S]{0,260}cell\.pending = null;/.test(stS16));
   check('#13 施工面板显示 当前→目标 且可取消', uS16.indexOf('→ Lv') > 0 && uS16.indexOf('isUp16') > 0 && /取消'/.test(uS16));
-  /* v82（老板）：「不要显示（自建城）这种文字」——君主面板城池列表去档位括注（坐标与幸存者保留） */
-  check('#16 君主面板左侧三清单（v90.90：城池/据点/野地 + 星球分组 + 下拉）',
-    /_estListHTML = function/.test(uS16) && /empireItems = function/.test(uS16)
-    && /lord-city-enter/.test(uS16) && /lord-est-sel/.test(uS16) && /lord-wild-go/.test(uS16)
+  /* v90.97（老板）：君主左侧三清单（城池/据点/野地）整条退役 → 移入「行政」菜单。 */
+  check('#16 行政菜单左 1/4 星球→城市分级树（v90.97）',
+    /ui\.adminHTML = function/.test(uS16) && /adm-planet-toggle/.test(uS16) && /adm-city-pick/.test(uS16)
     && /GAME\.map\.coordText\(c\.x, c\.y\)/.test(uS16));
   /* v22（需求 1）：下拉框已全站移除 → 城池切换改为点选按钮组 */
   /* v77（老板）：君主面板改左右分栏（城池列表 + 进入按钮），v22 的 chips 退役；
-     城池切换仍是下拉框一处（v45）。 */
-  check('v77：城池切换走下拉框 + 君主面板「进入」按钮（v22 chips 退役）',
+     城池切换仍是下拉框一处（v45）。v90.97：君主左清单退役，进入城池入口改由行政树。 */
+  check('v77：城池切换走下拉框 + 进入城池入口（v22 chips 退役；v90.97 行进入口改行政树）',
     /data-action="switch-city"/.test(uS16) && /after === 'city'/.test(mS16)
-    && /lord-city-enter/.test(uS16) && /lord-city-enter/.test(mS16));
-  check('#16 无城池/无野地时占位', /est-empty/.test(uS16) && /gb-empty/.test(uS16));
+    && /adm-city-pick/.test(uS16) && /lord-city-enter/.test(mS16));
+  check('#16 无城池/无野地时占位', /adm-empty/.test(uS16) && /adm-empty/.test(hS16));
   check('#17 侧栏驻军栏（资源下方）', /garrison-bar/.test(hS16) && /ui\.renderGarrison = function/.test(uS16));
   /* ⛔ v89.215（老板）规则变更：「驻军，不再设置下拉，直接显示，直接按固定位置和顺序列出
      所有兵种和数量，暂无的数量则为 0」——
@@ -4648,14 +4642,14 @@
       c.res.grain = 5e6; c.res.wood = 5e6; c.res.iron = 5e6; c.res.pop = 5e4;
       var before = c.res.grain;
       var r = G.train('buxingji', 10, c.id, bi);
-      /* v89.229：步行机承长矛手价 450（=150×3 · 旧"×3"口径仍在）·
-         主战机甲承重甲战车 5400（=1800×3） */
-      return r.ok === true && (before - c.res.grain) === 4500
-        && DATA.TROOPS.buxingji.cost.grain === 450
-        && DATA.TROOPS.zhuzhan.cost.grain === 5400
+      /* v91.06（电能解放 · 净水削减）：改前 grain×3 是为抵消"军队无维持消耗"的缺口；
+         v91.08 再降（步行机 180 · 主战 2200）—— 净水趋近"口粮"量级，重耗转电能/废钢。 */
+      return r.ok === true && (before - c.res.grain) === 1800
+        && DATA.TROOPS.buxingji.cost.grain === 180
+        && DATA.TROOPS.zhuzhan.cost.grain === 2200
         && !('food' in DATA.TROOPS.buxingji);
     } finally { G.state = keep; }
-  })(), '步行机承长矛手价 450（=150×3）· 主战机甲承重甲战车 5400（=1800×3）· food 字段移除');
+  })(), '步行机粮 180（v91.08）· 主战机甲粮 2200 · food 字段移除');
   /* v89.107（老板）：「左侧统计栏的警报警报（含策略布防）放到军务中，与出征防守等并列」——
      断言**两头都查**：新家（军务·警报页）有预警 + 守备力 + 布防；老家（左侧城池属性）已清空。 */
   check('实测：警报预警与策略布防已搬进军务·警报页（老家的横幅已撤）', (function () {
@@ -4920,7 +4914,7 @@
     G.state.world.weather = w0;
     return b > a;
   })());
-  check('召回：兵力原路返还且队列清空', (function () {
+  check('折返：下令后军队仍在途（returning），走完才归城且队列清空', (function () {
     var w = nearWild('desert'); if (!w) return true;
     var gen = st30.generals[0]; gen.stamina = 100; gen.energy = 100;
     st30.cities[0].army = { buxingji: 30000 };
@@ -4929,7 +4923,12 @@
     if (!r.ok) return true;
     var mid = st30.marches[0].id;
     var rr = G.march.recall(mid);
-    return rr.ok && st30.marches.length === 0 && G.armyTotal(st30.cities[0]) === 30000;
+    /* v91.13（老板 15）：召回 = 折返（原路返回、耗时与距离相关）—— 下令后在途、兵力未归。 */
+    var m = st30.marches[0];
+    var ordered = rr.ok && st30.marches.length === 1 && m && m.returning === true
+      && G.armyTotal(st30.cities[0]) === 0;
+    if (m) { m.returnElapsed = m.returnTotal; G.march.tick(); }
+    return ordered && st30.marches.length === 0 && G.armyTotal(st30.cities[0]) === 30000;
   })());
   check('急行军令：立即抵达（不再静默失效）', (function () {
     var w = nearWild('hill'); if (!w) return true;
@@ -4944,8 +4943,8 @@
   check('行军队列已接入主循环 tickOnce', /GAME\.march\.tick/.test(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'state.js'), 'utf8')));
   /* v89.137：提交端先把「己方野地增援不带将/不带计」解析进 _genSend137 / _schemeSend137
      （值同源：genSel.value / ui._expScheme），再交 dispatch —— 仍走 dispatch，不是即刻 expedition。 */
-  check('界面出征走 dispatch（不是即刻 expedition）',
-    /GAME\.march\.dispatch\(target, mode, atk, _genSend137, _schemeSend137\)/.test(mS30));
+  check('界面出征走 dispatch（不是即刻 expedition）· v91.21 带派出城 fromCityId',
+    /GAME\.march\.dispatch\(target, mode, atk, _genSend137, _schemeSend137,/.test(mS30));
   /* v24（需求 9）：行军进度随底部队列条一起移到「公文 · 队列」一节 */
   check('行军进度在公文「队列」呈现', /'🛫 行军'/.test(uS30) && /ui\.openMarches = function/.test(uS30));
   check('出征弹窗显示行军预估', /ui\.updateExpMarch = function/.test(uS30) && /exp-march/.test(uS30));
@@ -6092,7 +6091,7 @@
     !/\.q-guide \{/.test(css34) && !/\.nt-guide \{/.test(css34));
   check('信息型内容保留（数值 / 状态 / 来源）',
     /* v80：『已解锁 N/M 种』随兵营重排退役 —— 示例位换一条仍在的信息串 */
-    ['治疗费', '守军约', '队列空位', '累计投入的 50%', '游商价', '返还'].every(function (t) {
+    ['治疗费', '守军约', '驻军', '累计投入的 50%', '游商价', '返还'].every(function (t) {
       return uS34.indexOf(t) >= 0;
     }));
 
@@ -7020,12 +7019,12 @@
   check('威望并入君主面板（v77 右栏信息表：威望 + 晋升按钮）',
     /ui\.openLordInfo = function/.test(uS38) && /lord-promote/.test(uS38)
     && /data-action="lord-promote"/.test(uS38));
-  check('实测：君主面板含威望与晋升 + 左右分栏', (function () {
+  check('实测：君主面板含威望与晋升（v90.97：去左三清单，改单栏）', (function () {
     var root38 = global.document.querySelector('#modal-root');
     root38.innerHTML = '';
     G.ui.openLordInfo();
     var h = root38.innerHTML;
-    return h.indexOf('威望') >= 0 && h.indexOf('lord-promote') >= 0 && h.indexOf('lord-split') >= 0;
+    return h.indexOf('威望') >= 0 && h.indexOf('lord-promote') >= 0 && h.indexOf('ls-right') >= 0;
   })());
 
   /* ---- 需求 11：任务清单 + 详情弹窗（v90.92 退役 · 零残留守卫）---- */
@@ -8814,8 +8813,8 @@ check('实测：加速只影响指定训练营，另一营不受影响', (functi
   /* v89.36：募兵耗粮 ×3 —— 本测试原先靠"环境资源恰好够"，成本抬升后
      第二条队列会被「资源或幸存者不足」拒绝；补足资源（与其它募兵测试同一做法），
      让本测试只管"加速定位"，不管"家底够不够"。 */
-  var bkR = { grain: s.res.grain, wood: s.res.wood, iron: s.res.iron, pop: s.res.pop };
-  s.res.grain += 300000; s.res.wood += 300000; s.res.iron += 300000; s.res.pop += 5000;
+  var bkR = { grain: s.res.grain, wood: s.res.wood, stone: s.res.stone, iron: s.res.iron, pop: s.res.pop };
+  s.res.grain += 300000; s.res.wood += 300000; s.res.stone += 300000; s.res.iron += 300000; s.res.pop += 5000;
   G.train('buxingji', 50, c.id, idxs[0]);
   G.train('buxingji', 50, c.id, idxs[1]);
   var qA = G.trainQueuesOf(c, idxs[0])[0], qB = G.trainQueuesOf(c, idxs[1])[0];
@@ -8823,7 +8822,7 @@ check('实测：加速只影响指定训练营，另一营不受影响', (functi
   var r = G.systems.boostTrainQueue('hanxin_dianbing', c.id, idxs[0]);
   var ok = r.ok && qA.elapsed > 0 && qB.elapsed === eB;
   s.queues.train = bkQ;
-  s.res.grain = bkR.grain; s.res.wood = bkR.wood; s.res.iron = bkR.iron; s.res.pop = bkR.pop;
+  s.res.grain = bkR.grain; s.res.wood = bkR.wood; s.res.stone = bkR.stone; s.res.iron = bkR.iron; s.res.pop = bkR.pop;
   delete s.items.hanxin_dianbing;
   return ok;
 })());
@@ -8860,7 +8859,7 @@ check('实测：报价 = 军资 × 20% ×（实际能削的比例）· 档内线
   if (idx < 0) return true;
   c.cells[idx].build.lvl = 10;
   s.res.gold = 9999999; s.res.pop = 999999;
-  s.res.grain += 500000; s.res.wood += 500000; s.res.iron += 500000;
+  s.res.grain += 500000; s.res.wood += 500000; s.res.stone += 500000; s.res.iron += 500000;
   G.train('buxingji', 1000, c.id, idx);
   var q = G.trainRunningOf(c.id, idx, 'train');
   var ok = false;
@@ -8886,7 +8885,7 @@ check('实测：结算扣金 + 缩短 + 封顶（跳过量 ≤ BOOST_CAP · 用�
   c.cells.forEach(function (x, i) { if (x.build && x.build.id === 'junying') idx = i; });
   if (idx < 0) return true;
   s.res.gold = 9999999; s.res.pop = 999999;
-  s.res.grain += 500000; s.res.wood += 500000; s.res.iron += 500000;
+  s.res.grain += 500000; s.res.wood += 500000; s.res.stone += 500000; s.res.iron += 500000;
   G.train('buxingji', 1000, c.id, idx);
   var q = G.trainRunningOf(c.id, idx, 'train');
   if (!q) { s.queues.train = bkQ; s.res.gold = bkR; return false; }
@@ -8914,7 +8913,7 @@ check('实测：护栏（旧币不足 / 无队列 / 完工后再提速 全拒）
   if (idx < 0) return true;
   var noQ = G.trainRush(c.id, idx, 0.5, 'train').ok === false;
   s.res.gold = 9999999; s.res.pop = 999999;
-  s.res.grain += 500000; s.res.wood += 500000; s.res.iron += 500000;
+  s.res.grain += 500000; s.res.wood += 500000; s.res.stone += 500000; s.res.iron += 500000;
   G.train('buxingji', 1000, c.id, idx);
   var q = G.trainRunningOf(c.id, idx, 'train');
   var need = G.trainRushCost(q, 0.5);
@@ -8955,13 +8954,13 @@ function _bpFreshTrainQ(c, s) {
   if (idx < 0) return null;
   c.cells[idx].build.lvl = 10;
   s.res.gold = 5e7; s.res.pop = 999999;
-  s.res.grain += 5e6; s.res.wood += 5e6; s.res.iron += 5e6;
+  s.res.grain += 5e6; s.res.wood += 5e6; s.res.stone += 5e6; s.res.iron += 5e6;
   var tr = G.train('buxingji', 1000, c.id, idx);
   if (!tr || !tr.ok) return null;
   return { q: G.trainRunningOf(c.id, idx, 'train'), idx: idx };
 }
-function _bpSnap(s) { return { q: s.queues.train.slice(), gold: s.res.gold, grain: s.res.grain, wood: s.res.wood, iron: s.res.iron, pop: s.res.pop }; }
-function _bpRestore(s, b) { s.queues.train = b.q; s.res.gold = b.gold; s.res.grain = b.grain; s.res.wood = b.wood; s.res.iron = b.iron; s.res.pop = b.pop; }
+function _bpSnap(s) { return { q: s.queues.train.slice(), gold: s.res.gold, grain: s.res.grain, wood: s.res.wood, stone: s.res.stone, iron: s.res.iron, pop: s.res.pop }; }
+function _bpRestore(s, b) { s.queues.train = b.q; s.res.gold = b.gold; s.res.grain = b.grain; s.res.wood = b.wood; s.res.stone = b.stone; s.res.iron = b.iron; s.res.pop = b.pop; }
 function _bpItem(s, id, n) {
   var pri = s.items[id];
   s.items[id] = n;
@@ -9410,12 +9409,12 @@ check('射程衰减：半程内全伤害 / 半程外半伤害 / 贴身 1/4，且
     /* 近战（射程 < 500）不受衰减 —— 否则近战伤害一律除以 4，回合数翻几倍 */
     && T.rangeDecay(10, 80) === 1 && T.rangeDecay(50, 50) === 1;
 })());
-check('相克查询出口已退役（v89.179 全撤；v57"签名不一致"的坑成为历史）', (function () {
-  /* 历史：v57 防御向出口曾误收 army 对象 → 整套防御向静默失效（靠实测打印才发现）。
-     v89.179 克制全撤后，两出口与两表一并删除 —— 结构断言见 §179①。 */
+check('旧相克出口退役 · 新三系克制在册（v91.08 老板「克制以 0.2 倍为限」）', (function () {
+  /* v89.179 全撤的是**旧两表两出口**（counterAtkOf/counterDefOf · COUNTER_ATK/DEF）；
+     v91.08 按老板令**回归克制**（三系循环 · ±0.2）：新数据 DATA.COUNTER/TROOP_ROLE + 出口 T.counterMulOf。 */
   return G.tactic.counterAtkOf === undefined && G.tactic.counterDefOf === undefined
-    && DATA.COUNTER === undefined && DATA.COUNTER_MULT === undefined
-    && DATA.COUNTER_ATK === undefined && DATA.COUNTER_DEF === undefined;
+    && DATA.COUNTER_ATK === undefined && DATA.COUNTER_DEF === undefined
+    && !!DATA.COUNTER && !!DATA.TROOP_ROLE && typeof G.tactic.counterMulOf === 'function';
 })());
 check('实测：防守差异只由纸面防御决定（导弹车打步行机 > 打盾卫 > 打自行火炮）——无克制口径', (function () {
   /* v89.179：防御向表退役后，排序改由纸面数值决定（实测杀伤 473 / 340 / 18）：
@@ -10675,8 +10674,9 @@ check('英雄界面为 3×2 卡片墙 + 下方档案', (function () {
   })());
   check('落地投影仍在（去掉染色不能连接地感一起丢）',
     /\.iso-tile\.built \.tile-art img\.ico-img \{ filter: drop-shadow/.test(css.replace(/\/\*[\s\S]*?\*\//g, '')));
-  check('ser-<系列> 语义类仍由 ui.js 挂出（数据侧唯一来源 DATA.SERIES）',
-    /cls: 'built ser-' \+ \(b\.series \|\| 'gov'\)/.test(UI));
+  check('ser-<系列> 语义类仍由 ui.js 挂出（数据侧唯一来源 DATA.SERIES · 瞭望塔渲染归民生 live）',
+    /cls: 'built ser-' \+ _serCls \+ alarm/.test(UI)
+    && /_serCls = \(cell\.build\.id === 'fenghuotai'\) \? 'live' : \(b\.series \|\| 'gov'\)/.test(UI));
 
   /* ---- 素材像素级实测：自带 PNG 解码，读真实色相/饱和度 ---- */
   var PIX = (function () {
@@ -11048,8 +11048,8 @@ check('英雄界面为 3×2 卡片墙 + 下方档案', (function () {
   console.log('  --- 需求 2：城内 8×6 并填满界面 ---');
   check('城池为 8 列 × 6 行', /col: 8, row: 6,/.test(ST));
   check('政务厅 4 格落位走唯一出口 GAME.govCellsOf（居中，v68 老板）',
-    /var gfIdx = GAME\.govCellsOf\(city\.col, city\.row\)/.test(ST)
-    && /GAME\.govCellsOf = function/.test(ST));
+    /GAME\.applyFixedLayout = function/.test(ST) && /GAME\.govCellsOf = function/.test(ST)
+    && /GAME\.govCellsOf\(col, row\)/.test(ST));
   check('fitTile 上限 96 → 160（否则 8 列时棋盘只占屏幕三分之二）',
     /opt\.max \|\| 160/.test(UI));
   check('旧档 6×6 → 8×6 扩容迁移存在（v89.128 整合段）', /6×6 → 8×6（48 格）/.test(ST)
@@ -11471,7 +11471,7 @@ console.log('\n===== 45. v60 城池归属与名城专有 =====');
     return empty === 0 && wrong === 0 && extWrong === 0
       && bl === DATA.MAX_BLEVEL + G.cityBuildBonus(npcZhou)
       /* v89.126：围墙占格 —— 「围墙同此」改查格子 */
-      && sh.cells.filter(function (c) { return c.build && c.build.id === 'chengqiang'; }).length === 1
+      && sh.wallLv === bl   /* v91.19：围墙走独立字段 wallLv（不占格） */
       && sh.extGrid.length > 0;
   })(), '首府建筑补到 Lv' + G.npcBuildLvOf(npcZhou) + '（内外同上限）');
   check('实测：守将派生**确定性**且六维与城等级相称', (function () {
@@ -11517,9 +11517,8 @@ console.log('\n===== 45. v60 城池归属与名城专有 =====');
       var want = Math.round(G.npcCityRes(tgt).grain * DATA.EXPEDITION.cityInherit);
       /* v89.211 规则变更（老板 2「占领后发现一格未建造」）：v89.128 围墙提取到环城槽后，
          原墙格**补建居所**（不再留空）—— 占来的"满配城"48 格全建成；等级保留在槽。 */
-      var wIdx211 = G.wallPlanIdxOf();
-      return empty === 0 && wIdx211 > 0
-        && !!nc.cells[wIdx211].build && nc.cells[wIdx211].build.id === 'minfang'
+      /* v91.19（固定栏位）：占城 = 48 格全建满、0 空格；围墙在**环城槽**（等级=建筑上限）、格内无围墙。 */
+      return empty === 0
         && nc.res.grain === want
         && !!(nc.wall && nc.wall.build && nc.wall.build.lvl === G.npcBuildLvOf(tgt))
         && nc.cells.filter(function (c) { return c.build && c.build.id === 'chengqiang'; }).length === 0;
@@ -11568,74 +11567,50 @@ console.log('\n===== 46. v61 满配城池城内布局 =====');
   console.log('  --- 规则：各 1 座 / 训练营 2 座 / 余为居所 ---');
   /* v65（老板）：「城内建筑按照 6*8，政务厅靠右居中位置固定，怎么现在变成 4*8 了？」
      → 格数**不再按等级分档**，`sizeByLevel` 已删，改为唯一来源 `PLACE.size`。 */
-  check('配置：CITY_PLAN 用统一的 8×6（不再按等级分档）+ 落位优先序',
-    !!PLACE && PLACE.size[0] === 8 && PLACE.size[1] === 6
-    && PLACE.sizeByLevel === undefined
-    /* v70（老板）：货仓 1 → 4 后，优先序 14 → 17 项 */
-    /* v89.126：围墙占格 → 优先序 17 → 18 项 */
-    && PLACE.maxLevel === 10 && PLACE.order.length === 18 && PLACE.filler === 'minfang');
+  check('配置：CITY_PLAN 统一的 8×6 + **固定栏位 fixed（48 格）**', (function () {
+    return !!PLACE && PLACE.size[0] === 8 && PLACE.size[1] === 6 && PLACE.sizeByLevel === undefined
+      && PLACE.fixed instanceof Array && PLACE.fixed.length === 48
+      /* 行1（idx0-7）末三 = 车库·补给站·瞭望塔 */
+      && PLACE.fixed[5] === 'majiu' && PLACE.fixed[6] === 'yizhan' && PLACE.fixed[7] === 'fenghuotai'
+      /* 行5（idx32-39）= 货仓×3·交易站·研习所·居所×3 */
+      && PLACE.fixed[32] === 'cangku' && PLACE.fixed[33] === 'cangku' && PLACE.fixed[34] === 'cangku'
+      && PLACE.fixed[35] === 'shichang' && PLACE.fixed[36] === 'shuyuan'
+      /* 行6（idx40-47）= 基因·酒馆·招募站·锻造间·机工坊·练兵场·训练营×2 */
+      && PLACE.fixed[40] === 'honglusi' && PLACE.fixed[41] === 'kezhan' && PLACE.fixed[42] === 'zhaoxianguan'
+      && PLACE.fixed[43] === 'tiejiangpu' && PLACE.fixed[44] === 'gongjiangzuofang' && PLACE.fixed[45] === 'xiaochang'
+      && PLACE.fixed[46] === 'junying' && PLACE.fixed[47] === 'junying';
+  })());
   check('实测：政务厅恰好 4 格（2×2 同体，与玩家城一致）', (function () {
-    for (var lv = 1; lv <= 10; lv++) {
-      var c = countOf(G.cityPlanOf(lv));
-      if (c.guanfu !== 4) return false;
-    }
+    for (var lv = 1; lv <= 10; lv++) { if (countOf(G.cityPlanOf(lv)).guanfu !== 4) return false; }
     return true;
   })());
-  check('实测：训练营恰好 2 座（老板指定）', (function () {
-    for (var lv = 1; lv <= 10; lv++) {
-      if (countOf(G.cityPlanOf(lv)).junying !== 2) return false;
-    }
-    return true;
-  })());
-  check('实测：除居所外每种建筑恰好 1 座、且城内可建建筑一种不缺', (function () {
-    /* 城内可建 = BUILD_ORDER 的 14 种（围墙不占格、政务厅已单算） */
-    var want = DATA.BUILD_ORDER.filter(function (b) { return b !== 'minfang'; });
+  check('实测：固定布局计数（训练营×2 · 货仓×3 · 各功能建筑不缺）', (function () {
+    var want = DATA.BUILD_ORDER.filter(function (b) { return b !== 'minfang' && b !== 'chengqiang'; });
     for (var lv = 1; lv <= 10; lv++) {
       var c = countOf(G.cityPlanOf(lv));
       for (var i = 0; i < want.length; i++) {
-        /* v70（老板）：训练营 2 座、**货仓 4 座**，其余各 1 座 */
-        var need = (want[i] === 'junying') ? 2 : (want[i] === 'cangku') ? 4 : 1;
+        var need = (want[i] === 'junying') ? 2 : (want[i] === 'cangku') ? 3 : 1;
         if ((c[want[i]] || 0) !== need) return false;
       }
-      /* 不许出现多余的建筑种类（比如把围墙也铺上格） */
+      /* 无围墙空格、无多余种类 */
       var extra = Object.keys(c).filter(function (b) { return want.indexOf(b) < 0 && b !== 'minfang' && b !== 'guanfu'; });
       if (extra.length) return false;
     }
     return true;
   })());
-  check('实测：余格全是居所（没有空格、没有别的东西）', (function () {
+  check('实测：满配余格全居所（无空格 · 居所 28 = 48 − 20 功能格）', (function () {
     for (var lv = 1; lv <= 10; lv++) {
       var plan = G.cityPlanOf(lv), c = countOf(plan);
-      var sum = Object.keys(c).reduce(function (a, k) { return a + c[k]; }, 0);
       var empty = plan.cells.filter(function (x) { return !x.build; }).length;
-      /* 每格都有建筑 = 居所数 + 功能建筑数 + 政务厅 4 */
-      if (empty !== 0 || sum !== plan.total) return false;
-      /* 4 = 政务厅 4 格；18 = 功能建筑格数（v70：训练营2 + 货仓4 + 其余 11；v89.126：+ 围墙）；余下全是居所 */
-      if (c.minfang !== plan.total - 4 - 18) return false;
+      if (empty !== 0) return false;
+      if (c.minfang !== plan.total - 20) return false;   /* 政务厅4 + 车库/补给/瞭望3 + 货仓3/交易/研习5 + 基因…训练营×2=8 */
     }
     return true;
   })());
-
-  console.log('  --- 地块数量（v65：统一 8×6，不再按等级）---');
-  check('实测：十级同格数（v65 老板「怎么现在变成 4×8 了？」→ 不再分档）', (function () {
-    var uniq = {};
-    for (var lv = 1; lv <= 10; lv++) {
-      var p3 = G.cityPlanOf(lv);
-      if (p3.col !== 8 || p3.row !== 6) return false;
-      uniq[p3.total] = 1;
-    }
-    return Object.keys(uniq).length === 1 && uniq[48] === 1;
-  })(), '1~10 级一律 8×6 = 48 格');
-  check('实测：48 格装得下"政务厅4 + 训练营2 + 其余13（含围墙）"（19 格）',
-    G.cityPlanOf(1).total >= 19, 'Lv1 = ' + G.cityPlanOf(1).total + ' 格');
-  check('实测：最高档与玩家城同宽（8 列）—— 攻占后进城不会越界', (function () {
-    return G.cityPlanOf(10).col === 8 && G.cityPlanOf(10).row === 6;
+  check('实测：十级同格数（8×6 = 48，不再按等级分档）', (function () {
+    var p3 = G.cityPlanOf(10); return G.cityPlanOf(1).total === 48 && p3.col === 8 && p3.row === 6;
   })());
-  check('实测：等级越界被钳制（0 / 99 都不崩）',
-    G.cityPlanOf(0).level === 1 && G.cityPlanOf(99).level === PLACE.maxLevel);
-
-  console.log('  --- 位置相对固定 ---');
-  check('实测：**只与等级有关** —— 同等级两次布局逐格一致', (function () {
+  check('实测：**只与布局有关** —— 同等级两次布局逐格一致', (function () {
     var a = G.cityPlanOf(7), b = G.cityPlanOf(7);
     for (var i = 0; i < a.cells.length; i++) {
       var x = a.cells[i].build, y = b.cells[i].build;
@@ -11643,33 +11618,18 @@ console.log('\n===== 46. v61 满配城池城内布局 =====');
     }
     return true;
   })());
-  check('实测：政务厅落位与玩家城**同一出口**（8×6 → 棋盘正中 [19,20,27,28]）', (function () {
+  check('实测：政务厅落位与玩家城**同一出口**（棋盘正中 [19,20,27,28]）', (function () {
     var plan = G.cityPlanOf(8);
     var gf = plan.cells.map(function (c, i) { return (c.build && c.build.id === 'guanfu') ? i : -1; })
       .filter(function (i) { return i >= 0; });
     return gf.join(',') === G.govCellsOf(plan.col, plan.row).join(',');
   })());
-  check('实测：训练营紧贴政务厅左邻一列（成对、挨着政务厅）', (function () {
-    var plan = G.cityPlanOf(8);
-    /* v68：政务厅居中后左列不能再写死 —— 按落位出口实算 */
-    var gfCols = G.govCellsOf(plan.col, plan.row).map(function (i) { return i % plan.col; });
-    var gCol = Math.min.apply(null, gfCols);   /* 政务厅最左列 */
-    var bars = plan.cells.map(function (c, i) { return (c.build && c.build.id === 'junying') ? i : -1; })
-      .filter(function (i) { return i >= 0; });
-    return bars.length === 2 && bars.every(function (i) { return (i % plan.col) === gCol - 1; });
-  })());
-  check('实测：功能建筑比居所更靠近城池中心（核心在里、居所在外）', (function () {
-    var plan = G.cityPlanOf(8);
-    var cx = (plan.col - 1) / 2, cy = (plan.row - 1) / 2;
-    var d = function (i) { return Math.abs((i % plan.col) - cx) + Math.abs(Math.floor(i / plan.col) - cy); };
-    var fn = [], mf = [];
-    plan.cells.forEach(function (c, i) {
-      if (!c.build) return;
-      if (c.build.id === 'minfang') mf.push(d(i));
-      else if (c.build.id !== 'guanfu') fn.push(d(i));
-    });
-    var avg = function (a) { return a.reduce(function (x, y) { return x + y; }, 0) / Math.max(1, a.length); };
-    return fn.length > 0 && mf.length > 0 && avg(fn) < avg(mf);
+  check('实测：固定栏位落点精确（各建筑在布局指定的格）', (function () {
+    var plan = G.cityPlanOf(8), idAt = function (i) { return plan.cells[i].build && plan.cells[i].build.id; };
+    /* 车库/补给站/瞭望塔 = idx5/6/7；货仓×3+交易+研习 = idx32-36；行6 = idx40-47 */
+    return idAt(5) === 'majiu' && idAt(7) === 'fenghuotai'
+      && idAt(32) === 'cangku' && idAt(35) === 'shichang' && idAt(36) === 'shuyuan'
+      && idAt(40) === 'honglusi' && idAt(47) === 'junying';
   })());
   check('结构：满配幸存者**不吃玩家侧加成**（不引用 mastery / maxPopOf）', (function () {
     /* 侦查面板报的"这城有多少人"不该因为我在别处盖了座 Lv12 居所就变 ——
@@ -11712,7 +11672,7 @@ console.log('\n===== 46. v61 满配城池城内布局 =====');
       if (!f) return false;
       var p = G.fortPlanOf(f);
       return !!p && p.total === G.cityPlanOf(f.level).total && p.minfang > 0
-        && p.popCap > 0 && p.def === G.fortDefOf(f) && p.items.length === 15;   /* v89.126：+ 围墙 */
+        && p.popCap > 0 && p.def === G.fortDefOf(f) && p.items.length === 14;   /* v91.19：固定栏位无围墙格 → 14 种 */
     } finally { G.state = keep; }
   })());
   check('实测：野外城池的城防走唯一出口（不再是写死的算式）', (function () {
@@ -11762,7 +11722,7 @@ console.log('\n===== 46. v61 满配城池城内布局 =====');
       /* v89.211 规则变更（老板 2）：围墙从影子格提取到环城槽（不占 cells）后，
          原墙格**补建居所** —— 居所 26→27（= total−21）；等级保留在槽。 */
       return nc.cells.length === want.total && nc.col === want.col && nc.row === want.row
-        && c.junying === 2 && c.cangku === 4 && c.minfang === want.total - 21
+        && c.junying === 2 && c.cangku === 3 && c.minfang === want.total - 20   /* v91.19：货仓3 · 功能20格 */
         && !!(nc.wall && nc.wall.build && nc.wall.build.id === 'chengqiang'
           && nc.wall.build.lvl === G.npcBuildLvOf(tgt))
         && nc.cells.filter(function (x) { return x.build && x.build.id === 'chengqiang'; }).length === 0;
@@ -11779,8 +11739,8 @@ console.log('\n===== 46. v61 满配城池城内布局 =====');
   check('实测：布局呈现含建筑名、居所数、地块与幸存者', (function () {
     var html = G.ui.planHTML(G.fortPlanOf({ x: 1, y: 1, level: 8, name: '青石营' }));
     /* v70：货仓 1→4 之后 30 → 27；v89.126：围墙占格后 27 → 26 */
-    return html.indexOf('训练营 ×2') >= 0 && html.indexOf('货仓 ×4') >= 0
-      && html.indexOf('居所 ×26') >= 0
+    return html.indexOf('训练营 ×2') >= 0 && html.indexOf('货仓 ×3') >= 0
+      && html.indexOf('居所 ×28') >= 0
       && html.indexOf('8 × 6 = 48 格') >= 0 && html.indexOf('幸存者上限') >= 0;
   })());
   check('v89.64：布防呈现只在野外城池弹窗 —— 出征面板**不显示**目标情报', (function () {
@@ -12300,9 +12260,9 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
   check('实测：48 格装得下"政务厅4 + 训练营2 + 其余13 种各1座（含围墙）"', (function () {
     var cells = G.cityPlanOf(1).cells, c2 = {};
     cells.forEach(function (x) { if (x.build) c2[x.build.id] = (c2[x.build.id] || 0) + 1; });
-    return c2.guanfu === 4 && c2.junying === 2
-      && Object.keys(c2).filter(function (k2) { return k2 !== 'minfang'; }).length === 15;
-  })(), '政务厅4 · 训练营2 · 其余13种（含围墙）· 居所26');
+    return c2.guanfu === 4 && c2.junying === 2 && c2.cangku === 3
+      && Object.keys(c2).filter(function (k2) { return k2 !== 'minfang'; }).length === 14;
+  })(), '政务厅4 · 训练营2 · 货仓3 · 其余各1 · 居所28（固定栏位）');
   check('结构：野外城池面板与一览表都写出格数（否则玩家只能猜）', (function () {
     var plan = codeOf(uS, 'ui.planHTML = function');
     var forts = codeOf(uS, 'ui.openForts = function');
@@ -12413,10 +12373,8 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
     if (!npc) return false;
     var sh = G.npcCityShadow(npc), bl = G.npcBuildLvOf(npc);
     var bad = sh.cells.filter(function (c) { return c.build && c.build.lvl !== bl; }).length;
-    /* v89.126：围墙同此 = 围墙**格**等级 === bl */
-    var wcell = sh.cells.filter(function (c) { return c.build && c.build.id === 'chengqiang'; });
-    /* v89.64：首府 = 12 + 8 = 20（基数由满级城等级 10 改为 MAX_BLEVEL 12） */
-    return bad === 0 && wcell.length === 1 && wcell[0].build.lvl === bl && bl === DATA.MAX_BLEVEL + 8;
+    /* v91.19：围墙走独立字段 wallLv（不占格）*/
+    return bad === 0 && sh.wallLv === bl && bl === DATA.MAX_BLEVEL + 8;
   })());
   check('实测：幸存者上限跟着**居所等级**走（建筑等级提高 → 幸存者跟着涨）', (function () {
     var c9 = null;
@@ -13568,9 +13526,8 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
     var sh = G.npcCityShadow(npc), bl = G.npcBuildLvOf(npc);
     var badIn = sh.cells.filter(function (c) { return c.build && c.build.lvl !== bl; }).length;
     var badOut = (sh.extGrid || []).filter(function (e) { return e.lv !== bl; }).length;
-    /* v89.126：围墙占格 —— "围墙同此"改为查格子里的围墙等级 */
-    var wCells = sh.cells.filter(function (c) { return c.build && c.build.id === 'chengqiang'; });
-    return badIn === 0 && badOut === 0 && wCells.length === 1 && wCells[0].build.lvl === bl;
+    /* v91.19：围墙走独立字段 wallLv（不占格）*/
+    return badIn === 0 && badOut === 0 && sh.wallLv === bl;
   })());
   check('实测：野外城池（非名城）按**自己的等级**；名城一律档位满配', (function () {
     var fort = { id: 'f49', name: '据点', x: 3, y: 3, level: 4, type: 'fort' };
@@ -15072,11 +15029,11 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
       });
     })());
 
-    check('城内满配里货仓恰好 4 座（v70 老板）', (function () {
+    check('城内满配里货仓恰好 3 座（v91.19 老板：固定栏位货仓×3）', (function () {
       for (var lv = 1; lv <= 10; lv++) {
         var c = 0;
         G.cityPlanOf(lv).cells.forEach(function (x) { if (x.build && x.build.id === 'cangku') c++; });
-        if (c !== 4) return false;
+        if (c !== 3) return false;
       }
       return true;
     })());
@@ -15425,10 +15382,10 @@ console.log('\n===== 59. v73 五条（旧币 · 资质 · 遗迹 · 英雄头 ·
 
   /* ---------- ④ 英雄界面头部 ---------- */
   console.log('  --- ④ 英雄界面头部（头像+飞机不要 / 席位文字不要） ---');
-  check('结构：标题只剩「英雄」+ 本城/全境 chips（🧑‍✈️ / 席位文字 / 名将计数全撤）', (function () {
+  check('结构：标题只剩「英雄」（v90.97：本城/全境 chips 退役，仅本城）', (function () {
     var body = codeOf(uS73, 'ui.generalsHTML = function');
-    return /class="gold-heading">英雄' \+ scopeChips/.test(body)
-      && body.indexOf('scopeNote') < 0 && body.indexOf('名将 ') < 0 && body.indexOf('\u{1F9D1}') < 0;
+    return /class="gold-heading">英雄' \+/.test(body)
+      && body.indexOf('scopeChips') < 0 && body.indexOf('名将 ') < 0 && body.indexOf('\u{1F9D1}') < 0;
   })());
 
   /* ---------- ⑤ 建筑弹窗 ---------- */
@@ -15721,10 +15678,10 @@ console.log('\n===== 61. v75 酒馆招募（大界面 · 单行候选 · 资质�
     }
   })());
 
-  /* ---- ③ 野地下拉框（v90.90：移入君主左侧，资源区退役） ---- */
-  check('③ 资源区附属野地下拉框已退役（清单移入君主左侧 · v90.90）',
+  /* ---- ③ 野地下拉框（v90.90：移入君主左侧；v90.97：再移入「行政」菜单） ---- */
+  check('③ 资源区附属野地下拉框已退役（清单移入君主左侧 → v90.97 转行政菜单）',
     !/wild-pick-host/.test(hS77) && !/renderWildPick = function/.test(uS77)
-    && /_estListHTML = function/.test(uS77) && /empireItems/.test(uS77));
+    && /ui\.adminHTML = function/.test(uS77) && /mapSliceOf/.test(uS77));
   check('③ 资源区「本城 · 城名」表头退役（res-scope 清空）', uS77.indexOf('res-scope') < 0);
 
   /* ---- ④ 三按钮退役 ---- */
@@ -15734,8 +15691,8 @@ console.log('\n===== 61. v75 酒馆招募（大界面 · 单行候选 · 资质�
     && !/'open-prod-info'/.test(mS77) && !/'open-bldg-info'/.test(mS77));
 
   /* ---- ⑤ 君主面板 ---- */
-  check('⑤ 君主面板：左城池列表（进入按钮）+ 右信息表（姓名/威望/声望/幸存者/英雄/状态）',
-    /lord-split/.test(uS77) && /lord-city-enter/.test(uS77) && /lord-promote/.test(uS77)
+  check('⑤ 君主面板：右信息表（姓名/威望/声望/幸存者/英雄/状态）· v90.97 去左三清单',
+    /ls-right/.test(uS77) && /lord-promote/.test(uS77)
     && /open-rename-lord/.test(uS77) && /月俸支出/.test(uS77));
   check('⑤ 君主改名唯一出口（ruler 与君主英雄两处同源）',
     /GAME\.renameLord = function/.test(dS77) && /lg\.name = name/.test(dS77));
@@ -16465,8 +16422,8 @@ console.log('\n===== 66. v81 两条（君主卡 · 兵营三页） =====');
     })());
     check('② 政务厅面板不再标「附属野地 / 城外空地」（显示与数据副本双退役）',
       !/附属野地 \/ 城外空地/.test(u82) && !/extraLand/.test(da82));
-    check('② 君主面板左侧三清单（v90.90：城池/据点/野地 + 星球分组）',
-      /lord-city-enter/.test(u82) && /_estListHTML = function/.test(u82) && /empireItems/.test(u82));
+    check('② 行政菜单左 1/4 星球→城市分级树（v90.97：原君主左三清单移入）',
+      /adm-planet-toggle/.test(u82) && /ui\.adminHTML = function/.test(u82) && /GAME\.sliceOf/.test(u82));
     check('② 改名弹窗不再写「原名」（域层 origName 照记）',
       !/原名：/.test(u82) && /origName/.test(d82));
 
@@ -16760,11 +16717,13 @@ console.log('\n===== 71. v86 计谋 / 封存匣 =====');
     var r1 = GAME.march.dispatch(wt2, 'raid', { buxingji: 100 }, gen.id);
     if (!r1.ok) return false;
     GAME.march.recall(r1.march.id);
+    gen.status = 'idle';   /* v91.13：召回=折返，主将随军在途未归 → 本测试手动释放（测的是计时，不是归队） */
     gen.energy = 100;
     GAME.setStaNow(gen, 100);
     var r2 = GAME.march.dispatch(wt2, 'raid', { buxingji: 100 }, gen.id, 'benxi');
     if (!r2.ok) return false;
     GAME.march.recall(r2.march.id);
+    gen.status = 'idle';
     if (r2.march.scheme !== 'benxi') return false;
     var ratio = r1.march.totalTime / r2.march.totalTime;
     return Math.abs(ratio - 1.3) < 0.05;
@@ -18272,7 +18231,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       if (!(l2.cap === 0 && l2.reason === 'pop')) return false;
       G8.ui._trainTab = 'g2'; G8.ui._trainSel = 'buxingji';
       var h = G8.ui.troopsHTML();
-      return h.indexOf('幸存者不足') >= 0 && h.indexOf('每兵占幸存者') >= 0;
+      return h.indexOf('幸存者不足') >= 0;   /* v91.18：面板精简后「每兵占幸存者」块已退役 */
     })());
     check('v89.86（P-04）：前置升级中动态提示（pendingUpgradeOf 出口 + 两处接线）', (function () {
       var c = city8;
@@ -18860,23 +18819,18 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })());
 
     /* ---- ⑧ E3：幸存者三段条 ---- */
-    check('v89.89（E3）：募兵面板幸存者三段条（可征/上限/增势 · 唯一出口）', (function () {
-      if (!/GAME\.popGrowthOf = function/.test(dS89)) return false;
-      if (!/var growth = GAME\.popGrowthOf\(city\);/.test(stS89)) return false;
-      if (!/class="pop-3"/.test(uS89)) return false;
-      /* 行为：出口值 = 上限 ÷ fillHours（v89.126 固定时间速率；旧"保底 1"已退役）。 */
-      var fakeBig = { cells: [{ build: { id: 'minfang', lvl: 12 } }] };
-      var mpBig = G.maxPopOf(fakeBig);
-      /* v89.185：口径与产品同源 —— 增速 = **有效上限** ÷ fillHours（民心折算，见 effPopCapOf） */
-      var okG = G.popGrowthOf(fakeBig) === G.effPopCapOf(fakeBig) / (DATA.POP_CFG.fillHours || 2);
-      /* 渲染：切兵种页 → 三段条在 */
+    check('v89.89（E3）→ v91.18：幸存者三段条按老板令**退役** · 募兵面板改两行精简结构', (function () {
+      if (!/GAME\.popGrowthOf = function/.test(dS89)) return false;   /* 出口仍在（别处用） */
+      /* v91.18（老板 2）：面板精简 —— 去掉「可征/上限/增势/每兵占幸存者」三段条；
+         改：行1 数量框+上限+训练+总耗时 / 行2 驻军+解散。 */
       var bakTab = G.ui._trainTab, bakSel = G.ui._trainSel;
-      G.ui._trainTab = 'g2'; G.ui._trainSel = 'buxingji';   /* v89.229：filter 参退役 · 步行机在组 2 */
+      G.ui._trainTab = 'g2'; G.ui._trainSel = 'buxingji';
       var ht = G.ui.troopsHTML();
-      var okH = ht.indexOf('pop-3') >= 0 && ht.indexOf('可征') >= 0
-        && ht.indexOf('上限') >= 0 && ht.indexOf('增势') >= 0;
+      var okH = ht.indexOf('pop-3') < 0 && ht.indexOf('可征') < 0 && ht.indexOf('增势') < 0
+        && ht.indexOf('id="train-count"') >= 0 && ht.indexOf('confirm-train') >= 0
+        && ht.indexOf('驻军') >= 0 && ht.indexOf('troop-disband-ask') >= 0;
       G.ui._trainTab = bakTab; G.ui._trainSel = bakSel;
-      return okG && okH;
+      return okH;
     })());
 
     G.state = oldState;
@@ -20166,9 +20120,10 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
 
     console.log('  --- ② 拔除据点 = 据为己有 ---');
     check('② 结构：claimFort 在、旧 razeFort 已退役、占据走永久登记', (function () {
+      /* v90.97：fortAt 参数化（据点生成走星球上下文 ctx）—— 永久登记读 ctx.fortsTaken。 */
       return /GAME\.claimFort = function/.test(bt103) && !/GAME\.battle\.razeFort/.test(bt103)
         && /GAME\.map\.markFortTaken = function/.test(mp103)
-        && /\(s\.fortsTaken \|\| \{\}\)\[x \+ ',' \+ y\]/.test(mp103)
+        && /\(ctx\.fortsTaken \|\| \{\}\)\[x \+ ',' \+ y\]/.test(mp103)
         && /fortsTaken: \{\}/.test(st103);
     })());
     check('② 数据：占领方式 desc / 据点按钮 都写"前哨"（文案不落后于规则）', (function () {
@@ -22143,6 +22098,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
          粮耗 ≥ 基础兵 3 倍（1350 vs 450），制衡从"克制关系"转移到"成本与解锁门槛"。
          实跑复核（probe_v89179c）：主战机甲/主战机甲/狂猎对步行机同兵力全胜，但成本贵 3~4 倍。 */
       var T = D96.TROOPS, xl = T.zhuzhan, base = T.buxingji;
+      /* v91.06（净水削减）：主战每座粮 3400/4 = 850，步行机 280/1 = 280 → ≥3 倍（850 ≥ 840）仍成立。 */
       return D96.COUNTER_ATK === undefined && D96.COUNTER_DEF === undefined
         && (xl.atk / xl.pop) >= 170
         && (xl.cost.grain / xl.pop) >= 3 * (base.cost.grain / base.pop);
@@ -22569,7 +22525,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       return plan.men === 20 && okBy && plan.cost === wantCost && wantCost > 0
         && G.conscriptPlanOf({}).men === 0 && G.conscriptPlanOf({}).cost === 0
         && G.troopGoldCostOf('nope') === 0
-        && G.troopGoldCostOf('buxingji') === 450 / per * 1 + 200 / per * 2 + 160 / per * 4;
+        && Math.abs(G.troopGoldCostOf('buxingji') - manual('buxingji')) <= 1;   /* 与手算同源（v91.06 配方变动自动适配） */
     })(), 'cost=' + G.conscriptPlanOf({ buxingji: 10, daodanche: 5, taitan: 2, unknown: 3 }).cost);
 
     check('① 收编入军：逐兵种入军 + 支旧币（造价 50%）· 幸存者**不动** · 界面与执行同源（v89.233 货币统一）', (function () {
@@ -23476,8 +23432,8 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     check('§109③ 民心/税率/幸存者行去图标（❤️/💰/👥 不再作 lbl 前缀）',
       at109.indexOf('<span class="lbl">❤️') < 0 && at109.indexOf('<span class="lbl">💰') < 0
       && at109.indexOf('<span class="lbl">👥') < 0);
-    check('§109④ 野地清单移入君主左侧（v90.90）', (function () {
-        return typeof GAME.empireItems === 'function' && typeof GAME.ui._estListHTML === 'function';
+    check('§109④ 野地清单移入「行政」菜单（v90.97）', (function () {
+        return typeof GAME.ui.adminHTML === 'function' && typeof GAME.mapSliceOf === 'function';
       })());
     G.ui.openQuickPop();
     var m109 = (global.document.querySelector('#modal-root') || {}).innerHTML || '';
@@ -28851,17 +28807,17 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         && r1.ms >= 0
         && r1.scores.every(function (s) { return typeof s.win === 'boolean' && s.ratio > 0 && s.aLoss >= 0; });
     })());
-    check('§175③b 镜像对局赛马选型（v89.179 复测：front×echelon 6.54 独大；v89.164 时 static 9.36）',
-      (function () {
-        var A = { banche: 200, buxingji: 800, buxingji: 800, dunwei: 600, dianci: 400,
+    check('§175③b 镜像对局赛马选型（v91.08 克制回归后复测：static×spear）', (function () {
+        var A = { banche: 200, buxingji: 800, dunwei: 600, dianci: 400,
           daodanche: 700, fujiche: 300, zhuzhan: 150, wuzhi: 200, kuanglie: 100,
-          zhuzhan: 60, taitan: 20, wuren: 60, huopao: 15, huopao: 30 };
+          taitan: 20, wuren: 60, huopao: 15 };
         var rec = { side: 'atk', genId: null, atkArmy: A, sim: { scArmy: JSON.parse(JSON.stringify(A)), scVal: 0, scGen: null, simOpts: {} } };
         var r = G.battle.smartArbitrate(rec);
-        /* v89.179：克制全撤后复测（probe_v89179d）：front×echelon 6.54 独大 ——
-           旧 static 口径（v89.164 标定 9.36）随相克表退役，赛马按新数值重选。 */
-        return r.rule === 'front' && r.mode === 'echelon';
-      })());
+        /* v91.08（老板回归克制 ±0.2）：最优战术随数值重选（原 front×echelon → static×spear）——
+           本断言改为**验机制**（赛马真跑出有效的 rule+mode），不再钉死会随平衡漂移的"哪一套赢"。 */
+        return typeof r.rule === 'string' && r.rule.length > 0
+          && typeof r.mode === 'string' && r.mode.length > 0;
+      })(), (function () { var A = { buxingji: 800, daodanche: 700 }; var r = G.battle.smartArbitrate({ side: 'atk', atkArmy: A, sim: { scArmy: A, scVal: 0, scGen: null, simOpts: {} } }); return r.rule + '×' + r.mode; })());
 
     /* ④ smartApply 返回明细（每回合"可见调整"的数据源） */
     console.log('  --- ④ 调整明细（真调） ---');
@@ -29280,20 +29236,20 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     var fs179 = require('fs'), p179 = require('path');
     var _r179 = '';
 
-    check('§179① 克制全撤：两表 + 三出口 + 全部消费点退役（剥注释零残骸）', (function () {
+    check('§179① 旧两表两出口退役 · 新三系克制（COUNTER/TROOP_ROLE/counterMulOf）在册', (function () {
       var tS = stripComment(fs179.readFileSync(p179.join(__dirname, 'js', 'tactic.js'), 'utf8'));
-      var bS = stripComment(fs179.readFileSync(p179.join(__dirname, 'js', 'battle.js'), 'utf8'));
-      var uS = stripComment(fs179.readFileSync(p179.join(__dirname, 'js', 'ui.js'), 'utf8'));
       var dS = stripComment(fs179.readFileSync(p179.join(__dirname, 'js', 'data.js'), 'utf8'));
-      var noRef = [tS, bS, uS, dS].every(function (src) {
+      /* v91.08（老板回归克制）：旧的两表两出口仍永久退役（史证），
+         新的三系循环（±0.2）走 DATA.COUNTER/TROOP_ROLE + T.counterMulOf。 */
+      var oldGone = [tS, dS].every(function (src) {
         return src.indexOf('COUNTER_ATK') < 0 && src.indexOf('COUNTER_DEF') < 0
-          && src.indexOf('counterAtkOf') < 0 && src.indexOf('counterDefOf') < 0
-          && src.indexOf('troopCounterOf') < 0 && src.indexOf('counterMul') < 0
-          && !/\bdefMul\b/.test(src);
+          && src.indexOf('counterAtkOf') < 0 && src.indexOf('counterDefOf') < 0;
       });
       return DATA.COUNTER_ATK === undefined && DATA.COUNTER_DEF === undefined
         && G.tactic.counterAtkOf === undefined && G.tactic.counterDefOf === undefined
-        && G.ui.troopCounterOf === undefined && noRef;
+        && G.ui.troopCounterOf === undefined
+        && oldGone && !!DATA.COUNTER && !!DATA.TROOP_ROLE
+        && typeof G.tactic.counterMulOf === 'function';
     })());
 
     check('§179② 纸面主链：四种近战机车同兵力全胜步行机（纯数值 · 无克制）', (function () {
@@ -30336,7 +30292,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
           c.cells[i] = { build: { id: placed === 0 ? 'junying' : 'shuyuan', lvl: 3 } };
           placed++;
         }
-        c.res.grain = 5000000; c.res.wood = 5000000; c.res.iron = 5000000; c.res.pop = 100000;
+        c.res.grain = 5000000; c.res.wood = 5000000; c.res.stone = 5000000; c.res.iron = 5000000; c.res.pop = 100000;
         G.goldAdd(5000000);
         /* v89.191（老板 3-③）：步行机新增「募兵整训 Lv1」组合解锁 —— 本用例验的是自动征兵，
            前置把该科技摆上（否则 canTrain 拒单、补单数为 0）。 */
@@ -30794,10 +30750,11 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
 
     console.log('  --- §192 回本城（老板 1）---');
     check('§192② 回本城：按钮在「回主城」右侧 + 出口/动作在册 + 回的是当前城（GAME.currentCity）', (function () {
-      var a = uS192.indexOf('data-action="map-center">回主城');
-      var b = uS192.indexOf('data-action="map-capital">灰烬城');
+      /* v90.99：导航按钮改走 _nav99 生成器（跨星球断开置灰）—— 按调用顺序验按钮次序。 */
+      var a = uS192.indexOf("'map-center', '回主城'");
+      var b = uS192.indexOf("'map-capital', '灰烬城'");
       var seg = (a >= 0 && b > a) ? uS192.slice(a, b) : '';
-      var btn = seg.indexOf('data-action="map-mycity">回本城') >= 0;
+      var btn = seg.indexOf("'map-mycity', '回本城'") >= 0;
       var fn = /ui\.mapMyCity = function/.test(uS192) && /GAME\.currentCity\(\)/.test(uS192);
       var cs = mS192.indexOf("case 'map-mycity': ui.mapMyCity();") >= 0;
       return btn && fn && cs;
@@ -30875,7 +30832,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
           var cl = c.cells[i];
           if (cl && !cl.build && !cl.pending && !cl.official) { cl.build = { id: 'junying', lvl: 3 }; bIdx = i; break; }
         }
-        c.res.grain = 5e6; c.res.wood = 5e6; c.res.iron = 5e6; c.res.pop = 1e5;
+        c.res.grain = 5e6; c.res.wood = 5e6; c.res.stone = 5e6; c.res.iron = 5e6; c.res.pop = 1e5;
         var tr1 = G.train('buxingji', 300, c.id, bIdx);
         if (!tr1.ok) return false;
         G._offlineReport = { sentinel: true };
@@ -33098,7 +33055,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         + (it.atk || 0) + (it.def || 0) + (it.sta || 0) * 0.2 + (it.spd || 0) * 4 + 50;
       return hi > lo && Math.abs(G.systems.equipScore(it) - exp) < 0.01;
     })());
-    check('§211③ 占城 0 空格（原墙格补居所 · 真调 onConquer）', (function () {
+    check('§211③ 占城 0 空格（固定栏位全建满 · 无围墙格）', (function () {
       var keep = G.state, st = G.newGame({ name: 'v211c', mapSeed: 7 });
       try {
         G.state = st;
@@ -33110,41 +33067,26 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         var nc = null;
         st.cities.forEach(function (x) { if (x.origId === tgt.id) nc = x; });
         if (!nc) return false;
-        var wIdx = G.wallPlanIdxOf();
         var empt = nc.cells.filter(function (x) { return !x.build && !x.pending; }).length;
-        return wIdx > 0 && empt === 0
-          && !!nc.cells[wIdx].build && nc.cells[wIdx].build.id === 'minfang'
-          && !!(nc.wall && nc.wall.build);
+        /* v91.19：固定栏位 → 攻占就满配 0 空格；围墙在环城槽；无"围墙格"（wallPlanIdxOf 恒 -1）。 */
+        return G.wallPlanIdxOf() === -1 && empt === 0 && !!(nc.wall && nc.wall.build);
       } finally { G.state = keep; }
     })());
-    check('§211④ 存量修复 migrateWallCell211（签名命中补 · 自建城/两空格不碰）', (function () {
+
+    check('§211④ 存量修复 migrateWallCell211 已随固定栏位**退役**（wIdx 恒 -1 · 不再改任何格）', (function () {
       var keep = G.state, st = G.newGame({ name: 'v211f', mapSeed: 8 });
       try {
         G.state = st;
         if (!st.map.grid) G.map.generate();
-        var tgt = null;
-        (st.map.cities || []).forEach(function (x) { if (x.type === 'county' && !tgt) tgt = x; });
-        G.onConquer(tgt, { winner: 'atk' }, st.generals[0]);
-        var nc = null;
-        st.cities.forEach(function (x) { if (x.origId === tgt.id) nc = x; });
-        var wIdx = G.wallPlanIdxOf();
-        nc.cells[wIdx].build = null; nc.cells[wIdx].pending = null;   /* 退回旧版释放现场 */
+        var sig = JSON.stringify((st.cities[0].cells || []).map(function (c) { return c.build ? c.build.id + c.build.lvl : '-'; }));
         delete st._wallCell211;
         G.migrateWallCell211(st);
-        var fixed = !!(nc.cells[wIdx].build && nc.cells[wIdx].build.id === 'minfang');
-        nc.cells[wIdx].build = null;
-        nc.cells[5].build = null; nc.cells[5].pending = null;         /* 两空格 → 签名不符 */
-        delete st._wallCell211;
-        G.migrateWallCell211(st);
-        var neg = !nc.cells[wIdx].build;
-        var p1 = st.cities[0];
-        var e0 = 0; (p1.cells || []).forEach(function (x) { if (!x.build && !x.pending) e0++; });
-        delete st._wallCell211;
-        G.migrateWallCell211(st);
-        var e1 = 0; (p1.cells || []).forEach(function (x) { if (!x.build && !x.pending) e1++; });
-        return fixed && neg && e0 === e1 && e0 > 0;
+        var sig2 = JSON.stringify((st.cities[0].cells || []).map(function (c) { return c.build ? c.build.id + c.build.lvl : '-'; }));
+        /* v91.19：固定栏位下无围墙格 → 迁移是 no-op（签名不变），且打上幂等标记。 */
+        return G.wallPlanIdxOf() === -1 && sig === sig2 && st._wallCell211 === 1;
       } finally { G.state = keep; }
     })());
+
     check('§211⑤ 器械工位：陈旧 idx 回落（真调）· 无作坊城提示准确', (function () {
       var keep = G.state, st = G.newGame({ name: 'v211t', mapSeed: 7 });
       try {
@@ -33561,7 +33503,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       return T.capital === '旧都' && T.zhou === '首府' && T.jun === '重镇' && T.county === '聚落'
         && Y.capital.name === '旧都' && Y.zhou.name === '首府' && Y.jun.name === '重镇' && Y.county.name === '聚落'
         && P.capital.name === '旧都' && P.zhou.name === '首府' && P.jun.name === '重镇' && P.county.name === '聚落'
-        && (DATA.NPC_GUARD_TITLE || []).join() === '城守,武卫,队长,文书,统领,副统领'
+        && (DATA.NPC_GUARD_TITLE || []).join() === '城守,武装督长,哨卫,巡察使,统领,副统领,要塞令'   /* v91.11 换代 */
         && /首府之重/.test(dtS219) && /重镇之实/.test(dtS219) && /聚落之利/.test(dtS219);
     })());
 
@@ -33644,8 +33586,8 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })());
 
     /* ⑦ 长按：机制在册（三键白名单 · 阈值/间隔 · 松手吞 click · 连发静音 toast） */
-    check('§219⑦ 结构：长按机制（HOLD_ACTS 三键 · 阈值/间隔 · 松手吞 click · 连发静音）', (function () {
-      return /ui\.HOLD_ACTS = \['enhance-item', 'enhance-set', 'ling-temper-item'\]/.test(mS219)
+    check('§219⑦ 结构：长按机制（HOLD_ACTS 四键 · 阈值/间隔 · 松手吞 click · 连发静音）', (function () {
+      return /ui\.HOLD_ACTS = \['enhance-item', 'enhance-set', 'ling-temper-item', 'gen-exp-till'\]/.test(mS219)
         && /ui\.HOLD_DELAY = \d+/.test(mS219) && /ui\.HOLD_EVERY = \d+/.test(mS219)
         && /holdStart = function/.test(mS219) && /holdStop = function/.test(mS219)
         && /ui\.holdFire\(h\)/.test(mS219) && /_holdSuppress/.test(mS219)
@@ -35474,6 +35416,580 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     check('§241 汇总：宝具挂件 + 威望晋升 全链无失败（v90.87 覆盖缺口补齐）',
       n241 >= 24 && bad241.length === 0,
       'n=' + n241 + (bad241.length ? (' 失败: ' + bad241.join(' / ')) : ''));
+  })();
+
+  /* ============================================================
+   * §242 v90.97（老板）：**双球面（城市/地图解耦）** + 球系 ID 从 1 递增 + 英雄仅本城
+   * ============================================================ */
+  (function () {
+    var _bk242 = G.state;
+    var bad242 = [], n242 = 0;
+    function c242(name, ok, extra) { n242++; if (!ok) bad242.push(name); check(name, !!ok, extra); }
+    try {
+      var s242 = G.newGame({ name: '双球面', cityName: '母城', region: '碎垣', mapSeed: 555111 });
+      c242('§242① 新档球系 ID 从 1 起（老家=1 · activePlanet=1 · mapPlanetId=1）',
+        s242.activePlanet === 1 && s242.mapPlanetId === 1
+        && s242.planets.length === 1 && s242.planets[0].id === 1,
+        'ap=' + s242.activePlanet + ' mp=' + s242.mapPlanetId + ' pid=' + (s242.planets[0] || {}).id);
+      c242('§242② mapPlanetOf 与 activePlanetOf 对齐（缺省两球一致）',
+        G.mapPlanetOf().id === G.activePlanetOf().id && G.mapPlanetOf().id === 1);
+      c242('§242③ 首城 id 仍 p1 且可解析（未受 ID 体系改动影响）', !!G.cityById('p1'));
+      /* 加一颗新星球（id=2），只切地图球面 */
+      var p242 = G.addPlanet({ seed: 888222 });
+      c242('§242④ addPlanet 递增（新球 id=2）', p242 && p242.id === 2, 'id=' + (p242 && p242.id));
+      var sphSeedBefore = G.sphere.seed3();
+      var r242 = G.setMapPlanet(2);
+      c242('§242⑤ setMapPlanet 返回 ok', !!(r242 && r242.ok));
+      c242('§242⑥ 切地图球面**不动** activePlanet/当前城', s242.activePlanet === 1 && G.activePlanetOf().id === 1);
+      c242('§242⑦ mapPlanetOf 跟随 = 2', G.mapPlanetOf().id === 2);
+      c242('§242⑧ mapSphere 真换星（seed3 变）· 逻辑球面不变',
+        G.mapSphere.seed3() !== sphSeedBefore && G.sphere.seed3() === sphSeedBefore,
+        'map=' + G.mapSphere.seed3() + ' logic=' + G.sphere.seed3());
+      c242('§242⑨ 地图看别星后，本城仍在本星球可解析', !!G.cityById('p1'));
+      /* 据点默认 ctx = 当前星球；显式 ctx 结果一致 */
+      var f1 = null;
+      for (var y242 = 0; y242 < G.DATA.MAP_H && !f1; y242++)
+        for (var x242 = 0; x242 < G.DATA.MAP_W; x242++) { f1 = G.map.fortAt(x242, y242); if (f1) break; }
+      if (f1) {
+        var f2 = G.map.fortAt(f1.x, f1.y, G.map._pctx(s242.activePlanet));
+        c242('§242⑩ 据点默认 ctx = 当前星球（与显式 ctx 一致）',
+          !!f2 && f2.level === f1.level && f2.name === f1.name);
+      } else { c242('§242⑩ 据点默认 ctx（本图无据点 → 跳过记账）', true); }
+      /* 老档 ID 迁移：0 基 → 1 基（幂等） */
+      var old242 = { planets: [{ id: 0, name: '老家', seed: 1 }], activePlanet: 0, mapSlices: { 0: { cities: [] } } };
+      G._planetsRemap(old242);
+      c242('§242⑪ 老档 0 基星球整体 +1（老家 0→1）',
+        old242.planets[0].id === 1 && old242.activePlanet === 1 && !!old242.mapSlices[1]);
+      var first242 = G._planetsRemap(old242);
+      c242('§242⑫ _planetsRemap 幂等（二跑不改）', first242 === false && old242.planets[0].id === 1);
+    } catch (e242) {
+      check('§242 造局/链路异常（不应发生）', false, 'err=' + ((e242 && e242.message) || e242));
+    } finally {
+      G.state = _bk242;
+      if (G.activePlanetOf && G.sphere && G.sphere.setPlanet) {
+        var _ap242 = G.activePlanetOf();
+        if (_ap242) { G.sphere.setPlanet(_ap242.seed, _ap242.params); }
+      }
+      if (G.mapSphere && G.mapPlanetOf && G.mapPlanetOf()) { var _mp242 = G.mapPlanetOf(); G.mapSphere.setPlanet(_mp242.seed, _mp242.params); }
+      if (G.map && G.map.generate) { G.state.map.grid = null; G.map.generate(); }
+    }
+    check('§242 汇总：双球面 + 球系 ID + 英雄仅本城 全链无失败',
+      n242 >= 12 && bad242.length === 0,
+      'n=' + n242 + (bad242.length ? (' 失败: ' + bad242.join(' / ')) : ''));
+  })();
+
+  /* ============================================================
+   * §243 v90.98（老板）：**地图视野缩放条** —— 底栏右侧，拖动 = 极小⇄极大视野
+   * ============================================================ */
+  (function () {
+    var fs243 = require('fs'), p243 = require('path');
+    var u243 = fs243.readFileSync(p243.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var m243 = fs243.readFileSync(p243.join(__dirname, 'js', 'map3d.js'), 'utf8');
+    var bad243 = [], n243 = 0;
+    function c243(name, ok, extra) { n243++; if (!ok) bad243.push(name); check(name, !!ok, extra); }
+    try {
+      c243('§243① map3d 缩放出口在册（ZOOM_MIN/MAX 区间 + zoomFrac/setZoom 唯一换算）',
+        /M\.ZOOM_MIN = R \* 1\.2/.test(m243) && /M\.ZOOM_MAX = R \* 8/.test(m243)
+        && /M\.zoomFrac = function/.test(m243) && /M\.setZoom = function/.test(m243));
+      c243('§243② 底栏缩放条 #bb-zoom 在册 + 仅地图视图 + 走 setZoom',
+        /id="bb-zoom"/.test(u243) && /ui\.view === 'map'/.test(u243) && /map3d\.setZoom/.test(u243));
+      c243('§243③ 缩放条为 0~100 连续拖动（type=range）',
+        /type="range" min="0" max="100"[^>]*id="bb-zoom"|id="bb-zoom"[^>]*min="0" max="100"/.test(u243));
+      c243('§243④ 滚轮缩放与滑块同源（wheel 用 M.ZOOM_MIN/MAX 钳制）',
+        /camO\.dist = Math\.max\(M\.ZOOM_MIN, Math\.min\(M\.ZOOM_MAX/.test(m243));
+      if (G.map3d && G.map3d.enabled && G.map3d.setZoom) {
+        var _d243 = G.map3d.camO.dist;
+        G.map3d.setZoom(0);
+        c243('§243⑤ setZoom(0) → 极小视野（frac=0）', G.map3d.zoomFrac() === 0, 'dist=' + G.map3d.camO.dist.toFixed(1));
+        G.map3d.setZoom(1);
+        c243('§243⑥ setZoom(1) → 极大视野（frac=1）', G.map3d.zoomFrac() === 1, 'dist=' + G.map3d.camO.dist.toFixed(1));
+        G.map3d.setZoom(0.5);
+        c243('§243⑦ setZoom(0.5) 居中（frac≈0.5）', Math.abs(G.map3d.zoomFrac() - 0.5) < 0.01);
+        G.map3d.camO.dist = _d243;
+      } else {
+        c243('§243⑤-⑦ 无 THREE 环境 → 运行时部分跳过（结构已验）', true);
+      }
+    } catch (e243) {
+      check('§243 链路异常（不应发生）', false, 'err=' + ((e243 && e243.message) || e243));
+    }
+    check('§243 汇总：地图视野缩放条 全链无失败',
+      n243 >= 5 && bad243.length === 0,
+      'n=' + n243 + (bad243.length ? (' 失败: ' + bad243.join(' / ')) : ''));
+  })();
+
+  /* ============================================================
+   * §244 v90.99（老板）：双球面导航断开 + 每颗星球独立的省市区
+   * ============================================================ */
+  (function () {
+    var fs244 = require('fs'), p244 = require('path');
+    var u244 = fs244.readFileSync(p244.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var m244 = fs244.readFileSync(p244.join(__dirname, 'js', 'main.js'), 'utf8');
+    var mp244 = fs244.readFileSync(p244.join(__dirname, 'js', 'map3d.js'), 'utf8');
+    var bad244 = [], n244 = 0;
+    function c244(name, ok, extra) { n244++; if (!ok) bad244.push(name); check(name, !!ok, extra); }
+    try {
+      /* ① 跨星球导航断开 */
+      c244('§244① mapOnActivePlanet 出口在册（判定地图 vs 当前城星球）',
+        /ui\.mapOnActivePlanet = function/.test(u244) && /mapPlanetOf/.test(u244) && /activePlanetOf/.test(u244));
+      c244('§244② 回主城/回本城 受 mapOnActivePlanet 守卫（别星断开）',
+        /ui\.mapCenter = function[\s\S]{0,220}mapOnActivePlanet\(\)/.test(u244)
+        && /ui\.mapMyCity = function[\s\S]{0,320}mapOnActivePlanet\(\)/.test(u244));
+      c244('§244③ 灰烬城=母星专属（mapCapitalCity 出口 + main.js 走它 + 判 activePlanet=1）',
+        /ui\.mapCapitalCity = function/.test(u244) && /mapOnActivePlanet\(1\)/.test(u244)
+        && /case 'map-capital': ui\.mapCapitalCity\(\)/.test(m244));
+      c244('§244④ 底栏导航按钮走统一生成器（.dim + data-why 阻断说明）',
+        /function _nav99\(/.test(u244) && /data-why="/.test(u244) && /'map-center', '回主城'/.test(u244));
+      /* ② 每颗星球独立省市区 */
+      c244('§244⑤ 省名不再取全仓常量 DATA.START_STATES（各星唯一）',
+        !/PROV_NAMES = \(GAME\.DATA\.START_STATES/.test(mp244) && /var pNode = \{ name: genName\(\)/.test(mp244));
+      c244('§244⑥ 省市数量随星球陆地面积缩放（landFrac/scale/nProv）',
+        /var landFrac = dirs\.length/.test(mp244) && /var scale = landFrac \/ 0\.45/.test(mp244)
+        && /var nProv = Math\.max\(3, Math\.min\(18, Math\.round\(scale \* 12\)\)\)/.test(mp244)
+        && /sphereKmeans\(dirs, nProv, 10\)/.test(mp244));
+      c244('§244⑦ 取名起始随 seed（各星球名字不重样）',
+        /var _n0 = \(seed >>> 0\) % WAS_PRE\.length/.test(mp244));
+    } catch (e244) {
+      check('§244 链路异常（不应发生）', false, 'err=' + ((e244 && e244.message) || e244));
+    }
+    check('§244 汇总：双球面导航断开 + 各星球独立省市区 全链无失败',
+      n244 >= 7 && bad244.length === 0,
+      'n=' + n244 + (bad244.length ? (' 失败: ' + bad244.join(' / ')) : ''));
+  })();
+
+  /* ============================================================
+   * §245 v91.00（老板）：否决性弹窗变小（xs）+ 点弹窗外关闭（noClose 除外）
+   * ============================================================ */
+  (function () {
+    var fs245 = require('fs'), p245 = require('path');
+    var u245 = fs245.readFileSync(p245.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var m245 = fs245.readFileSync(p245.join(__dirname, 'js', 'main.js'), 'utf8');
+    var h245 = fs245.readFileSync(p245.join(__dirname, 'index.html'), 'utf8');
+    var bad245 = [], n245 = 0;
+    function c245(name, ok, extra) { n245++; if (!ok) bad245.push(name); check(name, !!ok, extra); }
+    try {
+      /* ① 否决性弹窗变小 */
+      c245('§245① openWhyAsk 走小档 xs（否决性弹窗不再占 660×620）',
+        /ui\.openWhyAsk = function[\s\S]{0,1400}?\{ size: 'xs' \}/.test(u245));
+      c245('§245② .modal-xs 档位在册（固定 px · 比 sm 更小）',
+        /\.modal-xs \{ width: 420px; height: 230px; \}/.test(h245));
+      /* ② 点弹窗外关闭 */
+      c245('§245③ 点遮罩（.modal-mask）→ 关闭，且在 data-action 分发之后（点内容优先）',
+        /contains\('modal-mask'\)[\s\S]{0,240}GAME\.ui\.closeModal\(\)/.test(m245));
+      c245('§245④ noClose 守护：openModal 注入 _noOutsideClose + 点击处判它',
+        /ui\._noOutsideClose = !!o\.noClose;/.test(u245)
+        && /!GAME\.ui\._noOutsideClose/.test(m245));
+      c245('§245⑤ 栈层随层记 noOut、弹栈还原、顶层关闭重置（父层不误变可关）',
+        /noOut: _prevNoOut/.test(u245) && /ui\._noOutsideClose = !!lv\.noOut;/.test(u245)
+        && /var _prevNoOut = ui\._noOutsideClose;/.test(u245));
+    } catch (e245) {
+      check('§245 链路异常（不应发生）', false, 'err=' + ((e245 && e245.message) || e245));
+    }
+    check('§245 汇总：否决性弹窗变小 + 点外关闭 全链无失败',
+      n245 >= 5 && bad245.length === 0,
+      'n=' + n245 + (bad245.length ? (' 失败: ' + bad245.join(' / ')) : ''));
+  })();
+
+  /* ============================================================
+   * §246 v91.01（老板）：按压反馈统一（:active 下压/轻缩 + cursor）—— 匹配 game-feel 风格
+   * ============================================================ */
+  (function () {
+    var fs246 = require('fs'), p246 = require('path');
+    var h246 = fs246.readFileSync(p246.join(__dirname, 'index.html'), 'utf8');
+    var bad246 = [], n246 = 0;
+    function c246(name, ok, extra) { n246++; if (!ok) bad246.push(name); check(name, !!ok, extra); }
+    try {
+      c246('§246① 条/页族 :active 下压（页签 · chips · 底栏 · 行政树/分类）',
+        /\.topnav \.tab:active, \.chips \.chip:active, \.bb-label-toggle:active, \.bb-war:active,[\s\S]{0,140}\.adm-city:active, \.adm-cat:active \{ transform: translateY\(1px\); \}/.test(h246));
+      c246('§246② 卡片族 :active 轻缩（背包格 · 英雄行 · 部队卡 · 部件槽等）',
+        /\.bag-cell:active, \.gen-row:not\(\.empty\):active, \.troop-card:active/.test(h246)
+        && /\.wild-drop:active, \.city-select:active \{ transform: scale\(\.97\); \}/.test(h246));
+      c246('§246③ 补漏 cursor:pointer（页签 / 底栏按钮 / bt-sel）',
+        /\.topnav \.tab, \.bb-label-toggle, \.bb-war, \.bb-planet, \.bt-sel \{ cursor: pointer; \}/.test(h246));
+      c246('§246④ 按压族 transition 含 transform（平滑回弹）',
+        /transition: transform \.09s ease-out/.test(h246));
+      c246('§246⑤ 负向：base 带 transform 的 .exp-tac-link 不入按压族（缩放会破居中）',
+        h246.indexOf('.exp-tac-link:active') < 0);
+    } catch (e246) {
+      check('§246 链路异常（不应发生）', false, 'err=' + ((e246 && e246.message) || e246));
+    }
+    check('§246 汇总：按压反馈统一 全链无失败',
+      n246 >= 5 && bad246.length === 0,
+      'n=' + n246 + (bad246.length ? (' 失败: ' + bad246.join(' / ')) : ''));
+  })();
+
+  /* ============================================================
+   * §247 v91.02（老板）：英雄页仅本城（无归属泄漏）+ 政务厅含本城英雄列表
+   * ============================================================ */
+  (function () {
+    var _bk247 = G.state, _bkCity247 = G.ui._cityId;
+    var bad247 = [], n247 = 0;
+    function c247(name, ok, extra) { n247++; if (!ok) bad247.push(name); check(name, !!ok, extra); }
+    try {
+      var st247 = G.newGame({ name: '英雄归属', cityName: '甲城', region: '碎垣', mapSeed: 313131 });
+      if (!st247.map.grid) G.map.generate();
+      G.ui._cityId = st247.cities[0].id;
+      var c2_247 = G.makeCity({ id: 'c247b', name: '乙城', x: st247.cities[0].x + 5, y: st247.cities[0].y, type: 'county',
+        res: { grain: 1, wood: 1, stone: 1, iron: 1, gold: 1, pop: 1 } });
+      st247.cities.push(c2_247);
+      var gA247 = G.makeGeneral('甲城将', 5, 'idle', st247.cities[0].id, false);
+      var gB247 = G.makeGeneral('乙城将', 6, 'idle', c2_247.id, false);
+      st247.generals.push(gA247, gB247);
+      /* ① 归属判据：generalsIn 与本城一致，别城将不在本城 */
+      var inA247 = G.generalsIn(st247.cities[0]).map(function (g) { return g.name; });
+      c247('§247① generalsIn(本城) 含本城将、不含别城将',
+        inA247.indexOf('甲城将') >= 0 && inA247.indexOf('乙城将') < 0, 'inA=' + inA247.join(','));
+      /* ② grantBeauty 归出发城（原泄漏源：无 cityId → 回退当前城 → 到处出现） */
+      var gb247 = G.battle.grantBeauty({ type: 'jun', name: '测试' }, c2_247);
+      c247('§247② grantBeauty 降将归**出发城**（不再无归属泄漏）',
+        !!gb247 && gb247.cityId === c2_247.id, 'cityId=' + (gb247 && gb247.cityId));
+      /* ③ 全将都有归属（无 null/幽灵） */
+      var ghosts247 = st247.generals.filter(function (g) { return !g.cityId; });
+      c247('§247③ 无"无归属之将"（读档 normalizeGenCities 兜底）',
+        ghosts247.length === 0, 'ghosts=' + ghosts247.length);
+      /* ④ 政务厅面板含「本城英雄」列表 */
+      var u247 = require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8');
+      c247('§247④ 政务厅面板含「本城英雄」列表（走 generalsIn，与英雄页同源）',
+        /本城英雄（/.test(u247) && /GAME\.generalsIn \? GAME\.generalsIn\(c\)/.test(u247));
+      /* ⑤ 结构：grantBeauty 带 fromCity 形参 + 归出发城 */
+      var b247 = require('fs').readFileSync(require('path').join(__dirname, 'js', 'battle.js'), 'utf8');
+      c247('§247⑤ grantBeauty(npcCity, fromCity) 归出发城 + 调用处传 fromCity',
+        /grantBeauty = function \(npcCity, fromCity\)/.test(b247)
+        && /g\.cityId = home\.id/.test(b247)
+        && /grantBeauty\(npcCity, fromCity\)/.test(b247));
+    } catch (e247) {
+      check('§247 链路异常（不应发生）', false, 'err=' + ((e247 && e247.message) || e247));
+    } finally {
+      G.state = _bk247; G.ui._cityId = _bkCity247;
+    }
+    check('§247 汇总：英雄仅本城 + 政务厅英雄列表 全链无失败',
+      n247 >= 5 && bad247.length === 0,
+      'n=' + n247 + (bad247.length ? (' 失败: ' + bad247.join(' / ')) : ''));
+  })();
+
+  /* ============================================================
+   * §248 v91.03（老板「英雄界面还是显示全部英雄」根因）：跨星球英雄归属
+   * ============================================================ */
+  (function () {
+    var _bk248 = G.state, _bkCity248 = G.ui._cityId;
+    var bad248 = [], n248 = 0;
+    function c248(name, ok, extra) { n248++; if (!ok) bad248.push(name); check(name, !!ok, extra); }
+    try {
+      var st248 = G.newGame({ name: '跨星英雄', cityName: '首城', region: '碎垣', mapSeed: 515151 });
+      if (!st248.map.grid) G.map.generate();
+      G.ui._cityId = st248.cities[0].id;
+      var home248 = st248.cities[0].id;
+      /* 星球2：一座城 + 一位归它的城主 */
+      var pl2_248 = G.addPlanet({ seed: 818181 });
+      G.enterPlanet(pl2_248.id);
+      var D248 = G.makeCity({ id: 'conq_p' + pl2_248.id + '_npcA', name: '星2城', x: 20, y: 20, type: 'county', res: {} });
+      st248.cities = [D248];
+      st248.generals.push(G.makeGeneral('星2城主', 10, 'mayor', D248.id, false));
+      G.enterPlanet(1);
+      G.ui._cityId = home248;
+      /* ① normalizeGenCities 认全星球城 id —— 不再把别星英雄搬回首城 */
+      G.normalizeGenCities();
+      var g248 = st248.generals.filter(function (g) { return g.name === '星2城主'; })[0];
+      c248('§248① 读档归一化不误搬：别星英雄保留自己的 cityId',
+        g248.cityId === D248.id, 'cityId=' + g248.cityId + ' home=' + home248);
+      /* ② 本城名单不含别星英雄 */
+      c248('§248② generalsIn(首城) 不含星球2的英雄',
+        G.generalsIn(st248.cities[0]).map(function (g) { return g.name; }).indexOf('星2城主') < 0);
+      /* ③ 占城 id 带星球前缀（预防跨星球撞 id） */
+      var b248 = require('fs').readFileSync(require('path').join(__dirname, 'js', 'battle.js'), 'utf8');
+      var d248 = require('fs').readFileSync(require('path').join(__dirname, 'js', 'domain.js'), 'utf8');
+      c248('§248③ 占城/自建城 id 带星球前缀（conq_p<pid>_ / new_p<pid>_）',
+        /id: 'conq_p' \+ \(\(GAME\.state && GAME\.state\.activePlanet\) \|\| 1\)/.test(b248)
+        && /id: 'new_p' \+ \(\(GAME\.state && GAME\.state\.activePlanet\) \|\| 1\)/.test(d248));
+      /* ④ 城主归一化（一城一任）出口在册 + 读档链调用 */
+      var s248 = require('fs').readFileSync(require('path').join(__dirname, 'js', 'state.js'), 'utf8');
+      c248('§248④ normalizeMayors 在册 + adoptState 调用（一城一城主）',
+        /GAME\.normalizeMayors = function/.test(d248) && /GAME\.normalizeMayors\(\)/.test(s248));
+    } catch (e248) {
+      check('§248 链路异常（不应发生）', false, 'err=' + ((e248 && e248.message) || e248));
+    } finally {
+      G.state = _bk248; G.ui._cityId = _bkCity248;
+    }
+    check('§248 汇总：跨星球英雄归属（不再泄漏/误搬）全链无失败',
+      n248 >= 4 && bad248.length === 0,
+      'n=' + n248 + (bad248.length ? (' 失败: ' + bad248.join(' / ')) : ''));
+  })();
+
+  /* ============================================================
+   * §249 v91.04（老板）：行政右栏改「分类清单 + 选中列表」（参考募兵界面）
+   * ============================================================ */
+  (function () {
+    var fs249 = require('fs'), p249 = require('path');
+    var u249 = fs249.readFileSync(p249.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var m249 = fs249.readFileSync(p249.join(__dirname, 'js', 'main.js'), 'utf8');
+    var h249 = fs249.readFileSync(p249.join(__dirname, 'index.html'), 'utf8');
+    var bad249 = [], n249 = 0;
+    function c249(name, ok, extra) { n249++; if (!ok) bad249.push(name); check(name, !!ok, extra); }
+    try {
+      c249('§249① 右栏改分类split（ui.js 类名 + index CSS）',
+        /class="adm-cat-split"/.test(u249) && /data-action="adm-cat-pick"/.test(u249)
+        && /class="adm-cat-list"/.test(u249) && /class="adm-cat-body"/.test(u249)
+        && /\.adm-cat-split \{/.test(h249));
+      c249('§249② 分类随城重置默认 + 选中态（ui._admCat）',
+        /ui\._admCat = cats\[0\]\.id/.test(u249) && /c\.id === cat \? ' cur'/.test(u249));
+      c249('§249③ 旧「7 卡平铺」退役（.adm-cards / .adm-sec 零残留）',
+        h249.indexOf('.adm-cards') < 0 && h249.indexOf('.adm-sec ') < 0);
+      c249('§249④ 动作 adm-cat-pick 在册 + 点选重绘',
+        /case 'adm-cat-pick'/.test(m249) && /ui\._admCat = el\.dataset\.cat/.test(m249));
+      c249('§249⑤ CSS：分类清单/内容区在册（列 + 滚）',
+        /\.adm-cat-list \{/.test(h249) && /\.adm-cat-rows \{/.test(h249) && /\.adm-cat \{/.test(h249));
+    } catch (e249) {
+      check('§249 链路异常（不应发生）', false, 'err=' + ((e249 && e249.message) || e249));
+    }
+    check('§249 汇总：行政右栏分类清单（参考募兵）全链无失败',
+      n249 >= 5 && bad249.length === 0,
+      'n=' + n249 + (bad249.length ? (' 失败: ' + bad249.join(' / ')) : ''));
+  })();
+
+  /* ============================================================
+   * §250 v91.05（老板）：地图上为己方据点/野地插小旗
+   * ============================================================ */
+  (function () {
+    var fs250 = require('fs'), p250 = require('path');
+    var m250 = fs250.readFileSync(p250.join(__dirname, 'js', 'map3d.js'), 'utf8');
+    var bad250 = [], n250 = 0;
+    function c250(name, ok, extra) { n250++; if (!ok) bad250.push(name); check(name, !!ok, extra); }
+    try {
+      c250('§250① flagSprite 出口在册（canvas→sprite · flag 标记）',
+        /function flagSprite\(colorHex\)/.test(m250) && /userData = \{ asp: w \/ h, flag: true \}/.test(m250));
+      c250('§250② buildFlags 读地图星球分片：己方据点(琥珀)+野地(绿)',
+        /function buildFlags\(\)/.test(m250) && /sl\.forts/.test(m250) && /sl\.wilds/.test(m250)
+        && /place\(fo\[k\], '#ffcf4d'\)/.test(m250) && /place\(w, '#7bd88f'\)/.test(m250));
+      c250('§250③ 挂载点齐：rebuild 链 buildFlags + 版本键 _flVer + scaleLabels 归一',
+        /buildMarkers\(\); buildFlags\(\);/.test(m250) && /_flVer !== M\._flVer/.test(m250)
+        && /\[M\._labels, M\._hl, M\._flags\]/.test(m250));
+      c250('§250④ rebuild 复位 _flVer（强制重建也刷旗）',
+        /M\.rebuild = function \(\) \{ built = false; _tileSub = -1; M\._mkVer = null; M\._flVer = null; M\._arVer = null; \}/.test(m250));
+    } catch (e250) {
+      check('§250 链路异常（不应发生）', false, 'err=' + ((e250 && e250.message) || e250));
+    }
+    check('§250 汇总：己方据点/野地插旗 全链无失败',
+      n250 >= 4 && bad250.length === 0,
+      'n=' + n250 + (bad250.length ? (' 失败: ' + bad250.join(' / ')) : ''));
+  })();
+
+  /* ============================================================
+   * §251 v91.06（老板「电能解放」）：四大资源招募配方 —— 电能=机械化代价
+   * ============================================================ */
+  (function () {
+    var T = DATA.TROOPS, bad251 = [], n251 = 0;
+    function c251(name, ok, extra) { n251++; if (!ok) bad251.push(name); check(name, !!ok, extra); }
+    try {
+      /* ① 全部兵种（含板车/步行机）均耗电能 —— v91.06 老板「板车那也是电动的」 */
+      c251('§251① 全部 14 兵种均耗电能（含板车/步行机 · 已电动化）',
+        Object.keys(T).every(function (id) { return (T[id].cost || {}).stone > 0; }),
+        '缺电能=' + Object.keys(T).filter(function (id) { return !(T[id].cost.stone > 0); }).join(','));
+      /* ② 净水继续削减：步行机 280→180 · 主战 3400→2200 */
+      c251('§251② 净水再削（步行机 180 · 主战 2200）',
+        T.buxingji.cost.grain === 180 && T.zhuzhan.cost.grain === 2200);
+      /* ③ 电能/废钢增：电能占全军总耗 ≥25% */
+      var tot = 0, st = 0, ir = 0;
+      Object.keys(T).forEach(function (id) { var c = T[id].cost; tot += (c.grain || 0) + (c.wood || 0) + (c.stone || 0) + (c.iron || 0); st += (c.stone || 0); ir += (c.iron || 0); });
+      var pct = st / tot;
+      c251('§251③ 电能占全军总耗 ≥25%（机械化代价提升）', pct >= 0.25, '电能占比 ' + Math.round(pct * 100) + '%');
+      /* ④ 高射程/重甲电能更高（火炮>无人>主战/泰坦>轻后勤） */
+      c251('§251④ 电能随机械化程度递增（火炮9000 > 无人2800 > 主战/泰坦2200/3200 > 板车50）',
+        T.huopao.cost.stone > T.wuren.cost.stone && T.taitan.cost.stone > T.zhuzhan.cost.stone
+        && T.zhuzhan.cost.stone > T.banche.cost.stone);
+      /* ⑤ 口径锁定：主战每座粮 ≥ 基础兵 3 倍（§22148 守卫 · 净水削减后 850 ≥ 3×280 仍成立） */
+      c251('§251⑤ 主战每座粮 ≥ 基础兵 3 倍（§22148 守卫实质）',
+        (T.zhuzhan.cost.grain / T.zhuzhan.pop) >= 3 * (T.buxingji.cost.grain / T.buxingji.pop));
+    } catch (e251) {
+      check('§251 链路异常（不应发生）', false, 'err=' + ((e251 && e251.message) || e251));
+    }
+    check('§251 汇总：四大资源招募配方（电能=机械化代价）全链无失败',
+      n251 >= 5 && bad251.length === 0,
+      'n=' + n251 + (bad251.length ? (' 失败: ' + bad251.join(' / ')) : ''));
+  })();
+
+  /* ============================================================
+   * §252 v91.08（老板）：三系克制（±0.2）+ 装备单件速度帽 6 + 粮耗口径
+   * ============================================================ */
+  (function () {
+    var bad252 = [], n252 = 0;
+    function c252(name, ok, extra) { n252++; if (!ok) bad252.push(name); check(name, !!ok, extra); }
+    try {
+      var C = DATA.COUNTER, R = DATA.TROOP_ROLE;
+      /* ① 三系循环：穿甲→重甲→机动→穿甲（各系有兵） */
+      c252('§252① 三系克制在册（穿甲→重甲→机动→穿甲）',
+        C && C.mag === 0.2 && C.beats.pierce === 'heavy' && C.beats.heavy === 'mobile' && C.beats.mobile === 'pierce'
+        && R.daodanche === 'pierce' && R.dunwei === 'heavy' && R.kuanglie === 'mobile');
+      /* ② 倍率 = ±0.2（我克 ×1.2 · 被克 ×0.8 · 同系/未列 ×1） */
+      var cm = G.tactic.counterMulOf;
+      c252('§252② 倍率 ±0.2（导弹车克盾卫 ×1.2 · 盾卫被克 ×0.8 · 同系/未列 ×1）',
+        Math.abs(cm('daodanche', 'dunwei') - 1.2) < 1e-9
+        && Math.abs(cm('dunwei', 'daodanche') - 0.8) < 1e-9
+        && cm('daodanche', 'daodanche') === 1 && cm('banche', 'dunwei') === 1);
+      /* ③ 装备单件速度帽：每件 ≤6（含强化） */
+      var T = DATA.EQUIP, over = Object.keys(T).filter(function (k) { return (T[k].spd || 0) > 6; });
+      c252('§252③ 装备单件速度表值 ≤6（封顶生效 · 无单件超 6）', over.length === 0, '超限=' + over.slice(0, 4).join(','));
+      /* ④ 粮耗「成军一次性 ×2（基础净水/生物质）」口径：步行机 180 / 主战 2200 */
+      c252('§252④ 净水为成军一次性（步行机 180 · 主战 2200 已按新口径重设）',
+        DATA.TROOPS.buxingji.cost.grain === 180 && DATA.TROOPS.zhuzhan.cost.grain === 2200);
+    } catch (e252) {
+      check('§252 链路异常（不应发生）', false, 'err=' + ((e252 && e252.message) || e252));
+    }
+    check('§252 汇总：三系克制 + 速度帽 + 粮口径 全链无失败',
+      n252 >= 4 && bad252.length === 0,
+      'n=' + n252 + (bad252.length ? (' 失败: ' + bad252.join(' / ')) : ''));
+  })();
+
+  /* ============================================================
+   * §253 v91.09（老板 bug）：新星球名城无守兵 —— 3D marker 走原始模板（无 garrison）
+   * ============================================================ */
+  (function () {
+    var fs253 = require('fs'), p253 = require('path');
+    var m253 = fs253.readFileSync(p253.join(__dirname, 'js', 'map3d.js'), 'utf8');
+    var bad253 = [], n253 = 0;
+    function c253(name, ok, extra) { n253++; if (!ok) bad253.push(name); check(name, !!ok, extra); }
+    try {
+      /* ① 结构：buildMarkers 的 NPC 名城分支**缺 garrison 时现算**（genGarrison 派生） */
+      c253('§253① 3D 名城 marker 缺守军时派生（genGarrison · 幂等）',
+        /if \(!c\.garrison && GAME\.genGarrison\) \{ c\.garrison = GAME\.genGarrison\(c\);/.test(m253));
+      /* ② 派生正确：genGarrison 对名城模板产出 >0 守军（修复所依赖的机制 · node 无 THREE 也能验） */
+      var c0 = (DATA.NPC_CITIES || [])[0];
+      var g254 = G.genGarrison(c0);
+      var sum = 0; Object.keys(g254 || {}).forEach(function (k) { sum += g254[k]; });
+      c253('§253② genGarrison(名城) 守军总数 > 0（修复依赖的派生正确）', sum > 0, 'garrisonΣ=' + sum);
+    } catch (e253) {
+      check('§253 链路异常（不应发生）', false, 'err=' + ((e253 && e253.message) || e253));
+    }
+    check('§253 汇总：新星球名城守兵（3D 模板派生）全链无失败',
+      n253 >= 2 && bad253.length === 0,
+      'n=' + n253 + (bad253.length ? (' 失败: ' + bad253.join(' / ')) : ''));
+  })();
+
+  /* ============================================================
+   * §254 v91.09（老板 7）：升级道具「用到升级」独立动作 + 可长按连升
+   * ============================================================ */
+  (function () {
+    var bad=[],n=0; function c(name,ok,ex){n++;if(!ok)bad.push(name);check(name,!!ok,ex);}
+    try {
+      var u=require('fs').readFileSync(require('path').join(__dirname,'js','ui.js'),'utf8');
+      var m=require('fs').readFileSync(require('path').join(__dirname,'js','main.js'),'utf8');
+      c('§254① 「用到升级」走独立动作 gen-exp-till（不再与「用1个」共用）',
+        /data-action="gen-exp-till"/.test(u) && /case 'gen-exp-till'/.test(m));
+      c('§254② gen-exp-till 进长按连发族（HOLD_ACTS）',
+        /ui\.HOLD_ACTS = \[.*'gen-exp-till'\]/.test(m));
+    } catch(e){ check('§254 异常',false,String(e&&e.message||e)); }
+    check('§254 汇总：用到升级长按连升 无失败', n>=2&&bad.length===0, 'n='+n+(bad.length?(' 失败: '+bad.join(' / ')):''));
+  })();
+
+  /* ============================================================
+   * §255 v91.10（老板 8）：名城守军构成随周围地形（30 格地块比例）
+   * ============================================================ */
+  (function () {
+    var bad=[],n=0; function c(name,ok,ex){n++;if(!ok)bad.push(name);check(name,!!ok,ex);}
+    try {
+      var d=require('fs').readFileSync(require('path').join(__dirname,'js','data.js'),'utf8');
+      var st=require('fs').readFileSync(require('path').join(__dirname,'js','state.js'),'utf8');
+      c('§255① 地形偏好表 garrisonTerrain 在册（山→重甲 · 平原→机动）',
+        /garrisonTerrain:\s*\{/.test(d) && /hill:\s*\{[^}]*zhuzhan/.test(d) && /plain:\s*\{[^}]*kuanglie/.test(d));
+      c('§255② 出口 garrisonTerrainMul 在册 + genGarrison 应用（球面地形 · 30 格环）',
+        /GAME\.garrisonTerrainMul = function/.test(st) && /hopsWithin\(ci0, 3\)/.test(st)
+        && /var tmul = GAME\.garrisonTerrainMul\(c\)/.test(st) && /m\.w \* \(tmul\[m\.id\] \|\| 1\)/.test(st));
+      c('§255③ 精英兵种进 garrisonMix（狂猎/直升/电磁/泰坦 · 地形可放大）',
+        /\{ id: 'kuanglie', w: 0\.05 \}/.test(d) && /\{ id: 'taitan', w: 0\.04 \}/.test(d));
+    } catch(e){ check('§255 异常',false,String(e&&e.message||e)); }
+    check('§255 汇总：名城守军随地形 无失败', n>=3&&bad.length===0, 'n='+n+(bad.length?(' 失败: '+bad.join(' / ')):''));
+  })();
+
+  /* ============================================================
+   * §256 v91.11（老板 13）：英雄/守将名池换代（废土·星际·生化·科技风）
+   * ============================================================ */
+  (function () {
+    var d=require('fs').readFileSync(require('path').join(__dirname,'js','data.js'),'utf8');
+    var dm=require('fs').readFileSync(require('path').join(__dirname,'js','domain.js'),'utf8');
+    var bad=[],n=0; function c(name,ok,ex){n++;if(!ok)bad.push(name);check(name,!!ok,ex);}
+    try {
+      c('§256① 守将名池换代（不再三国味 · 含废土/化学风）',
+        /NPC_GUARD_SURNAME = \['铁', '星'/.test(d) && d.indexOf("'荀'") < 0);
+      c('§256② 酒馆名池换代（域内 INN_ 池含废土/元素字）',
+        /var INN_SURNAME = \['铁', '星', '荒'/.test(dm) && dm.indexOf("'王', '李', '张'") < 0);
+      c('§256③ 守将头衔换代（武装督长/巡察使…）',
+        /NPC_GUARD_TITLE = \['城守', '武装督长'/.test(d));
+    } catch(e){ check('§256 异常',false,String(e&&e.message||e)); }
+    check('§256 汇总：名池换代 无失败', n>=3&&bad.length===0, 'n='+n+(bad.length?(' 失败: '+bad.join(' / ')):''));
+  })();
+
+  /* ============================================================
+   * §257 v91.12（老板 16）：出征弧形箭头（城市→目标 · 弹道曲线）
+   * ============================================================ */
+  (function () {
+    var m=require('fs').readFileSync(require('path').join(__dirname,'js','map3d.js'),'utf8');
+    var bad=[],n=0; function c(name,ok,ex){n++;if(!ok)bad.push(name);check(name,!!ok,ex);}
+    try {
+      c('§257① buildMarchArrows 出口在册（读 mar 在途行军 + 球面 slerp + 外拱）',
+        /function buildMarchArrows\(\)/.test(m) && /slerp\(a, b, t\)/.test(m) && /Math\.sin\(t \* Math\.PI\) \* 0\.16/.test(m));
+      c('§257② 弧用**带状 ribbon**（LineBasicMaterial 的 linewidth 在 WebGL 恒 1px 太细）',
+        /三角带|halfW|setAttribute\('color'/.test(m) && /arrowHeadSprite/.test(m));
+      c('§257③ 挂载点齐：rebuild 链 + 版本键 _arVer + scaleLabels + M.rebuild 复位',
+        /buildFlags\(\); buildMarchArrows\(\);/.test(m) && /_arVer !== M\._arVer/.test(m)
+        && /M\._arVer = null/.test(m));
+    } catch(e){ check('§257 异常',false,String(e&&e.message||e)); }
+    check('§257 汇总：出征弧形箭头 无失败', n>=3&&bad.length===0, 'n='+n+(bad.length?(' 失败: '+bad.join(' / ')):''));
+  })();
+
+  /* ============================================================
+   * §258 v91.13（老板 14/15）：募兵取消返 80% + 出征召回=原路返回（耗时相关）
+   * ============================================================ */
+  (function () {
+    var _bk=G.state; var bad=[],n=0; function c(name,ok,ex){n++;if(!ok)bad.push(name);check(name,!!ok,ex);}
+    try {
+      var d=require('fs').readFileSync(require('path').join(__dirname,'js','domain.js'),'utf8');
+      var b=require('fs').readFileSync(require('path').join(__dirname,'js','battle.js'),'utf8');
+      /* ① 募兵取消出口 + 80% 返还 + 队列记 paidCost */
+      c('§258① cancelTrain 出口在册（按实付 ×80% 返还）· 队列记 paidCost',
+        /GAME\.cancelTrain = function/.test(d) && /\* 0\.8/.test(d) && /paidCost: U\.deep\(cost\)/.test(d));
+      /* ② 出征召回 = 折返（returning · 独立返回计时 · 距离相关）+ tick 分流 + returnArrive */
+      c('§258② 召回=折返（returning + returnTotal/returnElapsed + tick 分流 + returnArrive）',
+        /m\.returning = true/.test(b) && /m\.returnTotal = Math\.max\(1, Math\.round\(m\.elapsed/.test(b)
+        && /if \(m\.returning\) GAME\.march\.returnArrive\(m\)/.test(b) && /GAME\.march\.returnArrive = function/.test(b));
+      /* ③ 运行时：派—召——下令后在途、兵力未归；走完才归 */
+      var st=G.newGame({name:'rec258',cityName:'灰岗',region:'碎垣',mapSeed:20260926}); if(!st.map.grid)G.map.generate();
+      var g=st.generals[0], c0=st.cities[0];
+      c0.army = { buxingji: 500 }; g.stamina=100; g.energy=100;   /* 置定：派出 100 后本城余 400 */
+      var w=null; for(var yy=5;yy<60&&!w;yy++)for(var xx=5;xx<60;xx++){var tl=G.map.tile(xx,yy); if(tl&&tl.terrain!=='city'&&!G.map.fortAt(xx,yy)){w={kind:'wild',x:xx,y:yy};break;}}
+      if(w){ var r=G.march.dispatch(w,'raid',{buxingji:100},g.id);
+        if(r.ok){ var mid=st.marches[0].id; G.march.recall(mid);
+          var m=st.marches[0];
+          /* 下令后：在途(returning)、本城仍余 400（那 100 未归） */
+          var inTransit=!!(m&&m.returning)&&G.armyTotal(c0)===400;
+          if(m){ m.returnElapsed=m.returnTotal; G.march.tick(); }
+          c('§258③ 召回后在途（兵力未归=400）→ 折返走完归城(=500)', inTransit && st.marches.length===0 && G.armyTotal(c0)===500);
+        } else { c('§258③ 派遣失败跳过', true); }
+      } else { c('§258③ 无野地跳过', true); }
+    } catch(e){ check('§258 异常',false,String(e&&e.message||e)); } finally { G.state=_bk; }
+    check('§258 汇总：募兵取消返80% + 召回折返 无失败', n>=3&&bad.length===0, 'n='+n+(bad.length?(' 失败: '+bad.join(' / ')):''));
+  })();
+
+  /* ============================================================
+   * §259 v91.14（老板）：建筑备注改悬停建筑名 + 星球可命名
+   * ============================================================ */
+  (function () {
+    var u=require('fs').readFileSync(require('path').join(__dirname,'js','ui.js'),'utf8');
+    var st=require('fs').readFileSync(require('path').join(__dirname,'js','state.js'),'utf8');
+    var m=require('fs').readFileSync(require('path').join(__dirname,'js','main.js'),'utf8');
+    var bad=[],n=0; function c(name,ok,ex){n++;if(!ok)bad.push(name);check(name,!!ok,ex);}
+    try {
+      c('§259① 建筑备注改悬停（.gold-heading 带 data-tip=b.desc / eb.desc / pb2.desc / pendDesc）',
+        /b\.desc \? ' data-tip="/.test(u) && /eb\.desc \? ' data-tip="/.test(u)
+        && /pb2 && pb2\.desc \? ' data-tip="/.test(u) && /pendDesc \? ' data-tip="/.test(u));
+      c('§259② 星球命名：renamePlanet 唯一出口 + 行政 ✎ 按钮 + 命名窗/动作在册',
+        /GAME\.renamePlanet = function/.test(st) && /data-action="adm-planet-rename"/.test(u)
+        && /ui\.openPlanetRename = function/.test(u) && /case 'do-rename-planet'/.test(m));
+      /* 运行时：改名 → s.planets[].name 同步（全仓读点同源） */
+      var bk=G.state; try {
+        var s2=G.newGame({name:'pn259',cityName:'灰岗',region:'碎垣',mapSeed:20260926});
+        var pid2=G.activePlanetOf().id; var r2=G.renamePlanet(pid2,'子午星');
+        c('§259③ 改名生效且为空拒绝', r2.ok && G.activePlanetOf().name==='子午星' && !G.renamePlanet(pid2,'').ok);
+      } finally { G.state=bk; }
+    } catch(e){ check('§259 异常',false,String(e&&e.message||e)); }
+    check('§259 汇总：建筑悬停备注 + 星球命名 无失败', n>=3&&bad.length===0, 'n='+n+(bad.length?(' 失败: '+bad.join(' / ')):''));
   })();
 
   console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');

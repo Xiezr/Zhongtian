@@ -291,11 +291,14 @@
         var s1 = RIM[t2], s2 = RIM[(t2 + 1) % mm];
         fpos.push(P[0], P[1], P[2], s1[0], s1[1], s1[2], s2[0], s2[1], s2[2]);
       }
-      /* 球系坐标（经纬度）。⚠️ 平面格坐标 x/y 为过渡遗留，M1 后移除。*/
+      /* 球系坐标（经纬度）。⚠️ 平面格坐标 x/y 为过渡遗留。*/
       var lonDeg = (Math.atan2(n[2], n[0]) * 180 / Math.PI + 360) % 360;
       var latDeg = Math.asin(Math.max(-1, Math.min(1, n[1]))) * 180 / Math.PI;
+      /* 平面格坐标 x/y：**仅供旧口径过渡**（拾取/行政城/前哨落位经它反查 ci）。
+         ⚠️ 必须与 SP.lonLatOfXY 严格互逆 —— 北在 y 小（0.5 - lat/180）。
+         曾用 (lat/180+0.5)（北→大 y）与反查符号相反 → 3D 拾取→筑城**纬度翻面**（已修）。*/
       var cgx = Math.round(lonDeg / 360 * mw()) % mw();
-      var cgy = Math.round((latDeg / 180 + 0.5) * mh()) % mh();
+      var cgy = Math.round((0.5 - latDeg / 180) * mh()) % mh();
       cells[vi] = { dir: n, pos: P, rim: RIM, type: typ[vi], name: TYPE_NAME[typ[vi]], level: lv, e: n._e,
         off: off, nt: mm, lon: lonDeg, lat: latDeg,
         x: ((cgx % mw()) + mw()) % mw(), y: ((cgy % mh()) + mh()) % mh() };
@@ -373,11 +376,28 @@
   SP.terrainAt = function (worldX, worldY) {
     if (!SP.cells || worldX == null || worldY == null) return null;
     var ci = SP.ciOfXY(worldX, worldY);
-    var c = ci >= 0 && SP.cells[ci];
+    var c = SP.cellOf(ci);
     return c ? { ci: ci, type: c.type, level: c.level } : null;
   };
   /* 格索引 → 经纬 */
   SP.dirOf = function (ci) { var c = SP.cells && SP.cells[ci]; return c ? c.dir : null; };
+  /* ============================================================
+   * 球系坐标唯一映射（SSOT）：平面世界格 (x,y) ↔ 经纬 (lon,lat)。
+   * 北在 y=0（纬度向上为正）。反查 ciOfXY / 界面 coordText / 地图定位
+   * mapGoto **全走这两个纯函数**，勿再各写一份。
+   * ⚠️ 历史 bug 根因：生成 cell.x/y 曾用 (lat/180+0.5)（北→大 y），
+   *    反查用 (0.5-lat/180)（北→小 y），正负相反 → 拾取→存档→渲染**纬度翻面**。
+   * ============================================================ */
+  SP.lonLatOfXY = function (x, y) {
+    var W = mw(), H = mh();
+    return { lon: ((x / W) * 360 + 360) % 360, lat: (0.5 - y / H) * 180 };
+  };
+  SP.xyOfLonLat = function (lon, lat) {
+    var W = mw(), H = mh();
+    return { x: ((Math.round(lon / 360 * W) % W) + W) % W, y: ((Math.round((0.5 - lat / 180) * H) % H) + H) % H };
+  };
+  /* ci（唯一身份）↔ 单元格对象 */
+  SP.cellOf = function (ci) { return (SP.cells && ci >= 0 && ci < SP.cells.length) ? SP.cells[ci] : null; };
 
   /* ============================================================
    * 六边相邻距离（环数）—— 世界距离的唯一出口。
@@ -422,12 +442,11 @@
   var _xyCi = null;
   SP.ciOfXY = function (worldX, worldY) {
     if (!SP.cells || worldX == null || worldY == null) return -1;
-    var W = (GAME.DATA && GAME.DATA.MAP_W) || 500, H = (GAME.DATA && GAME.DATA.MAP_H) || 500;
-    var lon = ((worldX / W) * 360 + 360) % 360, lat = (0.5 - worldY / H) * 180;
+    var ll = SP.lonLatOfXY(worldX, worldY);
     if (!_xyCi) _xyCi = {};
     var key = worldX + ',' + worldY;
     var v = _xyCi[key];
-    if (v === undefined) { v = _xyCi[key] = nearestCell(SP.dirOfLonLat(lon, lat)); }
+    if (v === undefined) { v = _xyCi[key] = nearestCell(SP.dirOfLonLat(ll.lon, ll.lat)); }
     return v;
   };
   /* 两点（世界格坐标）的六边环数距离；无内核时回退切比雪夫（与旧口径一致）。 */

@@ -1136,7 +1136,11 @@
     });
     startRes.pop = inherit.pop || 0;
     var newCity = GAME.makeCity({
-      id: 'conq_' + npcCity.id,
+      /* v91.03（老板「英雄界面显示全部英雄」根因修复）：城 id **带星球前缀** ——
+         改前 'conq_'+npcCity.id 在**不同星球**会撞（两颗星都打同一座 NPC 名城 = 同 id）
+         → genCityOf/cityById 按 id 只在当前星球找 → 别星城的英雄被判成**本城的城** → 泄漏。
+         前缀 pid 使各星球的城 id 全局唯一。 */
+      id: 'conq_p' + ((GAME.state && GAME.state.activePlanet) || 1) + '_' + npcCity.id,
       name: npcCity.name,
       x: npcCity.x, y: npcCity.y,
       type: npcCity.type,                 // v14：保留城档位 → 决定岁贡（旧都/首府/重镇/聚落）
@@ -1166,23 +1170,15 @@
         pending: null, official: !!c.official };
     });
     newCity.extGrid = sh.extGrid.map(function (e) { return { id: e.id, type: e.type, lv: e.lv }; });
-    /* v89.128：围墙从影子格**提取到环城槽**（玩家侧不占格）——影子计划仍含围墙格，
-       转正时在这里归一，那一格释放回可建造状态。 */
+    /* v89.128：围墙从影子格**提取到环城槽**（玩家侧不占格）。
+       v91.19（固定栏位）：布局里**不再有围墙格** → 直接按该城建筑等级建环城墙（否则占城无墙）。 */
     newCity.wall = { build: null, pending: null };
-    (function () {
-      var _wl128 = 0;
-      newCity.cells.forEach(function (c) {
-        if (c.build && c.build.id === 'chengqiang') {
-          _wl128 = Math.max(_wl128, c.build.lvl || 0);
-          /* v89.211（老板 2）：围墙格**补建居所**（同等级）—— 原样留空会让"打下的满配城"
-             缺一块（老板实测"第五行第六格未建造"即此格，误猜是货仓）。
-             同口径见 state.js 读档迁移的释放块 / 存量修复 migrateWallCell211。 */
-          c.build = { id: 'minfang', lvl: c.build.lvl || 1 };
-          c.pending = null;
-        }
-      });
-      if (_wl128 > 0) newCity.wall.build = { id: 'chengqiang', lvl: _wl128 };
-    })();
+    var _wlBl = sh.wallLv || (GAME.npcBuildLvOf ? GAME.npcBuildLvOf(npcCity) : (sh.buildLv || 1)) || 1;
+    newCity.wall.build = { id: 'chengqiang', lvl: _wlBl };
+    newCity.cells.forEach(function (c) {
+      /* 兼容老影子（万一仍含围墙格）：归一为居所 */
+      if (c.build && c.build.id === 'chengqiang') { c.build = { id: 'minfang', lvl: c.build.lvl || 1 }; c.pending = null; }
+    });
     newCity.def = npcCity.def || 0;
     /* v60（需求 4）：**占领不再另发一次性战利品** ——
        与「占领野地不取财货」同一铁律：城池连同剩余库藏（上面的 startRes）一起归你。
@@ -1242,8 +1238,8 @@
       s.generals.push(_gj);
       GAME.log.war('🕸️ 挑拨离间奏效：守将 ' + _ng.name + ' 倒戈归降，愿效犬马之劳！');
     })();
-    /* 美人 50% 几率（攻占重镇/首府） */
-    if (npcCity.type !== 'capital' && Math.random() < 0.5) GAME.battle.grantBeauty(npcCity);
+    /* 美人 50% 几率（攻占重镇/首府）—— v91.02：传出发城，女将归降该城（不再无归属） */
+    if (npcCity.type !== 'capital' && Math.random() < 0.5) GAME.battle.grantBeauty(npcCity, fromCity);
     /* v90.92：任务系统退役 —— 原 advanceConquer（已占城计数）已删。 */
     GAME.log.war('占领新城池：' + npcCity.name + '！（威望 +' + repGain + '）');
     /* v89.93（整改 E5）：**占城演出** —— 核心目标达成，值一张卡（此前只有一行日志） */
@@ -1565,7 +1561,7 @@
   };
 
   /* 美人 50% */
-  GAME.battle.grantBeauty = function (npcCity) {
+  GAME.battle.grantBeauty = function (npcCity, fromCity) {
     var s = GAME.state;
     var owned = {};
     s.generals.forEach(function (g) { owned[g.name] = true; });
@@ -1574,6 +1570,11 @@
     var b = cands[Math.floor(Math.random() * cands.length)];
     var g = GAME.makeHero(b);
     g.loyalty = 60;
+    /* v91.02：**降将也要有归属城**（与 grantHero 同款）—— 改前这里没写 cityId →
+       null → genCityOf 回退"当前城" → 这位女将**在每个城里都出现**（老板报的"英雄界面
+       显示全部英雄而非本城"），且会随"在看哪座城"飘。取出征出发城：谁打下来的就归谁。 */
+    var home = fromCity || GAME.currentCity() || (s.cities && s.cities[0]) || null;
+    if (home) g.cityId = home.id;
     s.generals.push(g);
     GAME.log.war('获得女将 ' + b.name + '！（掠夺/占领野外城池50%几率）');   /* v89.188（老板 3）：文案中性化 */
     return g;
@@ -3872,7 +3873,7 @@
   GAME.march.dispatch = function (target, modeId, army, genId, schemeId, extra) {
     var s = GAME.state;
     /* ⛔ v89.198（老板「清除战法这个玩法」）：第 6 参 ops（随军战法）随玩法全撤退役。 */
-    var p = GAME.battle.prepare(target, modeId, army, genId, { scheme: schemeId || null });
+    var p = GAME.battle.prepare(target, modeId, army, genId, { scheme: schemeId || null, cityId: (extra && extra.fromCityId) || null });
     if (!p.ok) return p;
     var city = p.city, gen = p.gen, mode = p.mode, t = p.t;
     /* ============================================================
@@ -3970,12 +3971,18 @@
     var done = [];
     for (var i = 0; i < s.marches.length; i++) {
       var m = s.marches[i];
-      m.elapsed += ts;                       // 本 tick 折合的游戏秒
-      if (m.elapsed >= m.totalTime) done.push(m);
+      var ts0 = ts;                       // 本 tick 折合的游戏秒
+      if (m.returning) {
+        m.returnElapsed = (m.returnElapsed || 0) + ts0;
+        if (m.returnElapsed >= (m.returnTotal || 1)) done.push(m);
+      } else {
+        m.elapsed += ts0;
+        if (m.elapsed >= m.totalTime) done.push(m);
+      }
     }
     if (!done.length) return;
     s.marches = s.marches.filter(function (x) { return done.indexOf(x) < 0; });
-    done.forEach(function (m) { GAME.march.arrive(m); });
+    done.forEach(function (m) { if (m.returning) GAME.march.returnArrive(m); else GAME.march.arrive(m); });
   };
 
   /* 抵达结算：调用与即时出征同一套核心（opts.arrived 跳过校验与扣除） */
@@ -4085,26 +4092,50 @@
     var m = null;
     (s.marches || []).forEach(function (x) { if (x.id === id) m = x; });
     if (!m) return { ok: false, msg: '该行军已结束' };
+    /* v91.13（老板 15）：「出征可取消，军队**原路返回**、**耗时与距离相关**」——
+       改前召回=**瞬间**归城（兵力当场回）。现改为：行军掉头（returning），
+       用时 = **已走出多远**（elapsed 折合的距离），走完才归城。 */
+    if (m.returning) return { ok: false, msg: '已在返回途中' };
     var city = GAME.cityById(m.cityId);
-    s.marches = s.marches.filter(function (x) { return x.id !== id; });
+    /* 用**独立返回计时**（不回写 totalTime/elapsed）—— 保留原行军时长，回程才算返回。 */
+    m.returning = true;
+    m.returnTotal = Math.max(1, Math.round(m.elapsed || 0));   /* 返回耗时 ≈ 已行进量（距离相关） */
+    m.returnElapsed = 0;
+    if (city) GAME.log.war('↩️ ' + m.name + ' 方向的大军**折返**（原路返回 ' + city.name
+      + ' · 约 ' + U.durExact(m.returnTotal / GAME.timeScale()) + '）');
+    return { ok: true, msg: '已下令折返（约 ' + U.durExact(m.returnTotal / GAME.timeScale()) + ' 后归城）' };
+  };
+  /* v91.13：折返**抵达** —— 兵力/辎重原路归城，主将归位（召回真正生效的时点）。 */
+  GAME.march.returnArrive = function (m) {
+    var s = GAME.state;
+    var city = GAME.cityById(m.cityId);
     var gen = null;
     for (var i = 0; i < s.generals.length; i++) if (s.generals[i].id === m.genId) gen = s.generals[i];
     if (gen && gen.status === 'march') gen.status = 'idle';
     if (city) {
       for (var a in m.army) city.army[a] = (city.army[a] || 0) + m.army[a];
-      /* v89.103：随军辎重同样原路回城（召回 = 这一趟没发生） */
       if (m.cargo) {
         var _Rrc = GAME.res(city);
         for (var ckC in m.cargo) _Rrc[ckC] = (_Rrc[ckC] || 0) + m.cargo[ckC];
-        GAME.log.war('↩️ ' + m.name + ' 方向的辎重也已原路回 ' + city.name);
       }
-      GAME.log.war('↩️ ' + m.name + ' 方向的大军已召回（兵力已归 ' + city.name + '）');
+      GAME.log.war('↩️ ' + m.name + ' 方向的大军已归 ' + city.name + '（折返抵达）');
+    } else {
+      /* 出发城已不在（被放弃/夺走）：兵力并入首城，绝不凭空消失 */
+      var home = (s.cities && s.cities[0]) || null;
+      if (home) for (var a2 in m.army) home.army[a2] = (home.army[a2] || 0) + m.army[a2];
+      GAME.log.war('⚠️ 折返抵达但出发城不在，兵力并入首城');
     }
-    return { ok: true, msg: '已召回，兵力归城' };
+    if (GAME.onMarchArrive) GAME.onMarchArrive(m, { ok: true, returned: true });
+    return { ok: true };
   };
 
   /* 行军进度（界面用） */
   GAME.march.progressOf = function (m) {
+    if (m && m.returning) {
+      var rp = Math.min(100, Math.floor((m.returnElapsed || 0) / (m.returnTotal || 1) * 100));
+      var rl = Math.max(0, ((m.returnTotal || 0) - (m.returnElapsed || 0)) / GAME.timeScale());
+      return { pct: rp, left: rl, returning: true, label: '↩︎ 返回中 ' + rp + '% · ' + U.durExact(rl) };
+    }
     var pct = Math.min(100, Math.floor((m.elapsed || 0) / (m.totalTime || 1) * 100));
     var left = Math.max(0, ((m.totalTime || 0) - (m.elapsed || 0)) / GAME.timeScale());
     return { pct: pct, left: left, label: pct + '% · ' + U.durExact(left) };

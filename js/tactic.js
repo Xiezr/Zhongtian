@@ -98,6 +98,20 @@
   /* v89.95（B1）：`T.SPLASH_PCT` **退役**（一击一目标，溢出作废）。
      保留常量 = 0 只为兼容旧引用点（smoke 的老断言会改成新口径）。 */
   T.SPLASH_PCT = 0;
+  /* v91.08（老板）：**克制倍率唯一出口** —— 攻方 atkId 打守方 defId 时的最终伤害倍率。
+     三系循环（穿甲→重甲→机动→穿甲）· 幅度 ±0.2（DATA.COUNTER.mag）：
+     我克他 ×(1+0.2) · 我被他克 ×(1−0.2) · 其余/未列兵种 ×1。 */
+  T.counterMulOf = function (atkId, defId) {
+    var C = (GAME.DATA && GAME.DATA.COUNTER) || null;
+    if (!C) return 1;
+    var R = GAME.DATA.TROOP_ROLE || {};
+    var ra = R[atkId], rd = R[defId];
+    if (!ra || !rd || ra === rd) return 1;
+    var beats = C.beats || {};
+    if (beats[ra] === rd) return 1 + (C.mag || 0.2);     /* 我克他 */
+    if (beats[rd] === ra) return 1 - (C.mag || 0.2);     /* 我被他克 */
+    return 1;
+  };
   /* 旧场地常数**保留为回退值**：`opts.field` 显式传入时仍然可用
      （旧战报回放、跨服类玩法要另设距离），不让老数据算不出来。 */
   T.FIELD = { wild: 2000, fort: 3000, city: 4000 };
@@ -775,6 +789,8 @@
         var _vt180 = DATA.TROOPS[tgId];
         return (_vt180 && _vt180.mech) ? _shT180.vsMech : 1;
       };
+      /* v91.08（老板）：拆械 × 克制 —— 两者都按"攻方 vs 守方兵种"定最终伤害倍率，合并一处。 */
+      var unitMulOf = function (tgId) { return mechMulOf(tgId) * (T.counterMulOf ? T.counterMulOf(shooter.id, tgId) : 1); };
       var av = perA * shooter.count * (ctx.decay || 1);
       if (ctx.onWall) av *= T.WALL_FIRE_MUL * (ctx.wallFireMul || 1);
       if (ctx.defBonus > 0) av *= Math.max(0.05, 1 - ctx.defBonus);
@@ -807,7 +823,7 @@
         var perHp0 = T.perHp(tg0, ctx.defGenOfTarget);
         var cf0 = T.clashFactor(perA, T.perDef(tg0));
         var holdMul0 = (tg0.stance === 'hold') ? (1 - T.HOLD_DAMAGE_CUT) : 1;
-        var eff0 = av * cf0 * holdMul0 * mechMulOf(tg0.id);
+        var eff0 = av * cf0 * holdMul0 * unitMulOf(tg0.id);
         /* v89.96：取整用 **round** 而不是 floor ——
            floor 会让"伤害不足一个人份"的攻击恒为 0 杀：实测步行机 20v20
            （每回合 0.625 人份）双方站着不动到 30 回合（卡死）。
@@ -831,7 +847,7 @@
         var cf = T.clashFactor(perA, T.perDef(tg));
         /* v59：**防御动作受到的伤害减半**（报告 §九） */
         var holdMul = (tg.stance === 'hold') ? (1 - T.HOLD_DAMAGE_CUT) : 1;
-        var eff = av * cf * holdMul * mechMulOf(tg.id);
+        var eff = av * cf * holdMul * unitMulOf(tg.id);
         var k = Math.round(eff / perHp);             /* v89.96：同 single 分支，round 防小规模卡死 */
         if (k <= 0) break;
         if (k > tg.count) k = tg.count;      // 自然钳制：不能杀超过目标实有人数

@@ -453,23 +453,10 @@
       extGrid: GAME.makeExtGrid(opts.initialExt),   // 外城地块按城池独立（v14）
     };
     var total = city.col * city.row;
-    for (var i = 0; i < total; i++) city.cells.push({ build: null, pending: null });
-    /* v89.128（老板）：「围墙以**环城一圈的围墙结构**作为一个建筑（地位与城内建筑同），
-       而不是占据城内一个地块」—— 围墙走**环城槽** `city.wall`（与 cell 同形，
-       不占 48 格中的任何一格；建造/升级/拆除统一走 GAME.cellOf）。 */
+    /* v91.19（老板 1）：**固定栏位（预留模式）** —— 居所槽预建居所、各功能建筑槽**留空**，
+       玩家按科技解锁后在固定位置建；与系统名城同一套布局（切城不再乱）。 */
+    GAME.applyFixedLayout(city.cells, 1, city.col, city.row, true);
     city.wall = { build: null, pending: null };
-    /* 政务厅占 4 格：v68（老板）移回**正中央** —— 8×6 时占「第三行 4、5 与第四行 4、5」。
-       落位公式的唯一出口是 GAME.govCellsOf（makeCity / cityPlanOf / 旧档迁移共用）。 */
-    var gfIdx = GAME.govCellsOf(city.col, city.row);
-    gfIdx.forEach(function (g) { city.cells[g].build = { id: 'guanfu', lvl: 1 }; city.cells[g].official = true; });
-    /* 初始居所2座（其余格子玩家自建） */
-    DATA.INITIAL_BUILDINGS.forEach(function (bid, idx) {
-      var slots = [0, 7, 1, 6, 40]; // 初始居所放四角（v40：按 8 列重排）
-      if (bid === 'minfang' && idx < 2) {
-        var si = slots[idx];
-        if (!city.cells[si].build) city.cells[si].build = { id: bid, lvl: 1 };
-      }
-    });
     return city;
   };
 
@@ -555,10 +542,15 @@
       map: { seed: mapSeed, cities: GAME.buildNpcCities(mapSeed), wilds: null,
         startPos: { x: startPos.x, y: startPos.y } },
       /* v90.73（老板 9）：**多星球副本** —— 每颗星球一份 {seed, params}；activePlanet 指向当前。
-         默认星球 = 本局的 mapSeed + SP.PLANET 默认参数。 */
-      planets: [{ id: 0, name: '老家', seed: mapSeed,
+         默认星球 = 本局的 mapSeed + SP.PLANET 默认参数。
+         v90.97（老板）：**球系 ID 从 1 起递增**（老家 = 1，后续 2/3/4…）—— 为持续新增的
+         星球/城市预留可管理的编号结构；0 保留为「未初始化」哨兵，供老档迁移判据使用。 */
+      planets: [{ id: 1, name: '老家', seed: mapSeed,
         params: (GAME.sphere && GAME.sphere.PLANET) ? { seaFrac: GAME.sphere.PLANET.seaFrac, ridge: GAME.sphere.PLANET.ridge, detail: GAME.sphere.PLANET.detail, temp: GAME.sphere.PLANET.temp } : { seaFrac: 0.45, ridge: 1.5, detail: 0.7, temp: 1.0 } }],
-      activePlanet: 0,
+      activePlanet: 1,
+      /* v90.97（双球面）：**地图在看/渲染的星球**（id）—— 与 activePlanet（当前城所在星球）解耦。
+         默认与 activePlanet 相同（进某城时同步）。地图切星球只动它，不动 activePlanet/当前城。 */
+      mapPlanetId: 1,
       rep: 0,
       rank: 0,
       mainCityId: null,          // v79：主城（政务厅里设；驻跸加成 + 【主城】标识）
@@ -607,8 +599,8 @@
     };
     GAME.attachRes(GAME.state);   // v60：挂上「当前城池库存」访问器（必须在 story.init 之前）
     /* v90.84（老板 2）：**星球分片** —— 城/野地/据点/行军/队列 按星球各存一份（帝国英雄/资源全局共享）。
-       开局这套初始城/野地 = 默认星球（id 0）的分片，先归档。 */
-    GAME._savePlanetSlice(0);
+       开局这套初始城/野地 = 默认星球（id 1，v90.97 起球系 ID 从 1 递增）的分片，先归档。 */
+    GAME._savePlanetSlice(1);
     /* v89.161（老板 5）：旧币上收玩家池 —— 开局库存里的旧币（INITIAL_RES.gold）并进 s.gold */
     GAME.attachGold(GAME.state, { keepCityGold: true });
     if (GAME.story) GAME.story.init();
@@ -635,6 +627,56 @@
     ps.forEach(function (x) { if (x.id === aid) byId = x; });
     return byId || ps[0] || null;
   };
+  /* v90.97（双球面）：**地图在看/渲染的星球**（id 非下标）—— 与 activePlanet 解耦。
+     SSOT：map3d 标记、地图星球的据点/城/野地读取都走它（或 mapSliceOf）。 */
+  GAME.mapPlanetOf = function () {
+    var s = GAME.state; if (!s) return null; var ps = GAME.planetsOf();
+    var mid = (s.mapPlanetId != null) ? s.mapPlanetId : s.activePlanet;
+    var byId = null; ps.forEach(function (x) { if (x.id === mid) byId = x; });
+    return byId || GAME.activePlanetOf() || ps[0] || null;
+  };
+  /* v90.97：**任一星球的分片读取**（pid 缺省 = 当前星球）—— 跨星球行政视图（星球→城市树）用。
+     当前星球取活态 s（queries 与 s.queues 是同一对象，天然实时）；他星读 mapSlices 快照，
+     若该星未存片则用现有世界兜底（近似，但至少不判空）。 */
+  GAME.sliceOf = function (pid) {
+    var s = GAME.state; if (!s) return null;
+    var mid = (pid != null) ? pid : (s.activePlanet || 0);
+    if (mid === (s.activePlanet || 0)) {
+      var slA = (s.mapSlices && s.mapSlices[mid]) || {};
+      return { cities: s.cities || [], wilds: s.wilds || [], forts: (GAME.fortsOf ? GAME.fortsOf() : (s.forts || {})),
+        fortsRazed: s.fortsRazed || {}, fortsTaken: s.fortsTaken || {},
+        queues: s.queues || slA.queues || { build: [], train: [], tech: [] }, marches: s.marches || [],
+        startPos: (s.map && s.map.startPos) || slA.startPos || null };
+    }
+    return (s.mapSlices && s.mapSlices[mid]) || GAME._blankSlice();
+  };
+  /* v90.97：**地图星球的分片**（cities/wilds/forts/queues…）—— map3d 标记/据点读取用。
+     缺省取 mapPlanet；地图星球 = 当前星球时与 sliceOf 同源（实时）。 */
+  GAME.mapSliceOf = function (pid) {
+    var s = GAME.state; if (!s) return null;
+    var mid = (pid != null) ? pid : (GAME.mapPlanetOf() ? GAME.mapPlanetOf().id : (s.activePlanet || 0));
+    var sl = (s.mapSlices && s.mapSlices[mid]) || GAME._blankSlice();
+    if (mid === (s.activePlanet || 0)) {
+      return { cities: s.cities || [], wilds: s.wilds || [], forts: (GAME.fortsOf ? GAME.fortsOf() : (s.forts || sl.forts || {})),
+        fortsRazed: s.fortsRazed || {}, fortsTaken: s.fortsTaken || {},
+        queues: s.queues || { build: [], train: [], tech: [] }, marches: s.marches || [],
+        startPos: (s.map && s.map.startPos) || sl.startPos || null };
+    }
+    return sl;
+  };
+  /* v90.97（双球面）：地图切星球 —— **只动地图球面**（mapPlanetId + mapSphere），
+     不碰 GAME.sphere / activePlanet / 当前城，故城市界面保持。 */
+  GAME.setMapPlanet = function (id) {
+    var s = GAME.state; if (!s) return { ok: false, msg: '无存档' };
+    var ps = GAME.planetsOf(), p = null;
+    ps.forEach(function (x) { if (x.id === id) p = x; });
+    if (!p) return { ok: false, msg: '星球不存在' };
+    s.mapPlanetId = p.id;
+    if (GAME.mapSphere && GAME.mapSphere.setPlanet) GAME.mapSphere.setPlanet(p.seed, p.params);
+    if (GAME.map) { GAME.map._fortCand = null; GAME.map._fortLv = null; GAME.map._fortBlocks = null; GAME.map._fortRing = null; GAME.map._cntyF = null; }
+    if (GAME.map3d && GAME.map3d.rebuild) GAME.map3d.rebuild();
+    return { ok: true, planet: p };
+  };
   /* 载入某星球 —— 把其 seed/params 灌入内核并重建；activePlanet 记档。 */
   GAME.loadPlanet = function (id) {
     var s = GAME.state; if (!s) return { ok: false, msg: '无存档' };
@@ -645,13 +687,28 @@
     if (GAME.sphere && GAME.sphere.setPlanet) GAME.sphere.setPlanet(p.seed, p.params);
     return { ok: true, planet: p };
   };
-  /* 生成新星球（附到副本池）：返回 {id}。seed 缺省现摇（在边界注入以求确定）。 */
+  /* v91.14（老板）：「星球可以命名」—— 唯一出口：改 s.planets[].name。
+     全仓星球名读点都取 p.name（toast/地图 dock/前哨命名/星球列表）→ 改名一处即全同步（SSOT）。 */
+  GAME.renamePlanet = function (id, name) {
+    var s = GAME.state; if (!s) return { ok: false, msg: '无存档' };
+    var p = null; GAME.planetsOf().forEach(function (x) { if (x.id === id) p = x; });
+    if (!p) return { ok: false, msg: '星球不存在' };
+    name = String(name == null ? '' : name).trim();
+    if (!name) return { ok: false, msg: '名称不能为空' };
+    if (name.length > 10) name = name.slice(0, 10);
+    var old = p.name;
+    p.name = name;
+    GAME.log && GAME.log('🪐 星球改名：「' + (old || ('#' + id)) + '」→「' + name + '」', 'sys', 'admin');
+    return { ok: true, msg: '已改名「' + name + '」', planet: p };
+  };
+  /* 生成新星球（附到副本池）：返回 {id}。seed 缺省现摇（在边界注入以求确定）。
+     v90.97：球系 ID 从 1 起递增（老家=1）；命名 = 老家 / 星球 N（N=球系 ID）。 */
   GAME.addPlanet = function (opts) {
     var s = GAME.state; if (!s) return null;
     opts = opts || {};
     var ps = GAME.planetsOf();
     var id = (ps.reduce(function (m, x) { return Math.max(m, x.id || 0); }, 0) || 0) + 1;
-    var p = { id: id, name: opts.name || ('星球 ' + (id + 1)), seed: (opts.seed != null ? (opts.seed | 0) : ((U.now() % 900000) || 1)),
+    var p = { id: id, name: opts.name || (id === 1 ? '老家' : ('星球 ' + id)), seed: (opts.seed != null ? (opts.seed | 0) : ((U.now() % 900000) || 1)),
       params: opts.params || (GAME.sphere && GAME.sphere.PLANET ? { seaFrac: GAME.sphere.PLANET.seaFrac, ridge: GAME.sphere.PLANET.ridge, detail: GAME.sphere.PLANET.detail, temp: GAME.sphere.PLANET.temp } : { seaFrac: 0.45, ridge: 1.5, detail: 0.7, temp: 1.0 }) };
     ps.push(p);
     return p;
@@ -724,43 +781,74 @@
     });
     if (s.map) s.map.startPos = sl.startPos ? U.deep(sl.startPos) : null;
   };
+  /* ============================================================
+   * v90.97（老板）**球系 ID 从 1 起递增** —— 老档（0 基：老家=0，后续 1/2/3…）整体 +1。
+   * 只动「星球号」：planets[].id、mapSlices 键、activePlanet、mapPlanetId。
+   * ⚠️ 不改前哨城 id『fp<pid>』—— 它是不透明标识（全仓无人解码其数字部分），
+   *    且各城 id 在同档内天然唯一，留着不产生冲突（改它要连带 ~10 处引用，风险大于收益）。
+   * 幂等：`_pidRemap1` 标志，只跑一次（无论是否真改）。
+   * ============================================================ */
+  GAME._planetsRemap = function (st) {
+    if (st._pidRemap1) return false;
+    st._pidRemap1 = 1;
+    st.planets = st.planets || [];
+    var has0 = false;
+    st.planets.forEach(function (p) { if (p && p.id === 0) has0 = true; });
+    if (!has0) return false;                              /* 已是 1 基（新档/已迁）→ 不动 */
+    st.planets.forEach(function (p) { if (p && p.id != null) p.id = (p.id | 0) + 1; });
+    var S = st.mapSlices || {}, NS = {};
+    Object.keys(S).forEach(function (k) { NS[(+k) + 1] = S[k]; });
+    st.mapSlices = NS;
+    if (st.activePlanet != null) st.activePlanet = (st.activePlanet | 0) + 1;
+    if (st.mapPlanetId != null) st.mapPlanetId = (st.mapPlanetId | 0) + 1;
+    return true;
+  };
+  /* v90.97（双球面）：`mapPlanetId` 补字段/校验（缺省 = activePlanet，目标不存在则回落）。 */
+  GAME._mapPlanetMigrate = function (st) {
+    var ids = {}; (st.planets || []).forEach(function (p) { if (p) ids[p.id] = 1; });
+    if (st.mapPlanetId == null || !ids[st.mapPlanetId]) {
+      st.mapPlanetId = (st.activePlanet != null && ids[st.activePlanet]) ? st.activePlanet
+        : (st.planets && st.planets[0] ? st.planets[0].id : 1);
+    }
+  };
   /* v90.86/87：星球分片**读档迁移/修复**（幂等）。
-     · 首迁（老档无分片）：现有世界状态 = **老家（0 号星球）**。
-     · 修复 A：老家(0) 空/无城，但别的星球分片里有城 → 那些城本是老家的，**搬回 0 号**。
-     · 修复 B：某非 0 分片与老家**城完全相同**（共用/别名，早期迁移 + 导航所致）→ 清掉非 0 的那份。 */
+     · 首迁（老档无分片）：现有世界状态 = **老家（1 号星球）**。
+     · 修复 A：老家(1) 空/无城，但别的星球分片里有城 → 那些城本是老家的，**搬回 1 号**。
+     · 修复 B：某非 1 分片与老家**城完全相同**（共用/别名，早期迁移 + 导航所致）→ 清掉非 1 的那份。
+     （v90.97：老家号由 0 改为 1，配合「球系 ID 从 1 递增」；`_planetsRemap` 已先跑，老档 0 基也归到 1。） */
   GAME._planetsMigrate84 = function (st) {
     st.mapSlices = st.mapSlices || {};
     st.planets = st.planets || [];
-    /* v90.91b：**确保老家（id 0）存在** —— 老档（v90.73 前）无 planets 字段时，
+    /* v90.91b：**确保老家（id 1）存在** —— 老档（v90.73 前）无 planets 字段时，
        planetsOf() 空 → addPlanet 从 1 开始编号 → **老家凭空消失**（"初始星球不见了"）。
-       此处补一个 id 0 的老家（种子 = 存档地图种子）。 */
+       此处补一个 id 1 的老家（种子 = 存档地图种子）。 */
     var hasHome = false;
-    st.planets.forEach(function (p) { if (p && p.id === 0) hasHome = true; });
+    st.planets.forEach(function (p) { if (p && p.id === 1) hasHome = true; });
     if (!hasHome) {
-      st.planets.unshift({ id: 0, name: '老家', seed: (st.map && st.map.seed) || 1,
+      st.planets.unshift({ id: 1, name: '老家', seed: (st.map && st.map.seed) || 1,
         params: (GAME.sphere && GAME.sphere.PLANET_DEFAULT) ? U.deep(GAME.sphere.PLANET_DEFAULT) : { seaFrac: 0.45, ridge: 1.5, detail: 0.7, temp: 1.0 } });
     }
     var S = st.mapSlices, keys = Object.keys(S);
     function nCit(k) { return ((S[k] && S[k].cities) || []).length; }
     function keyOf(k) { return ((S[k] && S[k].cities) || []).map(function (c) { return c.id; }).sort().join(','); }
-    if (keys.length === 0) { st.activePlanet = 0; GAME._savePlanetSlice(0); return true; }
+    if (keys.length === 0) { st.activePlanet = 1; GAME._savePlanetSlice(1); return true; }
     var withCities = keys.filter(function (k) { return nCit(k) > 0; });
     /* 修复 A：老家只有 0 座（空）或 1 座且是**落地前哨**（id 以 fp 开头），
-       而别的星球城更多 → 那些城本是老家的，搬回 0 号。（精确判据：避免误搬真布局）*/
-    var home0 = S['0'] || { cities: [] };
-    var isFootholdOnly = home0.cities.length === 1 && /^fp/.test(String(home0.cities[0].id));
-    if ((nCit('0') === 0 || isFootholdOnly) && withCities.length > 0) {
+       而别的星球城更多 → 那些城本是老家的，搬回 1 号。（精确判据：避免误搬真布局）*/
+    var home1 = S['1'] || { cities: [] };
+    var isFootholdOnly = home1.cities.length === 1 && /^fp/.test(String(home1.cities[0].id));
+    if ((nCit('1') === 0 || isFootholdOnly) && withCities.length > 0) {
       var best = withCities.slice().sort(function (a, b) { return nCit(b) - nCit(a); })[0];
-      if (best && best !== '0' && nCit(best) > nCit('0')) {
-        S['0'] = U.deep(S[best]); delete S[best];
-        st.activePlanet = 0; GAME._loadPlanetSlice(0); return true;
+      if (best && best !== '1' && nCit(best) > nCit('1')) {
+        S['1'] = U.deep(S[best]); delete S[best];
+        st.activePlanet = 1; GAME._loadPlanetSlice(1); return true;
       }
     }
-    /* 修复 B：非 0 分片与老家城完全相同 → 是同一批城的副本，清掉 */
-    var k0 = keyOf('0'), fixed = false;
+    /* 修复 B：非 1 分片与老家城完全相同 → 是同一批城的副本，清掉 */
+    var k0 = keyOf('1'), fixed = false;
     keys.forEach(function (k) {
-      if (k === '0' || nCit(k) === 0) return;
-      if (k0 && (nCit('0') > 0) && keyOf(k) === k0) { S[k] = GAME._blankSlice(); fixed = true; }
+      if (k === '1' || nCit(k) === 0) return;
+      if (k0 && (nCit('1') > 0) && keyOf(k) === k0) { S[k] = GAME._blankSlice(); fixed = true; }
     });
     return fixed;
   };
@@ -778,6 +866,10 @@
     var r = GAME.loadPlanet(id);                          /* 载种子/规格 + setPlanet 重建内核 */
     if (!r.ok) return r;
     var s = GAME.state;
+    /* v90.97（双球面）：进某城 = 强信号「玩家关心的星球」—— 地图视角随之对齐（默认两球一致，
+       回地图时看到的就是这座城市所在的星球）。地图再单独切星球只动 mapPlanetId，不回冲这里。 */
+    s.mapPlanetId = id;
+    if (GAME.mapSphere && GAME.mapSphere.setPlanet) GAME.mapSphere.setPlanet(r.planet.seed, r.planet.params);
     if (!skipSlice) GAME._loadPlanetSlice(id);            /* 载目标星球的片（空=毛胚）*/
     s.map.grid = null; s.map.cities = null;               /* 清投影网格 → 重投影 + 重建 NPC 城 */
     GAME.map._fortCand = null; GAME.map._fortLv = null; GAME.map._fortBlocks = null; GAME.map._fortRing = null;
@@ -1356,14 +1448,15 @@
     return { ok: true, msg: g.name + ' ' + nm + ' +' + n + '（余 ' + g.freePts + ' 点）' };
   };
 
-  /* 生成 NPC 城 */
-  GAME.buildNpcCities = function (seed) {
+  /* 生成 NPC 城。v90.97：加 sphere 形参（默认逻辑球面）—— 地图星球的 NPC 城须按其球面算 ci。 */
+  GAME.buildNpcCities = function (seed, sphere) {
+    var SP = sphere || GAME.sphere;
     return U.deep(DATA.NPC_CITIES).map(function (c) {
       c.owner = 'npc';
       c.garrison = GAME.genGarrison(c);
       c.maxArmy = c.garrison;
       /* v90.70：附上球面六边格索引（标记直接落格，免 (x,y)→dir 往返）*/
-      c.ci = (GAME.sphere && GAME.sphere.ciOfXY) ? GAME.sphere.ciOfXY(c.x, c.y) : -1;
+      c.ci = (SP && SP.ciOfXY) ? SP.ciOfXY(c.x, c.y) : -1;
       return c;
     });
   };
@@ -1403,6 +1496,30 @@
     if (ty && by[ty] != null) return by[ty];
     return 0;                       /* 非名城：不走这条（野外据点用自己的 fortGarrison） */
   };
+  /* v91.10（老板 8）：名城守军**兵种构成随周围地形** —— 采样该城周围 ~30 格地块地形分布，
+     按 DATA.NPC_CITY_RES.garrisonTerrain 的每地形偏好对兵种权重取**几何平均倍率**
+     （同基构成 → 地形放大）。地形走球面地块（星球原生、与老家同框架）；无地形信息（老档/无球面）
+     则返回中性全 1（不破坏既有生成，幂等）。 */
+  GAME.garrisonTerrainMul = function (c) {
+    var mul = {};
+    var T = (DATA.NPC_CITY_RES && DATA.NPC_CITY_RES.garrisonTerrain) || null;
+    if (!c || !T || !GAME.sphere || !GAME.sphere.terrainAt || !GAME.sphere.hopsWithin || !GAME.sphere.ciOfXY) return mul;
+    var ci0 = GAME.sphere.ciOfXY(c.x, c.y);
+    if (ci0 == null || ci0 < 0) return mul;
+    var cells = GAME.sphere.cells || [];
+    var ring = GAME.sphere.hopsWithin(ci0, 3) || [];   /* 3 环 ≈ 30 格 */
+    /* 地形**占比**加权偏好：mul[tid] = Σ_terrain frac_t × pref_t[tid]（线性，强度足）。
+       比"几何平均"更能体现"山地占八成 → 重甲显著多"。 */
+    var frac = {}, nTot = 0;
+    ring.forEach(function (ci) { var cell = cells[ci]; if (cell && cell.type) { frac[cell.type] = (frac[cell.type] || 0) + 1; nTot++; } });
+    if (!nTot) return mul;
+    Object.keys(frac).forEach(function (ty) {
+      var prefs = T[ty]; if (!prefs) return;
+      var f = frac[ty] / nTot;
+      Object.keys(prefs).forEach(function (tid) { (mul[tid] = mul[tid] || 0); mul[tid] += f * prefs[tid]; });
+    });
+    return mul;
+  };
   GAME.genGarrison = function (c) {
     var base = GAME.npcGarrisonBaseOf(c);
     if (!base) return {};
@@ -1412,13 +1529,16 @@
        兵种按权重同比例分，所以同档城的兵种构成完全一致。 */
     var rng = U.rng(GAME.npcHash(c.id, 0x2b17));
     var want = Math.round(base * (0.92 + rng() * 0.16));
+    /* v91.10：地形偏好倍率（同星球/老家同框架）；缺则全 1。 */
+    var tmul = GAME.garrisonTerrainMul(c);
     var use = mix.filter(function (m) { return DATA.TROOPS[m.id]; });
-    var wSum = use.reduce(function (a, m) { return a + m.w; }, 0) || 1;
+    var wSum = use.reduce(function (a, m) { return a + m.w * (tmul[m.id] || 1); }, 0) || 1;
     var g = {}, placed = 0;
     use.forEach(function (m, i) {
       /* 最后一种吃余额，保证"分完之后总数**恰好**等于 want" ——
          逐个 round 会漂几个兵，那种误差在"守军总数"这种口径上是说不清的。 */
-      var cnt = (i === use.length - 1) ? (want - placed) : Math.round(want * m.w / wSum);
+      var w = m.w * (tmul[m.id] || 1);
+      var cnt = (i === use.length - 1) ? (want - placed) : Math.round(want * w / wSum);
       if (cnt > 0) { g[m.id] = cnt; placed += cnt; }
     });
     return g;
@@ -1689,11 +1809,25 @@
     var i = Math.max(0, Math.min(s.rank | 0, DATA.RANK.length - 1));
     return DATA.RANK[i].city;   /* v89.203：本档管理数（幸存者 9 → 每档 +1 → 封顶 30） */
   };
+  /* v91.22（老板 3）：**帝国口径**聚合 —— 跨星球统计（政策/上限/晋升都该按帝国而非当前星球）。
+     `s.cities` 只是当前星活态；他星读分片。 */
+  GAME.empireCityCount = function () {
+    var s = GAME.state; if (!s) return 0;
+    var n = (s.cities || []).length, act = s.activePlanet || 0, sl = s.mapSlices || {};
+    Object.keys(sl).forEach(function (pid) { if (+pid === act) return; n += ((sl[pid] && sl[pid].cities) || []).length; });
+    return n;
+  };
+  GAME.planetsOwnedCount = function () {
+    var s = GAME.state; if (!s) return 0;
+    var n = (s.cities || []).length ? 1 : 0, act = s.activePlanet || 0, sl = s.mapSlices || {};
+    Object.keys(sl).forEach(function (pid) { if (+pid === act) return; if (((sl[pid] && sl[pid].cities) || []).length) n++; });
+    return n;
+  };
   /* 领地上限检查：{ ok, cap, n, msg }。ok=false 时 msg 已备好（界面与执行共用）。 */
   GAME.cityCapChk = function () {
     var s = GAME.state;
     if (!s) return { ok: true, cap: 0, n: 0, msg: '' };
-    var cap = GAME.cityCapOf(), n = (s.cities || []).length;
+    var cap = GAME.cityCapOf(), n = (GAME.empireCityCount ? GAME.empireCityCount() : (s.cities || []).length);
     if (n < cap) return { ok: true, cap: cap, n: n, msg: '' };
     var i = Math.max(0, Math.min(s.rank | 0, DATA.RANK.length - 1));
     var cur = DATA.RANK[i], nx = DATA.RANK[i + 1];
@@ -1866,59 +2000,31 @@
    *   等级 = `buildLv`）—— 这只是影子数据的形状；**攻占转正时提取到环城槽**
    *   （`city.wall`），玩家侧永不占格（老板：「以环城一圈的结构作为一个建筑」）。
    * ============================================================ */
+  /* v91.19（老板 1）：**固定建筑栏位** —— 所有城共用 DATA.CITY_PLAN.fixed 的 48 格布局。
+     `reserve`（自建城）：居所槽预建居所、**功能建筑槽留空（预留）**，玩家按科技解锁后建；
+     非 reserve（系统名城/攻占）：按布局**全部预建成**（等级 = buildLv）。政务厅 4 格官方位覆盖。 */
+  GAME.fixedBidAt = function (idx) { var F = (DATA.CITY_PLAN || {}).fixed || []; return F[idx] || 'minfang'; };
+  GAME.applyFixedLayout = function (cells, buildLv, col, row, reserve) {
+    var total = col * row;
+    for (var i = 0; i < total; i++) {
+      var bid = GAME.fixedBidAt(i);
+      if (reserve && bid !== 'minfang') cells[i] = { build: null, pending: null };
+      else cells[i] = { build: { id: bid, lvl: buildLv }, pending: null };
+    }
+    GAME.govCellsOf(col, row).forEach(function (g) {
+      cells[g] = { build: { id: 'guanfu', lvl: buildLv }, pending: null, official: true };
+    });
+    return cells;
+  };
   GAME.cityPlanOf = function (level, buildLv) {
     var P = DATA.CITY_PLAN;
     var lv = Math.max(1, Math.min(P.maxLevel, Math.round(level) || 1));
-    /* 建筑等级：不传就是"与城同级"（野外城池、自建城口径） */
     var bl = Math.max(1, Math.min(DATA.MAX_LEVEL_ABS, Math.round(buildLv) || lv));
-    /* v65（老板）：格数**不再按等级分档** —— 所有系统城一律 8×6。
-       `P.size` 是唯一来源，改棋盘尺寸只需动那一个数组。 */
+    /* v65：格数不按等级分档（一律 8×6）；v91.19：**固定栏位**（与自建城/攻占同一套，非预留=预建成）。 */
     var size = P.size;
     var col = size[0], row = size[1], total = col * row;
     var cells = [];
-    for (var k = 0; k < total; k++) cells.push({ build: null, pending: null });
-
-    /* ① 政务厅 2×2：**棋盘正中**（v68 老板）—— 走与 makeCity 同一出口 */
-    var gf = GAME.govCellsOf(col, row);
-    var gc = Math.floor((col - 2) / 2), gr = Math.floor((row - 2) / 2);
-    gf.forEach(function (g) {
-      cells[g] = { build: { id: 'guanfu', lvl: bl }, pending: null, official: true };
-    });
-
-    /* ② 训练营 2 座：**紧贴政务厅左邻一列的两格**（成对、挨着政务厅，军事区自成一格）。
-       col 都是偶数、政务厅宽 2，所以左邻格必定合法；仍留一个越界兜底。 */
-    var bar = [];
-    var bc = gc - 1;
-    if (bc >= 0) { bar = [gr * col + bc, (gr + 1) * col + bc]; }
-    bar = bar.filter(function (i) { return i >= 0 && i < total && !cells[i].build; });
-
-    /* ③ 其余格按"到**城池中心**的曼哈顿距离"升序取用（同距按格号）。
-       基准取城池中心（不取政务厅中心）—— "中心"跨棋盘尺寸是稳定参照；
-       v68 政务厅居中后两者结果接近，仍以城池中心为准。 */
-    var cx = (col - 1) / 2, cy = (row - 1) / 2;
-    var rest = [];
-    for (var i = 0; i < total; i++) {
-      if (cells[i].build) continue;
-      if (bar.indexOf(i) >= 0) continue;
-      rest.push(i);
-    }
-    rest.sort(function (a, b) {
-      var da = Math.abs((a % col) - cx) + Math.abs(Math.floor(a / col) - cy);
-      var db = Math.abs((b % col) - cx) + Math.abs(Math.floor(b / col) - cy);
-      return (da - db) || (a - b);
-    });
-
-    /* ④ 训练营占满 2 座之后，剩下的按 DATA.CITY_PLAN.order 依次落位（每种 1 座），
-       再有余格一律居所。 */
-    bar.forEach(function (idx) {
-      cells[idx] = { build: { id: 'junying', lvl: bl }, pending: null };
-    });
-    /* 其余 12 种按固定序落位（每种 1 座），训练营已在上面手工落好 2 座 */
-    var restOrder = P.order.filter(function (b) { return b !== 'junying'; });
-    rest.forEach(function (idx, n) {
-      var bid = n < restOrder.length ? restOrder[n] : P.filler;
-      cells[idx] = { build: { id: bid, lvl: bl }, pending: null };
-    });
+    GAME.applyFixedLayout(cells, bl, col, row, false);
     return { col: col, row: row, level: lv, buildLv: bl, cells: cells, total: total };
   };
   /* 系统城的**建筑等级**（唯一出口，与玩家侧 `buildCapOf` 同一个换算口径）。
@@ -2049,6 +2155,9 @@
       id: city.id, name: city.name, x: city.x, y: city.y,
       level: lv, buildLv: bl, type: city.type, state: city.state,
       col: plan.col, row: plan.row, cells: cells, extGrid: ext, def: city.def || 0,
+      /* v91.19（固定栏位）：围墙不再占格 → 影子城的围墙等级走**独立字段** wallLv（= 建筑等级），
+         供占城转正时给环城槽补墙、以及各处"围墙同此"判据读它。 */
+      wallLv: bl,
       army: {}, ruler: false, shadow: true,
     };
     GAME._npcCache[key] = sh;
@@ -2097,14 +2206,8 @@
     var out = {
       col: summary.plan.col, row: summary.plan.row, level: lv,
       buildLv: summary.plan.buildLv,
-      /* v89.126：围墙占格后，等级从 cells 读（与 GAME.buildingLevel 同源） */
-      wallLv: (function () {
-        var w = 0;
-        (summary.plan.cells || []).forEach(function (x) {
-          if (x.build && x.build.id === 'chengqiang') w = Math.max(w, x.build.lvl || 0);
-        });
-        return w;
-      })(), total: summary.plan.total,
+      /* v91.19（固定栏位）：围墙不占格 → 据点满配围墙等级 = 建筑等级（与名城同口径）。 */
+      wallLv: summary.plan.buildLv, total: summary.plan.total,
       items: summary.items, minfang: summary.minfang,
       popCap: GAME.planPopCapOf(lv),
       def: GAME.fortDefOf(fort),
@@ -2717,9 +2820,14 @@
       }
       /* v90.70：老档补写 ci（球面六边格索引）—— 城/野地/前哨/采集/行军统一读 ci（幂等） */
       if (GAME.migrateSphereCi70) GAME.migrateSphereCi70(st);
-      /* v90.84（老板 2）：**星球分片迁移** —— 老档无 mapSlices → 现有世界归**老家（0 号）**；
-         v90.86：修复旧迁移误把世界存到非 0 号的档（唯一分片搬回 0 号）。 */
+      /* v90.97（老板）：**球系 ID 从 1 起递增** —— 老档整体 +1（须在 _planetsMigrate84 之前，
+         否则老家号还是 0，迁移判据落空）。幂等。 */
+      if (GAME._planetsRemap) GAME._planetsRemap(st);
+      /* v90.84（老板 2）：**星球分片迁移** —— 老档无 mapSlices → 现有世界归**老家（1 号）**；
+         v90.86：修复旧迁移误把世界存到非 1 号的档（唯一分片搬回 1 号）。 */
       if (GAME._planetsMigrate84) GAME._planetsMigrate84(st);
+      /* v90.97（双球面）：`mapPlanetId` 补字段/校验（缺省 = activePlanet）。 */
+      if (GAME._mapPlanetMigrate) GAME._mapPlanetMigrate(st);
       /* 叙事层补字段（旧档可能缺 world/chronicle） */
       if (GAME.story) GAME.story.init();
       /* 英雄资质补字段（v11 前的存档没有 rank/style，按四维反推并写回） */
@@ -2756,6 +2864,8 @@
          （只有第一个生效，后任的静默失效）。这里把重复的清掉，
          否则老板的现有存档读进来仍然是"新守将不生效"。 */
       GAME.normalizeGuards();
+      /* v91.03：城主归一化（一城一任）—— 与守将同款；原遗漏 → 幽灵城主堆在同城 */
+      if (GAME.normalizeMayors) GAME.normalizeMayors();
       /* v64：把没有归属城的英雄挂到首城 —— 席位按城算，不许有"无主之将" */
       if (GAME.normalizeGenCities) GAME.normalizeGenCities();
       /* 读档后把发号序号对齐到存档内最大号，否则新招募的将会与旧将撞 id
@@ -3001,6 +3111,12 @@
         GAME.sphere.setPlanet(_ap89.seed, _ap89.params);
         st.map.grid = null;
         if (GAME.map.generate) GAME.map.generate();
+      }
+      /* v90.97（双球面）：读档也把**地图球面**切到 mapPlanetId（与逻辑球面解耦，可能不同星球）。 */
+      var _mp97 = GAME.mapPlanetOf && GAME.mapPlanetOf();
+      if (_mp97 && GAME.mapSphere && GAME.mapSphere.setPlanet) {
+        GAME.mapSphere.setPlanet(_mp97.seed, _mp97.params);
+        if (GAME.map3d && GAME.map3d.rebuild) GAME.map3d.rebuild();
       }
       return st;
     } catch (e209) {

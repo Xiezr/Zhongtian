@@ -13,6 +13,8 @@ var BITMAPS = (function () {
   F["ai_banche.png"] = 1;
   F["ai_buxingji.png"] = 1;
   F["ai_cangku.png"] = 1;
+  F["ai_cangku_t2.png"] = 1;
+  F["ai_cangku_t3.png"] = 1;
   F["ai_chengqiang.png"] = 1;
   F["ai_city_capital.png"] = 1;
   F["ai_city_county.png"] = 1;
@@ -60,6 +62,8 @@ var BITMAPS = (function () {
   F["ai_kezhan_t3.png"] = 1;
   F["ai_kuanglie.png"] = 1;
   F["ai_majiu.png"] = 1;
+  F["ai_majiu_t2.png"] = 1;
+  F["ai_majiu_t3.png"] = 1;
   F["ai_mat_bintie.png"] = 1;
   F["ai_mat_cuge.png"] = 1;
   F["ai_mat_fatie.png"] = 1;
@@ -91,6 +95,8 @@ var BITMAPS = (function () {
   F["ai_pop.png"] = 1;
   F["ai_quarry.png"] = 1;
   F["ai_shichang.png"] = 1;
+  F["ai_shichang_t2.png"] = 1;
+  F["ai_shichang_t3.png"] = 1;
   F["ai_shuyuan.png"] = 1;
   F["ai_shuyuan_t2.png"] = 1;
   F["ai_shuyuan_t3.png"] = 1;
@@ -132,6 +138,8 @@ var BITMAPS = (function () {
   F["ai_xiaochang_t2.png"] = 1;
   F["ai_xiaochang_t3.png"] = 1;
   F["ai_yizhan.png"] = 1;
+  F["ai_yizhan_t2.png"] = 1;
+  F["ai_yizhan_t3.png"] = 1;
   F["ai_yunshu.png"] = 1;
   F["ai_zhaoxianguan.png"] = 1;
   F["ai_zhaoxianguan_t2.png"] = 1;
@@ -164,7 +172,7 @@ var BITMAPS = (function () {
     has: function (f) { return !!F[f]; },
     fileOf: fileOf,
     src: function (group, id) { var f = fileOf(group, id); return f ? DIR + f : ''; },
-    count: 133,
+    count: 141,
   };
 })();
 

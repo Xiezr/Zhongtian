@@ -307,6 +307,10 @@
     var g = GAME.makeHero ? GAME.makeHero(h)
       : GAME.makeGeneral(h.name, 1, 'idle', GAME.currentCity().id, false);
     g.loyalty = 70;
+    /* v91.02：**贤才也要有归属城** —— makeHero 的 cityId 默认 null → genCityOf 回退"当前城"
+       → 这位英雄**在每个城里都出现**（老板报的"英雄界面显示全部英雄"）。归当前城。 */
+    var home91 = GAME.currentCity() || (s.cities && s.cities[0]) || null;
+    if (home91 && !g.cityId) g.cityId = home91.id;
     s.generals.push(g);
     if (GAME.log) GAME.log('贤才来归：' + h.name + ' 入我帐下。', 'sys', 'staff');
     return g;

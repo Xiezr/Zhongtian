@@ -401,10 +401,12 @@
     var why = (el && el.getAttribute && el.getAttribute('data-why')) || '当前条件不满足';
     var what = el ? String(el.textContent || '').replace(/\s+/g, ' ').trim() : '';
     if (what.length > 16) what = what.slice(0, 16) + '…';
+    /* v91.00（老板）：**否决性弹窗**用小档 xs —— 只有一句原因，不必占 660×620；
+       点弹窗外 / Esc 均可关闭（openModal 统一注入，见 ui.openModal 的 mask 点击）。 */
     ui.openModal(
       '<div class="gold-heading">⛔ 无法执行</div>' +
       (what ? '<div style="text-align:center;color:var(--text-dim);font-size:var(--fs-body);margin-bottom:8px;">操作：<b style="color:var(--text-strong);">' + U.escape(what) + '</b></div>' : '') +
-      '<div class="note">' + U.escape(why).replace(/\n/g, '<br>') + '</div>');
+      '<div class="note">' + U.escape(why).replace(/\n/g, '<br>') + '</div>', { size: 'xs' });
   };
   ui.softenBlocked = function (root) {
     root = root || document;
@@ -450,6 +452,11 @@
     var o = (typeof opts === 'string') ? { size: opts } : (opts || {});
     var sizeCls = o.size ? (' modal-' + o.size) : '';
     if (o.size === 'md') sizeCls = '';                 // 'md' 就是默认档
+    /* v91.00（老板）：**点弹窗外（遮罩）→ 关闭** —— noClose 的窗（必须做选择才能继续）**不给关**。
+       「必须选择」的窗本来就该拦住"点外面溜走"，与"连右上角 × 都不给"同一语义。
+       `_prevNoOut` = 父层（旧）的值 → 压栈时随层记下，弹栈时还原（否则子层关掉后父层误变可关）。 */
+    var _prevNoOut = ui._noOutsideClose;
+    ui._noOutsideClose = !!o.noClose;
     /* v89.119：opts.tall —— 在档位基础上**放开高度**（战报正文页专属，见 index.html 的
        `.modal.modal-tall` 规则）。已开窗分支用 className 全量覆盖 → 跳回普通页自动摘掉；
        层级栈存完整 className → 回退时一起还原。 */
@@ -522,7 +529,7 @@
           title: curTitle, marks: ui._modalMarks(),
           /* v89.210：栈层记"输入值 / 滚动位 / 焦点"快照 —— 弹栈时回填（键盘流手感连续） */
           snap: ui._liveSnap(),
-          live: ui._liveReopen, closeAll: ui._modalCloseAll });   /* v89.135 */
+          live: ui._liveReopen, closeAll: ui._modalCloseAll, noOut: _prevNoOut });   /* v89.135 · v91.00 */
       }
       if (title) ui._modalTitle = title;
       ui._liveReopen = o.live || null;          /* v89.135：同级重绘同样更新回调 */
@@ -600,6 +607,7 @@
         ui._modalMarksRestore(lv.marks);
         ui._liveReopen = lv.live || null;       /* v89.135：回退恢复该层的实时刷新 */
         ui._modalCloseAll = lv.closeAll || false;
+        ui._noOutsideClose = !!lv.noOut;        /* v91.00：回退恢复该层的"点外关闭"许可 */
         ui._paintModalX();
         ui._visible = true;
         /* v89.156（老板 1）：弹栈恢复的是**旧快照**（下级改过的数据还是旧值 —— 例如
@@ -634,6 +642,7 @@
     ui._attackWild = null;
     ui._liveReopen = null;         /* v89.135：顶层关闭 = 停表 */
     ui._modalCloseAll = false;
+    ui._noOutsideClose = false;    /* v91.00：顶层关闭 → 重置"点外关闭"许可 */
   };
   /* v89.117：**关掉所有层级**（closeModal 现在只弹一层 —— 见上面的弹窗栈）。
      语义明确的一个出口：脚本/测试/"一键回城"这类要"全关"的地方用它。
@@ -4087,7 +4096,10 @@
            （v28 的 disabled 就是老板"不可加速"的直接原因）。 */
         '<td class="ctr">' + (running
           ? '<button class="btn sm gold" data-action="train-boost" data-idx="' + bar.idx + '">加速</button>'
-          : '—') + '</td></tr>';
+          : '—') +
+          ' <button class="btn sm" data-action="train-cancel" data-idx="' + bar.idx + '" data-kind="' + kind +
+          '" data-i="' + i + '" title="取消本条募兵，返还 80% 军资">取消</button>' +
+        '</td></tr>';
     }).join('');
     return '<div class="q-sec" style="margin-top:14px;"><span class="q-sec-t">本营募兵队列</span>' +
       '<span class="q-sec-n">' + qs.length + ' / ' + slots + ' 条</span></div>' +
@@ -5062,68 +5074,9 @@
     return it.desc || '';
   };
 
-  /* ============================================================
-   * v90.90（老板）：**帝国全境**的城/据点/野地（跨所有星球）—— 君主左侧清单用。
-   * 经 mapSlices 取每颗星球的城/野地/前哨（含当前星球活态）。返回 [{pid,name,seed,cities,wilds,forts}]。
-   * ============================================================ */
-  GAME.empireItems = function () {
-    var s = GAME.state; if (!s) return [];
-    var act = s.activePlanet, slices = s.mapSlices || {}, out = [];
-    (s.planets || []).forEach(function (p) {
-      if (p.id === act) {
-        var fo = {}; var fm = GAME.fortsOf(); for (var k in fm) if (fm[k] && fm[k].cityId) fo[k] = fm[k];
-        out.push({ pid: p.id, name: p.name, seed: p.seed, active: true,
-          cities: s.cities || [], wilds: s.wilds || [], forts: fo });
-      } else {
-        var sl = slices[p.id] || {};
-        out.push({ pid: p.id, name: p.name, seed: p.seed, active: false,
-          cities: sl.cities || [], wilds: sl.wilds || [], forts: sl.forts || {} });
-      }
-    });
-    /* 老档无 planets 时兜底：只有当前世界 */
-    if (!out.length) {
-      var fo2 = GAME.fortsOf(); out.push({ pid: 0, name: '老家', seed: 0, active: true,
-        cities: s.cities || [], wilds: s.wilds || [], forts: fo2 });
-    }
-    return out;
-  };
-  /* 君主左侧：一个清单（城/据点/野地）按星球分组 + 顶部星球下拉 */
-  ui._estListHTML = function (kind, list) {
-    var selKey = '_estSel_' + kind;
-    var sel = ui[selKey] || 'all';
-    var opts = '<option value="all"' + (sel === 'all' ? ' selected' : '') + '>全部星球（' + list.length + '）</option>' +
-      list.map(function (P) {
-        var n = kind === 'city' ? P.cities.length : (kind === 'wild' ? P.wilds.length : Object.keys(P.forts).length);
-        return '<option value="' + P.pid + '"' + (String(sel) === String(P.pid) ? ' selected' : '') + '>' +
-          U.escape(P.name) + '（' + n + '）</option>';
-      }).join('');
-    var shown = (sel === 'all') ? list : list.filter(function (P) { return String(P.pid) === String(sel); });
-    var rows = shown.map(function (P) {
-      var items = kind === 'city' ? P.cities.map(function (c) {
-          return '<div class="lord-city' + (c.id === ui._cityId ? ' cur' : '') + '" data-action="lord-city-enter" data-city="' + c.id + '" data-pid="' + P.pid + '" title="进入该城">' +
-            U.escape(c.name) + ' · ' + GAME.map.coordText(c.x, c.y) + '</div>';
-        }).join('')
-        : kind === 'wild' ? P.wilds.map(function (w) {
-          var t = DATA.TERRAIN[w.type];
-          return '<div class="lord-city" data-action="lord-wild-go" data-x="' + w.x + '" data-y="' + w.y + '" data-pid="' + P.pid + '" title="定位该野地">' +
-            (t ? t.name : w.type) + ' Lv' + w.level + ' · ' + GAME.map.coordText(w.x, w.y) + '</div>';
-        }).join('')
-        : Object.keys(P.forts).map(function (fk) {
-          var f = P.forts[fk];
-          return '<div class="lord-city" data-action="lord-fort-go" data-x="' + f.x + '" data-y="' + f.y + '" data-pid="' + P.pid + '" title="定位该前哨">' +
-            U.escape(f.name || '前哨') + ' Lv' + (f.lv || f.level || '') + ' · ' + GAME.map.coordText(f.x, f.y) + '</div>';
-        }).join('');
-      return '<div class="est-planet"><div class="est-pname">' + (P.active ? '🪐 ' : '· ') + U.escape(P.name) + '</div>' +
-        (items || '<div class="est-empty">— 无 —</div>') + '</div>';
-    }).join('');
-    return '<div class="est-head">' +
-        '<select class="est-sel" data-action="lord-est-sel" data-kind="' + kind + '">' + opts + '</select>' +
-        '<span class="est-n">' + (kind === 'city' ? shown.reduce(function (a, P) { return a + P.cities.length; }, 0)
-          : kind === 'wild' ? shown.reduce(function (a, P) { return a + P.wilds.length; }, 0)
-          : shown.reduce(function (a, P) { return a + Object.keys(P.forts).length; }, 0)) + ' 条</span>' +
-      '</div>' +
-      '<div class="est-body">' + (rows || '<div class="gb-empty">暂无</div>') + '</div>';
-  };
+  /* ⛔ v90.97（老板）：君主左侧「城池/据点/野地 三清单」整条退役 —— 内容移入**行政菜单**
+     （星球→城市分级树 + 只读总览）。`GAME.empireItems` / `ui._estListHTML` 一并删除。
+     对应的动作 `lord-city-enter / lord-wild-go / lord-fort-go` 已无 UI 出处（保留 case 不碍事，见 main.js）。 */
 
   /* 君主信息弹窗（原版「君主」按钮） */
     ui.openLordInfo = function () {
@@ -5144,7 +5097,8 @@
         return (it ? it.name : j) + ' ' + ((s.items && s.items[j]) || 0) + '/' + next.jewel[j];
       });
       condTitle = '晋升「' + next.name + '」条件：声望 ' + U.fmt(s.rep) + '/' + U.fmt(next.rep)
-        + '　城池 ' + s.cities.length + '/' + cur.city      /* v89.203：门槛=本档上限 */
+        + '　城池 ' + (GAME.empireCityCount ? GAME.empireCityCount() : s.cities.length) + '/' + cur.city   /* v91.22：帝国口径 */
+        + '　星球 ' + (GAME.planetsOwnedCount ? GAME.planetsOwnedCount() : 1) + '/' + (cur.planet || 1)
         + '　旧币 ' + U.fmt(s.res.gold || 0) + '/' + U.fmt(next.gold)
         + (jewParts.length ? '　珠宝 ' + jewParts.join('、') : '')
         + (chk && !chk.ok ? '（' + chk.msg + '）' : '（条件已满足）');
@@ -5157,17 +5111,10 @@
     ui.openShell({
       title: '👤 君主',
       sub: (cur ? cur.name : '幸存者') + ' · 声望 ' + U.fmt(s.rep) + ' · ' + s.cities.length + ' 城',
-      size: 'xxl',      /* v89.105：实测 690px —— xl(700) 只差 10px，但正文会冒滚动条；升一档 */
-      body: '<div class="lord-split">' +
-        '<div class="ls-left">' + (function () {
-            /* v90.90（老板）：左侧三份清单 —— 城池 / 据点 / 野地；每份顶部**星球下拉** + 按星球分组。 */
-            var items = GAME.empireItems();
-            return '<div class="est-sec"><div class="m-sec">🏯 城池清单</div>' + ui._estListHTML('city', items) + '</div>' +
-              '<div class="est-sec"><div class="m-sec">🏯 据点清单</div>' + ui._estListHTML('fort', items) + '</div>' +
-              '<div class="est-sec"><div class="m-sec">🌿 附属野地清单</div>' + ui._estListHTML('wild', items) + '</div>';
-          })() +
-        '</div>' +
-        '<div class="ls-right"><div class="m-sec">君主信息</div>' +
+      /* v90.97（老板）：君主面板**去左半三清单**（城池/据点/野地 → 移入「行政」菜单）——
+         只保留君主相关信息，面板收窄一档（xxl 1200 → xl 960）。 */
+      size: 'xl',
+      body: '<div class="ls-right"><div class="m-sec">君主信息</div>' +
         '<table class="tbl lord-tbl"><tbody>' +
           '<tr><td class="k">君主姓名</td><td><b>' + U.escape(s.ruler.name) + '</b>　' +
             '<button class="btn sm" data-action="open-rename-lord">改名</button></td></tr>' +
@@ -5245,7 +5192,6 @@
           '<tr><td class="k">状态</td><td>正常</td></tr>' +
         '</tbody></table>' +
         '</div>' +
-      '</div>' +
       /* v90.94（老板「给君主界面的最下方加一条练功菜单」）：练功条独立到**面板最下方**（横贯）——
          与突破解耦（练功只涨经验，不再是突破门槛）。按不按得成由出口判（doLordTrain）。 */
       (lg ? (function () {
@@ -7603,6 +7549,170 @@
   };
 
   /* ================= 锻造间 · 打造 ================= */
+  /* ============================================================
+   * v90.97（老板）**行政大菜单**（顶栏「军务」右侧）
+   * ------------------------------------------------------------
+   * 左 1/4：星球→城市 **分级树**（默认只列星球，点星球展开其下辖城市）。
+   * 右 3/4：选中城市的**只读总览** —— 据点 / 占领野地 / 管理英雄 / 在建建筑 /
+   *         招募队列 / 研究中科技（只监控，不在此操作；操作仍回各专页）。
+   * 数据出口：星球 = GAME.planetsOf / GAME.mapSliceOf（SSOT）；英雄 = GAME.generalsIn。
+   * ============================================================ */
+  ui.adminHTML = function () {
+    var s = GAME.state;
+    var open = ui._admOpen = ui._admOpen || {};      /* {pid:true} 展开的星球 */
+    var planets = GAME.planetsOf ? GAME.planetsOf() : [];
+    function sliceOf(pid) { return (GAME.sliceOf ? GAME.sliceOf(pid) : null) || { cities: [], wilds: [], forts: {}, queues: { build: [], train: [], tech: [] } }; }
+    /* 默认选中：当前城（若属某星球）；否则首星球首城 */
+    var cur = GAME.currentCity ? GAME.currentCity() : null;
+    if (!ui._admSel) {
+      if (cur) ui._admSel = { pid: (GAME.activePlanetOf && GAME.activePlanetOf() ? GAME.activePlanetOf().id : (s.activePlanet || 1)), cityId: cur.id };
+      else { var p0 = planets[0]; var c0 = p0 ? (sliceOf(p0.id).cities || [])[0] : null; ui._admSel = p0 ? { pid: p0.id, cityId: c0 ? c0.id : null } : null; }
+    }
+    var sel = ui._admSel;
+
+    /* ---------- 左：分级树 ---------- */
+    var tree = planets.map(function (p) {
+      var sl = sliceOf(p.id), cities = sl.cities || [];
+      var isOpen = !!open[p.id];
+      var isCurPlanet = (GAME.activePlanetOf && GAME.activePlanetOf() && GAME.activePlanetOf().id === p.id);
+      var head = '<div class="adm-node' + (isOpen ? ' open' : '') + '" data-action="adm-planet-toggle" data-pid="' + p.id + '" title="点开/收起该星球下辖城市">' +
+        '<span class="adm-caret">' + (isOpen ? '▾' : '▸') + '</span>' +
+        '<span class="adm-pname">' + (isCurPlanet ? '🪐 ' : '· ') + U.escape(p.name || ('星球 ' + p.id)) + '</span>' +
+        /* v91.14（老板）：「星球可以命名」—— 星球名右侧加改名按钮（嵌套 data-action，点按钮不触发展开）。 */
+        '<button class="btn xs adm-rename" data-action="adm-planet-rename" data-pid="' + p.id + '" title="给这颗星球命名">✎</button>' +
+        '<span class="adm-n">' + cities.length + ' 城</span></div>';
+      if (!isOpen) return head;
+      var kids = cities.length ? cities.map(function (c) {
+        var on = sel && sel.pid === p.id && sel.cityId === c.id;
+        return '<div class="adm-city' + (on ? ' cur' : '') + '" data-action="adm-city-pick" data-pid="' + p.id + '" data-city="' + c.id + '" title="查看该城行政总览">' +
+          U.escape(c.name || '城池') + ' <span class="adm-cmeta">' + (GAME.map.coordText ? GAME.map.coordText(c.x, c.y) : '') + '</span></div>';
+      }).join('') : '<div class="adm-empty">— 无城 —</div>';
+      return head + '<div class="adm-kids">' + kids + '</div>';
+    }).join('');
+
+    /* ---------- 右：只读总览 ---------- */
+    var detail;
+    if (!sel) detail = '<div class="adm-empty">暂无星球</div>';
+    else {
+      var sl2 = sliceOf(sel.pid);
+      var city = null;
+      (sl2.cities || []).forEach(function (c) { if (c.id === sel.cityId) city = c; });
+      if (!city) detail = '<div class="adm-empty">请选择一座城市</div>';
+      else detail = ui._admDetailHTML(sl2, city, sel.pid);
+    }
+    return '<div class="ui-page"><div class="gold-heading">🏛 行政' +
+        ui.help('左栏按「星球 → 城市」分级——默认只列星球，点星球展开其下辖城市。\n' +
+          '选中城市后，右栏：**左列选分类**（管理英雄 / 据点 / 野地 / 在建 / 招募 / 研究…），**右侧看该分类的列表**（只读总览）。\n' +
+          '这里只做监控：具体操作仍在「城池 / 军务 / 英雄 / 地图」各页。') +
+      '</div>' +
+      '<div class="adm-split">' +
+        '<div class="adm-tree">' + (tree || '<div class="adm-empty">暂无星球</div>') + '</div>' +
+        '<div class="adm-detail">' + detail + '</div>' +
+      '</div></div>';
+  };
+  /* 右栏：某城的只读行政明细 */
+  ui._admDetailHTML = function (sl, city, pid) {
+    function empty(t) { return '<div class="adm-empty">— ' + (t || '无') + ' —</div>'; }
+    /* 据点（前哨）：按 cityId 归属该城 */
+    var fo = sl.forts || {}, fortRows = [];
+    Object.keys(fo).forEach(function (k) {
+      var f = fo[k]; if (!f || String(f.cityId) !== String(city.id)) return;
+      fortRows.push('<div class="adm-row"><span class="adm-k">' + U.escape(f.name || '前哨') + '</span>' +
+        '<span class="adm-v">Lv' + (f.lv || f.level || 0) + ' · ' + (GAME.map.coordText ? GAME.map.coordText(f.x, f.y) : '') + '</span></div>');
+    });
+    /* 占领野地：驻军 garrison.cityId 归属该城。v91.22（老板 2）：行尾加「野地详情」按钮 →
+       弹出该野地的**单独管理界面**（ui.openLandModal，含已占野地的全部操作）。 */
+    var wildRows = [];
+    (sl.wilds || []).forEach(function (w) {
+      var g = w.garrison; if (!g || String(g.cityId) !== String(city.id)) return;
+      var gn = ''; if (g.genId) { var gg = (GAME.state.generals || []).filter(function (x) { return x.id === g.genId; })[0]; if (gg) gn = ' · 守将 ' + U.escape(gg.name); }
+      var t = (DATA.TERRAIN || {})[w.type];
+      /* 野地详情：切到该野地所在**星球**（若他星）→ 打开野地面板。 */
+      var _wpid = pid;
+      wildRows.push('<div class="adm-row"><span class="adm-k">' + (t ? t.name : w.type || '野地') + ' Lv' + (w.level || 0) + '</span>' +
+        '<span class="adm-v">' + (GAME.map.coordText ? GAME.map.coordText(w.x, w.y) : '') + gn + '</span>' +
+        '<button class="btn xs adm-wild-open" data-action="adm-wild-open" data-pid="' + _wpid + '" data-x="' + w.x + '" data-y="' + w.y + '" title="野地详情（单独管理界面）">详情</button></div>');
+    });
+    /* 管理英雄：归属该城的英雄 */
+    var gens = (GAME.generalsIn ? GAME.generalsIn(city) : []);
+    var genRows = gens.map(function (g) {
+      var st = ui.genStatusName ? ui.genStatusName(g) : '';
+      return '<div class="adm-row"><span class="adm-k">' + U.escape(g.name) + '</span>' +
+        '<span class="adm-v">Lv' + (g.level || 1) + ' · ' + st + '</span></div>';
+    });
+    /* 在建建筑 */
+    var bq = (sl.queues && sl.queues.build) || [];
+    var buildRows = bq.filter(function (q) { return String(q.cityId) === String(city.id); }).map(function (q) {
+      var b = (DATA.BUILDINGS || {})[q.buildId] || (DATA.EXT_BUILDINGS || {})[q.buildId] || {};
+      return '<div class="adm-row"><span class="adm-k">' + U.escape(b.name || q.buildId) + '</span>' +
+        '<span class="adm-v">' + ui.pctOf(q.elapsed, q.totalTime) + '</span></div>';
+    });
+    /* 招募队列 */
+    var tq = (sl.queues && sl.queues.train) || [];
+    var trainRows = tq.filter(function (q) { return String(q.cityId) === String(city.id); }).map(function (q) {
+      var t = (DATA.TROOPS || {})[q.troopId] || {};
+      return '<div class="adm-row"><span class="adm-k">' + U.escape(t.name || q.troopId) + ' ×' + (q.count || 0) + '</span>' +
+        '<span class="adm-v">' + ui.pctOf(q.elapsed, q.totalTime) + '</span></div>';
+    });
+    /* 研究中科技 */
+    var kq = (sl.queues && sl.queues.tech) || [];
+    var techRows = kq.filter(function (q) { return String(q.cityId) === String(city.id); }).map(function (q) {
+      var name = q.techId; (DATA.TECH || []).forEach(function (x) { if (x.id === q.techId) name = x.name; });
+      return '<div class="adm-row"><span class="adm-k">🔬 ' + U.escape(name) + '</span>' +
+        '<span class="adm-v">' + ui.pctOf(q.elapsed, q.totalTime) + '</span></div>';
+    });
+    /* 已研科技由下方分类 cats 的 techLvRows 现算（v91.04：不再预拼 techLvNames） */
+    /* 星球名（非「当前」字样 —— 读该 pid 的星球） */
+    var pl97 = null; (GAME.planetsOf ? GAME.planetsOf() : []).forEach(function (p) { if (p.id === pid) pl97 = p; });
+    var isCur97 = (GAME.activePlanetOf && GAME.activePlanetOf() && GAME.activePlanetOf().id === pid);
+    return '<div class="adm-city-title">🏯 ' + U.escape(city.name || '城池') +
+        ' <span class="adm-cmeta">' + (GAME.map.coordText ? GAME.map.coordText(city.x, city.y) : '') +
+        ' · 星球 ' + U.escape((pl97 && pl97.name) || ('#' + pid)) + (isCur97 ? '（当前城所在）' : '') + '</span>' +
+        '<button class="btn sm' + (isCur97 ? '' : ' gold') + '" data-action="adm-city-enter" data-pid="' + pid + '" data-city="' + city.id + '"' +
+        (isCur97 ? ' title="该城即当前城">已是当前城' : ' title="进入该城（城市界面切到该城所在星球）">进入该城') + '</button></div>' +
+      (function () {
+        /* v91.04（老板）：右栏改**分类清单 + 选中列表**（参考募兵界面 .troop-split）——
+           左小列 = 各分类（带条数），右 = 该分类完整列表（不再 7 张卡平铺 → 一屏装得下）。 */
+        var techsC = city.techs || {};
+        var techLvRows = Object.keys(techsC).filter(function (k) { return techsC[k] > 0; }).map(function (k) {
+          var n = k; (DATA.TECH || []).forEach(function (x) { if (x.id === k) n = x.name; });
+          return '<div class="adm-row"><span class="adm-k">' + U.escape(n) + '</span><span class="adm-v">Lv' + techsC[k] + '</span></div>';
+        });
+        var cats = [
+          { id: 'gen', icon: '🧑✈️', label: '管理英雄', rows: genRows },
+          { id: 'fort', icon: '🚩', label: '据点（前哨）', rows: fortRows },
+          { id: 'wild', icon: '🌿', label: '占领野地', rows: wildRows },
+          { id: 'build', icon: '🏗', label: '在建建筑', rows: buildRows },
+          { id: 'train', icon: '⚔️', label: '招募队列', rows: trainRows },
+          { id: 'tech', icon: '🔬', label: '研究中科技', rows: techRows },
+          { id: 'techdone', icon: '📚', label: '已研科技', rows: techLvRows }
+        ];
+        var cat = ui._admCat, found = false;
+        cats.forEach(function (c) { if (c.id === cat) found = true; });
+        if (!found) cat = ui._admCat = cats[0].id;
+        var selCat = cats.filter(function (c) { return c.id === cat; })[0];
+        var catList = cats.map(function (c) {
+          return '<div class="adm-cat' + (c.id === cat ? ' cur' : '') + '" data-action="adm-cat-pick" data-cat="' + c.id + '">' +
+            '<span class="adm-cat-ic">' + c.icon + '</span><span class="adm-cat-nm">' + c.label + '</span>' +
+            '<span class="adm-cat-n">' + c.rows.length + '</span></div>';
+        }).join('');
+        return '<div class="adm-cat-split">' +
+            '<div class="adm-cat-list">' + catList + '</div>' +
+            '<div class="adm-cat-body">' +
+              '<div class="adm-cat-body-t">' + selCat.icon + ' ' + selCat.label +
+                ' <span class="adm-cmeta">（' + selCat.rows.length + '）</span></div>' +
+              '<div class="adm-cat-rows">' + (selCat.rows.length ? selCat.rows.join('') : empty()) + '</div>' +
+            '</div>' +
+          '</div>';
+      })();
+  };
+  /* 进度百分比（在建/招募/研究的统一展示） */
+  ui.pctOf = function (elapsed, total) {
+    total = Math.max(0, total || 0);
+    var p = total > 0 ? Math.max(0, Math.min(100, Math.round((elapsed || 0) / total * 100))) : 0;
+    return p + '%';
+  };
+
   ui.renderView = function (v) {
     ui.syncTheme();   /* v39：主题落点（幂等） */
     var box = $('#view-container');
@@ -7623,6 +7733,8 @@
     else if (v === 'troops') box.innerHTML = ui.troopsHTML();
     else if (v === 'generals') box.innerHTML = ui.generalsHTML();
     else if (v === 'marches') box.innerHTML = ui.marchesHTML();
+    /* v90.97（老板）：行政大菜单（星球→城市分级树 + 城市只读总览） */
+    else if (v === 'admin') box.innerHTML = ui.adminHTML();
     else if (v === 'equip') box.innerHTML = ui.equipHTML();
     else if (v === 'tech') box.innerHTML = ui.techHTML();
     else if (v === 'items') box.innerHTML = ui.itemsHTML();
@@ -8023,6 +8135,10 @@
         (o.name ? '<span class="tile-label"><span class="nm">' + o.name + '</span></span>' : '');
     } else if (o.addHint) {
       inner = '<span class="iso-add">＋</span>';
+    } else if (o.reserve) {
+      /* v91.19（老板 1）：预留位内容 —— 预定建筑名（暗字，居中偏上）+ ＋。 */
+      inner = '<span class="iso-add' + (o.ready ? ' ready' : '') + '">＋</span>' +
+        '<span class="iso-reserve">' + U.escape(o.reserve) + '</span>';
     } else {
       /* v89.229（老板「建筑名称和等级都放顶部，建筑名称的文字色块行高调高」）：
          名称行移到**格顶**、族色编码由名称文字色块承载；等级角标并入名称行右端
@@ -8056,6 +8172,14 @@
         name: (isUp16 ? ((pb16 ? pb16.name : '建筑') + ' 升级中') : '') });
     }
     if (!cell.build) {
+      /* v91.19（老板 1）：**预留位** —— 固定栏位里"指定建筑"的槽：显示预定建筑名（暗字）；
+         满足前置（`buildPrereqOf`）时地块边缘**渐变闪烁**，提示"此处现在可建"。居所槽仍为普通空位。 */
+      var fixedBid = GAME.fixedBidAt ? GAME.fixedBidAt(idx) : 'minfang';
+      if (fixedBid && fixedBid !== 'minfang' && DATA.BUILDINGS[fixedBid]) {
+        var rOk = GAME.buildPrereqOf ? GAME.buildPrereqOf(city, fixedBid, 1).ok : false;
+        return ui.isoCell({ M: M, col: col, row: row, cls: 'empty reserve' + (rOk ? ' ready' : ''),
+          idx: idx, act: 'build-cell', reserve: DATA.BUILDINGS[fixedBid].name, ready: rOk });
+      }
       return ui.isoCell({ M: M, col: col, row: row, cls: 'empty', idx: idx, act: 'build-cell', addHint: true });
     }
     var b = DATA.BUILDINGS[cell.build.id];
@@ -8069,8 +8193,11 @@
          瞭望塔格在**预警窗内**挂 .alarm（CSS 做明暗呼吸），窗口口径走唯一出口
          GAME.invasionAlertOf（与军务·警报页、报信消息同源）。 */
       var alarm = (cell.build.id === 'fenghuotai' && GAME.invasionAlertOf && GAME.invasionAlertOf(city)) ? ' alarm' : '';
+      /* v91.22（老板 1）：**瞭望塔地块底色 = 民居系**（民生·暖陶）—— 视觉上归入"无操作/民生"色块；
+         其族属（DATA 的 series='mil' · 军事分组逻辑）保持不变，只改**渲染族色**。 */
+      var _serCls = (cell.build.id === 'fenghuotai') ? 'live' : (b.series || 'gov');
       return ui.isoCell({ M: M, col: col, row: row,
-        cls: 'built ser-' + (b.series || 'gov') + alarm, built: true, idx: idx, act: 'build-cell',
+        cls: 'built ser-' + _serCls + alarm, built: true, idx: idx, act: 'build-cell',
         /* v89.227：先查等级档位图（_t2/_t3）；缺则回退基础图。基础图那次调用
            保留 `GAME.icons.forBuilding(cell.build.id)` 原字符串（smoke 结构断言查它）。 */
         icon: (GAME.icons.bmBuildingTier(cell.build.id, cell.build.lvl) || GAME.icons.forBuilding(cell.build.id)), name: b.name,
@@ -8434,6 +8561,18 @@
           '</span></div>' : '') +
         (yParts.length ? '<div class="attr"><span class="k">岁贡 / 日</span><span class="v good">' +
           yParts.join(' · ') + '</span></div>' : '') +
+        /* v91.02（老板）：「英雄列表也放入政务」—— 政务厅加入**本城英雄列表**（只读）：
+           与英雄页**同源**（GAME.generalsIn → genCityOf），故两处名单永远一致。 */
+        (function () {
+          var gs91 = (GAME.generalsIn ? GAME.generalsIn(c) : []);
+          var rows91 = gs91.map(function (gg) {
+            var st91 = ui.genStatusName ? ui.genStatusName(gg) : '';
+            return '<div class="attr"><span class="k">' + U.escape(gg.name) + '</span>' +
+              '<span class="v">Lv' + (gg.level || 1) + (st91 ? ' · ' + U.escape(st91) : '') + '</span></div>';
+          }).join('');
+          return '<div class="m-sec" style="margin-top:10px;">🧑‍✈️ 本城英雄（' + gs91.length + '）</div>' +
+            (rows91 || '<div class="note" style="margin:0;">本城暂无英雄 —— 到酒馆招募、或从别城「英雄派遣」调入。</div>');
+        })() +
         '</div>';
     }
     /* ============================================================
@@ -8530,7 +8669,8 @@
          顶部图标块整体撤除（城内 / 城外 × 正常 / 施工中 四处一起撤），
          v72 的 .dlg-ico 尺寸盒随之退休 —— 没有图标，就没有 1024px 撑爆的土壤。 */
       ui.openModal(
-        '<div class="gold-heading">' + (pb2 ? pb2.name : '建筑') +
+        '<div class="gold-heading"' + (pb2 && pb2.desc ? ' data-tip="' + U.escape(pb2.desc) + '" style="cursor:help;"' : '') +
+          '>' + (pb2 ? pb2.name : '建筑') +
           (isUpgrade ? (' · Lv' + (cell.pending.targetLevel - 1) + ' → Lv' + cell.pending.targetLevel) : '') + '</div>' +
         '<div style="color:var(--text-dim);font-size:var(--fs-body);text-align:center;margin-bottom:12px;">' +
           (isUpgrade ? '🛠️ 升级中 · 后台施工，倒计时每秒更新，不影响下方操作'
@@ -8716,9 +8856,10 @@
            合适的地方写一个简要的说明…写得有历史感，大气沧桑一点」—— 现将
            **历史感的一句 + 功能要点**（DATA.BUILDINGS[].desc 已整体重写）加回标题正下方，
            与 v76 的诉求不冲突：短、居中小字、不占版面。 */
-        '<div class="gold-heading">' + b.name + ' · Lv' + cell.build.lvl + '</div>' +
-        (b.desc ? '<div class="ui-sub" style="text-align:center;margin:-2px 0 8px;">'
-          + U.escape(b.desc) + '</div>' : '') +
+        /* v91.14（老板）：建筑备注**不再直接写**在标题下，改为**悬停建筑名**显示
+           （data-tip → 全站 #tip-layer 浮层）。城内/城外/施工中四处一致。 */
+        '<div class="gold-heading"' + (b.desc ? ' data-tip="' + U.escape(b.desc) + '" style="cursor:help;"' : '') +
+          '>' + b.name + ' · Lv' + cell.build.lvl + '</div>' +
         extra +
         guanfuBox + heartsBox177 + queueBox174 +
         jewelLine +
@@ -8854,6 +8995,26 @@
 
   /* v77（老板）：「君主姓名（给一个改名按钮）」—— 与城池改名同一套小弹窗版式。
      域侧唯一出口 GAME.renameLord（同时改 ruler.name 与君主英雄 g.name，两处同源）。 */
+  /* v91.14（老板）：「星球可以命名」—— 行政星球名右侧 ✎ 按钮打开本窗。
+     10 字以内；改名走唯一出口 GAME.renamePlanet（全仓读点同步）。 */
+  ui.openPlanetRename = function (pid) {
+    var p = null; (GAME.planetsOf ? GAME.planetsOf() : []).forEach(function (x) { if (x.id === pid) p = x; });
+    if (!p) { ui.toast('星球不存在'); return; }
+    ui._renamePid = pid;
+    ui.openShell({
+      title: '✎ 星球命名',
+      sub: '10 字以内 · 改名会同步到所有引用处（前哨命名 / 地图 / 提示）',
+      size: 'sm',
+      body: '<input type="text" id="rename-planet-input" maxlength="10" value="' + U.escape(p.name || ('星球 ' + pid)) + '"' +
+        ' style="width:100%;padding:8px;background:var(--slab-1);border:1px solid var(--gold-dark);' +
+        'color:var(--text);border-radius:4px;text-align:center;">' +
+        '<div class="op-row" style="justify-content:center;margin-top:12px;">' +
+          '<button class="btn gold" data-action="do-rename-planet">确定</button>' +
+        '</div>',
+      foot: '<div class="m-foot"><button class="btn" data-action="close-modal">取消</button></div>'
+    });
+  };
+
   ui.openRenameLord = function () {
     var s = GAME.state;
     ui.openShell({
@@ -8978,6 +9139,7 @@
     };
     if (e.pending) {
       var pendName = DATA.EXT_BUILDINGS[e.pending] ? DATA.EXT_BUILDINGS[e.pending].name : '建筑';
+      var pendDesc = DATA.EXT_BUILDINGS[e.pending] ? (DATA.EXT_BUILDINGS[e.pending].desc || '') : '';
       var isUpE = !!e.type;
       var prE = GAME.buildProgress('ext', idx);
       /* v19：城外升级同样是后台过程 —— 施工期间**照常产出**（产量按当前等级计），
@@ -8991,7 +9153,8 @@
       }
       ui.openModal(
         /* v73（老板）：顶部图标不留（与城内两处同批撤除） */
-        '<div class="gold-heading">' + pendName + (isUpE ? (' · Lv' + e.lv + ' → Lv' + (e.lv + 1)) : '') + '</div>' +
+        '<div class="gold-heading"' + (pendDesc ? ' data-tip="' + U.escape(pendDesc) + '" style="cursor:help;"' : '') +
+          '>' + pendName + (isUpE ? (' · Lv' + e.lv + ' → Lv' + (e.lv + 1)) : '') + '</div>' +
         '<div style="color:var(--text-dim);font-size:var(--fs-body);text-align:center;margin-bottom:12px;">' +
           (isUpE ? '🛠️ 升级中 · 后台施工，倒计时每秒更新（施工中不停产）' : '🏗️ 建造中 · 倒计时每秒更新') + '</div>' +
         prodLine +
@@ -9027,8 +9190,9 @@
       var costStr = upCost ? GAME.costString(upCost) : (upPre.ok ? '已满级' : upPre.short);
       var eRef = GAME.demolishExtRefund(idx);
       ui.openModal(
-        /* v73（老板）：顶部图标不留（与城内两处同批撤除） */
-        '<div class="gold-heading">' + eb.name + ' · Lv' + e.lv + '</div>' +
+        /* v73（老板）：顶部图标不留（与城内两处同批撤除）；v91.14：备注改**悬停建筑名** */
+        '<div class="gold-heading"' + (eb.desc ? ' data-tip="' + U.escape(eb.desc) + '" style="cursor:help;"' : '') +
+          '>' + eb.name + ' · Lv' + e.lv + '</div>' +
         '<div class="attr"><span class="k">产量</span><span class="v good">' + U.perHourText(prodH) + '/时</span></div>' +
         /* v89.155（老板 5）：本块为堆场容量的贡献；v89.212（老板 1）：按资源分账（只加"本类资源"的上限） */
         '<div class="attr"><span class="k">另加' + (_rn212 || '资源') + '上限</span><span class="v good">+' + U.fmt(GAME.extStoreCapOneOf(e)) + '</span></div>' +
@@ -9143,55 +9307,30 @@
             : (limN.reason === 'res' ? '⚠️ 资源不足' : '当前不可募')) + '</div>' : '') +
         '</div>' +
       '</div>';
-    /* v90.65（老板）：**下方整块=数量 / 训练 / 解散**；右侧只展示。 */
+    /* v91.18（老板 2）：**精简为两行** ——
+       行1：数量框 · 训练 · 招募总耗时；行2：驻军数 · 解散。
+       去掉（老板点名）：重复兵种名 / 幸存者块（可征·上限·增势·每兵占幸存者）。 */
     var opsHTML = '<div class="troop-ops">' + barLine +
+      ((maxN <= 0 && limN)
+        ? '<div class="troop-ops-row"><span class="ui-sub" style="color:var(--red-light);">⚠️ ' +
+            (limN.reason === 'pop' ? '可征幸存者不足（建居所或等待增长）'
+              : (limN.reason === 'res' ? '资源不足' : '当前不可募')) + '</span></div>'
+        : '') +
       '<div class="troop-ops-row">' +
-        '<span style="color:var(--gold-light);font-weight:700;">' + (sel ? sel.icon + ' ' + sel.name : '—') + '</span>' +
-        '<label style="color:var(--text-dim);">数量</label>' +
-        '<input type="number" id="train-count" min="1" value="' + qty + '" style="width:96px;padding:6px;background:var(--slab-1);border:1px solid var(--gold-dark);color:var(--text);border-radius:4px;text-align:center;">' +
+        '<input type="number" id="train-count" min="1" value="' + qty + '" style="width:110px;padding:6px;background:var(--slab-1);border:1px solid var(--gold-dark);color:var(--text);border-radius:4px;text-align:center;">' +
         '<button class="btn sm" data-action="train-max" title="按可用幸存者与资源填到最大可募数">上限</button>' +
-        '<span class="ui-sub">上限 <b style="color:var(--gold-light);font-variant-numeric:tabular-nums;">' + U.numText(maxN, 0) + '</b></span>' +
-        '<span class="ui-sub">驻军 <b style="color:var(--gold-light);font-variant-numeric:tabular-nums;">' + U.numText(haveN, 0) + '</b></span>' +
-        ((maxN <= 0 && limN)
-          ? '<span class="ui-sub" style="color:var(--red-light);">' +
-              (limN.reason === 'pop'
-                ? '⚠️ 可征幸存者不足（劳作占用 ' + U.fmt(GAME.popLaborOf(GAME.currentCity())) + ' 不可征兵）—— 建居所或等待增长'
-                : (limN.reason === 'res'
-                    ? '⚠️ 资源不足 —— 缺 ' + ((limN.lack || []).map(function (k) { return GAME.resName(k); }).join('、') || '募兵所需资源')
-                    : '当前不可募')) +
-            '</span>'
-          : '') +
-        (sel ? (function () {
-          var avail = GAME.popFreeOf(c);
-          var capP = GAME.effPopCapOf(c) || 0;
-          var grow = Math.round(GAME.popGrowthOf(c));
-          var pct = capP > 0 ? Math.min(100, Math.round(avail / capP * 100)) : 0;
-          var srcTxt = '';
-          try {
-            (GAME.popSourcesOf(c) || []).forEach(function (x) {
-              if (Math.abs(x.v) > 1e-9) srcTxt += '　· ' + x.name + ' ' + (x.v > 0 ? '+' : '') + Math.round(x.v * 100) + '%';
-            });
-          } catch (e) {}
-          return '<span class="pop-3" title="可征＝幸存者 − 劳作占用（城市产业所占，不可征兵 · 当前劳作 '
-            + U.fmt(GAME.popLaborOf(c)) + '）· 上限＝居所决定 · 增势＝现实每小时自然增长（基准 2 小时补满）' + srcTxt + '">' +
-            '<span class="p3-k">幸存者</span>' +
-            '<span class="p3-seg ok">可征 <b>' + U.numText(avail, 0) + '</b></span>' +
-            '<span class="p3-seg">上限 <b>' + U.numText(capP, 0) + '</b></span>' +
-            '<span class="p3-seg">增势 <b>+' + grow + '/时</b></span>' +
-            '<span class="p3-bar"><i style="width:' + pct + '%"></i></span>' +
-            '<span class="p3-note">每兵占幸存者 ' + sel.pop + (capP > 0 && avail > capP ? '　· 超上限不增长' : '') + '</span>' +
-            '</span>';
-        })() : '') +
+        '<span style="flex:1 1 auto;"></span>' +
         '<button class="btn gold" data-action="confirm-train" data-troop="' + ui._trainSel + '"' +
           (slotsLeft > 0 ? '' : ' disabled data-why="本营训练队列已满：等待一个队列完成，或升级训练营解锁等待位"') + '>' + (kind === 'craft' ? '制造' : '训练') + '</button>' +
-        '<span style="color:var(--text-dim);font-size:var(--fs-sub);">约' + timeStr + '</span>' +
-        (slotsLeft > 0
-          ? '<span class="ui-sub">队列空位 ' + slotsLeft + '</span>'
-          : '<span class="ui-sub" style="color:var(--amber);">' + (kind === 'craft' ? '本作坊' : '本营') + '队列已满' +
-            (bar && GAME.trainNextSlotLv(bar.lvl) ? '（Lv' + GAME.trainNextSlotLv(bar.lvl) + ' 解锁下一个等待位）' : '') + '</span>') +
+        '<span style="flex:1 1 auto;"></span>' +
+        '<span style="color:var(--text-dim);font-size:var(--fs-sub);">约 ' + timeStr + (slotsLeft > 0 ? '' : '　· 队列已满') + '</span>' +
+      '</div>' +
+      '<div class="troop-ops-row">' +
+        '<span style="color:var(--text);font-size:var(--fs-sub);">驻军 <b style="color:var(--gold-light);font-variant-numeric:tabular-nums;">' + U.numText(haveN, 0) + '</b></span>' +
+        '<span style="flex:1 1 auto;"></span>' +
         '<button class="btn sm red" data-action="troop-disband-ask" data-troop="' + ui._trainSel + '"' +
           (haveN > 0 ? '' : ' disabled') +
-          ' title="解散本城驻军并归农（返还幸存者、军资不退；需二次确认）">解散所选兵种</button>' +
+          ' title="解散本城驻军并归农（返还幸存者、军资不退；需二次确认）">解散</button>' +
       '</div>' +
     '</div>';
     return '<div class="ui-page troops-page"><div class="troop-split">' + listHTML +
@@ -10216,7 +10355,7 @@
       foot: '<div class="m-foot">' +
         '<button class="btn gold" data-action="gen-exp-item" data-mode="one" data-gen="' + genId +
           '" data-item="' + pick + '">用 1 个</button>' +
-        '<button class="btn gold" data-action="gen-exp-item" data-mode="till" data-gen="' + genId +
+        '<button class="btn gold" data-action="gen-exp-till" data-mode="till" data-gen="' + genId +
           '" data-item="' + pick + '"' + (toLevel > have ? ' title="持有 ' + have + ' 个，不够一路升上去"' : '') +
           '>用到升级</button>' +
         '<button class="btn" data-action="close-modal">取消</button></div>'
@@ -10243,40 +10382,29 @@
   /* UI.v41: genDetailBlock-gone —— 内容已并入 ui.genPane 的右侧栏 */
 
 
-  /* v60（需求 4）：英雄**归属城池** —— 英雄页默认只列本城英雄。
-     老板原话：「英雄，幸存者，资源等是归属于城池的数据，切换城池时，只统计、呈现
-     当前的数据即可」。要看全境名单再点 chips 切换 ——
-     不能把两套混在一张表里，否则"我这座城到底有几个人"永远说不清。 */
-  ui.GEN_SCOPES = [['city', '本城'], ['all', '全境']];
-  ui.genScope = function () { return ui._genScope || 'city'; };
+  /* v90.97（老板）：英雄页**只列本城** —— 英雄归属城市，派遣改变归属（调到别城则在本城消失、在彼城出现）。
+     旧「本城 / 全境」切换整条退役（老板："本境还看到了所有英雄"）。 */
   ui.generalsHTML = function () {
     var s = GAME.state;
     var cur = GAME.currentCity();
-    var scope = ui.genScope();
     /* 英雄归属判据走 GAME.genCityOf（唯一出口）：cityId 为空的英雄归当前城，
        不会因为"没写归属"就从名单里消失 */
     var pool = (s.generals || []).filter(function (g) {
-      if (scope === 'all') return true;
       var gc = GAME.genCityOf(g);
       return !!(gc && cur && gc.id === cur.id);
     });
     /* v89.80（老板）：「默认按等级从大到小排序」——
        排序放在**分页之前**（否则"第 1 页"里也不是最强者），并带姓名次键
-       （同等级按姓名，避免顺序随对象引用抖动、每次重开面板都换位）。
-       ⚠️ 不改 pool 的过滤口径，只换顺序；空席补位仍按池长算。 */
+       （同等级按姓名，避免顺序随对象引用抖动、每次重开面板都换位）。 */
     pool = pool.slice().sort(function (a, b) {
       return ((b.level || 1) - (a.level || 1))
         || String(a.name || '').localeCompare(String(b.name || ''), 'zh');
     });
-    /* v64（老板）：「根据**该城的招募站等级**有相应空位」——
-       席位按城。列表分"本城/全境"两栏，上限就要跟栏内范围一致：
-       本城栏比本城席位、全境栏比各城席位数之和（否则两栏共用一个数，必有一栏是错的）。 */
-    var cap = (scope === 'all') ? GAME.genSlotsTotal() : GAME.genSlotsOf(cur);
-    /* v76（老板）：「12个空格每页，平分空间吧，当城池超过12个英雄，
-       自动在底部导航栏产生翻页菜单」—— 每页固定 12 席（不足以空席补满），
-       超过 12 位英雄时把翻页登记到底部导航条；席位号跨页连续（第 N 席 = from + i）。 */
+    /* v64（老板）：「根据**该城的招募站等级**有相应空位」—— 席位按城。 */
+    var cap = GAME.genSlotsOf(cur);
+    /* v76（老板）：「12个空格每页…超过12个英雄自动翻页」—— 每页固定 12 席。 */
     var pg = ui.pageOf('gen', pool.length, ui.GEN_PER);
-    /* 选中英雄：默认第一位；无效（被解雇/换档/换范围）时回落 */
+    /* 选中英雄：默认第一位；无效（被解雇/换档/换城）时回落 */
     var sel = null;
     pool.forEach(function (g) { if (g.id === ui._genSel) sel = g; });
     if (!sel) sel = pool[pg.from] || pool[0] || null;
@@ -10289,17 +10417,10 @@
     }
     if (pg.maxPage > 1) ui.pagerHTML('gen', pool.length, ui.GEN_PER);
 
-    var scopeChips = '<span class="chips gen-scope">' + ui.GEN_SCOPES.map(function (p2) {
-      return '<span class="chip' + (p2[0] === scope ? ' on' : '') +
-        '" data-action="gen-scope" data-v="' + p2[0] + '">' + p2[1] + '</span>';
-    }).join('') + '</span>';
-    /* v73（老板）：「英雄的界面顶部，怎么有个头像加一个飞机啊？不要搞
-       （本城 2 / 11 席 · 全境 2 / 11 席）这些文字，直接英雄加本城/全境切换按钮就行」
-       —— 标题只留「英雄」二字 + 本城/全境 chips：🧑‍✈️（人+飞机）/ 席位文字 /
-       英雄计数一律撤下（席位口径仍在 ⓘ 里说明，具体数字去招募站面板看）。 */
     return '<div class="ui-page">' +
-      '<div class="gold-heading">英雄' + scopeChips +
+      '<div class="gold-heading">英雄' +
         ui.help('左侧点姓名切换英雄；右侧即其**全部**档案与部件栏（不再另开弹窗）\n' +
+          '**只列本城英雄**：英雄归属城市，派遣（出征→调兵）改变归属 —— 调到别城则在本城消失、在彼城出现\n' +
           '席位**按城算**：每座城的上限 = 该城招募站等级（+建筑专精：每档 +2，满三档 +6）；0 级 = 0 席\n' +
           '已超编不会清退现有英雄，但**招募/调入**须先建或升级招募站\n' +
           '英雄先在酒馆招募（本城酒馆 + 本城空位），也可「城池面板 → 英雄派遣」从别城调入\n' +
@@ -10772,6 +10893,8 @@
       : '返还按<b style="color:var(--gold-light)">累计投入的 50%</b> 计算，损失不可追回。') + '</div>';
     html += '<div class="panel-foot">'
       + '<button class="btn red" data-action="demolish-do" data-kind="' + kind + '" data-idx="' + idx + '">' + (isCity && lv > 1 ? '确定拆 1 级' : '确定拆毁') + '</button>'
+      /* v91.15（老板 3）：城内建筑 ≥Lv2 时，加「拆毁」——**直接整座拆除**（不分级）。 */
+      + (isCity && lv > 1 ? '<button class="btn red" data-action="demolish-whole-do" data-kind="' + kind + '" data-idx="' + idx + '" title="直接整座拆除（不分级），返还累计投入的 50%">拆毁（整座）</button>' : '')
       + '<button class="btn" data-action="close-modal">取消</button></div>';
     ui.openModal(html);
   };
@@ -11272,7 +11395,9 @@
         '<div class="res-line"><span class="lbl">声望</span><span class="val" style="color:' + (s.rep >= next.rep ? 'var(--green-ok)' : 'inherit') + ';">' + U.fmt(s.rep) + '/' + U.fmt(next.rep) + '</span></div>' +
         /* v89.108（老板）：城池数现在是**硬上限**（随威望解封）——
            这一行同时是"晋升门槛进度"与"领地上限"（cap = next.city，二者天然同值）。 */
-        '<div class="res-line"><span class="lbl">城池（领地上限）</span><span class="val" style="color:' + (s.cities.length >= cur.city ? 'var(--green-ok)' : 'inherit') + ';">' + s.cities.length + '/' + cur.city + '</span></div>' +
+        '<div class="res-line"><span class="lbl">城池（领地上限）</span><span class="val" style="color:' + ((GAME.empireCityCount ? GAME.empireCityCount() : s.cities.length) >= cur.city ? 'var(--green-ok)' : 'inherit') + ';">' + (GAME.empireCityCount ? GAME.empireCityCount() : s.cities.length) + '/' + cur.city + '</span></div>' +
+        /* v91.22（老板 3）：星球门槛行（每 4 档 +1 星球）。 */
+        '<div class="res-line"><span class="lbl">占领星球</span><span class="val" style="color:' + ((GAME.planetsOwnedCount ? GAME.planetsOwnedCount() : 1) >= (cur.planet || 1) ? 'var(--green-ok)' : 'inherit') + ';">' + (GAME.planetsOwnedCount ? GAME.planetsOwnedCount() : 1) + '/' + (cur.planet || 1) + '</span></div>' +
         '<div class="res-line"><span class="lbl">旧币</span><span class="val" style="color:' + ((s.res.gold || 0) >= next.gold ? 'var(--green-ok)' : 'inherit') + ';">' + U.fmt(s.res.gold || 0) + '/' + U.fmt(next.gold) + '</span></div>' +
         (chk && chk.msg && !chk.ok ? '<div style="color:var(--red-light);font-size:var(--fs-sub);margin-top:6px;">' + chk.msg + '</div>' : '') +
         '<div style="text-align:center;margin-top:12px;">' + promoteBtn + '</div></div>'
@@ -11469,6 +11594,14 @@
        （ui._bottom → paintBottom）；地图页本身只剩棋盘。 */
     /* v90.88（老板）：**去掉上下左右**方向键 + 平面 (x,y) 双输入框；
        改为**球系坐标**（经度/纬度）单一输入 + 前往。其余导航键（回主城/回本城/前哨/灰烬城）保留。 */
+    /* v90.99（老板）：地图在看别颗星球时，基于「当前城」的导航（回主城/回本城）与母星专属的
+       「灰烬城」**断开** —— 挂 .dim + data-why（点击弹原因，走全局受阻机制），比"点了没反应"直观。 */
+    var _onAct99 = ui.mapOnActivePlanet();
+    var _cap99 = ui.mapOnActivePlanet(1);
+    function _nav99(cls, act, label, on, why) {
+      return '<button class="btn sm' + cls + (on ? '' : ' dim') + '" data-action="' + act + '"'
+        + (on ? '' : ' data-why="' + why + '"') + '>' + label + '</button>';
+    }
     ui._bottom.push('<div class="map-dock">' +
         '<span class="map-info" id="map-info">' + ui.mapInfoText() + '</span>' +
         '<span class="map-info mk-pick" id="map-pick-info">' + ui.mapPickText() + '</span>' +
@@ -11479,11 +11612,10 @@
         '<input id="map-lat" type="number" min="-90" max="90" step="1" placeholder="纬度">' +
         '<span class="mk-lbl">°N</span>' +
         '<button class="btn sm gold" data-action="map-goto">前往</button>' +
-        '<button class="btn sm" data-action="map-center">回主城</button>' +
-        /* v89.192（老板 1）：「地图导航栏增加一个回本城的按钮」—— 回本城 = 当前操作城池（ui._cityId）*/
-        '<button class="btn sm" data-action="map-mycity">回本城</button>' +
+        _nav99('', 'map-center', '回主城', _onAct99, '地图在看别颗星球 —— 回主城需先切回本城所在星球') +
+        _nav99('', 'map-mycity', '回本城', _onAct99, '本城不在当前地图星球上 —— 回本城需先切回本城所在星球') +
         '<button class="btn sm" data-action="open-outposts">🚩 前哨</button>' +
-        '<button class="btn sm" data-action="map-capital">灰烬城</button>' +
+        _nav99('', 'map-capital', '灰烬城', _cap99, '灰烬城在母星 —— 当前地图非母星，不可定位') +
       '</div>');
     return '<div class="map-wrap">' +
       '<canvas id="mapCanvas"></canvas>' +
@@ -11521,17 +11653,24 @@
   };
   /* 分级行政检索（级联）：全球 → 省 → 市 → 区；选中即高亮 + 显示下一级边界/首府/名称 */
   ui.fillAdmSearch = function () {
+    /* v90.99：行政检索读的是**地图星球的行政表**（`_settle`，genSettlements 生成）——
+       切星球后须**先重绘地图**（重建该星球的 _settle.package table）再读，否则拿到上一颗星球的省市。 */
+    if (GAME.map3d && GAME.map3d.enabled && GAME.map3d.render) {
+      var _cv = (document.getElementById && document.getElementById('mapCanvas'));
+      if (_cv && _cv.width) { try { GAME.map3d.render(_cv); } catch (e) { } }
+    }
     var T = GAME.map3d && GAME.map3d._settle && GAME.map3d._settle.table;
     var g = function (id) { return document.getElementById && document.getElementById(id); };
     var provEl = g('adm-prov'), mktEl = g('adm-market'), distEl = g('adm-district'), plEl = g('adm-planet');
     /* v90.80（老板 2）：**星球副本**下拉 —— 分类菜单须先于行政检索填充（T 依赖当前星球）。 */
     if (plEl) {
       var _planets = GAME.planetsOf ? GAME.planetsOf() : [];
-      var _act = GAME.activePlanetOf ? GAME.activePlanetOf() : null;
-      if (plEl.getAttribute('data-n') !== String(_planets.length) + ':' + (_act ? _act.id : -1)) {
-        plEl.setAttribute('data-n', String(_planets.length) + ':' + (_act ? _act.id : -1));
+      /* v90.97（双球面）：下拉反映的是**地图在看/渲染的星球**（mapPlanet），非当前城所在星球。 */
+      var _mp = GAME.mapPlanetOf ? GAME.mapPlanetOf() : null;
+      if (plEl.getAttribute('data-n') !== String(_planets.length) + ':' + (_mp ? _mp.id : -1)) {
+        plEl.setAttribute('data-n', String(_planets.length) + ':' + (_mp ? _mp.id : -1));
         plEl.innerHTML = '<option value="-1">全球 · 星球…</option>' + _planets.map(function (p) {
-          return '<option value="' + p.id + '"' + (_act && p.id === _act.id ? ' selected' : '') + '>🪐 ' + U.escape(p.name) + '</option>';
+          return '<option value="' + p.id + '"' + (_mp && p.id === _mp.id ? ' selected' : '') + '>🪐 ' + U.escape(p.name) + '</option>';
         }).join('');
       }
     }
@@ -11584,11 +11723,12 @@
         if (pid < 0) return;                                     /* "全球 · 星球…" 占位项不切 */
         if (GAME.map3d && GAME.map3d.setHighlight) GAME.map3d.setHighlight(null);
         ui._adm = { prov: -1, market: -1, district: -1 };
-        /* v90.85：读条屏切换到该星球 */
-        ui.switchPlanet(pid, function () {
-          var pl = GAME.activePlanetOf();
-          GAME.refreshAll(); ui.fillAdmSearch(); ui.toast('🪐 已进入 ' + (pl ? pl.name : '星球'));
-        });
+        /* v90.97（双球面）：**只切地图球面**（mapPlanet）—— 不碰当前城/activePlanet，
+           城市界面保持；地图重绘为新星球。 */
+        GAME.setMapPlanet(pid);
+        GAME.refreshAll(); ui.fillAdmSearch(); ui.renderMapCanvas();
+        var pl = GAME.mapPlanetOf ? GAME.mapPlanetOf() : null;
+        ui.toast('🪐 地图视角：' + (pl ? pl.name : '星球') + '（城市不变）');
       });
       provEl.addEventListener('change', function () { st.prov = +provEl.value; st.market = -1; st.district = -1; ui.fillAdmSearch(); apply(); });
       mktEl.addEventListener('change', function () { st.market = +mktEl.value; st.district = -1; ui.fillAdmSearch(); apply(); });
@@ -11686,6 +11826,12 @@
       ui.syncMapInfo();
       return;
     }
+    /* v90.97（双球面）：2D 兜底渲染读的是 GAME.map（**当前星球**平面投影）—— 不支持地图看别星，
+       故退回 2D 时把地图视角钉回 current 星球（避免地图下拉与画面不符）。 */
+    if (GAME.state && GAME.mapPlanetOf && GAME.mapPlanetOf()) {
+      var _ap97 = GAME.activePlanetOf ? GAME.activePlanetOf() : null;
+      if (_ap97 && GAME.state.mapPlanetId !== _ap97.id) GAME.state.mapPlanetId = _ap97.id;
+    }
     GAME.map.render(canvas, { vx: ui.mapView.x, vy: ui.mapView.y,
       spanX: fr.spanX, spanY: fr.spanY, cell: fr.cell,
       showLabels: true });   /* v90.88（老板）：名称开关**不再关联地图** —— 地图标注恒显 */
@@ -11726,8 +11872,15 @@
   };
 
   /* v90.88：ui.mapPan（方向键平移）随方向键退役。 */
-  ui.mapCenterOn = function (x, y) {
-    /* v50：视野中心格 = (x,y)。旧签名后两个参数（spanX/spanY）已无意义 ——
+  /* v90.99（老板）：**地图是否在看当前城所在星球** —— 双球面下，若地图已切到别星，
+     「回主城 / 回本城 / 灰烬城」这些**基于当前城的导航**不适用（城不在当前地图星球上）。
+     除非显式传「某城所在星球」，一律返回是否 mapPlanet === activePlanet。 */
+  ui.mapOnActivePlanet = function (pid) {
+    if (pid == null) pid = (GAME.activePlanetOf && GAME.activePlanetOf()) ? GAME.activePlanetOf().id : null;
+    var mp = (GAME.mapPlanetOf && GAME.mapPlanetOf()) ? GAME.mapPlanetOf().id : pid;
+    return pid != null && mp === pid;
+  };
+  ui.mapCenterOn = function (x, y) {    /* v50：视野中心格 = (x,y)。旧签名后两个参数（spanX/spanY）已无意义 ——
        菱形视野不是矩形，不再需要"减去半屏"；保留形参只为兼容旧调用。 */
     ui.mapView.x = U.clamp(Math.round(x), 0, DATA.MAP_W - 1);
     ui.mapView.y = U.clamp(Math.round(y), 0, DATA.MAP_H - 1);
@@ -11739,17 +11892,26 @@
   ui.mapCenter = function () {
     var pc = GAME.map.playerCity();
     if (!pc) return;
+    if (!ui.mapOnActivePlanet()) { ui.toast('地图当前在看别颗星球 —— 回主城需先切回本城所在星球'); return; }
     ui.mapCenterOn(pc.x, pc.y);
     ui.toast('已回到主城 ' + GAME.map.coordText(pc.x, pc.y));
   };
 
   /* v89.192（老板 1）：回本城 —— 视野中心跳到**当前操作城池**所在位置
-     （回主城 = 首城 / 回本城 = ui._cityId 指的那座；数值全走既有出口 mapCenterOn）。 */
+     （回主城 = 首城 / 回本城 = ui._cityId 指的那座；数值全走既有出口 mapCenterOn）。
+     v90.99（老板）：**跨星球断开** —— 本城不在当前地图星球上时不可回（否则"回到别星球的坐标"没意义）。 */
   ui.mapMyCity = function () {
     var c = GAME.currentCity();
     if (!c) { ui.toast('尚无城池'); return; }
+    if (!ui.mapOnActivePlanet()) { ui.toast('本城不在当前地图星球上 —— 回本城需先切回本城所在星球'); return; }
     ui.mapCenterOn(c.x, c.y);
     ui.toast('已回到本城（' + (c.name || '') + '）' + GAME.map.coordText(c.x, c.y));
+  };
+  /* v90.99（老板）：灰烬城（旧都）是**母星专属** —— 地图在看别星时不可回（别星没有灰烬城）。 */
+  ui.mapCapitalCity = function () {
+    if (!ui.mapOnActivePlanet(1)) { ui.toast('灰烬城在母星 —— 当前地图非母星，不可定位'); return; }
+    ui.mapCenterOn(265, 215);
+    ui.toast('已定位至旧都灰烬城 (265,215)');
   };
 
   ui.mapGoto = function () {
@@ -11761,9 +11923,8 @@
       ui.toast('请输入球系坐标：经度 0~360°E · 纬度 -90~90°N');
       return;
     }
-    var W = DATA.MAP_W, H = DATA.MAP_H;
-    var x = U.clamp(Math.round(lon / 360 * W), 0, W - 1);
-    var y = U.clamp(Math.round((0.5 - lat / 180) * H), 0, H - 1);
+    var xy = GAME.sphere.xyOfLonLat(lon, lat);   /* 球系映射 SSOT（见 sphere.js） */
+    var x = U.clamp(xy.x, 0, DATA.MAP_W - 1), y = U.clamp(xy.y, 0, DATA.MAP_H - 1);
     ui.mapCenterOn(x, y);
     ui.toast('已定位至 ' + GAME.map.coordText(x, y));
   };
@@ -13322,11 +13483,13 @@
       target = { kind: 'owncity', id: target.id };     /* 交给既有 resolveTarget（同一出口） */
     }
     ui._expOwn = !!(target && target.kind === 'owncity');
-    var s = GAME.state, c = GAME.currentCity();
+    var s = GAME.state, c = (ui._expFrom && GAME.cityById(ui._expFrom)) || GAME.currentCity();
     var t = GAME.battle.resolveTarget(target);
     if (!t.ok) { ui.toast(t.msg); return; }
     ui._expTarget = target;
     ui._expScheme = null;      /* v86：每次打开出征面板重置计略（防上次的计意外带上） */
+    /* v91.21（老板 C1）：派出城缺省 = 当前城（换目标重开时复位；下拉 change 会重设）。 */
+    if (!(ui._expFrom && GAME.cityById(ui._expFrom))) ui._expFrom = null;
     /* v89.103：本境调运强制走「调兵 · 辎重」方式（只有这一种方式） */
     if (ui._expOwn) { ui._expMode = 'transfer'; }
     /* v74：把**已解析的目标**存一份 —— 兵力总览/战力对比要用守军与城防，
@@ -13496,6 +13659,16 @@
        无限制时这行为空。唯一出口 ui.expLimitsHTML（与执行端判据同源）。 */
     html += '<div class="exp-info exp-info-l" id="exp-limits" style="margin-bottom:0;color:var(--red-light);">' +
       ui.expLimitsHTML() + '</div>';
+    /* v91.21（老板 C1）：**派出城**下拉 —— 多城时选由哪座城执行（全境己方城；跨星球亦列出）。
+       选定后本面板"拥有兵力/出征容量"改读该城；发兵带 fromCityId。 */
+    var _mycities = (s.cities || []);
+    if (_mycities.length > 1 && !ui._expOwn) {
+      html += ui.expRowHTML('派出城',
+        '<select id="exp-from" class="city-select">' + _mycities.map(function (cc) {
+          return '<option value="' + cc.id + '"' + (c && cc.id === c.id ? ' selected' : '') + '>' +
+            U.escape(cc.name) + '（' + GAME.map.coordText(cc.x, cc.y) + '）</option>';
+        }).join('') + '</select>', null);
+    }
     html += '</div>';
 
     /* ② 主将（左中）—— 主将缺省已在函数开头定好（v89.57）；
@@ -13677,6 +13850,12 @@
     /* v89.58：出征方式下拉框 → setExpMode（锁 + 按钮文案 + 兵力区置灰） */
     var _mdSel = document.getElementById('exp-mode');
     if (_mdSel) _mdSel.addEventListener('change', function () { ui.setExpMode(_mdSel.value); });
+    /* v91.21（老板 C1）：**派出城**下拉 → 记 ui._expFrom 并重开面板（兵力/容量改读该城）。 */
+    var _fromSel = document.getElementById('exp-from');
+    if (_fromSel) _fromSel.addEventListener('change', function () {
+      ui._expFrom = _fromSel.value;
+      ui.openExpModal(ui._expTarget);
+    });
   };
 
   /* ============================================================
@@ -14251,10 +14430,21 @@
     /* v90.79（老板 1）：星球生成器移到底栏**最右**（与「隐藏名称」同款图标按钮样式）。 */
     var planetBtn = '<button class="bb-planet" data-action="planet-gen-open" ' +
       'title="星球生成器：设置要素参数生成新星球（各星球作独立副本，不同屏展示）">🪐 星球生成器</button>';
+    /* v90.98（老板）：**地图视野缩放条** —— 底栏右侧、星球生成器左侧；仅地图视图显示。
+       拖动滑块 = 极小视野 ⇄ 极大视野（与滚轮同源 camO.dist，见 map3d.zoomFrac/setZoom）。 */
+    var zoomHTML = '';
+    if (ui.view === 'map' && GAME.map3d && GAME.map3d.enabled && GAME.map3d.zoomFrac) {
+      var zf98 = Math.round(GAME.map3d.zoomFrac() * 100);
+      zoomHTML = '<div class="bb-zoom" title="地图视野：左=极小视野（近看细节） · 右=极大视野（整星总览）；也可用鼠标滚轮缩放">' +
+        '<span class="bzm-ico">🔍</span>' +
+        '<input id="bb-zoom" type="range" min="0" max="100" step="1" value="' + zf98 + '" aria-label="地图视野缩放" ' +
+        'oninput="var G2=window.GAME;if(G2&&G2.map3d&&G2.map3d.setZoom)G2.map3d.setZoom(this.value/100);">' +
+        '</div>';
+    }
     bar.innerHTML = '<div class="bb-tools">' + lblBtn + warBtn + '</div>'
       + (arr.length ? arr.join('')
       : '<span class="bb-hint">—</span>')
-      + '<div class="bb-tools bb-tools-r">' + planetBtn + '</div>';
+      + '<div class="bb-tools bb-tools-r">' + zoomHTML + planetBtn + '</div>';
     ui.paintWarBeacon();
   };
   /* v89.151（老板 3）：「指挥战斗（有正在进行的战斗时发生闪烁）」——

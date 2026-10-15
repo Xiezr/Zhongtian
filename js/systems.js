@@ -195,7 +195,9 @@
       b.tong += (item.tong || 0) * mul; b.nz += (item.nz || 0) * mul;
       b.yw += (item.yw || 0) * mul; b.zm += (item.zm || 0) * mul;
       b.atk += (item.atk || 0) * mul; b.def += (item.def || 0) * mul;
-      b.spd += (item.spd || 0) * mul;
+      /* v91.08（老板）：「装备**单件**属性中速度不能加超过 6 点，不然全军平地起飞」——
+         单件速度贡献**封顶 6**（含强化乘数）；**套装**速度不进这里（走 genSetBonus，不受此帽）。 */
+      b.spd += Math.min(6, (item.spd || 0) * mul);
       b.sta += (item.sta || 0) * mul;
     }
     /* 套装加成 */
@@ -997,10 +999,18 @@
     var s = GAME.state, next = S.nextRank();
     if (!next) return { ok: false, msg: '已达最高威望' };
     if (s.rep < next.rep) return { ok: false, msg: '声望不足（需 ' + U.fmt(next.rep) + '）' };
-    /* v89.203（老板 4）：城池门槛 = **打满本档领地上限**（= 本档管理数；与 cap 同值）。 */
+    /* v89.203（老板 4）：城池门槛 = **打满本档领地上限**（= 本档管理数；与 cap 同值）。
+       v91.22（老板 3）：改**帝国口径** —— 数**所有星球**的城（s.cities 只当前星）。 */
     var _cur203 = DATA.RANK[s.rank] || DATA.RANK[0];
-    if (s.cities.length < _cur203.city) {
-      return { ok: false, msg: '需要 ' + _cur203.city + ' 座城池（打满本档领地上限）' };
+    var _ecc = GAME.empireCityCount ? GAME.empireCityCount() : s.cities.length;
+    if (_ecc < _cur203.city) {
+      return { ok: false, msg: '需要 ' + _cur203.city + ' 座城池（打满本档领地上限，现 ' + _ecc + '）' };
+    }
+    /* v91.22（老板 3）：新增**占领星球数**门槛 —— 每 4 档 +1 星球（DATA.RANK[].planet）。 */
+    var _pNeed = _cur203.planet || 1;
+    var _pOwn = GAME.planetsOwnedCount ? GAME.planetsOwnedCount() : 1;
+    if (_pOwn < _pNeed) {
+      return { ok: false, msg: '需要占领 ' + _pNeed + ' 颗星球（现 ' + _pOwn + '）' };
     }
     if ((s.res.gold || 0) < next.gold) return { ok: false, msg: '旧币不足（需 ' + U.fmt(next.gold) + '）' };
     /* 珠宝检查 */
