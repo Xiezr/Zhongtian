@@ -632,8 +632,9 @@
     var sl = (GAME.mapSliceOf && GAME.mapSliceOf()) || {};
     var grp = new THREE.Group();
     function place(ref, colorHex) {
-      if (!ref || ref.x == null || ref.y == null) return;
-      var ci = nearestCell(dirOfCell(ref.x, ref.y));
+      /* v91.25（球系）：**以 ci 直接落格**（旧法 dirOfCell(x,y) 经 (x,y)→经纬→最近格 往返，
+         会落到邻格 → 棋子错位）。缺 ci 的旧档才回退坐标往返。 */
+      var ci = (ref && ref.ci != null && ref.ci >= 0) ? ref.ci : ((ref && ref.x != null && ref.y != null) ? nearestCell(dirOfCell(ref.x, ref.y)) : -1);
       var cell = (ci >= 0) ? _tileCells[ci] : null; if (!cell || !cell.pos) return;
       var P = cell.pos, L = Math.hypot(P[0], P[1], P[2]) || 1, lift = 1.5;
       var spr = flagSprite(colorHex);
@@ -855,7 +856,7 @@
     var _flVer = (function () {
       var sl = (GAME.mapSliceOf && GAME.mapSliceOf()) || {};
       var fp = Object.keys(sl.forts || {}).sort().join(',');
-      var wp = (sl.wilds || []).map(function (w) { return w.x + ',' + w.y; }).sort().join('|');
+      var wp = (sl.wilds || []).map(function (w) { return w.ci; }).sort(function (a, b) { return a - b; }).join('|');
       return fp + '#' + wp + '#' + _tileSub;
     })();
     if (_flVer !== M._flVer) { M._flVer = _flVer; buildFlags(); }

@@ -3596,7 +3596,7 @@
       '<select class="city-select" data-action="switch-city" title="切换当前经营的城池">' +
       s.cities.map(function (x) {
         return '<option value="' + x.id + '"' + (x.id === c.id ? ' selected' : '') + '>' +
-          '星球' + _pid + '·' + U.escape(x.name || '城')
+          U.escape(x.name || '城')
           + ((GAME.isMainCity && GAME.isMainCity(x)) ? '【主城】' : '')
           + '</option>';
       }).join('') +

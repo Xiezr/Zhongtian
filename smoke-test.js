@@ -6259,8 +6259,7 @@
   check('城池属性：身份信息并入下拉行（v91.25：去重复，城名/操作在「城池」下拉行）',
     /* v91.25（老板）：原「城池身份行」（🏯城名 + 🎲/📍/🏗）删除 —— 城名已在下拉框、
        操作并入下拉行。判据：下拉选项带「星球P·城名」；🧱/🗺/🏗 三入口在 switcher 内。 */
-    /星球' \+ _pid \+ '·'/.test(uS35)
-    && /data-action="open-bldg-list"/.test(uS35)
+    /data-action="open-bldg-list"/.test(uS35)
     && !/政务厅Lv/.test(uS35.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, ''))
     && /城外地块/.test(uS35));
   check('renderCityTools 与 #city-tools 已彻底移除',
@@ -6570,10 +6569,10 @@
     /* v71（老板）：「即使只有一个城池，也保留下拉框，在这里可以显示区镇落坐标」——
        单城不再收起；两侧选项都带坐标（区镇落全称在上，坐标在后）。 */
     /* v91.25（老板）：选项文案 = 「星球P·城名」（去全称与经纬）；星球下拉在位时排在其上。 */
+    /* v91.25：选项文案 = 城名（+【主城】）—— 星球已有独立下拉，不再前缀星球；无经纬。 */
     return /<select class="city-select" data-action="switch-city"/.test(multi)
       && /<option value="[^"]+" selected>/.test(multi)
-      && /星球\d+·/.test(multi)
-      && !/\d+°E/.test(multi)
+      && multi.indexOf('星球1·') < 0 && !/\d+°E/.test(multi)
       && /<select class="city-select" data-action="switch-city"/.test(single)
       && sepOk;
   })());

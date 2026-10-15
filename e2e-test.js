@@ -2823,7 +2823,7 @@ async function runTests(dom, URL) {
   check('侧栏不再有 征收/显示比例/岁贡（板块已删）',
     toolsV24.indexOf('征收') < 0 && toolsV24.indexOf('显示比例') < 0 && toolsV24.indexOf('岁贡') < 0);
   check('侧栏身份信息移入下拉行（v91.25：城名在 #city-switch-host）',
-    ((document.querySelector('#city-switch-host') || {}).innerHTML || '').indexOf('星球') >= 0);
+    ((document.querySelector('#city-switch-host') || {}).innerHTML || '').indexOf(G.currentCity().name) >= 0);
 
   /* ================= v23：地块管理 / 角标 / 宫殿 / 统计 ================= */
   console.log('\n--- v23 地块管理与界面细化 ---');
@@ -3537,13 +3537,13 @@ async function runTests(dom, URL) {
     st.cities = bak;
     G.ui.renderCityAttrs(cur, st);
     /* v71（老板）：「即使只有一个城池，也保留下拉框，在这里可以显示区镇落坐标」 */
-    check('单城时也出现城池下拉框（选项 = 星球P·城名）',
-      single === 1 && singleTxt.indexOf('星球') >= 0 && singleTxt.indexOf(cur.name) >= 0, single + ' 个选项');
+    check('单城时也出现城池下拉框（选项 = 城名）',
+      single === 1 && singleTxt.indexOf(cur.name) >= 0, single + ' 个选项');
     /* v45（需求 3）：判据由"芯片个数"改为"下拉框选项数" —— 已有城池都是可选项 */
     check('多城时城池清单给出城池下拉框（已有城池均为选项）', multi >= 2, multi + ' 个选项');
     /* v71（老板）：选项文案 = 区镇落全称 + 坐标（在哪建城，这里可鉴） */
-    check('下拉框选项 = 星球P·城名（v91.25：去区镇落与坐标）',
-      multiTxt.indexOf('星球') >= 0 && multiTxt.indexOf(cur.name) >= 0, multiTxt.slice(0, 80));
+    check('下拉框选项 = 城名（v91.25：去星球前缀/区镇落/坐标）',
+      multiTxt.indexOf(cur.name) >= 0 && multiTxt.indexOf('星球') < 0, multiTxt.slice(0, 80));
     /* v53（老板："点出来列表马上收回去了"）：这条才是那个 bug 的直接判据 ——
        原生下拉列表挂在 <select> 元素上，元素被重绘换掉 = 列表立刻合上。
        造出多城 → 连点三次 renderCityAttrs（主循环每秒就这么干）→
@@ -4742,7 +4742,7 @@ if (svBtn) {
     const attrs = document.querySelector('#city-attrs').innerHTML;
     const c0 = G.currentCity();
     return attrs.indexOf('500×500') < 0 && attrs.indexOf(G.coordText(c0)) < 0
-      && host.indexOf('星球') >= 0 && host.indexOf(c0.name) >= 0
+      && host.indexOf(c0.name) >= 0
       && host.indexOf('data-action="city-random"') >= 0 && host.indexOf('data-action="city-move-ask"') >= 0;
   })());
   {
