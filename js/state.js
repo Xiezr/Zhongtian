@@ -1785,6 +1785,78 @@
     return n;
   };
 
+  /* ============================================================
+   * v90.100（球系身份）：老档把**身份/键**从平面 (x,y) 迁到 ci。
+   * ------------------------------------------------------------
+   * 前置：migrateSphereCi70 已为实体补 `.ci`。本迁移做「身份层」的换血：
+   *   · 据点字典键：`'x,y'` → `'c'+ci`（forts / fortsRazed / fortsTaken / fortRaids）；
+   *   · 围攻键：`'f:x,y'` → `'f:c'+ci`（`'c:城id'` 不变）；
+   *   · 行军：`tx/ty` → `tci`；
+   *   · 城池：补 lon/lat（由 ci 现算；x/y 保留为派生缓存）。
+   * 同时**递归每个 `st.mapSlices[pid]`**（非当前星球的分片也要迁）。
+   * 幂等（`st.sphereIdMig` 标记）；无内核时跳过（保持旧档可读）。
+   * ⚠️ 迁移是「换算键」不是「重算位置」：ci 一律取自实体已存的 `.ci`（缺则按 x,y 现算一次），
+   *    **绝不按 x,y 覆盖已有 ci**，否则会与既有世界错位。
+   * ============================================================ */
+  GAME._sphereIdMig = function (st) {
+    if (!st || st.sphereIdMig) return 0;
+    var SP = GAME.sphere;
+    if (!SP || !SP.ciOfXY || !SP.cells) return 0;      /* 无内核：以后再迁 */
+    var n = 0;
+    /* 由实体取 ci（优先已存 .ci；缺则按 x,y 现算一次，回填） */
+    function ciOf(o) {
+      if (!o) return -1;
+      if (o.ci != null && o.ci >= 0) return o.ci;
+      if (o.x != null && o.y != null) { var c = SP.ciOfXY(o.x, o.y); if (c >= 0) { o.ci = c; return c; } }
+      return -1;
+    }
+    function cityCi(o) {
+      var ci = ciOf(o);
+      if (ci >= 0) { var c = SP.cells[ci]; if (c) { o.lon = c.lon; o.lat = c.lat; } }
+      return ci;
+    }
+    /* 'A,B' → 'c'+ci；已是 'c…' / 非坐标键 → 原样 */
+    function remapKey(k) {
+      if (typeof k !== 'string') return k;
+      if (k.charAt(0) === 'c') return k;                 /* 新键/城键：已成 ci 口径 */
+      var m = /^(\d+),(\d+)$/.exec(k);
+      if (!m) return k;
+      var ci = SP.ciOfXY(+m[1], +m[2]);
+      return ci >= 0 ? ('c' + ci) : k;
+    }
+    /* 遍历一套「世界」（顶层 or 某 slice） */
+    function migWorld(w) {
+      if (!w) return;
+      (w.cities || []).forEach(cityCi);
+      (w.wilds || []).forEach(ciOf);
+      (w.gathers || []).forEach(ciOf);
+      (w.marches || []).forEach(function (mr) {
+        if (mr.tci != null) return;
+        var ci = -1;
+        if (mr.tx != null && mr.ty != null) ci = SP.ciOfXY(mr.tx, mr.ty);
+        else if (mr.target) ci = ciOf(mr.target);
+        if (ci >= 0) { mr.tci = ci; delete mr.tx; delete mr.ty; }
+      });
+      ['forts', 'fortsRazed', 'fortsTaken', 'fortRaids'].forEach(function (dict) {
+        var o = w[dict]; if (!o || typeof o !== 'object') return;
+        var out = {};
+        for (var k in o) { var nk = remapKey(k); out[nk] = o[k]; if (dict === 'forts' && o[k] && nk.charAt(0) === 'c') ciOf(o[k]); }
+        w[dict] = out;
+      });
+      var sg = w.sieges;
+      if (sg && typeof sg === 'object') {
+        var so = {};
+        for (var sk in sg) { so[sk.replace(/^f:(\d+),(\d+)$/, function (_, a, b) { var ci = SP.ciOfXY(+a, +b); return ci >= 0 ? ('f:c' + ci) : ('f:' + a + ',' + b); })] = sg[sk]; }
+        w.sieges = so;
+      }
+    }
+    migWorld(st);                                        /* 顶层（当前星球） */
+    var slices = st.mapSlices || {};
+    for (var pid in slices) migWorld(slices[pid]);       /* 每个星球分片 */
+    st.sphereIdMig = 1;
+    return n;
+  };
+
   GAME.rankBuildCapOf = function (city) {
     var s = GAME.state;
     if (!s || !GAME.isMainCity(city)) return 0;
@@ -3073,6 +3145,10 @@
       if (GAME.migrateLordLing) GAME.migrateLordLing(st);
       /* v89.211（老板 2）：占城"围墙格释放成空格"的存量补齐（紧签名 · 一次性） */
       if (GAME.migrateWallCell211) GAME.migrateWallCell211(st);
+      /* v90.100（球系身份）：据点字典键 'x,y'→'c'+ci、行军 tx/ty→tci、sieges 键、
+         城补 lon/lat —— 顶层 + **递归各星球分片**（须在分片迁移之后，分片已定型）。
+         前置：migrateSphereCi70 已补 .ci。幂等。 */
+      if (GAME._sphereIdMig) GAME._sphereIdMig(st);
       /* v89.43：经验曲线整体缩到 1/32 —— 老档经验池按新曲线截断，避免读档连升 */
       if (GAME.migrateExpScale) GAME.migrateExpScale(st);
       /* v77 补字段：月俸锚点（老档锚点=当前游戏时刻，首期 7 游戏日后到来） */

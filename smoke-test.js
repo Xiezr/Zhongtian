@@ -35997,6 +35997,55 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     check('§259 汇总：建筑悬停备注 + 星球命名 无失败', n>=3&&bad.length===0, 'n='+n+(bad.length?(' 失败: '+bad.join(' / ')):''));
   })();
 
+  /* ============================================================
+   * §260. v90.100 球系身份：老档键/坐标迁移（_sphereIdMig）
+   * ============================================================ */
+  (function () {
+    console.log('\n===== 260. v90.100 球系身份：老档迁移 =====');
+    check('§260① _sphereIdMig 出口在册（幂等标记 + 递归分片）', (function () {
+      var src = String(GAME._sphereIdMig);
+      return typeof GAME._sphereIdMig === 'function'
+        && /sphereIdMig/.test(src) && /mapSlices/.test(src);
+    })());
+    check('§260② 老档据点字典键 x,y→c+ci · 行军 tx/ty→tci · sieges 键（真迁一次）', (function () {
+      var bak = G.state;
+      try {
+        var st = G.newGame({ name: 'mig260', region: '烬环' });
+        G.state = st;
+        var ci = _ciOf(30, 30), ci2 = _ciOf(40, 40);
+        st.sphereMig70 = 0; st.sphereIdMig = 0;
+        st.cities[0].ci = _ciOf(st.cities[0].x, st.cities[0].y);   /* 前置 ci 已有 */
+        st.forts = { '30,30': { x: 30, y: 30, lv: 4, name: '旧哨', cityId: st.cities[0].id } };
+        st.fortsRazed = { '40,40': 7 };
+        st.fortsTaken = { '30,30': { day: 1, cityId: st.cities[0].id } };
+        st.marches = [{ id: 'mrT', tx: 40, ty: 40, target: { kind: 'wild', x: 40, y: 40 }, kind: 'wild' }];
+        st.sieges = {}; st.sieges['f:30,30'] = { hold: 50, waves: 1, day: 1 };
+        st.oldFortType0 = G.map.fortAt;
+        GAME._sphereIdMig(st);
+        var okForts = !!st.forts['c' + ci] && !st.forts['30,30'] && st.forts['c' + ci].ci === ci;
+        var okRazed = !!st.fortsRazed['c' + ci2] && !st.fortsRazed['40,40'];
+        var okTaken = !!st.fortsTaken['c' + ci];
+        var okMarch = st.marches[0].tci === ci2 && st.marches[0].tx === undefined;
+        var okSiege = !!st.sieges['f:c' + ci] && !st.sieges['f:30,30'];
+        var okIdem = (GAME._sphereIdMig(st) === 0);   /* 二次调用 = no-op */
+        return okForts && okRazed && okTaken && okMarch && okSiege && okIdem;
+      } finally { G.state = bak; }
+    })());
+    check('§260③ 老档城补 lon/lat（由 ci 现算）', (function () {
+      var bak = G.state;
+      try {
+        var st = G.newGame({ name: 'mig260c', region: '烬环' });
+        G.state = st;
+        st.sphereIdMig = 0;
+        var c = st.cities[0];
+        delete c.lon; delete c.lat;
+        GAME._sphereIdMig(st);
+        var cell = G.sphere.cells[c.ci];
+        return c.lon != null && Math.abs(c.lon - cell.lon) < 1e-9 && Math.abs(c.lat - cell.lat) < 1e-9;
+      } finally { G.state = bak; }
+    })());
+  })();
+
   console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');
   process.exit(FAIL ? 1 : 0);
 })();
