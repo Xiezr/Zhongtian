@@ -1546,7 +1546,8 @@
        取**出征的出发城** —— 谁打下来的就归谁。 */
     var home = fromCity || GAME.currentCity() || (s.cities && s.cities[0]) || null;
     var candidates = DATA.HEROES.filter(function (h) {
-      return h.city === npcCity.name || (h.city && (h.x === npcCity.x || Math.abs(h.x - npcCity.x) < 3) && (h.y === npcCity.y || Math.abs(h.y - npcCity.y) < 3));
+      /* v90.100：出身城**按城名匹配**（去 (x,y) 坐标依赖；h.city 为英雄的出生名城名）。 */
+      return h.city === npcCity.name;
     });
     if (!candidates.length) return null;
     var h = candidates[Math.floor(Math.random() * candidates.length)];
