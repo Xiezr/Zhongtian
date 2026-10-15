@@ -421,22 +421,27 @@
 
   GAME.makeCity = function (opts) {
     opts = opts || {};
+    /* v90.100（球系）：**格索引 ci = 唯一身份**（可传 opts.ci，或旧式 opts.x/opts.y）；
+       lon/lat 由 ci 现算；x/y 仅为渲染缓存（由 ci 派生，映射已互逆）。 */
+    var _SP = GAME.sphere;
+    var _ci = (opts.ci != null && opts.ci >= 0) ? opts.ci
+      : ((_SP && _SP.ciOfXY && opts.x != null && opts.y != null) ? _SP.ciOfXY(opts.x, opts.y) : -1);
+    var _cell = (_SP && _SP.cells && _ci >= 0) ? _SP.cells[_ci] : null;
+    var _lon = _cell ? _cell.lon : (opts.lon != null ? opts.lon : 0);
+    var _lat = _cell ? _cell.lat : (opts.lat != null ? opts.lat : 0);
+    var _xy = (_SP && _SP.xyOfLonLat) ? _SP.xyOfLonLat(_lon, _lat)
+      : { x: (opts.x != null ? opts.x : DATA.START_POS.x), y: (opts.y != null ? opts.y : DATA.START_POS.y) };
     var city = {
       id: opts.id || 'p1',
-      /* v60：每城一份资源与幸存者。
-         初始库存走 `opts.res`：攻占的城传 `GAME.npcCityRes(city)`（继承该城库存），
-         自建城传 `DATA.NEW_CITY_RES`（一小笔启动物资）——
-         不传就给 DATA.NEW_CITY_RES，否则新城会因为"0 粮 0 木"连一块田都开不出来。 */
+      /* v60：每城一份资源与幸存者。 */
       res: (function () {
         var r = GAME.emptyRes(), src = opts.res || DATA.NEW_CITY_RES || {};
         GAME.RES_KEYS.forEach(function (k) { r[k] = src[k] || 0; });
         return r;
       })(),
       name: opts.name || '新城池',
-      x: opts.x != null ? opts.x : DATA.START_POS.x,
-      y: opts.y != null ? opts.y : DATA.START_POS.y,
-      /* v90.70：记录**球面六边格索引**（球系化的稳定身份；x,y 为派生显示坐标）*/
-      ci: GAME.sphere && GAME.sphere.ciOfXY ? GAME.sphere.ciOfXY(opts.x != null ? opts.x : DATA.START_POS.x, opts.y != null ? opts.y : DATA.START_POS.y) : -1,
+      ci: _ci, lon: _lon, lat: _lat,   /* 球系唯一身份 + 显示经纬 */
+      x: _xy.x, y: _xy.y,              /* 渲染缓存（由 ci 派生；不再作身份/主键） */
       level: 1,
       def: 0,
       col: 8, row: 6,          /* v40：6 行 8 列 */
@@ -4887,13 +4892,13 @@
   };
   /* v89.4：逐地分布 —— 某格的活动组合 = 格子坐标的确定性函数（同格恒同貌）。
      ① 荒僻率：不是所有野地都有活动；② 有事格 1~3 事（按候选洗牌裁剪）。 */
-  GAME.jianghuActsAt = function (x, y) {
-    var tile = GAME.map.tile(x, y);
-    if (!tile) return [];
-    var cands = GAME.jianghuCands(tile.terrain);
+  GAME.jianghuActsAt = function (ci) {
+    var cell = (GAME.sphere && GAME.sphere.cells) ? GAME.sphere.cells[ci] : null;
+    if (!cell) return [];
+    var cands = GAME.jianghuCands(cell.type);
     if (!cands.length) return [];
     var sp = DATA.JH_SPREAD || {};
-    var r = function (salt) { return GAME.invasionRoll('jhsp|' + x + ',' + y + '|' + salt); };
+    var r = function (salt) { return GAME.invasionRoll('jhsp|c' + ci + '|' + salt); };
     var roll0 = r('any');
     if (roll0 < (sp.noneP != null ? sp.noneP : 0.3)) return [];
     var want = roll0 < (sp.p2 != null ? sp.p2 : 0.62) ? 1
@@ -4904,10 +4909,10 @@
   /* v89.5：灵机之地 —— 有事的野地中「值得专程一访」者（大地图悬青旗）。
      灵机 = 事数 × 野地等级，≥ DATA.JH_MARK.minScore 者为地标（mark）。
      返回 null = 此地无荒野事（荒僻 / 非野地地形）。地图渲染与点选信息共用此出口。 */
-  GAME.jianghuSpotInfo = function (x, y) {
-    var acts = GAME.jianghuActsAt(x, y);
+  GAME.jianghuSpotInfo = function (ci) {
+    var acts = GAME.jianghuActsAt(ci);
     if (!acts.length) return null;
-    var lv = GAME.map.wildLevelNow(x, y);
+    var lv = GAME.map.wildLevelNow(ci);
     var score = lv * acts.length;
     var th = (DATA.JH_MARK && DATA.JH_MARK.minScore != null) ? DATA.JH_MARK.minScore : 10;
     return { n: acts.length, lv: lv, score: score, mark: score >= th };
@@ -4918,21 +4923,21 @@
    _jhClueAttach / wonderCheck / wonderSpend / wonderRoll 共 12 出口全清（数据层 DATA.WONDER/WONDERS 同步清；
    UI / 地图悬星 / main 动作 / 测试见各自墓碑与 smoke §80 退役记录）。 */
 
-  GAME.jianghuDone = function (s, x, y, actId, day) {
-    return ((s.jianghu || {})[x + ',' + y + '|' + actId]) === day;
+  GAME.jianghuDone = function (s, ci, actId, day) {
+    return ((s.jianghu || {})['c' + ci + '|' + actId]) === day;
   };
-  GAME.jianghuCheck = function (x, y, genId, actId) {
+  GAME.jianghuCheck = function (ci, genId, actId) {
     var s = GAME.state;
-    var tile = GAME.map.tile(x, y);
-    if (!tile) return { ok: false, msg: '坐标越界' };
+    var cell = (GAME.sphere && GAME.sphere.cells) ? GAME.sphere.cells[ci] : null;
+    if (!cell) return { ok: false, msg: '目标格越界' };
     var a = (DATA.LING_ACT || {})[actId];
     if (!a) return { ok: false, msg: '无此荒野活动' };
-    if (!a.spots || a.spots.indexOf(tile.terrain) < 0) {
-      return { ok: false, msg: ((DATA.TERRAIN[tile.terrain] || {}).name || '此地') + '做不了「' + a.name + '」' };
+    if (!a.spots || a.spots.indexOf(cell.type) < 0) {
+      return { ok: false, msg: ((DATA.TERRAIN[cell.type] || {}).name || '此地') + '做不了「' + a.name + '」' };
     }
     /* v89.4：逐地分布闸门 —— 此处野地今日并没有这桩事（随缘而现） */
     var avail4 = false;
-    GAME.jianghuActsAt(x, y).forEach(function (k) { if (k.id === actId) avail4 = true; });
+    GAME.jianghuActsAt(ci).forEach(function (k) { if (k.id === actId) avail4 = true; });
     if (!avail4) return { ok: false, msg: '此处野地无「' + a.name + '」—— 荒野之事随缘而现，换一处看看' };
     var gen = null;
     (s.generals || []).forEach(function (g) { if (g.id === genId) gen = g; });
@@ -4946,16 +4951,16 @@
       return { ok: false, msg: gen.name + ' 体力不足（' + Math.round(GAME.staNow(gen)) + '/' + a.stam + '），休整后再来' };
     }
     var day = Math.floor(((s.world && s.world.elapsed) || 0) / 86400);
-    if (GAME.jianghuDone(s, x, y, actId, day)) {
+    if (GAME.jianghuDone(s, ci, actId, day)) {
       return { ok: false, msg: '「' + a.name + '」此地今日已做过，明日再来' };
     }
-    return { ok: true, act: a, gen: gen, day: day, lv: GAME.map.wildLevelNow(x, y), x: x, y: y, actId: actId };
+    return { ok: true, act: a, gen: gen, day: day, lv: GAME.map.wildLevelNow(ci), ci: ci, actId: actId };
   };
   /* v89：内核拆三段 —— Check（jianghuCheck）/ Spend（扣费+落锁）/ Roll（抽结果）。
      全屏剧本流程（GAME.scene*，见下）与 one-shot 入口（jianghuDo）共用同一份内核，
      保证「改了判定只改一处」。 */
-  GAME.jianghuDo = function (x, y, genId, actId) {
-    var chk = GAME.jianghuCheck(x, y, genId, actId);
+  GAME.jianghuDo = function (ci, genId, actId) {
+    var chk = GAME.jianghuCheck(ci, genId, actId);
     if (!chk.ok) return chk;
     GAME.jianghuSpend(chk);
     return GAME.jianghuRoll(chk);
@@ -4966,15 +4971,15 @@
     gen.energy = Math.max(0, (gen.energy || 0) - a.energy);
     GAME.setStaNow(gen, GAME.staNow(gen) - a.stam);
     s.jianghu = s.jianghu || {};
-    s.jianghu[chk.x + ',' + chk.y + '|' + chk.actId] = chk.day;
+    s.jianghu['c' + chk.ci + '|' + chk.actId] = chk.day;
     return { ok: true };
   };
   GAME.jianghuRoll = function (chk, mods) {
     var s = GAME.state;
     var a = chk.act, gen = chk.gen, day = chk.day, lv = chk.lv;
-    var x = chk.x, y = chk.y;
-    var tile = GAME.map.tile(x, y);
-    var seedBase = 'jh|' + x + ',' + y + '|' + chk.actId + '|' + day;
+    var _jc = (GAME.sphere && GAME.sphere.cells) ? GAME.sphere.cells[chk.ci] : null;
+    var tile = { terrain: (_jc && _jc.type) || 'plain' };
+    var seedBase = 'jh|c' + chk.ci + '|' + chk.actId + '|' + day;
     var roll = function (salt) { return GAME.invasionRoll(seedBase + '|' + salt); };
     var rnd = function (salt, lo, hi) {
       lo = Math.round(lo); hi = Math.round(hi);

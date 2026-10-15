@@ -432,7 +432,7 @@
     var cellKind = {}, cellRef = {};
     for (var vi0 = 0; vi0 < M._vdirs.length; vi0++) if (M._vdirs[vi0] && S.provOf[vi0] >= 0) { cellKind[vi0] = 'wild'; }   /* 默认：陆地块 = 野地 */
     /* 据点 = 黄 */
-    for (var fi = 0; fi < _tileCells.length; fi++) { var fc = _tileCells[fi]; if (fc && GAME.map.fortAt(fc.x, fc.y, mctx)) { mark[fi] = [226, 202, 64]; cellKind[fi] = 'fort'; } }
+    for (var fi = 0; fi < _tileCells.length; fi++) { var fc = _tileCells[fi]; if (fc && GAME.map.fortAt(fc.ci, mctx)) { mark[fi] = [226, 202, 64]; cellKind[fi] = 'fort'; } }
     /* v90.70：实体 → 六边格索引。带 .ci 直用（球系唯一身份）；否则按 (x,y) 现算（旧档/未标注）。 */
     function ciOfRef(ref) {
       if (!ref) return -1;
@@ -1001,19 +1001,18 @@
     M._cellKind = kind;
     var reg = M.regionAt(ci);                                  /* 该地块的省/市/区归属 */
     /* 链接到游戏弹窗（照抄 main.js:2534 的 2D 分发）*/
-    var x = cell.x, y = cell.y, ui = GAME.ui;
+    var ui = GAME.ui;
     if (ui) {
       var ref = M.cellRef && M.cellRef[ci];
-      GAME.map._coordOverride = { lon: cell.lon, lat: cell.lat };   /* 球系坐标 → 弹窗 */
       if (kind === 'own' && ref && ui.openCityPanel) ui.openCityPanel(ref);
       else if (kind === 'npc' && ref && ui.openAttackModal) ui.openAttackModal(ref);
       else if (kind === 'adm' && ref && ui.openAttackModal) ui.openAttackModal(ref);
-      else if (kind === 'fort' && GAME.map.fortAt) { var ff = GAME.map.fortAt(x, y, GAME.map._pctx(GAME.mapPlanetOf ? GAME.mapPlanetOf().id : null)); if (ff && ui.openFortModal) ui.openFortModal(ff); else if (ui.openLandModal) { GAME.map._terrOverride = cell.type; GAME.map._wildLvOverride = cell.level; GAME.map._regionOverride = reg; ui.openLandModal(x, y); } }
-      else if (ui.openLandModal) {
-        /* 野地：球面地块地形/等级 + 行政区归属 + 球系坐标 */
-        GAME.map._terrOverride = cell.type; GAME.map._wildLvOverride = cell.level;
+      else if (kind === 'fort' && GAME.map.fortAt) { var ff = GAME.map.fortAt(ci, GAME.map._pctx(GAME.mapPlanetOf ? GAME.mapPlanetOf().id : null)); if (ff && ui.openFortModal) ui.openFortModal(ff); else if (ui.openLandModalCi) { GAME.map._terrOverride = cell.type; GAME.map._regionOverride = reg; ui.openLandModalCi(ci); } }
+      else if (ui.openLandModalCi) {
+        /* 野地：球面地块地形/等级 + 行政区归属 + 球系坐标（球系：按 ci） */
+        GAME.map._terrOverride = cell.type;
         GAME.map._regionOverride = reg;
-        ui.openLandModal(x, y);
+        ui.openLandModalCi(ci);
       }
     }
     if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();

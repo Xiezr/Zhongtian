@@ -1720,38 +1720,29 @@
     return { mul: Math.max(P.minMul, Math.pow(P.decay, gap)), need: need, wl: wl, gap: gap };
   };
 
-  /* 目标解析：野地 / 城池 / 野外城池 */
+  /* 目标解析：野地 / 城池 / 野外城池（球系：按格索引 ci） */
   GAME.battle.resolveTarget = function (target) {
     var s = GAME.state;
     if (!target) return { ok: false, msg: '未指定目标' };
     if (target.kind === 'wild') {
-      var tile = GAME.map.tile(target.x, target.y);
-      if (!tile) return { ok: false, msg: '坐标越界' };
-      if (tile.terrain === 'city') return { ok: false, msg: '该处为城池，请点击城池出征' };
-      /* v90.69（老板「平原不能建城」）：野地**地形口径 = 球面**（所见即所得）——
-         优先用点选时带入的 target.terrain（与面板同源，精确）；无则按坐标查球面地块；再兜底平面格。
-         占领记录/建城判据/产量加成/采集全读它，与 3D 星球一致。 */
-      var _sphT = (!target.terrain && GAME.sphere && GAME.sphere.terrainAt) ? GAME.sphere.terrainAt(target.x, target.y) : null;
-      var _wildTerr = target.terrain || (_sphT && _sphT.type) || tile.terrain;
-      var lv = GAME.map.wildLevelNow ? GAME.map.wildLevelNow(target.x, target.y) : GAME.map.wildLevel(target.x, target.y);
-      /* v27（需求 3）：守军改由 wildDefenseAt 按 (坐标, 现实日) 确定性生成 ——
-         同一天内"侦查看到的"与"打起来遇到的"必然是同一支军队。
-         守将一并带出：野地也可能有将，有将就真的吃英雄加成。 */
-      var wd = GAME.wildDefenseAt(target.x, target.y, lv);
-      return { ok: true, kind: 'wild', x: target.x, y: target.y, lv: lv,
+      var tcell = (GAME.sphere && GAME.sphere.cells) ? GAME.sphere.cells[target.ci] : null;
+      if (!tcell) return { ok: false, msg: '目标格越界' };
+      if (tcell.type === 'city') return { ok: false, msg: '该处为城池，请点击城池出征' };
+      /* v90.69：野地**地形口径 = 球面**（所见即所得）——优先用点选带入的 terrain；无则读球面地块。 */
+      var _wildTerr = target.terrain || tcell.type;
+      var lv = GAME.map.wildLevelNow ? GAME.map.wildLevelNow(target.ci) : GAME.map.wildLevel(target.ci);
+      /* v27（需求 3）：守军由 wildDefenseAt 按 (格, 现实日) 确定性生成 —— 侦查所见即战斗所遇。 */
+      var wd = GAME.wildDefenseAt(target.ci, lv);
+      return { ok: true, kind: 'wild', ci: target.ci, x: tcell.x, y: tcell.y, lon: tcell.lon, lat: tcell.lat, lv: lv,
         name: (DATA.TERRAIN[_wildTerr] ? DATA.TERRAIN[_wildTerr].name : '野地') + ' Lv' + lv,
         terrain: _wildTerr, garrison: wd.army, guard: wd.gen, def: 0, defDay: wd.day };
     }
     if (target.kind === 'fort' && GAME.map.fortAt) {
-      var f = GAME.map.fortAt(target.x, target.y);
+      var f = GAME.map.fortAt(target.ci);
       if (!f) return { ok: false, msg: '此处并无野外城池' };
       var fg = GAME.map.fortGarrison(f.level);
-      /* v61（老板）：「野地里的城池，应默认其建筑全都建满了」——
-         布局由 GAME.fortPlanOf 派生（所有建筑各 1 座 · 训练营 2 座 · 余为居所 · 位置固定），
-         城防走唯一出口 GAME.fortDefOf（原来写死在这行里）。
-         v89.129：**守将**同样走唯一出口 GAME.fortGuardOf ——
-         补上"据点无守将"的缺口（战斗吃英雄加成 / 侦查名册可见 / 可触发斗将）。 */
-      return { ok: true, kind: 'fort', x: f.x, y: f.y, lv: f.level, name: f.name + '（野外城池 Lv' + f.level + '）',
+      /* v61：野地城池建筑全满；布局 GAME.fortPlanOf · 城防 GAME.fortDefOf · 守将 GAME.fortGuardOf。 */
+      return { ok: true, kind: 'fort', ci: f.ci, x: f.x, y: f.y, lon: f.lon, lat: f.lat, lv: f.level, name: f.name + '（野外城池 Lv' + f.level + '）',
         fort: f, garrison: fg, def: GAME.fortDefOf(f), plan: GAME.fortPlanOf(f),
         guard: GAME.fortGuardOf(f),
         cityType: 'fort', dropType: 'fort' };
@@ -1760,21 +1751,15 @@
     if (target.kind === 'owncity') {
       var oc = GAME.cityById(target.id);
       if (!oc) return { ok: false, msg: '目标城池不存在' };
-      return { ok: true, kind: 'owncity', id: oc.id, x: oc.x, y: oc.y, name: oc.name, city: oc };
+      return { ok: true, kind: 'owncity', id: oc.id, ci: oc.ci, x: oc.x, y: oc.y, lon: oc.lon, lat: oc.lat, name: oc.name, city: oc };
     }
     if (target.kind === 'city') {
       var npc = target.npc || null;   // 允许直接传入城池对象（测试/临时目标）
       if (!npc) (s.map.cities || []).forEach(function (c) { if (c.id === target.id) npc = c; });
       if (!npc) return { ok: false, msg: '目标城池不存在（可能已被攻占）' };
-      /* v60（需求 6）：未占据城池**有守将** —— 由 GAME.npcCityGuard 按城 id 确定性
-         派生（老板：「均有守将，为守将六维进行随机设定（避免存储，在接触时生成即可）」）。
-         同一座城每次读到的是同一个人，且它的六维会真的参与战斗（守方英雄加成）。 */
       var ng = GAME.npcCityGuard(npc);
-      /* v89.115：**坐标带上**（x/y）—— 面板的行军估算 / 军师估算 / 搬运预估都读它；
-         此前返回值没有 x/y，按 id 传目标时预估区会整体早退成空白
-         （实机诊断：`🛫 目标无坐标，无法估算行军`）。 */
       return { ok: true, kind: 'city', id: npc.id, lv: GAME.cityLvOf(npc), name: npc.name,
-        x: npc.x, y: npc.y,
+        x: npc.x, y: npc.y, ci: npc.ci, lon: npc.lon, lat: npc.lat,
         npc: npc, garrison: npc.garrison, def: npc.def, guard: ng,
         cityType: npc.type, dropType: GAME.battle.dropTierOf(npc) };
     }
@@ -2082,7 +2067,7 @@
     if (!gen && modeId === 'station' && GAME.map && GAME.map.wildAt) {
       var _tpre137 = GAME.battle.resolveTarget(target);
       if (_tpre137.ok && _tpre137.kind === 'wild') {
-        var _wpre137 = GAME.map.wildAt(_tpre137.x, _tpre137.y);
+        var _wpre137 = GAME.map.wildAt(_tpre137.ci);
         _stNoGen137 = !!(_wpre137 && _wpre137.garrison && _wpre137.garrison.genId);
       }
     }
@@ -2121,7 +2106,7 @@
       }
     }
     if (mode.id === 'station') {
-      if (!(t.kind === 'wild' && GAME.map.wildAt(t.x, t.y))) {
+      if (!(t.kind === 'wild' && GAME.map.wildAt(t.ci))) {
         return { ok: false, msg: '驻守目标须是已属我方的野地' };
       }
       /* ============================================================
@@ -2134,7 +2119,7 @@
        * ③ 计谋护栏：不带将不能施计（schemePrepare 会报"需要主将施计"，
        *    这里提前给更清楚的文案；界面在"已有驻将"时也不会带计谋提交）。
        * ============================================================ */
-      var _w137b = GAME.map.wildAt(t.x, t.y);
+      var _w137b = GAME.map.wildAt(t.ci);
       var _cap137b = GAME.wildGarrisonCap(_w137b.level, _w137b.x, _w137b.y);   /* v89.186：#3 兵站加成读坐标 */
       var _have137b = GAME.wildGarrisonTotal(_w137b.garrison);
       var _men137b = 0;
@@ -2151,7 +2136,7 @@
         }
       }
     }
-    if (mode.id === 'gather' && !(t.kind === 'wild' && GAME.map.wildAt(t.x, t.y))) {
+    if (mode.id === 'gather' && !(t.kind === 'wild' && GAME.map.wildAt(t.ci))) {
       return { ok: false, msg: '采集目标须是已属我方的野地' };
     }
 
@@ -2171,7 +2156,7 @@
        都先过这里，所以才拦得住；写在界面里只是提示，绕过界面就失效。
        ⚠️ 只拦「掠夺」：占领（会把据点打掉、当日不再出现）与侦查不受影响。 */
     if (!opts.arrived && mode.id === 'raid' && t.kind === 'fort'
-        && GAME.map.fortRaidedToday && GAME.map.fortRaidedToday(t.x, t.y)) {
+        && GAME.map.fortRaidedToday && GAME.map.fortRaidedToday(t.ci)) {
       return { ok: false, msg: '此据点今日已被掠夺（每日每处限一次），明日再来' };
     }
 
@@ -2421,15 +2406,15 @@
          `openGathers` 全撤，墓碑见各文件）。此分支**仅服务老档**：
          v89.136 之前出发、仍在途的采集行军 —— 抵达时兵并入该野地驻军
          （野地非我方则整体回城），与此前"抵达开始采集"的下场等价（**不丢兵**）。 */
-      var _gw136 = GAME.map.wildAt(t.x, t.y);
+      var _gw136 = GAME.map.wildAt(t.ci);
       var _gadd136 = 0;
       if (_gw136) {
-        var _gb136 = GAME.wildGarrisonAdd(t.x, t.y, atkArmy, city.id, { noCap: true, genId: gen && gen.id });
+        var _gb136 = GAME.wildGarrisonAdd(t.ci, atkArmy, city.id, { noCap: true, genId: gen && gen.id });
         if (_gb136.overflow) {
           for (var _o136 in _gb136.overflow) city.army[_o136] = (city.army[_o136] || 0) + _gb136.overflow[_o136];
         }
         _gadd136 = _gb136.add || 0;
-        var _wg136 = GAME.wildGarrisonAt(t.x, t.y);
+        var _wg136 = GAME.wildGarrisonAt(t.ci);
         if (gen) gen.status = (_wg136 && _wg136.genId === gen.id) ? 'garrison' : 'idle';
       } else {
         for (var _k136 in atkArmy) city.army[_k136] = (city.army[_k136] || 0) + atkArmy[_k136];
@@ -2609,19 +2594,19 @@
        走到这里都已完成扣减，所以本段**只负责入驻**，不重复扣任何东西。
        为什么必须短路：己方野地上没有"守军"可打，走战斗结算会出现
        "自己打自己地盘、还按己方守军算伤害"的荒谬结果。 */
-    if (mode.station && t.kind === 'wild' && GAME.map.wildAt(t.x, t.y)) {
+    if (mode.station && t.kind === 'wild' && GAME.map.wildAt(t.ci)) {
       /* v89.135（老板 4）：「设置英雄在野地停留的机制」—— 驻军首队（或补将）时把
          带队英雄写进 `garrison.genId`，英雄驻留野地（status='garrison'、cityId=null）；
          已有**别的**英雄驻守时，新将随军**回城**（增援不许带将，与 doWildGarrison 同规）。 */
-      var _wg135 = GAME.wildGarrisonAt(t.x, t.y);
+      var _wg135 = GAME.wildGarrisonAt(t.ci);
       var _hadGen135 = !!(_wg135 && _wg135.genId);
-      var _ga = GAME.wildGarrisonAdd(t.x, t.y, atkArmy, city.id, { genId: gen && gen.id });
+      var _ga = GAME.wildGarrisonAdd(t.ci, atkArmy, city.id, { genId: gen && gen.id });
       if (_ga.overflow) {
         for (var _o1 in _ga.overflow) city.army[_o1] = (city.army[_o1] || 0) + _ga.overflow[_o1];
       }
       var _genStay135 = false;
       if (gen) {
-        var _wg2 = GAME.wildGarrisonAt(t.x, t.y);
+        var _wg2 = GAME.wildGarrisonAt(t.ci);
         /* v89.135：**驻守不改 cityId**（编制城保持 —— "人在野地"由 status 表达）——
            改前置 null 会打穿所有按 `g.cityId === 城.id` 过滤的界面（荒野行动君主在城、
            任命候选…），实测把 v88/v89 的荒野段整条链路连带失败。 */
@@ -2758,7 +2743,7 @@
          掠夺失败不占用当天的额度（打不过不算掠夺过；否则一次失手就整天没得打，
          与 `prepare` 的拦截语义要一致：拦的是"已掠夺过"，不是"已尝试过"）。 */
       if (t.kind === 'fort' && mode.id === 'raid' && GAME.map.markFortRaided) {
-        GAME.map.markFortRaided(t.x, t.y);
+        GAME.map.markFortRaided(t.ci);
         result.fortRaidDaily = true;
       }
       /* 战利品（v15 按原版铁律重排）：
@@ -2870,12 +2855,13 @@
             GAME.log.war('野地数量已达上限（政务厅' + limit + '级），转为就地取材');
           } else {
             s.wilds = s.wilds || [];
-            if (!GAME.map.wildAt(t.x, t.y)) {
+            if (!GAME.map.wildAt(t.ci)) {
               /* v15：记录占领时的等级与日期，此后每现实日 -1 级（见 GAME.decayWilds）
                  v90.70：附 ci（球面六边格索引）—— 与城/据点统一按球系身份 */
+              var _wc = GAME.sphere && GAME.sphere.cells ? GAME.sphere.cells[t.ci] : null;
               s.wilds.push({
-                x: t.x, y: t.y, type: t.terrain, level: t.lv,
-                ci: (GAME.sphere && GAME.sphere.ciOfXY) ? GAME.sphere.ciOfXY(t.x, t.y) : -1,
+                ci: t.ci, type: t.terrain, level: t.lv,
+                lon: _wc ? _wc.lon : null, lat: _wc ? _wc.lat : null,
                 levelDay: GAME.questDayIndex ? GAME.questDayIndex() : Math.floor(Date.now() / 86400000),
               });
             }
@@ -2978,13 +2964,13 @@
     var returned = { back: {}, wounded: {} };
     /* v89.63：「派遣」打下来的兵**留驻该地**（伤兵仍回城医治）——
        于是"出兵"与"驻守"合成一道手续，那道独立的「派军驻守」按钮就此退场。 */
-    var _stW = (mode.station && t.kind === 'wild' && win) ? GAME.map.wildAt(t.x, t.y) : null;
+    var _stW = (mode.station && t.kind === 'wild' && win) ? GAME.map.wildAt(t.ci) : null;
     var _stAdd = 0;
     if (city) {
       returned = GAME.battle.returnArmy(city, atkArmy, result, _stW ? function (back) {
         /* v89.135（老板 3）：**占领新野地不受驻军上限**（noCap）——「10W 占领 1 级野地
            也能全部进去」；老板 4：首队随征英雄记入驻军（genId）。 */
-        var _gb = GAME.wildGarrisonAdd(t.x, t.y, back, city.id, {
+        var _gb = GAME.wildGarrisonAdd(t.ci, back, city.id, {
           genId: gen && gen.id,
           noCap: !!mode.occupy,
         });
@@ -3210,34 +3196,39 @@
     var s = GAME.state;
     if (!t || t.kind !== 'fort' || !t.fort) return { ok: false, msg: '不是野外城池' };
     var f = t.fort;
+    /* v90.100：fort 对象缺 ci 时由 (x,y) 派生（兼容旧夹具）。 */
+    if ((f.ci == null || f.ci < 0) && f.x != null && GAME.sphere && GAME.sphere.ciOfXY) f.ci = GAME.sphere.ciOfXY(f.x, f.y);
     var lv = Math.max(1, f.level || 1);
     var A = DATA.FORT_AURA || {};
     var forts = GAME.fortsOf();
-    var key = f.x + ',' + f.y;
+    var key = 'c' + f.ci;
     /* v89.193：归属 = 出发城；超限分支 —— 本格照常记"已拔除"（不再刷据点）、
        不登记前哨（战利品已在 result 里照收）。 */
     var own193 = (fromCity && (s.cities || []).some(function (c) { return c.id === fromCity.id; })) ? fromCity : null;
     var max193 = A.maxPerCity == null ? 5 : A.maxPerCity;
     if (own193 && GAME.fortsOfCity(own193).length >= max193) {
-      if (GAME.map.markFortTaken) GAME.map.markFortTaken(f.x, f.y, key);
-      if (GAME.map.razeFort) GAME.map.razeFort(f.x, f.y);
+      if (GAME.map.markFortTaken) GAME.map.markFortTaken(f.ci, key);
+      if (GAME.map.razeFort) GAME.map.razeFort(f.ci);
       GAME.log.war('🚩 拔除 ' + f.name + '（野外城池 Lv' + lv + '）—— 但「' + own193.name
         + '」的前哨已满（' + max193 + ' 处），**未能设哨**（战利品照收；可先放手一处，或从其他城池出征）');
       return { ok: false, full: true,
         msg: f.name + ' 已拔除，但本城前哨已满（' + max193 + ' 处）—— 未能设哨' };
     }
-    var rec = forts[key] = forts[key] || { x: f.x, y: f.y,
+    var _fc = (GAME.sphere && GAME.sphere.cells) ? GAME.sphere.cells[f.ci] : null;
+    var rec = forts[key] = forts[key] || {
+      ci: f.ci, lon: f.lon != null ? f.lon : (_fc ? _fc.lon : null), lat: f.lat != null ? f.lat : (_fc ? _fc.lat : null),
+      /* x/y：渲染缓存（由 ci 派生；x/y 不再作身份） */
+      x: _fc ? _fc.x : null, y: _fc ? _fc.y : null,
       day: GAME.questDayIndex ? GAME.questDayIndex() : 0 };
     rec.lv = lv; rec.name = f.name;
     rec.cityId = own193 ? own193.id : (rec.cityId || null);   /* v89.193：归属城（老档迁移兜底） */
     var fx193 = GAME.fortEffectOf(rec);                       /* v89.193：半径/文案与覆盖同源（按等级） */
     var RR = fx193.radius;
-    if (GAME.map.markFortTaken) GAME.map.markFortTaken(f.x, f.y, key);
-    if (GAME.map.razeFort) GAME.map.razeFort(f.x, f.y);    /* 当日标记：今日不再出现 */
-    var tile = GAME.map.tile(f.x, f.y);
+    if (GAME.map.markFortTaken) GAME.map.markFortTaken(f.ci, key);
+    if (GAME.map.razeFort) GAME.map.razeFort(f.ci);    /* 当日标记：今日不再出现 */
     /* v89.195（老板 1）：「前哨可放手」—— 记录**占据前的地形**（terrain0），
        放手时恢复（GAME.abandonFort 唯一出口）。`rec.terrain0 ||` 保证只记最早那一次。 */
-    if (tile) { rec.terrain0 = rec.terrain0 || tile.terrain; tile.terrain = 'city'; }   /* 据点仍占该格（视觉可见） */
+    /* 据点仍占该格（视觉可见）：地形由 sphere 供，无需平面 tile 标记 */
     GAME.statBump('forts', 1);
     /* ⛔ v90.93：STORY.repMult（年号国策）随年号纪元退役。 */
     var repF = Math.round(20 + lv * 5);
@@ -3757,14 +3748,11 @@
     return (DATA.EXPEDITION && DATA.EXPEDITION.marchMinRealSec) || 2;
   };
 
-  /* 行军耗时（单位：游戏秒，与建造/训练队列口径一致） */
+  /* 行军耗时（单位：游戏秒，与建造/训练队列口径一致；球系：from/to 带 .ci） */
   GAME.march.travelTime = function (from, to, army, secPerTile, gen) {
     var ts = GAME.timeScale();
-    /* v90.70（老板「统一坐标系·不再以平面坐标转接」）：距离口径 = **球面六边相邻环数**
-       （step-dist / Honeycomb），非平面切比雪夫。无内核时回退旧口径。 */
-    var dist = (GAME.sphere && GAME.sphere.distOf)
-      ? GAME.sphere.distOf(from, to)
-      : Math.max(Math.abs((from.x || 0) - (to.x || 0)), Math.abs((from.y || 0) - (to.y || 0)));
+    /* v90.100：距离口径 = **球面六边相邻环数**（step-dist / Honeycomb）。 */
+    var dist = (GAME.sphere && GAME.sphere.distOf) ? GAME.sphere.distOf(from, to) : 1;
     if (dist <= 0) dist = 1;
     var fac = GAME.march.speedFactor(army, from, to, gen);
     var gameSec = dist * (secPerTile || GAME.march.secPerTile()) / Math.max(0.05, fac);
@@ -3813,8 +3801,8 @@
          v28（需求 1）：建筑专精把范围再放 6 格、强度再 +20%/档（v89.137 三档） */
       var fh = GAME.buildingLevel(fc, 'fenghuotai') || 0;
       var bb = (GAME.mastery ? GAME.mastery('beaconBoost', fc) : 0);
-      if (fh >= 10 && to) {
-        var d = Math.max(Math.abs(fc.x - (to.x || 0)), Math.abs(fc.y - (to.y || 0)));
+      if (fh >= 10 && to && to.ci != null) {
+        var d = GAME.cityDist(fc, to);
         if (d <= 13 + bb * 30) m *= (1.5 + bb);
       }
     }
@@ -3934,8 +3922,8 @@
       gen.status = 'march';
     }
 
-    var to = { x: t.x, y: t.y };
-    var total = GAME.march.travelTime({ x: city.x, y: city.y, cityId: city.id }, to, army, null, gen);
+    var to = { ci: t.ci };
+    var total = GAME.march.travelTime({ ci: city.ci, cityId: city.id }, to, army, null, gen);
     /* v86：千里奔袭 —— 本次行军 +30%（只影响这一趟，不改全局速度链） */
     if (scheme === 'benxi') {
       var _bx = GAME.schemeOf('benxi');
@@ -3946,7 +3934,7 @@
     var m = {
       id: 'mr' + (GAME._marchSeq = (GAME._marchSeq || 0) + 1),
       cityId: city.id, genId: gen ? gen.id : '', modeId: mode.id,   /* v89.137：'' = 无将增援 */
-      target: target, tx: t.x, ty: t.y, name: t.name, kind: t.kind,
+      target: target, tci: t.ci, name: t.name, kind: t.kind,
       army: U.deep(army), elapsed: 0, totalTime: total,
       scheme: scheme,                    /* v86：随军计谋（抵达时读） */
       cargo: cargo || null,              /* v89.103：随军辎重（抵达落账 / 失败退回） */

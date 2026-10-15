@@ -2626,17 +2626,18 @@
    *   · 区档 = 该聚落数据里写死的 state。
    * 两个坐标落在同一个聚落 → 永远同一结果，可断言、可缓存。
    * ============================================================ */
-  GAME.regionOf = function (x, y) {
+  GAME.regionOf = function (ci) {
     /* v90.79：O(1) 走**区域场**（多源 BFS 最近聚落）—— 免逐点六边 BFS（旧 O(全星)/次）。
        先确保场地已建（首调 ~150ms，随后缓存）。 */
     var best = null;
     var cf = GAME.map._countyField ? GAME.map._countyField() : null;
     if (cf && GAME.map._cntyF && GAME.map._cntyF.byCi) {
-      var ownerCi = GAME.map.countyCiAt(x, y);
+      var ownerCi = GAME.map.countyCiAt(ci);
       if (ownerCi >= 0) best = GAME.map._cntyF.byCi[ownerCi] || null;
     }
     if (!best) {                               /* 兜底（无内核 / 无场地）：线性扫描最近聚落 */
-      var pt = { x: x, y: y }, bd = Infinity;
+      var _sp = GAME.sphere, _tc = _sp && _sp.cells ? _sp.cells[ci] : null;
+      var pt = { ci: ci, x: _tc ? _tc.x : 0, y: _tc ? _tc.y : 0 }, bd = Infinity;
       (DATA.NPC_CITIES || []).forEach(function (c) {
         if (c.type !== 'county') return;
         var d = GAME.cityDist(c, pt);
@@ -2670,7 +2671,7 @@
     if (st) parts.push(st);
     /* 聚落：行政链到「镇」为止（聚落本身是末段的"名字"那一层） */
     if (city.type === 'county') {
-      var rg = GAME.regionOf(city.x, city.y);
+      var rg = GAME.regionOf(city.ci);
       if (rg && rg.jun) parts.push(GAME.junNameOf(rg.jun));
     }
     /* 末段 = 这座城的名字：
@@ -2688,7 +2689,7 @@
   /* 野外城池的标识（v70 老板「标识应写上其所在聚落」）：`芦塘 · 青石营` */
   GAME.fortLabelOf = function (fort) {
     if (!fort) return '';
-    var rg = GAME.regionOf(fort.x, fort.y);
+    var rg = GAME.regionOf(fort.ci);
     return (rg && rg.county ? GAME.countyNameOf(rg.county) + ' · ' : '') + fort.name;
   };
 
@@ -2709,8 +2710,8 @@
   };
   GAME.siegeKeyOf = function (t) {
     if (!t) return '';
-    if (t.kind === 'city') return 'c:' + ((t.npc && t.npc.id) || t.id || (t.x + ',' + t.y));
-    return 'f:' + t.x + ',' + t.y;
+    if (t.kind === 'city') return 'c:' + ((t.npc && t.npc.id) || t.id || ('#' + t.ci));
+    return 'f:c' + t.ci;
   };
   GAME.siegeDayIdx = function () {
     return GAME.questDayIndex ? GAME.questDayIndex() : 0;
@@ -3248,11 +3249,11 @@
   GAME.wildDefenseDay = function () {
     return GAME.questDayIndex ? GAME.questDayIndex() : Math.floor(Date.now() / 86400000);
   };
-  GAME.wildDefenseAt = function (x, y, lv) {
-    if (lv == null) lv = GAME.map.wildLevelNow ? GAME.map.wildLevelNow(x, y) : GAME.map.wildLevel(x, y);
+  GAME.wildDefenseAt = function (ci, lv) {
+    if (lv == null) lv = GAME.map.wildLevelNow ? GAME.map.wildLevelNow(ci) : GAME.map.wildLevel(ci);
     lv = Math.max(0, Math.min(10, lv | 0));
     var day = GAME.wildDefenseDay();
-    var hash = ((x | 0) * 73856093) ^ ((y | 0) * 19349663) ^ (day * 83492791);
+    var hash = (Math.imul(ci | 0, 73856093) ^ Math.imul(day | 0, 83492791)) >>> 0;
     var rand = U.rng(hash >>> 0);
     var tbl = DATA.WILD_DEFENSE[lv] || [];
     var wave = DATA.WILD_DEFENSE_WAVE;
@@ -3285,8 +3286,8 @@
     return { lv: lv, day: day, army: army, total: total, gen: gen };
   };
 
-  GAME.wildGarrisonAt = function (x, y) {
-    var w = GAME.map.wildAt(x, y);
+  GAME.wildGarrisonAt = function (ci) {
+    var w = GAME.map.wildAt(ci);
     return (w && w.garrison) ? w.garrison : null;
   };
   GAME.wildGarrisonTotal = function (g) {
@@ -3305,8 +3306,8 @@
        · GAME.doWildGarrison（城内派兵驻守，先扣兵再调本函数）
        · battle 出征「派遣」到达结算（兵在 dispatch 时已离城，直接入驻军）
      超上限的部分**不硬塞**：放进 overflow 交回调用方处置（通常是回城）。 */
-  GAME.wildGarrisonAdd = function (x, y, army, cityId, opts) {
-    var w = GAME.map.wildAt(x, y);
+  GAME.wildGarrisonAdd = function (ci, army, cityId, opts) {
+    var w = GAME.map.wildAt(ci);
     if (!w) {
       /* 写不进去时把兵力**原样退回 overflow**，由调用方决定去处 —— 绝不能凭空蒸发（兵不丢铁律） */
       var ov0 = {};
@@ -3348,14 +3349,14 @@
    * ============================================================ */
 
   /* 撤回驻军：兵力回城 */
-  GAME.doWildWithdraw = function (x, y) {
-    var s = GAME.state, w = GAME.map.wildAt(x, y);
+  GAME.doWildWithdraw = function (ci) {
+    var s = GAME.state, w = GAME.map.wildAt(ci);
     if (!w || !w.garrison) return { ok: false, msg: '该野地没有驻军' };
     var city = GAME.cityById(w.garrison.cityId) || GAME.currentCity() || (s.cities || [])[0];
     /* v89.135：**先停采再撤** —— 原地开工的采集队挂在驻军上（采力动态读驻军），
        直接撤军会让它变成"采力 0 的僵尸队"。已满 1 小时的先自动收获（不罚玩家），
        不足 1 小时的停止开采。 */
-    var gth = GAME.gatherAt(x, y);
+    var gth = GAME.gatherAt(ci);
     if (gth) {
       var gy = GAME.gatherYield(gth);
       if (gy && gy.ready) GAME.finishGather(gth.id);
@@ -3382,15 +3383,15 @@
   };
 
   /* 放弃野地：先把驻军与采集队撤回（否则兵力凭空消失），再解除占领 */
-  GAME.doAbandonWild = function (x, y) {
-    var s = GAME.state, w = GAME.map.wildAt(x, y);
+  GAME.doAbandonWild = function (ci) {
+    var s = GAME.state, w = GAME.map.wildAt(ci);
     if (!w) return { ok: false, msg: '该野地尚未占领' };
     var back = 0;
     if (w.garrison) {
       back += GAME.wildGarrisonTotal(w.garrison);
-      GAME.doWildWithdraw(x, y);
+      GAME.doWildWithdraw(ci);
     }
-    var gth = GAME.gatherAt(x, y);
+    var gth = GAME.gatherAt(ci);
     if (gth) {
       back += gth.troops || 0;
       /* ⛔ v89.141（复核修复）：此处曾引 `GAME.doAbandonGather` —— 那是 v89.138
@@ -3399,7 +3400,7 @@
          满 1h 先自动收获的语义在 doWildWithdraw 主路径已处理）。 */
       GAME.abandonGather(gth.id);
     }
-    s.wilds = (s.wilds || []).filter(function (z) { return !(z.x === x && z.y === y); });
+    s.wilds = (s.wilds || []).filter(function (z) { return z.ci !== ci; });
     var tn = DATA.TERRAIN[w.type] ? DATA.TERRAIN[w.type].name : w.type;
     GAME.log('放弃野地：' + tn + ' Lv' + w.level + '（产量加成与采集权一并失去' +
       (back ? '，' + U.fmt(back) + ' 名守军/采集队已归城' : '') + '）');
@@ -3461,7 +3462,7 @@
         (s.wilds || []).forEach(function (w) {
           if (!w.garrison || w.garrison.cityId !== city.id) return;
           w.garrison.cityId = recv.id;
-          GAME.doWildWithdraw(w.x, w.y);
+          GAME.doWildWithdraw(w.ci);
         });
       } },
     /* ⚠️ 城池本体放最后：上面的清理还要用 city / recv */
@@ -3627,9 +3628,9 @@
     s.gathers = s.gathers || [];
     return s.gathers;
   };
-  GAME.gatherAt = function (x, y) {
+  GAME.gatherAt = function (ci) {
     var list = GAME.gatherList();
-    for (var i = 0; i < list.length; i++) if (list[i].x === x && list[i].y === y) return list[i];
+    for (var i = 0; i < list.length; i++) if (list[i].ci === ci) return list[i];
     return null;
   };
   GAME.gatherByGen = function (genId) {
@@ -3654,7 +3655,7 @@
     /* v89.135：**驻军开采 = 原地开工**（兵不离开驻军）—— 采力**动态**读驻军当前兵力：
        此后增援加兵，采集效率当场变高；驻军被召回则采力归零（该队应撤回）。 */
     if (g && g.origin === 'garrison') {
-      var _gw = GAME.wildGarrisonAt(g.x, g.y);
+      var _gw = GAME.wildGarrisonAt(g.ci);
       army = (_gw && GAME.wildGarrisonTotal(_gw) > 0) ? _gw.troops : null;
       if (!army) return 0;
     }
@@ -3672,7 +3673,7 @@
    * v89.186（老板 3）：**据点剥离出口组**（占据 = 野外建筑 + 归属）
    * ------------------------------------------------------------
    * 采用 #1 前哨 / #2 采集增产 / #3 兵站 / #5 情报站 / #6 商旅税所（见 DATA.FORT_AURA）。
-   * `GAME.fortAuraAt(x, y)` = **覆盖查询唯一出口**（切比雪夫距离 ≤ radius）——
+   * `GAME.fortAuraAt(ci)` = **覆盖查询唯一出口**（切比雪夫距离 ≤ radius）——
    *   五个读点（衰减 / 采集 / 驻军上限 / 情报误差 / 税所结算）全读它，不各判一遍。
    * ============================================================ */
   GAME.fortsOf = function () {
@@ -3811,31 +3812,25 @@
     for (var k in fs) { if (fs[k] && fs[k].cityId === city.id) out.push(fs[k]); }
     return out;
   };
-  GAME.fortOwnAt = function (x, y) {
-    if (x == null || y == null) return null;
-    return GAME.fortsOf()[x + ',' + y] || null;
+  GAME.fortOwnAt = function (ci) {
+    if (ci == null || ci < 0) return null;
+    return GAME.fortsOf()['c' + ci] || null;
   };
   /* v90.76：平面格数 → 球面六边环数的换算（等覆盖面积）。
      星球 40962 地块 vs 平面 500×500=25 万格 → 半径按 √(40962/250000)≈0.405 缩。 */
   GAME.RING_SCALE = Math.sqrt(40962 / 250000);
   GAME.cellsToRings = function (cells) { return Math.max(1, Math.round((cells || 0) * GAME.RING_SCALE)); };
-  GAME.fortAuraAt = function (x, y) {
-    if (x == null || y == null) return null;
+  GAME.fortAuraAt = function (ci) {
+    if (ci == null || ci < 0) return null;
     var fs = GAME.fortsOf(), SP = GAME.sphere;
     var best = null, bd = Infinity, bestKey = '';
-    var pci = (SP && SP.cells) ? SP.ciOfXY(x, y) : -1;
     for (var k in fs) {
       var f = fs[k];
       /* v89.193：半径随前哨等级。v90.76：距离改**球面六边环数**（等覆盖：平面格数 × RING_SCALE）。 */
       var _R194 = GAME.cellsToRings(GAME.fortRadiusOf(f));
-      var d;
-      if (SP && SP.cells && pci >= 0) {
-        var fci = (f.ci != null && f.ci >= 0) ? f.ci : SP.ciOfXY(f.x, f.y);
-        d = GAME.sphere.hexDist(fci, pci);
-      } else {
-        var _dx194 = (f.x || 0) - x, _dy194 = (f.y || 0) - y;
-        d = Math.round(Math.sqrt(_dx194 * _dx194 + _dy194 * _dy194));
-      }
+      var fci = (f.ci != null && f.ci >= 0) ? f.ci : ((SP && SP.cells && f.x != null) ? SP.ciOfXY(f.x, f.y) : -1);
+      if (fci < 0) continue;
+      var d = (SP && SP.cells) ? SP.hexDist(fci, ci) : Infinity;
       if (d > _R194) continue;
       if (d < bd || (d === bd && (best === null || k < bestKey))) { bd = d; best = f; bestKey = k; }
     }
@@ -3856,21 +3851,19 @@
    *     重占照常给战利品与声望（老板要的就是"完整再来"，不额外加护栏）。
    *   · 无返还（前哨没有驻军与库存；护持是"持续效果"，停即停）。
    * ============================================================ */
-  GAME.abandonFort = function (x, y) {
+  GAME.abandonFort = function (ci) {
     var s = GAME.state;
-    if (!s || x == null || y == null) return { ok: false, msg: '参数不足' };
-    var key = x + ',' + y;
+    if (!s || ci == null || ci < 0) return { ok: false, msg: '参数不足' };
+    var key = 'c' + ci;
     var rec = GAME.fortsOf()[key];
     if (!rec) return { ok: false, msg: '此处没有我方前哨' };
-    var nm = rec.name || ('(' + x + ',' + y + ')');
+    var nm = rec.name || ('格 #' + ci);
     var lv = rec.lv || 1;
     var own = GAME.cityById(rec.cityId);
     delete s.forts[key];
     /* v89.196（老板 2）：「放手后可重新占据」—— 清拔除登记，该格回归野外据点。
        （当日不再出现由 fortsRazed 保证；次日等级表重排后即可再打。） */
     if (s.fortsTaken) delete s.fortsTaken[key];
-    var t = GAME.map.tile(x, y);
-    if (t && t.terrain === 'city') t.terrain = rec.terrain0 || 'plain';   /* 恢复占据前的地形 */
     var nAfter = own ? GAME.fortsOfCity(own).length : 0;
     var maxN = ((DATA.FORT_AURA || {}).maxPerCity) || 5;
     GAME.log.war('🚩 我们放弃了「' + nm + '」前哨（Lv' + lv + '）—— 护持与商税随之中止'
@@ -3908,10 +3901,10 @@
   /* 野地驻军上限（v29 · 需求 0）：野地等级 × 10000。
      **只在派驻时校验**；野地日后掉级不会把已驻军队赶回城（见 DATA.WILD_GARRISON 注释）。
      v89.186（老板 3 · #3 兵站）：据点覆盖内上限 ×1.5；签名向后兼容（不传 x/y = 无加成）。 */
-  GAME.wildGarrisonCap = function (lv, x, y) {
+  GAME.wildGarrisonCap = function (lv, ci) {
     var cap = Math.max(0, Math.round((lv || 0) * DATA.WILD_GARRISON.perLevel));
     /* v89.193（老板 2）：乘数随前哨等级（×1.25~1.80，走唯一出口 fortEffectOf） */
-    var _f193c = (x != null && y != null && GAME.fortAuraAt) ? GAME.fortAuraAt(x, y) : null;
+    var _f193c = (ci != null && GAME.fortAuraAt) ? GAME.fortAuraAt(ci) : null;
     if (_f193c) cap = Math.round(cap * GAME.fortEffectOf(_f193c).garrisonCapMul);
     return cap;
   };
@@ -3944,7 +3937,7 @@
   GAME.gatherLoadOf = function (g) {
     var army = g && g.army;
     if (g && g.origin === 'garrison') {
-      var _gl = GAME.wildGarrisonAt(g.x, g.y);
+      var _gl = GAME.wildGarrisonAt(g.ci);
       army = (_gl && GAME.wildGarrisonTotal(_gl) > 0) ? _gl.troops : null;
     }
     var L = 0;
@@ -3973,7 +3966,7 @@
       amount = Math.round(power * (1 + (g.level || 0) * G.levelBonus) * capped);
       /* v89.186（老板 3 · #2 采集增产）：据点覆盖内采力产出加成（仍受负重上限约束）
          v89.193（老板 2）：倍率随前哨等级（×1.20~1.55，走唯一出口 fortEffectOf） */
-      var _f193g = (amount > 0 && GAME.fortAuraAt && g.x != null) ? GAME.fortAuraAt(g.x, g.y) : null;
+      var _f193g = (amount > 0 && GAME.fortAuraAt && g.x != null) ? GAME.fortAuraAt(g.ci) : null;
       if (_f193g) amount = Math.round(amount * GAME.fortEffectOf(_f193g).gatherMul);
       if (loadCap > 0 && amount > loadCap) { amount = loadCap; loadLimited = true; }
     }
@@ -4024,19 +4017,19 @@
     var c186 = (G.treasureBase + (genLv || 0) * G.treasurePerGenLv) * Math.sqrt(hours);
     /* v89.186（老板 3 · #2 采集增产）：据点覆盖内宝物概率加成（同受 treasureCap 封顶）
        v89.193（老板 2）：加成随前哨等级（+8%~+22%，走唯一出口 fortEffectOf） */
-    var _f193b = (GAME.fortAuraAt && g && g.x != null) ? GAME.fortAuraAt(g.x, g.y) : null;
+    var _f193b = (GAME.fortAuraAt && g && g.x != null) ? GAME.fortAuraAt(g.ci) : null;
     if (_f193b) c186 += GAME.fortEffectOf(_f193b).treasureAdd;
     return Math.min(G.treasureCap, c186);
   };
-  GAME.canStartGather = function (x, y) {
+  GAME.canStartGather = function (ci) {
     var s = GAME.state, G = DATA.GATHER;
-    var w = GAME.map.wildAt(x, y);
+    var w = GAME.map.wildAt(ci);
     if (!w) return { ok: false, msg: '需先占领该野地，方可派军采集' };
     if (!GAME.gatherResOf(w.type)) {
       var tn = DATA.TERRAIN[w.type] ? DATA.TERRAIN[w.type].name : '该地形';
       return { ok: false, msg: tn + '无可采之物（原版：平地不可采集）' };
     }
-    if (GAME.gatherAt(x, y)) return { ok: false, msg: '该野地已在采集中' };
+    if (GAME.gatherAt(ci)) return { ok: false, msg: '该野地已在采集中' };
     if (GAME.gatherList().length >= G.maxActive) return { ok: false, msg: '同时最多 ' + G.maxActive + ' 支采集队' };
     return { ok: true, wild: w };
   };
@@ -4057,13 +4050,13 @@
      ④ `case 'gather-open' / 'gather-start'`；
      ⑤ battle.js 的 arrive gather 分支**保留**（仅服务老档在途行军 —— 抵达时兵并入驻军）。
      `mode 'gather'`（data.js）保留：老档在途行军的显示兜底，不再有新出发。 */
-  GAME.startGather = function (x, y, army, opts) {
+  GAME.startGather = function (ci, army, opts) {
     var s = GAME.state, G = DATA.GATHER;
     opts = opts || {};
-    var chk = GAME.canStartGather(x, y);
+    var chk = GAME.canStartGather(ci);
     if (!chk.ok) return chk;
     var w = chk.wild;
-    var gar = GAME.wildGarrisonAt(x, y);
+    var gar = GAME.wildGarrisonAt(ci);
     if (!gar || !GAME.wildGarrisonTotal(gar)) return { ok: false, msg: '此地没有驻军可开采' };
     /* v89.135（老板第 5 条）：「己方野地只有在**有英雄带领驻军**的时候才可采集，
        否则不可采集，只可驻留军队」—— 无将驻军（纯增援叠上来的）只可驻留。 */
@@ -4075,7 +4068,7 @@
     if (!city) return { ok: false, msg: '城池不存在' };
     var rec = {
       id: 'ga' + (s._gatherSeq = (s._gatherSeq || 0) + 1),
-      x: x, y: y, type: w.type, level: w.level || 0,
+      ci: ci, type: w.type, level: w.level || 0,
       /* 带队英雄 = 驻军英雄（采集卡显示其名） */
       genId: gar.genId || null,
       army: U.deep(army), troops: troops,
@@ -4165,7 +4158,7 @@
     var city = GAME.cityById(g.cityId) || GAME.currentCity();
     if (g.origin === 'garrison') {
       if (!g.inPlace && GAME.wildGarrisonAdd) {
-        var _bk136 = GAME.wildGarrisonAdd(g.x, g.y, g.army, g.cityId);
+        var _bk136 = GAME.wildGarrisonAdd(g.ci, g.army, g.cityId);
         if (_bk136 && _bk136.overflow) {
           for (var _ao136 in _bk136.overflow) {
             if (city) city.army[_ao136] = (city.army[_ao136] || 0) + _bk136.overflow[_ao136];
@@ -4248,11 +4241,11 @@
       if (GAME.gatherList().length >= DATA.GATHER.maxActive) return;   /* 无空闲编制 */
       if (!(GAME.wildGarrisonTotal(w.garrison) > 0)) return;
       if (!w.garrison.genId) return;                                    /* 无将驻军：只驻留不采 */
-      if (GAME.gatherAt(w.x, w.y)) return;                              /* 已在采 */
-      var chk = GAME.canStartGather(w.x, w.y);
+      if (GAME.gatherAt(w.ci)) return;                              /* 已在采 */
+      var chk = GAME.canStartGather(w.ci);
       if (!chk.ok) return;
       var army = U.deep(w.garrison.troops);
-      var r2 = GAME.startGather(w.x, w.y, army, { cityId: w.garrison.cityId });   /* v89.136：新签名（唯一形态） */
+      var r2 = GAME.startGather(w.ci, army, { cityId: w.garrison.cityId });   /* v89.136：新签名（唯一形态） */
       if (r2 && r2.ok) done.push('采(' + w.x + ',' + w.y + ')');
     });
     if (!done.length) return null;    /* 无事不写日志（事件驱动：有事才报） */
@@ -4440,7 +4433,7 @@
          **老档旧式（!inPlace）** = 兵在队里 → 回驻军（溢出回城） ——
          与 finishGather 同一防御（老板「驻军丢失」的另一条路径）。 */
       if (!g.inPlace && GAME.wildGarrisonAdd) {
-        var _bk136b = GAME.wildGarrisonAdd(g.x, g.y, g.army, g.cityId);
+        var _bk136b = GAME.wildGarrisonAdd(g.ci, g.army, g.cityId);
         if (_bk136b && _bk136b.overflow) {
           for (var _ao136b in _bk136b.overflow) {
             if (city) city.army[_ao136b] = (city.army[_ao136b] || 0) + _bk136b.overflow[_ao136b];
@@ -4503,7 +4496,7 @@
     var n = 0;
     list.slice().forEach(function (g) {
       if (g.origin !== 'garrison' || g.inPlace) return;   /* 只转"兵在队里"的旧式 */
-      var w = (GAME.map && GAME.map.wildAt) ? GAME.map.wildAt(g.x, g.y) : null;
+      var w = (GAME.map && GAME.map.wildAt) ? GAME.map.wildAt(g.ci) : null;
       var city = GAME.cityById(g.cityId) || GAME.currentCity() || (s.cities || [])[0] || null;
       if (!w) {
         /* 野地已非我方：兵回城，该队移除（不丢兵） */
@@ -4515,7 +4508,7 @@
         return;
       }
       /* 兵回驻军（noCap：占领可超上限 —— 这些兵本来就驻在这里） */
-      var bk = GAME.wildGarrisonAdd(g.x, g.y, g.army, g.cityId, { noCap: true });
+      var bk = GAME.wildGarrisonAdd(g.ci, g.army, g.cityId, { noCap: true });
       if (bk && bk.overflow) {
         for (var ao in bk.overflow) {
           if (city) city.army[ao] = (city.army[ao] || 0) + bk.overflow[ao];
@@ -4568,7 +4561,7 @@
       if (w.levelDay == null) { w.levelDay = today; return; }
       /* v90.62（老板）：**只有被占领的地块会逐渐降级** —— 有驻军/前哨覆盖 -1/日，否则 -2/日；
          **地板改为 0**（原为 1）；降到 0 后满 **1 游戏日** 未回升 → 自动放弃（驻军/采集自动返回）。 */
-      var _hold = GAME.wildHeld(w) || (GAME.fortAuraAt && GAME.fortAuraAt(w.x, w.y));
+      var _hold = GAME.wildHeld(w) || (GAME.fortAuraAt && GAME.fortAuraAt(w.ci));
       var step = _hold ? Math.max(1, WD_.heldPerDay) : Math.max(1, WD_.perDay);
       var days = today - w.levelDay;
       if (days > 0) {
@@ -4583,7 +4576,7 @@
     });
     /* 自动放弃（0 级超期）：复用 doAbandonWild —— 它自带撤驻军回城 + 停采 */
     toAbandon.forEach(function (w) {
-      if (GAME.doAbandonWild) GAME.doAbandonWild(w.x, w.y);
+      if (GAME.doAbandonWild) GAME.doAbandonWild(w.ci);
     });
     if (toAbandon.length) {
       GAME.log('🏚️ ' + toAbandon.length + ' 块野地等级归零超 1 日，已自动放弃（驻军/采集已返回）');
@@ -4896,23 +4889,23 @@
     if (!cfg) return 0;
     return cfg.dailyMax > 0 ? Math.max(0, cfg.dailyMax - (cfg.todayCount || 0)) : Infinity;
   };
-  /* 附近有没有可打的目标（按切比雪夫距离取最近的一块） */
-  GAME.autoMarchTargetAt = function (cfg, x, y, d) {
-    var tile = GAME.map.tile(x, y);
-    if (!tile || tile.terrain === 'city') return null;
+  /* 附近有没有可打的目标（球系：入参 = 格索引 ci） */
+  GAME.autoMarchTargetAt = function (cfg, ci, d) {
+    var cell = GAME.sphere && GAME.sphere.cells ? GAME.sphere.cells[ci] : null;
+    if (!cell || cell.type === 'city') return null;
     if (cfg.target === 'wild') {
-      if (GAME.map.wildAt(x, y)) return null;              // 已占的野地不重复打
-      var lv = GAME.map.wildLevelNow ? GAME.map.wildLevelNow(x, y) : GAME.map.wildLevel(x, y);
+      if (GAME.map.wildAt(ci)) return null;              // 已占的野地不重复打
+      var lv = GAME.map.wildLevelNow ? GAME.map.wildLevelNow(ci) : GAME.map.wildLevel(ci);
       if (lv > cfg.maxLevel) return null;
-      return { kind: 'wild', x: x, y: y, lv: lv, d: d };
+      return { kind: 'wild', ci: ci, lv: lv, d: d };
     }
     if (cfg.target === 'fort') {
       if (!GAME.map.fortAt) return null;
-      var f = GAME.map.fortAt(x, y);
+      var f = GAME.map.fortAt(ci);
       if (!f || f.level > cfg.maxLevel) return null;
       var day = GAME.questDayIndex ? GAME.questDayIndex() : 0;
-      if ((GAME.state.fortsRazed || {})[x + ',' + y] === day) return null;  // 今日已破
-      return { kind: 'fort', x: x, y: y, lv: f.level, d: d };
+      if ((GAME.state.fortsRazed || {})['c' + ci] === day) return null;  // 今日已破
+      return { kind: 'fort', ci: ci, lv: f.level, d: d };
     }
     return null;
   };
@@ -4923,7 +4916,7 @@
     /* v89.83：半径走唯一出口 autoMarchRadius（老板「目标的选择可以加上距离」） */
     var rad = GAME.autoMarchRadius(cfg);
     var best = null, bestD = Infinity;
-    /* 「名城」目标不在坐标里找，而是从已生成的 NPC 城池列表里挑最近的一座 */
+    /* 「名城」目标不在格里找，而是从已生成的 NPC 城池列表里挑最近的一座 */
     if (cfg.target === 'city') {
       ((GAME.state.map && GAME.state.map.cities) || []).forEach(function (npc) {
         if (!npc || npc.owner !== 'npc') return;
@@ -4931,26 +4924,27 @@
     if (GAME.cityLvOf(npc) > cfg.maxLevel) return;
         if (skipRing && GAME.autoMarchRingHas(cfg, npc)) return;
         var d = GAME.cityDist(npc, city);       /* v90.70：球面六边环数取最近 */
-        if (d < bestD) { bestD = d; best = { kind: 'city', id: npc.id, x: npc.x, y: npc.y, lv: GAME.cityLvOf(npc), d: d, name: npc.name }; }
+        if (d < bestD) { bestD = d; best = { kind: 'city', id: npc.id, ci: npc.ci, lv: GAME.cityLvOf(npc), d: d, name: npc.name }; }
       });
       return best;
     }
-    for (var dy = -rad; dy <= rad; dy++) {
-      for (var dx = -rad; dx <= rad; dx++) {
-        var d2 = Math.max(Math.abs(dx), Math.abs(dy));
-        if (d2 >= bestD) continue;
-        var x = city.x + dx, y = city.y + dy;
-        if (x < 0 || y < 0 || x >= DATA.MAP_W || y >= DATA.MAP_H) continue;
-        var hit = GAME.autoMarchTargetAt(cfg, x, y, d2);
-        if (hit && skipRing && GAME.autoMarchRingHas(cfg, hit)) continue;
-        if (hit) { best = hit; bestD = d2; }
-      }
+    /* 以城为中心、半径 rad 环内的球面格（按六边环数）。 */
+    var SP = GAME.sphere;
+    if (!SP || !SP.cells || city.ci == null) return null;
+    var ring = SP.hopsWithin(city.ci, rad);
+    for (var i = 0; i < ring.length; i++) {
+      var ci = ring[i];
+      var d2 = SP.hexDist(city.ci, ci);
+      if (d2 >= bestD) continue;
+      var hit = GAME.autoMarchTargetAt(cfg, ci, d2);
+      if (hit && skipRing && GAME.autoMarchRingHas(cfg, hit)) continue;
+      if (hit) { best = hit; bestD = d2; }
     }
     return best;
   };
   /* v89.93（整改 E9）：轮空池（唯一出口）—— 记最近打过的目标，供取目标时跳过 */
   GAME.autoMarchRingSize = function () { return (DATA.AUTO_MARCH && DATA.AUTO_MARCH.ringSize) || 4; };
-  GAME.autoMarchKeyOf = function (t) { return t ? (t.x + ',' + t.y) : ''; };
+  GAME.autoMarchKeyOf = function (t) { return (t && t.ci != null) ? ('c' + t.ci) : ''; };
   GAME.autoMarchRingHas = function (cfg, t) {
     if (!cfg || !t) return false;
     return (cfg.ring || []).indexOf(GAME.autoMarchKeyOf(t)) >= 0;
@@ -5082,13 +5076,13 @@
     }
     var w = GAME.autoMarchWant(cfg, city);
     var pick = GAME.autoMarchPickArmy(city, w.want, cfg.army);
-    var from = { x: city.x, y: city.y, cityId: city.id };
-    var travel = GAME.march.travelTime(from, { x: t.x, y: t.y }, pick.army, null, gen) / GAME.timeScale();
+    var from = { ci: city.ci, cityId: city.id };
+    var travel = GAME.march.travelTime(from, { ci: t.ci }, pick.army, null, gen) / GAME.timeScale();
     /* 守军：野地走 wildDefenseAt（与战斗同一个来源）、据点取据点守军表、
        名城走 resolveTarget（与出征面板同一份解析结果）—— 三处都不另算第二遍。 */
     var def = 0;
     try {
-      if (t.kind === 'wild') def = GAME.wildDefenseAt(t.x, t.y, t.lv).total;
+      if (t.kind === 'wild') def = GAME.wildDefenseAt(t.ci, t.lv).total;
       else if (t.kind === 'fort') { var fg = GAME.map.fortGarrison(t.lv); for (var kf in fg) def += fg[kf]; }
       else {
         var rt = GAME.battle.resolveTarget(t);
@@ -5097,9 +5091,9 @@
     } catch (e) { def = 0; }
     return {
       ok: true, target: t, gen: gen, army: pick.army, total: pick.total, def: def,
-      dist: Math.max(Math.abs(city.x - t.x), Math.abs(city.y - t.y)),
+      dist: GAME.cityDist(city, t),
       travel: travel,
-      label: (t.kind === 'wild') ? ('野地 Lv' + t.lv + ' (' + t.x + ',' + t.y + ')')
+      label: (t.kind === 'wild') ? ('野地 Lv' + t.lv + ' · ' + GAME.map.coordTextCi(t.ci))
         : ((t.name || '目标') + (t.kind === 'fort' ? ' Lv' + t.lv : '')),
     };
   };
@@ -5169,16 +5163,16 @@
    * 平原筑城（v16 · P2-10）：原版平地带资源可筑新城
    * ============================================================ */
   GAME.BUILD_CITY_COST = { grain: 10000, wood: 10000, stone: 10000, iron: 10000, gold: 10000 };
-  GAME.canBuildCityAt = function (x, y) {
+  GAME.canBuildCityAt = function (ci) {
     var s = GAME.state;
-    var w = GAME.map.wildAt(x, y);
+    var w = GAME.map.wildAt(ci);
     if (!w) return { ok: false, msg: '需先占领该野地，方可在其上筑城' };
     if (w.type !== 'plain') {
       var tn = DATA.TERRAIN[w.type] ? DATA.TERRAIN[w.type].name : w.type;
       return { ok: false, msg: '只有**平原**可以筑城（' + tn + ' 不可）' };
     }
     for (var i = 0; i < (s.cities || []).length; i++) {
-      if (s.cities[i].x === x && s.cities[i].y === y) return { ok: false, msg: '此处已是我方城池' };
+      if (s.cities[i].ci === ci) return { ok: false, msg: '此处已是我方城池' };
     }
     /* v89.108（老板）：「可建造控制的城池数量随威望解封」。
        顺序：先地理（能不能在这建）→ 再资格（领地上限）→ 再资源 —— 逐层归因。 */
@@ -5189,25 +5183,22 @@
     }
     return { ok: true, wild: w };
   };
-  GAME.buildCityAt = function (x, y) {
+  GAME.buildCityAt = function (ci) {
     var s = GAME.state;
-    var chk = GAME.canBuildCityAt(x, y);
+    var chk = GAME.canBuildCityAt(ci);
     if (!chk.ok) return chk;
     GAME.payCost(GAME.BUILD_CITY_COST);
-    var stName = GAME.stateOfCity({ x: x, y: y });
+    var stName = GAME.stateOfCity(chk.wild);
     var city = GAME.makeCity({
-      /* v91.03：城 id 带**星球前缀**（防跨星球同 id 撞：同坐标筑城不同星球 → 'new_x_y' 相同）。
-         与 battle.js 占城 id 同族处理。 */
-      id: 'new_p' + ((GAME.state && GAME.state.activePlanet) || 1) + '_' + x + '_' + y, name: '新城' + (s.cities.length + 1),
-      x: x, y: y, type: 'self', state: stName,
+      /* v91.03 / v90.100：城 id 带**星球前缀** + **格索引 ci**（防跨星球/同格撞）。 */
+      id: 'new_p' + ((GAME.state && GAME.state.activePlanet) || 1) + '_c' + ci, name: '新城' + (s.cities.length + 1),
+      ci: ci, type: 'self', state: stName,
       initialExt: 'new',   /* v89.93（整改 E12）：自建城预置 6 块城外资源地，落地即可产 */
     });
     GAME.registerCity(city);   /* v89.161：入库唯一出口（含旧币池接线） */
     /* 筑城后该野地转为城池地块，从附属野地中移除 */
-    s.wilds = (s.wilds || []).filter(function (w) { return !(w.x === x && w.y === y); });
-    var tile = GAME.map.tile(x, y);
-    if (tile) tile.terrain = 'city';
-    GAME.log('🏯 于 (' + x + ',' + y + ') 筑新城「' + city.name + '」（耗 净水/生物质/电能/废钢/旧币 各 ' + U.fmt(GAME.BUILD_CITY_COST.grain) + '）', 'sys', 'admin');
+    s.wilds = (s.wilds || []).filter(function (w) { return w.ci !== ci; });
+    GAME.log('🏯 于 格#' + ci + ' 筑新城「' + city.name + '」（耗 净水/生物质/电能/废钢/旧币 各 ' + U.fmt(GAME.BUILD_CITY_COST.grain) + '）', 'sys', 'admin');
     return { ok: true, msg: '筑城成功：' + city.name, city: city };
   };
 
@@ -5230,65 +5221,64 @@
   GAME.COORD_MAX = (DATA.MAP_W || 500) - 1;
   GAME.coordText = function (city) {
     if (!city) return '—';
-    /* v90.59（老板）：**界面一律显示球系坐标**（经纬度）；内部逻辑/存档仍存平面 (x,y)。 */
-    if (GAME.map && GAME.map.coordText && city.x != null && city.y != null) return GAME.map.coordText(city.x, city.y);
-    return '(' + city.x + ', ' + city.y + ')';
+    /* v90.100（球系）：显示读**格索引 ci** → 经纬（球系唯一身份）。 */
+    if (GAME.map && GAME.map.coordTextCi && city.ci != null && city.ci >= 0) return GAME.map.coordTextCi(city.ci);
+    return '格#' + (city && city.ci != null ? city.ci : '—');
   };
   /* 可迁判据：自建城才可迁（名城 = 地理固定） */
   GAME.isMovableCity = function (city) {
     return !!(city && city.type === 'self');
   };
-  /* 目标坐标是否可迁入 —— **唯一判据** */
-  GAME.canCityMoveTo = function (city, x, y) {
+  /* 目标格是否可迁入 —— **唯一判据**（球系：按格索引 ci） */
+  GAME.canCityMoveTo = function (city, ci) {
     var s = GAME.state;
     if (!s || !city) return { ok: false, msg: '城池不存在' };
     if (!GAME.isMovableCity(city)) {
       return { ok: false, msg: '名城地望固定 —— 只有自建城可以迁址' };
     }
-    x = Math.round(Number(x)); y = Math.round(Number(y));
-    if (!isFinite(x) || !isFinite(y) || x < 0 || y < 0 || x > GAME.COORD_MAX || y > GAME.COORD_MAX) {
-      return { ok: false, msg: '坐标须在 0 ~ ' + GAME.COORD_MAX + ' 之间' };
+    ci = Math.round(Number(ci));
+    var SP = GAME.sphere;
+    if (!isFinite(ci) || ci < 0 || !SP || !SP.cells || !SP.cells[ci]) {
+      return { ok: false, msg: '目标格越出星球' };
     }
-    if (city.x === x && city.y === y) return { ok: false, msg: '已在目标坐标上' };
-    var own = GAME.map.ownCityAt(x, y);
-    if (own) return { ok: false, msg: '该坐标已有我方城池「' + own.name + '」' };
-    var npc = GAME.map.npcAt(x, y);
-    if (npc) return { ok: false, msg: '该坐标为名城「' + npc.name + '」所据，不可占用' };
-    var fort = GAME.map.fortAt(x, y);
-    if (fort) return { ok: false, msg: '该坐标是野外城池「' + fort.name + '」，需先攻取' };
-    var w = GAME.map.wildAt(x, y);
-    if (w) return { ok: false, msg: '该坐标是已占野地，不可占用' };
-    var t = GAME.map.tile(x, y);
-    if (!t) return { ok: false, msg: '坐标越出地图' };
-    if (t.terrain !== 'plain') {
-      var tn = DATA.TERRAIN[t.terrain] ? DATA.TERRAIN[t.terrain].name : t.terrain;
+    if (city.ci === ci) return { ok: false, msg: '已在目标格上' };
+    var own = GAME.map.ownCityAt(ci);
+    if (own) return { ok: false, msg: '该格已有我方城池「' + own.name + '」' };
+    var npc = GAME.map.npcAt(ci);
+    if (npc) return { ok: false, msg: '该格为名城「' + npc.name + '」所据，不可占用' };
+    var fort = GAME.map.fortAt(ci);
+    if (fort) return { ok: false, msg: '该格是野外城池「' + fort.name + '」，需先攻取' };
+    var w = GAME.map.wildAt(ci);
+    if (w) return { ok: false, msg: '该格是已占野地，不可占用' };
+    if (SP.cells[ci].type !== 'plain') {
+      var tn = DATA.TERRAIN[SP.cells[ci].type] ? DATA.TERRAIN[SP.cells[ci].type].name : SP.cells[ci].type;
       return { ok: false, msg: '只有**平原**可以立城（' + tn + ' 不可）' };
     }
     return { ok: true };
   };
-  /* 迁址（唯一执行）：旧格归还地图 → 新址脚下变城池 → 坐标落定 */
-  GAME.moveCityTo = function (cityId, x, y) {
+  /* 迁址（唯一执行）：旧格归还地图 → 新址脚下变城池 → 格索引落定 */
+  GAME.moveCityTo = function (cityId, ci) {
     var city = cityId ? GAME.cityById(cityId) : GAME.currentCity();
-    var chk = GAME.canCityMoveTo(city, x, y);
+    var chk = GAME.canCityMoveTo(city, ci);
     if (!chk.ok) return chk;
-    x = Math.round(Number(x)); y = Math.round(Number(y));
-    var from = { x: city.x, y: city.y };
+    ci = Math.round(Number(ci));
+    var fromCi = city.ci;
     /* ① 旧格归还：走「放弃城池」同一出口 restoreCityTile（自建城 → 还回平原） */
     GAME.restoreCityTile(city);
-    /* ② 落新址 */
-    city.x = x; city.y = y;
-    var t = GAME.map.tile(x, y);
-    if (t) t.terrain = 'city';
-    GAME.log('📍 迁址：' + city.name + ' (' + from.x + ',' + from.y + ') → (' + x + ',' + y + ')', 'sys', 'admin');
-    return { ok: true, msg: '已迁至 (' + x + ', ' + y + ')', city: city, from: from };
+    /* ② 落新址（ci = 身份；x/y/lon/lat 为派生缓存，必须同步刷新） */
+    city.ci = ci;
+    var _mc = GAME.sphere && GAME.sphere.cells ? GAME.sphere.cells[ci] : null;
+    if (_mc) { city.lon = _mc.lon; city.lat = _mc.lat; city.x = _mc.x; city.y = _mc.y; }
+    GAME.log('📍 迁址：' + city.name + ' 格#' + fromCi + ' → 格#' + ci, 'sys', 'admin');
+    return { ok: true, msg: '已迁至 ' + GAME.map.coordTextCi(ci), city: city, fromCi: fromCi };
   };
-  /* 掷一个可迁坐标（纯函数：rnd 可注入 → 测试确定；默认 Math.random） */
+  /* 掷一个可迁格（纯函数：rnd 可注入 → 测试确定；默认 Math.random） */
   GAME.randomCityCoord = function (city, rnd) {
     var rand = rnd || Math.random;
-    var M = GAME.COORD_MAX;
+    var SP = GAME.sphere, nv = (SP && SP.nv) || 0;
     for (var i = 0; i < 400; i++) {
-      var x = Math.floor(rand() * (M + 1)), y = Math.floor(rand() * (M + 1));
-      if (GAME.canCityMoveTo(city, x, y).ok) return { x: x, y: y };
+      var ci = Math.floor(rand() * nv);
+      if (GAME.canCityMoveTo(city, ci).ok) return { ci: ci };
     }
     return null;
   };
@@ -5298,9 +5288,9 @@
     if (!city) return { ok: false, msg: '城池不存在' };
     if (!GAME.isMovableCity(city)) return { ok: false, msg: '名城地望固定 —— 只有自建城可以迁址' };
     var c = GAME.randomCityCoord(city);
-    if (!c) return { ok: false, msg: '地图上暂无可迁的平原空地' };
-    var r = GAME.moveCityTo(city.id, c.x, c.y);
-    if (r.ok) r.msg = '🎲 已随机迁至 (' + c.x + ', ' + c.y + ')';
+    if (!c) return { ok: false, msg: '星球上暂无可迁的平原空地' };
+    var r = GAME.moveCityTo(city.id, c.ci);
+    if (r.ok) r.msg = '🎲 已随机迁至 ' + GAME.map.coordTextCi(c.ci);
     return r;
   };
 

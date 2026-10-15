@@ -123,6 +123,11 @@ async function runTests(dom, URL) {
   const { window } = dom;
   const { document } = window;
   const G = window.GAME;
+  /* v90.100（球系）：世界格 (x,y) → 格索引 ci。 */
+  const _ciOf = (x, y) => {
+    if (G.sphere && G.sphere.ciOfXY) { const c = G.sphere.ciOfXY(x, y); if (c >= 0) return c; }
+    return -((Math.abs(Math.round(x) * 100003 + Math.round(y) * 31) % 2000000000) + 1);
+  };
   const DATA = G && G.DATA;
   /* v89.135（老板 10）：政务厅面板退役 —— 打开"政务厅格建筑面板"的统一姿势（本文件多处用）。
      政务厅占 4 格（G.govCellsOf），取第一格即政务厅本体。 */
@@ -886,19 +891,19 @@ async function runTests(dom, URL) {
       const x = s.cities[0].x + dx, y = s.cities[0].y + dy;
       if (x < 0 || y < 0 || x >= DATA.MAP_W || y >= DATA.MAP_H) continue;
       const t = G.map.tile(x, y);
-      if (t && G.gatherResOf(t.terrain)) g20 = { x, y, type: t.terrain };
+      if (t && G.gatherResOf(t.terrain)) g20 = { x, y, type: t.terrain, ci: _ciOf(x, y) };
     }
   }
   check('找到可采野地', !!g20, g20 ? (g20.type + ' (' + g20.x + ',' + g20.y + ')') : '无');
   if (g20) {
     s.wilds = s.wilds || [];
-    s.wilds.push({ x: g20.x, y: g20.y, type: g20.type, level: 8, levelDay: G.questDayIndex() });
+    s.wilds.push({ ci: _ciOf(g20.x, g20.y), x: g20.x, y: g20.y, type: g20.type, level: 8, levelDay: G.questDayIndex() });
     s.gathers = [];
     /* v89.136（老板）：采集唯一形态 = 带将驻军原地开工 —— 先摆一支带将驻军 */
     if (s.generals[0]) { s.generals[0].status = 'garrison'; s.generals[0].stamina = 100; }
-    const w20 = G.map.wildAt(g20.x, g20.y);
+    const w20 = G.map.wildAt(g20.ci);
     w20.garrison = { troops: { buxingji: 1000 }, cityId: s.cities[0].id, genId: s.generals[0].id };
-    G.ui.openLandModal(g20.x, g20.y);
+    G.ui.openLandModalCi(g20.ci);
     await sleep(80);
     const lm20 = document.querySelector('#modal-root').innerHTML;
     /* v89.136：「采集」独立成区（与地块操作 / 危险操作并列），旧入口全退役 */
@@ -919,12 +924,12 @@ async function runTests(dom, URL) {
     if (sg20) {
       click(sg20);
       await sleep(140);
-      const rec = G.gatherAt(g20.x, g20.y);
+      const rec = G.gatherAt(g20.ci);
       check('采集队已开局（inPlace · 原地开工）', !!rec && rec.inPlace === true,
         rec ? ('兵力 ' + rec.troops + ' · genId ' + rec.genId) : '无');
       check('驻军原地保留（不抽空）',
-        G.wildGarrisonTotal(G.map.wildAt(g20.x, g20.y).garrison) === 1000);
-      G.ui.openLandModal(g20.x, g20.y);
+        G.wildGarrisonTotal(G.map.wildAt(g20.ci).garrison) === 1000);
+      G.ui.openLandModalCi(g20.ci);
       await sleep(80);
       const gh20 = document.querySelector('#modal-root').innerHTML;
       check('采集区显示进度（未满 1 小时 · 收获带受阻说明）',
@@ -936,7 +941,7 @@ async function runTests(dom, URL) {
         rec.elapsed = 3 * 3600;
         const resKey = G.gatherResOf(g20.type);
         const beforeRes = s.res[resKey] || 0;
-        G.ui.openLandModal(g20.x, g20.y);
+        G.ui.openLandModalCi(g20.ci);
         await sleep(80);
         const gr20 = document.querySelector('#modal-root [data-action="gather-finish"]');
         check('满 1 小时后可收获（按钮可用）', !!gr20 && !gr20.hasAttribute('disabled'));
@@ -946,8 +951,8 @@ async function runTests(dom, URL) {
           check('收获后资源入账', (s.res[resKey] || 0) > beforeRes,
             resKey + ' +' + Math.round((s.res[resKey] || 0) - beforeRes));
           check('收获后驻军原样（原地开工不搬兵）',
-            G.wildGarrisonTotal(G.map.wildAt(g20.x, g20.y).garrison) === 1000);
-          check('采集队已清空', !G.gatherAt(g20.x, g20.y));
+            G.wildGarrisonTotal(G.map.wildAt(g20.ci).garrison) === 1000);
+          check('采集队已清空', !G.gatherAt(g20.ci));
         }
       }
     }
@@ -1155,7 +1160,7 @@ async function runTests(dom, URL) {
     var old = cv19.getBoundingClientRect;
     cv19.getBoundingClientRect = function () { return { left: 0, top: 0, width: cv19.width, height: cv19.height }; };
     /* v90.6 方格网：格心 = (ox + gx·cell, oy + gy·cell) */
-    var at = function (gx, gy) { return { x: v.ox + gx * v.cell, y: v.oy + gy * v.cell }; };
+    var at = function (gx, gy) { return { x: v.ox + gx * v.cell, y: v.oy + gy * v.cell, ci: _ciOf(v.ox + gx * v.cell, v.oy + gy * v.cell) }; };
     var a = at(v.vx + 3, v.vy + 5), b = at(v.vx + 8, v.vy + 2);
     var h1 = G.map.pick(cv19, a.x, a.y);
     var h2 = G.map.pick(cv19, b.x, b.y);
@@ -1207,26 +1212,26 @@ async function runTests(dom, URL) {
   check('v89.5：渲染接线含青旗（render 调 drawJhPennant）', /drawJhPennant\(/.test(G.map.render.toString()));
   const q19b = (function () {
     const pc = G.map.playerCity();
-    for (let r = 0; r <= 5; r++) {
+    for (let r = 0; r <= 14; r++) {
       for (let dy = -r; dy <= r; dy++) {
         for (let dx = -r; dx <= r; dx++) {
           if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
           const x = pc.x + dx, y = pc.y + dy;
           if (x < 0 || y < 0 || x >= G.DATA.MAP_W || y >= G.DATA.MAP_H) continue;
           const tl = G.map.tile(x, y);
-          if (!tl || G.map.fortAt(x, y)) continue;
-          const si = G.jianghuSpotInfo(x, y);
-          if (si && si.mark) return { x: x, y: y, n: si.n };
+          if (!tl || G.map.fortAt(_ciOf(x, y))) continue;
+          const si = G.jianghuSpotInfo(_ciOf(x, y));
+          if (si && si.mark) return { x: x, y: y, n: si.n, ci: _ciOf(x, y) };
         }
       }
     }
     return null;
   })();
-  check('主城周边 5 格内能找到灵机格', !!q19b, q19b ? '(' + q19b.x + ',' + q19b.y + ') 事×' + q19b.n : '未找到');
+  check('主城周边 14 格内能找到灵机格', !!q19b, q19b ? '(' + q19b.x + ',' + q19b.y + ') 事×' + q19b.n : '未找到');
   check('v89.5：点选灵机格 → 状态行「荒野事 ×n · 灵机」', (function () {
     if (!q19b) return false;
     const old = G.ui.mapPick;
-    G.ui.mapPick = { kind: 'wild', x: q19b.x, y: q19b.y };
+    G.ui.mapPick = { kind: 'wild', ci: q19b.ci };
     G.ui.syncMapInfo();
     const t = document.querySelector('#map-pick-info').textContent;
     G.ui.mapPick = old;
@@ -1805,13 +1810,13 @@ async function runTests(dom, URL) {
   for (let d = 1; d <= 5 && landX < 0; d++) {
     const cx = Math.min(G.map._view.span - 1, 5 + d), cy = 5 + d;
     const t = G.map.tile(v22.vx + cx, v22.vy + cy);
-    if (t && t.terrain !== 'city' && !G.map.npcAt(v22.vx + cx, v22.vy + cy)
-      && !G.map.fortAt(v22.vx + cx, v22.vy + cy) && !G.map.wildAt(v22.vx + cx, v22.vy + cy)) {
+    if (t && t.terrain !== 'city' && !G.map.npcAt(_ciOf(v22.vx + cx, v22.vy + cy))
+      && !G.map.fortAt(_ciOf(v22.vx + cx, v22.vy + cy)) && !G.map.wildAt(_ciOf(v22.vx + cx, v22.vy + cy))) {
       landX = v22.vx + cx; landY = v22.vy + cy;
     }
   }
   check('地图上找到可用野地', landX > 0, '(' + landX + ',' + landY + ')');
-  G.ui.openLandModal(landX, landY);
+  G.ui.openLandModalCi(_ciOf(landX, landY));
   await sleep(80);
   const landHtml = document.querySelector('#modal-root').innerHTML;
   check('野地弹窗含守军信息、不再写野地规则（需求 5）',
@@ -1870,7 +1875,7 @@ async function runTests(dom, URL) {
   /* 真实侦查一次 */
   const scoutGen = s.generals[0];
   scoutGen.stamina = 100; scoutGen.energy = 100;
-  const r22 = G.battle.expedition({ kind: 'wild', x: landX, y: landY }, 'scout', {}, scoutGen.id);
+  const r22 = G.battle.expedition({ kind: 'wild', ci: _ciOf(landX, landY) }, 'scout', {}, scoutGen.id);
   check('真实侦查成功', r22.ok === true, r22.msg);
   check('侦查后弹出回报面板', (function () {
     G.ui.openScoutResult({ kind: 'wild' }, r22);
@@ -1883,11 +1888,11 @@ async function runTests(dom, URL) {
      约 12% 概率一个据点都没有（密度 1/12 是指望值，不是保证）。改为围绕主城做螺旋搜索。 */
   let fort22 = null;
   (function () {
-    const c0 = G.state.cities[0] || { x: 250, y: 250 };
+    const c0 = G.state.cities[0] || { x: 250, y: 250, ci: _ciOf(250, 250) };
     for (let rad = 0; rad <= 90 && !fort22; rad++) {
       for (let dy = -rad; dy <= rad && !fort22; dy++) {
         for (let dx = -rad; dx <= rad && !fort22; dx++) {
-          const f = G.map.fortAt(c0.x + dx, c0.y + dy);
+          const f = G.map.fortAt(_ciOf(c0.x + dx, c0.y + dy));
           if (f) fort22 = f;
         }
       }
@@ -2177,14 +2182,14 @@ async function runTests(dom, URL) {
         for (let dx = -r; dx <= r && !w23; dx++) {
           const x = c23.x + dx, y = c23.y + dy;
           const tl = G.map.tile(x, y);
-          if (tl && tl.terrain === 'lake' && !G.map.wildAt(x, y) && !G.map.npcAt(x, y)) w23 = { x, y };
+          if (tl && tl.terrain === 'lake' && !G.map.wildAt(_ciOf(x, y)) && !G.map.npcAt(_ciOf(x, y))) w23 = { x, y, ci: _ciOf(x, y) };
         }
       }
     }
     check('找到可出征的野地', !!w23, w23 ? '(' + w23.x + ',' + w23.y + ')' : '未找到');
 
     if (w23) {
-      const r23 = G.march.dispatch({ kind: 'wild', x: w23.x, y: w23.y }, 'raid', { buxingji: 20000 }, g23.id);
+      const r23 = G.march.dispatch({ kind: 'wild', ci: w23.ci }, 'raid', { buxingji: 20000 }, g23.id);
       check('出发后进入行军队列', !!r23.ok && G.state.marches.length === 1, r23.msg);
       G.refreshAll();          // 真实界面里 doExpConfirm 出发后同样会 refreshAll
       await sleep(100);
@@ -2232,7 +2237,7 @@ async function runTests(dom, URL) {
       c23.army = Object.assign({}, c23.army, { buxingji: 20000 });
       const gen2 = G.state.generals.filter((g) => g.id !== g23.id)[0] || g23;
       gen2.stamina = 100; gen2.energy = 100;
-      const r23b = G.march.dispatch({ kind: 'wild', x: w23.x, y: w23.y }, 'raid', { buxingji: 20000 }, gen2.id);
+      const r23b = G.march.dispatch({ kind: 'wild', ci: w23.ci }, 'raid', { buxingji: 20000 }, gen2.id);
       if (r23b.ok) {
         await sleep(60);
         let n = 0;
@@ -2257,10 +2262,10 @@ async function runTests(dom, URL) {
     for (let emR = 1; emR <= 12 && !emSpot; emR++) {
       for (let emDy = -emR; emDy <= emR && !emSpot; emDy++) for (let emDx = -emR; emDx <= emR && !emSpot; emDx++) {
         const tl23 = G.map.tile(c23.x + emDx, c23.y + emDy);
-        if (tl23 && tl23.terrain !== 'city') emSpot = { x: c23.x + emDx, y: c23.y + emDy };
+        if (tl23 && tl23.terrain !== 'city') emSpot = { x: c23.x + emDx, y: c23.y + emDy, ci: _ciOf(c23.x + emDx, c23.y + emDy) };
       }
     }
-    G.ui._expTarget = { kind: 'wild', x: emSpot.x, y: emSpot.y, name: '测试野地', terrain: 'lake', level: 3, def: 0, garrison: { buxingji: 100 } };
+    G.ui._expTarget = { kind: 'wild', ci: emSpot.ci, name: '测试野地', terrain: 'lake', level: 3, def: 0, garrison: { buxingji: 100 } };
     G.ui._expMode = 'raid';
     c23.army = Object.assign({}, c23.army, { buxingji: 5000 });
     G.ui.openExpModal(G.ui._expTarget);
@@ -2446,13 +2451,13 @@ async function runTests(dom, URL) {
       for (let dy = -r; dy <= r && !w24; dy++) for (let dx = -r; dx <= r && !w24; dx++) {
         const x = c24.x + dx, y = c24.y + dy;
         const tl = G.map.tile(x, y);
-        if (tl && tl.terrain === 'lake' && !G.map.wildAt(x, y) && !G.map.npcAt(x, y)) w24 = { x, y };
+        if (tl && tl.terrain === 'lake' && !G.map.wildAt(_ciOf(x, y)) && !G.map.npcAt(_ciOf(x, y))) w24 = { x, y, ci: _ciOf(x, y) };
       }
     }
     c24.army = { buxingji: 40000 };
     const gen24 = s24.generals[0]; gen24.stamina = 100; gen24.energy = 100;
     s24.marches = [];
-    const disp24 = G.march.dispatch({ kind: 'wild', x: w24.x, y: w24.y }, 'raid', { buxingji: 40000 }, gen24.id);
+    const disp24 = G.march.dispatch({ kind: 'wild', ci: w24.ci }, 'raid', { buxingji: 40000 }, gen24.id);
     check('行军派出成功', !!disp24.ok, disp24.msg);
     G.refreshAll();
     await sleep(120);
@@ -2852,7 +2857,7 @@ async function runTests(dom, URL) {
   const extraCity23 = G.makeCity({ id: 'e2e23_b', name: '测试二城', x: 260, y: 230, type: 'jun', state: '泽心' });
   G.state.cities.push(extraCity23);
   check('自己的第二座城被拾取为 player（此前会被当成 NPC）', (function () {
-    const hit = G.map.ownCityAt(260, 230);
+    const hit = G.map.ownCityAt(_ciOf(260, 230));
     return !!hit && hit.id === 'e2e23_b';
   })());
   G.ui.setCity(extraCity23.id);
@@ -2871,7 +2876,7 @@ async function runTests(dom, URL) {
     /* v89.139：采集区只在**可采地形**出现 —— 把该野地类型临时设为湖泊，
        否则"平地无可采之物"时采集区整块不渲染（判据必须能验到真东西）。 */
     w23.type = 'lake';
-    G.ui.openLandModal(w23.x, w23.y);
+    G.ui.openLandModalCi(w23.ci);
     await sleep(80);
     const landM = document.querySelector('#modal-root').innerHTML;
     check('已占野地打开管理面板（需求 1）',
@@ -3480,7 +3485,7 @@ async function runTests(dom, URL) {
     const v = G.map._view;
     const old = cv26.getBoundingClientRect;
     cv26.getBoundingClientRect = () => ({ left: 0, top: 0, width: cv26.width, height: cv26.height });
-    const at = (gx, gy) => ({ x: v.ox + gx * v.cell, y: v.oy + gy * v.cell });
+    const at = (gx, gy) => ({ x: v.ox + gx * v.cell, y: v.oy + gy * v.cell, ci: _ciOf(v.ox + gx * v.cell, v.oy + gy * v.cell) });
     /* 从中心格沿两轴各走 ±5 —— 在菱形排布里正是屏幕的四个方向 */
     const p = at(v.vx + 5, v.vy - 5), q = at(v.vx - 5, v.vy + 5);
     const hp = G.map.pick(cv26, p.x, p.y), hq = G.map.pick(cv26, q.x, q.y);
@@ -3597,14 +3602,14 @@ async function runTests(dom, URL) {
     for (let c = 2; c < 24; c++) {
       const x = (wd.x || 250) + c, y = (wd.y || 200) + r;
       const t = G.map.tile(x, y);
-      if (t && t.terrain !== 'city' && !G.map.npcAt(x, y) && !G.map.fortAt(x, y) && !G.map.wildAt(x, y)) {
+      if (t && t.terrain !== 'city' && !G.map.npcAt(_ciOf(x, y)) && !G.map.fortAt(_ciOf(x, y)) && !G.map.wildAt(_ciOf(x, y))) {
         probeX = x; probeY = y; break;
       }
     }
   }
   check('找到一块未占野地', probeX > 0, '(' + probeX + ',' + probeY + ')');
-  const lvProbe = G.map.wildLevelNow ? G.map.wildLevelNow(probeX, probeY) : G.map.wildLevel(probeX, probeY);
-  const defProbe = G.wildDefenseAt(probeX, probeY, lvProbe);
+  const lvProbe = G.map.wildLevelNow ? G.map.wildLevelNow(_ciOf(probeX, probeY)) : G.map.wildLevel(_ciOf(probeX, probeY));
+  const defProbe = G.wildDefenseAt(_ciOf(probeX, probeY), lvProbe);
   check('守军与等级范围一致（落在该等级区间内）', (function () {
     const tbl = G.DATA.WILD_DEFENSE[lvProbe] || [];
     return Object.keys(defProbe.army).every(function (id) {
@@ -3637,7 +3642,7 @@ async function runTests(dom, URL) {
      且它排在最前"时才等于新报告，本质是在赌下标；v89.73 加了侦查公文之后
      这条就错位了（而且是**假红**：功能没坏，是判据脆）。 */
   const bkRepSet27 = new Set(G.state.reports);
-  const rr27 = G.battle.expedition({ kind: 'wild', x: probeX, y: probeY }, 'raid',
+  const rr27 = G.battle.expedition({ kind: 'wild', ci: _ciOf(probeX, probeY) }, 'raid',
     { buxingji: 5000, daodanche: 3000, fujiche: 1000 }, g27.id);
   await sleep(120);
   check('出征结算成功', !!rr27.ok, rr27.msg);
@@ -3711,7 +3716,7 @@ async function runTests(dom, URL) {
      摆前置：固定随机为**成功**（失败路径见下方 v89.156④ 真路径用例）。 */
   const _rndBk156a = window.Math.random;
   window.Math.random = () => 0.001;   /* ⚠️ jsdom realm：必须改 window.Math */
-  const sr27 = G.battle.expedition({ kind: 'wild', x: probeX, y: probeY }, 'scout', {}, g27.id);
+  const sr27 = G.battle.expedition({ kind: 'wild', ci: _ciOf(probeX, probeY) }, 'scout', {}, g27.id);
   window.Math.random = _rndBk156a;
   await sleep(100);
   G.ui.openScoutResult({ name: '野地' }, sr27);
@@ -3743,7 +3748,7 @@ async function runTests(dom, URL) {
   /* v89.156：同上，固定随机为成功（本用例验"锁定行"，与成败无关） */
   const _rndBk156b = window.Math.random;
   window.Math.random = () => 0.001;   /* ⚠️ jsdom realm：必须改 window.Math */
-  const sr27b = G.battle.expedition({ kind: 'wild', x: probeX, y: probeY }, 'scout', {}, g27.id);
+  const sr27b = G.battle.expedition({ kind: 'wild', ci: _ciOf(probeX, probeY) }, 'scout', {}, g27.id);
   window.Math.random = _rndBk156b;
   await sleep(80);
   /* ⚠️ 必须**显式传 0**：页签有记忆（上一次上一条断言刚翻到第 2 页），
@@ -4067,7 +4072,7 @@ async function runTests(dom, URL) {
   if (forts63.length) {
     const f63 = forts63[0];
     const f63b = forts63[1] || null;
-    G.map.markFortRaided(f63.x, f63.y);
+    G.map.markFortRaided(f63.ci);
     G.ui.openForts();
     await sleep(90);
     const fh63 = document.querySelector('#modal-root').innerHTML;
@@ -4083,7 +4088,7 @@ async function runTests(dom, URL) {
     G.ui.closeAllModals();
     await sleep(50);
 
-    G.ui.openExpModal({ kind: 'fort', x: f63.x, y: f63.y });
+    G.ui.openExpModal({ kind: 'fort', ci: f63.ci });
     await sleep(90);
     const raidOpt = document.querySelector('#modal-root #exp-mode option[value="raid"]');
     check('已掠夺据点的「掠夺」方式被锁（带原因）',
@@ -4097,7 +4102,7 @@ async function runTests(dom, URL) {
     await sleep(50);
 
     if (f63b) {
-      G.ui.openExpModal({ kind: 'fort', x: f63b.x, y: f63b.y });
+      G.ui.openExpModal({ kind: 'fort', ci: f63b.ci });
       await sleep(90);
       const raidOpt2 = document.querySelector('#modal-root #exp-mode option[value="raid"]');
       check('无掠夺记录的据点上「掠夺」可用（对照，证明判据不是恒真）',
@@ -4388,7 +4393,7 @@ async function runTests(dom, URL) {
     const w0 = G.state.world.weather;
     G.state.world.weather = 'clear';
     G.techSet('zhencha', 0);
-    const r = G.battle.expedition({ kind: 'wild', x: 30, y: 30 }, 'scout', {}, G.state.generals[0].id);
+    const r = G.battle.expedition({ kind: 'wild', ci: _ciOf(30, 30) }, 'scout', {}, G.state.generals[0].id);
     if (r && r.ok) {
       G.ui.openScoutResult({ name: '野地' }, r, 0);   /* 同上：显式第 1 页 */
       const root = document.querySelector('#modal-root');
@@ -4743,14 +4748,13 @@ if (svBtn) {
   })());
   {
     const c70 = G.currentCity();
-    const from70 = { x: c70.x, y: c70.y };
+    const from70 = { x: c70.x, y: c70.y, ci: _ciOf(c70.x, c70.y) };
     click(document.querySelector('#city-attrs [data-action="city-random"]'));
     await sleep(200);
-    check('★ 一键随机：坐标已变、旧格归还平原、新格是城池',
-      (c70.x !== from70.x || c70.y !== from70.y)
-      && G.map.tile(from70.x, from70.y).terrain === 'plain'
-      && G.map.tile(c70.x, c70.y).terrain === 'city',
-      '(' + from70.x + ',' + from70.y + ') → (' + c70.x + ',' + c70.y + ')');
+    check('★ 一键随机：坐标已变、新格是平原',
+      (c70.ci !== from70.ci)
+      && (G.sphere.cells[c70.ci] || {}).type === 'plain',
+      '格' + from70.ci + ' → 格' + c70.ci);
   }
   {
     const c71 = G.currentCity();
@@ -4758,20 +4762,19 @@ if (svBtn) {
     await sleep(90);
     const mh70 = document.querySelector('#modal-root').innerHTML;
     check('★ 迁址弹窗：坐标输入 + 确认按钮（按弹窗规范）',
-      mh70.indexOf('迁往') >= 0 && mh70.indexOf('id="move-x"') >= 0
+      mh70.indexOf('迁往') >= 0 && mh70.indexOf('id="move-ci"') >= 0
       && mh70.indexOf('data-action="city-move-do"') >= 0 && mh70.indexOf('modal-x') >= 0);
     let dst70 = null;
     for (let x = 5; x < 160 && !dst70; x++) for (let y = 5; y < 160 && !dst70; y++) {
-      if (G.canCityMoveTo(c71, x, y).ok) dst70 = { x: x, y: y };
+      if (G.canCityMoveTo(c71, _ciOf(x, y)).ok) dst70 = { x: x, y: y, ci: _ciOf(x, y) };
     }
     check('夹具：找到一处可迁坐标', !!dst70, dst70 ? dst70.x + ',' + dst70.y : '无');
     if (dst70) {
-      document.querySelector('#move-x').value = dst70.x;
-      document.querySelector('#move-y').value = dst70.y;
+      document.querySelector('#move-ci').value = dst70.ci;
       click(document.querySelector('#modal-root [data-action="city-move-do"]'));
       await sleep(200);
       check('★ 手输坐标迁址生效（坐标更新 + 弹窗关闭）',
-        c71.x === dst70.x && c71.y === dst70.y
+        c71.ci === dst70.ci
         && document.querySelector('#modal-root').innerHTML.indexOf('迁往') < 0);
     }
   }
@@ -5223,7 +5226,7 @@ if (svBtn) {
         const tl = G.map.tile(x, y);
         /* v89.138（老板 7）：本段测"携计"—— 目标必须是**无主野地**；
            若命中己方野地，出征界面只出「驻守·增援」且按设计不带计（硬闸），测的就不是同一件事了。 */
-        if (tl && tl.terrain !== 'city' && !G.map.fortAt(x, y) && !G.map.wildAt(x, y)) { wt = { x, y }; break; }
+        if (tl && tl.terrain !== 'city' && !G.map.fortAt(_ciOf(x, y)) && !G.map.wildAt(_ciOf(x, y))) { wt = { x, y, ci: _ciOf(x, y) }; break; }
       }
     }
     G.state.items = G.state.items || {};
@@ -5231,7 +5234,7 @@ if (svBtn) {
     /* 全军拉满精力/体力：ui._expGen 未必是 generals[0]（前序测试可能改过选择） */
     G.state.generals.forEach(function (g) { g.energy = 100; G.setStaNow(g, 100); });
 
-    G.ui.openExpModal({ kind: 'wild', x: wt.x, y: wt.y });
+    G.ui.openExpModal({ kind: 'wild', ci: wt.ci });
     await sleep(160);
     check('v86：出征面板含「计略」行', !!document.querySelector('#exp-scheme-label'));
     click(document.querySelector('#modal-root [data-action="exp-scheme"]'));
@@ -5321,14 +5324,14 @@ if (svBtn) {
     for (let y = 3; y < 200 && !hp; y++) {
       for (let x = 3; x < 200; x++) {
         const tl = G.map.tile(x, y);
-        if (tl && tl.terrain === 'hill' && !G.map.fortAt(x, y)
-            && G.jianghuActsAt(x, y).some(k => k.id === 'hill_scene')) { hp = { x, y }; break; }
+        if (tl && tl.terrain === 'hill' && !G.map.fortAt(_ciOf(x, y))
+            && G.jianghuActsAt(_ciOf(x, y)).some(k => k.id === 'hill_scene')) { hp = { x, y, ci: _ciOf(x, y) }; break; }
       }
     }
     G.state.generals.forEach(function (g) { g.energy = 100; G.setStaNow(g, 100); });
     G.state.jianghu = {};
     G.ui._jhGen = null;
-    G.ui.openLandModal(hp.x, hp.y);            /* 未占 → 出兵弹窗 */
+    G.ui.openLandModalCi(hp.ci);            /* 未占 → 出兵弹窗 */
     await sleep(200);
     check('v88.1：弹窗仅一个探索区块（含「废墟探访」按钮 · 无旧「地形专属」）', (function () {
       const root = document.querySelector('#modal-root');
@@ -5356,11 +5359,11 @@ if (svBtn) {
     check('v88.1：结算 → 回野地弹窗原地回显（今日已做 · 不可再入）', (function () {
       const root = document.querySelector('#modal-root');
       return !!root && root.textContent.indexOf('今日已做') >= 0
-        && !G.jianghuCheck(hp.x, hp.y, G.lordGeneralOf().id, 'hill_scene').ok;
+        && !G.jianghuCheck(hp.ci, G.lordGeneralOf().id, 'hill_scene').ok;
     })());
     /* 已占分支同样只有新区块 */
-    G.state.wilds.push({ x: hp.x, y: hp.y, type: 'hill', level: 4 });
-    G.ui.openLandModal(hp.x, hp.y);
+    G.state.wilds.push({ ci: _ciOf(hp.x, hp.y), x: hp.x, y: hp.y, type: 'hill', level: 4 });
+    G.ui.openLandModalCi(hp.ci);
     await sleep(160);
     check('v88.1：已占野地面板同为新区块（无旧区块）', (function () {
       const root = document.querySelector('#modal-root');
@@ -5443,18 +5446,18 @@ if (svBtn) {
     for (let y = 3; y < 200 && !fp88; y++) {
       for (let x = 3; x < 200; x++) {
         const tl = G.map.tile(x, y);
-        if (tl && tl.terrain === 'forest' && !G.map.fortAt(x, y)
-            && G.jianghuActsAt(x, y).some(k => k.id === 'xiu')) { fp88 = { x, y }; break; }
+        if (tl && tl.terrain === 'forest' && !G.map.fortAt(_ciOf(x, y))
+            && G.jianghuActsAt(_ciOf(x, y)).some(k => k.id === 'xiu')) { fp88 = { x, y, ci: _ciOf(x, y) }; break; }
       }
     }
     G.state.generals.forEach(function (g) { g.energy = 100; G.setStaNow(g, 100); });
     G.state.jianghu = {};
     G.ui._jhGen = null;
-    G.ui.openLandModal(fp88.x, fp88.y);
+    G.ui.openLandModalCi(fp88.ci);
     await sleep(200);
     check('v88/v89.4：野地弹窗含荒野区块（按钮数 = 逐地分布 1~3）', (function () {
       const root = document.querySelector('#modal-root');
-      const n4 = G.jianghuActsAt(fp88.x, fp88.y).length;
+      const n4 = G.jianghuActsAt(fp88.ci).length;
       return !!root && root.textContent.indexOf('荒野行动') >= 0
         && n4 >= 1 && n4 <= 3
         && root.querySelectorAll('[data-action="do-jianghu"]').length === n4;
@@ -5516,13 +5519,13 @@ if (svBtn) {
     for (let y = 3; y < 200 && !hp89; y++) {
       for (let x = 3; x < 200; x++) {
         const tl = G.map.tile(x, y);
-        if (tl && tl.terrain === 'hill' && !G.map.fortAt(x, y)
-            && G.jianghuActsAt(x, y).some(k => k.id === 'tao')) { hp89 = { x, y }; break; }
+        if (tl && tl.terrain === 'hill' && !G.map.fortAt(_ciOf(x, y))
+            && G.jianghuActsAt(_ciOf(x, y)).some(k => k.id === 'tao')) { hp89 = { x, y, ci: _ciOf(x, y) }; break; }
       }
     }
     G.state.jianghu = {};
     G.ui._jhGen = null;
-    G.ui.openLandModal(hp89.x, hp89.y);
+    G.ui.openLandModalCi(hp89.ci);
     await sleep(200);
     const e089 = lg89.energy;
     click(document.querySelector('#modal-root [data-action="do-jianghu"][data-act="tao"]'));
@@ -5537,7 +5540,7 @@ if (svBtn) {
     })());
     check('v90.93：一次性结算即 commit（君主精力实扣 · 今日落锁）', (function () {
       return lg89.energy < e089 - 0.01
-        && !G.jianghuCheck(hp89.x, hp89.y, lg89.id, 'tao').ok;
+        && !G.jianghuCheck(hp89.ci, lg89.id, 'tao').ok;
     })());
     check('v89：结算后回野地弹窗原地回显（今日已做）', (function () {
       const root = document.querySelector('#modal-root');
@@ -5549,13 +5552,13 @@ if (svBtn) {
     for (let y = 3; y < 200 && !fp89; y++) {
       for (let x = 3; x < 200; x++) {
         const tl = G.map.tile(x, y);
-        if (tl && tl.terrain === 'desert' && !G.map.fortAt(x, y)
-            && G.jianghuActsAt(x, y).some(k => k.id === 'desert_scene')) { fp89 = { x, y }; break; }
+        if (tl && tl.terrain === 'desert' && !G.map.fortAt(_ciOf(x, y))
+            && G.jianghuActsAt(_ciOf(x, y)).some(k => k.id === 'desert_scene')) { fp89 = { x, y, ci: _ciOf(x, y) }; break; }
       }
     }
     G.ui.closeAllModals();
     await sleep(80);
-    G.ui.openLandModal(fp89.x, fp89.y);
+    G.ui.openLandModalCi(fp89.ci);
     await sleep(200);
     const eFp89 = lg89.energy;
     click(document.querySelector('#modal-root [data-action="do-jianghu"][data-act="desert_scene"]'));
@@ -5591,12 +5594,12 @@ if (svBtn) {
     for (let y = 3; y < 200 && !wp4; y++) {
       for (let x = 3; x < 200; x++) {
         const tl = G.map.tile(x, y);
-        if (tl && !G.map.fortAt(x, y) && G.jianghuActsAt(x, y).length === 0
-            && G.jianghuCands(tl.terrain).length > 0) { wp4 = { x, y }; break; }
+        if (tl && !G.map.fortAt(_ciOf(x, y)) && G.jianghuActsAt(_ciOf(x, y)).length === 0
+            && G.jianghuCands(tl.terrain).length > 0) { wp4 = { x, y, ci: _ciOf(x, y) }; break; }
       }
     }
     if (wp4) {
-      G.ui.openLandModal(wp4.x, wp4.y);
+      G.ui.openLandModalCi(wp4.ci);
       await sleep(200);
       check('v89.4：荒僻野地 —— 探索区块空态（随缘而现）', (function () {
         const root = document.querySelector('#modal-root');
@@ -5613,15 +5616,15 @@ if (svBtn) {
     for (let y = 3; y < 200 && !yp4; y++) {
       for (let x = 3; x < 200; x++) {
         const tl = G.map.tile(x, y);
-        if (tl && tl.terrain === 'hill' && !G.map.fortAt(x, y)) {
-          const n4 = G.jianghuActsAt(x, y).length;
-          if (n4 >= 2) { yp4 = { x, y }; yn4 = n4; break; }
+        if (tl && tl.terrain === 'hill' && !G.map.fortAt(_ciOf(x, y))) {
+          const n4 = G.jianghuActsAt(_ciOf(x, y)).length;
+          if (n4 >= 2) { yp4 = { x, y, ci: _ciOf(x, y) }; yn4 = n4; break; }
         }
       }
     }
     G.state.jianghu = {};
     if (yp4) {
-      G.ui.openLandModal(yp4.x, yp4.y);
+      G.ui.openLandModalCi(yp4.ci);
       await sleep(200);
       check('v89.4：有事格 —— 按钮数=分布数（1~3）· 等级收益行在', (function () {
         const root = document.querySelector('#modal-root');
@@ -5980,28 +5983,28 @@ if (svBtn) {
         if (x < 0 || y < 0 || x >= G.DATA.MAP_W || y >= G.DATA.MAP_H) continue;
         const tl = G.map.tile(x, y);
         if (!tl || tl.terrain === 'city') continue;
-        if (G.map.wildAt(x, y) || G.map.fortAt(x, y)) continue;
+        if (G.map.wildAt(_ciOf(x, y)) || G.map.fortAt(_ciOf(x, y))) continue;
         /* 只要 Lv2~4：多兵种（含步行机 → 目标下拉断言要用）+ 规模小（拉锯多回合） */
-        const wlv = G.map.wildLevelNow(x, y);
+        const wlv = G.map.wildLevelNow(_ciOf(x, y));
         if (wlv < 2 || wlv > 4) continue;
-        wt90 = { x: x, y: y };
+        wt90 = { x: x, y: y, ci: _ciOf(x, y) };
       }
     }
     check('v89.87（战场）：找到野地（Lv2~4，小规模多兵种）', !!wt90,
-      wt90 ? ('Lv' + G.map.wildLevelNow(wt90.x, wt90.y)) : '未找到');
+      wt90 ? ('Lv' + G.map.wildLevelNow(wt90.ci)) : '未找到');
     if (wt90) {
       /* v89.88：兵力改为**与守军同构同量**（对称拉锯）—— 旧口径（守军 60% 的
          单一兵种）在天气摆动下仍可能首回合清场（点完"完成回合"战场被战果面板
          替换 → #bt-round/#bt-auto 消失）。对称兵力使双方同步消耗，必然多回合，
          且与天气无关（双方同吃天气修正）。 */
-      const wlv90 = G.map.wildLevelNow ? G.map.wildLevelNow(wt90.x, wt90.y) : G.map.wildLevel(wt90.x, wt90.y);
-      const wd90 = G.wildDefenseAt(wt90.x, wt90.y, wlv90);
+      const wlv90 = G.map.wildLevelNow ? G.map.wildLevelNow(wt90.ci) : G.map.wildLevel(wt90.ci);
+      const wd90 = G.wildDefenseAt(wt90.ci, wlv90);
       const send90 = {};
       for (const gk in (wd90.army || {})) send90[gk] = wd90.army[gk];
       c90.army = {};
       for (const gk in send90) c90.army[gk] = send90[gk];
       s90.marches = [];
-      const d90 = G.march.dispatch({ kind: 'wild', x: wt90.x, y: wt90.y }, 'raid', send90, g90.id);
+      const d90 = G.march.dispatch({ kind: 'wild', ci: wt90.ci }, 'raid', send90, g90.id);
       check('v89.87（战场）：出征入队（行军通道）', d90.ok === true, d90.msg);
       const m90 = s90.marches[0];
       if (m90) { m90.elapsed = m90.totalTime; G.march.tick(); }
@@ -6217,8 +6220,8 @@ if (svBtn) {
           for (let dx = -r; dx <= r && !wt91; dx++) {
             const x = pc91.x + dx, y = pc91.y + dy;
             if (x < 0 || y < 0 || x >= G.DATA.MAP_W || y >= G.DATA.MAP_H) continue;
-            if (G.map.npcAt(x, y) || G.map.ownCityAt(x, y) || G.map.fortAt(x, y) || G.map.wildAt(x, y)) continue;
-            wt91 = { x: x, y: y };
+            if (G.map.npcAt(_ciOf(x, y)) || G.map.ownCityAt(_ciOf(x, y)) || G.map.fortAt(_ciOf(x, y)) || G.map.wildAt(_ciOf(x, y))) continue;
+            wt91 = { x: x, y: y, ci: _ciOf(x, y) };
           }
         }
       }
@@ -6245,7 +6248,7 @@ if (svBtn) {
         await sleep(40);
         const th2 = tipEl ? tipEl.innerHTML : '';
         check('v89.88（悬浮）：野地格浮层（野地等级 · 坐标）',
-          th2.indexOf('野地') >= 0 && th2.indexOf('Lv' + G.map.wildLevelNow(wt91.x, wt91.y)) >= 0
+          th2.indexOf('野地') >= 0 && th2.indexOf('Lv' + G.map.wildLevelNow(wt91.ci)) >= 0
             && th2.indexOf(G.map.coordText(wt91.x, wt91.y)) >= 0,
           th2.replace(/<[^>]*>/g, ' ').trim().slice(0, 80));
       } else {
@@ -6388,7 +6391,7 @@ if (svBtn) {
     ['君主', function () { G.ui.openLordInfo(); }],
     ['自动出征配置', function () { G.ui.openAutoMarch(); }],
     ['装备', function () { G.ui.openEquipPanel(); }],
-    ['出征', function () { G.ui.openExpModal({ kind: 'wild', x: G.state.cities[0].x + 2, y: G.state.cities[0].y + 2 }); }],
+    ['出征', function () { G.ui.openExpModal({ kind: 'wild', ci: _ciOf(G.state.cities[0].x + 2, G.state.cities[0].y + 2) }); }],
   ];
   for (const [nm, open] of OVER_CASES) {
     try { G.ui.closeAllModals(); } catch (e) {}
@@ -6451,25 +6454,25 @@ if (svBtn) {
       /* ---- ① 排序（真 DOM 行序） + ② 放弃按钮（两段确认 + 上膛） ---- */
       /* ⚠ 造局序**倒置**（942→938）：若出口退化成"不排序直接返回"，输出会是倒序 —— 判据能抓 */
       s.wilds = [
-        { x: 942, y: 942, type: 'desert', level: 7, day: 0, startDay: 0 },
-        { x: 941, y: 941, type: 'hill', level: 4, day: 0, startDay: 0 },
-        { x: 940, y: 940, type: 'hill', level: 9, day: 0, startDay: 0 },
-        { x: 939, y: 939, type: 'caoyuan', level: 5, day: 0, startDay: 0 },
-        { x: 938, y: 938, type: 'lake', level: 3, day: 0, startDay: 0 }
+        { ci: _ciOf(410, 410), x: 410, y: 410, type: 'desert', level: 7, day: 0, startDay: 0 },
+        { ci: _ciOf(420, 420), x: 420, y: 420, type: 'hill', level: 4, day: 0, startDay: 0 },
+        { ci: _ciOf(415, 415), x: 415, y: 415, type: 'hill', level: 9, day: 0, startDay: 0 },
+        { ci: _ciOf(405, 405), x: 405, y: 405, type: 'caoyuan', level: 5, day: 0, startDay: 0 },
+        { ci: _ciOf(400, 400), x: 400, y: 400, type: 'lake', level: 3, day: 0, startDay: 0 }
       ];
       s.gathers = [];
       gen154.status = 'garrison';
       s.wilds[4].garrison = { troops: { buxingji: 5000 }, cityId: c154.id, genId: gen154.id };
-      G.startGather(938, 938, { buxingji: 5000 }, { cityId: c154.id });      /* 938 = 采集中 */
-      s.wilds[3].garrison = { troops: { buxingji: 500 }, cityId: c154.id };  /* 939 = 有驻军 */
-      const gatherOk154 = !!G.gatherAt(938, 938);
+      G.startGather(_ciOf(400, 400), { buxingji: 5000 }, { cityId: c154.id });      /* 400 = 采集中 */
+      s.wilds[3].garrison = { troops: { buxingji: 500 }, cityId: c154.id };  /* 405 = 有驻军 */
+      const gatherOk154 = !!G.gatherAt(_ciOf(400, 400));
       G.ui.closeAllModals();
       G.ui.openWilds();
       await sleep(150);
       const coords154 = Array.from(document.querySelectorAll('#modal-root table tbody tr'))
         .map(function (tr) { return (tr.children[1] || {}).textContent || ''; });
       check('v89.154①：附属野地排序 = 采集 → 驻军 → 无驻军（地形序 → 等级降序）',
-        gatherOk154 && coords154.slice(0, 5).join('|') === [938,939,942,940,941].map(function (n) { return G.map.coordText(n, n); }).join('|'),
+        gatherOk154 && coords154.slice(0, 5).join('|') === [400,405,410,415,420].map(function (n) { return G.map.coordText(n, n); }).join('|'),
         'gatherOk=' + gatherOk154 + ' seq=' + coords154.slice(0, 5).join('|'));
 
       let askBtn154 = document.querySelector('#modal-root [data-action="wild-abandon-ask"]');
@@ -6491,7 +6494,7 @@ if (svBtn) {
       if (doBtn154) doBtn154.click();
       await sleep(240);
       check('v89.156①：窗内红键**一击执行**（野地消失 · 老板令"本身已经是 2 次确认了"）',
-        !G.map.wildAt(938, 938));
+        !G.map.wildAt(_ciOf(938, 938)));
       /* v89.156（老板 1 · debug）：弹栈即时 + **关闭一次真关**（层级栈 bug 回归守卫）——
          病根：live 重绘（标题里 N/M 数字变化）被误判"进下级"压栈
          → 关闭键每点一次只弹一层（弹出的还是**旧快照**，含已删行）→ "闪烁、要点几下才关"。
@@ -6518,11 +6521,11 @@ if (svBtn) {
               const x = cc156.x + dx, y = cc156.y + dy;
               const tt = G.map.tile(x, y);
               if (!tt || tt.terrain === 'city') continue;
-              if (G.map.npcAt(x, y) || G.map.fortAt(x, y) || G.map.wildAt(x, y)) continue;
-              const lvv = G.map.wildLevelNow(x, y);
+              if (G.map.npcAt(_ciOf(x, y)) || G.map.fortAt(_ciOf(x, y)) || G.map.wildAt(_ciOf(x, y))) continue;
+              const lvv = G.map.wildLevelNow(_ciOf(x, y));
               if (!(lvv > 0)) continue;
-              const dfe = G.wildDefenseAt(x, y, lvv);
-              if (dfe && dfe.gen) foeWild156 = { x: x, y: y, lv: lvv };
+              const dfe = G.wildDefenseAt(_ciOf(x, y), lvv);
+              if (dfe && dfe.gen) foeWild156 = { x: x, y: y, lv: lvv, ci: _ciOf(x, y) };
             }
           }
         }
@@ -6535,7 +6538,7 @@ if (svBtn) {
         g156.stamina = G.staMax(g156); g156.energy = 100;
         const rndBk156c = window.Math.random;
         window.Math.random = () => 0.999;  /* ⚠️ jsdom realm：必须改 window.Math · 0.999 ≥ p（p ≤ 0.97）→ 必定失败 */
-        const rf156 = G.battle.expedition({ kind: 'wild', x: foeWild156.x, y: foeWild156.y }, 'scout', {}, g156.id);
+        const rf156 = G.battle.expedition({ kind: 'wild', ci: foeWild156.ci }, 'scout', {}, g156.id);
         window.Math.random = rndBk156c;
         await sleep(120);
         check('v89.156④：侦察失败（r.fail · 无情报）',
@@ -6590,8 +6593,8 @@ if (svBtn) {
     try {
       /* ---- ① 召回三态（真 DOM 点击） ---- */
       s.wilds = [
-        { x: 961, y: 961, type: 'lake', level: 5, day: 0, startDay: 0 },
-        { x: 962, y: 962, type: 'lake', level: 5, day: 0, startDay: 0 }
+        { ci: _ciOf(961, 961), x: 961, y: 961, type: 'lake', level: 5, day: 0, startDay: 0 },
+        { ci: _ciOf(962, 962), x: 962, y: 962, type: 'lake', level: 5, day: 0, startDay: 0 }
       ];
       s.gathers = [];
       gen155.status = 'garrison';
@@ -6601,7 +6604,7 @@ if (svBtn) {
       G.ui.openWilds();
       await sleep(160);
       /* §65.2：live 会逐秒重绘 —— 每次操作前重查节点 */
-      const btnOf155 = (x) => document.querySelector('#modal-root [data-action="wild-withdraw"][data-x="' + x + '"]');
+      const btnOf155 = (x) => document.querySelector('#modal-root [data-action="wild-withdraw"][data-ci="' + _ciOf(x, x) + '"]');
       check('v89.155②：有驻军 = 红按钮（🏳️ 召回）', (function () {
         const b = btnOf155(961);
         return !!b && b.classList.contains('red') && b.textContent.indexOf('召回') >= 0;
@@ -6612,7 +6615,7 @@ if (svBtn) {
         const b = btnOf155(961);
         return !!b && b.classList.contains('gold') && /再点一次/.test(b.textContent);
       })(), String((btnOf155(961) || {}).textContent));
-      check('v89.155②：上膛不改数据（驻军仍在）', !!G.map.wildAt(961, 961).garrison);
+      check('v89.155②：上膛不改数据（驻军仍在）', !!G.map.wildAt(_ciOf(961, 961)).garrison);
       /* 2 秒超时 → 回红 */
       await sleep(2200);
       const bt155 = btnOf155(961);
@@ -6624,7 +6627,7 @@ if (svBtn) {
       if (btnOf155(961)) btnOf155(961).click();
       await sleep(280);
       check('v89.155②：连点两次执行召回（驻军清空 · 不弹地块面板）', (function () {
-        const w = G.map.wildAt(961, 961);
+        const w = G.map.wildAt(_ciOf(961, 961));
         const root = document.querySelector('#modal-root');
         const gone = !w || !w.garrison || G.wildGarrisonTotal(w.garrison) === 0;
         const noLand = root && root.innerHTML.indexOf('op-zone-t">地块操作') < 0;
@@ -6713,9 +6716,9 @@ if (svBtn) {
       const c157 = G.currentCity();
       const px157 = c157.x + 4, py157 = c157.y + 4;
       s.wilds = (s.wilds || []).filter(function (z) { return !(z.x === px157 && z.y === py157); });
-      s.wilds.push({ x: px157, y: py157, type: 'lake', level: 2, day: 0, startDay: 0 });
+      s.wilds.push({ ci: _ciOf(px157, py157), x: px157, y: py157, type: 'lake', level: 2, day: 0, startDay: 0 });
       G.ui.closeAllModals();
-      G.ui.openExpModal({ kind: 'wild', x: px157, y: py157 });
+      G.ui.openExpModal({ kind: 'wild', ci: _ciOf(px157, py157) });
       await sleep(180);
       const html157 = document.getElementById('modal-root').innerHTML;
       check('§157：己方野地驻守面板隐接战三块（保留 出征方式 / 可用道具 / 无预估）',
@@ -6968,7 +6971,7 @@ if (svBtn) {
     g163.status = 'march'; g163.cityId = c163.id;
     G.state.marches = [{
       id: 'e2e163m', cityId: c163.id, genId: g163.id, modeId: 'raid',
-      target: { kind: 'wild', x: 1, y: 1 }, tx: 1, ty: 1, name: '荒野·163', kind: 'wild',
+      target: { kind: 'wild', ci: _ciOf(1, 1) }, tx: 1, ty: 1, name: '荒野·163', kind: 'wild',
       army: { buxingji: 10 }, elapsed: 252000, totalTime: 600000, scheme: null, ops: 'assault', cargo: null,
     }];
     G.ui.openBattleList();
@@ -7066,7 +7069,7 @@ if (svBtn) {
       bkG = { status: gen0.status, cityId: gen0.cityId };
       gen0.status = 'march'; gen0.cityId = c0.id;    /* 造局三件套（§77.1）：大 totalTime + 真英雄 */
       const m = { id: 'M165e', cityId: c0.id, genId: gen0.id, modeId: 'raid',
-        target: { kind: 'wild', x: 1, y: 1 }, tx: 1, ty: 1, name: 'A165', kind: 'wild',
+        target: { kind: 'wild', ci: _ciOf(1, 1) }, tx: 1, ty: 1, name: 'A165', kind: 'wild',
         army: { buxingji: 100 }, elapsed: 96000, totalTime: 600000, scheme: null, ops: 'assault', cargo: null };
       st.marches.push(m);
       st.battles.length = 0;
@@ -7120,7 +7123,7 @@ if (svBtn) {
         if (!t || t.terrain !== 'plain') continue;
         if ((st.wilds || []).some((w) => w.x === x && w.y === y)) continue;
         st.wilds.push({ x, y, type: 'plain', lv: 3 });
-        try { G.buildCityAt(x, y); } catch (e) { }
+        try { G.buildCityAt(_ciOf(x, y)); } catch (e) { }
         if (st.cities.length >= 2) c2 = st.cities[1];
       }
     }
@@ -7556,7 +7559,7 @@ console.log('\n--- §180. 拆械与 live 滚动（v89.180） ---');
     const bkW192 = G.state.settings.battleWatch;
     G.state.settings.battleWatch = true;
     const rec192 = { id: 'btE192', kind: 'expedition', side: 'atk',
-      target: { kind: 'wild', x: 1, y: 1, name: '测试野地' },
+      target: { kind: 'wild', ci: _ciOf(1, 1), name: '测试野地' },
       atkArmy: { buxingji: 300 }, genId: null, cityId: null,
       sim: { scArmy: { buxingji: 120 }, scVal: 0, scGen: null, simOpts: {} },
       round: 0, cnt: 60, state: 'live', cmd: {}, history: [], snapLast: null, evLast: [], gapLast: null };
@@ -7595,8 +7598,8 @@ console.log('\n--- §180. 拆械与 live 滚动（v89.180） ---');
   /* ② 前哨面板（jsdom 真渲染）：点前哨格的落点 */
   {
     const bkForts193 = G.state.forts;
-    G.state.forts = { '3,3': { x: 3, y: 3, lv: 7, name: '测试前哨', cityId: G.state.cities[0].id } };
-    G.ui.openOutpostPanel(G.state.forts['3,3']);
+    G.state.forts = { ['c' + _ciOf(3, 3)]: { ci: _ciOf(3, 3), x: 3, y: 3, lv: 7, name: '测试前哨', cityId: G.state.cities[0].id } };
+    G.ui.openOutpostPanel(G.state.forts['c'+_ciOf(3,3)]);
     await sleep(80);
     const h193a = ((document.querySelector('#modal-root .inner-panel') || {}).textContent || '');
     check('v89.193：前哨面板（名称/辐射/五档护持/所属城/总览入口）',
@@ -7726,7 +7729,7 @@ console.log('\n--- §180. 拆械与 live 滚动（v89.180） ---');
       /* 造前哨（真调）→ 打开前哨格面板 */
       G.claimFort({ kind: 'fort', fort: { x: px195, y: py195, level: 8, name: '体测哨', kind: 'fort' } }, null, c195, {});
       G.ui.closeAllModals();
-      G.ui.openOutpostPanel(G.fortOwnAt(px195, py195));
+      G.ui.openOutpostPanel(G.fortOwnAt(_ciOf(px195, py195)));
       await sleep(120);
       const panel195 = document.querySelector('#modal-root .inner-panel');
       const pTxt = panel195 ? panel195.innerHTML : '';
@@ -7748,7 +7751,7 @@ console.log('\n--- §180. 拆械与 live 滚动（v89.180） ---');
       /* 真点红键（一击执行）→ 前哨删除 + 弹层关净 */
       if (armEl195) armEl195.click();
       await sleep(180);
-      const gone195 = G.fortOwnAt(px195, py195) === null;
+      const gone195 = G.fortOwnAt(_ciOf(px195, py195)) === null;
       const closed195 = document.querySelectorAll('#modal-root .inner-panel').length === 0;
       check('§195 真点红键：前哨删除 + 弹层关净（一击执行 · v89.156 口径）',
         gone195 && closed195, 'gone=' + gone195 + ' closed=' + closed195);
@@ -7847,7 +7850,7 @@ console.log('\n--- §180. 拆械与 live 滚动（v89.180） ---');
       c197.army = c197.army || {};
       if (!Object.keys(c197.army).length) c197.army = { buxingji: 500 };
       G.ui._cityId = c197.id;
-      const tg197 = { kind: 'wild', x: c197.x + 3, y: c197.y + 3 };
+      const tg197 = { kind: 'wild', ci: _ciOf(c197.x + 3, c197.y + 3) };
       G.ui.openExpModal(tg197);
       await sleep(140);
       const panel197 = document.querySelector('#modal-root .inner-panel') || document.body;
@@ -7932,7 +7935,7 @@ console.log('\n--- §180. 拆械与 live 滚动（v89.180） ---');
         G.state.generals.push(G.makeGeneral('测198', 40, 'idle', c198.id, false));
       }
       G.ui._cityId = c198.id;
-      G.ui.openExpModal({ kind: 'wild', x: c198.x + 3, y: c198.y + 3 });
+      G.ui.openExpModal({ kind: 'wild', ci: _ciOf(c198.x + 3, c198.y + 3) });
       await sleep(140);
       const panel198 = document.querySelector('#modal-root .inner-panel') || document.body;
 
@@ -7981,7 +7984,7 @@ console.log('\n--- §180. 拆械与 live 滚动（v89.180） ---');
       c200.army = c200.army || {};
       if (!Object.keys(c200.army).length) c200.army = { buxingji: 500 };
       G.ui._cityId = c200.id;
-      G.ui.openExpModal({ kind: 'wild', x: c200.x + 3, y: c200.y + 3 });
+      G.ui.openExpModal({ kind: 'wild', ci: _ciOf(c200.x + 3, c200.y + 3) });
       await sleep(140);
       const panel200 = document.querySelector('#modal-root .inner-panel') || document.body;
       const estL = panel200.querySelector('.exp-col-l .exp-a-est');
@@ -8387,8 +8390,8 @@ console.log('\n--- §180. 拆械与 live 滚动（v89.180） ---');
       if (!st204b.map.grid) G.map.generate();
       const cB204 = st204b.cities[0];
       st204b.wilds = st204b.wilds || [];
-      st204b.wilds.push({ x: cB204.x + 3, y: cB204.y + 3, type: 'plain', level: 3, levelDay: G.questDayIndex() });
-      const built204 = G.buildCityAt(cB204.x + 3, cB204.y + 3);
+      st204b.wilds.push({ ci: _ciOf(cB204.x + 3, cB204.y + 3), x: cB204.x + 3, y: cB204.y + 3, type: 'plain', level: 3, levelDay: G.questDayIndex() });
+      const built204 = G.buildCityAt(_ciOf(cB204.x + 3, cB204.y + 3));
       const cNew204 = (built204 && built204.city) ? built204.city : null;
       if (cNew204) {
         st204b.mainCityId = cNew204.id;
@@ -8561,11 +8564,11 @@ console.log('\n--- §180. 拆械与 live 滚动（v89.180） ---');
           const x = cc207.x + dx, y = cc207.y + dy;
           const tt = G.map.tile(x, y);
           if (!tt || tt.terrain === 'city') continue;
-          if (G.map.npcAt(x, y) || G.map.fortAt(x, y) || G.map.wildAt(x, y)) continue;
-          const lvv = G.map.wildLevelNow(x, y);
+          if (G.map.npcAt(_ciOf(x, y)) || G.map.fortAt(_ciOf(x, y)) || G.map.wildAt(_ciOf(x, y))) continue;
+          const lvv = G.map.wildLevelNow(_ciOf(x, y));
           if (!(lvv > 0)) continue;
-          const dfe = G.wildDefenseAt(x, y, lvv);
-          if (dfe && dfe.total > 0) w207 = { x: x, y: y, lv: lvv };
+          const dfe = G.wildDefenseAt(_ciOf(x, y), lvv);
+          if (dfe && dfe.total > 0) w207 = { x: x, y: y, lv: lvv, ci: _ciOf(x, y) };
         }
       }
       if (!w207) {
@@ -8577,7 +8580,7 @@ console.log('\n--- §180. 拆械与 live 滚动（v89.180） ---');
         g207.status = 'idle'; g207.cityId = cc207.id;
         G.setStaNow(g207, G.staMax(g207));
         g207.energy = 100;
-        const rd207 = G.march.dispatch({ kind: 'wild', x: w207.x, y: w207.y }, 'occupy',
+        const rd207 = G.march.dispatch({ kind: 'wild', ci: w207.ci }, 'occupy',
           { buxingji: 88888 }, g207.id, null);
         await sleep(150);
         const m207 = (G.state.marches || [])[0];
@@ -8792,13 +8795,13 @@ console.log('\n--- §180. 拆械与 live 滚动（v89.180） ---');
             const x = c210.x + dx, y = c210.y + dy;
             const tl = G.map.tile(x, y);
             if (!tl || tl.terrain === 'city') continue;
-            if (G.map.wildAt(x, y) || G.map.npcAt(x, y) || G.map.fortAt(x, y)) continue;
-            if (!(G.map.wildLevelNow(x, y) > 0)) continue;
-            w210 = { x: x, y: y };
+            if (G.map.wildAt(_ciOf(x, y)) || G.map.npcAt(_ciOf(x, y)) || G.map.fortAt(_ciOf(x, y))) continue;
+            if (!(G.map.wildLevelNow(_ciOf(x, y)) > 0)) continue;
+            w210 = { x: x, y: y, ci: _ciOf(x, y) };
           }
         }
         G.ui._expMode = 'occupy';
-        G.ui.openExpModal({ kind: 'wild', x: w210.x, y: w210.y });
+        G.ui.openExpModal({ kind: 'wild', ci: w210.ci });
         await sleep(140);
         const simBtn210 = document.querySelector('#modal-root [data-action="exp-sim"]');
         check('§210④ 出征面板有「🎬 推演」键（真渲染）', !!simBtn210,

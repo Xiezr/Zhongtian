@@ -427,7 +427,7 @@
          * 三个入口（地块界面「派驻/增派驻军」· 军务总览「增派」· 附属野地「派驻」）
          * 共用这一个动作 → 一律打开出征界面；方式是己方野地自动落「驻守 · 增援」。
          * ============================================================ */
-        ui.openExpModal({ kind: 'wild', x: Number(el.dataset.x), y: Number(el.dataset.y) });
+        ui.openExpModal({ kind: 'wild', ci: Number(el.dataset.ci) });
         break;
       /* v87（老板）：野地地形专属场景 */
       /* v88：双轨切换 / 调校 / 荒野行动（v88.1：原 do-wild-scene 已并入 do-jianghu） */
@@ -436,7 +436,7 @@
       case 'ling-temper-item': GAME.doLingTemper(el.dataset.key); break;
       case 'ling-pick': ui.lingPick(el.dataset.key); break;
       case 'ling-filter': ui.setLingFilter(el.dataset.k); break;
-      case 'do-jianghu': ui.doJianghu(Number(el.dataset.x), Number(el.dataset.y), el.dataset.act); break;
+      case 'do-jianghu': ui.doJianghu(Number(el.dataset.ci), el.dataset.act); break;
       /* ⛔ v90.93：case sxf-choice / sxf-escape / sxf-stop / sxf-exit
          随全屏剧本（荒野场景流程）整条退役（见 ui.doJianghu 同款墓碑）。 */
       /* ⛔ v89.218：故事相关动作（story-pick / story-read / story-read-at /
@@ -459,35 +459,35 @@
          *     按钮经 wdRepaint 就地变绿；
          *   · 按钮三态渲染唯一出口 = ui.wildWdBtnHTML（本处只改状态 + 触发重绘）。
          * ============================================================ */
-        var _wx155 = Number(el.dataset.x), _wy155 = Number(el.dataset.y);
-        var _wk155 = _wx155 + ',' + _wy155;
+        var _wci155 = Number(el.dataset.ci);
+        var _wk155 = 'c' + _wci155;
         if (ui._wdArm138 !== _wk155) {
           ui._wdArm138 = _wk155;
           if (ui._wdArmTimer155) clearTimeout(ui._wdArmTimer155);
           ui._wdArmTimer155 = setTimeout(function () {
             if (ui._wdArm138 !== _wk155) return;
             ui._wdArm138 = null; ui._wdArmTimer155 = null;
-            ui.wdRepaint(_wx155, _wy155);        /* 2 秒无第二次点击 → 回落（红 / 绿） */
+            ui.wdRepaint(_wci155);        /* 2 秒无第二次点击 → 回落（红 / 绿） */
           }, DATA.WD_ARM_MS || 2000);
-          ui.wdRepaint(_wx155, _wy155);          /* 立即变黄（就地重绘，唯一出口） */
+          ui.wdRepaint(_wci155);          /* 立即变黄（就地重绘，唯一出口） */
           break;
         }
         if (ui._wdArmTimer155) { clearTimeout(ui._wdArmTimer155); ui._wdArmTimer155 = null; }
         ui._wdArm138 = null;
-        var wr = GAME.doWildWithdraw(_wx155, _wy155);
+        var wr = GAME.doWildWithdraw(_wci155);
         ui.toast(wr.msg);
-        if (wr.ok) { ui.wdRepaint(_wx155, _wy155); GAME.refreshAll(); }
+        if (wr.ok) { ui.wdRepaint(_wci155); GAME.refreshAll(); }
         break;
       }
       /* v89.63（老板「野地驻军可以选择采集或召回」）：驻军就地开采 —— 无英雄带队、
          兵从驻军里出、收获回驻军（走 GAME.startGather 的 from:'garrison' 分支） */
       case 'wild-garrison-gather': {
-        var _gx = Number(el.dataset.x), _gy = Number(el.dataset.y);
-        var _gg = GAME.wildGarrisonAt(_gx, _gy);
+        var _gci = Number(el.dataset.ci);
+        var _gg = GAME.wildGarrisonAt(_gci);
         if (!_gg || !GAME.wildGarrisonTotal(_gg)) { ui.toast('此地没有驻军可开采'); break; }
         /* v89.135（老板 5）：无将驻军只可驻留 —— 动作层先拦（startGather 内亦有硬闸） */
         if (!_gg.genId) { ui.toast('驻军须有英雄带队方可开采（再次「派驻」选一位英雄补驻）'); break; }
-        var _gr = GAME.startGather(_gx, _gy, U.deep(_gg.troops), {});   /* v89.136：新签名 */
+        var _gr = GAME.startGather(_gci, U.deep(_gg.troops), {});   /* v89.136：新签名 */
         ui.toast(_gr.msg);
         /* v89.139（老板 2）：「点击采集不要出现页面、界面跳转，直接后台开始计时即可」——
            不再重开面板（地块面板带 live 逐秒刷新，会自然切到"采集中"形态）；
@@ -495,13 +495,13 @@
         if (_gr.ok) GAME.refreshAll();
         break;
       }
-      case 'wild-abandon-ask': ui.openAbandonWildAsk(Number(el.dataset.x), Number(el.dataset.y)); break;
+      case 'wild-abandon-ask': ui.openAbandonWildAsk(Number(el.dataset.ci)); break;
       /* v89.156（老板 1）：「弹窗出来的放弃按钮点击直接执行即可，本身已经是 2 次确认了」——
          上膛式（连点两次）整条退役：操作列「🗑️ 放弃」→ 二次确认窗 → 窗内红键**一击执行**。
          `-arm` → `-do` 改名收敛回 §14.1 的「xxx-ask → xxx-do」两段式；
          旧 `ui._wildArm154` 标记随本需求退役（零残留）。 */
       case 'wild-abandon-do': {
-        var wa = GAME.doAbandonWild(Number(el.dataset.x), Number(el.dataset.y));
+        var wa = GAME.doAbandonWild(Number(el.dataset.ci));
         ui.toast(wa.msg);
         ui.closeModal();
         GAME.refreshAll();
@@ -793,7 +793,7 @@
       case 'equip-item': GAME.doEquip(el.dataset.gen, el.dataset.item); break;
       case 'unequip-item': GAME.doUnequip(el.dataset.gen, el.dataset.slot); break;
       /* v89.187（老板 3）：据点情报（前哨覆盖内的野地明细 · 免侦查） */
-      case 'wild-fortintel': ui.openFortIntel(Number(el.dataset.x), Number(el.dataset.y)); break;
+      case 'wild-fortintel': ui.openFortIntel(Number(el.dataset.ci)); break;
       /* v89.187（老板 1）：遗物合成（2 件同品质 → 1 件高一档） */
       case 'bao-fuse': GAME.doBaoFuse(el.dataset.q); break;
       /* v89.186（老板 1）：挂件（遗物）——选择窗 / 装上 / 卸下 */
@@ -986,10 +986,10 @@
         var _awPid = Number(el.dataset.pid);
         var _awAct = GAME.activePlanetOf ? GAME.activePlanetOf() : null;
         if (_awAct && _awPid !== _awAct.id) { GAME.enterPlanet(_awPid); }
-        var _awX = Number(el.dataset.x), _awY = Number(el.dataset.y);
+        var _awCi = Number(el.dataset.ci);
         ui.closeAllModals();
         ui.setView('map');
-        ui.openLandModal(_awX, _awY);   /* 已占野地 → 单独管理界面（派驻/增援/召回/采集/出兵/筑城…） */
+        ui.openLandModalCi(_awCi);   /* 已占野地 → 单独管理界面（派驻/增援/召回/采集/出兵/筑城…） */
         break;
       }
       case 'do-rename-planet': {
@@ -1161,9 +1161,9 @@
       case 'open-outposts': ui.openOutposts(); break;
       /* v89.195（老板 1）：前哨放手 —— 确认窗 → 红键一击执行（v89.156 口径：
          "弹窗出来的放弃按钮点击直接执行即可，本身已经是 2 次确认了"）。 */
-      case 'fort-abandon-ask': ui.openFortAbandonAsk(Number(el.dataset.x), Number(el.dataset.y)); break;
+      case 'fort-abandon-ask': ui.openFortAbandonAsk(Number(el.dataset.ci)); break;
       case 'fort-abandon-arm': {
-        var fabR195 = GAME.abandonFort(Number(el.dataset.x), Number(el.dataset.y));
+        var fabR195 = GAME.abandonFort(Number(el.dataset.ci));
         ui.toast((fabR195.ok ? '🗑️ ' : '⚠️ ') + fabR195.msg);
         /* 放手成功后：关净全部弹层（确认窗 → 前哨面板/总览），回地图看新状态 */
         if (fabR195.ok) { ui.closeAllModals(); GAME.refreshAll(); ui.renderMapCanvas(); }
@@ -1777,10 +1777,10 @@
   /* 解雇（二次确认） */
   /* v70（老板需求 3/4）：迁址（坐标切换）与一键随机 —— 唯一执行都走 GAME.moveCityTo */
   GAME.doCityMove = function () {
-    var el1 = document.getElementById('move-x'), el2 = document.getElementById('move-y');
+    var el1 = document.getElementById('move-ci');
     var cur = GAME.currentCity();
     var id = ui._cityMoveId || (cur && cur.id);
-    var r = GAME.moveCityTo(id, el1 ? el1.value : NaN, el2 ? el2.value : NaN);
+    var r = GAME.moveCityTo(id, el1 ? el1.value : NaN);
     ui.toast(r.msg);
     if (r.ok) {
       ui.closeModal();
@@ -2245,7 +2245,7 @@
        战力比 < 0.5 时第一次点击只"上膛"（按钮变红复述后果），再点一次才真发兵。
        例外：侦查（不接战）与"占领己方野地"（到了即驻，不接战）不设此闸。 */
     var _tgt86 = ui._expRes;
-    var _peaceful86 = !!(_tgt86 && _tgt86.kind === 'wild' && GAME.map.wildAt(_tgt86.x, _tgt86.y));
+    var _peaceful86 = !!(_tgt86 && _tgt86.kind === 'wild' && GAME.map.wildAt(_tgt86.ci));
     /* v89.94（B2 · E2）：闸门改按**最坏情形**拦（区间下界 ratioLo）——
        情报越差区间越宽，警告越容易触发：这是"不确定性"该有的代价。
        文案同时给点估计与误差，玩家知道自己在赌什么。 */
@@ -2579,9 +2579,9 @@
           ui.openFortModal(hit.fort);
         } else if (hit.kind === 'wild') {
           /* v23（需求 1）：已占野地不再是"只弹一句提示"，直接进管理面板 */
-          ui.openLandModal(hit.x, hit.y);
+          ui.openLandModalCi(hit.ci);
         } else {
-          ui.openLandModal(hit.x, hit.y);
+          ui.openLandModalCi(hit.ci);
         }
       }
     }

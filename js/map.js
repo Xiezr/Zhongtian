@@ -108,45 +108,44 @@
   /* v89.43：城池位图 tier 取值口（地图渲染的唯一口径）。
      own 城 type 'self'（自建/首城）按 **county 档**出图 —— 玩家的城就是一座小城；
      攻占来的系统城保留原 type（capital/zhou/jun/county 各归各档）。 */
-  GAME.map.cityArtKeyAt = function (x, y) {
+  GAME.map.cityArtKeyAt = function (ci) {
     var s = GAME.state;
     var i, c;
     for (i = 0; i < (s.cities || []).length; i++) {
       c = s.cities[i];
-      if (c.x === x && c.y === y) {
+      if (c.ci === ci) {
         return 'city_' + (!c.type || c.type === 'self' ? 'county' : c.type);
       }
     }
     for (i = 0; i < (s.map.cities || []).length; i++) {
       c = s.map.cities[i];
-      if (c.x === x && c.y === y) return 'city_' + c.type;
+      if (c.ci === ci) return 'city_' + c.type;
     }
     return null;
   };
 
-  /* v23（需求 1）：**玩家自己的城**在任何坐标 ——
-     此前只认 state.cities[0]，于是自己攻下的第二座城在地图上被当成 NPC，
-     点它反而弹出"出征"面板，等于能打自己。 */
-  GAME.map.ownCityAt = function (x, y) {
+  /* v23（需求 1）：**玩家自己的城**在任何格（球系：按格索引 ci）。
+     v90.100：ci 即身份；x/y 退役。 */
+  GAME.map.ownCityAt = function (ci) {
     var cs = (GAME.state && GAME.state.cities) || [];
-    for (var i = 0; i < cs.length; i++) if (cs[i].x === x && cs[i].y === y) return cs[i];
+    for (var i = 0; i < cs.length; i++) if (cs[i].ci === ci) return cs[i];
     return null;
   };
 
-  GAME.map.npcAt = function (x, y) {
+  GAME.map.npcAt = function (ci) {
     var s = GAME.state;
     for (var i = 0; i < s.map.cities.length; i++) {
       var c = s.map.cities[i];
-      if (c.x === x && c.y === y) return c;
+      if (c.ci === ci) return c;
     }
     return null;
   };
 
-  /* 该格是否已被占领为野地 */
-  GAME.map.wildAt = function (x, y) {
+  /* 该格是否已被占领为野地（按 ci） */
+  GAME.map.wildAt = function (ci) {
     var s = GAME.state;
     for (var i = 0; i < (s.wilds || []).length; i++) {
-      if (s.wilds[i].x === x && s.wilds[i].y === y) return s.wilds[i];
+      if (s.wilds[i].ci === ci) return s.wilds[i];
     }
     return null;
   };
@@ -275,12 +274,11 @@
     }
     return false;
   };
-  /* 是否生有野外城池（确定性；**位置固定** —— 与"等级每日变化"各管一头） */
-  GAME.map.hasFort = function (x, y, ctx) {
+  /* 是否生有野外城池（确定性；**位置固定** —— 与"等级每日变化"各管一头；球系：按 ci） */
+  GAME.map.hasFort = function (ci, ctx) {
     ctx = ctx || GAME.map._pctx();
     var F = DATA.FORT, SP = ctx.sphere;
-    if (!F || !SP || !SP.cells) return false;
-    var ci = SP.ciOfXY(x, y); if (ci < 0) return false;
+    if (!F || !SP || !SP.cells || !SP.cells[ci]) return false;
     if (GAME.map._cellHasCity(ci, ctx)) return false;
     return GAME.map._fortActive(ci, ctx);
   };
@@ -326,12 +324,9 @@
        按**累计占比边界**逐级切段（构造性：排序后切段，不是掷点；v89.72 教训）。
        边界 = round(n × 累计权重 / 总权重)，最后一级吃满 —— 总数恒 = 候选数。 */
     var Wt = (F.levelDist && F.levelDist.weights) || null;
-    /* 键 = 该六边格的**代表世界格 (x,y)**（不是 ci）—— 使 fortAt(x,y) 精确命中，
-       免 ci↔(x,y) 往返在格边界处漂移。 */
-    var cells = SP.cells;
+    /* 键 = 该六边格的**格索引 ci**（球系唯一身份）—— 使 fortAt(ci) 精确命中。 */
     var arr = GAME.map._fortCandidates(ctx).map(function (ci) {
-      var c = cells[ci];
-      return { k: c.x + ',' + c.y, r: GAME.map._fortHashCi(ci, 9001 + day, ctx) };
+      return { k: 'c' + ci, r: GAME.map._fortHashCi(ci, 9001 + day, ctx) };
     });
     arr.sort(function (a, b) { return a.r - b.r; });
     var n = arr.length, map = {}, idx = 0, k;
@@ -351,9 +346,9 @@
     GAME.map._fortLv = { seed: seed, day: day, map: map };
     return map;
   };
-  /* 某格在指定日的据点等级（0 = 不是据点格）—— 按世界格 (x,y) 精确查 */
-  GAME.map._fortLevelAt = function (day, x, y, ctx) {
-    return GAME.map._fortLevelTable(day, ctx)[x + ',' + y] || 0;
+  /* 某格在指定日的据点等级（0 = 不是据点格）—— 按格索引 ci 精确查 */
+  GAME.map._fortLevelAt = function (day, ci, ctx) {
+    return GAME.map._fortLevelTable(day, ctx)['c' + ci] || 0;
   };
   /* 今日是否仍在（被攻取的据点次日重置） */
   /* ============================================================
@@ -418,26 +413,26 @@
     cache[R] = out;
     return out;
   };
-  GAME.map.fortRazedToday = function (x, y, ctx) {
+  GAME.map.fortRazedToday = function (ci, ctx) {
     var day = GAME.questDayIndex ? GAME.questDayIndex() : 0;
     var rz = (ctx && ctx.fortsRazed) || ((GAME.state || {}).fortsRazed) || {};
-    return rz[x + ',' + y] === day;
+    return rz['c' + ci] === day;
   };
-  GAME.map.fortAt = function (x, y, ctx) {
+  GAME.map.fortAt = function (ci, ctx) {
     ctx = ctx || GAME.map._pctx();
     var F = DATA.FORT, SP = ctx.sphere;
-    if (!F || !SP || !SP.cells) return null;
-    if (GAME.map.fortRazedToday(x, y, ctx)) return null;
+    if (!F || !SP || !SP.cells || !SP.cells[ci]) return null;
+    if (GAME.map.fortRazedToday(ci, ctx)) return null;
     /* v89.103（老板「拔除据点可以占据该据点」）：已据为己有的格子**永久**不再生成据点 ——
        与 fortsRazed（当日标记，次日重置）不同：那一格现在是我方一座城（分片 cities 里）。 */
-    if ((ctx.fortsTaken || {})[x + ',' + y]) return null;
+    if ((ctx.fortsTaken || {})['c' + ci]) return null;
     var day = GAME.questDayIndex ? GAME.questDayIndex() : 0;
-    var level = GAME.map._fortLevelAt(day, x, y, ctx);   /* 等级表 = 据点存在的唯一事实（已排除城/海） */
+    var level = GAME.map._fortLevelAt(day, ci, ctx);   /* 等级表 = 据点存在的唯一事实（已排除城/海） */
     if (!level) return null;
-    var ci = SP.ciOfXY(x, y);
     var a = Math.floor(GAME.map._fortHashCi(ci, 7, ctx) * F.nameA.length);
     var b = Math.floor(GAME.map._fortHashCi(ci, 13, ctx) * F.nameB.length);
-    return { x: x, y: y, ci: ci, level: level, name: F.nameA[a] + F.nameB[b], kind: 'fort' };
+    var c = SP.cells[ci];
+    return { ci: ci, lon: c.lon, lat: c.lat, level: level, name: F.nameA[a] + F.nameB[b], kind: 'fort' };
   };
   GAME.map.fortGarrison = function (lv) {
     var F = DATA.FORT;
@@ -503,21 +498,21 @@
     g.title = tt[Math.floor(rand() * tt.length)];
     return g;
   };
-  GAME.map.razeFort = function (x, y) {
+  GAME.map.razeFort = function (ci) {
     var s = GAME.state;
     s.fortsRazed = s.fortsRazed || {};
-    s.fortsRazed[x + ',' + y] = GAME.questDayIndex ? GAME.questDayIndex() : 0;
+    s.fortsRazed['c' + ci] = GAME.questDayIndex ? GAME.questDayIndex() : 0;
   };
   /* v89.103（老板「拔除据点可以占据该据点」）：**永久**占据登记（唯一出口）。
      与 fortsRazed 的分工：那张表只管"今天不再出现"，次日重置；
      这张表是"这格已经是我的城了"，永不失效 —— `fortAt` 读到它就直接返回 null，
      于是渲染 / 出征目标 / 自动出征 / 侦查**全部**看不到它（一个出口，处处生效）。 */
-  GAME.map.markFortTaken = function (x, y, cityId) {
+  GAME.map.markFortTaken = function (ci, cityId) {
     var s = GAME.state;
     if (!s) return null;
     s.fortsTaken = s.fortsTaken || {};
-    s.fortsTaken[x + ',' + y] = { day: GAME.questDayIndex ? GAME.questDayIndex() : 0, cityId: cityId || null };
-    return s.fortsTaken[x + ',' + y];
+    s.fortsTaken['c' + ci] = { day: GAME.questDayIndex ? GAME.questDayIndex() : 0, cityId: cityId || null };
+    return s.fortsTaken['c' + ci];
   };
   /* ============================================================
    * 野外城池的**每日掠夺上限**（v63 · 老板：「野外城每天只能被掠夺一次」）
@@ -528,26 +523,23 @@
    * 之所以要拦：掠夺（raid）**不破城**（只有占领才 raze），同一座据点
    * 一天内可以反复刷 —— 财货、材料、珠宝、军械全部可以无限取。
    * ============================================================ */
-  GAME.map.fortRaidedToday = function (x, y) {
+  GAME.map.fortRaidedToday = function (ci) {
     var s = GAME.state;
     var day = GAME.questDayIndex ? GAME.questDayIndex() : 0;
-    return (s.fortRaids || {})[x + ',' + y] === day;
+    return (s.fortRaids || {})['c' + ci] === day;
   };
-  GAME.map.markFortRaided = function (x, y) {
+  GAME.map.markFortRaided = function (ci) {
     var s = GAME.state;
     s.fortRaids = s.fortRaids || {};
-    s.fortRaids[x + ',' + y] = GAME.questDayIndex ? GAME.questDayIndex() : 0;
+    s.fortRaids['c' + ci] = GAME.questDayIndex ? GAME.questDayIndex() : 0;
   };
   /* 视口内所有野外城池（供渲染与提示） */
-  GAME.map.fortsInView = function (vx, vy, spanX, spanY) {
+  /* 视口内所有野外城池。v90.100（球系）：据点已按 ci 生成，视口 = 平面概览语义淡化 ——
+     直接返回当前星球全部据点（供一览 / 提示）。 */
+  GAME.map.fortsInView = function () {
     var out = [];
-    if (spanY == null) spanY = spanX;              // 旧调用（方形视口）保持可用
-    for (var y = vy; y < vy + spanY; y++) {
-      for (var x = vx; x < vx + spanX; x++) {
-        var f = GAME.map.fortAt(x, y);
-        if (f) out.push(f);
-      }
-    }
+    var cands = GAME.map._fortCandidates();
+    for (var i = 0; i < cands.length; i++) { var f = GAME.map.fortAt(cands[i]); if (f) out.push(f); }
     return out;
   };
 
@@ -584,11 +576,10 @@
     GAME.map._cntyF = { seed: seed, field: field, byCi: byCi, junOf: {} };
     return field;
   };
-  /* 世界格 (x,y) 所属**聚落格索引**（最近聚落；无 → -1）。O(1)。 */
-  GAME.map.countyCiAt = function (x, y) {
+  /* 格索引 ci 所属**聚落格索引**（最近聚落；无 → -1）。O(1)。 */
+  GAME.map.countyCiAt = function (ci) {
     var SP = GAME.sphere; if (!SP) return -1;
     var f = GAME.map._countyField(); if (!f) return -1;
-    var ci = SP.ciOfXY(x, y);
     return (ci >= 0 && ci < f.length) ? f[ci] : -1;
   };
   /* 聚落 ci → 该聚落城的**近邻重镇**（同州最近 jun，按聚落缓存）。O(1) 摊还。 */
@@ -626,34 +617,37 @@
          避免"所有地块不分类型等级高的聚拢在一起"；
        · 保留少量确定性例外（约 4% 边陲遗迹 8~10 级、约 4% 腹地弱地 0~2 级），
          让地图有可远征的高价值点与新手软柿子，用坐标哈希、同 seed 完全复现。 */
-  GAME.map.wildLevelBase = function (x, y) {
+  /* v90.100（球系）：野地等级 = 球面原生噪声 —— 输入格索引 ci + 经纬，非平面 (x,y)。
+     同 seed 完全复现；地形盐由该格球面地形取（所见即所得）。 */
+  GAME.map.wildLevelBase = function (ci) {
     var sd = (GAME.state.map.seed || 1) | 0;
-    var tile = GAME.map.tile(x, y);
-    var tn = tile ? (tile.terrain || 'plain') : 'plain';
-    /* 地形名 → 稳定盐（让每种地形有独立的等级场） */
+    var SP = GAME.sphere, cell = SP && SP.cells ? SP.cells[ci] : null;
+    var tn = (cell && cell.type) || 'plain';
+    /* 经度折到 [-180,180]（消 0/360 缝）、按纬度余弦压经度（极区不挤）；单位=度。 */
+    var lon = cell ? ((cell.lon + 180) % 360 - 180) : 0, lat = cell ? cell.lat : 0;
+    var sx = lon * Math.cos(lat * Math.PI / 180), sy = lat;
     var tSalt = 0;
     for (var _i = 0; _i < tn.length; _i++) tSalt = (tSalt * 31 + tn.charCodeAt(_i)) >>> 0;
-    /* 局部平滑场（两层 octave）：主波长稍小 → 团块尺度 ~9~17 格，
-       既"成团"又不会一大片同值；频率错开避免栅格感 */
-    var n1 = vnoise(x, y, 9, sd * 13 + (tSalt % 997));
-    var n2 = vnoise(x, y, 17, sd * 7 + (tSalt % 991));
+    /* 两层 octave（度尺度）：团块 ~9~17°，既成团又不成片同值。 */
+    var n1 = vnoise(sx, sy, 9, sd * 13 + (tSalt % 997));
+    var n2 = vnoise(sx, sy, 17, sd * 7 + (tSalt % 991));
     var field = n1 * 0.72 + n2 * 0.28;
     var lv = Math.round(field * 10);
-    /* 少量确定性例外（坐标哈希，跨引擎一致） */
-    var r = nhash(x, y, sd * 3 + 991);
-    if (r < 0.04) lv = 8 + Math.floor(nhash(x, y, sd + 771) * 3);       /* 边陲遗迹 */
-    else if (r > 0.96) lv = Math.floor(nhash(x, y, sd + 772) * 3);      /* 腹地弱地 */
+    /* 少量确定性例外（格哈希，跨引擎一致） */
+    var r = GAME.map._fortHashCi(ci, sd * 3 + 991, GAME.map._pctx());
+    if (r < 0.04) lv = 8 + Math.floor(GAME.map._fortHashCi(ci, sd + 771, GAME.map._pctx()) * 3);   /* 边陲遗迹 */
+    else if (r > 0.96) lv = Math.floor(GAME.map._fortHashCi(ci, sd + 772, GAME.map._pctx()) * 3);  /* 腹地弱地 */
     return Math.max(0, Math.min(10, lv));
   };
-  GAME.map.wildLevel = function (x, y) {
+  GAME.map.wildLevel = function (ci) {
     var day = Math.floor(Date.now() / 86400000);
-    return (GAME.map.wildLevelBase(x, y) + day) % 11;   // 每日 +1 级（模 11 循环）
+    return (GAME.map.wildLevelBase(ci) + day) % 11;   // 每日 +1 级（模 11 循环）
   };
   /* 当前实际等级：已占野地用记录值（会衰减），无主野地用日盐值 */
-  GAME.map.wildLevelNow = function (x, y) {
-    var w = GAME.map.wildAt(x, y);
+  GAME.map.wildLevelNow = function (ci) {
+    var w = GAME.map.wildAt(ci);
     if (w && w.level != null) return w.level;
-    return GAME.map.wildLevel(x, y);
+    return GAME.map.wildLevel(ci);
   };
 
   /* --------- 离屏地形层（v22 遗留，v42 删除） ---------
@@ -1038,6 +1032,12 @@
   /* 球系坐标显示文本（界面统一口径） */
   GAME.map.coordText = function (x, y) {
     var c = GAME.map.lonlatOf(x, y);
+    return Math.round(c.lon) + '°E ' + Math.round(c.lat) + '°N';
+  };
+  /* 格索引 → 球系坐标显示文本（球系唯一身份的口径） */
+  GAME.map.coordTextCi = function (ci) {
+    var c = GAME.sphere && GAME.sphere.cells && GAME.sphere.cells[ci];
+    if (!c) return '—';
     return Math.round(c.lon) + '°E ' + Math.round(c.lat) + '°N';
   };
   /* ============================================================
@@ -1741,7 +1741,8 @@
        理由：城池名是地图的骨架（哪座是哪座全靠它），关掉=地图失去可读性；
        而野地/据点是密集的"背景信息"，才是真正需要一键收起来的东西。 */
     function drawCityLabel(d) {
-      var city = GAME.map.ownCityAt(d.gx, d.gy) || GAME.map.npcAt(d.gx, d.gy);
+      var ci = GAME.sphere ? GAME.sphere.ciOfXY(d.gx, d.gy) : -1;
+      var city = GAME.map.ownCityAt(ci) || GAME.map.npcAt(ci);
       if (!city) return;
       var nm = city.name || '城';
       /* v89.70：**自带对齐设置**，不依赖环境遗留状态 ——
@@ -1818,7 +1819,7 @@
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         ctx.fillText(lvTxt, cx, cy - 12.5);
         if (GAME.jianghuWildMounted) {
-          var jhM5 = GAME.jianghuSpotInfo(d.gx, d.gy);
+          var jhM5 = GAME.jianghuSpotInfo((GAME.sphere.ciOfXY) ? GAME.sphere.ciOfXY(d.gx, d.gy) : -1);
           if (jhM5 && jhM5.mark) drawJhPennant(ctx, cx, cy - 12);
         }
       }
@@ -1915,7 +1916,7 @@
          * 不点进野地就能一眼看出哪几块在开采。
          * 画在框之后 = 永远压在最上层（同名教训：§46.1 图层序）。
          * ============================================================ */
-        if (GAME.gatherAt && GAME.gatherAt(w.x, w.y)) {
+        if (GAME.gatherAt && GAME.gatherAt(w.ci)) {
           var _bx = diaBox(gx, gy, el, 0);
           var _px = c.x, _py = c.y - _bx.h * 0.46;
           dot(ctx, _px, _py, 5.2, 'rgba(58,208,122,.30)');
@@ -1933,7 +1934,7 @@
        顺序由数据决定 —— 南北相邻时会出现"南边的城被北边的城穿透"。
        分两遍：先画图标（受纵深遮挡），再画名带与角标（永远在最上层，保证可读）。 */
     var marks = [];
-    GAME.map.fortsInView(gx0, gy0, gx1 - gx0 + 1, gy1 - gy0 + 1).forEach(function (f) {
+    GAME.map.fortsInView().forEach(function (f) {
       marks.push({ gx: f.x, gy: f.y, kind: 'fort', o: f });
     });
     (s.map.cities || []).forEach(function (cy2) {
@@ -2116,16 +2117,18 @@
     /* v90.6：方格网反投影 —— x = ox + gx·cell, y = oy + gy·cell。 */
     var gx = Math.round((mx - v.ox) / v.cell), gy = Math.round((my - v.oy) / v.cell);
     if (gx < 0 || gy < 0 || gx >= DATA.MAP_W || gy >= DATA.MAP_H) return null;
+    /* v90.100（球系）：2D 平面点击 → 格索引 ci → 按 ci 定位。 */
+    var pci = (GAME.sphere && GAME.sphere.ciOfXY) ? GAME.sphere.ciOfXY(gx, gy) : -1;
     /* 自己的城（含第二座起）优先于 NPC 判定 */
-    var own = GAME.map.ownCityAt(gx, gy);
-    if (own) return { kind: 'player', city: own, x: gx, y: gy };
-    var npc = GAME.map.npcAt(gx, gy);
-    if (npc) return { kind: 'npc', city: npc, x: gx, y: gy };
-    var w2 = GAME.map.wildAt(gx, gy);
-    if (w2) return { kind: 'wild', wild: w2, x: gx, y: gy };
-    var f = GAME.map.fortAt(gx, gy);
-    if (f) return { kind: 'fort', fort: f, x: gx, y: gy };
-    return { kind: 'land', x: gx, y: gy };
+    var own = GAME.map.ownCityAt(pci);
+    if (own) return { kind: 'player', city: own, ci: pci, x: gx, y: gy };
+    var npc = GAME.map.npcAt(pci);
+    if (npc) return { kind: 'npc', city: npc, ci: pci, x: gx, y: gy };
+    var w2 = GAME.map.wildAt(pci);
+    if (w2) return { kind: 'wild', wild: w2, ci: pci, x: gx, y: gy };
+    var f = GAME.map.fortAt(pci);
+    if (f) return { kind: 'fort', fort: f, ci: pci, x: gx, y: gy };
+    return { kind: 'land', ci: pci, x: gx, y: gy };
   };
 
   /* ⛔ v90.93 退役：场景插画（v89.2）—— `GAME.map.paintScene` / `SCENE_KEYS` /
