@@ -7759,6 +7759,7 @@
     else if (v === 'tech') box.innerHTML = ui.techHTML();
     else if (v === 'items') box.innerHTML = ui.itemsHTML();
     else if (v === 'rank') box.innerHTML = ui.rankHTML();
+    else if (v === 'galaxy') box.innerHTML = ui.galaxyHTML();
     else if (v === 'map') box.innerHTML = ui.mapHTML();
     /* v25（需求 2）：游商 / 背包 由弹窗改为整页视图 */
     else if (v === 'shop') box.innerHTML = ui.shopHTML();
@@ -7772,6 +7773,7 @@
     /* v26（需求 5）：子页签与 ui._citySub 一并删除 —— 城内/城外走顶栏 data-view，
        不再有"独立于视图的 sub 状态"，也就不会出现"切了视图但页签还亮着旧值"。 */
     if (v === 'map') requestAnimationFrame(function () { ui.renderMapCanvas(); });
+    if (v === 'galaxy') requestAnimationFrame(function () { ui.renderGalaxy(); });
     ui.softenBlocked(box);   /* v89.189：视图页的受阻按钮同样转「可点+说明」 */
     ui.paintBottom();
   };
@@ -11595,6 +11597,75 @@
     if (document.body && document.body.classList) document.body.classList.toggle('labels-off', !on);
     var btn = document.querySelector('.bb-label-toggle');
     if (btn) btn.classList.toggle('on', on);
+  };
+
+  /* ============================================================
+   * v91.30 星系界面（一级视图 · 纯 canvas 径向渐变画球）
+   * ------------------------------------------------------------
+   * 中央大太阳（球·发黄光·无数据·留 starData 占位）+ 各星球缩球绕太阳（各带"进入"）。
+   * 点击某星球 → 进现有单星球管理界面（setView('map')）。本视图不改单星球逻辑。
+   * 用 2D canvas（不依赖 THREE · 测试可跑 · 稳）；3D 无头进不了此处也无妨。
+   * ============================================================ */
+  ui.galaxyHTML = function () {
+    return '<div class="galaxy-wrap" style="position:relative;width:100%;height:100%;min-height:520px;">' +
+      '<canvas id="galaxyCanvas" style="width:100%;height:100%;display:block;background:radial-gradient(circle at 50% 45%,#0b1220,#05070c 70%);"></canvas>' +
+      '<div class="galaxy-tip" style="position:absolute;left:12px;bottom:10px;color:var(--text-dim);font-size:var(--fs-sub);">点击星球进入其单星球管理界面　·　太阳（无数据·预留）</div>' +
+      '</div>';
+  };
+  ui.renderGalaxy = function () {
+    var cv = document.getElementById('galaxyCanvas'); if (!cv) return;
+    var box = cv.parentNode; var W = box.clientWidth || 900, H = box.clientHeight || 560;
+    /* 允许传 opts 覆写（供测试/无布局环境）：ui._galaxyW/H */
+    if (ui._galaxyW) W = ui._galaxyW; if (ui._galaxyH) H = ui._galaxyH;
+    if (cv.width !== W) cv.width = W; if (cv.height !== H) cv.height = H;
+    var ctx = cv.getContext('2d'); if (!ctx || !ctx.createRadialGradient) return;
+    ctx.clearRect(0, 0, W, H);
+    var cx = W / 2, cy = H / 2;
+    /* 中央太阳（大球 · 发黄光）— 恒星数据占位：本帧不承载任何数据。 */
+    var sr = Math.min(W, H) * 0.13;
+    var sg = ctx.createRadialGradient(cx, cy, sr * 0.2, cx, cy, sr * 3.2);
+    sg.addColorStop(0, 'rgba(255,236,170,0.95)');
+    sg.addColorStop(0.18, 'rgba(255,200,90,0.55)');
+    sg.addColorStop(0.5, 'rgba(255,160,60,0.16)');
+    sg.addColorStop(1, 'rgba(255,140,40,0)');
+    ctx.fillStyle = sg; ctx.fillRect(0, 0, W, H);
+    var sun = ctx.createRadialGradient(cx - sr * 0.3, cy - sr * 0.3, sr * 0.1, cx, cy, sr);
+    sun.addColorStop(0, '#fffbe6'); sun.addColorStop(0.6, '#ffdf7a'); sun.addColorStop(1, '#e8a63a');
+    ctx.fillStyle = sun; ctx.beginPath(); ctx.arc(cx, cy, sr, 0, 6.283); ctx.fill();
+    /* 各星球缩球绕太阳 */
+    var ps = (GAME.planetsOf && GAME.planetsOf()) || [];
+    var act = (GAME.activePlanetOf && GAME.activePlanetOf()) || null;
+    var orbR = Math.min(W, H) * 0.36, pr = Math.min(W, H) * 0.055;
+    ui._galaxyPlanets = [];
+    ps.forEach(function (p, i) {
+      var ang = -Math.PI / 2 + (i / Math.max(1, ps.length)) * 6.283;
+      var px = cx + Math.cos(ang) * orbR, py = cy + Math.sin(ang) * orbR;
+      ui._galaxyPlanets.push({ id: p.id, x: px, y: py, r: pr });
+      var on = act && p.id === act.id;
+      /* 星球球体：径向渐变（亮面朝太阳）。 */
+      var g = ctx.createRadialGradient(px - pr * 0.3, py - pr * 0.3, pr * 0.1, px, py, pr);
+      g.addColorStop(0, on ? '#cfe8ff' : '#9fb6cc'); g.addColorStop(0.7, on ? '#5c86ad' : '#5a6b7c'); g.addColorStop(1, '#2a3441');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(px, py, pr, 0, 6.283); ctx.fill();
+      if (on) { ctx.strokeStyle = '#ffd76a'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(px, py, pr + 4, 0, 6.283); ctx.stroke(); }
+      /* 名称 */
+      try {
+        ctx.font = '13px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+        ctx.fillStyle = on ? '#ffe6a8' : '#c3d2e0';
+        ctx.fillText((p.name || ('星球 ' + p.id)) + (on ? '（当前）' : ''), px, py + pr + 6);
+      } catch (e) { }
+    });
+  };
+  /* 星系点击：命中某星球 → 进入其管理界面（切到该星球 + 地图视图）。 */
+  ui.galaxyClick = function (clientX, clientY) {
+    var cv = document.getElementById('galaxyCanvas'); if (!cv) return false;
+    var r = cv.getBoundingClientRect ? cv.getBoundingClientRect() : { left: 0, top: 0 };
+    var x = clientX - r.left, y = clientY - r.top;
+    var hit = null;
+    (ui._galaxyPlanets || []).forEach(function (pp) { if (!hit && Math.hypot(x - pp.x, y - pp.y) <= pp.r + 6) hit = pp; });
+    if (!hit) return false;
+    if (hit.id !== (GAME.state.activePlanet || 0) && GAME.enterPlanet) GAME.enterPlanet(hit.id);
+    ui.setView('map'); GAME.refreshAll();
+    return true;
   };
 
   ui.mapHTML = function () {

@@ -36184,6 +36184,32 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })());
   })();
 
+  /* ============================================================
+   * §265. v91.30 星系界面（一级视图 · 太阳 + 星球绕行 · 点击进入）
+   * ============================================================ */
+  (function () {
+    console.log('\n===== 265. v91.30 星系界面 =====');
+    check('§265① 出口齐：galaxyHTML / renderGalaxy / galaxyClick', (function () {
+      return typeof GAME.ui.galaxyHTML === 'function' && typeof GAME.ui.renderGalaxy === 'function'
+        && typeof GAME.ui.galaxyClick === 'function';
+    })());
+    check('§265② galaxyHTML 含 canvas#galaxyCanvas（恒星/星球由 canvas 绘）', (function () {
+      return GAME.ui.galaxyHTML().indexOf('id="galaxyCanvas"') >= 0;
+    })());
+    check('§265③ 渲染后命中记录建立（ui._galaxyPlanets 与星球数一致）', (function () {
+      GAME.ui._galaxyW = 900; GAME.ui._galaxyH = 560;
+      var cv = global.document.createElement('canvas'); cv.id = 'galaxyCanvas';
+      /* DOM stub 无 append：直接把 parentNode/clientWidth 造出来 */
+      var wrap = { clientWidth: 900, clientHeight: 560 }; cv.parentNode = wrap;
+      var _ge = global.document.getElementById;
+      global.document.getElementById = function (id) { return id === 'galaxyCanvas' ? cv : _ge.apply(global.document, arguments); };
+      var ok = false;
+      try { GAME.ui.renderGalaxy(); ok = (GAME.ui._galaxyPlanets || []).length === (GAME.planetsOf() || []).length; } catch (e) { }
+      global.document.getElementById = _ge;
+      return ok;
+    })());
+  })();
+
   console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');
   process.exit(FAIL ? 1 : 0);
 })();

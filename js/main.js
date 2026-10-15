@@ -2615,6 +2615,11 @@
   /* --------- 地图点击 --------- */
   function handleCanvasClick(e) {
     var t = e.target;
+    /* v91.30：星系视图 —— 点星球进入其管理界面。 */
+    if (t && t.id === 'galaxyCanvas') {
+      if (GAME.ui.galaxyClick) GAME.ui.galaxyClick(e.clientX, e.clientY);
+      return;
+    }
     if (t && t.id === 'mapCanvas') {
       var G = GAME.map;
       var hit = G.pick(t, e.clientX, e.clientY);
