@@ -1073,6 +1073,11 @@
     $('#screen-create').classList.add('hidden');
     $('#screen-game').classList.remove('hidden');
     ui.setView('city');
+    /* v91.33（性能）：**空闲后台预建 3D 地图**（含全版本戳）—— 把进地图的一次性构建挪到进游戏后。 */
+    if (GAME.map3d && GAME.map3d.preload) {
+      var _pre = function () { try { GAME.map3d.preload(); } catch (e) { } };
+      if (typeof requestIdleCallback === 'function') requestIdleCallback(_pre, { timeout: 4000 }); else setTimeout(_pre, 500);
+    }
   };
 
   /* ================= 主界面 ================= */

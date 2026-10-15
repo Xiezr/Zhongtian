@@ -69,6 +69,25 @@
   M.ZOOM_MIN = R * 1.2;                                   /* 极小视野（贴脸看细节）*/
   M.ZOOM_MAX = R * 8;                                     /* 极大视野（整星总览）*/
 
+  /* v91.33（性能）：版本戳（把 M.render 里的内联拼串抽出，预建时可预盖）。 */
+  M._pverOf = function () { return (SP.seed3 ? SP.seed3() : 0) + '|' + (SP.sub || 0) + '|' + (SP.PLANET ? JSON.stringify(SP.PLANET) : ''); };
+  M._mkVerOf = function () { return (((GAME.mapSliceOf && GAME.mapSliceOf()) || {}).cities || []).map(function (c) { return c.id + ':' + c.x + ',' + c.y; }).join('|') + '#' + _tileSub; };
+  M._flVerOf = function () { var sl = (GAME.mapSliceOf && GAME.mapSliceOf()) || {}; var fp = Object.keys(sl.forts || {}).sort().join(','); var wp = (sl.wilds || []).map(function (w) { return w.ci; }).sort(function (a, b) { return a - b; }).join('|'); return fp + '#' + wp + '#' + _tileSub; };
+  M._arVerOf = function () { var sl = (GAME.mapSliceOf && GAME.mapSliceOf()) || {}; return (sl.marches || []).map(function (m) { return m.id + ':' + m.cityId + '>' + m.tci; }).join('|') + '#' + _tileSub; };
+  /* v91.33：**后台预建**全场景（进游戏后调用）—— 含**全部版本戳**（否则首次 M.render 会全量重建）。 */
+  M.preload = function () {
+    if (built) return;
+    try {
+      if (typeof THREE === 'undefined') return;
+      ensure();
+      if (SP && SP.build) SP.build(SP.sub);
+      buildGlobe(); buildTiles(TILE_SUB); buildRegions(); buildMarkers(); buildFlags(); buildMarchArrows();
+      buildWonder();
+      M._pver = M._pverOf(); M._mkVer = M._mkVerOf(); M._flVer = M._flVerOf(); M._arVer = M._arVerOf();
+      try { placeCamera(); if (wcv && typeof window !== 'undefined') { wcv.width = window.innerWidth || 1680; wcv.height = window.innerHeight || 900; R3.setSize(wcv.width, wcv.height, false); cam.aspect = wcv.width / wcv.height; cam.updateProjectionMatrix(); } R3.render(scene, cam); } catch (e) { }
+      built = true;
+    } catch (e) { built = false; }
+  };
   function ensure() {
     if (R3) return;
     wcv = document.createElement('canvas');
@@ -836,7 +855,7 @@
     if (wcv.width !== cw || wcv.height !== ch) { wcv.width = cw; wcv.height = ch; R3.setSize(cw, ch, false); cam.aspect = cw / ch; cam.updateProjectionMatrix(); }
     /* v90.78（老板「换星球后地图没变」）：**星球身份**变（种子/规格/细分）→ 强制重建几何。
        v90.81：规格含全部要素（大陆数/山脉成因/海深/恒星色温…）→ 序列化比对。 */
-    var _pver = (SP.seed3 ? SP.seed3() : 0) + '|' + (SP.sub || 0) + '|' + (SP.PLANET ? JSON.stringify(SP.PLANET) : '');
+    var _pver = M._pverOf();
     if (_pver !== M._pver) {
       M._pver = _pver; built = false; M._mkVer = null; M.region = null; M.clearBeam();
       if (M._sun && SP.PLANET && SP.PLANET.starColor != null) M._sun.color.setHex(SP.PLANET.starColor);   /* 恒星色温 → 光色 */
@@ -851,21 +870,13 @@
     /* 城市/据点增减/迁移（占领/迁址/放弃）→ 重建标记。v90.62（老板「移动后新城2 无色块/名称」）：
        旧判据只数**城市条数** —— 迁址时条数不变 → 标记不重建 → 旧色块/名称留在原地。
        改：把各城的 **id + 坐标** 拼进版本号，任一城移动即触发重建（色块与连线随城走）。 */
-    var _mkVer = (((GAME.mapSliceOf && GAME.mapSliceOf()) || {}).cities || []).map(function (c) { return c.id + ':' + c.x + ',' + c.y; }).join('|') + '#' + _tileSub;
+    var _mkVer = M._mkVerOf();
     if (_mkVer !== M._mkVer) { M._mkVer = _mkVer; buildMarkers(); }
     /* v91.05（老板）：己方**据点/野地插旗** —— 归属随占/放/迁变，同款"坐标拼版本号"触发重建。 */
-    var _flVer = (function () {
-      var sl = (GAME.mapSliceOf && GAME.mapSliceOf()) || {};
-      var fp = Object.keys(sl.forts || {}).sort().join(',');
-      var wp = (sl.wilds || []).map(function (w) { return w.ci; }).sort(function (a, b) { return a - b; }).join('|');
-      return fp + '#' + wp + '#' + _tileSub;
-    })();
+    var _flVer = M._flVerOf();
     if (_flVer !== M._flVer) { M._flVer = _flVer; buildFlags(); }
     /* v91.12（老板 16）：**出征弧形箭头** —— 在途行军增减/改向即重建（id+起止坐标拼版本号）。 */
-    var _arVer = (function () {
-      var sl = (GAME.mapSliceOf && GAME.mapSliceOf()) || {};
-      return (sl.marches || []).map(function (m) { return m.id + ':' + m.cityId + '>' + m.tx + ',' + m.ty; }).join('|') + '#' + _tileSub;
-    })();
+    var _arVer = M._arVerOf();
     if (_arVer !== M._arVer) { M._arVer = _arVer; buildMarchArrows(); }
     /* 线框随相机拉近**渐隐**：远看网格，近看透明消失（好观察地形）*/
     if (M._shellMat) {
