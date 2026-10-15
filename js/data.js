@@ -941,8 +941,8 @@
    * 校正口径：从步行机（pop1 / atk150 / hp300 / def150 → atk/pop 150、
    * ehp/pop 750）往上，**每幸存者攻击与每幸存者有效生命双双不低于上一档**。
    * 角色特化兵种例外，靠各自的定位取胜：
-   *     导弹车 / 无人轰炸机 / 自行火炮 —— 靠射程（1200 / 1400 / 1600）
-   *     盾卫 / 自行火炮 —— 靠坦度（ehp/pop 1400 / 8400）
+   *     自走火炮 / 无人轰炸机 / 东风快递 —— 靠射程（1200 / 1400 / 1600）
+   *     盾卫 / 东风快递 —— 靠坦度（ehp/pop 1400 / 8400）
    *     侦察单元 —— 不参战（nocombat）；板车 / 运输平台 —— 后勤（负重）
    * ============================================================ */
   /* v84（老板）：「运输平台是机车吧，侦察单元是步兵」——
@@ -966,11 +966,11 @@
      只能搬走载重范围内的部分，余留库中 —— 见 battle.haulPlanOf）。
      标定基准（让"打得起就搬得走"成立，复核数据见 probe_v89114_load.js）：
        · **基准：一名步兵 = 50**（随身干粮与水之外的余量）；
-       · 步战主力 45~60 —— 甲械越重、能背回的越少（盾卫 50 / 导弹车 45 / 步行机 60）；
+       · 步战主力 45~60 —— 甲械越重、能背回的越少（盾卫 50 / 自走火炮 45 / 步行机 60）；
        · 机车 = 步兵 ×4~5（一人一马）：伏击车 250 / 主战机甲 200（重装）/ 武装直升机 120 / 狂猎 150；
        · 泰坦机甲 = 步兵 ×16（驮载之王）：800；
        · 后勤专精：板车 = 步兵 ×10（500）；运输平台 = 步兵 ×400（**20000**，一车顶 40 人挑）；
-       · 器械（无人轰炸机 20 / 自行火炮 30）：自身就是"被运的货"，无携行余力；
+       · 器械（无人轰炸机 20 / 东风快递 30）：自身就是"被运的货"，无携行余力；
        · 侦察单元 30（不列阵，但能背）。
      标定效果：纯战兵编队可搬同级战利品约 1/4~1/3；**编入约 1% 运输平台（或 5% 板车）
      即可全数搬回** —— "带不带后勤"从此是一道真题，而不是一句空话。 */
@@ -1011,8 +1011,8 @@
      * v89.229 **兵种重构**（老板：「不再按步兵骑兵区分，合并，按分页显示，缩减兵种数量，
      *   保留可增加框架」）—— 18 种 → **14 种**，按三组分页（grp 1/2/3）：
      *     组 1 后勤支援（4）：板车 / 伏击车 / 侦察单元 / 运输平台
-     *     组 2 主力战斗（5）：步行机 / 盾卫 / 导弹车 / 武装直升机 / 主战机甲
-     *     组 3 尖端武装（5）：狂猎 / 电磁盾卫 / 自行火炮 / 无人轰炸机 / 泰坦机甲
+     *     组 2 主力战斗（5）：步行机 / 盾卫 / 自走火炮 / 武装直升机 / 主战机甲
+     *     组 3 尖端武装（5）：狂猎 / 电磁盾卫 / 东风快递 / 无人轰炸机 / 泰坦机甲
      * ------------------------------------------------------------
      * 结构变化：
      *   · `cat`（inf/cav）退役 → **`grp`**（1/2/3，分页依据；"步兵/骑兵"不再区分）；
@@ -1029,26 +1029,26 @@
      * 解锁：buxingji 继承步行机的 junying:1 入门位（保开局可战）；其余按主原型全套。
      * 老档迁移：GAME.migrateTroops229（18 项映射表 · 读档幂等并入，见 state.js）。
      * ============================================================ */
-    banche:    { id: 'banche', grp: 1, name: '板车', ab: '板', icon: '🛞', hp: 600, atk: 5, def: 10, range: 10, spd: 180, gather: 2, load: 500, pop: 1, time: 15, cost: { grain: 60, wood: 72, stone: 90, iron: 50 }, unlock: { junying: 1 }, desc: '拼装板车，转运物资；战力孱弱，可运输' },
-    fujiche:   { id: 'fujiche', grp: 1, name: '伏击车', ab: '伏', icon: '🏍️', hp: 3720, atk: 340, def: 180, range: 80, spd: 1000, gather: 6, load: 250, pop: 2, ride: true, time: 70, cost: { grain: 1000, wood: 290, stone: 2000, iron: 1680 }, unlock: { junying: 5, majiu: 1, tech: { zhandou: 1, xingjun: 1, jiayu: 1 } }, desc: '机动伏击，捕俘主力（需载具研究所 + 战斗条令/机动行军/机车操控）' },
-    zhencha:   { id: 'zhencha', grp: 1, name: '侦察单元', ab: '侦', icon: '🛸', hp: 600, atk: 20, def: 20, range: 20, spd: 3000, gather: 1, load: 30, pop: 1, nocombat: true, time: 20, cost: { grain: 120, wood: 96, stone: 380, iron: 220 }, unlock: { junying: 2, shuyuan: 2, tech: { zhencha: 1 } }, desc: '小巧飞行器，极限速度，侦察/截援必备（需侦察网络）' },
-    yunshu:    { id: 'yunshu', grp: 1, name: '运输平台', ab: '运', icon: '🚚', hp: 4200, atk: 10, def: 60, range: 10, spd: 150, gather: 1, load: 20000, pop: 4, mech: true, ride: true, time: 110, cost: { grain: 700, wood: 720, stone: 1100, iron: 1030 }, unlock: { junying: 5, tech: { fuzhong: 1 } }, desc: '专属运资，负重冠绝全军（需载重优化）' },
-    buxingji:  { id: 'buxingji', grp: 2, name: '步行机', ab: '步', icon: '🤖', hp: 1800, atk: 150, def: 150, range: 50, spd: 300, gather: 4, load: 60, pop: 1, time: 30, cost: { grain: 180, wood: 240, stone: 300, iron: 250 }, unlock: { junying: 1 }, desc: '双足步进机甲，攻守均衡，列阵之基' },
-    dunwei:    { id: 'dunwei', grp: 2, name: '盾卫', ab: '盾', icon: '🛡️', hp: 2400, atk: 130, def: 250, range: 30, spd: 275, gather: 4, load: 50, pop: 1, time: 35, cost: { grain: 240, wood: 72, stone: 500, iron: 750 }, unlock: { junying: 3, shuyuan: 3, tech: { fanghu: 1 } }, desc: '高防御，炮灰首选（需装甲强化）' },
-    daodanche: { id: 'daodanche', grp: 2, name: '导弹车', ab: '弹', icon: '🚀', hp: 1920, atk: 220, def: 50, range: 1200, spd: 250, gather: 5, load: 45, pop: 2, ride: true, time: 60, cost: { grain: 360, wood: 170, stone: 620, iron: 650 }, unlock: { junying: 4, shuyuan: 4, tech: { paoshe: 1 } }, desc: '远程主力，射程1200（需弹道校正）' },
-    wuzhi:     { id: 'wuzhi', grp: 2, name: '武装直升机', ab: '直', icon: '🚁', hp: 3840, atk: 330, def: 150, range: 1000, spd: 450, gather: 7, load: 120, pop: 2, ride: true, time: 65, cost: { grain: 1300, wood: 240, stone: 2200, iron: 2380 }, unlock: { junying: 9, shuyuan: 7, majiu: 3, city: 'hebei', tech: { paoshe: 5, jiayu: 5 } }, desc: '低空火力，射程1000（需弹道校正/机车操控）' },
-    zhuzhan:   { id: 'zhuzhan', grp: 2, name: '主战机甲', ab: '主', icon: '🦾', hp: 8400, atk: 700, def: 400, range: 80, spd: 750, gather: 10, load: 220, pop: 4, ride: true, time: 150, cost: { grain: 2200, wood: 340, stone: 4000, iron: 4350 }, unlock: { junying: 7, shuyuan: 6, majiu: 3, tech: { jiayu: 2, fanghu: 2 } }, desc: '主战序列，攻700防400，攻守兼备（需载具研究所3 + 机车操控/装甲强化）' },
-    kuanglie:  { id: 'kuanglie', grp: 3, name: '狂猎', ab: '狂', icon: '⚔️', hp: 5400, atk: 510, def: 280, range: 70, spd: 850, gather: 10, load: 150, pop: 3, ride: true, time: 70, cost: { grain: 1700, wood: 380, stone: 2800, iron: 3300 }, unlock: { junying: 9, shuyuan: 8, majiu: 4, city: 'sili', tech: { tongshuai: 9, lianbing: 7 } }, desc: '旧军猎团，冲击力冠绝全军（需霜脊首府）' },
-    dianci:    { id: 'dianci', grp: 3, name: '电磁盾卫', ab: '磁', icon: '🔋', hp: 3600, atk: 340, def: 350, range: 60, spd: 300, gather: 5, load: 55, pop: 2, time: 35, cost: { grain: 600, wood: 140, stone: 1600, iron: 800 }, unlock: { junying: 8, shuyuan: 7, city: 'yizhou', tech: { fanghu: 8 } }, desc: '电磁护盾，防350，刀枪不入（惧火 · 需雾谷首府）' },
-    huopao:    { id: 'huopao', grp: 3, name: '自行火炮', ab: '炮', icon: '💥', hp: 6600, atk: 950, def: 200, range: 1600, spd: 100, gather: 2, load: 30, pop: 4, craft: true, mech: true, time: 5830, cost: { grain: 6500, wood: 2400, stone: 13000, iron: 10300 }, unlock: { junying: 10, shuyuan: 10, gongjiangzuofang: 7 }, desc: '攻950射程1600，攻城巨炮（机工坊制造）' },
-    wuren:     { id: 'wuren', grp: 3, name: '无人轰炸机', ab: '轰', icon: '🛩️', hp: 5400, atk: 500, def: 160, range: 1400, spd: 120, gather: 2, load: 20, pop: 3, craft: true, mech: true, vsMech: 3, time: 2910, cost: { grain: 3000, wood: 1440, stone: 5000, iron: 4450 }, unlock: { junying: 8, shuyuan: 8, gongjiangzuofang: 3 }, desc: '强力远程，拆械破车，攻城必带（机工坊制造）' },
+    banche:    { id: 'banche', grp: 1, name: '板车', ab: '板', ab2: '板车', icon: '🛞', hp: 600, atk: 5, def: 10, range: 10, spd: 180, gather: 2, load: 500, pop: 1, time: 15, cost: { grain: 60, wood: 72, stone: 90, iron: 50 }, unlock: { junying: 1 }, desc: '拼装板车，转运物资；战力孱弱，可运输' },
+    fujiche:   { id: 'fujiche', grp: 1, name: '伏击车', ab: '伏', ab2: '伏击', icon: '🏍️', hp: 3720, atk: 340, def: 180, range: 80, spd: 1000, gather: 6, load: 250, pop: 2, ride: true, time: 70, cost: { grain: 1000, wood: 290, stone: 2000, iron: 1680 }, unlock: { junying: 5, majiu: 1, tech: { zhandou: 1, xingjun: 1, jiayu: 1 } }, desc: '机动伏击，捕俘主力（需载具研究所 + 战斗条令/机动行军/机车操控）' },
+    zhencha:   { id: 'zhencha', grp: 1, name: '侦察单元', ab: '侦', ab2: '侦察', icon: '🛸', hp: 600, atk: 20, def: 20, range: 20, spd: 3000, gather: 1, load: 30, pop: 1, nocombat: true, time: 20, cost: { grain: 120, wood: 96, stone: 380, iron: 220 }, unlock: { junying: 2, shuyuan: 2, tech: { zhencha: 1 } }, desc: '小巧飞行器，极限速度，侦察/截援必备（需侦察网络）' },
+    yunshu:    { id: 'yunshu', grp: 1, name: '运输平台', ab: '运', ab2: '运输', icon: '🚚', hp: 4200, atk: 10, def: 60, range: 10, spd: 150, gather: 1, load: 20000, pop: 4, mech: true, ride: true, time: 110, cost: { grain: 700, wood: 720, stone: 1100, iron: 1030 }, unlock: { junying: 5, tech: { fuzhong: 1 } }, desc: '专属运资，负重冠绝全军（需载重优化）' },
+    buxingji:  { id: 'buxingji', grp: 2, name: '步行机', ab: '步', ab2: '步行', icon: '🤖', hp: 1800, atk: 150, def: 150, range: 50, spd: 300, gather: 4, load: 60, pop: 1, time: 30, cost: { grain: 180, wood: 240, stone: 300, iron: 250 }, unlock: { junying: 1 }, desc: '双足步进机甲，攻守均衡，列阵之基' },
+    dunwei:    { id: 'dunwei', grp: 2, name: '盾卫', ab: '盾', ab2: '盾卫', icon: '🛡️', hp: 2400, atk: 130, def: 250, range: 30, spd: 275, gather: 4, load: 50, pop: 1, time: 35, cost: { grain: 240, wood: 72, stone: 500, iron: 750 }, unlock: { junying: 3, shuyuan: 3, tech: { fanghu: 1 } }, desc: '高防御，炮灰首选（需装甲强化）' },
+    daodanche: { id: 'daodanche', grp: 2, name: '自走火炮', ab: '弹', ab2: '自走', icon: '🚀', hp: 1920, atk: 220, def: 50, range: 1200, spd: 250, gather: 5, load: 45, pop: 2, ride: true, time: 60, cost: { grain: 360, wood: 170, stone: 620, iron: 650 }, unlock: { junying: 4, shuyuan: 4, tech: { paoshe: 1 } }, desc: '远程主力，射程1200（需弹道校正）' },
+    wuzhi:     { id: 'wuzhi', grp: 2, name: '武装直升机', ab: '直', ab2: '武直', icon: '🚁', hp: 3840, atk: 330, def: 150, range: 1000, spd: 450, gather: 7, load: 120, pop: 2, ride: true, time: 65, cost: { grain: 1300, wood: 240, stone: 2200, iron: 2380 }, unlock: { junying: 9, shuyuan: 7, majiu: 3, city: 'hebei', tech: { paoshe: 5, jiayu: 5 } }, desc: '低空火力，射程1000（需弹道校正/机车操控）' },
+    zhuzhan:   { id: 'zhuzhan', grp: 2, name: '主战机甲', ab: '主', ab2: '主机', icon: '🦾', hp: 8400, atk: 700, def: 400, range: 80, spd: 750, gather: 10, load: 220, pop: 4, ride: true, time: 150, cost: { grain: 2200, wood: 340, stone: 4000, iron: 4350 }, unlock: { junying: 7, shuyuan: 6, majiu: 3, tech: { jiayu: 2, fanghu: 2 } }, desc: '主战序列，攻700防400，攻守兼备（需载具研究所3 + 机车操控/装甲强化）' },
+    kuanglie:  { id: 'kuanglie', grp: 3, name: '狂猎', ab: '狂', ab2: '狂猎', icon: '⚔️', hp: 5400, atk: 510, def: 280, range: 70, spd: 850, gather: 10, load: 150, pop: 3, ride: true, time: 70, cost: { grain: 1700, wood: 380, stone: 2800, iron: 3300 }, unlock: { junying: 9, shuyuan: 8, majiu: 4, city: 'sili', tech: { tongshuai: 9, lianbing: 7 } }, desc: '旧军猎团，冲击力冠绝全军（需霜脊首府）' },
+    dianci:    { id: 'dianci', grp: 3, name: '电磁盾卫', ab: '磁', ab2: '电磁', icon: '🔋', hp: 3600, atk: 340, def: 350, range: 60, spd: 300, gather: 5, load: 55, pop: 2, time: 35, cost: { grain: 600, wood: 140, stone: 1600, iron: 800 }, unlock: { junying: 8, shuyuan: 7, city: 'yizhou', tech: { fanghu: 8 } }, desc: '电磁护盾，防350，刀枪不入（惧火 · 需雾谷首府）' },
+    huopao:    { id: 'huopao', grp: 3, name: '东风快递', ab: '炮', ab2: '东风', icon: '💥', hp: 6600, atk: 950, def: 200, range: 1600, spd: 100, gather: 2, load: 30, pop: 4, craft: true, mech: true, time: 5830, cost: { grain: 6500, wood: 2400, stone: 13000, iron: 10300 }, unlock: { junying: 10, shuyuan: 10, gongjiangzuofang: 7 }, desc: '攻950射程1600，攻城巨炮（机工坊制造）' },
+    wuren:     { id: 'wuren', grp: 3, name: '无人轰炸机', ab: '轰', ab2: '无人', icon: '🛩️', hp: 5400, atk: 500, def: 160, range: 1400, spd: 120, gather: 2, load: 20, pop: 3, craft: true, mech: true, vsMech: 3, time: 2910, cost: { grain: 3000, wood: 1440, stone: 5000, iron: 4450 }, unlock: { junying: 8, shuyuan: 8, gongjiangzuofang: 3 }, desc: '强力远程，拆械破车，攻城必带（机工坊制造）' },
     /* v89.230 链路修复（兵种链体检抓出）：本兵种 unlock.tech 原为 `yiliao: 8` —— 即参考
        数据里一栏旧代兵种的「医疗技巧 Lv8」，而该科技在本作 24 项表中**从未存在**（v67 基线
        起即悬空 → 泰坦机甲门禁自始不可达，报错还会显示原始 id）。
        现按"救治向科技"改指 **再生技术（weixiu · 伤兵回收率 +3%/级）**，仍取 Lv8
        （weixiu 上限 Lv9 可达）。要改口径只动这一个键；链体检工具
        `.workbuddy/tools/audit/audit_v89229b_troopchain.js` 守着"tech 键必须 ∈ DATA.TECH"。 */
-    taitan:    { id: 'taitan', grp: 3, name: '泰坦机甲', ab: '泰', icon: '👾', hp: 15000, atk: 620, def: 300, range: 70, spd: 400, gather: 12, load: 800, pop: 5, ride: true, time: 300, cost: { grain: 3600, wood: 480, stone: 6500, iron: 5500 }, unlock: { junying: 9, shuyuan: 8, city: 'yizhou', tech: { weixiu: 8, zhandou: 7 } }, desc: '辐射变异的巨兽机甲，血厚守坚，凭蛮力硬拼（需雾谷首府）' },
+    taitan:    { id: 'taitan', grp: 3, name: '泰坦机甲', ab: '泰', ab2: '泰坦', icon: '👾', hp: 15000, atk: 620, def: 300, range: 70, spd: 400, gather: 12, load: 800, pop: 5, ride: true, time: 300, cost: { grain: 3600, wood: 480, stone: 6500, iron: 5500 }, unlock: { junying: 9, shuyuan: 8, city: 'yizhou', tech: { weixiu: 8, zhandou: 7 } }, desc: '辐射变异的巨兽机甲，血厚守坚，凭蛮力硬拼（需雾谷首府）' },
   };
 
   /* ============================================================
@@ -1074,7 +1074,7 @@
    * ------------------------------------------------------------
    * 老板令：「克制以 0.2 倍为限：我克他 → 我打出的伤害 ×(1+0.2)；我被他克 → ×(1−0.2)。」
    * 三系（按**现实职能**分，避免"惧火"那种超现实臆想）：
-   *   · 穿甲（远程/爆）—— 导弹车 / 自行火炮 / 无人轰炸机；
+   *   · 穿甲（远程/爆）—— 自走火炮 / 东风快递 / 无人轰炸机；
    *   · 重甲           —— 盾卫 / 主战机甲 / 泰坦机甲 / 电磁盾卫；
    *   · 机动           —— 狂猎 / 伏击车 / 武装直升机。
    * 循环：**穿甲克重甲 → 重甲克机动 → 机动克穿甲**（穿甲破不开重甲、重甲追不上机动、机动躲不过穿甲）。
@@ -1121,7 +1121,7 @@
      把接近交给攻方、配合箭塔）——v89.203 老板拍板撤销该特例（siege 字段退役）。 */
   DATA.STANCE_DEFAULT = { atk: 'advance', def: 'advance' };
   /* 目标选择的特殊值：打城防工事（箭塔）—— 原版攻城战的核心动作
-     （战报实录："[攻]导弹车前进454，攻击981145，[守]箭塔6666-272=6394"）。 */
+     （战报实录："[攻]自走火炮前进454，攻击981145，[守]箭塔6666-272=6394"）。 */
   DATA.TARGET_WALL = '_tower';
   /* v89.149（老板 4）：目标哨兵「任意」——
      引擎的默认目标从"任意"改成"**同兵种**"之后，想显式表达**不指定目标（打最近的）**
@@ -1153,7 +1153,7 @@
     gapInf: 250,        /* 步近战：距敌前军 ≤ 250 → 转防御（结阵 · 受创减半） */
     gapCav: 250,        /* 机车：冲到位（≤ 250）→ 转防御（缠斗） */
     rangeK: 1.0,        /* 远程：进自身射程（× rangeK）→ 转防御（站桩输出） */
-    /* v89.180（老板 3「距离难道不是导弹车的生命线吗」+4「不够智能」）：
+    /* v89.180（老板 3「距离难道不是自走火炮的生命线吗」+4「不够智能」）：
        **风筝预判步数** —— 撤退触发线 = 敌射程 + 敌速度 × kiteLead（"它下回合能不能打到我"）。
        1 = 预判一步。标定见 probe_v89180b（武装直升机 2000 vs 步行机 4000：我损 39.9% → 1.8%）。 */
     kiteLead: 1,
@@ -1162,14 +1162,14 @@
     targets: {
       /* v89.229 兵种重构：按 18→14 映射重写（v89.164 静态标定的语义原样保留） */
       buxingji: 'fujiche',         /* 步行机 → 伏击车（v89.164 静态标定） */
-      dunwei: 'daodanche',         /* 盾卫 → 导弹车（导弹车防最低 · v89.164 静态标定） */
+      dunwei: 'daodanche',         /* 盾卫 → 自走火炮（自走火炮防最低 · v89.164 静态标定） */
       dianci: 'buxingji',          /* 电磁盾卫 → 步行机（防高扛线） */
-      daodanche: 'daodanche',      /* 导弹车 → 导弹车（对射 · 两边都防 50，先手定胜负） */
-      huopao: 'daodanche',         /* 自行火炮 → 导弹车（高攻打最软目标） */
+      daodanche: 'daodanche',      /* 自走火炮 → 自走火炮（对射 · 两边都防 50，先手定胜负） */
+      huopao: 'daodanche',         /* 东风快递 → 自走火炮（高攻打最软目标） */
       wuren: 'wuren',              /* 无人轰炸机 → 器械（对器械族） */
       fujiche: 'daodanche', zhuzhan: 'daodanche', wuzhi: 'daodanche',
       kuanglie: 'daodanche', taitan: 'daodanche',
-      /* 机车族 → 导弹车（冲散后排火力 · v89.164 静态标定） */
+      /* 机车族 → 自走火炮（冲散后排火力 · v89.164 静态标定） */
     },
     /* ============================================================
      * v89.175（老板）：「确实采用最优策略……适当的攻击目标（是伤害计算最优，
@@ -1239,7 +1239,7 @@
   DATA.WALL_TOWER = {
     /* v89.96 标定：hp 保持原版 2000（不改塔本身），改 `tough` 1200 → 800 ——
        撤末端系数 + 属性覆盖降率（武力 300 从 ×4 → ×1.15）后，拆塔速度约降至
-       原来的 1/3.5；tough 800 把"自行火炮 4000 + 中级将拆 100 座"标回 **26 回合**
+       原来的 1/3.5；tough 800 把"东风快递 4000 + 中级将拆 100 座"标回 **26 回合**
        （实测扫参 tough∈{600,800,1000,1200} → 21/26/30/拆不完）。
        ⚠️ 塔的 atk 保持 300 不动（实测 atk×3 会让攻城方损失 50%、且 30 回合拆不完）。 */
     name: '箭塔', hp: 2000, atk: 300, def: 360, range: 1250,
@@ -1248,8 +1248,8 @@
     /* 量纲换算：把"攻城方的伤害点数"换成"打掉几座箭塔"。原版伤害量纲比本作大
        两个数量级（原版单次杀伤百万级，本作几百），直接除以 2000 生命会一回合拆光全城。
        它只影响"拆箭塔要几回合"，**不影响箭塔火力本身** —— 实测标定值，非原版数据。
-       标定过程：自行火炮 4000 打城防 200（100 座）——tough=200 时一回合拆 58 座（2 回合拆完）；
-       v89.96 改 800 后约 4 座/回合（配"中级将 + 自行火炮 4000"≈26 回合清 100 座）。 */
+       标定过程：东风快递 4000 打城防 200（100 座）——tough=200 时一回合拆 58 座（2 回合拆完）；
+       v89.96 改 800 后约 4 座/回合（配"中级将 + 东风快递 4000"≈26 回合清 100 座）。 */
     tough: 800,
     /* ============================================================
      * v62（老板）：「机工坊可以造箭塔，箭塔默认参与防守」
@@ -1298,7 +1298,7 @@
     /* v58（老板「全按建议实现」）：**4%/级 → 5%/级**，对齐原版（满级 10 级 = ×1.5）。
        为什么值得改：v57 把"战场距离 = 最远射程 + 199"落地后，抛射不再只加射程，
        它同时**把开战间距推远**。改成 5% 后满抛射弓 = 1200×1.5+199 = **1999**，
-       与原版公开实测值（满抛射导弹车 1999 / 无人轰炸机 2299 / 自行火炮 2599）**逐项精确对上**。 */
+       与原版公开实测值（满抛射自走火炮 1999 / 无人轰炸机 2299 / 东风快递 2599）**逐项精确对上**。 */
     { id: 'paoshe', name: '弹道校正', cat: 'mil', lv: 4, type: 'range', per: 0.05, desc: '远程射程 +5%/级（原版口径；射程同时抬高战场距离 → 先手）', req: { xiaochang: 5 } },
     { id: 'jiayu', name: '机车操控', cat: 'logi', lv: 5, type: 'ride', per: 0.04, desc: '机车速度 +4%/级（影响先手判定）' },
     { id: 'jianzhu', name: '废墟重建', cat: 'eng', lv: 5, type: 'build', per: 0.05, desc: '建造与升级耗时 −5%/级', req: { gongjiangzuofang: 4 } },
@@ -3280,14 +3280,14 @@
      而玩家的军队规模到后期是几万级（政务厅 Lv10 满净化厂能养 5 万+），
      所以"感觉少了"是数量级的差距，不是感觉问题。
      本次**只重标定总数，不动兵种构成比例与区间形状**（比例本身是合理的：
-     步行机→盾卫→导弹车→伏击车→电磁盾卫/主战机甲/无人轰炸机/自行火炮的递进与原版一致；
+     步行机→盾卫→自走火炮→伏击车→电磁盾卫/主战机甲/无人轰炸机/东风快递的递进与原版一致；
      v89.229 兵种重构后按新名映射，中值合计逐级不变）。
      每一级的新中值合计与原版总数的偏差 ≤1.2%（见 smoke 的实测断言）。 */
   DATA.WILD_DEF_ORIG_TOTAL = [20, 50, 150, 200, 500, 1000, 2000, 4000, 8000, 20000, 40000];
   DATA.WILD_DEFENSE = [
     /* v89.229 兵种重构：18→14 按映射重写 —— 步行机+步行机合并为步行机（min/max 逐级相加，
-       中值合计不变 = 原标定保持）；导弹车→导弹车 · 盾卫→盾卫 · 伏击车→伏击车 ·
-       电磁盾卫→电磁盾卫 · 主战机甲→主战机甲 · 无人轰炸机→无人轰炸机 · 自行火炮→自行火炮。 */
+       中值合计不变 = 原标定保持）；自走火炮→自走火炮 · 盾卫→盾卫 · 伏击车→伏击车 ·
+       电磁盾卫→电磁盾卫 · 主战机甲→主战机甲 · 无人轰炸机→无人轰炸机 · 东风快递→东风快递。 */
     /* Lv0 */ [{ id: 'buxingji', min: 9, max: 30 }],
     /* Lv1 */ [{ id: 'buxingji', min: 26, max: 76 }],
     /* Lv2 */ [{ id: 'buxingji', min: 81, max: 220 }],
@@ -4015,7 +4015,7 @@
        档位之间的差别体现在**数量**（50 万 → 300 万），不体现在"有没有这种兵"。 */
    garrisonMix: [
      /* v89.229 兵种重构：18→14 —— 同兵种权重相加（戍军构成总量与比例保持）：
-        步行机 0.15 + 步行机 0.25 → 步行机 0.40 · 自行火炮 0.05 + 自行火炮 0.03 → 自行火炮 0.08 */
+        步行机 0.15 + 步行机 0.25 → 步行机 0.40 · 东风快递 0.05 + 东风快递 0.03 → 东风快递 0.08 */
      { id: 'buxingji', w: 0.40 },
      { id: 'dunwei', w: 0.20 },
      { id: 'daodanche', w: 0.25 },
@@ -4153,10 +4153,10 @@
     scoutLoot: { minKinds: 1, maxKinds: 2 },        // 侦查顺手所得的种类数
     /* ---- 行军（v18）----
        出征不再瞬间抵达：1 格 = marchSecPerTile 游戏秒 ÷ 速度系数。
-       注意 DATA.TROOPS 的 spd 在 100~1000 量级（步行机 200 / 盾卫 275 / 自行火炮 100 / 伏击车 1000），
+       注意 DATA.TROOPS 的 spd 在 100~1000 量级（步行机 200 / 盾卫 275 / 东风快递 100 / 伏击车 1000），
        故用 marchBaseSpeed 归一 —— 取 300 使标准步卒系数 ≈ 1.0。
        · 10 格 ≈ 5 现实秒（120× 倍率）· 50 格 ≈ 25 秒
-       · 带自行火炮会明显拖慢（最慢兵种决定全军速度） */
+       · 带东风快递会明显拖慢（最慢兵种决定全军速度） */
     marchSecPerTile: 60,
     marchBaseSpeed: 300,
     marchMinRealSec: 2,                             // 再近也走满 2 现实秒，否则队列一闪而过

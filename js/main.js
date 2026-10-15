@@ -211,7 +211,14 @@
          · 跨星球选城 → **必须** enterPlanet（该星球的城市分片要就位），
            但**地图星球保持不动**（切回原 mapPlanetId，地图不跟着跳）。 */
       case 'switch-city': {
-        var _cid = el.value, _cp = el.dataset ? Number(el.dataset.pid) : 0;
+        var _cid = el.value;
+        /* v91.36 修复（老板「城市选框一旦选中特定城市，城市管理界面需要切换到相应城市」）——
+           旧代码读 `el.dataset.pid`，但 `data-pid` 标在 **<option>** 上、不在 <select> 上，
+           `el.dataset.pid` 恒为 undefined → _cp 恒 0 → **跨星球选城永远走 else 分支**：
+           只改 ui._cityId（该 id 不在本星球分片里 → cityById 返回 null → 界面**看起来没切**）。
+           改为从**选中的 option** 取 pid。 */
+        var _cpOpt = el.options && el.selectedIndex >= 0 ? el.options[el.selectedIndex] : null;
+        var _cp = _cpOpt && _cpOpt.dataset ? Number(_cpOpt.dataset.pid) : 0;
         if (_cid && _cp && _cp !== (GAME.state.activePlanet || 0) && GAME.enterPlanet) {
           var _keepMap = GAME.state.mapPlanetId;
           GAME.enterPlanet(_cp);
@@ -263,8 +270,12 @@
       /* v82：征收退役 —— do-levy 分发随功能撤除（政务厅面板不再产出该按钮）。 */
       /* v89.86（整改 P-26）：筑城成功 → 守备 0 风险提示 + 一键调兵（此前"裸城无提示"） */
       case 'build-city': (function () {
-        var xy = ui._buildCityXY; if (!xy) return;
-        var r = GAME.buildCityAt(xy.x, xy.y);
+        /* v91.35 修复：变量名迁移（`_buildCityXY`→`_buildCityCi`）后此处漏改 ——
+           读的是从不存在的 `_buildCityXY`（恒 undefined）→ 点「🏯 建城」**永远 early-return 无反应**。
+           并修第二个 bug：buildCityAt 只收 ci（见 domain.js），旧代码按 (x,y) 两参会导致 ci=NaN。
+           现读 ui._buildCityCi（面板开时由 openLandModalCi 赋值）。 */
+        var ci = ui._buildCityCi; if (ci == null || ci < 0) return;
+        var r = GAME.buildCityAt(ci);
         ui.toast(r.msg);
         if (r.ok) {
           ui.closeModal();
@@ -2584,29 +2595,12 @@
   };
 
   /* 兼容旧入口：统一走三方式出征 */
-  /* 兼容旧入口：统一走三方式出征 */
 
-  GAME.checkVictory = function () {
-    var s = GAME.state;
-    /* 胜利：占领旧都灰烬城 */
-    var hasLuoyang = false;
-    s.cities.forEach(function (c) { if (c.origId === 'cap' || (c.origName || c.name) === '灰烬城') hasLuoyang = true; });
-    if (hasLuoyang && !GAME._won) {
-      GAME._won = true;
-      ui.openModal(
-        '<div style="text-align:center;padding:10px 20px;">' +
-        '<div style="font-size:var(--isz-xl);line-height:var(--lh-1);">🏆</div>' +
-        '<div class="gold-heading">天下一统 · 问鼎灰烬城</div>' +
-        '<div style="color:var(--text-dim);font-size:var(--fs-lead);text-align:center;margin-bottom:16px;">' +
-          '你已攻占旧都灰烬城，天下归心，真霸主非你莫属！</div>' +
-        '<div style="text-align:center;display:flex;gap:10px;justify-content:center;">' +
-          '<button class="btn gold" data-action="close-modal">继续游玩</button>' +
-          '<button class="btn" data-action="new-game">重新开局</button>' +
-        '</div></div>'
-      );
-      ui.toast('🏆 已问鼎灰烬城，统一天下！');
-    }
-  };
+  /* ⛔ v91.36（老板）：「占领旧都并非结束，删除此弹窗界面及其开局功能」——
+     `GAME.checkVictory`（攻占旧都灰烬城 → 「天下一统」弹窗 + 重新开局）**整条退役**。
+     占领旧都现在只是普通的一次攻城（照样拿城、拿威望向、进公文），不再弹终结界面、
+     不再置 `GAME._won`、不再提供"重新开局"入口（开局走顶栏「设置 · 新游戏」本来就有）。
+     调用点（battle.js 攻城成功后）已同步删除。 */
 
   /* --------- 存档动作 --------- */
   GAME.doSave = function () {

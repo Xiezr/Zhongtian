@@ -74,19 +74,44 @@
   M._mkVerOf = function () { return (((GAME.mapSliceOf && GAME.mapSliceOf()) || {}).cities || []).map(function (c) { return c.id + ':' + c.x + ',' + c.y; }).join('|') + '#' + _tileSub; };
   M._flVerOf = function () { var sl = (GAME.mapSliceOf && GAME.mapSliceOf()) || {}; var fp = Object.keys(sl.forts || {}).sort().join(','); var wp = (sl.wilds || []).map(function (w) { return w.ci; }).sort(function (a, b) { return a - b; }).join('|'); return fp + '#' + wp + '#' + _tileSub; };
   M._arVerOf = function () { var sl = (GAME.mapSliceOf && GAME.mapSliceOf()) || {}; return (sl.marches || []).map(function (m) { return m.id + ':' + m.cityId + '>' + m.tci; }).join('|') + '#' + _tileSub; };
-  /* v91.33：**后台预建**全场景（进游戏后调用）—— 含**全部版本戳**（否则首次 M.render 会全量重建）。 */
+  /* v91.33：**后台预建**全场景（进游戏后调用）—— 含**全部版本戳**（否则首次 M.render 会全量重建）。
+     v91.35：拆成**可分段**的步骤（`preloadSteps`）—— 每段之间让出事件循环，避免一次性同步阻塞主线程。
+     段序 = 原同步 preload 的展开（严格同序，结果一致）。 */
+  M.preloadSteps = function () {
+    if (built) return [];               /* 已建 → 零步骤 */
+    if (typeof THREE === 'undefined') return [];
+    /* ⚠️ v91.35：**先建渲染器，失败即零步骤** —— jsdom（无 WebGL）下 `ensure()` 会抛、
+       scene/R3 保持 undefined；若不在此拦下，分帧运行器会吞掉抛错、继续跑完 `finish`，
+       把 `built` 置成 true（此时 scene 是 undefined）→ 之后 `M.rebuild()` 里
+       `scene.remove(_wonderGrp)` 必崩（"Cannot read properties of undefined"）。
+       实测该坑曾让「存档往返」e2e 断言整条红。 */
+    try { ensure(); } catch (e) { return []; }
+    if (!R3 || !scene) return [];
+    var steps = [
+      { label: 'sphere', run: function () { if (SP && SP.build) SP.build(SP.sub); } },
+      { label: 'globe+tiles', run: function () { buildGlobe(); buildTiles(TILE_SUB); } },
+      { label: 'regions', run: function () { buildRegions(); } },
+      { label: 'markers', run: function () { buildMarkers(); buildFlags(); buildMarchArrows(); } },
+      { label: 'wonder', run: function () { buildWonder(); } },
+      { label: 'finish', run: function () {
+        M._pver = M._pverOf(); M._mkVer = M._mkVerOf(); M._flVer = M._flVerOf(); M._arVer = M._arVerOf();
+        try {
+          placeCamera();
+          if (wcv && typeof window !== 'undefined') {
+            wcv.width = window.innerWidth || 1680; wcv.height = window.innerHeight || 900;
+            R3.setSize(wcv.width, wcv.height, false); cam.aspect = wcv.width / wcv.height; cam.updateProjectionMatrix();
+          }
+          R3.render(scene, cam);
+        } catch (e) { }
+        if (R3 && scene) built = true;   /* 只有渲染器真就绪才认"已建" */
+      } },
+    ];
+    return steps;
+  };
   M.preload = function () {
     if (built) return;
-    try {
-      if (typeof THREE === 'undefined') return;
-      ensure();
-      if (SP && SP.build) SP.build(SP.sub);
-      buildGlobe(); buildTiles(TILE_SUB); buildRegions(); buildMarkers(); buildFlags(); buildMarchArrows();
-      buildWonder();
-      M._pver = M._pverOf(); M._mkVer = M._mkVerOf(); M._flVer = M._flVerOf(); M._arVer = M._arVerOf();
-      try { placeCamera(); if (wcv && typeof window !== 'undefined') { wcv.width = window.innerWidth || 1680; wcv.height = window.innerHeight || 900; R3.setSize(wcv.width, wcv.height, false); cam.aspect = wcv.width / wcv.height; cam.updateProjectionMatrix(); } R3.render(scene, cam); } catch (e) { }
-      built = true;
-    } catch (e) { built = false; }
+    var steps = M.preloadSteps();
+    for (var i = 0; i < steps.length; i++) steps[i].run();
   };
   function ensure() {
     if (R3) return;
@@ -520,7 +545,12 @@
       var ci = ciOfRef(ref);
       return (ci >= 0 && SP.cells[ci]) ? SP.cells[ci].dir : dirOfCell(ref.x, ref.y);
     }
-    (GAME.DATA.NPC_CITIES || []).forEach(function (c) { if (c.type === 'capital' || c.type === 'zhou') floatName(dirOfRef(c), c.name || '', '#ffd76a'); });
+    /* v91.36（老板「有名称的名城被占领后，同时冒出 2 个名称标签」）——
+       被占名城**不再画原（金）标签**，只留「本城」的蓝标签（下方 own 循环画），
+       避免同名双标签叠在一起。判据：本星球分片里已拥有的城，其 `origId` = 该名城的 id。 */
+    var _ownOrig = {};
+    (((GAME.mapSliceOf && GAME.mapSliceOf()) || {}).cities || []).forEach(function (c) { if (c && c.origId) _ownOrig[c.origId] = 1; });
+    (GAME.DATA.NPC_CITIES || []).forEach(function (c) { if (_ownOrig[c.id]) return; if (c.type === 'capital' || c.type === 'zhou') floatName(dirOfRef(c), c.name || '', '#ffd76a'); });
     var ol = M.admCities || [];
     ol.forEach(function (c) { if (c.admLevel === 'old' || c.admLevel === 'prov') floatName(c._cent, c.name, c.admLevel === 'old' ? '#ffd76a' : '#cfe6ff'); });
     /* v90.57（老板）：**己方城市**也引出名称（像名城一样）—— 亮蓝＝己方色。
@@ -1115,25 +1145,50 @@
       M._wonderMode = mode;
       var mesh = new THREE.Mesh(geo, geo._mat);
       var body = new THREE.Group(); body.add(mesh);
+      M._wonderSpin = mesh;                                       /* v91.34：自旋目标 = 几何体本身（绕自身竖轴） */
       if (mode === 'space') {
         mesh.scale.setScalar(R * 0.64);   /* v91.30g：×2 放大 */                          /* 太空天体 R 的 32% */
       } else {
-        /* 地表/海面：落在星球某格上 —— 贴地(海拔)+按法线立起，尺寸 R 的 15%。 */
+        /* 地表/海面：落在星球某格上 —— 按模型**实际几何**贴地/入海（不再整体悬空）。 */
         var sc = _wonderSurfaceCell(mode);
         var d = (sc && sc.dir) ? sc.dir : [0, 1, 0];
-        var surfR = R + Math.max(0, sphElev(d)) * HSC;
-        if (mode === 'water') surfR = R + 2.0;                   /* 浮在水面 */
-        var rr = surfR + R * 0.05;
-        M._wonderUp = d; M._wonderR = rr;
         mesh.scale.setScalar(R * 0.30);   /* v91.30g：×2 放大 */
         var tg = new THREE.Group(); tg.add(mesh);
-        tg.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(d[0], d[1], d[2]).normalize());
+        /* v91.36（老板「奇观都侧翻了…请判别奇观的上下底部，底部应贴合星球地面」）——
+           实测 9 个 .glb **全部 Z-up**（包围盒 z 跨度=薄轴、且 max z 恒为 0 = 原点在顶部；
+           x/y 居中）：竖轴是 **+Z** 不是 +Y。原代码把 +Y 对齐到法线 → 整体**倒伏 90°**（侧翻）。
+           改为把 **+Z** 对齐到球面法线 d → 模型「顶朝外、底朝内」，正立贴地。 */
+        tg.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), new THREE.Vector3(d[0], d[1], d[2]).normalize());
         body.add(tg);
-        if (M._wonderBody) { /* no-op */ }
+        /* v91.34（老板「奇观穿模」）：原 rr = surfR + R*0.05 把主体整体**抬离地表**——
+           近景穿帮（陆地浮空 / 海面悬于水上）。改为按包围盒 8 角沿法线的最小投影 `low`
+           （< 0 = 有部分在原点之下）反推落点：rr = surfR − low + margin → **最低点坐在地表上**。
+           海面给负 margin（半潜入水，合「沉没方舟」等形制）。 */
+        var surfR = R + Math.max(0, sphElev(d)) * HSC;
+        if (mode === 'water') surfR = R + 2.0;                   /* 浮在水面 */
+        var low = 0;
+        try {
+          geo.computeBoundingBox();
+          var bb = geo.boundingBox, S = R * 0.30, cs = [];
+          for (var xi = 0; xi < 2; xi++) for (var yi = 0; yi < 2; yi++) for (var zi = 0; zi < 2; zi++)
+            cs.push(new THREE.Vector3((xi ? bb.max.x : bb.min.x) * S, (yi ? bb.max.y : bb.min.y) * S, (zi ? bb.max.z : bb.min.z) * S).applyQuaternion(tg.quaternion));
+          for (var ci = 0; ci < cs.length; ci++) { var dt2 = cs[ci].x * d[0] + cs[ci].y * d[1] + cs[ci].z * d[2]; if (dt2 < low) low = dt2; }
+        } catch (e) { }
+        var margin = (mode === 'water') ? -R * 0.015 : 0.6;      /* 陆地贴地 + 微抬；海面略沉（半潜） */
+        var rr = surfR - low + margin;
+        M._wonderUp = d; M._wonderR = rr;
       }
-      /* 名称标签（浮在主体上方） */
+      /* 名称标签（浮在主体上方）。
+         v91.36：地表/海面时"上"是**球面法线 d**（模型已 Z-up 立起），标签随 d 抬；
+         太空无上下，仍按世界 +Y 抬。 */
       var lbl = null;
-      try { lbl = nameSprite('✨ ' + wd.name, '#ffe6a8'); lbl.position.set(0, R * (mode === 'space' ? 0.2 : 0.12), 0); body.add(lbl); } catch (e) { }
+      try {
+        lbl = nameSprite('✨ ' + wd.name, '#ffe6a8');
+        var _lh = R * (mode === 'space' ? 0.2 : 0.16);
+        if (mode === 'space') lbl.position.set(0, _lh, 0);
+        else lbl.position.set(d[0] * _lh, d[1] * _lh, d[2] * _lh);
+        body.add(lbl);
+      } catch (e) { }
       M._wonderBody = body;
       grp.add(body);
       M._wonderLam = lbl;
@@ -1178,6 +1233,27 @@
       if (sp && SP2.ciOfXY) baseCi = SP2.ciOfXY(sp.x, sp.y);
     } catch (e) { }
     var best = null, bd = Infinity;
+    /* v91.35（性能 · 关键修复）：原实现对**每个**候选格调 `SP2.hexDist(baseCi, i)` ——
+       那是**一趟全图 BFS（O(nv)=40962）**，而候选格有几千个 → 单次 `_wonderSurfaceCell`
+       实测 **12.3 秒**同步死循环（进主页「能看不能动」的真正元凶，与 GPU 无关）。
+       改：从出生地做**一趟** BFS，按**环数**一圈圈扫，取首个出现的合适地形格即最近；
+       BFS 全图也不到该格成为近邻的那一层，绝大多数情况远早于全图。无出生地时退回单趟线性。 */
+    if (baseCi >= 0 && SP2.hexDist && SP2.adj) {
+      var adj = SP2.adj, nv = SP2.nv;
+      var stamp = (M._wcStamp = (M._wcStamp || 0) + 1);
+      var seen = M._wcSeen || (M._wcSeen = new Int32Array(nv));
+      var q = [baseCi], head = 0; seen[baseCi] = stamp;
+      while (head < q.length) {
+        var cur = q[head++], cc0 = cells[cur];
+        if (cc0 && want.indexOf(cc0.type) >= 0) return cc0;         /* BFS 层序 → 首个命中即最近 */
+        var an = adj[cur];
+        for (var ai2 = 0; ai2 < an.length; ai2++) {
+          var nb = an[ai2];
+          if (seen[nb] !== stamp) { seen[nb] = stamp; q.push(nb); }
+        }
+      }
+      return null;
+    }
     for (var i = 0; i < cells.length; i++) {
       var c = cells[i]; if (!c || want.indexOf(c.type) < 0) continue;
       var d = (baseCi >= 0 && SP2.hexDist) ? SP2.hexDist(baseCi, i) : Math.abs(i - (baseCi < 0 ? 0 : baseCi));
@@ -1196,12 +1272,14 @@
       var L = Math.hypot(dir[0], dir[1], dir[2]) || 1;
       M._wonderBody.position.set(dir[0] / L * R_W, dir[1] / L * R_W, dir[2] / L * R_W);
     } else {
-      /* 地表/海面：位置固定（贴地/浮水），绕自身竖轴慢转（活气）。 */
+      /* 地表/海面：位置固定（贴地/入海），绕**自身竖轴**（= 所在处法线 d）慢转（活气）。
+         v91.36：竖轴是模型的 **局部 Z**（Z-up，见上）—— tg 把 +Z 映到法线 d，
+         故 `mesh.rotation.z` 即绕 d 自旋。 */
       var d = M._wonderUp || [0, 1, 0];
       var r = M._wonderR || (R + 2);
       M._wonderBody.position.set(d[0] * r, d[1] * r, d[2] * r);
-      var mesh = M._wonderBody.children[0];
-      if (mesh) mesh.rotation.y += 0.003;
+      var mesh = M._wonderSpin;
+      if (mesh) mesh.rotation.z += 0.003;
     }
     /* 出场：0.6s 内 scale 0→1（ease-out）。 */
     var t = (Date.now() - (M._wonderT0 || 0)) / 600; if (t > 1) t = 1;

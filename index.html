@@ -688,8 +688,10 @@
      铺满链必须从 lord-card 起（作者第一版挂在 .auth-side > .side-block 上，
      选择器压根匹配不到，真机一量才发现驻军框纹丝不动）。 */
   .auth-side .lord-card { flex: 1 1 auto; display: flex; flex-direction: column; }
-  .auth-side .lord-card > .side-block:last-child { flex: 1 1 auto; display: flex; flex-direction: column; }
-  .auth-side .lord-card > .side-block:last-child .garrison-bar { flex: 1 1 auto; display: flex; flex-direction: column; }
+  /* v91.36：驻军已独立成最后一个 .side-block（其 .side-body#garrison-bar 铺满到底、内部列表滚动）。 */
+  .auth-side .lord-card > .side-block:last-child { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+  .auth-side .lord-card > .side-block:last-child #garrison-bar { flex: 1 1 auto; min-height: 0; overflow-y: auto;
+    max-height: none; }
 
   /* ============ 左侧：君主卡 ============ */
   .lord-card {
@@ -2016,6 +2018,20 @@
     background: linear-gradient(180deg, var(--cyan), var(--gold)); box-shadow: 0 0 8px rgba(var(--cyan-rgb),.6);
     transition: width .18s ease; }
   .planet-loading .pl-pct { margin-top: 8px; color: var(--cyan); font-variant-numeric: tabular-nums; font-size: var(--fs-sub); }
+  /* v91.35：首次进游戏的后台预建遮罩（分帧进行 · 显示进度）—— 观感对齐 .planet-loading。 */
+  .boot-loading { position: absolute; inset: 0; z-index: 60; display: none;
+    align-items: center; justify-content: center; background: rgba(var(--sh-rgb),.86); backdrop-filter: blur(2px); }
+  .boot-loading.on { display: flex; }
+  .boot-loading .bl-inner { width: min(460px, 72%); text-align: center;
+    background: var(--panel-bg); border: 1px solid var(--gold-dark); border-radius: var(--r-lg);
+    padding: var(--sp-6) var(--sp-5); box-shadow: 0 10px 40px rgba(var(--sh-rgb),.6); }
+  .boot-loading .bl-title { font-size: var(--fs-h2); font-weight: 800; letter-spacing: 1px; color: var(--gold-light); }
+  .boot-loading .bl-sub { margin: 8px 0 14px; color: var(--text-dim); font-size: var(--fs-sub); line-height: var(--lh-tight); }
+  .boot-loading .bl-bar { height: 12px; border-radius: var(--r-md); background: var(--slab-1);
+    border: 1px solid var(--line-strong); overflow: hidden; }
+  .boot-loading .bl-bar i { display: block; height: 100%; width: 0;
+    background: var(--grad-gold); transition: width .2s linear; }
+  .boot-loading .bl-pct { margin-top: 8px; color: var(--cyan); font-variant-numeric: tabular-nums; font-size: var(--fs-sub); }
   /* v90.64（老板）：右上角**行政检索**下拉（选省/市/区 → 增亮该区、其余调暗） */
   .adm-search { position: absolute; top: 14px; right: 20px; z-index: 5; display: flex; gap: 6px; align-items: flex-start; }
   .adm-search select { padding: var(--sp-1) var(--sp-3); font-size: var(--fs-sub); max-width: 150px;
@@ -2193,36 +2209,27 @@
   .modal .pbar i { display: block; height: 100%; border-radius: var(--r-sm);
     background: var(--grad-progress); transition: width .4s linear; }
 
-  /* ============ 侧栏驻军栏（v16 · v89.215 改版）============
-     固定高度、固定位置；**列表常驻**（v89.215 起折叠开关退役）。 */
-  .garrison-bar { margin: var(--sp-3) var(--sp-4) var(--sp-4); border: 1px solid var(--line-strong); border-radius: var(--r-md);
-    background: rgba(var(--sh-rgb),.24); overflow: hidden; }
-  .gb-head { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3);
-    font-size: var(--fs-sub); color: var(--gold-light); font-weight: 700; }
-  /* ⛔ v89.215（老板「不再设置下拉」）：`.gb-head { cursor:pointer }` 与 `.gb-head .gb-arrow`
-     随折叠开关整条退役（列表常驻，头只是头）。 */
-  /* v76（老板）：「左侧统计框没有到底」——驻军列表从固定 132px 改**撑满剩余高度**
-     （左栏"铺满到底"的主力；兵多时列表内部照旧滚动）。 */
-  /* v89.53（老板 09-19）：侧栏仅 283px 宽，原单列滚动「不够显示」。
-     改为 2 列紧凑网格（每格 = 兵种名 + 数量），同高可见兵种数翻倍、名字完整可读。
-     4 列会把「重装步兵 12,345」挤压/截断，故取 2 列；要更密把下方 repeat(2,…) 改 3/4。 */
-  /* v89.215（老板「直接按固定位置和顺序列出**所有**兵种」）：18 行按 2 列 = 9 行 ——
-     行距与行高各收一档（行间隔 4px→1px · 行高走 --lh-tight），
-     把"全列"多出来的高度吃回去：侧栏不再因驻军栏变长而整体出滚动条（铺满到底口径不破）。 */
-  .gb-list { flex: 1 1 auto; min-height: 132px; overflow-y: auto;
-    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-hair) var(--sp-4);
-    align-content: start; padding: var(--sp-0) var(--sp-3) var(--sp-3); }
+  /* ============ 侧栏驻军栏（v16 · v91.36 照搬资源栏样式）============
+     v89.215：折叠开关退役，列表常驻。
+     v91.36（老板）：「驻军板块跟别的就不一样，请照搬城市属性和资源的 UI 和字体设置」——
+     整块改走 .side-block / .side-title / .side-body 三件套（见 index.html 结构），
+     行样式**逐条对齐资源行**（同字号 --fs-lead · 同虚线分隔 · 同列布局 · 数量 tabular 右对齐）。 */
+  .garrison-bar { }
+  /* 驻军行 = 资源行同款（名称 lbl | 数量 val 右对齐），2 列紧凑网格（侧栏窄，单列不够看）。 */
+  .gb-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--sp-hair) var(--sp-4); align-content: start; }
   .gb-row { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-2);
-    font-size: var(--fs-sub); line-height: var(--lh-tight); padding: var(--sp-0) 0; border-bottom: 1px dashed var(--line); }
-  .gb-row .gb-n { color: var(--text); min-width: 0; overflow: hidden;
-    text-overflow: ellipsis; white-space: nowrap; }
-  .gb-row .gb-c { color: var(--gold-light); font-variant-numeric: tabular-nums;
-    text-align: right; flex: none; }
+    font-size: var(--fs-lead); line-height: var(--lh-tight); padding: var(--sp-0) 0;
+    border-bottom: 1px dashed rgba(var(--gold-rgb),.2); }
+  .gb-row .gb-n { color: var(--text-dim); min-width: 0; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+  .gb-row .gb-c { color: var(--text); font-weight: 700; font-variant-numeric: tabular-nums;
+    text-align: right; flex: none; min-width: 3.4em; }
   /* v89.215（老板「暂无的数量则为 0」）：零行**灰显** —— 固定阵位里一眼挑出"有兵的那几行" */
-  .gb-row.gb-zero .gb-n { color: var(--text-dim); }
+  .gb-row.gb-zero .gb-n { color: var(--text-dim); opacity: .6; }
   .gb-row.gb-zero .gb-c { color: var(--text-dim); font-weight: 400; }
-  .gb-empty { height: 132px; display: flex; align-items: center; justify-content: center;
-    color: var(--text-dim); font-size: var(--fs-sub); }
+  .gb-empty { display: flex; align-items: center; justify-content: center;
+    color: var(--text-dim); font-size: var(--fs-sub); padding: var(--sp-3) 0; }
 
   /* ============ v20：布局 / 队列 / 对齐 / 浮层 ============ */
 
@@ -3599,18 +3606,21 @@
      其余时间主循环一个字节都不碰，原生下拉列表才不会被每秒重绘冲合。
      单城时里面是空的，靠 :empty 收掉，不留空行。 */
   .city-switch-host { padding: var(--sp-2) var(--sp-4) 0; }
-  /* v91.31：城市属性里的「当前城市名」—— **定宽**（不随城名长短跳动·布局规整）。 */
+  /* v91.31：城市属性里的「当前城市名」—— **定宽**（不随城名长短跳动·布局规整）。
+     v91.34（老板）：「城市名称字小点，大得有点丑」→ --fs-h2(16) 降到 --fs-lead(14)；
+     三个操作按钮（🎲/📍/🏗）移入本行右侧（键向右对齐）—— space-between 撑开，
+     `.ccn-ops` margin-left:auto 兜底右贴。 */
   .city-cur-name {
     display: flex; align-items: center; gap: var(--sp-2);
     padding: var(--sp-1) var(--sp-4) 0;
-    font-size: var(--fs-h2); font-weight: 700; color: var(--gold-light);
-    line-height: var(--lh-tight); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    font-size: var(--fs-lead); font-weight: 700; color: var(--gold-light);
+    line-height: var(--lh-tight);
   }
+  .city-cur-name .ccn-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .city-cur-name .ccn-ops { display: inline-flex; gap: var(--sp-1); flex: none; margin-left: auto; }
+  .city-cur-name .ccn-ops .btn.sm { padding: 1px 6px; }
   .city-switch-host:empty { display: none; }
   .city-switch .cs-lbl { color: var(--text-dim); font-size: var(--fs-sub); flex: none; }
-  /* v91.25：城名旁的三个操作入口（🎲/📍/🏗）—— 从原「城市身份行」并入本行 */
-  .city-switch-ops { display: inline-flex; gap: var(--sp-1); flex: none; }
-  .city-switch-ops .btn.sm { padding: 1px 6px; }
   .city-select {
     flex: 1; min-width: 0;
     padding: var(--sp-1) var(--sp-2); border-radius: var(--r-md); cursor: pointer;
@@ -3873,7 +3883,7 @@
      宽度三档（图标 26px **不变**，变的是**框的留白**：窄框贴图标 = 徒步；宽框留白 = 器械）：
        · .walk  徒步（无 ride/craft，含板车/侦察单元）— 28px（贴边窄框）
        · .ride  机车（ride = true）                 — 32px（比改前的 36 稍窄、比徒步宽 4px）
-       · .craft 器械（craft：无人轰炸机/自行火炮）   — 36px（**维持改前的方块尺寸**）
+       · .craft 器械（craft：无人轰炸机/东风快递）   — 36px（**维持改前的方块尺寸**）
      形态由 `GAME.troopShapeOf` 判定（唯一出口，读数据表的 ride / craft 字段）。
      v89.230：类名随兵种体系同步（原 .inf/.cav/.siege 退役 —— 步兵/骑兵不再区分）。 */
   .bt-unit { --u-w: 36px; position: absolute; transform: translateX(-50%); display: flex; align-items: center;
@@ -4295,6 +4305,15 @@
 
 <!-- 主游戏界面 -->
 <div id="screen-game" class="hidden">
+  <!-- v91.35（老板）：「进主页卡四五秒、能看不能动」—— 首次进游戏的后台 3D 预建改为**分帧**进行，
+       此遮罩在预建期间盖住整页并显示进度（否则主线程被同步构建冻住 = 能看不能动）。
+       ⚠️ 独立于 #planet-loading（那个只在**地图视图**里，进游戏时还不存在）。 -->
+  <div id="boot-loading" class="boot-loading"><div class="bl-inner">
+    <div class="bl-title" id="boot-title">🪐 正在构建星球…</div>
+    <div class="bl-sub" id="bl-sub">首次进入 3D 地图需构建星球地形（仅此一次 · 之后秒开）</div>
+    <div class="bl-bar"><i id="bl-fill"></i></div>
+    <div class="bl-pct" id="bl-pct">0%</div>
+  </div></div>
   <!-- 顶部导航 -->
   <!-- v19：菜单按**类型分组**，同类型相邻、不同类型以竖线分隔
        ① 场景：城市 / 地图   ② 军事：英雄 / 行军
@@ -4388,8 +4407,16 @@
           <!-- v77（老板）：资源区曾在此放「附属野地」下拉框。
                v90.90（老板）：附属野地清单**移入君主左侧**（城市/据点/野地 三份清单），此处退役。 -->
           <div class="side-body" id="res-bar"></div>
-          <!-- v16：资源下方固定驻军栏 -->
-          <div class="garrison-bar" id="garrison-bar"></div>
+        </div>
+
+        <!-- ④ 驻军栏
+             v91.36（老板）：「驻军板块跟别的就不一样，请照搬城市属性和资源的 UI 和字体设置」——
+             改前是一枚**带边框的独立小盒**（.garrison-bar 自带 border/background/圆角），
+             与城市属性/资源两个 .side-block 的观感脱节。现在**拆成独立 side-block**：
+             同一个 .side-title 标题条 + 同一个 .side-body 内容区，三块并列同款。 -->
+        <div class="side-block side-block-garrison">
+          <div class="side-title"><span>⚔ 驻军</span><span class="side-quick" id="garrison-total"></span></div>
+          <div class="side-body" id="garrison-bar"></div>
         </div>
       </div>
     </div>
@@ -4421,32 +4448,32 @@
 </div><!-- /#app-scale -->
 </div><!-- /#app-fit -->
 
-<!-- BUILD 9253 -->
-<script src="js/data.js?v=9253"></script>
-<script src="js/state.js?v=9253"></script>
-<script src="js/systems.js?v=9253"></script>
-<script src="js/domain.js?v=9253"></script>
-<script src="js/map.js?v=9253"></script>
+<!-- BUILD 9265 -->
+<script src="js/data.js?v=9265"></script>
+<script src="js/state.js?v=9265"></script>
+<script src="js/systems.js?v=9265"></script>
+<script src="js/domain.js?v=9265"></script>
+<script src="js/map.js?v=9265"></script>
 <!-- v90.69：球面世界内核（纯 JS · 拓扑/地形/几何 SSOT）—— 逻辑与 3D 渲染共用，无 THREE -->
-<script src="js/sphere.js?v=9253"></script>
+<script src="js/sphere.js?v=9265"></script>
 <!-- v90.61：Three.js 真 3D 主地图（vendor 本地，离线可用） -->
-<script src="vendor/three.min.js?v=9253"></script>
-<script src="js/gltf.js?v=9253"></script>
-<script src="js/map3d.js?v=9253"></script>
-<script src="js/battle.js?v=9253"></script>
+<script src="vendor/three.min.js?v=9265"></script>
+<script src="js/gltf.js?v=9265"></script>
+<script src="js/map3d.js?v=9265"></script>
+<script src="js/battle.js?v=9265"></script>
 <!-- v27（需求 5）：回合制文字战场。放在 battle.js 之后 —— simulate 由它接管 -->
-<script src="js/tactic.js?v=9253"></script>
-<script src="js/icons.js?v=9253"></script>
+<script src="js/tactic.js?v=9265"></script>
+<script src="js/icons.js?v=9265"></script>
 <!-- v32（需求「采用网图」）：game-icons 开源图标素材层。必须在 icons.js 之后 ——
      icons.js 内的取图函数用 typeof GICONS 延迟绑定，渲染时才真正查表。 -->
-<script src="js/gicons.js?v=9253"></script>
+<script src="js/gicons.js?v=9265"></script>
 <!-- v35：AI 位图素材登记表（汉代风，最高优先级）。同样在 icons.js 之后 ——
      取图函数用 typeof BITMAPS 延迟绑定；未登记的 id 自动回退矢量层。 -->
-<script src="js/bitmaps.js?v=9253"></script>
-<script src="js/portraits.js?v=9253"></script>
-<script src="js/story.js?v=9253"></script>
+<script src="js/bitmaps.js?v=9265"></script>
+<script src="js/portraits.js?v=9265"></script>
+<script src="js/story.js?v=9265"></script>
 <!-- ⛔ v89.218（老板「故事全部去除」）：84 卷故事库（story/）整目录删除，脚本标签同步撤除。 -->
-<script src="js/ui.js?v=9253"></script>
-<script src="js/main.js?v=9253"></script>
+<script src="js/ui.js?v=9265"></script>
+<script src="js/main.js?v=9265"></script>
 </body>
 </html>

@@ -803,9 +803,9 @@
    * ============================================================ */
   /* v31 兵种四类独立剪影
      foot: 步兵（持长兵器，盾在身侧）
-     bow: 导弹车（开弓姿态）
+     bow: 自走火炮（开弓姿态）
      horse: 机车（马+骑手剪影）
-     cart: 器械（车/弩/自行火炮） */
+     cart: 器械（车/弩/东风快递） */
   function soldierFoot(tone, w) {
     var C1 = tone[0], C2 = tone[1], C3 = tone[2];
     var s = '<ellipse cx="30" cy="56" rx="14" ry="2.6" fill="#000" opacity=".28"/>';
@@ -968,7 +968,7 @@
     return s;
   }
   function soldierCart(tone, kind) {
-    /* v31：器械四类——运输平台/自行火炮/无人轰炸机/自行火炮 */
+    /* v31：器械四类——运输平台/东风快递/无人轰炸机/东风快递 */
     var C1 = tone[0], C2 = tone[1], C3 = tone[2];
     var s = '<ellipse cx="32" cy="56" rx="20" ry="2.6" fill="#000" opacity=".28"/>';
     /* 车轮（两轮） */
@@ -993,7 +993,7 @@
     s += '<line x1="14" y1="50" x2="20" y2="44" stroke="' + P.woodLo + '" stroke-width="1.6"/>' +
       '<line x1="50" y1="50" x2="44" y2="44" stroke="' + P.woodLo + '" stroke-width="1.6"/>';
     if (kind === 'cart') {
-      /* 自行火炮：基座 + 抛杆 + 配重 + 弹丸 */
+      /* 东风快递：基座 + 抛杆 + 配重 + 弹丸 */
       s += '<path d="M20 30 L44 30 L46 42 L18 42 Z" fill="' + C2 + '"/>' +
         '<path d="M20 30 L32 30 L32 42 L18 42 Z" fill="' + C1 + '" opacity=".4"/>' +
         /* 抛杆（斜向上） */
@@ -1005,7 +1005,7 @@
         '<circle cx="14" cy="8" r="3" fill="' + P.stLo + '"/>' +
         '<circle cx="13" cy="7" r="1.2" fill="' + P.stHi + '" opacity=".7"/>';
     } else if (kind === 'siege_ram') {
-      /* 自行火炮：上覆皮盾的攻城槌 */
+      /* 东风快递：上覆皮盾的攻城槌 */
       s += '<path d="M20 18 L44 18 L46 30 L18 30 Z" fill="' + C2 + '"/>' +
         '<path d="M20 18 L32 18 L32 30 L18 30 Z" fill="' + C1 + '" opacity=".4"/>' +
         /* 屋顶皮盖 */
@@ -1041,7 +1041,7 @@
         /* 箭羽 */
         '<path d="M48 11 L50 9 L50 11 Z M48 13 L50 15 L50 13 Z" fill="' + P.clHi + '"/>';
     } else if (kind === 'catapult') {
-      /* 自行火炮（原投石车形制）：高架投臂 + 弹筐 */
+      /* 东风快递（原投石车形制）：高架投臂 + 弹筐 */
       s += '<path d="M22 32 L42 32 L42 42 L22 42 Z" fill="' + C2 + '"/>' +
         '<path d="M22 32 L32 32 L32 42 L22 42 Z" fill="' + C1 + '" opacity=".4"/>' +
         /* 投臂（斜向下，弹筐端朝下） */
@@ -1114,13 +1114,13 @@
           '<rect x="20" y="20" width="24" height="12" rx="1.6" fill="' + P.woodMd + '"/>' +
           flag(30, 22, 14, P.rMd, P.rHi);
       } else if (c.cls === 'bow') {
-        /* v31：导弹车独立剪影 */
+        /* v31：自走火炮独立剪影 */
         s += soldierBow(c.tone);
       } else if (c.cls === 'mount') {
         /* v31：机车（车体+骑手）独立剪影 */
         s += soldierMount(c.tone, c.w);
       } else if (c.cls === 'cart') {
-        /* v31：器械 4 类（按 c.w 区分运输平台/自行火炮/无人轰炸机/自行火炮） */
+        /* v31：器械 4 类（按 c.w 区分运输平台/东风快递/无人轰炸机/东风快递） */
         s += soldierCart(c.tone, c.w === 'cart' ? 'cart' : (c.w === 'siege_ram' ? 'siege_ram' : (c.w === 'ballista' ? 'ballista' : 'catapult')));
       } else {
         /* v31：步兵 4 种兵器（默认 foot 类） */

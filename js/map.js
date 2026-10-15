@@ -445,7 +445,7 @@
     var mul = (DATA.EXPEDITION && DATA.EXPEDITION.garrisonMul) || 1;
     var base = Math.round(F.garrisonBase * Math.pow(F.garrisonGrowth, lv - 1) * mul);
     /* v89.229（兵种重构 18→14）：键按 `GAME.TROOP_MAP_229` 换代 —— 权重**相加**保持总数不变：
-         步行机 35% + 步行机 25% → 步行机 60%；刀盾 20% → 盾卫；弓箭 20% → 导弹车；
+         步行机 35% + 步行机 25% → 步行机 60%；刀盾 20% → 盾卫；弓箭 20% → 自走火炮；
          伏击车 10%（Lv4 起）→ 伏击车。
        ⛔ 这里曾漏改（键留着 yibing/changqiang/… 五个退役 id）→ 据点守军**整支为空**：
          引擎拿到 0 防守单位，战斗 0 回合结束、defLoss 恒 0（俘获/战功/战报全空），

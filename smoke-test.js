@@ -254,7 +254,7 @@ require('./js/map3d.js');
     Object.keys(DATA.TROOPS).every(function (id) { return (DATA.TROOPS[id].cost || {}).stone > 0; })
     && DATA.TROOPS.huopao.craft === true && DATA.TROOPS.huopao.mech === true
     && DATA.TROOPS.huopao.cost.stone > 0);
-  check('自行火炮：攻与射程均为全军之最（远程压制定位）',
+  check('东风快递：攻与射程均为全军之最（远程压制定位）',
     DATA.TROOPS.huopao.range === 1600 && DATA.TROOPS.huopao.craft === true
     && DATA.TROOPS.huopao.atk > DATA.TROOPS.wuren.atk);
   check('侦察单元速度3000', DATA.TROOPS.zhencha.spd === 3000);
@@ -422,7 +422,7 @@ require('./js/map3d.js');
 
   console.log('\n===== 8. 战斗模拟 =====');
   var res = G.battle.simulate({ daodanche: 1500, dunwei: 100 }, null, { buxingji: 2000, buxingji: 500 }, 0, null);
-  check('1500导弹车+100盾卫 vs 2500野兵', res.winner === 'atk', '胜方=' + res.winner + ' 我余' + res.atkRemain + ' 敌余' + res.defRemain);
+  check('1500自走火炮+100盾卫 vs 2500野兵', res.winner === 'atk', '胜方=' + res.winner + ' 我余' + res.atkRemain + ' 敌余' + res.defRemain);
   var res2 = G.battle.simulate({ buxingji: 100 }, null, { zhuzhan: 500 }, 10, null);
   check('100步行机 vs 500主战机甲+围墙', res2.winner === 'def');
 
@@ -2833,7 +2833,7 @@ require('./js/map3d.js');
   })());
 
   /* v89.88：据点等级分布上移（8/9/10 占 90%）、守军 ×10 ——
-     攻取用例优先挑一座**低级据点**（≤ Lv4）：固定 4 万导弹车正好覆盖
+     攻取用例优先挑一座**低级据点**（≤ Lv4）：固定 4 万自走火炮正好覆盖
      "练兵场容量"闸门与"打得赢"的**正向路径**（守军规模断言见 §88）。 */
   var fAny = null, fLow = null;
   /* v90.75：改在**球面据点候选**上找靶子（不再扫平面小窗 —— 那在球系=极冠）。 */
@@ -4248,15 +4248,15 @@ require('./js/map3d.js');
      所有兵种和数量，暂无的数量则为 0」——
      旧断言查「toggle-garrison 在册（可折叠）」，按新规则重写为：折叠开关**整条不在**、
      列表**全部兵种**（Object.keys(DATA.TROOPS) 唯一顺序源）+ 零行灰显（.gb-zero）。 */
-  check('#17 驻军栏（v89.215：无折叠开关 · 全兵种固定序 · 零行灰显 · 仍撑满）', (function () {
+  check('#17 驻军栏（v91.36：照搬资源栏 · 独立 side-block · 全兵种固定序 · 零行灰显）', (function () {
     /* ⚠ 本项目老坑：注释里提一句 `toggle-garrison` 就会让"不该出现"的断言假红
        —— 判据一律**先剥注释**（此处 uS16 是原始源码，就地剥）。 */
     var u0 = uS16.replace(/\/\*[\s\S]*?\*\//g, '');
     return !/toggle-garrison/.test(u0) && !/gb-arrow/.test(u0) && !/_garrisonOpen/.test(u0)
-      && !/\.gb-head \{ [^}]*cursor: pointer/.test(hS16)
       && /Object\.keys\(DATA\.TROOPS\)\.map/.test(u0)
       && /gb-zero/.test(u0) && /\.gb-row\.gb-zero \.gb-c \{ color: var\(--text-dim\)/.test(hS16)
-      && /\.gb-list \{ flex: 1 1 auto; min-height: 132px/.test(hS16);
+      /* v91.36：驻军改走 .side-block（与资源/城市属性同款三件套），不再自带边框小盒 */
+      && /side-block-garrison/.test(hS16) && /#garrison-bar/.test(hS16);
   })());
 
   console.log('  --- 菜单与消息 ---');
@@ -4739,8 +4739,10 @@ require('./js/map3d.js');
       && !/STORY\.repMult/.test(stripComment(bS29.slice(0)))
       && !/STORY\.repMult/.test(stripComment(dS29.slice(0)));
   })());
-  check('checkVictory 已被调用（攻占灰烬城→天下一统）',
-    /if \(GAME\.checkVictory\) GAME\.checkVictory\(\);/.test(bS29));
+  /* v91.36（老板「占领旧都并非结束」）：天下一统弹窗与 checkVictory 整条退役。 */
+  check('checkVictory 已退役（占领旧都不再弹终结界面 · v91.36）',
+    !/GAME\.checkVictory\(\)/.test(bS29.replace(/\/\*[\s\S]*?\*\//g, ''))
+    && !/天下一统/.test(mS29.replace(/\/\*[\s\S]*?\*\//g, '')));
   check('defMult 改为单一来源（不再两份实现）',
     /STORY\.defMult = function \(\) \{\s*return STORY\.bondBonus\('def'\);/.test(yS29));
   check('城防梯度恢复（/200 线性，替代 0.6 封顶）',
@@ -4892,7 +4894,7 @@ require('./js/map3d.js');
     var b = G.march.travelTime(from, { x: c0.x + 50, y: c0.y, ci: _ciOf(c0.x + 50, c0.y) }, { buxingji: 10000 });
     return b > a;
   })());
-  check('最慢兵种决定全军速度（自行火炮拖慢）', (function () {
+  check('最慢兵种决定全军速度（东风快递拖慢）', (function () {
     var c0 = st30.cities[0];
     var from = { x: c0.x, y: c0.y, cityId: c0.id }, to = { x: c0.x + 20, y: c0.y, ci: _ciOf(c0.x + 20, c0.y) };
     var fast = G.march.travelTime(from, to, { fujiche: 10000 });
@@ -8001,7 +8003,7 @@ require('./js/map3d.js');
   check('实测：军队资源价值按兵种造价折算（口径真算一遍，含电能）', (function () {
     var t = DATA.TROOPS.buxingji;
     var one = (t.cost.grain || 0) + (t.cost.wood || 0) + (t.cost.stone || 0) + (t.cost.iron || 0);
-    /* 自行火炮是唯一同时吃粮/木/石/铁的兵种之一 —— 用它才能验出"漏掉某一项"的错 */
+    /* 东风快递是唯一同时吃粮/木/石/铁的兵种之一 —— 用它才能验出"漏掉某一项"的错 */
     var s2 = DATA.TROOPS.huopao;
     var two = (s2.cost.grain || 0) + (s2.cost.wood || 0) + (s2.cost.stone || 0) + (s2.cost.iron || 0);
     return G.battle.armyResourceValue({ buxingji: 10 }) === one * 10
@@ -8145,7 +8147,7 @@ require('./js/map3d.js');
   check('兵种损耗文本：兵种 初始 → 剩余（损 N）', (function () {
     var s = G.battle.troopLossText({ buxingji: 1000, daodanche: 500 }, { buxingji: 300, daodanche: 120 });
     return s.indexOf('步行机') >= 0 && s.indexOf('1,000 → 700') >= 0 && s.indexOf('损 300') >= 0
-      && s.indexOf('导弹车') >= 0;
+      && s.indexOf('自走火炮') >= 0;
   })());
   check('战报正文写入【兵种损耗】', /【兵种损耗】/.test(bS40) && /troopLossText/.test(bS40));
   check('战报同时存结构化损耗（供详情表用）', /loss: \{[\s\S]{0,160}atkLossBy/.test(bS40)
@@ -8209,15 +8211,15 @@ require('./js/map3d.js');
     var D = function (a, b) { return T.battlefieldOf(a, b, 0, {}); };
     var one = function (id) { var o = {}; o[id] = 500; return o; };
     /* v89.229（兵种重构）：旧夹具两头是 民兵/长矛手（合并后同 id）—— 首项改用**盾卫**
-       （射程 30 < 步行机 50），单调链仍成立：盾卫 < 步行机 < 导弹车 < 自行火炮。 */
+       （射程 30 < 步行机 50），单调链仍成立：盾卫 < 步行机 < 自走火炮 < 东风快递。 */
     return D(one('dunwei'), one('dunwei')) === eff('dunwei', 'dunwei')
       && D(one('buxingji'), one('buxingji')) === eff('buxingji', 'buxingji')
       && D(one('daodanche'), one('buxingji')) === eff('daodanche', 'buxingji')
       && D(one('huopao'), one('buxingji')) === eff('huopao', 'buxingji')
-      /* 射程越远 → 战场越宽（近战也参与比较，所以盾卫 < 步行机 < 导弹车 < 自行火炮） */
+      /* 射程越远 → 战场越宽（近战也参与比较，所以盾卫 < 步行机 < 自走火炮 < 东风快递） */
       && raw('dunwei') < raw('buxingji') && raw('buxingji') < raw('daodanche')
       && raw('daodanche') < raw('huopao')
-      /* 取**双方**最远：导弹车对自行火炮 = 自行火炮那一边 */
+      /* 取**双方**最远：自走火炮对东风快递 = 东风快递那一边 */
       && D(one('daodanche'), one('huopao')) === eff('daodanche', 'huopao')
       /* 速度下限真的生效：伏击车 vs 伏击车（快）+ 短射程 → D 由速度项撑起 */
       && D(one('fujiche'), one('fujiche')) === Math.round(spd('fujiche') * 2 * T.MARCH_ROUNDS_MIN)
@@ -8227,7 +8229,7 @@ require('./js/map3d.js');
       && spd('zhencha') > spd('buxingji');
   })(), (function () {
     var T = G.tactic, o = { buxingji: 1 }, g = { daodanche: 1 }, q = { fujiche: 1 };
-    return '步行机 ' + T.battlefieldOf(o, o, 0, {}) + ' / 导弹车 ' + T.battlefieldOf(g, o, 0, {})
+    return '步行机 ' + T.battlefieldOf(o, o, 0, {}) + ' / 自走火炮 ' + T.battlefieldOf(g, o, 0, {})
       + ' / 伏击车 ' + T.battlefieldOf(q, q, 0, {});
   })());
   check('旧场地常数保留为回退值，但已不参与默认计算',
@@ -8253,7 +8255,7 @@ require('./js/map3d.js');
   })(), (function () {
     var a = G.battle.simulate({ buxingji: 500 }, null, { buxingji: 500 }, 0, null, { kind: 'wild' });
     var c = G.battle.simulate({ daodanche: 500 }, null, { buxingji: 500 }, 0, null, { kind: 'wild' });
-    return '纯近战纵深 ' + a.field + ' → 带导弹车 ' + c.field;
+    return '纯近战纵深 ' + a.field + ' → 带自走火炮 ' + c.field;
   })());
   check('攻击值 = 兵种基础攻 ×（1 + 英雄/装备百分比链）× 科技…（v89.96 并链）',
     /var base = t\.atk;/.test(tS40)
@@ -8307,11 +8309,11 @@ require('./js/map3d.js');
     var a = G.battle.simulate({ buxingji: 5000 }, null, { buxingji: 5000 }, 0, null, { kind: 'wild' });
     var b = G.battle.simulate({ buxingji: 5000, huopao: 300 }, null, { buxingji: 5000 }, 0, null, { kind: 'wild' });
     /* ⚠️ 判据是**开局间距**而不是总回合数：带远程的一方虽然接敌慢，
-       但一旦开火就把对面打光了 —— 实测"带自行火炮纵深 1799 → 4 回合"比
+       但一旦开火就把对面打光了 —— 实测"带东风快递纵深 1799 → 4 回合"比
        "纯近战纵深 219 → 5 回合"**更少**，拿总回合数当判据会反过来（我第一版就栽了）。 */
     var g1 = function (r) { return (r.roundsLog && r.roundsLog[0] && r.roundsLog[0].gap) || 0; };
     /* v89.95：FIELD_MIN 抬到 1400 后，两档纵深的**差距比例**变小
-       （纯近战吃 1400 兜底，带自行火炮才多 ~500）——判据改成"确实更宽、开局确实更远"。 */
+       （纯近战吃 1400 兜底，带东风快递才多 ~500）——判据改成"确实更宽、开局确实更远"。 */
     return b.field > a.field * 1.2 && g1(b) > g1(a) * 1.3;
   })(), (function () {
     var a = G.battle.simulate({ buxingji: 5000 }, null, { buxingji: 5000 }, 0, null, { kind: 'wild' });
@@ -8418,7 +8420,7 @@ check('箭塔射程＝原版加法口径（基础×(1+抛射) + 基础×(围墙�
   && /T\.wallFireRangeRaw = function \(defVal, wallLv, towers\)/.test(tS41)
   && /wallR = opts\.sieging \? T\.wallFireRangeRaw\(defVal, opts\.wallLv, opts\.towers\) : 0/.test(tS41)
   /* ⚠️ v58 铁证：旧式 `300 + defVal*35` 在城防 300 时是 10800，把战场纵深撑到 10999
-     → 自行火炮要 94 回合才够得着 → 30 回合内一箭不发。这条必须锁住它不许回来。 */
+     → 东风快递要 94 回合才够得着 → 30 回合内一箭不发。这条必须锁住它不许回来。 */
   && !/300 \+ defVal \* 35/.test(tS41)
   /* 行为：十抛射十墙 = 1250+625+375+100 = 2350（原版公开实测值）；无围墙无科技 = 1350 */
   && G.tactic.arrowTowerRange(10, 0.5) === 2350
@@ -8488,17 +8490,17 @@ check('实测：带 1000 侦察单元出征，侦察单元不参战也不计损�
 })());
 
 /* 行为断言：幸存者约束下高级兵不再最弱（修掉数值倒挂） */
-check('实测：同为满幸存者，主战机甲能打赢导弹车（高级兵不再是最差选择）', (function () {
+check('实测：同为满幸存者，主战机甲能打赢自走火炮（高级兵不再是最差选择）', (function () {
   /* v89.96：原判据是"主战机甲赢步行机"——但 v89.96 把"枪克骑"标定成真之后
      （v89.178 起：枪打骑 ×2.5 + 步行机拒马 ×3，见 data.js COUNTER 表），步行机是主战机甲的**天敌**，
-     打不过是设计；"高级兵不废"改由"主战机甲同兵力赢导弹车/盾卫"承担。实测：
-     主战机甲 1833 vs 导弹车 2750 → 5 回合胜（我损 74）；vs 盾卫 5500 → 7 回合胜。 */
+     打不过是设计；"高级兵不废"改由"主战机甲同兵力赢自走火炮/盾卫"承担。实测：
+     主战机甲 1833 vs 自走火炮 2750 → 5 回合胜（我损 74）；vs 盾卫 5500 → 7 回合胜。 */
   var POP = 5500, per = DATA.TROOPS;
   var a = {}; a.zhuzhan = Math.floor(POP / per.zhuzhan.pop);
   var b = {}; b.daodanche = Math.floor(POP / per.daodanche.pop);
   var r = G.battle.simulate(a, null, b, 0, null, { kind: 'wild' });
   return r.winner === 'atk';
-})(), '主战机甲 ' + Math.floor(5500 / G.DATA.TROOPS.zhuzhan.pop) + ' vs 导弹车 ' + Math.floor(5500 / G.DATA.TROOPS.daodanche.pop));
+})(), '主战机甲 ' + Math.floor(5500 / G.DATA.TROOPS.zhuzhan.pop) + ' vs 自走火炮 ' + Math.floor(5500 / G.DATA.TROOPS.daodanche.pop));
 check('实测：机车对步行机保有赢面（同兵力机车胜 · 同数量（机车2倍幸存者）大胜）——无克制口径', (function () {
   /* v89.179（老板「取消所有克制关系，直接按兵种纸面数据计算」）：克制全撤后
      战斗只看 TROOPS 纸面数值 ——
@@ -8517,7 +8519,7 @@ check('高级兵种的每幸存者战力不再倒挂（攻与有效生命双双�
   var baseAtk = base.atk / base.pop;
   var baseEhp = base.hp * (1 + base.def / 100) / base.pop;
   /* 角色特化兵种按各自定位取胜，不参与这条判据：
-     射程（导弹车/无人轰炸机/自行火炮）、坦度（盾卫/自行火炮）、后勤（板车/辎重）、不参战（侦察单元） */
+     射程（自走火炮/无人轰炸机/东风快递）、坦度（盾卫/东风快递）、后勤（板车/辎重）、不参战（侦察单元） */
   var specialists = ['daodanche', 'wuren', 'huopao', 'dunwei', 'huopao',
     'banche', 'yunshu', 'zhencha',
     /* 步行机 = 入门步行机，定位就是"便宜量大"，不参与阶梯判据 */
@@ -9278,7 +9280,7 @@ check('机动：MARCH_UNIT = 1（速度即每回合丈数），stepsToWall 收�
   var st = function (id, D) { return T.stepsToWall(DATA.TROOPS[id].spd, DATA.TROOPS[id].range, D); };
   /* 原版战报实录里步数 ≈ 满科技速度本身（伏击车前进 1500、主战机甲 900、步行机 600），
      所以口径是 1:1；这里用同一纵深比较**兵种之间的先后**，不写死绝对步数。 */
-  /* v89.229（兵种重构）：旧第三条"长矛手 < 破门车"随合并失效 —— 自行火炮射程 1600 > 纵深 1399，
+  /* v89.229（兵种重构）：旧第三条"长矛手 < 破门车"随合并失效 —— 东风快递射程 1600 > 纵深 1399，
      1 步即开火（**比步行机更快**），真正慢的是**板车**（射程 10 · 速 180 → 8 步）。 */
   return T.MARCH_UNIT === 1
     && st('fujiche', 1399) < st('buxingji', 1399)
@@ -9293,7 +9295,7 @@ check('机动：MARCH_UNIT = 1（速度即每回合丈数），stepsToWall 收�
   G.tactic.stepsToWall(DATA.TROOPS.buxingji.spd, DATA.TROOPS.buxingji.range, 1399) + '步');
 check('实测：带远程的战场上机车先接敌、步兵后接敌（机动优势在真实纵深下才看得见）', (function () {
   var T = G.tactic;
-  /* 带导弹车 → 纵深 1399（改为场地常数时是 2000，但那时与"带不带远程"无关） */
+  /* 带自走火炮 → 纵深 1399（改为场地常数时是 2000，但那时与"带不带远程"无关） */
   var D = T.battlefieldOf({ daodanche: 500 }, { buxingji: 500 }, 0, {});
   var Dm = T.battlefieldOf({ buxingji: 500 }, { buxingji: 500 }, 0, {});
   var st = function (id) { return T.stepsToWall(DATA.TROOPS[id].spd, DATA.TROOPS[id].range, D); };
@@ -9303,7 +9305,7 @@ check('实测：带远程的战场上机车先接敌、步兵后接敌（机动�
     && cav.every(function (n) { return n >= 1 && n <= 6; })
     && st('buxingji') > st('fujiche')           /* 步行机比伏击车慢 */
     && st('daodanche') <= 3                       /* 远程很快就能开火（纵深受控后不再"开局即打"） */
-    && st('banche') > st('buxingji');         /* v89.229：真正慢的是板车（射程 10）；自行火炮射程 1600 → 1 步开火 */
+    && st('banche') > st('buxingji');         /* v89.229：真正慢的是板车（射程 10）；东风快递射程 1600 → 1 步开火 */
 })(), (function () {
   var T = G.tactic, D = T.battlefieldOf({ daodanche: 500 }, { buxingji: 500 }, 0, {});
   var st = function (id) { return T.stepsToWall(DATA.TROOPS[id].spd, DATA.TROOPS[id].range, D); };
@@ -9358,7 +9360,7 @@ check('反击：双方都在射程内才触发（隔空打不被反击）', (fun
   /* 纯近战互殴：双方都够得着 → 必有反击 */
   var melee = cnt(G.tactic.simulate({ buxingji: 2000 }, null, { buxingji: 2000 }, 0, null, { kind: 'wild' }));
   /* 远程隔空打纯近战 → 不该有反击。
-     v89.229（兵种重构）：步行机承**长矛手速度 300**（> 导弹车 250），2000:2000 时能一路贴脸 → 会吃反击；
+     v89.229（兵种重构）：步行机承**长矛手速度 300**（> 自走火炮 250），2000:2000 时能一路贴脸 → 会吃反击；
      判据改为**压倒性远程**（20000 : 500，近战在接敌前被清空）—— 口径（隔空打不被反击）不变，
      只把"必死"的量级写明（旧民兵速度 200 < 250，"走到跟前就被打光"天然成立）。 */
   var far = cnt(G.tactic.simulate({ daodanche: 20000 }, null, { buxingji: 500 }, 0, null, { kind: 'wild' }));
@@ -9429,9 +9431,9 @@ check('旧相克出口退役 · 新三系克制在册（v91.08 老板「克制�
     && DATA.COUNTER_ATK === undefined && DATA.COUNTER_DEF === undefined
     && !!DATA.COUNTER && !!DATA.TROOP_ROLE && typeof G.tactic.counterMulOf === 'function';
 })());
-check('实测：防守差异只由纸面防御决定（导弹车打步行机 > 打盾卫 > 打自行火炮）——无克制口径', (function () {
+check('实测：防守差异只由纸面防御决定（自走火炮打步行机 > 打盾卫 > 打东风快递）——无克制口径', (function () {
   /* v89.179：防御向表退役后，排序改由纸面数值决定（实测杀伤 473 / 340 / 18）：
-     步行机（防150·血1800）> 盾卫（防250·血2400）> 自行火炮（防600·血36000 巨肉）。 */
+     步行机（防150·血1800）> 盾卫（防250·血2400）> 东风快递（防600·血36000 巨肉）。 */
   var kill = function (def) {
     var r = G.tactic.simulate({ daodanche: 1000 }, null, def, 0, null, { kind: 'wild' });
     var n = 0;
@@ -9453,8 +9455,8 @@ check('实测：防守差异只由纸面防御决定（导弹车打步行机 > �
     });
     return n;
   };
-  return '导弹车1000 的杀伤：打步行机 ' + kill({ buxingji: 1000 }) + ' / 打盾卫 ' + kill({ dunwei: 1000 }) +
-    ' / 打自行火炮 ' + kill({ huopao: 1000 }) + '（纸面防御越高越难射穿）';
+  return '自走火炮1000 的杀伤：打步行机 ' + kill({ buxingji: 1000 }) + ' / 打盾卫 ' + kill({ dunwei: 1000 }) +
+    ' / 打东风快递 ' + kill({ huopao: 1000 }) + '（纸面防御越高越难射穿）';
 })());
 check('回合上限 30（tactic 与 dice 引擎同一口径）', (function () {
   var b = require('fs').readFileSync(require('path').join(__dirname, 'js', 'battle.js'), 'utf8');
@@ -9521,7 +9523,7 @@ check('抛射科技 5%/级（对齐原版），满级战场距离与原版公开
   var ok = t.per === 0.05 && Math.abs(k - 1.5) < 1e-9 && K0 === 1.25
     && D('daodanche') === eff('daodanche') && D('wuren') === eff('wuren')
     && D('huopao') === eff('huopao')
-    /* 新口径下的满抛射量级（与旧公开值同阶）：导弹车 2250 / 无人轰炸机 2625 / 自行火炮 3000 */
+    /* 新口径下的满抛射量级（与旧公开值同阶）：自走火炮 2250 / 无人轰炸机 2625 / 东风快递 3000 */
     && Math.round(Math.round(1200 * k) * K0) === 2250
     && Math.round(Math.round(1400 * k) * K0) === 2625
     && Math.round(Math.round(1600 * k) * K0) === 3000;
@@ -9533,8 +9535,8 @@ check('抛射科技 5%/级（对齐原版），满级战场距离与原版公开
   var k = 1 + G.systems.techBonus('range');
   var D = function (id) { var o = {}; o[id] = 1; return G.tactic.battlefieldOf(o, { buxingji: 1 }, 0, {}); };
   var w = (G.story && G.story.combatMod) ? G.story.combatMod().archerRange : 1;
-  var txt = '满抛射 ×' + k.toFixed(2) + '（天气 ×' + w + '）：导弹车 ' + D('daodanche') + ' / 无人轰炸机 ' +
-    D('wuren') + ' / 自行火炮 ' + D('huopao') + '　无天气时 = 2250 / 2625 / 3000（×1.25 口径）';
+  var txt = '满抛射 ×' + k.toFixed(2) + '（天气 ×' + w + '）：自走火炮 ' + D('daodanche') + ' / 无人轰炸机 ' +
+    D('wuren') + ' / 东风快递 ' + D('huopao') + '　无天气时 = 2250 / 2625 / 3000（×1.25 口径）';
   G.techSet('paoshe', bak);
   return txt;
 })());
@@ -9628,8 +9630,8 @@ check('实测：近战冲脸进双倍区、远程对射不进（我们的"前进
     }).length;
   };
   /* v89.229（兵种重构）：近战侧 = **步行机**（射程 50 < 墙前距离 → 冲脸进双倍区）·
-     远程侧 = 自行火炮（射程 1600 → "前进"在射程边界停，不进双倍区）。
-     旧夹具 破门车/迫击炮 合并后同 id（且自行火炮是远程），两侧取不同兵种。 */
+     远程侧 = 东风快递（射程 1600 → "前进"在射程边界停，不进双倍区）。
+     旧夹具 破门车/迫击炮 合并后同 id（且东风快递是远程），两侧取不同兵种。 */
   var melee = dbl({ buxingji: 3000 }, 'buxingji');
   var far = dbl({ huopao: 3000 }, 'huopao');
   return melee > 0 && far === 0;
@@ -9644,10 +9646,10 @@ check('实测：近战冲脸进双倍区、远程对射不进（我们的"前进
     }).length;
   };
   return '步行机（近战）双倍回合 ' + dbl({ buxingji: 3000 }, 'buxingji') +
-    '　自行火炮（远程）双倍回合 ' + dbl({ huopao: 3000 }, 'huopao');
+    '　东风快递（远程）双倍回合 ' + dbl({ huopao: 3000 }, 'huopao');
 })());
 check('实测：指定目标为箭塔可拆，且**拆完自动转打守军**（不许对着空地站到 30 回合 · 守方固定 hold[^v89.203]）', (function () {
-  /* ⚠️ 必须带英雄：无英雄时攻击力只有基础值，4000 自行火炮 30 回合也拆不完 100 座 →
+  /* ⚠️ 必须带英雄：无英雄时攻击力只有基础值，4000 东风快递 30 回合也拆不完 100 座 →
      "拆完转打守军"这条根本走不到，会变成假红（第一版就栽在这）。 */
   var gT = G.makeGeneral('拆塔', 40, 'idle');
   gT.tong = 500; gT.yw = 300; gT.zm = 200;
@@ -10023,7 +10025,7 @@ check('作坊有独立的队列查询口与格位', (function () {
   return typeof G.craftWorkshopsOf === 'function' && typeof G.craftLevel === 'function'
     && typeof G.firstWorkshopIdx === 'function';
 })());
-check('器械不看军营等级（造自行火炮不必先有 8 级军营）', (function () {
+check('器械不看军营等级（造东风快递不必先有 8 级军营）', (function () {
   var u = DATA.TROOPS.huopao.unlock;
   return !!u.junying && !!u.gongjiangzuofang
     && !/t\.craft && k === 'junying'\) continue/.test('') === true
@@ -13483,11 +13485,14 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
   console.log('  --- ③ 侧栏驻军精简 ---');
   /* v89.215（老板）规则变更：「驻军，不再设置下拉」—— 头不再是折叠键（去 action/箭头），
      标题仍只留二字。旧断言要求 span 紧贴串首，按新形态重写。 */
-  check('结构：驻军标题只留「驻军」二字（v89.215：且不再是折叠键）', (function () {
+  check('结构：驻军标题只留「驻军」二字（v91.36：标题移入 side-title · 仍是折叠键退役）', (function () {
     var body = code49(uS49, 'ui.renderGarrison = function');
-    return body.indexOf('⚔ 驻军') >= 0
+    /* v91.36：标题「⚔ 驻军」移入 index.html 的 .side-title（与「资源」同款），
+       renderGarrison 只渲染内容区 → 正文里**不再**含标题文案，也不得含折叠/长文案。 */
+    return /⚔ 驻军/.test(hS49 || '')
       && body.indexOf('种 · 耗粮') < 0 && body.indexOf('c.name') < 0
-      && body.indexOf('toggle-garrison') < 0 && body.indexOf('gb-arrow') < 0;
+      && body.indexOf('toggle-garrison') < 0 && body.indexOf('gb-arrow') < 0
+      && body.indexOf('gb-head') < 0;
   })());
 
   /* ============================================================
@@ -18471,10 +18476,10 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
        溢出伤害作废：被主目标吃满后，另一支**毫发无损**（实证比读常数更硬）。 */
     check('v89.95（战斗）：一回合只打一个目标兵种（溢出作废 · 无溅射）', (function () {
       /* 前排：40 盾卫（先动、占最前）；后排：4000 泰坦机甲（射程 70 < 纵深 700 → 进不了战）。
-         7000 导弹车一轮的**原始伤害足以杀数千**，但只准打光前排的 40 名 ——
+         7000 自走火炮一轮的**原始伤害足以杀数千**，但只准打光前排的 40 名 ——
          溢出若还在溅射，后排 4000 泰坦机甲会被顺带打掉，这条断言就红。
-         v89.229（兵种重构）：旧后排 破门车（近战 · 血厚）合并后并入自行火炮 ——
-         而自行火炮射程 1600 > 纵深 700，会开火并**吃反击**（后排掉血 = 假红），
+         v89.229（兵种重构）：旧后排 破门车（近战 · 血厚）合并后并入东风快递 ——
+         而东风快递射程 1600 > 纵深 700，会开火并**吃反击**（后排掉血 = 假红），
          故后排改用泰坦机甲（射程 70 · 血 15000 · 本轮最厚重的单位），"进不了战"的前提不变。 */
       var env1 = G.tactic.begin({ daodanche: 7000 }, null, { dunwei: 40, taitan: 4000 }, 0, null,
         { sieging: false, kind: 'wild', defName: 'x', field: 700 });
@@ -19100,7 +19105,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       if (!tW.ok) return false;
       var bak = G.ui._expRes, bakArmy = c94.army;
       c94.army = { daodanche: 10000 };
-      document.getElementById('exp-daodanche').value = '5000';   /* 面板输入桩：我方 5000 导弹车 */
+      document.getElementById('exp-daodanche').value = '5000';   /* 面板输入桩：我方 5000 自走火炮 */
       G.ui._expRes = tW;
       var pw = G.ui.expPowerOf();
       document.getElementById('exp-daodanche').value = '';
@@ -20888,8 +20893,8 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
             { kind: 'city', sieging: true, defName: '试', wallLv: 10, towers: 8,
               /* 攻方指令：专拆工事（不打这个就测不到拦住拆墙）；守方按用例参数 */
               stances: { atk: { huopao: { s: 'advance', t: DATA.TARGET_WALL } }, def: ov } });
-          /* 计时口径（探针实测）：自行火炮推进 3 回合够到工事；拆**一座**要 4 回合
-             （8 座 × 2000 耐久，200 台自行火炮单回合约 500 点）→ 走 8 回合：
+          /* 计时口径（探针实测）：东风快递推进 3 回合够到工事；拆**一座**要 4 回合
+             （8 座 × 2000 耐久，200 台东风快递单回合约 500 点）→ 走 8 回合：
              对照场已拆掉 1 座（left=7），野战军场 20 回合都纹丝不动（left=8）。 */
           for (var _si2 = 0; _si2 < 8; _si2++) env.step();
           return env.finish();
@@ -21878,7 +21883,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         return !!r && r.ok && r.back === 800 && r.backBy && r.backBy.buxingji === 500
           && r.backBy.daodanche === 300
           && log.length === 1 && rec.n === 800 && rec.by.buxingji === 500
-          && /步行机/.test(his) && /导弹车/.test(his) && /800/.test(his);
+          && /步行机/.test(his) && /自走火炮/.test(his) && /800/.test(his);
       } finally {
         s.wounded = bk.w; s.woundedArmy = bk.wa; s.res.gold = bk.gold;
         s.autoHealLog = bk.log; s.autoHealState = bk.st; c.army = bk.army;
@@ -22093,7 +22098,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })());
 
     console.log('  --- ⑨ 兵种数值梳理（需求 9）---');
-    check('⑨ desc 与实际字段一致（运输平台 / 自行火炮 / 主战机甲三处已修）', (function () {
+    check('⑨ desc 与实际字段一致（运输平台 / 东风快递 / 主战机甲三处已修）', (function () {
       var T = D96.TROOPS;
       var bad = [];
       Object.keys(T).forEach(function (id) {
@@ -22877,15 +22882,15 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       return tOK && bOK && uOK;
     })());
 
-    /* ⑦ 同名兵种互射（导弹车 vs 导弹车）：配对不串台（实测） */
+    /* ⑦ 同名兵种互射（自走火炮 vs 自走火炮）：配对不串台（实测） */
     var c7 = (function () {
-      var snap = { field: 1200, atk: [{ id: 'daodanche', name: '导弹车', count: 100, adv: 100 }],
-        def: [{ id: 'daodanche', name: '导弹车', count: 100, adv: 100 }], towers: null };
+      var snap = { field: 1200, atk: [{ id: 'daodanche', name: '自走火炮', count: 100, adv: 100 }],
+        def: [{ id: 'daodanche', name: '自走火炮', count: 100, adv: 100 }], towers: null };
       var r = { r: 1, gap: 300, events: [
-        { kind: 'attack', side: 'def', id: 'daodanche', name: '导弹车', target: '导弹车', targetId: 'daodanche', kill: 20 },
-        { kind: 'counter', side: 'atk', id: 'daodanche', name: '导弹车', target: '导弹车', targetId: 'daodanche', kill: 18 },
-        { kind: 'attack', side: 'atk', id: 'daodanche', name: '导弹车', target: '导弹车', targetId: 'daodanche', kill: 16 },
-        { kind: 'counter', side: 'def', id: 'daodanche', name: '导弹车', target: '导弹车', targetId: 'daodanche', kill: 14 },
+        { kind: 'attack', side: 'def', id: 'daodanche', name: '自走火炮', target: '自走火炮', targetId: 'daodanche', kill: 20 },
+        { kind: 'counter', side: 'atk', id: 'daodanche', name: '自走火炮', target: '自走火炮', targetId: 'daodanche', kill: 18 },
+        { kind: 'attack', side: 'atk', id: 'daodanche', name: '自走火炮', target: '自走火炮', targetId: 'daodanche', kill: 16 },
+        { kind: 'counter', side: 'def', id: 'daodanche', name: '自走火炮', target: '自走火炮', targetId: 'daodanche', kill: 14 },
       ] };
       var lines = G.ui.btRoundLines(r, snap);
       var atkLine = '', defLine = '';
@@ -24018,7 +24023,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var h = G.ui.marchAffairsHTML();
       return h.indexOf('class="camp-cards"') >= 0
         && (h.match(/class="camp-card"/g) || []).length === 2
-        && h.indexOf('步行机') >= 0 && h.indexOf('导弹车') >= 0
+        && h.indexOf('步行机') >= 0 && h.indexOf('自走火炮') >= 0
         && h.indexOf('伏击车') >= 0 && h.indexOf('步行机') >= 0;
     })());
     check('§113① 「兵源与征募」「军心」两卡退役（军务处只剩两营）', (function () {
@@ -24841,11 +24846,11 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var snap = {
         field: 1800, towers: null,
         atk: [{ id: 'buxingji', name: '步行机', count: 100, stance: 'advance' },
-          { id: 'daodanche', name: '导弹车', count: 50, stance: 'advance' }],
+          { id: 'daodanche', name: '自走火炮', count: 50, stance: 'advance' }],
         def: [{ id: 'buxingji', name: '步行机', count: 80, stance: 'advance' }]
       };
       var html = G.ui.btSideHTML(snap, 'atk');
-      /* v89.140：只列在场（2 格 = 步行机 + 导弹车）· 无 off 灰暗格；
+      /* v89.140：只列在场（2 格 = 步行机 + 自走火炮）· 无 off 灰暗格；
          v89.148：表头的"（2 队）"备注**已去掉**（老板 3）。 */
       var nOn = (html.match(/class="bt-card"/g) || []).length
         + (html.match(/class="bt-card dead"/g) || []).length;
@@ -24861,7 +24866,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         && /var spdFloor = Math\.round\(\(fastA \+ fastD\) \* T\.MARCH_ROUNDS_MIN\);/.test(tc)
         && /Math\.max\(T\.FIELD_MIN, Math\.round\(maxR \* T\.FIELD_RANGE_K\), spdFloor\)/.test(tc);
     })());
-    check('§120③ 实测：伏击车纵深 2400 > 步行机 1400（速度参与）· 自行火炮 1899（射程参与）', (function () {
+    check('§120③ 实测：伏击车纵深 2400 > 步行机 1400（速度参与）· 东风快递 1899（射程参与）', (function () {
       var T = G.tactic;
       var D = function (a, b) { return T.battlefieldOf(a, b, 0, {}); };
       var q = D({ fujiche: 500 }, { fujiche: 500 });
@@ -26087,7 +26092,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     check('§129⑤ 战场条填满 board 行 · 兵牌按 --rel 纵向铺满 · dense 档（>8 队）', (function () {
       var snap = { field: 1400, towers: null,
         atk: [{ id: 'buxingji', name: '步行机', count: 100, stance: 'advance', adv: 100 },
-          { id: 'daodanche', name: '导弹车', count: 50, stance: 'advance', adv: 100 }],
+          { id: 'daodanche', name: '自走火炮', count: 50, stance: 'advance', adv: 100 }],
         def: [{ id: 'buxingji', name: '步行机', count: 80, stance: 'advance', adv: 100 }] };
       var html = G.ui.btFieldHTML(snap);
       /* 9 队 → 挂 dense */
@@ -27194,14 +27199,14 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     /* ---- ⑤ 逐回合文字复盘 ---- */
     check('§157⑥ 逐回合文字：唯一出口 roundLinesOf（与关键帧措辞同源）+ 入口接线 + 空档返回空', (function () {
       var fake = { engine: 'tactic', roundsLog: [
-        { r: 1, a: 100, d: 80, events: [{ kind: 'attack', side: 'atk', id: 0, name: '步行机', target: '导弹车', kill: 5 }] },
+        { r: 1, a: 100, d: 80, events: [{ kind: 'attack', side: 'atk', id: 0, name: '步行机', target: '自走火炮', kill: 5 }] },
         { r: 2, a: 95, d: 70, events: [] }
       ], winner: 'atk' };
       var lines = G.battle.roundLinesOf(fake);
       var rf = G.battle.replayFramesOf(fake);
       return lines.length === 2
         && lines[0].indexOf('第1回合（我 100 · 敌 80）：') === 0
-        && lines[0].indexOf('步行机→导弹车 杀 5') >= 0
+        && lines[0].indexOf('步行机→自走火炮 杀 5') >= 0
         && lines[1].indexOf('（无交火）') >= 0
         && rf.frames[0].ev === lines[0].slice(lines[0].indexOf('：') + 1)   /* 同源：与关键帧一字不差 */
         && G.battle.roundLinesOf({ roundsLog: [] }).length === 0
@@ -27950,10 +27955,10 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       window.__r163r = 'n=' + n + (bad.length ? (' · ' + bad.join(',')) : '');
       return bad.length === 0 && n >= 1;
     })(), '机车 ' + (window.__r163r || '?'));
-    check('§163 器械（craft：无人轰炸机/自行火炮）时间未动（仍 ≥1000）', (function () {
+    check('§163 器械（craft：无人轰炸机/东风快递）时间未动（仍 ≥1000）', (function () {
       return DATA.TROOPS.wuren.time >= 1000 && DATA.TROOPS.huopao.time >= 1000;
     })());
-    check('§163 表序即分组序（grp 连续块 · 无交错）+ 卡面显示（步行机「30秒」/ 导弹车「1分」/ 泰坦机甲「5分」）', (function () {
+    check('§163 表序即分组序（grp 连续块 · 无交错）+ 卡面显示（步行机「30秒」/ 自走火炮「1分」/ 泰坦机甲「5分」）', (function () {
       /* v89.229（兵种重构）**规则变更**：旧的"同类内按时长升序"排序断言随分页重构退役 ——
          新表序 = 老板给定的三组分页序（后勤支援 4 / 主力战斗 5 / 尖端武装 5），
          组块**连续**才是新口径的不变量（面板按表序渲染 · 组页互斥）。 */
@@ -27972,7 +27977,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         && U.dur(DATA.TROOPS.buxingji.time) === '30秒' && U.dur(DATA.TROOPS.daodanche.time) === '1分'
         && U.dur(DATA.TROOPS.taitan.time) === '5分';
     })());
-    check('§163 ★ 批量换算 @当前倍速：100 导弹车 ≤1 分钟现实 · 100 主战机甲 ≤5 分钟现实', (function () {
+    check('§163 ★ 批量换算 @当前倍速：100 自走火炮 ≤1 分钟现实 · 100 主战机甲 ≤5 分钟现实', (function () {
       var ts = G.timeScale();
       var a = DATA.TROOPS.daodanche.time * 100 / ts;
       var b = DATA.TROOPS.zhuzhan.time * 100 / ts;
@@ -28027,7 +28032,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   /* ============================================================
    * §164. v89.164（老板 3）：
    *   ① 城主六维加成改**曲线**（分段减半 · 收敛 +300%/+150%）
-   *   ② 征兵时长按五条对齐关系重排（狂猎=步行机 · 盾卫=电磁盾卫 · 武装直升机>导弹车 · 伏击车=狂猎 · 主战机甲=主战机甲）
+   *   ② 征兵时长按五条对齐关系重排（狂猎=步行机 · 盾卫=电磁盾卫 · 武装直升机>自走火炮 · 伏击车=狂猎 · 主战机甲=主战机甲）
    *   ③ 智能战斗系统（DATA.SMART_PLAN · stepBattle 执行 · 默认开）
    * ============================================================ */
   console.log('\n===== 164. v89.164（六维曲线 · 时长对齐 · 智能战斗） =====');
@@ -28075,10 +28080,10 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })());
 
     console.log('  --- ② 征兵时长 · 五条对齐关系 ---');
-    check('§164②/§229 ★ 征兵时长承原型：狂猎=伏击车 · 盾卫=电磁盾卫 · 武装直升机>导弹车 · 主战机甲>步行机 · 泰坦机甲最慢', (function () {
+    check('§164②/§229 ★ 征兵时长承原型：狂猎=伏击车 · 盾卫=电磁盾卫 · 武装直升机>自走火炮 · 主战机甲>步行机 · 泰坦机甲最慢', (function () {
       /* v89.229（兵种重构）**规则变更**：五条对齐关系的锚点随 18→14 换代 ——
          合并后仍成立的是"原型对"：狂猎=王牌战车 70 = 伏击车=摩托游骑 70 ·
-         盾卫 35 = 电磁盾卫=防暴甲兵 35 · 武装直升机=突击摩托 65 > 导弹车=弩手 60 ·
+         盾卫 35 = 电磁盾卫=防暴甲兵 35 · 武装直升机=突击摩托 65 > 自走火炮=弩手 60 ·
          主战机甲=重甲战车 150 > 步行机=长矛手 30 · 泰坦机甲=变异巨兽 300 = 全表最慢。 */
       var T = DATA.TROOPS;
       return T.kuanglie.time === T.fujiche.time
@@ -28086,12 +28091,12 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         && T.wuzhi.time > T.daodanche.time
         && T.zhuzhan.time > T.buxingji.time
         && T.taitan.time > T.zhuzhan.time
-        /* 器械（自行火炮 5830 / 无人轰炸机 2910）是制造品、不走征兵节奏 → 豁免本次比较 */
+        /* 器械（东风快递 5830 / 无人轰炸机 2910）是制造品、不走征兵节奏 → 豁免本次比较 */
         && Object.keys(T).every(function (id) {
           return T[id].craft || T[id].time <= T.taitan.time;
         });
     })(), '狂猎/伏击车 ' + DATA.TROOPS.kuanglie.time + ' · 盾卫/电磁盾卫 ' + DATA.TROOPS.dunwei.time
-      + ' · 武装直升机 ' + DATA.TROOPS.wuzhi.time + '>导弹车 ' + DATA.TROOPS.daodanche.time
+      + ' · 武装直升机 ' + DATA.TROOPS.wuzhi.time + '>自走火炮 ' + DATA.TROOPS.daodanche.time
       + ' · 主战机甲 ' + DATA.TROOPS.zhuzhan.time + '>步行机 ' + DATA.TROOPS.buxingji.time
       + ' · 泰坦机甲 ' + DATA.TROOPS.taitan.time + '（全表最慢）');
     check('§164② 上限口径保持（徒步 ≤60 · 机车 ≤300 · 器械未动 · v89.230 三态换代）', (function () {
@@ -28811,10 +28816,10 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     console.log('  --- ② 目标评分器（真调） ---');
     check('§175② ★ smartPickTarget 真调：战力碾压下 front 选最靠前 · dmg/eff 选最软',
       (function () {
-        var u = { id: 'daodanche', name: '导弹车', count: 500, spd: 250, range: 1200, adv: 800 };
+        var u = { id: 'daodanche', name: '自走火炮', count: 500, spd: 250, range: 1200, adv: 800 };
         var foes = [
           { id: 'dunwei', name: '盾卫', count: 500, adv: 2500, stance: 'advance', spd: 275, range: 30, hpPer: 2400 },
-          { id: 'daodanche', name: '导弹车', count: 100, adv: 100, stance: 'hold', spd: 250, range: 1200, hpPer: 1920 },
+          { id: 'daodanche', name: '自走火炮', count: 100, adv: 100, stance: 'hold', spd: 250, range: 1200, hpPer: 1920 },
         ];
         var tf = G.battle.smartPickTarget(u, foes, 'front', 4000);
         var td = G.battle.smartPickTarget(u, foes, 'dmg', 4000);
@@ -28999,7 +29004,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         && uS.indexOf('ui.fieldScaleHTML = function') >= 0);
       var snap176 = { field: 2600, atk: [
           { id: 'buxingji', name: '步行机', count: 80, start: 100, adv: 1400, spd: 300, er: 50, stance: 'advance' }],
-        def: [{ id: 'daodanche', name: '导弹车', count: 90, start: 100, adv: 1400, spd: 250, er: 1200, stance: 'advance' }],
+        def: [{ id: 'daodanche', name: '自走火炮', count: 90, start: 100, adv: 1400, spd: 250, er: 1200, stance: 'advance' }],
         towers: null };
       var fh = G.ui.btFieldHTML(snap176);
       check('§176⑤b ★ btFieldHTML 输出：三线（bt-fl-a）+ 标尺 + 接敌角标（incoming）',
@@ -29192,7 +29197,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
 
   /* ═══════════════════════════════════════════════════════════════
    * §178（v89.178）——兵种克制降档（老板：「兵种克制太厉害了……外的系数给到3倍，
-   *   游戏体感很差。766导弹车杀伤35个敌方伏击车，这合理吗。」）
+   *   游戏体感很差。766自走火炮杀伤35个敌方伏击车，这合理吗。」）
    *   + 出征预估文案精简（共派遣 / 区间·情报 / 此战凶险 三处）
    * ═══════════════════════════════════════════════════════════════ */
   (function () {
@@ -29209,7 +29214,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         && raw178.indexOf('v89.178') >= 0 && raw178.indexOf('取消所有克制关系') >= 0;
     })());
 
-    check('§178②（v89.179 重写）无克制口径：766 导弹车打 800 伏击车首轮齐射走纸面值（≥20）', (function () {
+    check('§178②（v89.179 重写）无克制口径：766 自走火炮打 800 伏击车首轮齐射走纸面值（≥20）', (function () {
       /* v89.178 时这里比"克制下 / 无克制"两臂；v89.179 全撤后只剩单一口径 ——
          判据改为**下限**（旧克制把首轮齐射压到 11~17，全撤后应回到纸面量级）。
          注：受天气影响（雨天远程射程 −20%）—— 固定晴天再跑，跑完还原。 */
@@ -29315,8 +29320,8 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   /* ============================================================
    * §180（v89.180）—— 拆械特性 + 智能风筝（老板四条）
    * 老板原话：「1.补无人轰炸机拆器械特性 / 2.你在意的是每幸存者效率，我在意的是能上场的
-   *   总幸存者和总攻防 / 3.武装直升机是带速度的导弹车，……前出接敌（拉进射程），后边持续
-   *   无伤消耗，……距离难道不是导弹车的生命线吗 / 4.如果对导弹车的运用只会前直接对对碰，
+   *   总幸存者和总攻防 / 3.武装直升机是带速度的自走火炮，……前出接敌（拉进射程），后边持续
+   *   无伤消耗，……距离难道不是自走火炮的生命线吗 / 4.如果对自走火炮的运用只会前直接对对碰，
    *   那是还不够智能」
    * 标定证据：probe_v89180a（总幸存者矩阵）· b（风筝候选）· c（拆械倍率）· d（落地后对照）
    * ============================================================ */
@@ -29326,7 +29331,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
 
     /* ① 拆械表结构 */
     check('§180① 拆械表：无人轰炸机 vsMech=3 · 三器械 mech 标签（四原型合并）· 非器械零污染', (function () {
-      /* v89.229（兵种重构）：mech 集合随 18→14 换代 —— 破门车+迫击炮 合并为自行火炮
+      /* v89.229（兵种重构）：mech 集合随 18→14 换代 —— 破门车+迫击炮 合并为东风快递
          → 器械从四项变三 id（huopao / wuren / yunshu），集合语义不变。 */
       var T = DATA.TROOPS;
       var mechIds = Object.keys(T).filter(function (k) { return T[k].mech; }).sort();
@@ -29336,7 +29341,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })());
 
     /* ② 拆械引擎真调（单变量对照：×3 胜 / ×1 负，防"没生效"平凡解） */
-    check('§180② 拆械引擎真调：无人轰炸机打自行火炮（×3 胜 · ×1 负）· 打步行机不受影响', (function () {
+    check('§180② 拆械引擎真调：无人轰炸机打东风快递（×3 胜 · ×1 负）· 打步行机不受影响', (function () {
       var bak = DATA.TROOPS.wuren.vsMech;
       var r3, r1, rK;
       try {
@@ -29367,8 +29372,8 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         && f(tu, 300, null, 'echelon', { kite: true, threat: 350, eRange: 50, back: 0 }) === 'hold';
     })());
 
-    /* ④ 风筝真实管线：武装直升机（能跑）出现"后退"指令；导弹车（跑不动）不出现 */
-    check('§180④ 风筝真实管线：武装直升机 vs 步行机 8 回合内出「后退」· 导弹车为对照不出现', (function () {
+    /* ④ 风筝真实管线：武装直升机（能跑）出现"后退"指令；自走火炮（跑不动）不出现 */
+    check('§180④ 风筝真实管线：武装直升机 vs 步行机 8 回合内出「后退」· 自走火炮为对照不出现', (function () {
       function runOne(A, B) {
         var id = Object.keys(A)[0];
         var env = G.tactic.begin(JSON.parse(JSON.stringify(A)), null, JSON.parse(JSON.stringify(B)), 0, null, {});
@@ -29409,10 +29414,10 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
 
   /* ============================================================
    * §181（v89.181）—— 狂猎加强 + 血量合理性复核 + 拍板存档
-   * 老板原话：「1.导弹车不提速 2.狂猎稍微加强 3.不要 4.为啥现在兵种的血量
+   * 老板原话：「1.自走火炮不提速 2.狂猎稍微加强 3.不要 4.为啥现在兵种的血量
    *   这么高，确认是否是合理的数值设计，是就算了」
    * 标定证据：probe_v89180e（血量复核）· probe_v89180f（狂猎候选扫描）
-   * 存档（拍板，不锁测试值，仅供后人检索）：导弹车 spd 250 不提速 · 拆械 vsMech 3 不加码
+   * 存档（拍板，不锁测试值，仅供后人检索）：自走火炮 spd 250 不提速 · 拆械 vsMech 3 不加码
    * ============================================================ */
   (function () {
     console.log('  --- §181 狂猎加强与血量基线 ---');
@@ -29439,7 +29444,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var a = G.battle.simulate({ daodanche: 6000 }, null, { buxingji: 6000 }, 0, null, { kind: 'wild' });
       var b = G.battle.simulate({ fujiche: 6000 }, null, { buxingji: 6000 }, 0, null, { kind: 'wild' });
       return a.rounds >= 3 && a.rounds <= 24 && b.rounds >= 2 && b.rounds <= 24;
-    })(), '导弹车vs步行机 14 / 伏击车vs步行机 4（2026-09-28 读数）');
+    })(), '自走火炮vs步行机 14 / 伏击车vs步行机 4（2026-09-28 读数）');
 
     check('§181③b 小规模必收敛（步行机 20v20 · round 取整口径）', (function () {
       var r = G.battle.simulate({ buxingji: 20 }, null, { buxingji: 20 }, 0, null, { kind: 'wild' });
@@ -30721,7 +30726,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       finally { G.state = bk; }
       return out;
     })();
-    check('§191⑧/v90.12 自动征兵默认全部城市（两城各补 1 单）· 器械纳入目标表（自行火炮/无人轰炸机）', at191.ok === true, JSON.stringify(at191));
+    check('§191⑧/v90.12 自动征兵默认全部城市（两城各补 1 单）· 器械纳入目标表（东风快递/无人轰炸机）', at191.ok === true, JSON.stringify(at191));
   })();
 
   /* ============================================================
@@ -30747,7 +30752,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         var env = G.tactic.begin({ daodanche: 3000 }, null, { fujiche: 3000, daodanche: 3000 }, 0, null, { field: 2300 });
         env.units.atk.forEach(function (u) { if (u.id === 'daodanche') u.adv = 267; });
         env.units.def.forEach(function (u) {
-          if (u.id === 'fujiche') u.adv = 875;          /* 距我导弹车 1158 —— 射程 1200 内 */
+          if (u.id === 'fujiche') u.adv = 875;          /* 距我自走火炮 1158 —— 射程 1200 内 */
           if (u.id === 'daodanche') u.adv = -600;       /* 目标：3167 —— 任何射程外 */
           env.setCmd('def', u.id, { s: 'hold' });
         });
@@ -30766,7 +30771,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         var env = G.tactic.begin({ daodanche: 3000 }, null, { fujiche: 3000, daodanche: 3000 }, 0, null, { field: 2300 });
         env.units.atk.forEach(function (u) { if (u.id === 'daodanche') u.adv = 900; });
         env.units.def.forEach(function (u) {
-          if (u.id === 'fujiche') u.adv = 875;          /* 距我导弹车 525（更近） */
+          if (u.id === 'fujiche') u.adv = 875;          /* 距我自走火炮 525（更近） */
           if (u.id === 'daodanche') u.adv = 300;        /* 目标：1100 —— 射程内 */
           env.setCmd('def', u.id, { s: 'hold' });
         });
@@ -33446,7 +33451,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })(), 'rows=' + rows215.length + ' / troops=' + TROOP_IDS.length);
 
     /* ② 行为：有兵的行数字对（千分位与 U.numText 同源） */
-    check('§215② 行为：有兵两行数字正确（步行机 1,234 · 导弹车 56）', (function () {
+    check('§215② 行为：有兵两行数字正确（步行机 1,234 · 自走火炮 56）', (function () {
       var seg = html215.split('data-troop="');
       var rowOf = function (id) {
         var s = seg.filter(function (x) { return x.indexOf(id + '"') === 0; })[0] || '';
@@ -33486,11 +33491,11 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         && !/\.gb-head \{[^}]*cursor: pointer/.test(h0);
     })());
 
-    /* ⑥ 结构：零行灰显样式在册 + 撑满（v76）保留 */
-    check('§215⑥ 结构：零行灰显样式在册 · 列表仍撑满（min-height 132px）', (function () {
+    /* ⑥ 结构：零行灰显样式在册（v91.36 起"撑满"改由 side-block 铺满链承担，不再靠 min-height 132px） */
+    check('§215⑥ 结构：零行灰显样式在册（驻军已并入 side-block · v91.36）', (function () {
       return /\.gb-row\.gb-zero \.gb-n \{ color: var\(--text-dim\)/.test(hS215)
         && /\.gb-row\.gb-zero \.gb-c \{ color: var\(--text-dim\)/.test(hS215)
-        && /\.gb-list \{ flex: 1 1 auto; min-height: 132px/.test(hS215);
+        && /side-block-garrison/.test(hS215);
     })());
 
     /* ⑦ 需求档案在册（老板原文关键句逐字） */
@@ -33884,7 +33889,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     check('§221④ 兵种旧缩写：可见面零泄漏（载具研究所行/天气/战术占位 · 任务文件已退役）', (function () {
       var uiSrc = rd221('js/ui.js'), d221 = rd221('js/data.js');
       return uiSrc.indexOf('伏击车需1级 · 主战机甲/武装直升机需3级') >= 0
-        && uiSrc.indexOf('战术名（如：导弹车后退）') >= 0
+        && uiSrc.indexOf('战术名（如：自走火炮后退）') >= 0
         && d221.indexOf('弓兵射程') < 0
         && !fs221.existsSync(path221.join(__dirname, 'js', 'questdata.js'));
     })());
@@ -33970,7 +33975,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var e2e = rd222('e2e-test.js');
       var left = OLD222.filter(function (w) { return e2e.indexOf(w) >= 0; });
       return left.length === 0
-        && e2e.indexOf('步行机') >= 0 && e2e.indexOf('导弹车') >= 0
+        && e2e.indexOf('步行机') >= 0 && e2e.indexOf('自走火炮') >= 0
         && e2e.indexOf('区镇落') >= 0 && e2e.indexOf('灰岗') >= 0;
     })(), '');
 
@@ -34009,7 +34014,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       buxingji: '步', dunwei: '盾', daodanche: '弹', wuzhi: '直', zhuzhan: '主',
       kuanglie: '狂', dianci: '磁', huopao: '炮', wuren: '轰', taitan: '泰' };
     /* 上一代（18 兵种）的简称里**未被继承**的字 —— 全部必须零残留。
-       盾/运/炮 三个字被新表继承（盾卫/运输平台/自行火炮承原型），故不列入。 */
+       盾/运/炮 三个字被新表继承（盾卫/运输平台/东风快递承原型），故不列入。 */
     var OLD223 = ['搬', '民', '斥', '矛', '弩', '摩', '装', '重', '破', '旧', '防', '突', '王', '甲', '兽'];
     var _r223a = '';
 
@@ -35851,7 +35856,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         && R.daodanche === 'pierce' && R.dunwei === 'heavy' && R.kuanglie === 'mobile');
       /* ② 倍率 = ±0.2（我克 ×1.2 · 被克 ×0.8 · 同系/未列 ×1） */
       var cm = G.tactic.counterMulOf;
-      c252('§252② 倍率 ±0.2（导弹车克盾卫 ×1.2 · 盾卫被克 ×0.8 · 同系/未列 ×1）',
+      c252('§252② 倍率 ±0.2（自走火炮克盾卫 ×1.2 · 盾卫被克 ×0.8 · 同系/未列 ×1）',
         Math.abs(cm('daodanche', 'dunwei') - 1.2) < 1e-9
         && Math.abs(cm('dunwei', 'daodanche') - 0.8) < 1e-9
         && cm('daodanche', 'daodanche') === 1 && cm('banche', 'dunwei') === 1);

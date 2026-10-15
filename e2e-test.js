@@ -4322,17 +4322,19 @@ async function runTests(dom, URL) {
       && !/\.ledger|\.lg-row/.test(h0);               /* 账册样式（含死选择器）已清 */
   })());
 
-  /* --- 驻军栏：标题只有两个字 --- */
+  /* --- 驻军栏：标题只有两个字（v91.36：标题移入 .side-title） --- */
   (function () {
     G.ui.renderSide();
-    const gb = document.querySelector('#garrison-bar');
-    const head = gb && gb.querySelector('.gb-head');
-    check('侧栏驻军标题只留「⚔ 驻军」（无城名/总数/种类/耗粮）', (function () {
-      if (!head) return false;
-      const t = head.textContent;
+    /* v91.36：驻军标题已并入独立 side-block 的 .side-title（与「资源」「城市属性」同款）。 */
+    const block = document.querySelector('.side-block-garrison');
+    const head = block && block.querySelector('.side-title');
+    const titleSpan = head && head.querySelector('span');
+    check('侧栏驻军标题只留「⚔ 驻军」（无城名/种类/耗粮）', (function () {
+      if (!titleSpan) return false;
+      const t = titleSpan.textContent;
       return t.indexOf('驻军') >= 0 && t.indexOf('种') < 0 && t.indexOf('耗粮') < 0
-        && /^[\s⚔驻军▾▸]+$/.test(t.replace(/\s/g, ''));
-    })(), head && head.textContent.trim().slice(0, 40));
+        && /^[\s⚔驻军]+$/.test(t.replace(/\s/g, ''));
+    })(), titleSpan && titleSpan.textContent.trim().slice(0, 40));
   })();
 
   /* --- v89.215（老板）：驻军栏 = 全兵种固定序 · 暂无记 0 · 去下拉（真 DOM） --- */
@@ -4356,9 +4358,10 @@ async function runTests(dom, URL) {
         && yb && yb.querySelector('.gb-c').textContent !== '0'
         && !yb.classList.contains('gb-zero');
     })());
-    check('v89.215 驻军头不再是折叠开关（无 data-action / 无箭头）', (function () {
-      const head = gb && gb.querySelector('.gb-head');
-      return !!head && !head.hasAttribute('data-action') && !gb.querySelector('.gb-arrow');
+    check('v91.36 驻军标题在 side-title（无 data-action / 无箭头）', (function () {
+      const block = document.querySelector('.side-block-garrison');
+      const head = block && block.querySelector('.side-title');
+      return !!head && !head.hasAttribute('data-action') && !head.querySelector('.gb-arrow');
     })());
     c.army = bk;
     G.ui.renderSide();
@@ -4742,19 +4745,21 @@ if (svBtn) {
   G.ui.setView('city');
   await sleep(90);
   /* v71（老板）：只显示城市命名 —— 坐标文字已撤，迁址两入口保留 */
-  check('★ 城市属性栏只显城名（无坐标），迁址/建筑入口在下拉行', (function () {
-    /* v91.25（老板）：身份行退役 —— 城名/操作移入「城市」下拉行（#city-switch-host）。 */
+  /* v91.34（老板）：🎲/📍/🏗 从「城市」下拉行**移入城市属性·城市名右侧**（键向右对齐）。 */
+  check('★ 城市属性栏只显城名（无坐标），迁址/建筑入口在城市名行', (function () {
     const host = (document.querySelector('#city-switch-host') || {}).innerHTML || '';
+    const cur = (document.querySelector('#city-cur-name') || {}).innerHTML || '';
     const attrs = document.querySelector('#city-attrs').innerHTML;
     const c0 = G.currentCity();
     return attrs.indexOf('500×500') < 0 && attrs.indexOf(G.coordText(c0)) < 0
       && host.indexOf(c0.name) >= 0
-      && host.indexOf('data-action="city-random"') >= 0 && host.indexOf('data-action="city-move-ask"') >= 0;
+      && cur.indexOf(c0.name) >= 0
+      && cur.indexOf('data-action="city-random"') >= 0 && cur.indexOf('data-action="city-move-ask"') >= 0;
   })());
   {
     const c70 = G.currentCity();
     const from70 = { x: c70.x, y: c70.y, ci: _ciOf(c70.x, c70.y) };
-    click(document.querySelector('#city-switch-host [data-action="city-random"]'));
+    click(document.querySelector('#city-cur-name [data-action="city-random"]'));
     await sleep(200);
     check('★ 一键随机：坐标已变、新格是平原',
       (c70.ci !== from70.ci)
@@ -4763,7 +4768,7 @@ if (svBtn) {
   }
   {
     const c71 = G.currentCity();
-    click(document.querySelector('#city-switch-host [data-action="city-move-ask"]'));
+    click(document.querySelector('#city-cur-name [data-action="city-move-ask"]'));
     await sleep(90);
     const mh70 = document.querySelector('#modal-root').innerHTML;
     check('★ 迁址弹窗：坐标输入 + 确认按钮（按弹窗规范）',
@@ -6692,7 +6697,7 @@ if (svBtn) {
         t: Date.now(), title: '§157 测试战报', win: true, type: 'war', fav: false,
         body: '【灰岗】攻城胜利', engine: 'tactic', rounds: 2, winner: 'atk',
         roundsLog: [
-          { r: 1, a: 100, d: 80, events: [{ kind: 'attack', side: 'atk', id: 0, name: '步行机', target: '导弹车', kill: 5 }] },
+          { r: 1, a: 100, d: 80, events: [{ kind: 'attack', side: 'atk', id: 0, name: '步行机', target: '自走火炮', kill: 5 }] },
           { r: 2, a: 95, d: 70, events: [] }
         ]
       });
@@ -6710,7 +6715,7 @@ if (svBtn) {
         const txt157 = box157 ? (box157.textContent || '') : '';
         check('§157：逐回合弹窗（一回合一行 · 首行含第1回合与交火事件 · 空回合写无交火）',
           rounds157.length === 2 && txt157.indexOf('第1回合') >= 0
-          && txt157.indexOf('步行机→导弹车 杀 5') >= 0 && txt157.indexOf('（无交火）') >= 0,
+          && txt157.indexOf('步行机→自走火炮 杀 5') >= 0 && txt157.indexOf('（无交火）') >= 0,
           'rounds=' + rounds157.length + ' txt=' + txt157.slice(0, 80));
       }
     } finally {
@@ -6959,13 +6964,13 @@ if (svBtn) {
     Object.keys(G.DATA.TROOPS).forEach((k) => {
       const t = G.DATA.TROOPS[k];
       /* v89.229（兵种重构）**规则变更**：cat 退役 → 口径改为"常备兵 ≤60 / 机车 ≤300"，
-         器械（craft · 制造品）不属征兵范畴（自行火炮 5830 / 无人轰炸机 2910 本就超线）。 */
+         器械（craft · 制造品）不属征兵范畴（东风快递 5830 / 无人轰炸机 2910 本就超线）。 */
       if (t.craft) return;
       if (!t.ride && t.time > 60) over163.push(t.name + '=' + t.time);
       if (t.ride && t.time > 300) over163.push(t.name + '=' + t.time);
     });
     check('v89.229 征兵时长：常备兵 ≤1 分 / 机车 ≤5 分（单兵耗时 · 游戏秒 · 器械豁免）', over163.length === 0,
-      over163.join('/') || ('步行机 ' + G.DATA.TROOPS.buxingji.time + ' · 导弹车 ' + G.DATA.TROOPS.daodanche.time
+      over163.join('/') || ('步行机 ' + G.DATA.TROOPS.buxingji.time + ' · 自走火炮 ' + G.DATA.TROOPS.daodanche.time
         + ' · 泰坦机甲 ' + G.DATA.TROOPS.taitan.time));
 
     /* ② 清单两段 + 召回宿主跟走（真 DOM · 真点击） */
@@ -7330,10 +7335,10 @@ if (svBtn) {
       host.id = 'bt-log';
       document.body.appendChild(host);
     }
-    const snap175 = { field: 4000, atk: [{ id: 'daodanche', name: '导弹车', count: 700, adv: 850, range: 1200 }],
-      def: [{ id: 'daodanche', name: '导弹车', count: 700, adv: 100, range: 1200 }], towers: null };
+    const snap175 = { field: 4000, atk: [{ id: 'daodanche', name: '自走火炮', count: 700, adv: 850, range: 1200 }],
+      def: [{ id: 'daodanche', name: '自走火炮', count: 700, adv: 100, range: 1200 }], towers: null };
     const fakeRec175 = { side: 'atk', smartRule: 'front',
-      smartLog: [{ r: 93, n: 3, rule: 'front', notes: ['导弹车 前进→防御', '伏击车 目标→导弹车', '步行机 目标→伏击车'] }] };
+      smartLog: [{ r: 93, n: 3, rule: 'front', notes: ['自走火炮 前进→防御', '伏击车 目标→自走火炮', '步行机 目标→伏击车'] }] };
     G.ui.btRoundLine({ r: 93, gap: 1800, events: [] }, snap175, fakeRec175);
     const lg175 = document.querySelector('#bt-log');
     check('★ v89.175 回合记录出现「智能调兵完成（调整 3 项…）· 采用「清前排」· 开始回合战斗」',
@@ -7360,7 +7365,7 @@ if (svBtn) {
 (function () {
   const snap176 = { field: 2600, round: 3, maxRounds: 30, towers: null,
     atk: [{ id: 'buxingji', name: '步行机', count: 80, start: 100, adv: 1400, spd: 300, er: 50, stance: 'advance' }],
-    def: [{ id: 'daodanche', name: '导弹车', count: 90, start: 100, adv: 1400, spd: 250, er: 1200, stance: 'advance' }] };
+    def: [{ id: 'daodanche', name: '自走火炮', count: 90, start: 100, adv: 1400, spd: 250, er: 1200, stance: 'advance' }] };
   check('v89.176 顶栏损失读数出现（btTopHTML · start↔count 我损 20%/敌损 10%）', (function () {
     const h = G.ui.btTopHTML({ cnt: 60 }, snap176);
     return h.indexOf('bt-loss') >= 0 && h.indexOf('我损 20%') >= 0 && h.indexOf('敌损 10%') >= 0;
@@ -7376,7 +7381,7 @@ if (svBtn) {
     host.id = 'bt-log'; document.body.appendChild(host);
     G.ui.btRoundLine({ r: 96, gap: 1500, events: [] }, snap176,
       { side: 'atk', smartRule: 'front', smartMode: 'spear',
-        smartLog: [{ r: 96, n: 2, rule: 'front', mode: 'spear', notes: ['导弹车 前进→防御'] }] });
+        smartLog: [{ r: 96, n: 2, rule: 'front', mode: 'spear', notes: ['自走火炮 前进→防御'] }] });
     const txt = host.textContent || '';
     return txt.indexOf('针尖麦芒') >= 0 && txt.indexOf('清前排') >= 0;
   })());
@@ -8870,7 +8875,7 @@ console.log('\n--- §180. 拆械与 live 滚动（v89.180） ---');
     click(document.querySelector('#modal-root [data-action="train-tab"][data-page="g3"]'));
     await sleep(180);
     const card211 = document.querySelector('#modal-root .troop-card[data-troop="huopao"]');
-    check('§229c-e② 自行火炮卡可选（无灰）', !!card211 && !card211.classList.contains('disabled'));
+    check('§229c-e② 东风快递卡可选（无灰）', !!card211 && !card211.classList.contains('disabled'));
     if (card211) {
       click(card211);
       await sleep(160);

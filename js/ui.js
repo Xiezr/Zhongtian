@@ -1073,11 +1073,41 @@
     $('#screen-create').classList.add('hidden');
     $('#screen-game').classList.remove('hidden');
     ui.setView('city');
-    /* v91.33（性能）：**空闲后台预建 3D 地图**（含全版本戳）—— 把进地图的一次性构建挪到进游戏后。 */
-    if (GAME.map3d && GAME.map3d.preload) {
-      var _pre = function () { try { GAME.map3d.preload(); } catch (e) { } };
-      if (typeof requestIdleCallback === 'function') requestIdleCallback(_pre, { timeout: 4000 }); else setTimeout(_pre, 500);
+    /* v91.36（老板）：「不要在首次载入主页/城市管理界面时预加载别的了，太影响心情」——
+       v91.33 的后台预建（即便 v91.35 已分帧 + 遮罩）仍会在进城市管理时占用 CPU、
+       给低配机带来可感的迟滞。**整段撤除**：3D 地图改为**首次进地图时**才构建
+       （用户明确要看地图才会等，且那时本就有明确预期）。`#boot-loading` 遮罩随之不再触发。 */
+  };
+  /* v91.36：**首次进地图**时的分帧构建 + 过场（原 v91.33/35 挂在进游戏路径上，老板嫌"进主页就卡"）。
+     现在只在用户**主动点地图**时跑一次：分帧让出事件循环（进度条可动），跑完再撤遮罩；
+     此后进地图因版本戳已预盖而**零重建**。 */
+  ui.ensureMap3D = function () {
+    var M = GAME.map3d;
+    if (!M || M._preloaded) return;
+    var steps = (M.preloadSteps && M.preloadSteps()) || null;
+    if (!steps || !steps.length) {      /* 无 WebGL / 已建 → 直接放行（renderMapCanvas 自己处理） */
+      M._preloaded = true; return;
     }
+    M._preloaded = true;
+    var ov = (document.getElementById && document.getElementById('boot-loading'));
+    var fill = (document.getElementById && document.getElementById('bl-fill'));
+    var pctE = (document.getElementById && document.getElementById('bl-pct'));
+    var subE = (document.getElementById && document.getElementById('bl-sub'));
+    var titleE = (document.getElementById && document.getElementById('boot-title'));
+    function paint(p) { if (fill) fill.style.width = p + '%'; if (pctE) pctE.textContent = Math.round(p) + '%'; }
+    function hide() { if (ov) ov.classList.remove('on'); }
+    if (titleE) titleE.textContent = '🪐 正在构建星球…';
+    if (subE) subE.textContent = '首次进入 3D 地图需构建星球地形（仅此一次 · 之后秒开）';
+    if (ov) ov.classList.add('on'); paint(3);
+    var i = 0;
+    function next() {
+      if (i >= steps.length) { paint(100); setTimeout(hide, 240); return; }
+      var st = steps[i++];
+      try { st.run(); } catch (e) { }
+      paint(3 + 94 * (i / steps.length));
+      setTimeout(next, 0);             /* 让出事件循环 → 遮罩/进度条可刷新 */
+    }
+    setTimeout(next, 40);
   };
 
   /* ================= 主界面 ================= */
@@ -3498,16 +3528,21 @@
     var el = $('#garrison-bar');
     if (!el || !c) return;
     if (ui.hoverHold(el)) return;      /* v89.158：悬停保护（同资源栏） */
-    /* v65（老板）：「左侧统计的驻军，只留驻军 2 个字就行了」—— v89.215 起标题不再兼折叠键 */
-    var head = '<div class="gb-head"><span>⚔ 驻军</span></div>';
+    /* v91.36（老板）：「驻军板块照搬城市属性和资源的 UI 和字体设置」——
+       标题已移入 HTML 的 `.side-title`（与「资源」同款），此处只渲染**内容区**；
+       兵力合计写进标题右侧的 `#garrison-total`（同 .side-quick 槽位）。
+       行样式逐条对齐资源行（见 index.html `.gb-row`）；兵种走 2 字缩写（`ab2`）以适配 2 列窄栏。 */
+    var total = 0; for (var tk in (c.army || {})) total += Math.max(0, (c.army[tk] || 0) | 0);
+    var totEl = $('#garrison-total'); if (totEl) totEl.textContent = '共 ' + U.numText(total, 0);
     var body = '<div class="gb-list">' + Object.keys(DATA.TROOPS).map(function (k) {
       var t = DATA.TROOPS[k];
       var n = (c.army && c.army[k]) || 0;
-      return '<div class="gb-row' + (n > 0 ? '' : ' gb-zero') + '" data-troop="' + k + '">' +
-        '<span class="gb-n">' + (t ? t.name : k) + '</span>' +
+      var full = t ? t.name : k;
+      return '<div class="gb-row' + (n > 0 ? '' : ' gb-zero') + '" data-troop="' + k + '" title="' + U.escape(full) + '">' +
+        '<span class="gb-n">' + U.escape(GAME.troopAb2Of ? GAME.troopAb2Of(k) : full) + '</span>' +
         '<span class="gb-c">' + U.numText(n, 0) + '</span></div>';
     }).join('') + '</div>';
-    el.innerHTML = head + body;
+    el.innerHTML = body;
   };
 
   /* v90.31（老板）：「提供一个建筑明细清单」—— 城内建筑一览（全部建筑 · 等级 · 升级造价 · 效果 · 前置）。 */
@@ -3614,15 +3649,7 @@
           + ((GAME.isMainCity && GAME.isMainCity(x)) ? '【主城】' : '')
           + '</option>';
       }).join('') : '<option value="">（该星球暂无城市）</option>') +
-      '</select>' +
-      /* 城名旁的三个操作入口（从原「城市身份行」并入本行，去重复展示） */
-      '<span class="city-switch-ops">' +
-        (GAME.isMovableCity(c)
-          ? '<button class="btn sm" data-action="city-random" title="一键随机：迁到一处空闲平原">🎲</button>' +
-            '<button class="btn sm" data-action="city-move-ask" title="迁址：输入格索引 ci">📍</button>'
-          : '') +
-        '<button class="btn sm" data-action="open-bldg-list" title="城内建筑明细清单（全部建筑 · 等级 · 造价 · 效果）">🏗</button>' +
-      '</span></div>';
+      '</select></div>';
     /* v53（老板："点出来列表马上收回去了"）：**城市清单必须与每秒重绘解耦**。
        主循环每秒调一次 renderSide → renderCityAttrs，改前 switcher 拼在下面的 html 里，
        `box.innerHTML = html` 会把 <select> 整块销毁重建 ——
@@ -3631,9 +3658,21 @@
         已在 main.js 的 click 委托里对 SELECT 直接放行。）
        现在它走**自己的静态节点** #city-switch-host，只在
        "城市清单或当前城市变了"时才重建；城市属性正文照旧每帧重建（正文没有交互态）。 */
-    /* v91.31：城市属性里的「当前城市名」（下拉已上移）。 */
+    /* v91.34（老板）：城市名行 = 城市名 + 右侧按键组 ——
+       🎲 一键随机 / 📍 迁址 / 🏗 建筑清单**从「城市」下拉行右移入城市属性**（城名右侧 · 一键右对齐）。
+       名城（地望固定、不可迁址）只出「建筑清单」。 */
     var _curNameEl = $('#city-cur-name');
-    if (_curNameEl) _curNameEl.innerHTML = '🏯 ' + U.escape(c.name || '城');
+    if (_curNameEl) {
+      _curNameEl.innerHTML =
+        '<span class="ccn-name">🏯 ' + U.escape(c.name || '城') + '</span>' +
+        '<span class="ccn-ops">' +
+          (GAME.isMovableCity(c)
+            ? '<button class="btn sm" data-action="city-random" title="一键随机：迁到一处空闲平原">🎲</button>' +
+              '<button class="btn sm" data-action="city-move-ask" title="迁址：输入格索引 ci">📍</button>'
+            : '') +
+          '<button class="btn sm" data-action="open-bldg-list" title="城内建筑明细清单（全部建筑 · 等级 · 造价 · 效果）">🏗</button>' +
+        '</span>';
+    }
     var host = $('#city-switch-host');
     /* v71（老板）：选项文案含城名 / 坐标 —— 签名跟着文案走，
        改名、迁址后下一帧即刷新；否则下拉框会停在旧文案上。 */
@@ -7158,7 +7197,7 @@
         : '已关闭 —— 配置会保留，重开即用。') + '</div>' +
       '<div class="auto-line"><span class="al-k">触发条件</span><span>某城某兵种（驻军 + 在训）<b>低于「触发线」</b>即自动补单（触发线设 0 = 低于目标就补）</span></div>' +
       '<div class="auto-line"><span class="al-k">停止条件</span><span>达到<b>「目标」</b>即停 · <b>旧币 / 净水低于保底</b>即停（暂停不关开关）· 军营队列满则等待（消化后自动继续）</span></div>' +
-      '<div class="auto-line"><span class="al-k">执行范围</span><span>全境统一规则、<b>逐城独立执行</b>（各用各的城市资源与队列）；器械（无人轰炸机 / 自行火炮）走<b>机工坊队列</b>，与军营队列分开排空位</span></div>' +
+      '<div class="auto-line"><span class="al-k">执行范围</span><span>全境统一规则、<b>逐城独立执行</b>（各用各的城市资源与队列）；器械（无人轰炸机 / 东风快递）走<b>机工坊队列</b>，与军营队列分开排空位</span></div>' +
       '<div class="auto-line"><span class="al-k">可用栏位</span><span>只往<b>有空位</b>的队列放单 —— 军营位 = Σ 军营（队列位 − 已占）、机工坊位同理；与募兵面板同一把尺（trainQueueSlots 唯一出口）</span></div>' +
       '<table class="tbl" style="margin-top:var(--sp-3);"><thead><tr><th>目标兵种</th><th class="ctr">触发线（低于）</th><th class="ctr">目标（补到）</th><th class="num">全境现状</th></tr></thead><tbody>' +
         rows + '</tbody></table>' +
@@ -7775,7 +7814,7 @@
     else if (v === 'auto') box.innerHTML = ui.autoHTML();
     /* v26（需求 5）：子页签与 ui._citySub 一并删除 —— 城内/城外走顶栏 data-view，
        不再有"独立于视图的 sub 状态"，也就不会出现"切了视图但页签还亮着旧值"。 */
-    if (v === 'map') requestAnimationFrame(function () { ui.renderMapCanvas(); });
+    if (v === 'map') { ui.ensureMap3D(); requestAnimationFrame(function () { ui.renderMapCanvas(); }); }
     if (v === 'galaxy') requestAnimationFrame(function () { ui.renderGalaxy(); });
     ui.softenBlocked(box);   /* v89.189：视图页的受阻按钮同样转「可点+说明」 */
     ui.paintBottom();
@@ -8427,7 +8466,7 @@
       body:
         '<div class="m-sec">制造器械</div>' +
         '<div class="op-row"><button class="btn gold" data-action="open-siege" data-idx="' +
-          (ui._workshopIdx == null ? '' : ui._workshopIdx) + '">🛠️ 造自行火炮 / 自行火炮等</button></div>' +
+          (ui._workshopIdx == null ? '' : ui._workshopIdx) + '">🛠️ 造东风快递 / 无人轰炸机等</button></div>' +
         '<div class="op-zone"><div class="op-hint">器械随军出征，用于拆箭塔、破围墙。</div></div>' +
         '<div class="m-sec" style="margin-top:10px;">城防工事 · ' + TW.name + '</div>' +
         '<div class="attr"><span class="k">本城箭塔</span><span class="v">' +
@@ -13281,7 +13320,7 @@
       sub: '固定「前进 / 防御 / 后退 + 目标」的一套指令',
       body: rows +
         '<div class="op-zone" style="margin-top:8px;"><div class="op-zone-t">存为新战术</div>' +
-        '<div class="mk-row"><input type="text" id="tac-name" placeholder="战术名（如：导弹车后退）" style="flex:1;"></div>' +
+        '<div class="mk-row"><input type="text" id="tac-name" placeholder="战术名（如：自走火炮后退）" style="flex:1;"></div>' +
         '<div style="text-align:center;margin-top:6px;">' +
         '<button class="btn gold" data-action="tac-save">存为新战术（取打开弹窗前指令）</button>' +
         '<button class="btn" data-action="open-tactic">逐兵种调整</button></div></div>',
@@ -16118,7 +16157,7 @@
         '<div class="auto-note"><b>红线（不可关闭）</b>：' +
           '① 只派<b>空闲</b>英雄，出征中/守将/采集中一律跳过；' +
           '② 体力不足以支付本次出征就不出发；' +
-          '③ 器械（无人轰炸机/自行火炮）、侦察单元、辎重<b>不编入</b>自动队伍 —— ' +
+          '③ 器械（无人轰炸机/东风快递）、侦察单元、辎重<b>不编入</b>自动队伍 —— ' +
           '它们拖慢行军，且是守城家底；' +
           '④ 只从<b>当前城市</b>取兵；' +
           '⑤ 已占野地与今日已攻破的据点不会被重复打。</div>';
@@ -16581,6 +16620,13 @@
     var W = DATA.WONDER_CFG || { maxActive: 3, marchRealSec: 3600, accrueSec: 600 };
     var present = GAME.wonderPresent ? GAME.wonderPresent(pid) : true;
     var active = GAME.wonderActiveCount ? GAME.wonderActiveCount(pid) : 0;
+    /* v91.34（老板）：「奇观界面给一个消失时间倒计时」—— 今日奇观现实日一翻即消散/刷新，
+       剩余在场时间 = 到本现实日零点。走唯一出口 GAME.wonderLeftToday（与 present 同轴）。 */
+    var leftMs = GAME.wonderLeftToday ? GAME.wonderLeftToday(pid) : 0;
+    var cdTip = '今日奇观随现实日刷新：约每 5 天缺席 1 天（当日无奇观）。剩余时间一满即消散或刷新。';
+    var cdLine = present
+      ? '<span style="color:var(--gold-light);" title="' + U.escape(cdTip) + '">下一日刷新 ' + U.dur(leftMs / 1000) + '</span>'
+      : '<span style="color:var(--red-light);" title="' + U.escape(cdTip) + '">今日已消散</span>';
     /* 可能产出（去重）：材料「主产」/ 附带「概率」；**悬停统一说明采集 vs 派军搜查的差异**。 */
     var DIFF_TIP = '采集：不派兵、安稳取**少量**材料；派军搜查/深潜攻坚：**出征界面**选将选兵，'
       + '按**军力**给更多材料，并可能获图纸/珠宝（有损兵风险）。';
@@ -16595,6 +16641,7 @@
     return '<div class="op-zone"><div class="op-zone-t">' + wd.icon + ' ' + U.escape(wd.name) + ' · ' + U.escape(wd.body) + '</div>' +
       '<div style="text-align:center;color:var(--text-dim);font-size:var(--fs-sub);margin-bottom:6px;">' +
         (present ? '今日在场' : '<span style="color:var(--red-light);">今日未出现</span>') +
+        '　·　' + cdLine +
         '　·　在途 ' + active + ' / ' + (W.maxActive || 3) + ' 队　·　行军 ' + Math.round((W.marchRealSec || 3600) / 60) +
         ' 分抵达后**持续累计**（每 ' + Math.round((W.accrueSec || 600) / 60) + ' 分 +1 份）</div>' +
       '<div class="ui-sub" title="' + U.escape(DIFF_TIP) + '">可能产出　<span style="color:var(--text-dim);">（悬停看「采集 / 派军搜查」差异）</span></div>' +

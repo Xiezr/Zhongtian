@@ -53,7 +53,7 @@
   function spdMultOf(t) {
     var m = 1 + TB('march');
     if (!t) return m;
-    if (t.craft) return m * (1 + TB('wheel'));                    // 器械（无人轰炸机/自行火炮）
+    if (t.craft) return m * (1 + TB('wheel'));                    // 器械（无人轰炸机/东风快递）
     if (t.ride) {
       /* v89.229：id 模式匹配（/qi$|tieqi|qingji/）退役 —— 兵种重构后 id 无此规律，
          改读 TROOPS 的显式字段 `ride`（原 cav 类的显式化）。 */
@@ -513,7 +513,7 @@
     /* echelon 错落有致（默认 · v89.164 标定） */
     if ((u.range || 0) >= 500) {
       if (gap > u.range * (plan.rangeK || 1)) return 'advance';
-      /* v89.180（老板 3/4「距离难道不是导弹车的生命线吗……那是还不够智能」）：
+      /* v89.180（老板 3/4「距离难道不是自走火炮的生命线吗……那是还不够智能」）：
          **风筝** —— 进射程后不再无条件站桩：处于威胁线内（敌下回合能打到我）、
          且存在"我打得到 / 它够不着"的窗口（敌射程 < 我）、且退一步后仍在射程内
          （退出去打不着 → 原地打）→ **后撤一步**（引擎的 retreat 可退到 −D，
@@ -1253,8 +1253,7 @@
       });
       GAME.ui.sfx('rank');
     }
-    /* 胜利判定：攻占旧都灰烬城 → 天下一统（此前该函数定义了却从未被调用） */
-    if (GAME.checkVictory) GAME.checkVictory();
+    /* ⛔ v91.36（老板「占领旧都并非结束」）：`GAME.checkVictory()`（天下一统弹窗）调用**删除**。 */
   };
 
   /* ============================================================
@@ -3397,7 +3396,7 @@
 
   };
 
-  /* 逐回合一行：`第N回合（我 X · 敌 Y）：我步行机→导弹车 杀 120；…`
+  /* 逐回合一行：`第N回合（我 X · 敌 Y）：我步行机→自走火炮 杀 120；…`
      —— 兵力读回合记录（rr.a / rr.d = 双方当时兵力）；没有事件的回合写「（无交火）」。 */
   GAME.battle.roundLinesOf = function (r) {
     if (!r || !r.roundsLog || !r.roundsLog.length) return [];
@@ -3774,7 +3773,7 @@
      （兵种 spd 量级 100~1000，基准 marchBaseSpeed=300，故 +1 点 ≈ 系数 +1/300）。
      在此之前英雄速度只影响战斗先手，对行军毫无作用，是个只显示不生效的死属性。 */
   GAME.march.speedFactor = function (army, from, to, gen) {
-    /* ① 最慢兵种决定全军速度（带自行火炮就别指望跑得快） */
+    /* ① 最慢兵种决定全军速度（带东风快递就别指望跑得快） */
     var slowest = null;
     for (var id in (army || {})) {
       var t = DATA.TROOPS[id];
