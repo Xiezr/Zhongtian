@@ -13491,7 +13491,8 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
     var body = code49(uS49, 'ui.renderGarrison = function');
     /* v91.36：标题「⚔ 驻军」移入 index.html 的 .side-title（与「资源」同款），
        renderGarrison 只渲染内容区 → 正文里**不再**含标题文案，也不得含折叠/长文案。 */
-    return /⚔ 驻军/.test(hS49 || '')
+    /* v91.57（老板「驻军前边的小图标去掉」）：标题改纯「驻军」（无 ⚔）。 */
+    return />驻军</.test(hS49 || '') && !/⚔ 驻军/.test(hS49 || '')
       && body.indexOf('种 · 耗粮') < 0 && body.indexOf('c.name') < 0
       && body.indexOf('toggle-garrison') < 0 && body.indexOf('gb-arrow') < 0
       && body.indexOf('gb-head') < 0;
@@ -15731,8 +15732,8 @@ console.log('\n===== 61. v75 征召大厅招募（大界面 · 单行候选 · �
     /晋升「' \+ next\.name \+ '」条件/.test(uS77));
 
   /* ---- ⑥ 商场新货 ---- */
-  check('⑥ 新商品齐备（三级宝箱 / 四部残卷 / 征调令）',
-    ['chest_tong', 'chest_yin', 'chest_jin', 'book_sunzi', 'book_liutao', 'book_wuqin',
+  check('⑥ 新商品齐备（三级宝箱 / 残卷 / 征调令）',
+    ['chest_tong', 'chest_yin', 'chest_jin', 'book_liutao', 'book_wuqin',
      'book_yuenv', 'corvee'].every(function (id) {
       return (DATA.ITEMS || []).some(function (x) { return x.id === id; });
     }));
@@ -15768,18 +15769,19 @@ console.log('\n===== 61. v75 征召大厅招募（大界面 · 单行候选 · �
   /* ---- ⑦ 战技 ---- */
   check('⑦ 实测：修习残卷 → 1 重（加成立刻进 genAttrs：+4）；再修 → 2 重（+8）', (function () {
     var S77c = G.state, g77c = S77c.generals[0];
-    var bkNg = g77c.ng, bkItem = S77c.items.book_sunzi;
-    S77c.items.book_sunzi = (S77c.items.book_sunzi || 0) + 2;
-    var zm0 = G.genAttrs(g77c).zm;
-    var r1 = G.systems.useItem('book_sunzi', g77c.id);
-    var zm1 = G.genAttrs(g77c).zm;
-    var r2 = G.systems.useItem('book_sunzi', g77c.id);
-    var zm2 = G.genAttrs(g77c).zm;
-    var okAll = r1.ok && r2.ok && g77c.ng && g77c.ng.id === 'sunzi' && g77c.ng.lv === 2
-      && zm1 === zm0 + 4 && zm2 === zm0 + 8;
+    /* v91.57：筹算残页（sunzi）作为孤儿已删 → 改用《统御纲要》（liutao · 指挥 +4/重）。 */
+    var bkNg = g77c.ng, bkItem = S77c.items.book_liutao;
+    S77c.items.book_liutao = (S77c.items.book_liutao || 0) + 2;
+    var t0 = G.genAttrs(g77c).tong;
+    var r1 = G.systems.useItem('book_liutao', g77c.id);
+    var t1 = G.genAttrs(g77c).tong;
+    var r2 = G.systems.useItem('book_liutao', g77c.id);
+    var t2 = G.genAttrs(g77c).tong;
+    var okAll = r1.ok && r2.ok && g77c.ng && g77c.ng.id === 'liutao' && g77c.ng.lv === 2
+      && t1 === t0 + 4 && t2 === t0 + 8;
     g77c.ng = bkNg;
-    S77c.items.book_sunzi = bkItem;
-    if (S77c.items.book_sunzi == null) delete S77c.items.book_sunzi;
+    S77c.items.book_liutao = bkItem;
+    if (S77c.items.book_liutao == null) delete S77c.items.book_liutao;
     return okAll;
   })(), '');
 
@@ -36156,7 +36158,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var a = GAME.wonderOf(pid), b = GAME.wonderOf(pid);
       return !!a && a.id === b.id && (DATA.WONDER_DEFS || []).some(function (d) { return d.id === a.id; });
     })());
-    check('§263③ 同时最多 3 队在途（第 4 队被拒）· 次数不限', (function () {
+    check('§263③ 同时最多 5 队在途（第 6 队被拒）· 次数不限', (function () {
       var bk = GAME.state;
       try {
         var st = G.newGame({ name: 'w263', cityName: '灰岗', region: '烬环', mapSeed: 7 });
@@ -36167,12 +36169,12 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         pl.wonderClearedLv = 6;   /* v91.52：奇观行动须先清对应层守卫 —— 本用例测在途上限，先全清 */
         var c = st.cities[0]; c.army = { buxingji: 99999 };
         /* v91.45（老板「同一英雄同时只能执行一种派遣」）：一个英雄一周只能带一队 ——
-           要测"在途上限 3"，须给**5 个不同英雄**各派一队，前 3 成、后 2 被上限拒。 */
+           要测"在途上限 5"（v91.57 老板 3→5），须给**7 个不同英雄**各派一队，前 5 成、后 2 被上限拒。 */
         st.generals = st.generals || [];
-        for (var gi = 0; gi < 5; gi++) st.generals.push(G.makeGeneral('探' + gi, 10, 'idle'));
+        for (var gi = 0; gi < 7; gi++) st.generals.push(G.makeGeneral('探' + gi, 10, 'idle'));
         var okN = 0;
-        for (var i = 0; i < 5; i++) { var r = GAME.wonderExplore(st.activePlanet, 'collect', c.id, {}, st.generals[i].id); if (r.ok) okN++; }
-        return okN === 3 && GAME.wonderActiveCount(st.activePlanet) === 3;   /* 前 3 成、第 4/5 被上限拒 */
+        for (var i = 0; i < 7; i++) { var r = GAME.wonderExplore(st.activePlanet, 'collect', c.id, {}, st.generals[i].id); if (r.ok) okN++; }
+        return okN === 5 && GAME.wonderActiveCount(st.activePlanet) === 5;   /* 前 5 成、第 6/7 被上限拒 */
       } finally { G.state = bk; }
     })());
     check('§263④ 累计→落账：探查产奇观材料入全局 s.items（3 种材料之一）', (function () {

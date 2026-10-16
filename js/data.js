@@ -1973,7 +1973,6 @@
     { id: 'chest_yin', name: '补给箱·合金', type: 'chest', tier: 2, price: 70, desc: '开启随机获得：丰厚资源 / 旧币 / 二阶材料（小概率图纸）' },
     { id: 'chest_jin', noShop: true, /* v89.104：游商下架（族内已有 4 档） */ name: '补给箱·军规', type: 'chest', tier: 3, price: 180, desc: '开启随机获得：高阶材料 / 图纸 / 珠宝（小概率征调令）' },
     /* 战技残卷：修习后随重数提供属性特性（每将一门，见 DATA.NEIGONG） */
-    { id: 'book_sunzi', name: '《筹算残页》', type: 'neigong', teach: 'sunzi', price: 80, wonderOnly: true, desc: '修习战技「筹算」：谋略随重数增长（最高 10 重）' },
     { id: 'book_liutao', name: '《统御纲要》', type: 'neigong', teach: 'liutao', price: 80, wonderOnly: true, desc: '修习战技「统御」：指挥随重数增长（最高 10 重）' },
     { id: 'book_wuqin', name: '《体能操典》', type: 'neigong', teach: 'wuqin', price: 80, wonderOnly: true, desc: '修习战技「强身」：治理随重数增长（最高 10 重）' },
     { id: 'book_yuenv', name: '《白刃刀谱》', type: 'neigong', teach: 'yuenv', price: 80, wonderOnly: true, desc: '修习战技「白刃」：武力随重数增长（最高 10 重）' },
@@ -3028,7 +3027,6 @@
    * 战斗、生产、界面全走同一条链。书在游商购得（type 'neigong'）。
    * ============================================================ */
   DATA.NEIGONG = [
-    { id: 'sunzi',  name: '筹算残卷', trait: '筹算', attr: 'zm',  per: 4, maxLv: 10, desc: '未战先算，多算胜少算。谋略 +4/重。' },
     { id: 'liutao', name: '统御纲要', trait: '统御', attr: 'tong', per: 4, maxLv: 10, desc: '文韬武略，驭众之要。指挥 +4/重。' },
     { id: 'wuqin',  name: '体能操典',   trait: '强身', attr: 'nz',  per: 4, maxLv: 10, desc: '体魄训练，形神俱养。治理 +4/重。' },
     { id: 'yuenv',  name: '白刃刀谱', trait: '白刃', attr: 'yw',  per: 4, maxLv: 10, desc: '刀法凌厉，一人当百。武力 +4/重。' },
@@ -3991,7 +3989,7 @@
      此前队伍**永远不返回**（只有奇观消失才返航）→ 累计 100+ 份、英雄永久占用。
      新增 `exploreSec`：抵达后**持续时间**（默认 4 现实小时），到时**自动返航**
      （返航耗时按已行进比例，与"奇观消失返航"同一公式；抵达落账 + 英雄归位）。 */
-  DATA.WONDER_CFG = { maxActive: 3, marchRealSec: 3600, accrueSec: 600, exploreSec: 3600,
+  DATA.WONDER_CFG = { maxActive: 5, marchRealSec: 3600, accrueSec: 600, exploreSec: 3600,
     /* v91.53（老板）：「满 1h 返回 + 每程产出上限，让材料保持稀缺」——
        · exploreSec 14400→**3600**（抵达后累计 1 现实小时即返航 → 一程 ≈ 6 份）；
        · **maxPerTrip 12**：单队单程**主产材料**上限（超出不再累计）—— 高兵量不再一次喂满半座城。

@@ -3613,7 +3613,7 @@
   .city-cur-name {
     display: flex; align-items: center; gap: var(--sp-2);
     padding: var(--sp-1) var(--sp-4) 0;
-    font-size: var(--fs-lead); font-weight: 700; color: var(--gold-light);
+    font-size: var(--fs-body); font-weight: 700; color: var(--gold-light);
     line-height: var(--lh-tight);
   }
   .city-cur-name .ccn-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -4418,7 +4418,7 @@
              与城市属性/资源两个 .side-block 的观感脱节。现在**拆成独立 side-block**：
              同一个 .side-title 标题条 + 同一个 .side-body 内容区，三块并列同款。 -->
         <div class="side-block side-block-garrison">
-          <div class="side-title"><span>⚔ 驻军</span><span class="side-quick" id="garrison-total"></span></div>
+          <div class="side-title"><span>驻军</span><span class="side-quick" id="garrison-total"></span></div>
           <div class="side-body" id="garrison-bar"></div>
         </div>
       </div>
@@ -4451,32 +4451,32 @@
 </div><!-- /#app-scale -->
 </div><!-- /#app-fit -->
 
-<!-- BUILD 9312 -->
-<script src="js/data.js?v=9312"></script>
-<script src="js/state.js?v=9312"></script>
-<script src="js/systems.js?v=9312"></script>
-<script src="js/domain.js?v=9312"></script>
-<script src="js/map.js?v=9312"></script>
+<!-- BUILD 9314 -->
+<script src="js/data.js?v=9314"></script>
+<script src="js/state.js?v=9314"></script>
+<script src="js/systems.js?v=9314"></script>
+<script src="js/domain.js?v=9314"></script>
+<script src="js/map.js?v=9314"></script>
 <!-- v90.69：球面世界内核（纯 JS · 拓扑/地形/几何 SSOT）—— 逻辑与 3D 渲染共用，无 THREE -->
-<script src="js/sphere.js?v=9312"></script>
+<script src="js/sphere.js?v=9314"></script>
 <!-- v90.61：Three.js 真 3D 主地图（vendor 本地，离线可用） -->
-<script src="vendor/three.min.js?v=9312"></script>
-<script src="js/gltf.js?v=9312"></script>
-<script src="js/map3d.js?v=9312"></script>
-<script src="js/battle.js?v=9312"></script>
+<script src="vendor/three.min.js?v=9314"></script>
+<script src="js/gltf.js?v=9314"></script>
+<script src="js/map3d.js?v=9314"></script>
+<script src="js/battle.js?v=9314"></script>
 <!-- v27（需求 5）：回合制文字战场。放在 battle.js 之后 —— simulate 由它接管 -->
-<script src="js/tactic.js?v=9312"></script>
-<script src="js/icons.js?v=9312"></script>
+<script src="js/tactic.js?v=9314"></script>
+<script src="js/icons.js?v=9314"></script>
 <!-- v32（需求「采用网图」）：game-icons 开源图标素材层。必须在 icons.js 之后 ——
      icons.js 内的取图函数用 typeof GICONS 延迟绑定，渲染时才真正查表。 -->
-<script src="js/gicons.js?v=9312"></script>
+<script src="js/gicons.js?v=9314"></script>
 <!-- v35：AI 位图素材登记表（汉代风，最高优先级）。同样在 icons.js 之后 ——
      取图函数用 typeof BITMAPS 延迟绑定；未登记的 id 自动回退矢量层。 -->
-<script src="js/bitmaps.js?v=9312"></script>
-<script src="js/portraits.js?v=9312"></script>
-<script src="js/story.js?v=9312"></script>
+<script src="js/bitmaps.js?v=9314"></script>
+<script src="js/portraits.js?v=9314"></script>
+<script src="js/story.js?v=9314"></script>
 <!-- ⛔ v89.218（老板「故事全部去除」）：84 卷故事库（story/）整目录删除，脚本标签同步撤除。 -->
-<script src="js/ui.js?v=9312"></script>
-<script src="js/main.js?v=9312"></script>
+<script src="js/ui.js?v=9314"></script>
+<script src="js/main.js?v=9314"></script>
 </body>
 </html>

@@ -3755,8 +3755,10 @@
        名城（地望固定、不可迁址）只出「建筑清单」。 */
     var _curNameEl = $('#city-cur-name');
     if (_curNameEl) {
+      /* v91.57（老板）：去前边小图标 · 去「星球N·」星球前缀（只显示城名本身）· 字号收小。 */
+      var _cname = (c.name || '城').replace(/^[^·]*·/, '');
       _curNameEl.innerHTML =
-        '<span class="ccn-name">🏯 ' + U.escape(c.name || '城') + '</span>' +
+        '<span class="ccn-name">' + U.escape(_cname) + '</span>' +
         '<span class="ccn-ops">' +
           (GAME.isMovableCity(c)
             ? '<button class="btn sm" data-action="city-random" title="一键随机：迁到一处空闲平原">🎲</button>' +
