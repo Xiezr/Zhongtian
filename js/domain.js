@@ -7108,67 +7108,12 @@
 
   /* ---------- 等级上限 & 体力（v29 · 需求 2 / 11） ---------- */
   /* ============================================================
-   * 君主：练功 / 突破（v89.65）—— 考据与取舍见 data.js 的 DATA.LORD_BREAK
-   * ------------------------------------------------------------
-   * 三个读出口（breaks / 段顶 / 突破所需修为 / 境界名）+ 两个写出口（练功 / 突破）。
-   * 界面只读这些出口，不自己推公式。
+   * v91.57（老板）：「去除君主修行，相关标准供威望晋升条件进行参考合并」——
+   *   君主「练功 / 突破 / 境界」子系统**整条退役**（练功 GAME.doLordTrain、突破
+   *   GAME.doLordBreak、境界 lordRealmOf / lordRankNeed / lordStageCap / lordTrialOf、
+   *   自动练功 GAME.autoLordTrain + 其自动化开关）。君主按**资质等级上限**（genLevelCap）
+   *   正常成长，升级走既有 gainExp 通道（战斗/经验道具）。
    * ============================================================ */
-  GAME.lordBreaksOf = function (g) { return Math.max(0, Math.round((g && g.breaks) || 0)); };
-  /* 当前段的等级上限 = 60 ×（已突破次数 + 1）—— genLevelCap 内部调它 */
-  GAME.lordStageCap = function (g) {
-    return DATA.LORD_BREAK.step * (1 + GAME.lordBreaksOf(g));
-  };
-  /* 下一次突破所需威望（威望档 = s.rank 索引）；null = 已至顶（天启体 240 之上无更上层） */
-  GAME.lordRankNeed = function (g) {
-    var B = DATA.LORD_BREAK, n = GAME.lordBreaksOf(g);
-    return (n < B.realms.length - 1) ? (B.rankStep * (n + 1)) : null;
-  };
-  GAME.lordRealmOf = function (g) {
-    var B = DATA.LORD_BREAK, n = GAME.lordBreaksOf(g);
-    return B.realms[Math.min(n, B.realms.length - 1)];
-  };
-  /* 练功一次：扣体力 + 粮 → 产经验（未到段顶才给）
-     · v90.94：不再产「修为」（练功与突破已解耦 · 见 DATA.LORD_BREAK 注释） */
-  GAME.doLordTrain = function () {
-    var g = GAME.lordGeneralOf ? GAME.lordGeneralOf() : null;
-    if (!g) return { ok: false, msg: '君主不在帐下' };
-    var B = DATA.LORD_BREAK, city = GAME.currentCity();
-    if (!city) return { ok: false, msg: '无城市可供练功' };
-    var cap = GAME.genLevelCap(g);
-    if (GAME.staNow(g) < B.trainSta) {
-      return { ok: false, msg: g.name + ' 体力不足（需 ' + B.trainSta + '，现 '
-        + Math.round(GAME.staNow(g)) + '），静待恢复' };
-    }
-    var need0 = GAME.expNeedOf(g);
-    var grain = Math.max(1, Math.round(need0 * B.trainGrainPct));
-    city.res = city.res || {};
-    if ((city.res.grain || 0) < grain) {
-      return { ok: false, msg: '净水不足（需 ' + U.fmt(grain) + '，府库 ' + U.fmt(city.res.grain || 0) + '）' };
-    }
-    city.res.grain -= grain;
-    GAME.setStaNow(g, GAME.staNow(g) - B.trainSta);          /* v66：体力唯一写入口 */
-    var tail;
-    if ((g.level || 1) < cap) {
-      var rr = GAME.battle.gainExp(g, need0 * B.expPct, '练功');   /* v26：经验唯一入口 */
-      tail = (rr && rr.up > 0) ? '　⭐ 连升 ' + rr.up + ' 级 → Lv' + g.level
-        : '　经验 +' + U.fmt(need0 * B.expPct);
-    } else {
-      tail = '　（已在本段顶 Lv' + cap + '，经验不再累积）';
-    }
-    var say = tail.replace(/^　/, '');
-    GAME.log('🧘 ' + g.name + ' 练功（耗体力 ' + B.trainSta + '）：' + say, 'sys', 'staff');
-    return { ok: true, msg: '练功完成：' + say };
-  };
-  /* ============================================================
-   * v89.83（老板「再加入其他自动化选项」）：自动练功 —— 君主体力过半时自动练一次
-   * ------------------------------------------------------------
-   * 为什么必须有**节流**与**过半门槛**（两个都不能省）：
-   *   练功一次扣体力 6，若主循环每帧都试，一秒内就能把池子掏空；
-   *   而君主的体力也是**出征/演武**的本钱 —— 自动化的底线是"不抢玩家的手段"，
-   *   所以只在体力过半时才练（剩下的留给玩家自己安排）。
-   * 判定与执行全部复用既有出口（staNow / doLordTrain），不新造第二套规则。
-   * ============================================================ */
-  GAME.AUTO_LORD_MIN_MS = 30000;                 /* 每 30 秒现实时间最多练一次 */
   /* ============================================================
    * v89.115（老板「自动菜单增加一个自动治疗伤兵」）：**自动治疗伤兵**
    * ------------------------------------------------------------
@@ -7207,60 +7152,7 @@
     }
     return r;
   };
-  GAME.autoLordTrain = function () {
-    var s = GAME.state;
-    if (!s || !s.settings || !s.settings.autoLordTrain) return null;
-    var g = GAME.lordGeneralOf ? GAME.lordGeneralOf() : null;
-    if (!g) return null;
-    var now = U.now();
-    if (now - (s.lordTrainAt || 0) < GAME.AUTO_LORD_MIN_MS) return null;
-    var at = GAME.genAttrs ? GAME.genAttrs(g) : null;
-    var max = (at && at.staMax) || 100;
-    var cur = GAME.staNow(g);
-    if (cur < max * 0.5) {
-      s.autoLordState = { ok: false, paused: true,
-        msg: '体力 ' + Math.round(cur) + '/' + Math.round(max) + '（过半才自动练功）', at: now };
-      return null;
-    }
-    s.lordTrainAt = now;
-    var r = GAME.doLordTrain();
-    s.autoLordState = { ok: r.ok, msg: r.msg, at: now };
-    return r;
-  };
-  /* 突破：须在段顶 + 威望够 + 四关过 → 上限 +60、境界进一阶、发自由点
-     （v90.94：门槛由「修为」改为「威望（威望档）」） */
-  GAME.doLordBreak = function () {
-    var g = GAME.lordGeneralOf ? GAME.lordGeneralOf() : null;
-    if (!g) return { ok: false, msg: '君主不在帐下' };
-    var B = DATA.LORD_BREAK, cap = GAME.genLevelCap(g), need = GAME.lordRankNeed(g);
-    if (need == null) {
-      return { ok: false, msg: '已至「' + GAME.lordRealmOf(g) + '」，天启体之上再无更高境界' };
-    }
-    if ((g.level || 1) < cap) {
-      return { ok: false, msg: '须先练至本段顶 Lv' + cap + '（现 Lv' + g.level + '）方可突破' };
-    }
-    var curRank = (GAME.state && GAME.state.rank) || 0;
-    if (curRank < need) {
-      return { ok: false, msg: '威望不足（需 ' + need + ' 档，现 ' + curRank + ' 档）—— 先晋升威望档' };
-    }
-    /* v89.177（老板「君主的突破要求更高……综合考验」）：威望之外，还须过
-       "城/军/资/宝"四关（DATA.LORD_BREAK.trials）——缺哪关提示哪关。 */
-    var _trial = GAME.lordTrialOf(g);
-    if (_trial && !_trial.ok) {
-      var miss = _trial.rows.filter(function (r2) { return !r2.ok; })
-        .map(function (r2) { return r2.label + '（' + U.fmt(r2.cur) + '/' + U.fmt(r2.goal) + '）'; });
-      return { ok: false, msg: '综合考验未过：' + miss.join('、') + ' —— 详见君主面板' };
-    }
-    g.breaks = GAME.lordBreaksOf(g) + 1;
-    var fp = B.freePts[Math.min(g.breaks, B.freePts.length - 1)] || 0;
-    if (fp) g.freePts = (g.freePts || 0) + fp;
-    var nCap = GAME.genLevelCap(g);
-    GAME.log('⚡ ' + g.name + ' 突破成功 → 境界「' + GAME.lordRealmOf(g) + '」，等级上限 Lv'
-      + cap + ' → Lv' + nCap + (fp ? '，自由点 +' + fp : ''), 'sys', 'staff');
-    return { ok: true, realm: GAME.lordRealmOf(g), cap: nCap, freePts: fp,
-      msg: '突破成功！境界「' + GAME.lordRealmOf(g) + '」，上限升至 Lv' + nCap
-        + (fp ? '，自由点 +' + fp : '') };
-  };
+  /* v91.57：doLordBreak（君主突破）随君主修行退役 —— 整段删除。 */
   /* ============================================================
    * v89.177（老板「政务厅界面增加鼓舞民心，消减民怨的措施各 1 个」）：
    * **两个安抚措施**（各每日一次 · 耗旧币 · 走 heartsComfortAdd 唯一入口）。
@@ -7295,45 +7187,10 @@
     return { ok: true, msg: cfg.name + '：民心 ' + Math.round(GAME.heartsOf())
       + ' / 民怨 ' + Math.round(GAME.minyuanOf()) };
   };
-  /* ============================================================
-   * v89.177（老板「君主的突破要求更高……综合考验」）：**综合考验唯一出口** ——
-   * 返回 { n, rows:[{key,label,cur,goal,ok}], ok }；null = 未配该项（视为无考验）。
-   * 四关口径见 DATA.LORD_BREAK.trials 注释（城/军/资/宝）。
-   * ============================================================ */
-  GAME.lordTrialOf = function (g) {
-    var B = DATA.LORD_BREAK, n = GAME.lordBreaksOf(g) + 1;   /* 第 n 次突破 */
-    var tr = (B.trials || [])[n - 1];
-    if (!tr) return null;
-    var s = GAME.state;
-    /* v91.25（老板）：「君主突破的城市要求应是**帝国口径**（所有星球）——此前只数当前星球」。
-       军队同款：跨星球求和（与城市同源，避免"两部口径"）。 */
-    var cities = GAME.empireCityCount ? GAME.empireCityCount() : (s.cities || []).length;
-    var army = 0;
-    var _allCities = (s.cities || []).slice();
-    var _act = s.activePlanet || 0, _sl = s.mapSlices || {};
-    Object.keys(_sl).forEach(function (pid) { if (+pid === _act) return; var cs = (_sl[pid] || {}).cities || []; for (var i = 0; i < cs.length; i++) _allCities.push(cs[i]); });
-    _allCities.forEach(function (c) { army += (GAME.armyTotal ? GAME.armyTotal(c) : 0); });
-    var gold = GAME.goldOf();
-    var jewelIds = {};
-    (DATA.ITEMS || []).forEach(function (it) { if (it.type === 'jewel') jewelIds[it.id] = true; });
-    var jk = 0;
-    Object.keys(s.items || {}).forEach(function (k2) {
-      if (jewelIds[k2] && (s.items[k2] || 0) > 0) jk++;
-    });
-    var rows = [
-      { key: 'cities', label: '城市', cur: cities, goal: tr.cities, ok: cities >= tr.cities },
-      { key: 'army', label: '军队（兵力）', cur: army, goal: tr.army, ok: army >= tr.army },
-      { key: 'gold', label: '资源（持旧币）', cur: gold, goal: tr.gold, ok: gold >= tr.gold },
-      { key: 'treasure', label: '宝物（珠宝）', cur: jk, goal: tr.treasure, ok: jk >= tr.treasure },
-    ];
-    return { n: n, rows: rows, ok: rows.every(function (r2) { return r2.ok; }) };
-  };
   GAME.genLevelCap = function (g) {
     var rk = GAME.rankOf ? GAME.rankOf(g) : null;
     var cap = (rk && rk.lvCap) || (DATA.GEN_RANKS[0] && DATA.GEN_RANKS[0].lvCap) || 60;
-    /* v89.65：君主的上限被切成段（练功→突破续升）—— 这里收口，
-       升级判定 / 经验道具 / 详情页 / 君主面板全都不必再判一次 */
-    if (g && g.isLord) cap = Math.min(cap, GAME.lordStageCap(g));
+    /* v91.57：君主「分段上限（练功→突破）」随君主修行退役 —— 君主按**资质等级上限**正常成长。 */
     return cap;
   };
   /* 经验道具能不能用（唯一出口）→ 返回 '' 表示可以用，否则返回给玩家看的原因。
@@ -7345,14 +7202,7 @@
     if (!g) return '请先选择英雄';
     var cap = GAME.genLevelCap(g);
     if ((g.level || 1) < cap) return '';
-    /* v89.65：君主的"上限"是**分段**的（练功→突破续升），不是资质顶 ——
-       若沿用下面那句"资质决定等级上限"，玩家会以为已经练到头了，
-       实际上该去突破。同一件事的两处文案必须与真实原因一致。 */
-    if (g.isLord) {
-      return g.name + ' 已达本段上限 Lv' + cap + '（君主每 '
-        + DATA.LORD_BREAK.step + ' 级一段）—— 须在君主面板「突破」方可续升'
-        + (GAME.lordRankNeed(g) == null ? '；已至天启体上限，无更高境界' : '');
-    }
+    /* v91.57：君主修行退役 —— 君主与普通英雄同走"资质决定等级上限"文案。 */
     var rk = GAME.rankOf ? GAME.rankOf(g) : null;
     return g.name + ' 已达' + ((rk && rk.name) || '') + '上限 Lv' + cap
       + '，无法再使用经验道具（资质决定等级上限）';

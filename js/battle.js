@@ -3289,15 +3289,9 @@
     }
     var capped = gen.level >= capLv;
     if (capped && from < capLv) {
-      /* v89.65：君主的段顶不是"资质顶"，文案与真实原因对齐（否则玩家以为练到头了，
-         其实该去练功突破） */
-      if (gen.isLord) {
-        GAME.log.sys('🔒 ' + gen.name + ' 已达本段上限 Lv' + capLv
-          + '（君主每 ' + DATA.LORD_BREAK.step + ' 级一段）—— 练功攒修为后突破可续升');
-      } else {
-        GAME.log.sys('🔒 ' + gen.name + ' 已达资质上限 Lv' + capLv
-          + '（' + (GAME.rankOf(gen).name) + '），再多的经验也无法提升');
-      }
+      /* v91.57：君主修行退役 —— 君主与普通英雄同走"资质上限"文案。 */
+      GAME.log.sys('🔒 ' + gen.name + ' 已达资质上限 Lv' + capLv
+        + '（' + (GAME.rankOf(gen).name) + '），再多的经验也无法提升');
     }
     return { from: from, to: gen.level, up: gen.level - from, step: step, capped: capped, cap: capLv };
   };

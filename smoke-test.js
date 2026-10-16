@@ -10169,43 +10169,18 @@ check('v89.83→v89.137：派驻面板退役 · 派驻入口统一到出征界�
 })());
 /* v89.83（老板「再加入其他自动化选项」）：第 4 条自动化 —— 君主修行。
    判据含**行为**：不过半不练、过了半练一次且按 trainSta 扣体力、30 秒内不重复。 */
-check('v89.83：自动练功挂进主循环（唯一出口 · 过半门槛 · 30 秒节流）', (function () {
+check('v91.57：君主修行/练功/自动练功 整条退役（无残留调用点）', (function () {
   var dm = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'domain.js'), 'utf8');
   var u = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'ui.js'), 'utf8');
   var m = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'main.js'), 'utf8');
   var st = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'state.js'), 'utf8');
-  return typeof G.autoLordTrain === 'function'
-    && /if \(GAME\.autoLordTrain\) GAME\.autoLordTrain\(\);/.test(st)   /* 真挂进主循环 */
-    && /AUTO_LORD_MIN_MS/.test(dm) && /过半才自动练功/.test(dm)             /* 节流 + 门槛 */
-    && /var r = GAME\.doLordTrain\(\);/.test(dm)                          /* 复用既有出口 */
-    && /toggle-auto-lord/.test(u) && /toggle-auto-lord/.test(m)
-    && /case 'toggle-auto-lord': GAME\.doToggleAutoLord\(\)/.test(m);
-})());
-check('v89.83：自动练功的行为（体力过半才练 · 扣 trainSta · 30 秒内不重复）', (function () {
-  var s = G.state, g = G.lordGeneralOf ? G.lordGeneralOf() : null;
-  if (!g || typeof G.autoLordTrain !== 'function') return false;
-  var city = G.currentCity();
-  if (!city) return false;
-  var bk = { on: s.settings.autoLordTrain, at: s.lordTrainAt, sta: G.staNow(g),
-    grain: (city.res && city.res.grain) || 0, lv: g.level, exp: g.exp || 0, cult: g.cultiv || 0 };
-  var at = G.genAttrs(g), max = (at && at.staMax) || 100;
-  city.res = city.res || {};
-  city.res.grain = Math.max(city.res.grain || 0, 1e9);      /* 排除"粮不足"这个干扰因 */
-  s.settings.autoLordTrain = true;
-  s.lordTrainAt = 0;
-  G.setStaNow(g, max * 0.3);
-  var low = G.autoLordTrain();                              /* 不过半 → 不练 */
-  s.lordTrainAt = 0;
-  G.setStaNow(g, max);
-  var hi = G.autoLordTrain();                               /* 满体力 → 练一次 */
-  var after = G.staNow(g);
-  var again = G.autoLordTrain();                            /* 立刻再来 → 被节流 */
-  /* 还原（练功会涨经验/修为/等级，必须还回去，否则污染后续守卫） */
-  G.setStaNow(g, bk.sta); s.lordTrainAt = bk.at;
-  s.settings.autoLordTrain = bk.on; city.res.grain = bk.grain;
-  g.level = bk.lv; g.exp = bk.exp; g.cultiv = bk.cult;
-  return low === null && !!hi && hi.ok === true && again === null
-    && after <= max - DATA.LORD_BREAK.trainSta + 1;
+  var strip = function (x) { return x.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, ''); };
+  var dmc = strip(dm), uc = strip(u), mc = strip(m), stc = strip(st);
+  return !/doLordTrain/.test(dmc) && !/doLordBreak/.test(dmc) && !/lordTrialOf/.test(dmc)
+    && !/lordRealmOf/.test(dmc) && !/lordStageCap/.test(dmc) && !/lordRankNeed/.test(dmc)
+    && !/if \(GAME\.autoLordTrain\) GAME\.autoLordTrain\(\);/.test(stc)
+    && !/toggle-auto-lord/.test(uc) && !/toggle-auto-lord/.test(mc)
+    && !/autoLordTrain/.test(dmc);
 })());
 check('主循环确实挂了自动出征（不是只写不接）', (function () {
   var s = require('fs').readFileSync(require('path').join(__dirname, 'js', 'state.js'), 'utf8');
@@ -16317,23 +16292,13 @@ console.log('\n===== 66. v81 两条（君主卡 · 兵营三页） =====');
        —— 君主不再是"凡人开局 + 药草逐档升"（v82 口径对君主退役），
        而是**天启体开局 + 练功突破分段**：上限 = 60 ×（突破次数 + 1），天启体封顶 240。
        药草链本身仍在（其余英雄照用），所以下面那条链式断言保留。 */
-    check('① 君主开局天启体 + 分段上限（60 起，练功突破续升）', (function () {
+    check('① 君主开局天启体 + 等级上限=资质上限（240 · 分段修行退役）', (function () {
       var lord = G.makeLordGeneral({ name: '甲' }, 1, null);
-      var okBase = DATA.LORD_GEN.rankId === 'tian' && lord.rank === 'tian'
+      /* v91.57：君主修行（分段突破）退役 → 等级上限 = 资质上限（天启体 240），与普通英雄同规。 */
+      return DATA.LORD_GEN.rankId === 'tian' && lord.rank === 'tian'
         && DATA.GEN_RANK_BY_ID['tian'].lvCap === 240
-        && G.genLevelCap(lord) === 60;                 /* 未突破 → 只到第一段顶 */
-      /* 模拟三突破：60 → 120 → 180 → 240（天启体封顶，第四次没有） */
-      var caps = [];
-      lord.breaks = 1; caps.push(G.genLevelCap(lord));
-      lord.breaks = 2; caps.push(G.genLevelCap(lord));
-      lord.breaks = 3; caps.push(G.genLevelCap(lord));
-      lord.breaks = 9; caps.push(G.genLevelCap(lord));  /* 超次数也不越天启体上限 */
-      lord.breaks = 0;
-      return okBase && caps.join(',') === '120,180,240,240';
-    })(), 'rank=' + DATA.LORD_GEN.rankId + ' 一突破后上限=' + (function () {
-      var l = G.makeLordGeneral({ name: '乙' }, 1, null);
-      l.breaks = 1; return G.genLevelCap(l);
-    })());
+        && G.genLevelCap(lord) === 240;
+    })(), 'rank=' + DATA.LORD_GEN.rankId + ' 上限=' + G.genLevelCap(G.makeLordGeneral({ name: '乙' }, 1, null)));
     check('① 升档链在（凡→良→英→名→天，四株药草，唯一出口 rankUpUse）', (function () {
       var chain = (DATA.ITEMS || []).filter(function (x) { return x.type === 'rank_up'; })
         .map(function (x) { return x.from + '>' + x.to; });
@@ -16341,107 +16306,6 @@ console.log('\n===== 66. v81 两条（君主卡 · 兵营三页） =====');
         && chain[0] === 'fan>liang' && chain[3] === 'ming>tian';
     })());
 
-    /* ---- v89.65（老板「君主练功然后突破，这很合理」）：两个出口的行为断言 ----
-       独立开一局跑、跑完把 state 还原 —— 不污染其它用例（它们依赖同一份 state）。 */
-    (function () {
-      var withLord = function (fn) {
-        var keep = G.state, out = null;
-        try { G.newGame({ name: '练功君主', cityName: '灰岗' }); out = fn(G.lordGeneralOf(), G.currentCity()); }
-        catch (e) { out = { err: (e && e.message) || 'throw' }; }
-        finally { G.state = keep; }
-        return out;
-      };
-
-      check('v90.94：练功产经验（练功与突破已解耦 · 不再产修为）', function () {
-        return withLord(function (lord, city) {
-          if (!lord || !city) return false;
-          lord.level = 10; lord.breaks = 0; lord.exp = 0; lord.cultiv = 0;
-          G.setStaNow(lord, 100);
-          city.res.grain = 1e9;
-          var grain0 = city.res.grain, sta0 = G.staNow(lord);
-          var r = G.doLordTrain();
-          return r.ok === true && lord.exp > 0
-            && !(lord.cultiv > 0)               /* v90.94：修为不再产出 */
-            && city.res.grain < grain0          /* 真扣了粮 */
-            && G.staNow(lord) === sta0 - DATA.LORD_BREAK.trainSta;
-        });
-      }());
-      check('v90.94：到段顶后练功不给经验（且仍不产修为）', function () {
-        return withLord(function (lord, city) {
-          if (!lord || !city) return false;
-          lord.breaks = 0; lord.level = G.genLevelCap(lord);   /* = 60 */
-          lord.exp = 0; lord.cultiv = 0;
-          G.setStaNow(lord, 100); city.res.grain = 1e9;
-          var r = G.doLordTrain();
-          return r.ok === true && lord.exp === 0 && !(lord.cultiv > 0);
-        });
-      }());
-      check('v89.65：体力不足时练功被拒（不白扣）', function () {
-        return withLord(function (lord, city) {
-          if (!lord || !city) return false;
-          lord.exp = 0; lord.cultiv = 0;
-          G.setStaNow(lord, 0);
-          city.res.grain = 1e9;
-          var r = G.doLordTrain();
-          return r.ok === false && /体力/.test(r.msg);
-        });
-      }());
-      check('v90.94：突破须"段顶 + 威望够"（未到顶拒 / 威望不足拒 / 满足则跨段）', function () {
-        return withLord(function (lord, city) {
-          if (!lord) return false;
-          var bkRank = G.state.rank;
-          /* ① 未到段顶：拒 */
-          lord.breaks = 0; lord.level = 10; lord.exp = 0; G.state.rank = 9;
-          if (G.doLordBreak().ok !== false) return false;
-          /* ② 段顶但威望不足：拒（第 1 次突破需 3 档威望 · rankStep=3） */
-          lord.level = 60; G.state.rank = 2;
-          if (G.doLordBreak().ok !== false) return false;
-          /* ③ v89.177（老板「综合考验」）：段顶 + 威望够，但四关不过 → **拒**（提示综合考验） */
-          G.state.rank = G.lordRankNeed(lord);
-          var r0 = G.doLordBreak();
-          if (r0.ok !== false || !/综合考验/.test(r0.msg)) return false;
-          /* ③b 灌满四关（城市 2 / 兵力 5k / 持金 5w / 珠宝 2 种）→ 跨段。
-                 ⚠️ 用例改状态要还原（§131 纪律）——失败前也要恢复。 */
-          var bk = {
-            cities: G.state.cities.slice(),
-            army: G.state.cities.map(function (c) { return c.army; }),
-            items: JSON.parse(JSON.stringify(G.state.items || {})),
-            gold: G.goldOf(),
-          };
-          var ok = false;
-          try {
-            var c2 = JSON.parse(JSON.stringify(G.state.cities[0]));
-            c2.id = 'p2-test'; c2.army = { buxingji: 3000 };
-            G.state.cities.forEach(function (c) { c.army = { buxingji: 3000 }; });
-            G.state.cities.push(c2);
-            G.goldAdd(bk.gold >= 50000 ? 0 : (50000 - bk.gold));
-            G.state.items.bengzhu = 2;
-            G.state.items.mila = 1;
-            var fp0 = lord.freePts || 0;
-            var r = G.doLordBreak();
-            ok = r.ok === true && lord.breaks === 1
-              && G.genLevelCap(lord) === 120 && (lord.freePts || 0) > fp0;
-          } finally {
-            G.state.rank = bkRank;
-            G.state.cities = bk.cities;
-            bk.cities.forEach(function (c, i2) { c.army = bk.army[i2]; });
-            G.state.items = bk.items;
-            G.goldAdd(bk.gold - G.goldOf());
-          }
-          return ok;
-        });
-      }());
-      check('v90.94：三突破到天启体上限后不再有突破（威望门槛用尽 → null）', function () {
-        return withLord(function (lord) {
-          if (!lord) return false;
-          lord.breaks = 3; lord.level = 240;
-          if (G.lordRankNeed(lord) !== null) return false;
-          if (G.genLevelCap(lord) !== 240) return false;
-          var r = G.doLordBreak();
-          return r.ok === false && lord.breaks === 3;      /* 没被加一层 */
-        });
-      }());
-    })();
 
     /* v89.135（老板 10）：政务厅面板退役 —— 功能直进建筑面板（改名/主城两键可见）
        v89.224（老板 1）：基因实验室按钮撤出本段（迁入城内「基因实验室」建筑格） */
@@ -29172,23 +29036,8 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     console.log('  --- ⑤ 综合考验 ---');
     /* v90.92：任务系统退役 → 考验表去掉 quests 项，五关改四关（城市/军队/资源/宝物）。
        ⚠️ 下一步（批次D）突破改威望门槛时本段还会再动；此处只钉「任务项已摘除」。 */
-    check('§177⑤ ★ lordTrialOf：四关行（城市/军队/资源/宝物）+ 口径读表（v90.92：政务关退役）', (function () {
-      var lord = null;
-      (G.state.generals || []).forEach(function (g) { if (g.isLord) lord = g; });
-      if (!lord) { lord = G.makeGeneral('测试君主', 1, 'idle', G.state.cities[0].id, false); lord.isLord = true; }
-      var tr = G.lordTrialOf(lord);
-      var keys = tr.rows.map(function (r) { return r.key; }).join(',');
-      var tbl = (DATA.LORD_BREAK.trials || [])[0];
-      return tr.n === 1 && keys === 'cities,army,gold,treasure'
-        && tr.rows[0].goal === tbl.cities && tr.rows[3].goal === tbl.treasure
-        && tbl.quests === undefined
-        && typeof tr.ok === 'boolean';
-    })());
-    check('§177⑤b 考验表在册（trials 三段 · 逐段递增）', (function () {
-      var t = DATA.LORD_BREAK.trials;
-      return Array.isArray(t) && t.length === 3
-        && t[0].cities < t[1].cities && t[1].cities < t[2].cities
-        && t[0].gold < t[1].gold && t[1].gold < t[2].gold;
+    check('§177⑤ ★ 君主修行退役：lordTrialOf / 考验表 整条不在（v91.57）', (function () {
+      return typeof G.lordTrialOf !== 'function' && DATA.LORD_BREAK === undefined;
     })());
 
     /* ⑥ 界面与接入（源码级） */
@@ -29202,8 +29051,8 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       check('§177⑥b main.js：hearts-boost / hearts-soothe 动作 + doSetTax 重算',
         mS.indexOf("case 'hearts-boost'") >= 0 && mS.indexOf("case 'hearts-soothe'") >= 0
         && mS.indexOf('GAME.applyHearts()') >= 0);
-      check('§177⑥c 君主面板考验清单在册（_trialHTML177 · 四关逐条 · v90.92 政关退役）',
-        uS.indexOf('_trialHTML177') >= 0 && uS.indexOf('突破考验（第') >= 0);
+      check('§177⑥c 君主面板：「突破考验」清单已随君主修行退役（v91.57 不再出现）',
+        uS.indexOf('_trialHTML177') < 0 && uS.indexOf('突破考验（第') < 0);
       check('§177⑥d HEARTS 表在册（安抚上限/衰减/两措施）',
         DATA.HEARTS.comfortCap === 50 && DATA.HEARTS.decayPerHour === 0.5
         && DATA.HEARTS.boost.cost === 2000 && DATA.HEARTS.soothe.cost === 6000);
@@ -36105,30 +35954,6 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })());
   })();
 
-  /* ============================================================
-   * §261. v91.25 君主突破考验：城市/军队走**帝国口径**（跨星球）
-   * ============================================================ */
-  (function () {
-    console.log('\n===== 261. v91.25 突破考验帝国口径 =====');
-    check('§261 突破考验「城市」行 = 帝国口径（含他星分片城）', (function () {
-      var bak = G.state;
-      try {
-        var st = G.newGame({ name: 'trial261', region: '烬环' });
-        G.state = st;
-        var lord = (st.generals || []).filter(function (g) { return g.isLord; })[0] || st.generals[0];
-        lord.level = GAME.lordStageCap(lord);              /* 拉到段顶 → 有下一段考验 */
-        /* 造一他星分片（1 城）——不得进 s.cities，只进 mapSlices */
-        st.mapSlices = st.mapSlices || {};
-        st.mapSlices[9] = { cities: [{ id: 'x9', name: '他星城' }], wilds: [], forts: {} };
-        var tr = GAME.lordTrialOf(lord);
-        if (!tr) return true;                              /* 无考验表数据 → 跳过记账 */
-        var row = tr.rows.filter(function (r) { return r.key === 'cities'; })[0];
-        var same = row && row.cur === (G.empireCityCount ? GAME.empireCityCount() : 1)
-          && row.cur > (st.cities || []).length;          /* 严格大于当前星球城数 = 确实算了帝国 */
-        return !!same;
-      } finally { G.state = bak; }
-    })());
-  })();
 
   /* ============================================================
    * §262. v91.26 基因实验室主城专属

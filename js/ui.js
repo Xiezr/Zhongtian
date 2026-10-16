@@ -5328,101 +5328,40 @@
        （姓名+改名 / 威望+晋升（悬停见条件）/ 声望 / 幸存者总和 / 英雄总和 / 状态）」。
        旧版（单列 + chips + 城市表 + rankBlock）整段退役；威望区块并入右表。 */
     ui.openShell({
-      title: '👤 君主',
+      /* v91.57（老板）：君主前的图标去掉；界面收窄（xl → lg）。 */
+      title: '君主',
       sub: (cur ? cur.name : '幸存者') + ' · 声望 ' + U.fmt(s.rep) + ' · ' + (GAME.empireCityCount ? GAME.empireCityCount() : s.cities.length) + ' 城（帝国）',
-      /* v90.97（老板）：君主面板**去左半三清单**（城市/据点/野地 → 移入「行政」菜单）——
-         只保留君主相关信息，面板收窄一档（xxl 1200 → xl 960）。 */
-      size: 'xl',
+      size: 'lg',
+      /* v91.57（老板）：「下方信息栏，各种按钮放在每行右侧」——三列表（键 | 值 | 操作右贴）。 */
       body: '<div class="ls-right"><div class="m-sec">君主信息</div>' +
         '<table class="tbl lord-tbl"><tbody>' +
-          '<tr><td class="k">君主姓名</td><td><b>' + U.escape(s.ruler.name) + '</b>　' +
-            '<button class="btn sm" data-action="open-rename-lord">改名</button></td></tr>' +
-          /* v89.7（老板「头像可更换」）：头像行 —— 现脸缩略图 + 更换入口 */
-          '<tr><td class="k">头像</td><td>' + (function () {
-            var face = GAME.portraits ? GAME.portraits.poolFile({
-              gender: s.ruler.gender, portraitSeed: s.ruler.portraitSeed }) : '';
-            return (face ? '<img class="lord-av-mini" src="' + face + '" alt="君主头像">' : '') +
-              '<button class="btn sm" data-action="open-avatar-pick">更换</button>';
-          })() + '</td></tr>' +
-          '<tr><td class="k">威望</td><td>' + (cur ? cur.name : '幸存者') +
-            ' <span class="ui-sub">（' + (s.rank || 0) + ' / ' + (DATA.RANK.length - 1) + '）</span>　' +
-            (next
-              ? '<button class="btn sm' + (chk && chk.ok ? ' gold' : '') + '" data-action="lord-promote" title="' +
-                  U.escape(condTitle) + '">晋升：' + next.name + '</button>'
-              : '<span style="color:var(--gold-light);">已登顶</span>') +
-            '</td></tr>' +
-          /* v79（老板）：威望加成 / 主城 / 神器 —— 三条新系统的入口与现况 */
-          '<tr><td class="k">威望加成</td><td style="color:var(--green-ok);">' + GAME.rankBonusText() + '</td></tr>' +
-          /* v89.131（老板「只有攻打名城才给的那什么'节X'，列出其设定」）：
-             节钺余额 + 一条式来源进表（此前只在城市面板的「扩编」按钮悬停里可见 ——
-             玩家看不到自己有几枚、从哪来）。悬停给 DATA.JIEYUE.desc 全文。 */
-          /* v89.132（老板「节钺设计再开拓一下」）：整行改为**面板入口** ——
-             余额 + 来源 + 四种用途 + 全境进度都在 ui.openJieyue 里。 */
-          '<tr><td class="k">节钺</td><td title="' +
-            U.escape((DATA.JIEYUE || {}).desc || '') + '">' +
-            '<button class="btn sm" data-action="open-jieyue">' +
-            ((DATA.JIEYUE || {}).icon || '🪓') + ' ×<b>' + GAME.jieyueOf() + '</b>' +
-            '　查看用途</button>' +
-            ' <span class="ui-sub">（攻占名城 / 威望每 ' +
-            ((DATA.JIEYUE || {}).rankEvery || 4) + ' 档 +1）</span></td></tr>' +
-          '<tr><td class="k">主城</td><td>' + (function () {
-            var mc = GAME.mainCityOf();
-            return mc
-              ? ('🏯 ' + U.escape(mc.name) + ' <span class="ui-sub">（驻跸加成中）</span>')
-              : '<span class="ui-sub">未设 —— 到目标城的政务厅点「设为主城」</span>';
-          })() + '</td></tr>' +
-          '<tr><td class="k">神器</td><td>供奉 ' + U.fmt(GAME.artPts()) + '　' +
-            (DATA.ARTIFACTS || []).map(function (a) {
-              return a.icon + a.name.slice(0, 2) + ' Lv' + GAME.artLevelOf(a.id);
-            }).join(' · ') +
-            '　<button class="btn sm gold" data-action="open-artifacts">查看</button></td></tr>' +
-          '<tr><td class="k">声望</td><td style="color:var(--green-ok);">' + U.fmt(s.rep) + '</td></tr>' +
-          '<tr><td class="k">幸存者总和</td><td>' + U.fmt(popNow) + ' / ' + U.fmt(totalPop) + '</td></tr>' +
-          '<tr><td class="k">英雄总和</td><td>' + s.generals.length + '</td></tr>' +
-          '<tr><td class="k">月俸支出</td><td>' + U.fmt(salaryTotal) + ' 旧币 / 7 游戏日' +
-            ' <span class="ui-sub">（月俸结算时从各城府库扣除）</span></td></tr>' +
-          (lg ? (function () {
-            /* v89.65（老板「君主练功然后突破」）：修行行 —— 境界 / 修为 / 两个动作。
-               「能不能按」一律交给出口去判（按了不可行会返回原因并 toast），
-               界面不预判 —— 否则就是"界面判一遍、后端判一遍"两个出口。 */
-            var bCap = GAME.genLevelCap(lg), bNeed = GAME.lordRankNeed(lg);
-            var bRank = (s.rank || 0), atTop = (lg.level || 1) >= bCap;
-            var canBreak = atTop && bNeed != null && bRank >= bNeed;
-            /* v89.177（老板「综合考验」）：四关进度（城/军/资/宝 · v90.92 政关随任务系统退役）——未过项红字。
-               口径 = GAME.lordTrialOf（唯一出口）；按钮高亮仍看威望（界面不预判全部门槛）。 */
-            var _trial177 = GAME.lordTrialOf ? GAME.lordTrialOf(lg) : null;
-            var _trialHTML177 = _trial177 ? ('<div class="ui-sub">突破考验（第 ' + _trial177.n + ' 次 · '
-              + (_trial177.ok ? '四关俱过' : '未过') + '）：'
-              + _trial177.rows.map(function (r2) {
-                return '<span style="color:' + (r2.ok ? 'var(--green-ok)' : 'var(--red-light)') + ';">'
-                  + r2.label + ' ' + U.fmt(r2.cur) + '/' + U.fmt(r2.goal) + (r2.ok ? '✓' : '✗') + '</span>';
-              }).join('　') + '</div>') : '';
-            return '<tr><td class="k">君主领兵</td><td>Lv' + lg.level + ' / ' + bCap + ' · ' +
-              ui.genStatusName(lg) + '（不可解雇）</td></tr>' +
-              '<tr><td class="k">君主修行</td><td>境界 <b>' + GAME.lordRealmOf(lg) + '</b>' +
-              '　威望 <b>' + bRank + '</b>' + (bNeed == null ? '（已至顶）' : ' / ' + bNeed + ' 档') +
-              '　<button class="btn sm' + (canBreak ? ' gold' : '') + '" data-action="lord-break">⚡ 突破</button>' +
-              '<div class="ui-sub">每 ' + DATA.LORD_BREAK.step + ' 级一段：每升高 ' + DATA.LORD_BREAK.rankStep
-              + ' 个威望档可突破一次，段顶须突破方可续升' +
-              (bNeed == null ? '　·　已至天启体上限' : ('（下一段 Lv' + (bCap + DATA.LORD_BREAK.step) + ' 需威望 ' + bNeed + ' 档）')) +
-              '</div>' + _trialHTML177 +
-              '</td></tr>';
-          })() : '') +
-          '<tr><td class="k">状态</td><td>正常</td></tr>' +
+        (function () {
+          var R = function (k, v, act) { return '<tr><td class="k">' + k + '</td><td>' + v + '</td><td class="act">' + (act || '') + '</td></tr>'; };
+          var rows = '';
+          rows += R('君主姓名', '<b>' + U.escape(s.ruler.name) + '</b>', '<button class="btn sm" data-action="open-rename-lord">改名</button>');
+          rows += R('头像', (function () {
+            var face = GAME.portraits ? GAME.portraits.poolFile({ gender: s.ruler.gender, portraitSeed: s.ruler.portraitSeed }) : '';
+            return (face ? '<img class="lord-av-mini" src="' + face + '" alt="君主头像">' : '');
+          })(), '<button class="btn sm" data-action="open-avatar-pick">更换</button>');
+          rows += R('威望', (cur ? cur.name : '幸存者') + ' <span class="ui-sub">（' + (s.rank || 0) + ' / ' + (DATA.RANK.length - 1) + '）</span>',
+            next ? '<button class="btn sm' + (chk && chk.ok ? ' gold' : '') + '" data-action="lord-promote" title="' + U.escape(condTitle) + '">晋升：' + next.name + '</button>' : '<span style="color:var(--gold-light);">已登顶</span>');
+          /* v91.57（老板）：威望作用**逐条列出**（控城数 / 建造等级上限 / 各项加成）。 */
+          rows += R('威望作用', '<span style="color:var(--green-ok);">' + GAME.rankBonusText() + '</span>', '');
+          rows += R('节钺', (DATA.JIEYUE || {}).icon + ' ×<b>' + GAME.jieyueOf() + '</b> <span class="ui-sub">（攻占名城 / 威望每 ' + ((DATA.JIEYUE || {}).rankEvery || 4) + ' 档 +1）</span>',
+            '<button class="btn sm" data-action="open-jieyue">查看用途</button>');
+          rows += R('主城', (function () { var mc = GAME.mainCityOf(); return mc ? ('🏯 ' + U.escape(mc.name) + ' <span class="ui-sub">（驻跸加成中）</span>') : '<span class="ui-sub">未设 —— 到目标城的政务厅点「设为主城」</span>'; })(), '');
+          rows += R('神器', '供奉 ' + U.fmt(GAME.artPts()) + '　' + (DATA.ARTIFACTS || []).map(function (a) { return a.icon + a.name.slice(0, 2) + ' Lv' + GAME.artLevelOf(a.id); }).join(' · '),
+            '<button class="btn sm gold" data-action="open-artifacts">查看</button>');
+          rows += R('声望', '<span style="color:var(--green-ok);">' + U.fmt(s.rep) + '</span>', '');
+          rows += R('幸存者总和', U.fmt(popNow) + ' / ' + U.fmt(totalPop), '');
+          rows += R('英雄总和', '' + s.generals.length, '');
+          rows += R('月俸支出', U.fmt(salaryTotal) + ' 旧币 / 7 游戏日 <span class="ui-sub">（月俸结算时从各城府库扣除）</span>', '');
+          if (lg) rows += R('君主领兵', 'Lv' + lg.level + ' / ' + GAME.genLevelCap(lg) + ' · ' + ui.genStatusName(lg) + '（不可解雇）', '');
+          rows += R('状态', '正常', '');
+          return rows;
+        })() +
         '</tbody></table>' +
-        '</div>' +
-      /* v90.94（老板「给君主界面的最下方加一条练功菜单」）：练功条独立到**面板最下方**（横贯）——
-         与突破解耦（练功只涨经验，不再是突破门槛）。按不按得成由出口判（doLordTrain）。 */
-      (lg ? (function () {
-        var st = Math.round(GAME.staNow(lg));
-        var stMax = Math.round((GAME.genAttrs(lg) || {}).staMax || 0);
-        return '<div class="m-sec" style="margin-top:10px;">🧘 练功</div>' +
-          '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">' +
-          '<span>君主 Lv' + (lg.level || 1) + '　体力 <b>' + st + '</b> / ' + stMax + '</span>' +
-          '<button class="btn sm gold" data-action="lord-train">🧘 练功一次</button>' +
-          '<span class="ui-sub">耗体力 ' + DATA.LORD_BREAK.trainSta + ' + 少量净水：涨经验，助君主升级</span>' +
-          '</div>';
-      })() : ''),
+        '</div>',
       foot: '<div class="m-foot"><button class="btn" data-action="close-modal">关闭</button></div>'
     });
   };
@@ -16246,7 +16185,7 @@
     /* v91.36（老板）：「增加自动探索功能，城中有任意空闲英雄和可用兵种时，每个城市均可
        向奇观派遣探索队」（参考自动出征 · 不设固定英雄）。 */
     { id: 'explore', icon: '✨', name: '自动探索', act: 'toggle-auto-explore' },
-    { id: 'lord', icon: '🧘', name: '自动练功', act: 'toggle-auto-lord' },
+    /* ⛔ v91.57（老板「去除君主修行」）：自动练功项退役。 */
     /* v89.128（需求 5）：自动采集/收获（每 24 游戏小时一轮） */
     { id: 'gather', icon: '🌾', name: '自动采集/收获', act: 'toggle-auto-gather' },
     { id: 'recruit', icon: '🧲', name: '自动招募', act: 'auto-recruit-toggle' },
@@ -16264,7 +16203,6 @@
     if (id === 'research') return !!(s.settings && s.settings.autoResearch);
     if (id === 'march') return !!(cfg && cfg.on);
     if (id === 'explore') { var _ec = GAME.autoExploreCfg ? GAME.autoExploreCfg() : null; return !!(_ec && _ec.on); }
-    if (id === 'lord') return !!(s.settings && s.settings.autoLordTrain);
     if (id === 'recruit') return !!(GAME.innAutoCfg && GAME.innAutoCfg().on);
     if (id === 'train') return !!(s.settings && s.settings.autoTrain);
     if (id === 'heal') return !!(s.settings && s.settings.autoHeal);
@@ -16279,7 +16217,6 @@
     if (id === 'research') return (s.autoTechState && s.autoTechState.msg) || '未开启';
     if (id === 'march') return (s.autoMarchInfo && s.autoMarchInfo.msg) || '未开启';
     if (id === 'explore') return (s.autoExploreInfo && s.autoExploreInfo.msg) || '未开启';
-    if (id === 'lord') return (s.autoLordState && s.autoLordState.msg) || '未开启';
     if (id === 'gather') return (s.autoGatherState && s.autoGatherState.msg) || '未开启';
     if (id === 'recruit') {
       var c = GAME.innAutoCfg ? GAME.innAutoCfg() : null;
@@ -16395,11 +16332,6 @@
           '② 兵力取你在「详细配置」里逐兵种填的<b>上限</b>（0 = 不自动派）；' +
           '③ 只对<b>当前所在星球</b>的今日奇观派队，在途满队即等候；' +
           '④ 每城每日次数上限见配置。</div>';
-    } else if (it.id === 'lord') {
-      body = '<div class="auto-note">君主<b>体力过半</b>时自动练一次（每 30 秒最多一次）：' +
-        '产修为、未到段顶还给经验。过半才练是为了<b>把体力留给玩家</b> —— ' +
-        '君主的体力也是出征与演武的本钱，自动化不该把它抢光。' +
-        '净水不足或体力不足时<b>暂停但不关开关</b>，恢复后自动继续。</div>';
     } else if (it.id === 'gather') {
       var _ws128 = (s.wilds || []).filter(function (w) { return GAME.wildGarrisonTotal(w.garrison) > 0; });
       var _gn128 = GAME.gatherList().length, _gm128 = DATA.GATHER.maxActive;

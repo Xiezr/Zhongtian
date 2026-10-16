@@ -408,18 +408,8 @@
         ui.toast('已定位前哨 ' + GAME.map.coordText(Number(el.dataset.x), Number(el.dataset.y)));
       })(); break;
       case 'lord-promote': GAME.doLordPromote(); break;
-      /* v89.65（老板「君主练功然后突破」）：两个动作都就地重开君主面板，
-         让玩家立刻看到修为/境界/上限的变化（与「晋升」同一套收尾）。 */
-      case 'lord-train': (function () {
-        var r = GAME.doLordTrain();
-        ui.toast(r.msg);
-        if (r.ok) { GAME.refreshAll(); ui.openLordInfo(); }
-      })(); break;
-      case 'lord-break': (function () {
-        var r = GAME.doLordBreak();
-        ui.toast(r.msg);
-        if (r.ok) { GAME.refreshAll(); ui.openLordInfo(); }
-      })(); break;
+      /* ⛔ v91.57（老板「去除君主修行/练功」）：`lord-train` / `lord-break` 两个 case 整条退役
+         （君主不再分段突破，按资质等级上限正常成长）。 */
       case 'open-rename-lord': ui.openRenameLord(); break;
       case 'do-rename-lord': GAME.doRenameLord(); break;
       /* v90.90：资源区附属野地下拉框退职（清单移入君主左侧）—— wild-pick 已删。 */
@@ -1225,7 +1215,6 @@
       /* ⛔ v89.204（老板 2）：`case 'forge-setinfo'` 随「套装效果一览」整条退役
          （面板 / 按钮 / 函数一起删，见 ui.js 墓碑；套装数据 DATA.SETS 仍在）。 */
       case 'toggle-auto-march': GAME.doToggleAutoMarch(); break;
-      case 'toggle-auto-lord': GAME.doToggleAutoLord(); break;   /* v89.83：第 4 条自动化 */
       case 'toggle-auto-gather': GAME.doToggleAutoGather(); break;   /* v89.128：自动采集/收获 */
       case 'auto-march-once': GAME.doAutoMarchOnce(); break;
       /* v89.65（老板「自动出征精细化，根据现有出征界面形成弹窗」）：
@@ -1715,21 +1704,6 @@
     if (r && r.ok) GAME.refreshAll(); else GAME.refreshView();
   };
 
-  /* v89.83：自动练功开关（与其它开关同形：开启即试一次，关闭只清状态） */
-  GAME.doToggleAutoLord = function () {
-    var s = GAME.state;
-    if (!s) return;
-    s.settings.autoLordTrain = !s.settings.autoLordTrain;
-    if (s.settings.autoLordTrain) {
-      s.lordTrainAt = 0;                        /* 开启即视为"该练了"，立刻试一次 */
-      var r = GAME.autoLordTrain();
-      ui.toast(r && r.ok ? '🧘 ' + r.msg : '🧘 自动练功已开启（体力过半时自动练）');
-    } else {
-      s.autoLordState = null;
-      ui.toast('自动练功已关闭');
-    }
-    GAME.refreshView();
-  };
   /* v89.118（老板需求 3）：「外敌来犯」开关 —— 与其它自动化开关同形。
      开 = 接受来犯（按现实时间轮番来袭）；关 = 拒战（警报无排期、敌军不来、也无守城俘获）。 */
   GAME.doToggleInvasionAccept = function () {

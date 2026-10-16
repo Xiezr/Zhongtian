@@ -2385,9 +2385,9 @@ async function runTests(dom, URL) {
       !!document.querySelector('#modal-root .m-head') && !!document.querySelector('#modal-root .m-body')
       && !!document.querySelector('#modal-root .modal-x[data-action="close-modal"]')
       && !document.querySelector('#modal-root .m-foot [data-action="close-modal"]'));
-    /* v90.97（老板）：君主面板去左三清单 → 单栏收窄，尺寸 xxl(1200) → xl(960)。 */
-    check('君主弹窗用大档固定尺寸（v77 分栏 · v90.97 收窄 xl）',
-      !!document.querySelector('#modal-root .modal-xl'));
+    /* v91.57（老板）：君主面板再收窄一档 —— xl(960) → lg。 */
+    check('君主弹窗用大档固定尺寸（v77 分栏 · v91.57 收窄 lg）',
+      !!document.querySelector('#modal-root .modal-lg'));
     check('三段式弹窗内层为 flex 布局', !!document.querySelector('#modal-root .inner-panel.inner-shell'));
     G.ui.closeAllModals();
     /* v25（需求 2）：游商/背包改为整页视图 —— 与各"大界面"同格局（.ui-page 容器） */
@@ -3055,12 +3055,13 @@ async function runTests(dom, URL) {
   /* ⑧b 自动化菜单（v29 · 需求 5） */
   G.ui.setView('auto');
   await sleep(100);
-  check('自动化界面：左名单十项 + 右详情（v89.115 分栏 · v89.118 外敌来犯 · v89.128 采集 · v89.190 自动征兵 · v91.36 自动探索）', (function () {
+  check('自动化界面：左名单九项 + 右详情（v89.115 分栏 · v89.118 外敌来犯 · v89.128 采集 · v89.190 自动征兵 · v91.36 自动探索 · v91.57 自动练功退役）', (function () {
     /* v89.115：「左 1/3 名单 + 右 2/3 详情」，新增「🏥 自动治疗」；
        v89.118：「🔥 外敌来犯」；v89.190：「🛡️ 自动征兵」；
-       v91.36（老板）：「✨ 自动探索」（城中有空闲英雄和可用兵种时，逐城向奇观派探索队）。 */
+       v91.36（老板）：「✨ 自动探索」（城中有空闲英雄和可用兵种时，逐城向奇观派探索队）。
+       v91.57（老板「去除君主修行」）：自动练功项退役 → 10 项变 9 项。 */
     var items = vc.querySelectorAll('.auto-item');
-    return items.length === 10 && !!vc.querySelector('.auto-pane')
+    return items.length === 9 && !!vc.querySelector('.auto-pane')
       && !!vc.querySelector('[data-action="auto-pick"][data-key="heal"]')
       && !!vc.querySelector('[data-action="auto-pick"][data-key="train"]')
       && !!vc.querySelector('[data-action="auto-pick"][data-key="invasion"]')
@@ -7412,47 +7413,18 @@ if (svBtn) {
     return txt.indexOf('民心 / 民怨') >= 0 && txt.indexOf('鼓舞民心') >= 0
       && txt.indexOf('消减民怨') >= 0 && !!b1 && !!b2;
   })());
-  check('v89.177 君主面板「突破考验」四关清单（真 DOM · 打开君主面板）', (function () {
+  /* v91.57（老板「去除君主修行」）：君主面板不再有「突破考验」/「练功」条，
+     改为断言"两者均不出现"（君主按资质等级上限正常成长）。 */
+  check('v91.57 君主面板：突破考验 / 练功条均随君主修行退役（真 DOM · 打开君主面板）', (function () {
     G.ui.closeAllModals();
     if (!G.lordGeneralOf || !G.lordGeneralOf()) return 'SKIP-无条件';
     G.ui.openLordInfo();
-    const txt = document.querySelector('#modal-root').textContent || '';
+    const root = document.querySelector('#modal-root');
+    const txt = root.textContent || '';
+    const noTrainBtn = !root.querySelector('[data-action="lord-train"]');
+    const noBreakBtn = !root.querySelector('[data-action="lord-break"]');
     G.ui.closeAllModals();
-    return txt.indexOf('突破考验') >= 0 && txt.indexOf('宝物（珠宝）') >= 0;
-  })());
-  check('v90.94 君主面板「练功」条在面板最下方（真 DOM · 真点一步 · 体力与净水双降）', (function () {
-    /* 老板「给君主界面的最下方加一条练功菜单」+「去除练功与君主突破之间的关联」：
-       ① 位置自证：练功条必须出现在「突破考验」**之后**（面板最下方）
-       ② 真点一步：体力与净水必须**都严格下降**（防平凡解：0===0 不算过） */
-    if (!G.lordGeneralOf || !G.lordGeneralOf()) return 'SKIP-无条件';
-    const g = G.lordGeneralOf();
-    const city = (G.currentCity && G.currentCity()) || G.state.cities[0];
-    if (!city) return false;
-    const bak = { sta: G.staNow(g), grain: (city.res || {}).grain };
-    try {
-      G.ui.closeAllModals();
-      G.ui.openLordInfo();
-      const root = document.querySelector('#modal-root');
-      const txt = root.textContent || '';
-      const btn = root.querySelector('[data-action="lord-train"]');
-      if (!btn) return false;
-      const iTrain = txt.indexOf('练功');
-      const iTrial = txt.indexOf('突破考验');
-      if (!(iTrain >= 0 && iTrial >= 0 && iTrain > iTrial)) return false;
-      /* 造局：体力与净水给足，确保「练得成」（否则测的是"体力不足"分支） */
-      G.setStaNow(g, 999);
-      city.res = city.res || {};
-      city.res.grain = 999999;
-      const sta0 = G.staNow(g), grain0 = city.res.grain;
-      btn.click();
-      const sta1 = G.staNow(g), grain1 = city.res.grain;
-      return sta1 < sta0 && grain1 < grain0;
-    } catch (e) { return false; }
-    finally {
-      G.ui.closeAllModals();
-      G.setStaNow(g, bak.sta);
-      if (city.res) city.res.grain = bak.grain;
-    }
+    return txt.indexOf('突破考验') < 0 && txt.indexOf('练功') < 0 && noTrainBtn && noBreakBtn;
   })());
 })();
 
