@@ -2234,6 +2234,62 @@
         '</tr>';
     }).join('');
   };
+  /* ============================================================
+   * v91.42（老板）：「奇观探索等同行军，请作为**行军管理的一部分**列入」——
+   * 奇观探索在规则上就是一支行军队（1 现实小时抵达 · 可返回 · 按军力结算），
+   * 故并入行军管理：① 军务总览「行军」段列进行内（带进度/读秒），
+   * ② 「指挥战斗 · 行军中的军队」弹窗并入（读秒每秒跳动）。
+   * ⚠️ 数据仍挂在**星球对象** `p.wonderExp`（非 state.marches —— 那是 `_savePlanetSlice`
+   *   的**当前分片**槽位，异星球的队在切换时会丢）；出队列**按星球分组**渲染（各球奇观不同）。
+   * ============================================================ */
+  ui._pheOf = function (e, now) {
+    if (e.returning) return { ico: '↩︎', name: '返回', t: (e.retArrive - now) / 1000, retro: true };
+    if (now < e.arriveAt) return { ico: '🛫', name: '行军', t: (e.arriveAt - now) / 1000, retro: false };
+    return { ico: '⛏', name: '探查累计', t: 0, retro: false };
+  };
+  /* 全星球奇观探索队 → 行内。
+     vFull=true（军务总览 7 列：目标/出发/主将/方式/兵力/进度/操作）；
+     vFull=false（指挥战斗弹窗 5 列：军队/主将/兵力/进度/操作 —— 列数随宿主表头，避免错位）。 */
+  ui._wonderFlightRows = function (vFull) {
+    var s = GAME.state || {}, now = U.now();
+    var W = DATA.WONDER_CFG || { marchRealSec: 3600 };
+    var rows = '';
+    (GAME.planetsOf ? GAME.planetsOf() : []).forEach(function (pl) {
+      var w = GAME.wonderOf ? GAME.wonderOf(pl.id) : null;
+      (pl.wonderExp || []).forEach(function (e) {
+        var ph = ui._pheOf(e, now);
+        var g = null; (s.generals || []).forEach(function (x) { if (x.id === e.genId) g = x; });
+        var city = GAME.cityByIdAnywhere ? GAME.cityByIdAnywhere(e.cityId) : GAME.cityById(e.cityId);
+        var n = e.troops || 0;
+        var baseSec = (W.marchRealSec || 3600);
+        var pct = Math.max(0, Math.min(100, Math.round((ph.retro || ph.t <= 0) ? (ph.retro ? 0 : 100)
+          : (1 - ph.t / baseSec) * 100)));
+        var left = U.durExact(ph.t);
+        var progCell = '<td style="min-width:150px;">' +
+            '<div class="pbar"><i style="width:' + pct + '%"></i></div>' +
+            '<span style="font-size:var(--fs-cap);color:var(--text-dim);">' + ph.ico + ' ' + ph.name + ' · ' + pct + '% · ' +
+            (ph.t > 0 ? ('余 ' + left) : '已抵达（累计 ' + (e.accrued || 0) + ' 份）') + '</span></td>';
+        var opCell = '<td class="ctr"><button class="btn sm" data-action="wonder-open" data-pid="' + pl.id + '" title="查看该星球的奇观（产出 / 探查队列）">查看</button></td>';
+        if (vFull) {
+          rows += '<tr>' +
+            '<td>' + U.escape(w ? w.name : '奇观') + ' · ' + U.escape(pl.name) + '</td>' +
+            '<td class="ctr">' + (city ? U.escape(city.name) : '—') + '</td>' +
+            '<td class="ctr">' + (g ? U.escape(g.name) + ' Lv' + g.level : '无将') + '</td>' +
+            '<td class="ctr">☄ 奇观探查</td>' +
+            '<td class="num">' + U.numText(n, 0) + '</td>' + progCell + opCell + '</tr>';
+        } else {
+          rows += '<tr>' +
+            '<td>' + U.escape(w ? w.name : '奇观') + ' · ' + U.escape(pl.name) + '</td>' +
+            '<td class="ctr">' + (g ? U.escape(g.name) + ' Lv' + g.level : '无将') + '</td>' +
+            '<td class="num">' + U.numText(n, 0) + '</td>' + progCell + opCell + '</tr>';
+        }
+      });
+    });
+    return rows;
+  };
+  ui.wonderFlightCount = function () {
+    var n = 0; (GAME.planetsOf ? GAME.planetsOf() : []).forEach(function (pl) { n += (pl.wonderExp || []).length; }); return n;
+  };
   ui.battleListHTML = function () {
     var list = ui.battleListOf();
     var mList = ui.marchListOf();
@@ -2249,11 +2305,13 @@
     } else {
       h += '<div class="q-empty">当前没有待指挥的战斗</div>';
     }
-    h += '<div class="gold-heading" style="margin-top:16px;">🛫 行军中的军队（' + mList.length + '）</div>';
-    if (mList.length) {
+    var _wf = ui._wonderFlightRows(false);
+    var _wfn = ui.wonderFlightCount();
+    h += '<div class="gold-heading" style="margin-top:16px;">🛫 行军中的军队（' + (mList.length + _wfn) + '）</div>';
+    if (mList.length || _wfn) {
       h += '<table class="tbl"><thead><tr><th>军队</th><th class="ctr">主将</th><th class="num">兵力</th>' +
         '<th>行军进度</th><th class="ctr">操作</th></tr></thead>' +
-        '<tbody>' + ui.marchRowsHTML(mList) + '</tbody></table>';
+        '<tbody>' + ui.marchRowsHTML(mList) + _wf + '</tbody></table>';
     } else {
       h += '<div class="q-empty">当前没有行军中军队（地图上对野地 / 据点 / 城市「出兵」即进入行军）</div>';
     }
@@ -2270,7 +2328,7 @@
        querySelector 恒返回假元素（永远 truthy），只有 querySelectorAll 会如实给 []。 */
     try { opened = !!(document && document.querySelectorAll
       && document.querySelectorAll('#modal-root .war-list').length > 0); } catch (e0) { opened = false; }
-    if (!ui.battleListOf().length && !ui.marchListOf().length && !opened) {
+    if (!ui.battleListOf().length && !ui.marchListOf().length && !ui.wonderFlightCount() && !opened) {
       ui.toast('当前没有待指挥的战斗与行军中军队');
       return;
     }
@@ -3412,10 +3470,19 @@
         ui.marchOpsCell(m) +
         '</tr>';
     }).join('');
-    var marchBlock = list.length
-      ? '<table class="tbl"><thead><tr><th>目标</th><th class="ctr">出发</th><th class="ctr">主将</th><th class="ctr">方式</th><th class="num">兵力</th><th>行军进度</th><th class="ctr">操作</th></tr></thead><tbody>' + rows + '</tbody></table>' +
-        ui.marchRushAllBtn(list)
-      : '<div class="q-empty">当前没有在途行军队列。在地图上对野地 / 据点 / 城市点「出兵」即会进入行军。</div>';
+    /* v91.42（老板）：「奇观探索等同行军，作为行军管理的一部分」——
+       奇观探索队（全星球）并入本段，与常规行军同表头（出发/主将/方式=☄奇观探查/兵力…）。
+       常规行军与奇观探索都空时才提示"没有在途队列"。 */
+    var _wfRows = ui._wonderFlightRows(true), _wfN = ui.wonderFlightCount();
+    var _marchHead = '<thead><tr><th>目标</th><th class="ctr">出发</th><th class="ctr">主将</th><th class="ctr">方式</th><th class="num">兵力</th><th>行军进度</th><th class="ctr">操作</th></tr></thead>';
+    var marchBlock;
+    if (list.length || _wfN) {
+      marchBlock = '';
+      if (list.length) marchBlock += '<table class="tbl">' + _marchHead + '<tbody>' + rows + '</tbody></table>' + ui.marchRushAllBtn(list);
+      if (_wfN) marchBlock += '<table class="tbl"' + (list.length ? ' style="margin-top:8px;"' : '') + '>' + _marchHead + '<tbody>' + _wfRows + '</tbody></table>';
+    } else {
+      marchBlock = '<div class="q-empty">当前没有在途行军队列。在地图上对野地 / 据点 / 城市点「出兵」即会进入行军。</div>';
+    }
 
     /* v89.140（老板 2）：① 统计行（"在城 X · 驻守 Y · 采集 Z …"）**整行去掉**；
        ② 驻守野地 / 采集队两块去掉；③ 编号重排为 ① 城内 / ② 征战中 / ③ 行军。 */
@@ -3424,7 +3491,7 @@
       '<div class="q-sec" style="margin-top:6px;"><span class="q-sec-t">① 城内</span><span class="q-sec-n">' + (s.cities || []).length + ' 城</span></div>' +
       cityBlock +
       (btPend ? '<div class="q-sec" style="margin-top:18px;"><span class="q-sec-t">② ⚔ 征战中</span><span class="q-sec-n">' + btPend.n + ' 处</span></div>' + btPend.html : '') +
-      '<div class="q-sec" style="margin-top:18px;"><span class="q-sec-t">' + (btPend ? '③' : '②') + ' 行军</span><span class="q-sec-n">' + list.length + ' 队</span></div>' +
+      '<div class="q-sec" style="margin-top:18px;"><span class="q-sec-t">' + (btPend ? '③' : '②') + ' 行军</span><span class="q-sec-n">' + (list.length + _wfN) + ' 队</span></div>' +
       marchBlock +
       /* v89.132（老板「军务总览里边，不需要两营（伤兵·俘虏）这个菜单，只在军务处即可」）：
          ⑤ 两营区整体退役 —— 两营（含逐兵种清单与操作）的**唯一落点** = 军务 · 军务处；
