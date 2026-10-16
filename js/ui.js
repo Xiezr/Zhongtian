@@ -4834,6 +4834,13 @@
     rank_up: { hint: '提升资质：请对英雄使用', view: 'generals', btn: '去英雄面板' },
     /* v91.30：奇观材料 —— 无"使用"动作（作高阶升级/强化/打造的消耗料）。 */
     wmat: { hint: '奇观材料：用于高阶升级 / 强化 / 打造（非消耗品）', view: 'city', btn: '去城市' },
+    /* v91.56：6 种奇观材料改为可直接使用 —— 就地生效（体力上限/行军提速/民心/人口上限/血清增产/图纸解析）。 */
+    stamina_max: { hint: '注入英雄提升体力上限：请对英雄使用', view: 'generals', btn: '去英雄面板' },
+    march_boost: { direct: true },
+    hearts_up: { direct: true },
+    pop_cap: { direct: true },
+    serum_yield: { direct: true },
+    set_bp: { direct: true },
     /* 有场景：去对应玩法界面 */
     essence: { hint: '请到调校界面使用', act: 'ling-temper-open', btn: '去调校' },
     talis: { hint: '封存匣在出征时随计略消耗，无需手动使用', view: 'city', btn: '去城市' },
@@ -4856,6 +4863,10 @@
     rank_up: '血清（提升资质）',
     essence: '精华（调校基因强化件）',
     chest: '宝箱', neigong: '战技残页', corvee: '政令', talis: '封存匣', build_cost: '营造', wmat: '奇观材料',
+    /* v91.56：6 种奇观材料改为可直接使用的消耗品，归入「奇观材料」组（背包可见可用）。 */
+    stamina_max: '奇观材料（体力上限）', march_boost: '奇观材料（行军提速）',
+    hearts_up: '奇观材料（抑民怨）', pop_cap: '奇观材料（人口上限）',
+    serum_yield: '奇观材料（血清增产）', set_bp: '奇观材料（图纸解析）',
     /* v89.99（老板「增加道具如招揽令」）：民生 —— 幸存者增速道具；
        v89.104：迁入令（一次性幸存者注入）同属民生族 */
     pop_boost: '民生（幸存者增速）',

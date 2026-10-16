@@ -1859,16 +1859,23 @@
     { id: 'chenxiang', name: '沉香', type: 'jewel', loyalty: 85, price: 550, desc: '赏赐忠诚 +85（森林所产）' },
     { id: 'yemingzhu', name: '夜光珠', type: 'jewel', loyalty: 92, price: 750, desc: '赏赐忠诚 +92（荒漠所产 · 全地形偶得）' },
     { id: 'dushanyu', name: '独山玉', type: 'jewel', loyalty: 100, price: 1200, desc: '赏赐忠诚 +100（山地所产 · 玉中君子）' },
-    /* v91.30 奇观特产材料（9 种 · 全局玩家级 · 只产自奇观 · type:'jewel' 以便并入 cost.jewel 消耗）*/
-    { id: 'w_stariron', name: '星铁同位素', type: 'wmat', price: 40, wonderOnly: true, desc: '奇观特产 · 永动熔炉：天启体改造 / 高阶建筑升级' },
-    { id: 'w_he3', name: '氦-3', type: 'wmat', price: 30, wonderOnly: true, desc: '奇观特产 · 戴森残片/交椅星环：电能提速 / 星际切换燃料' },
-    { id: 'w_crystal', name: '晶核', type: 'wmat', price: 45, wonderOnly: true, desc: '奇观特产 · 巨构水晶：稀有图纸打造 / 词条重铸' },
-    { id: 'w_humus', name: '幽壤', type: 'wmat', price: 35, wonderOnly: true, desc: '奇观特产 · 上古神殿：基因血清量产' },
-    { id: 'w_tidesalt', name: '潮盐素', type: 'wmat', price: 25, wonderOnly: true, desc: '奇观特产 · 沉没方舟：体力/精力上限' },
-    { id: 'w_meteor', name: '陨尘', type: 'wmat', price: 50, wonderOnly: true, desc: '奇观特产 · 坠星峡谷：装备强化（+8 级以上）' },
-    { id: 'w_coldcrystal', name: '冷晶', type: 'wmat', price: 28, wonderOnly: true, desc: '奇观特产 · 沉没方舟：冷却类 / 抑民怨' },
-    { id: 'w_spore', name: '生机孢子', type: 'wmat', price: 22, wonderOnly: true, desc: '奇观特产 · 千柱圣殿：人口暴增 / 幸存者转化' },
-    { id: 'w_singularity', name: '奇点碎屑', type: 'wmat', price: 80, wonderOnly: true, desc: '奇观特产 · 交椅星环：顶级套装件 / 终局件' },
+    /* v91.30 奇观特产材料（9 种 · 全局玩家级 · 只产自奇观）
+       ============================================================
+       v91.56（老板）：「给 6 个奇观材料各配一个专属用途，按材料性质/世界观重新设计」——
+       其中 6 种从"无去路"改为**可直接使用的消耗品**（type 各自专属，见下方分支）：
+         · 星铁同位素/晶核/陨尘 三种**仍走 cost.jewel**（建筑升级/顶级打造/装备强化）。
+         · 潮盐素→英雄**体力上限** · 幽壤→基因血清量产 · 生机孢子→**幸存者上限**
+           · 冷晶→**抑民怨（民心）** · 氦-3→**行军提速** · 奇点碎屑→**顶级套装图纸**。
+       ============================================================ */
+    { id: 'w_stariron', name: '星铁同位素', type: 'wmat', price: 40, wonderOnly: true, desc: '奇观特产：天启体改造 / 高阶建筑升级' },
+    { id: 'w_he3', name: '聚变燃料', type: 'march_boost', price: 30, wonderOnly: true, dur: 24, eff: 0.15, desc: '奇观特产：注入行军编队，24 小时内全军**行军速度 +15%**' },
+    { id: 'w_crystal', name: '晶核', type: 'wmat', price: 45, wonderOnly: true, desc: '奇观特产：稀有图纸打造 / 词条重铸' },
+    { id: 'w_humus', name: '幽壤母株', type: 'serum_yield', price: 35, wonderOnly: true, dur: 24, eff: 1, desc: '奇观特产：基因实验室**每舱额外产 1 份血清**（24h）' },
+    { id: 'w_tidesalt', name: '潮盐素', type: 'stamina_max', price: 25, wonderOnly: true, amount: 120, desc: '奇观特产：注入英雄，**体力上限 +120**（永久 · 每将上限 5 剂）' },
+    { id: 'w_meteor', name: '陨尘', type: 'wmat', price: 50, wonderOnly: true, desc: '奇观特产：装备强化（+8 级以上）' },
+    { id: 'w_coldcrystal', name: '冷晶', type: 'hearts_up', price: 28, wonderOnly: true, amount: 20, desc: '奇观特产：**本城民心 +20**（抑民怨 · 上限 100）' },
+    { id: 'w_spore', name: '生机孢囊', type: 'pop_cap', price: 22, wonderOnly: true, amount: 0.06, desc: '奇观特产：**本城幸存者上限 +6%**（永久叠加 · 每城上限 10 次）' },
+    { id: 'w_singularity', name: '奇点残响', type: 'set_bp', price: 80, wonderOnly: true, desc: '奇观特产：解析得一**顶级套装图纸**（天罚 / 神谕 / 机体，随机）' },
     /* v86（老板「按计划进行」· 第四轮 G1）：封存匣 —— 施展计谋所需 */
     { id: 'jinang', name: '封存匣', type: 'talis', price: 15, desc: '施展计谋所需。妙计千条，藏于囊中。' },
     /* v88（辐能装备）：辐能核心 —— 调校基因强化件的专属材料（price 0 = 游商不售）。

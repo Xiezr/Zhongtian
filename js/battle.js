@@ -3802,6 +3802,9 @@
 
     /* ③ 天气：雨 −20% / 雪 −50% / 雾 −30% / 大风 +10% */
     if (GAME.story && GAME.story.combatMod) m *= (GAME.story.combatMod().move || 1);
+    /* ③′ v91.56（老板）：聚变燃料 —— 全军行军提速（dur 小时 · 唯一出口 s.buffs.marchBoost）。 */
+    if (GAME.state && GAME.state.buffs && GAME.state.buffs.marchBoost
+      && GAME.state.buffs.marchBoost.until > U.now()) m *= (1 + (GAME.state.buffs.marchBoost.mult || 0));
 
 
     /* ③ 己方城市的传送站：城市间行军提速 1.5~6 倍 */

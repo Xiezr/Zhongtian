@@ -216,6 +216,8 @@
        幸存者上限从此**只**由居所（+ 建筑专精）决定：一个来源，一眼可查。
        （`ignoreGuard` 参数保留：历史调用点传 true 表示"不含守将加成"，
         现在本来就没有该加成 —— 不删参数是为了不动那些调用点。） */
+    /* v91.56（老板）：生机孢囊 —— 本城幸存者上限 +popCapAdd（永久叠加 · 每城上限 10 次）。 */
+    if (city.popCapAdd) cap = Math.round(cap * (1 + city.popCapAdd));
     return cap;
   };
   /* ============================================================
@@ -8070,9 +8072,13 @@
     }
     var c = st.crop, items = s.items = s.items || {};
     var got = [];
+    /* v91.56（老板）：幽壤母株 —— 基因项目（血清）额外 +buffs.serumYield.add 份。 */
+    var _syExtra = 0;
+    if (s.buffs && s.buffs.serumYield && s.buffs.serumYield.until > U.now()) _syExtra = s.buffs.serumYield.add || 0;
     if (c.herb) {
-      items[c.herb] = (items[c.herb] || 0) + 1;
-      got.push(farmItemName(c.herb) + ' ×1');
+      var _hn = 1 + _syExtra;
+      items[c.herb] = (items[c.herb] || 0) + _hn;
+      got.push(farmItemName(c.herb) + ' ×' + _hn);
     } else {
       var q = U.randInt(Math.random, c.qty[0], c.qty[1]);
       items[c.mat] = (items[c.mat] || 0) + q;

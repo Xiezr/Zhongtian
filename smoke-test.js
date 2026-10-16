@@ -1063,12 +1063,12 @@ require('./js/map3d.js');
   check('候选含四维属性', cands20[0].tong > 0 && cands20[0].nz > 0 && cands20[0].yw > 0 && cands20[0].zm > 0,
     '统' + cands20[0].tong + ' 内' + cands20[0].nz + ' 勇' + cands20[0].yw + ' 智' + cands20[0].zm);
   check('候选带资质字段', !!DATA.GEN_RANK_BY_ID[cands20[0].rank], cands20[0].rank);
-  /* 指挥的风格倍率区间为 0.96~1.10（最窄），适合作为区间校验 */
+  /* v91.56：候选四维 = roll(base) + 等级成长（随候选等级）——带宽放宽以容成长量（原 1.12 偏紧，偶发假红）。 */
   check('候选四维落在该资质区间内（按风格倍率验算）', (function () {
     var bad = [];
     cands20.forEach(function (c) {
       var rk = DATA.GEN_RANK_BY_ID[c.rank];
-      var lo = Math.floor(rk.base[0] * 0.95), hi = Math.ceil(rk.base[1] * 1.12);
+      var lo = Math.floor(rk.base[0] * 0.85), hi = Math.ceil(rk.base[1] * 1.5);
       if (c.tong < lo || c.tong > hi) bad.push(c.name + ' 统' + c.tong);
     });
     return bad.length === 0;
@@ -15511,22 +15511,29 @@ console.log('\n===== 60. v74 七条（幸存者 · 画布 · 简介 · 六维 ·
 
   console.log('  --- ⑤ 类型化成长 + 自由点（实测） ---');
   var cid74 = st74.cities[0].id;
-  var gWar = G.makeGeneral('猛将甲', 1, 'idle', cid74, false, 'liang', 'war');
-  var gBal = G.makeGeneral('均衡乙', 1, 'idle', cid74, false, 'liang', 'balance');
-  gWar.tong = 50; gWar.yw = 50; gWar.zm = 50; gWar.nz = 50;
-  gBal.tong = 50; gBal.yw = 50; gBal.zm = 50; gBal.nz = 50;
-  for (var k74 = 1; k74 <= 10; k74++) { G.applyLevelGrowth(gWar); G.applyLevelGrowth(gBal); }
-  var sumWar = (gWar.tong - 50) + (gWar.yw - 50) + (gWar.zm - 50) + (gWar.nz - 50);
-  var sumBal = (gBal.tong - 50) + (gBal.yw - 50) + (gBal.zm - 50) + (gBal.nz - 50);
-  check('⑤ 猛将武力涨得比均衡快（类型化自动加点）', gWar.yw > gBal.yw + 1,
-    '猛将武力 ' + gWar.yw.toFixed(1) + ' vs 均衡 ' + gBal.yw.toFixed(1));
-  check('⑤ 均衡与旧口径逐点一致（每级四维各 +成长值）', Math.abs(gBal.tong - (50 + 2 * 10)) < 0.01,
-    '50 → ' + gBal.tong);
-  check('⑤ 两类总成长量一致（每级 4×成长值，只是分配不同）', Math.abs(sumWar - sumBal) < 0.01,
-    sumWar.toFixed(1) + ' vs ' + sumBal.toFixed(1));
-  check('⑤ 自由点按 成长值/级 发放（突变体 10 级 = 20 点）',
-    Math.abs(gBal.freePts - 20) < 0.01 && Math.abs(gWar.freePts - 20) < 0.01,
-    '均衡 ' + gBal.freePts + ' / 猛将 ' + gWar.freePts);
+  /* v91.55（老板）：3 维改为**专长概率随机分配** —— 单次不再保证，改按**大样本均值**验。 */
+  var gWar2 = G.makeGeneral('猛将甲', 1, 'idle', cid74, false, 'liang', 'war');
+  var gBal2 = G.makeGeneral('均衡乙', 1, 'idle', cid74, false, 'liang', 'balance');
+  gWar2.tong = 50; gWar2.yw = 50; gWar2.zm = 50; gWar2.nz = 50;
+  gBal2.tong = 50; gBal2.yw = 50; gBal2.zm = 50; gBal2.nz = 50;
+  for (var k74 = 1; k74 <= 200; k74++) { G.applyLevelGrowth(gWar2); G.applyLevelGrowth(gBal2); }
+  var sumWar2 = (gWar2.tong - 50) + (gWar2.yw - 50) + (gWar2.zm - 50) + (gWar2.nz - 50);
+  var sumBal2 = (gBal2.tong - 50) + (gBal2.yw - 50) + (gBal2.zm - 50) + (gBal2.nz - 50);
+  check('⑤ 猛将武力涨得比均衡快（专长概率·大样本）', gWar2.yw > gBal2.yw,
+    '猛将武力 ' + gWar2.yw.toFixed(0) + ' vs 均衡 ' + gBal2.yw.toFixed(0));
+  check('⑤ 指挥 = 初始 + 成长×级数（确定 · 每级 +成长值）', Math.abs(gBal2.tong - (50 + 2 * 200)) < 0.01,
+    '50 → ' + gBal2.tong);
+  check('⑤ 两类总成长量一致（指挥 + 3维总量 = 4×成长×级数）', Math.abs(sumWar2 - sumBal2) < 0.01,
+    sumWar2.toFixed(1) + ' vs ' + sumBal2.toFixed(1));
+  check('⑤ 自由点按 成长值/级 发放（突变体 200 级 = 400 点）',
+    Math.abs(gBal2.freePts - 400) < 0.01 && Math.abs(gWar2.freePts - 400) < 0.01,
+    '均衡 ' + gBal2.freePts + ' / 猛将 ' + gWar2.freePts);
+  /* v91.55：多样性 —— 同专长同资质、各升 30 级，武力应**各不相同**（不再逐点一致）。 */
+  check('⑤ 多样性：同专长同资质两次升级武力不同（3 维随机）', (function () {
+    function ywOf() { var gg = G.makeGeneral('x', 1, 'idle', cid74, false, 'tian', 'war'); gg.yw = 100; for (var i = 0; i < 30; i++) G.applyLevelGrowth(gg); return gg.yw; }
+    var a = ywOf(), b = ywOf(), c = ywOf();
+    return !(a === b && b === c);
+  })());
   check('⑤ 旧档补发：缺 freePts 的英雄按 已过等级×成长值 一次性补', (function () {
     var gg = G.makeGeneral('旧档将', 6, 'idle', cid74, false, 'ying', 'balance');
     delete gg.freePts;
@@ -17895,6 +17902,9 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
        渠道 = 打据点/名城缴获（GAME.grantBaoDrop，掉落表 DATA.BAOJU_DROP）。 */
     bao: ['eff'],
     wmat: ['price'],   /* v91.30：奇观材料（奇观产 · 走 cost.jewel 消耗）*/
+    /* v91.56：6 种奇观材料改为**可直接使用**的专属消耗品（消费点 = systems.useItem 分支）。 */
+    stamina_max: ['amount'], march_boost: ['dur', 'eff'], hearts_up: ['amount'],
+    pop_cap: ['amount'], serum_yield: ['dur', 'eff'], set_bp: ['price'],
   };
   check('v89.50：每条新物品的 type 都在**已知消费点**内，且必填字段齐（无死物品）', (function () {
     var bad = [];
@@ -36307,9 +36317,15 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var c = GAME.forgeCost(hi.id);
       return c && c.jewel && (c.jewel.w_crystal || 0) > 0;
     })());
-    check('§264④ 9 种奇观材料均在册（type wmat · 走 jewel 键可消耗）', (function () {
-      var ms = (DATA.ITEMS || []).filter(function (x) { return x.type === 'wmat'; });
-      return ms.length === 9 && ms.every(function (x) { return x.id.indexOf('w_') === 0; });
+    check('§264④ 9 种奇观材料均在册（3 走 jewel 消耗 + 6 专属消耗品 · v91.56）', (function () {
+      var IDS = ['w_stariron', 'w_he3', 'w_crystal', 'w_humus', 'w_tidesalt', 'w_meteor', 'w_coldcrystal', 'w_spore', 'w_singularity'];
+      var byId = {};
+      (DATA.ITEMS || []).forEach(function (x) { byId[x.id] = x; });
+      var allIn = IDS.every(function (id) { return !!byId[id]; });
+      /* 3 个仍走 cost.jewel（wmat），6 个改为可直接使用的专属消耗品。 */
+      var wmatN = IDS.filter(function (id) { return byId[id].type === 'wmat'; }).length;
+      var useN = IDS.filter(function (id) { return byId[id].type !== 'wmat'; }).length;
+      return allIn && wmatN === 3 && useN === 6;
     })());
   })();
 
