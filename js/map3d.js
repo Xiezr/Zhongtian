@@ -1149,27 +1149,24 @@
       if (mode === 'space') {
         mesh.scale.setScalar(R * 0.64);   /* v91.30g：×2 放大 */                          /* 太空天体 R 的 32% */
       } else {
-        /* 地表/海面：落在星球某格上 —— 按模型**实际几何**贴地/入海（不再整体悬空）。 */
+        /* 地表/海面：落在星球某格上 —— 贴地(海拔) + 按法线立起 + 按包围盒**底面**坐地。
+           v91.38：模型**已由解析器应用节点旋转**（gltf.js 读 nodes[].rotation）→ 标准 **Y-up**，
+           故把 **+Y** 对齐球面法线 d（老板「角度颠倒」的根因是解析器漏读节点旋转，非本处对齐）。 */
         var sc = _wonderSurfaceCell(mode);
         var d = (sc && sc.dir) ? sc.dir : [0, 1, 0];
-        mesh.scale.setScalar(R * 0.30);   /* v91.30g：×2 放大 */
+        var S = R * 0.30;
+        mesh.scale.setScalar(S);
         var tg = new THREE.Group(); tg.add(mesh);
-        /* v91.36（老板「奇观都侧翻了…请判别奇观的上下底部，底部应贴合星球地面」）——
-           实测 9 个 .glb **全部 Z-up**（包围盒 z 跨度=薄轴、且 max z 恒为 0 = 原点在顶部；
-           x/y 居中）：竖轴是 **+Z** 不是 +Y。原代码把 +Y 对齐到法线 → 整体**倒伏 90°**（侧翻）。
-           改为把 **+Z** 对齐到球面法线 d → 模型「顶朝外、底朝内」，正立贴地。 */
-        tg.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), new THREE.Vector3(d[0], d[1], d[2]).normalize());
+        tg.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(d[0], d[1], d[2]).normalize());
         body.add(tg);
-        /* v91.34（老板「奇观穿模」）：原 rr = surfR + R*0.05 把主体整体**抬离地表**——
-           近景穿帮（陆地浮空 / 海面悬于水上）。改为按包围盒 8 角沿法线的最小投影 `low`
-           （< 0 = 有部分在原点之下）反推落点：rr = surfR − low + margin → **最低点坐在地表上**。
-           海面给负 margin（半潜入水，合「沉没方舟」等形制）。 */
+        /* 落点：按包围盒 8 角沿法线的最小投影 `low`（< 0 = 有部分在原点之下）反推 ——
+           rr = surfR − low + margin → **最低点坐在地表上**。海面给负 margin（半潜入水）。 */
         var surfR = R + Math.max(0, sphElev(d)) * HSC;
         if (mode === 'water') surfR = R + 2.0;                   /* 浮在水面 */
         var low = 0;
         try {
           geo.computeBoundingBox();
-          var bb = geo.boundingBox, S = R * 0.30, cs = [];
+          var bb = geo.boundingBox, cs = [];
           for (var xi = 0; xi < 2; xi++) for (var yi = 0; yi < 2; yi++) for (var zi = 0; zi < 2; zi++)
             cs.push(new THREE.Vector3((xi ? bb.max.x : bb.min.x) * S, (yi ? bb.max.y : bb.min.y) * S, (zi ? bb.max.z : bb.min.z) * S).applyQuaternion(tg.quaternion));
           for (var ci = 0; ci < cs.length; ci++) { var dt2 = cs[ci].x * d[0] + cs[ci].y * d[1] + cs[ci].z * d[2]; if (dt2 < low) low = dt2; }
@@ -1179,7 +1176,7 @@
         M._wonderUp = d; M._wonderR = rr;
       }
       /* 名称标签（浮在主体上方）。
-         v91.36：地表/海面时"上"是**球面法线 d**（模型已 Z-up 立起），标签随 d 抬；
+         v91.38：地表/海面时"上"是**球面法线 d**（模型 Y-up 立起后），标签随 d 抬；
          太空无上下，仍按世界 +Y 抬。 */
       var lbl = null;
       try {
@@ -1216,7 +1213,16 @@
     if (gb) { useBytes(_wonderB64Buf(gb)); return; }
     if (!document || !document.createElement) return;
     var sc = document.createElement('script');
-    sc.src = 'assets/wonders/' + wd.id + '.glb.js';
+    /* v91.38 修复（老板「奇观角度颠倒、颜色糊」）：本 asset 脚本此前**不带 ?v=** →
+       index.html bump 后浏览器仍命中**旧缓存**的 .glb.js（旧的 Y-up 朝向 + 512px 糊贴图），
+       于是"改了没用"。锚定到 index.html 的构建号（同源同串），随每次 bump 自动失效。
+       取法：页面上任一 `?v=NNNN`（js/*.js 由 bump 脚本统一写同号）。 */
+    var _bv = 0;
+    try {
+      var _any = document.querySelector('script[src*="?v="]');
+      if (_any) { var _m = /[?&]v=(\d+)/.exec(_any.getAttribute('src') || ''); if (_m) _bv = _m[1]; }
+    } catch (e) { }
+    sc.src = 'assets/wonders/' + wd.id + '.glb.js' + (_bv ? ('?v=' + _bv) : '');
     sc.onload = function () { var b = window.__WONDER_GLB && window.__WONDER_GLB[wd.id]; if (b) useBytes(_wonderB64Buf(b)); };
     (document.head || document.body || document.documentElement).appendChild(sc);
   }
@@ -1273,13 +1279,13 @@
       M._wonderBody.position.set(dir[0] / L * R_W, dir[1] / L * R_W, dir[2] / L * R_W);
     } else {
       /* 地表/海面：位置固定（贴地/入海），绕**自身竖轴**（= 所在处法线 d）慢转（活气）。
-         v91.36：竖轴是模型的 **局部 Z**（Z-up，见上）—— tg 把 +Z 映到法线 d，
-         故 `mesh.rotation.z` 即绕 d 自旋。 */
+         v91.38：模型为 **Y-up**（解析器已应用节点旋转）—— tg 把 +Y 映到法线 d，
+         故 `mesh.rotation.y` 即绕 d 自旋。 */
       var d = M._wonderUp || [0, 1, 0];
       var r = M._wonderR || (R + 2);
       M._wonderBody.position.set(d[0] * r, d[1] * r, d[2] * r);
       var mesh = M._wonderSpin;
-      if (mesh) mesh.rotation.z += 0.003;
+      if (mesh) mesh.rotation.y += 0.003;
     }
     /* 出场：0.6s 内 scale 0→1（ease-out）。 */
     var t = (Date.now() - (M._wonderT0 || 0)) / 600; if (t > 1) t = 1;

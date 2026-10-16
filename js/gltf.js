@@ -67,8 +67,81 @@
       catch (e) { return null; }
     }
 
+    /* ---- v91.38：**节点变换**（关键修复）----
+       我们的奇观 .glb 来自 gltf-transform，scene 名 `convert`、每个 node 带一条
+       **四元数旋转**（典型 `[0.7071,0,0,0.7071]` = 绕 X +90°，把导出的 Z-up 转成正统 Y-up）。
+       解析器此前**只读 mesh.primitives、完全忽略 nodes[].rotation** → 拿到的是**未旋转**的
+       原始 mesh（Z-up），任何"对齐到法线"的后续处理都建立在**错的模型朝向**上
+       （老板：「奇观角度颠倒」的根因；某个模型还因轴向差 180° 看着完全翻过来）。
+       现按 glTF 规范：从 scene 根**沿 children 复合 TRS**，逐 mesh 求出世界矩阵，
+       与 bakeGeometry 同处应用（位置→点变换，法线→方向变换）。 */
+    function _q2m(q) {                               /* 四元数 → 3x3 元素（列主序数组） */
+      var x = q[0], y = q[1], z = q[2], w = q[3];
+      return [
+        1 - 2 * (y * y + z * z), 2 * (x * y + z * w), 2 * (x * z - y * w),
+        2 * (x * y - z * w), 1 - 2 * (x * x + z * z), 2 * (y * z + x * w),
+        2 * (x * z + y * w), 2 * (y * z - x * w), 1 - 2 * (x * x + y * y)];
+    }
+    function _mul(a, b) {                            /* 两个 3x3（列主序）相乘 a·b */
+      var o = new Array(9);
+      for (var c = 0; c < 3; c++) for (var r = 0; r < 3; r++) {
+        o[c * 3 + r] = a[0 * 3 + r] * b[c * 3 + 0] + a[1 * 3 + r] * b[c * 3 + 1] + a[2 * 3 + r] * b[c * 3 + 2];
+      }
+      return o;
+    }
+    /* 每个 mesh 索引 → 复合（旋转 3x3 + 平移 3 + 缩放 3）。节点链一般很短。 */
+    var _meshXf = {};
+    (function () {
+      var nodes = gltf.nodes || [];
+      var seen = {};
+      function nodeXf(n) {
+        if (!n) return { r: [1, 0, 0, 0, 1, 0, 0, 0, 1], t: [0, 0, 0], s: [1, 1, 1] };
+        var r = n.matrix ? [n.matrix[0], n.matrix[1], n.matrix[2], n.matrix[4], n.matrix[5], n.matrix[6], n.matrix[8], n.matrix[9], n.matrix[10]]
+          : (n.rotation ? _q2m(n.rotation) : [1, 0, 0, 0, 1, 0, 0, 0, 1]);
+        return { r: r, t: n.translation || [0, 0, 0], s: n.scale || [1, 1, 1] };
+      }
+      /* 复合 父·子（先子缩放着父旋转、再父平移 —— 够这套单节点素材用；多级也正确） */
+      function compose(p, c) {
+        return {
+          r: _mul(p.r, c.r),
+          t: [p.r[0] * (c.s[0] * c.t[0]) + p.r[3] * (c.s[1] * c.t[1]) + p.r[6] * (c.s[2] * c.t[2]) + p.t[0],
+              p.r[1] * (c.s[0] * c.t[0]) + p.r[4] * (c.s[1] * c.t[1]) + p.r[7] * (c.s[2] * c.t[2]) + p.t[1],
+              p.r[2] * (c.s[0] * c.t[0]) + p.r[5] * (c.s[1] * c.t[1]) + p.r[8] * (c.s[2] * c.t[2]) + p.t[2]],
+          s: [p.s[0] * c.s[0], p.s[1] * c.s[1], p.s[2] * c.s[2]],
+        };
+      }
+      function rec(ni, acc) {
+        if (ni == null || seen[ni]) return; seen[ni] = 1;
+        var n = nodes[ni]; if (!n) return;
+        var xf = compose(acc, nodeXf(n));
+        if (n.mesh != null) _meshXf[n.mesh] = xf;
+        (n.children || []).forEach(function (ci) { rec(ci, xf); });
+      }
+      var root = { r: [1, 0, 0, 0, 1, 0, 0, 0, 1], t: [0, 0, 0], s: [1, 1, 1] };
+      var scene = (gltf.scenes && gltf.scenes[gltf.scene == null ? 0 : gltf.scene]) || (gltf.scenes && gltf.scenes[0]);
+      var roots = (scene && scene.nodes) || (gltf.nodes || []).map(function (_, i) { return i; });
+      roots.forEach(function (ri) { rec(ri, root); });
+    })();
+    function xfPoint(xf, p) {                        /* 点 = R·(S·v) + T */
+      var vx = p[0] * xf.s[0], vy = p[1] * xf.s[1], vz = p[2] * xf.s[2], r = xf.r;
+      return [r[0] * vx + r[3] * vy + r[6] * vz + xf.t[0],
+              r[1] * vx + r[4] * vy + r[7] * vz + xf.t[1],
+              r[2] * vx + r[5] * vy + r[8] * vz + xf.t[2]];
+    }
+    function xfDir(xf, p) {                           /* 方向 = R·v（不吃平移/缩放） */
+      var r = xf.r;
+      return [r[0] * p[0] + r[3] * p[1] + r[6] * p[2],
+              r[1] * p[0] + r[4] * p[1] + r[7] * p[2],
+              r[2] * p[0] + r[5] * p[1] + r[8] * p[2]];
+    }
+    function _isIdentity(xf) {
+      return !xf || (xf.r[0] === 1 && xf.r[4] === 1 && xf.r[8] === 1 && xf.r[1] === 0 && xf.r[2] === 0 && xf.r[3] === 0
+        && xf.r[5] === 0 && xf.r[6] === 0 && xf.r[7] === 0 && xf.t[0] === 0 && xf.t[1] === 0 && xf.t[2] === 0 && xf.s[0] === 1);
+    }
+
     var parts = [];
-    (gltf.meshes || []).forEach(function (mesh) {
+    (gltf.meshes || []).forEach(function (mesh, mi) {
+      var xf = _meshXf[mi];
       (mesh.primitives || []).forEach(function (prim) {
         if ((prim.mode != null) && prim.mode !== 4) return;   /* 只取三角形 */
         var at = prim.attributes || {};
@@ -77,6 +150,17 @@
         var nor = (at.NORMAL != null) ? accArray(gltf, bin, at.NORMAL) : null;
         var uv = (at.TEXCOORD_0 != null) ? accArray(gltf, bin, at.TEXCOORD_0) : null;
         var idx = (prim.indices != null) ? accArray(gltf, bin, prim.indices) : null;
+        /* v91.38：应用节点复合变换（原地写回副本 —— 视图可能共享 bin，必须拷一份）。 */
+        if (xf && !_isIdentity(xf)) {
+          var cp = new Float32Array(pos.length), i3;
+          for (i3 = 0; i3 < pos.length; i3 += 3) { var q = xfPoint(xf, [pos[i3], pos[i3 + 1], pos[i3 + 2]]); cp[i3] = q[0]; cp[i3 + 1] = q[1]; cp[i3 + 2] = q[2]; }
+          pos = cp;
+          if (nor) {
+            var cn = new Float32Array(nor.length);
+            for (i3 = 0; i3 < nor.length; i3 += 3) { var dn = xfDir(xf, [nor[i3], nor[i3 + 1], nor[i3 + 2]]); cn[i3] = dn[0]; cn[i3 + 1] = dn[1]; cn[i3 + 2] = dn[2]; }
+            nor = cn;
+          }
+        }
         var mat = (prim.material != null) ? (gltf.materials[prim.material] || {}) : {};
         var pbr = mat.pbrMetallicRoughness || {};
         parts.push({
