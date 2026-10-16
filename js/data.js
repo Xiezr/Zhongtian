@@ -3882,7 +3882,8 @@
   DATA.WONDER_DEFS = [
     { id: 'crystal', name: '巨构水晶', body: '发光晶簇', icon: '💠', adapt: 'res', place: 'land',
       mat: 'w_crystal', acts: ['collect', 'search'], out: ['w_meteor'] },
-    { id: 'chairring', name: '交椅星环', body: '巨型环', icon: '💫', adapt: 'resDanger', place: 'space',
+    { id: 'chairring', name: '交椅星环', body: '巨型行星环', icon: '💫', adapt: 'resDanger', place: 'space',
+      planetRing: true,   /* v91.40（老板「不然能叫星环吗」）：**绕星球**的行星环，不是绕行的小环 */
       mat: 'w_singularity', acts: ['search', 'deep'], out: ['w_he3', 'bp_legend_zhan'] },
     { id: 'crater', name: '坠星峡谷', body: '陨击坑熔岩', icon: '☄️', adapt: 'danger', place: 'land',
       mat: 'w_meteor', acts: ['search', 'deep'], out: ['bp_rare_zhan'] },

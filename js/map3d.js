@@ -1154,9 +1154,25 @@
       var mesh = new THREE.Mesh(geo, geo._mat);
       var body = new THREE.Group(); body.add(mesh);
       M._wonderSpin = mesh;                                       /* v91.34：自旋目标 = 几何体本身（绕自身竖轴） */
-      if (mode === 'space') {
+      if (wd.planetRing) {
+        /* v91.40（老板「星环得放大把星球环起来，不然能叫星环吗」）——
+           行星环 = **绕在星球外圈**。模型环平面在 Y-Z、轴沿 X；先绕 Z 转 90° 把它**放平到赤道面**
+           （X-Z，与星球 Y 轴垂直），再扣 0.30 得土星环式倾角。
+           定标按**几何实测半径**算（bakeGeometry 后环半径 ≈ 0.49，非 1）→ 外径 = 1.55R（略大于 1.5R，
+           让环稳稳套在球外）。位置恒在**球心**；环对称 → 环面内自旋不可见，故**不转**。 */
+        var _r0 = 0.5;
+        try {
+          geo.computeBoundingBox(); var _bb = geo.boundingBox;
+          _r0 = Math.max(Math.abs(_bb.max.y), Math.abs(_bb.min.y), Math.abs(_bb.max.z), Math.abs(_bb.min.z)) || 0.5;
+        } catch (e) { }
+        mesh.scale.setScalar(R * 1.45 / _r0);
+        body.rotation.z = Math.PI / 2 - 0.18;   /* 放平到赤道面后扣 0.18 倾角（土星环观感） */
+        M._planetRing = true; M._wonderUp = [0, 1, 0]; M._wonderR = 0;
+      } else if (mode === 'space') {
+        M._planetRing = false;
         mesh.scale.setScalar(R * 0.64);   /* v91.30g：×2 放大 */                          /* 太空天体 R 的 32% */
       } else {
+        M._planetRing = false;
         /* 地表/海面：落在星球某格上 —— 贴地(海拔) + 按法线立起 + 按包围盒**底面**坐地。
            v91.38：模型**已由解析器应用节点旋转**（gltf.js 读 nodes[].rotation）→ 标准 **Y-up**，
            故把 **+Y** 对齐球面法线 d（老板「角度颠倒」的根因是解析器漏读节点旋转，非本处对齐）。 */
@@ -1183,15 +1199,16 @@
         var rr = surfR - low + margin;
         M._wonderUp = d; M._wonderR = rr;
       }
-      /* 名称标签（浮在主体上方）。
-         v91.38：地表/海面时"上"是**球面法线 d**（模型 Y-up 立起后），标签随 d 抬；
-         太空无上下，仍按世界 +Y 抬。 */
+      /* 名称标签（浮在主体上方）。 */
       var lbl = null;
       try {
         lbl = nameSprite('✨ ' + wd.name, '#ffe6a8');
-        var _lh = R * (mode === 'space' ? 0.2 : 0.16);
-        if (mode === 'space') lbl.position.set(0, _lh, 0);
-        else lbl.position.set(d[0] * _lh, d[1] * _lh, d[2] * _lh);
+        if (wd.planetRing) { var _eh = R * 0.6; lbl.position.set(0, _eh, 0); }   /* 星环：标在环外顶 */
+        else {
+          var _lh = R * (mode === 'space' ? 0.2 : 0.16);
+          if (mode === 'space') lbl.position.set(0, _lh, 0);
+          else lbl.position.set(d[0] * _lh, d[1] * _lh, d[2] * _lh);
+        }
         body.add(lbl);
       } catch (e) { }
       M._wonderBody = body;
@@ -1279,7 +1296,10 @@
   function wonderStep() {
     if (!M._wonderBody || !M._wonderGrp) return;
     var mode = M._wonderMode || 'space';
-    if (mode === 'space') {
+    if (M._planetRing) {
+      /* v91.40 行星环：恒在**球心**（环对称，环面内自旋不可见 → 不转，静置）。 */
+      M._wonderBody.position.set(0, 0, 0);
+    } else if (mode === 'space') {
       M._wonderAngle = (M._wonderAngle || 0) + 0.004;
       var a = M._wonderAngle, R_W = R * 1.6;
       var dir = [Math.cos(a), 0.22, Math.sin(a)];
