@@ -36165,18 +36165,20 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         return okN === 3 && GAME.wonderActiveCount(st.activePlanet) === 3;   /* 前 3 成、第 4/5 被上限拒 */
       } finally { G.state = bk; }
     })());
-    check('§263④ 累计→落账：探查产奇观材料入全局 s.items', (function () {
+    check('§263④ 累计→落账：探查产奇观材料入全局 s.items（3 种材料之一）', (function () {
       var bk = GAME.state;
       try {
         var st = G.newGame({ name: 'w263b', cityName: '灰岗', region: '烬环', mapSeed: 8 });
         G.state = st;
         var wd = GAME.wonderOf(st.activePlanet);
         st.items = st.items || {};
-        var before = st.items[wd.mat] || 0;
+        var mats = wd.mats || [wd.mat];
+        var before = 0; mats.forEach(function (m) { before += st.items[m] || 0; });
         var exp = { act: 'collect', cityId: st.cities[0].id, army: {}, troops: 0, acc: [], accrued: 0 };
         for (var i = 0; i < 5; i++) GAME._wonderAccrueItem(wd, exp);   /* 累计 5 份 */
         GAME._wonderBank(exp, wd, '');                                  /* 落账 */
-        return (st.items[wd.mat] || 0) > before && exp.accrued === 5;
+        var after = 0; mats.forEach(function (m) { after += st.items[m] || 0; });
+        return after > before && exp.accrued === 5;
       } finally { G.state = bk; }
     })());
     /* v91.36（老板）：「增加自动探索 —— 城中有空闲英雄和可用兵种时，逐城向奇观派队 · 不设固定英雄」。 */

@@ -8376,12 +8376,14 @@
     var q = Math.max(1, Math.round((1 + Math.floor(Math.random() * 2)) * (act.mul || 1) * tierMul));
     function add(id, n) { if (!id || n <= 0) return; var e = null; exp.acc.forEach(function (x) { if (x.id === id) e = x; }); if (e) e.n += n; else exp.acc.push({ id: id, n: n }); }
     function pickFrom(pred) { var a = (DATA.ITEMS || []).filter(pred); return a.length ? a[Math.floor(Math.random() * a.length)].id : null; }
-    /* ① 主产（必给，但**受每程上限约束**——v91.53：高兵量不再一次喂满半座城） */
-    if (def && def.mat) {
+    /* ① 主产（**该奇观 3 种材料之一**，每份等概率随机取 1 种）——
+       受每程上限约束（v91.53：高兵量不再一次喂满半座城；v91.54：上限按 3 种**合计**算）。 */
+    var _mats = (def && def.mats) || (def && def.mat ? [def.mat] : []);
+    if (_mats.length) {
       var _cap = W.maxPerTrip || 12, _cur = 0;
-      exp.acc.forEach(function (x) { if (x.id === def.mat) _cur += x.n; });
+      _mats.forEach(function (mid) { exp.acc.forEach(function (x) { if (x.id === mid) _cur += x.n; }); });
       var _q = Math.min(q, Math.max(0, _cap - _cur));
-      if (_q > 0) add(def.mat, _q);
+      if (_q > 0) add(_mats[Math.floor(Math.random() * _mats.length)], _q);
     }
     /* ② 通用·珠宝（任意奇观）—— 档位按主产材料价派生 */
     if (Math.random() < (W.jewelChance || 0)) {

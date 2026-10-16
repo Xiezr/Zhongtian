@@ -16930,11 +16930,16 @@
     var DIFF_TIP = '采集：不派兵、安稳取**少量**材料；派军搜查/深潜攻坚：**出征界面**选将选兵，'
       + '按**军力**给更多材料（有损兵风险）。**珠宝 / 图纸 / 残页为通用掉落，任意奇观均有一定几率**。';
     var rows = '';
-    /* ① 主产（必给） */
-    var _mit = DATA.ITEM_BY_ID[wd.mat] || {};
-    rows += '<div class="stat-row" title="' + U.escape(DIFF_TIP) + '"><span class="sr-name">' + (_mit.icon || '📦') + ' ' +
-      U.escape(_mit.name || wd.mat) + ' <i class="gd-sub">×' + ((GAME.state.items || {})[wd.mat] || 0) + '</i></span>' +
-      '<span class="sr-sub">主产 · 必给</span></div>';
+    /* ① 主产（v91.54 老板：该奇观 **3 种**材料，**同一行等分 1/3** 显示） */
+    var _mats = wd.mats || (wd.mat ? [wd.mat] : []);
+    var _mcell = _mats.map(function (mid) {
+      var it = DATA.ITEM_BY_ID[mid] || {}, have = (GAME.state.items || {})[mid] || 0;
+      return '<span style="flex:1 1 33.33%;min-width:0;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' +
+        U.escape(DIFF_TIP) + '">' + (it.icon || '📦') + ' ' + U.escape(it.name || mid) +
+        ' <i class="gd-sub">×' + have + '</i></span>';
+    }).join('');
+    rows += '<div class="stat-row"><span class="sr-name" style="display:flex;flex:1;min-width:0;">' + _mcell + '</span>' +
+      '<span class="sr-sub">主产 · 每份随机 1 种</span></div>';
     /* ② 通用掉落（各自独立几率） */
     function _genericRow(icon, name, pct, have) {
       return '<div class="stat-row" title="' + U.escape(DIFF_TIP) + '"><span class="sr-name">' + icon + ' ' + name +

@@ -3901,26 +3901,32 @@
    * `mat` = 主产奇观材料 id；`out` = 额外产出（珠宝/芯片/图纸/残页 id）。
    * 产出统一落**全局背包 s.items**（玩家级）。
    * ============================================================ */
+  /* ============================================================
+   * v91.54（老板）：「每个奇观可产出其中 **3 种**（共 9 种）材料，分配一下；
+   *   奇观界面同一行显示、等分 1/3 空间」。
+   * 分配原则：**每种材料恰被 3 个奇观产出**（9×3 = 27 = 9 材料 × 3），按奇观特性配主题；
+   *   `mats: [3]`（取代旧的单 `mat`）；每份产出**随机取其中 1 种**（等概率）。
+   * ============================================================ */
   DATA.WONDER_DEFS = [
     { id: 'crystal', name: '巨构水晶', body: '发光晶簇', icon: '💠', adapt: 'res', place: 'land',
-      mat: 'w_crystal', acts: ['collect', 'search'], out: ['w_meteor'] },
+      mats: ['w_he3', 'w_crystal', 'w_spore'], acts: ['collect', 'search'], out: [] },
     { id: 'chairring', name: '交椅星环', body: '巨型行星环', icon: '💫', adapt: 'resDanger', place: 'space',
       planetRing: true,   /* v91.40（老板「不然能叫星环吗」）：**绕星球**的行星环，不是绕行的小环 */
-      mat: 'w_singularity', acts: ['search', 'deep'], out: ['w_he3', 'bp_legend_zhan'] },
+      mats: ['w_stariron', 'w_he3', 'w_singularity'], acts: ['search', 'deep'], out: [] },
     { id: 'crater', name: '坠星峡谷', body: '陨击坑熔岩', icon: '☄️', adapt: 'danger', place: 'land',
-      mat: 'w_meteor', acts: ['search', 'deep'], out: ['bp_rare_zhan'] },
+      mats: ['w_meteor', 'w_singularity', 'w_crystal'], acts: ['search', 'deep'], out: [] },
     { id: 'ark', name: '沉没方舟', body: '半潜方舟', icon: '🚢', adapt: 'habit', place: 'water',
-      mat: 'w_tidesalt', acts: ['collect', 'rescue'], out: ['w_coldcrystal'] },
+      mats: ['w_humus', 'w_tidesalt', 'w_coldcrystal'], acts: ['collect', 'rescue'], out: [] },
     { id: 'pillars', name: '千柱圣殿', body: '列柱环廊', icon: '🏛️', adapt: 'civ', place: 'land',
-      mat: 'w_spore', acts: ['study', 'collect'], out: ['book_wuzi'] },
+      mats: ['w_humus', 'w_spore', 'w_singularity'], acts: ['study', 'collect'], out: [] },
     { id: 'mothership', name: '陨落母舰', body: '半沉舰体', icon: '🛸', adapt: 'default', place: 'land',
-      mat: 'w_stariron', acts: ['search', 'collect'], out: ['w_crystal'] },
+      mats: ['w_stariron', 'w_tidesalt', 'w_meteor'], acts: ['search', 'collect'], out: [] },
     { id: 'dyson', name: '戴森残片', body: '环状能量板', icon: '🔆', adapt: 'default', place: 'space',
-      mat: 'w_he3', acts: ['collect', 'search'], out: [] },
+      mats: ['w_he3', 'w_tidesalt', 'w_coldcrystal'], acts: ['collect', 'search'], out: [] },
     { id: 'temple', name: '上古神殿', body: '悬浮神殿', icon: '🛕', adapt: 'default', place: 'land',
-      mat: 'w_humus', acts: ['study', 'rescue'], out: ['book_liutao'] },
+      mats: ['w_humus', 'w_coldcrystal', 'w_spore'], acts: ['study', 'rescue'], out: [] },
     { id: 'forge', name: '永动熔炉', body: '喷焰工业巨构', icon: '🏭', adapt: 'default', place: 'land',
-      mat: 'w_stariron', acts: ['collect', 'deep'], out: ['w_meteor'] },
+      mats: ['w_stariron', 'w_crystal', 'w_meteor'], acts: ['collect', 'deep'], out: [] },
   ];
   /* 探索行动表（分类名 · 需将/需军/负重门槛 · 冒险损兵概率 · 产出倍率）
      v91.36（老板）：「对奇观的动作应等同于出征，直连出征界面，**必须由将领带队**。
@@ -3988,7 +3994,7 @@
     /* ============================================================
      * v91.51（老板）：「奇观的产出应该扩大，特定材料分奇观分配；通用材料（图纸/珠宝等）
      *   应都给**独立的产出几率**」——累计每 1 份的产出分三类（**各有独立几率**）：
-     *   ① 主产：该奇观分配的材料（def.mat），按产量倍率给 1~2×；
+     *   ① 主产：该奇观分配的**3 种材料之一**（`mats`，每份等概率随机取 1 种），按产量倍率给 1~2×；
      *   ② 通用·珠宝：**任意奇观**都有几率掉珠宝（`jewelChance`），按奇观强弱取档位；
      *   ③ 通用·图纸：**任意奇观**都有几率掉图纸（`bpChance`）——**不再"某奇观只产某几张"**，
      *      否则集齐 18 套要跑遍所有奇观，漏一个就永远造不出对应套装；
@@ -4003,10 +4009,12 @@
     3: ['yusui', 'yinchenmu', 'cuiyu', 'danbaishi', 'bixi', 'jiaorenlei'],  /* 高阶 */
     4: ['tianzhu', 'longxianxiang', 'chenxiang', 'yemingzhu', 'dushanyu'],   /* 顶阶 */
   };
-  /* 某奇观产出几档珠宝（按主产材料的 price：越贵越靠上档）。 */
+  /* 某奇观产出几档珠宝（按 3 种材料均价的最高档派生）。 */
   DATA.wonderJewelBandOf = function (wd) {
-    var it = (DATA.ITEM_BY_ID || {})[wd && wd.mat];
-    var pr = (it && it.price) || 30;
+    var mats = (wd && wd.mats) || [];
+    var pr = 0;
+    mats.forEach(function (id) { var it = (DATA.ITEM_BY_ID || {})[id]; if (it && it.price > pr) pr = it.price; });
+    if (!pr) pr = 30;
     return pr >= 70 ? 4 : pr >= 45 ? 3 : pr >= 32 ? 2 : 1;
   };
 
