@@ -194,6 +194,18 @@
     stepEvery: 3,      /* 每 3 级 +1 颗 */
     tierEvery: 4,      /* 每 4 级上移一档珠宝 */
   };
+  /* ============================================================
+   * v91.48（老板）：「难度应该递增，但指数级太容易膨胀 → 用**近指数（多项式）**曲线，
+   *   同时必须考虑**可行性**」——Lv13+ 的资源成本从"冻结"改为**多项式增长**：
+   *   资源(lv) = 资源(12→13 档) × (target / 12)^p，target = lv+1，p 见下。
+   * · **为什么不纯指数**：×2/级 到 Lv24 是 ×4096（净化厂曾 4 亿、围墙曾天文数字）——
+   *   远超仓容（base 2M × Σ仓等级）→ 永远升不起。多项式 (target/12)^1.6 在 13→24 段
+   *   只 ×1.13→×3.03，**末级约 3 倍起点**，可行性有保证。
+   * · **Lv1-12 不动**（现有 ×2/级 手写表已平衡、有测试钉死）——本条只管 13+。
+   * · **时间不封顶**（仍走 buildTimeSec 的 12 级循环，单次 ≤24h，老板硬上限）。
+   * · ⚠ 调平衡只动本表 `p`（越大越陡）。`p=1.6` = 老板拍的"级^1.6"。
+   * ============================================================ */
+  DATA.LEVEL_COST_POLY = { p: 1.6 };
   /* 珠宝阶梯（按 price 升序）—— 唯一来源是 DATA.ITEMS 的 jewel 型条目。
      ⚠️ **惰性求值**：本段代码在 DATA.ITEMS 之前执行（costTable 要给 BUILDINGS 用），
      直接在这里枚举会得到空阶梯（= 高等级升不动）。所以第一次用时才算并缓存。 */
@@ -323,8 +335,18 @@
        （12 级循环 + 单次 ≤24h；行数组第 5 列成为历史遗迹，仅作对照参考）。 */
     var rows = extRows(arr, DATA.MAX_LEVEL_ABS);
     var freezeAt = (DATA.JEWEL_COST && DATA.JEWEL_COST.fromLevel) || 12;
+    var _polyP = (DATA.LEVEL_COST_POLY && DATA.LEVEL_COST_POLY.p) || 1.6;
     return function (lv) {
-      var r = (lv >= freezeAt) ? rows[freezeAt - 1] : rows[lv];   /* 资源封顶：用「12→13」那一档 */
+      /* v91.48：Lv13+ 资源按**多项式**增长（基准 = 12→13 那一档 × (target/12)^p）——
+         取代旧的"冻结在 12→13 档"（老板：「难度应递增，但指数太膨胀，用近指数并顾可行性」）。 */
+      var base13 = rows[freezeAt - 1];
+      var r;
+      if (lv >= freezeAt) {
+        var _t = lv + 1, _k = Math.pow(_t / freezeAt, _polyP);   /* target=lv+1；live≥13 → _k≥1 */
+        r = [Math.round(base13[0] * _k), Math.round(base13[1] * _k), Math.round(base13[2] * _k), Math.round(base13[3] * _k)];
+      } else {
+        r = rows[lv];
+      }
       if (!r) return null;
       /* v90.12（老板 1）：废土化 —— 建筑升级同样**少木料、重废钢**（与 buildCost 同一系数），
          否则等级表与首建表倒挂。 */

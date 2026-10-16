@@ -20308,16 +20308,23 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     var u4 = srcF('ui.js'), d4 = srcF('domain.js'), m4 = srcF('main.js'), da4 = srcF('data.js');
     var h4 = _fs.readFileSync(_p.join(__dirname, 'index.html'), 'utf8');
 
-    console.log('  --- ① 建筑高等级造价（资源封顶 + 珠宝）---');
-    check('① Lv12 之后资源冻结、改吃珠宝（阶梯从 DATA.ITEMS 派生）', (function () {
+    console.log('  --- ① 建筑高等级造价（近指数递增 + 珠宝）---');
+    check('① Lv13+ 资源按近指数（多项式）递增 · 非冻结非爆炸 · 珠宝门槛在册', (function () {
       var b = DATA.BUILDINGS.minfang;
-      var c12 = b.levelCost(12), c30 = b.levelCost(30);
+      var c12 = b.levelCost(12), c24 = b.levelCost(24), c30 = b.levelCost(30);
+      /* v91.48（老板「难度应递增，但指数太膨胀 → 用近指数并顾可行性」）：
+         Lv13+ 资源 = base13 × (target/12)^p（p=DATA.LEVEL_COST_POLY.p）——
+         ① **递增**（不再冻结，难度随级上升）；② **有界**（多项式，非 ×2 指数）：
+         target=31 时 (31/12)^1.6 ≈ 4.7，故 Lv30 起点倍率应 < 6（×2 指数会是 2^18）。 */
+      var grew = c30.grain > c12.grain && c24.grain > c12.grain;
+      var bounded = (c30.grain / c12.grain) < 6;
+      var monotone = c24.grain <= c30.grain;
       return DATA.JEWEL_COST.fromLevel === 12
-        && c12.grain === c30.grain && c12.wood === c30.wood
+        && grew && bounded && monotone
         && !!c12.jewel && !b.levelCost(11).jewel
         && DATA.jewelLadder().length >= 9
         && Object.keys(b.levelCost(24).jewel)[0] === DATA.jewelLadder()[3];
-    })(), '13 级 → 珠宝 ' + JSON.stringify(DATA.BUILDINGS.minfang.levelCost(12).jewel));
+    })(), 'Lv30/Lv12 资源倍率 ' + (DATA.BUILDINGS.minfang.levelCost(30).grain / DATA.BUILDINGS.minfang.levelCost(12).grain).toFixed(2) + '×');
     check('① 校验/支付同一出口：珠宝查 s.items（唯一读法 jewelNeedOf）', (function () {
       var keep = G.state;
       var st = G.newGame({ name: 'v104a', cityName: '灰岗' });

@@ -1007,7 +1007,18 @@
      *   与城内一致，单次 ≤24h）。珠宝（jewel）另表，本函数不涉及。
      * ============================================================ */
     var freezeAt = (DATA.JEWEL_COST && DATA.JEWEL_COST.fromLevel) || 12;
-    var r = eb.cost[lv >= freezeAt ? (freezeAt - 1) : lv];
+    var base13 = eb.cost[freezeAt - 1];
+    var r;
+    if (lv >= freezeAt) {
+      /* v91.48（老板）：Lv13+ 资源按**多项式**增长（与城内 costTable 同一曲线/同一系数）——
+         `base13 × (target/12)^p`。取代 v91.47 的"冻结"（老板：「难度应递增，
+         但指数太膨胀 → 用近指数并顾可行性」）。系数唯一来源 DATA.LEVEL_COST_POLY.p。 */
+      var _p = (DATA.LEVEL_COST_POLY && DATA.LEVEL_COST_POLY.p) || 1.6;
+      var _k = Math.pow((lv + 1) / freezeAt, _p);
+      r = [Math.round(base13[0] * _k), Math.round(base13[1] * _k), Math.round(base13[2] * _k), Math.round(base13[3] * _k)];
+    } else {
+      r = eb.cost[lv];
+    }
     /* 越界返回 null（而不是读 r[0] 抛异常）—— 等级上限提到 12 之后，
        任何一处"按 10 级算"的旧调用都会走到这里，宁可返回"无费用"也不要崩。 */
     if (!r) return null;
