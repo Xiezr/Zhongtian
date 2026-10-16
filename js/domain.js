@@ -8141,6 +8141,7 @@
     var pl = GAME._planetOf(pid); if (!pl) return null;
     var defs = DATA.WONDER_DEFS || []; if (!defs.length) return null;
     var day = _wday();
+    if (pl.wonderDay !== day) { pl.wonderClearedLv = 0; }   /* v91.52：奇观每现实日刷新 → 已清层归零 */
     if (pl.wonderDay === day && pl.wonderId) {
       var d0 = null; defs.forEach(function (d) { if (d.id === pl.wonderId) d0 = d; });
       if (d0) return d0;
@@ -8171,6 +8172,89 @@
     var pl = GAME._planetOf(pid); if (!pl || !pl.wonderExp) return 0;
     return pl.wonderExp.length;
   };
+  /* ============================================================
+   * v91.52（老板）：**奇观探索层级** —— 每层守军，逐层击败才解锁下一层；
+   *   高层才解锁 → 且各行动需「已清层 ≥ 该行动门槛层」才可**开始材料收集**。
+   * ------------------------------------------------------------
+   * 守卫构成（确定论，按层派生，不落状态）：
+   *   兵力 = totalArmy × 权重[lv]/Σ权重（6 层之和 = 50 万）；
+   *   守卫英雄 = 青铜/白银/…/王级，等级/四维/速度按层递增（速度另设）。
+   * `pl.wonderClearedLv` = 本奇观**已清最高层**（现实日刷新归零 —— 与奇观同轴）。
+   * ============================================================ */
+  GAME.wonderLayerCount = function () { return (DATA.WONDER_LAYER_WEIGHTS || []).length || 6; };
+  GAME.wonderLayerDefOf = function (lv) {
+    var C = DATA.WONDER_LAYER_CFG || {}, W = DATA.WONDER_LAYER_WEIGHTS || [];
+    var n = W.length || 6; lv = Math.max(1, Math.min(n, lv | 0));
+    var sum = 0; for (var i = 0; i < n; i++) sum += W[i];
+    var total = C.totalArmy || 500000;
+    var army = {}, n2 = Math.round(total * W[lv - 1] / (sum || 1)), placed = 0;
+    var mix = (C.mixByLv || [])[lv - 1] || [];
+    mix.forEach(function (m, i) { var c = (i === mix.length - 1) ? Math.max(0, n2 - placed) : Math.round(n2 * (m.w || 0)); if (c > 0) { army[m.id] = (army[m.id] || 0) + c; placed += c; } });
+    var rank = (DATA.WONDER_GUARD_RANKS || [])[lv - 1] || { name: '守卫', title: '守卫' };
+    /* 守卫英雄（含四维 + 速度）—— 属性 1000/2000… 量级（四维之和）。 */
+    var per = (C.attrBase != null ? C.attrBase : 250) + (lv - 1) * (C.attrPerLv != null ? C.attrPerLv : 250);
+    var gen = {
+      name: rank.name + '守卫', title: rank.title, wild: true, guard: true, _layerGuard: lv,
+      level: (C.guardLvBase || 60) + (lv - 1) * (C.guardLvPerLv || 20),
+      tong: per, yw: per, zm: per, nz: per,                                    /* 四维（总 = 4×per ≈ 1000/2000/…） */
+      atk: Math.round(per * 1.5), def: Math.round(per * 1.2),                     /* 攻/防派生 */
+      spd: (C.spdBase || 300) + (lv - 1) * (C.spdPerLv || 60),                    /* **速度另设** */
+    };
+    return { lv: lv, rank: rank, army: army, total: n2, gen: gen,
+      minTroops: (C.minTroops || [])[lv - 1] || 0 };
+  };
+  GAME.wonderClearedOf = function (pid) { var pl = GAME._planetOf(pid); return (pl && pl.wonderClearedLv) || 0; };
+  /* 各行动的**门槛层**（越高门槛越深 · 由行动侧派生，不手写）。默认：索引 +1。 */
+  GAME.wonderActGateOf = function (actId) {
+    var rank = { collect: 1, study: 1, rescue: 2, search: 3, deep: 5 };
+    return rank[actId] || 1;
+  };
+  /* 该行动是否已解锁（已清层 ≥ 门槛层）。未解锁 → 返回原因（给 UI/闸门）。 */
+  GAME.wonderActLockOf = function (pid, actId) {
+    var gate = GAME.wonderActGateOf(actId);
+    if (GAME.wonderClearedOf(pid) >= gate) return '';
+    var C = DATA.WONDER_LAYER_CFG || {};
+    return '需先击败第 ' + gate + ' 层守卫（' + ((DATA.WONDER_GUARD_RANKS || [])[gate - 1] || {}).name + '守卫）才可' + ((DATA.WONDER_ACT_DEFS || {})[actId] || {}).name;
+  };
+  /* 挑战某层守军：走战斗引擎（与出征同引擎），**败则损兵**、胜则登记已清层。 */
+  GAME.wonderFightLayer = function (pid, lv, cityId, army, genId) {
+    var pl = GAME._planetOf(pid); if (!pl) return { ok: false, msg: '星球不存在' };
+    if (!GAME.wonderPresent(pid)) return { ok: false, msg: '今日奇观未出现' };
+    var cleared = GAME.wonderClearedOf(pid);
+    lv = Math.max(1, Math.min(GAME.wonderLayerCount(), lv | 0));
+    if (lv > cleared + 1) return { ok: false, msg: '须先击败第 ' + (cleared + 1) + ' 层（逐层推进）' };
+    if (lv <= cleared) return { ok: false, msg: '第 ' + lv + ' 层已清，无需再战' };
+    var city = cityId ? (GAME.cityByIdAnywhere ? GAME.cityByIdAnywhere(cityId) : GAME.cityById(cityId)) : GAME.currentCity();
+    if (!city) return { ok: false, msg: '无可用城市' };
+    army = army || {};
+    var total = 0; for (var k in army) total += Math.max(0, Math.floor(army[k] || 0));
+    if (total <= 0) return { ok: false, msg: '须派兵挑战守军' };
+    if (!genId) return { ok: false, msg: '须英雄带队挑战' };
+    var def = GAME.wonderLayerDefOf(lv);
+    /* 扣兵（从出发城） */
+    for (var k2 in army) { var c = Math.max(0, Math.floor(army[k2] || 0)); if (c <= 0) continue; city.army[k2] = Math.max(0, (city.army[k2] || 0) - c); }
+    var gen = null; (GAME.state.generals || []).forEach(function (g) { if (g.id === genId) gen = g; });
+    var r = GAME.battle.simulate(army, gen, def.army, 0, def.gen, {});
+    var won = r && r.winner === 'atk';
+    /* 败/胜都要回收余部（败按引擎残余、胜亦然），伤兵走同一出口 */
+    var back = {};
+    for (var k3 in army) { /* 引擎给 atkRemain 为**总残余**，按比例回收到各兵种 */ }
+    var _aStart = 0; for (var k4 in army) _aStart += army[k4] || 0;
+    var _frac = _aStart > 0 ? Math.max(0, (r && r.atkRemain || 0) / _aStart) : 0;
+    for (var k5 in army) { var v = Math.round((army[k5] || 0) * _frac); if (v > 0) { city.army[k5] = (city.army[k5] || 0) + v; back[k5] = v; } }
+    if (won) {
+      pl.wonderClearedLv = Math.max(cleared, lv);
+      GAME.log('⚔ 奇观「' + (GAME.wonderOf(pid) || {}).name + '」第 ' + lv + ' 层『' + def.rank.title + '』告破！'
+        + '（我军损 ' + U.fmt((r && r.atkLoss) || 0) + ' · 守军 ' + U.fmt(def.total) + ' 覆灭）', 'sys', 'war');
+      if (gen && gen.status === 'idle') { /* 英雄留在城，不置忙 */ }
+    } else {
+      GAME.log('⚔ 奇观「' + (GAME.wonderOf(pid) || {}).name + '」第 ' + lv + ' 层『' + def.rank.title + '』未破 —— 我军退回（损 ' + U.fmt((r && r.atkLoss) || 0) + '）', 'sys', 'war');
+    }
+    return { ok: won, won: !!won, layer: lv, rank: def.rank, defTotal: def.total,
+      atkLoss: (r && r.atkLoss) || 0, back: back, clearedLv: GAME.wonderClearedOf(pid),
+      msg: won ? ('第 ' + lv + ' 层『' + def.rank.title + '』已破（已清 ' + GAME.wonderClearedOf(pid) + ' 层）')
+        : ('第 ' + lv + ' 层『' + def.rank.title + '』守军未破（损兵 ' + U.fmt((r && r.atkLoss) || 0) + '，建议 ≥ ' + U.fmt(def.minTroops) + ' 兵）') };
+  };
   /* 派一支探查（行军 1 真实小时 → 抵达后**持续累计**奖励）。需军队的行动须带兵。 */
   GAME.wonderExplore = function (pid, actId, cityId, army, genId) {
     var pl = GAME._planetOf(pid); if (!pl) return { ok: false, msg: '星球不存在' };
@@ -8195,6 +8279,9 @@
     var _gen = null;
     if (genId) (GAME.state.generals || []).forEach(function (g) { if (g.id === genId) _gen = g; });
     if (act.needGen !== false && !_gen) return { ok: false, msg: '带队英雄不存在' };
+    /* v91.52（老板）：**须先击败对应层守卫**才能开始该行动的材料收集。 */
+    var _lock = GAME.wonderActLockOf(pid, actId);
+    if (_lock) return { ok: false, msg: _lock };
     if (_gen && _gen.status && _gen.status !== 'idle') {
       var _stTxt = _gen.status === 'guard' ? '守将' : _gen.status === 'mayor' ? '城主'
         : _gen.status === 'march' ? '出征中' : _gen.status === 'gather' ? '采集中'

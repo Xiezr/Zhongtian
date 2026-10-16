@@ -13767,11 +13767,16 @@
      *   确认键 = 「☄ 探索 · {行动名}」，不再借用「占领」这个战斗方式名。
      * ============================================================ */
     ui._expWonder = null;
+    ui._expWonderFight = null;
     if (target && target.kind === 'wonder') {
       var _wwd = GAME.wonderOf ? GAME.wonderOf(t.pid) : null;
       var _wacts = (_wwd && _wwd.acts) || [];
       ui._expWonder = { pid: t.pid, wd: _wwd };
       ui._expMode = (_wacts.indexOf(t.mode) >= 0) ? t.mode : (_wacts[0] || 'collect');
+    } else if (target && target.kind === 'wonderFight') {
+      /* v91.52：挑战奇观层级守军 —— 走战斗（方式固定，确认键 = 「挑战第 N 层」）。 */
+      ui._expWonderFight = { pid: t.pid, lv: t.lv };
+      ui._expMode = 'occupy';
     }
     /* ============================================================
      * v89.137（老板 7）：「所有军队操作均以出征界面进行（除非采集/收获/召回这类
@@ -13870,6 +13875,9 @@
         return { id: aid, icon: '☄', name: a.name || aid, _wonderAct: true,
           stamina: a.needArmy ? 15 : 0, energy: 0, battle: false };
       });
+    } else if (ui._expWonderFight) {
+      modes = [{ id: 'occupy', icon: '⚔', name: '挑战第 ' + ui._expWonderFight.lv + ' 层守卫',
+        _wonderFight: true, stamina: 15, energy: 5, battle: true }];
     } else {
       modes = ((DATA.EXPEDITION && DATA.EXPEDITION.modes) || []).filter(function (m) {
         if (ui._expOwn) return m.id === 'transfer';
@@ -13898,7 +13906,9 @@
       }).join('') + '</select>';
     var cur = ui._expWonder
       ? { icon: '☄', name: '探索 · ' + (((DATA.WONDER_ACT_DEFS || {})[ui._expMode] || {}).name || ui._expMode), battle: false }
-      : GAME.battle.modeOf(ui._expMode);
+      : ui._expWonderFight
+        ? { icon: '⚔', name: '挑战第 ' + ui._expWonderFight.lv + ' 层守卫', battle: true }
+        : GAME.battle.modeOf(ui._expMode);
 
     /* v70（老板）：出征目标写**全称** —— 名城给区·镇·城名，野外城市带所在聚落 */
     var _tTitle = (t.kind === 'fort' && t.fort) ? GAME.fortLabelOf(t.fort)
@@ -14271,7 +14281,9 @@
     if (!btn) return;
     var cur = ui._expWonder
       ? { icon: '☄', name: '探索 · ' + (((DATA.WONDER_ACT_DEFS || {})[ui._expMode] || {}).name || ui._expMode) }
-      : GAME.battle.modeOf(ui._expMode || 'occupy');
+      : ui._expWonderFight
+        ? { icon: '⚔', name: '挑战第 ' + ui._expWonderFight.lv + ' 层守卫' }
+        : GAME.battle.modeOf(ui._expMode || 'occupy');
     btn.className = 'btn gold';
     btn.innerHTML = cur.icon + ' ' + cur.name;
   };
@@ -16954,14 +16966,46 @@
     if (!wd) return '';
     var active = GAME.wonderActiveCount ? GAME.wonderActiveCount(pid) : 0;
     var W = DATA.WONDER_CFG || { maxActive: 3 };
+    var cleared = GAME.wonderClearedOf ? GAME.wonderClearedOf(pid) : 0;
     return (wd.acts || []).map(function (aid) {
       var a = (DATA.WONDER_ACT_DEFS || {})[aid]; if (!a) return '';
+      var lock = GAME.wonderActLockOf ? GAME.wonderActLockOf(pid, aid) : '';
+      var gate = GAME.wonderActGateOf ? GAME.wonderActGateOf(aid) : 1;
       var tip = a.desc + '\n条件：' + (a.cond || '需英雄带队')
+        + '\n门槛：需已清 ' + gate + ' 层（当前 ' + cleared + ' 层）'
         + (a.risk ? '\n风险：可能损兵 ' + Math.round(a.risk * 100) + '%' : '')
         + '\n（走出征界面 · 选将选兵 · 按军力给奖励）';
-      return '<button class="btn gold" data-action="wonder-exp" data-pid="' + pid + '" data-act="' + aid + '"'
-        + ' title="' + U.escape(tip) + '">' + a.name + '</button>';
-    }).join(' ') + '<span class="ui-sub" style="margin-left:8px;">在途 ' + active + ' / ' + (W.maxActive || 3) + ' 队</span>';
+      return '<button class="btn' + (lock ? '' : ' gold') + '" data-action="wonder-exp" data-pid="' + pid + '" data-act="' + aid + '"'
+        + (lock ? ' disabled' : '') + ' title="' + U.escape(lock ? lock : tip) + '">' + (lock ? '🔒 ' : '') + a.name + '</button>';
+    }).join(' ') + '<span class="ui-sub" style="margin-left:8px;">已清 ' + cleared + '/' +
+      (GAME.wonderLayerCount ? GAME.wonderLayerCount() : 6) + ' 层 · 在途 ' + active + ' / ' + (W.maxActive || 3) + ' 队</span>';
+  };
+  /* v91.52（老板）：**探索层级**面板 —— 逐层守军（青铜/白银/黄金/钻石/星耀/王级），
+     逐层"挑战"；已清层解锁更深行动。 */
+  ui.wonderLayersHTML = function (pid) {
+    var wd = GAME.wonderOf ? GAME.wonderOf(pid) : null; if (!wd) return '';
+    var cleaned = GAME.wonderClearedOf ? GAME.wonderClearedOf(pid) : 0;
+    var n = GAME.wonderLayerCount ? GAME.wonderLayerCount() : 6;
+    var rows = '';
+    for (var lv = 1; lv <= n; lv++) {
+      var d = GAME.wonderLayerDefOf(lv);
+      var isCleared = lv <= cleaned, isNext = lv === cleaned + 1;
+      var state = isCleared ? '<span style="color:var(--green-ok);">✔ 已清</span>'
+        : isNext ? '<button class="btn sm gold" data-action="wonder-fight" data-pid="' + pid + '" data-lv="' + lv + '"'
+          + ' title="走出征界面选将选兵，挑战本层守军（建议 ≥ ' + U.fmt(d.minTroops) + ' 兵）">⚔ 挑战</button>'
+        : '<span style="color:var(--text-dim);">🔒 未解锁</span>';
+      rows += '<tr' + (isCleared ? ' style="opacity:.6;"' : '') + '>' +
+        '<td>第 ' + lv + ' 层 · <b>' + d.rank.name + '</b></td>' +
+        '<td class="num">' + U.fmt(d.total) + ' 兵</td>' +
+        '<td class="num">' + U.fmt(d.gen.level) + ' 级 / 四维 ' + U.fmt(d.gen.tong * 4) + ' / 速 ' + d.gen.spd + '</td>' +
+        '<td class="ctr">' + state + '</td></tr>';
+    }
+    return '<div class="op-zone"><div class="op-zone-t">🗝 探索层级（击败守军 → 解锁更深行动）</div>' +
+      '<table class="tbl"><thead><tr><th>层级 · 守卫</th><th class="num">守军</th><th class="num">守卫属性</th><th class="ctr">状态</th></tr></thead>' +
+      '<tbody>' + rows + '</tbody></table>' +
+      '<div class="exp-info exp-info-l" style="color:var(--text-dim);margin-bottom:0;">该奇观守军总数 ' +
+      U.fmt((DATA.WONDER_LAYER_CFG || {}).totalArmy) + '，按层**递增切分**（越深越多、越精锐）。' +
+      '各行动的**门槛层**：采集/研读 → 1 层，救援 → 2 层，派军搜查 → 3 层，深潜攻坚 → 5 层。</div></div>';
   };
   /* 探查中队列：将领 · 军力 · 计时 · 累计奖励（每现实秒刷新）。 */
   ui.wonderQueueHTML = function (pid) {
@@ -16995,7 +17039,7 @@
     return h + '</div>';
   };
   ui.openWonder = function (pid) {
-    ui.openModal('<div class="gold-heading">✨ 奇观</div>' + ui.wonderHTML(pid) + ui.wonderQueueHTML(pid) +
+    ui.openModal('<div class="gold-heading">✨ 奇观</div>' + ui.wonderHTML(pid) + ui.wonderLayersHTML(pid) + ui.wonderQueueHTML(pid) +
       /* v91.31（老板）：**点击性按钮放弹窗底部**。 */
       '<div class="m-foot" style="justify-content:center;flex-wrap:wrap;gap:8px;">' + ui.wonderActsHTML(pid) +
       '<button class="btn" data-action="close-modal">关闭</button></div>',

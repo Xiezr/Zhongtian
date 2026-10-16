@@ -1755,6 +1755,16 @@
       return { ok: true, kind: 'wonder', pid: wpid, mode: target.mode || 'search',
         name: wd.icon + ' ' + wd.name, garrison: {}, guard: null, def: 0 };
     }
+    /* v91.52（老板）：奇观**层级挑战**目标 —— 攻击第 N 层守军（走战斗引擎）。 */
+    if (target.kind === 'wonderFight') {
+      var fpid = (target.pid != null) ? target.pid : ((s.activePlanet) || 1);
+      var fwd = GAME.wonderOf ? GAME.wonderOf(fpid) : null;
+      if (!fwd) return { ok: false, msg: '该星球无奇观' };
+      var fdef = GAME.wonderLayerDefOf(target.lv);
+      return { ok: true, kind: 'wonderFight', pid: fpid, lv: target.lv,
+        name: fwd.name + ' · 第 ' + target.lv + ' 层守卫',
+        garrison: fdef.army, guard: fdef.gen, def: 0 };
+    }
     /* v89.87（老板需求 2）：调兵目标 —— 本境自家城市（走行军通道） */
     if (target.kind === 'owncity') {
       var oc = GAME.cityById(target.id);

@@ -167,6 +167,16 @@
       }
       /* v91.30：星系总览（地图底部入口 · 后续再拓展玩法）。 */
       case 'galaxy-open': ui.setView('galaxy'); GAME.refreshAll(); break;
+      /* v91.52（老板）：奇观**探索层级** —— 挑战第 N 层守军（走出征界面选将选兵）。 */
+      case 'wonder-fight': {
+        ui.closeAllModals();
+        var _flv = Number(el.dataset.lv), _fpid = Number(el.dataset.pid);
+        var _fd = GAME.wonderLayerDefOf(_flv);
+        ui.openExpModal({ kind: 'wonderFight', pid: _fpid, lv: _flv },
+          { hint: '挑战奇观第 ' + _flv + ' 层『' + _fd.rank.title + '』：守军 ' + GAME.utils.fmt(_fd.total)
+            + ' 兵 · 守卫 Lv' + _fd.gen.level + ' · 建议 ≥ ' + GAME.utils.fmt(_fd.minTroops) + ' 兵' });
+        break;
+      }
       /* v91.31（老板）：派军搜查/深潜 → 出征界面（选将选兵 · 自由定数量 · 按军力给奖励）。
          v91.36（老板）：**所有**奇观动作都走此入口（等同出征 · 必须英雄带队）；
          各行动的带队条件（研读只需将 / 救援需总负重达标…）作为 hint 带到出征界面。 */
@@ -2351,6 +2361,16 @@
       var _wr = GAME.wonderExplore(target.pid, ui._expMode || target.mode || 'search', GAME.currentCity() && GAME.currentCity().id, atk, _wgen && _wgen.id);
       ui.toast(_wr.msg);
       if (_wr.ok) { ui.closeModal(); GAME.refreshAll(); if (ui.view === 'map' && ui.renderMapCanvas) ui.renderMapCanvas(); }
+      return;
+    }
+    /* v91.52（老板）：挑战奇观层级守军 —— 走战斗引擎（GAME.wonderFightLayer）。 */
+    if (target.kind === 'wonderFight') {
+      var _fgen = (GAME.state.generals || []).filter(function (g) { return g.id === genSel.value; })[0];
+      var _fr = GAME.wonderFightLayer(target.pid, target.lv, GAME.currentCity() && GAME.currentCity().id, atk, _fgen && _fgen.id);
+      ui.toast(_fr.msg);
+      ui.closeModal();
+      GAME.refreshAll();
+      if (ui.view === 'map' && ui.renderMapCanvas) ui.renderMapCanvas();
       return;
     }
     var md = GAME.battle.modeOf(mode);

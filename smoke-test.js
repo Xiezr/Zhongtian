@@ -36152,6 +36152,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         var pl = GAME._planetOf(st.activePlanet);
         pl.wonderId = 'crystal'; pl.wonderDay = GAME.questDayIndex(); pl.wonderPresDay = GAME.questDayIndex(); pl.wonderPresent = true;
         pl.wonderExp = [];
+        pl.wonderClearedLv = 6;   /* v91.52：奇观行动须先清对应层守卫 —— 本用例测在途上限，先全清 */
         var c = st.cities[0]; c.army = { buxingji: 99999 };
         /* v91.45（老板「同一英雄同时只能执行一种派遣」）：一个英雄一周只能带一队 ——
            要测"在途上限 3"，须给**5 个不同英雄**各派一队，前 3 成、后 2 被上限拒。 */
@@ -36185,6 +36186,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         var pl = GAME._planetOf(st.activePlanet);
         pl.wonderId = 'crystal'; pl.wonderDay = GAME.questDayIndex();
         pl.wonderPresDay = GAME.questDayIndex(); pl.wonderPresent = true; pl.wonderExp = [];
+        pl.wonderClearedLv = 6;   /* v91.52：清层后才可探索（本用例测自动探索，先全清） */
         var c = st.cities[0]; c.army = { buxingji: 5000 };
         /* 两枚空闲英雄（自动探索不绑 genId，每城现取一枚）。 */
         st.generals = st.generals || [];
@@ -36211,6 +36213,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         G.state = st;
         var pl = GAME._planetOf(st.activePlanet);
         pl.wonderId = 'crystal'; pl.wonderDay = GAME.questDayIndex(); pl.wonderPresDay = GAME.questDayIndex(); pl.wonderPresent = true; pl.wonderExp = [];
+        pl.wonderClearedLv = 6;   /* v91.52：先清层，本用例测"派遣唯一性" */
         var c = st.cities[0]; c.army = { buxingji: 9000 };
         st.generals = st.generals || []; var g1 = G.makeGeneral('甲', 30, 'idle'); st.generals.push(g1);
         var r1 = GAME.wonderExplore(st.activePlanet, 'collect', c.id, { buxingji: 1000 }, g1.id);
@@ -36222,6 +36225,32 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         pl.wonderExp[0].retArrive = 0; GAME.wonderTick();       /* 立即返抵 → 落账 */
         var freed = g1.status === 'idle' && pl.wonderExp.length === 0;
         return r1.ok && busy && blocked && rc.ok && returning && freed;
+      } finally { G.state = bk; }
+    })());
+    /* v91.52（老板）：**六层守军**（青铜→王级）+ 逐层击败解锁行动。 */
+    check('§263⑧ 奇观探索层级：6 层守军总和 50 万 · 逐层击败解锁行动', (function () {
+      var bk = GAME.state;
+      try {
+        var st = G.newGame({ name: 'wl263', cityName: '灰岗', region: '烬环', mapSeed: 13 });
+        G.state = st;
+        var pid = st.activePlanet, pl = GAME._planetOf(pid);
+        pl.wonderId = 'crystal'; pl.wonderDay = GAME.questDayIndex(); pl.wonderPresDay = GAME.questDayIndex(); pl.wonderPresent = true; pl.wonderExp = []; pl.wonderClearedLv = 0;
+        /* ① 6 层 · 名称 · 兵力之和 = 50 万 · 逐层递增 · 四维/速度递增 */
+        var sum = 0, ranks = [], inc = true, prev = 0, attrInc = true, spdInc = true, pa = 0, ps = 0;
+        for (var lv = 1; lv <= 6; lv++) {
+          var d = GAME.wonderLayerDefOf(lv); sum += d.total; ranks.push(d.rank.name);
+          if (d.total < prev) inc = false; prev = d.total;
+          var a4 = d.gen.tong * 4; if (a4 < pa) attrInc = false; pa = a4;
+          if (d.gen.spd < ps) spdInc = false; ps = d.gen.spd;
+        }
+        var okLayers = ranks.join('') === '青铜白银黄金钻石星耀王级' && sum === 500000 && inc && attrInc && spdInc;
+        /* ② 未清层：search 锁；清 1 层后 collect 开、search 仍锁；逐层推进（不能跳层） */
+        var lockSearch0 = !!GAME.wonderActLockOf(pid, 'search');
+        var jump = GAME.wonderFightLayer(pid, 3, st.cities[0].id, { buxingji: 1000 }, null);
+        pl.wonderClearedLv = 1;
+        var collectOpen = !GAME.wonderActLockOf(pid, 'collect') && !!GAME.wonderActLockOf(pid, 'search');
+        var layer3 = GAME.wonderLayerDefOf(3);
+        return okLayers && lockSearch0 && !jump.ok && collectOpen && layer3.total > 0 && layer3.gen.spd > GAME.wonderLayerDefOf(1).gen.spd;
       } finally { G.state = bk; }
     })());
     /* v91.41（老板「确保统一规则可适配所有已经/将来可能有的类型增加或更新」）：

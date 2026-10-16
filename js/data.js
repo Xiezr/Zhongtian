@@ -3936,6 +3936,42 @@
     study: { name: '圣殿研读', needGen: true, needArmy: false, risk: 0, mul: 1.0, banner: 'page', cond: '仅需英雄带队 · 不带兵', desc: '研读残页，得战技' },
     rescue: { name: '方舟救援', needGen: true, needArmy: true, needLoad: 20000, risk: 0, mul: 1.0, banner: 'pop', cond: '需英雄带队 + 队伍总负重 ≥ 2 万 · 运回幸存者', desc: '救援幸存者' },
   };
+  /* ============================================================
+   * v91.52（老板）：「为奇观设置**探索层级**，每层守军，每队均需独立击败守军才能开始
+   *   材料收集；先 6 级，总兵力 50 万，将领按层级分**青铜/白银/黄金/钻石/星耀/王级**奇迹守卫；
+   *   属性分级 1000、2000……（速度另设）」。
+   * ------------------------------------------------------------
+   * · 层级 Lv1..6；某**奇观**的总守军固定 = `totalArmy`（50 万），按权重**递增切分**
+   *   （Lv1 最少 → Lv6 最多；6 层之和 = 50 万，不手抄逐层数字）。
+   * · 守卫**英雄**：等级 = base + (lv-1)×perLv；四维**每维** ≈ attrBase + (lv-1)×attrPerLv
+   *   （总四维落在 1000/2000/… 量级）；**速度另设**（spdBase + (lv-1)×spdPerLv）。
+   * · `minTroops` = 击败该层守军所需**建议最小兵力**（UI 提示/闸门）。
+   * ============================================================ */
+  DATA.WONDER_GUARD_RANKS = [
+    { lv: 1, name: '青铜', title: '青铜守卫' },
+    { lv: 2, name: '白银', title: '白银守卫' },
+    { lv: 3, name: '黄金', title: '黄金守卫' },
+    { lv: 4, name: '钻石', title: '钻石守卫' },
+    { lv: 5, name: '星耀', title: '星耀守卫' },
+    { lv: 6, name: '王级', title: '王级守卫' },
+  ];
+  DATA.WONDER_LAYER_WEIGHTS = [1, 1.5, 2.2, 3.3, 5, 7];   /* 和 = 20 → 每份 = totalArmy/20 */
+  DATA.WONDER_LAYER_CFG = {
+    totalArmy: 500000,                       /* 某奇观 6 层守军**总数** */
+    guardLvBase: 60, guardLvPerLv: 20,       /* 守卫英雄等级：60/80/100/120/140/160 */
+    attrBase: 250, attrPerLv: 250,           /* 四维**每维**基数（总四维 ≈ 1000/2000/… 量级） */
+    spdBase: 300, spdPerLv: 60,              /* **速度另设**：300/360/420/480/540/600 */
+    minTroops: [8000, 24000, 60000, 130000, 240000, 400000],   /* 逐层建议最小兵力（击败线） */
+    /* 兵力构成：越高的层越偏精锐。 */
+    mixByLv: [
+      [{ id: 'buxingji', w: 0.8 }, { id: 'dunwei', w: 0.2 }],
+      [{ id: 'buxingji', w: 0.5 }, { id: 'dunwei', w: 0.3 }, { id: 'daodanche', w: 0.2 }],
+      [{ id: 'dunwei', w: 0.35 }, { id: 'daodanche', w: 0.35 }, { id: 'zhuzhan', w: 0.3 }],
+      [{ id: 'dunwei', w: 0.2 }, { id: 'zhuzhan', w: 0.4 }, { id: 'wuzhi', w: 0.2 }, { id: 'dianci', w: 0.2 }],
+      [{ id: 'zhuzhan', w: 0.35 }, { id: 'kuanglie', w: 0.3 }, { id: 'dianci', w: 0.35 }],
+      [{ id: 'zhuzhan', w: 0.3 }, { id: 'kuanglie', w: 0.3 }, { id: 'dianci', w: 0.4 }],
+    ],
+  };
   /* 奇观探索参数 */
   /* v91.31：探查**不限次**；同时最多 maxActive 队在途；抵达后每 accrueSec 现实秒累计 1 份奖励。
      v91.50（老板）：「探索结束（满 1h）自动返回触发城市」+「显示剩余探索时间」——
