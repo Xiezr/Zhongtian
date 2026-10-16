@@ -4005,6 +4005,36 @@
      * ============================================================ */
     jewelChance: 0.10, bpChance: 0.06, pageChance: 0.03, pageBannerChance: 0.08 };
 
+  /* ============================================================
+   * v91.60（老板）：「建立一个类星球地图，用于**奇观建造**——奇观建造将会消耗奇观材料，
+   *   参考我的世界之类的建造游戏，打造一个建造玩法引擎」。
+   * ------------------------------------------------------------
+   * 全局一座**奇观建造场**（网格 canvas 视图 `build`）：从一颗「奇观核心」起，
+   * 构件须**邻接已有构件**放置（Minecraft 式连通），每构件消耗一种奇观材料；
+   * 已建构件按类型给**全局 buff**（并入 GAME.cityBonusNum —— 与威望/主城/神器同轴）。
+   * ============================================================ */
+  DATA.BUILD = {
+    W: 9, H: 9,                 /* 建造场网格（含中心核心） */
+    maxPlaced: 40,              /* 上限（防无限叠 buff） */
+    /* 构件表：id → { name, icon, mat（消耗的奇观材料）, cost, buff:{加成键:每座}, desc }。
+       加成键全部是**已被真实消费**的口径（产量/税收/仓储/野地上限/建造位/兵力位），
+       故并入 cityBonusNum 即**真生效**（见 state.js cityBonusNum）。 */
+    modules: [
+      { id: 'core',      name: '奇观核心', icon: '🛰️', mat: null, cost: 0,
+        buff: {}, desc: '建造场的种子。所有构件须从核心向外邻接延伸。' },
+      { id: 'powercore', name: '动力核',   icon: '⚛️', mat: 'w_he3',        cost: 3, buff: { prodPct: 0.003 },  desc: '全境产量 +0.3%' },
+      { id: 'hull',      name: '装甲舱',   icon: '🛡️', mat: 'w_stariron',   cost: 3, buff: { storePct: 0.005 }, desc: '全境仓储 +0.5%' },
+      { id: 'habitat',   name: '居住舱',   icon: '🏘️', mat: 'w_spore',      cost: 3, buff: { wildCap: 1 },      desc: '每城附属野地上限 +1' },
+      { id: 'reactor',   name: '反应堆',   icon: '🔆', mat: 'w_crystal',    cost: 3, buff: { taxPct: 0.002 },   desc: '全境税收 +0.2%' },
+      { id: 'sensor',    name: '雷达阵',   icon: '📡', mat: 'w_coldcrystal', cost: 3, buff: { buildSlot: 1 },  desc: '全境建造位 +1' },
+      { id: 'armory',    name: '武备库',   icon: '🗡️', mat: 'w_meteor',     cost: 3, buff: { troopSlot: 1 },   desc: '每城出征容量 +1' },
+      { id: 'lab',       name: '研究舱',   icon: '🧪', mat: 'w_humus',      cost: 3, buff: { genCap: 1 },      desc: '每城英雄席位 +1' },
+      { id: 'ring',      name: '防护环',   icon: '💫', mat: 'w_tidesalt',   cost: 4, buff: { storePct: 0.004 }, desc: '全境仓储 +0.4%' },
+      { id: 'forge',     name: '熔炉舱',   icon: '🏭', mat: 'w_singularity', cost: 5, buff: { prodPct: 0.005 }, desc: '全境产量 +0.5%' },
+    ],
+    costPct: 0.5,   /* 拆除返还材料比例 */
+  };
+
   /* v91.51：奇观「产出档位」→ 珠宝池（越强的材料，掉越贵的珠宝）。按 price 派生，不手抄 id。 */
   DATA.WONDER_JEWEL_BANDS = {
     1: ['bengzhu', 'mila', 'meiyu'],                     /* 低阶 */

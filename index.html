@@ -4353,6 +4353,8 @@
     <!-- v90.97（老板）：**行政大菜单** —— 军务右侧。左 1/4 = 星球→城市分级树；右 3/4 = 所选城市的
          据点/占领野地/管理英雄/在建建筑/招募队列/研究中科技（只读总览）。 -->
     <div class="tab" data-view="admin"><i class="ti" data-nav="admin"></i>行政</div>
+    <!-- v91.60（老板）：奇观建造（类星球建造场 · 耗奇观材料 · 全局 buff） -->
+    <div class="tab" data-view="build"><i class="ti" data-nav="build"></i>建造</div>
     <!-- ⛔ v90.92：任务系统整条退役 —— 「任务」页签摘除。
          (v89.104 原：「将英雄，军务，任务放一起」，三者之间不插分隔条；现只剩英雄/军务。) -->
     <span class="nav-sep"></span>
@@ -4466,32 +4468,32 @@
 </div><!-- /#app-scale -->
 </div><!-- /#app-fit -->
 
-<!-- BUILD 9323 -->
-<script src="js/data.js?v=9323"></script>
-<script src="js/state.js?v=9323"></script>
-<script src="js/systems.js?v=9323"></script>
-<script src="js/domain.js?v=9323"></script>
-<script src="js/map.js?v=9323"></script>
+<!-- BUILD 9324 -->
+<script src="js/data.js?v=9324"></script>
+<script src="js/state.js?v=9324"></script>
+<script src="js/systems.js?v=9324"></script>
+<script src="js/domain.js?v=9324"></script>
+<script src="js/map.js?v=9324"></script>
 <!-- v90.69：球面世界内核（纯 JS · 拓扑/地形/几何 SSOT）—— 逻辑与 3D 渲染共用，无 THREE -->
-<script src="js/sphere.js?v=9323"></script>
+<script src="js/sphere.js?v=9324"></script>
 <!-- v90.61：Three.js 真 3D 主地图（vendor 本地，离线可用） -->
-<script src="vendor/three.min.js?v=9323"></script>
-<script src="js/gltf.js?v=9323"></script>
-<script src="js/map3d.js?v=9323"></script>
-<script src="js/battle.js?v=9323"></script>
+<script src="vendor/three.min.js?v=9324"></script>
+<script src="js/gltf.js?v=9324"></script>
+<script src="js/map3d.js?v=9324"></script>
+<script src="js/battle.js?v=9324"></script>
 <!-- v27（需求 5）：回合制文字战场。放在 battle.js 之后 —— simulate 由它接管 -->
-<script src="js/tactic.js?v=9323"></script>
-<script src="js/icons.js?v=9323"></script>
+<script src="js/tactic.js?v=9324"></script>
+<script src="js/icons.js?v=9324"></script>
 <!-- v32（需求「采用网图」）：game-icons 开源图标素材层。必须在 icons.js 之后 ——
      icons.js 内的取图函数用 typeof GICONS 延迟绑定，渲染时才真正查表。 -->
-<script src="js/gicons.js?v=9323"></script>
+<script src="js/gicons.js?v=9324"></script>
 <!-- v35：AI 位图素材登记表（汉代风，最高优先级）。同样在 icons.js 之后 ——
      取图函数用 typeof BITMAPS 延迟绑定；未登记的 id 自动回退矢量层。 -->
-<script src="js/bitmaps.js?v=9323"></script>
-<script src="js/portraits.js?v=9323"></script>
-<script src="js/story.js?v=9323"></script>
+<script src="js/bitmaps.js?v=9324"></script>
+<script src="js/portraits.js?v=9324"></script>
+<script src="js/story.js?v=9324"></script>
 <!-- ⛔ v89.218（老板「故事全部去除」）：84 卷故事库（story/）整目录删除，脚本标签同步撤除。 -->
-<script src="js/ui.js?v=9323"></script>
-<script src="js/main.js?v=9323"></script>
+<script src="js/ui.js?v=9324"></script>
+<script src="js/main.js?v=9324"></script>
 </body>
 </html>

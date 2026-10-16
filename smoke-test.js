@@ -36339,6 +36339,56 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })());
   })();
 
+  /* ============================================================
+   * §266. v91.60（老板）奇观建造引擎（类星球建造场 · 耗奇观材料 · 全局 buff）
+   * ============================================================ */
+  (function () {
+    console.log('\n===== 266. v91.60 奇观建造引擎 =====');
+    check('§266① 数据/出口齐：DATA.BUILD + buildPlace/Remove/BonusNum + UI buildHTML', (function () {
+      return !!(DATA.BUILD && (DATA.BUILD.modules || []).length >= 9)
+        && typeof GAME.buildPlace === 'function' && typeof GAME.buildRemove === 'function'
+        && typeof GAME.buildBonusNum === 'function' && typeof GAME.buildCanPlace === 'function'
+        && typeof GAME.ui.buildHTML === 'function';
+    })());
+    check('§266② 真调：邻接校验 + 耗材料 + 入 state.build + buff 生效', (function () {
+      var bk = GAME.state;
+      try {
+        var st = G.newGame({ name: 'bd266', cityName: '灰岗', region: '碎垣', mapSeed: 8 });
+        G.state = st;
+        st.items = st.items || {}; st.items.w_he3 = 5;
+        st.build = {};
+        GAME.buildOf();                                     /* 核心自动落 (0,0) */
+        if (st.build['0_0'] !== 'core') return 'FAIL-核心未置';
+        /* 邻接 (1,0) 放动力核：耗 w_he3 ×3 */
+        var r1 = GAME.buildPlace(1, 0, 'powercore');
+        var b1 = GAME.buildBonusNum('prodPct') > 0 && st.items.w_he3 === 2;
+        /* 非邻接 (5,5) 拒 */
+        var r2 = GAME.buildPlace(5, 5, 'hull');
+        /* 材料不足拒（w_stariron=0） */
+        var r3 = GAME.buildPlace(0, 1, 'hull');
+        /* 拆除动力核 → 返还部分材料（+1 或 +2） */
+        var he3Before = st.items.w_he3;
+        var r4 = GAME.buildRemove(1, 0);
+        var b2 = r4.ok && st.items.w_he3 > he3Before && GAME.buildBonusNum('prodPct') === 0;
+        return r1.ok && b1 && r2.ok === false && r3.ok === false && b2;
+      } finally { G.state = bk; }
+    })());
+    check('§266③ buff 并入 cityBonusNum（唯一汇总出口）', (function () {
+      var bk = GAME.state;
+      try {
+        var st = G.newGame({ name: 'bd266b', cityName: '灰岗', region: '碎垣', mapSeed: 8 });
+        G.state = st;
+        st.items = st.items || {}; st.items.w_he3 = 9;
+        st.build = {};
+        var city = st.cities[0];
+        var before = GAME.cityBonusNum(city, 'prodPct');
+        GAME.buildPlace(1, 0, 'powercore');
+        var after = GAME.cityBonusNum(city, 'prodPct');
+        return after > before;
+      } finally { G.state = bk; }
+    })());
+  })();
+
   console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');
   process.exit(FAIL ? 1 : 0);
 })();

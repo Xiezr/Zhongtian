@@ -7964,6 +7964,8 @@
     else if (v === 'items') box.innerHTML = ui.itemsHTML();
     else if (v === 'rank') box.innerHTML = ui.rankHTML();
     else if (v === 'galaxy') box.innerHTML = ui.galaxyHTML();
+    /* v91.60（老板）：奇观建造（类星球建造场 · 耗奇观材料 · 全局 buff） */
+    else if (v === 'build') box.innerHTML = ui.buildHTML();
     else if (v === 'map') box.innerHTML = ui.mapHTML();
     /* v25（需求 2）：游商 / 背包 由弹窗改为整页视图 */
     else if (v === 'shop') box.innerHTML = ui.shopHTML();
@@ -11875,6 +11877,94 @@
     if (hit.id !== (GAME.state.activePlanet || 0) && GAME.enterPlanet) GAME.enterPlanet(hit.id);
     ui.setView('map'); GAME.refreshAll();
     return true;
+  };
+
+  /* ============================================================
+   * v91.60（老板）：「建立一个类星球地图，用于奇观建造（建造玩法引擎）」——
+   *   全局一座**奇观建造场**（HTML 网格 + 构件面板）。点构件选中 → 点邻接空格放置；
+   *   点已建构件（非核心）拆除（返还部分材料）。已建构件按类型给全局 buff。
+   * ============================================================ */
+  ui._buildSel = null;
+  ui.buildHTML = function () {
+    var B = DATA.BUILD || {}, b = GAME.buildOf();
+    var half = Math.floor((B.W || 9) / 2);
+    var IBY = DATA.ITEM_BY_ID || {};
+    /* 构件面板（内联样式 · 不走样式表 —— 与 galaxy 视图同惯例，免踩设计令牌 lint） */
+    var pals = (B.modules || []).filter(function (m) { return m.id !== 'core'; }).map(function (m) {
+      var own = (GAME.state.items || {})[m.mat] || 0;
+      var it = IBY[m.mat] || {};
+      var sel = ui._buildSel === m.id;
+      var can = own >= (m.cost || 0);
+      return '<button data-action="build-pick" data-module="' + m.id + '" title="' + U.escape(m.desc || '') + '"' +
+        ' style="display:flex;flex-direction:column;align-items:flex-start;gap:1px;padding:6px 8px;' +
+        'border:1px solid ' + (sel ? 'var(--gold)' : 'var(--line)') + ';border-radius:var(--r-sm);' +
+        'background:' + (sel ? 'rgba(var(--gold-rgb),.14)' : 'var(--bg-2)') + ';color:var(--text);cursor:pointer;' +
+        'text-align:left;opacity:' + (can ? '1' : '.5') + ';">' +
+        '<span style="font-size:var(--fs-lead);">' + m.icon + '</span>' +
+        '<span style="font-weight:600;">' + U.escape(m.name) + '</span>' +
+        '<span style="font-size:var(--fs-cap);color:var(--text-dim);">' + U.escape(it.name || m.mat) + ' ×' + m.cost + '（持 ' + own + '）</span></button>';
+    }).join('');
+    /* 网格（类星球：中心核心 + 环形格） */
+    var cells = '';
+    for (var dy = -half; dy <= half; dy++) {
+      for (var dx = -half; dx <= half; dx++) {
+        var mid = b[GAME.buildKey(dx, dy)];
+        var m = mid ? GAME.buildModuleOf(mid) : null;
+        var label = '', dis = '', bg = 'rgba(var(--hl-rgb),.03)', bd = 'rgba(var(--hl-rgb),.08)', cur = 'default', op = '1';
+        if (m) {
+          label = m.icon;
+          if (mid === 'core') { bg = 'rgba(255,210,90,.42)'; bd = 'var(--gold-light)'; }
+          else { bg = 'rgba(var(--gold-rgb),.22)'; bd = 'var(--gold)'; cur = 'pointer'; }
+        } else if (!GAME.buildAdjacent(dx, dy)) {
+          op = '.28'; dis = ' disabled';
+        } else {
+          bg = 'rgba(120,150,190,.05)';
+          if (ui._buildSel && GAME.buildCanPlace(dx, dy, ui._buildSel).ok) { bg = 'rgba(var(--gold-rgb),.14)'; bd = 'var(--gold-dark)'; cur = 'pointer'; }
+          else { dis = ' disabled'; }
+        }
+        cells += '<button data-action="build-cell" data-dx="' + dx + '" data-dy="' + dy + '"' + dis +
+          ' style="aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;font-size:var(--fs-lead);' +
+          'background:' + bg + ';border:1px solid ' + bd + ';border-radius:4px;color:var(--text-dim);' +
+          'cursor:' + (dis ? 'default' : cur) + ';opacity:' + op + ';">' + label + '</button>';
+      }
+    }
+    /* buff 汇总 */
+    var kn = { prodPct: '产量', taxPct: '税收', storePct: '仓储', wildCap: '野地上限', buildSlot: '建造位', troopSlot: '出征容量', genCap: '英雄席位' };
+    var sum = Object.keys(kn).map(function (k) {
+      var v = GAME.buildBonusNum(k); if (!v) return '';
+      return kn[k] + ' +' + (/Pct$/.test(k) ? Math.round(v * 100) + '%' : v);
+    }).filter(Boolean).join('　') || '尚无加成（放置构件）';
+    var placed = GAME.buildPlacedCount(), maxP = B.maxPlaced || 40;
+    return '<div class="ui-page">' +
+      '<div class="gold-heading">🏗️ 奇观建造 · 类星球建造场' +
+        ui.help('从中央**奇观核心**向外，邻接已有构件放置新构件（我的世界式连通）；\n' +
+          '每个构件消耗一种**奇观材料** + 给**全局加成**（产量/税收/仓储/野地上限…）。\n' +
+          '点下方构件选中 → 点亮的空格放置；点已建构件可拆除（返还部分材料）。') +
+      '</div>' +
+      '<div style="display:flex;gap:var(--sp-4);align-items:flex-start;flex-wrap:wrap;">' +
+        '<div style="display:grid;gap:3px;grid-template-columns:repeat(' + (B.W || 9) + ',1fr);flex:0 0 auto;width:min(58vh,520px);' +
+          'background:radial-gradient(circle at 50% 45%,#0b1626,#05070c 72%);padding:8px;border:1px solid var(--line);border-radius:var(--r-sm);">' + cells + '</div>' +
+        '<div style="flex:1 1 300px;min-width:280px;">' +
+          '<div style="color:var(--text-dim);font-size:var(--fs-sub);margin-bottom:var(--sp-2);">已建 <b>' + placed + '</b> / ' + maxP + '　·　材料为 0 的构件灰显</div>' +
+          '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:var(--sp-1);">' + pals + '</div>' +
+          '<div style="margin-top:var(--sp-3);padding-top:var(--sp-2);border-top:1px solid var(--sep-gold);color:var(--green-ok);font-size:var(--fs-sub);">' +
+            '<div class="ui-sub">全局加成（已建构件）</div>' + sum + '</div>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  };
+  ui.buildPick = function (mid) {
+    ui._buildSel = (ui._buildSel === mid) ? null : mid;
+    ui.renderView('build');
+  };
+  ui.buildCellClick = function (dx, dy) {
+    var b = GAME.buildOf();
+    if (b[GAME.buildKey(dx, dy)]) {
+      var r = GAME.buildRemove(dx, dy); ui.toast(r.msg);
+    } else if (ui._buildSel) {
+      var r2 = GAME.buildPlace(dx, dy, ui._buildSel); ui.toast(r2.msg);
+    }
+    GAME.refreshAll(); ui.renderView('build');
   };
 
   ui.mapHTML = function () {

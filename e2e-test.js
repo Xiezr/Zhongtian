@@ -513,7 +513,7 @@ async function runTests(dom, URL) {
 
   console.log('\n--- 10. 标签页渲染（真实 DOM） ---');
   /* v90.92：任务页整条退役 → 视图清单摘除 'tasks'。 */
-  const views = ['city', 'ext', 'map', 'generals', 'troops', 'tech', 'equip', 'items', 'rank', 'stats', 'story', 'settings', 'shop', 'bag'];
+  const views = ['city', 'ext', 'map', 'generals', 'troops', 'tech', 'equip', 'items', 'rank', 'stats', 'story', 'settings', 'shop', 'bag', 'build'];
   for (const v of views) {
     try {
       G.ui.setView(v);

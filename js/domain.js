@@ -5156,6 +5156,80 @@
     };
   };
   /* 主循环驱动：按"频率"（现实分钟）节流 → **逐城**各发一支（v91.53 老板「各城均可出征」）。 */
+  /* ============================================================
+   * v91.60（老板）：「建立一个类星球地图，用于奇观建造……打造一个建造玩法引擎」——
+   *   全局一座**奇观建造场**（state.build = { cellKey: moduleId }）。核心自动置于中心。
+   *   放置须**邻接已有构件**（Minecraft 式连通）；每构件耗一种奇观材料；已建构件给全局 buff。
+   * ============================================================ */
+  GAME.buildModuleOf = function (mid) {
+    var out = null;
+    ((DATA.BUILD || {}).modules || []).forEach(function (m) { if (m.id === mid) out = m; });
+    return out;
+  };
+  GAME.buildOf = function () {
+    var s = GAME.state; if (!s) return {};
+    var B = DATA.BUILD || {};
+    s.build = s.build || {};
+    var k0 = '0_0';
+    if (!s.build[k0]) s.build[k0] = 'core';   /* 核心自动置于中心（原点） */
+    return s.build;
+  };
+  GAME.buildKey = function (dx, dy) { return dx + '_' + dy; };
+  GAME.buildPlacedCount = function () { var n = 0, b = GAME.buildOf(); for (var k in b) if (b[k]) n++; return n; };
+  /* 是否邻接已有构件（切比雪夫距离 1 内有件）；核心在 (0,0)。 */
+  GAME.buildAdjacent = function (dx, dy) {
+    var b = GAME.buildOf(), nb = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+    for (var i = 0; i < nb.length; i++) if (b[GAME.buildKey(dx + nb[i][0], dy + nb[i][1])]) return true;
+    return false;
+  };
+  /* 能否放置（唯一出口）：越界 / 已占 / 不邻接 / 超上限 / 材料不足 —— 界面与执行同读。 */
+  GAME.buildCanPlace = function (dx, dy, mid) {
+    var B = DATA.BUILD || {}, half = Math.floor((B.W || 9) / 2);
+    var m = GAME.buildModuleOf(mid);
+    if (!m) return { ok: false, msg: '未知构件' };
+    if (Math.abs(dx) > half || Math.abs(dy) > half) return { ok: false, msg: '超建造场范围' };
+    var b = GAME.buildOf();
+    if (b[GAME.buildKey(dx, dy)]) return { ok: false, msg: '该格已有构件' };
+    if (!GAME.buildAdjacent(dx, dy)) return { ok: false, msg: '须邻接已有构件（从核心向外延伸）' };
+    if (GAME.buildPlacedCount() >= (B.maxPlaced || 40)) return { ok: false, msg: '建造场已满（上限 ' + (B.maxPlaced || 40) + '）' };
+    if (m.mat && ((GAME.state.items || {})[m.mat] || 0) < (m.cost || 0)) {
+      var nm = ((DATA.ITEM_BY_ID || {})[m.mat] || {}).name || m.mat;
+      return { ok: false, msg: '材料不足：需 ' + nm + ' ×' + (m.cost || 0) };
+    }
+    return { ok: true, module: m };
+  };
+  GAME.buildPlace = function (dx, dy, mid) {
+    var s = GAME.state;
+    var chk = GAME.buildCanPlace(dx, dy, mid);
+    if (!chk.ok) return chk;
+    var m = chk.module;
+    if (m.mat) { s.items = s.items || {}; s.items[m.mat] = Math.max(0, (s.items[m.mat] || 0) - (m.cost || 0)); }
+    GAME.buildOf()[GAME.buildKey(dx, dy)] = mid;
+    GAME.log('🏗️ 奇观建造：置「' + m.name + '」×1' + (m.mat ? ('（耗 ' + (((DATA.ITEM_BY_ID || {})[m.mat] || {}).name || m.mat) + ' ×' + m.cost + '）') : ''), 'sys', 'admin');
+    return { ok: true, msg: '已放置「' + m.name + '」' };
+  };
+  GAME.buildRemove = function (dx, dy) {
+    var s = GAME.state, B = DATA.BUILD || {};
+    var b = GAME.buildOf(), k = GAME.buildKey(dx, dy), mid = b[k];
+    if (!mid) return { ok: false, msg: '该格无构件' };
+    if (mid === 'core') return { ok: false, msg: '奇观核心不可拆除' };
+    var m = GAME.buildModuleOf(mid);
+    delete b[k];
+    var back = Math.floor((m.cost || 0) * (B.costPct == null ? 0.5 : B.costPct));
+    if (m.mat && back > 0) { s.items = s.items || {}; s.items[m.mat] = (s.items[m.mat] || 0) + back; }
+    GAME.log('🏗️ 奇观建造：拆「' + m.name + '」（返还 ' + (((DATA.ITEM_BY_ID || {})[m.mat] || {}).name || m.mat) + ' ×' + back + '）', 'sys', 'admin');
+    return { ok: true, msg: '已拆除「' + m.name + '」' };
+  };
+  /* 已建构件的全局加成汇总：Σ 每类构件数量 × buff[k]（唯一出口 · 并入 cityBonusNum）。 */
+  GAME.buildBonusNum = function (key) {
+    var out = 0, b = GAME.buildOf();
+    for (var k in b) {
+      var m = GAME.buildModuleOf(b[k]);
+      if (m && m.buff && m.buff[key]) out += m.buff[key];
+    }
+    return out;
+  };
+
   GAME.autoMarch = function () {
     var s = GAME.state;
     var cfg = GAME.autoMarchCfg();

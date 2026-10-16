@@ -1246,6 +1246,9 @@
       case 'open-auto-buy': ui.openAutoBuy(); break;
       case 'ab-toggle': GAME.doToggleAutoBuy(); ui.openAutoBuy(); break;
       case 'ab-once': (function () { var r = GAME.autoBuyOnce(); ui.toast(r.msg); ui.openAutoBuy(); })(); break;
+      /* v91.60（老板）：奇观建造 —— 选构件 / 放构件（点已建格=拆）。 */
+      case 'build-pick': ui.buildPick(el.dataset.module); break;
+      case 'build-cell': ui.buildCellClick(Number(el.dataset.dx), Number(el.dataset.dy)); break;
       /* v40：`case 'set-timescale'` / `case 'set-tax'` 已删 ——
          v22 起税率与倍率改走 `chip-set + data-after='tax'/'timescale'`，
          这两个旧分支在界面上查无触发点（audit 会一直报"不可达分支"）。 */

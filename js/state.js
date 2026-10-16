@@ -2021,7 +2021,9 @@
   /* 汇总：名城档位 + 威望 + 主城 + 神器（四层相加，唯一出口） */
   GAME.cityBonusNum = function (city, key) {
     return GAME.perkNum(city, key) + GAME.rankBonusNum(key)
-      + GAME.mainCityBonusNum(city, key) + GAME.artifactBonusNum(key);
+      + GAME.mainCityBonusNum(city, key) + GAME.artifactBonusNum(key)
+      /* v91.60（老板）：奇观建造——已建构件的全局 buff 并入本汇总（唯一出口）。 */
+      + (GAME.buildBonusNum ? GAME.buildBonusNum(key) : 0);
   };
   /* 是不是"名城"（有档位加成的系统城）。v61：野外城市不算 —— 它有 CITY_PERK 档位
      （为了走同一套派生公式），但没有档位加成，不该在界面上被叫"名城"。 */
