@@ -1831,6 +1831,17 @@
   .forge-filter { display: flex; align-items: center; gap: var(--sp-4); flex-wrap: wrap; margin-bottom: var(--sp-1); }
   .forge-filter .ff-k { font-size: var(--fs-cap); color: var(--text-dim); letter-spacing: 1px; }
   .forge-filter .shop-cats { margin: 0; }
+  /* v91.59（老板）：融合淬体面板（材料配牌 + 品质概率）。 */
+  .lf-list { display: flex; flex-direction: column; gap: var(--sp-1); margin: var(--sp-2) 0; }
+  .lf-row { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-1) var(--sp-2);
+    border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--bg-2); }
+  .lf-row .lf-art { width: 34px; height: 34px; flex: 0 0 auto; }
+  .lf-row .lf-nm { flex: 1 1 auto; min-width: 0; color: var(--text); }
+  .lf-row .lf-nm i { display: block; font-style: normal; font-size: var(--fs-cap); color: var(--text-dim); opacity: .7; }
+  .lf-row .lf-step { display: flex; align-items: center; gap: var(--sp-2); }
+  .lf-row .lf-step b { min-width: 1.6em; text-align: center; color: var(--gold-light); }
+  .lf-odds { flex-direction: row; flex-wrap: wrap; gap: var(--sp-3); }
+  .lf-odds i { opacity: 1; }
   /* ⛔ v89.204（老板 2）：「打造界面不要'套装效果一览'」——
      .forge-set-note / .fsn-t / .fsn-row / .fsn-name / .fsn-n / .fsn-tiers 整族随该功能退役
      （函数与按钮同批删除，见 js/ui.js 墓碑；回退点 = v89.203 快照）。 */
@@ -4455,32 +4466,32 @@
 </div><!-- /#app-scale -->
 </div><!-- /#app-fit -->
 
-<!-- BUILD 9319 -->
-<script src="js/data.js?v=9319"></script>
-<script src="js/state.js?v=9319"></script>
-<script src="js/systems.js?v=9319"></script>
-<script src="js/domain.js?v=9319"></script>
-<script src="js/map.js?v=9319"></script>
+<!-- BUILD 9322 -->
+<script src="js/data.js?v=9322"></script>
+<script src="js/state.js?v=9322"></script>
+<script src="js/systems.js?v=9322"></script>
+<script src="js/domain.js?v=9322"></script>
+<script src="js/map.js?v=9322"></script>
 <!-- v90.69：球面世界内核（纯 JS · 拓扑/地形/几何 SSOT）—— 逻辑与 3D 渲染共用，无 THREE -->
-<script src="js/sphere.js?v=9319"></script>
+<script src="js/sphere.js?v=9322"></script>
 <!-- v90.61：Three.js 真 3D 主地图（vendor 本地，离线可用） -->
-<script src="vendor/three.min.js?v=9319"></script>
-<script src="js/gltf.js?v=9319"></script>
-<script src="js/map3d.js?v=9319"></script>
-<script src="js/battle.js?v=9319"></script>
+<script src="vendor/three.min.js?v=9322"></script>
+<script src="js/gltf.js?v=9322"></script>
+<script src="js/map3d.js?v=9322"></script>
+<script src="js/battle.js?v=9322"></script>
 <!-- v27（需求 5）：回合制文字战场。放在 battle.js 之后 —— simulate 由它接管 -->
-<script src="js/tactic.js?v=9319"></script>
-<script src="js/icons.js?v=9319"></script>
+<script src="js/tactic.js?v=9322"></script>
+<script src="js/icons.js?v=9322"></script>
 <!-- v32（需求「采用网图」）：game-icons 开源图标素材层。必须在 icons.js 之后 ——
      icons.js 内的取图函数用 typeof GICONS 延迟绑定，渲染时才真正查表。 -->
-<script src="js/gicons.js?v=9319"></script>
+<script src="js/gicons.js?v=9322"></script>
 <!-- v35：AI 位图素材登记表（汉代风，最高优先级）。同样在 icons.js 之后 ——
      取图函数用 typeof BITMAPS 延迟绑定；未登记的 id 自动回退矢量层。 -->
-<script src="js/bitmaps.js?v=9319"></script>
-<script src="js/portraits.js?v=9319"></script>
-<script src="js/story.js?v=9319"></script>
+<script src="js/bitmaps.js?v=9322"></script>
+<script src="js/portraits.js?v=9322"></script>
+<script src="js/story.js?v=9322"></script>
 <!-- ⛔ v89.218（老板「故事全部去除」）：84 卷故事库（story/）整目录删除，脚本标签同步撤除。 -->
-<script src="js/ui.js?v=9319"></script>
-<script src="js/main.js?v=9319"></script>
+<script src="js/ui.js?v=9322"></script>
+<script src="js/main.js?v=9322"></script>
 </body>
 </html>

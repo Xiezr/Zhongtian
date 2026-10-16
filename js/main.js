@@ -495,6 +495,16 @@
       case 'ling-temper-item': GAME.doLingTemper(el.dataset.key); break;
       case 'ling-pick': ui.lingPick(el.dataset.key); break;
       case 'ling-filter': ui.setLingFilter(el.dataset.k); break;
+      /* v91.59（老板）：融合淬体（材料 → 原体基因强化件 · 赌概率）。 */
+      case 'ling-fuse-open': ui.openLingFuse(); break;
+      case 'lf-step': ui.fuseStep(el.dataset.mat, Number(el.dataset.d)); break;
+      case 'lf-clear': ui._fuseSel = {}; ui.reopenKeepScroll(ui.openLingFuse); break;
+      case 'lf-do': (function () {
+        var r = GAME.lingFuse(ui._fuseSel);
+        ui.toast(r.msg);
+        if (r.ok) { ui._fuseSel = {}; GAME.refreshAll(); ui.openLingFuse(); }
+        else ui.openLingFuse();
+      })(); break;
       case 'do-jianghu': ui.doJianghu(Number(el.dataset.ci), el.dataset.act); break;
       /* ⛔ v90.93：case sxf-choice / sxf-escape / sxf-stop / sxf-exit
          随全屏剧本（荒野场景流程）整条退役（见 ui.doJianghu 同款墓碑）。 */
@@ -1230,6 +1240,12 @@
       case 'open-auto-explore': ui.openAutoExplore(); break;
       case 'ae-toggle': GAME.doToggleAutoExplore(); ui.openAutoExplore(); break;
       case 'ae-once': GAME.doAutoExploreOnce(); ui.openAutoExplore(); break;
+      /* v91.59（老板）：自动采购（逐商品补货到目标 · 每现实日上限内）。 */
+      case 'toggle-auto-buy': GAME.doToggleAutoBuy(); break;
+      case 'auto-buy-once': (function () { var r = GAME.autoBuyOnce(); ui.toast(r.msg); GAME.refreshView(); })(); break;
+      case 'open-auto-buy': ui.openAutoBuy(); break;
+      case 'ab-toggle': GAME.doToggleAutoBuy(); ui.openAutoBuy(); break;
+      case 'ab-once': (function () { var r = GAME.autoBuyOnce(); ui.toast(r.msg); ui.openAutoBuy(); })(); break;
       /* v40：`case 'set-timescale'` / `case 'set-tax'` 已删 ——
          v22 起税率与倍率改走 `chip-set + data-after='tax'/'timescale'`，
          这两个旧分支在界面上查无触发点（audit 会一直报"不可达分支"）。 */
@@ -1562,8 +1578,27 @@
     }
   };
 
-  /* 游商购买（旧币结算：元宝价×100） */
-  GAME.doShopping = function (itemId, qty) {
+  /* ============================================================
+   * v91.59（老板）：「限制所有可购买商品的**每现实日购买上限为 20 件**」（防"钱多直购"）——
+   *   现实日桶 `s.shopDay = { key, bought:{itemId:n} }`（与 boostDrop 同轴：同一把现实日尺）。
+   *   每商品各自计数；跨现实日自动清零。自动采购（GAME.autoBuy）也走同一桶（共享额度）。
+   * ============================================================ */
+  GAME.shopDailyMax = function () { return (DATA.SHOP_DAILY_MAX == null ? 20 : DATA.SHOP_DAILY_MAX); };
+  GAME.shopDayRoll = function () {
+    var s = GAME.state; if (!s) return { key: '', bought: {} };
+    var key = String(Math.floor(U.now() / 86400000));
+    s.shopDay = s.shopDay || { key: '', bought: {} };
+    if (s.shopDay.key !== key) { s.shopDay.key = key; s.shopDay.bought = {}; }
+    return s.shopDay;
+  };
+  /* 某商品今日已购量 / 余量（UI 展示与自动采购共用）。 */
+  GAME.shopBoughtToday = function (itemId) { return GAME.shopDayRoll().bought[itemId] || 0; };
+  GAME.shopTodayLeft = function (itemId) { return Math.max(0, GAME.shopDailyMax() - GAME.shopBoughtToday(itemId)); };
+
+  /* 游商购买（旧币结算：元宝价×100）
+     `silent`（v91.59 · 自动采购专用）：true 时不弹 toast / 不重绘游商 —— 由调用方（autoBuy）汇总日志。
+       手动购买口（游商/快购）不传 → 行为不变。 */
+  GAME.doShopping = function (itemId, qty, silent) {
     var s = GAME.state;
     var item = GAME.systems.itemInfo(itemId);
     /* v89.87（需求 1）：返回 { ok, msg, bought } —— 快购（qb-buy/qb-cat-buy）与
@@ -1595,24 +1630,38 @@
     }
     qty = Math.max(1, Math.floor(Number(qty) || 1));
     var price = (item.price || 0) * 100;
-    /* v28（需求 6）：**买得起几个就买几个**，而不是"差一点就一口拒绝"。
-       按「最多」时只可能被旧币卡住，这时买满能买的并说明差多少，
-       比抛一句"旧币不足"有用得多。 */
-    var can = Math.min(qty, Math.floor((s.res.gold || 0) / Math.max(1, price)));
+    /* v91.59（老板）：「后边钱一多，游商直接买了，对游戏内容不利，限制所有可购买商品的
+       每现实日购买上限为 20 件」——现实日桶 `s.shopDay = { key, bought:{} }`（仿 s.boostDrop），
+       每个商品各自每现实日最多 20 件；三个购买口（游商/快购/整类快购）都汇入本出口 → 全自动生效。 */
+    var DAILY = GAME.shopDailyMax();
+    var _day = GAME.shopDayRoll();
+    var _bought = _day.bought[itemId] || 0;
+    var _left = Math.max(0, DAILY - _bought);
+    /* v28（需求 6）：**买得起几个就买几个** —— 但再受"今日余量"钳制。 */
+    var can = Math.min(qty, Math.floor((s.res.gold || 0) / Math.max(1, price)), _left);
+    if (_left <= 0) {
+      var capMsg = '「' + item.name + '」今日购买已达上限 ' + DAILY + ' 件（每现实日重置）';
+      if (!silent) ui.toast(capMsg);
+      return { ok: false, msg: capMsg };
+    }
     if (can <= 0) {
       var noMsg = '旧币不足（单价 ' + GAME.utils.fmt(price) + ' 旧币，现有 '
         + GAME.utils.fmt(s.res.gold || 0) + '）';
-      ui.toast(noMsg);
+      if (!silent) ui.toast(noMsg);
       return { ok: false, msg: noMsg };
     }
     s.res.gold -= price * can;
     s.items[itemId] = (s.items[itemId] || 0) + can;
+    _day.bought[itemId] = _bought + can;
     GAME.log('游商购买：' + item.name + (can > 1 ? ' ×' + can : ''));
     var okMsg = '购买 ' + item.name + ' ×' + can + '（-' + GAME.utils.fmt(price * can) + ' 旧币）'
-      + (can < qty ? '　旧币只够买 ' + can + ' 个' : '');
-    ui.toast(okMsg);
-    GAME.refreshAll();
-    ui.renderShop();          // 只重绘游商（保留当前分类与页码，不要跳回第一页）
+      + (can < qty ? (can < _left ? '　旧币只够买 ' + can + ' 个'
+        : '　今日仅余 ' + _left + ' 件（上限 ' + DAILY + '）') : '');
+    if (!silent) {
+      ui.toast(okMsg);
+      GAME.refreshAll();
+      ui.renderShop();        // 只重绘游商（保留当前分类与页码，不要跳回第一页）
+    }
     return { ok: true, msg: okMsg, bought: can };
   };
   /* v77（老板）：doJumpCell（建筑信息 → 定位地块）与 doSetWorkRate（开工率调整）

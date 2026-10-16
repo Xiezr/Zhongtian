@@ -5159,6 +5159,67 @@
   };
 
   /* ============================================================
+   * v91.59（老板）：「增加自动采购功能，可以设定所有商品的数量，每现实日均购买 X 件」——
+   *   · `s.settings.autoBuy = { on, targets:{itemId:qty}, everyMin, last }`（逐商品目标持有量）。
+   *   · 主循环节流（现实分钟）；逐商品把持有补到目标（受**每日购买上限**与旧币钳制）。
+   *   · 走同一出口 GAME.doShopping（silent）→ 每日上限/扣款/日志自动一致。
+   *   · **仅在线 tick**（与 autoMarch 同轴，见 state.js）—— 不吃离线补算，避免回档瞬间爆买。
+   * ============================================================ */
+  GAME.autoBuyCfg = function () {
+    var s = GAME.state; if (!s || !s.settings) return null;
+    var A = DATA.AUTO_BUY || {};
+    if (!s.settings.autoBuy) {
+      s.settings.autoBuy = { on: false, targets: {}, everyMin: A.defaultFreqMin || 10, last: 0 };
+    }
+    var c = s.settings.autoBuy;
+    if (!c.targets) c.targets = {};
+    if (c.everyMin == null) c.everyMin = A.defaultFreqMin || 10;
+    return c;
+  };
+  GAME.doToggleAutoBuy = function () {
+    var cfg = GAME.autoBuyCfg(); if (!cfg) return;
+    cfg.on = !cfg.on;
+    if (cfg.on) { cfg.last = 0; GAME.state.autoBuyInfo = { ok: true, msg: '已开启，待命', at: U.now() }; }
+    else GAME.state.autoBuyInfo = { ok: false, msg: '已关闭', at: U.now() };
+    GAME.refreshView();
+  };
+  GAME.doSetAutoBuy = function (k, v) {
+    var cfg = GAME.autoBuyCfg(); if (!cfg) return;
+    if (String(k).indexOf('item:') === 0) { cfg.targets[String(k).slice(5)] = Math.max(0, Math.floor(Number(v) || 0)); return; }
+    if (k === 'everyMin') cfg.everyMin = Math.max(1, Math.floor(Number(v) || 10));
+  };
+  GAME.autoBuyOnce = function () {
+    var s = GAME.state, cfg = GAME.autoBuyCfg();
+    if (!cfg || !cfg.on) return { ok: false, msg: '未开启' };
+    var items = {}; (DATA.ITEMS || []).forEach(function (it) { items[it.id] = it; });
+    var bought = 0, spent = 0;
+    for (var id in cfg.targets) {
+      var want = Math.floor(cfg.targets[id] || 0);
+      if (want <= 0) continue;
+      var it = items[id]; if (!it || !it.price) continue;
+      var have = (s.items || {})[id] || 0;
+      var need = want - have;
+      if (need <= 0) continue;
+      var left = GAME.shopTodayLeft(id);          /* 每日购买上限余量 */
+      var q = Math.min(need, left);
+      if (q <= 0) continue;
+      var r = GAME.doShopping(id, q, true);        /* 静默：走同一出口（扣款/每日上限一致） */
+      if (r && r.ok && r.bought > 0) { bought += r.bought; spent += r.bought * it.price * 100; }
+    }
+    if (spent > 0) GAME.log('🤖 自动采购：补货 ' + bought + ' 件（-' + GAME.utils.fmt(spent) + ' 旧币）');
+    s.autoBuyInfo = { ok: bought > 0, msg: bought > 0 ? ('已补货 ' + bought + ' 件') : '待命', at: U.now() };
+    return { ok: bought > 0, msg: s.autoBuyInfo.msg, bought: bought };
+  };
+  GAME.autoBuy = function () {
+    var cfg = GAME.autoBuyCfg();
+    if (!cfg || !cfg.on) return null;
+    var now = U.now();
+    if (now - (cfg.last || 0) < cfg.everyMin * 60000) return null;
+    cfg.last = now;
+    return GAME.autoBuyOnce();
+  };
+
+  /* ============================================================
    * v91.36（老板）：「增加**自动探索** —— 城中有任意空闲英雄和可用兵种时，
    *   每个城市均可向奇观派遣探索队。参考自动出征，但**不设固定英雄**。」
    * ------------------------------------------------------------
@@ -5512,12 +5573,26 @@
      玩家看到 +10 的件写着原属性，观感就是"强化了没增加"。 */
   GAME.eqEnhMulOf = function (x) {
     var lv = GAME.eqEnhOf(x);
-    return lv ? 1 + lv * ((DATA.ENHANCE && DATA.ENHANCE.perLv) || 0.08) : 1;
+    if (!lv) return 1;
+    /* v91.59（老板）：**基因强化件**的强化（调校）走递增曲线（+12%→+20%），
+       其 inst.enh 即调校等级（基因件不走熔铸）。机甲件仍走 DATA.ENHANCE.perLv。 */
+    var it = DATA.EQUIP[GAME.eqId(x)];
+    if (it && it.ling) return GAME.lingTemperMulOf(lv);
+    return 1 + lv * ((DATA.ENHANCE && DATA.ENHANCE.perLv) || 0.08);
   };
-  /* 调校乘数（机能口径）——与状态层 lingPowerOf 同源（LING_TEMPER.perLv）。 */
+  /* v91.59（老板）：调校**递增乘数**唯一出口 —— 满级 +12%→+20% 逐级累加（线性叠加，非复利）。
+     消费点：eqEnhMulOf（六维）/ eqLingMulOf（机能）/ 各处展示，全部读这一份。 */
+  GAME.lingTemperMulOf = function (lv) {
+    lv = Math.max(0, Math.floor(lv || 0));
+    var C = DATA.LING_TEMPER || {}, arr = C.perLvArr;
+    if (!arr || !arr.length) return 1 + lv * ((C.perLv) || 0.08);
+    var s = 0; for (var i = 0; i < lv && i < arr.length; i++) s += arr[i];
+    return 1 + s;
+  };
+  /* 调校乘数（机能口径）——与状态层 lingPowerOf 同源（LING_TEMPER 递增曲线）。 */
   GAME.eqLingMulOf = function (x) {
     var lv = GAME.eqEnhOf(x);
-    return lv ? 1 + lv * ((DATA.LING_TEMPER && DATA.LING_TEMPER.perLv) || 0.08) : 1;
+    return lv ? GAME.lingTemperMulOf(lv) : 1;
   };
   GAME.eqUidOf = function (x) { return (x && typeof x === 'object') ? x.u : null; };
   GAME.eqMake = function (id, enh) {
@@ -6021,7 +6096,7 @@
     if (inst && typeof inst === 'object') inst.enh = lv + 1;   /* 按件 +1 */
     GAME.log('调校：' + label0 + ' → +' + (lv + 1) + '（耗辐能核心 ' + cost + '）', 'sys', 'admin');
     return { ok: true, msg: '「' + GAME.eqLabel(inst) + '」调校 +' + (lv + 1)
-      + '（强化属性 +' + Math.round((lv + 1) * ((DATA.LING_TEMPER || {}).perLv || 0.08) * 100) + '%）' };
+      + '（强化属性 +' + Math.round((GAME.lingTemperMulOf(lv + 1) - 1) * 100) + '%）' };
   };
   /* 调校清单（背包 + 穿戴的辐能件；品质高、已调校者在前） */
   GAME.lingTemperList = function () {
@@ -6034,6 +6109,60 @@
         || (GAME.eqEnhOf(b) - GAME.eqEnhOf(a));
     });
     return out;
+  };
+  /* ============================================================
+   * v91.59（老板）：「材料融合原体装备（好属性概率低）」——**融合淬体**
+   * ------------------------------------------------------------
+   * 消耗**奇观材料**（`mats` = { wmatId: 份数 }，每种份数 = 一张牌），产出一件
+   * **基因强化件**（原体）：部位随机；**品质（1..6）按牌数加权抽**（好属性概率低）。
+   *   · 牌数越多 → 品质期望越高（多加材料 = 加注）。
+   *   · 不失败、不碎裂；产出直接入包（GAME.addEquip）。
+   * 口子唯一：mats 校验/扣费/入包全在此；UI 只收集 mats。
+   * ============================================================ */
+  GAME.lingFuse = function (mats) {
+    var s = GAME.state;
+    var F = DATA.LING_FUSE || {};
+    s.items = s.items || {};
+    /* ① 校验：至少 1 种奇观材料，且每种份数为正整数、持有足够 */
+    var pool = [], total = 0;
+    (DATA.ITEMS || []).forEach(function (it) { if (it.type === 'wmat') pool.push(it.id); });
+    var use = {};
+    for (var k in (mats || {})) {
+      var n = Math.floor(mats[k] || 0);
+      if (n <= 0) continue;
+      if (pool.indexOf(k) < 0) return { ok: false, msg: '「' + k + '」非奇观材料，无法融合' };
+      if ((s.items[k] || 0) < n) return { ok: false, msg: '材料不足（' + k + '）需 ' + n + ' 现有 ' + (s.items[k] || 0) };
+      use[k] = n; total += n;
+    }
+    if (!total) return { ok: false, msg: '请先放入奇观材料（每种份数 = 一张牌）' };
+    /* ② 扣材料 */
+    for (var k2 in use) s.items[k2] = Math.max(0, (s.items[k2] || 0) - use[k2]);
+    /* ③ 抽品质：牌数加权 —— 累计牌数越多，越偏向高阶（每张牌都按 qWeight 掷，取最高） */
+    var q = GAME._lingFuseRollQ(total, F);
+    /* ④ 随机部位 → 产出件入包（新件 · 强化 0 级） */
+    var slots = DATA.LING_SLOTS_ID || Object.keys(DATA.LING_SLOT_NAMES || {});
+    var slot = slots[Math.floor(Math.random() * slots.length)];
+    var id = 'lg_' + slot + '_' + q;
+    var item = DATA.EQUIP[id];
+    if (!item) return { ok: false, msg: '融合失败：无对应件（' + id + '）' };   /* 材料已扣的兜底（不该发生） */
+    GAME.addEquip(id, 0);
+    var slotName = (DATA.LING_SLOT_NAMES || {})[slot] || slot;
+    GAME.log('🧬 融合淬体：' + slotName + ' → 「' + item.name + '」（' + (DATA.LING_Q_NAME[q] || q) + '）', 'sys', 'admin');
+    return { ok: true, msg: '融合成功：' + slotName + ' · 「' + item.name + '」（' + (DATA.LING_Q_NAME[q] || q) + '品质）',
+      item: item, slot: slot, q: q };
+  };
+  /* 融合品质掷（唯一出口 · 供断言同读）：total 张牌，每张按 qWeight 掷一次取**最高**品质。 */
+  GAME._lingFuseRollQ = function (total, F) {
+    F = F || DATA.LING_FUSE || {};
+    var w = F.qWeight || [0, 40, 26, 17, 11, 6], best = 1;
+    var q6 = F.q6Chance == null ? 0.05 : F.q6Chance;
+    for (var i = 0; i < total; i++) {
+      if (Math.random() < q6) return 6;                       /* 单张直中 6 阶 */
+      var sum = w[1] + w[2] + w[3] + w[4] + w[5], r = Math.random() * sum, acc = 0, q = 1;
+      for (q = 1; q <= 5; q++) { acc += w[q]; if (r < acc) break; }
+      if (q > best) best = q;
+    }
+    return best;
   };
 
   /* --------- 君主改名（v77 · 君主面板） --------- */

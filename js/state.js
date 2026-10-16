@@ -3658,6 +3658,8 @@
     if (GAME.autoMarch) GAME.autoMarch();
     /* v91.36（老板）：自动探索 —— 同上，只在**在线主循环**驱动。 */
     if (GAME.autoExplore) GAME.autoExplore();
+    /* v91.59（老板）：自动采购 —— 同上，仅在线 tick（补货到目标量 · 受每日购买上限钳制）。 */
+    if (GAME.autoBuy) GAME.autoBuy();
 
     /* 9c) ⛔ v90.92 退役：随机任务每日刷新（ensureDailyQuests）随任务系统一并移除。 */
 

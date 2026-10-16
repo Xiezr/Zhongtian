@@ -174,6 +174,7 @@ require('./js/map3d.js');
         || /id="sd-t-/.test(tag)                         /* v89.102：沙盘（回放/推演）逐兵种目标 */
         || /id="tm-gen"/.test(tag) || /id="wg-gen"/.test(tag)   /* v89.87：调兵/驻守的带队英雄 */
         || /id="am-/.test(tag)                           /* 自动出征弹窗（v89.83：十项，其中出征战术行是字面量） */
+        || /id="ab-/.test(tag)                           /* v91.59：自动采购弹窗（补货频率） */
         || /id="adm-/.test(tag)                          /* v90.64：地图**分级行政检索**下拉（全球/省/市/区 · 高亮）*/
         || /data-pf="/.test(tag)                          /* v90.81：星球菜单生成器**参数化**下拉（恒星色温/山脉成因/生态）*/
         || /^<select id="' \+ id \+ '">$/.test(tag)     /* openAutoMarch 的参数化构造器（其余九项） */
@@ -16910,7 +16911,7 @@ console.log('\n===== 73. v88 辐能双轨装备 + 荒野行动 =====');
   })());
 
   console.log('  --- ③ 调校 ---');
-  check('实测：+1 扣 20 精华 · 机能 130->140 · 六维 x1.08 · 防护', (function () {
+  check('实测：+1 扣 20 精华 · 机能 130->146 · 六维 x1.12（v91.59 递增曲线）· 防护', (function () {
     var s = GAME.state, g = GAME.lordGeneralOf();   /* v89：调校君主专属 */
     var lInst = null;
     for (var sl in (g.lingEquip || {})) lInst = g.lingEquip[sl];
@@ -16920,11 +16921,12 @@ console.log('\n===== 73. v88 辐能双轨装备 + 荒野行动 =====');
     if (GAME.lingTemperCost(lInst) !== 20) return false;
     var r = GAME.lingTemper(lInst);
     if (!r.ok || GAME.eqEnhOf(lInst) !== 1 || s.items.lingsui !== 480) return false;
-    if (GAME.lingPowerOf(g) !== Math.round(130 * 1.08)) return false;
+    /* v91.59：调校递增曲线，+1 级 = +12%（旧口径恒定 +8%）。 */
+    if (GAME.lingPowerOf(g) !== Math.round(130 * GAME.lingTemperMulOf(1))) return false;
     g.equipOn = 'ling';
     var atk = GAME.systems.genEquipBonus(g).atk;
     g.equipOn = 'sha';
-    if (Math.abs(atk - 420 * 1.08) > 0.01) return false;
+    if (Math.abs(atk - 420 * GAME.lingTemperMulOf(1)) > 0.01) return false;
     /* 防护：机甲不可调校 */
     for (var sl2 in (g.equip || {})) {
       var rr = GAME.lingTemper(g.equip[sl2]);
@@ -17767,10 +17769,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     /* v89.186（老板 1）：遗物 —— 消费点 = **挂件体系**（GAME.attachEquip，不经 useItem）；
        渠道 = 打据点/名城缴获（GAME.grantBaoDrop，掉落表 DATA.BAOJU_DROP）。 */
     bao: ['eff'],
-    wmat: ['price'],   /* v91.30：奇观材料（奇观产 · 走 cost.jewel 消耗）*/
-    /* v91.56：6 种奇观材料改为**可直接使用**的专属消耗品（消费点 = systems.useItem 分支）。 */
-    stamina_max: ['amount'], march_boost: ['dur', 'eff'], hearts_up: ['amount'],
-    pop_cap: ['amount'], serum_yield: ['dur', 'eff'], set_bp: ['price'],
+    wmat: ['price'],   /* v91.30 奇观材料（奇观产 · 走 cost.jewel 消耗 / v91.59 融合淬体）*/
   };
   check('v89.50：每条新物品的 type 都在**已知消费点**内，且必填字段齐（无死物品）', (function () {
     var bad = [];
@@ -23142,6 +23141,98 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     var qbOff = qbList.filter(function (x) { return x.noShop; }).length;
     check('§102⑤b 快购列表同口径：stamina 列出 ' + qbList.length + ' 项、下架 0 项',
       qbList.length > 0 && qbOff === 0, '在售 ' + qbList.length + ' / 下架 ' + qbOff);
+  })();
+
+  /* ============================================================
+   * §102B. v91.59（老板）：「限制所有可购买商品的**每现实日购买上限为 20 件**」
+   * ============================================================ */
+  (function () {
+    console.log('\n===== 102B. v91.59 游商每现实日购买上限 20 =====');
+    check('§102B① 出口齐 + 每日上限默认 20', (function () {
+      return typeof GAME.shopDailyMax === 'function' && typeof GAME.shopDayRoll === 'function'
+        && typeof GAME.shopTodayLeft === 'function' && GAME.shopDailyMax() === 20;
+    })());
+    check('§102B② 真调：买满 20 后第 21 件被拒（真扣金封顶）', (function () {
+      var bk = GAME.state;
+      try {
+        var st = G.newGame({ name: 'shopcap', cityName: '灰岗', region: '碎垣', mapSeed: 20260926 });
+        G.state = st;
+        /* 挑一件在售商品，给足旧币 */
+        var sid = null;
+        G.ui.shopItems().forEach(function (it) { if (!sid) sid = it.id; });
+        if (!sid) return 'SKIP-无在售';
+        var it = GAME.systems.itemInfo(sid);
+        st.res.gold = (it.price * 100) * 100;
+        st.shopDay = { key: '', bought: {} };
+        var r1 = GAME.doShopping(sid, 50);   // 想买 50，但每日上限 20
+        var b1 = r1.bought;
+        var r2 = GAME.doShopping(sid, 1);    // 再买 1 → 应被拒
+        return b1 === 20 && r2.ok === false && GAME.shopBoughtToday(sid) === 20;
+      } finally { G.state = bk; }
+    })());
+    check('§102B③ 跨现实日自动清零（换 key → 归零）', (function () {
+      var bk = GAME.state;
+      try {
+        var st = G.newGame({ name: 'shopcap2', cityName: '灰岗', region: '碎垣', mapSeed: 20260926 });
+        G.state = st;
+        var sid = null; G.ui.shopItems().forEach(function (it) { if (!sid) sid = it.id; });
+        if (!sid) return 'SKIP-无在售';
+        var it = GAME.systems.itemInfo(sid);
+        st.res.gold = (it.price * 100) * 100;
+        GAME.doShopping(sid, 20);
+        var before = GAME.shopBoughtToday(sid);
+        st.shopDay.key = 'FORCE-OLD-DAY';    // 伪造旧日 key → 下次 roll 应清零
+        var after = GAME.shopBoughtToday(sid);
+        return before === 20 && after === 0;
+      } finally { G.state = bk; }
+    })());
+  })();
+
+  /* ============================================================
+   * §102C. v91.59（老板）：自动采购（逐商品补货到目标量 · 走 doShopping · 每日上限内）
+   * ============================================================ */
+  (function () {
+    console.log('\n===== 102C. v91.59 自动采购 =====');
+    check('§102C① 出口齐 + 自动化页在册', (function () {
+      var u = String(G.ui.autoPaneHTML) + String(G.ui.openAutoBuy);
+      return typeof GAME.autoBuyCfg === 'function' && typeof GAME.autoBuy === 'function'
+        && typeof GAME.doToggleAutoBuy === 'function' && typeof GAME.doSetAutoBuy === 'function'
+        && u.indexOf('open-auto-buy') >= 0 && u.indexOf('ab-item-') >= 0;
+    })());
+    check('§102C② 真调：设目标 → autoBuyOnce 补到目标（扣金入包）', (function () {
+      var bk = GAME.state;
+      try {
+        var st = G.newGame({ name: 'autobuy', cityName: '灰岗', region: '碎垣', mapSeed: 20260926 });
+        G.state = st;
+        var sid = null; G.ui.shopItems().forEach(function (it) { if (!sid) sid = it.id; });
+        if (!sid) return 'SKIP-无在售';
+        var it = GAME.systems.itemInfo(sid);
+        st.res.gold = (it.price * 100) * 50;
+        st.items = st.items || {}; st.items[sid] = 0;
+        st.shopDay = { key: '', bought: {} };
+        var cfg = GAME.autoBuyCfg(); cfg.on = true; cfg.targets = {}; cfg.targets[sid] = 3;
+        var r = GAME.autoBuyOnce();
+        return r.ok === true && (st.items[sid] || 0) === 3 && GAME.shopBoughtToday(sid) === 3;
+      } finally { G.state = bk; }
+    })());
+    check('§102C③ 已被每日上限钳制：目标 50 但今日余 0 → 不买', (function () {
+      var bk = GAME.state;
+      try {
+        var st = G.newGame({ name: 'autobuy2', cityName: '灰岗', region: '碎垣', mapSeed: 20260926 });
+        G.state = st;
+        var sid = null; G.ui.shopItems().forEach(function (it) { if (!sid) sid = it.id; });
+        if (!sid) return 'SKIP-无在售';
+        var it = GAME.systems.itemInfo(sid);
+        st.res.gold = (it.price * 100) * 200;
+        st.items = st.items || {}; st.items[sid] = 0;
+        /* 先 roll（对齐今日 key），再把该商品今日额度填满。 */
+        GAME.shopDayRoll();
+        st.shopDay.bought[sid] = GAME.shopDailyMax();   // 今日已满
+        var cfg = GAME.autoBuyCfg(); cfg.on = true; cfg.targets = {}; cfg.targets[sid] = 50;
+        var r = GAME.autoBuyOnce();
+        return (st.items[sid] || 0) === 0 && r.bought === 0;
+      } finally { G.state = bk; }
+    })());
   })();
 
   /* ═══════════════════════════════════════════════════════════
@@ -30167,8 +30258,10 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })());
 
     /* ② 自动征兵（老板 2）：九项在册 + 出口接线 */
-    check('§190② 自动征兵：自动化九项在册（train 项）+ 出口全接线 + 输入在册', (function () {
+    check('§190② 自动征兵：自动化含 train 项 + v91.59 自动采购 + 出口全接线 + 输入在册', (function () {
       return /id: 'train', icon: '🛡️', name: '自动征兵', act: 'toggle-auto-train'/.test(uS190)
+        && /id: 'buy', icon: '🛒', name: '自动采购', act: 'toggle-auto-buy'/.test(uS190)   /* v91.59 */
+        && /ui\.openAutoBuy = function/.test(uS190)
         && /if \(id === 'train'\) return !!\(s\.settings && s\.settings\.autoTrain\)/.test(uS190)
         && /if \(id === 'train'\) return \(s\.autoTrain && s\.autoTrain\.msg\)/.test(uS190)
         && /body = ui\.autoTrainHTML\(\)/.test(uS190)
@@ -33999,7 +34092,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       (DATA.LING_SLOTS || []).forEach(function (x) { if (x.id === 'head') head = x; });
       return CLEAN224.ui.indexOf('⚙ 机甲') >= 0 && CLEAN224.ui.indexOf('🧬 基因') >= 0
         && CLEAN224.ui.indexOf('部件栏（') >= 0
-        && L.head === '颅脑强化' && L.pelvis === undefined && L.weapon === '利刃强化' && L.mount === '机动强化'
+        && L.head === '脑域解放' && L.pelvis === undefined && L.weapon === '刃化骨爪' && L.mount === '悬浮脊柱'
         && DATA.Q_NAME[1] === '粗劣' && DATA.Q_NAME[6] === '机神'
         && head && head.names[0] === '颅骨补片' && head.names[5] === '遗世天目'
         && CLEAN224.data.indexOf('军装') < 0 && CLEAN224.domain.indexOf('改造装备') < 0;
@@ -36167,15 +36260,45 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var c = GAME.forgeCost(hi.id);
       return c && c.jewel && (c.jewel.w_crystal || 0) > 0;
     })());
-    check('§264④ 9 种奇观材料均在册（3 走 jewel 消耗 + 6 专属消耗品 · v91.56）', (function () {
+    check('§264④ 9 种奇观材料均在册且**一律 wmat**（v91.59：6 用途退役→融合）', (function () {
       var IDS = ['w_stariron', 'w_he3', 'w_crystal', 'w_humus', 'w_tidesalt', 'w_meteor', 'w_coldcrystal', 'w_spore', 'w_singularity'];
       var byId = {};
       (DATA.ITEMS || []).forEach(function (x) { byId[x.id] = x; });
       var allIn = IDS.every(function (id) { return !!byId[id]; });
-      /* 3 个仍走 cost.jewel（wmat），6 个改为可直接使用的专属消耗品。 */
-      var wmatN = IDS.filter(function (id) { return byId[id].type === 'wmat'; }).length;
-      var useN = IDS.filter(function (id) { return byId[id].type !== 'wmat'; }).length;
-      return allIn && wmatN === 3 && useN === 6;
+      var allWmat = IDS.every(function (id) { return byId[id].type === 'wmat'; });
+      /* v91.59 融合出口齐备 */
+      var fuseOk = typeof GAME.lingFuse === 'function' && typeof GAME._lingFuseRollQ === 'function'
+        && !!(DATA.LING_FUSE && DATA.LING_FUSE.qWeight);
+      return allIn && allWmat && fuseOk;
+    })());
+    check('§264⑤ v91.59 融合淬体：耗材料出件入包 · 品质 1..6', (function () {
+      var bk = GAME.state;
+      try {
+        var st = G.newGame({ name: 'fuse264', cityName: '灰岗', region: '烬环', mapSeed: 8 });
+        G.state = st;
+        st.items = st.items || {};
+        st.items.w_stariron = 3; st.items.w_crystal = 2;
+        st.inventory = st.inventory || [];
+        var inv0 = st.inventory.length;
+        var r = GAME.lingFuse({ w_stariron: 3, w_crystal: 2 });
+        var it = r.item;
+        return r.ok === true && st.inventory.length === inv0 + 1
+          && it && it.ling === true && it.q >= 1 && it.q <= 6
+          && st.items.w_stariron === 0 && st.items.w_crystal === 0;   /* 材料扣净 */
+      } finally { G.state = bk; }
+    })());
+    check('§264⑥ v91.59 调校递增乘数：+12%→+20%（满级累计 +164%）· 基因件走新曲线', (function () {
+      var m1 = GAME.lingTemperMulOf(1), m10 = GAME.lingTemperMulOf(10);
+      var okCurve = Math.abs(m1 - 1.12) < 1e-9 && Math.abs(m10 - 2.64) < 1e-9;
+      /* 基因件（ling）eqEnhMulOf 读新曲线；机甲件仍读 ENHANCE.perLv（+8%） */
+      var gid = null;
+      Object.keys(DATA.EQUIP).forEach(function (k) { if (!gid && DATA.EQUIP[k].ling) gid = k; });
+      var lingMul = GAME.eqEnhMulOf({ id: gid, enh: 10 });
+      var mechMul = DATA.ENHANCE.perLv * 10 + 1;
+      var mid = null;
+      Object.keys(DATA.EQUIP).forEach(function (k) { if (!mid && !DATA.EQUIP[k].ling && DATA.EQUIP[k].q >= 1) mid = k; });
+      var mech = GAME.eqEnhMulOf({ id: mid, enh: 10 });
+      return okCurve && Math.abs(lingMul - 2.64) < 1e-9 && Math.abs(mech - mechMul) < 1e-9;
     })());
   })();
 

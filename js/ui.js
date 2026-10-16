@@ -4517,7 +4517,7 @@
   /* v91.57：**大类（一级分类）**表 —— 宝物页上层分类，把 ~26 个细类收进 4 个桶。 */
   ui.BAG_CATS = {
     war: { name: '战备', types: ['attr_buff', 'military_buff', 'mount_buff', 'boost', 'exp', 'stamina', 'energy', 'perm', 'rank_up', 'essence', 'talis', 'corvee', 'chest'] },
-    mat: { name: '物资', types: ['wmat', 'stamina_max', 'march_boost', 'hearts_up', 'pop_cap', 'serum_yield', 'set_bp'] },
+    mat: { name: '物资', types: ['wmat'] },   /* v91.59：6 种专用途退役 → 物资大类只剩奇观材料 */
     civ: { name: '民生', types: ['prod_buff', 'pop_boost', 'pop_fill', 'build_cost'] },
     treasure: { name: '秘宝', types: ['jewel', 'bao', 'neigong', 'blueprint'] },
   };
@@ -4884,15 +4884,9 @@
     /* v89.186（老板 1）：遗物为英雄挂件 —— 背包不选人，去英雄面板佩 */
     bao: { hint: '遗物为英雄挂件：请到英雄面板佩上', view: 'generals', btn: '去英雄面板' },
     rank_up: { hint: '提升资质：请对英雄使用', view: 'generals', btn: '去英雄面板' },
-    /* v91.30：奇观材料 —— 无"使用"动作（作高阶升级/强化/打造的消耗料）。 */
-    wmat: { hint: '奇观材料：用于高阶升级 / 强化 / 打造（非消耗品）', view: 'city', btn: '去城市' },
-    /* v91.56：6 种奇观材料改为可直接使用 —— 就地生效（体力上限/行军提速/民心/人口上限/血清增产/图纸解析）。 */
-    stamina_max: { hint: '注入英雄提升体力上限：请对英雄使用', view: 'generals', btn: '去英雄面板' },
-    march_boost: { direct: true },
-    hearts_up: { direct: true },
-    pop_cap: { direct: true },
-    serum_yield: { direct: true },
-    set_bp: { direct: true },
+    /* v91.30：奇观材料 —— 无"使用"动作（作高阶升级/强化/打造/融合的消耗料）。
+       v91.59（老板）：6 种"直接使用型"专属用途退役 → 9 种一律 wmat，去**融合淬体**。 */
+    wmat: { hint: '奇观材料：用于高阶升级 / 强化 / 打造 / 基因融合（非消耗品）', act: 'ling-fuse-open', btn: '去融合淬体' },
     /* 有场景：去对应玩法界面 */
     essence: { hint: '请到调校界面使用', act: 'ling-temper-open', btn: '去调校' },
     talis: { hint: '封存匣在出征时随计略消耗，无需手动使用', view: 'city', btn: '去城市' },
@@ -4915,10 +4909,6 @@
     rank_up: '血清（提升资质）',
     essence: '精华（调校基因强化件）',
     chest: '宝箱', neigong: '战技残页', corvee: '政令', talis: '封存匣', build_cost: '营造', wmat: '奇观材料',
-    /* v91.56：6 种奇观材料改为可直接使用的消耗品，归入「奇观材料」组（背包可见可用）。 */
-    stamina_max: '奇观材料（体力上限）', march_boost: '奇观材料（行军提速）',
-    hearts_up: '奇观材料（抑民怨）', pop_cap: '奇观材料（人口上限）',
-    serum_yield: '奇观材料（血清增产）', set_bp: '奇观材料（图纸解析）',
     /* v89.99（老板「增加道具如招揽令」）：民生 —— 幸存者增速道具；
        v89.104：迁入令（一次性幸存者注入）同属民生族 */
     pop_boost: '民生（幸存者增速）',
@@ -5103,7 +5093,7 @@
        v89.214：基因强化件这一行叫「调校」（同一字段 enh，语义按套分流） */
     if (lv) {
       html += '<div class="attr"><span class="k">' + (it.ling ? '调校' : '熔铸') + '</span><span class="v good">+' + lv +
-        '（装备属性 +' + Math.round(lv * ((it.ling ? (DATA.LING_TEMPER || {}).perLv : (DATA.ENHANCE || {}).perLv) || 0.08) * 100) + '%，仅此件）</span></div>';
+        '（装备属性 +' + Math.round((it.ling ? (GAME.lingTemperMulOf(lv) - 1) : (lv * ((DATA.ENHANCE || {}).perLv || 0.08))) * 100) + '%，仅此件）</span></div>';
     }
     /* v89.214（老板 1）：属性**分行** —— 原始值白、增强增量按来源着色（与悬停同源） */
     html += '<div class="attr"><span class="k">属性</span><span class="v">' + ui.equipStatsHTML(inst || { id: itemId }) + '</span></div>';
@@ -6549,8 +6539,9 @@
         kind: 'item', id: it.id, q: 1,
         name: U.escape(it.name),
         /* v90.44（老板）：「耗费资源的操作不要直接显示数额，改为悬停显示」——
-           单价从行上撤下（只留「持有」），改挂**购买按钮**悬停。 */
-        meta: '持有 ' + U.numText(have, 0),
+           单价从行上撤下（只留「持有」），改挂**购买按钮**悬停。
+           v91.59（老板）：加「今日 N/20」（每现实日购买上限）。 */
+        meta: '持有 ' + U.numText(have, 0) + '　·　今日 ' + GAME.shopBoughtToday(it.id) + '/' + GAME.shopDailyMax(),
         desc: GAME.itemEffect(it) || '',
         hoverDesc: true,          /* v89.140（老板 6）：简介悬停显示（卡片固定高、位置固定） */
         /* v89.145（老板 1）：「购买数量那里不要**最多**这个功能 —— 总不能那点旧币
@@ -7058,8 +7049,12 @@
     /* v89：调校君主专属 —— 无君主直接拒开 */
     if (!GAME.lordGeneralOf()) { ui.toast('君主不在，无从调校'); return; }
     var list = GAME.lingTemperList();
-    var perLv = Math.round(((DATA.LING_TEMPER || {}).perLv || 0.08) * 100);
     var maxL = GAME.lingTemperMax();
+    /* v91.59（老板）：调校改为**递增曲线**（+12%→+20%），展示改读曲线两端与满级累计。 */
+    var _ARR = (DATA.LING_TEMPER || {}).perLvArr || [0.12];
+    var perLo = Math.round(_ARR[0] * 100), perHi = Math.round(_ARR[_ARR.length - 1] * 100);
+    var perFull = Math.round((GAME.lingTemperMulOf(maxL) - 1) * 100);
+    var perLv = perLo;   /* 卡面旧引用兜底（tips/文案已改用曲线描述） */
     var ess = (GAME.state.items || {}).lingsui || 0;
     var filt = ui._lingFilter || 'all';
     var pool = list.filter(function (inst) {
@@ -7085,7 +7080,7 @@
       var key = ui.enhKeyOf(inst);
       var cost = lv < maxL ? GAME.lingTemperCost(inst) : null;
       /* v89.204（老板 2）：与熔铸同款 —— 成本行改悬停（.ec-cost 退役） */
-      var tipL204 = GAME.eqLabel(inst) + '　每级改造属性 +' + perLv + '%　'
+      var tipL204 = GAME.eqLabel(inst) + '　每级改造属性 +' + perLo + '%~+' + perHi + '%（递增）　'
         + (cost ? ('下级成本 辐能核心 ' + cost) : '已至圆满');
       return '<div class="enh-card' + (key === ui._lingSel ? ' on' : '') +
           '" data-action="ling-pick" data-key="' + key + '"' +
@@ -7112,12 +7107,12 @@
       /* v89.202：逐秒刷新（辐能核心随采集/探索即时变；live 快照自动保滚动位） */
       live: function () { ui.openLingTemper(); },
       title: '☯ 调校 · 基因强化件',
-      sub: '按件调校（同名件看调校等级区分）　圆满 +' + maxL + '　每级改造属性 +' + perLv + '%（对原始值线性叠加 · 圆满共 +' + Math.round(maxL * perLv) + '%）　辐能核心 ' + ess + '（野地采集 · 征战所得）',
+      sub: '按件调校（同名件看调校等级区分）　圆满 +' + maxL + '　每级改造属性 +' + perLo + '%~+' + perHi + '% 递增（对原始值线性叠加 · 圆满共 +' + perFull + '%）　辐能核心 ' + ess + '（野地采集 · 征战所得）',
       size: 'xxl',
       body: '<div class="forge-filter">' +
           '<span class="ff-k">筛选</span><span class="shop-cats">' + filtHtml + '</span>' +
           ui.help('调校按件记录：同名多件各有各的等级（卡面 +N 即其等级）。\n' +
-            '每级改造属性 +' + perLv + '%（对原始值线性叠加；+10 = +80%，非复利）。\n' +
+            '每级改造属性 +' + perLo + '%~+' + perHi + '% 递增（对原始值线性叠加；圆满共 +' + perFull + '%，非复利）。\n' +
             '点选一件 → 底部「调校」键逐级提升 —— 长按可连续调校（按住不放即连升）。') +
         '</div>' +
         '<div class="enh-rows">' + cards + '</div>',
@@ -7127,12 +7122,85 @@
           (canT ? '' : ' disabled data-why="' + U.escape(btnWhy) + '"') + '>☯ 调校' +
           (selInst && selLv < maxL ? ' +' + (selLv + 1) : '') + '</button>' +
         (selCost ? '<span class="op-hint">' + U.escape('下一级 辐能核心 ' + selCost) + '</span>' : '') +
+        '<button class="btn" data-action="ling-fuse-open">🧬 融合淬体</button>' +
         '<button class="btn" data-action="close-modal">关闭</button></div>'
     });
   };
 
-  /* 排行榜（原版右下功能入口） */
-  /* 公告牌已并入「公文」页（v19 需求 6）—— 不再单独开弹窗，避免与公文重复。 */
+  /* ============================================================
+   * v91.59（老板）：「有没有卡牌类游戏的抽卡式消耗资源、赌概率式，或材料融合原体装备
+   *   （好属性概率低）」——**融合淬体**（基因强化件的产出口）。
+   * ------------------------------------------------------------
+   * 面板：列出 9 种奇观材料 + 持有量 + 加/减「牌」（每份材料 = 一张牌）；
+   *   底部实时显示**品质概率**（max-of-N 解析式 · 见 _fuseOdds）；「融合」→ GAME.lingFuse。
+   * 选择态存 ui._fuseSel = { 材料id: 份数 }。
+   * ============================================================ */
+  ui._fuseSel = {};
+  ui._fuseOdds = function (arr, total) {
+    /* 单张牌品质分布 → N 张取 max 的分布：P(max=q) = CDF(q)^N − CDF(q-1)^N。 */
+    var F = DATA.LING_FUSE || {}, w = F.qWeight || [0, 40, 26, 17, 11, 6];
+    var q6 = F.q6Chance == null ? 0.05 : F.q6Chance;
+    var sum = w[1] + w[2] + w[3] + w[4] + w[5];
+    var cdf = [], acc = 0;
+    for (var q = 1; q <= 5; q++) { acc += (1 - q6) * w[q] / sum; cdf[q] = acc; }
+    var out = [];
+    for (var k = 1; k <= 5; k++) {
+      var hi = Math.pow(cdf[k], total), lo = k > 1 ? Math.pow(cdf[k - 1], total) : 0;
+      out[k] = hi - lo;
+    }
+    out[6] = Math.pow(q6, total);       /* 6 阶须 N 张各自都中 q6（极稀有）——近似：单张即中已在上文；此式偏严，作展示下限 */
+    /* 修正：单张命中 q6 即整次为 6 → P = 1 − (1−q6)^N。 */
+    out[6] = 1 - Math.pow(1 - q6, total);
+    return out;
+  };
+  ui.openLingFuse = function () {
+    var s = GAME.state;
+    var pool = (DATA.ITEMS || []).filter(function (it) { return it.type === 'wmat'; });
+    var hold = function (id) { return (s.items || {})[id] || 0; };
+    var total = 0;
+    pool.forEach(function (it) { total += (ui._fuseSel[it.id] || 0); });
+    var odds = ui._fuseOdds(null, Math.max(1, total));
+    var rows = pool.map(function (it) {
+      var n = ui._fuseSel[it.id] || 0, own = hold(it.id);
+      return '<div class="lf-row">' +
+        '<span class="lf-art">' + ui.itemArt('mat', it.id, 1) + '</span>' +
+        '<span class="lf-nm">' + U.escape(it.name) + '<i>持 ' + own + '</i></span>' +
+        '<span class="lf-step">' +
+          '<button class="btn sm" data-action="lf-step" data-mat="' + it.id + '" data-d="-1"' + (n <= 0 ? ' disabled' : '') + '>−</button>' +
+          '<b>' + n + '</b>' +
+          '<button class="btn sm" data-action="lf-step" data-mat="' + it.id + '" data-d="1"' + (n >= own ? ' disabled' : '') + '>＋</button>' +
+        '</span></div>';
+    }).join('');
+    var oddsHtml = total > 0 ? odds.slice(1).map(function (p, i) {
+      var q = i + 1; return '<i><b>' + (DATA.LING_Q_NAME[q] || ('T' + q)) + '</b>' + Math.round(p * 100) + '%</i>';
+    }).join('') : '<span class="ui-sub">放入材料（每份 = 一张牌）后显示品质概率</span>';
+    ui.openShell({
+      title: '🧬 融合淬体 · 基因强化件',
+      sub: '耗奇观材料融合「原体」强化件 —— 品质随机（**好属性概率低**），牌越多越可能出高阶　已配 ' + total + ' 张牌',
+      size: 'lg',
+      body:
+        '<div class="note">放入奇观材料（每份 = 一张牌），点「融合」抽取一件**基因强化件**（随机部位 × 随机品质）。' +
+          '多放牌可提升出件品质。产出件可再走「调校」（辐能核心）逐级强化。</div>' +
+        '<div class="lf-list">' + rows + '</div>' +
+        '<div class="ui-sub" style="margin-top:6px;">品质概率（按当前 ' + total + ' 张牌）</div>' +
+        '<div class="ds-tiers lf-odds">' + oddsHtml + '</div>',
+      foot: '<div class="m-foot">' +
+        '<button class="btn' + (total > 0 ? ' gold' : ' dim') + '" data-action="lf-do"' +
+          (total > 0 ? '' : ' disabled data-why="请先放入奇观材料"') + '>🧬 融合淬体</button>' +
+        '<button class="btn" data-action="lf-clear"' + (total > 0 ? '' : ' disabled') + '>清空</button>' +
+        '<button class="btn" data-action="close-modal">关闭</button></div>'
+    });
+  };
+  ui.fuseStep = function (mat, d) {
+    var it = null; (DATA.ITEMS || []).forEach(function (x) { if (x.id === mat) it = x; });
+    if (!it || it.type !== 'wmat') return;
+    var own = (GAME.state.items || {})[mat] || 0;
+    var n = Math.max(0, Math.min(own, (ui._fuseSel[mat] || 0) + d));
+    if (n > 0) ui._fuseSel[mat] = n; else delete ui._fuseSel[mat];
+    ui.reopenKeepScroll(ui.openLingFuse);
+  };
+
+
 
   /* 底部信息流频道切换（实现见 renderLog 处） */
 
@@ -10989,7 +11057,8 @@
           '<i><b>辐能核心</b>' + ess + '</i>' +
         '</div>' +
       '</div>' +
-      '<div class="ds-empty">机能用于野地征战判定；调校每级改造属性 +8%（辐能核心 · 野地采集与征战所得）。</div>' +
+      '<div class="ds-empty">机能用于野地征战判定；调校每级改造属性 +12%~+20% 递增（辐能核心 · 野地采集与征战所得）。' +
+        '　<button class="btn sm gold" data-action="ling-fuse-open">🧬 融合淬体</button></div>' +
     '</div>';
   };
   /* 套装进度面板：件数 + 四档（已达/未达）+ 下一档提示
@@ -11379,7 +11448,7 @@
      v89.214（老板 1）：升级为**结构化分行** —— 唯一数据出口 `equipStatRowsOf`：
        每条 = { k, label, short, base, val, add, src }
          base = 原始属性（表值）· val = 现值（含强化/调校）· add = val − base · src = 增强来源
-         src: 'enh' = 熔铸（机甲 +8%/级）· 'ling' = 调校（基因强化件 +8%/级）· '' = 未增强
+         src: 'enh' = 熔铸（机甲 +8%/级）· 'ling' = 调校（基因强化件 +12%~+20% 递增/级）· '' = 未增强
        一行文本（equipDescOf）与分行浮层（ui.equipStatsHTML）都由它派生 ——
        数值口径与配色口径都只此一份（改乘链只改上面那两个乘数出口）。
      行序（攻防 → 六维 → 机能）：攻击 防御 指挥 武力 谋略 治理 速度 体力 机能 ——
@@ -11431,12 +11500,13 @@
   ui.equipEnhNoteHTML = function (x) {
     var lv = GAME.eqEnhOf(x), it = DATA.EQUIP[GAME.eqId(x)];
     if (!lv || !it) return '';
-    var per = Math.round(((it.ling ? (DATA.LING_TEMPER || {}).perLv : (DATA.ENHANCE || {}).perLv) || 0.08) * 100);
-    /* v89.219（老板 2）：把「线性」写进脚注 —— 每级 +8% 是**相对原始值**叠加（非复利），
-       +10 = +80%；增量 = 原始值 × 80%，与行内金/青数字可逐项验算。 */
+    /* v91.59：基因件走递增曲线（+12%→+20%），机甲件走熔铸恒定 perLv —— 本件**累计**乘数照实报。 */
+    var mul = it.ling ? GAME.lingTemperMulOf(lv) : (1 + lv * ((DATA.ENHANCE || {}).perLv || 0.08));
+    var tot = Math.round((mul - 1) * 100);
     return '<div class="tip-l eqv-note"><span class="eqv-d' + (it.ling ? '2' : '1') + '">+</span> ' +
-      (it.ling ? '调校' : '熔铸') + ' +' + lv + ' 级 · 每级 +' + per + '%（对原始值线性叠加 · 本件共 +' +
-      Math.round(lv * per) + '%）</div>';
+      (it.ling ? '调校' : '熔铸') + ' +' + lv + ' 级 · ' +
+      (it.ling ? ('每级 +12%~+20% 递增') : ('每级 +' + Math.round(((DATA.ENHANCE || {}).perLv || 0.08) * 100) + '%')) +
+      '（对原始值线性叠加 · 本件共 +' + tot + '%）</div>';
   };
 
   /* --------- 科技 --------- */
@@ -16192,6 +16262,8 @@
     /* v89.190（老板 2）：自动征兵（兵营募兵 · 与「自动招募」= 征召大厅招将并列） */
     { id: 'train', icon: '🛡️', name: '自动征兵', act: 'toggle-auto-train' },
     { id: 'heal', icon: '🏥', name: '自动治疗', act: 'toggle-auto-heal' },
+    /* v91.59（老板）：自动采购 —— 逐商品补货到目标量（每现实日上限内）。 */
+    { id: 'buy', icon: '🛒', name: '自动采购', act: 'toggle-auto-buy' },
     /* v89.118（老板需求 3）：外敌来犯的**接受开关** + 介绍 + 警报流水（从军务·警报迁来） */
     { id: 'invasion', icon: '🔥', name: '外敌来犯', act: 'toggle-auto-invasion' },
   ];
@@ -16207,6 +16279,7 @@
     if (id === 'train') return !!(s.settings && s.settings.autoTrain);
     if (id === 'heal') return !!(s.settings && s.settings.autoHeal);
     if (id === 'gather') return !!(s.settings && s.settings.autoGather);
+    if (id === 'buy') { var _bc = GAME.autoBuyCfg ? GAME.autoBuyCfg() : null; return !!(_bc && _bc.on); }
     if (id === 'invasion') return GAME.invasionAcceptOn ? GAME.invasionAcceptOn() : true;
     return false;
   };
@@ -16224,6 +16297,7 @@
     }
     if (id === 'train') return (s.autoTrain && s.autoTrain.msg) || (s.settings && s.settings.autoTrain ? '已开启，待命' : '未开启');
     if (id === 'heal') return (s.autoHealState && s.autoHealState.msg) || '未开启';
+    if (id === 'buy') return (s.autoBuyInfo && s.autoBuyInfo.msg) || '未开启';
     if (id === 'invasion') {
       if (!(GAME.invasionAcceptOn ? GAME.invasionAcceptOn() : true)) return '已拒战 —— 外敌不来犯';
       var soon = 0;
@@ -16302,6 +16376,16 @@
     } else if (it.id === 'research') {
       body = '<div class="auto-note">从科研中心当前能研究的科技里挑最便宜的一项；' +
         '资源不足则暂停等待，不影响开关状态。</div>';
+    } else if (it.id === 'buy') {
+      var bcfg = GAME.autoBuyCfg ? GAME.autoBuyCfg() : null;
+      var bset = 0; for (var bk in ((bcfg && bcfg.targets) || {})) { if (bcfg.targets[bk] > 0) bset++; }
+      body = '<div class="auto-line" style="margin-top:2px;">' +
+          '<button class="btn gold" data-action="open-auto-buy">⚙️ 详细配置</button>' +
+          '<button class="btn" data-action="auto-buy-once">🛒 立即采购</button>' +
+          '<span class="ui-sub">已设 ' + bset + ' 种商品　·　每 ' + ((bcfg && bcfg.everyMin) || 10) +
+            ' 现实分钟补货一次（每商品每现实日上限 ' + GAME.shopDailyMax() + '）</span></div>' +
+        '<div class="auto-note">按你设定的**目标持有量**逐商品补货 —— 持有不足目标即买入（补到目标），' +
+        '受旧币与每日购买上限约束；已达目标或旧币不足则跳过。</div>';
     } else if (it.id === 'march') {
       body = '<div class="auto-line" style="margin-top:2px;">' +
           '<button class="btn gold" data-action="open-auto-march">⚙️ 详细配置</button>' +
@@ -16771,6 +16855,61 @@
       ui.expApplyTactic(_tacSel.value);
       ui.openAutoMarch();
     });
+  };
+
+  /* ============================================================
+   * v91.59（老板）：「增加自动采购功能，可以设定所有商品的数量，每现实日均购买 X 件」——
+   *   逐商品设目标持有量（0 = 不自动买）；主循环按频率补货到目标（受旧币 + 每日上限钳制）。
+   *   版面：频率下拉 + 逐商品目标下拉（bought 走 GAME.doSetAutoBuy('item:<id>')）。
+   * ============================================================ */
+  ui.openAutoBuy = function () {
+    var cfg = GAME.autoBuyCfg();
+    if (!cfg) { ui.toast('尚未开局'); return; }
+    var A = DATA.AUTO_BUY || {};
+    var freqOpts = (A.freqOptions || [1, 3, 5, 10, 20, 30]).map(function (m) {
+      return { v: m, on: m === cfg.everyMin, label: m + ' 分钟' };
+    });
+    var tgtOpts = (A.targetOptions || [0, 1, 3, 5, 10, 20, 50, 100]).map(function (n) {
+      return { v: n, label: n === 0 ? '不自动买' : ('目标 ' + n) };
+    });
+    var freqSel = '<select id="ab-freq">' + freqOpts.map(function (o) {
+      return '<option value="' + o.v + '"' + (o.on ? ' selected' : '') + '>' + o.label + '</option>';
+    }).join('') + '</select>';
+    var items = GAME.ui.shopItems();
+    var rows = items.map(function (it) {
+      var want = (cfg.targets || {})[it.id] || 0;
+      var have = (GAME.state.items || {})[it.id] || 0;
+      var left = GAME.shopTodayLeft(it.id);
+      var opts = tgtOpts.map(function (o) {
+        return '<option value="' + o.v + '"' + (o.v === want ? ' selected' : '') + '>' + o.label + '</option>';
+      }).join('');
+      return '<div class="lf-row"><span class="lf-nm">' + U.escape(it.name) +
+        '<i>持有 ' + U.numText(have, 0) + '　·　今日余 ' + left + '</i></span>' +
+        '<span class="lf-step"><select id="ab-item-' + it.id + '" data-item="' + it.id + '">' + opts + '</select></span></div>';
+    }).join('');
+    var html = '<div class="gold-heading">🛒 自动采购 · 详细配置</div>' +
+      ui.expRowHTML('补货频率', freqSel, '每多久尝试补货一次（现实时间）') +
+      '<div class="auto-note" style="margin-top:8px;">逐商品设定**目标持有量**：持有不足目标时按频率自动买入（补到目标），' +
+        '受旧币与**每商品每现实日上限 ' + GAME.shopDailyMax() + ' 件**约束；已达目标或旧币不足的跳过。</div>' +
+      '<div class="lf-list">' + (rows || '<div class="q-empty">暂无可购买商品。</div>') + '</div>' +
+      '<div class="m-foot">' +
+        '<button class="btn' + (cfg.on ? ' gold' : '') + '" data-action="ab-toggle">' +
+          (cfg.on ? '⏸ 关闭自动采购' : '▶️ 开启自动采购') + '</button>' +
+        '<button class="btn" data-action="ab-once">立即采购一次</button>' +
+        '<button class="btn" data-action="close-modal">关闭</button></div>';
+    ui.openModal(html, { size: 'xl' });
+    /* 下拉改完即生效 */
+    var fq = document.getElementById('ab-freq');
+    if (fq) fq.addEventListener('change', function () { GAME.doSetAutoBuy('everyMin', fq.value); ui.openAutoBuy(); });
+    var sels = document.querySelectorAll('[data-item][id^="ab-item-"]');
+    for (var i = 0; i < sels.length; i++) {
+      (function (el) {
+        el.addEventListener('change', function () {
+          GAME.doSetAutoBuy('item:' + el.dataset.item, el.value);
+          ui.openAutoBuy();
+        });
+      })(sels[i]);
+    }
   };
 
   /* ============================================================

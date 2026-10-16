@@ -3055,13 +3055,14 @@ async function runTests(dom, URL) {
   /* ⑧b 自动化菜单（v29 · 需求 5） */
   G.ui.setView('auto');
   await sleep(100);
-  check('自动化界面：左名单九项 + 右详情（v89.115 分栏 · v89.118 外敌来犯 · v89.128 采集 · v89.190 自动征兵 · v91.36 自动探索 · v91.57 自动练功退役）', (function () {
+  check('自动化界面：左名单十项 + 右详情（v89.115 分栏 · v89.118 外敌来犯 · v89.128 采集 · v89.190 自动征兵 · v91.36 自动探索 · v91.57 自动练功退役 · v91.59 自动采购）', (function () {
     /* v89.115：「左 1/3 名单 + 右 2/3 详情」，新增「🏥 自动治疗」；
        v89.118：「🔥 外敌来犯」；v89.190：「🛡️ 自动征兵」；
        v91.36（老板）：「✨ 自动探索」（城中有空闲英雄和可用兵种时，逐城向奇观派探索队）。
-       v91.57（老板「去除君主修行」）：自动练功项退役 → 10 项变 9 项。 */
+       v91.57（老板「去除君主修行」）：自动练功项退役 → 10 项变 9 项。
+       v91.59（老板）：加「🛒 自动采购」→ 恢复 10 项。 */
     var items = vc.querySelectorAll('.auto-item');
-    return items.length === 9 && !!vc.querySelector('.auto-pane')
+    return items.length === 10 && !!vc.querySelector('.auto-pane')
       && !!vc.querySelector('[data-action="auto-pick"][data-key="heal"]')
       && !!vc.querySelector('[data-action="auto-pick"][data-key="train"]')
       && !!vc.querySelector('[data-action="auto-pick"][data-key="invasion"]')
@@ -5424,10 +5425,10 @@ if (svBtn) {
 
     click(document.querySelector('#view-container [data-action="toggle-equip-set"][data-set="ling"]'));
     await sleep(260);
-    check('v88（v89.224 换皮）：切换后槽名变「利刃强化」+ 显示军规骨刃', (function () {
+    check('v88（v89.224 换皮 · v91.59 换名）：切换后槽名变「刃化骨爪」+ 显示军规骨刃', (function () {
       const vc = document.querySelector('#view-container');
       const slot = vc.querySelector('.gen-pane .doll-slot[data-slot="weapon"]');
-      return !!slot && slot.textContent.indexOf('利刃强化') >= 0 && slot.textContent.indexOf('军规骨刃') >= 0;
+      return !!slot && slot.textContent.indexOf('刃化骨爪') >= 0 && slot.textContent.indexOf('军规骨刃') >= 0;
     })());
     check('v88：改造面板出现（机能 / 总调校 / 辐能核心）', (function () {
       const vc = document.querySelector('#view-container');

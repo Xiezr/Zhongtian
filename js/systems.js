@@ -625,53 +625,6 @@
       var healed8 = Math.min(enMx8, enNow8 + (item.amount || 0.1) * enMx8) - enNow8;
       GAME.setEnergyNow(g8, enNow8 + healed8);
       ok = true; msg = g8.name + ' 精力 +' + Math.round(healed8);
-    } else if (item.type === 'stamina_max') {
-      /* v91.56（老板）：潮盐素 → 英雄**体力上限** +amount（永久 · 每将上限 5 剂）。 */
-      var gsm = S._findGen(targetGenId);
-      if (!gsm) return { ok: false, msg: '请选择英雄' };
-      gsm.staUse = gsm.staUse || 0;
-      if (gsm.staUse >= 5) return { ok: false, msg: gsm.name + ' 体力上限强化已达 5 剂上限' };
-      var _sn = GAME.staNow(gsm);                 /* 先记现值，免得上限一涨"量余量"把当前值顶到新满值（瞬回） */
-      gsm.staAdd = (gsm.staAdd || 0) + (item.amount || 100); gsm.staUse += 1;
-      if (GAME.setStaNow) GAME.setStaNow(gsm, _sn);   /* 上限 +，当前值**不变**（按原速率回复） */
-      ok = true; msg = gsm.name + ' 体力上限 +' + (item.amount || 100) + '（已用 ' + gsm.staUse + '/5 剂）';
-    } else if (item.type === 'march_boost') {
-      /* v91.56（老板）：聚变燃料 → 全军**行军提速**（dur 小时 · 同类取最强）。 */
-      s.buffs = s.buffs || {};
-      var _mbOld = s.buffs.marchBoost;
-      var _mbStrong = !!(_mbOld && _mbOld.until > U.now() && (_mbOld.mult || 0) > (item.eff || 0));
-      s.buffs.marchBoost = { mult: _mbStrong ? _mbOld.mult : (item.eff || 0.15),
-        until: U.now() + (item.dur || 24) * 3600 * 1000 };
-      ok = true; msg = item.name + ' 生效：行军速度 +' + Math.round((item.eff || 0.15) * 100) + '%（' + (item.dur || 24) + 'h）';
-    } else if (item.type === 'hearts_up') {
-      /* v91.56（老板）：冷晶 → **民心 +amount**（抑民怨）。
-         民心是派生值（base − 税 + 安抚）→ 改**安抚偏移**（唯一入口 heartsComfortAdd）+ applyHearts。 */
-      if (!GAME.heartsComfortAdd) return { ok: false, msg: '民心系统不可用' };
-      var _h0 = GAME.heartsOf ? GAME.heartsOf() : (s.hearts || 50);
-      GAME.heartsComfortAdd(item.amount || 20);
-      if (GAME.applyHearts) GAME.applyHearts();
-      var _h1 = GAME.heartsOf ? GAME.heartsOf() : s.hearts;
-      ok = true; msg = item.name + ' 生效：民心 ' + Math.round(_h0) + ' → ' + Math.round(_h1) + '（抑民怨）';
-    } else if (item.type === 'pop_cap') {
-      /* v91.56（老板）：生机孢囊 → 本城**幸存者上限 +amount（比例 · 永久叠加）**，每城上限 10 次。 */
-      var _cp = GAME.currentCity();
-      if (!_cp) return { ok: false, msg: '没有当前城市' };
-      _cp.popCapUse = _cp.popCapUse || 0;
-      if (_cp.popCapUse >= 10) return { ok: false, msg: _cp.name + ' 幸存者上限强化已达 10 次上限' };
-      _cp.popCapAdd = (_cp.popCapAdd || 0) + (item.amount || 0.06); _cp.popCapUse += 1;
-      ok = true; msg = _cp.name + ' 幸存者上限 +' + Math.round((item.amount || 0.06) * 100) + '%（已用 ' + _cp.popCapUse + '/10 次）';
-    } else if (item.type === 'serum_yield') {
-      /* v91.56（老板）：幽壤母株 → 基因实验室**每舱额外产 amount 份血清**（dur 小时）。 */
-      s.buffs = s.buffs || {};
-      s.buffs.serumYield = { add: item.eff || 1, until: U.now() + (item.dur || 24) * 3600 * 1000 };
-      ok = true; msg = item.name + ' 生效：基因实验室每舱额外产 ' + (item.eff || 1) + ' 份血清（' + (item.dur || 24) + 'h）';
-    } else if (item.type === 'set_bp') {
-      /* v91.56（老板）：奇点残响 → 解析得一**顶级套装图纸**（天罚套 / 神谕套 / 机体套 · 随机）。 */
-      var _tops = (DATA.ITEMS || []).filter(function (x) { return x.type === 'blueprint' && /^bp_divine_/.test(x.id); });
-      if (!_tops.length) return { ok: false, msg: '无可解析的顶级图纸' };
-      var _bp = _tops[Math.floor(Math.random() * _tops.length)];
-      s.items[_bp.id] = (s.items[_bp.id] || 0) + 1;
-      ok = true; msg = item.name + ' 解析：获得「' + _bp.name + '」×1';
     } else if (item.type === 'perm') {
       var g5 = S._findGen(targetGenId);
       if (!g5) return { ok: false, msg: '请选择英雄' };
