@@ -208,30 +208,55 @@
   /* 建材质并把 webp **立即加载**（blob URL 在后续重建可能失效 → 载完即可 revoke）。 */
   GTF.buildMaterial = function (THREE, part, onReady) {
     /* ⚠️ 材质**先建**、再在贴图 onload 里**直接改 material.map**（不能改 mopt —— 构造时已拷贝）。 */
-    /* 无环境贴图 → 金属会发黑；奇观又常处背光面 → 用**漫反射 + 自发光**（贴图兼作 emissive），
-       使天体在阴影里也柔和自发光，更像"奇观天体"。 */
-    /* 用 **MeshBasicMaterial**（不受光照）—— 贴图始终满亮显示，天体在任意光照/背光面都清晰。 */
-    var mat = new THREE.MeshBasicMaterial({
+    /* ============================================================
+     * v91.38（老板「奇观表面糊成一片，色彩无层次」）——
+     * 根因：此前用 **MeshBasicMaterial（不受光）**，还把 normalMap **直接丢弃** →
+     *   表面永远满亮、无明暗、无高光 → 近看就是一张**平贴的彩色贴花**（"糊成一片、无层次"）。
+     * 改：用 **MeshStandardMaterial（受光）** + **normalMap**（模型自带的法线贴图，恢复凹凸明暗）
+     *   + 少量 emissive（用自身贴图当自发光）—— 背光面不至于死黑（奇观常在背光侧），
+     *   但**保留明暗层次**（不再满亮平贴）。
+     * 回退：无 MeshStandardMaterial（极旧 three）时退回 Basic（行为同改前）。
+     * ============================================================ */
+    var _std = !!THREE.MeshStandardMaterial;
+    var mat = new (_std ? THREE.MeshStandardMaterial : THREE.MeshBasicMaterial)({
       side: part.doubleSided ? THREE.DoubleSide : THREE.FrontSide, color: 0xffffff,
     });
+    if (_std) {
+      /* 无环境贴图 → 金属会发黑，夹到一个低值（奇观多为岩石/金属混材，靠漫反射看形）。 */
+      mat.metalness = Math.min(part.metalness != null ? part.metalness : 0, 0.25);
+      mat.roughness = (part.roughness != null ? part.roughness : 0.8);
+      mat.emissive = new THREE.Color(0xffffff);
+      mat.emissiveIntensity = 0.18;      /* 自发光 = 自身贴图 ×0.18：补背光，但不抹平明暗 */
+    }
+    /* 统一贴图加载（baseColor / normalMap）；载完回调一次。 */
+    var _pending = 0, _done = 0;
+    function _finish() { if (onReady && _done === _pending) onReady(); }
+    function _load(url, apply) {
+      if (!url) return;
+      _pending++;
+      var bmp = new Image();
+      bmp.onload = function () {
+        try {
+          var tx = new THREE.Texture(bmp); tx.needsUpdate = true;
+          if (THREE.SRGBColorSpace && apply !== 'normal') tx.colorSpace = THREE.SRGBColorSpace;
+          apply(tx); mat.needsUpdate = true;
+        } catch (e) { }
+        try { URL.revokeObjectURL(url); } catch (e) { }
+        _done++; _finish();
+      };
+      bmp.onerror = function () { try { URL.revokeObjectURL(url); } catch (e) { } _done++; _finish(); };
+      bmp.src = url;
+    }
     try {
-      if (part.map) {
-        var u = part.map, bmp = new Image();
-        bmp.onload = function () {
-          try {
-            var tx = new THREE.Texture(bmp); tx.needsUpdate = true;
-            if (THREE.SRGBColorSpace) tx.colorSpace = THREE.SRGBColorSpace;
-            mat.map = tx; mat.needsUpdate = true;
-          } catch (e) { }
-          try { URL.revokeObjectURL(u); } catch (e) { }
-          if (onReady) onReady();
-        };
-        bmp.onerror = function () { try { URL.revokeObjectURL(u); } catch (e) { } };
-        bmp.src = u;
-      }
-      /* MeshBasicMaterial 无 normalMap（r150）→ 不赋（自发光平面化，奇观够用）。 */
-      if (part.normalMap) { try { URL.revokeObjectURL(part.normalMap); } catch (e) { } }
-    } catch (e) { }
+      _load(part.map, function (tx) {
+        mat.map = tx;
+        if (_std) mat.emissiveMap = tx;      /* 自发光用自身颜色（保留原贴图色，不加环境光染色） */
+      });
+      /* v91.38：法线贴图此前被丢弃（"胡乱着色"观感的一因）——现接上，恢复表面凹凸明暗。 */
+      if (_std) _load(part.normalMap, function (tx) { mat.normalMap = tx; mat.normalScale = new THREE.Vector2(1, 1); });
+      else if (part.normalMap) { try { URL.revokeObjectURL(part.normalMap); } catch (e) { } }
+      if (!_pending) _finish();
+    } catch (e) { _finish(); }
     return mat;
   };
 

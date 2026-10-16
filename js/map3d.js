@@ -123,10 +123,18 @@
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0x0a1020);
     cam = new THREE.PerspectiveCamera(42, 1, 1, 6000);
-    scene.add(new THREE.AmbientLight(0xdfe8f0, 0.30));
-    scene.add(new THREE.HemisphereLight(0xd8e4f0, 0x2a2a30, 0.26));
-    var sun = new THREE.DirectionalLight(0xffe6b8, 2.9);
+    scene.add(new THREE.AmbientLight(0xdfe8f0, 0.22));
+    scene.add(new THREE.HemisphereLight(0xd8e4f0, 0x2a2a30, 0.20));
+    /* v91.38（老板「奇观表面糊成一片、色彩无层次」）——
+       球体（globe/water/tiles/markers 等）一律 **MeshBasicMaterial（不受光）**，改光照**只影响
+       奇观天体**（现为 MeshStandardMaterial）。原光照**太软太平**（ambient 0.30 + hemi 0.26 +
+       dir 2.9），配合 Basic 无所谓、但会**把奇观的明暗层次压平**。
+       现：调低环境光、调高**主光方向强度** → 奇观看得出受光面/背光面与凹凸。 */
+    var sun = new THREE.DirectionalLight(0xfff0d8, 3.6);
     sun.position.set(-800, 500, -500); scene.add(sun); M._sun = sun;
+    /* 侧后方补一盏弱平行光：勾出**轮廓边**（避免背光面纯黑、也让圆面有转折）。 */
+    var fill = new THREE.DirectionalLight(0xbcd2e8, 1.0);
+    fill.position.set(700, -300, 600); scene.add(fill); M._fillLight = fill;
   }
 
   /* v90.67（老板 1 · 方案B）：**细节纹理** —— 可平铺的多倍频值噪声，乘到地形顶点色上，
