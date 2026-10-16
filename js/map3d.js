@@ -89,10 +89,24 @@
     if (!R3 || !scene) return [];
     var steps = [
       { label: 'sphere', run: function () { if (SP && SP.build) SP.build(SP.sub); } },
+      /* v91.46（老板）：「星环加载很慢，一开始没出来、过一会突然出现」——
+         奇观 .glb.js 是 2~7MB 的 base64 脚本，**异步加载**（注入 script 即返回）。
+         此前它排在**最后**（sphere→globe→tiles→regions→markers→wonder）→ 脚本要等前面
+         ~1.6s 的重活跑完才开始下载 → 地图已现、奇观却迟迟不来。
+         现**提前到第 2 步**：脚本立刻开始下载，其下载/解析与后续 globe/tiles/regions 重活
+         **并行** → 地图出现时奇观基本就绪（buildWonder 只注入脚本、即时返回，不阻塞后续）。
+         仅依赖 sphere 已建（cells 就位），不依赖 tiles/markers。 */
+      { label: 'wonder', run: function () { buildWonder(); } },
       { label: 'globe+tiles', run: function () { buildGlobe(); buildTiles(TILE_SUB); } },
       { label: 'regions', run: function () { buildRegions(); } },
       { label: 'markers', run: function () { buildMarkers(); buildFlags(); buildMarchArrows(); } },
-      { label: 'wonder', run: function () { buildWonder(); } },
+      /* v91.46：**等奇观就绪再出图**（轮询让出主线程 → glb onload + 解析能跑完）。
+         放在最后重活（regions/markers）之后 —— 那时脚本多半已下载完，只需等解析，
+         首帧即"地图 + 奇观"一起出现，不再分两次"蹦"。超时（maxWait）则先出地图。 */
+      { label: 'wonder-ready', run: function () { }, waitFor: function () {
+        if (!M._wonderGrp) return true;                     /* 无奇观/已失败 → 不等 */
+        return !!(M._wonderBody && M._wonderSpin && M._wonderSpin.material && M._wonderSpin.material.map);
+      }, maxWait: 2500 },
       { label: 'finish', run: function () {
         M._pver = M._pverOf(); M._mkVer = M._mkVerOf(); M._flVer = M._flVerOf(); M._arVer = M._arVerOf();
         try {

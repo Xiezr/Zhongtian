@@ -1107,6 +1107,18 @@
       var st = steps[i++];
       try { st.run(); } catch (e) { }
       paint(3 + 94 * (i / steps.length));
+      /* v91.46：若该步标了 `waitFor`（如"等奇观异步加载就绪"），**轮询等待**——
+         轮询期间主线程空闲 → 奇观 .glb.js 的 onload + atob + 解析得以执行，
+         于是**地图首帧就带着奇观一起出现**（不再"地图先出、奇观过一会突然蹦出来"）。
+         给上限 maxWait（默认 2.5s）：超大 glb 也不至于把地图卡太久，超时则先出地图、奇观随后到。 */
+      if (st.waitFor) {
+        var _w0 = Date.now(), _mw = st.maxWait || 2500;
+        (function poll() {
+          if (st.waitFor() || (Date.now() - _w0) > _mw) { setTimeout(next, 0); return; }
+          setTimeout(poll, 40);
+        })();
+        return;
+      }
       setTimeout(next, 0);             /* 让出事件循环 → 遮罩/进度条可刷新 */
     }
     setTimeout(next, 40);
