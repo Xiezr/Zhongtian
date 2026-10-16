@@ -882,8 +882,29 @@
          chips 一律"只切 class + 写选择"，需要刷新数字的走 ui.syncTransportEst。 */
       /* v91.28（老板）：侧栏「星球」下拉 —— **只切换本栏查看的城市清单**（本地筛选），
          不 enterPlanet、不重建球面、不改变地图（城市管理 / 地图管理解耦）。 */
+      /* v91.37（老板）：「切换星球时，切换到该星球所在的**主城**；然后旋转城市，可以切换
+         该星球所在的其他城市」——
+         星球框不再只是"筛选城市清单"，而是**真正进入该星球**并落在其主城上
+         （主城 = s.mainCityId 且属该星；否则该星球分片首城）。
+         实现复用已有的 enterPlanet + ui.setCity（与「跨星球选城」同一套出口）：
+         enterPlanet 载该星球分片、把 activePlanet 指过去（地图保持不动）；setCity 切到该城主城。 */
       case 'switch-planet': {
-        ui._swPlanetId = Number(el.value);
+        var _spid = Number(el.value);
+        ui._swPlanetId = _spid;
+        var _actPid = GAME.state.activePlanet || 0;
+        if (_spid && _spid !== _actPid && GAME.enterPlanet) {
+          var _keepMapP = GAME.state.mapPlanetId;
+          GAME.enterPlanet(_spid);
+          /* enterPlanet 后 s.cities 即该星球的城市（分片已载）；主城 = 该星 mainCityId，缺省首城。 */
+          var _mc = GAME.mainCityOf && GAME.mainCityOf();
+          var _cities = GAME.state.cities || [];
+          if (!_mc || !_cities.some(function (x) { return x.id === _mc.id; })) _mc = _cities[0] || null;
+          if (_mc) ui._cityId = _mc.id;
+          /* 地图仍是原来在看的那颗星（切星球不改变地图）。 */
+          if (_keepMapP != null && _keepMapP !== GAME.state.mapPlanetId && GAME.setMapPlanet) GAME.setMapPlanet(_keepMapP);
+          ui._swPlanetId = _spid;    /* enterPlanet 会复位，重新钉住 = 展示该星球城市清单 */
+          GAME.refreshAll();
+        }
         ui.renderSide();
         break;
       }
