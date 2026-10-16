@@ -8236,10 +8236,15 @@
        受每程上限约束（v91.53：高兵量不再一次喂满半座城；v91.54：上限按 3 种**合计**算）。 */
     var _mats = (def && def.mats) || (def && def.mat ? [def.mat] : []);
     if (_mats.length) {
-      var _cap = W.maxPerTrip || 12, _cur = 0;
-      _mats.forEach(function (mid) { exp.acc.forEach(function (x) { if (x.id === mid) _cur += x.n; }); });
+      /* v91.58（老板）：「每队主产上限允许为**每类材料** 12」——
+         原口径是 3 种**合计** 12；现改为**每种独立** 12：先随机选中一种，
+         再按**该种**已累计数封顶（单程最多 3×12 = 36）。 */
+      var _cap = W.maxPerTrip || 12;
+      var _mid = _mats[Math.floor(Math.random() * _mats.length)];
+      var _cur = 0;
+      exp.acc.forEach(function (x) { if (x.id === _mid) _cur += x.n; });
       var _q = Math.min(q, Math.max(0, _cap - _cur));
-      if (_q > 0) add(_mats[Math.floor(Math.random() * _mats.length)], _q);
+      if (_q > 0) add(_mid, _q);
     }
     /* ② 通用·珠宝（任意奇观）—— 档位按主产材料价派生 */
     if (Math.random() < (W.jewelChance || 0)) {

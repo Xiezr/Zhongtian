@@ -36018,6 +36018,25 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         return after > before && exp.accrued === 5;
       } finally { G.state = bk; }
     })());
+    /* v91.58（老板）：「每队主产上限允许为**每类材料** 12」——原为 3 种**合计** 12。 */
+    check('§263④b v91.58：每类材料**各自**上限 12（不再 3 种合计）', (function () {
+      var bk = GAME.state;
+      try {
+        var st = G.newGame({ name: 'w263c', cityName: '灰岗', region: '烬环', mapSeed: 8 });
+        G.state = st;
+        var wd = GAME.wonderOf(st.activePlanet);
+        var mats = wd.mats || [wd.mat];
+        var exp = { act: 'collect', cityId: st.cities[0].id, army: {}, troops: 0, acc: [], accrued: 0 };
+        for (var i = 0; i < 500; i++) GAME._wonderAccrueItem(wd, exp);   /* 狂累计 → 必然饱和 */
+        var cap = (DATA.WONDER_CFG || {}).maxPerTrip || 12;
+        var perMat = mats.map(function (m) {
+          var n = 0; exp.acc.forEach(function (x) { if (x.id === m) n += x.n; }); return n;
+        });
+        var total = perMat.reduce(function (a, b) { return a + b; }, 0);
+        return perMat.every(function (n) { return n <= cap; })   /* 每种 ≤ 12（独立封顶） */
+          && total > cap;                                        /* 总量 > 12 → 证明确是"每类各自" */
+      } finally { G.state = bk; }
+    })());
     /* v91.36（老板）：「增加自动探索 —— 城中有空闲英雄和可用兵种时，逐城向奇观派队 · 不设固定英雄」。 */
     check('§263⑤ 自动探索：无固定英雄 · 逐城现取空闲英雄 · 每日上限生效', (function () {
       var bk = GAME.state;
@@ -36123,11 +36142,15 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
    * ============================================================ */
   (function () {
     console.log('\n===== 264. v91.30 奇观材料 sink =====');
-    check('§264① 建筑 Lv16+ 升级追加「星铁同位素」（jewel 键）', (function () {
+    check('§264① 建筑 Lv16+ 升级需「3 种奇观材料」且随级换种类（v91.58）', (function () {
       var b = DATA.BUILDINGS.guanfu || DATA.BUILDINGS.minfang;
-      var c16 = b.levelCost(16), c15 = b.levelCost(15);
-      return c16 && c16.jewel && (c16.jewel.w_stariron || 0) > 0
-        && (!c15 || !c15.jewel || !c15.jewel.w_stariron);
+      var c15 = b.levelCost(15), c16 = b.levelCost(16), c22 = b.levelCost(22);
+      var jw = function (c) { return Object.keys((c && c.jewel) || {}).filter(function (k) { return /^w_/.test(k); }); };
+      var j15 = jw(c15), j16 = jw(c16), j22 = jw(c22);
+      return j15.length === 0                                  /* Lv13~15：仍只吃珠宝 · 无 wmat */
+        && j16.length === 3                                    /* Lv16：3 种奇观材料 */
+        && j22.length === 3                                    /* Lv22：换一批（仍 3 种） */
+        && j16.join(',') !== j22.join(',');                    /* 种类确实变了 */
     })());
     check('§264② 装备 +8 及以上强化追加「陨尘」（enhCost）', (function () {
       /* 夹具 = { id: 装备id, enh: 强化级 }（eqId 读 .id / enhOf 读 .enh）。 */

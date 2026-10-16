@@ -228,6 +228,30 @@
     o[lad[tier]] = n;
     return o;
   };
+  /* ============================================================
+   * v91.58（老板）：「建筑升级消耗的**原料**现在只有一种，扩充一下**每次需要 3 种**，
+   *   等级升高**材料种类变化**」——
+   * Lv16+ 起每次建筑升级须 **3 种奇观材料**（走 `cost.jewel` 键 · 与珠宝/装备 sink 同链路）；
+   *   档次越高质量越大、且**换一批材料**：
+   *     16~18：兴铁同位素 / 晶核 / 陨尘         ×1
+   *     19~21：聚变燃料 / 冷晶 / 幽壤母株        ×2
+   *     22~24：潮盐素 / 生机孢囊 / 奇点残响       ×3
+   *   （Lv13~15 仍只吃珠宝 · 不变。数量暂定 1/2/3，待实机调。）
+   * ============================================================ */
+  DATA.BLD_MAT_TIERS = [
+    { from: 16, mats: ['w_stariron', 'w_crystal', 'w_meteor'], n: 1 },
+    { from: 19, mats: ['w_he3', 'w_coldcrystal', 'w_humus'], n: 2 },
+    { from: 22, mats: ['w_tidesalt', 'w_spore', 'w_singularity'], n: 3 },
+  ];
+  /* 升到 lv+1 级时的奇观材料需求（唯一出口）：返回 { 材料id: 数量 } 或 null */
+  DATA.bldMatCostAt = function (lv) {
+    var T = DATA.BLD_MAT_TIERS || [], hit = null;
+    for (var i = 0; i < T.length; i++) { if (lv >= T[i].from) hit = T[i]; }
+    if (!hit) return null;
+    var o = {};
+    hit.mats.forEach(function (mid) { o[mid] = hit.n; });
+    return o;
+  };
 
   /* ============================================================
    * v89.152：珠宝体系重设 —— **旧 15 种 -> 新 18 种**的等值换算表
@@ -362,8 +386,10 @@
       if (_g194 > 0) o.gold = _g194;
       var jw = DATA.jewelCostAt(lv);
       if (jw) o.jewel = jw;
-      /* v91.30：**Lv16 及以上**建筑升级追加奇观材料「星铁同位素」（走 jewel 键）。 */
-      if (lv >= 16) { o.jewel = o.jewel || {}; o.jewel.w_stariron = (o.jewel.w_stariron || 0) + (lv - 15); }
+      /* v91.58：**Lv16 及以上**沿用「3 种奇观材料」（按 BLD_MAT_TIERS 分档换种类）
+         并入 cost.jewel —— 取代 v91.30 的单一「星铁同位素」。 */
+      var _bm = DATA.bldMatCostAt ? DATA.bldMatCostAt(lv) : null;
+      if (_bm) { o.jewel = o.jewel || {}; for (var _k in _bm) o.jewel[_k] = (o.jewel[_k] || 0) + _bm[_k]; }
       return o;
     };
   }
@@ -3944,8 +3970,9 @@
   DATA.WONDER_CFG = { maxActive: 5, marchRealSec: 3600, accrueSec: 600, exploreSec: 3600,
     /* v91.53（老板）：「满 1h 返回 + 每程产出上限，让材料保持稀缺」——
        · exploreSec 14400→**3600**（抵达后累计 1 现实小时即返航 → 一程 ≈ 6 份）；
-       · **maxPerTrip 12**：单队单程**主产材料**上限（超出不再累计）—— 高兵量不再一次喂满半座城。
-       实测标定：sink（单座建筑 Lv16→24 兴铁 45）÷ 12 = 4 程 ≈ 8 小时，代价合理。
+       v91.58（老板）：「每队主产上限允许为**每类材料** 12」——
+       · **maxPerTrip 12 = 每种材料各自的上限**（原为 3 种**合计** 12）；单程最多 3×12 = 36。
+       实测标定：sink（单座建筑 Lv16→24 某种材料 ~45）÷ 12 = 4 程 ≈ 8 小时，代价合理。
        通用掉落（珠宝/图纸/残页）**不受**此上限（各自独立几率）。 */
     maxPerTrip: 12,
     /* ============================================================
