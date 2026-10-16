@@ -3892,11 +3892,17 @@ require('./js/map3d.js');
     V15.gathers = [];
   })();
 
-  check('采集队上限 ' + DATA.GATHER.maxActive + ' 支', (function () {
-    V15.gathers = [{ id: 'x1', x: -1, y: -1 }, { id: 'x2', x: -2, y: -2 }, { id: 'x3', x: -3, y: -3 }];
+  check('采集队上限每城 ' + DATA.GATHER.maxActive + ' 支（v91.60：**按城**独立）', (function () {
+    var gar = G.wildGarrisonAt(wl.ci);
+    var cid = (gar && gar.cityId) || (G.currentCity() || {}).id;
+    /* ① 本城已有 3 队 → 拒 */
+    V15.gathers = [{ id: 'x1', cityId: cid }, { id: 'x2', cityId: cid }, { id: 'x3', cityId: cid }];
     var r = G.canStartGather(wl.ci);
+    /* ② 他城的 3 队不影响本城 → 放行（这正是"按城独立"） */
+    V15.gathers = [{ id: 'y1', cityId: 'OTHER' }, { id: 'y2', cityId: 'OTHER' }, { id: 'y3', cityId: 'OTHER' }];
+    var r2 = G.canStartGather(wl.ci);
     V15.gathers = [];
-    return r.ok === false && /最多 3 支/.test(r.msg);
+    return r.ok === false && /已满 3 支/.test(r.msg) && r2.ok === true;
   })());
   check('同一野地不可开第二支采集队（v89.136：唯一形态）', (function () {
     var r1 = G.startGather(wl.ci, { buxingji: 100 });

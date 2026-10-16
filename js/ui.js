@@ -16419,13 +16419,20 @@
     } else if (it.id === 'gather') {
       var _ws128 = (s.wilds || []).filter(function (w) { return GAME.wildGarrisonTotal(w.garrison) > 0; });
       var _gn128 = GAME.gatherList().length, _gm128 = DATA.GATHER.maxActive;
+      /* v91.60（老板）：上限改为**每城** maxActive —— 列出各城已用队数。 */
+      var _gcn = 0, _gcl = '';
+      (s.cities || []).forEach(function (ct) {
+        var n = GAME.gatherCountOfCity(ct.id);
+        if (n > 0) { _gcn++; _gcl += (ct.name || ct.id) + ' ' + n + '/' + _gm128 + '　'; }
+      });
       body = '<div class="auto-line" style="margin-top:2px;">' +
-          '<span class="ui-sub">有驻军野地 <b>' + _ws128.length + '</b> · 采集队 <b>' + _gn128 + '/' + _gm128 + '</b>' +
+          '<span class="ui-sub">有驻军野地 <b>' + _ws128.length + '</b> · 采集队共 <b>' + _gn128 + '</b> 支' +
+          (_gcn ? '（' + _gcl.replace(/　$/, '') + '）' : '') +
           (s.autoGatherState && s.autoGatherState.at ? '　·　上次执行 ' + U.dur((U.now() - s.autoGatherState.at) / 1000) + '前' : '') +
           '</span></div>' +
-        '<div class="auto-note">每 <b>24 游戏小时</b>一轮：先<b>自动收获</b>（满 1 游戏小时即可收，24 小时封顶），' +
-          '再把<b>有驻军的可采野地</b>全部转入采集（驻军全员入队，采完自动回驻军）。' +
-          '目标已有采集队 / 野地不可采 / 无驻军 → 自动跳过；与手动采集共用同一套结算出口。</div>';
+        '<div class="auto-note">按<b>城市独立</b>进行（<b>每城最多 ' + _gm128 + ' 支</b>采集队 —— 各城各用各的编制）：' +
+          '把<b>有驻军的可采野地</b>转入采集（驻军全员入队，满 1 游戏小时即可收、24 小时封顶，采完自动回驻军）。' +
+          '某城编制已满 / 野地不可采 / 无驻军 → 自动跳过；与手动采集共用同一套结算出口。</div>';
     } else if (it.id === 'recruit') {
       /* 招募门槛/说明的正文由 ui.autoRecruitHTML 提供（去壳版：外壳与开关由本 pane 统一给） */
       body = ui.autoRecruitHTML();

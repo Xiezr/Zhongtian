@@ -4043,6 +4043,13 @@
     if (_f193b) c186 += GAME.fortEffectOf(_f193b).treasureAdd;
     return Math.min(G.treasureCap, c186);
   };
+  /* 某城当前采集队数（v91.60 · 按城独立口径 · 唯一出口）。
+     归属城 = 采集队 cityId（老档缺省落到当前城）。 */
+  GAME.gatherCountOfCity = function (cityId) {
+    var n = 0;
+    (GAME.gatherList() || []).forEach(function (g) { if ((g.cityId || null) === (cityId || null)) n++; });
+    return n;
+  };
   GAME.canStartGather = function (ci) {
     var s = GAME.state, G = DATA.GATHER;
     var w = GAME.map.wildAt(ci);
@@ -4052,8 +4059,16 @@
       return { ok: false, msg: tn + '无可采之物（原版：平地不可采集）' };
     }
     if (GAME.gatherAt(ci)) return { ok: false, msg: '该野地已在采集中' };
-    if (GAME.gatherList().length >= G.maxActive) return { ok: false, msg: '同时最多 ' + G.maxActive + ' 支采集队' };
-    return { ok: true, wild: w };
+    /* v91.60（老板）：「自动采集/收获也区分城市独立进行（每个城市最多 3 队）」——
+       上限由**全局 3** 改为**每城 3**：按该野地驻军的归属城计数。 */
+    var gar = GAME.wildGarrisonAt(ci);
+    var cid = (gar && gar.cityId) || (GAME.currentCity() && GAME.currentCity().id) || null;
+    var used = GAME.gatherCountOfCity(cid);
+    if (used >= G.maxActive) {
+      var _cn = GAME.cityById ? ((GAME.cityById(cid) || {}).name || '该城') : '该城';
+      return { ok: false, msg: _cn + '已满 ' + G.maxActive + ' 支采集队' };
+    }
+    return { ok: true, wild: w, cityId: cid };
   };
   /* ============================================================
    * 采集（v89.136 合并定型）：**唯一形态 = 带将驻军原地开工**
@@ -4258,13 +4273,14 @@
         }
       }
     });
-    /* ② 采集：有空闲编制 + 带将驻军 + 尚未开采 → 立即开工（"有将"= 老板第 5 条） */
+    /* ② 采集：**每城**有空闲编制 + 带将驻军 + 尚未开采 → 立即开工（"有将"= 老板第 5 条）。
+       v91.60（老板）：「按城市独立进行（每城最多 maxActive 队）」——逐野地按其归属城计数，
+       不再用全局总队长当闸（全局闸会在多城并存时过早卡住）。 */
     (s.wilds || []).forEach(function (w) {
-      if (GAME.gatherList().length >= DATA.GATHER.maxActive) return;   /* 无空闲编制 */
       if (!(GAME.wildGarrisonTotal(w.garrison) > 0)) return;
       if (!w.garrison.genId) return;                                    /* 无将驻军：只驻留不采 */
       if (GAME.gatherAt(w.ci)) return;                              /* 已在采 */
-      var chk = GAME.canStartGather(w.ci);
+      var chk = GAME.canStartGather(w.ci);                          /* 内含"每城 3 队"闸 */
       if (!chk.ok) return;
       var army = U.deep(w.garrison.troops);
       var r2 = GAME.startGather(w.ci, army, { cityId: w.garrison.cityId });   /* v89.136：新签名（唯一形态） */
