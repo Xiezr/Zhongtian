@@ -3639,6 +3639,8 @@
        离线一次补几百分钟会在瞬间把攒下的兵全打光，与"自动刷经验"的
        设计意图不符（那不是让玩家睡一觉回来发现兵没了）。 */
     if (GAME.autoMarch) GAME.autoMarch();
+    /* v91.36（老板）：自动探索 —— 同上，只在**在线主循环**驱动。 */
+    if (GAME.autoExplore) GAME.autoExplore();
 
     /* 9c) ⛔ v90.92 退役：随机任务每日刷新（ensureDailyQuests）随任务系统一并移除。 */
 

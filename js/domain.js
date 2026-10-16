@@ -5112,6 +5112,91 @@
     return r;
   };
 
+  /* ============================================================
+   * v91.36（老板）：「增加**自动探索** —— 城中有任意空闲英雄和可用兵种时，
+   *   每个城市均可向奇观派遣探索队。参考自动出征，但**不设固定英雄**。」
+   * ------------------------------------------------------------
+   * 口径：
+   *   · 全局开关 + 频率（现实分钟）+ 每城每日上限；**逐城**尝试（每城各自抢一位空闲英雄）；
+   *   · 目标 = 本星球（当前 activePlanet）今日奇观，须在途未满（DATA.WONDER_CFG.maxActive）；
+   *   · 兵力 = `cfg.army`（逐兵种上限）∩ 城内实有；主角行动 = 奇观支持的第一个（或 cfg.act）。
+   * ============================================================ */
+  GAME.autoExploreCfg = function () {
+    var s = GAME.state; if (!s || !s.settings) return null;
+    var A = DATA.AUTO_EXPLORE || {};
+    if (!s.settings.autoExplore) {
+      s.settings.autoExplore = {
+        on: false, act: null, everyMin: A.defaultFreqMin || 20, last: 0,
+        dailyMax: (A.defaultDailyMax != null ? A.defaultDailyMax : 2),
+        army: {},                    /* 逐兵种「自动探索数量」上限（0/缺 = 不自动派） */
+        today: {},                   /* { 城id: 今日已派次数 } · 随现实日归零 */
+        todayKey: '',
+      };
+    }
+    var c = s.settings.autoExplore;
+    if (c.everyMin == null) c.everyMin = A.defaultFreqMin || 20;
+    if (c.dailyMax == null) c.dailyMax = (A.defaultDailyMax != null ? A.defaultDailyMax : 2);
+    if (!c.army) c.army = {};
+    if (!c.today) c.today = {};
+    return c;
+  };
+  /* 现实日归零（每城计数同翻）—— 与自动出征同轴。 */
+  GAME.autoExploreRollDay = function (cfg) {
+    if (!cfg) return null;
+    var key = String(Math.floor(U.now() / 86400000));
+    if (cfg.todayKey !== key) { cfg.todayKey = key; cfg.today = {}; }
+    return cfg;
+  };
+  /* 单城尝试：挑行动 → 取兵 → 找空闲英雄 → 派队。返回 { ok, msg }。 */
+  GAME._autoExploreCity = function (pid, city, cfg) {
+    var wd = GAME.wonderOf ? GAME.wonderOf(pid) : null;
+    if (!wd) return { ok: false, msg: '无奇观' };
+    if (!GAME.wonderPresent(pid)) return { ok: false, msg: '今日奇观未出现' };
+    var W = DATA.WONDER_CFG || {};
+    if (GAME.wonderActiveCount(pid) >= (W.maxActive || 3)) return { ok: false, msg: '在途已满' };
+    /* 行动：cfg.act 指定且被支持 → 用它；否则取奇观支持的第一个。 */
+    var acts = (wd.acts || []).slice();
+    var actId = (cfg.act && acts.indexOf(cfg.act) >= 0) ? cfg.act : acts[0];
+    if (!actId) return { ok: false, msg: '该奇观无可派行动' };
+    var act = (DATA.WONDER_ACT_DEFS || {})[actId] || {};
+    /* 兵力：逐兵种上限 ∩ 城内实有。 */
+    var army = {}, total = 0;
+    (DATA.TROOPS ? Object.keys(DATA.TROOPS) : []).forEach(function (id) {
+      var want = Math.max(0, Math.floor((cfg.army && cfg.army[id]) || 0));
+      if (want <= 0) return;
+      var have = ((city.army || {})[id]) || 0;
+      var take = Math.min(have, want);
+      if (take > 0) { army[id] = take; total += take; }
+    });
+    if (act.needArmy && total <= 0) return { ok: false, msg: '未配置兵种或城中无兵' };
+    /* 空闲英雄（不固定 · 每次现取一枚）——与自动出征同一判据：只取 idle。 */
+    var gen = null;
+    (GAME.state.generals || []).forEach(function (g) { if (!gen && (!g.status || g.status === 'idle')) gen = g; });
+    if (!gen) return { ok: false, msg: '城中无空闲英雄' };
+    return GAME.wonderExplore(pid, actId, city.id, army, gen.id);
+  };
+  /* 主循环驱动：按频率节流 → 逐城尝试（当前星球所有城）。 */
+  GAME.autoExplore = function () {
+    var s = GAME.state;
+    var cfg = GAME.autoExploreCfg();
+    if (!cfg || !cfg.on) return null;
+    var now = U.now();
+    if (now - (cfg.last || 0) < cfg.everyMin * 60000) return null;
+    cfg.last = now;
+    GAME.autoExploreRollDay(cfg);
+    var pid = s.activePlanet || 1;
+    var done = 0, lastMsg = '';
+    (s.cities || []).forEach(function (city) {
+      if ((cfg.dailyMax > 0) && ((cfg.today[city.id] || 0) >= cfg.dailyMax)) return;
+      var r = GAME._autoExploreCity(pid, city, cfg);
+      if (r && r.ok) { cfg.today[city.id] = (cfg.today[city.id] || 0) + 1; done++; lastMsg = r.msg; }
+      else if (r && r.msg) lastMsg = r.msg;
+    });
+    s.autoExploreInfo = { ok: done > 0, msg: done > 0 ? ('已派 ' + done + ' 城探索队') : (lastMsg || '待命'), at: now };
+    if (done > 0) GAME.log('✨ 自动探索：' + done + ' 城各派一支奇观探索队');
+    return { ok: done > 0, msg: s.autoExploreInfo.msg };
+  };
+
   /* v90.54（老板）：自动研究**逐城遍历**（与 autoUpgrade 同构）—— 各城科研中心**并行**研究、互不阻塞。
      每城：已在研 → 跳过；否则挑该城最便宜的候选开研（受该城科研中心等级 / techCapOf / 建筑 req 约束）。 */
   GAME._autoResearchCity = function (city) {

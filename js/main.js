@@ -1196,6 +1196,12 @@
       case 'open-auto-march': ui.openAutoMarch(); break;
       case 'am-toggle': GAME.doToggleAutoMarch(); ui.openAutoMarch(); break;
       case 'am-once': GAME.doAutoMarchOnce(); ui.openAutoMarch(); break;
+      /* v91.36：自动探索（参考自动出征 · 不设固定英雄）。 */
+      case 'toggle-auto-explore': GAME.doToggleAutoExplore(); break;
+      case 'auto-explore-once': GAME.doAutoExploreOnce(); break;
+      case 'open-auto-explore': ui.openAutoExplore(); break;
+      case 'ae-toggle': GAME.doToggleAutoExplore(); ui.openAutoExplore(); break;
+      case 'ae-once': GAME.doAutoExploreOnce(); ui.openAutoExplore(); break;
       /* v40：`case 'set-timescale'` / `case 'set-tax'` 已删 ——
          v22 起税率与倍率改走 `chip-set + data-after='tax'/'timescale'`，
          这两个旧分支在界面上查无触发点（audit 会一直报"不可达分支"）。 */
@@ -1635,6 +1641,43 @@
     GAME.state.autoMarchInfo = { ok: r.ok, msg: r.msg, at: U.now() };
     ui.toast((r.ok ? '✅ ' : '⏸ ') + r.msg);
     if (r.ok) GAME.refreshAll(); else GAME.refreshView();
+  };
+
+  /* v91.36（老板）：自动探索（参考自动出征 · 不设固定英雄）。 */
+  GAME.doToggleAutoExplore = function () {
+    var cfg = GAME.autoExploreCfg();
+    if (!cfg) return;
+    cfg.on = !cfg.on;
+    if (cfg.on) {
+      cfg.last = 0;                       /* 开启即视为"该执行了" */
+      GAME.state.autoExploreInfo = { ok: true, msg: '已开启，待命', at: U.now() };
+      ui.toast('✨ 自动探索已开启（每 ' + cfg.everyMin + ' 分钟一轮 · 逐城派空闲英雄）');
+    } else {
+      GAME.state.autoExploreInfo = { ok: false, msg: '已关闭', at: U.now() };
+      ui.toast('自动探索已关闭');
+    }
+    GAME.refreshView();
+  };
+  GAME.doSetAutoExplore = function (k, v) {
+    var cfg = GAME.autoExploreCfg();
+    if (!cfg || !k) return;
+    if (k.indexOf('army:') === 0) {       /* 逐兵种「自动探索数量」上限 */
+      cfg.army = cfg.army || {};
+      cfg.army[k.slice(5)] = Math.max(0, Math.floor(Number(v) || 0));
+      GAME.refreshView();
+      return;
+    }
+    if (k === 'everyMin' || k === 'dailyMax') cfg[k] = Number(v);
+    else cfg[k] = String(v);
+    GAME.refreshView();
+  };
+  GAME.doAutoExploreOnce = function () {
+    var cfg = GAME.autoExploreCfg();
+    if (!cfg) return;
+    cfg.last = 0;                         /* 手动"立即"不吃频率节流（与自动出征同口径） */
+    var r = GAME.autoExplore();
+    ui.toast((r && r.ok ? '✅ ' : '⏸ ') + ((r && r.msg) || '待命'));
+    if (r && r.ok) GAME.refreshAll(); else GAME.refreshView();
   };
 
   /* v89.83：自动练功开关（与其它开关同形：开启即试一次，关闭只清状态） */

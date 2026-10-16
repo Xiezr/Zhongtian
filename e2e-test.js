@@ -3055,15 +3055,16 @@ async function runTests(dom, URL) {
   /* ⑧b 自动化菜单（v29 · 需求 5） */
   G.ui.setView('auto');
   await sleep(100);
-  check('自动化界面：左名单九项 + 右详情（v89.115 分栏 · v89.118 外敌来犯 · v89.128 采集 · v89.190 自动征兵）', (function () {
-    /* v89.115：整合成「左 1/3 名单 + 右 2/3 详情」，新增「🏥 自动治疗」；
-       v89.118：再加「🔥 外敌来犯」（开关 + 介绍 + 警报流水，从军务·警报迁来）。
-       v89.190（老板 2）：再加「🛡️ 自动征兵」（兵营募兵；与「🧲 自动招募」= 征召大厅招将并列）。 */
+  check('自动化界面：左名单十项 + 右详情（v89.115 分栏 · v89.118 外敌来犯 · v89.128 采集 · v89.190 自动征兵 · v91.36 自动探索）', (function () {
+    /* v89.115：「左 1/3 名单 + 右 2/3 详情」，新增「🏥 自动治疗」；
+       v89.118：「🔥 外敌来犯」；v89.190：「🛡️ 自动征兵」；
+       v91.36（老板）：「✨ 自动探索」（城中有空闲英雄和可用兵种时，逐城向奇观派探索队）。 */
     var items = vc.querySelectorAll('.auto-item');
-    return items.length === 9 && !!vc.querySelector('.auto-pane')
+    return items.length === 10 && !!vc.querySelector('.auto-pane')
       && !!vc.querySelector('[data-action="auto-pick"][data-key="heal"]')
       && !!vc.querySelector('[data-action="auto-pick"][data-key="train"]')
       && !!vc.querySelector('[data-action="auto-pick"][data-key="invasion"]')
+      && !!vc.querySelector('[data-action="auto-pick"][data-key="explore"]')
       && !!vc.querySelector('[data-action="auto-pick"][data-key="gather"]');
   })());
 

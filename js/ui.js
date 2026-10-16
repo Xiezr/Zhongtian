@@ -16036,6 +16036,9 @@
     { id: 'upgrade', icon: '🔨', name: '自动升级', act: 'toggle-auto-upgrade' },
     { id: 'research', icon: '📜', name: '自动研究', act: 'toggle-auto-research' },
     { id: 'march', icon: '⚔️', name: '自动出征', act: 'toggle-auto-march' },
+    /* v91.36（老板）：「增加自动探索功能，城中有任意空闲英雄和可用兵种时，每个城市均可
+       向奇观派遣探索队」（参考自动出征 · 不设固定英雄）。 */
+    { id: 'explore', icon: '✨', name: '自动探索', act: 'toggle-auto-explore' },
     { id: 'lord', icon: '🧘', name: '自动练功', act: 'toggle-auto-lord' },
     /* v89.128（需求 5）：自动采集/收获（每 24 游戏小时一轮） */
     { id: 'gather', icon: '🌾', name: '自动采集/收获', act: 'toggle-auto-gather' },
@@ -16053,6 +16056,7 @@
     if (id === 'upgrade') return !!(s.settings && s.settings.autoUpgrade);
     if (id === 'research') return !!(s.settings && s.settings.autoResearch);
     if (id === 'march') return !!(cfg && cfg.on);
+    if (id === 'explore') { var _ec = GAME.autoExploreCfg ? GAME.autoExploreCfg() : null; return !!(_ec && _ec.on); }
     if (id === 'lord') return !!(s.settings && s.settings.autoLordTrain);
     if (id === 'recruit') return !!(GAME.innAutoCfg && GAME.innAutoCfg().on);
     if (id === 'train') return !!(s.settings && s.settings.autoTrain);
@@ -16067,6 +16071,7 @@
     if (id === 'upgrade') return (s.autoState && s.autoState.msg) || '未开启';
     if (id === 'research') return (s.autoTechState && s.autoTechState.msg) || '未开启';
     if (id === 'march') return (s.autoMarchInfo && s.autoMarchInfo.msg) || '未开启';
+    if (id === 'explore') return (s.autoExploreInfo && s.autoExploreInfo.msg) || '未开启';
     if (id === 'lord') return (s.autoLordState && s.autoLordState.msg) || '未开启';
     if (id === 'gather') return (s.autoGatherState && s.autoGatherState.msg) || '未开启';
     if (id === 'recruit') {
@@ -16167,6 +16172,22 @@
           '它们拖慢行军，且是守城家底；' +
           '④ 只从<b>当前城市</b>取兵；' +
           '⑤ 已占野地与今日已攻破的据点不会被重复打。</div>';
+    } else if (it.id === 'explore') {
+      var _ecfg = GAME.autoExploreCfg ? GAME.autoExploreCfg() : null;
+      var _pid = s.activePlanet || 1, _wd = GAME.wonderOf ? GAME.wonderOf(_pid) : null;
+      var _act = GAME.wonderActiveCount ? GAME.wonderActiveCount(_pid) : 0;
+      var _max = (DATA.WONDER_CFG || {}).maxActive || 3;
+      body = '<div class="auto-line" style="margin-top:2px;">' +
+          '<button class="btn gold" data-action="open-auto-explore">⚙️ 详细配置</button>' +
+          '<button class="btn" data-action="auto-explore-once">✨ 立即探索一次</button>' +
+          '<span class="ui-sub">' + (_wd ? (_wd.icon + ' ' + _wd.name) : '本星球暂无奇观') +
+            '　·　在途 ' + _act + '/' + _max + ' 队　·　' +
+            (_ecfg && _ecfg.on ? ('约 ' + _ecfg.everyMin + ' 分钟一轮') : '未开启') + '</span></div>' +
+        '<div class="auto-note"><b>口径</b>：' +
+          '① <b>不设固定英雄</b> —— 每城每次现取一枚<b>空闲</b>英雄带队（出征中/守将/采集中跳过）；' +
+          '② 兵力取你在「详细配置」里逐兵种填的<b>上限</b>（0 = 不自动派）；' +
+          '③ 只对<b>当前所在星球</b>的今日奇观派队，在途满队即等候；' +
+          '④ 每城每日次数上限见配置。</div>';
     } else if (it.id === 'lord') {
       body = '<div class="auto-note">君主<b>体力过半</b>时自动练一次（每 30 秒最多一次）：' +
         '产修为、未到段顶还给经验。过半才练是为了<b>把体力留给玩家</b> —— ' +
@@ -16609,6 +16630,90 @@
       ui.expApplyTactic(_tacSel.value);
       ui.openAutoMarch();
     });
+  };
+
+  /* ============================================================
+   * v91.36（老板）：「增加自动探索功能 —— 城中有任意空闲英雄和可用兵种时，
+   *   每个城市均可向奇观派遣探索队。其他设置参考自动出征，但**不设固定英雄**。」
+   * ------------------------------------------------------------
+   * 版面照抄「自动出征 · 详细配置」的左列（频率/每日上限/预估）+ 右列（逐兵种数量上限），
+   * 去掉英雄/目标/等级/距离/方式/计略（自动探索无这些旋钮）。
+   * ============================================================ */
+  ui.openAutoExplore = function () {
+    var s = GAME.state, cfg = GAME.autoExploreCfg();
+    if (!cfg) return;
+    var pid = s.activePlanet || 1;
+    var wd = GAME.wonderOf ? GAME.wonderOf(pid) : null;
+    var E = DATA.AUTO_EXPLORE || {};
+    var present = GAME.wonderPresent ? GAME.wonderPresent(pid) : true;
+    var active = GAME.wonderActiveCount ? GAME.wonderActiveCount(pid) : 0;
+    var maxA = (DATA.WONDER_CFG || {}).maxActive || 3;
+    /* 主角行动候选：本奇观支持的行动（cfg.act 缺省取第一个）。 */
+    var acts = (wd && wd.acts) || [];
+    var actOpts = acts.map(function (a) {
+      var d = (DATA.WONDER_ACT_DEFS || {})[a] || {};
+      return { v: a, on: (cfg.act || acts[0]) === a, label: d.name + '（' + (d.cond || '') + '）' };
+    });
+    var sel = function (id, opts) {
+      return '<select id="' + id + '">' + opts.map(function (o) {
+        return '<option value="' + o.v + '"' + (o.on ? ' selected' : '') + '>' + U.escape(o.label) + '</option>';
+      }).join('') + '</select>';
+    };
+    var freqOpts = (E.freqOptions || []).map(function (v) { return { v: v, on: v === cfg.everyMin, label: v + ' 分钟' }; });
+    var dailyOpts = (E.dailyOptions || [0]).map(function (v) { return { v: v, on: v === cfg.dailyMax, label: v ? ('每城每日 ' + v + ' 次') : '不限次数' }; });
+    /* 逐兵种「自动探索数量」上限（可作战兵种）。 */
+    var rows = Object.keys(DATA.TROOPS).filter(function (id) { return !DATA.TROOPS[id].nocombat; }).map(function (id) {
+      var tr = DATA.TROOPS[id] || {};
+      /* 各城合计实有（跨城取总，让玩家对"能派多少"有体感）。 */
+      var own = 0;
+      (s.cities || []).forEach(function (ct) { own += ((ct.army || {})[id]) || 0; });
+      var capN = (cfg.army && cfg.army[id]) || 0;
+      return '<tr class="et-row' + (own <= 0 ? ' off' : '') + '">' +
+        '<td class="et-name">' + U.escape(tr.name || id) + '</td>' +
+        '<td class="et-own num">' + U.fmt(own) + '</td>' +
+        '<td class="et-in"><input type="number" id="ae-a-' + id + '" min="0" value="' + capN + '"' +
+          (own > 0 ? '' : ' disabled') + '></td></tr>';
+    }).join('');
+    var html = '<div class="gold-heading">✨ 自动探索 · 详细配置' +
+      '<span style="font-weight:400;font-size:var(--fs-sub);color:var(--text-dim);">（逐城派空闲英雄探奇观）</span>' +
+      ui.help('与自动出征同构：频率节流 + 每日上限 + 逐兵种数量上限。\n' +
+        '**不设固定英雄** —— 每城每次现取一枚空闲英雄带队。\n' +
+        '只对本星球今日奇观派队；在途满 ' + maxA + ' 队即等候。') + '</div>' +
+      '<div class="exp-grid"><div class="exp-col-l">' +
+        '<div class="exp-sec"><div class="exp-sec-t">目标奇观</div>' +
+          '<div class="ui-sub" style="margin-bottom:6px;">' + (wd ? (wd.icon + ' ' + U.escape(wd.name) + ' · ' + U.escape(wd.body)) : '本星球暂无奇观') +
+          '　·　' + (present ? '今日在场' : '<span style="color:var(--red-light);">今日未出现</span>') +
+          '　·　在途 ' + active + '/' + maxA + ' 队</div>' +
+          ui.expRowHTML('主角行动', sel('ae-act', actOpts.length ? actOpts : [{ v: '', on: true, label: '（无）' }]),
+            '该奇观支持的行动 · 条件见括号（英雄带队为共同要求）') + '</div>' +
+        '<div class="exp-sec">' +
+          ui.expRowHTML('探索频率', sel('ae-freq', freqOpts), null) +
+          ui.expRowHTML('每城每日上限', sel('ae-daily', dailyOpts), null) + '</div>' +
+      '</div>' +
+      '<div class="exp-col-r"><div class="exp-sec exp-a-troops"><div class="exp-sec-t">兵种编成（自动探索数量上限）</div>' +
+        '<div class="exp-troops exp-body"><table class="tbl exp-tbl"><colgroup>' +
+          '<col class="et-c-name"><col class="et-c-own"><col class="et-c-in"></colgroup><thead><tr>' +
+          '<th>兵种</th><th class="num">全境合计</th><th class="ctr">自动探索数量</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+        '<div class="exp-info exp-info-l" style="color:var(--text-dim);margin-bottom:0;">逐兵种填<b>上限</b>（0 = 不自动派）；' +
+        '实际按每城实有取小值。侦察单元不编入。</div></div></div>' +
+      '</div>' +
+      '<div class="exp-foot">' +
+        '<button class="btn' + (cfg.on ? ' gold' : '') + '" data-action="ae-toggle">' +
+          (cfg.on ? '⏸ 关闭自动探索' : '▶️ 开启自动探索') + '</button>' +
+        '<button class="btn" data-action="ae-once">立即探索一次</button>' +
+        '<button class="btn" data-action="close-modal">关闭</button></div>';
+    ui.openModal(html, { size: 'xxl' });
+    var bind = function (id, key) {
+      var el = document.getElementById(id); if (!el) return;
+      el.addEventListener('change', function () { GAME.doSetAutoExplore(key, el.value); ui.openAutoExplore(); });
+    };
+    bind('ae-act', 'act'); bind('ae-freq', 'everyMin'); bind('ae-daily', 'dailyMax');
+    (function () {
+      var ins = document.querySelectorAll('[id^="ae-a-"]');
+      for (var ii = 0; ii < ins.length; ii++) (function (el2) {
+        el2.addEventListener('change', function () { GAME.doSetAutoExplore('army:' + el2.id.slice(5), el2.value); });
+      })(ins[ii]);
+    })();
   };
 
   /* ============================================================

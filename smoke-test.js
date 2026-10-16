@@ -36168,6 +36168,33 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         return (st.items[wd.mat] || 0) > before && exp.accrued === 5;
       } finally { G.state = bk; }
     })());
+    /* v91.36（老板）：「增加自动探索 —— 城中有空闲英雄和可用兵种时，逐城向奇观派队 · 不设固定英雄」。 */
+    check('§263⑤ 自动探索：无固定英雄 · 逐城现取空闲英雄 · 每日上限生效', (function () {
+      var bk = GAME.state;
+      try {
+        var st = G.newGame({ name: 'ae263', cityName: '灰岗', region: '烬环', mapSeed: 11 });
+        G.state = st;
+        var pl = GAME._planetOf(st.activePlanet);
+        pl.wonderId = 'crystal'; pl.wonderDay = GAME.questDayIndex();
+        pl.wonderPresDay = GAME.questDayIndex(); pl.wonderPresent = true; pl.wonderExp = [];
+        var c = st.cities[0]; c.army = { buxingji: 5000 };
+        /* 两枚空闲英雄（自动探索不绑 genId，每城现取一枚）。 */
+        st.generals = st.generals || [];
+        st.generals.push(G.makeGeneral('甲', 20, 'idle'), G.makeGeneral('乙', 20, 'idle'));
+        var cfg = GAME.autoExploreCfg();
+        cfg.on = true; cfg.everyMin = 0; cfg.army = { buxingji: 1000 }; cfg.dailyMax = 1;
+        cfg.act = (G.wonderOf(st.activePlanet).acts || [])[0];
+        var r = GAME.autoExplore();
+        var ok1 = r.ok && GAME.wonderActiveCount(st.activePlanet) === 1;
+        /* 每日上限 = 1 → 再跑一次同城不再派（频率 0 但日限拦下）。 */
+        GAME.autoExplore();
+        var ok2 = GAME.wonderActiveCount(st.activePlanet) === 1;
+        /* 不固定英雄：派出的队 genId 应落在在册英雄里，且 cfg 无 genId 字段依赖。 */
+        var e0 = pl.wonderExp[0] || {};
+        var ok3 = !!e0.genId && st.generals.some(function (g) { return g.id === e0.genId; });
+        return ok1 && ok2 && ok3;
+      } finally { G.state = bk; }
+    })());
   })();
 
   /* ============================================================
