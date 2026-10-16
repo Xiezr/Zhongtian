@@ -865,6 +865,8 @@
       : '<span>🧔</span>';
   };
   ui.setCreate = function () {
+    /* v91.36：创建屏默认 hidden（启动不再闪现）—— 这里是**唯一的揭开点**。 */
+    $('#screen-create').classList.remove('hidden');
     ui.paintCreateAvatar();
     /* v70（老板需求 5）：归属选项改成**十三区** —— 说明给「首府 + 特产 + 风土」，
        出生城由 GAME.pickStartPos 落在该区首府近旁（不再是三句空文案）。 */

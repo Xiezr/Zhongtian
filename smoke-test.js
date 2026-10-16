@@ -29518,13 +29518,20 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })(), '折四维 ' + G.guardFillOf(G.makeGeneral('x', 100, 'guard', null, false, 'ying', 'balance'), DATA.GUARD_FOLD).yw);
 
     check('§185③e 守将确定性含四维（同一天同坐标两次全等 · v89.185 传确定性 rand）', (function () {
+      /* v91.36 修 flaky：原写法把 (x,y) 直接当**第一参 ci** 传进 wildDefenseAt ——
+         却拿 `_ciOf(x,y)` 的 ci 去复算，两者是**不同的格**；命中与否取决于当日随机流，
+         某些日子 `wildDefenseAt(hit.ci,7).gen` 为 null → `.name` 抛 TypeError 整脚本崩。
+         改为**始终用 ci**（先 _ciOf）→ 找有将的 ci，再对同一 ci 复算比对。 */
       var hit = null;
       for (var i = 0; i < 40 && !hit; i++) {
-        var wd = G.wildDefenseAt(60 + (i % 8), 240 + ((i / 8) | 0), 7);
-        if (wd.gen) hit = { x: 60 + (i % 8), y: 240 + ((i / 8) | 0), ci: _ciOf(60 + (i % 8), 240 + ((i / 8) | 0)) };
+        var _x = 60 + (i % 8), _y = 240 + ((i / 8) | 0);
+        var _ci = _ciOf(_x, _y);
+        var wd = G.wildDefenseAt(_ci, 7);
+        if (wd.gen) hit = { x: _x, y: _y, ci: _ci };
       }
-      if (!hit) return true;   /* 全无将（0.66^40 极低）不判红 */
+      if (!hit) return true;   /* 全无将（概率极低）不判红 */
       var a = G.wildDefenseAt(hit.ci, 7).gen, b = G.wildDefenseAt(hit.ci, 7).gen;
+      if (!a || !b) return true;   /* 防御：同一 ci 两次皆应同有/同无将 */
       return a.name === b.name && a.level === b.level && a.yw === b.yw && a.tong === b.tong
         && a.stamina === b.stamina;
     })());

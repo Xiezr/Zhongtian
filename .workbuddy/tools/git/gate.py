@@ -18,6 +18,14 @@
 import io
 import os, re, subprocess, sys
 
+# v91.36：Windows 控制台默认 GBK，print 里的 ✅/✗ 等字符会 UnicodeEncodeError 让钩子**崩在最后一步**
+# （提交其实已落库，但退出码非 0 + 报错刷屏，看着像失败）。统一把 stdout/stderr 拉成 UTF-8。
+try:
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+except Exception:
+    pass
+
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 # gate.py 在 .workbuddy/tools/git/ → 上溯 4 层得 E:\Deepseekdb
 
