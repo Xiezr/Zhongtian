@@ -36146,8 +36146,11 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         pl.wonderId = 'crystal'; pl.wonderDay = GAME.questDayIndex(); pl.wonderPresDay = GAME.questDayIndex(); pl.wonderPresent = true;
         pl.wonderExp = [];
         var c = st.cities[0]; c.army = { buxingji: 99999 };
+        /* v91.36（老板「必须由英雄带队」）：奇观行动一律须带将 —— 补一枚在册英雄。 */
+        var _g263 = (st.generals || [])[0] || G.makeGeneral('探', 10, 'idle');
+        if (!((st.generals || [])[0])) { st.generals = st.generals || []; st.generals.push(_g263); }
         var okN = 0;
-        for (var i = 0; i < 5; i++) { var r = GAME.wonderExplore(st.activePlanet, 'collect', c.id, {}); if (r.ok) okN++; }
+        for (var i = 0; i < 5; i++) { var r = GAME.wonderExplore(st.activePlanet, 'collect', c.id, {}, _g263.id); if (r.ok) okN++; }
         return okN === 3 && GAME.wonderActiveCount(st.activePlanet) === 3;   /* 前 3 成、第 4/5 被静默拒 */
       } finally { G.state = bk; }
     })());

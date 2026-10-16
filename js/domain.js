@@ -8030,8 +8030,19 @@
     var city = cityId ? GAME.cityById(cityId) : GAME.currentCity();
     if (!city) return { ok: false, msg: '无可用城市' };
     army = army || {};
-    var n = 0; for (var k in army) n += Math.max(0, Math.floor(army[k] || 0));
+    /* v91.36（老板）：「对奇观的动作应等同于出征，**必须由将领带队**」——一律须将领。 */
+    if (act.needGen !== false && !genId) return { ok: false, msg: '「' + act.name + '」须英雄带队' };
+    var n = 0, load = 0;
+    for (var k in army) {
+      var cnt = Math.max(0, Math.floor(army[k] || 0)); if (cnt <= 0) continue;
+      n += cnt;
+      load += cnt * (((DATA.TROOPS[k] || {}).load) || 0);   /* 队伍总负重（与出征同口径：Σ 数量 × 单兵负重） */
+    }
     if (act.needArmy && n <= 0) return { ok: false, msg: '「' + act.name + '」须派兵' };
+    /* v91.36：负重门槛（方舟救援须能"运回幸存者"）—— 与自动出征/出征面板同一套兵种 load 字段。 */
+    if (act.needLoad && load < act.needLoad) {
+      return { ok: false, msg: '「' + act.name + '」须队伍总负重 ≥ ' + U.fmt(act.needLoad) + '（现有 ' + U.fmt(load) + '，请多带辎重/步卒）' };
+    }
     for (var k2 in army) {
       var c = Math.max(0, Math.floor(army[k2] || 0)); if (c <= 0) continue;
       city.army[k2] = Math.max(0, (city.army[k2] || 0) - c);

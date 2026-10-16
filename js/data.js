@@ -3882,13 +3882,19 @@
     { id: 'forge', name: '永动熔炉', body: '喷焰工业巨构', icon: '🏭', adapt: 'default', place: 'land',
       mat: 'w_stariron', acts: ['collect', 'deep'], out: ['w_meteor'] },
   ];
-  /* 探索行动表（分类名 · 需军 · 冒险损兵概率 · 产出倍率） */
+  /* 探索行动表（分类名 · 需将/需军/负重门槛 · 冒险损兵概率 · 产出倍率）
+     v91.36（老板）：「对奇观的动作应等同于出征，直连出征界面，**必须由将领带队**。
+       但根据出征动作的不同，需要不一样。比如圣殿研读，只需派遣将领；
+       方舟救援，需要派遣军队的总负重达到某个数值，等等」——
+     · `needGen`（全为 true）：**一律将领带队**（等同于出征的主将）。
+     · `needArmy`：是否须有兵（研读/采集只需将 → false）。
+     · `needLoad`：队伍**总负重**门槛（Σ 数量 × TROOPS[].load；救援行必须，见 cond）。 */
   DATA.WONDER_ACT_DEFS = {
-    collect: { name: '采集', needArmy: false, risk: 0, mul: 1.0, desc: '小队采集，安稳取料' },
-    search: { name: '派军搜查', needArmy: true, risk: 0.15, mul: 1.6, desc: '派军搜掠，产出更多但可能损兵' },
-    deep: { name: '深潜攻坚', needArmy: true, risk: 0.30, mul: 2.4, desc: '精锐攻坚，顶级产出、风险最高' },
-    study: { name: '圣殿研读', needArmy: false, risk: 0, mul: 1.0, banner: 'page', desc: '研读残页，得战技' },
-    rescue: { name: '方舟救援', needArmy: false, risk: 0, mul: 1.0, banner: 'pop', desc: '救援幸存者' },
+    collect: { name: '采集', needGen: true, needArmy: false, risk: 0, mul: 1.0, cond: '需 1 位英雄带队（无需带兵）', desc: '小队采集，安稳取料' },
+    search: { name: '派军搜查', needGen: true, needArmy: true, risk: 0.15, mul: 1.6, cond: '需英雄带队 + 至少 1 兵', desc: '派军搜掠，产出更多但可能损兵' },
+    deep: { name: '深潜攻坚', needGen: true, needArmy: true, risk: 0.30, mul: 2.4, cond: '需英雄带队 + 至少 1 兵（军力越高产出越多）', desc: '精锐攻坚，顶级产出、风险最高' },
+    study: { name: '圣殿研读', needGen: true, needArmy: false, risk: 0, mul: 1.0, banner: 'page', cond: '仅需 1 位英雄带队（不带兵）', desc: '研读残页，得战技' },
+    rescue: { name: '方舟救援', needGen: true, needArmy: true, needLoad: 20000, risk: 0, mul: 1.0, banner: 'pop', cond: '需英雄带队 + 队伍总负重 ≥ 2 万（运回幸存者）', desc: '救援幸存者' },
   };
   /* 奇观探索参数 */
   /* v91.31：探查**不限次**；同时最多 maxActive 队在途；抵达后每 accrueSec 现实秒累计 1 份奖励。 */

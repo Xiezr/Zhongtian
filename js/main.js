@@ -160,21 +160,15 @@
       case 'wonder-open': ui.openWonder(Number(el.dataset.pid)); break;
       /* v91.30：星系总览（地图底部入口 · 后续再拓展玩法）。 */
       case 'galaxy-open': ui.setView('galaxy'); GAME.refreshAll(); break;
-      /* v91.31（老板）：派军搜查/深潜 → 出征界面（选将选兵 · 自由定数量 · 按军力给奖励）。 */
+      /* v91.31（老板）：派军搜查/深潜 → 出征界面（选将选兵 · 自由定数量 · 按军力给奖励）。
+         v91.36（老板）：**所有**奇观动作都走此入口（等同出征 · 必须英雄带队）；
+         各行动的带队条件（研读只需将 / 救援需总负重达标…）作为 hint 带到出征界面。 */
       case 'wonder-exp': {
         ui.closeAllModals();
+        var _adDef = (DATA.WONDER_ACT_DEFS || {})[el.dataset.act] || {};
         ui.openExpModal({ kind: 'wonder', pid: Number(el.dataset.pid), mode: el.dataset.act },
-          { hint: '奇观派遣：选主将与兵力 —— 按军力给奖励，可能有损兵' });
-        break;
-      }
-      case 'wonder-go': {
-        var _pid = Number(el.dataset.pid), _act = el.dataset.act;
-        var _paid = { buxingji: 2000 };   /* 派军行动默认派 2000 步兵（可后续做编队） */
-        var _ad = (DATA.WONDER_ACT_DEFS || {})[_act] || {};
-        var _r = GAME.wonderExplore(_pid, _act, GAME.currentCity() && GAME.currentCity().id,
-          _ad.needArmy ? _paid : {}, null);
-        ui.toast(_r.msg);
-        if (_r.ok) { GAME.refreshAll(); }
+          { hint: '奇观派遣「' + (_adDef.name || '') + '」：' + (_adDef.cond || '须英雄带队')
+            + '　·　按军力给奖励' + (_adDef.risk ? '（可能损兵 ' + Math.round(_adDef.risk * 100) + '%）' : '') });
         break;
       }
       case 'open-lab':

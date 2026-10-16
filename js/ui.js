@@ -13797,12 +13797,16 @@
        目标城市 / 主将+可用道具 / 派遣兵力 / 出征方式 / 战术·计略 / 预估 / 确认，
        六大块用标题小卡分区，一眼扫完；主将改下拉框，可用道具实时可见。 */
     var html = '<div class="gold-heading">⚔️ ' + U.escape(_tTitle) + '</div>';
-    /* v89.138：派遣 / 运输 的入口提示（同一界面，两句话说清各自要填的东西） */
+    /* v89.138：派遣 / 运输 的入口提示（同一界面，两句话说清各自要填的东西）
+       v91.36：支持**自定义 hint 文案**（奇观派遣等用它带入各行动的带队条件）——
+       只有两个历史哨兵值走硬编码，其余原样展示。 */
     if (ui._expHint) {
       html += '<div class="exp-info exp-info-l" style="text-align:center;color:var(--gold-light);margin-bottom:6px;">'
         + (ui._expHint === 'cargo'
           ? '🚚 运输：先选<b>押运兵力</b>（运力随兵力涨），再到下方辎重区填要运的资源'
-          : '🛡️ 派遣：选<b>主将</b>（随军入城）+ 兵种数量 —— 抵达即入城；不带货可直接出征')
+          : (ui._expHint === 'dispatch'
+            ? '🛡️ 派遣：选<b>主将</b>（随军入城）+ 兵种数量 —— 抵达即入城；不带货可直接出征'
+            : U.escape(ui._expHint)))
         + '</div>';
     }
     /* v89.55（老板：出征界面偏小、每区块占整行不紧凑）→ 改 2 列分区网格 + 弹窗升 xl：
@@ -16651,7 +16655,11 @@
       '<div class="ui-sub" title="' + U.escape(DIFF_TIP) + '">可能产出　<span style="color:var(--text-dim);">（悬停看「采集 / 派军搜查」差异）</span></div>' +
       (rows || '<div class="q-empty">—</div>') + '</div>';
   };
-  /* 奇观行动按钮（**放弹窗底部**）：采集/研读/救援 = 就地；派军搜查/深潜 = 走出征界面选将选兵。 */
+  /* 奇观行动按钮（**放弹窗底部**）。
+     v91.36（老板）：「对奇观的动作应等同于出征，**直连出征界面，必须由将领带队**，
+     但根据出征动作的不同，需要不一样」（研读只需将 / 救援需总负重达标…）——
+     所有行动一律走 `wonder-exp` → **出征界面**（选将 · 选兵 · 自由定数量）；
+     各行动的**带队条件**写进 `DATA.WONDER_ACT_DEFS[].cond`，**悬停显示**（图标/按钮 title）。 */
   ui.wonderActsHTML = function (pid) {
     var wd = GAME.wonderOf ? GAME.wonderOf(pid) : null;
     if (!wd) return '';
@@ -16659,12 +16667,11 @@
     var W = DATA.WONDER_CFG || { maxActive: 3 };
     return (wd.acts || []).map(function (aid) {
       var a = (DATA.WONDER_ACT_DEFS || {})[aid]; if (!a) return '';
-      if (a.needArmy) {   /* 派军：走出征界面（选将/选兵/自由定数量） */
-        return '<button class="btn gold" data-action="wonder-exp" data-pid="' + pid + '" data-act="' + aid + '"'
-          + ' title="' + U.escape(a.desc + '（出征界面选将选兵 · 按军力给奖励）') + '">' + a.name + '</button>';
-      }
-      return '<button class="btn" data-action="wonder-go" data-pid="' + pid + '" data-act="' + aid + '"'
-        + ' title="' + U.escape(a.desc) + '">' + a.name + '</button>';
+      var tip = a.desc + '\n条件：' + (a.cond || '需英雄带队')
+        + (a.risk ? '\n风险：可能损兵 ' + Math.round(a.risk * 100) + '%' : '')
+        + '\n（走出征界面 · 选将选兵 · 按军力给奖励）';
+      return '<button class="btn gold" data-action="wonder-exp" data-pid="' + pid + '" data-act="' + aid + '"'
+        + ' title="' + U.escape(tip) + '">' + a.name + '</button>';
     }).join(' ') + '<span class="ui-sub" style="margin-left:8px;">在途 ' + active + ' / ' + (W.maxActive || 3) + ' 队</span>';
   };
   /* 探查中队列：将领 · 军力 · 计时 · 累计奖励（每现实秒刷新）。 */
