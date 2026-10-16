@@ -13752,6 +13752,19 @@
        同一份 resolveTarget 结果直接读，不再各算一遍（两个出口必漂移）。 */
     ui._expRes = t;
     /* ============================================================
+     * v91.49（老板）：「探索奇观的出征界面，最终行动按钮为『占领』，应改为『探索』；
+     *   出征按钮跟随出征目的改变，增加相应出征方式到下拉框」——
+     * 目标 = 奇观时：出征方式**改为该奇观的各项探索行动**（DATA.WONDER_ACT_DEFS），
+     *   确认键 = 「☄ 探索 · {行动名}」，不再借用「占领」这个战斗方式名。
+     * ============================================================ */
+    ui._expWonder = null;
+    if (target && target.kind === 'wonder') {
+      var _wwd = GAME.wonderOf ? GAME.wonderOf(t.pid) : null;
+      var _wacts = (_wwd && _wwd.acts) || [];
+      ui._expWonder = { pid: t.pid, wd: _wwd };
+      ui._expMode = (_wacts.indexOf(t.mode) >= 0) ? t.mode : (_wacts[0] || 'collect');
+    }
+    /* ============================================================
      * v89.137（老板 7）：「所有军队操作均以出征界面进行（除非采集/收获/召回这类
      *   默认全军操作）」—— 目标是**己方野地**时：
      *   · 方式默认「驻守 · 增援」（station）——见下面的 modes 过滤；
@@ -13767,6 +13780,13 @@
        兵根本没发出去）。 */
     if (!isOwnWild137 && !ui._expOwn && (ui._expMode === 'station' || ui._expMode === 'transfer')) {
       ui._expMode = 'occupy';
+    }
+    /* v91.49：离开奇观目标时，`_expMode` 里可能残留**探索行动 id**（collect/search…）——
+       那不是出征方式，会粘到下一次常规出征上（battle.modeOf 取不到 → 退默认）。
+       判据：非奇观目标时，若 _expMode 不在 EXPEDITION.modes 里，复位为 occupy。 */
+    if (!ui._expWonder) {
+      var _validMode = ((DATA.EXPEDITION && DATA.EXPEDITION.modes) || []).some(function (mm) { return mm.id === ui._expMode; });
+      if (!_validMode) ui._expMode = 'occupy';
     }
     /* 己方野地的现役驻将（有 → 纯增援不带将；无 → 首次/补将必选带队英雄） */
     var stGen137 = null;
@@ -13831,29 +13851,45 @@
     /* v89.87（需求 2）：调派类（调兵/驻守/采集）**不列出征面板** ——
        三者各有自己的入口（城市间操作 / 派驻面板 / 采集面板），
        混进"出征方式"只会让每次出征都要先跳过三个无关项。 */
-    var modes = ((DATA.EXPEDITION && DATA.EXPEDITION.modes) || []).filter(function (m) {
-      /* v89.103（老板「资源运输采用出征界面」）：目标是己方城市时，
-         方式只有一种 —— 调兵 · 辎重（transfer：兵力 + 资源一起走行军通道）。 */
-      if (ui._expOwn) return m.id === 'transfer';
-      /* v89.137（老板 7）：目标 = **己方野地** → 只出「驻守 · 增援」（station）。
-         打自家地盘没有侦察/掠夺/占领的语义；采集/收获/召回是默认全军操作，不本面板。 */
-      if (isOwnWild137) return m.id === 'station';
-      return m.panel !== false;
-    });
+    /* v91.49（老板）：「增加相应出征方式到下拉框」——
+       奇观目标时：方式 = 该奇观支持的**探索行动**（采集/派军搜查/深潜攻坚…），
+       与 DATA.WONDER_ACT_DEFS 同源（新增行动自动出现）。 */
+    var modes;
+    if (ui._expWonder) {
+      modes = ((ui._expWonder.wd && ui._expWonder.wd.acts) || []).map(function (aid) {
+        var a = (DATA.WONDER_ACT_DEFS || {})[aid] || {};
+        return { id: aid, icon: '☄', name: a.name || aid, _wonderAct: true,
+          stamina: a.needArmy ? 15 : 0, energy: 0, battle: false };
+      });
+    } else {
+      modes = ((DATA.EXPEDITION && DATA.EXPEDITION.modes) || []).filter(function (m) {
+        if (ui._expOwn) return m.id === 'transfer';
+        if (isOwnWild137) return m.id === 'station';
+        return m.panel !== false;
+      });
+    }
     /* v89.58（老板「出征界面采用下拉框，三张卡片占位置太大」）：
        出征方式由三张大卡片 → 紧凑下拉框（与目标/站位/计略同款 .exp-sel 行）。 */
     var modeSelHTML = '<select id="exp-mode" class="exp-mode-select">' +
       modes.map(function (m) {
-        var lock = ui.expModeLockOf(m.id);
-        var label = ui._expOwn
-          ? '🚚 调兵 · 辎重（不接战 · 兵力押运）'
-          : ((isOwnWild137 && m.id === 'station')
-            ? '🛡️ 驻守 · 增派驻军（不接战 · 抵达即驻 · 不耗体力精力）'
-            : (m.icon + ' ' + m.name + '（体' + m.stamina + ' 精' + m.energy + '）'));
+        var lock = ui._expOwn ? '' : ui.expModeLockOf(m.id);
+        var label;
+        if (m._wonderAct) {
+          var ad = (DATA.WONDER_ACT_DEFS || {})[m.id] || {};
+          label = '☄ ' + m.name + '（' + (ad.cond || '需英雄带队') + '）';
+        } else if (ui._expOwn) {
+          label = '🚚 调兵 · 辎重（不接战 · 兵力押运）';
+        } else if (isOwnWild137 && m.id === 'station') {
+          label = '🛡️ 驻守 · 增派驻军（不接战 · 抵达即驻 · 不耗体力精力）';
+        } else {
+          label = m.icon + ' ' + m.name + '（体' + m.stamina + ' 精' + m.energy + '）';
+        }
         return '<option value="' + m.id + '"' + (ui._expMode === m.id ? ' selected' : '') + (lock ? ' disabled' : '') + '>' +
           label + (lock ? '　— ' + U.escape(lock) : '') + '</option>';
       }).join('') + '</select>';
-    var cur = GAME.battle.modeOf(ui._expMode);
+    var cur = ui._expWonder
+      ? { icon: '☄', name: '探索 · ' + (((DATA.WONDER_ACT_DEFS || {})[ui._expMode] || {}).name || ui._expMode), battle: false }
+      : GAME.battle.modeOf(ui._expMode);
 
     /* v70（老板）：出征目标写**全称** —— 名城给区·镇·城名，野外城市带所在聚落 */
     var _tTitle = (t.kind === 'fort' && t.fort) ? GAME.fortLabelOf(t.fort)
@@ -14064,7 +14100,8 @@
       ((ui._expOwn || !cur.battle) ? '' : '<button class="btn" data-action="exp-sim" title="沙盘推演：按当前选择预演一场（与实战同一引擎 · 不扣兵不落账）">🎬 推演</button>') +
       /* v89.186（老板 2）：「出征界面提供快购按钮（专用于战役）」——
          军事宝物（攻防/伤兵/出征上限）就地快购；本境调运无战役需求，不显示。 */
-      (ui._expOwn ? '' : '<button class="btn" data-action="qb-cat" data-cat="military_buff">🛒 战备快购</button>') +
+      /* v91.49：奇观探索无战役需求 —— 快购/推演一并隐藏（与 `battle=false` 同口径）。 */
+      ((ui._expOwn || ui._expWonder) ? '' : '<button class="btn" data-action="qb-cat" data-cat="military_buff">🛒 战备快购</button>') +
       '<button class="btn" data-action="close-modal">取消</button></div>';
 
     /* v89.186：注册 live（**只刷伤兵行**，不重开面板）——
@@ -14223,7 +14260,9 @@
     ui._expForceArmed = false;
     var btn = document.querySelector('#modal-root [data-action="exp-confirm"]');
     if (!btn) return;
-    var cur = GAME.battle.modeOf(ui._expMode || 'occupy');
+    var cur = ui._expWonder
+      ? { icon: '☄', name: '探索 · ' + (((DATA.WONDER_ACT_DEFS || {})[ui._expMode] || {}).name || ui._expMode) }
+      : GAME.battle.modeOf(ui._expMode || 'occupy');
     btn.className = 'btn gold';
     btn.innerHTML = cur.icon + ' ' + cur.name;
   };
@@ -14503,7 +14542,9 @@
   };
 
   ui.applyExpMode = function () {
-    var cur = GAME.battle.modeOf(ui._expMode || 'occupy');
+    var cur = ui._expWonder
+      ? { battle: false, icon: '☄', name: (((DATA.WONDER_ACT_DEFS || {})[ui._expMode] || {}).name || ui._expMode) }
+      : GAME.battle.modeOf(ui._expMode || 'occupy');
     var box = $('#modal-root .exp-troops');
     if (box) box.style.opacity = cur.battle ? '1' : '.55';
     ui.updateExpLimits();           /* v89.156：方式变更 → 重算限制性信息（原野地上限预警） */

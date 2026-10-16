@@ -2346,7 +2346,9 @@
        将领带队（genSel）如同常规出征。 */
     if (target.kind === 'wonder') {
       var _wgen = (GAME.state.generals || []).filter(function (g) { return g.id === genSel.value; })[0];
-      var _wr = GAME.wonderExplore(target.pid, target.mode || 'search', GAME.currentCity() && GAME.currentCity().id, atk, _wgen && _wgen.id);
+      /* v91.49（老板）：用**下拉框选中的探索行动**（ui._expMode），不是打开面板时的 entry mode ——
+         玩家可在下拉里改「采集/派军搜查/深潜攻坚」。 */
+      var _wr = GAME.wonderExplore(target.pid, ui._expMode || target.mode || 'search', GAME.currentCity() && GAME.currentCity().id, atk, _wgen && _wgen.id);
       ui.toast(_wr.msg);
       if (_wr.ok) { ui.closeModal(); GAME.refreshAll(); if (ui.view === 'map' && ui.renderMapCanvas) ui.renderMapCanvas(); }
       return;
