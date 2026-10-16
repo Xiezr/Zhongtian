@@ -1,0 +1,479 @@
+{
+ "meta": {
+  "hours": 12,
+  "iters": 43200,
+  "ts": 600,
+  "auto": {
+   "up": true,
+   "march": true,
+   "explore": true
+  },
+  "wallMs": 1089,
+  "okTicks": 43200,
+  "saveKB": 137,
+  "saveMB": 0.13
+ },
+ "errs": [],
+ "viol": [],
+ "samples": [
+  {
+   "i": 0,
+   "day": 20742,
+   "cities": 1,
+   "army": 19500,
+   "gens": 2,
+   "grain": 4997396,
+   "heapMB": 190,
+   "bld": 0,
+   "q": 1
+  },
+  {
+   "i": 1800,
+   "day": null,
+   "cities": 1,
+   "army": 22000,
+   "gens": 2,
+   "grain": 4673333,
+   "heapMB": 190,
+   "bld": 0,
+   "q": 0
+  },
+  {
+   "i": 3600,
+   "day": null,
+   "cities": 1,
+   "army": 21000,
+   "gens": 2,
+   "grain": 4511449,
+   "heapMB": 190,
+   "bld": 0,
+   "q": 0
+  },
+  {
+   "i": 5400,
+   "day": null,
+   "cities": 1,
+   "army": 33000,
+   "gens": 2,
+   "grain": 4516731,
+   "heapMB": 190,
+   "bld": 0,
+   "q": 0
+  },
+  {
+   "i": 7200,
+   "day": null,
+   "cities": 1,
+   "army": 33000,
+   "gens": 2,
+   "grain": 4529355,
+   "heapMB": 190,
+   "bld": 0,
+   "q": 0
+  },
+  {
+   "i": 9000,
+   "day": null,
+   "cities": 1,
+   "army": 33000,
+   "gens": 2,
+   "grain": 4517819,
+   "heapMB": 190,
+   "bld": 0,
+   "q": 0
+  },
+  {
+   "i": 10800,
+   "day": null,
+   "cities": 1,
+   "army": 33000,
+   "gens": 2,
+   "grain": 4750914,
+   "heapMB": 190,
+   "bld": 0,
+   "q": 0
+  },
+  {
+   "i": 12600,
+   "day": null,
+   "cities": 1,
+   "army": 33000,
+   "gens": 2,
+   "grain": 4702529,
+   "heapMB": 190,
+   "bld": 0,
+   "q": 0
+  },
+  {
+   "i": 14400,
+   "day": null,
+   "cities": 1,
+   "army": 33000,
+   "gens": 2,
+   "grain": 4622962,
+   "heapMB": 190,
+   "bld": 0,
+   "q": 0
+  },
+  {
+   "i": 16200,
+   "day": null,
+   "cities": 1,
+   "army": 33000,
+   "gens": 2,
+   "grain": 4642144,
+   "heapMB": 190,
+   "bld": 0,
+   "q": 0
+  },
+  {
+   "i": 18000,
+   "day": null,
+   "cities": 1,
+   "army": 33000,
+   "gens": 2,
+   "grain": 4663351,
+   "heapMB": 190,
+   "bld": 0,
+   "q": 0
+  },
+  {
+   "i": 19800,
+   "day": null,
+   "cities": 1,
+   "army": 33000,
+   "gens": 2,
+   "grain": 4848333,
+   "heapMB": 190,
+   "bld": 0,
+   "q": 0
+  },
+  {
+   "i": 21600,
+   "day": null,
+   "cities": 1,
+   "army": 33000,
+   "gens": 2,
+   "grain": 4735068,
+   "heapMB": 190,
+   "bld": 0,
+   "q": 0
+  },
+  {
+   "i": 23400,
+   "day": null,
+   "cities": 1,
+   "army": 29000,
+   "gens": 2,
+   "grain": 4714334,
+   "heapMB": 190,
+   "bld": 0,
+   "q": 0
+  },
+  {
+   "i": 25200,
+   "day": null,
+   "cities": 1,
+   "army": 33000,
+   "gens": 2,
+   "grain": 4752963,
+   "heapMB": 190,
+   "bld": 0,
+   "q": 0
+  },
+  {
+   "i": 27000,
+   "day": null,
+   "cities": 1,
+   "army": 33000,
+   "gens": 2,
+   "grain": 4747957,
+   "heapMB": 190,
+   "bld": 0,
+   "q": 0
+  },
+  {
+   "i": 28800,
+   "day": null,
+   "cities": 1,
+   "army": 33000,
+   "gens": 2,
+   "grain": 4845303,
+   "heapMB": 190,
+   "bld": 0,
+   "q": 0
+  },
+  {
+   "i": 30600,
+   "day": null,
+   "cities": 1,
+   "army": 33000,
+   "gens": 2,
+   "grain": 4817178,
+   "heapMB": 190,
+   "bld": 0,
+   "q": 0
+  },
+  {
+   "i": 32400,
+   "day": null,
+   "cities": 1,
+   "army": 33000,
+   "gens": 2,
+   "grain": 4768404,
+   "heapMB": 190,
+   "bld": 0,
+   "q": 0
+  },
+  {
+   "i": 34200,
+   "day": null,
+   "cities": 1,
+   "army": 33000,
+   "gens": 2,
+   "grain": 4759636,
+   "heapMB": 190,
+   "bld": 0,
+   "q": 0
+  },
+  {
+   "i": 36000,
+   "day": null,
+   "cities": 1,
+   "army": 33000,
+   "gens": 2,
+   "grain": 4744301,
+   "heapMB": 190,
+   "bld": 0,
+   "q": 0
+  },
+  {
+   "i": 37800,
+   "day": null,
+   "cities": 1,
+   "army": 33000,
+   "gens": 2,
+   "grain": 4882803,
+   "heapMB": 190,
+   "bld": 0,
+   "q": 0
+  },
+  {
+   "i": 39600,
+   "day": null,
+   "cities": 1,
+   "army": 33000,
+   "gens": 2,
+   "grain": 4796217,
+   "heapMB": 190,
+   "bld": 0,
+   "q": 0
+  },
+  {
+   "i": 41400,
+   "day": null,
+   "cities": 1,
+   "army": 29000,
+   "gens": 2,
+   "grain": 4780496,
+   "heapMB": 190,
+   "bld": 0,
+   "q": 0
+  }
+ ],
+ "players": [
+  {
+   "i": 0,
+   "day": 20742,
+   "marches": 1
+  },
+  {
+   "i": 1500,
+   "day": 20742,
+   "marches": 0
+  },
+  {
+   "i": 3000,
+   "day": 20742,
+   "marches": 0
+  },
+  {
+   "i": 4500,
+   "day": 20742,
+   "marches": 0
+  },
+  {
+   "i": 6000,
+   "day": 20742,
+   "marches": 0
+  },
+  {
+   "i": 7500,
+   "day": 20742,
+   "marches": 0
+  },
+  {
+   "i": 9000,
+   "day": 20742,
+   "marches": 0
+  },
+  {
+   "i": 10500,
+   "day": 20742,
+   "marches": 0
+  },
+  {
+   "i": 12000,
+   "day": 20742,
+   "marches": 0
+  },
+  {
+   "i": 13500,
+   "day": 20742,
+   "marches": 0
+  },
+  {
+   "i": 15000,
+   "day": 20742,
+   "marches": 0
+  },
+  {
+   "i": 16500,
+   "day": 20742,
+   "marches": 0
+  },
+  {
+   "i": 18000,
+   "day": 20742,
+   "marches": 0
+  },
+  {
+   "i": 19500,
+   "day": 20742,
+   "marches": 0
+  },
+  {
+   "i": 21000,
+   "day": 20742,
+   "marches": 0
+  },
+  {
+   "i": 22500,
+   "day": 20742,
+   "marches": 0
+  },
+  {
+   "i": 24000,
+   "day": 20742,
+   "marches": 0
+  },
+  {
+   "i": 25500,
+   "day": 20742,
+   "marches": 0
+  },
+  {
+   "i": 27000,
+   "day": 20742,
+   "marches": 0
+  },
+  {
+   "i": 28500,
+   "day": 20742,
+   "marches": 0
+  },
+  {
+   "i": 30000,
+   "day": 20742,
+   "marches": 0
+  },
+  {
+   "i": 31500,
+   "day": 20742,
+   "marches": 0
+  },
+  {
+   "i": 33000,
+   "day": 20742,
+   "marches": 0
+  },
+  {
+   "i": 34500,
+   "day": 20742,
+   "marches": 0
+  },
+  {
+   "i": 36000,
+   "day": 20742,
+   "marches": 0
+  },
+  {
+   "i": 37500,
+   "day": 20742,
+   "marches": 0
+  },
+  {
+   "i": 39000,
+   "day": 20742,
+   "marches": 0
+  },
+  {
+   "i": 40500,
+   "day": 20742,
+   "marches": 0
+  },
+  {
+   "i": 42000,
+   "day": 20742,
+   "marches": 0
+  }
+ ],
+ "autoInfo": {
+  "marchMsg": "陆沉 正在出征，本次跳过",
+  "exploreMsg": "在途已满",
+  "marchCfg": {
+   "on": true,
+   "last": 1792168015598,
+   "everyMin": 1,
+   "genId": "g1",
+   "army": {
+    "buxingji": 5000
+   }
+  },
+  "gens": [
+   {
+    "name": "陆沉",
+    "status": "march"
+   },
+   {
+    "name": "评测",
+    "status": "idle"
+   }
+  ]
+ },
+ "final": {
+  "day": 20742,
+  "cities": 1,
+  "gens": 2,
+  "army": 33000,
+  "bldN": 0,
+  "bldLv": 0,
+  "wilds": 0,
+  "marches": 0,
+  "stats": {
+   "buildDone": 29,
+   "techDone": 0,
+   "trained": 0,
+   "forgedCount": 0,
+   "recruited": 0,
+   "trades": 0,
+   "wins": 0,
+   "conquer": 0,
+   "itemsUsed": 0
+  },
+  "msgLog": 300,
+  "log": 40,
+  "items": 3,
+  "heapMB": 190
+ }
+}
