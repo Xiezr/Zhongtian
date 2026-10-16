@@ -36146,12 +36146,13 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         pl.wonderId = 'crystal'; pl.wonderDay = GAME.questDayIndex(); pl.wonderPresDay = GAME.questDayIndex(); pl.wonderPresent = true;
         pl.wonderExp = [];
         var c = st.cities[0]; c.army = { buxingji: 99999 };
-        /* v91.36（老板「必须由英雄带队」）：奇观行动一律须带将 —— 补一枚在册英雄。 */
-        var _g263 = (st.generals || [])[0] || G.makeGeneral('探', 10, 'idle');
-        if (!((st.generals || [])[0])) { st.generals = st.generals || []; st.generals.push(_g263); }
+        /* v91.45（老板「同一英雄同时只能执行一种派遣」）：一个英雄一周只能带一队 ——
+           要测"在途上限 3"，须给**5 个不同英雄**各派一队，前 3 成、后 2 被上限拒。 */
+        st.generals = st.generals || [];
+        for (var gi = 0; gi < 5; gi++) st.generals.push(G.makeGeneral('探' + gi, 10, 'idle'));
         var okN = 0;
-        for (var i = 0; i < 5; i++) { var r = GAME.wonderExplore(st.activePlanet, 'collect', c.id, {}, _g263.id); if (r.ok) okN++; }
-        return okN === 3 && GAME.wonderActiveCount(st.activePlanet) === 3;   /* 前 3 成、第 4/5 被静默拒 */
+        for (var i = 0; i < 5; i++) { var r = GAME.wonderExplore(st.activePlanet, 'collect', c.id, {}, st.generals[i].id); if (r.ok) okN++; }
+        return okN === 3 && GAME.wonderActiveCount(st.activePlanet) === 3;   /* 前 3 成、第 4/5 被上限拒 */
       } finally { G.state = bk; }
     })());
     check('§263④ 累计→落账：探查产奇观材料入全局 s.items', (function () {
@@ -36193,6 +36194,27 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         var e0 = pl.wonderExp[0] || {};
         var ok3 = !!e0.genId && st.generals.some(function (g) { return g.id === e0.genId; });
         return ok1 && ok2 && ok3;
+      } finally { G.state = bk; }
+    })());
+    /* v91.45（老板）：「同一英雄同时只能执行一种派遣」+「任何派遣均应提供撤军选项」。 */
+    check('§263⑦ 奇观派遣：英雄置忙不可重复派遣 · 召回落账后归位', (function () {
+      var bk = GAME.state;
+      try {
+        var st = G.newGame({ name: 'wb263', cityName: '灰岗', region: '烬环', mapSeed: 9 });
+        G.state = st;
+        var pl = GAME._planetOf(st.activePlanet);
+        pl.wonderId = 'crystal'; pl.wonderDay = GAME.questDayIndex(); pl.wonderPresDay = GAME.questDayIndex(); pl.wonderPresent = true; pl.wonderExp = [];
+        var c = st.cities[0]; c.army = { buxingji: 9000 };
+        st.generals = st.generals || []; var g1 = G.makeGeneral('甲', 30, 'idle'); st.generals.push(g1);
+        var r1 = GAME.wonderExplore(st.activePlanet, 'collect', c.id, { buxingji: 1000 }, g1.id);
+        var busy = g1.status === 'wonderExplore';
+        var r2 = GAME.wonderExplore(st.activePlanet, 'collect', c.id, { buxingji: 1000 }, g1.id);   /* 同将再派 */
+        var blocked = !r2.ok;
+        var rc = GAME.wonderExploreRecall(st.activePlanet, g1.id);
+        var returning = !!(pl.wonderExp[0] && pl.wonderExp[0].returning);
+        pl.wonderExp[0].retArrive = 0; GAME.wonderTick();       /* 立即返抵 → 落账 */
+        var freed = g1.status === 'idle' && pl.wonderExp.length === 0;
+        return r1.ok && busy && blocked && rc.ok && returning && freed;
       } finally { G.state = bk; }
     })());
     /* v91.41（老板「确保统一规则可适配所有已经/将来可能有的类型增加或更新」）：

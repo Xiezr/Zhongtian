@@ -6031,6 +6031,7 @@
     if (g.status === 'march') return { ok: false, msg: g.name + ' 正在出征，不可解雇' };
     if (g.status === 'gather') return { ok: false, msg: g.name + ' 正在采集（撤回采集队后再解雇）' };
     if (g.status === 'garrison') return { ok: false, msg: g.name + ' 正在驻守野地（召回驻军后再解雇）' };
+    if (g.status === 'wonderExplore') return { ok: false, msg: g.name + ' 正在奇观探索（召回后再解雇）' };   /* v91.45 */
     s.inventory = s.inventory || [];
     var back = 0;
     /* v88：两套部件都归还（机甲 + 基因） */
@@ -6888,6 +6889,7 @@
     if (g.status === 'march') return { ok: false, msg: g.name + ' 正在出征，不可任命' };
     if (g.status === 'gather') return { ok: false, msg: g.name + ' 正在采集（撤回采集队后再任命）' };
     if (g.status === 'garrison') return { ok: false, msg: g.name + ' 正在驻守野地（召回驻军后再任命）' };
+    if (g.status === 'wonderExplore') return { ok: false, msg: g.name + ' 正在奇观探索（召回后再任命）' };   /* v91.45 */
     var _roleName = (role === 'mayor') ? '城主' : '守将';
     var out = (role === 'mayor') ? GAME.releaseMayorsOf(cityArg, g.id) : GAME.releaseGuardsOf(cityArg, g.id);
     g.status = role; g.cityId = cityArg;
@@ -8156,6 +8158,22 @@
     army = army || {};
     /* v91.36（老板）：「对奇观的动作应等同于出征，**必须由将领带队**」——一律须将领。 */
     if (act.needGen !== false && !genId) return { ok: false, msg: '「' + act.name + '」须英雄带队' };
+    /* ============================================================
+     * v91.45（老板）：「同一个英雄只能**同时**执行一种派遣动作（侦查/掠夺/占领/派遣/探索/
+     *   驻守/采集…），在某英雄被派后应标记起来，不可再被委派其他行动」——
+     *   奇观探索此前**既不查 gen.status、也不置位** → 同一个英雄可被反复派往奇观
+     *   （别的出征又会因他 status='march' 而拒绝 → 状态自相矛盾）。
+     *   现与出征同规：**只派空闲英雄**；派出即置 `status='wonderExplore'`（奇观探索中）。
+     * ============================================================ */
+    var _gen = null;
+    if (genId) (GAME.state.generals || []).forEach(function (g) { if (g.id === genId) _gen = g; });
+    if (act.needGen !== false && !_gen) return { ok: false, msg: '带队英雄不存在' };
+    if (_gen && _gen.status && _gen.status !== 'idle') {
+      var _stTxt = _gen.status === 'guard' ? '守将' : _gen.status === 'mayor' ? '城主'
+        : _gen.status === 'march' ? '出征中' : _gen.status === 'gather' ? '采集中'
+        : _gen.status === 'garrison' ? '驻守野地' : _gen.status === 'wonderExplore' ? '奇观探索中' : '执行任务中';
+      return { ok: false, msg: _gen.name + ' 正在' + _stTxt + '，不可同时派遣' };
+    }
     var n = 0, load = 0;
     for (var k in army) {
       var cnt = Math.max(0, Math.floor(army[k] || 0)); if (cnt <= 0) continue;
@@ -8178,8 +8196,32 @@
       t0: now, arriveAt: now + (W.marchRealSec || 3600) * 1000,
       acc: [], accrued: 0, returning: false, retArrive: 0,
     });
+    if (_gen) _gen.status = 'wonderExplore';   /* v91.45：标记"奇观探索中"—— 不可再被委派其他行动 */
     GAME.log('✨ 「' + city.name + '」派队探查「' + def.name + ' · ' + act.name + '」—— 行军 1h 抵达后持续开采（累计奖励）', 'sys', 'wild');
     return { ok: true, msg: '已派出：行军 1 小时后抵达，持续累计奖励（同时上限 ' + (W.maxActive || 3) + ' 队）' };
+  };
+  /* ============================================================
+   * v91.45（老板）：「**任何派遣均应提供撤军选项**，以便英雄或行军返回」——
+   * 奇观探索撤军：与常规行军召回同口径（**掉头返航**，耗时按**已行进比例**折算，
+   * 抵达才落账 + 释放英雄）。返回时长公式与 wonderTick 里"奇观消失自动返航"**同一份**。
+   * 入参：pid + genId（英雄身份）—— 一个英雄同时只带一队，唯一定位。
+   * ============================================================ */
+  GAME.wonderExploreRecall = function (pid, genId) {
+    var pl = GAME._planetOf(pid); if (!pl || !pl.wonderExp || !pl.wonderExp.length) return { ok: false, msg: '该星球没有在途探查队' };
+    var W = DATA.WONDER_CFG || {}, now = U.now();
+    for (var i = 0; i < pl.wonderExp.length; i++) {
+      var e = pl.wonderExp[i];
+      if (e.genId !== genId || e.returning) continue;
+      e.returning = true;
+      var from = Math.max(e.t0, Math.min(now, e.arriveAt));
+      var frac = Math.max(0.05, Math.min(1, (from - e.t0) / Math.max(1, e.arriveAt - e.t0)));
+      e.retArrive = now + Math.round(frac * (W.marchRealSec || 3600) * 1000);
+      var secs = Math.round((e.retArrive - now) / 1000);
+      var city = GAME.cityByIdAnywhere ? GAME.cityByIdAnywhere(e.cityId) : GAME.cityById(e.cityId);
+      GAME.log('↩️ 奇观探查队折返（' + (city ? city.name : '') + ' · 约 ' + U.durExact(secs) + ' 后归城）', 'sys', 'wild');
+      return { ok: true, msg: '已下令返航（约 ' + U.durExact(secs) + ' 后归城，英雄随之归位）' };
+    }
+    return { ok: false, msg: '未找到该队的在途探查（可能已返航）' };
   };
   /* 累计 1 份奖励（材料 + 概率附带）落该队 acc。 */
   GAME._wonderAccrueItem = function (def, exp) {
@@ -8208,6 +8250,9 @@
       }
     }
     var names = (exp.acc || []).map(function (x) { return ((DATA.ITEM_BY_ID[x.id] || {}).name || x.id) + '×' + x.n; });
+    /* v91.45：归城即**释放带队英雄**（置回空闲）—— 否则英雄会永远卡在"奇观探索中"。 */
+    var _g = null; (s.generals || []).forEach(function (x) { if (x.id === exp.genId) _g = x; });
+    if (_g && _g.status === 'wonderExplore') _g.status = 'idle';
     GAME.log('✨ 奇观「' + (def ? def.name : '?') + '」探查' + (note || '归来') + '：' + (names.join('、') || '无')
       + (city ? ('　·　兵归「' + city.name + '」' + (loss ? '（损兵 ' + loss + '）' : '')) : ''), 'sys', 'wild');
   };

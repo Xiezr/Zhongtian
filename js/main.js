@@ -158,6 +158,13 @@
          立项 / 提取后**留在实验室里刷新** —— 状态变化要立刻看得见。 */
       /* v91.30：奇观菜单 + 探索 */
       case 'wonder-open': ui.openWonder(Number(el.dataset.pid)); break;
+      /* v91.45（老板）：「任何派遣均应提供撤军选项」—— 奇观探索撤军（掉头返航 · 英雄归位）。 */
+      case 'wonder-recall': {
+        var _wrres = GAME.wonderExploreRecall(Number(el.dataset.pid), el.dataset.gen);
+        ui.toast(_wrres.msg);
+        if (_wrres.ok) GAME.refreshAll();
+        break;
+      }
       /* v91.30：星系总览（地图底部入口 · 后续再拓展玩法）。 */
       case 'galaxy-open': ui.setView('galaxy'); GAME.refreshAll(); break;
       /* v91.31（老板）：派军搜查/深潜 → 出征界面（选将选兵 · 自由定数量 · 按军力给奖励）。

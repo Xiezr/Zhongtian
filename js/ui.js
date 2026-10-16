@@ -2269,7 +2269,9 @@
             '<div class="pbar"><i style="width:' + pct + '%"></i></div>' +
             '<span style="font-size:var(--fs-cap);color:var(--text-dim);">' + ph.ico + ' ' + ph.name + ' · ' + pct + '% · ' +
             (ph.t > 0 ? ('余 ' + left) : '已抵达（累计 ' + (e.accrued || 0) + ' 份）') + '</span></td>';
-        var opCell = '<td class="ctr"><button class="btn sm" data-action="wonder-open" data-pid="' + pl.id + '" title="查看该星球的奇观（产出 / 探查队列）">查看</button></td>';
+        var opCell = '<td class="ctr" style="white-space:nowrap;">' +
+          (e.returning ? '' : '<button class="btn sm" data-action="wonder-recall" data-pid="' + pl.id + '" data-gen="' + U.escape(e.genId || '') + '" title="撤军：下令返航（英雄随之归位）">召回</button> ') +
+          '<button class="btn sm" data-action="wonder-open" data-pid="' + pl.id + '" title="查看该星球的奇观（产出 / 探查队列）">查看</button></td>';
         if (vFull) {
           rows += '<tr>' +
             '<td>' + U.escape(w ? w.name : '奇观') + ' · ' + U.escape(pl.name) + '</td>' +
@@ -9697,7 +9699,8 @@
     return g.status === 'guard' ? '守将' : g.status === 'mayor' ? '城主'
       : g.status === 'march' ? '出征中'
       : g.status === 'gather' ? '采集中'
-      : g.status === 'garrison' ? '驻守野地' : '空闲';
+      : g.status === 'garrison' ? '驻守野地'
+      : g.status === 'wonderExplore' ? '奇观探索中' : '空闲';
   };
   ui.genStatusCls = function (g) {
     if (!g) return '';
@@ -16894,7 +16897,7 @@
     if (!list.length) return h + '<div class="q-empty">暂无探查队 —— 派出后在此看进度与累计奖励。</div></div>';
     list.forEach(function (e) {
       var g = null; (GAME.state.generals || []).forEach(function (x) { if (x.id === e.genId) g = x; });
-      var city = GAME.cityById(e.cityId);
+      var city = GAME.cityByIdAnywhere ? GAME.cityByIdAnywhere(e.cityId) : GAME.cityById(e.cityId);
       var accStr = (e.acc || []).map(function (x) { return ((DATA.ITEM_BY_ID[x.id] || {}).name || x.id) + '×' + x.n; }).join('、') || '—';
       var phase, tsec;
       if (e.returning) { phase = '↩︎ 返回中'; tsec = Math.max(0, (e.retArrive - now) / 1000); }
@@ -16903,7 +16906,9 @@
       h += '<div class="stat-row"><span class="sr-name">' + (g ? U.escape(g.name) + ' Lv' + g.level : '无将')
         + (city ? '　<i class="gd-sub">' + U.escape(city.name) + '</i>' : '') + '</span>'
         + '<span class="sr-sub">' + U.numText(e.troops || 0, 0) + ' 兵　·　' + phase
-        + (tsec > 0 ? ' ' + U.dur(tsec) : '') + '　·　累计 ' + (e.accrued || 0) + ' 份</span></div>';
+        + (tsec > 0 ? ' ' + U.dur(tsec) : '') + '　·　累计 ' + (e.accrued || 0) + ' 份'
+        + (e.returning ? '' : '　<button class="btn sm" data-action="wonder-recall" data-pid="' + pid + '" data-gen="' + U.escape(e.genId || '') + '" title="撤军：下令返航（英雄随之归位）">召回</button>')
+        + '</span></div>';
       h += '<div class="ui-sub" style="margin:-2px 0 4px;">　收获：' + U.escape(accStr) + '</div>';
     });
     return h + '</div>';
