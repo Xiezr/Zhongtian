@@ -1176,7 +1176,7 @@
         /* 地表/海面：落在星球某格上 —— 贴地(海拔) + 按法线立起 + 按包围盒**底面**坐地。
            v91.38：模型**已由解析器应用节点旋转**（gltf.js 读 nodes[].rotation）→ 标准 **Y-up**，
            故把 **+Y** 对齐球面法线 d（老板「角度颠倒」的根因是解析器漏读节点旋转，非本处对齐）。 */
-        var sc = _wonderSurfaceCell(mode);
+        var sc = _wonderSurfaceCell(mode, wd.id);
         var d = (sc && sc.dir) ? sc.dir : [0, 1, 0];
         var S = R * 0.30;
         mesh.scale.setScalar(S);
@@ -1252,45 +1252,33 @@
     (document.head || document.body || document.documentElement).appendChild(sc);
   }
   /* 地表/海面落点：按 place 在该星球球面找一格（决定论）。water→湖/沼；land→陆地形。 */
-  function _wonderSurfaceCell(kind) {
+  function _wonderSurfaceCell(kind, wid) {
     var SP2 = GAME.mapSphere && GAME.mapSphere.cells ? GAME.mapSphere : (GAME.sphere || null);
     var cells = SP2 && SP2.cells; if (!cells) return null;
     var want = (kind === 'water') ? ['lake', 'zhaoze'] : ['plain', 'caoyuan', 'forest', 'hill', 'desert'];
-    /* v91.30：**锚定到玩家出生地附近**（否则可能落在球背面不可见）——取离 startPos 格最近的合格格。 */
-    var baseCi = -1;
-    try {
-      var sp = (GAME.mapSliceOf && GAME.mapSliceOf()) ? GAME.mapSliceOf().startPos : null;
-      if (!sp && GAME.state && GAME.state.map) sp = GAME.state.map.startPos;
-      if (sp && SP2.ciOfXY) baseCi = SP2.ciOfXY(sp.x, sp.y);
-    } catch (e) { }
-    var best = null, bd = Infinity;
-    /* v91.35（性能 · 关键修复）：原实现对**每个**候选格调 `SP2.hexDist(baseCi, i)` ——
-       那是**一趟全图 BFS（O(nv)=40962）**，而候选格有几千个 → 单次 `_wonderSurfaceCell`
-       实测 **12.3 秒**同步死循环（进主页「能看不能动」的真正元凶，与 GPU 无关）。
-       改：从出生地做**一趟** BFS，按**环数**一圈圈扫，取首个出现的合适地形格即最近；
-       BFS 全图也不到该格成为近邻的那一层，绝大多数情况远早于全图。无出生地时退回单趟线性。 */
-    if (baseCi >= 0 && SP2.hexDist && SP2.adj) {
-      var adj = SP2.adj, nv = SP2.nv;
-      var stamp = (M._wcStamp = (M._wcStamp || 0) + 1);
-      var seen = M._wcSeen || (M._wcSeen = new Int32Array(nv));
-      var q = [baseCi], head = 0; seen[baseCi] = stamp;
-      while (head < q.length) {
-        var cur = q[head++], cc0 = cells[cur];
-        if (cc0 && want.indexOf(cc0.type) >= 0) return cc0;         /* BFS 层序 → 首个命中即最近 */
-        var an = adj[cur];
-        for (var ai2 = 0; ai2 < an.length; ai2++) {
-          var nb = an[ai2];
-          if (seen[nb] !== stamp) { seen[nb] = stamp; q.push(nb); }
-        }
-      }
-      return null;
-    }
+    /* ============================================================
+     * v91.43（老板）：「哪有奇观落在家门口」——**不再锚定出生地附近**，改为
+     *   **确定性随机**落在本星球任意一块合适地形上（可能落在球背面）。
+     * · 确定性 = 星球种子 × 奇观 id 哈希 → 同一星球·同一奇观**每次落同一格**
+     *   （重载/重建不跳位）；奇观按日一换 → 落点随之变，合"奇观常有常新"。
+     * · 取"合适地形格集合"里的第 (hash % N) 个：一次 O(nv) 线性扫描（~1ms），
+     *   无 BFS、无逐格求距（老版本那个 12 秒死循环不会再回来）。
+     * · 无合适地形（如该球无湖）→ 退回"任意非城市格"，保证仍能落位。
+     * ============================================================ */
+    var seed = (SP2.seed3 ? SP2.seed3() : 0) >>> 0;
+    var str = String(wid || '');
+    var h = (seed ^ 2166136261) >>> 0;
+    for (var si = 0; si < str.length; si++) h = Math.imul(h ^ str.charCodeAt(si), 16777619) >>> 0;   /* FNV-1a */
+    var matches = [];
     for (var i = 0; i < cells.length; i++) {
-      var c = cells[i]; if (!c || want.indexOf(c.type) < 0) continue;
-      var d = (baseCi >= 0 && SP2.hexDist) ? SP2.hexDist(baseCi, i) : Math.abs(i - (baseCi < 0 ? 0 : baseCi));
-      if (d < bd) { bd = d; best = c; }
+      var c = cells[i]; if (!c) continue;
+      if (want.indexOf(c.type) >= 0) matches.push(c);
     }
-    return best;
+    if (!matches.length) {                              /* 回退：任意非城市格（含海/山） */
+      for (var j = 0; j < cells.length; j++) { var c2 = cells[j]; if (c2 && c2.type !== 'city') matches.push(c2); }
+    }
+    if (!matches.length) return null;
+    return matches[h % matches.length];
   }
   /* 每 33ms：太空轨行 / 地表·海面微旋 + 出场 scale 动画。 */
   function wonderStep() {
