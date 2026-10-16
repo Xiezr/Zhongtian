@@ -580,6 +580,7 @@
       case 'bag-tab': ui.setBagTab(el.dataset.v); break;
       /* v89.115：宝物二级分类条（参考游商分类检索） */
       case 'bag-sub': ui.setBagSub(el.dataset.v); break;
+      case 'bag-cat': ui.setBagCat(el.dataset.v); break;   /* v91.57：宝物一级大类 */
       case 'bag-sort': ui.setBagSort(el.dataset.v); break;
       case 'open-mat-detail': ui.openMatDetail(el.dataset.key); break;
       case 'open-bp-detail': ui.openBpDetail(el.dataset.key); break;

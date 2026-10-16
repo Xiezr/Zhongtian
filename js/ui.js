@@ -4351,7 +4351,12 @@
       }).join('') + '</div>';
     /* 二级分类条（仅宝物页）—— 参考游商分类，只列有货的（快速检索）；
        v89.143：进页先归一（删「全部」后，失效值一律落到第一个有货分类）。 */
-    if (t === 'treasure') { ui._bagSub = ui.bagSubNorm(ui._bagSub); html += ui.bagSubChipsHTML(); }
+    if (t === 'treasure') {
+      /* v91.57：两层 —— 大类（战备/物资/民生/秘宝 + 材料）× 细类（仅当前大类下）。 */
+      if (ui._bagCat === 'material') { ui._bagSub = 'material'; }
+      else { ui._bagSub = ui.bagSubNorm(ui._bagSub); }
+      html += ui.bagCatsHTML() + (ui._bagCat === 'material' ? '' : ui.bagSubChipsHTML());
+    }
     /* v89.117（老板「参考制造厂分类，增加更细致的划分」）：装备页三排筛选 */
     if (t === 'equip') html += ui.bagEqChipsHTML();
     /* 排序条 */
@@ -4475,17 +4480,32 @@
     if (ui.BAG_ITEM_CN[v]) return v;
     return ui.bagSubFirstOf();
   };
+  /* v91.57：切**大类** → 细类归到该大类下第一个有货的（材料类则细类锁 material）。 */
+  ui.setBagCat = function (c) {
+    ui._bagCat = (c === 'material' || ui.BAG_CATS[c]) ? c : ui.bagCatFirstOf();
+    if (ui._bagCat === 'material') { ui._bagSub = 'material'; }
+    else {
+      var ts = ui.BAG_CATS[ui._bagCat].types || [], pick = null;
+      ts.forEach(function (ty) { if (!pick && ui.bagSubCountOf(ty) > 0) pick = ty; });
+      ui._bagSub = pick || ts[0] || 'chest';
+    }
+    ui._pages['bag-item'] = 1; ui._pages['bag-item-' + ui._bagSub] = 1;
+    ui.renderBag();
+  };
   ui.bagSubChipsHTML = function () {
     var sub = ui.bagSubNorm(ui._bagSub);
     var list = [];
     var mn = ui.bagSubCountOf('material');
     if (mn > 0) list.push(['material', '材料', mn]);
-    Object.keys(ui.BAG_ITEM_CN).forEach(function (ty) {
+    /* v91.57（老板）：「宝物界面类型直接列举、超出看不到 → 往上再做一层分类」——
+       细类只列**当前大类**下的（`ui._bagCat`），不再把所有类型一次铺开。 */
+    (ui.BAG_CATS[ui._bagCat].types || []).forEach(function (ty) {
+      var meta = ui.BAG_ITEM_CN[ty]; if (!meta) return;
       var n = ui.bagSubCountOf(ty);
-      if (n > 0) list.push([ty, (ui.BAG_ITEM_CN[ty] + '').replace(/（.*/, ''), n]);
+      if (n > 0) list.push([ty, (meta + '').replace(/（.*/, ''), n]);
     });
     var bn = ui.bagSubCountOf('blueprint');
-    if (bn > 0) list.push(['blueprint', '图纸', bn]);
+    if (bn > 0 && (ui.BAG_CATS[ui._bagCat].types || []).indexOf('blueprint') >= 0) list.push(['blueprint', '图纸', bn]);
     /* v89.147（老板 2）：分类条从**界面左侧**开始（原来 inline-flex 居中）——
        行容器与装备页同款（.bag-filterrow：块级占满 + 左起 + 不换行）→ 两页排序框同位置。 */
     return '<div class="chips chips-xs bag-filterrow">' +
@@ -4493,6 +4513,36 @@
         return '<span class="chip' + (sub === x[0] ? ' on' : '') +
           '" data-action="bag-sub" data-v="' + x[0] + '">' + x[1] + ' <i>' + x[2] + '</i></span>';
       }).join('') + '</div>';
+  };
+  /* v91.57：**大类（一级分类）**表 —— 宝物页上层分类，把 ~26 个细类收进 4 个桶。 */
+  ui.BAG_CATS = {
+    war: { name: '战备', types: ['attr_buff', 'military_buff', 'mount_buff', 'boost', 'exp', 'stamina', 'energy', 'perm', 'rank_up', 'essence', 'talis', 'corvee', 'chest'] },
+    mat: { name: '物资', types: ['wmat', 'stamina_max', 'march_boost', 'hearts_up', 'pop_cap', 'serum_yield', 'set_bp'] },
+    civ: { name: '民生', types: ['prod_buff', 'pop_boost', 'pop_fill', 'build_cost'] },
+    treasure: { name: '秘宝', types: ['jewel', 'bao', 'neigong', 'blueprint'] },
+  };
+  ui._bagCat = ui._bagCat || 'war';
+  ui.bagCatCountOf = function (cat) {
+    var c = ui.BAG_CATS[cat]; if (!c) return 0;
+    var n = 0; (c.types || []).forEach(function (ty) { n += ui.bagSubCountOf(ty); });
+    return n;
+  };
+  ui.bagCatFirstOf = function () {
+    var hit = null;
+    Object.keys(ui.BAG_CATS).forEach(function (c) { if (!hit && ui.bagCatCountOf(c) > 0) hit = c; });
+    return hit || 'war';
+  };
+  ui.bagCatsHTML = function () {
+    /* 材料（material）不在大类里（它恒单列）→ 有材料时单给一个「材料」大类。 */
+    var mn = ui.bagSubCountOf('material');
+    var chips = (mn > 0 ? '<span class="chip' + (ui._bagCat === 'material' ? ' on' : '') +
+        '" data-action="bag-cat" data-v="material">材料 <i>' + mn + '</i></span>' : '') +
+      Object.keys(ui.BAG_CATS).map(function (c) {
+        var n = ui.bagCatCountOf(c);
+        return '<span class="chip' + (ui._bagCat === c ? ' on' : '') +
+          '" data-action="bag-cat" data-v="' + c + '">' + ui.BAG_CATS[c].name + ' <i>' + n + '</i></span>';
+      }).join('');
+    return '<div class="chips chips-xs bag-filterrow bag-catrow">' + chips + '</div>';
   };
   /* 宝物页（按二级分类分派）：material → 材料页 · blueprint → 图纸页 ·
      单一类型 → 宝物页（过滤）· all → 三段并排（材料 / 宝物 / 图纸） */
