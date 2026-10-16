@@ -5175,7 +5175,7 @@
     if (!gen) return { ok: false, msg: '城中无空闲英雄' };
     return GAME.wonderExplore(pid, actId, city.id, army, gen.id);
   };
-  /* 主循环驱动：按频率节流 → 逐城尝试（当前星球所有城）。 */
+  /* 主循环驱动：按频率节流 → **遍历所有星球**逐城尝试（每球的城向本球今日奇观派队）。 */
   GAME.autoExplore = function () {
     var s = GAME.state;
     var cfg = GAME.autoExploreCfg();
@@ -5184,16 +5184,26 @@
     if (now - (cfg.last || 0) < cfg.everyMin * 60000) return null;
     cfg.last = now;
     GAME.autoExploreRollDay(cfg);
-    var pid = s.activePlanet || 1;
-    var done = 0, lastMsg = '';
-    (s.cities || []).forEach(function (city) {
-      if ((cfg.dailyMax > 0) && ((cfg.today[city.id] || 0) >= cfg.dailyMax)) return;
-      var r = GAME._autoExploreCity(pid, city, cfg);
-      if (r && r.ok) { cfg.today[city.id] = (cfg.today[city.id] || 0) + 1; done++; lastMsg = r.msg; }
-      else if (r && r.msg) lastMsg = r.msg;
+    /* v91.41（老板「各星球奇观不同，自动探索要覆盖全部星球」）——
+       遍历 `planets`：当前星球用**活态** s.cities；其余用各自 mapSlices[pid].cities
+       （那是 `_savePlanetSlice` 存的独立副本，原地改即落片、无需额外保存）。
+       wonderExplore 内部经 cityByIdAnywhere 取到**同一个**城对象 → 扣兵落在正确的片上。 */
+    var actPid = s.activePlanet || 1;
+    var done = 0, lastMsg = '', planets = GAME.planetsOf();
+    planets.forEach(function (pl) {
+      var pid = pl.id;
+      var cities = (pid === actPid) ? (s.cities || []) : (((s.mapSlices || {})[pid] || {}).cities || []);
+      if (!cities.length) return;
+      cities.forEach(function (city) {
+        if ((cfg.dailyMax > 0) && ((cfg.today[city.id] || 0) >= cfg.dailyMax)) return;
+        var r = GAME._autoExploreCity(pid, city, cfg);
+        if (r && r.ok) { cfg.today[city.id] = (cfg.today[city.id] || 0) + 1; done++; lastMsg = r.msg; }
+        else if (r && r.msg) lastMsg = r.msg;
+      });
     });
-    s.autoExploreInfo = { ok: done > 0, msg: done > 0 ? ('已派 ' + done + ' 城探索队') : (lastMsg || '待命'), at: now };
-    if (done > 0) GAME.log('✨ 自动探索：' + done + ' 城各派一支奇观探索队');
+    s.autoExploreInfo = { ok: done > 0,
+      msg: done > 0 ? ('全域 ' + planets.length + ' 星球 · 已派 ' + done + ' 城探索队') : (lastMsg || '待命'), at: now };
+    if (done > 0) GAME.log('✨ 自动探索：全域 ' + done + ' 城各派一支奇观探索队（各向本星球奇观）');
     return { ok: done > 0, msg: s.autoExploreInfo.msg };
   };
 
@@ -8062,7 +8072,42 @@
     return pl;
   };
   function _wday() { return GAME.questDayIndex ? GAME.questDayIndex() : 0; }
-  /* 今日奇观（按星球适配 + 现实日盐选 1 个）。 */
+  /* ============================================================
+   * v91.41（老板「确保统一规则可适配所有已经/将来可能有的类型增加或更新」）——
+   * 今日奇观此前**写死 id 候选池**（`['crystal','chairring']` …）：
+   *   · 新增一个奇观 → 除非手改这里，否则**永不被选**；
+   *   · 删/改一个 id → `out` 取不到 → `out.id` 抛错。
+   * 现改为**由数据的 `adapt` 派生**：每颗星球按其主导禀赋（res/danger/habit）取
+   *   「adapt 匹配该禀赋（含 resDanger 双适）」的奇观池；无匹配则取通用池
+   *   （adapt ∈ default/civ/未知）。**新增奇观只要写对 `adapt` 就自动入池**，无需改本函数。
+   * ============================================================ */
+  GAME._wonderTraitOf = function (pl) {
+    var rep = (pl && pl.report) || { habit: 0, danger: 0, res: 0 };
+    if (rep.res >= 60) return 'res';
+    if (rep.danger >= 60) return 'danger';
+    if (rep.habit >= 60) return 'habit';
+    return 'general';
+  };
+  GAME._wonderPoolFor = function (trait) {
+    var defs = DATA.WONDER_DEFS || [];
+    var KNOWN = { res: 1, danger: 1, resDanger: 1, habit: 1, default: 1, civ: 1 };
+    function isGeneric(d) { var a = d.adapt || 'default'; return a === 'default' || a === 'civ' || !KNOWN[a]; }
+    var map = { res: ['res', 'resDanger'], danger: ['danger', 'resDanger'], habit: ['habit'] };
+    var want = map[trait];
+    var pool = defs.filter(function (d) {
+      var a = d.adapt || 'default';
+      if (!KNOWN[a]) return true;                    /* 未登记 adapt = 通用 */
+      if (trait === 'general') return a === 'default' || a === 'civ';
+      return want ? want.indexOf(a) >= 0 : false;
+    });
+    /* 禀赋专池不足 2 个 → 补通用池（保证**变体**；新奇观也总能进来）。 */
+    if (pool.length < 2) {
+      defs.forEach(function (d) { if (isGeneric(d) && pool.indexOf(d) < 0) pool.push(d); });
+    }
+    if (!pool.length) pool = defs.filter(isGeneric).concat(defs);
+    return pool.length ? pool : defs;
+  };
+  /* 今日奇观（按星球禀赋适配 + 现实日盐选 1 个）。 */
   GAME.wonderOf = function (pid) {
     var pl = GAME._planetOf(pid); if (!pl) return null;
     var defs = DATA.WONDER_DEFS || []; if (!defs.length) return null;
@@ -8071,16 +8116,10 @@
       var d0 = null; defs.forEach(function (d) { if (d.id === pl.wonderId) d0 = d; });
       if (d0) return d0;
     }
-    var rep = pl.report || { habit: 0, danger: 0, res: 0 };
-    var cands;
-    if (rep.res >= 60) cands = ['crystal', 'chairring'];
-    else if (rep.danger >= 60) cands = ['crater', 'chairring'];
-    else if (rep.habit >= 60) cands = ['ark', 'temple'];
-    else cands = ['mothership', 'dyson', 'temple', 'forge', 'pillars'];
-    var pick = cands[(((pl.seed || 1) | 0) + day) % cands.length];
-    var out = null; defs.forEach(function (d) { if (d.id === pick) out = d; });
-    pl.wonderId = out.id; pl.wonderDay = day;
-    return out;
+    var pool = GAME._wonderPoolFor(GAME._wonderTraitOf(pl));
+    var pick = pool[(((pl.seed || 1) | 0) + day) % pool.length] || defs[0];
+    pl.wonderId = pick.id; pl.wonderDay = day;
+    return pick;
   };
   /* 今日奇观是否在场（现实日确定性：约每 5 天缺席 1 天 → 当日消失）。 */
   GAME.wonderPresent = function (pid) {
@@ -8112,7 +8151,7 @@
     if ((def.acts || []).indexOf(actId) < 0) return { ok: false, msg: '此奇观不支持「' + act.name + '」' };
     var W = DATA.WONDER_CFG || {};
     if (GAME.wonderActiveCount(pid) >= (W.maxActive || 3)) return { ok: false, msg: '同时在途探查队已满（最多 ' + (W.maxActive || 3) + ' 队）' };
-    var city = cityId ? GAME.cityById(cityId) : GAME.currentCity();
+    var city = cityId ? (GAME.cityByIdAnywhere ? GAME.cityByIdAnywhere(cityId) : GAME.cityById(cityId)) : GAME.currentCity();
     if (!city) return { ok: false, msg: '无可用城市' };
     army = army || {};
     /* v91.36（老板）：「对奇观的动作应等同于出征，**必须由将领带队**」——一律须将领。 */

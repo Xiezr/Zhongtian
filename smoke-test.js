@@ -36195,6 +36195,28 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         return ok1 && ok2 && ok3;
       } finally { G.state = bk; }
     })());
+    /* v91.41（老板「确保统一规则可适配所有已经/将来可能有的类型增加或更新」）：
+       奇观选取**不得写死 id 池** —— 新增奇观/新 adapt 应自动入池；删 id 不得崩。 */
+    check('§263⑥ 奇观池数据驱动：无写死 id 候选 · 新 adapt 自动入池 · 源无硬编码 id 列表', (function () {
+      var bk = GAME.state;
+      try {
+        var st = G.newGame({ name: 'wp263', cityName: '灰岗', region: '烬环', mapSeed: 5 });
+        G.state = st;
+        /* ① 源里不得再出现写死的 id 候选池字面量 */
+        var src = String(GAME.wonderOf).replace(/\s/g, '');
+        var noHard = src.indexOf("['crystal'") < 0 && src.indexOf('["crystal"') < 0;
+        /* ② 追加一个"将来才会有"的新奇观（新 adapt）→ 必落入通用池、可被选中 */
+        var fake = { id: '_new_wonder_probe', name: '探针奇观', body: 'x', icon: '🧪', adapt: '_future', place: 'space', mat: 'w_he3', acts: ['collect'], out: [] };
+        DATA.WONDER_DEFS.push(fake);
+        var pool = GAME._wonderPoolFor('general');
+        var incl = pool.some(function (d) { return d.id === '_new_wonder_probe'; });
+        /* ③ 删/换掉一个已知 id 不再崩（池由数据派生） */
+        var crash = false;
+        try { GAME._planetOf(1).wonderId = null; GAME.wonderOf(1); } catch (e) { crash = true; }
+        DATA.WONDER_DEFS.pop();
+        return noHard && incl && !crash;
+      } finally { G.state = bk; }
+    })());
   })();
 
   /* ============================================================

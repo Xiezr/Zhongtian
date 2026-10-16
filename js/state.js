@@ -4619,6 +4619,23 @@
     for (var i = 0; i < s.cities.length; i++) if (s.cities[i].id === id) return s.cities[i];
     return null;
   };
+  /* ============================================================
+   * v91.41：**跨星球**按 id 找城（自动探索要对**所有**星球逐城派队）。
+   * `GAME.cityById` 只查**当前星球分片**（s.cities）—— 异星球的城 id 查不到。
+   * 这里再扫各星球分片（含背景 slice 与 mapSlices[id].cities），返回**该城实际所属**的对象。
+   * 注意背景片的城是 `U.deep` 拷贝 → 改它（扣兵/改城）后须 `_savePlanetSlice(pid)` 落回，
+   * 否则下次 `_loadPlanetSlice` 覆盖丢失（见 autoExplore）。
+   * ============================================================ */
+  GAME.cityByIdAnywhere = function (id) {
+    var s = GAME.state; if (!s) return null;
+    var cur = GAME.cityById(id); if (cur) return cur;
+    var slices = s.mapSlices || {};
+    for (var pid in slices) {
+      var sl = slices[pid]; if (!sl || !sl.cities) continue;
+      for (var i = 0; i < sl.cities.length; i++) if (sl.cities[i] && sl.cities[i].id === id) return sl.cities[i];
+    }
+    return null;
+  };
 
   /* ============================================================
    * 消息日志（v16）

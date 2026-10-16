@@ -16661,12 +16661,17 @@
     };
     var freqOpts = (E.freqOptions || []).map(function (v) { return { v: v, on: v === cfg.everyMin, label: v + ' 分钟' }; });
     var dailyOpts = (E.dailyOptions || [0]).map(function (v) { return { v: v, on: v === cfg.dailyMax, label: v ? ('每城每日 ' + v + ' 次') : '不限次数' }; });
+    /* 全境城（跨星球：当前球活态 + 各球分片）—— 用于"全境合计"兵力。 */
+    var allCities = [];
+    GAME.planetsOf().forEach(function (pl) {
+      var cs = (pl.id === (s.activePlanet || 0)) ? (s.cities || []) : (((s.mapSlices || {})[pl.id] || {}).cities || []);
+      cs.forEach(function (c) { allCities.push(c); });
+    });
     /* 逐兵种「自动探索数量」上限（可作战兵种）。 */
     var rows = Object.keys(DATA.TROOPS).filter(function (id) { return !DATA.TROOPS[id].nocombat; }).map(function (id) {
       var tr = DATA.TROOPS[id] || {};
-      /* 各城合计实有（跨城取总，让玩家对"能派多少"有体感）。 */
       var own = 0;
-      (s.cities || []).forEach(function (ct) { own += ((ct.army || {})[id]) || 0; });
+      allCities.forEach(function (ct) { own += ((ct.army || {})[id]) || 0; });
       var capN = (cfg.army && cfg.army[id]) || 0;
       return '<tr class="et-row' + (own <= 0 ? ' off' : '') + '">' +
         '<td class="et-name">' + U.escape(tr.name || id) + '</td>' +
@@ -16674,13 +16679,46 @@
         '<td class="et-in"><input type="number" id="ae-a-' + id + '" min="0" value="' + capN + '"' +
           (own > 0 ? '' : ' disabled') + '></td></tr>';
     }).join('');
+    /* ============================================================
+     * v91.41（老板）：「各星球奇观不同，在自动探索处加上**全部星球的奇观类型列表**、
+     *   兵种要求、上限」+「确保统一规则可适配所有已经/将来可能有的类型增加或更新」。
+     * 本表**全部由数据派生**（planetsOf × wonderOf × WONDER_ACT_DEFS × WONDER_CFG）——
+     *   新增奇观/新行动/新门槛**无需改本表**，自动出现（"统一规则适配所有类型"）。
+     * ============================================================ */
+    var _AD = DATA.WONDER_ACT_DEFS || {};
+    var planetRows = GAME.planetsOf().map(function (pl) {
+      var w = GAME.wonderOf ? GAME.wonderOf(pl.id) : null;
+      var pres = GAME.wonderPresent ? GAME.wonderPresent(pl.id) : true;
+      var act = GAME.wonderActiveCount ? GAME.wonderActiveCount(pl.id) : 0;
+      /* 该星球奇观支持的行动 + 各自**兵种/带队条件**（条件文案来自数据层 cond）。 */
+      var acts = ((w && w.acts) || []).map(function (a) {
+        var d = _AD[a] || {};
+        return (d.name || a) + '（' + (d.cond || '需英雄带队') + '）';
+      }).join('　·　') || '—';
+      return '<tr class="et-row' + (pres ? '' : ' off') + '">' +
+        '<td class="et-name">' + U.escape(pl.name) +
+          (pl.id === (s.activePlanet || 0) ? ' <i class="gd-sub">当前</i>' : '') + '</td>' +
+        '<td>' + (w ? (w.icon + ' ' + U.escape(w.name)) : '<span style="color:var(--text-dim);">—</span>') + '　' +
+          (pres ? '<span style="color:var(--green-ok);">在场</span>' : '<span style="color:var(--red-light);">未出现</span>') + '</td>' +
+        '<td style="font-size:var(--fs-sub);color:var(--text-dim);">' + U.escape(acts) + '</td>' +
+        '<td class="num">' + act + ' / ' + maxA + '</td></tr>';
+    }).join('');
+    var planetTable = '<div class="op-zone" style="margin-top:8px;"><div class="op-zone-t">全部星球 · 奇观一览（类型 · 兵种要求 · 在途上限）</div>' +
+      '<table class="tbl exp-tbl"><colgroup><col class="et-c-name"><col><col style="width:auto"><col class="et-c-own"></colgroup>' +
+      '<thead><tr><th>星球</th><th>今日奇观</th><th>收录行动 · 兵种要求</th><th class="num">在途</th></tr></thead><tbody>' +
+      (planetRows || '<tr><td colspan="4" class="q-empty">暂无星球</td></tr>') + '</tbody></table>' +
+      '<div class="exp-info exp-info-l" style="color:var(--text-dim);margin-bottom:0;">本表**由数据自动生成**：' +
+      '各星球今日奇观来自 `DATA.WONDER_DEFS`、行动与兵种要求来自 `DATA.WONDER_ACT_DEFS`、' +
+      '在途上限来自 `DATA.WONDER_CFG.maxActive` —— 新增奇观/行动/门槛会自动出现在此，无需改界面。</div></div>';
     var html = '<div class="gold-heading">✨ 自动探索 · 详细配置' +
-      '<span style="font-weight:400;font-size:var(--fs-sub);color:var(--text-dim);">（逐城派空闲英雄探奇观）</span>' +
+      '<span style="font-weight:400;font-size:var(--fs-sub);color:var(--text-dim);">（全域逐城派空闲英雄探奇观）</span>' +
       ui.help('与自动出征同构：频率节流 + 每日上限 + 逐兵种数量上限。\n' +
         '**不设固定英雄** —— 每城每次现取一枚空闲英雄带队。\n' +
-        '只对本星球今日奇观派队；在途满 ' + maxA + ' 队即等候。') + '</div>' +
+        '**覆盖全部星球**：异星球的城向**本星球今日奇观**派队（各球奇观不同）。\n' +
+        '「主角行动」= 在本球奇观支持的行动里优先选它，不支持则退回该奇观第一个。\n' +
+        '在途满 ' + maxA + ' 队（每球各自计）即等候。') + '</div>' +
       '<div class="exp-grid"><div class="exp-col-l">' +
-        '<div class="exp-sec"><div class="exp-sec-t">目标奇观</div>' +
+        '<div class="exp-sec"><div class="exp-sec-t">目标奇观（当前星球）</div>' +
           '<div class="ui-sub" style="margin-bottom:6px;">' + (wd ? (wd.icon + ' ' + U.escape(wd.name) + ' · ' + U.escape(wd.body)) : '本星球暂无奇观') +
           '　·　' + (present ? '今日在场' : '<span style="color:var(--red-light);">今日未出现</span>') +
           '　·　在途 ' + active + '/' + maxA + ' 队</div>' +
@@ -16689,6 +16727,7 @@
         '<div class="exp-sec">' +
           ui.expRowHTML('探索频率', sel('ae-freq', freqOpts), null) +
           ui.expRowHTML('每城每日上限', sel('ae-daily', dailyOpts), null) + '</div>' +
+        planetTable +
       '</div>' +
       '<div class="exp-col-r"><div class="exp-sec exp-a-troops"><div class="exp-sec-t">兵种编成（自动探索数量上限）</div>' +
         '<div class="exp-troops exp-body"><table class="tbl exp-tbl"><colgroup>' +

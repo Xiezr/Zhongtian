@@ -3908,11 +3908,11 @@
      · `needArmy`：是否须有兵（研读/采集只需将 → false）。
      · `needLoad`：队伍**总负重**门槛（Σ 数量 × TROOPS[].load；救援行必须，见 cond）。 */
   DATA.WONDER_ACT_DEFS = {
-    collect: { name: '采集', needGen: true, needArmy: false, risk: 0, mul: 1.0, cond: '需 1 位英雄带队（无需带兵）', desc: '小队采集，安稳取料' },
+    collect: { name: '采集', needGen: true, needArmy: false, risk: 0, mul: 1.0, cond: '需英雄带队 · 无需带兵', desc: '小队采集，安稳取料' },
     search: { name: '派军搜查', needGen: true, needArmy: true, risk: 0.15, mul: 1.6, cond: '需英雄带队 + 至少 1 兵', desc: '派军搜掠，产出更多但可能损兵' },
-    deep: { name: '深潜攻坚', needGen: true, needArmy: true, risk: 0.30, mul: 2.4, cond: '需英雄带队 + 至少 1 兵（军力越高产出越多）', desc: '精锐攻坚，顶级产出、风险最高' },
-    study: { name: '圣殿研读', needGen: true, needArmy: false, risk: 0, mul: 1.0, banner: 'page', cond: '仅需 1 位英雄带队（不带兵）', desc: '研读残页，得战技' },
-    rescue: { name: '方舟救援', needGen: true, needArmy: true, needLoad: 20000, risk: 0, mul: 1.0, banner: 'pop', cond: '需英雄带队 + 队伍总负重 ≥ 2 万（运回幸存者）', desc: '救援幸存者' },
+    deep: { name: '深潜攻坚', needGen: true, needArmy: true, risk: 0.30, mul: 2.4, cond: '需英雄带队 + 至少 1 兵 · 军力越高产出越多', desc: '精锐攻坚，顶级产出、风险最高' },
+    study: { name: '圣殿研读', needGen: true, needArmy: false, risk: 0, mul: 1.0, banner: 'page', cond: '仅需英雄带队 · 不带兵', desc: '研读残页，得战技' },
+    rescue: { name: '方舟救援', needGen: true, needArmy: true, needLoad: 20000, risk: 0, mul: 1.0, banner: 'pop', cond: '需英雄带队 + 队伍总负重 ≥ 2 万 · 运回幸存者', desc: '救援幸存者' },
   };
   /* 奇观探索参数 */
   /* v91.31：探查**不限次**；同时最多 maxActive 队在途；抵达后每 accrueSec 现实秒累计 1 份奖励。 */
