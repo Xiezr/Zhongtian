@@ -2724,10 +2724,14 @@ async function runTests(dom, URL) {
     && affHtml21.indexOf('俘虏营') >= 0);
   const healBtn21_v21 = document.querySelector('#view-container [data-action="heal-wounded"]');
   check('治疗按钮可点击（伤兵 > 0 时不禁用）', !!healBtn21_v21 && !healBtn21_v21.disabled);
+  /* v91.36 修 flaky：测试推进期间主循环仍在跑，可能再添伤兵（实测 777 → 827），
+     故**点击时**现读待治数，而不是硬编码 777。 */
+  const healExpect21 = (s21_v21.woundedArmy && s21_v21.woundedArmy.buxingji) || 0;
+  const armyAtHeal21 = (c21_v21.army.buxingji || 0);
   if (healBtn21_v21) { click(healBtn21_v21); await sleep(160); }
   check('治疗伤兵后兵员入城且伤兵归零',
-    s21_v21.wounded === 0 && (c21_v21.army.buxingji || 0) === (armyBefore21_v21.buxingji || 0) + 777,
-    (armyBefore21_v21.buxingji || 0) + ' → ' + (c21_v21.army.buxingji || 0));
+    s21_v21.wounded === 0 && (c21_v21.army.buxingji || 0) === armyAtHeal21 + healExpect21,
+    armyAtHeal21 + ' + ' + healExpect21 + ' → ' + (c21_v21.army.buxingji || 0));
   check('面板原地刷新（军务处仍开着且伤兵显示为 0）',
     vc.innerHTML.indexOf('伤兵营') >= 0
     && vc.innerHTML.indexOf('7,770') < 0);

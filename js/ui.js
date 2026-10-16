@@ -16489,20 +16489,22 @@
     /* 右栏编成表（v89.140 老板 7'）：「兵种编成这里保留 **3 列**：兵种、拥有（改成**驻军数量**）、
        **自动出征数量**（各兵种提供数量输入框）」——
        输入框直接写 cfg.army[tid]（`army:<tid>` 键，经 doSetAutoMarch）；
-       只列"可编入"的兵种（与 autoMarchPickArmy 同口径：器械/侦察单元/辎重不编入）。
-       v89.93 的"自动编入/顺位"只读两列随"单次兵力"一并退役。 */
+       v91.36（老板「兵种列表不全…去除兵种名称前的垃圾小图标」）：
+       · 列表改为**全部可作战兵种**（含器械）——与出征面板同口径（只剔 nocombat 侦察），
+         "不全"即此前漏了器械（东风快递 / 无人轰炸机）两行；
+       · 兵种名**不再带图标前缀**（图标是噪声，名称本身够读）。 */
     var troopBlock = '<table class="tbl exp-tbl"><colgroup>' +
       '<col class="et-c-name"><col class="et-c-own"><col class="et-c-in">' +
       '</colgroup><thead><tr><th>兵种</th><th class="num">驻军数量</th><th class="ctr">自动出征数量</th>' +
       '</tr></thead><tbody>' +
       Object.keys(DATA.TROOPS).filter(function (id) {
         var t = DATA.TROOPS[id];
-        return t && !t.nocombat && !t.craft;
+        return t && !t.nocombat;
       }).map(function (id) {
         var tr = DATA.TROOPS[id] || {}, own = (city && city.army && city.army[id]) || 0;
         var cfgN = (cfg.army && cfg.army[id]) || 0;
         return '<tr class="et-row' + (own <= 0 ? ' off' : '') + '">' +
-          '<td class="et-name">' + (tr.icon || '') + ' ' + U.escape(tr.name || id) + '</td>' +
+          '<td class="et-name">' + U.escape(tr.name || id) + '</td>' +
           '<td class="et-own num">' + U.fmt(own) + '</td>' +
           '<td class="et-in"><input type="number" id="am-a-' + id + '" min="0" max="' + own + '" value="' + cfgN + '"' +
             (own > 0 ? '' : ' disabled') + '></td>' +
@@ -16558,7 +16560,7 @@
           '<div class="exp-sec exp-a-troops"><div class="exp-sec-t">兵种编成（自动）</div>' +
             '<div class="exp-troops exp-body">' + troopBlock + '</div>' +
             '<div class="exp-info exp-info-l" style="color:var(--text-dim);margin-bottom:0;">城内现有 ' +
-            U.fmt(have) + ' 兵；<b>逐兵种填数量</b>（0 = 不带），器械／侦察单元／辎重不编入</div></div>' +
+            U.fmt(have) + ' 兵；<b>逐兵种填数量</b>（0 = 不带，顺位兜底跳过器械）；侦察单元不编入</div></div>' +
         '</div>' +
       '</div>' +
       '<div class="exp-foot">' +

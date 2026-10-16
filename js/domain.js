@@ -4973,7 +4973,10 @@
     if (cfgArmy) {
       Object.keys(cfgArmy).forEach(function (id) {
         var t = A[id];
-        if (!t || t.craft || t.nocombat) return;
+        /* v91.36（老板「兵种列表不全」）：**显式配置**的兵种照带 —— 含器械（东风快递/无人轰炸机）。
+           器械此前被无条件剔除，玩家在编成表里填了数量也不发兵（"列表看着有、其实不生效"）。
+           顺位兜底（下方 want 循环）仍跳过器械：无显式意图时不自动掏空你的攻城器械。 */
+        if (!t || t.nocombat) return;
         var have = ((city.army) || {})[id] || 0;
         var take = Math.min(have, Math.max(0, Math.floor(cfgArmy[id] || 0)));
         if (take > 0) { out[id] = take; n += take; }
