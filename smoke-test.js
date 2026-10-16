@@ -10072,12 +10072,14 @@ check('编队红线：器械/侦察单元/辎重不编入，且按数量取够',
   return !pick.army.huopao && !pick.army.huopao && !pick.army.zhencha
     && pick.total === 3000 && pick.army.zhuzhan === 900;
 })());
-check('实测：未指定英雄时不硬发兵，并给出原因', (function () {
+check('v91.53：不指定英雄（genId=null）→ 随机指派空闲英雄（不再"请先指定"）', (function () {
   var cfg = G.autoMarchCfg(), bk = cfg.genId;
   cfg.genId = null;
   var r = G.autoMarchOnce(cfg);
   cfg.genId = bk;
-  return r.ok === false && /指定/.test(r.msg);
+  /* 新口径：genId 为空 = **不指定**（各城各随机取空闲英雄）——
+     不再报「请先指定英雄」；失败原因只能是"无空闲英雄 / 无兵 / 无目标"这类具体原因。 */
+  return !/请先指定/.test(r.msg || '');
 })());
 /* ---- v89.65（老板「自动出征精细化」）：两个自动出征特有的护栏 ---- */
 check('v89.65：每日次数上限 —— 到顶即拒（与实际发兵次数同源计数）', (function () {

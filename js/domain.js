@@ -5015,7 +5015,7 @@
     });
     return { army: out, total: n };
   };
-  GAME.autoMarchOnce = function (cfg) {
+  GAME.autoMarchOnce = function (cfg, city) {
     var s = GAME.state;
     cfg = cfg || GAME.autoMarchCfg();
     if (!cfg) return { ok: false, msg: '状态未就绪' };
@@ -5024,11 +5024,28 @@
     if (cfg.dailyMax > 0 && (cfg.todayCount || 0) >= cfg.dailyMax) {
       return { ok: false, msg: '今日已达上限 ' + cfg.dailyMax + ' 次，明日再战' };
     }
-    var city = GAME.currentCity();
+    /* v91.53（老板：「自动出征按**城市层面**独立执行，各城均可根据设定出征」）——
+       入参可指定城（遍历各城时用）；缺省 = 当前城。兵力/队列都读**该城**。 */
+    city = city || GAME.currentCity();
     if (!city) return { ok: false, msg: '无可用城市' };
+    /* v91.53（老板：「执行英雄固定首行加『不指定英雄』，会**随机选择当前空闲英雄**」）——
+       cfg.genId 为空 = 不指定 → 现取一枚**空闲**英雄（优先本城，其次任意空闲；排除君主）。
+       指定了具体英雄则照旧（须空闲）。 */
     var gen = null;
-    (s.generals || []).forEach(function (g) { if (g.id === cfg.genId) gen = g; });
-    if (!gen) return { ok: false, msg: '请先指定执行自动出征的英雄' };
+    if (cfg.genId) {
+      (s.generals || []).forEach(function (g) { if (g.id === cfg.genId) gen = g; });
+    } else {
+      var idles = (s.generals || []).filter(function (g) {
+        if (g.status && g.status !== 'idle') return false;
+        if (GAME.isLordGeneral && GAME.isLordGeneral(g)) return false;   /* 君主不自动外派 */
+        return true;
+      });
+      /* 优先本城英雄（genCityOf === city），否则任意空闲 */
+      var _mine = idles.filter(function (g) { var gc = GAME.genCityOf ? GAME.genCityOf(g) : null; return gc && gc.id === city.id; });
+      var pool = _mine.length ? _mine : idles;
+      if (pool.length) gen = pool[Math.floor(Math.random() * pool.length)];
+    }
+    if (!gen) return { ok: false, msg: cfg.genId ? '请先指定执行自动出征的英雄' : '本城无空闲英雄（随机指派）' };
     /* 红线①：只派空闲英雄 */
     if (gen.status && gen.status !== 'idle') {
       return { ok: false, msg: gen.name + ' 正在' + (gen.status === 'guard' ? '任守将'
@@ -5120,7 +5137,7 @@
         : ((t.name || '目标') + (t.kind === 'fort' ? ' Lv' + t.lv : '')),
     };
   };
-  /* 主循环驱动：按"频率"（现实分钟）节流 */
+  /* 主循环驱动：按"频率"（现实分钟）节流 → **逐城**各发一支（v91.53 老板「各城均可出征」）。 */
   GAME.autoMarch = function () {
     var s = GAME.state;
     var cfg = GAME.autoMarchCfg();
@@ -5128,10 +5145,15 @@
     var now = U.now();
     if (now - (cfg.last || 0) < cfg.everyMin * 60000) return null;
     cfg.last = now;
-    var r = GAME.autoMarchOnce(cfg);
-    s.autoMarchInfo = { ok: r.ok, msg: r.msg, at: now };
-    if (r.ok) GAME.log('🤖 自动出征：' + r.msg);
-    return r;
+    var done = 0, lastMsg = '';
+    (s.cities || []).forEach(function (city) {
+      var r = GAME.autoMarchOnce(cfg, city);
+      if (r && r.ok) { done++; lastMsg = r.msg; }
+      else if (r && r.msg && !lastMsg) lastMsg = r.msg;
+    });
+    s.autoMarchInfo = { ok: done > 0, msg: done > 0 ? ('已派 ' + done + ' 城出征') : (lastMsg || '待命'), at: now };
+    if (done > 0) GAME.log('🤖 自动出征：' + done + ' 城各派一支（各用各城资源与队列）');
+    return { ok: done > 0, msg: s.autoMarchInfo.msg };
   };
 
   /* ============================================================
@@ -8354,8 +8376,13 @@
     var q = Math.max(1, Math.round((1 + Math.floor(Math.random() * 2)) * (act.mul || 1) * tierMul));
     function add(id, n) { if (!id || n <= 0) return; var e = null; exp.acc.forEach(function (x) { if (x.id === id) e = x; }); if (e) e.n += n; else exp.acc.push({ id: id, n: n }); }
     function pickFrom(pred) { var a = (DATA.ITEMS || []).filter(pred); return a.length ? a[Math.floor(Math.random() * a.length)].id : null; }
-    /* ① 主产（必给） */
-    if (def && def.mat) add(def.mat, q);
+    /* ① 主产（必给，但**受每程上限约束**——v91.53：高兵量不再一次喂满半座城） */
+    if (def && def.mat) {
+      var _cap = W.maxPerTrip || 12, _cur = 0;
+      exp.acc.forEach(function (x) { if (x.id === def.mat) _cur += x.n; });
+      var _q = Math.min(q, Math.max(0, _cap - _cur));
+      if (_q > 0) add(def.mat, _q);
+    }
     /* ② 通用·珠宝（任意奇观）—— 档位按主产材料价派生 */
     if (Math.random() < (W.jewelChance || 0)) {
       var band = (DATA.wonderJewelBandOf ? DATA.wonderJewelBandOf(def) : 2);

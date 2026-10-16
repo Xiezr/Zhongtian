@@ -16624,12 +16624,14 @@
       return '<select id="' + id + '">' + inner + '</select>';
     };
 
-    var genOpts = (s.generals || []).map(function (g) {
-      var busy = g.status && g.status !== 'idle';
-      return { v: g.id, on: g.id === cfg.genId,
-        label: U.escape(g.name) + (busy ? '（' + ui.genStatusName(g) + '）' : '') };
-    });
-    if (!genOpts.length) genOpts = [{ v: '', on: true, label: '帐下暂无英雄' }];
+    /* v91.53（老板）：「执行英雄固定首行加『不指定英雄』，会**随机选择当前空闲英雄**」——
+       首行哨兵 v='' = 不指定（每城各随机取一枚空闲英雄）；其余为具体英雄。 */
+    var genOpts = [{ v: '', on: !cfg.genId, label: '🎲 不指定英雄（随机指派空闲英雄）' }].concat(
+      (s.generals || []).map(function (g) {
+        var busy = g.status && g.status !== 'idle';
+        return { v: g.id, on: g.id === cfg.genId,
+          label: U.escape(g.name) + (busy ? '（' + ui.genStatusName(g) + '）' : '') };
+      }));
 
     var tgtOpts = A.targetOptions.map(function (x) { return { v: x[0], on: cfg.target === x[0], label: x[1] }; });
     /* v89.83：等级候选按**当前目标类型**给（野地/据点 1~10；名城 12/16/20/24） */

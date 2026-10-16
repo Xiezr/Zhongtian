@@ -101,11 +101,19 @@ const LITE_FN = `function(){
 /* ---------- 不变量 ---------- */
 function checkInvariants(cur, prev, meta) {
   const v = [];
-  if (!cur) { v.push({ id: 'I0', msg: 'state 为 null（游戏未就绪/已退出）' }); return v; }
+  // 边界用例/刷新窗口内：时钟速率与回退检查没有意义（刷新会重置倍率、补算会跳变），只查硬性数值
+  const edgeWindow = !!(meta && meta.edgeWindow);
+  if (!cur) {
+    // 从未拿到过有效样本 → 只是启动噪声（监控早于游戏就绪），不计违例
+    if (prev) v.push({ id: 'I0', msg: 'state 为 null（游戏未就绪/已退出）' });
+    return v;
+  }
   const fin = x => typeof x === 'number' && isFinite(x);
   if (!fin(cur.gt) || cur.gt < 0) v.push({ id: 'I3', msg: '游戏时钟异常: ' + cur.gt });
-  if (prev && fin(prev.gt) && cur.gt < prev.gt) v.push({ id: 'I1', msg: `时钟回退: ${prev.gt} → ${cur.gt}` });
-  if (prev && fin(prev.gt) && meta && meta.realDt > 3) {
+  // 倍率在区间内变化（如刷新后重置）→ 期望速率不可计算，跳过速率/回退检查
+  const scaleChanged = prev && prev.ts !== cur.ts;
+  if (prev && fin(prev.gt) && cur.gt < prev.gt && !edgeWindow && !scaleChanged) v.push({ id: 'I1', msg: `时钟回退: ${prev.gt} → ${cur.gt}` });
+  if (prev && fin(prev.gt) && meta && meta.realDt > 3 && !edgeWindow && !scaleChanged) {
     const expect = meta.realDt * (cur.ts || 1);
     const actual = cur.gt - prev.gt;
     if (actual < expect * 0.5) v.push({ id: 'I2', msg: `时钟速率过低: ${meta.realDt}s 现实仅推进 ${actual} 游戏秒（期望≈${Math.round(expect)}，倍率 ${cur.ts}）` });
@@ -132,9 +140,13 @@ class Bot {
     this.page = null;
     this.lastSample = null;
     this.lastSampleAt = Date.now();
+    this.edgeUntil = 0;          // 边界用例窗口截止（窗口内不查速率/回退类不变量）
     this.downloads = [];
     this.stats = { clicks: 0, jsClicks: 0, realClicks: 0, recovers: 0, errors: 0 };
   }
+
+  /* 标记一段"边界窗口"：期间的不变量检查只保留硬性数值项 */
+  markEdge(ms) { this.edgeUntil = Date.now() + (ms || 60000); }
 
   async launch() {
     this.browser = await chromium.launchPersistentContext(core.USER_DATA, {
@@ -155,6 +167,9 @@ class Bot {
       const name = 'export_' + Date.now() + '.json';
       try { await dl.saveAs(path.join(core.LOGS, name)); this.downloads.push(name); }
       catch (e) { core.logEvent('download-fail', { msg: String(e.message).slice(0, 120) }); }
+    });
+    this.page.on('filechooser', async fc => {
+      core.logEvent('filechooser', { });
     });
     core.heartbeat('浏览器已启动（持久化上下文）');
   }
@@ -207,8 +222,9 @@ class Bot {
   }
 
   async safeEval(fnStr, arg) {
+    const expr = '(' + fnStr + ')(' + (arg === undefined ? '' : JSON.stringify(arg)) + ')';
     for (let attempt = 0; attempt < 2; attempt++) {
-      try { return await this.page.evaluate(fnStr, arg); }
+      try { return await this.page.evaluate(expr); }
       catch (e) {
         const msg = String(e.message || e);
         if (/crash|closed|Target|Session|Connection|Execution context/i.test(msg) && attempt === 0) {
@@ -225,7 +241,7 @@ class Bot {
   }
 
   async lite() {
-    try { return await this.page.evaluate(LITE_FN); } catch (e) { return null; }
+    try { return await this.safeEval(LITE_FN); } catch (e) { return null; }
   }
 
   async sample() {
@@ -238,7 +254,7 @@ class Bot {
     } catch (e) {}
     const cur = await this.safeEval(core.SAMPLE_FN);
     const now = Date.now();
-    const meta = { realDt: (now - this.lastSampleAt) / 1000, saveSize };
+    const meta = { realDt: (now - this.lastSampleAt) / 1000, saveSize, edgeWindow: this.edgeUntil > Date.now() };
     const viol = checkInvariants(cur, this.lastSample, meta);
     const fps = await this.page.evaluate(`(function(){ var n = window.__fps?window.__fps.n:0; window.__fps.n = 0; return n; })()`).catch(() => 0);
     const errs = await this.page.evaluate(`(function(){ var e = window.__ev?window.__ev.errors:[]; var c = e.length; window.__ev.errors = []; return c; })()`).catch(() => 0);
@@ -253,29 +269,68 @@ class Bot {
     return { cur, viol, fps, errs };
   }
 
-  /* 点击一个枚举描述符；返回行为链记录 */
-  async clickDesc(d, opts) {
+  /* 单击一次（不含重试） */
+  async _clickOnce(d, opts, before) {
     opts = opts || {};
     const sid = opts.sid || 'X';
-    const before = await this.lite();
     let path = 'js';
-    try {
-      const loc = this.page.locator('[data-ev-idx="' + d.idx + '"]').first();
-      await loc.click({ timeout: 1600 });
-      path = 'real';
-      this.stats.realClicks++;
-    } catch (e) {
-      // 回退：JS click（同一事件委托路径）
+    // SELECT / number / range：游戏走委托 change 事件分发，真实 click 不产生 change
+    // （Playwright 点 SELECT 只是开下拉，actN 不涨 → 误报"无效果"）。这些类型直接走 change 派发。
+    const changeLike = d.tag === 'SELECT' ||
+      (d.tag === 'INPUT' && ['number', 'range'].includes(d.type || ''));
+    if (changeLike) {
       try {
         await this.page.evaluate(`(function(){
           var el = document.querySelector('[data-ev-idx="${d.idx}"]');
-          if (el) { if (el.tagName === 'SELECT') { el.selectedIndex = Math.min(el.selectedIndex+1, el.options.length-1); el.dispatchEvent(new Event('change',{bubbles:true})); } else el.click(); }
+          if (!el && ${JSON.stringify(d.action || '')}) {
+            var all = document.querySelectorAll('[data-action="${d.action}"]');
+            for (var i = 0; i < all.length; i++) {
+              var t = (all[i].textContent||'').trim().replace(/\\s+/g,' ').slice(0,24);
+              if (t === ${JSON.stringify(d.label || '')}) { el = all[i]; break; }
+            }
+          }
+          if (el) {
+            if (el.tagName === 'SELECT') { el.selectedIndex = Math.min(el.selectedIndex+1, el.options.length-1); }
+            else if (el.type === 'number') { el.value = '2'; el.dispatchEvent(new Event('input',{bubbles:true})); }
+            else if (el.type === 'range') { el.value = String(Math.min(Number(el.max||100), Number(el.value||0)+20)); }
+            el.dispatchEvent(new Event('change',{bubbles:true}));
+          }
         })()`);
-        path = 'js';
+        path = 'js-change';
         this.stats.jsClicks++;
       } catch (e2) {
         core.logEvent('click-fail', { sid, action: d.action, label: d.label, msg: String(e2.message || e2).slice(0, 120) });
         return null;
+      }
+    } else {
+      try {
+        const loc = this.page.locator('[data-ev-idx="' + d.idx + '"]').first();
+        await loc.click({ timeout: 1600 });
+        path = 'real';
+        this.stats.realClicks++;
+      } catch (e) {
+        // 回退：JS click（同一事件委托路径）；先按 idx 找，再按 action+label 找新鲜节点
+        try {
+          await this.page.evaluate(`(function(){
+            var el = document.querySelector('[data-ev-idx="${d.idx}"]');
+            if (!el && ${JSON.stringify(d.action || '')}) {
+              var all = document.querySelectorAll('[data-action="${d.action}"]');
+              for (var i = 0; i < all.length; i++) {
+                var t = (all[i].textContent||'').trim().replace(/\\s+/g,' ').slice(0,24);
+                if (t === ${JSON.stringify(d.label || '')}) { el = all[i]; break; }
+              }
+            }
+            if (el) {
+              if (el.tagName === 'SELECT') { el.selectedIndex = Math.min(el.selectedIndex+1, el.options.length-1); el.dispatchEvent(new Event('change',{bubbles:true})); }
+              else el.click();
+            }
+          })()`);
+          path = 'js';
+          this.stats.jsClicks++;
+        } catch (e2) {
+          core.logEvent('click-fail', { sid, action: d.action, label: d.label, msg: String(e2.message || e2).slice(0, 120) });
+          return null;
+        }
       }
     }
     this.stats.clicks++;
@@ -302,18 +357,41 @@ class Bot {
       } : null
     };
     core.recBehavior.write(rec);
-    // 覆盖记账
     if (d.action) {
       if (d.disabled) core.covState(d.action, 'blocked', d.why || 'disabled');
       else core.covTouch(d.action, { view: rec.view, note: d.why });
     }
     if (d.view) core.covTouch('view:' + d.view, { view: d.view });
-    if (rec.result.fired === false && !d.disabled && !after.modal) {
-      core.logEvent('no-effect', { sid, action: d.action, label: d.label, view: rec.view, inModal: d.inModal });
-    }
     if (rec.result.errDelta > 0) {
       core.logEvent('click-error', { sid, action: d.action, label: d.label, view: rec.view });
       await this.shot('err_' + (d.action || 'x') + '_' + Date.now());
+    }
+    return rec;
+  }
+
+  /* 点击一个枚举描述符；无效果时按 action+label 找新鲜节点重试一次 */
+  async clickDesc(d, opts) {
+    opts = opts || {};
+    const before = await this.lite();
+    const rec = await this._clickOnce(d, opts, before);
+    if (rec && rec.result.fired === false && !rec.result.modalOpen && !opts.retry && d.action) {
+      let fresh = null;
+      try {
+        const els = await this.enumInteractive();
+        fresh = (els || []).find(x => x.action === d.action && x.label === d.label && !x.disabled && x.idx !== d.idx)
+             || (els || []).find(x => x.action === d.action && !x.disabled);
+      } catch (e) {}
+      if (fresh) {
+        const rec2 = await this._clickOnce(fresh, Object.assign({}, opts, { retry: true }), before);
+        if (rec2 && rec2.result.fired) return rec2;
+        if (rec2) rec2.retried = true;
+        if (rec2) core.recBehavior.write({ t: new Date().toISOString(), sid: opts.sid, type: 'retry-note',
+          action: d.action, label: d.label, result: { fired: rec2.result.fired, modalOpen: rec2.result.modalOpen } });
+        return rec2 || rec;
+      }
+      // 重试后仍无效果 → 记入事件（候选死按钮/需前置条件）
+      core.logEvent('no-effect', { sid: opts.sid, action: d.action, label: d.label,
+        view: rec.view, inModal: d.inModal, retried: !!fresh });
     }
     return rec;
   }

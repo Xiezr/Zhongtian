@@ -1633,15 +1633,11 @@
     if (!cfg) return;
     cfg.on = !cfg.on;
     if (cfg.on) {
-      /* 没指定英雄时自动挑一个空闲的 —— 否则"开了却永远不动"，很难查 */
-      var s = GAME.state;
-      if (!cfg.genId || !(s.generals || []).some(function (g) { return g.id === cfg.genId; })) {
-        var idle = (s.generals || []).filter(function (g) { return !g.status || g.status === 'idle'; });
-        cfg.genId = (idle[0] || s.generals[0] || {}).id || null;
-      }
+      /* v91.53（老板）：`genId` 为空 = **不指定英雄**（各城各随机取空闲英雄）——
+         不再"开启就自动挑一个"（那是旧口径；现在"不指定"本身是合法且推荐的默认）。 */
       cfg.last = 0;                       // 开启即视为"该执行了"
-      s.autoMarchInfo = { ok: true, msg: '已开启，待命', at: U.now() };
-      ui.toast('⚔️ 自动出征已开启（每 ' + cfg.everyMin + ' 分钟一次）');
+      GAME.state.autoMarchInfo = { ok: true, msg: '已开启，待命', at: U.now() };
+      ui.toast('⚔️ 自动出征已开启（每 ' + cfg.everyMin + ' 分钟一次 · 逐城各派）');
     } else {
       GAME.state.autoMarchInfo = { ok: false, msg: '已关闭', at: U.now() };
       ui.toast('自动出征已关闭');

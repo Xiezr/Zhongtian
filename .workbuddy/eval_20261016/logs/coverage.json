@@ -1,0 +1,2136 @@
+{
+ "at": "2026-10-16T03:15:59.989Z",
+ "stat": {
+  "touched": 69,
+  "opened": 0,
+  "blocked": 1,
+  "pending": 183,
+  "unreachable": 90,
+  "total": 343
+ },
+ "detail": {
+  "adm-cat-pick": {
+   "state": "touched",
+   "note": "",
+   "count": 1,
+   "view": "admin",
+   "lastAt": "2026-10-16T03:08:53.106Z"
+  },
+  "adm-city-enter": {
+   "state": "touched",
+   "note": "",
+   "count": 1,
+   "view": "admin",
+   "lastAt": "2026-10-16T03:08:54.325Z"
+  },
+  "adm-city-pick": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "adm-planet-rename": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "adm-planet-toggle": {
+   "state": "touched",
+   "note": "",
+   "count": 2,
+   "view": "settings",
+   "lastAt": "2026-10-16T03:14:26.924Z"
+  },
+  "adm-wild-open": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "am-once": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "am-toggle": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "assign-guard": {
+   "state": "touched",
+   "note": "",
+   "count": 1,
+   "view": "generals",
+   "lastAt": "2026-10-16T03:09:00.232Z"
+  },
+  "assign-mayor": {
+   "state": "touched",
+   "note": "",
+   "count": 1,
+   "view": "generals",
+   "lastAt": "2026-10-16T03:09:01.504Z"
+  },
+  "attach-off": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "attach-on": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "attach-pick": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "auto-march-once": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "auto-pick": {
+   "state": "touched",
+   "note": "",
+   "count": 2,
+   "view": "settings",
+   "lastAt": "2026-10-16T03:15:32.138Z"
+  },
+  "auto-recruit-min": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "auto-recruit-toggle": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "autotrain-set": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "avatar-next": {
+   "state": "touched",
+   "note": "",
+   "count": 1,
+   "view": "",
+   "lastAt": "2026-10-16T03:08:12.219Z"
+  },
+  "avatar-prev": {
+   "state": "touched",
+   "note": "",
+   "count": 1,
+   "view": "",
+   "lastAt": "2026-10-16T03:08:11.873Z"
+  },
+  "bag-detail": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "bag-eq-f": {
+   "state": "touched",
+   "note": "",
+   "count": 1,
+   "view": "bag",
+   "lastAt": "2026-10-16T03:09:06.702Z"
+  },
+  "bag-go": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "bag-sort": {
+   "state": "touched",
+   "note": "",
+   "count": 1,
+   "view": "bag",
+   "lastAt": "2026-10-16T03:09:08.606Z"
+  },
+  "bag-sub": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "bag-tab": {
+   "state": "touched",
+   "note": "",
+   "count": 2,
+   "view": "settings",
+   "lastAt": "2026-10-16T03:14:52.885Z"
+  },
+  "bao-fuse": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "battle-list-open": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "bt-auto": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "bt-done": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "bt-open": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "bt-replay": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "bt-retreat": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "bt-spd": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "bt-stance": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "bt-target": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "build-cell": {
+   "state": "touched",
+   "note": "",
+   "count": 1,
+   "view": "city",
+   "lastAt": "2026-10-16T03:09:19.148Z"
+  },
+  "build-city": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "bulk-use-do": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "cancel-build-ask": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "cancel-build-do": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "cg-clear": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "cg-max": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "chip-set": {
+   "state": "touched",
+   "note": "",
+   "count": 18,
+   "view": "settings",
+   "lastAt": "2026-10-16T03:15:56.301Z"
+  },
+  "city-abandon-arm": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "city-abandon-ask": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "city-dispatch-exp": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "city-enter": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "city-move-ask": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "city-move-do": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "city-opt": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "city-random": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "city-scheme": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "city-scheme-pick": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "city-transport": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "close-avatar-pick": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "close-modal": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "collect-buy": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "collect-cat": {
+   "state": "touched",
+   "note": "",
+   "count": 2,
+   "view": "settings",
+   "lastAt": "2026-10-16T03:15:05.960Z"
+  },
+  "collect-series": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "confirm-build": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "confirm-train": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "confirm-upgrade": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "conscript-captives": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "consign-all": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "consign-sell": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "create-continue": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "create-start": {
+   "state": "touched",
+   "note": "",
+   "count": 1,
+   "view": "",
+   "lastAt": "2026-10-16T03:08:21.303Z"
+  },
+  "def-sub": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "demolish-ask": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "demolish-do": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "demolish-whole-do": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "dismiss-gen": {
+   "state": "touched",
+   "note": "",
+   "count": 1,
+   "view": "generals",
+   "lastAt": "2026-10-16T03:09:34.163Z"
+  },
+  "dismiss-gen-do": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "do-jianghu": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "do-rename-city": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "do-rename-lord": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "do-rename-planet": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "do-train-boost": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "doc-tab": {
+   "state": "touched",
+   "note": "",
+   "count": 2,
+   "view": "settings",
+   "lastAt": "2026-10-16T03:15:18.964Z"
+  },
+  "enh-filter": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "enh-pick": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "enhance-item": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "enhance-set": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "eq-slot": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "equip-item": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "equip-set-do": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "exp-act-go": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "exp-act-pick": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "exp-confirm": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "exp-go": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "exp-max": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "exp-open": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "exp-pick-item": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "exp-scheme": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "exp-scheme-pick": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "exp-sim": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "exp-tac-sub": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "exp-use-item-pick": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "exp-zero": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "ext-build": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "ext-cell": {
+   "state": "touched",
+   "note": "",
+   "count": 1,
+   "view": "ext",
+   "lastAt": "2026-10-16T03:10:00.529Z"
+  },
+  "ext-convert": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "ext-convert-ask": {
+   "state": "touched",
+   "note": "",
+   "count": 1,
+   "view": "ext",
+   "lastAt": "2026-10-16T03:10:03.760Z"
+  },
+  "ext-locked": {
+   "state": "touched",
+   "note": "",
+   "count": 1,
+   "view": "ext",
+   "lastAt": "2026-10-16T03:10:07.430Z"
+  },
+  "ext-upgrade": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "farm-extract": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "farm-extract-all": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "farm-projects": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "farm-start": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "forge-allset": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "forge-clear": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "forge-item": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "forge-kind": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "forge-open-slot": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "forge-pick": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "forge-q": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "forge-set": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "forge-setinfo": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "forge-slot": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "fort-abandon-arm": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "fort-abandon-ask": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "fort-exp": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "fort-goto": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "fort-pick": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "galaxy-open": {
+   "state": "touched",
+   "note": "",
+   "count": 1,
+   "view": "map",
+   "lastAt": "2026-10-16T03:10:33.979Z"
+  },
+  "gather-finish": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "gen-auto-equip": {
+   "state": "touched",
+   "note": "",
+   "count": 1,
+   "view": "generals",
+   "lastAt": "2026-10-16T03:10:35.210Z"
+  },
+  "gen-energy-pick": {
+   "state": "touched",
+   "note": "背包中暂无精力道具。游商「精力」页签可购",
+   "count": 1,
+   "view": "generals",
+   "lastAt": "2026-10-16T03:10:36.411Z"
+  },
+  "gen-equip-item": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "gen-equip-set-pick": {
+   "state": "touched",
+   "note": "",
+   "count": 1,
+   "view": "generals",
+   "lastAt": "2026-10-16T03:10:38.561Z"
+  },
+  "gen-exp-item": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "gen-exp-pick": {
+   "state": "touched",
+   "note": "",
+   "count": 1,
+   "view": "generals",
+   "lastAt": "2026-10-16T03:10:40.716Z"
+  },
+  "gen-exp-till": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "gen-gift-do": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "gen-gift-pick": {
+   "state": "touched",
+   "note": "",
+   "count": 1,
+   "view": "generals",
+   "lastAt": "2026-10-16T03:10:43.596Z"
+  },
+  "gen-pick": {
+   "state": "touched",
+   "note": "",
+   "count": 2,
+   "view": "settings",
+   "lastAt": "2026-10-16T03:14:01.053Z"
+  },
+  "gen-rankup": {
+   "state": "touched",
+   "note": "",
+   "count": 1,
+   "view": "generals",
+   "lastAt": "2026-10-16T03:10:48.114Z"
+  },
+  "gen-restore-do": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "gen-sta-pick": {
+   "state": "touched",
+   "note": "背包中暂无体力道具。游商「体力」页签可购",
+   "count": 1,
+   "view": "generals",
+   "lastAt": "2026-10-16T03:10:50.008Z"
+  },
+  "gen-stat-plus": {
+   "state": "touched",
+   "note": "",
+   "count": 1,
+   "view": "generals",
+   "lastAt": "2026-10-16T03:10:51.436Z"
+  },
+  "gen-unequip": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "gen-unequip-all": {
+   "state": "touched",
+   "note": "",
+   "count": 1,
+   "view": "generals",
+   "lastAt": "2026-10-16T03:10:53.575Z"
+  },
+  "gender-set": {
+   "state": "touched",
+   "note": "",
+   "count": 2,
+   "view": "",
+   "lastAt": "2026-10-16T03:08:12.887Z"
+  },
+  "gift-pick-item": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "go-affairs": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "go-beacon": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "heal-wounded": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "hearts-boost": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "hearts-soothe": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "inn-recruit": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "inn-reroll": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "jieyue-expand": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "jieyue-gen": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "jieyue-xc": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "ling-filter": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "ling-pick": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "ling-temper-item": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "ling-temper-open": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "lord-break": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "lord-city-enter": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "lord-est-sel": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "lord-fort-go": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "lord-promote": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "lord-train": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "lord-wild-go": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "map-capital": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "map-center": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "map-goto": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "map-mycity": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "map-toggle-labels": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "march-recall": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "march-rush": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "march-tab": {
+   "state": "touched",
+   "note": "",
+   "count": 3,
+   "view": "settings",
+   "lastAt": "2026-10-16T03:14:14.044Z"
+  },
+  "market-buy": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "market-sell": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "mat-go": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "mecha-style": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "mecha-style-do": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "mk-preset": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "mk-scale": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "moment-close": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "move-ask": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "move-cancel": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "move-do": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "mpage": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "msg-tag": {
+   "state": "touched",
+   "note": "",
+   "count": 1,
+   "view": "reports",
+   "lastAt": "2026-10-16T03:11:20.916Z"
+  },
+  "new-game": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "newcity-send-troop": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "open-artifacts": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "open-auto-march": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "open-avatar-pick": {
+   "state": "touched",
+   "note": "",
+   "count": 3,
+   "view": "settings",
+   "lastAt": "2026-10-16T03:13:31.086Z"
+  },
+  "open-bag-equip": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "open-bldg-list": {
+   "state": "touched",
+   "note": "",
+   "count": 1,
+   "view": "city",
+   "lastAt": "2026-10-16T03:11:25.729Z"
+  },
+  "open-bp-detail": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "open-enhance": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "open-forge": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "open-guanfu": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "open-hostel": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "open-inn": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "open-jieyue": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "open-lab": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "open-lord": {
+   "state": "touched",
+   "note": "",
+   "count": 3,
+   "view": "settings",
+   "lastAt": "2026-10-16T03:13:33.131Z"
+  },
+  "open-market": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "open-mat-detail": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "open-outposts": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "open-panel": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "open-plan": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "open-rename-city": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "open-rename-lord": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "open-sandbox": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "open-saves": {
+   "state": "touched",
+   "note": "",
+   "count": 3,
+   "view": "settings",
+   "lastAt": "2026-10-16T03:08:47.762Z"
+  },
+  "open-siege": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "open-store": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "open-tactic": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "open-tactic-set": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "open-troops": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "open-wall": {
+   "state": "touched",
+   "note": "",
+   "count": 1,
+   "view": "city",
+   "lastAt": "2026-10-16T03:11:43.140Z"
+  },
+  "open-wilds": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "open-workshop": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "open-xiaochang": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "page": {
+   "state": "blocked",
+   "note": "disabled",
+   "count": 0,
+   "view": ""
+  },
+  "pick-lord-avatar": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "plan-apply": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "plan-del": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "plan-save": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "planet-classic": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "planet-create": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "planet-create-stay": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "planet-gen-open": {
+   "state": "touched",
+   "note": "",
+   "count": 1,
+   "view": "admin",
+   "lastAt": "2026-10-16T03:11:50.344Z"
+  },
+  "planet-load": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "planet-tab": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "promote": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "qb-buy": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "qb-cat": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "qb-cat-buy": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "qb-item": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "qty-max": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "qty-step": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "quick-item": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "quick-pop": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "release-captives": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "rep-fav": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "rep-filter": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "report-rounds": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "restore-pick-item": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "rush-build": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "rush-ext": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "rush-tech": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "salvage-equip-ask": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "salvage-equip-do": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "save": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "save-import-file": {
+   "state": "touched",
+   "note": "",
+   "count": 1,
+   "view": "settings",
+   "lastAt": "2026-10-16T03:12:02.638Z"
+  },
+  "save-import-text": {
+   "state": "touched",
+   "note": "",
+   "count": 1,
+   "view": "settings",
+   "lastAt": "2026-10-16T03:08:49.126Z"
+  },
+  "save-import-toggle": {
+   "state": "touched",
+   "note": "",
+   "count": 1,
+   "view": "settings",
+   "lastAt": "2026-10-16T03:08:48.457Z"
+  },
+  "save-slot-drop": {
+   "state": "touched",
+   "note": "",
+   "count": 1,
+   "view": "settings",
+   "lastAt": "2026-10-16T03:12:04.484Z"
+  },
+  "save-slot-drop-do": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "save-slot-export": {
+   "state": "touched",
+   "note": "",
+   "count": 1,
+   "view": "settings",
+   "lastAt": "2026-10-16T03:08:45.213Z"
+  },
+  "save-slot-load": {
+   "state": "touched",
+   "note": "",
+   "count": 1,
+   "view": "settings",
+   "lastAt": "2026-10-16T03:12:07.902Z"
+  },
+  "save-slot-load-do": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "save-slot-write": {
+   "state": "touched",
+   "note": "",
+   "count": 1,
+   "view": "settings",
+   "lastAt": "2026-10-16T03:12:11.317Z"
+  },
+  "scout-open": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "sd-done": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "sd-first": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "sd-next": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "sd-play": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "sd-prev": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "sd-sim": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "sd-sim-exit": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "sd-stance": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "sd-target": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "sd-text": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "select-train": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "sell-equip-ask": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "sell-equip-do": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "set-main-city": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "set-tax": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "set-timescale": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "shop-buy": {
+   "state": "touched",
+   "note": "",
+   "count": 1,
+   "view": "shop",
+   "lastAt": "2026-10-16T03:12:22.802Z"
+  },
+  "shop-cat": {
+   "state": "touched",
+   "note": "",
+   "count": 2,
+   "view": "settings",
+   "lastAt": "2026-10-16T03:14:40.020Z"
+  },
+  "show-help": {
+   "state": "touched",
+   "note": "无已知入口映射",
+   "count": 7,
+   "view": "settings",
+   "lastAt": "2026-10-16T03:15:30.094Z"
+  },
+  "sky-go": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "stat-plus-free": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "stat-plus-item": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "switch-city": {
+   "state": "touched",
+   "note": "",
+   "count": 1,
+   "view": "city",
+   "lastAt": "2026-10-16T03:12:27.080Z"
+  },
+  "switch-planet": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "tac-apply": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "tac-del": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "tac-save": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "tactic-reset": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "tactic-set": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "tax-step": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "tech-research": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "tm-do": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "tm-max": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "tm-to": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "toggle-auto-gather": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "toggle-auto-heal": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "toggle-auto-invasion": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "toggle-auto-lord": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "toggle-auto-march": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "toggle-auto-research": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "toggle-auto-train": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "toggle-auto-upgrade": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "toggle-equip-set": {
+   "state": "unreachable",
+   "note": "无已知入口映射",
+   "count": 0,
+   "view": ""
+  },
+  "tower-build": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "train-boost": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "train-cancel": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "train-max": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "train-rush": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "troop-disband-ask": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "troop-disband-do": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "unequip-item": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "use-bag-item": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "use-item": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "use-item-quick": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "view": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "view-report": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "wild-abandon-ask": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "wild-abandon-do": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "wild-fortintel": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "wild-garrison-gather": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "wild-garrison-open": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "wild-withdraw": {
+   "state": "pending",
+   "note": "",
+   "count": 0,
+   "view": ""
+  },
+  "wonder-exp": {
+   "state": "touched",
+   "note": "",
+   "count": 1,
+   "view": "map",
+   "lastAt": "2026-10-16T03:12:54.339Z"
+  },
+  "wonder-open": {
+   "state": "touched",
+   "note": "",
+   "count": 2,
+   "view": "settings",
+   "lastAt": "2026-10-16T03:13:46.204Z"
+  },
+  "view:city": {
+   "state": "touched",
+   "note": "视图tab",
+   "count": 81,
+   "view": "city",
+   "lastAt": "2026-10-16T03:15:46.785Z"
+  },
+  "view:ext": {
+   "state": "touched",
+   "note": "视图tab",
+   "count": 31,
+   "view": "ext",
+   "lastAt": "2026-10-16T03:15:47.304Z"
+  },
+  "view:map": {
+   "state": "touched",
+   "note": "视图tab",
+   "count": 17,
+   "view": "map",
+   "lastAt": "2026-10-16T03:15:47.862Z"
+  },
+  "view:generals": {
+   "state": "touched",
+   "note": "视图tab",
+   "count": 42,
+   "view": "generals",
+   "lastAt": "2026-10-16T03:15:50.114Z"
+  },
+  "view:marches": {
+   "state": "touched",
+   "note": "视图tab",
+   "count": 48,
+   "view": "marches",
+   "lastAt": "2026-10-16T03:15:50.574Z"
+  },
+  "view:admin": {
+   "state": "touched",
+   "note": "视图tab",
+   "count": 40,
+   "view": "admin",
+   "lastAt": "2026-10-16T03:15:51.052Z"
+  },
+  "view:shop": {
+   "state": "touched",
+   "note": "视图tab",
+   "count": 20,
+   "view": "shop",
+   "lastAt": "2026-10-16T03:15:51.534Z"
+  },
+  "view:bag": {
+   "state": "touched",
+   "note": "视图tab",
+   "count": 35,
+   "view": "bag",
+   "lastAt": "2026-10-16T03:15:51.990Z"
+  },
+  "view:collection": {
+   "state": "touched",
+   "note": "视图tab",
+   "count": 17,
+   "view": "collection",
+   "lastAt": "2026-10-16T03:15:52.443Z"
+  },
+  "view:reports": {
+   "state": "touched",
+   "note": "视图tab",
+   "count": 18,
+   "view": "reports",
+   "lastAt": "2026-10-16T03:15:52.917Z"
+  },
+  "view:auto": {
+   "state": "touched",
+   "note": "视图tab",
+   "count": 20,
+   "view": "auto",
+   "lastAt": "2026-10-16T03:15:53.398Z"
+  },
+  "view:settings": {
+   "state": "touched",
+   "note": "视图tab",
+   "count": 28,
+   "view": "settings",
+   "lastAt": "2026-10-16T03:15:57.229Z"
+  },
+  "view:galaxy": {
+   "state": "touched",
+   "note": "视图tab",
+   "count": 1,
+   "view": "galaxy",
+   "lastAt": "2026-10-16T03:15:46.140Z"
+  },
+  "key:1-9": {
+   "state": "touched",
+   "note": "键盘切页",
+   "count": 9,
+   "lastAt": "2026-10-16T03:08:32.218Z"
+  },
+  "key:shift1-3": {
+   "state": "touched",
+   "note": "键盘续号",
+   "count": 3,
+   "lastAt": "2026-10-16T03:08:33.791Z"
+  },
+  "key:esc": {
+   "state": "touched",
+   "note": "关弹窗",
+   "count": 3,
+   "lastAt": "2026-10-16T03:08:38.314Z"
+  },
+  "key:tab-enter": {
+   "state": "pending",
+   "note": "弹窗内导航",
+   "count": 0
+  }
+ }
+}

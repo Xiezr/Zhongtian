@@ -3123,14 +3123,15 @@ async function runTests(dom, URL) {
       && !!vc.querySelector('[data-action="auto-march-once"]')
       && !!pane && pane.querySelectorAll('.al-k').length === 0;
   })());
-  check('点「开启自动出征」真能开（并自动挑一位空闲英雄）', (function () {
+  check('点「开启自动出征」真能开', (function () {
     /* v89.115：开关在右侧详情里 —— 先选中「自动出征」 */
     click(vc.querySelector('[data-action="auto-pick"][data-key="march"]'));
     var btn = vc.querySelector('[data-action="toggle-auto-march"]');
     if (!btn) return false;
     btn.click();
     var cfg = G.autoMarchCfg();
-    return cfg.on === true && !!cfg.genId;
+    /* v91.53：`genId` 为空 = **不指定英雄**（合法默认，不再"开启就自动挑一个"）。 */
+    return cfg.on === true;
   })());
   check('自动出征：参数改在「详细配置」弹窗里（打开后统一行齐备 · v89.198）', (function () {
     G.ui.openAutoMarch();
@@ -3143,11 +3144,12 @@ async function runTests(dom, URL) {
     return ks.indexOf('执行英雄') >= 0 && ks.indexOf('目标类型') >= 0
       && ks.indexOf('出征战术') >= 0 && ks.indexOf('每日上限') >= 0;
   })());
-  check('无合适目标时不硬发兵（给出原因）', (function () {
+  check('不指定英雄 → 随机指派（不再报「请先指定英雄」）', (function () {
     var cfg = G.autoMarchCfg();
     cfg.genId = null;
     var r = G.autoMarchOnce(cfg);
-    return r.ok === false && /指定/.test(r.msg);
+    /* v91.53：genId=null = 不指定（各城各随机取空闲英雄）；失败原因只能是具体的（无兵/无目标…）。 */
+    return !/请先指定/.test(r.msg || '');
   })());
   check('器械与侦察单元不会被编入自动队伍', (function () {
     var pick = G.autoMarchPickArmy({ army: { huopao: 50, huopao: 50, zhencha: 20, zhuzhan: 900, buxingji: 5000 } }, 3000);

@@ -5,8 +5,8 @@
 const fs = require('fs');
 const path = require('path');
 
-const ROOT = path.resolve(__dirname, '..');                 // .workbuddy/eval_20261016
-const GAME_DIR = path.resolve(ROOT, '../../..');             // E:/Deepseekdb
+const ROOT = path.resolve(__dirname, '..', '..');             // .workbuddy/eval_20261016
+const GAME_DIR = path.resolve(ROOT, '..', '..');              // E:/Deepseekdb
 const LOGS = path.join(ROOT, 'logs');
 const SHOTS = path.join(ROOT, 'shots');
 const REPORTS = path.join(ROOT, 'reports');
@@ -22,7 +22,7 @@ const VIEWS = ['city', 'ext', 'map', 'generals', 'marches', 'admin', 'shop', 'ba
 
 /* 326 个静态动作注册表（js/main.js GAME.action 分发器全集） */
 let ACTIONS = [];
-try { ACTIONS = JSON.parse(fs.readFileSync(path.join(__dirname, 'actions.json'), 'utf8')); } catch (e) {}
+try { ACTIONS = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'actions.json'), 'utf8')); } catch (e) {}
 if (!ACTIONS.length) { console.error('FATAL: actions.json 缺失'); process.exit(1); }
 
 /* ---------- 危险动作策略 ---------- */
@@ -174,7 +174,9 @@ const SAMPLE_FN = `function(){
     gt: (s.world && s.world.elapsed) || 0,
     year: (s.world && s.world.year) || 0,
     day: Math.floor(((s.world && s.world.elapsed)||0)/86400),
-    res: res, gold: s.gold||0, pop: pop, army: army,
+    res: res,
+    grain: Math.round(res.grain), wood: Math.round(res.wood), stone: Math.round(res.stone),
+    iron: Math.round(res.iron), gold: s.gold||0, pop: pop, army: army,
     cities: (s.cities||[]).length, wilds: (s.wilds||[]).length,
     bldN: bldN, bldLv: bldLv, extN: extN, extLv: extLv,
     gens: (s.generals||[]).length,
