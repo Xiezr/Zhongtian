@@ -8252,16 +8252,34 @@
     }
     return { ok: false, msg: '未找到该队的在途探查（可能已返航）' };
   };
-  /* 累计 1 份奖励（材料 + 概率附带）落该队 acc。 */
+  /* 累计 1 份奖励（材料 + 独立几率的通用产出）落该队 acc。
+     v91.51（老板）：产出分三类、**各有独立几率**——
+       · 主产：该奇观分配的材料（def.mat），按行动/兵力倍率给 1~2×；
+       · 通用·珠宝：任意奇观都有 `jewelChance` 几率掉珠宝（档位由奇观主产材料决定）；
+       · 通用·图纸：任意奇观都有 `bpChance` 几率掉**任意**套装图纸（不再"某奇观只产某几张"）；
+       · 通用·残页：研读类奇观（banner=page）掉，另有基础 `pageChance`。
+       —— 这样"图上所有套装都造得出"、"珠宝在所有奇观都能稳定来"。 */
   GAME._wonderAccrueItem = function (def, exp) {
     var act = (DATA.WONDER_ACT_DEFS || {})[exp.act] || { mul: 1 };
+    var W = DATA.WONDER_CFG || {};
     var troops = exp.troops || 0;
     var tierMul = troops <= 0 ? 1 : Math.min(6, 1 + Math.log(1 + troops / 2000) / Math.LN2);
     var q = Math.max(1, Math.round((1 + Math.floor(Math.random() * 2)) * (act.mul || 1) * tierMul));
     function add(id, n) { if (!id || n <= 0) return; var e = null; exp.acc.forEach(function (x) { if (x.id === id) e = x; }); if (e) e.n += n; else exp.acc.push({ id: id, n: n }); }
+    function pickFrom(pred) { var a = (DATA.ITEMS || []).filter(pred); return a.length ? a[Math.floor(Math.random() * a.length)].id : null; }
+    /* ① 主产（必给） */
     if (def && def.mat) add(def.mat, q);
-    (def && def.out || []).forEach(function (oid) { if (Math.random() < 0.12) add(oid, 1); });
-    if (act.banner === 'page' && Math.random() < 0.05) add(['book_wuzi', 'book_sima', 'book_sanlue', 'book_weiliu'][Math.floor(Math.random() * 4)], 1);
+    /* ② 通用·珠宝（任意奇观）—— 档位按主产材料价派生 */
+    if (Math.random() < (W.jewelChance || 0)) {
+      var band = (DATA.wonderJewelBandOf ? DATA.wonderJewelBandOf(def) : 2);
+      var ids = (DATA.WONDER_JEWEL_BANDS || {})[band] || [];
+      if (ids.length) add(ids[Math.floor(Math.random() * ids.length)], 1);
+    }
+    /* ③ 通用·图纸（任意奇观 · 任意套装） */
+    if (Math.random() < (W.bpChance || 0)) add(pickFrom(function (x) { return x.type === 'blueprint'; }), 1);
+    /* ④ 通用·战技残页（研读类奇观几率更高） */
+    var _pc = (act.banner === 'page') ? (W.pageBannerChance || 0.08) : (W.pageChance || 0.03);
+    if (Math.random() < _pc) add(pickFrom(function (x) { return x.type === 'neigong'; }), 1);
     exp.accrued = (exp.accrued || 0) + 1;
   };
   /* 把一队的累计奖励落**全局背包**；兵按风险损耗，余部**归城**。 */

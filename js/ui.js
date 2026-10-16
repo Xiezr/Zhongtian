@@ -16911,17 +16911,29 @@
     var cdLine = present
       ? '<span style="color:var(--gold-light);" title="' + U.escape(cdTip) + '">下一日刷新 ' + U.dur(leftMs / 1000) + '</span>'
       : '<span style="color:var(--red-light);" title="' + U.escape(cdTip) + '">今日已消散</span>';
-    /* 可能产出（去重）：材料「主产」/ 附带「概率」；**悬停统一说明采集 vs 派军搜查的差异**。 */
+    /* v91.51（老板）：产出 = **主产材料（必给）** + **通用掉落（任意奇观都有独立几率）**：
+       珠宝 / 图纸 / 残页。列表如实展示（主产 + 三类通用几率），不再"某奇观只产某几张"。 */
     var DIFF_TIP = '采集：不派兵、安稳取**少量**材料；派军搜查/深潜攻坚：**出征界面**选将选兵，'
-      + '按**军力**给更多材料，并可能获图纸/珠宝（有损兵风险）。';
-    var outs = [wd.mat].concat(wd.out || []);
-    var seen = {}, rows = '';
-    outs.forEach(function (oid, i) {
-      if (!oid || seen[oid]) return; seen[oid] = 1;
-      var it = DATA.ITEM_BY_ID[oid] || {}; var have = (GAME.state.items || {})[oid] || 0;
-      rows += '<div class="stat-row" title="' + U.escape(DIFF_TIP) + '"><span class="sr-name">' + (it.icon || '📦') + ' ' +
-        U.escape(it.name || oid) + ' <i class="gd-sub">×' + have + '</i></span><span class="sr-sub">' + (i === 0 ? '主产' : '概率') + '</span></div>';
-    });
+      + '按**军力**给更多材料（有损兵风险）。**珠宝 / 图纸 / 残页为通用掉落，任意奇观均有一定几率**。';
+    var rows = '';
+    /* ① 主产（必给） */
+    var _mit = DATA.ITEM_BY_ID[wd.mat] || {};
+    rows += '<div class="stat-row" title="' + U.escape(DIFF_TIP) + '"><span class="sr-name">' + (_mit.icon || '📦') + ' ' +
+      U.escape(_mit.name || wd.mat) + ' <i class="gd-sub">×' + ((GAME.state.items || {})[wd.mat] || 0) + '</i></span>' +
+      '<span class="sr-sub">主产 · 必给</span></div>';
+    /* ② 通用掉落（各自独立几率） */
+    function _genericRow(icon, name, pct, have) {
+      return '<div class="stat-row" title="' + U.escape(DIFF_TIP) + '"><span class="sr-name">' + icon + ' ' + name +
+        '</span><span class="sr-sub">通用 · 每份 ' + Math.round(pct * 100) + '% 几率</span></div>';
+    }
+    var _band = (DATA.wonderJewelBandOf ? DATA.wonderJewelBandOf(wd) : 2);
+    var _bnames = ((DATA.WONDER_JEWEL_BANDS || {})[_band] || []).map(function (id) { return (DATA.ITEM_BY_ID[id] || {}).name || id; }).join('/');
+    rows += _genericRow('💎', '珠宝（' + _band + ' 档：' + _bnames + '）', (W.jewelChance || 0));
+    rows += _genericRow('📜', '套装图纸（任意套）', (W.bpChance || 0));
+    rows += _genericRow('📖', '战技残页', (wd.banner === 'page' ? (W.pageBannerChance || 0.08) : (W.pageChance || 0.03)));
+    if (wd.out && wd.out.length) {
+      wd.out.forEach(function (oid) { var it = DATA.ITEM_BY_ID[oid] || {}; rows += '<div class="stat-row"><span class="sr-name">' + (it.icon || '📦') + ' ' + U.escape(it.name || oid) + '</span><span class="sr-sub">附带 · 小概率</span></div>'; });
+    }
     return '<div class="op-zone"><div class="op-zone-t">' + wd.icon + ' ' + U.escape(wd.name) + ' · ' + U.escape(wd.body) + '</div>' +
       '<div style="text-align:center;color:var(--text-dim);font-size:var(--fs-sub);margin-bottom:6px;">' +
         (present ? '今日在场' : '<span style="color:var(--red-light);">今日未出现</span>') +

@@ -3942,7 +3942,31 @@
      此前队伍**永远不返回**（只有奇观消失才返航）→ 累计 100+ 份、英雄永久占用。
      新增 `exploreSec`：抵达后**持续时间**（默认 4 现实小时），到时**自动返航**
      （返航耗时按已行进比例，与"奇观消失返航"同一公式；抵达落账 + 英雄归位）。 */
-  DATA.WONDER_CFG = { maxActive: 3, marchRealSec: 3600, accrueSec: 600, exploreSec: 14400 };
+  DATA.WONDER_CFG = { maxActive: 3, marchRealSec: 3600, accrueSec: 600, exploreSec: 14400,
+    /* ============================================================
+     * v91.51（老板）：「奇观的产出应该扩大，特定材料分奇观分配；通用材料（图纸/珠宝等）
+     *   应都给**独立的产出几率**」——累计每 1 份的产出分三类（**各有独立几率**）：
+     *   ① 主产：该奇观分配的材料（def.mat），按产量倍率给 1~2×；
+     *   ② 通用·珠宝：**任意奇观**都有几率掉珠宝（`jewelChance`），按奇观强弱取档位；
+     *   ③ 通用·图纸：**任意奇观**都有几率掉图纸（`bpChance`）——**不再"某奇观只产某几张"**，
+     *      否则集齐 18 套要跑遍所有奇观，漏一个就永远造不出对应套装；
+     *   ④ 通用·战技残页：研读类奇观（banner=page）掉，另有基础几率。
+     * ============================================================ */
+    jewelChance: 0.10, bpChance: 0.06, pageChance: 0.03, pageBannerChance: 0.08 };
+
+  /* v91.51：奇观「产出档位」→ 珠宝池（越强的材料，掉越贵的珠宝）。按 price 派生，不手抄 id。 */
+  DATA.WONDER_JEWEL_BANDS = {
+    1: ['bengzhu', 'mila', 'meiyu'],                     /* 低阶 */
+    2: ['puyu', 'zijin', 'lvsongshi', 'hongshanhu'],     /* 中阶 */
+    3: ['yusui', 'yinchenmu', 'cuiyu', 'danbaishi', 'bixi', 'jiaorenlei'],  /* 高阶 */
+    4: ['tianzhu', 'longxianxiang', 'chenxiang', 'yemingzhu', 'dushanyu'],   /* 顶阶 */
+  };
+  /* 某奇观产出几档珠宝（按主产材料的 price：越贵越靠上档）。 */
+  DATA.wonderJewelBandOf = function (wd) {
+    var it = (DATA.ITEM_BY_ID || {})[wd && wd.mat];
+    var pr = (it && it.price) || 30;
+    return pr >= 70 ? 4 : pr >= 45 ? 3 : pr >= 32 ? 2 : 1;
+  };
 
   /* 取某城的档位加成（唯一出口：别处不要再按 type 分支） */
   DATA.CITY_PERK_KEYS = ['prodPct', 'taxPct', 'buildSlot', 'storePct', 'troopSlot'];
