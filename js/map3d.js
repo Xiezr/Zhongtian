@@ -312,6 +312,22 @@
       }
       return best;
     }
+    /* ============================================================
+     * v91.44（老板）：「行省/市/区的**首府/首市/首区**竟然不在该辖区内」——
+     *   根因：中心点取的是 kmeans **质心方向**，而行政区是**非凸连通块**，
+     *   质心常落在辖区外（甚至落进别的区）→ `nearestCell(质心)` 取到的格子不在本区。
+     * 修：`groupCenterDir(cent, members)` = 取**该组成员方向求平均 → 再取离平均最近的成员格**，
+     *   保证返回的**一定落在组内**（成员本身）。省/市/区三级中心统一走它。
+     * ============================================================ */
+    function groupCenterDir(cent, members) {
+      if (!members || !members.length) return { dir: cent, ci: -1 };
+      var sx = 0, sy = 0, sz = 0;
+      for (var gi = 0; gi < members.length; gi++) { var gd = M._vdirs[members[gi]]; if (!gd) continue; sx += gd[0]; sy += gd[1]; sz += gd[2]; }
+      var gl = Math.hypot(sx, sy, sz) || 1, gc = [sx / gl, sy / gl, sz / gl];
+      var best = null, bci = -1, bd = -2;
+      for (var gj = 0; gj < members.length; gj++) { var dd = M._vdirs[members[gj]]; if (!dd) continue; var dt = dd[0] * gc[0] + dd[1] * gc[1] + dd[2] * gc[2]; if (dt > bd) { bd = dt; best = dd; bci = members[gj]; } }
+      return { dir: best || cent, ci: bci };
+    }
     /* v90.99（老板）：**省/市/区数量随星球陆地面积缩放** —— 老家（~45% 陆地）为 1.0 基准，
        小星球省更少、大星球省更多（不必与老家一致）。再按「每省 2~6 市、每市 2~4 区」配面积。 */
     var landFrac = dirs.length / Math.max(1, nv);
@@ -401,15 +417,47 @@
       }
       table.prov.push(pNode);
     }
+    /* v91.44：**行政中心一律落回本辖区**（kmeans 质心可能落在辖区外/别区）——
+       用最终归属数组反推每级成员，把中心改成"组内离组质心最近的格"，并**记下该格的 ci**。
+       中心格 = 组内成员本身 → 一定落在本辖区；且 `_ci` 直供落点，免 `nearestCell` 再反查
+       （反查在边界上可能落到邻格 → 少数市/区"中心跑到邻区"的残留）。 */
+    (function () {
+      var _pM = [], _mM = [], _dM = [];
+      for (var z = 0; z < provCent.length; z++) _pM.push([]);
+      for (var z2 = 0; z2 < marketCent.length; z2++) _mM.push([]);
+      for (var z3 = 0; z3 < districtCent.length; z3++) _dM.push([]);
+      for (var ci = 0; ci < nv; ci++) {
+        if (provOf[ci] >= 0 && _pM[provOf[ci]]) _pM[provOf[ci]].push(ci);
+        if (marketOf[ci] >= 0 && _mM[marketOf[ci]]) _mM[marketOf[ci]].push(ci);
+        if (districtOf[ci] >= 0 && _dM[districtOf[ci]]) _dM[districtOf[ci]].push(ci);
+      }
+      for (var pi = 0; pi < provCent.length; pi++) { var g1 = groupCenterDir(provCent[pi], _pM[pi]); provCent[pi] = g1.dir; if (table.prov[pi]) table.prov[pi].cent = g1.dir; }
+      for (var mi = 0; mi < marketCent.length; mi++) { var g2 = groupCenterDir(marketCent[mi], _mM[mi]); marketCent[mi] = g2.dir; if (table.market[mi]) table.market[mi].cent = g2.dir; }
+      for (var di = 0; di < districtCent.length; di++) { var g3 = groupCenterDir(districtCent[di], _dM[di]); districtCent[di] = g3.dir; if (table.district[di]) table.district[di].cent = g3.dir; }
+    })();
     M.adminTable = table;
     /* 行政中心**城对象**（旧都/省府/市府/区）—— 占据地块、可点弹出征界面 */
     var admCities = [], EGT = { old: 22, prov: 18, market: 14, district: 9 };
     function tierOf(lv) { return lv === 'old' ? 'capital' : lv === 'prov' ? 'zhou' : lv === 'market' ? 'jun' : 'county'; }
-    function addAdm(lv, name, cent, idx) {
-      var ci = nearestCell(cent); if (ci < 0) return;
+    /* v91.44：落点 ci = **在最终归属数组里属于本辖区 idx、且方向离该中心最近的格** ——
+       无论如何都能保证"中心格 ∈ 本辖区"（省/市/区同一把尺）。 */
+    function cellInGroup(arr, idx, cent) {
+      var best = -1, bd = -2;
+      for (var k = 0; k < nv; k++) {
+        if (arr[k] !== idx) continue;
+        var d = M._vdirs[k]; if (!d) continue;
+        var dt = d[0] * cent[0] + d[1] * cent[1] + d[2] * cent[2];
+        if (dt > bd) { bd = dt; best = k; }
+      }
+      return best;
+    }
+    function addAdm(lv, name, cent, idx, hintArr) {
+      var ci = (hintArr ? cellInGroup(hintArr, idx, cent) : -1);
+      if (ci < 0) ci = nearestCell(cent);
+      if (ci < 0) return;
       var cell = _tileCells[ci]; if (!cell) return;
       var tier = tierOf(lv), lvl = EGT[lv];
-      var c = { id: 'adm_' + lv + '_' + idx, name: name, x: cell.x, y: cell.y,
+      var c = { id: 'adm_' + lv + '_' + idx, name: name, x: cell.x, y: cell.y, ci: ci,
         type: tier, owner: 'npc', level: lvl, admLevel: lv, admIndex: idx, _cent: cent };
       c.garrison = GAME.genGarrison ? GAME.genGarrison(c) : {};   /* 旧设定：按城档守军 */
       c.maxArmy = c.garrison;
@@ -420,9 +468,9 @@
     var pa;
     for (pa = 0; pa < provCent.length; pa++) {
       var pv2 = table.prov[pa]; if (!pv2) continue;
-      addAdm('prov', pv2.name + '府', pv2.cent, pa);
-      pv2.markets.forEach(function (mi) { var m = table.market[mi]; addAdm('market', m.name, m.cent, mi); });
-      pv2.markets.forEach(function (mi) { table.market[mi].districts.forEach(function (di) { var d = table.district[di]; addAdm('district', d.name, d.cent, di); }); });
+      addAdm('prov', pv2.name + '府', pv2.cent, pa, provOf);
+      pv2.markets.forEach(function (mi) { var m = table.market[mi]; addAdm('market', m.name, m.cent, mi, marketOf); });
+      pv2.markets.forEach(function (mi) { table.market[mi].districts.forEach(function (di) { var d = table.district[di]; addAdm('district', d.name, d.cent, di, districtOf); }); });
     }
     M.admCities = admCities;
     M._settle = { old: lc, oldName: '灰烬城', provCent: provCent, marketCent: marketCent, districtCent: districtCent,
@@ -503,7 +551,7 @@
       var ci = ciOfRef(c); if (ci >= 0) { mark[ci] = [220, 70, 60]; cellKind[ci] = 'npc'; cellRef[ci] = c; }
     });
     /* 行政中心城 = 紫色（按球面质心方向取格）*/
-    (M.admCities || []).forEach(function (c) { var ci = nearestCell(c._cent); if (ci >= 0) { mark[ci] = [180, 120, 210]; cellKind[ci] = 'adm'; cellRef[ci] = c; } });
+    (M.admCities || []).forEach(function (c) { var ci = (c.ci != null && c.ci >= 0) ? c.ci : nearestCell(c._cent); if (ci >= 0) { mark[ci] = [180, 120, 210]; cellKind[ci] = 'adm'; cellRef[ci] = c; } });
     /* 己方城 = 蓝：落在其**球面六边格索引 ci**（球系唯一身份，免 (x,y) 往返）
        v90.97（双球面）：读**地图星球分片**的城（未必 = 当前城所在星球）。 */
     M._ownCells = {};
@@ -1155,18 +1203,20 @@
       var body = new THREE.Group(); body.add(mesh);
       M._wonderSpin = mesh;                                       /* v91.34：自旋目标 = 几何体本身（绕自身竖轴） */
       if (wd.planetRing) {
-        /* v91.40（老板「星环得放大把星球环起来，不然能叫星环吗」）——
-           行星环 = **绕在星球外圈**。模型环平面在 Y-Z、轴沿 X；先绕 Z 转 90° 把它**放平到赤道面**
-           （X-Z，与星球 Y 轴垂直），再扣 0.30 得土星环式倾角。
-           定标按**几何实测半径**算（bakeGeometry 后环半径 ≈ 0.49，非 1）→ 外径 = 1.55R（略大于 1.5R，
-           让环稳稳套在球外）。位置恒在**球心**；环对称 → 环面内自旋不可见，故**不转**。 */
+        /* v91.44（老板）：「星环套在球体上了，不该与地表接触，建议离地心 2.5 个半径；
+           并且星环应在三维空间中相对不动，看着中间球体转动」——
+           · **尺寸**：外径 = 2.5R（远在球外，绝不接触地表）。
+           · **姿态**：环模型在 Y-Z 平面（轴沿 X）→ 绕 Z 转 90° 后落在 **X-Z 赤道面**，
+             且**不另加倾角** —— 水平环对 Y 轴**旋转对称**，相机绕 Y 自转（= 自动"星球自转"）
+             时环的**轮廓保持不动**，只有中间球面的地形在转 → 正是"环静、球转"的观感。
+           · 位置恒在**球心**；世界坐标不旋转（静态）。 */
         var _r0 = 0.5;
         try {
           geo.computeBoundingBox(); var _bb = geo.boundingBox;
           _r0 = Math.max(Math.abs(_bb.max.y), Math.abs(_bb.min.y), Math.abs(_bb.max.z), Math.abs(_bb.min.z)) || 0.5;
         } catch (e) { }
-        mesh.scale.setScalar(R * 1.45 / _r0);
-        body.rotation.z = Math.PI / 2 - 0.18;   /* 放平到赤道面后扣 0.18 倾角（土星环观感） */
+        mesh.scale.setScalar(R * 2.5 / _r0);
+        body.rotation.z = Math.PI / 2;          /* 放平到赤道面（不倾） */
         M._planetRing = true; M._wonderUp = [0, 1, 0]; M._wonderR = 0;
       } else if (mode === 'space') {
         M._planetRing = false;
@@ -1203,7 +1253,7 @@
       var lbl = null;
       try {
         lbl = nameSprite('✨ ' + wd.name, '#ffe6a8');
-        if (wd.planetRing) { var _eh = R * 0.6; lbl.position.set(0, _eh, 0); }   /* 星环：标在环外顶 */
+        if (wd.planetRing) { var _eh = R * 1.15; lbl.position.set(0, _eh, 0); }   /* 星环：标在环外顶（环外径 2.5R） */
         else {
           var _lh = R * (mode === 'space' ? 0.2 : 0.16);
           if (mode === 'space') lbl.position.set(0, _lh, 0);
