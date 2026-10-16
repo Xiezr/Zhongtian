@@ -3937,8 +3937,12 @@
     rescue: { name: '方舟救援', needGen: true, needArmy: true, needLoad: 20000, risk: 0, mul: 1.0, banner: 'pop', cond: '需英雄带队 + 队伍总负重 ≥ 2 万 · 运回幸存者', desc: '救援幸存者' },
   };
   /* 奇观探索参数 */
-  /* v91.31：探查**不限次**；同时最多 maxActive 队在途；抵达后每 accrueSec 现实秒累计 1 份奖励。 */
-  DATA.WONDER_CFG = { maxActive: 3, marchRealSec: 3600, accrueSec: 600 };
+  /* v91.31：探查**不限次**；同时最多 maxActive 队在途；抵达后每 accrueSec 现实秒累计 1 份奖励。
+     v91.50（老板）：「探索结束（满 1h）自动返回触发城市」+「显示剩余探索时间」——
+     此前队伍**永远不返回**（只有奇观消失才返航）→ 累计 100+ 份、英雄永久占用。
+     新增 `exploreSec`：抵达后**持续时间**（默认 4 现实小时），到时**自动返航**
+     （返航耗时按已行进比例，与"奇观消失返航"同一公式；抵达落账 + 英雄归位）。 */
+  DATA.WONDER_CFG = { maxActive: 3, marchRealSec: 3600, accrueSec: 600, exploreSec: 14400 };
 
   /* 取某城的档位加成（唯一出口：别处不要再按 type 分支） */
   DATA.CITY_PERK_KEYS = ['prodPct', 'taxPct', 'buildSlot', 'storePct', 'troopSlot'];

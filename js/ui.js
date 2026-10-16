@@ -2255,9 +2255,12 @@
    *   的**当前分片**槽位，异星球的队在切换时会丢）；出队列**按星球分组**渲染（各球奇观不同）。
    * ============================================================ */
   ui._pheOf = function (e, now) {
+    var W = DATA.WONDER_CFG || { marchRealSec: 3600, exploreSec: 14400 };
     if (e.returning) return { ico: '↩︎', name: '返回', t: (e.retArrive - now) / 1000, retro: true };
     if (now < e.arriveAt) return { ico: '🛫', name: '行军', t: (e.arriveAt - now) / 1000, retro: false };
-    return { ico: '⛏', name: '探查累计', t: 0, retro: false };
+    /* v91.50（老板）：「在探索队列补充剩余探索时间」—— 累计阶段显示**距自动返航还剩多久**。 */
+    var until = e.exploreUntil || (e.arriveAt + (W.exploreSec || 14400) * 1000);
+    return { ico: '⛏', name: '探查累计', t: Math.max(0, (until - now) / 1000), retro: false, isAccrue: true };
   };
   /* 全星球奇观探索队 → 行内。
      vFull=true（军务总览 7 列：目标/出发/主将/方式/兵力/进度/操作）；
@@ -2274,13 +2277,19 @@
         var city = GAME.cityByIdAnywhere ? GAME.cityByIdAnywhere(e.cityId) : GAME.cityById(e.cityId);
         var n = e.troops || 0;
         var baseSec = (W.marchRealSec || 3600);
-        var pct = Math.max(0, Math.min(100, Math.round((ph.retro || ph.t <= 0) ? (ph.retro ? 0 : 100)
-          : (1 - ph.t / baseSec) * 100)));
-        var left = U.durExact(ph.t);
+        var expSec = (W.exploreSec || 14400);
+        var pct, label;
+        if (ph.isAccrue) {                       /* v91.50：累计阶段 —— 进度按**探索期**（exploreSec）走 */
+          var elapsed = Math.max(0, expSec - ph.t);
+          pct = Math.max(0, Math.min(100, Math.round(elapsed / expSec * 100)));
+          label = '⛏ 探查累计 · 累计 ' + (e.accrued || 0) + ' 份 · 距返航 ' + U.durExact(ph.t);
+        } else {
+          pct = Math.max(0, Math.min(100, Math.round((ph.retro || ph.t <= 0) ? 0 : (1 - ph.t / baseSec) * 100)));
+          label = ph.ico + ' ' + ph.name + ' · ' + pct + '% · 余 ' + U.durExact(ph.t);
+        }
         var progCell = '<td style="min-width:150px;">' +
             '<div class="pbar"><i style="width:' + pct + '%"></i></div>' +
-            '<span style="font-size:var(--fs-cap);color:var(--text-dim);">' + ph.ico + ' ' + ph.name + ' · ' + pct + '% · ' +
-            (ph.t > 0 ? ('余 ' + left) : '已抵达（累计 ' + (e.accrued || 0) + ' 份）') + '</span></td>';
+            '<span style="font-size:var(--fs-cap);color:var(--text-dim);">' + label + '</span></td>';
         var opCell = '<td class="ctr" style="white-space:nowrap;">' +
           (e.returning ? '' : '<button class="btn sm" data-action="wonder-recall" data-pid="' + pl.id + '" data-gen="' + U.escape(e.genId || '') + '" title="撤军：下令返航（英雄随之归位）">召回</button> ') +
           '<button class="btn sm" data-action="wonder-open" data-pid="' + pl.id + '" title="查看该星球的奇观（产出 / 探查队列）">查看</button></td>';
@@ -16918,7 +16927,8 @@
         (present ? '今日在场' : '<span style="color:var(--red-light);">今日未出现</span>') +
         '　·　' + cdLine +
         '　·　在途 ' + active + ' / ' + (W.maxActive || 3) + ' 队　·　行军 ' + Math.round((W.marchRealSec || 3600) / 60) +
-        ' 分抵达后**持续累计**（每 ' + Math.round((W.accrueSec || 600) / 60) + ' 分 +1 份）</div>' +
+        ' 分抵达后**持续累计**（每 ' + Math.round((W.accrueSec || 600) / 60) + ' 分 +1 份 · 满 ' +
+        Math.round((W.exploreSec || 14400) / 3600) + ' 小时自动返航）</div>' +
       '<div class="ui-sub" title="' + U.escape(DIFF_TIP) + '">可能产出　<span style="color:var(--text-dim);">（悬停看「采集 / 派军搜查」差异）</span></div>' +
       (rows || '<div class="q-empty">—</div>') + '</div>';
   };
@@ -16952,14 +16962,20 @@
       var g = null; (GAME.state.generals || []).forEach(function (x) { if (x.id === e.genId) g = x; });
       var city = GAME.cityByIdAnywhere ? GAME.cityByIdAnywhere(e.cityId) : GAME.cityById(e.cityId);
       var accStr = (e.acc || []).map(function (x) { return ((DATA.ITEM_BY_ID[x.id] || {}).name || x.id) + '×' + x.n; }).join('、') || '—';
-      var phase, tsec;
+      var phase, tsec, untilNote = '';
       if (e.returning) { phase = '↩︎ 返回中'; tsec = Math.max(0, (e.retArrive - now) / 1000); }
       else if (now < e.arriveAt) { phase = '🛫 行军'; tsec = Math.max(0, (e.arriveAt - now) / 1000); }
-      else { phase = '⛏ 探查累计'; tsec = 0; }
+      else {
+        /* v91.50（老板）：「在探索队列补充剩余探索时间」—— 累计阶段显示**距自动返航**还剩多久。 */
+        phase = '⛏ 探查累计';
+        var _until = e.exploreUntil || (e.arriveAt + (W.exploreSec || 14400) * 1000);
+        tsec = Math.max(0, (_until - now) / 1000);
+        untilNote = '　·　剩 ';
+      }
       h += '<div class="stat-row"><span class="sr-name">' + (g ? U.escape(g.name) + ' Lv' + g.level : '无将')
         + (city ? '　<i class="gd-sub">' + U.escape(city.name) + '</i>' : '') + '</span>'
         + '<span class="sr-sub">' + U.numText(e.troops || 0, 0) + ' 兵　·　' + phase
-        + (tsec > 0 ? ' ' + U.dur(tsec) : '') + '　·　累计 ' + (e.accrued || 0) + ' 份'
+        + (tsec > 0 ? (untilNote + U.durExact(tsec)) : '') + '　·　累计 ' + (e.accrued || 0) + ' 份'
         + (e.returning ? '' : '　<button class="btn sm" data-action="wonder-recall" data-pid="' + pid + '" data-gen="' + U.escape(e.genId || '') + '" title="撤军：下令返航（英雄随之归位）">召回</button>')
         + '</span></div>';
       h += '<div class="ui-sub" style="margin:-2px 0 4px;">　收获：' + U.escape(accStr) + '</div>';

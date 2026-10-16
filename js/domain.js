@@ -5191,9 +5191,14 @@
       if (take > 0) { army[id] = take; total += take; }
     });
     if (act.needArmy && total <= 0) return { ok: false, msg: '未配置兵种或城中无兵' };
-    /* 空闲英雄（不固定 · 每次现取一枚）——与自动出征同一判据：只取 idle。 */
+    /* 空闲英雄（不固定 · 每次现取一枚）——与自动出征同一判据：只取 idle。
+       v91.50：**排除君主**（君主是本局化身，不该被自动派去探索/或冒出「无将」那种怪状）。 */
     var gen = null;
-    (GAME.state.generals || []).forEach(function (g) { if (!gen && (!g.status || g.status === 'idle')) gen = g; });
+    (GAME.state.generals || []).forEach(function (g) {
+      if (gen || (g.status && g.status !== 'idle')) return;
+      if (GAME.isLordGeneral && GAME.isLordGeneral(g)) return;
+      gen = g;
+    });
     if (!gen) return { ok: false, msg: '城中无空闲英雄' };
     return GAME.wonderExplore(pid, actId, city.id, army, gen.id);
   };
@@ -8216,6 +8221,8 @@
     pl.wonderExp.push({
       act: actId, cityId: city.id, genId: genId || null, army: U.deep(army), troops: n,
       t0: now, arriveAt: now + (W.marchRealSec || 3600) * 1000,
+      /* v91.50：探索**持续时间**到点（= 抵达 + exploreSec）→ 自动返航（见 wonderTick）。 */
+      exploreUntil: 0,   /* 抵达时补算（= arriveAt + exploreSec×1000） */
       acc: [], accrued: 0, returning: false, retArrive: 0,
     });
     if (_gen) _gen.status = 'wonderExplore';   /* v91.45：标记"奇观探索中"—— 不可再被委派其他行动 */
@@ -8292,7 +8299,7 @@
       var keep = [];
       pl.wonderExp.forEach(function (e) {
         if (e.returning) {
-          if (now >= e.retArrive) { GAME._wonderBank(e, def, '（奇观消失 · 已累计）'); return; }
+          if (now >= e.retArrive) { GAME._wonderBank(e, def, '（归队）'); return; }
           keep.push(e); return;
         }
         if (!present) {
@@ -8306,6 +8313,16 @@
         if (now >= e.arriveAt) {
           var due = Math.floor((now - e.arriveAt) / ACC);
           while ((e.accrued || 0) < due) GAME._wonderAccrueItem(def, e);
+          /* v91.50（老板）：「探索结束（满 1h）自动返回触发城市」——
+             抵达后累计 `exploreSec`（默认 4 现实小时）→ **自动返航**（不再永久挖、
+             占着英雄不放）。返航时长按已行进比例（与召回/奇观消失同一公式）。 */
+          if (!e.exploreUntil) e.exploreUntil = e.arriveAt + (W.exploreSec || 14400) * 1000;
+          if (now >= e.exploreUntil) {
+            e.returning = true;
+            e.retArrive = now + Math.round((W.marchRealSec || 3600) * 1000);   /* 已抵达 → 返航 ≈ 全程 */
+            GAME.log('✨ 奇观「' + (def ? def.name : '?') + '」探查期满 —— 队伍携已累计奖励返航（约 '
+              + Math.round((W.marchRealSec || 3600) / 60) + ' 分后归队）', 'sys', 'wild');
+          }
         }
         keep.push(e);
       });
