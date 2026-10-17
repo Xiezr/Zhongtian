@@ -1676,7 +1676,7 @@ import './ui.js';
       if (!silent) ui.toast(noMsg);
       return { ok: false, msg: noMsg };
     }
-    s.res.gold -= price * can;
+    GAME.goldAdd(-price * can);   /* v91.67：旧币唯一出口 */
     GAME.items.add(itemId, can);   /* v91.63：走归属出口 */
     _day.bought[itemId] = _bought + can;
     GAME.log('游商购买：' + item.name + (can > 1 ? ' ×' + can : ''));

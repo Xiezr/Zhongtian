@@ -114,7 +114,7 @@ import './state.js';
         continue;
       }
       if (k === 'gold') { GAME.goldAdd(-cost[k]); continue; }
-      R[k] = (R[k] || 0) - cost[k];
+      GAME.city.sub(ct, k, cost[k]);   /* v91.67：城市资源扣减唯一入口 */
     }
   };
   /* 当前城语境的两个薄转发（既有调用点语义不变） */
@@ -140,7 +140,7 @@ import './state.js';
     for (var k in cost) {
       if (k === 'jewel') continue;            /* 同上：珠宝不返还 */
       if (k === 'gold') { GAME.goldAdd(Math.floor(cost[k] * ratio)); continue; }
-      R[k] = (R[k] || 0) + Math.floor(cost[k] * ratio);
+      GAME.city.add(city || GAME.currentCity(), k, Math.floor(cost[k] * ratio));   /* v91.67 */
     }
   };
 
@@ -1785,7 +1785,7 @@ import './state.js';
     var R = GAME.res(city), give = {};
     Object.keys(paid).forEach(function (k) {
       var back = Math.floor((paid[k] || 0) * 0.8);
-      if (back > 0) { R[k] = (R[k] || 0) + back; give[k] = back; }
+      if (back > 0) { GAME.city.add(city, k, back); give[k] = back; }   /* v91.67 */
     });
     /* 移除该条（按 qid；老档无 qid 则按对象引用） */
     s.queues.train = (s.queues.train || []).filter(function (x) { return x !== q && (q.qid == null || x.qid !== q.qid); });
@@ -1813,7 +1813,7 @@ import './state.js';
       return { ok: false, msg: '旧币不足（需 ' + U.fmt(cost) + '，现有 ' + U.fmt(s.res.gold || 0) + '）' };
     }
     var add = q.totalTime * frac;
-    s.res.gold -= cost;
+    GAME.goldAdd(-cost);   /* v91.67 */
     q.elapsed = Math.min(q.totalTime, (q.elapsed || 0) + add);
     q.boosted = (q.boosted || 0) + add;
     var tn = (DATA.TROOPS[q.troopId] || {}).name || q.troopId;
@@ -2089,7 +2089,7 @@ import './state.js';
       rows.forEach(function (r) {
         var loss = GAME.overflowLossOf(r.excess, capped);
         if (loss <= 0) return;
-        R[r.k] = Math.max(0, (R[r.k] || 0) - loss);
+        GAME.city.sub(ct, r.k, loss);   /* v91.67（下界恒 0） */
         losses[r.k] = (losses[r.k] || 0) + loss;
         total += loss; any = true;
       });
@@ -2331,7 +2331,7 @@ import './state.js';
     var s = GAME.state;
     var cost = GAME.innRefreshCost();
     if ((s.res.gold || 0) < cost) return { ok: false, msg: '旧币不足（需 ' + U.fmt(cost) + '）' };
-    s.res.gold -= cost;
+    GAME.goldAdd(-cost);   /* v91.67 */
     GAME.innRefresh(true);
     return { ok: true, msg: '已另请一批贤士（-' + U.fmt(cost) + '旧币）' };
   };
@@ -2459,8 +2459,8 @@ import './state.js';
     if (amount <= 0) return { ok: false, msg: '数量无效' };
     if ((s.res[from] || 0) < amount) return { ok: false, msg: '库存不足' };
     var gain = Math.floor(amount * GAME.marketRate());
-    s.res[from] -= amount;
-    s.res[to] = (s.res[to] || 0) + gain;
+    GAME.city.sub(GAME.currentCity(), from, amount);   /* v91.67 */
+    GAME.city.add(GAME.currentCity(), to, gain);
     GAME.statBump('trades', 1);
     GAME.log('市易：以 ' + U.fmt(amount) + ' 换得 ' + U.fmt(gain) + '。', 'sys', 'trade');
     return { ok: true, msg: '换得 ' + U.fmt(gain) + '（折损 ' + Math.round((1 - GAME.marketRate()) * 100) + '%）' };
@@ -2559,8 +2559,8 @@ import './state.js';
     if ((s.res[res] || 0) < amount) return { ok: false, msg: '库存不足' };
     var gold = GAME.marketSellGold(res, amount);
     if (gold < 1) return { ok: false, msg: '数量太少 —— 至少 ' + U.fmt(GAME.marketSellMin(res)) + ' 单位才够换 1 旧币' };
-    s.res[res] -= amount;
-    s.res.gold = (s.res.gold || 0) + gold;
+    GAME.city.sub(GAME.currentCity(), res, amount);    /* v91.67 */
+    GAME.goldAdd(gold);
     GAME.mktSlipRecord(gold);                  /* v89.95：物多价贱 —— 记账（通商券额度一并扣） */
     GAME.statBump('trades', 1);
     GAME.log('市易：售出 ' + U.fmt(amount) + ' 得旧币 ' + U.fmt(gold) + '。' + GAME.mktSlipText(), 'sys', 'trade');
@@ -2612,8 +2612,8 @@ import './state.js';
     if ((s.res.gold || 0) < gold) return { ok: false, msg: '旧币不足' };
     var gain = GAME.marketBuyUnits(res, gold);
     if (gain < 1) return { ok: false, msg: '旧币太少 —— 至少 ' + U.fmt(GAME.marketBuyMin(res)) + ' 旧币才够换 1 单位' };
-    s.res.gold -= gold;
-    s.res[res] = (s.res[res] || 0) + gain;
+    GAME.goldAdd(-gold);                              /* v91.67 */
+    GAME.city.add(GAME.currentCity(), res, gain);
     GAME.statBump('trades', 1);
     GAME.log('市易：以旧币 ' + U.fmt(gold) + ' 购入 ' + U.fmt(res) + ' ' + U.fmt(gain) + '。', 'sys', 'trade');
     return { ok: true, msg: '购得 ' + U.fmt(gain) + '（折损 ' + Math.round((c.loss || 0) * 100) + '%）' };
@@ -2906,7 +2906,7 @@ import './state.js';
       });
     }
     /* 岁贡旧币是货币，不受战储仓上限约束 */
-    s.res.gold = (s.res.gold || 0) + gold;
+    GAME.goldAdd(gold);   /* v91.67 */
     /* ⛔ v90.93：声望的赛季国策增益（STORY.repMult）随年号纪元退役。 */
     s.rep = (s.rep || 0) + rep;
     var got = [];
@@ -3916,8 +3916,7 @@ import './state.js';
     for (var k in fs) { n++; sumTax += GAME.fortEffectOf(fs[k]).tax; }
     if (!n) return { days: capped, gold: 0, forts: 0 };
     var gold = Math.round(sumTax * capped);
-    if (GAME.goldAdd) GAME.goldAdd(gold);
-    else s.res.gold = (s.res.gold || 0) + gold;
+    GAME.goldAdd(gold);   /* v91.67：旧币唯一出口 */
     GAME.log('🏪 商旅税所：' + n + ' 处前哨过境商税 +' + U.fmt(gold) + ' 旧币（每现实日 · 随前哨等级 · 与岁贡同轴）', 'sys', 'trade');
     return { days: capped, gold: gold, forts: n };
   };
@@ -4832,7 +4831,7 @@ import './state.js';
     if ((s.res.gold || 0) < cost) {
       return { ok: false, msg: '旧币不足（需 ' + U.fmt(cost) + '，现有 ' + U.fmt(s.res.gold || 0) + '）' };
     }
-    s.res.gold -= cost;
+    GAME.goldAdd(-cost);   /* v91.67 */
     q.elapsed = q.totalTime;      /* 下一拍由既有队列推进统一结算（与在线推进同一出口） */
     GAME.log('💰 花旧币提速：' + (what || '工程') + '（-' + U.fmt(cost) + ' 旧币，立等可成）');
     return { ok: true, cost: cost, msg: (what || '工程') + ' 提速完成（-' + U.fmt(cost) + ' 旧币，下一拍落成）' };
@@ -6566,7 +6565,8 @@ import './state.js';
     var asked = n;
     n = Math.min(n, affordable);
     city.towers = GAME.towersBuiltOf(city) + n;
-    for (var k in GAME.towerCostOf(n)) R[k] = (R[k] || 0) - GAME.towerCostOf(n)[k];
+    var _twc = GAME.towerCostOf(n);
+    for (var k in _twc) GAME.city.sub(city, k, _twc[k]);   /* v91.67 */
     var msg = city.name + ' 新筑' + TW_T().name + ' ' + n + ' 座（共 ' + city.towers + ' / ' +
       GAME.towerCapOf(city) + '）· 守备力 ' + GAME.cityDefense(city) +
       (asked > n ? '　（资源所限，未按请求的 ' + asked + ' 座）' : '');
@@ -7762,8 +7762,8 @@ import './state.js';
   /* 落账（唯一出口）：出发城 −ship，目的地 +landed */
   GAME.transportApply = function (plan, from, to) {
     var R = GAME.res(from), R2 = GAME.res(to);
-    R[plan.key] = (R[plan.key] || 0) - plan.ship;
-    R2[plan.key] = (R2[plan.key] || 0) + plan.landed;
+    GAME.city.sub(from, plan.key, plan.ship);            /* v91.67 */
+    GAME.city.add(to, plan.key, plan.landed);
     return plan;
   };
   /* 一批辎重的抵达落账（随军运输用）：逐项结算，凑一句可读的账。
@@ -7779,8 +7779,7 @@ import './state.js';
       var plan = GAME.transportPlanOf(from, to, k, cargo[k]);
       GAME.transportApply(plan, from, to);
       if (plan.stay > 0) {
-        var R = GAME.res(from);
-        R[k] = (R[k] || 0) + plan.stay;          /* 装不下 → 原路退回（未起运，不抽损耗） */
+        GAME.city.add(from, k, plan.stay);       /* v91.67：装不下 → 原路退回（未起运，不抽损耗） */
         out.back += plan.stay;
       }
       out.landed += plan.landed;
@@ -7979,13 +7978,13 @@ import './state.js';
         return { ok: false, msg: GAME.resName(k) + '不足（需 ' + U.fmt(opt.cost[k]) + '）' };
       }
     }
-    for (k in (opt.cost || {})) R[k] = (R[k] || 0) - opt.cost[k];
+    for (k in (opt.cost || {})) GAME.city.sub(city, k, opt.cost[k]);   /* v91.67 */
     var lv = GAME.buildingLevel(city, 'guanfu') || city.level || 1;
     var gain = '';
     if (optId === 'levy') {
       /* 征调：按政务厅等级复利给一笔物资（与 NPC 城库存同一套"等级 → 量"的口径） */
       var amt = Math.round(3000 * Math.pow(1.5, lv - 1) * (1 + GAME.perkNum(city, 'prodPct')));
-      ['grain', 'wood', 'stone', 'iron'].forEach(function (kk) { R[kk] = (R[kk] || 0) + amt; });
+      ['grain', 'wood', 'stone', 'iron'].forEach(function (kk) { GAME.city.add(city, kk, amt); });   /* v91.67 */
       gain = '净水/生物质/电能/废钢各 +' + U.fmt(amt);
     } else if (optId === 'fest') {
       GAME.heartsComfortAdd(8);      /* v89.177：民心 +8 走安抚通道 */

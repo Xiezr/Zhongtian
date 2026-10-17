@@ -477,7 +477,7 @@ import './state.js';
     qty = Math.max(1, Math.min(have, Math.floor(Number(qty) || have)));
     var gold = unit * qty;
     GAME.items.sub(id, qty);   /* v91.63：寄售走归属出口 */
-    s.res.gold = (s.res.gold || 0) + gold;
+    GAME.goldAdd(gold);   /* v91.67 */
     GAME.statBump('trades', 1);
     GAME.log('🎒 寄售「' + item.name + '」×' + qty + ' → 得旧币 ' + U.fmt(gold) + '（购买价 75% 回收）', 'sys', 'trade');
     return { ok: true, msg: '寄售「' + item.name + '」×' + qty + '，得旧币 ' + U.fmt(gold), gold: gold, n: qty };
@@ -714,8 +714,8 @@ import './state.js';
         var cap = GAME.storeCapOf ? GAME.storeCapOf(GAME.currentCity(), k) : 0;
         var amt = rnd(rt[0], rt[1]);
         var before = R[k] || 0;
-        R[k] = cap > 0 ? Math.min(cap, before + amt) : before + amt;
-        var got = R[k] - before;
+        GAME.city.add(GAME.currentCity(), k, amt, cap > 0);   /* v91.67：封顶走唯一口径 */
+        var got = (R[k] || 0) - before;
         if (got > 0) parts.push(RN[k] + ' +' + U.fmt(got));
       });
     /* 旧币 */
@@ -1022,7 +1022,7 @@ import './state.js';
     var s = GAME.state, next = S.nextRank();
     var chk = S.canPromote();
     if (!chk.ok) return chk;
-    s.res.gold -= next.gold;
+    GAME.goldAdd(-next.gold);   /* v91.67 */
     for (var j in next.jewel) {
       GAME.items.sub(j, next.jewel[j]);   /* v91.63 */
     }

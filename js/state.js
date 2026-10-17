@@ -1938,7 +1938,7 @@ import './data.js';
       if ((s.res.gold || 0) < cost.gold) {
         return { ok: false, msg: '迁都需 ' + U.fmt(cost.gold) + ' 旧币（从府库扣）' };
       }
-      s.res.gold -= cost.gold;
+      GAME.goldAdd(-cost.gold);   /* v91.67 */
     }
     s.mainCityId = city.id;
     GAME.log('🏯 定「' + city.name + '」为主城（' + (DATA.MAIN_CITY.desc || '') + '）', 'sys', 'admin');
@@ -2529,11 +2529,9 @@ import './data.js';
         if (k === 'pop') continue;
         var cap = (k === 'gold') ? 0 : (caps[k] != null ? caps[k] : GAME.storeCapOf(ct, k));
         /* v89.158：只封增长、不削存量（同在线口径） */
-        if (k === 'gold' || !(cap > 0)) {
-          R[k] = (R[k] || 0) + prod[k] * secReal * rate;
-        } else if ((R[k] || 0) < cap) {
-          R[k] = Math.min(cap, (R[k] || 0) + prod[k] * secReal * rate);
-        }
+        /* v91.67：产出入账走资源归属出口（封顶复用 addResCapped 的"只封增长"口径） */
+        if (k === 'gold' || !(cap > 0)) GAME.city.add(ct, k, prod[k] * secReal * rate);
+        else if ((R[k] || 0) < cap) GAME.city.add(ct, k, prod[k] * secReal * rate, true);
       }
     });
     if (GAME.artGain && DATA.ARTIFACT && DATA.ARTIFACT.perGameHour) {
@@ -2727,11 +2725,9 @@ import './data.js';
         if (k === 'pop') continue;
         var cap = (k === 'gold') ? 0 : (caps[k] != null ? caps[k] : GAME.storeCapOf(ct, k));
         /* v89.158：只封增长、不削存量（与在线 tickOnce 同一口径） */
-        if (k === 'gold' || !(cap > 0)) {
-          R[k] = (R[k] || 0) + prod[k] * secReal;
-        } else if ((R[k] || 0) < cap) {
-          R[k] = Math.min(cap, (R[k] || 0) + prod[k] * secReal);
-        }
+        /* v91.67：产出入账走城市资源归属出口 */
+        if (k === 'gold' || !(cap > 0)) GAME.city.add(ct, k, prod[k] * secReal);
+        else if ((R[k] || 0) < cap) GAME.city.add(ct, k, prod[k] * secReal, true);
       }
       /* v89.36：军粮维持耗粮已废除（不再扣粮、不再缺粮计时）。 */
     });
@@ -3530,11 +3526,9 @@ import './data.js';
            顶到上限之上后，**下一 tick 被静默削回 cap**（实测 500 万 → 366.7 万，丢 133 万）。
            战储仓面板的文案本来就是"超出部分将停止增长"——现在代码与文案一致。
            旧币是货币，不受储量上限约束（同前口径）。 */
-        if (rk2 === 'gold' || !(cap > 0)) {
-          R[rk2] = (R[rk2] || 0) + p[rk2];
-        } else if ((R[rk2] || 0) < cap) {
-          R[rk2] = Math.min(cap, (R[rk2] || 0) + p[rk2]);
-        }
+        /* v91.67：产出入账走城市资源归属出口（只封增长） */
+        if (rk2 === 'gold' || !(cap > 0)) GAME.city.add(ct, rk2, p[rk2]);
+        else if ((R[rk2] || 0) < cap) GAME.city.add(ct, rk2, p[rk2], true);
         /* 已达 / 超上限：不增不减（存量保留） */
       }
     });
@@ -4275,7 +4269,7 @@ import './data.js';
       for (var k3 in { grain: 1, wood: 1, stone: 1, iron: 1, gold: 1 }) {
         var pct = severity * (L.resPct || 0.15);
         var lost = Math.floor((R[k3] || 0) * pct);
-        if (lost > 0) { R[k3] -= lost; out.resLost[k3] = lost; }
+        if (lost > 0) { GAME.city.sub(city, k3, lost); out.resLost[k3] = lost; }   /* v91.67 */
       }
     }
     /* ---- 围墙掉级：破防得手才掉（与"墙被打穿"语义对齐） ---- */

@@ -7502,7 +7502,7 @@ window.GAME = window.GAME || {};
       if ((s.res.gold || 0) < cost.gold) {
         return { ok: false, msg: '迁都需 ' + U.fmt(cost.gold) + ' 旧币（从府库扣）' };
       }
-      s.res.gold -= cost.gold;
+      GAME.goldAdd(-cost.gold);   /* v91.67 */
     }
     s.mainCityId = city.id;
     GAME.log('🏯 定「' + city.name + '」为主城（' + (DATA.MAIN_CITY.desc || '') + '）', 'sys', 'admin');
@@ -8093,11 +8093,9 @@ window.GAME = window.GAME || {};
         if (k === 'pop') continue;
         var cap = (k === 'gold') ? 0 : (caps[k] != null ? caps[k] : GAME.storeCapOf(ct, k));
         /* v89.158：只封增长、不削存量（同在线口径） */
-        if (k === 'gold' || !(cap > 0)) {
-          R[k] = (R[k] || 0) + prod[k] * secReal * rate;
-        } else if ((R[k] || 0) < cap) {
-          R[k] = Math.min(cap, (R[k] || 0) + prod[k] * secReal * rate);
-        }
+        /* v91.67：产出入账走资源归属出口（封顶复用 addResCapped 的"只封增长"口径） */
+        if (k === 'gold' || !(cap > 0)) GAME.city.add(ct, k, prod[k] * secReal * rate);
+        else if ((R[k] || 0) < cap) GAME.city.add(ct, k, prod[k] * secReal * rate, true);
       }
     });
     if (GAME.artGain && DATA.ARTIFACT && DATA.ARTIFACT.perGameHour) {
@@ -8291,11 +8289,9 @@ window.GAME = window.GAME || {};
         if (k === 'pop') continue;
         var cap = (k === 'gold') ? 0 : (caps[k] != null ? caps[k] : GAME.storeCapOf(ct, k));
         /* v89.158：只封增长、不削存量（与在线 tickOnce 同一口径） */
-        if (k === 'gold' || !(cap > 0)) {
-          R[k] = (R[k] || 0) + prod[k] * secReal;
-        } else if ((R[k] || 0) < cap) {
-          R[k] = Math.min(cap, (R[k] || 0) + prod[k] * secReal);
-        }
+        /* v91.67：产出入账走城市资源归属出口 */
+        if (k === 'gold' || !(cap > 0)) GAME.city.add(ct, k, prod[k] * secReal);
+        else if ((R[k] || 0) < cap) GAME.city.add(ct, k, prod[k] * secReal, true);
       }
       /* v89.36：军粮维持耗粮已废除（不再扣粮、不再缺粮计时）。 */
     });
@@ -9094,11 +9090,9 @@ window.GAME = window.GAME || {};
            顶到上限之上后，**下一 tick 被静默削回 cap**（实测 500 万 → 366.7 万，丢 133 万）。
            战储仓面板的文案本来就是"超出部分将停止增长"——现在代码与文案一致。
            旧币是货币，不受储量上限约束（同前口径）。 */
-        if (rk2 === 'gold' || !(cap > 0)) {
-          R[rk2] = (R[rk2] || 0) + p[rk2];
-        } else if ((R[rk2] || 0) < cap) {
-          R[rk2] = Math.min(cap, (R[rk2] || 0) + p[rk2]);
-        }
+        /* v91.67：产出入账走城市资源归属出口（只封增长） */
+        if (rk2 === 'gold' || !(cap > 0)) GAME.city.add(ct, rk2, p[rk2]);
+        else if ((R[rk2] || 0) < cap) GAME.city.add(ct, rk2, p[rk2], true);
         /* 已达 / 超上限：不增不减（存量保留） */
       }
     });
@@ -9839,7 +9833,7 @@ window.GAME = window.GAME || {};
       for (var k3 in { grain: 1, wood: 1, stone: 1, iron: 1, gold: 1 }) {
         var pct = severity * (L.resPct || 0.15);
         var lost = Math.floor((R[k3] || 0) * pct);
-        if (lost > 0) { R[k3] -= lost; out.resLost[k3] = lost; }
+        if (lost > 0) { GAME.city.sub(city, k3, lost); out.resLost[k3] = lost; }   /* v91.67 */
       }
     }
     /* ---- 围墙掉级：破防得手才掉（与"墙被打穿"语义对齐） ---- */
@@ -11352,7 +11346,7 @@ window.GAME = window.GAME || {};
     qty = Math.max(1, Math.min(have, Math.floor(Number(qty) || have)));
     var gold = unit * qty;
     GAME.items.sub(id, qty);   /* v91.63：寄售走归属出口 */
-    s.res.gold = (s.res.gold || 0) + gold;
+    GAME.goldAdd(gold);   /* v91.67 */
     GAME.statBump('trades', 1);
     GAME.log('🎒 寄售「' + item.name + '」×' + qty + ' → 得旧币 ' + U.fmt(gold) + '（购买价 75% 回收）', 'sys', 'trade');
     return { ok: true, msg: '寄售「' + item.name + '」×' + qty + '，得旧币 ' + U.fmt(gold), gold: gold, n: qty };
@@ -11589,8 +11583,8 @@ window.GAME = window.GAME || {};
         var cap = GAME.storeCapOf ? GAME.storeCapOf(GAME.currentCity(), k) : 0;
         var amt = rnd(rt[0], rt[1]);
         var before = R[k] || 0;
-        R[k] = cap > 0 ? Math.min(cap, before + amt) : before + amt;
-        var got = R[k] - before;
+        GAME.city.add(GAME.currentCity(), k, amt, cap > 0);   /* v91.67：封顶走唯一口径 */
+        var got = (R[k] || 0) - before;
         if (got > 0) parts.push(RN[k] + ' +' + U.fmt(got));
       });
     /* 旧币 */
@@ -11897,7 +11891,7 @@ window.GAME = window.GAME || {};
     var s = GAME.state, next = S.nextRank();
     var chk = S.canPromote();
     if (!chk.ok) return chk;
-    s.res.gold -= next.gold;
+    GAME.goldAdd(-next.gold);   /* v91.67 */
     for (var j in next.jewel) {
       GAME.items.sub(j, next.jewel[j]);   /* v91.63 */
     }
@@ -12207,6 +12201,69 @@ window.GAME = window.GAME || {};
   };
 
   /* ============================================================
+   * 资源写（v91.67 · 第六刀第一小刀）：**城市资源的唯一加减入口**
+   * ------------------------------------------------------------
+   * 背景：`GAME.res(city)` 只解决了"取哪个对象"，加减仍是 29 处裸写
+   *   （`R[k] = (R[k]||0) - cost[k]` / `+ amt` / `Math.max(0,...)`），
+   *   没有统一的下界与上限口径 → 资源可能为负、也可能超出仓容。
+   *
+   * · `add(city, k, n)`    加的**唯一入口**：下界 0；`cap=true` 时按仓容封顶。
+   * · `sub(city, k, n)`    扣的**唯一入口**：下界恒 0（不足只扣到 0，返回实扣量）。
+   * · `take(city, cost)`   **原子扣费**：任一资源不足 → 整单拒绝、不动账。
+   * 数据仍在 `city.res`（存档零迁移）。
+   * ============================================================ */
+  function resOf(city) { return GAME.res ? GAME.res(city) : ((city && city.res) || {}); }
+  function num(n) { n = Math.floor(Number(n) || 0); return n > 0 ? n : 0; }
+
+  C.add = function (city, k, n, cap) {
+    /* 快速路径（无封顶）—— 逐城 tick 的产量入账走这里，必须够轻。 */
+    var add = n >= 0 ? Math.floor(n) || 0 : 0;
+    if (!k || add <= 0) return resOf(city)[k] || 0;
+    if (!cap) {
+      var R = resOf(city);
+      var v = (R[k] || 0) + add;
+      R[k] = v;
+      return v;
+    }
+    /* 封顶口径**复用既有唯一出口** `addResCapped`（只封增长、不削存量 ·
+       存量已超上限时一点不加），避免在这里另造第二套"封顶"语义。 */
+    if (GAME.addResCapped) return GAME.addResCapped(k, add, city).cur;
+    var R2 = resOf(city);
+    R2[k] = (R2[k] || 0) + add;
+    return R2[k];
+  };
+
+  C.sub = function (city, k, n) {
+    var R = resOf(city), want = num(n), cur = num(R[k]);
+    var cut = Math.min(cur, want);
+    if (cut <= 0) return 0;
+    R[k] = cur - cut;
+    return cut;
+  };
+
+  /* 原子扣费：`cost` = {grain,wood,stone,iron,...}（time/jewel/gold 由各自出口处理） */
+  C.take = function (city, cost) {
+    var lack = [];
+    for (var k in (cost || {})) {
+      if (k === 'time' || k === 'jewel' || k === 'gold') continue;
+      var need = num(cost[k]);
+      if (need <= 0) continue;
+      var have = num(resOf(city)[k]);
+      if (have < need) lack.push({ k: k, need: need, have: have });
+    }
+    if (lack.length) {
+      return { ok: false, msg: '资源不足：' + lack.map(function (x) {
+        return (GAME.resName ? GAME.resName(x.k) : x.k);
+      }).join('、'), lack: lack };
+    }
+    for (var k2 in cost) {
+      if (k2 === 'time' || k2 === 'jewel' || k2 === 'gold') continue;
+      C.sub(city, k2, cost[k2]);
+    }
+    return { ok: true, msg: '' };
+  };
+
+  /* ============================================================
    * 不变量（供 smoke 守卫调用；返回 [{city, msg}]，空数组 = 全部通过）
    * 这些是"城市一旦写坏就会静默扩散"的量，界面上未必立刻可见。
    * ============================================================ */
@@ -12373,7 +12430,7 @@ window.GAME = window.GAME || {};
         continue;
       }
       if (k === 'gold') { GAME.goldAdd(-cost[k]); continue; }
-      R[k] = (R[k] || 0) - cost[k];
+      GAME.city.sub(ct, k, cost[k]);   /* v91.67：城市资源扣减唯一入口 */
     }
   };
   /* 当前城语境的两个薄转发（既有调用点语义不变） */
@@ -12399,7 +12456,7 @@ window.GAME = window.GAME || {};
     for (var k in cost) {
       if (k === 'jewel') continue;            /* 同上：珠宝不返还 */
       if (k === 'gold') { GAME.goldAdd(Math.floor(cost[k] * ratio)); continue; }
-      R[k] = (R[k] || 0) + Math.floor(cost[k] * ratio);
+      GAME.city.add(city || GAME.currentCity(), k, Math.floor(cost[k] * ratio));   /* v91.67 */
     }
   };
 
@@ -14044,7 +14101,7 @@ window.GAME = window.GAME || {};
     var R = GAME.res(city), give = {};
     Object.keys(paid).forEach(function (k) {
       var back = Math.floor((paid[k] || 0) * 0.8);
-      if (back > 0) { R[k] = (R[k] || 0) + back; give[k] = back; }
+      if (back > 0) { GAME.city.add(city, k, back); give[k] = back; }   /* v91.67 */
     });
     /* 移除该条（按 qid；老档无 qid 则按对象引用） */
     s.queues.train = (s.queues.train || []).filter(function (x) { return x !== q && (q.qid == null || x.qid !== q.qid); });
@@ -14072,7 +14129,7 @@ window.GAME = window.GAME || {};
       return { ok: false, msg: '旧币不足（需 ' + U.fmt(cost) + '，现有 ' + U.fmt(s.res.gold || 0) + '）' };
     }
     var add = q.totalTime * frac;
-    s.res.gold -= cost;
+    GAME.goldAdd(-cost);   /* v91.67 */
     q.elapsed = Math.min(q.totalTime, (q.elapsed || 0) + add);
     q.boosted = (q.boosted || 0) + add;
     var tn = (DATA.TROOPS[q.troopId] || {}).name || q.troopId;
@@ -14348,7 +14405,7 @@ window.GAME = window.GAME || {};
       rows.forEach(function (r) {
         var loss = GAME.overflowLossOf(r.excess, capped);
         if (loss <= 0) return;
-        R[r.k] = Math.max(0, (R[r.k] || 0) - loss);
+        GAME.city.sub(ct, r.k, loss);   /* v91.67（下界恒 0） */
         losses[r.k] = (losses[r.k] || 0) + loss;
         total += loss; any = true;
       });
@@ -14590,7 +14647,7 @@ window.GAME = window.GAME || {};
     var s = GAME.state;
     var cost = GAME.innRefreshCost();
     if ((s.res.gold || 0) < cost) return { ok: false, msg: '旧币不足（需 ' + U.fmt(cost) + '）' };
-    s.res.gold -= cost;
+    GAME.goldAdd(-cost);   /* v91.67 */
     GAME.innRefresh(true);
     return { ok: true, msg: '已另请一批贤士（-' + U.fmt(cost) + '旧币）' };
   };
@@ -14718,8 +14775,8 @@ window.GAME = window.GAME || {};
     if (amount <= 0) return { ok: false, msg: '数量无效' };
     if ((s.res[from] || 0) < amount) return { ok: false, msg: '库存不足' };
     var gain = Math.floor(amount * GAME.marketRate());
-    s.res[from] -= amount;
-    s.res[to] = (s.res[to] || 0) + gain;
+    GAME.city.sub(GAME.currentCity(), from, amount);   /* v91.67 */
+    GAME.city.add(GAME.currentCity(), to, gain);
     GAME.statBump('trades', 1);
     GAME.log('市易：以 ' + U.fmt(amount) + ' 换得 ' + U.fmt(gain) + '。', 'sys', 'trade');
     return { ok: true, msg: '换得 ' + U.fmt(gain) + '（折损 ' + Math.round((1 - GAME.marketRate()) * 100) + '%）' };
@@ -14818,8 +14875,8 @@ window.GAME = window.GAME || {};
     if ((s.res[res] || 0) < amount) return { ok: false, msg: '库存不足' };
     var gold = GAME.marketSellGold(res, amount);
     if (gold < 1) return { ok: false, msg: '数量太少 —— 至少 ' + U.fmt(GAME.marketSellMin(res)) + ' 单位才够换 1 旧币' };
-    s.res[res] -= amount;
-    s.res.gold = (s.res.gold || 0) + gold;
+    GAME.city.sub(GAME.currentCity(), res, amount);    /* v91.67 */
+    GAME.goldAdd(gold);
     GAME.mktSlipRecord(gold);                  /* v89.95：物多价贱 —— 记账（通商券额度一并扣） */
     GAME.statBump('trades', 1);
     GAME.log('市易：售出 ' + U.fmt(amount) + ' 得旧币 ' + U.fmt(gold) + '。' + GAME.mktSlipText(), 'sys', 'trade');
@@ -14871,8 +14928,8 @@ window.GAME = window.GAME || {};
     if ((s.res.gold || 0) < gold) return { ok: false, msg: '旧币不足' };
     var gain = GAME.marketBuyUnits(res, gold);
     if (gain < 1) return { ok: false, msg: '旧币太少 —— 至少 ' + U.fmt(GAME.marketBuyMin(res)) + ' 旧币才够换 1 单位' };
-    s.res.gold -= gold;
-    s.res[res] = (s.res[res] || 0) + gain;
+    GAME.goldAdd(-gold);                              /* v91.67 */
+    GAME.city.add(GAME.currentCity(), res, gain);
     GAME.statBump('trades', 1);
     GAME.log('市易：以旧币 ' + U.fmt(gold) + ' 购入 ' + U.fmt(res) + ' ' + U.fmt(gain) + '。', 'sys', 'trade');
     return { ok: true, msg: '购得 ' + U.fmt(gain) + '（折损 ' + Math.round((c.loss || 0) * 100) + '%）' };
@@ -15165,7 +15222,7 @@ window.GAME = window.GAME || {};
       });
     }
     /* 岁贡旧币是货币，不受战储仓上限约束 */
-    s.res.gold = (s.res.gold || 0) + gold;
+    GAME.goldAdd(gold);   /* v91.67 */
     /* ⛔ v90.93：声望的赛季国策增益（STORY.repMult）随年号纪元退役。 */
     s.rep = (s.rep || 0) + rep;
     var got = [];
@@ -16175,8 +16232,7 @@ window.GAME = window.GAME || {};
     for (var k in fs) { n++; sumTax += GAME.fortEffectOf(fs[k]).tax; }
     if (!n) return { days: capped, gold: 0, forts: 0 };
     var gold = Math.round(sumTax * capped);
-    if (GAME.goldAdd) GAME.goldAdd(gold);
-    else s.res.gold = (s.res.gold || 0) + gold;
+    GAME.goldAdd(gold);   /* v91.67：旧币唯一出口 */
     GAME.log('🏪 商旅税所：' + n + ' 处前哨过境商税 +' + U.fmt(gold) + ' 旧币（每现实日 · 随前哨等级 · 与岁贡同轴）', 'sys', 'trade');
     return { days: capped, gold: gold, forts: n };
   };
@@ -17091,7 +17147,7 @@ window.GAME = window.GAME || {};
     if ((s.res.gold || 0) < cost) {
       return { ok: false, msg: '旧币不足（需 ' + U.fmt(cost) + '，现有 ' + U.fmt(s.res.gold || 0) + '）' };
     }
-    s.res.gold -= cost;
+    GAME.goldAdd(-cost);   /* v91.67 */
     q.elapsed = q.totalTime;      /* 下一拍由既有队列推进统一结算（与在线推进同一出口） */
     GAME.log('💰 花旧币提速：' + (what || '工程') + '（-' + U.fmt(cost) + ' 旧币，立等可成）');
     return { ok: true, cost: cost, msg: (what || '工程') + ' 提速完成（-' + U.fmt(cost) + ' 旧币，下一拍落成）' };
@@ -18825,7 +18881,8 @@ window.GAME = window.GAME || {};
     var asked = n;
     n = Math.min(n, affordable);
     city.towers = GAME.towersBuiltOf(city) + n;
-    for (var k in GAME.towerCostOf(n)) R[k] = (R[k] || 0) - GAME.towerCostOf(n)[k];
+    var _twc = GAME.towerCostOf(n);
+    for (var k in _twc) GAME.city.sub(city, k, _twc[k]);   /* v91.67 */
     var msg = city.name + ' 新筑' + TW_T().name + ' ' + n + ' 座（共 ' + city.towers + ' / ' +
       GAME.towerCapOf(city) + '）· 守备力 ' + GAME.cityDefense(city) +
       (asked > n ? '　（资源所限，未按请求的 ' + asked + ' 座）' : '');
@@ -20021,8 +20078,8 @@ window.GAME = window.GAME || {};
   /* 落账（唯一出口）：出发城 −ship，目的地 +landed */
   GAME.transportApply = function (plan, from, to) {
     var R = GAME.res(from), R2 = GAME.res(to);
-    R[plan.key] = (R[plan.key] || 0) - plan.ship;
-    R2[plan.key] = (R2[plan.key] || 0) + plan.landed;
+    GAME.city.sub(from, plan.key, plan.ship);            /* v91.67 */
+    GAME.city.add(to, plan.key, plan.landed);
     return plan;
   };
   /* 一批辎重的抵达落账（随军运输用）：逐项结算，凑一句可读的账。
@@ -20038,8 +20095,7 @@ window.GAME = window.GAME || {};
       var plan = GAME.transportPlanOf(from, to, k, cargo[k]);
       GAME.transportApply(plan, from, to);
       if (plan.stay > 0) {
-        var R = GAME.res(from);
-        R[k] = (R[k] || 0) + plan.stay;          /* 装不下 → 原路退回（未起运，不抽损耗） */
+        GAME.city.add(from, k, plan.stay);       /* v91.67：装不下 → 原路退回（未起运，不抽损耗） */
         out.back += plan.stay;
       }
       out.landed += plan.landed;
@@ -20238,13 +20294,13 @@ window.GAME = window.GAME || {};
         return { ok: false, msg: GAME.resName(k) + '不足（需 ' + U.fmt(opt.cost[k]) + '）' };
       }
     }
-    for (k in (opt.cost || {})) R[k] = (R[k] || 0) - opt.cost[k];
+    for (k in (opt.cost || {})) GAME.city.sub(city, k, opt.cost[k]);   /* v91.67 */
     var lv = GAME.buildingLevel(city, 'guanfu') || city.level || 1;
     var gain = '';
     if (optId === 'levy') {
       /* 征调：按政务厅等级复利给一笔物资（与 NPC 城库存同一套"等级 → 量"的口径） */
       var amt = Math.round(3000 * Math.pow(1.5, lv - 1) * (1 + GAME.perkNum(city, 'prodPct')));
-      ['grain', 'wood', 'stone', 'iron'].forEach(function (kk) { R[kk] = (R[kk] || 0) + amt; });
+      ['grain', 'wood', 'stone', 'iron'].forEach(function (kk) { GAME.city.add(city, kk, amt); });   /* v91.67 */
       gain = '净水/生物质/电能/废钢各 +' + U.fmt(amt);
     } else if (optId === 'fest') {
       GAME.heartsComfortAdd(8);      /* v89.177：民心 +8 走安抚通道 */
@@ -25509,7 +25565,7 @@ window.GAME = window.GAME || {};
     var gold = GAME.healFeeOf(n);
     if ((s.res.gold || 0) < gold) return { ok: false, msg: '旧币不足（需 ' + U.fmt(gold) + '）' };
     var city = (cityId && GAME.cityById(cityId)) || GAME.currentCity() || s.cities[0];
-    s.res.gold -= gold;
+    GAME.goldAdd(-gold);   /* v91.67：旧币走唯一出口 */
     /* 真正归队：按兵种把伤兵加回城市。
        此前只是 `s.wounded = 0` 然后把「归队」写进日志 —— 兵没有回来，
        治疗纯粹是一笔没有回报的旧币消耗。 */
@@ -27955,7 +28011,7 @@ window.GAME = window.GAME || {};
         var _goldLoot189 = Math.max(0, Math.round(loot.gold || 0));
         if (_goldLoot189 > 0) {
           if (GAME.goldAdd) GAME.goldAdd(_goldLoot189);
-          else s.res.gold = (s.res.gold || 0) + _goldLoot189;
+          else GAME.goldAdd(_goldLoot189);   /* v91.67 */
           gains.gold = _goldLoot189;
         }
         loot = _haul.keep;
@@ -33902,10 +33958,10 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
   STORY.applyReward = function (rw) {
     if (!rw) return;
     var s = GAME.state;
-    if (rw.res) for (var k in rw.res) s.res[k] = (s.res[k] || 0) + rw.res[k];
+    if (rw.res) for (var k in rw.res) GAME.city.add(GAME.currentCity(), k, rw.res[k]);   /* v91.67 */
     if (rw.hearts) s.hearts = U.clamp((s.hearts || 100) + rw.hearts, 0, 100);
     if (rw.rep) s.rep = (s.rep || 0) + rw.rep;
-    if (rw.pop) s.res.pop = Math.max(0, (s.res.pop || 0) + rw.pop);
+    if (rw.pop) GAME.city.add(GAME.currentCity(), 'pop', rw.pop);   /* v91.67 */
     if (rw.tech) GAME.state.res.techPoint = (GAME.state.res.techPoint || 0) + rw.tech;
     if (rw.item) {
       var n = rw.count || 1;
@@ -33916,7 +33972,7 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
         if (GAME.recruitRandomGeneral) GAME.recruitRandomGeneral();
       }
     }
-    if (rw.gold) s.res.gold = (s.res.gold || 0) + rw.gold;
+    if (rw.gold) GAME.goldAdd(rw.gold);   /* v91.67 */
   };
 
   /* ============================================================
@@ -53005,7 +53061,7 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
       if (!silent) ui.toast(noMsg);
       return { ok: false, msg: noMsg };
     }
-    s.res.gold -= price * can;
+    GAME.goldAdd(-price * can);   /* v91.67：旧币唯一出口 */
     GAME.items.add(itemId, can);   /* v91.63：走归属出口 */
     _day.bought[itemId] = _bought + can;
     GAME.log('游商购买：' + item.name + (can > 1 ? ' ×' + can : ''));

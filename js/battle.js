@@ -359,7 +359,7 @@ import './state.js';
     var gold = GAME.healFeeOf(n);
     if ((s.res.gold || 0) < gold) return { ok: false, msg: '旧币不足（需 ' + U.fmt(gold) + '）' };
     var city = (cityId && GAME.cityById(cityId)) || GAME.currentCity() || s.cities[0];
-    s.res.gold -= gold;
+    GAME.goldAdd(-gold);   /* v91.67：旧币走唯一出口 */
     /* 真正归队：按兵种把伤兵加回城市。
        此前只是 `s.wounded = 0` 然后把「归队」写进日志 —— 兵没有回来，
        治疗纯粹是一笔没有回报的旧币消耗。 */
@@ -2805,7 +2805,7 @@ import './state.js';
         var _goldLoot189 = Math.max(0, Math.round(loot.gold || 0));
         if (_goldLoot189 > 0) {
           if (GAME.goldAdd) GAME.goldAdd(_goldLoot189);
-          else s.res.gold = (s.res.gold || 0) + _goldLoot189;
+          else GAME.goldAdd(_goldLoot189);   /* v91.67 */
           gains.gold = _goldLoot189;
         }
         loot = _haul.keep;

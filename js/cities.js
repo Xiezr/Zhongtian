@@ -65,6 +65,69 @@ import './state.js';
   };
 
   /* ============================================================
+   * 资源写（v91.67 · 第六刀第一小刀）：**城市资源的唯一加减入口**
+   * ------------------------------------------------------------
+   * 背景：`GAME.res(city)` 只解决了"取哪个对象"，加减仍是 29 处裸写
+   *   （`R[k] = (R[k]||0) - cost[k]` / `+ amt` / `Math.max(0,...)`），
+   *   没有统一的下界与上限口径 → 资源可能为负、也可能超出仓容。
+   *
+   * · `add(city, k, n)`    加的**唯一入口**：下界 0；`cap=true` 时按仓容封顶。
+   * · `sub(city, k, n)`    扣的**唯一入口**：下界恒 0（不足只扣到 0，返回实扣量）。
+   * · `take(city, cost)`   **原子扣费**：任一资源不足 → 整单拒绝、不动账。
+   * 数据仍在 `city.res`（存档零迁移）。
+   * ============================================================ */
+  function resOf(city) { return GAME.res ? GAME.res(city) : ((city && city.res) || {}); }
+  function num(n) { n = Math.floor(Number(n) || 0); return n > 0 ? n : 0; }
+
+  C.add = function (city, k, n, cap) {
+    /* 快速路径（无封顶）—— 逐城 tick 的产量入账走这里，必须够轻。 */
+    var add = n >= 0 ? Math.floor(n) || 0 : 0;
+    if (!k || add <= 0) return resOf(city)[k] || 0;
+    if (!cap) {
+      var R = resOf(city);
+      var v = (R[k] || 0) + add;
+      R[k] = v;
+      return v;
+    }
+    /* 封顶口径**复用既有唯一出口** `addResCapped`（只封增长、不削存量 ·
+       存量已超上限时一点不加），避免在这里另造第二套"封顶"语义。 */
+    if (GAME.addResCapped) return GAME.addResCapped(k, add, city).cur;
+    var R2 = resOf(city);
+    R2[k] = (R2[k] || 0) + add;
+    return R2[k];
+  };
+
+  C.sub = function (city, k, n) {
+    var R = resOf(city), want = num(n), cur = num(R[k]);
+    var cut = Math.min(cur, want);
+    if (cut <= 0) return 0;
+    R[k] = cur - cut;
+    return cut;
+  };
+
+  /* 原子扣费：`cost` = {grain,wood,stone,iron,...}（time/jewel/gold 由各自出口处理） */
+  C.take = function (city, cost) {
+    var lack = [];
+    for (var k in (cost || {})) {
+      if (k === 'time' || k === 'jewel' || k === 'gold') continue;
+      var need = num(cost[k]);
+      if (need <= 0) continue;
+      var have = num(resOf(city)[k]);
+      if (have < need) lack.push({ k: k, need: need, have: have });
+    }
+    if (lack.length) {
+      return { ok: false, msg: '资源不足：' + lack.map(function (x) {
+        return (GAME.resName ? GAME.resName(x.k) : x.k);
+      }).join('、'), lack: lack };
+    }
+    for (var k2 in cost) {
+      if (k2 === 'time' || k2 === 'jewel' || k2 === 'gold') continue;
+      C.sub(city, k2, cost[k2]);
+    }
+    return { ok: true, msg: '' };
+  };
+
+  /* ============================================================
    * 不变量（供 smoke 守卫调用；返回 [{city, msg}]，空数组 = 全部通过）
    * 这些是"城市一旦写坏就会静默扩散"的量，界面上未必立刻可见。
    * ============================================================ */

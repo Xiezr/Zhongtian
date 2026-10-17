@@ -36675,6 +36675,71 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })());
   })();
 
+  /* ============================================================
+   * §271. v91.67（第六刀第一小刀）城市资源加减归属：GAME.city.add/sub/take
+   * ============================================================ */
+  (function () {
+    console.log('\n===== 271. v91.67 城市资源归属（GAME.city.add/sub/take）=====');
+    check('§271① 出口齐：add/sub/take', (function () {
+      var X = GAME.city;
+      return typeof X.add === 'function' && typeof X.sub === 'function' && typeof X.take === 'function';
+    })());
+    check('§271② sub 下界恒 0（扣超量只扣到 0，返回实扣量）', (function () {
+      var bk = GAME.state;
+      try {
+        var st = G.newGame({ name: 'rs271', cityName: '灰岗', region: '碎垣', mapSeed: 8 });
+        G.state = st;
+        var c = st.cities[0]; c.res = { grain: 100, wood: 5 };
+        var cut = GAME.city.sub(c, 'grain', 300);
+        var wood = GAME.city.sub(c, 'wood', 99);
+        return cut === 100 && c.res.grain === 0 && wood === 5 && c.res.wood === 0
+          && GAME.city.sub(c, 'grain', 1) === 0;
+      } finally { G.state = bk; }
+    })());
+    check('§271③ take 原子：任一不足整单拒绝且不动账', (function () {
+      var bk = GAME.state;
+      try {
+        var st = G.newGame({ name: 'rs271b', cityName: '灰岗', region: '碎垣', mapSeed: 8 });
+        G.state = st;
+        var c = st.cities[0]; c.res = { grain: 100, wood: 100 };
+        var bad = GAME.city.take(c, { grain: 50, wood: 500 });
+        var untouched = !bad.ok && c.res.grain === 100 && c.res.wood === 100 && /资源不足/.test(bad.msg);
+        var ok = GAME.city.take(c, { grain: 50, wood: 30 });
+        return untouched && ok.ok && c.res.grain === 50 && c.res.wood === 70;
+      } finally { G.state = bk; }
+    })());
+    check('§271④ add 封顶复用 addResCapped（存量已超上限则不再增长）', (function () {
+      var bk = GAME.state;
+      try {
+        var st = G.newGame({ name: 'rs271c', cityName: '灰岗', region: '碎垣', mapSeed: 8 });
+        G.state = st;
+        var c = st.cities[0];
+        var cap = GAME.storeCapOf(c, 'grain');
+        c.res.grain = cap + 1000;                    /* 已超上限（v89.158 允许） */
+        GAME.city.add(c, 'grain', 500, true);
+        return c.res.grain === cap + 1000;           /* 只封增长、不削存量 */
+      } finally { G.state = bk; }
+    })());
+    check('§271⑤ 全仓零裸写城市资源（GAME.city / addResCapped 之外）', (function () {
+      var fs = require('fs'), path = require('path');
+      var jsDir = path.join(__dirname, 'js'), bad = [];
+      ['data', 'state', 'systems', 'domain', 'map', 'sphere', 'gltf', 'map3d',
+        'battle', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits', 'story', 'ui', 'main'].forEach(function (f) {
+        var src = fs.readFileSync(path.join(jsDir, f + '.js'), 'utf8')
+          .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/[^\n]*/gm, '');
+        /* 允许：addResCapped 本体（domain.js）—— 它是封顶入账的唯一实现 */
+        if (f === 'domain') src = src.replace(/GAME\.addResCapped = function[\s\S]*?\n  \};/, '');
+        /* 命中：s.res.x = / s.res[x] = / R[x] =（R 指向 GAME.res 的局部别名）。
+           `=` 必须是**单等号赋值** —— 排除 == / === / <= / >= / != 这类比较。 */
+        var ASG = '(?:=(?!=)|\\+=|-=)';
+        if (new RegExp('\\bs\\.res\\.[a-z]+\\s*' + ASG).test(src)
+          || new RegExp('\\bs\\.res\\[[^\\]]+\\]\\s*' + ASG).test(src)
+          || new RegExp('\\bR\\[[^\\]]+\\]\\s*' + ASG).test(src)) bad.push(f);
+      });
+      return bad.length === 0;
+    })(), (function () { return '城市资源写点已全部走 GAME.city / addResCapped'; })());
+  })();
+
   console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');
   process.exit(FAIL ? 1 : 0);
 })();

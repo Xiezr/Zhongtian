@@ -269,10 +269,10 @@ import './state.js';
   STORY.applyReward = function (rw) {
     if (!rw) return;
     var s = GAME.state;
-    if (rw.res) for (var k in rw.res) s.res[k] = (s.res[k] || 0) + rw.res[k];
+    if (rw.res) for (var k in rw.res) GAME.city.add(GAME.currentCity(), k, rw.res[k]);   /* v91.67 */
     if (rw.hearts) s.hearts = U.clamp((s.hearts || 100) + rw.hearts, 0, 100);
     if (rw.rep) s.rep = (s.rep || 0) + rw.rep;
-    if (rw.pop) s.res.pop = Math.max(0, (s.res.pop || 0) + rw.pop);
+    if (rw.pop) GAME.city.add(GAME.currentCity(), 'pop', rw.pop);   /* v91.67 */
     if (rw.tech) GAME.state.res.techPoint = (GAME.state.res.techPoint || 0) + rw.tech;
     if (rw.item) {
       var n = rw.count || 1;
@@ -283,7 +283,7 @@ import './state.js';
         if (GAME.recruitRandomGeneral) GAME.recruitRandomGeneral();
       }
     }
-    if (rw.gold) s.res.gold = (s.res.gold || 0) + rw.gold;
+    if (rw.gold) GAME.goldAdd(rw.gold);   /* v91.67 */
   };
 
   /* ============================================================
