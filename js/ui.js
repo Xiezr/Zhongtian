@@ -7968,7 +7968,8 @@ import './state.js';
     else if (v === 'rank') box.innerHTML = ui.rankHTML();
     else if (v === 'galaxy') box.innerHTML = ui.galaxyHTML();
     /* v91.60（老板）：奇观建造（类星球建造场 · 耗奇观材料 · 全局 buff） */
-    else if (v === 'build') box.innerHTML = ui.buildHTML();
+    /* v91.71：奇观建造场 → 空间站（卡牌船坞） */
+    else if (v === 'station' || v === 'build') box.innerHTML = ui.stationHTML();
     else if (v === 'map') box.innerHTML = ui.mapHTML();
     /* v25（需求 2）：游商 / 背包 由弹窗改为整页视图 */
     else if (v === 'shop') box.innerHTML = ui.shopHTML();
@@ -11883,91 +11884,180 @@ import './state.js';
   };
 
   /* ============================================================
-   * v91.60（老板）：「建立一个类星球地图，用于奇观建造（建造玩法引擎）」——
-   *   全局一座**奇观建造场**（HTML 网格 + 构件面板）。点构件选中 → 点邻接空格放置；
-   *   点已建构件（非核心）拆除（返还部分材料）。已建构件按类型给全局 buff。
+   * v91.71（老板）：「先建造空间站，再建造战舰；12 种 3*4 白蓝紫红；
+   *   建造/管理采用**卡牌式**；先构造船体，再升级其他部件。」——**空间站视图**。
+   * ------------------------------------------------------------
+   * 旧「奇观建造场」（buildHTML）退役：它是"摆块换平 buff"，不是战舰。
+   * 本视图 = 空间站（等级/船坞位）+ 卡牌船坞（12 舰种）+ 选中舰详情（部件/属性）。
    * ============================================================ */
-  ui._buildSel = null;
-  ui.buildHTML = function () {
-    var B = DATA.BUILD || {}, b = GAME.buildOf();
-    var half = Math.floor((B.W || 9) / 2);
+  ui._stationSel = null;   /* 选中的舰种 classId（造舰用） */
+  ui._shipSel = null;      /* 选中的战舰实例 id（升级部件用） */
+
+  ui.stationHTML = function () {
+    var SH = GAME.ship;
+    if (!SH) return '<div class="q-empty">战舰模块未加载</div>';
+    var lv = SH.lv(), cap = SH.tierCapNow(), slots = SH.dockSlots();
+    var ships = SH.ships();
     var IBY = DATA.ITEM_BY_ID || {};
-    /* 构件面板（内联样式 · 不走样式表 —— 与 galaxy 视图同惯例，免踩设计令牌 lint） */
-    var pals = (B.modules || []).filter(function (m) { return m.id !== 'core'; }).map(function (m) {
-      var own = (GAME.state.items || {})[m.mat] || 0;
-      var it = IBY[m.mat] || {};
-      var sel = ui._buildSel === m.id;
-      var can = own >= (m.cost || 0);
-      return '<button data-action="build-pick" data-module="' + m.id + '" title="' + U.escape(m.desc || '') + '"' +
-        ' style="display:flex;flex-direction:column;align-items:flex-start;gap:1px;padding:6px 8px;' +
+    var T = DATA.SHIP_TIERS || [], R = DATA.SHIP_ROLES || {};
+
+    /* ---- 顶部：空间站状态 ---- */
+    var head = '<div style="display:flex;gap:var(--sp-4);flex-wrap:wrap;align-items:center;' +
+      'padding:var(--sp-2) var(--sp-3);border:1px solid var(--line);border-radius:var(--r-sm);background:var(--bg-2);">' +
+      '<span style="font-weight:700;color:var(--gold-light);">🛰️ ' + U.escape(DATA.STATION.name) +
+        ' Lv' + lv + '</span>' +
+      '<span class="ui-sub">可造最高舰档 <b>' + (T[cap] ? T[cap].name : '白') + '</b>' +
+        '　·　船坞 <b>' + ships.length + ' / ' + slots + '</b></span>' +
+      '<span class="ui-sub">升级空间站可解锁更高舰档与更多船坞位</span>' +
+      '</div>';
+
+    /* ---- 卡牌船坞：12 舰种 ---- */
+    var cards = (DATA.SHIP_CLASSES || []).map(function (cls) {
+      var tier = T[cls.tier] || T[1], role = R[cls.role] || { name: '', short: '' };
+      var chk = SH.canBuild(cls.id);
+      var locked = cls.tier > cap;
+      var bp = SH.bpOf(cls);
+      var hasBp = !bp || (GAME.items && GAME.items.has(bp, 1));
+      var owned = ships.filter(function (x) { return x.classId === cls.id; }).length;
+      var sel = ui._stationSel === cls.id;
+      var op = (chk.ok ? '1' : '.55');
+      var tip = cls.name + '（' + tier.name + '档 · ' + role.name + '）\n' + cls.desc +
+        (bp ? ('\n蓝图：' + (hasBp ? '已持有' : '未获得')) : '') +
+        '\n' + (chk.ok ? ('造舰消耗 ' + ((IBY[chk.mat] || {}).name || chk.mat) + ' ×' + chk.cost)
+                        : ('不可建造：' + chk.msg));
+      return '<div data-action="sp-pick" data-class="' + cls.id + '" title="' + U.escape(tip) + '"' +
+        ' style="display:flex;flex-direction:column;gap:2px;padding:10px 12px;cursor:pointer;' +
         'border:1px solid ' + (sel ? 'var(--gold)' : 'var(--line)') + ';border-radius:var(--r-sm);' +
-        'background:' + (sel ? 'rgba(var(--gold-rgb),.14)' : 'var(--bg-2)') + ';color:var(--text);cursor:pointer;' +
-        'text-align:left;opacity:' + (can ? '1' : '.5') + ';">' +
-        '<span style="font-size:var(--fs-lead);">' + m.icon + '</span>' +
-        '<span style="font-weight:600;">' + U.escape(m.name) + '</span>' +
-        '<span style="font-size:var(--fs-cap);color:var(--text-dim);">' + U.escape(it.name || m.mat) + ' ×' + m.cost + '（持 ' + own + '）</span></button>';
-    }).join('');
-    /* 网格（类星球：中心核心 + 环形格） */
-    var cells = '';
-    for (var dy = -half; dy <= half; dy++) {
-      for (var dx = -half; dx <= half; dx++) {
-        var mid = b[GAME.buildKey(dx, dy)];
-        var m = mid ? GAME.buildModuleOf(mid) : null;
-        var label = '', dis = '', bg = 'rgba(var(--hl-rgb),.03)', bd = 'rgba(var(--hl-rgb),.08)', cur = 'default', op = '1';
-        if (m) {
-          label = m.icon;
-          if (mid === 'core') { bg = 'rgba(255,210,90,.42)'; bd = 'var(--gold-light)'; }
-          else { bg = 'rgba(var(--gold-rgb),.22)'; bd = 'var(--gold)'; cur = 'pointer'; }
-        } else if (!GAME.buildAdjacent(dx, dy)) {
-          op = '.28'; dis = ' disabled';
-        } else {
-          bg = 'rgba(120,150,190,.05)';
-          if (ui._buildSel && GAME.buildCanPlace(dx, dy, ui._buildSel).ok) { bg = 'rgba(var(--gold-rgb),.14)'; bd = 'var(--gold-dark)'; cur = 'pointer'; }
-          else { dis = ' disabled'; }
-        }
-        cells += '<button data-action="build-cell" data-dx="' + dx + '" data-dy="' + dy + '"' + dis +
-          ' style="aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;font-size:var(--fs-lead);' +
-          'background:' + bg + ';border:1px solid ' + bd + ';border-radius:4px;color:var(--text-dim);' +
-          'cursor:' + (dis ? 'default' : cur) + ';opacity:' + op + ';">' + label + '</button>';
-      }
-    }
-    /* buff 汇总 */
-    var kn = { prodPct: '产量', taxPct: '税收', storePct: '仓储', wildCap: '野地上限', buildSlot: '建造位', troopSlot: '出征容量', genCap: '英雄席位' };
-    var sum = Object.keys(kn).map(function (k) {
-      var v = GAME.buildBonusNum(k); if (!v) return '';
-      return kn[k] + ' +' + (/Pct$/.test(k) ? Math.round(v * 100) + '%' : v);
-    }).filter(Boolean).join('　') || '尚无加成（放置构件）';
-    var placed = GAME.buildPlacedCount(), maxP = B.maxPlaced || 40;
-    return '<div class="ui-page">' +
-      '<div class="gold-heading">🏗️ 奇观建造 · 类星球建造场' +
-        ui.help('从中央**奇观核心**向外，邻接已有构件放置新构件（我的世界式连通）；\n' +
-          '每个构件消耗一种**奇观材料** + 给**全局加成**（产量/税收/仓储/野地上限…）。\n' +
-          '点下方构件选中 → 点亮的空格放置；点已建构件可拆除（返还部分材料）。') +
-      '</div>' +
-      '<div style="display:flex;gap:var(--sp-4);align-items:flex-start;flex-wrap:wrap;">' +
-        '<div style="display:grid;gap:3px;grid-template-columns:repeat(' + (B.W || 9) + ',1fr);flex:0 0 auto;width:min(58vh,520px);' +
-          'background:radial-gradient(circle at 50% 45%,#0b1626,#05070c 72%);padding:8px;border:1px solid var(--line);border-radius:var(--r-sm);">' + cells + '</div>' +
-        '<div style="flex:1 1 300px;min-width:280px;">' +
-          '<div style="color:var(--text-dim);font-size:var(--fs-sub);margin-bottom:var(--sp-2);">已建 <b>' + placed + '</b> / ' + maxP + '　·　材料为 0 的构件灰显</div>' +
-          '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:var(--sp-1);">' + pals + '</div>' +
-          '<div style="margin-top:var(--sp-3);padding-top:var(--sp-2);border-top:1px solid var(--sep-gold);color:var(--green-ok);font-size:var(--fs-sub);">' +
-            '<div class="ui-sub">全局加成（已建构件）</div>' + sum + '</div>' +
+        'background:' + (sel ? 'rgba(var(--gold-rgb),.14)' : 'var(--bg-2)') + ';opacity:' + op + ';">' +
+        '<div style="display:flex;align-items:center;gap:6px;">' +
+          '<span style="font-size:var(--fs-lead);">' + cls.icon + '</span>' +
+          '<b style="color:' + tier.color + ';">' + U.escape(cls.name) + '</b>' +
         '</div>' +
+        '<div style="font-size:var(--fs-cap);color:var(--text-dim);">' +
+          tier.name + '档 · ' + role.name + (owned ? ('　×' + owned) : '') +
+          (locked ? '　🔒' : '') + (bp && !hasBp ? '　📜' : '') +
+        '</div>' +
+        '<div style="font-size:var(--fs-cap);color:var(--text-dim);opacity:.75;">' + U.escape(cls.desc) + '</div>' +
+      '</div>';
+    }).join('');
+
+    /* ---- 选中舰种 → 造舰面板 ---- */
+    var sel = null;
+    (DATA.SHIP_CLASSES || []).forEach(function (c) { if (c.id === ui._stationSel) sel = c; });
+    var buildBox = '';
+    if (sel) {
+      var chk2 = SH.canBuild(sel.id);
+      buildBox = '<div style="margin-top:var(--sp-3);padding:var(--sp-3);border:1px solid var(--line);' +
+        'border-radius:var(--r-sm);background:var(--bg-2);">' +
+        '<div style="font-weight:700;">建造 · ' + U.escape(sel.name) + '</div>' +
+        '<div class="ui-sub" style="margin-top:4px;">' +
+          (chk2.ok ? ('消耗 ' + ((IBY[chk2.mat] || {}).name || chk2.mat) + ' ×' + chk2.cost +
+            '（持有 ' + GAME.items.count(chk2.mat) + '）')
+                   : U.escape(chk2.msg)) + '</div>' +
+        '<div style="margin-top:8px;display:flex;gap:8px;">' +
+          '<button class="btn' + (chk2.ok ? ' gold' : ' dim') + '" data-action="sp-build" data-class="' + sel.id + '"' +
+            (chk2.ok ? '' : ' disabled data-why="' + U.escape(chk2.msg) + '"') + '>🛠️ 建造船体</button>' +
+          '<button class="btn" data-action="sp-clear">取消</button>' +
+        '</div></div>';
+    }
+
+    /* ---- 已造战舰列表 ---- */
+    var shipCards = ships.map(function (ship) {
+      var cls = SH.classOf(ship.classId) || {}, tier = T[ship.tier] || T[1];
+      var st = SH.statsOf(ship), os = ui._shipSel === ship.id;
+      return '<div data-action="sp-ship" data-ship="' + ship.id + '"' +
+        ' style="display:flex;align-items:center;gap:var(--sp-3);padding:var(--sp-2) var(--sp-3);cursor:pointer;' +
+        'border:1px solid ' + (os ? 'var(--gold)' : 'var(--line)') + ';border-radius:var(--r-sm);' +
+        'background:' + (os ? 'rgba(var(--gold-rgb),.14)' : 'var(--bg-2)') + ';">' +
+        '<span style="font-size:var(--fs-lead);">' + (cls.icon || '🚀') + '</span>' +
+        '<span style="flex:1;min-width:0;"><b style="color:' + tier.color + ';">' + U.escape(cls.name || ship.classId) + '</b>' +
+          '<i style="font-style:normal;font-size:var(--fs-cap);color:var(--text-dim);margin-left:8px;">战力 ' +
+          SH.powerOf(ship) + '</i></span>' +
+        '<span style="font-size:var(--fs-cap);color:var(--text-dim);">' +
+          '伤' + st.atk + ' · 命' + Math.round(st.hit * 100) + '% · 血' + st.hp + ' · 盾' + st.shield + '</span>' +
+        '</div>';
+    }).join('') || '<div class="q-empty">船坞空空 —— 从上方选一个舰种建造。</div>';
+
+    var selShip = null;
+    ships.forEach(function (x) { if (x.id === ui._shipSel) selShip = x; });
+    var detail = '';
+    if (selShip) {
+      var clsS = SH.classOf(selShip.classId) || {};
+      var stS = SH.statsOf(selShip);
+      var statRows = (DATA.SHIP_STATS || []).map(function (sdef) {
+        var v = stS[sdef.k] || 0;
+        return '<span style="display:inline-block;min-width:96px;font-size:var(--fs-cap);color:var(--text-dim);">' +
+          sdef.name + ' <b style="color:var(--text);">' + (sdef.pct ? Math.round(v * 100) + '%' : v) + '</b></span>';
+      }).join('');
+      var partRows = (DATA.SHIP_PARTS || []).filter(function (p) { return p.id !== 'hull'; }).map(function (p) {
+        var plv = SH.partLvOf(selShip, p.id), mx = p.max || 10;
+        var chkP = SH.canUpgrade(selShip.id, p.id);
+        var matName = ((IBY[p.mat] || {}).name) || p.mat;
+        return '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--line);">' +
+          '<span style="width:92px;">' + p.icon + ' ' + U.escape(p.name) + '</span>' +
+          '<span style="width:64px;color:var(--gold);">Lv' + plv + ' / ' + mx + '</span>' +
+          '<span style="flex:1;font-size:var(--fs-cap);color:var(--text-dim);">' + U.escape(p.desc) + '</span>' +
+          '<button class="btn sm' + (chkP.ok ? ' gold' : ' dim') + '" data-action="sp-part" data-part="' + p.id + '"' +
+            (chkP.ok ? '' : ' disabled data-why="' + U.escape(chkP.msg) + '"') +
+            ' title="' + U.escape(chkP.ok ? (matName + ' ×' + chkP.cost) : chkP.msg) + '">升级</button>' +
+          '</div>';
+      }).join('');
+      detail = '<div style="margin-top:var(--sp-3);padding:var(--sp-3);border:1px solid var(--line);' +
+        'border-radius:var(--r-sm);background:var(--bg-2);">' +
+        '<div style="display:flex;align-items:center;gap:10px;">' +
+          '<span style="font-size:var(--fs-lead);">' + (clsS.icon || '🚀') + '</span>' +
+          '<b>' + U.escape(clsS.name || '') + '</b>' +
+          '<span class="ui-sub">战力 ' + SH.powerOf(selShip) + '</span>' +
+          '<button class="btn sm" data-action="sp-scrap" data-ship="' + selShip.id + '" style="margin-left:auto;">♻️ 拆解</button>' +
+        '</div>' +
+        '<div style="margin:8px 0;display:flex;flex-wrap:wrap;gap:2px 6px;">' + statRows + '</div>' +
+        '<div class="ui-sub" style="margin-bottom:4px;">部件（先造好船体，再逐级升级）</div>' +
+        partRows +
+        '</div>';
+    }
+
+    return '<div class="ui-page">' +
+      '<div class="gold-heading">🛰️ 空间站 · 星际战舰' +
+        ui.help('先在空间站**建造船体**（消耗奇观材料），再逐级**升级部件**提升属性。\n' +
+          '舰种按 **白 / 蓝 / 紫 / 红** 四档解锁：升级空间站可解锁更高档与更多船坞位。\n' +
+          '蓝图由**奇观探索**产出（白档起步，紫红档稀有）。') +
       '</div>' +
+      head +
+      '<div class="ui-sub" style="margin:10px 0 6px;">船坞 · 舰种</div>' +
+      '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:var(--sp-2);">' + cards + '</div>' +
+      buildBox +
+      '<div class="ui-sub" style="margin:16px 0 6px;">已造战舰（' + ships.length + ' / ' + slots + '）</div>' +
+      '<div style="display:flex;flex-direction:column;gap:var(--sp-1);">' + shipCards + '</div>' +
+      detail +
     '</div>';
   };
-  ui.buildPick = function (mid) {
-    ui._buildSel = (ui._buildSel === mid) ? null : mid;
-    ui.renderView('build');
+  /* 旧建造场：保留函数名以免外部引用断裂，但**视图已改走 station**。 */
+  ui.buildHTML = ui.stationHTML;
+
+  ui.stationPick = function (classId) {
+    ui._stationSel = (ui._stationSel === classId) ? null : classId;
+    ui.renderView('station');
   };
-  ui.buildCellClick = function (dx, dy) {
-    var b = GAME.buildOf();
-    if (b[GAME.buildKey(dx, dy)]) {
-      var r = GAME.buildRemove(dx, dy); ui.toast(r.msg);
-    } else if (ui._buildSel) {
-      var r2 = GAME.buildPlace(dx, dy, ui._buildSel); ui.toast(r2.msg);
-    }
-    GAME.refreshAll(); ui.renderView('build');
+  ui.shipPick = function (shipId) {
+    ui._shipSel = (ui._shipSel === shipId) ? null : shipId;
+    ui.renderView('station');
+  };
+  ui.stationBuild = function (classId) {
+    var r = GAME.ship.build(classId);
+    ui.toast(r.msg);
+    if (r.ok) { ui._stationSel = null; ui._shipSel = r.ship && r.ship.id; }
+    GAME.refreshAll(); ui.renderView('station');
+  };
+  ui.stationUpgradePart = function (pid) {
+    if (!ui._shipSel) { ui.toast('先选一艘战舰'); return; }
+    var r = GAME.ship.upgradePart(ui._shipSel, pid);
+    ui.toast(r.msg); GAME.refreshAll(); ui.renderView('station');
+  };
+  ui.stationScrap = function (shipId) {
+    var r = GAME.ship.scrap(shipId);
+    ui.toast(r.msg);
+    if (r.ok && ui._shipSel === shipId) ui._shipSel = null;
+    GAME.refreshAll(); ui.renderView('station');
   };
 
   ui.mapHTML = function () {

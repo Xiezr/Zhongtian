@@ -12344,7 +12344,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
   check('v91.61：js/bundle.js 与 js/*.js 源码同步（防"改了源码忘构建"的假绿）', (function () {
     var fs = require('fs'), path = require('path'), crypto = require('crypto');
     var jsDir = path.join(__dirname, 'js');
-    var ORDER = ['core', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'domain', 'map', 'sphere', 'gltf',
+    var ORDER = ['core', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'domain', 'map', 'sphere', 'gltf',
       'map3d', 'battle', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits', 'story', 'ui', 'main'];
     var h = crypto.createHash('sha256');
     try {
@@ -36833,6 +36833,75 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       });
       return bad.length === 0;
     })(), (function () { return '城兵增删已全部走 GAME.city.army*'; })());
+  })();
+
+  /* ============================================================
+   * §274. v91.71（A 期）空间站 / 星际战舰
+   * ============================================================ */
+  (function () {
+    console.log('\n===== 274. v91.71 空间站 · 星际战舰 =====');
+    check('§274① 数据齐：12 舰种 / 4 档 / 10 部件 / 11 属性', (function () {
+      return (DATA.SHIP_CLASSES || []).length === 12
+        && (DATA.SHIP_TIERS || []).length === 5          /* 下标 0 占位 */
+        && (DATA.SHIP_PARTS || []).length === 10
+        && (DATA.SHIP_STATS || []).length === 11
+        && !!DATA.STATION && !!DATA.SHIP_BASE && !!DATA.SHIP_COST;
+    })());
+    check('§274② 12 舰种覆盖 4 档 × 3 系（无缺口）', (function () {
+      var m = {};
+      (DATA.SHIP_CLASSES || []).forEach(function (c) { m[c.tier + '_' + c.role] = (m[c.tier + '_' + c.role] || 0) + 1; });
+      var bad = [];
+      [1, 2, 3, 4].forEach(function (t) {
+        ['assault', 'escort', 'carrier'].forEach(function (r) { if (m[t + '_' + r] !== 1) bad.push(t + '_' + r); });
+      });
+      return bad.length === 0;
+    })());
+    check('§274③ 造舰：扣船体材料 → 入船坞；空间站等级锁高档', (function () {
+      var bk = GAME.state;
+      try {
+        var st = G.newGame({ name: 'sp274', cityName: '灰岗', region: '碎垣', mapSeed: 8 });
+        G.state = st; st.items = {};
+        st.items[G.DATA.SHIP_COST.hullMat] = 100;
+        var c0 = G.ship.ships().length;
+        var r = G.ship.build('c_w1');
+        var okBuild = r.ok && G.ship.ships().length === c0 + 1
+          && st.items[G.DATA.SHIP_COST.hullMat] === 100 - G.ship.hullCost(G.ship.classOf('c_w1'));
+        var g = G.ship.build('c_g1');                       /* 紫档：空间站 Lv1 应拒 */
+        return okBuild && g.ok === false && /空间站等级不足/.test(g.msg);
+      } finally { G.state = bk; }
+    })());
+    check('§274④ 部件升级：扣对应材料 → 属性真实提升', (function () {
+      var bk = GAME.state;
+      try {
+        var st = G.newGame({ name: 'sp274b', cityName: '灰岗', region: '碎垣', mapSeed: 8 });
+        G.state = st; st.items = {};
+        st.items[G.DATA.SHIP_COST.hullMat] = 50; st.items.w_meteor = 50;
+        var r = G.ship.build('c_w1');
+        var s0 = G.ship.statsOf(r.ship);
+        var u = G.ship.upgradePart(r.ship.id, 'weapon');
+        var s1 = G.ship.statsOf(r.ship);
+        return u.ok && s1.atk > s0.atk && G.ship.partLvOf(r.ship, 'weapon') === 1;
+      } finally { G.state = bk; }
+    })());
+    check('§274⑤ 拆舰返还（材料回包 · 舰消失）', (function () {
+      var bk = GAME.state;
+      try {
+        var st = G.newGame({ name: 'sp274c', cityName: '灰岗', region: '碎垣', mapSeed: 8 });
+        G.state = st; st.items = {};
+        st.items[G.DATA.SHIP_COST.hullMat] = 50;
+        var r = G.ship.build('c_w1');
+        var before = G.items.count(G.DATA.SHIP_COST.hullMat);
+        var sc = G.ship.scrap(r.ship.id);
+        return sc.ok && G.items.count(G.DATA.SHIP_COST.hullMat) > before && G.ship.ships().length === 0;
+      } finally { G.state = bk; }
+    })());
+    check('§274⑥ 视图在册：station 走 stationHTML · 顶栏标签已改名', (function () {
+      var u = String(G.ui.stationHTML) + String(GAME.ui.renderView) + String(GAME.ui.autoPaneHTML);
+      var html = require('fs').readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+      return typeof GAME.ui.stationHTML === 'function'
+        && /stationHTML/.test(String(GAME.ui.renderView))
+        && /data-view="station"/.test(html) && /空间站/.test(html);
+    })());
   })();
 
   console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');

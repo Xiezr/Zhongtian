@@ -23,7 +23,7 @@ const FS = require('fs');
 const JSDIR = path.join(__dirname, 'js');
 /* v90.92：任务系统退役 —— 'questdata' 模块（js/questdata.js 已删）摘除。
    v91.61：新增 'core'（共享命名空间单例 · 地基第 1 期）。 */
-const MODULES = ['core', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'domain', 'map', 'sphere', 'battle', 'icons', 'story', 'ui', 'map3d', 'main'];
+const MODULES = ['core', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'domain', 'map', 'sphere', 'battle', 'icons', 'story', 'ui', 'map3d', 'main'];
 
 const src = {};
 MODULES.forEach(m => { src[m] = fs.readFileSync(path.join(JSDIR, m + '.js'), 'utf8'); });

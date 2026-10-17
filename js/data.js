@@ -4036,6 +4036,98 @@ import './core.js';
     costPct: 0.5,   /* 拆除返还材料比例 */
   };
 
+  /* ============================================================
+   * v91.71（老板）：「先建造空间站，再建造战舰；战舰奇观出蓝图，设计 12 种蓝图，
+   *   3*4 白·蓝·紫·红四档，解锁不同等级战舰制造。建造/管理过程采用卡牌式。
+   *   先构造船体，再升级其他部件。」「主题 = 军事投送」
+   * ============================================================ */
+  /* ---------- 空间站（母港 · 全局一座） ---------- */
+  DATA.STATION = {
+    name: '空间站',
+    maxLv: 10,
+    /* 站等级 → 可造的最高舰档（白/蓝/紫/红 依次解锁）与船坞容量 */
+    tierCap: { 1: 1, 3: 2, 6: 3, 9: 4 },   /* 达到该等级 → 解锁到第几档 */
+    dockSlots: function (lv) { return 2 + Math.floor((lv || 1) / 2); },
+  };
+  /* ---------- 12 种战舰：4 档 × 3 系 ---------- */
+  /* 档 tier：1 白 / 2 蓝 / 3 紫 / 4 红（品质色沿用六档表的前四档语义）。
+     系 role：assault 突击（伤害）/ escort 护卫（防御）/ carrier 母舰（运载）。
+     hull = 初始船体（造舰时必付）；tierMul = 属性倍率；bp = 蓝图 id（第 B 期启用）。 */
+  DATA.SHIP_TIERS = [
+    null,
+    { id: 1, name: '白', color: '#c8d2dc', mul: 1.00, matMul: 1 },
+    { id: 2, name: '蓝', color: '#5aa7e0', mul: 1.45, matMul: 2 },
+    { id: 3, name: '紫', color: '#b07de0', mul: 2.10, matMul: 3 },
+    { id: 4, name: '红', color: '#e06a5a', mul: 3.00, matMul: 5 },
+  ];
+  DATA.SHIP_ROLES = {
+    assault: { name: '突击', short: '突', focus: ['atk', 'hit', 'spd'] },
+    escort: { name: '护卫', short: '护', focus: ['hp', 'armor', 'shield', 'eva'] },
+    carrier: { name: '母舰', short: '母', focus: ['cap', 'ammo', 'warp', 'repair'] },
+  };
+  DATA.SHIP_CLASSES = [
+    /* --- 白档 --- */
+    { id: 'c_w1', tier: 1, role: 'assault', name: '游隼艇', icon: '🛩️', desc: '轻型突击艇，快而脆。' },
+    { id: 'c_w2', tier: 1, role: 'escort', name: '护盾艇', icon: '🛡️', desc: '编队护卫，挡在最前。' },
+    { id: 'c_w3', tier: 1, role: 'carrier', name: '运输梭', icon: '🚚', desc: '小型运载，投送先驱。' },
+    /* --- 蓝档 --- */
+    { id: 'c_b1', tier: 2, role: 'assault', name: '裂空驱逐舰', icon: '🚀', desc: '主炮驱逐，突破防线。' },
+    { id: 'c_b2', tier: 2, role: 'escort', name: '铁壁护卫舰', icon: '🛡️', desc: '重甲护卫，掩护主力。' },
+    { id: 'c_b3', tier: 2, role: 'carrier', name: '远洋运输舰', icon: '🚢', desc: '中程投送，载兵载货。' },
+    /* --- 紫档 --- */
+    { id: 'c_g1', tier: 3, role: 'assault', name: '星火巡洋舰', icon: '🔥', desc: '火力巡洋，正面压制。' },
+    { id: 'c_g2', tier: 3, role: 'escort', name: '壁垒巡防舰', icon: '🧱', desc: '护盾与装甲并重。' },
+    { id: 'c_g3', tier: 3, role: 'carrier', name: '方舟运载舰', icon: '📦', desc: '大容量，殖民跳板。' },
+    /* --- 红档 --- */
+    { id: 'c_r1', tier: 4, role: 'assault', name: '天罚战列舰', icon: '⚡', desc: '主力战列，一击定势。' },
+    { id: 'c_r2', tier: 4, role: 'escort', name: '天穹旗舰', icon: '🛡️', desc: '舰队之盾，旗舰级防护。' },
+    { id: 'c_r3', tier: 4, role: 'carrier', name: '星际母舰', icon: '🛸', desc: '运载与投送的终点。' },
+  ];
+  /* ---------- 部件（先船体 → 再升级） ---------- */
+  /* 老板清单 + 补充（指挥舱=命中/闪避，弹药库=载弹量）。
+     per：每级增加的属性；max：部件等级上限；mat：升级消耗的奇观材料。
+     船体（hull）无等级 —— 造舰时一次性付费，决定基础生命与槽位。 */
+  DATA.SHIP_PARTS = [
+    { id: 'hull',    name: '船体',       icon: '🛠️', max: 0, mat: null,           per: {},                      desc: '造舰时一次性建造，决定基础生命与部件槽位。' },
+    { id: 'engine',  name: '引擎',       icon: '🔥', max: 10, mat: 'w_he3',        per: { spd: 2, eva: 0.4 },    desc: '亚光速机动与闪避。' },
+    { id: 'weapon',  name: '武器',       icon: '🔫', max: 10, mat: 'w_meteor',     per: { atk: 12, hit: 0.5 },   desc: '伤害与命中。' },
+    { id: 'armor',   name: '装甲',       icon: '🧱', max: 10, mat: 'w_stariron',   per: { hp: 40, armor: 2 },    desc: '生命与护甲。' },
+    { id: 'shield',  name: '护盾',       icon: '🛡️', max: 10, mat: 'w_crystal',    per: { shield: 30 },          desc: '护盾值。' },
+    { id: 'warp',    name: '跃迁发生器', icon: '🌀', max: 10, mat: 'w_singularity', per: { warp: 0.15 },          desc: '超光速倍数（跨星球投送）。' },
+    { id: 'repair',  name: '维修机器人', icon: '🤖', max: 10, mat: 'w_humus',      per: { repair: 1 },           desc: '战后自动修复。' },
+    { id: 'cargo',   name: '仓储',       icon: '📦', max: 10, mat: 'w_spore',      per: { cap: 2 },              desc: '运载容量（兵/货）。' },
+    { id: 'command', name: '指挥舱',     icon: '🎯', max: 10, mat: 'w_coldcrystal', per: { hit: 0.3, eva: 0.3 }, desc: '命中与闪避。' },
+    { id: 'ammo',    name: '弹药库',     icon: '🧨', max: 10, mat: 'w_tidesalt',   per: { ammo: 6 },             desc: '载弹量。' },
+  ];
+  /* ---------- 战舰属性（唯一口径 · 供 GAME.ship.statsOf 与界面显示） ---------- */
+  DATA.SHIP_STATS = [
+    { k: 'atk',    name: '伤害',   pct: false },
+    { k: 'hit',    name: '命中',   pct: true },
+    { k: 'hp',     name: '生命',   pct: false },
+    { k: 'shield', name: '护盾',   pct: false },
+    { k: 'armor',  name: '护甲',   pct: false },
+    { k: 'eva',    name: '闪避',   pct: true },
+    { k: 'cap',    name: '容量',   pct: false },
+    { k: 'spd',    name: '亚光速', pct: false },
+    { k: 'warp',   name: '超光速', pct: false },
+    { k: 'ammo',   name: '载弹量', pct: false },
+    { k: 'repair', name: '维修',   pct: false },
+  ];
+  /* 各舰种的基础值（造舰时一次给；档位倍率再乘）。 */
+  DATA.SHIP_BASE = {
+    assault: { atk: 120, hit: 0.85, hp: 900,  shield: 200, armor: 6,  eva: 0.15, cap: 4,  spd: 12, warp: 1.0, ammo: 30, repair: 0 },
+    escort:  { atk: 60,  hit: 0.80, hp: 1600, shield: 700, armor: 16, eva: 0.08, cap: 5,  spd: 9,  warp: 1.0, ammo: 12, repair: 1 },
+    carrier: { atk: 40,  hit: 0.75, hp: 1300, shield: 400, armor: 10, eva: 0.05, cap: 20, spd: 8,  warp: 1.4, ammo: 8,  repair: 2 },
+  };
+  /* 部件升级成本（随部件等级递增）与造舰材料（船体） */
+  DATA.SHIP_COST = {
+    hullMat: 'w_stariron',
+    hullBase: 8,             /* 造舰船体基础材料数（再 × 档位 matMul） */
+    partBase: 4,             /* 部件升级一级的基础材料数 */
+    partStep: 2,             /* 每级递增 */
+    scrapPct: 0.5,           /* 拆舰返还比例 */
+  };
+
   /* v91.51：奇观「产出档位」→ 珠宝池（越强的材料，掉越贵的珠宝）。按 price 派生，不手抄 id。 */
   DATA.WONDER_JEWEL_BANDS = {
     1: ['bengzhu', 'mila', 'meiyu'],                     /* 低阶 */

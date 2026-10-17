@@ -19,7 +19,7 @@ BUNDLE = os.path.join(JS, 'bundle.js')
 HASHF = os.path.join(JS, 'bundle.hash')
 
 # 与 js/main.js 的 import 列表逐条一致（= 旧 index.html 的 <script> 顺序）。
-ORDER = ['core', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'domain', 'map', 'sphere', 'gltf',
+ORDER = ['core', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'domain', 'map', 'sphere', 'gltf',
          'map3d', 'battle', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits',
          'story', 'ui', 'main']
 
