@@ -436,6 +436,7 @@ import './state.js';
     var id = 'bt' + (GAME._battleSeq = (GAME._battleSeq || 0) + 1);
     var rec = {
       id: id, kind: 'expedition', side: 'atk',
+      pid: (target && target.pid != null) ? target.pid : GAME.curPid(),
       target: U.deep(target), modeId: modeId,
       atkArmy: U.deep(atkArmy), genId: genId,
       cityId: opts.cityId || null, scheme: opts.scheme || null,
@@ -1726,7 +1727,9 @@ import './state.js';
     var s = GAME.state;
     if (!target) return { ok: false, msg: '未指定目标' };
     if (target.kind === 'wild') {
-      var tcell = (GAME.sphere && GAME.sphere.cells) ? GAME.sphere.cells[target.ci] : null;
+      var _wpid = (target.pid != null) ? target.pid : GAME.curPid();
+      var _wSP = GAME.sphereOf(_wpid);
+      var tcell = (_wSP && _wSP.cells) ? _wSP.cells[target.ci] : null;
       if (!tcell) return { ok: false, msg: '目标格越界' };
       if (tcell.type === 'city') return { ok: false, msg: '该处为城市，请点击城市出征' };
       /* v90.69：野地**地形口径 = 球面**（所见即所得）——优先用点选带入的 terrain；无则读球面地块。 */
@@ -1734,16 +1737,22 @@ import './state.js';
       var lv = GAME.map.wildLevelNow ? GAME.map.wildLevelNow(target.ci) : GAME.map.wildLevel(target.ci);
       /* v27（需求 3）：守军由 wildDefenseAt 按 (格, 现实日) 确定性生成 —— 侦查所见即战斗所遇。 */
       var wd = GAME.wildDefenseAt(target.ci, lv);
-      return { ok: true, kind: 'wild', ci: target.ci, x: tcell.x, y: tcell.y, lon: tcell.lon, lat: tcell.lat, lv: lv,
+      return { ok: true, kind: 'wild', pid: _wpid, ci: target.ci, x: tcell.x, y: tcell.y, lon: tcell.lon, lat: tcell.lat, lv: lv,
         name: (DATA.TERRAIN[_wildTerr] ? DATA.TERRAIN[_wildTerr].name : '野地') + ' Lv' + lv,
         terrain: _wildTerr, garrison: wd.army, guard: wd.gen, def: 0, defDay: wd.day };
     }
     if (target.kind === 'fort' && GAME.map.fortAt) {
-      var f = GAME.map.fortAt(target.ci);
+      var _fpid2 = (target.pid != null) ? target.pid : GAME.curPid();
+      /* v91.74：老调用点只给 (x,y)（据点面板/自动出征）—— 先按该星球球面换成 ci。 */
+      if (target.ci == null && target.x != null) {
+        var _fsp = GAME.sphereOf(_fpid2);
+        target.ci = (_fsp && _fsp.ciOfXY) ? _fsp.ciOfXY(target.x, target.y) : -1;
+      }
+      var f = GAME.map.fortAt(target.ci, GAME.map._pctx(_fpid2, true));
       if (!f) return { ok: false, msg: '此处并无野外城市' };
       var fg = GAME.map.fortGarrison(f.level);
       /* v61：野地城市建筑全满；布局 GAME.fortPlanOf · 城防 GAME.fortDefOf · 守将 GAME.fortGuardOf。 */
-      return { ok: true, kind: 'fort', ci: f.ci, x: f.x, y: f.y, lon: f.lon, lat: f.lat, lv: f.level, name: f.name + '（野外城市 Lv' + f.level + '）',
+      return { ok: true, kind: 'fort', pid: _fpid2, ci: f.ci, x: f.x, y: f.y, lon: f.lon, lat: f.lat, lv: f.level, name: f.name + '（野外城市 Lv' + f.level + '）',
         fort: f, garrison: fg, def: GAME.fortDefOf(f), plan: GAME.fortPlanOf(f),
         guard: GAME.fortGuardOf(f),
         cityType: 'fort', dropType: 'fort' };
@@ -1775,7 +1784,16 @@ import './state.js';
     }
     if (target.kind === 'city') {
       var npc = target.npc || null;   // 允许直接传入城市对象（测试/临时目标）
-      if (!npc) (s.map.cities || []).forEach(function (c) { if (c.id === target.id) npc = c; });
+      /* v91.74：世界数据全局一份 —— 先按"该星球的名城派生表"找，再回落当前地图的派生表。 */
+      if (!npc) {
+        var _cpid = (target.pid != null) ? target.pid : GAME.curPid();
+        try {
+          var _ps = GAME._planetById(_cpid);
+          var _npcList = GAME.buildNpcCities(_ps ? _ps.seed : (s.map && s.map.seed), GAME.sphereOf(_cpid));
+          _npcList.forEach(function (c) { if (!npc && c.id === target.id) npc = c; });
+        } catch (e) {}
+        if (!npc) (s.map.cities || []).forEach(function (c) { if (!npc && c.id === target.id) npc = c; });
+      }
       if (!npc) return { ok: false, msg: '目标城市不存在（可能已被攻占）' };
       var ng = GAME.npcCityGuard(npc);
       return { ok: true, kind: 'city', id: npc.id, lv: GAME.cityLvOf(npc), name: npc.name,
@@ -2879,6 +2897,7 @@ import './state.js';
                  v90.70：附 ci（球面六边格索引）—— 与城/据点统一按球系身份 */
               var _wc = GAME.sphere && GAME.sphere.cells ? GAME.sphere.cells[t.ci] : null;
               s.wilds.push({
+                pid: (t.pid != null) ? t.pid : GAME.curPid(),
                 ci: t.ci, type: t.terrain, level: t.lv,
                 lon: _wc ? _wc.lon : null, lat: _wc ? _wc.lat : null,
                 levelDay: GAME.questDayIndex ? GAME.questDayIndex() : Math.floor(Date.now() / 86400000),
@@ -3215,26 +3234,30 @@ import './state.js';
     var s = GAME.state;
     if (!t || t.kind !== 'fort' || !t.fort) return { ok: false, msg: '不是野外城市' };
     var f = t.fort;
+    /* v91.74：据点按 (pid, ci) 定位 —— ci 只在星球内唯一。 */
+    var _fpid = (t.pid != null) ? t.pid : (f.pid != null ? f.pid : GAME.curPid());
+    var _fSP = GAME.sphereOf(_fpid);
     /* v90.100：fort 对象缺 ci 时由 (x,y) 派生（兼容旧夹具）。 */
-    if ((f.ci == null || f.ci < 0) && f.x != null && GAME.sphere && GAME.sphere.ciOfXY) f.ci = GAME.sphere.ciOfXY(f.x, f.y);
+    if ((f.ci == null || f.ci < 0) && f.x != null && _fSP && _fSP.ciOfXY) f.ci = _fSP.ciOfXY(f.x, f.y);
     var lv = Math.max(1, f.level || 1);
     var A = DATA.FORT_AURA || {};
     var forts = GAME.fortsOf();
-    var key = 'c' + f.ci;
+    var key = GAME.fortKey(f.ci, _fpid);
     /* v89.193：归属 = 出发城；超限分支 —— 本格照常记"已拔除"（不再刷据点）、
        不登记前哨（战利品已在 result 里照收）。 */
     var own193 = (fromCity && (s.cities || []).some(function (c) { return c.id === fromCity.id; })) ? fromCity : null;
     var max193 = A.maxPerCity == null ? 5 : A.maxPerCity;
     if (own193 && GAME.fortsOfCity(own193).length >= max193) {
-      if (GAME.map.markFortTaken) GAME.map.markFortTaken(f.ci, key);
-      if (GAME.map.razeFort) GAME.map.razeFort(f.ci);
+      if (GAME.map.markFortTaken) GAME.map.markFortTaken(f.ci, key, _fpid);
+      if (GAME.map.razeFort) GAME.map.razeFort(f.ci, _fpid);
       GAME.log.war('🚩 拔除 ' + f.name + '（野外城市 Lv' + lv + '）—— 但「' + own193.name
         + '」的前哨已满（' + max193 + ' 处），**未能设哨**（战利品照收；可先放手一处，或从其他城市出征）');
       return { ok: false, full: true,
         msg: f.name + ' 已拔除，但本城前哨已满（' + max193 + ' 处）—— 未能设哨' };
     }
-    var _fc = (GAME.sphere && GAME.sphere.cells) ? GAME.sphere.cells[f.ci] : null;
+    var _fc = (_fSP && _fSP.cells) ? _fSP.cells[f.ci] : null;
     var rec = forts[key] = forts[key] || {
+      pid: _fpid,
       ci: f.ci, lon: f.lon != null ? f.lon : (_fc ? _fc.lon : null), lat: f.lat != null ? f.lat : (_fc ? _fc.lat : null),
       /* x/y：渲染缓存（由 ci 派生；x/y 不再作身份） */
       x: _fc ? _fc.x : null, y: _fc ? _fc.y : null,
@@ -3243,8 +3266,8 @@ import './state.js';
     rec.cityId = own193 ? own193.id : (rec.cityId || null);   /* v89.193：归属城（老档迁移兜底） */
     var fx193 = GAME.fortEffectOf(rec);                       /* v89.193：半径/文案与覆盖同源（按等级） */
     var RR = fx193.radius;
-    if (GAME.map.markFortTaken) GAME.map.markFortTaken(f.ci, key);
-    if (GAME.map.razeFort) GAME.map.razeFort(f.ci);    /* 当日标记：今日不再出现 */
+    if (GAME.map.markFortTaken) GAME.map.markFortTaken(f.ci, key, _fpid);
+    if (GAME.map.razeFort) GAME.map.razeFort(f.ci, _fpid);    /* 当日标记：今日不再出现 */
     /* v89.195（老板 1）：「前哨可放手」—— 记录**占据前的地形**（terrain0），
        放手时恢复（GAME.abandonFort 唯一出口）。`rec.terrain0 ||` 保证只记最早那一次。 */
     /* 据点仍占该格（视觉可见）：地形由 sphere 供，无需平面 tile 标记 */
@@ -3949,6 +3972,7 @@ import './state.js';
     s.marches = s.marches || [];
     var m = {
       id: 'mr' + (GAME._marchSeq = (GAME._marchSeq || 0) + 1),
+      pid: (t.pid != null) ? t.pid : GAME.pidOf(city),
       cityId: city.id, genId: gen ? gen.id : '', modeId: mode.id,   /* v89.137：'' = 无将增援 */
       target: target, tci: t.ci, name: t.name, kind: t.kind,
       army: U.deep(army), elapsed: 0, totalTime: total,

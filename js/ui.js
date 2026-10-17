@@ -2944,7 +2944,7 @@ import './state.js';
       by.ownwild.targets.push({ d: dist(w.x, w.y),
         label: '🌾 ' + t.name + ' Lv' + w.level + '（' + GAME.map.coordText(w.x, w.y) + '）'
           + (gn > 0 ? '　· 驻军 ' + U.numText(gn, 0) : '　· 无驻军'),
-        tg: { kind: 'wild', ci: w.ci } });
+        tg: { kind: 'wild', ci: w.ci, pid: GAME.pidOf(w) } });
     });
     /* ③ 名城（NPC 城市 —— 聚落/重镇/首府/旧都，按距离取最近 N 处） */
     (s.map.cities || []).forEach(function (nc) {
@@ -2966,7 +2966,7 @@ import './state.js';
         if (!(lv > 0)) continue;
         by.wild.targets.push({ d: Math.max(Math.abs(dx), Math.abs(dy)),
           label: '🗺️ 野地 Lv' + lv + '（' + GAME.map.coordText(x, y) + '）',
-          tg: { kind: 'wild', ci: (GAME.sphere&&GAME.sphere.ciOfXY?GAME.sphere.ciOfXY(x, y):-1) } });
+          tg: { kind: 'wild', ci: (GAME.sphere&&GAME.sphere.ciOfXY?GAME.sphere.ciOfXY(x, y):-1), pid: GAME.curPid() } });
       }
     }
     /* ⑤ 野外据点（本城 14 格内 —— 与 expTargetCandidates 同一半径） */
@@ -2979,7 +2979,7 @@ import './state.js';
         if (!f) continue;
         by.fort.targets.push({ d: Math.max(Math.abs(fx), Math.abs(fy)),
           label: '🏕️ ' + GAME.fortLabelOf(f) + '（Lv' + (f.level || 1) + '）',
-          tg: { kind: 'fort', x: fxx, y: fyy } });
+          tg: { kind: 'fort', x: fxx, y: fyy, pid: GAME.curPid() } });
       }
     }
     groups.forEach(function (g) {
@@ -13068,7 +13068,7 @@ import './state.js';
     ui._buildCityCi = ci;   // v90.100：平原筑城用（球系 ci）
     /* v90.69：把**该格地形**（与面板同源 _terKey139）随出征目标带上 —— 占领时按它记野地类型
        （所见即所得），不再靠平面格或坐标反查。3D 点选/2D 点选一致。 */
-    ui._expTarget = { kind: 'wild', ci: ci, terrain: _terKey139 };
+    ui._expTarget = { kind: 'wild', ci: ci, terrain: _terKey139, pid: GAME.curPid() };
     ui._expMode = 'occupy';
 
     /* v89.135（老板「为啥没有珠宝（比如湖泊里有珍珠等等）」）：可采清单里的**珠宝行** */
@@ -13693,7 +13693,7 @@ import './state.js';
           var x = city.x + dx, y = city.y + dy;
           if (x < 0 || y < 0 || x >= DATA.MAP_W || y >= DATA.MAP_H) continue;
           var f = GAME.map.fortAt ? GAME.map.fortAt(x, y) : null;
-          if (f) push({ kind: 'fort', x: x, y: y }, Math.max(Math.abs(dx), Math.abs(dy)) + 100);
+          if (f) push({ kind: 'fort', x: x, y: y, pid: GAME.curPid() }, Math.max(Math.abs(dx), Math.abs(dy)) + 100);
         }
       }
     }
@@ -17369,7 +17369,7 @@ import './state.js';
     /* 全境城（跨星球：当前球活态 + 各球分片）—— 用于"全境合计"兵力。 */
     var allCities = [];
     GAME.planetsOf().forEach(function (pl) {
-      var cs = (pl.id === (s.activePlanet || 0)) ? (s.cities || []) : (((s.mapSlices || {})[pl.id] || {}).cities || []);
+      var cs = (s.cities || []).filter(function (c) { return GAME.pidOf(c) === pl.id; });
       cs.forEach(function (c) { allCities.push(c); });
     });
     /* 逐兵种「自动探索数量」上限（可作战兵种）。 */

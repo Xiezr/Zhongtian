@@ -12887,7 +12887,8 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
       if (!f) return false;
       G.map.markFortRaided(f.ci);
       var now = G.map.fortRaidedToday(f.ci);
-      st.fortRaids['c' + f.ci] = (G.questDayIndex ? G.questDayIndex() : 0) - 1;
+      st.fortRaids[G.fk()('c' + f.ci)] = (G.questDayIndex ? G.questDayIndex() : 0) - 1;
+      if (st.fortRaids['c' + f.ci] != null) st.fortRaids['c' + f.ci] = (G.questDayIndex ? G.questDayIndex() : 0) - 1;
       return now === true && G.map.fortRaidedToday(f.ci) === false;
     });
   })());
@@ -20064,7 +20065,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       /* v90.97：fortAt 参数化（据点生成走星球上下文 ctx）—— 永久登记读 ctx.fortsTaken。 */
       return /GAME\.claimFort = function/.test(bt103) && !/GAME\.battle\.razeFort/.test(bt103)
         && /GAME\.map\.markFortTaken = function/.test(mp103)
-        && /\(ctx\.fortsTaken \|\| \{\}\)\['c' \+ ci\]/.test(mp103)
+        && /GAME\._fkGet\(ctx\.fortsTaken, ci, ctx\.id\)/.test(mp103)   /* v91.74：据点键带星球前缀 */
         && /fortsTaken: \{\}/.test(st103);
     })());
     check('② 数据：占领方式 desc / 据点按钮 都写"前哨"（文案不落后于规则）', (function () {
@@ -20106,10 +20107,11 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       if (f) {
         var nCity0 = st9.cities.length;
         var r = G.claimFort({ kind: 'fort', ci: f.ci, fort: f, lv: f.level, name: f.name }, null, null, {});
-        var rec = (st9.forts || {})['c' + f.ci];
+        var _k = G.fortKey(f.ci, G.curPid ? G.curPid() : 1);
+        var rec = (st9.forts || {})[_k] || (st9.forts || {})['c' + f.ci];
         ok = !!(r && r.ok && rec && rec.lv === f.level && !r.city
           && st9.cities.length === nCity0
-          && (st9.fortsTaken || {})['c' + f.ci]);
+          && (G._fkGet(st9.fortsTaken, f.ci) !== undefined));
       }
       G.state = old;
       return ok;
@@ -29879,7 +29881,8 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         var nCity = st.cities.length;
         var fake = { kind: 'fort', name: '测据点', fort: { x: 88, y: 66, level: 5, name: '测据点' } };
         var r = G.claimFort(fake, null, st.cities[0], {});
-        var rec = (st.forts || {})['c' + _ciOf(88, 66)];
+        var _k186 = G.fortKey(_ciOf(88, 66), G.curPid ? G.curPid() : 1);
+        var rec = (st.forts || {})[_k186] || (st.forts || {})['c' + _ciOf(88, 66)];
         return r.ok && !!rec && rec.lv === 5 && st.cities.length === nCity
           && r.fort && r.fort.x === 88;
       } finally { G.state = keep; G.ui._cityId = keepCity; }
@@ -31362,7 +31365,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
 
     console.log('  --- ① 前哨放手（结构）---');
     check('§195① 唯一出口 GAME.abandonFort + 确认窗 + 两个 case + terrain0 记录（源码级）', (function () {
-      return /GAME\.abandonFort = function \(ci\) \{/.test(dS195)
+      return /GAME\.abandonFort = function \(ci, pid\) \{/.test(dS195)
         && /ui\.openFortAbandonAsk = function \(ci\) \{/.test(uS195)
         && /case 'fort-abandon-ask': ui\.openFortAbandonAsk/.test(mS195)
         && /case 'fort-abandon-arm': \{/.test(mS195)
@@ -31577,7 +31580,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     console.log('  --- ② 放手可重占 ---');
     check('§196② 放手清拔除登记（源码锚 · 行为在 §195② 名额闭环内）', (function () {
       /* "可重新占据"在注释里 → 查 raw；可执行形态查剥注释版。 */
-      return /if \(s\.fortsTaken\) delete s\.fortsTaken\[key\];/.test(dS196)
+      return /if \(s\.fortsTaken\) \{ delete s\.fortsTaken\[key\];/.test(dS196)
         && /可重新占据/.test(raw196('domain.js'));
     })());
 
@@ -35770,7 +35773,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var pl2_248 = G.addPlanet({ seed: 818181 });
       G.enterPlanet(pl2_248.id);
       var D248 = G.makeCity({ id: 'conq_p' + pl2_248.id + '_npcA', name: '星2城', x: 20, y: 20, type: 'county', res: {} });
-      st248.cities = [D248];
+      st248.cities.push(D248);      /* v91.74：世界数据全局一份（原先"整片替换"= 分片语义） */
       st248.generals.push(G.makeGeneral('星2城主', 10, 'mayor', D248.id, false));
       G.enterPlanet(1);
       G.ui._cityId = home248;
@@ -36695,10 +36698,10 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         var c0 = st.cities[0];
         var same = GAME.city.byId(c0.id) === c0 && GAME.city.byId(c0.id) === GAME.cityById(c0.id);
         /* 造一个"他星分片"的城，anywhere 必须找得到 */
-        st.mapSlices = st.mapSlices || {};
-        st.mapSlices[9] = { cities: [{ id: 'x9', name: '他星城', army: {}, res: {} }] };
+        /* v91.74：世界数据全局一份 —— "他星城"就在 s.cities 里（带 pid）。 */
+        st.cities.push({ id: 'x9', name: '他星城', army: {}, res: {}, pid: 9 });
         var other = GAME.city.anywhere('x9');
-        return same && !!other && other.id === 'x9' && GAME.city.byId('x9') === null;
+        return same && !!other && other.id === 'x9' && GAME.city.byId('x9') !== null;
       } finally { G.state = bk; }
     })());
     check('§270③ armyTotal 逐兵种求和（忽略非正/非法值）', (function () {
@@ -37277,6 +37280,58 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         var stillOff = G.autoFarmCfg().on === false;
         return on0 && off && stillOff;
       } finally { G.state = bk; }
+    })());
+  })();
+
+  /* ============================================================
+   * §280. v91.74 世界数据归一（星球不切片）—— 背景星球不再停表
+   * ============================================================ */
+  (function () {
+    console.log('\n===== 280. v91.74 星球世界归一 =====');
+    check('§280① 全局世界：城带 pid · cityById 跨星球直达 · sliceOf 只做过滤', (function () {
+      var bk = GAME.state;
+      try {
+        var st = G.newGame({ name: 'gw280', cityName: '灰岗', region: '碎垣', mapSeed: 8 });
+        G.state = st;
+        var p2 = G.addPlanet({ seed: 777001 });
+        var c2 = G.makeCity({ id: 'p2c1', name: '二星城', x: 30, y: 30, pid: p2.id });
+        st.cities.push(c2);
+        return G.pidOf(st.cities[0]) === 1 && G.pidOf(c2) === p2.id
+          && G.cityById('p2c1') === c2 && G.cityByIdAnywhere('p2c1') === c2
+          && G.sliceOf(1).cities.length === 1 && G.sliceOf(p2.id).cities.length === 1;
+      } finally { G.state = bk; }
+    })());
+    check('§280② 背景星球的建造/募兵/科技队列照常推进（切走后不停表）', (function () {
+      var bk = GAME.state;
+      try {
+        var st = G.newGame({ name: 'gw280b', cityName: '灰岗', region: '碎垣', mapSeed: 8 });
+        G.state = st;
+        var p2 = G.addPlanet({ seed: 777001 });
+        var c2 = G.makeCity({ id: 'p2c2', name: '二星城', x: 30, y: 30, pid: p2.id });
+        st.cities.push(c2);
+        st.queues.build.push({ pid: p2.id, cityId: c2.id, gridIndex: 0, buildId: 'minfang', type: 'build', elapsed: 0, totalTime: 1e9 });
+        st.queues.tech.push({ pid: p2.id, cityId: c2.id, techId: 'zhongzhi', elapsed: 0, totalTime: 1e9 });
+        st.queues.train.push({ pid: p2.id, kind: 'train', cityId: c2.id, bIdx: 0, troopId: 'buxingji', count: 1, elapsed: 0, totalTime: 1e9 });
+        var b0 = st.queues.build[0].elapsed, t0 = st.queues.tech[0].elapsed, r0 = st.queues.train[0].elapsed;
+        for (var i = 0; i < 5; i++) G.tickOnce();
+        return st.queues.build[0].elapsed > b0 && st.queues.tech[0].elapsed > t0 && st.queues.train[0].elapsed > r0;
+      } finally { G.state = bk; }
+    })());
+    check('§280③ 老档分片一次性合并（城/野地/据点键加星球前缀 · 幂等）', (function () {
+      var st = {
+        activePlanet: 1, planets: [{ id: 1, seed: 1 }, { id: 2, seed: 2 }],
+        cities: [{ id: 'a', pid: 1 }], wilds: [{ ci: 5 }], queues: { build: [], train: [], tech: [] },
+        forts: { 'c9': { ci: 9, lv: 2 } }, fortsRazed: {}, fortsTaken: {}, fortRaids: {}, sieges: {},
+        mapSlices: { 2: { cities: [{ id: 'b' }], wilds: [{ ci: 7 }], queues: { build: [], train: [], tech: [] },
+          forts: {}, fortsRazed: { 'c8': 3 }, fortsTaken: {}, fortRaids: {}, sieges: {} } },
+      };
+      G.migratePlanetWorld74(st);
+      var ok = st.cities.length === 2 && st.wilds.length === 2
+        && st.cities[1].pid === 2 && st.wilds[1].pid === 2
+        && !!st.forts['p1|c9'] && !st.forts['c9']
+        && !!st.fortsRazed['p2|c8'] && !st.mapSlices && st.planetWorldMig74 === 1;
+      var again = G.migratePlanetWorld74(st);
+      return ok && again === false && st.cities.length === 2;
     })());
   })();
 

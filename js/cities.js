@@ -149,6 +149,10 @@ import './state.js';
   };
   C.queueAdd = function (kind, item) {
     if (!kind || !item) return null;
+    if (item.pid == null) {
+      var _c = item.cityId ? GAME.cityById(item.cityId) : null;
+      item.pid = _c ? GAME.pidOf(_c) : GAME.curPid();
+    }
     C.queueOf(kind).push(item);
     return item;
   };

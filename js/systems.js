@@ -139,7 +139,7 @@ import './state.js';
       /* v89.164：曲线自带边界，二次截断（旧 min 1.5）退役 */
       if (_mb.research) time = Math.round(time / (1 + _mb.research)); // 城主谋略：研究加速
     }
-    GAME.city.queueAdd('tech', { techId: techId, cityId: city ? city.id : null,
+    GAME.city.queueAdd('tech', { pid: GAME.pidOf(city), techId: techId, cityId: city ? city.id : null,
       elapsed: 0, totalTime: Math.max(5, time) });
     return { ok: true, msg: '开始研究 ' + t.name };
   };

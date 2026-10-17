@@ -64,8 +64,8 @@ import './state.js';
     if (!s.map.cities) {
       /* NPC 城由 seed 确定性重建（不入存档）。重建后剔除**已被我方占领**的城。 */
       s.map.cities = GAME.buildNpcCities(s.map.seed);
-      var taken = {};
-      (s.cities || []).forEach(function (c) { if (c.origId) taken[c.origId] = 1; });
+      var taken = {}, _mypid = GAME.curPid();
+      (s.cities || []).forEach(function (c) { if (c.origId && GAME.pidOf(c) === _mypid) taken[c.origId] = 1; });
       s.map.cities = s.map.cities.filter(function (c) { return !taken[c.id]; });
     }
     return null;
@@ -93,9 +93,10 @@ import './state.js';
   };
   /* 城市格 ci 集合（我方城 + NPC 名城）—— 随城清单变化重建；供 terrainAt O(1) 判定。 */
   GAME.map._cityCiSet = function () {
-    var s = GAME.state;
-    var cs = (s.cities || []).concat((s.map && s.map.cities) || []);
-    var sig = cs.length + '#' + cs.map(function (c) { return c.id || '?'; }).join(',');
+    var s = GAME.state, _pid = GAME.curPid();
+    var cs = (s.cities || []).filter(function (c) { return GAME.pidOf(c) === _pid; })
+      .concat((s.map && s.map.cities) || []);
+    var sig = _pid + '#' + cs.length + '#' + cs.map(function (c) { return c.id || '?'; }).join(',');
     if (GAME.map._ccs && GAME.map._ccs.sig === sig) return GAME.map._ccs.set;
     var set = {};
     cs.forEach(function (c) { if (c.ci != null && c.ci >= 0) set[c.ci] = 1; });
@@ -151,10 +152,13 @@ import './state.js';
   };
 
   /* 该格是否已被占领为野地（按 ci） */
-  GAME.map.wildAt = function (ci) {
+  /* v91.74：野地按 `(pid, ci)` 取 —— 归一后各星球 ci 会重号，必须带星球。 */
+  GAME.map.wildAt = function (ci, pid) {
     var s = GAME.state;
+    pid = (pid == null) ? GAME.curPid() : pid;
     for (var i = 0; i < (s.wilds || []).length; i++) {
-      if (s.wilds[i].ci === ci) return s.wilds[i];
+      var w = s.wilds[i];
+      if (w.ci === ci && GAME.pidOf(w) === pid) return w;
     }
     return null;
   };
@@ -198,14 +202,22 @@ import './state.js';
     var id = useMap ? pid : (s.activePlanet || 0);
     var ps = (GAME.planetsOf ? GAME.planetsOf() : (s.planets || []));
     var p = null; ps.forEach(function (x) { if (x.id === id) p = x; });
-    var SP = useMap ? GAME.mapSphere : GAME.sphere;
-    var sl = (s.mapSlices && s.mapSlices[id]) || null;
+    var SP = GAME.sphereOf(id);
     var isActive = (id === (s.activePlanet || 0));
-    var cities = isActive ? (s.cities || []) : ((sl && sl.cities) || []);
+    var cities = (s.cities || []).filter(function (c) { return GAME.pidOf(c) === id; });
     var seed = p ? p.seed : ((s.map && s.map.seed) || 1);
-    var startPos = (isActive && s.map && s.map.startPos) || (sl && sl.startPos) || DATA.START_POS;
-    var fortsRazed = isActive ? (s.fortsRazed || {}) : ((sl && sl.fortsRazed) || {});
-    var fortsTaken = isActive ? (s.fortsTaken || {}) : ((sl && sl.fortsTaken) || {});
+    var startPos = (isActive && s.map && s.map.startPos) || DATA.START_POS;
+    /* v91.74：据点类字典键带 `p<pid>|` 前缀 —— ctx 保持**完整键**（与 fortAt 的查表同一口径）。 */
+    var pickF = function (o) {
+      var out = {};
+      Object.keys(o || {}).forEach(function (k) {
+        if (String(k).indexOf('p' + id + '|') === 0) out[k] = o[k];
+        else if (GAME.fortKeyCi(k) >= 0 && id === (s.activePlanet || 1)) out[k] = o[k];   /* 老裸键 = 当前星 */
+      });
+      return out;
+    };
+    var fortsRazed = pickF(s.fortsRazed);
+    var fortsTaken = pickF(s.fortsTaken);
     /* 名城按该星球球面算 ci（DATA.NPC_CITIES 位置固定）；按 (id,seed) 缓存免热路径重算。 */
     var cch = GAME.map._npcOf = GAME.map._npcOf || {};
     var npcKey = id + '|' + seed, npc = cch[npcKey];
@@ -307,8 +319,11 @@ import './state.js';
     ctx = ctx || GAME.map._pctx();
     var SP = ctx.sphere;
     if (!ctx || !SP || !SP.cells) return [];           /* 内核未建 → 无候选 */
-    var seed = ctx.seed;
+    var seed = ctx.seed, _cp = ctx.id;
     var cch = GAME.map._fortCand;
+    /* v91.74：缓存按**星球**分桶（各星球面/城集不同，共用一份会串）。 */
+    if (!GAME.map._fortCandBy) GAME.map._fortCandBy = {};
+    cch = GAME.map._fortCandBy[_cp];
     if (cch && cch.seed === seed && cch.list) return cch.list;
     /* **球系化（v90.75）**：候选 = 全星六边格（~4 万，O(nv)），逐个走放置判据。
        改前对 500×500=25 万平面格哈希；现直接枚举球面地块，与地形/距离/标记同源。 */
@@ -319,23 +334,26 @@ import './state.js';
       if (!GAME.map._fortActive(ci, ctx)) continue;          /* 海面由 _fortThr 折半（非排除） */
       list.push(ci);
     }
-    GAME.map._fortCand = { seed: seed, list: list };
+    GAME.map._fortCandBy[_cp] = { seed: seed, list: list };
+    GAME.map._fortCand = GAME.map._fortCandBy[_cp];
     return list;
   };
   GAME.map._fortLevelTable = function (day, ctx) {
     ctx = ctx || GAME.map._pctx();
     var F = DATA.FORT, SP = ctx.sphere;
     if (!ctx || !SP || !SP.cells) return {};   /* 内核未建 → 空表 */
-    var seed = ctx.seed;
-    var cch = GAME.map._fortLv;
+    var seed = ctx.seed, _cp2 = ctx.id;
+    if (!GAME.map._fortLvBy) GAME.map._fortLvBy = {};
+    var cch = GAME.map._fortLvBy[_cp2];
     if (cch && cch.seed === seed && cch.day === day) return cch.map;
     /* v89.197（老板 2）：「5 级以上占 80% · 等级越高比例越高」——
        按**累计占比边界**逐级切段（构造性：排序后切段，不是掷点；v89.72 教训）。
        边界 = round(n × 累计权重 / 总权重)，最后一级吃满 —— 总数恒 = 候选数。 */
     var Wt = (F.levelDist && F.levelDist.weights) || null;
     /* 键 = 该六边格的**格索引 ci**（球系唯一身份）—— 使 fortAt(ci) 精确命中。 */
+    var _kf = GAME.fk(ctx ? ctx.id : null);
     var arr = GAME.map._fortCandidates(ctx).map(function (ci) {
-      return { k: 'c' + ci, r: GAME.map._fortHashCi(ci, 9001 + day, ctx) };
+      return { k: _kf('c' + ci), r: GAME.map._fortHashCi(ci, 9001 + day, ctx) };
     });
     arr.sort(function (a, b) { return a.r - b.r; });
     var n = arr.length, map = {}, idx = 0, k;
@@ -352,12 +370,13 @@ import './state.js';
     } else {
       for (; idx < n; idx++) { map[arr[idx].k] = F.levelMin; }
     }
-    GAME.map._fortLv = { seed: seed, day: day, map: map };
+    GAME.map._fortLvBy[_cp2] = { seed: seed, day: day, map: map };
+    GAME.map._fortLv = GAME.map._fortLvBy[_cp2];
     return map;
   };
   /* 某格在指定日的据点等级（0 = 不是据点格）—— 按格索引 ci 精确查 */
   GAME.map._fortLevelAt = function (day, ci, ctx) {
-    return GAME.map._fortLevelTable(day, ctx)['c' + ci] || 0;
+    return GAME.map._fortLevelTable(day, ctx)[GAME.fk(ctx ? ctx.id : null)('c' + ci)] || 0;
   };
   /* 今日是否仍在（被攻取的据点次日重置） */
   /* ============================================================
@@ -425,7 +444,7 @@ import './state.js';
   GAME.map.fortRazedToday = function (ci, ctx) {
     var day = GAME.questDayIndex ? GAME.questDayIndex() : 0;
     var rz = (ctx && ctx.fortsRazed) || ((GAME.state || {}).fortsRazed) || {};
-    return rz['c' + ci] === day;
+    return GAME._fkGet(rz, ci, ctx ? ctx.id : null) === day;
   };
   GAME.map.fortAt = function (ci, ctx) {
     ctx = ctx || GAME.map._pctx();
@@ -434,14 +453,15 @@ import './state.js';
     if (GAME.map.fortRazedToday(ci, ctx)) return null;
     /* v89.103（老板「拔除据点可以占据该据点」）：已据为己有的格子**永久**不再生成据点 ——
        与 fortsRazed（当日标记，次日重置）不同：那一格现在是我方一座城（分片 cities 里）。 */
-    if ((ctx.fortsTaken || {})['c' + ci]) return null;
+    if (GAME._fkGet(ctx.fortsTaken, ci, ctx.id)) return null;
     var day = GAME.questDayIndex ? GAME.questDayIndex() : 0;
     var level = GAME.map._fortLevelAt(day, ci, ctx);   /* 等级表 = 据点存在的唯一事实（已排除城/海） */
     if (!level) return null;
     var a = Math.floor(GAME.map._fortHashCi(ci, 7, ctx) * F.nameA.length);
     var b = Math.floor(GAME.map._fortHashCi(ci, 13, ctx) * F.nameB.length);
     var c = SP.cells[ci];
-    return { ci: ci, lon: c.lon, lat: c.lat, level: level, name: F.nameA[a] + F.nameB[b], kind: 'fort' };
+    return { pid: (ctx && ctx.id) || GAME.curPid(), ci: ci, lon: c.lon, lat: c.lat,
+      level: level, name: F.nameA[a] + F.nameB[b], kind: 'fort' };
   };
   GAME.map.fortGarrison = function (lv) {
     var F = DATA.FORT;
@@ -507,21 +527,22 @@ import './state.js';
     g.title = tt[Math.floor(rand() * tt.length)];
     return g;
   };
-  GAME.map.razeFort = function (ci) {
+  GAME.map.razeFort = function (ci, pid) {
     var s = GAME.state;
     s.fortsRazed = s.fortsRazed || {};
-    s.fortsRazed['c' + ci] = GAME.questDayIndex ? GAME.questDayIndex() : 0;
+    s.fortsRazed[GAME.fk(pid)('c' + ci)] = GAME.questDayIndex ? GAME.questDayIndex() : 0;
   };
   /* v89.103（老板「拔除据点可以占据该据点」）：**永久**占据登记（唯一出口）。
      与 fortsRazed 的分工：那张表只管"今天不再出现"，次日重置；
      这张表是"这格已经是我的城了"，永不失效 —— `fortAt` 读到它就直接返回 null，
      于是渲染 / 出征目标 / 自动出征 / 侦查**全部**看不到它（一个出口，处处生效）。 */
-  GAME.map.markFortTaken = function (ci, cityId) {
+  GAME.map.markFortTaken = function (ci, cityId, pid) {
     var s = GAME.state;
     if (!s) return null;
     s.fortsTaken = s.fortsTaken || {};
-    s.fortsTaken['c' + ci] = { day: GAME.questDayIndex ? GAME.questDayIndex() : 0, cityId: cityId || null };
-    return s.fortsTaken['c' + ci];
+    var _k = GAME.fk(pid)('c' + ci);
+    s.fortsTaken[_k] = { day: GAME.questDayIndex ? GAME.questDayIndex() : 0, cityId: cityId || null };
+    return s.fortsTaken[_k];
   };
   /* ============================================================
    * 野外城市的**每日掠夺上限**（v63 · 老板：「野外城每天只能被掠夺一次」）
@@ -532,15 +553,15 @@ import './state.js';
    * 之所以要拦：掠夺（raid）**不破城**（只有占领才 raze），同一座据点
    * 一天内可以反复刷 —— 财货、材料、珠宝、军械全部可以无限取。
    * ============================================================ */
-  GAME.map.fortRaidedToday = function (ci) {
+  GAME.map.fortRaidedToday = function (ci, pid) {
     var s = GAME.state;
     var day = GAME.questDayIndex ? GAME.questDayIndex() : 0;
-    return (s.fortRaids || {})['c' + ci] === day;
+    return GAME._fkGet(s.fortRaids, ci, pid) === day;
   };
-  GAME.map.markFortRaided = function (ci) {
+  GAME.map.markFortRaided = function (ci, pid) {
     var s = GAME.state;
     s.fortRaids = s.fortRaids || {};
-    s.fortRaids['c' + ci] = GAME.questDayIndex ? GAME.questDayIndex() : 0;
+    s.fortRaids[GAME.fk(pid)('c' + ci)] = GAME.questDayIndex ? GAME.questDayIndex() : 0;
   };
   /* 视口内所有野外城市（供渲染与提示） */
   /* 视口内所有野外城市。v90.100（球系）：据点已按 ci 生成，视口 = 平面概览语义淡化 ——

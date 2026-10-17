@@ -6169,6 +6169,8 @@ window.GAME = window.GAME || {};
         return r;
       })(),
       name: opts.name || '新城市',
+      /* v91.74：**星球归属** —— 归一化世界里，城/野地/据点/队列都带星球号（ci 只在球内唯一）。 */
+      pid: (opts.pid != null) ? opts.pid : ((GAME.state && GAME.state.activePlanet) || 1),
       ci: _ci, lon: _lon, lat: _lat,   /* 球系唯一身份 + 显示经纬 */
       x: _xy.x, y: _xy.y,              /* 渲染缓存（由 ci 派生；不再作身份/主键） */
       level: 1,
@@ -6285,6 +6287,7 @@ window.GAME = window.GAME || {};
       planets: [{ id: 1, name: '老家', seed: mapSeed,
         params: (GAME.sphere && GAME.sphere.PLANET) ? { seaFrac: GAME.sphere.PLANET.seaFrac, ridge: GAME.sphere.PLANET.ridge, detail: GAME.sphere.PLANET.detail, temp: GAME.sphere.PLANET.temp } : { seaFrac: 0.45, ridge: 1.5, detail: 0.7, temp: 1.0 } }],
       activePlanet: 1,
+      planetWorldMig74: 1,       /* v91.74：新局即全局世界（分片已退役） */
       /* v90.97（双球面）：**地图在看/渲染的星球**（id）—— 与 activePlanet（当前城所在星球）解耦。
          默认与 activePlanet 相同（进某城时同步）。地图切星球只动它，不动 activePlanet/当前城。 */
       mapPlanetId: 1,
@@ -6335,9 +6338,8 @@ window.GAME = window.GAME || {};
       savedAt: U.now(),
     };
     GAME.attachRes(GAME.state);   // v60：挂上「当前城市库存」访问器（必须在 story.init 之前）
-    /* v90.84（老板 2）：**星球分片** —— 城/野地/据点/行军/队列 按星球各存一份（帝国英雄/资源全局共享）。
-       开局这套初始城/野地 = 默认星球（id 1，v90.97 起球系 ID 从 1 递增）的分片，先归档。 */
-    GAME._savePlanetSlice(1);
+    /* v91.74：世界数据全局一份（不再按星球分片）—— 新局直接标记已完成归一。 */
+
     /* v89.161（老板 5）：旧币上收玩家池 —— 开局库存里的旧币（INITIAL_RES.gold）并进 s.gold */
     GAME.attachGold(GAME.state, { keepCityGold: true });
     if (GAME.story) GAME.story.init();
@@ -6375,31 +6377,34 @@ window.GAME = window.GAME || {};
   /* v90.97：**任一星球的分片读取**（pid 缺省 = 当前星球）—— 跨星球行政视图（星球→城市树）用。
      当前星球取活态 s（queries 与 s.queues 是同一对象，天然实时）；他星读 mapSlices 快照，
      若该星未存片则用现有世界兜底（近似，但至少不判空）。 */
+  /* 某星球**过滤视图**（只读快照引用；v91.74 起世界数据全局一份，按 pid 过滤）。 */
   GAME.sliceOf = function (pid) {
     var s = GAME.state; if (!s) return null;
-    var mid = (pid != null) ? pid : (s.activePlanet || 0);
-    if (mid === (s.activePlanet || 0)) {
-      var slA = (s.mapSlices && s.mapSlices[mid]) || {};
-      return { cities: s.cities || [], wilds: s.wilds || [], forts: (GAME.fortsOf ? GAME.fortsOf() : (s.forts || {})),
-        fortsRazed: s.fortsRazed || {}, fortsTaken: s.fortsTaken || {},
-        queues: s.queues || slA.queues || { build: [], train: [], tech: [] }, marches: s.marches || [],
-        startPos: (s.map && s.map.startPos) || slA.startPos || null };
-    }
-    return (s.mapSlices && s.mapSlices[mid]) || GAME._blankSlice();
+    var mid = (pid != null) ? pid : (s.activePlanet || 1);
+    var by = function (arr) { return (arr || []).filter(function (e) { return GAME.pidOf(e) === mid; }); };
+    var fkPrefix = 'p' + mid + '|';
+    var pickDict = function (o) {
+      var out = {};
+      Object.keys(o || {}).forEach(function (k) {
+        if (String(k).indexOf(fkPrefix) === 0) out[String(k).slice(fkPrefix.length)] = o[k];
+        else if (GAME.fortKeyCi(k) >= 0 && mid === (s.activePlanet || 1)) out[k] = o[k];   /* 老裸键 = 当前星 */
+      });
+      return out;
+    };
+    var q = s.queues || {};
+    return {
+      cities: by(s.cities), wilds: by(s.wilds),
+      forts: pickDict(GAME.fortsOf ? GAME.fortsOf() : (s.forts || {})),
+      fortsRazed: pickDict(s.fortsRazed), fortsTaken: pickDict(s.fortsTaken), fortRaids: pickDict(s.fortRaids),
+      queues: { build: by(q.build), train: by(q.train), tech: by(q.tech) },
+      marches: by(s.marches), gathers: by(s.gathers),
+      startPos: (mid === (s.activePlanet || 1) && s.map) ? s.map.startPos : null,
+    };
   };
   /* v90.97：**地图星球的分片**（cities/wilds/forts/queues…）—— map3d 标记/据点读取用。
      缺省取 mapPlanet；地图星球 = 当前星球时与 sliceOf 同源（实时）。 */
   GAME.mapSliceOf = function (pid) {
-    var s = GAME.state; if (!s) return null;
-    var mid = (pid != null) ? pid : (GAME.mapPlanetOf() ? GAME.mapPlanetOf().id : (s.activePlanet || 0));
-    var sl = (s.mapSlices && s.mapSlices[mid]) || GAME._blankSlice();
-    if (mid === (s.activePlanet || 0)) {
-      return { cities: s.cities || [], wilds: s.wilds || [], forts: (GAME.fortsOf ? GAME.fortsOf() : (s.forts || sl.forts || {})),
-        fortsRazed: s.fortsRazed || {}, fortsTaken: s.fortsTaken || {},
-        queues: s.queues || { build: [], train: [], tech: [] }, marches: s.marches || [],
-        startPos: (s.map && s.map.startPos) || sl.startPos || null };
-    }
-    return sl;
+    return GAME.sliceOf(pid != null ? pid : (GAME.mapPlanetOf() ? GAME.mapPlanetOf().id : null));
   };
   /* v90.97（双球面）：地图切星球 —— **只动地图球面**（mapPlanetId + mapSphere），
      不碰 GAME.sphere / activePlanet / 当前城，故城市界面保持。 */
@@ -6494,7 +6499,145 @@ window.GAME = window.GAME || {};
    * ============================================================ */
   GAME.SLICE_KEYS = ['cities', 'wilds', 'forts', 'fortsRazed', 'fortsTaken', 'fortRaids', 'gathers', 'marches',
     'battles', 'queues', 'sieges', 'mainCityId', 'startPos', 'yieldDay'];
+  /* ============================================================
+   * v91.74（老板）：「星球不做切片，归一管理，只是地图显示切片」——
+   * ------------------------------------------------------------
+   * 世界数据（城/野地/据点/队列/行军/采集/战斗）**全局一份**，每条记录带 `pid`；
+   * `ci` 只在球内唯一，所以所有按格查表的入口都必须带星球上下文。
+   * 本段是这批改造的**唯一基础设施**：
+   *   · `curPid()`      —— 当前经营星球（activePlanet）；
+   *   · `pidOf(e)`      —— 实体所属星球（缺省 = 当前星球，老档容错）；
+   *   · `sphereOf(pid)` —— 该星球的球面内核（本次/地图球面复用，其余按 seed 懒建并缓存）；
+   *   · `FK(ci,pid)`    —— **据点类字典键**（forts / fortsRazed / fortsTaken / fortRaids / sieges）：
+   *                        `p<pid>|c<ci>`；老档 `c<ci>` 一律视为**母星 1**。
+   * ============================================================ */
+  GAME.curPid = function () {
+    var s = GAME.state; return (s && s.activePlanet) || 1;
+  };
+  GAME.pidOf = function (e) {
+    if (!e) return GAME.curPid();
+    return (e.pid != null) ? e.pid : GAME.curPid();
+  };
+  GAME._planetById = function (pid) {
+    var out = null; GAME.planetsOf().forEach(function (p) { if (p && p.id === pid) out = p; });
+    return out;
+  };
+  GAME._extraSpheres = GAME._extraSpheres || {};
+  GAME.sphereOf = function (pid) {
+    pid = pid || GAME.curPid();
+    if (pid === GAME.curPid() && GAME.sphere) return GAME.sphere;
+    if (GAME.mapSphere && GAME.mapPlanetOf && GAME.mapPlanetOf() && GAME.mapPlanetOf().id === pid
+      && GAME.mapSphere && GAME.mapSphere.cells) return GAME.mapSphere;
+    var sp = GAME._extraSpheres[pid];
+    if (sp) return sp;
+    var p = GAME._planetById(pid);
+    if (!p || !GAME.createSphere) return GAME.sphere;
+    sp = GAME.createSphere();
+    sp.setPlanet(p.seed, p.params);
+    sp.ensure();
+    GAME._extraSpheres[pid] = sp;
+    return sp;
+  };
+  GAME.fortKey = function (ci, pid) {
+    pid = (pid == null) ? GAME.curPid() : pid;
+    return 'p' + pid + '|c' + ci;
+  };
+  /* 兼容老键：`c<ci>` = 母星 1 的据点。 */
+  GAME.fortKeyCi = function (k) {
+    var m = /c(\d+)$/.exec(String(k || ''));
+    return m ? Number(m[1]) : -1;
+  };
+  /* 键前缀：`c<ci>` → `p<pid>|c<ci>`（指定星球）。 */
+  /* 据点类字典的**兼容读**：新键 `p<pid>|c<ci>`；旧裸键 `c<ci>` 视为当前星球（老档/夹具）。 */
+  GAME._fkGet = function (o, ci, pid) {
+    if (!o) return undefined;
+    pid = (pid == null) ? GAME.curPid() : pid;
+    var k = GAME.fortKey(ci, pid), v = o[k];
+    if (v === undefined && pid === GAME.curPid()) v = o['c' + ci];
+    return v;
+  };
+  /* 柯里化前缀：`GAME.fk(pid)(k)` —— 把该星球所有 `'c'+ci` 键一次性映射成 `'p<pid>|c'+ci`。
+     用法：`var K = GAME.fk(pid); forts[K('c'+ci)]`（替换点只改一处，键格式不散落）。 */
+  GAME.fk = function (pid) {
+    pid = (pid == null) ? GAME.curPid() : pid;
+    return function (k) {
+      k = String(k == null ? '' : k);
+      if (/^p\d+\|/.test(k)) return k;
+      return 'p' + pid + '|' + k;
+    };
+  };
+  /* 老档据点类字典（forts / fortsRazed / fortsTaken / fortRaids）：`c<ci>` → `p1|c<ci>`
+     （老档的据点全在母星 1 —— 当时的分片只给玩家城/野地分家，据点表本就在顶层）。 */
+  GAME._fortKeyMigrate = function (obj) {
+    if (!obj || typeof obj !== 'object') return obj;
+    var out = {}, changed = false;
+    Object.keys(obj).forEach(function (k) {
+      if (/^p\d+\|/.test(k)) { out[k] = obj[k]; return; }
+      if (GAME.fortKeyCi(k) < 0) { out[k] = obj[k]; return; }   /* 非格键（如 'c:城id'）原样 */
+      changed = true;
+      out[GAME.fortKey(GAME.fortKeyCi(k), 1)] = obj[k];
+    });
+    return changed ? out : obj;
+  };
+  /* ============================================================
+   * v91.74（老板）：「星球不做切片，归一管理」—— **老档一次性合并**。
+   * ------------------------------------------------------------
+   * 旧结构：s.cities / s.wilds / ... 只是当前星球；mapSlices[pid] 是其余星球（深拷贝）。
+   * 新结构：世界数组全局一份、每条带 pid。迁移：
+   *   ① 当前星球（activePlanet）用**活态**字段（它们最新）；
+   *   ② 其余分片整片并入并打 `pid`；
+   *   ③ 据点类字典键 `c<ci>` → `p<pid>|c<ci>`（自动覆盖当前星球的旧键）；
+   *   ④ 删 s.mapSlices，标记 `planetWorldMig74`（幂等）。
+   * 迁移后 `sliceOf/mapSliceOf` 变成**过滤视图**（不再读写分片）。
+   * ============================================================ */
+  GAME.migratePlanetWorld74 = function (st) {
+    if (!st || st.planetWorldMig74) return false;
+    var act = st.activePlanet || 1;
+    st.cities = st.cities || []; st.wilds = st.wilds || [];
+    st.gathers = st.gathers || []; st.marches = st.marches || []; st.battles = st.battles || [];
+    st.queues = st.queues || { build: [], train: [], tech: [] };
+    ['build', 'train', 'tech'].forEach(function (k) { st.queues[k] = st.queues[k] || []; });
+    st.sieges = st.sieges || {};
+    var tagArr = function (arr, pid) {
+      (arr || []).forEach(function (e) { if (e && e.pid == null) e.pid = pid; });
+    };
+    tagArr(st.cities, act); tagArr(st.wilds, act); tagArr(st.gathers, act);
+    tagArr(st.marches, act); tagArr(st.battles, act);
+    ['build', 'train', 'tech'].forEach(function (k) { tagArr(st.queues[k], act); });
+    /* 据点类字典：当前星球的旧键先迁 */
+    ['forts', 'fortsRazed', 'fortsTaken', 'fortRaids'].forEach(function (k) {
+      if (st[k]) st[k] = GAME._fortKeyMigrate(st[k]);
+    });
+    /* 其余星球分片并入 */
+    var S = st.mapSlices || {};
+    Object.keys(S).forEach(function (k) {
+      var pid = Number(k);
+      if (!S[k] || pid === act) return;
+      var sl = S[k];
+      (sl.cities || []).forEach(function (c) { if (c) { if (c.pid == null) c.pid = pid; st.cities.push(c); } });
+      (sl.wilds || []).forEach(function (w) { if (w) { if (w.pid == null) w.pid = pid; st.wilds.push(w); } });
+      (sl.gathers || []).forEach(function (g) { if (g) { if (g.pid == null) g.pid = pid; st.gathers.push(g); } });
+      (sl.marches || []).forEach(function (m) { if (m) { if (m.pid == null) m.pid = pid; st.marches.push(m); } });
+      (sl.battles || []).forEach(function (b) { if (b) { if (b.pid == null) b.pid = pid; st.battles.push(b); } });
+      ['build', 'train', 'tech'].forEach(function (qk) {
+        ((sl.queues || {})[qk] || []).forEach(function (q) { if (q) { if (q.pid == null) q.pid = pid; st.queues[qk].push(q); } });
+      });
+      ['forts', 'fortsRazed', 'fortsTaken', 'fortRaids'].forEach(function (fk) {
+        var src = sl[fk]; if (!src || typeof src !== 'object') return;
+        st[fk] = st[fk] || {};
+        Object.keys(src).forEach(function (kk) { st[fk][GAME.fk(pid)(kk)] = src[kk]; });
+      });
+      Object.keys(sl.sieges || {}).forEach(function (sk) { st.sieges[GAME.fk(pid)(sk)] = sl.sieges[sk]; });
+      /* 奇观探索挂在星球对象上（p.wonderExp），不在此迁 */
+    });
+    delete st.mapSlices;
+    st.planetWorldMig74 = 1;
+    return true;
+  };
+
   GAME._savePlanetSlice = function (pid) {
+    /* v91.74：分片已退役（世界数据全局一份）—— 保留空实现供旧调用点。 */
+    return;
     var s = GAME.state; if (!s) return;
     if (!s.mapSlices) s.mapSlices = {};
     var sl = {};
@@ -6505,6 +6648,8 @@ window.GAME = window.GAME || {};
     s.mapSlices[pid] = sl;
   };
   GAME._loadPlanetSlice = function (pid) {
+    /* v91.74：分片已退役 —— 保留空实现供旧调用点。 */
+    return;
     var s = GAME.state; if (!s) return;
     s.mapSlices = s.mapSlices || {};
     var sl = s.mapSlices[pid];
@@ -6599,7 +6744,11 @@ window.GAME = window.GAME || {};
      **只载目标星球的球面内核 + 重投影网格，不换分片**（否则用 s.mapSlices 覆盖掉刚迁移好的活态）。 */
   GAME.enterPlanet = function (id, skipSlice) {
     var s0 = GAME.state;
-    if (s0 && !skipSlice) GAME._savePlanetSlice(s0.activePlanet || 0);   /* 先存当前星球的片 */
+    /* v91.74：出生点/开始圈**按星球**保存（归一后 startPos 只有一个字段，切星球要换）。 */
+    try {
+      var _prevPl = GAME._planetById(s0 && s0.activePlanet || 1);
+      if (_prevPl && s0 && s0.map) _prevPl.worldStart = U.deep(s0.map.startPos || null);
+    } catch (e0) {}
     var r = GAME.loadPlanet(id);                          /* 载种子/规格 + setPlanet 重建内核 */
     if (!r.ok) return r;
     var s = GAME.state;
@@ -6607,21 +6756,26 @@ window.GAME = window.GAME || {};
        回地图时看到的就是这座城市所在的星球）。地图再单独切星球只动 mapPlanetId，不回冲这里。 */
     s.mapPlanetId = id;
     if (GAME.mapSphere && GAME.mapSphere.setPlanet) GAME.mapSphere.setPlanet(r.planet.seed, r.planet.params);
-    if (!skipSlice) GAME._loadPlanetSlice(id);            /* 载目标星球的片（空=毛胚）*/
+    /* v91.74：世界数据全局一份 —— 切星球**不再换分片**，只是换球面 + 重建地图投影。 */
+    if (r.planet && r.planet.worldStart && s.map) s.map.startPos = U.deep(r.planet.worldStart);
     s.map.grid = null; s.map.cities = null;               /* 清投影网格 → 重投影 + 重建 NPC 城 */
     GAME.map._fortCand = null; GAME.map._fortLv = null; GAME.map._fortBlocks = null; GAME.map._fortRing = null;
     GAME.map._cntyF = null;   /* 区域场（最近聚落 BFS）随星球失效 */
     GAME.map.generate();
-    if (skipSlice) {                                      /* 读档：活态分片已就位，只是球面换了 */
+    if (skipSlice) {                                      /* 读档：球面换了即可 */
       if (GAME.ui) { var _c0 = s.cities[0]; GAME.ui._cityId = _c0 ? _c0.id : null; }
       return r;
     }
-    if (GAME.attachRes) GAME.attachRes(s);                /* 资源访问器指向当前城（换片后重挂）*/
-    /* v90.84：进入的是**毛胚**星球（分片无城）→ 给一个落地前哨城（否则 currentCity 为 null，无法操作）。
+    if (GAME.attachRes) GAME.attachRes(s);                /* 资源访问器指向当前城 */
+    /* v90.84：进入的是**毛胚**星球（该星球还没有城）→ 给一个落地前哨城（否则 currentCity 为 null，无法操作）。
        该星球的 NPC 城/野地/据点/奇观由 seed 自动派生（已在 map.generate + 内核里）。 */
-    if (!s.cities.length) GAME.seedFoothold(id, r.planet);
+    var _hasHere = (s.cities || []).some(function (c) { return GAME.pidOf(c) === id; });
+    if (!_hasHere) GAME.seedFoothold(id, r.planet);
     /* UI 选城指针重指到本星球首城（否则仍指旧星球某城 id → 界面异常）*/
-    if (GAME.ui) { var _c0 = s.cities[0]; GAME.ui._cityId = _c0 ? _c0.id : null; }
+    if (GAME.ui) {
+      var _first = (s.cities || []).filter(function (c) { return GAME.pidOf(c) === id; })[0];
+      GAME.ui._cityId = _first ? _first.id : null;
+    }
     return r;
   };
   /* 毛胚星球落地前哨：在球面找一块平原立城 + 周边几块野地 */
@@ -6636,14 +6790,13 @@ window.GAME = window.GAME || {};
     }
     var city = GAME.makeCity({
       id: 'fp' + pid, name: (planet && planet.name ? planet.name : '星球') + '·前哨', x: x, y: y, type: 'self',
-      initialExt: 'new', res: DATA.NEW_CITY_RES || DATA.INITIAL_RES,
+      initialExt: 'new', res: DATA.NEW_CITY_RES || DATA.INITIAL_RES, pid: pid,
     });
-    s.cities = [city];
-    s.mainCityId = city.id;
-    s.wilds = [];
+    s.cities = s.cities || [];
+    s.cities.push(city);
+    if (!s.mainCityId || !GAME.cityById(s.mainCityId)) s.mainCityId = city.id;
     if (s.map) s.map.startPos = { x: x, y: y };
-    (s.mapSlices || (s.mapSlices = {}))[pid] = null;      /* 占位：下次 _savePlanetSlice 会覆盖 */
-    GAME._savePlanetSlice(pid);
+    if (planet) planet.worldStart = { x: x, y: y };       /* v91.74：随星球保存开始圈 */
     GAME.log('🪐 登陆「' + (planet && planet.name) + '」—— 落地前哨「' + city.name + '」已建立，四周待拓。', 'sys', 'admin');
   };
 
@@ -7627,15 +7780,13 @@ window.GAME = window.GAME || {};
      `s.cities` 只是当前星活态；他星读分片。 */
   GAME.empireCityCount = function () {
     var s = GAME.state; if (!s) return 0;
-    var n = (s.cities || []).length, act = s.activePlanet || 0, sl = s.mapSlices || {};
-    Object.keys(sl).forEach(function (pid) { if (+pid === act) return; n += ((sl[pid] && sl[pid].cities) || []).length; });
-    return n;
+    return (s.cities || []).length;                 /* v91.74：世界数据全局一份 */
   };
   GAME.planetsOwnedCount = function () {
     var s = GAME.state; if (!s) return 0;
-    var n = (s.cities || []).length ? 1 : 0, act = s.activePlanet || 0, sl = s.mapSlices || {};
-    Object.keys(sl).forEach(function (pid) { if (+pid === act) return; if (((sl[pid] && sl[pid].cities) || []).length) n++; });
-    return n;
+    var seen = {};
+    (s.cities || []).forEach(function (c) { seen[GAME.pidOf(c)] = 1; });
+    return Object.keys(seen).length;
   };
   /* 领地上限检查：{ ok, cap, n, msg }。ok=false 时 msg 已备好（界面与执行共用）。 */
   GAME.cityCapChk = function () {
@@ -8492,6 +8643,7 @@ window.GAME = window.GAME || {};
     /* 队列：整段推进后统一判定完成 */
     var advance = function (q) { q.elapsed += secReal * ts; };
     s.queues.build.forEach(advance);
+    /* v91.74：背景星球的建筑队列同样推进（世界数据全局一份，不再按分片停表）。 */
     /* v24（需求 8）：募兵队列按军营分组推进（与在线主循环共用同一实现） */
     GAME.advanceTrainQueues(secReal * ts);
     /* v73：实验室研发项目按同一段离线时长推进（挂机回来也该完成了） */
@@ -8527,9 +8679,7 @@ window.GAME = window.GAME || {};
   GAME.saveGame = function () {
     if (!GAME.state) return false;
     GAME.state.savedAt = U.now();
-    /* v90.89：**当前分片同步** —— 活态在 s.cities/s.wilds/...，而当前星球分片是"上次切换时"的快照。
-       存前把活态写回当前星球分片，否则存档读到的是**切换前**的旧快照（近期改动丢失）。 */
-    if (GAME._savePlanetSlice) GAME._savePlanetSlice(GAME.state.activePlanet || 0);
+    /* v91.74：世界数据全局一份 —— 存档无需再同步星球分片。 */
     try {
       /* 【派生数据一律不入档】同类历史问题已发生两次：
          · map.grid    —— 500×500=25 万格地形（JSON 约 9MB），曾撑爆 localStorage 的 5MB 配额，
@@ -8884,6 +9034,9 @@ window.GAME = window.GAME || {};
          城补 lon/lat —— 顶层 + **递归各星球分片**（须在分片迁移之后，分片已定型）。
          前置：migrateSphereCi70 已补 .ci。幂等。 */
       if (GAME._sphereIdMig) GAME._sphereIdMig(st);
+      /* v91.74（老板）：「星球不做切片，归一管理」—— 分片世界一次性合并成全局数组
+         （每条打 pid；据点类字典键加 `p<pid>|` 前缀）。幂等；此后 sliceOf 只是过滤视图。 */
+      if (GAME.migratePlanetWorld74) GAME.migratePlanetWorld74(st);
       /* v89.43：经验曲线整体缩到 1/32 —— 老档经验池按新曲线截断，避免读档连升 */
       if (GAME.migrateExpScale) GAME.migrateExpScale(st);
       /* v77 补字段：月俸锚点（老档锚点=当前游戏时刻，首期 7 游戏日后到来） */
@@ -9472,7 +9625,7 @@ window.GAME = window.GAME || {};
     if (techMult[r]) list.push({ name: '科技', d: techMult[r] });
     var itemMult = GAME.prodBuffMult();
     if (itemMult[r]) list.push({ name: '宝物', d: itemMult[r] });
-    var wildMult = GAME.wildMult();
+    var wildMult = GAME.wildMult(city);   /* v91.74：只吃本星球的野地加成 */
     /* v89.104（老板）：资源产出处的"附属野地"改成"野地"（省位置） */
     if (wildMult[r]) list.push({ name: '野地', d: wildMult[r] });
     if (GAME.story) {
@@ -10384,14 +10537,7 @@ window.GAME = window.GAME || {};
    * 否则下次 `_loadPlanetSlice` 覆盖丢失（见 autoExplore）。
    * ============================================================ */
   GAME.cityByIdAnywhere = function (id) {
-    var s = GAME.state; if (!s) return null;
-    var cur = GAME.cityById(id); if (cur) return cur;
-    var slices = s.mapSlices || {};
-    for (var pid in slices) {
-      var sl = slices[pid]; if (!sl || !sl.cities) continue;
-      for (var i = 0; i < sl.cities.length; i++) if (sl.cities[i] && sl.cities[i].id === id) return sl.cities[i];
-    }
-    return null;
+    return GAME.cityById(id);                       /* v91.74：世界数据全局一份，无需扫分片 */
   };
 
   /* ============================================================
@@ -11181,7 +11327,7 @@ window.GAME = window.GAME || {};
       /* v89.164：曲线自带边界，二次截断（旧 min 1.5）退役 */
       if (_mb.research) time = Math.round(time / (1 + _mb.research)); // 城主谋略：研究加速
     }
-    GAME.city.queueAdd('tech', { techId: techId, cityId: city ? city.id : null,
+    GAME.city.queueAdd('tech', { pid: GAME.pidOf(city), techId: techId, cityId: city ? city.id : null,
       elapsed: 0, totalTime: Math.max(5, time) });
     return { ok: true, msg: '开始研究 ' + t.name };
   };
@@ -12478,6 +12624,10 @@ window.GAME = window.GAME || {};
   };
   C.queueAdd = function (kind, item) {
     if (!kind || !item) return null;
+    if (item.pid == null) {
+      var _c = item.cityId ? GAME.cityById(item.cityId) : null;
+      item.pid = _c ? GAME.pidOf(_c) : GAME.curPid();
+    }
     C.queueOf(kind).push(item);
     return item;
   };
@@ -13876,7 +14026,7 @@ window.GAME = window.GAME || {};
     if (!GAME.canAffordIn(city, cost)) return { ok: false, msg: GAME.costLackMsg(city, cost) || '本城资源不足（跨城需走「本境调运」）' };
     GAME.payCostIn(city, cost);
     e.pending = eid;
-    GAME.city.queueAdd('build', { cityId: city.id, extIdx: extIdx, buildId: eid, type: 'ext_build', paidCost: GAME.resOnlyOf(cost), elapsed: 0, totalTime: Math.max(cost.time * GAME.cityBuildMult(city), GAME.buildMinTime()) });   /* v91.68 */
+    GAME.city.queueAdd('build', { pid: GAME.pidOf(city), cityId: city.id, extIdx: extIdx, buildId: eid, type: 'ext_build', paidCost: GAME.resOnlyOf(cost), elapsed: 0, totalTime: Math.max(cost.time * GAME.cityBuildMult(city), GAME.buildMinTime()) });   /* v91.68 */
     return { ok: true, msg: '开始建造 ' + eb.name };
   };
   GAME.upgradeExt = function (extIdx, cityId) {
@@ -13900,7 +14050,7 @@ window.GAME = window.GAME || {};
     if (!GAME.canAffordIn(city, cost)) return { ok: false, msg: GAME.costLackMsg(city, cost) || '本城资源不足（跨城需走「本境调运」）' };
     GAME.payCostIn(city, cost);
     e.pending = e.type;
-    GAME.city.queueAdd('build', { cityId: city.id, extIdx: extIdx, buildId: e.type, type: 'ext_upgrade', targetLevel: e.lv + 1, paidCost: GAME.resOnlyOf(cost), elapsed: 0, totalTime: Math.max(cost.time * GAME.cityBuildMult(city), GAME.buildMinTime()) });   /* v91.68 */
+    GAME.city.queueAdd('build', { pid: GAME.pidOf(city), cityId: city.id, extIdx: extIdx, buildId: e.type, type: 'ext_upgrade', targetLevel: e.lv + 1, paidCost: GAME.resOnlyOf(cost), elapsed: 0, totalTime: Math.max(cost.time * GAME.cityBuildMult(city), GAME.buildMinTime()) });   /* v91.68 */
     return { ok: true, msg: '开始升级 ' + eb.name };
   };
 
@@ -13942,7 +14092,7 @@ window.GAME = window.GAME || {};
     var lc = b.levelCost(0);
     if (lc && lc.time) totalTime = lc.time;
     totalTime = Math.max(totalTime * GAME.cityBuildMult(GAME.cityById(cityId)), GAME.buildMinTime());
-    GAME.city.queueAdd('build', { cityId: cityId, gridIndex: gridIndex, buildId: buildId, type: 'build', paidCost: GAME.resOnlyOf(cost), elapsed: 0, totalTime: totalTime });   /* v91.68 */
+    GAME.city.queueAdd('build', { pid: GAME.pidOf(GAME.cityById(cityId) || GAME.currentCity()), cityId: cityId, gridIndex: gridIndex, buildId: buildId, type: 'build', paidCost: GAME.resOnlyOf(cost), elapsed: 0, totalTime: totalTime });   /* v91.68 */
     return { ok: true, msg: '开始建造 ' + b.name };
   };
 
@@ -14019,7 +14169,7 @@ window.GAME = window.GAME || {};
     cell.pending = { buildId: cell.build.id, targetLevel: cell.build.lvl + 1 };
     var totalTime = Math.max(5, cost.time || cell.build.lvl * 60);
     totalTime = Math.max(totalTime * GAME.cityBuildMult(GAME.cityById(cityId)), GAME.buildMinTime());
-    GAME.city.queueAdd('build', { cityId: cityId, gridIndex: gridIndex, buildId: cell.build.id, type: 'upgrade', targetLevel: cell.build.lvl + 1, paidCost: GAME.resOnlyOf(cost), elapsed: 0, totalTime: totalTime });   /* v91.68 */
+    GAME.city.queueAdd('build', { pid: GAME.pidOf(GAME.cityById(cityId) || GAME.currentCity()), cityId: cityId, gridIndex: gridIndex, buildId: cell.build.id, type: 'upgrade', targetLevel: cell.build.lvl + 1, paidCost: GAME.resOnlyOf(cost), elapsed: 0, totalTime: totalTime });   /* v91.68 */
     return { ok: true, msg: '开始升级 ' + b.name + ' → Lv' + (cell.build.lvl + 1) };
   };
 
@@ -14544,7 +14694,7 @@ window.GAME = window.GAME || {};
       totalTime = Math.round(totalTime * (1 - s.buffs.trainRed.eff));
     }
     /* v91.13（老板 14）：记录**本批实付**（取消时按 80% 返还）—— 改前队列不留成本，无从退。 */
-    GAME.city.queueAdd('train', { kind: kind, cityId: city.id, bIdx: bIdx, troopId: troopId, count: count,
+    GAME.city.queueAdd('train', { pid: GAME.pidOf(city), kind: kind, cityId: city.id, bIdx: bIdx, troopId: troopId, count: count,
       qid: 'tq' + (GAME._tqSeq = (GAME._tqSeq || 0) + 1),
       paidCost: U.deep(cost), paidAt: U.now(),
       elapsed: 0, totalTime: Math.max(2, totalTime), waiting: false });
@@ -15579,7 +15729,8 @@ window.GAME = window.GAME || {};
   GAME.siegeKeyOf = function (t) {
     if (!t) return '';
     if (t.kind === 'city') return 'c:' + ((t.npc && t.npc.id) || t.id || ('#' + t.ci));
-    return 'f:c' + t.ci;
+    /* v91.74：据点围攻键带星球（ci 只在本星唯一）。 */
+    return 'f:' + GAME.fk(t.pid == null ? GAME.curPid() : t.pid)('c' + t.ci);
   };
   GAME.siegeDayIdx = function () {
     return GAME.questDayIndex ? GAME.questDayIndex() : 0;
@@ -16153,8 +16304,8 @@ window.GAME = window.GAME || {};
     return { lv: lv, day: day, army: army, total: total, gen: gen };
   };
 
-  GAME.wildGarrisonAt = function (ci) {
-    var w = GAME.map.wildAt(ci);
+  GAME.wildGarrisonAt = function (ci, pid) {
+    var w = GAME.map.wildAt(ci, pid);
     return (w && w.garrison) ? w.garrison : null;
   };
   GAME.wildGarrisonTotal = function (g) {
@@ -16509,9 +16660,10 @@ window.GAME = window.GAME || {};
     s.gathers = s.gathers || [];
     return s.gathers;
   };
-  GAME.gatherAt = function (ci) {
+  GAME.gatherAt = function (ci, pid) {
     var list = GAME.gatherList();
-    for (var i = 0; i < list.length; i++) if (list[i].ci === ci) return list[i];
+    pid = (pid == null) ? GAME.curPid() : pid;
+    for (var i = 0; i < list.length; i++) if (list[i].ci === ci && GAME.pidOf(list[i]) === pid) return list[i];
     return null;
   };
   GAME.gatherByGen = function (genId) {
@@ -16693,20 +16845,23 @@ window.GAME = window.GAME || {};
     for (var k in fs) { if (fs[k] && fs[k].cityId === city.id) out.push(fs[k]); }
     return out;
   };
-  GAME.fortOwnAt = function (ci) {
+  GAME.fortOwnAt = function (ci, pid) {
     if (ci == null || ci < 0) return null;
-    return GAME.fortsOf()['c' + ci] || null;
+    var v = GAME._fkGet(GAME.fortsOf(), ci, pid);
+    return v || null;
   };
   /* v90.76：平面格数 → 球面六边环数的换算（等覆盖面积）。
      星球 40962 地块 vs 平面 500×500=25 万格 → 半径按 √(40962/250000)≈0.405 缩。 */
   GAME.RING_SCALE = Math.sqrt(40962 / 250000);
   GAME.cellsToRings = function (cells) { return Math.max(1, Math.round((cells || 0) * GAME.RING_SCALE)); };
-  GAME.fortAuraAt = function (ci) {
+  GAME.fortAuraAt = function (ci, pid) {
     if (ci == null || ci < 0) return null;
-    var fs = GAME.fortsOf(), SP = GAME.sphere;
+    pid = (pid == null) ? GAME.curPid() : pid;
+    var fs = GAME.fortsOf(), SP = GAME.sphereOf(pid);
     var best = null, bd = Infinity, bestKey = '';
     for (var k in fs) {
       var f = fs[k];
+      if (GAME.pidOf(f) !== pid) continue;      /* v91.74：只看本星球的哨 */
       /* v89.193：半径随前哨等级。v90.76：距离改**球面六边环数**（等覆盖：平面格数 × RING_SCALE）。 */
       var _R194 = GAME.cellsToRings(GAME.fortRadiusOf(f));
       var fci = (f.ci != null && f.ci >= 0) ? f.ci : ((SP && SP.cells && f.x != null) ? SP.ciOfXY(f.x, f.y) : -1);
@@ -16732,19 +16887,21 @@ window.GAME = window.GAME || {};
    *     重占照常给战利品与声望（老板要的就是"完整再来"，不额外加护栏）。
    *   · 无返还（前哨没有驻军与库存；护持是"持续效果"，停即停）。
    * ============================================================ */
-  GAME.abandonFort = function (ci) {
+  GAME.abandonFort = function (ci, pid) {
     var s = GAME.state;
     if (!s || ci == null || ci < 0) return { ok: false, msg: '参数不足' };
-    var key = 'c' + ci;
-    var rec = GAME.fortsOf()[key];
+    var key = GAME.fortKey(ci, pid == null ? GAME.curPid() : pid);
+    var rec = GAME.fortsOf()[key] || GAME.fortsOf()['c' + ci];
     if (!rec) return { ok: false, msg: '此处没有我方前哨' };
     var nm = rec.name || ('格 #' + ci);
     var lv = rec.lv || 1;
     var own = GAME.cityById(rec.cityId);
     delete s.forts[key];
+    if (s.forts['c' + ci]) delete s.forts['c' + ci];
+    var _fkOld = 'c' + ci;
     /* v89.196（老板 2）：「放手后可重新占据」—— 清拔除登记，该格回归野外据点。
        （当日不再出现由 fortsRazed 保证；次日等级表重排后即可再打。） */
-    if (s.fortsTaken) delete s.fortsTaken[key];
+    if (s.fortsTaken) { delete s.fortsTaken[key]; delete s.fortsTaken[_fkOld]; }
     var nAfter = own ? GAME.fortsOfCity(own).length : 0;
     var maxN = ((DATA.FORT_AURA || {}).maxPerCity) || 5;
     GAME.log.war('🚩 我们放弃了「' + nm + '」前哨（Lv' + lv + '）—— 护持与商税随之中止'
@@ -16963,6 +17120,7 @@ window.GAME = window.GAME || {};
     if (!city) return { ok: false, msg: '城市不存在' };
     var rec = {
       id: 'ga' + (s._gatherSeq = (s._gatherSeq || 0) + 1),
+      pid: GAME.pidOf(w),
       ci: ci, type: w.type, level: w.level || 0,
       /* 带队英雄 = 驻军英雄（采集卡显示其名） */
       genId: gar.genId || null,
@@ -17798,7 +17956,7 @@ window.GAME = window.GAME || {};
       var f = GAME.map.fortAt(ci);
       if (!f || f.level > cfg.maxLevel) return null;
       var day = GAME.questDayIndex ? GAME.questDayIndex() : 0;
-      if ((GAME.state.fortsRazed || {})['c' + ci] === day) return null;  // 今日已破
+      if ((GAME.state.fortsRazed || {})[GAME.fk()('c' + ci)] === day) return null;  // 今日已破
       return { kind: 'fort', ci: ci, lv: f.level, d: d };
     }
     return null;
@@ -18266,7 +18424,9 @@ window.GAME = window.GAME || {};
     var done = 0, lastMsg = '', planets = GAME.planetsOf();
     planets.forEach(function (pl) {
       var pid = pl.id;
-      var cities = (pid === actPid) ? (s.cities || []) : (((s.mapSlices || {})[pid] || {}).cities || []);
+      /* v91.74：该星球的城按**该星球球面**算格（ci 只在球内唯一）。 */
+      if (GAME.sphere && GAME.sphere.setPlanet) GAME.sphere.setPlanet(pl.seed, pl.params);
+      var cities = (s.cities || []).filter(function (c) { return GAME.pidOf(c) === pid; });
       if (!cities.length) return;
       cities.forEach(function (city) {
         if ((cfg.dailyMax > 0) && ((cfg.today[city.id] || 0) >= cfg.dailyMax)) return;
@@ -18275,6 +18435,9 @@ window.GAME = window.GAME || {};
         else if (r && r.msg) lastMsg = r.msg;
       });
     });
+    /* 还原当前星球球面（逐星临时切换后必须切回，否则后续建造/科技按错地形算格）。 */
+    var _cur = GAME.activePlanetOf && GAME.activePlanetOf();
+    if (_cur && GAME.sphere && GAME.sphere.setPlanet) GAME.sphere.setPlanet(_cur.seed, _cur.params);
     s.autoExploreInfo = { ok: done > 0,
       msg: done > 0 ? ('全域 ' + planets.length + ' 星球 · 已派 ' + done + ' 城探索队') : (lastMsg || '待命'), at: now };
     if (done > 0) GAME.log('✨ 自动探索：全域 ' + done + ' 城各派一支奇观探索队（各向本星球奇观）');
@@ -19494,10 +19657,7 @@ window.GAME = window.GAME || {};
        改前只认当前星球的 `s.cities`，于是**别星城的英雄**在每次读档时被判"无归属"→
        通通改挂到首城（老板截图：一座城上 4 个城主 —— 别星的城主全被搬过来了）。
        现把 mapSlices 里每颗星的城 id 一并并入；只有**全星球都查无**的才视为孤儿补首城。 */
-    var sl = s.mapSlices || {};
-    Object.keys(sl).forEach(function (pid) {
-      ((sl[pid] && sl[pid].cities) || []).forEach(function (c) { ids[c.id] = 1; });
-    });
+    /* v91.74：世界数据全局一份 —— s.cities 已含所有星球。 */
     var home = s.cities[0].id, n = 0;
     s.generals.forEach(function (g) {
       if (!g.cityId || !ids[g.cityId]) { g.cityId = home; n++; }
@@ -20690,17 +20850,8 @@ window.GAME = window.GAME || {};
     var s = GAME.state;
     if (!g) return null;
     if (g.cityId) {
-      var c = GAME.cityById(g.cityId);
-      if (c) return c;
-      /* v90.91：本星球找不到 → 搜**其他星球**的分片（将领可归属别星球的城）。
-         改前直接回退"当前城" → 别星球的将领被判成当前城 → **泄漏进本城名单**（老板："将领界面出现所有将领"）。 */
-      var act = s.activePlanet, sl = s.mapSlices || {};
-      for (var pid in sl) {
-        if (+pid === act) continue;
-        var cs = sl[pid].cities || [];
-        for (var i = 0; i < cs.length; i++) if (cs[i].id === g.cityId) return cs[i];
-      }
-      return null;                       /* cityId 有值但查无（未载入星球/已销毁）→ 不归属当前城 */
+      /* v91.74：世界数据全局一份 —— 直接按 id 找得到别星球的城。 */
+      return GAME.cityById(g.cityId) || null;
     }
     /* 无 cityId（未分配）→ 归当前城（默认口径，名单不丢人） */
     return GAME.currentCity() || (s && s.cities && s.cities[0]) || null;
@@ -21152,6 +21303,7 @@ window.GAME = window.GAME || {};
     GAME.farmCities().forEach(function (ct) {
       /* 只对建有实验室的城（不能拿 ct.farm 当判据：查询也会惰性建它）。 */
       if (GAME.buildingLevel(ct, 'honglusi') <= 0) return;
+      /* v91.74：背景星球的实验室不依赖当前球面网格 —— buildingLevel 只读 cells，安全。 */
       cities++;
       var f = GAME.farmOf(ct), i;
       /* ① 先收 */
@@ -21710,8 +21862,8 @@ window.GAME = window.GAME || {};
     if (!s.map.cities) {
       /* NPC 城由 seed 确定性重建（不入存档）。重建后剔除**已被我方占领**的城。 */
       s.map.cities = GAME.buildNpcCities(s.map.seed);
-      var taken = {};
-      (s.cities || []).forEach(function (c) { if (c.origId) taken[c.origId] = 1; });
+      var taken = {}, _mypid = GAME.curPid();
+      (s.cities || []).forEach(function (c) { if (c.origId && GAME.pidOf(c) === _mypid) taken[c.origId] = 1; });
       s.map.cities = s.map.cities.filter(function (c) { return !taken[c.id]; });
     }
     return null;
@@ -21739,9 +21891,10 @@ window.GAME = window.GAME || {};
   };
   /* 城市格 ci 集合（我方城 + NPC 名城）—— 随城清单变化重建；供 terrainAt O(1) 判定。 */
   GAME.map._cityCiSet = function () {
-    var s = GAME.state;
-    var cs = (s.cities || []).concat((s.map && s.map.cities) || []);
-    var sig = cs.length + '#' + cs.map(function (c) { return c.id || '?'; }).join(',');
+    var s = GAME.state, _pid = GAME.curPid();
+    var cs = (s.cities || []).filter(function (c) { return GAME.pidOf(c) === _pid; })
+      .concat((s.map && s.map.cities) || []);
+    var sig = _pid + '#' + cs.length + '#' + cs.map(function (c) { return c.id || '?'; }).join(',');
     if (GAME.map._ccs && GAME.map._ccs.sig === sig) return GAME.map._ccs.set;
     var set = {};
     cs.forEach(function (c) { if (c.ci != null && c.ci >= 0) set[c.ci] = 1; });
@@ -21797,10 +21950,13 @@ window.GAME = window.GAME || {};
   };
 
   /* 该格是否已被占领为野地（按 ci） */
-  GAME.map.wildAt = function (ci) {
+  /* v91.74：野地按 `(pid, ci)` 取 —— 归一后各星球 ci 会重号，必须带星球。 */
+  GAME.map.wildAt = function (ci, pid) {
     var s = GAME.state;
+    pid = (pid == null) ? GAME.curPid() : pid;
     for (var i = 0; i < (s.wilds || []).length; i++) {
-      if (s.wilds[i].ci === ci) return s.wilds[i];
+      var w = s.wilds[i];
+      if (w.ci === ci && GAME.pidOf(w) === pid) return w;
     }
     return null;
   };
@@ -21844,14 +22000,22 @@ window.GAME = window.GAME || {};
     var id = useMap ? pid : (s.activePlanet || 0);
     var ps = (GAME.planetsOf ? GAME.planetsOf() : (s.planets || []));
     var p = null; ps.forEach(function (x) { if (x.id === id) p = x; });
-    var SP = useMap ? GAME.mapSphere : GAME.sphere;
-    var sl = (s.mapSlices && s.mapSlices[id]) || null;
+    var SP = GAME.sphereOf(id);
     var isActive = (id === (s.activePlanet || 0));
-    var cities = isActive ? (s.cities || []) : ((sl && sl.cities) || []);
+    var cities = (s.cities || []).filter(function (c) { return GAME.pidOf(c) === id; });
     var seed = p ? p.seed : ((s.map && s.map.seed) || 1);
-    var startPos = (isActive && s.map && s.map.startPos) || (sl && sl.startPos) || DATA.START_POS;
-    var fortsRazed = isActive ? (s.fortsRazed || {}) : ((sl && sl.fortsRazed) || {});
-    var fortsTaken = isActive ? (s.fortsTaken || {}) : ((sl && sl.fortsTaken) || {});
+    var startPos = (isActive && s.map && s.map.startPos) || DATA.START_POS;
+    /* v91.74：据点类字典键带 `p<pid>|` 前缀 —— ctx 保持**完整键**（与 fortAt 的查表同一口径）。 */
+    var pickF = function (o) {
+      var out = {};
+      Object.keys(o || {}).forEach(function (k) {
+        if (String(k).indexOf('p' + id + '|') === 0) out[k] = o[k];
+        else if (GAME.fortKeyCi(k) >= 0 && id === (s.activePlanet || 1)) out[k] = o[k];   /* 老裸键 = 当前星 */
+      });
+      return out;
+    };
+    var fortsRazed = pickF(s.fortsRazed);
+    var fortsTaken = pickF(s.fortsTaken);
     /* 名城按该星球球面算 ci（DATA.NPC_CITIES 位置固定）；按 (id,seed) 缓存免热路径重算。 */
     var cch = GAME.map._npcOf = GAME.map._npcOf || {};
     var npcKey = id + '|' + seed, npc = cch[npcKey];
@@ -21953,8 +22117,11 @@ window.GAME = window.GAME || {};
     ctx = ctx || GAME.map._pctx();
     var SP = ctx.sphere;
     if (!ctx || !SP || !SP.cells) return [];           /* 内核未建 → 无候选 */
-    var seed = ctx.seed;
+    var seed = ctx.seed, _cp = ctx.id;
     var cch = GAME.map._fortCand;
+    /* v91.74：缓存按**星球**分桶（各星球面/城集不同，共用一份会串）。 */
+    if (!GAME.map._fortCandBy) GAME.map._fortCandBy = {};
+    cch = GAME.map._fortCandBy[_cp];
     if (cch && cch.seed === seed && cch.list) return cch.list;
     /* **球系化（v90.75）**：候选 = 全星六边格（~4 万，O(nv)），逐个走放置判据。
        改前对 500×500=25 万平面格哈希；现直接枚举球面地块，与地形/距离/标记同源。 */
@@ -21965,23 +22132,26 @@ window.GAME = window.GAME || {};
       if (!GAME.map._fortActive(ci, ctx)) continue;          /* 海面由 _fortThr 折半（非排除） */
       list.push(ci);
     }
-    GAME.map._fortCand = { seed: seed, list: list };
+    GAME.map._fortCandBy[_cp] = { seed: seed, list: list };
+    GAME.map._fortCand = GAME.map._fortCandBy[_cp];
     return list;
   };
   GAME.map._fortLevelTable = function (day, ctx) {
     ctx = ctx || GAME.map._pctx();
     var F = DATA.FORT, SP = ctx.sphere;
     if (!ctx || !SP || !SP.cells) return {};   /* 内核未建 → 空表 */
-    var seed = ctx.seed;
-    var cch = GAME.map._fortLv;
+    var seed = ctx.seed, _cp2 = ctx.id;
+    if (!GAME.map._fortLvBy) GAME.map._fortLvBy = {};
+    var cch = GAME.map._fortLvBy[_cp2];
     if (cch && cch.seed === seed && cch.day === day) return cch.map;
     /* v89.197（老板 2）：「5 级以上占 80% · 等级越高比例越高」——
        按**累计占比边界**逐级切段（构造性：排序后切段，不是掷点；v89.72 教训）。
        边界 = round(n × 累计权重 / 总权重)，最后一级吃满 —— 总数恒 = 候选数。 */
     var Wt = (F.levelDist && F.levelDist.weights) || null;
     /* 键 = 该六边格的**格索引 ci**（球系唯一身份）—— 使 fortAt(ci) 精确命中。 */
+    var _kf = GAME.fk(ctx ? ctx.id : null);
     var arr = GAME.map._fortCandidates(ctx).map(function (ci) {
-      return { k: 'c' + ci, r: GAME.map._fortHashCi(ci, 9001 + day, ctx) };
+      return { k: _kf('c' + ci), r: GAME.map._fortHashCi(ci, 9001 + day, ctx) };
     });
     arr.sort(function (a, b) { return a.r - b.r; });
     var n = arr.length, map = {}, idx = 0, k;
@@ -21998,12 +22168,13 @@ window.GAME = window.GAME || {};
     } else {
       for (; idx < n; idx++) { map[arr[idx].k] = F.levelMin; }
     }
-    GAME.map._fortLv = { seed: seed, day: day, map: map };
+    GAME.map._fortLvBy[_cp2] = { seed: seed, day: day, map: map };
+    GAME.map._fortLv = GAME.map._fortLvBy[_cp2];
     return map;
   };
   /* 某格在指定日的据点等级（0 = 不是据点格）—— 按格索引 ci 精确查 */
   GAME.map._fortLevelAt = function (day, ci, ctx) {
-    return GAME.map._fortLevelTable(day, ctx)['c' + ci] || 0;
+    return GAME.map._fortLevelTable(day, ctx)[GAME.fk(ctx ? ctx.id : null)('c' + ci)] || 0;
   };
   /* 今日是否仍在（被攻取的据点次日重置） */
   /* ============================================================
@@ -22071,7 +22242,7 @@ window.GAME = window.GAME || {};
   GAME.map.fortRazedToday = function (ci, ctx) {
     var day = GAME.questDayIndex ? GAME.questDayIndex() : 0;
     var rz = (ctx && ctx.fortsRazed) || ((GAME.state || {}).fortsRazed) || {};
-    return rz['c' + ci] === day;
+    return GAME._fkGet(rz, ci, ctx ? ctx.id : null) === day;
   };
   GAME.map.fortAt = function (ci, ctx) {
     ctx = ctx || GAME.map._pctx();
@@ -22080,14 +22251,15 @@ window.GAME = window.GAME || {};
     if (GAME.map.fortRazedToday(ci, ctx)) return null;
     /* v89.103（老板「拔除据点可以占据该据点」）：已据为己有的格子**永久**不再生成据点 ——
        与 fortsRazed（当日标记，次日重置）不同：那一格现在是我方一座城（分片 cities 里）。 */
-    if ((ctx.fortsTaken || {})['c' + ci]) return null;
+    if (GAME._fkGet(ctx.fortsTaken, ci, ctx.id)) return null;
     var day = GAME.questDayIndex ? GAME.questDayIndex() : 0;
     var level = GAME.map._fortLevelAt(day, ci, ctx);   /* 等级表 = 据点存在的唯一事实（已排除城/海） */
     if (!level) return null;
     var a = Math.floor(GAME.map._fortHashCi(ci, 7, ctx) * F.nameA.length);
     var b = Math.floor(GAME.map._fortHashCi(ci, 13, ctx) * F.nameB.length);
     var c = SP.cells[ci];
-    return { ci: ci, lon: c.lon, lat: c.lat, level: level, name: F.nameA[a] + F.nameB[b], kind: 'fort' };
+    return { pid: (ctx && ctx.id) || GAME.curPid(), ci: ci, lon: c.lon, lat: c.lat,
+      level: level, name: F.nameA[a] + F.nameB[b], kind: 'fort' };
   };
   GAME.map.fortGarrison = function (lv) {
     var F = DATA.FORT;
@@ -22153,21 +22325,22 @@ window.GAME = window.GAME || {};
     g.title = tt[Math.floor(rand() * tt.length)];
     return g;
   };
-  GAME.map.razeFort = function (ci) {
+  GAME.map.razeFort = function (ci, pid) {
     var s = GAME.state;
     s.fortsRazed = s.fortsRazed || {};
-    s.fortsRazed['c' + ci] = GAME.questDayIndex ? GAME.questDayIndex() : 0;
+    s.fortsRazed[GAME.fk(pid)('c' + ci)] = GAME.questDayIndex ? GAME.questDayIndex() : 0;
   };
   /* v89.103（老板「拔除据点可以占据该据点」）：**永久**占据登记（唯一出口）。
      与 fortsRazed 的分工：那张表只管"今天不再出现"，次日重置；
      这张表是"这格已经是我的城了"，永不失效 —— `fortAt` 读到它就直接返回 null，
      于是渲染 / 出征目标 / 自动出征 / 侦查**全部**看不到它（一个出口，处处生效）。 */
-  GAME.map.markFortTaken = function (ci, cityId) {
+  GAME.map.markFortTaken = function (ci, cityId, pid) {
     var s = GAME.state;
     if (!s) return null;
     s.fortsTaken = s.fortsTaken || {};
-    s.fortsTaken['c' + ci] = { day: GAME.questDayIndex ? GAME.questDayIndex() : 0, cityId: cityId || null };
-    return s.fortsTaken['c' + ci];
+    var _k = GAME.fk(pid)('c' + ci);
+    s.fortsTaken[_k] = { day: GAME.questDayIndex ? GAME.questDayIndex() : 0, cityId: cityId || null };
+    return s.fortsTaken[_k];
   };
   /* ============================================================
    * 野外城市的**每日掠夺上限**（v63 · 老板：「野外城每天只能被掠夺一次」）
@@ -22178,15 +22351,15 @@ window.GAME = window.GAME || {};
    * 之所以要拦：掠夺（raid）**不破城**（只有占领才 raze），同一座据点
    * 一天内可以反复刷 —— 财货、材料、珠宝、军械全部可以无限取。
    * ============================================================ */
-  GAME.map.fortRaidedToday = function (ci) {
+  GAME.map.fortRaidedToday = function (ci, pid) {
     var s = GAME.state;
     var day = GAME.questDayIndex ? GAME.questDayIndex() : 0;
-    return (s.fortRaids || {})['c' + ci] === day;
+    return GAME._fkGet(s.fortRaids, ci, pid) === day;
   };
-  GAME.map.markFortRaided = function (ci) {
+  GAME.map.markFortRaided = function (ci, pid) {
     var s = GAME.state;
     s.fortRaids = s.fortRaids || {};
-    s.fortRaids['c' + ci] = GAME.questDayIndex ? GAME.questDayIndex() : 0;
+    s.fortRaids[GAME.fk(pid)('c' + ci)] = GAME.questDayIndex ? GAME.questDayIndex() : 0;
   };
   /* 视口内所有野外城市（供渲染与提示） */
   /* 视口内所有野外城市。v90.100（球系）：据点已按 ci 生成，视口 = 平面概览语义淡化 ——
@@ -26409,6 +26582,7 @@ window.GAME = window.GAME || {};
     var id = 'bt' + (GAME._battleSeq = (GAME._battleSeq || 0) + 1);
     var rec = {
       id: id, kind: 'expedition', side: 'atk',
+      pid: (target && target.pid != null) ? target.pid : GAME.curPid(),
       target: U.deep(target), modeId: modeId,
       atkArmy: U.deep(atkArmy), genId: genId,
       cityId: opts.cityId || null, scheme: opts.scheme || null,
@@ -27699,7 +27873,9 @@ window.GAME = window.GAME || {};
     var s = GAME.state;
     if (!target) return { ok: false, msg: '未指定目标' };
     if (target.kind === 'wild') {
-      var tcell = (GAME.sphere && GAME.sphere.cells) ? GAME.sphere.cells[target.ci] : null;
+      var _wpid = (target.pid != null) ? target.pid : GAME.curPid();
+      var _wSP = GAME.sphereOf(_wpid);
+      var tcell = (_wSP && _wSP.cells) ? _wSP.cells[target.ci] : null;
       if (!tcell) return { ok: false, msg: '目标格越界' };
       if (tcell.type === 'city') return { ok: false, msg: '该处为城市，请点击城市出征' };
       /* v90.69：野地**地形口径 = 球面**（所见即所得）——优先用点选带入的 terrain；无则读球面地块。 */
@@ -27707,16 +27883,22 @@ window.GAME = window.GAME || {};
       var lv = GAME.map.wildLevelNow ? GAME.map.wildLevelNow(target.ci) : GAME.map.wildLevel(target.ci);
       /* v27（需求 3）：守军由 wildDefenseAt 按 (格, 现实日) 确定性生成 —— 侦查所见即战斗所遇。 */
       var wd = GAME.wildDefenseAt(target.ci, lv);
-      return { ok: true, kind: 'wild', ci: target.ci, x: tcell.x, y: tcell.y, lon: tcell.lon, lat: tcell.lat, lv: lv,
+      return { ok: true, kind: 'wild', pid: _wpid, ci: target.ci, x: tcell.x, y: tcell.y, lon: tcell.lon, lat: tcell.lat, lv: lv,
         name: (DATA.TERRAIN[_wildTerr] ? DATA.TERRAIN[_wildTerr].name : '野地') + ' Lv' + lv,
         terrain: _wildTerr, garrison: wd.army, guard: wd.gen, def: 0, defDay: wd.day };
     }
     if (target.kind === 'fort' && GAME.map.fortAt) {
-      var f = GAME.map.fortAt(target.ci);
+      var _fpid2 = (target.pid != null) ? target.pid : GAME.curPid();
+      /* v91.74：老调用点只给 (x,y)（据点面板/自动出征）—— 先按该星球球面换成 ci。 */
+      if (target.ci == null && target.x != null) {
+        var _fsp = GAME.sphereOf(_fpid2);
+        target.ci = (_fsp && _fsp.ciOfXY) ? _fsp.ciOfXY(target.x, target.y) : -1;
+      }
+      var f = GAME.map.fortAt(target.ci, GAME.map._pctx(_fpid2, true));
       if (!f) return { ok: false, msg: '此处并无野外城市' };
       var fg = GAME.map.fortGarrison(f.level);
       /* v61：野地城市建筑全满；布局 GAME.fortPlanOf · 城防 GAME.fortDefOf · 守将 GAME.fortGuardOf。 */
-      return { ok: true, kind: 'fort', ci: f.ci, x: f.x, y: f.y, lon: f.lon, lat: f.lat, lv: f.level, name: f.name + '（野外城市 Lv' + f.level + '）',
+      return { ok: true, kind: 'fort', pid: _fpid2, ci: f.ci, x: f.x, y: f.y, lon: f.lon, lat: f.lat, lv: f.level, name: f.name + '（野外城市 Lv' + f.level + '）',
         fort: f, garrison: fg, def: GAME.fortDefOf(f), plan: GAME.fortPlanOf(f),
         guard: GAME.fortGuardOf(f),
         cityType: 'fort', dropType: 'fort' };
@@ -27748,7 +27930,16 @@ window.GAME = window.GAME || {};
     }
     if (target.kind === 'city') {
       var npc = target.npc || null;   // 允许直接传入城市对象（测试/临时目标）
-      if (!npc) (s.map.cities || []).forEach(function (c) { if (c.id === target.id) npc = c; });
+      /* v91.74：世界数据全局一份 —— 先按"该星球的名城派生表"找，再回落当前地图的派生表。 */
+      if (!npc) {
+        var _cpid = (target.pid != null) ? target.pid : GAME.curPid();
+        try {
+          var _ps = GAME._planetById(_cpid);
+          var _npcList = GAME.buildNpcCities(_ps ? _ps.seed : (s.map && s.map.seed), GAME.sphereOf(_cpid));
+          _npcList.forEach(function (c) { if (!npc && c.id === target.id) npc = c; });
+        } catch (e) {}
+        if (!npc) (s.map.cities || []).forEach(function (c) { if (!npc && c.id === target.id) npc = c; });
+      }
       if (!npc) return { ok: false, msg: '目标城市不存在（可能已被攻占）' };
       var ng = GAME.npcCityGuard(npc);
       return { ok: true, kind: 'city', id: npc.id, lv: GAME.cityLvOf(npc), name: npc.name,
@@ -28852,6 +29043,7 @@ window.GAME = window.GAME || {};
                  v90.70：附 ci（球面六边格索引）—— 与城/据点统一按球系身份 */
               var _wc = GAME.sphere && GAME.sphere.cells ? GAME.sphere.cells[t.ci] : null;
               s.wilds.push({
+                pid: (t.pid != null) ? t.pid : GAME.curPid(),
                 ci: t.ci, type: t.terrain, level: t.lv,
                 lon: _wc ? _wc.lon : null, lat: _wc ? _wc.lat : null,
                 levelDay: GAME.questDayIndex ? GAME.questDayIndex() : Math.floor(Date.now() / 86400000),
@@ -29188,26 +29380,30 @@ window.GAME = window.GAME || {};
     var s = GAME.state;
     if (!t || t.kind !== 'fort' || !t.fort) return { ok: false, msg: '不是野外城市' };
     var f = t.fort;
+    /* v91.74：据点按 (pid, ci) 定位 —— ci 只在星球内唯一。 */
+    var _fpid = (t.pid != null) ? t.pid : (f.pid != null ? f.pid : GAME.curPid());
+    var _fSP = GAME.sphereOf(_fpid);
     /* v90.100：fort 对象缺 ci 时由 (x,y) 派生（兼容旧夹具）。 */
-    if ((f.ci == null || f.ci < 0) && f.x != null && GAME.sphere && GAME.sphere.ciOfXY) f.ci = GAME.sphere.ciOfXY(f.x, f.y);
+    if ((f.ci == null || f.ci < 0) && f.x != null && _fSP && _fSP.ciOfXY) f.ci = _fSP.ciOfXY(f.x, f.y);
     var lv = Math.max(1, f.level || 1);
     var A = DATA.FORT_AURA || {};
     var forts = GAME.fortsOf();
-    var key = 'c' + f.ci;
+    var key = GAME.fortKey(f.ci, _fpid);
     /* v89.193：归属 = 出发城；超限分支 —— 本格照常记"已拔除"（不再刷据点）、
        不登记前哨（战利品已在 result 里照收）。 */
     var own193 = (fromCity && (s.cities || []).some(function (c) { return c.id === fromCity.id; })) ? fromCity : null;
     var max193 = A.maxPerCity == null ? 5 : A.maxPerCity;
     if (own193 && GAME.fortsOfCity(own193).length >= max193) {
-      if (GAME.map.markFortTaken) GAME.map.markFortTaken(f.ci, key);
-      if (GAME.map.razeFort) GAME.map.razeFort(f.ci);
+      if (GAME.map.markFortTaken) GAME.map.markFortTaken(f.ci, key, _fpid);
+      if (GAME.map.razeFort) GAME.map.razeFort(f.ci, _fpid);
       GAME.log.war('🚩 拔除 ' + f.name + '（野外城市 Lv' + lv + '）—— 但「' + own193.name
         + '」的前哨已满（' + max193 + ' 处），**未能设哨**（战利品照收；可先放手一处，或从其他城市出征）');
       return { ok: false, full: true,
         msg: f.name + ' 已拔除，但本城前哨已满（' + max193 + ' 处）—— 未能设哨' };
     }
-    var _fc = (GAME.sphere && GAME.sphere.cells) ? GAME.sphere.cells[f.ci] : null;
+    var _fc = (_fSP && _fSP.cells) ? _fSP.cells[f.ci] : null;
     var rec = forts[key] = forts[key] || {
+      pid: _fpid,
       ci: f.ci, lon: f.lon != null ? f.lon : (_fc ? _fc.lon : null), lat: f.lat != null ? f.lat : (_fc ? _fc.lat : null),
       /* x/y：渲染缓存（由 ci 派生；x/y 不再作身份） */
       x: _fc ? _fc.x : null, y: _fc ? _fc.y : null,
@@ -29216,8 +29412,8 @@ window.GAME = window.GAME || {};
     rec.cityId = own193 ? own193.id : (rec.cityId || null);   /* v89.193：归属城（老档迁移兜底） */
     var fx193 = GAME.fortEffectOf(rec);                       /* v89.193：半径/文案与覆盖同源（按等级） */
     var RR = fx193.radius;
-    if (GAME.map.markFortTaken) GAME.map.markFortTaken(f.ci, key);
-    if (GAME.map.razeFort) GAME.map.razeFort(f.ci);    /* 当日标记：今日不再出现 */
+    if (GAME.map.markFortTaken) GAME.map.markFortTaken(f.ci, key, _fpid);
+    if (GAME.map.razeFort) GAME.map.razeFort(f.ci, _fpid);    /* 当日标记：今日不再出现 */
     /* v89.195（老板 1）：「前哨可放手」—— 记录**占据前的地形**（terrain0），
        放手时恢复（GAME.abandonFort 唯一出口）。`rec.terrain0 ||` 保证只记最早那一次。 */
     /* 据点仍占该格（视觉可见）：地形由 sphere 供，无需平面 tile 标记 */
@@ -29922,6 +30118,7 @@ window.GAME = window.GAME || {};
     s.marches = s.marches || [];
     var m = {
       id: 'mr' + (GAME._marchSeq = (GAME._marchSeq || 0) + 1),
+      pid: (t.pid != null) ? t.pid : GAME.pidOf(city),
       cityId: city.id, genId: gen ? gen.id : '', modeId: mode.id,   /* v89.137：'' = 无将增援 */
       target: target, tci: t.ci, name: t.name, kind: t.kind,
       army: U.deep(army), elapsed: 0, totalTime: total,
@@ -37724,7 +37921,7 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
       by.ownwild.targets.push({ d: dist(w.x, w.y),
         label: '🌾 ' + t.name + ' Lv' + w.level + '（' + GAME.map.coordText(w.x, w.y) + '）'
           + (gn > 0 ? '　· 驻军 ' + U.numText(gn, 0) : '　· 无驻军'),
-        tg: { kind: 'wild', ci: w.ci } });
+        tg: { kind: 'wild', ci: w.ci, pid: GAME.pidOf(w) } });
     });
     /* ③ 名城（NPC 城市 —— 聚落/重镇/首府/旧都，按距离取最近 N 处） */
     (s.map.cities || []).forEach(function (nc) {
@@ -37746,7 +37943,7 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
         if (!(lv > 0)) continue;
         by.wild.targets.push({ d: Math.max(Math.abs(dx), Math.abs(dy)),
           label: '🗺️ 野地 Lv' + lv + '（' + GAME.map.coordText(x, y) + '）',
-          tg: { kind: 'wild', ci: (GAME.sphere&&GAME.sphere.ciOfXY?GAME.sphere.ciOfXY(x, y):-1) } });
+          tg: { kind: 'wild', ci: (GAME.sphere&&GAME.sphere.ciOfXY?GAME.sphere.ciOfXY(x, y):-1), pid: GAME.curPid() } });
       }
     }
     /* ⑤ 野外据点（本城 14 格内 —— 与 expTargetCandidates 同一半径） */
@@ -37759,7 +37956,7 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
         if (!f) continue;
         by.fort.targets.push({ d: Math.max(Math.abs(fx), Math.abs(fy)),
           label: '🏕️ ' + GAME.fortLabelOf(f) + '（Lv' + (f.level || 1) + '）',
-          tg: { kind: 'fort', x: fxx, y: fyy } });
+          tg: { kind: 'fort', x: fxx, y: fyy, pid: GAME.curPid() } });
       }
     }
     groups.forEach(function (g) {
@@ -47848,7 +48045,7 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
     ui._buildCityCi = ci;   // v90.100：平原筑城用（球系 ci）
     /* v90.69：把**该格地形**（与面板同源 _terKey139）随出征目标带上 —— 占领时按它记野地类型
        （所见即所得），不再靠平面格或坐标反查。3D 点选/2D 点选一致。 */
-    ui._expTarget = { kind: 'wild', ci: ci, terrain: _terKey139 };
+    ui._expTarget = { kind: 'wild', ci: ci, terrain: _terKey139, pid: GAME.curPid() };
     ui._expMode = 'occupy';
 
     /* v89.135（老板「为啥没有珠宝（比如湖泊里有珍珠等等）」）：可采清单里的**珠宝行** */
@@ -48473,7 +48670,7 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
           var x = city.x + dx, y = city.y + dy;
           if (x < 0 || y < 0 || x >= DATA.MAP_W || y >= DATA.MAP_H) continue;
           var f = GAME.map.fortAt ? GAME.map.fortAt(x, y) : null;
-          if (f) push({ kind: 'fort', x: x, y: y }, Math.max(Math.abs(dx), Math.abs(dy)) + 100);
+          if (f) push({ kind: 'fort', x: x, y: y, pid: GAME.curPid() }, Math.max(Math.abs(dx), Math.abs(dy)) + 100);
         }
       }
     }
@@ -52149,7 +52346,7 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
     /* 全境城（跨星球：当前球活态 + 各球分片）—— 用于"全境合计"兵力。 */
     var allCities = [];
     GAME.planetsOf().forEach(function (pl) {
-      var cs = (pl.id === (s.activePlanet || 0)) ? (s.cities || []) : (((s.mapSlices || {})[pl.id] || {}).cities || []);
+      var cs = (s.cities || []).filter(function (c) { return GAME.pidOf(c) === pl.id; });
       cs.forEach(function (c) { allCities.push(c); });
     });
     /* 逐兵种「自动探索数量」上限（可作战兵种）。 */
@@ -55801,7 +55998,7 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
      （这解释了"改了却说没生效"的观感）。老板若发现版本 ≠ 最新交付，按 Ctrl+F5
      强制刷新即获得新代码。⚠️ 发版须走 **bump_version.py --bump --version vX.Y**（它同步 index.html 的 ?v=/BUILD
      与这里的 GAME.VERSION 三处）—— 只手改 index.html 会让版本号冻住（v91.18 前的病灶）。 */
-  GAME.VERSION = 'v91.73';
+  GAME.VERSION = 'v91.74';
   function boot() {
     fitAppSize();
     try {
