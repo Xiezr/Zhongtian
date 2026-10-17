@@ -276,7 +276,7 @@ import './state.js';
     if (rw.tech) GAME.state.res.techPoint = (GAME.state.res.techPoint || 0) + rw.tech;
     if (rw.item) {
       var n = rw.count || 1;
-      s.items[rw.item] = (s.items[rw.item] || 0) + n;
+      GAME.items.add(rw.item, n);   /* v91.63 */
     }
     if (rw.hero) {
       for (var i = 0; i < rw.hero; i++) {

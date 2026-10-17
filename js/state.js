@@ -4872,9 +4872,7 @@ import './data.js';
     var sc = GAME.schemeOf(sid);
     if (!sc || !gen) return null;
     gen.energy = Math.max(0, (gen.energy || 0) - sc.energy);
-    s.items = s.items || {};
-    s.items.jinang = (s.items.jinang || 0) - sc.jinang;
-    if (s.items.jinang <= 0) delete s.items.jinang;
+    GAME.items.sub('jinang', sc.jinang);   /* v91.63：走归属出口 */
     var key = GAME.schemeKeyOf(t);
     s.schemes = s.schemes || {};
     var rec = s.schemes[key] = s.schemes[key] || {};
@@ -4903,9 +4901,7 @@ import './data.js';
     if (!sc || !city) return null;
     var now = (s.world && s.world.elapsed) || 0;
     if (gen) gen.energy = Math.max(0, (gen.energy || 0) - sc.energy);
-    s.items = s.items || {};
-    s.items.jinang = (s.items.jinang || 0) - sc.jinang;
-    if (s.items.jinang <= 0) delete s.items.jinang;
+    GAME.items.sub('jinang', sc.jinang);   /* v91.63：走归属出口 */
     var key = 'my:' + city.id;
     s.schemes = s.schemes || {};
     var rec = s.schemes[key] = s.schemes[key] || {};
@@ -5108,10 +5104,9 @@ import './data.js';
     var ling = GAME.lingPowerOf(gen);
     var texts = [];
     var bad = false;
-    s.items = s.items || {};
     var ess = function (lo, hi, salt, tag) {
       var n = mi(rnd(salt || 'ess', lo, hi));
-      s.items.lingsui = (s.items.lingsui || 0) + n;
+      GAME.items.add('lingsui', n);   /* v91.63 */
       texts.push('辐能核心 +' + n + (tag ? '（' + tag + '）' : ''));
       return n;
     };
@@ -5159,7 +5154,7 @@ import './data.js';
       if (layer > 0) {
         var tot = 0;
         for (var j = 1; j <= layer; j++) tot += mi(rnd('te' + j, a.win.ess[0] / 3, a.win.ess[1] / 3));
-        s.items.lingsui = (s.items.lingsui || 0) + tot;
+        GAME.items.add('lingsui', tot);   /* v91.63 */
         texts.push('辐能核心 +' + tot + '（过 ' + layer + ' 层）');
         if (layer >= 3) tryDrop('drop');
         title = (layer >= 3) ? '三层皆过' : ('止步第 ' + (layer + 1) + ' 层');
@@ -5214,7 +5209,7 @@ import './data.js';
       if ((out2.wound || out2.none) && mLuck > 0 && roll('lr') < mLuck) out2 = pickScene('scene_roll2');
       var home2 = GAME.currentCity();
       var gift = function (id, n) {
-        s.items[id] = (s.items[id] || 0) + n;
+        GAME.items.add(id, n);   /* v91.63 */
         var it0 = (DATA.ITEMS || []).filter(function (x2) { return x2.id === id; })[0];
         texts.push((it0 ? it0.name : id) + '×' + n);
       };
@@ -5240,7 +5235,7 @@ import './data.js';
             bag2[mk2] = (bag2[mk2] || 0) + mn2;
           }
           for (var bk3 in bag2) {
-            s.items[bk3] = (s.items[bk3] || 0) + bag2[bk3];
+            GAME.items.add(bk3, bag2[bk3]);
             var mm2 = DATA.MATERIAL_BY_ID[bk3];
             texts.push((mm2 ? mm2.name : bk3) + '×' + bag2[bk3]);
           }

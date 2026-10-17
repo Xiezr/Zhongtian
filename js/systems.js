@@ -480,8 +480,7 @@ import './state.js';
     if (have <= 0) return { ok: false, msg: '背包中没有「' + item.name + '」' };
     qty = Math.max(1, Math.min(have, Math.floor(Number(qty) || have)));
     var gold = unit * qty;
-    s.items[id] = have - qty;
-    if (s.items[id] <= 0) delete s.items[id];
+    GAME.items.sub(id, qty);   /* v91.63：寄售走归属出口 */
     s.res.gold = (s.res.gold || 0) + gold;
     GAME.statBump('trades', 1);
     GAME.log('🎒 寄售「' + item.name + '」×' + qty + ' → 得旧币 ' + U.fmt(gold) + '（购买价 75% 回收）', 'sys', 'trade');
@@ -734,7 +733,7 @@ import './state.js';
       jewels.sort(function (a, b) { return a.price - b.price; });
       var jw = pick(jewels.slice(0, Math.min(jewels.length, tier * 3 + 2)));
       var jn = rnd(1, tier + 1);
-      s.items[jw.id] = (s.items[jw.id] || 0) + jn;
+      GAME.items.add(jw.id, jn);
       parts.push(jw.name + ' ×' + jn);
     }
     /* 材料（按档取品阶：t1→tier1-2 少；t2→tier2-3；t3→tier3，20% 出 tier4） */
@@ -747,7 +746,7 @@ import './state.js';
       if (mats.length) {
         var md = pick(mats);
         var mn = rnd(2, 3 + tier * 2);
-        s.items[md.id] = (s.items[md.id] || 0) + mn;
+        GAME.items.add(md.id, mn);
         parts.push(md.name + ' ×' + mn);
       }
     }
@@ -756,13 +755,13 @@ import './state.js';
       var bps = DATA.ITEMS.filter(function (x) { return x.type === 'blueprint'; });
       if (bps.length) {
         var bp = pick(bps);
-        s.items[bp.id] = (s.items[bp.id] || 0) + 1;
+        GAME.items.add(bp.id, 1);
         parts.push(bp.name + ' ×1');
       }
     }
     /* 征调令（tier3 小概率） */
     if (tier >= 3 && Math.random() < 0.08) {
-      s.items.corvee = (s.items.corvee || 0) + 1;
+      GAME.items.add('corvee', 1);   /* v91.63 */
       parts.push('征调令 ×1');
     }
     var msg = '开启「' + item.name + '」：' + (parts.join('、') || '空空如也');
@@ -1029,8 +1028,7 @@ import './state.js';
     if (!chk.ok) return chk;
     s.res.gold -= next.gold;
     for (var j in next.jewel) {
-      s.items[j] = (s.items[j] || 0) - next.jewel[j];
-      if (s.items[j] <= 0) delete s.items[j];
+      GAME.items.sub(j, next.jewel[j]);   /* v91.63 */
     }
     s.rank += 1;
     /* v89.95（A1）：威望每 rankEvery 档 → 赏节钺 ×1（22 档共 5 枚） */

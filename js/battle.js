@@ -1367,7 +1367,7 @@ import './state.js';
       var jTop = Math.min(jewels.length, mult + 3);
       var j = jewels[Math.floor(rd() * jTop)];
       var cnt = 1 + Math.floor(rd() * (mult > 2 ? 3 : 1));
-      GAME.state.items[j.id] = (GAME.state.items[j.id] || 0) + cnt;
+      GAME.items.add(j.id, cnt);   /* v91.63 */
       GAME.log.war('缴获珠宝：' + j.name + ' ×' + cnt);
     }
     return out;
@@ -1488,13 +1488,12 @@ import './state.js';
   GAME.battle.grantMaterials = function (table, mult, label) {
     var s = GAME.state;
     if (!table) return [];
-    s.items = s.items || {};
     var got = [];
     for (var mid in table) {
       var rng = table[mid], lo = rng[0], hi = rng[1];
       var cnt = Math.round((lo + Math.random() * (hi - lo + 1)) * (mult || 1));
       if (cnt <= 0) continue;
-      s.items[mid] = (s.items[mid] || 0) + cnt;
+      GAME.items.add(mid, cnt);
       var m = DATA.MATERIAL_BY_ID[mid];
       got.push((m ? m.name : mid) + '×' + cnt);
     }
@@ -1517,7 +1516,7 @@ import './state.js';
       var owned = s.items || {};
       var bps = DATA.BLUEPRINTS.filter(function (b) { return !owned[b.id]; });
       var bp = bps.length ? bps[Math.floor(Math.random() * bps.length)] : DATA.BLUEPRINTS[Math.floor(Math.random() * DATA.BLUEPRINTS.length)];
-      s.items[bp.id] = (s.items[bp.id] || 0) + 1;
+      GAME.items.add(bp.id, 1);
       got.push(bp.name + '（图纸）');
     }
     /* ② 成品装备（品质随城等级） */
@@ -1980,8 +1979,7 @@ import './state.js';
       for (var i = 0; i < Math.min(take, ids.length); i++) {
         var mid = ids[Math.floor(Math.random() * ids.length)];
         var cnt = Math.max(1, Math.round((tbl[mid][0] + Math.random() * 2) * (DATA.EXPEDITION.wildMatMul.scout || 0.35) * scBonus));
-        s.items = s.items || {};
-        s.items[mid] = (s.items[mid] || 0) + cnt;
+        GAME.items.add(mid, cnt);
         out.loot.push((DATA.MATERIAL_BY_ID[mid] ? DATA.MATERIAL_BY_ID[mid].name : mid) + '×' + cnt);
       }
     }
@@ -1992,7 +1990,7 @@ import './state.js';
       });
       if (pool.length) {
         var got2 = pool[Math.floor(Math.random() * pool.length)];
-        s.items[got2.id] = (s.items[got2.id] || 0) + 1;
+        GAME.items.add(got2.id, 1);
         out.treasure = got2.name;
       }
     }
@@ -2838,7 +2836,7 @@ import './state.js';
           var top = Math.min(jewels.length, (t.kind === 'city' || t.kind === 'fort') ? t.lv : 4);
           var j = jewels[Math.floor(Math.random() * Math.max(1, top))];
           var jn = 1 + Math.floor(Math.random() * 2);
-          s.items[j.id] = (s.items[j.id] || 0) + jn;
+          GAME.items.add(j.id, jn);
           GAME.log.war('缴获珠宝：' + j.name + ' ×' + jn);
         }
       }

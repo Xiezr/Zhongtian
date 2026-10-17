@@ -10436,9 +10436,7 @@ window.GAME = window.GAME || {};
     var sc = GAME.schemeOf(sid);
     if (!sc || !gen) return null;
     gen.energy = Math.max(0, (gen.energy || 0) - sc.energy);
-    s.items = s.items || {};
-    s.items.jinang = (s.items.jinang || 0) - sc.jinang;
-    if (s.items.jinang <= 0) delete s.items.jinang;
+    GAME.items.sub('jinang', sc.jinang);   /* v91.63：走归属出口 */
     var key = GAME.schemeKeyOf(t);
     s.schemes = s.schemes || {};
     var rec = s.schemes[key] = s.schemes[key] || {};
@@ -10467,9 +10465,7 @@ window.GAME = window.GAME || {};
     if (!sc || !city) return null;
     var now = (s.world && s.world.elapsed) || 0;
     if (gen) gen.energy = Math.max(0, (gen.energy || 0) - sc.energy);
-    s.items = s.items || {};
-    s.items.jinang = (s.items.jinang || 0) - sc.jinang;
-    if (s.items.jinang <= 0) delete s.items.jinang;
+    GAME.items.sub('jinang', sc.jinang);   /* v91.63：走归属出口 */
     var key = 'my:' + city.id;
     s.schemes = s.schemes || {};
     var rec = s.schemes[key] = s.schemes[key] || {};
@@ -10672,10 +10668,9 @@ window.GAME = window.GAME || {};
     var ling = GAME.lingPowerOf(gen);
     var texts = [];
     var bad = false;
-    s.items = s.items || {};
     var ess = function (lo, hi, salt, tag) {
       var n = mi(rnd(salt || 'ess', lo, hi));
-      s.items.lingsui = (s.items.lingsui || 0) + n;
+      GAME.items.add('lingsui', n);   /* v91.63 */
       texts.push('辐能核心 +' + n + (tag ? '（' + tag + '）' : ''));
       return n;
     };
@@ -10723,7 +10718,7 @@ window.GAME = window.GAME || {};
       if (layer > 0) {
         var tot = 0;
         for (var j = 1; j <= layer; j++) tot += mi(rnd('te' + j, a.win.ess[0] / 3, a.win.ess[1] / 3));
-        s.items.lingsui = (s.items.lingsui || 0) + tot;
+        GAME.items.add('lingsui', tot);   /* v91.63 */
         texts.push('辐能核心 +' + tot + '（过 ' + layer + ' 层）');
         if (layer >= 3) tryDrop('drop');
         title = (layer >= 3) ? '三层皆过' : ('止步第 ' + (layer + 1) + ' 层');
@@ -10778,7 +10773,7 @@ window.GAME = window.GAME || {};
       if ((out2.wound || out2.none) && mLuck > 0 && roll('lr') < mLuck) out2 = pickScene('scene_roll2');
       var home2 = GAME.currentCity();
       var gift = function (id, n) {
-        s.items[id] = (s.items[id] || 0) + n;
+        GAME.items.add(id, n);   /* v91.63 */
         var it0 = (DATA.ITEMS || []).filter(function (x2) { return x2.id === id; })[0];
         texts.push((it0 ? it0.name : id) + '×' + n);
       };
@@ -10804,7 +10799,7 @@ window.GAME = window.GAME || {};
             bag2[mk2] = (bag2[mk2] || 0) + mn2;
           }
           for (var bk3 in bag2) {
-            s.items[bk3] = (s.items[bk3] || 0) + bag2[bk3];
+            GAME.items.add(bk3, bag2[bk3]);
             var mm2 = DATA.MATERIAL_BY_ID[bk3];
             texts.push((mm2 ? mm2.name : bk3) + '×' + bag2[bk3]);
           }
@@ -11360,8 +11355,7 @@ window.GAME = window.GAME || {};
     if (have <= 0) return { ok: false, msg: '背包中没有「' + item.name + '」' };
     qty = Math.max(1, Math.min(have, Math.floor(Number(qty) || have)));
     var gold = unit * qty;
-    s.items[id] = have - qty;
-    if (s.items[id] <= 0) delete s.items[id];
+    GAME.items.sub(id, qty);   /* v91.63：寄售走归属出口 */
     s.res.gold = (s.res.gold || 0) + gold;
     GAME.statBump('trades', 1);
     GAME.log('🎒 寄售「' + item.name + '」×' + qty + ' → 得旧币 ' + U.fmt(gold) + '（购买价 75% 回收）', 'sys', 'trade');
@@ -11614,7 +11608,7 @@ window.GAME = window.GAME || {};
       jewels.sort(function (a, b) { return a.price - b.price; });
       var jw = pick(jewels.slice(0, Math.min(jewels.length, tier * 3 + 2)));
       var jn = rnd(1, tier + 1);
-      s.items[jw.id] = (s.items[jw.id] || 0) + jn;
+      GAME.items.add(jw.id, jn);
       parts.push(jw.name + ' ×' + jn);
     }
     /* 材料（按档取品阶：t1→tier1-2 少；t2→tier2-3；t3→tier3，20% 出 tier4） */
@@ -11627,7 +11621,7 @@ window.GAME = window.GAME || {};
       if (mats.length) {
         var md = pick(mats);
         var mn = rnd(2, 3 + tier * 2);
-        s.items[md.id] = (s.items[md.id] || 0) + mn;
+        GAME.items.add(md.id, mn);
         parts.push(md.name + ' ×' + mn);
       }
     }
@@ -11636,13 +11630,13 @@ window.GAME = window.GAME || {};
       var bps = DATA.ITEMS.filter(function (x) { return x.type === 'blueprint'; });
       if (bps.length) {
         var bp = pick(bps);
-        s.items[bp.id] = (s.items[bp.id] || 0) + 1;
+        GAME.items.add(bp.id, 1);
         parts.push(bp.name + ' ×1');
       }
     }
     /* 征调令（tier3 小概率） */
     if (tier >= 3 && Math.random() < 0.08) {
-      s.items.corvee = (s.items.corvee || 0) + 1;
+      GAME.items.add('corvee', 1);   /* v91.63 */
       parts.push('征调令 ×1');
     }
     var msg = '开启「' + item.name + '」：' + (parts.join('、') || '空空如也');
@@ -11909,8 +11903,7 @@ window.GAME = window.GAME || {};
     if (!chk.ok) return chk;
     s.res.gold -= next.gold;
     for (var j in next.jewel) {
-      s.items[j] = (s.items[j] || 0) - next.jewel[j];
-      if (s.items[j] <= 0) delete s.items[j];
+      GAME.items.sub(j, next.jewel[j]);   /* v91.63 */
     }
     s.rank += 1;
     /* v89.95（A1）：威望每 rankEvery 档 → 赏节钺 ×1（22 档共 5 枚） */
@@ -12153,7 +12146,6 @@ window.GAME = window.GAME || {};
       if (k === 'time') continue;
       if (k === 'jewel') {
         var need = GAME.jewelNeedOf(cost);
-        s.items = s.items || {};
         /* v91.62：走背包归属出口（下界恒 0，与旧 Math.max 同义） */
       for (var jid in need) GAME.items.sub(jid, need[jid]);
         continue;
@@ -14954,10 +14946,9 @@ window.GAME = window.GAME || {};
     s.res.gold = (s.res.gold || 0) + gold;
     /* ⛔ v90.93：声望的赛季国策增益（STORY.repMult）随年号纪元退役。 */
     s.rep = (s.rep || 0) + rep;
-    s.items = s.items || {};
     var got = [];
     for (var mid in mats) {
-      s.items[mid] = (s.items[mid] || 0) + mats[mid];
+      GAME.items.add(mid, mats[mid]);
       got.push((DATA.MATERIAL_BY_ID[mid] ? DATA.MATERIAL_BY_ID[mid].name : mid) + '×' + mats[mid]);
     }
     s.yieldDay = today;
@@ -16207,8 +16198,7 @@ window.GAME = window.GAME || {};
       });
       if (pool.length) {
         var tr = pool[Math.floor(Math.random() * pool.length)];
-        s.items = s.items || {};
-        s.items[tr.id] = (s.items[tr.id] || 0) + 1;
+        GAME.items.add(tr.id, 1);
         got = tr.name;
       }
     }
@@ -16226,8 +16216,7 @@ window.GAME = window.GAME || {};
     if (Math.random() < Math.min(0.85, (G.jewelChance || 0) + (g.level || 0) * (G.jewelPerLv || 0))) {
       var _jp = GAME.gatherJewelPick(g.type, g.level || 0);
       if (_jp) {
-        s.items = s.items || {};
-        s.items[_jp.id] = (s.items[_jp.id] || 0) + _jp.n;
+        GAME.items.add(_jp.id, _jp.n);
         var jn = _jp.id;
         (DATA.ITEMS || []).forEach(function (x) { if (x.id === _jp.id) jn = x.name; });
         jewelGot = jn + '×' + _jp.n;
@@ -16549,16 +16538,16 @@ window.GAME = window.GAME || {};
     if (!s || s.jewelMig152) return 0;
     var map = DATA.JEWEL_MIG152 || {};
     var carried = {}, n = 0;
-    s.items = s.items || {};
+    GAME.items.count('__warm__');   /* v91.63：确保背包对象存在（归属模块惰性建） */
     Object.keys(map).forEach(function (oldId) {
       var v = Math.floor(s.items[oldId] || 0);
       if (!v) return;
-      delete s.items[oldId];
+      GAME.items.sub(oldId, v);   /* v91.63：走归属出口（v 已读，等价清除） */
       var to = map[oldId];
       carried[to] = (carried[to] || 0) + v;
       n += v;
     });
-    Object.keys(carried).forEach(function (to) { s.items[to] = (s.items[to] || 0) + carried[to]; });
+    Object.keys(carried).forEach(function (to) { GAME.items.add(to, carried[to]); });
     s.jewelMig152 = 1;
     if (n > 0) GAME.log('💎 老档珠宝换算：' + n + ' 颗旧珠宝已按等值换成新体系珠宝');
     return n;
@@ -17251,7 +17240,7 @@ window.GAME = window.GAME || {};
     var chk = GAME.buildCanPlace(dx, dy, mid);
     if (!chk.ok) return chk;
     var m = chk.module;
-    if (m.mat) { s.items = s.items || {}; s.items[m.mat] = Math.max(0, (s.items[m.mat] || 0) - (m.cost || 0)); }
+    if (m.mat) GAME.items.sub(m.mat, m.cost || 0);   /* v91.63：走归属出口 */
     GAME.buildOf()[GAME.buildKey(dx, dy)] = mid;
     GAME.log('🏗️ 奇观建造：置「' + m.name + '」×1' + (m.mat ? ('（耗 ' + (((DATA.ITEM_BY_ID || {})[m.mat] || {}).name || m.mat) + ' ×' + m.cost + '）') : ''), 'sys', 'admin');
     return { ok: true, msg: '已放置「' + m.name + '」' };
@@ -17264,7 +17253,7 @@ window.GAME = window.GAME || {};
     var m = GAME.buildModuleOf(mid);
     delete b[k];
     var back = Math.floor((m.cost || 0) * (B.costPct == null ? 0.5 : B.costPct));
-    if (m.mat && back > 0) { s.items = s.items || {}; s.items[m.mat] = (s.items[m.mat] || 0) + back; }
+    if (m.mat && back > 0) GAME.items.add(m.mat, back);
     GAME.log('🏗️ 奇观建造：拆「' + m.name + '」（返还 ' + (((DATA.ITEM_BY_ID || {})[m.mat] || {}).name || m.mat) + ' ×' + back + '）', 'sys', 'admin');
     return { ok: true, msg: '已拆除「' + m.name + '」' };
   };
@@ -17941,8 +17930,7 @@ window.GAME = window.GAME || {};
       due[k] = n;
       got.push((DATA.MATERIAL_BY_ID[k] ? DATA.MATERIAL_BY_ID[k].name : k) + '×' + n);
     }
-    s.items = s.items || {};
-    for (var k2 in due) s.items[k2] = (s.items[k2] || 0) + due[k2];
+    for (var k2 in due) GAME.items.add(k2, due[k2]);
     s.inventory.splice(idx, 1);
     GAME.statBump('salvaged', 1);
     GAME.log('拆解 ' + label + '，回收 ' + got.join('、'), 'sys', 'admin');
@@ -18000,11 +17988,9 @@ window.GAME = window.GAME || {};
     return true;
   };
   GAME.payMaterials = function (itemId) {
-    var need = GAME.forgeMaterials(itemId), s = GAME.state, items = s.items = s.items || {};
-    for (var k in need) {
-      items[k] = (items[k] || 0) - need[k];
-      if (items[k] <= 0) delete items[k];
-    }
+    var need = GAME.forgeMaterials(itemId);
+    /* v91.63：扣料走归属出口（下界恒 0，不再手写 -/删除） */
+    for (var k in need) GAME.items.sub(k, need[k]);
   };
 
   /* 该装备所需图纸（套装件才有） */
@@ -18077,9 +18063,7 @@ window.GAME = window.GAME || {};
     GAME.payMaterials(itemId);
     /* v16：套装件打造**消耗 1 张图纸**（此前为永久持有、无限打造） */
     if (bp) {
-      s.items = s.items || {};
-      s.items[bp.id] = (s.items[bp.id] || 0) - 1;
-      if (s.items[bp.id] <= 0) delete s.items[bp.id];
+      GAME.items.sub(bp.id, 1);   /* v91.63：扣图纸走归属出口 */
     }
     GAME.addEquip(itemId);   /* v79：入包唯一出口（生成实例，件号递增） */
     s.forged = s.forged || [];
@@ -18227,10 +18211,9 @@ window.GAME = window.GAME || {};
     var label0 = GAME.eqLabel(inst);
     if (lv >= GAME.lingTemperMax()) return { ok: false, msg: '「' + label0 + '」已至 +' + GAME.lingTemperMax() + '（圆满）' };
     var cost = GAME.lingTemperCost(inst);
-    s.items = s.items || {};
-    var own = s.items.lingsui || 0;
+    var own = GAME.items.count('lingsui');
     if (own < cost) return { ok: false, msg: '辐能核心不足（需 ' + cost + '，现有 ' + own + '）' };
-    s.items.lingsui = own - cost;
+    GAME.items.sub('lingsui', cost);   /* v91.63：走归属出口 */
     if (inst && typeof inst === 'object') inst.enh = lv + 1;   /* 按件 +1 */
     GAME.log('调校：' + label0 + ' → +' + (lv + 1) + '（耗辐能核心 ' + cost + '）', 'sys', 'admin');
     return { ok: true, msg: '「' + GAME.eqLabel(inst) + '」调校 +' + (lv + 1)
@@ -18260,7 +18243,6 @@ window.GAME = window.GAME || {};
   GAME.lingFuse = function (mats) {
     var s = GAME.state;
     var F = DATA.LING_FUSE || {};
-    s.items = s.items || {};
     /* ① 校验：至少 1 种奇观材料，且每种份数为正整数、持有足够 */
     var pool = [], total = 0;
     (DATA.ITEMS || []).forEach(function (it) { if (it.type === 'wmat') pool.push(it.id); });
@@ -18274,7 +18256,7 @@ window.GAME = window.GAME || {};
     }
     if (!total) return { ok: false, msg: '请先放入奇观材料（每种份数 = 一张牌）' };
     /* ② 扣材料 */
-    for (var k2 in use) s.items[k2] = Math.max(0, (s.items[k2] || 0) - use[k2]);
+    for (var k2 in use) GAME.items.sub(k2, use[k2]);
     /* ③ 抽品质：牌数加权 —— 累计牌数越多，越偏向高阶（每张牌都按 qWeight 掷，取最高） */
     var q = GAME._lingFuseRollQ(total, F);
     /* ④ 随机部位 → 产出件入包（新件 · 强化 0 级） */
@@ -19050,8 +19032,8 @@ window.GAME = window.GAME || {};
     var have = (s.items || {})[itemId] || 0;
     if (have <= 0) return { ok: false, msg: '库存中没有「' + it.name + '」' };
     var old = GAME.attachOf(g, slotId);
-    s.items[itemId] = have - 1;                              /* 新件扣库 */
-    if (old) s.items[old.id] = (s.items[old.id] || 0) + 1;   /* 旧件还库（替换守恒） */
+    GAME.items.sub(itemId, 1);                     /* v91.63：新件扣库（替换守恒） */
+    if (old) GAME.items.add(old.id, 1);            /* 旧件还库 */
     g.attach[slotId] = itemId;
     GAME.log('🔮 ' + g.name + ' 佩上「' + it.name + '」' + (old ? '（卸下「' + old.name + '」归库）' : ''), 'sys', 'staff');
     return { ok: true, msg: g.name + ' 佩上「' + it.name + '」' + (old ? '，' + old.name + ' 已归库' : '') };
@@ -19064,7 +19046,7 @@ window.GAME = window.GAME || {};
     var old = GAME.attachOf(g, slotId);
     if (!old) return { ok: false, msg: '未佩' + slot.name };
     var s = GAME.state;
-    s.items[old.id] = (s.items[old.id] || 0) + 1;
+    GAME.items.add(old.id, 1);
     delete g.attach[slotId];
     GAME.log('🔮 ' + g.name + ' 卸下「' + old.name + '」（已归库）', 'sys', 'staff');
     return { ok: true, msg: g.name + ' 卸下「' + old.name + '」' };
@@ -19089,7 +19071,7 @@ window.GAME = window.GAME || {};
       if (roll < acc) { pick = pool[i]; break; }
     }
     var s = GAME.state;
-    s.items[pick.id] = (s.items[pick.id] || 0) + 1;
+    GAME.items.add(pick.id, 1);
     GAME.log('🔮 缴获遗物：「' + pick.name + '」（可佩于英雄身上）', 'war');
     return [pick];
   };
@@ -19139,13 +19121,12 @@ window.GAME = window.GAME || {};
     pool.sort(function (a, b) { return (a.tier || 0) - (b.tier || 0); });
     var used = pool.slice(0, need);
     used.forEach(function (b) {
-      s.items[b.id] = (s.items[b.id] || 0) - 1;
-      if (s.items[b.id] <= 0) delete s.items[b.id];
+      GAME.items.sub(b.id, 1);   /* v91.63 */
     });
     /* 产出：目标品质随机一件 */
     var dstPool = (DATA.BAOJU || []).filter(function (b) { return GAME.baojuQOf(b) === to; });
     var got = dstPool[Math.floor(Math.random() * dstPool.length)];
-    s.items[got.id] = (s.items[got.id] || 0) + 1;
+    GAME.items.add(got.id, 1);
     var usedNames = used.map(function (b) { return b.name; }).join(' + ');
     GAME.log('⚗️ 遗物合成：' + usedNames + ' → 「' + got.name + '」（' + DATA.BAOJU_Q[to].name + '阶）', 'sys', 'staff');
     return { ok: true, got: got, used: used, to: to,
@@ -20113,8 +20094,7 @@ window.GAME = window.GAME || {};
     if (Math.random() >= (tbl.base + tbl.perLv * lv) * m) return [];
     var n = U.randInt(Math.random, tbl.qty[0], tbl.qty[1]);
     if (n <= 0) return [];
-    s.items = s.items || {};
-    s.items.lingsui = (s.items.lingsui || 0) + n;
+    GAME.items.add('lingsui', n);   /* v91.63 */
     var got = ['辐能核心×' + n];
     if (label) GAME.log(label + '：' + got.join('、'));
     return got;
@@ -20145,7 +20125,6 @@ window.GAME = window.GAME || {};
     var tbl = DATA.BOOST_DROP;
     var s = GAME.state;
     if (!tbl || !s || !tbl.table) return [];
-    s.items = s.items || {};
     var left = GAME.boostDropLeft();                     /* 周期配额（现实日） */
     if (left <= 0) return [];
     var lv = Math.max(1, Math.min(10, Math.round(sourceLv || 1)));
@@ -20158,7 +20137,7 @@ window.GAME = window.GAME || {};
       var n = U.randInt(Math.random, row.qty[0], row.qty[1]);
       n = Math.min(n, left - granted);                   /* 单行多件也不许溢出配额 */
       if (n <= 0) return;
-      s.items[row.id] = (s.items[row.id] || 0) + n;
+      GAME.items.add(row.id, n);
       got.push(row.name + '×' + n);
       granted += n;
     });
@@ -20187,21 +20166,21 @@ window.GAME = window.GAME || {};
     if (st.state !== 'ripe') {
       return { ok: false, msg: st.crop.name + ' 还差 ' + U.durExact(st.left / GAME.timeScale()) + ' 完成' };
     }
-    var c = st.crop, items = s.items = s.items || {};
+    var c = st.crop;   /* v91.63：入库统一走 GAME.items */
     var got = [];
     /* v91.56（老板）：幽壤母株 —— 基因项目（血清）额外 +buffs.serumYield.add 份。 */
     var _syExtra = 0;
     if (s.buffs && s.buffs.serumYield && s.buffs.serumYield.until > U.now()) _syExtra = s.buffs.serumYield.add || 0;
     if (c.herb) {
       var _hn = 1 + _syExtra;
-      items[c.herb] = (items[c.herb] || 0) + _hn;
+      GAME.items.add(c.herb, _hn);
       got.push(farmItemName(c.herb) + ' ×' + _hn);
     } else {
       var q = U.randInt(Math.random, c.qty[0], c.qty[1]);
-      items[c.mat] = (items[c.mat] || 0) + q;
+      GAME.items.add(c.mat, q);
       got.push(farmItemName(c.mat) + ' ×' + q);
       if (c.rare && Math.random() < (c.rareP || 0.15)) {
-        items[c.rare] = (items[c.rare] || 0) + 1;
+        GAME.items.add(c.rare, 1);
         got.push(farmItemName(c.rare) + ' ×1');
       }
     }
@@ -20528,8 +20507,8 @@ window.GAME = window.GAME || {};
   };
   /* 把一队的累计奖励落**全局背包**；兵按风险损耗，余部**归城**。 */
   GAME._wonderBank = function (exp, def, note) {
-    var s = GAME.state; s.items = s.items || {};
-    (exp.acc || []).forEach(function (x) { if (x.id && x.n > 0) s.items[x.id] = (s.items[x.id] || 0) + x.n; });
+    var s = GAME.state;
+    (exp.acc || []).forEach(function (x) { if (x.id && x.n > 0) GAME.items.add(x.id, x.n); });
     var act = (DATA.WONDER_ACT_DEFS || {})[exp.act] || { risk: 0 };
     var city = GAME.cityById(exp.cityId);
     var loss = 0;
@@ -26291,7 +26270,7 @@ window.GAME = window.GAME || {};
       var jTop = Math.min(jewels.length, mult + 3);
       var j = jewels[Math.floor(rd() * jTop)];
       var cnt = 1 + Math.floor(rd() * (mult > 2 ? 3 : 1));
-      GAME.state.items[j.id] = (GAME.state.items[j.id] || 0) + cnt;
+      GAME.items.add(j.id, cnt);   /* v91.63 */
       GAME.log.war('缴获珠宝：' + j.name + ' ×' + cnt);
     }
     return out;
@@ -26412,13 +26391,12 @@ window.GAME = window.GAME || {};
   GAME.battle.grantMaterials = function (table, mult, label) {
     var s = GAME.state;
     if (!table) return [];
-    s.items = s.items || {};
     var got = [];
     for (var mid in table) {
       var rng = table[mid], lo = rng[0], hi = rng[1];
       var cnt = Math.round((lo + Math.random() * (hi - lo + 1)) * (mult || 1));
       if (cnt <= 0) continue;
-      s.items[mid] = (s.items[mid] || 0) + cnt;
+      GAME.items.add(mid, cnt);
       var m = DATA.MATERIAL_BY_ID[mid];
       got.push((m ? m.name : mid) + '×' + cnt);
     }
@@ -26441,7 +26419,7 @@ window.GAME = window.GAME || {};
       var owned = s.items || {};
       var bps = DATA.BLUEPRINTS.filter(function (b) { return !owned[b.id]; });
       var bp = bps.length ? bps[Math.floor(Math.random() * bps.length)] : DATA.BLUEPRINTS[Math.floor(Math.random() * DATA.BLUEPRINTS.length)];
-      s.items[bp.id] = (s.items[bp.id] || 0) + 1;
+      GAME.items.add(bp.id, 1);
       got.push(bp.name + '（图纸）');
     }
     /* ② 成品装备（品质随城等级） */
@@ -26904,8 +26882,7 @@ window.GAME = window.GAME || {};
       for (var i = 0; i < Math.min(take, ids.length); i++) {
         var mid = ids[Math.floor(Math.random() * ids.length)];
         var cnt = Math.max(1, Math.round((tbl[mid][0] + Math.random() * 2) * (DATA.EXPEDITION.wildMatMul.scout || 0.35) * scBonus));
-        s.items = s.items || {};
-        s.items[mid] = (s.items[mid] || 0) + cnt;
+        GAME.items.add(mid, cnt);
         out.loot.push((DATA.MATERIAL_BY_ID[mid] ? DATA.MATERIAL_BY_ID[mid].name : mid) + '×' + cnt);
       }
     }
@@ -26916,7 +26893,7 @@ window.GAME = window.GAME || {};
       });
       if (pool.length) {
         var got2 = pool[Math.floor(Math.random() * pool.length)];
-        s.items[got2.id] = (s.items[got2.id] || 0) + 1;
+        GAME.items.add(got2.id, 1);
         out.treasure = got2.name;
       }
     }
@@ -27762,7 +27739,7 @@ window.GAME = window.GAME || {};
           var top = Math.min(jewels.length, (t.kind === 'city' || t.kind === 'fort') ? t.lv : 4);
           var j = jewels[Math.floor(Math.random() * Math.max(1, top))];
           var jn = 1 + Math.floor(Math.random() * 2);
-          s.items[j.id] = (s.items[j.id] || 0) + jn;
+          GAME.items.add(j.id, jn);
           GAME.log.war('缴获珠宝：' + j.name + ' ×' + jn);
         }
       }
@@ -33685,7 +33662,7 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
     if (rw.tech) GAME.state.res.techPoint = (GAME.state.res.techPoint || 0) + rw.tech;
     if (rw.item) {
       var n = rw.count || 1;
-      s.items[rw.item] = (s.items[rw.item] || 0) + n;
+      GAME.items.add(rw.item, n);   /* v91.63 */
     }
     if (rw.hero) {
       for (var i = 0; i < rw.hero; i++) {
@@ -52780,7 +52757,7 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
       return { ok: false, msg: noMsg };
     }
     s.res.gold -= price * can;
-    s.items[itemId] = (s.items[itemId] || 0) + can;
+    GAME.items.add(itemId, can);   /* v91.63：走归属出口 */
     _day.bought[itemId] = _bought + can;
     GAME.log('游商购买：' + item.name + (can > 1 ? ' ×' + can : ''));
     var okMsg = '购买 ' + item.name + ' ×' + can + '（-' + GAME.utils.fmt(price * can) + ' 旧币）'

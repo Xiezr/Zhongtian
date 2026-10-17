@@ -4382,7 +4382,7 @@
     return r.ok === true && st.cities.length === n0 + 1
       && !st.wilds.some(function (w) { return w.x === wp.x && w.y === wp.y; });
   })());
-  check('P2-11 打造消耗图纸 1 张', /if \(bp\) \{[\s\S]{0,200}s\.items\[bp\.id\] = \(s\.items\[bp\.id\] \|\| 0\) - 1;/.test(dS16));
+  check('P2-11 打造消耗图纸 1 张', /if \(bp\) \{[\s\S]{0,200}GAME\.items\.sub\(bp\.id, 1\)/.test(dS16));
   check('P2-11 文案改为每件消耗', /每件消耗图纸 1 张/.test(uS16) && !/图纸为永久持有/.test(uS16));
 
   /* ============================================================
@@ -29776,7 +29776,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         var r1 = G.attachEquip(g, 'bao', A);
         var ok1 = r1.ok && st.items[A] === 1 && g.attach.bao === A && G.genAttrs(g).tong === baseTong + 6;
         var r2 = G.attachEquip(g, 'bao', B);          /* 替换 A→B（旧还新扣） */
-        var ok2 = r2.ok && st.items[A] === 2 && st.items[B] === 0 && g.attach.bao === B;
+        var ok2 = r2.ok && st.items[A] === 2 && (st.items[B] || 0) === 0 && g.attach.bao === B;   /* v91.63：归零键已清 */
         var r3 = G.attachUnequip(g, 'bao');           /* 卸下（还库） */
         var ok3 = r3.ok && st.items[B] === 1 && !g.attach.bao;
         var r4 = G.attachUnequip(g, 'bao');           /* 幂等：空手卸 → 拒绝 */
@@ -36300,7 +36300,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         var it = r.item;
         return r.ok === true && st.inventory.length === inv0 + 1
           && it && it.ling === true && it.q >= 1 && it.q <= 6
-          && st.items.w_stariron === 0 && st.items.w_crystal === 0;   /* 材料扣净 */
+          && (st.items.w_stariron || 0) === 0 && (st.items.w_crystal || 0) === 0;   /* v91.63：材料扣净（归零键已清） */
       } finally { G.state = bk; }
     })());
     check('§264⑥ v91.59 调校递增乘数：+12%→+20%（满级累计 +164%）· 基因件走新曲线', (function () {
@@ -36435,11 +36435,29 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         return noTouch && good.ok && GAME.items.count('jinang') === 3 && GAME.items.count('bengzhu') === 0;
       } finally { G.state = bk; }
     })());
-    check('§267④ 无保护写点已收口（源码级：不再有裸 `s.items[x] -=`）', (function () {
-      var cd = require('fs').readFileSync(require('path').join(__dirname, 'js', 'battle.js'), 'utf8')
-        + require('fs').readFileSync(require('path').join(__dirname, 'js', 'systems.js'), 'utf8');
-      cd = cd.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/[^\n]*/gm, '');
-      return !/s\.items\[[^\]]+\]\s*-=/.test(cd) && /GAME\.items\.sub\(/.test(cd);
+    check('§267④ 全仓零裸写 s.items（GAME.items 是唯一出口 · 防回潮 lint 守卫）', (function () {
+      /* v91.63：所有写点已收口，守卫升级为**全仓扫描**。
+         命中任一即红：s.items[x] =/+=/-= · s.items.x =/+=/-= · delete s.items.x
+         · s.items = s.items || {} · GAME.state.items[x] =            */
+      var fs = require('fs'), path = require('path');
+      var jsDir = path.join(__dirname, 'js'), bad = [];
+      var files = ['data', 'state', 'systems', 'domain', 'map', 'sphere', 'gltf', 'map3d',
+        'battle', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits', 'story', 'ui', 'main'];
+      var writeRe = new RegExp([
+        '\\bs\\.items\\.[A-Za-z_$]+\\s*(?:=|\\+=|-=)',
+        '\\bs\\.items\\[[^\\]]+\\]\\s*(?:=|\\+=|-=)',
+        'delete\\s+s\\.items\\.',
+        '\\bs\\.items\\s*=\\s*s\\.items\\s*\\|\\|\\s*\\{\\}',
+        '\\bGAME\\.state\\.items\\[[^\\]]+\\]\\s*='
+      ].join('|'));
+      files.forEach(function (f) {
+        var src = fs.readFileSync(path.join(jsDir, f + '.js'), 'utf8')
+          .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/[^\n]*/gm, '');
+        if (writeRe.test(src)) bad.push(f);
+      });
+      return bad.length === 0;
+    })(), (function () {
+      return '写点已全部走 GAME.items';
     })());
     check('§267⑤ 主循环路径仍可读写（消费点未断）', (function () {
       /* 游商购买走 s.items 读、GAME.doShopping 后数量应增 */
