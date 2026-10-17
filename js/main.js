@@ -10,6 +10,7 @@ import './state.js';
 import './systems.js';
 import './items.js';
 import './generals.js';   /* v91.65：英雄名册/状态归属 */
+import './cities.js';     /* v91.66：城市只读出口 */
 import './domain.js';
 import './map.js';
 import './sphere.js';

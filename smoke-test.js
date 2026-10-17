@@ -12344,7 +12344,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
   check('v91.61：js/bundle.js 与 js/*.js 源码同步（防"改了源码忘构建"的假绿）', (function () {
     var fs = require('fs'), path = require('path'), crypto = require('crypto');
     var jsDir = path.join(__dirname, 'js');
-    var ORDER = ['core', 'data', 'state', 'systems', 'items', 'generals', 'domain', 'map', 'sphere', 'gltf',
+    var ORDER = ['core', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'domain', 'map', 'sphere', 'gltf',
       'map3d', 'battle', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits', 'story', 'ui', 'main'];
     var h = crypto.createHash('sha256');
     try {
@@ -36611,6 +36611,68 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       });
       return bad.length === 0;
     })(), (function () { return 'status 写点已全部走 GAME.gen'; })());
+  })();
+
+  /* ============================================================
+   * §270. v91.66（地基第 2 期第五刀）城市只读出口 + 不变量
+   * ============================================================ */
+  (function () {
+    console.log('\n===== 270. v91.66 城市只读出口（GAME.city）=====');
+    check('§270① 出口齐：byId/anywhere/all/armyTotal/level/isMain/popOf/checkInvariants', (function () {
+      var X = GAME.city, need = ['byId', 'anywhere', 'all', 'armyTotal', 'level', 'isMain', 'popOf', 'checkInvariants'];
+      return !!X && need.every(function (k) { return typeof X[k] === 'function'; });
+    })());
+    check('§270② 查找口径一致（byId === cityById · anywhere 能跨分片）', (function () {
+      var bk = GAME.state;
+      try {
+        var st = G.newGame({ name: 'ct270', cityName: '灰岗', region: '碎垣', mapSeed: 8 });
+        G.state = st;
+        var c0 = st.cities[0];
+        var same = GAME.city.byId(c0.id) === c0 && GAME.city.byId(c0.id) === GAME.cityById(c0.id);
+        /* 造一个"他星分片"的城，anywhere 必须找得到 */
+        st.mapSlices = st.mapSlices || {};
+        st.mapSlices[9] = { cities: [{ id: 'x9', name: '他星城', army: {}, res: {} }] };
+        var other = GAME.city.anywhere('x9');
+        return same && !!other && other.id === 'x9' && GAME.city.byId('x9') === null;
+      } finally { G.state = bk; }
+    })());
+    check('§270③ armyTotal 逐兵种求和（忽略非正/非法值）', (function () {
+      var c = { army: { buxingji: 1200, dunwei: 300, kuanglie: 0, bad: -5, weird: 'x' } };
+      return GAME.city.armyTotal(c) === 1500 && GAME.city.armyTotal({}) === 0 && GAME.city.armyTotal(null) === 0;
+    })());
+    check('§270④ popOf / level 安全取值', (function () {
+      return GAME.city.popOf({ res: { pop: 321 } }) === 321
+        && GAME.city.popOf({}) === 0 && GAME.city.popOf(null) === 0
+        && GAME.city.level(null, 'guanfu') === 0;
+    })());
+    check('§270⑤ 真实存档不变量全过（兵力/资源非负·格数·坐标·当前城在分片内）', (function () {
+      var bk = GAME.state;
+      try {
+        var st = G.newGame({ name: 'ct270b', cityName: '灰岗', region: '碎垣', mapSeed: 8 });
+        G.state = st;
+        var bad = GAME.city.checkInvariants();
+        return Array.isArray(bad) && bad.length === 0;
+      } finally { G.state = bk; }
+    })(), (function () {
+      try { return '不变量检查：' + (GAME.city.checkInvariants() || []).length + ' 项异常'; } catch (e) { return 'n/a'; }
+    })());
+    check('§270⑥ 不变量能抓到坏数据（负兵力 / 越界坐标 / 重复 id）', (function () {
+      var bk = GAME.state;
+      try {
+        var st = G.newGame({ name: 'ct270c', cityName: '灰岗', region: '碎垣', mapSeed: 8 });
+        G.state = st;
+        var c = st.cities[0];
+        c.army = { buxingji: -10 };
+        var hitArmy = GAME.city.checkInvariants().some(function (x) { return /兵力异常/.test(x.msg); });
+        c.army = {};
+        c.x = -5;
+        var hitCoord = GAME.city.checkInvariants().some(function (x) { return /坐标越界/.test(x.msg); });
+        c.x = 100;
+        st.cities.push({ id: c.id, name: '重复', army: {}, res: {}, cells: [] });
+        var hitDup = GAME.city.checkInvariants().some(function (x) { return /id 重复/.test(x.msg); });
+        return hitArmy && hitCoord && hitDup;
+      } finally { G.state = bk; }
+    })());
   })();
 
   console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');
