@@ -19,11 +19,12 @@ BUNDLE = os.path.join(JS, 'bundle.js')
 HASHF = os.path.join(JS, 'bundle.hash')
 
 # 与 js/main.js 的 import 列表逐条一致（= 旧 index.html 的 <script> 顺序）。
-ORDER = ['core', 'data', 'state', 'systems', 'domain', 'map', 'sphere', 'gltf',
+ORDER = ['core', 'data', 'state', 'systems', 'items', 'domain', 'map', 'sphere', 'gltf',
          'map3d', 'battle', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits',
          'story', 'ui', 'main']
 
-RE_IMPORT = re.compile(r'^\s*import\s+[\'"].*?[\'"]\s*;?\s*$', re.M)
+# 允许行尾注释（如 `import './x.js';   /* 说明 */`），否则注释会残留进 bundle。
+RE_IMPORT = re.compile(r'^\s*import\s+[\'"].*?[\'"]\s*;?[ \t]*(?:/\*.*?\*/[ \t]*)?$', re.M)
 
 
 def sources():

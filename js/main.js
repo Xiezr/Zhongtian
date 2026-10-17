@@ -8,6 +8,7 @@ import './core.js';
 import './data.js';
 import './state.js';
 import './systems.js';
+import './items.js';
 import './domain.js';
 import './map.js';
 import './sphere.js';

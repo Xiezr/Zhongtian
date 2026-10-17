@@ -12342,7 +12342,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
   check('v91.61：js/bundle.js 与 js/*.js 源码同步（防"改了源码忘构建"的假绿）', (function () {
     var fs = require('fs'), path = require('path'), crypto = require('crypto');
     var jsDir = path.join(__dirname, 'js');
-    var ORDER = ['core', 'data', 'state', 'systems', 'domain', 'map', 'sphere', 'gltf',
+    var ORDER = ['core', 'data', 'state', 'systems', 'items', 'domain', 'map', 'sphere', 'gltf',
       'map3d', 'battle', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits', 'story', 'ui', 'main'];
     var h = crypto.createHash('sha256');
     try {
@@ -36395,6 +36395,66 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         GAME.buildPlace(1, 0, 'powercore');
         var after = GAME.cityBonusNum(city, 'prodPct');
         return after > before;
+      } finally { G.state = bk; }
+    })());
+  })();
+
+  /* ============================================================
+   * §267. v91.62（地基第 2 期第一刀）背包归属模块 GAME.items
+   * ============================================================ */
+  (function () {
+    console.log('\n===== 267. v91.62 背包归属（GAME.items）=====');
+    check('§267① 出口齐：count/has/add/sub/take/addAll/list', (function () {
+      var I = GAME.items;
+      return I && typeof I.count === 'function' && typeof I.has === 'function'
+        && typeof I.add === 'function' && typeof I.sub === 'function'
+        && typeof I.take === 'function' && typeof I.addAll === 'function'
+        && typeof I.list === 'function';
+    })());
+    check('§267② add/sub 下界恒 0（不写负数）· 0 量自动清键', (function () {
+      var bk = GAME.state;
+      try {
+        var st = G.newGame({ name: 'it267', cityName: '灰岗', region: '碎垣', mapSeed: 8 });
+        G.state = st; st.items = {};
+        GAME.items.add('jinang', 3);
+        var a = GAME.items.count('jinang') === 3;
+        var cutMore = GAME.items.sub('jinang', 99);          /* 只扣到 0 */
+        var b = cutMore === 3 && GAME.items.count('jinang') === 0 && !('jinang' in st.items);
+        GAME.items.sub('jinang', 1);                          /* 空库存再扣 → 0，不出现 -1 */
+        return a && b && GAME.items.count('jinang') === 0;
+      } finally { G.state = bk; }
+    })());
+    check('§267③ take 原子：不足整单拒绝且不动账 / 足够则全扣', (function () {
+      var bk = GAME.state;
+      try {
+        var st = G.newGame({ name: 'it267b', cityName: '灰岗', region: '碎垣', mapSeed: 8 });
+        G.state = st; st.items = { jinang: 5, bengzhu: 1 };
+        var bad = GAME.items.take({ jinang: 2, bengzhu: 9 });
+        var noTouch = !bad.ok && GAME.items.count('jinang') === 5 && GAME.items.count('bengzhu') === 1;
+        var good = GAME.items.take({ jinang: 2, bengzhu: 1 });
+        return noTouch && good.ok && GAME.items.count('jinang') === 3 && GAME.items.count('bengzhu') === 0;
+      } finally { G.state = bk; }
+    })());
+    check('§267④ 无保护写点已收口（源码级：不再有裸 `s.items[x] -=`）', (function () {
+      var cd = require('fs').readFileSync(require('path').join(__dirname, 'js', 'battle.js'), 'utf8')
+        + require('fs').readFileSync(require('path').join(__dirname, 'js', 'systems.js'), 'utf8');
+      cd = cd.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/[^\n]*/gm, '');
+      return !/s\.items\[[^\]]+\]\s*-=/.test(cd) && /GAME\.items\.sub\(/.test(cd);
+    })());
+    check('§267⑤ 主循环路径仍可读写（消费点未断）', (function () {
+      /* 游商购买走 s.items 读、GAME.doShopping 后数量应增 */
+      var bk = GAME.state;
+      try {
+        var st = G.newGame({ name: 'it267c', cityName: '灰岗', region: '碎垣', mapSeed: 8 });
+        G.state = st;
+        var sid = null; G.ui.shopItems().forEach(function (it) { if (!sid) sid = it.id; });
+        if (!sid) return 'SKIP-无在售';
+        var it = GAME.systems.itemInfo(sid);
+        st.res.gold = (it.price * 100) * 5;
+        st.shopDay = { key: '', bought: {} };
+        var before = GAME.items.count(sid);
+        var r = GAME.doShopping(sid, 2);
+        return r.ok && GAME.items.count(sid) === before + 2;
       } finally { G.state = bk; }
     })());
   })();

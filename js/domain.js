@@ -110,7 +110,8 @@ import './state.js';
       if (k === 'jewel') {
         var need = GAME.jewelNeedOf(cost);
         s.items = s.items || {};
-        for (var jid in need) s.items[jid] = Math.max(0, (s.items[jid] || 0) - need[jid]);
+        /* v91.62：走背包归属出口（下界恒 0，与旧 Math.max 同义） */
+      for (var jid in need) GAME.items.sub(jid, need[jid]);
         continue;
       }
       if (k === 'gold') { GAME.goldAdd(-cost[k]); continue; }

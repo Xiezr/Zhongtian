@@ -690,8 +690,7 @@ import './state.js';
     }
 
     if (ok) {
-      s.items[itemId] -= 1;
-      if (s.items[itemId] <= 0) delete s.items[itemId];
+      GAME.items.sub(itemId, 1);   /* v91.62：走背包归属出口 */
       if (!(opts && opts.silent)) GAME.log('使用宝物：' + item.name);
     }
     return { ok: ok, msg: msg, gain: gain };
@@ -832,8 +831,7 @@ import './state.js';
     q.elapsed = Math.min(q.totalTime, (q.elapsed || 0) + add);
     q.boosted = (q.boosted || 0) + add;
     q.boost[item.id] = (q.boost[item.id] || 0) + 1;
-    s.items[itemId] -= 1;
-    if (s.items[itemId] <= 0) delete s.items[itemId];
+    GAME.items.sub(itemId, 1);   /* v91.62：走背包归属出口 */
     var tn = (DATA.TROOPS[q.troopId] || {}).name || q.troopId;
     GAME.log('募兵加速：' + item.name + ' → ' + tn + ' ×' + q.count
       + '（提前 ' + Math.round(add / GAME.timeScale()) + ' 秒）');

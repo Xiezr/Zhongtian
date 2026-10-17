@@ -4086,8 +4086,7 @@ import './state.js';
     }
     var r = GAME.march.rushApply(marchId || null);
     if (!r.ok) return r;
-    s.items[itemId] -= 1;
-    if (s.items[itemId] <= 0) delete s.items[itemId];
+    GAME.items.sub(itemId, 1);   /* v91.62：走背包归属出口（下界恒 0） */
     GAME.log.war('⚡ ' + it.name + '：' + r.msg);
     return { ok: true, count: r.count, msg: '⚡ ' + it.name + '：' + r.msg };
   };
