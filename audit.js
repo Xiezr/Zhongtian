@@ -23,7 +23,7 @@ const FS = require('fs');
 const JSDIR = path.join(__dirname, 'js');
 /* v90.92：任务系统退役 —— 'questdata' 模块（js/questdata.js 已删）摘除。
    v91.61：新增 'core'（共享命名空间单例 · 地基第 1 期）。 */
-const MODULES = ['core', 'data', 'state', 'systems', 'items', 'domain', 'map', 'sphere', 'battle', 'icons', 'story', 'ui', 'map3d', 'main'];
+const MODULES = ['core', 'data', 'state', 'systems', 'items', 'generals', 'domain', 'map', 'sphere', 'battle', 'icons', 'story', 'ui', 'map3d', 'main'];
 
 const src = {};
 MODULES.forEach(m => { src[m] = fs.readFileSync(path.join(JSDIR, m + '.js'), 'utf8'); });
@@ -297,7 +297,7 @@ const REF_OK = {
    portraits 也算进来（它们也是 GAME.* 的生产者与消费者）。 */
 /* v90.92：任务系统退役 —— 'questdata' 摘除（见①的 MODULES 说明）。
    v91.61：新增 'core'。 */
-const REF_MODULES = ['core', 'data', 'state', 'systems', 'items', 'domain', 'map', 'sphere', 'battle', 'tactic',
+const REF_MODULES = ['core', 'data', 'state', 'systems', 'items', 'generals', 'domain', 'map', 'sphere', 'battle', 'tactic',
   'icons', 'gicons', 'bitmaps', 'portraits', 'story', 'ui', 'map3d', 'main'];
 /* 剥注释（audit.js 里没有共用版；注释里提到旧名不应算引用 —— 本项目踩过多次） */
 const stripC = s => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '');

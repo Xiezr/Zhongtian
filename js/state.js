@@ -5265,7 +5265,7 @@ import './data.js';
           var gg3 = GAME.makeHero(hh2, 30);
           gg3.loyalty = 60;
           if (home2) gg3.cityId = home2.id;
-          s.generals.push(gg3);
+          GAME.gen.add(gg3);   /* v91.65 */
           texts.push('「' + hname2 + '」慕名来投，愿效犬马之劳');
         } else {
           gift('zhenzhu', 1);       /* 重名兜底：换成一枚珍珠 */

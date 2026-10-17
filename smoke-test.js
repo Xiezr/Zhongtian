@@ -12344,7 +12344,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
   check('v91.61：js/bundle.js 与 js/*.js 源码同步（防"改了源码忘构建"的假绿）', (function () {
     var fs = require('fs'), path = require('path'), crypto = require('crypto');
     var jsDir = path.join(__dirname, 'js');
-    var ORDER = ['core', 'data', 'state', 'systems', 'items', 'domain', 'map', 'sphere', 'gltf',
+    var ORDER = ['core', 'data', 'state', 'systems', 'items', 'generals', 'domain', 'map', 'sphere', 'gltf',
       'map3d', 'battle', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits', 'story', 'ui', 'main'];
     var h = crypto.createHash('sha256');
     try {
@@ -36542,6 +36542,75 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       });
       return bad.length === 0;
     })());
+  })();
+
+  /* ============================================================
+   * §269. v91.65（地基第 2 期第四刀）英雄名册/状态归属：GAME.gen
+   * ============================================================ */
+  (function () {
+    console.log('\n===== 269. v91.65 英雄状态机归属（s.generals）=====');
+    check('§269① 出口齐：set/release/claim/isFree/isBusy/statusOf/add/remove/byId/freeOnes', (function () {
+      var X = GAME.gen, need = ['set', 'release', 'claim', 'isFree', 'isBusy', 'statusOf', 'add', 'remove', 'byId', 'freeOnes'];
+      return !!X && need.every(function (k) { return typeof X[k] === 'function'; })
+        && X.ALL.length >= 7 && X.OCCUPYING.indexOf('idle') < 0;
+    })());
+    check('§269② claim 原子互斥：占用中 → 拒绝且状态不变；空闲 → 占位成功', (function () {
+      var bk = GAME.state;
+      try {
+        var st = G.newGame({ name: 'gen269', cityName: '灰岗', region: '碎垣', mapSeed: 8 });
+        G.state = st;
+        var g = st.generals[0];
+        GAME.gen.release(g);
+        var r1 = GAME.gen.claim(g, 'march');
+        var busy = GAME.gen.statusOf(g);
+        var r2 = GAME.gen.claim(g, 'gather');      /* 已 march → 拒 */
+        var still = GAME.gen.statusOf(g);
+        GAME.gen.release(g);
+        var r3 = GAME.gen.claim(g, 'gather');
+        return r1.ok && busy === 'march' && r2.ok === false && /正在/.test(r2.msg)
+          && still === 'march' && r3.ok && GAME.gen.statusOf(g) === 'gather';
+      } finally { G.state = bk; }
+    })());
+    check('§269③ 离开驻守自动清 cityId（防"回空闲仍挂野地"）', (function () {
+      var bk = GAME.state;
+      try {
+        var st = G.newGame({ name: 'gen269b', cityName: '灰岗', region: '碎垣', mapSeed: 8 });
+        G.state = st;
+        var g = st.generals[0];
+        GAME.gen.set(g, 'garrison'); g.cityId = 'wild-x';
+        GAME.gen.release(g);
+        var cleared = g.cityId === null;
+        GAME.gen.set(g, 'garrison'); g.cityId = 'wild-y';
+        GAME.gen.set(g, 'garrison');                 /* 驻守→驻守：不清 */
+        return cleared && g.cityId === undefined ? g.cityId == null : g.cityId === 'wild-y';
+      } finally { G.state = bk; }
+    })());
+    check('§269④ 名册增删唯一入口（同 id 不重复入册 / remove 返回实例）', (function () {
+      var bk = GAME.state;
+      try {
+        var st = G.newGame({ name: 'gen269c', cityName: '灰岗', region: '碎垣', mapSeed: 8 });
+        G.state = st; st.generals = [];
+        var a = { id: 'gA', name: '甲', status: 'idle' };
+        var b = { id: 'gA', name: '甲副本', status: 'idle' };
+        GAME.gen.add(a); GAME.gen.add(b);
+        var once = st.generals.length === 1 && GAME.gen.byId('gA') === a;
+        var got = GAME.gen.remove('gA');
+        return once && got === a && st.generals.length === 0 && GAME.gen.remove('gA') === null;
+      } finally { G.state = bk; }
+    })());
+    check('§269⑤ 全仓零裸改 status（GAME.gen 之外无 `g.status =`）', (function () {
+      var fs = require('fs'), path = require('path');
+      var jsDir = path.join(__dirname, 'js'), bad = [];
+      ['data', 'state', 'systems', 'domain', 'map', 'sphere', 'gltf', 'map3d',
+        'battle', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits', 'story', 'ui', 'main'].forEach(function (f) {
+        var src = fs.readFileSync(path.join(jsDir, f + '.js'), 'utf8')
+          .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/[^\n]*/gm, '');
+        /* 允许：GAME.gen.set/release 内部（在 generals.js，不在本清单）、
+           以及状态字段的**对象字面量**初始化（status: '...'）。 */
+        if (/\b[A-Za-z_$][\w$]*\.status\s*=\s*'/.test(src)) bad.push(f);
+      });
+      return bad.length === 0;
+    })(), (function () { return 'status 写点已全部走 GAME.gen'; })());
   })();
 
   console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');

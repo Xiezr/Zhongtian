@@ -10829,7 +10829,7 @@ window.GAME = window.GAME || {};
           var gg3 = GAME.makeHero(hh2, 30);
           gg3.loyalty = 60;
           if (home2) gg3.cityId = home2.id;
-          s.generals.push(gg3);
+          GAME.gen.add(gg3);   /* v91.65 */
           texts.push('「' + hname2 + '」慕名来投，愿效犬马之劳');
         } else {
           gift('zhenzhu', 1);       /* 重名兜底：换成一枚珍珠 */
@@ -12027,6 +12027,115 @@ window.GAME = window.GAME || {};
       out.push({ id: id, n: n });
     }
     return out;
+  };
+})();
+
+/* ---- generals.js ---- */
+/* ============================================================
+ * js/generals.js — **英雄名册（s.generals）归属模块**（v91.65 · 地基第 2 期第四刀）
+ * ------------------------------------------------------------
+ * 背景：英雄是**状态机**（idle / march / gather / garrison / guard / mayor / wonderExplore），
+ *   且"一个英雄同时只能执行一种派遣"是老板 v91.45 明确立下的规则 ——
+ *   但此前 **16 处裸改 status + 11 处裸判 idle**，没有任何出口，
+ *   互斥全靠各调用方自觉（漏一处 = 同一个英雄能被派两次）。
+ *
+ * 本模块把**状态与名册**收进唯一出口：
+ *   · `GAME.gen.set(g, status)` —— 改状态的唯一入口（校验合法值、离开驻守时清 cityId）；
+ *   · `GAME.gen.free(g)` / `GAME.gen.busy(g)` —— "是否可被派遣"的唯一判据；
+ *   · `GAME.gen.claim(g, status)` —— **原子占位**（空闲才占，否则返回拒绝原因）；
+ *   · `GAME.gen.release(g)` —— 归队（回 idle）；
+ *   · `GAME.gen.add(...)` / `GAME.gen.remove(...)` —— 名册增删的唯一入口。
+ *
+ * 迁移策略同前两刀：先建出口 + 切"状态与互斥"这类规则点（本刀），
+ * 名册增删的其余调用点后续刀再逐个切；未切处行为不变。
+ * 数据仍存 `s.generals` / `g.status`（存档零迁移）。
+ * ============================================================ */
+
+
+
+(function () {
+  var GAME = window.GAME = window.GAME || {};
+
+  /* 合法状态（唯一来源）：idle = 空闲可派遣；其余均为"占用中"。 */
+  var STATUS = {
+    idle: '空闲',
+    march: '行军中',
+    gather: '采集中',
+    garrison: '驻守野地',
+    guard: '守将',
+    mayor: '城主',
+    wonderExplore: '奇观探索中',
+  };
+
+  var G = GAME.gen = {};
+  G.STATUS = STATUS;
+  G.ALL = Object.keys(STATUS);
+  /* 这些状态"占用英雄"（不可再被委派其他行动） */
+  G.OCCUPYING = G.ALL.filter(function (k) { return k !== 'idle'; });
+
+  function list() {
+    var s = GAME.state;
+    if (!s) return [];
+    s.generals = s.generals || [];
+    return s.generals;
+  }
+
+  /* 读状态（缺省视作空闲） */
+  G.statusOf = function (g) { return (g && g.status) || 'idle'; };
+  G.isBusy = function (g) { return G.statusOf(g) !== 'idle'; };
+  G.isFree = function (g) { return !!(g && !G.isBusy(g)); };
+
+  /* **改状态的唯一入口**。
+     规则：合法值校验；离开驻守（garrison）时清掉驻地的 cityId
+     （否则英雄回空闲后仍"挂"在野地上，下次派遣会错判归属）。 */
+  G.set = function (g, status) {
+    if (!g) return false;
+    if (G.ALL.indexOf(status) < 0) return false;
+    var prev = G.statusOf(g);
+    g.status = status;
+    if (prev === 'garrison' && status !== 'garrison') g.cityId = null;
+    return true;
+  };
+
+  /* **原子占位**：空闲才能占；已占用 → 拒绝并给出原因（互斥唯一判据）。 */
+  G.claim = function (g, status) {
+    if (!g) return { ok: false, msg: '未指定英雄' };
+    if (G.isBusy(g)) {
+      return { ok: false, msg: g.name + ' 正在' + (STATUS[G.statusOf(g)] || G.statusOf(g)) + '，无法另行派遣' };
+    }
+    if (!G.set(g, status)) return { ok: false, msg: '未知状态：' + status };
+    return { ok: true, msg: '' };
+  };
+
+  /* 归队（回空闲） */
+  G.release = function (g) { return G.set(g, 'idle'); };
+
+  /* 名册：按 id 取 */
+  G.byId = function (id) {
+    var arr = list();
+    for (var i = 0; i < arr.length; i++) if (arr[i].id === id) return arr[i];
+    return null;
+  };
+  /* 名册：增（唯一入口 · 去重：同 id 不重复入册） */
+  G.add = function (g) {
+    if (!g) return null;
+    var arr = list();
+    if (g.id && G.byId(g.id)) return G.byId(g.id);
+    arr.push(g);
+    return g;
+  };
+  G.remove = function (ref) {
+    var arr = list();
+    var idx = -1;
+    for (var i = 0; i < arr.length; i++) {
+      if (arr[i] === ref || (ref && typeof ref === 'string' && arr[i].id === ref)) { idx = i; break; }
+    }
+    if (idx < 0) return null;
+    return arr.splice(idx, 1)[0];
+  };
+  /* 空闲英雄（自动指派用：逐城/逐星球取一枚） */
+  G.freeOnes = function (pred) {
+    return list().filter(function (g) { return G.isFree(g) && (!pred || pred(g)); });
   };
 })();
 
@@ -14392,7 +14501,7 @@ window.GAME = window.GAME || {};
     g.loyalty = cnd.loyalty;
     g.hero = cnd.hero;
     g.beauty = cnd.beauty;
-    s.generals.push(g);
+    GAME.gen.add(g);   /* v91.65 */
     list.splice(idx, 1);
     var rkName = GAME.rankOf(g).name;
     GAME.statBump('recruited', 1);
@@ -15426,7 +15535,7 @@ window.GAME = window.GAME || {};
     if (w.garrison.genId) {
       (s.generals || []).forEach(function (g) { if (g.id === w.garrison.genId) _wgen = g; });
       /* v89.135：驻守不改 cityId（编制城一直没动）—— 召回只把 status 收成 idle */
-      if (_wgen && _wgen.status === 'garrison') { _wgen.status = 'idle'; }
+      if (_wgen && _wgen.status === 'garrison') { GAME.gen.release(_wgen); }   /* v91.65 */
     }
     var n = 0;
     for (var k in w.garrison.troops) {
@@ -15492,7 +15601,7 @@ window.GAME = window.GAME || {};
           if (g.cityId !== city.id) return;
           g.cityId = recv.id;
           /* 守将随城解任：城都没了，守将位自然不存在 */
-          if (g.status === 'guard') g.status = 'idle';
+          if (g.status === 'guard') GAME.gen.release(g);   /* v91.65 */
         });
       } },
     { key: 'queues.build', path: 'cityId', label: '建造队列',
@@ -16239,7 +16348,7 @@ window.GAME = window.GAME || {};
     if (gen && g.origin !== 'garrison') {
       /* v89.135：驻军开采的带队英雄**仍在驻守**（status='garrison' 不动）——
          只有英雄带队那条老路才在此收工回城。 */
-      gen.status = 'idle';
+      GAME.gen.release(gen);   /* v91.65 */
       gen.cityId = city ? city.id : null;
       /* v26（需求 1）：统一走唯一入口 —— 顺带把这次获得的经验写进公文，
          原先裸加时玩家完全看不到采集也会涨经验。 */
@@ -16512,7 +16621,7 @@ window.GAME = window.GAME || {};
         }
       }
     } else if (city) { for (var a in g.army) city.army[a] = (city.army[a] || 0) + g.army[a]; }
-    if (gen && g.origin !== 'garrison') { gen.status = 'idle'; gen.cityId = city ? city.id : null; }
+    if (gen && g.origin !== 'garrison') { GAME.gen.release(gen); gen.cityId = city ? city.id : null; }   /* v91.65 */
     list.splice(idx, 1);
     GAME.log(g.origin === 'garrison' ? '停止驻军开采（驻军原地保留）' : '撤回采集队（无收益）', 'sys', 'gather');
     return { ok: true, msg: g.origin === 'garrison' ? '已停止开采（驻军原地保留）' : '已撤回，兵力归还（放弃采集无收益）' };
@@ -18361,7 +18470,7 @@ window.GAME = window.GAME || {};
     ['equip', 'lingEquip'].forEach(function (bk) {
       for (var slot in (g[bk] || {})) { GAME.addEquip(g[bk][slot]); back++; }   /* v91.64：回收原实例 */
     });
-    s.generals.splice(idx, 1);
+    GAME.gen.remove(g);   /* v91.65 */
     var repCost = g.hero ? 50 : 0;
     if (repCost) s.rep = Math.max(0, (s.rep || 0) - repCost);
     GAME.heartsComfortAdd(-2);      /* v89.177：民心改动统一走安抚通道（-2 解雇之伤） */
@@ -18618,7 +18727,7 @@ window.GAME = window.GAME || {};
     (((GAME.state || {}).generals) || []).forEach(function (x) {
       if (x.id === keepId) return;
       if (x.status === 'guard' && x.cityId === cityId) {
-        x.status = 'idle'; x.cityId = null; out.push(x.name);
+        GAME.gen.release(x); x.cityId = null; out.push(x.name);   /* v91.65 */
       }
     });
     return out;
@@ -18629,7 +18738,7 @@ window.GAME = window.GAME || {};
     (((GAME.state || {}).generals) || []).forEach(function (x) {
       if (x.id === keepId) return;
       if (x.status === 'mayor' && x.cityId === cityId) {
-        x.status = 'idle'; x.cityId = null; out.push(x.name);
+        GAME.gen.release(x); x.cityId = null; out.push(x.name);   /* v91.65 */
       }
     });
     return out;
@@ -20429,11 +20538,9 @@ window.GAME = window.GAME || {};
     /* v91.52（老板）：**须先击败对应层守卫**才能开始该行动的材料收集。 */
     var _lock = GAME.wonderActLockOf(pid, actId);
     if (_lock) return { ok: false, msg: _lock };
-    if (_gen && _gen.status && _gen.status !== 'idle') {
-      var _stTxt = _gen.status === 'guard' ? '守将' : _gen.status === 'mayor' ? '城主'
-        : _gen.status === 'march' ? '出征中' : _gen.status === 'gather' ? '采集中'
-        : _gen.status === 'garrison' ? '驻守野地' : _gen.status === 'wonderExplore' ? '奇观探索中' : '执行任务中';
-      return { ok: false, msg: _gen.name + ' 正在' + _stTxt + '，不可同时派遣' };
+    /* v91.65：互斥判据收口到 GAME.gen（唯一状态机出口）—— 不再手写 7 分支状态文案。 */
+    if (_gen && GAME.gen.isBusy(_gen)) {
+      return { ok: false, msg: _gen.name + ' 正在' + (GAME.gen.STATUS[GAME.gen.statusOf(_gen)] || '执行任务中') + '，不可同时派遣' };
     }
     var n = 0, load = 0;
     for (var k in army) {
@@ -20459,7 +20566,7 @@ window.GAME = window.GAME || {};
       exploreUntil: 0,   /* 抵达时补算（= arriveAt + exploreSec×1000） */
       acc: [], accrued: 0, returning: false, retArrive: 0,
     });
-    if (_gen) _gen.status = 'wonderExplore';   /* v91.45：标记"奇观探索中"—— 不可再被委派其他行动 */
+    if (_gen) GAME.gen.set(_gen, 'wonderExplore');   /* v91.65 */   /* v91.45：标记"奇观探索中"—— 不可再被委派其他行动 */
     GAME.log('✨ 「' + city.name + '」派队探查「' + def.name + ' · ' + act.name + '」—— 行军 1h 抵达后持续开采（累计奖励）', 'sys', 'wild');
     return { ok: true, msg: '已派出：行军 1 小时后抵达，持续累计奖励（同时上限 ' + (W.maxActive || 3) + ' 队）' };
   };
@@ -20545,7 +20652,7 @@ window.GAME = window.GAME || {};
     var names = (exp.acc || []).map(function (x) { return ((DATA.ITEM_BY_ID[x.id] || {}).name || x.id) + '×' + x.n; });
     /* v91.45：归城即**释放带队英雄**（置回空闲）—— 否则英雄会永远卡在"奇观探索中"。 */
     var _g = null; (s.generals || []).forEach(function (x) { if (x.id === exp.genId) _g = x; });
-    if (_g && _g.status === 'wonderExplore') _g.status = 'idle';
+    if (_g && _g.status === 'wonderExplore') GAME.gen.release(_g);   /* v91.65 */
     GAME.log('✨ 奇观「' + (def ? def.name : '?') + '」探查' + (note || '归来') + '：' + (names.join('、') || '无')
       + (city ? ('　·　兵归「' + city.name + '」' + (loss ? '（损兵 ' + loss + '）' : '')) : ''), 'sys', 'wild');
   };
@@ -25767,7 +25874,7 @@ window.GAME = window.GAME || {};
     /* 英雄状态收尾（等价 arrive 的 idle 设置） */
     var gen = null;
     (s.generals || []).forEach(function (g) { if (g.id === rec.genId) gen = g; });
-    if (gen && gen.status === 'march') gen.status = 'idle';
+    if (gen && gen.status === 'march') GAME.gen.release(gen);   /* v91.65 */
     /* 军账兜底（P-25 同口径）：落账异常 / 目标失效 → 折返 */
     if (err || !resp || resp.ok === false) {
       var city = rec.cityId ? GAME.cityById(rec.cityId) : null;
@@ -26163,7 +26270,7 @@ window.GAME = window.GAME || {};
       var _gj = GAME.makeHero(_ng, _ng.level);
       _gj.loyalty = 50;
       if (fromCity) _gj.cityId = fromCity.id;
-      s.generals.push(_gj);
+      GAME.gen.add(_gj);   /* v91.65 */
       GAME.log.war('🕸️ 挑拨离间奏效：守将 ' + _ng.name + ' 倒戈归降，愿效犬马之劳！');
     })();
     /* 美人 50% 几率（攻占重镇/首府）—— v91.02：传出发城，女将归降该城（不再无归属） */
@@ -26482,7 +26589,7 @@ window.GAME = window.GAME || {};
     var g = GAME.makeHero(h);
     g.loyalty = 60;
     if (home) g.cityId = home.id;
-    s.generals.push(g);
+    GAME.gen.add(g);   /* v91.65 */
     GAME.log.war('守将 ' + h.name + ' 归降！（攻打城市必降）');   /* v89.188（老板 3）：文案中性化 */
     return g;
   };
@@ -26502,7 +26609,7 @@ window.GAME = window.GAME || {};
        显示全部英雄而非本城"），且会随"在看哪座城"飘。取出征出发城：谁打下来的就归谁。 */
     var home = fromCity || GAME.currentCity() || (s.cities && s.cities[0]) || null;
     if (home) g.cityId = home.id;
-    s.generals.push(g);
+    GAME.gen.add(g);   /* v91.65：名册唯一入口 */
     GAME.log.war('获得女将 ' + b.name + '！（掠夺/占领野外城市50%几率）');   /* v89.188（老板 3）：文案中性化 */
     return g;
   };
@@ -27363,7 +27470,7 @@ window.GAME = window.GAME || {};
         if (gen) gen.status = (_wg136 && _wg136.genId === gen.id) ? 'garrison' : 'idle';
       } else {
         for (var _k136 in atkArmy) city.army[_k136] = (city.army[_k136] || 0) + atkArmy[_k136];
-        if (gen) gen.status = 'idle';
+        if (gen) GAME.gen.release(gen);   /* v91.65 */
       }
       _expArmySettled = true;                 /* 军账已结（兵已并入 / 已回城） */
       return { ok: true, mode: 'gather', peaceful: true, target: t,
@@ -27555,8 +27662,8 @@ window.GAME = window.GAME || {};
         /* v89.135：**驻守不改 cityId**（编制城保持 —— "人在野地"由 status 表达）——
            改前置 null 会打穿所有按 `g.cityId === 城.id` 过滤的界面（荒野行动君主在城、
            任命候选…），实测把 v88/v89 的荒野段整条链路连带失败。 */
-        if (_wg2 && _wg2.genId === gen.id) { gen.status = 'garrison'; _genStay135 = true; }
-        else { gen.status = 'idle'; }
+        if (_wg2 && _wg2.genId === gen.id) { GAME.gen.set(gen, 'garrison'); _genStay135 = true; }   /* v91.65 */
+        else { GAME.gen.release(gen); }   /* v91.65 */
       }
       var _stMsg = '派遣驻守 ' + U.fmt(_ga.add || 0) + ' 名（守地不衰减'
         + (_genStay135 ? '，' + gen.name + ' 驻留野地' : '') + '）';
@@ -27933,7 +28040,7 @@ window.GAME = window.GAME || {};
       /* v89.135（老板 4）：占领/驻守后**英雄留在野地**（与 station 到达同口径）——
          驻军有将，野地面板可见，开采由他带队（老板第 5 条）。 */
       /* v89.135：驻守不改 cityId（同 station 段） */
-      if (gen) { gen.status = 'garrison'; }
+      if (gen) { GAME.gen.set(gen, 'garrison'); }   /* v91.65 */
       GAME.log.war('🛡️ 派遣驻守：' + U.fmt(_stAdd) + ' 名留驻 ' + t.name
         + (gen ? '，' + gen.name + ' 驻留野地' : '')
         + (woundN > 0 ? '，伤兵 ' + U.fmt(woundN) + ' 回城医治' : ''));
@@ -28861,7 +28968,7 @@ window.GAME = window.GAME || {};
     if (gen) {
       GAME.setStaNow(gen, GAME.staNow(gen) - GAME.staCostOf(mode, scheme));
       gen.energy = Math.max(0, (gen.energy || 0) - mode.energy);
-      gen.status = 'march';
+      GAME.gen.set(gen, 'march');   /* v91.65 */
     }
 
     var to = { ci: t.ci };
@@ -28942,7 +29049,7 @@ window.GAME = window.GAME || {};
     /* v89.87：观战挂起（pending）时英雄**保持征战在外**，不置 idle ——
        等 finishBattle 落账后统一收尾（否则战斗中英雄会被当成空闲可再派遣）。
        v89.137：`gen` 可能为 null（无将增援 · station 补兵）—— 守卫防空引用。 */
-    if (gen && !(r && r.pending) && gen.status === 'march') gen.status = 'idle';
+    if (gen && !(r && r.pending) && gen.status === 'march') GAME.gen.release(gen);   /* v91.65 */
     if (err || !r || r.ok === false) {
       var rolled = false;
       if (!_expArmySettled && city) {
@@ -29040,7 +29147,7 @@ window.GAME = window.GAME || {};
     var city = GAME.cityById(m.cityId);
     var gen = null;
     for (var i = 0; i < s.generals.length; i++) if (s.generals[i].id === m.genId) gen = s.generals[i];
-    if (gen && gen.status === 'march') gen.status = 'idle';
+    if (gen && gen.status === 'march') GAME.gen.release(gen);   /* v91.65 */
     if (city) {
       for (var a in m.army) city.army[a] = (city.army[a] || 0) + m.army[a];
       if (m.cargo) {
@@ -33723,7 +33830,7 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
        → 这位英雄**在每个城里都出现**（老板报的"英雄界面显示全部英雄"）。归当前城。 */
     var home91 = GAME.currentCity() || (s.cities && s.cities[0]) || null;
     if (home91 && !g.cityId) g.cityId = home91.id;
-    s.generals.push(g);
+    GAME.gen.add(g);   /* v91.65 */
     if (GAME.log) GAME.log('贤才来归：' + h.name + ' 入我帐下。', 'sys', 'staff');
     return g;
   };
@@ -51109,6 +51216,7 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
 /* v91.61 地基第 1 期：main.js 是**唯一入口** —— 下列 import 的先后即**执行顺序**
    （esbuild 按 DFS 发现顺序执行；本列表与旧 index.html 的 18 个 <script> 顺序逐条一致）。
    改顺序 = 改行为；非必要勿动。 */
+
 
 
 

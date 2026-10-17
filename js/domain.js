@@ -2359,7 +2359,7 @@ import './state.js';
     g.loyalty = cnd.loyalty;
     g.hero = cnd.hero;
     g.beauty = cnd.beauty;
-    s.generals.push(g);
+    GAME.gen.add(g);   /* v91.65 */
     list.splice(idx, 1);
     var rkName = GAME.rankOf(g).name;
     GAME.statBump('recruited', 1);
@@ -3393,7 +3393,7 @@ import './state.js';
     if (w.garrison.genId) {
       (s.generals || []).forEach(function (g) { if (g.id === w.garrison.genId) _wgen = g; });
       /* v89.135：驻守不改 cityId（编制城一直没动）—— 召回只把 status 收成 idle */
-      if (_wgen && _wgen.status === 'garrison') { _wgen.status = 'idle'; }
+      if (_wgen && _wgen.status === 'garrison') { GAME.gen.release(_wgen); }   /* v91.65 */
     }
     var n = 0;
     for (var k in w.garrison.troops) {
@@ -3459,7 +3459,7 @@ import './state.js';
           if (g.cityId !== city.id) return;
           g.cityId = recv.id;
           /* 守将随城解任：城都没了，守将位自然不存在 */
-          if (g.status === 'guard') g.status = 'idle';
+          if (g.status === 'guard') GAME.gen.release(g);   /* v91.65 */
         });
       } },
     { key: 'queues.build', path: 'cityId', label: '建造队列',
@@ -4206,7 +4206,7 @@ import './state.js';
     if (gen && g.origin !== 'garrison') {
       /* v89.135：驻军开采的带队英雄**仍在驻守**（status='garrison' 不动）——
          只有英雄带队那条老路才在此收工回城。 */
-      gen.status = 'idle';
+      GAME.gen.release(gen);   /* v91.65 */
       gen.cityId = city ? city.id : null;
       /* v26（需求 1）：统一走唯一入口 —— 顺带把这次获得的经验写进公文，
          原先裸加时玩家完全看不到采集也会涨经验。 */
@@ -4479,7 +4479,7 @@ import './state.js';
         }
       }
     } else if (city) { for (var a in g.army) city.army[a] = (city.army[a] || 0) + g.army[a]; }
-    if (gen && g.origin !== 'garrison') { gen.status = 'idle'; gen.cityId = city ? city.id : null; }
+    if (gen && g.origin !== 'garrison') { GAME.gen.release(gen); gen.cityId = city ? city.id : null; }   /* v91.65 */
     list.splice(idx, 1);
     GAME.log(g.origin === 'garrison' ? '停止驻军开采（驻军原地保留）' : '撤回采集队（无收益）', 'sys', 'gather');
     return { ok: true, msg: g.origin === 'garrison' ? '已停止开采（驻军原地保留）' : '已撤回，兵力归还（放弃采集无收益）' };
@@ -6328,7 +6328,7 @@ import './state.js';
     ['equip', 'lingEquip'].forEach(function (bk) {
       for (var slot in (g[bk] || {})) { GAME.addEquip(g[bk][slot]); back++; }   /* v91.64：回收原实例 */
     });
-    s.generals.splice(idx, 1);
+    GAME.gen.remove(g);   /* v91.65 */
     var repCost = g.hero ? 50 : 0;
     if (repCost) s.rep = Math.max(0, (s.rep || 0) - repCost);
     GAME.heartsComfortAdd(-2);      /* v89.177：民心改动统一走安抚通道（-2 解雇之伤） */
@@ -6585,7 +6585,7 @@ import './state.js';
     (((GAME.state || {}).generals) || []).forEach(function (x) {
       if (x.id === keepId) return;
       if (x.status === 'guard' && x.cityId === cityId) {
-        x.status = 'idle'; x.cityId = null; out.push(x.name);
+        GAME.gen.release(x); x.cityId = null; out.push(x.name);   /* v91.65 */
       }
     });
     return out;
@@ -6596,7 +6596,7 @@ import './state.js';
     (((GAME.state || {}).generals) || []).forEach(function (x) {
       if (x.id === keepId) return;
       if (x.status === 'mayor' && x.cityId === cityId) {
-        x.status = 'idle'; x.cityId = null; out.push(x.name);
+        GAME.gen.release(x); x.cityId = null; out.push(x.name);   /* v91.65 */
       }
     });
     return out;
@@ -8396,11 +8396,9 @@ import './state.js';
     /* v91.52（老板）：**须先击败对应层守卫**才能开始该行动的材料收集。 */
     var _lock = GAME.wonderActLockOf(pid, actId);
     if (_lock) return { ok: false, msg: _lock };
-    if (_gen && _gen.status && _gen.status !== 'idle') {
-      var _stTxt = _gen.status === 'guard' ? '守将' : _gen.status === 'mayor' ? '城主'
-        : _gen.status === 'march' ? '出征中' : _gen.status === 'gather' ? '采集中'
-        : _gen.status === 'garrison' ? '驻守野地' : _gen.status === 'wonderExplore' ? '奇观探索中' : '执行任务中';
-      return { ok: false, msg: _gen.name + ' 正在' + _stTxt + '，不可同时派遣' };
+    /* v91.65：互斥判据收口到 GAME.gen（唯一状态机出口）—— 不再手写 7 分支状态文案。 */
+    if (_gen && GAME.gen.isBusy(_gen)) {
+      return { ok: false, msg: _gen.name + ' 正在' + (GAME.gen.STATUS[GAME.gen.statusOf(_gen)] || '执行任务中') + '，不可同时派遣' };
     }
     var n = 0, load = 0;
     for (var k in army) {
@@ -8426,7 +8424,7 @@ import './state.js';
       exploreUntil: 0,   /* 抵达时补算（= arriveAt + exploreSec×1000） */
       acc: [], accrued: 0, returning: false, retArrive: 0,
     });
-    if (_gen) _gen.status = 'wonderExplore';   /* v91.45：标记"奇观探索中"—— 不可再被委派其他行动 */
+    if (_gen) GAME.gen.set(_gen, 'wonderExplore');   /* v91.65 */   /* v91.45：标记"奇观探索中"—— 不可再被委派其他行动 */
     GAME.log('✨ 「' + city.name + '」派队探查「' + def.name + ' · ' + act.name + '」—— 行军 1h 抵达后持续开采（累计奖励）', 'sys', 'wild');
     return { ok: true, msg: '已派出：行军 1 小时后抵达，持续累计奖励（同时上限 ' + (W.maxActive || 3) + ' 队）' };
   };
@@ -8512,7 +8510,7 @@ import './state.js';
     var names = (exp.acc || []).map(function (x) { return ((DATA.ITEM_BY_ID[x.id] || {}).name || x.id) + '×' + x.n; });
     /* v91.45：归城即**释放带队英雄**（置回空闲）—— 否则英雄会永远卡在"奇观探索中"。 */
     var _g = null; (s.generals || []).forEach(function (x) { if (x.id === exp.genId) _g = x; });
-    if (_g && _g.status === 'wonderExplore') _g.status = 'idle';
+    if (_g && _g.status === 'wonderExplore') GAME.gen.release(_g);   /* v91.65 */
     GAME.log('✨ 奇观「' + (def ? def.name : '?') + '」探查' + (note || '归来') + '：' + (names.join('、') || '无')
       + (city ? ('　·　兵归「' + city.name + '」' + (loss ? '（损兵 ' + loss + '）' : '')) : ''), 'sys', 'wild');
   };

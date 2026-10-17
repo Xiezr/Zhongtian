@@ -314,7 +314,7 @@ import './state.js';
        → 这位英雄**在每个城里都出现**（老板报的"英雄界面显示全部英雄"）。归当前城。 */
     var home91 = GAME.currentCity() || (s.cities && s.cities[0]) || null;
     if (home91 && !g.cityId) g.cityId = home91.id;
-    s.generals.push(g);
+    GAME.gen.add(g);   /* v91.65 */
     if (GAME.log) GAME.log('贤才来归：' + h.name + ' 入我帐下。', 'sys', 'staff');
     return g;
   };

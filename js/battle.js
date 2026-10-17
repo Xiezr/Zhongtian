@@ -841,7 +841,7 @@ import './state.js';
     /* 英雄状态收尾（等价 arrive 的 idle 设置） */
     var gen = null;
     (s.generals || []).forEach(function (g) { if (g.id === rec.genId) gen = g; });
-    if (gen && gen.status === 'march') gen.status = 'idle';
+    if (gen && gen.status === 'march') GAME.gen.release(gen);   /* v91.65 */
     /* 军账兜底（P-25 同口径）：落账异常 / 目标失效 → 折返 */
     if (err || !resp || resp.ok === false) {
       var city = rec.cityId ? GAME.cityById(rec.cityId) : null;
@@ -1237,7 +1237,7 @@ import './state.js';
       var _gj = GAME.makeHero(_ng, _ng.level);
       _gj.loyalty = 50;
       if (fromCity) _gj.cityId = fromCity.id;
-      s.generals.push(_gj);
+      GAME.gen.add(_gj);   /* v91.65 */
       GAME.log.war('🕸️ 挑拨离间奏效：守将 ' + _ng.name + ' 倒戈归降，愿效犬马之劳！');
     })();
     /* 美人 50% 几率（攻占重镇/首府）—— v91.02：传出发城，女将归降该城（不再无归属） */
@@ -1556,7 +1556,7 @@ import './state.js';
     var g = GAME.makeHero(h);
     g.loyalty = 60;
     if (home) g.cityId = home.id;
-    s.generals.push(g);
+    GAME.gen.add(g);   /* v91.65 */
     GAME.log.war('守将 ' + h.name + ' 归降！（攻打城市必降）');   /* v89.188（老板 3）：文案中性化 */
     return g;
   };
@@ -1576,7 +1576,7 @@ import './state.js';
        显示全部英雄而非本城"），且会随"在看哪座城"飘。取出征出发城：谁打下来的就归谁。 */
     var home = fromCity || GAME.currentCity() || (s.cities && s.cities[0]) || null;
     if (home) g.cityId = home.id;
-    s.generals.push(g);
+    GAME.gen.add(g);   /* v91.65：名册唯一入口 */
     GAME.log.war('获得女将 ' + b.name + '！（掠夺/占领野外城市50%几率）');   /* v89.188（老板 3）：文案中性化 */
     return g;
   };
@@ -2437,7 +2437,7 @@ import './state.js';
         if (gen) gen.status = (_wg136 && _wg136.genId === gen.id) ? 'garrison' : 'idle';
       } else {
         for (var _k136 in atkArmy) city.army[_k136] = (city.army[_k136] || 0) + atkArmy[_k136];
-        if (gen) gen.status = 'idle';
+        if (gen) GAME.gen.release(gen);   /* v91.65 */
       }
       _expArmySettled = true;                 /* 军账已结（兵已并入 / 已回城） */
       return { ok: true, mode: 'gather', peaceful: true, target: t,
@@ -2629,8 +2629,8 @@ import './state.js';
         /* v89.135：**驻守不改 cityId**（编制城保持 —— "人在野地"由 status 表达）——
            改前置 null 会打穿所有按 `g.cityId === 城.id` 过滤的界面（荒野行动君主在城、
            任命候选…），实测把 v88/v89 的荒野段整条链路连带失败。 */
-        if (_wg2 && _wg2.genId === gen.id) { gen.status = 'garrison'; _genStay135 = true; }
-        else { gen.status = 'idle'; }
+        if (_wg2 && _wg2.genId === gen.id) { GAME.gen.set(gen, 'garrison'); _genStay135 = true; }   /* v91.65 */
+        else { GAME.gen.release(gen); }   /* v91.65 */
       }
       var _stMsg = '派遣驻守 ' + U.fmt(_ga.add || 0) + ' 名（守地不衰减'
         + (_genStay135 ? '，' + gen.name + ' 驻留野地' : '') + '）';
@@ -3007,7 +3007,7 @@ import './state.js';
       /* v89.135（老板 4）：占领/驻守后**英雄留在野地**（与 station 到达同口径）——
          驻军有将，野地面板可见，开采由他带队（老板第 5 条）。 */
       /* v89.135：驻守不改 cityId（同 station 段） */
-      if (gen) { gen.status = 'garrison'; }
+      if (gen) { GAME.gen.set(gen, 'garrison'); }   /* v91.65 */
       GAME.log.war('🛡️ 派遣驻守：' + U.fmt(_stAdd) + ' 名留驻 ' + t.name
         + (gen ? '，' + gen.name + ' 驻留野地' : '')
         + (woundN > 0 ? '，伤兵 ' + U.fmt(woundN) + ' 回城医治' : ''));
@@ -3935,7 +3935,7 @@ import './state.js';
     if (gen) {
       GAME.setStaNow(gen, GAME.staNow(gen) - GAME.staCostOf(mode, scheme));
       gen.energy = Math.max(0, (gen.energy || 0) - mode.energy);
-      gen.status = 'march';
+      GAME.gen.set(gen, 'march');   /* v91.65 */
     }
 
     var to = { ci: t.ci };
@@ -4016,7 +4016,7 @@ import './state.js';
     /* v89.87：观战挂起（pending）时英雄**保持征战在外**，不置 idle ——
        等 finishBattle 落账后统一收尾（否则战斗中英雄会被当成空闲可再派遣）。
        v89.137：`gen` 可能为 null（无将增援 · station 补兵）—— 守卫防空引用。 */
-    if (gen && !(r && r.pending) && gen.status === 'march') gen.status = 'idle';
+    if (gen && !(r && r.pending) && gen.status === 'march') GAME.gen.release(gen);   /* v91.65 */
     if (err || !r || r.ok === false) {
       var rolled = false;
       if (!_expArmySettled && city) {
@@ -4114,7 +4114,7 @@ import './state.js';
     var city = GAME.cityById(m.cityId);
     var gen = null;
     for (var i = 0; i < s.generals.length; i++) if (s.generals[i].id === m.genId) gen = s.generals[i];
-    if (gen && gen.status === 'march') gen.status = 'idle';
+    if (gen && gen.status === 'march') GAME.gen.release(gen);   /* v91.65 */
     if (city) {
       for (var a in m.army) city.army[a] = (city.army[a] || 0) + m.army[a];
       if (m.cargo) {
