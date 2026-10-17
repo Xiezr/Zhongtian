@@ -7893,7 +7893,7 @@ import './state.js';
    *   · 失败 / 召回：兵与辎重**原路退回**（在 march.arrive / march.recall 里）。
    * `doTransferTroops` = 不带辎重的薄包装（军队派驻面板仍走它）。
    * ============================================================ */
-  GAME.doTransferCargo = function (fromId, toId, army, genId, cargo) {
+  GAME.doTransferCargo = function (fromId, toId, army, genId, cargo, modeId) {
     var s = GAME.state;
     if (!s) return { ok: false, msg: '尚未开局' };
     var from = GAME.cityById(fromId), to = GAME.cityById(toId);
@@ -7908,7 +7908,22 @@ import './state.js';
       }
       moved += n;
     }
-    if (!moved) return { ok: false, msg: '请先选择要派驻的兵力' };
+    /* v91.76（老板）：派遣/运输**都可无英雄**；运输必须带兵押货（运力），
+       派遣允许"只派将"（地图「英雄派遣」入口仍走即时出口）。 */
+    var _mode76 = modeId ? String(modeId) : 'transport';
+    var _genId76 = genId || null;
+    if (!moved && (!cargo || !Object.keys(cargo).length)) {
+      if (_mode76 === 'dispatch') {
+        /* 只派将：无需兵力 */
+      } else {
+        return { ok: false, msg: '请先选择要运输的兵力或资源' };
+      }
+    }
+    /* v91.76：运输以**运力**为准 —— 只要负重够运这批货即可，不强制非零兵力
+       （老板口径：仅利用英雄和兵种的负重进行资源调动，均可无英雄）。 */
+    if (_mode76 === 'transport' && cargo && Object.keys(cargo).length && GAME.cargoLoadOf(cargo) > GAME.cargoCapOf(army)) {
+      return { ok: false, msg: '运力不足：辎重 ' + U.fmt(GAME.cargoLoadOf(cargo)) + ' ＞ 随军载重 ' + U.fmt(GAME.cargoCapOf(army)) };
+    }
     /* ⛔ v89.220（老板 2）：「向己方城市派遣时，提示练兵场容量不足。练兵场有什么容量，
        出征才有出征兵力上限吧」——**目标城容量闸整条退役**：
        练兵场容量只作为**出征**（从本城发兵）的兵力上限（prepare 的 mode.battle 闸）；
@@ -7949,19 +7964,22 @@ import './state.js';
      * 超容则大军整体折返（见 expedition 的 owncity 分支）。
      * "一律要选将"（老板拍板）：调兵也需带队英雄（随军入驻新城）。
      * ============================================================ */
-    if (!genId) return { ok: false, msg: '请选择带队英雄' };
     var gen = null;
-    (s.generals || []).forEach(function (g) { if (g.id === genId) gen = g; });
-    if (!gen) return { ok: false, msg: '英雄不存在' };
-    if (gen.status && gen.status !== 'idle') {
-      return { ok: false, msg: gen.name + ' 正在执行其他任务（' + gen.status + '）' };
-    }
-    var _gc2 = GAME.genCityOf ? GAME.genCityOf(gen) : null;   /* 返回城对象 */
-    if (!_gc2 || _gc2.id !== from.id) {
-      return { ok: false, msg: gen.name + ' 不在' + from.name };
+    if (_genId76) {
+      (s.generals || []).forEach(function (g) { if (g.id === _genId76) gen = g; });
+      if (!gen) return { ok: false, msg: '英雄不存在' };
+      if (gen.status && gen.status !== 'idle') {
+        return { ok: false, msg: gen.name + ' 正在执行其他任务（' + gen.status + '）' };
+      }
+      var _gc2 = GAME.genCityOf ? GAME.genCityOf(gen) : null;   /* 返回城对象 */
+      if (!_gc2 || _gc2.id !== from.id) {
+        return { ok: false, msg: gen.name + ' 不在' + from.name };
+      }
     }
     /* v89.198（dispatch 六参签名）：原第 6 参 ops 退役 —— 辎重落在第 6 参 extra（防静默丢失）。 */
-    var d = GAME.march.dispatch({ kind: 'owncity', id: to.id }, 'transfer', army, gen.id, null,
+    var _modeId76 = (_mode76 === 'dispatch') ? 'dispatch'
+      : (_mode76 === 'transport' ? 'transport' : 'transfer');
+    var d = GAME.march.dispatch({ kind: 'owncity', id: to.id }, _modeId76, army, gen ? gen.id : '', null,
       load ? { cargo: load } : null);
     if (!d.ok) return d;
     var wTxt = load ? ('，辎重 ' + U.fmt(GAME.cargoLoadOf(load)) + '（' + Object.keys(load).length + ' 项）') : '';

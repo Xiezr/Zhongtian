@@ -1884,21 +1884,22 @@ async function runTests(dom, URL) {
   /* ⚠️ 不要用 expHtml.indexOf('派遣') < 0 做判据：兵力块的标题就叫「派遣兵力」，
      那是"派兵"的意思，与被退役的**出征方式**「派遣」同名不同物 —— 会假红。
      判据要落在**下拉框的选项**上（那才是方式的唯一出口）。 */
-  check('出征面板列出三种方式', (function () {
+  /* v91.76（老板「固定一个完整界面」）：方式恒列 7 种，不适用置灰。 */
+  check('出征面板列出七种方式（不适用置灰）', (function () {
     var sel = document.querySelector('#modal-root #exp-mode');
     if (!sel) return false;
     var opts = sel.querySelectorAll('option');
     var txt = Array.prototype.map.call(opts, function (o) { return o.textContent || ''; }).join('|');
-    return opts.length === 3 && txt.indexOf('侦查') >= 0 && txt.indexOf('掠夺') >= 0
-      && txt.indexOf('占领') >= 0 && !sel.querySelector('option[value=\"station\"]');
+    return opts.length === 7 && txt.indexOf('侦查') >= 0 && txt.indexOf('掠夺') >= 0
+      && txt.indexOf('占领') >= 0 && txt.indexOf('派遣') >= 0 && txt.indexOf('运输') >= 0
+      && txt.indexOf('派驻') >= 0 && txt.indexOf('探索') >= 0;
   })());
-  check('三种方式各有消耗标注', (function () {
+  check('战斗方式各有消耗标注（非战斗方式不标）', (function () {
     var sel = document.querySelector('#modal-root #exp-mode');
     if (!sel) return false;
-    var opts = sel.querySelectorAll('option');
-    return opts.length === 3 && Array.prototype.every.call(opts, function (o) {
-      return /体\d+ 精\d+/.test(o.textContent || '');
-    });
+    var opts = Array.prototype.slice.call(sel.querySelectorAll('option'));
+    var combat = opts.filter(function (o) { return /占领|掠夺|侦查/.test(o.textContent || ''); });
+    return combat.length === 3 && combat.every(function (o) { return /体\d+ 精\d+/.test(o.textContent || ''); });
   })());
   check('默认选中「占领」', (document.querySelector('#modal-root #exp-mode') || {}).value === 'occupy');
   G.ui.setExpMode('scout');       /* v89.58：方式改下拉框，直接调 setExpMode（与下拉 change 等同） */
@@ -6488,8 +6489,10 @@ if (svBtn) {
     const two = G.state.cities.filter((c) => c.id);
     if (two.length < 2) { check('调运：已备好两座城（本境调运的前提）', false, '只有 ' + two.length + ' 城'); return; }
     G.ui._cityId = two[0].id;
+    /* v91.76：辎重区只在「运输」方式展开（老板：如为运输，再展开辎重区）。 */
     G.ui.openExpModal({ kind: 'own', id: two[1].id });
-    const rt = document.querySelector('#modal-root');
+    G.ui._expMode = 'transport';
+    G.ui.openExpModal({ kind: 'own', id: two[1].id });
     /* v89.161（老板 5）：金从运输清单移除（玩家层级通用资源，运金 = 从池子搬到池子）——
        辎重区 = 四行（净水/生物质/电能/废钢） */
     const keys = ['grain', 'wood', 'stone', 'iron'];
@@ -6498,8 +6501,8 @@ if (svBtn) {
     check('调运：辎重区**没有**金的数量框（金全境通用，无需运输）', !document.getElementById('cg-gold'));
     check('调运：顶栏有「运力」读数（随兵力实时算）', !!document.getElementById('exp-cargo-cap'));
     const mk = G.battle.modeOf(G.ui._expMode);
-    /* 实装方式名 = 「调兵」（含辎重配置；文案以 DATA.EXPEDITION 为准，不另抄一份） */
-    check('调运：方式锁定「调兵」（不给选错的机会）', !!mk && /调兵/.test(mk.name || ''), mk ? mk.name : '-');
+    /* v91.76：本境调运改为「运输」（方式下拉里仍需自己选，但执行同走 transfer 通道）。 */
+    check('调运：方式「运输」且辎重区展开', !!mk && /运输/.test(mk.name || ''), mk ? mk.name : '-');
     G.ui.closeAllModals();
   })();
 
@@ -6787,9 +6790,12 @@ if (svBtn) {
       G.ui.openExpModal({ kind: 'wild', ci: _ciOf(px157, py157) });
       await sleep(180);
       const html157 = document.getElementById('modal-root').innerHTML;
-      check('§157：己方野地驻守面板隐接战三块（保留 出征方式 / 可用道具 / 无预估）',
-        html157.indexOf('exp-a-tactic') < 0 && html157.indexOf('exp-a-plan') < 0
-        && html157.indexOf('exp-a-tacmenu') < 0 && html157.indexOf('exp-a-est') < 0
+      /* v91.76（老板「固定一个完整界面，不适用的变为不可选」）：接战三块与预估恒在，
+         非接战方式（派驻）整块置灰；辎重区仍只在运输。 */
+      check('§157/v91.76 己方野地面板：接战三块与预估恒在（派驻置灰）· 辎重不展开',
+        html157.indexOf('exp-a-tactic') >= 0 && html157.indexOf('exp-a-plan') >= 0
+        && html157.indexOf('exp-a-tacmenu') >= 0 && html157.indexOf('exp-a-est') >= 0
+        && html157.indexOf('exp-a-cargo') < 0
         && html157.indexOf('exp-a-modes') >= 0 && html157.indexOf('exp-a-items') >= 0,
         'tactic=' + html157.indexOf('exp-a-tactic') + ' modes=' + html157.indexOf('exp-a-modes'));
     } finally {
@@ -7926,7 +7932,7 @@ console.log('\n--- §180. 拆械与 live 滚动（v89.180） ---');
         const tipL197 = document.querySelector('#tip-layer');
         check('§197④ 悬停浮层：方案说明经 #tip-layer 显示（统一规格）',
           !!tipL197 && tipL197.classList.contains('on')
-          && tipL197.textContent.indexOf('套用方案即按其配好兵力与战术') >= 0,
+          && tipL197.textContent.indexOf('沿用当前设置') >= 0,
           (tipL197 && tipL197.textContent || '').slice(0, 60));
       } else {
         check('§197④ 悬停浮层：方案说明经 #tip-layer 显示（统一规格）', false, '未找到方案行');

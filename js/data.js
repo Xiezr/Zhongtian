@@ -4426,8 +4426,18 @@ import './core.js';
        * ⚠ transfer/gather 的 battle:false —— expedition 顶部有**专属分支**
        *   在"侦查判定"之前处理它们（否则会被当成侦查结算）。
        * ============================================================ */
+      /* v91.76（老板）：己方城市间拆成 **派遣 / 运输** 两条（内部都走 transfer 通道）：
+         · 派遣 = 英雄城市归属变化 + 两城兵种减增（不带货）；
+         · 运输 = 仅用英雄/兵种负重调资源，运达后花与去程相同的时间返回。
+         两者都可无英雄。 */
+      { id: 'dispatch', name: '派遣', icon: '🧑‍✈️', stamina: 0, energy: 0, battle: false, occupy: false,
+        panel: false, needGen: false, cargo: false,
+        desc: '英雄随军调往本境他城（城市归属变化），兵力随之两城减增；可不带英雄。' },
+      { id: 'transport', name: '运输', icon: '🚚', stamina: 0, energy: 0, battle: false, occupy: false,
+        panel: false, needGen: false, cargo: true, roundTrip: true,
+        desc: '用英雄与兵种的负重调动资源；送达后沿原路返回（耗时与去程相同）；可不带英雄。' },
       { id: 'transfer', name: '调兵', icon: '🚚', stamina: 0, energy: 0, battle: false, occupy: false,
-        panel: false,   /* v89.87：调派类**不列出征方式下拉**（各有自己的入口） */
+        panel: false,   /* v91.76：旧统一入口保留为内部别名（自动/脚本兼容） */
         desc: '兵力调往本境他城：走行军通道，抵城入编（主将随军入驻新城）。' },
       { id: 'station', name: '驻守', icon: '🛡️', stamina: 0, energy: 0, battle: true, station: true,
         panel: false,

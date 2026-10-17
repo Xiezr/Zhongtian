@@ -1046,6 +1046,20 @@ import './ui.js';
       /* v89.144（老板 4）：选定后**立刻 live 刷新**（下方「当前目标 / 进入军事行动」随之更新）；
          空首项 = 取消选择（该行选回空 → 清空 _actPick）；
          在**另一行**选择 → 原来那一行自动回到空（_actPick 只有一份，渲染读同一出口）。 */
+      /* v91.76（老板）：「其他目标」弹窗（仅本星球、按类型） */
+      case 'exp-target-pick': ui.openExpTargetPicker(); break;
+      case 'exp-target-set': {
+        var _etg = el.dataset.kind;
+        var _eid = el.dataset.id, _eci = Number(el.dataset.ci);
+        var _tg76;
+        if (_etg === 'own') _tg76 = { kind: 'own', id: _eid };
+        else if (_etg === 'city') _tg76 = { kind: 'city', id: _eid };
+        else if (_etg === 'wild') _tg76 = { kind: 'wild', ci: _eci, pid: GAME.curPid() };
+        else if (_etg === 'fort') _tg76 = { kind: 'fort', ci: _eci, pid: GAME.curPid() };
+        else if (_etg === 'wonder') _tg76 = { kind: 'wonder', pid: GAME.curPid() };
+        if (_tg76) { ui.closeAllModals(); ui.openExpModal(_tg76); }
+        break;
+      }
       case 'exp-act-pick': {
         var g144 = el.dataset.grp || '';
         if (el.value === '') {
@@ -2453,31 +2467,26 @@ import './ui.js';
     if (!target) { ui.toast('未选择目标'); return; }
     var mode = ui._expMode || 'occupy';
     var genSel = document.getElementById('exp-gen');
-    if (!genSel) { ui.toast('请选择英雄'); return; }
+    if (!genSel && mode !== 'explore') { ui.toast('请选择英雄'); return; }
+    /* v91.76：主将可为空（派遣/运输/派驻无将合法）。 */
+    var genId76 = genSel ? genSel.value : '';
     /* v89.103：兵力从输入框收 —— 与辎重运力的算法**同一个来源**（ui.expArmyOf） */
     var atk = ui.expArmyOf ? ui.expArmyOf() : {};
     /* v91.31（老板）：**奇观探索**走出征界面 —— 选将/选兵 → 派队（非战斗，按军力给奖励）。
        将领带队（genSel）如同常规出征。 */
-    if (target.kind === 'wonder') {
-      var _wgen = (GAME.state.generals || []).filter(function (g) { return g.id === genSel.value; })[0];
-      /* v91.49（老板）：用**下拉框选中的探索行动**（ui._expMode），不是打开面板时的 entry mode ——
-         玩家可在下拉里改「采集/派军搜查/深潜攻坚」。 */
-      /* v91.72（老板）：按**派出城**发兵（奇观探索限本星球城市，派出城已由界面过滤）。 */
+    /* v91.76（老板）：奇观统一为「探索」——层级下拉 > 0 = 挑战该层守卫，否则走探索行动。 */
+    if (mode === 'explore') {
+      var _wlSel = document.getElementById('exp-wl');
+      var _wlv76 = _wlSel ? Number(_wlSel.value) || 0 : 0;
+      var _actSel = document.getElementById('exp-act');
+      var _act76 = (_actSel && _actSel.value) || ui._expWonderAct || 'collect';
+      var _wgen = (GAME.state.generals || []).filter(function (g) { return g.id === genId76; })[0];
       var _fc = ui.expFromCity();
-      var _wr = GAME.wonderExplore(target.pid, ui._expMode || target.mode || 'search', _fc && _fc.id, atk, _wgen && _wgen.id);
+      var _wr = _wlv76 > 0
+        ? GAME.wonderFightLayer(target.pid, _wlv76, _fc && _fc.id, atk, _wgen && _wgen.id)
+        : GAME.wonderExplore(target.pid, _act76, _fc && _fc.id, atk, _wgen && _wgen.id);
       ui.toast(_wr.msg);
       if (_wr.ok) { ui.closeModal(); GAME.refreshAll(); if (ui.view === 'map' && ui.renderMapCanvas) ui.renderMapCanvas(); }
-      return;
-    }
-    /* v91.52（老板）：挑战奇观层级守军 —— 走战斗引擎（GAME.wonderFightLayer）。 */
-    if (target.kind === 'wonderFight') {
-      var _fgen = (GAME.state.generals || []).filter(function (g) { return g.id === genSel.value; })[0];
-      var _fc2 = ui.expFromCity();
-      var _fr = GAME.wonderFightLayer(target.pid, target.lv, _fc2 && _fc2.id, atk, _fgen && _fgen.id);
-      ui.toast(_fr.msg);
-      ui.closeModal();
-      GAME.refreshAll();
-      if (ui.view === 'map' && ui.renderMapCanvas) ui.renderMapCanvas();
       return;
     }
     var md = GAME.battle.modeOf(mode);
@@ -2488,14 +2497,13 @@ import './ui.js';
      * 本境调运：兵 + 辎重一起走行军通道（GAME.doTransferCargo）——
      * 出发扣兵扣货，抵达入城落账（损耗 / 仓容），失败或召回原路退回。
      * ============================================================ */
-    if (ui._expOwn) {
-      var _from5 = GAME.currentCity();
+    if (mode === 'dispatch' || mode === 'transport') {
+      var _from5 = ui.expFromCity();
       var _to5 = (ui._expRes && ui._expRes.city) || GAME.cityById(target.id);
       if (!_from5 || !_to5) { ui.toast('城市不存在'); return; }
-      /* v89.138（老板 2）：本境调运**允许 0 兵**（只派将）——
-         有辎重才必须有兵押运（运力随兵力），没辎重就纯调将。 */
+      /* v91.76：只有「运输」带货；「派遣」只动兵/将。 */
       var _cargo5 = {};
-      GAME.TRANSPORT_KEYS.forEach(function (k) {
+      if (mode === 'transport') GAME.TRANSPORT_KEYS.forEach(function (k) {
         var el5 = document.getElementById('cg-' + k);
         var v5 = el5 ? Math.floor(Number(el5.value) || 0) : 0;
         if (v5 > 0) _cargo5[k] = v5;
@@ -2506,7 +2514,7 @@ import './ui.js';
           + ' / 运输平台 ' + DATA.TROOPS.yunshu.load + '）');
         return;
       }
-      var _r5 = GAME.doTransferCargo(_from5.id, _to5.id, atk, genSel.value, _cargo5);
+      var _r5 = GAME.doTransferCargo(_from5.id, _to5.id, atk, genId76, _cargo5, mode);
       ui.toast(_r5.msg);
       if (_r5.ok) {
         ui._expForceArmed = false;
@@ -2552,7 +2560,7 @@ import './ui.js';
       var _wm137 = GAME.map.wildAt(ui._expRes.x, ui._expRes.y);
       _stGen137m = !!(_wm137 && _wm137.garrison && _wm137.garrison.genId);
     }
-    var _genSend137 = _stGen137m ? '' : genSel.value;
+    var _genSend137 = _stGen137m ? '' : genId76;
     var _schemeSend137 = _stGen137m ? null : (ui._expScheme || null);
     var r = GAME.march.dispatch(target, mode, atk, _genSend137, _schemeSend137,
       ui._expFrom ? { fromCityId: ui._expFrom } : null);   /* v91.21（老板 C1）：派出城 */
@@ -3083,6 +3091,8 @@ import './ui.js';
       var el = e.target;
       if (el && el.type === 'number' && el.id && el.id.indexOf('exp-') === 0 && ui.updateExpMarch) {
         ui.updateExpMarch();
+        /* v91.76：兵力一变，运输辎重的「上限」列与输入 max 同步刷新。 */
+        if (ui.syncCargoEst) ui.syncCargoEst();
       }
     });
     /* v27（需求 9）：窗口尺寸变化 → 重绘棋盘。
@@ -3323,7 +3333,7 @@ import './ui.js';
      （这解释了"改了却说没生效"的观感）。老板若发现版本 ≠ 最新交付，按 Ctrl+F5
      强制刷新即获得新代码。⚠️ 发版须走 **bump_version.py --bump --version vX.Y**（它同步 index.html 的 ?v=/BUILD
      与这里的 GAME.VERSION 三处）—— 只手改 index.html 会让版本号冻住（v91.18 前的病灶）。 */
-  GAME.VERSION = 'v91.75';
+  GAME.VERSION = 'v91.76';
   function boot() {
     fitAppSize();
     try {

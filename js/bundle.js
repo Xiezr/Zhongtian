@@ -4440,8 +4440,18 @@ window.GAME = window.GAME || {};
        * ⚠ transfer/gather 的 battle:false —— expedition 顶部有**专属分支**
        *   在"侦查判定"之前处理它们（否则会被当成侦查结算）。
        * ============================================================ */
+      /* v91.76（老板）：己方城市间拆成 **派遣 / 运输** 两条（内部都走 transfer 通道）：
+         · 派遣 = 英雄城市归属变化 + 两城兵种减增（不带货）；
+         · 运输 = 仅用英雄/兵种负重调资源，运达后花与去程相同的时间返回。
+         两者都可无英雄。 */
+      { id: 'dispatch', name: '派遣', icon: '🧑‍✈️', stamina: 0, energy: 0, battle: false, occupy: false,
+        panel: false, needGen: false, cargo: false,
+        desc: '英雄随军调往本境他城（城市归属变化），兵力随之两城减增；可不带英雄。' },
+      { id: 'transport', name: '运输', icon: '🚚', stamina: 0, energy: 0, battle: false, occupy: false,
+        panel: false, needGen: false, cargo: true, roundTrip: true,
+        desc: '用英雄与兵种的负重调动资源；送达后沿原路返回（耗时与去程相同）；可不带英雄。' },
       { id: 'transfer', name: '调兵', icon: '🚚', stamina: 0, energy: 0, battle: false, occupy: false,
-        panel: false,   /* v89.87：调派类**不列出征方式下拉**（各有自己的入口） */
+        panel: false,   /* v91.76：旧统一入口保留为内部别名（自动/脚本兼容） */
         desc: '兵力调往本境他城：走行军通道，抵城入编（主将随军入驻新城）。' },
       { id: 'station', name: '驻守', icon: '🛡️', stamina: 0, energy: 0, battle: true, station: true,
         panel: false,
@@ -20874,7 +20884,7 @@ window.GAME = window.GAME || {};
    *   · 失败 / 召回：兵与辎重**原路退回**（在 march.arrive / march.recall 里）。
    * `doTransferTroops` = 不带辎重的薄包装（军队派驻面板仍走它）。
    * ============================================================ */
-  GAME.doTransferCargo = function (fromId, toId, army, genId, cargo) {
+  GAME.doTransferCargo = function (fromId, toId, army, genId, cargo, modeId) {
     var s = GAME.state;
     if (!s) return { ok: false, msg: '尚未开局' };
     var from = GAME.cityById(fromId), to = GAME.cityById(toId);
@@ -20889,7 +20899,22 @@ window.GAME = window.GAME || {};
       }
       moved += n;
     }
-    if (!moved) return { ok: false, msg: '请先选择要派驻的兵力' };
+    /* v91.76（老板）：派遣/运输**都可无英雄**；运输必须带兵押货（运力），
+       派遣允许"只派将"（地图「英雄派遣」入口仍走即时出口）。 */
+    var _mode76 = modeId ? String(modeId) : 'transport';
+    var _genId76 = genId || null;
+    if (!moved && (!cargo || !Object.keys(cargo).length)) {
+      if (_mode76 === 'dispatch') {
+        /* 只派将：无需兵力 */
+      } else {
+        return { ok: false, msg: '请先选择要运输的兵力或资源' };
+      }
+    }
+    /* v91.76：运输以**运力**为准 —— 只要负重够运这批货即可，不强制非零兵力
+       （老板口径：仅利用英雄和兵种的负重进行资源调动，均可无英雄）。 */
+    if (_mode76 === 'transport' && cargo && Object.keys(cargo).length && GAME.cargoLoadOf(cargo) > GAME.cargoCapOf(army)) {
+      return { ok: false, msg: '运力不足：辎重 ' + U.fmt(GAME.cargoLoadOf(cargo)) + ' ＞ 随军载重 ' + U.fmt(GAME.cargoCapOf(army)) };
+    }
     /* ⛔ v89.220（老板 2）：「向己方城市派遣时，提示练兵场容量不足。练兵场有什么容量，
        出征才有出征兵力上限吧」——**目标城容量闸整条退役**：
        练兵场容量只作为**出征**（从本城发兵）的兵力上限（prepare 的 mode.battle 闸）；
@@ -20930,19 +20955,22 @@ window.GAME = window.GAME || {};
      * 超容则大军整体折返（见 expedition 的 owncity 分支）。
      * "一律要选将"（老板拍板）：调兵也需带队英雄（随军入驻新城）。
      * ============================================================ */
-    if (!genId) return { ok: false, msg: '请选择带队英雄' };
     var gen = null;
-    (s.generals || []).forEach(function (g) { if (g.id === genId) gen = g; });
-    if (!gen) return { ok: false, msg: '英雄不存在' };
-    if (gen.status && gen.status !== 'idle') {
-      return { ok: false, msg: gen.name + ' 正在执行其他任务（' + gen.status + '）' };
-    }
-    var _gc2 = GAME.genCityOf ? GAME.genCityOf(gen) : null;   /* 返回城对象 */
-    if (!_gc2 || _gc2.id !== from.id) {
-      return { ok: false, msg: gen.name + ' 不在' + from.name };
+    if (_genId76) {
+      (s.generals || []).forEach(function (g) { if (g.id === _genId76) gen = g; });
+      if (!gen) return { ok: false, msg: '英雄不存在' };
+      if (gen.status && gen.status !== 'idle') {
+        return { ok: false, msg: gen.name + ' 正在执行其他任务（' + gen.status + '）' };
+      }
+      var _gc2 = GAME.genCityOf ? GAME.genCityOf(gen) : null;   /* 返回城对象 */
+      if (!_gc2 || _gc2.id !== from.id) {
+        return { ok: false, msg: gen.name + ' 不在' + from.name };
+      }
     }
     /* v89.198（dispatch 六参签名）：原第 6 参 ops 退役 —— 辎重落在第 6 参 extra（防静默丢失）。 */
-    var d = GAME.march.dispatch({ kind: 'owncity', id: to.id }, 'transfer', army, gen.id, null,
+    var _modeId76 = (_mode76 === 'dispatch') ? 'dispatch'
+      : (_mode76 === 'transport' ? 'transport' : 'transfer');
+    var d = GAME.march.dispatch({ kind: 'owncity', id: to.id }, _modeId76, army, gen ? gen.id : '', null,
       load ? { cargo: load } : null);
     if (!d.ok) return d;
     var wTxt = load ? ('，辎重 ' + U.fmt(GAME.cargoLoadOf(load)) + '（' + Object.keys(load).length + ' 项）') : '';
@@ -28254,7 +28282,11 @@ window.GAME = window.GAME || {};
         _stNoGen137 = !!(_wpre137 && _wpre137.garrison && _wpre137.garrison.genId);
       }
     }
-    if (!gen && !_stNoGen137) return { ok: false, msg: '请选择出征英雄' };
+    /* v91.76（老板）：派遣/运输**可无英雄**（城市归属不变，只搬兵/货）——
+       其余方式仍须带队。 */
+    if (!gen && !_stNoGen137 && modeId !== 'dispatch' && modeId !== 'transport' && modeId !== 'transfer') {
+      return { ok: false, msg: '请选择出征英雄' };
+    }
     /* v89.117（老板「城主和守将不能执行出征动作」）：与界面**同一判据**（唯一出口
        GAME.marchBlockOf）—— 界面置灰只是提示，这里才是拦得住的那道闸
        （自动出征 / 脚本 / 老档里的旧配置都会经过 prepare）。 */
@@ -28269,15 +28301,21 @@ window.GAME = window.GAME || {};
     var t = GAME.battle.resolveTarget(target);
     if (!t.ok) return { ok: false, msg: t.msg || '目标无效' };
 
-    /* v89.87（老板需求 2）：调兵 / 驻守 / 采集的前置校验（统一出口的口子） */
-    if (mode.id === 'transfer' && t.kind !== 'owncity') return { ok: false, msg: '调兵目标须为本境城市' };
+    /* v89.87（老板需求 2）：调兵 / 驻守 / 采集的前置校验（统一出口的口子）
+       v91.76：派遣 / 运输同属"己方城市间"通道。 */
+    var _ownMoveMode = (mode.id === 'transfer' || mode.id === 'dispatch' || mode.id === 'transport');
+    if (_ownMoveMode && t.kind !== 'owncity') return { ok: false, msg: '「' + mode.name + '」目标须为本境城市' };
+    if (mode.id === 'transport') {
+      var _ct76 = 0; for (var _ck76 in (atkArmy || {})) _ct76 += Math.max(0, Math.floor(atkArmy[_ck76] || 0));
+      if (opts.cargo && _ct76 <= 0) return { ok: false, msg: '运输须带兵押运（运力来自兵种负重）' };
+    }
     /* ============================================================
      * v89.138（老板 2）：「英雄派遣」并进出征界面后，原 `GAME.doDispatch` 的
      * **目标城席位预检**迁移到这道唯一闸口（入场即拦，比"到了再发现住不下"好）——
      * 英雄是**归属城市**的，席位 = 该城英雄枢纽房间数；不拦的话目标城名册会静默超编。
      * （「守将/城主不可出征」由下方 `GAME.marchBlockOf` 同一出口负责。）
      * ============================================================ */
-    if (mode.id === 'transfer' && t.kind === 'owncity' && gen) {
+    if (_ownMoveMode && t.kind === 'owncity' && gen) {
       var _to138 = t.city;
       if (_to138 && gen.cityId !== _to138.id) {
         var _slots138 = GAME.genSlotsOf(_to138), _used138 = GAME.generalsIn(_to138).length;
@@ -28564,7 +28602,8 @@ window.GAME = window.GAME || {};
         GAME.city.armyAdd(_to, { [_ok2]: _n2 });
         _mv += _n2;
       }
-      gen.cityId = _to.id;                    /* 主将随军入驻新城（城建制） */
+      if (gen) gen.cityId = _to.id;             /* v91.76：可无将 —— 有将才随军入驻新城 */
+      if (mode.id === 'dispatch' && gen && GAME.gen.set) GAME.gen.set(gen, 'idle');   /* 已入城，释放行军态 */
       _expArmySettled = true;                 /* 军账已结（兵入新城） */
       /* v89.103（老板「资源运输采用出征界面」）：**随军辎重落账** ——
          与"即时运输"同一套口径（GAME.transportPlanOf / transportApply）：
@@ -28579,7 +28618,9 @@ window.GAME = window.GAME || {};
           GAME.log.war('🚚 辎重抵 ' + _to.name + '：' + _cgOut.lines.join('；'));
         }
       }
-      GAME.log.war('🚚 军队调防：' + U.fmt(_mv) + ' 兵入 ' + _to.name + '（' + gen.name + ' 统带）');
+      GAME.log.war('🚚 军队调防：' + U.fmt(_mv) + ' 兵入 ' + _to.name + (gen ? '（' + gen.name + ' 统带）' : '（无将）'));
+      /* v91.76（老板）：**运输**送达后沿原路返回（耗时与去程相同）；兵与货已卸、
+         空车返程即结束该行军 —— 由 march.dispatch 标记 roundTrip 后归城释放。 */
       return { ok: true, mode: mode.id, peaceful: true, target: t, moved: _mv, cargo: _cgOut,
         msg: '已入驻 ' + _to.name + '（+' + U.fmt(_mv) + ' 兵'
           + (_cgOut && _cgOut.keys.length ? ' · 辎重实收 ' + U.fmt(_cgOut.landed) + ' 单位' : '') + '）' };
@@ -30124,6 +30165,7 @@ window.GAME = window.GAME || {};
       army: U.deep(army), elapsed: 0, totalTime: total,
       scheme: scheme,                    /* v86：随军计谋（抵达时读） */
       cargo: cargo || null,              /* v89.103：随军辎重（抵达落账 / 失败退回） */
+      roundTrip: !!(mode && mode.roundTrip),   /* v91.76：运输送达后原路返程 */
     };
     s.marches.push(m);
     var left = Math.max(0, total / GAME.timeScale());
@@ -30156,7 +30198,20 @@ window.GAME = window.GAME || {};
     }
     if (!done.length) return;
     s.marches = s.marches.filter(function (x) { return done.indexOf(x) < 0; });
-    done.forEach(function (m) { if (m.returning) GAME.march.returnArrive(m); else GAME.march.arrive(m); });
+    done.forEach(function (m) {
+      if (m.returning) { GAME.march.returnArrive(m); return; }
+      GAME.march.arrive(m);
+      /* v91.76（老板）：**运输**送达后沿原路返回（耗时与去程相同）——
+         抵达时兵/货已卸，返程只带回队伍本身；归城由 returnArrive 释放。 */
+      if (m.roundTrip && !m.returning && GAME.cityById(m.cityId)) {
+        m.returning = true;
+        m.returnTotal = Math.max(1, Math.round(m.totalTime || 0));
+        m.returnElapsed = 0;
+        s.marches.push(m);
+        GAME.log.war('↩️ ' + m.name + ' 方向运输已卸货，空车返程（约 '
+          + U.durExact(m.returnTotal / GAME.timeScale()) + ' 后归城）');
+      }
+    });
   };
 
   /* 抵达结算：调用与即时出征同一套核心（opts.arrived 跳过校验与扣除） */
@@ -48464,6 +48519,42 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
      唯一出口 —— 界面提示与真正的拦截（`GAME.battle.prepare`）说明同一件事，
      免得"按钮能点但打了被拒"或"按钮灰了却不知道为什么"。
      返回 '' 表示可用，否则返回原因。 */
+  /* v91.76（老板「到达性限制由目标决定、出发性限制由派出城决定」）——
+     **方式可用性唯一出口**：目标侧 + 派出城侧 + 兵力/英雄前置，一次性给出原因。
+     界面下拉置灰与执行端（battle.prepare）同源；不适用 = 置灰，不再隐藏。 */
+  ui.expModeAvailOf = function (modeId) {
+    var tg = ui._expTarget, t = ui._expRes;
+    var from = ui.expFromCity();
+    if (!t || !from) return '无目标或派出城';
+    var m = GAME.battle.modeOf(modeId);
+    if (tg && tg.kind === 'wonder') {
+      if (modeId !== 'explore') return '奇观只能探索';
+      var wd = GAME.wonderOf ? GAME.wonderOf(t.pid) : null;
+      if (!wd) return '该星球无奇观';
+      if (!GAME.wonderPresent(t.pid)) return '今日奇观未出现';
+      if (GAME.wonderActiveCount(t.pid) >= ((DATA.WONDER_CFG || {}).maxActive || 3)) return '奇观探查队已满';
+      return '';
+    }
+    if (modeId === 'explore') return '仅奇观可用';
+    if (modeId === 'dispatch' || modeId === 'transport') {
+      if (t.kind !== 'owncity') return '仅对己方城市';
+      if (t.city && t.city.id === from.id) return '目标即派出城';
+      /* v91.76：可选中本身只由目标决定；兵力需求在**确认时**校验（否则先选方式后填兵会被锁死）。 */
+      return '';
+    }
+    if (t.kind === 'owncity') return '己方城市只能派遣/运输';
+    if (modeId === 'station') {
+      if (!(t.kind === 'wild' && GAME.map.wildAt(t.ci, t.pid))) return '仅对己方野地';
+      return '';   /* 无将派驻的后果在摘要/确认时提示（驻军不可采集） */
+    }
+    if (modeId === 'scout' || modeId === 'raid' || modeId === 'occupy') {
+      if (t.kind === 'wild' && GAME.map.wildAt(t.ci, t.pid)) return '己方野地不接战（改用驻守）';
+      if (t.kind !== 'wild' && t.kind !== 'fort' && t.kind !== 'city') return '该目标不可' + m.name;
+      return ui.expModeLockOf(modeId);   /* 领地上限 / 据点每日掠夺 */
+    }
+    return '';
+  };
+
   ui.expModeLockOf = function (modeId) {
     var tg = ui._expTarget;
     /* v89.108（老板）：领地上限 —— 占城 / 拔除据点都会产出一座新城，
@@ -48610,6 +48701,7 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
     var s = GAME.state;
     var genEl = document.getElementById('exp-gen');
     var gid = (genEl && genEl.value) || ui._expGen || '';
+    if (!gid) { if (vital) vital.innerHTML = '<span style="opacity:.75;">未派将（派遣/运输/派驻可不带将）</span>'; }
     var gen = null;
     (s.generals || []).forEach(function (g) { if (g.id === gid) gen = g; });
     if (vital) {
@@ -48772,7 +48864,8 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
   ui.expApplyPlan = function (id) {
     var p = null; ui.plansOf().forEach(function (x) { if (x.id === id) p = x; });
     if (!p) return;
-    var city = GAME.currentCity();
+    /* v91.76：方案按**派出城**的兵力裁剪（老板：方案沿用派出城的练兵场上限）。 */
+    var city = ui.expFromCity();
     Object.keys((city && city.army) || {}).forEach(function (tid) {
       var inp = document.getElementById('exp-' + tid);
       if (!inp) return;
@@ -48793,7 +48886,7 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
     if (GAME.battle && GAME.battle.setSmartBattle) GAME.battle.setSmartBattle(false);
     if (!v) { GAME.clearTactics(); }
     else if (v.indexOf('u:') === 0) {
-      var sid = v.slice(2), city = GAME.currentCity();
+      var sid = v.slice(2), city = ui.expFromCity();
       Object.keys((city && city.army) || {}).forEach(function (id) { GAME.setTactic(id, { s: sid }); });
     } else if (v.indexOf('s:') === 0) {
       var tid = v.slice(2);
@@ -49021,31 +49114,35 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
   };
   ui.expCargoHTML = function (c) {
     var R = GAME.res(c);
+    /* v91.76（老板）：辎重列 = 资源 / 现有 / **上限**（不超过运力的最高数量）/ 起运 / 实收。 */
+    var _capW76 = GAME.cargoCapOf(ui.expArmyOf ? ui.expArmyOf() : {});
     var rows = GAME.TRANSPORT_KEYS.map(function (k) {
       var meta = null;
       (DATA.RESOURCES || []).forEach(function (r) { if (r.key === k) meta = r; });
       var have = Math.floor(R[k] || 0);
+      var capK = Math.min(have, Math.max(0, _capW76));      /* 载重 1 单位 = 1 资源 */
       return '<tr><td class="et-name">' + (meta ? (meta.icon + ' ' + meta.name) : GAME.resName(k)) + '</td>' +
         '<td class="et-own num">' + U.fmt(have) + '</td>' +
-        '<td class="et-in"><input type="number" id="cg-' + k + '" min="0" max="' + have + '" value="0"' +
-          (have > 0 ? '' : ' disabled') + '></td>' +
+        '<td class="et-own num" id="cg-cap-' + k + '">' + U.fmt(capK) + '</td>' +
+        '<td class="et-in"><input type="number" id="cg-' + k + '" min="0" max="' + capK + '" value="0"' +
+          (capK > 0 ? '' : ' disabled') + '></td>' +
         '<td class="et-act"><button class="btn sm" data-action="cg-max" data-k="' + k + '"' +
-          (have > 0 ? '' : ' disabled data-why="本城该资源存量为 0，无法调配"') + '>全</button></td>' +
+          (capK > 0 ? '' : ' disabled data-why="本城该资源存量为 0 或运力为 0，无法调配"') + '>全</button></td>' +
         '<td class="cg-est num" id="cg-est-' + k + '">—</td></tr>';
     }).join('');
     return '<div class="exp-sec exp-a-cargo"><div class="exp-sec-t" style="display:flex;align-items:center;gap:8px;">辎重 · 资源调配' +
       '<button class="btn sm" data-action="cg-clear">清空</button>' +
       '<span class="ui-sub" id="exp-cargo-cap" style="margin-left:auto;">运力 —</span></div>' +
       '<table class="tbl exp-tbl cg-tbl"><colgroup>' +
-        '<col class="cg-c-n"><col class="cg-c-own"><col class="cg-c-in"><col class="cg-c-act"><col class="cg-c-est">' +
+        '<col class="cg-c-n"><col class="cg-c-own"><col class="cg-c-cap"><col class="cg-c-in"><col class="cg-c-act"><col class="cg-c-est">' +
       '</colgroup><thead><tr>' +
-        '<th>物资</th><th class="num">拥有</th><th class="ctr">起运</th><th class="ctr">全</th><th class="num">实收</th>' +
+        '<th>物资</th><th class="num">现有</th><th class="num">上限</th><th class="ctr">起运</th><th class="ctr">全</th><th class="num">实收</th>' +
       '</tr></thead><tbody>' + rows + '</tbody></table></div>';
   };
   /* 实时刷新（只改文字，不重建弹窗 —— 与面板"点选不重绘"的约定一致） */
   ui.syncCargoEst = function () {
-    if (!ui._expOwn) return;
-    var from = GAME.currentCity();
+    if (ui._expMode !== 'dispatch' && ui._expMode !== 'transport') return;
+    var from = ui.expFromCity();
     var to = (ui._expTarget && ui._expTarget.kind === 'owncity') ? GAME.cityById(ui._expTarget.id) : null;
     if (!from || !to) return;
     var cap = GAME.cargoCapOf(ui.expArmyOf());
@@ -49053,6 +49150,15 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
     GAME.TRANSPORT_KEYS.forEach(function (k) {
       var el = document.getElementById('cg-' + k);
       load += el ? Math.max(0, Math.floor(Number(el.value) || 0)) : 0;
+    });
+    /* v91.76：兵力变化 → 逐资源「上限」列与输入框 max 同步刷新。 */
+    GAME.TRANSPORT_KEYS.forEach(function (k) {
+      var capCell = document.getElementById('cg-cap-' + k);
+      var inEl = document.getElementById('cg-' + k);
+      var have = Math.floor(GAME.res(from)[k] || 0);
+      var capK = Math.min(have, Math.max(0, cap));
+      if (capCell) capCell.textContent = U.fmt(capK);
+      if (inEl) { inEl.max = capK; if (Number(inEl.value) > capK) inEl.value = capK; }
     });
     var capEl = document.getElementById('exp-cargo-cap');
     if (capEl) {
@@ -49074,7 +49180,7 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
   };
   /* 「全」= 实有量与**余下运力**的较小者（多运的部分反正载不动） */
   ui.cgFillMax = function (k) {
-    var from = GAME.currentCity();
+    var from = ui.expFromCity();
     if (!from || !k) return;
     var cap = GAME.cargoCapOf(ui.expArmyOf());
     var used = 0;
@@ -49154,7 +49260,7 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
   };
   ui.refreshExpCapLabel = function () {
     var el = document.getElementById('exp-cap-t');
-    if (el) el.textContent = ui.expCapLabelOf(GAME.currentCity(), ui._expRes, ui._expMode);
+    if (el) el.textContent = ui.expCapLabelOf(ui.expFromCity(), ui._expRes, ui._expMode);
   };
   /* v89.156（老板 3）：右列」预估」块（原左列整段搬来；exp-wildcap 行退役——
      它的内容并入目标区「限制性信息」）。仅战斗型任务渲染（见 openExpModal）。 */
@@ -49202,6 +49308,80 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
       + ' − 其他兵种已填)。　' + ui.expFillTipOf(ct, modeId);
   };
 
+  /* ============================================================
+   * v91.76（老板）：「1 个当前目标 + 1 个『其他目标』按钮」——
+   * 弹窗只列**当前星球**可选项，按类型分组：
+   *   · 己方（城市 / 野地）· 野地（周围 30 格）· 据点（周围 30 格）
+   *   · 名城（区 → 重镇/首府/旧都 分级筛选，数据取地图同一份）· 奇观（本星球）
+   * 选中 = 直接以该目标重开出征面板（同一出口）。
+   * ============================================================ */
+  ui.openExpTargetPicker = function () {
+    var c = ui.expFromCity() || GAME.currentCity();
+    if (!c) { ui.toast('无可用城市'); return; }
+    var pid = GAME.curPid(), SP = GAME.sphereOf(pid);
+    var kf = GAME.fk(pid);
+    var ciAt = function (x, y) { return (SP && SP.ciOfXY) ? SP.ciOfXY(x, y) : -1; };
+    var own = (GAME.state.cities || []).filter(function (x) { return GAME.pidOf(x) === pid && x.id !== c.id; });
+    var ownWild = (GAME.state.wilds || []).filter(function (w) { return GAME.pidOf(w) === pid; });
+    var SCAN = 30, wilds = [], forts = [];
+    for (var dy = -SCAN; dy <= SCAN; dy++) {
+      for (var dx = -SCAN; dx <= SCAN; dx++) {
+        var x = c.x + dx, y = c.y + dy;
+        if (x < 0 || y < 0 || x >= DATA.MAP_W || y >= DATA.MAP_H) continue;
+        var ci = ciAt(x, y); if (ci < 0) continue;
+        if (GAME.map.wildAt(ci, pid)) continue;
+        if (GAME.map.npcAt && GAME.map.npcAt(ci)) continue;
+        var f = GAME.map.fortAt ? GAME.map.fortAt(ci) : null;
+        if (f) { if (forts.length < 60) forts.push({ ci: ci, x: x, y: y, lv: f.level, name: f.name }); continue; }
+        var lv = GAME.map.wildLevelNow ? GAME.map.wildLevelNow(ci) : 0;
+        if (lv > 0 && wilds.length < 60) wilds.push({ ci: ci, x: x, y: y, lv: lv });
+      }
+    }
+    /* 名城：按「区 → 城」分级（与地图行政区同一份 s.map.cities） */
+    var npcs = (GAME.state.map.cities || []).slice();
+    var states = [];
+    npcs.forEach(function (n) { if (n.state && states.indexOf(n.state) < 0) states.push(n.state); });
+    var tierName = { county: '聚落', jun: '重镇', zhou: '首府', capital: '旧都' };
+    var wonder = GAME.wonderOf ? GAME.wonderOf(pid) : null;
+    var row = function (k, id, ci, label, extra) {
+      return '<button class="btn sm" data-action="exp-target-set" data-kind="' + k + '"' +
+        (id != null ? ' data-id="' + U.escape(String(id)) + '"' : '') +
+        (ci != null ? ' data-ci="' + ci + '"' : '') + '>' + label + (extra || '') + '</button> ';
+    };
+    var sec = function (title, list) {
+      return '<div class="gold-heading" style="margin-top:8px;">' + title + '</div><div>' + (list || '—') + '</div>';
+    };
+    var body = sec('🏯 己方城市（派遣 / 运输）',
+        own.map(function (x) { return row('own', x.id, null, '🏯 ' + U.escape(x.name)); }).join('') || '—') +
+      (ownWild.length ? sec('🌾 己方野地（派驻）',
+        ownWild.map(function (w) { return row('wild', null, w.ci, '🌾 ' + (DATA.TERRAIN[w.type] ? DATA.TERRAIN[w.type].name : w.type) + ' Lv' + w.level); }).join('')) : '') +
+      sec('🗺️ 周围 30 格野地（侦查/掠夺/占领）',
+        wilds.map(function (w) { return row('wild', null, w.ci, '🗺️ 野地 Lv' + w.lv + '（' + GAME.map.coordText(w.x, w.y) + '）'); }).join('') || '—') +
+      sec('🏕️ 周围 30 格据点',
+        forts.map(function (f) { return row('fort', null, f.ci, '🏕️ ' + U.escape(f.name) + ' Lv' + (f.lv || 1)); }).join('') || '—') +
+      sec('🏛️ 名城（按区分级）',
+        '<select id="etp-state" style="margin-bottom:6px;">' + states.map(function (st) {
+          return '<option value="' + U.escape(st) + '">' + U.escape(st) + '</option>';
+        }).join('') + '</select><div id="etp-npcs"></div>') +
+      (wonder ? sec('☄ 奇观（本星球）',
+        row('wonder', null, null, '☄ ' + U.escape(wonder.name)) ) : '');
+    ui.openModal('<div class="gold-heading">🎯 选择出征目标</div>' +
+      '<div class="ui-sub" style="text-align:center;margin-bottom:6px;">仅列当前星球 · 选中后以该目标重开出征界面</div>' +
+      body, { size: 'xl' });
+    /* 名城分级：区下拉 → 该区名城（档位 + 名称） */
+    var stSel = document.getElementById('etp-state');
+    var boxEl = document.getElementById('etp-npcs');
+    var paintNpc = function () {
+      if (!boxEl) return;
+      var st0 = stSel ? stSel.value : (states[0] || '');
+      boxEl.innerHTML = npcs.filter(function (n) { return n.state === st0; }).map(function (n) {
+        return row('city', n.id, null, '🏛️ ' + U.escape(n.name), '<i style="opacity:.7;">（' + (tierName[n.type] || n.type) + ' Lv' + GAME.cityLvOf(n) + '）</i>');
+      }).join('') || '—';
+    };
+    paintNpc();
+    if (stSel) stSel.addEventListener('change', paintNpc);
+  };
+
   ui.openExpModal = function (target, opts138) {
     /* v89.138（老板 2）：「派遣」「运输」两个入口共用本界面 ——
        opts138.hint 给一行**入口专属提示**（讲清这次要填什么），不传则不显示。 */
@@ -49238,8 +49418,8 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
       _wc.forEach(function (x) { if (ui._expFrom && x.id === ui._expFrom) _okFrom = true; });
       if (!_okFrom) ui._expFrom = _wc.length ? _wc[0].id : null;
     }
-    /* v89.103：本境调运强制走「调兵 · 辎重」方式（只有这一种方式） */
-    if (ui._expOwn) { ui._expMode = 'transfer'; }
+    /* v91.76：本境调运可选「派遣 / 运输」；缺省给运输（带辎重区）。 */
+    if (ui._expOwn && ui._expMode !== 'dispatch' && ui._expMode !== 'transport') ui._expMode = 'transport';
     /* v74：把**已解析的目标**存一份 —— 兵力总览/战力对比要用守军与城防，
        同一份 resolveTarget 结果直接读，不再各算一遍（两个出口必漂移）。 */
     ui._expRes = t;
@@ -49251,15 +49431,19 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
      * ============================================================ */
     ui._expWonder = null;
     ui._expWonderFight = null;
-    if (target && target.kind === 'wonder') {
+    if (target && (target.kind === 'wonder' || target.kind === 'wonderFight')) {
+      /* v91.76（老板）：「探索（奇观统一，选择后增加一个选项『探索层级』）」——
+         奇观目标统一为 **explore**；层级下拉默认「不挑战（采集）」，
+         选层级 = 挑战该层守卫（沿用现有 6 层、逐层解锁与采集动作下拉）。 */
       var _wwd = GAME.wonderOf ? GAME.wonderOf(t.pid) : null;
-      var _wacts = (_wwd && _wwd.acts) || [];
-      ui._expWonder = { pid: t.pid, wd: _wwd };
-      ui._expMode = (_wacts.indexOf(t.mode) >= 0) ? t.mode : (_wacts[0] || 'collect');
-    } else if (target && target.kind === 'wonderFight') {
-      /* v91.52：挑战奇观层级守军 —— 走战斗（方式固定，确认键 = 「挑战第 N 层」）。 */
-      ui._expWonderFight = { pid: t.pid, lv: t.lv };
-      ui._expMode = 'occupy';
+      var _wacts2 = (_wwd && _wwd.acts) || [];
+      var _wlv76 = (target.kind === 'wonderFight' && target.lv) ? target.lv
+        : ((target.kind === 'wonder' && target.lv) ? target.lv : 0);
+      ui._expWonder = { pid: t.pid, wd: _wwd, lv: _wlv76 };
+      ui._expWonderFight = null;
+      ui._expMode = 'explore';
+      if (target.kind === 'wonder' && !target.lv) ui._expWonderAct = (_wacts2.indexOf(t.mode) >= 0) ? t.mode : (_wacts2[0] || 'collect');
+      else if (!ui._expWonderAct) ui._expWonderAct = _wacts2[0] || 'collect';
     }
     /* ============================================================
      * v89.137（老板 7）：「所有军队操作均以出征界面进行（除非采集/收获/召回这类
@@ -49271,6 +49455,13 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
     ui._expOwnWild137 = isOwnWild137;         /* 主将段/提交端读（一枚标志，一处判定） */
     ui._expMode = ui._expMode || 'occupy';
     if (isOwnWild137 && ui._expMode !== 'station') ui._expMode = 'station';
+    /* v91.76：方式**不粘滞** —— 换目标后若当前方式对它是"不可用"的（比如上次运输、这次点野地），
+       复位到该目标的缺省方式（己方城市→运输 / 己方野地→派驻 / 奇观→探索 / 其余→占领）。 */
+    var _ownMove76 = !!(target && target.kind === 'owncity');
+    if (_ownMove76 && ui._expMode !== 'dispatch' && ui._expMode !== 'transport') ui._expMode = 'transport';
+    if (!_ownMove76 && (ui._expMode === 'dispatch' || ui._expMode === 'transport')) ui._expMode = isOwnWild137 ? 'station' : 'occupy';
+    if (!isOwnWild137 && ui._expMode === 'station') ui._expMode = 'occupy';
+    if (!ui._expWonder && ui._expMode === 'explore') ui._expMode = 'occupy';
     /* v89.138 修正（e2e 抓出）：`station` 与 `transfer` 都是**专用方式** ——
        离开对应目标类型时必须复位，否则会粘到下一次出征上
        （实测：先走"运输"（transfer）再打无主野地 → prepare 连报两次"调兵目标须为本境城市"、
@@ -49294,9 +49485,11 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
       }
     }
     if (target.kind === 'city') ui._attackNpc = t.npc;
-    /* v89.57：主将缺省必须在**构建计略选项之前**定好（计略可用性要读当前英雄） */
-    if (!ui._expGen || !s.generals.some(function (g) { return g.id === ui._expGen; })) {
-      ui._expGen = s.generals[0] ? s.generals[0].id : '';
+    /* v89.57：主将缺省必须在**构建计略选项之前**定好（计略可用性要读当前英雄）
+       v91.76：只从**派出城**里取缺省；没有则留空（无将方式合法）。 */
+    var _defGen76 = (GAME.generalsIn ? GAME.generalsIn(c) : [])[0];
+    if (!ui._expGen || !(GAME.generalsIn ? GAME.generalsIn(c) : []).some(function (g) { return g.id === ui._expGen; })) {
+      ui._expGen = _defGen76 ? _defGen76.id : '';
     }
     /* v89.117：缺省主将**必须可出征** —— 旧口径取 generals[0]，若那位正在当城主/守将，
        玩家一开面板就"默认选中一个不能出征的人"（点出征才报错，很别扭）。
@@ -49304,7 +49497,9 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
     var _curGen = null;
     s.generals.forEach(function (g) { if (g.id === ui._expGen) _curGen = g; });
     if (GAME.marchIssueOf && GAME.marchIssueOf(_curGen)) {
-      var _okGen = GAME.expGeneralsOf()[0];
+      var _okGen = (GAME.expGeneralsOf ? GAME.expGeneralsOf() : []).filter(function (g) {
+        return GAME.pidOf(g) === GAME.pidOf(c) && (GAME.genCityOf ? (GAME.genCityOf(g) || {}).id === c.id : true);
+      })[0];
       if (_okGen) ui._expGen = _okGen.id;
     }
     var gNum = 0;
@@ -49351,47 +49546,57 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
     /* v91.49（老板）：「增加相应出征方式到下拉框」——
        奇观目标时：方式 = 该奇观支持的**探索行动**（采集/派军搜查/深潜攻坚…），
        与 DATA.WONDER_ACT_DEFS 同源（新增行动自动出现）。 */
-    var modes;
-    if (ui._expWonder) {
-      modes = ((ui._expWonder.wd && ui._expWonder.wd.acts) || []).map(function (aid) {
-        var a = (DATA.WONDER_ACT_DEFS || {})[aid] || {};
-        return { id: aid, icon: '☄', name: a.name || aid, _wonderAct: true,
-          stamina: a.needArmy ? 15 : 0, energy: 0, battle: false };
-      });
-    } else if (ui._expWonderFight) {
-      modes = [{ id: 'occupy', icon: '⚔', name: '挑战第 ' + ui._expWonderFight.lv + ' 层守卫',
-        _wonderFight: true, stamina: 15, energy: 5, battle: true }];
-    } else {
-      modes = ((DATA.EXPEDITION && DATA.EXPEDITION.modes) || []).filter(function (m) {
-        if (ui._expOwn) return m.id === 'transfer';
-        if (isOwnWild137) return m.id === 'station';
-        return m.panel !== false;
-      });
-    }
-    /* v89.58（老板「出征界面采用下拉框，三张卡片占位置太大」）：
-       出征方式由三张大卡片 → 紧凑下拉框（与目标/站位/计略同款 .exp-sel 行）。 */
-    var modeSelHTML = '<select id="exp-mode" class="exp-mode-select">' +
+    /* v91.76（老板）：「**固定一个完整界面**，不适用的变为不可选即可，不然每个出征界面都不一样」——
+       方式下拉**恒列全部 7 种**（侦查/掠夺/占领/派遣/运输/派驻/探索），
+       不适用 = 置灰 + 悬停写原因（`ui.expModeAvailOf` 唯一出口，与执行端同源）。 */
+    var ALL_MODES = ['scout', 'raid', 'occupy', 'dispatch', 'transport', 'station', 'explore'];
+    var modes = ALL_MODES.map(function (mid) {
+      if (mid === 'explore') return { id: 'explore', icon: '☄', name: '探索', stamina: 0, energy: 0, battle: false };
+      var m0 = GAME.battle.modeOf(mid);
+      if (mid === 'station') return { id: 'station', icon: '🛡️', name: '派驻', stamina: 0, energy: 0, battle: true };
+      return m0;
+    });
+    var modeSelHTML = '<select id="exp-mode" class="exp-mode-select"' + (modes.length ? '' : '') + '>' +
       modes.map(function (m) {
-        var lock = ui._expOwn ? '' : ui.expModeLockOf(m.id);
+        var lock = ui.expModeAvailOf(m.id);
         var label;
-        if (m._wonderAct) {
-          var ad = (DATA.WONDER_ACT_DEFS || {})[m.id] || {};
-          label = '☄ ' + m.name + '（' + (ad.cond || '需英雄带队') + '）';
-        } else if (ui._expOwn) {
-          label = '🚚 调兵 · 辎重（不接战 · 兵力押运）';
-        } else if (isOwnWild137 && m.id === 'station') {
-          label = '🛡️ 驻守 · 增派驻军（不接战 · 抵达即驻 · 不耗体力精力）';
-        } else {
-          label = m.icon + ' ' + m.name + '（体' + m.stamina + ' 精' + m.energy + '）';
-        }
-        return '<option value="' + m.id + '"' + (ui._expMode === m.id ? ' selected' : '') + (lock ? ' disabled' : '') + '>' +
+        if (m.id === 'explore') label = '☄ 探索（奇观）';
+        else if (m.id === 'dispatch') label = '🧑‍✈️ 派遣（己方城市 · 兵将归属）';
+        else if (m.id === 'transport') label = '🚚 运输（己方城市 · 负重调资源 · 原路返回）';
+        else if (m.id === 'station') label = '🛡️ 派驻（己方野地 · 藏兵 · 无将不可采集）';
+        else label = m.icon + ' ' + m.name + '（体' + (m.stamina || 0) + ' 精' + (m.energy || 0) + '）';
+        return '<option value="' + m.id + '"' + (ui._expMode === m.id ? ' selected' : '') +
+          (lock ? ' disabled' : '') + ' title="' + U.escape(lock || label) + '">' +
           label + (lock ? '　— ' + U.escape(lock) : '') + '</option>';
       }).join('') + '</select>';
-    var cur = ui._expWonder
-      ? { icon: '☄', name: '探索 · ' + (((DATA.WONDER_ACT_DEFS || {})[ui._expMode] || {}).name || ui._expMode), battle: false }
-      : ui._expWonderFight
-        ? { icon: '⚔', name: '挑战第 ' + ui._expWonderFight.lv + ' 层守卫', battle: true }
-        : GAME.battle.modeOf(ui._expMode);
+    /* 奇观：方式之上再给一行「探索层级」（不挑战 / 第 N 层），层级影响预估的战斗对象。 */
+    var wonderLvRow = '';
+    if (ui._expWonder) {
+      var _cleared76 = GAME.wonderClearedOf ? GAME.wonderClearedOf(ui._expWonder.pid) : 0;
+      var _maxLv76 = GAME.wonderLayerCount ? GAME.wonderLayerCount() : 6;
+      var opts76 = ['<option value="0"' + (!ui._expWonder.lv ? ' selected' : '') + '>不挑战（采集）</option>'];
+      for (var _l76 = 1; _l76 <= _maxLv76; _l76++) {
+        var _done76 = _l76 <= _cleared76, _next76 = _l76 === _cleared76 + 1;
+        opts76.push('<option value="' + _l76 + '"' + (ui._expWonder.lv === _l76 ? ' selected' : '') +
+          ((!_done76 && !_next76) ? ' disabled' : '') + '>第 ' + _l76 + ' 层' +
+          (_done76 ? '（已清）' : (_next76 ? '（可挑战）' : '（须先清前层）')) + '</option>');
+      }
+      wonderLvRow = ui.expRowHTML('探索层级', '<select id="exp-wl">' + opts76.join('') + '</select>',
+        '选“不挑战”则按下方探索行动采集；选层级 = 挑战该层守卫');
+      /* 采集行动下拉（原“自己就是方式”迁到这里） */
+      var _acts76 = (ui._expWonder.wd && ui._expWonder.wd.acts) || [];
+      wonderLvRow += ui.expRowHTML('探索行动',
+        '<select id="exp-act">' + _acts76.map(function (aid) {
+          var a = (DATA.WONDER_ACT_DEFS || {})[aid] || {};
+          return '<option value="' + aid + '"' + (ui._expWonderAct === aid ? ' selected' : '') + '>' +
+            '☄ ' + U.escape(a.name || aid) + '</option>';
+        }).join('') + '</select>' + '<span class="exp-tac-link" data-action="exp-scheme">详情</span>',
+        (_acts76.map(function (aid) { var a = (DATA.WONDER_ACT_DEFS || {})[aid] || {}; return a.name + '：' + (a.cond || ''); }).join('　｜　')));
+    }
+    var cur = (ui._expWonder && ui._expWonder.lv)
+      ? { icon: '⚔', name: '挑战第 ' + ui._expWonder.lv + ' 层守卫', battle: true }
+      : (ui._expWonder ? { icon: '☄', name: '探索 · ' + (((DATA.WONDER_ACT_DEFS || {})[ui._expWonderAct] || {}).name || '采集'), battle: false }
+        : GAME.battle.modeOf(ui._expMode));
 
     /* v70（老板）：出征目标写**全称** —— 名城给区·镇·城名，野外城市带所在聚落 */
     var _tTitle = (t.kind === 'fort' && t.fort) ? GAME.fortLabelOf(t.fort)
@@ -49464,9 +49669,17 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
     }
     /* v91.75（老板「主将只列一个」同口径）—— 派出城**只显示本次从哪座城发兵**：
        只有在同一星球上有多座可选城时才给下拉；否则就是一行静态名（不再每个形态各造一套选择）。 */
+    /* v91.76（老板）：「1 个当前目标 + 1 个‘其他目标’按钮」——
+       当前目标 = 地图点选所得（上面名称行）；「其他目标」开弹窗按类型选（仅本星球）。 */
+    html += ui.expRowHTML('目标',
+      '<span class="exp-one">' + U.escape(_tTitle) + '</span>' +
+      '<button class="btn sm" data-action="exp-target-pick">其他目标</button>',
+      '当前目标 = 地图/军务点选；「其他目标」可在本星球内换选');
+    if (wonderLvRow) html += wonderLvRow;
     if (!ui._expOwn) {
       var _pickFrom = c;
       if (_mycities.indexOf(c) < 0) _pickFrom = _mycities[0];
+      /* v91.76：派出城 = **本星球全部己方城**（老板：根据当前所在城市默认，并提供当前星球可选项）*/
       var _fromHtml;
       if (_mycities.length > 1) {
         _fromHtml = '<select id="exp-from" class="city-select">' + _mycities.map(function (cc) {
@@ -49478,8 +49691,7 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
       } else {
         _fromHtml = '<span class="exp-one">无可用城市</span>';
       }
-      html += ui.expRowHTML('派出城', _fromHtml,
-        (ui._expWonder || ui._expWonderFight) ? '仅列目标景点所在星球的城市' : null);
+      html += ui.expRowHTML('派出城', _fromHtml, null);
     }
     html += '</div>';
 
@@ -49494,21 +49706,21 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
         + U.escape(stGen137.name) + ' Lv' + (stGen137.level || 1)
         + ' 驻守中 —— 本次增援<b>不带将</b>（只并兵，不换驻将）</div>';
     }
+    /* v91.76（老板「主将：提供派出城的可选英雄，不要提供全部英雄」· 口径=本城全部+置灰）——
+       只列**派出城归属**的英雄；忙碌/城主/守将置灰注明；另给「不派将」（派遣/运输/派驻可用）。 */
     var genSelHTML = '<select id="exp-gen" class="exp-gen-select"' + (stGen137 ? ' disabled' : '') + '>';
-    genSelHTML += s.generals.map(function (g) {
+    genSelHTML += '<option value=""' + (!ui._expGen ? ' selected' : '') + '>（不派将）</option>';
+    (GAME.generalsIn ? GAME.generalsIn(c) : []).forEach(function (g) {
       var a = GAME.genAttrs(g);
-      /* v89.59（老板需求 2）：主将选项展示**六维** —— 指挥 / 武力 / 谋略 / 治理 / 速度 / 体力 */
       var six = '统' + (a.tong || 0) + ' 勇' + (a.yw || 0) + ' 智' + (a.zm || 0) + ' 政' + (a.nz || 0) +
         ' 速' + (a.spd || 0) + ' 体' + (a.staMax || 0);
-      /* v89.117（老板「城主和守将不能执行出征动作」）：不可出征者**列出来但置灰**
-         （比"藏起来"好：玩家一眼看出"他在当城主"）。判据走唯一出口 GAME.marchBlockOf。 */
       var blk = GAME.marchIssueOf ? GAME.marchIssueOf(g) : null;
-      return '<option value="' + g.id + '"' + (g.id === ui._expGen ? ' selected' : '') +
-        (blk ? ' disabled' : '') + '>' +
+      genSelHTML += '<option value="' + g.id + '"' + (g.id === ui._expGen ? ' selected' : '') +
+        (blk ? ' disabled' : '') + ' title="' + U.escape(blk || six) + '">' +
         U.escape(g.name) + (blk ? '（' + U.escape(blk) + '）' : '（' + six + '）') + '</option>';
-    }).join('');
+    });
     genSelHTML += '</select>';
-    html += ui.expRowHTML('主将', genSelHTML, null);
+    html += ui.expRowHTML('主将', genSelHTML, '所列 = 派出城的英雄；“不派将”仅派遣/运输/派驻可用');
     /* v89.198（老板 4）：「精力 · 体力」读数移入**主将栏**（选定主将后显示，随选将刷新）——
        原挂「可用道具」信息行（同批：封存匣数量备注退役）。内容由 ui.refreshExpItems 填。 */
     html += '<div class="exp-info exp-info-l" id="exp-gen-vital" style="margin:4px 0 0;"></div>';
@@ -49541,41 +49753,34 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
        原本 2×2 两行、改单列后四块 439px 把左列顶爆（调运面板溢出 141px · modals 审计实锤）；
        语义也正：transfer 是"兵力押运、不接战"，计略/阵位/阵型配置无用途。 */
     /* v89.157（老板 1）：己方野地驻守（station）同样不接战 —— 接战三块一并隐（与调运同规） */
-    if (!ui._expOwn && !isOwnWild137) {
-      /* ⑦ 方案（2×2 左下 · v89.59 需求 6）：固定「兵力 + 战术」的一套配置 */
-      html += '<div class="exp-sec exp-a-plan">';
-      html += ui.expRowHTML('方案',
-        '<select id="exp-plan">' + ui.expPlanOptionsHTML() + '</select><span class="exp-tac-link" data-action="open-plan">设置</span>',
-        '套用方案即按其配好兵力与战术');
-      html += '</div>';
-
-    }
+    /* v91.76（老板）：「固定一个完整界面，不适用的变为不可选即可」——
+       方案/战术/计略恒渲染；非接战方式下整块半透明并禁用（不再隐藏）。 */
+    var _combat76 = !!(cur && cur.battle);
+    var _dimStyle76 = _combat76 ? '' : ' style="opacity:.45;pointer-events:none;" title="该出征方式不接战，此设置不适用"';
+    html += '<div class="exp-sec exp-a-plan"' + _dimStyle76 + '>';
+    html += ui.expRowHTML('方案',
+      '<select id="exp-plan"' + (_combat76 ? '' : ' disabled') + '>' + ui.expPlanOptionsHTML() + '</select>' +
+      '<span class="exp-tac-link" data-action="open-plan">设置</span>',
+      '沿用当前设置 · 套用后按派出城的练兵场上限裁剪');
+    html += '</div>';
     /* v89.156：调运（transfer · 不接战）**不渲染接战专属三块**（出征战术）——
        原本 2×2 两行、改单列后四块 439px 把左列顶爆（调运面板溢出 141px · modals 审计实锤）；
        语义也正：transfer 是"兵力押运、不接战"，计略/阵位/阵型配置无用途。 */
     /* v89.157（老板 1）：己方野地驻守（station）同样不接战 —— 接战三块一并隐（与调运同规） */
-    if (!ui._expOwn && !isOwnWild137) {
-      /* ⑧ 出征战术（2×2 右下 · v89.59 需求 6）：统一进退 + 预设战术 + 逐兵种 */
-      html += '<div class="exp-sec exp-a-tacmenu">';
-      html += ui.expRowHTML('出征战术',
-        '<select id="exp-tactic">' + ui.expTacticOptionsHTML() + '</select><span class="exp-tac-link" data-action="open-tactic-set">设置</span>',
-        null);
-      /* ⛔ v89.198（老板 3）：「阵位 … 逐兵种」备注行退役 —— 摘要与选择框重复；
-         逐兵种编辑器仍可经「设置」→「逐兵种调整」进入（openTacticSets）。 */
-      html += '</div>';
-
-    }
+    html += '<div class="exp-sec exp-a-tacmenu"' + _dimStyle76 + '>';
+    html += ui.expRowHTML('出征战术',
+      '<select id="exp-tactic"' + (_combat76 ? '' : ' disabled') + '>' + ui.expTacticOptionsHTML() + '</select>' +
+      '<span class="exp-tac-link" data-action="open-tactic-set">设置</span>',
+      null);
+    html += '</div>';
     /* v89.212（老板 2）：计略块（原在「出征方式」之前）按老板令**移至「出征战术」之后** ——
        行序：目标 → 主将 → 出征方式 → 方案 → 战术 → 计略 → 可用道具。
        块体一字未动（仅换位置）；v89.59 语义保留：站位并入「出征战术」菜单，这里只留计略。
        v89.156/157：调运（transfer）与己方野地驻守（station）不接战 —— 本块与方案/战术一并隐。 */
-    if (!ui._expOwn && !isOwnWild137) {
-      html += '<div class="exp-sec exp-a-tactic">';
-      html += ui.expRowHTML('计略', schemeSel, '<span id="exp-scheme-label">' + U.escape(ui.expSchemeLabel()) + '</span>');
-      html += '<div id="exp-scheme-box" class="hidden exp-body" style="max-height:210px;margin:0 0 6px;"></div>';
-      html += '</div>';
-
-    }
+    html += '<div class="exp-sec exp-a-tactic"' + _dimStyle76 + '>';
+    html += ui.expRowHTML('计略', schemeSel, '<span id="exp-scheme-label">' + U.escape(ui.expSchemeLabel()) + '</span>');
+    html += '<div id="exp-scheme-box" class="hidden exp-body" style="max-height:210px;margin:0 0 6px;"></div>';
+    html += '</div>';
     html += '</div>';  /* /.exp-quad（四块容器的闭合 —— 必须在 if 外，否则 transfer 时不闭合、布局炸） */
 
     /* ⑨ 可用道具（v89.156 老板 2：左列 + 下拉框）；v89.198（老板 6）：信息行退役 ——
@@ -49589,15 +49794,13 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
     /* ⑩ 本境调运「辎重 · 资源调配」（transfer 专用**操作区**）——
        v89.156 随"预估"挪去右列后独立成块：它不是预估、是操作，不能跟着藏。
        旧账（v89.112）：右列 辎重221 + 兵种655 = 876px 顶穿正文区 —— 辎重始终留左列。 */
-    if (ui._expOwn) html += ui.expCargoHTML(c);
-    /* v89.200（老板 3）：预估**移回左列下方**（v89.156 曾随老板令搬右列，此令再搬回）——
-       位置 = 左列最底（可用道具/辎重之后）；渲染条件不变：仅战斗型任务
-       （本境调运与驻守没有战果可估，不渲染）。 */
-    if (!ui._expOwn && !isOwnWild137) html += ui.expEstBlockHTML();
+    /* 预估恒渲染（老板：通用内容包括预估）；内容按方式切换（见 updateExpMarch）。 */
+    html += ui.expEstBlockHTML();
 
     /* 右列（独占）：**兵种及数量**（v89.156 老板 2：可用道具整块搬去左列；
        v89.200 老板 3：预估移回左列下方 —— 右列只留兵力表）。 */
-    html += '</div><div class="exp-col-r' + (ui._expOwn ? ' exp-own' : '') + '">';
+    /* v91.76：只有「派遣 / 运输」才是本境调运形态（派驻不是）。 */
+    html += '</div><div class="exp-col-r' + (ui._expMode === 'dispatch' || ui._expMode === 'transport' ? ' exp-own' : '') + '">';
     /* v89.144（老板 2）：标题栏的两枚全局键（旧「上限 / 清空」）**整条退役** ——
        两个操作挪进每个兵种行（见 troopBlock）。
        v89.156 老板 2：标题由「派遣兵力 · 兵种数量」改「派遣兵力（练兵场出征上限：N）」——
@@ -49609,9 +49812,14 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
     /* v89.200（老板 3）：预估调用已移左列下方（见上）——右列只剩兵力表。 */
     html += '</div></div>';  /* /.exp-col-r /.exp-grid */
 
+    /* v91.76：**辎重区**只在「运输」方式展开；放在两列之后（整行），避免撑爆列高。 */
+    if (ui._expMode === 'transport') html += ui.expCargoHTML(c);
+
     /* ⑦ 确认 / 取消 */
-    html += '<div class="exp-foot"><button class="btn gold" data-action="exp-confirm">'
-      + (ui._expOwn ? '🚚 起运（兵 + 辎重）' : (cur.icon + ' ' + cur.name)) + '</button>' +
+    var _cfText76 = ui._expMode === 'transport' ? '🚚 起运（兵 + 辎重）'
+      : ui._expMode === 'dispatch' ? '🧑‍✈️ 派遣'
+      : (cur.icon + ' ' + cur.name);
+    html += '<div class="exp-foot"><button class="btn gold" data-action="exp-confirm">' + _cfText76 + '</button>' +
       /* v89.210（老板拍板）：🎬 战前推演 —— 仅战斗方式显示（本境调运 / 侦查无战役需求）。 */
       ((ui._expOwn || !cur.battle) ? '' : '<button class="btn" data-action="exp-sim" title="沙盘推演：按当前选择预演一场（与实战同一引擎 · 不扣兵不落账）">🎬 推演</button>') +
       /* v89.186（老板 2）：「出征界面提供快购按钮（专用于战役）」——
@@ -49716,7 +49924,7 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
      · 误差 ±err 由侦察网络等级决定 —— 情报越细，区间越窄，"判断"才有价值。 */
   ui.expPowerOf = function () {
     var tp = (GAME.story && GAME.story.troopPower) ? GAME.story.troopPower : null;
-    var city = GAME.currentCity();
+    var city = ui.expFromCity();   /* v91.76：按派出城读出征兵力 */
     if (!tp || !city) return null;
     var mine = 0, n = 0;
     Object.keys(city.army || {}).forEach(function (id) {
@@ -49834,7 +50042,7 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
        （实机诊断：`🛫 目标无坐标，无法估算行军` → power/haul 三框皆空）。
        与 v89.114 的 haul 预估同一条口径：面板读的就是结算读的那个 t。 */
     var t = ui._expRes || ui._expTarget;
-    var city = GAME.currentCity();
+    var city = ui.expFromCity();   /* v91.76：出发性限制全部按派出城 */
     if (!t || !city) { box.textContent = ''; ui.updateExpHaul(); return; }
     var army = {}, any = false;
     Object.keys(city.army || {}).forEach(function (id) {
@@ -50060,13 +50268,38 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
   };
 
   ui.applyExpMode = function () {
-    var cur = ui._expWonder
-      ? { battle: false, icon: '☄', name: (((DATA.WONDER_ACT_DEFS || {})[ui._expMode] || {}).name || ui._expMode) }
-      : GAME.battle.modeOf(ui._expMode || 'occupy');
+    /* v91.76（固定界面）：方式变化后**不隐藏**接战块，只置灰；
+       同时刷新兵力上限标签 / 限制性信息 / 预估 / 辎重。 */
+    var _md76 = ui._expMode;
+    var _mdef76 = GAME.battle.modeOf(_md76);
+    var cur = (ui._expWonder && ui._expWonder.lv)
+      ? { battle: true, icon: '⚔' }
+      : (ui._expWonder ? { battle: false, icon: '☄' } : (_mdef76 || { battle: false }));
+    var _combat76b = !!cur.battle;
+    ['exp-a-plan', 'exp-a-tacmenu', 'exp-a-tactic'].forEach(function (cls) {
+      var el = document.querySelector('#modal-root .' + cls);
+      if (!el) return;
+      el.style.opacity = _combat76b ? '' : '.45';
+      el.style.pointerEvents = _combat76b ? '' : 'none';
+      el.title = _combat76b ? '' : '该出征方式不接战，此设置不适用';
+    });
     var box = $('#modal-root .exp-troops');
-    if (box) box.style.opacity = cur.battle ? '1' : '.55';
-    ui.updateExpLimits();           /* v89.156：方式变更 → 重算限制性信息（原野地上限预警） */
-    ui.refreshExpCapLabel();        /* v89.156：限额标签随方式刷新（出征容量 / 派驻 / 不限） */
+    if (box) box.style.opacity = _combat76b ? '1' : '.55';
+    ui.updateExpLimits();           /* 方式变更 → 重算限制性信息 */
+    ui.refreshExpCapLabel();        /* 限额标签随方式刷新（出征容量 / 派驻 / 不限） */
+    ui.refreshExpModeLocks();       /* 方式可用性随（派驻城/兵力）变化 */
+    if (ui.updateExpMarch) ui.updateExpMarch();
+    if (ui.syncCargoEst) ui.syncCargoEst();
+  };
+  /* 重算方式下拉的置灰态（不重绘弹窗）。 */
+  ui.refreshExpModeLocks = function () {
+    var sel = document.getElementById('exp-mode');
+    if (!sel) return;
+    Array.prototype.forEach.call(sel.querySelectorAll('option'), function (o) {
+      var lock = ui.expModeAvailOf(o.value);
+      o.disabled = !!lock;
+      o.title = lock || o.textContent;
+    });
   };
 
   /* ============================================================
@@ -50079,7 +50312,7 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
    * ============================================================ */
   ui.expLimitsHTML = function () {
     var t = ui._expRes;
-    var city = GAME.currentCity();
+    var city = ui.expFromCity();   /* v91.76：到达性限制也按派出城判（领地/野地上限与城相关） */
     if (!t || !city) return '';
     var mode = GAME.battle.modeOf(ui._expMode || 'occupy');
     var out = [];
@@ -53771,6 +54004,20 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
       /* v89.144（老板 4）：选定后**立刻 live 刷新**（下方「当前目标 / 进入军事行动」随之更新）；
          空首项 = 取消选择（该行选回空 → 清空 _actPick）；
          在**另一行**选择 → 原来那一行自动回到空（_actPick 只有一份，渲染读同一出口）。 */
+      /* v91.76（老板）：「其他目标」弹窗（仅本星球、按类型） */
+      case 'exp-target-pick': ui.openExpTargetPicker(); break;
+      case 'exp-target-set': {
+        var _etg = el.dataset.kind;
+        var _eid = el.dataset.id, _eci = Number(el.dataset.ci);
+        var _tg76;
+        if (_etg === 'own') _tg76 = { kind: 'own', id: _eid };
+        else if (_etg === 'city') _tg76 = { kind: 'city', id: _eid };
+        else if (_etg === 'wild') _tg76 = { kind: 'wild', ci: _eci, pid: GAME.curPid() };
+        else if (_etg === 'fort') _tg76 = { kind: 'fort', ci: _eci, pid: GAME.curPid() };
+        else if (_etg === 'wonder') _tg76 = { kind: 'wonder', pid: GAME.curPid() };
+        if (_tg76) { ui.closeAllModals(); ui.openExpModal(_tg76); }
+        break;
+      }
       case 'exp-act-pick': {
         var g144 = el.dataset.grp || '';
         if (el.value === '') {
@@ -55178,31 +55425,26 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
     if (!target) { ui.toast('未选择目标'); return; }
     var mode = ui._expMode || 'occupy';
     var genSel = document.getElementById('exp-gen');
-    if (!genSel) { ui.toast('请选择英雄'); return; }
+    if (!genSel && mode !== 'explore') { ui.toast('请选择英雄'); return; }
+    /* v91.76：主将可为空（派遣/运输/派驻无将合法）。 */
+    var genId76 = genSel ? genSel.value : '';
     /* v89.103：兵力从输入框收 —— 与辎重运力的算法**同一个来源**（ui.expArmyOf） */
     var atk = ui.expArmyOf ? ui.expArmyOf() : {};
     /* v91.31（老板）：**奇观探索**走出征界面 —— 选将/选兵 → 派队（非战斗，按军力给奖励）。
        将领带队（genSel）如同常规出征。 */
-    if (target.kind === 'wonder') {
-      var _wgen = (GAME.state.generals || []).filter(function (g) { return g.id === genSel.value; })[0];
-      /* v91.49（老板）：用**下拉框选中的探索行动**（ui._expMode），不是打开面板时的 entry mode ——
-         玩家可在下拉里改「采集/派军搜查/深潜攻坚」。 */
-      /* v91.72（老板）：按**派出城**发兵（奇观探索限本星球城市，派出城已由界面过滤）。 */
+    /* v91.76（老板）：奇观统一为「探索」——层级下拉 > 0 = 挑战该层守卫，否则走探索行动。 */
+    if (mode === 'explore') {
+      var _wlSel = document.getElementById('exp-wl');
+      var _wlv76 = _wlSel ? Number(_wlSel.value) || 0 : 0;
+      var _actSel = document.getElementById('exp-act');
+      var _act76 = (_actSel && _actSel.value) || ui._expWonderAct || 'collect';
+      var _wgen = (GAME.state.generals || []).filter(function (g) { return g.id === genId76; })[0];
       var _fc = ui.expFromCity();
-      var _wr = GAME.wonderExplore(target.pid, ui._expMode || target.mode || 'search', _fc && _fc.id, atk, _wgen && _wgen.id);
+      var _wr = _wlv76 > 0
+        ? GAME.wonderFightLayer(target.pid, _wlv76, _fc && _fc.id, atk, _wgen && _wgen.id)
+        : GAME.wonderExplore(target.pid, _act76, _fc && _fc.id, atk, _wgen && _wgen.id);
       ui.toast(_wr.msg);
       if (_wr.ok) { ui.closeModal(); GAME.refreshAll(); if (ui.view === 'map' && ui.renderMapCanvas) ui.renderMapCanvas(); }
-      return;
-    }
-    /* v91.52（老板）：挑战奇观层级守军 —— 走战斗引擎（GAME.wonderFightLayer）。 */
-    if (target.kind === 'wonderFight') {
-      var _fgen = (GAME.state.generals || []).filter(function (g) { return g.id === genSel.value; })[0];
-      var _fc2 = ui.expFromCity();
-      var _fr = GAME.wonderFightLayer(target.pid, target.lv, _fc2 && _fc2.id, atk, _fgen && _fgen.id);
-      ui.toast(_fr.msg);
-      ui.closeModal();
-      GAME.refreshAll();
-      if (ui.view === 'map' && ui.renderMapCanvas) ui.renderMapCanvas();
       return;
     }
     var md = GAME.battle.modeOf(mode);
@@ -55213,14 +55455,13 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
      * 本境调运：兵 + 辎重一起走行军通道（GAME.doTransferCargo）——
      * 出发扣兵扣货，抵达入城落账（损耗 / 仓容），失败或召回原路退回。
      * ============================================================ */
-    if (ui._expOwn) {
-      var _from5 = GAME.currentCity();
+    if (mode === 'dispatch' || mode === 'transport') {
+      var _from5 = ui.expFromCity();
       var _to5 = (ui._expRes && ui._expRes.city) || GAME.cityById(target.id);
       if (!_from5 || !_to5) { ui.toast('城市不存在'); return; }
-      /* v89.138（老板 2）：本境调运**允许 0 兵**（只派将）——
-         有辎重才必须有兵押运（运力随兵力），没辎重就纯调将。 */
+      /* v91.76：只有「运输」带货；「派遣」只动兵/将。 */
       var _cargo5 = {};
-      GAME.TRANSPORT_KEYS.forEach(function (k) {
+      if (mode === 'transport') GAME.TRANSPORT_KEYS.forEach(function (k) {
         var el5 = document.getElementById('cg-' + k);
         var v5 = el5 ? Math.floor(Number(el5.value) || 0) : 0;
         if (v5 > 0) _cargo5[k] = v5;
@@ -55231,7 +55472,7 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
           + ' / 运输平台 ' + DATA.TROOPS.yunshu.load + '）');
         return;
       }
-      var _r5 = GAME.doTransferCargo(_from5.id, _to5.id, atk, genSel.value, _cargo5);
+      var _r5 = GAME.doTransferCargo(_from5.id, _to5.id, atk, genId76, _cargo5, mode);
       ui.toast(_r5.msg);
       if (_r5.ok) {
         ui._expForceArmed = false;
@@ -55277,7 +55518,7 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
       var _wm137 = GAME.map.wildAt(ui._expRes.x, ui._expRes.y);
       _stGen137m = !!(_wm137 && _wm137.garrison && _wm137.garrison.genId);
     }
-    var _genSend137 = _stGen137m ? '' : genSel.value;
+    var _genSend137 = _stGen137m ? '' : genId76;
     var _schemeSend137 = _stGen137m ? null : (ui._expScheme || null);
     var r = GAME.march.dispatch(target, mode, atk, _genSend137, _schemeSend137,
       ui._expFrom ? { fromCityId: ui._expFrom } : null);   /* v91.21（老板 C1）：派出城 */
@@ -55808,6 +56049,8 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
       var el = e.target;
       if (el && el.type === 'number' && el.id && el.id.indexOf('exp-') === 0 && ui.updateExpMarch) {
         ui.updateExpMarch();
+        /* v91.76：兵力一变，运输辎重的「上限」列与输入 max 同步刷新。 */
+        if (ui.syncCargoEst) ui.syncCargoEst();
       }
     });
     /* v27（需求 9）：窗口尺寸变化 → 重绘棋盘。
@@ -56048,7 +56291,7 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
      （这解释了"改了却说没生效"的观感）。老板若发现版本 ≠ 最新交付，按 Ctrl+F5
      强制刷新即获得新代码。⚠️ 发版须走 **bump_version.py --bump --version vX.Y**（它同步 index.html 的 ?v=/BUILD
      与这里的 GAME.VERSION 三处）—— 只手改 index.html 会让版本号冻住（v91.18 前的病灶）。 */
-  GAME.VERSION = 'v91.75';
+  GAME.VERSION = 'v91.76';
   function boot() {
     fitAppSize();
     try {

@@ -2108,7 +2108,11 @@ import './state.js';
         _stNoGen137 = !!(_wpre137 && _wpre137.garrison && _wpre137.garrison.genId);
       }
     }
-    if (!gen && !_stNoGen137) return { ok: false, msg: '请选择出征英雄' };
+    /* v91.76（老板）：派遣/运输**可无英雄**（城市归属不变，只搬兵/货）——
+       其余方式仍须带队。 */
+    if (!gen && !_stNoGen137 && modeId !== 'dispatch' && modeId !== 'transport' && modeId !== 'transfer') {
+      return { ok: false, msg: '请选择出征英雄' };
+    }
     /* v89.117（老板「城主和守将不能执行出征动作」）：与界面**同一判据**（唯一出口
        GAME.marchBlockOf）—— 界面置灰只是提示，这里才是拦得住的那道闸
        （自动出征 / 脚本 / 老档里的旧配置都会经过 prepare）。 */
@@ -2123,15 +2127,21 @@ import './state.js';
     var t = GAME.battle.resolveTarget(target);
     if (!t.ok) return { ok: false, msg: t.msg || '目标无效' };
 
-    /* v89.87（老板需求 2）：调兵 / 驻守 / 采集的前置校验（统一出口的口子） */
-    if (mode.id === 'transfer' && t.kind !== 'owncity') return { ok: false, msg: '调兵目标须为本境城市' };
+    /* v89.87（老板需求 2）：调兵 / 驻守 / 采集的前置校验（统一出口的口子）
+       v91.76：派遣 / 运输同属"己方城市间"通道。 */
+    var _ownMoveMode = (mode.id === 'transfer' || mode.id === 'dispatch' || mode.id === 'transport');
+    if (_ownMoveMode && t.kind !== 'owncity') return { ok: false, msg: '「' + mode.name + '」目标须为本境城市' };
+    if (mode.id === 'transport') {
+      var _ct76 = 0; for (var _ck76 in (atkArmy || {})) _ct76 += Math.max(0, Math.floor(atkArmy[_ck76] || 0));
+      if (opts.cargo && _ct76 <= 0) return { ok: false, msg: '运输须带兵押运（运力来自兵种负重）' };
+    }
     /* ============================================================
      * v89.138（老板 2）：「英雄派遣」并进出征界面后，原 `GAME.doDispatch` 的
      * **目标城席位预检**迁移到这道唯一闸口（入场即拦，比"到了再发现住不下"好）——
      * 英雄是**归属城市**的，席位 = 该城英雄枢纽房间数；不拦的话目标城名册会静默超编。
      * （「守将/城主不可出征」由下方 `GAME.marchBlockOf` 同一出口负责。）
      * ============================================================ */
-    if (mode.id === 'transfer' && t.kind === 'owncity' && gen) {
+    if (_ownMoveMode && t.kind === 'owncity' && gen) {
       var _to138 = t.city;
       if (_to138 && gen.cityId !== _to138.id) {
         var _slots138 = GAME.genSlotsOf(_to138), _used138 = GAME.generalsIn(_to138).length;
@@ -2418,7 +2428,8 @@ import './state.js';
         GAME.city.armyAdd(_to, { [_ok2]: _n2 });
         _mv += _n2;
       }
-      gen.cityId = _to.id;                    /* 主将随军入驻新城（城建制） */
+      if (gen) gen.cityId = _to.id;             /* v91.76：可无将 —— 有将才随军入驻新城 */
+      if (mode.id === 'dispatch' && gen && GAME.gen.set) GAME.gen.set(gen, 'idle');   /* 已入城，释放行军态 */
       _expArmySettled = true;                 /* 军账已结（兵入新城） */
       /* v89.103（老板「资源运输采用出征界面」）：**随军辎重落账** ——
          与"即时运输"同一套口径（GAME.transportPlanOf / transportApply）：
@@ -2433,7 +2444,9 @@ import './state.js';
           GAME.log.war('🚚 辎重抵 ' + _to.name + '：' + _cgOut.lines.join('；'));
         }
       }
-      GAME.log.war('🚚 军队调防：' + U.fmt(_mv) + ' 兵入 ' + _to.name + '（' + gen.name + ' 统带）');
+      GAME.log.war('🚚 军队调防：' + U.fmt(_mv) + ' 兵入 ' + _to.name + (gen ? '（' + gen.name + ' 统带）' : '（无将）'));
+      /* v91.76（老板）：**运输**送达后沿原路返回（耗时与去程相同）；兵与货已卸、
+         空车返程即结束该行军 —— 由 march.dispatch 标记 roundTrip 后归城释放。 */
       return { ok: true, mode: mode.id, peaceful: true, target: t, moved: _mv, cargo: _cgOut,
         msg: '已入驻 ' + _to.name + '（+' + U.fmt(_mv) + ' 兵'
           + (_cgOut && _cgOut.keys.length ? ' · 辎重实收 ' + U.fmt(_cgOut.landed) + ' 单位' : '') + '）' };
@@ -3978,6 +3991,7 @@ import './state.js';
       army: U.deep(army), elapsed: 0, totalTime: total,
       scheme: scheme,                    /* v86：随军计谋（抵达时读） */
       cargo: cargo || null,              /* v89.103：随军辎重（抵达落账 / 失败退回） */
+      roundTrip: !!(mode && mode.roundTrip),   /* v91.76：运输送达后原路返程 */
     };
     s.marches.push(m);
     var left = Math.max(0, total / GAME.timeScale());
@@ -4010,7 +4024,20 @@ import './state.js';
     }
     if (!done.length) return;
     s.marches = s.marches.filter(function (x) { return done.indexOf(x) < 0; });
-    done.forEach(function (m) { if (m.returning) GAME.march.returnArrive(m); else GAME.march.arrive(m); });
+    done.forEach(function (m) {
+      if (m.returning) { GAME.march.returnArrive(m); return; }
+      GAME.march.arrive(m);
+      /* v91.76（老板）：**运输**送达后沿原路返回（耗时与去程相同）——
+         抵达时兵/货已卸，返程只带回队伍本身；归城由 returnArrive 释放。 */
+      if (m.roundTrip && !m.returning && GAME.cityById(m.cityId)) {
+        m.returning = true;
+        m.returnTotal = Math.max(1, Math.round(m.totalTime || 0));
+        m.returnElapsed = 0;
+        s.marches.push(m);
+        GAME.log.war('↩️ ' + m.name + ' 方向运输已卸货，空车返程（约 '
+          + U.durExact(m.returnTotal / GAME.timeScale()) + ' 后归城）');
+      }
+    });
   };
 
   /* 抵达结算：调用与即时出征同一套核心（opts.arrived 跳过校验与扣除） */

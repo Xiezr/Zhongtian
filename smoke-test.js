@@ -155,6 +155,7 @@
         || /id="am-/.test(tag)                           /* 自动出征弹窗（v89.83：十项，其中出征战术行是字面量） */
         || /id="ab-/.test(tag)                           /* v91.59：自动采购弹窗（补货频率） */
         || /id="adm-/.test(tag)                          /* v90.64：地图**分级行政检索**下拉（全球/省/市/区 · 高亮）*/
+        || /id="etp-/.test(tag)                          /* v91.76：出征「其他目标」弹窗（名城按区筛选）*/
         || /data-pf="/.test(tag)                          /* v90.81：星球菜单生成器**参数化**下拉（恒星色温/山脉成因/生态）*/
         || /^<select id="' \+ id \+ '">$/.test(tag)     /* openAutoMarch 的参数化构造器（其余九项） */
         /* v89.133：带 data-action 的 select（走全局 change 委托 → GAME.action）——
@@ -2643,8 +2644,10 @@
      v89.63 那个独立的「派遣」已并入「占领」（两者只差兵回不回），故回到**三种**方式。 */
   /* v89.87（需求 2）：派兵统一走行军通道 —— 三个"非战斗调派"并入方式表
      （调兵 transfer / 驻守 station / 采集 gather） */
-  check('v89.87：方式齐备（侦查/掠夺/占领 + 调兵/驻守/采集）', DATA.EXPEDITION.modes.length === 6
-    && DATA.EXPEDITION.modes.map(function (m) { return m.id; }).join(',') === 'scout,raid,occupy,transfer,station,gather');
+  /* v91.76（老板）：己方城市间拆成派遣/运输，探索统一走奇观（方式表另有旧 transfer 别名）。 */
+  check('v89.87/v91.76：方式齐备（侦查/掠夺/占领 + 派遣/运输/调兵/驻守/采集）',
+    DATA.EXPEDITION.modes.map(function (m) { return m.id; }).join(',')
+      === 'scout,raid,occupy,dispatch,transport,transfer,station,gather');
   check('v89.83：占领自带就地驻守（station 标记 · 接战 · 据有）；掠夺不驻守（直接撤军）', (function () {
     var m = G.battle.modeOf('occupy'), r = G.battle.modeOf('raid');
     return m.battle === true && m.occupy === true && m.station === true
@@ -10146,11 +10149,13 @@ check('v89.83→v89.137：派驻面板退役 · 派驻入口统一到出征界�
   var m = stripComment(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'main.js'), 'utf8'));
   var d = stripComment(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'domain.js'), 'utf8'));
   var bt = stripComment(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'battle.js'), 'utf8'));
+  /* v91.76：方式名由「驻守·增援」改为「派驻」（老板口径）——判据只看**旧面板**是否复活。 */
   return !/ui\.openWildGarrison = function/.test(u) && !/ui\.wgFill = function/.test(u)
     && !/ui\.updateWgTotal = function/.test(u) && !/data-action="wg-step"/.test(u)
     && !/GAME\.doWildGarrison = function/.test(d) && !/GAME\.doWildGarrisonDo = function/.test(m)
     && /case 'wild-garrison-open':/.test(m) && /ui\.openExpModal\(\{ kind: 'wild'/.test(m)
-    && /if \(isOwnWild137\) return m\.id === 'station';/.test(u)
+    /* v91.76：方式恒列，适用性走 expModeAvailOf（派驻/已有驻将规则在内）。 */
+    && /ui\.expModeAvailOf = function/.test(u)
     && /stGen137/.test(u)
     /* 驻守预检/无将硬闸在 battle.prepare（不是 domain） */
     && /_cap137b/.test(bt) && /_w137b\.garrison\.genId/.test(bt);
@@ -11783,7 +11788,7 @@ console.log('\n===== 46. v61 满配城市城内布局 =====');
       && idx[2] === secs[2] + OFF && idx[3] === secs[3] + OFF
       && idx[4] === secs[4] + OFF                               /* 第 5 块 = 可用道具 */
       && iR > 0 && iEstCall > idx[4] && iEstCall < iR           /* v89.200：预估调用点在左列下方（可用道具之后） */
-      && /if \(!ui\._expOwn && !isOwnWild137\) html \+= ui\.expEstBlockHTML\(\);/.test(exp)
+      && /html \+= ui\.expEstBlockHTML\(\);/.test(exp)   /* v91.76：预估恒渲染（内容按方式） */
       && /\.exp-quad \{ display: grid; grid-template-columns: minmax\(0, 1fr\);/.test(body)
       && /\.exp-quad > \.exp-sec \{ margin-bottom: 0; \}/.test(body)
       /* 只换容器：四块的 id 与 handler 一个都不能丢（v89.198：阵位摘要行退役，判据反转） */
@@ -12900,9 +12905,11 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
   })());
   check('结构：界面会先说清楚（一览表状态列 + 出征方式锁定）', (function () {
     var code = stripComment(uS);
+    /* v91.76：锁定判据收口到 expModeAvailOf（目标侧 + 派出城侧），方式下拉读它。 */
     return /fortRaidedToday/.test(code)
-      && /ui\.expModeLockOf = function/.test(code)
-      && /expModeLockOf\(m\.id\)/.test(code);
+      && /ui\.expModeAvailOf = function/.test(code)
+      && /ui\.expModeAvailOf\(m\.id\)/.test(code)
+      && /ui\.expModeLockOf = function/.test(code);
   })());
   check('实测：锁定判据只认"掠夺 + 野外城市"（侦查/野地/名城都不受影响）', (function () {
     return freshState('v63lock', function (st) {
@@ -20180,9 +20187,10 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         && /case 'cg-max': ui\.cgFillMax/.test(_f103.readFileSync(_p103.join(__dirname, 'js/main.js'), 'utf8'));
     })());
     check('③ 本境调运：己方城市目标**不再跳小面板**，方式锁定「调兵 · 辎重」', (function () {
+      /* v91.76：本境调运拆成 派遣 / 运输；两条都走 doTransferCargo（同一行军通道）。 */
       return /kind: 'owncity', id: target\.id/.test(ui103) && /ui\._expOwn/.test(ui103)
-        && /if \(ui\._expOwn\) return m\.id === 'transfer';/.test(ui103)
-        && /GAME\.doTransferCargo\(_from5\.id, _to5\.id, atk, genSel\.value, _cargo5\)/.test(_f103.readFileSync(_p103.join(__dirname, 'js/main.js'), 'utf8'));
+        && /ui\.expModeAvailOf = function/.test(ui103)
+        && /GAME\.doTransferCargo\(_from5\.id, _to5\.id, atk, genId76, _cargo5, mode\)/.test(_f103.readFileSync(_p103.join(__dirname, 'js/main.js'), 'utf8'));
     })());
     check('③ 老入口整条退场（城市不存在的旧路不再有落脚点）', (function () {
       var m103 = _f103.readFileSync(_p103.join(__dirname, 'js/main.js'), 'utf8');
@@ -20202,9 +20210,9 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       /* ⚠️ 写成"值必须为 none"的正向判据 —— 用 `!` 排除会把"注释/同类规则"误伤
          （本项目老坑：负向断言碰上注释里的同名标识符就假红）。 */
       return /\.modal \.exp-col-l, \.modal \.exp-col-r \{ gap: var\(--sp-2\); \}/.test(h)
-        && /if \(ui\._expOwn\) html \+= ui\.expCargoHTML\(c\);/.test(ui103)
+        && /if \(ui\._expMode === 'transport'\) html \+= ui\.expCargoHTML\(c\);/.test(ui103)
         && /\.exp-col-r\.exp-own \.exp-a-troops \.exp-body \{ max-height: none; \}/.test(h)
-        && /exp-col-r' \+ \(ui\._expOwn \? ' exp-own' : ''\)/.test(ui103);
+        && /ui\._expMode === 'transport' \? ' exp-own'/.test(ui103);
     })());
   })();
 
@@ -22213,9 +22221,11 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       } finally { G.state = keep; }
     })());
     check('② 出征下拉：不可出征者置灰 + 写明原因；缺省主将只从可出征者取', (function () {
+      /* v91.76：主将只列派出城的英雄（本城全部 + 置灰）；缺省只从本城可出征者取。 */
       return /GAME\.marchIssueOf\(g\)/.test(u97)
         && /\(blk \? ' disabled' : ''\)/.test(u97)
-        && /var _okGen = GAME\.expGeneralsOf\(\)\[0\];/.test(u97);
+        && /GAME\.generalsIn\(c\)/.test(u97)
+        && /expFromCity\(\)/.test(u97);
     })());
     check('② 硬拦在 prepare（界面之外也拦得住：自动出征 / 老档 / 脚本）', (function () {
       var keep = G.state;
@@ -24653,7 +24663,9 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         && /ui\.openExpModal\(\{ kind: 'wild', ci: Number\(el\.dataset\.ci\) \}\)/.test(mc);
     })());
     check('§118⑤ 出征界面：己方野地只出「驻守·增援」+ 已有驻将不带将（界面与硬闸同判据）', (function () {
-      return /if \(isOwnWild137\) return m\.id === 'station';/.test(uc)
+      /* v91.76：方式下拉恒列 7 种，适用性由 ui.expModeAvailOf 判定（含派驻/已有驻将）。 */
+      return /ui\.expModeAvailOf = function/.test(uc)
+        && /仅对己方野地/.test(uc)
         && /stGen137/.test(uc) && /本次增援<b>不带将<\/b>/.test(uc)
         && /_cap137b/.test(bc) && /_stNoGen137/.test(bc);
     })());
@@ -27044,7 +27056,9 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       return ok;
     })(), _why156);
 
-    check('§156③ 己方野地（驻守）：无预估块 + 标题「派驻上限」（老板 3：己方无需预估）', (function () {
+    /* v91.76（老板「固定一个完整界面」）：效果块不再隐藏 —— 预估恒在（内容随方式切换），
+       派驻的兵力上限标签仍为「派驻上限」。 */
+    check('§156③/v91.76 己方野地（派驻）：预估块恒在（内容按方式）+ 标题「派驻上限」', (function () {
       var st = G.state, c = G.currentCity();
       if (!st.map.grid) G.map.generate();
       var px = c.x + 3, py = c.y + 3;
@@ -27059,8 +27073,10 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         catch (e) { html = 'ERR:' + (e && e.message); }
         G.ui.openModal = _om2;
         /* v89.157（老板 1）：station 也**不接战** → 接战三块（计略/方案/出征战术）一并隐 */
-        ok = html.indexOf('exp-a-est') < 0 && html.indexOf('派驻上限') >= 0 && html.indexOf('exp-a-cargo') < 0
-          && html.indexOf('exp-a-tactic') < 0 && html.indexOf('exp-a-plan') < 0 && html.indexOf('exp-a-tacmenu') < 0
+        /* v91.76：固定界面 —— 预估/战术/方案/计略恒渲染（非接战方式置灰），辎重只在运输。
+           派驻仍是「派驻上限」标签。 */
+        ok = html.indexOf('exp-a-est') >= 0 && html.indexOf('派驻上限') >= 0 && html.indexOf('exp-a-cargo') < 0
+          && html.indexOf('exp-a-tactic') >= 0 && html.indexOf('exp-a-plan') >= 0 && html.indexOf('exp-a-tacmenu') >= 0
           && html.indexOf('exp-a-modes') >= 0 && html.indexOf('exp-a-items') >= 0;
         if (!ok) _why156 = 'html.len=' + html.length + ' est=' + html.indexOf('exp-a-est')
           + ' tactic=' + html.indexOf('exp-a-tactic');
@@ -31814,7 +31830,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var segFx = codeOf(u197, 'ui.refreshExpItems = function');
       var iTgt = seg.indexOf('exp-a-target'), iRec = seg.indexOf('相称建议'), iGen = seg.indexOf('exp-a-gen');
       return /ui\.expRowHTML\('计略', schemeSel, '<span id="exp-scheme-label">'/.test(seg)
-        && seg.indexOf('套用方案即按其配好兵力与战术') >= 0
+        && seg.indexOf('沿用当前设置 · 套用后按派出城的练兵场上限裁剪') >= 0
         && seg.indexOf('据点：占领=拔除并收为') >= 0
         && seg.indexOf('id="exp-limits"') >= 0
         && iTgt >= 0 && iRec > iTgt && iRec < iGen
@@ -36039,7 +36055,9 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       /* ② 出征召回 = 折返（returning · 独立返回计时 · 距离相关）+ tick 分流 + returnArrive */
       c('§258② 召回=折返（returning + returnTotal/returnElapsed + tick 分流 + returnArrive）',
         /m\.returning = true/.test(b) && /m\.returnTotal = Math\.max\(1, Math\.round\(m\.elapsed/.test(b)
-        && /if \(m\.returning\) GAME\.march\.returnArrive\(m\)/.test(b) && /GAME\.march\.returnArrive = function/.test(b));
+        /* v91.76：tick 分流改为 done.forEach 内 `if (m.returning) { ... returnArrive }` 形态 */
+        && /if \(m\.returning\) \{ GAME\.march\.returnArrive\(m\); return; \}/.test(b)
+        && /GAME\.march\.returnArrive = function/.test(b));
       /* ③ 运行时：派—召——下令后在途、兵力未归；走完才归 */
       var st=G.newGame({name:'rec258',cityName:'灰岗',region:'碎垣',mapSeed:20260926}); if(!st.map.grid)G.map.generate();
       var g=st.generals[0], c0=st.cities[0];
@@ -37366,9 +37384,10 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })());
     check('§281⑤ 形态差异块：战斗三块只给战斗型；调运给辎重；驻守不给', (function () {
       var u = String(G.ui.openExpModal);
-      return /!ui\._expOwn && !isOwnWild137/.test(u)
-        && /expCargoHTML\(c\)/.test(u)
-        && /expEstBlockHTML/.test(u);
+      /* v91.76：辎重只给「运输」（展开条件）；预估恒渲染；接战三块按 cur.battle 置灰。 */
+      return /ui\._expMode === 'transport'\) html \+= ui\.expCargoHTML/.test(u)
+        && /html \+= ui\.expEstBlockHTML\(\)/.test(u)
+        && /var _dimStyle76 = _combat76/.test(u);
     })());
   })();
 
