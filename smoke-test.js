@@ -2539,8 +2539,10 @@
     G.systems.equipItem(gA.id, 'coarse_zhi_head');
     var before = gA.equip.head;
     G.systems.equipItem(gA.id, 'prime_zhi_head');
-    return before === 'coarse_zhi_head' && gA.equip.head === 'prime_zhi_head'
-      && (gS.inventory || []).indexOf('coarse_zhi_head') >= 0;
+    /* v91.64：背包存**实例**（不再是字符串 id）→ 按 eqId 比对（语义不变） */
+    var _ids = (gS.inventory || []).map(function (x) { return G.eqId(x); });
+    return G.eqId(before) === 'coarse_zhi_head' && G.eqId(gA.equip.head) === 'prime_zhi_head'
+      && _ids.indexOf('coarse_zhi_head') >= 0;
   })());
   check('全部卸下：装备回背包', (function () {
     var n0 = Object.keys(gA.equip).length;
@@ -2553,7 +2555,7 @@
   gA.equip = { weapon: 'rare_zhan_weapon' };
   var rDis = G.dismissGeneral(gA.id);
   check('解雇英雄成功', rDis.ok === true && gS.generals.length === genCount0 - 1, rDis.msg);
-  check('解雇后装备归还背包', (gS.inventory || []).indexOf('rare_zhan_weapon') >= 0);
+  check('解雇后装备归还背包', (gS.inventory || []).map(function (x) { return G.eqId(x); }).indexOf('rare_zhan_weapon') >= 0);
   check('解雇后该将不在名录', !gS.generals.some(function (g) { return g.id === gA.id; }));
   check('仅剩一位英雄时拒绝解雇', (function () {
     var keep = gS.generals.slice();
@@ -36474,6 +36476,71 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         var r = GAME.doShopping(sid, 2);
         return r.ok && GAME.items.count(sid) === before + 2;
       } finally { G.state = bk; }
+    })());
+  })();
+
+  /* ============================================================
+   * §268. v91.64（地基第 2 期第三刀）装备背包归属：addEquip / removeEquip
+   * ============================================================ */
+  (function () {
+    console.log('\n===== 268. v91.64 装备背包归属（s.inventory）=====');
+    check('§268① 出口齐：addEquip / removeEquip / hasEquipInBag', (function () {
+      return typeof GAME.addEquip === 'function' && typeof GAME.removeEquip === 'function'
+        && typeof GAME.hasEquipInBag === 'function';
+    })());
+    check('§268② 入包→出包守恒（removeEquip 返回实例；重复移除 → null）', (function () {
+      var bk = GAME.state;
+      try {
+        var st = G.newGame({ name: 'eq268', cityName: '灰岗', region: '碎垣', mapSeed: 8 });
+        G.state = st; st.inventory = [];
+        var inst = GAME.addEquip('coarse_zhan_head', 0);
+        var inBag = GAME.hasEquipInBag(inst) && st.inventory.length === 1;
+        var got = GAME.removeEquip(inst);
+        var outBag = got === inst && st.inventory.length === 0 && !GAME.hasEquipInBag(inst);
+        var again = GAME.removeEquip(inst) === null;
+        return inBag && outBag && again;
+      } finally { G.state = bk; }
+    })());
+    check('§268③ 穿戴/卸下守恒（装 −1 包 / 卸 +1 包 · 强化随件走）', (function () {
+      var bk = GAME.state;
+      try {
+        var st = G.newGame({ name: 'eq268b', cityName: '灰岗', region: '碎垣', mapSeed: 8 });
+        G.state = st; st.inventory = [];
+        var g = st.generals[0];
+        g.equip = {}; g.equipOn = 'sha';
+        var inst = GAME.addEquip('coarse_zhan_head', 2);   /* 带 +2 强化 */
+        var bag0 = st.inventory.length;
+        var r1 = GAME.systems.equipItem ? GAME.systems.equipItem(g.id, inst.u) : null;
+        /* 兼容不同签名：直接用舱内出口 */
+        if (!r1 || r1.ok === false) {
+          var it = DATA.EQUIP['coarse_zhan_head'];
+          var r2 = GAME.systems.tryEquip ? GAME.systems.tryEquip(g, inst) : null;
+          if (r2) r1 = r2;
+        }
+        var worn = g.equip && g.equip.head;
+        var okWear = st.inventory.length === bag0 - 1 && !!worn;
+        var r3 = GAME.systems.unequipItem(g.id, 'head');
+        var okOff = r3.ok && st.inventory.length === bag0 && GAME.eqEnhOf(st.inventory[st.inventory.length - 1]) === 2;
+        return okWear && okOff;
+      } finally { G.state = bk; }
+    })());
+    check('§268④ 全仓零裸改 s.inventory（addEquip/removeEquip 之外的 push/splice）', (function () {
+      /* 允许域：addEquip（本体的 push）/ removeEquip（本体的 splice）。
+         其余文件出现 `s.inventory.push(` / `s.inventory.splice(` 即红。 */
+      var fs = require('fs'), path = require('path');
+      var jsDir = path.join(__dirname, 'js'), bad = [];
+      ['data', 'state', 'systems', 'domain', 'map', 'sphere', 'gltf', 'map3d',
+        'battle', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits', 'story', 'ui', 'main'].forEach(function (f) {
+        var src = fs.readFileSync(path.join(jsDir, f + '.js'), 'utf8')
+          .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/[^\n]*/gm, '');
+        /* domain.js 的 addEquip/removeEquip 本体是合法写入者：把这两个函数体切掉再扫 */
+        if (f === 'domain') {
+          src = src.replace(/GAME\.addEquip = function[\s\S]*?\n  \};/, '')
+                   .replace(/GAME\.removeEquip = function[\s\S]*?\n  \};/, '');
+        }
+        if (/s\.inventory\.(push|splice)\(/.test(src)) bad.push(f);
+      });
+      return bad.length === 0;
     })());
   })();
 

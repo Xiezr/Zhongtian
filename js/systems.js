@@ -291,9 +291,8 @@ import './state.js';
     /* v88：按部件归属选袋 —— 基因强化件入 g.lingEquip，机甲入 g.equip（各自 12 槽） */
     var bag = item.ling ? (g.lingEquip = g.lingEquip || {}) : (g.equip = g.equip || {});
     /* 同槽位旧件回背包（原物原样，强化随件走） */
-    if (bag[item.slot]) s.inventory.push(bag[item.slot]);
-    var idx = s.inventory.indexOf(inst);
-    if (idx >= 0) s.inventory.splice(idx, 1);
+    if (bag[item.slot]) GAME.addEquip(bag[item.slot]);   /* v91.64：旧件回包（原实例） */
+    GAME.removeEquip(inst);                                                        /* v91.64：新件出包 */
     bag[item.slot] = inst;
     var label = GAME.eqLabel(inst);
     GAME.log('装备 ' + label + ' 给 ' + g.name);
@@ -329,7 +328,6 @@ import './state.js';
        v89：非君主恒机甲 */
     var isLing = (g.equipOn === 'ling') && GAME.canCultivate(g);
     var bag = isLing ? (g.lingEquip = g.lingEquip || {}) : (g.equip = g.equip || {});
-    s.inventory = s.inventory || [];
     var changed = [];
     /* v90.11：机甲 19 槽 / 基因 12 槽 —— 按当前套选槽列表（机甲扩了腿与右肢，基因不变） */
     (isLing ? DATA.LING_SLOTS_ID : DATA.EQUIP_SLOTS).forEach(function (slot) {
@@ -343,9 +341,8 @@ import './state.js';
         if (sc > bestScore) { bestScore = sc; bestInst = inst; }
       });
       if (bestInst && bestInst !== curInst) {
-        if (curInst) s.inventory.push(curInst);
-        var idx = s.inventory.indexOf(bestInst);
-        if (idx >= 0) s.inventory.splice(idx, 1);
+        if (curInst) GAME.addEquip(curInst);   /* v91.64：原实例回包 */
+        GAME.removeEquip(bestInst);                                 /* v91.64 */
         bag[slot] = bestInst;
         changed.push(GAME.eqLabel(bestInst));
       }
@@ -366,7 +363,6 @@ import './state.js';
     var isLing = (g.equipOn === 'ling') && GAME.canCultivate(g);
     if (isLing) return { ok: false, msg: '套装仅适用于机甲部件' };
     var bag = (g.equip = g.equip || {});
-    s.inventory = s.inventory || [];
     var changed = 0, missing = 0;
     DATA.EQUIP_SLOTS.forEach(function (slot) {
       /* 该槽**已拥有**的此套件（背包里的实例） */
@@ -379,8 +375,8 @@ import './state.js';
         var cur = bag[slot];
         var curIt = cur ? DATA.EQUIP[GAME.eqId(cur)] : null;
         if (curIt && curIt.set === setId) return;   /* 已是此套件 */
-        if (cur) s.inventory.push(cur);
-        var idx = s.inventory.indexOf(cand); if (idx >= 0) s.inventory.splice(idx, 1);
+        if (cur) GAME.addEquip(cur);   /* v91.64：原实例回包 */
+        GAME.removeEquip(cand);                         /* v91.64 */
         bag[slot] = cand; changed++;
       } else {
         /* 未拥有该槽此套件 → 保留现件（计数缺口） */
@@ -404,7 +400,7 @@ import './state.js';
     var cnt = 0;
     var bag = S.equipBagOf(g);   /* v88：只卸当前生效套 */
     for (var slot in bag) {
-      s.inventory.push(bag[slot]);
+      GAME.addEquip(bag[slot]);   /* v91.64：原实例回包 */
       delete bag[slot];
       cnt++;
     }
@@ -419,7 +415,7 @@ import './state.js';
     var bag = S.equipBagOf(g);   /* v88：按当前生效套 */
     if (!g || !bag[slot]) return { ok: false, msg: '该槽位无装备' };
     var label = GAME.eqLabel(bag[slot]);
-    s.inventory.push(bag[slot]);   /* 原物原样回背包（强化随件走） */
+    GAME.addEquip(bag[slot]);   /* v91.64：原物原样回包（强化随件走） */
     delete bag[slot];
     GAME.log('卸下 ' + label, 'sys', 'staff');
     return { ok: true, msg: '已卸下 ' + label };

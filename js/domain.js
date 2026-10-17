@@ -5690,13 +5690,42 @@ import './state.js';
     s.nextEqU = (s.nextEqU || 0) + 1;
     return { u: s.nextEqU, id: id, enh: Math.max(0, Math.min(GAME.enhMax(), enh || 0)) };
   };
-  /* 入包（**唯一出口**：打造 / 缴获 / 卸下 / 归还 都走它） */
+  /* 入包（**唯一出口**：打造 / 缴获 / 卸下 / 归还 都走它）
+     v91.64（地基第 2 期第三刀）：`s.inventory`（装备实例数组）归属化 ——
+     与 GAME.items（计数背包）对称：**入包只走 addEquip、出包只走 removeEquip**。 */
   GAME.addEquip = function (id, enh) {
     var s = GAME.state;
     s.inventory = s.inventory || [];
+    /* v91.64：允许**回收既有实例**（穿戴换下 / 卸下 / 解雇归还）——
+       此时保留件号与强化，不新建实例（否则"同一件装备"的身份会漂移）。 */
+    if (id && typeof id === 'object') {
+      var back = id;
+      if (!(back.enh >= 0)) back.enh = Math.max(0, Math.floor(enh || 0));
+      if (s.inventory.indexOf(back) < 0) s.inventory.push(back);
+      return back;
+    }
     var inst = GAME.eqMake(id, enh);
     s.inventory.push(inst);
     return inst;
+  };
+  /* 出包（**唯一出口**：穿戴 / 拆解 / 出售 / 卸下 都走它）。
+     `ref` = 实例（也容许装备 id → 取第一件同名）。返回被移除的实例；不在包内 → null。 */
+  GAME.removeEquip = function (ref) {
+    var s = GAME.state;
+    if (!s || !s.inventory || !s.inventory.length) return null;
+    var idx = s.inventory.indexOf(ref);
+    if (idx < 0) {
+      for (var i = 0; i < s.inventory.length; i++) {
+        if (GAME.eqId(s.inventory[i]) === GAME.eqId(ref)) { idx = i; break; }
+      }
+    }
+    if (idx < 0) return null;
+    return s.inventory.splice(idx, 1)[0];
+  };
+  /* 是否在包内（穿戴 / 拆解 / 出售 的前置校验同读） */
+  GAME.hasEquipInBag = function (ref) {
+    var s = GAME.state;
+    return !!(s && s.inventory && s.inventory.indexOf(ref) >= 0);
   };
   /* 全部件（背包 + 穿戴） */
   GAME.eqPieces = function () {
@@ -5816,12 +5845,11 @@ import './state.js';
      一次性（s._lingLord1 标记），在 loadFrom 里与装备单件化迁移同点调用。 */
   GAME.migrateLordLing = function (s) {
     if (!s || s._lingLord1) return s;
-    s.inventory = s.inventory || [];
     (s.generals || []).forEach(function (g) {
       if (!g || GAME.isLordGeneral(g)) return;
       var bag = g.lingEquip;
       if (bag) {
-        for (var sl in bag) { if (bag[sl]) s.inventory.push(bag[sl]); }
+        for (var sl in bag) { if (bag[sl]) GAME.addEquip(bag[sl]); }   /* v91.64：回收原实例 */
         delete g.lingEquip;
       }
       if (g.equipOn === 'ling') g.equipOn = 'sha';
@@ -5894,7 +5922,7 @@ import './state.js';
       got.push((DATA.MATERIAL_BY_ID[k] ? DATA.MATERIAL_BY_ID[k].name : k) + '×' + n);
     }
     for (var k2 in due) GAME.items.add(k2, due[k2]);
-    s.inventory.splice(idx, 1);
+    GAME.removeEquip(inst);   /* v91.64：出包走唯一出口 */
     GAME.statBump('salvaged', 1);
     GAME.log('拆解 ' + label + '，回收 ' + got.join('、'), 'sys', 'admin');
     return { ok: true, msg: '已拆解 ' + label + '，回收 ' + got.join('、'), got: got };
@@ -5919,7 +5947,7 @@ import './state.js';
     var gold = GAME.equipSellPrice(itemId);
     var city = GAME.currentCity();
     var R = GAME.res(city);
-    s.inventory.splice(idx, 1);
+    GAME.removeEquip(inst);   /* v91.64：出包走唯一出口 */
     R.gold = (R.gold || 0) + gold;
     GAME.statBump('trades', 1);
     var label = GAME.eqLabel(inst);
@@ -6295,11 +6323,10 @@ import './state.js';
     if (g.status === 'gather') return { ok: false, msg: g.name + ' 正在采集（撤回采集队后再解雇）' };
     if (g.status === 'garrison') return { ok: false, msg: g.name + ' 正在驻守野地（召回驻军后再解雇）' };
     if (g.status === 'wonderExplore') return { ok: false, msg: g.name + ' 正在奇观探索（召回后再解雇）' };   /* v91.45 */
-    s.inventory = s.inventory || [];
     var back = 0;
     /* v88：两套部件都归还（机甲 + 基因） */
     ['equip', 'lingEquip'].forEach(function (bk) {
-      for (var slot in (g[bk] || {})) { s.inventory.push(g[bk][slot]); back++; }
+      for (var slot in (g[bk] || {})) { GAME.addEquip(g[bk][slot]); back++; }   /* v91.64：回收原实例 */
     });
     s.generals.splice(idx, 1);
     var repCost = g.hero ? 50 : 0;
