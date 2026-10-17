@@ -2,6 +2,9 @@
  * map.js  全国地图（500×500 · 真实坐标 · 7地形 · 野地）
  * v42：地块改 2.5D「顶面 + 土色侧壁」两片；观察框内逐格绘制（不再用离屏全图层）
  * ============================================================ */
+import './core.js';
+import './data.js';
+import './state.js';
 (function () {
   var GAME = window.GAME = window.GAME || {};
   var DATA = GAME.DATA, U = GAME.utils;

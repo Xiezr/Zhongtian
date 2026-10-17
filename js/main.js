@@ -1,6 +1,26 @@
 /* ============================================================
  * main.js  启动入口、事件委托、动作分发、游戏主循环（真实数值版）
  * ============================================================ */
+/* v91.61 地基第 1 期：main.js 是**唯一入口** —— 下列 import 的先后即**执行顺序**
+   （esbuild 按 DFS 发现顺序执行；本列表与旧 index.html 的 18 个 <script> 顺序逐条一致）。
+   改顺序 = 改行为；非必要勿动。 */
+import './core.js';
+import './data.js';
+import './state.js';
+import './systems.js';
+import './domain.js';
+import './map.js';
+import './sphere.js';
+import './gltf.js';
+import './map3d.js';
+import './battle.js';
+import './tactic.js';
+import './icons.js';
+import './gicons.js';
+import './bitmaps.js';
+import './portraits.js';
+import './story.js';
+import './ui.js';
 (function () {
   var GAME = window.GAME = window.GAME || {};
   var ui = GAME.ui;
@@ -3239,7 +3259,7 @@
      （这解释了"改了却说没生效"的观感）。老板若发现版本 ≠ 最新交付，按 Ctrl+F5
      强制刷新即获得新代码。⚠️ 发版须走 **bump_version.py --bump --version vX.Y**（它同步 index.html 的 ?v=/BUILD
      与这里的 GAME.VERSION 三处）—— 只手改 index.html 会让版本号冻住（v91.18 前的病灶）。 */
-  GAME.VERSION = 'v91.18';
+  GAME.VERSION = 'v91.61';
   function boot() {
     fitAppSize();
     try {

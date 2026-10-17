@@ -2,6 +2,9 @@
  * ui.js  界面渲染与模态框（真实数值版）
  * 面板：城内/城外/军队/英雄/装备/科技/宝物/威望/地图/任务/统计/公文/设置
  * ============================================================ */
+import './core.js';
+import './data.js';
+import './state.js';
 (function () {
   var GAME = window.GAME = window.GAME || {};
   var DATA = GAME.DATA, U = GAME.utils;

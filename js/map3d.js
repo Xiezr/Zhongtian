@@ -8,6 +8,10 @@
  * 数据：高度/深度来自 GAME.map.heightAt / depthAt（单一出口）；地形读 GAME.map.tile。
  * 相机：轨道（左键拖动转向 · 滚轮缩放）。回退：GAME.map3d.enabled=false → 二维。
  * ============================================================ */
+import './core.js';
+import './data.js';
+import './state.js';
+import './gltf.js';
 (function () {
   'use strict';
   var GAME = window.GAME = window.GAME || {};

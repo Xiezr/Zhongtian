@@ -28,6 +28,9 @@
  * 本引擎**完全确定**（不含 Math.random）—— 同样的输入必得同样的结果，
  * 这也是"装备/体力让损兵更少"这类对比断言能稳定成立的前提。
  * ============================================================ */
+import './core.js';
+import './data.js';
+import './state.js';
 (function () {
   var GAME = window.GAME = window.GAME || {};
   var DATA = GAME.DATA, U = GAME.utils;

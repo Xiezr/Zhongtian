@@ -28,6 +28,7 @@
  *   ⑮ 界面           THEME / 建筑系列 / 公文
  *   ⑯ v89 新系统     荒野场景 / 套装扩展 / 表重建（ITEM_BY_ID 等）
  * ============================================================ */
+import './core.js';
 (function () {
   window.GAME = window.GAME || {};
   var DATA = {};

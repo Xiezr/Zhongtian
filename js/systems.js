@@ -2,6 +2,9 @@
  * systems.js  四大玩法系统：科技研究 / 装备穿戴 / 宝物使用 / 威望晋升
  * 挂到 window.GAME.systems
  * ============================================================ */
+import './core.js';
+import './data.js';
+import './state.js';
 (function () {
   var GAME = window.GAME = window.GAME || {};
   var DATA = GAME.DATA, U = GAME.utils;

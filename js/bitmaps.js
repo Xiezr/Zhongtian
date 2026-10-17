@@ -7,6 +7,7 @@
  *
  * 用法：BITMAPS.src(group, id) → 相对路径（不存在返回空串，上层走矢量回退）
  * ============================================================ */
+import './core.js';
 var BITMAPS = (function () {
   var DIR = "assets/icons/ui/";
   var F = {};

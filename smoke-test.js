@@ -54,36 +54,15 @@
   /* ui.js 源码（供整页视图菜单图标这类结构断言直接读） */
   var uiSrcProbe = require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8');
 
-  /* ---- 加载游戏模块（模拟 index.html 加载顺序） ---- */
-  require('./js/data.js');
-  require('./js/state.js');
-  /* ⛔ v90.92 退役：任务系统整条删除 —— js/questdata.js（任务目录分包）已删，
-     原 require('./js/questdata.js'); 一并撤除。 */
-  require('./js/systems.js');
-  require('./js/domain.js');
-  require('./js/map.js');
-  /* v90.69：球面世界内核（纯 JS · 拓扑/地形 SSOT）—— index.html 加载序同此（map 之后、map3d 之前） */
-  require('./js/sphere.js');
-  /* v90.61：Three.js 真 3D 主地图（无 THREE 时自降级为 {enabled:false}） */
-  require('./js/gltf.js');
-require('./js/map3d.js');
-  require('./js/battle.js');
-  require('./js/tactic.js');
-  require('./js/icons.js');
-  /* v32：game-icons 素材层。与 index.html 同序 —— icons.js 内的取图函数
-     用 typeof GICONS 延迟绑定，必须在 icons.js 之后加载。 */
-  require('./js/gicons.js');
-  /* v35：AI 位图素材登记表。与 index.html 同序 —— 同样必须在 icons.js 之后。 */
-  require('./js/bitmaps.js');
-  require('./js/portraits.js');
-  require('./js/story.js');
-  /* ⛔ v89.218（老板「故事全部去除」）：84 卷故事库（story/）已删，require 一并撤除。 */
-  /* v89.10：铺量二批（卷 03~05 · 18 篇）随卷加载 */
-  require('./js/ui.js');
-  /* main.js 必须加载：主循环 setInterval、事件分发、动作实现都在这里。
-     曾经漏测此文件，导致主循环内 "$ is not defined" 长期未被发现
-     （表现为：读秒不动、侧栏空白、生产停滞）。 */
-  require('./js/main.js');
+  /* ---- 加载游戏模块（v91.61 地基第 1 期：走构建产物 js/bundle.js）----
+     源码仍是 IIFE + import 依赖图（js/main.js 为入口）；bundle 由
+     `.workbuddy/tools/patch/build_bundle.py` 按该 import 顺序拼接生成。
+     require 单包即等价于旧的 17 个 require —— 顺序已固化进 bundle。 */
+  require('./js/bundle.js');
+  /* 求值顺序不变量（防"import 图退化成乱序"）：data/state 必须已挂上。 */
+  if (!window.GAME || !window.GAME.DATA || !window.GAME.utils) {
+    throw new Error('bundle 求值顺序异常：GAME.DATA / GAME.utils 缺失（检查 js/main.js 的 import 顺序）');
+  }
   /* ⛔ v89.218：逸闻奇遇触发钩子随故事系统退役（不再需要测试期 rng 钉死）。 */
   /* v89.87（老板需求 4）：测试默认关闭战斗观战（战斗走即算/自动路径，
      保持既有用例语义）；观战挂起/重放路径由 §87 专项断言另测。 */
@@ -12189,7 +12168,8 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
   console.log('\n===== 44. v42 局部死函数 / 2.5D =====');
   var dir = path.join(__dirname, 'js');
   var dead = [];
-  fs.readdirSync(dir).filter(function (f) { return /\.js$/.test(f); }).forEach(function (f) {
+  /* v91.61：排除构建产物 bundle.js（它是源文件的拼接副本，重复扫描只会制造重复条目）。 */
+  fs.readdirSync(dir).filter(function (f) { return /\.js$/.test(f) && f !== 'bundle.js'; }).forEach(function (f) {
     var src = fs.readFileSync(path.join(dir, f), 'utf8');
     /* 先剥注释：注释里会提到已删除的函数名（本轮就写了"tri 已删除"），
        不剥会把"只出现在注释里"误判成"有引用"。 */
@@ -12339,8 +12319,8 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
          ③ 与文件顶部的 `<!-- BUILD N -->` 标记一致（唯一来源，发布时一起 +1）。 */
     var html = require('fs').readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
     var tags = html.match(/<script src="[^"]+"><\/script>/g) || [];
-    /* v89.218：84 卷故事库脚本撤除后剩 15 个（js/ 全部 + 无外链）—— 阈值随之下调。 */
-    if (tags.length < 12) return false;
+    /* v91.61（地基第 1 期）：18 个脚本 → vendor + bundle 共 **2 个** → 下限随之下调。 */
+    if (tags.length < 2) return false;
     var vers = {}, missing = 0;
     tags.forEach(function (s) {
       var m = /\?v=(\d+)"/.exec(s);
@@ -12355,6 +12335,35 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
     var m = /<!-- BUILD (\d+) -->/.exec(html);
     var n = (html.match(/<script src="[^"]+"><\/script>/g) || []).length;
     return 'BUILD ' + (m ? m[1] : '?') + ' · ' + n + ' 个脚本';
+  })());
+  /* v91.61（地基第 1 期）：bundle 与源码同步守卫 ——
+     改了 js/*.js 却忘记重建 js/bundle.js 时，测试会拿旧产物跑出"假绿"。
+     判据 = 源码哈希 vs js/bundle.hash（构建脚本同一算法）。 */
+  check('v91.61：js/bundle.js 与 js/*.js 源码同步（防"改了源码忘构建"的假绿）', (function () {
+    var fs = require('fs'), path = require('path'), crypto = require('crypto');
+    var jsDir = path.join(__dirname, 'js');
+    var ORDER = ['core', 'data', 'state', 'systems', 'domain', 'map', 'sphere', 'gltf',
+      'map3d', 'battle', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits', 'story', 'ui', 'main'];
+    var h = crypto.createHash('sha256');
+    try {
+      ORDER.forEach(function (m) {
+        h.update(m, 'utf8'); h.update(Buffer.from([0]));
+        h.update(fs.readFileSync(path.join(jsDir, m + '.js'), 'utf8'), 'utf8');
+      });
+    } catch (e) { return false; }
+    var want = h.digest('hex').slice(0, 16);
+    var got = fs.readFileSync(path.join(jsDir, 'bundle.hash'), 'utf8').trim();
+    var bundleOk = fs.existsSync(path.join(jsDir, 'bundle.js'));
+    return bundleOk && want === got;
+  })(), (function () {
+    try {
+      var fs = require('fs'), path = require('path');
+      return 'hash=' + fs.readFileSync(path.join(__dirname, 'js', 'bundle.hash'), 'utf8').trim();
+    } catch (e) { return 'no bundle.hash'; }
+  })());
+  check('v91.61：bundle.js 无残留 import/export 语句（必须是经典 IIFE 单包）', (function () {
+    var s = require('fs').readFileSync(require('path').join(__dirname, 'js', 'bundle.js'), 'utf8');
+    return !/^\s*(import|export)\s/m.test(s);
   })());
   check('v89.77：侦查公文同报**城内与城外**建筑等级，两者相等且 = 该档满配', (function () {
     /* 老板要的是"城**内外**建筑全是 12/16" —— 原先只报城内，他看不到城外那半。 */
@@ -14580,10 +14589,11 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
 
     /* ---- 资源名出口（曾因 DATA.RESOURCES 是数组而 TypeError）---- */
     check('GAME.resName 全项目只有一处定义（防第二出口回退）', (function () {
-      /* 必须**跨全部模块**统计 —— 定义在 domain.js，只看 state.js 会数成 0 */
+      /* 必须**跨全部模块**统计 —— 定义在 domain.js，只看 state.js 会数成 0。
+         v91.61：排除构建产物 bundle.js（否则同一份定义被数两次）。 */
       var fs2 = require('fs'), px = require('path'), all = '';
       fs2.readdirSync(px.join(__dirname, 'js')).forEach(function (f) {
-        if (/\.js$/.test(f)) all += stripComment(fs2.readFileSync(px.join(__dirname, 'js', f), 'utf8'));
+        if (/\.js$/.test(f) && f !== 'bundle.js') all += stripComment(fs2.readFileSync(px.join(__dirname, 'js', f), 'utf8'));
       });
       return (all.match(/GAME\.resName\s*=\s*function/g) || []).length === 1;
     })());

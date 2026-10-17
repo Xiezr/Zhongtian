@@ -2,6 +2,8 @@
  * state.js  运行时状态 / 存档 / 工具函数 / 时间轮（真实数值版 v3）
  * 挂到 window.GAME
  * ============================================================ */
+import './core.js';
+import './data.js';
 (function () {
   var GAME = window.GAME = window.GAME || {};
   var DATA = GAME.DATA;
@@ -493,7 +495,10 @@
       ? ((Math.round(Number(rulerOpts.mapSeed)) % 100000) || 1)
       : (U.now() % 100000);
     /* v90.70：先建球面内核（随 seed）—— 城/名城的球面六边格索引（ci）与地形判据都要它。
-       幂等（同 seed 不重算）。 */
+       幂等（同 seed 不重算）。
+       ⚠️ v91.61 记录（未在本轮改）：此处 `seed3()` 读 `GAME.state.map.seed`，而 state
+       尚未换成新局 → 全新会话首局会用 seed 1 建球面（种子错配）。属**既有缺陷**，
+       修复需连同"出生点校验依赖球面"的时序一起调整，留待单独一轮处理。 */
     if (GAME.sphere && GAME.sphere.ensure) GAME.sphere.ensure();
     /* v70（老板需求 5）：出生坐标按**所选区**落位（首府近旁的平原空地），
        烬环以灰烬城为锚；落不到才回退旧口径的固定点。出生城写明所属区 ——

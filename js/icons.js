@@ -4,6 +4,7 @@
  * 不再使用「色块 + emoji」的组合
  * 统一风格：左上光源的平涂分层 + 檐口翘起 + 铜饰点缀
  * ============================================================ */
+import './core.js';
 (function () {
   var GAME = window.GAME = window.GAME || {};
   var ICON = GAME.icons = {};

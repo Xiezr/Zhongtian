@@ -10,6 +10,7 @@
  * 逻辑层（map/state/domain/battle/ui）读 GAME.sphere.cells 取地形 —— 不再有平面 500×500 中介。
  * ⚠️ 必须纯 JS：smoke/e2e 在 node 下跑（无 THREE / 无 DOM）。
  * ============================================================ */
+import './core.js';
 (function () {
   'use strict';
   var GAME = window.GAME = window.GAME || {};

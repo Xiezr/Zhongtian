@@ -11,6 +11,7 @@
  * 池文件清单**内嵌在下方 POOL**——头像是同步渲染的，运行时不能 fetch 目录，
  * 往池里加新图后须把文件名补进对应数组（顺序即分配顺序）。
  * ============================================================ */
+import './core.js';
 (function () {
   var GAME = window.GAME = window.GAME || {};
   var P = GAME.portraits = {};

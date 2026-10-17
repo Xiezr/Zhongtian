@@ -7,6 +7,7 @@
  * 支持：单/多 primitive · POSITION/NORMAL/TEXCOORD_0 · 索引 · baseColor/normal 贴图。
  * ⚠️ 仅覆盖我们自己的素材形态；通用 glTF 特性（蒙皮/动画/KHR_draco）不支持。
  * ============================================================ */
+import './core.js';
 (function () {
   'use strict';
   var GAME = window.GAME = window.GAME || {};

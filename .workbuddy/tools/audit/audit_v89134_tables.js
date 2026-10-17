@@ -114,7 +114,9 @@ function scanAll() {
   var ROOT = path.join(__dirname, '..', '..', '..');
   var SCAN = [];
   fs.readdirSync(path.join(ROOT, 'js'))
-    .filter(function (f) { return /\.js$/.test(f); })
+    /* v91.61：排除构建产物 bundle.js —— 它是源文件的拼接副本，重复扫描会把
+       每张数据表都算成"被 bundle 写/读"（实测一次报 475 项假阳性）。 */
+    .filter(function (f) { return /\.js$/.test(f) && f !== 'bundle.js'; })
     .forEach(function (f) { SCAN.push({ id: 'js/' + f, p: path.join(ROOT, 'js', f) }); });
   ['smoke-test.js', 'e2e-test.js', 'audit.js'].forEach(function (f) {
     var p = path.join(ROOT, f);

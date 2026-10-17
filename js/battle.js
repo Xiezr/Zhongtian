@@ -2,6 +2,9 @@
  * battle.js  回合制战斗（真实数值版）
  * 速度先手、远程射程优势、英雄四维加成、科技/宝物加成、伤兵营
  * ============================================================ */
+import './core.js';
+import './data.js';
+import './state.js';
 (function () {
   var GAME = window.GAME = window.GAME || {};
   var DATA = GAME.DATA, U = GAME.utils;

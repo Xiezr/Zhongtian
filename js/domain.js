@@ -2,6 +2,9 @@
  * domain.js  核心业务逻辑（真实数值版）
  * 建造/升级/拆除、城外资源建筑、造兵、任务、英雄、产出计算
  * ============================================================ */
+import './core.js';
+import './data.js';
+import './state.js';
 (function () {
   var GAME = window.GAME = window.GAME || {};
   var DATA = GAME.DATA, U = GAME.utils;

@@ -27,7 +27,7 @@ import os
 import re
 import sys
 
-MIN_TAGS = 12  # index.html 脚本数下限（防「正则有病 → 只改到一两个」的平凡解）
+MIN_TAGS = 2  # index.html 脚本数下限（v91.61 起 = vendor + bundle 两个；防「正则有病 → 只改到一两个」的平凡解）
 
 
 def find_root():

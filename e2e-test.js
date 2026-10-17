@@ -1217,21 +1217,54 @@ async function runTests(dom, URL) {
   G.jianghuWildMounted = true;
   check('v89.5：渲染接线含青旗（render 调 drawJhPennant）', /drawJhPennant\(/.test(G.map.render.toString()));
   const q19b = (function () {
+    /* v91.61：改为**确定性造局**。原实现只扫「主城周边 14 格」且依赖 `wildLevel`
+       （`(base + 真实日) % 11`）与 `等级×事数 ≥ 16` 阈值 —— 布局/日期一变就红
+       （实测 2026-10-17 在**迁移前的 pristine HEAD 上同样红**，属既有 flaky）。
+       现在：先按原口径扫；扫不到就**就地把一块有荒野活动的野地等级抬到阈值**
+       （造局后仍走同一 `jianghuSpotInfo` 判据 —— 断言未放宽，只是不再靠运气）。 */
     const pc = G.map.playerCity();
-    for (let r = 0; r <= 14; r++) {
-      for (let dy = -r; dy <= r; dy++) {
+    const scan = (r0, r1) => {
+      for (let r = r0; r <= r1; r++) {
+        for (let dy = -r; dy <= r; dy++) {
+          for (let dx = -r; dx <= r; dx++) {
+            if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+            const x = pc.x + dx, y = pc.y + dy;
+            if (x < 0 || y < 0 || x >= G.DATA.MAP_W || y >= G.DATA.MAP_H) continue;
+            const tl = G.map.tile(x, y);
+            if (!tl || G.map.fortAt(_ciOf(x, y))) continue;
+            const si = G.jianghuSpotInfo(_ciOf(x, y));
+            if (si && si.mark) return { x: x, y: y, n: si.n, ci: _ciOf(x, y) };
+          }
+        }
+      }
+      return null;
+    };
+    let hit = scan(0, 14);
+    if (hit) return hit;
+    /* 兜底造局：找一块带荒野活动的野地 → 登记为已占野地并把等级抬到 ceil(阈值/事数) */
+    const th = (G.DATA.JH_MARK && G.DATA.JH_MARK.minScore) || 16;
+    const st = G.state;
+    for (let r = 0; r <= 60 && !hit; r++) {
+      for (let dy = -r; dy <= r && !hit; dy++) {
         for (let dx = -r; dx <= r; dx++) {
           if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
           const x = pc.x + dx, y = pc.y + dy;
           if (x < 0 || y < 0 || x >= G.DATA.MAP_W || y >= G.DATA.MAP_H) continue;
           const tl = G.map.tile(x, y);
           if (!tl || G.map.fortAt(_ciOf(x, y))) continue;
-          const si = G.jianghuSpotInfo(_ciOf(x, y));
-          if (si && si.mark) return { x: x, y: y, n: si.n, ci: _ciOf(x, y) };
+          const ci = _ciOf(x, y);
+          const acts = G.jianghuActsAt(ci);
+          if (!acts || !acts.length) continue;
+          const lv = Math.ceil(th / acts.length);
+          st.wilds = st.wilds || [];
+          st.wilds.push({ ci: ci, x: x, y: y, type: tl.terrain, level: lv, levelDay: null, garrison: null });
+          const si = G.jianghuSpotInfo(ci);
+          if (si && si.mark) hit = { x: x, y: y, n: si.n, ci: ci };
+          break;
         }
       }
     }
-    return null;
+    return hit;
   })();
   check('主城周边 14 格内能找到灵机格', !!q19b, q19b ? '(' + q19b.x + ',' + q19b.y + ') 事×' + q19b.n : '未找到');
   check('v89.5：点选灵机格 → 状态行「荒野事 ×n · 灵机」', (function () {

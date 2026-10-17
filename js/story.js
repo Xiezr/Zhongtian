@@ -26,6 +26,9 @@
  * 的引用面过大，重命名零功能收益 —— 迁移说明记于此，勿再按名索骥。
  * 挂到 window.GAME.story
  * ============================================================ */
+import './core.js';
+import './data.js';
+import './state.js';
 (function () {
   var GAME = window.GAME = window.GAME || {};
   var DATA = GAME.DATA, U = GAME.utils;
