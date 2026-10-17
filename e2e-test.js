@@ -4304,9 +4304,11 @@ async function runTests(dom, URL) {
   })();
   await sleep(120);
   const dpHtml64 = document.querySelector('#modal-root').innerHTML;
-  check('派遣入口 → 出征界面（本境调运 · 入口提示在位）',
-    dpHtml64.indexOf('派遣：') >= 0 && dpHtml64.indexOf('id="exp-mode"') >= 0,
-    dpHtml64.indexOf('派遣：') >= 0 ? '提示在位' : '缺提示');
+  /* v91.75：入口提示并入标题下的**一行形态摘要**（不再单独占一行「派遣：…」）。 */
+  check('派遣入口 → 出征界面（本境调运 · 形态摘要在位）',
+    dpHtml64.indexOf('本境调兵') >= 0 && dpHtml64.indexOf('主将随军入城') >= 0
+      && dpHtml64.indexOf('id="exp-mode"') >= 0,
+    dpHtml64.indexOf('本境调兵') >= 0 ? '摘要在位' : '缺摘要');
   check('席位口径仍在（v89.138：precheck 迁到 prepare 的 transfer 分支）', (function () {
     /* ⚠️ 新 IIFE 里看不到上级的 a / b —— 就地重取（v89.138 修） */
     var _a = G.currentCity();

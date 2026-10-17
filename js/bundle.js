@@ -37931,19 +37931,24 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
     });
     /* ④ 野地（中立）—— 本城周边扫一圈（半径 20），按距离取最近 N 处。
        排除：我方野地格 / NPC 城市格 / 据点格（那些格子另有归组）。 */
-    var SCAN = 20;
+    /* v91.75：这里必须走 **ci**（wildAt/npcAt/fortAt/wildLevelNow 都按六边格索引）——
+       改前把平面 (x,y) 当 ci 传，结果"野地"候选全是伪目标、"我方野地/据点"永远筛不干净。 */
+    var SCAN = 20, _pid = GAME.curPid();
+    var _ciAt = function (x, y) { return (GAME.sphere && GAME.sphere.ciOfXY) ? GAME.sphere.ciOfXY(x, y) : -1; };
     for (var dy = -SCAN; dy <= SCAN; dy++) {
       for (var dx = -SCAN; dx <= SCAN; dx++) {
         var x = c.x + dx, y = c.y + dy;
         if (x < 0 || y < 0 || x >= DATA.MAP_W || y >= DATA.MAP_H) continue;
-        if (GAME.map.wildAt(x, y)) continue;                        /* 我方野地 → ② */
-        if (GAME.map.npcAt && GAME.map.npcAt(x, y)) continue;       /* 名城格 → ③ */
-        if (GAME.map.fortAt && GAME.map.fortAt(x, y)) continue;     /* 据点格 → ⑤ */
-        var lv = GAME.map.wildLevelNow ? GAME.map.wildLevelNow(x, y) : 0;
+        var _wci = _ciAt(x, y);
+        if (_wci < 0) continue;
+        if (GAME.map.wildAt(_wci, _pid)) continue;                  /* 我方野地 → ② */
+        if (GAME.map.npcAt && GAME.map.npcAt(_wci)) continue;       /* 名城格 → ③ */
+        if (GAME.map.fortAt && GAME.map.fortAt(_wci)) continue;     /* 据点格 → ⑤ */
+        var lv = GAME.map.wildLevelNow ? GAME.map.wildLevelNow(_wci) : 0;
         if (!(lv > 0)) continue;
         by.wild.targets.push({ d: Math.max(Math.abs(dx), Math.abs(dy)),
           label: '🗺️ 野地 Lv' + lv + '（' + GAME.map.coordText(x, y) + '）',
-          tg: { kind: 'wild', ci: (GAME.sphere&&GAME.sphere.ciOfXY?GAME.sphere.ciOfXY(x, y):-1), pid: GAME.curPid() } });
+          tg: { kind: 'wild', ci: _wci, pid: _pid } });
       }
     }
     /* ⑤ 野外据点（本城 14 格内 —— 与 expTargetCandidates 同一半径） */
@@ -37952,11 +37957,13 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
       for (var fx = -R; fx <= R; fx++) {
         var fxx = c.x + fx, fyy = c.y + fy;
         if (fxx < 0 || fyy < 0 || fxx >= DATA.MAP_W || fyy >= DATA.MAP_H) continue;
-        var f = GAME.map.fortAt ? GAME.map.fortAt(fxx, fyy) : null;
+        var _fci = _ciAt(fxx, fyy);
+        if (_fci < 0) continue;
+        var f = GAME.map.fortAt ? GAME.map.fortAt(_fci) : null;
         if (!f) continue;
         by.fort.targets.push({ d: Math.max(Math.abs(fx), Math.abs(fy)),
           label: '🏕️ ' + GAME.fortLabelOf(f) + '（Lv' + (f.level || 1) + '）',
-          tg: { kind: 'fort', x: fxx, y: fyy, pid: GAME.curPid() } });
+          tg: { kind: 'fort', ci: _fci, pid: _pid } });
       }
     }
     groups.forEach(function (g) {
@@ -48669,8 +48676,9 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
         for (var dx = -R; dx <= R; dx++) {
           var x = city.x + dx, y = city.y + dy;
           if (x < 0 || y < 0 || x >= DATA.MAP_W || y >= DATA.MAP_H) continue;
-          var f = GAME.map.fortAt ? GAME.map.fortAt(x, y) : null;
-          if (f) push({ kind: 'fort', x: x, y: y, pid: GAME.curPid() }, Math.max(Math.abs(dx), Math.abs(dy)) + 100);
+          var _fci2 = (GAME.sphere && GAME.sphere.ciOfXY) ? GAME.sphere.ciOfXY(x, y) : -1;
+          var f = (_fci2 >= 0 && GAME.map.fortAt) ? GAME.map.fortAt(_fci2) : null;
+          if (f) push({ kind: 'fort', ci: _fci2, pid: GAME.curPid() }, Math.max(Math.abs(dx), Math.abs(dy)) + 100);
         }
       }
     }
@@ -48872,6 +48880,47 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
   /* v89.197（老板 3/4）：**出征模块统一行** ——「名称（固定宽 4.5em）+ 控件（flex:1）」。
      备注（说明性文字）一律收进 .tip-src → 悬停走全站唯一浮层 #tip-layer（规格相同）；
      tipHTML 传 null = 该模块无备注（"底下适合的才给备注"）。 */
+  /* v91.75（老板「重复的不要：目标只列一个、主将只列一个，对出征做一次汇总整理」）——
+     出征界面**只留一套主档**（目标 / 派出城 / 主将 / 出征方式 / 方案 / 战术 / 计略 / 道具 / 兵力 / 预估），
+     各形态的差异收进标题下**一行摘要**，不再各写一块。 */
+  ui.expShapeSummary = function (t, city) {
+    if (!t) return '';
+    var own = ui._expOwn;
+    var c = city || ui.expFromCity() || GAME.currentCity();
+    var ownWild = !!(t.kind === 'wild' && GAME.map.wildAt(t.ci, t.pid));
+    var parts = [];
+    if (own) {
+      var to = GAME.cityById(t.id);
+      parts.push('本境调兵 · 终点「' + U.escape(to ? to.name : '?') + '」');
+      parts.push('不接战 · 兵力押运，抵达入城');
+      parts.push('可携带辎重（资源），按距离损耗');
+    } else if (t.kind === 'wonder') {
+      var wd = ui._expWonder && ui._expWonder.wd;
+      parts.push('奇观「' + U.escape(wd ? wd.name : '?') + '」· 星球 ' + t.pid);
+      parts.push('行动 = 出征方式（采集 / 派军搜查 / 深潜攻坚…）');
+      parts.push('派出城只列该星球城市');
+    } else if (t.kind === 'wonderFight') {
+      var fwd = GAME.wonderOf ? GAME.wonderOf(t.pid) : null;
+      parts.push('奇观「' + U.escape(fwd ? fwd.name : '?') + '」第 ' + t.lv + ' 层守卫');
+      parts.push('战斗 · 击败即解锁该层材料收集');
+    } else if (ownWild) {
+      var gw = GAME.map.wildAt(t.ci, t.pid);
+      var st = gw && gw.garrison && gw.garrison.genId;
+      parts.push('己方野地 · 方式固定「驻守 · 增援」');
+      parts.push(st ? '已有驻将 → 本次只并兵、不换将' : '首次驻守需选主将');
+      parts.push('不接战 · 不耗体力精力');
+    } else if (t.kind === 'fort') {
+      parts.push('野外据点 · 占领 = 收为「我方前哨」（不转城市、不占名额）');
+      parts.push('每日每处只能掠夺一次');
+    } else if (t.kind === 'city') {
+      parts.push('名城 · 占领即纳入版图（受领地上限约束）');
+      parts.push('掠夺得库藏（约半数），占领得城');
+    } else if (t.kind === 'wild') {
+      parts.push('无主野地 · 占领得地盘（产量加成 + 采集权），掠夺得财货');
+    }
+    return parts.length ? parts.join('　·　') : '';
+  };
+
   ui.expRowHTML = function (lab, ctrl, tipHTML) {
     return '<div class="exp-row"' + (tipHTML ? ' data-tip-el="1"' : '') + '>' +
       '<span class="exp-lab">' + lab + '</span>' +
@@ -49348,17 +49397,11 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
     var _tTitle = (t.kind === 'fort' && t.fort) ? GAME.fortLabelOf(t.fort)
       : (t.npc ? GAME.cityFullName(t.npc) : t.name);
 
-    /* v89.57：三个下拉框的选项 HTML —— 目标候选 / 全体站位 / 计略（全部接既有机制） */
+    /* v91.75（老板「重复的不要：目标只列一个」）——
+       目标行**只显示本次目标**（名称即上面金头），不再在出征面板里再摆一份目标候选下拉。
+       改目标请关窗回地图/军务选（目标候选由军务「出征」页承担，避免同一屏两处选目标）。 */
     ui._expTargets = ui.expTargetCandidates(c, target);
     var tgtSel = '';
-    if (ui._expTargets.length > 1) {
-      /* v89.197（老板 3）：裸 select（label 双写退役——名称统一由 exp-lab 列给） */
-      tgtSel = '<select id="exp-target">' +
-        ui._expTargets.map(function (tg, i) {
-          return '<option value="' + i + '"' + (i === 0 ? ' selected' : '') + '>' +
-            U.escape(ui.expTargetLabel(tg)) + (i === 0 ? '　·当前' : '') + '</option>';
-        }).join('') + '</select>';
-    }
     /* v89.59（需求 6）：站位并入下方「出征战术」菜单（统一进退 + 预设战术），此处不再单列 */
     /* v89.197（老板 3）：裸 select + 详情链接（label 双写退役） */
     var schemeSel = '<select id="exp-scheme-sel">' +
@@ -49368,16 +49411,15 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
        目标城市 / 主将+可用道具 / 派遣兵力 / 出征方式 / 战术·计略 / 预估 / 确认，
        六大块用标题小卡分区，一眼扫完；主将改下拉框，可用道具实时可见。 */
     var html = '<div class="gold-heading">⚔️ ' + U.escape(_tTitle) + '</div>';
-    /* v89.138：派遣 / 运输 的入口提示（同一界面，两句话说清各自要填的东西）
-       v91.36：支持**自定义 hint 文案**（奇观派遣等用它带入各行动的带队条件）——
-       只有两个历史哨兵值走硬编码，其余原样展示。 */
-    if (ui._expHint) {
+    /* v91.75：**每个形态只留一行摘要**（差异说明；共用主档不再各写一块）。
+       v89.138 的运输/派遣提示并入摘要，不再单独占一行。 */
+    var _sum75 = ui.expShapeSummary(t, c);
+    if (_sum75 || ui._expHint) {
       html += '<div class="exp-info exp-info-l" style="text-align:center;color:var(--gold-light);margin-bottom:6px;">'
-        + (ui._expHint === 'cargo'
-          ? '🚚 运输：先选<b>押运兵力</b>（运力随兵力涨），再到下方辎重区填要运的资源'
-          : (ui._expHint === 'dispatch'
-            ? '🛡️ 派遣：选<b>主将</b>（随军入城）+ 兵种数量 —— 抵达即入城；不带货可直接出征'
-            : U.escape(ui._expHint)))
+        + U.escape(_sum75)
+        + (_sum75 && ui._expHint ? '　·　' : '')
+        + (ui._expHint ? U.escape(ui._expHint === 'cargo' ? '押运兵力即运力'
+          : (ui._expHint === 'dispatch' ? '主将随军入城' : ui._expHint)) : '')
         + '</div>';
     }
     /* v89.55（老板：出征界面偏小、每区块占整行不紧凑）→ 改 2 列分区网格 + 弹窗升 xl：
@@ -49420,15 +49462,23 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
       var _wCities = (_slice && _slice.cities) || [];
       if (_wCities.length) _mycities = _wCities;
     }
-    if (_mycities.length > 1 && !ui._expOwn) {
-      /* 缺省派出城 = 目标星球上的当前城（当前城不在该星则取该星首城）。 */
+    /* v91.75（老板「主将只列一个」同口径）—— 派出城**只显示本次从哪座城发兵**：
+       只有在同一星球上有多座可选城时才给下拉；否则就是一行静态名（不再每个形态各造一套选择）。 */
+    if (!ui._expOwn) {
       var _pickFrom = c;
       if (_mycities.indexOf(c) < 0) _pickFrom = _mycities[0];
-      html += ui.expRowHTML('派出城',
-        '<select id="exp-from" class="city-select">' + _mycities.map(function (cc) {
+      var _fromHtml;
+      if (_mycities.length > 1) {
+        _fromHtml = '<select id="exp-from" class="city-select">' + _mycities.map(function (cc) {
           return '<option value="' + cc.id + '"' + (_pickFrom && cc.id === _pickFrom.id ? ' selected' : '') + '>' +
             U.escape(cc.name) + '（' + GAME.map.coordText(cc.x, cc.y) + '）</option>';
-        }).join('') + '</select>',
+        }).join('') + '</select>';
+      } else if (_pickFrom) {
+        _fromHtml = '<span class="exp-one">' + U.escape(_pickFrom.name) + '（' + GAME.map.coordText(_pickFrom.x, _pickFrom.y) + '）</span>';
+      } else {
+        _fromHtml = '<span class="exp-one">无可用城市</span>';
+      }
+      html += ui.expRowHTML('派出城', _fromHtml,
         (ui._expWonder || ui._expWonderFight) ? '仅列目标景点所在星球的城市' : null);
     }
     html += '</div>';
@@ -55998,7 +56048,7 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
      （这解释了"改了却说没生效"的观感）。老板若发现版本 ≠ 最新交付，按 Ctrl+F5
      强制刷新即获得新代码。⚠️ 发版须走 **bump_version.py --bump --version vX.Y**（它同步 index.html 的 ?v=/BUILD
      与这里的 GAME.VERSION 三处）—— 只手改 index.html 会让版本号冻住（v91.18 前的病灶）。 */
-  GAME.VERSION = 'v91.74';
+  GAME.VERSION = 'v91.75';
   function boot() {
     fitAppSize();
     try {

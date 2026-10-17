@@ -6141,7 +6141,7 @@
     var chk = selectsRegistered(all);
     return chk.bad.length === 0
       && /class="city-select" data-action="switch-city"/.test(all)
-      && /id="exp-gen"/.test(all) && /id="exp-target"/.test(all)
+      && /id="exp-gen"/.test(all)
       && /id="exp-plan"/.test(all) && /id="exp-tactic"/.test(all) && /id="exp-scheme-sel"/.test(all)
       && /id="exp-mode"/.test(all)
       /* 自动出征弹窗：唯一构造器 + 八项逐个在册（id 经拼接生成，故断言 bind 的字段名） */
@@ -8340,7 +8340,7 @@
     var all = strip(uS40 + hS40 + mS40);
     return selectsRegistered(all).bad.length === 0
       && /data-action="switch-city"/.test(all)
-      && /id="exp-gen"/.test(all) && /id="exp-target"/.test(all)
+      && /id="exp-gen"/.test(all)
       && /id="exp-plan"/.test(all) && /id="exp-tactic"/.test(all) && /id="exp-scheme-sel"/.test(all)
       && /id="exp-mode"/.test(all)
       && /ui\.openAutoMarch = function/.test(all);
@@ -11839,7 +11839,8 @@ console.log('\n===== 46. v61 满配城市城内布局 =====');
   check('v89.57：出征面板多选项下拉框（目标/站位/计略）且全部接既有机制（非死数据）', (function () {
     var u = stripComment(require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8'));
     var exp = codeOf(u, 'ui.openExpModal = function');
-    return /id="exp-target"/.test(exp) && /id="exp-scheme-sel"/.test(exp)
+    /* v91.75（老板「目标只列一个」）：出征面板不再摆目标候选下拉 —— 只显示本次目标。 */
+    return !/id="exp-target"/.test(exp) && /id="exp-scheme-sel"/.test(exp)
       /* 接线：目标候选走 resolveTarget；站位走 setTactic/clearTactics；计略选项走 schemePrepare */
       && /ui\.expTargetCandidates = function/.test(u) && /GAME\.battle\.resolveTarget\(tg\)/.test(u)
       && /GAME\.setTactic\(id, \{ s: sid \}\)/.test(u) && /GAME\.clearTactics\(\)/.test(u)
@@ -11888,9 +11889,8 @@ console.log('\n===== 46. v61 满配城市城内布局 =====');
           && html.indexOf('id="exp-scheme-sel"') >= 0
           && html.indexOf('id="exp-gen"') >= 0 && html.indexOf('id="exp-mode"') >= 0
           && html.indexOf('exp-grid') >= 0
-          /* 目标候选生成器：至少含当前目标；多候选时必须渲染目标下拉框 */
-          && nT >= 1
-          && (nT < 2 || html.indexOf('id="exp-target"') >= 0);
+          /* v91.75：目标只列一个（不再有目标候选下拉）；候选生成器仍可用（军务页在用） */
+          && nT >= 1 && html.indexOf('id="exp-target"') < 0;
         if (!ok) why = 'html missing pieces (' + html.length + ' chars, ' + _expDiag + ')';
       }
     } catch (e) { why = e && e.message; }
@@ -37332,6 +37332,43 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         && !!st.fortsRazed['p2|c8'] && !st.mapSlices && st.planetWorldMig74 === 1;
       var again = G.migratePlanetWorld74(st);
       return ok && again === false && st.cities.length === 2;
+    })());
+  })();
+
+  /* ============================================================
+   * §281. v91.75 出征入口与形态汇总（老板：目标只列一个、主将只列一个）
+   * ============================================================ */
+  (function () {
+    console.log('\n===== 281. v91.75 出征汇总 =====');
+    check('§281① 所有出征入口统一走 openExpModal（无第二套编队界面）', (function () {
+      var fs = require('fs'), path = require('path');
+      var m = fs.readFileSync(path.join(__dirname, 'js', 'main.js'), 'utf8');
+      var calls = (m.match(/ui\.openExpModal\(/g) || []).length;
+      var kinds = ['own', 'wild', 'fort', 'city', 'wonder', 'wonderFight'].filter(function (k) {
+        return new RegExp("kind: '" + k + "'").test(m);
+      });
+      return calls >= 8 && kinds.length === 6 && !/openExpedition|openArmyModal/.test(m);
+    })());
+    check('§281② 目标只列一个：出征面板不再有目标候选下拉', (function () {
+      var u = String(G.ui.openExpModal);
+      return !/id="exp-target"/.test(u) && /ui\.expTargetCandidates\(c, target\)/.test(u)
+        && /expRowHTML\('目标'/.test(u);
+    })());
+    check('§281③ 每个形态一行摘要（差异说明不再各写一块）', (function () {
+      var f = String(G.ui.expShapeSummary);
+      return ['本境调兵', '奇观', '己方野地', '野外据点', '名城', '无主野地'].every(function (k) {
+        return f.indexOf(k) >= 0;
+      });
+    })());
+    check('§281④ 派出城恒为一行（单城静态 / 多城下拉）', (function () {
+      var u = String(G.ui.openExpModal);
+      return /expRowHTML\('派出城'/.test(u) && /exp-one/.test(u);
+    })());
+    check('§281⑤ 形态差异块：战斗三块只给战斗型；调运给辎重；驻守不给', (function () {
+      var u = String(G.ui.openExpModal);
+      return /!ui\._expOwn && !isOwnWild137/.test(u)
+        && /expCargoHTML\(c\)/.test(u)
+        && /expEstBlockHTML/.test(u);
     })());
   })();
 
