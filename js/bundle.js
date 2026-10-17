@@ -8334,13 +8334,13 @@ window.GAME = window.GAME || {};
     var i;
     for (i = s.queues.build.length - 1; i >= 0; i--) {
       if (s.queues.build[i].elapsed >= s.queues.build[i].totalTime) {
-        var qb = s.queues.build.splice(i, 1)[0];
+        var qb = GAME.city.queueRemove('build', i);   /* v91.68 */
         GAME.applyBuildDone(qb);
       }
     }
     for (i = s.queues.tech.length - 1; i >= 0; i--) {
       if (s.queues.tech[i].elapsed >= s.queues.tech[i].totalTime) {
-        var qc = s.queues.tech.splice(i, 1)[0];
+        var qc = GAME.city.queueRemove('tech', i);   /* v91.68 */
         GAME.applyTechDone(qc);
       }
     }
@@ -9187,7 +9187,7 @@ window.GAME = window.GAME || {};
       var q = s.queues.build[i];
       q.elapsed += dtReal * ts;
       if (q.elapsed >= q.totalTime) {
-        s.queues.build.splice(i, 1);
+        GAME.city.queueRemove('build', i);   /* v91.68 */
         GAME.applyBuildDone(q);
         /* v89.174：完成**脏标记** —— 主循环重绘不能只比队列条数：
            完成 1 条 + 自动升级同 tick 补 1 条时 length 不变（"读秒完了还是建造中"的另一成因）。 */
@@ -9201,7 +9201,7 @@ window.GAME = window.GAME || {};
       var tq = s.queues.tech[k2];
       tq.elapsed += dtReal * ts;
       if (tq.elapsed >= tq.totalTime) {
-        s.queues.tech.splice(k2, 1);
+        GAME.city.queueRemove('tech', k2);   /* v91.68 */
         GAME.applyTechDone(tq);
       }
     }
@@ -11003,7 +11003,7 @@ window.GAME = window.GAME || {};
       /* v89.164：曲线自带边界，二次截断（旧 min 1.5）退役 */
       if (_mb.research) time = Math.round(time / (1 + _mb.research)); // 城主谋略：研究加速
     }
-    s.queues.tech.push({ techId: techId, cityId: city ? city.id : null,
+    GAME.city.queueAdd('tech', { techId: techId, cityId: city ? city.id : null,
       elapsed: 0, totalTime: Math.max(5, time) });
     return { ok: true, msg: '开始研究 ' + t.name };
   };
@@ -12264,6 +12264,56 @@ window.GAME = window.GAME || {};
   };
 
   /* ============================================================
+   * 队列（v91.68 · 第六刀②）：`s.queues.{build,train,tech}` 的唯一增删入口
+   * ------------------------------------------------------------
+   * 背景：队列条目散在 5 个文件里 `push/splice/filter`（18 处），
+   *   且**条目结构随类型不同**（建造/升级/城外/募兵/科技），
+   *   最易出的事故是"删错项"或"清了别城的队列"。
+   *
+   * · `queueOf(kind)`      取队列数组（惰性建，唯一读法）
+   * · `queueAdd(kind,item)` 入队（唯一入口）
+   * · `queueRemove(kind,ref)` 删一条（按对象引用 / qid / 索引；返回被删项）
+   * · `queueClearCity(kind,cityId)` 清某城的队列（换城/弃城用）
+   * ⚠️ 本刀只收"增删"；条目的**字段与推进逻辑**仍留在各业务文件里。
+   * ============================================================ */
+  C.queueOf = function (kind) {
+    var s = GAME.state;
+    if (!s) return [];
+    s.queues = s.queues || {};
+    s.queues[kind] = s.queues[kind] || [];
+    return s.queues[kind];
+  };
+  C.queueAdd = function (kind, item) {
+    if (!kind || !item) return null;
+    C.queueOf(kind).push(item);
+    return item;
+  };
+  /* 删除：ref 可为对象引用 / qid / 数字下标。找不到返回 null（不误删）。 */
+  C.queueRemove = function (kind, ref) {
+    var q = C.queueOf(kind), idx = -1, i;
+    if (typeof ref === 'number') {
+      idx = (ref >= 0 && ref < q.length) ? ref : -1;
+    } else if (ref && typeof ref === 'object') {
+      idx = q.indexOf(ref);
+      if (idx < 0 && ref.qid != null) {
+        for (i = 0; i < q.length; i++) if (q[i] && q[i].qid === ref.qid) { idx = i; break; }
+      }
+    } else if (typeof ref === 'string') {
+      for (i = 0; i < q.length; i++) if (q[i] && q[i].qid === ref) { idx = i; break; }
+    }
+    if (idx < 0) return null;
+    return q.splice(idx, 1)[0];
+  };
+  /* 清某城队列（换城/弃城）：返回清掉的条数 */
+  C.queueClearCity = function (kind, cityId) {
+    var q = C.queueOf(kind), n = 0;
+    for (var i = q.length - 1; i >= 0; i--) {
+      if (q[i] && q[i].cityId === cityId) { q.splice(i, 1); n++; }
+    }
+    return n;
+  };
+
+  /* ============================================================
    * 不变量（供 smoke 守卫调用；返回 [{city, msg}]，空数组 = 全部通过）
    * 这些是"城市一旦写坏就会静默扩散"的量，界面上未必立刻可见。
    * ============================================================ */
@@ -13174,7 +13224,7 @@ window.GAME = window.GAME || {};
       var qg = qc ? GAME.extGridOf(qc) : [];
       if (qg[q.extIdx]) qg[q.extIdx].pending = null;
     }
-    s.queues.build.splice(qi, 1);
+    GAME.city.queueRemove('build', qi);   /* v91.68 */
     GAME.log('取消建造，返还部分资源（' + Math.round(info.remainRatio * 80) + '%）');
     return { ok: true, msg: '已取消建造，返还 ' + U.fmt(total) + ' 资源' };
   };
@@ -13362,7 +13412,7 @@ window.GAME = window.GAME || {};
     if (!GAME.canAffordIn(city, cost)) return { ok: false, msg: GAME.costLackMsg(city, cost) || '本城资源不足（跨城需走「本境调运」）' };
     GAME.payCostIn(city, cost);
     e.pending = eid;
-    s.queues.build.push({ cityId: city.id, extIdx: extIdx, buildId: eid, type: 'ext_build', paidCost: GAME.resOnlyOf(cost), elapsed: 0, totalTime: Math.max(cost.time * GAME.cityBuildMult(city), GAME.buildMinTime()) });
+    GAME.city.queueAdd('build', { cityId: city.id, extIdx: extIdx, buildId: eid, type: 'ext_build', paidCost: GAME.resOnlyOf(cost), elapsed: 0, totalTime: Math.max(cost.time * GAME.cityBuildMult(city), GAME.buildMinTime()) });   /* v91.68 */
     return { ok: true, msg: '开始建造 ' + eb.name };
   };
   GAME.upgradeExt = function (extIdx, cityId) {
@@ -13386,7 +13436,7 @@ window.GAME = window.GAME || {};
     if (!GAME.canAffordIn(city, cost)) return { ok: false, msg: GAME.costLackMsg(city, cost) || '本城资源不足（跨城需走「本境调运」）' };
     GAME.payCostIn(city, cost);
     e.pending = e.type;
-    s.queues.build.push({ cityId: city.id, extIdx: extIdx, buildId: e.type, type: 'ext_upgrade', targetLevel: e.lv + 1, paidCost: GAME.resOnlyOf(cost), elapsed: 0, totalTime: Math.max(cost.time * GAME.cityBuildMult(city), GAME.buildMinTime()) });
+    GAME.city.queueAdd('build', { cityId: city.id, extIdx: extIdx, buildId: e.type, type: 'ext_upgrade', targetLevel: e.lv + 1, paidCost: GAME.resOnlyOf(cost), elapsed: 0, totalTime: Math.max(cost.time * GAME.cityBuildMult(city), GAME.buildMinTime()) });   /* v91.68 */
     return { ok: true, msg: '开始升级 ' + eb.name };
   };
 
@@ -13428,7 +13478,7 @@ window.GAME = window.GAME || {};
     var lc = b.levelCost(0);
     if (lc && lc.time) totalTime = lc.time;
     totalTime = Math.max(totalTime * GAME.cityBuildMult(GAME.cityById(cityId)), GAME.buildMinTime());
-    s.queues.build.push({ cityId: cityId, gridIndex: gridIndex, buildId: buildId, type: 'build', paidCost: GAME.resOnlyOf(cost), elapsed: 0, totalTime: totalTime });
+    GAME.city.queueAdd('build', { cityId: cityId, gridIndex: gridIndex, buildId: buildId, type: 'build', paidCost: GAME.resOnlyOf(cost), elapsed: 0, totalTime: totalTime });   /* v91.68 */
     return { ok: true, msg: '开始建造 ' + b.name };
   };
 
@@ -13505,7 +13555,7 @@ window.GAME = window.GAME || {};
     cell.pending = { buildId: cell.build.id, targetLevel: cell.build.lvl + 1 };
     var totalTime = Math.max(5, cost.time || cell.build.lvl * 60);
     totalTime = Math.max(totalTime * GAME.cityBuildMult(GAME.cityById(cityId)), GAME.buildMinTime());
-    s.queues.build.push({ cityId: cityId, gridIndex: gridIndex, buildId: cell.build.id, type: 'upgrade', targetLevel: cell.build.lvl + 1, paidCost: GAME.resOnlyOf(cost), elapsed: 0, totalTime: totalTime });
+    GAME.city.queueAdd('build', { cityId: cityId, gridIndex: gridIndex, buildId: cell.build.id, type: 'upgrade', targetLevel: cell.build.lvl + 1, paidCost: GAME.resOnlyOf(cost), elapsed: 0, totalTime: totalTime });   /* v91.68 */
     return { ok: true, msg: '开始升级 ' + b.name + ' → Lv' + (cell.build.lvl + 1) };
   };
 
@@ -13562,9 +13612,13 @@ window.GAME = window.GAME || {};
     cell.build = null;
     cell.pending = null;
     /* 清掉该格的建造/升级队列项，避免队列完成后写入已拆毁的格子 */
-    s.queues.build = (s.queues.build || []).filter(function (q) {
-      return !(q.cityId === cityId && GAME.slotEq(q.gridIndex, gridIndex));
-    });
+    /* v91.68：拆毁后清掉指向该格的队列项（避免完成后写入已拆格子） */
+    (function () {
+      var q = GAME.city.queueOf('build');
+      for (var i = q.length - 1; i >= 0; i--) {
+        if (q[i] && q[i].cityId === cityId && GAME.slotEq(q[i].gridIndex, gridIndex)) q.splice(i, 1);
+      }
+    })();
     GAME.statBump('demolished', 1);
     GAME.log('拆毁 ' + b.name + ' Lv' + lv + '，返还 ' + GAME.costString(back));
     return { ok: true, msg: '已拆毁 ' + b.name + ' Lv' + lv + '，返还 ' + GAME.costString(back), back: back };
@@ -13585,9 +13639,13 @@ window.GAME = window.GAME || {};
     GAME.refundCert(inv, DATA.DEMOLISH_RATE, city);
     cell.build = null;
     cell.pending = null;
-    s.queues.build = (s.queues.build || []).filter(function (q) {
-      return !(q.cityId === cityId && GAME.slotEq(q.gridIndex, gridIndex));
-    });
+    /* v91.68：原地清掉指向该格的队列项（不换数组引用，避免持有旧引用的调用方错位） */
+    (function () {
+      var q = GAME.city.queueOf('build');
+      for (var i = q.length - 1; i >= 0; i--) {
+        if (q[i] && q[i].cityId === cityId && GAME.slotEq(q[i].gridIndex, gridIndex)) q.splice(i, 1);
+      }
+    })();
     GAME.statBump('demolished', 1);
     GAME.log('拆毁 ' + b.name + ' Lv' + lv + '（整座），返还 ' + GAME.costString(back));
     return { ok: true, msg: '已拆毁 ' + b.name + ' Lv' + lv + '（整座），返还 ' + GAME.costString(back), back: back };
@@ -13695,11 +13753,15 @@ window.GAME = window.GAME || {};
     GAME.refundCert(out, DATA.DEMOLISH_RATE, city);   /* v89.161：还给**这座城** */
     var lv = e.lv;
     e.type = null; e.lv = 1; e.pending = null;
-    s.queues.build = (s.queues.build || []).filter(function (q) {
-      if (q.extIdx !== extIdx) return true;
-      if (!city) return false;
-      return q.cityId && q.cityId !== city.id;   // 只清本城该地块的队列项
-    });
+    /* v91.68：原地清（只清本城该地块的队列项） */
+    (function () {
+      var q2 = GAME.city.queueOf('build');
+      for (var i = q2.length - 1; i >= 0; i--) {
+        var it = q2[i];
+        if (!it || it.extIdx !== extIdx) continue;
+        if (!city || !(it.cityId && it.cityId !== city.id)) q2.splice(i, 1);
+      }
+    })();
     GAME.statBump('demolished', 1);
     GAME.log('拆毁城外 ' + eb.name + ' Lv' + lv + '，返还 ' + GAME.costString(back));
     return { ok: true, msg: '已拆毁 ' + eb.name + ' Lv' + lv + '，返还 ' + GAME.costString(back), back: back };
@@ -13915,8 +13977,7 @@ window.GAME = window.GAME || {};
         if (need > left) { head.elapsed += left; left = 0; break; }
         head.elapsed = head.totalTime;
         left -= need;
-        var at = s.queues.train.indexOf(head);
-        if (at >= 0) s.queues.train.splice(at, 1);
+        GAME.city.queueRemove('train', head);   /* v91.68 */
         list.shift();
         running = null;                       // 已完成出队，下一条尚未开始
         GAME.applyTrainDone(head);
@@ -14019,7 +14080,7 @@ window.GAME = window.GAME || {};
       totalTime = Math.round(totalTime * (1 - s.buffs.trainRed.eff));
     }
     /* v91.13（老板 14）：记录**本批实付**（取消时按 80% 返还）—— 改前队列不留成本，无从退。 */
-    s.queues.train.push({ kind: kind, cityId: city.id, bIdx: bIdx, troopId: troopId, count: count,
+    GAME.city.queueAdd('train', { kind: kind, cityId: city.id, bIdx: bIdx, troopId: troopId, count: count,
       qid: 'tq' + (GAME._tqSeq = (GAME._tqSeq || 0) + 1),
       paidCost: U.deep(cost), paidAt: U.now(),
       elapsed: 0, totalTime: Math.max(2, totalTime), waiting: false });
@@ -14104,7 +14165,7 @@ window.GAME = window.GAME || {};
       if (back > 0) { GAME.city.add(city, k, back); give[k] = back; }   /* v91.67 */
     });
     /* 移除该条（按 qid；老档无 qid 则按对象引用） */
-    s.queues.train = (s.queues.train || []).filter(function (x) { return x !== q && (q.qid == null || x.qid !== q.qid); });
+    GAME.city.queueRemove('train', q);   /* v91.68：按对象引用 / qid 删 */
     var gn = t.name || q.troopId;
     GAME.log('♻️ 取消募兵：' + gn + ' ×' + (q.count || 0) + '（返还 80% 军资）', 'sys', 'admin');
     return { ok: true, msg: '已取消 ' + gn + ' ×' + (q.count || 0) + '（返还 80% 军资）', refund: give };
@@ -15780,11 +15841,11 @@ window.GAME = window.GAME || {};
       } },
     { key: 'queues.build', path: 'cityId', label: '建造队列',
       clean: function (s, city) {
-        s.queues.build = (s.queues.build || []).filter(function (q) { return q.cityId !== city.id; });
+        GAME.city.queueClearCity('build', city.id);   /* v91.68 */
       } },
     { key: 'queues.train', path: 'cityId', label: '募兵队列',
       clean: function (s, city) {
-        s.queues.train = (s.queues.train || []).filter(function (q) { return q.cityId !== city.id; });
+        GAME.city.queueClearCity('train', city.id);   /* v91.68 */
       } },
     /* 在途部队与在外采集**不许清**：清了兵就凭空消失，所以标 hard（有它就不让放弃）。
        v89.204：`clean` = **失城路径**（GAME.cityFallen）专用 —— 改属收容城（行程与兵都不丢）；

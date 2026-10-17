@@ -2770,13 +2770,13 @@ import './data.js';
     var i;
     for (i = s.queues.build.length - 1; i >= 0; i--) {
       if (s.queues.build[i].elapsed >= s.queues.build[i].totalTime) {
-        var qb = s.queues.build.splice(i, 1)[0];
+        var qb = GAME.city.queueRemove('build', i);   /* v91.68 */
         GAME.applyBuildDone(qb);
       }
     }
     for (i = s.queues.tech.length - 1; i >= 0; i--) {
       if (s.queues.tech[i].elapsed >= s.queues.tech[i].totalTime) {
-        var qc = s.queues.tech.splice(i, 1)[0];
+        var qc = GAME.city.queueRemove('tech', i);   /* v91.68 */
         GAME.applyTechDone(qc);
       }
     }
@@ -3623,7 +3623,7 @@ import './data.js';
       var q = s.queues.build[i];
       q.elapsed += dtReal * ts;
       if (q.elapsed >= q.totalTime) {
-        s.queues.build.splice(i, 1);
+        GAME.city.queueRemove('build', i);   /* v91.68 */
         GAME.applyBuildDone(q);
         /* v89.174：完成**脏标记** —— 主循环重绘不能只比队列条数：
            完成 1 条 + 自动升级同 tick 补 1 条时 length 不变（"读秒完了还是建造中"的另一成因）。 */
@@ -3637,7 +3637,7 @@ import './data.js';
       var tq = s.queues.tech[k2];
       tq.elapsed += dtReal * ts;
       if (tq.elapsed >= tq.totalTime) {
-        s.queues.tech.splice(k2, 1);
+        GAME.city.queueRemove('tech', k2);   /* v91.68 */
         GAME.applyTechDone(tq);
       }
     }

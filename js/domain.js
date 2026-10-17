@@ -858,7 +858,7 @@ import './state.js';
       var qg = qc ? GAME.extGridOf(qc) : [];
       if (qg[q.extIdx]) qg[q.extIdx].pending = null;
     }
-    s.queues.build.splice(qi, 1);
+    GAME.city.queueRemove('build', qi);   /* v91.68 */
     GAME.log('取消建造，返还部分资源（' + Math.round(info.remainRatio * 80) + '%）');
     return { ok: true, msg: '已取消建造，返还 ' + U.fmt(total) + ' 资源' };
   };
@@ -1046,7 +1046,7 @@ import './state.js';
     if (!GAME.canAffordIn(city, cost)) return { ok: false, msg: GAME.costLackMsg(city, cost) || '本城资源不足（跨城需走「本境调运」）' };
     GAME.payCostIn(city, cost);
     e.pending = eid;
-    s.queues.build.push({ cityId: city.id, extIdx: extIdx, buildId: eid, type: 'ext_build', paidCost: GAME.resOnlyOf(cost), elapsed: 0, totalTime: Math.max(cost.time * GAME.cityBuildMult(city), GAME.buildMinTime()) });
+    GAME.city.queueAdd('build', { cityId: city.id, extIdx: extIdx, buildId: eid, type: 'ext_build', paidCost: GAME.resOnlyOf(cost), elapsed: 0, totalTime: Math.max(cost.time * GAME.cityBuildMult(city), GAME.buildMinTime()) });   /* v91.68 */
     return { ok: true, msg: '开始建造 ' + eb.name };
   };
   GAME.upgradeExt = function (extIdx, cityId) {
@@ -1070,7 +1070,7 @@ import './state.js';
     if (!GAME.canAffordIn(city, cost)) return { ok: false, msg: GAME.costLackMsg(city, cost) || '本城资源不足（跨城需走「本境调运」）' };
     GAME.payCostIn(city, cost);
     e.pending = e.type;
-    s.queues.build.push({ cityId: city.id, extIdx: extIdx, buildId: e.type, type: 'ext_upgrade', targetLevel: e.lv + 1, paidCost: GAME.resOnlyOf(cost), elapsed: 0, totalTime: Math.max(cost.time * GAME.cityBuildMult(city), GAME.buildMinTime()) });
+    GAME.city.queueAdd('build', { cityId: city.id, extIdx: extIdx, buildId: e.type, type: 'ext_upgrade', targetLevel: e.lv + 1, paidCost: GAME.resOnlyOf(cost), elapsed: 0, totalTime: Math.max(cost.time * GAME.cityBuildMult(city), GAME.buildMinTime()) });   /* v91.68 */
     return { ok: true, msg: '开始升级 ' + eb.name };
   };
 
@@ -1112,7 +1112,7 @@ import './state.js';
     var lc = b.levelCost(0);
     if (lc && lc.time) totalTime = lc.time;
     totalTime = Math.max(totalTime * GAME.cityBuildMult(GAME.cityById(cityId)), GAME.buildMinTime());
-    s.queues.build.push({ cityId: cityId, gridIndex: gridIndex, buildId: buildId, type: 'build', paidCost: GAME.resOnlyOf(cost), elapsed: 0, totalTime: totalTime });
+    GAME.city.queueAdd('build', { cityId: cityId, gridIndex: gridIndex, buildId: buildId, type: 'build', paidCost: GAME.resOnlyOf(cost), elapsed: 0, totalTime: totalTime });   /* v91.68 */
     return { ok: true, msg: '开始建造 ' + b.name };
   };
 
@@ -1189,7 +1189,7 @@ import './state.js';
     cell.pending = { buildId: cell.build.id, targetLevel: cell.build.lvl + 1 };
     var totalTime = Math.max(5, cost.time || cell.build.lvl * 60);
     totalTime = Math.max(totalTime * GAME.cityBuildMult(GAME.cityById(cityId)), GAME.buildMinTime());
-    s.queues.build.push({ cityId: cityId, gridIndex: gridIndex, buildId: cell.build.id, type: 'upgrade', targetLevel: cell.build.lvl + 1, paidCost: GAME.resOnlyOf(cost), elapsed: 0, totalTime: totalTime });
+    GAME.city.queueAdd('build', { cityId: cityId, gridIndex: gridIndex, buildId: cell.build.id, type: 'upgrade', targetLevel: cell.build.lvl + 1, paidCost: GAME.resOnlyOf(cost), elapsed: 0, totalTime: totalTime });   /* v91.68 */
     return { ok: true, msg: '开始升级 ' + b.name + ' → Lv' + (cell.build.lvl + 1) };
   };
 
@@ -1246,9 +1246,13 @@ import './state.js';
     cell.build = null;
     cell.pending = null;
     /* 清掉该格的建造/升级队列项，避免队列完成后写入已拆毁的格子 */
-    s.queues.build = (s.queues.build || []).filter(function (q) {
-      return !(q.cityId === cityId && GAME.slotEq(q.gridIndex, gridIndex));
-    });
+    /* v91.68：拆毁后清掉指向该格的队列项（避免完成后写入已拆格子） */
+    (function () {
+      var q = GAME.city.queueOf('build');
+      for (var i = q.length - 1; i >= 0; i--) {
+        if (q[i] && q[i].cityId === cityId && GAME.slotEq(q[i].gridIndex, gridIndex)) q.splice(i, 1);
+      }
+    })();
     GAME.statBump('demolished', 1);
     GAME.log('拆毁 ' + b.name + ' Lv' + lv + '，返还 ' + GAME.costString(back));
     return { ok: true, msg: '已拆毁 ' + b.name + ' Lv' + lv + '，返还 ' + GAME.costString(back), back: back };
@@ -1269,9 +1273,13 @@ import './state.js';
     GAME.refundCert(inv, DATA.DEMOLISH_RATE, city);
     cell.build = null;
     cell.pending = null;
-    s.queues.build = (s.queues.build || []).filter(function (q) {
-      return !(q.cityId === cityId && GAME.slotEq(q.gridIndex, gridIndex));
-    });
+    /* v91.68：原地清掉指向该格的队列项（不换数组引用，避免持有旧引用的调用方错位） */
+    (function () {
+      var q = GAME.city.queueOf('build');
+      for (var i = q.length - 1; i >= 0; i--) {
+        if (q[i] && q[i].cityId === cityId && GAME.slotEq(q[i].gridIndex, gridIndex)) q.splice(i, 1);
+      }
+    })();
     GAME.statBump('demolished', 1);
     GAME.log('拆毁 ' + b.name + ' Lv' + lv + '（整座），返还 ' + GAME.costString(back));
     return { ok: true, msg: '已拆毁 ' + b.name + ' Lv' + lv + '（整座），返还 ' + GAME.costString(back), back: back };
@@ -1379,11 +1387,15 @@ import './state.js';
     GAME.refundCert(out, DATA.DEMOLISH_RATE, city);   /* v89.161：还给**这座城** */
     var lv = e.lv;
     e.type = null; e.lv = 1; e.pending = null;
-    s.queues.build = (s.queues.build || []).filter(function (q) {
-      if (q.extIdx !== extIdx) return true;
-      if (!city) return false;
-      return q.cityId && q.cityId !== city.id;   // 只清本城该地块的队列项
-    });
+    /* v91.68：原地清（只清本城该地块的队列项） */
+    (function () {
+      var q2 = GAME.city.queueOf('build');
+      for (var i = q2.length - 1; i >= 0; i--) {
+        var it = q2[i];
+        if (!it || it.extIdx !== extIdx) continue;
+        if (!city || !(it.cityId && it.cityId !== city.id)) q2.splice(i, 1);
+      }
+    })();
     GAME.statBump('demolished', 1);
     GAME.log('拆毁城外 ' + eb.name + ' Lv' + lv + '，返还 ' + GAME.costString(back));
     return { ok: true, msg: '已拆毁 ' + eb.name + ' Lv' + lv + '，返还 ' + GAME.costString(back), back: back };
@@ -1599,8 +1611,7 @@ import './state.js';
         if (need > left) { head.elapsed += left; left = 0; break; }
         head.elapsed = head.totalTime;
         left -= need;
-        var at = s.queues.train.indexOf(head);
-        if (at >= 0) s.queues.train.splice(at, 1);
+        GAME.city.queueRemove('train', head);   /* v91.68 */
         list.shift();
         running = null;                       // 已完成出队，下一条尚未开始
         GAME.applyTrainDone(head);
@@ -1703,7 +1714,7 @@ import './state.js';
       totalTime = Math.round(totalTime * (1 - s.buffs.trainRed.eff));
     }
     /* v91.13（老板 14）：记录**本批实付**（取消时按 80% 返还）—— 改前队列不留成本，无从退。 */
-    s.queues.train.push({ kind: kind, cityId: city.id, bIdx: bIdx, troopId: troopId, count: count,
+    GAME.city.queueAdd('train', { kind: kind, cityId: city.id, bIdx: bIdx, troopId: troopId, count: count,
       qid: 'tq' + (GAME._tqSeq = (GAME._tqSeq || 0) + 1),
       paidCost: U.deep(cost), paidAt: U.now(),
       elapsed: 0, totalTime: Math.max(2, totalTime), waiting: false });
@@ -1788,7 +1799,7 @@ import './state.js';
       if (back > 0) { GAME.city.add(city, k, back); give[k] = back; }   /* v91.67 */
     });
     /* 移除该条（按 qid；老档无 qid 则按对象引用） */
-    s.queues.train = (s.queues.train || []).filter(function (x) { return x !== q && (q.qid == null || x.qid !== q.qid); });
+    GAME.city.queueRemove('train', q);   /* v91.68：按对象引用 / qid 删 */
     var gn = t.name || q.troopId;
     GAME.log('♻️ 取消募兵：' + gn + ' ×' + (q.count || 0) + '（返还 80% 军资）', 'sys', 'admin');
     return { ok: true, msg: '已取消 ' + gn + ' ×' + (q.count || 0) + '（返还 80% 军资）', refund: give };
@@ -3464,11 +3475,11 @@ import './state.js';
       } },
     { key: 'queues.build', path: 'cityId', label: '建造队列',
       clean: function (s, city) {
-        s.queues.build = (s.queues.build || []).filter(function (q) { return q.cityId !== city.id; });
+        GAME.city.queueClearCity('build', city.id);   /* v91.68 */
       } },
     { key: 'queues.train', path: 'cityId', label: '募兵队列',
       clean: function (s, city) {
-        s.queues.train = (s.queues.train || []).filter(function (q) { return q.cityId !== city.id; });
+        GAME.city.queueClearCity('train', city.id);   /* v91.68 */
       } },
     /* 在途部队与在外采集**不许清**：清了兵就凭空消失，所以标 hard（有它就不让放弃）。
        v89.204：`clean` = **失城路径**（GAME.cityFallen）专用 —— 改属收容城（行程与兵都不丢）；

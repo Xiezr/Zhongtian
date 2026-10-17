@@ -36740,6 +36740,56 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })(), (function () { return '城市资源写点已全部走 GAME.city / addResCapped'; })());
   })();
 
+  /* ============================================================
+   * §272. v91.68（第六刀②）队列增删归属：GAME.city.queue*
+   * ============================================================ */
+  (function () {
+    console.log('\n===== 272. v91.68 队列增删归属（GAME.city.queue*）=====');
+    check('§272① 出口齐：queueOf / queueAdd / queueRemove / queueClearCity', (function () {
+      var X = GAME.city, need = ['queueOf', 'queueAdd', 'queueRemove', 'queueClearCity'];
+      return !!X && need.every(function (k) { return typeof X[k] === 'function'; });
+    })());
+    check('§272② queueRemove 三态：对象引用 / qid / 下标；找不到 → null（不误删）', (function () {
+      var bk = GAME.state;
+      try {
+        var st = G.newGame({ name: 'q272', cityName: '灰岗', region: '碎垣', mapSeed: 8 });
+        G.state = st; st.queues = { build: [], train: [], tech: [] };
+        var a = { qid: 'ax' }, b = { qid: 'bx' }, c = { qid: 'cx' };
+        GAME.city.queueAdd('build', a); GAME.city.queueAdd('build', b); GAME.city.queueAdd('build', c);
+        var r1 = GAME.city.queueRemove('build', b) === b;              /* 对象引用 */
+        var r2 = GAME.city.queueRemove('build', 'ax') === a;           /* qid */
+        var r3 = GAME.city.queueRemove('build', 0) === c;              /* 下标 */
+        var r4 = GAME.city.queueRemove('build', 'nope') === null;      /* 找不到 */
+        return r1 && r2 && r3 && r4 && GAME.city.queueOf('build').length === 0;
+      } finally { G.state = bk; }
+    })());
+    check('§272③ queueClearCity 只清本城（别城的条目保留）', (function () {
+      var bk = GAME.state;
+      try {
+        var st = G.newGame({ name: 'q272b', cityName: '灰岗', region: '碎垣', mapSeed: 8 });
+        G.state = st; st.queues = { build: [], train: [], tech: [] };
+        GAME.city.queueAdd('train', { cityId: 'A' });
+        GAME.city.queueAdd('train', { cityId: 'A' });
+        GAME.city.queueAdd('train', { cityId: 'B' });
+        var n = GAME.city.queueClearCity('train', 'A');
+        var q = GAME.city.queueOf('train');
+        return n === 2 && q.length === 1 && q[0].cityId === 'B';
+      } finally { G.state = bk; }
+    })());
+    check('§272④ 全仓零裸改队列（queue* 之外无 .queues.x.push/splice/=）', (function () {
+      var fs = require('fs'), path = require('path');
+      var jsDir = path.join(__dirname, 'js'), bad = [];
+      ['data', 'state', 'systems', 'domain', 'map', 'sphere', 'gltf', 'map3d',
+        'battle', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits', 'story', 'ui', 'main'].forEach(function (f) {
+        var src = fs.readFileSync(path.join(jsDir, f + '.js'), 'utf8')
+          .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/[^\n]*/gm, '');
+        if (/\.queues\.(build|train|tech)\s*\.\s*(push|splice)\s*\(/.test(src)
+          || /\.queues\.(build|train|tech)\s*=(?!=)/.test(src)) bad.push(f);
+      });
+      return bad.length === 0;
+    })(), (function () { return '队列增删已全部走 GAME.city.queue*'; })());
+  })();
+
   console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');
   process.exit(FAIL ? 1 : 0);
 })();

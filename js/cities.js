@@ -128,6 +128,56 @@ import './state.js';
   };
 
   /* ============================================================
+   * 队列（v91.68 · 第六刀②）：`s.queues.{build,train,tech}` 的唯一增删入口
+   * ------------------------------------------------------------
+   * 背景：队列条目散在 5 个文件里 `push/splice/filter`（18 处），
+   *   且**条目结构随类型不同**（建造/升级/城外/募兵/科技），
+   *   最易出的事故是"删错项"或"清了别城的队列"。
+   *
+   * · `queueOf(kind)`      取队列数组（惰性建，唯一读法）
+   * · `queueAdd(kind,item)` 入队（唯一入口）
+   * · `queueRemove(kind,ref)` 删一条（按对象引用 / qid / 索引；返回被删项）
+   * · `queueClearCity(kind,cityId)` 清某城的队列（换城/弃城用）
+   * ⚠️ 本刀只收"增删"；条目的**字段与推进逻辑**仍留在各业务文件里。
+   * ============================================================ */
+  C.queueOf = function (kind) {
+    var s = GAME.state;
+    if (!s) return [];
+    s.queues = s.queues || {};
+    s.queues[kind] = s.queues[kind] || [];
+    return s.queues[kind];
+  };
+  C.queueAdd = function (kind, item) {
+    if (!kind || !item) return null;
+    C.queueOf(kind).push(item);
+    return item;
+  };
+  /* 删除：ref 可为对象引用 / qid / 数字下标。找不到返回 null（不误删）。 */
+  C.queueRemove = function (kind, ref) {
+    var q = C.queueOf(kind), idx = -1, i;
+    if (typeof ref === 'number') {
+      idx = (ref >= 0 && ref < q.length) ? ref : -1;
+    } else if (ref && typeof ref === 'object') {
+      idx = q.indexOf(ref);
+      if (idx < 0 && ref.qid != null) {
+        for (i = 0; i < q.length; i++) if (q[i] && q[i].qid === ref.qid) { idx = i; break; }
+      }
+    } else if (typeof ref === 'string') {
+      for (i = 0; i < q.length; i++) if (q[i] && q[i].qid === ref) { idx = i; break; }
+    }
+    if (idx < 0) return null;
+    return q.splice(idx, 1)[0];
+  };
+  /* 清某城队列（换城/弃城）：返回清掉的条数 */
+  C.queueClearCity = function (kind, cityId) {
+    var q = C.queueOf(kind), n = 0;
+    for (var i = q.length - 1; i >= 0; i--) {
+      if (q[i] && q[i].cityId === cityId) { q.splice(i, 1); n++; }
+    }
+    return n;
+  };
+
+  /* ============================================================
    * 不变量（供 smoke 守卫调用；返回 [{city, msg}]，空数组 = 全部通过）
    * 这些是"城市一旦写坏就会静默扩散"的量，界面上未必立刻可见。
    * ============================================================ */
