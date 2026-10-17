@@ -32,7 +32,8 @@ import './state.js';
   };
 
   S.techInfo = function (id) {
-    for (var i = 0; i < DATA.TECH.length; i++) if (DATA.TECH[i].id === id) return DATA.TECH[i];
+    var all = DATA.TECH_ALL || DATA.TECH;
+    for (var i = 0; i < all.length; i++) if (all[i].id === id) return all[i];
     return null;
   };
 
@@ -67,6 +68,10 @@ import './state.js';
       }
     }
     var cur = S.techLevel(techId, city);
+    /* v91.72（老板）：主城独有科技 —— 只有主城能研究（独立 5 项，见 DATA.TECH_MAIN）。 */
+    if (t.mainOnly && !GAME.isMainCity(city)) {
+      return { ok: false, msg: '「' + t.name + '」是主城独有科技 —— 只能在主城研究' };
+    }
     /* v89.81：上限唯一出口；v89.191（老板 3-④）：**按城** —— 主城 20、别城 10
        （GAME.techCapOf；战储仓容量"满配"口径仍读 DATA.TECH_MAX_LV，互不影响）。 */
     var cap = GAME.techCapOf ? GAME.techCapOf(city) : (DATA.TECH_MAX_LV || 10);
@@ -144,11 +149,18 @@ import './state.js';
     return Math.min(0.6, S.techLevel('yanjiu', city) * 0.05);
   };
 
+  /* v91.72（老板）：主城独有科技「税关直隶」—— 主城旧币税收 +3%/级（唯一出口）。
+     与 cityProdPerSec 的 taxPct 同层相加（v89.157 加法口径）。 */
+  S.taxBonus = function (city) {
+    return S.techBonus('tax', city);
+  };
+
   /* 科技累计加成查询（供战斗/生产/建造调用） */
   S.techBonus = function (type, city) {
     var sum = 0;
-    DATA.TECH.forEach(function (t) {
+    (DATA.TECH_ALL || DATA.TECH).forEach(function (t) {
       if (t.type !== type) return;
+      if (t.mainOnly && !GAME.isMainCity(city || GAME.currentCity())) return;
       sum += S.techLevel(t.id, city) * (t.per || 0);
     });
     return sum;
@@ -566,6 +578,11 @@ import './state.js';
       ok = true;
       msg = item.name + ' 生效：' + _c5.name + ' 幸存者 ' + U.fmt(_have) + ' → ' + U.fmt(_want)
         + '（+' + U.fmt(_want - _have) + ' = 上限 ' + U.fmt(_cap5) + ' 的 ' + Math.round(_ratio5 * 100) + '%）';
+    } else if (item.type === 'res_crate') {
+      /* v91.72（老板）：压缩物资 —— 解压 1 份入当前城（仓容不足整单拒绝，不做部分解压）。 */
+      var _rr = GAME.decompressResCrate(GAME.currentCity(), item.res, 1);
+      if (!_rr.ok) return _rr;
+      ok = true; msg = _rr.msg;
     } else if (item.type === 'build_cost') {
       s.buffs = s.buffs || {}; s.buffs.buildCost = { until: U.now() + (item.dur || 24) * 3600 * 1000, eff: item.eff };
       ok = true; msg = item.name + ' 生效：建造成本-30%（24h）';
@@ -680,6 +697,9 @@ import './state.js';
         bao: '遗物是英雄挂件：请到「英雄面板」把遗物佩到英雄身上（打据点/名城缴获）',
         /* v91.30：奇观材料（奇观探索产出）—— 非消耗品，作高阶升级/强化/打造料。 */
         wmat: '奇观材料来自奇观探索 —— 用于高阶升级 / 装备强化 / 顶级打造',
+        /* v91.72：舰船蓝图 / 压缩物资 —— 各有专用入口（空间站 / 战储仓解压）。 */
+        ship_bp: '舰船蓝图请到「空间站」建造对应舰种',
+        res_crate: '压缩物资请在「战储仓」或背包点击解压（需当前城仓容足够）',
       }[item.type];
       return { ok: false, msg: HINT || '该宝物暂不可直接使用' };
     }

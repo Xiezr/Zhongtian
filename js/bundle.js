@@ -537,7 +537,7 @@ window.GAME = window.GAME || {};
       levelCost: costTable(lerpCost([350,1000,600,1200,360], [170670,455005,279395,571840,197905], 10), 'tiejiangpu'),
     },
     gongjiangzuofang: {
-      id: 'gongjiangzuofang', series: 'ops', name: '机工坊', icon: '🛠️', desc: '百工群集，匠心营器 —— 制造攻守城器械。',
+      id: 'gongjiangzuofang', series: 'ops', name: '精密制造厂', icon: '🛠️', desc: '百工群集，匠心营器 —— 制造攻守城器械。',
       buildCost: { grain: 450, wood: 525, stone: 675, iron: 2700 }, maxLevel: 12, prod: null,
       levelCost: costTable(lerpCost([450,1500,500,1500,1080], [219430,682505,232830,714800,593710], 10), 'gongjiangzuofang'),
     },
@@ -562,7 +562,7 @@ window.GAME = window.GAME || {};
   DATA.BUILD_PREREQ = {
     /* v68 原 6 条：**建造与升级同一把尺**（升到任何等级都看它）—— 沿用不动。 */
     zhaoxianguan:     { kezhan: 2 },     // 先征召大厅后英雄枢纽：有安顿来客之处，方可设馆纳贤
-    gongjiangzuofang: { tiejiangpu: 3 }, // 机工坊：器械以铁作底，制造厂 Lv3 起步
+    gongjiangzuofang: { tiejiangpu: 3 }, // 精密制造厂：器械以铁作底，制造厂 Lv3 起步
     xiaochang:        { junying: 2 },    // 先募兵（军营）再练兵（练兵场）
     yizhan:           { shichang: 2 },   // 驿传通商：先有交易站才有驿路
     honglusi:         { kezhan: 3 },     // 基因实验室：线索与人力来自征召大厅 Lv3
@@ -642,7 +642,7 @@ window.GAME = window.GAME || {};
     chengqiang:       { tech: 'jianzhu',  div: 4 },   // 围墙：废墟重建（营造）
     /* ⛔ 居所不设科技闸（v89.191 决策）：基础居所直连幸存者与劳作 —— 早期就被卡会
        连带卡死征兵/产量，与"体系化"的初衷相反。营造类门槛由围墙承担。 */
-    gongjiangzuofang: { tech: 'chelun',   div: 3 },   // 机工坊：传动系统（器械）
+    gongjiangzuofang: { tech: 'chelun',   div: 3 },   // 精密制造厂：传动系统（器械）
     tiejiangpu:       { tech: 'dazao',    div: 3 },   // 制造厂：锻造工艺
     majiu:            { tech: 'xunma',    div: 3 },   // 载具研究所：座驾改装
     yizhan:           { tech: 'xingjun',  div: 3 },   // 传送站：机动行军（驿传）
@@ -1103,8 +1103,8 @@ window.GAME = window.GAME || {};
     zhuzhan:   { id: 'zhuzhan', grp: 2, name: '主战机甲', ab: '主', ab2: '主机', icon: '🦾', hp: 8400, atk: 700, def: 400, range: 80, spd: 750, gather: 10, load: 220, pop: 4, ride: true, time: 150, cost: { grain: 2200, wood: 340, stone: 4000, iron: 4350 }, unlock: { junying: 7, shuyuan: 6, majiu: 3, tech: { jiayu: 2, fanghu: 2 } }, desc: '主战序列，攻700防400，攻守兼备（需载具研究所3 + 机车操控/装甲强化）' },
     kuanglie:  { id: 'kuanglie', grp: 3, name: '狂猎', ab: '狂', ab2: '狂猎', icon: '⚔️', hp: 5400, atk: 510, def: 280, range: 70, spd: 850, gather: 10, load: 150, pop: 3, ride: true, time: 70, cost: { grain: 1700, wood: 380, stone: 2800, iron: 3300 }, unlock: { junying: 9, shuyuan: 8, majiu: 4, city: 'sili', tech: { tongshuai: 9, lianbing: 7 } }, desc: '旧军猎团，冲击力冠绝全军（需霜脊首府）' },
     dianci:    { id: 'dianci', grp: 3, name: '电磁盾卫', ab: '磁', ab2: '电磁', icon: '🔋', hp: 3600, atk: 340, def: 350, range: 60, spd: 300, gather: 5, load: 55, pop: 2, time: 35, cost: { grain: 600, wood: 140, stone: 1600, iron: 800 }, unlock: { junying: 8, shuyuan: 7, city: 'yizhou', tech: { fanghu: 8 } }, desc: '电磁护盾，防350，刀枪不入（惧火 · 需雾谷首府）' },
-    huopao:    { id: 'huopao', grp: 3, name: '东风快递', ab: '炮', ab2: '东风', icon: '💥', hp: 6600, atk: 950, def: 200, range: 1600, spd: 100, gather: 2, load: 30, pop: 4, craft: true, mech: true, time: 5830, cost: { grain: 6500, wood: 2400, stone: 13000, iron: 10300 }, unlock: { junying: 10, shuyuan: 10, gongjiangzuofang: 7 }, desc: '攻950射程1600，攻城巨炮（机工坊制造）' },
-    wuren:     { id: 'wuren', grp: 3, name: '无人轰炸机', ab: '轰', ab2: '无人', icon: '🛩️', hp: 5400, atk: 500, def: 160, range: 1400, spd: 120, gather: 2, load: 20, pop: 3, craft: true, mech: true, vsMech: 3, time: 2910, cost: { grain: 3000, wood: 1440, stone: 5000, iron: 4450 }, unlock: { junying: 8, shuyuan: 8, gongjiangzuofang: 3 }, desc: '强力远程，拆械破车，攻城必带（机工坊制造）' },
+    huopao:    { id: 'huopao', grp: 3, name: '东风快递', ab: '炮', ab2: '东风', icon: '💥', hp: 6600, atk: 950, def: 200, range: 1600, spd: 100, gather: 2, load: 30, pop: 4, craft: true, mech: true, time: 5830, cost: { grain: 6500, wood: 2400, stone: 13000, iron: 10300 }, unlock: { junying: 10, shuyuan: 10, gongjiangzuofang: 7 }, desc: '攻950射程1600，攻城巨炮（精密制造厂制造）' },
+    wuren:     { id: 'wuren', grp: 3, name: '无人轰炸机', ab: '轰', ab2: '无人', icon: '🛩️', hp: 5400, atk: 500, def: 160, range: 1400, spd: 120, gather: 2, load: 20, pop: 3, craft: true, mech: true, vsMech: 3, time: 2910, cost: { grain: 3000, wood: 1440, stone: 5000, iron: 4450 }, unlock: { junying: 8, shuyuan: 8, gongjiangzuofang: 3 }, desc: '强力远程，拆械破车，攻城必带（精密制造厂制造）' },
     /* v89.230 链路修复（兵种链体检抓出）：本兵种 unlock.tech 原为 `yiliao: 8` —— 即参考
        数据里一栏旧代兵种的「医疗技巧 Lv8」，而该科技在本作 24 项表中**从未存在**（v67 基线
        起即悬空 → 泰坦机甲门禁自始不可达，报错还会显示原始 id）。
@@ -1376,6 +1376,29 @@ window.GAME = window.GAME || {};
     { id: 'xunma', name: '座驾改装', cat: 'logi', lv: 5, type: 'horse', per: 0.05, desc: '座驾装备属性 +5%/级' },
     { id: 'yanjiu', name: '逆向工程', cat: 'intel', lv: 3, type: 'study', per: 0.05, desc: '科技研究速度 +5%/级' },
   ];
+  /* ============================================================
+   * v91.72（老板）：「给主城设计独特的 5 个科技，独立生效，显示主城的独特优势。
+   *   而且这个主城的科技上限也是 20 级」。
+   * ------------------------------------------------------------
+   * · 独立表 DATA.TECH_MAIN（不进 DATA.TECH，防上层 24 项计数/分组断言误伤）；
+   * · **只有主城**能研究（canResearch 有闸），独立成组显示在科研中心面板；
+   * · 上限同主城：techCapOf 对主城科技也返回 20（GAME.techCapOfMain）；
+   * · 类型全部复用既有消费点（grain/gold/train/build/def），不新增读点。
+   * ============================================================ */
+  DATA.TECH_MAIN = [
+    { id: 'm_zhongshu', name: '中枢统筹', cat: 'main', lv: 1, type: 'grain', per: 0.04, mainOnly: true,
+      desc: '主城全资源产量 +4%/级（净水口径，其余三类同享）' },
+    { id: 'm_shuiguan', name: '税关直隶', cat: 'main', lv: 2, type: 'tax', per: 0.03, mainOnly: true,
+      desc: '主城旧币税收 +3%/级' },
+    { id: 'm_junxie', name: '王畿兵工', cat: 'main', lv: 3, type: 'train', per: 0.04, mainOnly: true,
+      desc: '主城募兵速度 +4%/级' },
+    { id: 'm_tumu', name: '京畿土木', cat: 'main', lv: 4, type: 'build', per: 0.04, mainOnly: true,
+      desc: '主城建造 / 升级耗时 −4%/级' },
+    { id: 'm_jincheng', name: '金城汤池', cat: 'main', lv: 5, type: 'def', per: 0.03, mainOnly: true,
+      desc: '主城守军受创 −3%/级' },
+  ];
+  DATA.TECH_MAIN_CAT = { key: 'main', name: '主城独有（仅主城可研）' };
+
   /* v89.231（老板「根据废土背景和现有兵种，建筑，调整科技体系」）：
      **科技分组** —— 科研中心面板按此分节展示；`DATA.TECH[*].cat` 必须 ∈ 本表 key。
      分组序 = 面板展示序（24 项 → 5 组：4/6/5/6/3）。 */
@@ -1386,6 +1409,9 @@ window.GAME = window.GAME || {};
     { key: 'logi',  name: '机动后勤' },
     { key: 'intel', name: '情报指挥' },
   ];
+  /* v91.72：主城独有科技并入只读索引（TECH_ALL）；DATA.TECH 本体保持 24 项不动。 */
+  DATA.TECH_ALL = (DATA.TECH || []).concat(DATA.TECH_MAIN || []);
+
   /* 科技研究消耗（v16 改为原版口径：**以旧币为主**，另需少量木石）
      原版「科技需在科研中心使用旧币进行研究」；此前耗粮木石铁，未体现旧币的硬需求。 */
   DATA.techCost = function (tech, lv) {
@@ -1916,6 +1942,16 @@ window.GAME = window.GAME || {};
     { id: 'w_coldcrystal', name: '冷晶', type: 'wmat', price: 28, wonderOnly: true, desc: '奇观特产：高阶建筑升级 / 融合淬体' },
     { id: 'w_spore', name: '生机孢囊', type: 'wmat', price: 22, wonderOnly: true, desc: '奇观特产：高阶建筑升级 / 融合淬体' },
     { id: 'w_singularity', name: '奇点残响', type: 'wmat', price: 80, wonderOnly: true, desc: '奇观特产：融合淬体（高阶材料 · 出件品质更佳）' },
+    /* v91.72（老板）：「战储仓设置空间压缩功能 —— 每 500 万物资压缩为一份对应的高级物资，
+       作为物品存放在背包中；压缩后释放 500 万城市储量」。解压由 GAME.decompressResCrate 出口。 */
+    { id: 'crate_grain', name: '压缩净水块', type: 'res_crate', res: 'grain', qty: 5000000, price: 0,
+      desc: '五百万净水压缩封存。使用后解压入当前城（需仓容足够），为战储仓腾出空间。' },
+    { id: 'crate_wood',  name: '压缩生物质块', type: 'res_crate', res: 'wood', qty: 5000000, price: 0,
+      desc: '五百万生物质压缩封存。使用后解压入当前城（需仓容足够），为战储仓腾出空间。' },
+    { id: 'crate_stone', name: '压缩电能芯', type: 'res_crate', res: 'stone', qty: 5000000, price: 0,
+      desc: '五百万电能压缩封存。使用后解压入当前城（需仓容足够），为战储仓腾出空间。' },
+    { id: 'crate_iron',  name: '压缩废钢锭', type: 'res_crate', res: 'iron', qty: 5000000, price: 0,
+      desc: '五百万废钢压缩封存。使用后解压入当前城（需仓容足够），为战储仓腾出空间。' },
     /* v86（老板「按计划进行」· 第四轮 G1）：封存匣 —— 施展计谋所需 */
     { id: 'jinang', name: '封存匣', type: 'talis', price: 15, desc: '施展计谋所需。妙计千条，藏于囊中。' },
     /* v88（辐能装备）：辐能核心 —— 调校基因强化件的专属材料（price 0 = 游商不售）。
@@ -4018,7 +4054,12 @@ window.GAME = window.GAME || {};
      *      否则集齐 18 套要跑遍所有奇观，漏一个就永远造不出对应套装；
      *   ④ 通用·战技残页：研读类奇观（banner=page）掉，另有基础几率。
      * ============================================================ */
-    jewelChance: 0.10, bpChance: 0.06, pageChance: 0.03, pageBannerChance: 0.08 };
+    jewelChance: 0.10, bpChance: 0.06, pageChance: 0.03, pageBannerChance: 0.08,
+    /* v91.72（老板「战舰奇观出蓝图」· B 期）：舰船蓝图 = 通用掉落，按档位加权。
+       白常见、红稀有；不受主产每程上限约束（独立几率，与套装图纸同口径）。 */
+    shipBpChance: 0.06 };
+  /* 舰船蓝图档位权重（白/蓝/紫/红）—— 抽中蓝图后再按此加权选具体舰种。 */
+  DATA.WONDER_SHIP_BP_WEIGHTS = { 1: 50, 2: 28, 3: 15, 4: 7 };
 
   /* ============================================================
    * v91.60（老板）：「建立一个类星球地图，用于**奇观建造**——奇观建造将会消耗奇观材料，
@@ -4050,6 +4091,10 @@ window.GAME = window.GAME || {};
     costPct: 0.5,   /* 拆除返还材料比例 */
   };
 
+  /* v91.72（老板）：战储仓空间压缩 —— 每 500 万物资 = 1 份压缩物资（背包道具）。
+     只压缩粮木石铁；解压按当前城仓容校验（放不下则拒绝，不做部分解压）。 */
+  DATA.STORAGE_COMPRESS = { unit: 5000000, crate: { grain: 'crate_grain', wood: 'crate_wood', stone: 'crate_stone', iron: 'crate_iron' } };
+
   /* ============================================================
    * v91.71（老板）：「先建造空间站，再建造战舰；战舰奇观出蓝图，设计 12 种蓝图，
    *   3*4 白·蓝·紫·红四档，解锁不同等级战舰制造。建造/管理过程采用卡牌式。
@@ -4063,6 +4108,25 @@ window.GAME = window.GAME || {};
     tierCap: { 1: 1, 3: 2, 6: 3, 9: 4 },   /* 达到该等级 → 解锁到第几档 */
     dockSlots: function (lv) { return 2 + Math.floor((lv || 1) / 2); },
   };
+  /* ---------- 12 种舰船蓝图（B 期 · 白/蓝/紫/红四档） ----------
+     v91.72（老板）：「战舰奇观出蓝图」—— 先由奇观探索获得对应舰种蓝图，
+     之后才能在空间站建造该舰（门槛见 GAME.ship.canBuild / SH.bpOf）。
+     price 只作背包「估值/寄售」口径（wonderOnly → 游商与快购都不列）。 */
+  DATA.SHIP_BLUEPRINTS = [
+    { id: 'bp_ship_c_w1', name: '游隼艇蓝图',   type: 'ship_bp', wonderOnly: true, price: 30,  shipClass: 'c_w1', tier: 1, desc: '凭此可在空间站建造「游隼艇」' },
+    { id: 'bp_ship_c_w2', name: '护盾艇蓝图',   type: 'ship_bp', wonderOnly: true, price: 30,  shipClass: 'c_w2', tier: 1, desc: '凭此可在空间站建造「护盾艇」' },
+    { id: 'bp_ship_c_w3', name: '运输梭蓝图',   type: 'ship_bp', wonderOnly: true, price: 30,  shipClass: 'c_w3', tier: 1, desc: '凭此可在空间站建造「运输梭」' },
+    { id: 'bp_ship_c_b1', name: '裂空驱逐舰蓝图', type: 'ship_bp', wonderOnly: true, price: 80,  shipClass: 'c_b1', tier: 2, desc: '凭此可在空间站建造「裂空驱逐舰」' },
+    { id: 'bp_ship_c_b2', name: '铁壁护卫舰蓝图', type: 'ship_bp', wonderOnly: true, price: 80,  shipClass: 'c_b2', tier: 2, desc: '凭此可在空间站建造「铁壁护卫舰」' },
+    { id: 'bp_ship_c_b3', name: '远洋运输舰蓝图', type: 'ship_bp', wonderOnly: true, price: 80,  shipClass: 'c_b3', tier: 2, desc: '凭此可在空间站建造「远洋运输舰」' },
+    { id: 'bp_ship_c_g1', name: '星火巡洋舰蓝图', type: 'ship_bp', wonderOnly: true, price: 160, shipClass: 'c_g1', tier: 3, desc: '凭此可在空间站建造「星火巡洋舰」' },
+    { id: 'bp_ship_c_g2', name: '壁垒巡防舰蓝图', type: 'ship_bp', wonderOnly: true, price: 160, shipClass: 'c_g2', tier: 3, desc: '凭此可在空间站建造「壁垒巡防舰」' },
+    { id: 'bp_ship_c_g3', name: '方舟运载舰蓝图', type: 'ship_bp', wonderOnly: true, price: 160, shipClass: 'c_g3', tier: 3, desc: '凭此可在空间站建造「方舟运载舰」' },
+    { id: 'bp_ship_c_r1', name: '天罚战列舰蓝图', type: 'ship_bp', wonderOnly: true, price: 320, shipClass: 'c_r1', tier: 4, desc: '凭此可在空间站建造「天罚战列舰」' },
+    { id: 'bp_ship_c_r2', name: '天穹旗舰蓝图',   type: 'ship_bp', wonderOnly: true, price: 320, shipClass: 'c_r2', tier: 4, desc: '凭此可在空间站建造「天穹旗舰」' },
+    { id: 'bp_ship_c_r3', name: '星际母舰蓝图',   type: 'ship_bp', wonderOnly: true, price: 320, shipClass: 'c_r3', tier: 4, desc: '凭此可在空间站建造「星际母舰」' },
+  ];
+
   /* ---------- 12 种战舰：4 档 × 3 系 ---------- */
   /* 档 tier：1 白 / 2 蓝 / 3 紫 / 4 红（品质色沿用六档表的前四档语义）。
      系 role：assault 突击（伤害）/ escort 护卫（防御）/ carrier 母舰（运载）。
@@ -4081,21 +4145,21 @@ window.GAME = window.GAME || {};
   };
   DATA.SHIP_CLASSES = [
     /* --- 白档 --- */
-    { id: 'c_w1', tier: 1, role: 'assault', name: '游隼艇', icon: '🛩️', desc: '轻型突击艇，快而脆。' },
-    { id: 'c_w2', tier: 1, role: 'escort', name: '护盾艇', icon: '🛡️', desc: '编队护卫，挡在最前。' },
-    { id: 'c_w3', tier: 1, role: 'carrier', name: '运输梭', icon: '🚚', desc: '小型运载，投送先驱。' },
+    { id: 'c_w1', tier: 1, role: 'assault', name: '游隼艇', icon: '🛩️', desc: '轻型突击艇，快而脆。' , bp: 'bp_ship_c_w1'},
+    { id: 'c_w2', tier: 1, role: 'escort', name: '护盾艇', icon: '🛡️', desc: '编队护卫，挡在最前。' , bp: 'bp_ship_c_w2'},
+    { id: 'c_w3', tier: 1, role: 'carrier', name: '运输梭', icon: '🚚', desc: '小型运载，投送先驱。' , bp: 'bp_ship_c_w3'},
     /* --- 蓝档 --- */
-    { id: 'c_b1', tier: 2, role: 'assault', name: '裂空驱逐舰', icon: '🚀', desc: '主炮驱逐，突破防线。' },
-    { id: 'c_b2', tier: 2, role: 'escort', name: '铁壁护卫舰', icon: '🛡️', desc: '重甲护卫，掩护主力。' },
-    { id: 'c_b3', tier: 2, role: 'carrier', name: '远洋运输舰', icon: '🚢', desc: '中程投送，载兵载货。' },
+    { id: 'c_b1', tier: 2, role: 'assault', name: '裂空驱逐舰', icon: '🚀', desc: '主炮驱逐，突破防线。' , bp: 'bp_ship_c_b1'},
+    { id: 'c_b2', tier: 2, role: 'escort', name: '铁壁护卫舰', icon: '🛡️', desc: '重甲护卫，掩护主力。' , bp: 'bp_ship_c_b2'},
+    { id: 'c_b3', tier: 2, role: 'carrier', name: '远洋运输舰', icon: '🚢', desc: '中程投送，载兵载货。' , bp: 'bp_ship_c_b3'},
     /* --- 紫档 --- */
-    { id: 'c_g1', tier: 3, role: 'assault', name: '星火巡洋舰', icon: '🔥', desc: '火力巡洋，正面压制。' },
-    { id: 'c_g2', tier: 3, role: 'escort', name: '壁垒巡防舰', icon: '🧱', desc: '护盾与装甲并重。' },
-    { id: 'c_g3', tier: 3, role: 'carrier', name: '方舟运载舰', icon: '📦', desc: '大容量，殖民跳板。' },
+    { id: 'c_g1', tier: 3, role: 'assault', name: '星火巡洋舰', icon: '🔥', desc: '火力巡洋，正面压制。' , bp: 'bp_ship_c_g1'},
+    { id: 'c_g2', tier: 3, role: 'escort', name: '壁垒巡防舰', icon: '🧱', desc: '护盾与装甲并重。' , bp: 'bp_ship_c_g2'},
+    { id: 'c_g3', tier: 3, role: 'carrier', name: '方舟运载舰', icon: '📦', desc: '大容量，殖民跳板。' , bp: 'bp_ship_c_g3'},
     /* --- 红档 --- */
-    { id: 'c_r1', tier: 4, role: 'assault', name: '天罚战列舰', icon: '⚡', desc: '主力战列，一击定势。' },
-    { id: 'c_r2', tier: 4, role: 'escort', name: '天穹旗舰', icon: '🛡️', desc: '舰队之盾，旗舰级防护。' },
-    { id: 'c_r3', tier: 4, role: 'carrier', name: '星际母舰', icon: '🛸', desc: '运载与投送的终点。' },
+    { id: 'c_r1', tier: 4, role: 'assault', name: '天罚战列舰', icon: '⚡', desc: '主力战列，一击定势。' , bp: 'bp_ship_c_r1'},
+    { id: 'c_r2', tier: 4, role: 'escort', name: '天穹旗舰', icon: '🛡️', desc: '舰队之盾，旗舰级防护。' , bp: 'bp_ship_c_r2'},
+    { id: 'c_r3', tier: 4, role: 'carrier', name: '星际母舰', icon: '🛸', desc: '运载与投送的终点。' , bp: 'bp_ship_c_r3'},
   ];
   /* ---------- 部件（先船体 → 再升级） ---------- */
   /* 老板清单 + 补充（指挥舱=命中/闪避，弹药库=载弹量）。
@@ -4723,7 +4787,7 @@ window.GAME = window.GAME || {};
   DATA.SERIES = {
     /* v89.227：8 族 → 4 族（老板：「族有点多了…其他限制在 2 族以内，官府单独一族」）——
        官府（政务厅/基因实验室）· 民生（居所/战储仓/载具研究所/传送站 —— "无特定菜单操作"类）·
-       军事（军营/练兵场/围墙/瞭望塔）· 城务（征召大厅/英雄枢纽/科研中心/交易站/制造厂/机工坊）。
+       军事（军营/练兵场/围墙/瞭望塔）· 城务（征召大厅/英雄枢纽/科研中心/交易站/制造厂/精密制造厂）。
        旧 5 族 key 退役：store / edu / biz / road / recruit。
        v89.229：plot 语义 = **名称文字色块**的目标色（鲜明档，白字可读 ≥4.5）。
        HSL 值经"渲染复现"求解 —— smoke 逐字节对齐（rgbOfHsl 舍入往返零误差）。 */
@@ -5647,6 +5711,13 @@ window.GAME = window.GAME || {};
    * 修法：在**全部扩充完成之后**重建一次 —— 建表处保留（早期读取不空），
    * 这里覆盖为全量。smoke §102③ 钉住"两表键数一致"防回退。
    * ============================================================ */
+  /* v91.72：舰船蓝图并入宝物表（奇观产出、背包可见、空间站按持有放行）——
+     必须放在**全部物品定义之后**（SHIP_BLUEPRINTS 在空间站段，晚于套装图纸）。 */
+  (DATA.SHIP_BLUEPRINTS || []).forEach(function (bp) {
+    var exists = false;
+    (DATA.ITEMS || []).forEach(function (it) { if (it.id === bp.id) exists = true; });
+    if (!exists) DATA.ITEMS.push(bp);
+  });
   DATA.ITEM_BY_ID = {};
   (DATA.ITEMS || []).forEach(function (it) { DATA.ITEM_BY_ID[it.id] = it; });
 
@@ -7274,6 +7345,10 @@ window.GAME = window.GAME || {};
       return Math.max(base, DATA.TECH_MAX_LV_MAIN || 20);
     }
     return base;
+  };
+  /* v91.72（老板）：主城独有科技上限 —— 与主城同 20 级（别城根本不能研究）。 */
+  GAME.techCapOfMain = function () {
+    return Math.max(DATA.TECH_MAX_LV || 10, DATA.TECH_MAX_LV_MAIN || 20);
   };
   GAME.techsOf = function (city) {
     var ct = city || GAME.currentCity();
@@ -9317,6 +9392,8 @@ window.GAME = window.GAME || {};
     if (GAME.autoExplore) GAME.autoExplore();
     /* v91.59（老板）：自动采购 —— 同上，仅在线 tick（补货到目标量 · 受每日购买上限钳制）。 */
     if (GAME.autoBuy) GAME.autoBuy();
+    /* v91.72（老板）：自动基因研究 —— 各城有空舱时自动立项、成熟自动收获。 */
+    if (GAME.autoFarm) GAME.autoFarm();
 
     /* 9c) ⛔ v90.92 退役：随机任务每日刷新（ensureDailyQuests）随任务系统一并移除。 */
 
@@ -9451,8 +9528,10 @@ window.GAME = window.GAME || {};
        **同层相加**（v89.157 的加法口径，不连乘）。 */
     var mbTax162 = GAME.mayorBonus(city).tax || 0;
     /* v89.204（老板 1）：税收按**城级民心**（含战争创伤 —— 民心受创的城，税收同步走低） */
+    /* v91.72（老板）：+ 主城独有科技「税关直隶」（S.taxBonus，仅主城计入；与 taxPct 同层相加）。 */
+    var _taxTech194 = (GAME.systems && GAME.systems.taxBonus) ? GAME.systems.taxBonus(city) : 0;
     var taxGold = popCap * (GAME.cityHeartsOf ? GAME.cityHeartsOf(city) : (s.hearts || 100)) / 100
-      * (s.tax || 0) * (1 + GAME.cityBonusNum(city, 'taxPct') + mbTax162)
+      * (s.tax || 0) * (1 + GAME.cityBonusNum(city, 'taxPct') + mbTax162 + _taxTech194)
       * (DATA.GOLD_GATE.tax || 1);
     /* v89.157：旧币同口径（加法叠加）—— 宝物 / 天时各自作用于基础税收后相加 */
     var gm = 1 + (GAME.prodBuffMult().gold || 0);
@@ -9548,7 +9627,9 @@ window.GAME = window.GAME || {};
   /* 科技产量加成（type 为资源键的）—— v89.191：按**那座城**的科技读（不传 = 当前城） */
   GAME.techMult = function (city) {
     var m = {};
-    (DATA.TECH || []).forEach(function (t) {
+    var isMain = GAME.isMainCity(city || GAME.currentCity());
+    (DATA.TECH_ALL || DATA.TECH).forEach(function (t) {
+      if (t.mainOnly && !isMain) return;          /* v91.72：主城独有科技只对主城生效 */
       var lv = GAME.systems.techLevel(t.id, city);
       if (lv > 0 && ['grain', 'wood', 'stone', 'iron'].indexOf(t.type) >= 0) {
         m[t.type] = (m[t.type] || 0) + lv * t.per;
@@ -10284,7 +10365,7 @@ window.GAME = window.GAME || {};
     if (_tt191) _tt191[tq.techId] = (_tt191[tq.techId] || 0) + 1;
     GAME.statBump('techDone', 1);
     var name = tq.techId;
-    (DATA.TECH || []).forEach(function (t) { if (t.id === tq.techId) name = t.name; });
+    (DATA.TECH_ALL || DATA.TECH || []).forEach(function (t) { if (t.id === tq.techId) name = t.name; });
     GAME.log('科技完成：' + name + (_ct191 ? '（' + _ct191.name + ' Lv' + ((_tt191 && _tt191[tq.techId]) || 0) + '）' : ''),
       'sys', 'admin');
   };
@@ -10993,7 +11074,8 @@ window.GAME = window.GAME || {};
   };
 
   S.techInfo = function (id) {
-    for (var i = 0; i < DATA.TECH.length; i++) if (DATA.TECH[i].id === id) return DATA.TECH[i];
+    var all = DATA.TECH_ALL || DATA.TECH;
+    for (var i = 0; i < all.length; i++) if (all[i].id === id) return all[i];
     return null;
   };
 
@@ -11028,6 +11110,10 @@ window.GAME = window.GAME || {};
       }
     }
     var cur = S.techLevel(techId, city);
+    /* v91.72（老板）：主城独有科技 —— 只有主城能研究（独立 5 项，见 DATA.TECH_MAIN）。 */
+    if (t.mainOnly && !GAME.isMainCity(city)) {
+      return { ok: false, msg: '「' + t.name + '」是主城独有科技 —— 只能在主城研究' };
+    }
     /* v89.81：上限唯一出口；v89.191（老板 3-④）：**按城** —— 主城 20、别城 10
        （GAME.techCapOf；战储仓容量"满配"口径仍读 DATA.TECH_MAX_LV，互不影响）。 */
     var cap = GAME.techCapOf ? GAME.techCapOf(city) : (DATA.TECH_MAX_LV || 10);
@@ -11105,11 +11191,18 @@ window.GAME = window.GAME || {};
     return Math.min(0.6, S.techLevel('yanjiu', city) * 0.05);
   };
 
+  /* v91.72（老板）：主城独有科技「税关直隶」—— 主城旧币税收 +3%/级（唯一出口）。
+     与 cityProdPerSec 的 taxPct 同层相加（v89.157 加法口径）。 */
+  S.taxBonus = function (city) {
+    return S.techBonus('tax', city);
+  };
+
   /* 科技累计加成查询（供战斗/生产/建造调用） */
   S.techBonus = function (type, city) {
     var sum = 0;
-    DATA.TECH.forEach(function (t) {
+    (DATA.TECH_ALL || DATA.TECH).forEach(function (t) {
       if (t.type !== type) return;
+      if (t.mainOnly && !GAME.isMainCity(city || GAME.currentCity())) return;
       sum += S.techLevel(t.id, city) * (t.per || 0);
     });
     return sum;
@@ -11527,6 +11620,11 @@ window.GAME = window.GAME || {};
       ok = true;
       msg = item.name + ' 生效：' + _c5.name + ' 幸存者 ' + U.fmt(_have) + ' → ' + U.fmt(_want)
         + '（+' + U.fmt(_want - _have) + ' = 上限 ' + U.fmt(_cap5) + ' 的 ' + Math.round(_ratio5 * 100) + '%）';
+    } else if (item.type === 'res_crate') {
+      /* v91.72（老板）：压缩物资 —— 解压 1 份入当前城（仓容不足整单拒绝，不做部分解压）。 */
+      var _rr = GAME.decompressResCrate(GAME.currentCity(), item.res, 1);
+      if (!_rr.ok) return _rr;
+      ok = true; msg = _rr.msg;
     } else if (item.type === 'build_cost') {
       s.buffs = s.buffs || {}; s.buffs.buildCost = { until: U.now() + (item.dur || 24) * 3600 * 1000, eff: item.eff };
       ok = true; msg = item.name + ' 生效：建造成本-30%（24h）';
@@ -11641,6 +11739,9 @@ window.GAME = window.GAME || {};
         bao: '遗物是英雄挂件：请到「英雄面板」把遗物佩到英雄身上（打据点/名城缴获）',
         /* v91.30：奇观材料（奇观探索产出）—— 非消耗品，作高阶升级/强化/打造料。 */
         wmat: '奇观材料来自奇观探索 —— 用于高阶升级 / 装备强化 / 顶级打造',
+        /* v91.72：舰船蓝图 / 压缩物资 —— 各有专用入口（空间站 / 战储仓解压）。 */
+        ship_bp: '舰船蓝图请到「空间站」建造对应舰种',
+        res_crate: '压缩物资请在「战储仓」或背包点击解压（需当前城仓容足够）',
       }[item.type];
       return { ok: false, msg: HINT || '该宝物暂不可直接使用' };
     }
@@ -12563,8 +12664,23 @@ window.GAME = window.GAME || {};
     (DATA.SHIP_PARTS || []).forEach(function (p) { if (p.id === pid) out = p; });
     return out;
   };
-  /* 该档需要的蓝图 id（B 期启用）。A 期返回 null = 不设门槛。 */
+  /* 该舰种需要的蓝图 id（B 期已启用；数据缺失时返回 null = 不设门槛）。 */
   SH.bpOf = function (cls) { return (cls && cls.bp) || null; };
+  SH.bpOfClass = function (classId) { return SH.bpOf(SH.classOf(classId)); };
+  /* 某舰种蓝图是否已持有（唯一出口；canBuild / 卡牌 / 守卫同读）。 */
+  SH.hasBpOf = function (classId) {
+    var bp = SH.bpOfClass(classId);
+    return !bp || !!(GAME.items && GAME.items.has(bp, 1));
+  };
+  /* 12 舰种蓝图汇总（空间站一览与门禁断言用）。 */
+  SH.bpStatus = function () {
+    return (DATA.SHIP_CLASSES || []).map(function (cls) {
+      var bp = SH.bpOf(cls);
+      return { classId: cls.id, name: cls.name, bp: bp,
+        bpName: bp ? (((DATA.ITEM_BY_ID || {})[bp] || {}).name || bp) : null,
+        has: SH.hasBpOf(cls.id), tier: cls.tier };
+    });
+  };
 
   /* 空间站等级 → 允许建造的最高舰档 */
   SH.tierCapNow = function () {
@@ -12594,8 +12710,9 @@ window.GAME = window.GAME || {};
       return { ok: false, msg: '船坞已满（' + SH.dockSlots() + ' 艘）—— 升级空间站扩容' };
     }
     var bp = SH.bpOf(cls);
-    if (bp && !(GAME.items && GAME.items.has(bp, 1))) {
-      return { ok: false, msg: '缺少蓝图：需先在奇观获得「' + cls.name + '」蓝图' };
+    if (bp && !SH.hasBpOf(cls.id)) {
+      var bpName = ((DATA.ITEM_BY_ID || {})[bp] || {}).name || (cls.name + '蓝图');
+      return { ok: false, msg: '缺少蓝图「' + bpName + '」：需先奇观探索获得（白常见、红稀有）' };
     }
     var C = DATA.SHIP_COST || {}, mat = C.hullMat || 'w_stariron', need = SH.hullCost(cls);
     var own = GAME.items ? GAME.items.count(mat) : 0;
@@ -14389,7 +14506,7 @@ window.GAME = window.GAME || {};
     }
     if (bLv <= 0) {
       return { ok: false, msg: kind === 'craft'
-        ? '本城尚无机工坊，无法制造器械（先建机工坊）'
+        ? '本城尚无精密制造厂，无法制造器械（先建精密制造厂）'
         : '本城尚无军营，无法募兵（先建军营）' };
     }
     if (GAME.trainSlotsLeft(city, bIdx, kind) <= 0) {
@@ -16248,6 +16365,22 @@ window.GAME = window.GAME || {};
     if ((s.cities || []).length <= 1) {
       return { ok: false, msg: '这是最后一座城市 —— 放弃它就没有立足之地了' };
     }
+    /* ============================================================
+     * v91.72（老板）：「古城不可废弃。直至取消主城头衔」——
+     * 口径（2026-10-17 确认）：**名城不可弃、主城不可弃，只有自建城（且未设为主城）可弃**。
+     *   · 主城：迁都（在目标城设为主城）后自然失去头衔，本城即可放弃 —— 不再另设"取消主城"按钮；
+     *   · 攻占来的名城（type ≠ self / 带 origId）：永远不可弃（把系统城还回地图的路径
+     *     只剩"被敌方攻陷"，见 GAME.lostCityToNpc）。
+     * 判据与界面**同读本出口**（政务厅入口据此显隐），不许各写一份。
+     * ============================================================ */
+    if (GAME.isMainCity(city)) {
+      return { ok: false, msg: '「' + city.name + '」是主城 —— 主城不可放弃；请先到别的城设为主城（迁都），再放弃本城' };
+    }
+    var _ct = city.type || 'self';
+    if (_ct !== 'self' || city.origId) {
+      var _tier = (DATA.CITY_TIER || {})[_ct] || '名城';
+      return { ok: false, msg: '「' + city.name + '」是' + _tier + ' —— 名城不可放弃（只有自建城可以放弃）' };
+    }
     var refs = GAME.cityRefsOf(cityId);
     var hard = refs.filter(function (r) { return r.hard; });
     if (hard.length) {
@@ -17084,7 +17217,7 @@ window.GAME = window.GAME || {};
       out.total += slots;
       out.left += Math.max(0, slots - used);
     });
-    /* v90.12：器械走**机工坊**队列（与军营分开排空位） */
+    /* v90.12：器械走**精密制造厂**队列（与军营分开排空位） */
     GAME.craftWorkshopsOf(city).forEach(function (b) {
       var slots = GAME.trainQueueSlots(b.lvl, city);
       var used = GAME.trainQueuesOf(city, b.idx, 'craft').length;
@@ -17092,7 +17225,7 @@ window.GAME = window.GAME || {};
       out.craftTotal += slots;
       out.craftLeft += Math.max(0, slots - used);
     });
-    /* 在训（含排队）：逐兵种汇总本城队列（军营 + 机工坊各算各的） */
+    /* 在训（含排队）：逐兵种汇总本城队列（军营 + 精密制造厂各算各的） */
     var queued = {};
     ((GAME.state || {}).queues && (GAME.state.queues.train || [])).forEach(function (q) {
       if (q.cityId !== city.id) return;
@@ -17130,7 +17263,7 @@ window.GAME = window.GAME || {};
     var rKeep = Math.max(0, Math.floor(c.grainKeep || 0));
     (s.cities || []).forEach(function (ct) {
       var plan = GAME.autoTrainPlanOf(ct);
-      if (!plan.bars.length && !plan.craftBars.length) return;   /* 无军营也无机工坊 */
+      if (!plan.bars.length && !plan.craftBars.length) return;   /* 无军营也无精密制造厂 */
       if (!plan.needs.length) return;
       var pending = plan.needs.filter(function (n) { return n.need > 0; });
       if (!pending.length) return;                           /* 已达标 */
@@ -17138,7 +17271,7 @@ window.GAME = window.GAME || {};
         var isCraft = !!nd.craft;
         var bars = isCraft ? plan.craftBars : plan.bars;
         var leftSlots = isCraft ? plan.craftLeft : plan.left;
-        if (leftSlots <= 0) { notes.push(ct.name + ' ' + (isCraft ? '机工坊' : '军营') + ' 队列已满'); return; }
+        if (leftSlots <= 0) { notes.push(ct.name + ' ' + (isCraft ? '精密制造厂' : '军营') + ' 队列已满'); return; }
         var left = nd.need;
         var guard = 0;
         while (left > 0 && guard++ < 12) {
@@ -17147,7 +17280,7 @@ window.GAME = window.GAME || {};
           if (rKeep > 0 && ((GAME.res(ct).grain || 0) < rKeep)) { notes.push(ct.name + ' 净水低于保底'); return; }
           var bar = null;
           for (var i = 0; i < bars.length; i++) { if (bars[i].left > 0) { bar = bars[i]; break; } }
-          if (!bar) { notes.push(ct.name + ' ' + (isCraft ? '机工坊' : '军营') + ' 队列已满'); return; }
+          if (!bar) { notes.push(ct.name + ' ' + (isCraft ? '精密制造厂' : '军营') + ' 队列已满'); return; }
           var lim = GAME.trainLimitOf(nd.troopId, ct);
           var cnt = Math.min(left, lim.cap);
           if (!(cnt > 0)) {
@@ -17978,14 +18111,28 @@ window.GAME = window.GAME || {};
    *   · 走同一出口 GAME.doShopping（silent）→ 每日上限/扣款/日志自动一致。
    *   · **仅在线 tick**（与 autoMarch 同轴，见 state.js）—— 不吃离线补算，避免回档瞬间爆买。
    * ============================================================ */
+  /* v91.72（老板）：「自动采购不对具体商品设置数量，直接统一的设置一个数量即可」——
+     逐商品 targets 退役 → **统一目标持有量** cfg.qty（0 = 不自动买）。
+     老档迁移：有 targets 的档取其中最常见的非 0 值作为统一数量（就地一次性转换）。 */
   GAME.autoBuyCfg = function () {
     var s = GAME.state; if (!s || !s.settings) return null;
     var A = DATA.AUTO_BUY || {};
     if (!s.settings.autoBuy) {
-      s.settings.autoBuy = { on: false, targets: {}, everyMin: A.defaultFreqMin || 10, last: 0 };
+      s.settings.autoBuy = { on: false, qty: 0, everyMin: A.defaultFreqMin || 10, last: 0 };
     }
     var c = s.settings.autoBuy;
-    if (!c.targets) c.targets = {};
+    if (c.qty == null) {
+      var _mig = 0, _cnt = {};
+      for (var _k in (c.targets || {})) {
+        var _v = Math.floor(Number(c.targets[_k]) || 0);
+        if (_v > 0) { _cnt[_v] = (_cnt[_v] || 0) + 1; }
+      }
+      var _best = 0;
+      Object.keys(_cnt).forEach(function (v) { if (!_best || _cnt[v] > _cnt[_best]) _best = v; });
+      _mig = Number(_best) || 0;
+      c.qty = _mig;
+      delete c.targets;
+    }
     if (c.everyMin == null) c.everyMin = A.defaultFreqMin || 10;
     return c;
   };
@@ -17998,27 +18145,29 @@ window.GAME = window.GAME || {};
   };
   GAME.doSetAutoBuy = function (k, v) {
     var cfg = GAME.autoBuyCfg(); if (!cfg) return;
-    if (String(k).indexOf('item:') === 0) { cfg.targets[String(k).slice(5)] = Math.max(0, Math.floor(Number(v) || 0)); return; }
-    if (k === 'everyMin') cfg.everyMin = Math.max(1, Math.floor(Number(v) || 10));
+    if (k === 'qty') cfg.qty = Math.max(0, Math.floor(Number(v) || 0));
+    else if (k === 'everyMin') cfg.everyMin = Math.max(1, Math.floor(Number(v) || 10));
   };
   GAME.autoBuyOnce = function () {
     var s = GAME.state, cfg = GAME.autoBuyCfg();
     if (!cfg || !cfg.on) return { ok: false, msg: '未开启' };
-    var items = {}; (DATA.ITEMS || []).forEach(function (it) { items[it.id] = it; });
+    var want = Math.floor(cfg.qty || 0);
+    if (want <= 0) return { ok: false, msg: '未设置统一采购数量（0 = 不自动买）' };
     var bought = 0, spent = 0;
-    for (var id in cfg.targets) {
-      var want = Math.floor(cfg.targets[id] || 0);
-      if (want <= 0) continue;
-      var it = items[id]; if (!it || !it.price) continue;
+    /* v91.72：统一数量 = 每种可购商品都补到 want 件（各自受每日上限 / 旧币钳制）。 */
+    (DATA.ITEMS || []).forEach(function (it) {
+      if (!it || !it.price || it.noShop || it.dropOnly || it.wonderOnly) return;
+      if (!GAME.ui || !GAME.ui.SHOP_CATS || !GAME.ui.SHOP_CATS[it.type]) return;
+      var id = it.id;
       var have = (s.items || {})[id] || 0;
       var need = want - have;
-      if (need <= 0) continue;
+      if (need <= 0) return;
       var left = GAME.shopTodayLeft(id);          /* 每日购买上限余量 */
       var q = Math.min(need, left);
-      if (q <= 0) continue;
+      if (q <= 0) return;
       var r = GAME.doShopping(id, q, true);        /* 静默：走同一出口（扣款/每日上限一致） */
       if (r && r.ok && r.bought > 0) { bought += r.bought; spent += r.bought * it.price * 100; }
-    }
+    });
     if (spent > 0) GAME.log('🤖 自动采购：补货 ' + bought + ' 件（-' + GAME.utils.fmt(spent) + ' 旧币）');
     s.autoBuyInfo = { ok: bought > 0, msg: bought > 0 ? ('已补货 ' + bought + ' 件') : '待命', at: U.now() };
     return { ok: bought > 0, msg: s.autoBuyInfo.msg, bought: bought };
@@ -18143,7 +18292,10 @@ window.GAME = window.GAME || {};
     if (act) return 'resumed';
     var capLv18 = (s.settings && s.settings.autoTechMaxLv) || 0;
     var _cap191 = GAME.techCapOf ? GAME.techCapOf(city) : 10;
-    var cands = (DATA.TECH || []).filter(function (t) {
+    var _isMain = GAME.isMainCity && GAME.isMainCity(city);
+    var cands = (DATA.TECH_ALL || DATA.TECH || []).filter(function (t) {
+      if (t.mainOnly && !_isMain) return false;      /* v91.72：主城独有科技只给主城排队 */
+      if (t.mainOnly && GAME.systems.techLevel(t.id, city) >= GAME.techCapOfMain()) return false;
       var lv = GAME.systems.techLevel(t.id, city);
       if (shuLv < t.lv || lv >= _cap191) return false;
       if (capLv18 > 0 && lv >= capLv18) return false;
@@ -19258,7 +19410,7 @@ window.GAME = window.GAME || {};
     var city = cityId ? GAME.cityById(cityId) : GAME.currentCity();
     if (!s || !city) return { ok: false, msg: '城市不存在' };
     var lv = GAME.buildingLevel(city, 'gongjiangzuofang');
-    if (lv <= 0) return { ok: false, msg: city.name + '尚无机工坊，无从制造' };
+    if (lv <= 0) return { ok: false, msg: city.name + '尚无精密制造厂，无从制造' };
     n = Math.floor(Number(n) || 0);
     if (!(n > 0)) return { ok: false, msg: '数量必须大于 0' };
     var room = GAME.towerRoomOf(city);
@@ -20751,17 +20903,43 @@ window.GAME = window.GAME || {};
    * 存档：s.farm 懒初始化（旧档缺失即补），不动 SAVE_VERSION。
    * ⚠ 内部函数名沿用 farm*（历史 id 不动，语义 = 研发项目）。
    * ============================================================ */
-  GAME.farmOf = function () {
+  /* ============================================================
+   * v91.72（老板）：「基因实验室不再限制为主城生效」——
+   *   培养舱状态从**全局 s.farm** 迁到 **各城 city.farm**（各城独立 6 舱）。
+   *   · farmOf(city) 缺省 = 当前城（界面/手动操作）；
+   *   · tickFarm 逐城推进，离线补算同口径；
+   *   · 老档：顶层 s.farm 首次被读时**整体迁给主城**（无主城 → 首城），随后删除。
+   * ============================================================ */
+  GAME.farmCities = function () {
     var s = GAME.state;
-    if (!s.farm) s.farm = { plots: [] };
+    return (s && s.cities) || [];
+  };
+  GAME.farmOf = function (city) {
+    var s = GAME.state;
+    if (!s) return { plots: [] };
+    var ct = city || GAME.currentCity() || (s.cities && s.cities[0]) || null;
+    if (!ct) return { plots: [] };
+    /* 老档迁移：顶层 s.farm（全境一份）→ 主城 / 首城 */
+    if (s.farm) {
+      var dst = GAME.mainCityOf() || (s.cities && s.cities[0]) || ct;
+      var legacy = s.farm;
+      dst.farm = dst.farm || { plots: [] };
+      if (legacy.plots && legacy.plots.length) {
+        for (var li = 0; li < legacy.plots.length; li++) {
+          if (legacy.plots[li] && !dst.farm.plots[li]) dst.farm.plots[li] = legacy.plots[li];
+        }
+      }
+      delete s.farm;
+    }
+    if (!ct.farm) ct.farm = { plots: [] };
     var n = (DATA.FARM && DATA.FARM.plots) || 6;
-    while (s.farm.plots.length < n) s.farm.plots.push(null);
-    return s.farm;
+    while (ct.farm.plots.length < n) ct.farm.plots.push(null);
+    return ct.farm;
   };
   GAME.farmCrop = function (id) { return (DATA.FARM_CROP_BY_ID || {})[id] || null; };
   /* 单块地状态：empty / growing / ripe（left = 剩余游戏秒） */
-  GAME.farmPlotState = function (idx) {
-    var f = GAME.farmOf(), p = f.plots[idx];
+  GAME.farmPlotState = function (idx, city) {
+    var f = GAME.farmOf(city), p = f.plots[idx];
     if (!p) return { state: 'empty' };
     var total = p.totalTime || 0;
     var left = Math.max(0, total - (p.elapsed || 0));
@@ -20773,23 +20951,33 @@ window.GAME = window.GAME || {};
   };
   /* 立项 = 直接开工（v89.224 · 老板 2：「不要播种 / 种子」）——
      不消耗任何道具；种子 / 掉落 / 货架三条链已整条删除（老档种子由 adoptState 清出）。 */
-  GAME.farmPlant = function (idx, cropId) {
-    var f = GAME.farmOf();
+  GAME.farmPlant = function (idx, cropId, city) {
+    var ct = city || GAME.currentCity() || (GAME.state && GAME.state.cities && GAME.state.cities[0]);
+    if (!ct) return { ok: false, msg: '无城市' };
+    var f = GAME.farmOf(ct);
     var c = GAME.farmCrop(cropId);
     if (!c) return { ok: false, msg: '未知项目' };
     if (idx < 0 || idx >= f.plots.length) return { ok: false, msg: '培养舱不存在' };
     if (f.plots[idx]) return { ok: false, msg: '这座培养舱还占着' };
     f.plots[idx] = { crop: cropId, elapsed: 0, totalTime: Math.round(c.hours * 3600) };
-    GAME.log('🧬 立项研发：' + c.name);
+    GAME.log('🧬 「' + ct.name + '」立项研发：' + c.name);
     return { ok: true, msg: '已立项 \u300c' + c.name + '\u300d' };
   };
-  /* 生长推进（在线主循环 / 离线补算共用；secGame = 游戏秒） */
+  /* 生长推进（在线主循环 / 离线补算共用；secGame = 游戏秒）—— v91.72：逐城推进。 */
   GAME.tickFarm = function (secGame) {
-    var s = GAME.state;
-    if (!s || !s.farm || !s.farm.plots) return;
-    s.farm.plots.forEach(function (p) {
-      if (p && p.elapsed < p.totalTime) p.elapsed = Math.min(p.totalTime, p.elapsed + secGame);
+    GAME.farmCities().forEach(function (ct) {
+      var f = ct.farm;
+      if (!f || !f.plots) return;
+      f.plots.forEach(function (p) {
+        if (p && p.elapsed < p.totalTime) p.elapsed = Math.min(p.totalTime, p.elapsed + secGame);
+      });
     });
+    var s0 = GAME.state;
+    if (s0 && s0.farm && s0.farm.plots) {   /* 老档尚未迁移：照旧推进，下次读 farmOf 再迁 */
+      s0.farm.plots.forEach(function (p) {
+        if (p && p.elapsed < p.totalTime) p.elapsed = Math.min(p.totalTime, p.elapsed + secGame);
+      });
+    }
   };
   /* ⛔ v89.224：GAME.grantSeedDrop 退役（种子体系删除）——
      采集归来 / 出征缴获两条调用点一并撤除；播种改「立项」后不再需要种子。 */
@@ -20872,9 +21060,10 @@ window.GAME = window.GAME || {};
     return nm;
   }
   /* 提取：研发完成才给 —— 材料项目 = 3 阶主产 ×区间 + 4 阶副产（几率）；基因项目 = 血清 ×1 */
-  GAME.farmHarvest = function (idx) {
-    var s = GAME.state, f = GAME.farmOf();
-    var st = GAME.farmPlotState(idx);
+  GAME.farmHarvest = function (idx, city) {
+    var s = GAME.state, ct = city || GAME.currentCity() || (s && s.cities && s.cities[0]);
+    var f = GAME.farmOf(ct);
+    var st = GAME.farmPlotState(idx, ct);
     if (st.state === 'empty') return { ok: false, msg: '这座培养舱空着' };
     if (st.state !== 'ripe') {
       return { ok: false, msg: st.crop.name + ' 还差 ' + U.durExact(st.left / GAME.timeScale()) + ' 完成' };
@@ -20903,15 +21092,158 @@ window.GAME = window.GAME || {};
     return { ok: true, msg: '提取 ' + txt };
   };
   /* 一键提取：把完成的全提了（面板里的快捷按钮） */
-  GAME.farmHarvestAll = function () {
-    var f = GAME.farmOf(), got = [], any = false;
+  GAME.farmHarvestAll = function (city) {
+    var ct = city || GAME.currentCity() || (GAME.state && GAME.state.cities && GAME.state.cities[0]);
+    var f = GAME.farmOf(ct), got = [], any = false;
     for (var i = 0; i < f.plots.length; i++) {
-      if (GAME.farmPlotState(i).state !== 'ripe') continue;
-      var r = GAME.farmHarvest(i);
+      if (GAME.farmPlotState(i, ct).state !== 'ripe') continue;
+      var r = GAME.farmHarvest(i, ct);
       if (r.ok) { any = true; got.push(r.msg.replace(/^提取 /, '')); }
     }
     if (!any) return { ok: false, msg: '没有可提取的产物' };
     return { ok: true, msg: '提取 ' + got.join('、') };
+  };
+  /* ============================================================
+   * v91.72（老板）：「建立一个自动化基因研究 —— 各城有空位时自动进行研究和收获研究物品」。
+   * ------------------------------------------------------------
+   * 逐城（与自动研究/自动升级同构）：先收成熟产物，再把空舱补种**统一选定的项目**
+   * （默认第一项材料研究；可在自动页选择血清/其他材料）。只对**建有基因实验室**的城生效。
+   * 在线主循环驱动（不参与离线补算 —— 与其余自动项同轴）。
+   * ============================================================ */
+  GAME.autoFarmCfg = function () {
+    var s = GAME.state; if (!s || !s.settings) return null;
+    /* v91.73（老板「自动进行基因研究」）：默认**开启** —— 建有基因实验室的城有空舱即自动立项、
+       成熟即自动收获；玩家仍可在自动页手动关闭（关过之后不再被强制打开）。 */
+    if (!s.settings.autoFarm) s.settings.autoFarm = { on: true, crops: [] };
+    var c = s.settings.autoFarm;
+    if (!s.autoFarmOn73) {            /* 老档一次性打开（此后尊重玩家的开关） */
+      c.on = true;
+      s.autoFarmOn73 = 1;
+    }
+    /* v91.72b：crop 单选 → **crops 多选**（只种选中的项目；空 = 全部项目都种）。 */
+    if (!c.crops || !c.crops.length) c.crops = (c.crop && GAME.farmCrop(c.crop)) ? [c.crop] : [];
+    c.crops = c.crops.filter(function (x) { return !!GAME.farmCrop(x); });
+    delete c.crop;
+    return c;
+  };
+  GAME.doToggleAutoFarm = function () {
+    var c = GAME.autoFarmCfg(); if (!c) return;
+    c.on = !c.on;
+    GAME.state.autoFarmState = { msg: c.on ? '已开启，待命' : '已关闭' };
+    GAME.refreshView();
+  };
+  GAME.doSetAutoFarmCrop = function (id) {
+    var c = GAME.autoFarmCfg(); if (!c) return;
+    if (!GAME.farmCrop(id)) return;
+    var i = c.crops.indexOf(id);
+    if (i >= 0) c.crops.splice(i, 1);
+    else c.crops.push(id);
+  };
+  GAME.autoFarm = function () {
+    var s = GAME.state, c = GAME.autoFarmCfg();
+    if (!s || !c || !c.on) return null;
+    /* v91.73b：**真实时间节流** —— 逐城要查"是否建有实验室"，100 城时每 tick 全扫会把
+       tickOnce 顶过 3ms 护栏（smoke §87 实测 4.45ms）。自动研究不需要每帧执行，
+       2 秒一次与手动节奏一致。 */
+    var _now73 = U.now();
+    if (s._autoFarmAt73 && _now73 - s._autoFarmAt73 < 2000) return null;
+    s._autoFarmAt73 = _now73;
+    var planted = 0, harvested = 0, cities = 0;
+    GAME.farmCities().forEach(function (ct) {
+      /* 只对建有实验室的城（不能拿 ct.farm 当判据：查询也会惰性建它）。 */
+      if (GAME.buildingLevel(ct, 'honglusi') <= 0) return;
+      cities++;
+      var f = GAME.farmOf(ct), i;
+      /* ① 先收 */
+      for (i = 0; i < f.plots.length; i++) {
+        if (GAME.farmPlotState(i, ct).state === 'ripe' && GAME.farmHarvest(i, ct).ok) harvested++;
+      }
+      /* ② 再补空舱：在**选定项目**里挑一个没在种、没成熟的（去重则各舱种不同项目）；
+             未选任何项目 = 全部项目都可种。 */
+      var _busy = {};
+      for (i = 0; i < f.plots.length; i++) if (f.plots[i]) _busy[f.plots[i].crop] = 1;
+      var _pool = (c.crops || []).slice();
+      if (!_pool.length) _pool = (DATA.FARM.crops || []).map(function (x) { return x.id; });
+      var _pick = null;
+      for (i = 0; i < _pool.length; i++) { if (!_busy[_pool[i]]) { _pick = _pool[i]; break; } }
+      if (!_pick) _pick = _pool[0];
+      for (i = 0; i < f.plots.length; i++) {
+        if (f.plots[i]) continue;
+        if (GAME.farmPlant(i, _pick, ct).ok) planted++;
+      }
+    });
+    if (planted || harvested) {
+      s.autoFarmState = { msg: '本回收获 ' + harvested + ' 项 · 立项 ' + planted + ' 项（' + cities + ' 城）' };
+    } else if (cities) {
+      s.autoFarmState = { msg: '各城培养舱已排满 / 无成熟产物' };
+    } else {
+      s.autoFarmState = { msg: '暂无建有基因实验室的城市' };
+    }
+    return null;
+  };
+
+  /* ============================================================
+   * v91.72（老板）：「战储仓设置空间压缩功能 —— 每 500 万物资压缩为一份对应的高级物资，
+   *   作为物品存放在背包中；压缩后相应释放 500 万城市储量」。
+   * ------------------------------------------------------------
+   * 唯一出口：
+   *   · compressResCrate(city, key, n) —— 从该城扣 n×500万，背包 +n 份压缩物资；
+   *   · decompressResCrate(city, key, n) —— 从背包扣 n 份，回灌 n×500万（仓容不够整单拒绝）；
+   *   · resCrateLeftOf(city, key) —— 可压缩份数（向下取整，0 份不压）。
+   * 只作用粮木石铁（货币/幸存者不在此列）；压缩量按**当前城库存**算，不跨城。
+   * ============================================================ */
+  GAME.resCrateCfg = function () {
+    var C = DATA.STORAGE_COMPRESS || {};
+    return { unit: C.unit || 5000000, crate: C.crate || {} };
+  };
+  GAME.resCrateIdOf = function (key) { return GAME.resCrateCfg().crate[key] || null; };
+  GAME.resCrateLeftOf = function (city, key) {
+    var cfg = GAME.resCrateCfg();
+    var R = GAME.res(city || GAME.currentCity());
+    return Math.floor(Math.max(0, R[key] || 0) / cfg.unit);
+  };
+  GAME.compressResCrate = function (city, key, n) {
+    var cfg = GAME.resCrateCfg(), crateId = GAME.resCrateIdOf(key);
+    city = city || GAME.currentCity();
+    if (!city) return { ok: false, msg: '无城市' };
+    if (!crateId) return { ok: false, msg: '该资源不可压缩' };
+    n = Math.floor(Number(n) || 0);
+    if (n <= 0) return { ok: false, msg: '压缩份数无效' };
+    var R = GAME.res(city);
+    var have = Math.floor(R[key] || 0), need = n * cfg.unit;
+    if (have < need) {
+      return { ok: false, msg: '库存不足：需 ' + U.fmt(need) + '，现有 ' + U.fmt(have)
+        + '（每份 ' + U.fmt(cfg.unit) + '）' };
+    }
+    GAME.city.sub(city, key, need);          /* v91.67：城市资源扣减唯一入口 */
+    GAME.items.add(crateId, n);              /* v91.63：背包唯一出口 */
+    var rn = GAME.resName(key);
+    GAME.log('🗜️ 「' + city.name + '」压缩 ' + rn + ' ' + U.fmt(need) + ' → 「'
+      + (((DATA.ITEM_BY_ID || {})[crateId] || {}).name || crateId) + '」×' + n + '（释放等量仓容）', 'sys', 'admin');
+    return { ok: true, msg: '已压缩 ' + rn + ' ' + U.fmt(need) + ' → 压缩物资 ×' + n, n: n, key: key };
+  };
+  GAME.decompressResCrate = function (city, key, n) {
+    var cfg = GAME.resCrateCfg(), crateId = GAME.resCrateIdOf(key);
+    city = city || GAME.currentCity();
+    if (!city) return { ok: false, msg: '无城市' };
+    if (!crateId) return { ok: false, msg: '该资源不可解压' };
+    n = Math.floor(Number(n) || 0);
+    if (n <= 0) return { ok: false, msg: '解压份数无效' };
+    var cn = GAME.items.count(crateId);
+    if (cn < n) return { ok: false, msg: '压缩物资不足（持有 ' + cn + ' 份）' };
+    var add = n * cfg.unit, cap = GAME.storeCapOf(city, key);
+    var R = GAME.res(city), cur = Math.floor(R[key] || 0);
+    if (cur + add > cap) {
+      return { ok: false, msg: '仓容不足：解压需 ' + U.fmt(add) + '，本城 ' + GAME.resName(key)
+        + ' 上限 ' + U.fmt(cap) + '（现有 ' + U.fmt(cur) + '）—— 先扩建战储仓或转运他城' };
+    }
+    GAME.items.sub(crateId, n);              /* v91.63 */
+    GAME.city.add(city, key, add);           /* v91.67 */
+    /* 解压后仓容被顶满 → 逾溢折损会慢慢吃掉——这不是"bug"，是仓容决策；
+       但要进日志提醒（玩家从战储仓面板解压时能看见）。 */
+    var rn = GAME.resName(key);
+    GAME.log('📦 「' + city.name + '」解压压缩物资 ×' + n + ' → ' + rn + ' ' + U.fmt(add), 'sys', 'admin');
+    return { ok: true, msg: '已解压 ' + rn + ' ' + U.fmt(add), n: n, key: key };
   };
 
   /* ⛔ v90.92 退役：派系（门派）系统整条删除 —— 老板「去掉门派」。
@@ -21211,9 +21543,39 @@ window.GAME = window.GAME || {};
     /* ④ 通用·战技残页（研读类奇观几率更高） */
     var _pc = (act.banner === 'page') ? (W.pageBannerChance || 0.08) : (W.pageChance || 0.03);
     if (Math.random() < _pc) add(pickFrom(function (x) { return x.type === 'neigong'; }), 1);
+    /* ⑤ v91.72（B 期）通用·舰船蓝图 —— 按档位加权（白常见、红稀有）。
+       与套装图纸同口径：任何奇观都能出，保证 12 舰种全部可达。 */
+    if (Math.random() < (W.shipBpChance || 0)) {
+      var _bpList = (DATA.SHIP_BLUEPRINTS || []);
+      if (_bpList.length) {
+        var _wts = DATA.WONDER_SHIP_BP_WEIGHTS || { 1: 50, 2: 28, 3: 15, 4: 7 };
+        var _tot = 0, _roll = Math.random();
+        _bpList.forEach(function (b) { _tot += (_wts[b.tier] || 1); });
+        var _acc = 0, _pick = _bpList[0];
+        _roll *= _tot;
+        for (var _bi = 0; _bi < _bpList.length; _bi++) {
+          _acc += (_wts[_bpList[_bi].tier] || 1);
+          if (_roll <= _acc) { _pick = _bpList[_bi]; break; }
+        }
+        add(_pick.id, 1);
+      }
+    }
     exp.accrued = (exp.accrued || 0) + 1;
   };
   /* 把一队的累计奖励落**全局背包**；兵按风险损耗，余部**归城**。 */
+  /* 舰船蓝图加权抽签（唯一出口；奇观掉落与门禁断言同读） */
+  GAME.wonderShipBpPick = function (rng) {
+    var list = DATA.SHIP_BLUEPRINTS || [];
+    if (!list.length) return null;
+    var wts = DATA.WONDER_SHIP_BP_WEIGHTS || { 1: 50, 2: 28, 3: 15, 4: 7 };
+    var tot = 0; list.forEach(function (b) { tot += (wts[b.tier] || 1); });
+    var roll = (typeof rng === 'function' ? rng() : Math.random()) * tot, acc = 0;
+    for (var i = 0; i < list.length; i++) {
+      acc += (wts[list[i].tier] || 1);
+      if (roll <= acc) return list[i];
+    }
+    return list[list.length - 1];
+  };
   GAME._wonderBank = function (exp, def, note) {
     var s = GAME.state;
     (exp.acc || []).forEach(function (x) { if (x.id && x.n > 0) GAME.items.add(x.id, x.n); });
@@ -37966,10 +38328,11 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
     }
     /* v73：基因实验室 —— 面板开着时倒计时每秒走、完成即换出「提取」按钮
        （与征收冷却同一套"弹窗不整页重绘、靠这里每秒同步"的口径）。 */
+    var _farmCity = GAME.currentCity();
     var fLeft = document.querySelectorAll('[data-farm-left]');
     for (var f1 = 0; f1 < fLeft.length; f1++) {
       var fi1 = Number(fLeft[f1].getAttribute('data-farm-left'));
-      var fs1 = GAME.farmPlotState(fi1);
+      var fs1 = GAME.farmPlotState(fi1, _farmCity);
       fLeft[f1].textContent = fs1.state === 'ripe'
         ? '✨ 可提取'
         : ('完成还需 ' + U.durExact(fs1.left / GAME.timeScale()));
@@ -37977,12 +38340,12 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
     var fBars = document.querySelectorAll('[data-farm-bar]');
     for (var f2 = 0; f2 < fBars.length; f2++) {
       var fi2 = Number(fBars[f2].getAttribute('data-farm-bar'));
-      fBars[f2].style.width = GAME.farmPlotState(fi2).pct + '%';
+      fBars[f2].style.width = GAME.farmPlotState(fi2, _farmCity).pct + '%';
     }
     if (document.querySelector('.farm-space')) {
-      var fr = GAME.farmOf(), ripeN = 0;
+      var fr = GAME.farmOf(_farmCity), ripeN = 0;
       for (var f3 = 0; f3 < fr.plots.length; f3++) {
-        if (GAME.farmPlotState(f3).state === 'ripe') ripeN++;
+        if (GAME.farmPlotState(f3, _farmCity).state === 'ripe') ripeN++;
       }
       var shownN = document.querySelectorAll('.farm-cell [data-action="farm-extract"]').length;
       if (ripeN !== shownN) ui.openFarm();
@@ -38639,6 +39002,34 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
     return list[0];
   };
 
+  /* ============================================================
+   * v91.72（老板）：「多条目的信息，比如步兵队列。满 6 条会将这个界面撑开，
+   *   对于这种多条目的信息，建议采用一个伸缩的设置 —— 除非展开，否则收起来，
+   *   以一条汇总呈现」。
+   * ------------------------------------------------------------
+   * 通用**折叠块**（唯一出口）：标题行 = 汇总（总是可见），明细默认收起，
+   * 点标题行展开/收起。展开态记 `ui._foldOpen[key]`（界面态，不落存档）；
+   * 动作 `fold-toggle` 在 main.js 里改状态 + 走当前弹窗的 live 回调重绘
+   * （保存滚动位），无 live 时退回整页重绘。
+   * ============================================================ */
+  ui._foldOpen = {};
+  ui.foldBlock = function (key, title, rows, opts) {
+    opts = opts || {};
+    var n = (rows || []).length;
+    /* 未手动展开过时：条目少（≤ opts.autoOpen）默认展开，多则收起 —— 满足老板
+       「满 6 条会撑开界面」的场景，又不会让 1~2 条的小队列多一次点击。 */
+    var open = (ui._foldOpen[key] == null)
+      ? (opts.autoOpen != null && n <= opts.autoOpen)
+      : !!ui._foldOpen[key];
+    if (opts.empty && !n) return '';
+    var head = '<div class="op-zone-t" data-action="fold-toggle" data-fold="' + U.escape(key) + '"' +
+      ' style="cursor:pointer;user-select:none;" title="' + U.escape(open ? '点击收起明细' : '点击展开明细') + '">' +
+      (open ? '▾ ' : '▸ ') + title +
+      '<span class="q-sec-n" style="float:right;">' + (opts.note != null ? opts.note : (n + ' 条')) +
+      '</span></div>';
+    return '<div class="op-zone"' + (opts.style ? ' style="' + opts.style + '"' : '') + '>' +
+      head + (open ? (opts.detail || '') : '') + '</div>';
+  };
   /* 本营募兵队列（执行中 / 排队等待） */
   ui.trainQueueBlock = function (bar, city, kind) {
     kind = GAME.queueKindOf ? GAME.queueKindOf(kind) : 'train';
@@ -38678,25 +39069,37 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
           '" data-i="' + i + '" title="取消本条募兵，返还 80% 军资">取消</button>' +
         '</td></tr>';
     }).join('');
-    return '<div class="q-sec" style="margin-top:14px;"><span class="q-sec-t">本营募兵队列</span>' +
-      '<span class="q-sec-n">' + qs.length + ' / ' + slots + ' 条</span></div>' +
-      '<table class="tbl"><thead><tr><th>序</th><th>兵种</th><th>状态</th><th>进度</th><th>操作</th></tr></thead><tbody>' +
-      rows + '</tbody></table>' +
-      /* v89.49：两条路都写清楚（原先只在"没宝物"时报一句，且按钮是灰的） */
-      '<div class="ui-sub" style="margin-top:4px;">' + (hasBoost
-        ? '可提速：宝物加速（更划算）· 花旧币买时间'
-        : '背包没有加速宝物，仍可**花旧币买时间**') +
-        ui.help('提速面板里有两条路：\n' +
-          '① 花旧币买时间 —— 价 = 该批军资 ×20% × 还能缩短的比例，随时可用\n' +
-          '② 宝物加速 —— 操典残页 −30%（每队列限 1 次）· 操典全卷 −50%，游商「加速」类购得，更划算') +
-      '</div>';
+    /* v91.72：多条目折叠 —— 默认一条汇总（标题 + N 条 + 正在执行的那条），
+       点标题行才展开逐条表格（满 6 条不再把面板撑开）。 */
+    var run = qs[0] || null;
+    var runTxt = run ? ((DATA.TROOPS[run.troopId] ? DATA.TROOPS[run.troopId].name : run.troopId)
+      + ' ×' + U.numText(run.count, 0) + ' · ' + Math.min(100, Math.floor((run.elapsed || 0) / run.totalTime * 100)) + '%') : '空闲';
+    var foldKey = 'queue-' + kind + '-' + (city && city.id) + '-' + bar.idx;
+    return ui.foldBlock(foldKey,
+      (isCraft ? '本作坊制造队列' : '本营募兵队列') +
+        '<span style="color:var(--text-dim);font-weight:400;font-size:var(--fs-sub);margin-left:8px;">' +
+        (qs.length > 1 ? ('执行中：' + U.escape(runTxt) + '（另有 ' + (qs.length - 1) + ' 条排队）') : U.escape(runTxt)) +
+        '</span>',
+      qs.slice(),
+      { note: qs.length + ' / ' + slots + ' 条', autoOpen: 3,
+        detail:
+        '<table class="tbl"><thead><tr><th>序</th><th>兵种</th><th>状态</th><th>进度</th><th>操作</th></tr></thead><tbody>' +
+        rows + '</tbody></table>' +
+        /* v89.49：两条路都写清楚（原先只在"没宝物"时报一句，且按钮是灰的） */
+        '<div class="ui-sub" style="margin-top:4px;">' + (hasBoost
+          ? '可提速：宝物加速（更划算）· 花旧币买时间'
+          : '背包没有加速宝物，仍可**花旧币买时间**') +
+          ui.help('提速面板里有两条路：\n' +
+            '① 花旧币买时间 —— 价 = 该批军资 ×20% × 还能缩短的比例，随时可用\n' +
+            '② 宝物加速 —— 操典残页 −30%（每队列限 1 次）· 操典全卷 −50%，游商「加速」类购得，更划算') +
+        '</div>' });
   };
 
   ui.openPanel = function (view, title, size) {
     var box = ui['PANEL_TITLE'] || {};
     var body = '';
     if (view === 'troops') body = ui.troopsHTML();
-    else if (view === 'tech') body = ui.techHTML();
+    else if (view === 'tech') body = ui.techHTML(true);   /* v91.72b：弹窗外壳已有标题，正文不再重复 */
     else if (view === 'equip') body = ui.equipHTML(true);    /* v89.112：弹窗模式（分页走弹窗内） */
     else if (view === 'items') { ui.openBag('item'); return; }
     else if (view === 'generals') body = ui.generalsHTML();
@@ -38938,7 +39341,7 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
   /* v91.57：**大类（一级分类）**表 —— 宝物页上层分类，把 ~26 个细类收进 4 个桶。 */
   ui.BAG_CATS = {
     war: { name: '战备', types: ['attr_buff', 'military_buff', 'mount_buff', 'boost', 'exp', 'stamina', 'energy', 'perm', 'rank_up', 'essence', 'talis', 'corvee', 'chest'] },
-    mat: { name: '物资', types: ['wmat'] },   /* v91.59：6 种专用途退役 → 物资大类只剩奇观材料 */
+    mat: { name: '物资', types: ['wmat', 'res_crate'] },   /* v91.72：+ 战储仓压缩物资 */
     civ: { name: '民生', types: ['prod_buff', 'pop_boost', 'pop_fill', 'build_cost'] },
     treasure: { name: '秘宝', types: ['jewel', 'bao', 'neigong', 'blueprint'] },
   };
@@ -39308,6 +39711,10 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
     /* v91.30：奇观材料 —— 无"使用"动作（作高阶升级/强化/打造/融合的消耗料）。
        v91.59（老板）：6 种"直接使用型"专属用途退役 → 9 种一律 wmat，去**融合淬体**。 */
     wmat: { hint: '奇观材料：用于高阶升级 / 强化 / 打造 / 基因融合（非消耗品）', act: 'ling-fuse-open', btn: '去融合淬体' },
+    /* v91.72：舰船蓝图 —— 非消耗品，指引去空间站建造对应舰种（奇观探索产出）。 */
+    ship_bp: { hint: '舰船蓝图：请到空间站建造对应舰种', view: 'station', btn: '去空间站' },
+    /* v91.72：压缩物资 —— 无对象，就地解压入当前城（仓容不足则拒绝）。 */
+    res_crate: { direct: true },
     /* 有场景：去对应玩法界面 */
     essence: { hint: '请到调校界面使用', act: 'ling-temper-open', btn: '去调校' },
     talis: { hint: '封存匣在出征时随计略消耗，无需手动使用', view: 'city', btn: '去城市' },
@@ -39330,6 +39737,8 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
     rank_up: '血清（提升资质）',
     essence: '精华（调校基因强化件）',
     chest: '宝箱', neigong: '战技残页', corvee: '政令', talis: '封存匣', build_cost: '营造', wmat: '奇观材料',
+    ship_bp: '舰船蓝图',
+    res_crate: '压缩物资（解压回城）',
     /* v89.99（老板「增加道具如招揽令」）：民生 —— 幸存者增速道具；
        v89.104：迁入令（一次性幸存者注入）同属民生族 */
     pop_boost: '民生（幸存者增速）',
@@ -39384,8 +39793,14 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
           title: it.name + '（' + tplName + '）',
           lore: '持有 ' + U.numText(have, 0) + (it.price ? '　估值 ' + U.fmt(it.price * 100) + ' 旧币' : ''),
           attr: (GAME.itemEffect(it) || '') +
-            (route.direct ? '　（点击使用 1 个 · 右键批量）' : ('　↳ ' + (route.hint || '需在对应界面使用'))),
+            (route.direct ? '　（点击使用 1 个 · 右键批量）' : ('　↳ ' + (route.hint || '需在对应界面使用'))) +
+            (GAME.systems.consignPriceOf && GAME.systems.consignPriceOf(it.id) > 0
+              ? '　·　可寄售（右下角「售」）' : ''),
           key: it.id,
+          /* v91.72（老板）：「商品的出售建议直接放在背包物品的右下角」——
+             与装备格同一个「售」角标，动作走寄售确认（item-sell-ask）。 */
+          sellKey: (GAME.systems.consignPriceOf && GAME.systems.consignPriceOf(it.id) > 0) ? it.id : null,
+          sellAct: 'item-sell-ask',
         };
         if (route.direct) { cell.act = 'use-bag-item'; cell.bulk = 1; }   /* v89.141：右键 = 批量小窗 */
         else if (route.act) { cell.act = route.act; }
@@ -39483,7 +39898,8 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
       (o.cnt ? '<span class="bag-cnt">×' + o.cnt + '</span>' : '') +
       (o.worn ? '<span class="bag-worn" title="' + U.escape(o.worn) + ' 着">' + U.escape(o.worn) + '</span>' : '') +
       /* v90.55（老板）：可售件（背包中未穿戴）→ 角上「售」按钮（自带 data-action，点击优先于格子动作）。 */
-      (o.sellKey != null ? '<span class="bag-sell" data-action="sell-equip-ask" data-key="' + o.sellKey + '" title="出售换旧币">售</span>' : '') +
+      (o.sellKey != null ? '<span class="bag-sell" data-action="' + (o.sellAct || 'sell-equip-ask') +
+        '" data-key="' + o.sellKey + '" title="出售换旧币">售</span>' : '') +
       '<span class="bag-ico">' + o.ico + '</span>' +
       '<span class="bag-name">' + U.escape(o.name) + '</span>' +
       '<div class="bag-tip"><div class="tip-t">' + U.escape(o.title) + '</div>' +
@@ -39899,7 +40315,7 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
       GAME.craftWorkshopsOf(c).forEach(function (x) { if (x.idx === bIdx) { bar = x; kind = 'craft'; } });
     }
     if (!bar) { ui.toast('未找到该军营'); return; }
-    var label = kind === 'craft' ? '机工坊' : '军营';
+    var label = kind === 'craft' ? '精密制造厂' : '军营';
     var run = GAME.trainRunningOf(c.id, bIdx, kind);
     var head = '<div class="gold-heading">⚡ 提速 · 城内第 ' + (bIdx + 1) + ' 格' + label + '</div>';
     /* v89.49：队列刚好走完、还没被主循环扫走时（remain = 0）也按空态显示 ——
@@ -41107,9 +41523,22 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
     if (!f.tierOk) blockers.push('需制造厂 Lv' + (DATA.FORGE.tierLv[f.q - 1] || 7));
     if (!f.bpOk) blockers.push('缺图纸「' + (f.bp ? f.bp.name : '') + '」');
     if (!f.matsOk) blockers.push('材料不足');
-    if (!GAME.canAfford(f.cost)) blockers.push('资材不足');
+    var jwMissing = false;
+    /* v91.72（老板）：「目前装备需求加上了奇迹材料，但是在制造厂中还没有把相应信息做好」——
+       奇观材料（走 cost.jewel 键）单独列一行，与普通材料**间隔开**；
+       缺什么标红（与 GAME.canAfford 同一份 cost，不另算）。 */
+    var jwNeed = GAME.jewelNeedOf ? GAME.jewelNeedOf(f.cost) : {};
+    var jwParts = Object.keys(jwNeed).map(function (jid) {
+      var inv = (GAME.state.items || {})[jid] || 0, need2 = jwNeed[jid];
+      var jn = ((DATA.ITEM_BY_ID || {})[jid] || {}).name || jid;
+      if (inv < need2) jwMissing = true;
+      return '<span class="' + (inv >= need2 ? '' : 'lack') + '">' + U.escape(jn) + ' ' + inv + '/' + need2 + '</span>';
+    });
+    if (!GAME.canAfford(f.cost)) blockers.push(jwParts.length ? '奇观材料 / 资材不足' : '资材不足');
     var ok = !blockers.length;
-    /* v89.87（老板需求 1）：缺什么就地可买（只在真缺时渲染 —— 不占常态高度） */
+    /* v89.87（老板需求 1）：缺什么就地可买（只在真缺时渲染 —— 不占常态高度）。
+       v91.72（老板）：「如果材料不足，可以放在点选那一行上，不占据装备信息展示空间」——
+       qb 按钮从卡片正文移到**点选行**（actHtml）。 */
     var qbBtns = '';
     Object.keys(f.mats || {}).forEach(function (mk) {
       var have = (GAME.state.items || {})[mk] || 0, need2 = f.mats[mk];
@@ -41144,13 +41573,18 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
          两处合起来给每张卡省约 38px：208 → 170。这不是审美，是能否放下两行的硬数
          （正文 434px 里 2×208 = 416 差 1px 装不下，2×170 = 340 才有余量）。 */
       desc: '材料：' + (matParts.join('　') || '无') +
-        (ok ? '' : '<br><span style="color:var(--red-light);">' + blockers.join('　') + '</span>') +
-        (qbBtns ? '<br>' + qbBtns : ''),
+        /* v91.72：奇观材料独立一行（与普通材料之间留 4px 间隔）。 */
+        (jwParts.length ? '<br><span style="display:inline-block;margin-top:4px;">奇观材料：' +
+          jwParts.join('　') + '</span>' : '') +
+        (ok ? '' : '<br><span style="color:var(--red-light);">' + blockers.join('　') + '</span>'),
       /* v89.117（老板「太多打造按钮了，统一成一个放在底部」）：
          逐卡「打造」键退役 —— 卡片改为**可点选**，底部只有一个打造键（动作名沿用
          `forge-item`，改从选中集取件；v89.201 起为多选 _forgeSelList）。"点选"提示占位极小，
          而省下的是每张卡一整个按钮的高度。 */
-      actHtml: '<span class="ir-pick">' + ((ui._forgeSelList || []).indexOf(String(f.id)) >= 0 ? '✔ 已选' : '点选') + '</span>',
+      /* v91.72：缺料按钮进「点选」这一行（不占装备信息展示空间）。 */
+      actHtml: (qbBtns ? '<span class="ir-lack" style="display:inline-flex;gap:2px;flex-wrap:wrap;margin-right:6px;">' +
+          qbBtns + '</span>' : '') +
+        '<span class="ir-pick">' + ((ui._forgeSelList || []).indexOf(String(f.id)) >= 0 ? '✔ 已选' : '点选') + '</span>',
       pickAction: 'forge-pick', pickItem: f.id,
       sel: ((ui._forgeSelList || []).indexOf(String(f.id)) >= 0),
     });
@@ -41741,7 +42175,7 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
       ((s.queues && s.queues.train) || []).forEach(function (q) { if (q.troopId === id) queued += (q.count || 0); });
       return '<tr' + (part ? ' class="at-on"' : '') + '>' +
         '<td>' + t.icon + ' ' + U.escape(t.name) +
-          (t.craft ? ' <span class="ui-sub">🏭 机工坊</span>' : '') + '</td>' +
+          (t.craft ? ' <span class="ui-sub">🏭 精密制造厂</span>' : '') + '</td>' +
         '<td class="ctr"><input type="number" class="at-num" min="0" max="9999999" value="' + (tg.min || 0) +
           '" data-action="autotrain-set" data-k="min" data-troop="' + id + '"></td>' +
         '<td class="ctr"><input type="number" class="at-num" min="0" max="9999999" value="' + (tg.max || 0) +
@@ -41756,8 +42190,8 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
         .map(function (n) { return ((DATA.TROOPS[n.troopId] || {}).name || n.troopId) + ' 差 ' + U.fmt(n.need); });
       var slotTxt = (plan.bars.length || plan.craftBars.length)
         ? (plan.bars.length ? '军营 ' + plan.bars.length + ' 座　空位 <b>' + plan.left + ' / ' + plan.total + '</b>' : '')
-          + (plan.craftBars.length ? (plan.bars.length ? '　·　' : '') + '机工坊 ' + plan.craftBars.length + ' 座　空位 <b>' + plan.craftLeft + ' / ' + plan.craftTotal + '</b>' : '')
-        : '<span class="ui-sub">无军营 / 机工坊 —— 不参与</span>';
+          + (plan.craftBars.length ? (plan.bars.length ? '　·　' : '') + '精密制造厂 ' + plan.craftBars.length + ' 座　空位 <b>' + plan.craftLeft + ' / ' + plan.craftTotal + '</b>' : '')
+        : '<span class="ui-sub">无军营 / 精密制造厂 —— 不参与</span>';
       /* v89.199（老板 2）：「待补」清单逐项累积（每个参与的兵种一项）——wrap-ok =
          换行许可；不加时 nowrap 会把本行撑到上千 px、连锁撑宽整页（实测 1408→2383）。 */
       return '<div class="res-line wrap-ok"><span class="lbl">' + U.escape(c0.name) + '</span><span class="val">' + slotTxt +
@@ -41780,8 +42214,8 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
         : '已关闭 —— 配置会保留，重开即用。') + '</div>' +
       '<div class="auto-line"><span class="al-k">触发条件</span><span>某城某兵种（驻军 + 在训）<b>低于「触发线」</b>即自动补单（触发线设 0 = 低于目标就补）</span></div>' +
       '<div class="auto-line"><span class="al-k">停止条件</span><span>达到<b>「目标」</b>即停 · <b>旧币 / 净水低于保底</b>即停（暂停不关开关）· 军营队列满则等待（消化后自动继续）</span></div>' +
-      '<div class="auto-line"><span class="al-k">执行范围</span><span>全境统一规则、<b>逐城独立执行</b>（各用各的城市资源与队列）；器械（无人轰炸机 / 东风快递）走<b>机工坊队列</b>，与军营队列分开排空位</span></div>' +
-      '<div class="auto-line"><span class="al-k">可用栏位</span><span>只往<b>有空位</b>的队列放单 —— 军营位 = Σ 军营（队列位 − 已占）、机工坊位同理；与募兵面板同一把尺（trainQueueSlots 唯一出口）</span></div>' +
+      '<div class="auto-line"><span class="al-k">执行范围</span><span>全境统一规则、<b>逐城独立执行</b>（各用各的城市资源与队列）；器械（无人轰炸机 / 东风快递）走<b>精密制造厂队列</b>，与军营队列分开排空位</span></div>' +
+      '<div class="auto-line"><span class="al-k">可用栏位</span><span>只往<b>有空位</b>的队列放单 —— 军营位 = Σ 军营（队列位 − 已占）、精密制造厂位同理；与募兵面板同一把尺（trainQueueSlots 唯一出口）</span></div>' +
       '<table class="tbl" style="margin-top:var(--sp-3);"><thead><tr><th>目标兵种</th><th class="ctr">触发线（低于）</th><th class="ctr">目标（补到）</th><th class="num">全境现状</th></tr></thead><tbody>' +
         rows + '</tbody></table>' +
       '<div class="auto-line" style="margin-top:var(--sp-3);"><span class="al-k">资源保底</span>' +
@@ -41914,6 +42348,20 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
      原入口 = 建筑 honglusi 建筑面板的「⚔️ 派系」按钮（已从 BLDG_FUNC 摘除）。
      三种形态（未入派名录 / 已入派品阶声望任务 / 退派）随系统一并移除。 */
 
+  /* v91.72（老板）：「交易数量在设定后买入或卖出后不要跳回 10 万」——
+     数量框的值记在界面态 ui._mkAmount（不落存档），面板每次重建都回填它。 */
+  ui._mkAmount = 0;
+  ui.mkAttach = function (root) {
+    var inEl = (root || document).querySelector('#mk-amount');
+    if (!inEl || inEl._mkBound) return;
+    inEl._mkBound = true;
+    var sync = function () {
+      var v = Math.max(1, Math.floor(Number(inEl.value) || 0));
+      if (v > 0) ui._mkAmount = v;
+    };
+    inEl.addEventListener('input', sync);
+    inEl.addEventListener('change', sync);
+  };
   ui.openMarket = function () {
     var s = GAME.state;
     var lv = GAME.marketLevel();
@@ -41954,7 +42402,8 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
       '<table class="ms-table ms-res-table"><thead><tr>' +
         '<th>资源</th><th>库存</th><th>卖出·每千得旧币</th><th>买入·每千耗旧币</th><th>交易</th>' +
       '</tr></thead><tbody>' + rows + '</tbody></table>' +
-      '<div class="mk-row"><input type="number" id="mk-amount" min="1" value="100000" placeholder="数量">' +
+      '<div class="mk-row"><input type="number" id="mk-amount" min="1" value="' +
+        (ui._mkAmount && ui._mkAmount > 0 ? ui._mkAmount : 100000) + '" placeholder="数量" data-persist="mk">' +
         '<span class="mk-hint">交易数量（资源单位）</span></div>' +
       /* v89.62（老板「买卖数量以 10万，百万，千万，亿量级加减」）：
          四档量级一键设定 + ÷10 / ×10 两键按量级增减；数量框仍可直接手填（两条路并存）。 */
@@ -42008,6 +42457,7 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
          v89.136（清单①）：live 逐秒刷新（报价 / 折损 / 库存随交易即时变）。 */
       { size: 'xxl', live: function () { ui.openMarket(); } }
     );
+    ui.mkAttach(document);
   };
 
 
@@ -42036,6 +42486,11 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
       + ((_C160.periodGameHours || 24) / 24) + ' 游戏日（现实约 ' + ui.rotPeriodRealText() + '）折损 ' + Math.round((_C160.ratio == null ? 0.25 : _C160.ratio) * 100) + '%'
       + '（' + ((_C160.events || []).map(function (e) { return e.name; }).join(' / ')) + '）'
       + '　·　当前超出上限：<b>' + (_rotEx160 > 0 ? U.fmt(_rotEx160) : '无') + '</b></div>';
+    /* v91.72（老板）：空间压缩 —— 每 500 万物资 = 1 份压缩物资（入背包），压缩后释放等量城储。
+       行尾给「压缩」按钮；背包里的压缩物资可在战储仓顺手解压（仓容不足会拒绝）。 */
+    var _CMP = GAME.resCrateCfg();
+    var _cmpAll = GAME.items.count('crate_grain') + GAME.items.count('crate_wood')
+      + GAME.items.count('crate_stone') + GAME.items.count('crate_iron');
     var rows = ['grain', 'wood', 'stone', 'iron'].map(function (k) {
       var meta = null;
       DATA.RESOURCES.forEach(function (r) { if (r.key === k) meta = r; });
@@ -42044,17 +42499,72 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
       var capK = (sp.capByRes && sp.capByRes[k] != null) ? sp.capByRes[k] : sp.total;
       var exK = (sp.extByRes && sp.extByRes[k]) || 0;
       var pct = Math.min(100, Math.round(v / capK * 100));
+      var cid = GAME.resCrateIdOf(k), cn = cid ? GAME.items.count(cid) : 0;
+      var canN = Math.floor(v / _CMP.unit);
+      var ctl = '<span class="store-cmp" style="display:flex;gap:4px;align-items:center;margin-left:8px;">' +
+        '<button class="btn xs" data-action="store-compress-ask" data-res="' + k + '"' +
+          (canN > 0 ? '' : ' disabled title="满 ' + U.fmt(_CMP.unit) + ' 才能压缩 1 份"') + '>压缩</button>' +
+        (cn > 0 ? '<button class="btn xs" data-action="store-decompress" data-res="' + k +
+          '" title="解压 1 份（' + U.fmt(_CMP.unit) + '）入本城，需仓容足够">解压 ×' + cn + '</button>' : '') +
+        '</span>';
       return '<div class="store-row"><span class="lbl">' + (meta ? meta.icon + meta.name : k) + '</span>' +
         '<span class="prog" style="flex:1;margin:0 10px;"><i style="width:' + pct + '%' + (pct > 90 ? ';background:linear-gradient(90deg,#a33,#e66)' : '') + '"></i></span>' +
         '<span class="val">' + U.numHTML(v, 0) + ' <span class="cap" title="战储仓 ' + U.fmt(sp.base)
-          + (exK > 0 ? (' + 城外堆场 ' + U.fmt(exK)) : '') + '">/ ' + U.numText(capK, 0) + '</span></span></div>';
+          + (exK > 0 ? (' + 城外堆场 ' + U.fmt(exK)) : '') + '">/ ' + U.numText(capK, 0) + '</span></span>' +
+        ctl + '</div>';
     }).join('');
     ui.openModal(
       '<div class="gold-heading">🏚️ 战储仓 · ' + (lv > 0 ? ('Lv' + lv + '（多仓叠加）') : '未建') + '</div>' +
       '<div style="color:var(--text-dim);font-size:var(--fs-sub);text-align:center;margin-bottom:8px;">每级 +' + U.fmt(GAME.DATA.BASE_STORE || 2000000) + ' 储量上限</div>' +
       near + rotNote + rows +
+      '<div class="note" style="margin-top:8px;">🗜️ 空间压缩：每 <b>' + U.fmt(_CMP.unit) +
+        '</b> 物资可压缩为 1 份对应压缩物资（入背包，不占仓容）；解压回城需仓容足够。' +
+        '背包中现有压缩物资 <b>' + _cmpAll + '</b> 份。</div>' +
       '<div style="text-align:center;margin-top:12px;"><button class="btn" data-action="close-modal">关闭</button></div>'
     );
+  };
+  ui.openItemSellAsk = function (itemId) {
+    var s = GAME.state, item = GAME.systems.itemInfo(itemId);
+    if (!item) { ui.toast('未知道具'); return; }
+    var n = (s.items || {})[itemId] || 0;
+    var unit = GAME.systems.consignPriceOf(itemId);
+    if (!(n > 0) || !(unit > 0)) { ui.toast('「' + item.name + '」不可寄售'); return; }
+    ui.openShell({
+      title: '💰 寄售 · ' + U.escape(item.name),
+      size: 'sm',
+      body: '<div class="attr"><span class="k">持有</span><span class="v">' + U.numText(n, 0) + ' 件</span></div>' +
+        '<div class="attr"><span class="k">回收价</span><span class="v">' + U.fmt(unit) + ' 旧币 / 件（购买价 75%）</span></div>' +
+        '<div class="op-zone" style="margin-top:10px;"><div class="op-row">' +
+          ui.qtyInput('sell-q', 1, unit, n) +
+          '<span class="op-hint">只卖这一种；一次卖一件或多件</span>' +
+        '</div></div>',
+      foot: '<div class="m-foot"><button class="btn gold" data-action="item-sell-do" data-item="' + itemId + '">确认寄售</button>' +
+        '<button class="btn" data-action="consign-sell" data-item="' + itemId + '">全部寄售</button></div>'
+    });
+  };
+  /* 压缩份数确认小窗（默认 1 份；输入框可改） */
+  ui.openCompressAsk = function (key) {
+    var city = GAME.currentCity();
+    if (!city) return;
+    var cfg = GAME.resCrateCfg(), maxN = GAME.resCrateLeftOf(city, key);
+    var meta = null; DATA.RESOURCES.forEach(function (r) { if (r.key === key) meta = r; });
+    var cid = GAME.resCrateIdOf(key);
+    var cName = ((DATA.ITEM_BY_ID || {})[cid] || {}).name || '压缩物资';
+    ui.openShell({
+      title: '🗜️ 压缩 ' + ((meta && meta.name) || key),
+      size: 'sm',
+      body: '<div class="attr"><span class="k">当前库存</span><span class="v">' +
+          U.numText((GAME.res(city) || {})[key] || 0, 0) + '</span></div>' +
+        '<div class="attr"><span class="k">可压缩</span><span class="v good">' + maxN + ' 份（每份 ' +
+          U.fmt(cfg.unit) + '）</span></div>' +
+        '<div class="attr"><span class="k">产物</span><span class="v">' + U.escape(cName) + ' ×N</span></div>' +
+        '<div class="op-zone" style="margin-top:10px;"><div class="op-row">' +
+          ui.qtyInput('cmp-q', Math.max(1, Math.min(maxN, 1)), 0, Math.max(1, maxN)) +
+          '<span class="op-hint">压缩后等量释放城市储量；解压需仓容足够</span>' +
+        '</div></div>',
+      foot: '<div class="m-foot"><button class="btn gold" data-action="store-compress-do" data-res="' + key +
+        '">确认压缩</button></div>'
+    });
   };
 
   /* ================= 英雄资质徽章 ================= */
@@ -43045,7 +43555,7 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
         }).join('')
       : '';
     ui.openShell({
-      title: '🛠️ 机工坊 · Lv' + lv,
+      title: '🛠️ 精密制造厂 · Lv' + lv,
       sub: '器械制造与城防工事',
       /* 尺寸用**默认档**（660×620）而不是 sm：实测 sm（440×420）下正文超出 36px，
          会出现弹窗内滚动条 —— 那是老板明令禁止的（"弹窗内禁止下拉条，一律分页"）。 */
@@ -43200,7 +43710,8 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
               '">🏛 设为主城</button>') +
           /* v90.62（老板）：**放弃城市**选项并入政务厅要务（原只在城市操作弹窗）——
              仍需二次确认；最后一座城 / 尚有军队驻外时由 abandonCityCheck 拒绝。 */
-          ((s.cities || []).length > 1
+          /* v91.72：只有**自建城且未设为主城**才给入口（判据同 GAME.abandonCityCheck · 不给必然被拒的按钮）。 */
+          (((s.cities || []).length > 1 && (c.type || 'self') === 'self' && !c.origId && !isMain135)
             ? '<button class="btn sm red" data-action="city-abandon-ask" data-city="' + c.id +
               '" title="放弃本城（不可逆）：照表清理附属于本城的数据，该格归还地图">🗑 放弃城市</button>'
             : '') +
@@ -43277,8 +43788,23 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
     var queueBox174 = '';
     if (_gfBid135 === 'guanfu') {
       var qs174 = (s.queues.build || []).filter(function (q) { return q.cityId === c.id; });
-      queueBox174 = '<div class="op-zone"><div class="op-zone-t">在建队列（' + qs174.length + '）</div>' +
-        (qs174.length ? qs174.map(function (q) {
+      /* v91.72（老板）：多条目折叠 —— 默认只留一条汇总（N 项 + 最近一项的进度），
+         展开才逐条列出（满 6 条不再把面板撑开）。≤3 条时默认展开。 */
+      var _gfQKey174 = 'guanfu-queue-' + c.id;
+      var _gfQOpen174 = (ui._foldOpen[_gfQKey174] == null) ? (qs174.length <= 3) : !!ui._foldOpen[_gfQKey174];
+      var _first174 = qs174[0], _sum174 = '本城暂无在建工程';
+      if (_first174) {
+        var _b174 = DATA.BUILDINGS[_first174.buildId] || (DATA.EXT_BUILDINGS || {})[_first174.buildId] || {};
+        var _pr174 = GAME.buildProgressOf(_first174);
+        _sum174 = (qs174.length > 1
+          ? ('在建 ' + qs174.length + ' 项 · 最近：' + (_b174.name || _first174.buildId) + ' ' + (_pr174 ? _pr174.label : ''))
+          : ((_b174.name || _first174.buildId) + ' · ' + (_pr174 ? _pr174.label : '')));
+      }
+      queueBox174 = '<div class="op-zone"><div class="op-zone-t" data-action="fold-toggle" data-fold="guanfu-queue-' + c.id + '"' +
+        ' style="cursor:pointer;user-select:none;" title="点击展开 / 收起重明细">' +
+        (_gfQOpen174 ? '▾ ' : '▸ ') + '在建队列（' + qs174.length + '）' +
+        '<span class="q-sec-n" style="float:right;">' + U.escape(_sum174) + '</span></div>' +
+        (_gfQOpen174 ? (qs174.length ? qs174.map(function (q) {
           var bB = DATA.BUILDINGS[q.buildId];
           var bE = (DATA.EXT_BUILDINGS || {})[q.buildId];
           var nm = (bB && bB.name) || (bE && bE.name) || q.buildId;
@@ -43293,7 +43819,7 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
           return '<div class="attr"><span class="k">' + U.escape(nm) + '</span>' +
             '<span class="v">' + what + ' · <b ' + attr + '>' + (pr ? pr.label : '…') + '</b></span></div>';
         }).join('')
-          : '<div class="attr"><span class="v" style="color:var(--text-dim);">本城暂无在建工程</span></div>') +
+          : '<div class="attr"><span class="v" style="color:var(--text-dim);">本城暂无在建工程</span></div>') : '') +
         '</div>';
     }
     var liveFn174 = function () {
@@ -43852,21 +44378,16 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
           /* ⛔ v89.138（老板 4）：标题行撤除（同上） */
           '<div class="op-row"><button class="btn gold" data-action="ext-convert-ask" data-idx="' + idx + '">🔧 改建为其他资源建筑</button></div>' +
         '</div>' +
-        /* v89.135（老板 11）：与城内同构 —— 费用整体进悬停（资源行 / 珠宝行），
-           按钮两行（升级 / LvX → LvX+1）；"费用"字样与面板费用行一并撤除。 */
-        '<div class="op-zone">' +
-          '<div class="op-zone-t">升级</div>' +
-          '<div class="bldg-acts">' +
-            (upCost
-              ? '<button class="btn gold bldg-act" data-action="ext-upgrade" data-idx="' + idx + '"' +
-                  ' title="' + U.escape(ui.buildCostTip(upCost)) + '">升级' +
-                  '<span class="ba-sub">Lv' + e.lv + ' → Lv' + (e.lv + 1) + '</span></button>'
-              : '<span class="op-done">' + (upPre.ok ? '已达最高等级' : U.escape(ui.prereqText(c, upPre))) + '</span>') +
-          '</div></div>' +
+        /* v91.72（老板）：「资源建筑的升级按钮应该放在底部」——
+           升级键从正文中段挪到底部操作栏（与拆毁 / 关闭同排），正文只留信息。 */
         '<div class="bldg-foot">' +
+          (upCost
+            ? '<button class="btn gold bldg-act" data-action="ext-upgrade" data-idx="' + idx + '"' +
+                ' title="' + U.escape(ui.buildCostTip(upCost)) + '">升级' +
+                '<span class="ba-sub">Lv' + e.lv + ' → Lv' + (e.lv + 1) + '</span></button>'
+            : '<span class="op-done">' + (upPre.ok ? '已达最高等级' : U.escape(ui.prereqText(c, upPre))) + '</span>') +
           (upCost ? '<button class="btn sm red" data-action="demolish-ask" data-kind="ext" data-idx="' + idx + '" title="返还累计投入的 50%（需二次确认）">拆毁</button>' : '<span></span>') +
           '<button class="btn" data-action="close-modal">关闭</button>' +
-          '<span></span>' +
         '</div>', { live: liveFnE174 }
       );
       return;
@@ -43939,7 +44460,7 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
     var bar = ui.trainBarracks();
     var slotsLeft = bar ? GAME.trainSlotsLeft(c, bar.idx, kind) : 0;
     var barLine = bar ? ''
-      : '<div class="q-empty">本城尚未建造' + (kind === 'craft' ? '机工坊，无法制造器械。' : '军营，无法募兵。') + '</div>';
+      : '<div class="q-empty">本城尚未建造' + (kind === 'craft' ? '精密制造厂，无法制造器械。' : '军营，无法募兵。') + '</div>';
     var listHTML = '<div class="troop-list">' + cards + '</div>';
     /* v90.65（老板）：右侧 = 选中兵种的**展示栏**（大图 + 属性 + 驻军/上限/消耗；**纯展示，无控件**）。 */
     var detailHead = !sel ? '' :
@@ -45934,7 +46455,7 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
   };
 
   /* --------- 科技 --------- */
-  ui.techHTML = function () {
+  ui.techHTML = function (inModal) {
     var s = GAME.state, c = GAME.currentCity();
     var bookLv = GAME.buildingLevel(c, 'shuyuan') || 0;
     var cur = GAME.systems.researching();
@@ -45942,10 +46463,11 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
     var cap = GAME.techCapOf ? GAME.techCapOf(c) : (DATA.TECH_MAX_LV || 10);
     var isMain = GAME.isMainCity && GAME.isMainCity(c);
     var mainCap = DATA.TECH_MAX_LV_MAIN || 20;
-    var rowOf = function (t) {
+    var rowOf = function (t, capOverride) {
+      var _cap = capOverride == null ? cap : capOverride;
       var lv = GAME.systems.techLevel(t.id, c);
       var locked = bookLv < t.lv;
-      var full = lv >= cap;
+      var full = lv >= _cap;
       /* v89.191（老板 3-③）：**建筑不达标则无法研究** —— 缺哪个建筑、差多少，逐一列明。 */
       var miss = [];
       var req = t.req || {};
@@ -45962,7 +46484,7 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
         '<button class="btn sm" data-action="tech-research" data-tech="' + t.id + '"'
           + ' title="需 ' + GAME.costString(cost) + '"'
           + (cur ? ' disabled data-why="本城科研中心正在研究其他科技（每城同时仅 1 项）"' : '') + '>研究</button>';
-      return '<tr><td>' + t.name + '</td><td class="ctr">' + lv + '/' + cap + '</td>' +
+      return '<tr><td>' + t.name + '</td><td class="ctr">' + lv + '/' + _cap + '</td>' +
         '<td style="font-size:var(--fs-sub);color:var(--text-dim);">' + t.desc + '</td>' +
         '<td class="ctr">' + btn + '</td></tr>';
     };
@@ -45970,18 +46492,35 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
        （唯一分组源；分组缺失/空组自动跳过，兜底不吞行）。 */
     var rows = (DATA.TECH_CATS || [{ key: null, name: '' }]).map(function (cat) {
       var inner = DATA.TECH.filter(function (t) { return cat.key == null || t.cat === cat.key; })
-        .map(rowOf).join('');
+        .map(function (t) { return rowOf(t); }).join('');
       if (!inner) return '';
       var head = cat.name ? '<tr class="tech-cat"><td colspan="4">' + cat.name + '</td></tr>' : '';
       return head + inner;
     }).join('');
+    /* v91.72（老板）：「给主城设计独特的 5 个科技，独立生效显示主城的独特优势」——
+       独立成组排在常规 24 项之后；只有主城可研（别城整组置灰并说明）。
+       v91.72b（老板）：「科研中心的科技界面，这个顶上的标题应该是重复的」——
+       **弹窗/视图外层已有标题**，正文不再重复同一条金头。 */
+    var mainRows = (DATA.TECH_MAIN || []).map(function (t) {
+      var tr = rowOf(t, GAME.techCapOfMain());
+      if (isMain) return tr;
+      return '<tr style="opacity:.55;"><td>' + U.escape(t.name) + '</td><td class="ctr">—</td>' +
+        '<td style="font-size:var(--fs-sub);color:var(--text-dim);">' + U.escape(t.desc) + '</td>' +
+        '<td class="ctr"><span style="color:var(--text-dim);">仅主城</span></td></tr>';
+    }).join('');
+    if (mainRows) {
+      rows += '<tr class="tech-cat"><td colspan="4">' +
+        U.escape((DATA.TECH_MAIN_CAT || {}).name || '主城独有') +
+        (isMain ? '' : '（本城不是主城 —— 设为主城后可研究）') + '</td></tr>' + mainRows;
+    }
     return '<div class="ui-page">' +
-      '<div class="gold-heading">📜 科研中心科技（' + bookLv + '级科研中心 · ' + DATA.TECH.length + '项）</div>' +
+      (inModal ? '' : '<div class="gold-heading">📜 科研中心科技（' + bookLv + '级科研中心 · ' +
+        (DATA.TECH.length + (DATA.TECH_MAIN || []).length) + '项）</div>') +
       /* v89.191：上限按城提示（主城 20 / 别城 10）—— 玩家一眼知道本城的天花板与出路。 */
       '<div style="text-align:center;color:var(--text-dim);font-size:var(--fs-sub);margin-bottom:4px;">'
         + (isMain
-          ? '主城科技上限 Lv' + cap + '（11 级起花费急剧升高）'
-          : '本城科技上限 Lv' + cap + '　·　设为主城可提升至 Lv' + mainCap) + '</div>' +
+          ? '主城科技上限 Lv' + cap + '　·　主城独有科技上限 Lv' + GAME.techCapOfMain() + '（11 级起花费急剧升高）'
+          : '本城科技上限 Lv' + cap + '　·　设为主城可提升至 Lv' + mainCap + '（并解锁主城独有 5 项）') + '</div>' +
       (cur ? '<div style="text-align:center;color:var(--green-ok);font-size:var(--fs-body);margin-bottom:8px;">🔬 研究中：' + (function(){ var n=cur.techId; DATA.TECH.forEach(function(x){if(x.id===cur.techId)n=x.name;}); return n; })()
         + (function(){ var qc = cur.cityId && GAME.cityById(cur.cityId); return qc ? '（' + qc.name + '）' : ''; })() + ' ' + Math.min(100, Math.floor(cur.elapsed / cur.totalTime * 100)) + '%' +
         /* v89.179b·P2-9：科技提速按钮显价（与 rush-build/rush-ext 同档） */
@@ -46318,6 +46857,8 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
     var ships = SH.ships();
     var IBY = DATA.ITEM_BY_ID || {};
     var T = DATA.SHIP_TIERS || [], R = DATA.SHIP_ROLES || {};
+    var _bps = SH.bpStatus();
+    var _bpAllN = _bps.length, _bpHaveN = _bps.filter(function (x) { return x.has; }).length;
 
     /* ---- 顶部：空间站状态 ---- */
     var head = '<div style="display:flex;gap:var(--sp-4);flex-wrap:wrap;align-items:center;' +
@@ -46327,6 +46868,7 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
       '<span class="ui-sub">可造最高舰档 <b>' + (T[cap] ? T[cap].name : '白') + '</b>' +
         '　·　船坞 <b>' + ships.length + ' / ' + slots + '</b></span>' +
       '<span class="ui-sub">升级空间站可解锁更高舰档与更多船坞位</span>' +
+      '<span class="ui-sub">舰船蓝图 <b>' + _bpHaveN + ' / ' + _bpAllN + '</b>（奇观探索产出 · 白常见红稀有）</span>' +
       '</div>';
 
     /* ---- 卡牌船坞：12 舰种 ---- */
@@ -46353,7 +46895,7 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
         '</div>' +
         '<div style="font-size:var(--fs-cap);color:var(--text-dim);">' +
           tier.name + '档 · ' + role.name + (owned ? ('　×' + owned) : '') +
-          (locked ? '　🔒' : '') + (bp && !hasBp ? '　📜' : '') +
+          (locked ? '　🔒' : '') + (bp ? (hasBp ? '　📜已持有' : '　📜缺蓝图') : '') +
         '</div>' +
         '<div style="font-size:var(--fs-cap);color:var(--text-dim);opacity:.75;">' + U.escape(cls.desc) + '</div>' +
       '</div>';
@@ -46530,8 +47072,12 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
       '</div>');
     return '<div class="map-wrap">' +
       '<canvas id="mapCanvas"></canvas>' +
-      /* v91.30：**雷霆大箭头** —— 屏幕内指向今日奇观（可点开奇观菜单）。 */
-      '<div id="wonder-arrow" class="wonder-arrow" data-action="wonder-open" style="display:none;" title="今日奇观 —— 点击查看">⚡</div>' +
+      /* v91.30：**雷霆大箭头** —— 屏幕内指向今日奇观。
+         v91.73（老板「奇观的闪电改成不可点击选择的，老是被选中」）：
+         它只是**指路标记**，不再带动作；且 pointer-events/user-select 全关，
+         拖动/框选时不会被点中或选中（奇观本体在 3D 场景里仍可点击打开）。 */
+      '<div id="wonder-arrow" class="wonder-arrow" aria-hidden="true"' +
+        ' style="display:none;pointer-events:none;user-select:none;">⚡</div>' +
       /* v90.85（老板）：「星球切换读条屏」—— 切星球时盖一层进度条，让玩家**确认切换成功**。 */
       '<div id="planet-loading" class="planet-loading"><div class="pl-inner">' +
         '<div class="pl-title">🪐 正在进入星球…</div>' +
@@ -47018,10 +47564,12 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
                 : '本城 ' + (city.jieyueSlots || 0) + '/' + ((DATA.JIEYUE || {}).citySlotMax || 2)
                   + '　持符 ' + GAME.jieyueOf()) + '</button>'
           : '') +
-        /* v67（老板）：放弃城市 —— 只在还有别的城可去时才出现（否则点了必被拒） */
-        (isOwn && (s.cities || []).length > 1
+        /* v67（老板）：放弃城市 —— 只在还有别的城可去时才出现（否则点了必被拒）。
+           v91.72：只有**自建城且未设为主城**可弃（名城/主城不给入口，判据同 abandonCityCheck）。 */
+        (isOwn && (s.cities || []).length > 1 && (city.type || 'self') === 'self' && !city.origId
+          && !(GAME.isMainCity && GAME.isMainCity(city))
           ? '<button class="btn red" data-action="city-abandon-ask" data-city="' + city.id +
-            '">🗑️ 放弃城市</button>'
+            '" title="只有自建城可以放弃；主城需先迁都，名城不可放弃">🗑️ 放弃城市</button>'
           : '') +
         '<button class="btn" data-action="close-modal">关闭</button></div>'
     });
@@ -47990,7 +48538,7 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
   ui.plansOf = function () { var s = GAME.state; if (s) s.plans = s.plans || []; return (s && s.plans) || []; };
   ui.tacticSetsOf = function () { var s = GAME.state; if (s) s.tacticSets = s.tacticSets || []; return (s && s.tacticSets) || []; };
   ui.expCurrentTroops = function () {
-    var city = GAME.currentCity(), out = {};
+    var city = ui.expFromCity(), out = {};
     Object.keys((city && city.army) || {}).forEach(function (id) {
       var inp = document.getElementById('exp-' + id);
       var v = inp ? Number(inp.value) || 0 : 0;
@@ -48143,9 +48691,16 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
    * · expCargoHTML() —— 资源 + 数量框（只在"本境调运"时出现）
    * · syncCargoEst() —— 实时算运力 / 载重 / 逐项预计实收（与抵达落账同一函数）
    * ============================================================ */
+  /* v91.72（老板）：**派出城**的唯一读点 —— 兵力上限 / 已填数量 / 提交都读它。
+     改前只改了下拉值与面板读数，提交仍从当前城取兵（选了别城也白选）。 */
+  ui.expFromCity = function () {
+    var ct = null;
+    if (ui._expFrom) ct = GAME.cityByIdAnywhere ? GAME.cityByIdAnywhere(ui._expFrom) : GAME.cityById(ui._expFrom);
+    return ct || GAME.currentCity();
+  };
   ui.expArmyOf = function () {
     var out = {};
-    var city = GAME.currentCity();
+    var city = ui.expFromCity();
     if (!city) return out;
     Object.keys(city.army || {}).forEach(function (id) {
       var inp = document.getElementById('exp-' + id);
@@ -48378,6 +48933,7 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
    * 因此也不存在"强兵优先 / 表序优先"之类需要额外约定的分配序（老板 2 明确不要）。
    * ============================================================ */
   ui.expTroopMaxOf = function (troopId, city, modeId) {
+    city = city || ui.expFromCity();
     var ei = document.getElementById('exp-' + troopId);
     var own = ei ? (Number(ei.max) || 0) : 0;
     var cap = ui.expFillCapOf(city || GAME.currentCity(), ui._expRes, modeId);
@@ -48426,8 +48982,16 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
     if (!t.ok) { ui.toast(t.msg); return; }
     ui._expTarget = target;
     ui._expScheme = null;      /* v86：每次打开出征面板重置计略（防上次的计意外带上） */
-    /* v91.21（老板 C1）：派出城缺省 = 当前城（换目标重开时复位；下拉 change 会重设）。 */
-    if (!(ui._expFrom && GAME.cityById(ui._expFrom))) ui._expFrom = null;
+    /* v91.21（老板 C1）：派出城缺省 = 当前城（换目标重开时复位；下拉 change 会重设）。
+       v91.72：奇观目标 → 缺省取**该星球**的当前城 / 首城（当前城不在该星时不能默认它）。 */
+    if (!(ui._expFrom && GAME.cityByIdAnywhere(ui._expFrom))) ui._expFrom = null;
+    if ((target && (target.kind === 'wonder' || target.kind === 'wonderFight')) && target.pid != null) {
+      var _wsl = GAME.sliceOf ? GAME.sliceOf(target.pid) : null;
+      var _wc = (_wsl && _wsl.cities) || [];
+      var _okFrom = false;
+      _wc.forEach(function (x) { if (ui._expFrom && x.id === ui._expFrom) _okFrom = true; });
+      if (!_okFrom) ui._expFrom = _wc.length ? _wc[0].id : null;
+    }
     /* v89.103：本境调运强制走「调兵 · 辎重」方式（只有这一种方式） */
     if (ui._expOwn) { ui._expMode = 'transfer'; }
     /* v74：把**已解析的目标**存一份 —— 兵力总览/战力对比要用守军与城防，
@@ -48650,12 +49214,25 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
     /* v91.21（老板 C1）：**派出城**下拉 —— 多城时选由哪座城执行（全境己方城；跨星球亦列出）。
        选定后本面板"拥有兵力/出征容量"改读该城；发兵带 fromCityId。 */
     var _mycities = (s.cities || []);
+    /* v91.72（老板）：「奇观的探索是星球特有动作，派出城应该提供**所在奇观所在星球**的城市列表」——
+       目标是奇观/奇观守军时，派出城只列**目标星球分片**里的城（跨星派队没有意义）。
+       ⚔ 挑战奇观层级有同样的约束（同一条奇观通道）。 */
+    if ((ui._expWonder || ui._expWonderFight) && t && t.pid != null) {
+      var _wpid2 = t.pid;
+      var _slice = GAME.sliceOf ? GAME.sliceOf(_wpid2) : null;
+      var _wCities = (_slice && _slice.cities) || [];
+      if (_wCities.length) _mycities = _wCities;
+    }
     if (_mycities.length > 1 && !ui._expOwn) {
+      /* 缺省派出城 = 目标星球上的当前城（当前城不在该星则取该星首城）。 */
+      var _pickFrom = c;
+      if (_mycities.indexOf(c) < 0) _pickFrom = _mycities[0];
       html += ui.expRowHTML('派出城',
         '<select id="exp-from" class="city-select">' + _mycities.map(function (cc) {
-          return '<option value="' + cc.id + '"' + (c && cc.id === c.id ? ' selected' : '') + '>' +
+          return '<option value="' + cc.id + '"' + (_pickFrom && cc.id === _pickFrom.id ? ' selected' : '') + '>' +
             U.escape(cc.name) + '（' + GAME.map.coordText(cc.x, cc.y) + '）</option>';
-        }).join('') + '</select>', null);
+        }).join('') + '</select>',
+        (ui._expWonder || ui._expWonderFight) ? '仅列目标景点所在星球的城市' : null);
     }
     html += '</div>';
 
@@ -50863,8 +51440,10 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
     /* v89.190（老板 2）：自动征兵（兵营募兵 · 与「自动招募」= 征召大厅招将并列） */
     { id: 'train', icon: '🛡️', name: '自动征兵', act: 'toggle-auto-train' },
     { id: 'heal', icon: '🏥', name: '自动治疗', act: 'toggle-auto-heal' },
-    /* v91.59（老板）：自动采购 —— 逐商品补货到目标量（每现实日上限内）。 */
+    /* v91.59（老板）：自动采购 —— 统一数量补货（每现实日上限内）。 */
     { id: 'buy', icon: '🛒', name: '自动采购', act: 'toggle-auto-buy' },
+    /* v91.72（老板）：自动基因研究 —— 各城有空舱自动立项、成熟自动收获。 */
+    { id: 'farm', icon: '🧬', name: '自动基因研究', act: 'toggle-auto-farm' },
     /* v89.118（老板需求 3）：外敌来犯的**接受开关** + 介绍 + 警报流水（从军务·警报迁来） */
     { id: 'invasion', icon: '🔥', name: '外敌来犯', act: 'toggle-auto-invasion' },
   ];
@@ -50881,6 +51460,7 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
     if (id === 'heal') return !!(s.settings && s.settings.autoHeal);
     if (id === 'gather') return !!(s.settings && s.settings.autoGather);
     if (id === 'buy') { var _bc = GAME.autoBuyCfg ? GAME.autoBuyCfg() : null; return !!(_bc && _bc.on); }
+    if (id === 'farm') { var _fc = GAME.autoFarmCfg ? GAME.autoFarmCfg() : null; return !!(_fc && _fc.on); }
     if (id === 'invasion') return GAME.invasionAcceptOn ? GAME.invasionAcceptOn() : true;
     return false;
   };
@@ -50899,6 +51479,7 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
     if (id === 'train') return (s.autoTrain && s.autoTrain.msg) || (s.settings && s.settings.autoTrain ? '已开启，待命' : '未开启');
     if (id === 'heal') return (s.autoHealState && s.autoHealState.msg) || '未开启';
     if (id === 'buy') return (s.autoBuyInfo && s.autoBuyInfo.msg) || '未开启';
+    if (id === 'farm') return (s.autoFarmState && s.autoFarmState.msg) || '未开启';
     if (id === 'invasion') {
       if (!(GAME.invasionAcceptOn ? GAME.invasionAcceptOn() : true)) return '已拒战 —— 外敌不来犯';
       var soon = 0;
@@ -50979,14 +51560,36 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
         '资源不足则暂停等待，不影响开关状态。</div>';
     } else if (it.id === 'buy') {
       var bcfg = GAME.autoBuyCfg ? GAME.autoBuyCfg() : null;
-      var bset = 0; for (var bk in ((bcfg && bcfg.targets) || {})) { if (bcfg.targets[bk] > 0) bset++; }
+      var bset = (bcfg && bcfg.qty) || 0;   /* v91.72：统一采购数量 */
       body = '<div class="auto-line" style="margin-top:2px;">' +
           '<button class="btn gold" data-action="open-auto-buy">⚙️ 详细配置</button>' +
           '<button class="btn" data-action="auto-buy-once">🛒 立即采购</button>' +
-          '<span class="ui-sub">已设 ' + bset + ' 种商品　·　每 ' + ((bcfg && bcfg.everyMin) || 10) +
+          '<span class="ui-sub">统一数量 ' + bset + ' 件/种　·　每 ' + ((bcfg && bcfg.everyMin) || 10) +
             ' 现实分钟补货一次（每商品每现实日上限 ' + GAME.shopDailyMax() + '）</span></div>' +
         '<div class="auto-note">按你设定的**目标持有量**逐商品补货 —— 持有不足目标即买入（补到目标），' +
         '受旧币与每日购买上限约束；已达目标或旧币不足则跳过。</div>';
+    } else if (it.id === 'farm') {
+      var _fc2 = GAME.autoFarmCfg ? GAME.autoFarmCfg() : null;
+      var _crops = ((DATA.FARM && DATA.FARM.crops) || []);
+      var _selC = (_fc2 && _fc2.crops) || [];
+      var _labN = 0;
+      (s.cities || []).forEach(function (ct) {
+        if (GAME.buildingLevel(ct, 'honglusi') > 0) _labN++;
+      });
+      body = '<div class="auto-line" style="margin-top:2px;">' +
+          '<button class="btn" data-action="auto-farm-once">🧬 立即执行一次</button>' +
+          '<span class="ui-sub">建有基因实验室的城市 <b>' + _labN + '</b> 座　·　' +
+            (_fc2 && _fc2.on ? '逐城自动立项 / 收获' : '未开启') + '</span></div>' +
+        '<div class="auto-line"><span class="al-k">研究项目</span>' +
+          '<div class="chips chips-xs" style="justify-content:flex-start;">' +
+            _crops.map(function (c) {
+              return '<span class="chip' + (_selC.indexOf(c.id) >= 0 ? ' on' : '') +
+                '" data-action="autofarm-crop" data-crop="' + c.id + '">' + c.icon + ' ' + c.name + '</span>';
+            }).join('') +
+          '</div></div>' +
+        '<div class="auto-note">项目可多选（只种选中的；<b>都不选 = 全部项目都种</b>）。' +
+          '每城先收成熟产物、再补空舱；同一城按"一舱一项目"去重，不会 6 舱全种同一项。' +
+          '只对<b>建有基因实验室</b>的城生效；与手动立项/提取共用同一套出口。</div>';
     } else if (it.id === 'march') {
       body = '<div class="auto-line" style="margin-top:2px;">' +
           '<button class="btn gold" data-action="open-auto-march">⚙️ 详细配置</button>' +
@@ -51089,7 +51692,7 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
     return '<div class="ui-page">' +
       '<div class="gold-heading">🤖 自动化' +
         ui.help('左侧切换自动化功能，右侧看介绍与详细设置。\n' +
-          '七项彼此独立；「暂停」只发生在资源/条件不足时 —— 开关不会自己关掉。\n' +
+          '各项彼此独立；「暂停」只发生在资源/条件不足时 —— 开关不会自己关掉。\n' +
           '自动出征只派空闲英雄、器械与侦察单元不编入，且只从当前城市取兵。') +
       '</div>' +
       '<div class="auto-grid">' +
@@ -51480,25 +52083,26 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
     var tgtOpts = (A.targetOptions || [0, 1, 3, 5, 10, 20, 50, 100]).map(function (n) {
       return { v: n, label: n === 0 ? '不自动买' : ('目标 ' + n) };
     });
+    /* v91.72（老板）：统一数量 —— 不再逐商品各设一个目标。 */
+    var uniSel = '<select id="ab-qty">' + tgtOpts.map(function (o) {
+      return '<option value="' + o.v + '"' + (o.v === (cfg.qty || 0) ? ' selected' : '') + '>' + o.label + '</option>';
+    }).join('') + '</select>';
     var freqSel = '<select id="ab-freq">' + freqOpts.map(function (o) {
       return '<option value="' + o.v + '"' + (o.on ? ' selected' : '') + '>' + o.label + '</option>';
     }).join('') + '</select>';
     var items = GAME.ui.shopItems();
     var rows = items.map(function (it) {
-      var want = (cfg.targets || {})[it.id] || 0;
       var have = (GAME.state.items || {})[it.id] || 0;
       var left = GAME.shopTodayLeft(it.id);
-      var opts = tgtOpts.map(function (o) {
-        return '<option value="' + o.v + '"' + (o.v === want ? ' selected' : '') + '>' + o.label + '</option>';
-      }).join('');
       return '<div class="lf-row"><span class="lf-nm">' + U.escape(it.name) +
         '<i>持有 ' + U.numText(have, 0) + '　·　今日余 ' + left + '</i></span>' +
-        '<span class="lf-step"><select id="ab-item-' + it.id + '" data-item="' + it.id + '">' + opts + '</select></span></div>';
+        '<span class="lf-step"><span class="ui-sub">补到 ' + (cfg.qty || 0) + '</span></span></div>';
     }).join('');
     var html = '<div class="gold-heading">🛒 自动采购 · 详细配置</div>' +
       ui.expRowHTML('补货频率', freqSel, '每多久尝试补货一次（现实时间）') +
-      '<div class="auto-note" style="margin-top:8px;">逐商品设定**目标持有量**：持有不足目标时按频率自动买入（补到目标），' +
-        '受旧币与**每商品每现实日上限 ' + GAME.shopDailyMax() + ' 件**约束；已达目标或旧币不足的跳过。</div>' +
+      ui.expRowHTML('统一数量', uniSel, '每种商品都补到这个持有量（0 = 不自动买）') +
+      '<div class="auto-note" style="margin-top:8px;">**统一设定一个数量**：所有可购商品都补到该持有量，' +
+        '受旧币与**每商品每现实日上限 ' + GAME.shopDailyMax() + ' 件**约束；已达数量或旧币不足的跳过。</div>' +
       '<div class="lf-list">' + (rows || '<div class="q-empty">暂无可购买商品。</div>') + '</div>' +
       '<div class="m-foot">' +
         '<button class="btn' + (cfg.on ? ' gold' : '') + '" data-action="ab-toggle">' +
@@ -51509,15 +52113,8 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
     /* 下拉改完即生效 */
     var fq = document.getElementById('ab-freq');
     if (fq) fq.addEventListener('change', function () { GAME.doSetAutoBuy('everyMin', fq.value); ui.openAutoBuy(); });
-    var sels = document.querySelectorAll('[data-item][id^="ab-item-"]');
-    for (var i = 0; i < sels.length; i++) {
-      (function (el) {
-        el.addEventListener('change', function () {
-          GAME.doSetAutoBuy('item:' + el.dataset.item, el.value);
-          ui.openAutoBuy();
-        });
-      })(sels[i]);
-    }
+    var uq = document.getElementById('ab-qty');
+    if (uq) uq.addEventListener('change', function () { GAME.doSetAutoBuy('qty', uq.value); ui.openAutoBuy(); });
   };
 
   /* ============================================================
@@ -51795,18 +52392,19 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
       { size: 'md', live: function () { ui.openWonder(pid); } });
   };
 
-  ui.openFarm = function () {
-    ui.openModal('<div class="ui-page farm-space">' + ui.farmHTML() + '</div>' +
+  ui.openFarm = function (city) {
+    ui.openModal('<div class="ui-page farm-space">' + ui.farmHTML(city) + '</div>' +
       '<div class="modal-foot"><button class="btn" data-action="close-modal">关闭</button></div>',
       { size: 'xxl', closeAll: true });
       /* v89.135（老板 8）：「基因实验室关闭后直接会到城市界面」—— closeAll 语义：
          关闭键 = 全关回游戏视图（不弹回进实验室前的那层）。 */
   };
-  ui.farmHTML = function () {
-    var f = GAME.farmOf();
+  ui.farmHTML = function (city) {
+    var ct = city || GAME.currentCity();
+    var f = GAME.farmOf(ct);
     var ripeN = 0;
     var cells = f.plots.map(function (p, i) {
-      var st = GAME.farmPlotState(i);
+      var st = GAME.farmPlotState(i, ct);
       var body, act = '';
       if (st.state === 'empty') {
         body = '<div class="farm-ic">🧫</div><div class="farm-crop">空闲</div>' +
@@ -51827,8 +52425,8 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
       }
       return '<div class="farm-cell' + (st.state === 'ripe' ? ' ripe' : '') + '">' + body + act + '</div>';
     }).join('');
-    return '<div class="gold-heading">🧬 基因实验室</div>' +
-      '<div class="ui-sub" style="text-align:center;">旧世实验室 · 六座培养舱　立项即开工，研发走游戏时间</div>' +
+    return '<div class="gold-heading">🧬 基因实验室' + (ct ? ' · ' + U.escape(ct.name) : '') + '</div>' +
+      '<div class="ui-sub" style="text-align:center;">旧世实验室 · 六座培养舱（各城独立）　立项即开工，研发走游戏时间</div>' +
       '<div class="farm-grid">' + cells + '</div>' +
       (ripeN
         ? '<div class="op-row" style="justify-content:flex-end;">' +
@@ -52093,15 +52691,21 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
         break;
       }
       case 'open-lab':
-        /* v91.26（老板）：基因实验室 = **主城专属设施**（状态是全局 s.farm）——
-           只在主城使用；别城该格保留建造位但不启用。 */
+        /* v91.72（老板）：「基因实验室不再限制为主城生效」—— 任何建有实验室的城都能用
+           （培养舱按城独立，见 GAME.farmOf(city)）。 */
         (function () {
           var _c = GAME.currentCity();
-          if (!_c || !GAME.isMainCity(_c)) { ui.toast('基因实验室为主城专属设施 —— 请到主城使用'); return; }
+          if (!_c || GAME.buildingLevel(_c, 'honglusi') <= 0) {
+            ui.toast('本城尚未建造基因实验室'); return;
+          }
           ui.openFarm();
         })();
         break;
       case 'farm-projects': ui.openFarmProjects(Number(el.dataset.idx)); break;
+      /* v91.72（老板）：自动基因研究 —— 开关 + 项目多选 + 立即执行一次 */
+      case 'toggle-auto-farm': GAME.doToggleAutoFarm(); GAME.refreshView(); break;
+      case 'autofarm-crop': GAME.doSetAutoFarmCrop(el.dataset.crop); GAME.refreshView(); break;
+      case 'auto-farm-once': (function () { GAME.autoFarm(); ui.toast((GAME.state.autoFarmState || {}).msg || '已执行'); GAME.refreshView(); })(); break;
       case 'farm-start': {
         var fpr = GAME.farmPlant(Number(el.dataset.idx), el.dataset.crop);
         ui.toast(fpr.msg);
@@ -52591,6 +53195,32 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
       case 'market-buy': GAME.doMarketBuy(el.dataset.res); break;
       /* v89.100：道具寄售（价 = 购买价 75%；出口 systems.consign*） */
       case 'consign-sell': GAME.doConsign(el.dataset.item); break;
+      /* v91.72（老板）：背包物品右下角「售」—— 先问数量再寄售（默认 1 件）。 */
+      case 'item-sell-ask': ui.openItemSellAsk(el.dataset.key); break;
+      case 'item-sell-do': {
+        var _sq = ui.qtyValueOf('sell-q');
+        var _sr = GAME.systems.consignItem(el.dataset.item, _sq);
+        ui.toast(_sr.msg || '');
+        ui.closeModal();
+        if (_sr.ok) GAME.refreshAll();
+        break;
+      }
+      /* v91.72（老板）：战储仓空间压缩 / 解压 */
+      case 'store-compress-ask': ui.openCompressAsk(el.dataset.res); break;
+      case 'store-compress-do': {
+        var _cN = ui.qtyValueOf('cmp-q');
+        var _cr = GAME.compressResCrate(GAME.currentCity(), el.dataset.res, _cN);
+        ui.toast(_cr.msg);
+        ui.closeModal();
+        if (_cr.ok) { GAME.refreshAll(); ui.openStore(); }
+        break;
+      }
+      case 'store-decompress': {
+        var _dr = GAME.decompressResCrate(GAME.currentCity(), el.dataset.res, 1);
+        ui.toast(_dr.msg);
+        if (_dr.ok) { GAME.refreshAll(); ui.openStore(); }
+        break;
+      }
       case 'consign-all': GAME.doConsignAll(); break;
       /* v26：同上，「游商」已是顶栏视图（data-view="shop"）。 */
       case 'quick-item': ui.openQuickItem(el.dataset.res); break;
@@ -53102,6 +53732,23 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
       case 'toggle-auto-upgrade': GAME.doToggleAutoUpgrade(); break;
       /* v89.115：自动化界面左右分栏 —— 左名单点选（只重绘本视图，不重开面板） */
       case 'auto-pick': ui._autoSel = el.dataset.key; GAME.refreshView(); break;
+      /* v91.72（老板）：通用折叠块 —— 改展开态后重绘**当前弹窗**（保住滚动位）；
+         无弹窗时退回整页重绘。 */
+      case 'fold-toggle': {
+        var _fk = el.dataset.fold;
+        ui._foldOpen = ui._foldOpen || {};
+        ui._foldOpen[_fk] = !ui._foldOpen[_fk];
+        var _snapFold = null;
+        try { _snapFold = ui._liveSnap ? ui._liveSnap() : null; } catch (eF) {}
+        if (ui._liveReopen && document.querySelector('.modal-mask')) {
+          ui._liveRedraw = true;
+          try { ui._liveReopen(); } finally { ui._liveRedraw = false; }
+          try { if (_snapFold && ui._liveRestore) ui._liveRestore(_snapFold); } catch (eF2) {}
+        } else {
+          GAME.refreshView();
+        }
+        break;
+      }
       case 'toggle-auto-heal': GAME.doToggleAutoHeal(); break;
       /* v89.190（老板 2）：自动征兵 —— 开关 / 数值设置（change 委托）/ 募兵面板入口 */
       case 'toggle-auto-train': GAME.doToggleAutoTrain(); break;
@@ -53952,7 +54599,9 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
   GAME.doMarketSell = function (res) {
     var a = document.getElementById('mk-amount');
     if (!a) return;
-    var r = GAME.marketSell(res, Number(a.value) || 0);
+    var _n0 = Number(a.value) || 0;
+    if (_n0 > 0) ui._mkAmount = Math.floor(_n0);   /* v91.72：记住玩家设定的数量 */
+    var r = GAME.marketSell(res, _n0);
     ui.toast(r.msg);
     if (r.ok) { ui.openMarket(); GAME.refreshAll(); }
   };
@@ -53960,6 +54609,7 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
     var a = document.getElementById('mk-amount');
     if (!a) return;
     var units = Number(a.value) || 0;
+    if (units > 0) ui._mkAmount = Math.floor(units);   /* v91.72：记住玩家设定的数量 */
     if (units <= 0) { ui.toast('数量无效'); return; }
     var need = GAME.marketBuyGoldFor(res, units);        /* 口径唯一出口，界面只读不算 */
     if ((GAME.state.res.gold || 0) < need) { ui.toast('旧币不足 —— 需 ' + U.fmt(need) + ' 旧币'); return; }
@@ -54290,7 +54940,9 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
       var _wgen = (GAME.state.generals || []).filter(function (g) { return g.id === genSel.value; })[0];
       /* v91.49（老板）：用**下拉框选中的探索行动**（ui._expMode），不是打开面板时的 entry mode ——
          玩家可在下拉里改「采集/派军搜查/深潜攻坚」。 */
-      var _wr = GAME.wonderExplore(target.pid, ui._expMode || target.mode || 'search', GAME.currentCity() && GAME.currentCity().id, atk, _wgen && _wgen.id);
+      /* v91.72（老板）：按**派出城**发兵（奇观探索限本星球城市，派出城已由界面过滤）。 */
+      var _fc = ui.expFromCity();
+      var _wr = GAME.wonderExplore(target.pid, ui._expMode || target.mode || 'search', _fc && _fc.id, atk, _wgen && _wgen.id);
       ui.toast(_wr.msg);
       if (_wr.ok) { ui.closeModal(); GAME.refreshAll(); if (ui.view === 'map' && ui.renderMapCanvas) ui.renderMapCanvas(); }
       return;
@@ -54298,7 +54950,8 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
     /* v91.52（老板）：挑战奇观层级守军 —— 走战斗引擎（GAME.wonderFightLayer）。 */
     if (target.kind === 'wonderFight') {
       var _fgen = (GAME.state.generals || []).filter(function (g) { return g.id === genSel.value; })[0];
-      var _fr = GAME.wonderFightLayer(target.pid, target.lv, GAME.currentCity() && GAME.currentCity().id, atk, _fgen && _fgen.id);
+      var _fc2 = ui.expFromCity();
+      var _fr = GAME.wonderFightLayer(target.pid, target.lv, _fc2 && _fc2.id, atk, _fgen && _fgen.id);
       ui.toast(_fr.msg);
       ui.closeModal();
       GAME.refreshAll();
@@ -55148,7 +55801,7 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
      （这解释了"改了却说没生效"的观感）。老板若发现版本 ≠ 最新交付，按 Ctrl+F5
      强制刷新即获得新代码。⚠️ 发版须走 **bump_version.py --bump --version vX.Y**（它同步 index.html 的 ?v=/BUILD
      与这里的 GAME.VERSION 三处）—— 只手改 index.html 会让版本号冻住（v91.18 前的病灶）。 */
-  GAME.VERSION = 'v91.61';
+  GAME.VERSION = 'v91.73';
   function boot() {
     fitAppSize();
     try {

@@ -47,8 +47,23 @@ import './state.js';
     (DATA.SHIP_PARTS || []).forEach(function (p) { if (p.id === pid) out = p; });
     return out;
   };
-  /* 该档需要的蓝图 id（B 期启用）。A 期返回 null = 不设门槛。 */
+  /* 该舰种需要的蓝图 id（B 期已启用；数据缺失时返回 null = 不设门槛）。 */
   SH.bpOf = function (cls) { return (cls && cls.bp) || null; };
+  SH.bpOfClass = function (classId) { return SH.bpOf(SH.classOf(classId)); };
+  /* 某舰种蓝图是否已持有（唯一出口；canBuild / 卡牌 / 守卫同读）。 */
+  SH.hasBpOf = function (classId) {
+    var bp = SH.bpOfClass(classId);
+    return !bp || !!(GAME.items && GAME.items.has(bp, 1));
+  };
+  /* 12 舰种蓝图汇总（空间站一览与门禁断言用）。 */
+  SH.bpStatus = function () {
+    return (DATA.SHIP_CLASSES || []).map(function (cls) {
+      var bp = SH.bpOf(cls);
+      return { classId: cls.id, name: cls.name, bp: bp,
+        bpName: bp ? (((DATA.ITEM_BY_ID || {})[bp] || {}).name || bp) : null,
+        has: SH.hasBpOf(cls.id), tier: cls.tier };
+    });
+  };
 
   /* 空间站等级 → 允许建造的最高舰档 */
   SH.tierCapNow = function () {
@@ -78,8 +93,9 @@ import './state.js';
       return { ok: false, msg: '船坞已满（' + SH.dockSlots() + ' 艘）—— 升级空间站扩容' };
     }
     var bp = SH.bpOf(cls);
-    if (bp && !(GAME.items && GAME.items.has(bp, 1))) {
-      return { ok: false, msg: '缺少蓝图：需先在奇观获得「' + cls.name + '」蓝图' };
+    if (bp && !SH.hasBpOf(cls.id)) {
+      var bpName = ((DATA.ITEM_BY_ID || {})[bp] || {}).name || (cls.name + '蓝图');
+      return { ok: false, msg: '缺少蓝图「' + bpName + '」：需先奇观探索获得（白常见、红稀有）' };
     }
     var C = DATA.SHIP_COST || {}, mat = C.hullMat || 'w_stariron', need = SH.hullCost(cls);
     var own = GAME.items ? GAME.items.count(mat) : 0;

@@ -1972,7 +1972,8 @@
   .map-wrap { position: relative; padding: 0; width: 100%; height: 100%; box-sizing: border-box; }
   /* v91.30：**雷霆大箭头** —— 指向今日奇观的大标记（脉动 + 光晕），点它开奇观菜单。 */
   .wonder-arrow {
-    position: absolute; z-index: 6; pointer-events: auto; cursor: pointer;
+    /* v91.73（老板）：不可点击 / 不可选中 —— 纯指路标记（奇观本体在地图上点击打开）。 */
+    position: absolute; z-index: 6; pointer-events: none; user-select: none; cursor: default;
     width: 64px; height: 64px; margin: 0; transform-origin: 50% 50%;
     display: flex; align-items: center; justify-content: center;
     font-size: var(--fs-h1); line-height: var(--lh-1); color: var(--gold-light);
@@ -4468,12 +4469,12 @@
 </div><!-- /#app-scale -->
 </div><!-- /#app-fit -->
 
-<!-- BUILD 9325 -->
+<!-- BUILD 9327 -->
 <!-- v91.61（地基第 1 期）：18 个手写顺序脚本 → **2 个**。
      · vendor/three.min.js 必须在前（gltf/map3d 用全局 THREE）；
      · js/bundle.js 由 js/main.js 的 import 图打包而来（顺序 = 旧脚本顺序），
        构建：python .workbuddy/tools/patch/build_bundle.py（改源码后须重建）。 -->
-<script src="vendor/three.min.js?v=9325"></script>
-<script src="js/bundle.js?v=9325"></script>
+<script src="vendor/three.min.js?v=9327"></script>
+<script src="js/bundle.js?v=9327"></script>
 </body>
 </html>

@@ -1619,6 +1619,10 @@ import './data.js';
     }
     return base;
   };
+  /* v91.72（老板）：主城独有科技上限 —— 与主城同 20 级（别城根本不能研究）。 */
+  GAME.techCapOfMain = function () {
+    return Math.max(DATA.TECH_MAX_LV || 10, DATA.TECH_MAX_LV_MAIN || 20);
+  };
   GAME.techsOf = function (city) {
     var ct = city || GAME.currentCity();
     if (!ct) return {};
@@ -3661,6 +3665,8 @@ import './data.js';
     if (GAME.autoExplore) GAME.autoExplore();
     /* v91.59（老板）：自动采购 —— 同上，仅在线 tick（补货到目标量 · 受每日购买上限钳制）。 */
     if (GAME.autoBuy) GAME.autoBuy();
+    /* v91.72（老板）：自动基因研究 —— 各城有空舱时自动立项、成熟自动收获。 */
+    if (GAME.autoFarm) GAME.autoFarm();
 
     /* 9c) ⛔ v90.92 退役：随机任务每日刷新（ensureDailyQuests）随任务系统一并移除。 */
 
@@ -3795,8 +3801,10 @@ import './data.js';
        **同层相加**（v89.157 的加法口径，不连乘）。 */
     var mbTax162 = GAME.mayorBonus(city).tax || 0;
     /* v89.204（老板 1）：税收按**城级民心**（含战争创伤 —— 民心受创的城，税收同步走低） */
+    /* v91.72（老板）：+ 主城独有科技「税关直隶」（S.taxBonus，仅主城计入；与 taxPct 同层相加）。 */
+    var _taxTech194 = (GAME.systems && GAME.systems.taxBonus) ? GAME.systems.taxBonus(city) : 0;
     var taxGold = popCap * (GAME.cityHeartsOf ? GAME.cityHeartsOf(city) : (s.hearts || 100)) / 100
-      * (s.tax || 0) * (1 + GAME.cityBonusNum(city, 'taxPct') + mbTax162)
+      * (s.tax || 0) * (1 + GAME.cityBonusNum(city, 'taxPct') + mbTax162 + _taxTech194)
       * (DATA.GOLD_GATE.tax || 1);
     /* v89.157：旧币同口径（加法叠加）—— 宝物 / 天时各自作用于基础税收后相加 */
     var gm = 1 + (GAME.prodBuffMult().gold || 0);
@@ -3892,7 +3900,9 @@ import './data.js';
   /* 科技产量加成（type 为资源键的）—— v89.191：按**那座城**的科技读（不传 = 当前城） */
   GAME.techMult = function (city) {
     var m = {};
-    (DATA.TECH || []).forEach(function (t) {
+    var isMain = GAME.isMainCity(city || GAME.currentCity());
+    (DATA.TECH_ALL || DATA.TECH).forEach(function (t) {
+      if (t.mainOnly && !isMain) return;          /* v91.72：主城独有科技只对主城生效 */
       var lv = GAME.systems.techLevel(t.id, city);
       if (lv > 0 && ['grain', 'wood', 'stone', 'iron'].indexOf(t.type) >= 0) {
         m[t.type] = (m[t.type] || 0) + lv * t.per;
@@ -4628,7 +4638,7 @@ import './data.js';
     if (_tt191) _tt191[tq.techId] = (_tt191[tq.techId] || 0) + 1;
     GAME.statBump('techDone', 1);
     var name = tq.techId;
-    (DATA.TECH || []).forEach(function (t) { if (t.id === tq.techId) name = t.name; });
+    (DATA.TECH_ALL || DATA.TECH || []).forEach(function (t) { if (t.id === tq.techId) name = t.name; });
     GAME.log('科技完成：' + name + (_ct191 ? '（' + _ct191.name + ' Lv' + ((_tt191 && _tt191[tq.techId]) || 0) + '）' : ''),
       'sys', 'admin');
   };

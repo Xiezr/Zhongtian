@@ -2568,7 +2568,8 @@ async function runTests(dom, URL) {
     check('城外地块面板有「改建」入口', !!document.querySelector('#modal-root [data-action="ext-convert-ask"]'));
     /* v89.138（老板 4）：「功能」标题行已删（按钮直接呈现）—— 判据反转 */
     check('城外地块面板操作分区（升级行 / 底栏 · v89.138 已删「功能」标题）',
-      mh24.indexOf('op-zone-t">功能') < 0 && mh24.indexOf('op-zone-t">升级') >= 0 && mh24.indexOf('bldg-foot') >= 0);
+      mh24.indexOf('op-zone-t">功能') < 0 && mh24.indexOf('op-zone-t">升级') < 0
+      && mh24.indexOf('data-action="ext-upgrade"') > mh24.indexOf('bldg-foot'));
     click(document.querySelector('#modal-root [data-action="ext-convert-ask"]'));
     await sleep(100);
     const cv24 = document.querySelector('#modal-root').innerHTML;
@@ -3095,7 +3096,9 @@ async function runTests(dom, URL) {
        v91.57（老板「去除君主修行」）：自动练功项退役 → 10 项变 9 项。
        v91.59（老板）：加「🛒 自动采购」→ 恢复 10 项。 */
     var items = vc.querySelectorAll('.auto-item');
-    return items.length === 10 && !!vc.querySelector('.auto-pane')
+    /* v91.72：「🧬 自动基因研究」→ 11 项。 */
+    return items.length === 11 && !!vc.querySelector('.auto-pane')
+      && !!vc.querySelector('[data-action="auto-pick"][data-key="farm"]')
       && !!vc.querySelector('[data-action="auto-pick"][data-key="heal"]')
       && !!vc.querySelector('[data-action="auto-pick"][data-key="train"]')
       && !!vc.querySelector('[data-action="auto-pick"][data-key="invasion"]')
@@ -4867,6 +4870,10 @@ if (svBtn) {
   console.log('\n--- v73. 基因实验室（建筑格入口 · 立项制）· 建筑弹窗底栏（真实 DOM） ---');
   {
     G.state.res.gold = 3000000;
+    /* v91.73：自动基因研究默认开启 —— 本段验的是**手动**立项/提取，
+       先临时关掉（否则点一次立项会把 6 个空舱全部自动补满），段末还原。 */
+    const autoFarmBk73 = G.autoFarmCfg().on;
+    G.autoFarmCfg().on = false;
     /* v89.224：实验室入口在城内「基因实验室」（honglusi）建筑格 —— 临时放一座再点 */
     const pc73 = G.currentCity();
     /* v91.26：基因实验室 = 主城专属 → 本段把当前城设为主城（否则 open-lab 被门禁拦）。 */
@@ -4919,6 +4926,7 @@ if (svBtn) {
         await sleep(80);
       }
     }
+    G.autoFarmCfg().on = autoFarmBk73;   /* 还原自动基因研究开关 */
     if (labCell) labCell.build = labSaved;
 
     /* 建筑弹窗：无顶图 + 取消升级/关闭同在吸底底栏 */

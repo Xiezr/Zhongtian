@@ -523,7 +523,7 @@ import './core.js';
       levelCost: costTable(lerpCost([350,1000,600,1200,360], [170670,455005,279395,571840,197905], 10), 'tiejiangpu'),
     },
     gongjiangzuofang: {
-      id: 'gongjiangzuofang', series: 'ops', name: '机工坊', icon: '🛠️', desc: '百工群集，匠心营器 —— 制造攻守城器械。',
+      id: 'gongjiangzuofang', series: 'ops', name: '精密制造厂', icon: '🛠️', desc: '百工群集，匠心营器 —— 制造攻守城器械。',
       buildCost: { grain: 450, wood: 525, stone: 675, iron: 2700 }, maxLevel: 12, prod: null,
       levelCost: costTable(lerpCost([450,1500,500,1500,1080], [219430,682505,232830,714800,593710], 10), 'gongjiangzuofang'),
     },
@@ -548,7 +548,7 @@ import './core.js';
   DATA.BUILD_PREREQ = {
     /* v68 原 6 条：**建造与升级同一把尺**（升到任何等级都看它）—— 沿用不动。 */
     zhaoxianguan:     { kezhan: 2 },     // 先征召大厅后英雄枢纽：有安顿来客之处，方可设馆纳贤
-    gongjiangzuofang: { tiejiangpu: 3 }, // 机工坊：器械以铁作底，制造厂 Lv3 起步
+    gongjiangzuofang: { tiejiangpu: 3 }, // 精密制造厂：器械以铁作底，制造厂 Lv3 起步
     xiaochang:        { junying: 2 },    // 先募兵（军营）再练兵（练兵场）
     yizhan:           { shichang: 2 },   // 驿传通商：先有交易站才有驿路
     honglusi:         { kezhan: 3 },     // 基因实验室：线索与人力来自征召大厅 Lv3
@@ -628,7 +628,7 @@ import './core.js';
     chengqiang:       { tech: 'jianzhu',  div: 4 },   // 围墙：废墟重建（营造）
     /* ⛔ 居所不设科技闸（v89.191 决策）：基础居所直连幸存者与劳作 —— 早期就被卡会
        连带卡死征兵/产量，与"体系化"的初衷相反。营造类门槛由围墙承担。 */
-    gongjiangzuofang: { tech: 'chelun',   div: 3 },   // 机工坊：传动系统（器械）
+    gongjiangzuofang: { tech: 'chelun',   div: 3 },   // 精密制造厂：传动系统（器械）
     tiejiangpu:       { tech: 'dazao',    div: 3 },   // 制造厂：锻造工艺
     majiu:            { tech: 'xunma',    div: 3 },   // 载具研究所：座驾改装
     yizhan:           { tech: 'xingjun',  div: 3 },   // 传送站：机动行军（驿传）
@@ -1089,8 +1089,8 @@ import './core.js';
     zhuzhan:   { id: 'zhuzhan', grp: 2, name: '主战机甲', ab: '主', ab2: '主机', icon: '🦾', hp: 8400, atk: 700, def: 400, range: 80, spd: 750, gather: 10, load: 220, pop: 4, ride: true, time: 150, cost: { grain: 2200, wood: 340, stone: 4000, iron: 4350 }, unlock: { junying: 7, shuyuan: 6, majiu: 3, tech: { jiayu: 2, fanghu: 2 } }, desc: '主战序列，攻700防400，攻守兼备（需载具研究所3 + 机车操控/装甲强化）' },
     kuanglie:  { id: 'kuanglie', grp: 3, name: '狂猎', ab: '狂', ab2: '狂猎', icon: '⚔️', hp: 5400, atk: 510, def: 280, range: 70, spd: 850, gather: 10, load: 150, pop: 3, ride: true, time: 70, cost: { grain: 1700, wood: 380, stone: 2800, iron: 3300 }, unlock: { junying: 9, shuyuan: 8, majiu: 4, city: 'sili', tech: { tongshuai: 9, lianbing: 7 } }, desc: '旧军猎团，冲击力冠绝全军（需霜脊首府）' },
     dianci:    { id: 'dianci', grp: 3, name: '电磁盾卫', ab: '磁', ab2: '电磁', icon: '🔋', hp: 3600, atk: 340, def: 350, range: 60, spd: 300, gather: 5, load: 55, pop: 2, time: 35, cost: { grain: 600, wood: 140, stone: 1600, iron: 800 }, unlock: { junying: 8, shuyuan: 7, city: 'yizhou', tech: { fanghu: 8 } }, desc: '电磁护盾，防350，刀枪不入（惧火 · 需雾谷首府）' },
-    huopao:    { id: 'huopao', grp: 3, name: '东风快递', ab: '炮', ab2: '东风', icon: '💥', hp: 6600, atk: 950, def: 200, range: 1600, spd: 100, gather: 2, load: 30, pop: 4, craft: true, mech: true, time: 5830, cost: { grain: 6500, wood: 2400, stone: 13000, iron: 10300 }, unlock: { junying: 10, shuyuan: 10, gongjiangzuofang: 7 }, desc: '攻950射程1600，攻城巨炮（机工坊制造）' },
-    wuren:     { id: 'wuren', grp: 3, name: '无人轰炸机', ab: '轰', ab2: '无人', icon: '🛩️', hp: 5400, atk: 500, def: 160, range: 1400, spd: 120, gather: 2, load: 20, pop: 3, craft: true, mech: true, vsMech: 3, time: 2910, cost: { grain: 3000, wood: 1440, stone: 5000, iron: 4450 }, unlock: { junying: 8, shuyuan: 8, gongjiangzuofang: 3 }, desc: '强力远程，拆械破车，攻城必带（机工坊制造）' },
+    huopao:    { id: 'huopao', grp: 3, name: '东风快递', ab: '炮', ab2: '东风', icon: '💥', hp: 6600, atk: 950, def: 200, range: 1600, spd: 100, gather: 2, load: 30, pop: 4, craft: true, mech: true, time: 5830, cost: { grain: 6500, wood: 2400, stone: 13000, iron: 10300 }, unlock: { junying: 10, shuyuan: 10, gongjiangzuofang: 7 }, desc: '攻950射程1600，攻城巨炮（精密制造厂制造）' },
+    wuren:     { id: 'wuren', grp: 3, name: '无人轰炸机', ab: '轰', ab2: '无人', icon: '🛩️', hp: 5400, atk: 500, def: 160, range: 1400, spd: 120, gather: 2, load: 20, pop: 3, craft: true, mech: true, vsMech: 3, time: 2910, cost: { grain: 3000, wood: 1440, stone: 5000, iron: 4450 }, unlock: { junying: 8, shuyuan: 8, gongjiangzuofang: 3 }, desc: '强力远程，拆械破车，攻城必带（精密制造厂制造）' },
     /* v89.230 链路修复（兵种链体检抓出）：本兵种 unlock.tech 原为 `yiliao: 8` —— 即参考
        数据里一栏旧代兵种的「医疗技巧 Lv8」，而该科技在本作 24 项表中**从未存在**（v67 基线
        起即悬空 → 泰坦机甲门禁自始不可达，报错还会显示原始 id）。
@@ -1362,6 +1362,29 @@ import './core.js';
     { id: 'xunma', name: '座驾改装', cat: 'logi', lv: 5, type: 'horse', per: 0.05, desc: '座驾装备属性 +5%/级' },
     { id: 'yanjiu', name: '逆向工程', cat: 'intel', lv: 3, type: 'study', per: 0.05, desc: '科技研究速度 +5%/级' },
   ];
+  /* ============================================================
+   * v91.72（老板）：「给主城设计独特的 5 个科技，独立生效，显示主城的独特优势。
+   *   而且这个主城的科技上限也是 20 级」。
+   * ------------------------------------------------------------
+   * · 独立表 DATA.TECH_MAIN（不进 DATA.TECH，防上层 24 项计数/分组断言误伤）；
+   * · **只有主城**能研究（canResearch 有闸），独立成组显示在科研中心面板；
+   * · 上限同主城：techCapOf 对主城科技也返回 20（GAME.techCapOfMain）；
+   * · 类型全部复用既有消费点（grain/gold/train/build/def），不新增读点。
+   * ============================================================ */
+  DATA.TECH_MAIN = [
+    { id: 'm_zhongshu', name: '中枢统筹', cat: 'main', lv: 1, type: 'grain', per: 0.04, mainOnly: true,
+      desc: '主城全资源产量 +4%/级（净水口径，其余三类同享）' },
+    { id: 'm_shuiguan', name: '税关直隶', cat: 'main', lv: 2, type: 'tax', per: 0.03, mainOnly: true,
+      desc: '主城旧币税收 +3%/级' },
+    { id: 'm_junxie', name: '王畿兵工', cat: 'main', lv: 3, type: 'train', per: 0.04, mainOnly: true,
+      desc: '主城募兵速度 +4%/级' },
+    { id: 'm_tumu', name: '京畿土木', cat: 'main', lv: 4, type: 'build', per: 0.04, mainOnly: true,
+      desc: '主城建造 / 升级耗时 −4%/级' },
+    { id: 'm_jincheng', name: '金城汤池', cat: 'main', lv: 5, type: 'def', per: 0.03, mainOnly: true,
+      desc: '主城守军受创 −3%/级' },
+  ];
+  DATA.TECH_MAIN_CAT = { key: 'main', name: '主城独有（仅主城可研）' };
+
   /* v89.231（老板「根据废土背景和现有兵种，建筑，调整科技体系」）：
      **科技分组** —— 科研中心面板按此分节展示；`DATA.TECH[*].cat` 必须 ∈ 本表 key。
      分组序 = 面板展示序（24 项 → 5 组：4/6/5/6/3）。 */
@@ -1372,6 +1395,9 @@ import './core.js';
     { key: 'logi',  name: '机动后勤' },
     { key: 'intel', name: '情报指挥' },
   ];
+  /* v91.72：主城独有科技并入只读索引（TECH_ALL）；DATA.TECH 本体保持 24 项不动。 */
+  DATA.TECH_ALL = (DATA.TECH || []).concat(DATA.TECH_MAIN || []);
+
   /* 科技研究消耗（v16 改为原版口径：**以旧币为主**，另需少量木石）
      原版「科技需在科研中心使用旧币进行研究」；此前耗粮木石铁，未体现旧币的硬需求。 */
   DATA.techCost = function (tech, lv) {
@@ -1902,6 +1928,16 @@ import './core.js';
     { id: 'w_coldcrystal', name: '冷晶', type: 'wmat', price: 28, wonderOnly: true, desc: '奇观特产：高阶建筑升级 / 融合淬体' },
     { id: 'w_spore', name: '生机孢囊', type: 'wmat', price: 22, wonderOnly: true, desc: '奇观特产：高阶建筑升级 / 融合淬体' },
     { id: 'w_singularity', name: '奇点残响', type: 'wmat', price: 80, wonderOnly: true, desc: '奇观特产：融合淬体（高阶材料 · 出件品质更佳）' },
+    /* v91.72（老板）：「战储仓设置空间压缩功能 —— 每 500 万物资压缩为一份对应的高级物资，
+       作为物品存放在背包中；压缩后释放 500 万城市储量」。解压由 GAME.decompressResCrate 出口。 */
+    { id: 'crate_grain', name: '压缩净水块', type: 'res_crate', res: 'grain', qty: 5000000, price: 0,
+      desc: '五百万净水压缩封存。使用后解压入当前城（需仓容足够），为战储仓腾出空间。' },
+    { id: 'crate_wood',  name: '压缩生物质块', type: 'res_crate', res: 'wood', qty: 5000000, price: 0,
+      desc: '五百万生物质压缩封存。使用后解压入当前城（需仓容足够），为战储仓腾出空间。' },
+    { id: 'crate_stone', name: '压缩电能芯', type: 'res_crate', res: 'stone', qty: 5000000, price: 0,
+      desc: '五百万电能压缩封存。使用后解压入当前城（需仓容足够），为战储仓腾出空间。' },
+    { id: 'crate_iron',  name: '压缩废钢锭', type: 'res_crate', res: 'iron', qty: 5000000, price: 0,
+      desc: '五百万废钢压缩封存。使用后解压入当前城（需仓容足够），为战储仓腾出空间。' },
     /* v86（老板「按计划进行」· 第四轮 G1）：封存匣 —— 施展计谋所需 */
     { id: 'jinang', name: '封存匣', type: 'talis', price: 15, desc: '施展计谋所需。妙计千条，藏于囊中。' },
     /* v88（辐能装备）：辐能核心 —— 调校基因强化件的专属材料（price 0 = 游商不售）。
@@ -4004,7 +4040,12 @@ import './core.js';
      *      否则集齐 18 套要跑遍所有奇观，漏一个就永远造不出对应套装；
      *   ④ 通用·战技残页：研读类奇观（banner=page）掉，另有基础几率。
      * ============================================================ */
-    jewelChance: 0.10, bpChance: 0.06, pageChance: 0.03, pageBannerChance: 0.08 };
+    jewelChance: 0.10, bpChance: 0.06, pageChance: 0.03, pageBannerChance: 0.08,
+    /* v91.72（老板「战舰奇观出蓝图」· B 期）：舰船蓝图 = 通用掉落，按档位加权。
+       白常见、红稀有；不受主产每程上限约束（独立几率，与套装图纸同口径）。 */
+    shipBpChance: 0.06 };
+  /* 舰船蓝图档位权重（白/蓝/紫/红）—— 抽中蓝图后再按此加权选具体舰种。 */
+  DATA.WONDER_SHIP_BP_WEIGHTS = { 1: 50, 2: 28, 3: 15, 4: 7 };
 
   /* ============================================================
    * v91.60（老板）：「建立一个类星球地图，用于**奇观建造**——奇观建造将会消耗奇观材料，
@@ -4036,6 +4077,10 @@ import './core.js';
     costPct: 0.5,   /* 拆除返还材料比例 */
   };
 
+  /* v91.72（老板）：战储仓空间压缩 —— 每 500 万物资 = 1 份压缩物资（背包道具）。
+     只压缩粮木石铁；解压按当前城仓容校验（放不下则拒绝，不做部分解压）。 */
+  DATA.STORAGE_COMPRESS = { unit: 5000000, crate: { grain: 'crate_grain', wood: 'crate_wood', stone: 'crate_stone', iron: 'crate_iron' } };
+
   /* ============================================================
    * v91.71（老板）：「先建造空间站，再建造战舰；战舰奇观出蓝图，设计 12 种蓝图，
    *   3*4 白·蓝·紫·红四档，解锁不同等级战舰制造。建造/管理过程采用卡牌式。
@@ -4049,6 +4094,25 @@ import './core.js';
     tierCap: { 1: 1, 3: 2, 6: 3, 9: 4 },   /* 达到该等级 → 解锁到第几档 */
     dockSlots: function (lv) { return 2 + Math.floor((lv || 1) / 2); },
   };
+  /* ---------- 12 种舰船蓝图（B 期 · 白/蓝/紫/红四档） ----------
+     v91.72（老板）：「战舰奇观出蓝图」—— 先由奇观探索获得对应舰种蓝图，
+     之后才能在空间站建造该舰（门槛见 GAME.ship.canBuild / SH.bpOf）。
+     price 只作背包「估值/寄售」口径（wonderOnly → 游商与快购都不列）。 */
+  DATA.SHIP_BLUEPRINTS = [
+    { id: 'bp_ship_c_w1', name: '游隼艇蓝图',   type: 'ship_bp', wonderOnly: true, price: 30,  shipClass: 'c_w1', tier: 1, desc: '凭此可在空间站建造「游隼艇」' },
+    { id: 'bp_ship_c_w2', name: '护盾艇蓝图',   type: 'ship_bp', wonderOnly: true, price: 30,  shipClass: 'c_w2', tier: 1, desc: '凭此可在空间站建造「护盾艇」' },
+    { id: 'bp_ship_c_w3', name: '运输梭蓝图',   type: 'ship_bp', wonderOnly: true, price: 30,  shipClass: 'c_w3', tier: 1, desc: '凭此可在空间站建造「运输梭」' },
+    { id: 'bp_ship_c_b1', name: '裂空驱逐舰蓝图', type: 'ship_bp', wonderOnly: true, price: 80,  shipClass: 'c_b1', tier: 2, desc: '凭此可在空间站建造「裂空驱逐舰」' },
+    { id: 'bp_ship_c_b2', name: '铁壁护卫舰蓝图', type: 'ship_bp', wonderOnly: true, price: 80,  shipClass: 'c_b2', tier: 2, desc: '凭此可在空间站建造「铁壁护卫舰」' },
+    { id: 'bp_ship_c_b3', name: '远洋运输舰蓝图', type: 'ship_bp', wonderOnly: true, price: 80,  shipClass: 'c_b3', tier: 2, desc: '凭此可在空间站建造「远洋运输舰」' },
+    { id: 'bp_ship_c_g1', name: '星火巡洋舰蓝图', type: 'ship_bp', wonderOnly: true, price: 160, shipClass: 'c_g1', tier: 3, desc: '凭此可在空间站建造「星火巡洋舰」' },
+    { id: 'bp_ship_c_g2', name: '壁垒巡防舰蓝图', type: 'ship_bp', wonderOnly: true, price: 160, shipClass: 'c_g2', tier: 3, desc: '凭此可在空间站建造「壁垒巡防舰」' },
+    { id: 'bp_ship_c_g3', name: '方舟运载舰蓝图', type: 'ship_bp', wonderOnly: true, price: 160, shipClass: 'c_g3', tier: 3, desc: '凭此可在空间站建造「方舟运载舰」' },
+    { id: 'bp_ship_c_r1', name: '天罚战列舰蓝图', type: 'ship_bp', wonderOnly: true, price: 320, shipClass: 'c_r1', tier: 4, desc: '凭此可在空间站建造「天罚战列舰」' },
+    { id: 'bp_ship_c_r2', name: '天穹旗舰蓝图',   type: 'ship_bp', wonderOnly: true, price: 320, shipClass: 'c_r2', tier: 4, desc: '凭此可在空间站建造「天穹旗舰」' },
+    { id: 'bp_ship_c_r3', name: '星际母舰蓝图',   type: 'ship_bp', wonderOnly: true, price: 320, shipClass: 'c_r3', tier: 4, desc: '凭此可在空间站建造「星际母舰」' },
+  ];
+
   /* ---------- 12 种战舰：4 档 × 3 系 ---------- */
   /* 档 tier：1 白 / 2 蓝 / 3 紫 / 4 红（品质色沿用六档表的前四档语义）。
      系 role：assault 突击（伤害）/ escort 护卫（防御）/ carrier 母舰（运载）。
@@ -4067,21 +4131,21 @@ import './core.js';
   };
   DATA.SHIP_CLASSES = [
     /* --- 白档 --- */
-    { id: 'c_w1', tier: 1, role: 'assault', name: '游隼艇', icon: '🛩️', desc: '轻型突击艇，快而脆。' },
-    { id: 'c_w2', tier: 1, role: 'escort', name: '护盾艇', icon: '🛡️', desc: '编队护卫，挡在最前。' },
-    { id: 'c_w3', tier: 1, role: 'carrier', name: '运输梭', icon: '🚚', desc: '小型运载，投送先驱。' },
+    { id: 'c_w1', tier: 1, role: 'assault', name: '游隼艇', icon: '🛩️', desc: '轻型突击艇，快而脆。' , bp: 'bp_ship_c_w1'},
+    { id: 'c_w2', tier: 1, role: 'escort', name: '护盾艇', icon: '🛡️', desc: '编队护卫，挡在最前。' , bp: 'bp_ship_c_w2'},
+    { id: 'c_w3', tier: 1, role: 'carrier', name: '运输梭', icon: '🚚', desc: '小型运载，投送先驱。' , bp: 'bp_ship_c_w3'},
     /* --- 蓝档 --- */
-    { id: 'c_b1', tier: 2, role: 'assault', name: '裂空驱逐舰', icon: '🚀', desc: '主炮驱逐，突破防线。' },
-    { id: 'c_b2', tier: 2, role: 'escort', name: '铁壁护卫舰', icon: '🛡️', desc: '重甲护卫，掩护主力。' },
-    { id: 'c_b3', tier: 2, role: 'carrier', name: '远洋运输舰', icon: '🚢', desc: '中程投送，载兵载货。' },
+    { id: 'c_b1', tier: 2, role: 'assault', name: '裂空驱逐舰', icon: '🚀', desc: '主炮驱逐，突破防线。' , bp: 'bp_ship_c_b1'},
+    { id: 'c_b2', tier: 2, role: 'escort', name: '铁壁护卫舰', icon: '🛡️', desc: '重甲护卫，掩护主力。' , bp: 'bp_ship_c_b2'},
+    { id: 'c_b3', tier: 2, role: 'carrier', name: '远洋运输舰', icon: '🚢', desc: '中程投送，载兵载货。' , bp: 'bp_ship_c_b3'},
     /* --- 紫档 --- */
-    { id: 'c_g1', tier: 3, role: 'assault', name: '星火巡洋舰', icon: '🔥', desc: '火力巡洋，正面压制。' },
-    { id: 'c_g2', tier: 3, role: 'escort', name: '壁垒巡防舰', icon: '🧱', desc: '护盾与装甲并重。' },
-    { id: 'c_g3', tier: 3, role: 'carrier', name: '方舟运载舰', icon: '📦', desc: '大容量，殖民跳板。' },
+    { id: 'c_g1', tier: 3, role: 'assault', name: '星火巡洋舰', icon: '🔥', desc: '火力巡洋，正面压制。' , bp: 'bp_ship_c_g1'},
+    { id: 'c_g2', tier: 3, role: 'escort', name: '壁垒巡防舰', icon: '🧱', desc: '护盾与装甲并重。' , bp: 'bp_ship_c_g2'},
+    { id: 'c_g3', tier: 3, role: 'carrier', name: '方舟运载舰', icon: '📦', desc: '大容量，殖民跳板。' , bp: 'bp_ship_c_g3'},
     /* --- 红档 --- */
-    { id: 'c_r1', tier: 4, role: 'assault', name: '天罚战列舰', icon: '⚡', desc: '主力战列，一击定势。' },
-    { id: 'c_r2', tier: 4, role: 'escort', name: '天穹旗舰', icon: '🛡️', desc: '舰队之盾，旗舰级防护。' },
-    { id: 'c_r3', tier: 4, role: 'carrier', name: '星际母舰', icon: '🛸', desc: '运载与投送的终点。' },
+    { id: 'c_r1', tier: 4, role: 'assault', name: '天罚战列舰', icon: '⚡', desc: '主力战列，一击定势。' , bp: 'bp_ship_c_r1'},
+    { id: 'c_r2', tier: 4, role: 'escort', name: '天穹旗舰', icon: '🛡️', desc: '舰队之盾，旗舰级防护。' , bp: 'bp_ship_c_r2'},
+    { id: 'c_r3', tier: 4, role: 'carrier', name: '星际母舰', icon: '🛸', desc: '运载与投送的终点。' , bp: 'bp_ship_c_r3'},
   ];
   /* ---------- 部件（先船体 → 再升级） ---------- */
   /* 老板清单 + 补充（指挥舱=命中/闪避，弹药库=载弹量）。
@@ -4709,7 +4773,7 @@ import './core.js';
   DATA.SERIES = {
     /* v89.227：8 族 → 4 族（老板：「族有点多了…其他限制在 2 族以内，官府单独一族」）——
        官府（政务厅/基因实验室）· 民生（居所/战储仓/载具研究所/传送站 —— "无特定菜单操作"类）·
-       军事（军营/练兵场/围墙/瞭望塔）· 城务（征召大厅/英雄枢纽/科研中心/交易站/制造厂/机工坊）。
+       军事（军营/练兵场/围墙/瞭望塔）· 城务（征召大厅/英雄枢纽/科研中心/交易站/制造厂/精密制造厂）。
        旧 5 族 key 退役：store / edu / biz / road / recruit。
        v89.229：plot 语义 = **名称文字色块**的目标色（鲜明档，白字可读 ≥4.5）。
        HSL 值经"渲染复现"求解 —— smoke 逐字节对齐（rgbOfHsl 舍入往返零误差）。 */
@@ -5633,6 +5697,13 @@ import './core.js';
    * 修法：在**全部扩充完成之后**重建一次 —— 建表处保留（早期读取不空），
    * 这里覆盖为全量。smoke §102③ 钉住"两表键数一致"防回退。
    * ============================================================ */
+  /* v91.72：舰船蓝图并入宝物表（奇观产出、背包可见、空间站按持有放行）——
+     必须放在**全部物品定义之后**（SHIP_BLUEPRINTS 在空间站段，晚于套装图纸）。 */
+  (DATA.SHIP_BLUEPRINTS || []).forEach(function (bp) {
+    var exists = false;
+    (DATA.ITEMS || []).forEach(function (it) { if (it.id === bp.id) exists = true; });
+    if (!exists) DATA.ITEMS.push(bp);
+  });
   DATA.ITEM_BY_ID = {};
   (DATA.ITEMS || []).forEach(function (it) { DATA.ITEM_BY_ID[it.id] = it; });
 

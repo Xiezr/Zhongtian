@@ -213,15 +213,21 @@ import './ui.js';
         break;
       }
       case 'open-lab':
-        /* v91.26（老板）：基因实验室 = **主城专属设施**（状态是全局 s.farm）——
-           只在主城使用；别城该格保留建造位但不启用。 */
+        /* v91.72（老板）：「基因实验室不再限制为主城生效」—— 任何建有实验室的城都能用
+           （培养舱按城独立，见 GAME.farmOf(city)）。 */
         (function () {
           var _c = GAME.currentCity();
-          if (!_c || !GAME.isMainCity(_c)) { ui.toast('基因实验室为主城专属设施 —— 请到主城使用'); return; }
+          if (!_c || GAME.buildingLevel(_c, 'honglusi') <= 0) {
+            ui.toast('本城尚未建造基因实验室'); return;
+          }
           ui.openFarm();
         })();
         break;
       case 'farm-projects': ui.openFarmProjects(Number(el.dataset.idx)); break;
+      /* v91.72（老板）：自动基因研究 —— 开关 + 项目多选 + 立即执行一次 */
+      case 'toggle-auto-farm': GAME.doToggleAutoFarm(); GAME.refreshView(); break;
+      case 'autofarm-crop': GAME.doSetAutoFarmCrop(el.dataset.crop); GAME.refreshView(); break;
+      case 'auto-farm-once': (function () { GAME.autoFarm(); ui.toast((GAME.state.autoFarmState || {}).msg || '已执行'); GAME.refreshView(); })(); break;
       case 'farm-start': {
         var fpr = GAME.farmPlant(Number(el.dataset.idx), el.dataset.crop);
         ui.toast(fpr.msg);
@@ -711,6 +717,32 @@ import './ui.js';
       case 'market-buy': GAME.doMarketBuy(el.dataset.res); break;
       /* v89.100：道具寄售（价 = 购买价 75%；出口 systems.consign*） */
       case 'consign-sell': GAME.doConsign(el.dataset.item); break;
+      /* v91.72（老板）：背包物品右下角「售」—— 先问数量再寄售（默认 1 件）。 */
+      case 'item-sell-ask': ui.openItemSellAsk(el.dataset.key); break;
+      case 'item-sell-do': {
+        var _sq = ui.qtyValueOf('sell-q');
+        var _sr = GAME.systems.consignItem(el.dataset.item, _sq);
+        ui.toast(_sr.msg || '');
+        ui.closeModal();
+        if (_sr.ok) GAME.refreshAll();
+        break;
+      }
+      /* v91.72（老板）：战储仓空间压缩 / 解压 */
+      case 'store-compress-ask': ui.openCompressAsk(el.dataset.res); break;
+      case 'store-compress-do': {
+        var _cN = ui.qtyValueOf('cmp-q');
+        var _cr = GAME.compressResCrate(GAME.currentCity(), el.dataset.res, _cN);
+        ui.toast(_cr.msg);
+        ui.closeModal();
+        if (_cr.ok) { GAME.refreshAll(); ui.openStore(); }
+        break;
+      }
+      case 'store-decompress': {
+        var _dr = GAME.decompressResCrate(GAME.currentCity(), el.dataset.res, 1);
+        ui.toast(_dr.msg);
+        if (_dr.ok) { GAME.refreshAll(); ui.openStore(); }
+        break;
+      }
       case 'consign-all': GAME.doConsignAll(); break;
       /* v26：同上，「游商」已是顶栏视图（data-view="shop"）。 */
       case 'quick-item': ui.openQuickItem(el.dataset.res); break;
@@ -1222,6 +1254,23 @@ import './ui.js';
       case 'toggle-auto-upgrade': GAME.doToggleAutoUpgrade(); break;
       /* v89.115：自动化界面左右分栏 —— 左名单点选（只重绘本视图，不重开面板） */
       case 'auto-pick': ui._autoSel = el.dataset.key; GAME.refreshView(); break;
+      /* v91.72（老板）：通用折叠块 —— 改展开态后重绘**当前弹窗**（保住滚动位）；
+         无弹窗时退回整页重绘。 */
+      case 'fold-toggle': {
+        var _fk = el.dataset.fold;
+        ui._foldOpen = ui._foldOpen || {};
+        ui._foldOpen[_fk] = !ui._foldOpen[_fk];
+        var _snapFold = null;
+        try { _snapFold = ui._liveSnap ? ui._liveSnap() : null; } catch (eF) {}
+        if (ui._liveReopen && document.querySelector('.modal-mask')) {
+          ui._liveRedraw = true;
+          try { ui._liveReopen(); } finally { ui._liveRedraw = false; }
+          try { if (_snapFold && ui._liveRestore) ui._liveRestore(_snapFold); } catch (eF2) {}
+        } else {
+          GAME.refreshView();
+        }
+        break;
+      }
       case 'toggle-auto-heal': GAME.doToggleAutoHeal(); break;
       /* v89.190（老板 2）：自动征兵 —— 开关 / 数值设置（change 委托）/ 募兵面板入口 */
       case 'toggle-auto-train': GAME.doToggleAutoTrain(); break;
@@ -2072,7 +2121,9 @@ import './ui.js';
   GAME.doMarketSell = function (res) {
     var a = document.getElementById('mk-amount');
     if (!a) return;
-    var r = GAME.marketSell(res, Number(a.value) || 0);
+    var _n0 = Number(a.value) || 0;
+    if (_n0 > 0) ui._mkAmount = Math.floor(_n0);   /* v91.72：记住玩家设定的数量 */
+    var r = GAME.marketSell(res, _n0);
     ui.toast(r.msg);
     if (r.ok) { ui.openMarket(); GAME.refreshAll(); }
   };
@@ -2080,6 +2131,7 @@ import './ui.js';
     var a = document.getElementById('mk-amount');
     if (!a) return;
     var units = Number(a.value) || 0;
+    if (units > 0) ui._mkAmount = Math.floor(units);   /* v91.72：记住玩家设定的数量 */
     if (units <= 0) { ui.toast('数量无效'); return; }
     var need = GAME.marketBuyGoldFor(res, units);        /* 口径唯一出口，界面只读不算 */
     if ((GAME.state.res.gold || 0) < need) { ui.toast('旧币不足 —— 需 ' + U.fmt(need) + ' 旧币'); return; }
@@ -2410,7 +2462,9 @@ import './ui.js';
       var _wgen = (GAME.state.generals || []).filter(function (g) { return g.id === genSel.value; })[0];
       /* v91.49（老板）：用**下拉框选中的探索行动**（ui._expMode），不是打开面板时的 entry mode ——
          玩家可在下拉里改「采集/派军搜查/深潜攻坚」。 */
-      var _wr = GAME.wonderExplore(target.pid, ui._expMode || target.mode || 'search', GAME.currentCity() && GAME.currentCity().id, atk, _wgen && _wgen.id);
+      /* v91.72（老板）：按**派出城**发兵（奇观探索限本星球城市，派出城已由界面过滤）。 */
+      var _fc = ui.expFromCity();
+      var _wr = GAME.wonderExplore(target.pid, ui._expMode || target.mode || 'search', _fc && _fc.id, atk, _wgen && _wgen.id);
       ui.toast(_wr.msg);
       if (_wr.ok) { ui.closeModal(); GAME.refreshAll(); if (ui.view === 'map' && ui.renderMapCanvas) ui.renderMapCanvas(); }
       return;
@@ -2418,7 +2472,8 @@ import './ui.js';
     /* v91.52（老板）：挑战奇观层级守军 —— 走战斗引擎（GAME.wonderFightLayer）。 */
     if (target.kind === 'wonderFight') {
       var _fgen = (GAME.state.generals || []).filter(function (g) { return g.id === genSel.value; })[0];
-      var _fr = GAME.wonderFightLayer(target.pid, target.lv, GAME.currentCity() && GAME.currentCity().id, atk, _fgen && _fgen.id);
+      var _fc2 = ui.expFromCity();
+      var _fr = GAME.wonderFightLayer(target.pid, target.lv, _fc2 && _fc2.id, atk, _fgen && _fgen.id);
       ui.toast(_fr.msg);
       ui.closeModal();
       GAME.refreshAll();
@@ -3268,7 +3323,7 @@ import './ui.js';
      （这解释了"改了却说没生效"的观感）。老板若发现版本 ≠ 最新交付，按 Ctrl+F5
      强制刷新即获得新代码。⚠️ 发版须走 **bump_version.py --bump --version vX.Y**（它同步 index.html 的 ?v=/BUILD
      与这里的 GAME.VERSION 三处）—— 只手改 index.html 会让版本号冻住（v91.18 前的病灶）。 */
-  GAME.VERSION = 'v91.61';
+  GAME.VERSION = 'v91.73';
   function boot() {
     fitAppSize();
     try {
