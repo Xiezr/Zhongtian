@@ -1444,6 +1444,12 @@ import './ui.js';
         ui.openTacticSets();      /* v89.86：改指预设管理（原同名覆盖导致「逐兵种」打不开编辑器） */
         break;
       }
+      /* v91.80（老板）：自动出征 —— 按城指定执行英雄（勾选框 + 本城英雄下拉）。 */
+      case 'open-am-citygen': ui.openAutoMarchCityGen(); break;
+      /* v91.81（老板）：自动探索 —— 选择探索范围（全部星球 + 城市，带勾选框）。 */
+      case 'open-ae-scope': ui.openAutoExploreScope(); break;
+      /* v91.82（老板）：自动探索 —— 按城指定执行英雄（勾选框 + 本城英雄下拉）。 */
+      case 'open-ae-citygen': ui.openAutoExploreCityGen(); break;
       case 'plan-save': ui.expSavePlan(); break;
       case 'tac-save': ui.expSaveTactic(); break;
       case 'plan-del': ui.expDeletePlan(el.dataset.v); break;
@@ -1792,6 +1798,16 @@ import './ui.js';
       GAME.refreshView();
       return;
     }
+    /* v91.80（老板「执行英雄可不限，但提供弹窗按城指定」）：按城指定执行英雄 ——
+       键形如 `cityGen:<cityId>`；v 非空 = 该城固定此英雄，v 为空 = 该城不限（随机空闲）。 */
+    if (k.indexOf('cityGen:') === 0) {
+      cfg.cityGen = cfg.cityGen || {};
+      var _cgCity = k.slice(8), _cgVal = String(v == null ? '' : v);
+      if (_cgVal) cfg.cityGen[_cgCity] = _cgVal;
+      else delete cfg.cityGen[_cgCity];
+      GAME.refreshView();
+      return;
+    }
     if (k === 'troops' || k === 'maxLevel' || k === 'everyMin'
       || k === 'radius' || k === 'dailyMax') cfg[k] = Number(v);
     else cfg[k] = (v === '' && k === 'scheme') ? null : String(v);
@@ -1832,6 +1848,31 @@ import './ui.js';
     if (k.indexOf('army:') === 0) {       /* 逐兵种「自动探索数量」上限 */
       cfg.army = cfg.army || {};
       cfg.army[k.slice(5)] = Math.max(0, Math.floor(Number(v) || 0));
+      GAME.refreshView();
+      return;
+    }
+    /* v91.81（老板「开发所有星球和城市选项」）：探索范围 = 排除表。
+       `offPlanet:<pid>` / `offCity:<cityId>` —— v 为真值 = 排除（不探索），空 = 恢复参与。 */
+    if (k.indexOf('offPlanet:') === 0) {
+      cfg.offPlanets = cfg.offPlanets || {};
+      var _op = k.slice(10);
+      if (v) cfg.offPlanets[_op] = 1; else delete cfg.offPlanets[_op];
+      GAME.refreshView();
+      return;
+    }
+    if (k.indexOf('offCity:') === 0) {
+      cfg.offCities = cfg.offCities || {};
+      var _oc = k.slice(8);
+      if (v) cfg.offCities[_oc] = 1; else delete cfg.offCities[_oc];
+      GAME.refreshView();
+      return;
+    }
+    /* v91.82（老板「自动探索也要按城指定英雄」）：`cityGen:<cityId>` —— 与自动出征同构，
+       v 为英雄 id = 该城固定用这位英雄；**空 = 该城不限**（随机取空闲英雄，优先本城）。 */
+    if (k.indexOf('cityGen:') === 0) {
+      cfg.cityGen = cfg.cityGen || {};
+      var _cg = k.slice(8);
+      if (v) cfg.cityGen[_cg] = String(v); else delete cfg.cityGen[_cg];
       GAME.refreshView();
       return;
     }
@@ -3333,7 +3374,7 @@ import './ui.js';
      （这解释了"改了却说没生效"的观感）。老板若发现版本 ≠ 最新交付，按 Ctrl+F5
      强制刷新即获得新代码。⚠️ 发版须走 **bump_version.py --bump --version vX.Y**（它同步 index.html 的 ?v=/BUILD
      与这里的 GAME.VERSION 三处）—— 只手改 index.html 会让版本号冻住（v91.18 前的病灶）。 */
-  GAME.VERSION = 'v91.76';
+  GAME.VERSION = 'v91.82';
   function boot() {
     fitAppSize();
     try {

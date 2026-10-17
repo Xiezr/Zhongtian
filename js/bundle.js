@@ -17903,6 +17903,9 @@ window.GAME = window.GAME || {};
            v89.83：`keepHome`（城内留守）已退役（老板「无需兵力留守这个菜单项」）；
                  新增 `radius`（搜索距离）与 `scheme`（计略）。 */
         dailyMax: 0, radius: A.defaultRadius, scheme: null, todayKey: '', todayCount: 0,
+        /* v91.80（老板「执行英雄可不限，但提供弹窗按城指定」）：
+           { cityId: genId } —— 登记了该城 = 固定用这个英雄；未登记/空 = 该城不限（随机空闲）。 */
+        cityGen: {},
       };
 
     }
@@ -17921,6 +17924,7 @@ window.GAME = window.GAME || {};
     if (lvs.indexOf(Number(c.maxLevel)) < 0) c.maxLevel = lvs[lvs.length - 1];
     if (c.everyMin == null) c.everyMin = A.defaultFreqMin;
     if (c.dailyMax == null) c.dailyMax = 0;
+    if (!c.cityGen || typeof c.cityGen !== 'object') c.cityGen = {};   /* v91.80：按城指定英雄 */
     return c;
   };
   /* v89.83：搜索半径 —— **唯一出口**（改前这个数是写死的，弹窗与后端各引一份）。 */
@@ -18057,6 +18061,68 @@ window.GAME = window.GAME || {};
     });
     return { army: out, total: n };
   };
+  /* v91.79（老板）：玩家设定「编成组成」（troop→数量），由各城按自身数据匹配。
+     某城若任一兵种驻军 < 设定值，或总额 > 练兵场出征容量（marchCapOf，按总人马计），
+     则该城达不到 → 不出征。返回 {ok, army, total, reason, short, need, have, cap}。
+     reason: '' / 'short'（某兵种不足）/ 'cap'（超练兵场容量）。 */
+  GAME.autoMarchMatchCity = function (city, comp) {
+    comp = comp || {};
+    var A = DATA.TROOPS, army = {}, total = 0, short = null, need = 0, have0 = 0;
+    for (var id in comp) {
+      var q = Math.max(0, Math.floor(comp[id] || 0));
+      if (q <= 0) continue;
+      var t = A[id];
+      if (!t || t.nocombat) continue;                 /* 只认可作战兵种（斥候/辎重不计） */
+      var h = ((city.army) || {})[id] || 0;
+      if (h < q) { short = id; need = q; have0 = h; break; }
+      army[id] = q; total += q;
+    }
+    if (short) return { ok: false, reason: 'short', short: short, need: need, have: have0, army: {}, total: 0 };
+    var cap = (GAME.battle && GAME.battle.marchCapOf) ? GAME.battle.marchCapOf(city) : 0;
+    if (cap > 0 && total > cap) return { ok: false, reason: 'cap', need: total, cap: cap, army: {}, total: 0 };
+    return { ok: true, army: army, total: total };
+  };
+  /* ============================================================
+   * v91.80（老板）：自动出征「执行英雄」选取 —— **唯一出口**。
+   *   抽出来是因为它是"选谁去"的口径，必须能被单独验证：留在 autoMarchOnce 里的话，
+   *   目标搜索失败会提前 return，这段永远走不到（也就永远测不到）。
+   *   优先级：① 本城指定 cfg.cityGen[city.id] > ② 全局指定 cfg.genId > ③ 随机空闲（优先本城）。
+   *   任一级未登记就落到下一级；两处都不指定 = 「不限」→ 走 ③（排除君主）。
+   * ============================================================ */
+  /* ============================================================
+   * 自动派将**唯一出口**（v91.82 抽出 · 自动出征 / 自动探索共用，杜绝两处口径漂移）。
+   *   优先级 ① 本城指定 cfg.cityGen[city.id]  >  ② 全局指定 cfg.genId  >  ③ 随机空闲（优先本城、排除君主）。
+   *   任一级未登记就落到下一级；两处都不指定 = 「不限」→ 走 ③。
+   *   指定了一个**不在册**的 id → 返回 null（调用方报"已不在册"），绝不静默随机顶替。
+   * ============================================================ */
+  GAME.pickAutoGen = function (cfg, city) {
+    var s = GAME.state;
+    if (!cfg || !city) return null;
+    var _wantId = ((cfg.cityGen && cfg.cityGen[city.id]) || '') || cfg.genId || '';
+    if (_wantId) {
+      var _hit = null;
+      (s.generals || []).forEach(function (g) { if (g.id === _wantId) _hit = g; });
+      return _hit;
+    }
+    var idles = (s.generals || []).filter(function (g) {
+      if (g.status && g.status !== 'idle') return false;
+      if (GAME.isLordGeneral && GAME.isLordGeneral(g)) return false;   /* 君主不自动外派 */
+      return true;
+    });
+    /* 优先本城英雄（genCityOf === city），否则任意空闲 */
+    var _mine = idles.filter(function (g) { var gc = GAME.genCityOf ? GAME.genCityOf(g) : null; return gc && gc.id === city.id; });
+    var pool = _mine.length ? _mine : idles;
+    return pool.length ? pool[Math.floor(Math.random() * pool.length)] : null;
+  };
+  GAME.autoMarchPickGen = function (cfg, city) {
+    cfg = cfg || GAME.autoMarchCfg();
+    return GAME.pickAutoGen(cfg, city);
+  };
+  /* v91.82：自动探索同构出口（读自己的 cfg，判据与出征完全一致）。 */
+  GAME.autoExplorePickGen = function (cfg, city) {
+    cfg = cfg || GAME.autoExploreCfg();
+    return GAME.pickAutoGen(cfg, city);
+  };
   GAME.autoMarchOnce = function (cfg, city) {
     var s = GAME.state;
     cfg = cfg || GAME.autoMarchCfg();
@@ -18072,22 +18138,13 @@ window.GAME = window.GAME || {};
     if (!city) return { ok: false, msg: '无可用城市' };
     /* v91.53（老板：「执行英雄固定首行加『不指定英雄』，会**随机选择当前空闲英雄**」）——
        cfg.genId 为空 = 不指定 → 现取一枚**空闲**英雄（优先本城，其次任意空闲；排除君主）。
-       指定了具体英雄则照旧（须空闲）。 */
-    var gen = null;
-    if (cfg.genId) {
-      (s.generals || []).forEach(function (g) { if (g.id === cfg.genId) gen = g; });
-    } else {
-      var idles = (s.generals || []).filter(function (g) {
-        if (g.status && g.status !== 'idle') return false;
-        if (GAME.isLordGeneral && GAME.isLordGeneral(g)) return false;   /* 君主不自动外派 */
-        return true;
-      });
-      /* 优先本城英雄（genCityOf === city），否则任意空闲 */
-      var _mine = idles.filter(function (g) { var gc = GAME.genCityOf ? GAME.genCityOf(g) : null; return gc && gc.id === city.id; });
-      var pool = _mine.length ? _mine : idles;
-      if (pool.length) gen = pool[Math.floor(Math.random() * pool.length)];
-    }
-    if (!gen) return { ok: false, msg: cfg.genId ? '请先指定执行自动出征的英雄' : '本城无空闲英雄（随机指派）' };
+       指定了具体英雄则照旧（须空闲）。
+       v91.80（老板「执行英雄可不限，但提供弹窗按城指定」）—— 优先级：
+         ① 本城指定 cfg.cityGen[city.id]  >  ② 全局指定 cfg.genId  >  ③ 随机空闲（优先本城）
+         任一级未登记就落到下一级；两处都不指定 = 「不限」→ 走 ③。 */
+    var gen = GAME.autoMarchPickGen(cfg, city);
+    var _wantId = ((cfg.cityGen && cfg.cityGen[city.id]) || '') || cfg.genId || '';
+    if (!gen) return { ok: false, msg: _wantId ? '指定的执行英雄已不在册，请重新指定' : '本城无空闲英雄（随机指派）' };
     /* 红线①：只派空闲英雄 */
     if (gen.status && gen.status !== 'idle') {
       return { ok: false, msg: gen.name + ' 正在' + (gen.status === 'guard' ? '任守将'
@@ -18104,10 +18161,26 @@ window.GAME = window.GAME || {};
       return { ok: false, msg: '「' + city.name + '」周边 ' + GAME.autoMarchRadius(cfg)
         + ' 格内没有符合条件的目标（' + mode.name + ' · 等级 ≤ ' + cfg.maxLevel + '）' };
     }
-    var w = GAME.autoMarchWant(cfg, city);
-    if (w.want <= 0) return { ok: false, msg: city.name + ' 城内无兵可派（现有 ' + U.fmt(w.total) + ' 兵）' };
-    var pick = GAME.autoMarchPickArmy(city, w.want, cfg.army);
-    if (!pick.total) return { ok: false, msg: city.name + ' 城内无兵可派（器械与侦察单元不计入编队）' };
+    /* v91.79（老板）：玩家设定「编成组成」→ 各城按自身数据匹配；达不到的城市跳过。
+       未设定组成 → 退回旧模式（单次兵力 / 顺位补足）。 */
+    var _comp = {}, _hasComp = false;
+    if (cfg.army) { for (var _ck in cfg.army) { var _cq = Math.max(0, Math.floor(cfg.army[_ck] || 0)); if (_cq > 0) { _comp[_ck] = _cq; _hasComp = true; } } }
+    var pick;
+    if (_hasComp) {
+      var _m = GAME.autoMarchMatchCity(city, _comp);
+      if (!_m.ok) {
+        var _why = _m.reason === 'cap'
+          ? ('总兵力 ' + U.fmt(_m.need) + ' 超本城练兵场出征容量 ' + U.fmt(_m.cap))
+          : ((DATA.TROOPS[_m.short] || {}).name || _m.short) + ' 需 ' + U.fmt(_m.need) + ' 现有 ' + U.fmt(_m.have);
+        return { ok: false, msg: '「' + city.name + '」未达设定编成（' + _why + '），本次跳过' };
+      }
+      pick = { army: _m.army, total: _m.total };
+    } else {
+      var w = GAME.autoMarchWant(cfg, city);
+      if (w.want <= 0) return { ok: false, msg: city.name + ' 城内无兵可派（现有 ' + U.fmt(w.total) + ' 兵）' };
+      pick = GAME.autoMarchPickArmy(city, w.want, null);
+      if (!pick.total) return { ok: false, msg: city.name + ' 城内无兵可派（器械与侦察单元不计入编队）' };
+    }
     /* v89.83：计略 —— 与出征面板走**同一个出口**（march.dispatch 的 schemeId）。
        无人值守时**不因计略而卡住**：封存匣/精力不足或该目标不适用，则本次不用计
        （原因写进结果文案）—— 否则挂了计略又没封存匣，自动出征会一直不动，
@@ -18156,8 +18229,12 @@ window.GAME = window.GAME || {};
         + ' 格内没有符合条件的目标（' + GAME.battle.modeOf(cfg.mode).name
         + ' · 等级 ≤ ' + cfg.maxLevel + '）' };
     }
-    var w = GAME.autoMarchWant(cfg, city);
-    var pick = GAME.autoMarchPickArmy(city, w.want, cfg.army);
+    /* v91.79（老板）：预估也走「玩家设定编成 → 各城匹配」同一口径（与实发同源）。 */
+    var _comp2 = {}, _hasComp2 = false;
+    if (cfg.army) { for (var _c2 in cfg.army) { var _q2 = Math.max(0, Math.floor(cfg.army[_c2] || 0)); if (_q2 > 0) { _comp2[_c2] = _q2; _hasComp2 = true; } } }
+    var pick;
+    if (_hasComp2) { var _m2 = GAME.autoMarchMatchCity(city, _comp2); pick = _m2.ok ? { army: _m2.army, total: _m2.total } : { army: {}, total: 0 }; }
+    else { var w = GAME.autoMarchWant(cfg, city); pick = GAME.autoMarchPickArmy(city, w.want, null); }
     var from = { ci: city.ci, cityId: city.id };
     var travel = GAME.march.travelTime(from, { ci: t.ci }, pick.army, null, gen) / GAME.timeScale();
     /* 守军：野地走 wildDefenseAt（与战斗同一个来源）、据点取据点守军表、
@@ -18368,6 +18445,14 @@ window.GAME = window.GAME || {};
         army: {},                    /* 逐兵种「自动探索数量」上限（0/缺 = 不自动派） */
         today: {},                   /* { 城id: 今日已派次数 } · 随现实日归零 */
         todayKey: '',
+        /* v91.81（老板「自动探索开发所有星球和城市选项」）：探索范围 = **排除表**（黑名单）。
+           默认空 = 全域（兼容老档）；玩家在弹窗里取消勾选某星球/某城 → 记 1 = 不探索。 */
+        offPlanets: {},              /* { pid: 1 } */
+        offCities: {},               /* { cityId: 1 } */
+        /* v91.82（老板「自动探索也要按城指定英雄」）—— 与自动出征同构：
+           cityGen[cityId] = genId 表示**该城固定**用这位英雄；留空 = 该城不限。 */
+        cityGen: {},
+        genId: null,                 /* 全局兜底（界面只暴露「按城指定」，此键留作兼容/存档） */
       };
     }
     var c = s.settings.autoExplore;
@@ -18375,6 +18460,9 @@ window.GAME = window.GAME || {};
     if (c.dailyMax == null) c.dailyMax = (A.defaultDailyMax != null ? A.defaultDailyMax : 2);
     if (!c.army) c.army = {};
     if (!c.today) c.today = {};
+    if (!c.offPlanets || typeof c.offPlanets !== 'object') c.offPlanets = {};   /* v91.81 */
+    if (!c.offCities || typeof c.offCities !== 'object') c.offCities = {};      /* v91.81 */
+    if (!c.cityGen || typeof c.cityGen !== 'object') c.cityGen = {};            /* v91.82 */
     return c;
   };
   /* 现实日归零（每城计数同翻）—— 与自动出征同轴。 */
@@ -18384,6 +18472,37 @@ window.GAME = window.GAME || {};
     if (cfg.todayKey !== key) { cfg.todayKey = key; cfg.today = {}; }
     return cfg;
   };
+  /* ============================================================
+   * v91.81（老板：「自动探索，开发所有星球和城市选项 …… 目前限定为当前星球了」）——
+   *   探索范围**唯一出口**：默认全域（排除表空 = 全部星球 + 全部城市都探索），
+   *   玩家在「选择星球/城市」弹窗里取消勾选 → 记入排除表，该星球/该城不再派队。
+   *   抽成独立函数是因为"哪些城参与"必须能被单独验证（留在 autoExplore 里会被
+   *   频率节流的提前 return 挡住，永远测不到）。
+   *   · inScope(pid)          —— 星球级（该球整体被排除则 false）
+   *   · inScope(pid, cityId)  —— 城级（球被排除 或 该城被排除 → false）
+   * ============================================================ */
+  GAME.autoExploreInScope = function (cfg, pid, cityId) {
+    cfg = cfg || GAME.autoExploreCfg();
+    if (!cfg) return false;
+    if (cfg.offPlanets && cfg.offPlanets[pid]) return false;
+    if (cityId != null && cfg.offCities && cfg.offCities[cityId]) return false;
+    return true;
+  };
+  /* 范围内星球数 / 城数（界面摘要用，可验证）。 */
+  GAME.autoExploreScopeCount = function (cfg) {
+    var s = GAME.state;
+    cfg = cfg || GAME.autoExploreCfg();
+    var planets = 0, cities = 0;
+    if (!cfg || !s) return { planets: 0, cities: 0 };
+    GAME.planetsOf().forEach(function (pl) {
+      var cs = (s.cities || []).filter(function (c) { return GAME.pidOf(c) === pl.id; });
+      if (!cs.length) return;
+      if (!GAME.autoExploreInScope(cfg, pl.id)) return;
+      planets++;
+      cs.forEach(function (c) { if (GAME.autoExploreInScope(cfg, pl.id, c.id)) cities++; });
+    });
+    return { planets: planets, cities: cities };
+  };
   /* 单城尝试：挑行动 → 取兵 → 找空闲英雄 → 派队。返回 { ok, msg }。 */
   GAME._autoExploreCity = function (pid, city, cfg) {
     var wd = GAME.wonderOf ? GAME.wonderOf(pid) : null;
@@ -18391,30 +18510,55 @@ window.GAME = window.GAME || {};
     if (!GAME.wonderPresent(pid)) return { ok: false, msg: '今日奇观未出现' };
     var W = DATA.WONDER_CFG || {};
     if (GAME.wonderActiveCount(pid) >= (W.maxActive || 3)) return { ok: false, msg: '在途已满' };
-    /* 行动：cfg.act 指定且被支持 → 用它；否则取奇观支持的第一个。 */
-    var acts = (wd.acts || []).slice();
-    var actId = (cfg.act && acts.indexOf(cfg.act) >= 0) ? cfg.act : acts[0];
-    if (!actId) return { ok: false, msg: '该奇观无可派行动' };
+    /* v91.79（老板）：不再限定主角行动 —— 直接按本星球奇观类型，从**已解锁**的可用行动里随机取一种
+       （适配多种奇观：采集/派军搜查/深潜攻坚/圣殿研读/方舟救援各自行为不一）。 */
+    var acts = (wd.acts || []).filter(function (a) { return !GAME.wonderActLockOf(pid, a); });
+    if (!acts.length) return { ok: false, msg: '可用行动均未解锁（须先清层）' };
+    var actId = acts[Math.floor(Math.random() * acts.length)];
     var act = (DATA.WONDER_ACT_DEFS || {})[actId] || {};
-    /* 兵力：逐兵种上限 ∩ 城内实有。 */
+    /* 兵力：仅 needArmy 的行动按玩家设定编成匹配本城（达不到则跳过）；
+       仅英雄行动（采集/圣殿研读…）即使设了兵也不带兵出征。 */
     var army = {}, total = 0;
-    (DATA.TROOPS ? Object.keys(DATA.TROOPS) : []).forEach(function (id) {
-      var want = Math.max(0, Math.floor((cfg.army && cfg.army[id]) || 0));
-      if (want <= 0) return;
-      var have = ((city.army || {})[id]) || 0;
-      var take = Math.min(have, want);
-      if (take > 0) { army[id] = take; total += take; }
-    });
-    if (act.needArmy && total <= 0) return { ok: false, msg: '未配置兵种或城中无兵' };
-    /* 空闲英雄（不固定 · 每次现取一枚）——与自动出征同一判据：只取 idle。
-       v91.50：**排除君主**（君主是本局化身，不该被自动派去探索/或冒出「无将」那种怪状）。 */
-    var gen = null;
-    (GAME.state.generals || []).forEach(function (g) {
-      if (gen || (g.status && g.status !== 'idle')) return;
-      if (GAME.isLordGeneral && GAME.isLordGeneral(g)) return;
-      gen = g;
-    });
-    if (!gen) return { ok: false, msg: '城中无空闲英雄' };
+    if (act.needArmy) {
+      var comp = {}, hasComp = false;
+      if (cfg.army) { for (var ik in cfg.army) { var iq = Math.max(0, Math.floor(cfg.army[ik] || 0)); if (iq > 0) { comp[ik] = iq; hasComp = true; } } }
+      if (hasComp) {
+        var m = GAME.autoMarchMatchCity(city, comp);
+        if (!m.ok) {
+          var why = m.reason === 'cap'
+            ? ('总兵力 ' + U.fmt(m.need) + ' 超本城练兵场出征容量 ' + U.fmt(m.cap))
+            : ((DATA.TROOPS[m.short] || {}).name || m.short) + ' 需 ' + U.fmt(m.need) + ' 现有 ' + U.fmt(m.have);
+          return { ok: false, msg: '「' + city.name + '」未达设定编成（' + why + '），跳过' };
+        }
+        army = m.army; total = m.total;
+      } else {
+        /* 未设定编成：沿用旧逻辑（逐兵种上限 ∩ 城内实有）；全空则本行动不可派。 */
+        (DATA.TROOPS ? Object.keys(DATA.TROOPS) : []).forEach(function (id) {
+          var want = Math.max(0, Math.floor((cfg.army && cfg.army[id]) || 0));
+          if (want <= 0) return;
+          var have = ((city.army || {})[id]) || 0;
+          var take = Math.min(have, want);
+          if (take > 0) { army[id] = take; total += take; }
+        });
+      }
+      if (total <= 0) return { ok: false, msg: '未配置兵种或城中无兵' };
+    }
+    /* v91.82（老板「自动探索也要按城指定英雄」）—— 与自动出征**同构**（同一出口 pickAutoGen）：
+       ① 本城指定 cfg.cityGen[city.id]  >  ② 全局 cfg.genId  >  ③ 随机空闲（优先本城、排除君主）。
+       两处都不指定 = 不限 = ③（即旧行为：每次现取一枚空闲英雄）。
+       指定了一个**不在册**的 id → 报"已不在册"，不静默随机顶替。 */
+    var gen = GAME.autoExplorePickGen(cfg, city);
+    var _wantId = ((cfg.cityGen && cfg.cityGen[city.id]) || '') || cfg.genId || '';
+    if (!gen) {
+      return { ok: false, msg: _wantId
+        ? ('「' + city.name + '」指定的执行英雄已不在册，请重新指定')
+        : ('「' + city.name + '」无空闲英雄') };
+    }
+    /* 红线①：只派空闲英雄（指定到在忙的英雄时不硬派） */
+    if (gen.status && gen.status !== 'idle') {
+      return { ok: false, msg: gen.name + ' 正在' + (gen.status === 'guard' ? '任守将'
+        : gen.status === 'march' ? '出征' : '采集') + '，本次跳过' };
+    }
     return GAME.wonderExplore(pid, actId, city.id, army, gen.id);
   };
   /* 主循环驱动：按频率节流 → **遍历所有星球**逐城尝试（每球的城向本球今日奇观派队）。 */
@@ -18438,8 +18582,11 @@ window.GAME = window.GAME || {};
       if (GAME.sphere && GAME.sphere.setPlanet) GAME.sphere.setPlanet(pl.seed, pl.params);
       var cities = (s.cities || []).filter(function (c) { return GAME.pidOf(c) === pid; });
       if (!cities.length) return;
+      /* v91.81（老板）：探索范围 —— 被取消勾选的星球/城市整体跳过（默认空表 = 全域）。 */
+      if (!GAME.autoExploreInScope(cfg, pid)) return;
       cities.forEach(function (city) {
         if ((cfg.dailyMax > 0) && ((cfg.today[city.id] || 0) >= cfg.dailyMax)) return;
+        if (!GAME.autoExploreInScope(cfg, pid, city.id)) return;
         var r = GAME._autoExploreCity(pid, city, cfg);
         if (r && r.ok) { cfg.today[city.id] = (cfg.today[city.id] || 0) + 1; done++; lastMsg = r.msg; }
         else if (r && r.msg) lastMsg = r.msg;
@@ -21338,19 +21485,29 @@ window.GAME = window.GAME || {};
       for (i = 0; i < f.plots.length; i++) {
         if (GAME.farmPlotState(i, ct).state === 'ripe' && GAME.farmHarvest(i, ct).ok) harvested++;
       }
-      /* ② 再补空舱：在**选定项目**里挑一个没在种、没成熟的（去重则各舱种不同项目）；
-             未选任何项目 = 全部项目都可种。 */
-      var _busy = {};
-      for (i = 0; i < f.plots.length; i++) if (f.plots[i]) _busy[f.plots[i].crop] = 1;
+      /* ② 再补空舱：**互不相同** —— v91.80（老板：「研究项目需要互不相同，就是一个研究，
+             本城6个栏位只能有一个」）。在「选定项目」(未选=全部)里按游标逐个取**本城尚未
+             占用**的项目铺到各空舱；候选被占满时该舱**留空** ——
+             ⚠️ 旧版此处「退化回硬塞 _pool[0]（铺满为先）」正是同项目重复占多格的根因，已删。
+             游标持久化在 c.rotCursor（跨 tick 持续推进，多项目随时间真正轮换）。 */
       var _pool = (c.crops || []).slice();
       if (!_pool.length) _pool = (DATA.FARM.crops || []).map(function (x) { return x.id; });
-      var _pick = null;
-      for (i = 0; i < _pool.length; i++) { if (!_busy[_pool[i]]) { _pick = _pool[i]; break; } }
-      if (!_pick) _pick = _pool[0];
+      if (!_pool.length) return;                       /* 没有任何可研究项目：跳过本城 */
+      var _busy = {};
+      for (i = 0; i < f.plots.length; i++) if (f.plots[i]) _busy[f.plots[i].crop] = 1;
+      var _cur = (typeof c.rotCursor === 'number' ? c.rotCursor : 0) % _pool.length;
       for (i = 0; i < f.plots.length; i++) {
         if (f.plots[i]) continue;
+        var _pick = null, _tried = 0;
+        while (_tried < _pool.length) {                /* 从游标起找下一个未在种的；全占满则 _pick 留空 */
+          var _cand = _pool[_cur % _pool.length]; _cur++; _tried++;
+          if (!_busy[_cand]) { _pick = _cand; break; }
+        }
+        if (!_pick) continue;                              /* 候选已被占满 → 本舱留空，绝不铺重复 */
+        _busy[_pick] = 1;                                  /* 本城本次已用，保证 6 格两两不同 */
         if (GAME.farmPlant(i, _pick, ct).ok) planted++;
       }
+      c.rotCursor = ((_cur % _pool.length) + _pool.length) % _pool.length;
     });
     if (planted || harvested) {
       s.autoFarmState = { msg: '本回收获 ' + harvested + ' 项 · 立项 ' + planted + ' 项（' + cities + ' 城）' };
@@ -49348,38 +49505,79 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
         (id != null ? ' data-id="' + U.escape(String(id)) + '"' : '') +
         (ci != null ? ' data-ci="' + ci + '"' : '') + '>' + label + (extra || '') + '</button> ';
     };
-    var sec = function (title, list) {
-      return '<div class="gold-heading" style="margin-top:8px;">' + title + '</div><div>' + (list || '—') + '</div>';
-    };
-    var body = sec('🏯 己方城市（派遣 / 运输）',
-        own.map(function (x) { return row('own', x.id, null, '🏯 ' + U.escape(x.name)); }).join('') || '—') +
-      (ownWild.length ? sec('🌾 己方野地（派驻）',
-        ownWild.map(function (w) { return row('wild', null, w.ci, '🌾 ' + (DATA.TERRAIN[w.type] ? DATA.TERRAIN[w.type].name : w.type) + ' Lv' + w.level); }).join('')) : '') +
-      sec('🗺️ 周围 30 格野地（侦查/掠夺/占领）',
-        wilds.map(function (w) { return row('wild', null, w.ci, '🗺️ 野地 Lv' + w.lv + '（' + GAME.map.coordText(w.x, w.y) + '）'); }).join('') || '—') +
-      sec('🏕️ 周围 30 格据点',
-        forts.map(function (f) { return row('fort', null, f.ci, '🏕️ ' + U.escape(f.name) + ' Lv' + (f.lv || 1)); }).join('') || '—') +
-      sec('🏛️ 名城（按区分级）',
-        '<select id="etp-state" style="margin-bottom:6px;">' + states.map(function (st) {
+    /* v91.77（老板）：左 1/4 分类（己方城市 / 己方野地 / 周围野地 / 周围据点 / 名城 / 奇观），
+       右 3/4 展示选中分类的目标；点击分类切换右侧内容。只列非空分类。 */
+    var catDefs = [
+      { id: 'own',     title: '🏯 己方城市',     body: (own.length ? own.map(function (x) {
+          return row('own', x.id, null, '🏯 ' + U.escape(x.name)); }).join('') : '—') },
+      { id: 'ownWild', title: '🌾 己方野地',     body: (ownWild.length ? ownWild.map(function (w) {
+          return row('wild', null, w.ci, '🌾 ' + (DATA.TERRAIN[w.type] ? DATA.TERRAIN[w.type].name : w.type) + ' Lv' + w.level); }).join('') : null) },
+      { id: 'wild',    title: '🗺️ 周围 30 格野地', body: (wilds.length ? wilds.map(function (w) {
+          return row('wild', null, w.ci, '🗺️ 野地 Lv' + w.lv + '（' + GAME.map.coordText(w.x, w.y) + '）'); }).join('') : '—') },
+      { id: 'fort',    title: '🏕️ 周围 30 格据点', body: (forts.length ? forts.map(function (f) {
+          return row('fort', null, f.ci, '🏕️ ' + U.escape(f.name) + ' Lv' + (f.lv || 1)); }).join('') : '—') },
+      { id: 'city',    title: '🏛️ 名城（按区分级）', body: (npcs.length ? '<select id="etp-state" style="margin-bottom:6px;">' + states.map(function (st) {
           return '<option value="' + U.escape(st) + '">' + U.escape(st) + '</option>';
-        }).join('') + '</select><div id="etp-npcs"></div>') +
-      (wonder ? sec('☄ 奇观（本星球）',
-        row('wonder', null, null, '☄ ' + U.escape(wonder.name)) ) : '');
+        }).join('') + '</select><div id="etp-npcs"></div>' : null) },
+      { id: 'wonder',  title: '☄ 奇观（本星球）',  body: (wonder ? row('wonder', null, null, '☄ ' + U.escape(wonder.name)) : null) }
+    ];
+    var cats = catDefs.filter(function (c) { return c.body != null; });
+    if (!cats.length) {
+      ui.openModal('<div class="gold-heading">🎯 选择出征目标</div>' +
+        '<div class="ui-sub" style="text-align:center;margin:8px 0;">当前星球暂无可选目标</div>', { size: 'xl' });
+      return;
+    }
+    var sideHTML = cats.map(function (cat, i) {
+      return '<div class="etp-cat"' + (i === 0 ? ' data-active="1"' : '') +
+        ' data-cat="' + cat.id + '"' +
+        ' style="padding:8px 10px;margin-bottom:4px;border-radius:8px;cursor:pointer;font-size:var(--fs-sub);' +
+        (i === 0 ? 'background:var(--slab-2);color:var(--gold-light);font-weight:800;' : 'color:var(--text);') + '">' +
+        U.escape(cat.title) + '</div>';
+    }).join('');
+    var layout = '<div style="display:flex;gap:12px;align-items:stretch;min-height:320px;">' +
+      '<div style="flex:0 0 25%;border-right:1px solid var(--line);padding-right:10px;overflow:auto;">' + sideHTML + '</div>' +
+      '<div style="flex:1 1 75%;min-width:0;"><div id="etp-body"></div></div>' +
+      '</div>';
     ui.openModal('<div class="gold-heading">🎯 选择出征目标</div>' +
       '<div class="ui-sub" style="text-align:center;margin-bottom:6px;">仅列当前星球 · 选中后以该目标重开出征界面</div>' +
-      body, { size: 'xl' });
+      layout, { size: 'xl' });
     /* 名城分级：区下拉 → 该区名城（档位 + 名称） */
-    var stSel = document.getElementById('etp-state');
-    var boxEl = document.getElementById('etp-npcs');
-    var paintNpc = function () {
+    var paintNpc = function (stSel, boxEl) {
       if (!boxEl) return;
       var st0 = stSel ? stSel.value : (states[0] || '');
       boxEl.innerHTML = npcs.filter(function (n) { return n.state === st0; }).map(function (n) {
         return row('city', n.id, null, '🏛️ ' + U.escape(n.name), '<i style="opacity:.7;">（' + (tierName[n.type] || n.type) + ' Lv' + GAME.cityLvOf(n) + '）</i>');
       }).join('') || '—';
     };
-    paintNpc();
-    if (stSel) stSel.addEventListener('change', paintNpc);
+    var paint = function (id) {
+      var els = document.querySelectorAll('.etp-cat');
+      for (var i = 0; i < els.length; i++) {
+        var el = els[i], on = el.getAttribute('data-cat') === id;
+        el.setAttribute('data-active', on ? '1' : '0');
+        el.style.background = on ? 'var(--slab-2)' : 'transparent';
+        el.style.color = on ? 'var(--gold-light)' : 'var(--text)';
+        el.style.fontWeight = on ? '800' : '400';
+      }
+      var cat = null;
+      for (var j = 0; j < cats.length; j++) if (cats[j].id === id) { cat = cats[j]; break; }
+      if (!cat) return;
+      var b = document.getElementById('etp-body');
+      if (!b) return;
+      b.innerHTML = cat.body;
+      if (id === 'city') {
+        var stSel = document.getElementById('etp-state');
+        var boxEl = document.getElementById('etp-npcs');
+        paintNpc(stSel, boxEl);
+        if (stSel) stSel.addEventListener('change', function () { paintNpc(stSel, boxEl); });
+      }
+    };
+    paint(cats[0].id);
+    var sideEls = document.querySelectorAll('.etp-cat');
+    for (var k = 0; k < sideEls.length; k++) {
+      (function (el) {
+        el.addEventListener('click', function () { paint(el.getAttribute('data-cat')); });
+      })(sideEls[k]);
+    }
   };
 
   ui.openExpModal = function (target, opts138) {
@@ -49641,7 +49839,11 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
     /* v89.197（老板 3）：「一个目标」——标题+label 双写退役；名称固定宽、右边直接是下拉框
        （单目标时给静态文本，名称列照旧对齐）。 */
     html += '<div class="exp-sec exp-a-target">';
-    html += ui.expRowHTML('目标', tgtSel || ('<span class="exp-one">' + U.escape(_tTitle) + '</span>'), null);
+    /* v91.76（老板）：「1 个当前目标 + 1 个『其他目标』按钮」—— 合并为**单行**：
+       标题在左（exp-one 占满剩余宽度），「其他目标」按钮顶到右侧；不再另起一行重复目标。 */
+    html += ui.expRowHTML('目标',
+      '<span class="exp-one">' + U.escape(_tTitle) + '</span>' +
+      '<button class="btn sm" data-action="exp-target-pick">其他目标</button>', null);
     /* v89.198（老板 5）：「相称建议」由主将区**移入目标区**（它是随目标变化的建议）。
        纯按目标等级给"宜派"的档位（守将实情请侦查；软提示、非门槛）。
        v89.129 建立（原挂主将区）；目标切换时整窗重绘，本行随 t 重建。 */
@@ -49669,12 +49871,7 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
     }
     /* v91.75（老板「主将只列一个」同口径）—— 派出城**只显示本次从哪座城发兵**：
        只有在同一星球上有多座可选城时才给下拉；否则就是一行静态名（不再每个形态各造一套选择）。 */
-    /* v91.76（老板）：「1 个当前目标 + 1 个‘其他目标’按钮」——
-       当前目标 = 地图点选所得（上面名称行）；「其他目标」开弹窗按类型选（仅本星球）。 */
-    html += ui.expRowHTML('目标',
-      '<span class="exp-one">' + U.escape(_tTitle) + '</span>' +
-      '<button class="btn sm" data-action="exp-target-pick">其他目标</button>',
-      '当前目标 = 地图/军务点选；「其他目标」可在本星球内换选');
+    /* v91.77（老板）：下方重复的「目标」行已删除 —— 「其他目标」按钮已并入上方目标行右侧（单行 + 右侧换选）。 */
     if (wonderLvRow) html += wonderLvRow;
     if (!ui._expOwn) {
       var _pickFrom = c;
@@ -52403,6 +52600,10 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
           label: U.escape(g.name) + (busy ? '（' + ui.genStatusName(g) + '）' : '') };
       }));
 
+    /* v91.80（老板）：已「按城指定」英雄的城数（界面提示用） */
+    var _cg = cfg.cityGen || {}, _cgN = 0;
+    for (var _cgk in _cg) if (_cg[_cgk]) _cgN++;
+
     var tgtOpts = A.targetOptions.map(function (x) { return { v: x[0], on: cfg.target === x[0], label: x[1] }; });
     /* v89.83：等级候选按**当前目标类型**给（野地/据点 1~10；名城 12/16/20/24） */
     var lvOpts = lvList.map(function (v) {
@@ -52434,23 +52635,28 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
        · 列表改为**全部可作战兵种**（含器械）——与出征面板同口径（只剔 nocombat 侦察），
          "不全"即此前漏了器械（东风快递 / 无人轰炸机）两行；
        · 兵种名**不再带图标前缀**（图标是噪声，名称本身够读）。 */
+    /* v91.79（老板）：右侧兵种**不再引用某城市现存兵种**，改为「玩家设定编成组成」——
+       各城按自身驻军与练兵场容量匹配，达不到的城市自动跳过不出征。 */
+    var _comp79 = {};
+    Object.keys(cfg.army || {}).forEach(function (id) { var q = Math.max(0, Math.floor(cfg.army[id] || 0)); if (q > 0) _comp79[id] = q; });
     var troopBlock = '<table class="tbl exp-tbl"><colgroup>' +
-      '<col class="et-c-name"><col class="et-c-own"><col class="et-c-in">' +
-      '</colgroup><thead><tr><th>兵种</th><th class="num">驻军数量</th><th class="ctr">自动出征数量</th>' +
-      '</tr></thead><tbody>' +
-      Object.keys(DATA.TROOPS).filter(function (id) {
-        var t = DATA.TROOPS[id];
-        return t && !t.nocombat;
-      }).map(function (id) {
-        var tr = DATA.TROOPS[id] || {}, own = (city && city.army && city.army[id]) || 0;
-        var cfgN = (cfg.army && cfg.army[id]) || 0;
-        return '<tr class="et-row' + (own <= 0 ? ' off' : '') + '">' +
+      '<col class="et-c-name"><col class="et-c-in"></colgroup><thead><tr>' +
+      '<th>兵种</th><th class="ctr">出征数量</th></tr></thead><tbody>' +
+      Object.keys(DATA.TROOPS).filter(function (id) { var t = DATA.TROOPS[id]; return t && !t.nocombat; }).map(function (id) {
+        var tr = DATA.TROOPS[id] || {}, cfgN = (cfg.army && cfg.army[id]) || 0;
+        return '<tr class="et-row' + (cfgN > 0 ? ' on' : '') + '">' +
           '<td class="et-name">' + U.escape(tr.name || id) + '</td>' +
-          '<td class="et-own num">' + U.fmt(own) + '</td>' +
-          '<td class="et-in"><input type="number" id="am-a-' + id + '" min="0" max="' + own + '" value="' + cfgN + '"' +
-            (own > 0 ? '' : ' disabled') + '></td>' +
-          '</tr>';
+          '<td class="et-in"><input type="number" id="am-a-' + id + '" min="0" value="' + cfgN + '"></td></tr>';
       }).join('') + '</tbody></table>';
+    /* 各城可达标统计（让玩家一眼看清哪些城能执行） */
+    var _reach = { ok: 0, total: 0 };
+    if (_comp79 && Object.keys(_comp79).length) {
+      GAME.planetsOf().forEach(function (pl) {
+        (s.cities || []).filter(function (c) { return GAME.pidOf(c) === pl.id; }).forEach(function (ct) {
+          _reach.total++; if (GAME.autoMarchMatchCity(ct, _comp79).ok) _reach.ok++;
+        });
+      });
+    }
 
     var html = '<div class="gold-heading">⚔️ 自动出征 · 详细配置' +
       '<span style="font-weight:400;font-size:var(--fs-sub);color:var(--text-dim);">' +
@@ -52462,8 +52668,12 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
         '<div class="exp-col-l">' +
           /* ① 执行英雄（v89.198：统一行 —— 名称列 + 右边直接下拉；规则说明进悬停） */
           '<div class="exp-sec">' +
-            ui.expRowHTML('执行英雄', sel('am-gen', genOpts),
-              '只派空闲英雄；出征中／守将／采集中一律跳过（现空闲 ' + idle.length + ' 位）') + '</div>' +
+            ui.expRowHTML('执行英雄', sel('am-gen', genOpts) +
+                '<span class="exp-tac-link" data-action="open-am-citygen">按城指定' +
+                (_cgN ? '（' + _cgN + ' 城）' : '') + '</span>',
+              '只派空闲英雄；出征中／守将／采集中一律跳过（现空闲 ' + idle.length + ' 位）。\n' +
+              '优先级：按城指定 > 全局指定 > 不限（随机取空闲，优先本城）。\n' +
+              '「按城指定」可为每座城单独固定英雄；未指定的城 = 不限。') + '</div>' +
           /* ② 目标：类型 · 等级 · 距离（三行同一名称列宽） */
           '<div class="exp-sec">' +
             ui.expRowHTML('目标类型', sel('am-target', tgtOpts), null) +
@@ -52496,12 +52706,11 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
           '<div class="exp-sec"><div class="exp-sec-t">预估</div>' + ui.amEstHTML(pv) + '</div>' +
         '</div>' +
         '<div class="exp-col-r">' +
-          /* v89.140（老板 7'）：「右侧，**单次兵力这个菜单去除**」——整块退役；
-             每次带多少改由下方编成表**逐兵种**指定（cfg.army）。 */
-          '<div class="exp-sec exp-a-troops"><div class="exp-sec-t">兵种编成（自动）</div>' +
+          '<div class="exp-sec exp-a-troops"><div class="exp-sec-t">编成组成（玩家设定）</div>' +
             '<div class="exp-troops exp-body">' + troopBlock + '</div>' +
-            '<div class="exp-info exp-info-l" style="color:var(--text-dim);margin-bottom:0;">城内现有 ' +
-            U.fmt(have) + ' 兵；<b>逐兵种填数量</b>（0 = 不带，顺位兜底跳过器械）；侦察单元不编入</div></div>' +
+            '<div class="exp-info exp-info-l" style="color:var(--text-dim);margin-bottom:0;">' +
+            (_reach.total ? ('设定一支队伍的兵种组成；当前可达标城市 <b>' + _reach.ok + ' / ' + _reach.total + '</b>（达不到的城市自动跳过）。') : '设定一支队伍的兵种组成（0 = 不带）。') +
+            '各城按自身驻军与练兵场出征容量匹配。</div></div>' +
         '</div>' +
       '</div>' +
       '<div class="exp-foot">' +
@@ -52545,6 +52754,79 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
     if (_tacSel) _tacSel.addEventListener('change', function () {
       ui.expApplyTactic(_tacSel.value);
       ui.openAutoMarch();
+    });
+  };
+
+  /* ============================================================
+   * v91.80（老板）：「自动出征的执行英雄可不限，但提供弹窗选择，列出可选城市，
+   *   对应城市提供英雄下拉框选择，选项前带勾选框，供选中/不选中」——
+   *   按城指定执行英雄：{ cityId: genId } 写进 cfg.cityGen，唯一出口
+   *   doSetAutoMarch('cityGen:<cid>')（与 army:<tid> 同构，界面不自己改 cfg）。
+   *   勾选框 = 该城是否固定英雄（不勾 = 不限，随机取空闲）；下拉只列**本城**在册英雄。
+   * ============================================================ */
+  ui.openAutoMarchCityGen = function () {
+    var s = GAME.state, cfg = GAME.autoMarchCfg();
+    if (!cfg) return;
+    var _cg = cfg.cityGen || {};
+    var _gensOf = function (cid) {
+      return (s.generals || []).filter(function (g) {
+        var gc = GAME.genCityOf ? GAME.genCityOf(g) : null;
+        return gc && gc.id === cid;
+      });
+    };
+    var rows = '';
+    GAME.planetsOf().forEach(function (pl) {
+      var list = (s.cities || []).filter(function (c) { return GAME.pidOf(c) === pl.id; });
+      if (!list.length) return;
+      rows += '<tr class="et-row"><td colspan="3" style="font-weight:600;color:var(--text-dim);">' +
+        U.escape(pl.name || ('星球 ' + pl.id)) + '</td></tr>';
+      list.forEach(function (c) {
+        var gens = _gensOf(c.id), cur = _cg[c.id] || '';
+        var opts = '<option value=""' + (cur ? '' : ' selected') + '>🎲 不限（随机空闲英雄）</option>' +
+          gens.map(function (g) {
+            var busy = g.status && g.status !== 'idle';
+            return '<option value="' + g.id + '"' + (g.id === cur ? ' selected' : '') + '>' +
+              U.escape(g.name) + (busy ? '（' + ui.genStatusName(g) + '）' : '') + '</option>';
+          }).join('');
+        rows += '<tr class="et-row' + (cur ? ' on' : '') + '">' +
+          '<td class="ctr"><input type="checkbox" id="am-cg-on-' + c.id + '"' + (cur ? ' checked' : '') + '></td>' +
+          '<td class="et-name">' + U.escape(GAME.cityLabel(c)) + '</td>' +
+          '<td class="et-in"><select id="am-cg-gen-' + c.id + '">' + opts + '</select></td></tr>';
+      });
+    });
+    var n = 0;
+    for (var k in _cg) if (_cg[k]) n++;
+    var html = '<div class="gold-heading">⚔️ 按城指定执行英雄' +
+      '<span style="font-weight:400;font-size:var(--fs-sub);color:var(--text-dim);">' +
+      '（已指定 ' + n + ' 座城 · 未勾选的城 = 不限）</span></div>' +
+      '<div class="exp-info exp-info-l" style="color:var(--text-dim);">' +
+      '勾选框 = 该城固定使用所选英雄；<b>不勾选 = 该城不限</b>（随机取空闲英雄，优先本城）。' +
+      '英雄下拉只列<b>本城</b>在册英雄。</div>' +
+      '<div class="exp-troops exp-body" style="max-height:52vh;overflow:auto;">' +
+      '<table class="tbl exp-tbl"><colgroup><col style="width:3.2em">' +
+      '<col class="et-c-name"><col class="et-c-in"></colgroup>' +
+      '<thead><tr><th class="ctr">指定</th><th>城市</th><th>执行英雄</th></tr></thead><tbody>' +
+      (rows || '<tr><td colspan="3" style="color:var(--text-dim);">暂无城市</td></tr>') +
+      '</tbody></table></div>' +
+      '<div class="exp-foot"><button class="btn" data-action="close-modal">关闭</button></div>';
+    ui.openModal(html, { size: 'xl' });
+    /* 勾选框与下拉任一变动 → 按「勾中且有英雄 → 写；否则 → 清（= 不限）」落盘。
+       不重开本弹窗（重开会丢滚动位置），doSetAutoMarch 内部的 refreshView 已同步主视图。 */
+    var _apply = function (cid) {
+      var cb = document.getElementById('am-cg-on-' + cid);
+      var sl = document.getElementById('am-cg-gen-' + cid);
+      if (!cb || !sl) return;
+      GAME.doSetAutoMarch('cityGen:' + cid, cb.checked ? sl.value : '');
+    };
+    (s.cities || []).forEach(function (c) {
+      var cb = document.getElementById('am-cg-on-' + c.id);
+      var sl = document.getElementById('am-cg-gen-' + c.id);
+      if (cb) cb.addEventListener('change', function () { _apply(c.id); });
+      if (sl) sl.addEventListener('change', function () {
+        var cb2 = document.getElementById('am-cg-on-' + c.id);
+        if (cb2) cb2.checked = !!sl.value;   /* 选了具体英雄 → 自动勾上；选「不限」→ 自动取消 */
+        _apply(c.id);
+      });
     });
   };
 
@@ -52613,12 +52895,11 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
     var present = GAME.wonderPresent ? GAME.wonderPresent(pid) : true;
     var active = GAME.wonderActiveCount ? GAME.wonderActiveCount(pid) : 0;
     var maxA = (DATA.WONDER_CFG || {}).maxActive || 3;
-    /* 主角行动候选：本奇观支持的行动（cfg.act 缺省取第一个）。 */
-    var acts = (wd && wd.acts) || [];
-    var actOpts = acts.map(function (a) {
-      var d = (DATA.WONDER_ACT_DEFS || {})[a] || {};
-      return { v: a, on: (cfg.act || acts[0]) === a, label: d.name + '（' + (d.cond || '') + '）' };
-    });
+    /* v91.79（老板）：自动探索**不再限定主角行动** —— 由域层按本星球奇观类型，
+       从「已解锁」的可用行动里随机取一种（采集/派军搜查/深潜攻坚/圣殿研读/方舟救援各自行为不一）。
+       故本面板移除「主角行动」下拉，改由系统在运行时随机分配。 */
+    var _aeComp = {};
+    Object.keys(cfg.army || {}).forEach(function (id) { var q = Math.max(0, Math.floor(cfg.army[id] || 0)); if (q > 0) _aeComp[id] = q; });
     var sel = function (id, opts) {
       return '<select id="' + id + '">' + opts.map(function (o) {
         return '<option value="' + o.v + '"' + (o.on ? ' selected' : '') + '>' + U.escape(o.label) + '</option>';
@@ -52632,18 +52913,28 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
       var cs = (s.cities || []).filter(function (c) { return GAME.pidOf(c) === pl.id; });
       cs.forEach(function (c) { allCities.push(c); });
     });
-    /* 逐兵种「自动探索数量」上限（可作战兵种）。 */
+    /* v91.79（老板）：自动探索编成**同自动出征** —— 玩家设定组成，不再引用各城现存兵种。 */
     var rows = Object.keys(DATA.TROOPS).filter(function (id) { return !DATA.TROOPS[id].nocombat; }).map(function (id) {
       var tr = DATA.TROOPS[id] || {};
-      var own = 0;
-      allCities.forEach(function (ct) { own += ((ct.army || {})[id]) || 0; });
       var capN = (cfg.army && cfg.army[id]) || 0;
-      return '<tr class="et-row' + (own <= 0 ? ' off' : '') + '">' +
+      return '<tr class="et-row' + (capN > 0 ? ' on' : '') + '">' +
         '<td class="et-name">' + U.escape(tr.name || id) + '</td>' +
-        '<td class="et-own num">' + U.fmt(own) + '</td>' +
-        '<td class="et-in"><input type="number" id="ae-a-' + id + '" min="0" value="' + capN + '"' +
-          (own > 0 ? '' : ' disabled') + '></td></tr>';
+        '<td class="et-in"><input type="number" id="ae-a-' + id + '" min="0" value="' + capN + '"></td></tr>';
     }).join('');
+    /* 各城可达标统计（与自动出征同源） */
+    var _aeReach = { ok: 0, total: 0 };
+    if (_aeComp && Object.keys(_aeComp).length) {
+      GAME.planetsOf().forEach(function (pl) {
+        (s.cities || []).filter(function (c) { return GAME.pidOf(c) === pl.id; }).forEach(function (ct) {
+          _aeReach.total++; if (GAME.autoMarchMatchCity(ct, _aeComp).ok) _aeReach.ok++;
+        });
+      });
+    }
+    /* v91.81（老板「开发所有星球和城市选项」）：探索范围摘要（默认全域 = 所有星球所有城） */
+    var _sc = GAME.autoExploreScopeCount ? GAME.autoExploreScopeCount(cfg) : { planets: 0, cities: 0 };
+    /* v91.82（老板「自动探索也要按城指定英雄」）：已固定英雄的城数（界面摘要） */
+    var _aeGenN = 0;
+    for (var _agk in (cfg.cityGen || {})) if (cfg.cityGen[_agk]) _aeGenN++;
     /* ============================================================
      * v91.41（老板）：「各星球奇观不同，在自动探索处加上**全部星球的奇观类型列表**、
      *   兵种要求、上限」+「确保统一规则可适配所有已经/将来可能有的类型增加或更新」。
@@ -52655,51 +52946,75 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
       var w = GAME.wonderOf ? GAME.wonderOf(pl.id) : null;
       var pres = GAME.wonderPresent ? GAME.wonderPresent(pl.id) : true;
       var act = GAME.wonderActiveCount ? GAME.wonderActiveCount(pl.id) : 0;
-      /* 该星球奇观支持的行动 + 各自**兵种/带队条件**（条件文案来自数据层 cond）。 */
+      /* 该星球奇观支持的行动 —— 紧凑标签（名称）+ 悬停显示条件，避免整列换行。 */
       var acts = ((w && w.acts) || []).map(function (a) {
         var d = _AD[a] || {};
-        return (d.name || a) + '（' + (d.cond || '需英雄带队') + '）';
-      }).join('　·　') || '—';
+        return '<span style="display:inline-block;margin:1px 3px;padding:0 5px;border:1px solid var(--line,#444);' +
+          'border-radius:3px;font-size:var(--fs-sub);white-space:nowrap;" title="' +
+          U.escape((d.name || a) + '：' + (d.cond || '需英雄带队')) + '">' + U.escape(d.name || a) + '</span>';
+      }).join('') || '—';
       return '<tr class="et-row' + (pres ? '' : ' off') + '">' +
         '<td class="et-name">' + U.escape(pl.name) +
           (pl.id === (s.activePlanet || 0) ? ' <i class="gd-sub">当前</i>' : '') + '</td>' +
-        '<td>' + (w ? (w.icon + ' ' + U.escape(w.name)) : '<span style="color:var(--text-dim);">—</span>') + '　' +
+        '<td style="white-space:nowrap;">' + (w ? (w.icon + ' ' + U.escape(w.name)) : '<span style="color:var(--text-dim);">—</span>') + '　' +
           (pres ? '<span style="color:var(--green-ok);">在场</span>' : '<span style="color:var(--red-light);">未出现</span>') + '</td>' +
-        '<td style="font-size:var(--fs-sub);color:var(--text-dim);">' + U.escape(acts) + '</td>' +
+        '<td>' + acts + '</td>' +
         '<td class="num">' + act + ' / ' + maxA + '</td></tr>';
     }).join('');
-    var planetTable = '<div class="op-zone" style="margin-top:8px;"><div class="op-zone-t">全部星球 · 奇观一览（类型 · 兵种要求 · 在途上限）</div>' +
-      '<table class="tbl exp-tbl"><colgroup><col class="et-c-name"><col><col style="width:auto"><col class="et-c-own"></colgroup>' +
-      '<thead><tr><th>星球</th><th>今日奇观</th><th>收录行动 · 兵种要求</th><th class="num">在途</th></tr></thead><tbody>' +
+    var planetTable = '<div class="op-zone" style="margin-top:8px;"><div class="op-zone-t">全部星球 · 奇观一览（类型 · 行动 · 在途上限）</div>' +
+      '<table class="tbl exp-tbl"><colgroup><col style="width:5.5em"><col style="width:9em"><col style="width:auto"><col class="et-c-own"></colgroup>' +
+      '<thead><tr><th>星球</th><th>今日奇观</th><th>收录行动</th><th class="num">在途</th></tr></thead><tbody>' +
       (planetRows || '<tr><td colspan="4" class="q-empty">暂无星球</td></tr>') + '</tbody></table>' +
       '<div class="exp-info exp-info-l" style="color:var(--text-dim);margin-bottom:0;">本表**由数据自动生成**：' +
       '各星球今日奇观来自 `DATA.WONDER_DEFS`、行动与兵种要求来自 `DATA.WONDER_ACT_DEFS`、' +
       '在途上限来自 `DATA.WONDER_CFG.maxActive` —— 新增奇观/行动/门槛会自动出现在此，无需改界面。</div></div>';
     var html = '<div class="gold-heading">✨ 自动探索 · 详细配置' +
       '<span style="font-weight:400;font-size:var(--fs-sub);color:var(--text-dim);">（全域逐城派空闲英雄探奇观）</span>' +
-      ui.help('与自动出征同构：频率节流 + 每日上限 + 逐兵种数量上限。\n' +
-        '**不设固定英雄** —— 每城每次现取一枚空闲英雄带队。\n' +
-        '**覆盖全部星球**：异星球的城向**本星球今日奇观**派队（各球奇观不同）。\n' +
-        '「主角行动」= 在本球奇观支持的行动里优先选它，不支持则退回该奇观第一个。\n' +
+      ui.help('与自动出征同构：频率节流 + 每日上限 + 玩家设定编成。\n' +
+        '**默认不限英雄** —— 每城每次现取一枚空闲英雄带队；要固定就点「执行英雄 → 按城指定」。\n' +
+        '**覆盖全部星球**：各星球的城向**本星球今日奇观**派队（各球奇观不同）。\n' +
+        '**行动随机**：按本星球奇观类型，从已解锁的可用行动里随机取一种（不再限定主角行动）。\n' +
+        '仅英雄行动（采集/圣殿研读）即使设了兵也不带兵；需兵行动按编成匹配，达不到的城市跳过。\n' +
         '在途满 ' + maxA + ' 队（每球各自计）即等候。') + '</div>' +
       '<div class="exp-grid"><div class="exp-col-l">' +
-        '<div class="exp-sec"><div class="exp-sec-t">目标奇观（当前星球）</div>' +
+        /* v91.81（老板「自动探索开发所有星球和城市选项 · 目前限定为当前星球了」）：
+           新增「探索范围」—— 默认全域，可逐个取消勾选星球/城市；下列「当前星球奇观」
+           降级为**参考信息**（不再代表探索范围，范围由上面的「探索范围」决定）。 */
+        '<div class="exp-sec"><div class="exp-sec-t">探索范围</div>' +
+          ui.expRowHTML('范围',
+            '<span class="exp-tac-link" data-action="open-ae-scope">选择星球 / 城市</span>' +
+            '<span style="margin-left:8px;">已选 <b>' + _sc.planets + '</b> 星球 · <b>' + _sc.cities + '</b> 城</span>', null) +
+          '<div class="exp-info exp-info-l" style="color:var(--text-dim);margin-bottom:0;">' +
+          '默认<b>全域</b>（所有星球的所有城市，各城向<b>本星球</b>奇观派队）。' +
+          '点「选择星球 / 城市」可逐个取消勾选；被取消的星球 / 城市不再派队。</div>' +
+        '</div>' +
+        /* v91.82（老板「自动探索也要按城指定英雄」）：与自动出征同构的「按城指定」入口。 */
+        '<div class="exp-sec"><div class="exp-sec-t">执行英雄</div>' +
+          ui.expRowHTML('指定方式',
+            '<span class="exp-tac-link" data-action="open-ae-citygen">按城指定</span>' +
+            '<span style="margin-left:8px;">已指定 <b>' + _aeGenN + '</b> 座城 · 其余不限</span>', null) +
+          '<div class="exp-info exp-info-l" style="color:var(--text-dim);margin-bottom:0;">' +
+          '默认<b>不限</b>（每城现取一枚空闲英雄，优先本城）。点「按城指定」可逐城固定英雄；' +
+          '已固定的城若该英雄<b>正在忙碌</b>或<b>已不在册</b> → 该城<b>本次跳过</b>（不随机顶替）。</div>' +
+        '</div>' +
+        '<div class="exp-sec"><div class="exp-sec-t">当前星球奇观（参考）</div>' +
           '<div class="ui-sub" style="margin-bottom:6px;">' + (wd ? (wd.icon + ' ' + U.escape(wd.name) + ' · ' + U.escape(wd.body)) : '本星球暂无奇观') +
           '　·　' + (present ? '今日在场' : '<span style="color:var(--red-light);">今日未出现</span>') +
           '　·　在途 ' + active + '/' + maxA + ' 队</div>' +
-          ui.expRowHTML('主角行动', sel('ae-act', actOpts.length ? actOpts : [{ v: '', on: true, label: '（无）' }]),
-            '该奇观支持的行动 · 条件见括号（英雄带队为共同要求）') + '</div>' +
+          '<div class="exp-info exp-info-l" style="color:var(--text-dim);margin-bottom:0;">行动由系统按本星球奇观类型**随机分配**（已解锁的可用行动），不再手动指定。</div>' +
+        '</div>' +
         '<div class="exp-sec">' +
           ui.expRowHTML('探索频率', sel('ae-freq', freqOpts), null) +
           ui.expRowHTML('每城每日上限', sel('ae-daily', dailyOpts), null) + '</div>' +
         planetTable +
       '</div>' +
-      '<div class="exp-col-r"><div class="exp-sec exp-a-troops"><div class="exp-sec-t">兵种编成（自动探索数量上限）</div>' +
+      '<div class="exp-col-r"><div class="exp-sec exp-a-troops"><div class="exp-sec-t">编成组成（玩家设定）</div>' +
         '<div class="exp-troops exp-body"><table class="tbl exp-tbl"><colgroup>' +
-          '<col class="et-c-name"><col class="et-c-own"><col class="et-c-in"></colgroup><thead><tr>' +
-          '<th>兵种</th><th class="num">全境合计</th><th class="ctr">自动探索数量</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
-        '<div class="exp-info exp-info-l" style="color:var(--text-dim);margin-bottom:0;">逐兵种填<b>上限</b>（0 = 不自动派）；' +
-        '实际按每城实有取小值。侦察单元不编入。</div></div></div>' +
+          '<col class="et-c-name"><col class="et-c-in"></colgroup><thead><tr>' +
+          '<th>兵种</th><th class="ctr">探索数量</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+        '<div class="exp-info exp-info-l" style="color:var(--text-dim);margin-bottom:0;">' +
+        (_aeReach.total ? ('设定编成；当前可达标城市 <b>' + _aeReach.ok + ' / ' + _aeReach.total + '</b>（达不到跳过）。') : '设定编成（0 = 不带）。') +
+        '仅英雄行动（采集/圣殿研读）即使设兵也不带兵；需兵行动按编成匹配。</div></div></div>' +
       '</div>' +
       '<div class="exp-foot">' +
         '<button class="btn' + (cfg.on ? ' gold' : '') + '" data-action="ae-toggle">' +
@@ -52711,13 +53026,189 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
       var el = document.getElementById(id); if (!el) return;
       el.addEventListener('change', function () { GAME.doSetAutoExplore(key, el.value); ui.openAutoExplore(); });
     };
-    bind('ae-act', 'act'); bind('ae-freq', 'everyMin'); bind('ae-daily', 'dailyMax');
+    bind('ae-freq', 'everyMin'); bind('ae-daily', 'dailyMax');
     (function () {
       var ins = document.querySelectorAll('[id^="ae-a-"]');
       for (var ii = 0; ii < ins.length; ii++) (function (el2) {
         el2.addEventListener('change', function () { GAME.doSetAutoExplore('army:' + el2.id.slice(5), el2.value); });
       })(ins[ii]);
     })();
+  };
+
+  /* ============================================================
+   * v91.81（老板）：「自动探索，开发所有星球和城市选项，参考出征界面。目前限定为当前星球了」——
+   *   探索范围选择器：**左 1/4 星球导航 + 右 3/4 该星球城市（逐城勾选框）**，
+   *   版面沿用出征界面「其他目标」弹窗（.etp-cat 同构）。
+   *   语义 = **排除表**：默认全勾选（全域）；取消勾选 → 该星球 / 该城不派探索队。
+   *   落盘走唯一出口 doSetAutoExplore('offPlanet:<pid>') / ('offCity:<cityId>')。
+   * ============================================================ */
+  ui.openAutoExploreScope = function () {
+    var s = GAME.state, cfg = GAME.autoExploreCfg();
+    if (!cfg) return;
+    var citiesOf = function (pid) {
+      return (s.cities || []).filter(function (c) { return GAME.pidOf(c) === pid; });
+    };
+    var planets = GAME.planetsOf().filter(function (pl) { return citiesOf(pl.id).length > 0; });
+    if (!planets.length) {
+      ui.openModal('<div class="gold-heading">🗺️ 选择探索范围</div>' +
+        '<div class="ui-sub" style="text-align:center;margin:8px 0;">暂无城市</div>', { size: 'xl' });
+      return;
+    }
+    var nOn = function (pid) {
+      return citiesOf(pid).filter(function (c) { return GAME.autoExploreInScope(cfg, pid, c.id); }).length;
+    };
+    var sideHTML = planets.map(function (pl, i) {
+      var pOn = GAME.autoExploreInScope(cfg, pl.id);
+      return '<div class="aes-cat"' + (i === 0 ? ' data-active="1"' : '') + ' data-pid="' + pl.id + '"' +
+        ' style="padding:8px 10px;margin-bottom:4px;border-radius:8px;cursor:pointer;font-size:var(--fs-sub);' +
+        (i === 0 ? 'background:var(--slab-2);color:var(--gold-light);font-weight:800;' : 'color:var(--text);') + '">' +
+        '<input type="checkbox" id="aes-p-' + pl.id + '"' + (pOn ? ' checked' : '') + '> ' +
+        U.escape(pl.name) + ' <i style="opacity:.7;">（' + nOn(pl.id) + '/' + citiesOf(pl.id).length + '）</i></div>';
+    }).join('');
+    ui.openModal('<div class="gold-heading">🗺️ 选择探索范围' +
+      '<span style="font-weight:400;font-size:var(--fs-sub);color:var(--text-dim);">' +
+      '（取消勾选 = 该星球 / 该城市不派探索队）</span></div>' +
+      '<div style="display:flex;gap:12px;align-items:stretch;min-height:320px;">' +
+        '<div style="flex:0 0 25%;border-right:1px solid var(--line);padding-right:10px;overflow:auto;">' + sideHTML + '</div>' +
+        '<div style="flex:1 1 75%;min-width:0;"><div id="aes-body"></div></div>' +
+      '</div>' +
+      '<div class="exp-foot"><button class="btn" data-action="close-modal">关闭</button></div>', { size: 'xl' });
+
+    var curPid = planets[0].id;
+    /* 左侧计数与星球勾选框回写（cfg 是同一对象，doSetAutoExplore 改后这里立即生效） */
+    var refreshSide = function () {
+      planets.forEach(function (pl) {
+        var cat = document.querySelector('.aes-cat[data-pid="' + pl.id + '"]');
+        if (cat) { var ii = cat.querySelector('i'); if (ii) ii.textContent = '（' + nOn(pl.id) + '/' + citiesOf(pl.id).length + '）'; }
+        var pcb = document.getElementById('aes-p-' + pl.id);
+        if (pcb) pcb.checked = GAME.autoExploreInScope(cfg, pl.id);
+      });
+    };
+    var paint = function (pid) {
+      curPid = pid;
+      var els = document.querySelectorAll('.aes-cat');
+      for (var i = 0; i < els.length; i++) {
+        var el = els[i], on = String(el.getAttribute('data-pid')) === String(pid);
+        el.setAttribute('data-active', on ? '1' : '0');
+        el.style.background = on ? 'var(--slab-2)' : 'transparent';
+        el.style.color = on ? 'var(--gold-light)' : 'var(--text)';
+        el.style.fontWeight = on ? '800' : '400';
+      }
+      var b = document.getElementById('aes-body');
+      if (!b) return;
+      var cs = citiesOf(pid);
+      b.innerHTML = '<div style="margin-bottom:6px;display:flex;gap:12px;">' +
+          '<span class="exp-tac-link" id="aes-all-on">本星球全选</span>' +
+          '<span class="exp-tac-link" id="aes-all-off">本星球全不选</span></div>' +
+        (cs.length ? cs.map(function (c) {
+          var on = GAME.autoExploreInScope(cfg, pid, c.id);
+          return '<label style="display:flex;align-items:center;gap:6px;padding:3px 0;">' +
+            '<input type="checkbox" id="aes-c-' + c.id + '"' + (on ? ' checked' : '') + '>' +
+            '<span>' + U.escape(GAME.cityLabel(c)) + '</span></label>';
+        }).join('') : '<div class="ui-sub">该星球暂无城市</div>');
+      /* 逐城勾选：勾 = 参与探索（清排除）；取消 = 排除 */
+      cs.forEach(function (c) {
+        var cb = document.getElementById('aes-c-' + c.id);
+        if (!cb) return;
+        cb.addEventListener('change', function () {
+          GAME.doSetAutoExplore('offCity:' + c.id, cb.checked ? '' : '1');
+          refreshSide();
+        });
+      });
+      var onBtn = document.getElementById('aes-all-on'), offBtn = document.getElementById('aes-all-off');
+      var bulk = function (on) {
+        cs.forEach(function (c) { GAME.doSetAutoExplore('offCity:' + c.id, on ? '' : '1'); });
+        paint(pid); refreshSide();
+      };
+      if (onBtn) onBtn.addEventListener('click', function () { bulk(true); });
+      if (offBtn) offBtn.addEventListener('click', function () { bulk(false); });
+    };
+    /* 左侧：星球条目点击切右侧；星球勾选框独立生效（stopPropagation 防误切换分类） */
+    planets.forEach(function (pl) {
+      var cat = document.querySelector('.aes-cat[data-pid="' + pl.id + '"]');
+      if (cat) cat.addEventListener('click', function () { paint(pl.id); });
+      var pcb = document.getElementById('aes-p-' + pl.id);
+      if (pcb) {
+        pcb.addEventListener('click', function (e) { if (e.stopPropagation) e.stopPropagation(); });
+        pcb.addEventListener('change', function () {
+          GAME.doSetAutoExplore('offPlanet:' + pl.id, pcb.checked ? '' : '1');
+          paint(curPid); refreshSide();
+        });
+      }
+    });
+    paint(curPid);
+  };
+
+  /* ============================================================
+   * v91.82（老板「自动探索也要按城指定英雄」）—— 与自动出征「按城指定」同构：
+   *   按星球分组列出全部城市，每行 = **勾选框 + 城市名 + 本城英雄下拉**。
+   *   勾选 = 该城固定用所选英雄；不勾选 = 该城不限（随机空闲英雄，优先本城）。
+   *   版面沿用 `openAutoMarchCityGen`（同一张表），仅写入口换成 doSetAutoExplore。
+   * ============================================================ */
+  ui.openAutoExploreCityGen = function () {
+    var s = GAME.state, cfg = GAME.autoExploreCfg();
+    if (!cfg) return;
+    var _cg = cfg.cityGen || {};
+    var _gensOf = function (cid) {
+      return (s.generals || []).filter(function (g) {
+        var gc = GAME.genCityOf ? GAME.genCityOf(g) : null;
+        return gc && gc.id === cid;
+      });
+    };
+    var rows = '';
+    GAME.planetsOf().forEach(function (pl) {
+      var list = (s.cities || []).filter(function (c) { return GAME.pidOf(c) === pl.id; });
+      if (!list.length) return;
+      rows += '<tr class="et-row"><td colspan="3" style="font-weight:600;color:var(--text-dim);">' +
+        U.escape(pl.name || ('星球 ' + pl.id)) + '</td></tr>';
+      list.forEach(function (c) {
+        var gens = _gensOf(c.id), cur = _cg[c.id] || '';
+        var opts = '<option value=""' + (cur ? '' : ' selected') + '>🎲 不限（随机空闲英雄）</option>' +
+          gens.map(function (g) {
+            var busy = g.status && g.status !== 'idle';
+            return '<option value="' + g.id + '"' + (g.id === cur ? ' selected' : '') + '>' +
+              U.escape(g.name) + (busy ? '（' + ui.genStatusName(g) + '）' : '') + '</option>';
+          }).join('');
+        rows += '<tr class="et-row' + (cur ? ' on' : '') + '">' +
+          '<td class="ctr"><input type="checkbox" id="am-eg-on-' + c.id + '"' + (cur ? ' checked' : '') + '></td>' +
+          '<td class="et-name">' + U.escape(GAME.cityLabel(c)) + '</td>' +
+          '<td class="et-in"><select id="am-eg-gen-' + c.id + '">' + opts + '</select></td></tr>';
+      });
+    });
+    var n = 0;
+    for (var k in _cg) if (_cg[k]) n++;
+    var html = '<div class="gold-heading">✨ 按城指定探索英雄' +
+      '<span style="font-weight:400;font-size:var(--fs-sub);color:var(--text-dim);">' +
+      '（已指定 ' + n + ' 座城 · 未勾选的城 = 不限）</span></div>' +
+      '<div class="exp-info exp-info-l" style="color:var(--text-dim);">' +
+      '勾选框 = 该城固定使用所选英雄；<b>不勾选 = 该城不限</b>（随机取空闲英雄，优先本城）。' +
+      '英雄下拉只列<b>本城</b>在册英雄；指定的英雄若正在忙碌或已不在册，该城<b>本次跳过</b>。</div>' +
+      '<div class="exp-troops exp-body" style="max-height:52vh;overflow:auto;">' +
+      '<table class="tbl exp-tbl"><colgroup><col style="width:3.2em">' +
+      '<col class="et-c-name"><col class="et-c-in"></colgroup>' +
+      '<thead><tr><th class="ctr">指定</th><th>城市</th><th>探索英雄</th></tr></thead><tbody>' +
+      (rows || '<tr><td colspan="3" style="color:var(--text-dim);">暂无城市</td></tr>') +
+      '</tbody></table></div>' +
+      '<div class="exp-foot"><button class="btn" data-action="close-modal">关闭</button></div>';
+    ui.openModal(html, { size: 'xl' });
+    /* 与出征同款：勾选框/下拉任一变动 →「勾中且有英雄 → 写；否则 → 清（= 不限）」落盘。
+       不重开本弹窗（重开会丢滚动位置）。 */
+    var _apply = function (cid) {
+      var cb = document.getElementById('am-eg-on-' + cid);
+      var sl = document.getElementById('am-eg-gen-' + cid);
+      if (!cb || !sl) return;
+      GAME.doSetAutoExplore('cityGen:' + cid, cb.checked ? sl.value : '');
+    };
+    (s.cities || []).forEach(function (c) {
+      var cb = document.getElementById('am-eg-on-' + c.id);
+      var sl = document.getElementById('am-eg-gen-' + c.id);
+      if (cb) cb.addEventListener('change', function () { _apply(c.id); });
+      if (sl) sl.addEventListener('change', function () {
+        var cb2 = document.getElementById('am-eg-on-' + c.id);
+        if (cb2) cb2.checked = !!sl.value;   /* 选了具体英雄 → 自动勾上；选「不限」→ 自动取消 */
+        _apply(c.id);
+      });
+    });
   };
 
   /* ============================================================
@@ -54402,6 +54893,12 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
         ui.openTacticSets();      /* v89.86：改指预设管理（原同名覆盖导致「逐兵种」打不开编辑器） */
         break;
       }
+      /* v91.80（老板）：自动出征 —— 按城指定执行英雄（勾选框 + 本城英雄下拉）。 */
+      case 'open-am-citygen': ui.openAutoMarchCityGen(); break;
+      /* v91.81（老板）：自动探索 —— 选择探索范围（全部星球 + 城市，带勾选框）。 */
+      case 'open-ae-scope': ui.openAutoExploreScope(); break;
+      /* v91.82（老板）：自动探索 —— 按城指定执行英雄（勾选框 + 本城英雄下拉）。 */
+      case 'open-ae-citygen': ui.openAutoExploreCityGen(); break;
       case 'plan-save': ui.expSavePlan(); break;
       case 'tac-save': ui.expSaveTactic(); break;
       case 'plan-del': ui.expDeletePlan(el.dataset.v); break;
@@ -54750,6 +55247,16 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
       GAME.refreshView();
       return;
     }
+    /* v91.80（老板「执行英雄可不限，但提供弹窗按城指定」）：按城指定执行英雄 ——
+       键形如 `cityGen:<cityId>`；v 非空 = 该城固定此英雄，v 为空 = 该城不限（随机空闲）。 */
+    if (k.indexOf('cityGen:') === 0) {
+      cfg.cityGen = cfg.cityGen || {};
+      var _cgCity = k.slice(8), _cgVal = String(v == null ? '' : v);
+      if (_cgVal) cfg.cityGen[_cgCity] = _cgVal;
+      else delete cfg.cityGen[_cgCity];
+      GAME.refreshView();
+      return;
+    }
     if (k === 'troops' || k === 'maxLevel' || k === 'everyMin'
       || k === 'radius' || k === 'dailyMax') cfg[k] = Number(v);
     else cfg[k] = (v === '' && k === 'scheme') ? null : String(v);
@@ -54790,6 +55297,31 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
     if (k.indexOf('army:') === 0) {       /* 逐兵种「自动探索数量」上限 */
       cfg.army = cfg.army || {};
       cfg.army[k.slice(5)] = Math.max(0, Math.floor(Number(v) || 0));
+      GAME.refreshView();
+      return;
+    }
+    /* v91.81（老板「开发所有星球和城市选项」）：探索范围 = 排除表。
+       `offPlanet:<pid>` / `offCity:<cityId>` —— v 为真值 = 排除（不探索），空 = 恢复参与。 */
+    if (k.indexOf('offPlanet:') === 0) {
+      cfg.offPlanets = cfg.offPlanets || {};
+      var _op = k.slice(10);
+      if (v) cfg.offPlanets[_op] = 1; else delete cfg.offPlanets[_op];
+      GAME.refreshView();
+      return;
+    }
+    if (k.indexOf('offCity:') === 0) {
+      cfg.offCities = cfg.offCities || {};
+      var _oc = k.slice(8);
+      if (v) cfg.offCities[_oc] = 1; else delete cfg.offCities[_oc];
+      GAME.refreshView();
+      return;
+    }
+    /* v91.82（老板「自动探索也要按城指定英雄」）：`cityGen:<cityId>` —— 与自动出征同构，
+       v 为英雄 id = 该城固定用这位英雄；**空 = 该城不限**（随机取空闲英雄，优先本城）。 */
+    if (k.indexOf('cityGen:') === 0) {
+      cfg.cityGen = cfg.cityGen || {};
+      var _cg = k.slice(8);
+      if (v) cfg.cityGen[_cg] = String(v); else delete cfg.cityGen[_cg];
       GAME.refreshView();
       return;
     }
@@ -56291,7 +56823,7 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
      （这解释了"改了却说没生效"的观感）。老板若发现版本 ≠ 最新交付，按 Ctrl+F5
      强制刷新即获得新代码。⚠️ 发版须走 **bump_version.py --bump --version vX.Y**（它同步 index.html 的 ?v=/BUILD
      与这里的 GAME.VERSION 三处）—— 只手改 index.html 会让版本号冻住（v91.18 前的病灶）。 */
-  GAME.VERSION = 'v91.76';
+  GAME.VERSION = 'v91.82';
   function boot() {
     fitAppSize();
     try {

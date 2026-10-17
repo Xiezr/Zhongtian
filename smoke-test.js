@@ -25182,11 +25182,13 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         && /\.bag-grid \{ display: grid; grid-template-columns: repeat\(7, minmax\(0, 1fr\)\);/.test(h);
     })());
 
-    /* ---- ⑥ 自动出征：3 列 + 逐兵种取兵 + 无单次兵力/播报 ---------- */
-    check('§121⑥ 自动出征：编成 3 列（驻军数量 / 自动出征数量）· 单次兵力与上次结果退役', (function () {
+    /* ---- ⑥ 自动出征：玩家设定编成 2 列（兵种 / 出征数量）+ 各城可达标统计 + 无单次兵力/播报 ---------- */
+    check('§121⑥ 自动出征：玩家设定编成 2 列（兵种 / 出征数量）· 无驻军数量列 · 单次兵力与上次结果退役', (function () {
       var i = uc.indexOf('var troopBlock = '), seg = uc.slice(i, i + 1800);
-      return /<th>兵种<\/th><th class="num">驻军数量<\/th><th class="ctr">自动出征数量<\/th>/.test(seg)
+      return /<th>兵种<\/th><th class="ctr">出征数量<\/th>/.test(seg)
         && /id="am-a-' \+ id \+ '"/.test(seg)
+        && /<th class="num">驻军数量<\/th>/.test(seg) === false   /* v91.79：不再引用某城现兵，改玩家设定组成 */
+        && uc.indexOf('编成组成（玩家设定）') >= 0                 /* v91.79：右栏标题改为玩家设定 */
         && uc.indexOf('exp-sec-t">单次兵力') < 0
         && uc.indexOf('上次结果') < 0
         && /bind\('am-troops'/.test(uc) === false;
@@ -25215,6 +25217,61 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       } catch (e) { ok = false; }
       finally { GAME.state = keep; }
       return ok;
+    })());
+
+    /* ---- ⑧ v91.80（老板）：执行英雄「可不限 + 按城指定」（勾选框 + 本城英雄下拉） ---------- */
+    check('§121⑧ 按城指定英雄：出口 autoMarchPickGen 三级优先（本城指定 > 全局 > 随机空闲）', (function () {
+      var keep = GAME.state;
+      var ok = false;
+      try {
+        G.newGame({ name: '按城指定英雄', cityName: '灰岗' });
+        var st = GAME.state, c0 = G.currentCity();
+        st.generals = st.generals || [];
+        var gA = G.makeGeneral('甲将', 30, 'idle'), gB = G.makeGeneral('乙将', 30, 'idle');
+        /* ⚠️ 必须**覆盖**而非 push：newGame 自带英雄会混进空闲池，
+           "不限 = 随机取空闲"就会取到自带英雄 → 断言变成掷骰子（本机实测 flaky）。
+           池子只留这两枚，"随机"才可断言（且能构造"只留一枚空闲"的确定性用例）。 */
+        st.generals = [gA, gB];
+        var cfg = GAME.autoMarchCfg();
+        cfg.cityGen = {}; cfg.genId = null;
+        /* ① 都不指定 = 不限 → 取到空闲在册英雄（池内只有 gA/gB，故必为二者之一） */
+        var r0 = GAME.autoMarchPickGen(cfg, c0);
+        var okFree = !!r0 && (r0.id === gA.id || r0.id === gB.id);
+        /* ①b 确定性：只留 gA 空闲（gB 置忙）→ 不限模式必取 gA（防"随便返回一个也算过"） */
+        gB.status = 'march';
+        var okOnlyIdle = (GAME.autoMarchPickGen(cfg, c0) || {}).id === gA.id;
+        gB.status = 'idle';
+        /* ② 全局指定 → 命中该将 */
+        cfg.genId = gB.id;
+        var okGlobal = (GAME.autoMarchPickGen(cfg, c0) || {}).id === gB.id;
+        /* ③ 本城指定优先于全局（本城设 A、全局设 B → 出 A） */
+        cfg.cityGen[c0.id] = gA.id;
+        var okCityFirst = (GAME.autoMarchPickGen(cfg, c0) || {}).id === gA.id;
+        /* ④ 本城未登记的另一座城 → 落回全局指定 */
+        var other = { id: '_no_such_city_80' };
+        var okFallBack = (GAME.autoMarchPickGen(cfg, other) || {}).id === gB.id;
+        /* ⑤ 指定了不在册的 id → null（调用方报"已不在册"，不静默随机顶替） */
+        cfg.cityGen[c0.id] = '_ghost_gen_80';
+        var okGhost = GAME.autoMarchPickGen(cfg, c0) === null;
+        ok = okFree && okOnlyIdle && okGlobal && okCityFirst && okFallBack && okGhost;
+      } catch (e) { ok = false; }
+      finally { GAME.state = keep; }
+      return ok;
+    })());
+    check('§121⑧ 域侧：cfg.cityGen 有默认与兜底 · doSetAutoMarch 支持 cityGen:<cityId> 键', (function () {
+      return /cityGen: \{\}/.test(dc)                                  /* autoMarchCfg 默认值 */
+        && /if \(!c\.cityGen \|\| typeof c\.cityGen !== 'object'\) c\.cityGen = \{\};/.test(dc)
+        && /if \(k\.indexOf\('cityGen:'\) === 0\)/.test(mc)            /* 出口键在 main.js */
+        && /cityGen\[_cgCity\] = _cgVal/.test(mc)
+        && /delete cfg\.cityGen\[_cgCity\]/.test(mc);                  /* 清空 = 该城不限 */
+    })());
+    check('§121⑧ 界面：执行英雄行带「按城指定」入口 · 弹窗 = 勾选框 + 本城英雄下拉（含「不限」）', (function () {
+      return /ui\.openAutoMarchCityGen = function/.test(uc)
+        && /data-action="open-am-citygen"/.test(uc)
+        && /case 'open-am-citygen': ui\.openAutoMarchCityGen\(\); break;/.test(mc)
+        && /id="am-cg-on-' \+ c\.id \+ '"/.test(uc)                    /* 勾选框（供选中/不选中） */
+        && /id="am-cg-gen-' \+ c\.id \+ '"/.test(uc)                   /* 英雄下拉（走 am- 白名单） */
+        && /不限（随机空闲英雄）/.test(uc);                              /* 首行「不限」哨兵 */
     })());
 
     /* ---- ⑦ 附属野地：英雄 + 驻军两列 ---------- */
@@ -36332,6 +36389,121 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         return noHard && incl && !crash;
       } finally { G.state = bk; }
     })());
+    /* ---- ⑨ v91.81（老板）：自动探索开放「所有星球 + 城市」选项（探索范围） ---------- */
+    check('§263⑨ 探索范围：默认全域 · 排除星球/城市即时生效 · 可恢复', (function () {
+      var bk = GAME.state;
+      var ok = false;
+      try {
+        var st = G.newGame({ name: 'ae81scope', cityName: '灰岗', region: '烬环', mapSeed: 11 });
+        G.state = st;
+        var cfg = G.autoExploreCfg();
+        cfg.offPlanets = {}; cfg.offCities = {};
+        var citiesOf = function (pid) {
+          return (st.cities || []).filter(function (c) { return GAME.pidOf(c) === pid; });
+        };
+        var sc0 = GAME.autoExploreScopeCount(cfg);
+        var withCity = GAME.planetsOf().filter(function (pl) { return citiesOf(pl.id).length > 0; });
+        /* 下限判据：防空数据（0 星球 / 0 城）凭空"完美复现"全域的平凡解 */
+        if (!withCity.length || sc0.planets < 1 || sc0.cities < 1) return false;
+        var p0 = withCity[0], c0 = citiesOf(p0.id)[0];
+        /* ① 排除整颗星球 → 星球数 -1；该球下的城即使未单独排除也不在范围内 */
+        GAME.doSetAutoExplore('offPlanet:' + p0.id, '1');
+        var sc1 = GAME.autoExploreScopeCount(cfg);
+        var okPlanet = sc1.planets === sc0.planets - 1
+          && GAME.autoExploreInScope(cfg, p0.id, c0.id) === false;
+        /* ② 恢复星球 → 回到全域 */
+        GAME.doSetAutoExplore('offPlanet:' + p0.id, '');
+        var sc2 = GAME.autoExploreScopeCount(cfg);
+        var okRestore = sc2.planets === sc0.planets
+          && GAME.autoExploreInScope(cfg, p0.id, c0.id) === true;
+        /* ③ 只排除单城 → 星球数不变、城数 -1 */
+        GAME.doSetAutoExplore('offCity:' + c0.id, '1');
+        var sc3 = GAME.autoExploreScopeCount(cfg);
+        var okCity = sc3.planets === sc0.planets && sc3.cities === sc0.cities - 1
+          && GAME.autoExploreInScope(cfg, p0.id, c0.id) === false;
+        /* ④ 恢复单城 */
+        GAME.doSetAutoExplore('offCity:' + c0.id, '');
+        var okCityBack = GAME.autoExploreInScope(cfg, p0.id, c0.id) === true;
+        ok = okPlanet && okRestore && okCity && okCityBack;
+      } catch (e) { ok = false; }
+      finally { GAME.state = bk; }
+      return ok;
+    })());
+    check('§263⑨ 域侧/出口：范围过滤**接进主循环**（防"加了函数没接线"）· 键与兜底 · 弹窗在册', (function () {
+      /* ⚠️ dc/mc/uc 是 §121 块的局部变量，本块拿不到 —— 自己读一次源码
+         （§276⑤ 同款写法），别跨块引用不存在的变量。 */
+      var _fs = require('fs'), _pa = require('path');
+      var dc2 = _fs.readFileSync(_pa.join(__dirname, 'js', 'domain.js'), 'utf8');
+      var mc2 = _fs.readFileSync(_pa.join(__dirname, 'js', 'main.js'), 'utf8');
+      var uc2 = _fs.readFileSync(_pa.join(__dirname, 'js', 'ui.js'), 'utf8');
+      return /GAME\.autoExploreInScope = function/.test(dc2)
+        && /GAME\.autoExploreScopeCount = function/.test(dc2)
+        && /if \(!GAME\.autoExploreInScope\(cfg, pid\)\) return;/.test(dc2)          /* 星球级接线 */
+        && /if \(!GAME\.autoExploreInScope\(cfg, pid, city\.id\)\) return;/.test(dc2) /* 城级接线 */
+        && /offPlanets: \{\}/.test(dc2) && /offCities: \{\}/.test(dc2)                /* 默认 = 全域 */
+        && /if \(!c\.offPlanets \|\| typeof c\.offPlanets !== 'object'\)/.test(dc2)   /* 老档兜底 */
+        && /if \(k\.indexOf\('offPlanet:'\) === 0\)/.test(mc2)
+        && /if \(k\.indexOf\('offCity:'\) === 0\)/.test(mc2)
+        && /ui\.openAutoExploreScope = function/.test(uc2)
+        && /data-action="open-ae-scope"/.test(uc2)
+        && /case 'open-ae-scope': ui\.openAutoExploreScope\(\); break;/.test(mc2)
+        && /id="aes-p-'/.test(uc2) && /id="aes-c-'/.test(uc2);                        /* 星球/城市勾选框 */
+    })());
+    check('§263⑩ 按城指定探索英雄：出口 autoExplorePickGen 三级优先（与自动出征同构）', (function () {
+      var keep = GAME.state;
+      var ok = false;
+      try {
+        G.newGame({ name: '探索按城指定', cityName: '灰岗' });
+        var st = GAME.state, c0 = G.currentCity();
+        st.generals = st.generals || [];
+        var gA = G.makeGeneral('甲将', 30, 'idle'), gB = G.makeGeneral('乙将', 30, 'idle');
+        /* 同 §121⑧：**覆盖**而非 push —— 隔离空闲池，"随机"才可断言（否则 flaky）。 */
+        st.generals = [gA, gB];
+        var cfg = GAME.autoExploreCfg();
+        cfg.cityGen = {}; cfg.genId = null;
+        /* ① 都不指定 = 不限 → 取到池内空闲英雄之一 */
+        var r0 = GAME.autoExplorePickGen(cfg, c0);
+        var okFree = !!r0 && (r0.id === gA.id || r0.id === gB.id);
+        /* ①b 确定性：只留 gA 空闲 → 必取 gA（防"随便返回一个也算过"） */
+        gB.status = 'march';
+        var okOnlyIdle = (GAME.autoExplorePickGen(cfg, c0) || {}).id === gA.id;
+        gB.status = 'idle';
+        /* ② 全局兜底 → 命中该将 */
+        cfg.genId = gB.id;
+        var okGlobal = (GAME.autoExplorePickGen(cfg, c0) || {}).id === gB.id;
+        /* ③ 本城指定优先于全局（本城 A、全局 B → 出 A） */
+        cfg.cityGen[c0.id] = gA.id;
+        var okCityFirst = (GAME.autoExplorePickGen(cfg, c0) || {}).id === gA.id;
+        /* ④ 本城未登记的另一座城 → 落回全局 */
+        var okFallBack = (GAME.autoExplorePickGen(cfg, { id: '_no_such_city_82' }) || {}).id === gB.id;
+        /* ⑤ 幽灵 id → null（调用方报「已不在册」，不静默随机顶替） */
+        cfg.cityGen[c0.id] = '_ghost_gen_82';
+        var okGhost = GAME.autoExplorePickGen(cfg, c0) === null;
+        /* ⑥ 下限判据：五个用例全部命中才算过（防"空数据完美复现空史实"） */
+        var n = 0;
+        [okFree, okOnlyIdle, okGlobal, okCityFirst, okFallBack, okGhost].forEach(function (b) { if (b) n++; });
+        ok = n === 6;
+      } catch (e) { ok = false; }
+      finally { GAME.state = keep; }
+      return ok;
+    })());
+    check('§263⑩ 域侧/出口：探索英雄**接进派队链**（防"加了函数没接线"）· 键与兜底 · 弹窗在册', (function () {
+      var _fs = require('fs'), _pa = require('path');
+      var dc3 = _fs.readFileSync(_pa.join(__dirname, 'js', 'domain.js'), 'utf8');
+      var mc3 = _fs.readFileSync(_pa.join(__dirname, 'js', 'main.js'), 'utf8');
+      var uc3 = _fs.readFileSync(_pa.join(__dirname, 'js', 'ui.js'), 'utf8');
+      return /GAME\.pickAutoGen = function/.test(dc3)                        /* 共用唯一出口 */
+        && /GAME\.autoExplorePickGen = function/.test(dc3)
+        && /GAME\.autoMarchPickGen = function/.test(dc3)
+        && /var gen = GAME\.autoExplorePickGen\(cfg, city\);/.test(dc3)      /* 派队链接线 */
+        && /cityGen: \{\}/.test(dc3)                                         /* 默认 = 不限 */
+        && /if \(!c\.cityGen \|\| typeof c\.cityGen !== 'object'\) c\.cityGen = \{\};/.test(dc3)
+        && /if \(k\.indexOf\('cityGen:'\) === 0\)/.test(mc3)                 /* 出口键 */
+        && /ui\.openAutoExploreCityGen = function/.test(uc3)
+        && /data-action="open-ae-citygen"/.test(uc3)
+        && /case 'open-ae-citygen': ui\.openAutoExploreCityGen\(\); break;/.test(mc3)
+        && /id="am-eg-on-'/.test(uc3) && /id="am-eg-gen-'/.test(uc3);       /* 勾选框 + 英雄下拉 */
+    })());
   })();
 
   /* ============================================================
@@ -37170,6 +37342,60 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         return harvested && plantedCrops.indexOf('tanxiangshu') >= 0
           && plantedCrops.every(function (x) { return x === 'tanxiangshu'; })
           && f2.plots.every(function (p) { return !p; });
+      } finally { G.state = bk; }
+    })());
+    check('§276④b 自动基因研究：多选时按轮转分配（不再只种第一个）', (function () {
+      var bk = GAME.state;
+      try {
+        var st = G.newGame({ name: 'farm276d', cityName: '灰岗', region: '碎垣', mapSeed: 8 });
+        G.state = st;
+        var c1 = st.cities[0];
+        c1.cells[0].build = { id: 'honglusi', lvl: 1 };
+        var f = G.farmOf(c1); f.plots = [];            /* 清空舱 → farmOf 重新补齐 6 空舱 */
+        var cfg = G.autoFarmCfg(); cfg.on = true;
+        cfg.crops = ['yunlingcao', 'xisuizhi', 'hualongshen', 'tianshouguo'];  /* 4 项基因调试 */
+        st._autoFarmAt73 = 0;                          /* 解除 2s 节流，便于断言 */
+        G.autoFarm();
+        var pc = f.plots.filter(Boolean).map(function (p) { return p.crop; });
+        var distinct = {}; pc.forEach(function (x) { distinct[x] = 1; });
+        /* v91.80（老板「研究项目需要互不相同，就是一个研究，本城6个栏位只能有一个」）：
+           候选 4 项 → 本城 6 格最多铺 4 格（每种占 1 格），剩 2 格**留空** ——
+           旧口径「铺满为先（退化硬塞 _pool[0]）」已废，故 pc.length 由 6 改为 4。 */
+        return pc.length === 4                          /* 下限判据：铺了 4 格（不是 0，也不是铺满 6） */
+          && Object.keys(distinct).length === pc.length  /* v91.80 核心：两两不同，绝无重复占格 */
+          && Object.keys(distinct).length >= 3           /* 多项目并行，而非只种第一个 */
+          && pc[0] === 'yunlingcao'                      /* 游标从 0 起：首个仍是第一项 */
+          && pc[1] === 'xisuizhi';
+      } finally { G.state = bk; }
+    })());
+    /* v91.80（老板「某城 6 个栏位中，研究项目需要互不相同」）两条极值：
+       ① 候选 < 舱数（单选 1 项）→ 只铺 1 格、其余留空（旧口径会 6 格全种同一种）；
+       ② 候选 > 舱数（全选 10 项）→ 6 格铺满且两两不同。 */
+    check('§276④c 自动基因研究：候选 < 舱数时留空不重复 · 候选 > 舱数时铺满且两两不同', (function () {
+      var bk = GAME.state;
+      try {
+        var st = G.newGame({ name: 'farm276e', cityName: '灰岗', region: '碎垣', mapSeed: 8 });
+        G.state = st;
+        var c1 = st.cities[0];
+        c1.cells[0].build = { id: 'honglusi', lvl: 1 };
+        var f = G.farmOf(c1); f.plots = [];            /* 清空舱 → farmOf 重新补齐 6 空舱 */
+        var cfg = G.autoFarmCfg(); cfg.on = true;
+        /* ① 单选 1 项：6 舱只能有 1 格在种 */
+        cfg.crops = ['yunlingcao'];
+        st._autoFarmAt73 = 0;                          /* 解除 2s 节流 */
+        G.autoFarm();
+        var p1 = f.plots.filter(Boolean).map(function (p) { return p.crop; });
+        /* ② 全选（空 = 全部项目）：6 格铺满且两两不同 */
+        f.plots = [];
+        cfg.crops = [];
+        st._autoFarmAt73 = 0;
+        G.autoFarm();
+        var p2 = f.plots.filter(Boolean).map(function (p) { return p.crop; });
+        var d2 = {}; p2.forEach(function (x) { d2[x] = 1; });
+        return p1.length === 1                          /* 下限判据：恰好 1 格（不是 0、不是 6） */
+          && p1[0] === 'yunlingcao'
+          && p2.length === 6                            /* 全选 → 6 格铺满 */
+          && Object.keys(d2).length === 6;              /* 且两两不同 */
       } finally { G.state = bk; }
     })());
     check('§276⑤ 自动基因研究在册（自动页 + 主循环调用）', (function () {
