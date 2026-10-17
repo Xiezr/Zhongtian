@@ -4245,7 +4245,7 @@ import './data.js';
       for (var tk in lossBy) {
         var nl = Math.floor(Math.min(lossBy[tk] || 0, city.army[tk] || 0) * jbMul);
         if (nl > 0) {
-          city.army[tk] -= nl; out.troopsLost += nl;
+          GAME.city.armySub(city, { [tk]: nl }); out.troopsLost += nl;
           var wnd = Math.floor(nl * wRate);
           if (wnd > 0) {
             s.woundedArmy = s.woundedArmy || {};
@@ -4259,7 +4259,7 @@ import './data.js';
       var tpct = severity * (L.troopPct || 0.10);
       for (var t2 in city.army) {
         var lose2 = Math.floor((city.army[t2] || 0) * tpct);
-        if (lose2 > 0) { city.army[t2] -= lose2; out.troopsLost += lose2; }
+        if (lose2 > 0) { GAME.city.armySub(city, { [t2]: lose2 }); out.troopsLost += lose2; }
       }
     }
 
@@ -4612,7 +4612,7 @@ import './data.js';
   GAME.applyTrainDone = function (t) {
     var city = GAME.cityById(t.cityId);
     if (!city) return;
-    city.army[t.troopId] = (city.army[t.troopId] || 0) + t.count;
+    GAME.city.armyAdd(city, { [t.troopId]: t.count });
     GAME.statBump('trained', t.count);
     GAME.log('训练完成：' + (DATA.TROOPS[t.troopId] ? DATA.TROOPS[t.troopId].name : t.troopId) + ' ×' + t.count, 'sys', 'admin');
   };

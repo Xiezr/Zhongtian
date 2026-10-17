@@ -36790,6 +36790,51 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })(), (function () { return '队列增删已全部走 GAME.city.queue*'; })());
   })();
 
+  /* ============================================================
+   * §273. v91.69（第六刀③）城兵增删归属：GAME.city.army*
+   * ============================================================ */
+  (function () {
+    console.log('\n===== 273. v91.69 城兵归属（GAME.city.army*）=====');
+    check('§273① 出口齐：armyAdd / armySub / armyTake', (function () {
+      var X = GAME.city;
+      return typeof X.armyAdd === 'function' && typeof X.armySub === 'function' && typeof X.armyTake === 'function';
+    })());
+    check('§273② armySub 下界恒 0（扣超量只扣到实有 · 归零键删除）', (function () {
+      var c = { army: { buxingji: 100, dunwei: 5 } };
+      var cut = GAME.city.armySub(c, { buxingji: 300, dunwei: 5 });
+      return cut.buxingji === 100 && cut.dunwei === 5 && !('buxingji' in c.army) && !('dunwei' in c.army);
+    })());
+    check('§273③ armyTake 原子：任一兵种不足 → 整单拒绝且不动账', (function () {
+      var c = { army: { buxingji: 100, dunwei: 10 } };
+      var bad = GAME.city.armyTake(c, { buxingji: 50, dunwei: 999 });
+      var untouched = !bad.ok && c.army.buxingji === 100 && c.army.dunwei === 10 && /兵力不足/.test(bad.msg);
+      var ok = GAME.city.armyTake(c, { buxingji: 40 });
+      return untouched && ok.ok && c.army.buxingji === 60;
+    })());
+    check('§273④ armyAdd 忽略非法值 / 动态键正确（防"字面量键"回归）', (function () {
+      var c = { army: {} };
+      var tid = 'kuanglie';
+      GAME.city.armyAdd(c, { bad: -5, weird: 'x' });
+      GAME.city.armyAdd(c, { [tid]: 30 });
+      GAME.city.armyAdd(c, { plain: 7 });
+      return !('bad' in c.army) && !('weird' in c.army) && c.army.kuanglie === 30 && c.army.plain === 7;
+    })());
+    check('§273⑤ 全仓零裸改城兵（armyAdd/armySub 之外无 X.army[...] 赋值）', (function () {
+      var fs = require('fs'), path = require('path');
+      var jsDir = path.join(__dirname, 'js'), bad = [];
+      ['data', 'state', 'systems', 'domain', 'map', 'sphere', 'gltf', 'map3d',
+        'battle', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits', 'story', 'ui', 'main'].forEach(function (f) {
+        var src = fs.readFileSync(path.join(jsDir, f + '.js'), 'utf8')
+          .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/[^\n]*/gm, '');
+        var ASG = '(?:=(?!=)|\\+=|-=)';
+        /* 城兵：X.army[key] 赋值（排除 cfg.army —— 那是自动出征配置，不是城） */
+        var re = new RegExp('\\b(?!(?:cfg|m|rec|exp|g|wb|_gb|_ga|army|c)\\.army)\\.army\\[[^\\]]+\\]\\s*' + ASG);
+        if (new RegExp('\\b(?!cfg\\b)[A-Za-z_$][\\w$]*\\.army\\[[^\\]]+\\]\\s*' + ASG).test(src)) bad.push(f);
+      });
+      return bad.length === 0;
+    })(), (function () { return '城兵增删已全部走 GAME.city.army*'; })());
+  })();
+
   console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');
   process.exit(FAIL ? 1 : 0);
 })();

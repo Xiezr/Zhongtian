@@ -354,8 +354,7 @@ import './state.js';
     var have = city.army[troopId] || 0;
     if (have <= 0) return { ok: false, msg: '本城没有' + t.name + '可解散' };
     var n = Math.min(have, count);
-    city.army[troopId] = have - n;
-    if (city.army[troopId] <= 0) delete city.army[troopId];
+    GAME.city.armySub(city, { [troopId]: n });   /* v91.69（下界恒 0） */
     var cfg = DATA.DISBAND || {};
     var back = Math.floor(n * (t.pop || 0) * (cfg.popReturn == null ? 1 : cfg.popReturn));
     var Rr = GAME.res(city);
@@ -3410,7 +3409,7 @@ import './state.js';
     for (var k in w.garrison.troops) {
       var c = w.garrison.troops[k] || 0;
       if (c <= 0 || !city) continue;
-      city.army[k] = (city.army[k] || 0) + c;
+      GAME.city.armyAdd(city, { [k]: c });
       n += c;
     }
     w.garrison = null;
@@ -4208,11 +4207,11 @@ import './state.js';
         var _bk136 = GAME.wildGarrisonAdd(g.ci, g.army, g.cityId);
         if (_bk136 && _bk136.overflow) {
           for (var _ao136 in _bk136.overflow) {
-            if (city) city.army[_ao136] = (city.army[_ao136] || 0) + _bk136.overflow[_ao136];
+            if (city) GAME.city.armyAdd(city, { [_ao136]: _bk136.overflow[_ao136] });
           }
         }
       }
-    } else if (city) { for (var a in g.army) city.army[a] = (city.army[a] || 0) + g.army[a]; }
+    } else if (city) { for (var a in g.army) GAME.city.armyAdd(city, { [a]: g.army[a] }); }
     if (gen && g.origin !== 'garrison') {
       /* v89.135：驻军开采的带队英雄**仍在驻守**（status='garrison' 不动）——
          只有英雄带队那条老路才在此收工回城。 */
@@ -4484,11 +4483,11 @@ import './state.js';
         var _bk136b = GAME.wildGarrisonAdd(g.ci, g.army, g.cityId);
         if (_bk136b && _bk136b.overflow) {
           for (var _ao136b in _bk136b.overflow) {
-            if (city) city.army[_ao136b] = (city.army[_ao136b] || 0) + _bk136b.overflow[_ao136b];
+            if (city) GAME.city.armyAdd(city, { [_ao136b]: _bk136b.overflow[_ao136b] });
           }
         }
       }
-    } else if (city) { for (var a in g.army) city.army[a] = (city.army[a] || 0) + g.army[a]; }
+    } else if (city) { for (var a in g.army) GAME.city.armyAdd(city, { [a]: g.army[a] }); }
     if (gen && g.origin !== 'garrison') { GAME.gen.release(gen); gen.cityId = city ? city.id : null; }   /* v91.65 */
     list.splice(idx, 1);
     GAME.log(g.origin === 'garrison' ? '停止驻军开采（驻军原地保留）' : '撤回采集队（无收益）', 'sys', 'gather');
@@ -4548,7 +4547,7 @@ import './state.js';
       var city = GAME.cityById(g.cityId) || GAME.currentCity() || (s.cities || [])[0] || null;
       if (!w) {
         /* 野地已非我方：兵回城，该队移除（不丢兵） */
-        if (city) { for (var a in (g.army || {})) city.army[a] = (city.army[a] || 0) + (g.army[a] || 0); }
+        if (city) { for (var a in (g.army || {})) GAME.city.armyAdd(city, { [a]: (g.army[a] || 0) }); }
         var ii = list.indexOf(g);
         if (ii >= 0) list.splice(ii, 1);
         GAME.log('🧭 老档迁移：采集队（' + g.x + ',' + g.y + '）所在野地已易主，兵力已回城');
@@ -4559,7 +4558,7 @@ import './state.js';
       var bk = GAME.wildGarrisonAdd(g.ci, g.army, g.cityId, { noCap: true });
       if (bk && bk.overflow) {
         for (var ao in bk.overflow) {
-          if (city) city.army[ao] = (city.army[ao] || 0) + bk.overflow[ao];
+          if (city) GAME.city.armyAdd(city, { [ao]: bk.overflow[ao] });
         }
       }
       g.inPlace = true;
@@ -8356,7 +8355,7 @@ import './state.js';
     if (!genId) return { ok: false, msg: '须英雄带队挑战' };
     var def = GAME.wonderLayerDefOf(lv);
     /* 扣兵（从出发城） */
-    for (var k2 in army) { var c = Math.max(0, Math.floor(army[k2] || 0)); if (c <= 0) continue; city.army[k2] = Math.max(0, (city.army[k2] || 0) - c); }
+    GAME.city.armySub(city, army);   /* v91.69 */
     var gen = null; (GAME.state.generals || []).forEach(function (g) { if (g.id === genId) gen = g; });
     var r = GAME.battle.simulate(army, gen, def.army, 0, def.gen, {});
     var won = r && r.winner === 'atk';
@@ -8365,7 +8364,7 @@ import './state.js';
     for (var k3 in army) { /* 引擎给 atkRemain 为**总残余**，按比例回收到各兵种 */ }
     var _aStart = 0; for (var k4 in army) _aStart += army[k4] || 0;
     var _frac = _aStart > 0 ? Math.max(0, (r && r.atkRemain || 0) / _aStart) : 0;
-    for (var k5 in army) { var v = Math.round((army[k5] || 0) * _frac); if (v > 0) { city.army[k5] = (city.army[k5] || 0) + v; back[k5] = v; } }
+    for (var k5 in army) { var v = Math.round((army[k5] || 0) * _frac); if (v > 0) { GAME.city.armyAdd(city, { [k5]: v }); back[k5] = v; } }
     if (won) {
       pl.wonderClearedLv = Math.max(cleared, lv);
       GAME.log('⚔ 奇观「' + (GAME.wonderOf(pid) || {}).name + '」第 ' + lv + ' 层『' + def.rank.title + '』告破！'
@@ -8421,10 +8420,7 @@ import './state.js';
     if (act.needLoad && load < act.needLoad) {
       return { ok: false, msg: '「' + act.name + '」须队伍总负重 ≥ ' + U.fmt(act.needLoad) + '（现有 ' + U.fmt(load) + '，请多带辎重/步卒）' };
     }
-    for (var k2 in army) {
-      var c = Math.max(0, Math.floor(army[k2] || 0)); if (c <= 0) continue;
-      city.army[k2] = Math.max(0, (city.army[k2] || 0) - c);
-    }
+    GAME.city.armySub(city, army);   /* v91.69：逐兵种扣（下界恒 0） */
     var now = U.now();
     pl.wonderExp = pl.wonderExp || [];
     pl.wonderExp.push({
@@ -8514,7 +8510,7 @@ import './state.js';
       for (var k in (exp.army || {})) {
         var c0 = Math.max(0, Math.floor(exp.army[k] || 0)); if (c0 <= 0) continue;
         var lost = act.risk ? Math.round(c0 * act.risk * Math.random()) : 0;
-        loss += lost; city.army[k] = (city.army[k] || 0) + (c0 - lost);
+        loss += lost; GAME.city.armyAdd(city, { [k]: (c0 - lost) });
       }
     }
     var names = (exp.acc || []).map(function (x) { return ((DATA.ITEM_BY_ID[x.id] || {}).name || x.id) + '×' + x.n; });

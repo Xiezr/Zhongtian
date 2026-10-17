@@ -178,6 +178,64 @@ import './state.js';
   };
 
   /* ============================================================
+   * 城兵（v91.69 · 第六刀③）：`city.army` 的唯一增删入口
+   * ------------------------------------------------------------
+   * 背景：城兵增删散在 battle/domain 共 **38 处**，其中数处是裸 `-=`
+   *   （`city.army[a] -= atkArmy[a]`）—— 可写出**负兵**（兵凭空变多）。
+   *   且"派出去的兵 = 从城里扣的"这条守恒，全靠各调用方自觉。
+   *
+   * · `armyAdd(city, map)`  加到城（逐兵种；忽略非正/非法）
+   * · `armySub(city, map)`  从城扣（**下界恒 0**，返回实扣 map）
+   * · `armyTake(city, map)` **原子**：任一兵种不足 → 整单拒绝、不动账
+   * 数据仍是 `city.army`（存档零迁移）。
+   * ============================================================ */
+  C.armyAdd = function (city, map) {
+    if (!city) return {};
+    city.army = city.army || {};
+    var out = {};
+    for (var k in (map || {})) {
+      var n = Math.floor(Number(map[k]) || 0);
+      if (n <= 0) continue;
+      city.army[k] = (city.army[k] || 0) + n;
+      out[k] = n;
+    }
+    return out;
+  };
+  C.armySub = function (city, map) {
+    if (!city) return {};
+    city.army = city.army || {};
+    var out = {};
+    for (var k in (map || {})) {
+      var want = Math.floor(Number(map[k]) || 0);
+      if (want <= 0) continue;
+      var cur = Math.max(0, Math.floor(Number(city.army[k]) || 0));
+      var cut = Math.min(cur, want);
+      if (cut <= 0) continue;
+      var next = cur - cut;
+      if (next === 0) delete city.army[k]; else city.army[k] = next;
+      out[k] = cut;
+    }
+    return out;
+  };
+  /* 原子扣兵：任一兵种不足 → 整单拒绝（不部分扣） */
+  C.armyTake = function (city, map) {
+    var lack = [];
+    for (var k in (map || {})) {
+      var need = Math.floor(Number(map[k]) || 0);
+      if (need <= 0) continue;
+      var have = Math.max(0, Math.floor(Number((city && city.army && city.army[k])) || 0));
+      if (have < need) lack.push({ k: k, need: need, have: have });
+    }
+    if (lack.length) {
+      return { ok: false, msg: '兵力不足：' + lack.map(function (x) {
+        return ((GAME.DATA.TROOPS || {})[x.k] || {}).name || x.k;
+      }).join('、'), lack: lack };
+    }
+    C.armySub(city, map);
+    return { ok: true, msg: '' };
+  };
+
+  /* ============================================================
    * 不变量（供 smoke 守卫调用；返回 [{city, msg}]，空数组 = 全部通过）
    * 这些是"城市一旦写坏就会静默扩散"的量，界面上未必立刻可见。
    * ============================================================ */

@@ -9809,7 +9809,7 @@ window.GAME = window.GAME || {};
       for (var tk in lossBy) {
         var nl = Math.floor(Math.min(lossBy[tk] || 0, city.army[tk] || 0) * jbMul);
         if (nl > 0) {
-          city.army[tk] -= nl; out.troopsLost += nl;
+          GAME.city.armySub(city, { [tk]: nl }); out.troopsLost += nl;
           var wnd = Math.floor(nl * wRate);
           if (wnd > 0) {
             s.woundedArmy = s.woundedArmy || {};
@@ -9823,7 +9823,7 @@ window.GAME = window.GAME || {};
       var tpct = severity * (L.troopPct || 0.10);
       for (var t2 in city.army) {
         var lose2 = Math.floor((city.army[t2] || 0) * tpct);
-        if (lose2 > 0) { city.army[t2] -= lose2; out.troopsLost += lose2; }
+        if (lose2 > 0) { GAME.city.armySub(city, { [t2]: lose2 }); out.troopsLost += lose2; }
       }
     }
 
@@ -10176,7 +10176,7 @@ window.GAME = window.GAME || {};
   GAME.applyTrainDone = function (t) {
     var city = GAME.cityById(t.cityId);
     if (!city) return;
-    city.army[t.troopId] = (city.army[t.troopId] || 0) + t.count;
+    GAME.city.armyAdd(city, { [t.troopId]: t.count });
     GAME.statBump('trained', t.count);
     GAME.log('训练完成：' + (DATA.TROOPS[t.troopId] ? DATA.TROOPS[t.troopId].name : t.troopId) + ' ×' + t.count, 'sys', 'admin');
   };
@@ -12314,6 +12314,64 @@ window.GAME = window.GAME || {};
   };
 
   /* ============================================================
+   * 城兵（v91.69 · 第六刀③）：`city.army` 的唯一增删入口
+   * ------------------------------------------------------------
+   * 背景：城兵增删散在 battle/domain 共 **38 处**，其中数处是裸 `-=`
+   *   （`city.army[a] -= atkArmy[a]`）—— 可写出**负兵**（兵凭空变多）。
+   *   且"派出去的兵 = 从城里扣的"这条守恒，全靠各调用方自觉。
+   *
+   * · `armyAdd(city, map)`  加到城（逐兵种；忽略非正/非法）
+   * · `armySub(city, map)`  从城扣（**下界恒 0**，返回实扣 map）
+   * · `armyTake(city, map)` **原子**：任一兵种不足 → 整单拒绝、不动账
+   * 数据仍是 `city.army`（存档零迁移）。
+   * ============================================================ */
+  C.armyAdd = function (city, map) {
+    if (!city) return {};
+    city.army = city.army || {};
+    var out = {};
+    for (var k in (map || {})) {
+      var n = Math.floor(Number(map[k]) || 0);
+      if (n <= 0) continue;
+      city.army[k] = (city.army[k] || 0) + n;
+      out[k] = n;
+    }
+    return out;
+  };
+  C.armySub = function (city, map) {
+    if (!city) return {};
+    city.army = city.army || {};
+    var out = {};
+    for (var k in (map || {})) {
+      var want = Math.floor(Number(map[k]) || 0);
+      if (want <= 0) continue;
+      var cur = Math.max(0, Math.floor(Number(city.army[k]) || 0));
+      var cut = Math.min(cur, want);
+      if (cut <= 0) continue;
+      var next = cur - cut;
+      if (next === 0) delete city.army[k]; else city.army[k] = next;
+      out[k] = cut;
+    }
+    return out;
+  };
+  /* 原子扣兵：任一兵种不足 → 整单拒绝（不部分扣） */
+  C.armyTake = function (city, map) {
+    var lack = [];
+    for (var k in (map || {})) {
+      var need = Math.floor(Number(map[k]) || 0);
+      if (need <= 0) continue;
+      var have = Math.max(0, Math.floor(Number((city && city.army && city.army[k])) || 0));
+      if (have < need) lack.push({ k: k, need: need, have: have });
+    }
+    if (lack.length) {
+      return { ok: false, msg: '兵力不足：' + lack.map(function (x) {
+        return ((GAME.DATA.TROOPS || {})[x.k] || {}).name || x.k;
+      }).join('、'), lack: lack };
+    }
+    C.armySub(city, map);
+    return { ok: true, msg: '' };
+  };
+
+  /* ============================================================
    * 不变量（供 smoke 守卫调用；返回 [{city, msg}]，空数组 = 全部通过）
    * 这些是"城市一旦写坏就会静默扩散"的量，界面上未必立刻可见。
    * ============================================================ */
@@ -12720,8 +12778,7 @@ window.GAME = window.GAME || {};
     var have = city.army[troopId] || 0;
     if (have <= 0) return { ok: false, msg: '本城没有' + t.name + '可解散' };
     var n = Math.min(have, count);
-    city.army[troopId] = have - n;
-    if (city.army[troopId] <= 0) delete city.army[troopId];
+    GAME.city.armySub(city, { [troopId]: n });   /* v91.69（下界恒 0） */
     var cfg = DATA.DISBAND || {};
     var back = Math.floor(n * (t.pop || 0) * (cfg.popReturn == null ? 1 : cfg.popReturn));
     var Rr = GAME.res(city);
@@ -15776,7 +15833,7 @@ window.GAME = window.GAME || {};
     for (var k in w.garrison.troops) {
       var c = w.garrison.troops[k] || 0;
       if (c <= 0 || !city) continue;
-      city.army[k] = (city.army[k] || 0) + c;
+      GAME.city.armyAdd(city, { [k]: c });
       n += c;
     }
     w.garrison = null;
@@ -16574,11 +16631,11 @@ window.GAME = window.GAME || {};
         var _bk136 = GAME.wildGarrisonAdd(g.ci, g.army, g.cityId);
         if (_bk136 && _bk136.overflow) {
           for (var _ao136 in _bk136.overflow) {
-            if (city) city.army[_ao136] = (city.army[_ao136] || 0) + _bk136.overflow[_ao136];
+            if (city) GAME.city.armyAdd(city, { [_ao136]: _bk136.overflow[_ao136] });
           }
         }
       }
-    } else if (city) { for (var a in g.army) city.army[a] = (city.army[a] || 0) + g.army[a]; }
+    } else if (city) { for (var a in g.army) GAME.city.armyAdd(city, { [a]: g.army[a] }); }
     if (gen && g.origin !== 'garrison') {
       /* v89.135：驻军开采的带队英雄**仍在驻守**（status='garrison' 不动）——
          只有英雄带队那条老路才在此收工回城。 */
@@ -16850,11 +16907,11 @@ window.GAME = window.GAME || {};
         var _bk136b = GAME.wildGarrisonAdd(g.ci, g.army, g.cityId);
         if (_bk136b && _bk136b.overflow) {
           for (var _ao136b in _bk136b.overflow) {
-            if (city) city.army[_ao136b] = (city.army[_ao136b] || 0) + _bk136b.overflow[_ao136b];
+            if (city) GAME.city.armyAdd(city, { [_ao136b]: _bk136b.overflow[_ao136b] });
           }
         }
       }
-    } else if (city) { for (var a in g.army) city.army[a] = (city.army[a] || 0) + g.army[a]; }
+    } else if (city) { for (var a in g.army) GAME.city.armyAdd(city, { [a]: g.army[a] }); }
     if (gen && g.origin !== 'garrison') { GAME.gen.release(gen); gen.cityId = city ? city.id : null; }   /* v91.65 */
     list.splice(idx, 1);
     GAME.log(g.origin === 'garrison' ? '停止驻军开采（驻军原地保留）' : '撤回采集队（无收益）', 'sys', 'gather');
@@ -16914,7 +16971,7 @@ window.GAME = window.GAME || {};
       var city = GAME.cityById(g.cityId) || GAME.currentCity() || (s.cities || [])[0] || null;
       if (!w) {
         /* 野地已非我方：兵回城，该队移除（不丢兵） */
-        if (city) { for (var a in (g.army || {})) city.army[a] = (city.army[a] || 0) + (g.army[a] || 0); }
+        if (city) { for (var a in (g.army || {})) GAME.city.armyAdd(city, { [a]: (g.army[a] || 0) }); }
         var ii = list.indexOf(g);
         if (ii >= 0) list.splice(ii, 1);
         GAME.log('🧭 老档迁移：采集队（' + g.x + ',' + g.y + '）所在野地已易主，兵力已回城');
@@ -16925,7 +16982,7 @@ window.GAME = window.GAME || {};
       var bk = GAME.wildGarrisonAdd(g.ci, g.army, g.cityId, { noCap: true });
       if (bk && bk.overflow) {
         for (var ao in bk.overflow) {
-          if (city) city.army[ao] = (city.army[ao] || 0) + bk.overflow[ao];
+          if (city) GAME.city.armyAdd(city, { [ao]: bk.overflow[ao] });
         }
       }
       g.inPlace = true;
@@ -20722,7 +20779,7 @@ window.GAME = window.GAME || {};
     if (!genId) return { ok: false, msg: '须英雄带队挑战' };
     var def = GAME.wonderLayerDefOf(lv);
     /* 扣兵（从出发城） */
-    for (var k2 in army) { var c = Math.max(0, Math.floor(army[k2] || 0)); if (c <= 0) continue; city.army[k2] = Math.max(0, (city.army[k2] || 0) - c); }
+    GAME.city.armySub(city, army);   /* v91.69 */
     var gen = null; (GAME.state.generals || []).forEach(function (g) { if (g.id === genId) gen = g; });
     var r = GAME.battle.simulate(army, gen, def.army, 0, def.gen, {});
     var won = r && r.winner === 'atk';
@@ -20731,7 +20788,7 @@ window.GAME = window.GAME || {};
     for (var k3 in army) { /* 引擎给 atkRemain 为**总残余**，按比例回收到各兵种 */ }
     var _aStart = 0; for (var k4 in army) _aStart += army[k4] || 0;
     var _frac = _aStart > 0 ? Math.max(0, (r && r.atkRemain || 0) / _aStart) : 0;
-    for (var k5 in army) { var v = Math.round((army[k5] || 0) * _frac); if (v > 0) { city.army[k5] = (city.army[k5] || 0) + v; back[k5] = v; } }
+    for (var k5 in army) { var v = Math.round((army[k5] || 0) * _frac); if (v > 0) { GAME.city.armyAdd(city, { [k5]: v }); back[k5] = v; } }
     if (won) {
       pl.wonderClearedLv = Math.max(cleared, lv);
       GAME.log('⚔ 奇观「' + (GAME.wonderOf(pid) || {}).name + '」第 ' + lv + ' 层『' + def.rank.title + '』告破！'
@@ -20787,10 +20844,7 @@ window.GAME = window.GAME || {};
     if (act.needLoad && load < act.needLoad) {
       return { ok: false, msg: '「' + act.name + '」须队伍总负重 ≥ ' + U.fmt(act.needLoad) + '（现有 ' + U.fmt(load) + '，请多带辎重/步卒）' };
     }
-    for (var k2 in army) {
-      var c = Math.max(0, Math.floor(army[k2] || 0)); if (c <= 0) continue;
-      city.army[k2] = Math.max(0, (city.army[k2] || 0) - c);
-    }
+    GAME.city.armySub(city, army);   /* v91.69：逐兵种扣（下界恒 0） */
     var now = U.now();
     pl.wonderExp = pl.wonderExp || [];
     pl.wonderExp.push({
@@ -20880,7 +20934,7 @@ window.GAME = window.GAME || {};
       for (var k in (exp.army || {})) {
         var c0 = Math.max(0, Math.floor(exp.army[k] || 0)); if (c0 <= 0) continue;
         var lost = act.risk ? Math.round(c0 * act.risk * Math.random()) : 0;
-        loss += lost; city.army[k] = (city.army[k] || 0) + (c0 - lost);
+        loss += lost; GAME.city.armyAdd(city, { [k]: (c0 - lost) });
       }
     }
     var names = (exp.acc || []).map(function (x) { return ((DATA.ITEM_BY_ID[x.id] || {}).name || x.id) + '×' + x.n; });
@@ -25634,7 +25688,7 @@ window.GAME = window.GAME || {};
     for (var id in comp) {
       var c = comp[id] || 0;
       if (c <= 0 || !city) continue;
-      city.army[id] = (city.army[id] || 0) + c;
+      GAME.city.armyAdd(city, { [id]: c });
       back += c;
       backBy[id] = (backBy[id] || 0) + c;      /* v89.116：逐兵种明细（界面要列出来） */
     }
@@ -26114,7 +26168,7 @@ window.GAME = window.GAME || {};
       var city = rec.cityId ? GAME.cityById(rec.cityId) : null;
       var rolled = false;
       if (!_expArmySettled && city) {
-        for (var aR in rec.atkArmy) city.army[aR] = (city.army[aR] || 0) + rec.atkArmy[aR];
+        for (var aR in rec.atkArmy) GAME.city.armyAdd(city, { [aR]: rec.atkArmy[aR] });
         rolled = true;
       }
       _expArmySettled = true;
@@ -26355,7 +26409,7 @@ window.GAME = window.GAME || {};
     var bits = [];
     Object.keys(plan.byType).forEach(function (tid) {
       var n = plan.byType[tid];
-      city.army[tid] = (city.army[tid] || 0) + n;
+      GAME.city.armyAdd(city, { [tid]: n });
       bits.push((DATA.TROOPS[tid] ? DATA.TROOPS[tid].name : tid) + '+' + U.fmt(n));
     });
     s.captives = {};
@@ -27664,7 +27718,7 @@ window.GAME = window.GAME || {};
       for (var _ok2 in atkArmy) {
         var _n2 = Math.floor(atkArmy[_ok2] || 0);
         if (_n2 <= 0) continue;
-        _to.army[_ok2] = (_to.army[_ok2] || 0) + _n2;
+        GAME.city.armyAdd(_to, { [_ok2]: _n2 });
         _mv += _n2;
       }
       gen.cityId = _to.id;                    /* 主将随军入驻新城（城建制） */
@@ -27697,13 +27751,13 @@ window.GAME = window.GAME || {};
       if (_gw136) {
         var _gb136 = GAME.wildGarrisonAdd(t.ci, atkArmy, city.id, { noCap: true, genId: gen && gen.id });
         if (_gb136.overflow) {
-          for (var _o136 in _gb136.overflow) city.army[_o136] = (city.army[_o136] || 0) + _gb136.overflow[_o136];
+          for (var _o136 in _gb136.overflow) GAME.city.armyAdd(city, { [_o136]: _gb136.overflow[_o136] });
         }
         _gadd136 = _gb136.add || 0;
         var _wg136 = GAME.wildGarrisonAt(t.ci);
         if (gen) gen.status = (_wg136 && _wg136.genId === gen.id) ? 'garrison' : 'idle';
       } else {
-        for (var _k136 in atkArmy) city.army[_k136] = (city.army[_k136] || 0) + atkArmy[_k136];
+        for (var _k136 in atkArmy) GAME.city.armyAdd(city, { [_k136]: atkArmy[_k136] });
         if (gen) GAME.gen.release(gen);   /* v91.65 */
       }
       _expArmySettled = true;                 /* 军账已结（兵已并入 / 已回城） */
@@ -27867,7 +27921,7 @@ window.GAME = window.GAME || {};
     if (!opts.arrived) {
       /* 出征即离城：此处扣除，战后由 returnArmy 归还幸存者
          （行军模式下由 GAME.march.dispatch 扣除，抵达结算时 opts.arrived=true 不再重复扣） */
-      for (var a3 in atkArmy) city.army[a3] -= atkArmy[a3];
+      for (var a3 in atkArmy) GAME.city.armySub(city, { [a3]: atkArmy[a3] });
       /* v89.137：无将增援（station）没有带队人可扣 —— 兵出去、体力不扣 */
       if (gen) {
         GAME.setStaNow(gen, GAME.staNow(gen) - GAME.staCostOf(mode, opts && opts.scheme));
@@ -27888,7 +27942,7 @@ window.GAME = window.GAME || {};
       var _hadGen135 = !!(_wg135 && _wg135.genId);
       var _ga = GAME.wildGarrisonAdd(t.ci, atkArmy, city.id, { genId: gen && gen.id });
       if (_ga.overflow) {
-        for (var _o1 in _ga.overflow) city.army[_o1] = (city.army[_o1] || 0) + _ga.overflow[_o1];
+        for (var _o1 in _ga.overflow) GAME.city.armyAdd(city, { [_o1]: _ga.overflow[_o1] });
       }
       var _genStay135 = false;
       if (gen) {
@@ -28261,7 +28315,7 @@ window.GAME = window.GAME || {};
           noCap: !!mode.occupy,
         });
         if (_gb.overflow) {
-          for (var _o2 in _gb.overflow) city.army[_o2] = (city.army[_o2] || 0) + _gb.overflow[_o2];
+          for (var _o2 in _gb.overflow) GAME.city.armyAdd(city, { [_o2]: _gb.overflow[_o2] });
         }
         _stAdd = _gb.add || 0;
       } : null);
@@ -28417,7 +28471,7 @@ window.GAME = window.GAME || {};
   /* 战后归队：幸存者按类型同比例回城；阵亡者按回收率折算为伤兵（另记兵种构成，治疗后再归队）
      ------------------------------------------------------------------
      此前**两条路径都没有归还**：
-       · expedition 只做了 `city.army[id] -= atkArmy[id]`，`result.atkRemain` 从未加回城市
+       · expedition 只做了 `GAME.city.armySub(city, (id: atkArmy[id]`，`result.atkRemain` 从未加回城市
          → 派 10 万、零损失打一场，回来城内是 0，每次出征都在凭空蒸发军队
        · applyWounded 只累加 `s.wounded` 这个数字，heal() 也只是把它清零
          → 「伤兵归队」是空话，治疗成了一笔没有任何回报的旧币消耗
@@ -28445,7 +28499,7 @@ window.GAME = window.GAME || {};
       var dead = n - alive;
       if (alive > 0) {
         back[id2] = alive;
-        if (!backSink) city.army[id2] = (city.army[id2] || 0) + alive;   /* 有 backSink 时目的地由调用方落地 */
+        if (!backSink) GAME.city.armyAdd(city, { [id2]: alive });   /* 有 backSink 时目的地由调用方落地 */
       }
       var w = Math.floor(dead * rate);
       if (w > 0) { wounded[id2] = w; wTotal += w; }
@@ -29185,7 +29239,7 @@ window.GAME = window.GAME || {};
       scheme = schemeId;
     }
 
-    for (var a in army) city.army[a] -= army[a];
+    for (var a in army) GAME.city.armySub(city, { [a]: army[a] });
     var cargoTxt = '';
     if (cargo) {
       var _Rc = GAME.res(city);
@@ -29266,7 +29320,7 @@ window.GAME = window.GAME || {};
        只有"记了将、人却已不在"（解雇/离去）才折返。 */
     if (!gen && m.genId) {
       /* 英雄已不在（解雇/离去）：兵力原路退回，避免凭空消失 */
-      if (city) for (var a in m.army) city.army[a] = (city.army[a] || 0) + m.army[a];
+      if (city) for (var a in m.army) GAME.city.armyAdd(city, { [a]: m.army[a] });
       GAME.log.war('⚠️ 行军中断：' + m.name + ' 方向的主将已不在，大军折返 ' + ((city && city.name) || ''));
       return null;
     }
@@ -29287,7 +29341,7 @@ window.GAME = window.GAME || {};
     if (err || !r || r.ok === false) {
       var rolled = false;
       if (!_expArmySettled && city) {
-        for (var aR in m.army) city.army[aR] = (city.army[aR] || 0) + m.army[aR];
+        for (var aR in m.army) GAME.city.armyAdd(city, { [aR]: m.army[aR] });
         /* v89.103：辎重与兵力同进退 —— 结算失败时原路退回，不许凭空消失 */
         if (m.cargo) {
           var _Rbk = GAME.res(city);
@@ -29383,7 +29437,7 @@ window.GAME = window.GAME || {};
     for (var i = 0; i < s.generals.length; i++) if (s.generals[i].id === m.genId) gen = s.generals[i];
     if (gen && gen.status === 'march') GAME.gen.release(gen);   /* v91.65 */
     if (city) {
-      for (var a in m.army) city.army[a] = (city.army[a] || 0) + m.army[a];
+      for (var a in m.army) GAME.city.armyAdd(city, { [a]: m.army[a] });
       if (m.cargo) {
         var _Rrc = GAME.res(city);
         for (var ckC in m.cargo) _Rrc[ckC] = (_Rrc[ckC] || 0) + m.cargo[ckC];
@@ -29392,7 +29446,7 @@ window.GAME = window.GAME || {};
     } else {
       /* 出发城已不在（被放弃/夺走）：兵力并入首城，绝不凭空消失 */
       var home = (s.cities && s.cities[0]) || null;
-      if (home) for (var a2 in m.army) home.army[a2] = (home.army[a2] || 0) + m.army[a2];
+      if (home) for (var a2 in m.army) GAME.city.armyAdd(home, { [a2]: m.army[a2] });
       GAME.log.war('⚠️ 折返抵达但出发城不在，兵力并入首城');
     }
     if (GAME.onMarchArrive) GAME.onMarchArrive(m, { ok: true, returned: true });
