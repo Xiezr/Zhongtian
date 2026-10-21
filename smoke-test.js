@@ -38655,6 +38655,94 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       return true;
     })());
 
+    console.log('\n===== 294. v92.11 纳贡（B2 之一：交钱换时间）=====');
+
+    var tribFid = (function () {
+      G.newGame({ name: '纳贡', cityName: '灰岗' });
+      G.faction.ensure();
+      G.state.world.elapsed = 0;
+      G.state.truces = {};
+      var a = G.faction.arr();
+      return a.length ? a[0].id : null;
+    })();
+
+    check('§294① 定价随半径走（越大越贵）', (function () {
+      if (!tribFid) return false;
+      var a = G.faction.arr(), f = null;
+      for (var i = 0; i < a.length; i++) if (a[i].id === tribFid) f = a[i];
+      if (!f) return false;
+      var c0 = G.faction.tributeCostOf(tribFid);
+      f.r = f.r + 4;
+      var c1 = G.faction.tributeCostOf(tribFid);
+      f.r = f.r - 4;
+      return c1.grain > c0.grain && c1.iron > c0.iron;
+    })());
+
+    check('§294② 资源不够 → 拒绝且不扣', (function () {
+      if (!tribFid) return false;
+      var c = G.currentCity();
+      c.res = c.res || {};
+      c.res.grain = 0; c.res.iron = 0;
+      var r = G.faction.tribute(tribFid);
+      return !r.ok && /不够/.test(r.msg || '') && (c.res.grain | 0) === 0;
+    })());
+
+    check('§294③ 纳贡成功：真扣资源 + 进停战期', (function () {
+      if (!tribFid) return false;
+      var c = G.currentCity();
+      var cost = G.faction.tributeCostOf(tribFid);
+      c.res.grain = cost.grain + 5000;
+      c.res.iron = cost.iron + 5000;
+      var g0 = c.res.grain, i0 = c.res.iron;
+      var r = G.faction.tribute(tribFid);
+      return r.ok && c.res.grain === g0 - cost.grain && c.res.iron === i0 - cost.iron
+        && G.faction.truceLeft(tribFid) > 0;
+    })(), '剩 ' + (function () { return tribFid ? G.faction.truceLeft(tribFid) : 0; })() + ' 月');
+
+    check('§294④ 停战期内不能再纳贡（不重复扣钱）', (function () {
+      if (!tribFid) return false;
+      var c = G.currentCity();
+      c.res.grain = 99999; c.res.iron = 99999;
+      var g0 = c.res.grain;
+      var r = G.faction.tribute(tribFid);
+      return !r.ok && /停战期/.test(r.msg || '') && c.res.grain === g0;
+    })());
+
+    check('§294⑤ 停战期内该势力不推进（其余照常）', (function () {
+      if (!tribFid) return false;
+      var st = G.state;
+      st.world.elapsed = 0;
+      st.factions.lastMonth = -1;
+      G.faction.tick();                              /* 记基准 */
+      var before = {};
+      G.faction.arr().forEach(function (f) { before[f.id] = f.r; });
+      st.world.elapsed = 4800;                       /* 跨一个月 */
+      G.faction.tick();
+      var after = {};
+      G.faction.arr().forEach(function (f) { after[f.id] = f.r; });
+      return after[tribFid] === before[tribFid];     /* 纳贡那家不动 */
+    })());
+
+    check('§294⑥ 停战期满恢复推进', (function () {
+      if (!tribFid) return false;
+      var st = G.state;
+      st.world.elapsed = 12 * 4800;                  /* 12 个月后，6 个月停战早过期 */
+      var r0 = 0;
+      G.faction.arr().forEach(function (f) { if (f.id === tribFid) r0 = f.r; });
+      st.factions.lastMonth = -1;
+      G.faction.tick();
+      G.faction.tick();                              /* 第一次只记基准 */
+      var r1 = 0;
+      G.faction.arr().forEach(function (f) { if (f.id === tribFid) r1 = f.r; });
+      st.world.elapsed = 20 * 4800;
+      G.faction.tick();
+      var r2 = 0;
+      G.faction.arr().forEach(function (f) { if (f.id === tribFid) r2 = f.r; });
+      return G.faction.truceLeft(tribFid) === 0 && r2 > r1;
+    })(), '期满后半径 ' + (function () {
+      var v = 0; G.faction.arr().forEach(function (f) { if (f.id === tribFid) v = f.r; }); return v;
+    })());
+
     console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');
   process.exit(FAIL ? 1 : 0);
 })();

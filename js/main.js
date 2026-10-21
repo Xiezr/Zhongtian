@@ -1345,6 +1345,8 @@ import './ui.js';
         ui.openDuel(el.getAttribute('data-fid'));
         break;
       case 'duel-move': ui.openDuel(ui._duel && ui._duel.fid, el.getAttribute('data-mv')); break;
+      /* v92.11：向势力纳贡（交资源换它停几个月） */
+      case 'faction-tribute': GAME.doFactionTribute(el.getAttribute('data-fid')); break;
       /* v91.59（老板）：自动采购（逐商品补货到目标 · 每现实日上限内）。 */
       case 'toggle-auto-buy': GAME.doToggleAutoBuy(); break;
       case 'auto-buy-once': (function () { var r = GAME.autoBuyOnce(); ui.toast(r.msg); GAME.refreshView(); })(); break;
@@ -1926,6 +1928,18 @@ import './ui.js';
   };
   /* v92.7：遗迹翻找 —— 两种翻法互斥，翻过就永远没有另一样。
      不做二次确认：面板上两种产出都写清了，点下去就是放弃另一个。 */
+  /* v92.11：纳贡 —— 交钱换时间。付不起就说清楚缺多少，不静默扣。 */
+  GAME.doFactionTribute = function (fid) {
+    var r = GAME.faction && GAME.faction.tribute ? GAME.faction.tribute(fid) : null;
+    if (!r) { ui.toast('纳贡不可用'); return; }
+    ui.toast((r.ok ? '✅ ' : '⏸ ') + r.msg);
+    if (r.ok) {
+      GAME.log(r.msg, 'sys', 'wild');
+      GAME.refreshAll();
+    } else {
+      GAME.refreshView();
+    }
+  };
   GAME.doRuinAct = function (ci, side) {
     var r = GAME.ruin && GAME.ruin.act ? GAME.ruin.act(+ci, side) : null;
     if (!r) { ui.toast('遗迹翻找不可用'); return; }

@@ -4664,6 +4664,13 @@ window.GAME = window.GAME || {};
     growPerMonth: 0.8,     /* 每月半径增长（× 该家侵略性）—— 一年约 +10 格 */
     maxR: 14,              /* 半径上限（约 590 格）—— 是压力，不是终局 */
     warnAt: 8,             /* 最近一家进入 8 格内 → 警报 */
+    /* v92.11（构想 B2「势力的四种用法」之一：**贡**）——
+       打不过、又不想它继续长的时候，可以交一笔保护费换它停几个月。
+       定价随它的半径走（越大越贵）：r=14 时约 2800 粮 + 1400 铁。
+       这是这一版唯一能落地的"外交"：打/盟/挑 都要先有战斗接入，
+       做了也只是播报，是假动作。 */
+    truceMonths: 6,
+    tributePerR: { grain: 200, iron: 100 },
     list: [
       { id: 'anvil', name: '铁砧', trait: '侵略', aggr: 1.4 },
       { id: 'wall', name: '灰墙', trait: '守成', aggr: 0.6 },
@@ -26569,12 +26576,69 @@ window.GAME = window.GAME || {};
     if (first) return null;                          /* 第一次只记基准，不推进 */
     var c = cfg();
     arr.forEach(function (f) {
+      if (FA.truceLeft(f.id) > 0) return;         /* v92.11：纳贡期内停手 */
       var d = FA.defOf(f.id) || {};
       /* v92.8：年景（B5）—— 战年军阀并起，推进翻倍。 */
       var g = (c.growPerMonth || 0.8) * (d.aggr || 1) * (GAME.yearMulOf ? GAME.yearMulOf('factionMul') : 1);
       f.r = Math.min(c.maxR || 14, Math.round((f.r + g) * 100) / 100);
     });
     return { month: month };
+  };
+
+  /* ============================================================
+   * v92.11（B2 之一：纳贡）—— 交钱换时间
+   * ------------------------------------------------------------
+   * 打不过、又不想它继续长：付一笔保护费，换它停几个月。
+   * 定价随半径走（越大越贵），所以"养虎为患"是有代价的。
+   * ⚠️ 目前只有这一种"外交"。打/盟/挑 都要先有战斗接入 ——
+   *    没有战斗的结盟只是播报，是假动作，这一版不做。
+   * ============================================================ */
+  FA.monthNow = function () {
+    var C = GAME.DATA.CALENDAR || {};
+    var spm = (C.secPerYear || 57600) / 12;
+    var st = GAME.state || {};
+    return Math.floor(((st.world && st.world.elapsed) || 0) / spm);
+  };
+
+  FA.tributeCostOf = function (fid) {
+    var arr = FA.arr(), f = null;
+    for (var i = 0; i < arr.length; i++) if (arr[i].id === fid) f = arr[i];
+    if (!f) return null;
+    var per = cfg().tributePerR || { grain: 200, iron: 100 };
+    return {
+      grain: Math.max(100, Math.round((per.grain || 200) * f.r)),
+      iron: Math.max(50, Math.round((per.iron || 100) * f.r))
+    };
+  };
+
+  /* 还在停战期吗（剩几个月） */
+  FA.truceLeft = function (fid) {
+    var t = ((GAME.state || {}).truces || {})[fid] | 0;
+    var m = FA.monthNow();
+    return t > m ? (t - m) : 0;
+  };
+
+  FA.tribute = function (fid) {
+    var st = GAME.state;
+    if (!st) return { ok: false, msg: '无存档' };
+    FA.ensure();
+    var def = FA.defOf(fid);
+    if (!def) return { ok: false, msg: '没有这家势力' };
+    if (FA.truceLeft(fid) > 0) return { ok: false, msg: '还在停战期内（还剩 ' + FA.truceLeft(fid) + ' 个月）' };
+    var cost = FA.tributeCostOf(fid);
+    if (!cost) return { ok: false, msg: '这家已经不在了' };
+    var city = GAME.currentCity ? GAME.currentCity() : null;
+    if (!city) return { ok: false, msg: '没有可支付的城市' };
+    city.res = city.res || {};
+    if ((city.res.grain || 0) < cost.grain) return { ok: false, msg: '粮不够：要 ' + U.numText(cost.grain, 0) };
+    if ((city.res.iron || 0) < cost.iron) return { ok: false, msg: '铁不够：要 ' + U.numText(cost.iron, 0) };
+    city.res.grain -= cost.grain;
+    city.res.iron -= cost.iron;
+    st.truces = st.truces || {};
+    var months = cfg().truceMonths || 6;
+    st.truces[fid] = FA.monthNow() + months;
+    return { ok: true, msg: '向' + def.name + '纳贡：粮 −' + U.numText(cost.grain, 0)
+      + '、铁 −' + U.numText(cost.iron, 0) + '，换它 ' + months + ' 个月不动' };
   };
 
   /* 态势：每家半径、约格数（六边面积 ≈ 3r²）、离玩家主城多少格 */
@@ -26586,7 +26650,8 @@ window.GAME = window.GAME || {};
       var near = (pc && pc.ci >= 0) ? s.distOf({ ci: pc.ci }, { ci: f.core }) : null;
       return {
         id: f.id, name: d.name || f.id, trait: d.trait || '',
-        r: f.r, cells: Math.round(3 * f.r * f.r), near: near
+        r: f.r, cells: Math.round(3 * f.r * f.r), near: near,
+        truce: FA.truceLeft(f.id)
       };
     }).sort(function (a, b) { return (a.near == null ? 1e9 : a.near) - (b.near == null ? 1e9 : b.near); });
   };
@@ -46246,8 +46311,11 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
         + '<b>' + U.escape(x.name) + '</b> <span style="color:var(--text-dim);">' + U.escape(x.trait) + '</span><br>'
         + '半径 ' + x.r + ' · 约 ' + U.numText(x.cells, 0) + ' 格'
         + (x.near != null ? '<br><span style="color:var(--text-dim);">距你 ' + Math.round(x.near) + ' 格</span>' : '')
+        + (x.truce > 0 ? ('<br><span style="color:var(--gold-light);">🤝 停战中（剩 ' + x.truce + ' 月）</span>') : '')
         + '<br><button class="btn" style="font-size:var(--fs-cap);padding:1px 8px;margin-top:3px;"'
         + ' data-action="duel-with" data-fid="' + x.id + '">⚔ 叫阵</button>'
+        + (x.truce > 0 ? '' : ('<button class="btn" style="font-size:var(--fs-cap);padding:1px 8px;margin:3px 0 0 4px;"'
+          + ' data-action="faction-tribute" data-fid="' + x.id + '">🤝 纳贡</button>'))
         + '</div>';
     });
     h += '</div>';
@@ -58219,6 +58287,8 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
         ui.openDuel(el.getAttribute('data-fid'));
         break;
       case 'duel-move': ui.openDuel(ui._duel && ui._duel.fid, el.getAttribute('data-mv')); break;
+      /* v92.11：向势力纳贡（交资源换它停几个月） */
+      case 'faction-tribute': GAME.doFactionTribute(el.getAttribute('data-fid')); break;
       /* v91.59（老板）：自动采购（逐商品补货到目标 · 每现实日上限内）。 */
       case 'toggle-auto-buy': GAME.doToggleAutoBuy(); break;
       case 'auto-buy-once': (function () { var r = GAME.autoBuyOnce(); ui.toast(r.msg); GAME.refreshView(); })(); break;
@@ -58800,6 +58870,18 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
   };
   /* v92.7：遗迹翻找 —— 两种翻法互斥，翻过就永远没有另一样。
      不做二次确认：面板上两种产出都写清了，点下去就是放弃另一个。 */
+  /* v92.11：纳贡 —— 交钱换时间。付不起就说清楚缺多少，不静默扣。 */
+  GAME.doFactionTribute = function (fid) {
+    var r = GAME.faction && GAME.faction.tribute ? GAME.faction.tribute(fid) : null;
+    if (!r) { ui.toast('纳贡不可用'); return; }
+    ui.toast((r.ok ? '✅ ' : '⏸ ') + r.msg);
+    if (r.ok) {
+      GAME.log(r.msg, 'sys', 'wild');
+      GAME.refreshAll();
+    } else {
+      GAME.refreshView();
+    }
+  };
   GAME.doRuinAct = function (ci, side) {
     var r = GAME.ruin && GAME.ruin.act ? GAME.ruin.act(+ci, side) : null;
     if (!r) { ui.toast('遗迹翻找不可用'); return; }

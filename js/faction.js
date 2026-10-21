@@ -145,12 +145,69 @@
     if (first) return null;                          /* 第一次只记基准，不推进 */
     var c = cfg();
     arr.forEach(function (f) {
+      if (FA.truceLeft(f.id) > 0) return;         /* v92.11：纳贡期内停手 */
       var d = FA.defOf(f.id) || {};
       /* v92.8：年景（B5）—— 战年军阀并起，推进翻倍。 */
       var g = (c.growPerMonth || 0.8) * (d.aggr || 1) * (GAME.yearMulOf ? GAME.yearMulOf('factionMul') : 1);
       f.r = Math.min(c.maxR || 14, Math.round((f.r + g) * 100) / 100);
     });
     return { month: month };
+  };
+
+  /* ============================================================
+   * v92.11（B2 之一：纳贡）—— 交钱换时间
+   * ------------------------------------------------------------
+   * 打不过、又不想它继续长：付一笔保护费，换它停几个月。
+   * 定价随半径走（越大越贵），所以"养虎为患"是有代价的。
+   * ⚠️ 目前只有这一种"外交"。打/盟/挑 都要先有战斗接入 ——
+   *    没有战斗的结盟只是播报，是假动作，这一版不做。
+   * ============================================================ */
+  FA.monthNow = function () {
+    var C = GAME.DATA.CALENDAR || {};
+    var spm = (C.secPerYear || 57600) / 12;
+    var st = GAME.state || {};
+    return Math.floor(((st.world && st.world.elapsed) || 0) / spm);
+  };
+
+  FA.tributeCostOf = function (fid) {
+    var arr = FA.arr(), f = null;
+    for (var i = 0; i < arr.length; i++) if (arr[i].id === fid) f = arr[i];
+    if (!f) return null;
+    var per = cfg().tributePerR || { grain: 200, iron: 100 };
+    return {
+      grain: Math.max(100, Math.round((per.grain || 200) * f.r)),
+      iron: Math.max(50, Math.round((per.iron || 100) * f.r))
+    };
+  };
+
+  /* 还在停战期吗（剩几个月） */
+  FA.truceLeft = function (fid) {
+    var t = ((GAME.state || {}).truces || {})[fid] | 0;
+    var m = FA.monthNow();
+    return t > m ? (t - m) : 0;
+  };
+
+  FA.tribute = function (fid) {
+    var st = GAME.state;
+    if (!st) return { ok: false, msg: '无存档' };
+    FA.ensure();
+    var def = FA.defOf(fid);
+    if (!def) return { ok: false, msg: '没有这家势力' };
+    if (FA.truceLeft(fid) > 0) return { ok: false, msg: '还在停战期内（还剩 ' + FA.truceLeft(fid) + ' 个月）' };
+    var cost = FA.tributeCostOf(fid);
+    if (!cost) return { ok: false, msg: '这家已经不在了' };
+    var city = GAME.currentCity ? GAME.currentCity() : null;
+    if (!city) return { ok: false, msg: '没有可支付的城市' };
+    city.res = city.res || {};
+    if ((city.res.grain || 0) < cost.grain) return { ok: false, msg: '粮不够：要 ' + U.numText(cost.grain, 0) };
+    if ((city.res.iron || 0) < cost.iron) return { ok: false, msg: '铁不够：要 ' + U.numText(cost.iron, 0) };
+    city.res.grain -= cost.grain;
+    city.res.iron -= cost.iron;
+    st.truces = st.truces || {};
+    var months = cfg().truceMonths || 6;
+    st.truces[fid] = FA.monthNow() + months;
+    return { ok: true, msg: '向' + def.name + '纳贡：粮 −' + U.numText(cost.grain, 0)
+      + '、铁 −' + U.numText(cost.iron, 0) + '，换它 ' + months + ' 个月不动' };
   };
 
   /* 态势：每家半径、约格数（六边面积 ≈ 3r²）、离玩家主城多少格 */
@@ -162,7 +219,8 @@
       var near = (pc && pc.ci >= 0) ? s.distOf({ ci: pc.ci }, { ci: f.core }) : null;
       return {
         id: f.id, name: d.name || f.id, trait: d.trait || '',
-        r: f.r, cells: Math.round(3 * f.r * f.r), near: near
+        r: f.r, cells: Math.round(3 * f.r * f.r), near: near,
+        truce: FA.truceLeft(f.id)
       };
     }).sort(function (a, b) { return (a.near == null ? 1e9 : a.near) - (b.near == null ? 1e9 : b.near); });
   };

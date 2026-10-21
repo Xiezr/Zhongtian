@@ -8094,8 +8094,11 @@ import './state.js';
         + '<b>' + U.escape(x.name) + '</b> <span style="color:var(--text-dim);">' + U.escape(x.trait) + '</span><br>'
         + '半径 ' + x.r + ' · 约 ' + U.numText(x.cells, 0) + ' 格'
         + (x.near != null ? '<br><span style="color:var(--text-dim);">距你 ' + Math.round(x.near) + ' 格</span>' : '')
+        + (x.truce > 0 ? ('<br><span style="color:var(--gold-light);">🤝 停战中（剩 ' + x.truce + ' 月）</span>') : '')
         + '<br><button class="btn" style="font-size:var(--fs-cap);padding:1px 8px;margin-top:3px;"'
         + ' data-action="duel-with" data-fid="' + x.id + '">⚔ 叫阵</button>'
+        + (x.truce > 0 ? '' : ('<button class="btn" style="font-size:var(--fs-cap);padding:1px 8px;margin:3px 0 0 4px;"'
+          + ' data-action="faction-tribute" data-fid="' + x.id + '">🤝 纳贡</button>'))
         + '</div>';
     });
     h += '</div>';
