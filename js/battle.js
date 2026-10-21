@@ -1354,6 +1354,75 @@ import './state.js';
       Math.round((D.bonusPct == null ? 0.10 : D.bonusPct) * 100) + '%）';
   };
 
+  /* ============================================================
+   * v92.9（构想 C1）：**手动斗将** —— 招式心理战
+   * ------------------------------------------------------------
+   * 文档：「已有 stub 但是自动比大小。要做成玩法需三件：
+   *   ①可选非强制 ②招式心理战（看不到对手出什么）③将领性格决定招式池」。
+   *
+   * 这里给 ②③ 一个可操作的形状：
+   *   · 玩家出 5 招（突刺/格挡/佯攻/蓄力），每招克一种、被一种克；
+   *   · 对手的招式**当合不显示**，只看得到"谁占先"；
+   *   · 对手出招由**属性倾向**加权（高武力偏突刺、高谋略偏佯攻、
+   *     高统率偏格挡），所以观察两合能猜 —— 这是"可预判"那一半；
+   *   · 结果不可撤销（这一场合就是这一场），这是"不可逆"那一半。
+   *
+   * 纯函数：不落任何状态。履历由调用方（GAME.doDuel）记。
+   * ============================================================ */
+  GAME.battle.duelTendency = function (g) {
+    /* 倾向 = 属性权重，返回一组相对权重（不需要归一化，抽样时按累计）*/
+    var yw = (g && g.yw) || 10, zm = (g && g.zm) || 10, tong = (g && g.tong) || 10;
+    return {
+      stab: 1 + yw / 20,        /* 武力高 → 突刺 */
+      guard: 1 + tong / 20,     /* 统率高 → 格挡 */
+      feint: 1 + zm / 20,       /* 谋略高 → 佯攻 */
+      charge: 1.1               /* 蓄力：谁也不特别偏好，留个底 */
+    };
+  };
+  /* 对手当合出什么（确定性：同一 seed 同一合必得同一招） */
+  GAME.battle.duelEnemyMove = function (defGen, round, seed) {
+    var D = DATA.DUEL || {};
+    var order = D.moveOrder || ['stab', 'guard', 'feint', 'charge'];
+    var w = GAME.battle.duelTendency(defGen);
+    var tot = 0, i;
+    for (i = 0; i < order.length; i++) tot += (w[order[i]] || 1);
+    var r = GAME.invasionRoll('duelm|' + (defGen && defGen.id) + '|' + round + '|' + (seed == null ? 0 : seed)) * tot;
+    var acc = 0;
+    for (i = 0; i < order.length; i++) {
+      acc += (w[order[i]] || 1);
+      if (r < acc) return order[i];
+    }
+    return order[order.length - 1];
+  };
+  /* 打一场手动斗将：moves = ['stab','guard',...]（长度 playRounds） */
+  GAME.battle.duelPlay = function (atkGen, defGen, moves, seed) {
+    var D = DATA.DUEL || {};
+    var MV = D.moves || {};
+    if (!atkGen || !defGen || !moves || !moves.length) return null;
+    var need = D.winScore || 3;
+    var wa = 0, wb = 0, log = [], rows = [];
+    for (var i = 0; i < moves.length; i++) {
+      var am = moves[i];
+      var bm = GAME.battle.duelEnemyMove(defGen, i + 1, seed);
+      var res;
+      if (am === bm) res = 'tie';
+      else if (MV[am] && MV[am].beats === bm) res = 'a';
+      else res = 'b';
+      if (res === 'a') wa++; else if (res === 'b') wb++;
+      var an = (MV[am] || {}).name || am, bn = (MV[bm] || {}).name || bm;
+      rows.push({ r: i + 1, a: am, b: bm, aName: an, bName: bn, res: res });
+      log.push('第' + (i + 1) + '合：' + an + ' 对 ' + bn + '　'
+        + (res === 'a' ? (atkGen.name + ' 占先') : res === 'b' ? (defGen.name + ' 占先') : '相持'));
+      if (wa >= need || wb >= need) break;          /* 先到 3 分即止 */
+    }
+    var winner = wa > wb ? 'atk' : (wb > wa ? 'def' : 'draw');
+    log.push('斗将 ' + rows.length + ' 合，' + (winner === 'atk' ? atkGen.name : winner === 'def' ? defGen.name : '未分胜负')
+      + '（' + wa + ' : ' + wb + '）');
+    return { done: true, winner: winner, wa: wa, wb: wb, rows: rows, log: log,
+      winnerName: winner === 'atk' ? atkGen.name : winner === 'def' ? defGen.name : '未分胜负',
+      bonusPct: (D.bonusPct == null ? 0.10 : D.bonusPct) };
+  };
+
   /* 战利品按城类型 */
   GAME.battle.genLootEx = function (c, extMul, rnd, dry) {
     var tier = (c && c.type) ? c.type

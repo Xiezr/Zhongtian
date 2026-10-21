@@ -203,6 +203,26 @@ import './state.js';
      专精说明搬进**对应建筑**的面板里（那里直接读 masteryTierOf(bid)，不需要列表）。
      留着就是死函数（audit 会报），所以整段撤掉。 */
 
+  /* ============================================================
+   * v92.8：年景（构想 B5「历法 = 赛季」）—— 唯一出口
+   * ------------------------------------------------------------
+   * `world.year % N` 循环。年号纪元 v90.93 已退役，这里不复活旧系统。
+   * 只影响新系统的参数（营地/势力/视野/遗迹），不碰粮产训练战斗。
+   * ============================================================ */
+  GAME.yearOf = function () {
+    var L = (GAME.DATA && GAME.DATA.YEARS) || [];
+    if (!L.length) return null;
+    var y = ((GAME.state && GAME.state.world && GAME.state.world.year) || 1) | 0;
+    var i = ((y - 1) % L.length + L.length) % L.length;
+    return L[i];
+  };
+  /* 取某个年景修数的便捷出口（没配 yearly 字段就是 1） */
+  GAME.yearMulOf = function (key) {
+    var Y = GAME.yearOf();
+    if (!Y || Y[key] == null) return 1;
+    return Y[key];
+  };
+
   /* --------- 幸存者上限（居所等级表） --------- */
   GAME.maxPopOf = function (city, ignoreGuard) {
     var cap = 0;

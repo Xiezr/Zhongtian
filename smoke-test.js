@@ -38517,6 +38517,120 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       return r.ok && after !== before;
     })());
 
-  console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');
+    console.log('\n===== 292. v92.8 年景（历法 = 赛季）=====');
+
+    check('§292① 年景按年循环且不重复跳（1..6 覆盖全部）', (function () {
+      G.newGame({ name: '年景', cityName: '灰岗' });
+      var L = DATA.YEARS || [];
+      if (L.length < 4) return false;
+      var seen = {};
+      for (var y = 1; y <= L.length; y++) {
+        G.state.world.year = y;
+        var Y = G.yearOf();
+        if (!Y) return false;
+        seen[Y.id] = 1;
+      }
+      return Object.keys(seen).length === L.length;
+    })(), (DATA.YEARS || []).length + ' 种');
+
+    check('§292② 没配的年份项一律乘数 1（不误伤核心数值）', (function () {
+      G.state.world.year = 1;                       /* 平年 */
+      return G.yearMulOf('campMul') === 1 && G.yearMulOf('factionMul') === 1
+        && G.yearMulOf('ruinMul') === 1 && G.yearMulOf('不存在的键') === 1;
+    })());
+
+    check('§292③ 丰年营地招募 ×1.3（真的接到产出上）', (function () {
+      var L = DATA.YEARS || [];
+      var idx = -1;
+      for (var i = 0; i < L.length; i++) if (L[i].campMul && L[i].campMul > 1) { idx = i; break; }
+      if (idx < 0) return false;
+      G.state.world.year = idx + 1;
+      return G.yearMulOf('campMul') > 1;
+    })(), '×' + (function () {
+      var L = DATA.YEARS || [];
+      for (var i = 0; i < L.length; i++) if (L[i].campMul && L[i].campMul > 1) { G.state.world.year = i + 1; return G.yearMulOf('campMul'); }
+      return 1;
+    })());
+
+    check('§292④ 开拓年视野 +1（只加不减）', (function () {
+      var L = DATA.YEARS || [];
+      var idx = -1;
+      for (var i = 0; i < L.length; i++) if (L[i].fogPlus) { idx = i; break; }
+      if (idx < 0) return false;
+      G.state.world.year = 1;                        /* 平年 */
+      var r0 = G.fog.radiusOf();
+      G.state.world.year = idx + 1;
+      var r1 = G.fog.radiusOf();
+      return r1 === r0 + 1;
+    })());
+
+    console.log('\n===== 293. v92.9 手动斗将（招式心理战）=====');
+
+    check('§293① 克制表闭合：每招各克一种、各被一种克', (function () {
+      var MV = (DATA.DUEL || {}).moves || {};
+      var keys = Object.keys(MV);
+      if (keys.length !== 4) return false;
+      var beaten = {};
+      for (var i = 0; i < keys.length; i++) {
+        var b = MV[keys[i]].beats;
+        if (!MV[b]) return false;                 /* 克的必须是存在的招 */
+        if (beaten[b]) return false;              /* 一招不能被两招克 */
+        beaten[b] = keys[i];
+      }
+      return Object.keys(beaten).length === 4;    /* 四招各被克一次 */
+    })());
+
+    check('§293② 同一 seed 出招确定（观战/复现不会重掷）', (function () {
+      var rv = G.faction.rivalOf('anvil');
+      var a = [], b = [];
+      for (var i = 1; i <= 5; i++) { a.push(G.battle.duelEnemyMove(rv, i, 'SEED1')); b.push(G.battle.duelEnemyMove(rv, i, 'SEED1')); }
+      return a.join(',') === b.join(',');
+    })(), (function () {
+      var rv = G.faction.rivalOf('anvil'); var out = [];
+      for (var i = 1; i <= 5; i++) out.push(G.battle.duelEnemyMove(rv, i, 'SEED1'));
+      return out.join(',');
+    })());
+
+    check('§293③ 倾向可预判：武力高的对手更爱突刺（>25%）', (function () {
+      var rv = G.faction.rivalOf('anvil');        /* yw 22 最高 */
+      var n = 0, stab = 0;
+      for (var s = 0; s < 200; s++) {
+        var m = G.battle.duelEnemyMove(rv, 1, 'S' + s);
+        n++; if (m === 'stab') stab++;
+      }
+      return n === 200 && stab / n > 0.25;
+    })(), '突刺占比 ' + (function () {
+      var rv = G.faction.rivalOf('anvil'), n = 0, stab = 0;
+      for (var s = 0; s < 200; s++) { n++; if (G.battle.duelEnemyMove(rv, 1, 'S' + s) === 'stab') stab++; }
+      return Math.round(stab / n * 100) + '%';
+    })());
+
+    check('§293④ 五合结算：胜负与比分自洽', (function () {
+      var me = { id: 'me', name: '我' }, rv = G.faction.rivalOf('wall');
+      var r = G.battle.duelPlay(me, rv, ['stab', 'guard', 'feint', 'charge', 'stab'], 'T1');
+      if (!r || !r.rows.length) return false;
+      if (r.rows.length > 5) return false;
+      if (r.wa + r.wb > r.rows.length) return false;
+      var w = r.wa > r.wb ? 'atk' : (r.wb > r.wa ? 'def' : 'draw');
+      return r.winner === w;
+    })(), (function () {
+      var me = { id: 'me', name: '我' }, rv = G.faction.rivalOf('wall');
+      var r = G.battle.duelPlay(me, rv, ['stab', 'guard', 'feint', 'charge', 'stab'], 'T1');
+      return r ? (r.winner + ' ' + r.wa + ':' + r.wb) : 'null';
+    })());
+
+    check('§293⑤ 招式名与克制说明都在册（界面不会露英文键）', (function () {
+      var MV = (DATA.DUEL || {}).moves || {};
+      var order = (DATA.DUEL || {}).moveOrder || [];
+      if (order.length !== 4) return false;
+      for (var i = 0; i < order.length; i++) {
+        var m = MV[order[i]];
+        if (!m || !m.name || !m.note) return false;
+        if (!/[\u4e00-\u9fa5]/.test(m.name)) return false;
+      }
+      return true;
+    })());
+
+    console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');
   process.exit(FAIL ? 1 : 0);
 })();

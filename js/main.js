@@ -1339,6 +1339,12 @@ import './ui.js';
       case 'camp-act': GAME.doCampAct(el.getAttribute('data-ci'), el.getAttribute('data-mode')); break;
       /* v92.7：遗迹翻找（两个翻法互斥，翻一次就没了） */
       case 'ruin-act': GAME.doRuinAct(el.getAttribute('data-ci'), el.getAttribute('data-rs')); break;
+      /* v92.9：斗将（向势力代将叫阵 · 招式心理战） */
+      case 'duel-with':
+        if (el.getAttribute('data-reset')) ui._duel = null;
+        ui.openDuel(el.getAttribute('data-fid'));
+        break;
+      case 'duel-move': ui.openDuel(ui._duel && ui._duel.fid, el.getAttribute('data-mv')); break;
       /* v91.59（老板）：自动采购（逐商品补货到目标 · 每现实日上限内）。 */
       case 'toggle-auto-buy': GAME.doToggleAutoBuy(); break;
       case 'auto-buy-once': (function () { var r = GAME.autoBuyOnce(); ui.toast(r.msg); GAME.refreshView(); })(); break;

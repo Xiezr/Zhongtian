@@ -330,6 +330,9 @@
     var tiers = C.tiers || [];
     var pct = F.stats().pct;
     for (var i = 0; i < tiers.length; i++) if (pct >= tiers[i].pct) r = tiers[i].r;
+    /* v92.8：年景（B5）—— 开拓年视野 +1（只加不减，不给惩罚） */
+    var _y = (GAME.yearOf ? GAME.yearOf() : null);
+    if (_y && _y.fogPlus) r += _y.fogPlus;
     return r;
   };
   F.outpostRadius = function () {

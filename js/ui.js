@@ -8077,7 +8077,14 @@ import './state.js';
     var arr = F.stats();
     if (!arr.length) return '';
     var th = F.threatOf();
+    var Y = GAME.yearOf ? GAME.yearOf() : null;
     var h = '<div style="margin:0 0 10px;padding:8px 10px;border:1px solid var(--wood-light);border-radius:4px;">';
+    /* v92.8：年景（B5）—— 今年是什么年，直接写在世界态势上面一行 */
+    if (Y) {
+      h += '<div style="font-size:var(--fs-cap);color:var(--text-dim);margin-bottom:4px;">'
+        + '🌍 今年 · <b style="color:var(--gold-light);">' + U.escape(Y.name) + '</b>　'
+        + U.escape(Y.note || '') + '</div>';
+    }
     h += '<div style="font-size:var(--fs-cap);color:var(--gold-light);margin-bottom:6px;">⚔ 四方势力'
       + (th ? '　<span style="color:var(--red-light);">⚠ ' + U.escape(th.name) + ' 已到 ' + Math.round(th.near) + ' 格内</span>' : '')
       + '</div>';
@@ -8087,6 +8094,8 @@ import './state.js';
         + '<b>' + U.escape(x.name) + '</b> <span style="color:var(--text-dim);">' + U.escape(x.trait) + '</span><br>'
         + '半径 ' + x.r + ' · 约 ' + U.numText(x.cells, 0) + ' 格'
         + (x.near != null ? '<br><span style="color:var(--text-dim);">距你 ' + Math.round(x.near) + ' 格</span>' : '')
+        + '<br><button class="btn" style="font-size:var(--fs-cap);padding:1px 8px;margin-top:3px;"'
+        + ' data-action="duel-with" data-fid="' + x.id + '">⚔ 叫阵</button>'
         + '</div>';
     });
     h += '</div>';
@@ -12840,6 +12849,88 @@ import './state.js';
       h += '<div style="font-size:var(--fs-cap);color:var(--text-dim);">'
         + '只能选一个。翻过之后这处遗迹就空了 —— 另一样永远留在这里。<br>'
         + '离你的城越远，翻出来的东西越多（这里 ×' + (Math.round(mul * 100) / 100) + '）。</div>';
+    }
+    h += '</div><div class="panel-foot"><button class="btn" data-action="close-modal">关闭</button></div>';
+    ui.openModal(h);
+  };
+
+  /* ============================================================
+   * v92.9（构想 C1）：手动斗将 —— 招式心理战
+   * ------------------------------------------------------------
+   * 玩家出 5 招，对手的招式**当合不显示**，只看得到谁占先。
+   * 对手出招按属性倾向加权（`s duelTendency`），观察两合能猜 ——
+   * 这既是"看不到"，又不是纯掷骰（文档要的"不可预判 × 可预判"）。
+   *
+   * ⚠️ 目前只记**履历与胜负**，不接战前士气 —— 面板上明写。
+   * ============================================================ */
+  ui.openDuel = function (fid, moveId) {
+    var st = GAME.state;
+    if (!st || !GAME.faction) return;
+    var D = DATA.DUEL || {}, MV = D.moves || {}, order = D.moveOrder || [];
+    var need = D.playRounds || 5;
+    var S = ui._duel;
+    if (!S || S.fid !== fid) {
+      var gens = (st.generals || []).filter(function (g) { return !g.dead; });
+      S = ui._duel = { fid: fid, genId: gens.length ? gens[0].id : null, moves: [], seed: String(U.now()), res: null };
+    }
+    if (moveId && !S.res && S.moves.length < need) {
+      S.moves.push(moveId);
+      if (S.moves.length >= need) {
+        var g0 = null;
+        (st.generals || []).forEach(function (x) { if (x.id === S.genId) g0 = x; });
+        var rival = GAME.faction.rivalOf(fid);
+        S.res = GAME.battle.duelPlay(g0 || { id: 'me', name: '我军主将' }, rival, S.moves, S.seed);
+        if (S.res && g0) {
+          if (S.res.winner === 'atk') g0.duelW = (g0.duelW || 0) + 1;
+          else if (S.res.winner === 'def') g0.duelL = (g0.duelL || 0) + 1;
+        }
+      }
+    }
+    var rival = GAME.faction.rivalOf(fid);
+    var me = null;
+    (st.generals || []).forEach(function (x) { if (x.id === S.genId) me = x; });
+
+    var h = '<div class="gold-heading">⚔ 向 ' + U.escape((GAME.faction.defOf(fid) || {}).name || fid) + ' 叫阵</div>';
+    h += '<div class="panel-body">';
+    h += '<div class="exp-info exp-info-l" style="color:var(--text-dim);">'
+      + '对手：<b>' + U.escape(rival.name) + '</b>（武 ' + rival.yw + ' · 谋 ' + rival.zm + ' · 统 ' + rival.tong + '）'
+      + '　— 他的招式看不到，但**属性高的招他更爱出**。' + '</div>';
+
+    /* 五合进度 */
+    h += '<div style="display:flex;gap:6px;margin:10px 0;flex-wrap:wrap;">';
+    for (var i = 0; i < need; i++) {
+      var got = S.moves[i];
+      h += '<span style="padding:3px 9px;border:1px solid var(--wood-light);border-radius:3px;font-size:var(--fs-cap);'
+        + (got ? 'color:var(--gold-light);' : 'color:var(--text-dim);') + '">'
+        + (got ? U.escape((MV[got] || {}).name || got) : ('第 ' + (i + 1) + ' 合')) + '</span>';
+    }
+    h += '</div>';
+
+    if (!S.res) {
+      h += '<div style="display:flex;gap:8px;flex-wrap:wrap;">';
+      order.forEach(function (mk) {
+        var m = MV[mk] || {};
+        h += '<button class="btn" data-action="duel-move" data-mv="' + mk + '" title="' + U.escape(m.note || '') + '">'
+          + U.escape(m.name || mk) + '</button>';
+      });
+      h += '</div>';
+      h += '<div style="font-size:var(--fs-cap);color:var(--text-dim);margin-top:8px;">'
+        + '突刺克蓄力 · 格挡克突刺 · 佯攻克格挡 · 蓄力克佯攻（同招相持）。出满 ' + need + ' 合即结算，中途不能改。</div>';
+    } else {
+      h += '<table class="tbl"><thead><tr><th>合</th><th>你</th><th>他</th><th>结果</th></tr></thead><tbody>';
+      S.res.rows.forEach(function (r) {
+        h += '<tr><td class="num">' + r.r + '</td><td>' + U.escape(r.aName) + '</td><td>' + U.escape(r.bName) + '</td>'
+          + '<td style="color:' + (r.res === 'a' ? 'var(--gold-light)' : r.res === 'b' ? 'var(--red-light)' : 'var(--text-dim)') + ';">'
+          + (r.res === 'a' ? '占先' : r.res === 'b' ? '被压' : '相持') + '</td></tr>';
+      });
+      h += '</tbody></table>';
+      h += '<div class="exp-info exp-info-l" style="margin-top:8px;color:var(--gold-light);">'
+        + U.escape(S.res.winnerName) + ' 胜（' + S.res.wa + ' : ' + S.res.wb + '）'
+        + '　· 履历：' + (me ? ((me.duelW || 0) + ' 胜 ' + (me.duelL || 0) + ' 负') : '—') + '</div>';
+      h += '<div style="font-size:var(--fs-cap);color:var(--text-dim);margin-top:6px;">'
+        + '（这一版只记履历，尚未接入战前士气加成。）</div>';
+      h += '<div style="margin-top:8px;"><button class="btn" data-action="duel-with" data-fid="' + fid + '"'
+        + ' data-reset="1">再来一场</button></div>';
     }
     h += '</div><div class="panel-foot"><button class="btn" data-action="close-modal">关闭</button></div>';
     ui.openModal(h);

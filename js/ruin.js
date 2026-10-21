@@ -76,7 +76,7 @@
     var pc = GAME.currentCity ? GAME.currentCity() : null;
     if (!s || !pc || pc.ci == null || pc.ci < 0) return 1;
     var d = s.distOf({ ci: pc.ci }, { ci: ci });
-    return 1 + Math.min(1.5, d / 40);          /* 40 格外封顶 +150% */
+    return (1 + Math.min(1.5, d / 40)) * (GAME.yearMulOf ? GAME.yearMulOf('ruinMul') : 1);   /* 40 格外封顶 +150% · 兴年再 ×1.3 */
   };
 
   /* 与营地同一套节流扫描：候选只有几十处，5 秒扫一次几乎零成本 */

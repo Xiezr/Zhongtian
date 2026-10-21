@@ -171,7 +171,8 @@
     if (mode === 'recruit') {
       var city = C.cityNearOf(ci);
       if (!city) return { ok: false, msg: '附近没有己方城市' };
-      var mul = C.waryMul();
+      /* v92.8：年景（B5）—— 丰年多来三成，疫年闭门。风声与年景相乘。 */
+      var mul = C.waryMul() * (GAME.yearMulOf ? GAME.yearMulOf('campMul') : 1);
       var n = Math.max(1, Math.round(w.pop * mul));
       /* 人口走既有出口：直接加到存量的 pop（不超上限）*/
       var cap = GAME.effPopCapOf ? GAME.effPopCapOf(city) : (GAME.maxPopOf ? GAME.maxPopOf(city) : 0);

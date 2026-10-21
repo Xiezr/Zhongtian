@@ -2417,6 +2417,27 @@ window.GAME = window.GAME || {};
     chance: 0.50,        // 触发概率（军队战前的一次判定）
     bonusPct: 0.10,      // 胜者英雄属性加成（临时；仅本战）
     rounds: 3,           // 对拼合数（逐合判定，先占先多者胜）
+    /* ============================================================
+     * v92.9（构想 C1 斗将）：**招式心理战**
+     * ------------------------------------------------------------
+     * 文档原话：「已有 stub（战前斗将，胜者 +10% 属性）但是**自动比大小**。
+     *   要做成玩法需三件：①可选非强制 ②招式心理战（突刺/格挡/佯攻/蓄力，
+     *   看不到对手出什么）③将领性格决定招式池」。
+     *
+     * 这一版做的是 ②③ 的**手动斗将**（独立入口，不拦出征）：
+     *   玩家出 5 招，对手的招式**看不到**，但它的倾向可以从属性推出来 ——
+     *   高武力爱突刺、高谋略爱佯攻、高统率爱格挡。观察两合就能猜。
+     *   这就是"不可预判 × 可预判"那条尺子：随机里带倾向，不是纯掷骰。
+     * ============================================================ */
+    moves: {
+      stab: { name: '突刺', beats: 'charge', note: '打断蓄力' },
+      guard: { name: '格挡', beats: 'stab', note: '挡住直取' },
+      feint: { name: '佯攻', beats: 'guard', note: '骗开架势' },
+      charge: { name: '蓄力', beats: 'feint', note: '不理虚招' }
+    },
+    moveOrder: ['stab', 'guard', 'feint', 'charge'],
+    playRounds: 5,       /* 手动斗将 5 合，先到 3 分胜 */
+    winScore: 3
   };
 
   DATA.WILD_GARRISON = { perLevel: 10000 };
@@ -4574,6 +4595,25 @@ window.GAME = window.GAME || {};
    * 两个翻法**互斥** —— 拿材料的就没有资源，这就是"放弃"。
    * 越远越富（ruin.tierMulOf：40 格外封顶 +150%），探索的回报落在产出上。
    * ============================================================ */
+  /* ============================================================
+   * v92.8：年景（构想 B5「历法 = 赛季」）
+   * ------------------------------------------------------------
+   * 文档原话：「11 个年号各带独特规则 …… 只换规则表，**几乎零成本**」。
+   * 年号纪元在 v90.93 已退役，这里用 `world.year % N` 循环取年景，不复活旧系统。
+   *
+   * ⚠️ 只影响**新系统的参数**（营地招募 / 势力推进 / 视野 / 遗迹产出），
+   *    不碰粮产、训练、战斗这些核心数值 —— 那些一动就是全部平衡重标，
+   *    且现有断言会大面积漂移。年景是"世界的天气"，不是"数值的补丁"。
+   * ============================================================ */
+  DATA.YEARS = [
+    { id: 'calm', name: '平年', note: '风调雨顺，四方无事。' },
+    { id: 'harvest', name: '丰年', note: '粮仓满溢，来投者众。', campMul: 1.3 },
+    { id: 'war', name: '战年', note: '四方刀兵，军阀并起。', factionMul: 2.0 },
+    { id: 'explore', name: '开拓年', note: '道路畅通，视野更远。', fogPlus: 1 },
+    { id: 'plague', name: '疫年', note: '病气弥漫，营地闭门。', campMul: 0.7 },
+    { id: 'boom', name: '兴年', note: '百业俱兴，旧世之物重现。', ruinMul: 1.3 }
+  ];
+
   DATA.RUIN = {
     chance: 0.0025,        /* 陆地格约 0.25%（40962 × 0.25% ≈ 100 处）*/
     kinds: [
@@ -13556,6 +13596,26 @@ window.GAME = window.GAME || {};
      它唯一的消费点是全境汇总的「丙 · 建筑专精」那一节，而老板要求
      专精说明搬进**对应建筑**的面板里（那里直接读 masteryTierOf(bid)，不需要列表）。
      留着就是死函数（audit 会报），所以整段撤掉。 */
+
+  /* ============================================================
+   * v92.8：年景（构想 B5「历法 = 赛季」）—— 唯一出口
+   * ------------------------------------------------------------
+   * `world.year % N` 循环。年号纪元 v90.93 已退役，这里不复活旧系统。
+   * 只影响新系统的参数（营地/势力/视野/遗迹），不碰粮产训练战斗。
+   * ============================================================ */
+  GAME.yearOf = function () {
+    var L = (GAME.DATA && GAME.DATA.YEARS) || [];
+    if (!L.length) return null;
+    var y = ((GAME.state && GAME.state.world && GAME.state.world.year) || 1) | 0;
+    var i = ((y - 1) % L.length + L.length) % L.length;
+    return L[i];
+  };
+  /* 取某个年景修数的便捷出口（没配 yearly 字段就是 1） */
+  GAME.yearMulOf = function (key) {
+    var Y = GAME.yearOf();
+    if (!Y || Y[key] == null) return 1;
+    return Y[key];
+  };
 
   /* --------- 幸存者上限（居所等级表） --------- */
   GAME.maxPopOf = function (city, ignoreGuard) {
@@ -25676,6 +25736,9 @@ window.GAME = window.GAME || {};
     var tiers = C.tiers || [];
     var pct = F.stats().pct;
     for (var i = 0; i < tiers.length; i++) if (pct >= tiers[i].pct) r = tiers[i].r;
+    /* v92.8：年景（B5）—— 开拓年视野 +1（只加不减，不给惩罚） */
+    var _y = (GAME.yearOf ? GAME.yearOf() : null);
+    if (_y && _y.fogPlus) r += _y.fogPlus;
     return r;
   };
   F.outpostRadius = function () {
@@ -26087,7 +26150,8 @@ window.GAME = window.GAME || {};
     if (mode === 'recruit') {
       var city = C.cityNearOf(ci);
       if (!city) return { ok: false, msg: '附近没有己方城市' };
-      var mul = C.waryMul();
+      /* v92.8：年景（B5）—— 丰年多来三成，疫年闭门。风声与年景相乘。 */
+      var mul = C.waryMul() * (GAME.yearMulOf ? GAME.yearMulOf('campMul') : 1);
       var n = Math.max(1, Math.round(w.pop * mul));
       /* 人口走既有出口：直接加到存量的 pop（不超上限）*/
       var cap = GAME.effPopCapOf ? GAME.effPopCapOf(city) : (GAME.maxPopOf ? GAME.maxPopOf(city) : 0);
@@ -26216,7 +26280,7 @@ window.GAME = window.GAME || {};
     var pc = GAME.currentCity ? GAME.currentCity() : null;
     if (!s || !pc || pc.ci == null || pc.ci < 0) return 1;
     var d = s.distOf({ ci: pc.ci }, { ci: ci });
-    return 1 + Math.min(1.5, d / 40);          /* 40 格外封顶 +150% */
+    return (1 + Math.min(1.5, d / 40)) * (GAME.yearMulOf ? GAME.yearMulOf('ruinMul') : 1);   /* 40 格外封顶 +150% · 兴年再 ×1.3 */
   };
 
   /* 与营地同一套节流扫描：候选只有几十处，5 秒扫一次几乎零成本 */
@@ -26418,6 +26482,31 @@ window.GAME = window.GAME || {};
   };
 
   /* ============================================================
+   * v92.9（构想 C1）：势力代将 —— 斗将的对手
+   * ------------------------------------------------------------
+   * 每家有固定的人格（名字 + 三维），玩家可以**记住他的出招倾向**：
+   *   铁砧断钉（武力 22）爱突刺 · 灰墙老砧（统率 22）爱格挡
+   *   焰誓灰烬（武力 20）爱突刺 · 商盟秤砣（谋略 20）爱佯攻
+   * 这就是「可预判」：不是纯掷骰，属性高什么、就更容易出什么。
+   * ============================================================ */
+  FA.rivalOf = function (fid) {
+    var T = {
+      anvil: { name: '断钉', yw: 22, zm: 12, tong: 14 },
+      wall: { name: '老砧', yw: 14, zm: 14, tong: 22 },
+      oath: { name: '灰烬', yw: 20, zm: 16, tong: 14 },
+      guild: { name: '秤砣', yw: 12, zm: 20, tong: 18 }
+    }[fid] || { name: '无名将', yw: 16, zm: 16, tong: 16 };
+    var d = FA.defOf(fid);
+    return {
+      id: 'rival-' + fid,
+      name: (d ? d.name + ' · ' : '') + T.name,
+      yw: T.yw, zm: T.zm, tong: T.tong,
+      level: 20,
+      _rival: true
+    };
+  };
+
+  /* ============================================================
    * tick —— 每月推进一次（不按"日"：日只有 1.3 现实秒，会变成抽搐）
    * ------------------------------------------------------------
    * 半径增长 × 该家的侵略性。上限 maxR 保证不会把整颗球吃干净 ——
@@ -26439,7 +26528,8 @@ window.GAME = window.GAME || {};
     var c = cfg();
     arr.forEach(function (f) {
       var d = FA.defOf(f.id) || {};
-      var g = (c.growPerMonth || 0.8) * (d.aggr || 1);
+      /* v92.8：年景（B5）—— 战年军阀并起，推进翻倍。 */
+      var g = (c.growPerMonth || 0.8) * (d.aggr || 1) * (GAME.yearMulOf ? GAME.yearMulOf('factionMul') : 1);
       f.r = Math.min(c.maxR || 14, Math.round((f.r + g) * 100) / 100);
     });
     return { month: month };
@@ -29735,6 +29825,75 @@ window.GAME = window.GAME || {};
     return '⚔ 斗将：' + U.escape(atkGen.name) + ' vs ' + U.escape(defGen.name) +
       '（战前 ' + Math.round((D.chance == null ? 0.5 : D.chance) * 100) + '% 触发 · 胜者全军 +' +
       Math.round((D.bonusPct == null ? 0.10 : D.bonusPct) * 100) + '%）';
+  };
+
+  /* ============================================================
+   * v92.9（构想 C1）：**手动斗将** —— 招式心理战
+   * ------------------------------------------------------------
+   * 文档：「已有 stub 但是自动比大小。要做成玩法需三件：
+   *   ①可选非强制 ②招式心理战（看不到对手出什么）③将领性格决定招式池」。
+   *
+   * 这里给 ②③ 一个可操作的形状：
+   *   · 玩家出 5 招（突刺/格挡/佯攻/蓄力），每招克一种、被一种克；
+   *   · 对手的招式**当合不显示**，只看得到"谁占先"；
+   *   · 对手出招由**属性倾向**加权（高武力偏突刺、高谋略偏佯攻、
+   *     高统率偏格挡），所以观察两合能猜 —— 这是"可预判"那一半；
+   *   · 结果不可撤销（这一场合就是这一场），这是"不可逆"那一半。
+   *
+   * 纯函数：不落任何状态。履历由调用方（GAME.doDuel）记。
+   * ============================================================ */
+  GAME.battle.duelTendency = function (g) {
+    /* 倾向 = 属性权重，返回一组相对权重（不需要归一化，抽样时按累计）*/
+    var yw = (g && g.yw) || 10, zm = (g && g.zm) || 10, tong = (g && g.tong) || 10;
+    return {
+      stab: 1 + yw / 20,        /* 武力高 → 突刺 */
+      guard: 1 + tong / 20,     /* 统率高 → 格挡 */
+      feint: 1 + zm / 20,       /* 谋略高 → 佯攻 */
+      charge: 1.1               /* 蓄力：谁也不特别偏好，留个底 */
+    };
+  };
+  /* 对手当合出什么（确定性：同一 seed 同一合必得同一招） */
+  GAME.battle.duelEnemyMove = function (defGen, round, seed) {
+    var D = DATA.DUEL || {};
+    var order = D.moveOrder || ['stab', 'guard', 'feint', 'charge'];
+    var w = GAME.battle.duelTendency(defGen);
+    var tot = 0, i;
+    for (i = 0; i < order.length; i++) tot += (w[order[i]] || 1);
+    var r = GAME.invasionRoll('duelm|' + (defGen && defGen.id) + '|' + round + '|' + (seed == null ? 0 : seed)) * tot;
+    var acc = 0;
+    for (i = 0; i < order.length; i++) {
+      acc += (w[order[i]] || 1);
+      if (r < acc) return order[i];
+    }
+    return order[order.length - 1];
+  };
+  /* 打一场手动斗将：moves = ['stab','guard',...]（长度 playRounds） */
+  GAME.battle.duelPlay = function (atkGen, defGen, moves, seed) {
+    var D = DATA.DUEL || {};
+    var MV = D.moves || {};
+    if (!atkGen || !defGen || !moves || !moves.length) return null;
+    var need = D.winScore || 3;
+    var wa = 0, wb = 0, log = [], rows = [];
+    for (var i = 0; i < moves.length; i++) {
+      var am = moves[i];
+      var bm = GAME.battle.duelEnemyMove(defGen, i + 1, seed);
+      var res;
+      if (am === bm) res = 'tie';
+      else if (MV[am] && MV[am].beats === bm) res = 'a';
+      else res = 'b';
+      if (res === 'a') wa++; else if (res === 'b') wb++;
+      var an = (MV[am] || {}).name || am, bn = (MV[bm] || {}).name || bm;
+      rows.push({ r: i + 1, a: am, b: bm, aName: an, bName: bn, res: res });
+      log.push('第' + (i + 1) + '合：' + an + ' 对 ' + bn + '　'
+        + (res === 'a' ? (atkGen.name + ' 占先') : res === 'b' ? (defGen.name + ' 占先') : '相持'));
+      if (wa >= need || wb >= need) break;          /* 先到 3 分即止 */
+    }
+    var winner = wa > wb ? 'atk' : (wb > wa ? 'def' : 'draw');
+    log.push('斗将 ' + rows.length + ' 合，' + (winner === 'atk' ? atkGen.name : winner === 'def' ? defGen.name : '未分胜负')
+      + '（' + wa + ' : ' + wb + '）');
+    return { done: true, winner: winner, wa: wa, wb: wb, rows: rows, log: log,
+      winnerName: winner === 'atk' ? atkGen.name : winner === 'def' ? defGen.name : '未分胜负',
+      bonusPct: (D.bonusPct == null ? 0.10 : D.bonusPct) };
   };
 
   /* 战利品按城类型 */
@@ -46028,7 +46187,14 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
     var arr = F.stats();
     if (!arr.length) return '';
     var th = F.threatOf();
+    var Y = GAME.yearOf ? GAME.yearOf() : null;
     var h = '<div style="margin:0 0 10px;padding:8px 10px;border:1px solid var(--wood-light);border-radius:4px;">';
+    /* v92.8：年景（B5）—— 今年是什么年，直接写在世界态势上面一行 */
+    if (Y) {
+      h += '<div style="font-size:var(--fs-cap);color:var(--text-dim);margin-bottom:4px;">'
+        + '🌍 今年 · <b style="color:var(--gold-light);">' + U.escape(Y.name) + '</b>　'
+        + U.escape(Y.note || '') + '</div>';
+    }
     h += '<div style="font-size:var(--fs-cap);color:var(--gold-light);margin-bottom:6px;">⚔ 四方势力'
       + (th ? '　<span style="color:var(--red-light);">⚠ ' + U.escape(th.name) + ' 已到 ' + Math.round(th.near) + ' 格内</span>' : '')
       + '</div>';
@@ -46038,6 +46204,8 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
         + '<b>' + U.escape(x.name) + '</b> <span style="color:var(--text-dim);">' + U.escape(x.trait) + '</span><br>'
         + '半径 ' + x.r + ' · 约 ' + U.numText(x.cells, 0) + ' 格'
         + (x.near != null ? '<br><span style="color:var(--text-dim);">距你 ' + Math.round(x.near) + ' 格</span>' : '')
+        + '<br><button class="btn" style="font-size:var(--fs-cap);padding:1px 8px;margin-top:3px;"'
+        + ' data-action="duel-with" data-fid="' + x.id + '">⚔ 叫阵</button>'
         + '</div>';
     });
     h += '</div>';
@@ -50791,6 +50959,88 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
       h += '<div style="font-size:var(--fs-cap);color:var(--text-dim);">'
         + '只能选一个。翻过之后这处遗迹就空了 —— 另一样永远留在这里。<br>'
         + '离你的城越远，翻出来的东西越多（这里 ×' + (Math.round(mul * 100) / 100) + '）。</div>';
+    }
+    h += '</div><div class="panel-foot"><button class="btn" data-action="close-modal">关闭</button></div>';
+    ui.openModal(h);
+  };
+
+  /* ============================================================
+   * v92.9（构想 C1）：手动斗将 —— 招式心理战
+   * ------------------------------------------------------------
+   * 玩家出 5 招，对手的招式**当合不显示**，只看得到谁占先。
+   * 对手出招按属性倾向加权（`s duelTendency`），观察两合能猜 ——
+   * 这既是"看不到"，又不是纯掷骰（文档要的"不可预判 × 可预判"）。
+   *
+   * ⚠️ 目前只记**履历与胜负**，不接战前士气 —— 面板上明写。
+   * ============================================================ */
+  ui.openDuel = function (fid, moveId) {
+    var st = GAME.state;
+    if (!st || !GAME.faction) return;
+    var D = DATA.DUEL || {}, MV = D.moves || {}, order = D.moveOrder || [];
+    var need = D.playRounds || 5;
+    var S = ui._duel;
+    if (!S || S.fid !== fid) {
+      var gens = (st.generals || []).filter(function (g) { return !g.dead; });
+      S = ui._duel = { fid: fid, genId: gens.length ? gens[0].id : null, moves: [], seed: String(U.now()), res: null };
+    }
+    if (moveId && !S.res && S.moves.length < need) {
+      S.moves.push(moveId);
+      if (S.moves.length >= need) {
+        var g0 = null;
+        (st.generals || []).forEach(function (x) { if (x.id === S.genId) g0 = x; });
+        var rival = GAME.faction.rivalOf(fid);
+        S.res = GAME.battle.duelPlay(g0 || { id: 'me', name: '我军主将' }, rival, S.moves, S.seed);
+        if (S.res && g0) {
+          if (S.res.winner === 'atk') g0.duelW = (g0.duelW || 0) + 1;
+          else if (S.res.winner === 'def') g0.duelL = (g0.duelL || 0) + 1;
+        }
+      }
+    }
+    var rival = GAME.faction.rivalOf(fid);
+    var me = null;
+    (st.generals || []).forEach(function (x) { if (x.id === S.genId) me = x; });
+
+    var h = '<div class="gold-heading">⚔ 向 ' + U.escape((GAME.faction.defOf(fid) || {}).name || fid) + ' 叫阵</div>';
+    h += '<div class="panel-body">';
+    h += '<div class="exp-info exp-info-l" style="color:var(--text-dim);">'
+      + '对手：<b>' + U.escape(rival.name) + '</b>（武 ' + rival.yw + ' · 谋 ' + rival.zm + ' · 统 ' + rival.tong + '）'
+      + '　— 他的招式看不到，但**属性高的招他更爱出**。' + '</div>';
+
+    /* 五合进度 */
+    h += '<div style="display:flex;gap:6px;margin:10px 0;flex-wrap:wrap;">';
+    for (var i = 0; i < need; i++) {
+      var got = S.moves[i];
+      h += '<span style="padding:3px 9px;border:1px solid var(--wood-light);border-radius:3px;font-size:var(--fs-cap);'
+        + (got ? 'color:var(--gold-light);' : 'color:var(--text-dim);') + '">'
+        + (got ? U.escape((MV[got] || {}).name || got) : ('第 ' + (i + 1) + ' 合')) + '</span>';
+    }
+    h += '</div>';
+
+    if (!S.res) {
+      h += '<div style="display:flex;gap:8px;flex-wrap:wrap;">';
+      order.forEach(function (mk) {
+        var m = MV[mk] || {};
+        h += '<button class="btn" data-action="duel-move" data-mv="' + mk + '" title="' + U.escape(m.note || '') + '">'
+          + U.escape(m.name || mk) + '</button>';
+      });
+      h += '</div>';
+      h += '<div style="font-size:var(--fs-cap);color:var(--text-dim);margin-top:8px;">'
+        + '突刺克蓄力 · 格挡克突刺 · 佯攻克格挡 · 蓄力克佯攻（同招相持）。出满 ' + need + ' 合即结算，中途不能改。</div>';
+    } else {
+      h += '<table class="tbl"><thead><tr><th>合</th><th>你</th><th>他</th><th>结果</th></tr></thead><tbody>';
+      S.res.rows.forEach(function (r) {
+        h += '<tr><td class="num">' + r.r + '</td><td>' + U.escape(r.aName) + '</td><td>' + U.escape(r.bName) + '</td>'
+          + '<td style="color:' + (r.res === 'a' ? 'var(--gold-light)' : r.res === 'b' ? 'var(--red-light)' : 'var(--text-dim)') + ';">'
+          + (r.res === 'a' ? '占先' : r.res === 'b' ? '被压' : '相持') + '</td></tr>';
+      });
+      h += '</tbody></table>';
+      h += '<div class="exp-info exp-info-l" style="margin-top:8px;color:var(--gold-light);">'
+        + U.escape(S.res.winnerName) + ' 胜（' + S.res.wa + ' : ' + S.res.wb + '）'
+        + '　· 履历：' + (me ? ((me.duelW || 0) + ' 胜 ' + (me.duelL || 0) + ' 负') : '—') + '</div>';
+      h += '<div style="font-size:var(--fs-cap);color:var(--text-dim);margin-top:6px;">'
+        + '（这一版只记履历，尚未接入战前士气加成。）</div>';
+      h += '<div style="margin-top:8px;"><button class="btn" data-action="duel-with" data-fid="' + fid + '"'
+        + ' data-reset="1">再来一场</button></div>';
     }
     h += '</div><div class="panel-foot"><button class="btn" data-action="close-modal">关闭</button></div>';
     ui.openModal(h);
@@ -57921,6 +58171,12 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
       case 'camp-act': GAME.doCampAct(el.getAttribute('data-ci'), el.getAttribute('data-mode')); break;
       /* v92.7：遗迹翻找（两个翻法互斥，翻一次就没了） */
       case 'ruin-act': GAME.doRuinAct(el.getAttribute('data-ci'), el.getAttribute('data-rs')); break;
+      /* v92.9：斗将（向势力代将叫阵 · 招式心理战） */
+      case 'duel-with':
+        if (el.getAttribute('data-reset')) ui._duel = null;
+        ui.openDuel(el.getAttribute('data-fid'));
+        break;
+      case 'duel-move': ui.openDuel(ui._duel && ui._duel.fid, el.getAttribute('data-mv')); break;
       /* v91.59（老板）：自动采购（逐商品补货到目标 · 每现实日上限内）。 */
       case 'toggle-auto-buy': GAME.doToggleAutoBuy(); break;
       case 'auto-buy-once': (function () { var r = GAME.autoBuyOnce(); ui.toast(r.msg); GAME.refreshView(); })(); break;
