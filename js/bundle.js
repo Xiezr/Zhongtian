@@ -4543,6 +4543,10 @@ window.GAME = window.GAME || {};
   DATA.FOG = {
     baseRadius: 4,            /* 开局：城周 4 格全明 */
     outpostRadius: 2,         /* 前哨 / 据点 */
+    /* v92.6（构想 A2）：迷雾边缘的**半信息痕迹**概率 —— 紧贴已探明区的未探明格，
+       有这个比例会显示一颗暗红烟点。知道"那边有东西"，但不知道是什么。
+       纯视觉：不给地形、不给等级、点不开。只回答"往哪走"。 */
+    traceChance: 0.28,
     tiers: [
       { pct: 3, r: 5, name: '初识周边' },
       { pct: 10, r: 6, name: '走遍近畿' },
@@ -27428,6 +27432,41 @@ window.GAME = window.GAME || {};
       });
     }
     M._flags = grp; scene.add(grp);
+    /* ============================================================
+     * v92.6（构想 A2：半信息痕迹）—— 迷雾边缘的"有东西"暗示
+     * ------------------------------------------------------------
+     * 文档原话：「未点亮区能看到烟柱、脚印、无线电杂音，知道『有东西』
+     * 但不知是什么」。
+     *
+     * 这是纯视觉，不带任何情报：不给地形、不给等级、点不开、不进 info 条。
+     * 它只回答"往哪走"这个方向问题 —— 全黑的球玩家不知道往哪推。
+     * 位置由哈希决定（确定性），玩家可以记住"那根烟一直在那边"。
+     * ============================================================ */
+    if (GAME.fog && GAME.DATA && GAME.DATA.FOG && GAME.DATA.FOG.traceChance) {
+      var _tc = GAME.DATA.FOG.traceChance;
+      var _tn = _tileCells.length;
+      for (var _ti = 0; _ti < _tn; _ti++) {
+        if (GAME.fog.get(_ti) !== 0) continue;          /* 只看未探明格 */
+        var _tc0 = _tileCells[_ti];
+        if (!_tc0 || !_tc0.pos || !_tc0.nt) continue;
+        /* 必须紧贴已探明区（更远的地方，玩家连"那边有东西"都没理由知道） */
+        var _near = false;
+        for (var _adj = 0; _adj < _tc0.nt; _adj++) {
+          var _nb = SP.adj[_ti] && SP.adj[_ti][_adj];
+          if (_nb != null && _nb >= 0 && GAME.fog.get(_nb) > 0) { _near = true; break; }
+        }
+        if (!_near) continue;
+        /* 确定性：同一格永远有/没有这根烟 */
+        var _hx = (_ti * 2654435761 + (_tileSub + 7) * 40503) >>> 0;
+        _hx ^= _hx >>> 13; _hx = (_hx * 1274126177) >>> 0; _hx ^= _hx >>> 16;
+        if ((_hx >>> 0) / 4294967296 >= _tc) continue;
+        var _P = _tc0.pos, _L = Math.hypot(_P[0], _P[1], _P[2]) || 1, _lf = 5;
+        var _tm = new THREE.Mesh(new THREE.SphereGeometry(1.5, 6, 6),
+          new THREE.MeshBasicMaterial({ color: 0x9c5a3c, transparent: true, opacity: 0.75 }));
+        _tm.position.set(_P[0] + _P[0] / _L * _lf, _P[1] + _P[1] / _L * _lf, _P[2] + _P[2] / _L * _lf);
+        grp.add(_tm);
+      }
+    }
     /* v92.4：已发现的幸存者营地 —— 金珠（待交涉）/ 绿珠（已招募）/ 暗红珠（已洗劫）。
        只在已探明处显示：探明度掉了（换星球/重置）就不画，不泄露位置。 */
     if (GAME.camp && GAME.camp.found) {
