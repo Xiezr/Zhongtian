@@ -59126,7 +59126,7 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
      （这解释了"改了却说没生效"的观感）。老板若发现版本 ≠ 最新交付，按 Ctrl+F5
      强制刷新即获得新代码。⚠️ 发版须走 **bump_version.py --bump --version vX.Y**（它同步 index.html 的 ?v=/BUILD
      与这里的 GAME.VERSION 三处）—— 只手改 index.html 会让版本号冻住（v91.18 前的病灶）。 */
-  GAME.VERSION = 'v92.0';
+  GAME.VERSION = 'v92.2';
   function boot() {
     fitAppSize();
     try {

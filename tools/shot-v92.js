@@ -117,6 +117,13 @@ function serve() {
   await page.waitForTimeout(1800);
   await page.screenshot({ path: path.join(OUT, '03-memorial.png') });
 
+  /* 自动探索面板（v92.2 新增「顺带探路」开关） */
+  await page.evaluate(function () {
+    if (GAME.ui.openAutoExplore) GAME.ui.openAutoExplore();
+  });
+  await page.waitForTimeout(1500);
+  await page.screenshot({ path: path.join(OUT, '04-autoexplore.png') });
+
   fs.writeFileSync(path.join(OUT, 'report.json'), JSON.stringify({ stat, stat2, errors }, null, 2));
   console.log('探明(开局)：', stat.seen, '/', stat.total, '=', stat.pct + '%');
   console.log('探明(点亮后)：', stat2.seen, '=', stat2.pct + '%');
