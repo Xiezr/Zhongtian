@@ -3288,7 +3288,7 @@ import './state.js';
   };
   GAME.wildDefenseAt = function (ci, lv) {
     if (lv == null) lv = GAME.map.wildLevelNow ? GAME.map.wildLevelNow(ci) : GAME.map.wildLevel(ci);
-    lv = Math.max(0, Math.min(10, lv | 0));
+    lv = Math.max(0, Math.min(15, lv | 0));   /* v91.89：上限 15 */
     var day = GAME.wildDefenseDay();
     var hash = (Math.imul(ci | 0, 73856093) ^ Math.imul(day | 0, 83492791)) >>> 0;
     var rand = U.rng(hash >>> 0);
@@ -3315,10 +3315,18 @@ import './state.js';
       var LG = DATA.WILD_GUARD_LV || { base: 30, perLv: 10, jit: 10 };
       var glv = LG.base + Math.max(0, lv - 1) * LG.perLv + Math.floor(rand() * LG.jit);
       var g = GAME.makeGeneral(sn + gn, glv, 'guard', null, false, rk.id, 'balance', rand);
-      GAME.guardFillOf(g, DATA.GUARD_FOLD);   /* v89.185：野外守将折损（半折，见 DATA.GUARD_FOLD） */
+      GAME.guardFillOf(g, GAME.guardBal.fold());   /* v91.87：开关决定折损档（默认 = DATA.GUARD_FOLD） */
+      if (GAME.guardBal) GAME.guardBal.applyGear(g, 'wild', lv);   /* v91.88：按野地等级配等效装备 */
       g.wild = true;
       g.title = title;
       gen = g;
+    }
+    /* v91.87：守将变强 → 守军数量同幅下调（开关关闭时 scaleArmy 原样返回） */
+    /* ⚠️ 只有"真有守将"的野地才补偿 —— 无将的野地守将没变强，砍兵就是白送（实测过） */
+    if (gen && GAME.guardBal && GAME.guardBal.on()) {
+      army = GAME.guardBal.scaleArmy(army, 'wild', lv);
+      total = 0;
+      for (var _wk in army) total += army[_wk];
     }
     return { lv: lv, day: day, army: army, total: total, gen: gen };
   };
@@ -5451,7 +5459,12 @@ import './state.js';
       s.settings.autoExplore = {
         on: false, act: null, everyMin: A.defaultFreqMin || 20, last: 0,
         dailyMax: (A.defaultDailyMax != null ? A.defaultDailyMax : 2),
-        army: {},                    /* 逐兵种「自动探索数量」上限（0/缺 = 不自动派） */
+        army: {},                    /* 逐兵种「自动探索数量」（0/缺 = 不自动派） */
+        /* v91.84（老板「把行为链每一个选项走到头」）：**清层编成**。
+           破层是一场真战斗（守军按层 8千~40万），与"带多少兵去采集"不是一套兵 ——
+           只做采集的玩家（探索编成 0）此前会被"清层需兵"卡死，第一层永远破不了。
+           本表单独设定；**留空 = 沿用探索编成**（老档/未设时行为不变）。 */
+        clearArmy: {},
         today: {},                   /* { 城id: 今日已派次数 } · 随现实日归零 */
         todayKey: '',
         /* v91.81（老板「自动探索开发所有星球和城市选项」）：探索范围 = **排除表**（黑名单）。
@@ -5462,15 +5475,24 @@ import './state.js';
            cityGen[cityId] = genId 表示**该城固定**用这位英雄；留空 = 该城不限。 */
         cityGen: {},
         genId: null,                 /* 全局兜底（界面只暴露「按城指定」，此键留作兼容/存档） */
+        /* v91.84（老板「把行为链每一个选项走到头」）：**默认开**。
+           原默认关 → 开局已清 0 层、所有行动全锁 → 自动探索永远只报「无可派行动」，
+           链条断在第一步（奇观界面也看不出该去破层）。
+           安全阀（防送死）：编成总兵力 < 该层「建议最小兵力」时**绝不出战**，
+           只打"带够了兵"的那一层；清层**不占**每城每日探索次数，成功即当轮重试派队。 */
+        autoClear: true,
       };
     }
     var c = s.settings.autoExplore;
     if (c.everyMin == null) c.everyMin = A.defaultFreqMin || 20;
     if (c.dailyMax == null) c.dailyMax = (A.defaultDailyMax != null ? A.defaultDailyMax : 2);
     if (!c.army) c.army = {};
+    if (!c.clearArmy || typeof c.clearArmy !== 'object') c.clearArmy = {};      /* v91.84 */
     if (!c.today) c.today = {};
     if (!c.offPlanets || typeof c.offPlanets !== 'object') c.offPlanets = {};   /* v91.81 */
     if (!c.offCities || typeof c.offCities !== 'object') c.offCities = {};      /* v91.81 */
+    if (!c.cityGen || typeof c.cityGen !== 'object') c.cityGen = {};            /* v91.82 */
+    if (c.autoClear == null) c.autoClear = true;                                /* v91.84 */
     if (!c.cityGen || typeof c.cityGen !== 'object') c.cityGen = {};            /* v91.82 */
     return c;
   };
@@ -5512,6 +5534,78 @@ import './state.js';
     });
     return { planets: planets, cities: cities };
   };
+  /* ============================================================
+   * v91.83（老板「奇观探索的行为链不对，全面复核」）—— **行为链收敛**。
+   * 复核发现两条断链，均在"选行动"这一步：
+   *   ① **开局死锁**：`wonderActGateOf` 最低门槛是 1 层（collect/study），
+   *      而 `pl.wonderClearedLv` 现实日刷新后 = 0 → **所有行动全锁** →
+   *      自动探索 100% 不工作，且界面只说"行动由系统随机"，看不出要清层。
+   *   ② **随机硬撞**：v91.79 改成随机取行动后，**不校验本城能不能做到** ——
+   *      `needArmy` 而玩家没设编成 → total=0 失败；`rescue` 的 `needLoad`
+   *      （总负重 2 万）不满足 → wonderExplore 直接拒 → **整城跳过**。
+   *      随机取到哪个算哪个，等于掷骰子决定这城探不探。
+   * 修法：**先算可行集，再随机**（不是先随机再撞墙）。
+   *   · `GAME.autoExploreActsFor(pid, city, cfg)` = 唯一出口，返回
+   *     { feas:[可行行动…], blocked:[{id,name,why,kind}…] }；
+   *   · `GAME._autoExploreActFit` = 单行动 × 本城 的编成/负重匹配；
+   *   · 可行集为空 → 若开了「自动清层」（cfg.autoClear）则派兵打下一层，
+   *     把链补上（清层 → 解锁行动 → 采集）；否则**带明确原因跳过**（不再静默）。
+   * ============================================================ */
+  /* 清层编成（唯一出口）：单独设了就用它，否则**沿用探索编成**（老档行为不变）。
+     返回 null = 一套兵都没有（无法破层）。 */
+  GAME.autoExploreClearComp = function (cfg) {
+    cfg = cfg || GAME.autoExploreCfg();
+    if (!cfg) return null;
+    var src = (cfg.clearArmy && Object.keys(cfg.clearArmy).length) ? cfg.clearArmy : (cfg.army || {});
+    var out = {}, any = false;
+    for (var k in src) { var q = Math.max(0, Math.floor(src[k] || 0)); if (q > 0) { out[k] = q; any = true; } }
+    return any ? out : null;
+  };
+  /* 单行动 × 本城 的编成匹配（含 needArmy / needLoad 两道门槛）。 */
+  GAME._autoExploreActFit = function (city, cfg, actId, act, compOverride) {
+    act = act || (DATA.WONDER_ACT_DEFS || {})[actId] || {};
+    var army = {}, total = 0, load = 0;
+    if (act.needArmy) {
+      var comp = {}, has = false;
+      var _src = compOverride || (cfg && cfg.army) || {};
+      for (var ik in _src) {
+        var iq = Math.max(0, Math.floor(_src[ik] || 0));
+        if (iq > 0) { comp[ik] = iq; has = true; }
+      }
+      if (!has) return { ok: false, kind: 'nocomp', why: '未设定编成' };
+      var m = GAME.autoMarchMatchCity(city, comp);
+      if (!m.ok) {
+        var why = m.reason === 'cap'
+          ? ('总兵力 ' + U.fmt(m.need) + ' 超本城练兵场出征容量 ' + U.fmt(m.cap))
+          : (((DATA.TROOPS[m.short] || {}).name || m.short) + ' 需 ' + U.fmt(m.need) + ' 现有 ' + U.fmt(m.have));
+        return { ok: false, kind: m.reason, why: why };
+      }
+      army = m.army; total = m.total;
+      for (var k2 in army) load += (army[k2] || 0) * (((DATA.TROOPS[k2] || {}).load) || 0);
+    }
+    /* v91.36：负重门槛（方舟救援须能"运回幸存者"）—— 与出征面板同一套 load 字段。 */
+    if (act.needLoad && load < act.needLoad) {
+      return { ok: false, kind: 'load',
+        why: '队伍总负重 ' + U.fmt(load) + ' < 所需 ' + U.fmt(act.needLoad) };
+    }
+    return { ok: true, army: army, total: total, load: load };
+  };
+  /* 本城 × 本星球奇观 的**可行行动集**（界面提示与自动派队共用同一出口）。 */
+  GAME.autoExploreActsFor = function (pid, city, cfg) {
+    var out = { feas: [], blocked: [], wonder: null };
+    var wd = GAME.wonderOf ? GAME.wonderOf(pid) : null;
+    out.wonder = wd;
+    if (!wd) return out;
+    (wd.acts || []).forEach(function (actId) {
+      var act = (DATA.WONDER_ACT_DEFS || {})[actId] || {};
+      var lock = GAME.wonderActLockOf(pid, actId);              /* 门槛层：未清层 → 锁 */
+      if (lock) { out.blocked.push({ id: actId, name: act.name || actId, why: lock, kind: 'lock' }); return; }
+      var f = GAME._autoExploreActFit(city, cfg, actId, act);   /* 能力：编成 / 负重 */
+      if (!f.ok) { out.blocked.push({ id: actId, name: act.name || actId, why: f.why, kind: f.kind }); return; }
+      out.feas.push({ id: actId, name: act.name || actId, army: f.army, total: f.total, load: f.load, act: act });
+    });
+    return out;
+  };
   /* 单城尝试：挑行动 → 取兵 → 找空闲英雄 → 派队。返回 { ok, msg }。 */
   GAME._autoExploreCity = function (pid, city, cfg) {
     var wd = GAME.wonderOf ? GAME.wonderOf(pid) : null;
@@ -5519,38 +5613,52 @@ import './state.js';
     if (!GAME.wonderPresent(pid)) return { ok: false, msg: '今日奇观未出现' };
     var W = DATA.WONDER_CFG || {};
     if (GAME.wonderActiveCount(pid) >= (W.maxActive || 3)) return { ok: false, msg: '在途已满' };
-    /* v91.79（老板）：不再限定主角行动 —— 直接按本星球奇观类型，从**已解锁**的可用行动里随机取一种
-       （适配多种奇观：采集/派军搜查/深潜攻坚/圣殿研读/方舟救援各自行为不一）。 */
-    var acts = (wd.acts || []).filter(function (a) { return !GAME.wonderActLockOf(pid, a); });
-    if (!acts.length) return { ok: false, msg: '可用行动均未解锁（须先清层）' };
-    var actId = acts[Math.floor(Math.random() * acts.length)];
-    var act = (DATA.WONDER_ACT_DEFS || {})[actId] || {};
-    /* 兵力：仅 needArmy 的行动按玩家设定编成匹配本城（达不到则跳过）；
-       仅英雄行动（采集/圣殿研读…）即使设了兵也不带兵出征。 */
-    var army = {}, total = 0;
-    if (act.needArmy) {
-      var comp = {}, hasComp = false;
-      if (cfg.army) { for (var ik in cfg.army) { var iq = Math.max(0, Math.floor(cfg.army[ik] || 0)); if (iq > 0) { comp[ik] = iq; hasComp = true; } } }
-      if (hasComp) {
-        var m = GAME.autoMarchMatchCity(city, comp);
-        if (!m.ok) {
-          var why = m.reason === 'cap'
-            ? ('总兵力 ' + U.fmt(m.need) + ' 超本城练兵场出征容量 ' + U.fmt(m.cap))
-            : ((DATA.TROOPS[m.short] || {}).name || m.short) + ' 需 ' + U.fmt(m.need) + ' 现有 ' + U.fmt(m.have);
-          return { ok: false, msg: '「' + city.name + '」未达设定编成（' + why + '），跳过' };
-        }
-        army = m.army; total = m.total;
-      } else {
-        /* 未设定编成：沿用旧逻辑（逐兵种上限 ∩ 城内实有）；全空则本行动不可派。 */
-        (DATA.TROOPS ? Object.keys(DATA.TROOPS) : []).forEach(function (id) {
-          var want = Math.max(0, Math.floor((cfg.army && cfg.army[id]) || 0));
-          if (want <= 0) return;
-          var have = ((city.army || {})[id]) || 0;
-          var take = Math.min(have, want);
-          if (take > 0) { army[id] = take; total += take; }
-        });
+    /* v91.83：先算**可行行动集**（已解锁 ∩ 本城能力满足），再从中随机取一种 ——
+       不再"随机取到哪个算哪个、撞上不可行就整城跳过"。 */
+    var A = GAME.autoExploreActsFor(pid, city, cfg);
+    var actId = null, army = {}, total = 0;
+    if (A.feas.length) {
+      /* v91.84：每日次数**只管派队**，不管破层（破层不吃次数，否则次数被吃光、永远轮不到采集）。 */
+      if ((cfg.dailyMax > 0) && (((cfg.today || {})[city.id]) || 0) >= cfg.dailyMax) {
+        return { ok: false, msg: '「' + city.name + '」已达每城每日 ' + cfg.dailyMax + ' 次' };
       }
-      if (total <= 0) return { ok: false, msg: '未配置兵种或城中无兵' };
+      var pick = A.feas[Math.floor(Math.random() * A.feas.length)];
+      actId = pick.id; army = pick.army; total = pick.total;
+    } else {
+      /* 可行集为空 —— 若开了「自动清层」则先派兵破下一层（补完行为链：
+         清层 → 解锁行动 → 采集）。默认关：清层要真打，不该默认烧兵。 */
+      var cleared = GAME.wonderClearedOf(pid);
+      var nextLv = cleared + 1;
+      var canClear = cfg.autoClear && nextLv <= GAME.wonderLayerCount();
+      if (canClear) {
+        /* v91.84：清层用**清层编成**（未设则沿用探索编成）—— 与"带多少兵采集"解耦。 */
+        var _cc = GAME.autoExploreClearComp(cfg);
+        var fit = GAME._autoExploreActFit(city, cfg, '__fight__', { needArmy: true }, _cc);
+        if (!fit.ok) {
+          return { ok: false, msg: '「' + city.name + '」自动清层未达编成（'
+            + (fit.kind === 'nocomp' ? '未设定清层编成，请在右侧「清层数量」列填写' : fit.why) + '），跳过' };
+        }
+        /* v91.84 安全阀：编成 < 该层「建议最小兵力」→ 不出战（否则每轮送死、链条永不前进）。 */
+        var _ldef = GAME.wonderLayerDefOf(nextLv);
+        var _need = _ldef.minTroops || 0;
+        if (_need > 0 && fit.total < _need) {
+          return { ok: false, msg: '「' + city.name + '」编成 ' + U.fmt(fit.total)
+            + ' 低于第 ' + nextLv + ' 层建议兵力 ' + U.fmt(_need) + '，未自动清层（避免送死）' };
+        }
+        var gC = GAME.autoExplorePickGen(cfg, city);
+        if (!gC) return { ok: false, msg: '「' + city.name + '」无空闲英雄，无法自动清层' };
+        if (gC.status && gC.status !== 'idle') {
+          return { ok: false, msg: gC.name + ' 正在执行任务，本次不自动清层' };
+        }
+        var _fr = GAME.wonderFightLayer(pid, nextLv, city.id, fit.army, gC.id);
+        /* 标记"这是清层"——主循环据此**不计入**每日探索次数，并在成功后当轮重试派队。 */
+        if (_fr && _fr.ok) _fr.cleared = true;
+        return _fr;
+      }
+      /* 未开自动清层 → 给**第一条**受阻原因（不再静默跳过）。 */
+      var b0 = A.blocked[0];
+      var why = b0 ? (b0.why || ('「' + b0.name + '」不可行')) : '本奇观无可用行动';
+      return { ok: false, msg: '「' + city.name + '」无可派行动（' + why + '）' };
     }
     /* v91.82（老板「自动探索也要按城指定英雄」）—— 与自动出征**同构**（同一出口 pickAutoGen）：
        ① 本城指定 cfg.cityGen[city.id]  >  ② 全局 cfg.genId  >  ③ 随机空闲（优先本城、排除君主）。
@@ -5584,7 +5692,7 @@ import './state.js';
        （那是 `_savePlanetSlice` 存的独立副本，原地改即落片、无需额外保存）。
        wonderExplore 内部经 cityByIdAnywhere 取到**同一个**城对象 → 扣兵落在正确的片上。 */
     var actPid = s.activePlanet || 1;
-    var done = 0, lastMsg = '', planets = GAME.planetsOf();
+    var done = 0, clearedN = 0, lastMsg = '', planets = GAME.planetsOf();
     planets.forEach(function (pl) {
       var pid = pl.id;
       /* v91.74：该星球的城按**该星球球面**算格（ci 只在球内唯一）。 */
@@ -5594,20 +5702,29 @@ import './state.js';
       /* v91.81（老板）：探索范围 —— 被取消勾选的星球/城市整体跳过（默认空表 = 全域）。 */
       if (!GAME.autoExploreInScope(cfg, pid)) return;
       cities.forEach(function (city) {
-        if ((cfg.dailyMax > 0) && ((cfg.today[city.id] || 0) >= cfg.dailyMax)) return;
         if (!GAME.autoExploreInScope(cfg, pid, city.id)) return;
         var r = GAME._autoExploreCity(pid, city, cfg);
-        if (r && r.ok) { cfg.today[city.id] = (cfg.today[city.id] || 0) + 1; done++; lastMsg = r.msg; }
+        /* v91.84：「清层」与「探索」是两件事 —— 清层**不吃**每城每日探索次数
+           （否则次数被破层吃光、城市永远轮不到派队）；
+           且清层成功后**当轮立刻重试一次**，把「清层 → 解锁 → 派队」在同一次 tick 内走完。 */
+        if (r && r.cleared) {
+          clearedN++; lastMsg = r.msg;
+          r = GAME._autoExploreCity(pid, city, cfg);   /* 同轮重试（清层已推进一层，行动已解锁） */
+        }
+        if (r && r.ok && !r.cleared) { cfg.today[city.id] = (cfg.today[city.id] || 0) + 1; done++; lastMsg = r.msg; }
         else if (r && r.msg) lastMsg = r.msg;
       });
     });
     /* 还原当前星球球面（逐星临时切换后必须切回，否则后续建造/科技按错地形算格）。 */
     var _cur = GAME.activePlanetOf && GAME.activePlanetOf();
     if (_cur && GAME.sphere && GAME.sphere.setPlanet) GAME.sphere.setPlanet(_cur.seed, _cur.params);
-    s.autoExploreInfo = { ok: done > 0,
-      msg: done > 0 ? ('全域 ' + planets.length + ' 星球 · 已派 ' + done + ' 城探索队') : (lastMsg || '待命'), at: now };
+    s.autoExploreInfo = { ok: done > 0 || clearedN > 0,
+      msg: (done > 0 || clearedN > 0)
+        ? ('全域 ' + planets.length + ' 星球 · 已派 ' + done + ' 城探索队' + (clearedN ? (' · 破 ' + clearedN + ' 层守卫') : ''))
+        : (lastMsg || '待命'), at: now };
+    if (clearedN) GAME.log('⚔ 自动探索：本回自动破层 ' + clearedN + ' 座（清层 → 解锁行动 → 继续采集）', 'sys', 'wild');
     if (done > 0) GAME.log('✨ 自动探索：全域 ' + done + ' 城各派一支奇观探索队（各向本星球奇观）');
-    return { ok: done > 0, msg: s.autoExploreInfo.msg };
+    return { ok: done > 0 || clearedN > 0, msg: s.autoExploreInfo.msg };
   };
 
   /* v90.54（老板）：自动研究**逐城遍历**（与 autoUpgrade 同构）—— 各城科研中心**并行**研究、互不阻塞。
@@ -7098,9 +7215,57 @@ import './state.js';
    *   守将强度改由**等级**承担（见 DATA.WILD_GUARD_LV / FORT_GUARD_LV 与 GAME.guardFillOf）。
    * 以后调守将资质只改这里（界面建议自动跟）。
    * ============================================================ */
+  /* v91.87：守将平衡套餐唯一开关出口（默认关 = v89.195 口径逐字节不变）。
+     三个消费点：资质（此处）· 折损（wildDefenseAt / fortGuardOf）· 守军数量补偿。 */
+  GAME.guardBal = {
+    on: function () {
+      var s = GAME.state;
+      return !!(s && s.settings && s.settings.guardBalance);
+    },
+    fold: function () {
+      return GAME.guardBal.on() ? (DATA.GUARD_FOLD_V2 || DATA.GUARD_FOLD) : DATA.GUARD_FOLD;
+    },
+    rankIdOf: function (kind, lv) {
+      if (!GAME.guardBal.on() || kind !== 'wild') return null;
+      var L = DATA.GUARD_RANK_LADDER;
+      if (!L || !L.length) return null;
+      return L[Math.max(0, Math.min(L.length - 1, (lv | 0) - 1))] || null;
+    },
+    /* v91.90：**补偿乘数退役** —— 守军数量已直接写进 DATA.WILD_DEFENSE（老板要"简洁"）。
+       保留函数只为不动调用链（据点的 scaleArmy 仍要它），恒返回 1。 */
+    compOf: function (kind, lv) {
+      return 1;
+    },
+    /* v91.88：守将的「等效装备」—— 按目标等级取档，再乘 gearMul（守将拿玩家同档的七成） */
+    gearOf: function (kind, lv) {
+      if (!GAME.guardBal.on()) return null;
+      var GG = DATA.GUARD_GEAR || {};
+      var i = Math.max(0, Math.min((DATA.GUARD_GEAR && DATA.GUARD_GEAR.atk ? DATA.GUARD_GEAR.atk.length : 11) - 1, (lv | 0)));
+      var m = (GG.mul != null ? GG.mul : 1);
+      var atk = Math.round(((GG.atk || [])[i] || 0) * m);
+      var def = Math.round(((GG.def || [])[i] || 0) * m);
+      if (!atk && !def) return null;
+      return { atk: atk, def: def };
+    },
+    /* 挂到守将身上（npcGear 由 genAttrs 消费 → 折进 atkPct/defPct） */
+    applyGear: function (g, kind, lv) {
+      if (!g) return g;
+      var ge = GAME.guardBal.gearOf(kind, lv);
+      if (ge) g.npcGear = ge; else delete g.npcGear;
+      return g;
+    },
+    scaleArmy: function (army, kind, lv) {
+      var k = GAME.guardBal.compOf(kind, lv);
+      if (!army || Math.abs(k - 1) < 1e-6) return army;
+      var out = {};
+      for (var id in army) out[id] = Math.max(1, Math.round((army[id] || 0) * k));
+      return out;
+    }
+  };
   GAME.guardRankIdxOf = function (kind, lv) {
     /* v89.185（老板 2）：资质定稿（lv 参数保留以兼容签名；强度不再经资质、改经等级） */
-    var want = (kind === 'fort') ? 'ming' : 'ying';
+    var _balRk = GAME.guardBal.rankIdOf(kind, lv);
+    var want = _balRk || ((kind === 'fort') ? 'ming' : 'ying');
     var idx = -1;
     (DATA.GEN_RANKS || []).forEach(function (r, i) { if (idx < 0 && r.id === want) idx = i; });
     return idx >= 0 ? idx : ((kind === 'fort') ? 3 : 2);
@@ -7409,7 +7574,18 @@ import './state.js';
   GAME.ATK_PER_YW = 10;      /* 1 武力 → 10 攻击值（展示口径，v52 保留） */
   GAME.DEF_PER_ZM = 10;      /* 1 谋略 → 10 防御值（展示口径，v52 保留） */
   GAME.PCT_PER_ATK = 10;     /* 装备：每 10 攻击值 → 全军攻击 +1%（v52 保留） */
-  GAME.PCT_PER_DEF = 10;     /* 装备：每 10 防御值 → 全军防御 +1%（v52 保留） */
+  /* ============================================================
+   * v91.91（2026-10-20）：防御换算**对齐攻击刻度**
+   * ------------------------------------------------------------
+   * 旧口径每 10 防御值 +1%，与攻击同一把尺 —— 但**武器只有 1 件、防具 22 件**：
+   *   q6 全套 atk 9,000（+900%）· def 109,824（+10,982%）。
+   * 于是后期玩家 perDef ≈ 131 倍，而守军 perA 只有 7 倍 →
+   * 守军每一下只打出名义伤害的 5%，堆到 3 倍兵力也打不动（实测）。
+   * 改为每 100 防御值 +1% 后，q6 全套 def → +1,098%，与攻击 +900% 同量级；
+   * q1 全套 +32% ↔ atk +26%，整个养成曲线两端都对齐。
+   * 只改这一处常数：装备数值、将领换算、科技/羁绊一概不动。
+   * ============================================================ */
+  GAME.PCT_PER_DEF = 100;    /* 装备：每 100 防御值 → 全军防御 +1%（v91.91 对齐攻击） */
   GAME.YW_PCT = 0.0005;      /* 武力：每点 → 全军攻击 +0.05%（每 20 点 +1%；v89.96 标定） */
   GAME.ZM_PCT = 0.0005;      /* 谋略：每点 → 全军防御 +0.05%（v89.96 标定） */
 
@@ -7424,6 +7600,51 @@ import './state.js';
      装备部分复用 pctOfVal（v52 的 /10/100），武力部分走 YW_PCT —— 两条腿各有依据。 */
   GAME.atkPctOf = function (yw, eqAtk) { return (yw || 0) * GAME.YW_PCT + GAME.pctOfVal(eqAtk, GAME.PCT_PER_ATK); };
   GAME.defPctOf = function (zm, eqDef) { return (zm || 0) * GAME.ZM_PCT + GAME.pctOfVal(eqDef, GAME.PCT_PER_DEF); };
+
+  /* ============================================================
+   * v91.92（老板拍板）：**指挥 = 覆盖 + 溢出减伤**（唯一出口）
+   * ------------------------------------------------------------
+   * 旧口径只有一条：`覆盖兵数 = 指挥 × 100`，覆盖内的部队吃满武力/谋略加成。
+   * 问题（tools/gen-cap.js 实测）：15 万兵只需指挥 1,500，而天启体 Lv240 的
+   * 指挥上限是 **19,134** —— 顶端 92% 的指挥**一点作用都没有**。
+   * 更糟的是指挥恰恰是唯一"确定性成长"（每级 +成长值）的属性，
+   * 于是玩家把自由点投指挥 = 白扔，而界面完全不会提示。
+   *
+   * 新规则（一句话）：**指挥 = 覆盖 + 减伤**，两条各自线性、互不纠缠。
+   *   覆盖 = min(1, 指挥×100 / 该兵种人数)   ← 与旧版逐点相同，前后期手感不变
+   *   减伤 = 30% × 指挥 / 20,000              ← 每 1,000 点指挥 = 1.5% 全军减伤
+   *
+   * 为什么减伤只跟指挥走、**不跟兵力走**（v91.92 前两版都试过，都不行）：
+   *   ① 按"溢出覆盖/兵数"算 → 700 人的小队随便带个将就满 30% 减伤
+   *      （任何带将的小股部队白拿），还顺手打破了「正常仗净损 ≤15%」的旧基线；
+   *   ② 加"规模兑现"补救 → 变成 **3 万兵 27% / 15 万兵 15%**：兵带得越多反而越不抗打，
+   *      玩家一问"为什么加兵变弱"就答不上来 —— 规则再自洽也是别扭的。
+   *   现在这条没有交互项：**只跟指挥走**，单调、可心算、不与任何其它系统打架。
+   *   顺带把四维摊成四条对称通道（这才是这套数值最漂亮的地方）：
+   *     武力 → 全军攻击（每 20 点 +1%）· 谋略 → 全军防御（每 20 点 +1%）
+   *     指挥 → 全军减伤（每 1,000 点 +1.5%）· 治理 → 体力 → 全军生命
+   *
+   * 为什么上限取 20,000：
+   *   指挥的**理论极值只有 19,134**（tools/gen-cap.js），所以 30% 是"看得见、取不到"的
+   *   渐近值 —— 和属性符"取最大值"、覆盖"刚好够用"一样，都不给玩家"到顶就废"的死点。
+   *
+   * 口径边界：
+   *   · **没有将领 = 没有减伤**（野地空将不白拿）；
+   *   · 覆盖仍受战斗条令科技（TB('command')）放宽；减伤不受科技影响（它是将领自身属性）。
+   * ============================================================ */
+  GAME.COVER_PER_TONG = 100;      /* 1 指挥 = 覆盖 100 兵（v52 起的老口径，不动） */
+  GAME.COVER_DR_MAX = 0.30;       /* 减伤上限（渐近值：实际极值 19,134 指挥 → 28.7%） */
+  GAME.COVER_DR_REF = 20000;      /* 吃满 30% 所需的指挥（= 指挥的整数天花板） */
+  GAME.coverOf = function (tong, cmdMul, cnt) {
+    var t = Math.max(0, tong || 0);
+    var cap = t * GAME.COVER_PER_TONG * (cmdMul || 1);
+    cnt = Math.max(0, cnt || 0);
+    return {
+      cap: cap,
+      cover: cnt > 0 ? Math.min(1, cap / cnt) : 0,
+      dr: GAME.COVER_DR_MAX * Math.min(1, t / GAME.COVER_DR_REF),
+    };
+  };
 
   GAME.genAttrs = function (g) {
     var b = GAME.systems.genEquipBonus(g);
@@ -7512,6 +7733,12 @@ import './state.js';
     a.atkVal = GAME.atkValOf(a.yw, a.atk);                 /* 英雄攻击值（展示） */
     a.defVal = GAME.defValOf(a.zm, a.def);                 /* 英雄防御值（展示） */
     a.atkPct = GAME.atkPctOf(a.yw, a.atk);                 /* 全军攻击加成（唯一原子；v89.96 双刻度） */
+    /* v91.88：守将的「等效装备」并进同一条百分比链（与玩家装备同刻度，不另开一套换算）。
+       只有守将（npcGear）有；玩家将读装备实例，这里恒 +0。 */
+    if (g.npcGear) {
+      a.atkPct += GAME.pctOfVal(g.npcGear.atk || 0, GAME.PCT_PER_ATK);
+      a.defPct += GAME.pctOfVal(g.npcGear.def || 0, GAME.PCT_PER_DEF);
+    }
     a.defPct = GAME.defPctOf(a.zm, a.def);                 /* 全军防御加成（同上） */
     return a;
   };

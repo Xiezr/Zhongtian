@@ -76,7 +76,7 @@ import './gltf.js';
   /* v91.33（性能）：版本戳（把 M.render 里的内联拼串抽出，预建时可预盖）。 */
   M._pverOf = function () { return (SP.seed3 ? SP.seed3() : 0) + '|' + (SP.sub || 0) + '|' + (SP.PLANET ? JSON.stringify(SP.PLANET) : ''); };
   M._mkVerOf = function () { return (((GAME.mapSliceOf && GAME.mapSliceOf()) || {}).cities || []).map(function (c) { return c.id + ':' + c.x + ',' + c.y; }).join('|') + '#' + _tileSub; };
-  M._flVerOf = function () { var sl = (GAME.mapSliceOf && GAME.mapSliceOf()) || {}; var fp = Object.keys(sl.forts || {}).sort().join(','); var wp = (sl.wilds || []).map(function (w) { return w.ci; }).sort(function (a, b) { return a - b; }).join('|'); return fp + '#' + wp + '#' + _tileSub; };
+  M._flVerOf = function () { var sl = (GAME.mapSliceOf && GAME.mapSliceOf()) || {}; var fp = Object.keys(sl.forts || {}).sort().join(','); var wp = (sl.wilds || []).map(function (w) { return w.ci; }).sort(function (a, b) { return a - b; }).join('|'); return fp + '#' + wp + '#' + _tileSub + '#' + (GAME.memorial ? GAME.memorial.total() : 0); };
   M._arVerOf = function () { var sl = (GAME.mapSliceOf && GAME.mapSliceOf()) || {}; return (sl.marches || []).map(function (m) { return m.id + ':' + m.cityId + '>' + m.tci; }).join('|') + '#' + _tileSub; };
   /* v91.33：**后台预建**全场景（进游戏后调用）—— 含**全部版本戳**（否则首次 M.render 会全量重建）。
      v91.35：拆成**可分段**的步骤（`preloadSteps`）—— 每段之间让出事件循环，避免一次性同步阻塞主线程。
@@ -245,7 +245,18 @@ import './gltf.js';
     /* 地块 = **纯线框**（老板：不要地块上色）· 只声明地块边界 */
     var ugeo = new THREE.BufferGeometry();
     ugeo.setAttribute('position', new THREE.Float32BufferAttribute(upos, 3));
-    var mat = new THREE.LineBasicMaterial({ color: 0x8fb4d6, transparent: true, opacity: 0.6, depthWrite: false });
+    /* v92：线框**顶点色** —— 迷雾遮罩靠它，不靠多画一层几何。
+       暗区把线框染成近黑（不是纯黑：留一点点轮廓，球面才不像一块死黑饼）；
+       半明略暗；全明保留原本的冷蓝。
+       为什么要走顶点色：线框画在 `_shellR` 球壳上，比地形表面高；
+       雾面若只贴地，线框就从雾里穿出来 —— 实测截图里暗区满屏白点就是这个。
+       而靠"把雾面抬高"去盖，盖住的是**整颗球**（含已探明区），越修越错。 */
+    var ucol = new Float32Array(upos.length);
+    for (var ui0 = 0; ui0 < ucol.length; ui0++) ucol[ui0] = 1;
+    var lineColAttr = new THREE.Float32BufferAttribute(ucol, 3);
+    ugeo.setAttribute('color', lineColAttr);
+    M._lineColAttr = lineColAttr;
+    var mat = new THREE.LineBasicMaterial({ color: 0xffffff, vertexColors: true, transparent: true, opacity: 0.6, depthWrite: false });
     M._shellMat = mat;
     tiles = new THREE.LineSegments(ugeo, mat);
     scene.add(tiles);
@@ -259,6 +270,85 @@ import './gltf.js';
     _tileSub = sub; _tileCells = cells; M._vdirs = SP.V; M._cent = SP.cent; M._icoF = SP.F;
   }
   var _tileCells = [];
+
+  /* ============================================================
+   * v92：迷雾层
+   * ------------------------------------------------------------
+   * 未探明（fog 0）→ 近黑的雾壳，看不见地形
+   * 半明  （fog 1）→ 灰纱，看得见起伏，不知道上面有什么
+   * 全明  （fog 2）→ 不遮
+   *
+   * 几何直接用 SP.fpos（每面 3 顶点 · faceCell 面→格）沿格子法线外扩：
+   * 雾必须浮在地形之上，否则山脊会穿破它。
+   * 只在 fog.ver() 变化时重建 —— 全量 24 万个面片，不能每帧跑。
+   * ============================================================ */
+  var _fogDark = null, _fogHalf = null;
+  function buildFog() {
+    var kill = function (m) { if (m) { scene.remove(m); if (m.geometry) m.geometry.dispose(); if (m.material) m.material.dispose(); } };
+    kill(_fogDark); kill(_fogHalf); _fogDark = _fogHalf = null;
+    var F = GAME.fog, SPn = GAME.sphere;
+    if (!F || !SPn || !SPn.fpos || !SPn.faceCell) return;
+    F.ensure();
+    var fpos = SPn.fpos, fc = SPn.faceCell, cells = SPn.cells;
+    var dark = [], half = [], t, v;
+    for (t = 0; t < fc.length; t++) {
+      v = F.get(fc[t]);
+      if (v === 0) dark.push(t); else if (v === 1) half.push(t);
+    }
+    function makeMesh(list, lift, color, opacity, order) {
+      if (!list.length) return null;
+      var arr = new Float32Array(list.length * 9), o = 0, i, k, b, d;
+      for (i = 0; i < list.length; i++) {
+        t = list[i];
+        var cx = cells[fc[t]];
+        d = (cx && cx.dir) || [0, 1, 0];
+        for (k = 0; k < 3; k++) {
+          b = t * 9 + k * 3;
+          arr[o++] = fpos[b] + d[0] * lift;
+          arr[o++] = fpos[b + 1] + d[1] * lift;
+          arr[o++] = fpos[b + 2] + d[2] * lift;
+        }
+      }
+      var g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(arr, 3));
+      var m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({
+        color: color, transparent: true, opacity: opacity,
+        side: THREE.DoubleSide, depthWrite: false
+      }));
+      m.renderOrder = order;
+      m.frustumCulled = false;
+      scene.add(m);
+      return m;
+    }
+    /* 外扩量：雾面只需盖住**自己脚下那格的地形**（山脊），不必去盖线框 ——
+       线框现在由顶点色自己熄掉（paintLineFog）。
+       上一版把 lift 提到 14 想盖线框，结果雾壳膨胀到把已探明区也挡住（截图确认）。 */
+    _fogDark = makeMesh(dark, 4, 0x070b11, 0.94, 21);
+    _fogHalf = makeMesh(half, 2.5, 0x2a3444, 0.5, 20);
+    paintLineFog();
+  }
+
+  /* 线框按探明度上色（与雾面同一把尺子：fog.get） */
+  function paintLineFog() {
+    var attr = M._lineColAttr, SPn = GAME.sphere;
+    if (!attr || !SPn || !SPn.uposCell) return;
+    var arr = attr.array, uc = SPn.uposCell, F = GAME.fog;
+    for (var i = 0; i < uc.length; i++) {
+      var v = F ? F.get(uc[i]) : 2;
+      var r, g, b;
+      if (v === 0) { r = 0.02; g = 0.03; b = 0.05; }        /* 未探明：近黑，只剩极淡轮廓 */
+      else if (v === 1) { r = 0.28; g = 0.36; b = 0.45; }   /* 半明：灰蓝 */
+      else { r = 0.56; g = 0.70; b = 0.84; }                /* 全明：原冷蓝 */
+      var o = i * 6;                                        /* 每段 2 顶点 × 3 分量 */
+      arr[o] = r; arr[o + 1] = g; arr[o + 2] = b;
+      arr[o + 3] = r; arr[o + 4] = g; arr[o + 5] = b;
+    }
+    attr.needsUpdate = true;
+  }
+  /* 该格是否被迷雾遮住（未探明）。标记/标签/点击都用这一把尺子。 */
+  function fogHides(ci) {
+    return !!(GAME.fog && GAME.fog.get(ci) === 0);
+  }
 
   /* ============================================================
    * 球面聚落层级：1 旧都（全球）→ 12 行省 → 36 市 → 240 区
@@ -581,6 +671,14 @@ import './gltf.js';
       if (ci < 0) return;
       mark[ci] = [80, 150, 230]; cellKind[ci] = 'own'; cellRef[ci] = c; M._ownCells[ci] = c;
     });
+    /* v92：**未探明的格子一律不出标记**。
+       只把地形画暗却照样显示每座城/每块野地，迷雾就只是"地图变暗"，
+       玩家仍然一眼看尽 —— 那不是未知，是滤镜。
+       己方城豁免（自家地盘必然已点亮，兜底防"自家城凭空消失"）。 */
+    Object.keys(mark).forEach(function (k) {
+      if (cellKind[k] === 'own') return;
+      if (fogHides(+k)) { delete mark[k]; delete cellKind[k]; delete cellRef[k]; }
+    });
     M.cellKind = cellKind; M.cellRef = cellRef;
     /* 平涂：每格六边形填色（贴地形 · 微抬）*/
     var pos = [], col = [], idx = [], base = 0;
@@ -606,6 +704,15 @@ import './gltf.js';
     var grp = new THREE.Group();
     var lp = [];
     function floatName(dir, text, colHex) {
+      /* v92：未探明格**不浮名**。否则雾里还飘着"灰烬城 / 某某府"，
+         等于把整张地图的行省结构白送 —— 迷雾就形同虚设了。
+         ⚠️ 必须用 **SP**（= GAME.mapSphere）反查，不能用 GAME.sphere：
+         双球面下逻辑球面可能还没 build（nv=0，nearestCell 恒返回 -1）→ 过滤静默失效，
+         未探明区照样飘城名（实测截图确认）。 */
+      if (GAME.fog && dir && SP.nearestCell) {
+        var _fci = SP.nearestCell(dir);
+        if (_fci >= 0 && GAME.fog.get(_fci) === 0) return;
+      }
       var r = R + Math.max(0, sphElev(dir)) * HSC;
       var g0 = [dir[0] * r, dir[1] * r, dir[2] * r];                 /* 地面点 */
       var g1 = [dir[0] * (r + 46), dir[1] * (r + 46), dir[2] * (r + 46)];   /* 悬浮点 */
@@ -767,6 +874,18 @@ import './gltf.js';
     var fo = sl.forts || {};
     Object.keys(fo).forEach(function (k) { place(fo[k], '#ffcf4d'); });   /* 己方据点 = 琥珀金 */
     (sl.wilds || []).forEach(function (w) { place(w, '#7bd88f'); });      /* 己方野地 = 绿 */
+    /* v92：**阵亡地点**留一面暗红的旗 —— 地图上看得见"这一带死过人"。
+       不做数字标签（"42 人"）挂在旗上：旗帜是纪念，不是战绩榜。 */
+    if (GAME.memorial && GAME.memorial.byPlace) {
+      var bp = GAME.memorial.byPlace();
+      Object.keys(bp).forEach(function (k) {
+        var ci = +k; if (!(ci >= 0)) return;
+        var cell0 = _tileCells[ci];
+        if (!cell0 || !cell0.pos) return;
+        if (GAME.fog && GAME.fog.get(ci) === 0) return;   /* 未探明的地方不显示（否则等于免费探图）*/
+        place({ ci: ci }, '#9c3b34');
+      });
+    }
     M._flags = grp; scene.add(grp);
   }
 
@@ -965,6 +1084,13 @@ import './gltf.js';
       if (M._sun && SP.PLANET && SP.PLANET.starColor != null) M._sun.color.setHex(SP.PLANET.starColor);   /* 恒星色温 → 光色 */
     }
     if (!built) { buildGlobe(); buildTiles(TILE_SUB); buildRegions(); buildMarkers(); buildFlags(); buildMarchArrows(); built = true; }
+    /* v92：迷雾层 —— 探明度一变就重建（行军点亮 / 侦查 / 占城都会推 ver）。
+       放在 built 之后：换星球时 buildTiles 换了 cells，雾层必须跟着重量。 */
+    var _fv = GAME.fog ? GAME.fog.ver() : 0;
+    if (_fv !== M._fogVer) {
+      M._fogVer = _fv; buildFog();
+      M._mkVer = null;   /* 迷雾变了 → 标记/浮名的可见集也变了，下一行强制重建 */
+    }
     buildWonder();   /* v91.30：奇观天体（按当前地图星球 · 幂等） */
     /* v90.81（老板 4 · L0 自转）：地图页静止 10s 无操作 → 星球按 PLANET.spinSec 自动旋转。
        见下方 insetInterval 驱动器（每 33ms 步进 + 重绘）。 */
@@ -1013,13 +1139,29 @@ import './gltf.js';
         ctx.fillStyle = 'rgba(10,14,20,.78)'; ctx.fillRect(14, ch - 40, _pw + 22, 28);
         ctx.strokeStyle = 'rgba(255,215,106,.7)'; ctx.lineWidth = 1.5; ctx.strokeRect(14, ch - 40, _pw + 22, 28);
         ctx.fillStyle = '#ffd76a'; ctx.fillText(_pt, 25, ch - 32);
+        /* v92：**行迹**（已探明 % + 当前视野半径），挂在星球标识同一行右侧。
+           放在地图上而不是藏在军务页里：探索度是这张地图的主状态，
+           玩家抬头就该看见"我还认识多少"。 */
+        if (GAME.fog && GAME.fog.stats) {
+          var _fs2 = GAME.fog.stats();
+          var _ft = '🗺 行迹 ' + _fs2.pct + '%　· 视野 ' + GAME.fog.radiusOf() + ' 格';
+          var _fx = 14 + _pw + 30;
+          ctx.font = '13px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+          var _fw = ctx.measureText(_ft).width;
+          ctx.fillStyle = 'rgba(10,14,20,.78)'; ctx.fillRect(_fx, ch - 40, _fw + 22, 28);
+          ctx.strokeStyle = 'rgba(143,180,214,.55)'; ctx.lineWidth = 1.5; ctx.strokeRect(_fx, ch - 40, _fw + 22, 28);
+          ctx.fillStyle = '#8fb4d6'; ctx.fillText(_ft, _fx + 11, ch - 32);
+        }
       }
     }
     /* 点击选中 → 画信息条（地块类型 + 等级）*/
     if (M._cell) {
       var _kname = { wild: '野地', fort: '据点', npc: '名城', adm: '行政城', own: '己方城' }[M._cellKind] || '野地';
-      var txt = '【' + _kname + '】' + M._cell.name + ' · 等级 ' + M._cell.level
-        + ' · 球系坐标 ' + (GAME.map.coordText ? GAME.map.coordText(M._cell.x, M._cell.y) : (Math.round(M._cell.lon) + '°E ' + Math.round(M._cell.lat) + '°'));
+      /* v92：未探明格**连地形名与海拔都不给** —— 否则信息条就成了免费的探图工具。 */
+      var txt = (M._cellKind === 'unknown')
+        ? '【未探明】这一带地图上没有记载'
+        : ('【' + _kname + '】' + M._cell.name + ' · 等级 ' + M._cell.level
+          + ' · 球系坐标 ' + (GAME.map.coordText ? GAME.map.coordText(M._cell.x, M._cell.y) : (Math.round(M._cell.lon) + '°E ' + Math.round(M._cell.lat) + '°')));
       /* v90.66（老板）：字号缩到与底部导航栏一致（原 bold 20px 偏大）。 */
       ctx.font = '13px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
       var tw = ctx.measureText(txt).width;
@@ -1119,6 +1261,15 @@ import './gltf.js';
     var face = hit[0].face, ci = M._collider.faceCell[face.a / 3 | 0];
     var cell = M._collider.cells[ci];
     if (!cell) return;
+    /* v92：**未探明的格子点不进去** —— 这是迷雾真正的玩法后果。
+       不做成"点开发现是空的"：那只是把信息藏一层，玩家照样能靠点击扫图。
+       整片未探明 = 地图上没有这一带，得先派人过去（这里连地形都不给看）。 */
+    if (fogHides(ci)) {
+      M._cell = cell; M._cellKind = 'unknown';
+      if (GAME.ui && GAME.ui.toast) GAME.ui.toast('🌫 ' + GAME.fog.unknownMsg());
+      if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
+      return;
+    }
     M._cell = cell;
     var kind = (M.cellKind && M.cellKind[ci]) || 'wild';   /* 地块属性：野地/城市/据点/行政城/己方城 */
     M._cellKind = kind;
@@ -1387,6 +1538,7 @@ import './gltf.js';
   M.buildWonder = buildWonder;
 
   M.rebuild = function () { built = false; _tileSub = -1; M._mkVer = null; M._flVer = null; M._arVer = null;
+    M._fogVer = -1;
     /* v91.30：清奇观天体 → 下次 M.render 按当前星球重建。 */
     if (M._wonderGrp) { scene.remove(M._wonderGrp); M._wonderGrp = null; M._wonderBody = null; M._wonderLam = null; } };
 })();

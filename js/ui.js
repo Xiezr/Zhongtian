@@ -2871,7 +2871,7 @@ import './state.js';
      exp = 出征战术（原「出征」改）、def = 防守战术（原「防守」改）、act = 出征（新）。 */
   /* v89.144（老板 3）：「编制 · 出战能力」改名**军队练兵场扩容**、整块搬出出征页，
      作为独立页签放在**军务总览右边**。 */
-  ui.MARCH_TABS = [['over', '军务总览'], ['expand', '军队练兵场扩容'], ['act', '出征'], ['exp', '出征战术'], ['def', '防守战术'], ['beacon', '警报'], ['affairs', '军务处']];
+  ui.MARCH_TABS = [['over', '军务总览'], ['expand', '军队练兵场扩容'], ['act', '出征'], ['exp', '出征战术'], ['def', '防守战术'], ['beacon', '警报'], ['affairs', '军务处'], ['memorial', '阵亡名录']];
   /* v89.116（老板「警报相关流水已经存在于军务的警报中」）：警报流水窗口 ——
      公文不再给警报页签，这条流水就是它的**唯一落点**，窗口从 12 提到 24 条。 */
   ui.BEACON_FLOW = 24;
@@ -3429,6 +3429,74 @@ import './state.js';
     return out;
   };
 
+  /* ============================================================
+   * v92：阵亡名录
+   * ------------------------------------------------------------
+   * 老板：「死多少不是问题，问题是死亡换来什么。」
+   * 老板：「不必过于强调死亡换来什么，这将调整玩家的道德感。」
+   *
+   * 所以这一页**只做一件事：把名字留下来。**
+   * ⚠️ 刻意的空白：
+   *   · 不给任何加成（"阵亡 N 人全军 +X%"）—— 那是给死亡标价；
+   *   · 不做"复仇任务"—— 那是把死人变成任务道具；
+   *   · 不拦出征、不弹警告 —— 它是一面墙，不是一道闸。
+   * 唯一"有用"的地方：它把**这场仗值不值**从数字变成了一张脸。
+   * ============================================================ */
+  ui.memorialHTML = function () {
+    var M = GAME.memorial;
+    if (!M) return '<div class="q-empty">阵亡名录未接入。</div>';
+    var st = (GAME.state || {}).stats || {};
+    var total = M.total();
+    var battles = st.deadBattles || 0;
+    var list = M.list(40);
+
+    var h = '<div class="sec-h">阵亡名录</div>';
+    h += '<div style="display:flex;gap:18px;flex-wrap:wrap;margin:6px 0 12px;">'
+      + '<div><div style="font-size:var(--fs-title);color:var(--gold-light);">' + U.fmt(total) + '</div>'
+      + '<div style="font-size:var(--fs-cap);color:var(--text-dim);">人未归</div></div>'
+      + '<div><div style="font-size:var(--fs-title);color:var(--text);">' + U.fmt(battles) + '</div>'
+      + '<div style="font-size:var(--fs-cap);color:var(--text-dim);">场有去无回</div></div>'
+      + '<div><div style="font-size:var(--fs-title);color:var(--text);">' + U.fmt(list.length) + '</div>'
+      + '<div style="font-size:var(--fs-cap);color:var(--text-dim);">条刻在墙上</div></div>'
+      + '</div>';
+
+    /* 探索度：和"未归"放一起 —— 都是这场远征的账。 */
+    if (GAME.fog && GAME.fog.stats) {
+      var fs = GAME.fog.stats();
+      h += '<div style="margin:0 0 12px;padding:8px 10px;border:1px solid var(--wood-light);border-radius:4px;">'
+        + '<div style="font-size:var(--fs-cap);color:var(--text-dim);">行迹 · 这颗星球已探明</div>'
+        + '<div style="display:flex;align-items:center;gap:8px;margin-top:4px;">'
+        + '<div class="pbar" style="flex:1;"><i style="width:' + Math.max(0.5, fs.pct) + '%"></i></div>'
+        + '<span style="font-size:var(--fs-cap);">' + U.fmt(fs.seen) + ' / ' + U.fmt(fs.total) + ' 格（' + fs.pct + '%）</span>'
+        + '</div></div>';
+    }
+
+    if (!list.length) {
+      h += '<div class="q-empty">' + U.escape(M.emptyText()) + '</div>';
+    } else {
+      var rows = list.map(function (r) {
+        var by = Object.keys(r.by || {}).map(function (id) {
+          var T = DATA.TROOPS[id] || {};
+          return (T.name || id) + ' ' + U.fmt(r.by[id]);
+        }).join(' · ');
+        return '<tr>'
+          + '<td style="white-space:nowrap;">第 ' + r.y + ' 年' + ['春', '夏', '秋', '冬'][r.s % 4] + '</td>'
+          + '<td>' + U.escape(r.place) + '</td>'
+          + '<td class="num" style="color:var(--gold-light);">' + U.fmt(r.n) + '</td>'
+          + '<td style="font-size:var(--fs-cap);color:var(--text-dim);">' + U.escape(by || '—') + '</td>'
+          + '<td class="ctr" style="color:' + (r.win ? 'var(--text)' : 'var(--red-light)') + ';">'
+          + (r.win ? '胜' : '败') + '</td>'
+          + '</tr>';
+      }).join('');
+      h += '<table class="tbl"><thead><tr><th>年月</th><th>地方</th><th class="num">未归</th><th>兵马</th><th class="ctr">战果</th></tr></thead>'
+        + '<tbody>' + rows + '</tbody></table>';
+    }
+    h += '<div style="margin-top:10px;font-size:var(--fs-cap);color:var(--text-dim);">'
+      + '名录只记再也不回来的人 —— 归队的、抬回来治好的，都不算。'
+      + '</div>';
+    return h;
+  };
+
   ui.marchesHTML = function () {
     var s = GAME.state;
     var c = GAME.currentCity();
@@ -3439,6 +3507,7 @@ import './state.js';
     if (tab === 'def') return '<div class="ui-page">' + ui.marchTabHTML() + ui.marchDefHTML() + '</div>';
     if (tab === 'beacon') return '<div class="ui-page">' + ui.marchTabHTML() + ui.marchBeaconHTML() + '</div>';
     if (tab === 'affairs') return '<div class="ui-page">' + ui.marchTabHTML() + ui.marchAffairsHTML() + '</div>';
+    if (tab === 'memorial') return '<div class="ui-page">' + ui.marchTabHTML() + ui.memorialHTML() + '</div>';
 
     /* ---------- ① 城内（v89.140 老板 2：表头 = 各兵种名称，逐格显示数量） ----------
        老板原话：「兵种明显直接增加表头为各兵种名称，分别显示数量。**固定行宽**，
@@ -3521,7 +3590,8 @@ import './state.js';
        ② 驻守野地 / 采集队两块去掉；③ 编号重排为 ① 城内 / ② 征战中 / ③ 行军。 */
     return '<div class="ui-page">' + ui.marchTabHTML() +
       '<div class="gold-heading">⚔ 军务总览</div>' +
-      '<div class="q-sec" style="margin-top:6px;"><span class="q-sec-t">① 城内</span><span class="q-sec-n">' + (s.cities || []).length + ' 城</span></div>' +
+      '<div class="q-sec" style="margin-top:6px;"><span class="q-sec-t">① 城内</span><span class="q-sec-n">' + (s.cities || []).length + ' 城' +
+        '　<button class="btn sm" data-action="open-power" title="英雄 / 兵种 / 总体战力评估（基于英雄对兵种的加成）">⚖ 战力评估</button></span></div>' +
       cityBlock +
       (btPend ? '<div class="q-sec" style="margin-top:18px;"><span class="q-sec-t">② ⚔ 征战中</span><span class="q-sec-n">' + btPend.n + ' 处</span></div>' + btPend.html : '') +
       '<div class="q-sec" style="margin-top:18px;"><span class="q-sec-t">' + (btPend ? '③' : '②') + ' 行军</span><span class="q-sec-n">' + (list.length + _wfN) + ' 队</span></div>' +
@@ -10197,6 +10267,10 @@ import './state.js';
     expItems.forEach(function (it) { expHave += (s.items[it.id] || 0); });
     var atkShow = Math.round(a.atkPct * 1000) / 10;
     var defShow = Math.round(a.defPct * 1000) / 10;
+    /* v91.92：指挥 = 覆盖 + 溢出减伤。悬停里给人看两件事：
+       ① 这一将的指挥最多能让多少兵吃满加成（每个兵种各算）；② 溢出后的减伤上限。
+       —— 加成必须看得见，否则玩家没法判断该不该往指挥上投点。 */
+    var coverCapShow = Math.round((a.tong || 0) * GAME.COVER_PER_TONG);
 
     /* ---------- ① 顶部：汇总信息（身份行）+ 经验条 + 操作 ---------- */
     /* v74（老板需求 3）：「英雄的简介…太啰嗦：赵子龙 突变体 ★★ 均衡 / 可当一镇之任」
@@ -10459,11 +10533,15 @@ import './state.js';
          「全军攻击/防御 +X%」由行内移到悬停，行上只留总数。 */
       '<div class="gd-line" title="攻击 ' + U.numText(a.atkVal, 0) + ' = 武力 '
         + U.numText(a.yw * GAME.ATK_PER_YW, 0) + ' ＋ 装备 ' + U.numText(a.atk, 0)
-        + '\n全军攻击 +' + atkShow + '%">攻击 <b>'
+        + '\n全军攻击 +' + atkShow + '%'
+        + '\n指挥覆盖：' + U.fmt(coverCapShow) + ' 兵/兵种（覆盖内吃满加成）'
+        + '；溢出部分转全军减伤，最多 ' + Math.round(GAME.COVER_DR_MAX * 100) + '%">攻击 <b>'
         + U.numText(a.atkVal, 0) + '</b></div>' +
       '<div class="gd-line" title="防御 ' + U.numText(a.defVal, 0) + ' = 谋略 '
         + U.numText(a.zm * GAME.DEF_PER_ZM, 0) + ' ＋ 装备 ' + U.numText(a.def, 0)
-        + '\n全军防御 +' + defShow + '%">防御 <b>'
+        + '\n全军防御 +' + defShow + '%'
+        + '\n指挥覆盖：' + U.fmt(coverCapShow) + ' 兵/兵种（覆盖内吃满加成）'
+        + '；溢出部分转全军减伤，最多 ' + Math.round(GAME.COVER_DR_MAX * 100) + '%">防御 <b>'
         + U.numText(a.defVal, 0) + '</b></div>' +
       /* v90.10（老板 3）：月俸行钉在「状态」区底部（君主也显示 —— 只是文案为"君主不领俸"）。 */
       salLine194;
@@ -10913,7 +10991,7 @@ import './state.js';
   ui.GEN_DIMS = [
     /* v74（老板需求 1）：「带兵 +100 · 幸存者上限 +1000」里的**幸存者上限那半条已撤**
        （幸存者只由居所决定）；作用文案现在走六维名称的悬停。 */
-    { k: 'tong', n: '指挥', color: '#d8b04e', use: '带兵 +100' },
+    { k: 'tong', n: '指挥', color: '#d8b04e', use: '覆盖100兵/点＋溢出减伤；3000开二阵' },
     /* v52（老板给定换算链）→ v89.96 改双刻度（见 domain.js atkPctOf 注释）：
        武力每 20 点 +1%（无上限属性单独降率）、装备每 10 攻值 +1%（v52 保留）。
        这里写的**就是代码里的同一组常量**（GAME.YW_PCT / PCT_PER_ATK 等），
@@ -11242,7 +11320,7 @@ import './state.js';
     var out = '<div class="doll-set">';
     if (!active.length) {
       out += '<div class="ds-empty">未着套装件。套装件每满 <b>'
-        + (DATA.SET_TIERS || []).join(' / ') + '</b> 件逐档加成，效果累计。</div>';
+        + (DATA.SET_TIERS || []).join(' / ') + '</b> 件升一档，<b>只生效已达成的最高一档</b>。</div>';
     }
     active.forEach(function (p) {
       /* v90.32（老板）：「只显示当前生效的属性即可，比如满足 7 件，仅展示 7 件的套装效果，
@@ -17697,6 +17775,30 @@ import './state.js';
    * 版面照抄「自动出征 · 详细配置」的左列（频率/每日上限/预估）+ 右列（逐兵种数量上限），
    * 去掉英雄/目标/等级/距离/方式/计略（自动探索无这些旋钮）。
    * ============================================================ */
+  /* v91.83：奇观**行为链**现状 —— 逐行动标出"可派 / 为什么不可派"（界面与域层同一出口
+     `GAME.autoExploreActsFor`，不另写判据）。附「自动清层」开关。 */
+  ui.aeChainHTML = function (chain, cfg) {
+    var rows = [];
+    (chain.feas || []).forEach(function (f) {
+      rows.push('<div class="exp-info exp-info-l">✅ <b>' + U.escape(f.name) + '</b>　'
+        + (f.total ? ('编成 ' + U.fmt(f.total) + ' 兵' + (f.load ? ' · 负重 ' + U.fmt(f.load) : ''))
+                   : '仅需英雄 · 不带兵')
+        + '</div>');
+    });
+    (chain.blocked || []).forEach(function (b) {
+      var ic = b.kind === 'lock' ? '🔒' : '⚠️';
+      rows.push('<div class="exp-info exp-info-l" style="color:var(--text-dim);">'
+        + ic + ' ' + U.escape(b.name) + ' —— ' + U.escape(b.why) + '</div>');
+    });
+    if (!rows.length) rows.push('<div class="exp-info exp-info-l" style="color:var(--text-dim);">本奇观未收录任何行动</div>');
+    return '<div style="margin-top:6px;">' + rows.join('') +
+      '<label style="display:flex;align-items:center;gap:6px;margin-top:8px;cursor:pointer;">' +
+      '<input type="checkbox" id="ae-autoclear"' + (cfg.autoClear ? ' checked' : '') + '>' +
+      '<span>无可行行动时<b>自动派兵破下一层</b>（清层 → 解锁行动 → 采集）'
+      + '　<i class="gd-sub">默认开 · 编成低于该层建议兵力时不出战 · 不占每日次数</i></span></label>' +
+      '</div>';
+  };
+
   ui.openAutoExplore = function () {
     var s = GAME.state, cfg = GAME.autoExploreCfg();
     if (!cfg) return;
@@ -17728,9 +17830,12 @@ import './state.js';
     var rows = Object.keys(DATA.TROOPS).filter(function (id) { return !DATA.TROOPS[id].nocombat; }).map(function (id) {
       var tr = DATA.TROOPS[id] || {};
       var capN = (cfg.army && cfg.army[id]) || 0;
-      return '<tr class="et-row' + (capN > 0 ? ' on' : '') + '">' +
+      var clrN = (cfg.clearArmy && cfg.clearArmy[id]) || 0;
+      return '<tr class="et-row' + (capN > 0 || clrN > 0 ? ' on' : '') + '">' +
         '<td class="et-name">' + U.escape(tr.name || id) + '</td>' +
-        '<td class="et-in"><input type="number" id="ae-a-' + id + '" min="0" value="' + capN + '"></td></tr>';
+        '<td class="et-in"><input type="number" id="ae-a-' + id + '" min="0" value="' + capN + '"></td>' +
+        '<td class="et-in"><input type="number" id="ae-cl-' + id + '" min="0" value="' + clrN +
+          '" placeholder="' + (capN > 0 ? String(capN) : '0') + '"></td></tr>';
     }).join('');
     /* 各城可达标统计（与自动出征同源） */
     var _aeReach = { ok: 0, total: 0 };
@@ -17746,6 +17851,25 @@ import './state.js';
     /* v91.82（老板「自动探索也要按城指定英雄」）：已固定英雄的城数（界面摘要） */
     var _aeGenN = 0;
     for (var _agk in (cfg.cityGen || {})) if (cfg.cityGen[_agk]) _aeGenN++;
+    /* v91.83（老板「自动探索加上英雄选择」）：**全局执行英雄**下拉 —— 与自动出征同构
+       （首行「🎲 不限」= 每城各随机取一枚空闲英雄；选定则作**全局兜底**）。
+       优先级：按城指定 > 全局指定 > 不限（与 pickAutoGen 三级链一致）。 */
+    var _aeGenOpts = [{ v: '', on: !cfg.genId, label: '🎲 不限（每城随机取空闲英雄）' }].concat(
+      (s.generals || []).map(function (g) {
+        var busy = g.status && g.status !== 'idle';
+        return { v: g.id, on: g.id === cfg.genId,
+          label: U.escape(g.name) + (busy ? '（' + ui.genStatusName(g) + '）' : '') };
+      }));
+    /* v91.83：本星球奇观的**行为链现状**（已清层 / 各行动可否派）—— 界面与域层同一出口。 */
+    var _cc0 = GAME.currentCity ? GAME.currentCity() : null;
+    var _aePid = _cc0 ? GAME.pidOf(_cc0) : (GAME.planetsOf()[0] || {}).id;
+    var _aeChain = (function () {
+      var city = GAME.currentCity ? GAME.currentCity() : null;
+      if (_aePid == null || !city || !GAME.autoExploreActsFor) return null;
+      var r = GAME.autoExploreActsFor(_aePid, city, cfg);
+      return { cleared: GAME.wonderClearedOf(_aePid), layers: GAME.wonderLayerCount(),
+        feas: r.feas, blocked: r.blocked, city: city };
+    })();
     /* ============================================================
      * v91.41（老板）：「各星球奇观不同，在自动探索处加上**全部星球的奇观类型列表**、
      *   兵种要求、上限」+「确保统一规则可适配所有已经/将来可能有的类型增加或更新」。
@@ -17804,15 +17928,20 @@ import './state.js';
           ui.expRowHTML('指定方式',
             '<span class="exp-tac-link" data-action="open-ae-citygen">按城指定</span>' +
             '<span style="margin-left:8px;">已指定 <b>' + _aeGenN + '</b> 座城 · 其余不限</span>', null) +
+          ui.expRowHTML('全局英雄', sel('ae-gen', _aeGenOpts),
+            '优先级：**按城指定 > 全局英雄 > 不限**。全局英雄是兜底——' +
+            '没被「按城指定」的城会用这位；若未选，则每城各随机取一枚空闲英雄（优先本城、排除君主）。') +
           '<div class="exp-info exp-info-l" style="color:var(--text-dim);margin-bottom:0;">' +
-          '默认<b>不限</b>（每城现取一枚空闲英雄，优先本城）。点「按城指定」可逐城固定英雄；' +
           '已固定的城若该英雄<b>正在忙碌</b>或<b>已不在册</b> → 该城<b>本次跳过</b>（不随机顶替）。</div>' +
         '</div>' +
         '<div class="exp-sec"><div class="exp-sec-t">当前星球奇观（参考）</div>' +
           '<div class="ui-sub" style="margin-bottom:6px;">' + (wd ? (wd.icon + ' ' + U.escape(wd.name) + ' · ' + U.escape(wd.body)) : '本星球暂无奇观') +
           '　·　' + (present ? '今日在场' : '<span style="color:var(--red-light);">今日未出现</span>') +
-          '　·　在途 ' + active + '/' + maxA + ' 队</div>' +
-          '<div class="exp-info exp-info-l" style="color:var(--text-dim);margin-bottom:0;">行动由系统按本星球奇观类型**随机分配**（已解锁的可用行动），不再手动指定。</div>' +
+          '　·　在途 ' + active + '/' + maxA + ' 队' +
+          (_aeChain ? ('　·　已清 <b>' + _aeChain.cleared + ' / ' + _aeChain.layers + '</b> 层') : '') + '</div>' +
+          '<div class="exp-info exp-info-l" style="color:var(--text-dim);margin-bottom:0;">' +
+          '行动由系统在<b>本城可行</b>的行动里随机取一种（可行 = 该奇观收录 ∩ 已清层达标 ∩ 编成/负重满足）。</div>' +
+          (_aeChain ? ui.aeChainHTML(_aeChain, cfg) : '') +
         '</div>' +
         '<div class="exp-sec">' +
           ui.expRowHTML('探索频率', sel('ae-freq', freqOpts), null) +
@@ -17821,11 +17950,12 @@ import './state.js';
       '</div>' +
       '<div class="exp-col-r"><div class="exp-sec exp-a-troops"><div class="exp-sec-t">编成组成（玩家设定）</div>' +
         '<div class="exp-troops exp-body"><table class="tbl exp-tbl"><colgroup>' +
-          '<col class="et-c-name"><col class="et-c-in"></colgroup><thead><tr>' +
-          '<th>兵种</th><th class="ctr">探索数量</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+          '<col class="et-c-name"><col class="et-c-in"><col class="et-c-in"></colgroup><thead><tr>' +
+          '<th>兵种</th><th class="ctr">探索数量</th><th class="ctr" title="破层是一场真战斗，与探索编成分开；留空 = 沿用探索数量">清层数量</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
         '<div class="exp-info exp-info-l" style="color:var(--text-dim);margin-bottom:0;">' +
         (_aeReach.total ? ('设定编成；当前可达标城市 <b>' + _aeReach.ok + ' / ' + _aeReach.total + '</b>（达不到跳过）。') : '设定编成（0 = 不带）。') +
-        '仅英雄行动（采集/圣殿研读）即使设兵也不带兵；需兵行动按编成匹配。</div></div></div>' +
+        '仅英雄行动（采集/圣殿研读）即使设兵也不带兵；需兵行动按编成匹配。' +
+        '破层按<b>清层数量</b>（留空沿用探索数量），低于该层建议兵力时不出战。</div></div></div>' +
       '</div>' +
       '<div class="exp-foot">' +
         '<button class="btn' + (cfg.on ? ' gold' : '') + '" data-action="ae-toggle">' +
@@ -17838,10 +17968,26 @@ import './state.js';
       el.addEventListener('change', function () { GAME.doSetAutoExplore(key, el.value); ui.openAutoExplore(); });
     };
     bind('ae-freq', 'everyMin'); bind('ae-daily', 'dailyMax');
+    /* v91.83：全局执行英雄（兜底）+ 自动清层开关。 */
+    bind('ae-gen', 'genId');
+    (function () {
+      var cb = document.getElementById('ae-autoclear'); if (!cb) return;
+      cb.addEventListener('change', function () {
+        GAME.doSetAutoExplore('autoClear', cb.checked ? 1 : '');
+        ui.openAutoExplore();
+      });
+    })();
     (function () {
       var ins = document.querySelectorAll('[id^="ae-a-"]');
       for (var ii = 0; ii < ins.length; ii++) (function (el2) {
         el2.addEventListener('change', function () { GAME.doSetAutoExplore('army:' + el2.id.slice(5), el2.value); });
+      })(ins[ii]);
+    })();
+    /* v91.84：清层数量列（破层专用编成；清空 = 沿用探索数量）。 */
+    (function () {
+      var ins = document.querySelectorAll('[id^="ae-cl-"]');
+      for (var ii = 0; ii < ins.length; ii++) (function (el2) {
+        el2.addEventListener('change', function () { GAME.doSetAutoExplore('clearArmy:' + el2.id.slice(6), el2.value); });
       })(ins[ii]);
     })();
   };
@@ -18166,6 +18312,103 @@ import './state.js';
     });
     return h + '</div>';
   };
+  /* ============================================================
+   * v91.84（老板）：「补充英雄战力评估，兵种战力评估体系。基于英雄对兵种的加成，
+   *   建立**总体战力评估**」——
+   *   三块同屏（数值**全部**来自 `GAME.power` 唯一出口，界面不另算一套）：
+   *     ① 总体：编成 × 英雄加成（覆盖率公式与战斗引擎 damageOf 同一份）；
+   *     ② 英雄：四维 / 指挥容量 / 攻防加成（满覆盖）/ 战力；
+   *     ③ 兵种：纸面分项 + 派生（每人口战力 / 性价比 / 定位）。
+   *   ⚠️ 速度/先手**不折进战力** —— 先手要有对手才能判（firstStrike 需双方），
+   *     单列 `spd`，避免"无对手也能算出先手"的伪精度。
+   *   入口：军务总览「⚖ 战力评估」。
+   * ============================================================ */
+  ui.openPower = function (opts) {
+    opts = opts || {};
+    if (!GAME.power) { ui.toast('战力模块未加载'); return; }
+    var s = GAME.state;
+    var city = (opts.cityId && GAME.cityById(opts.cityId)) || GAME.currentCity() || (s.cities && s.cities[0]) || null;
+    var army = (city && city.army) || {};
+    var genId = (opts.genId != null ? opts.genId : (ui._pwGen || ''));
+    var gen = null;
+    (s.generals || []).forEach(function (g) { if (g.id === genId) gen = g; });
+
+    /* ---------- ① 总体 ---------- */
+    var agg = GAME.power.armyOf(army, gen);
+    var gOpts = [{ v: '', on: !genId, label: '🎲 不带将（裸战力）' }].concat(
+      (s.generals || []).map(function (g) {
+        return { v: g.id, on: g.id === genId, label: U.escape(g.name) + ' Lv' + (g.level || 1) };
+      }));
+    /* ⚠️ id 用 am- 前缀是**刻意**的：冒烟门禁的「下拉框白名单」只认登记过的前缀
+       （见 smoke-test.js selectsRegistered），换前缀会被判红。别"顺手改名"。 */
+    var genSel = '<select id="am-pw-gen">' + gOpts.map(function (o) {
+      return '<option value="' + o.v + '"' + (o.on ? ' selected' : '') + '>' + o.label + '</option>';
+    }).join('') + '</select>';
+    var block1 = '<div class="op-zone"><div class="op-zone-t">① 总体战力' +
+      (city ? '（' + U.escape(city.name) + ' 驻军）' : '') + '</div>' +
+      ui.expRowHTML('带队英雄', genSel, null) +
+      '<div class="stat-row"><span class="sr-name">裸战力（Σ 兵种战力 × 数量）</span>' +
+        '<span class="sr-sub"><b>' + U.numText(agg.base, 0) + '</b></span></div>' +
+      '<div class="stat-row"><span class="sr-name">兵力加成（× 覆盖率）</span>' +
+        '<span class="sr-sub">+' + U.numText(agg.add, 0) +
+        (gen ? '（满覆盖 ' + Math.round(agg.bonusRate * 100) + '% · 实得 ' + Math.round(agg.coverRate * 100) + '%）' : '（未带将 = 0）') +
+        '</span></div>' +
+      '<div class="stat-row"><span class="sr-name"><b>总体战力</b></span>' +
+        '<span class="sr-sub"><b style="color:var(--gold-light);">' + U.numText(agg.total, 0) + '</b></span></div>' +
+      '<div class="stat-row"><span class="sr-name">兵力 / 负重 / 均速</span>' +
+        '<span class="sr-sub">' + U.numText(agg.troops, 0) + ' 人　·　' + U.numText(agg.load, 0) +
+        '　·　' + Math.round(agg.spd) + '</span></div>' +
+      '<div class="exp-info exp-info-l" style="color:var(--text-dim);margin-bottom:0;">' +
+      '加成原子（全军攻/防 %）与战斗引擎同源；覆盖率 = min(兵力, 指挥容量)/兵力，**逐兵种**算，' +
+      '与伤害公式同一份。速度不折进战力（先手需双方才能判）。</div></div>';
+
+    /* ---------- ② 英雄评估 ---------- */
+    var grows = GAME.power.genRows(army).slice(0, 12).map(function (r) {
+      return '<tr><td>' + U.escape(r.name) + ' <i class="gd-sub">Lv' + r.level + '</i></td>' +
+        '<td class="num">' + U.fmt(r.tong) + '/' + U.fmt(r.yw) + '/' + U.fmt(r.zm) + '/' + U.fmt(r.nz) + '</td>' +
+        '<td class="num">' + U.fmt(r.coverCap) + '</td>' +
+        '<td class="num">+' + Math.round(r.atkPct * 100) + '% / +' + Math.round(r.defPct * 100) + '%</td>' +
+        '<td class="num"><b>' + U.numText(r.power, 0) + '</b></td></tr>';
+    }).join('') || '<tr><td colspan="5" class="q-empty">暂无英雄</td></tr>';
+    var block2 = '<div class="op-zone"><div class="op-zone-t">② 英雄战力（按战力降序 · 前 12）</div>' +
+      '<table class="tbl"><thead><tr><th>英雄</th><th class="num">四维（统/勇/智/政）</th>' +
+      '<th class="num">指挥容量</th><th class="num">攻/防加成</th><th class="num">战力</th></tr></thead>' +
+      '<tbody>' + grows + '</tbody></table>' +
+      '<div class="exp-info exp-info-l" style="color:var(--text-dim);margin-bottom:0;">' +
+      '战力 = 指挥容量 × 攻防加成均值 × 当前编成加权单兵战力（= 塞满兵时凭加成额外贡献的战力）。' +
+      '加成取自 `GAME.genAttrs`（与战斗同源），不是另写一张表。</div></div>';
+
+    /* ---------- ③ 兵种评估 ---------- */
+    var trows = GAME.power.troopRows({ combatOnly: true }).map(function (r) {
+      return '<tr' + (r.id === (opts.hi || '') ? ' style="background:rgba(255,200,80,.08);"' : '') + '>' +
+        '<td>' + U.escape(r.name) + '</td>' +
+        '<td class="num">' + U.fmt(r.atk) + '/' + U.fmt(r.def) + '/' + U.fmt(r.hp) + '</td>' +
+        '<td class="num">' + U.fmt(r.range) + '</td>' +
+        '<td class="num">' + U.fmt(r.spd) + '</td>' +
+        '<td class="num"><b>' + U.numText(r.power, 0) + '</b></td>' +
+        '<td class="num">' + (r.perPop ? r.perPop.toFixed(1) : '—') + '</td>' +
+        '<td class="num">' + (r.perCost ? r.perCost.toFixed(2) : '—') + '</td>' +
+        '<td class="num">' + U.escape(r.role) + '</td></tr>';
+    }).join('');
+    var block3 = '<div class="op-zone"><div class="op-zone-t">③ 兵种战力（按战力降序）</div>' +
+      '<table class="tbl"><thead><tr><th>兵种</th><th class="num">攻/防/血</th><th class="num">射程</th>' +
+      '<th class="num">速度</th><th class="num">战力</th><th class="num">每人口</th><th class="num">性价比</th>' +
+      '<th class="num">定位</th></tr></thead><tbody>' + trows + '</tbody></table>' +
+      '<div class="exp-info exp-info-l" style="color:var(--text-dim);margin-bottom:0;">' +
+      '战力走 `STORY.troopPower` 唯一出口（与来袭/家底同一把尺）；定位由数据派生（运输/远程/防御/突击）。</div></div>';
+
+    ui.openModal('<div class="gold-heading">⚖ 战力评估</div>' + block1 + block2 + block3 +
+      '<div class="m-foot" style="justify-content:center;">' +
+      '<button class="btn" data-action="close-modal">关闭</button></div>',
+      { size: 'xl', live: function () { ui.openPower({ cityId: city && city.id, genId: genId, hi: opts.hi }); } });
+
+    var sel2 = document.getElementById('am-pw-gen');
+    if (sel2) sel2.addEventListener('change', function () {
+      ui._pwGen = sel2.value;
+      ui.openPower({ cityId: city && city.id, genId: sel2.value, hi: opts.hi });
+    });
+  };
+
   ui.openWonder = function (pid) {
     ui.openModal('<div class="gold-heading">✨ 奇观</div>' + ui.wonderHTML(pid) + ui.wonderLayersHTML(pid) + ui.wonderQueueHTML(pid) +
       /* v91.31（老板）：**点击性按钮放弹窗底部**。 */

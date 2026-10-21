@@ -474,12 +474,14 @@ import './state.js';
          引擎拿到 0 防守单位，战斗 0 回合结束、defLoss 恒 0（俘获/战功/战报全空），
          且"兵力悬殊二次确认"因比值算不出而永不触发。旧档迁移（migrateTroops229）
          救不了它 —— 本函数是**运行时派生**，每次现算。 */
-    return {
+    var _gar = {
       buxingji: Math.round(base * 0.6),
       dunwei: Math.round(base * 0.2),
       daodanche: Math.round(base * 0.2),
-      fujiche: lv >= 4 ? Math.round(base * 0.1) : 0,
+      fujiche: lv >= 4 ? Math.round(base * 0.1) : 0
     };
+    /* v91.87：据点守将变强 → 守军数量同幅下调（开关关闭时原样返回） */
+    return (GAME.guardBal && GAME.guardBal.on()) ? GAME.guardBal.scaleArmy(_gar, 'fort', lv) : _gar;
   };
   /* ============================================================
    * v89.129（老板：「任何野外目标（野地，城市，名城等）均应有英雄带领，
@@ -522,7 +524,8 @@ import './state.js';
       if (rollS <= 0) { st = styles[si]; break; }
     }
     var g = GAME.makeGeneral(name, gLv, 'guard', null, false, rk.id, st.id, rand);
-    GAME.guardFillOf(g, DATA.GUARD_FOLD);   /* v89.185：等级/资质真转战力（野外守将折损半折） */
+    GAME.guardFillOf(g, GAME.guardBal ? GAME.guardBal.fold() : DATA.GUARD_FOLD);   /* v91.87：开关决定折损档 */
+    if (GAME.guardBal) GAME.guardBal.applyGear(g, 'fort', lv);   /* v91.88：据点守将配等效装备 */
     g.npcGuard = true;                        /* 系统派生标记（与 npcCityGuard 同） */
     g.title = tt[Math.floor(rand() * tt.length)];
     return g;
@@ -665,13 +668,20 @@ import './state.js';
     var lv = Math.round(field * 10);
     /* 少量确定性例外（格哈希，跨引擎一致） */
     var r = GAME.map._fortHashCi(ci, sd * 3 + 991, GAME.map._pctx());
-    if (r < 0.04) lv = 8 + Math.floor(GAME.map._fortHashCi(ci, sd + 771, GAME.map._pctx()) * 3);   /* 边陲遗迹 */
-    else if (r > 0.96) lv = Math.floor(GAME.map._fortHashCi(ci, sd + 772, GAME.map._pctx()) * 3);  /* 腹地弱地 */
-    return Math.max(0, Math.min(10, lv));
+    if (r < 0.04) lv = 8 + Math.floor(GAME.map._fortHashCi(ci, sd + 771, GAME.map._pctx()) * 3);   /* 边陲遗迹 8~10 */
+    else if (r > 0.96) lv = Math.floor(GAME.map._fortHashCi(ci, sd + 772, GAME.map._pctx()) * 3);  /* 腹地弱地 0~2 */
+    /* v91.89（老板同意「野地上限放到 15」）：**稀有高级地** —— 约 1.2% 的格子固定 11~15 级。
+       刻意做成"固定高价值点"而不是拉高整张地图：既保留既有 0~10 的手感，
+       又给后期玩家一个真正需要配兵的目标。这些点**不随日盐漂移**（下面 wildLevel 里判）。 */
+    else if (r > 0.988) lv = 11 + Math.floor(GAME.map._fortHashCi(ci, sd + 773, GAME.map._pctx()) * 5);
+    return Math.max(0, Math.min(15, lv));
   };
   GAME.map.wildLevel = function (ci) {
     var day = Math.floor(Date.now() / 86400000);
-    return (GAME.map.wildLevelBase(ci) + day) % 11;   // 每日 +1 级（模 11 循环）
+    var base = GAME.map.wildLevelBase(ci);
+    /* v91.89：常规野地（0~10）保持"每日 +1 级、模 11 循环"的原语义；
+       稀有高级地（11~15）是固定地标，不参与日盐（否则一天一个样，没法规划）。 */
+    return base > 10 ? base : (base + day) % 11;
   };
   /* 当前实际等级：已占野地用记录值（会衰减），无主野地用日盐值 */
   GAME.map.wildLevelNow = function (ci) {

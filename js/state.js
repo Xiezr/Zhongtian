@@ -609,6 +609,13 @@ import './data.js';
       msgLog: [],                               // v16：完整消息流（保留 10 游戏天 / 至少 300 条）
       createdAt: U.now(),
       savedAt: U.now(),
+      /* v92：探明度（迷雾）。null = 尚未建包 —— 由 GAME.fog.ensure() 按当前星球
+         seed 惰性建（RLE 打包，开局约 60 字节）。
+         换星球不继承：探索度是这颗球自己的经历。 */
+      fog: null,
+      /* v92：阵亡名录（只记事）。每次战斗一条，滚动上限 240 条；
+         累计人数另在 stats.deadTotal（不因 UI 上限缩水）。*/
+      memorial: [],
     };
     GAME.attachRes(GAME.state);   // v60：挂上「当前城市库存」访问器（必须在 story.init 之前）
     /* v91.74：世界数据全局一份（不再按星球分片）—— 新局直接标记已完成归一。 */
@@ -617,6 +624,11 @@ import './data.js';
     GAME.attachGold(GAME.state, { keepCityGold: true });
     if (GAME.story) GAME.story.init();
     GAME.syncSeq();            // 发号起点对齐（防新将撞号）
+    /* v92：开局只看得见自家门口 —— 全图 40962 格其余一律未探明。
+       （此前开局全亮：每座城、每块野地等级一眼看尽 → 远征只剩算路线。）
+       ⚠️ 先 reset：同一 seed 开第二局时，内存里还留着上一局的探明度包，
+       ensure 的快速路径认 (格数,种子) 会直接沿用 —— 那就不是"新的一局"了。 */
+    if (GAME.fog) { GAME.fog.reset(); GAME.fog.revealOwned(); }
     return GAME.state;
   };
 
@@ -630,6 +642,28 @@ import './data.js';
    * ============================================================ */
   GAME.STAR_DIST = 10000;      /* 星球间默认距离（六边形拓扑格数）—— 出征距离参考 */
   GAME.planetsOf = function () { var s = GAME.state; if (!s) return []; s.planets = s.planets || []; return s.planets; };
+  /* v91.86 · 星球环境规则（"一步一景"的机制底座）
+     ────────────────────────────────────────────────
+     · 老家（id=1）没有规则 → 既有战斗/数值基线一字不动；
+     · 新星球在 addPlanet 时按 DATA.PLANET_ENV_ORDER 轮换；
+     · 老档缺 env 字段 → 回落 none，行为与旧版一致。 */
+  GAME.planetEnvOf = function (pid) {
+    var ENV = (DATA && DATA.PLANET_ENV) || {};
+    if (pid == null) pid = GAME.curPid();
+    var p = null;
+    GAME.planetsOf().forEach(function (x) { if (x && x.id === pid) p = x; });
+    var id = (p && p.env) || 'none';
+    return ENV[id] || ENV.none || { id: 'none', name: '常规', desc: '', spd: 1, range: 1, drain: 0 };
+  };
+  /* v91.86 · 星球难度阶梯（第 1 星球 = ×1）
+     ×1.30 基础 + 每 3 星球追加 ×1.15 —— 比纯 ×1.5 可读，也不至于第 10 球撞墙。 */
+  GAME.planetScaleOf = function (pid) {
+    var C = (DATA && DATA.PLANET_SCALE) || { base: 1.3, step: 0.15, every: 3 };
+    var n = Math.max(1, pid | 0);
+    var s = Math.pow(C.base, n - 1);
+    s *= Math.pow(1 + C.step, Math.floor((n - 1) / C.every));
+    return s;
+  };
   GAME.activePlanetOf = function () {
     var s = GAME.state; if (!s) return null; var ps = GAME.planetsOf();
     /* v90.89：`activePlanet` 是**星球 id**（非数组下标）—— 按 id 严格查找。
@@ -723,7 +757,11 @@ import './data.js';
     opts = opts || {};
     var ps = GAME.planetsOf();
     var id = (ps.reduce(function (m, x) { return Math.max(m, x.id || 0); }, 0) || 0) + 1;
+    /* v91.86：新星球带一条环境规则（老家不带）—— 玩家一进球就知道"这里不一样" */
+    var _eo = (DATA && DATA.PLANET_ENV_ORDER) || [];
+    var _env = (id === 1 || !_eo.length) ? 'none' : _eo[(id - 2) % _eo.length];
     var p = { id: id, name: opts.name || (id === 1 ? '老家' : ('星球 ' + id)), seed: (opts.seed != null ? (opts.seed | 0) : ((U.now() % 900000) || 1)),
+      env: _env,
       params: opts.params || (GAME.sphere && GAME.sphere.PLANET ? { seaFrac: GAME.sphere.PLANET.seaFrac, ridge: GAME.sphere.PLANET.ridge, detail: GAME.sphere.PLANET.detail, temp: GAME.sphere.PLANET.temp } : { seaFrac: 0.45, ridge: 1.5, detail: 0.7, temp: 1.0 }) };
     ps.push(p);
     return p;
@@ -1031,6 +1069,16 @@ import './data.js';
     if (GAME.mapSphere && GAME.mapSphere.setPlanet) GAME.mapSphere.setPlanet(r.planet.seed, r.planet.params);
     /* v91.74：世界数据全局一份 —— 切星球**不再换分片**，只是换球面 + 重建地图投影。 */
     if (r.planet && r.planet.worldStart && s.map) s.map.startPos = U.deep(r.planet.worldStart);
+    /* v91.86："一步一景"的可感知层 —— 进入星球时报出环境规则与难度档 */
+    try {
+      var _pe = GAME.planetEnvOf(id);
+      if (_pe && _pe.id !== "none" && GAME.log) {
+        GAME.log("🪐 " + (r.planet && r.planet.name || ("星球 " + id)) + " · 环境「" + _pe.name + "」：" + _pe.desc, "sys", "planet");
+      }
+      if (GAME.log && id > 1 && GAME.planetScaleOf) {
+        GAME.log("⚠ 本星球守军强度 ×" + GAME.planetScaleOf(id).toFixed(2) + "（星球难度阶梯）", "sys", "planet");
+      }
+    } catch (eEnv) {}
     s.map.grid = null; s.map.cities = null;               /* 清投影网格 → 重投影 + 重建 NPC 城 */
     GAME.map._fortCand = null; GAME.map._fortLv = null; GAME.map._fortBlocks = null; GAME.map._fortRing = null;
     GAME.map._cntyF = null;   /* 区域场（最近聚落 BFS）随星球失效 */
@@ -2544,6 +2592,7 @@ import './data.js';
        base[1]×特性权重 + (等级−1)×成长×特性权重×(5/Σ权重) —— v89.73 的推导见其头注）。
        ⚠️ 不传 fold：名城守将维持既有满量口径（v89.73 起）；折损只服务野外（DATA.GUARD_FOLD）。 */
     GAME.guardFillOf(g);
+    if (GAME.guardBal) GAME.guardBal.applyGear(g, 'city', 10);   /* v91.88：名城守将按顶档配装备 */
     GAME._npcCache[key] = g;
     return g;
   };
@@ -2952,6 +3001,9 @@ import './data.js';
   GAME.saveGame = function () {
     if (!GAME.state) return false;
     GAME.state.savedAt = U.now();
+    /* v92：探明度打包入档（40962 格 × 2bit → base64 约 13.6KB）。
+       必须在 stringify 之前写回 state —— savePayload 直接序列化整个 state。 */
+    if (GAME.fog) GAME.state.fog = GAME.fog.pack();
     /* v91.74：世界数据全局一份 —— 存档无需再同步星球分片。 */
     try {
       /* 【派生数据一律不入档】同类历史问题已发生两次：
@@ -3360,6 +3412,17 @@ import './data.js';
         GAME.mapSphere.setPlanet(_mp97.seed, _mp97.params);
         if (GAME.map3d && GAME.map3d.rebuild) GAME.map3d.rebuild();
       }
+      /* v92：探明度。球面已切好（上面的 setPlanet）才有格数，故放在这里。
+         · 老档（无 fog 数据）→ backfill：把走过的城/野地/据点补成已知，
+           **不清零** —— 加迷雾不该抹掉玩家几十小时的成果。
+         · 新档 → 只刷一次城/前哨视野（城池易主、新建城都要靠这一步）。 */
+      if (GAME.fog) {
+        var _hadFog = !!(st.fog && st.fog.data);
+        GAME.fog.reset();     /* 丢掉内存里**当前局**的包 —— 读档是换一局，不是续那一局 */
+        GAME.fog.ensure();
+        if (!_hadFog) GAME.fog.backfill();
+        else GAME.fog.revealOwned();
+      }
       return st;
     } catch (e209) {
       GAME.state = _prev209;   /* v89.209：回滚 —— 坏档失败不留半迁移态 */
@@ -3648,6 +3711,9 @@ import './data.js';
     if (GAME.autoTrainTick) GAME.autoTrainTick();
     /* v89.202（老板 3）：收藏条件峰值扫掠（10 游戏秒节流 · 达到过即永久解锁） */
     if (GAME.collectPeakSweep) GAME.collectPeakSweep();
+    /* v92：探索里程碑 —— 探明度跨过 DATA.FOG.tiers 的新档 → 城的视野半径永久 +1。
+       stats 有缓存（只在探明度变化时重算），没跨档时这里是一次数值比较。 */
+    if (GAME.fog && GAME.fog.checkMilestones) GAME.fog.checkMilestones();
     /* v89.136：老档采集队迁移兜底（幂等 · 正常已被 loadGame 处理） */
     if (GAME.migrateLegacyGathers) GAME.migrateLegacyGathers();
     /* v89.152：老档珠宝换算兜底（幂等 · 同款双保险） */

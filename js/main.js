@@ -15,9 +15,12 @@ import './ship.js';       /* v91.71：空间站/战舰 */
 import './domain.js';
 import './map.js';
 import './sphere.js';
+import './fog.js';      /* v92：探明度（迷雾）—— 依赖 sphere 的六边邻接做半径点亮 */
+import './memorial.js'; /* v92：阵亡名录 —— 只记事，不记账 */
 import './gltf.js';
 import './map3d.js';
 import './battle.js';
+import './strategy.js';   /* v91.77：回合战斗策略层（独立模块，只出指令） */
 import './tactic.js';
 import './icons.js';
 import './gicons.js';
@@ -1319,6 +1322,8 @@ import './ui.js';
          这里只多做一步**就地重开弹窗**，让"今日次数 / 可派兵力 / 上次结果"立刻反映。
          两个入口（页面快速行 + 弹窗）共用同一份后端，不是两套逻辑。 */
       case 'open-auto-march': ui.openAutoMarch(); break;
+      /* v91.84（老板「建立总体战力评估」）：军务总览 → 战力评估（将 / 兵 / 总体三块同屏）。 */
+      case 'open-power': ui.openPower(); break;
       case 'am-toggle': GAME.doToggleAutoMarch(); ui.openAutoMarch(); break;
       case 'am-once': GAME.doAutoMarchOnce(); ui.openAutoMarch(); break;
       /* v91.36：自动探索（参考自动出征 · 不设固定英雄）。 */
@@ -1851,6 +1856,15 @@ import './ui.js';
       GAME.refreshView();
       return;
     }
+    /* v91.84：逐兵种「清层数量」—— 破层是战斗，与探索编成分开设定（空 = 沿用探索编成）。 */
+    if (k.indexOf('clearArmy:') === 0) {
+      cfg.clearArmy = cfg.clearArmy || {};
+      var _cia = k.slice(10);
+      var _cin = Math.max(0, Math.floor(Number(v) || 0));
+      if (_cin > 0) cfg.clearArmy[_cia] = _cin; else delete cfg.clearArmy[_cia];
+      GAME.refreshView();
+      return;
+    }
     /* v91.81（老板「开发所有星球和城市选项」）：探索范围 = 排除表。
        `offPlanet:<pid>` / `offCity:<cityId>` —— v 为真值 = 排除（不探索），空 = 恢复参与。 */
     if (k.indexOf('offPlanet:') === 0) {
@@ -1876,6 +1890,8 @@ import './ui.js';
       GAME.refreshView();
       return;
     }
+    /* v91.83：自动清层开关（可行行动全锁时，自动派兵破下一层守卫）。 */
+    if (k === 'autoClear') { cfg.autoClear = !!v; GAME.refreshView(); return; }
     if (k === 'everyMin' || k === 'dailyMax') cfg[k] = Number(v);
     else cfg[k] = String(v);
     GAME.refreshView();
@@ -3374,7 +3390,7 @@ import './ui.js';
      （这解释了"改了却说没生效"的观感）。老板若发现版本 ≠ 最新交付，按 Ctrl+F5
      强制刷新即获得新代码。⚠️ 发版须走 **bump_version.py --bump --version vX.Y**（它同步 index.html 的 ?v=/BUILD
      与这里的 GAME.VERSION 三处）—— 只手改 index.html 会让版本号冻住（v91.18 前的病灶）。 */
-  GAME.VERSION = 'v91.82';
+  GAME.VERSION = 'v92.0';
   function boot() {
     fitAppSize();
     try {

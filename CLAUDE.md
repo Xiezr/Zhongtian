@@ -47,6 +47,7 @@ js/items.js         GAME.items   背包（唯一出口）
 js/generals.js      GAME.gen     英雄状态机
 js/cities.js        GAME.city    城市/资源/队列/城兵
 js/ship.js          GAME.ship    空间站/战舰
+js/strategy.js      GAME.strat   回合战斗策略（选靶/姿态，独立模块）
 js/bundle.js        构建产物（提交入库）
 ```
 

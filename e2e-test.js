@@ -204,7 +204,7 @@ async function runTests(dom, URL) {
   })();
 
   console.log('\n--- 2. 数据层完整性 ---');
-  check('兵种 14', Object.keys(DATA.TROOPS || {}).length === 14, Object.keys(DATA.TROOPS || {}).length + '');
+  check('兵种 17（v91.99 补中程梯队）', Object.keys(DATA.TROOPS || {}).length === 17, Object.keys(DATA.TROOPS || {}).length + '');
   check('城内建筑 16', Object.keys(DATA.BUILDINGS || {}).length >= 16, Object.keys(DATA.BUILDINGS || {}).length + '');
   check('城外建筑 4', Object.keys(DATA.EXT_BUILDINGS || {}).length === 4);
   check('科技 ≥23', (DATA.TECH || []).length >= 23, (DATA.TECH || []).length + ' 项');
@@ -5208,9 +5208,11 @@ if (svBtn) {
    * v83（老板）：野地经验惩罚 —— 台阶口径 / 战报注明
    * ============================================================ */
   console.log('\n--- v83. 经验惩罚（野地越级） ---');
-  check('v83：台阶 = 每 12 级一档（12→1 / 13→2 / 120→10 / 121+→10）', (function () {
+  check('v83：台阶 = 每 12 级一档（12→1 / 13→2 / 120→10 / 121→11 / 240→15）', (function () {
+    /* v91.89：野地扩到 15 级 → 档位上限 10 → 15（将级 180 才要求满档） */
     return G.battle.expTierOf(12) === 1 && G.battle.expTierOf(13) === 2
-      && G.battle.expTierOf(120) === 10 && G.battle.expTierOf(200) === 10;
+      && G.battle.expTierOf(120) === 10 && G.battle.expTierOf(121) === 11
+      && G.battle.expTierOf(240) === 15;
   })());
   check('v83：越级惩罚 ×0.8^gap（v89.173 放宽 · Lv73 打 1 级 → 0.8⁶）', (function () {
     const p = G.battle.expPenaltyOf(73, 1);

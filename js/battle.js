@@ -30,6 +30,16 @@ import './state.js';
     for (var id in army) n += army[id];
     return n;
   }
+  /* v91.86：星球难度阶梯 —— 守军数量按星球放大（第 1 星球 ×1，既有基线零影响）。
+     只放大「常规目标」（野地/据点/NPC 城）；奇观守卫与自家调兵不动。 */
+  function scaleGarrison(army, pid) {
+    if (!army) return army;
+    var k = (GAME.planetScaleOf ? GAME.planetScaleOf(pid) : 1);
+    if (!(k > 1.0001)) return army;
+    var out = {};
+    for (var id in army) out[id] = Math.max(1, Math.round((army[id] || 0) * k));
+    return out;
+  }
   function totalHp(army, gen) {
     var hp = 0;
     for (var id in army) if (DATA.TROOPS[id]) hp += army[id] * DATA.TROOPS[id].hp;
@@ -104,9 +114,11 @@ import './state.js';
       var atkMult = 1, defMult = 1, cover = 1;
       if (general) {
         var a = GAME.genAttrs(general);
-        /* 指挥覆盖：指挥×100 内士兵吃满加成；指挥链路科技再放宽覆盖范围 */
-        var covered = Math.min(cnt, a.tong * 100 * (1 + TB('command')));
-        cover = covered / cnt;
+        /* 指挥覆盖：指挥×100 内士兵吃满加成；指挥链路科技再放宽覆盖范围。
+           v91.92：换算收敛到 GAME.coverOf（唯一出口，与 tactic / 战力评估同源）——
+           变量名仍叫 cover，是因为下面 atkMult/defMult 的写法与断言（smoke 3564）
+           都按 `a.atkPct * cover` 守着"加成 × 覆盖率"这条链，不另立第二套写法。 */
+        cover = GAME.coverOf(a.tong, 1 + TB('command'), cnt).cover;
         atkMult = 1 + a.atkPct * cover;        // 全军攻击（含装备，见 genAttrs.atkVal）
         defMult = 1 + a.defPct * cover;        // 全军防御（对防守方由调用方传）
       }
@@ -216,15 +228,26 @@ import './state.js';
     if (GAME.story && GAME.story.defMult) defBonus = Math.min(0.9, defBonus + GAME.story.defMult());
     if (defGen) {
       /* v52：守将的防御加成同样走「谋略→防御值→百分比」这条链（含装备/套装防御），
-         原来分成 `zm/100` 与 `def/10000` 两笔的地方合成一笔。 */
+         原来分成 `zm/100` 与 `def/10000` 两笔的地方合成一笔。
+         v91.92：再并上「指挥溢出减伤」——指挥够覆盖全军后，多余的指挥转减伤
+         （口径见 domain.js coverOf）。⚠️ 本引擎的减伤是**加法封顶 0.9**，
+         而 defPct 在后期本身就远超 0.9，所以这里 DR 多半被上限吞掉 ——
+         属既有引擎差异（主引擎 tactic 走乘法碰撞，不受此限），不另开旁路。 */
       var ga = GAME.genAttrs(defGen);
-      defBonus = Math.min(0.9, defBonus + ga.defPct);
+      defBonus = Math.min(0.9, defBonus + ga.defPct
+        + GAME.coverOf(ga.tong, 1 + TB('command'), totalCount(defArmy)).dr);
     }
 
     /* 攻方自身减伤：装甲强化（科技）+ 装备护甲 —— 在守方反击时生效。
        此前「装甲强化」与装备 def 只在扮演守方时才算，而玩家**只当攻方**，
-       等于这两项完全废弃。v52：攻方的防御也走同一条链（含谋略与装备）。 */
-    var atkDefBonus = Math.min(0.85, TB('def') + (atkGen ? GAME.genAttrs(atkGen).defPct : 0));
+       等于这两项完全废弃。v52：攻方的防御也走同一条链（含谋略与装备）。
+       v91.92：同上并指挥溢出减伤（同口径）。 */
+    var atkDefPct = 0;
+    if (atkGen) {
+      var ag = GAME.genAttrs(atkGen);
+      atkDefPct = ag.defPct + GAME.coverOf(ag.tong, 1 + TB('command'), totalCount(atkArmy)).dr;
+    }
+    var atkDefBonus = Math.min(0.85, TB('def') + atkDefPct);
 
     /* 攻城伤害：羁绊「白衣渡江」（v90.93：赛季国策项随年号纪元退役）
        v28（需求 0）：再乘**攻城器械的内建倍率**，并让器械拆城。
@@ -411,12 +434,22 @@ import './state.js';
     /* v89.142（老板 7）：重放用**斗将后的那份主将**（rec.sim.genSim）——
        否则史实（结算读 genSim）与重放（读原件）在英雄属性上差一个 +10%，verify 必假红。 */
     var _genSimD = rec.sim.genSim || gen;
+    /* v91.85：观战路径也要接策略层 —— 原来只有 T.simulate（自动结算）那条路装，
+       而默认 battleWatch=true，等于"AI 只在关掉观战时才生效"。
+       这里按 **rec.sim.simOpts.battleAI 快照**决定，重跑与首算同源。 */
+    var _so = rec.sim.simOpts || {};
+    if (_so.battleAI && GAME.strat && GAME.strat.autoPlan && !_so.plan) {
+      var _so2 = {};
+      for (var _kk in _so) _so2[_kk] = _so[_kk];
+      _so2.plan = GAME.strat.autoPlan({ sides: ['def'], allowRetreat: true });
+      _so = _so2;
+    }
     var env = null;
     /* v89.179b·P1-3：会话建立 + 逐回合重放读的是"现在"的全局加成（科技/天时/羁绊/战鼓），
        而史实是开打那一刻的 → 读档/挂起重放会漂。包 withBoost(rec.sim.boost) 装回史实快照。 */
     GAME.battle.withBoost(rec.sim.boost, function () {
       env = GAME.tactic.begin(rec.atkArmy, _genSimD, rec.sim.scArmy || {}, rec.sim.scVal || 0,
-        rec.sim.scGen || null, rec.sim.simOpts || {});
+        rec.sim.scGen || null, _so);
       (rec.history || []).forEach(function (h) {
         for (var tid in (h || {})) env.setCmd('atk', tid, h[tid]);
         var _st192 = env.step();
@@ -499,13 +532,7 @@ import './state.js';
   GAME.battle.smartStanceOf = function (u, gap, plan, mode, ctx) {
     plan = plan || GAME.battle.smartPlanOf();
     mode = mode || 'echelon';
-    /* v89.176（老板「总体策略是齐头并进，针尖麦芒，还是退守底线消耗，一波冲锋。
-       还是错落有致，进退有据逐一消灭，伺机全军出动」）：**阵型模式**（第 4 参）——
-       与目标规则正交：本函数只决定"动作"，打谁由 smartPickTarget 决定。
-       模式表与标定数据见 DATA.SMART_PLAN.modes 注释（probe_v89176d_modes）。
-       `plan.fastestId`（spear 的尖刀）由 smartApply 经 planX 传入；单独调用缺省时
-       spear 自动回落到 echelon 分支（纯函数不依赖外部状态）。 */
-    if (mode === 'turtle') return 'hold';        /* 退守消耗：全军原地（受创减半） */
+    if (mode === 'turtle') return 'hold';        /* 退守消耗：全军原地（驻守减伤） */
     if (mode === 'charge') return 'advance';     /* 一波冲锋：全军全速、永不转防御 */
     var _er = (u.er != null ? u.er : (u.range || 0));
     if (mode === 'line') {                       /* 齐头并进：贴到**射程边缘**才转防御 */
@@ -521,17 +548,21 @@ import './state.js';
          **风筝** —— 进射程后不再无条件站桩：处于威胁线内（敌下回合能打到我）、
          且存在"我打得到 / 它够不着"的窗口（敌射程 < 我）、且退一步后仍在射程内
          （退出去打不着 → 原地打）→ **后撤一步**（引擎的 retreat 可退到 −D，
-         后退回合照常开火 = 边退边射）；否则站桩输出（受创减半）。
+         后退回合照常开火 = 边退边射）；否则站桩输出（驻守减伤）。
          ctx 由 smartApply 按**团队条件**构造（我方最慢远程 > 敌最前速度才给 ctx.kite ——
          混编里最慢那支决定整条远程线是否风筝；probe_v89180b 的 S3 实测"部分退、部分留"
          反而更差）。**无 ctx（旧调用 / 旧断言）→ 行为与 v89.164 逐字一致。** */
       if (ctx && ctx.kite && ctx.back > 0 && gap <= ctx.threat && ctx.eRange < _er - 1
-          && gap + ctx.back <= _er + 1) return 'retreat';   /* back>0：退不动就别退（hold 受创减半） */
+          && gap + ctx.back <= _er + 1) return 'retreat';   /* back>0：退不动就别退（hold 驻守减伤） */
       return 'hold';
     }
     var isCav = (u.spd || 0) >= 400;
     var k = isCav ? (plan.gapCav != null ? plan.gapCav : 250)
                   : (plan.gapInf != null ? plan.gapInf : 250);
+    /* v91.100：**近战不再"停 250 结阵"** —— 动作三角开启后驻守要付 −20% 输出，
+       而它换来的 −20% 受创在"击杀判胜负"的仗里只是把战斗拖长（实测镜像局
+       平均战损 39.9% → 42.1%）。所以近战一路压上去，结阵交给玩家自己按。 */
+    if (DATA.STANCE_TRIANGLE_ON) return 'advance';
     return (gap <= k) ? 'hold' : 'advance';
   };
   /* 应用：把方案写进本场战斗（env.setCmd + rec.cmd）。
@@ -623,7 +654,7 @@ import './state.js';
     list.forEach(function (e) {
       var cf = T.clashFactor(perA, T.perDef(e));
       var perHp = T.perHp(e, null);
-      var hold = (e.stance === 'hold') ? (1 - T.HOLD_DAMAGE_CUT) : 1;
+      var hold = T.stanceTakenMul(e);      /* v91.95：动作三角（受创倍率，唯一口径） */
       /* v89.180：拆械 —— 评分器与实战共用一把尺（无人轰炸机打器械的 killF 乘 vsMech） */
       var _st180 = DATA.TROOPS[u.id] || {};
       var _et180 = DATA.TROOPS[e.id] || {};
@@ -1341,7 +1372,24 @@ import './state.js';
     var mult = { wild: 0.9, fort: 0.5, county: 0.9, jun: 1, zhou: 3, capital: 8 }[tier] || 1;
     mult *= (extMul == null ? 1 : extMul);
     if (tier === 'fort') mult *= Math.pow(2.15, (c.lv || c.level || 1) - 1);
-    if (tier === 'wild') mult *= Math.pow(1.45, (c.lv || c.level || 1) - 1);
+    /* v91.90（老板「把野地资源砍一砍，一块地那么多钱说不过去」）：
+       **野地掠夺 = 守军人数 × 每兵资源**（默认 80），不再用 1.45^(lv-1) 的指数曲线。
+       理由：指数曲线比守军涨得快 —— 旧口径 Lv15 守军 27 万却给 1746 万资源（每兵 65），
+       而 Lv10 只有 357 万；改成"每兵固定"之后，一处参数同时兜住三件事
+       （打多大的仗 / 损多少兵 / 抢多少东西），实测盈亏恒定在打平。
+       基准 = 四资源中值合计 71500（grain25000+wood20000+stone15000+iron11500）。 */
+    if (tier === 'wild') {
+      var _wl = Math.max(0, Math.min(15, (c.lv || c.level || 0) | 0));
+      var _tb = DATA.WILD_DEFENSE[_wl] || [], _cnt = 0;
+      for (var _i = 0; _i < _tb.length; _i++) _cnt += (_tb[_i].min + _tb[_i].max) / 2;
+      /* 按**守军造价**给（不是按人头）—— 后期守军兵种贵，按人头会覆盖不了战损。
+         5% 正好等于"一场 5% 损兵"的补员成本：打平，不赚不亏。 */
+      var _mid = {}, _val = 0;
+      for (var _j = 0; _j < _tb.length; _j++) _mid[_tb[_j].id] = (_tb[_j].min + _tb[_j].max) / 2;
+      _val = GAME.battle.armyResourceValue(_mid);
+      var _r = (DATA.EXPEDITION && DATA.EXPEDITION.wildLootRatio) || 0.05;
+      mult *= (_val * _r) / 71500;
+    }
     /* 载重优化：掠夺与采集收获 +5%/级（负重 = 能搬回来多少） */
     mult *= (1 + TB('load'));
     /* v89.114：随机源与落账开关**显式传入**（`rnd` 默认 Math.random）——
@@ -1456,7 +1504,23 @@ import './state.js';
   GAME.battle.haulCapOf = function (o) {
     o = o || {};
     var surv = GAME.battle.survivedArmyOf(o.army || {}, o.result);
-    return Math.max(0, GAME.cargoCapOf(surv) - GAME.cargoLoadOf(o.cargo || null));
+    var cap = Math.max(0, GAME.cargoCapOf(surv) - GAME.cargoLoadOf(o.cargo || null));
+    /* ============================================================
+     * v92：**距离折损** —— 远征半径的真实手感
+     * ------------------------------------------------------------
+     * 老板：「全图开放缺探索」「兵源无限…什么设定在摧毁游戏」。
+     * 这里不禁止远行（禁止 = 墙，不是取舍），而是让远行的**收获变薄**：
+     * 路上要吃的、要带的、要留人看着的，都从搬运力里扣。
+     *
+     * 近处（5 格）= 几乎全额带回；中等（20 格）≈ 七成半；
+     * 极远（60 格以上）只剩一成半 —— 地板 15% 而不是 0：
+     * 打下来却一件不剩，玩家只会觉得"这仗白打了"，而不是"下次该带辎重队"。
+     * ============================================================ */
+    if (o.dist > 0) {
+      var k = (DATA.EXPEDITION && DATA.EXPEDITION.haulDecayPerTile) || 0;
+      if (k > 0) cap = cap * Math.max(0.15, 1 - o.dist * k);
+    }
+    return cap;
   };
   /* 一批战利品的**重量**（粮木石铁旧币同权 1:1，与 cargoLoadOf 同源同口径） */
   GAME.battle.lootWeightOf = function (loot) {
@@ -1466,11 +1530,16 @@ import './state.js';
     }
     return w;
   };
-  /* 搬运计划（纯函数，不落账）：{ cap, weight, factor, keep, left, kept, lost } */
+  /* 搬运计划（纯函数，不落账）：{ cap, weight, factor, keep, left, kept, lost, decay, dist } */
   GAME.battle.haulPlanOf = function (o) {
     o = o || {};
     var loot = o.loot || {};
     var cap = GAME.battle.haulCapOf(o);
+    /* v92：无折损基准（同一算式但不传 dist）—— 只为了把"折了多少"算出来给战报看。
+       结算一场仗调两次 survivedArmyOf 无所谓；关键是口径同源，
+       不许在战报里另写一个"距离折扣"公式（那就是两份实现了）。 */
+    var capFull = GAME.battle.haulCapOf({ army: o.army, result: o.result, cargo: o.cargo });
+    var decay = capFull > 0 ? Math.max(0, Math.min(1, cap / capFull)) : 1;
     var wt = GAME.battle.lootWeightOf(loot);
     var factor = wt > 0 ? Math.min(1, cap / wt) : 1;
     var keep = {}, left = {}, kept = 0;
@@ -1482,7 +1551,7 @@ import './state.js';
       kept += g;
     });
     return { cap: cap, weight: wt, factor: factor, keep: keep, left: left,
-      kept: kept, lost: wt - kept };
+      kept: kept, lost: wt - kept, decay: decay, dist: o.dist || 0 };
   };
 
   /* 打造材料掉落：表 = { matId: [min, max] }，mult 为数量倍率 */
@@ -1630,14 +1699,30 @@ import './state.js';
      老板拍板「胜方才有经验」，所以我把败方系数与 `won` 参数**一起删了** ——
      留一个恒为 0 的系数就是"假旋钮"（看着可调、实际乘 0），
      比没有更坏；调用方（败方分支）也一并不再调用本函数。 */
+  /* v91.89：守军**战力**合计（与军师估算/来袭强度/家底同一把尺）。
+     只用于经验结算（mode='power'），不改任何战斗数学。 */
+  GAME.battle.armyPowerTotal = function (army) {
+    var tp = (GAME.story && GAME.story.troopPower) ? GAME.story.troopPower : null;
+    var n = 0;
+    for (var id in (army || {})) {
+      var c = army[id] || 0;
+      if (!c) continue;
+      n += (tp ? tp(id) : 1) * c;
+    }
+    return Math.round(n);
+  };
   GAME.battle.battleExp = function (defLossBy, gen) {
     var R = DATA.EXP_RULE || { perResource: 1000, winMul: 2, capPct: 0.8 };
     if (!gen) return { gain: 0, raw: 0, cap: 0, capped: false };
-    var val = GAME.battle.armyResourceValue(defLossBy);
-    var raw = Math.round(val / R.perResource) * R.winMul;
+    /* v91.89：双口径 —— mode='power' 按战力，其余按资源（旧口径保留，可一格切回） */
+    var val = (R.mode === 'power')
+      ? GAME.battle.armyPowerTotal(defLossBy)
+      : GAME.battle.armyResourceValue(defLossBy);
+    var per = (R.mode === 'power') ? (R.perPower || 180) : (R.perResource || 1000);
+    var raw = Math.round(val / per) * R.winMul;
     var cap = Math.round(GAME.expNeedOf(gen) * R.capPct);
     var gain = Math.max(0, Math.min(raw, cap));
-    return { gain: gain, raw: raw, cap: cap, capped: raw > cap, value: val };
+    return { gain: gain, raw: raw, cap: cap, capped: raw > cap, value: val, mode: (R.mode === 'power' ? 'power' : 'resource') };
   };
 
   /* ============================================================
@@ -1710,7 +1795,7 @@ import './state.js';
      · expPenaltyOf：野地等级 ≥ 台阶 → 1（吃满）；每差一档 ×decay，地板 minMul
      野地 0 级按 1 级对待（尚未长成的野地不比 1 级更差）。 */
   GAME.battle.expTierOf = function (genLevel) {
-    var P = DATA.EXP_PENALTY || { tier: 12, maxLv: 10 };
+    var P = DATA.EXP_PENALTY || { tier: 12, maxLv: 15 };
     return Math.min(P.maxLv, Math.max(1, Math.ceil((genLevel || 1) / P.tier)));
   };
   GAME.battle.expPenaltyOf = function (genLevel, wildLevel) {
@@ -1739,7 +1824,7 @@ import './state.js';
       var wd = GAME.wildDefenseAt(target.ci, lv);
       return { ok: true, kind: 'wild', pid: _wpid, ci: target.ci, x: tcell.x, y: tcell.y, lon: tcell.lon, lat: tcell.lat, lv: lv,
         name: (DATA.TERRAIN[_wildTerr] ? DATA.TERRAIN[_wildTerr].name : '野地') + ' Lv' + lv,
-        terrain: _wildTerr, garrison: wd.army, guard: wd.gen, def: 0, defDay: wd.day };
+        terrain: _wildTerr, garrison: scaleGarrison(wd.army, _wpid), guard: wd.gen, def: 0, defDay: wd.day, env: (GAME.planetEnvOf ? GAME.planetEnvOf(_wpid) : null) };
     }
     if (target.kind === 'fort' && GAME.map.fortAt) {
       var _fpid2 = (target.pid != null) ? target.pid : GAME.curPid();
@@ -1753,7 +1838,7 @@ import './state.js';
       var fg = GAME.map.fortGarrison(f.level);
       /* v61：野地城市建筑全满；布局 GAME.fortPlanOf · 城防 GAME.fortDefOf · 守将 GAME.fortGuardOf。 */
       return { ok: true, kind: 'fort', pid: _fpid2, ci: f.ci, x: f.x, y: f.y, lon: f.lon, lat: f.lat, lv: f.level, name: f.name + '（野外城市 Lv' + f.level + '）',
-        fort: f, garrison: fg, def: GAME.fortDefOf(f), plan: GAME.fortPlanOf(f),
+        fort: f, garrison: scaleGarrison(fg, _fpid2), def: GAME.fortDefOf(f), plan: GAME.fortPlanOf(f),
         guard: GAME.fortGuardOf(f),
         cityType: 'fort', dropType: 'fort' };
     }
@@ -1798,7 +1883,7 @@ import './state.js';
       var ng = GAME.npcCityGuard(npc);
       return { ok: true, kind: 'city', id: npc.id, lv: GAME.cityLvOf(npc), name: npc.name,
         x: npc.x, y: npc.y, ci: npc.ci, lon: npc.lon, lat: npc.lat,
-        npc: npc, garrison: npc.garrison, def: npc.def, guard: ng,
+        npc: npc, garrison: scaleGarrison(npc.garrison, (target.pid != null ? target.pid : GAME.curPid())), def: npc.def, guard: ng,
         cityType: npc.type, dropType: GAME.battle.dropTierOf(npc) };
     }
     return { ok: false, msg: '未知目标类型' };
@@ -2355,7 +2440,13 @@ import './state.js';
            它把"城防折出"与"机工坊建造"合并成一个数。
            NPC 城没有自建箭塔（`city.towers` 未定义）→ 结果与 v59 完全一致；
            玩家城作为守方时，自己造的箭塔自动上阵（不需要任何指派）。 */
-        towers: (t.npc && GAME.towerCountOf) ? GAME.towerCountOf(t.npc) : null };
+        towers: (t.npc && GAME.towerCountOf) ? GAME.towerCountOf(t.npc) : null,
+        /* v91.85：把"本场是否启用策略层"随 simOpts 一起存成**纯数据**。
+           观战/读档重跑都从 simOpts 重建会话 —— 只认这里的快照，不认"现在"的全局设置，
+           这样中途改设置也不会让同一场仗前后两半用两套 AI。 */
+        battleAI: !!(GAME.state && GAME.state.settings && GAME.state.settings.battleAI),
+        /* v91.86：目标星球 —— 环境规则按它解析（跨星球出征不能读"当前城"） */
+        pid: (t && t.pid != null) ? t.pid : (GAME.curPid ? GAME.curPid() : 1) };
     return { scArmy: scArmy, scVal: scVal, scGen: scGen, scNote: scNote, simOpts: simOpts };
   };
 
@@ -2600,6 +2691,20 @@ import './state.js';
         if (_cS && _aS > 0) GAME.battle.returnArmy(_cS, atkArmy, { atkRemain: _aS });
         _expArmySettled = true;      /* 军账已结（随行者归城 / 本就无兵） */
       }
+      /* ============================================================
+       * v92：**侦查 = 专门的探索工具**
+       * ------------------------------------------------------------
+       * 全明 3 格 + 外围半明 6 格（普通抵达只给 2 格全明）。
+       * 掠夺/占领换收益，侦查换"看见" —— 否则半明这一档永远只有行军沿途
+       * 顺带触发，玩家也就没有"专门派人去探路"的动机。
+       * 放在 arrived 之外：即时报捷（点击直接结算）与行军抵达都算数。
+       * ============================================================ */
+      if (GAME.fog && t && t.ci != null && t.ci >= 0) {
+        try {
+          GAME.fog.revealAround(t.ci, 3, GAME.fog.ALL);
+          GAME.fog.revealAround(t.ci, 6, GAME.fog.TERRAIN);
+        } catch (eF) { /* 视野失败不阻断侦查结算 */ }
+      }
       return {
         ok: true, mode: mode.id, result: { winner: 'scout' },
         intel: lines, roster: sc.roster, guard: gd, spoils: sc.spoils,
@@ -2827,7 +2932,10 @@ import './state.js';
         /* v89.114（老板「掠夺返回的物资数量与军队总负重有关」）：
            战利品总重 ≤ **随军载重**（幸存部队，扣去去程已载辎重）。
            超载时按比例缩减，余数留在原处（战报里明示"未能装下"，下次可再取）。 */
-        var _haul = GAME.battle.haulPlanOf({ army: atkArmy, result: result, cargo: opts.cargo, loot: loot });
+        /* v92：传 dist —— 搬运力按距离折损（远行的收获变薄，不是去不了） */
+        var _dist92 = (GAME.sphere && GAME.sphere.distOf && city && t)
+          ? GAME.sphere.distOf({ ci: city.ci }, { ci: t.ci }) : 0;
+        var _haul = GAME.battle.haulPlanOf({ army: atkArmy, result: result, cargo: opts.cargo, loot: loot, dist: _dist92 });
         /* v89.189（老板 2 · 顺修）：**旧币不入搬运** —— gold 不在 TRANSPORT_KEYS
            （v89.161：旧币是玩家层级货币），但旧实现把 keep 直接覆盖回 loot →
            genLootEx / npcLoot 产的 gold 在下一步**静默蒸发**（"面板估掠有旧币、
@@ -3017,6 +3125,9 @@ import './state.js';
        于是"出兵"与"驻守"合成一道手续，那道独立的「派军驻守」按钮就此退场。 */
     var _stW = (mode.station && t.kind === 'wild' && win) ? GAME.map.wildAt(t.ci) : null;
     var _stAdd = 0;
+    /* v92：名录要的是"派出去多少" —— 必须在 returnArmy 之前留一份。
+       returnArmy 会按幸存编制改写原地账，事后再读 atkArmy 拿到的是残值。 */
+    var _sentSnap = U.deep(atkArmy);
     if (city) {
       returned = GAME.battle.returnArmy(city, atkArmy, result, _stW ? function (back) {
         /* v89.135（老板 3）：**占领新野地不受驻军上限**（noCap）——「10W 占领 1 级野地
@@ -3032,6 +3143,17 @@ import './state.js';
       } : null);
     }
     _expArmySettled = true;      /* v89.86（P-25）：军账已结（幸存者 / 伤兵均已入账） */
+    /* v92：阵亡名录 —— 只记**再也不会回来的人**（归队的、抬回来能治的都不算）。
+       ⚠️ 刻意不加任何加成或惩罚：给死亡标上汇率，玩家就开始算
+       "送多少人头最划算"，这件事的性质就变了。它只是一面墙。*/
+    if (GAME.memorial) {
+      try {
+        GAME.memorial.record({
+          sent: _sentSnap, back: returned.back, wounded: returned.wounded,
+          place: t.name, ci: t.ci, win: win, mode: mode.name, gen: gen,
+        });
+      } catch (eM) { /* 名录失败不阻断结算 */ }
+    }
     var backN = 0, woundN = 0;
     for (var bk in returned.back) backN += returned.back[bk];
     for (var wk in returned.wounded) woundN += returned.wounded[wk];
@@ -3087,6 +3209,13 @@ import './state.js';
       lootLines.push('🚚 运力不足：库藏重 ' + U.fmt(gains.haul.weight) + '，随军载重仅 '
         + U.fmt(gains.haul.cap) + ' —— 尚有 ' + U.fmt(gains.haul.lost)
         + ' 未能装下（仍留库中，下次可再取；编入运输平台或板车可提高搬运量）');
+    }
+    /* v92：**远途折损**要说出来，否则玩家只会觉得"这仗掠夺怎么这么少"，
+       学不到"远 = 贵"这条规则。距离 ≥ 8 格才提，免得近处打每一仗都刷一行。 */
+    if (gains.haul && gains.haul.dist >= 8 && gains.haul.decay < 0.995) {
+      lootLines.push('🧭 远途折损：往返 ' + Math.round(gains.haul.dist) + ' 格，搬运力只剩 '
+        + Math.round(gains.haul.decay * 100) + '% —— 这一趟的路途吃掉了大半运力；'
+        + '想把远处库藏搬干净，得带运输平台 / 板车，或者就近先修前哨。');
     }
     if (gains.mats && gains.mats.length) lootLines.push('材料：' + gains.mats.join('、'));
     if (gains.equip && gains.equip.length) lootLines.push('军械：' + gains.equip.join('、'));
@@ -3804,6 +3933,10 @@ import './state.js';
     var dist = (GAME.sphere && GAME.sphere.distOf) ? GAME.sphere.distOf(from, to) : 1;
     if (dist <= 0) dist = 1;
     var fac = GAME.march.speedFactor(army, from, to, gen);
+    /* v91.86：星球环境也作用在行军上（低重力更快 / 轨道封锁更慢） */
+    var _envPid = (to && to.pid != null) ? to.pid : (GAME.curPid ? GAME.curPid() : 1);
+    var _envM = GAME.planetEnvOf ? GAME.planetEnvOf(_envPid) : null;
+    if (_envM && _envM.spd && Math.abs(_envM.spd - 1) > 1e-9) fac = fac * _envM.spd;
     var gameSec = dist * (secPerTile || GAME.march.secPerTile()) / Math.max(0.05, fac);
     var realSec = Math.max(GAME.march.minRealSec(), gameSec / ts);
     return Math.round(realSec * ts);
@@ -3994,6 +4127,12 @@ import './state.js';
       roundTrip: !!(mode && mode.roundTrip),   /* v91.76：运输送达后原路返程 */
     };
     s.marches.push(m);
+    /* v92：出征 = 走过去看见什么。
+       沿途只点亮到**半明**（见过地形，不知道上面有什么）；
+       真正"到了"才升到全明（见 march.arrive）—— 路上远远看一眼 ≠ 在那儿扎过营。 */
+    if (GAME.fog) {
+      try { GAME.fog.revealPath({ ci: city.ci }, { ci: t.ci }, GAME.fog.TERRAIN); } catch (e) { /* 视野失败不阻断出征 */ }
+    }
     var left = Math.max(0, total / GAME.timeScale());
     GAME.log.war('🛫 ' + (gen ? gen.name + ' 率军' : '增援部队') + '出发 → ' + t.name + '（' + mode.name
       + cargoTxt
@@ -4064,6 +4203,11 @@ import './state.js';
         { arrived: true, cityId: m.cityId, scheme: m.scheme || null,
           cargo: m.cargo || null });      /* v89.103：随军辎重（owncity 分支落账） */
     } catch (e) { err = e; }
+    /* v92：抵达 = 这一带并入已知（全明）。**不论战果** —— 人已经站在那儿了，
+       看没看见、打没打赢，都不影响"这里有什么"这件事已经被知道。 */
+    if (GAME.fog && m.tci != null && m.tci >= 0) {
+      try { GAME.fog.revealAround(m.tci, 2, GAME.fog.ALL); } catch (e2) { /* 视野失败不阻断结算 */ }
+    }
     /* v89.87：观战挂起（pending）时英雄**保持征战在外**，不置 idle ——
        等 finishBattle 落账后统一收尾（否则战斗中英雄会被当成空闲可再派遣）。
        v89.137：`gen` 可能为 null（无将增援 · station 补兵）—— 守卫防空引用。 */
@@ -4193,5 +4337,127 @@ import './state.js';
     var pct = Math.min(100, Math.floor((m.elapsed || 0) / (m.totalTime || 1) * 100));
     var left = Math.max(0, ((m.totalTime || 0) - (m.elapsed || 0)) / GAME.timeScale());
     return { pct: pct, left: left, label: pct + '% · ' + U.durExact(left) };
+  };
+
+  /* ============================================================
+   * v91.83（老板）：「补充**将领战力评估**、**兵种战力评估体系**；
+   *   基于将领对兵种的加成，建立**总体战力评估**」。
+   * ------------------------------------------------------------
+   * 三层共用**同一把尺** —— 单兵战力复用 `STORY.troopPower`（全仓唯一出口，不另造）：
+   *   ① 兵种战力 `troopOf(id)` = hp×W.hp + atk×W.atk + def×W.def + spd×W.spd
+   *   ② 将领战力 `genOf(g, army)` = **带兵容量 × 加成强度 × 单兵战力**
+   *       带兵容量 coverCap = 指挥 × 100 ×(1+指挥链路科技)  ← 能吃满加成的兵数上限
+   *       加成强度 avgBonus = (atkPct + defPct)/2           ← 全军攻/防加成均值
+   *       → 量纲与①一致：= 该将麾下塞满兵时，凭加成**额外**贡献的战力。
+   *         （加成原子 atkPct/defPct 走 GAME.atkPctOf/defPctOf，与战斗引擎同源。）
+   *   ③ 总体战力 `armyOf(army, gen)` = Σ 兵种战力 ×(1 + 加成 × 覆盖率)
+   *       覆盖率 cover_i = min(cnt_i, coverCap)/cnt_i —— **逐兵种**，
+   *       与 damageOf 里 `covered/cnt` 是同一个公式（不是另写一套）。
+   * ⚠️ 速度/先手**不折进总战力** —— 先手要有对手才能判（firstStrike 需双方），
+   *    单列为 `spd` 指标，避免"无对手也能算出先手"的伪精度。
+   * ============================================================ */
+  GAME.power = {};
+
+  /* ① 单兵战力（唯一出口） */
+  GAME.power.troopOf = function (id) {
+    var tp = (GAME.story && GAME.story.troopPower) ? GAME.story.troopPower : null;
+    return tp ? tp(id) : (((DATA.TROOPS[id] || {}).power) || 0);
+  };
+  /* 兵种评估行：纸面分项 + 派生指标（人口效率 / 性价比 / 定位）。 */
+  GAME.power.troopRow = function (id) {
+    var t = DATA.TROOPS[id]; if (!t) return null;
+    var p = GAME.power.troopOf(id);
+    var cost = 0, cn = t.cost || {};
+    for (var k in cn) cost += (cn[k] || 0);
+    /* 定位由**数据派生**（不手写表）：新增兵种自动归类。 */
+    var role = t.nocombat ? '非战斗'
+      : (t.load >= 5000 ? '运输'
+        : (t.range >= 800 ? '远程'
+          : (t.def >= t.atk ? '防御' : '突击')));
+    return { id: id, name: t.name, ab: t.ab, icon: t.icon || '', grp: t.grp, nocombat: !!t.nocombat,
+      hp: t.hp || 0, atk: t.atk || 0, def: t.def || 0, spd: t.spd || 0, range: t.range || 0,
+      load: t.load || 0, pop: t.pop || 0, power: p, cost: cost,
+      perPop: (t.pop ? p / t.pop : 0), perCost: (cost ? p / cost : 0), role: role };
+  };
+  GAME.power.troopRows = function (opts) {
+    opts = opts || {};
+    var rows = Object.keys(DATA.TROOPS || {}).map(function (id) { return GAME.power.troopRow(id); }).filter(Boolean);
+    if (opts.grp) rows = rows.filter(function (r) { return r.grp === opts.grp; });
+    if (opts.combatOnly) rows = rows.filter(function (r) { return !r.nocombat; });
+    rows.sort(function (a, b) { return b.power - a.power; });
+    return rows;
+  };
+  /* 编成的**加权平均**单兵战力 —— 将领评估的基准尺（不给编成则取全兵种均值）。 */
+  GAME.power.avgTroopOf = function (army) {
+    var n = 0, sum = 0;
+    if (army) {
+      for (var k in army) {
+        var c = Math.max(0, Math.floor(army[k] || 0));
+        if (c > 0) { n += c; sum += c * GAME.power.troopOf(k); }
+      }
+    }
+    if (n > 0) return sum / n;
+    var ids = Object.keys(DATA.TROOPS || {}), s2 = 0;
+    ids.forEach(function (x) { s2 += GAME.power.troopOf(x); });
+    return ids.length ? s2 / ids.length : 1;
+  };
+
+  /* ② 将领战力评估（army 可选：给了就用该编成的加权单兵战力作尺） */
+  GAME.power.genOf = function (g, army) {
+    if (!g) return null;
+    var a = GAME.genAttrs(g);
+    /* v91.92：覆盖走 GAME.coverOf（唯一出口）；dr = 指挥溢出减伤（口径见 domain.js） */
+    var cv = GAME.coverOf(a.tong, 1 + TB('command'), totalCount(army || {}));
+    var coverCap = Math.round(cv.cap);
+    var atkPct = a.atkPct || 0, defPct = a.defPct || 0;
+    var avgBonus = (atkPct + defPct) / 2;
+    var unit = GAME.power.avgTroopOf(army);
+    return { id: g.id, name: g.name, level: g.level || 1,
+      tong: a.tong, yw: a.yw, zm: a.zm, nz: a.nz, spd: a.spd,
+      atkVal: a.atkVal || 0, defVal: a.defVal || 0,
+      coverCap: coverCap, atkPct: atkPct, defPct: defPct, avgBonus: avgBonus,
+      dr: cv.dr, unit: unit, power: Math.round(coverCap * avgBonus * unit) };
+  };
+  GAME.power.genRows = function (army) {
+    return ((GAME.state && GAME.state.generals) || []).map(function (g) { return GAME.power.genOf(g, army); })
+      .filter(Boolean).sort(function (a, b) { return b.power - a.power; });
+  };
+
+  /* ③ 总体战力 = 编成 × 将领加成（逐兵种覆盖率 · 与战斗引擎同一公式） */
+  GAME.power.armyOf = function (army, gen) {
+    army = army || {};
+    var base = 0, add = 0, n = 0, load = 0, spdSum = 0;
+    var byId = {};
+    var a = gen ? GAME.genAttrs(gen) : null;
+    var coverCap = a ? (a.tong || 0) * GAME.COVER_PER_TONG * (1 + TB('command')) : 0;
+    var avgBonus = a ? (((a.atkPct || 0) + (a.defPct || 0)) / 2) : 0;
+    var spdMult = 1 + TB('ride');
+    for (var id in army) {
+      var cnt = Math.max(0, Math.floor(army[id] || 0)); if (cnt <= 0) continue;
+      var t = DATA.TROOPS[id]; if (!t) continue;
+      var p = GAME.power.troopOf(id) * cnt;
+      base += p; n += cnt;
+      load += cnt * (t.load || 0);
+      spdSum += (t.spd || 0) * (t.ride ? spdMult : 1) * cnt;   /* 机车加成与 armySpeed 同口径 */
+      /* v91.92：覆盖率与减伤都走唯一出口（dr 仅供展示，不进战力口径） */
+      var cvI = a ? GAME.coverOf(a.tong, 1 + TB('command'), cnt) : { cover: 0, dr: 0 };
+      var cover = cvI.cover;
+      var addI = p * avgBonus * cover;
+      byId[id] = { cnt: cnt, power: Math.round(p), cover: cover, dr: cvI.dr, add: Math.round(addI) };
+      add += addI;
+    }
+    return {
+      base: Math.round(base), add: Math.round(add), total: Math.round(base + add),
+      troops: n, load: load, spd: (n ? spdSum / n : 0),
+      coverRate: (base > 0 ? add / base : 0),              /* 实际吃到的加成率（含覆盖折损） */
+      bonusRate: avgBonus,                                  /* 满覆盖时的加成率 */
+      coverCap: Math.round(coverCap), byId: byId,
+      gen: (a && gen) ? { id: gen.id, name: gen.name, atkPct: a.atkPct, defPct: a.defPct } : null,
+    };
+  };
+  /* 一城驻军的总体战力（gen 不传 = 裸战力） */
+  GAME.power.cityOf = function (city, gen) {
+    if (!city) return null;
+    return GAME.power.armyOf(city.army || {}, gen);
   };
 })();

@@ -303,6 +303,18 @@ var GICONS = (function () {
       "taitan": [
         "elephant",
         "metal"
+      ],
+      "paojiban": [
+        "archery-target",
+        "wood"
+      ],
+      "zhongjiqiang": [
+        "crossbow",
+        "iron"
+      ],
+      "guidaopao": [
+        "cog",
+        "iron"
       ]
     },
     "mat": {

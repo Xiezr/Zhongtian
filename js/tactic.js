@@ -483,13 +483,69 @@ import './state.js';
      我们的 `adv` 轴就是"前出距离"，所以行位直接当初始 adv。 */
   T.STANCE_ROW = {};
   (DATA.STANCES || []).forEach(function (x) { T.STANCE_ROW[x.id] = x.row; });
-  T.HOLD_DAMAGE_CUT = 0.5;    /* "防御"动作受到的伤害减半（报告 §九）——
-                                 ⚠️ 报告 §九（2024 新版）还写着"防御 = 本回合不攻击"，
-                                 但那与老版战报实证冲突（战报里"防御"中的无人轰炸机/东风快递**照常开火**、
-                                 且守城方"围墙原地防御"却仍在反击）。
-                                 两源冲突的裁决：**取老版战报口径 —— 照常开火**。
-                                 理由：若"不攻击"，守方默认防御会变成完全不还手，
-                                 与"守城方有先手优势""守军会反击"等其余全部资料矛盾。 */
+
+  /* ============================================================
+   * v91.95（老板「动作要有代价」）：**动作三角** —— 唯一口径
+   * ------------------------------------------------------------
+   * 数值全部在 DATA.STANCES（dmg / taken / takenLater），这里只读不写死。
+   *   · 输出倍率 `dmg`：驻守 −20%，其余 100%（原版"防御照常开火"的口径保留）；
+   *   · 受创倍率 `taken`：驻守首回合 0.75、**连用第 2 回合起 0.9**（防龟缩），
+   *     后退 1.25（背身），前进 1。
+   * 旧版是 hold 一刀 −50% 且无任何代价 —— 实测"全体守住"把战损从 53.6% 压到 4.4%，
+   * 属支配动作。改法不是单纯砍数值，而是让**每个动作都同时有收益和代价**。
+   * ⚠️ `holdRun`（连续驻守回合数）由 stepRound 每回合结算前维护，随单位对象走。
+   * ============================================================ */
+  T.stanceDefOf = function (id) {
+    var hit = null;
+    (DATA.STANCES || []).forEach(function (x) { if (x.id === id) hit = x; });
+    return hit;
+  };
+  /* 该单位**打出**的伤害倍率（驻守 −20%） */
+  T.stanceDmgMul = function (u) {
+    if (!DATA.STANCE_TRIANGLE_ON) return 1;                 /* 旧口径：动作不影响输出 */
+    var d = u && T.stanceDefOf(u.stance);
+    var m = (d && d.dmg != null) ? d.dmg : 1;
+    /* v91.97：移动开火惩罚 —— 与移动目标难打对称（一个是打不准，一个是难被瞄） */
+    var mvd = (u && u._moved) || 0;
+    if (T.MOVE_FIRE_CUT > 0 && mvd > 0) m *= 1 - T.MOVE_FIRE_CUT * Math.min(1, mvd / T.MOVE_TARGET_REF);
+    return m;
+  };
+  /* 该单位**受到**的伤害倍率（驻守 0.75/0.9 · 后退 1.25） */
+  /* v91.95：**移动目标难打** —— 本回合走了多远（移动段写 u._moved），走满 REF 吃满折扣。
+     ★ 只对**远程**射手生效（`shooter.range ≥ 500`）：这是"打移动靶"的物理直觉 ——
+       敌人跑动时提前量难算；而**近战已经贴身**，目标跑不跑都照样砍到。
+     第一版没加这道门，近战也被折了 0.6 倍，等于把所有接敌动作一起削，
+     实测立刻压塌三条纸面断言（首轮齐射 20→12、拆械 ×3 失效、防御排序并列）。
+     `shooter` 省略时按"远程"处理（旧调用/城头箭塔），保持纯函数可单测。 */
+  T.moveTargetMul = function (tg, shooter) {
+    if (!DATA.STANCE_TRIANGLE_ON) return 1;                  /* 旧口径：移动不折损 */
+    if (shooter && (shooter.range || 0) < 500) return 1;     /* 近战：贴身了，不打折扣 */
+    var mvd = (tg && tg._moved) || 0;
+    if (mvd <= 0) return 1;
+    return 1 - T.MOVE_TARGET_CUT * Math.min(1, mvd / T.MOVE_TARGET_REF);
+  };
+  T.stanceTakenMul = function (u) {
+    if (!DATA.STANCE_TRIANGLE_ON) {                          /* 旧口径：仅驻守受创减半 */
+      return (u && u.stance === 'hold') ? (1 - T.HOLD_DAMAGE_CUT) : 1;
+    }
+    var d = u && T.stanceDefOf(u.stance);
+    if (!d) return 1;
+    if (u.stance === 'hold' && (u.holdRun || 0) >= 2 && d.takenLater != null) return d.takenLater;
+    return (d.taken != null) ? d.taken : 1;
+  };
+  T.HOLD_DAMAGE_CUT = 0.5;   /* legacy：动作三角关闭时沿用「驻守受创减半」旧口径 */
+  /* v91.95：**追击** —— 对后退中的敌人，推进步长 ×1.35（追逃兵更容易）。
+     没有这条，风筝流在"双方速度相等"下就是无损白嫖（实测：全体后退 损 0%、拖满 30 回合）。 */
+  T.CHASE_MUL = 1.35;
+  /* v91.95：**移动目标难打** —— 对"本回合移动过"的目标，远程/近战命中都打折（最低 ×0.6）。
+     没有这条，谁站桩谁白打过来的那一方（实测：全体驻守损 11~15%、全体前进损 55~70%）。 */
+  T.MOVE_TARGET_REF = 400;   /* 一回合移动 ≥ 该值即吃满折损 */
+  /* v91.97：**移动开火惩罚** —— 边走边打打不准（输出 ×(1−0.3)）。
+     没有这一条，「推进」在任何参数下都不吃亏：单位可以一边全速前进一边满额开火，
+     于是"站定/结阵"永远只是白挨打（实测见 docs §10 与 §11）。 */
+  T.MOVE_FIRE_CUT = 0;      /* v91.100：停用 —— 实测它与"移动目标难打"一起把远程整体削 20%+，
+                               却没换来任何取舍（单位走到射程内就停，惩罚只在接敌那一两回合生效）。 */
+  T.MOVE_TARGET_CUT = 0;    /* v91.100：停用，理由同上（动作的取舍改由"守/退的输出代价"承担） */   /* 折扣上限：×0.8 —— 必须 < 驻守的减伤(0.25)，否则跑动两轴全赢 */
   T.CRAFT_SIEGE_MULT = 2.2;   // 攻城器械对城市的内建伤害倍率
   T.WALL_FIRE_MUL = 0.55;     // 城头射击强度（不如平地齐射密集）
   T.CRAFT_DEF_CUT = 0.8;      // 每类器械：守方城防减伤 ×0.8
@@ -534,9 +590,13 @@ import './state.js';
          守将的属性加成不打指挥折扣（"城内所有军队"人人有份）；
          野战/攻城的口径不动（指挥覆盖 = 阵前指挥半径，是既有语义）。
          ⚠️ NPC 守城不在此列（其守将为系统派生，口径保持原样，不给攻城平衡添变量）。 */
-      var covered = a ? Math.min(n, a.tong * 100 * (1 + TB('command'))) : 0;
-      var cover = (a && n > 0) ? covered / n : 0;
+      /* v91.92（老板拍板）：覆盖与「指挥溢出减伤」共用唯一出口 GAME.coverOf
+         （与 battle.js / 战力评估同源，指挥每点覆盖多少兵只有这一份定义）。
+         守城"全覆盖"那条特例只放宽 cover，不影响 dr —— dr 按真实覆盖量算，不白送。 */
+      var cv = a ? GAME.coverOf(a.tong, 1 + TB('command'), n) : { cover: 0, dr: 0 };
+      var cover = cv.cover;
       if (ctx && ctx.playerDef && side === 'def' && a) cover = 1;
+      var dr = cv.dr;
       /* v59（阵位与指挥指令）：每支部队带**动作**与**目标**（照搬原版 §九）。
          动作决定初始站位 —— 前进 = 100（第一排）/ 防御 = 50（第二排）/ 后退 = 0（第三排），
          所以初始 `adv` 不再是 0，而是该动作的行位。 */
@@ -568,6 +628,7 @@ import './state.js';
         hpPer: t.hp, range: t.range,
         spd: Math.round(t.spd * spdMult(t) * (1 + (a ? (a.spd || 0) : 0) / 300)),
         cover: cover,
+        dr: dr,                     /* v91.92：指挥溢出减伤（受击时按 1−dr 生效） */
         stance: stance,
         target: tgt,
         sortie: sortie,
@@ -662,6 +723,15 @@ import './state.js';
    * ⚠️ 只对**远程**（射程 ≥ 500）生效：近战本来就是贴脸互殴，
    * 给它算"贴身惩罚"等于把所有近战伤害一律除以 4，回合数会翻几倍。
    * ============================================================ */
+  /* v91.98：**推进的停点** —— 1.0 = 停在射程边缘（旧口径），0.5 = 停在近半程边界。
+     ⚠️ 旧口径下单位恰好停在"远半程"（衰减 ×0.5），于是"前进"和"驻守"都在 50% 档上打，
+     动作之间只剩那 20% 输出惩罚的差别 —— 这是"怎么调都没取舍"的直接原因。
+     走到 0.5 才进"近半程"（×1.0），"前进 = 走近换伤害 / 驻守 = 留在远档保安全"才成立。 */
+  T.ADVANCE_STOP_K = 1.0;
+  T.ADVANCE_STOP_K_RANGED = 1.0;   /* 远程专用停点系数：**1.0 = 旧口径**（停射程边缘）；
+                                     0.5 = 走近半程（衰减 ×1.0 那一档）。实测：改 0.5 会让镜像局
+                                     战损 77%→79%、"远程vs近战潮" 19%→16%，净效果接近打平但战斗变短，
+                                     故**默认保持 1.0**，只作可调旋钮留着。 */
   T.DECAY_FAR = 0.5;        // 半程以外
   T.DECAY_CLOSE = 0.25;     // 贴身
   T.CLOSE_RANGE = 120;      // "贴身"的界限（丈）
@@ -714,9 +784,23 @@ import './state.js';
     /* v57：战场距离由**双方配兵**算出来（最远射程 + 199），不再是场地常数。
        `opts.field` 显式给了仍以它为准（旧战报回放 / 跨服类玩法另设距离）。 */
     var D = T.battlefieldOf(atkArmy, defArmy, defVal, opts);
+    /* v91.86 · 星球环境（一步一景）：规则对**敌我双方**同时生效。
+       落点只有三处：纵深（随射程等比缩）、单位速度/射程、每回合兵力流失。
+       老家 env=none → 三个乘子都是 1，行为与 v91.85 逐字节一致。 */
+    var _env = opts.env || (GAME.planetEnvOf
+      ? GAME.planetEnvOf(opts.pid != null ? opts.pid : (GAME.curPid ? GAME.curPid() : 1))
+      : null);
+    /* 注意：纵深**不随环境缩放** —— 若连战场一起缩，"射程 −30%"对双方等比，等于没改。 */
     var s = GAME.state;
 
     var stances = opts.stances || {};
+    /* v91.85：**显式指令白名单** —— 调用方通过 opts.stances 明确指定过的兵种，
+       策略层一律不得改写（smoke 的"控制变量"对照、玩家的战术设置都靠这条保护）。 */
+    var _explicit = { atk: {}, def: {} };
+    ['atk', 'def'].forEach(function (sd) {
+      var mm = stances[sd] || {};
+      Object.keys(mm).forEach(function (id) { _explicit[sd][id] = true; });
+    });
     /* v89.116：`foeArmy` 传"对面那支军队" —— 引擎据它给 **NPC 侧**一个默认目标
        （同兵种）。玩家在哪一侧由 `playerDef` 决定：默认玩家是攻方 → NPC 是守方。 */
     var atk = T.unitsOf(atkArmy, 'atk', atkGen,
@@ -731,6 +815,15 @@ import './state.js';
         foeArmy: opts.playerDef ? null : atkArmy });
     /* v28：起始兵力只算**参战部队** —— 侦察单元不参战也不阵亡，
        若把它的数量算进 aStart，收尾的 atkLoss = aStart − aRemain 会把它记成"损失"。 */
+    /* v91.86：环境乘子落到双方每一支部队（速度影响行动序与接敌，射程影响开火门槛） */
+    if (_env && ((_env.spd && Math.abs(_env.spd - 1) > 1e-9) || (_env.range && Math.abs(_env.range - 1) > 1e-9))) {
+      var _envApply = function (u) {
+        if (_env.spd && Math.abs(_env.spd - 1) > 1e-9) u.spd = u.spd * _env.spd;
+        /* 只削远程：近战射程本来就贴着身，等比缩等于没设计 */
+        if (_env.range && Math.abs(_env.range - 1) > 1e-9 && u.range >= 800) u.range = u.range * _env.range;
+      };
+      atk.forEach(_envApply); def.forEach(_envApply);
+    }
     var aStart = atk.reduce(function (n, u) { return n + u.start; }, 0);
     var dStart = def.reduce(function (n, u) { return n + u.start; }, 0);
     /* v89.109：出城迎战部队的初始人数（掠夺前置判据"先歼灭野战军"要用） */
@@ -781,8 +874,24 @@ import './state.js';
     /* 一次开火：把 shooter 的攻击力按"由近及远"落到 enemyUnits 上（溢出杀伤）。
        v57：抽成函数是为了**反击复用** —— 反击与主动攻击的伤害算法必须完全一致，
        否则"反击伤害偏低"会变成一个很难查的暗偏差。 */
+    /* v91.99：**可打池 = 结算与战报共用的唯一口径**
+       接触面把近战的可打范围收窄到对方占位的单位；若只在 fireOnce 里过滤、
+       而 actSide 仍按最近的挑战报目标，就会出现战报写的是甲、伤害落在乙——
+       表现是战报帧对不上账（smoke §②帧自洽 当场抓到）。 */
+    function targetPoolOf(shooter, enemyUnits) {
+      var pool = enemyUnits.filter(function (e) { return e.count > 0; });
+      if (DATA.CONTACT && DATA.CONTACT.on
+          && (shooter.range || 0) < (DATA.CONTACT.meleeRange || 500)) {
+        var fr = pool.filter(function (e) { return e._front; });
+        if (fr.length) pool = fr;
+      }
+      return pool;
+    }
     function fireOnce(shooter, enemyUnits, ctx) {
-      var perA = T.perAtk(shooter, { sieging: !!opts.sieging, siegeMult: ctx.siegeMult });
+      /* v91.95：**动作三角 · 输出侧** —— 驻守 −20%（前进/后退全额）。
+         唯一落点：主动攻击、反击、拆箭塔全走这里（反击复用本函数）。 */
+      var perA = T.perAtk(shooter, { sieging: !!opts.sieging, siegeMult: ctx.siegeMult })
+        * T.stanceDmgMul(shooter);
       /* v89.180（老板 1「补无人轰炸机拆器械特性」）：**拆械**唯一出口 ——
          无人轰炸机兵种表 `vsMech`（对器械的最终伤害倍率）× 目标兵种表 `mech` 标签。
          主动攻击与反击都走 fireOnce，故此处一处即全覆盖；其余对位零影响。 */
@@ -797,7 +906,7 @@ import './state.js';
       var av = perA * shooter.count * (ctx.decay || 1);
       if (ctx.onWall) av *= T.WALL_FIRE_MUL * (ctx.wallFireMul || 1);
       if (ctx.defBonus > 0) av *= Math.max(0.05, 1 - ctx.defBonus);
-      var pool = enemyUnits.filter(function (e) { return e.count > 0; })
+      var pool = targetPoolOf(shooter, enemyUnits)
         .sort(function (x, y) { return y.adv - x.adv; });      // 越靠前越先挨打
       /* v59（指挥指令）：**指定目标在射程内 → 优先打它**（照搬原版 §九）——
          实现方式是把该兵种排到打击序列最前，伤害优先落在它头上，
@@ -825,8 +934,10 @@ import './state.js';
         var tg0 = pool[0];
         var perHp0 = T.perHp(tg0, ctx.defGenOfTarget);
         var cf0 = T.clashFactor(perA, T.perDef(tg0));
-        var holdMul0 = (tg0.stance === 'hold') ? (1 - T.HOLD_DAMAGE_CUT) : 1;
-        var eff0 = av * cf0 * holdMul0 * unitMulOf(tg0.id);
+        var holdMul0 = T.stanceTakenMul(tg0);      /* v91.95：动作三角（受创倍率） */
+        /* v91.92：指挥溢出减伤 —— 与"防御动作减伤"同层相乘，不另开一条旁路 */
+        var drMul0 = 1 - (tg0.dr || 0);
+        var eff0 = av * cf0 * holdMul0 * drMul0 * T.moveTargetMul(tg0, shooter) * unitMulOf(tg0.id);
         /* v89.96：取整用 **round** 而不是 floor ——
            floor 会让"伤害不足一个人份"的攻击恒为 0 杀：实测步行机 20v20
            （每回合 0.625 人份）双方站着不动到 30 回合（卡死）。
@@ -849,8 +960,9 @@ import './state.js';
         var perHp = T.perHp(tg, ctx.defGenOfTarget);
         var cf = T.clashFactor(perA, T.perDef(tg));
         /* v59：**防御动作受到的伤害减半**（报告 §九） */
-        var holdMul = (tg.stance === 'hold') ? (1 - T.HOLD_DAMAGE_CUT) : 1;
-        var eff = av * cf * holdMul * unitMulOf(tg.id);
+        var holdMul = T.stanceTakenMul(tg);           /* v91.95：动作三角（受创倍率） */
+        var drMul = 1 - (tg.dr || 0);                 /* v91.92：指挥溢出减伤 */
+        var eff = av * cf * holdMul * drMul * T.moveTargetMul(tg, shooter) * unitMulOf(tg.id);
         var k = Math.round(eff / perHp);             /* v89.96：同 single 分支，round 防小规模卡死 */
         if (k <= 0) break;
         if (k > tg.count) k = tg.count;      // 自然钳制：不能杀超过目标实有人数
@@ -916,8 +1028,10 @@ import './state.js';
         /* 双倍攻击区（原版）：距离在"射程/2 + 100"以内 → 箭塔打双倍 */
         var dec = T.wallDecay(towerGap(tg), wallRange);
         if (dec > 1) dbl++;
-        var holdMul = (tg.stance === 'hold') ? (1 - T.HOLD_DAMAGE_CUT) : 1;
-        var eff = av * cf * dec * holdMul;
+        var holdMul = T.stanceTakenMul(tg);           /* v91.95：动作三角（受击倍率） */
+        /* v91.92：指挥溢出减伤对**任何来源的受击**都生效（包括城头箭塔）——
+           规则只有一句"减伤 = 少受这么多伤"，不区分是谁打的。 */
+        var eff = av * cf * dec * holdMul * (1 - (tg.dr || 0)) * T.moveTargetMul(tg);
         var k = Math.floor(eff / perHp);
         if (k <= 0) break;
         if (k > tg.count) k = tg.count;
@@ -1008,8 +1122,8 @@ import './state.js';
           && towerAliveNow() > 0 && !_defSortieAlive;
         var ef = front(enemyUnits);
         var rec = null, bestGap = Infinity;
-        enemyUnits.forEach(function (e) {
-          if (e.count <= 0) return;
+        /* v91.99：与 fireOnce 同池 —— 战报记的目标必须就是真正挨打的那支 */
+        targetPoolOf(u, enemyUnits).forEach(function (e) {
           var g = gapOf(u, ef) + (ef - e.adv);   // 与该单位自身的间距
           if (g < bestGap) { bestGap = g; rec = e; }
         });
@@ -1036,7 +1150,9 @@ import './state.js';
         if (!rec && !wantTower) return;
         var onWall = onWallOf(u);
         var gap = bestGap;
-        var free = gap - effRange;
+        /* v91.98：停点按"射程 × 停点系数"算 —— 远程走到近半程边界，近战不变 */
+        var _stopK = ((u.range || 0) >= (T.DECAY_MIN_RANGE || 500)) ? T.ADVANCE_STOP_K_RANGED : T.ADVANCE_STOP_K;
+        var free = gap - effRange * (_stopK == null ? 1 : _stopK);
         /* ============================================================
          * 指令：动作（v59 · 照搬原版 §九）
          * ------------------------------------------------------------
@@ -1051,10 +1167,13 @@ import './state.js';
         if (stance === 'advance' && free > 0 && !onWall) {
           /* 推进：每回合走「兵种速度 × MARCH_UNIT」丈，走到接触点就停。
              v57：MARCH_UNIT 已改回 **1:1**（速度即每回合丈数）。 */
-          var step = Math.min(u.spd * T.MARCH_UNIT, free);
+          var _fleeing = false;
+          enemyUnits.forEach(function (e) { if (e.count > 0 && e.stance === 'retreat') _fleeing = true; });
+          var step = Math.min(u.spd * T.MARCH_UNIT * ((_fleeing && DATA.STANCE_TRIANGLE_ON) ? T.CHASE_MUL : 1), free);
           var _cap = T.advanceCapOf(D);
           if (step > _cap) step = _cap;
           u.adv += step;
+          u._moved = step;
           gap -= step;
           events.push({ kind: 'move', side: u.side, id: u.id, name: u.name, step: Math.round(step), gap: Math.round(gap) });
         } else if (stance === 'retreat') {
@@ -1066,6 +1185,7 @@ import './state.js';
           if (back > _capB) back = _capB;
           if (back > 0) {
             u.adv -= back;
+            u._moved = back;
             gap += back;
             events.push({ kind: 'retreat', side: u.side, id: u.id, name: u.name,
               step: Math.round(back), gap: Math.round(gap) });
@@ -1127,6 +1247,62 @@ import './state.js';
     function stepRound() {
       if (env.over) return null;
       round++;
+      /* v91.85：**策略层**（js/strategy.js · GAME.strat）。
+         每回合开火前，按当前战场快照重排「动作 / 目标」。
+         只由 `opts.plan` 提供 —— 调用方决定替哪一侧规划（游戏内只替 NPC 一侧）。
+         策略异常一律吞掉并回落到原有指令：一场仗不能因为 AI 报错而中断。 */
+      if (opts.plan) {
+        try {
+          var _plan = opts.plan(snapUnits(), round);
+          if (_plan) {
+            [['atk', atk], ['def', def]].forEach(function (pair) {
+              var m = _plan[pair[0]];
+              if (!m) return;
+              pair[1].forEach(function (u) {
+                if (_explicit[pair[0]] && _explicit[pair[0]][u.id]) return;   // 显式指令优先
+                var c = m[u.id];
+                if (!c) return;
+                if (c.s) u.stance = c.s;
+                if (c.t !== undefined) u.target = c.t;
+              });
+            });
+          }
+        } catch (e) { /* 策略层不得中断战斗 */ }
+      }
+      /* v91.95：**连续驻守计数**（动作三角的"防龟缩"项）。
+         必须在**指令落定之后、开火之前**更新 —— 否则本回合改成驻守的单位
+         拿不到"首回合 −25%"，或永远停在首回合的强减伤。 */
+      [atk, def].forEach(function (side) {
+        side.forEach(function (u) {
+          u.holdRun = (u.stance === 'hold') ? ((u.holdRun || 0) + 1) : 0;
+          u._moved = 0;                    /* v91.95：本回合移动量（移动目标难打用） */
+        });
+      });
+      /* v91.97：**接触面** —— 阵位由**近战单位**占据（远程不占位，它们在后面开火）。
+         近战只打得到对方"占位"的近战（见 fireOnce 的 pool 过滤）；远程不受此限。
+         对方**没有近战在场**时，近战才够得着远程 —— 这就是"肉盾倒了，后排就暴露"。
+         每回合重算 → 前排倒下后，下一支近战自动补位。
+         用"本回合开始时的存活"算快照：同一回合内不因中途阵亡而换位，
+         否则"谁先出手"会改变"谁能被打"，同一份输入就能给出不同结果（不可复现）。 */
+      if (DATA.CONTACT && DATA.CONTACT.on) {
+        var _mr = DATA.CONTACT.meleeRange || 500;
+        var _slotsOf = function (gen) {
+          var C = DATA.CONTACT, n = C.slots || 2;
+          var tong = 0;
+          try { tong = gen && GAME.genAttrs ? (GAME.genAttrs(gen).tong || 0) : 0; } catch (e) { tong = 0; }
+          return (C.slots3Tong && tong >= C.slots3Tong) ? n + 1 : n;
+        };
+        [[atk, atkGen], [def, defGen]].forEach(function (pair) {
+          var side = pair[0], n = _slotsOf(pair[1]);
+          side.forEach(function (u) { u._front = false; });
+          /* 谁能占位：近战、存活；优先**兵多**的那支（主力顶前面），同数时靠前的先上 */
+          alive(side).filter(function (u) { return (u.range || 0) < _mr; })
+            .sort(function (x, y) { return (y.count - x.count) || (y.adv - x.adv); })
+            .forEach(function (u, i) { if (i < n) u._front = true; });
+        });
+      } else {
+        [atk, def].forEach(function (side) { side.forEach(function (u) { u._front = true; }); });
+      }
       var events = [];
       /* 速度高的先行动 —— 双方混排后统一排序（需求：速度高的兵种先行动） */
       var order = alive(atk).concat(alive(def));
@@ -1152,6 +1328,14 @@ import './state.js';
       });
       /* 城头工事每回合开火一次（原版：箭塔/擂石是守城方自带的火力） */
       if (opts.sieging) wallVolley(atk, events);
+      /* v91.86：辐射带环境 —— 每回合全军按比例流失，逼玩家速战速决（双方同吃） */
+      if (_env && _env.drain > 0) {
+        [atk, def].forEach(function (list) {
+          list.forEach(function (u) {
+            if (u.count > 0) u.count = Math.max(0, u.count - Math.ceil(u.count * _env.drain));
+          });
+        });
+      }
       var _rA = alive(atk).reduce(function (n, u) { return n + u.count; }, 0);
       var _rD = alive(def).reduce(function (n, u) { return n + u.count; }, 0);
       var _rG = Math.round(gapOf({ adv: front(atk) }, front(def)));
@@ -1181,6 +1365,7 @@ import './state.js';
                  stance: u.stance, target: u.target || '', vsCity: !!u.vsCity,
                  /* v89.151：以下 6 项 = 引擎结算链（perAtk/perDef/perHp）的输入 —— 缺一即静默失真 */
                  hpPer: u.hpPer, cover: u.cover || 0, atkPct: u.atkPct || 0, defPct: u.defPct || 0,
+                 dr: u.dr || 0,
                  start: u.start || 0, sortie: !!u.sortie };
       }
       return { round: round, field: D, atk: atk.map(cp), def: def.map(cp),
@@ -1324,6 +1509,22 @@ import './state.js';
   /* v89.87：T.simulate 包装为会话（begin → runAll → finish）——
      与旧实现逐字节同行为；观战界面改用 env.step 逐回合推进。 */
   T.simulate = function (atkArmy, atkGen, defArmy, defVal, defGen, opts) {
+    opts = opts || {};
+    /* v91.85：给 **NPC 一侧** 装上策略层（玩家那一侧的战术设置原样不动）。
+       · 开关：只有 `s.settings.battleAI === true` 才启用 —— **默认关闭**，
+         保持 v91.76 的一切既有行为与验收数字不变；
+       · 显式指令（opts.stances）优先，策略层不覆盖；
+       · 回放/沙盘自己传了 `opts.plan` 时不覆盖（保证同一份战报重跑结果一致）。 */
+    if (!opts.plan && GAME.strat && GAME.strat.autoPlan) {
+      var _st = GAME.state && GAME.state.settings;
+      if (_st && _st.battleAI === true) {
+        var _foe = opts.playerDef ? 'atk' : 'def';
+        var _o2 = {};
+        for (var _k in opts) _o2[_k] = opts[_k];
+        _o2.plan = GAME.strat.autoPlan({ sides: [_foe], allowRetreat: _foe === 'def' });
+        opts = _o2;
+      }
+    }
     var env = T.begin(atkArmy, atkGen, defArmy, defVal, defGen, opts);
     env.runAll();
     return env.finish();

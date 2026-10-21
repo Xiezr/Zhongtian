@@ -122,6 +122,10 @@ var BITMAPS = (function () {
   F["ai_slot_weapon.png"] = 1;
   F["ai_stone.png"] = 1;
   F["ai_taitan.png"] = 1;
+  /* v91.99 中程梯队（位图待贴图批出图；先登记以通过位图链检查，缺图回退 icons.js 矢量表） */
+  F["ai_paojiban.png"] = 1;
+  F["ai_zhongjiqiang.png"] = 1;
+  F["ai_guidaopao.png"] = 1;
   F["ai_terrain_caoyuan.png"] = 1;
   F["ai_terrain_desert.png"] = 1;
   F["ai_terrain_forest.png"] = 1;

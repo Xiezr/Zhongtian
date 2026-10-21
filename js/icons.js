@@ -1101,6 +1101,10 @@ import './core.js';
     huopao:    { tone: ['#75664b', '#8f7d5c', '#544a36'], cls: 'cart', w: 'cart' },
     wuren:     { tone: ['#7d7154', '#9a8d6c', '#5c5240'], cls: 'bow', w: 'bow' },
     taitan:    { tone: ['#6f7a8a', '#8d98a8', '#525b68'], w: 'axe', beast: true },
+    /* v91.99 中程梯队（射程 450/600/700）：位图缺省回退本表，必须登记 */
+    paojiban:  { tone: ['#8a7f5c', '#a89a74', '#645b40'], cls: 'foot', w: 'bow' },
+    zhongjiqiang: { tone: ['#7a6a58', '#96846f', '#564a3c'], cls: 'foot', w: 'bow' },
+    guidaopao: { tone: ['#6d7480', '#8b93a0', '#4f545d'], cls: 'cart', w: 'cart' },
   };
   Object.keys(TR).forEach(function (id) {
     ICON['troop_' + id] = function (k) {

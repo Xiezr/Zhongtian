@@ -40,9 +40,13 @@ NODE_PATH_CANDIDATES = [
 CODE_PATHS = ('index.html', 'js/')
 
 TESTS = [
-    ('audit.js',      '结构审计', True),
-    ('smoke-test.js', '逻辑断言', False),
-    ('e2e-test.js',   '真实 DOM', False),
+    ('audit.js',       '结构审计', True),
+    # v91.84（老板「把行为链每一个选项走到头」）：状态推进式链路走查 ——
+    # 从派队一路推到落账（奇观六层×五行动 / 自动探索 / 自动出征 / 自动研究 / 战力），
+    # 专抓"单点都对、串起来断"的链式缺陷（2.1 秒）。
+    ('chain-audit.js', '链路走查', False),
+    ('smoke-test.js',  '逻辑断言', False),
+    ('e2e-test.js',    '真实 DOM', False),
 ]
 
 # v89.136（老板「盘点器进入 gate」）：数据表卫生四查（跨文件写 / 重复定义 / 孤儿 / 悬空）。

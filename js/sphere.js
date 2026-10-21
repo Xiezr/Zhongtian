@@ -280,7 +280,7 @@ import './core.js';
         if (typ[w] === typ[cur] && lvl[w] === -1) { lvl[w] = lvl[cur] + 1; q.push(w); }
       }
     }
-    var upos = [], fpos = [], cells = [], off = 0;
+    var upos = [], uposCell = [], fpos = [], cells = [], off = 0;
     function cross(a, b) { return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]; }
     function dot(a, b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
     /* 地块**贴地形**：某方向的表面半径 = 海平面 + max(0, 球面高度)×HSC + 微抬升 */
@@ -299,6 +299,10 @@ import './core.js';
       for (var e2 = 0; e2 < mm; e2++) {
         var s1c = cent[fs[e2]], s2c = cent[fs[(e2 + 1) % mm]];
         upos.push(s1c[0] * _shellR, s1c[1] * _shellR, s1c[2] * _shellR, s2c[0] * _shellR, s2c[1] * _shellR, s2c[2] * _shellR);
+        /* v92：线框**逐段归属格**（与 upos 同步 push，一条线一个 ci）。
+           map3d 用它在未探明区域把线框染黑 —— 否则线框球壳会从雾面里穿出来，
+           暗区满屏白点（实测截图确认）。 */
+        uposCell.push(vi);
       }
       var dep = lvl[vi] < 0 ? 0 : lvl[vi];
       var lv = 6 + Math.min(4, dep);                       /* 6~10 级：中央(离异类边界远)高、边缘低 */
@@ -323,7 +327,7 @@ import './core.js';
     for (var c2 in cells) if (cells[c2]) for (var j2 = 0; j2 < cells[c2].nt; j2++) faceCell[cells[c2].off + j2] = +c2;
 
     SP.V = V; SP.F = F; SP.cent = cent; SP.adj = adj; SP.cells = cells;
-    SP.upos = upos; SP.fpos = fpos; SP.faceCell = faceCell; SP.nv = nv;
+    SP.upos = upos; SP.uposCell = uposCell; SP.fpos = fpos; SP.faceCell = faceCell; SP.nv = nv;
     _builtSub = sub; _builtSeed = sd; _builtPver = pver; SP._bSub = sub; SP._bSeed = sd; SP._bPver = pver;
     SP.sub = sub;
     _grid = null;                                    /* 空间哈希随之失效（V 已换）*/
