@@ -362,6 +362,39 @@
     return best;
   };
 
+  /* ============================================================
+   * v92.10（构想 A3）：迷雾长回来 —— 远方的记忆会淡
+   * ------------------------------------------------------------
+   * 每 decayHours 现实小时：全明 → 半明，然后**立刻**按当前视野半径重刷
+   * 城与前哨周围。于是家门口永远是全明，只有你"很久没去"的地方变模糊。
+   *
+   * 为什么不是"全褪回未知"：那会让玩家的几十小时探索归零，
+   * 是惩罚而不是设计。半明仍能看到地形起伏、知道"那边是山是海"，
+   * 只是不再知道里面有什么 —— 这正是"忘了一部分"该有的样子。
+   * ============================================================ */
+  F.decay = function (force) {
+    var st = GAME.state;
+    if (!st || !_pack) return 0;
+    var hours = (GAME.DATA && GAME.DATA.FOG && GAME.DATA.FOG.decayHours) || 0;
+    if (hours <= 0) return 0;
+    var now = Date.now();
+    var last = st.fogDecay | 0;
+    if (!last) { st.fogDecay = now; return 0; }        /* 新档/刚读档：只记基准，第一次不褪 */
+    if (!force && now - last < hours * 3600000) return 0;
+    st.fogDecay = now;
+    var n = 0;
+    for (var ci = 0; ci < _n; ci++) {
+      if (getRaw(ci) === ALL) { setRaw(ci, TERRAIN); n++; }
+    }
+    if (!n) return 0;
+    _stat = null; _ver++;
+    F.revealOwned();                                  /* 城 / 前哨立刻点回全明 */
+    if (GAME.log && GAME.log.war) {
+      GAME.log.war('🌫 远方的记忆淡了：' + n + ' 格转为半明（城与前哨周围不受影响）');
+    }
+    return n;
+  };
+
   F.revealCity = function (city, r) {
     if (!city) return 0;
     var ci = _ciOf(city);

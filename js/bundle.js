@@ -4568,6 +4568,13 @@ window.GAME = window.GAME || {};
        有这个比例会显示一颗暗红烟点。知道"那边有东西"，但不知道是什么。
        纯视觉：不给地形、不给等级、点不开。只回答"往哪走"。 */
     traceChance: 0.28,
+    /* v92.10（构想 A3「迷雾长回来」）：**远方的记忆会淡**。
+       每 N 现实小时，把"全明"的格子降成"半明"（仍能看到地形，不再知道里面有什么），
+       然后立刻按 radiusOf() 重刷城与前哨周围 —— 所以**家门口永远不会忘**。
+       想保住远方的情报：修前哨，或者再派人去看一眼。
+       ⚠️ 行迹百分比**不会倒退**（stats 统计的是 v>0，半明仍算探明）：
+          这是"想不起来了"，不是"没去过"。 */
+    decayHours: 12,
     tiers: [
       { pct: 3, r: 5, name: '初识周边' },
       { pct: 10, r: 6, name: '走遍近畿' },
@@ -9773,6 +9780,8 @@ window.GAME = window.GAME || {};
     if (GAME.camp && GAME.camp.sweep) GAME.camp.sweep();
     /* v92.7：旧世界遗迹发现（同一套节流扫描） */
     if (GAME.ruin && GAME.ruin.sweep) GAME.ruin.sweep();
+    /* v92.10（A3）：远方的记忆会淡（每 decayHours 现实小时一次 · 城/前哨不受影响） */
+    if (GAME.fog && GAME.fog.decay) GAME.fog.decay();
     /* v92.5：四个军阀按月推进（按月而非按日：游戏日只有 1.3 现实秒，按日会抽搐） */
     if (GAME.faction && GAME.faction.tick) GAME.faction.tick();
     /* v89.136：老档采集队迁移兜底（幂等 · 正常已被 loadGame 处理） */
@@ -25766,6 +25775,39 @@ window.GAME = window.GAME || {};
         + best.r + ' 格（探得越远，看得越远）');
     }
     return best;
+  };
+
+  /* ============================================================
+   * v92.10（构想 A3）：迷雾长回来 —— 远方的记忆会淡
+   * ------------------------------------------------------------
+   * 每 decayHours 现实小时：全明 → 半明，然后**立刻**按当前视野半径重刷
+   * 城与前哨周围。于是家门口永远是全明，只有你"很久没去"的地方变模糊。
+   *
+   * 为什么不是"全褪回未知"：那会让玩家的几十小时探索归零，
+   * 是惩罚而不是设计。半明仍能看到地形起伏、知道"那边是山是海"，
+   * 只是不再知道里面有什么 —— 这正是"忘了一部分"该有的样子。
+   * ============================================================ */
+  F.decay = function (force) {
+    var st = GAME.state;
+    if (!st || !_pack) return 0;
+    var hours = (GAME.DATA && GAME.DATA.FOG && GAME.DATA.FOG.decayHours) || 0;
+    if (hours <= 0) return 0;
+    var now = Date.now();
+    var last = st.fogDecay | 0;
+    if (!last) { st.fogDecay = now; return 0; }        /* 新档/刚读档：只记基准，第一次不褪 */
+    if (!force && now - last < hours * 3600000) return 0;
+    st.fogDecay = now;
+    var n = 0;
+    for (var ci = 0; ci < _n; ci++) {
+      if (getRaw(ci) === ALL) { setRaw(ci, TERRAIN); n++; }
+    }
+    if (!n) return 0;
+    _stat = null; _ver++;
+    F.revealOwned();                                  /* 城 / 前哨立刻点回全明 */
+    if (GAME.log && GAME.log.war) {
+      GAME.log.war('🌫 远方的记忆淡了：' + n + ' 格转为半明（城与前哨周围不受影响）');
+    }
+    return n;
   };
 
   F.revealCity = function (city, r) {

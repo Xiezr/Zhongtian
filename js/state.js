@@ -3718,6 +3718,8 @@ import './data.js';
     if (GAME.camp && GAME.camp.sweep) GAME.camp.sweep();
     /* v92.7：旧世界遗迹发现（同一套节流扫描） */
     if (GAME.ruin && GAME.ruin.sweep) GAME.ruin.sweep();
+    /* v92.10（A3）：远方的记忆会淡（每 decayHours 现实小时一次 · 城/前哨不受影响） */
+    if (GAME.fog && GAME.fog.decay) GAME.fog.decay();
     /* v92.5：四个军阀按月推进（按月而非按日：游戏日只有 1.3 现实秒，按日会抽搐） */
     if (GAME.faction && GAME.faction.tick) GAME.faction.tick();
     /* v89.136：老档采集队迁移兜底（幂等 · 正常已被 loadGame 处理） */

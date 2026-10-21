@@ -38095,6 +38095,30 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       return grown >= 5;
     })(), scoutDbg);
 
+    check('§286⑮ 记忆衰减：首次只记基准（新档不惩罚）', (function () {
+      G.newGame({ name: '衰减', cityName: '灰岗' });
+      G.state.fogDecay = 0;
+      var before = G.fog.stats().seen;
+      var n = G.fog.decay(false);
+      return n === 0 && (G.state.fogDecay | 0) > 0 && G.fog.stats().seen === before;
+    })());
+
+    check('§286⑯ 强行衰减：全明 → 半明，且行迹百分比不倒退', (function () {
+      var city = G.currentCity();
+      G.fog.revealAround(city.ci, 12, G.fog.ALL);
+      var seen0 = G.fog.stats().seen;
+      var n = G.fog.decay(true);
+      var seen1 = G.fog.stats().seen;
+      /* 半明仍算"探明"（v>0），所以 seen 不该掉 */
+      return n > 0 && seen1 === seen0;
+    })(), '全明→半明 · 行迹不掉');
+
+    check('§286⑰ 城周围永远是全明（家门口不会忘）', (function () {
+      var city = G.currentCity();
+      G.fog.decay(true);
+      return G.fog.get(city.ci) === G.fog.ALL;
+    })());
+
     console.log('\n===== 287. v92 阵亡名录 =====');
 
     var memCase = (function () {
