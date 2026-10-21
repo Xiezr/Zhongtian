@@ -4248,7 +4248,19 @@ import './data.js';
     (s.cities || []).forEach(function (c) { total += GAME.armyPowerOf(c); });
     var r0 = GAME.invasionRoll('inv|' + (city && city.id) + '|' + (cycle == null ? 0 : cycle));
     var lo = (I.ratioMin == null ? 0.28 : I.ratioMin), hi = (I.ratioMax == null ? 0.45 : I.ratioMax);
-    return Math.max(1, Math.round(total * (lo + r0 * (hi - lo))));
+    var base = total * (lo + r0 * (hi - lo));
+    /* v92.24：**势力越大，远征越凶**。以前强度只跟玩家战力挂钩 ——
+       你打不打它、它长多大，都不影响下一场有多重。现在会。 */
+    if (GAME.faction && GAME.faction.attackerIdOf) {
+      var _fid24 = GAME.faction.attackerIdOf(city);
+      if (_fid24) {
+        var _arr24 = GAME.faction.arr ? GAME.faction.arr() : [];
+        for (var _i24 = 0; _i24 < _arr24.length; _i24++) {
+          if (_arr24[_i24].id === _fid24) { base *= (1 + _arr24[_i24].r * 0.04); break; }
+        }
+      }
+    }
+    return Math.max(1, Math.round(base));
   };
 
   /* ============================================================
@@ -4362,6 +4374,12 @@ import './data.js';
      参数 = 本场的**场次序号**（invasionSlotOf 的返回值）—— 预警与结算传同一个号。 */
   GAME.invasionSrcOf = function (city, slotIdx) {
     var I = DATA.INVASION || {};
+    /* v92.24：**如果是某家势力的领地压到你这座城，那就是它来打你** ——
+       名字要对得上（预警报谁，就是谁来），这条与"报谁打谁"的旧铁律同源。 */
+    if (GAME.faction && GAME.faction.attackerOf) {
+      var _fa24 = GAME.faction.attackerOf(city);
+      if (_fa24) return _fa24;
+    }
     var arr = I.sources || ['敌军'];
     return arr[Math.floor(GAME.invasionRoll('src|' + (city && city.id) + '|' + slotIdx) * arr.length)];
   };
@@ -4776,6 +4794,16 @@ import './data.js';
       var src = GAME.invasionSrcOf(city, d);       /* 与预警同一个出口："报谁就是谁来" */
       var detail = GAME.invasionResolve(city, src, d);
       fired++;
+      /* v92.24：**战果回写势力** —— 这才是"世界在反击"的闭环：
+         你顶住了，它的版图缩（它记住你）；它破了你的城，版图涨（它尝到甜头）。
+         以前这一场无论谁赢，世界都毫无变化，下一场还是照刷。 */
+      try {
+        var _fa24b = (GAME.faction && GAME.faction.attackerIdOf) ? GAME.faction.attackerIdOf(city) : null;
+        if (_fa24b) {
+          var _fr24 = GAME.faction.onInvasionResult(_fa24b, detail.held);
+          if (_fr24) GAME.log.beacon((detail.held ? '📉 ' : '📈 ') + _fr24.msg);
+        }
+      } catch (e24) { /* 回写失败绝不能拖垮结算 */ }
       var head = detail.held
         ? '🛡 ' + city.name + ' 击退' + src + '（守备 ' + U.fmt(detail.def) + ' vs 来犯 ' + U.fmt(detail.atk) + '）'
         : (detail.lootOk

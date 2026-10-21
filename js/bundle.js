@@ -10353,7 +10353,19 @@ window.GAME = window.GAME || {};
     (s.cities || []).forEach(function (c) { total += GAME.armyPowerOf(c); });
     var r0 = GAME.invasionRoll('inv|' + (city && city.id) + '|' + (cycle == null ? 0 : cycle));
     var lo = (I.ratioMin == null ? 0.28 : I.ratioMin), hi = (I.ratioMax == null ? 0.45 : I.ratioMax);
-    return Math.max(1, Math.round(total * (lo + r0 * (hi - lo))));
+    var base = total * (lo + r0 * (hi - lo));
+    /* v92.24：**势力越大，远征越凶**。以前强度只跟玩家战力挂钩 ——
+       你打不打它、它长多大，都不影响下一场有多重。现在会。 */
+    if (GAME.faction && GAME.faction.attackerIdOf) {
+      var _fid24 = GAME.faction.attackerIdOf(city);
+      if (_fid24) {
+        var _arr24 = GAME.faction.arr ? GAME.faction.arr() : [];
+        for (var _i24 = 0; _i24 < _arr24.length; _i24++) {
+          if (_arr24[_i24].id === _fid24) { base *= (1 + _arr24[_i24].r * 0.04); break; }
+        }
+      }
+    }
+    return Math.max(1, Math.round(base));
   };
 
   /* ============================================================
@@ -10467,6 +10479,12 @@ window.GAME = window.GAME || {};
      参数 = 本场的**场次序号**（invasionSlotOf 的返回值）—— 预警与结算传同一个号。 */
   GAME.invasionSrcOf = function (city, slotIdx) {
     var I = DATA.INVASION || {};
+    /* v92.24：**如果是某家势力的领地压到你这座城，那就是它来打你** ——
+       名字要对得上（预警报谁，就是谁来），这条与"报谁打谁"的旧铁律同源。 */
+    if (GAME.faction && GAME.faction.attackerOf) {
+      var _fa24 = GAME.faction.attackerOf(city);
+      if (_fa24) return _fa24;
+    }
     var arr = I.sources || ['敌军'];
     return arr[Math.floor(GAME.invasionRoll('src|' + (city && city.id) + '|' + slotIdx) * arr.length)];
   };
@@ -10881,6 +10899,16 @@ window.GAME = window.GAME || {};
       var src = GAME.invasionSrcOf(city, d);       /* 与预警同一个出口："报谁就是谁来" */
       var detail = GAME.invasionResolve(city, src, d);
       fired++;
+      /* v92.24：**战果回写势力** —— 这才是"世界在反击"的闭环：
+         你顶住了，它的版图缩（它记住你）；它破了你的城，版图涨（它尝到甜头）。
+         以前这一场无论谁赢，世界都毫无变化，下一场还是照刷。 */
+      try {
+        var _fa24b = (GAME.faction && GAME.faction.attackerIdOf) ? GAME.faction.attackerIdOf(city) : null;
+        if (_fa24b) {
+          var _fr24 = GAME.faction.onInvasionResult(_fa24b, detail.held);
+          if (_fr24) GAME.log.beacon((detail.held ? '📉 ' : '📈 ') + _fr24.msg);
+        }
+      } catch (e24) { /* 回写失败绝不能拖垮结算 */ }
       var head = detail.held
         ? '🛡 ' + city.name + ' 击退' + src + '（守备 ' + U.fmt(detail.def) + ' vs 来犯 ' + U.fmt(detail.atk) + '）'
         : (detail.lootOk
@@ -27021,6 +27049,50 @@ window.GAME = window.GAME || {};
     var d = FA.defOf(fid) || {};
     return { before: before, after: f.r, n: f.alarm,
       msg: (d.name || fid) + ' 因你在它地盘上动兵而警觉：势力范围 ' + before + ' → ' + f.r };
+  };
+
+  /* ============================================================
+   * v92.24（世界级反馈）：**谁在打你**
+   * ------------------------------------------------------------
+   * 原系统每 30 分钟来一场入侵，来源是 `DATA.INVASION.sources` 里的固定字符串
+   * （"敌军"）。强度只跟**玩家自己**的战力成正比 —— 那是"系统定期刷怪"，
+   * 不是"世界在反击"：你打不打它、它长多大，都不影响谁来找你。
+   *
+   * 现在改三处，让战争有因果：
+   *   ① 来源 = **领地压到你这座城的那家势力**（没有势力压到 → 退回旧逻辑）；
+   *   ② 强度 × (1 + r·0.04) —— 它版图越大，远征越凶；
+   *   ③ 战果回写它的半径：你顶住了它受挫（−0.3），它打赢了版图扩张（+0.3）。
+   * ============================================================ */
+  FA.attackerOf = function (city) {
+    if (!city || !GAME.faction) return null;
+    var ci = city.ci;
+    if (ci == null || ci < 0) return null;
+    var fid = FA.controlOf(ci);
+    if (!fid) return null;
+    var def = FA.defOf(fid);
+    return def ? def.name : null;
+  };
+  /* 该城的势力攻击者（供强度与战果回写用；没有 → null） */
+  FA.attackerIdOf = function (city) {
+    if (!city || !GAME.faction) return null;
+    var ci = city.ci;
+    if (ci == null || ci < 0) return null;
+    return FA.controlOf(ci);
+  };
+  /* 战果回写：守住了 → 它受挫；被破了 → 它扩张 */
+  FA.onInvasionResult = function (fid, held) {
+    var arr = FA.arr(), f = null;
+    for (var i = 0; i < arr.length; i++) if (arr[i].id === fid) f = arr[i];
+    if (!f) return null;
+    var d = FA.defOf(fid) || {};
+    var before = f.r;
+    f.r = held
+      ? Math.max(2, Math.round((f.r - 0.3) * 100) / 100)
+      : Math.min(cfg().maxR || 14, Math.round((f.r + 0.3) * 100) / 100);
+    return { before: before, after: f.r, held: !!held,
+      msg: held
+        ? ('你顶住了' + (d.name || fid) + ' 的远征：它的版图从 ' + before + ' 缩到 ' + f.r)
+        : ((d.name || fid) + ' 攻破了你的城防：它的版图从 ' + before + ' 扩到 ' + f.r) };
   };
 
   /* 态势：每家半径、约格数（六边面积 ≈ 3r²）、离玩家主城多少格 */

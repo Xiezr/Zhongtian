@@ -430,6 +430,50 @@
       msg: (d.name || fid) + ' 因你在它地盘上动兵而警觉：势力范围 ' + before + ' → ' + f.r };
   };
 
+  /* ============================================================
+   * v92.24（世界级反馈）：**谁在打你**
+   * ------------------------------------------------------------
+   * 原系统每 30 分钟来一场入侵，来源是 `DATA.INVASION.sources` 里的固定字符串
+   * （"敌军"）。强度只跟**玩家自己**的战力成正比 —— 那是"系统定期刷怪"，
+   * 不是"世界在反击"：你打不打它、它长多大，都不影响谁来找你。
+   *
+   * 现在改三处，让战争有因果：
+   *   ① 来源 = **领地压到你这座城的那家势力**（没有势力压到 → 退回旧逻辑）；
+   *   ② 强度 × (1 + r·0.04) —— 它版图越大，远征越凶；
+   *   ③ 战果回写它的半径：你顶住了它受挫（−0.3），它打赢了版图扩张（+0.3）。
+   * ============================================================ */
+  FA.attackerOf = function (city) {
+    if (!city || !GAME.faction) return null;
+    var ci = city.ci;
+    if (ci == null || ci < 0) return null;
+    var fid = FA.controlOf(ci);
+    if (!fid) return null;
+    var def = FA.defOf(fid);
+    return def ? def.name : null;
+  };
+  /* 该城的势力攻击者（供强度与战果回写用；没有 → null） */
+  FA.attackerIdOf = function (city) {
+    if (!city || !GAME.faction) return null;
+    var ci = city.ci;
+    if (ci == null || ci < 0) return null;
+    return FA.controlOf(ci);
+  };
+  /* 战果回写：守住了 → 它受挫；被破了 → 它扩张 */
+  FA.onInvasionResult = function (fid, held) {
+    var arr = FA.arr(), f = null;
+    for (var i = 0; i < arr.length; i++) if (arr[i].id === fid) f = arr[i];
+    if (!f) return null;
+    var d = FA.defOf(fid) || {};
+    var before = f.r;
+    f.r = held
+      ? Math.max(2, Math.round((f.r - 0.3) * 100) / 100)
+      : Math.min(cfg().maxR || 14, Math.round((f.r + 0.3) * 100) / 100);
+    return { before: before, after: f.r, held: !!held,
+      msg: held
+        ? ('你顶住了' + (d.name || fid) + ' 的远征：它的版图从 ' + before + ' 缩到 ' + f.r)
+        : ((d.name || fid) + ' 攻破了你的城防：它的版图从 ' + before + ' 扩到 ' + f.r) };
+  };
+
   /* 态势：每家半径、约格数（六边面积 ≈ 3r²）、离玩家主城多少格 */
   FA.stats = function () {
     var s = SP(), arr = FA.arr();

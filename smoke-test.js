@@ -39219,6 +39219,72 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       G.state.world.elapsed = 0; return G.coldLeftOf() + ' 个月';
     })());
 
+    console.log('\n===== 304. v92.24 世界级反馈：谁在打你 =====');
+
+    var w24 = (function () {
+      G.newGame({ name: '因果', cityName: '灰岗' });
+      G.faction.ensure();
+      return G.faction.arr().slice();
+    })();
+
+    check('§304① 势力领地压到我的城 → 预警点名就是它', (function () {
+      if (!w24.length) return false;
+      var city = G.currentCity();
+      if (!city || city.ci == null || city.ci < 0) return false;
+      var f = w24[0];
+      /* 把它的核心搬到我城旁边（半径盖住我城），模拟"它打到我门口了" */
+      var oldCore = f.core;
+      f.core = city.ci;
+      f.r = 6;
+      var name = G.faction.attackerOf(city);
+      var src = G.invasionSrcOf(city, 1);
+      f.core = oldCore;
+      var d = G.faction.defOf(f.id) || {};
+      return name === d.name && src === d.name;
+    })(), '预警报谁 = 谁来打');
+
+    check('§304② 势力越大，远征越凶（强度随半径涨）', (function () {
+      if (!w24.length) return false;
+      var city = G.currentCity();
+      /* ⚠️ 开局城没兵 → total=0 → 强度恒为 1（Math.max(1, ...) 兜底），
+         测不出倍数差。先给城布防，这是"玩家有家底"的真实前提。 */
+      city.army = city.army || {};
+      city.army.buxingji = 5000;
+      var f = w24[0];
+      var oldCore = f.core, oldR = f.r;
+      f.core = city.ci;
+      f.r = 3;
+      var p0 = G.invasionPowerOf(city, 7);
+      f.r = 12;
+      var p1 = G.invasionPowerOf(city, 7);
+      f.core = oldCore; f.r = oldR;
+      return p1 > p0;
+    })(), (function () { return 'r3 → r12 强度上升'; })());
+
+    check('§304③ 守住 → 它受挫；被破 → 它扩张', (function () {
+      if (!w24.length) return false;
+      var f = w24[0];
+      f.r = 8;
+      var held = G.faction.onInvasionResult(f.id, true);
+      var afterHeld = f.r;
+      var broke = G.faction.onInvasionResult(f.id, false);
+      return held.after === 7.7 && afterHeld === 7.7 && broke.after === 8 && f.r === 8;
+    })(), '8 → 7.7（守住）→ 8（被破）');
+
+    check('§304④ 回写有下限（不会把势力打消失）', (function () {
+      if (!w24.length) return false;
+      var f = w24[0];
+      f.r = 2;
+      for (var i = 0; i < 10; i++) G.faction.onInvasionResult(f.id, true);
+      return f.r >= 2;
+    })());
+
+    check('§304⑤ 没有势力覆盖时退回旧逻辑（不炸、不空）', (function () {
+      var far = { id: 'far-city', name: '远城', ci: 99999, x: 0, y: 0 };
+      var src = G.invasionSrcOf(far, 1);
+      return typeof src === 'string' && src.length > 0;
+    })());
+
     console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');
   process.exit(FAIL ? 1 : 0);
 })();
