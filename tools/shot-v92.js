@@ -66,7 +66,7 @@ function serve() {
     if (c && GAME.ui.mapCenterOn) { try { GAME.ui.mapCenterOn(c.x, c.y); } catch (e) { } }
   });
   await page.waitForTimeout(2000);
-  await page.screenshot({ path: path.join(OUT, '01-map-fog.png') });
+  await page.screenshot({ path: path.join(OUT, '01-map-fog.png'), timeout: 60000 });
 
   /* 报告探明度 + 雾层网格是否存在 */
   const stat = await page.evaluate(function () {
@@ -88,7 +88,7 @@ function serve() {
     if (c && GAME.map3d.centerOn) { try { GAME.map3d.centerOn(c.x, c.y); } catch (e) { } }
   });
   await page.waitForTimeout(1500);
-  await page.screenshot({ path: path.join(OUT, '02-map-revealed.png') });
+  await page.screenshot({ path: path.join(OUT, '02-map-revealed.png'), timeout: 60000 });
 
   const diag = await page.evaluate(function () {
     const m = GAME.map3d;
@@ -115,14 +115,14 @@ function serve() {
     GAME.ui.setView('marches');
   });
   await page.waitForTimeout(1800);
-  await page.screenshot({ path: path.join(OUT, '03-memorial.png') });
+  await page.screenshot({ path: path.join(OUT, '03-memorial.png'), timeout: 60000 });
 
   /* 自动探索面板（v92.2 新增「顺带探路」开关） */
   await page.evaluate(function () {
     if (GAME.ui.openAutoExplore) GAME.ui.openAutoExplore();
   });
   await page.waitForTimeout(1500);
-  await page.screenshot({ path: path.join(OUT, '04-autoexplore.png') });
+  await page.screenshot({ path: path.join(OUT, '04-autoexplore.png'), timeout: 60000 });
 
   fs.writeFileSync(path.join(OUT, 'report.json'), JSON.stringify({ stat, stat2, errors }, null, 2));
   console.log('探明(开局)：', stat.seen, '/', stat.total, '=', stat.pct + '%');

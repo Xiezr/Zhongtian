@@ -1144,7 +1144,14 @@ import './gltf.js';
            玩家抬头就该看见"我还认识多少"。 */
         if (GAME.fog && GAME.fog.stats) {
           var _fs2 = GAME.fog.stats();
-          var _ft = '🗺 行迹 ' + _fs2.pct + '%　· 视野 ' + GAME.fog.radiusOf() + ' 格';
+          /* 顺带报"下一档还差多少" —— 里程碑只落一条日志很容易被错过，
+             常驻在 HUD 上玩家才知道"再探 2.7% 视野就 +1"。 */
+          var _nextT = null;
+          ((GAME.DATA.FOG || {}).tiers || []).forEach(function (t) {
+            if (!_nextT && _fs2.pct < t.pct) _nextT = t;
+          });
+          var _ft = '🗺 行迹 ' + _fs2.pct + '%　· 视野 ' + GAME.fog.radiusOf() + ' 格'
+            + (_nextT ? ('　· 再 ' + (Math.round((_nextT.pct - _fs2.pct) * 10) / 10) + '% → ' + _nextT.r + ' 格') : '');
           var _fx = 14 + _pw + 30;
           ctx.font = '13px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
           var _fw = ctx.measureText(_ft).width;
