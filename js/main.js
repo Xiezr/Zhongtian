@@ -1892,6 +1892,8 @@ import './ui.js';
     }
     /* v91.83：自动清层开关（可行行动全锁时，自动派兵破下一层守卫）。 */
     if (k === 'autoClear') { cfg.autoClear = !!v; GAME.refreshView(); return; }
+    /* v92.1：探路开关（奇观那边没活干时，顺带派侦察往已探明边缘外推）。 */
+    if (k === 'probe') { cfg.probe = !!v; GAME.refreshView(); return; }
     if (k === 'everyMin' || k === 'dailyMax') cfg[k] = Number(v);
     else cfg[k] = String(v);
     GAME.refreshView();

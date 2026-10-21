@@ -38174,6 +38174,59 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
 
   })();
 
+    console.log('\n===== 288. v92.1 自动探路 =====');
+
+    var probeCase = (function () {
+      G.newGame({ name: '探路', cityName: '灰岗' });
+      return { city: G.currentCity() };
+    })();
+
+    check('§288① 探路目标 = 已探明边缘的未探明格（不是纯黑里随便挑）', (function () {
+      var city = probeCase.city;
+      var tci = G._autoProbeTargetOf(city, 20);
+      if (tci < 0) return false;
+      if (G.fog.get(tci) !== 0) return false;          /* 必须未探明 */
+      var SPn = G.mapSphere || G.sphere;
+      var nb = SPn.adj[tci] || [];
+      for (var i = 0; i < nb.length; i++) if (G.fog.get(nb[i]) > 0) return true;
+      return false;                                     /* 必须与已探明相邻 */
+    })(), 'ci=' + G._autoProbeTargetOf(probeCase.city, 20));
+
+    check('§288② 开关关闭时完全不介入（默认不打扰）', (function () {
+      var city = probeCase.city;
+      return G._autoProbeCity(G.pidOf(city), city, { probe: false, army: {} }) === null;
+    })());
+
+    check('§288③ 编成为空时给明确提示，不静默失败', (function () {
+      var city = probeCase.city;
+      var r = G._autoProbeCity(G.pidOf(city), city, { probe: true, army: {} });
+      return !!(r && !r.ok && /编成/.test(r.msg || ''));
+    })(), ((function () {
+      var c = probeCase.city;
+      var r = G._autoProbeCity(G.pidOf(c), c, { probe: true, army: {} });
+      return r ? r.msg : 'null';
+    })()));
+
+    var probeDbg = '';
+    check('§288④ 实派：给了编成就会走行军通道（不是瞬移点亮）', (function () {
+      var city = probeCase.city;
+      /* 开局城里没兵 —— 先加一支，否则这条测的是"没兵"而不是"探路通道"。 */
+      G.city.armyAdd(city, { buxingji: 80 });
+      var comp = { buxingji: 30 }, any = 'buxingji';
+      if ((city.army.buxingji || 0) < 30) { probeDbg = '加兵失败'; return false; }
+      var gen0 = (G.state.generals || [])[0];
+      if (!gen0) { probeDbg = '没有英雄'; return false; }
+      comp[any] = Math.min(30, city.army[any]);
+      var cfgP = { probe: true, army: comp };
+      cfgP.cityGen = {};
+      cfgP.cityGen[city.id] = gen0.id;                   /* 侦查必须有主将，配置里指定 */
+      var r = G._autoProbeCity(G.pidOf(city), city, cfgP);
+      if (!r || !r.ok) { probeDbg = (r && r.msg) || 'null'; return false; }
+      var ms = G.state.marches || [];
+      probeDbg = '行军队列 ' + ms.length + ' 支 · ' + (r.msg || '');
+      return ms.length > 0 && !!ms[ms.length - 1].tci;
+    })(), probeDbg);
+
   console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');
   process.exit(FAIL ? 1 : 0);
 })();

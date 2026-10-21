@@ -17796,6 +17796,11 @@ import './state.js';
       '<input type="checkbox" id="ae-autoclear"' + (cfg.autoClear ? ' checked' : '') + '>' +
       '<span>无可行行动时<b>自动派兵破下一层</b>（清层 → 解锁行动 → 采集）'
       + '　<i class="gd-sub">默认开 · 编成低于该层建议兵力时不出战 · 不占每日次数</i></span></label>' +
+      /* v92.1：探路开关 —— 挂机也能推进探索，但默认关（不打招呼就烧兵是坏设计）。 */
+      '<label style="display:flex;align-items:center;gap:6px;margin-top:8px;cursor:pointer;">' +
+      '<input type="checkbox" id="ae-probe"' + (cfg.probe ? ' checked' : '') + '>' +
+      '<span>奇观无活时<b>顺带派侦察探路</b>（往已探明边缘外推）'
+      + '　<i class="gd-sub">默认关 · 用上面的探索编成 · 吃每城每日次数 · 抵达后点亮周围 6 格</i></span></label>' +
       '</div>';
   };
 
@@ -17974,6 +17979,14 @@ import './state.js';
       var cb = document.getElementById('ae-autoclear'); if (!cb) return;
       cb.addEventListener('change', function () {
         GAME.doSetAutoExplore('autoClear', cb.checked ? 1 : '');
+        ui.openAutoExplore();
+      });
+    })();
+    /* v92.1：探路开关 */
+    (function () {
+      var cb2 = document.getElementById('ae-probe'); if (!cb2) return;
+      cb2.addEventListener('change', function () {
+        GAME.doSetAutoExplore('probe', cb2.checked ? 1 : '');
         ui.openAutoExplore();
       });
     })();

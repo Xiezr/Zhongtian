@@ -5481,6 +5481,10 @@ import './state.js';
            安全阀（防送死）：编成总兵力 < 该层「建议最小兵力」时**绝不出战**，
            只打"带够了兵"的那一层；清层**不占**每城每日探索次数，成功即当轮重试派队。 */
         autoClear: true,
+        /* v92.1：奇观那边没活干时，**顺带派侦察去探路**（默认关）。
+           挂机不该什么都推不动 —— 但也不该不打招呼就烧兵，所以做成显式开关，
+           编成沿用「自动探索编成」，每城每日次数照吃。 */
+        probe: false,
       };
     }
     var c = s.settings.autoExplore;
@@ -5493,6 +5497,7 @@ import './state.js';
     if (!c.offCities || typeof c.offCities !== 'object') c.offCities = {};      /* v91.81 */
     if (!c.cityGen || typeof c.cityGen !== 'object') c.cityGen = {};            /* v91.82 */
     if (c.autoClear == null) c.autoClear = true;                                /* v91.84 */
+    if (c.probe == null) c.probe = false;                                       /* v92.1 */
     if (!c.cityGen || typeof c.cityGen !== 'object') c.cityGen = {};            /* v91.82 */
     return c;
   };
@@ -5590,6 +5595,65 @@ import './state.js';
     }
     return { ok: true, army: army, total: total, load: load };
   };
+  /* ============================================================
+   * v92.1：**自动探路**（挂机也能推进探索）
+   * ------------------------------------------------------------
+   * 老板：「我不想纯粹是挂机游戏……挂机资源不会对游戏产生决定性影响」。
+   * 反过来说也一样成立：挂机不该什么都推不动。
+   * 奇观探索队走的是固定点位，永远不会去"没去过的地方"——
+   * 于是迷雾加进来以后，纯挂机的玩家地图会停在开局那一小圈。
+   *
+   * 这里补的是一条**可选**的探路队（cfg.probe，默认关）：
+   * 奇观那边今天没活干时，派一队侦察去"已探明边缘的未探明格"。
+   *
+   * ⚠️ 为什么不直接派进纯黑里：玩家看不到它从哪过去，新亮的一片和旧亮区
+   * 断开，像凭空开了一块图。从边缘出发，路径是连着的，看着才像"走出去"。
+   * ⚠️ 吃每城每日次数（与奇观派队同一条闸）：不然 20 分钟一次能一路刷到全亮。
+   * ============================================================ */
+  GAME._autoProbeTargetOf = function (city, maxHops) {
+    var F = GAME.fog;
+    if (!F || !city) return -1;
+    var pid = GAME.pidOf ? GAME.pidOf(city) : null;
+    var SPn = (GAME.sphereOf && pid != null) ? GAME.sphereOf(pid) : GAME.sphere;
+    if (!SPn || !SPn.hopsWithin || !SPn.adj) return -1;
+    var ci = city.ci;
+    if (ci == null || ci < 0) return -1;
+    var ring = SPn.hopsWithin(ci, maxHops || 30);   /* BFS 顺序 = 由近及远 */
+    for (var i = 0; i < ring.length; i++) {
+      var c = ring[i];
+      if (F.get(c) !== 0) continue;                 /* 已探明，跳过 */
+      var nb = SPn.adj[c] || [];
+      for (var k = 0; k < nb.length; k++) {
+        if (F.get(nb[k]) > 0) return c;             /* 与已探明相邻 = 边缘 */
+      }
+    }
+    return -1;
+  };
+
+  GAME._autoProbeCity = function (pid, city, cfg) {
+    if (!cfg || !cfg.probe) return null;
+    var tci = GAME._autoProbeTargetOf(city, 30);
+    if (tci < 0) return { ok: false, msg: '「' + city.name + '」周边已无可探之处' };
+    /* 编成走玩家自己设的「自动探索编成」—— 探路不该另开一套队伍配置。 */
+    var comp = cfg.army || {}, army = {}, tot = 0;
+    for (var id in comp) {
+      var want = Math.max(0, Math.floor(comp[id] || 0));
+      if (!want) continue;
+      var have = Math.floor((city.army || {})[id] || 0);
+      var n = Math.min(want, have);
+      if (n > 0) { army[id] = n; tot += n; }
+    }
+    if (!tot) return { ok: false, msg: '「' + city.name + '」探路编成为空（先在自动探索里设编成）' };
+    var gen = GAME.autoExplorePickGen ? GAME.autoExplorePickGen(cfg, city) : null;
+    /* 侦查必须有主将（expedition/prepare 会拒）—— 这里先拦，给出能照着做的提示，
+       别让玩家看到一句没头没尾的"请选择出征英雄"。 */
+    if (!gen) return { ok: false, msg: '「' + city.name + '」没有可派的主将（自动探索里给这城指定英雄）' };
+    var r = GAME.march.dispatch({ kind: 'wild', ci: tci }, 'scout', army,
+      gen.id, null, { fromCityId: city.id });
+    if (r && r.ok) return { ok: true, probe: true, msg: '「' + city.name + '」派队探路（去程 ' + U.durExact(Math.max(1, r.march ? (r.march.totalTime / GAME.timeScale()) : 1)) + '）' };
+    return { ok: false, msg: (r && r.msg) || '探路失败' };
+  };
+
   /* 本城 × 本星球奇观 的**可行行动集**（界面提示与自动派队共用同一出口）。 */
   GAME.autoExploreActsFor = function (pid, city, cfg) {
     var out = { feas: [], blocked: [], wonder: null };
@@ -5712,7 +5776,16 @@ import './state.js';
           r = GAME._autoExploreCity(pid, city, cfg);   /* 同轮重试（清层已推进一层，行动已解锁） */
         }
         if (r && r.ok && !r.cleared) { cfg.today[city.id] = (cfg.today[city.id] || 0) + 1; done++; lastMsg = r.msg; }
-        else if (r && r.msg) lastMsg = r.msg;
+        else {
+          /* v92.1：奇观那边今天没活干 → 顺带探路（cfg.probe，默认关）。
+             与奇观派队吃同一条每日次数闸 —— 否则 20 分钟一次能一路刷到全亮。 */
+          var pv = GAME._autoProbeCity(pid, city, cfg);
+          if (pv && pv.ok) {
+            cfg.today[city.id] = (cfg.today[city.id] || 0) + 1;
+            done++; lastMsg = pv.msg;
+          } else if (r && r.msg) lastMsg = r.msg;
+          else if (pv && pv.msg) lastMsg = pv.msg;
+        }
       });
     });
     /* 还原当前星球球面（逐星临时切换后必须切回，否则后续建造/科技按错地形算格）。 */
