@@ -8116,10 +8116,15 @@ import './state.js';
         + '半径 ' + x.r + ' · 约 ' + U.numText(x.cells, 0) + ' 格'
         + (x.near != null ? '<br><span style="color:var(--text-dim);">距你 ' + Math.round(x.near) + ' 格</span>' : '')
         + (x.truce > 0 ? ('<br><span style="color:var(--gold-light);">🤝 停战中（剩 ' + x.truce + ' 月）</span>') : '')
+        + (x.ally > 0 ? ('<br><span style="color:var(--green-ok);">🛡 盟友（剩 ' + x.ally + ' 月不扩张）</span>') : '')
         + '<br><button class="btn" style="font-size:var(--fs-cap);padding:1px 8px;margin-top:3px;"'
         + ' data-action="duel-with" data-fid="' + x.id + '">⚔ 叫阵</button>'
         + (x.truce > 0 ? '' : ('<button class="btn" style="font-size:var(--fs-cap);padding:1px 8px;margin:3px 0 0 4px;"'
           + ' data-action="faction-tribute" data-fid="' + x.id + '">🤝 纳贡</button>'))
+        + (x.ally > 0 ? '' : ('<button class="btn" style="font-size:var(--fs-cap);padding:1px 8px;margin:3px 0 0 4px;"'
+          + ' data-action="faction-ally" data-fid="' + x.id + '">🛡 结盟</button>'))
+        + ((x.ally > 0 || x.truce > 0) ? '' : ('<button class="btn" style="font-size:var(--fs-cap);padding:1px 8px;margin:3px 0 0 4px;"'
+          + ' data-action="faction-incite" data-fid="' + x.id + '">🔥 挑拨</button>'))
         + '</div>';
     });
     h += '</div>';

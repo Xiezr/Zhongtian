@@ -4663,6 +4663,16 @@ import './core.js';
        这是这一版唯一能落地的"外交"：打/盟/挑 都要先有战斗接入，
        做了也只是播报，是假动作。 */
     truceMonths: 6,
+    /* v92.17（B2 补完：挑 / 盟 / 互战）
+       · 挑拨：花一笔钱，让两家立刻打一场（它们耗掉的是彼此的半径，不是你的兵）
+       · 结盟：花更大一笔，换 12 个月它不扩张（贡是买时间，盟是买长期）
+       · 互战：每月自动判定，领地相交的两家按半径掷骰，强者进、弱者退
+       都是态势层的账 —— 不碰战斗引擎。 */
+    allyMonths: 12,
+    allyCost: { grain: 6000, iron: 3000 },
+    clashCost: { grain: 3000, iron: 1500 },
+    clashGain: 0.35,
+    clashEveryMonths: 3,
     tributePerR: { grain: 200, iron: 100 },
     list: [
       { id: 'anvil', name: '铁砧', trait: '侵略', aggr: 1.4 },

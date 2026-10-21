@@ -1347,6 +1347,9 @@ import './ui.js';
       case 'duel-move': ui.openDuel(ui._duel && ui._duel.fid, el.getAttribute('data-mv')); break;
       /* v92.11：向势力纳贡（交资源换它停几个月） */
       case 'faction-tribute': GAME.doFactionTribute(el.getAttribute('data-fid')); break;
+      /* v92.17：结盟 / 挑拨（B2 补完） */
+      case 'faction-ally': GAME.doFactionAlly(el.getAttribute('data-fid')); break;
+      case 'faction-incite': GAME.doFactionIncite(el.getAttribute('data-fid')); break;
       /* v92.14：派将挑衅一座城（赢了那城守军胆寒 24 小时） */
       case 'provoke-city': ui._provoke = null; ui.openProvoke(); break;
       case 'provoke-move': ui.openProvoke(el.getAttribute('data-mv')); break;
@@ -1943,6 +1946,25 @@ import './ui.js';
     } else {
       GAME.refreshView();
     }
+  };
+  /* v92.17：结盟（花大钱换长期不扩张） */
+  GAME.doFactionAlly = function (fid) {
+    var r = GAME.faction && GAME.faction.ally ? GAME.faction.ally(fid) : null;
+    if (!r) { ui.toast('结盟不可用'); return; }
+    ui.toast((r.ok ? '✅ ' : '⏸ ') + r.msg);
+    if (r.ok) { GAME.log(r.msg, 'sys', 'wild'); GAME.refreshAll(); }
+    else GAME.refreshView();
+  };
+  /* v92.17：挑拨（让这家与它最近的那家开打） */
+  GAME.doFactionIncite = function (fid) {
+    var F = GAME.faction;
+    if (!F || !F.incite) { ui.toast('挑拨不可用'); return; }
+    var other = F.nearestOtherOf(fid);
+    if (!other) { ui.toast('找不到可挑的另一家'); return; }
+    var r = F.incite(fid, other);
+    ui.toast((r.ok ? '✅ ' : '⏸ ') + r.msg);
+    if (r.ok) { GAME.log(r.msg, 'sys', 'wild'); GAME.refreshAll(); }
+    else GAME.refreshView();
   };
   GAME.doRuinAct = function (ci, side) {
     var r = GAME.ruin && GAME.ruin.act ? GAME.ruin.act(+ci, side) : null;

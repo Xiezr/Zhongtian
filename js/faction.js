@@ -146,12 +146,36 @@
     var c = cfg();
     arr.forEach(function (f) {
       if (FA.truceLeft(f.id) > 0) return;         /* v92.11：纳贡期内停手 */
+      if (FA.isAlly(f.id)) return;                /* v92.17：盟友期内部扩张 */
       var d = FA.defOf(f.id) || {};
       /* v92.8：年景（B5）—— 战年军阀并起，推进翻倍。 */
       var g = (c.growPerMonth || 0.8) * (d.aggr || 1) * (GAME.yearMulOf ? GAME.yearMulOf('factionMul') : 1);
       f.r = Math.min(c.maxR || 14, Math.round((f.r + g) * 100) / 100);
     });
-    return { month: month };
+    /* v92.17：**互战** —— 每 clashEveryMonths 个月，领地相交的两家打一场。
+       领地相交的判据用球面距离 vs 双方半径和（与 controlOf 同一把尺）。
+       盟友不参战；停战中的也不参战（拿了钱的不能转头就打）。 */
+    var every = c.clashEveryMonths || 3;
+    var out = { month: month, clashes: [] };
+    if (every > 0 && month % every === 0) {
+      var sp = SP();
+      for (var i2 = 0; i2 < arr.length; i2++) {
+        for (var j2 = i2 + 1; j2 < arr.length; j2++) {
+          var A = arr[i2], B2 = arr[j2];
+          if (FA.isAlly(A.id) || FA.isAlly(B2.id)) continue;
+          if (FA.truceLeft(A.id) > 0 || FA.truceLeft(B2.id) > 0) continue;
+          if (!sp || !sp.distOf) continue;
+          var dd = sp.distOf({ ci: A.core }, { ci: B2.core });
+          if (dd > A.r + B2.r) continue;         /* 领地不相交，打不起来 */
+          var rs = FA._clash(A.id, B2.id);
+          if (rs) out.clashes.push(rs);
+        }
+      }
+      if (out.clashes.length && GAME.log && GAME.log.war) {
+        out.clashes.forEach(function (x) { GAME.log.war('⚔ ' + x.msg); });
+      }
+    }
+    return out;
   };
 
   /* ============================================================
@@ -268,6 +292,114 @@
     };
   };
 
+  /* ============================================================
+   * v92.17（B2 补完：挑 / 盟 / 互战）
+   * ------------------------------------------------------------
+   * 文档 B2 的四种用法：打 / 贡 / 盟 / 挑。
+   *   · 打 —— v92.16（核心可讨伐）✅
+   *   · 贡 —— v92.11（交钱换 6 个月）✅
+   *   · 挑 —— 本节：花一笔钱让两家立刻开打，它们耗掉的是彼此的半径 ✅
+   *   · 盟 —— 本节：花更大一笔换 12 个月不扩张；与"贡"的区别是**长期**
+   *   · 互战 —— 每月自动判定：领地相交的两家按半径掷骰，强者进、弱者退
+   *
+   * 全是态势层的账（改 `arr[i].r`），**不碰战斗引擎**。
+   * 玩家的收益不是"抢到什么"，而是"看着它们互相消耗" ——
+   * 这正是文档里"挑：让 A 打 B，收渔利"那句话。
+   * ============================================================ */
+  FA.isAlly = function (fid) {
+    var a = ((GAME.state || {}).allies) || {};
+    return (a[fid] | 0) > FA.monthNow();
+  };
+  FA.allyLeft = function (fid) {
+    var a = ((GAME.state || {}).allies) || {};
+    var t = a[fid] | 0;
+    var m = FA.monthNow();
+    return t > m ? (t - m) : 0;
+  };
+
+  FA.ally = function (fid) {
+    var st = GAME.state;
+    if (!st) return { ok: false, msg: '无存档' };
+    FA.ensure();
+    var def = FA.defOf(fid);
+    if (!def) return { ok: false, msg: '没有这家势力' };
+    if (FA.isAlly(fid)) return { ok: false, msg: '已经是盟友了（还剩 ' + FA.allyLeft(fid) + ' 个月）' };
+    var cost = cfg().allyCost || { grain: 6000, iron: 3000 };
+    var city = GAME.currentCity ? GAME.currentCity() : null;
+    if (!city) return { ok: false, msg: '没有可支付的城市' };
+    city.res = city.res || {};
+    if ((city.res.grain || 0) < cost.grain) return { ok: false, msg: '粮不够：要 ' + U.numText(cost.grain, 0) };
+    if ((city.res.iron || 0) < cost.iron) return { ok: false, msg: '铁不够：要 ' + U.numText(cost.iron, 0) };
+    city.res.grain -= cost.grain;
+    city.res.iron -= cost.iron;
+    st.allies = st.allies || {};
+    var months = cfg().allyMonths || 12;
+    st.allies[fid] = FA.monthNow() + months;
+    return { ok: true, msg: '与' + def.name + '结盟：粮 −' + U.numText(cost.grain, 0)
+      + '、铁 −' + U.numText(cost.iron, 0) + '，它 ' + months + ' 个月不再扩张' };
+  };
+
+  /* 一场互战：按半径掷骰，强者进、弱者退。返回战果（便于播报与测试） */
+  FA._clash = function (aId, bId) {
+    var arr = FA.arr();
+    var A = null, B = null;
+    for (var i = 0; i < arr.length; i++) {
+      if (arr[i].id === aId) A = arr[i];
+      if (arr[i].id === bId) B = arr[i];
+    }
+    if (!A || !B || A === B) return null;
+    var sa = A.r * (1 + (FA.defOf(A.id) || {}).aggr * 0.3);
+    var sb = B.r * (1 + (FA.defOf(B.id) || {}).aggr * 0.3);
+    var roll = GAME.invasionRoll ? GAME.invasionRoll('clash|' + aId + '|' + bId + '|' + FA.monthNow()) : 0.5;
+    var aWins = (sa / (sa + sb)) > roll;
+    var gain = cfg().clashGain || 0.35;
+    var win = aWins ? A : B, lose = aWins ? B : A;
+    win.r = Math.min(cfg().maxR || 14, Math.round((win.r + gain) * 100) / 100);
+    lose.r = Math.max(2, Math.round((lose.r - gain) * 100) / 100);
+    var wn = ((FA.defOf(win.id) || {}).name || win.id);
+    var ln = ((FA.defOf(lose.id) || {}).name || lose.id);
+    return { winner: win.id, loser: lose.id,
+      msg: wn + ' 与 ' + ln + ' 交兵：' + wn + ' 进（r ' + win.r + '），' + ln + ' 退（r ' + lose.r + '）' };
+  };
+
+  /* 挑拨：花钱让两家立刻打一场 */
+  FA.incite = function (aId, bId) {
+    var st = GAME.state;
+    if (!st) return { ok: false, msg: '无存档' };
+    if (!aId || !bId || aId === bId) return { ok: false, msg: '要挑两家' };
+    var da = FA.defOf(aId), db = FA.defOf(bId);
+    if (!da || !db) return { ok: false, msg: '没有这两家' };
+    if (FA.isAlly(aId) || FA.isAlly(bId)) return { ok: false, msg: '盟友不参与挑拨' };
+    var cost = cfg().clashCost || { grain: 3000, iron: 1500 };
+    var city = GAME.currentCity ? GAME.currentCity() : null;
+    if (!city) return { ok: false, msg: '没有可支付的城市' };
+    city.res = city.res || {};
+    if ((city.res.grain || 0) < cost.grain) return { ok: false, msg: '粮不够：要 ' + U.numText(cost.grain, 0) };
+    if ((city.res.iron || 0) < cost.iron) return { ok: false, msg: '铁不够：要 ' + U.numText(cost.iron, 0) };
+    city.res.grain -= cost.grain;
+    city.res.iron -= cost.iron;
+    var res = FA._clash(aId, bId);
+    if (!res) return { ok: false, msg: '挑拨失败（这两家打不起来）' };
+    return { ok: true, msg: '挑拨得手：' + res.msg };
+  };
+
+  /* 挑拨的自动配对：与它最近的那一家。
+     为什么自动配：挑拨要选两家，做成两个下拉会让面板臃肿；
+     而"打你最近的邻居"本来就是挑拨最常用的形态。 */
+  FA.nearestOtherOf = function (fid) {
+    var sp = SP(), arr = FA.arr();
+    var me = null;
+    for (var i = 0; i < arr.length; i++) if (arr[i].id === fid) me = arr[i];
+    if (!me || !sp || !sp.distOf) return null;
+    var best = null, bd = 1e9;
+    for (var j = 0; j < arr.length; j++) {
+      if (arr[j].id === fid) continue;
+      var d = sp.distOf({ ci: me.core }, { ci: arr[j].core });
+      if (d < bd) { bd = d; best = arr[j]; }
+    }
+    return best ? best.id : null;
+  };
+
   /* 态势：每家半径、约格数（六边面积 ≈ 3r²）、离玩家主城多少格 */
   FA.stats = function () {
     var s = SP(), arr = FA.arr();
@@ -279,6 +411,7 @@
         id: f.id, name: d.name || f.id, trait: d.trait || '',
         r: f.r, cells: Math.round(3 * f.r * f.r), near: near,
         truce: FA.truceLeft(f.id),
+        ally: FA.allyLeft(f.id),
         /* v92.12（A8「迷雾里的势力」）：**没探明它的核心，就不知道它是谁**。
            以前这里白给"距你 32 格"——势力面板成了全能雷达。
            现在：核心未探明 → unknown，界面上是「？？？」。 */

@@ -38986,6 +38986,83 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         && G.faction.onRaidWin('没有这家') === null;
     })());
 
+    console.log('\n===== 300. v92.17 挑 / 盟 / 互战（B2 补完）=====');
+
+    var b2arr = (function () {
+      G.newGame({ name: '纵横', cityName: '灰岗' });
+      G.faction.ensure();
+      G.state.allies = {};
+      G.state.truces = {};
+      G.state.world.elapsed = 0;
+      return G.faction.arr().slice();
+    })();
+
+    check('§300① 结盟：扣资源 + 12 个月 + isAlly 真', (function () {
+      if (b2arr.length < 1) return false;
+      var c = G.currentCity();
+      var cost = (DATA.FACTION || {}).allyCost || { grain: 6000, iron: 3000 };
+      c.res.grain = cost.grain + 4000; c.res.iron = cost.iron + 4000;
+      var g0 = c.res.grain;
+      var r = G.faction.ally(b2arr[0].id);
+      return r.ok && c.res.grain === g0 - cost.grain
+        && G.faction.isAlly(b2arr[0].id) && G.faction.allyLeft(b2arr[0].id) > 0;
+    })(), '剩 ' + (function () { return b2arr.length ? G.faction.allyLeft(b2arr[0].id) : 0; })() + ' 月');
+
+    check('§300② 盟友期内部扩张（其余照常）', (function () {
+      var st = G.state, f = b2arr[0];
+      st.world.elapsed = 0; st.factions.lastMonth = -1;
+      G.faction.tick();
+      var r0 = f.r;
+      st.world.elapsed = 4800;
+      G.faction.tick();
+      return f.r === r0;
+    })());
+
+    check('§300③ 已是盟友 → 不能重复结盟（不重复扣钱）', (function () {
+      var c = G.currentCity();
+      c.res.grain = 99999; c.res.iron = 99999;
+      var g0 = c.res.grain;
+      var r = G.faction.ally(b2arr[0].id);
+      return !r.ok && /已经是盟友/.test(r.msg || '') && c.res.grain === g0;
+    })());
+
+    check('§300④ 挑拨：赢家半径涨、输家半径跌', (function () {
+      if (b2arr.length < 2) return false;
+      var A = b2arr[1], B = b2arr[2] || b2arr[1];
+      if (A.id === B.id) return false;
+      var a0 = A.r, b0 = B.r;
+      var res = G.faction._clash(A.id, B.id);
+      if (!res) return false;
+      var win = res.winner === A.id ? A : B;
+      var lose = res.loser === A.id ? A : B;
+      var w0 = res.winner === A.id ? a0 : b0;
+      var l0 = res.loser === A.id ? a0 : b0;
+      return win.r > w0 && lose.r < l0;
+    })(), (function () {
+      if (b2arr.length < 2) return '';
+      return b2arr[1].id + ' r=' + b2arr[1].r;
+    })());
+
+    check('§300⑤ 挑拨花钱；盟友不参与挑拨', (function () {
+      var c = G.currentCity();
+      c.res.grain = 99999; c.res.iron = 99999;
+      var g0 = c.res.grain;
+      var r1 = G.faction.incite(b2arr[0].id, b2arr[1].id);
+      var blocked = !r1.ok && /盟友/.test(r1.msg || '');
+      /* 找两个非盟友来试真挑拨 */
+      var free = b2arr.filter(function (x) { return !G.faction.isAlly(x.id); });
+      if (free.length < 2) return blocked;
+      var g1 = c.res.grain;
+      var r2 = G.faction.incite(free[0].id, free[1].id);
+      return blocked && r2.ok && c.res.grain === g1 - (((DATA.FACTION || {}).clashCost) || { grain: 3000 }).grain;
+    })());
+
+    check('§300⑥ 半径不会因为互战跌破 2（世界不塌）', (function () {
+      var f = b2arr[1];
+      for (var i = 0; i < 20; i++) G.faction._clash(f.id, b2arr[2] ? b2arr[2].id : b2arr[0].id);
+      return f.r >= 2;
+    })(), 'r=' + (function () { return b2arr[1].r; })());
+
     console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');
   process.exit(FAIL ? 1 : 0);
 })();
