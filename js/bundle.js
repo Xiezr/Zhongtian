@@ -20321,6 +20321,52 @@ window.GAME = window.GAME || {};
   };
 
   /* ============================================================
+   * v92.15（C3 建筑=工事）：**城防拆账**
+   * ------------------------------------------------------------
+   * 起因：`cityDefense` 一直在算围墙 ×20、箭塔 homeDef、专精 ×1.75、城主谋略，
+   * 但战报里只有一个"守方加成 480" —— 玩家不知道这 480 是谁给的，
+   * 也就没有理由去修墙、去造箭塔。**数值存在但玩家看不见，等于不存在。**
+   *
+   * 这个出口逐项还原 cityDefenseBase 的算法（口径必须一致，
+   * 否则拆出来的和总数对不上 —— 那比不拆更糟）。
+   * 消费点：战报的守方说明、守城面板。
+   * ============================================================ */
+  GAME.defensePartsOf = function (city) {
+    if (!city) return null;
+    var wallLv = GAME.buildingLevel(city, 'chengqiang') || 0;
+    var wallAdd = wallLv * 20;
+    var base0 = city.def || 0;
+    var raw = base0 + wallAdd;
+    var mst = GAME.mastery('defPct', city) || 0;
+    var afterMst = mst > 0 ? Math.round(raw * (1 + mst)) : raw;
+    var story = (GAME.story && GAME.story.cityDefMult) ? GAME.story.cityDefMult() : 1;
+    var afterStory = (GAME.story && GAME.story.cityDefMult) ? Math.round(afterMst * story) : afterMst;
+    var mbc = GAME.mayorBonus ? GAME.mayorBonus(city) : { name: '', def: 0 };
+    var afterMayor = mbc.name ? Math.round(afterStory * (1 + (mbc.def || 0))) : afterStory;
+    var towers = GAME.towersBuiltOf(city) || 0;
+    var towerAdd = towers * TW_T().homeDef;
+    return {
+      base: base0, wallLv: wallLv, wallAdd: wallAdd,
+      mastery: mst, story: story,
+      mayor: mbc.name ? (mbc.def || 0) : 0, mayorName: mbc.name || '',
+      towers: towers, towerAdd: towerAdd,
+      total: afterMayor + towerAdd
+    };
+  };
+  /* 一行中文（战报与面板共用同一措辞，不两处各写一遍） */
+  GAME.defenseLineOf = function (city) {
+    var p = GAME.defensePartsOf(city);
+    if (!p) return '';
+    var seg = [];
+    seg.push('城墙 Lv' + p.wallLv + '（+' + p.wallAdd + '）');
+    if (p.towers > 0) seg.push('箭塔 ' + p.towers + ' 座（+' + p.towerAdd + '）');
+    if (p.mastery > 0) seg.push('工事专精 ×' + (1 + p.mastery).toFixed(2));
+    if (p.mayor > 0) seg.push('城主谋略 ×' + (1 + p.mayor).toFixed(2));
+    if (p.story > 1.001) seg.push('羁绊守御 ×' + p.story.toFixed(2));
+    return seg.join(' · ') + ' ⇒ 城防 ' + p.total;
+  };
+
+  /* ============================================================
    * 箭塔（v62 · 老板）—— 两个来源，**一个出口**
    * ------------------------------------------------------------
    *   来源① 城防折出（v59 照搬原版：每 2 点城防 = 1 座）
@@ -41515,7 +41561,8 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
         '<td class="num">' + towers + '</td>' +
         '<td>' + (mayor ? U.escape(mayor.name) : '<span style="color:var(--red-light);">未任命</span>') + '</td>' +
         '<td>' + (guard ? U.escape(guard.name) : '<span style="color:var(--red-light);">未任命</span>') + '</td>' +
-        '<td class="num">' + U.numText(def, 0) + '</td>' +
+        '<td class="num" title="' + U.escape(GAME.defenseLineOf ? GAME.defenseLineOf(ct) : '') + '">'
+          + U.numText(def, 0) + '</td>' +
         '<td style="color:' + (risks.length ? 'var(--red-light)' : 'var(--green-ok)') + ';">' +
           (risks.length ? risks.join(' · ') : '齐备') + '</td></tr>';
     }).join('');
@@ -41525,6 +41572,19 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
         + '"齐备"= 有驻军 + 有围墙 + 有城主 + 有守将；缺哪项就在那行里点出来。') +
       '</div>' + (rows ? '<table class="tbl"><thead><tr><th>城市</th><th class="num">驻军</th><th class="num">围墙</th>' +
         '<th class="num">箭塔</th><th>城主</th><th>守将</th><th class="num">防御力</th><th>风险</th></tr></thead><tbody>' + rows + '</tbody></table>'
+      /* v92.15（C3）：城防拆账明细 —— 修墙/造塔到底加了多少，写在这里。
+         数值一直在算，但玩家看不到"这 480 是谁给的"，也就没有理由去修。 */
+      + (function () {
+        var cs = (GAME.state.cities || []).filter(function (c) { return !c.npc; });
+        if (!cs.length || !GAME.defenseLineOf) return '';
+        var items = cs.map(function (c) {
+          return '<div style="font-size:var(--fs-cap);color:var(--text-dim);">'
+            + U.escape(c.name) + '：' + U.escape(GAME.defenseLineOf(c)) + '</div>';
+        }).join('');
+        return '<div style="margin-top:8px;padding:6px 8px;border-top:1px dashed var(--wood-light);">'
+          + '<div style="font-size:var(--fs-cap);color:var(--gold-light);margin-bottom:3px;">城防构成</div>'
+          + items + '</div>';
+      })()
         : '<div class="q-empty">尚无城市。</div>') + '</div>' + tabs;
   };
   /* —— 军务处：两营并列（v89.132 起只此两块；动作全部复用既有出口） —— */

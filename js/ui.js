@@ -3173,7 +3173,8 @@ import './state.js';
         '<td class="num">' + towers + '</td>' +
         '<td>' + (mayor ? U.escape(mayor.name) : '<span style="color:var(--red-light);">未任命</span>') + '</td>' +
         '<td>' + (guard ? U.escape(guard.name) : '<span style="color:var(--red-light);">未任命</span>') + '</td>' +
-        '<td class="num">' + U.numText(def, 0) + '</td>' +
+        '<td class="num" title="' + U.escape(GAME.defenseLineOf ? GAME.defenseLineOf(ct) : '') + '">'
+          + U.numText(def, 0) + '</td>' +
         '<td style="color:' + (risks.length ? 'var(--red-light)' : 'var(--green-ok)') + ';">' +
           (risks.length ? risks.join(' · ') : '齐备') + '</td></tr>';
     }).join('');
@@ -3183,6 +3184,19 @@ import './state.js';
         + '"齐备"= 有驻军 + 有围墙 + 有城主 + 有守将；缺哪项就在那行里点出来。') +
       '</div>' + (rows ? '<table class="tbl"><thead><tr><th>城市</th><th class="num">驻军</th><th class="num">围墙</th>' +
         '<th class="num">箭塔</th><th>城主</th><th>守将</th><th class="num">防御力</th><th>风险</th></tr></thead><tbody>' + rows + '</tbody></table>'
+      /* v92.15（C3）：城防拆账明细 —— 修墙/造塔到底加了多少，写在这里。
+         数值一直在算，但玩家看不到"这 480 是谁给的"，也就没有理由去修。 */
+      + (function () {
+        var cs = (GAME.state.cities || []).filter(function (c) { return !c.npc; });
+        if (!cs.length || !GAME.defenseLineOf) return '';
+        var items = cs.map(function (c) {
+          return '<div style="font-size:var(--fs-cap);color:var(--text-dim);">'
+            + U.escape(c.name) + '：' + U.escape(GAME.defenseLineOf(c)) + '</div>';
+        }).join('');
+        return '<div style="margin-top:8px;padding:6px 8px;border-top:1px dashed var(--wood-light);">'
+          + '<div style="font-size:var(--fs-cap);color:var(--gold-light);margin-bottom:3px;">城防构成</div>'
+          + items + '</div>';
+      })()
         : '<div class="q-empty">尚无城市。</div>') + '</div>' + tabs;
   };
   /* —— 军务处：两营并列（v89.132 起只此两块；动作全部复用既有出口） —— */

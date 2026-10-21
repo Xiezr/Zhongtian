@@ -6904,6 +6904,52 @@ import './state.js';
   };
 
   /* ============================================================
+   * v92.15（C3 建筑=工事）：**城防拆账**
+   * ------------------------------------------------------------
+   * 起因：`cityDefense` 一直在算围墙 ×20、箭塔 homeDef、专精 ×1.75、城主谋略，
+   * 但战报里只有一个"守方加成 480" —— 玩家不知道这 480 是谁给的，
+   * 也就没有理由去修墙、去造箭塔。**数值存在但玩家看不见，等于不存在。**
+   *
+   * 这个出口逐项还原 cityDefenseBase 的算法（口径必须一致，
+   * 否则拆出来的和总数对不上 —— 那比不拆更糟）。
+   * 消费点：战报的守方说明、守城面板。
+   * ============================================================ */
+  GAME.defensePartsOf = function (city) {
+    if (!city) return null;
+    var wallLv = GAME.buildingLevel(city, 'chengqiang') || 0;
+    var wallAdd = wallLv * 20;
+    var base0 = city.def || 0;
+    var raw = base0 + wallAdd;
+    var mst = GAME.mastery('defPct', city) || 0;
+    var afterMst = mst > 0 ? Math.round(raw * (1 + mst)) : raw;
+    var story = (GAME.story && GAME.story.cityDefMult) ? GAME.story.cityDefMult() : 1;
+    var afterStory = (GAME.story && GAME.story.cityDefMult) ? Math.round(afterMst * story) : afterMst;
+    var mbc = GAME.mayorBonus ? GAME.mayorBonus(city) : { name: '', def: 0 };
+    var afterMayor = mbc.name ? Math.round(afterStory * (1 + (mbc.def || 0))) : afterStory;
+    var towers = GAME.towersBuiltOf(city) || 0;
+    var towerAdd = towers * TW_T().homeDef;
+    return {
+      base: base0, wallLv: wallLv, wallAdd: wallAdd,
+      mastery: mst, story: story,
+      mayor: mbc.name ? (mbc.def || 0) : 0, mayorName: mbc.name || '',
+      towers: towers, towerAdd: towerAdd,
+      total: afterMayor + towerAdd
+    };
+  };
+  /* 一行中文（战报与面板共用同一措辞，不两处各写一遍） */
+  GAME.defenseLineOf = function (city) {
+    var p = GAME.defensePartsOf(city);
+    if (!p) return '';
+    var seg = [];
+    seg.push('城墙 Lv' + p.wallLv + '（+' + p.wallAdd + '）');
+    if (p.towers > 0) seg.push('箭塔 ' + p.towers + ' 座（+' + p.towerAdd + '）');
+    if (p.mastery > 0) seg.push('工事专精 ×' + (1 + p.mastery).toFixed(2));
+    if (p.mayor > 0) seg.push('城主谋略 ×' + (1 + p.mayor).toFixed(2));
+    if (p.story > 1.001) seg.push('羁绊守御 ×' + p.story.toFixed(2));
+    return seg.join(' · ') + ' ⇒ 城防 ' + p.total;
+  };
+
+  /* ============================================================
    * 箭塔（v62 · 老板）—— 两个来源，**一个出口**
    * ------------------------------------------------------------
    *   来源① 城防折出（v59 照搬原版：每 2 点城防 = 1 座）

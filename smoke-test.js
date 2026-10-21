@@ -38888,6 +38888,50 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
 
     prov.restore();                                  /* 还原 npcCityInfo */
 
+    console.log('\n===== 298. v92.15 城防拆账（C3 建筑=工事）=====');
+
+    var c3city = (function () {
+      G.newGame({ name: '工事', cityName: '灰岗' });
+      return G.currentCity();
+    })();
+
+    check('§298① 拆账总数 = cityDefense（口径必须一致）', (function () {
+      var p = G.defensePartsOf(c3city);
+      var t = G.cityDefense(c3city);
+      return !!p && p.total === t;
+    })(), (function () {
+      var p = G.defensePartsOf(c3city);
+      return p ? (p.total + ' / ' + G.cityDefense(c3city)) : 'null';
+    })());
+
+    check('§298② 围墙等级进拆账（修墙真的加）', (function () {
+      var p0 = G.defensePartsOf(c3city);
+      /* 开局城不一定有围墙 —— 直接找一格空的塞一座 Lv3 进去（不跑建造流程） */
+      var cell = (c3city.cells || []).filter(function (c) { return !c.build; })[0];
+      if (!cell) return false;
+      var saved = cell.build;
+      cell.build = { id: 'chengqiang', lvl: 3 };
+      var p1 = G.defensePartsOf(c3city);
+      cell.build = saved;
+      /* Lv3 城墙 = +60；原来没墙就是 60，已有墙则更多 —— 用 >= 60 而不是精确相等 */
+      return p1.wallAdd >= 60 && p1.wallAdd > p0.wallAdd && p1.total > p0.total;
+    })(), '城墙 Lv3 ⇒ +60');
+
+    check('§298③ 一行中文含关键项（玩家看得懂）', (function () {
+      var line = G.defenseLineOf(c3city);
+      return /城墙 Lv\d+/.test(line) && /城防 \d+/.test(line);
+    })(), (function () { return G.defenseLineOf(c3city); })());
+
+    check('§298④ 空城返回 null（不炸）', function () {
+      return G.defensePartsOf(null) === null && G.defenseLineOf(null) === '';
+    });
+
+    check('§298⑤ 拆账各项都不为负', (function () {
+      var p = G.defensePartsOf(c3city);
+      if (!p) return false;
+      return p.base >= 0 && p.wallAdd >= 0 && p.towerAdd >= 0 && p.mastery >= 0 && p.total >= 0;
+    })());
+
     console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');
   process.exit(FAIL ? 1 : 0);
 })();
