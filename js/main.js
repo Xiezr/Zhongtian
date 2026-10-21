@@ -17,6 +17,8 @@ import './map.js';
 import './sphere.js';
 import './fog.js';      /* v92：探明度（迷雾）—— 依赖 sphere 的六边邻接做半径点亮 */
 import './memorial.js'; /* v92：阵亡名录 —— 只记事，不记账 */
+import './camp.js';     /* v92.4：幸存者营地 —— 探索的回报，招人 or 抢物资 */
+import './faction.js';  /* v92.5：四个军阀 —— 世界在动（态势层）*/
 import './gltf.js';
 import './map3d.js';
 import './battle.js';
@@ -1332,6 +1334,8 @@ import './ui.js';
       case 'open-auto-explore': ui.openAutoExplore(); break;
       case 'ae-toggle': GAME.doToggleAutoExplore(); ui.openAutoExplore(); break;
       case 'ae-once': GAME.doAutoExploreOnce(); ui.openAutoExplore(); break;
+      /* v92.4：幸存者营地交涉（招募 / 洗劫）—— 两条路选一条，选完就结束。 */
+      case 'camp-act': GAME.doCampAct(el.getAttribute('data-ci'), el.getAttribute('data-mode')); break;
       /* v91.59（老板）：自动采购（逐商品补货到目标 · 每现实日上限内）。 */
       case 'toggle-auto-buy': GAME.doToggleAutoBuy(); break;
       case 'auto-buy-once': (function () { var r = GAME.autoBuyOnce(); ui.toast(r.msg); GAME.refreshView(); })(); break;
@@ -1897,6 +1901,19 @@ import './ui.js';
     if (k === 'everyMin' || k === 'dailyMax') cfg[k] = Number(v);
     else cfg[k] = String(v);
     GAME.refreshView();
+  };
+  /* v92.4：营地交涉 —— 招人 / 抢物资。**不可撤销**：处理过就再也回不去。
+     这是整个"牺牲"内核的落点，所以这里不做二次确认弹窗：
+     面板上已经把两条路和代价写清楚了，玩家点下去就是决定。 */
+  GAME.doCampAct = function (ci, mode) {
+    var r = GAME.camp && GAME.camp.act ? GAME.camp.act(+ci, mode) : null;
+    if (!r) { ui.toast('营地交涉不可用'); return; }
+    ui.toast((r.ok ? '✅ ' : '⏸ ') + r.msg);
+    if (r.ok) {
+      GAME.log(r.msg, 'sys', 'wild');
+      GAME.refreshAll();
+    }
+    ui.openCampModal(+ci);
   };
   GAME.doAutoExploreOnce = function () {
     var cfg = GAME.autoExploreCfg();

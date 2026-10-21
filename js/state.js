@@ -3714,6 +3714,10 @@ import './data.js';
     /* v92：探索里程碑 —— 探明度跨过 DATA.FOG.tiers 的新档 → 城的视野半径永久 +1。
        stats 有缓存（只在探明度变化时重算），没跨档时这里是一次数值比较。 */
     if (GAME.fog && GAME.fog.checkMilestones) GAME.fog.checkMilestones();
+    /* v92.4：幸存者营地发现（节流 5 秒 · 只扫候选一两百格，不遍历全图） */
+    if (GAME.camp && GAME.camp.sweep) GAME.camp.sweep();
+    /* v92.5：四个军阀按月推进（按月而非按日：游戏日只有 1.3 现实秒，按日会抽搐） */
+    if (GAME.faction && GAME.faction.tick) GAME.faction.tick();
     /* v89.136：老档采集队迁移兜底（幂等 · 正常已被 loadGame 处理） */
     if (GAME.migrateLegacyGathers) GAME.migrateLegacyGathers();
     /* v89.152：老档珠宝换算兜底（幂等 · 同款双保险） */

@@ -8057,10 +8057,43 @@ import './state.js';
           '选中城市后，右栏：**左列选分类**（管理英雄 / 据点 / 野地 / 在建 / 招募 / 研究…），**右侧看该分类的列表**（只读总览）。\n' +
           '这里只做监控：具体操作仍在「城市 / 军务 / 英雄 / 地图」各页。') +
       '</div>' +
+      ui.factionBarHTML() +
       '<div class="adm-split">' +
         '<div class="adm-tree">' + (tree || '<div class="adm-empty">暂无星球</div>') + '</div>' +
         '<div class="adm-detail">' + detail + '</div>' +
       '</div></div>';
+  };
+
+  /* ============================================================
+   * v92.5：四方势力态势条（行政页顶部 · 与「星球→城市」树并列展示）
+   * ------------------------------------------------------------
+   * 世界现在只有玩家会动 —— 这一条就是"别人也在动"的证据。
+   * ⚠️ 只报态势，不报战力：介入战斗之前，任何"他们会来打你"的暗示都是假的。
+   * ============================================================ */
+  ui.factionBarHTML = function () {
+    var F = GAME.faction;
+    if (!F) return '';
+    F.ensure();
+    var arr = F.stats();
+    if (!arr.length) return '';
+    var th = F.threatOf();
+    var h = '<div style="margin:0 0 10px;padding:8px 10px;border:1px solid var(--wood-light);border-radius:4px;">';
+    h += '<div style="font-size:var(--fs-cap);color:var(--gold-light);margin-bottom:6px;">⚔ 四方势力'
+      + (th ? '　<span style="color:var(--red-light);">⚠ ' + U.escape(th.name) + ' 已到 ' + Math.round(th.near) + ' 格内</span>' : '')
+      + '</div>';
+    h += '<div style="display:flex;gap:16px;flex-wrap:wrap;">';
+    arr.forEach(function (x) {
+      h += '<div style="font-size:var(--fs-cap);line-height:1.5;">'
+        + '<b>' + U.escape(x.name) + '</b> <span style="color:var(--text-dim);">' + U.escape(x.trait) + '</span><br>'
+        + '半径 ' + x.r + ' · 约 ' + U.numText(x.cells, 0) + ' 格'
+        + (x.near != null ? '<br><span style="color:var(--text-dim);">距你 ' + Math.round(x.near) + ' 格</span>' : '')
+        + '</div>';
+    });
+    h += '</div>';
+    h += '<div style="font-size:var(--fs-cap);color:var(--text-dim);margin-top:6px;">'
+      + '按月推进（一年约 +10 格 · 半径上限 14）。目前只影响态势与警报 —— 尚未接入战斗。</div>';
+    h += '</div>';
+    return h;
   };
   /* 右栏：某城的只读行政明细 */
   ui._admDetailHTML = function (sl, city, pid) {
@@ -12760,6 +12793,45 @@ import './state.js';
         (movable ? '<button class="btn gold" data-action="city-move-do">确认迁址</button>' : '') +
         '<button class="btn" data-action="close-modal">' + (movable ? '取消' : '关闭') + '</button></div>'
     );
+  };
+
+  /* ============================================================
+   * v92.4：幸存者营地 —— 招人 还是 抢物资
+   * ------------------------------------------------------------
+   * 整个决策只有两条路，而且**不可撤销**（处理过就没了）。
+   * 这就是"牺牲"落地的地方：抢得快，但风声传开，后面招到的人越来越少。
+   * 不做二次确认：面板上两条路和代价都写清了，点下去就是决定。
+   * ============================================================ */
+  ui.openCampModal = function (ci) {
+    var C = GAME.camp;
+    if (!C) return;
+    var w = C.at(ci);
+    if (!w) { ui.toast('这里没有营地'); return; }
+    var rec = C.found()[ci] || {};
+    var mul = C.waryMul();
+    var nRec = Math.max(1, Math.round(w.pop * mul));
+    var h = '<div class="gold-heading">🏕 ' + U.escape(w.name) + '</div>';
+    h += '<div class="panel-body">';
+    if (rec.mode === 'recruit') {
+      h += '<div class="q-empty">你从这里带走了 ' + U.numText(rec.n || 0, 0) + ' 人。营地空了。</div>';
+    } else if (rec.mode === 'raid') {
+      h += '<div class="q-empty">这里被洗劫一空。没有人会再来。</div>';
+    } else {
+      h += '<div class="exp-info exp-info-l">一处还在运转的幸存者聚落。他们不知道你是谁。</div>';
+      h += '<div style="display:flex;gap:10px;margin:12px 0;flex-wrap:wrap;">'
+        + '<button class="btn" data-action="camp-act" data-ci="' + ci + '" data-mode="recruit">'
+        + '🤝 招募（+' + U.numText(nRec, 0) + ' 人）</button>'
+        + '<button class="btn" data-action="camp-act" data-ci="' + ci + '" data-mode="raid">'
+        + '🔥 洗劫（粮木石铁各 +' + U.numText(Math.round((w.loot || 0) / 4), 0) + '）</button>'
+        + '</div>';
+      h += '<div style="font-size:var(--fs-cap);color:var(--text-dim);">'
+        + '带走人 = 兵源；拿走物资 = 眼前的建设。两者只能选一个，选了就没有下一次。<br>'
+        + '洗劫的消息会传开 —— 之后每一处营地愿意跟你走的人都会少一些'
+        + (mul < 0.999 ? '（现在只剩 ' + Math.round(mul * 100) + '%）' : '（目前还没有人知道你的名声）')
+        + '。</div>';
+    }
+    h += '</div><div class="panel-foot"><button class="btn" data-action="close-modal">关闭</button></div>';
+    ui.openModal(h);
   };
 
   ui.openCityPanel = function (city) {

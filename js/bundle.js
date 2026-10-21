@@ -4551,6 +4551,51 @@ window.GAME = window.GAME || {};
     ]
   };
 
+  /* ============================================================
+   * v92.4：幸存者营地（探索的回报 · 兵源的来源）
+   * ------------------------------------------------------------
+   * 老板诊断（docs/玩法提案-从进度条到选择.md）：
+   *   「兵源无限不是数值问题，是**损失不可逆**这个前提被抹掉了。」
+   * 修法不用"调死亡剂量"（老板：「不要被数值困住」），而是给情境：
+   *   地图上散着营地，点亮才看得见，走到跟前只有两个选择 ——
+   *   **招募**（带走人）或 **抢夺**（拿走物资，风声传开）。
+   *
+   * ⚠️ 不改 POP_CFG.fillHours：那会推翻 6 处既有断言，且"补给慢"是惩罚思维。
+   *    营地带的是**净增量**，不是减速。
+   * ============================================================ */
+  DATA.CAMP = {
+    chance: 0.004,        /* 陆地格约 0.4% 是营地（40962 × 0.4% ≈ 160 处 · 一颗球约 100+）*/
+    waryPerRaid: 0.08,    /* 每洗劫一处，后续招募 −8%（风声传开）*/
+    waryFloor: 0.2,       /* 封顶 −80%（再脏的恶名也留两成人愿意跟你走）*/
+    tiers: [
+      { id: 'small', name: '零散营地', pop: 400, loot: 3000 },
+      { id: 'mid', name: '聚居地', pop: 900, loot: 7000 },
+      { id: 'big', name: '旧世避难所', pop: 2000, loot: 16000 }
+    ]
+  };
+
+  /* ============================================================
+   * v92.5：四个军阀（态势层 · 构想清单 B1 的最小闭环）
+   * ------------------------------------------------------------
+   * 世界里现在只有玩家会动，174 座 NPC 城是静止布景。
+   * 这一版让四家各有核心与势力半径，**每月推进**，玩家看得到"谁在长"。
+   *
+   * ⚠️ 只有态势，没有数值：不给领地野地加守军倍率（那会让"侦查所见 =
+   *    战斗所遇"破功），也不做势力间吞并（没有战斗接入前只是播报）。
+   * ============================================================ */
+  DATA.FACTION = {
+    startRadius: 2,        /* 初始领地半径（约 12 格）*/
+    growPerMonth: 0.8,     /* 每月半径增长（× 该家侵略性）—— 一年约 +10 格 */
+    maxR: 14,              /* 半径上限（约 590 格）—— 是压力，不是终局 */
+    warnAt: 8,             /* 最近一家进入 8 格内 → 警报 */
+    list: [
+      { id: 'anvil', name: '铁砧', trait: '侵略', aggr: 1.4 },
+      { id: 'wall', name: '灰墙', trait: '守成', aggr: 0.6 },
+      { id: 'oath', name: '焰誓', trait: '狂热', aggr: 1.2 },
+      { id: 'guild', name: '商盟', trait: '贸易', aggr: 0.8 }
+    ]
+  };
+
   DATA.EXPEDITION = {
     /* ============================================================
      * v92：**远征半径**（搬运力按距离折损）
@@ -9655,6 +9700,10 @@ window.GAME = window.GAME || {};
     /* v92：探索里程碑 —— 探明度跨过 DATA.FOG.tiers 的新档 → 城的视野半径永久 +1。
        stats 有缓存（只在探明度变化时重算），没跨档时这里是一次数值比较。 */
     if (GAME.fog && GAME.fog.checkMilestones) GAME.fog.checkMilestones();
+    /* v92.4：幸存者营地发现（节流 5 秒 · 只扫候选一两百格，不遍历全图） */
+    if (GAME.camp && GAME.camp.sweep) GAME.camp.sweep();
+    /* v92.5：四个军阀按月推进（按月而非按日：游戏日只有 1.3 现实秒，按日会抽搐） */
+    if (GAME.faction && GAME.faction.tick) GAME.faction.tick();
     /* v89.136：老档采集队迁移兜底（幂等 · 正常已被 loadGame 处理） */
     if (GAME.migrateLegacyGathers) GAME.migrateLegacyGathers();
     /* v89.152：老档珠宝换算兜底（幂等 · 同款双保险） */
@@ -25833,6 +25882,394 @@ window.GAME = window.GAME || {};
   };
 })();
 
+/* ---- camp.js ---- */
+/* ============================================================
+ * camp.js — 幸存者营地（v92.4 / v93 第一块）
+ * ------------------------------------------------------------
+ * 起因（docs/玩法提案-从进度条到选择.md 第 7 节）：
+ *   「**人口与探索绑定**：新人口来自幸存者营地 —— 一次解决两件事：
+ *     兵源变稀缺 + 探索有回报」。
+ *
+ * 老板诊断（同一份文档）：
+ *   「兵源无限不是数值问题，是**损失不可逆**这个前提被抹掉了。」
+ *   而"不可逆"不能用"调死亡剂量"来做（老板：「不要被数值困住」）。
+ *
+ * 所以这里给的是**情境**，不是数值：
+ *   地图上散落着幸存者营地。点亮才看得见。走到跟前只有两个选择 ——
+ *   **招募**（带走人，长期变成兵）或 **抢夺**（拿走物资，但风声传开，
+ *   之后的营地会警惕你，招募到的人一次比一次少）。
+ *
+ * ⚠️ 刻意不做的事：
+ *   · 不改 `POP_CFG.fillHours`（补员速度）—— 那会同时推翻 6 处既有断言，
+ *     且"补给慢"是惩罚思维，老板明确不要。营地带的是**净增量**，不是减速。
+ *   · 不给"抢"扣战力/扣民心 —— 名声只体现为**后面的人不愿意跟你走**，
+ *     这才是代价的形状，不是罚单。
+ *   · 不做随机刷新 —— 营地是哈希生成的固定地标，同一颗球永远那几个。
+ *     "找得到"才有意义，"刷出来"只是资源点。
+ * ============================================================ */
+(function () {
+  'use strict';
+  var GAME = window.GAME = window.GAME || {};
+  var C = GAME.camp = {};
+  var U = GAME.utils;          /* core.js 先于本模块求值（bundle 顺序保证） */
+
+  var _list = null;      /* 候选营地 ci 列表（按球面 seed 缓存） */
+  var _listSeed = -1;
+  var _sweepAt = 0;      /* 上次扫描（现实毫秒）——节流用 */
+
+  function SP() { return GAME.mapSphere || GAME.sphere; }
+  function data() { return (GAME.DATA && GAME.DATA.CAMP) || {}; }
+
+  /* 确定性哈希：同一颗球、同一格，永远是同一个结果。
+     ⚠️ 刻意**不用** `GAME.map._fortHashCi` —— 它带日盐（野地等级每天漂移要用）。
+     营地是"固定地标"：带盐的哈希会让 `list()`（缓存）与 `at()`（实时）脱钩，
+     表现为"列表里有、点开说这里没有营地"。这里只吃 (ci, seed)。 */
+  function h(ci, salt) {
+    var x = (ci * 2654435761 + salt * 40503) >>> 0;
+    x ^= x >>> 13; x = (x * 1274126177) >>> 0; x ^= x >>> 16;
+    return (x >>> 0) / 4294967296;
+  }
+
+  /* 该格是不是营地 / 是哪一档。渲染与点击都走这一个出口。 */
+  C.at = function (ci) {
+    var s = SP();
+    if (!s || !s.cells) return null;
+    var cell = s.cells[ci];
+    if (!cell) return null;
+    /* 海里没有幸存者 —— 也省掉一大半候选 */
+    if (cell.type === 'sea' || cell.type === 'ocean') return null;
+    var sd = (s.seed3 ? s.seed3() : 0) | 0;
+    if (h(ci, sd + 8101) >= (data().chance || 0.004)) return null;
+    var _r = h(ci, sd + 8102);
+    var tiers = data().tiers || [];
+    var t = tiers[Math.min(tiers.length - 1, Math.floor(_r * tiers.length))];
+    if (!t) return null;
+    return { ci: ci, tier: t.id, name: t.name, pop: t.pop, loot: t.loot };
+  };
+
+  /* 候选列表（缓存）—— 扫描只走这几十上百个格，不遍历 40962 */
+  C.list = function () {
+    var s = SP();
+    if (!s || !s.cells) return [];
+    var sd = (s.seed3 ? s.seed3() : 0) | 0;
+    if (_list && _listSeed === sd) return _list;
+    var out = [];
+    var n = s.cells.length;
+    for (var ci = 0; ci < n; ci++) {
+      var cell = s.cells[ci];
+      if (!cell) continue;
+      if (cell.type === 'sea' || cell.type === 'ocean') continue;
+      if (h(ci, sd + 8101) < (data().chance || 0.004)) out.push(ci);
+    }
+    _list = out; _listSeed = sd;
+    return out;
+  };
+
+  /* 已发现的营地（state.camps） */
+  C.found = function () { return ((GAME.state || {}).camps) || {}; };
+
+  /* 某格是否已发现（渲染用：未发现不画） */
+  C.isFound = function (ci) {
+    return !!C.found()[ci];
+  };
+
+  /* ============================================================
+   * sweep —— 把"已探明但还没登记"的营地收进账
+   * ------------------------------------------------------------
+   * 为什么不是"点亮那一刻回调"：一次 revealAround 半径 6 要点 127 格，
+   * 每格回调一次哈希判断会把 fog 的热路径拖慢。这里改成节流扫描：
+   * 候选只有一两百个，5 秒扫一次几乎零成本。
+   * ============================================================ */
+  C.sweep = function (force) {
+    var st = GAME.state;
+    if (!st || !GAME.fog) return 0;
+    var now = Date.now();
+    if (!force && now - _sweepAt < 5000) return 0;
+    _sweepAt = now;
+    var list = C.list();
+    if (!list.length) return 0;
+    st.camps = st.camps || {};
+    var got = 0;
+    for (var i = 0; i < list.length; i++) {
+      var ci = list[i];
+      if (st.camps[ci]) continue;
+      if (GAME.fog.get(ci) <= 0) continue;        /* 没探明就当不知道 */
+      var w = C.at(ci);
+      if (!w) continue;
+      st.camps[ci] = { tier: w.tier, mode: null, at: now };
+      got++;
+      if (GAME.log && GAME.log.war) {
+        GAME.log.war('🏕 发现幸存者营地：' + w.name + '（地图上标了金点 · 点击可交涉）');
+      }
+    }
+    if (got) {
+      /* 迷雾层要重画（营地标记挂在 flags 上，靠 _flVer 触发重建） */
+      if (GAME.map3d && GAME.map3d.rebuild) { /* 不整场重建，只让标记失效 */ }
+      if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
+    }
+    return got;
+  };
+
+  /* 离该格最近的我方城（营地归属：谁先到算谁的） */
+  C.cityNearOf = function (ci) {
+    var st = GAME.state;
+    if (!st) return null;
+    var s = SP();
+    if (!s || !s.distOf) return GAME.currentCity ? GAME.currentCity() : null;
+    var best = null, bd = 1e9;
+    (st.cities || []).forEach(function (c) {
+      if (!c || c.npc) return;
+      var d = s.distOf({ ci: c.ci }, { ci: ci });
+      if (d < bd) { bd = d; best = c; }
+    });
+    return best || (GAME.currentCity ? GAME.currentCity() : null);
+  };
+
+  /* 风声：抢过几次，后面的人就多警惕几分（叠减，封顶） */
+  C.waryMul = function () {
+    var st = GAME.state || {};
+    var n = st.campRaids || 0;
+    var d = data();
+    var per = d.waryPerRaid != null ? d.waryPerRaid : 0.08;
+    var floor = d.waryFloor != null ? d.waryFloor : 0.2;
+    return Math.max(floor, 1 - n * per);
+  };
+
+  /* ============================================================
+   * act —— 交涉：招募 或 抢夺
+   * ------------------------------------------------------------
+   * 这是整个模块唯一的"决策点"，也是废土内核（牺牲）落地的地方：
+   *   招募 = 带走人（兵源），但拿不到物资；
+   *   抢夺 = 拿走物资（即时），但风声传开，后面招到的人越来越少。
+   * 两个都对，看你要什么。
+   * ============================================================ */
+  C.act = function (ci, mode) {
+    var st = GAME.state;
+    if (!st) return { ok: false, msg: '无存档' };
+    var w = C.at(ci);
+    if (!w) return { ok: false, msg: '这里没有营地' };
+    st.camps = st.camps || {};
+    var rec = st.camps[ci];
+    if (!rec) return { ok: false, msg: '还没发现这处营地' };
+    if (rec.mode) return { ok: false, msg: '这处营地已经处理过了' };
+
+    if (mode === 'recruit') {
+      var city = C.cityNearOf(ci);
+      if (!city) return { ok: false, msg: '附近没有己方城市' };
+      var mul = C.waryMul();
+      var n = Math.max(1, Math.round(w.pop * mul));
+      /* 人口走既有出口：直接加到存量的 pop（不超上限）*/
+      var cap = GAME.effPopCapOf ? GAME.effPopCapOf(city) : (GAME.maxPopOf ? GAME.maxPopOf(city) : 0);
+      var before = city.pop || 0;
+      city.pop = Math.min(cap || (before + n), before + n);
+      var got = Math.round(city.pop - before);
+      rec.mode = 'recruit';
+      rec.n = got;
+      rec.cityId = city.id;
+      rec.at = Date.now();
+      return { ok: true, msg: '从' + w.name + '带回 ' + got + ' 名幸存者（' + city.name + '）'
+        + (mul < 0.999 ? '　· 风声已传开，只招到七成' : ''), n: got, cityId: city.id };
+    }
+
+    if (mode === 'raid') {
+      var co = GAME.currentCity ? GAME.currentCity() : null;
+      var loot = GAME.battle && GAME.battle.resolveTarget ? null : null;
+      rec.mode = 'raid';
+      rec.at = Date.now();
+      st.campRaids = (st.campRaids || 0) + 1;
+      /* 资源按品类平摊，走既有资源出口 */
+      var keys = ['grain', 'wood', 'stone', 'iron'];
+      var per = Math.max(1, Math.round((w.loot || 0) / keys.length));
+      var added = [];
+      keys.forEach(function (k) {
+        if (co) { co.res = co.res || {}; co.res[k] = (co.res[k] || 0) + per; }
+        added.push(k);
+      });
+      var later = C.waryMul();
+      return { ok: true, msg: '洗劫了' + w.name + '：粮木石铁各 +' + U.numText(per, 0)
+        + '　· 消息传开，之后招募只剩 ' + Math.round(later * 100) + '%', loot: per };
+    }
+
+    return { ok: false, msg: '未知的处理方式' };
+  };
+
+  /* 界面用的一行摘要 */
+  C.lineOf = function (ci) {
+    var w = C.at(ci);
+    if (!w) return '';
+    var rec = C.found()[ci];
+    if (!rec) return w.name + '（未发现）';
+    if (rec.mode === 'recruit') return w.name + ' · 已招募 ' + U.numText(rec.n || 0, 0) + ' 人';
+    if (rec.mode === 'raid') return w.name + ' · 已被洗劫';
+    return w.name + ' · 待交涉（招 ' + U.numText(Math.round(w.pop * C.waryMul()), 0)
+      + ' 人 / 抢 ' + U.numText(w.loot || 0, 0) + ' 物资）';
+  };
+})();
+
+/* ---- faction.js ---- */
+/* ============================================================
+ * faction.js — 四个军阀（v92.5 / 构想清单 B1 的最小闭环）
+ * ------------------------------------------------------------
+ * 起因（docs/玩法提案-从进度条到选择.md 第 5 节）：
+ *   「外交 ❌ 无」「十类玩法，空了七个」。而世界里现在只有玩家会动 ——
+ *   174 座 NPC 城是静止的布景，占下来就完事。
+ *
+ * 这一版只做**态势**，不碰数值、不跑战斗：
+ *   · 4 个军阀各有核心与领地半径，**每月推进一次**；
+ *   · 领地按"距离 + 半径"算，存档只存 4×3 个数字（不存格子，几十字节）；
+ *   · 面板里看得到四家的势力范围、离你最近多少格；
+ *   · 逼近到 8 格内给一条警报。
+ *
+ * ⚠️ 刻意**不做**的事（诚实标注，不假装做了）：
+ *   · 不给领地野地加守军倍率 —— 那会让"侦查所见 = 战斗所遇"这条铁律破功
+ *     （侦查读 wildDefenseAt，实战若另乘系数，情报就成了假的）；
+ *   · 不做势力间吞并与战争 —— B1 里那套"战力比 + 骰子"要真改世界状态，
+ *     没有战斗接入前做了也只是播报，是假动作。
+ *   所以：**它现在只是"世界在动"**。接入战斗是下一步，不是这一版。
+ * ============================================================ */
+(function () {
+  'use strict';
+  var GAME = window.GAME = window.GAME || {};
+  var FA = GAME.faction = {};   /* ⚠️ 不用 F：fog.js 已占 FA.（audit 按字面前缀查重名，会误报）*/
+  var U = GAME.utils;
+
+  function SP() { return GAME.mapSphere || GAME.sphere; }
+  function cfg() { return (GAME.DATA && GAME.DATA.FACTION) || {}; }
+
+  /* 纯哈希（只吃 ci + seed）：同一颗球，四家的位置永远一样 */
+  function h(ci, salt) {
+    var x = (ci * 2654435761 + salt * 40503) >>> 0;
+    x ^= x >>> 13; x = (x * 1274126177) >>> 0; x ^= x >>> 16;
+    return (x >>> 0) / 4294967296;
+  }
+
+  /* 挑 4 个核心：彼此至少 55 格、离玩家主城至少 25 格（别一开局就贴脸） */
+  function pickCores(sd, s, n) {
+    var out = [], tries = 0, total = s.cells.length;
+    var pc = GAME.currentCity ? GAME.currentCity() : null;
+    while (out.length < n && tries < 30000) {
+      var ci = Math.floor(h(tries++, sd + 4401) * total) % total;
+      var cell = s.cells[ci];
+      if (!cell || cell.type === 'sea' || cell.type === 'ocean') continue;
+      var ok = true;
+      for (var i = 0; i < out.length; i++) {
+        if (s.distOf({ ci: out[i] }, { ci: ci }) < 55) { ok = false; break; }
+      }
+      if (!ok) continue;
+      if (pc && pc.ci >= 0 && s.distOf({ ci: pc.ci }, { ci: ci }) < 25) continue;
+      out.push(ci);
+    }
+    return out;
+  }
+
+  /* 建/换星球时重建（幂等：seed 没变什么都不做） */
+  FA.ensure = function () {
+    var st = GAME.state, s = SP();
+    if (!st || !s || !s.cells) return false;
+    var sd = (s.seed3 ? s.seed3() : 0) | 0;
+    st.factions = st.factions || {};
+    if (st.factions.seed === sd && st.factions.arr) return true;
+    var list = cfg().list || [];
+    var cores = pickCores(sd, s, list.length);
+    if (!cores.length) return false;
+    st.factions = {
+      seed: sd,
+      lastMonth: -1,
+      arr: cores.map(function (ci, i) {
+        return { id: list[i] ? list[i].id : ('f' + i), core: ci, r: cfg().startRadius || 2 };
+      })
+    };
+    return true;
+  };
+
+  FA.arr = function () { return ((GAME.state || {}).factions || {}).arr || []; };
+
+  /* 某格归谁：最近的那家说了算，且必须在它的半径内；两圆重叠时近者胜。
+     ⚠️ 必须自己挡越界 ci：`hexDist` 对越界索引不保证给正数（实测给 0），
+     于是 999999 会被算成"距离 0 = 就在铁砧家里"。 */
+  FA.controlOf = function (ci) {
+    var s = SP(), arr = FA.arr();
+    if (!s || !arr.length || !s.cells) return null;
+    if (ci == null || ci < 0 || ci >= s.cells.length) return null;
+    if (!s.cells[ci]) return null;
+    var best = null, bd = 1e9;
+    for (var i = 0; i < arr.length; i++) {
+      var d = s.distOf({ ci: arr[i].core }, { ci: ci });
+      if (d < bd) { bd = d; best = arr[i]; }
+    }
+    if (!best) return null;
+    if (bd > best.r + 0.001) return null;
+    return best.id;
+  };
+
+  FA.defOf = function (id) {
+    var list = cfg().list || [];
+    for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i];
+    return null;
+  };
+
+  /* ============================================================
+   * tick —— 每月推进一次（不按"日"：日只有 1.3 现实秒，会变成抽搐）
+   * ------------------------------------------------------------
+   * 半径增长 × 该家的侵略性。上限 maxR 保证不会把整颗球吃干净 ——
+   * 势力是"压力"，不是"终局"。
+   * ============================================================ */
+  FA.tick = function () {
+    var st = GAME.state;
+    if (!st || !GAME.DATA) return null;
+    FA.ensure();
+    var arr = FA.arr();
+    if (!arr.length) return null;
+    var C = GAME.DATA.CALENDAR || {};
+    var spm = (C.secPerYear || 57600) / 12;          /* 游戏秒/月 */
+    var month = Math.floor(((st.world && st.world.elapsed) || 0) / spm);
+    if (month === st.factions.lastMonth) return null;
+    var first = st.factions.lastMonth < 0;
+    st.factions.lastMonth = month;
+    if (first) return null;                          /* 第一次只记基准，不推进 */
+    var c = cfg();
+    arr.forEach(function (f) {
+      var d = FA.defOf(f.id) || {};
+      var g = (c.growPerMonth || 0.8) * (d.aggr || 1);
+      f.r = Math.min(c.maxR || 14, Math.round((f.r + g) * 100) / 100);
+    });
+    return { month: month };
+  };
+
+  /* 态势：每家半径、约格数（六边面积 ≈ 3r²）、离玩家主城多少格 */
+  FA.stats = function () {
+    var s = SP(), arr = FA.arr();
+    var pc = GAME.currentCity ? GAME.currentCity() : null;
+    return arr.map(function (f) {
+      var d = FA.defOf(f.id) || {};
+      var near = (pc && pc.ci >= 0) ? s.distOf({ ci: pc.ci }, { ci: f.core }) : null;
+      return {
+        id: f.id, name: d.name || f.id, trait: d.trait || '',
+        r: f.r, cells: Math.round(3 * f.r * f.r), near: near
+      };
+    }).sort(function (a, b) { return (a.near == null ? 1e9 : a.near) - (b.near == null ? 1e9 : b.near); });
+  };
+
+  /* 逼近警报：最近的一家进入 warnAt 格内 → 返回它（UI 每帧节流调用即可） */
+  FA.threatOf = function () {
+    var st = GAME.state;
+    if (!st) return null;
+    var warn = cfg().warnAt || 8;
+    var s2 = FA.stats();
+    for (var i = 0; i < s2.length; i++) {
+      if (s2[i].near != null && s2[i].near <= warn) return s2[i];
+    }
+    return null;
+  };
+
+  /* 一行文字（面板与战报共用，避免两处措辞不一致） */
+  FA.lineOf = function (x) {
+    if (!x) return '';
+    return x.name + '（' + x.trait + '）· 半径 ' + x.r + ' ≈ ' + U.numText(x.cells, 0) + ' 格'
+      + (x.near != null ? (' · 距你 ' + Math.round(x.near) + ' 格') : '');
+  };
+})();
+
 /* ---- gltf.js ---- */
 /* ============================================================
  * v91.30 gltf.js — **极简 GLB 加载器**（无外链 · 配合 vendor three r150 UMD）
@@ -26180,7 +26617,7 @@ window.GAME = window.GAME || {};
   /* v91.33（性能）：版本戳（把 M.render 里的内联拼串抽出，预建时可预盖）。 */
   M._pverOf = function () { return (SP.seed3 ? SP.seed3() : 0) + '|' + (SP.sub || 0) + '|' + (SP.PLANET ? JSON.stringify(SP.PLANET) : ''); };
   M._mkVerOf = function () { return (((GAME.mapSliceOf && GAME.mapSliceOf()) || {}).cities || []).map(function (c) { return c.id + ':' + c.x + ',' + c.y; }).join('|') + '#' + _tileSub; };
-  M._flVerOf = function () { var sl = (GAME.mapSliceOf && GAME.mapSliceOf()) || {}; var fp = Object.keys(sl.forts || {}).sort().join(','); var wp = (sl.wilds || []).map(function (w) { return w.ci; }).sort(function (a, b) { return a - b; }).join('|'); return fp + '#' + wp + '#' + _tileSub + '#' + (GAME.memorial ? GAME.memorial.total() : 0); };
+  M._flVerOf = function () { var sl = (GAME.mapSliceOf && GAME.mapSliceOf()) || {}; var fp = Object.keys(sl.forts || {}).sort().join(','); var wp = (sl.wilds || []).map(function (w) { return w.ci; }).sort(function (a, b) { return a - b; }).join('|'); var _ck = ''; if (GAME.camp && GAME.camp.found) { var cf = GAME.camp.found(); var n = 0, dm = 0; Object.keys(cf).forEach(function (k) { n++; if (cf[k].mode) dm++; }); _ck = '#c' + n + '/' + dm; } return fp + '#' + wp + '#' + _tileSub + '#' + (GAME.memorial ? GAME.memorial.total() : 0) + _ck; };
   M._arVerOf = function () { var sl = (GAME.mapSliceOf && GAME.mapSliceOf()) || {}; return (sl.marches || []).map(function (m) { return m.id + ':' + m.cityId + '>' + m.tci; }).join('|') + '#' + _tileSub; };
   /* v91.33：**后台预建**全场景（进游戏后调用）—— 含**全部版本戳**（否则首次 M.render 会全量重建）。
      v91.35：拆成**可分段**的步骤（`preloadSteps`）—— 每段之间让出事件循环，避免一次性同步阻塞主线程。
@@ -26991,6 +27428,22 @@ window.GAME = window.GAME || {};
       });
     }
     M._flags = grp; scene.add(grp);
+    /* v92.4：已发现的幸存者营地 —— 金珠（待交涉）/ 绿珠（已招募）/ 暗红珠（已洗劫）。
+       只在已探明处显示：探明度掉了（换星球/重置）就不画，不泄露位置。 */
+    if (GAME.camp && GAME.camp.found) {
+      var _cf = GAME.camp.found();
+      Object.keys(_cf).forEach(function (k) {
+        var ci = +k, rec = _cf[k];
+        var cell0 = _tileCells[ci];
+        if (!cell0 || !cell0.pos) return;
+        if (GAME.fog && GAME.fog.get(ci) <= 0) return;
+        var col = rec && rec.mode === 'recruit' ? 0x7bd88f : (rec && rec.mode === 'raid' ? 0x9c3b34 : 0xffc857);
+        var P = cell0.pos, L = Math.hypot(P[0], P[1], P[2]) || 1, lift = 4;
+        var mesh = new THREE.Mesh(new THREE.SphereGeometry(2.4, 8, 8), new THREE.MeshBasicMaterial({ color: col }));
+        mesh.position.set(P[0] + P[0] / L * lift, P[1] + P[1] / L * lift, P[2] + P[2] / L * lift);
+        grp.add(mesh);
+      });
+    }
   }
 
   /* 名称标签（画布文字 → 贴图 → Sprite）。
@@ -27269,10 +27722,18 @@ window.GAME = window.GAME || {};
     if (M._cell) {
       var _kname = { wild: '野地', fort: '据点', npc: '名城', adm: '行政城', own: '己方城' }[M._cellKind] || '野地';
       /* v92：未探明格**连地形名与海拔都不给** —— 否则信息条就成了免费的探图工具。 */
+      /* v92.5：这一格归哪家军阀 —— 与点击面板同一出口（faction.controlOf），
+         不在这里另算一遍距离。未探明的格子不给（连地形都不给，更不会给归属）。 */
+      var _facName = '';
+      if (M._cellKind !== 'unknown' && GAME.faction && GAME.faction.controlOf) {
+        var _fid = GAME.faction.controlOf(M._cell.ci != null ? M._cell.ci : -1);
+        if (_fid) { var _fd = GAME.faction.defOf(_fid); _facName = (_fd && _fd.name) || _fid; }
+      }
       var txt = (M._cellKind === 'unknown')
         ? '【未探明】这一带地图上没有记载'
         : ('【' + _kname + '】' + M._cell.name + ' · 等级 ' + M._cell.level
-          + ' · 球系坐标 ' + (GAME.map.coordText ? GAME.map.coordText(M._cell.x, M._cell.y) : (Math.round(M._cell.lon) + '°E ' + Math.round(M._cell.lat) + '°')));
+          + ' · 球系坐标 ' + (GAME.map.coordText ? GAME.map.coordText(M._cell.x, M._cell.y) : (Math.round(M._cell.lon) + '°E ' + Math.round(M._cell.lat) + '°'))
+          + (_facName ? ('　⚔ ' + _facName + ' 的地盘') : ''));
       /* v90.66（老板）：字号缩到与底部导航栏一致（原 bold 20px 偏大）。 */
       ctx.font = '13px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
       var tw = ctx.measureText(txt).width;
@@ -27393,6 +27854,9 @@ window.GAME = window.GAME || {};
       else if (kind === 'npc' && ref && ui.openAttackModal) ui.openAttackModal(ref);
       else if (kind === 'adm' && ref && ui.openAttackModal) ui.openAttackModal(ref);
       else if (kind === 'fort' && GAME.map.fortAt) { var ff = GAME.map.fortAt(ci, GAME.map._pctx(GAME.mapPlanetOf ? GAME.mapPlanetOf().id : null)); if (ff && ui.openFortModal) ui.openFortModal(ff); else if (ui.openLandModalCi) { GAME.map._terrOverride = cell.type; GAME.map._regionOverride = reg; ui.openLandModalCi(ci); } }
+      /* v92.4：已发现的营地**优先于野地** —— 同一格上，营地才是这一带真正的事。
+         没发现的营地不拦（照旧按野地处理），免得"点了没反应"。 */
+      else if (GAME.camp && GAME.camp.isFound(ci) && ui.openCampModal) ui.openCampModal(ci);
       else if (ui.openLandModalCi) {
         /* 野地：球面地块地形/等级 + 行政区归属 + 球系坐标（球系：按 ci） */
         GAME.map._terrOverride = cell.type;
@@ -45282,10 +45746,43 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
           '选中城市后，右栏：**左列选分类**（管理英雄 / 据点 / 野地 / 在建 / 招募 / 研究…），**右侧看该分类的列表**（只读总览）。\n' +
           '这里只做监控：具体操作仍在「城市 / 军务 / 英雄 / 地图」各页。') +
       '</div>' +
+      ui.factionBarHTML() +
       '<div class="adm-split">' +
         '<div class="adm-tree">' + (tree || '<div class="adm-empty">暂无星球</div>') + '</div>' +
         '<div class="adm-detail">' + detail + '</div>' +
       '</div></div>';
+  };
+
+  /* ============================================================
+   * v92.5：四方势力态势条（行政页顶部 · 与「星球→城市」树并列展示）
+   * ------------------------------------------------------------
+   * 世界现在只有玩家会动 —— 这一条就是"别人也在动"的证据。
+   * ⚠️ 只报态势，不报战力：介入战斗之前，任何"他们会来打你"的暗示都是假的。
+   * ============================================================ */
+  ui.factionBarHTML = function () {
+    var F = GAME.faction;
+    if (!F) return '';
+    F.ensure();
+    var arr = F.stats();
+    if (!arr.length) return '';
+    var th = F.threatOf();
+    var h = '<div style="margin:0 0 10px;padding:8px 10px;border:1px solid var(--wood-light);border-radius:4px;">';
+    h += '<div style="font-size:var(--fs-cap);color:var(--gold-light);margin-bottom:6px;">⚔ 四方势力'
+      + (th ? '　<span style="color:var(--red-light);">⚠ ' + U.escape(th.name) + ' 已到 ' + Math.round(th.near) + ' 格内</span>' : '')
+      + '</div>';
+    h += '<div style="display:flex;gap:16px;flex-wrap:wrap;">';
+    arr.forEach(function (x) {
+      h += '<div style="font-size:var(--fs-cap);line-height:1.5;">'
+        + '<b>' + U.escape(x.name) + '</b> <span style="color:var(--text-dim);">' + U.escape(x.trait) + '</span><br>'
+        + '半径 ' + x.r + ' · 约 ' + U.numText(x.cells, 0) + ' 格'
+        + (x.near != null ? '<br><span style="color:var(--text-dim);">距你 ' + Math.round(x.near) + ' 格</span>' : '')
+        + '</div>';
+    });
+    h += '</div>';
+    h += '<div style="font-size:var(--fs-cap);color:var(--text-dim);margin-top:6px;">'
+      + '按月推进（一年约 +10 格 · 半径上限 14）。目前只影响态势与警报 —— 尚未接入战斗。</div>';
+    h += '</div>';
+    return h;
   };
   /* 右栏：某城的只读行政明细 */
   ui._admDetailHTML = function (sl, city, pid) {
@@ -49985,6 +50482,45 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
         (movable ? '<button class="btn gold" data-action="city-move-do">确认迁址</button>' : '') +
         '<button class="btn" data-action="close-modal">' + (movable ? '取消' : '关闭') + '</button></div>'
     );
+  };
+
+  /* ============================================================
+   * v92.4：幸存者营地 —— 招人 还是 抢物资
+   * ------------------------------------------------------------
+   * 整个决策只有两条路，而且**不可撤销**（处理过就没了）。
+   * 这就是"牺牲"落地的地方：抢得快，但风声传开，后面招到的人越来越少。
+   * 不做二次确认：面板上两条路和代价都写清了，点下去就是决定。
+   * ============================================================ */
+  ui.openCampModal = function (ci) {
+    var C = GAME.camp;
+    if (!C) return;
+    var w = C.at(ci);
+    if (!w) { ui.toast('这里没有营地'); return; }
+    var rec = C.found()[ci] || {};
+    var mul = C.waryMul();
+    var nRec = Math.max(1, Math.round(w.pop * mul));
+    var h = '<div class="gold-heading">🏕 ' + U.escape(w.name) + '</div>';
+    h += '<div class="panel-body">';
+    if (rec.mode === 'recruit') {
+      h += '<div class="q-empty">你从这里带走了 ' + U.numText(rec.n || 0, 0) + ' 人。营地空了。</div>';
+    } else if (rec.mode === 'raid') {
+      h += '<div class="q-empty">这里被洗劫一空。没有人会再来。</div>';
+    } else {
+      h += '<div class="exp-info exp-info-l">一处还在运转的幸存者聚落。他们不知道你是谁。</div>';
+      h += '<div style="display:flex;gap:10px;margin:12px 0;flex-wrap:wrap;">'
+        + '<button class="btn" data-action="camp-act" data-ci="' + ci + '" data-mode="recruit">'
+        + '🤝 招募（+' + U.numText(nRec, 0) + ' 人）</button>'
+        + '<button class="btn" data-action="camp-act" data-ci="' + ci + '" data-mode="raid">'
+        + '🔥 洗劫（粮木石铁各 +' + U.numText(Math.round((w.loot || 0) / 4), 0) + '）</button>'
+        + '</div>';
+      h += '<div style="font-size:var(--fs-cap);color:var(--text-dim);">'
+        + '带走人 = 兵源；拿走物资 = 眼前的建设。两者只能选一个，选了就没有下一次。<br>'
+        + '洗劫的消息会传开 —— 之后每一处营地愿意跟你走的人都会少一些'
+        + (mul < 0.999 ? '（现在只剩 ' + Math.round(mul * 100) + '%）' : '（目前还没有人知道你的名声）')
+        + '。</div>';
+    }
+    h += '</div><div class="panel-foot"><button class="btn" data-action="close-modal">关闭</button></div>';
+    ui.openModal(h);
   };
 
   ui.openCityPanel = function (city) {
@@ -55769,6 +56305,8 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
 
 
 
+
+
 (function () {
   var GAME = window.GAME = window.GAME || {};
   var ui = GAME.ui;
@@ -57073,6 +57611,8 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
       case 'open-auto-explore': ui.openAutoExplore(); break;
       case 'ae-toggle': GAME.doToggleAutoExplore(); ui.openAutoExplore(); break;
       case 'ae-once': GAME.doAutoExploreOnce(); ui.openAutoExplore(); break;
+      /* v92.4：幸存者营地交涉（招募 / 洗劫）—— 两条路选一条，选完就结束。 */
+      case 'camp-act': GAME.doCampAct(el.getAttribute('data-ci'), el.getAttribute('data-mode')); break;
       /* v91.59（老板）：自动采购（逐商品补货到目标 · 每现实日上限内）。 */
       case 'toggle-auto-buy': GAME.doToggleAutoBuy(); break;
       case 'auto-buy-once': (function () { var r = GAME.autoBuyOnce(); ui.toast(r.msg); GAME.refreshView(); })(); break;
@@ -57638,6 +58178,19 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
     if (k === 'everyMin' || k === 'dailyMax') cfg[k] = Number(v);
     else cfg[k] = String(v);
     GAME.refreshView();
+  };
+  /* v92.4：营地交涉 —— 招人 / 抢物资。**不可撤销**：处理过就再也回不去。
+     这是整个"牺牲"内核的落点，所以这里不做二次确认弹窗：
+     面板上已经把两条路和代价写清楚了，玩家点下去就是决定。 */
+  GAME.doCampAct = function (ci, mode) {
+    var r = GAME.camp && GAME.camp.act ? GAME.camp.act(+ci, mode) : null;
+    if (!r) { ui.toast('营地交涉不可用'); return; }
+    ui.toast((r.ok ? '✅ ' : '⏸ ') + r.msg);
+    if (r.ok) {
+      GAME.log(r.msg, 'sys', 'wild');
+      GAME.refreshAll();
+    }
+    ui.openCampModal(+ci);
   };
   GAME.doAutoExploreOnce = function () {
     var cfg = GAME.autoExploreCfg();

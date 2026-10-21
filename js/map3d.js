@@ -76,7 +76,7 @@ import './gltf.js';
   /* v91.33（性能）：版本戳（把 M.render 里的内联拼串抽出，预建时可预盖）。 */
   M._pverOf = function () { return (SP.seed3 ? SP.seed3() : 0) + '|' + (SP.sub || 0) + '|' + (SP.PLANET ? JSON.stringify(SP.PLANET) : ''); };
   M._mkVerOf = function () { return (((GAME.mapSliceOf && GAME.mapSliceOf()) || {}).cities || []).map(function (c) { return c.id + ':' + c.x + ',' + c.y; }).join('|') + '#' + _tileSub; };
-  M._flVerOf = function () { var sl = (GAME.mapSliceOf && GAME.mapSliceOf()) || {}; var fp = Object.keys(sl.forts || {}).sort().join(','); var wp = (sl.wilds || []).map(function (w) { return w.ci; }).sort(function (a, b) { return a - b; }).join('|'); return fp + '#' + wp + '#' + _tileSub + '#' + (GAME.memorial ? GAME.memorial.total() : 0); };
+  M._flVerOf = function () { var sl = (GAME.mapSliceOf && GAME.mapSliceOf()) || {}; var fp = Object.keys(sl.forts || {}).sort().join(','); var wp = (sl.wilds || []).map(function (w) { return w.ci; }).sort(function (a, b) { return a - b; }).join('|'); var _ck = ''; if (GAME.camp && GAME.camp.found) { var cf = GAME.camp.found(); var n = 0, dm = 0; Object.keys(cf).forEach(function (k) { n++; if (cf[k].mode) dm++; }); _ck = '#c' + n + '/' + dm; } return fp + '#' + wp + '#' + _tileSub + '#' + (GAME.memorial ? GAME.memorial.total() : 0) + _ck; };
   M._arVerOf = function () { var sl = (GAME.mapSliceOf && GAME.mapSliceOf()) || {}; return (sl.marches || []).map(function (m) { return m.id + ':' + m.cityId + '>' + m.tci; }).join('|') + '#' + _tileSub; };
   /* v91.33：**后台预建**全场景（进游戏后调用）—— 含**全部版本戳**（否则首次 M.render 会全量重建）。
      v91.35：拆成**可分段**的步骤（`preloadSteps`）—— 每段之间让出事件循环，避免一次性同步阻塞主线程。
@@ -887,6 +887,22 @@ import './gltf.js';
       });
     }
     M._flags = grp; scene.add(grp);
+    /* v92.4：已发现的幸存者营地 —— 金珠（待交涉）/ 绿珠（已招募）/ 暗红珠（已洗劫）。
+       只在已探明处显示：探明度掉了（换星球/重置）就不画，不泄露位置。 */
+    if (GAME.camp && GAME.camp.found) {
+      var _cf = GAME.camp.found();
+      Object.keys(_cf).forEach(function (k) {
+        var ci = +k, rec = _cf[k];
+        var cell0 = _tileCells[ci];
+        if (!cell0 || !cell0.pos) return;
+        if (GAME.fog && GAME.fog.get(ci) <= 0) return;
+        var col = rec && rec.mode === 'recruit' ? 0x7bd88f : (rec && rec.mode === 'raid' ? 0x9c3b34 : 0xffc857);
+        var P = cell0.pos, L = Math.hypot(P[0], P[1], P[2]) || 1, lift = 4;
+        var mesh = new THREE.Mesh(new THREE.SphereGeometry(2.4, 8, 8), new THREE.MeshBasicMaterial({ color: col }));
+        mesh.position.set(P[0] + P[0] / L * lift, P[1] + P[1] / L * lift, P[2] + P[2] / L * lift);
+        grp.add(mesh);
+      });
+    }
   }
 
   /* 名称标签（画布文字 → 贴图 → Sprite）。
@@ -1165,10 +1181,18 @@ import './gltf.js';
     if (M._cell) {
       var _kname = { wild: '野地', fort: '据点', npc: '名城', adm: '行政城', own: '己方城' }[M._cellKind] || '野地';
       /* v92：未探明格**连地形名与海拔都不给** —— 否则信息条就成了免费的探图工具。 */
+      /* v92.5：这一格归哪家军阀 —— 与点击面板同一出口（faction.controlOf），
+         不在这里另算一遍距离。未探明的格子不给（连地形都不给，更不会给归属）。 */
+      var _facName = '';
+      if (M._cellKind !== 'unknown' && GAME.faction && GAME.faction.controlOf) {
+        var _fid = GAME.faction.controlOf(M._cell.ci != null ? M._cell.ci : -1);
+        if (_fid) { var _fd = GAME.faction.defOf(_fid); _facName = (_fd && _fd.name) || _fid; }
+      }
       var txt = (M._cellKind === 'unknown')
         ? '【未探明】这一带地图上没有记载'
         : ('【' + _kname + '】' + M._cell.name + ' · 等级 ' + M._cell.level
-          + ' · 球系坐标 ' + (GAME.map.coordText ? GAME.map.coordText(M._cell.x, M._cell.y) : (Math.round(M._cell.lon) + '°E ' + Math.round(M._cell.lat) + '°')));
+          + ' · 球系坐标 ' + (GAME.map.coordText ? GAME.map.coordText(M._cell.x, M._cell.y) : (Math.round(M._cell.lon) + '°E ' + Math.round(M._cell.lat) + '°'))
+          + (_facName ? ('　⚔ ' + _facName + ' 的地盘') : ''));
       /* v90.66（老板）：字号缩到与底部导航栏一致（原 bold 20px 偏大）。 */
       ctx.font = '13px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
       var tw = ctx.measureText(txt).width;
@@ -1289,6 +1313,9 @@ import './gltf.js';
       else if (kind === 'npc' && ref && ui.openAttackModal) ui.openAttackModal(ref);
       else if (kind === 'adm' && ref && ui.openAttackModal) ui.openAttackModal(ref);
       else if (kind === 'fort' && GAME.map.fortAt) { var ff = GAME.map.fortAt(ci, GAME.map._pctx(GAME.mapPlanetOf ? GAME.mapPlanetOf().id : null)); if (ff && ui.openFortModal) ui.openFortModal(ff); else if (ui.openLandModalCi) { GAME.map._terrOverride = cell.type; GAME.map._regionOverride = reg; ui.openLandModalCi(ci); } }
+      /* v92.4：已发现的营地**优先于野地** —— 同一格上，营地才是这一带真正的事。
+         没发现的营地不拦（照旧按野地处理），免得"点了没反应"。 */
+      else if (GAME.camp && GAME.camp.isFound(ci) && ui.openCampModal) ui.openCampModal(ci);
       else if (ui.openLandModalCi) {
         /* 野地：球面地块地形/等级 + 行政区归属 + 球系坐标（球系：按 ci） */
         GAME.map._terrOverride = cell.type;

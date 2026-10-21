@@ -12381,7 +12381,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
     /* ⚠️ 这份 ORDER 与 build_bundle.py 的 ORDER **必须逐条一致**（本文故意不复用脚本，
        就是为了"构建脚本自己算错时测试还能抓到"）。加了模块两边都要加 ——
        v92 加 fog / memorial 时这里漏改，导致 hash 对不上、守卫假红。 */
-    var ORDER = ['core', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'domain', 'map', 'sphere', 'fog', 'memorial', 'gltf',
+    var ORDER = ['core', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'domain', 'map', 'sphere', 'fog', 'memorial', 'camp', 'faction', 'gltf',
       'map3d', 'battle', 'strategy', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits', 'story', 'ui', 'main'];
     var h = crypto.createHash('sha256');
     try {
@@ -38226,6 +38226,186 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       probeDbg = '行军队列 ' + ms.length + ' 支 · ' + (r.msg || '');
       return ms.length > 0 && !!ms[ms.length - 1].tci;
     })(), probeDbg);
+
+    console.log('\n===== 289. v92.4 幸存者营地 =====');
+
+    var campN = (function () {
+      G.newGame({ name: '营地', cityName: '灰岗' });
+      G.state.camps = {};
+      G.state.campRaids = 0;
+      return G.camp.list().length;
+    })();
+
+    check('§289① 候选规模合理（几十到几百处，不是遍地资源点）',
+      campN >= 20 && campN <= 800, campN + ' 处');
+
+    check('§289② 生成确定性（同格两次一致）+ 不长在海里', (function () {
+      var list = G.camp.list();
+      if (!list.length) return false;
+      var SPn = G.mapSphere || G.sphere;
+      var a = G.camp.at(list[0]), b = G.camp.at(list[0]);
+      if (!a || !b || a.tier !== b.tier || a.pop !== b.pop) return false;
+      for (var i = 0; i < list.length; i++) {
+        var c = SPn.cells[list[i]];
+        if (!c || c.type === 'sea' || c.type === 'ocean') return false;
+      }
+      return true;
+    })(), '首处 ' + (function () {
+      var l = G.camp.list(); var w = l.length ? G.camp.at(l[0]) : null;
+      return w ? (w.name + ' · ' + w.pop + ' 人') : 'null';
+    })());
+
+    check('§289③ 未探明不算发现（点亮才算）', (function () {
+      var list = G.camp.list();
+      var ci = null;
+      for (var i = 0; i < list.length; i++) if (G.fog.get(list[i]) === 0) { ci = list[i]; break; }
+      if (ci == null) return false;
+      G.state.camps = {};
+      G.camp.sweep(true);
+      return !G.state.camps[ci];
+    })());
+
+    check('§289④ 探明后 sweep 收进来', (function () {
+      var list = G.camp.list();
+      if (!list.length) return false;
+      var ci = list[0];
+      G.fog.bump(ci, G.fog.ALL);
+      G.state.camps = {};
+      var n = G.camp.sweep(true);
+      return n >= 1 && !!G.state.camps[ci];
+    })());
+
+    var campOne = (function () {
+      var list = G.camp.list();
+      for (var i = 0; i < list.length; i++) {
+        if (G.camp.at(list[i])) { G.fog.bump(list[i], G.fog.ALL); return list[i]; }
+      }
+      return -1;
+    })();
+
+    check('§289⑤ 招募：人口真的涨了（且不超上限）', (function () {
+      if (campOne < 0) return false;
+      G.state.camps = {};
+      G.camp.sweep(true);
+      var city = G.camp.cityNearOf(campOne);
+      if (!city) return false;
+      var before = city.pop || 0;
+      var cap = G.effPopCapOf ? G.effPopCapOf(city) : G.maxPopOf(city);
+      var r = G.camp.act(campOne, 'recruit');
+      var after = city.pop || 0;
+      return r.ok && after > before && after <= Math.max(cap, before + (r.n || 0));
+    })(), (function () {
+      if (campOne < 0) return '';
+      var rec = G.camp.found()[campOne];
+      return rec ? ('+' + (rec.n || 0) + ' 人') : '';
+    })());
+
+    check('§289⑥ 洗劫：资源进账 + 风声变差（招募变少）', (function () {
+      var list = G.camp.list();
+      var ci = -1;
+      for (var i = 0; i < list.length; i++) {
+        if (G.camp.at(list[i]) && !G.camp.found()[list[i]]) { G.fog.bump(list[i], G.fog.ALL); ci = list[i]; break; }
+      }
+      if (ci < 0) return false;
+      G.camp.sweep(true);
+      var c2 = G.currentCity();
+      c2.res = c2.res || {};
+      var before = c2.res.grain || 0;
+      var m0 = G.camp.waryMul();
+      var r = G.camp.act(ci, 'raid');
+      return r.ok && (c2.res.grain || 0) > before && G.camp.waryMul() < m0;
+    })(), '风声 ' + (function () { return Math.round(G.camp.waryMul() * 100) + '%'; })());
+
+    check('§289⑦ 处理过就不可撤销（再点无效）', (function () {
+      if (campOne < 0) return false;
+      var r2 = G.camp.act(campOne, 'raid');
+      return !r2.ok && /处理过/.test(r2.msg || '');
+    })());
+
+    console.log('\n===== 290. v92.5 四方势力 =====');
+
+    var facCase = (function () {
+      G.newGame({ name: '势力', cityName: '灰岗' });
+      G.faction.ensure();
+      return G.faction.arr();
+    })();
+
+    check('§290① 四家都有核心，且彼此拉开（≥55 格）', (function () {
+      var s = G.mapSphere || G.sphere;
+      var a = G.faction.arr();
+      if (a.length !== 4) return false;
+      for (var i = 0; i < a.length; i++) {
+        for (var j = i + 1; j < a.length; j++) {
+          if (s.distOf({ ci: a[i].core }, { ci: a[j].core }) < 55) return false;
+        }
+      }
+      return true;
+    })(), facCase.length + ' 家');
+
+    check('§290② 核心不在海里', (function () {
+      var s = G.mapSphere || G.sphere;
+      var a = G.faction.arr();
+      for (var i = 0; i < a.length; i++) {
+        var c = s.cells[a[i].core];
+        if (!c || c.type === 'sea' || c.type === 'ocean') return false;
+      }
+      return true;
+    })());
+
+    check('§290③ controlOf：核心归自己；越界返回 null', (function () {
+      var a = G.faction.arr();
+      if (!a.length) return false;
+      if (G.faction.controlOf(a[0].core) !== a[0].id) return false;
+      return G.faction.controlOf(-1) === null && G.faction.controlOf(999999) === null;
+    })());
+
+    check('§290④ 半径外无主（不把整颗球都算成地盘）', (function () {
+      var s = G.mapSphere || G.sphere;
+      var a = G.faction.arr();
+      var mx = (DATA.FACTION || {}).maxR || 14;
+      /* 找一格：离所有核心都 > maxR */
+      var n = s.cells.length, found = -1;
+      for (var ci = 0; ci < n; ci += 97) {
+        var far = true;
+        for (var i = 0; i < a.length; i++) {
+          if (s.distOf({ ci: a[i].core }, { ci: ci }) <= mx) { far = false; break; }
+        }
+        if (far) { found = ci; break; }
+      }
+      if (found < 0) return false;
+      return G.faction.controlOf(found) === null;
+    })());
+
+    check('§290⑤ 按月推进一次（同一月重复 tick 不再长）', (function () {
+      var st = G.state;
+      st.world.elapsed = 0;
+      st.factions.lastMonth = -1;
+      G.faction.tick();                                   /* 只记基准 */
+      var r0 = G.faction.arr()[0].r;
+      st.world.elapsed = 60000;                           /* 跨月（一月 = 4800 游戏秒）*/
+      G.faction.tick();
+      var r1 = G.faction.arr()[0].r;
+      G.faction.tick();                                   /* 同月再来一次 */
+      var r2 = G.faction.arr()[0].r;
+      return r1 > r0 && r2 === r1;
+    })(), '半径 ' + (function () { return G.faction.arr()[0].r; })());
+
+    check('§290⑥ 半径封顶 maxR（不会把整颗球吃干净）', (function () {
+      var st = G.state;
+      var mx = (DATA.FACTION || {}).maxR || 14;
+      for (var i = 0; i < 60; i++) {
+        st.world.elapsed = (i + 2) * 4800;
+        G.faction.tick();
+      }
+      var a = G.faction.arr();
+      for (var j = 0; j < a.length; j++) if (a[j].r > mx + 1e-6) return false;
+      return a[0].r > 2;
+    })(), '封顶半径 ' + (function () { return G.faction.arr()[0].r; })());
+
+    check('§290⑦ 存档只存 4×3 个数字（不存格子）', (function () {
+      var j = JSON.stringify(G.state.factions);
+      return j.length < 600;
+    })(), (function () { return JSON.stringify(G.state.factions).length + ' 字节'; })());
 
   console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');
   process.exit(FAIL ? 1 : 0);
