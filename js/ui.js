@@ -8090,6 +8090,13 @@ import './state.js';
       + '</div>';
     h += '<div style="display:flex;gap:16px;flex-wrap:wrap;">';
     arr.forEach(function (x) {
+      /* v92.12（A8）：核心没探明 → 只知道"有这么一家"，不知道是谁、多大 */
+      if (x.known === false) {
+        h += '<div style="font-size:var(--fs-cap);line-height:1.5;color:var(--text-dim);">'
+          + '<b>？？？</b> （未探明）<br>派侦察队找到它的老巢，才知道这是谁。'
+          + '</div>';
+        return;
+      }
       h += '<div style="font-size:var(--fs-cap);line-height:1.5;">'
         + '<b>' + U.escape(x.name) + '</b> <span style="color:var(--text-dim);">' + U.escape(x.trait) + '</span><br>'
         + '半径 ' + x.r + ' · 约 ' + U.numText(x.cells, 0) + ' 格'

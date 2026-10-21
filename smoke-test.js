@@ -38743,6 +38743,47 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var v = 0; G.faction.arr().forEach(function (f) { if (f.id === tribFid) v = f.r; }); return v;
     })());
 
+    console.log('\n===== 295. v92.12 势力情报受迷雾限制（A8）=====');
+
+    var a8arr = (function () {
+      G.newGame({ name: '情报', cityName: '灰岗' });
+      G.faction.ensure();
+      return G.faction.arr().slice();
+    })();
+
+    check('§295① 核心未探明 → 这家是「？？？」', (function () {
+      if (!a8arr.length) return false;
+      var fid = null;
+      for (var i = 0; i < a8arr.length; i++) {
+        if (G.fog.get(a8arr[i].core) === 0) { fid = a8arr[i].id; break; }
+      }
+      if (!fid) return false;                       /* 全探明了就没法测 */
+      return G.faction.knownOf(fid) === false;
+    })());
+
+    check('§295② 核心探明后认识它', (function () {
+      if (!a8arr.length) return false;
+      var f = a8arr[0];
+      G.fog.bump(f.core, G.fog.ALL);
+      return G.faction.knownOf(f.id) === true;
+    })());
+
+    check('§295③ 未探明的家不进威胁警报（不知道是谁就不报）', (function () {
+      var th = G.faction.threatOf();
+      return !th || th.known !== false;
+    })());
+
+    check('§295④ stats 每家都带 known 字段（界面才有得判）', (function () {
+      var st = G.faction.stats();
+      if (!st.length) return false;
+      for (var i = 0; i < st.length; i++) {
+        if (typeof st[i].known !== 'boolean') return false;
+      }
+      return true;
+    })(), '已知 ' + (function () {
+      var n = 0; G.faction.stats().forEach(function (x) { if (x.known) n++; }); return n;
+    })() + ' / ' + G.faction.arr().length + ' 家');
+
     console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');
   process.exit(FAIL ? 1 : 0);
 })();

@@ -210,6 +210,18 @@
       + '、铁 −' + U.numText(cost.iron, 0) + '，换它 ' + months + ' 个月不动' };
   };
 
+  /* v92.12（A8）：这一家你见过没有 —— 以"它的核心格是否已探明"为准。
+     为什么用核心格：那是它的老巢，探到才知道是谁；只在外围晃过不算。 */
+  FA.knownOf = function (fid) {
+    var arr = FA.arr();
+    for (var i = 0; i < arr.length; i++) {
+      if (arr[i].id !== fid) continue;
+      if (!GAME.fog) return true;                 /* 没有迷雾系统时退回"全都知道" */
+      return GAME.fog.get(arr[i].core) > 0;
+    }
+    return false;
+  };
+
   /* 态势：每家半径、约格数（六边面积 ≈ 3r²）、离玩家主城多少格 */
   FA.stats = function () {
     var s = SP(), arr = FA.arr();
@@ -220,7 +232,11 @@
       return {
         id: f.id, name: d.name || f.id, trait: d.trait || '',
         r: f.r, cells: Math.round(3 * f.r * f.r), near: near,
-        truce: FA.truceLeft(f.id)
+        truce: FA.truceLeft(f.id),
+        /* v92.12（A8「迷雾里的势力」）：**没探明它的核心，就不知道它是谁**。
+           以前这里白给"距你 32 格"——势力面板成了全能雷达。
+           现在：核心未探明 → unknown，界面上是「？？？」。 */
+        known: FA.knownOf(f.id)
       };
     }).sort(function (a, b) { return (a.near == null ? 1e9 : a.near) - (b.near == null ? 1e9 : b.near); });
   };
@@ -232,6 +248,8 @@
     var warn = cfg().warnAt || 8;
     var s2 = FA.stats();
     for (var i = 0; i < s2.length; i++) {
+      /* v92.12（A8）：不知道是谁，就给不出"某某逼近"的警报 */
+      if (s2[i].known === false) continue;
       if (s2[i].near != null && s2[i].near <= warn) return s2[i];
     }
     return null;
