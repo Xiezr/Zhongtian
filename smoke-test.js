@@ -39149,6 +39149,76 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       return !/\d+\s*格/.test(line) && !/坐标/.test(line);
     })(), (function () { return G.rumorLineOf(); })());
 
+    console.log('\n===== 303. v92.20~23 五项补丁 =====');
+
+    var five = (function () {
+      G.newGame({ name: '五补', cityName: '灰岗' });
+      G.faction.ensure();
+      G.state.world.elapsed = 0;
+      G.state.world.year = 1;
+      return G.faction.arr().slice();
+    })();
+
+    check('§303① 战年互战加剧（clashMul 让间隔缩到 1 个月）', (function () {
+      G.state.world.year = 1;
+      var m0 = G.yearMulOf('clashMul');
+      /* 找战年那一项 */
+      var L = DATA.YEARS || [];
+      var warIdx = -1;
+      for (var i = 0; i < L.length; i++) if (L[i].clashMul) { warIdx = i; break; }
+      if (warIdx < 0) return false;
+      G.state.world.year = warIdx + 1;
+      var m1 = G.yearMulOf('clashMul');
+      var every = Math.max(1, Math.round((DATA.FACTION.clashEveryMonths || 3) * m1));
+      return m0 === 1 && every === 1;
+    })(), '战年每隔 1 个月一场');
+
+    check('§303② 领地内动兵惊动势力（+0.15，上限 5 次）', (function () {
+      if (!five.length) return false;
+      var f = five[0];
+      f.r = 4; f.alarm = 0;
+      var r1 = G.faction.alarmBy(f.id);
+      var r2 = G.faction.alarmBy(f.id);
+      for (var i = 0; i < 10; i++) G.faction.alarmBy(f.id);
+      return r1.after === 4.15 && r2.after === 4.3 && (f.alarm | 0) === 5;
+    })(), '惊动 5 次封顶');
+
+    check('§303③ 民怨：民心 < 30 时产量吃 −40%', (function () {
+      var c = G.currentCity();
+      var _orig = G.cityHeartsOf;
+      G.cityHeartsOf = function () { return 20; };
+      var f1 = G.prodFactors('grain', c) || [];
+      var bad = f1.some(function (x) { return /民怨/.test(x.name) && Math.abs(x.d - (-0.4)) < 1e-9; });
+      G.cityHeartsOf = function () { return 80; };
+      var f2 = G.prodFactors('grain', c) || [];
+      var good = !f2.some(function (x) { return /民怨/.test(x.name); });
+      G.cityHeartsOf = _orig;
+      return bad && good;
+    })());
+
+    check('§303④ stats 带惊动次数（面板才显示得出来）', (function () {
+      var st = G.faction.stats();
+      if (!st.length) return false;
+      for (var i = 0; i < st.length; i++) if (typeof st[i].alarm !== 'number') return false;
+      return true;
+    })());
+
+    check('§303⑤ 寒潮有倒计时（开局 18 个月后到）', (function () {
+      var C = DATA.COLD || {};
+      var spm = (DATA.CALENDAR.secPerYear || 57600) / 12;
+      G.state.world.elapsed = 0;
+      var a = G.coldLeftOf();
+      G.state.world.elapsed = 3 * spm;                /* 过 3 个月 */
+      var b = G.coldLeftOf();
+      var inCold = (function () {
+        G.state.world.elapsed = ((C.periodMonths || 24) - 1) * spm;
+        return G.coldLeftOf();
+      })();
+      return a === ((C.periodMonths || 24) - (C.lenMonths || 6)) && b === a - 3 && inCold === 0;
+    })(), (function () {
+      G.state.world.elapsed = 0; return G.coldLeftOf() + ' 个月';
+    })());
+
     console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');
   process.exit(FAIL ? 1 : 0);
 })();

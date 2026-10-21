@@ -4608,7 +4608,7 @@ import './core.js';
   DATA.YEARS = [
     { id: 'calm', name: '平年', note: '风调雨顺，四方无事。' },
     { id: 'harvest', name: '丰年', note: '粮仓满溢，来投者众。', campMul: 1.3 },
-    { id: 'war', name: '战年', note: '四方刀兵，军阀并起。', factionMul: 2.0 },
+    { id: 'war', name: '战年', note: '四方刀兵，军阀并起。', factionMul: 2.0, clashMul: 0.34 },
     { id: 'explore', name: '开拓年', note: '道路畅通，视野更远。', fogPlus: 1 },
     { id: 'plague', name: '疫年', note: '病气弥漫，营地闭门。', campMul: 0.7 },
     { id: 'boom', name: '兴年', note: '百业俱兴，旧世之物重现。', ruinMul: 1.3 }

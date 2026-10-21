@@ -4622,7 +4622,7 @@ window.GAME = window.GAME || {};
   DATA.YEARS = [
     { id: 'calm', name: '平年', note: '风调雨顺，四方无事。' },
     { id: 'harvest', name: '丰年', note: '粮仓满溢，来投者众。', campMul: 1.3 },
-    { id: 'war', name: '战年', note: '四方刀兵，军阀并起。', factionMul: 2.0 },
+    { id: 'war', name: '战年', note: '四方刀兵，军阀并起。', factionMul: 2.0, clashMul: 0.34 },
     { id: 'explore', name: '开拓年', note: '道路畅通，视野更远。', fogPlus: 1 },
     { id: 'plague', name: '疫年', note: '病气弥漫，营地闭门。', campMul: 0.7 },
     { id: 'boom', name: '兴年', note: '百业俱兴，旧世之物重现。', ruinMul: 1.3 }
@@ -10078,6 +10078,15 @@ window.GAME = window.GAME || {};
       var _cm18 = GAME.coldMulOf();
       if (Math.abs(_cm18 - 1) > 1e-9) list.push({ name: '寒潮', d: _cm18 - 1 });
     }
+    /* v92.22（B3 补完：民怨）—— 民心跌破 30，**全资源产出 −40%**。
+       为什么用"阈值 + 固定惩罚"而不是"每天掷骰会不会民变"：
+       掷骰是赌博（文档反复强调不要），阈值是可预判的 ——
+       玩家看到民心 32 就知道"再跌下去要出事"，可以调税率救回来。
+       死亡螺旋有下限：最多 −40%，且民心本来就由税率/战败驱动，不是单向的。 */
+    if (city && GAME.cityHeartsOf) {
+      var _hh = GAME.cityHeartsOf(city);
+      if (_hh < 30) list.push({ name: '民怨（民心 ' + Math.round(_hh) + '）', d: -0.4 });
+    }
     /* v89.191：产量科技按**本城**算（各城科技独立生效）—— 逐城循环里传 city，别回落当前城。 */
     var techMult = GAME.techMult(city);
     if (techMult[r]) list.push({ name: '科技', d: techMult[r] });
@@ -13716,6 +13725,21 @@ window.GAME = window.GAME || {};
     if (cm) seg.push(cm + ' 处营地');
     if (ru) seg.push(ru + ' 处旧世界遗迹');
     return '传闻：无人到过的地方还有 ' + seg.join('、') + ' —— 往没亮的地方走。';
+  };
+
+  /* v92.23：距下次寒潮还有几个月（0 = 正在寒潮中）。
+     寒潮是"可预判的生存压力"—— 看不见倒计时就等于随机惩罚。 */
+  GAME.coldLeftOf = function () {
+    var C = (GAME.DATA && GAME.DATA.COLD) || {};
+    var cal = (GAME.DATA && GAME.DATA.CALENDAR) || {};
+    var spm = (cal.secPerYear || 57600) / 12;
+    var st = GAME.state || {};
+    var m = Math.floor(((st.world && st.world.elapsed) || 0) / spm);
+    var period = C.periodMonths || 24;
+    var len = C.lenMonths || 6;
+    var pos = ((m % period) + period) % period;
+    if (pos >= (period - len)) return 0;            /* 正在寒潮中 */
+    return (period - len) - pos;                    /* 还有几个月开始 */
   };
 
   /* 取某个年景修数的便捷出口（没配 yearly 字段就是 1） */
@@ -26724,7 +26748,11 @@ window.GAME = window.GAME || {};
     /* v92.17：**互战** —— 每 clashEveryMonths 个月，领地相交的两家打一场。
        领地相交的判据用球面距离 vs 双方半径和（与 controlOf 同一把尺）。
        盟友不参战；停战中的也不参战（拿了钱的不能转头就打）。 */
-    var every = c.clashEveryMonths || 3;
+    /* v92.20（B5 补完）：**战年互战加剧** —— 文档 B5 原文就写了"军阀年势力互战率×3"。
+       用"缩短间隔"表达：战年 clashMul=0.34 → 每 3 个月一场变成每月一场。
+       这是年景唯一影响"互战"的地方，不动年景映射本身。 */
+    var every = (c.clashEveryMonths || 3) * (GAME.yearMulOf ? GAME.yearMulOf('clashMul') : 1);
+    every = Math.max(1, Math.round(every));
     var out = { month: month, clashes: [] };
     if (every > 0 && month % every === 0) {
       var sp = SP();
@@ -26969,6 +26997,32 @@ window.GAME = window.GAME || {};
     return best ? best.id : null;
   };
 
+  /* ============================================================
+   * v92.21（A7 安全版：**点亮即暴露**）
+   * ------------------------------------------------------------
+   * 文档 A7：「你点亮一格，附近的东西也会注意到你」。
+   * 但 NPC 不侦查，做成"随机事件"就是赌博 —— 换一个**确定**的版本：
+   *   **你在它领地内打赢一场，它就会警惕起来**（半径 +0.15，最多触发 5 次）。
+   *
+   * 为什么是"打赢"而不是"进入"：
+   *   · 进入领地就暴露 = 玩家连路过都不敢，是惩罚；
+   *   · 打赢才惊动 = "动手是有代价的"，且这个代价可预判（你知道打它会涨）。
+   * 上限 5 次，避免"打一次涨一次"把世界提前吃满。
+   * ============================================================ */
+  FA.alarmBy = function (fid) {
+    var arr = FA.arr(), f = null;
+    for (var i = 0; i < arr.length; i++) if (arr[i].id === fid) f = arr[i];
+    if (!f) return null;
+    var n = f.alarm | 0;
+    if (n >= 5) return null;                        /* 惊动够了，不再涨 */
+    f.alarm = n + 1;
+    var before = f.r;
+    f.r = Math.min(cfg().maxR || 14, Math.round((f.r + 0.15) * 100) / 100);
+    var d = FA.defOf(fid) || {};
+    return { before: before, after: f.r, n: f.alarm,
+      msg: (d.name || fid) + ' 因你在它地盘上动兵而警觉：势力范围 ' + before + ' → ' + f.r };
+  };
+
   /* 态势：每家半径、约格数（六边面积 ≈ 3r²）、离玩家主城多少格 */
   FA.stats = function () {
     var s = SP(), arr = FA.arr();
@@ -26981,6 +27035,8 @@ window.GAME = window.GAME || {};
         r: f.r, cells: Math.round(3 * f.r * f.r), near: near,
         truce: FA.truceLeft(f.id),
         ally: FA.allyLeft(f.id),
+        /* v92.23：惊动次数（在它地盘上动过几次兵）—— 玩家要能看见"它为什么变凶了" */
+        alarm: f.alarm | 0,
         /* v92.12（A8「迷雾里的势力」）：**没探明它的核心，就不知道它是谁**。
            以前这里白给"距你 32 格"——势力面板成了全能雷达。
            现在：核心未探明 → unknown，界面上是「？？？」。 */
@@ -33315,6 +33371,13 @@ window.GAME = window.GAME || {};
         if (_fraid && _fwin) {
           var _fres = GAME.faction.onRaidWin(_fraid);
           if (_fres && GAME.log && GAME.log.war) GAME.log.war('🏴 ' + _fres.msg);
+        } else if (_fwin && GAME.faction.controlOf) {
+          /* v92.21（A7）：不在它的核心，但在它的地盘上打赢了 → 它会警觉 */
+          var _fwhere = GAME.faction.controlOf(m.target.ci);
+          if (_fwhere) {
+            var _fal = GAME.faction.alarmBy(_fwhere);
+            if (_fal && GAME.log && GAME.log.war) GAME.log.war('👁 ' + _fal.msg);
+          }
         }
       }
     } catch (eF) { /* 削势力失败不阻断结算 */ }
@@ -46785,7 +46848,7 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
         + (GAME.coldActiveOf && GAME.coldActiveOf()
           ? '　<span style="color:var(--red-light);">❄ 寒潮：粮产 −'
             + Math.round((1 - (GAME.coldMulOf ? GAME.coldMulOf() : 0.8)) * 100) + '%</span>'
-          : '')
+          : (GAME.coldLeftOf ? ('　<span style="color:var(--text-dim);">❄ 距寒潮 ' + GAME.coldLeftOf() + ' 个月</span>') : ''))
         + '</div>';
     }
     h += '<div style="font-size:var(--fs-cap);color:var(--gold-light);margin-bottom:6px;">⚔ 四方势力'
@@ -46806,6 +46869,7 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
         + (x.near != null ? '<br><span style="color:var(--text-dim);">距你 ' + Math.round(x.near) + ' 格</span>' : '')
         + (x.truce > 0 ? ('<br><span style="color:var(--gold-light);">🤝 停战中（剩 ' + x.truce + ' 月）</span>') : '')
         + (x.ally > 0 ? ('<br><span style="color:var(--green-ok);">🛡 盟友（剩 ' + x.ally + ' 月不扩张）</span>') : '')
+        + (x.alarm > 0 ? ('<br><span style="color:var(--red-light);">👁 已惊动 ' + x.alarm + ' 次（每次 +0.15 格）</span>') : '')
         + '<br><button class="btn" style="font-size:var(--fs-cap);padding:1px 8px;margin-top:3px;"'
         + ' data-action="duel-with" data-fid="' + x.id + '">⚔ 叫阵</button>'
         + (x.truce > 0 ? '' : ('<button class="btn" style="font-size:var(--fs-cap);padding:1px 8px;margin:3px 0 0 4px;"'

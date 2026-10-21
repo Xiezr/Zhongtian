@@ -4396,6 +4396,13 @@ import './state.js';
         if (_fraid && _fwin) {
           var _fres = GAME.faction.onRaidWin(_fraid);
           if (_fres && GAME.log && GAME.log.war) GAME.log.war('🏴 ' + _fres.msg);
+        } else if (_fwin && GAME.faction.controlOf) {
+          /* v92.21（A7）：不在它的核心，但在它的地盘上打赢了 → 它会警觉 */
+          var _fwhere = GAME.faction.controlOf(m.target.ci);
+          if (_fwhere) {
+            var _fal = GAME.faction.alarmBy(_fwhere);
+            if (_fal && GAME.log && GAME.log.war) GAME.log.war('👁 ' + _fal.msg);
+          }
         }
       }
     } catch (eF) { /* 削势力失败不阻断结算 */ }

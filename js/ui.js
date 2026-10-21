@@ -8107,7 +8107,7 @@ import './state.js';
         + (GAME.coldActiveOf && GAME.coldActiveOf()
           ? '　<span style="color:var(--red-light);">❄ 寒潮：粮产 −'
             + Math.round((1 - (GAME.coldMulOf ? GAME.coldMulOf() : 0.8)) * 100) + '%</span>'
-          : '')
+          : (GAME.coldLeftOf ? ('　<span style="color:var(--text-dim);">❄ 距寒潮 ' + GAME.coldLeftOf() + ' 个月</span>') : ''))
         + '</div>';
     }
     h += '<div style="font-size:var(--fs-cap);color:var(--gold-light);margin-bottom:6px;">⚔ 四方势力'
@@ -8128,6 +8128,7 @@ import './state.js';
         + (x.near != null ? '<br><span style="color:var(--text-dim);">距你 ' + Math.round(x.near) + ' 格</span>' : '')
         + (x.truce > 0 ? ('<br><span style="color:var(--gold-light);">🤝 停战中（剩 ' + x.truce + ' 月）</span>') : '')
         + (x.ally > 0 ? ('<br><span style="color:var(--green-ok);">🛡 盟友（剩 ' + x.ally + ' 月不扩张）</span>') : '')
+        + (x.alarm > 0 ? ('<br><span style="color:var(--red-light);">👁 已惊动 ' + x.alarm + ' 次（每次 +0.15 格）</span>') : '')
         + '<br><button class="btn" style="font-size:var(--fs-cap);padding:1px 8px;margin-top:3px;"'
         + ' data-action="duel-with" data-fid="' + x.id + '">⚔ 叫阵</button>'
         + (x.truce > 0 ? '' : ('<button class="btn" style="font-size:var(--fs-cap);padding:1px 8px;margin:3px 0 0 4px;"'

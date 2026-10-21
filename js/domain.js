@@ -266,6 +266,21 @@ import './state.js';
     return '传闻：无人到过的地方还有 ' + seg.join('、') + ' —— 往没亮的地方走。';
   };
 
+  /* v92.23：距下次寒潮还有几个月（0 = 正在寒潮中）。
+     寒潮是"可预判的生存压力"—— 看不见倒计时就等于随机惩罚。 */
+  GAME.coldLeftOf = function () {
+    var C = (GAME.DATA && GAME.DATA.COLD) || {};
+    var cal = (GAME.DATA && GAME.DATA.CALENDAR) || {};
+    var spm = (cal.secPerYear || 57600) / 12;
+    var st = GAME.state || {};
+    var m = Math.floor(((st.world && st.world.elapsed) || 0) / spm);
+    var period = C.periodMonths || 24;
+    var len = C.lenMonths || 6;
+    var pos = ((m % period) + period) % period;
+    if (pos >= (period - len)) return 0;            /* 正在寒潮中 */
+    return (period - len) - pos;                    /* 还有几个月开始 */
+  };
+
   /* 取某个年景修数的便捷出口（没配 yearly 字段就是 1） */
   GAME.yearMulOf = function (key) {
     var Y = GAME.yearOf();

@@ -155,7 +155,11 @@
     /* v92.17：**互战** —— 每 clashEveryMonths 个月，领地相交的两家打一场。
        领地相交的判据用球面距离 vs 双方半径和（与 controlOf 同一把尺）。
        盟友不参战；停战中的也不参战（拿了钱的不能转头就打）。 */
-    var every = c.clashEveryMonths || 3;
+    /* v92.20（B5 补完）：**战年互战加剧** —— 文档 B5 原文就写了"军阀年势力互战率×3"。
+       用"缩短间隔"表达：战年 clashMul=0.34 → 每 3 个月一场变成每月一场。
+       这是年景唯一影响"互战"的地方，不动年景映射本身。 */
+    var every = (c.clashEveryMonths || 3) * (GAME.yearMulOf ? GAME.yearMulOf('clashMul') : 1);
+    every = Math.max(1, Math.round(every));
     var out = { month: month, clashes: [] };
     if (every > 0 && month % every === 0) {
       var sp = SP();
@@ -400,6 +404,32 @@
     return best ? best.id : null;
   };
 
+  /* ============================================================
+   * v92.21（A7 安全版：**点亮即暴露**）
+   * ------------------------------------------------------------
+   * 文档 A7：「你点亮一格，附近的东西也会注意到你」。
+   * 但 NPC 不侦查，做成"随机事件"就是赌博 —— 换一个**确定**的版本：
+   *   **你在它领地内打赢一场，它就会警惕起来**（半径 +0.15，最多触发 5 次）。
+   *
+   * 为什么是"打赢"而不是"进入"：
+   *   · 进入领地就暴露 = 玩家连路过都不敢，是惩罚；
+   *   · 打赢才惊动 = "动手是有代价的"，且这个代价可预判（你知道打它会涨）。
+   * 上限 5 次，避免"打一次涨一次"把世界提前吃满。
+   * ============================================================ */
+  FA.alarmBy = function (fid) {
+    var arr = FA.arr(), f = null;
+    for (var i = 0; i < arr.length; i++) if (arr[i].id === fid) f = arr[i];
+    if (!f) return null;
+    var n = f.alarm | 0;
+    if (n >= 5) return null;                        /* 惊动够了，不再涨 */
+    f.alarm = n + 1;
+    var before = f.r;
+    f.r = Math.min(cfg().maxR || 14, Math.round((f.r + 0.15) * 100) / 100);
+    var d = FA.defOf(fid) || {};
+    return { before: before, after: f.r, n: f.alarm,
+      msg: (d.name || fid) + ' 因你在它地盘上动兵而警觉：势力范围 ' + before + ' → ' + f.r };
+  };
+
   /* 态势：每家半径、约格数（六边面积 ≈ 3r²）、离玩家主城多少格 */
   FA.stats = function () {
     var s = SP(), arr = FA.arr();
@@ -412,6 +442,8 @@
         r: f.r, cells: Math.round(3 * f.r * f.r), near: near,
         truce: FA.truceLeft(f.id),
         ally: FA.allyLeft(f.id),
+        /* v92.23：惊动次数（在它地盘上动过几次兵）—— 玩家要能看见"它为什么变凶了" */
+        alarm: f.alarm | 0,
         /* v92.12（A8「迷雾里的势力」）：**没探明它的核心，就不知道它是谁**。
            以前这里白给"距你 32 格"——势力面板成了全能雷达。
            现在：核心未探明 → unknown，界面上是「？？？」。 */

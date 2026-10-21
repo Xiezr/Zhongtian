@@ -3973,6 +3973,15 @@ import './data.js';
       var _cm18 = GAME.coldMulOf();
       if (Math.abs(_cm18 - 1) > 1e-9) list.push({ name: '寒潮', d: _cm18 - 1 });
     }
+    /* v92.22（B3 补完：民怨）—— 民心跌破 30，**全资源产出 −40%**。
+       为什么用"阈值 + 固定惩罚"而不是"每天掷骰会不会民变"：
+       掷骰是赌博（文档反复强调不要），阈值是可预判的 ——
+       玩家看到民心 32 就知道"再跌下去要出事"，可以调税率救回来。
+       死亡螺旋有下限：最多 −40%，且民心本来就由税率/战败驱动，不是单向的。 */
+    if (city && GAME.cityHeartsOf) {
+      var _hh = GAME.cityHeartsOf(city);
+      if (_hh < 30) list.push({ name: '民怨（民心 ' + Math.round(_hh) + '）', d: -0.4 });
+    }
     /* v89.191：产量科技按**本城**算（各城科技独立生效）—— 逐城循环里传 city，别回落当前城。 */
     var techMult = GAME.techMult(city);
     if (techMult[r]) list.push({ name: '科技', d: techMult[r] });
