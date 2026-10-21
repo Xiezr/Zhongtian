@@ -1456,6 +1456,63 @@ import './state.js';
     return out;
   };
 
+  /* ============================================================
+   * v92.14（老板：斗将可以派将领去挑衅其他城池，获得特殊奖励）
+   * ------------------------------------------------------------
+   * 玩家版：地图点一座敌城 → 「派将挑衅」→ 与该城守将打 5 合心理战。
+   *   赢：那城**胆寒** 24 小时（守军 −12%）+ 我方英雄获 2 小时士气；
+   *   输：英雄掉 20 点体力（不做重伤 —— 点一次输一次太挫败）；
+   *   无守将：叫阵无人应，直接拒（不消耗）。
+   * 与"向势力叫阵"的区别：那个只记履历，这个**真的削弱下一次攻城**。
+   * ============================================================ */
+  /* 把"胆寒"作用到守军编成上 —— 抽成纯函数，测试能直接验 */
+  GAME.battle.applyFearTo = function (army, pct) {
+    if (!army || !(pct > 0)) return army;
+    var out = {};
+    for (var k in army) out[k] = Math.max(1, Math.round((army[k] || 0) * (1 - pct)));
+    return out;
+  };
+
+  GAME.battle.fearOf = function (t) {
+    var st = GAME.state;
+    if (!st || !st.cityFear) return 0;
+    var cid = t && ((t.npc && t.npc.id) || t.cityId || (t.city && t.city.id));
+    if (!cid) return 0;
+    var f = st.cityFear[cid];
+    if (!f) return 0;
+    if ((f.until || 0) <= Date.now()) { delete st.cityFear[cid]; return 0; }
+    return f.pct || 0;
+  };
+
+  GAME.battle.provoke = function (npc, gen, moves, seed) {
+    var D = DATA.DUEL || {};
+    if (!npc) return { ok: false, msg: '没有目标城' };
+    if (!gen) return { ok: false, msg: '要派一位英雄去' };
+    var nci = GAME.npcCityInfo ? GAME.npcCityInfo(npc) : null;
+    var guard = nci && nci.guard;
+    if (!guard) return { ok: false, msg: '这座城没有守将，叫阵无人应' };
+    var res = GAME.battle.duelPlay(gen, guard, moves, seed);
+    if (!res) return { ok: false, msg: '斗将无法开始' };
+    var st = GAME.state;
+    st.cityFear = st.cityFear || {};
+    if (res.winner === 'atk') {
+      var hours = D.fearHours == null ? 24 : D.fearHours;
+      st.cityFear[npc.id] = { until: Date.now() + hours * 3600000, pct: (D.fearPct == null ? 0.12 : D.fearPct) };
+      gen.duelW = (gen.duelW || 0) + 1;
+      gen.duelMoraleUntil = Date.now() + ((GAME.battle.MORALE_MS) || 7200000);
+      return { ok: true, res: res,
+        msg: '挑衅得手：' + (GAME.cityFullName ? GAME.cityFullName(npc) : '该城')
+          + ' 守军胆寒 ' + hours + ' 小时（守军 −' + Math.round((D.fearPct == null ? 0.12 : D.fearPct) * 100) + '%）' };
+    }
+    if (res.winner === 'def') {
+      gen.duelL = (gen.duelL || 0) + 1;
+      var cost = D.provokeStaCost == null ? 20 : D.provokeStaCost;
+      if (GAME.setStaNow && GAME.staNow) GAME.setStaNow(gen, Math.max(0, GAME.staNow(gen) - cost));
+      return { ok: false, res: res, msg: '挑衅失手：' + guard.name + ' 占了上风，' + gen.name + ' 折了一阵（体力 −' + cost + '）' };
+    }
+    return { ok: false, res: res, msg: '势均力敌，双方各自收兵（不算得手）' };
+  };
+
   /* 战利品按城类型 */
   GAME.battle.genLootEx = function (c, extMul, rnd, dry) {
     var tier = (c && c.type) ? c.type
@@ -2470,6 +2527,13 @@ import './state.js';
        妖言惑众→守军副本 −15%；焚其辎重→城防值 −30%；挑拨离间→守将加成减半。
        累计施计次数走 state 层唯一出口 schemeMarksOf（挑拨：忠诚 = 100 − 25×n）。 */
     var scArmy = t.garrison, scVal = defBonus, scGen = t.guard || null, scNote = null;
+    /* v92.14（斗将挑衅）：被叫过阵的城，守军胆寒 —— 少一成。
+       与 schemeOf 的"妖言惑众"同层（都只改战斗入参），不碰引擎。 */
+    var _fear = GAME.battle.fearOf(t);
+    if (_fear > 0 && scArmy) {
+      scArmy = GAME.battle.applyFearTo(scArmy, _fear);
+      scNote = '胆寒 · 守军 −' + Math.round(_fear * 100) + '%';
+    }
     /* ⛔ v89.198（老板「清除战法这个玩法」）：战法（强攻/围困/奇袭）全撤 ——
        奇袭的「计略 ×1.5」放大退役，计略按**基准系数**结算（与 ui.expDefModsOf 同源）。 */
     if (opts.scheme) {

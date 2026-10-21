@@ -38826,6 +38826,68 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       return boosted._duelBoost === 1 + d.bonusPct;
     })());
 
+    console.log('\n===== 297. v92.14 派将挑衅城池 =====');
+
+    var prov = (function () {
+      G.newGame({ name: '挑衅', cityName: '灰岗' });
+      G.state.cityFear = {};
+      /* 现成的城不一定有守将（守将是懒生成的），这里造一座并把 npcCityInfo 临时接管，
+         否则测到的是"没有守将"这条早退分支，而不是"赢了写胆寒"。 */
+      var fake = { id: 'fake-city-1', name: '试剑城', npc: true, x: 200, y: 300, lv: 3,
+        garrison: { buxingji: 500 }, type: 'jun', def: 100 };
+      G.state.cities = G.state.cities || [];
+      G.state.cities.push(fake);
+      var _orig = G.npcCityInfo;
+      G.npcCityInfo = function (c) {
+        if (c && c.id === 'fake-city-1') {
+          return { guard: { id: 'gFake', name: '试剑城守将', yw: 10, zm: 10, tong: 10, level: 5 } };
+        }
+        return _orig(c);
+      };
+      return { npc: fake, restore: function () { G.npcCityInfo = _orig; } };
+    })();
+
+    check('§297① 无守将的城：叫阵无人应', (function () {
+      var g = { id: 'gx', name: '某将' };
+      /* 直接接管 npcCityInfo 返回空守将 —— 比造一座"碰巧没守将"的城更确定 */
+      var _o = G.npcCityInfo;
+      G.npcCityInfo = function () { return { guard: null }; };
+      var r = G.battle.provoke(prov.npc, g, ['stab', 'guard', 'feint', 'charge', 'stab'], 'S0');
+      G.npcCityInfo = _o;
+      return !r.ok && /没有守将/.test(r.msg || '');
+    })());
+
+    check('§297② 胆寒作用到守军编成（−12%）', (function () {
+      var out = G.battle.applyFearTo({ buxingji: 1000, dunwei: 500 }, 0.12);
+      return out.buxingji === 880 && out.dunwei === 440;
+    })(), (function () {
+      var o = G.battle.applyFearTo({ buxingji: 1000 }, 0.12);
+      return '1000 → ' + o.buxingji;
+    })());
+
+    check('§297③ 赢了写入胆寒；fearOf 读得到', (function () {
+      var g = { id: 'gP', name: '挑衅者', yw: 90, zm: 90, tong: 90, level: 30 };
+      for (var s2 = 0; s2 < 40; s2++) {
+        var r = G.battle.provoke(prov.npc, g, ['stab', 'guard', 'feint', 'charge', 'stab'], 'K' + s2);
+        if (r.ok) return G.battle.fearOf({ npc: prov.npc }) > 0;
+      }
+      return false;
+    })(), '胆寒 −' + (function () {
+      return Math.round(G.battle.fearOf({ npc: prov.npc }) * 100) + '%';
+    })());
+
+    check('§297④ 胆寒过期即失效并清理', (function () {
+      G.state.cityFear[prov.npc.id] = { until: Date.now() - 1000, pct: 0.12 };
+      var v = G.battle.fearOf({ npc: prov.npc });
+      return v === 0 && !G.state.cityFear[prov.npc.id];
+    })());
+
+    check('§297⑤ 没有胆寒的城 = 守军原样（不误伤）', (function () {
+      return G.battle.fearOf({ npc: { id: '从未挑衅过的城' } }) === 0;
+    })());
+
+    prov.restore();                                  /* 还原 npcCityInfo */
+
     console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');
   process.exit(FAIL ? 1 : 0);
 })();

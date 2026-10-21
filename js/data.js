@@ -2423,6 +2423,13 @@ import './core.js';
     },
     moveOrder: ['stab', 'guard', 'feint', 'charge'],
     playRounds: 5,       /* 手动斗将 5 合，先到 3 分胜 */
+    /* v92.14（老板：斗将可以派将领去挑衅其他城池，获得特殊奖励）——
+       挑衅赢了，那座城的守军会**胆寒**：接下来 24 小时守军少一成。
+       这是一个真实的战前收益，且与 duelBoostOf 对称（一个加我，一个减敌）。
+       输了只是英雄掉点体力 —— 不做重伤，避免"点一次输一次"的挫败。 */
+    fearPct: 0.12,
+    fearHours: 24,
+    provokeStaCost: 20,
     winScore: 3
   };
 

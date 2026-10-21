@@ -2437,6 +2437,13 @@ window.GAME = window.GAME || {};
     },
     moveOrder: ['stab', 'guard', 'feint', 'charge'],
     playRounds: 5,       /* 手动斗将 5 合，先到 3 分胜 */
+    /* v92.14（老板：斗将可以派将领去挑衅其他城池，获得特殊奖励）——
+       挑衅赢了，那座城的守军会**胆寒**：接下来 24 小时守军少一成。
+       这是一个真实的战前收益，且与 duelBoostOf 对称（一个加我，一个减敌）。
+       输了只是英雄掉点体力 —— 不做重伤，避免"点一次输一次"的挫败。 */
+    fearPct: 0.12,
+    fearHours: 24,
+    provokeStaCost: 20,
     winScore: 3
   };
 
@@ -30054,6 +30061,63 @@ window.GAME = window.GAME || {};
     return out;
   };
 
+  /* ============================================================
+   * v92.14（老板：斗将可以派将领去挑衅其他城池，获得特殊奖励）
+   * ------------------------------------------------------------
+   * 玩家版：地图点一座敌城 → 「派将挑衅」→ 与该城守将打 5 合心理战。
+   *   赢：那城**胆寒** 24 小时（守军 −12%）+ 我方英雄获 2 小时士气；
+   *   输：英雄掉 20 点体力（不做重伤 —— 点一次输一次太挫败）；
+   *   无守将：叫阵无人应，直接拒（不消耗）。
+   * 与"向势力叫阵"的区别：那个只记履历，这个**真的削弱下一次攻城**。
+   * ============================================================ */
+  /* 把"胆寒"作用到守军编成上 —— 抽成纯函数，测试能直接验 */
+  GAME.battle.applyFearTo = function (army, pct) {
+    if (!army || !(pct > 0)) return army;
+    var out = {};
+    for (var k in army) out[k] = Math.max(1, Math.round((army[k] || 0) * (1 - pct)));
+    return out;
+  };
+
+  GAME.battle.fearOf = function (t) {
+    var st = GAME.state;
+    if (!st || !st.cityFear) return 0;
+    var cid = t && ((t.npc && t.npc.id) || t.cityId || (t.city && t.city.id));
+    if (!cid) return 0;
+    var f = st.cityFear[cid];
+    if (!f) return 0;
+    if ((f.until || 0) <= Date.now()) { delete st.cityFear[cid]; return 0; }
+    return f.pct || 0;
+  };
+
+  GAME.battle.provoke = function (npc, gen, moves, seed) {
+    var D = DATA.DUEL || {};
+    if (!npc) return { ok: false, msg: '没有目标城' };
+    if (!gen) return { ok: false, msg: '要派一位英雄去' };
+    var nci = GAME.npcCityInfo ? GAME.npcCityInfo(npc) : null;
+    var guard = nci && nci.guard;
+    if (!guard) return { ok: false, msg: '这座城没有守将，叫阵无人应' };
+    var res = GAME.battle.duelPlay(gen, guard, moves, seed);
+    if (!res) return { ok: false, msg: '斗将无法开始' };
+    var st = GAME.state;
+    st.cityFear = st.cityFear || {};
+    if (res.winner === 'atk') {
+      var hours = D.fearHours == null ? 24 : D.fearHours;
+      st.cityFear[npc.id] = { until: Date.now() + hours * 3600000, pct: (D.fearPct == null ? 0.12 : D.fearPct) };
+      gen.duelW = (gen.duelW || 0) + 1;
+      gen.duelMoraleUntil = Date.now() + ((GAME.battle.MORALE_MS) || 7200000);
+      return { ok: true, res: res,
+        msg: '挑衅得手：' + (GAME.cityFullName ? GAME.cityFullName(npc) : '该城')
+          + ' 守军胆寒 ' + hours + ' 小时（守军 −' + Math.round((D.fearPct == null ? 0.12 : D.fearPct) * 100) + '%）' };
+    }
+    if (res.winner === 'def') {
+      gen.duelL = (gen.duelL || 0) + 1;
+      var cost = D.provokeStaCost == null ? 20 : D.provokeStaCost;
+      if (GAME.setStaNow && GAME.staNow) GAME.setStaNow(gen, Math.max(0, GAME.staNow(gen) - cost));
+      return { ok: false, res: res, msg: '挑衅失手：' + guard.name + ' 占了上风，' + gen.name + ' 折了一阵（体力 −' + cost + '）' };
+    }
+    return { ok: false, res: res, msg: '势均力敌，双方各自收兵（不算得手）' };
+  };
+
   /* 战利品按城类型 */
   GAME.battle.genLootEx = function (c, extMul, rnd, dry) {
     var tier = (c && c.type) ? c.type
@@ -31068,6 +31132,13 @@ window.GAME = window.GAME || {};
        妖言惑众→守军副本 −15%；焚其辎重→城防值 −30%；挑拨离间→守将加成减半。
        累计施计次数走 state 层唯一出口 schemeMarksOf（挑拨：忠诚 = 100 − 25×n）。 */
     var scArmy = t.garrison, scVal = defBonus, scGen = t.guard || null, scNote = null;
+    /* v92.14（斗将挑衅）：被叫过阵的城，守军胆寒 —— 少一成。
+       与 schemeOf 的"妖言惑众"同层（都只改战斗入参），不碰引擎。 */
+    var _fear = GAME.battle.fearOf(t);
+    if (_fear > 0 && scArmy) {
+      scArmy = GAME.battle.applyFearTo(scArmy, _fear);
+      scNote = '胆寒 · 守军 −' + Math.round(_fear * 100) + '%';
+    }
     /* ⛔ v89.198（老板「清除战法这个玩法」）：战法（强攻/围困/奇袭）全撤 ——
        奇袭的「计略 ×1.5」放大退役，计略按**基准系数**结算（与 ui.expDefModsOf 同源）。 */
     if (opts.scheme) {
@@ -51144,6 +51215,78 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
    *
    * ⚠️ 目前只记**履历与胜负**，不接战前士气 —— 面板上明写。
    * ============================================================ */
+  /* ============================================================
+   * v92.14：派将挑衅一座城 —— 与守将打 5 合，赢了那城胆寒 24 小时
+   * ------------------------------------------------------------
+   * 与「向势力叫阵」的区别：那个只记履历，这个**真的削弱下一次攻城**
+   * （守军 −12%，在 prepare 的 scArmy 上生效，与"妖言惑众"同层）。
+   * ⚠️ 输了只掉 20 体力：不做重伤，避免"点一次输一次"的挫败感。
+   * ============================================================ */
+  ui.openProvoke = function (moveId) {
+    var npc = ui._attackNpc;
+    if (!npc) return;
+    var nci = GAME.npcCityInfo(npc);
+    var guard = nci && nci.guard;
+    if (!guard) { ui.toast('这座城没有守将，叫阵无人应'); return; }
+    var gen = (GAME.state.generals || [])[0];
+    if (!gen) { ui.toast('没有可派的英雄'); return; }
+    var D = DATA.DUEL || {}, MV = D.moves || {}, order = D.moveOrder || [];
+    var need = D.playRounds || 5;
+    var S = ui._provoke;
+    if (!S || S.cid !== npc.id) {
+      S = ui._provoke = { cid: npc.id, moves: [], seed: String(U.now()), res: null, out: null };
+    }
+    if (moveId && !S.out && S.moves.length < need) {
+      S.moves.push(moveId);
+      if (S.moves.length >= need) {
+        S.out = GAME.battle.provoke(npc, gen, S.moves, S.seed);
+        S.res = S.out && S.out.res;
+      }
+    }
+    var h = '<div class="gold-heading">⚔ 派将挑衅 · ' + U.escape(GAME.cityFullName(npc)) + '</div>';
+    h += '<div class="panel-body">';
+    h += '<div class="exp-info exp-info-l" style="color:var(--text-dim);">'
+      + '我方：<b>' + U.escape(gen.name) + '</b>　·　守将：<b>' + U.escape(guard.name) + '</b>'
+      + '（武 ' + (guard.yw || 0) + ' · 谋 ' + (guard.zm || 0) + ' · 统 ' + (guard.tong || 0) + '）'
+      + '　— 他的招式看不到，但属性高的招他更爱出。</div>';
+    h += '<div style="display:flex;gap:6px;margin:10px 0;flex-wrap:wrap;">';
+    for (var i = 0; i < need; i++) {
+      var got = S.moves[i];
+      h += '<span style="padding:3px 9px;border:1px solid var(--wood-light);border-radius:3px;font-size:var(--fs-cap);'
+        + (got ? 'color:var(--gold-light);' : 'color:var(--text-dim);') + '">'
+        + (got ? U.escape((MV[got] || {}).name || got) : ('第 ' + (i + 1) + ' 合')) + '</span>';
+    }
+    h += '</div>';
+    if (!S.out) {
+      h += '<div style="display:flex;gap:8px;flex-wrap:wrap;">';
+      order.forEach(function (mk) {
+        var m = MV[mk] || {};
+        h += '<button class="btn" data-action="provoke-move" data-mv="' + mk + '" title="' + U.escape(m.note || '') + '">'
+          + U.escape(m.name || mk) + '</button>';
+      });
+      h += '</div>';
+      h += '<div style="font-size:var(--fs-cap);color:var(--text-dim);margin-top:8px;">'
+        + '突刺克蓄力 · 格挡克突刺 · 佯攻克格挡 · 蓄力克佯攻（同招相持）。出满 ' + need + ' 合即结算。</div>';
+    } else {
+      if (S.res) {
+        h += '<table class="tbl"><thead><tr><th>合</th><th>你</th><th>他</th><th>结果</th></tr></thead><tbody>';
+        S.res.rows.forEach(function (r) {
+          h += '<tr><td class="num">' + r.r + '</td><td>' + U.escape(r.aName) + '</td><td>' + U.escape(r.bName) + '</td>'
+            + '<td style="color:' + (r.res === 'a' ? 'var(--gold-light)' : r.res === 'b' ? 'var(--red-light)' : 'var(--text-dim)') + ';">'
+            + (r.res === 'a' ? '占先' : r.res === 'b' ? '被压' : '相持') + '</td></tr>';
+        });
+        h += '</tbody></table>';
+      }
+      h += '<div class="exp-info exp-info-l" style="margin-top:8px;color:'
+        + (S.out.ok ? 'var(--gold-light)' : 'var(--red-light)') + ';">' + U.escape(S.out.msg) + '</div>';
+      h += '<div style="margin-top:8px;"><button class="btn" data-action="provoke-again">再来一次</button>'
+        + '　<button class="btn" data-action="close-modal">关闭</button></div>';
+    }
+    if (!S.out) h += '<div class="panel-foot"><button class="btn" data-action="close-modal">关闭</button></div>';
+    h += '</div>';
+    ui.openModal(h);
+  };
+
   ui.openDuel = function (fid, moveId) {
     var st = GAME.state;
     if (!st || !GAME.faction) return;
@@ -53946,6 +54089,18 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
       (_dist != null ? '　·　距主城 ' + _dist + ' 格' : '') +
       '　·　守军约 ' + gNum.toLocaleString() + ' 名　·　城防 <b style="color:var(--gold-light)">' +
       (npcCity.def || 0) + '</b></div>';
+    /* v92.14（老板：斗将可以派将领去挑衅其他城池，获得特殊奖励）——
+       有守将才可叫阵；已经胆寒的城显示剩余效果。 */
+    if (ng) {
+      var _fv = GAME.battle.fearOf({ npc: npcCity });
+      html += '<div style="text-align:center;margin:0 0 10px;">'
+        + '<button class="btn" data-action="provoke-city">⚔ 派将挑衅</button>'
+        + (_fv > 0
+          ? ('<span style="color:var(--gold-light);font-size:var(--fs-cap);margin-left:8px;">'
+            + '守军胆寒中（−' + Math.round(_fv * 100) + '%）</span>')
+          : '<span style="color:var(--text-dim);font-size:var(--fs-cap);margin-left:8px;">赢了：该城守军胆寒 24 小时</span>')
+        + '</div>';
+    }
     /* v89.74（老板：「究竟是显示问题还是等级没有按上表执行变更？」）：这里回答它。
        弹窗里是**两个不同的量**，现在两处都带上了名字，不再让人误以为是同一个数写错：
          · **城等级**（标题）→ 这座城本身的等级，1~10 分布（v89.72 老板要的"越低越弱"），
@@ -58355,6 +58510,10 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
       case 'duel-move': ui.openDuel(ui._duel && ui._duel.fid, el.getAttribute('data-mv')); break;
       /* v92.11：向势力纳贡（交资源换它停几个月） */
       case 'faction-tribute': GAME.doFactionTribute(el.getAttribute('data-fid')); break;
+      /* v92.14：派将挑衅一座城（赢了那城守军胆寒 24 小时） */
+      case 'provoke-city': ui._provoke = null; ui.openProvoke(); break;
+      case 'provoke-move': ui.openProvoke(el.getAttribute('data-mv')); break;
+      case 'provoke-again': ui._provoke = null; ui.openProvoke(); break;
       /* v91.59（老板）：自动采购（逐商品补货到目标 · 每现实日上限内）。 */
       case 'toggle-auto-buy': GAME.doToggleAutoBuy(); break;
       case 'auto-buy-once': (function () { var r = GAME.autoBuyOnce(); ui.toast(r.msg); GAME.refreshView(); })(); break;

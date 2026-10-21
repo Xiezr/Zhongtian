@@ -1347,6 +1347,10 @@ import './ui.js';
       case 'duel-move': ui.openDuel(ui._duel && ui._duel.fid, el.getAttribute('data-mv')); break;
       /* v92.11：向势力纳贡（交资源换它停几个月） */
       case 'faction-tribute': GAME.doFactionTribute(el.getAttribute('data-fid')); break;
+      /* v92.14：派将挑衅一座城（赢了那城守军胆寒 24 小时） */
+      case 'provoke-city': ui._provoke = null; ui.openProvoke(); break;
+      case 'provoke-move': ui.openProvoke(el.getAttribute('data-mv')); break;
+      case 'provoke-again': ui._provoke = null; ui.openProvoke(); break;
       /* v91.59（老板）：自动采购（逐商品补货到目标 · 每现实日上限内）。 */
       case 'toggle-auto-buy': GAME.doToggleAutoBuy(); break;
       case 'auto-buy-once': (function () { var r = GAME.autoBuyOnce(); ui.toast(r.msg); GAME.refreshView(); })(); break;
