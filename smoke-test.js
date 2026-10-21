@@ -12381,7 +12381,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
     /* ⚠️ 这份 ORDER 与 build_bundle.py 的 ORDER **必须逐条一致**（本文故意不复用脚本，
        就是为了"构建脚本自己算错时测试还能抓到"）。加了模块两边都要加 ——
        v92 加 fog / memorial 时这里漏改，导致 hash 对不上、守卫假红。 */
-    var ORDER = ['core', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'domain', 'map', 'sphere', 'fog', 'memorial', 'camp', 'faction', 'gltf',
+    var ORDER = ['core', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'domain', 'map', 'sphere', 'fog', 'memorial', 'camp', 'ruin', 'faction', 'gltf',
       'map3d', 'battle', 'strategy', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits', 'story', 'ui', 'main'];
     var h = crypto.createHash('sha256');
     try {
@@ -38406,6 +38406,116 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var j = JSON.stringify(G.state.factions);
       return j.length < 600;
     })(), (function () { return JSON.stringify(G.state.factions).length + ' 字节'; })());
+
+    console.log('\n===== 291. v92.7 旧世界遗迹 =====');
+
+    var ruinN = (function () {
+      G.newGame({ name: '遗迹', cityName: '灰岗' });
+      G.state.ruins = {};
+      return G.ruin.list().length;
+    })();
+
+    check('§291① 候选规模合理（不是遍地都是）',
+      ruinN >= 10 && ruinN <= 500, ruinN + ' 处');
+
+    check('§291② 生成确定性 + 不长在海里', (function () {
+      var list = G.ruin.list();
+      if (!list.length) return false;
+      var SPn = G.mapSphere || G.sphere;
+      var a = G.ruin.at(list[0]), b = G.ruin.at(list[0]);
+      if (!a || !b || a.kind !== b.kind || a.name !== b.name) return false;
+      for (var i = 0; i < list.length; i++) {
+        var c = SPn.cells[list[i]];
+        if (!c || c.type === 'sea' || c.type === 'ocean') return false;
+      }
+      return true;
+    })(), '首处 ' + (function () {
+      var l = G.ruin.list(); var w = l.length ? G.ruin.at(l[0]) : null;
+      return w ? w.name : 'null';
+    })());
+
+    check('§291③ 未探明不登记', (function () {
+      var list = G.ruin.list();
+      var ci = null;
+      for (var i = 0; i < list.length; i++) if (G.fog.get(list[i]) === 0) { ci = list[i]; break; }
+      if (ci == null) return false;
+      G.state.ruins = {};
+      G.ruin.sweep(true);
+      return !G.state.ruins[ci];
+    })());
+
+    check('§291④ 探明后 sweep 收进来', (function () {
+      var list = G.ruin.list();
+      if (!list.length) return false;
+      var ci = list[0];
+      G.fog.bump(ci, G.fog.ALL);
+      G.state.ruins = {};
+      var n = G.ruin.sweep(true);
+      return n >= 1 && !!G.state.ruins[ci];
+    })());
+
+    check('§291⑤ 离城越远越富（探索的回报落在产出上）', (function () {
+      var s = G.mapSphere || G.sphere;
+      var c = G.currentCity();
+      var list = G.ruin.list();
+      var far = -1, fd = 0;
+      for (var i = 0; i < list.length; i++) {
+        var d = s.distOf({ ci: c.ci }, { ci: list[i] });
+        if (d > fd) { fd = d; far = list[i]; }
+      }
+      if (far < 0 || fd < 10) return false;
+      return G.ruin.tierMulOf(far) > G.ruin.tierMulOf(c.ci);
+    })(), '最远处 ×' + (function () {
+      var s = G.mapSphere || G.sphere, c = G.currentCity(), list = G.ruin.list();
+      var far = -1, fd = 0;
+      for (var i = 0; i < list.length; i++) {
+        var d = s.distOf({ ci: c.ci }, { ci: list[i] });
+        if (d > fd) { fd = d; far = list[i]; }
+      }
+      return far < 0 ? '?' : (Math.round(G.ruin.tierMulOf(far) * 100) / 100);
+    })());
+
+    var ruinOne = (function () {
+      var list = G.ruin.list();
+      for (var i = 0; i < list.length; i++) {
+        if (G.ruin.at(list[i])) { G.fog.bump(list[i], G.fog.ALL); return list[i]; }
+      }
+      return -1;
+    })();
+
+    check('§291⑥ 翻找 a：真拿到东西（不是空手）', (function () {
+      if (ruinOne < 0) return false;
+      G.state.ruins = {};
+      G.ruin.sweep(true);
+      var r = G.ruin.act(ruinOne, 'a');
+      return r.ok && /×|\+/.test(r.msg || '');
+    })(), (function () {
+      if (ruinOne < 0) return '';
+      var rec = G.ruin.found()[ruinOne];
+      return rec ? (rec.got || '') : '';
+    })());
+
+    check('§291⑦ 互斥且不可撤销（翻过就不能再翻另一样）', (function () {
+      if (ruinOne < 0) return false;
+      var r2 = G.ruin.act(ruinOne, 'b');
+      return !r2.ok && /翻过/.test(r2.msg || '');
+    })());
+
+    check('§291⑧ 翻找 b：资源真进账', (function () {
+      var list = G.ruin.list();
+      var ci = -1;
+      for (var i = 0; i < list.length; i++) {
+        if (G.ruin.at(list[i]) && !G.ruin.found()[list[i]]) { G.fog.bump(list[i], G.fog.ALL); ci = list[i]; break; }
+      }
+      if (ci < 0) return false;
+      G.ruin.sweep(true);
+      var c2 = G.currentCity();
+      c2.res = c2.res || {};
+      var before = (c2.res.iron || 0) + (c2.res.grain || 0) + (c2.res.stone || 0) + (c2.res.wood || 0);
+      var r = G.ruin.act(ci, 'b');
+      var after = (c2.res.iron || 0) + (c2.res.grain || 0) + (c2.res.stone || 0) + (c2.res.wood || 0);
+      return r.ok && after !== before;
+    })());
 
   console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');
   process.exit(FAIL ? 1 : 0);

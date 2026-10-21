@@ -18,6 +18,7 @@ import './sphere.js';
 import './fog.js';      /* v92：探明度（迷雾）—— 依赖 sphere 的六边邻接做半径点亮 */
 import './memorial.js'; /* v92：阵亡名录 —— 只记事，不记账 */
 import './camp.js';     /* v92.4：幸存者营地 —— 探索的回报，招人 or 抢物资 */
+import './ruin.js';     /* v92.7：旧世界遗迹 —— 一处只能翻一次，两种翻法互斥 */
 import './faction.js';  /* v92.5：四个军阀 —— 世界在动（态势层）*/
 import './gltf.js';
 import './map3d.js';
@@ -1336,6 +1337,8 @@ import './ui.js';
       case 'ae-once': GAME.doAutoExploreOnce(); ui.openAutoExplore(); break;
       /* v92.4：幸存者营地交涉（招募 / 洗劫）—— 两条路选一条，选完就结束。 */
       case 'camp-act': GAME.doCampAct(el.getAttribute('data-ci'), el.getAttribute('data-mode')); break;
+      /* v92.7：遗迹翻找（两个翻法互斥，翻一次就没了） */
+      case 'ruin-act': GAME.doRuinAct(el.getAttribute('data-ci'), el.getAttribute('data-rs')); break;
       /* v91.59（老板）：自动采购（逐商品补货到目标 · 每现实日上限内）。 */
       case 'toggle-auto-buy': GAME.doToggleAutoBuy(); break;
       case 'auto-buy-once': (function () { var r = GAME.autoBuyOnce(); ui.toast(r.msg); GAME.refreshView(); })(); break;
@@ -1914,6 +1917,18 @@ import './ui.js';
       GAME.refreshAll();
     }
     ui.openCampModal(+ci);
+  };
+  /* v92.7：遗迹翻找 —— 两种翻法互斥，翻过就永远没有另一样。
+     不做二次确认：面板上两种产出都写清了，点下去就是放弃另一个。 */
+  GAME.doRuinAct = function (ci, side) {
+    var r = GAME.ruin && GAME.ruin.act ? GAME.ruin.act(+ci, side) : null;
+    if (!r) { ui.toast('遗迹翻找不可用'); return; }
+    ui.toast((r.ok ? '✅ ' : '⏸ ') + r.msg);
+    if (r.ok) {
+      GAME.log(r.msg, 'sys', 'wild');
+      GAME.refreshAll();
+    }
+    ui.openRuinModal(+ci);
   };
   GAME.doAutoExploreOnce = function () {
     var cfg = GAME.autoExploreCfg();

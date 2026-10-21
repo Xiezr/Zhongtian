@@ -76,7 +76,7 @@ import './gltf.js';
   /* v91.33（性能）：版本戳（把 M.render 里的内联拼串抽出，预建时可预盖）。 */
   M._pverOf = function () { return (SP.seed3 ? SP.seed3() : 0) + '|' + (SP.sub || 0) + '|' + (SP.PLANET ? JSON.stringify(SP.PLANET) : ''); };
   M._mkVerOf = function () { return (((GAME.mapSliceOf && GAME.mapSliceOf()) || {}).cities || []).map(function (c) { return c.id + ':' + c.x + ',' + c.y; }).join('|') + '#' + _tileSub; };
-  M._flVerOf = function () { var sl = (GAME.mapSliceOf && GAME.mapSliceOf()) || {}; var fp = Object.keys(sl.forts || {}).sort().join(','); var wp = (sl.wilds || []).map(function (w) { return w.ci; }).sort(function (a, b) { return a - b; }).join('|'); var _ck = ''; if (GAME.camp && GAME.camp.found) { var cf = GAME.camp.found(); var n = 0, dm = 0; Object.keys(cf).forEach(function (k) { n++; if (cf[k].mode) dm++; }); _ck = '#c' + n + '/' + dm; } return fp + '#' + wp + '#' + _tileSub + '#' + (GAME.memorial ? GAME.memorial.total() : 0) + _ck; };
+  M._flVerOf = function () { var sl = (GAME.mapSliceOf && GAME.mapSliceOf()) || {}; var fp = Object.keys(sl.forts || {}).sort().join(','); var wp = (sl.wilds || []).map(function (w) { return w.ci; }).sort(function (a, b) { return a - b; }).join('|'); var _ck = ''; if (GAME.camp && GAME.camp.found) { var cf = GAME.camp.found(); var n = 0, dm = 0; Object.keys(cf).forEach(function (k) { n++; if (cf[k].mode) dm++; }); _ck = '#c' + n + '/' + dm; } if (GAME.ruin && GAME.ruin.found) { var rf = GAME.ruin.found(); var rn = 0, rd = 0; Object.keys(rf).forEach(function (k) { rn++; if (rf[k].side) rd++; }); _ck += '#r' + rn + '/' + rd; } return fp + '#' + wp + '#' + _tileSub + '#' + (GAME.memorial ? GAME.memorial.total() : 0) + _ck; };
   M._arVerOf = function () { var sl = (GAME.mapSliceOf && GAME.mapSliceOf()) || {}; return (sl.marches || []).map(function (m) { return m.id + ':' + m.cityId + '>' + m.tci; }).join('|') + '#' + _tileSub; };
   /* v91.33：**后台预建**全场景（进游戏后调用）—— 含**全部版本戳**（否则首次 M.render 会全量重建）。
      v91.35：拆成**可分段**的步骤（`preloadSteps`）—— 每段之间让出事件循环，避免一次性同步阻塞主线程。
@@ -938,6 +938,21 @@ import './gltf.js';
         grp.add(mesh);
       });
     }
+    /* v92.7：已发现的旧世界遗迹 —— 青珠（待翻）/ 暗青（已翻） */
+    if (GAME.ruin && GAME.ruin.found) {
+      var _rf = GAME.ruin.found();
+      Object.keys(_rf).forEach(function (k) {
+        var ci = +k, rec = _rf[k];
+        var cell0 = _tileCells[ci];
+        if (!cell0 || !cell0.pos) return;
+        if (GAME.fog && GAME.fog.get(ci) <= 0) return;
+        var col = (rec && rec.side) ? 0x3a5c58 : 0x6ec7c0;
+        var P = cell0.pos, L = Math.hypot(P[0], P[1], P[2]) || 1, lift = 4;
+        var mesh = new THREE.Mesh(new THREE.SphereGeometry(2.0, 8, 8), new THREE.MeshBasicMaterial({ color: col }));
+        mesh.position.set(P[0] + P[0] / L * lift, P[1] + P[1] / L * lift, P[2] + P[2] / L * lift);
+        grp.add(mesh);
+      });
+    }
   }
 
   /* 名称标签（画布文字 → 贴图 → Sprite）。
@@ -1351,6 +1366,9 @@ import './gltf.js';
       /* v92.4：已发现的营地**优先于野地** —— 同一格上，营地才是这一带真正的事。
          没发现的营地不拦（照旧按野地处理），免得"点了没反应"。 */
       else if (GAME.camp && GAME.camp.isFound(ci) && ui.openCampModal) ui.openCampModal(ci);
+      /* v92.7：遗迹排在营地之后 —— 同一格两者都有时，先给"人"（营地），
+         因为人是活的、遗迹是死的，先处理活的那一头。 */
+      else if (GAME.ruin && GAME.ruin.isFound(ci) && ui.openRuinModal) ui.openRuinModal(ci);
       else if (ui.openLandModalCi) {
         /* 野地：球面地块地形/等级 + 行政区归属 + 球系坐标（球系：按 ci） */
         GAME.map._terrOverride = cell.type;

@@ -12802,6 +12802,49 @@ import './state.js';
    * 这就是"牺牲"落地的地方：抢得快，但风声传开，后面招到的人越来越少。
    * 不做二次确认：面板上两条路和代价都写清了，点下去就是决定。
    * ============================================================ */
+  /* ============================================================
+   * v92.7：旧世界遗迹 —— 一处只能翻一次，两种翻法互斥
+   * ------------------------------------------------------------
+   * 和营地面板的分工：营地写"代价是名声"，遗迹写"你只能拿走一样"。
+   * 面板上把**两样的产出都摊开**，不藏 —— 藏了就不是取舍，是抽奖。
+   * ============================================================ */
+  ui.openRuinModal = function (ci) {
+    var R = GAME.ruin;
+    if (!R) return;
+    var w = R.at(ci);
+    if (!w) { ui.toast('这里没有遗迹'); return; }
+    var rec = R.found()[ci] || {};
+    var mul = R.tierMulOf(ci);
+    var h = '<div class="gold-heading">🏚 ' + U.escape(w.name) + '</div>';
+    h += '<div class="panel-body">';
+    if (rec.side) {
+      h += '<div class="q-empty">已经翻过了：' + U.escape(rec.got || '') + '。</div>';
+    } else {
+      h += '<div class="exp-info exp-info-l" style="color:var(--text-dim);font-style:italic;">'
+        + U.escape(w.flavor || '') + '</div>';
+      var descA = w.a.mat
+        ? ('材料 ' + U.escape((GAME.DATA.MATERIAL_BY_ID && GAME.DATA.MATERIAL_BY_ID[w.a.mat] || {}).name || w.a.mat)
+          + '×' + Math.round((w.a.n || 8) * mul))
+        : (w.a.pop ? ('幸存者 +' + Math.round(w.a.pop * mul) + (w.a.grain ? ('（粮 −' + Math.round(w.a.grain * mul) + '）') : '')) : '');
+      var descB = w.b.res
+        ? Object.keys(w.b.res).map(function (k) {
+          return ({ grain: '粮', wood: '木', stone: '石', iron: '铁' }[k] || k) + '+' + U.numText(Math.round(w.b.res[k] * mul), 0);
+        }).join('、')
+        : (w.b.mat ? ('材料 ' + U.escape((GAME.DATA.MATERIAL_BY_ID && GAME.DATA.MATERIAL_BY_ID[w.b.mat] || {}).name || w.b.mat) + '×' + Math.round((w.b.n || 8) * mul)) : '');
+      h += '<div style="display:flex;gap:10px;margin:12px 0;flex-wrap:wrap;">'
+        + '<button class="btn" data-action="ruin-act" data-ci="' + ci + '" data-rs="a">'
+        + U.escape(w.a.label) + '（' + U.escape(descA) + '）</button>'
+        + '<button class="btn" data-action="ruin-act" data-ci="' + ci + '" data-rs="b">'
+        + U.escape(w.b.label) + '（' + U.escape(descB) + '）</button>'
+        + '</div>';
+      h += '<div style="font-size:var(--fs-cap);color:var(--text-dim);">'
+        + '只能选一个。翻过之后这处遗迹就空了 —— 另一样永远留在这里。<br>'
+        + '离你的城越远，翻出来的东西越多（这里 ×' + (Math.round(mul * 100) / 100) + '）。</div>';
+    }
+    h += '</div><div class="panel-foot"><button class="btn" data-action="close-modal">关闭</button></div>';
+    ui.openModal(h);
+  };
+
   ui.openCampModal = function (ci) {
     var C = GAME.camp;
     if (!C) return;

@@ -4567,6 +4567,31 @@ window.GAME = window.GAME || {};
    * ⚠️ 不改 POP_CFG.fillHours：那会推翻 6 处既有断言，且"补给慢"是惩罚思维。
    *    营地带的是**净增量**，不是减速。
    * ============================================================ */
+  /* ============================================================
+   * v92.7：旧世界遗迹（构想 A4 遗物埋点 + A9 遗迹剧情）
+   * ------------------------------------------------------------
+   * 营地给"人"，遗迹给"旧世界的东西"。同一处只能翻一次，
+   * 两个翻法**互斥** —— 拿材料的就没有资源，这就是"放弃"。
+   * 越远越富（ruin.tierMulOf：40 格外封顶 +150%），探索的回报落在产出上。
+   * ============================================================ */
+  DATA.RUIN = {
+    chance: 0.0025,        /* 陆地格约 0.25%（40962 × 0.25% ≈ 100 处）*/
+    kinds: [
+      { id: 'hospital', name: '废弃医院',
+        flavor: '走廊里的应急灯还有电。消毒水的味道压不住别的味道。',
+        a: { label: '搜刮药品', mat: 'mabu', n: 14 },
+        b: { label: '收容幸存者', pop: 600, grain: 3000 } },
+      { id: 'arsenal', name: '旧军械库',
+        flavor: '门是被人从里面焊死的。焊渣还挂在接缝上。',
+        a: { label: '拆走军械', mat: 'jingtie', n: 10 },
+        b: { label: '搬空钢材', res: { iron: 4000, stone: 2000 } } },
+      { id: 'datatower', name: '数据塔',
+        flavor: '塔顶还在转。它不知道战争已经结束了。',
+        a: { label: '拆下晶片', mat: 'qingyu', n: 8 },
+        b: { label: '拆铜卖铁', res: { iron: 3000, grain: 1500 } } }
+    ]
+  };
+
   DATA.CAMP = {
     chance: 0.004,        /* 陆地格约 0.4% 是营地（40962 × 0.4% ≈ 160 处 · 一颗球约 100+）*/
     waryPerRaid: 0.08,    /* 每洗劫一处，后续招募 −8%（风声传开）*/
@@ -9706,6 +9731,8 @@ window.GAME = window.GAME || {};
     if (GAME.fog && GAME.fog.checkMilestones) GAME.fog.checkMilestones();
     /* v92.4：幸存者营地发现（节流 5 秒 · 只扫候选一两百格，不遍历全图） */
     if (GAME.camp && GAME.camp.sweep) GAME.camp.sweep();
+    /* v92.7：旧世界遗迹发现（同一套节流扫描） */
+    if (GAME.ruin && GAME.ruin.sweep) GAME.ruin.sweep();
     /* v92.5：四个军阀按月推进（按月而非按日：游戏日只有 1.3 现实秒，按日会抽搐） */
     if (GAME.faction && GAME.faction.tick) GAME.faction.tick();
     /* v89.136：老档采集队迁移兜底（幂等 · 正常已被 loadGame 处理） */
@@ -26110,6 +26137,184 @@ window.GAME = window.GAME || {};
   };
 })();
 
+/* ---- ruin.js ---- */
+/* ============================================================
+ * ruin.js — 旧世界遗迹（v92.7 · 构想 A4 遗物埋点 + A9 遗迹剧情）
+ * ------------------------------------------------------------
+ * 文档原话：
+ *   A4「特定格埋遗物/图纸，先点亮 + 满足条件才能挖」
+ *   A9「点亮特定区域触发故事（废弃实验室/旧时代纪念碑/幸存者营地）」
+ *   第 5 节「叙事选择 ❌ 无（叙事层 v89.218 已删）」—— 这一栏是空的。
+ *
+ * 和营地（camp.js）的分工：
+ *   · 营地 = 人。招人 or 抢物资，代价是名声。
+ *   · 遗迹 = **旧世界的东西**。同一处遗迹只能翻一次，翻了这边就没有那边。
+ *
+ * 取舍在哪（"放弃测试"）：
+ *   每处遗迹两个翻法，**互斥**：拿材料的就没有资源，拿资源的就没有材料。
+ *   越远的遗迹越富（`tierMulOf`）—— 探索的回报落在产出上，而不是另一个加成。
+ *
+ * ⚠️ 刻意不做：不给图纸/科技（`DATA.BLUEPRINT` 与科技链都有自己的口径，
+ *   在这里塞一份会造出第二个产出源）。遗迹给的是**材料与资源**，
+ *   交给现有的锻造/建造去消耗。
+ * ============================================================ */
+(function () {
+  'use strict';
+  var GAME = window.GAME = window.GAME || {};
+  var R = GAME.ruin = {};
+  var U = GAME.utils;
+
+  var _list = null, _listSeed = -1, _sweepAt = 0;
+
+  function SP() { return GAME.mapSphere || GAME.sphere; }
+  function data() { return (GAME.DATA && GAME.DATA.RUIN) || {}; }
+
+  /* 纯哈希（只吃 ci + seed）：遗迹是固定地标，同一颗球永远那几个 */
+  function h(ci, salt) {
+    var x = (ci * 2654435761 + salt * 40503) >>> 0;
+    x ^= x >>> 13; x = (x * 1274126177) >>> 0; x ^= x >>> 16;
+    return (x >>> 0) / 4294967296;
+  }
+
+  R.at = function (ci) {
+    var s = SP();
+    if (!s || !s.cells) return null;
+    var cell = s.cells[ci];
+    if (!cell) return null;
+    if (cell.type === 'sea' || cell.type === 'ocean') return null;
+    var sd = (s.seed3 ? s.seed3() : 0) | 0;
+    if (h(ci, sd + 9101) >= (data().chance || 0.0025)) return null;
+    var kinds = data().kinds || [];
+    if (!kinds.length) return null;
+    var k = kinds[Math.floor(h(ci, sd + 9102) * kinds.length) % kinds.length];
+    if (!k) return null;
+    return { ci: ci, kind: k.id, name: k.name, flavor: k.flavor, a: k.a, b: k.b };
+  };
+
+  R.list = function () {
+    var s = SP();
+    if (!s || !s.cells) return [];
+    var sd = (s.seed3 ? s.seed3() : 0) | 0;
+    if (_list && _listSeed === sd) return _list;
+    var out = [], n = s.cells.length;
+    for (var ci = 0; ci < n; ci++) {
+      var cell = s.cells[ci];
+      if (!cell) continue;
+      if (cell.type === 'sea' || cell.type === 'ocean') continue;
+      if (h(ci, sd + 9101) < (data().chance || 0.0025)) out.push(ci);
+    }
+    _list = out; _listSeed = sd;
+    return out;
+  };
+
+  R.found = function () { return ((GAME.state || {}).ruins) || {}; };
+  R.isFound = function (ci) { return !!R.found()[ci]; };
+
+  /* 远处更富：探索的回报落在产出上，而不是给个加成 */
+  R.tierMulOf = function (ci) {
+    var s = SP();
+    var pc = GAME.currentCity ? GAME.currentCity() : null;
+    if (!s || !pc || pc.ci == null || pc.ci < 0) return 1;
+    var d = s.distOf({ ci: pc.ci }, { ci: ci });
+    return 1 + Math.min(1.5, d / 40);          /* 40 格外封顶 +150% */
+  };
+
+  /* 与营地同一套节流扫描：候选只有几十处，5 秒扫一次几乎零成本 */
+  R.sweep = function (force) {
+    var st = GAME.state;
+    if (!st || !GAME.fog) return 0;
+    var now = Date.now();
+    if (!force && now - _sweepAt < 5000) return 0;
+    _sweepAt = now;
+    var list = R.list();
+    if (!list.length) return 0;
+    st.ruins = st.ruins || {};
+    var got = 0;
+    for (var i = 0; i < list.length; i++) {
+      var ci = list[i];
+      if (st.ruins[ci]) continue;
+      if (GAME.fog.get(ci) <= 0) continue;
+      var w = R.at(ci);
+      if (!w) continue;
+      st.ruins[ci] = { kind: w.kind, side: null, at: now };
+      got++;
+      if (GAME.log && GAME.log.war) {
+        GAME.log.war('🏚 发现旧世界遗迹：' + w.name + '（地图上标了青点 · 点击可翻找）');
+      }
+    }
+    if (got && GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
+    return got;
+  };
+
+  /* ============================================================
+   * act —— 翻找：两种互斥的拿法
+   * ------------------------------------------------------------
+   * a = 材料（锻造用）· b = 资源（建造用）· 少数是人口。
+   * 选了一个，另一个就永远拿不到了 —— 这就是"放弃"。
+   * ============================================================ */
+  R.act = function (ci, side) {
+    var st = GAME.state;
+    if (!st) return { ok: false, msg: '无存档' };
+    var w = R.at(ci);
+    if (!w) return { ok: false, msg: '这里没有遗迹' };
+    st.ruins = st.ruins || {};
+    var rec = st.ruins[ci];
+    if (!rec) return { ok: false, msg: '还没发现这处遗迹' };
+    if (rec.side) return { ok: false, msg: '这处遗迹已经翻过了' };
+    var pick = side === 'a' ? w.a : (side === 'b' ? w.b : null);
+    if (!pick) return { ok: false, msg: '未知的翻找方式' };
+    var city = (GAME.camp && GAME.camp.cityNearOf) ? GAME.camp.cityNearOf(ci)
+      : (GAME.currentCity ? GAME.currentCity() : null);
+    if (!city) return { ok: false, msg: '附近没有己方城市' };
+
+    var mul = R.tierMulOf(ci);
+    var out = [];
+    if (pick.mat) {
+      var n = Math.max(1, Math.round((pick.n || 8) * mul));
+      GAME.items.add(pick.mat, n);
+      var md = GAME.DATA.MATERIAL_BY_ID && GAME.DATA.MATERIAL_BY_ID[pick.mat];
+      out.push((md ? md.name : pick.mat) + '×' + n);
+    }
+    if (pick.res) {
+      city.res = city.res || {};
+      Object.keys(pick.res).forEach(function (k) {
+        var v = Math.max(1, Math.round(pick.res[k] * mul));
+        city.res[k] = (city.res[k] || 0) + v;
+        out.push(({ grain: '粮', wood: '木', stone: '石', iron: '铁' }[k] || k) + '+' + U.numText(v, 0));
+      });
+    }
+    if (pick.pop) {
+      var cap = GAME.effPopCapOf ? GAME.effPopCapOf(city) : (GAME.maxPopOf ? GAME.maxPopOf(city) : 0);
+      var before = city.pop || 0;
+      city.pop = Math.min(cap || (before + pick.pop), before + Math.round(pick.pop * mul));
+      out.push('幸存者 +' + U.numText(Math.round(city.pop - before), 0));
+    }
+    if (pick.grain) {
+      /* 有代价的选项：粮食不够就不给做（说清楚，别静默扣成负数）*/
+      var need = Math.round(pick.grain * mul);
+      if (((city.res || {}).grain || 0) < need) {
+        return { ok: false, msg: '要养活他们得先有 ' + U.numText(need, 0) + ' 粮 —— 现在不够' };
+      }
+      city.res.grain -= need;
+      out.push('粮 −' + U.numText(need, 0));
+    }
+
+    rec.side = side;
+    rec.at = Date.now();
+    rec.got = out.join('、');
+    return { ok: true, msg: '在' + w.name + '翻出：' + out.join('、') };
+  };
+
+  R.lineOf = function (ci) {
+    var w = R.at(ci);
+    if (!w) return '';
+    var rec = R.found()[ci];
+    if (!rec) return w.name + '（未发现）';
+    if (rec.side) return w.name + ' · 已翻找（' + (rec.got || '') + '）';
+    return w.name + ' · 待翻找（' + w.a.label + ' / ' + w.b.label + '）';
+  };
+})();
+
 /* ---- faction.js ---- */
 /* ============================================================
  * faction.js — 四个军阀（v92.5 / 构想清单 B1 的最小闭环）
@@ -26621,7 +26826,7 @@ window.GAME = window.GAME || {};
   /* v91.33（性能）：版本戳（把 M.render 里的内联拼串抽出，预建时可预盖）。 */
   M._pverOf = function () { return (SP.seed3 ? SP.seed3() : 0) + '|' + (SP.sub || 0) + '|' + (SP.PLANET ? JSON.stringify(SP.PLANET) : ''); };
   M._mkVerOf = function () { return (((GAME.mapSliceOf && GAME.mapSliceOf()) || {}).cities || []).map(function (c) { return c.id + ':' + c.x + ',' + c.y; }).join('|') + '#' + _tileSub; };
-  M._flVerOf = function () { var sl = (GAME.mapSliceOf && GAME.mapSliceOf()) || {}; var fp = Object.keys(sl.forts || {}).sort().join(','); var wp = (sl.wilds || []).map(function (w) { return w.ci; }).sort(function (a, b) { return a - b; }).join('|'); var _ck = ''; if (GAME.camp && GAME.camp.found) { var cf = GAME.camp.found(); var n = 0, dm = 0; Object.keys(cf).forEach(function (k) { n++; if (cf[k].mode) dm++; }); _ck = '#c' + n + '/' + dm; } return fp + '#' + wp + '#' + _tileSub + '#' + (GAME.memorial ? GAME.memorial.total() : 0) + _ck; };
+  M._flVerOf = function () { var sl = (GAME.mapSliceOf && GAME.mapSliceOf()) || {}; var fp = Object.keys(sl.forts || {}).sort().join(','); var wp = (sl.wilds || []).map(function (w) { return w.ci; }).sort(function (a, b) { return a - b; }).join('|'); var _ck = ''; if (GAME.camp && GAME.camp.found) { var cf = GAME.camp.found(); var n = 0, dm = 0; Object.keys(cf).forEach(function (k) { n++; if (cf[k].mode) dm++; }); _ck = '#c' + n + '/' + dm; } if (GAME.ruin && GAME.ruin.found) { var rf = GAME.ruin.found(); var rn = 0, rd = 0; Object.keys(rf).forEach(function (k) { rn++; if (rf[k].side) rd++; }); _ck += '#r' + rn + '/' + rd; } return fp + '#' + wp + '#' + _tileSub + '#' + (GAME.memorial ? GAME.memorial.total() : 0) + _ck; };
   M._arVerOf = function () { var sl = (GAME.mapSliceOf && GAME.mapSliceOf()) || {}; return (sl.marches || []).map(function (m) { return m.id + ':' + m.cityId + '>' + m.tci; }).join('|') + '#' + _tileSub; };
   /* v91.33：**后台预建**全场景（进游戏后调用）—— 含**全部版本戳**（否则首次 M.render 会全量重建）。
      v91.35：拆成**可分段**的步骤（`preloadSteps`）—— 每段之间让出事件循环，避免一次性同步阻塞主线程。
@@ -27483,6 +27688,21 @@ window.GAME = window.GAME || {};
         grp.add(mesh);
       });
     }
+    /* v92.7：已发现的旧世界遗迹 —— 青珠（待翻）/ 暗青（已翻） */
+    if (GAME.ruin && GAME.ruin.found) {
+      var _rf = GAME.ruin.found();
+      Object.keys(_rf).forEach(function (k) {
+        var ci = +k, rec = _rf[k];
+        var cell0 = _tileCells[ci];
+        if (!cell0 || !cell0.pos) return;
+        if (GAME.fog && GAME.fog.get(ci) <= 0) return;
+        var col = (rec && rec.side) ? 0x3a5c58 : 0x6ec7c0;
+        var P = cell0.pos, L = Math.hypot(P[0], P[1], P[2]) || 1, lift = 4;
+        var mesh = new THREE.Mesh(new THREE.SphereGeometry(2.0, 8, 8), new THREE.MeshBasicMaterial({ color: col }));
+        mesh.position.set(P[0] + P[0] / L * lift, P[1] + P[1] / L * lift, P[2] + P[2] / L * lift);
+        grp.add(mesh);
+      });
+    }
   }
 
   /* 名称标签（画布文字 → 贴图 → Sprite）。
@@ -27896,6 +28116,9 @@ window.GAME = window.GAME || {};
       /* v92.4：已发现的营地**优先于野地** —— 同一格上，营地才是这一带真正的事。
          没发现的营地不拦（照旧按野地处理），免得"点了没反应"。 */
       else if (GAME.camp && GAME.camp.isFound(ci) && ui.openCampModal) ui.openCampModal(ci);
+      /* v92.7：遗迹排在营地之后 —— 同一格两者都有时，先给"人"（营地），
+         因为人是活的、遗迹是死的，先处理活的那一头。 */
+      else if (GAME.ruin && GAME.ruin.isFound(ci) && ui.openRuinModal) ui.openRuinModal(ci);
       else if (ui.openLandModalCi) {
         /* 野地：球面地块地形/等级 + 行政区归属 + 球系坐标（球系：按 ci） */
         GAME.map._terrOverride = cell.type;
@@ -50530,6 +50753,49 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
    * 这就是"牺牲"落地的地方：抢得快，但风声传开，后面招到的人越来越少。
    * 不做二次确认：面板上两条路和代价都写清了，点下去就是决定。
    * ============================================================ */
+  /* ============================================================
+   * v92.7：旧世界遗迹 —— 一处只能翻一次，两种翻法互斥
+   * ------------------------------------------------------------
+   * 和营地面板的分工：营地写"代价是名声"，遗迹写"你只能拿走一样"。
+   * 面板上把**两样的产出都摊开**，不藏 —— 藏了就不是取舍，是抽奖。
+   * ============================================================ */
+  ui.openRuinModal = function (ci) {
+    var R = GAME.ruin;
+    if (!R) return;
+    var w = R.at(ci);
+    if (!w) { ui.toast('这里没有遗迹'); return; }
+    var rec = R.found()[ci] || {};
+    var mul = R.tierMulOf(ci);
+    var h = '<div class="gold-heading">🏚 ' + U.escape(w.name) + '</div>';
+    h += '<div class="panel-body">';
+    if (rec.side) {
+      h += '<div class="q-empty">已经翻过了：' + U.escape(rec.got || '') + '。</div>';
+    } else {
+      h += '<div class="exp-info exp-info-l" style="color:var(--text-dim);font-style:italic;">'
+        + U.escape(w.flavor || '') + '</div>';
+      var descA = w.a.mat
+        ? ('材料 ' + U.escape((GAME.DATA.MATERIAL_BY_ID && GAME.DATA.MATERIAL_BY_ID[w.a.mat] || {}).name || w.a.mat)
+          + '×' + Math.round((w.a.n || 8) * mul))
+        : (w.a.pop ? ('幸存者 +' + Math.round(w.a.pop * mul) + (w.a.grain ? ('（粮 −' + Math.round(w.a.grain * mul) + '）') : '')) : '');
+      var descB = w.b.res
+        ? Object.keys(w.b.res).map(function (k) {
+          return ({ grain: '粮', wood: '木', stone: '石', iron: '铁' }[k] || k) + '+' + U.numText(Math.round(w.b.res[k] * mul), 0);
+        }).join('、')
+        : (w.b.mat ? ('材料 ' + U.escape((GAME.DATA.MATERIAL_BY_ID && GAME.DATA.MATERIAL_BY_ID[w.b.mat] || {}).name || w.b.mat) + '×' + Math.round((w.b.n || 8) * mul)) : '');
+      h += '<div style="display:flex;gap:10px;margin:12px 0;flex-wrap:wrap;">'
+        + '<button class="btn" data-action="ruin-act" data-ci="' + ci + '" data-rs="a">'
+        + U.escape(w.a.label) + '（' + U.escape(descA) + '）</button>'
+        + '<button class="btn" data-action="ruin-act" data-ci="' + ci + '" data-rs="b">'
+        + U.escape(w.b.label) + '（' + U.escape(descB) + '）</button>'
+        + '</div>';
+      h += '<div style="font-size:var(--fs-cap);color:var(--text-dim);">'
+        + '只能选一个。翻过之后这处遗迹就空了 —— 另一样永远留在这里。<br>'
+        + '离你的城越远，翻出来的东西越多（这里 ×' + (Math.round(mul * 100) / 100) + '）。</div>';
+    }
+    h += '</div><div class="panel-foot"><button class="btn" data-action="close-modal">关闭</button></div>';
+    ui.openModal(h);
+  };
+
   ui.openCampModal = function (ci) {
     var C = GAME.camp;
     if (!C) return;
@@ -56346,6 +56612,7 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
 
 
 
+
 (function () {
   var GAME = window.GAME = window.GAME || {};
   var ui = GAME.ui;
@@ -57652,6 +57919,8 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
       case 'ae-once': GAME.doAutoExploreOnce(); ui.openAutoExplore(); break;
       /* v92.4：幸存者营地交涉（招募 / 洗劫）—— 两条路选一条，选完就结束。 */
       case 'camp-act': GAME.doCampAct(el.getAttribute('data-ci'), el.getAttribute('data-mode')); break;
+      /* v92.7：遗迹翻找（两个翻法互斥，翻一次就没了） */
+      case 'ruin-act': GAME.doRuinAct(el.getAttribute('data-ci'), el.getAttribute('data-rs')); break;
       /* v91.59（老板）：自动采购（逐商品补货到目标 · 每现实日上限内）。 */
       case 'toggle-auto-buy': GAME.doToggleAutoBuy(); break;
       case 'auto-buy-once': (function () { var r = GAME.autoBuyOnce(); ui.toast(r.msg); GAME.refreshView(); })(); break;
@@ -58230,6 +58499,18 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
       GAME.refreshAll();
     }
     ui.openCampModal(+ci);
+  };
+  /* v92.7：遗迹翻找 —— 两种翻法互斥，翻过就永远没有另一样。
+     不做二次确认：面板上两种产出都写清了，点下去就是放弃另一个。 */
+  GAME.doRuinAct = function (ci, side) {
+    var r = GAME.ruin && GAME.ruin.act ? GAME.ruin.act(+ci, side) : null;
+    if (!r) { ui.toast('遗迹翻找不可用'); return; }
+    ui.toast((r.ok ? '✅ ' : '⏸ ') + r.msg);
+    if (r.ok) {
+      GAME.log(r.msg, 'sys', 'wild');
+      GAME.refreshAll();
+    }
+    ui.openRuinModal(+ci);
   };
   GAME.doAutoExploreOnce = function () {
     var cfg = GAME.autoExploreCfg();
