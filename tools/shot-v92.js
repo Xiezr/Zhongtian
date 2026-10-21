@@ -124,6 +124,21 @@ function serve() {
   await page.waitForTimeout(1500);
   await page.screenshot({ path: path.join(OUT, '04-autoexplore.png'), timeout: 60000 });
 
+  /* 行政页：年景 + 四方势力 + 叫阵 */
+  await page.evaluate(function () {
+    if (GAME.ui.closeModal) GAME.ui.closeModal();   /* 上一步的弹窗要先关，否则挡住视图 */
+    if (GAME.ui.setView) GAME.ui.setView('admin');
+  });
+  await page.waitForTimeout(1400);
+  await page.screenshot({ path: path.join(OUT, '05-admin.png'), timeout: 60000 });
+
+  /* 斗将面板（招式心理战） */
+  await page.evaluate(function () {
+    if (GAME.ui.openDuel) GAME.ui.openDuel('anvil');
+  });
+  await page.waitForTimeout(1000);
+  await page.screenshot({ path: path.join(OUT, '06-duel.png'), timeout: 60000 });
+
   fs.writeFileSync(path.join(OUT, 'report.json'), JSON.stringify({ stat, stat2, errors }, null, 2));
   console.log('探明(开局)：', stat.seen, '/', stat.total, '=', stat.pct + '%');
   console.log('探明(点亮后)：', stat2.seen, '=', stat2.pct + '%');

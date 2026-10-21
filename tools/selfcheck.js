@@ -144,10 +144,15 @@ rows.forEach(function (x) {
 });
 lines.push('');
 
-const docDir = path.join(ROOT, 'docs');
-const outp = path.join(docDir, '自检-' + YMD + '.md');
-try { fs.writeFileSync(outp, lines.join('\n'), 'utf8'); } catch (e) { /* docs 不可写就只打印 */ }
+/* ⚠️ 产物必须落在**不进版本库**的地方（.workbuddy/tmp/ 已被 .gitignore 覆盖）。
+   第一版写进 docs/，结果自检每跑一次就改一次那个文件 ——
+   "工作区干净"这一项刚提交完又是红的，自己把自己弄脏。
+   生成物不是源码，不该被纳入"是否有未提交改动"的统计。 */
+const outDir = path.join(ROOT, '.workbuddy', 'tmp');
+try { fs.mkdirSync(outDir, { recursive: true }); } catch (e) { /* ignore */ }
+const outp = path.join(outDir, 'selfcheck-' + YMD + '.md');
+try { fs.writeFileSync(outp, lines.join('\n'), 'utf8'); } catch (e) { /* 不可写就只打印 */ }
 
 console.log(lines.join('\n'));
-console.log('\n（简报已写入 docs/自检-' + YMD + '.md）');
+console.log('\n（简报已写入 .workbuddy/tmp/selfcheck-' + YMD + '.md）');
 process.exit(fails.length ? 1 : 0);
