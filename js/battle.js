@@ -1423,6 +1423,39 @@ import './state.js';
       bonusPct: (D.bonusPct == null ? 0.10 : D.bonusPct) };
   };
 
+  /* ============================================================
+   * v92.13（C1 补完）：**斗将士气**
+   * ------------------------------------------------------------
+   * 审计里 C1 判定是「◐ 手动版已做，未接战前士气」——
+   * 赢一场斗将只记履历，没有战略意义。这里接上。
+   *
+   * 口径：
+   *   · 手动斗将胜 → 该英雄 2 现实小时内"有士气"；
+   *   · 这 2 小时里他出征，**只在"斗将本来没触发"的空档**补成我方胜；
+   *   · 已经打过的对拼**不改写**（士气不是外挂，赢了就是赢了，输了还是输了）；
+   *   · 结果仍是"胜者属性 +10%"（复用 duelBoostOf），不新造加成。
+   * ============================================================ */
+  GAME.battle.MORALE_MS = 2 * 3600000;
+  GAME.battle.moraleOf = function (g) {
+    if (!g || !g.duelMoraleUntil) return false;
+    return g.duelMoraleUntil > Date.now();
+  };
+  GAME.battle.applyMorale = function (duel, gen) {
+    if (!gen) return duel;
+    if (!GAME.battle.moraleOf(gen)) return duel;
+    var out = duel || { done: false };
+    if (out.done && out.winner) { out.morale = true; return out; }   /* 打过了，不改写 */
+    out.done = true;
+    out.winner = 'atk';
+    out.winnerName = gen.name;
+    out.morale = true;
+    out.wa = out.wa == null ? 0 : out.wa;
+    out.wb = out.wb == null ? 0 : out.wb;
+    out.bonusPct = (DATA.DUEL && DATA.DUEL.bonusPct != null) ? DATA.DUEL.bonusPct : 0.10;
+    out.log = ['斗将：' + gen.name + ' 挟前番叫阵之威，先声夺人（士气）'];
+    return out;
+  };
+
   /* 战利品按城类型 */
   GAME.battle.genLootEx = function (c, extMul, rnd, dry) {
     var tier = (c && c.type) ? c.type
@@ -2866,6 +2899,9 @@ import './state.js';
     var duel = null, genSim = gen;
     function _doDuel() {
       duel = GAME.battle.rollDuel(gen, scGen, GAME.battle.duelSeedOf(target));
+      /* v92.13（C1 补完）：手动斗将赢过的英雄，这一战先声夺人。
+         只补"本来没触发斗将"的空档，不改写已经打过的结果 —— 士气不是外挂。 */
+      duel = GAME.battle.applyMorale(duel, gen);
       if (duel && duel.done) {
         if (duel.winner === 'atk') genSim = GAME.battle.duelBoostOf(gen);
         else scGen = GAME.battle.duelBoostOf(scGen);

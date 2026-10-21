@@ -30021,6 +30021,39 @@ window.GAME = window.GAME || {};
       bonusPct: (D.bonusPct == null ? 0.10 : D.bonusPct) };
   };
 
+  /* ============================================================
+   * v92.13（C1 补完）：**斗将士气**
+   * ------------------------------------------------------------
+   * 审计里 C1 判定是「◐ 手动版已做，未接战前士气」——
+   * 赢一场斗将只记履历，没有战略意义。这里接上。
+   *
+   * 口径：
+   *   · 手动斗将胜 → 该英雄 2 现实小时内"有士气"；
+   *   · 这 2 小时里他出征，**只在"斗将本来没触发"的空档**补成我方胜；
+   *   · 已经打过的对拼**不改写**（士气不是外挂，赢了就是赢了，输了还是输了）；
+   *   · 结果仍是"胜者属性 +10%"（复用 duelBoostOf），不新造加成。
+   * ============================================================ */
+  GAME.battle.MORALE_MS = 2 * 3600000;
+  GAME.battle.moraleOf = function (g) {
+    if (!g || !g.duelMoraleUntil) return false;
+    return g.duelMoraleUntil > Date.now();
+  };
+  GAME.battle.applyMorale = function (duel, gen) {
+    if (!gen) return duel;
+    if (!GAME.battle.moraleOf(gen)) return duel;
+    var out = duel || { done: false };
+    if (out.done && out.winner) { out.morale = true; return out; }   /* 打过了，不改写 */
+    out.done = true;
+    out.winner = 'atk';
+    out.winnerName = gen.name;
+    out.morale = true;
+    out.wa = out.wa == null ? 0 : out.wa;
+    out.wb = out.wb == null ? 0 : out.wb;
+    out.bonusPct = (DATA.DUEL && DATA.DUEL.bonusPct != null) ? DATA.DUEL.bonusPct : 0.10;
+    out.log = ['斗将：' + gen.name + ' 挟前番叫阵之威，先声夺人（士气）'];
+    return out;
+  };
+
   /* 战利品按城类型 */
   GAME.battle.genLootEx = function (c, extMul, rnd, dry) {
     var tier = (c && c.type) ? c.type
@@ -31464,6 +31497,9 @@ window.GAME = window.GAME || {};
     var duel = null, genSim = gen;
     function _doDuel() {
       duel = GAME.battle.rollDuel(gen, scGen, GAME.battle.duelSeedOf(target));
+      /* v92.13（C1 补完）：手动斗将赢过的英雄，这一战先声夺人。
+         只补"本来没触发斗将"的空档，不改写已经打过的结果 —— 士气不是外挂。 */
+      duel = GAME.battle.applyMorale(duel, gen);
       if (duel && duel.done) {
         if (duel.winner === 'atk') genSim = GAME.battle.duelBoostOf(gen);
         else scGen = GAME.battle.duelBoostOf(scGen);
@@ -51126,8 +51162,11 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
         var rival = GAME.faction.rivalOf(fid);
         S.res = GAME.battle.duelPlay(g0 || { id: 'me', name: '我军主将' }, rival, S.moves, S.seed);
         if (S.res && g0) {
-          if (S.res.winner === 'atk') g0.duelW = (g0.duelW || 0) + 1;
-          else if (S.res.winner === 'def') g0.duelL = (g0.duelL || 0) + 1;
+          if (S.res.winner === 'atk') {
+            g0.duelW = (g0.duelW || 0) + 1;
+            /* v92.13：赢了就带 2 小时士气 —— 下次出征斗将没触发时，算他先声夺人 */
+            g0.duelMoraleUntil = Date.now() + ((GAME.battle.MORALE_MS) || 7200000);
+          } else if (S.res.winner === 'def') g0.duelL = (g0.duelL || 0) + 1;
         }
       }
     }
@@ -51173,7 +51212,9 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
         + U.escape(S.res.winnerName) + ' 胜（' + S.res.wa + ' : ' + S.res.wb + '）'
         + '　· 履历：' + (me ? ((me.duelW || 0) + ' 胜 ' + (me.duelL || 0) + ' 负') : '—') + '</div>';
       h += '<div style="font-size:var(--fs-cap);color:var(--text-dim);margin-top:6px;">'
-        + '（这一版只记履历，尚未接入战前士气加成。）</div>';
+        + (S.res.winner === 'atk'
+          ? '　· 胜者已获 <b>2 小时士气</b>：这段时间他出征时，战前斗将若未触发，算我方先声夺人（+10% 属性）。'
+          : '') + '</div>';
       h += '<div style="margin-top:8px;"><button class="btn" data-action="duel-with" data-fid="' + fid + '"'
         + ' data-reset="1">再来一场</button></div>';
     }

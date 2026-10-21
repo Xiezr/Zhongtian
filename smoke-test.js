@@ -38784,6 +38784,48 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var n = 0; G.faction.stats().forEach(function (x) { if (x.known) n++; }); return n;
     })() + ' / ' + G.faction.arr().length + ' 家');
 
+    console.log('\n===== 296. v92.13 斗将士气（C1 补完）=====');
+
+    check('§296① 赢过才有士气；没赢过没有', (function () {
+      var g = { id: 'g1', name: '甲' };
+      var g2 = { id: 'g2', name: '乙', duelMoraleUntil: Date.now() + 60000 };
+      return G.battle.moraleOf(g) === false && G.battle.moraleOf(g2) === true
+        && G.battle.moraleOf(null) === false;
+    })());
+
+    check('§296② 士气过期即失效', (function () {
+      var g = { id: 'g3', name: '丙', duelMoraleUntil: Date.now() - 1000 };
+      return G.battle.moraleOf(g) === false;
+    })());
+
+    check('§296③ 补空档：斗将没触发时补成我方胜', (function () {
+      var g = { id: 'g4', name: '丁', duelMoraleUntil: Date.now() + 60000 };
+      var d = G.battle.applyMorale({ done: false, chance: 0.5, log: ['未触发'] }, g);
+      return d.done === true && d.winner === 'atk' && d.morale === true && /先声夺人/.test((d.log || []).join(''));
+    })());
+
+    check('§296④ 不改写已经打过的结果（士气不是外挂）', (function () {
+      var g = { id: 'g5', name: '戊', duelMoraleUntil: Date.now() + 60000 };
+      var lost = G.battle.applyMorale({ done: true, winner: 'def', wa: 0, wb: 3 }, g);
+      var won = G.battle.applyMorale({ done: true, winner: 'atk', wa: 3, wb: 1 }, g);
+      return lost.winner === 'def' && won.winner === 'atk';
+    })());
+
+    check('§296⑤ 没士气时原样返回（不误伤）', (function () {
+      var g = { id: 'g6', name: '己' };
+      var d0 = { done: false, chance: 0.5 };
+      var d = G.battle.applyMorale(d0, g);
+      return d.done === false && d.winner === undefined && d === d0;
+    })());
+
+    check('§296⑥ 士气给的仍是 +10%（复用 duelBoostOf，不新造加成）', (function () {
+      var g = { id: 'g7', name: '庚', duelMoraleUntil: Date.now() + 60000, yw: 100, zm: 100, tong: 100, nz: 100, spd: 100 };
+      var d = G.battle.applyMorale({ done: false }, g);
+      if (d.bonusPct == null) return false;
+      var boosted = G.battle.duelBoostOf(g);
+      return boosted._duelBoost === 1 + d.bonusPct;
+    })());
+
     console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');
   process.exit(FAIL ? 1 : 0);
 })();

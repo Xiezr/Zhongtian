@@ -12891,8 +12891,11 @@ import './state.js';
         var rival = GAME.faction.rivalOf(fid);
         S.res = GAME.battle.duelPlay(g0 || { id: 'me', name: '我军主将' }, rival, S.moves, S.seed);
         if (S.res && g0) {
-          if (S.res.winner === 'atk') g0.duelW = (g0.duelW || 0) + 1;
-          else if (S.res.winner === 'def') g0.duelL = (g0.duelL || 0) + 1;
+          if (S.res.winner === 'atk') {
+            g0.duelW = (g0.duelW || 0) + 1;
+            /* v92.13：赢了就带 2 小时士气 —— 下次出征斗将没触发时，算他先声夺人 */
+            g0.duelMoraleUntil = Date.now() + ((GAME.battle.MORALE_MS) || 7200000);
+          } else if (S.res.winner === 'def') g0.duelL = (g0.duelL || 0) + 1;
         }
       }
     }
@@ -12938,7 +12941,9 @@ import './state.js';
         + U.escape(S.res.winnerName) + ' 胜（' + S.res.wa + ' : ' + S.res.wb + '）'
         + '　· 履历：' + (me ? ((me.duelW || 0) + ' 胜 ' + (me.duelL || 0) + ' 负') : '—') + '</div>';
       h += '<div style="font-size:var(--fs-cap);color:var(--text-dim);margin-top:6px;">'
-        + '（这一版只记履历，尚未接入战前士气加成。）</div>';
+        + (S.res.winner === 'atk'
+          ? '　· 胜者已获 <b>2 小时士气</b>：这段时间他出征时，战前斗将若未触发，算我方先声夺人（+10% 属性）。'
+          : '') + '</div>';
       h += '<div style="margin-top:8px;"><button class="btn" data-action="duel-with" data-fid="' + fid + '"'
         + ' data-reset="1">再来一场</button></div>';
     }
