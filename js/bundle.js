@@ -26706,6 +26706,52 @@ window.GAME = window.GAME || {};
     return false;
   };
 
+  /* ============================================================
+   * v92.16（B1 补完）：**势力核心可以打**
+   * ------------------------------------------------------------
+   * 之前势力只会长、能纳贡 —— 你拿它没办法。它的核心格现在是
+   * 一个**可以讨伐的目标**：守军按该家半径算（越大越难打），
+   * 打赢了它的半径腰斩（r × 0.5，保底 2）—— 这就是"打回去"的实感。
+   *
+   * 刻意**不做灭家**：`stats`/面板按"四家"写死，突然少一家会让 UI 空一块。
+   * 削到 r=2 它基本退回老巢，威胁解除，但世界还完整 ——
+   * 这比"打进数组删元素"安全得多，也不会让存档出现半截状态。
+   * ============================================================ */
+  FA.coreAt = function (ci) {
+    var arr = FA.arr();
+    if (ci == null || ci < 0) return null;
+    for (var i = 0; i < arr.length; i++) if (arr[i].core === ci) return arr[i].id;
+    return null;
+  };
+
+  /* 核心守军：按半径线性放大 —— r=2 约 2.3k，r=14 约 8.8k（一座大城的量级）*/
+  FA.coreGarrisonOf = function (fid) {
+    var arr = FA.arr(), f = null;
+    for (var i = 0; i < arr.length; i++) if (arr[i].id === fid) f = arr[i];
+    if (!f) return null;
+    var d = FA.defOf(fid) || {};
+    var base = Math.round(1200 * (1 + f.r * 0.45) * (0.9 + (d.aggr || 1) * 0.1));
+    var army = { buxingji: Math.round(base * 0.55), dunwei: Math.round(base * 0.25), paoshou: Math.round(base * 0.2) };
+    var total = 0;
+    for (var k in army) { if (army[k] <= 0) delete army[k]; else total += army[k]; }
+    return { army: army, total: total, gen: FA.rivalOf(fid), r: f.r };
+  };
+
+  /* 讨伐得手：半径腰斩，保底 2 */
+  FA.onRaidWin = function (fid) {
+    var arr = FA.arr(), f = null;
+    for (var i = 0; i < arr.length; i++) if (arr[i].id === fid) f = arr[i];
+    if (!f) return null;
+    var before = f.r;
+    f.r = Math.max(2, Math.round((f.r * 0.5) * 100) / 100);
+    f.hit = (f.hit || 0) + 1;
+    var d = FA.defOf(fid) || {};
+    return {
+      before: before, after: f.r,
+      msg: '攻破' + (d.name || fid) + ' 的核心：它的势力范围从 ' + before + ' 缩到 ' + f.r + ' 格'
+    };
+  };
+
   /* 态势：每家半径、约格数（六边面积 ≈ 3r²）、离玩家主城多少格 */
   FA.stats = function () {
     var s = SP(), arr = FA.arr();
@@ -28254,13 +28300,17 @@ window.GAME = window.GAME || {};
       var _facName = '';
       if (M._cellKind !== 'unknown' && GAME.faction && GAME.faction.controlOf) {
         var _fid = GAME.faction.controlOf(M._cell.ci != null ? M._cell.ci : -1);
-        if (_fid) { var _fd = GAME.faction.defOf(_fid); _facName = (_fd && _fd.name) || _fid; }
+        if (_fid) {
+          var _fd = GAME.faction.defOf(_fid);
+          var _isCore = GAME.faction.coreAt && GAME.faction.coreAt(M._cell.ci) === _fid;
+          _facName = ((_fd && _fd.name) || _fid) + (_isCore ? ' 的核心（打下来它领地腰斩）' : ' 的地盘');
+        }
       }
       var txt = (M._cellKind === 'unknown')
         ? '【未探明】这一带地图上没有记载'
         : ('【' + _kname + '】' + M._cell.name + ' · 等级 ' + M._cell.level
           + ' · 球系坐标 ' + (GAME.map.coordText ? GAME.map.coordText(M._cell.x, M._cell.y) : (Math.round(M._cell.lon) + '°E ' + Math.round(M._cell.lat) + '°'))
-          + (_facName ? ('　⚔ ' + _facName + ' 的地盘') : ''));
+          + (_facName ? ('　⚔ ' + _facName) : ''));
       /* v90.66（老板）：字号缩到与底部导航栏一致（原 bold 20px 偏大）。 */
       ctx.font = '13px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
       var tw = ctx.measureText(txt).width;
@@ -30632,8 +30682,17 @@ window.GAME = window.GAME || {};
       var lv = GAME.map.wildLevelNow ? GAME.map.wildLevelNow(target.ci) : GAME.map.wildLevel(target.ci);
       /* v27（需求 3）：守军由 wildDefenseAt 按 (格, 现实日) 确定性生成 —— 侦查所见即战斗所遇。 */
       var wd = GAME.wildDefenseAt(target.ci, lv);
+      /* v92.16（B1）：**势力核心不是普通野地** —— 守军按该家半径算（越大越难打），
+         打下来它的领地腰斩。核心格原来只是一块"等级碰巧很低"的野地，
+         玩家打过去毫无意义；现在它是一处真正的目标。 */
+      var _fid = (GAME.faction && GAME.faction.coreAt) ? GAME.faction.coreAt(target.ci) : null;
+      var _fcore = _fid ? GAME.faction.coreGarrisonOf(_fid) : null;
+      if (_fcore) wd = { army: _fcore.army, gen: _fcore.gen, day: wd.day };
       return { ok: true, kind: 'wild', pid: _wpid, ci: target.ci, x: tcell.x, y: tcell.y, lon: tcell.lon, lat: tcell.lat, lv: lv,
-        name: (DATA.TERRAIN[_wildTerr] ? DATA.TERRAIN[_wildTerr].name : '野地') + ' Lv' + lv,
+        faction: _fid,
+        name: _fid
+          ? (((GAME.faction.defOf(_fid) || {}).name || _fid) + ' 核心')
+          : ((DATA.TERRAIN[_wildTerr] ? DATA.TERRAIN[_wildTerr].name : '野地') + ' Lv' + lv),
         terrain: _wildTerr, garrison: scaleGarrison(wd.army, _wpid), guard: wd.gen, def: 0, defDay: wd.day, env: (GAME.planetEnvOf ? GAME.planetEnvOf(_wpid) : null) };
     }
     if (target.kind === 'fort' && GAME.map.fortAt) {
@@ -33028,6 +33087,19 @@ window.GAME = window.GAME || {};
     if (GAME.fog && m.tci != null && m.tci >= 0) {
       try { GAME.fog.revealAround(m.tci, 2, GAME.fog.ALL); } catch (e2) { /* 视野失败不阻断结算 */ }
     }
+    /* v92.16（B1）：**讨伐势力核心得手 → 它的领地腰斩**。
+       判据写多重（不同结算路径返回结构不同），并且整段包 try：
+       削势力失败绝不能拖垮一次正常结算 —— 兵已经打完了，账得先结清。 */
+    try {
+      if (r && m.target && m.target.ci != null && GAME.faction && GAME.faction.coreAt) {
+        var _fraid = GAME.faction.coreAt(m.target.ci);
+        var _fwin = (r.winner === 'atk') || (r.sim && r.sim.winner === 'atk') || (r.result && r.result.winner === 'atk');
+        if (_fraid && _fwin) {
+          var _fres = GAME.faction.onRaidWin(_fraid);
+          if (_fres && GAME.log && GAME.log.war) GAME.log.war('🏴 ' + _fres.msg);
+        }
+      }
+    } catch (eF) { /* 削势力失败不阻断结算 */ }
     /* v89.87：观战挂起（pending）时英雄**保持征战在外**，不置 idle ——
        等 finishBattle 落账后统一收尾（否则战斗中英雄会被当成空闲可再派遣）。
        v89.137：`gen` 可能为 null（无将增援 · station 补兵）—— 守卫防空引用。 */

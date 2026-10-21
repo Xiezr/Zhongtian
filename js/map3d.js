@@ -1236,13 +1236,17 @@ import './gltf.js';
       var _facName = '';
       if (M._cellKind !== 'unknown' && GAME.faction && GAME.faction.controlOf) {
         var _fid = GAME.faction.controlOf(M._cell.ci != null ? M._cell.ci : -1);
-        if (_fid) { var _fd = GAME.faction.defOf(_fid); _facName = (_fd && _fd.name) || _fid; }
+        if (_fid) {
+          var _fd = GAME.faction.defOf(_fid);
+          var _isCore = GAME.faction.coreAt && GAME.faction.coreAt(M._cell.ci) === _fid;
+          _facName = ((_fd && _fd.name) || _fid) + (_isCore ? ' 的核心（打下来它领地腰斩）' : ' 的地盘');
+        }
       }
       var txt = (M._cellKind === 'unknown')
         ? '【未探明】这一带地图上没有记载'
         : ('【' + _kname + '】' + M._cell.name + ' · 等级 ' + M._cell.level
           + ' · 球系坐标 ' + (GAME.map.coordText ? GAME.map.coordText(M._cell.x, M._cell.y) : (Math.round(M._cell.lon) + '°E ' + Math.round(M._cell.lat) + '°'))
-          + (_facName ? ('　⚔ ' + _facName + ' 的地盘') : ''));
+          + (_facName ? ('　⚔ ' + _facName) : ''));
       /* v90.66（老板）：字号缩到与底部导航栏一致（原 bold 20px 偏大）。 */
       ctx.font = '13px sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'top';
       var tw = ctx.measureText(txt).width;

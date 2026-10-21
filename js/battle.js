@@ -1981,8 +1981,17 @@ import './state.js';
       var lv = GAME.map.wildLevelNow ? GAME.map.wildLevelNow(target.ci) : GAME.map.wildLevel(target.ci);
       /* v27（需求 3）：守军由 wildDefenseAt 按 (格, 现实日) 确定性生成 —— 侦查所见即战斗所遇。 */
       var wd = GAME.wildDefenseAt(target.ci, lv);
+      /* v92.16（B1）：**势力核心不是普通野地** —— 守军按该家半径算（越大越难打），
+         打下来它的领地腰斩。核心格原来只是一块"等级碰巧很低"的野地，
+         玩家打过去毫无意义；现在它是一处真正的目标。 */
+      var _fid = (GAME.faction && GAME.faction.coreAt) ? GAME.faction.coreAt(target.ci) : null;
+      var _fcore = _fid ? GAME.faction.coreGarrisonOf(_fid) : null;
+      if (_fcore) wd = { army: _fcore.army, gen: _fcore.gen, day: wd.day };
       return { ok: true, kind: 'wild', pid: _wpid, ci: target.ci, x: tcell.x, y: tcell.y, lon: tcell.lon, lat: tcell.lat, lv: lv,
-        name: (DATA.TERRAIN[_wildTerr] ? DATA.TERRAIN[_wildTerr].name : '野地') + ' Lv' + lv,
+        faction: _fid,
+        name: _fid
+          ? (((GAME.faction.defOf(_fid) || {}).name || _fid) + ' 核心')
+          : ((DATA.TERRAIN[_wildTerr] ? DATA.TERRAIN[_wildTerr].name : '野地') + ' Lv' + lv),
         terrain: _wildTerr, garrison: scaleGarrison(wd.army, _wpid), guard: wd.gen, def: 0, defDay: wd.day, env: (GAME.planetEnvOf ? GAME.planetEnvOf(_wpid) : null) };
     }
     if (target.kind === 'fort' && GAME.map.fortAt) {
@@ -4377,6 +4386,19 @@ import './state.js';
     if (GAME.fog && m.tci != null && m.tci >= 0) {
       try { GAME.fog.revealAround(m.tci, 2, GAME.fog.ALL); } catch (e2) { /* 视野失败不阻断结算 */ }
     }
+    /* v92.16（B1）：**讨伐势力核心得手 → 它的领地腰斩**。
+       判据写多重（不同结算路径返回结构不同），并且整段包 try：
+       削势力失败绝不能拖垮一次正常结算 —— 兵已经打完了，账得先结清。 */
+    try {
+      if (r && m.target && m.target.ci != null && GAME.faction && GAME.faction.coreAt) {
+        var _fraid = GAME.faction.coreAt(m.target.ci);
+        var _fwin = (r.winner === 'atk') || (r.sim && r.sim.winner === 'atk') || (r.result && r.result.winner === 'atk');
+        if (_fraid && _fwin) {
+          var _fres = GAME.faction.onRaidWin(_fraid);
+          if (_fres && GAME.log && GAME.log.war) GAME.log.war('🏴 ' + _fres.msg);
+        }
+      }
+    } catch (eF) { /* 削势力失败不阻断结算 */ }
     /* v89.87：观战挂起（pending）时英雄**保持征战在外**，不置 idle ——
        等 finishBattle 落账后统一收尾（否则战斗中英雄会被当成空闲可再派遣）。
        v89.137：`gen` 可能为 null（无将增援 · station 补兵）—— 守卫防空引用。 */

@@ -222,6 +222,52 @@
     return false;
   };
 
+  /* ============================================================
+   * v92.16（B1 补完）：**势力核心可以打**
+   * ------------------------------------------------------------
+   * 之前势力只会长、能纳贡 —— 你拿它没办法。它的核心格现在是
+   * 一个**可以讨伐的目标**：守军按该家半径算（越大越难打），
+   * 打赢了它的半径腰斩（r × 0.5，保底 2）—— 这就是"打回去"的实感。
+   *
+   * 刻意**不做灭家**：`stats`/面板按"四家"写死，突然少一家会让 UI 空一块。
+   * 削到 r=2 它基本退回老巢，威胁解除，但世界还完整 ——
+   * 这比"打进数组删元素"安全得多，也不会让存档出现半截状态。
+   * ============================================================ */
+  FA.coreAt = function (ci) {
+    var arr = FA.arr();
+    if (ci == null || ci < 0) return null;
+    for (var i = 0; i < arr.length; i++) if (arr[i].core === ci) return arr[i].id;
+    return null;
+  };
+
+  /* 核心守军：按半径线性放大 —— r=2 约 2.3k，r=14 约 8.8k（一座大城的量级）*/
+  FA.coreGarrisonOf = function (fid) {
+    var arr = FA.arr(), f = null;
+    for (var i = 0; i < arr.length; i++) if (arr[i].id === fid) f = arr[i];
+    if (!f) return null;
+    var d = FA.defOf(fid) || {};
+    var base = Math.round(1200 * (1 + f.r * 0.45) * (0.9 + (d.aggr || 1) * 0.1));
+    var army = { buxingji: Math.round(base * 0.55), dunwei: Math.round(base * 0.25), paoshou: Math.round(base * 0.2) };
+    var total = 0;
+    for (var k in army) { if (army[k] <= 0) delete army[k]; else total += army[k]; }
+    return { army: army, total: total, gen: FA.rivalOf(fid), r: f.r };
+  };
+
+  /* 讨伐得手：半径腰斩，保底 2 */
+  FA.onRaidWin = function (fid) {
+    var arr = FA.arr(), f = null;
+    for (var i = 0; i < arr.length; i++) if (arr[i].id === fid) f = arr[i];
+    if (!f) return null;
+    var before = f.r;
+    f.r = Math.max(2, Math.round((f.r * 0.5) * 100) / 100);
+    f.hit = (f.hit || 0) + 1;
+    var d = FA.defOf(fid) || {};
+    return {
+      before: before, after: f.r,
+      msg: '攻破' + (d.name || fid) + ' 的核心：它的势力范围从 ' + before + ' 缩到 ' + f.r + ' 格'
+    };
+  };
+
   /* 态势：每家半径、约格数（六边面积 ≈ 3r²）、离玩家主城多少格 */
   FA.stats = function () {
     var s = SP(), arr = FA.arr();

@@ -38922,14 +38922,68 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       return /城墙 Lv\d+/.test(line) && /城防 \d+/.test(line);
     })(), (function () { return G.defenseLineOf(c3city); })());
 
-    check('§298④ 空城返回 null（不炸）', function () {
+    check('§298④ 空城返回 null（不炸）', (function () {
       return G.defensePartsOf(null) === null && G.defenseLineOf(null) === '';
-    });
+    })());
 
     check('§298⑤ 拆账各项都不为负', (function () {
       var p = G.defensePartsOf(c3city);
       if (!p) return false;
       return p.base >= 0 && p.wallAdd >= 0 && p.towerAdd >= 0 && p.mastery >= 0 && p.total >= 0;
+    })());
+
+    console.log('\n===== 299. v92.16 势力核心可讨伐（B1 补完）=====');
+
+    var b1arr = (function () {
+      G.newGame({ name: '讨伐', cityName: '灰岗' });
+      G.faction.ensure();
+      return G.faction.arr().slice();
+    })();
+
+    check('§299① coreAt：核心格认得出来，别处不认', (function () {
+      if (!b1arr.length) return false;
+      var f = b1arr[0];
+      return G.faction.coreAt(f.core) === f.id && G.faction.coreAt(f.core + 1) === null;
+    })());
+
+    check('§299② 核心守军按半径放大（越大越难打）', (function () {
+      if (!b1arr.length) return false;
+      var f = b1arr[0];
+      var g0 = G.faction.coreGarrisonOf(f.id);
+      var r0 = f.r;
+      f.r = r0 + 6;
+      var g1 = G.faction.coreGarrisonOf(f.id);
+      f.r = r0;
+      return g0.total > 0 && g1.total > g0.total;
+    })(), (function () {
+      var f = b1arr[0];
+      return f ? (G.faction.coreGarrisonOf(f.id).total + ' 守军') : '?';
+    })());
+
+    check('§299③ 讨伐得手：半径腰斩且保底 2', (function () {
+      if (!b1arr.length) return false;
+      var f = b1arr[0];
+      f.r = 12;
+      var r = G.faction.onRaidWin(f.id);
+      var ok1 = r && r.after === 6;
+      /* 再打一次：6 → 3 */
+      var r2 = G.faction.onRaidWin(f.id);
+      /* 再打：3 → 2（保底，不是 1.5）*/
+      var r3 = G.faction.onRaidWin(f.id);
+      var ok3 = r3 && r3.after === 2;
+      return ok1 && r2.after === 3 && ok3;
+    })(), '12 → 6 → 3 → 2');
+
+    check('§299④ 连续讨伐不会把半径压到 0（世界不塌）', (function () {
+      if (!b1arr.length) return false;
+      var f = b1arr[0];
+      for (var i = 0; i < 10; i++) G.faction.onRaidWin(f.id);
+      return f.r >= 2;
+    })());
+
+    check('§299⑤ 未知势力不炸（返回 null）', (function () {
+      return G.faction.coreGarrisonOf('没有这家') === null
+        && G.faction.onRaidWin('没有这家') === null;
     })());
 
     console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');
