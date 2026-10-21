@@ -3482,7 +3482,13 @@ import './state.js';
         + '<div style="display:flex;align-items:center;gap:8px;margin-top:4px;">'
         + '<div class="pbar" style="flex:1;"><i style="width:' + Math.max(0.5, fs.pct) + '%"></i></div>'
         + '<span style="font-size:var(--fs-cap);">' + U.fmt(fs.seen) + ' / ' + U.fmt(fs.total) + ' 格（' + fs.pct + '%）</span>'
-        + '</div></div>';
+        + '</div>'
+        /* v92.19：传闻 —— 不指路，只说"还剩多少没看见" */
+        + (GAME.rumorLineOf
+          ? ('<div style="font-size:var(--fs-cap);color:var(--text-dim);margin-top:5px;">'
+            + U.escape(GAME.rumorLineOf()) + '</div>')
+          : '')
+        + '</div>';
     }
 
     if (!list.length) {
@@ -8097,7 +8103,12 @@ import './state.js';
     if (Y) {
       h += '<div style="font-size:var(--fs-cap);color:var(--text-dim);margin-bottom:4px;">'
         + '🌍 今年 · <b style="color:var(--gold-light);">' + U.escape(Y.name) + '</b>　'
-        + U.escape(Y.note || '') + '</div>';
+        + U.escape(Y.note || '')
+        + (GAME.coldActiveOf && GAME.coldActiveOf()
+          ? '　<span style="color:var(--red-light);">❄ 寒潮：粮产 −'
+            + Math.round((1 - (GAME.coldMulOf ? GAME.coldMulOf() : 0.8)) * 100) + '%</span>'
+          : '')
+        + '</div>';
     }
     h += '<div style="font-size:var(--fs-cap);color:var(--gold-light);margin-bottom:6px;">⚔ 四方势力'
       + (th ? '　<span style="color:var(--red-light);">⚠ ' + U.escape(th.name) + ' 已到 ' + Math.round(th.near) + ' 格内</span>' : '')

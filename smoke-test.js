@@ -39063,6 +39063,92 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       return f.r >= 2;
     })(), 'r=' + (function () { return b2arr[1].r; })());
 
+    console.log('\n===== 301. v92.18 寒潮（B4 生存压力）=====');
+
+    var coldCase = (function () {
+      G.newGame({ name: '寒潮', cityName: '灰岗' });
+      G.state.world.elapsed = 0;
+      return true;
+    })();
+
+    check('§301① 开局不是寒冬（周期落在末尾）', (function () {
+      G.state.world.elapsed = 0;
+      return G.coldActiveOf() === false && G.coldMulOf() === 1;
+    })());
+
+    check('§301② 周期末尾进入寒潮（粮产 ×0.8）', (function () {
+      var C = DATA.COLD || {};
+      var spm = (DATA.CALENDAR.secPerYear || 57600) / 12;
+      var m = (C.periodMonths || 24) - 1;            /* 周期最后一个月 */
+      G.state.world.elapsed = m * spm;
+      return G.coldActiveOf() === true && Math.abs(G.coldMulOf() - (C.grainMul || 0.8)) < 1e-9;
+    })(), '×' + (function () { return G.coldMulOf(); })());
+
+    check('§301③ 寒潮只进粮产因子，不进铁矿因子', (function () {
+      var C = DATA.COLD || {};
+      var spm = (DATA.CALENDAR.secPerYear || 57600) / 12;
+      G.state.world.elapsed = ((C.periodMonths || 24) - 1) * spm;
+      var c = G.currentCity();
+      var gf = G.prodFactors('grain', c) || [];
+      var inf = G.prodFactors('iron', c) || [];
+      var gHas = gf.some(function (x) { return x.name === '寒潮'; });
+      var iHas = inf.some(function (x) { return x.name === '寒潮'; });
+      return gHas === true && iHas === false;
+    })());
+
+    check('§301④ 寒潮不碰存量（只削产量）', (function () {
+      var C = DATA.COLD || {};
+      var spm = (DATA.CALENDAR.secPerYear || 57600) / 12;
+      var c = G.currentCity();
+      c.res = c.res || {};
+      c.res.grain = 12345;
+      G.state.world.elapsed = ((C.periodMonths || 24) - 1) * spm;
+      G.coldActiveOf();                              /* 只读，不该改任何东西 */
+      return c.res.grain === 12345;
+    })());
+
+    check('§301⑤ 一个完整周期里只寒一次（连续两周期各一次）', (function () {
+      var C = DATA.COLD || {};
+      var spm = (DATA.CALENDAR.secPerYear || 57600) / 12;
+      var P = C.periodMonths || 24;
+      var hits = 0;
+      for (var m = 0; m < P * 2; m++) {
+        G.state.world.elapsed = m * spm;
+        if (G.coldActiveOf()) hits++;
+      }
+      return hits === (C.lenMonths || 6) * 2;
+    })(), (function () {
+      var C = DATA.COLD || {};
+      var spm = (DATA.CALENDAR.secPerYear || 57600) / 12;
+      var P = C.periodMonths || 24, hits = 0;
+      for (var m = 0; m < P * 2; m++) { G.state.world.elapsed = m * spm; if (G.coldActiveOf()) hits++; }
+      return hits + ' 个月';
+    })());
+
+    console.log('\n===== 302. v92.19 传闻（A2 延伸）=====');
+
+    check('§302① 开局有传闻（还有没看见的营地/遗迹）', (function () {
+      G.newGame({ name: '传闻', cityName: '灰岗' });
+      var line = G.rumorLineOf();
+      return /营地|遗迹/.test(line) && /无人到过/.test(line);
+    })(), (function () { return G.rumorLineOf(); })());
+
+    check('§302② 全探明后传闻变成"没什么没见过"', (function () {
+      /* 把所有候选都点亮并登记 */
+      var cl = G.camp.list(), rl = G.ruin.list();
+      cl.forEach(function (ci) { G.fog.bump(ci, G.fog.ALL); });
+      rl.forEach(function (ci) { G.fog.bump(ci, G.fog.ALL); });
+      G.state.camps = {}; G.state.ruins = {};
+      G.camp.sweep(true); G.ruin.sweep(true);
+      var line = G.rumorLineOf();
+      return /没什么你没见过/.test(line);
+    })());
+
+    check('§302③ 传闻不指路（不含坐标/格数）', (function () {
+      var line = G.rumorLineOf();
+      return !/\d+\s*格/.test(line) && !/坐标/.test(line);
+    })(), (function () { return G.rumorLineOf(); })());
+
     console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');
   process.exit(FAIL ? 1 : 0);
 })();

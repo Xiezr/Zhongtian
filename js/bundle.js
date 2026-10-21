@@ -4628,6 +4628,25 @@ window.GAME = window.GAME || {};
     { id: 'boom', name: '兴年', note: '百业俱兴，旧世之物重现。', ruinMul: 1.3 }
   ];
 
+  /* ============================================================
+   * v92.18（B4 生存压力）：**寒潮**
+   * ------------------------------------------------------------
+   * 文档 B4：「城市有粮食/温度/民心三条线，冬天或辐射季来临时做抉择」。
+   * 粮与民心已有，温度线没有 —— 这一版加一条最轻的：
+   *
+   * ⚠️ 刻意**不塞进 DATA.YEARS**：年景按 `year % N` 取值，
+   *    往数组里插一项会让所有年份对应的年景整体位移 —— 现存的
+   *    §292 断言与所有"这一年产量"的预期都得重算。
+   *    所以寒潮做成**独立的周期事件**，按月份算，不碰年景映射。
+   *
+   * 应对手段不是新系统：**平时多存粮**。寒潮只削产量，不碰存量。
+   * ============================================================ */
+  DATA.COLD = {
+    periodMonths: 24,     /* 每 24 个游戏月来一次 */
+    lenMonths: 6,         /* 持续 6 个月 */
+    grainMul: 0.8         /* 期间粮产 −20%（只削产量，不碰存量）*/
+  };
+
   DATA.RUIN = {
     chance: 0.0025,        /* 陆地格约 0.25%（40962 × 0.25% ≈ 100 处）*/
     kinds: [
@@ -10053,6 +10072,12 @@ window.GAME = window.GAME || {};
      不传则退回自己算（单次调用无妨；但**别放进逐城循环**：那是 O(城×格)/次）。 */
   GAME.prodFactors = function (r, city, mpGlobal) {
     var s = GAME.state, list = [];
+    /* v92.18（B4 生存压力）：寒潮 —— **只削粮产**，不碰其他资源、不碰存量。
+       玩家的应对手段就是平时多存粮，所以它必须能被提前看到（行政页有提示）。 */
+    if (r === 'grain' && GAME.coldMulOf) {
+      var _cm18 = GAME.coldMulOf();
+      if (Math.abs(_cm18 - 1) > 1e-9) list.push({ name: '寒潮', d: _cm18 - 1 });
+    }
     /* v89.191：产量科技按**本城**算（各城科技独立生效）—— 逐城循环里传 city，别回落当前城。 */
     var techMult = GAME.techMult(city);
     if (techMult[r]) list.push({ name: '科技', d: techMult[r] });
@@ -13643,6 +13668,56 @@ window.GAME = window.GAME || {};
     var i = ((y - 1) % L.length + L.length) % L.length;
     return L[i];
   };
+  /* ============================================================
+   * v92.18（B4）：寒潮 —— 每 periodMonths 个月来一次，持续 lenMonths 个月
+   * ------------------------------------------------------------
+   * 纯函数：只读 world.elapsed，不落状态（所以读档/重放不会出现"寒潮错位"）。
+   * 位于周期**末尾**（第 period-len ~ period 个月），所以开局不是寒冬。
+   * ============================================================ */
+  GAME.coldActiveOf = function () {
+    var C = (GAME.DATA && GAME.DATA.COLD) || {};
+    var cal = (GAME.DATA && GAME.DATA.CALENDAR) || {};
+    var spm = (cal.secPerYear || 57600) / 12;
+    var st = GAME.state || {};
+    var m = Math.floor(((st.world && st.world.elapsed) || 0) / spm);
+    var period = C.periodMonths || 24;
+    var len = C.lenMonths || 6;
+    var pos = ((m % period) + period) % period;
+    return pos >= (period - len);
+  };
+  /* 粮产乘数（寒潮 0.8，其余 1）—— 唯一消费点是 prodFactors */
+  GAME.coldMulOf = function () {
+    var C = (GAME.DATA && GAME.DATA.COLD) || {};
+    return GAME.coldActiveOf() ? (C.grainMul == null ? 0.8 : C.grainMul) : 1;
+  };
+
+  /* ============================================================
+   * v92.19（A2 延伸）：**传闻** —— 让迷雾有"值得再走一趟"的理由
+   * ------------------------------------------------------------
+   * 迷雾点亮之后，玩家会陷入"我看到的就是全部"的错觉：
+   * 行迹 10% 也好 40% 也好，他不知道**没看见的部分还剩什么**。
+   * 传闻只说一句实话：**没人到过的地方还有几处营地、几处遗迹**。
+   * 不指路、不给坐标 —— 那是"情报"，不是"传闻"。
+   * ============================================================ */
+  GAME.rumorLineOf = function () {
+    var cm = 0, ru = 0, i;
+    if (GAME.fog && GAME.fog.get) {
+      if (GAME.camp && GAME.camp.list) {
+        var cl = GAME.camp.list(), cf = GAME.camp.found ? GAME.camp.found() : {};
+        for (i = 0; i < cl.length; i++) if (!cf[cl[i]] && GAME.fog.get(cl[i]) === 0) cm++;
+      }
+      if (GAME.ruin && GAME.ruin.list) {
+        var rl = GAME.ruin.list(), rf = GAME.ruin.found ? GAME.ruin.found() : {};
+        for (i = 0; i < rl.length; i++) if (!rf[rl[i]] && GAME.fog.get(rl[i]) === 0) ru++;
+      }
+    }
+    if (!cm && !ru) return '传闻：这颗星球上已经没什么你没见过的东西了。';
+    var seg = [];
+    if (cm) seg.push(cm + ' 处营地');
+    if (ru) seg.push(ru + ' 处旧世界遗迹');
+    return '传闻：无人到过的地方还有 ' + seg.join('、') + ' —— 往没亮的地方走。';
+  };
+
   /* 取某个年景修数的便捷出口（没配 yearly 字段就是 1） */
   GAME.yearMulOf = function (key) {
     var Y = GAME.yearOf();
@@ -42085,7 +42160,13 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
         + '<div style="display:flex;align-items:center;gap:8px;margin-top:4px;">'
         + '<div class="pbar" style="flex:1;"><i style="width:' + Math.max(0.5, fs.pct) + '%"></i></div>'
         + '<span style="font-size:var(--fs-cap);">' + U.fmt(fs.seen) + ' / ' + U.fmt(fs.total) + ' 格（' + fs.pct + '%）</span>'
-        + '</div></div>';
+        + '</div>'
+        /* v92.19：传闻 —— 不指路，只说"还剩多少没看见" */
+        + (GAME.rumorLineOf
+          ? ('<div style="font-size:var(--fs-cap);color:var(--text-dim);margin-top:5px;">'
+            + U.escape(GAME.rumorLineOf()) + '</div>')
+          : '')
+        + '</div>';
     }
 
     if (!list.length) {
@@ -46700,7 +46781,12 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
     if (Y) {
       h += '<div style="font-size:var(--fs-cap);color:var(--text-dim);margin-bottom:4px;">'
         + '🌍 今年 · <b style="color:var(--gold-light);">' + U.escape(Y.name) + '</b>　'
-        + U.escape(Y.note || '') + '</div>';
+        + U.escape(Y.note || '')
+        + (GAME.coldActiveOf && GAME.coldActiveOf()
+          ? '　<span style="color:var(--red-light);">❄ 寒潮：粮产 −'
+            + Math.round((1 - (GAME.coldMulOf ? GAME.coldMulOf() : 0.8)) * 100) + '%</span>'
+          : '')
+        + '</div>';
     }
     h += '<div style="font-size:var(--fs-cap);color:var(--gold-light);margin-bottom:6px;">⚔ 四方势力'
       + (th ? '　<span style="color:var(--red-light);">⚠ ' + U.escape(th.name) + ' 已到 ' + Math.round(th.near) + ' 格内</span>' : '')

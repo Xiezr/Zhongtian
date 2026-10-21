@@ -216,6 +216,56 @@ import './state.js';
     var i = ((y - 1) % L.length + L.length) % L.length;
     return L[i];
   };
+  /* ============================================================
+   * v92.18（B4）：寒潮 —— 每 periodMonths 个月来一次，持续 lenMonths 个月
+   * ------------------------------------------------------------
+   * 纯函数：只读 world.elapsed，不落状态（所以读档/重放不会出现"寒潮错位"）。
+   * 位于周期**末尾**（第 period-len ~ period 个月），所以开局不是寒冬。
+   * ============================================================ */
+  GAME.coldActiveOf = function () {
+    var C = (GAME.DATA && GAME.DATA.COLD) || {};
+    var cal = (GAME.DATA && GAME.DATA.CALENDAR) || {};
+    var spm = (cal.secPerYear || 57600) / 12;
+    var st = GAME.state || {};
+    var m = Math.floor(((st.world && st.world.elapsed) || 0) / spm);
+    var period = C.periodMonths || 24;
+    var len = C.lenMonths || 6;
+    var pos = ((m % period) + period) % period;
+    return pos >= (period - len);
+  };
+  /* 粮产乘数（寒潮 0.8，其余 1）—— 唯一消费点是 prodFactors */
+  GAME.coldMulOf = function () {
+    var C = (GAME.DATA && GAME.DATA.COLD) || {};
+    return GAME.coldActiveOf() ? (C.grainMul == null ? 0.8 : C.grainMul) : 1;
+  };
+
+  /* ============================================================
+   * v92.19（A2 延伸）：**传闻** —— 让迷雾有"值得再走一趟"的理由
+   * ------------------------------------------------------------
+   * 迷雾点亮之后，玩家会陷入"我看到的就是全部"的错觉：
+   * 行迹 10% 也好 40% 也好，他不知道**没看见的部分还剩什么**。
+   * 传闻只说一句实话：**没人到过的地方还有几处营地、几处遗迹**。
+   * 不指路、不给坐标 —— 那是"情报"，不是"传闻"。
+   * ============================================================ */
+  GAME.rumorLineOf = function () {
+    var cm = 0, ru = 0, i;
+    if (GAME.fog && GAME.fog.get) {
+      if (GAME.camp && GAME.camp.list) {
+        var cl = GAME.camp.list(), cf = GAME.camp.found ? GAME.camp.found() : {};
+        for (i = 0; i < cl.length; i++) if (!cf[cl[i]] && GAME.fog.get(cl[i]) === 0) cm++;
+      }
+      if (GAME.ruin && GAME.ruin.list) {
+        var rl = GAME.ruin.list(), rf = GAME.ruin.found ? GAME.ruin.found() : {};
+        for (i = 0; i < rl.length; i++) if (!rf[rl[i]] && GAME.fog.get(rl[i]) === 0) ru++;
+      }
+    }
+    if (!cm && !ru) return '传闻：这颗星球上已经没什么你没见过的东西了。';
+    var seg = [];
+    if (cm) seg.push(cm + ' 处营地');
+    if (ru) seg.push(ru + ' 处旧世界遗迹');
+    return '传闻：无人到过的地方还有 ' + seg.join('、') + ' —— 往没亮的地方走。';
+  };
+
   /* 取某个年景修数的便捷出口（没配 yearly 字段就是 1） */
   GAME.yearMulOf = function (key) {
     var Y = GAME.yearOf();

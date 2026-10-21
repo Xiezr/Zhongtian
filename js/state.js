@@ -3967,6 +3967,12 @@ import './data.js';
      不传则退回自己算（单次调用无妨；但**别放进逐城循环**：那是 O(城×格)/次）。 */
   GAME.prodFactors = function (r, city, mpGlobal) {
     var s = GAME.state, list = [];
+    /* v92.18（B4 生存压力）：寒潮 —— **只削粮产**，不碰其他资源、不碰存量。
+       玩家的应对手段就是平时多存粮，所以它必须能被提前看到（行政页有提示）。 */
+    if (r === 'grain' && GAME.coldMulOf) {
+      var _cm18 = GAME.coldMulOf();
+      if (Math.abs(_cm18 - 1) > 1e-9) list.push({ name: '寒潮', d: _cm18 - 1 });
+    }
     /* v89.191：产量科技按**本城**算（各城科技独立生效）—— 逐城循环里传 city，别回落当前城。 */
     var techMult = GAME.techMult(city);
     if (techMult[r]) list.push({ name: '科技', d: techMult[r] });
