@@ -12384,7 +12384,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
     /* ⚠️ 这份 ORDER 与 build_bundle.py 的 ORDER **必须逐条一致**（本文故意不复用脚本，
        就是为了"构建脚本自己算错时测试还能抓到"）。加了模块两边都要加 ——
        v92 加 fog / memorial 时这里漏改，导致 hash 对不上、守卫假红。 */
-    var ORDER = ['core', 'registry', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'domain', 'map', 'sphere', 'risk', 'years', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'rival', 'land', 'taint', 'climate', 'surge', 'relic', 'goals', 'veteran', 'setskill', 'deck', 'bond', 'tower', 'wonderwar', 'delve', 'unrest', 'expose', 'trooplv', 'idle', 'ending', 'muster', 'founding', 'gltf',
+    var ORDER = ['core', 'registry', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'domain', 'map', 'sphere', 'risk', 'years', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'rival', 'land', 'taint', 'climate', 'surge', 'relic', 'goals', 'veteran', 'setskill', 'deck', 'bond', 'tower', 'wonderwar', 'delve', 'unrest', 'expose', 'trooplv', 'idle', 'ending', 'muster', 'founding', 'prologue', 'gltf',
       'map3d', 'battle', 'strategy', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits', 'story', 'ui', 'main'];
     var h = crypto.createHash('sha256');
     try {
@@ -41681,6 +41681,121 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })(), (function () { return '冷却靠 city._foundAt'; })());
 
     restore();
+  })();
+
+
+  /* ============================================================
+   * §326 · v105：前传 —— 先没有城，打怪升到 Lv20 才立城
+   * ------------------------------------------------------------
+   * 老板原话：「一开始将领是没有城的，君主是没有城的……升到 20 级，
+   *   然后再给予一个建城的一个机会。」这里钉四件事：
+   *   ① 前传状态存在且**只有显式传 prologue:true 才有**（默认不能被卷进去）；
+   *   ② 前传期产出 0 / 不能建 / 不能招（三个闸门真的合上）；
+   *   ③ 荒野行动给经验（走 gainExp 既有通道）；
+   *   ④ 不到 Lv20 立不了城；到了就立得成，且闸门同时松开。
+   * ============================================================ */
+  console.log('\n===== 326. v105 前传：没有城 → 荒野升到 Lv20 → 立城 =====');
+  (function () {
+    var G2 = G;
+    if (!G2.prologue) return;
+
+    /* ① 默认不进前传（324 处测试直接调 newGame，默认开就是集体假红） */
+    var stD = G2.newGame({ name: '前传默认', cityName: '灰岗' });
+    check('§326① newGame 不传 prologue → 不进前传（老路不变）', (function () {
+      return stD && G2.prologue.on() === false;
+    })(), (function () { return 'prologue.on=' + G2.prologue.on(); })());
+
+    /* 后面都用一个真前传档 */
+    var stP = G2.newGame({ name: '前传档', cityName: '灰岗', prologue: true });
+    check('§326② 显式 prologue:true → 进前传，君主从 Lv1 开始', (function () {
+      var lord = G2.prologue.lord();
+      return G2.prologue.on() === true && !!lord && (lord.level | 0) >= 1;
+    })(), (function () {
+      var lord = G2.prologue.lord();
+      return 'on=' + G2.prologue.on() + ' · 君主 Lv' + (lord ? lord.level : '?')
+        + ' · 要 Lv' + G2.prologue.needLv();
+    })());
+
+    /* ③ 三个闸门：产出 0 / 不能建 / 不能招 */
+    check('§326③ 前传期产出真的为 0（辎重不是城产）', (function () {
+      var c = G2.currentCity();
+      if (!c) return false;
+      var p = G2.cityProdPerSec(c);
+      return ['grain', 'wood', 'stone', 'iron', 'gold'].every(function (k) { return !p[k]; });
+    })(), (function () {
+      var c = G2.currentCity();
+      var p = c ? G2.cityProdPerSec(c) : {};
+      return '粮 ' + (p.grain || 0) + ' · 木 ' + (p.wood || 0);
+    })());
+
+    check('§326④ 前传期不能建、不能招（闸门在统一出口上，不是面板置灰）', (function () {
+      var c = G2.currentCity();
+      if (!c) return false;
+      var cell = (c.cells || []).filter(function (x) { return !x.build && !x.official; })[0];
+      var bi = cell ? G2.buildAt(c.id, c.cells.indexOf(cell), 'nongtian') : { ok: null };
+      var tr = G2.train('buxingji', 10, c.id);
+      return bi.ok === false && tr.ok === false
+        && /还没有城/.test(bi.msg || '') && /还没有城/.test(tr.msg || '');
+    })(), (function () {
+      var c = G2.currentCity();
+      var tr = c ? G2.train('buxingji', 10, c.id) : {};
+      return (tr.msg || '').slice(0, 30);
+    })());
+
+    /* ④ 荒野行动给经验（stub 内核，只测前传这层接线） */
+    check('§326⑤ 荒野行动 → 经验进 gainExp（内核三段走 stub，只验接线）', (function () {
+      var lord = G2.prologue.lord();
+      if (!lord) return false;
+      /* v105：P.act 走的是 check → spend → roll 三段（要传前传倍率），
+         所以 stub 也要三段一起换；只 stub jianghuDo 已经拦不住了。 */
+      var bC = G2.jianghuCheck, bS = G2.jianghuSpend, bR = G2.jianghuRoll;
+      G2.jianghuCheck = function () {
+        return { ok: true, gen: lord, day: 0, lv: 0, ci: 0, actId: 'tao',
+          act: { id: 'tao', kind: 'fight', name: '清剿', energy: 0, stam: 0 } };
+      };
+      G2.jianghuSpend = function () { return { ok: true }; };
+      G2.jianghuRoll = function () {
+        return { ok: true, name: '清剿 · 旗开得胜', text: '辐能核心 +40', bad: false, grade: 'win' };
+      };
+      var e0 = lord.exp || 0, lv0 = lord.level;
+      var r = G2.prologue.act(0, 'tao');
+      G2.jianghuCheck = bC; G2.jianghuSpend = bS; G2.jianghuRoll = bR;
+      return r.ok === true && r.gain > 0 && ((lord.exp || 0) > e0 || (lord.level | 0) > lv0);
+    })(), (function () {
+      var lord = G2.prologue.lord();
+      return lord ? ('Lv' + lord.level + ' · exp ' + (lord.exp || 0)) : 'no lord';
+    })());
+
+    /* ⑤ 不到 Lv20 立不了城 */
+    check('§326⑥ 不到 Lv20 → 立城被拒（门槛是真的）', (function () {
+      var lord = G2.prologue.lord();
+      if (!lord) return false;
+      lord.level = 1;
+      var r = G2.prologue.build();
+      return r.ok === false && G2.prologue.on() === true;
+    })(), (function () {
+      var lord = G2.prologue.lord();
+      return lord ? ('Lv' + lord.level + ' / ' + G2.prologue.needLv()) : '?';
+    })());
+
+    /* ⑥ 到了 Lv20 → 立得成，且三个闸门同时松开 */
+    check('§326⑦ Lv20 → 立城成功，前传结束、产出恢复', (function () {
+      var lord = G2.prologue.lord();
+      var c = G2.currentCity();
+      if (!lord || !c) return false;
+      lord.level = G2.prologue.needLv();
+      var r = G2.prologue.build();
+      var p = G2.cityProdPerSec(c);
+      var anyProd = ['grain', 'wood', 'stone', 'iron', 'gold'].some(function (k) { return (p[k] || 0) > 0; });
+      return r.ok === true && G2.prologue.on() === false && anyProd;
+    })(), (function () {
+      var c = G2.currentCity();
+      var p = c ? G2.cityProdPerSec(c) : {};
+      return 'on=' + G2.prologue.on() + ' · 粮 ' + Math.round(p.grain || 0);
+    })());
+
+    /* 收尾：回到普通档，别把前传状态留给后面的用例 */
+    G2.newGame({ name: '收尾', cityName: '灰岗' });
   })();
 
 console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');

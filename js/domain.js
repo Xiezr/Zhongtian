@@ -1182,6 +1182,10 @@ import './state.js';
 
   /* --------- 城内建造 / 升级 / 拆除 --------- */
   GAME.buildAt = function (cityId, gridIndex, buildId) {
+    /* v105（前传）：还没有城 —— 你带的是一队人，不是一座城。三个闸门之一。 */
+    if (GAME.prologue && GAME.prologue.on()) {
+      return { ok: false, msg: '你们还没有城，建不了东西（君主升到 Lv20 才能立城）' };
+    }
     var s = GAME.state, city = GAME.cityById(cityId);
     if (!city) return { ok: false, msg: '城市不存在' };
     /* v89.128：'wall' = 环城槽（围墙不占格） */
@@ -1741,6 +1745,10 @@ import './state.js';
   };
 
   GAME.train = function (troopId, count, cityId, bIdx) {
+    /* v105（前传）：还没有城 —— 没有营房就没有兵。三个闸门之二。 */
+    if (GAME.prologue && GAME.prologue.on()) {
+      return { ok: false, msg: '你们还没有城，招不了兵（君主升到 Lv20 才能立城）' };
+    }
     var s = GAME.state, t = DATA.TROOPS[troopId];
     var city = GAME.cityById(cityId || (s && s.cities[0] && s.cities[0].id));
     if (!t) return { ok: false, msg: '未知兵种（请先在上方选择要训练的兵种）' };

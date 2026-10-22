@@ -632,6 +632,10 @@ import './data.js';
        ⚠️ 先 reset：同一 seed 开第二局时，内存里还留着上一局的探明度包，
        ensure 的快速路径认 (格数,种子) 会直接沿用 —— 那就不是"新的一局"了。 */
     if (GAME.fog) { GAME.fog.reset(); GAME.fog.revealOwned(); }
+    /* v105（前传）：**只有显式 prologue:true 才进** —— 324 处测试直接调 newGame，
+       默认开会把它们全落进"城不产东西"的阶段，几百条断言集体假红。
+       玩家走创建角色界面（ui.doCreate）时传 true。 */
+    if (rulerOpts && rulerOpts.prologue && GAME.prologue) GAME.prologue.begin(GAME.state);
     return GAME.state;
   };
 
@@ -4097,6 +4101,9 @@ import './data.js';
     var s = GAME.state, ts = GAME.timeScale();
     var out = { grain: 0, wood: 0, stone: 0, iron: 0, gold: 0 };
     if (!city) return out;
+    /* v105（前传）：还没有城 —— 开局那点库存是**辎重**，不是城产。
+       一处闸门断全部产出来源（拆账、结算、界面读的都是这个函数）。 */
+    if (GAME.prologue && GAME.prologue.on()) return out;
     var mpG = (opt && opt.mpGlobal != null) ? opt.mpGlobal : null;
     /* v79：「本城产量」加成 = 名城档位 + 威望 + 主城 + 神器（唯一汇总口）
        v89.157（老板 4）：「资源产量的各种加成，应分别对**基础产量**加成，叠加的话有点夸张了」——

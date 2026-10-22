@@ -1067,6 +1067,9 @@ import './state.js';
       name: name, avatar: avatar, gender: gender,
       region: $('#create-region').value,
       portraitSeed: avatarIdx,
+      /* v105：走界面的玩家从**前传**开始（无城 → 打怪升到 Lv20 → 立城）。
+         `newGame` 默认 false —— 324 处测试直接调它，默认开会集体假红。 */
+      prologue: true,
     });
     GAME.map.generate();
     GAME.log('欢迎 ' + name + ' 踏上争霸之路！');
@@ -1077,7 +1080,8 @@ import './state.js';
   ui.enterGame = function () {
     $('#screen-create').classList.add('hidden');
     $('#screen-game').classList.remove('hidden');
-    ui.setView('city');
+    /* v105：前传从**地图**进 —— 你手上没有城，只有一队人 */
+    ui.setView((GAME.prologue && GAME.prologue.on()) ? 'map' : 'city');
     /* v91.36（老板）：「不要在首次载入主页/城市管理界面时预加载别的了，太影响心情」——
        v91.33 的后台预建（即便 v91.35 已分帧 + 遮罩）仍会在进城市管理时占用 CPU、
        给低配机带来可感的迟滞。**整段撤除**：3D 地图改为**首次进地图时**才构建

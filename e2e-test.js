@@ -251,6 +251,23 @@ async function runTests(dom, URL) {
   const toastText = (document.querySelector('#toast') || {}).textContent || '';
   check('游戏状态已创建', !!G.state, G.state ? 'ok' : ('toast=' + JSON.stringify(toastText)));
   if (!G.state) return finish();
+  /* v105：界面创建默认进**前传**（无城）。e2e 后面要测建造/招兵/产出这套正式局，
+     所以这里先把它验一遍、再当场立城回到正式状态 ——
+     前传本体（三个闸门 / 荒野给经验 / 20 级门槛）由 smoke §326①~⑦ 钉着，不在这里重复。 */
+  if (G.prologue && G.prologue.on()) {
+    const lord105 = G.prologue.lord();
+    check('v105 e2e：界面创建默认进前传（君主 Lv1 · 城不产出）', (function () {
+      const p105 = G.cityProdPerSec(G.currentCity()) || {};
+      return G.prologue.on() === true && !!lord105
+        && ['grain', 'wood', 'stone', 'iron', 'gold'].every((k) => !p105[k]);
+    })(), lord105 ? ('君主 Lv' + lord105.level + ' · 要 Lv' + G.prologue.needLv()) : 'no lord');
+    if (lord105) lord105.level = G.prologue.needLv();
+    G.prologue.build();
+    check('v105 e2e：立城后回到正式局（产出恢复）', (function () {
+      const p105 = G.cityProdPerSec(G.currentCity()) || {};
+      return G.prologue.on() === false && (p105.grain || 0) > 0;
+    })());
+  }
   const s = G.state;
   const city = s.cities[0];
   /* v70（老板需求 5）：出生城归属所选区 + 君主英雄入册 */
