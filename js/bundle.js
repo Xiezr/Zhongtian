@@ -39874,6 +39874,22 @@ window.GAME = window.GAME || {};
       for (_k in defArmy) _sd += (defArmy[_k] | 0);
       var _t98 = GAME.goals.tierOf(_sa, _sd);
       _goalMod = (_t98 && _t98.mod) || null;
+
+      /* v98.3：**指令牌的攻/防也在这里落地**。
+         牌组原来只在战果层乘 loot/loss —— "齐射（攻 +8%）"、"结阵（防 +8%）"、
+         "血勇（攻 +15%）"三张的攻击向效果**一处都没生效**（goals 只读 loot/rep/loss/wound）。
+         现在折进同一个 goalMod（相加，不连乘）：两条来源都走 atkPct/defPct，
+         战报里就是一份数。 */
+      if (GAME.deck && GAME.deck.effOf) {
+        var _dk = GAME.deck.effOf();
+        if (_dk && (_dk.atk || _dk.def)) {
+          _goalMod = {
+            atk: ((_goalMod && _goalMod.atk) || 0) + (_dk.atk || 0),
+            def: ((_goalMod && _goalMod.def) || 0) + (_dk.def || 0),
+            hp: (_goalMod && _goalMod.hp) || 0
+          };
+        }
+      }
     }
     var atk = T.unitsOf(atkArmy, 'atk', atkGen,
       /* v89.136（老板 4）：modeId 透传给 GAME.tacticOf —— 出征读"细分（掠夺/占领）覆盖通用" */
@@ -52163,9 +52179,23 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
 
       /* ① 作战目标（让"带多少兵"成为一个选择） */
       if (GAME.goals) {
+        /* 四档的**战场修正**直接摊出来：玩家在出征前就该知道自己会变成什么样
+           （攻高多少、防低多少、血薄多少），而不是打完才发现死得多。 */
+        var tierH = ((GAME.DATA.GOALS || {}).tiers || []).map(function (t) {
+          var m = t.mod || {};
+          var bit = [];
+          if (m.atk) bit.push('攻 ' + (m.atk > 0 ? '+' : '') + Math.round(m.atk * 100) + '%');
+          if (m.def) bit.push('防 ' + (m.def > 0 ? '+' : '') + Math.round(m.def * 100) + '%');
+          if (m.hp) bit.push('血 ' + (m.hp > 0 ? '+' : '') + Math.round(m.hp * 100) + '%');
+          return '<div style="margin-top:3px;">🎯 <b>' + U.escape(t.name) + '</b>　'
+            + U.escape(bit.length ? bit.join(' · ') : '无修正（稳推）')
+            + '　<span style="color:var(--text-dim);">战利品 ×' + t.loot + '</span></div>';
+        }).join('');
         h += sec('🎯 作战目标', GAME.goals.lineOf(),
-          '<div class="ui-sub" style="margin-top:3px;">没有单独的下拉框 —— 你带的兵越少，目标越"精"：'
-          + '战利品倍率越高，伤得也越重。出征界面的战力对比里会显示这一行。</div>');
+          tierH + '<div class="ui-sub" style="margin-top:4px;">没有单独的下拉框 —— '
+          + '**你带多少兵就决定了怎么打**：带满平推（稳），带少就自动变成斩首/奇袭'
+          + '（攻更高、防更低、血更薄，但战利品翻倍）。'
+          + '这一行不是说明，是战场上的真数值。</div>');
       }
 
       /* ①.b 兵员等级（v96）：一级斥候、二级斥候 */

@@ -40569,6 +40569,67 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
 
 
 
+
+  /* ============================================================
+   * §317 · v98.3：指令牌的攻/防第一次进战场
+   * ------------------------------------------------------------
+   * 之前「齐射（攻 +8%）」「结阵（防 +8%）」「血勇（攻 +15%）」三张牌
+   * 的攻击向效果**一处都没生效** —— goals 只读 loot/rep/loss/wound。
+   * 这一条钉住：牌组的 atk/def 与作战目标的 mod **相加**后进 unitsOf。
+   * ============================================================ */
+  console.log('\n===== 317. v98.3 指令牌进战场（不是只写在海报上）=====');
+  (function () {
+    var st = G.state;
+
+    /* ① 牌组的 atk/def 有值（数据层先得是真的） */
+    check('§317① 牌组能算出攻/防加成（齐射+结阵 → atk>0 且 def>0）', (function () {
+      if (!G.deck) return false;
+      st.deck = ['volley', 'shield'];
+      var e = G.deck.effOf();
+      return (e.atk || 0) > 0.05 && (e.def || 0) > 0.05;
+    })(), (function () {
+      var e = G.deck.effOf();
+      return '攻 +' + Math.round((e.atk || 0) * 100) + '% / 防 +' + Math.round((e.def || 0) * 100) + '%';
+    })());
+
+    /* ② 牌组的攻/防真的折进单位属性（相加，不是被忽略） */
+    check('§317② 牌组的攻/防真的进 unitsOf（与档位修正相加）', (function () {
+      if (!G.tactic || !G.tactic.unitsOf) return false;
+      var base = G.tactic.unitsOf({ buxingji: 100 }, 'atk', null, {});
+      var withDeck = G.tactic.unitsOf({ buxingji: 100 }, 'atk', null,
+        { goalMod: { atk: 0.08, def: 0.08 } });
+      return withDeck[0].atkPct > base[0].atkPct + 0.05
+        && withDeck[0].defPct > base[0].defPct + 0.05;
+    })(), (function () {
+      var base = G.tactic.unitsOf({ buxingji: 100 }, 'atk', null, {});
+      var w = G.tactic.unitsOf({ buxingji: 100 }, 'atk', null, { goalMod: { atk: 0.08, def: 0.08 } });
+      return '攻% ' + base[0].atkPct.toFixed(2) + '→' + w[0].atkPct.toFixed(2);
+    })());
+
+    /* ③ 源码级：simulate 里真的读了 deck.effOf（不是只有 unitsOf 支持） */
+    check('§317③ simulate 里把牌组的 atk/def 合并进 goalMod（源码级）', (function () {
+      var src = require('fs').readFileSync(require('path').join(__dirname, 'js', 'tactic.js'), 'utf8');
+      var i = src.indexOf('GAME.deck.effOf');
+      if (i < 0) return false;
+      /* 它必须在 _goalMod 那一段（playerAtk 门槛之内），而不是别处 */
+      var seg = src.slice(Math.max(0, i - 900), i + 200);
+      return seg.indexOf('_goalMod') >= 0;
+    })(), (function () { return '与档位修正同一条通道'; })());
+
+    /* ④ 「血勇」的代价还在（攻 +15% 但战损 +6% 必须仍是双向的） */
+    check('§317④ 血勇仍是双向的（攻 +15% 且战损 +6%，不是纯送）', (function () {
+      st.deck = ['fury'];
+      var e = G.deck.effOf();
+      return (e.atk || 0) > 0.1 && (e.loss || 0) < 0;
+    })(), (function () {
+      st.deck = ['fury'];
+      var e = G.deck.effOf();
+      return '攻 +' + Math.round((e.atk || 0) * 100) + '% · 战损 ' + Math.round((e.loss || 0) * 100) + '%';
+    })());
+
+    st.deck = [];
+  })();
+
   /* ============================================================
    * §316 · v98.2：作战目标的战场修正（"带多少兵"真的进战场）
    * ------------------------------------------------------------

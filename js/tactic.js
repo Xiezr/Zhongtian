@@ -832,6 +832,22 @@ import './state.js';
       for (_k in defArmy) _sd += (defArmy[_k] | 0);
       var _t98 = GAME.goals.tierOf(_sa, _sd);
       _goalMod = (_t98 && _t98.mod) || null;
+
+      /* v98.3：**指令牌的攻/防也在这里落地**。
+         牌组原来只在战果层乘 loot/loss —— "齐射（攻 +8%）"、"结阵（防 +8%）"、
+         "血勇（攻 +15%）"三张的攻击向效果**一处都没生效**（goals 只读 loot/rep/loss/wound）。
+         现在折进同一个 goalMod（相加，不连乘）：两条来源都走 atkPct/defPct，
+         战报里就是一份数。 */
+      if (GAME.deck && GAME.deck.effOf) {
+        var _dk = GAME.deck.effOf();
+        if (_dk && (_dk.atk || _dk.def)) {
+          _goalMod = {
+            atk: ((_goalMod && _goalMod.atk) || 0) + (_dk.atk || 0),
+            def: ((_goalMod && _goalMod.def) || 0) + (_dk.def || 0),
+            hp: (_goalMod && _goalMod.hp) || 0
+          };
+        }
+      }
     }
     var atk = T.unitsOf(atkArmy, 'atk', atkGen,
       /* v89.136（老板 4）：modeId 透传给 GAME.tacticOf —— 出征读"细分（掠夺/占领）覆盖通用" */
