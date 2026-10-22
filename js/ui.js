@@ -13247,6 +13247,20 @@ import './state.js';
         (isOwn ? rows +
           '<div class="attr"><span class="k">👥 幸存者</span><span class="v">' +
             U.numText(R.pop || 0, 0) + ' / ' + U.numText(GAME.effPopCapOf ? GAME.effPopCapOf(city) : GAME.maxPopOf(city), 0) + '</span></div>' +
+          /* v93.5：**城会自己长** —— 住不下的人在城墙外搭棚子。
+             有才显示（没有就不占版面）；带一个"推平"按钮，
+             因为这是唯一能对"自己长出来的东西"动手的地方。 */
+          ((function () {
+            var sh = (GAME.growth && GAME.growth.shantyOf) ? GAME.growth.shantyOf(city) : 0;
+            if (sh <= 0) return '';
+            var capSh = GAME.growth.shantyCapOf ? GAME.growth.shantyCapOf(city) : 0;
+            return '<div class="attr"><span class="k">🏚 城外棚户</span><span class="v" style="color:var(--red-light);">'
+              + U.numText(sh, 0) + ' / ' + U.numText(capSh, 0) + ' 人'
+              + '　<span style="font-size:var(--fs-cap);color:var(--text-dim);">拥挤 · 会起火</span>'
+              + '　<button class="btn" style="font-size:var(--fs-cap);padding:0 6px;margin-left:4px;"'
+              + ' data-action="shanty-clear" data-cid="' + city.id + '">推平</button>'
+              + '</span></div>';
+          })()) +
           '<div class="attr"><span class="k">⚔ 驻军</span><span class="v">' +
             U.numText(GAME.armyTotal(city), 0) + '　城防 ' + GAME.cityDefense(city) + '</span></div>' +
           '<div class="attr"><span class="k">📜 城主</span><span class="v">' +

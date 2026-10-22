@@ -142,7 +142,7 @@
    * o = { kind, sent }
    * 返回 { ok, dead, back, gain, msg }
    *
-   * ⚠️ 人从**城市人口**里扣（city.pop），不是从兵里扣。
+   * ⚠️ 人从**城市人口**里扣（`GAME.res(city).pop` 唯一出口），不是从兵里扣。
    *    死了进 GAME.memorial（名录），不返场。
    * ============================================================ */
   CV.send = function (kind, sent) {
@@ -155,8 +155,9 @@
     var city = GAME.currentCity ? GAME.currentCity() : null;
     if (!city) return { ok: false, msg: '没有出发的城市' };
     sent = Math.max(20, Math.round(sent || 100));
-    if ((city.pop || 0) < sent) {
-      return { ok: false, msg: '人口不够：要带 ' + sent + ' 人，城里只有 ' + Math.round(city.pop || 0) };
+    var RW = GAME.res(city);                 /* ⚠️ 人口在 res.pop，不在 city.pop */
+    if ((RW.pop || 0) < sent) {
+      return { ok: false, msg: '人口不够：要带 ' + sent + ' 人，城里只有 ' + Math.round(RW.pop || 0) };
     }
 
     var d = D();
@@ -164,7 +165,7 @@
     var dead = Math.min(sent, Math.max(1, Math.round(sent * risk)));
     var back = sent - dead;
 
-    city.pop = Math.max(0, (city.pop || 0) - sent);          /* 人走了 */
+    RW.pop = Math.max(0, (RW.pop || 0) - sent);             /* 人走了 */
     CV.done()[kind + '@' + t.ci] = 1;                        /* 这处清空了 */
 
     /* 全灭：一个人都没回来 —— 东西也没带回来 */
@@ -185,7 +186,7 @@
     CV._bury(dead, t, city, false);
 
     /* 回城的人会留在人口里（他们还是人，只是老了、残了、不肯再出门） */
-    city.pop = (city.pop || 0) + back;
+    RW.pop = (RW.pop || 0) + back;
 
     return { ok: true, dead: dead, back: back, mul: mul, gain: t.gainName,
       msg: '去' + t.name + '的 ' + sent + ' 人回来了 ' + back + ' 个，'

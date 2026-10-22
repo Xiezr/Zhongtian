@@ -4673,6 +4673,28 @@ window.GAME = window.GAME || {};
    * 而且**会流失**（寒潮/军阀/你的名声都在削减它的人口）。
    * 这里配的不是"奖励表"，是"这个世界还剩多少人"的参数。
    * ============================================================ */
+  /* ============================================================
+   * v93.5（老板：「世界会自己长」）DATA.GROWTH
+   * ------------------------------------------------------------
+   * 城不是死的容器：住不下的人会在城外搭棚子，棚子挤满了有人会走。
+   * 这里配的全是"人自己会怎么做"的参数，不是给玩家的奖励表。
+   * ============================================================ */
+  DATA.GROWTH = {
+    overflowAt: 0.92,        /* 人口到居所上限 92% → 开始溢出到棚户 */
+    overflowRate: 0.25,      /* 每月把"超出部分"的四分之一挤到城外 */
+    absorbAt: 0.75,          /* 人口落回 75% 以下 → 棚户一成一成搬回去 */
+    shantyCap: 0.30,         /* 棚户上限 = 居所容量的三成（再多就是无政府） */
+    yieldPerPop: 0.02,       /* 棚户每人每游戏小时自己种出的粮（很少） */
+    coldLoss: 0.12,          /* 寒潮：棚户死一成二（**用具体损失代替扣民心**，民心是全局量，一扣就污染别的系统）*/
+    firePerMonth: 0.04,      /* 棚户区起火概率（按月，按密度缩放） */
+    fireLoss: 0.30,          /* 烧掉三成棚子 */
+    clearHearts: 3,          /* 推平棚户：城里民心立刻回来这么多 */
+    leaveChance: 0.35,       /* 棚户挤到 75% 上限 → 每月有人出走开新村的概率 */
+    leavePct: 0.35,          /* 出走的人占棚户多少 */
+    abandonAt: 0.20,         /* 人口低于居所两成 → 计入荒废计数 */
+    abandonNeedMonths: 3     /* **连续**这么多个月才真塌（一个月没跟上只是还在长）*/
+  };
+
   DATA.VILLAGE = {
     chance: 0.006,              /* 陆地 About 0.6% → 一颗球约 200 处 */
     tiers: [
@@ -9893,6 +9915,13 @@ window.GAME = window.GAME || {};
     /* v93.2：村社月推进 —— **世界会自己流失人**（寒潮/军阀/名声都在削它）。
        玩家什么都不做，这个数会变小；这就是"重建"值得做的理由。 */
     if (GAME.village && GAME.village.tick) GAME.village.tick();
+    /* v93.5：城会自己长（棚户 / 出走开垦）也会自己朽（荒废）——
+       按月推演：按秒会让它变成"数值在跳"，按月才会让玩家某天抬头发现
+       "城墙外怎么多了一片棚子"。 */
+    if (GAME.growth && GAME.growth.tick) GAME.growth.tick();
+    /* 棚户自己种的那点粮（按游戏秒结算，不是按月）——很少，但它让
+       "城外的棚子"不是纯负资产，否则玩家只会觉得那是个 bug。 */
+    if (GAME.growth && GAME.growth.settleYield) GAME.growth.settleYield(ts);
     /* v92.5：四个军阀按月推进（按月而非按日：游戏日只有 1.3 现实秒，按日会抽搐） */
     if (GAME.faction && GAME.faction.tick) GAME.faction.tick();
     /* v89.136：老档采集队迁移兜底（幂等 · 正常已被 loadGame 处理） */
@@ -26332,6 +26361,7 @@ window.GAME = window.GAME || {};
     raidVillage: 12,    /* 抢一处村社 */
     callVillage: 3,     /* 从村社征人（不算恶，但也不是善） */
     guardVillage: 6,    /* 保护一处村社（长期给粮） */
+    clearShanty: 5,     /* 推平城外棚户（把人赶走 —— 不杀，但也是赶） */
     saveVillage: 10,    /* 救活一处要荒废的村社 */
     sackCity: 40,       /* 屠一座城 */
     holdCity: 12,       /* 守住一次来犯（你没有退，城里的人活下来了） */
@@ -26502,6 +26532,13 @@ window.GAME = window.GAME || {};
        于是"海里不生成"从来没有生效过（营地 v92.4 起就错了，村社照抄）。
        表现为水面上有村子/营地/遗迹。 */
     if (cell.type === 'lake') return null;
+    /* v93.5：**先看动态聚落**（世界自己开垦出来的），再看哈希地标。
+       动态的写在 state.villageNew，哈希的是"开局就在那儿"的 ——
+       对玩家没有区别，都是"有人住的地方"。 */
+    var dyn = (GAME.state && GAME.state.villageNew) || {};
+    if (dyn[ci]) {
+      return { ci: ci, tier: 'hamlet', tierName: '新垦', name: dyn[ci].name, pop0: dyn[ci].pop, dyn: true };
+    }
     var sd = (s.seed3 ? s.seed3() : 0) | 0;
     if (h(ci, sd + 9100) >= (D().chance || 0.006)) return null;
     var tiers = D().tiers || [];
@@ -26523,6 +26560,22 @@ window.GAME = window.GAME || {};
       if (h(ci, sd + 9100) < (D().chance || 0.006)) out.push(ci);
     }
     _list = out; _listSeed = sd;
+    return out;
+  };
+
+  /* v93.5：候选 + **动态聚落**。
+     哈希那一份按 seed 缓存（不变），动态这一份每次并进来 —— 它会增减，
+     不能跟着 seed 一起缓存。 */
+  V.listAll = function () {
+    var base = V.list();
+    var dyn = (GAME.state && GAME.state.villageNew) || {};
+    var keys = Object.keys(dyn);
+    if (!keys.length) return base;
+    var out = base.slice();
+    for (var i = 0; i < keys.length; i++) {
+      var ci = +keys[i];
+      if (out.indexOf(ci) < 0) out.push(ci);
+    }
     return out;
   };
 
@@ -26566,7 +26619,7 @@ window.GAME = window.GAME || {};
    * 这个数是玩家该看见的答案：还有几处人家、多少人。
    * ============================================================ */
   V.statsOf = function () {
-    var list = V.list();
+    var list = V.listAll();
     var known = 0, alive = 0, dead = 0, pop = 0;
     for (var i = 0; i < list.length; i++) {
       var ci = list[i];
@@ -26628,9 +26681,14 @@ window.GAME = window.GAME || {};
         * ((GAME.convoy && GAME.convoy.toolMul) ? GAME.convoy.toolMul() : 1);
       var want = Math.max(1, Math.round(rec.pop * rate * mul));
       var cap = GAME.effPopCapOf ? GAME.effPopCapOf(city) : (GAME.maxPopOf ? GAME.maxPopOf(city) : 0);
-      var before = city.pop || 0;
-      city.pop = Math.min(cap || (before + want), before + want);
-      var got = Math.round(city.pop - before);
+      /* ⚠️ 人口在 `GAME.res(city).pop`（唯一出口），不是 city.pop。
+         ⚠️ 变量名**不能叫 R** —— 本文件顶部有 `function R() { return GAME.renown; }`，
+         局部 `var R` 会把它整个遮蔽掉（var 提升 → 调用时 R 还不是函数，
+         报 `R is not a function`）。 */
+      var Rc = GAME.res(city);
+      var before = Rc.pop || 0;
+      Rc.pop = Math.min(cap || (before + want), before + want);
+      var got = Math.round(Rc.pop - before);
       rec.pop = Math.max(0, rec.pop - want);
       rec.mood = Math.max(0, rec.mood - 12);
       rec.at = Date.now();
@@ -26693,6 +26751,69 @@ window.GAME = window.GAME || {};
     return { ok: false, msg: '未知的方式' };
   };
 
+  /* ============================================================
+   * v93.5：**世界自己开垦** —— 新的村社在某处冒出来
+   * ------------------------------------------------------------
+   * 老板：「世界会自己长」。原来的村社全是哈希地标 —— 开局就在那儿，
+   * 一百年后还是那 249 处，一处不多一处不少。那不是世界，是布景。
+   *
+   * 现在有两种来源：
+   *   ① 城里的棚户住满了，有人不愿意再挤 → 走远一点，自己搭个新村子（见 growth.js）
+   *   ② 这里留一个通用出口，将来别的系统也能"让人在这里住下来"
+   *
+   * 选址条件（都要）：陆地 · 不在水里 · 离城 4~12 格 · 附近没有别的聚落 ·
+   * 不是我的城/不是 NPC 城。**不要求已探明** —— 世界在你看不见的地方也会长，
+   * 那正是"你不在的时候它也在动"。
+   * ============================================================ */
+  V.spawnNear = function (fromCi, opts) {
+    var s = SP(), st = GAME.state;
+    if (!s || !s.cells || !st || fromCi == null || fromCi < 0) return null;
+    opts = opts || {};
+    var sd = (s.seed3 ? s.seed3() : 0) | 0;
+    var n = s.cells.length;
+    var d = D();
+    var minD = opts.minDist == null ? 4 : opts.minDist;
+    /* ⚠️ 12 格太窄了：球面 40962 格里，距一点 4~12 格的环带只占约 **1%**，
+       抽 260 次命中率不到一次 —— 实测直接返回 null（§308⑤ 抓到的）。
+       放宽到 16 格（环带约 1.8%），抽样提到 1500 次，命中约 8 次/百次。 */
+    var maxD = opts.maxDist == null ? 16 : opts.maxDist;
+
+    /* 已有聚落/城的 ci（避免重叠） */
+    var taken = {};
+    V.listAll().forEach(function (ci) { taken[ci] = 1; });
+    (st.cities || []).forEach(function (c) { if (c && c.ci != null) taken[c.ci] = 1; });
+
+    var best = null;
+    for (var i = 0; i < 1500; i++) {
+      /* 从全图抽样（不用遍历 40962 格） */
+      var ci = Math.floor(h(i, sd + 9500 + (opts.salt || 0)) * n) % n;
+      if (taken[ci]) continue;
+      var cell = s.cells[ci];
+      if (!cell) continue;
+      if (cell.type === 'lake') continue;          /* 海洋的 type 是 'lake'（v93.4） */
+      var dist = s.distOf ? s.distOf({ ci: fromCi }, { ci: ci }) : 99;
+      if (dist < minD || dist > maxD) continue;
+      /* 越近越好：取距离最小的一个（不是随机的）—— 人走不了太远 */
+      if (!best || dist < best.dist) best = { ci: ci, dist: dist };
+    }
+    if (!best) return null;
+
+    /* 名字：同一套前缀+后缀，但带"新"的序列号，免得和地标重名 */
+    st.villageNew = st.villageNew || {};
+    var cnt = Object.keys(st.villageNew).length;
+    var nm = nameOf(best.ci, sd);
+    if (V.at(best.ci)) return null;                /* 已经有人占了 */
+    var pop = Math.max(20, Math.round(opts.pop || 40));
+    st.villageNew[best.ci] = { name: nm, pop: pop, mood: 45, born: V.monthNow(), seq: cnt + 1 };
+    return { ok: true, ci: best.ci, name: nm, pop: pop, dist: best.dist };
+  };
+
+  /* 这一处是不是"世界自己长出来的"（不是开局就在的地标） */
+  V.isNew = function (ci) {
+    var dyn = (GAME.state && GAME.state.villageNew) || {};
+    return !!dyn[ci];
+  };
+
   /* ---------- 月推进 ---------- */
   V.monthNow = function () {
     var C = (GAME.DATA && GAME.DATA.CALENDAR) || {};
@@ -26726,7 +26847,7 @@ window.GAME = window.GAME || {};
 
     var d = D();
     var cold = !!(GAME.coldActiveOf && GAME.coldActiveOf());
-    var list = V.list();
+    var list = V.listAll();
     var changed = 0, died = 0;
 
     for (var i = 0; i < list.length; i++) {
@@ -26928,7 +27049,7 @@ window.GAME = window.GAME || {};
    * o = { kind, sent }
    * 返回 { ok, dead, back, gain, msg }
    *
-   * ⚠️ 人从**城市人口**里扣（city.pop），不是从兵里扣。
+   * ⚠️ 人从**城市人口**里扣（`GAME.res(city).pop` 唯一出口），不是从兵里扣。
    *    死了进 GAME.memorial（名录），不返场。
    * ============================================================ */
   CV.send = function (kind, sent) {
@@ -26941,8 +27062,9 @@ window.GAME = window.GAME || {};
     var city = GAME.currentCity ? GAME.currentCity() : null;
     if (!city) return { ok: false, msg: '没有出发的城市' };
     sent = Math.max(20, Math.round(sent || 100));
-    if ((city.pop || 0) < sent) {
-      return { ok: false, msg: '人口不够：要带 ' + sent + ' 人，城里只有 ' + Math.round(city.pop || 0) };
+    var RW = GAME.res(city);                 /* ⚠️ 人口在 res.pop，不在 city.pop */
+    if ((RW.pop || 0) < sent) {
+      return { ok: false, msg: '人口不够：要带 ' + sent + ' 人，城里只有 ' + Math.round(RW.pop || 0) };
     }
 
     var d = D();
@@ -26950,7 +27072,7 @@ window.GAME = window.GAME || {};
     var dead = Math.min(sent, Math.max(1, Math.round(sent * risk)));
     var back = sent - dead;
 
-    city.pop = Math.max(0, (city.pop || 0) - sent);          /* 人走了 */
+    RW.pop = Math.max(0, (RW.pop || 0) - sent);             /* 人走了 */
     CV.done()[kind + '@' + t.ci] = 1;                        /* 这处清空了 */
 
     /* 全灭：一个人都没回来 —— 东西也没带回来 */
@@ -26971,7 +27093,7 @@ window.GAME = window.GAME || {};
     CV._bury(dead, t, city, false);
 
     /* 回城的人会留在人口里（他们还是人，只是老了、残了、不肯再出门） */
-    city.pop = (city.pop || 0) + back;
+    RW.pop = (RW.pop || 0) + back;
 
     return { ok: true, dead: dead, back: back, mul: mul, gain: t.gainName,
       msg: '去' + t.name + '的 ' + sent + ' 人回来了 ' + back + ' 个，'
@@ -27030,6 +27152,274 @@ window.GAME = window.GAME || {};
     if (CV.nOf('tool') > 0) seg.push('农具图纸（招募 +' + Math.round((CV.toolMul() - 1) * 100) + '%）');
     if (!seg.length) return '还没有任何一支拓荒队回来过。这东西只能派人去拿，买不到。';
     return seg.join(' · ');
+  };
+})();
+
+/* ---- growth.js ---- */
+/* ============================================================
+ * growth.js — 城会自己长，也会自己朽
+ * ------------------------------------------------------------
+ * 老板 2026-10-22：「你做的是一整个废土……从大处着眼」。
+ *
+ * 这个项目里所有的城都是**死的容器**：
+ *   · 48 个格子等你规划，你不建就永远空着；
+ *   · 人口只会在上限前停住，不会自己找地方住；
+ *   · 建筑造好就永远在那，不会塌。
+ * 于是"建城"这件事只有"我摆什么"，没有"它自己变成什么样"。
+ * 但真实的废土不是这样 —— **人会在你没想到的地方住下来，
+ * 没人管的房子会塌。**
+ *
+ * 这个模块只做两件事，一长一朽：
+ *   A. **棚户**：人口顶到居所上限，多出来的人不会凭空消失 ——
+ *      他们在城墙外自己搭棚子住。产出不多，但会带来拥挤、火、疫。
+ *   B. **荒废**：人口长期远低于居所容量的城，建筑会一级一级掉回去。
+ *
+ * ⚠️ 刻意不做的事：
+ *   · **不占那 48 格**。玩家的规划区是玩家的地方，居民不能偷偷占掉一格 ——
+ *     那是"抢你的操作"，不是"世界在长"。
+ *   · 不给棚户正收益。它是**症状**，不是新资源池；想解决就去建居所。
+ *   · 荒废只掉建筑等级，**不毁城、不删建筑**。下限 1 级，永远能修回来。
+ * ============================================================ */
+(function () {
+  'use strict';
+  var GAME = window.GAME = window.GAME || {};
+  var GR = GAME.growth = {};
+  var U = GAME.utils;
+
+  function D() { return (GAME.DATA && GAME.DATA.GROWTH) || {}; }
+
+  /* 月份（与 village / faction 同一把尺） */
+  GR.monthNow = function () {
+    var C = (GAME.DATA && GAME.DATA.CALENDAR) || {};
+    var spm = (C.secPerYear || 57600) / 12;
+    var st = GAME.state || {};
+    return Math.floor(((st.world && st.world.elapsed) || 0) / spm);
+  };
+
+  /* 棚户人口（只读出口，界面与产出都走它） */
+  GR.shantyOf = function (city) {
+    return (city && (city.shanty | 0)) || 0;
+  };
+
+  /* 棚户上限：居所容量的三成 —— 再多就不是"棚户"，是无政府 */
+  GR.shantyCapOf = function (city) {
+    var cap = GAME.effPopCapOf ? GAME.effPopCapOf(city) : (GAME.maxPopOf ? GAME.maxPopOf(city) : 0);
+    return Math.max(0, Math.round(cap * (D().shantyCap == null ? 0.3 : D().shantyCap)));
+  };
+
+  /* ============================================================
+   * tick —— 每月一次
+   * ------------------------------------------------------------
+   * 为什么按月而不是按秒：棚户是一代人的事，不是一次点击的事。
+   * 按秒结算会让它变成"数值在跳"，按月才会让玩家某天抬头发现
+   * "城墙外怎么多了一片棚子"。
+   * ============================================================ */
+  GR.tick = function (force) {
+    var st = GAME.state;
+    if (!st) return { spawned: 0, decayed: 0, moved: 0 };
+    var m = GR.monthNow();
+    var has = (st.growthMonth != null);
+    if (!force && has && st.growthMonth === m) return { spawned: 0, decayed: 0, moved: 0 };
+    if (!has) { st.growthMonth = m; return { spawned: 0, decayed: 0, first: true }; }
+    st.growthMonth = m;
+
+    var d = D();
+    var spawned = 0, decayed = 0, burned = 0, moved = 0;
+
+    (st.cities || []).forEach(function (c) {
+      if (!c || c.npc) return;
+      var cap = GAME.effPopCapOf ? GAME.effPopCapOf(c) : 0;
+      if (cap <= 0) return;
+      /* ⚠️ 人口在 `GAME.res(c).pop`，**不在 c.pop**。
+         state.js 的注释专门警告过这件事（"直接读 s.res.pop 只代表当前城"），
+         但 camp / ruin / convoy / 本模块第一版全都写了 `city.pop` ——
+         那个字段根本不存在，于是"加人口"全加到了空气里，而断言也跟着
+         用同一个错字段，所以一路全绿。e2e 用 `c211.res.pop` 才把它照出来。 */
+      var pop = GAME.res(c).pop || 0;
+      var ratio = cap > 0 ? pop / cap : 0;
+
+      /* ---------- A. 溢出成棚户 ---------- */
+      var at = d.overflowAt == null ? 0.92 : d.overflowAt;
+      if (ratio >= at) {
+        var capSh = GR.shantyCapOf(c);
+        var cur = GR.shantyOf(c);
+        if (cur < capSh) {
+          /* 每月溢出：超出的那部分人的一小截。不把人从城里搬走 ——
+             棚户是"城里住不下的人"，城里的人口仍然算他们的家底。 */
+          var over = Math.max(1, Math.round((pop - cap * at) * (d.overflowRate == null ? 0.25 : d.overflowRate)));
+          c.shanty = Math.min(capSh, cur + over);
+          if (c.shanty > cur) { spawned++; c.shantyAt = m; }
+        }
+      } else if (ratio < (d.absorbAt == null ? 0.75 : d.absorbAt)) {
+        /* 城里住得下了，棚户会慢慢搬回去（一成一成地走，不是一夜消失） */
+        var n0 = GR.shantyOf(c);
+        if (n0 > 0) {
+          c.shanty = Math.max(0, Math.round(n0 * 0.8));
+          if (c.shanty === 0) c.shantyAt = 0;
+        }
+      }
+
+      /* ---------- B. 棚户的代价 ---------- */
+      var sh = GR.shantyOf(c);
+      if (sh > 0) {
+        /* ① 寒潮与疫病：棚户先死
+           ⚠️ **刻意不碰民心**（原设计是"拥挤扣全局民心"，已撤）。
+           原因不是太狠，是**污染**：民心是全局量（`heartsOf` 读 `s.heartsComfort`，
+           唯一写入口 `heartsComfortAdd`），棚户一扣 −2，会把和它毫无关系的
+           器械制造、征兵的民心门槛一起挤灰。e2e 就是这么抓到的
+           （§229c-e② 器械卡变灰）。
+           一个系统不该靠改全局状态去提示自己的存在。
+           所以代价改成具体的、只落在棚户自己身上的：**寒潮与疫病时，棚户死得比城里多**。 */
+        if (GAME.coldActiveOf && GAME.coldActiveOf()) {
+          var coldLoss = Math.max(1, Math.round(sh * (d.coldLoss == null ? 0.12 : d.coldLoss)));
+          c.shanty = Math.max(0, sh - coldLoss);
+          if (GAME.log && GAME.log.war) {
+            GAME.log.war('❄ ' + c.name + ' 城外棚户熬不过这场寒潮，' + U.numText(coldLoss, 0) + ' 个人没撑过来。');
+          }
+        }
+        /* ② 火：棚户区是连片的木板和油布，一点就一片。
+             按人数比例削减，**不烧到城里的人**（棚户是"外面的"）。 */
+        var fc = (d.firePerMonth == null ? 0.04 : d.firePerMonth) * Math.min(1, sh / Math.max(1, cap) * 2);
+        if (GAME.invasionRoll ? GAME.invasionRoll('shantyfire|' + c.id + '|' + m) < fc : false) {
+          var lost = Math.max(1, Math.round(sh * (d.fireLoss == null ? 0.3 : d.fireLoss)));
+          c.shanty = Math.max(0, sh - lost);
+          burned++;
+          if (GAME.log && GAME.log.war) {
+            GAME.log.war('🔥 ' + c.name + ' 城外的棚户区起火，烧掉了 ' + U.numText(lost, 0) + ' 间棚子。');
+          }
+        }
+      }
+
+      /* ---------- B2. 有人不愿意再挤 → 走远一点，自己搭个新村 ----------
+         v93.5：这是"世界自己开垦"的**唯一来源**（village.spawnNear 的另一头）。
+         为什么接在棚户上而不是凭空刷新：凭空长出来的村子没有原因；
+         从这里走的人有原因 —— 城里挤不下，他们不想再挤。
+         人数不够（<60）就走不了：走不了多远的人只会死在路上。 */
+      if (sh > 0 && sh >= capSh * 0.75 && GAME.village && GAME.village.spawnNear) {
+        var leaveP = d.leaveChance == null ? 0.35 : d.leaveChance;
+        var roll2 = GAME.invasionRoll ? GAME.invasionRoll('leave|' + c.id + '|' + m) : 1;
+        if (roll2 < leaveP) {
+          var movers = Math.max(20, Math.round(sh * (d.leavePct == null ? 0.35 : d.leavePct)));
+          var nv = GAME.village.spawnNear(c.ci, { pop: movers, salt: m });
+          if (nv) {
+            c.shanty = Math.max(0, sh - movers);
+            c.shantyAt = 0;
+            moved++;
+            if (GAME.log && GAME.log.war) {
+              GAME.log.war('🏘 ' + U.numText(movers, 0) + ' 人离开' + c.name
+                + '城外的棚户区，在 ' + nv.dist + ' 格外的' + nv.name + '自己安了家。');
+            }
+          }
+        }
+      }
+
+      /* ---------- C. 荒废：没人住的房子会塌 ---------- */
+      /* ⚠️ **连续三个月**才塌，不是一低就塌。
+         起因：第一版当月就掉级，e2e 里一个刚造好的作坊因为人口还没涨上来
+         直接掉了一级，器械面板随之打不开（§229c-e② 器械卡消失）。
+         空城要空一段时间才叫"没人住" —— 一个月人口没跟上只是还在长。 */
+      var deadAt = d.abandonAt == null ? 0.2 : d.abandonAt;
+      if (ratio < deadAt) {
+        c.abandonMonths = (c.abandonMonths | 0) + 1;
+      } else {
+        c.abandonMonths = 0;
+      }
+      if (ratio < deadAt && (c.abandonMonths | 0) >= (d.abandonNeedMonths == null ? 3 : d.abandonNeedMonths)) {
+        /* 连 20% 都住不满 —— 这座城已经名存实亡。
+           每月掉一座建筑的 1 级（只掉 1 座，给玩家足够时间回来管）。 */
+        var cand = (c.cells || []).filter(function (cc) {
+          return cc && cc.build && cc.build.id && cc.build.lvl > 1;
+        });
+        if (c.wall && c.wall.build && c.wall.build.lvl > 1) cand.push(c.wall);
+        if (cand.length) {
+          /* 确定性挑一座（同月同城永远同一座，便于复盘），不从最低的开始掉 */
+          var idx = Math.floor((GAME.invasionRoll ? GAME.invasionRoll('decay|' + c.id + '|' + m) : 0.5) * cand.length) % cand.length;
+          var victim = cand[idx];
+          victim.build.lvl -= 1;
+          decayed++;
+          if (GAME.log && GAME.log.war) {
+            GAME.log.war('🏚 ' + c.name + ' 没人住：' + ((GAME.DATA.BUILDINGS[victim.build.id] || {}).name || victim.build.id)
+              + ' 塌了一部分（Lv' + (victim.build.lvl + 1) + ' → Lv' + victim.build.lvl + '）。');
+          }
+        }
+      }
+    });
+
+    return { spawned: spawned, decayed: decayed, burned: burned, moved: moved, month: m };
+  };
+
+  /* ============================================================
+   * 棚户产出 —— 贫民自己种的一点粮
+   * ------------------------------------------------------------
+   * 不走 `prodFactors`：那不是"这座城的产量"，是"住在城外的人
+   * 自己活下来的一点东西"。混进产量表会让玩家以为棚户是收益。
+   * ============================================================ */
+  GR.shantyYieldOf = function (city) {
+    var sh = GR.shantyOf(city);
+    if (sh <= 0) return 0;
+    return sh * (D().yieldPerPop == null ? 0.02 : D().yieldPerPop);
+  };
+
+  /* 结算（与产出同一个 tick 节奏；直接进城的资源，不额外记账） */
+  GR.settleYield = function (secGame) {
+    var st = GAME.state;
+    if (!st) return 0;
+    var got = 0;
+    (st.cities || []).forEach(function (c) {
+      if (!c || c.npc) return;
+      var sh = GR.shantyOf(c);
+      if (sh <= 0) return;
+      var add = GR.shantyYieldOf(c) * Math.max(0, secGame || 0) / 3600;   /* 每游戏小时 */
+      if (add <= 0) return;
+      /* ⚠️ **资源写入必须走 GAME.city.add**（cities.js 的唯一加减入口）——
+         直接 `c.res.grain += x` 会绕过仓容，让存量冲过上限
+         （e2e §v89.158① 抓到：got 10856797 > cap 10733333）。
+         和"人口必须走 res.pop"是同一类事：这个项目把每样东西都收口成了一个出口，
+         绕过去不会立刻报错，只会在很久以后以别的样子炸出来。
+         ⚠️ add() 内部 floor 成整数，而棚户每小时每人才 0.02 粮 ——
+         直接调会被抹成 0，所以先在自己这里攒零头，够一整再入账。 */
+      c._shAcc = (c._shAcc || 0) + add;
+      var whole = Math.floor(c._shAcc);
+      if (whole > 0) {
+        c._shAcc -= whole;
+        if (GAME.city && GAME.city.add) GAME.city.add(c, 'grain', whole, true);
+        else { c.res = c.res || {}; c.res.grain = (c.res.grain || 0) + whole; }
+        got += whole;
+      }
+    });
+    return got;
+  };
+
+  /* ============================================================
+   * clear —— 清理棚户（玩家的选择）
+   * ------------------------------------------------------------
+   * 「把城墙外那些棚子推平」。这是这个模块里唯一的一个**抉择**：
+   *   · 民心立刻回来一点（城里的人觉得清爽了）；
+   *   · 但那些人是被赶走的 —— 名声记一笔（cruelty）。
+   *   · 棚户人数清零，下一轮人口满上来还会长出来（问题没解决）。
+   * 正解永远是建居所；清理只是把症状按住一会儿。
+   * ============================================================ */
+  GR.clear = function (city) {
+    var st = GAME.state;
+    if (!st || !city) return { ok: false, msg: '没有这座城' };
+    var sh = GR.shantyOf(city);
+    if (sh <= 0) return { ok: false, msg: '城外没有棚户' };
+    city.shanty = 0;
+    city.shantyAt = 0;
+    /* 城里的人觉得清爽了 —— 一点民心（正向偏移，走既有出口）。
+       **不还账**：已经没有"欠账"这回事了（见上面不碰民心的说明）。 */
+    if (GAME.heartsComfortAdd) GAME.heartsComfortAdd(D().clearHearts == null ? 2 : D().clearHearts);
+    if (GAME.renown) GAME.renown.add('cruelty', (GAME.renown.W && GAME.renown.W.clearShanty) || 5);
+    return { ok: true, n: sh,
+      msg: '推平了城外的棚户，' + U.numText(sh, 0) + ' 个人被赶走。城里的民心回来了点 —— 他们会记得这事。' };
+  };
+
+  /* 一行摘要（城面板用） */
+  GR.lineOf = function (city) {
+    var sh = GR.shantyOf(city);
+    if (sh <= 0) return '';
+    var cap = GR.shantyCapOf(city);
+    return '🏚 城外棚户 ' + U.numText(sh, 0) + ' 人（上限 ' + U.numText(cap, 0) + '）· 拥挤让民心往下掉';
   };
 })();
 
@@ -27222,9 +27612,13 @@ window.GAME = window.GAME || {};
       var n = Math.max(1, Math.round(w.pop * mul));
       /* 人口走既有出口：直接加到存量的 pop（不超上限）*/
       var cap = GAME.effPopCapOf ? GAME.effPopCapOf(city) : (GAME.maxPopOf ? GAME.maxPopOf(city) : 0);
-      var before = city.pop || 0;
-      city.pop = Math.min(cap || (before + n), before + n);
-      var got = Math.round(city.pop - before);
+      /* ⚠️ v93.5 修既存 bug：人口在 `GAME.res(city).pop`，不是 `city.pop`。
+         从 v92.4 起这里的"招募 +N 人"一直加到一个不存在的字段上 ——
+         玩家从来没真的多过一个人，而 §289 的断言也跟着读了同一个错字段，全绿。 */
+      var RC = GAME.res(city);
+      var before = RC.pop || 0;
+      RC.pop = Math.min(cap || (before + n), before + n);
+      var got = Math.round(RC.pop - before);
       rec.mode = 'recruit';
       rec.n = got;
       rec.cityId = city.id;
@@ -27419,9 +27813,11 @@ window.GAME = window.GAME || {};
     }
     if (pick.pop) {
       var cap = GAME.effPopCapOf ? GAME.effPopCapOf(city) : (GAME.maxPopOf ? GAME.maxPopOf(city) : 0);
-      var before = city.pop || 0;
-      city.pop = Math.min(cap || (before + pick.pop), before + Math.round(pick.pop * mul));
-      out.push('幸存者 +' + U.numText(Math.round(city.pop - before), 0));
+      /* ⚠️ v93.5 修既存 bug：人口在 GAME.res(city).pop，不在 city.pop（同 camp） */
+      var RR = GAME.res(city);
+      var before = RR.pop || 0;
+      RR.pop = Math.min(cap || (before + pick.pop), before + Math.round(pick.pop * mul));
+      out.push('幸存者 +' + U.numText(Math.round(RR.pop - before), 0));
     }
     if (pick.grain) {
       /* 有代价的选项：粮食不够就不给做（说清楚，别静默扣成负数）*/
@@ -28326,6 +28722,8 @@ window.GAME = window.GAME || {};
         var _vva = GAME.state.villages, _vn = 0, _vg = 0, _vd = 0;
         Object.keys(_vva).forEach(function (k) { _vn++; if (_vva[k].guardAt > 0) _vg++; if (_vva[k].dead) _vd++; });
         _ck += '#v' + _vn + '/' + _vg + '/' + _vd;
+        /* 世界新开垦的聚落也要进指纹，否则"长出来了"但地图不重画 */
+        _ck += '#n' + Object.keys((GAME.state && GAME.state.villageNew) || {}).length;
       } return fp + '#' + wp + '#' + _tileSub + '#' + (GAME.memorial ? GAME.memorial.total() : 0) + _ck; };
   M._arVerOf = function () { var sl = (GAME.mapSliceOf && GAME.mapSliceOf()) || {}; return (sl.marches || []).map(function (m) { return m.id + ':' + m.cityId + '>' + m.tci; }).join('|') + '#' + _tileSub; };
   /* v91.33：**后台预建**全场景（进游戏后调用）—— 含**全部版本戳**（否则首次 M.render 会全量重建）。
@@ -29192,7 +29590,9 @@ window.GAME = window.GAME || {};
        与营地/遗迹不同：它们不需要"发现"动作，探明就看得见（人住在那里是明显的）。
        暖白＝有人 · 亮绿＝你护着 · 暗灰＝空村（他们走了）。 */
     if (GAME.village && GAME.village.list) {
-      var _vl = GAME.village.list();
+      /* ⚠️ 必须用 listAll：list() 只是哈希候选，**世界自己开垦出来的新村不在里面**
+         （v93.5）。用 list() 会出现"行政页说有 25 处，地图上只画 24 处"。 */
+      var _vl = (GAME.village.listAll || GAME.village.list)();
       for (var _vi = 0; _vi < _vl.length; _vi++) {
         var _vci = _vl[_vi];
         var _vc = _tileCells[_vci];
@@ -52943,6 +53343,20 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
         (isOwn ? rows +
           '<div class="attr"><span class="k">👥 幸存者</span><span class="v">' +
             U.numText(R.pop || 0, 0) + ' / ' + U.numText(GAME.effPopCapOf ? GAME.effPopCapOf(city) : GAME.maxPopOf(city), 0) + '</span></div>' +
+          /* v93.5：**城会自己长** —— 住不下的人在城墙外搭棚子。
+             有才显示（没有就不占版面）；带一个"推平"按钮，
+             因为这是唯一能对"自己长出来的东西"动手的地方。 */
+          ((function () {
+            var sh = (GAME.growth && GAME.growth.shantyOf) ? GAME.growth.shantyOf(city) : 0;
+            if (sh <= 0) return '';
+            var capSh = GAME.growth.shantyCapOf ? GAME.growth.shantyCapOf(city) : 0;
+            return '<div class="attr"><span class="k">🏚 城外棚户</span><span class="v" style="color:var(--red-light);">'
+              + U.numText(sh, 0) + ' / ' + U.numText(capSh, 0) + ' 人'
+              + '　<span style="font-size:var(--fs-cap);color:var(--text-dim);">拥挤 · 会起火</span>'
+              + '　<button class="btn" style="font-size:var(--fs-cap);padding:0 6px;margin-left:4px;"'
+              + ' data-action="shanty-clear" data-cid="' + city.id + '">推平</button>'
+              + '</span></div>';
+          })()) +
           '<div class="attr"><span class="k">⚔ 驻军</span><span class="v">' +
             U.numText(GAME.armyTotal(city), 0) + '　城防 ' + GAME.cityDefense(city) + '</span></div>' +
           '<div class="attr"><span class="k">📜 城主</span><span class="v">' +
@@ -58712,6 +59126,7 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
 
 
 
+
 (function () {
   var GAME = window.GAME = window.GAME || {};
   var ui = GAME.ui;
@@ -60035,6 +60450,8 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
       case 'village-act': GAME.doVillageAct(el.getAttribute('data-ci'), el.getAttribute('data-vm')); break;
       case 'convoy-send': GAME.doConvoySend(el.getAttribute('data-ck'), el.getAttribute('data-n')); break;
       case 'open-convoy': ui.openConvoyModal(); break;
+      /* v93.5：推平城外棚户（把人赶走 —— 民心回来点，名声记一笔 cruelty） */
+      case 'shanty-clear': GAME.doClearShanty(el.getAttribute('data-cid')); break;
       /* v92.14：派将挑衅一座城（赢了那城守军胆寒 24 小时） */
       case 'provoke-city': ui._provoke = null; ui.openProvoke(); break;
       case 'provoke-move': ui.openProvoke(el.getAttribute('data-mv')); break;
@@ -60652,6 +61069,15 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
     else GAME.refreshView();
   };
   /* v93.2：村社互动（征召 / 保护 / 抢）—— 三种都不可撤销 */
+  /* v93.5：推平棚户 —— 唯一能对"城自己长出来的东西"动手的地方 */
+  GAME.doClearShanty = function (cid) {
+    var city = (GAME.cityById && GAME.cityById(cid)) || GAME.currentCity();
+    var r = (GAME.growth && GAME.growth.clear) ? GAME.growth.clear(city) : null;
+    if (!r) { ui.toast('没有棚户可清'); return; }
+    ui.toast((r.ok ? '✅ ' : '⏸ ') + r.msg);
+    if (r.ok) { GAME.log(r.msg, 'sys', 'wild'); GAME.refreshAll(); }
+    else GAME.refreshView();
+  };
   GAME.doVillageAct = function (ci, mode) {
     var r = GAME.village && GAME.village.act ? GAME.village.act(+ci, mode) : null;
     if (!r) { ui.toast('村社不可用'); return; }

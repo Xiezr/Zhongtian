@@ -145,9 +145,11 @@
     }
     if (pick.pop) {
       var cap = GAME.effPopCapOf ? GAME.effPopCapOf(city) : (GAME.maxPopOf ? GAME.maxPopOf(city) : 0);
-      var before = city.pop || 0;
-      city.pop = Math.min(cap || (before + pick.pop), before + Math.round(pick.pop * mul));
-      out.push('幸存者 +' + U.numText(Math.round(city.pop - before), 0));
+      /* ⚠️ v93.5 修既存 bug：人口在 GAME.res(city).pop，不在 city.pop（同 camp） */
+      var RR = GAME.res(city);
+      var before = RR.pop || 0;
+      RR.pop = Math.min(cap || (before + pick.pop), before + Math.round(pick.pop * mul));
+      out.push('幸存者 +' + U.numText(Math.round(RR.pop - before), 0));
     }
     if (pick.grain) {
       /* 有代价的选项：粮食不够就不给做（说清楚，别静默扣成负数）*/

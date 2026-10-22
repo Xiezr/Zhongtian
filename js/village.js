@@ -65,6 +65,13 @@
        于是"海里不生成"从来没有生效过（营地 v92.4 起就错了，村社照抄）。
        表现为水面上有村子/营地/遗迹。 */
     if (cell.type === 'lake') return null;
+    /* v93.5：**先看动态聚落**（世界自己开垦出来的），再看哈希地标。
+       动态的写在 state.villageNew，哈希的是"开局就在那儿"的 ——
+       对玩家没有区别，都是"有人住的地方"。 */
+    var dyn = (GAME.state && GAME.state.villageNew) || {};
+    if (dyn[ci]) {
+      return { ci: ci, tier: 'hamlet', tierName: '新垦', name: dyn[ci].name, pop0: dyn[ci].pop, dyn: true };
+    }
     var sd = (s.seed3 ? s.seed3() : 0) | 0;
     if (h(ci, sd + 9100) >= (D().chance || 0.006)) return null;
     var tiers = D().tiers || [];
@@ -86,6 +93,22 @@
       if (h(ci, sd + 9100) < (D().chance || 0.006)) out.push(ci);
     }
     _list = out; _listSeed = sd;
+    return out;
+  };
+
+  /* v93.5：候选 + **动态聚落**。
+     哈希那一份按 seed 缓存（不变），动态这一份每次并进来 —— 它会增减，
+     不能跟着 seed 一起缓存。 */
+  V.listAll = function () {
+    var base = V.list();
+    var dyn = (GAME.state && GAME.state.villageNew) || {};
+    var keys = Object.keys(dyn);
+    if (!keys.length) return base;
+    var out = base.slice();
+    for (var i = 0; i < keys.length; i++) {
+      var ci = +keys[i];
+      if (out.indexOf(ci) < 0) out.push(ci);
+    }
     return out;
   };
 
@@ -129,7 +152,7 @@
    * 这个数是玩家该看见的答案：还有几处人家、多少人。
    * ============================================================ */
   V.statsOf = function () {
-    var list = V.list();
+    var list = V.listAll();
     var known = 0, alive = 0, dead = 0, pop = 0;
     for (var i = 0; i < list.length; i++) {
       var ci = list[i];
@@ -191,9 +214,14 @@
         * ((GAME.convoy && GAME.convoy.toolMul) ? GAME.convoy.toolMul() : 1);
       var want = Math.max(1, Math.round(rec.pop * rate * mul));
       var cap = GAME.effPopCapOf ? GAME.effPopCapOf(city) : (GAME.maxPopOf ? GAME.maxPopOf(city) : 0);
-      var before = city.pop || 0;
-      city.pop = Math.min(cap || (before + want), before + want);
-      var got = Math.round(city.pop - before);
+      /* ⚠️ 人口在 `GAME.res(city).pop`（唯一出口），不是 city.pop。
+         ⚠️ 变量名**不能叫 R** —— 本文件顶部有 `function R() { return GAME.renown; }`，
+         局部 `var R` 会把它整个遮蔽掉（var 提升 → 调用时 R 还不是函数，
+         报 `R is not a function`）。 */
+      var Rc = GAME.res(city);
+      var before = Rc.pop || 0;
+      Rc.pop = Math.min(cap || (before + want), before + want);
+      var got = Math.round(Rc.pop - before);
       rec.pop = Math.max(0, rec.pop - want);
       rec.mood = Math.max(0, rec.mood - 12);
       rec.at = Date.now();
@@ -256,6 +284,69 @@
     return { ok: false, msg: '未知的方式' };
   };
 
+  /* ============================================================
+   * v93.5：**世界自己开垦** —— 新的村社在某处冒出来
+   * ------------------------------------------------------------
+   * 老板：「世界会自己长」。原来的村社全是哈希地标 —— 开局就在那儿，
+   * 一百年后还是那 249 处，一处不多一处不少。那不是世界，是布景。
+   *
+   * 现在有两种来源：
+   *   ① 城里的棚户住满了，有人不愿意再挤 → 走远一点，自己搭个新村子（见 growth.js）
+   *   ② 这里留一个通用出口，将来别的系统也能"让人在这里住下来"
+   *
+   * 选址条件（都要）：陆地 · 不在水里 · 离城 4~12 格 · 附近没有别的聚落 ·
+   * 不是我的城/不是 NPC 城。**不要求已探明** —— 世界在你看不见的地方也会长，
+   * 那正是"你不在的时候它也在动"。
+   * ============================================================ */
+  V.spawnNear = function (fromCi, opts) {
+    var s = SP(), st = GAME.state;
+    if (!s || !s.cells || !st || fromCi == null || fromCi < 0) return null;
+    opts = opts || {};
+    var sd = (s.seed3 ? s.seed3() : 0) | 0;
+    var n = s.cells.length;
+    var d = D();
+    var minD = opts.minDist == null ? 4 : opts.minDist;
+    /* ⚠️ 12 格太窄了：球面 40962 格里，距一点 4~12 格的环带只占约 **1%**，
+       抽 260 次命中率不到一次 —— 实测直接返回 null（§308⑤ 抓到的）。
+       放宽到 16 格（环带约 1.8%），抽样提到 1500 次，命中约 8 次/百次。 */
+    var maxD = opts.maxDist == null ? 16 : opts.maxDist;
+
+    /* 已有聚落/城的 ci（避免重叠） */
+    var taken = {};
+    V.listAll().forEach(function (ci) { taken[ci] = 1; });
+    (st.cities || []).forEach(function (c) { if (c && c.ci != null) taken[c.ci] = 1; });
+
+    var best = null;
+    for (var i = 0; i < 1500; i++) {
+      /* 从全图抽样（不用遍历 40962 格） */
+      var ci = Math.floor(h(i, sd + 9500 + (opts.salt || 0)) * n) % n;
+      if (taken[ci]) continue;
+      var cell = s.cells[ci];
+      if (!cell) continue;
+      if (cell.type === 'lake') continue;          /* 海洋的 type 是 'lake'（v93.4） */
+      var dist = s.distOf ? s.distOf({ ci: fromCi }, { ci: ci }) : 99;
+      if (dist < minD || dist > maxD) continue;
+      /* 越近越好：取距离最小的一个（不是随机的）—— 人走不了太远 */
+      if (!best || dist < best.dist) best = { ci: ci, dist: dist };
+    }
+    if (!best) return null;
+
+    /* 名字：同一套前缀+后缀，但带"新"的序列号，免得和地标重名 */
+    st.villageNew = st.villageNew || {};
+    var cnt = Object.keys(st.villageNew).length;
+    var nm = nameOf(best.ci, sd);
+    if (V.at(best.ci)) return null;                /* 已经有人占了 */
+    var pop = Math.max(20, Math.round(opts.pop || 40));
+    st.villageNew[best.ci] = { name: nm, pop: pop, mood: 45, born: V.monthNow(), seq: cnt + 1 };
+    return { ok: true, ci: best.ci, name: nm, pop: pop, dist: best.dist };
+  };
+
+  /* 这一处是不是"世界自己长出来的"（不是开局就在的地标） */
+  V.isNew = function (ci) {
+    var dyn = (GAME.state && GAME.state.villageNew) || {};
+    return !!dyn[ci];
+  };
+
   /* ---------- 月推进 ---------- */
   V.monthNow = function () {
     var C = (GAME.DATA && GAME.DATA.CALENDAR) || {};
@@ -289,7 +380,7 @@
 
     var d = D();
     var cold = !!(GAME.coldActiveOf && GAME.coldActiveOf());
-    var list = V.list();
+    var list = V.listAll();
     var changed = 0, died = 0;
 
     for (var i = 0; i < list.length; i++) {

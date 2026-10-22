@@ -21,6 +21,7 @@ import './camp.js';     /* v92.4：幸存者营地 —— 探索的回报，招�
 import './renown.js';   /* v93.1：名声 —— 世界怎么看你 */
 import './village.js';  /* v93.2：村社 —— 废土上还有别人在活 */
 import './convoy.js';   /* v93.3：拓荒队 —— 用这一代人，换下一代人能活 */
+import './growth.js';   /* v93.5：城会自己长，也会自己朽 */
 import './ruin.js';     /* v92.7：旧世界遗迹 —— 一处只能翻一次，两种翻法互斥 */
 import './faction.js';  /* v92.5：四个军阀 —— 世界在动（态势层）*/
 import './gltf.js';
@@ -1357,6 +1358,8 @@ import './ui.js';
       case 'village-act': GAME.doVillageAct(el.getAttribute('data-ci'), el.getAttribute('data-vm')); break;
       case 'convoy-send': GAME.doConvoySend(el.getAttribute('data-ck'), el.getAttribute('data-n')); break;
       case 'open-convoy': ui.openConvoyModal(); break;
+      /* v93.5：推平城外棚户（把人赶走 —— 民心回来点，名声记一笔 cruelty） */
+      case 'shanty-clear': GAME.doClearShanty(el.getAttribute('data-cid')); break;
       /* v92.14：派将挑衅一座城（赢了那城守军胆寒 24 小时） */
       case 'provoke-city': ui._provoke = null; ui.openProvoke(); break;
       case 'provoke-move': ui.openProvoke(el.getAttribute('data-mv')); break;
@@ -1974,6 +1977,15 @@ import './ui.js';
     else GAME.refreshView();
   };
   /* v93.2：村社互动（征召 / 保护 / 抢）—— 三种都不可撤销 */
+  /* v93.5：推平棚户 —— 唯一能对"城自己长出来的东西"动手的地方 */
+  GAME.doClearShanty = function (cid) {
+    var city = (GAME.cityById && GAME.cityById(cid)) || GAME.currentCity();
+    var r = (GAME.growth && GAME.growth.clear) ? GAME.growth.clear(city) : null;
+    if (!r) { ui.toast('没有棚户可清'); return; }
+    ui.toast((r.ok ? '✅ ' : '⏸ ') + r.msg);
+    if (r.ok) { GAME.log(r.msg, 'sys', 'wild'); GAME.refreshAll(); }
+    else GAME.refreshView();
+  };
   GAME.doVillageAct = function (ci, mode) {
     var r = GAME.village && GAME.village.act ? GAME.village.act(+ci, mode) : null;
     if (!r) { ui.toast('村社不可用'); return; }

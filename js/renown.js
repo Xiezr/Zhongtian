@@ -36,6 +36,7 @@
     raidVillage: 12,    /* 抢一处村社 */
     callVillage: 3,     /* 从村社征人（不算恶，但也不是善） */
     guardVillage: 6,    /* 保护一处村社（长期给粮） */
+    clearShanty: 5,     /* 推平城外棚户（把人赶走 —— 不杀，但也是赶） */
     saveVillage: 10,    /* 救活一处要荒废的村社 */
     sackCity: 40,       /* 屠一座城 */
     holdCity: 12,       /* 守住一次来犯（你没有退，城里的人活下来了） */

@@ -82,6 +82,8 @@ import './gltf.js';
         var _vva = GAME.state.villages, _vn = 0, _vg = 0, _vd = 0;
         Object.keys(_vva).forEach(function (k) { _vn++; if (_vva[k].guardAt > 0) _vg++; if (_vva[k].dead) _vd++; });
         _ck += '#v' + _vn + '/' + _vg + '/' + _vd;
+        /* 世界新开垦的聚落也要进指纹，否则"长出来了"但地图不重画 */
+        _ck += '#n' + Object.keys((GAME.state && GAME.state.villageNew) || {}).length;
       } return fp + '#' + wp + '#' + _tileSub + '#' + (GAME.memorial ? GAME.memorial.total() : 0) + _ck; };
   M._arVerOf = function () { var sl = (GAME.mapSliceOf && GAME.mapSliceOf()) || {}; return (sl.marches || []).map(function (m) { return m.id + ':' + m.cityId + '>' + m.tci; }).join('|') + '#' + _tileSub; };
   /* v91.33：**后台预建**全场景（进游戏后调用）—— 含**全部版本戳**（否则首次 M.render 会全量重建）。
@@ -948,7 +950,9 @@ import './gltf.js';
        与营地/遗迹不同：它们不需要"发现"动作，探明就看得见（人住在那里是明显的）。
        暖白＝有人 · 亮绿＝你护着 · 暗灰＝空村（他们走了）。 */
     if (GAME.village && GAME.village.list) {
-      var _vl = GAME.village.list();
+      /* ⚠️ 必须用 listAll：list() 只是哈希候选，**世界自己开垦出来的新村不在里面**
+         （v93.5）。用 list() 会出现"行政页说有 25 处，地图上只画 24 处"。 */
+      var _vl = (GAME.village.listAll || GAME.village.list)();
       for (var _vi = 0; _vi < _vl.length; _vi++) {
         var _vci = _vl[_vi];
         var _vc = _tileCells[_vci];

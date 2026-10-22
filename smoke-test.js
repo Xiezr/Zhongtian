@@ -12381,7 +12381,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
     /* ⚠️ 这份 ORDER 与 build_bundle.py 的 ORDER **必须逐条一致**（本文故意不复用脚本，
        就是为了"构建脚本自己算错时测试还能抓到"）。加了模块两边都要加 ——
        v92 加 fog / memorial 时这里漏改，导致 hash 对不上、守卫假红。 */
-    var ORDER = ['core', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'domain', 'map', 'sphere', 'fog', 'memorial', 'renown', 'village', 'convoy', 'camp', 'ruin', 'faction', 'gltf',
+    var ORDER = ['core', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'domain', 'map', 'sphere', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'gltf',
       'map3d', 'battle', 'strategy', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits', 'story', 'ui', 'main'];
     var h = crypto.createHash('sha256');
     try {
@@ -38313,10 +38313,12 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       G.camp.sweep(true);
       var city = G.camp.cityNearOf(campOne);
       if (!city) return false;
-      var before = city.pop || 0;
+      /* ⚠️ v93.5：人口在 GAME.res(city).pop，原来这里读的 city.pop 根本不存在 ——
+         §289⑤ 从 v92.4 起一直是假绿（实现和断言用了同一个错字段）。 */
+      var before = G.res(city).pop || 0;
       var cap = G.effPopCapOf ? G.effPopCapOf(city) : G.maxPopOf(city);
       var r = G.camp.act(campOne, 'recruit');
-      var after = city.pop || 0;
+      var after = G.res(city).pop || 0;
       return r.ok && after > before && after <= Math.max(cap, before + (r.n || 0));
     })(), (function () {
       if (campOne < 0) return '';
@@ -39390,10 +39392,11 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var rec = G.village.get(ci);
       if (!rec || rec.dead) return false;
       var city = G.currentCity();
-      city.pop = Math.max(1000, city.pop || 0);
-      var p0 = city.pop, v0 = rec.pop;
+      var Rv = G.res(city);
+      Rv.pop = Math.max(1000, Rv.pop || 0);
+      var p0 = Rv.pop, v0 = rec.pop;
       var r = G.village.act(ci, 'call');
-      return r.ok && city.pop > p0 && rec.pop < v0 && r.n > 0;
+      return r.ok && Rv.pop > p0 && rec.pop < v0 && r.n > 0;
     })(), (function () {
       if (!vgCtx.list.length) return '?';
       var rec = G.village.get(vgCtx.list[0]);
@@ -39562,14 +39565,15 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
 
     check('§307④ 派人：真从人口里扣，回来的回到人口里', (function () {
       var city = G.currentCity();
-      city.pop = 2000;
+      var RWc = G.res(city);          /* ⚠️ 人口在 res.pop */
+      RWc.pop = 2000;
       var t = G.convoy.targetOf('seed');
       if (!t || t.cleared) return false;
       var r = G.convoy.send('seed', 100);
       if (!r.ok) return false;
-      return Math.abs(city.pop - (1900 + r.back)) < 1e-6 && r.back >= 0 && r.dead >= 1;
+      return Math.abs(RWc.pop - (1900 + r.back)) < 1e-6 && r.back >= 0 && r.dead >= 1;
     })(), (function () {
-      return Math.round(G.currentCity().pop) + ' 人';
+      return Math.round(G.res(G.currentCity()).pop) + ' 人';
     })());
 
     check('§307⑤ 去过的目标标清空（拿空就是拿空）', (function () {
@@ -39608,6 +39612,163 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       return r.ok && r.dead >= 1 && after > before;
     })(), (function () {
       return '名录累计 ' + (G.memorial ? G.memorial.total() : 0);
+    })());
+
+    console.log('\n===== 308. v93.5 城会自己长，也会自己朽 =====');
+
+    var grCtx = (function () {
+      G.newGame({ name: '生长', cityName: '灰岗', mapSeed: 4321 });
+      G.state.villageNew = {};
+      G.state.heartsComfort = 0;
+      var c = G.currentCity();
+      c.shanty = 0; c._shPenalty = 0;
+      return { c: c };
+    })();
+
+    /* 把时间推到第 n 个月并跑一次（第一次只记基准，第二次才推演） */
+    function grRunMonth(n) {
+      var spm = (DATA.CALENDAR.secPerYear || 57600) / 12;
+      G.state.world.elapsed = n * spm;
+      G.state.growthMonth = null;
+      G.growth.tick(true);          /* 记基准 */
+      G.growth.tick(true);          /* 推演 */
+    }
+
+    check('§308① 人口顶到居所上限 → 城外长出棚户', (function () {
+      var c = grCtx.c;
+      var cap = G.effPopCapOf(c);
+      G.res(c).pop = Math.round(cap * 0.98);
+      c.shanty = 0;
+      grRunMonth(3);
+      return G.growth.shantyOf(c) > 0;
+    })(), (function () {
+      var c = grCtx.c;
+      return '棚户 ' + G.growth.shantyOf(c) + ' / 上限 ' + G.growth.shantyCapOf(c);
+    })());
+
+    check('§308② 棚户有上限（不会无限膨胀）', (function () {
+      var c = grCtx.c;
+      G.res(c).pop = Math.round(G.effPopCapOf(c) * 2);      /* 极端挤爆 */
+      for (var i = 4; i < 14; i++) grRunMonth(i);
+      return G.growth.shantyOf(c) <= G.growth.shantyCapOf(c) + 1;
+    })(), (function () {
+      return G.growth.shantyOf(grCtx.c) + ' ≤ ' + G.growth.shantyCapOf(grCtx.c);
+    })());
+
+    check('§308③ 城里住得下了，棚户会搬回去（不是一夜消失）', (function () {
+      var c = grCtx.c;
+      var before = G.growth.shantyOf(c);
+      if (before <= 0) return false;
+      G.res(c).pop = Math.round(G.effPopCapOf(c) * 0.5);
+      grRunMonth(20);
+      var mid = G.growth.shantyOf(c);
+      return mid < before;
+    })());
+
+    check('§308④ 寒潮里棚户先死（用具体损失代替扣民心）', (function () {
+      var c = grCtx.c;
+      var C = DATA.COLD || {};
+      var spm = (DATA.CALENDAR.secPerYear || 57600) / 12;
+      /* 锁在寒潮月 */
+      G.state.world.elapsed = ((C.periodMonths || 24) - 1) * spm;
+      G.state.growthMonth = null;
+      G.growth.tick(true);
+      c.shanty = 200; G.res(c).pop = Math.round(G.effPopCapOf(c) * 0.98);
+      c.shantyAt = 1;
+      var before = c.shanty;
+      G.growth.tick(true);
+      return c.shanty < before;
+    })(), (function () {
+      return '棚户 ' + G.growth.shantyOf(grCtx.c) + '（寒潮前 200）';
+    })());
+
+    check('§308⑤ 棚户满了会有人出走，在别处开一个新村子（世界自己长）', (function () {
+      var c = grCtx.c;
+      G.state.villageNew = {};
+      c.shanty = G.growth.shantyCapOf(c);
+      c.shantyAt = 1;
+      /* 骰子是确定性的，多跑几个不同月份总能撞上一次出走 */
+      var got = null;
+      for (var i = 40; i < 90 && !got; i++) {
+        grRunMonth(i);
+        var keys = Object.keys(G.state.villageNew || {});
+        if (keys.length) got = +keys[0];
+        if (G.growth.shantyOf(c) <= 0) c.shanty = G.growth.shantyCapOf(c);
+      }
+      if (!got) {
+        /* 诊断：直接调选址，区分"概率没撞上"还是"选址根本选不出来" */
+        var d1 = G.village.spawnNear(c.ci, { pop: 100, salt: 999 });
+        G.state._diagSpawn = d1 ? ('ok ' + d1.name + '/' + d1.dist) : 'null';
+        return false;
+      }
+      return G.village.isNew(got) === true;
+    })(), (function () {
+      var keys = Object.keys(G.state.villageNew || {});
+      return keys.length ? (G.state.villageNew[keys[0]].name + '（' + keys.length + ' 处新村）')
+        : ('还没长出来 · 直接选址=' + (G.state._diagSpawn || '未测'));
+    })());
+
+    check('§308⑥ 新村是"真的聚落"：能查、能计数、不落水', (function () {
+      var keys = Object.keys(G.state.villageNew || {});
+      if (!keys.length) return false;
+      var ci = +keys[0];
+      var sp = G.mapSphere || G.sphere;
+      var w = G.village.at(ci);
+      var inList = G.village.listAll().indexOf(ci) >= 0;
+      var notLake = !(sp && sp.cells[ci] && sp.cells[ci].type === 'lake');
+      return !!w && w.dyn === true && inList && notLake && w.pop0 > 0;
+    })());
+
+    check('§308⑦ 新村不会被造在水里（v93.4 的教训）', (function () {
+      var sp = G.mapSphere || G.sphere;
+      if (!sp || !sp.cells) return false;
+      var keys = Object.keys(G.state.villageNew || {});
+      for (var i = 0; i < keys.length; i++) {
+        var cc = sp.cells[+keys[i]];
+        if (cc && cc.type === 'lake') return false;
+      }
+      return true;
+    })());
+
+    check('§308⑧ 推平棚户：清零 + 名声记一笔（人是被赶走的）', (function () {
+      var c = grCtx.c;
+      c.shanty = 50;
+      var c0 = G.renown.raw().cruelty | 0;
+      var r = G.growth.clear(c);
+      return r.ok && G.growth.shantyOf(c) === 0
+        && (G.renown.raw().cruelty | 0) > c0;
+    })(), (function () {
+      return G.growth.shantyOf(grCtx.c) === 0 ? '已清空' : '未清空';
+    })());
+
+    check('§308⑨ 棚户自己种的粮真的进账（不是纯负资产）', (function () {
+      var c = grCtx.c;
+      c.shanty = 100;
+      c.res = c.res || {};
+      var g0 = c.res.grain || 0;
+      var got = G.growth.settleYield(3600);      /* 一游戏小时 */
+      return got > 0 && (c.res.grain || 0) > g0;
+    })(), (function () {
+      return '每游戏小时约 +' + G.growth.shantyYieldOf(grCtx.c).toFixed(2) + ' 粮';
+    })());
+
+    check('§308⑩ 荒废：长期没人住 → 建筑会塌（下限 1 级）', (function () {
+      var c = grCtx.c;
+      /* 给城塞一座 Lv5 的建筑，再把人口压到一成 */
+      c.cells = c.cells || [];
+      var cell = c.cells.filter(function (x) { return !x.build; })[0];
+      if (!cell) return false;
+      cell.build = { id: 'nongtian', lvl: 5 };
+      G.res(c).pop = Math.round(G.effPopCapOf(c) * 0.05);
+      var lv0 = cell.build.lvl;
+      for (var i = 100; i < 110; i++) grRunMonth(i);
+      var lv1 = cell.build.lvl;
+      /* 掉过级，但没掉到 0 */
+      return lv1 < lv0 && lv1 >= 1;
+    })(), (function () {
+      var c = grCtx.c;
+      var cell = (c.cells || []).filter(function (x) { return x.build && x.build.id === 'nongtian'; })[0];
+      return cell ? ('农垦 Lv' + cell.build.lvl) : '?';
     })());
 console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');
   process.exit(FAIL ? 1 : 0);

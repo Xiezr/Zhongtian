@@ -3726,6 +3726,13 @@ import './data.js';
     /* v93.2：村社月推进 —— **世界会自己流失人**（寒潮/军阀/名声都在削它）。
        玩家什么都不做，这个数会变小；这就是"重建"值得做的理由。 */
     if (GAME.village && GAME.village.tick) GAME.village.tick();
+    /* v93.5：城会自己长（棚户 / 出走开垦）也会自己朽（荒废）——
+       按月推演：按秒会让它变成"数值在跳"，按月才会让玩家某天抬头发现
+       "城墙外怎么多了一片棚子"。 */
+    if (GAME.growth && GAME.growth.tick) GAME.growth.tick();
+    /* 棚户自己种的那点粮（按游戏秒结算，不是按月）——很少，但它让
+       "城外的棚子"不是纯负资产，否则玩家只会觉得那是个 bug。 */
+    if (GAME.growth && GAME.growth.settleYield) GAME.growth.settleYield(ts);
     /* v92.5：四个军阀按月推进（按月而非按日：游戏日只有 1.3 现实秒，按日会抽搐） */
     if (GAME.faction && GAME.faction.tick) GAME.faction.tick();
     /* v89.136：老档采集队迁移兜底（幂等 · 正常已被 loadGame 处理） */

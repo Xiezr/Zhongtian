@@ -186,9 +186,13 @@
       var n = Math.max(1, Math.round(w.pop * mul));
       /* 人口走既有出口：直接加到存量的 pop（不超上限）*/
       var cap = GAME.effPopCapOf ? GAME.effPopCapOf(city) : (GAME.maxPopOf ? GAME.maxPopOf(city) : 0);
-      var before = city.pop || 0;
-      city.pop = Math.min(cap || (before + n), before + n);
-      var got = Math.round(city.pop - before);
+      /* ⚠️ v93.5 修既存 bug：人口在 `GAME.res(city).pop`，不是 `city.pop`。
+         从 v92.4 起这里的"招募 +N 人"一直加到一个不存在的字段上 ——
+         玩家从来没真的多过一个人，而 §289 的断言也跟着读了同一个错字段，全绿。 */
+      var RC = GAME.res(city);
+      var before = RC.pop || 0;
+      RC.pop = Math.min(cap || (before + n), before + n);
+      var got = Math.round(RC.pop - before);
       rec.mode = 'recruit';
       rec.n = got;
       rec.cityId = city.id;
