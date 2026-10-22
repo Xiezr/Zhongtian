@@ -11,6 +11,141 @@
  * ============================================================ */
 window.GAME = window.GAME || {};
 
+/* ---- registry.js ---- */
+/* ============================================================
+ * registry.js — 模块注册表（v100 · 可插拔）
+ * ------------------------------------------------------------
+ * 老板原话：「按照之前进行过了切片之类的操作，代码分块啥的你留意下，
+ *   不要累积屎山代码，可插拔，可维护性提高」。
+ *
+ * 加一个模块要改几处？改前是 **7 处**：
+ *   ① build_bundle.py 的 ORDER
+ *   ② smoke-test.js 的 ORDER
+ *   ③ audit.js 的 MODULES
+ *   ④ audit.js 的 REF_MODULES
+ *   ⑤ main.js 的 import
+ *   ⑥ main.js 的动作 case
+ *   ⑦ state.js 的 _safeTick 列表
+ *   ⑧ ui.js 的面板块
+ * 每加一项都要在八个地方各写一遍，漏一个就是"模块存在但没生效"——
+ * 本项目已经因此吃过好几次（六层世界那批、兵源那批）。
+ *
+ * 这个表把 ⑥⑦⑧ 收敛成**一次声明**：
+ *
+ *   GAME.reg.add({
+ *     id: 'muster', order: 60,
+ *     tick: function(){ MU.tick(); },              // 月度 tick（自动 try/catch）
+ *     panel: function(ctx){ return ctx.sec(...); }, // 世界账本的一块（自动排序）
+ *     actions: { 'muster-accept': function(el, ctx){ ... } }  // 动作（自动分发）
+ *   });
+ *
+ * ①②③④ 仍然是静态清单（构建脚本要读文件顺序，没法运行时推导）——
+ * 但那四处是**纯登记**，不承载逻辑，加一行即可。
+ *
+ * ⚠️ 刻意保留旧硬编码：老模块（faction/wonderwar/...）的面板块还在 ui.js 里，
+ *    本轮只把**新模块**迁进来。一次全迁 = 一次大改 = 一次大炸，不干。
+ * ============================================================ */
+(function () {
+  'use strict';
+  var GAME = window.GAME = window.GAME || {};
+  var RG = GAME.reg = { mods: [] };
+
+  /* ---------------- 注册 ---------------- */
+  RG.add = function (spec) {
+    if (!spec || !spec.id) return null;
+    /* 幂等：同一个 id 重复注册只保留最后一次（热重载/重复 import 不至于出双份） */
+    for (var i = 0; i < RG.mods.length; i++) {
+      if (RG.mods[i].id === spec.id) { RG.mods[i] = spec; return spec; }
+    }
+    RG.mods.push(spec);
+    return spec;
+  };
+
+  RG.get = function (id) {
+    for (var i = 0; i < RG.mods.length; i++) if (RG.mods[i].id === id) return RG.mods[i];
+    return null;
+  };
+
+  /* ---------------- 月度 tick ----------------
+   * 每个模块自己管"这个月跑过没有"（它们都有一句 `if (!force && s.xMonth === m) return`），
+   * 这里只负责**逐个隔离开**：一个模块抛错不许拖停别的模块，更不许拖停主循环。
+   * （v95 的教训：`_safeTick` 就是为了这个，现在统一到这里。）
+   */
+  RG._warned = {};
+  RG.tickAll = function (force) {
+    var out = { ok: 0, err: 0 };
+    RG.mods.forEach(function (m) {
+      if (typeof m.tick !== 'function') return;
+      try {
+        m.tick(force);
+        out.ok++;
+      } catch (e) {
+        out.err++;
+        if (!RG._warned[m.id]) {
+          RG._warned[m.id] = 1;
+          if (typeof console !== 'undefined' && console.warn) {
+            console.warn('[monthly tick] ' + m.id, e);
+          }
+        }
+      }
+    });
+    return out;
+  };
+
+  /* ---------------- 界面块 ----------------
+   * `ctx` 由 ui.js 给：{ sec, U, cities, c0, esc }
+   * 每个 panel 返回一段 HTML；抛错就渲染成一行"这块没加载"，不整个面板崩掉。
+   */
+  RG.panels = function (ctx) {
+    var list = RG.mods.filter(function (m) { return typeof m.panel === 'function'; });
+    list.sort(function (a, b) {
+      return (a.order == null ? 500 : a.order) - (b.order == null ? 500 : b.order);
+    });
+    return list.map(function (m) {
+      try {
+        var h = m.panel(ctx);
+        return h || '';
+      } catch (e) {
+        if (typeof console !== 'undefined' && console.warn) console.warn('[panel] ' + m.id, e);
+        return '<div class="ui-sub" style="color:var(--red-light);">'
+          + '（' + m.id + ' 这块没加载：' + (e && e.message ? e.message : e) + '）</div>';
+      }
+    }).join('');
+  };
+
+  /* ---------------- 动作分发 ----------------
+   * main.js 的 switch 里加一句兜底：`if (GAME.reg.action(a, el, ctx)) break;`
+   * 返回 true = 这个动作归注册表管（调用方不要再往下走）。
+   */
+  RG.action = function (name, el, ctx) {
+    for (var i = 0; i < RG.mods.length; i++) {
+      var m = RG.mods[i];
+      var f = m.actions && m.actions[name];
+      if (typeof f !== 'function') continue;
+      try { f(el, ctx); return true; } catch (e) {
+        if (typeof console !== 'undefined' && console.warn) console.warn('[action] ' + name, e);
+        return true;
+      }
+    }
+    return false;
+  };
+
+  /* ---------------- 自检 ----------------
+   * 给 smoke 用：注册了几个、各自有没有 tick/panel/actions。
+   * 这是"可插拔"能被验证的地方 —— 不然新机制自己也会变成没人读的死代码。
+   */
+  RG.stats = function () {
+    var s = { total: RG.mods.length, tick: 0, panel: 0, actions: 0, ids: [] };
+    RG.mods.forEach(function (m) {
+      if (typeof m.tick === 'function') s.tick++;
+      if (typeof m.panel === 'function') s.panel++;
+      if (m.actions) s.actions += Object.keys(m.actions).length;
+      s.ids.push(m.id);
+    });
+    return s;
+  };
+})();
+
 /* ---- data.js ---- */
 /* ============================================================
  * data.js  静态配置数据 —— 真实我在废土有座城数值版（v2）
@@ -10368,9 +10503,9 @@ window.GAME = window.GAME || {};
       _safeTick('unrest');
       _safeTick('wonderwar');
       _safeTick('expose');
-      _safeTick('idle');        /* v97：惰性（自动化越多越懒，压兵员上限） */
-      _safeTick('ending');      /* v98：世界形态（接进去之后惰性单向爬） */
-      _safeTick('muster');      /* v99：兵源（流民来了没有 / 该走了） */
+      /* v100：**惰性 / 世界形态 / 兵源已迁入注册表**（js/registry.js）——
+         加模块不再回来改这个列表，见各模块末尾 `GAME.reg.add({ tick })`。 */
+      if (GAME.reg && GAME.reg.tickAll) GAME.reg.tickAll();
     }
     /* v89.136：老档采集队迁移兜底（幂等 · 正常已被 loadGame 处理） */
     if (GAME.migrateLegacyGathers) GAME.migrateLegacyGathers();
@@ -32107,6 +32242,58 @@ window.GAME = window.GAME || {};
     });
     return '🪖 ' + seg.join(' · ');
   };
+
+/* ============================================================
+ * v100：自注册（可插拔 —— 见 registry.js）
+ * ------------------------------------------------------------
+ * 这一段原来写在 ui.js 的玩法台里、动作写在 main.js 的 switch 里。
+ * 现在"界面块 + 动作"都从模块自己声明：加模块不用再改 ui/main/state 三处。
+ * `ctx` 由 ui.js 给：{ sec, U, cities, c0, toast, refresh }
+ * ============================================================ */
+if (GAME.reg) {
+  GAME.reg.add({
+    id: 'trooplv',
+    order: 60,
+    panel: function (ctx) {
+      /* ⚠️ `sec` 是 ui.js 的局部函数，模块里没有 —— 必须从 ctx 取。
+         漏了这句就是 ReferenceError，被 RG.panels 的 try/catch 吞成"这块没加载"。 */
+      var sec = ctx.sec;
+          /* ①.b 兵员等级（v96）：一级斥候、二级斥候 */
+          if (GAME.trooplv) {
+            var lvH = ctx.cities.map(function (c) {
+              var a = c.army || {}, keys = Object.keys(a).filter(function (k) { return (a[k] | 0) > 0; });
+              if (!keys.length) return '';
+              var chips = keys.map(function (tid) {
+                var t = (GAME.DATA.TROOPS || {})[tid] || {};
+                var lv = GAME.trooplv.of(c, tid);
+                var cost = GAME.trooplv.costOf(c, tid);
+                if (!cost) return '<span class="chip dim">' + U.escape(t.name || tid) + ' Lv' + lv + '（满级）</span>';
+                return '<span class="chip" data-action="trooplv-up" data-cid="' + U.escape(c.id)
+                  + '" data-tid="' + U.escape(tid) + '" title="'
+                  + U.escape('升到 Lv' + cost.to + '：粮 ' + cost.grain + ' · 木 ' + cost.wood
+                    + ' · 石 ' + cost.stone + ' · 铁 ' + cost.iron + '（军营等级有要求）') + '">'
+                  + U.escape(t.name || tid) + ' Lv' + lv + ' → ' + cost.to
+                  + '<span style="color:var(--text-dim);"> · ' + U.numText(cost.total, 0) + '</span></span>';
+              }).join('');
+              return '<div style="margin-top:5px;">🏯 ' + U.escape(c.name) + '<div class="chips" style="margin-top:3px;">'
+                + chips + '</div></div>';
+            }).join('');
+            return sec('🪖 兵员等级', '每升一级：生/攻/防 +7%；「奇袭」要 Lv3、「远征」要 Lv2',
+              lvH + '<div class="ui-sub" style="margin-top:4px;">等级是**这座城这个兵种**的档位（含以后新补的兵），'
+              + '不是某个人的军衔。整训要资源 + 军营等级，升上去就退不回来。</div>');
+          }
+
+    },
+    actions: {
+        'trooplv-up': function (el, ctx) {
+          var r = GAME.trooplv.up(GAME.city.byId(el.getAttribute('data-cid')),
+            el.getAttribute('data-tid'));
+          ctx.toast(r.msg); ctx.refresh();
+        }
+    }
+  });
+}
+
 })();
 
 /* ---- idle.js ---- */
@@ -32299,6 +32486,51 @@ window.GAME = window.GAME || {};
     var v = Math.round(ID.of(city)), cap = ID.maxLvOf(city);
     return v + '/100（兵员上限 Lv' + cap + '）';
   };
+
+/* ============================================================
+ * v100：自注册（可插拔 —— 见 registry.js）
+ * ------------------------------------------------------------
+ * 这一段原来写在 ui.js 的玩法台里、动作写在 main.js 的 switch 里。
+ * 现在"界面块 + 动作"都从模块自己声明：加模块不用再改 ui/main/state 三处。
+ * `ctx` 由 ui.js 给：{ sec, U, cities, c0, toast, refresh }
+ * ============================================================ */
+if (GAME.reg) {
+  GAME.reg.add({
+    id: 'idle',
+    /* 月度结算也走注册表：state.js 只调 GAME.reg.tickAll()，不再逐个点名 */
+    tick: function (force) { ID.tick(force); },
+    order: 70,
+    panel: function (ctx) {
+      /* ⚠️ `sec` 是 ui.js 的局部函数，模块里没有 —— 必须从 ctx 取。
+         漏了这句就是 ReferenceError，被 RG.panels 的 try/catch 吞成"这块没加载"。 */
+      var sec = ctx.sec;
+          /* ①.c 惰性（v97）：照顾得太好，人就废了 */
+          if (GAME.idle) {
+            var idH = ctx.cities.map(function (c) {
+              var v = Math.round(GAME.idle.of(c));
+              if (v < 8) return '';
+              return '<span class="chip" data-action="idle-work" data-cid="' + U.escape(c.id) + '"'
+                + ' title="' + U.escape('组织一次劳动（一个月一次）：降 18 点惰性，耗粮按人口算') + '">'
+                + U.escape(c.name) + ' · ' + v + '/100 · 兵员上限 Lv' + GAME.idle.maxLvOf(c) + ' · 组织劳动</span>';
+            }).join('');
+            return sec('🧠 惰性', GAME.idle.lineOf() || '城里的人还勤快',
+              '<div class="chips" style="margin-top:5px;">' + idH + '</div>'
+              + '<div class="ui-sub" style="margin-top:4px;">'
+              + '「它会照顾到你什么都不用做，然后就没有人了。」—— '
+              + '自动化开得越多、越久没打仗，人越懒；每 25 点惰性压掉一级兵员上限（最高 5 级）。'
+              + '打仗是最快的解法（一仗降 12 点），其次才是组织劳动。</div>');
+          }
+
+    },
+    actions: {
+        'idle-work': function (el, ctx) {
+          var r = GAME.idle.work(GAME.city.byId(el.getAttribute('data-cid')));
+          ctx.toast(r.msg); ctx.refresh();
+        }
+    }
+  });
+}
+
 })();
 
 /* ---- ending.js ---- */
@@ -32518,6 +32750,55 @@ window.GAME = window.GAME || {};
   };
 
   void U;
+
+/* ============================================================
+ * v100：自注册（可插拔 —— 见 registry.js）
+ * ------------------------------------------------------------
+ * 这一段原来写在 ui.js 的玩法台里、动作写在 main.js 的 switch 里。
+ * 现在"界面块 + 动作"都从模块自己声明：加模块不用再改 ui/main/state 三处。
+ * `ctx` 由 ui.js 给：{ sec, U, cities, c0, toast, refresh }
+ * ============================================================ */
+if (GAME.reg) {
+  GAME.reg.add({
+    id: 'ending',
+    /* 月度结算也走注册表：state.js 只调 GAME.reg.tickAll()，不再逐个点名 */
+    tick: function (force) { EN.tick(force); },
+    order: 90,
+    panel: function (ctx) {
+      /* ⚠️ `sec` 是 ui.js 的局部函数，模块里没有 —— 必须从 ctx 取。
+         漏了这句就是 ReferenceError，被 RG.panels 的 try/catch 吞成"这块没加载"。 */
+      var sec = ctx.sec;
+          /* ⑩ 世界形态（v98 终局）：接进去，还是关灯
+             —— 这是全局唯一一次"不可撤销"，所以把代价直接摊在按钮上，
+                不让玩家去猜一个 ×1.35 背后换掉了什么。 */
+          if (GAME.ending) {
+            var eo = GAME.ending.optionOf();
+            var eH;
+            if (eo) {
+              eH = '<div>已经定了：<b>' + U.escape(eo.name) + '</b>　' + U.escape(eo.short) + '</div>'
+                + '<div class="ui-sub" style="margin-top:4px;">' + U.escape(eo.costText || '') + '</div>';
+            } else if (GAME.ending.opened()) {
+              eH = '<div class="chips" style="margin-top:2px;">' + GAME.ending.optionsView().map(function (o) {
+                return '<span class="chip" data-action="ending-choose" data-eid="' + o.id + '"'
+                  + ' title="' + U.escape(o.desc) + '">' + U.escape(o.name) + '　' + U.escape(o.short) + '</span>';
+              }).join('') + '</div>'
+                + '<div class="ui-sub" style="margin-top:4px;">'
+                + '选一次，改不了。接进去是效率，关灯是能力 —— 这个废土上只能挑一头。</div>';
+            } else {
+              eH = '<div class="ui-sub">' + GAME.ending.lineOf() + '</div>';
+            }
+            return sec('🌗 世界形态', GAME.ending.lineOf(), eH);
+          }
+    },
+    actions: {
+        'ending-choose': function (el, ctx) {
+          var r = GAME.ending.choose(el.getAttribute('data-eid'));
+          ctx.toast(r.msg); ctx.refresh();
+        }
+    }
+  });
+}
+
 })();
 
 /* ---- muster.js ---- */
@@ -32825,6 +33106,64 @@ window.GAME = window.GAME || {};
     var bag = st0();
     return (bag && bag.log ? bag.log.slice(-6) : []);
   };
+
+/* ============================================================
+ * v100：自注册（可插拔 —— 见 registry.js）
+ * ------------------------------------------------------------
+ * 这一段原来写在 ui.js 的玩法台里、动作写在 main.js 的 switch 里。
+ * 现在"界面块 + 动作"都从模块自己声明：加模块不用再改 ui/main/state 三处。
+ * `ctx` 由 ui.js 给：{ sec, U, cities, c0, toast, refresh }
+ * ============================================================ */
+if (GAME.reg) {
+  GAME.reg.add({
+    id: 'muster',
+    /* 月度结算也走注册表：state.js 只调 GAME.reg.tickAll()，不再逐个点名 */
+    tick: function (force) { MU.tick(force); },
+    order: 10,
+    panel: function (ctx) {
+      /* ⚠️ `sec` 是 ui.js 的局部函数，模块里没有 —— 必须从 ctx 取。
+         漏了这句就是 ReferenceError，被 RG.panels 的 try/catch 吞成"这块没加载"。 */
+      var sec = ctx.sec;
+          /* ⓪ 兵源（v99）：人从哪来 —— 放在最前，因为它是这个月最要紧的事 */
+          if (GAME.muster) {
+            var mp = GAME.muster.pending();
+            var mH = '';
+            if (mp) {
+              var needG = GAME.muster.grainNeedOf(mp);
+              mH = '<div style="margin-top:2px;">门外 <b>' + U.numText(mp.pop | 0, 0) + '</b> 人（'
+                + U.escape(mp.cause || '逃荒') + '）　接纳要 '
+                + U.numText(needG, 0) + ' 粮</div>'
+                + '<div class="chips" style="margin-top:5px;">'
+                + '<span class="chip" data-action="muster-accept">接纳（花粮，得人+兵）</span>'
+                + '<span class="chip" data-action="muster-refuse">赶走（省粮，名声 −）</span></div>';
+            }
+            var mrec = GAME.muster.recent();
+            var recH = mrec.length ? ('<div class="ui-sub" style="margin-top:5px;">最近：'
+              + mrec.map(function (r) {
+                return U.escape(r.src) + ' ' + U.numText(r.n, 0);
+              }).join(' · ') + '</div>') : '';
+            return sec('🚶 人从哪来', GAME.muster.lineOf() || '这个月还没人投奔',
+              mH + recH
+              + '<div class="ui-sub" style="margin-top:5px;">'
+              + '人口自然补满要 14 小时（以前是 2 小时）—— 光等养不出兵。'
+              + '想快只有四条路：<b>遗迹里收容幸存者</b>、<b>战后收编俘虏 / 逃生者</b>、'
+              + '<b>接纳流民</b>、<b>远征把人从地下带回来</b>。'
+              + '兵是要从人里练的，所以"人"就是你真正的兵源。</div>');
+          }
+    },
+    actions: {
+        'muster-accept': function (el, ctx) {
+          var r = GAME.muster.accept();
+          ctx.toast(r.msg); ctx.refresh();
+        },
+        'muster-refuse': function (el, ctx) {
+          var r = GAME.muster.turnAway();
+          ctx.toast(r.msg); ctx.refresh();
+        }
+    }
+  });
+}
+
 })();
 
 /* ---- gltf.js ---- */
@@ -52848,32 +53187,11 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
       var c0 = (GAME.currentCity && GAME.currentCity()) || cities[0] || null;
       var cn = c0 ? U.escape(c0.name) : '—';
 
-      /* ⓪ 兵源（v99）：人从哪来 —— 放在最前，因为它是这个月最要紧的事 */
-      if (GAME.muster) {
-        var mp = GAME.muster.pending();
-        var mH = '';
-        if (mp) {
-          var needG = GAME.muster.grainNeedOf(mp);
-          mH = '<div style="margin-top:2px;">门外 <b>' + U.numText(mp.pop | 0, 0) + '</b> 人（'
-            + U.escape(mp.cause || '逃荒') + '）　接纳要 '
-            + U.numText(needG, 0) + ' 粮</div>'
-            + '<div class="chips" style="margin-top:5px;">'
-            + '<span class="chip" data-action="muster-accept">接纳（花粮，得人+兵）</span>'
-            + '<span class="chip" data-action="muster-refuse">赶走（省粮，名声 −）</span></div>';
-        }
-        var mrec = GAME.muster.recent();
-        var recH = mrec.length ? ('<div class="ui-sub" style="margin-top:5px;">最近：'
-          + mrec.map(function (r) {
-            return U.escape(r.src) + ' ' + U.numText(r.n, 0);
-          }).join(' · ') + '</div>') : '';
-        h += sec('🚶 人从哪来', GAME.muster.lineOf() || '这个月还没人投奔',
-          mH + recH
-          + '<div class="ui-sub" style="margin-top:5px;">'
-          + '人口自然补满要 14 小时（以前是 2 小时）—— 光等养不出兵。'
-          + '想快只有四条路：<b>遗迹里收容幸存者</b>、<b>战后收编俘虏 / 逃生者</b>、'
-          + '<b>接纳流民</b>、<b>远征把人从地下带回来</b>。'
-          + '兵是要从人里练的，所以"人"就是你真正的兵源。</div>');
-      }
+      /* v100：**注册表渲染** —— 兵源/兵员等级/惰性/世界形态四块由模块自己声明
+         （见各模块末尾的 `GAME.reg.add`）。order 决定顺序：兵源 10 → 兵员 60 → 惰性 70 → 世界形态 90。 */
+      h += GAME.reg.panels({ sec: sec, U: U, cities: cities, c0: c0,
+        toast: ui.toast, refresh: function () { ui.openWorldPanel(); GAME.refreshView(); } });
+
 
       /* ① 作战目标（让"带多少兵"成为一个选择） */
       if (GAME.goals) {
@@ -52894,48 +53212,6 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
           + '**你带多少兵就决定了怎么打**：带满平推（稳），带少就自动变成斩首/奇袭'
           + '（攻更高、防更低、血更薄，但战利品翻倍）。'
           + '这一行不是说明，是战场上的真数值。</div>');
-      }
-
-      /* ①.b 兵员等级（v96）：一级斥候、二级斥候 */
-      if (GAME.trooplv) {
-        var lvH = cities.map(function (c) {
-          var a = c.army || {}, keys = Object.keys(a).filter(function (k) { return (a[k] | 0) > 0; });
-          if (!keys.length) return '';
-          var chips = keys.map(function (tid) {
-            var t = (GAME.DATA.TROOPS || {})[tid] || {};
-            var lv = GAME.trooplv.of(c, tid);
-            var cost = GAME.trooplv.costOf(c, tid);
-            if (!cost) return '<span class="chip dim">' + U.escape(t.name || tid) + ' Lv' + lv + '（满级）</span>';
-            return '<span class="chip" data-action="trooplv-up" data-cid="' + U.escape(c.id)
-              + '" data-tid="' + U.escape(tid) + '" title="'
-              + U.escape('升到 Lv' + cost.to + '：粮 ' + cost.grain + ' · 木 ' + cost.wood
-                + ' · 石 ' + cost.stone + ' · 铁 ' + cost.iron + '（军营等级有要求）') + '">'
-              + U.escape(t.name || tid) + ' Lv' + lv + ' → ' + cost.to
-              + '<span style="color:var(--text-dim);"> · ' + U.numText(cost.total, 0) + '</span></span>';
-          }).join('');
-          return '<div style="margin-top:5px;">🏯 ' + U.escape(c.name) + '<div class="chips" style="margin-top:3px;">'
-            + chips + '</div></div>';
-        }).join('');
-        h += sec('🪖 兵员等级', '每升一级：生/攻/防 +7%；「奇袭」要 Lv3、「远征」要 Lv2',
-          lvH + '<div class="ui-sub" style="margin-top:4px;">等级是**这座城这个兵种**的档位（含以后新补的兵），'
-          + '不是某个人的军衔。整训要资源 + 军营等级，升上去就退不回来。</div>');
-      }
-
-      /* ①.c 惰性（v97）：照顾得太好，人就废了 */
-      if (GAME.idle) {
-        var idH = cities.map(function (c) {
-          var v = Math.round(GAME.idle.of(c));
-          if (v < 8) return '';
-          return '<span class="chip" data-action="idle-work" data-cid="' + U.escape(c.id) + '"'
-            + ' title="' + U.escape('组织一次劳动（一个月一次）：降 18 点惰性，耗粮按人口算') + '">'
-            + U.escape(c.name) + ' · ' + v + '/100 · 兵员上限 Lv' + GAME.idle.maxLvOf(c) + ' · 组织劳动</span>';
-        }).join('');
-        h += sec('🧠 惰性', GAME.idle.lineOf() || '城里的人还勤快',
-          '<div class="chips" style="margin-top:5px;">' + idH + '</div>'
-          + '<div class="ui-sub" style="margin-top:4px;">'
-          + '「它会照顾到你什么都不用做，然后就没有人了。」—— '
-          + '自动化开得越多、越久没打仗，人越懒；每 25 点惰性压掉一级兵员上限（最高 5 级）。'
-          + '打仗是最快的解法（一仗降 12 点），其次才是组织劳动。</div>');
       }
 
       /* ② 伤兵 / 老兵 */
@@ -53064,27 +53340,6 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
       if (GAME.expose) {
         var el = GAME.expose.lineOf();
         if (el) h += sec('👁 谁看见了你', el, '');
-      }
-      /* ⑩ 世界形态（v98 终局）：接进去，还是关灯
-         —— 这是全局唯一一次"不可撤销"，所以把代价直接摊在按钮上，
-            不让玩家去猜一个 ×1.35 背后换掉了什么。 */
-      if (GAME.ending) {
-        var eo = GAME.ending.optionOf();
-        var eH;
-        if (eo) {
-          eH = '<div>已经定了：<b>' + U.escape(eo.name) + '</b>　' + U.escape(eo.short) + '</div>'
-            + '<div class="ui-sub" style="margin-top:4px;">' + U.escape(eo.costText || '') + '</div>';
-        } else if (GAME.ending.opened()) {
-          eH = '<div class="chips" style="margin-top:2px;">' + GAME.ending.optionsView().map(function (o) {
-            return '<span class="chip" data-action="ending-choose" data-eid="' + o.id + '"'
-              + ' title="' + U.escape(o.desc) + '">' + U.escape(o.name) + '　' + U.escape(o.short) + '</span>';
-          }).join('') + '</div>'
-            + '<div class="ui-sub" style="margin-top:4px;">'
-            + '选一次，改不了。接进去是效率，关灯是能力 —— 这个废土上只能挑一头。</div>';
-        } else {
-          eH = '<div class="ui-sub">' + GAME.ending.lineOf() + '</div>';
-        }
-        h += sec('🌗 世界形态', GAME.ending.lineOf(), eH);
       }
     })();
 
@@ -64109,6 +64364,7 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
 
 
 
+
 /* v95：可玩性优先的一批（效果统一从「战果层」goals 落地，不改 simulate） */
 
 
@@ -65524,14 +65780,6 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
         var r = GAME.deck ? GAME.deck.toggle(el.getAttribute('data-card')) : { msg: '未加载' };
         ui.toast(r.msg); ui.openWorldPanel();
       })(); break;
-      case 'muster-accept': (function () {
-        var r = GAME.muster ? GAME.muster.accept() : { msg: '兵源系统未加载' };
-        ui.toast(r.msg); ui.openWorldPanel(); GAME.refreshView();
-      })(); break;
-      case 'muster-refuse': (function () {
-        var r = GAME.muster ? GAME.muster.turnAway() : { msg: '兵源系统未加载' };
-        ui.toast(r.msg); ui.openWorldPanel();
-      })(); break;
       case 'wonder-keep': (function () {
         var c = GAME.currentCity();
         var r = GAME.wonderwar
@@ -65542,22 +65790,6 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
       case 'wonder-pull': (function () {
         var r = GAME.wonderwar ? GAME.wonderwar.pull(+el.getAttribute('data-pid'))
           : { msg: '奇观系统未加载' };
-        ui.toast(r.msg); ui.openWorldPanel(); GAME.refreshView();
-      })(); break;
-      case 'ending-choose': (function () {
-        var r = GAME.ending ? GAME.ending.choose(el.getAttribute('data-eid'))
-          : { msg: '终局系统未加载' };
-        ui.toast(r.msg); ui.openWorldPanel(); GAME.refreshView();
-      })(); break;
-      case 'idle-work': (function () {
-        var r = GAME.idle ? GAME.idle.work(GAME.city.byId(el.getAttribute('data-cid')))
-          : { msg: '惰性系统未加载' };
-        ui.toast(r.msg); ui.openWorldPanel();
-      })(); break;
-      case 'trooplv-up': (function () {
-        var r = GAME.trooplv
-          ? GAME.trooplv.up(GAME.city.byId(el.getAttribute('data-cid')), el.getAttribute('data-tid'))
-          : { msg: '兵员等级未加载' };
         ui.toast(r.msg); ui.openWorldPanel(); GAME.refreshView();
       })(); break;
       case 'skill-arm': (function () {
@@ -65781,7 +66013,20 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
       }
       case 'save': GAME.doSave(); break;
       case 'new-game': GAME.doNewGame(); break;
-      default: break;
+      default:
+        /* ============================================================
+         * v100：**注册表分发**（可插拔）
+         * ------------------------------------------------------------
+         * 新的自包含模块（兵源 / 兵员等级 / 惰性 / 世界形态 …）不再往这个
+         * 巨大的 switch 里加 case —— 它们在各自文件末尾 `GAME.reg.add()`
+         * 声明 `actions`，统一从这里分发。
+         * 加模块从此只需要：① import ② 四份静态清单各一行 ③ 模块里自注册。
+         * ============================================================ */
+        if (GAME.reg && GAME.reg.action(name, el, {
+          toast: ui.toast,
+          refresh: function () { ui.openWorldPanel(); GAME.refreshView(); }
+        })) break;
+        break;
     }
   };
 

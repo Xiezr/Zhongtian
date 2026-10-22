@@ -67,6 +67,19 @@
   **凡是"全局生效"的数值改动，先问一句：这会不会改掉测试里那些对比基准？**
 - **后台提交跑 pre-commit 时，禁止再改 `js/` 或重建 bundle**：门禁会读到半新半旧的文件，
   报出莫名其妙的单条红（v98.1 就这么被拦下一次，4001/1）。等待期间只读文件、写文档。
+- **加模块走注册表（`js/registry.js`），不要再往 ui/main/state 三处各写一遍**：
+  模块文件末尾 `GAME.reg.add({ id, order, tick, panel, actions })` 一次声明，
+  界面块 / 动作 / 月度结算都从注册表走。
+  剩下要改的只有四份**静态清单**（build_bundle ORDER · smoke ORDER · audit MODULES ×2）
+  和 `main.js` 的 import —— 那五处是纯登记，不承载逻辑。
+  迁移样板见 `js/muster.js` / `js/trooplv.js` / `js/idle.js` / `js/ending.js` 末尾。
+  ⚠️ panel 里要用 `var sec = ctx.sec;`（`sec` 是 ui.js 的局部函数，模块里没有）；
+  漏了就是 ReferenceError，被 `RG.panels` 的 try/catch 吞成"这块没加载"（v100 踩过）。
+- **迁走代码必须删干净**：`smoke §322④` 钉着"ui.js 里不许留第二份面板"。
+  两份逻辑比一份烂代码更糟 —— 改一处、另一处不动，谁都看不出哪份在生效。
+- **改了机制，检查工具要跟着改**：动作迁进注册表后，`audit.js` 原来只认 main.js 的
+  `case`，会报一堆"点了没反应"的假红；现在它也扫各模块 `reg.add` 里的 actions 键。
+  门禁替新机制撒谎，比没有门禁更危险。
 - **长跑探针是"世界还活着吗"的唯一证据**：`node .workbuddy/tools/sim/sim-run.js 240`
   （N = 游戏月）。新开一局、按月推进、周期性打表（城/人/兵/资源/惰性/竞争者/村社/污染）。
   v98.6 就是它照出"20 年过去村社 0 处、竞争者 0 支"—— 而当时门禁全绿。

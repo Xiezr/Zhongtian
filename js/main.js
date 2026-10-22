@@ -5,6 +5,7 @@
    （esbuild 按 DFS 发现顺序执行；本列表与旧 index.html 的 18 个 <script> 顺序逐条一致）。
    改顺序 = 改行为；非必要勿动。 */
 import './core.js';
+import './registry.js';  /* v100：模块注册表（必须最先 import —— 各模块末尾会自注册） */
 import './data.js';
 import './state.js';
 import './systems.js';
@@ -1445,14 +1446,6 @@ import './ui.js';
         var r = GAME.deck ? GAME.deck.toggle(el.getAttribute('data-card')) : { msg: '未加载' };
         ui.toast(r.msg); ui.openWorldPanel();
       })(); break;
-      case 'muster-accept': (function () {
-        var r = GAME.muster ? GAME.muster.accept() : { msg: '兵源系统未加载' };
-        ui.toast(r.msg); ui.openWorldPanel(); GAME.refreshView();
-      })(); break;
-      case 'muster-refuse': (function () {
-        var r = GAME.muster ? GAME.muster.turnAway() : { msg: '兵源系统未加载' };
-        ui.toast(r.msg); ui.openWorldPanel();
-      })(); break;
       case 'wonder-keep': (function () {
         var c = GAME.currentCity();
         var r = GAME.wonderwar
@@ -1463,22 +1456,6 @@ import './ui.js';
       case 'wonder-pull': (function () {
         var r = GAME.wonderwar ? GAME.wonderwar.pull(+el.getAttribute('data-pid'))
           : { msg: '奇观系统未加载' };
-        ui.toast(r.msg); ui.openWorldPanel(); GAME.refreshView();
-      })(); break;
-      case 'ending-choose': (function () {
-        var r = GAME.ending ? GAME.ending.choose(el.getAttribute('data-eid'))
-          : { msg: '终局系统未加载' };
-        ui.toast(r.msg); ui.openWorldPanel(); GAME.refreshView();
-      })(); break;
-      case 'idle-work': (function () {
-        var r = GAME.idle ? GAME.idle.work(GAME.city.byId(el.getAttribute('data-cid')))
-          : { msg: '惰性系统未加载' };
-        ui.toast(r.msg); ui.openWorldPanel();
-      })(); break;
-      case 'trooplv-up': (function () {
-        var r = GAME.trooplv
-          ? GAME.trooplv.up(GAME.city.byId(el.getAttribute('data-cid')), el.getAttribute('data-tid'))
-          : { msg: '兵员等级未加载' };
         ui.toast(r.msg); ui.openWorldPanel(); GAME.refreshView();
       })(); break;
       case 'skill-arm': (function () {
@@ -1702,7 +1679,20 @@ import './ui.js';
       }
       case 'save': GAME.doSave(); break;
       case 'new-game': GAME.doNewGame(); break;
-      default: break;
+      default:
+        /* ============================================================
+         * v100：**注册表分发**（可插拔）
+         * ------------------------------------------------------------
+         * 新的自包含模块（兵源 / 兵员等级 / 惰性 / 世界形态 …）不再往这个
+         * 巨大的 switch 里加 case —— 它们在各自文件末尾 `GAME.reg.add()`
+         * 声明 `actions`，统一从这里分发。
+         * 加模块从此只需要：① import ② 四份静态清单各一行 ③ 模块里自注册。
+         * ============================================================ */
+        if (GAME.reg && GAME.reg.action(name, el, {
+          toast: ui.toast,
+          refresh: function () { ui.openWorldPanel(); GAME.refreshView(); }
+        })) break;
+        break;
     }
   };
 

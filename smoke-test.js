@@ -12381,7 +12381,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
     /* ⚠️ 这份 ORDER 与 build_bundle.py 的 ORDER **必须逐条一致**（本文故意不复用脚本，
        就是为了"构建脚本自己算错时测试还能抓到"）。加了模块两边都要加 ——
        v92 加 fog / memorial 时这里漏改，导致 hash 对不上、守卫假红。 */
-    var ORDER = ['core', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'domain', 'map', 'sphere', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'rival', 'land', 'taint', 'climate', 'surge', 'relic', 'goals', 'veteran', 'setskill', 'deck', 'bond', 'tower', 'wonderwar', 'delve', 'unrest', 'expose', 'trooplv', 'idle', 'ending', 'muster', 'gltf',
+    var ORDER = ['core', 'registry', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'domain', 'map', 'sphere', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'rival', 'land', 'taint', 'climate', 'surge', 'relic', 'goals', 'veteran', 'setskill', 'deck', 'bond', 'tower', 'wonderwar', 'delve', 'unrest', 'expose', 'trooplv', 'idle', 'ending', 'muster', 'gltf',
       'map3d', 'battle', 'strategy', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits', 'story', 'ui', 'main'];
     var h = crypto.createHash('sha256');
     try {
@@ -40579,6 +40579,81 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
 
 
 
+
+
+  /* ============================================================
+   * §322 · v100：模块注册表（可插拔）
+   * ------------------------------------------------------------
+   * 老板：「不要累积屎山代码，可插拔，可维护性提高」。
+   * 加一个模块原来要改 8 处，现在"界面块 + 动作 + 月度结算"一次声明。
+   * 这里钉四件事：注册表能用、四块真的从注册表出来、动作能分发、
+   * 而且 **ui.js 里不再留第二份**（防复制粘贴式屎山）。
+   * ============================================================ */
+  console.log('\n===== 322. v100 注册表：一次声明 · 界面/动作/月结都走它 =====');
+  (function () {
+    var cc = G.currentCity();   /* ⚠️ 这个 IIFE 里没有外层 c0 —— 直接取（否则 panels 里访问 undefined 会抛，被 catch 成"没加载"） */
+    check('§322① 注册表存在，且已注册 ≥4 个模块（惰性/世界形态/兵源/兵员等级）', (function () {
+      if (!G.reg || !G.reg.stats) return false;
+      var st2 = G.reg.stats();
+      return st2.total >= 4 && st2.tick >= 3 && st2.actions >= 5;
+    })(), (function () {
+      var s2 = G.reg.stats();
+      return '模块 ' + s2.total + ' · 有 tick ' + s2.tick + ' · 面板 ' + s2.panel + ' · 动作 ' + s2.actions;
+    })());
+
+    check('§322② 世界账本四块由注册表渲染（不是 ui.js 硬编码）', (function () {
+      if (!G.reg || !G.reg.panels) return false;
+      var secStub = function (title, sub, body) {
+        return '<sec t="' + title + '">' + (sub || '') + (body || '') + '</sec>';
+      };
+      var html = G.reg.panels({ sec: secStub, U: G.utils, cities: cc ? [cc] : [], c0: cc,
+        toast: function () {}, refresh: function () {} });
+      return /人从哪来/.test(html) && /兵员等级/.test(html)
+        && /惰性/.test(html) && /世界形态/.test(html);
+    })(), (function () { return '四块齐全'; })());
+
+    check('§322③ 动作从注册表分发（main.js 的 switch 里已无这些 case）', (function () {
+      var m = require('fs').readFileSync(require('path').join(__dirname, 'js', 'main.js'), 'utf8');
+      /* 迁走的动作不该再出现在 main.js 的 case 里 */
+      var gone = ['muster-accept', 'muster-refuse', 'trooplv-up', 'idle-work', 'ending-choose']
+        .every(function (k) { return m.indexOf("case '" + k + "'") < 0; });
+      if (!gone) return false;
+      /* 注册表里必须能找到它们 */
+      var hit = 0;
+      ['muster-accept', 'trooplv-up', 'idle-work', 'ending-choose'].forEach(function (k) {
+        if (G.reg.action(k, { getAttribute: function () { return null; } },
+          { toast: function () {}, refresh: function () {} })) hit++;
+      });
+      return hit === 4;
+    })(), (function () { return '5 个 case 已迁走 · 4 个动作可分发'; })());
+
+    check('§322④ ui.js 里不再有第二份（迁走就必须删干净，否则就是两份逻辑）', (function () {
+      var u = require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8');
+      /* ⚠️ 不能只查标题字符串：城面板里也有「🧠 惰性」这个属性名。
+         要查的是**玩法台那一段的写法**（`h += sec('<标题>'`）—— 它只该出现在模块里。 */
+      return u.indexOf("h += sec('🚶 人从哪来'") < 0
+        && u.indexOf("h += sec('🪖 兵员等级'") < 0
+        && u.indexOf("h += sec('🧠 惰性'") < 0
+        && u.indexOf("h += sec('🌗 世界形态'") < 0
+        && u.indexOf('GAME.reg.panels(') >= 0;
+    })(), (function () { return 'ui.js 只剩一次 reg.panels() 调用'; })());
+
+    check('§322⑤ 月度结算走注册表且互不拖累（一个抛错不拖停别的）', (function () {
+      if (!G.reg || !G.reg.tickAll) return false;
+      var bak = G.reg.mods.slice();
+      var called = 0;
+      G.reg.add({ id: 'zz_ok1', tick: function () { called++; } });
+      G.reg.add({ id: 'zz_bad', tick: function () { throw new Error('boom'); } });
+      G.reg.add({ id: 'zz_ok2', tick: function () { called++; } });
+      var out;
+      try { out = G.reg.tickAll(true); }
+      finally {
+        /* 清掉测试用的三个（按 id 过滤） */
+        G.reg.mods = bak;
+      }
+      return called === 2 && out.err === 1;
+    })(), (function () { return '两个正常 + 一个抛错 → 正常的照跑'; })());
+  })();
 
   /* ============================================================
    * §321 · v99：兵源 —— 人从哪来（自然增长变慢 + 四条外部来源）

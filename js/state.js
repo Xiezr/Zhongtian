@@ -3769,9 +3769,9 @@ import './data.js';
       _safeTick('unrest');
       _safeTick('wonderwar');
       _safeTick('expose');
-      _safeTick('idle');        /* v97：惰性（自动化越多越懒，压兵员上限） */
-      _safeTick('ending');      /* v98：世界形态（接进去之后惰性单向爬） */
-      _safeTick('muster');      /* v99：兵源（流民来了没有 / 该走了） */
+      /* v100：**惰性 / 世界形态 / 兵源已迁入注册表**（js/registry.js）——
+         加模块不再回来改这个列表，见各模块末尾 `GAME.reg.add({ tick })`。 */
+      if (GAME.reg && GAME.reg.tickAll) GAME.reg.tickAll();
     }
     /* v89.136：老档采集队迁移兜底（幂等 · 正常已被 loadGame 处理） */
     if (GAME.migrateLegacyGathers) GAME.migrateLegacyGathers();

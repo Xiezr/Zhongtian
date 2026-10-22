@@ -187,4 +187,49 @@
     var v = Math.round(ID.of(city)), cap = ID.maxLvOf(city);
     return v + '/100（兵员上限 Lv' + cap + '）';
   };
+
+/* ============================================================
+ * v100：自注册（可插拔 —— 见 registry.js）
+ * ------------------------------------------------------------
+ * 这一段原来写在 ui.js 的玩法台里、动作写在 main.js 的 switch 里。
+ * 现在"界面块 + 动作"都从模块自己声明：加模块不用再改 ui/main/state 三处。
+ * `ctx` 由 ui.js 给：{ sec, U, cities, c0, toast, refresh }
+ * ============================================================ */
+if (GAME.reg) {
+  GAME.reg.add({
+    id: 'idle',
+    /* 月度结算也走注册表：state.js 只调 GAME.reg.tickAll()，不再逐个点名 */
+    tick: function (force) { ID.tick(force); },
+    order: 70,
+    panel: function (ctx) {
+      /* ⚠️ `sec` 是 ui.js 的局部函数，模块里没有 —— 必须从 ctx 取。
+         漏了这句就是 ReferenceError，被 RG.panels 的 try/catch 吞成"这块没加载"。 */
+      var sec = ctx.sec;
+          /* ①.c 惰性（v97）：照顾得太好，人就废了 */
+          if (GAME.idle) {
+            var idH = ctx.cities.map(function (c) {
+              var v = Math.round(GAME.idle.of(c));
+              if (v < 8) return '';
+              return '<span class="chip" data-action="idle-work" data-cid="' + U.escape(c.id) + '"'
+                + ' title="' + U.escape('组织一次劳动（一个月一次）：降 18 点惰性，耗粮按人口算') + '">'
+                + U.escape(c.name) + ' · ' + v + '/100 · 兵员上限 Lv' + GAME.idle.maxLvOf(c) + ' · 组织劳动</span>';
+            }).join('');
+            return sec('🧠 惰性', GAME.idle.lineOf() || '城里的人还勤快',
+              '<div class="chips" style="margin-top:5px;">' + idH + '</div>'
+              + '<div class="ui-sub" style="margin-top:4px;">'
+              + '「它会照顾到你什么都不用做，然后就没有人了。」—— '
+              + '自动化开得越多、越久没打仗，人越懒；每 25 点惰性压掉一级兵员上限（最高 5 级）。'
+              + '打仗是最快的解法（一仗降 12 点），其次才是组织劳动。</div>');
+          }
+
+    },
+    actions: {
+        'idle-work': function (el, ctx) {
+          var r = GAME.idle.work(GAME.city.byId(el.getAttribute('data-cid')));
+          ctx.toast(r.msg); ctx.refresh();
+        }
+    }
+  });
+}
+
 })();

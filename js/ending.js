@@ -214,4 +214,53 @@
   };
 
   void U;
+
+/* ============================================================
+ * v100：自注册（可插拔 —— 见 registry.js）
+ * ------------------------------------------------------------
+ * 这一段原来写在 ui.js 的玩法台里、动作写在 main.js 的 switch 里。
+ * 现在"界面块 + 动作"都从模块自己声明：加模块不用再改 ui/main/state 三处。
+ * `ctx` 由 ui.js 给：{ sec, U, cities, c0, toast, refresh }
+ * ============================================================ */
+if (GAME.reg) {
+  GAME.reg.add({
+    id: 'ending',
+    /* 月度结算也走注册表：state.js 只调 GAME.reg.tickAll()，不再逐个点名 */
+    tick: function (force) { EN.tick(force); },
+    order: 90,
+    panel: function (ctx) {
+      /* ⚠️ `sec` 是 ui.js 的局部函数，模块里没有 —— 必须从 ctx 取。
+         漏了这句就是 ReferenceError，被 RG.panels 的 try/catch 吞成"这块没加载"。 */
+      var sec = ctx.sec;
+          /* ⑩ 世界形态（v98 终局）：接进去，还是关灯
+             —— 这是全局唯一一次"不可撤销"，所以把代价直接摊在按钮上，
+                不让玩家去猜一个 ×1.35 背后换掉了什么。 */
+          if (GAME.ending) {
+            var eo = GAME.ending.optionOf();
+            var eH;
+            if (eo) {
+              eH = '<div>已经定了：<b>' + U.escape(eo.name) + '</b>　' + U.escape(eo.short) + '</div>'
+                + '<div class="ui-sub" style="margin-top:4px;">' + U.escape(eo.costText || '') + '</div>';
+            } else if (GAME.ending.opened()) {
+              eH = '<div class="chips" style="margin-top:2px;">' + GAME.ending.optionsView().map(function (o) {
+                return '<span class="chip" data-action="ending-choose" data-eid="' + o.id + '"'
+                  + ' title="' + U.escape(o.desc) + '">' + U.escape(o.name) + '　' + U.escape(o.short) + '</span>';
+              }).join('') + '</div>'
+                + '<div class="ui-sub" style="margin-top:4px;">'
+                + '选一次，改不了。接进去是效率，关灯是能力 —— 这个废土上只能挑一头。</div>';
+            } else {
+              eH = '<div class="ui-sub">' + GAME.ending.lineOf() + '</div>';
+            }
+            return sec('🌗 世界形态', GAME.ending.lineOf(), eH);
+          }
+    },
+    actions: {
+        'ending-choose': function (el, ctx) {
+          var r = GAME.ending.choose(el.getAttribute('data-eid'));
+          ctx.toast(r.msg); ctx.refresh();
+        }
+    }
+  });
+}
+
 })();

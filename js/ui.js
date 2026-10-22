@@ -8207,32 +8207,11 @@ import './state.js';
       var c0 = (GAME.currentCity && GAME.currentCity()) || cities[0] || null;
       var cn = c0 ? U.escape(c0.name) : '—';
 
-      /* ⓪ 兵源（v99）：人从哪来 —— 放在最前，因为它是这个月最要紧的事 */
-      if (GAME.muster) {
-        var mp = GAME.muster.pending();
-        var mH = '';
-        if (mp) {
-          var needG = GAME.muster.grainNeedOf(mp);
-          mH = '<div style="margin-top:2px;">门外 <b>' + U.numText(mp.pop | 0, 0) + '</b> 人（'
-            + U.escape(mp.cause || '逃荒') + '）　接纳要 '
-            + U.numText(needG, 0) + ' 粮</div>'
-            + '<div class="chips" style="margin-top:5px;">'
-            + '<span class="chip" data-action="muster-accept">接纳（花粮，得人+兵）</span>'
-            + '<span class="chip" data-action="muster-refuse">赶走（省粮，名声 −）</span></div>';
-        }
-        var mrec = GAME.muster.recent();
-        var recH = mrec.length ? ('<div class="ui-sub" style="margin-top:5px;">最近：'
-          + mrec.map(function (r) {
-            return U.escape(r.src) + ' ' + U.numText(r.n, 0);
-          }).join(' · ') + '</div>') : '';
-        h += sec('🚶 人从哪来', GAME.muster.lineOf() || '这个月还没人投奔',
-          mH + recH
-          + '<div class="ui-sub" style="margin-top:5px;">'
-          + '人口自然补满要 14 小时（以前是 2 小时）—— 光等养不出兵。'
-          + '想快只有四条路：<b>遗迹里收容幸存者</b>、<b>战后收编俘虏 / 逃生者</b>、'
-          + '<b>接纳流民</b>、<b>远征把人从地下带回来</b>。'
-          + '兵是要从人里练的，所以"人"就是你真正的兵源。</div>');
-      }
+      /* v100：**注册表渲染** —— 兵源/兵员等级/惰性/世界形态四块由模块自己声明
+         （见各模块末尾的 `GAME.reg.add`）。order 决定顺序：兵源 10 → 兵员 60 → 惰性 70 → 世界形态 90。 */
+      h += GAME.reg.panels({ sec: sec, U: U, cities: cities, c0: c0,
+        toast: ui.toast, refresh: function () { ui.openWorldPanel(); GAME.refreshView(); } });
+
 
       /* ① 作战目标（让"带多少兵"成为一个选择） */
       if (GAME.goals) {
@@ -8253,48 +8232,6 @@ import './state.js';
           + '**你带多少兵就决定了怎么打**：带满平推（稳），带少就自动变成斩首/奇袭'
           + '（攻更高、防更低、血更薄，但战利品翻倍）。'
           + '这一行不是说明，是战场上的真数值。</div>');
-      }
-
-      /* ①.b 兵员等级（v96）：一级斥候、二级斥候 */
-      if (GAME.trooplv) {
-        var lvH = cities.map(function (c) {
-          var a = c.army || {}, keys = Object.keys(a).filter(function (k) { return (a[k] | 0) > 0; });
-          if (!keys.length) return '';
-          var chips = keys.map(function (tid) {
-            var t = (GAME.DATA.TROOPS || {})[tid] || {};
-            var lv = GAME.trooplv.of(c, tid);
-            var cost = GAME.trooplv.costOf(c, tid);
-            if (!cost) return '<span class="chip dim">' + U.escape(t.name || tid) + ' Lv' + lv + '（满级）</span>';
-            return '<span class="chip" data-action="trooplv-up" data-cid="' + U.escape(c.id)
-              + '" data-tid="' + U.escape(tid) + '" title="'
-              + U.escape('升到 Lv' + cost.to + '：粮 ' + cost.grain + ' · 木 ' + cost.wood
-                + ' · 石 ' + cost.stone + ' · 铁 ' + cost.iron + '（军营等级有要求）') + '">'
-              + U.escape(t.name || tid) + ' Lv' + lv + ' → ' + cost.to
-              + '<span style="color:var(--text-dim);"> · ' + U.numText(cost.total, 0) + '</span></span>';
-          }).join('');
-          return '<div style="margin-top:5px;">🏯 ' + U.escape(c.name) + '<div class="chips" style="margin-top:3px;">'
-            + chips + '</div></div>';
-        }).join('');
-        h += sec('🪖 兵员等级', '每升一级：生/攻/防 +7%；「奇袭」要 Lv3、「远征」要 Lv2',
-          lvH + '<div class="ui-sub" style="margin-top:4px;">等级是**这座城这个兵种**的档位（含以后新补的兵），'
-          + '不是某个人的军衔。整训要资源 + 军营等级，升上去就退不回来。</div>');
-      }
-
-      /* ①.c 惰性（v97）：照顾得太好，人就废了 */
-      if (GAME.idle) {
-        var idH = cities.map(function (c) {
-          var v = Math.round(GAME.idle.of(c));
-          if (v < 8) return '';
-          return '<span class="chip" data-action="idle-work" data-cid="' + U.escape(c.id) + '"'
-            + ' title="' + U.escape('组织一次劳动（一个月一次）：降 18 点惰性，耗粮按人口算') + '">'
-            + U.escape(c.name) + ' · ' + v + '/100 · 兵员上限 Lv' + GAME.idle.maxLvOf(c) + ' · 组织劳动</span>';
-        }).join('');
-        h += sec('🧠 惰性', GAME.idle.lineOf() || '城里的人还勤快',
-          '<div class="chips" style="margin-top:5px;">' + idH + '</div>'
-          + '<div class="ui-sub" style="margin-top:4px;">'
-          + '「它会照顾到你什么都不用做，然后就没有人了。」—— '
-          + '自动化开得越多、越久没打仗，人越懒；每 25 点惰性压掉一级兵员上限（最高 5 级）。'
-          + '打仗是最快的解法（一仗降 12 点），其次才是组织劳动。</div>');
       }
 
       /* ② 伤兵 / 老兵 */
@@ -8423,27 +8360,6 @@ import './state.js';
       if (GAME.expose) {
         var el = GAME.expose.lineOf();
         if (el) h += sec('👁 谁看见了你', el, '');
-      }
-      /* ⑩ 世界形态（v98 终局）：接进去，还是关灯
-         —— 这是全局唯一一次"不可撤销"，所以把代价直接摊在按钮上，
-            不让玩家去猜一个 ×1.35 背后换掉了什么。 */
-      if (GAME.ending) {
-        var eo = GAME.ending.optionOf();
-        var eH;
-        if (eo) {
-          eH = '<div>已经定了：<b>' + U.escape(eo.name) + '</b>　' + U.escape(eo.short) + '</div>'
-            + '<div class="ui-sub" style="margin-top:4px;">' + U.escape(eo.costText || '') + '</div>';
-        } else if (GAME.ending.opened()) {
-          eH = '<div class="chips" style="margin-top:2px;">' + GAME.ending.optionsView().map(function (o) {
-            return '<span class="chip" data-action="ending-choose" data-eid="' + o.id + '"'
-              + ' title="' + U.escape(o.desc) + '">' + U.escape(o.name) + '　' + U.escape(o.short) + '</span>';
-          }).join('') + '</div>'
-            + '<div class="ui-sub" style="margin-top:4px;">'
-            + '选一次，改不了。接进去是效率，关灯是能力 —— 这个废土上只能挑一头。</div>';
-        } else {
-          eH = '<div class="ui-sub">' + GAME.ending.lineOf() + '</div>';
-        }
-        h += sec('🌗 世界形态', GAME.ending.lineOf(), eH);
       }
     })();
 

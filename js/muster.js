@@ -302,4 +302,62 @@
     var bag = st0();
     return (bag && bag.log ? bag.log.slice(-6) : []);
   };
+
+/* ============================================================
+ * v100：自注册（可插拔 —— 见 registry.js）
+ * ------------------------------------------------------------
+ * 这一段原来写在 ui.js 的玩法台里、动作写在 main.js 的 switch 里。
+ * 现在"界面块 + 动作"都从模块自己声明：加模块不用再改 ui/main/state 三处。
+ * `ctx` 由 ui.js 给：{ sec, U, cities, c0, toast, refresh }
+ * ============================================================ */
+if (GAME.reg) {
+  GAME.reg.add({
+    id: 'muster',
+    /* 月度结算也走注册表：state.js 只调 GAME.reg.tickAll()，不再逐个点名 */
+    tick: function (force) { MU.tick(force); },
+    order: 10,
+    panel: function (ctx) {
+      /* ⚠️ `sec` 是 ui.js 的局部函数，模块里没有 —— 必须从 ctx 取。
+         漏了这句就是 ReferenceError，被 RG.panels 的 try/catch 吞成"这块没加载"。 */
+      var sec = ctx.sec;
+          /* ⓪ 兵源（v99）：人从哪来 —— 放在最前，因为它是这个月最要紧的事 */
+          if (GAME.muster) {
+            var mp = GAME.muster.pending();
+            var mH = '';
+            if (mp) {
+              var needG = GAME.muster.grainNeedOf(mp);
+              mH = '<div style="margin-top:2px;">门外 <b>' + U.numText(mp.pop | 0, 0) + '</b> 人（'
+                + U.escape(mp.cause || '逃荒') + '）　接纳要 '
+                + U.numText(needG, 0) + ' 粮</div>'
+                + '<div class="chips" style="margin-top:5px;">'
+                + '<span class="chip" data-action="muster-accept">接纳（花粮，得人+兵）</span>'
+                + '<span class="chip" data-action="muster-refuse">赶走（省粮，名声 −）</span></div>';
+            }
+            var mrec = GAME.muster.recent();
+            var recH = mrec.length ? ('<div class="ui-sub" style="margin-top:5px;">最近：'
+              + mrec.map(function (r) {
+                return U.escape(r.src) + ' ' + U.numText(r.n, 0);
+              }).join(' · ') + '</div>') : '';
+            return sec('🚶 人从哪来', GAME.muster.lineOf() || '这个月还没人投奔',
+              mH + recH
+              + '<div class="ui-sub" style="margin-top:5px;">'
+              + '人口自然补满要 14 小时（以前是 2 小时）—— 光等养不出兵。'
+              + '想快只有四条路：<b>遗迹里收容幸存者</b>、<b>战后收编俘虏 / 逃生者</b>、'
+              + '<b>接纳流民</b>、<b>远征把人从地下带回来</b>。'
+              + '兵是要从人里练的，所以"人"就是你真正的兵源。</div>');
+          }
+    },
+    actions: {
+        'muster-accept': function (el, ctx) {
+          var r = GAME.muster.accept();
+          ctx.toast(r.msg); ctx.refresh();
+        },
+        'muster-refuse': function (el, ctx) {
+          var r = GAME.muster.turnAway();
+          ctx.toast(r.msg); ctx.refresh();
+        }
+    }
+  });
+}
+
 })();

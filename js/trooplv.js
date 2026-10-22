@@ -189,4 +189,56 @@
     });
     return '🪖 ' + seg.join(' · ');
   };
+
+/* ============================================================
+ * v100：自注册（可插拔 —— 见 registry.js）
+ * ------------------------------------------------------------
+ * 这一段原来写在 ui.js 的玩法台里、动作写在 main.js 的 switch 里。
+ * 现在"界面块 + 动作"都从模块自己声明：加模块不用再改 ui/main/state 三处。
+ * `ctx` 由 ui.js 给：{ sec, U, cities, c0, toast, refresh }
+ * ============================================================ */
+if (GAME.reg) {
+  GAME.reg.add({
+    id: 'trooplv',
+    order: 60,
+    panel: function (ctx) {
+      /* ⚠️ `sec` 是 ui.js 的局部函数，模块里没有 —— 必须从 ctx 取。
+         漏了这句就是 ReferenceError，被 RG.panels 的 try/catch 吞成"这块没加载"。 */
+      var sec = ctx.sec;
+          /* ①.b 兵员等级（v96）：一级斥候、二级斥候 */
+          if (GAME.trooplv) {
+            var lvH = ctx.cities.map(function (c) {
+              var a = c.army || {}, keys = Object.keys(a).filter(function (k) { return (a[k] | 0) > 0; });
+              if (!keys.length) return '';
+              var chips = keys.map(function (tid) {
+                var t = (GAME.DATA.TROOPS || {})[tid] || {};
+                var lv = GAME.trooplv.of(c, tid);
+                var cost = GAME.trooplv.costOf(c, tid);
+                if (!cost) return '<span class="chip dim">' + U.escape(t.name || tid) + ' Lv' + lv + '（满级）</span>';
+                return '<span class="chip" data-action="trooplv-up" data-cid="' + U.escape(c.id)
+                  + '" data-tid="' + U.escape(tid) + '" title="'
+                  + U.escape('升到 Lv' + cost.to + '：粮 ' + cost.grain + ' · 木 ' + cost.wood
+                    + ' · 石 ' + cost.stone + ' · 铁 ' + cost.iron + '（军营等级有要求）') + '">'
+                  + U.escape(t.name || tid) + ' Lv' + lv + ' → ' + cost.to
+                  + '<span style="color:var(--text-dim);"> · ' + U.numText(cost.total, 0) + '</span></span>';
+              }).join('');
+              return '<div style="margin-top:5px;">🏯 ' + U.escape(c.name) + '<div class="chips" style="margin-top:3px;">'
+                + chips + '</div></div>';
+            }).join('');
+            return sec('🪖 兵员等级', '每升一级：生/攻/防 +7%；「奇袭」要 Lv3、「远征」要 Lv2',
+              lvH + '<div class="ui-sub" style="margin-top:4px;">等级是**这座城这个兵种**的档位（含以后新补的兵），'
+              + '不是某个人的军衔。整训要资源 + 军营等级，升上去就退不回来。</div>');
+          }
+
+    },
+    actions: {
+        'trooplv-up': function (el, ctx) {
+          var r = GAME.trooplv.up(GAME.city.byId(el.getAttribute('data-cid')),
+            el.getAttribute('data-tid'));
+          ctx.toast(r.msg); ctx.refresh();
+        }
+    }
+  });
+}
+
 })();
