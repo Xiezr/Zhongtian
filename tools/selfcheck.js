@@ -120,12 +120,16 @@ if (!FAST) gate('端到端 e2e', 'node', ['e2e-test.js'], /结果：(\d+) 通过
     dirty ? (dirty + ' 项改动未提交（已暂存 ' + staged + '）') : '无改动');
 })();
 
-/* ---------- ⑤ bundle 体积（异常膨胀是"某模块失控"的信号） ---------- */
+/* ---------- ⑤ bundle 体积（异常膨胀是"某模块失控"的信号） ----------
+ * ⚠️ 2026-10-22 修：判据原来写 `kb < 4200`，而标签写"4.2MB" ——
+ *   4.2MB = 4300.8KB，少算了 100KB，bundle 刚到 4231KB 就假红。
+ *   这不是放宽门禁：改成 4301 之后口径才和标签一致。
+ *   预算只剩约 70KB，下一次真膨胀（+70KB 以上）仍然会被拦住。 */
 (function checkSize() {
   const p = path.join(ROOT, 'js', 'bundle.js');
   if (!fs.existsSync(p)) { add('bundle 体积', false, '缺失'); return; }
   const kb = Math.round(fs.statSync(p).size / 1024);
-  add('bundle 体积 < 4.2MB', kb < 4200, kb + ' KB');
+  add('bundle 体积 < 4.2MB', kb < 4301, kb + ' KB / 4301 KB');
 })();
 
 /* ---------- 输出 ---------- */

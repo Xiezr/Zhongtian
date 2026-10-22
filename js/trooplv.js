@@ -30,7 +30,7 @@
   function maxLv() { return D().maxLv || 5; }
 
   /* v97：**这座城**的上限会被"惰性"压住（`idle.js`）。
-     "照顾得太好"的城练不出精锐 —— 这是设定灵魂那一条的落点。 */
+     靠配给活了三代的城练不出精锐 —— 这是设定灵魂那一条的落点。 */
   function capOf(city) {
     var top = maxLv();
     if (GAME.idle && GAME.idle.maxLvOf) top = Math.min(top, GAME.idle.maxLvOf(city));
