@@ -6965,7 +6965,12 @@ import './state.js';
     /* v62（老板：「机工坊可以造箭塔，箭塔默认参与防守」）：
        自建箭塔按 `homeDef` 计入守备力 —— 造好即生效、无需指派。
        这也是"造箭塔"立刻看得见的回报（守备力数字 + 守军减伤 defBonus）。 */
-    return GAME.cityDefenseBase(city) + GAME.towersBuiltOf(city) * TW_T().homeDef;
+    /* v95：守城工事（塔防布置）加成 · 破墙损失（两阶段攻城）。
+       ⚠️ 与 `defensePartsOf` **必须同口径** —— 两处都加 `works` 与 `wallLoss`，
+          否则"拆账之和不等于总数"（smoke §v92.15 钉着这条）。 */
+    var wAdd = (GAME.tower && GAME.tower.defBonusOf) ? GAME.tower.defBonusOf(city) : 0;
+    var wLoss = (GAME.tower && GAME.tower.wallLossOf) ? GAME.tower.wallLossOf(city) : 0;
+    return GAME.cityDefenseBase(city) + GAME.towersBuiltOf(city) * TW_T().homeDef + wAdd - wLoss;
   };
 
   /* ============================================================
@@ -6993,12 +6998,16 @@ import './state.js';
     var afterMayor = mbc.name ? Math.round(afterStory * (1 + (mbc.def || 0))) : afterStory;
     var towers = GAME.towersBuiltOf(city) || 0;
     var towerAdd = towers * TW_T().homeDef;
+    /* v95：与 cityDefense 同口径的两项 */
+    var works = (GAME.tower && GAME.tower.defBonusOf) ? GAME.tower.defBonusOf(city) : 0;
+    var wallLoss = (GAME.tower && GAME.tower.wallLossOf) ? GAME.tower.wallLossOf(city) : 0;
     return {
       base: base0, wallLv: wallLv, wallAdd: wallAdd,
       mastery: mst, story: story,
       mayor: mbc.name ? (mbc.def || 0) : 0, mayorName: mbc.name || '',
       towers: towers, towerAdd: towerAdd,
-      total: afterMayor + towerAdd
+      works: works, wallLoss: wallLoss,
+      total: afterMayor + towerAdd + works - wallLoss
     };
   };
   /* 一行中文（战报与面板共用同一措辞，不两处各写一遍） */
@@ -7008,6 +7017,8 @@ import './state.js';
     var seg = [];
     seg.push('城墙 Lv' + p.wallLv + '（+' + p.wallAdd + '）');
     if (p.towers > 0) seg.push('箭塔 ' + p.towers + ' 座（+' + p.towerAdd + '）');
+    if (p.works > 0) seg.push('工事（+' + p.works + '）');
+    if (p.wallLoss > 0) seg.push('墙裂（−' + p.wallLoss + '）');
     if (p.mastery > 0) seg.push('工事专精 ×' + (1 + p.mastery).toFixed(2));
     if (p.mayor > 0) seg.push('城主谋略 ×' + (1 + p.mayor).toFixed(2));
     if (p.story > 1.001) seg.push('羁绊守御 ×' + p.story.toFixed(2));

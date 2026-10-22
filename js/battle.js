@@ -887,6 +887,13 @@ import './state.js';
         + (rolled ? '大军折返 ' + city.name : '军账已结'));
       if (err && typeof console !== 'undefined' && console.warn) console.warn('[finishBattle] 落账异常：', err);
     }
+    /* ============================================================
+     * v95：**战果层**（goals）—— 作战目标/老兵伤兵/套装指令/牌组/破墙
+     * 全部在这一次调用里结账。放在归还兵之后、清 battles 之前，
+     * 因为那时 `rec` 与 `result` 都还在作用域里。
+     * 内部自带 try/catch：框架期任何一个新模块抛错都不许影响主流程。
+     * ============================================================ */
+    if (GAME.goals && GAME.goals.afterBattle) GAME.goals.afterBattle(rec, result, resp);
     s.battles = (s.battles || []).filter(function (b) { return b.id !== id; });
     delete GAME._bsess[id];
     GAME._battleJustDone = {

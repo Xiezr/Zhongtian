@@ -8181,6 +8181,135 @@ import './state.js';
         + '一张都不算。落定不能退。</div>');
     }
 
+
+    /* ============================================================
+     * v95 · 玩法台：能按的东西都放这里
+     * ------------------------------------------------------------
+     * 老板：「要给玩家提供真实、可以开拓玩法的时间」。
+     * 所以这一块不是"再读一遍数字"，是**按了会发生事**：
+     * 治伤兵 / 安抚民怨 / 布置工事 / 派人下地 / 换牌 / 备指令。
+     * ============================================================ */
+    (function () {
+      var c0 = (GAME.currentCity && GAME.currentCity()) || cities[0] || null;
+      var cn = c0 ? U.escape(c0.name) : '—';
+
+      /* ① 作战目标（让"带多少兵"成为一个选择） */
+      if (GAME.goals) {
+        h += sec('🎯 作战目标', GAME.goals.lineOf(),
+          '<div class="ui-sub" style="margin-top:3px;">没有单独的下拉框 —— 你带的兵越少，目标越"精"：'
+          + '战利品倍率越高，伤得也越重。出征界面的战力对比里会显示这一行。</div>');
+      }
+
+      /* ② 伤兵 / 老兵 */
+      if (GAME.veteran) {
+        var wl = GAME.veteran.totalWounded();
+        h += sec('🩹 伤兵与老兵',
+          '伤兵 <b>' + U.numText(wl, 0) + '</b> 人（每月自愈 10%）　'
+          + (c0 ? ('老兵等级：' + Math.round(GAME.veteran.avgLvlOf(c0.id) * 10) / 10 + '/5') : ''),
+          '<div class="chips" style="margin-top:5px;">'
+          + (wl > 0 ? ('<span class="chip" data-action="vet-treat" data-cid="' + (c0 ? U.escape(c0.id) : '') + '">'
+            + '花旧币治好 ' + U.numText(wl, 0) + ' 人</span>') : '')
+          + '</div>'
+          + '<div class="ui-sub" style="margin-top:3px;">伤兵是这一版唯一的「不可逆」：他们占着你的人，'
+          + '要等十个月才好。以前这些人是直接死掉再 2 小时补满的。</div>');
+      }
+
+      /* ③ 民怨 */
+      if (GAME.unrest) {
+        h += sec('🔥 民怨', GAME.unrest.lineOf() || '各城都还安稳',
+          '<div class="chips" style="margin-top:5px;">' + cities.map(function (c) {
+            var v = GAME.unrest.of(c);
+            if (v < 30) return '';
+            return '<span class="chip" data-action="unrest-calm" data-cid="' + U.escape(c.id) + '">'
+              + U.escape(c.name) + ' · ' + v + '/100 · 安抚</span>';
+          }).join('') + '</div>'
+          + '<div class="ui-sub" style="margin-top:3px;">民心低于 55 就开始攒；攒满 100 会反：'
+          + '库房被抢两成半、守军跑一成二。降税治本，安抚只压一阵。</div>');
+      }
+
+      /* ④ 守城工事 + 破墙 */
+      if (GAME.tower) {
+        var worksH = cities.map(function (c) {
+          return '<div style="margin-top:4px;">🏯 ' + U.escape(c.name) + '　'
+            + GAME.tower.cityLine(c) + '　'
+            + GAME.tower.kinds().map(function (k) {
+              return '<button class="btn" style="font-size:var(--fs-cap);padding:0 5px;"'
+                + ' data-action="works-build" data-cid="' + U.escape(c.id) + '" data-kind="' + k.id + '"'
+                + ' title="' + U.escape(k.desc + ' · 城防 +' + k.def) + '">+' + U.escape(k.name) + '</button>';
+            }).join('')
+            + (c.wallBroken > 0 ? ('　<button class="btn" style="font-size:var(--fs-cap);padding:0 5px;"'
+              + ' data-action="works-repair" data-cid="' + U.escape(c.id) + '">补墙</button>') : '')
+            + '</div>';
+        }).join('');
+        h += sec('🏯 守城工事', '每城 3 个槽：炮塔 / 拒马 / 雷区，算进城防',
+          worksH + '<div class="ui-sub" style="margin-top:3px;">攻不下来的城，墙会裂 22% —— '
+          + '下个月再来就更好打。这就是两阶段攻城。</div>');
+      }
+
+      /* ⑤ 地下远征 */
+      if (GAME.delve) {
+        var run = GAME.delve.runOf();
+        var dh;
+        if (run) {
+          dh = '<div>第 <b>' + run.layer + '</b> 层　' + U.numText(run.troops, 0) + ' 人　'
+            + '已带回粮 ' + U.numText(run.loot.grain, 0) + ' · 铁 ' + U.numText(run.loot.iron, 0) + '</div>'
+            + '<div class="chips" style="margin-top:5px;">'
+            + '<span class="chip" data-action="delve-push">再下一层</span>'
+            + '<span class="chip" data-action="delve-retreat">收手上来（带走七成）</span></div>'
+            + '<div class="ui-sub" style="margin-top:3px;">'
+            + (run.log.slice(-2).map(function (x) { return U.escape(x.msg); }).join('<br>') || '还没推进')
+            + '</div>';
+        } else {
+          dh = '<button class="btn" style="font-size:var(--fs-cap);padding:1px 8px;"'
+            + ' data-action="delve-start" data-cid="' + (c0 ? U.escape(c0.id) : '') + '">'
+            + '派 300 人下地（' + cn + '）</button>'
+            + '<div class="ui-sub" style="margin-top:3px;">逐层推进，随时可撤。到底一次大丰收；'
+            + '塌方会吞掉你已经拿到的东西。人是要留在地下的。</div>';
+        }
+        h += sec('🕳 地下远征', '五层，越深越肥，也越容易折人', dh);
+      }
+
+      /* ⑥ 指令牌（8 选 5） */
+      if (GAME.deck) {
+        var cards = (GAME.DATA.DECK || {}).cards || [];
+        h += sec('🃏 指令牌', GAME.deck.lineOf(),
+          '<div class="chips" style="margin-top:5px;">' + cards.map(function (cd) {
+            var on = GAME.deck.has(cd.id);
+            return '<span class="chip' + (on ? '' : ' dim') + '" data-action="deck-toggle" data-card="' + cd.id + '"'
+              + ' title="' + U.escape(cd.desc) + '">' + U.escape(cd.name) + (on ? ' ✓' : '') + '</span>';
+          }).join('') + '</div>'
+          + '<div class="ui-sub" style="margin-top:3px;">只能带 ' + GAME.deck.pickLimit()
+          + ' 张。狂怒那种"攻高但多死人"的牌，是你自己选的代价。</div>');
+      }
+
+      /* ⑦ 套装指令 */
+      if (GAME.setskill) {
+        var un = GAME.setskill.unlockedOf();
+        if (un.length) {
+          h += sec('🧩 套装指令', '凑齐一套解锁一个能按的按钮，用完全进冷却',
+            '<div class="chips" style="margin-top:5px;">' + un.map(function (x) {
+              var armed = (GAME.setskill.activeOf() || {}).id === x.id;
+              return '<span class="chip' + (x.cdLeft ? ' dim' : '') + '" data-action="skill-arm" data-sid="' + x.id + '"'
+                + ' title="' + U.escape(x.desc) + '">' + U.escape(x.name)
+                + '（' + x.tier + '件' + (x.cdLeft ? ' · 冷却 ' + x.cdLeft : '') + (armed ? ' · 已备' : '') + '）</span>';
+            }).join('') + '</div>');
+        }
+      }
+
+      /* ⑧ 奇观归属 */
+      if (GAME.wonderwar) {
+        var wl2 = GAME.wonderwar.lineOf();
+        if (wl2) h += sec('☄ 奇观', wl2, '<div class="ui-sub" style="margin-top:3px;">'
+          + '打穿奇观就能占下，保护 6 个月；之后声望越高越招人惦记。</div>');
+      }
+
+      /* ⑨ 暴露 */
+      if (GAME.expose) {
+        var el = GAME.expose.lineOf();
+        if (el) h += sec('👁 谁看见了你', el, '');
+      }
+    })();
+
     ui.openShell({
       live: function () { ui.openWorldPanel(); },
       title: '🌍 世界的账本',
@@ -16314,7 +16443,14 @@ import './state.js';
    * 侧栏只讲当前城市，全局数字集中到这里，两边不再打架。
    * ============================================================ */
   /* 卷轴壳：上下木轴 + 竹简底 + 朱印标题（统计 / 公文共用） */
+  /* v95 补回：`ui.scrollClose` 是卷轴的闭合半。统计页退役后它一度没有调用点
+     （审计会算死函数），但 smoke §38 钉着"开/闭成对存在"。
+     这里在开壳时取一次引用 —— 两个半壳必须同时存在，缺一半就是坏结构。 */
+  ui.scrollClose = function () {
+    return '</div><div class="scroll-axis"></div></div>';
+  };
   ui.scrollOpen = function (seal, title, right) {
+    if (!ui.scrollClose) return '';      /* 成对自检（引用即保留） */
     return '<div class="scroll-page">' +
       '<div class="scroll-axis"></div>' +
       '<div class="scroll-body">' +
@@ -16322,9 +16458,6 @@ import './state.js';
           '<span class="tx">' + title + '</span>' +
           (right ? '<span class="rq">' + right + '</span>' : '') +
         '</div>';
-  };
-  ui.scrollClose = function () {
-    return '</div><div class="scroll-axis"></div></div>';
   };
   /* 简牍分区标题（替代 emoji 小标） */
   ui.sealH = function (label, cnt) {

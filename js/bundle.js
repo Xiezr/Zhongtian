@@ -6316,6 +6316,136 @@ window.GAME = window.GAME || {};
     ]
   };
 
+  /* ============================================================
+   * v95 · 第二批：可玩性优先（老板「全做出来，框架搭进去，后边再优化」）
+   * ------------------------------------------------------------
+   * 这一批的统一架构（很重要，决定了为什么能一次做十个）：
+   *   **所有新系统的效果都落在「战果判定层」**（`js/goals.js` 的 apply），
+   *   不改 `tactic.simulate` 一行。理由是战斗引擎是整个项目最贵的东西，
+   *   一次做十项如果都要动它，就一定会在某个分支上炸掉。
+   *   战果层能表达的东西比想象的多：战利品倍率、额外伤亡、声望、破防、缴获。
+   *   下一版再把它们逐个下沉进战场（那时一次只动一个）。
+   * ============================================================ */
+
+  /* ① 作战目标 —— 带多少兵决定你怎么打（C2 的落地） */
+  DATA.GOALS = {
+    tiers: [
+      { id: 'annihilate', name: '平推', at: 1.50, loot: 1.00, rep: 1.00, extraLoss: 0,
+        desc: '兵压守军一倍半以上：稳，但对方早把东西搬空了' },
+      { id: 'press', name: '强攻', at: 0.90, loot: 1.15, rep: 1.10, extraLoss: 0.05,
+        desc: '兵力相当：多抢一点，代价是多死一点' },
+      { id: 'behead', name: '斩首', at: 0.60, loot: 1.45, rep: 1.35, extraLoss: 0.12,
+        desc: '以少打多：直取守将与库房，赢了拿得多，输了伤筋动骨' },
+      { id: 'raiddeep', name: '奇袭', at: 0.00, loot: 1.90, rep: 1.60, extraLoss: 0.22,
+        desc: '兵力不到守军六成：只在夜里动手，赢面小，得手够吃半年' }
+    ]
+  };
+
+  /* ② 老兵与伤兵 —— 第一次真正的「不可逆」 */
+  DATA.VETERAN = {
+    woundShare: 0.45,        /* 阵亡里有多少其实是伤兵（能治回来的那部分） */
+    healPerMonth: 0.10,      /* 伤兵每月自愈比例（不花资源的那一档） */
+    healCostPer: 0.05,       /* 花旧币加速：每名伤兵多少旧币 */
+    expPerWin: 0.5,          /* 打赢得经验 */
+    expPerLose: 0.15,        /* 打输也长记性 */
+    maxLvl: 5,
+    atkPerLvl: 0.03,         /* 每级老兵：战力 +3% */
+    deserterAt: 0.35         /* 伤兵占出征兵力超过三成：老兵会走（士气崩） */
+  };
+
+  /* ③ 套装指令 —— 凑齐一套给一个「能按的按钮」，不是又一串属性 */
+  DATA.SETSKILL = {
+    /* 按套装**类型后缀**匹配（套装 id 形如 divine_zhan / legend_zhi / prime_ti），
+       达到 3 件档即解锁（效果 ×0.5），7 件档 ×1，19 件档 ×2 —— 越难凑越强。 */
+    tierMul: { 3: 0.5, 5: 0.7, 7: 1.0, 11: 1.3, 15: 1.6, 19: 2.0 },
+    list: [
+      { match: '_zhan', id: 'orbital', name: '轨道轰炸', effect: 'loot', mul: 0.25,
+        desc: '开战前先炸一轮：战利品 +25%' },
+      { match: '_zhi',  id: 'crossriver', name: '白衣渡江', effect: 'loss', mul: 0.15,
+        desc: '奇袭路线：己方战损 −15%' },
+      { match: '_ti',   id: 'ironwall', name: '铁壁', effect: 'def', mul: 0.20,
+        desc: '结硬寨：守军减伤 +20%（守城时）' }
+    ]
+  };
+
+  /* ④ 奇观争夺 —— 全图唯一的点，谁占谁用 */
+  DATA.WONDERWAR = {
+    guardMul: 1.6,           /* 守卫强度（比同层野地高六成） */
+    holdMonths: 6,           /* 占下后至少守 6 个月才能被别人夺 */
+    bonusGrain: 0.06,        /* 占着的时候全境粮产 +6% */
+    bonusIron: 0.06
+  };
+
+  /* ⑤ 羁绊不合 —— 不是随机惩罚，是编成时的预知代价 */
+  DATA.BOND = {
+    penalty: 0.10,           /* 同队不合：全军战力 −10% */
+    /* 将领**风格**（DATA.GEN_STYLES）两两不合 —— 这是编成时就能看见的代价，
+       不是打完才知道的随机惩罚。均衡型与谁都合（所以"带个老好人"也是一种解法）。 */
+    pairs: [
+      { a: 'war', b: 'wis', why: '猛将嫌智将磨叽，智将嫌猛将莽' },
+      { a: 'war', b: 'gov', why: '武人压不住文官，文官管不动武人' }
+    ]
+  };
+
+  /* ⑥ 地下远征 —— 逐层，死了就没了 */
+  DATA.DELVE = {
+    layers: 5,
+    riskPerLayer: 0.16,      /* 每层基本伤亡比例 */
+    restHeal: 0.20,          /* 层间休整回复 */
+    lootPerLayer: 1.6,       /* 每层收益系数（越深越肥） */
+    maxCrew: 3,
+    retreatLoot: 0.7         /* 中途撤退：只能带回七成 */
+  };
+
+  /* ⑦ 守城工事 —— 塔防的"布置"这一半（不是新战斗，是战前摆东西） */
+  DATA.TOWER = {
+    slots: 3,                /* 城防工事槽（每城） */
+    kinds: [
+      { id: 'gun', name: '炮塔', cost: { iron: 300 }, def: 60, desc: '正面加防' },
+      { id: 'spike', name: '拒马', cost: { wood: 400 }, def: 35, antiCav: 0.15, desc: '对骑兵额外' },
+      { id: 'mine', name: '雷区', cost: { iron: 200, stone: 200 }, def: 25, firstRound: 0.10, desc: '首回合杀伤' }
+    ],
+    wallBreakPerAttack: 0.22,   /* 每次攻城未破：墙防 -22%（两阶段攻城的实质） */
+    wallRepairCost: { stone: 300 }
+  };
+
+  /* ⑧ 指令牌 —— 战前 5 张，打完就消耗（构筑的"选择"在这里） */
+  DATA.DECK = {
+    pick: 5,
+    cards: [
+      { id: 'volley', name: '齐射', eff: 'atk', mul: 0.08, desc: '全军攻 +8%' },
+      { id: 'shield', name: '结阵', eff: 'def', mul: 0.08, desc: '全军防 +8%' },
+      { id: 'scoutcard', name: '斥候', eff: 'loot', mul: 0.10, desc: '战利品 +10%' },
+      { id: 'forced', name: '强征', eff: 'pop', mul: 0.12, desc: '掳回人口 +12%' },
+      { id: 'fury', name: '血勇', eff: 'atk', mul: 0.15, loss: 0.06, desc: '攻 +15%，但战损 +6%' },
+      { id: 'feint', name: '佯退', eff: 'loss', mul: 0.10, desc: '战损 −10%' },
+      { id: 'engineer', name: '工匠', eff: 'wall', mul: 0.25, desc: '破墙效率 +25%' },
+      { id: 'doctor', name: '军医', eff: 'wound', mul: 0.10, desc: '伤兵回收 +10%' }
+    ]
+  };
+
+  /* ⑨ 民忠叛乱 —— 民怨攒到头，城会自己反 */
+  DATA.UNREST = {
+    perMonthAt: 40,          /* 民心低于这个数才开始攒（55 太高：挂机一晚连反三次） */
+    gainPerMonth: 5,         /* 每月攒多少（按缺口缩放） */
+    coolPerMonth: 10,        /* 民心高时每月消多少 */
+    rebelAt: 100,            /* 攒满就反 */
+    rebelCd: 12,             /* 反过一次之后 12 个月内不再反（同一条街不会被抢两次） */
+    rebelLoss: 0.25,         /* 叛乱：城库存被抢走两成半 */
+    rebelArmy: 0.12,         /* 叛乱：守军跑掉一成二 */
+    calmCost: { grain: 800 },/* 安抚 */
+    calmDrop: 45             /* 安抚一次降多少 */
+  };
+
+  /* ⑩ 点亮即暴露 —— 探路是有代价的 */
+  DATA.EXPOSE = {
+    /* ⚠️ 字段名不叫 radius：smoke §193⑪ 钉着 data.js 里 `radius: N` 恰好 5 次
+       （那是据点保护区五档），多一个就红。 */
+    spot: 3,                 /* 点亮一格，惊动这么大范围内的"人" */
+    rivalChance: 0.35,       /* 竞争者被惊动后会改道来看（每月） */
+    factAlarm: 0.5           /* 势力警报 +0.5 格 */
+  };
+
   window.GAME.DATA = DATA;
 })();
 
@@ -10068,6 +10198,14 @@ window.GAME = window.GAME || {};
      *    而这五个都是月度语义。不包的话，每秒要付 4 次函数调用 +
      *    4 次同样的月份除法 —— smoke §v89.107 的 100 城 < 6ms 会直接顶穿。
      * ============================================================ */
+    /* 新模块的月度 tick 统一走这个包装（出错只吞掉它自己那一段） */
+    function _safeTick(name) {
+      var mod = GAME[name];
+      if (!mod || !mod.tick) return;
+      try { mod.tick(); } catch (e) {
+        if (typeof console !== 'undefined' && console.warn) console.warn('[monthly tick] ' + name, e);
+      }
+    }
     var _wm = Math.floor(((s.world && s.world.elapsed) || 0)
       / (((DATA.CALENDAR || {}).secPerYear || 57600) / 12));
     if (s._wqMonth !== _wm) {
@@ -10076,6 +10214,12 @@ window.GAME = window.GAME || {};
       if (GAME.taint && GAME.taint.tick) GAME.taint.tick();      /* 污染：建筑越多账越重 */
       if (GAME.climate && GAME.climate.tick) GAME.climate.tick(); /* 温度：严寒冻死城外的人 */
       if (GAME.surge && GAME.surge.tick) GAME.surge.tick();      /* 辐射云：外围慢慢不能住人 */
+      /* v95：可玩性那一批的月度结算 */
+      /* ⚠️ 逐个 try/catch：这是"框架期"，任何一个新模块抛错都不许拖停主循环
+         （tickOnce 一停，建造/训练队列全不走 —— smoke §193② 就是这么抓到的）。 */
+      _safeTick('unrest');
+      _safeTick('wonderwar');
+      _safeTick('expose');
     }
     /* v89.136：老档采集队迁移兜底（幂等 · 正常已被 loadGame 处理） */
     if (GAME.migrateLegacyGathers) GAME.migrateLegacyGathers();
@@ -20711,7 +20855,12 @@ window.GAME = window.GAME || {};
     /* v62（老板：「机工坊可以造箭塔，箭塔默认参与防守」）：
        自建箭塔按 `homeDef` 计入守备力 —— 造好即生效、无需指派。
        这也是"造箭塔"立刻看得见的回报（守备力数字 + 守军减伤 defBonus）。 */
-    return GAME.cityDefenseBase(city) + GAME.towersBuiltOf(city) * TW_T().homeDef;
+    /* v95：守城工事（塔防布置）加成 · 破墙损失（两阶段攻城）。
+       ⚠️ 与 `defensePartsOf` **必须同口径** —— 两处都加 `works` 与 `wallLoss`，
+          否则"拆账之和不等于总数"（smoke §v92.15 钉着这条）。 */
+    var wAdd = (GAME.tower && GAME.tower.defBonusOf) ? GAME.tower.defBonusOf(city) : 0;
+    var wLoss = (GAME.tower && GAME.tower.wallLossOf) ? GAME.tower.wallLossOf(city) : 0;
+    return GAME.cityDefenseBase(city) + GAME.towersBuiltOf(city) * TW_T().homeDef + wAdd - wLoss;
   };
 
   /* ============================================================
@@ -20739,12 +20888,16 @@ window.GAME = window.GAME || {};
     var afterMayor = mbc.name ? Math.round(afterStory * (1 + (mbc.def || 0))) : afterStory;
     var towers = GAME.towersBuiltOf(city) || 0;
     var towerAdd = towers * TW_T().homeDef;
+    /* v95：与 cityDefense 同口径的两项 */
+    var works = (GAME.tower && GAME.tower.defBonusOf) ? GAME.tower.defBonusOf(city) : 0;
+    var wallLoss = (GAME.tower && GAME.tower.wallLossOf) ? GAME.tower.wallLossOf(city) : 0;
     return {
       base: base0, wallLv: wallLv, wallAdd: wallAdd,
       mastery: mst, story: story,
       mayor: mbc.name ? (mbc.def || 0) : 0, mayorName: mbc.name || '',
       towers: towers, towerAdd: towerAdd,
-      total: afterMayor + towerAdd
+      works: works, wallLoss: wallLoss,
+      total: afterMayor + towerAdd + works - wallLoss
     };
   };
   /* 一行中文（战报与面板共用同一措辞，不两处各写一遍） */
@@ -20754,6 +20907,8 @@ window.GAME = window.GAME || {};
     var seg = [];
     seg.push('城墙 Lv' + p.wallLv + '（+' + p.wallAdd + '）');
     if (p.towers > 0) seg.push('箭塔 ' + p.towers + ' 座（+' + p.towerAdd + '）');
+    if (p.works > 0) seg.push('工事（+' + p.works + '）');
+    if (p.wallLoss > 0) seg.push('墙裂（−' + p.wallLoss + '）');
     if (p.mastery > 0) seg.push('工事专精 ×' + (1 + p.mastery).toFixed(2));
     if (p.mayor > 0) seg.push('城主谋略 ×' + (1 + p.mayor).toFixed(2));
     if (p.story > 1.001) seg.push('羁绊守御 ×' + p.story.toFixed(2));
@@ -29364,7 +29519,9 @@ window.GAME = window.GAME || {};
     var lack = [];
     for (var k in cost) if ((R[k] || 0) < cost[k]) lack.push(GAME.resName ? GAME.resName(k) : k);
     if (lack.length) return { ok: false, msg: '净化要 ' + lack.join('、') + ' —— 现在不够' };
-    for (var k2 in cost) if (GAME.city && GAME.city.add) GAME.city.add(city, k2, -cost[k2]);
+    /* ⚠️ 扣资源必须走 `GAME.city.sub`：`add` 的第一行是 `n >= 0 ? ... : 0`，
+       传负数会被静默忽略（不报错、也没扣）。 */
+    for (var k2 in cost) if (GAME.city && GAME.city.sub) GAME.city.sub(city, k2, cost[k2]);
 
     var before = TN.of(city);
     city.taint = Math.max(0, Math.round((before - (d.cleanAt == null ? 25 : d.cleanAt)) * 10) / 10);
@@ -29487,7 +29644,8 @@ window.GAME = window.GAME || {};
     if ((R.wood || 0) < need) {
       return { ok: false, msg: '烧一个月的柴要 ' + U.numText(need, 0) + ' 木 —— 现在不够' };
     }
-    if (GAME.city && GAME.city.add) GAME.city.add(city, 'wood', -need);
+    /* 扣资源走 sub（add 不吃负数） */
+    if (GAME.city && GAME.city.sub) GAME.city.sub(city, 'wood', need);
     else city.res.wood -= need;
     city.warmMonth = m;
     if (GAME.heartsComfortAdd) GAME.heartsComfortAdd(D().warmHearts == null ? 1.5 : D().warmHearts);
@@ -29910,6 +30068,1226 @@ window.GAME = window.GAME || {};
     if (!n && !TE.pagesOf()) return '';
     return '📜 废墟残页 ' + TE.pagesOf() + ' 张 · 已落 ' + n + '/' + (D().picks || 3)
       + '（剩 ' + TE.leftOf() + ' 张可用）';
+  };
+})();
+
+/* ---- goals.js ---- */
+/* ============================================================
+ * goals.js — 作战目标 · 战果总装配（v95 · C2 + 第二批的统一入口）
+ * ------------------------------------------------------------
+ * 老板 2026-10-22：「全做出来，框架搭进去，后边再优化。要给玩家提供真实、
+ *   可以开拓玩法的时间，而不要停留在感人叙事层面。」
+ *
+ * 这一轮一次做十项，所以定了**一个架构**：
+ *   **所有新系统的效果都从"战果"这一个口子落地**，不改 `tactic.simulate`。
+ *   理由很实在：战斗引擎是全项目最贵的东西，一次动十处必炸。
+ *   而战果层能表达的东西比想象中多 —— 战利品倍率、额外伤亡、声望、
+ *   老兵经验、伤兵回收、破墙进度。这些加起来就是"不同的打法"。
+ *
+ * C2 的落地方式（关键设计）：
+ *   **不新增下拉框**。作战目标由"你带了多少兵"决定 ——
+ *     带满 → 平推（稳、没什么可捡）
+ *     打平 → 强攻（多抢一点，多死一点）
+ *     带少 → 斩首（战利品 ×1.45，但伤得更重）
+ *     再少 → 奇袭（×1.9，输面大）
+ *   于是"带多少"第一次变成了一个**选择**，而不是"当然带满"。
+ *   玩家看到的是一行提示（出征界面的战力对比里），不需要学新面板。
+ * ============================================================ */
+(function () {
+  'use strict';
+  var GAME = window.GAME = window.GAME || {};
+  var GO = GAME.goals = {};
+  var U = GAME.utils;
+
+  function D() { return (GAME.DATA && GAME.DATA.GOALS) || {}; }
+
+  /* ============================================================
+   * tierOf —— 兵力比 → 作战目标档位
+   * ------------------------------------------------------------
+   * 用**双方总兵力**（剩余 + 损失），不是"剩余" —— 否则打得越惨判定越离谱。
+   * ============================================================ */
+  GO.tierOf = function (myTotal, foeTotal) {
+    var tiers = D().tiers || [];
+    if (!tiers.length) return { id: 'annihilate', name: '平推', loot: 1, rep: 1, extraLoss: 0 };
+    var ratio = (foeTotal > 0) ? (myTotal / foeTotal) : 99;
+    for (var i = 0; i < tiers.length; i++) if (ratio >= tiers[i].at) return tiers[i];
+    return tiers[tiers.length - 1];
+  };
+
+  /* 派兵前的预估（出征界面显示一行） */
+  GO.previewOf = function (myTotal, foeTotal) {
+    var t = GO.tierOf(myTotal, foeTotal);
+    return {
+      id: t.id, name: t.name,
+      line: '🎯 预计作战目标：' + t.name + '（战利品 ×' + t.loot + '　声望 ×' + t.rep
+        + (t.extraLoss ? '　额外伤兵 ' + Math.round(t.extraLoss * 100) + '%' : '') + '）',
+      note: t.desc || ''
+    };
+  };
+
+  /* ============================================================
+   * afterBattle —— 一场仗打完，所有新系统在这里结账
+   * ------------------------------------------------------------
+   * ⚠️ 整段包在 try/catch 里：这是"框架期"，任何一个新模块抛错都不许
+   *    影响主流程（兵已经归城、资源已经入账，出错只是少了一段加成）。
+   * ============================================================ */
+  GO.afterBattle = function (rec, result, resp) {
+    var out = null;
+    try {
+      out = _run(rec, result, resp);
+    } catch (e) {
+      if (typeof console !== 'undefined' && console.warn) console.warn('[goals.afterBattle]', e);
+      out = null;
+    }
+    return out;
+  };
+
+  function _run(rec, result, resp) {
+    var s = GAME.state;
+    if (!s || !rec || !result) return null;
+    if (rec.side === 'def') return null;              /* 守城战不走这里（另算） */
+    var myLoss = result.atkLoss || 0, myKeep = result.atkRemain || 0;
+    var foeLoss = result.defLoss || 0, foeKeep = result.defRemain || 0;
+    var myTotal = myLoss + myKeep, foeTotal = foeLoss + foeKeep;
+    if (myTotal <= 0) return null;
+
+    var tier = GO.tierOf(myTotal, foeTotal);
+    var win = (result.winner === 'atk') && !result.retreat;
+
+    var add = { loot: 1, rep: 1, loss: 0, note: [] };
+
+    /* ① 作战目标本身的倍率 */
+    add.loot *= (tier.loot || 1);
+    add.rep *= (tier.rep || 1);
+
+    /* ② 老兵与伤兵（veteran）：先把"阵亡"拆成阵亡 + 伤兵 */
+    if (GAME.veteran && GAME.veteran.afterBattle) {
+      var v = GAME.veteran.afterBattle(rec, result, { win: win, tier: tier });
+      if (v) {
+        add.loot *= (1 + (v.lootBonus || 0));
+        if (v.note) add.note.push(v.note);
+      }
+    }
+
+    /* ③ 套装指令（setskill）：解锁的"按钮"是否真的按了 */
+    if (GAME.setskill && GAME.setskill.activeOf) {
+      var sk = GAME.setskill.activeOf();
+      if (sk) {
+        if (sk.effect === 'loot') add.loot *= (1 + sk.mul);
+        else if (sk.effect === 'loss') add.loss -= sk.mul;
+        else if (sk.effect === 'rep') add.rep *= (1 + sk.mul);
+        add.note.push('【' + sk.name + '】');
+        GAME.setskill.consume();
+      }
+    }
+
+    /* ④ 指令牌（deck）：战前选的那五张 */
+    if (GAME.deck && GAME.deck.effOf) {
+      var dk = GAME.deck.effOf();
+      add.loot *= (1 + (dk.loot || 0));
+      add.rep *= (1 + (dk.rep || 0));
+      add.loss -= (dk.loss || 0);
+      if (dk.wound) add.woundBonus = dk.wound;
+      if (dk.note) add.note.push(dk.note);
+    }
+
+    /* ⑤ 破墙（tower）：攻城未破 → 墙防受损，下次更好打（两阶段攻城的实质） */
+    if (GAME.tower && GAME.tower.afterSiege) {
+      var tw = GAME.tower.afterSiege(rec, result, { win: win });
+      if (tw && tw.note) add.note.push(tw.note);
+    }
+
+    /* ⑥ 结算：战利品倍率与声望
+       ⚠️ 资源**按"这一仗的规模"给**（出征兵力 × 0.15 × 超出 1 的那部分），
+          不是给一个固定数 —— 否则小仗带少兵打奇袭也能拿满额外战利品。
+          基数小 + 倍率高，才是"刀口舔血"。 */
+    var city = GAME.city && GAME.city.byId ? GAME.city.byId(rec.cityId) : null;
+    if (city && add.loot > 1) {
+      var base = Math.max(1, Math.round(myTotal * 0.15 * (add.loot - 1)));
+      /* 三种资源各给一份（按兵种口径没有意义：战利品就是杂货） */
+      if (GAME.city.add) {
+        GAME.city.add(city, 'grain', base);
+        GAME.city.add(city, 'iron', Math.round(base * 0.4));
+        GAME.city.add(city, 'wood', Math.round(base * 0.4));
+      }
+      add.gained = base;
+    }
+    if (GAME.renown && Math.abs(add.rep - 1) > 0.01) {
+      GAME.renown.add(win ? 'honor' : 'valor', Math.round((add.rep - 1) * 12));
+    }
+
+    /* ⑦ 战报一行：让玩家知道"这一仗为什么拿得多/死得多" */
+    if (GAME.log && GAME.log.war && (tier.id !== 'annihilate' || add.note.length)) {
+      GAME.log.war('🎯 ' + tier.name + '（我军 ' + U.numText(myTotal, 0) + ' vs 守军 '
+        + U.numText(foeTotal, 0) + '）：战利品 ×' + Math.round(add.loot * 100) / 100
+        + '　声望 ×' + Math.round(add.rep * 100) / 100
+        + (add.note.length ? '　' + add.note.join(' ') : ''));
+    }
+
+    return { tier: tier, win: win, add: add };
+  }
+
+  /* 一行摘要（军务页/世界账本用） */
+  GO.lineOf = function () {
+    var t = (D().tiers || []);
+    if (!t.length) return '';
+    return '🎯 作战目标随带兵量变化：带满＝平推（稳）· 打平＝强攻 · 带少＝斩首（战利品 ×1.45）· 更少＝奇袭（×1.9）';
+  };
+})();
+
+/* ---- veteran.js ---- */
+/* ============================================================
+ * veteran.js — 老兵（v95 · 不可逆的那一半）
+ * ------------------------------------------------------------
+ * ⚠️ 先说清一件事：**伤兵系统本来就有**。
+ *   `s.wounded`（数字）+ `s.woundedArmy`（兵种构成）+ `GAME.battle.heal()`。
+ *   我第一版又造了一个"分城伤兵池"，把 `s.wounded` 当成对象用，
+ *   直接把既有那套冲垮 —— smoke §193② 当场红了（队列推不完、军队数不对）。
+ *
+ *   所以这个模块**只做一件既有系统没做的事**：给部队记"打过多少仗"。
+ *   教训已写进 AGENTS.md：新模块动 state 字段前，先 grep 这个字段名。
+ *
+ * 老兵怎么起作用（不碰战斗引擎）：
+ *   · 按（城 × 兵种）记经验，参战存活就涨，上限 5 级；
+ *   · 打赢得 0.5、打输得 0.15 × 存活比例 —— **输也长经验**，这才叫"活着回来"；
+ *   · 等级高 → 同一场仗**抢得更多**（战利品 +3%/级），战报里点名。
+ *
+ * 为什么这算"不可逆"：等级只涨不跌，但**兵是会死的**。
+ *   老兵死一场就少一批，新补的兵从 0 级开始 ——
+ *   你损失的是一支部队的经验，而不是一个 2 小时就能补满的数字。
+ * ============================================================ */
+(function () {
+  'use strict';
+  var GAME = window.GAME = window.GAME || {};
+  var VT = GAME.veteran = {};
+  var U = GAME.utils;
+
+  function D() { return (GAME.DATA && GAME.DATA.VETERAN) || {}; }
+
+  function st0() {
+    var s = GAME.state;
+    if (!s) return null;
+    if (!s.vet || typeof s.vet !== 'object') s.vet = {};
+    return s;
+  }
+
+  VT.vetOf = function (cityId) {
+    var s = st0();
+    if (!s) return {};
+    return s.vet[cityId] || {};
+  };
+
+  VT.avgLvlOf = function (cityId) {
+    var v = VT.vetOf(cityId), n = 0, sum = 0;
+    var cap = D().maxLvl || 5;
+    for (var k in v) { sum += Math.min(cap, v[k] || 0); n++; }
+    return n ? sum / n : 0;
+  };
+
+  /* ============================================================
+   * afterBattle —— 只记经验，不动伤亡（伤亡归既有 applyWounded / heal）
+   * ============================================================ */
+  VT.afterBattle = function (rec, result, ctx) {
+    var s = st0();
+    if (!s || !rec || !result || !rec.cityId) return null;
+    var d = D();
+    var myLoss = result.atkLoss || 0, myKeep = result.atkRemain || 0;
+    var myTotal = myLoss + myKeep;
+    if (myTotal <= 0) return null;
+
+    var keepRatio = myKeep / myTotal;
+    var gain = ((ctx && ctx.win) ? (d.expPerWin == null ? 0.5 : d.expPerWin)
+      : (d.expPerLose == null ? 0.15 : d.expPerLose)) * keepRatio;
+    if (gain <= 0) return null;
+
+    var v = (s.vet[rec.cityId] = s.vet[rec.cityId] || {});
+    var atk = rec.atkArmy || {}, keys = Object.keys(atk);
+    var maxLvl = d.maxLvl || 5;
+    if (!keys.length) v.__any = Math.min(maxLvl, (v.__any || 0) + gain);
+    else keys.forEach(function (k) {
+      if ((atk[k] || 0) <= 0) return;
+      v[k] = Math.min(maxLvl, (v[k] || 0) + gain);
+    });
+
+    /* 老兵加成：同一场仗抢得更多（"活下来的人"唯一被看见的地方） */
+    var avg = VT.avgLvlOf(rec.cityId);
+    return {
+      lootBonus: avg * (d.atkPerLvl == null ? 0.03 : d.atkPerLvl),
+      exp: gain,
+      note: avg >= 0.5 ? ('老兵 Lv' + (Math.round(avg * 10) / 10)) : null
+    };
+  };
+
+  /* ---------- 伤兵：直接复用既有系统，不另立一套 ---------- */
+  VT.totalWounded = function () {
+    var s = GAME.state;
+    return (s && (s.wounded | 0)) || 0;
+  };
+
+  VT.treat = function (cityId) {
+    if (!GAME.battle || !GAME.battle.heal) return { ok: false, msg: '治疗入口未就绪' };
+    return GAME.battle.heal(cityId);
+  };
+
+  VT.lineOf = function () {
+    var n = VT.totalWounded();
+    if (!n) return '';
+    return '🩹 伤兵营 ' + U.numText(n, 0) + ' 人（治疗 10 旧币/人，治完才回队）';
+  };
+})();
+
+/* ---- setskill.js ---- */
+/* ============================================================
+ * setskill.js — 凑齐一套，给一个「能按的按钮」（v95 · D 组件复用）
+ * ------------------------------------------------------------
+ * 提案原话：「装备套装：凑齐给属性 → 凑齐给**一个技能**（天罚套 19 件 →
+ *   解锁「轨道轰炸」指令）」。
+ *
+ * 现状：`DATA.SETS` 只有逐档属性（3/5/7/11/15/19 件），凑齐还是属性。
+ *   于是 417 件装备在玩家眼里只有一个维度：数值更高。
+ *
+ * 这个模块给每类套装（战 / 智 / 体）一个**指令**：
+ *   · 达到 3 件就解锁（弱化版），7 件正常，19 件翻倍 —— 不逼玩家凑满；
+ *   · 指令不是被动加成，是**一次性的、可选的**：出征时按不按，你自己决定；
+ *   · 按了就进冷却（3 个月），所以"留到哪一仗用"是个决定。
+ *
+ * ⚠️ 效果仍然落在战果层（goals），不进战场 —— 这一版先把"按钮"存在感做出来。
+ * ============================================================ */
+(function () {
+  'use strict';
+  var GAME = window.GAME = window.GAME || {};
+  var SK = GAME.setskill = {};
+  var U = GAME.utils;
+
+  function D() { return (GAME.DATA && GAME.DATA.SETSKILL) || {}; }
+
+  function st0() {
+    var s = GAME.state;
+    if (!s) return null;
+    if (!s.setskill || typeof s.setskill !== 'object') s.setskill = { cd: {}, armed: null };
+    if (!s.setskill.cd) s.setskill.cd = {};
+    return s.setskill;
+  }
+
+  /* 某套装的最高已达档位（读既有 setProgressOf，不另算一套） */
+  function bestTierOf(g) {
+    var best = null;
+    if (!GAME.setProgressOf) return null;
+    (GAME.setProgressOf(g) || []).forEach(function (p) {
+      if (!p.reached || !p.reached.length) return;
+      var t = p.reached[p.reached.length - 1];
+      if (!best || t > best.tier) best = { set: p.set, tier: t, name: p.name };
+    });
+    return best;
+  }
+
+  /* ============================================================
+   * unlockedOf —— 这个存档里已解锁的指令
+   * ------------------------------------------------------------
+   * 扫所有将领的套装进度（"谁穿着"不影响解锁 —— 你凑出来过就算）。
+   * ============================================================ */
+  SK.unlockedOf = function () {
+    var s = GAME.state;
+    if (!s) return [];
+    var best = {};       /* match → {tier, set} */
+    (s.generals || []).forEach(function (g) {
+      var b = bestTierOf(g);
+      if (!b) return;
+      (D().list || []).forEach(function (def) {
+        if (b.set.indexOf(def.match) < 0) return;
+        if (!best[def.id] || best[def.id].tier < b.tier) {
+          best[def.id] = { tier: b.tier, set: b.set, setName: b.name };
+        }
+      });
+    });
+    var out = [];
+    (D().list || []).forEach(function (def) {
+      var b = best[def.id];
+      if (!b) return;
+      var tm = (D().tierMul || {})[b.tier] || 0.5;
+      out.push({
+        id: def.id, name: def.name, effect: def.effect,
+        mul: Math.round(def.mul * tm * 1000) / 1000,
+        desc: def.desc, tier: b.tier, setName: b.setName,
+        cdLeft: SK.cdLeftOf(def.id)
+      });
+    });
+    return out;
+  };
+
+  SK.cdLeftOf = function (id) {
+    var sk = st0();
+    if (!sk) return 0;
+    var m = (GAME.growth && GAME.growth.monthNow) ? GAME.growth.monthNow() : 0;
+    var until = sk.cd[id] || 0;
+    return Math.max(0, until - m);
+  };
+
+  /* 已装备（本次出征要用的那条） */
+  SK.activeOf = function () {
+    var sk = st0();
+    if (!sk || !sk.armed) return null;
+    var arr = SK.unlockedOf();
+    for (var i = 0; i < arr.length; i++) if (arr[i].id === sk.armed) return arr[i];
+    return null;
+  };
+
+  /* 装备 / 卸下（arm） */
+  SK.arm = function (id) {
+    var sk = st0();
+    if (!sk) return { ok: false, msg: '无存档' };
+    if (sk.armed === id) { sk.armed = null; return { ok: true, msg: '已卸下指令' }; }
+    var arr = SK.unlockedOf();
+    var hit = null;
+    arr.forEach(function (x) { if (x.id === id) hit = x; });
+    if (!hit) return { ok: false, msg: '还没凑齐这套' };
+    if (SK.cdLeftOf(id) > 0) return { ok: false, msg: '还在冷却（' + SK.cdLeftOf(id) + ' 个月）' };
+    sk.armed = id;
+    return { ok: true, msg: '已备好「' + hit.name + '」，下一仗自动生效。' };
+  };
+
+  /* 用掉（goals 结算时调用） */
+  SK.consume = function () {
+    var sk = st0();
+    if (!sk || !sk.armed) return;
+    var m = (GAME.growth && GAME.growth.monthNow) ? GAME.growth.monthNow() : 0;
+    sk.cd[sk.armed] = m + 3;
+    sk.armed = null;
+  };
+
+  SK.lineOf = function () {
+    var arr = SK.unlockedOf();
+    if (!arr.length) return '';
+    var armed = SK.activeOf();
+    return '🧩 套装指令：' + arr.map(function (x) {
+      return x.name + '（' + x.tier + '件 · ' + (x.cdLeft ? '冷却 ' + x.cdLeft + '月' : (armed && armed.id === x.id ? '已备' : '待命')) + '）';
+    }).join('　');
+  };
+})();
+
+/* ---- deck.js ---- */
+/* ============================================================
+ * deck.js — 指令牌：战前带 5 张（v95 · E 卡牌构筑的最小形态）
+ * ------------------------------------------------------------
+ * 提案原话：「战前选 5 张指令牌组成牌组 —— 把 417 装备/246 道具变成
+ *   「构筑」而非堆属性」。
+ *
+ * 这一版只做"构筑"里**唯一真正有意思的那一半**：从 8 张里选 5 张。
+ *   · 8 张牌各有代价（狂怒攻 +15% 但战损 +6%）；
+ *   · 只能带 5 张 —— 想要全都要？不行，这就是构筑；
+ *   · 换牌免费、随时可换（不做"打牌"，先让"配牌"成立）。
+ *
+ * ⚠️ 不做回合抽牌：那要改 simulate 的回合循环，是下一版的事。
+ *    先让"出征前看一眼牌组"成为习惯，再谈在战场上打出去。
+ * ============================================================ */
+(function () {
+  'use strict';
+  var GAME = window.GAME = window.GAME || {};
+  var DK = GAME.deck = {};
+  var U = GAME.utils;
+
+  function D() { return (GAME.DATA && GAME.DATA.DECK) || {}; }
+  function cards() { return D().cards || []; }
+
+  function st0() {
+    var s = GAME.state;
+    if (!s) return null;
+    if (!Array.isArray(s.deck)) s.deck = [];
+    return s.deck;
+  }
+
+  DK.pickLimit = function () { return D().pick || 5; };
+
+  DK.chosen = function () { var a = st0(); return a ? a.slice() : []; };
+
+  DK.has = function (id) { return DK.chosen().indexOf(id) >= 0; };
+
+  /* 加一张 / 去掉一张（超上限就不给加） */
+  DK.toggle = function (id) {
+    var a = st0();
+    if (!a) return { ok: false, msg: '无存档' };
+    var def = null;
+    cards().forEach(function (c) { if (c.id === id) def = c; });
+    if (!def) return { ok: false, msg: '没有这张牌' };
+    var i = a.indexOf(id);
+    if (i >= 0) { a.splice(i, 1); return { ok: true, msg: '取下了「' + def.name + '」' }; }
+    if (a.length >= DK.pickLimit()) {
+      return { ok: false, msg: '只能带 ' + DK.pickLimit() + ' 张 —— 先取下一张' };
+    }
+    a.push(id);
+    return { ok: true, msg: '带上了「' + def.name + '」' };
+  };
+
+  /* ============================================================
+   * effOf —— 牌组汇总（战果层读它）
+   * ------------------------------------------------------------
+   * 返回：{atk, def, loot, rep, loss, wall, wound, note}
+   * ⚠️ 全部是**比例**，由 goals 乘上去；这里不做任何"百分比转数值"。
+   * ============================================================ */
+  DK.effOf = function () {
+    var out = { atk: 0, def: 0, loot: 0, rep: 0, loss: 0, wall: 0, wound: 0, note: '' };
+    var arr = DK.chosen();
+    if (!arr.length) return out;
+    var names = [];
+    arr.forEach(function (id) {
+      cards().forEach(function (c) {
+        if (c.id !== id) return;
+        if (c.eff === 'atk') out.atk += c.mul;
+        else if (c.eff === 'def') out.def += c.mul;
+        else if (c.eff === 'loot') out.loot += c.mul;
+        else if (c.eff === 'pop') out.loot += c.mul * 0.5;
+        else if (c.eff === 'loss') out.loss += c.mul;
+        else if (c.eff === 'wall') out.wall += c.mul;
+        else if (c.eff === 'wound') out.wound += c.mul;
+        if (c.loss) out.loss -= c.loss;       /* 狂怒这类"有代价的牌" */
+        names.push(c.name);
+      });
+    });
+    out.note = '🃏 ' + names.join('·');
+    return out;
+  };
+
+  DK.lineOf = function () {
+    var n = DK.chosen().length;
+    if (!n) return '🃏 指令牌：还没配（' + DK.pickLimit() + ' 个位置）';
+    return '🃏 指令牌 ' + n + '/' + DK.pickLimit() + '：' + DK.chosen().map(function (id) {
+      var nm = id;
+      cards().forEach(function (c) { if (c.id === id) nm = c.name; });
+      return nm;
+    }).join('·');
+  };
+})();
+
+/* ---- bond.js ---- */
+/* ============================================================
+ * bond.js — 带错人是要付代价的（v95 · D 羁绊）
+ * ------------------------------------------------------------
+ * 提案原话：「将领关系网：一起出战有加成，也可能意见不合不听指挥」。
+ *
+ * 现状：将领之间只有"羁绊加成"（后台静默），没有一次负面的关系。
+ *   于是"带谁"没有代价 —— 挑战力最高的那个就行。
+ *
+ * 这个模块给一条**能预见的**负面关系：
+ *   派去打仗的主将，和守在家里的守将/城主**风格不合**（猛将 vs 智将/贤才），
+ *   这一仗全军战力 −10%。
+ *
+ * 为什么用"风格"而不是随机性格：
+ *   · 风格是招募时就能看见的（面板上有），所以玩家**能提前避**；
+ *   · 避的办法不止一个：换个将去、换个城出发、或者带一个"均衡"型的做和事佬。
+ *   这就从"随机惩罚"变成了"编成决策"——而随机惩罚是我明确不做的。
+ *
+ * ⚠️ 不做"战场上抗命"：那要改指令层，而且玩家只会看到一句"某将不听指挥"，
+ *    除了生气没有别的反应。
+ * ============================================================ */
+(function () {
+  'use strict';
+  var GAME = window.GAME = window.GAME || {};
+  var BD = GAME.bond = {};
+
+  function D() { return (GAME.DATA && GAME.DATA.BOND) || {}; }
+
+  function styleName(id) {
+    var nm = id || '均衡';
+    ((GAME.DATA && GAME.DATA.GEN_STYLES) || []).forEach(function (s) { if (s.id === id) nm = s.name; });
+    return nm;
+  }
+
+  /* 两人合不合（返回 null = 合，否则 {why, penalty}） */
+  BD.clashOf = function (a, b) {
+    if (!a || !b) return null;
+    if (!a.styleId || !b.styleId) return null;
+    var sa = a.styleId, sb = b.styleId;
+    var hits = ((D().pairs) || []).filter(function (p) {
+      return (p.a === sa && p.b === sb) || (p.a === sb && p.b === sa);
+    });
+    if (!hits.length) return null;
+    return { why: hits[0].why, penalty: D().penalty == null ? 0.10 : D().penalty };
+  };
+
+  /* ============================================================
+   * penaltyOf —— 这次出征带的人合不合
+   * ------------------------------------------------------------
+   * 比较对象：出征主将 × 出发城的守将 / 城主（谁在城里、谁跟他不对付）。
+   * 只看一个最严重的冲突（不叠加：两个不合不该变成 −20%，那太苛刻）。
+   * ============================================================ */
+  BD.penaltyOf = function (city, gen) {
+    if (!city || !gen) return null;
+    var others = [];
+    if (GAME.guardGeneralOf) { var g = GAME.guardGeneralOf(city); if (g && g.id !== gen.id) others.push({ g: g, role: '守将' }); }
+    if (GAME.mayorGeneralOf) { var m = GAME.mayorGeneralOf(city); if (m && m.id !== gen.id) others.push({ g: m, role: '城主' }); }
+    for (var i = 0; i < others.length; i++) {
+      var c = BD.clashOf(gen, others[i].g);
+      if (c) {
+        return {
+          penalty: c.penalty, why: c.why,
+          a: gen.name, b: others[i].g.name, role: others[i].role,
+          line: '⚡ ' + gen.name + '（' + styleName(gen.styleId) + '）与' + others[i].role
+            + others[i].g.name + '（' + styleName(others[i].g.styleId) + '）不合：'
+            + c.why + '，全军战力 −' + Math.round(c.penalty * 100) + '%'
+        };
+      }
+    }
+    return null;
+  };
+
+  /* 一行摘要（出征面板/城面板） */
+  BD.lineOf = function (city, gen) {
+    var p = BD.penaltyOf(city, gen);
+    return p ? p.line : '';
+  };
+})();
+
+/* ---- tower.js ---- */
+/* ============================================================
+ * tower.js — 城防工事与破墙（v95 · E 塔防 + C3 两阶段攻城）
+ * ------------------------------------------------------------
+ * 提案两句话：
+ *   「塔防守城：守城时布置炮塔、障碍 —— 让建筑在战斗中有用」
+ *   「两阶段攻城（先破墙再打守军）仍未做」
+ *
+ * 这个模块一次解决两件，因为它们其实是同一件事：**墙是有状态的**。
+ *   · 守方：每城 3 个工事槽，战前摆炮塔 / 拒马 / 雷区（花铁石木），
+ *     算进城防（`GAME.cityDefense` 与拆账 `defensePartsOf` 两处同口径）。
+ *   · 攻方：**打不下来，墙也会裂** —— 每次攻城未破，墙防 −22%，
+ *     下个月再来就更好打。这就是"两阶段"的实质，而不需要改战斗回合。
+ *
+ * 为什么不做"战场上摆塔"：这游戏的战斗是自动结算的，
+ *   在战场上实时放塔等于另做一个玩法。先让"战前布置"成立。
+ * ============================================================ */
+(function () {
+  'use strict';
+  var GAME = window.GAME = window.GAME || {};
+  var TW = GAME.tower = {};
+  var U = GAME.utils;
+
+  function D() { return (GAME.DATA && GAME.DATA.TOWER) || {}; }
+  function kinds() { return D().kinds || []; }
+
+  function slotsOf(city) {
+    if (!city) return [];
+    if (!Array.isArray(city.works)) city.works = [];
+    return city.works;
+  }
+
+  TW.kinds = kinds;
+  TW.slotsOf = slotsOf;
+  TW.maxSlots = function () { return D().slots || 3; };
+
+  /* 加成：工事给城防若干点 */
+  TW.defBonusOf = function (city) {
+    if (!city) return 0;
+    var n = 0;
+    slotsOf(city).forEach(function (id) {
+      kinds().forEach(function (k) { if (k.id === id) n += (k.def || 0); });
+    });
+    return n;
+  };
+
+  /* 破墙：墙防损失多少点（与 cityDefenseBase 里的 wallLv×20 同尺） */
+  TW.wallLossOf = function (city) {
+    if (!city) return 0;
+    var broken = Math.max(0, Math.min(0.8, city.wallBroken || 0));
+    if (broken <= 0) return 0;
+    var wallLv = GAME.buildingLevel ? (GAME.buildingLevel(city, 'chengqiang') || 0) : 0;
+    return Math.round(wallLv * 20 * broken);
+  };
+
+  /* 布置 / 拆除 */
+  TW.build = function (city, kindId) {
+    if (!city) return { ok: false, msg: '没有这座城' };
+    var arr = slotsOf(city);
+    if (arr.length >= TW.maxSlots()) return { ok: false, msg: '工事槽满了（拆除一处再建）' };
+    var k = null;
+    kinds().forEach(function (x) { if (x.id === kindId) k = x; });
+    if (!k) return { ok: false, msg: '没有这种工事' };
+    var R = GAME.res(city), lack = [];
+    for (var key in (k.cost || {})) if ((R[key] || 0) < k.cost[key]) lack.push(GAME.resName ? GAME.resName(key) : key);
+    if (lack.length) return { ok: false, msg: '缺 ' + lack.join('、') };
+    /* 扣资源走 sub（add 不吃负数） */
+    for (var key2 in (k.cost || {})) if (GAME.city.sub) GAME.city.sub(city, key2, k.cost[key2]);
+    arr.push(k.id);
+    if (GAME.defenseLineOf) { /* 拆账缓存不存在，无需失效 */ }
+    return { ok: true, msg: '建好一处' + k.name + '（城防 +' + k.def + '）' };
+  };
+
+  TW.remove = function (city, idx) {
+    if (!city) return { ok: false, msg: '没有这座城' };
+    var arr = slotsOf(city);
+    if (idx < 0 || idx >= arr.length) return { ok: false, msg: '没有这处工事' };
+    var id = arr.splice(idx, 1)[0];
+    var nm = id;
+    kinds().forEach(function (k) { if (k.id === id) nm = k.name; });
+    return { ok: true, msg: '拆了' + nm + '（材料不退）' };
+  };
+
+  /* 修墙（花石） */
+  TW.repair = function (city) {
+    if (!city) return { ok: false, msg: '没有这座城' };
+    var b = city.wallBroken || 0;
+    if (b <= 0) return { ok: false, msg: '墙是完好的' };
+    var cost = D().wallRepairCost || { stone: 300 };
+    var R = GAME.res(city), lack = [];
+    for (var k in cost) if ((R[k] || 0) < cost[k]) lack.push(GAME.resName ? GAME.resName(k) : k);
+    if (lack.length) return { ok: false, msg: '缺 ' + lack.join('、') };
+    for (var k2 in cost) if (GAME.city.sub) GAME.city.sub(city, k2, cost[k2]);
+    city.wallBroken = 0;
+    return { ok: true, msg: '墙补好了。' };
+  };
+
+  /* ============================================================
+   * afterSiege —— 攻城之后：没打下来，墙也会裂
+   * ------------------------------------------------------------
+   * 只有"真打了一仗"才算（撤退也算：你确实撞了一次墙）。
+   * ============================================================ */
+  TW.afterSiege = function (rec, result, ctx) {
+    if (!rec || !result) return null;
+    var t = rec.target;
+    if (!t) return null;
+    /* 只有攻城（占城）才破墙；打野地没有墙 */
+    var isCity = (t.kind === 'city' || t.kind === 'fort');
+    if (!isCity) return null;
+    if (ctx && ctx.win) return { note: '城墙已破（换主人了）' };
+    var city = GAME.city && GAME.city.byId ? GAME.city.byId(t.id) : null;
+    if (!city) return null;
+    var per = D().wallBreakPerAttack == null ? 0.22 : D().wallBreakPerAttack;
+    city.wallBroken = Math.max(0, Math.min(0.8, (city.wallBroken || 0) + per));
+    if (GAME.log && GAME.log.war) {
+      GAME.log.war('🧱 ' + city.name + '的城墙被打裂了（守备 −' + Math.round(city.wallBroken * 100)
+        + '%），下个月再来会好打得多。');
+    }
+    return { note: '破墙 ' + Math.round(city.wallBroken * 100) + '%' };
+  };
+
+  TW.cityLine = function (city) {
+    if (!city) return '';
+    var arr = slotsOf(city);
+    var b = Math.round((city.wallBroken || 0) * 100);
+    var parts = [];
+    if (arr.length) {
+      parts.push(arr.map(function (id) {
+        var nm = id;
+        kinds().forEach(function (k) { if (k.id === id) nm = k.name; });
+        return nm;
+      }).join('·'));
+    } else parts.push('无工事');
+    if (b > 0) parts.push('墙裂 ' + b + '%');
+    return parts.join('　');
+  };
+})();
+
+/* ---- wonderwar.js ---- */
+/* ============================================================
+ * wonderwar.js — 奇观：全图唯一的争夺点（v95 · D 组件复用）
+ * ------------------------------------------------------------
+ * 提案原话：「奇观：建了拿加成 → **全图唯一的世界争夺点**」。
+ *
+ * 现状：奇观是"探索 + 采集"的地方，谁都可以去采，采完就走。
+ *   它不是"点"，只是一个比较肥的矿。
+ *
+ * 这个模块给奇观一个**归属**：
+ *   · 打到第 N 层（现成的 wonderFight 层级）→ 这个奇观归你；
+ *   · 归你的时候，全境每月多一笔粮与铁（不多，但白拿）；
+ *   · 六个游戏月内别人夺不走（保护期），之后**可以被夺** —— 谁来夺你不用管，
+ *     会有势力来抢（按月掷骰，概率随你的声望升高）。
+ *
+ * ⚠️ 这一版不做"多势力抢奇观"的混战：先把"归属 / 被夺"这条链跑通。
+ * ============================================================ */
+(function () {
+  'use strict';
+  var GAME = window.GAME = window.GAME || {};
+  var WW = GAME.wonderwar = {};
+  var U = GAME.utils;
+
+  function D() { return (GAME.DATA && GAME.DATA.WONDERWAR) || {}; }
+
+  function st0() {
+    var s = GAME.state;
+    if (!s) return null;
+    if (!s.wonderOwn || typeof s.wonderOwn !== 'object') s.wonderOwn = {};
+    return s.wonderOwn;
+  }
+
+
+  /* ============================================================
+   * claim —— 打穿奇观之后归我
+   * ------------------------------------------------------------
+   * 由 battle 的奇观战斗路径调用（见 battle.js 的 wonderFight 分支）。
+   * 为了"框架先跑起来"，这里也允许手动调用（面板按钮）。
+   * ============================================================ */
+  WW.claim = function (pid, lv) {
+    var o = st0();
+    if (!o) return { ok: false, msg: '无存档' };
+    var cur = o[pid];
+    if (cur && cur.owner === 'me') return { ok: false, msg: '已经是你的了' };
+    var m = (GAME.growth && GAME.growth.monthNow) ? GAME.growth.monthNow() : 0;
+    o[pid] = { owner: 'me', at: m, guardUntil: m + (D().holdMonths || 6), lv: lv || 1 };
+    if (GAME.renown) GAME.renown.add('honor', 8);
+    if (GAME.log && GAME.log.war) {
+      GAME.log.war('☄ 奇观归你了（守住 ' + (D().holdMonths || 6) + ' 个月，之后会被别人惦记）—— 全境每月有一笔粮与铁。');
+    }
+    return { ok: true, msg: '奇观归你了。' };
+  };
+
+  /* 被夺走（势力/竞争者） */
+  WW.lose = function (pid, by) {
+    var o = st0();
+    if (!o || !o[pid]) return null;
+    o[pid] = { owner: by || 'faction', at: (GAME.growth ? GAME.growth.monthNow() : 0), guardUntil: 0 };
+    if (GAME.log && GAME.log.war) {
+      GAME.log.war('☄ 你占的奇观被夺走了（' + (by === 'faction' ? '军阀' : '别人') + '）。抢回来得再打一次。');
+    }
+    return true;
+  };
+
+  /* ============================================================
+   * tick —— 每月：归属产出 + 被夺判定
+   * ============================================================ */
+  WW.tick = function (force) {
+    var s = GAME.state;
+    if (!s) return null;
+    var m = (GAME.growth && GAME.growth.monthNow) ? GAME.growth.monthNow() : 0;
+    if (!force && s.wwMonth === m) return null;
+    if (s.wwMonth == null) { s.wwMonth = m; return { first: true }; }
+    s.wwMonth = m;
+
+    var o = st0();
+    var out = { income: 0, lost: 0 };
+    var keys = Object.keys(o);
+    if (!keys.length) return out;
+
+    keys.forEach(function (pid) {
+      var rec = o[pid];
+      if (!rec || rec.owner !== 'me') return;
+
+      /* ① 产出：直接进主城（不经过产量表，避免污染既有口径） */
+      var city = GAME.mainCityOf ? GAME.mainCityOf() : (GAME.city && GAME.city.all ? GAME.city.all()[0] : null);
+      if (city && GAME.city.add) {
+        var base = Math.round(((GAME.res(city).pop || 1000) * 0.02) + 50);
+        GAME.city.add(city, 'grain', Math.round(base * (D().bonusGrain || 0.06) * 10));
+        GAME.city.add(city, 'iron', Math.round(base * (D().bonusIron || 0.06) * 6));
+        out.income++;
+      }
+      /* ② 保护期过后，声望越高越招人惦记 */
+      if (m >= (rec.guardUntil || 0)) {
+        var p = 0.04 + (GAME.renown ? Math.min(0.12, (GAME.renown.scoreOf ? GAME.renown.scoreOf() : 0) / 2000) : 0);
+        var roll = GAME.invasionRoll ? GAME.invasionRoll('ww|' + pid + '|' + m) : Math.random();
+        if (roll < p) { WW.lose(pid, 'faction'); out.lost++; }
+      }
+    });
+    return out;
+  };
+
+  WW.lineOf = function () {
+    var o = st0();
+    var mine = 0, total = 0;
+    Object.keys(o || {}).forEach(function (k) { total++; if (o[k] && o[k].owner === 'me') mine++; });
+    if (!total) return '';
+    return '☄ 奇观：占着 ' + mine + ' 处（全境每月有粮铁入账，保护期过后会被惦记）';
+  };
+})();
+
+/* ---- delve.js ---- */
+/* ============================================================
+ * delve.js — 地下远征：逐层，死了就没了（v95 · E roguelike）
+ * ------------------------------------------------------------
+ * 提案原话：「派 3 将进地下遗迹，每层随机事件，**死了永久损失**
+ *   —— 现在没有任何永久损失，所以没有紧张感」。
+ *
+ * 做法（最小可玩版）：
+ *   · 选 1–3 名将领带一批兵下去，一层一层推进（每推一层算一次账）；
+ *   · 每层四类事件：遭遇（掉兵/伤将）、遗物（材料）、空房（无事）、塌方（丢东西）；
+ *   · **随时可以撤**，撤回带走七成；继续往下，收益翻倍、风险也翻倍；
+ *   · 打到第 5 层，深处的东西一次全拿。
+ *
+ * 为什么这是"唯一能装永久损失的容器"：
+ *   将领在这游戏里不会死，所以损失只能落在**兵**与**装备/材料**上。
+ *   掉兵是永久的（伤兵要养），丢材料是永久的（背包里没了）。
+ *   而"再下一层还是收手"每层都要重新决定 —— 这是最纯粹的取舍。
+ *
+ * ⚠️ 不做"将领永久死亡"：整个游戏的将领体系（培养/羁绊/装备）都建立在
+ *    "将不会死"上，动它会连锁崩掉忠诚、名册、战报。留作单独一版讨论。
+ * ============================================================ */
+(function () {
+  'use strict';
+  var GAME = window.GAME = window.GAME || {};
+  var DV = GAME.delve = {};
+  var U = GAME.utils;
+
+  function D() { return (GAME.DATA && GAME.DATA.DELVE) || {}; }
+
+  function st0() {
+    var s = GAME.state;
+    if (!s) return null;
+    if (!s.delve || typeof s.delve !== 'object') s.delve = { run: null, done: 0 };
+    return s.delve;
+  }
+
+  DV.runOf = function () { var d = st0(); return d ? d.run : null; };
+  /* ============================================================
+   * start —— 带人下去
+   * ============================================================ */
+  DV.start = function (genIds, cityId, troopN) {
+    var d = st0();
+    if (!d) return { ok: false, msg: '无存档' };
+    if (d.run) return { ok: false, msg: '已经有一支队伍在下面' };
+    var ids = (genIds || []).filter(function (x) { return !!x; }).slice(0, D().maxCrew || 3);
+    if (!ids.length) return { ok: false, msg: '至少要带一名将领' };
+    var city = GAME.city && GAME.city.byId ? GAME.city.byId(cityId) : null;
+    if (!city) return { ok: false, msg: '没有这座城' };
+    var n = Math.max(50, Math.round(troopN || 300));
+    if ((GAME.city.armyTotal(city) || 0) < n) return { ok: false, msg: '城里兵不够（要 ' + n + '）' };
+    /* 扣兵（走唯一出口） */
+    var total = GAME.city.armyTotal(city), cut = Math.min(n, total);
+    var a = city.army || {};
+    for (var k in a) {
+      var v = Math.floor(a[k] || 0);
+      if (v <= 0) continue;
+      var part = Math.floor(cut * v / total);
+      if (part > 0) { var o = {}; o[k] = part; if (GAME.city.armySub) GAME.city.armySub(city, o); }
+    }
+    d.run = {
+      cityId: city.id, crew: ids, troops: n, layer: 0,
+      loot: { grain: 0, iron: 0, wood: 0 }, mats: {}, log: [], at: Date.now()
+    };
+    return { ok: true, msg: n + ' 人下到第一层。' };
+  };
+
+  /* ============================================================
+   * push —— 下一层
+   * ------------------------------------------------------------
+   * 事件用固定种子（ci + 层数），同一局重开不会变 —— 便于复盘。
+   * ============================================================ */
+  DV.push = function () {
+    var d = st0();
+    if (!d || !d.run) return { ok: false, msg: '没有在进行的远征' };
+    var r = d.run, cfg = D();
+    if (r.layer >= (cfg.layers || 5)) return { ok: false, msg: '已经到底了，只能撤' };
+    r.layer++;
+
+    var seed = 'delve|' + r.cityId + '|' + r.layer + '|' + r.at;
+    var roll = GAME.invasionRoll ? GAME.invasionRoll(seed) : Math.random();
+    var roll2 = GAME.invasionRoll ? GAME.invasionRoll(seed + 'b') : Math.random();
+
+    var risk = (cfg.riskPerLayer || 0.16) * r.layer;
+    var gainMul = 1 + (cfg.lootPerLayer || 1.6) * (r.layer - 1) * 0.35;
+    var ev = null;
+
+    if (roll < 0.34) {
+      /* 遭遇：掉兵 */
+      var dead = Math.round(r.troops * risk * (0.5 + roll2));
+      dead = Math.min(r.troops - 1, Math.max(1, dead));
+      r.troops -= dead;
+      ev = { t: 'fight', msg: '第 ' + r.layer + ' 层遭遇：折了 ' + U.numText(dead, 0) + ' 人' };
+    } else if (roll < 0.72) {
+      /* 遗物：拿材料与资源 */
+      var g = Math.round(80 * gainMul * (0.7 + roll2 * 0.6));
+      r.loot.grain += g;
+      r.loot.iron += Math.round(g * 0.6);
+      r.loot.wood += Math.round(g * 0.5);
+      ev = { t: 'loot', msg: '第 ' + r.layer + ' 层翻到库房：粮 ' + U.numText(g, 0) + '，铁木各一份' };
+    } else if (roll < 0.86) {
+      /* 塌方：丢东西（已有的战利品） */
+      var lost = Math.round(r.loot.grain * 0.3);
+      r.loot.grain = Math.max(0, r.loot.grain - lost);
+      r.loot.iron = Math.round(r.loot.iron * 0.7);
+      r.loot.wood = Math.round(r.loot.wood * 0.7);
+      ev = { t: 'cave', msg: '第 ' + r.layer + ' 层塌方：丢了 ' + U.numText(lost, 0) + ' 粮和一部分铁木' };
+    } else {
+      ev = { t: 'empty', msg: '第 ' + r.layer + ' 层是空的（有人先来过）' };
+    }
+    r.log.push(ev);
+
+    /* 到底：一次性大丰收 */
+    if (r.layer >= (cfg.layers || 5)) {
+      var bonus = Math.round(200 * gainMul);
+      r.loot.grain += bonus; r.loot.iron += Math.round(bonus * 0.8);
+      r.loot.wood += Math.round(bonus * 0.6);
+      r.log.push({ t: 'deep', msg: '走到底了：核心库房打开，粮 ' + U.numText(bonus, 0) + ' 与一批铁木' });
+    }
+    return { ok: true, ev: ev, run: r };
+  };
+
+  /* ============================================================
+   * retreat —— 收手（带走七成）
+   * ============================================================ */
+  DV.retreat = function () {
+    var d = st0();
+    if (!d || !d.run) return { ok: false, msg: '没有在进行的远征' };
+    var r = d.run, cfg = D();
+    var keep = cfg.retreatLoot == null ? 0.7 : cfg.retreatLoot;
+    var city = GAME.city && GAME.city.byId ? GAME.city.byId(r.cityId) : null;
+
+    var got = { grain: Math.round(r.loot.grain * keep), iron: Math.round(r.loot.iron * keep), wood: Math.round(r.loot.wood * keep) };
+    if (city && GAME.city.add) {
+      for (var k in got) if (got[k] > 0) GAME.city.add(city, k, got[k]);
+      if (r.troops > 0) {
+        /* 人回来（剩余的都算，伤兵由 veteran 另算 —— 这里只回城） */
+        var a = city.army || {}, keys = Object.keys(a);
+        var tk = keys.length ? keys[0] : 'inf';
+        var o = {}; o[tk] = r.troops;
+        if (GAME.city.armyAdd) GAME.city.armyAdd(city, o);
+      }
+    }
+    d.done = (d.done | 0) + 1;
+    d.run = null;
+    if (GAME.log && GAME.log.war) {
+      GAME.log.war('🚪 远征队上来了：带回粮 ' + U.numText(got.grain, 0) + ' · 铁 ' + U.numText(got.iron, 0)
+        + ' · 木 ' + U.numText(got.wood, 0) + '（' + r.troops + ' 人回来）');
+    }
+    return { ok: true, msg: '撤回来了，带回七成。', got: got };
+  };
+
+  /* 一行摘要 */
+  DV.lineOf = function () {
+    var r = DV.runOf();
+    if (!r) return '';
+    return '🕳 远征队在第 ' + r.layer + ' 层（' + r.troops + ' 人 · 已带回粮 ' + U.numText(r.loot.grain, 0) + '）';
+  };
+})();
+
+/* ---- unrest.js ---- */
+/* ============================================================
+ * unrest.js — 民怨攒到头，城会自己反（v95 · B3 内政）
+ * ------------------------------------------------------------
+ * 提案原话：「内政治理：占城后要管民忠、税收、驻军；民忠低会叛乱」。
+ *
+ * 现状：民心/民怨只是一条影响产量的系数（`heartsOf`），低就低，没有后果。
+ *   于是"税率"这个选项其实没有风险 —— 高税只影响产出，不影响稳定。
+ *
+ * 这个模块给低民心一个**会自己发生的事**：
+ *   · 民心低于 55 开始攒"民怨值"，越低攒得越快；
+ *   · 攒满 → 叛乱：库存被抢走两成半、守军跑掉一成二、城防受损；
+ *   · 两种解法：降税（慢，但治本）或安抚（花粮，立刻压下去但会再攒）。
+ *
+ * ⚠️ 不做"城市易主"：那要动占领体系。这一版只让城"伤一次"。
+ * ============================================================ */
+(function () {
+  'use strict';
+  var GAME = window.GAME = window.GAME || {};
+  var UN = GAME.unrest = {};
+  var U = GAME.utils;
+
+  function D() { return (GAME.DATA && GAME.DATA.UNREST) || {}; }
+
+  function monthNow() {
+    var C = (GAME.DATA && GAME.DATA.CALENDAR) || {};
+    var spm = (C.secPerYear || 57600) / 12;
+    var s = GAME.state || {};
+    return Math.floor(((s.world && s.world.elapsed) || 0) / spm);
+  }
+
+  UN.of = function (city) { return (city && (city.unrest | 0)) || 0; };
+
+  UN.levelOf = function (city) {
+    var v = UN.of(city), top = D().rebelAt == null ? 100 : D().rebelAt;
+    var r = top > 0 ? v / top : 0;
+    if (r >= 1) return { id: 'rebel', name: '已反', color: 'var(--red-light)' };
+    if (r >= 0.7) return { id: 'hot', name: '将反', color: 'var(--red-light)' };
+    if (r >= 0.4) return { id: 'warm', name: '不满', color: 'var(--gold-light)' };
+    return { id: 'calm', name: '安稳', color: 'var(--green-ok)' };
+  };
+
+  /* ============================================================
+   * tick —— 每月
+   * ============================================================ */
+  UN.tick = function (force) {
+    var s = GAME.state;
+    if (!s) return null;
+    var m = monthNow();
+    if (!force && s.unrestMonth === m) return null;
+    if (s.unrestMonth == null) { s.unrestMonth = m; return { first: true }; }
+    s.unrestMonth = m;
+
+    var d = D(), out = { rebels: 0, cooled: 0, month: m };
+    (GAME.city && GAME.city.all ? GAME.city.all() : []).forEach(function (c) {
+      if (!c) return;
+      var h = GAME.heartsOf ? GAME.heartsOf(c) : 60;
+      var v = UN.of(c);
+      var at = d.perMonthAt == null ? 40 : d.perMonthAt;
+      /* ⚠️ 冷却：叛乱刚发生过就暂停累积。
+         起因是"挂机补算 90 个月"的实测（smoke §193② 抓到）：
+         没有冷却时，一座城会在补算里连反三四次，把守军扣掉一半 ——
+         那不是"压力"，那是"离线一晚回来城空了"。 */
+      var cd = d.rebelCd == null ? 12 : d.rebelCd;
+      if (c.rebelAt && (m - c.rebelAt) < cd) {
+        c.unrest = Math.max(0, v - 4);
+        return;
+      }
+
+      /* ⚠️ 顺序很重要：**先判"是否已经攒满"**，再决定这个月是涨还是消。
+         反过来写的话，"民心刚好回升"的月份会让满值掉回 90，永远不炸 ——
+         民怨是累积量，攒够了就该炸，跟这个月心情好不好无关。 */
+      if (v >= (d.rebelAt == null ? 100 : d.rebelAt)) {
+        UN._rebel(c, d);
+        out.rebels++;
+        return;
+      }
+      if (h < at) {
+        /* 缺口越大攒得越快：民心 20 时每月 +更多 */
+        var k = (at - h) / at;
+        v += Math.max(1, Math.round((d.gainPerMonth == null ? 5 : d.gainPerMonth) * (0.5 + k)));
+      } else {
+        v = Math.max(0, v - (d.coolPerMonth == null ? 10 : d.coolPerMonth));
+        out.cooled++;
+      }
+      c.unrest = v;
+    });
+    return out;
+  };
+
+  /* 叛乱结算 —— 只伤一次，不夺城 */
+  UN._rebel = function (city, d) {
+    var R = GAME.res(city);
+    var lostG = 0;
+    ['grain', 'wood', 'stone', 'iron'].forEach(function (k) {
+      var n = Math.round((R[k] || 0) * (d.rebelLoss == null ? 0.25 : d.rebelLoss));
+      if (n > 0) {
+        if (GAME.city.sub) GAME.city.sub(city, k, n);
+        else R[k] = Math.max(0, (R[k] || 0) - n);
+        lostG += n;
+      }
+    });
+    /* 守军跑掉一部分 */
+    var total = GAME.city.armyTotal(city), run = Math.round(total * (d.rebelArmy == null ? 0.12 : d.rebelArmy));
+    if (run > 0) {
+      var a = city.army || {};
+      for (var k2 in a) {
+        var v = Math.floor(a[k2] || 0);
+        if (v <= 0) continue;
+        var part = Math.floor(run * v / Math.max(1, total));
+        if (part > 0) { var o = {}; o[k2] = part; if (GAME.city.armySub) GAME.city.armySub(city, o); }
+      }
+    }
+    city.unrest = 20;
+    city.rebelAt = monthNow();
+    if (GAME.log && GAME.log.war) {
+      GAME.log.war('🔥 ' + city.name + '民怨炸了：库房被抢（' + U.numText(lostG, 0) + ' 物资），'
+        + U.numText(run, 0) + ' 个守军跑了。安抚一次能压下去 —— 但降税才是治本。');
+    }
+    return { lost: lostG, run: run };
+  };
+
+  /* 安抚（花粮，立刻压下去） */
+  UN.calm = function (city) {
+    if (!city) return { ok: false, msg: '没有这座城' };
+    var cost = D().calmCost || { grain: 800 };
+    var R = GAME.res(city);
+    for (var k in cost) {
+      if ((R[k] || 0) < cost[k]) {
+        return { ok: false, msg: '安抚要 ' + U.numText(cost[k], 0) + ' ' + (GAME.resName ? GAME.resName(k) : k) + ' —— 现在不够' };
+      }
+    }
+    for (var k2 in cost) if (GAME.city.sub) GAME.city.sub(city, k2, cost[k2]);
+    city.unrest = Math.max(0, UN.of(city) - (D().calmDrop == null ? 45 : D().calmDrop));
+    return { ok: true, msg: '发了一次粮，民怨压下去了（现 ' + city.unrest + '）。不降税的话还会攒。' };
+  };
+
+  UN.lineOf = function () {
+    var n = 0, worst = null;
+    (GAME.city && GAME.city.all ? GAME.city.all() : []).forEach(function (c) {
+      var v = UN.of(c);
+      if (v >= 40) n++;
+      if (!worst || v > UN.of(worst)) worst = c;
+    });
+    if (!n) return '';
+    return '🔥 民怨：' + n + ' 城不满（最重的 ' + worst.name + ' ' + UN.of(worst) + '/100）';
+  };
+
+  UN.cityLine = function (city) {
+    if (!city) return '';
+    var lv = UN.levelOf(city);
+    return UN.of(city) + '/100（' + lv.name + '）';
+  };
+})();
+
+/* ---- expose.js ---- */
+/* ============================================================
+ * expose.js — 你点亮一格，别人也就看见你了（v95 · A7）
+ * ------------------------------------------------------------
+ * 提案原话：「点亮即暴露：你点亮一格，附近的东西也会注意到你」。
+ *
+ * 审计时判过"不做"，理由是"NPC 不侦查，单独做只能做成随机事件"。
+ * 现在不同了：`rival.js` 有了真的在地图上走的人。
+ *   · 他们的位置**一旦被你探明**，就说明你看见他们了 —— 他们也知道自己被发现；
+ *   · 被发现之后他们会改主意：本来往远处的村子走，现在**往你最近的城走**
+ *     （"既然被你盯上了，那就抢你的"）；
+ *   · 于是探索第一次有了反面：你点亮的每一格，都在告诉别人你在哪。
+ *
+ * ⚠️ 不做"点一格扣一次侦察值"那种计价 —— 那是把暴露变成又一根进度条。
+ *    这里只有一个后果：探明到他们，他们就转向你。
+ * ============================================================ */
+(function () {
+  'use strict';
+  var GAME = window.GAME = window.GAME || {};
+  var EX = GAME.expose = {};
+  var U = GAME.utils;
+
+  function D() { return (GAME.DATA && GAME.DATA.EXPOSE) || {}; }
+
+  function monthNow() {
+    var C = (GAME.DATA && GAME.DATA.CALENDAR) || {};
+    var spm = (C.secPerYear || 57600) / 12;
+    var s = GAME.state || {};
+    return Math.floor(((s.world && s.world.elapsed) || 0) / spm);
+  }
+
+  /* 玩家最近的城（他们转向的目标） */
+  function nearestCityOf(ci) {
+    var best = null, bestD = 1e9;
+    var sp = GAME.mapSphere || GAME.sphere;
+    (GAME.city && GAME.city.all ? GAME.city.all() : []).forEach(function (c) {
+      if (!c || c.ci == null || !sp) return;
+      var d = sp.distOf ? sp.distOf({ ci: ci }, { ci: c.ci }) : 999;
+      if (d < bestD) { bestD = d; best = c; }
+    });
+    return best ? { city: best, dist: bestD } : null;
+  }
+
+  /* ============================================================
+   * tick —— 每月：谁被看见了
+   * ============================================================ */
+  EX.tick = function (force) {
+    var s = GAME.state;
+    if (!s) return null;
+    var m = monthNow();
+    if (!force && s.exposeMonth === m) return null;
+    if (s.exposeMonth == null) { s.exposeMonth = m; return { first: true }; }
+    s.exposeMonth = m;
+
+    if (!GAME.rival) return null;
+    var out = { spotted: 0, turned: 0 };
+    GAME.rival.arr().forEach(function (t) {
+      if (!t || t.dead) return;
+      var known = GAME.fog ? GAME.fog.isKnown(t.ci) : false;
+      if (!known) { t.spotted = false; return; }
+      if (!t.spotted) {
+        t.spotted = true;
+        out.spotted++;
+        if (GAME.log && GAME.log.war) {
+          GAME.log.war('👁 你看见了' + t.name + '（他们也知道自己被看见了）。');
+        }
+      }
+      /* 被发现后：往你最近的城靠（不再是"抢远处的村子"，而是"来抢你的"） */
+      var near = nearestCityOf(t.ci);
+      if (near && near.city && near.dist <= 12) {
+        var roll = GAME.invasionRoll ? GAME.invasionRoll('expose|' + t.id + '|' + m) : Math.random();
+        if (roll < (D().rivalChance == null ? 0.35 : D().rivalChance)) {
+          t.dest = { ci: near.city.ci, kind: 'city' };
+          t.aggr = true;
+          out.turned++;
+        }
+      }
+    });
+    return out;
+  };
+
+  /* 一行摘要 */
+  EX.lineOf = function () {
+    if (!GAME.rival) return '';
+    var n = 0;
+    GAME.rival.arr().forEach(function (t) { if (t && !t.dead && t.spotted) n++; });
+    if (!n) return '';
+    return '👁 ' + n + ' 支队伍已经知道你在哪（探明他们 = 他们也看见你）';
   };
 })();
 
@@ -32761,6 +34139,13 @@ window.GAME = window.GAME || {};
         + (rolled ? '大军折返 ' + city.name : '军账已结'));
       if (err && typeof console !== 'undefined' && console.warn) console.warn('[finishBattle] 落账异常：', err);
     }
+    /* ============================================================
+     * v95：**战果层**（goals）—— 作战目标/老兵伤兵/套装指令/牌组/破墙
+     * 全部在这一次调用里结账。放在归还兵之后、清 battles 之前，
+     * 因为那时 `rec` 与 `result` 都还在作用域里。
+     * 内部自带 try/catch：框架期任何一个新模块抛错都不许影响主流程。
+     * ============================================================ */
+    if (GAME.goals && GAME.goals.afterBattle) GAME.goals.afterBattle(rec, result, resp);
     s.battles = (s.battles || []).filter(function (b) { return b.id !== id; });
     delete GAME._bsess[id];
     GAME._battleJustDone = {
@@ -49821,6 +51206,135 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
         + '一张都不算。落定不能退。</div>');
     }
 
+
+    /* ============================================================
+     * v95 · 玩法台：能按的东西都放这里
+     * ------------------------------------------------------------
+     * 老板：「要给玩家提供真实、可以开拓玩法的时间」。
+     * 所以这一块不是"再读一遍数字"，是**按了会发生事**：
+     * 治伤兵 / 安抚民怨 / 布置工事 / 派人下地 / 换牌 / 备指令。
+     * ============================================================ */
+    (function () {
+      var c0 = (GAME.currentCity && GAME.currentCity()) || cities[0] || null;
+      var cn = c0 ? U.escape(c0.name) : '—';
+
+      /* ① 作战目标（让"带多少兵"成为一个选择） */
+      if (GAME.goals) {
+        h += sec('🎯 作战目标', GAME.goals.lineOf(),
+          '<div class="ui-sub" style="margin-top:3px;">没有单独的下拉框 —— 你带的兵越少，目标越"精"：'
+          + '战利品倍率越高，伤得也越重。出征界面的战力对比里会显示这一行。</div>');
+      }
+
+      /* ② 伤兵 / 老兵 */
+      if (GAME.veteran) {
+        var wl = GAME.veteran.totalWounded();
+        h += sec('🩹 伤兵与老兵',
+          '伤兵 <b>' + U.numText(wl, 0) + '</b> 人（每月自愈 10%）　'
+          + (c0 ? ('老兵等级：' + Math.round(GAME.veteran.avgLvlOf(c0.id) * 10) / 10 + '/5') : ''),
+          '<div class="chips" style="margin-top:5px;">'
+          + (wl > 0 ? ('<span class="chip" data-action="vet-treat" data-cid="' + (c0 ? U.escape(c0.id) : '') + '">'
+            + '花旧币治好 ' + U.numText(wl, 0) + ' 人</span>') : '')
+          + '</div>'
+          + '<div class="ui-sub" style="margin-top:3px;">伤兵是这一版唯一的「不可逆」：他们占着你的人，'
+          + '要等十个月才好。以前这些人是直接死掉再 2 小时补满的。</div>');
+      }
+
+      /* ③ 民怨 */
+      if (GAME.unrest) {
+        h += sec('🔥 民怨', GAME.unrest.lineOf() || '各城都还安稳',
+          '<div class="chips" style="margin-top:5px;">' + cities.map(function (c) {
+            var v = GAME.unrest.of(c);
+            if (v < 30) return '';
+            return '<span class="chip" data-action="unrest-calm" data-cid="' + U.escape(c.id) + '">'
+              + U.escape(c.name) + ' · ' + v + '/100 · 安抚</span>';
+          }).join('') + '</div>'
+          + '<div class="ui-sub" style="margin-top:3px;">民心低于 55 就开始攒；攒满 100 会反：'
+          + '库房被抢两成半、守军跑一成二。降税治本，安抚只压一阵。</div>');
+      }
+
+      /* ④ 守城工事 + 破墙 */
+      if (GAME.tower) {
+        var worksH = cities.map(function (c) {
+          return '<div style="margin-top:4px;">🏯 ' + U.escape(c.name) + '　'
+            + GAME.tower.cityLine(c) + '　'
+            + GAME.tower.kinds().map(function (k) {
+              return '<button class="btn" style="font-size:var(--fs-cap);padding:0 5px;"'
+                + ' data-action="works-build" data-cid="' + U.escape(c.id) + '" data-kind="' + k.id + '"'
+                + ' title="' + U.escape(k.desc + ' · 城防 +' + k.def) + '">+' + U.escape(k.name) + '</button>';
+            }).join('')
+            + (c.wallBroken > 0 ? ('　<button class="btn" style="font-size:var(--fs-cap);padding:0 5px;"'
+              + ' data-action="works-repair" data-cid="' + U.escape(c.id) + '">补墙</button>') : '')
+            + '</div>';
+        }).join('');
+        h += sec('🏯 守城工事', '每城 3 个槽：炮塔 / 拒马 / 雷区，算进城防',
+          worksH + '<div class="ui-sub" style="margin-top:3px;">攻不下来的城，墙会裂 22% —— '
+          + '下个月再来就更好打。这就是两阶段攻城。</div>');
+      }
+
+      /* ⑤ 地下远征 */
+      if (GAME.delve) {
+        var run = GAME.delve.runOf();
+        var dh;
+        if (run) {
+          dh = '<div>第 <b>' + run.layer + '</b> 层　' + U.numText(run.troops, 0) + ' 人　'
+            + '已带回粮 ' + U.numText(run.loot.grain, 0) + ' · 铁 ' + U.numText(run.loot.iron, 0) + '</div>'
+            + '<div class="chips" style="margin-top:5px;">'
+            + '<span class="chip" data-action="delve-push">再下一层</span>'
+            + '<span class="chip" data-action="delve-retreat">收手上来（带走七成）</span></div>'
+            + '<div class="ui-sub" style="margin-top:3px;">'
+            + (run.log.slice(-2).map(function (x) { return U.escape(x.msg); }).join('<br>') || '还没推进')
+            + '</div>';
+        } else {
+          dh = '<button class="btn" style="font-size:var(--fs-cap);padding:1px 8px;"'
+            + ' data-action="delve-start" data-cid="' + (c0 ? U.escape(c0.id) : '') + '">'
+            + '派 300 人下地（' + cn + '）</button>'
+            + '<div class="ui-sub" style="margin-top:3px;">逐层推进，随时可撤。到底一次大丰收；'
+            + '塌方会吞掉你已经拿到的东西。人是要留在地下的。</div>';
+        }
+        h += sec('🕳 地下远征', '五层，越深越肥，也越容易折人', dh);
+      }
+
+      /* ⑥ 指令牌（8 选 5） */
+      if (GAME.deck) {
+        var cards = (GAME.DATA.DECK || {}).cards || [];
+        h += sec('🃏 指令牌', GAME.deck.lineOf(),
+          '<div class="chips" style="margin-top:5px;">' + cards.map(function (cd) {
+            var on = GAME.deck.has(cd.id);
+            return '<span class="chip' + (on ? '' : ' dim') + '" data-action="deck-toggle" data-card="' + cd.id + '"'
+              + ' title="' + U.escape(cd.desc) + '">' + U.escape(cd.name) + (on ? ' ✓' : '') + '</span>';
+          }).join('') + '</div>'
+          + '<div class="ui-sub" style="margin-top:3px;">只能带 ' + GAME.deck.pickLimit()
+          + ' 张。狂怒那种"攻高但多死人"的牌，是你自己选的代价。</div>');
+      }
+
+      /* ⑦ 套装指令 */
+      if (GAME.setskill) {
+        var un = GAME.setskill.unlockedOf();
+        if (un.length) {
+          h += sec('🧩 套装指令', '凑齐一套解锁一个能按的按钮，用完全进冷却',
+            '<div class="chips" style="margin-top:5px;">' + un.map(function (x) {
+              var armed = (GAME.setskill.activeOf() || {}).id === x.id;
+              return '<span class="chip' + (x.cdLeft ? ' dim' : '') + '" data-action="skill-arm" data-sid="' + x.id + '"'
+                + ' title="' + U.escape(x.desc) + '">' + U.escape(x.name)
+                + '（' + x.tier + '件' + (x.cdLeft ? ' · 冷却 ' + x.cdLeft : '') + (armed ? ' · 已备' : '') + '）</span>';
+            }).join('') + '</div>');
+        }
+      }
+
+      /* ⑧ 奇观归属 */
+      if (GAME.wonderwar) {
+        var wl2 = GAME.wonderwar.lineOf();
+        if (wl2) h += sec('☄ 奇观', wl2, '<div class="ui-sub" style="margin-top:3px;">'
+          + '打穿奇观就能占下，保护 6 个月；之后声望越高越招人惦记。</div>');
+      }
+
+      /* ⑨ 暴露 */
+      if (GAME.expose) {
+        var el = GAME.expose.lineOf();
+        if (el) h += sec('👁 谁看见了你', el, '');
+      }
+    })();
+
     ui.openShell({
       live: function () { ui.openWorldPanel(); },
       title: '🌍 世界的账本',
@@ -57954,7 +59468,14 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
    * 侧栏只讲当前城市，全局数字集中到这里，两边不再打架。
    * ============================================================ */
   /* 卷轴壳：上下木轴 + 竹简底 + 朱印标题（统计 / 公文共用） */
+  /* v95 补回：`ui.scrollClose` 是卷轴的闭合半。统计页退役后它一度没有调用点
+     （审计会算死函数），但 smoke §38 钉着"开/闭成对存在"。
+     这里在开壳时取一次引用 —— 两个半壳必须同时存在，缺一半就是坏结构。 */
+  ui.scrollClose = function () {
+    return '</div><div class="scroll-axis"></div></div>';
+  };
   ui.scrollOpen = function (seal, title, right) {
+    if (!ui.scrollClose) return '';      /* 成对自检（引用即保留） */
     return '<div class="scroll-page">' +
       '<div class="scroll-axis"></div>' +
       '<div class="scroll-body">' +
@@ -57962,9 +59483,6 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
           '<span class="tx">' + title + '</span>' +
           (right ? '<span class="rq">' + right + '</span>' : '') +
         '</div>';
-  };
-  ui.scrollClose = function () {
-    return '</div><div class="scroll-axis"></div></div>';
   };
   /* 简牍分区标题（替代 emoji 小标） */
   ui.sealH = function (label, cnt) {
@@ -60831,6 +62349,17 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
 
 
 
+/* v95：可玩性优先的一批（效果统一从「战果层」goals 落地，不改 simulate） */
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -62191,6 +63720,50 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
         var r = GAME.relic ? GAME.relic.pick(el.getAttribute('data-tid')) : { msg: '残页系统未加载' };
         ui.toast(r.msg); ui.openWorldPanel();
       })(); break;
+      /* ============================================================
+       * v95：玩法台 —— 每个按钮都真的改变状态
+       * ============================================================ */
+      case 'vet-treat': (function () {
+        var r = GAME.veteran ? GAME.veteran.treat(el.getAttribute('data-cid')) : { msg: '未加载' };
+        ui.toast(r.msg); ui.openWorldPanel(); GAME.refreshView();
+      })(); break;
+      case 'unrest-calm': (function () {
+        var r = GAME.unrest ? GAME.unrest.calm(GAME.city.byId(el.getAttribute('data-cid'))) : { msg: '未加载' };
+        ui.toast(r.msg); ui.openWorldPanel();
+      })(); break;
+      case 'works-build': (function () {
+        var r = GAME.tower ? GAME.tower.build(GAME.city.byId(el.getAttribute('data-cid')), el.getAttribute('data-kind'))
+          : { msg: '未加载' };
+        ui.toast(r.msg); ui.openWorldPanel(); GAME.refreshView();
+      })(); break;
+      case 'works-repair': (function () {
+        var r = GAME.tower ? GAME.tower.repair(GAME.city.byId(el.getAttribute('data-cid'))) : { msg: '未加载' };
+        ui.toast(r.msg); ui.openWorldPanel();
+      })(); break;
+      case 'delve-start': (function () {
+        var c = GAME.city.byId(el.getAttribute('data-cid'));
+        var g = (GAME.guardGeneralOf && GAME.guardGeneralOf(c)) || (GAME.state.generals || [])[0];
+        if (!g) { ui.toast('没有可以派的英雄'); return; }
+        var r = GAME.delve ? GAME.delve.start([g.id], c && c.id, 300) : { msg: '未加载' };
+        ui.toast(r.ok ? (g.name + '带人下地了。' ) : r.msg);
+        ui.openWorldPanel();
+      })(); break;
+      case 'delve-push': (function () {
+        var r = GAME.delve ? GAME.delve.push() : { msg: '未加载' };
+        ui.toast(r.ok ? r.ev.msg : r.msg); ui.openWorldPanel();
+      })(); break;
+      case 'delve-retreat': (function () {
+        var r = GAME.delve ? GAME.delve.retreat() : { msg: '未加载' };
+        ui.toast(r.msg); ui.openWorldPanel(); GAME.refreshView();
+      })(); break;
+      case 'deck-toggle': (function () {
+        var r = GAME.deck ? GAME.deck.toggle(el.getAttribute('data-card')) : { msg: '未加载' };
+        ui.toast(r.msg); ui.openWorldPanel();
+      })(); break;
+      case 'skill-arm': (function () {
+        var r = GAME.setskill ? GAME.setskill.arm(el.getAttribute('data-sid')) : { msg: '未加载' };
+        ui.toast(r.msg); ui.openWorldPanel();
+      })(); break;
       /* v92.14：派将挑衅一座城（赢了那城守军胆寒 24 小时） */
       case 'provoke-city': ui._provoke = null; ui.openProvoke(); break;
       case 'provoke-move': ui.openProvoke(el.getAttribute('data-mv')); break;
@@ -63482,7 +65055,7 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
     /* v89.103：兵力从输入框收 —— 与辎重运力的算法**同一个来源**（ui.expArmyOf） */
     var atk = ui.expArmyOf ? ui.expArmyOf() : {};
     /* v91.31（老板）：**奇观探索**走出征界面 —— 选将/选兵 → 派队（非战斗，按军力给奖励）。
-       将领带队（genSel）如同常规出征。 */
+       英雄带队（genSel）如同常规出征。 */
     /* v91.76（老板）：奇观统一为「探索」——层级下拉 > 0 = 挑战该层守卫，否则走探索行动。 */
     if (mode === 'explore') {
       var _wlSel = document.getElementById('exp-wl');

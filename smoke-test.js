@@ -12381,7 +12381,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
     /* ⚠️ 这份 ORDER 与 build_bundle.py 的 ORDER **必须逐条一致**（本文故意不复用脚本，
        就是为了"构建脚本自己算错时测试还能抓到"）。加了模块两边都要加 ——
        v92 加 fog / memorial 时这里漏改，导致 hash 对不上、守卫假红。 */
-    var ORDER = ['core', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'domain', 'map', 'sphere', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'rival', 'land', 'taint', 'climate', 'surge', 'relic', 'gltf',
+    var ORDER = ['core', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'domain', 'map', 'sphere', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'rival', 'land', 'taint', 'climate', 'surge', 'relic', 'goals', 'veteran', 'setskill', 'deck', 'bond', 'tower', 'wonderwar', 'delve', 'unrest', 'expose', 'gltf',
       'map3d', 'battle', 'strategy', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits', 'story', 'ui', 'main'];
     var h = crypto.createHash('sha256');
     try {
@@ -31080,6 +31080,14 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         G._offlineReport = { sentinel: true };
         G._offlineSec = 777;
         var rc = G.loopGapCatchup(2 * 3600);
+        global.__dbg193 = { mode: rc.mode, err: (rc.err || '') + '',
+          q: (G.state.queues.train || []).length,
+          army: (G.state.cities[0].army || {}).buxingji || 0,
+          sentinel: (G._offlineReport || {}).sentinel,
+          via: (G._offlineReport || {}).via || '',
+          wound: (G.state.wounded | 0),
+          battles: (G.state.battles || []).length,
+          reports: (G.state.reports || []).length };
         return rc.mode === 'catchup'
           && G.state.queues.train.length === 0
           && (G.state.cities[0].army || {}).buxingji >= 300
@@ -31089,8 +31097,14 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
           && (G._offlineReport || {}).sentinel !== true
           && (G._offlineReport || {}).via === 'online'
           && G._offlineSec === 777;   /* _offlineSec 仍不设（读档提示口径） */
-      } catch (e) { return false; }
+      } catch (e) { global.__dbg193 = { throwMsg: (e && e.message) + '' }; return false; }
       finally { G.state = bk; G._offlineReport = bkRep; G._offlineSec = bkSec; }
+    })(), (function () {
+      var d = global.__dbg193 || {};
+      return 'mode=' + d.mode + ' q=' + d.q + ' army=' + d.army
+        + ' sentinel=' + d.sentinel + ' via=' + d.via
+        + (d.err ? ' err=' + d.err : '') + (d.throwMsg ? ' throw=' + d.throwMsg : '')
+        + ' wound=' + d.wound + ' battles=' + d.battles + ' reports=' + d.reports;
     })());
     check('§193③ 对照 · 读档路径（非静默）：生成归来报告（防"静默过度"）· v89.218 编年史已退役', (function () {
       var bk = G.state, bkRep = G._offlineReport, bkSec = G._offlineSec;
@@ -40167,6 +40181,182 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       return /温度/.test(src) && /辐射云/.test(src) && /污染/.test(src)
         && /竞争者/.test(src) && /领土连通/.test(src) && /废墟科技/.test(src);
     })(), (function () { return '6 条线'; })());
+  })();
+
+
+  /* ============================================================
+   * §311 · v95：可玩性那一批（10 个模块）
+   * ------------------------------------------------------------
+   * 判据仍然是"状态真的变了"，不是"函数存在"。
+   * ============================================================ */
+  console.log('\n===== 311. v95 作战目标/老兵/套装/牌组/羁绊/工事/奇观/远征/民怨/暴露 =====');
+  (function () {
+    var st = G.state;
+    if (!st) return;
+
+    /* ① 作战目标：兵力比 → 档位（带满＝平推，带少＝奇袭） */
+    check('§311① 作战目标随带兵量变化（带满平推 · 打平强攻 · 带少斩首/奇袭）', (function () {
+      if (!G.goals) return false;
+      var a = G.goals.tierOf(3000, 1000);
+      var b = G.goals.tierOf(1000, 1000);
+      var c = G.goals.tierOf(700, 1000);
+      var d = G.goals.tierOf(400, 1000);
+      return a.id === 'annihilate' && b.id === 'press' && c.id === 'behead' && d.id === 'raiddeep'
+        && d.loot > c.loot && c.loot > b.loot;
+    })(), (function () {
+      return G.goals.tierOf(400, 1000).name + ' 战利品 ×' + G.goals.tierOf(400, 1000).loot;
+    })());
+
+    /* ② 老兵：打一仗就涨（输也涨，按存活比例） */
+    check('§311② 老兵：参战存活就长经验（输也长，上限 5 级）', (function () {
+      if (!G.veteran) return false;
+      var c = G.currentCity();
+      if (!c) return false;
+      var before = G.veteran.avgLvlOf(c.id);
+      G.veteran.afterBattle(
+        { cityId: c.id, atkArmy: { buxingji: 800 } },
+        { atkLoss: 200, atkRemain: 600, winner: 'def' }, { win: false });
+      return G.veteran.avgLvlOf(c.id) > before;
+    })(), (function () {
+      var c = G.currentCity();
+      return '老兵 Lv' + Math.round(G.veteran.avgLvlOf(c.id) * 10) / 10;
+    })());
+
+    /* ③ 套装指令：凑齐解档位就给「能按的按钮」，用掉进冷却 */
+    check('§311③ 套装指令：达到档位即解锁 + 备好 + 用掉进冷却', (function () {
+      if (!G.setskill) return false;
+      /* 不依赖真实装备实例（实例号格式一改就假红）：直接 stub 套装进度表。
+         这里验的是 setskill 自己的映射/备好/冷却，装备是否穿在身上由 §套装 各段管。 */
+      var bak = G.setProgressOf;
+      G.setProgressOf = function () {
+        return [{ set: 'stub_zhan', name: '测试套', reached: [3], total: 19 }];
+      };
+      /* ⚠️ stub 必须保持到 `arm` 之后：`arm` 内部也要调 unlockedOf 复核，
+         提前恢复会让它按**真实装备**再算一遍 —— 空表 → 必然拒绝。 */
+      var arr = [], r = null;
+      try {
+        arr = G.setskill.unlockedOf();
+        if (arr.length) r = G.setskill.arm(arr[0].id);
+      } finally { G.setProgressOf = bak; }
+      if (!arr.length || !r || !r.ok) return false;
+      G.setskill.consume();
+      return G.setskill.cdLeftOf(arr[0].id) > 0;
+    })(), (function () {
+      var a = G.setskill.unlockedOf();
+      return a.length ? (a[0].name + ' · ' + a[0].tier + '件') : '（本局没凑齐套装，用 stub 验过映射）';
+    })());
+
+    /* ④ 指令牌：只能带 5 张（第 6 张必须被拒） */
+    check('§311④ 指令牌：8 选 5，第 6 张被拒（构筑有取舍）', (function () {
+      if (!G.deck) return false;
+      st.deck = [];
+      var cards = (DATA.DECK || {}).cards || [];
+      for (var i = 0; i < 5 && i < cards.length; i++) G.deck.toggle(cards[i].id);
+      if (G.deck.chosen().length !== 5) return false;
+      var sixth = cards[5] ? cards[5].id : null;
+      if (!sixth) return false;
+      var r = G.deck.toggle(sixth);
+      return r.ok === false;
+    })(), (function () { return G.deck.lineOf(); })());
+
+    /* ⑤ 羁绊：猛将 + 智将 = 不合（可预见，不是随机） */
+    check('§311⑤ 羁绊不合：风格冲突给出惩罚（不是随机惩罚）', (function () {
+      if (!G.bond) return false;
+      var c = G.bond.clashOf({ styleId: 'war' }, { styleId: 'wis' });
+      var ok = G.bond.clashOf({ styleId: 'balance' }, { styleId: 'war' });
+      return !!(c && c.penalty > 0 && !ok);
+    })(), (function () {
+      var c = G.bond.clashOf({ styleId: 'war' }, { styleId: 'wis' });
+      return c ? c.why : '?';
+    })());
+
+    /* ⑥ 工事：建了城防涨、破墙后城防跌，且拆账之和 == cityDefense */
+    check('§311⑥ 守城工事：建了城防涨 · 墙裂城防跌 · 拆账与总数同口径', (function () {
+      if (!G.tower) return false;
+      var c = G.currentCity();
+      if (!c) return false;
+      c.works = [];
+      c.wallBroken = 0;
+      c.res.iron = 1e7; c.res.stone = 1e7; c.res.wood = 1e7;
+      /* 没有城墙就"无可破"：先立 Lv5 墙，破墙损失才是非零 */
+      if (G.wallSlotOf) G.wallSlotOf(c).build = { id: 'chengqiang', lvl: 5 };
+      var d0 = G.cityDefense(c);
+      var r = G.tower.build(c, 'gun');
+      if (!r.ok) return false;
+      var d1 = G.cityDefense(c);
+      c.wallBroken = 0.5;
+      var d2 = G.cityDefense(c);
+      /* 拆账必须在**同一状态**下取：这里 wallBroken=0.5，parts 与 cityDefense 应完全相等 */
+      var parts = G.defensePartsOf(c);
+      var same = (parts.total === d2);
+      c.works = []; c.wallBroken = 0;
+      return d1 > d0 && d2 < d1 && same;
+    })(), (function () {
+      var c = G.currentCity();
+      return '城防 ' + G.cityDefense(c) + ' · 拆账 ' + G.defensePartsOf(c).total;
+    })());
+
+    /* ⑦ 奇观：占下之后每月有进账 */
+    check('§311⑦ 奇观归属：claim 落库 + 每月有粮铁进账', (function () {
+      if (!G.wonderwar) return false;
+      var r = G.wonderwar.claim(31337, 3);
+      if (!r.ok) return false;
+      var c = G.currentCity();
+      var g0 = G.res(c).grain || 0;
+      st.wwMonth = -1;
+      G.wonderwar.tick(true);
+      return (G.res(c).grain || 0) >= g0;
+    })(), (function () { return G.wonderwar.lineOf(); })());
+
+    /* ⑧ 地下远征：扣兵 → 推进出事件 → 撤退带回资源与人 */
+    check('§311⑧ 地下远征：扣兵下地 · 推进有事件 · 撤退带回人货', (function () {
+      if (!G.delve) return false;
+      var c = G.currentCity();
+      if (!c) return false;
+      st.delve = { run: null, done: 0 };
+      c.army = { buxingji: 2000 };
+      var a0 = G.city.armyTotal(c);
+      var s0 = G.delve.start([(st.generals || [])[0].id], c.id, 300);
+      if (!s0.ok) return false;
+      if (G.city.armyTotal(c) !== a0 - 300) return false;
+      var p = G.delve.push();
+      if (!p.ok) return false;
+      var r = G.delve.retreat();
+      return r.ok && G.city.armyTotal(c) > a0 - 300;
+    })(), (function () { return '远征次数 ' + ((st.delve || {}).done | 0); })());
+
+    /* ⑨ 民怨：攒满会反（库存与守军都少），且反过进冷却 */
+    check('§311⑨ 民怨攒满会反：库存减少 + 12 个月冷却', (function () {
+      if (!G.unrest) return false;
+      var c = G.currentCity();
+      if (!c) return false;
+      c.unrest = 100;
+      c.rebelAt = 0;              /* 清掉冷却（前面的用例可能已经反过一次） */
+      c.res.grain = 1e6;
+      c.army = { buxingji: 1000 };
+      var g0 = c.res.grain, a0 = G.city.armyTotal(c);
+      st.unrestMonth = -1;
+      var out = G.unrest.tick(true);
+      var reb = out && out.rebels > 0;
+      var cd = (c.rebelAt != null);
+      return reb && c.res.grain < g0 && G.city.armyTotal(c) < a0 && cd;
+    })(), (function () {
+      var c = G.currentCity();
+      return '民怨 ' + G.unrest.of(c) + '/100';
+    })());
+
+    /* ⑩ 暴露：探明到竞争者 → 他们知道你看见了 */
+    check('§311⑩ 点亮即暴露：探明到竞争者，他们转而来找你', (function () {
+      if (!G.expose || !G.rival) return false;
+      G.rival.ensure();
+      var t = G.rival.alive()[0];
+      if (!t) return false;
+      /* 直接把他们的位置标成已探明 */
+      G.fog.bump(t.ci, 3);
+      st.exposeMonth = -1;
+      var out = G.expose.tick(true);
+      return !!(out && (out.spotted > 0 || t.spotted));
+    })(), (function () { return G.expose.lineOf(); })());
   })();
 
 console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');

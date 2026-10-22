@@ -3746,6 +3746,14 @@ import './data.js';
      *    而这五个都是月度语义。不包的话，每秒要付 4 次函数调用 +
      *    4 次同样的月份除法 —— smoke §v89.107 的 100 城 < 6ms 会直接顶穿。
      * ============================================================ */
+    /* 新模块的月度 tick 统一走这个包装（出错只吞掉它自己那一段） */
+    function _safeTick(name) {
+      var mod = GAME[name];
+      if (!mod || !mod.tick) return;
+      try { mod.tick(); } catch (e) {
+        if (typeof console !== 'undefined' && console.warn) console.warn('[monthly tick] ' + name, e);
+      }
+    }
     var _wm = Math.floor(((s.world && s.world.elapsed) || 0)
       / (((DATA.CALENDAR || {}).secPerYear || 57600) / 12));
     if (s._wqMonth !== _wm) {
@@ -3754,6 +3762,12 @@ import './data.js';
       if (GAME.taint && GAME.taint.tick) GAME.taint.tick();      /* 污染：建筑越多账越重 */
       if (GAME.climate && GAME.climate.tick) GAME.climate.tick(); /* 温度：严寒冻死城外的人 */
       if (GAME.surge && GAME.surge.tick) GAME.surge.tick();      /* 辐射云：外围慢慢不能住人 */
+      /* v95：可玩性那一批的月度结算 */
+      /* ⚠️ 逐个 try/catch：这是"框架期"，任何一个新模块抛错都不许拖停主循环
+         （tickOnce 一停，建造/训练队列全不走 —— smoke §193② 就是这么抓到的）。 */
+      _safeTick('unrest');
+      _safeTick('wonderwar');
+      _safeTick('expose');
     }
     /* v89.136：老档采集队迁移兜底（幂等 · 正常已被 loadGame 处理） */
     if (GAME.migrateLegacyGathers) GAME.migrateLegacyGathers();

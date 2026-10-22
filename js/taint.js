@@ -138,7 +138,9 @@
     var lack = [];
     for (var k in cost) if ((R[k] || 0) < cost[k]) lack.push(GAME.resName ? GAME.resName(k) : k);
     if (lack.length) return { ok: false, msg: '净化要 ' + lack.join('、') + ' —— 现在不够' };
-    for (var k2 in cost) if (GAME.city && GAME.city.add) GAME.city.add(city, k2, -cost[k2]);
+    /* ⚠️ 扣资源必须走 `GAME.city.sub`：`add` 的第一行是 `n >= 0 ? ... : 0`，
+       传负数会被静默忽略（不报错、也没扣）。 */
+    for (var k2 in cost) if (GAME.city && GAME.city.sub) GAME.city.sub(city, k2, cost[k2]);
 
     var before = TN.of(city);
     city.taint = Math.max(0, Math.round((before - (d.cleanAt == null ? 25 : d.cleanAt)) * 10) / 10);

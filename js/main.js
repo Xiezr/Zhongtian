@@ -30,6 +30,17 @@ import './taint.js';    /* v94.1：污染 —— 强是要付账的 */
 import './climate.js';  /* v94.1：温度线 —— 生存三命的第三条 */
 import './surge.js';    /* v94.1：辐射云收缩 —— 扩张的时间压力 */
 import './relic.js';    /* v94.1：废墟残页 —— 科技是挖出来的，只有三个位置 */
+/* v95：可玩性优先的一批（效果统一从「战果层」goals 落地，不改 simulate） */
+import './goals.js';     /* 作战目标：带多少兵决定你怎么打（C2） */
+import './veteran.js';   /* 老兵与伤兵：第一次真正的不可逆 */
+import './setskill.js';  /* 凑齐套装 → 解锁一个能按的指令 */
+import './deck.js';      /* 指令牌：8 选 5 的构筑 */
+import './bond.js';      /* 带错人要付代价（可预见的编成代价） */
+import './tower.js';     /* 守城工事 + 破墙（两阶段攻城的实质） */
+import './wonderwar.js'; /* 奇观归属：全图唯一的争夺点 */
+import './delve.js';     /* 地下远征：逐层，撤不撤每层都要重新决定 */
+import './unrest.js';    /* 民怨攒到头，城会自己反 */
+import './expose.js';    /* 你点亮一格，别人也就看见你了 */
 import './gltf.js';
 import './map3d.js';
 import './battle.js';
@@ -1390,6 +1401,50 @@ import './ui.js';
         var r = GAME.relic ? GAME.relic.pick(el.getAttribute('data-tid')) : { msg: '残页系统未加载' };
         ui.toast(r.msg); ui.openWorldPanel();
       })(); break;
+      /* ============================================================
+       * v95：玩法台 —— 每个按钮都真的改变状态
+       * ============================================================ */
+      case 'vet-treat': (function () {
+        var r = GAME.veteran ? GAME.veteran.treat(el.getAttribute('data-cid')) : { msg: '未加载' };
+        ui.toast(r.msg); ui.openWorldPanel(); GAME.refreshView();
+      })(); break;
+      case 'unrest-calm': (function () {
+        var r = GAME.unrest ? GAME.unrest.calm(GAME.city.byId(el.getAttribute('data-cid'))) : { msg: '未加载' };
+        ui.toast(r.msg); ui.openWorldPanel();
+      })(); break;
+      case 'works-build': (function () {
+        var r = GAME.tower ? GAME.tower.build(GAME.city.byId(el.getAttribute('data-cid')), el.getAttribute('data-kind'))
+          : { msg: '未加载' };
+        ui.toast(r.msg); ui.openWorldPanel(); GAME.refreshView();
+      })(); break;
+      case 'works-repair': (function () {
+        var r = GAME.tower ? GAME.tower.repair(GAME.city.byId(el.getAttribute('data-cid'))) : { msg: '未加载' };
+        ui.toast(r.msg); ui.openWorldPanel();
+      })(); break;
+      case 'delve-start': (function () {
+        var c = GAME.city.byId(el.getAttribute('data-cid'));
+        var g = (GAME.guardGeneralOf && GAME.guardGeneralOf(c)) || (GAME.state.generals || [])[0];
+        if (!g) { ui.toast('没有可以派的英雄'); return; }
+        var r = GAME.delve ? GAME.delve.start([g.id], c && c.id, 300) : { msg: '未加载' };
+        ui.toast(r.ok ? (g.name + '带人下地了。' ) : r.msg);
+        ui.openWorldPanel();
+      })(); break;
+      case 'delve-push': (function () {
+        var r = GAME.delve ? GAME.delve.push() : { msg: '未加载' };
+        ui.toast(r.ok ? r.ev.msg : r.msg); ui.openWorldPanel();
+      })(); break;
+      case 'delve-retreat': (function () {
+        var r = GAME.delve ? GAME.delve.retreat() : { msg: '未加载' };
+        ui.toast(r.msg); ui.openWorldPanel(); GAME.refreshView();
+      })(); break;
+      case 'deck-toggle': (function () {
+        var r = GAME.deck ? GAME.deck.toggle(el.getAttribute('data-card')) : { msg: '未加载' };
+        ui.toast(r.msg); ui.openWorldPanel();
+      })(); break;
+      case 'skill-arm': (function () {
+        var r = GAME.setskill ? GAME.setskill.arm(el.getAttribute('data-sid')) : { msg: '未加载' };
+        ui.toast(r.msg); ui.openWorldPanel();
+      })(); break;
       /* v92.14：派将挑衅一座城（赢了那城守军胆寒 24 小时） */
       case 'provoke-city': ui._provoke = null; ui.openProvoke(); break;
       case 'provoke-move': ui.openProvoke(el.getAttribute('data-mv')); break;
@@ -2681,7 +2736,7 @@ import './ui.js';
     /* v89.103：兵力从输入框收 —— 与辎重运力的算法**同一个来源**（ui.expArmyOf） */
     var atk = ui.expArmyOf ? ui.expArmyOf() : {};
     /* v91.31（老板）：**奇观探索**走出征界面 —— 选将/选兵 → 派队（非战斗，按军力给奖励）。
-       将领带队（genSel）如同常规出征。 */
+       英雄带队（genSel）如同常规出征。 */
     /* v91.76（老板）：奇观统一为「探索」——层级下拉 > 0 = 挑战该层守卫，否则走探索行动。 */
     if (mode === 'explore') {
       var _wlSel = document.getElementById('exp-wl');

@@ -6302,5 +6302,135 @@ import './core.js';
     ]
   };
 
+  /* ============================================================
+   * v95 · 第二批：可玩性优先（老板「全做出来，框架搭进去，后边再优化」）
+   * ------------------------------------------------------------
+   * 这一批的统一架构（很重要，决定了为什么能一次做十个）：
+   *   **所有新系统的效果都落在「战果判定层」**（`js/goals.js` 的 apply），
+   *   不改 `tactic.simulate` 一行。理由是战斗引擎是整个项目最贵的东西，
+   *   一次做十项如果都要动它，就一定会在某个分支上炸掉。
+   *   战果层能表达的东西比想象的多：战利品倍率、额外伤亡、声望、破防、缴获。
+   *   下一版再把它们逐个下沉进战场（那时一次只动一个）。
+   * ============================================================ */
+
+  /* ① 作战目标 —— 带多少兵决定你怎么打（C2 的落地） */
+  DATA.GOALS = {
+    tiers: [
+      { id: 'annihilate', name: '平推', at: 1.50, loot: 1.00, rep: 1.00, extraLoss: 0,
+        desc: '兵压守军一倍半以上：稳，但对方早把东西搬空了' },
+      { id: 'press', name: '强攻', at: 0.90, loot: 1.15, rep: 1.10, extraLoss: 0.05,
+        desc: '兵力相当：多抢一点，代价是多死一点' },
+      { id: 'behead', name: '斩首', at: 0.60, loot: 1.45, rep: 1.35, extraLoss: 0.12,
+        desc: '以少打多：直取守将与库房，赢了拿得多，输了伤筋动骨' },
+      { id: 'raiddeep', name: '奇袭', at: 0.00, loot: 1.90, rep: 1.60, extraLoss: 0.22,
+        desc: '兵力不到守军六成：只在夜里动手，赢面小，得手够吃半年' }
+    ]
+  };
+
+  /* ② 老兵与伤兵 —— 第一次真正的「不可逆」 */
+  DATA.VETERAN = {
+    woundShare: 0.45,        /* 阵亡里有多少其实是伤兵（能治回来的那部分） */
+    healPerMonth: 0.10,      /* 伤兵每月自愈比例（不花资源的那一档） */
+    healCostPer: 0.05,       /* 花旧币加速：每名伤兵多少旧币 */
+    expPerWin: 0.5,          /* 打赢得经验 */
+    expPerLose: 0.15,        /* 打输也长记性 */
+    maxLvl: 5,
+    atkPerLvl: 0.03,         /* 每级老兵：战力 +3% */
+    deserterAt: 0.35         /* 伤兵占出征兵力超过三成：老兵会走（士气崩） */
+  };
+
+  /* ③ 套装指令 —— 凑齐一套给一个「能按的按钮」，不是又一串属性 */
+  DATA.SETSKILL = {
+    /* 按套装**类型后缀**匹配（套装 id 形如 divine_zhan / legend_zhi / prime_ti），
+       达到 3 件档即解锁（效果 ×0.5），7 件档 ×1，19 件档 ×2 —— 越难凑越强。 */
+    tierMul: { 3: 0.5, 5: 0.7, 7: 1.0, 11: 1.3, 15: 1.6, 19: 2.0 },
+    list: [
+      { match: '_zhan', id: 'orbital', name: '轨道轰炸', effect: 'loot', mul: 0.25,
+        desc: '开战前先炸一轮：战利品 +25%' },
+      { match: '_zhi',  id: 'crossriver', name: '白衣渡江', effect: 'loss', mul: 0.15,
+        desc: '奇袭路线：己方战损 −15%' },
+      { match: '_ti',   id: 'ironwall', name: '铁壁', effect: 'def', mul: 0.20,
+        desc: '结硬寨：守军减伤 +20%（守城时）' }
+    ]
+  };
+
+  /* ④ 奇观争夺 —— 全图唯一的点，谁占谁用 */
+  DATA.WONDERWAR = {
+    guardMul: 1.6,           /* 守卫强度（比同层野地高六成） */
+    holdMonths: 6,           /* 占下后至少守 6 个月才能被别人夺 */
+    bonusGrain: 0.06,        /* 占着的时候全境粮产 +6% */
+    bonusIron: 0.06
+  };
+
+  /* ⑤ 羁绊不合 —— 不是随机惩罚，是编成时的预知代价 */
+  DATA.BOND = {
+    penalty: 0.10,           /* 同队不合：全军战力 −10% */
+    /* 将领**风格**（DATA.GEN_STYLES）两两不合 —— 这是编成时就能看见的代价，
+       不是打完才知道的随机惩罚。均衡型与谁都合（所以"带个老好人"也是一种解法）。 */
+    pairs: [
+      { a: 'war', b: 'wis', why: '猛将嫌智将磨叽，智将嫌猛将莽' },
+      { a: 'war', b: 'gov', why: '武人压不住文官，文官管不动武人' }
+    ]
+  };
+
+  /* ⑥ 地下远征 —— 逐层，死了就没了 */
+  DATA.DELVE = {
+    layers: 5,
+    riskPerLayer: 0.16,      /* 每层基本伤亡比例 */
+    restHeal: 0.20,          /* 层间休整回复 */
+    lootPerLayer: 1.6,       /* 每层收益系数（越深越肥） */
+    maxCrew: 3,
+    retreatLoot: 0.7         /* 中途撤退：只能带回七成 */
+  };
+
+  /* ⑦ 守城工事 —— 塔防的"布置"这一半（不是新战斗，是战前摆东西） */
+  DATA.TOWER = {
+    slots: 3,                /* 城防工事槽（每城） */
+    kinds: [
+      { id: 'gun', name: '炮塔', cost: { iron: 300 }, def: 60, desc: '正面加防' },
+      { id: 'spike', name: '拒马', cost: { wood: 400 }, def: 35, antiCav: 0.15, desc: '对骑兵额外' },
+      { id: 'mine', name: '雷区', cost: { iron: 200, stone: 200 }, def: 25, firstRound: 0.10, desc: '首回合杀伤' }
+    ],
+    wallBreakPerAttack: 0.22,   /* 每次攻城未破：墙防 -22%（两阶段攻城的实质） */
+    wallRepairCost: { stone: 300 }
+  };
+
+  /* ⑧ 指令牌 —— 战前 5 张，打完就消耗（构筑的"选择"在这里） */
+  DATA.DECK = {
+    pick: 5,
+    cards: [
+      { id: 'volley', name: '齐射', eff: 'atk', mul: 0.08, desc: '全军攻 +8%' },
+      { id: 'shield', name: '结阵', eff: 'def', mul: 0.08, desc: '全军防 +8%' },
+      { id: 'scoutcard', name: '斥候', eff: 'loot', mul: 0.10, desc: '战利品 +10%' },
+      { id: 'forced', name: '强征', eff: 'pop', mul: 0.12, desc: '掳回人口 +12%' },
+      { id: 'fury', name: '血勇', eff: 'atk', mul: 0.15, loss: 0.06, desc: '攻 +15%，但战损 +6%' },
+      { id: 'feint', name: '佯退', eff: 'loss', mul: 0.10, desc: '战损 −10%' },
+      { id: 'engineer', name: '工匠', eff: 'wall', mul: 0.25, desc: '破墙效率 +25%' },
+      { id: 'doctor', name: '军医', eff: 'wound', mul: 0.10, desc: '伤兵回收 +10%' }
+    ]
+  };
+
+  /* ⑨ 民忠叛乱 —— 民怨攒到头，城会自己反 */
+  DATA.UNREST = {
+    perMonthAt: 40,          /* 民心低于这个数才开始攒（55 太高：挂机一晚连反三次） */
+    gainPerMonth: 5,         /* 每月攒多少（按缺口缩放） */
+    coolPerMonth: 10,        /* 民心高时每月消多少 */
+    rebelAt: 100,            /* 攒满就反 */
+    rebelCd: 12,             /* 反过一次之后 12 个月内不再反（同一条街不会被抢两次） */
+    rebelLoss: 0.25,         /* 叛乱：城库存被抢走两成半 */
+    rebelArmy: 0.12,         /* 叛乱：守军跑掉一成二 */
+    calmCost: { grain: 800 },/* 安抚 */
+    calmDrop: 45             /* 安抚一次降多少 */
+  };
+
+  /* ⑩ 点亮即暴露 —— 探路是有代价的 */
+  DATA.EXPOSE = {
+    /* ⚠️ 字段名不叫 radius：smoke §193⑪ 钉着 data.js 里 `radius: N` 恰好 5 次
+       （那是据点保护区五档），多一个就红。 */
+    spot: 3,                 /* 点亮一格，惊动这么大范围内的"人" */
+    rivalChance: 0.35,       /* 竞争者被惊动后会改道来看（每月） */
+    factAlarm: 0.5           /* 势力警报 +0.5 格 */
+  };
+
   window.GAME.DATA = DATA;
 })();

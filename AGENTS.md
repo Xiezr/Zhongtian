@@ -49,3 +49,14 @@
   否则 100 城压测的 `tickOnce < 6ms` 会被几次函数调用顶穿。
 - **每秒被调的加成出口必须缓存**（`growth.settleYield → relic.mulOf`）：
   每次重建数组在 100 城下就是 3ms 级开销。
+- **`GAME.city.add` 不吃负数**：它的第一行是 `n >= 0 ? Math.floor(n) : 0` ——
+  传 `-300` 会**静默变成 0**（不报错、也没扣）。扣资源一律走 `GAME.city.sub`。
+  v95 踩过：净化/烧柴/建工事/安抚/叛乱五处全写成 `add(city,k,-n)`，全都没生效，
+  直到断言里"库存没少"才照出来。
+- **动 `state.*` 字段前先 grep**：`s.wounded`（数字）+ `s.woundedArmy` 是既有的
+  伤兵系统，我第一版另造了一个"分城伤兵池"直接把它冲垮（smoke §193② 红）。
+  同类的还有 `s.tech`（科技）、`s.veterans`（不存在的字段别乱加）。
+- **新模块的月度 tick 要包 try/catch**（state.js 的 `_safeTick`）：
+  一个模块抛错会拖停整拍 `tickOnce`，建造/训练队列全不走。
+- **写断言时 stub 的生命周期要覆盖到被测函数内部**：
+  `setskill.arm()` 内部会再调一次 `unlockedOf()`，stub 提前恢复 → 必然拒绝（假红）。

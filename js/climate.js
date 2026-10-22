@@ -83,7 +83,8 @@
     if ((R.wood || 0) < need) {
       return { ok: false, msg: '烧一个月的柴要 ' + U.numText(need, 0) + ' 木 —— 现在不够' };
     }
-    if (GAME.city && GAME.city.add) GAME.city.add(city, 'wood', -need);
+    /* 扣资源走 sub（add 不吃负数） */
+    if (GAME.city && GAME.city.sub) GAME.city.sub(city, 'wood', need);
     else city.res.wood -= need;
     city.warmMonth = m;
     if (GAME.heartsComfortAdd) GAME.heartsComfortAdd(D().warmHearts == null ? 1.5 : D().warmHearts);
