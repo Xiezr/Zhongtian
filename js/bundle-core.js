@@ -6515,6 +6515,11 @@ window.GAME = window.GAME || {};
 
   /* ① 作战目标 —— 带多少兵决定你怎么打（C2 的落地） */
   DATA.GOALS = {
+    /* v109（C2）：**坚守** —— 守方兵力明显不如人时的另一种赢法。
+       不是"消灭对手"，是"撑到天亮"：打满 holdRounds 回合、还有活人 → 守方胜。
+       holdAt = 攻方表观战力占比超过这个数才切换（守得住的城照旧打歼灭战）。 */
+    holdAt: 0.62,
+    holdRounds: 6,
     tiers: [
       /* v98.2：`mod` = **战场修正**（不是战利品倍率）。
          带得越少，打法越凶也越脆 —— 这是"带多少兵"第一次真的进战场：
@@ -11392,6 +11397,18 @@ window.GAME = window.GAME || {};
     var simOpts = {
       kind: 'city', sieging: true, defName: city.name,
       wallLv: wallLv, towers: towers, playerDef: true,
+      /* v109（C2 坚守）：**兵力明显不如人**的时候，守方的目标不是消灭对手，
+         是"撑到天亮"。ratio（攻方表观战力占比）> holdAt 才切换 ——
+         守得住的城照旧打歼灭战，只有守不住的仗才变成"守城"。
+         这一档是**系统替你选的**（没有 UI 之前先这样），战报会写明。 */
+      obj: (function () {
+        try {
+          var GO = (GAME.DATA && GAME.DATA.GOALS) || {};
+          var holdAt = GO.holdAt == null ? 0.62 : GO.holdAt;
+          if (!(ratio > holdAt)) return null;
+          return { kind: 'hold', rounds: GO.holdRounds || 6 };
+        } catch (e) { return null; }
+      })(),
       /* v96：守城时**我方守军**也吃兵员等级（这座城训到几级就是几级） */
       defLv: (GAME.trooplv && GAME.trooplv.mapOf) ? GAME.trooplv.mapOf(city) : null,
     };

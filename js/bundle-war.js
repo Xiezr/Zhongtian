@@ -5724,6 +5724,10 @@
     return 1 - T.MOVE_TARGET_CUT * Math.min(1, mvd / T.MOVE_TARGET_REF);
   };
   T.stanceTakenMul = function (u) {
+    /* v109（C2 坚守）：**关门死守** —— 选了坚守的守方，依托城墙/街垒，
+       受创只剩 35%。没有这一条，兵力悬殊时守方两回合就被打光，
+       "撑 N 回合"这个目标根本够不到（探针实测：400 vs 5000 两回合全灭）。 */
+    if (u && u.siegeHold) return T.HOLD_SIEGE_TAKEN;
     if (!DATA.STANCE_TRIANGLE_ON) {                          /* 旧口径：仅驻守受创减半 */
       return (u && u.stance === 'hold') ? (1 - T.HOLD_DAMAGE_CUT) : 1;
     }
@@ -5733,6 +5737,8 @@
     return (d.taken != null) ? d.taken : 1;
   };
   T.HOLD_DAMAGE_CUT = 0.5;   /* legacy：动作三角关闭时沿用「驻守受创减半」旧口径 */
+  T.HOLD_SIEGE_TAKEN = 0.35; /* v109：坚守时守方受创（依托城墙，换存活） */
+  T.HOLD_SIEGE_DMG = 0.55;   /* v109：坚守时守方输出（不主动出击，换存活） */
   /* v91.95：**追击** —— 对后退中的敌人，推进步长 ×1.35（追逃兵更容易）。
      没有这条，风筝流在"双方速度相等"下就是无损白嫖（实测：全体后退 损 0%、拖满 30 回合）。 */
   T.CHASE_MUL = 1.35;
@@ -6610,7 +6616,11 @@
       var _rG = Math.round(gapOf({ adv: front(atk) }, front(def)));
       roundsLog.push({ r: round, a: _rA, d: _rD, gap: _rG, events: events });
       strips.push(T.strip(front(atk), front(def), D));
-      if (!alive(atk).length || !alive(def).length || round >= T.MAX_ROUNDS) env.over = true;
+      /* v109（C2）：坚守目标打完 N 回合就收手 —— 守方要的是"撑住"，不是歼灭 */
+      var _holdN9 = (opts.obj && opts.obj.kind === 'hold')
+        ? Math.max(1, opts.obj.rounds || 6) : 0;
+      if (!alive(atk).length || !alive(def).length || round >= T.MAX_ROUNDS
+        || (_holdN9 > 0 && round >= _holdN9)) env.over = true;
       return { r: round, a: _rA, d: _rD, gap: _rG, events: events, over: env.over, snap: snapUnits() };
     }
 
@@ -6642,6 +6652,10 @@
         /* 攻城时的城防箭塔（界面显示"余 N / M 座"用） */
         towers: (opts.sieging && towerStart > 0) ? { start: towerStart, left: towerAliveNow() } : null };
     }
+    /* v109（C2）：坚守 = 守方全体"关门死守"（受创 35%、输出 55%）*/
+    if (opts.obj && opts.obj.kind === 'hold') {
+      def.forEach(function (u) { u.siegeHold = true; });
+    }
     var env = {
       field: D, over: false,
       units: { atk: atk, def: def },
@@ -6672,8 +6686,16 @@
     /* ---------- 收尾 ---------- */
     var aRemain = alive(atk).reduce(function (n, u) { return n + u.count; }, 0);
     var dRemain = alive(def).reduce(function (n, u) { return n + u.count; }, 0);
+    /* v109（C2）：**坚守** —— 守方只要还有活人、并且撑满了 N 回合，就算守住。
+       这条要在"按剩余比例比"之前判：兵少的守方按比例永远输，
+       但"活到天亮"是另一种赢法。 */
+    var _holdN9f = (opts.obj && opts.obj.kind === 'hold')
+      ? Math.max(1, opts.obj.rounds || 6) : 0;
+    var holdHeld = !!(_holdN9f > 0 && dRemain > 0 && round >= _holdN9f
+      && !(dRemain <= 0));
     var winner;
-    if (dRemain <= 0 && aRemain > 0) winner = 'atk';
+    if (holdHeld) winner = 'def';
+    else if (dRemain <= 0 && aRemain > 0) winner = 'atk';
     else if (aRemain <= 0 && dRemain > 0) winner = 'def';
     else if (aRemain > 0 && dRemain > 0) {
       winner = (aRemain / Math.max(1, aStart)) > (dRemain / Math.max(1, dStart)) ? 'atk' : 'def';

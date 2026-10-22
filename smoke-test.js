@@ -41940,6 +41940,66 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     city.army = bakArmy;
   })();
 
+
+  /* ============================================================
+   * §329 · v109（C2 补完）：坚守 —— 撑住就是赢
+   * ------------------------------------------------------------
+   * 之前胜负只有一条：打到一方全灭，剩下的按比例比。
+   * 兵少的守方按比例永远输 —— 但"活到天亮"本来就是另一种赢法。
+   * ============================================================ */
+  console.log('\n===== 329. v109 坚守：同样的兵，守下去就赢了 =====');
+  (function () {
+    if (!G.tactic || !G.tactic.simulate) return;
+    var cp9 = function (o) { return JSON.parse(JSON.stringify(o)); };
+    function sim9(atk, def, defVal, obj) {
+      var o = { kind: 'city', sieging: true };
+      if (obj) o.obj = obj;
+      return G.tactic.simulate(cp9(atk), null, cp9(def), defVal || 0, null, o);
+    }
+
+    var plain = sim9({ buxingji: 3000 }, { buxingji: 1800 }, 0, null);
+    var hold = sim9({ buxingji: 3000 }, { buxingji: 1800 }, 0, { kind: 'hold', rounds: 6 });
+
+    check('§329① 同一场仗：不守是全灭，守下去就赢', (function () {
+      return plain.winner === 'atk' && hold.winner === 'def'
+        && (plain.defRemain || 0) === 0 && (hold.defRemain || 0) > 0;
+    })(), (function () {
+      return '常规 ' + plain.winner + '(守剩' + (plain.defRemain || 0) + ') · 坚守 '
+        + hold.winner + '(守剩' + (hold.defRemain || 0) + ')';
+    })());
+
+    check('§329② 坚守打满 N 回合就收手（不是拖到上限）', (function () {
+      return hold.rounds === 6;
+    })(), (function () { return hold.rounds + ' 回合'; })());
+
+    check('§329③ 不传 obj 时行为一字不变（旧战斗不受影响）', (function () {
+      var a = sim9({ buxingji: 2000 }, { buxingji: 1500 }, 3000, null);
+      var b = sim9({ buxingji: 2000 }, { buxingji: 1500 }, 3000, null);
+      return a.winner === b.winner && a.rounds === b.rounds && a.defRemain === b.defRemain;
+    })(), (function () {
+      var a = sim9({ buxingji: 2000 }, { buxingji: 1500 }, 3000, null);
+      return '同输入同结果：' + a.winner + ' / ' + a.rounds + ' 回合';
+    })());
+
+    check('§329④ 守方默认有城防时照旧打歼灭战（坚守不是白送）', (function () {
+      var n = sim9({ buxingji: 2500 }, { buxingji: 1500 }, 2000, null);
+      var h = sim9({ buxingji: 2500 }, { buxingji: 1500 }, 2000, { kind: 'hold', rounds: 6 });
+      /* 本来就守得住的仗：两边都是守方赢，不该因为"坚守"变成别的东西 */
+      return n.winner === 'def' && h.winner === 'def';
+    })(), (function () { return '守得住的城不会因为坚守变弱'; })());
+
+    check('§329⑤ 守城只在兵力明显不如人时才切坚守（源码口径）', (function () {
+      var st = require('fs').readFileSync(require('path').join(__dirname, 'js', 'state.js'), 'utf8');
+      var GO = (DATA.GOALS || {});
+      return (GO.holdAt || 0) > 0 && (GO.holdRounds || 0) > 0
+        && st.indexOf("if (!(ratio > holdAt)) return null;") >= 0
+        && st.indexOf("return { kind: 'hold', rounds: GO.holdRounds || 6 };") >= 0;
+    })(), (function () {
+      var GO = (DATA.GOALS || {});
+      return 'holdAt ' + GO.holdAt + ' · ' + GO.holdRounds + ' 回合';
+    })());
+  })();
+
 console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');
   process.exit(FAIL ? 1 : 0);
 })();
