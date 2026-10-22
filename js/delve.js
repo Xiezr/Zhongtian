@@ -156,13 +156,24 @@
         if (GAME.city.armyAdd) GAME.city.armyAdd(city, o);
       }
     }
+    /* v99：**救出来的人**（兵源的一条）—— 只在下到第 3 层以后才有，
+       越深越多。地下关着的人和上面逃荒的人不一样：他们是被困住的。 */
+    var saved = 0;
+    if (city && GAME.muster && GAME.muster.onDelveReturn && (r.layer | 0) >= 3) {
+      var cfgM = (GAME.DATA && GAME.DATA.MUSTER) || {};
+      var range = cfgM.delvePop || [40, 160];
+      var deepK = ((r.layer | 0) - 2) / 3;             /* 3 层 → 0.33，5 层 → 1 */
+      saved = Math.round((range[0] + (range[1] - range[0]) * Math.min(1, deepK)));
+      saved = GAME.muster.onDelveReturn(city, saved);
+    }
     d.done = (d.done | 0) + 1;
     d.run = null;
     if (GAME.log && GAME.log.war) {
       GAME.log.war('🚪 远征队上来了：带回粮 ' + U.numText(got.grain, 0) + ' · 铁 ' + U.numText(got.iron, 0)
-        + ' · 木 ' + U.numText(got.wood, 0) + '（' + r.troops + ' 人回来）');
+        + ' · 木 ' + U.numText(got.wood, 0) + '（' + r.troops + ' 人回来'
+        + (saved > 0 ? ('，另救出 ' + U.numText(saved, 0) + ' 个活人') : '') + '）');
     }
-    return { ok: true, msg: '撤回来了，带回七成。', got: got };
+    return { ok: true, msg: '撤回来了，带回七成。', got: got, saved: saved };
   };
 
   /* 一行摘要 */

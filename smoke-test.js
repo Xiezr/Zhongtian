@@ -12381,7 +12381,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
     /* ⚠️ 这份 ORDER 与 build_bundle.py 的 ORDER **必须逐条一致**（本文故意不复用脚本，
        就是为了"构建脚本自己算错时测试还能抓到"）。加了模块两边都要加 ——
        v92 加 fog / memorial 时这里漏改，导致 hash 对不上、守卫假红。 */
-    var ORDER = ['core', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'domain', 'map', 'sphere', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'rival', 'land', 'taint', 'climate', 'surge', 'relic', 'goals', 'veteran', 'setskill', 'deck', 'bond', 'tower', 'wonderwar', 'delve', 'unrest', 'expose', 'trooplv', 'idle', 'ending', 'gltf',
+    var ORDER = ['core', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'domain', 'map', 'sphere', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'rival', 'land', 'taint', 'climate', 'surge', 'relic', 'goals', 'veteran', 'setskill', 'deck', 'bond', 'tower', 'wonderwar', 'delve', 'unrest', 'expose', 'trooplv', 'idle', 'ending', 'muster', 'gltf',
       'map3d', 'battle', 'strategy', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits', 'story', 'ui', 'main'];
     var h = crypto.createHash('sha256');
     try {
@@ -19449,7 +19449,9 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     check('A：配置表齐备（DISBAND / POP_CFG / CAPTIVE 唯一来源）', (function () {
       return !!DATA.DISBAND && DATA.DISBAND.popReturn === 1
         /* v89.126：base/minPerHour 退役 → fillHours（现实小时补满） */
-        && !!DATA.POP_CFG && DATA.POP_CFG.fillHours === 2 && DATA.POP_CFG.govCap === 0.5
+        /* v99（老板「自然增长率降低」）：2 → 14 现实小时补满。
+           原来两小时补满，"人"永远不稀缺，探索/战后/流民全都没意义。 */
+        && !!DATA.POP_CFG && DATA.POP_CFG.fillHours === 14 && DATA.POP_CFG.govCap === 0.5
         /* v89.113：全战斗俘虏（8% · cap 3000 · kinds 含野地与防御战） */
         && !!DATA.CAPTIVE && DATA.CAPTIVE.rate === 0.08
         && DATA.CAPTIVE.kinds.join(',') === 'wild,fort,city,defense';
@@ -23851,13 +23853,17 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     check('§105① 增速 = 上限 ÷ fillHours（补满时长恒定，与上限大小无关）',
       Math.abs(hours105 - (cfg105.fillHours || 2)) < 1e-9,
       'cap=' + cap105 + ' 增速=' + g105 + '/时 → 补满 ' + hours105.toFixed(2) + ' 现实小时');
-    /* ② tick 真推进：1 现实小时（3600 tick）→ 增量 ≈ 上限的一半 */
+    /* ② tick 真推进：1 现实小时（3600 tick）→ 增量 ≈ 上限 × (1/fillHours)
+       ⚠️ v99：fillHours 从 2 改成 14（老板「自然增长率降低」）——
+          这条断言原来写死"1 小时补一半"，是新参数下的必然红。
+          改成**按参数算期望值**，以后再调 fillHours 不会假红。 */
     c105.res.pop = 0;
     for (var k105 = 0; k105 < 3600; k105++) G.tickOnce();
     var got105 = Math.round(G.res(c105).pop || 0);
-    check('§105② tick 真推进 1 现实小时：pop ≈ 上限/2',
-      Math.abs(got105 - cap105 / 2) <= Math.max(2, cap105 * 0.01),
-      'pop=' + got105 + '（期望 ' + Math.round(cap105 / 2) + '）');
+    var want105 = cap105 / (cfg105.fillHours || 14);
+    check('§105② tick 真推进 1 现实小时：pop ≈ 上限 × 1/fillHours（' + (cfg105.fillHours || 14) + '）',
+      Math.abs(got105 - want105) <= Math.max(2, cap105 * 0.01),
+      'pop=' + got105 + '（期望 ' + Math.round(want105) + '）');
     /* ③ 上限大 40 倍，补满时长仍然相同（固定时间速率的核心语义） */
     var big105 = { cells: [{ build: { id: 'minfang', lvl: 12 } }, { build: { id: 'minfang', lvl: 12 } },
       { build: { id: 'minfang', lvl: 12 } }, { build: { id: 'minfang', lvl: 12 } }] };
@@ -40572,6 +40578,120 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
 
 
 
+
+
+  /* ============================================================
+   * §321 · v99：兵源 —— 人从哪来（自然增长变慢 + 四条外部来源）
+   * ------------------------------------------------------------
+   * 老板：「兵种代价应当从控制来源，强化出路考虑。自然增长率降低，
+   *   增加偶然得到的来源比如探索，战后，任务，天灾流民等」
+   * ============================================================ */
+  console.log('\n===== 321. v99 兵源：补员慢 7 倍 · 流民可收可赶 · 战后/远征得人 =====');
+  (function () {
+    var st = G.state, c = G.currentCity();
+    if (!st || !c || !G.muster) return;
+
+    /* ① 自然增长真的慢了（公式反比：fillHours 越大，每小时越少） */
+    check('§321① 人口自然增长慢 7 倍（fillHours 2 → 14，增速按反比）', (function () {
+      var cfg = G.DATA.POP_CFG || {};
+      if (cfg.fillHours !== 14) return false;
+      var bak = cfg.fillHours;
+      var g14;
+      try { g14 = G.popGrowthOf(c); } finally { }
+      cfg.fillHours = 2;
+      var g2 = G.popGrowthOf(c);
+      cfg.fillHours = bak;
+      /* 14 小时的增速应该是 2 小时的 1/7（同城同加成） */
+      return g2 > 0 && Math.abs(g14 / g2 - 2 / 14) < 1e-6;
+    })(), (function () {
+      return '补满 14 小时（原 2 小时）';
+    })());
+
+    /* ② 流民概率吃天灾人祸（不是纯随机） */
+    check('§321② 流民概率随天灾人祸上升（污染/民怨会把人赶出来）', (function () {
+      if (!G.muster.chanceOf) return false;
+      var bakT = c.taint, bakU = c.unrest;
+      c.taint = 0; c.unrest = 0;
+      var base = G.muster.chanceOf(c).p;
+      c.taint = 200;                 /* 越过警戒线 */
+      var withTaint = G.muster.chanceOf(c).p;
+      c.taint = 0; c.unrest = 90;     /* 民怨高 */
+      var withUnrest = G.muster.chanceOf(c).p;
+      c.taint = bakT; c.unrest = bakU;
+      return withTaint > base && withUnrest > base;
+    })(), (function () {
+      var bakT = c.taint, bakU = c.unrest;
+      c.taint = 0; c.unrest = 0;
+      var b = G.muster.chanceOf(c).p;
+      c.taint = 200;
+      var t = G.muster.chanceOf(c).p;
+      c.taint = bakT; c.unrest = bakU;
+      return (Math.round(b * 1000) / 10) + '% → ' + (Math.round(t * 1000) / 10) + '%（污染）';
+    })());
+
+    /* ③ 接纳：花粮 → 人口 + 兵 + 名声仁义 */
+    check('§321③ 接纳流民：扣粮 · 人口与兵都增加 · 名声仁义 +', (function () {
+      var bak = { pop: G.res(c).pop, grain: c.res.grain, army: JSON.parse(JSON.stringify(c.army || {})),
+        muster: st.muster, renown: st.renown };
+      st.muster = { pending: { at: 0, pop: 400, cityId: c.id, cause: '寒潮' }, log: [] };
+      c.res.grain = 1e6;
+      var need = G.muster.grainNeedOf(st.muster.pending);
+      var p0 = G.res(c).pop, a0 = G.city.armyTotal(c), g0 = c.res.grain;
+      var m0 = G.renown ? G.renown.raw().mercy : 0;
+      var r = G.muster.accept();
+      var m1 = G.renown ? G.renown.raw().mercy : 0;
+      var ok = r.ok && c.res.grain < g0 && G.res(c).pop > p0 && G.city.armyTotal(c) > a0
+        && m1 > m0 && !G.muster.pending();
+      st.muster = bak.muster; c.res.grain = bak.grain; c.res.pop = bak.pop; c.army = bak.army;
+      if (G.renown) st.renown = bak.renown;
+      return ok && need > 0;
+    })(), (function () {
+      return '400 人 → 粮 ' + (400 * 3) + ' · 其中 18% 直接成兵';
+    })());
+
+    /* ④ 驱散：省粮但名声残忍 +（不是道德审判，是它有实际后果） */
+    check('§321④ 驱散流民：不扣粮 · 名声残忍 +（省钱的选择也是正当的）', (function () {
+      var bak = { muster: st.muster, grain: c.res.grain, renown: st.renown };
+      st.muster = { pending: { at: 0, pop: 400, cityId: c.id, cause: '民怨' }, log: [] };
+      c.res.grain = 5000;
+      var g0 = c.res.grain;
+      var cr0 = G.renown ? G.renown.raw().cruelty : 0;
+      var r = G.muster.turnAway();
+      var cr1 = G.renown ? G.renown.raw().cruelty : 0;
+      var ok = r.ok && c.res.grain === g0 && cr1 > cr0 && !G.muster.pending();
+      st.muster = bak.muster; c.res.grain = bak.grain;
+      if (G.renown) st.renown = bak.renown;
+      return ok;
+    })(), (function () { return '名声残忍 +7'; })());
+
+    /* ⑤ 战后逃生者：打赢才有人来（只加人口，不加兵） */
+    check('§321⑤ 战后逃生者：打赢 → 人口增加（兵还是要自己练）', (function () {
+      var bak = { pop: G.res(c).pop, army: JSON.parse(JSON.stringify(c.army || {})), muster: st.muster };
+      st.muster = { pending: null, log: [] };
+      var p0 = G.res(c).pop, a0 = G.city.armyTotal(c);
+      var n = G.muster.onBattleWin(c, { defLoss: 8000 });
+      var ok = n > 0 && G.res(c).pop > p0 && G.city.armyTotal(c) === a0;
+      st.muster = bak.muster; c.res.pop = bak.pop; c.army = bak.army;
+      return ok;
+    })(), (function () {
+      var bak = { pop: G.res(c).pop, muster: st.muster };
+      st.muster = { pending: null, log: [] };
+      var n = G.muster.onBattleWin(G.currentCity(), { defLoss: 8000 });
+      st.muster = bak.muster; c.res.pop = bak.pop;
+      return '敌军损 8000 → 来投 ' + n + ' 人';
+    })());
+
+    /* ⑥ 远征救出：地下带回来的人 */
+    check('§321⑥ 远征救出的人进人口（任务也是兵源之一）', (function () {
+      var bak = { pop: G.res(c).pop, muster: st.muster };
+      st.muster = { pending: null, log: [] };
+      var p0 = G.res(c).pop;
+      var n = G.muster.onDelveReturn(c, 120);
+      var ok = n > 0 && G.res(c).pop > p0;
+      st.muster = bak.muster; c.res.pop = bak.pop;
+      return ok;
+    })(), (function () { return '到底一次救 40~160 人'; })());
+  })();
 
   /* ============================================================
    * §320 · v98.6：**空世界**回归 —— 地图球面还没建格时，世界不能是空的

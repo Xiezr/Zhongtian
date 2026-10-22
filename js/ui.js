@@ -8207,6 +8207,33 @@ import './state.js';
       var c0 = (GAME.currentCity && GAME.currentCity()) || cities[0] || null;
       var cn = c0 ? U.escape(c0.name) : '—';
 
+      /* ⓪ 兵源（v99）：人从哪来 —— 放在最前，因为它是这个月最要紧的事 */
+      if (GAME.muster) {
+        var mp = GAME.muster.pending();
+        var mH = '';
+        if (mp) {
+          var needG = GAME.muster.grainNeedOf(mp);
+          mH = '<div style="margin-top:2px;">门外 <b>' + U.numText(mp.pop | 0, 0) + '</b> 人（'
+            + U.escape(mp.cause || '逃荒') + '）　接纳要 '
+            + U.numText(needG, 0) + ' 粮</div>'
+            + '<div class="chips" style="margin-top:5px;">'
+            + '<span class="chip" data-action="muster-accept">接纳（花粮，得人+兵）</span>'
+            + '<span class="chip" data-action="muster-refuse">赶走（省粮，名声 −）</span></div>';
+        }
+        var mrec = GAME.muster.recent();
+        var recH = mrec.length ? ('<div class="ui-sub" style="margin-top:5px;">最近：'
+          + mrec.map(function (r) {
+            return U.escape(r.src) + ' ' + U.numText(r.n, 0);
+          }).join(' · ') + '</div>') : '';
+        h += sec('🚶 人从哪来', GAME.muster.lineOf() || '这个月还没人投奔',
+          mH + recH
+          + '<div class="ui-sub" style="margin-top:5px;">'
+          + '人口自然补满要 14 小时（以前是 2 小时）—— 光等养不出兵。'
+          + '想快只有四条路：<b>遗迹里收容幸存者</b>、<b>战后收编俘虏 / 逃生者</b>、'
+          + '<b>接纳流民</b>、<b>远征把人从地下带回来</b>。'
+          + '兵是要从人里练的，所以"人"就是你真正的兵源。</div>');
+      }
+
       /* ① 作战目标（让"带多少兵"成为一个选择） */
       if (GAME.goals) {
         /* 四档的**战场修正**直接摊出来：玩家在出征前就该知道自己会变成什么样

@@ -149,6 +149,19 @@
       if (tw && tw.note) add.note.push(tw.note);
     }
 
+    if (GAME.markWarMonth) GAME.markWarMonth();
+
+    /* ⑤.a 兵源：打赢之后，溃散的敌兵里有人跟着你回来（v99）
+       ⚠️ 只加**人口**，不加兵 —— 兵要靠你自己练。这是"人从外面来"，
+          不是"兵从天上掉"。 */
+    if (win && GAME.muster && GAME.muster.onBattleWin) {
+      var wc = (GAME.city && GAME.city.byId) ? GAME.city.byId(rec.cityId) : null;
+      if (wc) {
+        var esc = GAME.muster.onBattleWin(wc, result);
+        if (esc > 0) add.note.push('逃生者 +' + esc);
+      }
+    }
+
     /* ⑤.b 惰性：打仗是最强的"必须做事"（设定：人不用做事就废了） */
     if (GAME.idle && GAME.idle.onBattle) {
       var fc = (GAME.city && GAME.city.byId) ? GAME.city.byId(rec.cityId) : null;

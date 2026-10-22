@@ -2625,7 +2625,15 @@ window.GAME = window.GAME || {};
    *     （野地无民可俘；小仗不收编，避免"刷麻了"）。
    * ============================================================ */
   DATA.POP_CFG = {
-    fillHours: 2,        /* 现实小时：无加成时，从 0 补满至上限的时长（固定时间速率） */
+    /* v99（老板「自然增长率降低，增加偶然得到的来源」）：
+       **2 小时 → 14 小时**。原来人口两小时自动补满，于是"人"从来不是稀缺品，
+       兵源的真正代价（人口）被时间抹平 —— 探索救回来的人、战后收编的俘虏、
+       接不接纳流民，全都没有意义。补满从 2 小时拉到 14 小时后：
+         · 打光一支军队要"重新长人"要小半天，不能一直带满最强；
+         · 想快，只能出去找（探索 / 战后 / 远征 / 接纳流民）。
+       ⚠️ 这里以前注释写着"不改 fillHours，会推翻 6 处断言"——实测只有 1 处
+          （smoke 的配置表断言钉了 `=== 2`），本轮一并改掉。 */
+    fillHours: 14,       /* 现实小时：无加成时，从 0 补满至上限的时长（固定时间速率） */
     govPerNz: 0.0005,    /* 守将治理 1 点 → 增速 +0.05% */
     govCap: 0.5,         /* 治理加成封顶 +50% */
     taxPivot: 0.5,       /* 税制杠杆支点：50% 税率 = 不增不减 */
@@ -6550,6 +6558,41 @@ window.GAME = window.GAME || {};
     ]
   };
 
+  /* ============================================================
+   * v99 · 兵源（老板：「兵种代价应当从控制来源，强化出路考虑」）
+   * ------------------------------------------------------------
+   * 人口自然增长放慢之后，人从哪来就成了玩法本身。四条路：
+   *   ① 自然增长（慢）——14 小时补满，只能兜底
+   *   ② 探索（遗迹"收容幸存者"，已有）
+   *   ③ 战后（俘虏营收编 + 逃生者来投，本模块）
+   *   ④ 天灾流民（本模块，可接纳 / 可驱散）
+   *   ⑤ 远征（地下救出来的人，本模块）
+   * 全部只写机制与一行日志，不写"废土上的孤独"这类东西。
+   * ============================================================ */
+  DATA.MUSTER = {
+    /* ---- 流民：被天灾/战乱赶出家门的人 ---- */
+    base: 0.06,              /* 每月基础出现概率 */
+    coldMul: 2.6,            /* 寒潮月 */
+    taintMul: 1.7,           /* 本城污染过了警戒线 */
+    unrestMul: 2.0,          /* 本城民怨 ≥ 50 */
+    warMul: 1.7,             /* 上个月打过仗 */
+    sizeMin: 160,            /* 流民规模 */
+    sizeMax: 640,
+    grainPer: 3,             /* 接纳：每人要多少粮 */
+    fameUp: 4,               /* 接纳：仁义 +4（名声） */
+    fameDown: 7,             /* 驱散：残忍 +7 */
+    armyShare: 0.18,         /* 流民里有多少是能拿枪的（直接成兵） */
+    expireMonths: 3,         /* 3 个月不处理就散了 */
+    expireFame: 0,           /* 散了不扣名声 —— 人自己走的，不算你作恶（老板：别搞太多意义） */
+
+    /* ---- 战后：溃散的敌兵里有人愿意跟你 ---- */
+    escapeShare: 0.03,       /* 按敌军损失的几成来投（不用付钱） */
+    escapeCap: 400,
+
+    /* ---- 远征：地下救出来的人 ---- */
+    delvePop: [40, 160]      /* 到底一次救出的人数范围 */
+  };
+
   window.GAME.DATA = DATA;
 })();
 
@@ -10327,6 +10370,7 @@ window.GAME = window.GAME || {};
       _safeTick('expose');
       _safeTick('idle');        /* v97：惰性（自动化越多越懒，压兵员上限） */
       _safeTick('ending');      /* v98：世界形态（接进去之后惰性单向爬） */
+      _safeTick('muster');      /* v99：兵源（流民来了没有 / 该走了） */
     }
     /* v89.136：老档采集队迁移兜底（幂等 · 正常已被 loadGame 处理） */
     if (GAME.migrateLegacyGathers) GAME.migrateLegacyGathers();
@@ -11514,6 +11558,15 @@ window.GAME = window.GAME || {};
   };
 
   /* 训练完成 */
+  /* v99：战事标记 —— 兵源模块读它判断"周围在打仗"（流民概率 ×1.7） */
+  GAME.markWarMonth = function () {
+    var s = GAME.state;
+    if (!s) return;
+    var C = DATA.CALENDAR || {};
+    var spm = (C.secPerYear || 57600) / 12;
+    s.lastWarMonth = Math.floor(((s.world && s.world.elapsed) || 0) / spm);
+  };
+
   GAME.applyTrainDone = function (t) {
     var city = GAME.cityById(t.cityId);
     if (!city) return;
@@ -30526,6 +30579,19 @@ window.GAME = window.GAME || {};
       if (tw && tw.note) add.note.push(tw.note);
     }
 
+    if (GAME.markWarMonth) GAME.markWarMonth();
+
+    /* ⑤.a 兵源：打赢之后，溃散的敌兵里有人跟着你回来（v99）
+       ⚠️ 只加**人口**，不加兵 —— 兵要靠你自己练。这是"人从外面来"，
+          不是"兵从天上掉"。 */
+    if (win && GAME.muster && GAME.muster.onBattleWin) {
+      var wc = (GAME.city && GAME.city.byId) ? GAME.city.byId(rec.cityId) : null;
+      if (wc) {
+        var esc = GAME.muster.onBattleWin(wc, result);
+        if (esc > 0) add.note.push('逃生者 +' + esc);
+      }
+    }
+
     /* ⑤.b 惰性：打仗是最强的"必须做事"（设定：人不用做事就废了） */
     if (GAME.idle && GAME.idle.onBattle) {
       var fc = (GAME.city && GAME.city.byId) ? GAME.city.byId(rec.cityId) : null;
@@ -31571,13 +31637,24 @@ window.GAME = window.GAME || {};
         if (GAME.city.armyAdd) GAME.city.armyAdd(city, o);
       }
     }
+    /* v99：**救出来的人**（兵源的一条）—— 只在下到第 3 层以后才有，
+       越深越多。地下关着的人和上面逃荒的人不一样：他们是被困住的。 */
+    var saved = 0;
+    if (city && GAME.muster && GAME.muster.onDelveReturn && (r.layer | 0) >= 3) {
+      var cfgM = (GAME.DATA && GAME.DATA.MUSTER) || {};
+      var range = cfgM.delvePop || [40, 160];
+      var deepK = ((r.layer | 0) - 2) / 3;             /* 3 层 → 0.33，5 层 → 1 */
+      saved = Math.round((range[0] + (range[1] - range[0]) * Math.min(1, deepK)));
+      saved = GAME.muster.onDelveReturn(city, saved);
+    }
     d.done = (d.done | 0) + 1;
     d.run = null;
     if (GAME.log && GAME.log.war) {
       GAME.log.war('🚪 远征队上来了：带回粮 ' + U.numText(got.grain, 0) + ' · 铁 ' + U.numText(got.iron, 0)
-        + ' · 木 ' + U.numText(got.wood, 0) + '（' + r.troops + ' 人回来）');
+        + ' · 木 ' + U.numText(got.wood, 0) + '（' + r.troops + ' 人回来'
+        + (saved > 0 ? ('，另救出 ' + U.numText(saved, 0) + ' 个活人') : '') + '）');
     }
-    return { ok: true, msg: '撤回来了，带回七成。', got: got };
+    return { ok: true, msg: '撤回来了，带回七成。', got: got, saved: saved };
   };
 
   /* 一行摘要 */
@@ -32441,6 +32518,313 @@ window.GAME = window.GAME || {};
   };
 
   void U;
+})();
+
+/* ---- muster.js ---- */
+/* ============================================================
+ * muster.js — 兵源：人从哪来（v99）
+ * ------------------------------------------------------------
+ * 老板原话：「**兵种代价应当从控制来源，强化出路考虑。自然增长率降低，
+ *   增加偶然得到的来源比如探索，战后，任务，天灾流民等，细化设定。
+ *   的确是要让发展有代价，但是不用搞太多意义，意义过于沉重了**」
+ *
+ * 之前的问题不在"造兵太便宜"，而在 **"人"根本不是稀缺品**：
+ *   `popGrowthOf = 上限 ÷ fillHours`，而 fillHours = 2 现实小时 ——
+ *   人口两小时自动补满。于是：
+ *     · 探索救回来的 600 个幸存者 → 两小时后你自己也长出来了，毫无意义
+ *     · 战后收编的俘虏 → 一样
+ *     · 「打完仗缺人」这件事，在日历上只是"等两小时"
+ *
+ * 这一版做了两件事：
+ *   ① `POP_CFG.fillHours` 2 → 14（自然增长慢 7 倍，不能再靠"等"）
+ *   ② 补上真正"从外面拿人"的几条路（本模块）：
+ *        · 天灾流民 —— 寒潮 / 污染 / 民怨 / 战乱会把人赶出来，你得决定收不收
+ *        · 战后逃生者 —— 敌军溃散时有人来投（不用付钱，量小）
+ *        · 远征救出 —— 地下到底时救出来的人
+ *      （"探索救幸存者"在遗迹翻找里早就有，这里不重复造）
+ *
+ * ⚠️ 刻意不做的：
+ *   · 不写任何"废土的孤独/生存的意义"之类的话 —— 老板明确说意义太重了。
+ *     每条来源只给一行日志：多少人、从哪来、花了什么。
+ *   · 不做"必须接纳否则道德谴责"的设计：驱散是完全正当的省钱选择，
+ *     代价只是名声（它会真的影响营地招募、纳贡价、村社意愿）。
+ * ============================================================ */
+(function () {
+  'use strict';
+  var GAME = window.GAME = window.GAME || {};
+  var MU = GAME.muster = {};
+  var U = GAME.utils;
+
+  function D() { return (GAME.DATA && GAME.DATA.MUSTER) || {}; }
+
+  function st0() {
+    var s = GAME.state;
+    if (!s) return null;
+    if (!s.muster || typeof s.muster !== 'object') s.muster = { pending: null, log: [] };
+    if (!Array.isArray(s.muster.log)) s.muster.log = [];
+    return s.muster;
+  }
+
+  function monthNow() {
+    var C = (GAME.DATA && GAME.DATA.CALENDAR) || {};
+    var spm = (C.secPerYear || 57600) / 12;
+    var s = GAME.state || {};
+    return Math.floor(((s.world && s.world.elapsed) || 0) / spm);
+  }
+
+  function cities() { return (GAME.city && GAME.city.all) ? (GAME.city.all() || []) : []; }
+  function pickCity() {
+    var a = cities();
+    return a.length ? a[0] : null;
+  }
+
+  /* 记一笔账（面板显示"这个月人从哪来"） */
+  function note(src, n, extra) {
+    var m = st0();
+    if (!m || !(n > 0)) return;
+    m.log.push({ at: monthNow(), src: src, n: Math.round(n), x: extra || '' });
+    if (m.log.length > 20) m.log = m.log.slice(-20);
+  }
+
+  /* 加人（受有效上限约束；返回实际加了几个） */
+  function addPop(city, n) {
+    if (!city || !(n > 0)) return 0;
+    var R = GAME.res(city);
+    var cap = GAME.effPopCapOf ? GAME.effPopCapOf(city) : (GAME.maxPopOf ? GAME.maxPopOf(city) : 0);
+    var before = R.pop || 0;
+    var after = cap > 0 ? Math.min(cap, before + n) : (before + n);
+    R.pop = after;
+    return Math.round(after - before);
+  }
+
+  /* 加兵：按"能拿枪的那部分"落地。没有兵种偏好时给最基础的步行机
+     （它没有解锁门槛：`unlock.junying = 1`）。 */
+  function addTroops(city, n) {
+    if (!city || !(n > 0)) return {};
+    var out = { buxingji: Math.round(n) };
+    if (GAME.city && GAME.city.armyAdd) GAME.city.armyAdd(city, out);
+    return out;
+  }
+
+  /* ============================================================
+   * 流民：出现概率吃四个"天灾人祸"
+   * ------------------------------------------------------------
+   * 不是纯随机 —— 你烧荒、污染、民心崩、周围在打仗，人就会往你这跑。
+   * 这也让"治理得好"有一个正面回报：安居的城不太会被流民砸门。
+   * ============================================================ */
+  MU.chanceOf = function (city) {
+    var d = D();
+    var p = d.base == null ? 0.06 : d.base;
+    var why = [];
+    if (GAME.climate && GAME.climate.isCold && GAME.climate.isCold()) {
+      p *= (d.coldMul == null ? 2.6 : d.coldMul); why.push('寒潮');
+    }
+    if (city && GAME.taint && GAME.taint.of) {
+      var t = GAME.taint.of(city);
+      var warn = ((GAME.DATA.TAINT || {}).warn == null ? 60 : GAME.DATA.TAINT.warn);
+      if (t >= warn) { p *= (d.taintMul == null ? 1.7 : d.taintMul); why.push('污染'); }
+    }
+    if (city && GAME.unrest && GAME.unrest.of) {
+      if (GAME.unrest.of(city) >= 50) { p *= (d.unrestMul == null ? 2.0 : d.unrestMul); why.push('民怨'); }
+    }
+    var s = GAME.state || {};
+    var lastWar = s.lastWarMonth;
+    if (lastWar != null && (monthNow() - lastWar) <= 1) {
+      p *= (d.warMul == null ? 1.7 : d.warMul); why.push('战乱');
+    }
+    return { p: Math.min(0.6, p), why: why };
+  };
+
+  /* ============================================================
+   * tick —— 每月：出流民 / 过期的流民散掉
+   * ============================================================ */
+  MU.tick = function (force) {
+    var s = GAME.state;
+    if (!s) return null;
+    var m = monthNow();
+    if (!force && s.musterMonth === m) return null;
+    if (s.musterMonth == null) { s.musterMonth = m; return { first: true }; }
+    s.musterMonth = m;
+
+    var d = D();
+    var bag = st0();
+    var out = { month: m, arrived: 0, expired: 0 };
+
+    /* ① 已有流民到期：自己散了（名声小扣，不惩罚性） */
+    if (bag.pending) {
+      var age = m - (bag.pending.at | 0);
+      if (age >= (d.expireMonths == null ? 3 : d.expireMonths)) {
+        var n = bag.pending.pop | 0;
+        bag.pending = null;
+        out.expired = n;
+        /* 过期不扣名声（`expireFame` 默认 0）：人自己走的，不算你作恶。
+           只有**主动赶走**才记一笔 —— 那是真的做了个决定。 */
+        if (GAME.renown && GAME.renown.add && (d.expireFame | 0) > 0) {
+          GAME.renown.add('cruelty', d.expireFame);
+        }
+        if (GAME.log && GAME.log.war) {
+          GAME.log.war('🚶 门外那批流民等不到答复，走了（' + U.numText(n, 0) + ' 人）。');
+        }
+      }
+    }
+
+    /* ② 新的流民：一次只挂一批，别堆成任务列表 */
+    if (!bag.pending) {
+      var c = pickCity();
+      if (c) {
+        var ch = MU.chanceOf(c);
+        var roll = GAME.invasionRoll ? GAME.invasionRoll('muster|' + m) : Math.random();
+        if (roll < ch.p) {
+          var lo = d.sizeMin == null ? 160 : d.sizeMin;
+          var hi = d.sizeMax == null ? 640 : d.sizeMax;
+          var size = Math.round(lo + (hi - lo) * ((roll * 37) % 1));
+          bag.pending = {
+            at: m, pop: size, cityId: c.id,
+            cause: ch.why.length ? ch.why.join('·') : '逃荒'
+          };
+          out.arrived = size;
+          if (GAME.log && GAME.log.war) {
+            GAME.log.war('🚶 ' + c.name + '门外来了一批流民：' + U.numText(size, 0)
+              + ' 人（' + bag.pending.cause + '）。接不接，你定。');
+          }
+        }
+      }
+    }
+    return out;
+  };
+
+  MU.pending = function () {
+    var bag = st0();
+    return (bag && bag.pending) || null;
+  };
+
+  /* 这批人要多少粮才养得起 */
+  MU.grainNeedOf = function (p) {
+    var d = D();
+    var n = (p && p.pop) || 0;
+    return Math.max(0, Math.round(n * (d.grainPer == null ? 3 : d.grainPer)));
+  };
+
+  /* ============================================================
+   * accept —— 接纳（花粮换人，一部分直接能拿枪）
+   * ============================================================ */
+  MU.accept = function () {
+    var bag = st0();
+    if (!bag || !bag.pending) return { ok: false, msg: '门外没有流民' };
+    var p = bag.pending;
+    var city = GAME.city && GAME.city.byId ? GAME.city.byId(p.cityId) : null;
+    if (!city) city = pickCity();
+    if (!city) return { ok: false, msg: '没有可以安置他们的城' };
+
+    var need = MU.grainNeedOf(p);
+    var R = GAME.res(city);
+    if ((R.grain || 0) < need) {
+      return { ok: false, msg: '养不起：要 ' + U.numText(need, 0) + ' 粮（现有 '
+        + U.numText(R.grain || 0, 0) + '）' };
+    }
+    if (GAME.city && GAME.city.sub) GAME.city.sub(city, 'grain', need);
+
+    var d = D();
+    var share = d.armyShare == null ? 0.18 : d.armyShare;
+    var asTroop = Math.round(p.pop * share);
+    var asPop = p.pop - asTroop;
+    var gotPop = addPop(city, asPop);
+    var gotArmy = addTroops(city, asTroop);
+    bag.pending = null;
+    if (GAME.renown && GAME.renown.add) GAME.renown.add('mercy', d.fameUp == null ? 4 : d.fameUp);
+    note('流民（接纳）', p.pop, '耗粮 ' + need);
+
+    var msg = '收下 ' + U.numText(p.pop, 0) + ' 人（耗粮 ' + U.numText(need, 0)
+      + '）：幸存者 +' + U.numText(gotPop, 0) + '、能拿枪的 ' + U.numText(asTroop, 0) + ' 人入营';
+    if (GAME.log && GAME.log.war) GAME.log.war('🚶 ' + city.name + '：' + msg);
+    return { ok: true, msg: msg, pop: gotPop, army: gotArmy, grain: need };
+  };
+
+  /* 驱散：省钱，但名声记一笔（不是道德审判：它会影响营地招募/纳贡价/村社意愿） */
+  MU.turnAway = function () {
+    var bag = st0();
+    if (!bag || !bag.pending) return { ok: false, msg: '门外没有流民' };
+    var p = bag.pending;
+    var d = D();
+    bag.pending = null;
+    if (GAME.renown && GAME.renown.add) GAME.renown.add('cruelty', d.fameDown == null ? 7 : d.fameDown);
+    note('流民（驱散）', p.pop, '名声 −' + (d.fameDown == null ? 7 : d.fameDown));
+    if (GAME.log && GAME.log.war) {
+      GAME.log.war('🚶 把 ' + U.numText(p.pop, 0) + ' 人赶走了（粮省下了，名声记了一笔）。');
+    }
+    return { ok: true, msg: '赶走了 ' + U.numText(p.pop, 0) + ' 人（名声 −' + (d.fameDown == null ? 7 : d.fameDown) + '）' };
+  };
+
+  /* ============================================================
+   * 战后逃生者 —— 敌军溃散时有人来投（不用付钱，量小）
+   * ------------------------------------------------------------
+   * 由 goals.afterBattle 调用。只在**打赢**时发生：
+   * 输了没人愿意跟你。
+   * ============================================================ */
+  MU.onBattleWin = function (city, result) {
+    if (!city || !result) return 0;
+    var d = D();
+    var loss = result.defLoss || 0;
+    if (!(loss > 0)) return 0;
+    var n = Math.round(loss * (d.escapeShare == null ? 0.03 : d.escapeShare));
+    if (n <= 0) return 0;
+    n = Math.min(d.escapeCap == null ? 400 : d.escapeCap, n);
+    var got = addPop(city, n);
+    if (got > 0) {
+      note('战后逃生者', got);
+      if (GAME.log && GAME.log.war) {
+        GAME.log.war('🚶 溃散的敌兵里有 ' + U.numText(got, 0) + ' 人没处去，跟着你回城了。');
+      }
+    }
+    return got;
+  };
+
+  /* 远征到底：救出来的人（由 delve 调用） */
+  MU.onDelveReturn = function (city, n) {
+    if (!city || !(n > 0)) return 0;
+    var got = addPop(city, n);
+    if (got > 0) {
+      note('地下救出', got);
+      if (GAME.log && GAME.log.war) {
+        GAME.log.war('🚶 从地下带回来 ' + U.numText(got, 0) + ' 个活人。');
+      }
+    }
+    return got;
+  };
+
+  /* ============================================================
+   * 只读出口
+   * ============================================================ */
+  MU.lineOf = function () {
+    var p = MU.pending();
+    var bag = st0();
+    var s = GAME.state || {};
+    var parts = [];
+    if (p) {
+      parts.push('门外有 ' + U.numText(p.pop, 0) + ' 个流民（' + p.cause + '）等答复');
+    }
+    /* 人口增速的一句话：让"等"这件事有数字 */
+    var c = (GAME.currentCity && GAME.currentCity()) || pickCity();
+    if (c && GAME.popGrowthOf) {
+      var g = GAME.popGrowthOf(c);
+      var cap = GAME.effPopCapOf ? GAME.effPopCapOf(c) : 0;
+      var pop = GAME.res(c).pop || 0;
+      if (cap > 0) {
+        var hrs = g > 0 ? Math.round((cap - pop) / g) : 0;
+        parts.push('自然补员 ' + U.numText(Math.round(g * 10) / 10, 1) + ' 人/时'
+          + (hrs > 0 && hrs < 999 ? ('（缺口 ' + U.numText(Math.max(0, cap - pop), 0) + '，要 '
+            + hrs + ' 小时才长满）') : ''));
+      }
+    }
+    void bag; void s;
+    return parts.join('　');
+  };
+
+  /* 台账（面板用）：最近 6 条来源 */
+  MU.recent = function () {
+    var bag = st0();
+    return (bag && bag.log ? bag.log.slice(-6) : []);
+  };
 })();
 
 /* ---- gltf.js ---- */
@@ -52464,6 +52848,33 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
       var c0 = (GAME.currentCity && GAME.currentCity()) || cities[0] || null;
       var cn = c0 ? U.escape(c0.name) : '—';
 
+      /* ⓪ 兵源（v99）：人从哪来 —— 放在最前，因为它是这个月最要紧的事 */
+      if (GAME.muster) {
+        var mp = GAME.muster.pending();
+        var mH = '';
+        if (mp) {
+          var needG = GAME.muster.grainNeedOf(mp);
+          mH = '<div style="margin-top:2px;">门外 <b>' + U.numText(mp.pop | 0, 0) + '</b> 人（'
+            + U.escape(mp.cause || '逃荒') + '）　接纳要 '
+            + U.numText(needG, 0) + ' 粮</div>'
+            + '<div class="chips" style="margin-top:5px;">'
+            + '<span class="chip" data-action="muster-accept">接纳（花粮，得人+兵）</span>'
+            + '<span class="chip" data-action="muster-refuse">赶走（省粮，名声 −）</span></div>';
+        }
+        var mrec = GAME.muster.recent();
+        var recH = mrec.length ? ('<div class="ui-sub" style="margin-top:5px;">最近：'
+          + mrec.map(function (r) {
+            return U.escape(r.src) + ' ' + U.numText(r.n, 0);
+          }).join(' · ') + '</div>') : '';
+        h += sec('🚶 人从哪来', GAME.muster.lineOf() || '这个月还没人投奔',
+          mH + recH
+          + '<div class="ui-sub" style="margin-top:5px;">'
+          + '人口自然补满要 14 小时（以前是 2 小时）—— 光等养不出兵。'
+          + '想快只有四条路：<b>遗迹里收容幸存者</b>、<b>战后收编俘虏 / 逃生者</b>、'
+          + '<b>接纳流民</b>、<b>远征把人从地下带回来</b>。'
+          + '兵是要从人里练的，所以"人"就是你真正的兵源。</div>');
+      }
+
       /* ① 作战目标（让"带多少兵"成为一个选择） */
       if (GAME.goals) {
         /* 四档的**战场修正**直接摊出来：玩家在出征前就该知道自己会变成什么样
@@ -63723,6 +64134,7 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
 
 
 
+
 (function () {
   var GAME = window.GAME = window.GAME || {};
   var ui = GAME.ui;
@@ -65110,6 +65522,14 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
       })(); break;
       case 'deck-toggle': (function () {
         var r = GAME.deck ? GAME.deck.toggle(el.getAttribute('data-card')) : { msg: '未加载' };
+        ui.toast(r.msg); ui.openWorldPanel();
+      })(); break;
+      case 'muster-accept': (function () {
+        var r = GAME.muster ? GAME.muster.accept() : { msg: '兵源系统未加载' };
+        ui.toast(r.msg); ui.openWorldPanel(); GAME.refreshView();
+      })(); break;
+      case 'muster-refuse': (function () {
+        var r = GAME.muster ? GAME.muster.turnAway() : { msg: '兵源系统未加载' };
         ui.toast(r.msg); ui.openWorldPanel();
       })(); break;
       case 'wonder-keep': (function () {

@@ -44,6 +44,7 @@ import './expose.js';    /* 你点亮一格，别人也就看见你了 */
 import './trooplv.js';   /* v96：兵员等级 —— 一级斥候、二级斥候（进战斗 + 任务门槛） */
 import './idle.js';      /* v97：惰性 —— 「照顾得太好，人就废了」（设定灵魂的游戏化） */
 import './ending.js';    /* v98：终局 —— 接进去，还是关灯（一次性全局选择） */
+import './muster.js';    /* v99：兵源 —— 人从哪来（流民/战后/远征） */
 import './gltf.js';
 import './map3d.js';
 import './battle.js';
@@ -1442,6 +1443,14 @@ import './ui.js';
       })(); break;
       case 'deck-toggle': (function () {
         var r = GAME.deck ? GAME.deck.toggle(el.getAttribute('data-card')) : { msg: '未加载' };
+        ui.toast(r.msg); ui.openWorldPanel();
+      })(); break;
+      case 'muster-accept': (function () {
+        var r = GAME.muster ? GAME.muster.accept() : { msg: '兵源系统未加载' };
+        ui.toast(r.msg); ui.openWorldPanel(); GAME.refreshView();
+      })(); break;
+      case 'muster-refuse': (function () {
+        var r = GAME.muster ? GAME.muster.turnAway() : { msg: '兵源系统未加载' };
         ui.toast(r.msg); ui.openWorldPanel();
       })(); break;
       case 'wonder-keep': (function () {

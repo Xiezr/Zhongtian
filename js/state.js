@@ -3771,6 +3771,7 @@ import './data.js';
       _safeTick('expose');
       _safeTick('idle');        /* v97：惰性（自动化越多越懒，压兵员上限） */
       _safeTick('ending');      /* v98：世界形态（接进去之后惰性单向爬） */
+      _safeTick('muster');      /* v99：兵源（流民来了没有 / 该走了） */
     }
     /* v89.136：老档采集队迁移兜底（幂等 · 正常已被 loadGame 处理） */
     if (GAME.migrateLegacyGathers) GAME.migrateLegacyGathers();
@@ -4958,6 +4959,15 @@ import './data.js';
   };
 
   /* 训练完成 */
+  /* v99：战事标记 —— 兵源模块读它判断"周围在打仗"（流民概率 ×1.7） */
+  GAME.markWarMonth = function () {
+    var s = GAME.state;
+    if (!s) return;
+    var C = DATA.CALENDAR || {};
+    var spm = (C.secPerYear || 57600) / 12;
+    s.lastWarMonth = Math.floor(((s.world && s.world.elapsed) || 0) / spm);
+  };
+
   GAME.applyTrainDone = function (t) {
     var city = GAME.cityById(t.cityId);
     if (!city) return;
