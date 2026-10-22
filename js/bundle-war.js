@@ -6059,7 +6059,8 @@
       }
 
       if (GAME.deck && GAME.deck.effOf) {
-        var _dk = GAME.deck.effOf();
+        /* v107（D3）：把主将传进去 —— 风格对不上的牌这一仗打不出去 */
+        var _dk = GAME.deck.effOf(atkGen);
         if (_dk && (_dk.atk || _dk.def)) {
           _goalMod = {
             atk: ((_goalMod && _goalMod.atk) || 0) + (_dk.atk || 0),

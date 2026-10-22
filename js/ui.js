@@ -8310,14 +8310,23 @@ import './state.js';
       /* ⑥ 指令牌（8 选 5） */
       if (GAME.deck) {
         var cards = (GAME.DATA.DECK || {}).cards || [];
+        /* v107（D3）：每张牌标出它要什么风格的将 —— 选牌时就要看得见，不是打完才知道 */
+        var styleName107 = function (id) {
+          var nm = '';
+          ((GAME.DATA.GEN_STYLES) || []).forEach(function (s) { if (s.id === id) nm = s.name; });
+          return nm;
+        };
         h += sec('🃏 指令牌', GAME.deck.lineOf(),
           '<div class="chips" style="margin-top:5px;">' + cards.map(function (cd) {
             var on = GAME.deck.has(cd.id);
             return '<span class="chip' + (on ? '' : ' dim') + '" data-action="deck-toggle" data-card="' + cd.id + '"'
-              + ' title="' + U.escape(cd.desc) + '">' + U.escape(cd.name) + (on ? ' ✓' : '') + '</span>';
+              + ' title="' + U.escape(cd.desc) + '">' + U.escape(cd.name)
+              + (cd.style ? '<span class="ui-sub"> · ' + U.escape(styleName107(cd.style)) + '</span>' : '')
+              + (on ? ' ✓' : '') + '</span>';
           }).join('') + '</div>'
           + '<div class="ui-sub" style="margin-top:3px;">只能带 ' + GAME.deck.pickLimit()
-          + ' 张。狂怒那种"攻高但多死人"的牌，是你自己选的代价。</div>');
+          + ' 张。<b>带队的将风格对不上的牌，这一仗打不出去</b>（均衡型的将什么牌都能打）。'
+          + '狂怒那种"攻高但多死人"的牌，是你自己选的代价。</div>');
       }
 
       /* ⑦ 套装指令 */

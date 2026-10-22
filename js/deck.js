@@ -56,12 +56,67 @@
    * 返回：{atk, def, loot, rep, loss, wall, wound, note}
    * ⚠️ 全部是**比例**，由 goals 乘上去；这里不做任何"百分比转数值"。
    * ============================================================ */
-  DK.effOf = function () {
-    var out = { atk: 0, def: 0, loot: 0, rep: 0, loss: 0, wall: 0, wound: 0, note: '' };
+  /* ============================================================
+   * v107（D3 补完）：牌与风格冲突 → 这一仗打不出去
+   * ------------------------------------------------------------
+   * v95 写这一块时明确不做"战场抗命"：「玩家只会看到一句'某将不听指挥'，
+   * 除了生气没有别的反应」。这个判断仍然成立 —— 所以这里不做随机，
+   * 做**可预见、可应对**的那一版：
+   *
+   *   · 每张牌有风格归属（war 猛将 / wis 智将 / gov 贤才），没标签的是通用牌；
+   *   · 带队的将风格对不上 → 那张牌这一仗**用不了**（不是随机失效，是根本不存在）；
+   *   · 均衡型（balance）不受限 —— 带个老好人，什么牌都能打。
+   *
+   * 于是"带谁去"第一次有了编成取舍：要打血勇，就得带猛将；
+   * 要带智将，就得换牌。
+   * ============================================================ */
+  DK.styleOf = function (gen) { return (gen && gen.styleId) || 'balance'; };
+
+  /* 这张牌这一仗能不能用（gen 缺省 = 不过滤，向后兼容旧调用）*/
+  DK.usableOf = function (cardId, gen) {
+    if (!gen) return true;
+    var st = DK.styleOf(gen);
+    if (st === 'balance') return true;       /* 均衡：全都能用 */
+    var card = null;
+    cards().forEach(function (c) { if (c.id === cardId) card = c; });
+    if (!card) return false;
+    if (!card.style) return true;            /* 通用牌 */
+    return card.style === st;
+  };
+
+  /* 这一仗哪些牌用不了（界面要灰掉的那几张）*/
+  DK.refusedOf = function (gen) {
+    if (!gen) return [];
+    var st = DK.styleOf(gen);
+    if (st === 'balance') return [];
+    var out = [];
+    DK.chosen().forEach(function (id) {
+      if (DK.usableOf(id, gen)) return;
+      cards().forEach(function (c) {
+        if (c.id !== id) return;
+        var need = '';
+        ((GAME.DATA && GAME.DATA.GEN_STYLES) || []).forEach(function (s) {
+          if (s.id === c.style) need = s.name;
+        });
+        out.push({ id: id, name: c.name, why: need + '才用得动' });
+      });
+    });
+    return out;
+  };
+
+  DK.effOf = function (gen) {
+    var out = { atk: 0, def: 0, loot: 0, rep: 0, loss: 0, wall: 0, wound: 0, note: '', refused: [] };
     var arr = DK.chosen();
     if (!arr.length) return out;
     var names = [];
     arr.forEach(function (id) {
+      /* v107：风格对不上的牌**不生效** —— 但它仍然占着牌位（选牌时就要想清楚）*/
+      if (!DK.usableOf(id, gen)) {
+        cards().forEach(function (c) {
+          if (c.id === id) out.refused.push(c.name);
+        });
+        return;
+      }
       cards().forEach(function (c) {
         if (c.id !== id) return;
         if (c.eff === 'atk') out.atk += c.mul;
@@ -75,17 +130,20 @@
         names.push(c.name);
       });
     });
-    out.note = '🃏 ' + names.join('·');
+    out.note = '🃏 ' + names.join('·')
+      + (out.refused.length ? '（' + out.refused.join('·') + ' 用不了）' : '');
     return out;
   };
 
-  DK.lineOf = function () {
+  DK.lineOf = function (gen) {
     var n = DK.chosen().length;
     if (!n) return '🃏 指令牌：还没配（' + DK.pickLimit() + ' 个位置）';
+    var bad = gen ? DK.refusedOf(gen) : [];
     return '🃏 指令牌 ' + n + '/' + DK.pickLimit() + '：' + DK.chosen().map(function (id) {
       var nm = id;
       cards().forEach(function (c) { if (c.id === id) nm = c.name; });
-      return nm;
-    }).join('·');
+      var out = bad.some(function (b) { return b.id === id; });
+      return nm + (out ? '✗' : '');
+    }).join('·') + (bad.length ? '　（✗ = 带队的将用不了）' : '');
   };
 })();

@@ -6458,14 +6458,18 @@ import './core.js';
   /* ⑧ 指令牌 —— 战前 5 张，打完就消耗（构筑的"选择"在这里） */
   DATA.DECK = {
     pick: 5,
+    /* v107（D3 补完）：每张牌有**风格归属**（与 DATA.GEN_STYLES 同 id）。
+       带队的将风格对不上，这张牌这一仗就打不出去 —— 不是随机失效，是根本用不了。
+       均衡型（balance）不受限 —— "带个老好人"本身是一种解法。
+       没有 style 字段的是通用牌（谁都能用）。 */
     cards: [
       { id: 'volley', name: '齐射', eff: 'atk', mul: 0.08, desc: '全军攻 +8%' },
       { id: 'shield', name: '结阵', eff: 'def', mul: 0.08, desc: '全军防 +8%' },
-      { id: 'scoutcard', name: '斥候', eff: 'loot', mul: 0.10, desc: '战利品 +10%' },
-      { id: 'forced', name: '强征', eff: 'pop', mul: 0.12, desc: '掳回人口 +12%' },
-      { id: 'fury', name: '血勇', eff: 'atk', mul: 0.15, loss: 0.06, desc: '攻 +15%，但战损 +6%' },
-      { id: 'feint', name: '佯退', eff: 'loss', mul: 0.10, desc: '战损 −10%' },
-      { id: 'engineer', name: '工匠', eff: 'wall', mul: 0.25, desc: '破墙效率 +25%' },
+      { id: 'scoutcard', name: '斥候', eff: 'loot', mul: 0.10, style: 'wis', desc: '战利品 +10%' },
+      { id: 'forced', name: '强征', eff: 'pop', mul: 0.12, style: 'war', desc: '掳回人口 +12%' },
+      { id: 'fury', name: '血勇', eff: 'atk', mul: 0.15, loss: 0.06, style: 'war', desc: '攻 +15%，但战损 +6%' },
+      { id: 'feint', name: '佯退', eff: 'loss', mul: 0.10, style: 'wis', desc: '战损 −10%' },
+      { id: 'engineer', name: '工匠', eff: 'wall', mul: 0.25, style: 'gov', desc: '破墙效率 +25%' },
       { id: 'doctor', name: '军医', eff: 'wound', mul: 0.10, desc: '伤兵回收 +10%' }
     ]
   };

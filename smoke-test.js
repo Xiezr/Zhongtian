@@ -41798,6 +41798,86 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     G2.newGame({ name: '收尾', cityName: '灰岗' });
   })();
 
+
+  /* ============================================================
+   * §327 · v107（D3 补完）：牌与将的风格冲突 → 打不出去
+   * ------------------------------------------------------------
+   * v95 的判断「不做战场抗命」仍然成立（随机失效只会让人生气）。
+   * 这一版做的是**可预见、可应对**的那一种：牌有风格归属，
+   * 带队的将风格对不上，这张牌这一仗根本用不了 —— 均衡型不受限。
+   * ============================================================ */
+  console.log('\n===== 327. v107 牌与风格：带错人，那手牌就打不出去 =====');
+  (function () {
+    var D3 = G.deck;
+    if (!D3 || !D3.usableOf) return;
+    var st = G.state;
+    var bak = (st.deck || []).slice();
+
+    function setDeck(list) { st.deck = list.slice(); }
+    var war = { styleId: 'war', name: '猛将甲' };
+    var wis = { styleId: 'wis', name: '智将乙' };
+    var bal = { styleId: 'balance', name: '老好人丙' };
+
+    check('§327① 风格门槛：猛将能打血勇不能打斥候；智将反之；均衡全能用', (function () {
+      return D3.usableOf('fury', war) === true && D3.usableOf('scoutcard', war) === false
+        && D3.usableOf('feint', wis) === true && D3.usableOf('fury', wis) === false
+        && D3.usableOf('fury', bal) === true && D3.usableOf('scoutcard', bal) === true
+        && D3.usableOf('volley', wis) === true;   /* 通用牌谁都能用 */
+    })(), (function () {
+      return '猛将：血勇' + (D3.usableOf('fury', war) ? '✓' : '✗')
+        + '/斥候' + (D3.usableOf('scoutcard', war) ? '✓' : '✗')
+        + ' · 智将：斥候' + (D3.usableOf('scoutcard', wis) ? '✓' : '✗');
+    })());
+
+    check('§327② 打不出去的牌**不生效**（血勇的攻 +15% 不算在智将头上）', (function () {
+      setDeck(['fury']);
+      var a = D3.effOf(war), b = D3.effOf(wis);
+      st.deck = bak.slice();
+      return a.atk > 0 && b.atk === 0
+        && (b.refused || []).indexOf('血勇') >= 0;
+    })(), (function () {
+      setDeck(['fury']);
+      var a = D3.effOf(war), b = D3.effOf(wis);
+      st.deck = bak.slice();
+      return '猛将攻 +' + Math.round(a.atk * 100) + '% · 智将攻 +' + Math.round(b.atk * 100) + '%';
+    })());
+
+    check('§327③ 不传将 → 不过滤（旧调用点行为不变，向后兼容）', (function () {
+      setDeck(['fury']);
+      var r = D3.effOf();
+      st.deck = bak.slice();
+      return r.atk > 0 && (r.refused || []).length === 0;
+    })(), (function () { return 'effOf() 不带参 → 全生效'; })());
+
+    check('§327④ 牌桌上看得出用不了（✗ 标在牌名后面）', (function () {
+      setDeck(['fury', 'volley']);
+      var s1 = D3.lineOf(wis), s2 = D3.lineOf(war);
+      st.deck = bak.slice();
+      return s1.indexOf('血勇✗') >= 0 && s1.indexOf('用不了') >= 0 && s2.indexOf('✗') < 0;
+    })(), (function () {
+      setDeck(['fury', 'volley']);
+      var s1 = D3.lineOf(wis);
+      st.deck = bak.slice();
+      return s1;
+    })());
+
+    check('§327⑤ 数据：五张牌有风格归属（war/wis/gov），三张是通用牌', (function () {
+      var cards = (DATA.DECK || {}).cards || [];
+      var tagged = cards.filter(function (x) { return !!x.style; });
+      var free = cards.filter(function (x) { return !x.style; });
+      return tagged.length === 5 && free.length === 3
+        && tagged.every(function (x) { return ['war', 'wis', 'gov'].indexOf(x.style) >= 0; })
+        /* 三张通用牌必须是"谁都能用"的基础战术，不是漏标 */
+        && free.map(function (x) { return x.id; }).sort().join(',') === 'doctor,shield,volley';
+    })(), (function () {
+      var cards = (DATA.DECK || {}).cards || [];
+      return cards.filter(function (x) { return x.style; })
+        .map(function (x) { return x.name + ':' + x.style; }).join(' ');
+    })());
+
+    st.deck = bak.slice();
+  })();
+
 console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');
   process.exit(FAIL ? 1 : 0);
 })();
