@@ -18,6 +18,9 @@ import './sphere.js';
 import './fog.js';      /* v92：探明度（迷雾）—— 依赖 sphere 的六边邻接做半径点亮 */
 import './memorial.js'; /* v92：阵亡名录 —— 只记事，不记账 */
 import './camp.js';     /* v92.4：幸存者营地 —— 探索的回报，招人 or 抢物资 */
+import './renown.js';   /* v93.1：名声 —— 世界怎么看你 */
+import './village.js';  /* v93.2：村社 —— 废土上还有别人在活 */
+import './convoy.js';   /* v93.3：拓荒队 —— 用这一代人，换下一代人能活 */
 import './ruin.js';     /* v92.7：旧世界遗迹 —— 一处只能翻一次，两种翻法互斥 */
 import './faction.js';  /* v92.5：四个军阀 —— 世界在动（态势层）*/
 import './gltf.js';
@@ -1350,6 +1353,10 @@ import './ui.js';
       /* v92.17：结盟 / 挑拨（B2 补完） */
       case 'faction-ally': GAME.doFactionAlly(el.getAttribute('data-fid')); break;
       case 'faction-incite': GAME.doFactionIncite(el.getAttribute('data-fid')); break;
+      /* v93.2 / v93.3：村社互动 · 拓荒队出发 */
+      case 'village-act': GAME.doVillageAct(el.getAttribute('data-ci'), el.getAttribute('data-vm')); break;
+      case 'convoy-send': GAME.doConvoySend(el.getAttribute('data-ck'), el.getAttribute('data-n')); break;
+      case 'open-convoy': ui.openConvoyModal(); break;
       /* v92.14：派将挑衅一座城（赢了那城守军胆寒 24 小时） */
       case 'provoke-city': ui._provoke = null; ui.openProvoke(); break;
       case 'provoke-move': ui.openProvoke(el.getAttribute('data-mv')); break;
@@ -1965,6 +1972,28 @@ import './ui.js';
     ui.toast((r.ok ? '✅ ' : '⏸ ') + r.msg);
     if (r.ok) { GAME.log(r.msg, 'sys', 'wild'); GAME.refreshAll(); }
     else GAME.refreshView();
+  };
+  /* v93.2：村社互动（征召 / 保护 / 抢）—— 三种都不可撤销 */
+  GAME.doVillageAct = function (ci, mode) {
+    var r = GAME.village && GAME.village.act ? GAME.village.act(+ci, mode) : null;
+    if (!r) { ui.toast('村社不可用'); return; }
+    ui.toast((r.ok ? '✅ ' : '⏸ ') + r.msg);
+    if (r.ok) {
+      GAME.log(r.msg, 'sys', 'wild');
+      GAME.refreshAll();
+      ui.openVillageModal(+ci);          /* 结果就在原地重绘 —— 别让玩家再点一次 */
+    } else GAME.refreshView();
+  };
+  /* v93.3：拓荒队出发 —— 走的是人，可能回不来 */
+  GAME.doConvoySend = function (kind, n) {
+    var r = GAME.convoy && GAME.convoy.send ? GAME.convoy.send(kind, Math.round(+n || 100)) : null;
+    if (!r) { ui.toast('拓荒队不可用'); return; }
+    ui.toast((r.ok ? '✅ ' : '⏸ ') + r.msg);
+    if (r.ok) {
+      GAME.log(r.msg, 'war', 'wild');
+      GAME.refreshAll();
+      ui.openConvoyModal();
+    } else GAME.refreshView();
   };
   GAME.doRuinAct = function (ci, side) {
     var r = GAME.ruin && GAME.ruin.act ? GAME.ruin.act(+ci, side) : null;

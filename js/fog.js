@@ -333,6 +333,9 @@
     /* v92.8：年景（B5）—— 开拓年视野 +1（只加不减，不给惩罚） */
     var _y = (GAME.yearOf ? GAME.yearOf() : null);
     if (_y && _y.fogPlus) r += _y.fogPlus;
+    /* v93.3：广播中继站（拓荒队带回的频率表）—— 视野 +1/处（最多 +2）。
+       "有人在那头报过天气"：拿到频率表，你就听得见更远的地方。 */
+    if (GAME.convoy && GAME.convoy.radioPlus) r += GAME.convoy.radioPlus();
     return r;
   };
   F.outpostRadius = function () {

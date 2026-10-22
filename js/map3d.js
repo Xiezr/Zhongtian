@@ -76,7 +76,13 @@ import './gltf.js';
   /* v91.33（性能）：版本戳（把 M.render 里的内联拼串抽出，预建时可预盖）。 */
   M._pverOf = function () { return (SP.seed3 ? SP.seed3() : 0) + '|' + (SP.sub || 0) + '|' + (SP.PLANET ? JSON.stringify(SP.PLANET) : ''); };
   M._mkVerOf = function () { return (((GAME.mapSliceOf && GAME.mapSliceOf()) || {}).cities || []).map(function (c) { return c.id + ':' + c.x + ',' + c.y; }).join('|') + '#' + _tileSub; };
-  M._flVerOf = function () { var sl = (GAME.mapSliceOf && GAME.mapSliceOf()) || {}; var fp = Object.keys(sl.forts || {}).sort().join(','); var wp = (sl.wilds || []).map(function (w) { return w.ci; }).sort(function (a, b) { return a - b; }).join('|'); var _ck = ''; if (GAME.camp && GAME.camp.found) { var cf = GAME.camp.found(); var n = 0, dm = 0; Object.keys(cf).forEach(function (k) { n++; if (cf[k].mode) dm++; }); _ck = '#c' + n + '/' + dm; } if (GAME.ruin && GAME.ruin.found) { var rf = GAME.ruin.found(); var rn = 0, rd = 0; Object.keys(rf).forEach(function (k) { rn++; if (rf[k].side) rd++; }); _ck += '#r' + rn + '/' + rd; } return fp + '#' + wp + '#' + _tileSub + '#' + (GAME.memorial ? GAME.memorial.total() : 0) + _ck; };
+  M._flVerOf = function () { var sl = (GAME.mapSliceOf && GAME.mapSliceOf()) || {}; var fp = Object.keys(sl.forts || {}).sort().join(','); var wp = (sl.wilds || []).map(function (w) { return w.ci; }).sort(function (a, b) { return a - b; }).join('|'); var _ck = ''; if (GAME.camp && GAME.camp.found) { var cf = GAME.camp.found(); var n = 0, dm = 0; Object.keys(cf).forEach(function (k) { n++; if (cf[k].mode) dm++; }); _ck = '#c' + n + '/' + dm; } if (GAME.ruin && GAME.ruin.found) { var rf = GAME.ruin.found(); var rn = 0, rd = 0; Object.keys(rf).forEach(function (k) { rn++; if (rf[k].side) rd++; }); _ck += '#r' + rn + '/' + rd; }
+      /* v93.2：村社——活着几处、护着几处、空了几处（任一变化都要重建标记） */
+      if (GAME.state && GAME.state.villages) {
+        var _vva = GAME.state.villages, _vn = 0, _vg = 0, _vd = 0;
+        Object.keys(_vva).forEach(function (k) { _vn++; if (_vva[k].guardAt > 0) _vg++; if (_vva[k].dead) _vd++; });
+        _ck += '#v' + _vn + '/' + _vg + '/' + _vd;
+      } return fp + '#' + wp + '#' + _tileSub + '#' + (GAME.memorial ? GAME.memorial.total() : 0) + _ck; };
   M._arVerOf = function () { var sl = (GAME.mapSliceOf && GAME.mapSliceOf()) || {}; return (sl.marches || []).map(function (m) { return m.id + ':' + m.cityId + '>' + m.tci; }).join('|') + '#' + _tileSub; };
   /* v91.33：**后台预建**全场景（进游戏后调用）—— 含**全部版本戳**（否则首次 M.render 会全量重建）。
      v91.35：拆成**可分段**的步骤（`preloadSteps`）—— 每段之间让出事件循环，避免一次性同步阻塞主线程。
@@ -938,6 +944,26 @@ import './gltf.js';
         grp.add(mesh);
       });
     }
+    /* v93.2：**村社** —— 废土上还有别人在活。
+       与营地/遗迹不同：它们不需要"发现"动作，探明就看得见（人住在那里是明显的）。
+       暖白＝有人 · 亮绿＝你护着 · 暗灰＝空村（他们走了）。 */
+    if (GAME.village && GAME.village.list) {
+      var _vl = GAME.village.list();
+      for (var _vi = 0; _vi < _vl.length; _vi++) {
+        var _vci = _vl[_vi];
+        var _vc = _tileCells[_vci];
+        if (!_vc || !_vc.pos) continue;
+        if (GAME.fog && GAME.fog.get(_vci) <= 0) continue;
+        var _vr = GAME.village.peek(_vci);
+        var _vcol = (_vr && _vr.dead) ? 0x4a4a4a
+          : ((_vr && _vr.guardAt > 0) ? 0x9be36a : 0xd9c98a);
+        var _vP = _vc.pos, _vL = Math.hypot(_vP[0], _vP[1], _vP[2]) || 1, _vlf = 3.6;
+        var _vm = new THREE.Mesh(new THREE.SphereGeometry(2.2, 8, 8),
+          new THREE.MeshBasicMaterial({ color: _vcol }));
+        _vm.position.set(_vP[0] + _vP[0] / _vL * _vlf, _vP[1] + _vP[1] / _vL * _vlf, _vP[2] + _vP[2] / _vL * _vlf);
+        grp.add(_vm);
+      }
+    }
     /* v92.7：已发现的旧世界遗迹 —— 青珠（待翻）/ 暗青（已翻） */
     if (GAME.ruin && GAME.ruin.found) {
       var _rf = GAME.ruin.found();
@@ -1370,6 +1396,9 @@ import './gltf.js';
       /* v92.4：已发现的营地**优先于野地** —— 同一格上，营地才是这一带真正的事。
          没发现的营地不拦（照旧按野地处理），免得"点了没反应"。 */
       else if (GAME.camp && GAME.camp.isFound(ci) && ui.openCampModal) ui.openCampModal(ci);
+      /* v93.2：村社排在营地之后 —— 营地是"这一次要什么"，村社是"你是什么人"，
+         先处理一次性的事件，再处理长期的关系。 */
+      else if (GAME.village && GAME.village.at && GAME.village.at(ci) && GAME.village.isKnown(ci) && ui.openVillageModal) ui.openVillageModal(ci);
       /* v92.7：遗迹排在营地之后 —— 同一格两者都有时，先给"人"（营地），
          因为人是活的、遗迹是死的，先处理活的那一头。 */
       else if (GAME.ruin && GAME.ruin.isFound(ci) && ui.openRuinModal) ui.openRuinModal(ci);

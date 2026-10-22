@@ -12381,7 +12381,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
     /* ⚠️ 这份 ORDER 与 build_bundle.py 的 ORDER **必须逐条一致**（本文故意不复用脚本，
        就是为了"构建脚本自己算错时测试还能抓到"）。加了模块两边都要加 ——
        v92 加 fog / memorial 时这里漏改，导致 hash 对不上、守卫假红。 */
-    var ORDER = ['core', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'domain', 'map', 'sphere', 'fog', 'memorial', 'camp', 'ruin', 'faction', 'gltf',
+    var ORDER = ['core', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'domain', 'map', 'sphere', 'fog', 'memorial', 'renown', 'village', 'convoy', 'camp', 'ruin', 'faction', 'gltf',
       'map3d', 'battle', 'strategy', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits', 'story', 'ui', 'main'];
     var h = crypto.createHash('sha256');
     try {
@@ -39285,6 +39285,309 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       return typeof src === 'string' && src.length > 0;
     })());
 
-    console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');
+    
+    console.log('\n===== 305. v93.1 名声：世界怎么看你 =====');
+
+    check('§305① 净名声 = 仁义 − 残忍（可负）', (function () {
+      G.state.renown = { mercy: 30, cruelty: 50 };
+      var a = G.renown.score();
+      G.state.renown = { mercy: 30, cruelty: 10 };
+      var b = G.renown.score();
+      return a === -20 && b === 20;
+    })());
+
+    check('§305② 分档：屠夫 / 心冷 / 无名 / 可托付 / 仁名', (function () {
+      var cases = [[-60, 'butcher'], [-20, 'cold'], [0, 'plain'], [25, 'trusted'], [60, 'saint']];
+      for (var i = 0; i < cases.length; i++) {
+        G.state.renown = { mercy: 0, cruelty: 0 };
+        var v = cases[i][0];
+        if (v >= 0) G.state.renown.mercy = v; else G.state.renown.cruelty = -v;
+        if (G.renown.tier().id !== cases[i][1]) return false;
+      }
+      return true;
+    })(), (function () {
+      G.state.renown = { mercy: 0, cruelty: 0 };
+      return G.renown.tier().name;
+    })());
+
+    check('§305③ 名声影响"愿不愿意跟你走"（屠夫 0.35 · 仁名 1.3）', (function () {
+      G.state.renown = { mercy: 0, cruelty: 100 };
+      var a = G.renown.willFollow();
+      G.state.renown = { mercy: 100, cruelty: 0 };
+      var b = G.renown.willFollow();
+      return Math.abs(a - 0.35) < 1e-9 && Math.abs(b - 1.3) < 1e-9 && b > a;
+    })());
+
+    check('§305④ 名声影响纳贡价钱（屠夫更贵、仁名更便宜）', (function () {
+      G.newGame({ name: '名声2', cityName: '灰岗' });
+      G.faction.ensure();
+      var f = G.faction.arr()[0];
+      if (!f) return false;
+      G.state.renown = { mercy: 0, cruelty: 0 };
+      var c0 = G.faction.tributeCostOf(f.id);
+      G.state.renown = { mercy: 0, cruelty: 100 };
+      var c1 = G.faction.tributeCostOf(f.id);
+      G.state.renown = { mercy: 100, cruelty: 0 };
+      var c2 = G.faction.tributeCostOf(f.id);
+      G.state.renown = { mercy: 0, cruelty: 0 };
+      return c1.grain > c0.grain && c2.grain < c0.grain;
+    })());
+
+    check('§305⑤ 洗劫营地真的记账（进 cruelty）', (function () {
+      G.newGame({ name: '名声3', cityName: '灰岗' });
+      var cl = G.camp.list();
+      if (!cl.length) return false;
+      var ci = cl[0];
+      G.fog.bump(ci, G.fog.ALL);
+      G.camp.sweep(true);
+      var before = G.renown.raw().cruelty | 0;
+      var r = G.camp.act(ci, 'raid');
+      return r.ok && (G.renown.raw().cruelty | 0) === before + G.renown.W.raidCamp;
+    })());
+
+    check('§305⑥ 名声不回弹（做过的事不会自己消失）', (function () {
+      G.state.renown = { mercy: 12, cruelty: 40 };
+      var s0 = G.renown.score();
+      for (var i = 0; i < 30; i++) { G.village.tick(true); }
+      return G.renown.score() === s0;
+    })());
+
+    console.log('\n===== 306. v93.2 村社：废土上还有别人在活 =====');
+
+    var vgCtx = (function () {
+      G.newGame({ name: '村社', cityName: '灰岗', mapSeed: 4321 });
+      return { list: G.village.list().slice() };
+    })();
+
+    check('§306① 村社是哈希固定的地标（同格永远同名）', (function () {
+      if (!vgCtx.list.length) return false;
+      var ci = vgCtx.list[0];
+      var a = G.village.at(ci), b = G.village.at(ci);
+      return !!a && !!b && a.name === b.name && a.ci === ci;
+    })(), (function () {
+      return vgCtx.list.length ? G.village.at(vgCtx.list[0]).name : '无';
+    })());
+
+    check('§306② 候选有量（至少 20 处，世界不是空的）', (function () {
+      return vgCtx.list.length >= 20;
+    })(), (function () { return vgCtx.list.length + ' 处'; })());
+
+    check('§306③ 没探明就不认识（不泄露位置）', (function () {
+      if (!vgCtx.list.length) return false;
+      for (var i = 0; i < vgCtx.list.length; i++) {
+        if (G.fog.get(vgCtx.list[i]) <= 0) {
+          return G.village.isKnown(vgCtx.list[i]) === false
+            && G.village.act(vgCtx.list[i], 'call').ok === false;
+        }
+      }
+      return true;
+    })());
+
+    check('§306④ 征召：人真进城里，村社人真减少（不可逆）', (function () {
+      if (!vgCtx.list.length) return false;
+      var ci = vgCtx.list[0];
+      G.fog.bump(ci, G.fog.ALL);
+      var rec = G.village.get(ci);
+      if (!rec || rec.dead) return false;
+      var city = G.currentCity();
+      city.pop = Math.max(1000, city.pop || 0);
+      var p0 = city.pop, v0 = rec.pop;
+      var r = G.village.act(ci, 'call');
+      return r.ok && city.pop > p0 && rec.pop < v0 && r.n > 0;
+    })(), (function () {
+      if (!vgCtx.list.length) return '?';
+      var rec = G.village.get(vgCtx.list[0]);
+      return rec ? ('剩 ' + Math.round(rec.pop) + ' 人') : '?';
+    })());
+
+    check('§306⑤ 保护：真扣粮 + 态度变好 + 记仁义', (function () {
+      if (!vgCtx.list.length) return false;
+      var ci = vgCtx.list[1] || vgCtx.list[0];
+      G.fog.bump(ci, G.fog.ALL);
+      var rec = G.village.get(ci);
+      if (!rec || rec.dead) return false;
+      rec.guardAt = 0;
+      var city = G.currentCity();
+      city.res = city.res || {};
+      city.res.grain = 999999;
+      var g0 = city.res.grain;
+      var mood0 = rec.mood;
+      var mercy0 = G.state.renown.mercy | 0;
+      var r = G.village.act(ci, 'guard');
+      return r.ok && city.res.grain < g0 && rec.mood > mood0
+        && (G.state.renown.mercy | 0) > mercy0 && rec.guardAt > 0;
+    })(), (function () {
+      if (!vgCtx.list.length) return '?';
+      var rec = G.village.get(vgCtx.list[1] || vgCtx.list[0]);
+      return rec ? ('护期到第 ' + rec.guardAt + ' 月') : '?';
+    })());
+
+    check('§306⑥ 抢：物资到账 + 整村迁走（空村）', (function () {
+      if (!vgCtx.list.length) return false;
+      var ci = vgCtx.list[2] || vgCtx.list[0];
+      G.fog.bump(ci, G.fog.ALL);
+      var rec = G.village.get(ci);
+      if (!rec || rec.dead) return false;
+      var city = G.currentCity();
+      city.res = city.res || {};
+      var g0 = city.res.grain || 0;
+      var r = G.village.act(ci, 'raid');
+      return r.ok && (city.res.grain || 0) > g0 && rec.dead === 'fled' && r.fled === true;
+    })());
+
+    check('§306⑦ 空村不能再互动（人走了就是走了）', (function () {
+      var ci = vgCtx.list[2] || vgCtx.list[0];
+      var r = G.village.act(ci, 'call');
+      return r.ok === false;
+    })());
+
+    check('§306⑧ 月推进：寒潮下人真的会流失（世界在缩）', (function () {
+      if (!vgCtx.list.length) return false;
+      var ci = vgCtx.list[0];
+      G.fog.bump(ci, G.fog.ALL);
+      /* ⚠️ 隔离：清掉其它村社，只留这一处 —— 否则 tick 会连带推演一堆格子，
+         断言就说不清"到底是谁变了"（第一版就是这么写成假绿的）。 */
+      G.state.villages = {};
+      var rec = G.village.get(ci);
+      if (!rec) return false;
+      rec.pop = 200;                 /* 固定初值，结果可手算 */
+      rec.guardAt = 0;
+      rec.dead = null;
+      G.state.renown = { mercy: 0, cruelty: 0 };
+      var C = DATA.COLD || {};
+      var spm = (DATA.CALENDAR.secPerYear || 57600) / 12;
+      G.state.world.elapsed = ((C.periodMonths || 24) - 1) * spm;   /* 锁在寒潮月 */
+      G.state.villageMonth = null;
+      G.village.tick(true);                                        /* 第一次只记基准 */
+      var p0 = G.state.villages[ci].pop;
+      G.village.tick(true);                                        /* 第二次才推演 */
+      var p1 = G.state.villages[ci].pop;
+      /* 寒潮月：+0.2% 繁衍 −1.5% 损失 = −1.3% */
+      return p1 < p0 && Math.abs(p1 - p0 * 0.987) < 0.5;
+    })(), (function () {
+      if (!vgCtx.list.length) return '?';
+      var ci = vgCtx.list[0];
+      var r = (G.state.villages || {})[ci];
+      var spm = (DATA.CALENDAR.secPerYear || 57600) / 12;
+      return 'cold=' + G.coldActiveOf() + ' 月=' + Math.floor(G.state.world.elapsed / spm)
+        + ' pop=' + (r ? Math.round(r.pop) : '?');
+    })());
+
+    check('§306⑩ 军阀领地压境也会削人口（同一类符号错误）', (function () {
+      if (!vgCtx.list.length) return false;
+      var ci = vgCtx.list[1] || vgCtx.list[0];
+      G.fog.bump(ci, G.fog.ALL);
+      G.state.villages = {};
+      var rec = G.village.get(ci);
+      if (!rec) return false;
+      rec.pop = 200; rec.guardAt = 0; rec.dead = null;
+      G.state.renown = { mercy: 0, cruelty: 0 };
+      G.state.world.elapsed = 0;                     /* 非寒潮月，只测军阀这一项 */
+      G.faction.ensure();
+      var f = G.faction.arr()[0];
+      if (!f) return false;
+      var oldCore = f.core, oldR = f.r;
+      f.core = ci; f.r = 6;                          /* 让它的领地盖住这一处 */
+      G.state.villageMonth = null;
+      G.village.tick(true);
+      var p0 = G.state.villages[ci].pop;
+      G.village.tick(true);
+      var p1 = G.state.villages[ci].pop;
+      f.core = oldCore; f.r = oldR;
+      /* +0.2% 繁衍 −2.0% 军阀 = −1.8% */
+      return p1 < p0 && Math.abs(p1 - p0 * 0.982) < 0.5;
+    })(), (function () {
+      if (!vgCtx.list.length) return '?';
+      var r = (G.state.villages || {})[vgCtx.list[1] || vgCtx.list[0]];
+      return r ? Math.round(r.pop) + ' 人' : '?';
+    })());
+
+    check('§306⑨ statsOf 汇总得出"还有几处人家"', (function () {
+      var st = G.village.statsOf();
+      return typeof st.alive === 'number' && typeof st.pop === 'number'
+        && st.alive >= 0 && st.known >= st.alive;
+    })(), (function () {
+      var st = G.village.statsOf();
+      return '活着 ' + st.alive + ' 处 / ' + Math.round(st.pop) + ' 人';
+    })());
+
+    console.log('\n===== 307. v93.3 拓荒队：用这一代人换下一代 =====');
+
+    check('§307① 目标位置是哈希固定的（同 seed 永远同一处）', (function () {
+      G.newGame({ name: '拓荒', cityName: '灰岗', mapSeed: 4321 });
+      G.state.convoyGot = {}; G.state.convoyDone = {};
+      var a = G.convoy.targetOf('seed');
+      var b = G.convoy.targetOf('seed');
+      return !!a && !!b && a.ci === b.ci && a.dist === b.dist;
+    })(), (function () {
+      var t = G.convoy.targetOf('seed');
+      return t ? (t.name + ' · ' + t.dist + ' 格') : '无';
+    })());
+
+    check('§307② 风险算得出来且随距离涨（不是黑盒抽奖）', (function () {
+      var near = { dist: 15, hard: 0 }, far = { dist: 60, hard: 0 };
+      var r1 = G.convoy.riskOf(near, 100), r2 = G.convoy.riskOf(far, 100);
+      return r2 > r1 && r1 > 0;
+    })(), (function () {
+      var t = G.convoy.targetOf('seed');
+      return t ? ('派 100 人预计死 ' + G.convoy.deadEstimateOf(t, 100) + ' 人') : '?';
+    })());
+
+    check('§307③ 人多能压风险，但压不到零', (function () {
+      var t = { dist: 40, hard: 0.02 };
+      var r1 = G.convoy.riskOf(t, 100), r2 = G.convoy.riskOf(t, 3000);
+      return r2 < r1 && r2 > 0;
+    })());
+
+    check('§307④ 派人：真从人口里扣，回来的回到人口里', (function () {
+      var city = G.currentCity();
+      city.pop = 2000;
+      var t = G.convoy.targetOf('seed');
+      if (!t || t.cleared) return false;
+      var r = G.convoy.send('seed', 100);
+      if (!r.ok) return false;
+      return Math.abs(city.pop - (1900 + r.back)) < 1e-6 && r.back >= 0 && r.dead >= 1;
+    })(), (function () {
+      return Math.round(G.currentCity().pop) + ' 人';
+    })());
+
+    check('§307⑤ 去过的目标标清空（拿空就是拿空）', (function () {
+      var t = G.convoy.targetOf('seed');
+      return !!t && t.cleared === true && G.convoy.send('seed', 100).ok === false;
+    })());
+
+    check('§307⑥ 有人在就真拿到东西（种子进粮产表）', (function () {
+      if (G.convoy.nOf('seed') <= 0) G.state.convoyGot.seed = 1;
+      var city = G.currentCity();
+      var f = G.prodFactors('grain', city) || [];
+      var has = f.some(function (x) { return /旧种原种/.test(x.name); });
+      return has && G.convoy.seedMul() > 1;
+    })(), '粮产 ×' + (function () { return G.convoy.seedMul().toFixed(2); })());
+
+    check('§307⑦ 四种东西的效果都真的接上了（无货时全为 1）', (function () {
+      G.state.convoyGot = { seed: 1, med: 1, radio: 1, tool: 1 };
+      var on = G.convoy.seedMul() > 1 && G.convoy.medMul() < 1
+        && G.convoy.radioPlus() >= 1 && G.convoy.toolMul() > 1;
+      G.state.convoyGot = {};
+      var off = G.convoy.seedMul() === 1 && G.convoy.medMul() === 1
+        && G.convoy.radioPlus() === 0 && G.convoy.toolMul() === 1;
+      return on && off;
+    })(), '种/医/电台/农具 四项全通');
+
+    check('§307⑧ 派出去的人会进阵亡名录（不是静默消失）', (function () {
+      G.newGame({ name: '全灭', cityName: '灰岗', mapSeed: 4321 });
+      G.state.convoyGot = {}; G.state.convoyDone = {};
+      var city = G.currentCity();
+      city.pop = 5000;
+      var before = G.memorial ? G.memorial.total() : 0;
+      var t = G.convoy.targetOf('med');
+      if (!t) return false;
+      var r = G.convoy.send('med', 40);
+      var after = G.memorial ? G.memorial.total() : 0;
+      return r.ok && r.dead >= 1 && after > before;
+    })(), (function () {
+      return '名录累计 ' + (G.memorial ? G.memorial.total() : 0);
+    })());
+console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');
   process.exit(FAIL ? 1 : 0);
 })();

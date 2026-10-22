@@ -202,9 +202,12 @@
     for (var i = 0; i < arr.length; i++) if (arr[i].id === fid) f = arr[i];
     if (!f) return null;
     var per = cfg().tributePerR || { grain: 200, iron: 100 };
+    /* v93.1：你是什么人，价钱不一样 —— 屠夫要先付（他们不信你会守约），
+       仁名可以少付（他们赌你不会反悔）。这是名声在"外交"上的唯一落点。 */
+    var _pm = (GAME.renown && GAME.renown.priceMul) ? GAME.renown.priceMul() : 1;
     return {
-      grain: Math.max(100, Math.round((per.grain || 200) * f.r)),
-      iron: Math.max(50, Math.round((per.iron || 100) * f.r))
+      grain: Math.max(100, Math.round((per.grain || 200) * f.r * _pm)),
+      iron: Math.max(50, Math.round((per.iron || 100) * f.r * _pm))
     };
   };
 

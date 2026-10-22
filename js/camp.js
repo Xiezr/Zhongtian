@@ -172,7 +172,12 @@
       var city = C.cityNearOf(ci);
       if (!city) return { ok: false, msg: '附近没有己方城市' };
       /* v92.8：年景（B5）—— 丰年多来三成，疫年闭门。风声与年景相乘。 */
-      var mul = C.waryMul() * (GAME.yearMulOf ? GAME.yearMulOf('campMul') : 1);
+      /* v93.3：农具图纸（拓荒队带回的）→ 招得到更多人。
+         v93.1：名声 → 屠夫招不到人（他们听说了），仁名有人主动跟来。 */
+      var mul = C.waryMul()
+        * (GAME.yearMulOf ? GAME.yearMulOf('campMul') : 1)
+        * (GAME.convoy && GAME.convoy.toolMul ? GAME.convoy.toolMul() : 1)
+        * (GAME.renown ? GAME.renown.willFollow() : 1);
       var n = Math.max(1, Math.round(w.pop * mul));
       /* 人口走既有出口：直接加到存量的 pop（不超上限）*/
       var cap = GAME.effPopCapOf ? GAME.effPopCapOf(city) : (GAME.maxPopOf ? GAME.maxPopOf(city) : 0);
@@ -193,6 +198,9 @@
       rec.mode = 'raid';
       rec.at = Date.now();
       st.campRaids = (st.campRaids || 0) + 1;
+      /* v93.1：洗劫进"名声"总账 —— 以前它只影响营地这一个局部乘数，
+         现在世界会记住（纳贡要多付、村社不愿跟你走）。 */
+      if (GAME.renown) GAME.renown.add('cruelty', GAME.renown.W.raidCamp);
       /* 资源按品类平摊，走既有资源出口 */
       var keys = ['grain', 'wood', 'stone', 'iron'];
       var per = Math.max(1, Math.round((w.loot || 0) / keys.length));

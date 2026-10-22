@@ -8099,6 +8099,33 @@ import './state.js';
     var th = F.threatOf();
     var Y = GAME.yearOf ? GAME.yearOf() : null;
     var h = '<div style="margin:0 0 10px;padding:8px 10px;border:1px solid var(--wood-light);border-radius:4px;">';
+    /* ============================================================
+     * v93.1~3：**这个世界还剩什么**
+     * ------------------------------------------------------------
+     * 放在最上面一行，因为它是这一屏最该被看见的数字：
+     *   不是"我有多少兵"，是"还有几处人家、多少人活着"。
+     * 玩家做的每个决定（抢/护/征召/派人出去）都在改这三个数。
+     * ============================================================ */
+    (function () {
+      var vs = (GAME.village && GAME.village.statsOf) ? GAME.village.statsOf() : null;
+      var rn = GAME.renown ? GAME.renown.tier() : null;
+      if (!vs && !rn) return;
+      h += '<div style="font-size:var(--fs-cap);line-height:1.7;margin-bottom:6px;'
+        + 'padding-bottom:6px;border-bottom:1px dashed var(--wood-light);">';
+      if (vs) {
+        h += '<span style="color:var(--gold-light);">🏘 还有 <b>' + vs.alive + '</b> 处村社 · 约 '
+          + U.numText(vs.pop, 0) + ' 人活着</span>'
+          + (vs.dead ? ('　<span style="color:var(--text-dim);">已空 ' + vs.dead + ' 处</span>') : '')
+          + '<br>';
+      }
+      if (rn) {
+        h += '<span style="color:var(--text-dim);">👤 外面怎么看你：<b>' + U.escape(rn.name) + '</b>　'
+          + U.escape(rn.note) + '</span>';
+      }
+      h += '<br><button class="btn" style="font-size:var(--fs-cap);padding:1px 8px;margin-top:3px;"'
+        + ' data-action="open-convoy">🚚 拓荒队（派人去拿买不到的东西）</button>';
+      h += '</div>';
+    })();
     /* v92.8：年景（B5）—— 今年是什么年，直接写在世界态势上面一行 */
     if (Y) {
       h += '<div style="font-size:var(--fs-cap);color:var(--text-dim);margin-bottom:4px;">'
@@ -13082,6 +13109,109 @@ import './state.js';
         + (mul < 0.999 ? '（现在只剩 ' + Math.round(mul * 100) + '%）' : '（目前还没有人知道你的名声）')
         + '。</div>';
     }
+    h += '</div><div class="panel-foot"><button class="btn" data-action="close-modal">关闭</button></div>';
+    ui.openModal(h);
+  };
+
+  /* ============================================================
+   * v93.2：村社面板 —— 废土上还有别人在活
+   * ------------------------------------------------------------
+   * 三个按钮就是三种"你打算当什么人"：
+   *   征召（要人，不算恶） / 保护（给粮，记恩） / 抢（拿物资，记仇）
+   * 面板把**每种做法的后果**都摊开写，不藏 —— 藏了就成了抽卡。
+   * ============================================================ */
+  ui.openVillageModal = function (ci) {
+    var V = GAME.village;
+    if (!V) return;
+    var w = V.at(ci);
+    if (!w) { ui.toast('这里没有村社'); return; }
+    if (!V.isKnown(ci)) { ui.toast('你还不知道这里有人住'); return; }
+    var rec = V.get(ci);
+    if (!rec) { ui.toast('这里没有村社'); return; }
+    var d = (GAME.DATA && GAME.DATA.VILLAGE) || {};
+    var h = '<div class="gold-heading">🏘 ' + U.escape(w.name) + '　<span style="font-size:var(--fs-cap);color:var(--text-dim);">' + U.escape(w.tierName) + '</span></div>';
+    h += '<div class="panel-body">';
+
+    if (rec.dead) {
+      h += '<div class="q-empty">'
+        + (rec.dead === 'fled'
+          ? '空了。他们把能带的都带走了，门框上还留着挂过东西的印子。'
+          : '没人了。屋顶塌了一半，风从里面穿过去。')
+        + '</div>';
+    } else {
+      var moodText = rec.mood >= 60 ? '他们认得你的旗子，会点头' : rec.mood >= 30 ? '他们不冷不热地看着你' : '他们把孩子往身后藏';
+      h += '<div class="exp-info exp-info-l">' + U.numText(Math.round(rec.pop), 0) + ' 人住在这里。' + moodText + '。</div>';
+      if (rec.guardAt > 0) {
+        h += '<div style="font-size:var(--fs-cap);color:var(--green-ok);margin-top:4px;">🛡 你护着这里（剩 ' + Math.max(0, rec.guardAt - V.monthNow()) + ' 个月）</div>';
+      }
+      var will = (GAME.renown ? GAME.renown.willFollow() : 1) * ((GAME.convoy && GAME.convoy.toolMul) ? GAME.convoy.toolMul() : 1);
+      var canCall = Math.max(1, Math.round(rec.pop * (d.callRate == null ? 0.3 : d.callRate) * will));
+      var guardCost = Math.max(1, Math.round(rec.pop * (d.guardGrainPerPop == null ? 2 : d.guardGrainPerPop))) * (d.guardMonths == null ? 3 : d.guardMonths);
+      var loot = Math.max(10, Math.round(rec.pop * (d.raidLootPerPop == null ? 3 : d.raidLootPerPop)));
+      h += '<div style="display:flex;gap:10px;margin:12px 0;flex-wrap:wrap;">';
+      h += '<button class="btn" data-action="village-act" data-ci="' + ci + '" data-vm="call"'
+        + (rec.mood <= 20 ? ' disabled' : '') + '>👥 征召（带走 ' + U.numText(canCall, 0) + ' 人）</button>';
+      h += '<button class="btn" data-action="village-act" data-ci="' + ci + '" data-vm="guard"'
+        + (rec.guardAt > 0 ? ' disabled' : '') + '>🛡 保护（' + U.numText(guardCost, 0) + ' 粮 / '
+        + (d.guardMonths == null ? 3 : d.guardMonths) + ' 个月）</button>';
+      h += '<button class="btn" data-action="village-act" data-ci="' + ci + '" data-vm="raid">🔥 抢（粮木石铁各 +'
+        + U.numText(Math.round(loot / 4), 0) + '）</button>';
+      h += '</div>';
+      h += '<div style="font-size:var(--fs-cap);color:var(--text-dim);line-height:1.6;">'
+        + '· 征召：带走三成人。他们不会拦你，但也不会送你。<br>'
+        + '· 保护：给粮，他们的态度会变好；粮一断，护期就结束（不弹窗、不提醒）。<br>'
+        + '· 抢：物资最多，但这一村**会散** —— 第二天就空了。名声也会跟着走。<br>'
+        + '<span style="color:var(--gold-light);">这三种都收不回来。</span></div>';
+    }
+    h += '</div><div class="panel-foot"><button class="btn" data-action="close-modal">关闭</button></div>';
+    ui.openModal(h);
+  };
+
+  /* ============================================================
+   * v93.3：拓荒队面板 —— 用这一代人，换下一代人能活
+   * ------------------------------------------------------------
+   * 风险是**算出来的、写出来的**（距离/目标/人数都摆着），
+   * 玩家不是在抽奖，是在决定"这 300 个人值不值一趟"。
+   * ============================================================ */
+  ui.openConvoyModal = function () {
+    var CV = GAME.convoy;
+    if (!CV) return;
+    var city = GAME.currentCity();
+    var pop = city ? Math.round(city.pop || 0) : 0;
+    var h = '<div class="gold-heading">🚚 拓荒队</div>';
+    h += '<div class="panel-body">';
+    h += '<div class="exp-info exp-info-l">'
+      + '带出去的是<b>人</b>，不是兵。他们可能回不来 —— 但带回来的东西，<b>买不到</b>。</div>';
+    h += '<div style="font-size:var(--fs-cap);color:var(--gold-light);margin:8px 0;">已到手：'
+      + U.escape(CV.lineOf()) + '</div>';
+    h += '<div style="font-size:var(--fs-cap);color:var(--text-dim);margin-bottom:6px;">'
+      + '城里现有人口：<b>' + U.numText(pop, 0) + '</b></div>';
+
+    var ts = CV.targets();
+    if (!ts.length) {
+      h += '<div class="q-empty">还没有可去的地方。先往远处探一探。</div>';
+    }
+    ts.forEach(function (t) {
+      h += '<div style="border-top:1px solid var(--wood-light);padding:8px 0;">';
+      h += '<div><b>' + t.icon + ' ' + U.escape(t.name) + '</b>'
+        + '<span style="color:var(--text-dim);font-size:var(--fs-cap);">　距离 ' + t.dist + ' 格 · 带回「'
+        + U.escape(t.gainName) + '」</span></div>';
+      if (t.cleared) {
+        h += '<div style="font-size:var(--fs-cap);color:var(--text-dim);margin-top:4px;">已经搬空了。</div>';
+      } else {
+        var d100 = CV.deadEstimateOf(t, 100), d300 = CV.deadEstimateOf(t, 300);
+        h += '<div style="font-size:var(--fs-cap);color:var(--text-dim);margin-top:3px;">'
+          + '派 100 人：预计回不来的 <' + d100 + ' 人　·　派 300 人：预计 <' + d300 + ' 人'
+          + '（人越多，死的比例越低，但死的总数更多）</div>';
+        h += '<div style="margin-top:5px;display:flex;gap:6px;flex-wrap:wrap;">'
+          + '<button class="btn" data-action="convoy-send" data-ck="' + t.kind + '" data-n="100">派 100</button>'
+          + '<button class="btn" data-action="convoy-send" data-ck="' + t.kind + '" data-n="300">派 300</button>'
+          + '<button class="btn" data-action="convoy-send" data-ck="' + t.kind + '" data-n="600">派 600</button>'
+          + '</div>';
+      }
+      h += '</div>';
+    });
+
     h += '</div><div class="panel-foot"><button class="btn" data-action="close-modal">关闭</button></div>';
     ui.openModal(h);
   };

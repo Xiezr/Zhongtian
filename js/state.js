@@ -600,6 +600,9 @@ import './data.js';
       world: null,                              // 由 GAME.story.init() 填充
       /* v90.92：任务系统整条退役 —— s.quests 字段移除 */
       /* 累计统计（任务指标来源，跨存档保留） */
+      /* v93.1：名声建档即带 —— 新档一定是"无名"，不是"没有这个字段"。
+         老档没有时由 GAME.renown.raw() 兜底补 {0,0}（不写迁移代码）。 */
+      renown: { mercy: 0, cruelty: 0 },
       stats: { buildDone: 0, techDone: 0, trained: 0, forgedCount: 0, recruited: 0,
                trades: 0, wins: 0, conquer: 0, itemsUsed: 0 },
       reports: [],
@@ -3720,6 +3723,9 @@ import './data.js';
     if (GAME.ruin && GAME.ruin.sweep) GAME.ruin.sweep();
     /* v92.10（A3）：远方的记忆会淡（每 decayHours 现实小时一次 · 城/前哨不受影响） */
     if (GAME.fog && GAME.fog.decay) GAME.fog.decay();
+    /* v93.2：村社月推进 —— **世界会自己流失人**（寒潮/军阀/名声都在削它）。
+       玩家什么都不做，这个数会变小；这就是"重建"值得做的理由。 */
+    if (GAME.village && GAME.village.tick) GAME.village.tick();
     /* v92.5：四个军阀按月推进（按月而非按日：游戏日只有 1.3 现实秒，按日会抽搐） */
     if (GAME.faction && GAME.faction.tick) GAME.faction.tick();
     /* v89.136：老档采集队迁移兜底（幂等 · 正常已被 loadGame 处理） */
@@ -3972,6 +3978,13 @@ import './data.js';
     if (r === 'grain' && GAME.coldMulOf) {
       var _cm18 = GAME.coldMulOf();
       if (Math.abs(_cm18 - 1) > 1e-9) list.push({ name: '寒潮', d: _cm18 - 1 });
+    }
+    /* v93.3：**种子库**（拓荒队拿回来的）—— 粮产永久 +6%/次（最多 3 次）。
+       这是全世界唯一买不到的东西，所以它必须真的出现在产量表里，
+       否则"用命换"就只是战报上的一句话。 */
+    if (r === 'grain' && GAME.convoy && GAME.convoy.seedMul) {
+      var _sm93 = GAME.convoy.seedMul();
+      if (Math.abs(_sm93 - 1) > 1e-9) list.push({ name: '旧种原种', d: _sm93 - 1 });
     }
     /* v92.22（B3 补完：民怨）—— 民心跌破 30，**全资源产出 −40%**。
        为什么用"阈值 + 固定惩罚"而不是"每天掷骰会不会民变"：

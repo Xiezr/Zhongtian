@@ -4665,6 +4665,68 @@ window.GAME = window.GAME || {};
     ]
   };
 
+  /* ============================================================
+   * v93.1（老板：「你做的是一整个废土……从大处着眼」）
+   * DATA.VILLAGE —— 村社：废土上还有别人在活
+   * ------------------------------------------------------------
+   * 与 DATA.CAMP 的区别：营地是一次性抉择，村社是长期关系，
+   * 而且**会流失**（寒潮/军阀/你的名声都在削减它的人口）。
+   * 这里配的不是"奖励表"，是"这个世界还剩多少人"的参数。
+   * ============================================================ */
+  DATA.VILLAGE = {
+    chance: 0.006,              /* 陆地 About 0.6% → 一颗球约 200 处 */
+    tiers: [
+      { id: 'hamlet',  name: '人家',  pop: 60  },
+      { id: 'village', name: '村子',  pop: 180 },
+      { id: 'hold',    name: '寨子',  pop: 420 }
+    ],
+    /* 名字池：前缀 + 后缀。哈希取，同格永远同名。 */
+    pre: ['白榆', '铁砧', '断桥', '灰窑', '三岔', '老井', '碱滩', '枯柳',
+          '石磨', '北岭', '双槐', '烂泥', '青瓦', '半坡', '冷泉', '瓦窑'],
+    suf: ['村', '沟', '洼', '堡', '庄', '铺', '屯', '坳'],
+
+    /* 互动 */
+    callRate: 0.30,             /* 征召：拿走三成人 */
+    guardMonths: 3,             /* 保护：一次护 3 个月 */
+    guardGrainPerPop: 2,        /* 保护：每人 2 粮/月 */
+    raidLootPerPop: 3,          /* 抢：每人约 3 单位物资 */
+    fleeOnRaid: true,           /* 抢过就待不住（整村迁走） */
+
+    /* 每月自然变化（正=增，负=减） */
+    growPerMonth:    0.002,
+    coldPerMonth:   -0.015,
+    factionPerMonth: -0.020,
+    guardPerMonth:   0.005
+  };
+
+  /* ============================================================
+   * DATA.CONVOY —— 拓荒队：用这一代人，换下一代人能活
+   * ------------------------------------------------------------
+   * 提案八.3 原表：种子库/图纸/医疗档案，派出去可能死，但换来明年。
+   * 这里只有四样东西，**每一样都不能用资源替代** —— 这是它能叫
+   * "用命换"的唯一理由。能拿钱买的东西，就不是这个交易。
+   * ============================================================ */
+  DATA.CONVOY = {
+    baseRisk: 0.12,             /* 基础死亡比例 */
+    riskPerTile: 0.006,         /* 每远 1 格 +0.6% */
+    crewRelief: 0.35,           /* 人多最多压掉 35% 的风险 */
+    gainTiers: [                /* 回来的人越多，拿得越全 */
+      { at: 0.70, mul: 1.0 },
+      { at: 0.40, mul: 0.6 },
+      { at: 0.00, mul: 0.3 }
+    ],
+    kinds: [
+      { id: 'seed',  name: '旧种子库',   icon: '🌾', hard: 0.02, gainName: '可发芽的种粮',
+        note: '冷库还封着。里面是战前的原种 —— 一旦化冻就再也活不过来。' },
+      { id: 'med',   name: '医院档案室', icon: '📁', hard: 0.03, gainName: '疫病记录',
+        note: '病历柜还在。谁得过什么、用什么压下去的，都写在里面。' },
+      { id: 'radio', name: '广播中继站', icon: '📡', hard: 0.04, gainName: '频率表',
+        note: '铁塔歪了，但中继还通着电。有人在那头报过天气。' },
+      { id: 'tool',  name: '农机仓库',   icon: '⚙', hard: 0.01, gainName: '农具图纸',
+        note: '一整仓的犁和脱粒机，锈成了铁疙瘩。图纸还挂在墙上。' }
+    ]
+  };
+
   DATA.CAMP = {
     chance: 0.004,        /* 陆地格约 0.4% 是营地（40962 × 0.4% ≈ 160 处 · 一颗球约 100+）*/
     waryPerRaid: 0.08,    /* 每洗劫一处，后续招募 −8%（风声传开）*/
@@ -6705,6 +6767,9 @@ window.GAME = window.GAME || {};
       world: null,                              // 由 GAME.story.init() 填充
       /* v90.92：任务系统整条退役 —— s.quests 字段移除 */
       /* 累计统计（任务指标来源，跨存档保留） */
+      /* v93.1：名声建档即带 —— 新档一定是"无名"，不是"没有这个字段"。
+         老档没有时由 GAME.renown.raw() 兜底补 {0,0}（不写迁移代码）。 */
+      renown: { mercy: 0, cruelty: 0 },
       stats: { buildDone: 0, techDone: 0, trained: 0, forgedCount: 0, recruited: 0,
                trades: 0, wins: 0, conquer: 0, itemsUsed: 0 },
       reports: [],
@@ -9825,6 +9890,9 @@ window.GAME = window.GAME || {};
     if (GAME.ruin && GAME.ruin.sweep) GAME.ruin.sweep();
     /* v92.10（A3）：远方的记忆会淡（每 decayHours 现实小时一次 · 城/前哨不受影响） */
     if (GAME.fog && GAME.fog.decay) GAME.fog.decay();
+    /* v93.2：村社月推进 —— **世界会自己流失人**（寒潮/军阀/名声都在削它）。
+       玩家什么都不做，这个数会变小；这就是"重建"值得做的理由。 */
+    if (GAME.village && GAME.village.tick) GAME.village.tick();
     /* v92.5：四个军阀按月推进（按月而非按日：游戏日只有 1.3 现实秒，按日会抽搐） */
     if (GAME.faction && GAME.faction.tick) GAME.faction.tick();
     /* v89.136：老档采集队迁移兜底（幂等 · 正常已被 loadGame 处理） */
@@ -10077,6 +10145,13 @@ window.GAME = window.GAME || {};
     if (r === 'grain' && GAME.coldMulOf) {
       var _cm18 = GAME.coldMulOf();
       if (Math.abs(_cm18 - 1) > 1e-9) list.push({ name: '寒潮', d: _cm18 - 1 });
+    }
+    /* v93.3：**种子库**（拓荒队拿回来的）—— 粮产永久 +6%/次（最多 3 次）。
+       这是全世界唯一买不到的东西，所以它必须真的出现在产量表里，
+       否则"用命换"就只是战报上的一句话。 */
+    if (r === 'grain' && GAME.convoy && GAME.convoy.seedMul) {
+      var _sm93 = GAME.convoy.seedMul();
+      if (Math.abs(_sm93 - 1) > 1e-9) list.push({ name: '旧种原种', d: _sm93 - 1 });
     }
     /* v92.22（B3 补完：民怨）—— 民心跌破 30，**全资源产出 −40%**。
        为什么用"阈值 + 固定惩罚"而不是"每天掷骰会不会民变"：
@@ -25945,6 +26020,9 @@ window.GAME = window.GAME || {};
     /* v92.8：年景（B5）—— 开拓年视野 +1（只加不减，不给惩罚） */
     var _y = (GAME.yearOf ? GAME.yearOf() : null);
     if (_y && _y.fogPlus) r += _y.fogPlus;
+    /* v93.3：广播中继站（拓荒队带回的频率表）—— 视野 +1/处（最多 +2）。
+       "有人在那头报过天气"：拿到频率表，你就听得见更远的地方。 */
+    if (GAME.convoy && GAME.convoy.radioPlus) r += GAME.convoy.radioPlus();
     return r;
   };
   F.outpostRadius = function () {
@@ -26215,6 +26293,742 @@ window.GAME = window.GAME || {};
   };
 })();
 
+/* ---- renown.js ---- */
+/* ============================================================
+ * renown.js — 名声：**世界怎么看你**
+ * ------------------------------------------------------------
+ * 起因（老板 2026-10-22：「你做的是一整个废土……从大处着眼」）：
+ *
+ * 这个废土里所有选择都是**散的**：
+ *   · 洗劫一处营地 → 只是"后面招的人少 8%"（v92.4 的一个局部乘数）
+ *   · 屠一座城     → 只进战报
+ *   · 保护一处村社 → 只有那一处记得
+ * 玩家做了一百个选择，世界**没有一个统一的反应**。
+ * 没有这个，所有"选择"都只是局部数值调整，不是"你成了什么人"。
+ *
+ * 所以这里只做一件事：**把散落的选择汇总成一个数**，
+ * 再让世界按这个数对待你（营地招人 / 村社给不给 / 纳贡要多少）。
+ *
+ * ⚠️ 刻意不做的事：
+ *   · 不做"善恶值"UI 条。数值化会让玩家开始刷分（"再屠一个村就升档"），
+ *     那就从"你是什么人"退化成了"你在打成就"。世界用**行为**回答你，
+ *     不是用一根进度条。
+ *   · 不给加成。名声高不会让你兵更强 —— 它只改变**别人对你的态度**。
+ *     这是这个模块唯一允许的因果方向。
+ *   · 不惩罚到死。屠夫也能玩（能抢），只是没人愿意跟你走。
+ *     两条路都要能走通，否则它不是选择，是正确答案。
+ * ============================================================ */
+(function () {
+  'use strict';
+  var GAME = window.GAME = window.GAME || {};
+  var RN = GAME.renown = {};   /* ⚠️ 不用 R：ruin.js 已占 RN.（audit 按字面前缀查重名会误报）*/
+  var U = GAME.utils;
+
+  /* 权重：一次屠城的份量远大于一次洗劫 —— 但都不是"一时冲动"能抵消的。
+     为什么洗劫营地只有 8：营地是散落的小团伙，抢了是"抢了几个陌生人"；
+     屠城是 40：那是"你杀了一城的人"。量级必须差得远，否则两件事等价。 */
+  var W = {
+    raidCamp: 8,        /* 洗劫幸存者营地 */
+    raidVillage: 12,    /* 抢一处村社 */
+    callVillage: 3,     /* 从村社征人（不算恶，但也不是善） */
+    guardVillage: 6,    /* 保护一处村社（长期给粮） */
+    saveVillage: 10,    /* 救活一处要荒废的村社 */
+    sackCity: 40,       /* 屠一座城 */
+    holdCity: 12,       /* 守住一次来犯（你没有退，城里的人活下来了） */
+    abandonCity: 15,    /* 弃城（自己烧掉/放弃） */
+    rescueConvoy: 4     /* 拓荒队把人带回来了 */
+  };
+  RN.W = W;
+
+  function st() { return GAME.state || {}; }
+
+  RN.raw = function () {
+    var s = st();
+    if (!s.renown) s.renown = { mercy: 0, cruelty: 0 };
+    return s.renown;
+  };
+
+  /* 记一笔。kind: 'mercy' | 'cruelty' */
+  RN.add = function (kind, n) {
+    var s = GAME.state;
+    if (!s) return 0;
+    var r = RN.raw();
+    var v = (n == null) ? 0 : n;
+    if (kind === 'mercy') r.mercy += v;
+    else if (kind === 'cruelty') r.cruelty += v;
+    else return RN.score();
+    return RN.score();
+  };
+
+  /* 净名声。**不裁剪、不回弹** —— 做过的事不会自己消失。
+     这是"不可逆"那条尺子在这个模块上的落点：你可以改，但改不掉。 */
+  RN.score = function () {
+    var r = RN.raw();
+    return (r.mercy | 0) - (r.cruelty | 0);
+  };
+
+  /* 分档。阈值写在这里（唯一来源），UI 与各系统都读它 */
+  var TIERS = [
+    { id: 'butcher', min: -1e9, max: -40, name: '屠夫',
+      note: '他们听说你来了，会先把粮食藏起来，然后把人藏起来。' },
+    { id: 'cold', min: -40, max: -10, name: '心冷',
+      note: '没人信你会白帮忙，但也没人怕你 —— 还不算最坏。' },
+    { id: 'plain', min: -10, max: 10, name: '无名',
+      note: '废土上没人认识你。这既是坏事，也是好事。' },
+    { id: 'trusted', min: 10, max: 40, name: '可托付',
+      note: '有人说你给过粮。这种话在废土上传得比刀快。' },
+    { id: 'saint', min: 40, max: 1e9, name: '仁名',
+      note: '孩子们不怕你的旗子。这在这个年代，很稀奇。' }
+  ];
+  RN.TIERS = TIERS;
+
+  RN.tier = function () {
+    var v = RN.score();
+    for (var i = 0; i < TIERS.length; i++) {
+      if (v >= TIERS[i].min && v < TIERS[i].max) return TIERS[i];
+    }
+    return TIERS[2];
+  };
+
+  /* ============================================================
+   * 世界怎么用这个数 —— 三个出口，都在别处被消费
+   * ============================================================ */
+
+  /* ① 村社愿不愿意跟你走（征召成功率/人数倍率） */
+  RN.willFollow = function () {
+    var v = RN.score();
+    if (v <= -40) return 0.35;      /* 屠夫：只剩没得选的人 */
+    if (v <= -10) return 0.7;
+    if (v < 10) return 1;
+    if (v < 40) return 1.15;
+    return 1.3;
+  };
+
+  /* ② 纳贡/结盟的价钱（他们不信你会守约，就要你先付） */
+  RN.priceMul = function () {
+    var v = RN.score();
+    if (v <= -40) return 1.5;
+    if (v <= -10) return 1.25;
+    if (v < 10) return 1;
+    if (v < 40) return 0.9;
+    return 0.8;
+  };
+
+  /* ③ 村社每月自然流失的额外项（屠夫治下的人都跑，仁名之下有人来投） */
+  RN.driftPerMonth = function () {
+    var v = RN.score();
+    if (v <= -40) return -0.012;
+    if (v <= -10) return -0.006;
+    if (v < 10) return 0;
+    if (v < 40) return 0.004;
+    return 0.008;
+  };
+
+  /* 一行给人看的话（行政页用，不显示分数 —— 见文件头"不做善恶条"） */
+  RN.lineOf = function () {
+    var t = RN.tier();
+    return t.name + '：' + t.note;
+  };
+
+  /* 存档：renown 跟着 state 走，无需 pack/unpack。
+     旧档没有该字段 → raw() 首次调用自动补 {0,0}（不迁移、不崩）。 */
+})();
+
+/* ---- village.js ---- */
+/* ============================================================
+ * village.js — 村社：**废土上还有别人在活**
+ * ------------------------------------------------------------
+ * 老板 2026-10-22：「你做的是一整个废土，而不是这种小小的这个什么随机啊……
+ *   从大处着眼。」
+ *
+ * 翻了一遍地图上的东西：
+ *   我的城 · NPC 城（敌人）· 野地（怪）· 幸存者营地（一次性资源点）
+ *   · 旧世界遗迹（可翻的箱子）· 四方势力（军阀）
+ * **没有一个"不打算杀你的人"。**
+ *
+ * 整个废土里"还有谁活着"这件事，居然一个字都没写。而这恰恰是废土题材的
+ * 全部重量所在 —— 不是怪物多凶，是**文明还剩多少**。
+ *
+ * ⚠️ 与「营地」的区别（不能做成第二个营地）：
+ *   · 营地是一次性抉择（招人 or 抢物资），处理完就没了；
+ *   · 村社是**长期关系**：它会因为你给粮而记住你，会因为你抢它而恨你，
+ *     会因战乱/寒潮/军阀推进而**人口流失，最后荒废**。
+ *   营地问"这一次你要什么"，村社问"你打算当什么人"。
+ *
+ * ⚠️ 不做的事：
+ *   · 不让村社产兵/产资源税 —— 它不是你的人口池，是**别人的家**。
+ *     能从它身上拿的只有"人"（征召）和"关系"（保护→情报/物资回礼）。
+ *   · 不做"必救"道德绑架 —— 你可以一路抢过去，代价是名声（见 renown.js）。
+ * ============================================================ */
+(function () {
+  'use strict';
+  var GAME = window.GAME = window.GAME || {};
+  var V = GAME.village = {};
+  var U = GAME.utils;
+
+  var _list = null;
+  var _listSeed = -1;
+
+  function SP() { return GAME.mapSphere || GAME.sphere; }
+  function D() { return (GAME.DATA && GAME.DATA.VILLAGE) || {}; }
+  function R() { return GAME.renown; }
+
+  /* 确定性哈希（与 camp 同一套整数混洗；**不带日盐** —— 村社是固定地标，
+     带盐会让"列表里有、点开说没有"） */
+  function h(ci, salt) {
+    var x = (ci * 2654435761 + salt * 40503) >>> 0;
+    x ^= x >>> 13; x = (x * 1274126177) >>> 0; x ^= x >>> 16;
+    return (x >>> 0) / 4294967296;
+  }
+
+  /* 村子名：前缀 + 后缀。哈希取，同格永远同名。 */
+  function nameOf(ci, sd) {
+    var d = D();
+    var P = d.pre || ['白榆'], S = d.suf || ['村'];
+    var i = Math.floor(h(ci, sd + 9101) * P.length) % P.length;
+    var j = Math.floor(h(ci, sd + 9102) * S.length) % S.length;
+    return P[i] + S[j];
+  }
+
+  /* 该格是不是村社 / 是哪一档 */
+  V.at = function (ci) {
+    var s = SP();
+    if (!s || !s.cells) return null;
+    var cell = s.cells[ci];
+    if (!cell) return null;
+    if (cell.type === 'sea' || cell.type === 'ocean') return null;
+    var sd = (s.seed3 ? s.seed3() : 0) | 0;
+    if (h(ci, sd + 9100) >= (D().chance || 0.006)) return null;
+    var tiers = D().tiers || [];
+    if (!tiers.length) return null;
+    var t = tiers[Math.min(tiers.length - 1, Math.floor(h(ci, sd + 9103) * tiers.length))];
+    return { ci: ci, tier: t.id, tierName: t.name, name: nameOf(ci, sd), pop0: t.pop };
+  };
+
+  V.list = function () {
+    var s = SP();
+    if (!s || !s.cells) return [];
+    var sd = (s.seed3 ? s.seed3() : 0) | 0;
+    if (_list && _listSeed === sd) return _list;
+    var out = [], n = s.cells.length;
+    for (var ci = 0; ci < n; ci++) {
+      var cell = s.cells[ci];
+      if (!cell) continue;
+      if (cell.type === 'sea' || cell.type === 'ocean') continue;
+      if (h(ci, sd + 9100) < (D().chance || 0.006)) out.push(ci);
+    }
+    _list = out; _listSeed = sd;
+    return out;
+  };
+
+  /* ---------- 运行时状态 ---------- */
+  V.all = function () {
+    var s = GAME.state;
+    if (!s) return {};
+    if (!s.villages) s.villages = {};
+    return s.villages;
+  };
+
+  /* 取（没有就按哈希建）—— 这是唯一出口，渲染与结算都走它 */
+  V.get = function (ci) {
+    var w = V.at(ci);
+    if (!w) return null;
+    var a = V.all();
+    var rec = a[ci];
+    if (!rec) {
+      rec = a[ci] = { pop: w.pop0, mood: 50, guardAt: 0, dead: null, at: 0 };
+    }
+    return rec;
+  };
+
+  /* 只读：有记录就返回，没有就 null（**不建档**）。
+     渲染每帧都会问一次，用 V.get 会在玩家还没到过那里时就写进存档。 */
+  V.peek = function (ci) {
+    var a = (GAME.state && GAME.state.villages) || {};
+    return a[ci] || null;
+  };
+
+  /* 已探明的村社才算"知道"（与营地同一口径：没探明不画不显示） */
+  V.isKnown = function (ci) {
+    if (!GAME.fog) return true;
+    return GAME.fog.get(ci) > 0;
+  };
+
+  /* ============================================================
+   * 汇总：这个世界还剩多少文明
+   * ------------------------------------------------------------
+   * 这是本模块存在的**唯一理由**。别的都是过程，
+   * 这个数是玩家该看见的答案：还有几处人家、多少人。
+   * ============================================================ */
+  V.statsOf = function () {
+    var list = V.list();
+    var known = 0, alive = 0, dead = 0, pop = 0;
+    for (var i = 0; i < list.length; i++) {
+      var ci = list[i];
+      if (!V.isKnown(ci)) continue;
+      known++;
+      var rec = V.get(ci);
+      if (!rec) continue;
+      if (rec.dead) dead++;
+      else { alive++; pop += Math.max(0, Math.round(rec.pop)); }
+    }
+    return { known: known, alive: alive, dead: dead, pop: pop };
+  };
+
+  /* 最近的我方城（征召的人往哪送） */
+  V.cityNearOf = function (ci) {
+    var st = GAME.state;
+    if (!st) return null;
+    var s = SP();
+    if (!s || !s.distOf) return GAME.currentCity ? GAME.currentCity() : null;
+    var best = null, bd = 1e9;
+    (st.cities || []).forEach(function (c) {
+      if (!c || c.npc) return;
+      var d = s.distOf({ ci: c.ci }, { ci: ci });
+      if (d < bd) { bd = d; best = c; }
+    });
+    return best || (GAME.currentCity ? GAME.currentCity() : null);
+  };
+
+  /* ============================================================
+   * act —— 三种对待别人的方式
+   * ------------------------------------------------------------
+   *   call  征召：拿走三成人，名声不算恶但也不算善
+   *   guard 保护：给它粮，它记住你（长期）；名声涨
+   *   raid  抢：一次性拿物资，名声大跌，村社可能整村迁走
+   *
+   * ⚠️ 三者**都不可撤销**（这是这个模块唯一的硬规则）：
+   *    征过的人回不来，抢过的信任回不来，给出去的粮要不回。
+   * ============================================================ */
+  V.act = function (ci, mode) {
+    var st = GAME.state;
+    if (!st) return { ok: false, msg: '无存档' };
+    var w = V.at(ci);
+    if (!w) return { ok: false, msg: '这里没有村社' };
+    if (!V.isKnown(ci)) return { ok: false, msg: '你还不知道这里有人住' };
+    var rec = V.get(ci);
+    if (!rec) return { ok: false, msg: '这里没有村社' };
+    if (rec.dead) {
+      return { ok: false, msg: rec.dead === 'fled' ? (w.name + '已经没人了 —— 他们走了') : (w.name + '已经空了') };
+    }
+    var d = D();
+    var city = V.cityNearOf(ci);
+
+    /* ---------- 征召 ---------- */
+    if (mode === 'call') {
+      if (!city) return { ok: false, msg: '附近没有己方城市' };
+      if (rec.mood <= 20) return { ok: false, msg: w.name + '的人不信你 —— 他们关上了门' };
+      var rate = d.callRate == null ? 0.3 : d.callRate;
+      var mul = (R() ? R().willFollow() : 1)
+        * ((GAME.convoy && GAME.convoy.toolMul) ? GAME.convoy.toolMul() : 1);
+      var want = Math.max(1, Math.round(rec.pop * rate * mul));
+      var cap = GAME.effPopCapOf ? GAME.effPopCapOf(city) : (GAME.maxPopOf ? GAME.maxPopOf(city) : 0);
+      var before = city.pop || 0;
+      city.pop = Math.min(cap || (before + want), before + want);
+      var got = Math.round(city.pop - before);
+      rec.pop = Math.max(0, rec.pop - want);
+      rec.mood = Math.max(0, rec.mood - 12);
+      rec.at = Date.now();
+      if (R()) R().add('cruelty', R().W.callVillage);
+      if (rec.pop < 1) rec.dead = 'fled';
+      return { ok: true, n: got, cityId: city.id,
+        msg: '从' + w.name + '带走 ' + got + ' 人（' + city.name + '）'
+          + '　· 他们没拦，但也没送' };
+    }
+
+    /* ---------- 保护 ---------- */
+    if (mode === 'guard') {
+      if (rec.guardAt > 0) return { ok: false, msg: '你已经在护着' + w.name + '了' };
+      var months = d.guardMonths == null ? 3 : d.guardMonths;
+      var per = Math.max(1, Math.round(rec.pop * (d.guardGrainPerPop == null ? 2 : d.guardGrainPerPop)));
+      var cost = per * months;
+      var co = GAME.currentCity ? GAME.currentCity() : city;
+      if (!co) return { ok: false, msg: '没有可支付的城市' };
+      co.res = co.res || {};
+      if ((co.res.grain || 0) < cost) {
+        return { ok: false, msg: '粮不够：护' + w.name + ' ' + months + ' 个月要 '
+          + U.numText(cost, 0) + ' 粮（现有 ' + U.numText(co.res.grain || 0, 0) + '）' };
+      }
+      co.res.grain -= cost;
+      rec.guardAt = V.monthNow() + months;
+      rec.mood = Math.min(100, rec.mood + 25);
+      rec.at = Date.now();
+      if (R()) R().add('mercy', R().W.guardVillage);
+      return { ok: true, cost: cost, months: months,
+        msg: '给' + w.name + '送去 ' + U.numText(cost, 0) + ' 粮，护它 ' + months + ' 个月'
+          + '　· 他们会记住这件事' };
+    }
+
+    /* ---------- 抢 ---------- */
+    if (mode === 'raid') {
+      var co2 = GAME.currentCity ? GAME.currentCity() : city;
+      if (!co2) return { ok: false, msg: '没有可存放物资的城市' };
+      var loot = Math.max(10, Math.round(rec.pop * (d.raidLootPerPop == null ? 3 : d.raidLootPerPop)));
+      var keys = ['grain', 'wood', 'stone', 'iron'];
+      var each = Math.max(1, Math.round(loot / keys.length));
+      co2.res = co2.res || {};
+      keys.forEach(function (k) { co2.res[k] = (co2.res[k] || 0) + each; });
+      var loss = Math.max(1, Math.round(rec.pop * 0.2));
+      rec.pop = Math.max(0, rec.pop - loss);
+      rec.mood = 0;
+      rec.guardAt = 0;
+      rec.at = Date.now();
+      if (R()) R().add('cruelty', R().W.raidVillage);
+      var fled = false;
+      if (rec.pop < 1 || (d.fleeOnRaid && rec.mood <= 0)) {
+        /* 被抢过的村子待不住 —— 整个迁走，地图上留下一座空村 */
+        rec.dead = 'fled';
+        fled = true;
+      }
+      return { ok: true, loot: each, fled: fled,
+        msg: '抢了' + w.name + '：粮木石铁各 +' + U.numText(each, 0)
+          + (fled ? '　· 第二天，村子空了。他们连夜走了。' : '　· 他们记住了你的旗子') };
+    }
+
+    return { ok: false, msg: '未知的方式' };
+  };
+
+  /* ---------- 月推进 ---------- */
+  V.monthNow = function () {
+    var C = (GAME.DATA && GAME.DATA.CALENDAR) || {};
+    var spm = (C.secPerYear || 57600) / 12;
+    var st = GAME.state || {};
+    return Math.floor(((st.world && st.world.elapsed) || 0) / spm);
+  };
+
+  /* ============================================================
+   * tick —— 每月一次：**世界自己在流失**
+   * ------------------------------------------------------------
+   * 这是村社与营地最本质的差别：营地是静止的地标，村社**会死**。
+   *   · 寒潮      −1.5%/月（粮不够，人走）
+   *   · 势力压境  −2.0%/月（军阀抢粮抓人）
+   *   · 你在保护  +0.5%/月（你给的粮）
+   *   · 名声      ±（屠夫治下的人跑，仁名之下有人来投）
+   *   · 自然繁衍  +0.2%/月
+   * 玩家什么都不做，这个世界会**越来越少人**。
+   * 这不是惩罚，是"重建"这件事之所以有意义的原因。
+   * ============================================================ */
+  V.tick = function (force) {
+    var st = GAME.state;
+    if (!st) return { changed: 0 };
+    var m = V.monthNow();
+    /* ⚠️ 判"有没有初始化过"必须用 == null，不能用 `!st.villageMonth` ——
+       月份 0 是合法值（开局就是第 0 个月），用 `!` 会把它当成"还没开始"，
+       于是**整个第一个月永远不推演**（测试 §306⑧ 抓到的就是这个）。 */
+    var has = (st.villageMonth != null);
+    if (!force && has && st.villageMonth === m) return { changed: 0, month: m };
+    if (!has) { st.villageMonth = m; return { changed: 0, month: m, first: true }; }
+    st.villageMonth = m;
+
+    var d = D();
+    var cold = !!(GAME.coldActiveOf && GAME.coldActiveOf());
+    var list = V.list();
+    var changed = 0, died = 0;
+
+    for (var i = 0; i < list.length; i++) {
+      var ci = list[i];
+      if (!V.isKnown(ci)) continue;             /* 不知道的地方不推演（也不该显示变化） */
+      var rec = V.get(ci);
+      if (!rec || rec.dead) continue;
+
+      /* ⚠️ 全部用 `+=`：DATA.VILLAGE 里的 coldPerMonth / factionPerMonth
+         **本身就是负数**（语义是"每月 −1.5%"，写表的人一眼看得出是减）。
+         这里若再写 `-=`，两个负号会抵成一个正数 —— 寒潮里人口反而涨
+         （§306⑧ 抓到的就是这个：200 人寒潮一个月变成 203）。 */
+      var rate = (d.growPerMonth == null ? 0.002 : d.growPerMonth);
+      /* v93.3：医疗档案 → 寒潮里死的人少一半（"下次瘟疫不死那么多人"）。
+         这是那趟拓荒唯一的意义，所以必须真的落到 tick 上。 */
+      if (cold) rate += (d.coldPerMonth == null ? -0.015 : d.coldPerMonth)
+        * ((GAME.convoy && GAME.convoy.medMul) ? GAME.convoy.medMul() : 1);
+      if (GAME.faction && GAME.faction.controlOf && GAME.faction.controlOf(ci)) {
+        rate += (d.factionPerMonth == null ? -0.02 : d.factionPerMonth);
+      }
+      if (rec.guardAt > 0) {
+        if (rec.guardAt > m) rate += (d.guardPerMonth == null ? 0.005 : d.guardPerMonth);
+        else rec.guardAt = 0;                   /* 护期结束，无声地结束（不弹窗） */
+      }
+      if (R()) rate += R().driftPerMonth();
+
+      var before = rec.pop;
+      rec.pop = rec.pop * (1 + rate);
+      if (rec.pop < 1) {
+        rec.pop = 0;
+        rec.dead = 'died';
+        died++;
+      } else if (Math.abs(rec.pop - before) >= 0.5) {
+        changed++;
+      }
+    }
+    return { changed: changed, died: died, month: m, cold: cold };
+  };
+
+  /* 一行摘要（面板/地块信息条用） */
+  V.lineOf = function (ci) {
+    var w = V.at(ci);
+    if (!w) return '';
+    if (!V.isKnown(ci)) return '（未探明）';
+    var rec = V.get(ci);
+    if (!rec) return w.name;
+    if (rec.dead === 'fled') return w.name + ' · 空村（他们走了）';
+    if (rec.dead) return w.name + ' · 荒废（没人了）';
+    var mood = rec.mood >= 60 ? '亲你' : rec.mood >= 30 ? '中立' : '戒备';
+    return w.name + ' · ' + U.numText(Math.round(rec.pop), 0) + ' 人 · ' + mood
+      + (rec.guardAt > 0 ? ' · 🛡 你护着' : '');
+  };
+
+  /* 存档：state.villages 跟着 state 走 */
+})();
+
+/* ---- convoy.js ---- */
+/* ============================================================
+ * convoy.js — 拓荒队：**用这一代人，换下一代人能活**
+ * ------------------------------------------------------------
+ * 提案第 294~307 行（八.3）：
+ *   「在废土语境里，死亡最崇高的交换不是资源，是
+ *     **用这一代人，换下一代人能活。**」
+ *
+ *     派出去找什么 | 他们可能死 | 但换来
+ *     种子库       | 是        | 城市明年有粮
+ *     旧时代图纸   | 是        | 城里有电了
+ *     医疗档案     | 是        | 下次瘟疫不死那么多人
+ *
+ * 这条线一直没落地。现有所有"探索"都不死人：
+ *   侦查（不接战）· 自动探路 · 遗迹翻找 · 营地交涉 ——
+ * 地图是点亮了，但**没有任何一次是用命换来的**。
+ *
+ * ⚠️ 三条硬规则（缺一条这套就不成立）：
+ *   ① **带走的必须是人**，不是兵。兵是资产，人是这个世界的存量。
+ *   ② **死了就真死了** —— 进阵亡名录，不返场，不复活。
+ *   ③ **带回来的不能用资源替代** —— 能拿钱买的东西，就不是"用命换"。
+ *
+ * ⚠️ 刻意不做：
+ *   · 不做"成功率抽奖"的纯赌。风险是**看得见**的（距离/目标/人数都摊在面板上），
+ *     玩家是在做取舍，不是点老虎机。
+ *   · 不给"全灭"加戏剧化弹窗。人没回来就是没回来，一行字。
+ * ============================================================ */
+(function () {
+  'use strict';
+  var GAME = window.GAME = window.GAME || {};
+  var CV = GAME.convoy = {};
+  var U = GAME.utils;
+
+  function SP() { return GAME.mapSphere || GAME.sphere; }
+  function D() { return (GAME.DATA && GAME.DATA.CONVOY) || {}; }
+
+  function h(ci, salt) {
+    var x = (ci * 2654435761 + salt * 40503) >>> 0;
+    x ^= x >>> 13; x = (x * 1274126177) >>> 0; x ^= x >>> 16;
+    return (x >>> 0) / 4294967296;
+  }
+
+  /* 已拿到的永久物（累计次数） */
+  CV.got = function () {
+    var s = GAME.state;
+    if (!s) return {};
+    if (!s.convoyGot) s.convoyGot = {};
+    return s.convoyGot;
+  };
+  CV.done = function () {
+    var s = GAME.state;
+    if (!s) return {};
+    if (!s.convoyDone) s.convoyDone = {};
+    return s.convoyDone;
+  };
+
+  CV.nOf = function (kind) { return CV.got()[kind] | 0; };
+
+  /* ============================================================
+   * 目标：一处具体的旧世界设施
+   * ------------------------------------------------------------
+   * 位置是**哈希固定的**（同一颗球永远是同一处），
+   * 所以玩家可以记住"东北边那个变电站还没去"。
+   * 每处只能去一次 —— 拿空了就是拿空了。
+   * ============================================================ */
+  CV.targetOf = function (kind) {
+    var s = SP(), st = GAME.state;
+    if (!s || !s.cells || !st) return null;
+    var sd = (s.seed3 ? s.seed3() : 0) | 0;
+    var kinds = D().kinds || [];
+    var kh = 0, i;
+    for (i = 0; i < kinds.length; i++) { if (kinds[i].id === kind) kh = 1000 + i; }
+    if (!kh) return null;
+
+    var home = GAME.currentCity ? GAME.currentCity() : null;
+    if (!home || home.ci == null) return null;
+
+    /* 在"离城 12~70 格"的陆地里，找哈希最高的一格 —— 不遍历全图，
+       用等距采样：从全图里按 seed 抽 400 个候选，挑最像的那一处。 */
+    var n = s.cells.length;
+    var best = null, bestScore = -1;
+    for (i = 0; i < 400; i++) {
+      var ci = Math.floor(h(i, sd + kh) * n) % n;
+      var cell = s.cells[ci];
+      if (!cell) continue;
+      if (cell.type === 'sea' || cell.type === 'ocean') continue;
+      var dist = s.distOf ? s.distOf({ ci: home.ci }, { ci: ci }) : 30;
+      if (dist < 12 || dist > 70) continue;
+      var score = h(ci, sd + kh + 7) - Math.abs(dist - 38) / 200;   /* 越接近 38 格越可能是它 */
+      if (score > bestScore) { bestScore = score; best = { ci: ci, dist: dist }; }
+    }
+    if (!best) return null;
+
+    var def = null;
+    for (i = 0; i < kinds.length; i++) if (kinds[i].id === kind) def = kinds[i];
+    if (!def) return null;
+
+    return {
+      kind: kind, ci: best.ci, dist: best.dist,
+      name: def.name, icon: def.icon, gainName: def.gainName,
+      hard: def.hard || 0,
+      cleared: !!CV.done()[kind + '@' + best.ci]
+    };
+  };
+
+  /* 全部目标（面板列表用） */
+  CV.targets = function () {
+    var kinds = D().kinds || [];
+    var out = [];
+    for (var i = 0; i < kinds.length; i++) {
+      var t = CV.targetOf(kinds[i].id);
+      if (t) out.push(t);
+    }
+    return out;
+  };
+
+  /* ============================================================
+   * riskOf —— 风险**摊开算**，不藏
+   * ------------------------------------------------------------
+   * 不做"30% 成功率"这种黑盒：死的比例是算得出来的，
+   * 玩家自己决定值不值。这就是"可预判"。
+   * ============================================================ */
+  CV.riskOf = function (t, sent) {
+    if (!t) return 1;
+    var d = D();
+    var base = d.baseRisk == null ? 0.12 : d.baseRisk;
+    var perTile = d.riskPerTile == null ? 0.006 : d.riskPerTile;
+    var r = base + t.dist * perTile + (t.hard || 0);
+    /* 人多能压风险，但压不到零（下限 25% 的死亡比例封底） */
+    var crew = d.crewRelief == null ? 0.35 : d.crewRelief;
+    var relief = Math.min(crew, (sent || 100) / 3000);
+    return Math.max(0.04, r * (1 - relief));
+  };
+
+  /* 预计伤亡（面板直接显示这个数，不是百分比） */
+  CV.deadEstimateOf = function (t, sent) {
+    return Math.max(1, Math.round((sent || 100) * CV.riskOf(t, sent)));
+  };
+
+  /* ============================================================
+   * send —— 派出去
+   * ------------------------------------------------------------
+   * o = { kind, sent }
+   * 返回 { ok, dead, back, gain, msg }
+   *
+   * ⚠️ 人从**城市人口**里扣（city.pop），不是从兵里扣。
+   *    死了进 GAME.memorial（名录），不返场。
+   * ============================================================ */
+  CV.send = function (kind, sent) {
+    var st = GAME.state;
+    if (!st) return { ok: false, msg: '无存档' };
+    var t = CV.targetOf(kind);
+    if (!t) return { ok: false, msg: '找不到这个方向的目标' };
+    if (t.cleared) return { ok: false, msg: t.name + '已经被搬空了' };
+
+    var city = GAME.currentCity ? GAME.currentCity() : null;
+    if (!city) return { ok: false, msg: '没有出发的城市' };
+    sent = Math.max(20, Math.round(sent || 100));
+    if ((city.pop || 0) < sent) {
+      return { ok: false, msg: '人口不够：要带 ' + sent + ' 人，城里只有 ' + Math.round(city.pop || 0) };
+    }
+
+    var d = D();
+    var risk = CV.riskOf(t, sent);
+    var dead = Math.min(sent, Math.max(1, Math.round(sent * risk)));
+    var back = sent - dead;
+
+    city.pop = Math.max(0, (city.pop || 0) - sent);          /* 人走了 */
+    CV.done()[kind + '@' + t.ci] = 1;                        /* 这处清空了 */
+
+    /* 全灭：一个人都没回来 —— 东西也没带回来 */
+    if (back <= 0) {
+      CV._bury(sent, t, city, true);
+      return { ok: true, dead: sent, back: 0, gain: null, wiped: true,
+        msg: '去' + t.name + '的 ' + sent + ' 人，一个都没回来。' };
+    }
+
+    /* 有人回来 → 带回东西。回来的人越多，拿得越全（三档） */
+    var rate = back / sent;
+    var tiers = d.gainTiers || [{ at: 0.7, mul: 1 }, { at: 0.4, mul: 0.6 }, { at: 0, mul: 0.3 }];
+    var mul = 0.3;
+    for (var i = 0; i < tiers.length; i++) { if (rate >= tiers[i].at) { mul = tiers[i].mul; break; } }
+    var got = CV.got();
+    got[kind] = (got[kind] | 0) + mul;
+
+    CV._bury(dead, t, city, false);
+
+    /* 回城的人会留在人口里（他们还是人，只是老了、残了、不肯再出门） */
+    city.pop = (city.pop || 0) + back;
+
+    return { ok: true, dead: dead, back: back, mul: mul, gain: t.gainName,
+      msg: '去' + t.name + '的 ' + sent + ' 人回来了 ' + back + ' 个，'
+        + '带回 ' + t.gainName + (mul < 1 ? '（只有一部分）' : '（完整的）')
+        + '。没回来的 ' + dead + ' 个人，名字刻在墙上了。' };
+  };
+
+  /* 进阵亡名录（复用 memorial 的唯一出口，不另建一套记账） */
+  CV._bury = function (dead, t, city, wiped) {
+    if (!dead || !GAME.memorial) return;
+    var army = {};
+    army.pingmin = dead;
+    try {
+      GAME.memorial.record({
+        sent: army, back: {}, wounded: {},
+        place: t.name, ci: t.ci, win: false, mode: 'convoy',
+        gen: null, note: wiped ? '拓荒队全灭' : '拓荒队'
+      });
+    } catch (e) { /* 名录失败不阻断（人已经走了，账不能倒回去） */ }
+  };
+
+  /* ============================================================
+   * 永久效果 —— 四个出口，都在别处被消费
+   * ------------------------------------------------------------
+   * 这些是**唯一**不能拿资源换的东西，所以每条都必须真的生效，
+   * 否则"用命换"这句话就是假的。
+   * ============================================================ */
+
+  /* ① 种子库 → 粮产（每次 +6%，最多 3 次 = +18%） */
+  CV.seedMul = function () {
+    var n = Math.min(3, CV.nOf('seed'));
+    return 1 + n * 0.06;
+  };
+
+  /* ② 广播塔 → 视野半径 +1（每次 +1，最多 +2） */
+  CV.radioPlus = function () {
+    return Math.min(2, Math.floor(CV.nOf('radio')));
+  };
+
+  /* ③ 医疗档案 → 寒潮/疫年的人口流失减半 */
+  CV.medMul = function () {
+    return CV.nOf('med') > 0 ? 0.5 : 1;
+  };
+
+  /* ④ 农具图纸 → 营地/村社愿意跟你走的人 +15%（每次 +15%，最多 +45%） */
+  CV.toolMul = function () {
+    return 1 + Math.min(3, Math.floor(CV.nOf('tool'))) * 0.15;
+  };
+
+  /* 一行摘要（面板顶部） */
+  CV.lineOf = function () {
+    var seg = [];
+    if (CV.nOf('seed') > 0) seg.push('种子库 ×' + CV.nOf('seed').toFixed(1) + '（粮产 +' + Math.round((CV.seedMul() - 1) * 100) + '%）');
+    if (CV.nOf('med') > 0) seg.push('医疗档案（寒潮伤亡减半）');
+    if (CV.nOf('radio') > 0) seg.push('广播塔（视野 +' + CV.radioPlus() + '）');
+    if (CV.nOf('tool') > 0) seg.push('农具图纸（招募 +' + Math.round((CV.toolMul() - 1) * 100) + '%）');
+    if (!seg.length) return '还没有任何一支拓荒队回来过。这东西只能派人去拿，买不到。';
+    return seg.join(' · ');
+  };
+})();
+
 /* ---- camp.js ---- */
 /* ============================================================
  * camp.js — 幸存者营地（v92.4 / v93 第一块）
@@ -26390,7 +27204,12 @@ window.GAME = window.GAME || {};
       var city = C.cityNearOf(ci);
       if (!city) return { ok: false, msg: '附近没有己方城市' };
       /* v92.8：年景（B5）—— 丰年多来三成，疫年闭门。风声与年景相乘。 */
-      var mul = C.waryMul() * (GAME.yearMulOf ? GAME.yearMulOf('campMul') : 1);
+      /* v93.3：农具图纸（拓荒队带回的）→ 招得到更多人。
+         v93.1：名声 → 屠夫招不到人（他们听说了），仁名有人主动跟来。 */
+      var mul = C.waryMul()
+        * (GAME.yearMulOf ? GAME.yearMulOf('campMul') : 1)
+        * (GAME.convoy && GAME.convoy.toolMul ? GAME.convoy.toolMul() : 1)
+        * (GAME.renown ? GAME.renown.willFollow() : 1);
       var n = Math.max(1, Math.round(w.pop * mul));
       /* 人口走既有出口：直接加到存量的 pop（不超上限）*/
       var cap = GAME.effPopCapOf ? GAME.effPopCapOf(city) : (GAME.maxPopOf ? GAME.maxPopOf(city) : 0);
@@ -26411,6 +27230,9 @@ window.GAME = window.GAME || {};
       rec.mode = 'raid';
       rec.at = Date.now();
       st.campRaids = (st.campRaids || 0) + 1;
+      /* v93.1：洗劫进"名声"总账 —— 以前它只影响营地这一个局部乘数，
+         现在世界会记住（纳贡要多付、村社不愿跟你走）。 */
+      if (GAME.renown) GAME.renown.add('cruelty', GAME.renown.W.raidCamp);
       /* 资源按品类平摊，走既有资源出口 */
       var keys = ['grain', 'wood', 'stone', 'iron'];
       var per = Math.max(1, Math.round((w.loot || 0) / keys.length));
@@ -26823,9 +27645,12 @@ window.GAME = window.GAME || {};
     for (var i = 0; i < arr.length; i++) if (arr[i].id === fid) f = arr[i];
     if (!f) return null;
     var per = cfg().tributePerR || { grain: 200, iron: 100 };
+    /* v93.1：你是什么人，价钱不一样 —— 屠夫要先付（他们不信你会守约），
+       仁名可以少付（他们赌你不会反悔）。这是名声在"外交"上的唯一落点。 */
+    var _pm = (GAME.renown && GAME.renown.priceMul) ? GAME.renown.priceMul() : 1;
     return {
-      grain: Math.max(100, Math.round((per.grain || 200) * f.r)),
-      iron: Math.max(50, Math.round((per.iron || 100) * f.r))
+      grain: Math.max(100, Math.round((per.grain || 200) * f.r * _pm)),
+      iron: Math.max(50, Math.round((per.iron || 100) * f.r * _pm))
     };
   };
 
@@ -27486,7 +28311,13 @@ window.GAME = window.GAME || {};
   /* v91.33（性能）：版本戳（把 M.render 里的内联拼串抽出，预建时可预盖）。 */
   M._pverOf = function () { return (SP.seed3 ? SP.seed3() : 0) + '|' + (SP.sub || 0) + '|' + (SP.PLANET ? JSON.stringify(SP.PLANET) : ''); };
   M._mkVerOf = function () { return (((GAME.mapSliceOf && GAME.mapSliceOf()) || {}).cities || []).map(function (c) { return c.id + ':' + c.x + ',' + c.y; }).join('|') + '#' + _tileSub; };
-  M._flVerOf = function () { var sl = (GAME.mapSliceOf && GAME.mapSliceOf()) || {}; var fp = Object.keys(sl.forts || {}).sort().join(','); var wp = (sl.wilds || []).map(function (w) { return w.ci; }).sort(function (a, b) { return a - b; }).join('|'); var _ck = ''; if (GAME.camp && GAME.camp.found) { var cf = GAME.camp.found(); var n = 0, dm = 0; Object.keys(cf).forEach(function (k) { n++; if (cf[k].mode) dm++; }); _ck = '#c' + n + '/' + dm; } if (GAME.ruin && GAME.ruin.found) { var rf = GAME.ruin.found(); var rn = 0, rd = 0; Object.keys(rf).forEach(function (k) { rn++; if (rf[k].side) rd++; }); _ck += '#r' + rn + '/' + rd; } return fp + '#' + wp + '#' + _tileSub + '#' + (GAME.memorial ? GAME.memorial.total() : 0) + _ck; };
+  M._flVerOf = function () { var sl = (GAME.mapSliceOf && GAME.mapSliceOf()) || {}; var fp = Object.keys(sl.forts || {}).sort().join(','); var wp = (sl.wilds || []).map(function (w) { return w.ci; }).sort(function (a, b) { return a - b; }).join('|'); var _ck = ''; if (GAME.camp && GAME.camp.found) { var cf = GAME.camp.found(); var n = 0, dm = 0; Object.keys(cf).forEach(function (k) { n++; if (cf[k].mode) dm++; }); _ck = '#c' + n + '/' + dm; } if (GAME.ruin && GAME.ruin.found) { var rf = GAME.ruin.found(); var rn = 0, rd = 0; Object.keys(rf).forEach(function (k) { rn++; if (rf[k].side) rd++; }); _ck += '#r' + rn + '/' + rd; }
+      /* v93.2：村社——活着几处、护着几处、空了几处（任一变化都要重建标记） */
+      if (GAME.state && GAME.state.villages) {
+        var _vva = GAME.state.villages, _vn = 0, _vg = 0, _vd = 0;
+        Object.keys(_vva).forEach(function (k) { _vn++; if (_vva[k].guardAt > 0) _vg++; if (_vva[k].dead) _vd++; });
+        _ck += '#v' + _vn + '/' + _vg + '/' + _vd;
+      } return fp + '#' + wp + '#' + _tileSub + '#' + (GAME.memorial ? GAME.memorial.total() : 0) + _ck; };
   M._arVerOf = function () { var sl = (GAME.mapSliceOf && GAME.mapSliceOf()) || {}; return (sl.marches || []).map(function (m) { return m.id + ':' + m.cityId + '>' + m.tci; }).join('|') + '#' + _tileSub; };
   /* v91.33：**后台预建**全场景（进游戏后调用）—— 含**全部版本戳**（否则首次 M.render 会全量重建）。
      v91.35：拆成**可分段**的步骤（`preloadSteps`）—— 每段之间让出事件循环，避免一次性同步阻塞主线程。
@@ -28348,6 +29179,26 @@ window.GAME = window.GAME || {};
         grp.add(mesh);
       });
     }
+    /* v93.2：**村社** —— 废土上还有别人在活。
+       与营地/遗迹不同：它们不需要"发现"动作，探明就看得见（人住在那里是明显的）。
+       暖白＝有人 · 亮绿＝你护着 · 暗灰＝空村（他们走了）。 */
+    if (GAME.village && GAME.village.list) {
+      var _vl = GAME.village.list();
+      for (var _vi = 0; _vi < _vl.length; _vi++) {
+        var _vci = _vl[_vi];
+        var _vc = _tileCells[_vci];
+        if (!_vc || !_vc.pos) continue;
+        if (GAME.fog && GAME.fog.get(_vci) <= 0) continue;
+        var _vr = GAME.village.peek(_vci);
+        var _vcol = (_vr && _vr.dead) ? 0x4a4a4a
+          : ((_vr && _vr.guardAt > 0) ? 0x9be36a : 0xd9c98a);
+        var _vP = _vc.pos, _vL = Math.hypot(_vP[0], _vP[1], _vP[2]) || 1, _vlf = 3.6;
+        var _vm = new THREE.Mesh(new THREE.SphereGeometry(2.2, 8, 8),
+          new THREE.MeshBasicMaterial({ color: _vcol }));
+        _vm.position.set(_vP[0] + _vP[0] / _vL * _vlf, _vP[1] + _vP[1] / _vL * _vlf, _vP[2] + _vP[2] / _vL * _vlf);
+        grp.add(_vm);
+      }
+    }
     /* v92.7：已发现的旧世界遗迹 —— 青珠（待翻）/ 暗青（已翻） */
     if (GAME.ruin && GAME.ruin.found) {
       var _rf = GAME.ruin.found();
@@ -28780,6 +29631,9 @@ window.GAME = window.GAME || {};
       /* v92.4：已发现的营地**优先于野地** —— 同一格上，营地才是这一带真正的事。
          没发现的营地不拦（照旧按野地处理），免得"点了没反应"。 */
       else if (GAME.camp && GAME.camp.isFound(ci) && ui.openCampModal) ui.openCampModal(ci);
+      /* v93.2：村社排在营地之后 —— 营地是"这一次要什么"，村社是"你是什么人"，
+         先处理一次性的事件，再处理长期的关系。 */
+      else if (GAME.village && GAME.village.at && GAME.village.at(ci) && GAME.village.isKnown(ci) && ui.openVillageModal) ui.openVillageModal(ci);
       /* v92.7：遗迹排在营地之后 —— 同一格两者都有时，先给"人"（营地），
          因为人是活的、遗迹是死的，先处理活的那一头。 */
       else if (GAME.ruin && GAME.ruin.isFound(ci) && ui.openRuinModal) ui.openRuinModal(ci);
@@ -46912,6 +47766,33 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
     var th = F.threatOf();
     var Y = GAME.yearOf ? GAME.yearOf() : null;
     var h = '<div style="margin:0 0 10px;padding:8px 10px;border:1px solid var(--wood-light);border-radius:4px;">';
+    /* ============================================================
+     * v93.1~3：**这个世界还剩什么**
+     * ------------------------------------------------------------
+     * 放在最上面一行，因为它是这一屏最该被看见的数字：
+     *   不是"我有多少兵"，是"还有几处人家、多少人活着"。
+     * 玩家做的每个决定（抢/护/征召/派人出去）都在改这三个数。
+     * ============================================================ */
+    (function () {
+      var vs = (GAME.village && GAME.village.statsOf) ? GAME.village.statsOf() : null;
+      var rn = GAME.renown ? GAME.renown.tier() : null;
+      if (!vs && !rn) return;
+      h += '<div style="font-size:var(--fs-cap);line-height:1.7;margin-bottom:6px;'
+        + 'padding-bottom:6px;border-bottom:1px dashed var(--wood-light);">';
+      if (vs) {
+        h += '<span style="color:var(--gold-light);">🏘 还有 <b>' + vs.alive + '</b> 处村社 · 约 '
+          + U.numText(vs.pop, 0) + ' 人活着</span>'
+          + (vs.dead ? ('　<span style="color:var(--text-dim);">已空 ' + vs.dead + ' 处</span>') : '')
+          + '<br>';
+      }
+      if (rn) {
+        h += '<span style="color:var(--text-dim);">👤 外面怎么看你：<b>' + U.escape(rn.name) + '</b>　'
+          + U.escape(rn.note) + '</span>';
+      }
+      h += '<br><button class="btn" style="font-size:var(--fs-cap);padding:1px 8px;margin-top:3px;"'
+        + ' data-action="open-convoy">🚚 拓荒队（派人去拿买不到的东西）</button>';
+      h += '</div>';
+    })();
     /* v92.8：年景（B5）—— 今年是什么年，直接写在世界态势上面一行 */
     if (Y) {
       h += '<div style="font-size:var(--fs-cap);color:var(--text-dim);margin-bottom:4px;">'
@@ -51895,6 +52776,109 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
         + (mul < 0.999 ? '（现在只剩 ' + Math.round(mul * 100) + '%）' : '（目前还没有人知道你的名声）')
         + '。</div>';
     }
+    h += '</div><div class="panel-foot"><button class="btn" data-action="close-modal">关闭</button></div>';
+    ui.openModal(h);
+  };
+
+  /* ============================================================
+   * v93.2：村社面板 —— 废土上还有别人在活
+   * ------------------------------------------------------------
+   * 三个按钮就是三种"你打算当什么人"：
+   *   征召（要人，不算恶） / 保护（给粮，记恩） / 抢（拿物资，记仇）
+   * 面板把**每种做法的后果**都摊开写，不藏 —— 藏了就成了抽卡。
+   * ============================================================ */
+  ui.openVillageModal = function (ci) {
+    var V = GAME.village;
+    if (!V) return;
+    var w = V.at(ci);
+    if (!w) { ui.toast('这里没有村社'); return; }
+    if (!V.isKnown(ci)) { ui.toast('你还不知道这里有人住'); return; }
+    var rec = V.get(ci);
+    if (!rec) { ui.toast('这里没有村社'); return; }
+    var d = (GAME.DATA && GAME.DATA.VILLAGE) || {};
+    var h = '<div class="gold-heading">🏘 ' + U.escape(w.name) + '　<span style="font-size:var(--fs-cap);color:var(--text-dim);">' + U.escape(w.tierName) + '</span></div>';
+    h += '<div class="panel-body">';
+
+    if (rec.dead) {
+      h += '<div class="q-empty">'
+        + (rec.dead === 'fled'
+          ? '空了。他们把能带的都带走了，门框上还留着挂过东西的印子。'
+          : '没人了。屋顶塌了一半，风从里面穿过去。')
+        + '</div>';
+    } else {
+      var moodText = rec.mood >= 60 ? '他们认得你的旗子，会点头' : rec.mood >= 30 ? '他们不冷不热地看着你' : '他们把孩子往身后藏';
+      h += '<div class="exp-info exp-info-l">' + U.numText(Math.round(rec.pop), 0) + ' 人住在这里。' + moodText + '。</div>';
+      if (rec.guardAt > 0) {
+        h += '<div style="font-size:var(--fs-cap);color:var(--green-ok);margin-top:4px;">🛡 你护着这里（剩 ' + Math.max(0, rec.guardAt - V.monthNow()) + ' 个月）</div>';
+      }
+      var will = (GAME.renown ? GAME.renown.willFollow() : 1) * ((GAME.convoy && GAME.convoy.toolMul) ? GAME.convoy.toolMul() : 1);
+      var canCall = Math.max(1, Math.round(rec.pop * (d.callRate == null ? 0.3 : d.callRate) * will));
+      var guardCost = Math.max(1, Math.round(rec.pop * (d.guardGrainPerPop == null ? 2 : d.guardGrainPerPop))) * (d.guardMonths == null ? 3 : d.guardMonths);
+      var loot = Math.max(10, Math.round(rec.pop * (d.raidLootPerPop == null ? 3 : d.raidLootPerPop)));
+      h += '<div style="display:flex;gap:10px;margin:12px 0;flex-wrap:wrap;">';
+      h += '<button class="btn" data-action="village-act" data-ci="' + ci + '" data-vm="call"'
+        + (rec.mood <= 20 ? ' disabled' : '') + '>👥 征召（带走 ' + U.numText(canCall, 0) + ' 人）</button>';
+      h += '<button class="btn" data-action="village-act" data-ci="' + ci + '" data-vm="guard"'
+        + (rec.guardAt > 0 ? ' disabled' : '') + '>🛡 保护（' + U.numText(guardCost, 0) + ' 粮 / '
+        + (d.guardMonths == null ? 3 : d.guardMonths) + ' 个月）</button>';
+      h += '<button class="btn" data-action="village-act" data-ci="' + ci + '" data-vm="raid">🔥 抢（粮木石铁各 +'
+        + U.numText(Math.round(loot / 4), 0) + '）</button>';
+      h += '</div>';
+      h += '<div style="font-size:var(--fs-cap);color:var(--text-dim);line-height:1.6;">'
+        + '· 征召：带走三成人。他们不会拦你，但也不会送你。<br>'
+        + '· 保护：给粮，他们的态度会变好；粮一断，护期就结束（不弹窗、不提醒）。<br>'
+        + '· 抢：物资最多，但这一村**会散** —— 第二天就空了。名声也会跟着走。<br>'
+        + '<span style="color:var(--gold-light);">这三种都收不回来。</span></div>';
+    }
+    h += '</div><div class="panel-foot"><button class="btn" data-action="close-modal">关闭</button></div>';
+    ui.openModal(h);
+  };
+
+  /* ============================================================
+   * v93.3：拓荒队面板 —— 用这一代人，换下一代人能活
+   * ------------------------------------------------------------
+   * 风险是**算出来的、写出来的**（距离/目标/人数都摆着），
+   * 玩家不是在抽奖，是在决定"这 300 个人值不值一趟"。
+   * ============================================================ */
+  ui.openConvoyModal = function () {
+    var CV = GAME.convoy;
+    if (!CV) return;
+    var city = GAME.currentCity();
+    var pop = city ? Math.round(city.pop || 0) : 0;
+    var h = '<div class="gold-heading">🚚 拓荒队</div>';
+    h += '<div class="panel-body">';
+    h += '<div class="exp-info exp-info-l">'
+      + '带出去的是<b>人</b>，不是兵。他们可能回不来 —— 但带回来的东西，<b>买不到</b>。</div>';
+    h += '<div style="font-size:var(--fs-cap);color:var(--gold-light);margin:8px 0;">已到手：'
+      + U.escape(CV.lineOf()) + '</div>';
+    h += '<div style="font-size:var(--fs-cap);color:var(--text-dim);margin-bottom:6px;">'
+      + '城里现有人口：<b>' + U.numText(pop, 0) + '</b></div>';
+
+    var ts = CV.targets();
+    if (!ts.length) {
+      h += '<div class="q-empty">还没有可去的地方。先往远处探一探。</div>';
+    }
+    ts.forEach(function (t) {
+      h += '<div style="border-top:1px solid var(--wood-light);padding:8px 0;">';
+      h += '<div><b>' + t.icon + ' ' + U.escape(t.name) + '</b>'
+        + '<span style="color:var(--text-dim);font-size:var(--fs-cap);">　距离 ' + t.dist + ' 格 · 带回「'
+        + U.escape(t.gainName) + '」</span></div>';
+      if (t.cleared) {
+        h += '<div style="font-size:var(--fs-cap);color:var(--text-dim);margin-top:4px;">已经搬空了。</div>';
+      } else {
+        var d100 = CV.deadEstimateOf(t, 100), d300 = CV.deadEstimateOf(t, 300);
+        h += '<div style="font-size:var(--fs-cap);color:var(--text-dim);margin-top:3px;">'
+          + '派 100 人：预计回不来的 <' + d100 + ' 人　·　派 300 人：预计 <' + d300 + ' 人'
+          + '（人越多，死的比例越低，但死的总数更多）</div>';
+        h += '<div style="margin-top:5px;display:flex;gap:6px;flex-wrap:wrap;">'
+          + '<button class="btn" data-action="convoy-send" data-ck="' + t.kind + '" data-n="100">派 100</button>'
+          + '<button class="btn" data-action="convoy-send" data-ck="' + t.kind + '" data-n="300">派 300</button>'
+          + '<button class="btn" data-action="convoy-send" data-ck="' + t.kind + '" data-n="600">派 600</button>'
+          + '</div>';
+      }
+      h += '</div>';
+    });
+
     h += '</div><div class="panel-foot"><button class="btn" data-action="close-modal">关闭</button></div>';
     ui.openModal(h);
   };
@@ -57696,6 +58680,9 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
 
 
 
+
+
+
 (function () {
   var GAME = window.GAME = window.GAME || {};
   var ui = GAME.ui;
@@ -59015,6 +60002,10 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
       /* v92.17：结盟 / 挑拨（B2 补完） */
       case 'faction-ally': GAME.doFactionAlly(el.getAttribute('data-fid')); break;
       case 'faction-incite': GAME.doFactionIncite(el.getAttribute('data-fid')); break;
+      /* v93.2 / v93.3：村社互动 · 拓荒队出发 */
+      case 'village-act': GAME.doVillageAct(el.getAttribute('data-ci'), el.getAttribute('data-vm')); break;
+      case 'convoy-send': GAME.doConvoySend(el.getAttribute('data-ck'), el.getAttribute('data-n')); break;
+      case 'open-convoy': ui.openConvoyModal(); break;
       /* v92.14：派将挑衅一座城（赢了那城守军胆寒 24 小时） */
       case 'provoke-city': ui._provoke = null; ui.openProvoke(); break;
       case 'provoke-move': ui.openProvoke(el.getAttribute('data-mv')); break;
@@ -59630,6 +60621,28 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
     ui.toast((r.ok ? '✅ ' : '⏸ ') + r.msg);
     if (r.ok) { GAME.log(r.msg, 'sys', 'wild'); GAME.refreshAll(); }
     else GAME.refreshView();
+  };
+  /* v93.2：村社互动（征召 / 保护 / 抢）—— 三种都不可撤销 */
+  GAME.doVillageAct = function (ci, mode) {
+    var r = GAME.village && GAME.village.act ? GAME.village.act(+ci, mode) : null;
+    if (!r) { ui.toast('村社不可用'); return; }
+    ui.toast((r.ok ? '✅ ' : '⏸ ') + r.msg);
+    if (r.ok) {
+      GAME.log(r.msg, 'sys', 'wild');
+      GAME.refreshAll();
+      ui.openVillageModal(+ci);          /* 结果就在原地重绘 —— 别让玩家再点一次 */
+    } else GAME.refreshView();
+  };
+  /* v93.3：拓荒队出发 —— 走的是人，可能回不来 */
+  GAME.doConvoySend = function (kind, n) {
+    var r = GAME.convoy && GAME.convoy.send ? GAME.convoy.send(kind, Math.round(+n || 100)) : null;
+    if (!r) { ui.toast('拓荒队不可用'); return; }
+    ui.toast((r.ok ? '✅ ' : '⏸ ') + r.msg);
+    if (r.ok) {
+      GAME.log(r.msg, 'war', 'wild');
+      GAME.refreshAll();
+      ui.openConvoyModal();
+    } else GAME.refreshView();
   };
   GAME.doRuinAct = function (ci, side) {
     var r = GAME.ruin && GAME.ruin.act ? GAME.ruin.act(+ci, side) : null;
