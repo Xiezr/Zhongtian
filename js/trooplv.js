@@ -29,6 +29,15 @@
   function D() { return (GAME.DATA && GAME.DATA.TROOPLV) || {}; }
   function maxLv() { return D().maxLv || 5; }
 
+  /* v97：**这座城**的上限会被"惰性"压住（`idle.js`）。
+     "照顾得太好"的城练不出精锐 —— 这是设定灵魂那一条的落点。 */
+  function capOf(city) {
+    var top = maxLv();
+    if (GAME.idle && GAME.idle.maxLvOf) top = Math.min(top, GAME.idle.maxLvOf(city));
+    return Math.max(1, top);
+  }
+  LV.capOf = capOf;
+
   function st0() {
     var s = GAME.state;
     if (!s) return null;
@@ -42,7 +51,7 @@
     if (!s || !city) return 1;
     var m = s.troopLv[city.id];
     if (!m || !troopId) return 1;
-    return Math.max(1, Math.min(maxLv(), m[troopId] | 0 || 1));
+    return Math.max(1, Math.min(capOf(city), m[troopId] | 0 || 1));
   };
 
   /* 某城所有兵种的等级表 —— 直接喂给 `tactic.unitsOf` 的 lvMap */
@@ -68,7 +77,7 @@
   LV.costOf = function (city, troopId) {
     if (!city) return null;
     var lv = LV.of(city, troopId);
-    if (lv >= maxLv()) return null;
+    if (lv >= capOf(city)) return null;
     var n = Math.max(1, Math.floor((city.army || {})[troopId] || 0));
     var per = D().baseCostPerLv == null ? 40 : D().baseCostPerLv;
     var ladder = D().costLadder || [0, 1, 2.2, 4.2, 7.5, 12];
@@ -94,7 +103,11 @@
     var t = (GAME.DATA.TROOPS || {})[troopId];
     if (!t) return { ok: false, msg: '没有这个兵种' };
     var lv = LV.of(city, troopId);
-    if (lv >= maxLv()) return { ok: false, msg: t.name + '已经训到 ' + maxLv() + ' 级（上限）' };
+    var cap = capOf(city);
+    if (lv >= cap) {
+      var why = (cap < maxLv()) ? ('（这座城的人被照顾惯了，上限被惰性压到 Lv' + cap + '）') : '（上限）';
+      return { ok: false, msg: t.name + '已经训到 Lv' + cap + why };
+    }
     if (Math.floor((city.army || {})[troopId] || 0) <= 0) {
       return { ok: false, msg: '城里没有' + t.name + ' —— 先造一批再整训' };
     }

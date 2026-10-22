@@ -141,6 +141,15 @@
       if (tw && tw.note) add.note.push(tw.note);
     }
 
+    /* ⑤.b 惰性：打仗是最强的"必须做事"（设定：人不用做事就废了） */
+    if (GAME.idle && GAME.idle.onBattle) {
+      var fc = (GAME.city && GAME.city.byId) ? GAME.city.byId(rec.cityId) : null;
+      if (fc) {
+        var ib = GAME.idle.onBattle(fc, myTotal / Math.max(1, foeTotal));
+        if (ib && ib.drop > 0) add.note.push('勤快 +' + ib.drop);
+      }
+    }
+
     /* ⑥ 结算：战利品倍率与声望
        ⚠️ 资源**按"这一仗的规模"给**（出征兵力 × 0.15 × 超出 1 的那部分），
           不是给一个固定数 —— 否则小仗带少兵打奇袭也能拿满额外战利品。

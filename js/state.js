@@ -3768,6 +3768,7 @@ import './data.js';
       _safeTick('unrest');
       _safeTick('wonderwar');
       _safeTick('expose');
+      _safeTick('idle');        /* v97：惰性（自动化越多越懒，压兵员上限） */
     }
     /* v89.136：老档采集队迁移兜底（幂等 · 正常已被 loadGame 处理） */
     if (GAME.migrateLegacyGathers) GAME.migrateLegacyGathers();

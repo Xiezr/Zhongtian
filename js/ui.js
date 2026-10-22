@@ -8225,6 +8225,23 @@ import './state.js';
           + '不是某个人的军衔。整训要资源 + 军营等级，升上去就退不回来。</div>');
       }
 
+      /* ①.c 惰性（v97）：照顾得太好，人就废了 */
+      if (GAME.idle) {
+        var idH = cities.map(function (c) {
+          var v = Math.round(GAME.idle.of(c));
+          if (v < 8) return '';
+          return '<span class="chip" data-action="idle-work" data-cid="' + U.escape(c.id) + '"'
+            + ' title="' + U.escape('组织一次劳动（一个月一次）：降 18 点惰性，耗粮按人口算') + '">'
+            + U.escape(c.name) + ' · ' + v + '/100 · 兵员上限 Lv' + GAME.idle.maxLvOf(c) + ' · 组织劳动</span>';
+        }).join('');
+        h += sec('🧠 惰性', GAME.idle.lineOf() || '城里的人还勤快',
+          '<div class="chips" style="margin-top:5px;">' + idH + '</div>'
+          + '<div class="ui-sub" style="margin-top:4px;">'
+          + '「它会照顾到你什么都不用做，然后就没有人了。」—— '
+          + '自动化开得越多、越久没打仗，人越懒；每 25 点惰性压掉一级兵员上限（最高 5 级）。'
+          + '打仗是最快的解法（一仗降 12 点），其次才是组织劳动。</div>');
+      }
+
       /* ② 伤兵 / 老兵 */
       if (GAME.veteran) {
         var wl = GAME.veteran.totalWounded();
@@ -13560,6 +13577,10 @@ import './state.js';
           /* v96：兵员等级（这座城训到几级，直接决定战力与能接什么仗） */
           (GAME.trooplv ? ('<div class="attr"><span class="k">🪖 兵员</span><span class="v">'
             + U.escape(GAME.trooplv.lineOf(city).replace('🪖 ', '')) + '</span></div>') : '') +
+          /* v97：惰性（压兵员等级上限的那条） */
+          (GAME.idle && GAME.idle.of(city) > 0
+            ? ('<div class="attr"><span class="k">🧠 惰性</span><span class="v">'
+              + U.escape(GAME.idle.cityLine(city)) + '</span></div>') : '') +
           /* ============================================================
            * v94.1：这座城的**三条线**（污染 / 温度 / 补给）
            * ------------------------------------------------------------

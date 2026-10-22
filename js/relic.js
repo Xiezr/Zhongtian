@@ -99,6 +99,18 @@
       return { ok: false, msg: '残页不够：要 ' + def.cost + '，手上 ' + TE.leftOf() };
     }
     s.picked.push(id);
+    /* v97：设定里三家对旧世界的三种态度（修 / 烧 / 卖），
+       第一次有了外交后果 —— 你落一条旧世界科技：
+         · 铁砧、灰墙（信"修"的）：信任 +8
+         · 焰誓（信"烧"的）：怨恨 +8
+         · 商盟（只信生意）：不在乎，但会涨价一点点（信任 −2）
+       这不是新系统，是把已有的 standing（怨/惧/信）接到科技路线上。 */
+    if (GAME.faction && GAME.faction.remember) {
+      GAME.faction.remember('anvil', 'techLike');    /* 修 */
+      GAME.faction.remember('wall', 'techLike');     /* 修 */
+      GAME.faction.remember('oath', 'techHate');     /* 烧 */
+      GAME.faction.remember('guild', 'techTrade');   /* 卖 */
+    }
     if (GAME.log && GAME.log.war) {
       GAME.log.war('📜 从旧世界残页里拼出了「' + def.name + '」—— ' + def.desc
         + '（还能再落 ' + TE.slotsLeft() + ' 条）');

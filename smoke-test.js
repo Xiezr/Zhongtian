@@ -12381,7 +12381,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
     /* ⚠️ 这份 ORDER 与 build_bundle.py 的 ORDER **必须逐条一致**（本文故意不复用脚本，
        就是为了"构建脚本自己算错时测试还能抓到"）。加了模块两边都要加 ——
        v92 加 fog / memorial 时这里漏改，导致 hash 对不上、守卫假红。 */
-    var ORDER = ['core', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'domain', 'map', 'sphere', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'rival', 'land', 'taint', 'climate', 'surge', 'relic', 'goals', 'veteran', 'setskill', 'deck', 'bond', 'tower', 'wonderwar', 'delve', 'unrest', 'expose', 'trooplv', 'gltf',
+    var ORDER = ['core', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'domain', 'map', 'sphere', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'rival', 'land', 'taint', 'climate', 'surge', 'relic', 'goals', 'veteran', 'setskill', 'deck', 'bond', 'tower', 'wonderwar', 'delve', 'unrest', 'expose', 'trooplv', 'idle', 'gltf',
       'map3d', 'battle', 'strategy', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits', 'story', 'ui', 'main'];
     var h = crypto.createHash('sha256');
     try {
@@ -40444,6 +40444,125 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })(), (function () {
       var o = global.__dbg312;
       return o ? ('档位=' + o) : '未取到结算结果';
+    })());
+  })();
+
+
+  /* ============================================================
+   * §313 · v97：惰性 —— 「照顾得太好，人就废了」
+   * ============================================================ */
+  console.log('\n===== 313. v97 惰性：自动化越多越懒 → 压兵员上限 → 打仗能压回去 =====');
+  (function () {
+    var st = G.state;
+    if (!st || !G.idle) return;
+    var c = G.currentCity();
+    if (!c) return;
+
+    /* ① 惰性压兵员上限（每 25 点一级） */
+    check('§313① 惰性压兵员上限：0→Lv5 · 50→Lv3 · 100→Lv1', (function () {
+      var bak = c.idle;
+      c.idle = 0;   var a = G.trooplv.capOf(c);
+      c.idle = 50;  var b = G.trooplv.capOf(c);
+      c.idle = 100; var d = G.trooplv.capOf(c);
+      c.idle = bak;
+      return a === 5 && b === 3 && d === 1;
+    })(), (function () {
+      var bak = c.idle; c.idle = 75; var r = 'Lv' + G.trooplv.capOf(c); c.idle = bak;
+      return '惰性 75 → 上限 ' + r;
+    })());
+
+    /* ② 惰性满了就升不了级（真的卡住整训） */
+    check('§313② 惰性 100 时，兵员整训被拒（不是只显示上限）', (function () {
+      var bak = c.idle, bakLv = st.troopLv;
+      c.idle = 100;
+      st.troopLv = {}; st.troopLv[c.id] = { buxingji: 1 };
+      c.army = { buxingji: 500 };
+      c.res.grain = 1e7; c.res.wood = 1e7; c.res.stone = 1e7; c.res.iron = 1e7;
+      var cell = (c.cells || []).filter(function (x) { return !x.build; })[0];
+      if (cell) cell.build = { id: 'junying', lvl: 9 };
+      var r = G.trooplv.up(c, 'buxingji');
+      c.idle = bak; st.troopLv = bakLv;
+      return r.ok === false && /惰性/.test(r.msg || '');
+    })(), (function () {
+      var bak = c.idle; c.idle = 100;
+      var m = G.trooplv.up(G.currentCity(), 'buxingji');
+      c.idle = bak;
+      return (m.msg || '').slice(0, 26);
+    })());
+
+    /* ③ 自动化越多、越久没打仗 → 惰性涨（每月结算真的加） */
+    check('§313③ 自动化开着 + 久无战事 → 惰性每月上涨', (function () {
+      var bakSet = st.settings, bakIdle = c.idle, bakM = st.idleMonth;
+      st.settings = { autoHeal: true, autoTrain: true, autoGather: true };
+      c.idle = 10; c.lastBattleMonth = -999;
+      st.idleMonth = -1;
+      G.idle.tick(true);
+      var v = G.idle.of(c);
+      st.settings = bakSet; c.idle = bakIdle; st.idleMonth = bakM;
+      return v > 10;
+    })(), (function () {
+      return '开 3 个自动化时每月 ≈ +' + (3 * ((DATA.IDLE || {}).perMonthAuto || 1.6)
+        + ((DATA.IDLE || {}).perMonthPeace || 1.2));
+    })());
+
+    /* ④ 打一仗 → 惰性掉（最强的"必须做事"） */
+    check('§313④ 打仗降惰性（战事让人勤快）', (function () {
+      var bak = c.idle;
+      c.idle = 60;
+      var r = G.idle.onBattle(c, 1);
+      var ok = r && r.drop > 0 && G.idle.of(c) < 60 && c.lastBattleMonth != null;
+      c.idle = bak;
+      return ok;
+    })(), (function () {
+      var bak = c.idle; c.idle = 60;
+      var r = G.idle.onBattle(c, 1); c.idle = bak;
+      return '一仗降 ' + (r ? r.drop : '?') + ' 点';
+    })());
+
+    /* ⑤ 组织劳动：花粮能压回去（玩家永远有得选） */
+    check('§313⑤ 组织劳动：花粮降惰性（一个月一次）', (function () {
+      var bak = c.idle, bakM = c.idleWorkMonth;
+      c.idle = 50; c.idleWorkMonth = -1;
+      c.res.grain = 1e7;
+      var g0 = c.res.grain;
+      var r = G.idle.work(c);
+      var ok = r.ok && G.idle.of(c) < 50 && c.res.grain < g0;
+      c.idle = bak; c.idleWorkMonth = bakM;
+      return ok;
+    })(), (function () {
+      var bak = c.idle, bakM = c.idleWorkMonth;
+      c.idle = 50; c.idleWorkMonth = -1; c.res.grain = 1e7;
+      var r = G.idle.work(c); c.idle = bak; c.idleWorkMonth = bakM;
+      return (r.msg || '').slice(0, 30);
+    })());
+
+    /* ⑥ 设定 → 外交：落一条旧世界科技，"修"的信任涨、"烧"的怨恨涨 */
+    check('§313⑥ 旧世界科技改变三家态度（修 / 烧 / 卖 各有反应）', (function () {
+      if (!G.faction || !G.relic) return false;
+      G.faction.ensure();
+      /* 先把两家的态度压回中位：前面的用例可能已经把焰誓的怨打到 100（满值涨不动） */
+      G.faction.standingOf('anvil').t = 50;
+      G.faction.standingOf('oath').g = 50;
+      G.faction.standingOf('oath').t = 50;
+      var before = {};
+      ['anvil', 'oath', 'guild'].forEach(function (f) {
+        var x = G.faction.standingOf(f);
+        before[f] = { g: x.g | 0, t: x.t | 0 };
+      });
+      /* 造够残页再落一条 */
+      st.ruins = st.ruins || {};
+      for (var i = 0; i < 12; i++) st.ruins['8' + (200000 + i)] = { kind: 'lab', side: 'a' };
+      G.relic.reset();
+      var picked = null;
+      G.relic.options().forEach(function (o) { if (!picked && o.ok) picked = o.id; });
+      if (!picked) return false;
+      var r = G.relic.pick(picked);
+      if (!r.ok) return false;
+      var a = G.faction.standingOf('anvil'), o = G.faction.standingOf('oath');
+      return (a.t | 0) > before.anvil.t && (o.g | 0) > before.oath.g;
+    })(), (function () {
+      var a = G.faction.standingOf('anvil'), o = G.faction.standingOf('oath');
+      return '铁砧 信 ' + Math.round(a.t) + ' · 焰誓 怨 ' + Math.round(o.g);
     })());
   })();
 
