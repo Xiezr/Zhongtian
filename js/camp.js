@@ -32,7 +32,11 @@
   var _listSeed = -1;
   var _sweepAt = 0;      /* 上次扫描（现实毫秒）——节流用 */
 
-  function SP() { return GAME.mapSphere || GAME.sphere; }
+  function SP() { return (GAME.sphereOf ? GAME.sphereOf()
+    : (GAME.mapSphere || GAME.sphere))   /* v98.6：`GAME.sphereOf()` 是**既有**出口（state.js：按 pid 取那颗星球的球面，
+      默认当前星球 → 返回有 cells 的 GAME.sphere）。
+      原来的 `GAME.mapSphere || GAME.sphere` 在玩家**还没打开地图**时是致命的：
+      mapSphere 对象存在但没 build，`||` 不生效 → 拿到空球 → 村社/遗迹/势力/竞争者全空。 */; }
   function data() { return (GAME.DATA && GAME.DATA.CAMP) || {}; }
 
   /* 确定性哈希：同一颗球、同一格，永远是同一个结果。

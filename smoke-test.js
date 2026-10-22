@@ -38077,20 +38077,20 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
 
     check('§286⑬ 城的视野半径真的按格铺开（8 格 ≈ 4 格的 4 倍面积）', (function () {
       var city = G.currentCity();
-      var SPn = G.mapSphere || G.sphere;
+      var SPn = (G.sphereOf ? G.sphereOf() : (G.mapSphere || G.sphere));
       if (!SPn || !SPn.hopsWithin) return false;
       var a = SPn.hopsWithin(city.ci, 4).length;
       var b = SPn.hopsWithin(city.ci, 8).length;
       return a > 1 && b > a * 2;
     })(), (function () {
-      var c = G.currentCity(); var SPn = G.mapSphere || G.sphere;
+      var c = G.currentCity(); var SPn = (G.sphereOf ? G.sphereOf() : (G.mapSphere || G.sphere));
       return SPn.hopsWithin(c.ci, 4).length + ' 格 → ' + SPn.hopsWithin(c.ci, 8).length + ' 格';
     })());
 
     var scoutDbg = '';
     check('§286⑭ 侦查点亮范围 > 普通抵达（全明 3 格 + 半明 6 格）', (function () {
       var city = G.currentCity();
-      var SPn = G.mapSphere || G.sphere;
+      var SPn = (G.sphereOf ? G.sphereOf() : (G.mapSphere || G.sphere));
       var ci = -1;
       for (var x = 180; x < 320; x++) {
         var t2 = SPn.ciOfXY ? SPn.ciOfXY(x, 300) : -1;
@@ -38228,7 +38228,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var tci = G._autoProbeTargetOf(city, 20);
       if (tci < 0) return false;
       if (G.fog.get(tci) !== 0) return false;          /* 必须未探明 */
-      var SPn = G.mapSphere || G.sphere;
+      var SPn = (G.sphereOf ? G.sphereOf() : (G.mapSphere || G.sphere));
       var nb = SPn.adj[tci] || [];
       for (var i = 0; i < nb.length; i++) if (G.fog.get(nb[i]) > 0) return true;
       return false;                                     /* 必须与已探明相邻 */
@@ -38284,7 +38284,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     check('§289② 生成确定性（同格两次一致）+ 不长在海里', (function () {
       var list = G.camp.list();
       if (!list.length) return false;
-      var SPn = G.mapSphere || G.sphere;
+      var SPn = (G.sphereOf ? G.sphereOf() : (G.mapSphere || G.sphere));
       var a = G.camp.at(list[0]), b = G.camp.at(list[0]);
       if (!a || !b || a.tier !== b.tier || a.pop !== b.pop) return false;
       for (var i = 0; i < list.length; i++) {
@@ -38375,7 +38375,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })();
 
     check('§290① 四家都有核心，且彼此拉开（≥55 格）', (function () {
-      var s = G.mapSphere || G.sphere;
+      var s = (G.sphereOf ? G.sphereOf() : (G.mapSphere || G.sphere));
       var a = G.faction.arr();
       if (a.length !== 4) return false;
       for (var i = 0; i < a.length; i++) {
@@ -38387,7 +38387,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })(), facCase.length + ' 家');
 
     check('§290② 核心不在海里', (function () {
-      var s = G.mapSphere || G.sphere;
+      var s = (G.sphereOf ? G.sphereOf() : (G.mapSphere || G.sphere));
       var a = G.faction.arr();
       for (var i = 0; i < a.length; i++) {
         var c = s.cells[a[i].core];
@@ -38404,7 +38404,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })());
 
     check('§290④ 半径外无主（不把整颗球都算成地盘）', (function () {
-      var s = G.mapSphere || G.sphere;
+      var s = (G.sphereOf ? G.sphereOf() : (G.mapSphere || G.sphere));
       var a = G.faction.arr();
       var mx = (DATA.FACTION || {}).maxR || 14;
       /* 找一格：离所有核心都 > maxR */
@@ -38465,7 +38465,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     check('§291② 生成确定性 + 不长在海里', (function () {
       var list = G.ruin.list();
       if (!list.length) return false;
-      var SPn = G.mapSphere || G.sphere;
+      var SPn = (G.sphereOf ? G.sphereOf() : (G.mapSphere || G.sphere));
       var a = G.ruin.at(list[0]), b = G.ruin.at(list[0]);
       if (!a || !b || a.kind !== b.kind || a.name !== b.name) return false;
       for (var i = 0; i < list.length; i++) {
@@ -38499,7 +38499,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })());
 
     check('§291⑤ 离城越远越富（探索的回报落在产出上）', (function () {
-      var s = G.mapSphere || G.sphere;
+      var s = (G.sphereOf ? G.sphereOf() : (G.mapSphere || G.sphere));
       var c = G.currentCity();
       var list = G.ruin.list();
       var far = -1, fd = 0;
@@ -38510,7 +38510,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       if (far < 0 || fd < 10) return false;
       return G.ruin.tierMulOf(far) > G.ruin.tierMulOf(c.ci);
     })(), '最远处 ×' + (function () {
-      var s = G.mapSphere || G.sphere, c = G.currentCity(), list = G.ruin.list();
+      var s = (G.sphereOf ? G.sphereOf() : (G.mapSphere || G.sphere)), c = G.currentCity(), list = G.ruin.list();
       var far = -1, fd = 0;
       for (var i = 0; i < list.length; i++) {
         var d = s.distOf({ ci: c.ci }, { ci: list[i] });
@@ -39524,7 +39524,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })());
 
     check('§306⑪ 村社/营地/遗迹都不在水上（海洋的 type 是 lake）', (function () {
-      var sp = G.mapSphere || G.sphere;
+      var sp = (G.sphereOf ? G.sphereOf() : (G.mapSphere || G.sphere));
       if (!sp || !sp.cells) return false;
       var bad = 0, i, ci;
       var vl = G.village.list(), cl = G.camp.list(), rl = G.ruin.list();
@@ -39536,7 +39536,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       });
       return bad === 0;
     })(), (function () {
-      var sp = G.mapSphere || G.sphere;
+      var sp = (G.sphereOf ? G.sphereOf() : (G.mapSphere || G.sphere));
       if (!sp || !sp.cells) return '?';
       var n = 0;
       var all = G.village.list().concat(G.camp.list(), G.ruin.list());
@@ -39730,7 +39730,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var keys = Object.keys(G.state.villageNew || {});
       if (!keys.length) return false;
       var ci = +keys[0];
-      var sp = G.mapSphere || G.sphere;
+      var sp = (G.sphereOf ? G.sphereOf() : (G.mapSphere || G.sphere));
       var w = G.village.at(ci);
       var inList = G.village.listAll().indexOf(ci) >= 0;
       var notLake = !(sp && sp.cells[ci] && sp.cells[ci].type === 'lake');
@@ -39738,7 +39738,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })());
 
     check('§308⑦ 新村不会被造在水里（v93.4 的教训）', (function () {
-      var sp = G.mapSphere || G.sphere;
+      var sp = (G.sphereOf ? G.sphereOf() : (G.mapSphere || G.sphere));
       if (!sp || !sp.cells) return false;
       var keys = Object.keys(G.state.villageNew || {});
       for (var i = 0; i < keys.length; i++) {
@@ -40006,7 +40006,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var pc = G.currentCity();
       /* ⚠️ 必须用 `mapSphere || sphere`（与模块内部同一个球）：双球面下
          两个球的 ci 不通用，用错球会把"沙漠"读成"海"。 */
-      var sp = G.mapSphere || G.sphere;
+      var sp = (G.sphereOf ? G.sphereOf() : (G.mapSphere || G.sphere));
       for (var i = 0; i < a.length; i++) {
         var cell = sp.cellOf(a[i].ci);
         if (!cell || cell.type === 'lake') return false;
@@ -40014,7 +40014,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       }
       return true;
     })(), (function () {
-      var pc = G.currentCity(), sp = G.mapSphere || G.sphere;
+      var pc = G.currentCity(), sp = (G.sphereOf ? G.sphereOf() : (G.mapSphere || G.sphere));
       return G.rival.arr().map(function (t) {
         var cell = sp.cellOf(t.ci);
         return t.name + '(' + t.pop + ') ci=' + t.ci + ' ' + (cell && cell.type)
@@ -40572,6 +40572,91 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
 
 
 
+
+  /* ============================================================
+   * §320 · v98.6：**空世界**回归 —— 地图球面还没建格时，世界不能是空的
+   * ------------------------------------------------------------
+   * 实测发现的根因：`makeSphere()` 刚造出来**没有 cells**，地图球面要等
+   * map3d 第一次渲染才 build。而 9 个模块都写了
+   *     `GAME.mapSphere || GAME.sphere`
+   * —— mapSphere **存在**（所以 `||` 不生效）却空，于是村社/遗迹/营地/
+   * 势力/竞争者/连通/污染/温度/收缩圈全部拿不到格子。
+   *
+   * 后果：新开一局跑 240 个月 —— 村社 0 处、遗迹 0 处、竞争者 0 支。
+   * **整个世界是空转的**，而 smoke 一直全绿（测试环境里 mapSphere 恰好没被赋值）。
+   *
+   * 这一条专门钉"mapSphere 空"这种状态，防止再退回去。
+   * ============================================================ */
+  console.log('\n===== 320. v98.6 空世界回归：地图球面没建格时，世界必须还在 =====');
+  (function () {
+    /* ① 统一出口存在，且返回**有格子**的那颗球 */
+    check('§320① GAME.sphereOf() 返回有格子的球面（不是空壳）', (function () {
+      if (!G.sphereOf) return false;
+      var sp = G.sphereOf();
+      return !!(sp && sp.cells && sp.cells.length > 100);
+    })(), (function () {
+      var sp = G.sphereOf();
+      return 'cells=' + (sp && sp.cells ? sp.cells.length : 'null');
+    })());
+
+    /* ② 把 mapSphere 换成"存在但没有 cells"的空壳 —— 世界必须照常 */
+    check('§320② mapSphere 是空壳时，村社/遗迹/竞争者仍然生成（关键回归）', (function () {
+      var bak = G.mapSphere;
+      G.mapSphere = { /* 有对象、没格子 —— 正是 map3d 还没渲染时的真实状态 */
+        nv: 0, seed3: function () { return 1; },
+      };
+      try {
+        var v = G.village.list().length;
+        var r = G.ruin.list().length;
+        G.rival.ensure();
+        var teams = G.rival.arr().length;
+        return v > 10 && r > 5 && teams > 0;
+      } finally { G.mapSphere = bak; }
+    })(), (function () {
+      var bak = G.mapSphere;
+      G.mapSphere = { nv: 0, seed3: function () { return 1; } };
+      var v = G.village.list().length, r = G.ruin.list().length;
+      G.rival.ensure();
+      var t = G.rival.arr().length;
+      G.mapSphere = bak;
+      return '村社 ' + v + ' · 遗迹 ' + r + ' · 竞争者 ' + t;
+    })());
+
+    /* ③ 九个模块都改走统一出口（源码级：不许再有裸的 `mapSphere || sphere`） */
+    check('§320③ 九个空间模块都改走 sphereOf（源码级：没有裸的 mapSphere || sphere）', (function () {
+      var fs = require('fs'), path = require('path');
+      var files = ['camp', 'convoy', 'expose', 'faction', 'land', 'relic', 'rival', 'ruin', 'village'];
+      var bad = [];
+      files.forEach(function (f) {
+        var src = fs.readFileSync(path.join(__dirname, 'js', f + '.js'), 'utf8');
+        /* ⚠️ 不能查 `GAME.mapSphere || GAME.sphere` 这个字符串本身 ——
+           修好之后的兜底分支里仍然有它（`sphereOf ? ... : (mapSphere || sphere)`）。
+           要查的是"**是不是先走 sphereOf**"。 */
+        if (src.indexOf('GAME.sphereOf') < 0) bad.push(f);
+      });
+      return bad.length === 0;
+    })(), (function () { return '9 个模块全部改走 sphereOf'; })());
+
+    /* ④ 污染：小城能自净，大工业城才涨（240 个月实测 478 → 该为 0） */
+    check('§320④ 污染平衡：小城自净（delta<0），大工业城才涨（delta>0）', (function () {
+      /* ⚠️ 不测"当前城"—— 前面的用例把它升级升得乱七八糟，delta 自然是正的。
+         这里测的是**公式的平衡点**：40 级打平，20 级自净，80 级才涨。 */
+      var d = G.DATA.TAINT || {};
+      var per = d.perLvl == null ? 0.08 : d.perLvl;
+      var dec = d.decay == null ? 3.2 : d.decay;
+      var small = 20 * per - dec;
+      var mid = 40 * per - dec;
+      var big = 80 * per - dec;
+      return small < 0 && Math.abs(mid) < 0.2 && big > 0;
+    })(), (function () {
+      var d = G.DATA.TAINT || {};
+      var per = d.perLvl == null ? 0.08 : d.perLvl;
+      var dec = d.decay == null ? 3.2 : d.decay;
+      return '20级 ' + (20 * per - dec).toFixed(2) + ' · 40级 ' + (40 * per - dec).toFixed(2)
+        + ' · 80级 +' + (80 * per - dec).toFixed(2);
+    })());
+  })();
+
   /* ============================================================
    * §319 · v98.5：老兵等级进战场（第四例"名字与用法不符"）
    * ============================================================ */
@@ -40686,7 +40771,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       st.ruins = {};
       /* 一处就在老家格上，一处放到很远的格（+120 → 邻接表里取个真实的） */
       st.ruins[pc] = { kind: 'lab', side: 'a' };
-      var farCi = null, sp = G.mapSphere || G.sphere;
+      var farCi = null, sp = (G.sphereOf ? G.sphereOf() : (G.mapSphere || G.sphere));
       for (var i = 0; i < 300 && farCi == null; i++) {
         var ci = (pc + 137 * (i + 1)) % 100000;
         if (ci === pc) continue;

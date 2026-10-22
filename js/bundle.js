@@ -6283,8 +6283,12 @@ window.GAME = window.GAME || {};
 
   /* ③ 污染 —— 用旧世界的东西是要付账的（F 代价） */
   DATA.TAINT = {
-    perLvl: 0.15,             /* 每座建筑每级每月产这么多污染（"工业"的代价） */
-    decay: 2,                 /* 每月自然衰减（雨水、风、旧植被） */
+    /* v98.6 平衡：原来 0.15 / 衰减 2 → **建筑总等级超过 14 的城永远不会自净**，
+       一座普通小城跑 20 年就涨到 478（变质线才 120）—— 玩家什么都不做也会被污染压死。
+       现在平衡点放在 40 级（约 10 座四级建筑）：小城自净，大工业城才付代价。
+       40×0.08 = 3.2 = decay，正好打平。 */
+    perLvl: 0.08,             /* 每座建筑每级每月产这么多污染（"工业"的代价） */
+    decay: 3.2,               /* 每月自然衰减（雨水、风、旧植被） */
     warn: 60,                 /* 警戒线（界面转黄） */
     bad: 120,                 /* 变质线（开始死人） */
     shantyLossAt: 0.02,       /* 越过 bad：每 100 点污染，棚户每月死这么多 */
@@ -26954,7 +26958,11 @@ window.GAME = window.GAME || {};
   var _list = null, _listN = 0;   /* v94.1：还要记住"这份缓存是在多少格时算的" */
   var _listSeed = -1;
 
-  function SP() { return GAME.mapSphere || GAME.sphere; }
+  function SP() { return (GAME.sphereOf ? GAME.sphereOf()
+    : (GAME.mapSphere || GAME.sphere))   /* v98.6：`GAME.sphereOf()` 是**既有**出口（state.js：按 pid 取那颗星球的球面，
+      默认当前星球 → 返回有 cells 的 GAME.sphere）。
+      原来的 `GAME.mapSphere || GAME.sphere` 在玩家**还没打开地图**时是致命的：
+      mapSphere 对象存在但没 build，`||` 不生效 → 拿到空球 → 村社/遗迹/势力/竞争者全空。 */; }
   function D() { return (GAME.DATA && GAME.DATA.VILLAGE) || {}; }
   function R() { return GAME.renown; }
 
@@ -27401,7 +27409,11 @@ window.GAME = window.GAME || {};
   var CV = GAME.convoy = {};
   var U = GAME.utils;
 
-  function SP() { return GAME.mapSphere || GAME.sphere; }
+  function SP() { return (GAME.sphereOf ? GAME.sphereOf()
+    : (GAME.mapSphere || GAME.sphere))   /* v98.6：`GAME.sphereOf()` 是**既有**出口（state.js：按 pid 取那颗星球的球面，
+      默认当前星球 → 返回有 cells 的 GAME.sphere）。
+      原来的 `GAME.mapSphere || GAME.sphere` 在玩家**还没打开地图**时是致命的：
+      mapSphere 对象存在但没 build，`||` 不生效 → 拿到空球 → 村社/遗迹/势力/竞争者全空。 */; }
   function D() { return (GAME.DATA && GAME.DATA.CONVOY) || {}; }
 
   function h(ci, salt) {
@@ -27926,7 +27938,11 @@ window.GAME = window.GAME || {};
   var _listSeed = -1;
   var _sweepAt = 0;      /* 上次扫描（现实毫秒）——节流用 */
 
-  function SP() { return GAME.mapSphere || GAME.sphere; }
+  function SP() { return (GAME.sphereOf ? GAME.sphereOf()
+    : (GAME.mapSphere || GAME.sphere))   /* v98.6：`GAME.sphereOf()` 是**既有**出口（state.js：按 pid 取那颗星球的球面，
+      默认当前星球 → 返回有 cells 的 GAME.sphere）。
+      原来的 `GAME.mapSphere || GAME.sphere` 在玩家**还没打开地图**时是致命的：
+      mapSphere 对象存在但没 build，`||` 不生效 → 拿到空球 → 村社/遗迹/势力/竞争者全空。 */; }
   function data() { return (GAME.DATA && GAME.DATA.CAMP) || {}; }
 
   /* 确定性哈希：同一颗球、同一格，永远是同一个结果。
@@ -28162,7 +28178,11 @@ window.GAME = window.GAME || {};
 
   var _list = null, _listSeed = -1, _listN = 0, _sweepAt = 0;   /* v94.1：+格数 */
 
-  function SP() { return GAME.mapSphere || GAME.sphere; }
+  function SP() { return (GAME.sphereOf ? GAME.sphereOf()
+    : (GAME.mapSphere || GAME.sphere))   /* v98.6：`GAME.sphereOf()` 是**既有**出口（state.js：按 pid 取那颗星球的球面，
+      默认当前星球 → 返回有 cells 的 GAME.sphere）。
+      原来的 `GAME.mapSphere || GAME.sphere` 在玩家**还没打开地图**时是致命的：
+      mapSphere 对象存在但没 build，`||` 不生效 → 拿到空球 → 村社/遗迹/势力/竞争者全空。 */; }
   function data() { return (GAME.DATA && GAME.DATA.RUIN) || {}; }
 
   /* 纯哈希（只吃 ci + seed）：遗迹是固定地标，同一颗球永远那几个 */
@@ -28342,7 +28362,11 @@ window.GAME = window.GAME || {};
   var FA = GAME.faction = {};   /* ⚠️ 不用 F：fog.js 已占 FA.（audit 按字面前缀查重名，会误报）*/
   var U = GAME.utils;
 
-  function SP() { return GAME.mapSphere || GAME.sphere; }
+  function SP() { return (GAME.sphereOf ? GAME.sphereOf()
+    : (GAME.mapSphere || GAME.sphere))   /* v98.6：`GAME.sphereOf()` 是**既有**出口（state.js：按 pid 取那颗星球的球面，
+      默认当前星球 → 返回有 cells 的 GAME.sphere）。
+      原来的 `GAME.mapSphere || GAME.sphere` 在玩家**还没打开地图**时是致命的：
+      mapSphere 对象存在但没 build，`||` 不生效 → 拿到空球 → 村社/遗迹/势力/竞争者全空。 */; }
   function cfg() { return (GAME.DATA && GAME.DATA.FACTION) || {}; }
 
   /* 纯哈希（只吃 ci + seed）：同一颗球，四家的位置永远一样 */
@@ -28990,7 +29014,11 @@ window.GAME = window.GAME || {};
   var U = GAME.utils;
 
   function D() { return (GAME.DATA && GAME.DATA.RIVAL) || {}; }
-  function SP() { return GAME.mapSphere || GAME.sphere; }
+  function SP() { return (GAME.sphereOf ? GAME.sphereOf()
+    : (GAME.mapSphere || GAME.sphere))   /* v98.6：`GAME.sphereOf()` 是**既有**出口（state.js：按 pid 取那颗星球的球面，
+      默认当前星球 → 返回有 cells 的 GAME.sphere）。
+      原来的 `GAME.mapSphere || GAME.sphere` 在玩家**还没打开地图**时是致命的：
+      mapSphere 对象存在但没 build，`||` 不生效 → 拿到空球 → 村社/遗迹/势力/竞争者全空。 */; }
   function VD() { return GAME.village; }
 
   function monthNow() {
@@ -29472,7 +29500,11 @@ window.GAME = window.GAME || {};
   var LD = GAME.land = {};
 
   function D() { return (GAME.DATA && GAME.DATA.LAND) || {}; }
-  function SP() { return GAME.mapSphere || GAME.sphere; }
+  function SP() { return (GAME.sphereOf ? GAME.sphereOf()
+    : (GAME.mapSphere || GAME.sphere))   /* v98.6：`GAME.sphereOf()` 是**既有**出口（state.js：按 pid 取那颗星球的球面，
+      默认当前星球 → 返回有 cells 的 GAME.sphere）。
+      原来的 `GAME.mapSphere || GAME.sphere` 在玩家**还没打开地图**时是致命的：
+      mapSphere 对象存在但没 build，`||` 不生效 → 拿到空球 → 村社/遗迹/势力/竞争者全空。 */; }
   /* 主城判定：走**既有**出口 `isMainCity`（`city.isMain` 是另一套、口径不同）。
      v94.1 踩过：用 city.isMain 判主城，结果自家唯一那座城被算成"断链"。 */
   function isMain(c) {
@@ -30199,7 +30231,11 @@ window.GAME = window.GAME || {};
     /* v98.4：**离老家越远的遗迹越值钱**（`pagesPerExtraDist` 之前没人读，白写在表里）。
        用 roughDistOf（经纬度近似）而不是 distOf：这里对每处遗迹算一次，
        全图一百多处遗迹 × 无缓存 BFS = 一帧几百毫秒（v94.1 踩过同样的坑）。 */
-    var sp = GAME.mapSphere || GAME.sphere;
+    var sp = (GAME.sphereOf ? GAME.sphereOf()
+    : (GAME.mapSphere || GAME.sphere))   /* v98.6：`GAME.sphereOf()` 是**既有**出口（state.js：按 pid 取那颗星球的球面，
+      默认当前星球 → 返回有 cells 的 GAME.sphere）。
+      原来的 `GAME.mapSphere || GAME.sphere` 在玩家**还没打开地图**时是致命的：
+      mapSphere 对象存在但没 build，`||` 不生效 → 拿到空球 → 村社/遗迹/势力/竞争者全空。 */;
     var pc = null, all = (GAME.city && GAME.city.all) ? (GAME.city.all() || []) : [];
     for (var q = 0; q < all.length; q++) {
       if (GAME.isMainCity && GAME.isMainCity(all[q])) { pc = all[q]; break; }
@@ -31741,7 +31777,11 @@ window.GAME = window.GAME || {};
   /* 玩家最近的城（他们转向的目标） */
   function nearestCityOf(ci) {
     var best = null, bestD = 1e9;
-    var sp = GAME.mapSphere || GAME.sphere;
+    var sp = (GAME.sphereOf ? GAME.sphereOf()
+    : (GAME.mapSphere || GAME.sphere))   /* v98.6：`GAME.sphereOf()` 是**既有**出口（state.js：按 pid 取那颗星球的球面，
+      默认当前星球 → 返回有 cells 的 GAME.sphere）。
+      原来的 `GAME.mapSphere || GAME.sphere` 在玩家**还没打开地图**时是致命的：
+      mapSphere 对象存在但没 build，`||` 不生效 → 拿到空球 → 村社/遗迹/势力/竞争者全空。 */;
     (GAME.city && GAME.city.all ? GAME.city.all() : []).forEach(function (c) {
       if (!c || c.ci == null || !sp) return;
       var d = sp.distOf ? sp.distOf({ ci: ci }, { ci: c.ci }) : 999;
