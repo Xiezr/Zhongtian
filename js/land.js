@@ -158,8 +158,9 @@
   LD.cityLine = function (city) {
     var st = LD.statusOf(city);
     if (!city) return '';
-    if (st.linked && st.hops === 0) return '🛣 补给：老家';
-    if (st.linked) return '🛣 补给：连着老家（' + st.hops + ' 跳）';
-    return '🛣 补给：**断链**（隔着水或太远，走不过去）';
+    /* 返回值**不带图标**：调用方已经在 key 栏放了 🛣（城面板）。 */
+    if (st.linked && st.hops === 0) return '老家';
+    if (st.linked) return '连着老家（' + st.hops + ' 跳）';
+    return '<span style="color:var(--red-light);">断链</span>（隔着水或太远，走不过去）';
   };
 })();

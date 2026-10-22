@@ -160,7 +160,7 @@
 
   CL.cityLine = function (city) {
     if (!city) return '';
-    return '🌡 供暖：' + (CL.isWarm(city) ? '这个月烧上了' : '没烧')
+    return (CL.isWarm(city) ? '这个月烧上了' : '没烧')
       + '　需要 ' + U.numText(CL.fuelCostOf(city), 0) + ' 木/月'
       + (CL.isCold() && !CL.isWarm(city) ? '　<span style="color:var(--red-light);">严寒中</span>' : '');
   };

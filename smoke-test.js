@@ -24824,7 +24824,11 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     check('§119② 城市菜单：进入城市→城内视图 · 派遣/运输双入口（带 hint）· 弃城两段确认', (function () {
       /* ⚠️ 不用 codeOf：fnBody 的括号配平会被 body 里 HTML 字符串的花括号打断（实测 seg 只到 5210） */
       var _i = uc.indexOf('ui.openCityPanel = function');
-      var seg = uc.slice(_i, _i + 30000);   /* openCityPanel 体长 ~28K（含名城专属段） */
+      /* v94.2：窗口从 30K 放大到 45K —— 城面板里新增了污染/温度/补给三行（约 1.2K），
+         把「弃城」按钮推出了旧窗口。这个窗口是**位置型断言**，函数一变长就要跟着调；
+         真要根治得改成结构取体，但函数体里有大量 HTML 字符串的花括号，
+         括号配平不可靠（本行上面的注释就是这么来的）。 */
+      var seg = uc.slice(_i, _i + 45000);   /* openCityPanel 体长 ~30K（含名城专属段 + 三条线） */
       return /ui\.setView\('city'\)/.test(mc) && /case 'city-enter'/.test(mc)
         && /case 'city-dispatch-exp'/.test(mc) && /hint: 'dispatch'/.test(mc)
         && /hint: 'cargo'/.test(mc) && /city-abandon-arm/.test(seg)

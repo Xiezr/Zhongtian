@@ -170,7 +170,7 @@
   TN.cityLine = function (city) {
     if (!city) return '';
     var t = TN.of(city), lv = TN.levelOf(city), dl = TN.deltaOf(city);
-    return '☢ 污染 ' + Math.round(t) + '（' + lv.name + '）'
+    return Math.round(t) + '（' + lv.name + '）'
       + '　每月 ' + (dl >= 0 ? '+' : '') + Math.round(dl * 10) / 10;
   };
 })();

@@ -13403,6 +13403,31 @@ import './state.js';
           })()) +
           '<div class="attr"><span class="k">⚔ 驻军</span><span class="v">' +
             U.numText(GAME.armyTotal(city), 0) + '　城防 ' + GAME.cityDefense(city) + '</span></div>' +
+          /* ============================================================
+           * v94.1：这座城的**三条线**（污染 / 温度 / 补给）
+           * ------------------------------------------------------------
+           * 六层世界的最小版里，这三条是"这座城自己的账"，
+           * 所以它们该在城面板里出现，而不是只在世界的账本里汇总。
+           * 没有内容的行不显示（不拿空行占版面）。
+           * ============================================================ */
+          ((function () {
+            var rows2 = [];
+            if (GAME.taint && GAME.taint.cityLine) {
+              var tn = GAME.taint.levelOf(city);
+              rows2.push('<div class="attr"><span class="k">☢ 污染</span>'
+                + '<span class="v" style="color:' + tn.color + ';">'
+                + U.escape(GAME.taint.cityLine(city).replace('☢ 污染 ', '')) + '</span></div>');
+            }
+            if (GAME.climate && GAME.climate.cityLine) {
+              rows2.push('<div class="attr"><span class="k">🌡 温度</span><span class="v">'
+                + GAME.climate.cityLine(city) + '</span></div>');
+            }
+            if (GAME.land && GAME.land.cityLine) {
+              rows2.push('<div class="attr"><span class="k">🛣 补给</span><span class="v">'
+                + GAME.land.cityLine(city) + '</span></div>');
+            }
+            return rows2.join('');
+          })()) +
           '<div class="attr"><span class="k">📜 城主</span><span class="v">' +
             (mayor ? (function () {
               /* v89.162（老板「列举城主的六维加成」）：悬停给出城主**全部**加成

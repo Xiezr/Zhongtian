@@ -29216,9 +29216,10 @@ window.GAME = window.GAME || {};
   LD.cityLine = function (city) {
     var st = LD.statusOf(city);
     if (!city) return '';
-    if (st.linked && st.hops === 0) return '🛣 补给：老家';
-    if (st.linked) return '🛣 补给：连着老家（' + st.hops + ' 跳）';
-    return '🛣 补给：**断链**（隔着水或太远，走不过去）';
+    /* 返回值**不带图标**：调用方已经在 key 栏放了 🛣（城面板）。 */
+    if (st.linked && st.hops === 0) return '老家';
+    if (st.linked) return '连着老家（' + st.hops + ' 跳）';
+    return '<span style="color:var(--red-light);">断链</span>（隔着水或太远，走不过去）';
   };
 })();
 
@@ -29395,7 +29396,7 @@ window.GAME = window.GAME || {};
   TN.cityLine = function (city) {
     if (!city) return '';
     var t = TN.of(city), lv = TN.levelOf(city), dl = TN.deltaOf(city);
-    return '☢ 污染 ' + Math.round(t) + '（' + lv.name + '）'
+    return Math.round(t) + '（' + lv.name + '）'
       + '　每月 ' + (dl >= 0 ? '+' : '') + Math.round(dl * 10) / 10;
   };
 })();
@@ -29563,7 +29564,7 @@ window.GAME = window.GAME || {};
 
   CL.cityLine = function (city) {
     if (!city) return '';
-    return '🌡 供暖：' + (CL.isWarm(city) ? '这个月烧上了' : '没烧')
+    return (CL.isWarm(city) ? '这个月烧上了' : '没烧')
       + '　需要 ' + U.numText(CL.fuelCostOf(city), 0) + ' 木/月'
       + (CL.isCold() && !CL.isWarm(city) ? '　<span style="color:var(--red-light);">严寒中</span>' : '');
   };
@@ -55042,6 +55043,31 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
           })()) +
           '<div class="attr"><span class="k">⚔ 驻军</span><span class="v">' +
             U.numText(GAME.armyTotal(city), 0) + '　城防 ' + GAME.cityDefense(city) + '</span></div>' +
+          /* ============================================================
+           * v94.1：这座城的**三条线**（污染 / 温度 / 补给）
+           * ------------------------------------------------------------
+           * 六层世界的最小版里，这三条是"这座城自己的账"，
+           * 所以它们该在城面板里出现，而不是只在世界的账本里汇总。
+           * 没有内容的行不显示（不拿空行占版面）。
+           * ============================================================ */
+          ((function () {
+            var rows2 = [];
+            if (GAME.taint && GAME.taint.cityLine) {
+              var tn = GAME.taint.levelOf(city);
+              rows2.push('<div class="attr"><span class="k">☢ 污染</span>'
+                + '<span class="v" style="color:' + tn.color + ';">'
+                + U.escape(GAME.taint.cityLine(city).replace('☢ 污染 ', '')) + '</span></div>');
+            }
+            if (GAME.climate && GAME.climate.cityLine) {
+              rows2.push('<div class="attr"><span class="k">🌡 温度</span><span class="v">'
+                + GAME.climate.cityLine(city) + '</span></div>');
+            }
+            if (GAME.land && GAME.land.cityLine) {
+              rows2.push('<div class="attr"><span class="k">🛣 补给</span><span class="v">'
+                + GAME.land.cityLine(city) + '</span></div>');
+            }
+            return rows2.join('');
+          })()) +
           '<div class="attr"><span class="k">📜 城主</span><span class="v">' +
             (mayor ? (function () {
               /* v89.162（老板「列举城主的六维加成」）：悬停给出城主**全部**加成
