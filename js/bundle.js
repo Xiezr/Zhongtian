@@ -6259,6 +6259,17 @@ window.GAME = window.GAME || {};
     driveWinAt: 0.55,         /* 驱赶：兵力够时的基础胜率 */
     driveCost: 300,           /* 驱赶一次要带的兵（不够不给打） */
     driveLoseTroop: 0.18,     /* 打输了折损的兵 */
+    /* v98.1：**他们也会来打你的城** —— 世界第一次真的反击。
+       门槛故意高（人口 1200 才敢）：开局那两支只会抢村子，
+       等他们吃成了势，才轮到你被惦记。 */
+    cityAtPop: 1200,          /* 队伍人口到这个数才敢碰城 */
+    cityRange: 14,            /* 只惦记这么近的城 */
+    cityNeedMul: 1.15,        /* 战力要超过守备的几倍才动手 */
+    cityPowerPerPop: 0.55,    /* 他们的战力 ≈ 人口 × 它 */
+    cityShare: 0.25,          /* 破城抢走库存的几成 */
+    cityLoss: 0.12,           /* 破城时守军损失几成 */
+    cityCd: 8,                /* 同一座城 8 个月内不会被再抢一次 */
+    cityRaidPop: 0.30,        /* 破城后他们分走的人口（按队伍人口） */
     names: ['灰烬车队', '铁鸦拾荒团', '第七公路', '白塔重建会', '南岸公社']
   };
 
@@ -6338,14 +6349,24 @@ window.GAME = window.GAME || {};
   /* ① 作战目标 —— 带多少兵决定你怎么打（C2 的落地） */
   DATA.GOALS = {
     tiers: [
+      /* v98.2：`mod` = **战场修正**（不是战利品倍率）。
+         带得越少，打法越凶也越脆 —— 这是"带多少兵"第一次真的进战场：
+           · 平推：无修正（兵多，稳推）
+           · 强攻：攻 +12% / 防 −8%
+           · 斩首：攻 +18% / 防 −15% / 血 −10%
+           · 奇袭：攻 +28% / 防 −28% / 血 −15%（刀口舔血） */
       { id: 'annihilate', name: '平推', at: 1.50, loot: 1.00, rep: 1.00, extraLoss: 0,
+        mod: {},
         desc: '兵压守军一倍半以上：稳，但对方早把东西搬空了' },
       { id: 'press', name: '强攻', at: 0.90, loot: 1.15, rep: 1.10, extraLoss: 0.05,
-        desc: '兵力相当：多抢一点，代价是多死一点' },
+        mod: { atk: 0.12, def: -0.08 },
+        desc: '兵力相当：攻 +12%、防 −8%，多抢一点，代价是多死一点' },
       { id: 'behead', name: '斩首', at: 0.60, loot: 1.45, rep: 1.35, extraLoss: 0.12,
-        desc: '以少打多：直取守将与库房，赢了拿得多，输了伤筋动骨' },
+        mod: { atk: 0.18, def: -0.15, hp: -0.10 },
+        desc: '以少打多：攻 +18%、防 −15%、血 −10%，直取守将与库房' },
       { id: 'raiddeep', name: '奇袭', at: 0.00, loot: 1.90, rep: 1.60, extraLoss: 0.22,
-        desc: '兵力不到守军六成：只在夜里动手，赢面小，得手够吃半年' }
+        mod: { atk: 0.28, def: -0.28, hp: -0.15 },
+        desc: '兵力不到守军六成：攻 +28%、防 −28%、血 −15%，赢面小，得手够吃半年' }
     ]
   };
 
@@ -29050,10 +29071,11 @@ window.GAME = window.GAME || {};
    * 两类：还没被人拿走的村社（人）· 已发现但没翻的遗迹（物）。
    * **不按玩家的探明度过滤**（理由见函数内注释）。
    * ============================================================ */
-  function pickTarget(t) {
+  function pickTarget(t, mm) {
     var s = SP();
     if (!s || !s.cells) return null;
     var best = null, bestD = 1e9, bestKind = null;
+    var d0 = D();
     var list = (VD() && VD().listAll) ? VD().listAll() : [];
     for (var i = 0; i < list.length; i++) {
       var ci = list[i];
@@ -29072,6 +29094,23 @@ window.GAME = window.GAME || {};
       var rd = (s.roughDistOf ? s.roughDistOf({ ci: t.ci }, { ci: rci }) : s.distOf({ ci: t.ci }, { ci: rci }));
       /* 遗迹给的是"东西"，优先级略低于"人" —— 同距时取村社 */
       if (rd < bestD - 0.001) { bestD = rd; best = rci; bestKind = 'ruin'; }
+    }
+    /* ③ v98.1：**你的城**。条件故意苛刻 —— 他们得先吃成势：
+          · 人口 ≥ cityAtPop（开局那两支只会抢村子）
+          · 你的城在 cityRange 格内
+          · 刚被抢过的城 8 个月免疫（同一条街不会被抢两次）
+       城比村社"肥"，所以同距时**优先城**（`bestD - 0.001` 的反向判断）。 */
+    var pop0 = (t.pop | 0);
+    if (pop0 >= (d0.cityAtPop == null ? 1200 : d0.cityAtPop)) {
+      var cd8 = d0.cityCd == null ? 8 : d0.cityCd;
+      (GAME.city && GAME.city.all ? (GAME.city.all() || []) : []).forEach(function (c) {
+        if (!c || c.ci == null || c.ci < 0) return;
+        if (c.raidCd != null && (mm - c.raidCd) < cd8) return;
+        var dd = (s.roughDistOf ? s.roughDistOf({ ci: t.ci }, { ci: c.ci })
+          : s.distOf({ ci: t.ci }, { ci: c.ci }));
+        if (dd > (d0.cityRange == null ? 14 : d0.cityRange)) return;
+        if (dd <= bestD + 0.001) { bestD = dd; best = c.ci; bestKind = 'city'; }
+      });
     }
     if (best == null) return null;
     return { ci: best, kind: bestKind, dist: bestD };
@@ -29115,8 +29154,19 @@ window.GAME = window.GAME || {};
       if (!t || t.dead) return;
       /* ① 半年一次重新挑目标（不必每月算，省一次 250 格遍历） */
       if (!t.dest || !t.dest.ci || m % 2 === 0) {
-        var tg = pickTarget(t);
+        var prevKind = t.dest && t.dest.kind;
+        var tg = pickTarget(t, m);
         t.dest = tg ? { ci: tg.ci, kind: tg.kind } : null;
+        /* 第一次把目标定成"某座城"时，给一条能看清的预警 ——
+           玩家必须在他们走到之前有机会派兵/驱赶，否则就是偷袭。 */
+        if (tg && tg.kind === 'city' && prevKind !== 'city') {
+          var tc = (GAME.city && GAME.city.byId) ? GAME.city.byId(tg.ci) : null;
+          if (tc && GAME.log && GAME.log.war) {
+            GAME.log.war('⚠ ' + t.name + '（' + U.numText(t.pop | 0, 0) + ' 人）正朝'
+              + tc.name + '来 —— 大约 ' + Math.max(0, Math.round(tg.dist))
+              + ' 个月后到城下。可以派兵驱赶，或者把守军补上。');
+          }
+        }
       }
       if (!t.dest) return;
 
@@ -29165,8 +29215,94 @@ window.GAME = window.GAME || {};
     return out;
   };
 
+  /* ============================================================
+   * v98.1 raidCity —— 他们来打你的城（世界第一次真的反击）
+   * ------------------------------------------------------------
+   * 不是掷骰子：**把双方摆出来比**
+   *   他们：pop × cityPowerPerPop
+   *   你  ：守军 + 城防（含工事、减掉墙裂）
+   * 不足守备 1.15 倍 → 被挡回去，他们折人；够了 → 破城，抢库存、砍守军。
+   *
+   * 两条刻意的边界：
+   *   · **不占城、不灭家**。抢完就走（`cityCd` 8 个月免疫）。
+   *     一座城被"抢空"和"被夺走"是两种体验，后者会让玩家直接删档。
+   *   · 预警在 `tick` 里给（他们刚把目标定成城的那一月），
+   *     玩家有时间补守军、建工事、或者花 300 兵去驱赶 —— 不是偷袭。
+   * ============================================================ */
+  function raidCity(t, city, m) {
+    var d = D();
+    var cd8 = d.cityCd == null ? 8 : d.cityCd;
+    if (city.raidCd != null && (m - city.raidCd) < cd8) return null;
+
+    var guard = (GAME.armyTotal ? GAME.armyTotal(city) : 0);
+    var def = (GAME.cityDefense ? GAME.cityDefense(city) : 0);
+    var wall = guard + def;
+    var mine = (t.pop | 0) * (d.cityPowerPerPop == null ? 0.55 : d.cityPowerPerPop);
+    var need = wall * (d.cityNeedMul == null ? 1.15 : d.cityNeedMul);
+
+    /* ① 打不进去：他们折人，城只掉一点守军（城防是有用的） */
+    if (mine < need) {
+      var died = Math.max(30, Math.round((t.pop | 0) * 0.15));
+      t.pop = Math.max(0, (t.pop | 0) - died);
+      if ((t.pop | 0) <= 0) t.dead = 'wall';
+      city.raidCd = m;
+      var lostG = Math.max(0, Math.round(guard * 0.02));
+      if (lostG > 0 && city.army) {
+        for (var k0 in city.army) {
+          city.army[k0] = Math.max(0, (city.army[k0] | 0) - Math.round(lostG / 3));
+        }
+      }
+      t.claims = (t.claims | 0) + 1;
+      return {
+        kind: 'city', ci: city.ci, repelled: true, n: died,
+        msg: '🛡 ' + t.name + '来打' + city.name + '，被城防挡回去了（他们折了 '
+          + U.numText(died, 0) + ' 人）。'
+      };
+    }
+
+    /* ② 破城：抢库存、砍守军。抢完就走。 */
+    var share = d.cityShare == null ? 0.25 : d.cityShare;
+    var lossP = d.cityLoss == null ? 0.12 : d.cityLoss;
+    var R = GAME.res(city), grabbed = {};
+    var total = 0;
+    ['grain', 'wood', 'stone', 'iron'].forEach(function (k) {
+      var n = Math.round((R[k] || 0) * share);
+      if (n <= 0) return;
+      if (GAME.city && GAME.city.sub) GAME.city.sub(city, k, n);
+      grabbed[k] = n; total += n;
+    });
+    if (city.army) {
+      for (var k2 in city.army) {
+        city.army[k2] = Math.max(0, Math.round((city.army[k2] | 0) * (1 - lossP)));
+      }
+    }
+    city.raidCd = m;
+    t.pop = (t.pop | 0) + Math.round((t.pop | 0) * (d.cityRaidPop == null ? 0.30 : d.cityRaidPop));
+    t.claims = (t.claims | 0) + 1;
+    return {
+      kind: 'city', ci: city.ci, broke: true, n: total, got: grabbed,
+      msg: '💥 ' + t.name + '破了' + city.name + '的墙：抢走 '
+        + U.numText(total, 0) + ' 资源、打掉 ' + Math.round(lossP * 100)
+        + '% 守军。他们扬长而去（这 8 个月不会再来）。'
+    };
+  }
+
   /* 占下一格：村社拿走人，遗迹拿走东西 */
+  /* ⚠️ 按**格号**找城：`GAME.city.byId` 收的是城 id（'c1' 这种），
+     而 `pickTarget` 存进 `dest.ci` 的是 ci —— 用 byId 查 ci 永远查不到，
+     攻城分支就永远不会执行（第一版就这么写的：断言里"守军一个没掉"照出来）。 */
+  function cityAtCi(ci) {
+    var all = (GAME.city && GAME.city.all) ? (GAME.city.all() || []) : [];
+    for (var i = 0; i < all.length; i++) if (all[i] && all[i].ci === ci) return all[i];
+    return null;
+  }
+
   function claim(t, ci, kind, m) {
+    if (kind === 'city') {
+      var tc = cityAtCi(ci);
+      if (!tc) return null;
+      return raidCity(t, tc, m);
+    }
     var st = GAME.state;
     if (!st) return null;
     if (kind === 'village') {
@@ -30217,6 +30353,13 @@ window.GAME = window.GAME || {};
     return tiers[tiers.length - 1];
   };
 
+  /* ============================================================
+   * v98.2：**战场修正** —— 让"带多少兵"真的进战场
+   * ------------------------------------------------------------
+   * 之前档位只改战利品倍率（战果层），玩家在战场上看不到任何区别 ——
+   * 又是"显示与实战分离"。这里把档位折成 atkPct/defPct/hpPer 的修正，
+   * 由 `tactic.simulate` 读 `goalMod` 落到攻方每一支部队。
+   * ============================================================ */
   /* 派兵前的预估（出征界面显示一行） */
   GO.previewOf = function (myTotal, foeTotal) {
     var t = GO.tierOf(myTotal, foeTotal);
@@ -36622,6 +36765,9 @@ window.GAME = window.GAME || {};
         battleAI: !!(GAME.state && GAME.state.settings && GAME.state.settings.battleAI),
         /* v91.86：目标星球 —— 环境规则按它解析（跨星球出征不能读"当前城"） */
         pid: (t && t.pid != null) ? t.pid : (GAME.curPid ? GAME.curPid() : 1),
+        /* v98.2：**玩家亲自出征** —— 只有这种战斗吃"作战目标"的战场修正
+           （平推/强攻/斩首/奇袭）。NPC 互打与测试模拟不受影响。 */
+        playerAtk: true,
         /* v96：**出兵城的兵员等级** —— {兵种: 1..5}。
            放在 simOpts 里（而不是运行时读），因为 simOpts 会被整存进 `rec.sim`：
            观战重放/读档重跑必须用**同一份等级快照**，否则同一场仗重跑会变。 */
@@ -39478,6 +39624,11 @@ window.GAME = window.GAME || {};
     var lvMap = (ctx && ctx.lvMap) || null;
     var lvPer = ((GAME.DATA && GAME.DATA.TROOPLV) || {}).gainPerLv;
     if (lvPer == null) lvPer = 0.07;
+    /* v98.2：**作战目标的战场修正**（`ctx.goalMod = {atk, def, hp}`）。
+       带得越少，攻越高、防越低、血越薄 —— 走的是既有的 atkPct/defPct/hpPer，
+       不另造数值通道，所以战报里的数字与引擎结算永远同一份。
+       只有**攻方**吃这个修正（守方还是照城防打）。 */
+    var gMod = (ctx && ctx.goalMod) || null;
     var out = [];
     Object.keys(army || {}).forEach(function (id) {
       var t = DATA.TROOPS[id], n = Math.floor(army[id] || 0);
@@ -39527,9 +39678,10 @@ window.GAME = window.GAME || {};
       var sortie = !!(tc && tc.sortie);
       var _lv = lvMap ? Math.max(1, Math.min(5, lvMap[id] | 0 || 1)) : 1;
       var _lvMul = 1 + lvPer * (_lv - 1);
+      var _gHp = gMod ? Math.max(0.4, 1 + (gMod.hp || 0)) : 1;
       out.push({
         id: id, name: t.name, side: side, count: n, start: n,
-        hpPer: Math.round(t.hp * _lvMul), range: t.range,
+        hpPer: Math.max(1, Math.round(t.hp * _lvMul * _gHp)), range: t.range,
         lv: _lv,
         spd: Math.round(t.spd * spdMult(t) * (1 + (a ? (a.spd || 0) : 0) / 300)),
         cover: cover,
@@ -39542,8 +39694,8 @@ window.GAME = window.GAME || {};
            genAttrs 的 atkPct/defPct（唯一换算原子见 domain.js atkPctOf/defPctOf）。
            旧版在这里散装 yw/zm/eqAtk/eqDef 四个字段、在 perAtk/perDef 里各乘一遍，
            与 UI 展示（v52 换算链）相差 4 倍 —— 属"显示与实战分离"，已并链。 */
-        atkPct: (a ? (a.atkPct || 0) : 0) + (_lvMul - 1),
-        defPct: (a ? (a.defPct || 0) : 0) + (_lvMul - 1),
+        atkPct: (a ? (a.atkPct || 0) : 0) + (_lvMul - 1) + (gMod ? (gMod.atk || 0) : 0),
+        defPct: (a ? (a.defPct || 0) : 0) + (_lvMul - 1) + (gMod ? (gMod.def || 0) : 0),
         vsCity: !!t.craft,
       });
     });
@@ -39708,10 +39860,25 @@ window.GAME = window.GAME || {};
     });
     /* v89.116：`foeArmy` 传"对面那支军队" —— 引擎据它给 **NPC 侧**一个默认目标
        （同兵种）。玩家在哪一侧由 `playerDef` 决定：默认玩家是攻方 → NPC 是守方。 */
+    /* v98.2：作战目标（平推/强攻/斩首/奇袭）的战场修正 —— 按兵力比自动定档，
+       **不接受外部指定**（否则玩家可以"带少兵却按平推打"，那就白送了）。
+       守城战（playerDef）不给攻方修正：那是别人来打你，你的目标由城防决定。 */
+    /* ⚠️ **只在玩家亲自出征时**给档位修正（`opts.playerAtk`）。
+       第一版是无条件按兵力比算，结果把 NPC 互打、拆械测试、智能方案对比
+       全改了 —— smoke §164③/§180②/§181② 三条当场红（平均战损 42.5%→63.5%）。
+       这种"隐式全局改数值"是最危险的一类改动：谁都看不出是自己的锅。 */
+    var _goalMod = null;
+    if (opts.playerAtk && !opts.playerDef && GAME.goals && GAME.goals.tierOf) {
+      var _sa = 0, _sd = 0, _k;
+      for (_k in atkArmy) _sa += (atkArmy[_k] | 0);
+      for (_k in defArmy) _sd += (defArmy[_k] | 0);
+      var _t98 = GAME.goals.tierOf(_sa, _sd);
+      _goalMod = (_t98 && _t98.mod) || null;
+    }
     var atk = T.unitsOf(atkArmy, 'atk', atkGen,
       /* v89.136（老板 4）：modeId 透传给 GAME.tacticOf —— 出征读"细分（掠夺/占领）覆盖通用" */
       { sieging: !!opts.sieging, override: stances.atk || null, modeId: opts.modeId || null,
-        lvMap: opts.atkLv || null,
+        lvMap: opts.atkLv || null, goalMod: _goalMod,
         foeArmy: opts.playerDef ? defArmy : null });
     var def = T.unitsOf(defArmy, 'def', defGen,
       /* v89.109：`playerDef` = 守方是**我方城市**（防御战）→ 读玩家「防守战术」设置；
@@ -51935,14 +52102,28 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
       RV.ensure();
       var live = RV.alive();
       var teamH = live.length ? live.map(function (t) {
+        /* v98.1：把「他们正在朝哪走」写出来 —— 攻城前必须有这一段，
+           否则玩家永远只会在被抢之后才知道有人来过。 */
+        var aim = '';
+        if (t.dest && t.dest.kind === 'city') {
+          var tc = (GAME.city && GAME.city.byId) ? GAME.city.byId(t.dest.ci) : null;
+          if (tc) aim = '<span style="color:var(--red-light);">　⚠ 正朝 ' + U.escape(tc.name) + ' 来</span>';
+        } else if (t.dest && t.dest.kind === 'village') {
+          aim = '<span style="color:var(--text-dim);">　→ 一处村社</span>';
+        } else if (t.dest && t.dest.kind === 'ruin') {
+          aim = '<span style="color:var(--text-dim);">　→ 一处遗迹</span>';
+        }
         return '<div style="margin-top:4px;">🏴 <b>' + U.escape(t.name) + '</b>　约 '
-          + U.numText(t.pop | 0, 0) + ' 人　已抢 ' + (t.claims | 0) + ' 处　'
+          + U.numText(t.pop | 0, 0) + ' 人　已抢 ' + (t.claims | 0) + ' 处' + aim + '　'
           + '<button class="btn" style="font-size:var(--fs-cap);padding:0 6px;"'
           + ' data-action="world-drive" data-rid="' + U.escape(t.id) + '">驱赶</button></div>';
       }).join('') : '<div class="ui-sub">暂时没有他们的消息（都被赶散了）。</div>';
       h += sec('🏴 竞争者', '你之外，还有人在做同一件事：他们抢村子的人，抢遗迹里的东西。',
         teamH + '<div class="ui-sub" style="margin-top:3px;">驱赶要 300 兵、要在 8 格内 —— 赢了他们散掉，'
-        + '人回附近的村子；输了折兵。他们不会灭，只会再拉一支。</div>');
+        + '人回附近的村子；输了折兵。他们不会灭，只会再拉一支。'
+        + '人口过 ' + U.numText((GAME.DATA.RIVAL || {}).cityAtPop || 1200, 0)
+        + ' 就会开始惦记你的城：城防 + 守军顶得住就打退他们，顶不住就抢走两成半库存、'
+        + '打掉一成二守军（抢完 8 个月不再来）。</div>');
     }
 
     /* ---------- 补给连通 ---------- */

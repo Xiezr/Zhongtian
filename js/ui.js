@@ -8148,14 +8148,28 @@ import './state.js';
       RV.ensure();
       var live = RV.alive();
       var teamH = live.length ? live.map(function (t) {
+        /* v98.1：把「他们正在朝哪走」写出来 —— 攻城前必须有这一段，
+           否则玩家永远只会在被抢之后才知道有人来过。 */
+        var aim = '';
+        if (t.dest && t.dest.kind === 'city') {
+          var tc = (GAME.city && GAME.city.byId) ? GAME.city.byId(t.dest.ci) : null;
+          if (tc) aim = '<span style="color:var(--red-light);">　⚠ 正朝 ' + U.escape(tc.name) + ' 来</span>';
+        } else if (t.dest && t.dest.kind === 'village') {
+          aim = '<span style="color:var(--text-dim);">　→ 一处村社</span>';
+        } else if (t.dest && t.dest.kind === 'ruin') {
+          aim = '<span style="color:var(--text-dim);">　→ 一处遗迹</span>';
+        }
         return '<div style="margin-top:4px;">🏴 <b>' + U.escape(t.name) + '</b>　约 '
-          + U.numText(t.pop | 0, 0) + ' 人　已抢 ' + (t.claims | 0) + ' 处　'
+          + U.numText(t.pop | 0, 0) + ' 人　已抢 ' + (t.claims | 0) + ' 处' + aim + '　'
           + '<button class="btn" style="font-size:var(--fs-cap);padding:0 6px;"'
           + ' data-action="world-drive" data-rid="' + U.escape(t.id) + '">驱赶</button></div>';
       }).join('') : '<div class="ui-sub">暂时没有他们的消息（都被赶散了）。</div>';
       h += sec('🏴 竞争者', '你之外，还有人在做同一件事：他们抢村子的人，抢遗迹里的东西。',
         teamH + '<div class="ui-sub" style="margin-top:3px;">驱赶要 300 兵、要在 8 格内 —— 赢了他们散掉，'
-        + '人回附近的村子；输了折兵。他们不会灭，只会再拉一支。</div>');
+        + '人回附近的村子；输了折兵。他们不会灭，只会再拉一支。'
+        + '人口过 ' + U.numText((GAME.DATA.RIVAL || {}).cityAtPop || 1200, 0)
+        + ' 就会开始惦记你的城：城防 + 守军顶得住就打退他们，顶不住就抢走两成半库存、'
+        + '打掉一成二守军（抢完 8 个月不再来）。</div>');
     }
 
     /* ---------- 补给连通 ---------- */

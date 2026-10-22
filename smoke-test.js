@@ -40567,6 +40567,187 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   })();
 
 
+
+
+  /* ============================================================
+   * §316 · v98.2：作战目标的战场修正（"带多少兵"真的进战场）
+   * ------------------------------------------------------------
+   * v95 那一版只改了战利品倍率，战场上一个数都没动 —— 又是显示与实战分离。
+   * 这一条钉两件事：① 档位真的折进 atkPct/defPct/hpPer；
+   *                ② 只有玩家亲自出征才吃（不许隐式改 NPC 互打与测试模拟）。
+   * ============================================================ */
+  console.log('\n===== 316. v98.2 档位进战场：带得越少，攻越高、血越薄 =====');
+  (function () {
+    /* ① 档位自带战场修正，且"带得越少越凶" */
+    check('§316① 四个档位自带战场修正，带得越少攻越高、防越低', (function () {
+      var a = G.goals.tierOf(3000, 1000);   /* 平推 */
+      var b = G.goals.tierOf(1000, 1000);   /* 强攻 */
+      var c = G.goals.tierOf(700, 1000);    /* 斩首 */
+      var d = G.goals.tierOf(400, 1000);    /* 奇袭 */
+      if (!a.mod || !b.mod || !c.mod || !d.mod) return false;
+      var atk = [a, b, c, d].map(function (x) { return x.mod.atk || 0; });
+      var def = [a, b, c, d].map(function (x) { return x.mod.def || 0; });
+      return atk[0] === 0 && atk[1] > atk[0] && atk[2] > atk[1] && atk[3] > atk[2]
+        && def[0] === 0 && def[1] < def[0] && def[3] < def[2];
+    })(), (function () {
+      var d = G.goals.tierOf(400, 1000);
+      return d.name + ' 攻 +' + Math.round(d.mod.atk * 100) + '% / 防 '
+        + Math.round(d.mod.def * 100) + '% / 血 ' + Math.round((d.mod.hp || 0) * 100) + '%';
+    })());
+
+    /* ② 修正真的落到单位属性上（不是只在数据表里躺着） */
+    check('§316② 修正真的进 unitsOf（攻↑ 防↓ 血↓，不是只在表里）', (function () {
+      if (!G.tactic || !G.tactic.unitsOf) return false;
+      var plain = G.tactic.unitsOf({ buxingji: 100 }, 'atk', null, { lvMap: { buxingji: 1 } });
+      var raid = G.tactic.unitsOf({ buxingji: 100 }, 'atk', null,
+        { lvMap: { buxingji: 1 }, goalMod: { atk: 0.28, def: -0.28, hp: -0.15 } });
+      if (!plain.length || !raid.length) return false;
+      return raid[0].atkPct > plain[0].atkPct + 0.2
+        && raid[0].defPct < plain[0].defPct - 0.2
+        && raid[0].hpPer < plain[0].hpPer;
+    })(), (function () {
+      var plain = G.tactic.unitsOf({ buxingji: 100 }, 'atk', null, {});
+      var raid = G.tactic.unitsOf({ buxingji: 100 }, 'atk', null,
+        { goalMod: { atk: 0.28, def: -0.28, hp: -0.15 } });
+      return '血 ' + plain[0].hpPer + '→' + raid[0].hpPer
+        + ' · 攻% ' + plain[0].atkPct.toFixed(2) + '→' + raid[0].atkPct.toFixed(2);
+    })());
+
+    /* ③ 只有玩家亲自出征才吃（不许隐式改 NPC 互打与测试模拟） */
+    check('§316③ 修正只挂在「玩家亲自出征」上（NPC 互打与测试模拟不受影响）', (function () {
+      var fs = require('fs'), path = require('path');
+      var src = fs.readFileSync(path.join(__dirname, 'js', 'tactic.js'), 'utf8');
+      var bsrc = fs.readFileSync(path.join(__dirname, 'js', 'battle.js'), 'utf8');
+      /* 条件里必须有 playerAtk；出征的 simOpts 里必须真的标上。
+         用 indexOf 而不是正则：这段断言本身在 heredoc 里写过一次，
+         `\s` 被编码吃掉变成 `/s`，直接语法错误（教训：断言里少用反斜杠正则）。 */
+      return src.indexOf('opts.playerAtk') >= 0
+        && src.indexOf('!opts.playerDef') >= 0
+        && bsrc.indexOf('playerAtk: true') >= 0;
+    })(), (function () { return '条件 playerAtk && !playerDef'; })());
+
+    /* ④ 平推档不带任何修正（带满兵就该是"什么都没发生"） */
+    check('§316④ 平推档不带修正（带满兵不该被偷偷加强或削弱）', (function () {
+      var t = G.goals.tierOf(3000, 1000);
+      if (t.id !== 'annihilate') return false;
+      var m = t.mod || {};
+      return !(m.atk || m.def || m.hp);
+    })(), (function () { return '平推：攻 0 / 防 0 / 血 0'; })());
+  })();
+
+  /* ============================================================
+   * §315 · v98.1：竞争者会来打你的城（世界第一次真的反击）
+   * ------------------------------------------------------------
+   * 判据：他们不是"掷骰子抢你"，是拿人口 × 系数去比你的守军 + 城防。
+   * 所以必须验到两头：守备够 → 被挡回去；守备空 → 真被抢。
+   * ============================================================ */
+  console.log('\n===== 315. v98.1 竞争者攻城：成势才会来 · 守备够就挡回去 =====');
+  (function () {
+    var st = G.state;
+    if (!st || !G.rival) return;
+    var c = G.currentCity();
+    if (!c) return;
+    var RVD = G.DATA.RIVAL || {};
+
+    /* 把队伍摆到城上、目标设成这座城，再 force 一次 tick（等价于"他们走到了"） */
+    function stage(pop, army) {
+      G.rival.ensure();
+      var t = G.rival.alive()[0];
+      if (!t) return null;
+      var bak = { army: JSON.parse(JSON.stringify(c.army || {})), raidCd: c.raidCd };
+      c.army = army;
+      c.raidCd = null;
+      t.pop = pop; t.dead = false;
+      t.ci = c.ci;
+      t.dest = { ci: c.ci, kind: 'city' };
+      /* m 必须是**奇数**：tick 里 `m % 2 === 0` 会重新挑目标，那就绕过了我们要测的分支 */
+      st.world.elapsed = 4800 * 7 + 10;
+      st.rival.month = 6;
+      return { t: t, bak: bak };
+    }
+    function restore(s0) {
+      if (!s0) return;
+      c.army = s0.bak.army;
+      c.raidCd = s0.bak.raidCd;
+      st.world.elapsed = 0;
+      st.rival.month = 0;
+    }
+
+    /* ① 人口不够成势 → 挑目标时不会挑城 */
+    check('§315① 人口没成势（不足 cityAtPop）时，不挑你的城', (function () {
+      var s0 = stage(Math.max(10, (RVD.cityAtPop || 1200) - 200), { buxingji: 100 });
+      if (!s0) return false;
+      s0.t.selected = null;
+      /* 清掉 dest 让它重新挑，并确保 m 是偶数（触发重挑） */
+      s0.t.dest = null;
+      st.world.elapsed = 4800 * 8 + 10;   /* m = 8（偶数）→ 重挑目标 */
+      G.rival.tick(true);
+      var kind = s0.t.dest && s0.t.dest.kind;
+      restore(s0);
+      return kind !== 'city';
+    })(), (function () { return '门槛 ' + (RVD.cityAtPop || 1200) + ' 人'; })());
+
+    /* ② 守备够 → 被挡回去：他们掉人，库存不动 */
+    check('§315② 城防 + 守军顶得住 → 他们被挡回去（掉人 · 库存不动）', (function () {
+      var s0 = stage(1500, { buxingji: 20000 });
+      if (!s0) return false;
+      var g0 = c.res.grain || 0;
+      var pop0 = s0.t.pop | 0;
+      G.rival.tick(true);
+      var ok = (s0.t.pop | 0) < pop0 && (c.res.grain || 0) >= g0 - 1 && c.raidCd != null;
+      restore(s0);
+      return ok;
+    })(), (function () {
+      var s0 = stage(1500, { buxingji: 20000 });
+      if (!s0) return '（无队伍）';
+      var p0 = s0.t.pop | 0;
+      G.rival.tick(true);
+      var r = '他们 ' + p0 + ' → ' + (s0.t.pop | 0) + ' 人';
+      restore(s0);
+      return r;
+    })());
+
+    /* ③ 守备空 → 真被抢：库存少、守军少、落冷却 */
+    check('§315③ 守备空 → 破城：库存被抢、守军被打、8 个月不再来', (function () {
+      var s0 = stage(60000, { buxingji: 100 });
+      if (!s0) return false;
+      c.res.grain = 100000; c.res.wood = 100000; c.res.stone = 100000; c.res.iron = 100000;
+      var g0 = c.res.grain, a0 = G.city.armyTotal(c);
+      G.rival.tick(true);
+      var ok = (c.res.grain || 0) < g0 * 0.85
+        && G.city.armyTotal(c) < a0
+        && c.raidCd != null;
+      restore(s0);
+      return ok;
+    })(), (function () {
+      var s0 = stage(60000, { buxingji: 100 });
+      if (!s0) return '（无队伍）';
+      c.res.grain = 100000; c.res.wood = 100000; c.res.stone = 100000; c.res.iron = 100000;
+      var g0 = c.res.grain;
+      G.rival.tick(true);
+      var r = '粮 ' + U.numText(g0, 0) + ' → ' + U.numText(c.res.grain || 0, 0)
+        + ' · 守军 ' + G.city.armyTotal(c);
+      restore(s0);
+      return r;
+    })());
+
+    /* ④ 冷却真的生效：同一个月的第二次直接不结算 */
+    check('§315④ 抢过的城 8 个月内免疫（不是每月都来薅一次）', (function () {
+      var s0 = stage(60000, { buxingji: 100 });
+      if (!s0) return false;
+      c.res.grain = 100000;
+      G.rival.tick(true);
+      var g1 = c.res.grain || 0;
+      /* 再摆一次，同一个月 */
+      s0.t.dest = { ci: c.ci, kind: 'city' };
+      s0.t.ci = c.ci;
+      G.rival.tick(true);
+      var same = (c.res.grain || 0) === g1;
+      restore(s0);
+      return same;
+    })(), (function () { return '冷却 ' + (RVD.cityCd || 8) + ' 个月'; })());
+  })();
+
   /* ============================================================
    * §314 · v98：终局 —— 接进去，还是关灯
    * ------------------------------------------------------------

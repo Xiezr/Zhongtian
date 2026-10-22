@@ -118,10 +118,11 @@
    * 两类：还没被人拿走的村社（人）· 已发现但没翻的遗迹（物）。
    * **不按玩家的探明度过滤**（理由见函数内注释）。
    * ============================================================ */
-  function pickTarget(t) {
+  function pickTarget(t, mm) {
     var s = SP();
     if (!s || !s.cells) return null;
     var best = null, bestD = 1e9, bestKind = null;
+    var d0 = D();
     var list = (VD() && VD().listAll) ? VD().listAll() : [];
     for (var i = 0; i < list.length; i++) {
       var ci = list[i];
@@ -140,6 +141,23 @@
       var rd = (s.roughDistOf ? s.roughDistOf({ ci: t.ci }, { ci: rci }) : s.distOf({ ci: t.ci }, { ci: rci }));
       /* 遗迹给的是"东西"，优先级略低于"人" —— 同距时取村社 */
       if (rd < bestD - 0.001) { bestD = rd; best = rci; bestKind = 'ruin'; }
+    }
+    /* ③ v98.1：**你的城**。条件故意苛刻 —— 他们得先吃成势：
+          · 人口 ≥ cityAtPop（开局那两支只会抢村子）
+          · 你的城在 cityRange 格内
+          · 刚被抢过的城 8 个月免疫（同一条街不会被抢两次）
+       城比村社"肥"，所以同距时**优先城**（`bestD - 0.001` 的反向判断）。 */
+    var pop0 = (t.pop | 0);
+    if (pop0 >= (d0.cityAtPop == null ? 1200 : d0.cityAtPop)) {
+      var cd8 = d0.cityCd == null ? 8 : d0.cityCd;
+      (GAME.city && GAME.city.all ? (GAME.city.all() || []) : []).forEach(function (c) {
+        if (!c || c.ci == null || c.ci < 0) return;
+        if (c.raidCd != null && (mm - c.raidCd) < cd8) return;
+        var dd = (s.roughDistOf ? s.roughDistOf({ ci: t.ci }, { ci: c.ci })
+          : s.distOf({ ci: t.ci }, { ci: c.ci }));
+        if (dd > (d0.cityRange == null ? 14 : d0.cityRange)) return;
+        if (dd <= bestD + 0.001) { bestD = dd; best = c.ci; bestKind = 'city'; }
+      });
     }
     if (best == null) return null;
     return { ci: best, kind: bestKind, dist: bestD };
@@ -183,8 +201,19 @@
       if (!t || t.dead) return;
       /* ① 半年一次重新挑目标（不必每月算，省一次 250 格遍历） */
       if (!t.dest || !t.dest.ci || m % 2 === 0) {
-        var tg = pickTarget(t);
+        var prevKind = t.dest && t.dest.kind;
+        var tg = pickTarget(t, m);
         t.dest = tg ? { ci: tg.ci, kind: tg.kind } : null;
+        /* 第一次把目标定成"某座城"时，给一条能看清的预警 ——
+           玩家必须在他们走到之前有机会派兵/驱赶，否则就是偷袭。 */
+        if (tg && tg.kind === 'city' && prevKind !== 'city') {
+          var tc = (GAME.city && GAME.city.byId) ? GAME.city.byId(tg.ci) : null;
+          if (tc && GAME.log && GAME.log.war) {
+            GAME.log.war('⚠ ' + t.name + '（' + U.numText(t.pop | 0, 0) + ' 人）正朝'
+              + tc.name + '来 —— 大约 ' + Math.max(0, Math.round(tg.dist))
+              + ' 个月后到城下。可以派兵驱赶，或者把守军补上。');
+          }
+        }
       }
       if (!t.dest) return;
 
@@ -233,8 +262,94 @@
     return out;
   };
 
+  /* ============================================================
+   * v98.1 raidCity —— 他们来打你的城（世界第一次真的反击）
+   * ------------------------------------------------------------
+   * 不是掷骰子：**把双方摆出来比**
+   *   他们：pop × cityPowerPerPop
+   *   你  ：守军 + 城防（含工事、减掉墙裂）
+   * 不足守备 1.15 倍 → 被挡回去，他们折人；够了 → 破城，抢库存、砍守军。
+   *
+   * 两条刻意的边界：
+   *   · **不占城、不灭家**。抢完就走（`cityCd` 8 个月免疫）。
+   *     一座城被"抢空"和"被夺走"是两种体验，后者会让玩家直接删档。
+   *   · 预警在 `tick` 里给（他们刚把目标定成城的那一月），
+   *     玩家有时间补守军、建工事、或者花 300 兵去驱赶 —— 不是偷袭。
+   * ============================================================ */
+  function raidCity(t, city, m) {
+    var d = D();
+    var cd8 = d.cityCd == null ? 8 : d.cityCd;
+    if (city.raidCd != null && (m - city.raidCd) < cd8) return null;
+
+    var guard = (GAME.armyTotal ? GAME.armyTotal(city) : 0);
+    var def = (GAME.cityDefense ? GAME.cityDefense(city) : 0);
+    var wall = guard + def;
+    var mine = (t.pop | 0) * (d.cityPowerPerPop == null ? 0.55 : d.cityPowerPerPop);
+    var need = wall * (d.cityNeedMul == null ? 1.15 : d.cityNeedMul);
+
+    /* ① 打不进去：他们折人，城只掉一点守军（城防是有用的） */
+    if (mine < need) {
+      var died = Math.max(30, Math.round((t.pop | 0) * 0.15));
+      t.pop = Math.max(0, (t.pop | 0) - died);
+      if ((t.pop | 0) <= 0) t.dead = 'wall';
+      city.raidCd = m;
+      var lostG = Math.max(0, Math.round(guard * 0.02));
+      if (lostG > 0 && city.army) {
+        for (var k0 in city.army) {
+          city.army[k0] = Math.max(0, (city.army[k0] | 0) - Math.round(lostG / 3));
+        }
+      }
+      t.claims = (t.claims | 0) + 1;
+      return {
+        kind: 'city', ci: city.ci, repelled: true, n: died,
+        msg: '🛡 ' + t.name + '来打' + city.name + '，被城防挡回去了（他们折了 '
+          + U.numText(died, 0) + ' 人）。'
+      };
+    }
+
+    /* ② 破城：抢库存、砍守军。抢完就走。 */
+    var share = d.cityShare == null ? 0.25 : d.cityShare;
+    var lossP = d.cityLoss == null ? 0.12 : d.cityLoss;
+    var R = GAME.res(city), grabbed = {};
+    var total = 0;
+    ['grain', 'wood', 'stone', 'iron'].forEach(function (k) {
+      var n = Math.round((R[k] || 0) * share);
+      if (n <= 0) return;
+      if (GAME.city && GAME.city.sub) GAME.city.sub(city, k, n);
+      grabbed[k] = n; total += n;
+    });
+    if (city.army) {
+      for (var k2 in city.army) {
+        city.army[k2] = Math.max(0, Math.round((city.army[k2] | 0) * (1 - lossP)));
+      }
+    }
+    city.raidCd = m;
+    t.pop = (t.pop | 0) + Math.round((t.pop | 0) * (d.cityRaidPop == null ? 0.30 : d.cityRaidPop));
+    t.claims = (t.claims | 0) + 1;
+    return {
+      kind: 'city', ci: city.ci, broke: true, n: total, got: grabbed,
+      msg: '💥 ' + t.name + '破了' + city.name + '的墙：抢走 '
+        + U.numText(total, 0) + ' 资源、打掉 ' + Math.round(lossP * 100)
+        + '% 守军。他们扬长而去（这 8 个月不会再来）。'
+    };
+  }
+
   /* 占下一格：村社拿走人，遗迹拿走东西 */
+  /* ⚠️ 按**格号**找城：`GAME.city.byId` 收的是城 id（'c1' 这种），
+     而 `pickTarget` 存进 `dest.ci` 的是 ci —— 用 byId 查 ci 永远查不到，
+     攻城分支就永远不会执行（第一版就这么写的：断言里"守军一个没掉"照出来）。 */
+  function cityAtCi(ci) {
+    var all = (GAME.city && GAME.city.all) ? (GAME.city.all() || []) : [];
+    for (var i = 0; i < all.length; i++) if (all[i] && all[i].ci === ci) return all[i];
+    return null;
+  }
+
   function claim(t, ci, kind, m) {
+    if (kind === 'city') {
+      var tc = cityAtCi(ci);
+      if (!tc) return null;
+      return raidCity(t, tc, m);
+    }
     var st = GAME.state;
     if (!st) return null;
     if (kind === 'village') {

@@ -582,6 +582,11 @@ import './state.js';
     var lvMap = (ctx && ctx.lvMap) || null;
     var lvPer = ((GAME.DATA && GAME.DATA.TROOPLV) || {}).gainPerLv;
     if (lvPer == null) lvPer = 0.07;
+    /* v98.2：**作战目标的战场修正**（`ctx.goalMod = {atk, def, hp}`）。
+       带得越少，攻越高、防越低、血越薄 —— 走的是既有的 atkPct/defPct/hpPer，
+       不另造数值通道，所以战报里的数字与引擎结算永远同一份。
+       只有**攻方**吃这个修正（守方还是照城防打）。 */
+    var gMod = (ctx && ctx.goalMod) || null;
     var out = [];
     Object.keys(army || {}).forEach(function (id) {
       var t = DATA.TROOPS[id], n = Math.floor(army[id] || 0);
@@ -631,9 +636,10 @@ import './state.js';
       var sortie = !!(tc && tc.sortie);
       var _lv = lvMap ? Math.max(1, Math.min(5, lvMap[id] | 0 || 1)) : 1;
       var _lvMul = 1 + lvPer * (_lv - 1);
+      var _gHp = gMod ? Math.max(0.4, 1 + (gMod.hp || 0)) : 1;
       out.push({
         id: id, name: t.name, side: side, count: n, start: n,
-        hpPer: Math.round(t.hp * _lvMul), range: t.range,
+        hpPer: Math.max(1, Math.round(t.hp * _lvMul * _gHp)), range: t.range,
         lv: _lv,
         spd: Math.round(t.spd * spdMult(t) * (1 + (a ? (a.spd || 0) : 0) / 300)),
         cover: cover,
@@ -646,8 +652,8 @@ import './state.js';
            genAttrs 的 atkPct/defPct（唯一换算原子见 domain.js atkPctOf/defPctOf）。
            旧版在这里散装 yw/zm/eqAtk/eqDef 四个字段、在 perAtk/perDef 里各乘一遍，
            与 UI 展示（v52 换算链）相差 4 倍 —— 属"显示与实战分离"，已并链。 */
-        atkPct: (a ? (a.atkPct || 0) : 0) + (_lvMul - 1),
-        defPct: (a ? (a.defPct || 0) : 0) + (_lvMul - 1),
+        atkPct: (a ? (a.atkPct || 0) : 0) + (_lvMul - 1) + (gMod ? (gMod.atk || 0) : 0),
+        defPct: (a ? (a.defPct || 0) : 0) + (_lvMul - 1) + (gMod ? (gMod.def || 0) : 0),
         vsCity: !!t.craft,
       });
     });
@@ -812,10 +818,25 @@ import './state.js';
     });
     /* v89.116：`foeArmy` 传"对面那支军队" —— 引擎据它给 **NPC 侧**一个默认目标
        （同兵种）。玩家在哪一侧由 `playerDef` 决定：默认玩家是攻方 → NPC 是守方。 */
+    /* v98.2：作战目标（平推/强攻/斩首/奇袭）的战场修正 —— 按兵力比自动定档，
+       **不接受外部指定**（否则玩家可以"带少兵却按平推打"，那就白送了）。
+       守城战（playerDef）不给攻方修正：那是别人来打你，你的目标由城防决定。 */
+    /* ⚠️ **只在玩家亲自出征时**给档位修正（`opts.playerAtk`）。
+       第一版是无条件按兵力比算，结果把 NPC 互打、拆械测试、智能方案对比
+       全改了 —— smoke §164③/§180②/§181② 三条当场红（平均战损 42.5%→63.5%）。
+       这种"隐式全局改数值"是最危险的一类改动：谁都看不出是自己的锅。 */
+    var _goalMod = null;
+    if (opts.playerAtk && !opts.playerDef && GAME.goals && GAME.goals.tierOf) {
+      var _sa = 0, _sd = 0, _k;
+      for (_k in atkArmy) _sa += (atkArmy[_k] | 0);
+      for (_k in defArmy) _sd += (defArmy[_k] | 0);
+      var _t98 = GAME.goals.tierOf(_sa, _sd);
+      _goalMod = (_t98 && _t98.mod) || null;
+    }
     var atk = T.unitsOf(atkArmy, 'atk', atkGen,
       /* v89.136（老板 4）：modeId 透传给 GAME.tacticOf —— 出征读"细分（掠夺/占领）覆盖通用" */
       { sieging: !!opts.sieging, override: stances.atk || null, modeId: opts.modeId || null,
-        lvMap: opts.atkLv || null,
+        lvMap: opts.atkLv || null, goalMod: _goalMod,
         foeArmy: opts.playerDef ? defArmy : null });
     var def = T.unitsOf(defArmy, 'def', defGen,
       /* v89.109：`playerDef` = 守方是**我方城市**（防御战）→ 读玩家「防守战术」设置；

@@ -2629,6 +2629,9 @@ import './state.js';
         battleAI: !!(GAME.state && GAME.state.settings && GAME.state.settings.battleAI),
         /* v91.86：目标星球 —— 环境规则按它解析（跨星球出征不能读"当前城"） */
         pid: (t && t.pid != null) ? t.pid : (GAME.curPid ? GAME.curPid() : 1),
+        /* v98.2：**玩家亲自出征** —— 只有这种战斗吃"作战目标"的战场修正
+           （平推/强攻/斩首/奇袭）。NPC 互打与测试模拟不受影响。 */
+        playerAtk: true,
         /* v96：**出兵城的兵员等级** —— {兵种: 1..5}。
            放在 simOpts 里（而不是运行时读），因为 simOpts 会被整存进 `rec.sim`：
            观战重放/读档重跑必须用**同一份等级快照**，否则同一场仗重跑会变。 */
