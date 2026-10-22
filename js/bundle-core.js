@@ -6581,7 +6581,31 @@ window.GAME = window.GAME || {};
     guardStep: 1000,         /* 每多少兵算一档 */
     holdMonths: 6,           /* 占下后至少守 6 个月才能被别人夺 */
     bonusGrain: 0.06,        /* 占着的时候全境粮产 +6% */
-    bonusIron: 0.06
+    bonusIron: 0.06,
+    /* ============================================================
+     * v110 · 奇观差异化（构想填充第二批·4）
+     * ------------------------------------------------------------
+     * 之前九种奇观效果一模一样（都 +6% 粮铁）—— 那就不叫九处争夺点，
+     * 叫九个同一个东西摆在不同地方。占哪个都一样，争夺就没有意义。
+     *
+     * 现在每处给**不一样的东西**，而且按它自己的"是什么"给：
+     *   · 工业巨构 → 材料（废钢/石料/旧币）
+     *   · 能源/信息类 → 辐能核心（研究材料）
+     *   · 圣殿/神殿 → 名声（名声本来就有三个消费口）
+     *
+     * `res` = 走 city.add（受仓容影响）；`item` = 走 items.add（不进仓容）。
+     * ============================================================ */
+    gains: {
+      forge:      { res: 'iron',  n: 420, name: '废钢' },
+      crater:     { res: 'stone', n: 520, name: '石料' },
+      dyson:      { res: 'gold',  n: 260, name: '旧币' },
+      ark:        { res: 'grain', n: 640, name: '粮食' },
+      crystal:    { item: 'lingsui', n: 9,  name: '辐能核心' },
+      chairring:  { item: 'lingsui', n: 14, name: '辐能核心' },
+      temple:     { item: 'lingsui', n: 7,  name: '辐能核心' },
+      pillars:    { fame: 3, name: '名声' },
+      mothership: { fame: 2, res: 'iron', n: 180, name: '名声 + 废钢' }
+    }
   };
 
   /* ⑤ 羁绊不合 —— 不是随机惩罚，是编成时的预知代价 */
@@ -31966,6 +31990,21 @@ if (GAME.reg) {
     return true;
   };
 
+  /* 这一处奇观每月给你什么（v110：九种各不一样）*/
+  WW.gainOf = function (pid) {
+    var t = (D().gains || {})[pid];
+    if (!t) return null;
+    return t;
+  };
+  WW.gainTextOf = function (pid) {
+    var t = WW.gainOf(pid);
+    if (!t) return '';
+    if (t.res) return t.name + ' +' + U.numText(t.n, 0) + '/月';
+    if (t.item) return t.name + ' +' + U.numText(t.n, 0) + '/月';
+    if (t.fame) return '名声 +' + t.fame + '/月';
+    return '';
+  };
+
   /* ============================================================
    * tick —— 每月：归属产出 + 被夺判定
    * ============================================================ */
@@ -31986,13 +32025,20 @@ if (GAME.reg) {
       var rec = o[pid];
       if (!rec || rec.owner !== 'me') return;
 
-      /* ① 产出：直接进主城（不经过产量表，避免污染既有口径） */
-      var city = GAME.mainCityOf ? GAME.mainCityOf() : (GAME.city && GAME.city.all ? GAME.city.all()[0] : null);
-      if (city && GAME.city.add) {
-        var base = Math.round(((GAME.res(city).pop || 1000) * 0.02) + 50);
-        GAME.city.add(city, 'grain', Math.round(base * (D().bonusGrain || 0.06) * 10));
-        GAME.city.add(city, 'iron', Math.round(base * (D().bonusIron || 0.06) * 6));
+      /* ① 产出：**每处奇观给的东西不一样**（v110）——直接进主城，不经过产量表 */
+      /* v110：`mainCityOf()` 在没有"主城"标记时返回 null ——
+         原来这里没有兜底，奇观收益会在那种局里**静默不发**（§330③ 照出来的）。 */
+      var city = (GAME.mainCityOf && GAME.mainCityOf())
+        || (GAME.currentCity && GAME.currentCity())
+        || (GAME.city && GAME.city.all ? GAME.city.all()[0] : null);
+      var gn = WW.gainOf(pid);
+      if (gn) {
+        if (city && gn.res && GAME.city.add) GAME.city.add(city, gn.res, gn.n);
+        if (gn.item && GAME.items && GAME.items.add) GAME.items.add(gn.item, gn.n);
+        if (gn.fame && GAME.renown && GAME.renown.add) GAME.renown.add('honor', gn.fame);
         out.income++;
+        out.detail = out.detail || [];
+        out.detail.push({ pid: pid, text: WW.gainTextOf(pid) });
       }
       /* ② 保护期过后，声望越高越招人惦记 —— 但**驻守的兵会让你更难被抢** */
       if (m >= (rec.guardUntil || 0)) {
@@ -32101,8 +32147,16 @@ if (GAME.reg) {
     Object.keys(o || {}).forEach(function (k) {
       if (o[k] && o[k].owner === 'me') g += (o[k].guard | 0);
     });
+    var bits = [];
+    Object.keys(o || {}).forEach(function (k) {
+      if (o[k] && o[k].owner === 'me') {
+        var tx = WW.gainTextOf(k);
+        if (tx) bits.push(k + '：' + tx);
+      }
+    });
     return '☄ 奇观：占着 ' + mine + ' 处' + (g > 0 ? ('（驻守 ' + U.numText(g, 0) + ' 人）') : '')
-      + '　全境每月有粮铁入账，保护期过后会被惦记';
+      + (bits.length ? '　' + bits.join(' · ') : '')
+      + '　保护期过后会被惦记';
   };
 })();
 

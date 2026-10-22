@@ -42000,6 +42000,75 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })());
   })();
 
+
+  /* ============================================================
+   * §330 · v110（第二批·4）：奇观差异化 —— 九处给九样东西
+   * ============================================================ */
+  console.log('\n===== 330. v110 奇观：占哪一处，拿什么，不一样 =====');
+  (function () {
+    var WW = G.wonderwar;
+    if (!WW || !WW.gainOf) return;
+    var defs = (DATA.WONDER_DEFS || []).map(function (x) { return x.id; });
+
+    check('§330① 九种奇观每一种都有明确的月收益', (function () {
+      return defs.length >= 9 && defs.every(function (id) { return !!WW.gainOf(id); });
+    })(), (function () {
+      return defs.length + ' 种，都有收益：' + defs.every(function (id) { return !!WW.gainOf(id); });
+    })());
+
+    check('§330② 收益不是同一个东西（资源 / 材料 / 名声 三类都在）', (function () {
+      var kinds = {};
+      defs.forEach(function (id) {
+        var g = WW.gainOf(id);
+        if (!g) return;
+        if (g.res) kinds['res:' + g.res] = 1;
+        if (g.item) kinds['item:' + g.item] = 1;
+        if (g.fame) kinds['fame'] = 1;
+      });
+      var ks = Object.keys(kinds);
+      return ks.length >= 6;     /* 至少六种不同的收益口径 */
+    })(), (function () {
+      var out = [];
+      defs.forEach(function (id) {
+        var t = WW.gainTextOf(id);
+        if (t) out.push(id + '=' + t);
+      });
+      return out.slice(0, 4).join(' · ');
+    })());
+
+    check('§330③ 每月真的按奇观给（不是按同一份预算分）', (function () {
+      var st = G.state;
+      if (!st) return false;
+      var bak = st.wonderOwn, bakMonth = st.wwMonth;
+      st.wonderOwn = { forge: { owner: 'me', at: 0, guardUntil: 999 } };
+      st.wwMonth = 0;
+      WW.tick(true);            /* 第一拍只对齐月份 */
+      var city = G.mainCityOf ? G.mainCityOf() : G.currentCity();
+      var before = (G.res(city).iron || 0);
+      var r = WW.tick(true);
+      var after = (G.res(city).iron || 0);
+      st.wonderOwn = bak; st.wwMonth = bakMonth;
+      return after > before && r && r.detail && r.detail[0] && r.detail[0].pid === 'forge';
+    })(), (function () {
+      var g = WW.gainOf('forge');
+      return g ? ('永动熔炉 → ' + WW.gainTextOf('forge')) : '无';
+    })());
+
+    check('§330④ 面板上写明占着的每一处给什么（不是一句"有粮铁入账"）', (function () {
+      var st = G.state;
+      var bak = st.wonderOwn;
+      st.wonderOwn = { forge: { owner: 'me' }, crystal: { owner: 'me' } };
+      var s = WW.lineOf();
+      st.wonderOwn = bak;
+      return s.indexOf('废钢') >= 0 && s.indexOf('辐能核心') >= 0;
+    })(), (function () {
+      var st = G.state, bak = st.wonderOwn;
+      st.wonderOwn = { forge: { owner: 'me' }, crystal: { owner: 'me' } };
+      var s = WW.lineOf(); st.wonderOwn = bak;
+      return s.slice(0, 60);
+    })());
+  })();
+
 console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');
   process.exit(FAIL ? 1 : 0);
 })();

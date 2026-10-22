@@ -61,6 +61,21 @@
     return true;
   };
 
+  /* 这一处奇观每月给你什么（v110：九种各不一样）*/
+  WW.gainOf = function (pid) {
+    var t = (D().gains || {})[pid];
+    if (!t) return null;
+    return t;
+  };
+  WW.gainTextOf = function (pid) {
+    var t = WW.gainOf(pid);
+    if (!t) return '';
+    if (t.res) return t.name + ' +' + U.numText(t.n, 0) + '/月';
+    if (t.item) return t.name + ' +' + U.numText(t.n, 0) + '/月';
+    if (t.fame) return '名声 +' + t.fame + '/月';
+    return '';
+  };
+
   /* ============================================================
    * tick —— 每月：归属产出 + 被夺判定
    * ============================================================ */
@@ -81,13 +96,20 @@
       var rec = o[pid];
       if (!rec || rec.owner !== 'me') return;
 
-      /* ① 产出：直接进主城（不经过产量表，避免污染既有口径） */
-      var city = GAME.mainCityOf ? GAME.mainCityOf() : (GAME.city && GAME.city.all ? GAME.city.all()[0] : null);
-      if (city && GAME.city.add) {
-        var base = Math.round(((GAME.res(city).pop || 1000) * 0.02) + 50);
-        GAME.city.add(city, 'grain', Math.round(base * (D().bonusGrain || 0.06) * 10));
-        GAME.city.add(city, 'iron', Math.round(base * (D().bonusIron || 0.06) * 6));
+      /* ① 产出：**每处奇观给的东西不一样**（v110）——直接进主城，不经过产量表 */
+      /* v110：`mainCityOf()` 在没有"主城"标记时返回 null ——
+         原来这里没有兜底，奇观收益会在那种局里**静默不发**（§330③ 照出来的）。 */
+      var city = (GAME.mainCityOf && GAME.mainCityOf())
+        || (GAME.currentCity && GAME.currentCity())
+        || (GAME.city && GAME.city.all ? GAME.city.all()[0] : null);
+      var gn = WW.gainOf(pid);
+      if (gn) {
+        if (city && gn.res && GAME.city.add) GAME.city.add(city, gn.res, gn.n);
+        if (gn.item && GAME.items && GAME.items.add) GAME.items.add(gn.item, gn.n);
+        if (gn.fame && GAME.renown && GAME.renown.add) GAME.renown.add('honor', gn.fame);
         out.income++;
+        out.detail = out.detail || [];
+        out.detail.push({ pid: pid, text: WW.gainTextOf(pid) });
       }
       /* ② 保护期过后，声望越高越招人惦记 —— 但**驻守的兵会让你更难被抢** */
       if (m >= (rec.guardUntil || 0)) {
@@ -196,7 +218,15 @@
     Object.keys(o || {}).forEach(function (k) {
       if (o[k] && o[k].owner === 'me') g += (o[k].guard | 0);
     });
+    var bits = [];
+    Object.keys(o || {}).forEach(function (k) {
+      if (o[k] && o[k].owner === 'me') {
+        var tx = WW.gainTextOf(k);
+        if (tx) bits.push(k + '：' + tx);
+      }
+    });
     return '☄ 奇观：占着 ' + mine + ' 处' + (g > 0 ? ('（驻守 ' + U.numText(g, 0) + ' 人）') : '')
-      + '　全境每月有粮铁入账，保护期过后会被惦记';
+      + (bits.length ? '　' + bits.join(' · ') : '')
+      + '　保护期过后会被惦记';
   };
 })();
