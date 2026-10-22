@@ -12381,7 +12381,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
     /* ⚠️ 这份 ORDER 与 build_bundle.py 的 ORDER **必须逐条一致**（本文故意不复用脚本，
        就是为了"构建脚本自己算错时测试还能抓到"）。加了模块两边都要加 ——
        v92 加 fog / memorial 时这里漏改，导致 hash 对不上、守卫假红。 */
-    var ORDER = ['core', 'registry', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'domain', 'map', 'sphere', 'risk', 'years', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'rival', 'land', 'taint', 'climate', 'surge', 'relic', 'goals', 'veteran', 'setskill', 'deck', 'bond', 'tower', 'wonderwar', 'delve', 'unrest', 'expose', 'trooplv', 'idle', 'ending', 'muster', 'gltf',
+    var ORDER = ['core', 'registry', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'domain', 'map', 'sphere', 'risk', 'years', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'rival', 'land', 'taint', 'climate', 'surge', 'relic', 'goals', 'veteran', 'setskill', 'deck', 'bond', 'tower', 'wonderwar', 'delve', 'unrest', 'expose', 'trooplv', 'idle', 'ending', 'muster', 'founding', 'gltf',
       'map3d', 'battle', 'strategy', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits', 'story', 'ui', 'main'];
     var h = crypto.createHash('sha256');
     try {
@@ -41552,6 +41552,124 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     /* 收尾：把状态清干净（后面没有用例了，但别把存档形状搞怪） */
     reset(null);
     st.ending.won = 0;
+  })();
+
+  /* ============================================================
+   * §325 · v103：开城 —— 棚户挤不下时，才第一次想到"我要开一座城"
+   * ------------------------------------------------------------
+   * 老板原话：「一开始甚至没有尝试，只是君主挑战升级，然后到了某个阶段，
+   *   突然想到了要开一座城来庇护天下人？」
+   * 这里钉的是**那个时刻真的存在**：不挤到这个份上，就不问；问了，按下去真落城。
+   * ============================================================ */
+  console.log('\n===== 325. v103 开城：棚户挤不下 → 带他们走 → 落一座新城 =====');
+  (function () {
+    var st = G.state;
+    if (!st || !G.found || !G.growth) return;
+    var c = G.currentCity();
+    if (!c) return;
+
+    var bakShanty = c.shanty, bakFoundAt = c._foundAt;
+    var bakWilds = (st.wilds || []).slice();
+    var bakCities = (st.cities || []).slice();
+    var bakRes = { grain: c.res.grain, wood: c.res.wood, stone: c.res.stone,
+      iron: c.res.iron, gold: c.res.gold };
+
+    function restore() {
+      st.wilds = bakWilds;
+      st.cities = bakCities;
+      c.shanty = bakShanty;
+      c._foundAt = bakFoundAt;
+      c.res.grain = bakRes.grain; c.res.wood = bakRes.wood;
+      c.res.stone = bakRes.stone; c.res.iron = bakRes.iron; c.res.gold = bakRes.gold;
+      if (G.found && G.found.offer && st.found) st.found.offer = null;
+    }
+
+    /* 找一块自家的平原空地（离城 3~8 格、非水、没被占） */
+    var s = G.sphereOf ? G.sphereOf() : G.sphere;
+    var probe = null;
+    if (s && s.cells) {
+      for (var pi = 0; pi < s.cells.length; pi++) {
+        var pc = s.cells[pi];
+        if (!pc || pc.type === 'lake') continue;
+        var pd = s.distOf ? s.distOf({ ci: c.ci }, { ci: pi }) : 99;
+        if (pd < 3 || pd > 8) continue;
+        var takenCi = false;
+        for (var q = 0; q < (st.cities || []).length; q++) if (st.cities[q].ci === pi) takenCi = true;
+        if (takenCi) continue;
+        probe = pi; break;
+      }
+    }
+    var capSh = G.growth.shantyCapOf(c);
+
+    /* ① 没挤到六成半 → 不问 */
+    check('§325① 棚户没挤到六成半 → 不弹"要不要开城"', (function () {
+      if (!capSh) return false;
+      c.shanty = Math.floor(capSh * 0.3);
+      c._foundAt = null;
+      var of = G.found.offerOf(c);
+      return of === null;
+    })(), (function () {
+      return '棚户上限 ' + capSh + ' · 三成时 ' + (c.shanty | 0) + ' 人';
+    })());
+
+    /* ② 挤到六成半以上 → 给出提议，且带走人数是实数 */
+    check('§325② 棚户挤到六成半以上 → 给出"带他们去开城"的提议', (function () {
+      if (!capSh) return false;
+      c.shanty = Math.floor(capSh * 0.7);
+      c._foundAt = null;
+      var of = G.found.offerOf(c);
+      return !!of && of.movers > 0 && of.shanty === c.shanty && of.cap === capSh;
+    })(), (function () {
+      var of = G.found.offerOf(c);
+      return of ? ('带走 ' + of.movers + ' / 棚户 ' + of.shanty) : '没有提议';
+    })());
+
+    /* ③ 找地走的是自家野地（不是全图抽样） */
+    check('§325③ 找地：给一块自家平原野地 → 立刻找得到', (function () {
+      if (probe == null) return false;
+      st.wilds = (st.wilds || []).concat([{ ci: probe, type: 'plain', pid: G.curPid() }]);
+      var spot = G.found.spotNear(c.ci);
+      st.wilds = bakWilds;
+      return !!spot && spot.ci === probe;
+    })(), (function () { return probe == null ? '找不到候选格' : ('候选格 #' + probe); })());
+
+    /* ④ 按下去真的落城：城 +1、人搬过去、棚户减少、资源扣掉 */
+    check('§325④ 带他们去 → 真落一座新城（人搬过去 · 棚户降 · 资源扣）', (function () {
+      if (probe == null || !capSh) return false;
+      st.wilds = (st.wilds || []).concat([{ ci: probe, type: 'plain', pid: G.curPid() }]);
+      c.shanty = Math.floor(capSh * 0.7);
+      c._foundAt = null;
+      c.res.grain = 1e6; c.res.wood = 1e6; c.res.stone = 1e6; c.res.iron = 1e6; c.res.gold = 1e6;
+      var n0 = (st.cities || []).length, sh0 = c.shanty, wood0 = c.res.wood;
+      var r = G.found.take(c);
+      var n1 = (st.cities || []).length;
+      var nc = r.city;
+      var ok = r.ok === true && n1 === n0 + 1 && !!nc
+        && (nc.res.pop | 0) > 0 && c.shanty < sh0 && c.res.wood < wood0;
+      restore();
+      return ok;
+    })(), (function () {
+      if (probe == null) return '找不到候选格';
+      st.wilds = (st.wilds || []).concat([{ ci: probe, type: 'plain', pid: G.curPid() }]);
+      c.shanty = Math.floor(capSh * 0.7); c._foundAt = null;
+      c.res.grain = 1e6; c.res.wood = 1e6; c.res.stone = 1e6; c.res.iron = 1e6; c.res.gold = 1e6;
+      var r = G.found.take(c);
+      var msg = r.msg + ' · 城 ' + (st.cities || []).length;
+      restore();
+      return msg;
+    })());
+
+    /* ⑤ 问过一次，六个月内不再问（不然就成骚扰，不叫选择） */
+    check('§325⑤ 同一座城问过一次 → 六个月内不再弹', (function () {
+      if (!capSh) return false;
+      c.shanty = Math.floor(capSh * 0.7);
+      c._foundAt = G.found.monthNow ? G.found.monthNow() : 0;
+      var of = G.found.offerOf(c);
+      c._foundAt = null;
+      return of === null;
+    })(), (function () { return '冷却靠 city._foundAt'; })());
+
+    restore();
   })();
 
 console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');

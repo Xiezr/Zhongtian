@@ -48,6 +48,7 @@ import './trooplv.js';   /* v96：兵员等级 —— 一级斥候、二级斥�
 import './idle.js';      /* v97：惰性 —— 「在配给表上活了三代」（设定灵魂的游戏化） */
 import './ending.js';    /* v98：终局 —— 接进去，还是关灯（一次性全局选择） */
 import './muster.js';    /* v99：兵源 —— 人从哪来（流民/战后/远征） */
+import './founding.js';  /* v103：开城 —— 棚户挤不下时，带他们去开一座城 */
 import './gltf.js';
 import './map3d.js';
 import './battle.js';

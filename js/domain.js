@@ -5959,7 +5959,10 @@ import './state.js';
    * 平原筑城（v16 · P2-10）：原版平地带资源可筑新城
    * ============================================================ */
   GAME.BUILD_CITY_COST = { grain: 10000, wood: 10000, stone: 10000, iron: 10000, gold: 10000 };
-  GAME.canBuildCityAt = function (ci) {
+  /* v103：**地理判据**单独一个出口（野地 / 平原 / 未被占）。
+     founding.js 要按自己的价钱找地，但它不能有第二份地理判据 ——
+     所以 canBuildCityAt 拆成"地理 → 资格 → 资源"三段，第一段复用本函数。 */
+  GAME.canBuildCityGeo = function (ci) {
     var s = GAME.state;
     var w = GAME.map.wildAt(ci);
     if (!w) return { ok: false, msg: '需先占领该野地，方可在其上筑城' };
@@ -5970,20 +5973,28 @@ import './state.js';
     for (var i = 0; i < (s.cities || []).length; i++) {
       if (s.cities[i].ci === ci) return { ok: false, msg: '此处已是我方城市' };
     }
+    return { ok: true, wild: w };
+  };
+  GAME.canBuildCityAt = function (ci, cost) {
+    var geo = GAME.canBuildCityGeo(ci);
+    if (!geo.ok) return geo;
     /* v89.108（老板）：「可建造控制的城市数量随威望解封」。
        顺序：先地理（能不能在这建）→ 再资格（领地上限）→ 再资源 —— 逐层归因。 */
     var _cc108 = GAME.cityCapChk ? GAME.cityCapChk() : { ok: true };
     if (!_cc108.ok) return _cc108;
-    if (!GAME.canAfford(GAME.BUILD_CITY_COST)) {
-      return { ok: false, msg: '资源不足（需 净水/生物质/电能/废钢/旧币 各 ' + U.fmt(GAME.BUILD_CITY_COST.grain) + '）' };
+    var c = cost || GAME.BUILD_CITY_COST;
+    if (!GAME.canAfford(c)) {
+      return { ok: false, msg: '资源不足（需 净水/生物质/电能/废钢/旧币 各 ' + U.fmt(c.grain) + '）' };
     }
-    return { ok: true, wild: w };
+    return { ok: true, wild: geo.wild };
   };
-  GAME.buildCityAt = function (ci) {
+  GAME.buildCityAt = function (ci, cost) {
     var s = GAME.state;
-    var chk = GAME.canBuildCityAt(ci);
+    /* v103：价钱可注入（founding.js 带人开城比纯花钱便宜）—— 默认仍是纯买价 */
+    var useCost = cost || GAME.BUILD_CITY_COST;
+    var chk = GAME.canBuildCityAt(ci, useCost);
     if (!chk.ok) return chk;
-    GAME.payCost(GAME.BUILD_CITY_COST);
+    GAME.payCost(useCost);
     var stName = GAME.stateOfCity(chk.wild);
     var city = GAME.makeCity({
       /* v91.03 / v90.100：城 id 带**星球前缀** + **格索引 ci**（防跨星球/同格撞）。 */
@@ -5994,7 +6005,7 @@ import './state.js';
     GAME.registerCity(city);   /* v89.161：入库唯一出口（含旧币池接线） */
     /* 筑城后该野地转为城市地块，从附属野地中移除 */
     s.wilds = (s.wilds || []).filter(function (w) { return w.ci !== ci; });
-    GAME.log('🏯 于 格#' + ci + ' 筑新城「' + city.name + '」（耗 净水/生物质/电能/废钢/旧币 各 ' + U.fmt(GAME.BUILD_CITY_COST.grain) + '）', 'sys', 'admin');
+    GAME.log('🏯 于 格#' + ci + ' 筑新城「' + city.name + '」（耗 净水/生物质/电能/废钢/旧币 各 ' + U.fmt(useCost.grain) + '）', 'sys', 'admin');
     return { ok: true, msg: '筑城成功：' + city.name, city: city };
   };
 
