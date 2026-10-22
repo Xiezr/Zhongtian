@@ -40571,6 +40571,57 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
 
 
 
+
+  /* ============================================================
+   * §319 · v98.5：老兵等级进战场（第四例"名字与用法不符"）
+   * ============================================================ */
+  console.log('\n===== 319. v98.5 老兵等级进战场（每级 +3% 攻，不再是抢得多）=====');
+  (function () {
+    var st = G.state, c = G.currentCity();
+    if (!st || !c || !G.veteran) return;
+
+    check('§319① 老兵等级换算成攻击加成（atkPerLvl 真的按攻算）', (function () {
+      var bk = JSON.parse(JSON.stringify(st.vet || {}));
+      st.vet = {}; st.vet[c.id] = { buxingji: 4 };
+      var a = G.veteran.atkPctOf(c.id);
+      st.vet = bk;
+      var per = (DATA.VETERAN || {}).atkPerLvl || 0.03;
+      return Math.abs(a - 4 * per) < 1e-9;
+    })(), (function () {
+      var bk = JSON.parse(JSON.stringify(st.vet || {}));
+      st.vet = {}; st.vet[c.id] = { buxingji: 3 };
+      var a = G.veteran.atkPctOf(c.id);
+      st.vet = bk;
+      return 'Lv3 老兵 → 攻 +' + Math.round(a * 100) + '%';
+    })());
+
+    check('§319② 老兵加成真的进 unitsOf（与档位、牌组同一条通道）', (function () {
+      var base = G.tactic.unitsOf({ buxingji: 100 }, 'atk', null, {});
+      var withVet = G.tactic.unitsOf({ buxingji: 100 }, 'atk', null, { goalMod: { atk: 0.09 } });
+      return withVet[0].atkPct > base[0].atkPct + 0.05;
+    })(), (function () {
+      var b = G.tactic.unitsOf({ buxingji: 100 }, 'atk', null, {});
+      var v = G.tactic.unitsOf({ buxingji: 100 }, 'atk', null, { goalMod: { atk: 0.09 } });
+      return '攻% ' + b[0].atkPct.toFixed(2) + '→' + v[0].atkPct.toFixed(2);
+    })());
+
+    check('§319③ 老兵不再乘战利品（同一份等级不许算两次）', (function () {
+      var bk = JSON.parse(JSON.stringify(st.vet || {}));
+      st.vet = {}; st.vet[c.id] = { buxingji: 5 };
+      var r = G.veteran.afterBattle(
+        { cityId: c.id, atkArmy: { buxingji: 100 } },
+        { winner: 'atk', atkLoss: 5, atkRemain: 95 }, { win: true });
+      st.vet = bk;
+      return r && r.lootBonus === undefined && (r.atkPct || 0) > 0;
+    })(), (function () { return '只返回 atkPct，不再返回 lootBonus'; })());
+
+    check('§319④ simulate 里真的传了 atkVet（源码级，出征路径）', (function () {
+      var b = require('fs').readFileSync(require('path').join(__dirname, 'js', 'battle.js'), 'utf8');
+      var t = require('fs').readFileSync(require('path').join(__dirname, 'js', 'tactic.js'), 'utf8');
+      return b.indexOf('atkVet:') >= 0 && t.indexOf('opts.atkVet') >= 0;
+    })(), (function () { return 'battle → tactic 同一条 simOpts'; })());
+  })();
+
   /* ============================================================
    * §318 · v98.4：把"写在表里的尸体"接活（伤兵自愈 / 老兵流失 /
    *                残页按距离 / 远征休整 / 奇观驻守）

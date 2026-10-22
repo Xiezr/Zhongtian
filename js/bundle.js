@@ -30456,7 +30456,8 @@ window.GAME = window.GAME || {};
     if (GAME.veteran && GAME.veteran.afterBattle) {
       var v = GAME.veteran.afterBattle(rec, result, { win: win, tier: tier });
       if (v) {
-        add.loot *= (1 + (v.lootBonus || 0));
+        /* v98.5：老兵不再乘战利品 —— 它的加成是**战场攻击**（见 tactic 的 atkVet）。
+           这里只留一句战报备注，免得同一份等级被算两次。 */
         if (v.note) add.note.push(v.note);
       }
     }
@@ -30579,6 +30580,12 @@ window.GAME = window.GAME || {};
     return s.vet[cityId] || {};
   };
 
+  /* 这座城的老兵给战斗加多少攻击（tactic 读它） */
+  VT.atkPctOf = function (cityId) {
+    var per = D().atkPerLvl == null ? 0.03 : D().atkPerLvl;
+    return VT.avgLvlOf(cityId) * per;
+  };
+
   VT.avgLvlOf = function (cityId) {
     var v = VT.vetOf(cityId), n = 0, sum = 0;
     var cap = D().maxLvl || 5;
@@ -30634,12 +30641,17 @@ window.GAME = window.GAME || {};
       if (!keys.length && v.__any) v.__any = Math.max(0, Math.round((v.__any - dec) * 10) / 10);
     }
 
-    /* 老兵加成：同一场仗抢得更多（"活下来的人"唯一被看见的地方） */
+    /* 老兵加成：**战场上的攻击**（`atkPerLvl` = "每级老兵：战力 +3%"）。
+       ⚠️ 这里原来返回的是 `lootBonus`（战利品加成）—— 字段名写着 atk、用法却是抢得多，
+          战场上一个数都没加（和 v98.2/v98.3 同一类错位，第四例）。
+       现在改成真攻击：由 `tactic` 折进 goalMod，战报里能看到。 */
     var avg = VT.avgLvlOf(rec.cityId);
+    var per = d.atkPerLvl == null ? 0.03 : d.atkPerLvl;
     return {
-      lootBonus: avg * (d.atkPerLvl == null ? 0.03 : d.atkPerLvl),
+      atkPct: avg * per,
       exp: gain,
-      note: avg >= 0.5 ? ('老兵 Lv' + (Math.round(avg * 10) / 10)) : null
+      note: avg >= 0.5 ? ('老兵 Lv' + (Math.round(avg * 10) / 10)
+        + '（攻 +' + Math.round(avg * per * 100) + '%）') : null
     };
   };
 
@@ -36984,6 +36996,15 @@ window.GAME = window.GAME || {};
         /* v98.2：**玩家亲自出征** —— 只有这种战斗吃"作战目标"的战场修正
            （平推/强攻/斩首/奇袭）。NPC 互打与测试模拟不受影响。 */
         playerAtk: true,
+        /* v98.5：**老兵等级**也是战场加成（每级 +3% 攻）。与 atkLv 同源取城，
+           同样存进 simOpts —— 重放/读档重跑必须用同一份。 */
+        atkVet: (function () {
+          try {
+            var _c2 = (opts && opts.cityId && GAME.city && GAME.city.byId)
+              ? GAME.city.byId(opts.cityId) : null;
+            return (GAME.veteran && _c2 && GAME.veteran.atkPctOf) ? GAME.veteran.atkPctOf(_c2.id) : 0;
+          } catch (e) { return 0; }
+        })(),
         /* v96：**出兵城的兵员等级** —— {兵种: 1..5}。
            放在 simOpts 里（而不是运行时读），因为 simOpts 会被整存进 `rec.sim`：
            观战重放/读档重跑必须用**同一份等级快照**，否则同一场仗重跑会变。 */
@@ -40096,6 +40117,16 @@ window.GAME = window.GAME || {};
          "血勇（攻 +15%）"三张的攻击向效果**一处都没生效**（goals 只读 loot/rep/loss/wound）。
          现在折进同一个 goalMod（相加，不连乘）：两条来源都走 atkPct/defPct，
          战报里就是一份数。 */
+      /* v98.5：老兵等级（每级 +3% 攻）—— 同一份 goalMod，相加 */
+      var _vet = (opts.atkVet || 0);
+      if (_vet > 0) {
+        _goalMod = {
+          atk: ((_goalMod && _goalMod.atk) || 0) + _vet,
+          def: (_goalMod && _goalMod.def) || 0,
+          hp: (_goalMod && _goalMod.hp) || 0
+        };
+      }
+
       if (GAME.deck && GAME.deck.effOf) {
         var _dk = GAME.deck.effOf();
         if (_dk && (_dk.atk || _dk.def)) {

@@ -838,6 +838,16 @@ import './state.js';
          "血勇（攻 +15%）"三张的攻击向效果**一处都没生效**（goals 只读 loot/rep/loss/wound）。
          现在折进同一个 goalMod（相加，不连乘）：两条来源都走 atkPct/defPct，
          战报里就是一份数。 */
+      /* v98.5：老兵等级（每级 +3% 攻）—— 同一份 goalMod，相加 */
+      var _vet = (opts.atkVet || 0);
+      if (_vet > 0) {
+        _goalMod = {
+          atk: ((_goalMod && _goalMod.atk) || 0) + _vet,
+          def: (_goalMod && _goalMod.def) || 0,
+          hp: (_goalMod && _goalMod.hp) || 0
+        };
+      }
+
       if (GAME.deck && GAME.deck.effOf) {
         var _dk = GAME.deck.effOf();
         if (_dk && (_dk.atk || _dk.def)) {

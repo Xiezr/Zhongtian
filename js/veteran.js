@@ -39,6 +39,12 @@
     return s.vet[cityId] || {};
   };
 
+  /* 这座城的老兵给战斗加多少攻击（tactic 读它） */
+  VT.atkPctOf = function (cityId) {
+    var per = D().atkPerLvl == null ? 0.03 : D().atkPerLvl;
+    return VT.avgLvlOf(cityId) * per;
+  };
+
   VT.avgLvlOf = function (cityId) {
     var v = VT.vetOf(cityId), n = 0, sum = 0;
     var cap = D().maxLvl || 5;
@@ -94,12 +100,17 @@
       if (!keys.length && v.__any) v.__any = Math.max(0, Math.round((v.__any - dec) * 10) / 10);
     }
 
-    /* 老兵加成：同一场仗抢得更多（"活下来的人"唯一被看见的地方） */
+    /* 老兵加成：**战场上的攻击**（`atkPerLvl` = "每级老兵：战力 +3%"）。
+       ⚠️ 这里原来返回的是 `lootBonus`（战利品加成）—— 字段名写着 atk、用法却是抢得多，
+          战场上一个数都没加（和 v98.2/v98.3 同一类错位，第四例）。
+       现在改成真攻击：由 `tactic` 折进 goalMod，战报里能看到。 */
     var avg = VT.avgLvlOf(rec.cityId);
+    var per = d.atkPerLvl == null ? 0.03 : d.atkPerLvl;
     return {
-      lootBonus: avg * (d.atkPerLvl == null ? 0.03 : d.atkPerLvl),
+      atkPct: avg * per,
       exp: gain,
-      note: avg >= 0.5 ? ('老兵 Lv' + (Math.round(avg * 10) / 10)) : null
+      note: avg >= 0.5 ? ('老兵 Lv' + (Math.round(avg * 10) / 10)
+        + '（攻 +' + Math.round(avg * per * 100) + '%）') : null
     };
   };
 

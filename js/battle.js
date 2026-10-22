@@ -2632,6 +2632,15 @@ import './state.js';
         /* v98.2：**玩家亲自出征** —— 只有这种战斗吃"作战目标"的战场修正
            （平推/强攻/斩首/奇袭）。NPC 互打与测试模拟不受影响。 */
         playerAtk: true,
+        /* v98.5：**老兵等级**也是战场加成（每级 +3% 攻）。与 atkLv 同源取城，
+           同样存进 simOpts —— 重放/读档重跑必须用同一份。 */
+        atkVet: (function () {
+          try {
+            var _c2 = (opts && opts.cityId && GAME.city && GAME.city.byId)
+              ? GAME.city.byId(opts.cityId) : null;
+            return (GAME.veteran && _c2 && GAME.veteran.atkPctOf) ? GAME.veteran.atkPctOf(_c2.id) : 0;
+          } catch (e) { return 0; }
+        })(),
         /* v96：**出兵城的兵员等级** —— {兵种: 1..5}。
            放在 simOpts 里（而不是运行时读），因为 simOpts 会被整存进 `rec.sim`：
            观战重放/读档重跑必须用**同一份等级快照**，否则同一场仗重跑会变。 */

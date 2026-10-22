@@ -115,7 +115,8 @@
     if (GAME.veteran && GAME.veteran.afterBattle) {
       var v = GAME.veteran.afterBattle(rec, result, { win: win, tier: tier });
       if (v) {
-        add.loot *= (1 + (v.lootBonus || 0));
+        /* v98.5：老兵不再乘战利品 —— 它的加成是**战场攻击**（见 tactic 的 atkVet）。
+           这里只留一句战报备注，免得同一份等级被算两次。 */
         if (v.note) add.note.push(v.note);
       }
     }
