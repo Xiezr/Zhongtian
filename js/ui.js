@@ -13256,7 +13256,7 @@ import './state.js';
             var capSh = GAME.growth.shantyCapOf ? GAME.growth.shantyCapOf(city) : 0;
             return '<div class="attr"><span class="k">🏚 城外棚户</span><span class="v" style="color:var(--red-light);">'
               + U.numText(sh, 0) + ' / ' + U.numText(capSh, 0) + ' 人'
-              + '　<span style="font-size:var(--fs-cap);color:var(--text-dim);">拥挤 · 会起火</span>'
+              + '　<span style="font-size:var(--fs-cap);color:var(--text-dim);">寒潮先死 · 会起火</span>'
               + '　<button class="btn" style="font-size:var(--fs-cap);padding:0 6px;margin-left:4px;"'
               + ' data-action="shanty-clear" data-cid="' + city.id + '">推平</button>'
               + '</span></div>';

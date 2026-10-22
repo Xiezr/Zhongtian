@@ -261,6 +261,6 @@
     var sh = GR.shantyOf(city);
     if (sh <= 0) return '';
     var cap = GR.shantyCapOf(city);
-    return '🏚 城外棚户 ' + U.numText(sh, 0) + ' 人（上限 ' + U.numText(cap, 0) + '）· 拥挤让民心往下掉';
+    return '🏚 城外棚户 ' + U.numText(sh, 0) + ' 人（上限 ' + U.numText(cap, 0) + '）· 寒潮里他们先死';
   };
 })();
