@@ -58,15 +58,22 @@ ORDER.forEach((m) => {
   refs[m] = r;
 });
 
-/* ---------- 三、出口归属（同名多定义 = 冲突，单独列出） ---------- */
-const owner = {};        /* 出口名 → [模块...] */
+/* ---------- 三、出口归属（同名多定义 = 冲突，单独列出） ----------
+ * ⚠️ v113 修正：归属只取**按 ORDER 最先定义它的那个模块**（= 加载顺序里的主定义）。
+ *   第一版把"任一文件赋过值"都算成归属，于是 `GAME.state` 因为 main.js 里
+ *   删档时写了 `GAME.state = null`，被算成"main 定义的槽"——
+ *   `domain → main` 于是虚报 **208 处**，其中 204 处其实是 `GAME.state`。
+ *   **量具错了，后面的架构判断全跟着错。** */
+const owner = {};        /* 出口名 → 主归属模块（第一个定义的）*/
+const allOwners = {};    /* 出口名 → [所有定义过它的模块] */
 const dup = {};
 ORDER.forEach((m) => {
   defs[m].forEach((k) => {
-    (owner[k] = owner[k] || []).push(m);
+    if (!owner[k]) owner[k] = m;
+    (allOwners[k] = allOwners[k] || []).push(m);
   });
 });
-Object.keys(owner).forEach((k) => { if (owner[k].length > 1) dup[k] = owner[k]; });
+Object.keys(allOwners).forEach((k) => { if (allOwners[k].length > 1) dup[k] = allOwners[k]; });
 
 /* ---------- 四、跨包引用 ---------- */
 const cross = { 'core>war': [], 'core>ui': [], 'war>ui': [] };
@@ -74,7 +81,7 @@ ORDER.forEach((m) => {
   Object.keys(refs[m]).forEach((k) => {
     const os = owner[k];
     if (!os) return;                       /* 未定义（可能是内建/拼错），另表列 */
-    const targets = os.filter((x) => x !== m);
+    const targets = (typeof os === 'string' ? [os] : os).filter((x) => x !== m);
     targets.forEach((t) => {
       const a = groupOf[m], b = groupOf[t];
       if (a === b) return;
@@ -89,7 +96,7 @@ const edges = {};    /* m -> Set(依赖的模块) */
 ORDER.forEach((m) => {
   edges[m] = new Set();
   Object.keys(refs[m]).forEach((k) => {
-    (owner[k] || []).forEach((t) => { if (t !== m) edges[m].add(t); });
+    [].concat(owner[k] || []).forEach((t) => { if (t !== m) edges[m].add(t); });
   });
 });
 const cycles = [];
