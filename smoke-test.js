@@ -12381,7 +12381,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
     /* ⚠️ 这份 ORDER 与 build_bundle.py 的 ORDER **必须逐条一致**（本文故意不复用脚本，
        就是为了"构建脚本自己算错时测试还能抓到"）。加了模块两边都要加 ——
        v92 加 fog / memorial 时这里漏改，导致 hash 对不上、守卫假红。 */
-    var ORDER = ['core', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'domain', 'map', 'sphere', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'rival', 'land', 'taint', 'climate', 'surge', 'relic', 'goals', 'veteran', 'setskill', 'deck', 'bond', 'tower', 'wonderwar', 'delve', 'unrest', 'expose', 'trooplv', 'idle', 'gltf',
+    var ORDER = ['core', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'domain', 'map', 'sphere', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'rival', 'land', 'taint', 'climate', 'surge', 'relic', 'goals', 'veteran', 'setskill', 'deck', 'bond', 'tower', 'wonderwar', 'delve', 'unrest', 'expose', 'trooplv', 'idle', 'ending', 'gltf',
       'map3d', 'battle', 'strategy', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits', 'story', 'ui', 'main'];
     var h = crypto.createHash('sha256');
     try {
@@ -40564,6 +40564,165 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var a = G.faction.standingOf('anvil'), o = G.faction.standingOf('oath');
       return '铁砧 信 ' + Math.round(a.t) + ' · 焰誓 怨 ' + Math.round(o.g);
     })());
+  })();
+
+
+  /* ============================================================
+   * §314 · v98：终局 —— 接进去，还是关灯
+   * ------------------------------------------------------------
+   * 这一条最怕的是"选了但没生效"（显示一个 ×1.35，产量表里没有）。
+   * 所以每条都拿真实产出/真实惰性/真实外交数做前后对比。
+   * ============================================================ */
+  console.log('\n===== 314. v98 终局：接进去（效率）vs 关灯（能力）=====');
+  (function () {
+    var st = G.state;
+    if (!st || !G.ending) return;
+    var c = G.currentCity();
+    if (!c) return;
+
+    /* ⚠️ reset 只清"选择"，**保留 won**（第二个开门条件）——
+       第一版把整只 st.ending 换掉，于是后面每条 choose() 都因"门关了"被拒（假红）。 */
+    function reset(choice) {
+      st.ending = { choice: choice || null, at: null, won: (st.ending && st.ending.won) | 0 };
+    }
+
+    /* ① 门没开 → 不许选 */
+    check('§314① 门没开时拒绝选择（不是无条件弹个按钮）', (function () {
+      reset(null);
+      st.ending.won = 0;
+      /* 把城削到 1 座、时间归零 —— 三个开门条件一个都不满足 */
+      var all = G.city.all() || [];
+      if (all.length > 1) st.cities = [all[0]];
+      st.world.elapsed = 0;
+      var opened = G.ending.opened();
+      var r = G.ending.choose('plug');
+      return opened === false && r.ok === false && G.ending.choiceOf() === null;
+    })(), (function () { return G.ending.lineOf(); })());
+
+    /* ② 门开了能选，且选完就不许改（一次性） */
+    check('§314② 门开了能选 · 选完不可撤销', (function () {
+      reset(null);
+      st.ending.won = 1;                 /* 「打掉一家势力核心」= 开门条件之一 */
+      if (!G.ending.opened()) return false;
+      var r1 = G.ending.choose('plug');
+      var r2 = G.ending.choose('dark');
+      return r1.ok && r2.ok === false && G.ending.choiceOf() === 'plug';
+    })(), (function () { return '当前：' + ((G.ending.optionOf() || {}).name || '未选'); })());
+
+    /* ③ 接进去：产出真的变大，且拆账里能看到这一项、和总值同口径 */
+    check('§314③ 接进去 → 产出真的变大 + 拆账里有「世界形态」一项', (function () {
+      reset(null);
+      var p0 = G.cityProdPerSec(c).grain;
+      var bd0 = (G.prodBreakdown ? G.prodBreakdown('grain', c) : []) || [];
+      var had0 = bd0.some(function (x) { return /世界形态/.test(x.name); });
+
+      reset('plug');
+      var p1 = G.cityProdPerSec(c).grain;
+      /* ⚠️ prodBreakdown 返回的是**数组**（每行 {name, val}），不是 {list, d} ——
+         第一版按对象取，item 恒为 undefined，假红。 */
+      var bd1 = (G.prodBreakdown ? G.prodBreakdown('grain', c) : []) || [];
+      var item = bd1.filter(function (x) { return /世界形态/.test(x.name); })[0];
+      if (!item || had0 || !(p1 > p0)) return false;
+      /* 这一项必须等于「基础产量 × 0.35」—— 证明它是按基础产量加成（与拆账同尺），
+         而不是在总值上乘了个 1.35（那会两把尺）。 */
+      var baseRow = bd1.filter(function (x) { return /基础产量/.test(x.name); })[0];
+      if (!baseRow) return false;
+      return Math.abs(item.val - baseRow.val * 0.35) <= Math.abs(baseRow.val) * 1e-9 + 1e-12;
+    })(), (function () {
+      var p = G.cityProdPerSec(c).grain;
+      return '粮产 ' + p.toFixed(4) + '/s';
+    })());
+
+    /* ④ 接进去：打仗不再让人勤快（这是它真正的代价） */
+    check('§314④ 接进去后打仗压不动惰性（代价真的落到惰性上）', (function () {
+      reset('plug');
+      var bak = c.idle;
+      c.idle = 60;
+      var r = G.idle.onBattle(c, 1);
+      var plugDrop = r.drop;
+      reset(null);
+      c.idle = 60;
+      var r0 = G.idle.onBattle(c, 1);
+      var normalDrop = r0.drop;
+      c.idle = bak; c.lastBattleMonth = null;
+      return normalDrop > 0 && plugDrop < normalDrop * 0.3;
+    })(), (function () {
+      reset('plug'); var b = c.idle; c.idle = 60; var a = G.idle.onBattle(c, 1).drop;
+      reset(null); c.idle = 60; var d = G.idle.onBattle(c, 1).drop; c.idle = b;
+      return '接进去降 ' + a + ' · 正常降 ' + d;
+    })());
+
+    /* ⑤ 接进去：惰性每月自己往上爬（月度结算真的推） */
+    check('§314⑤ 接进去后惰性每月自己往上爬（不需要自动化也爬）', (function () {
+      reset('plug');
+      var bakSet = st.settings, bakIdle = c.idle, bakM = st.endMonth;
+      st.settings = {};                    /* 全关：证明是终局在推，不是自动化 */
+      c.idle = 20;
+      st.endMonth = -1;
+      G.ending.tick(true);
+      var v = c.idle;
+      st.settings = bakSet; c.idle = bakIdle; st.endMonth = bakM;
+      return v > 20;
+    })(), (function () {
+      reset('plug'); var b = c.idle; c.idle = 20; st.endMonth = -1;
+      G.ending.tick(true); var v = c.idle; c.idle = b;
+      return '一个月 20 → ' + Math.round(v);
+    })());
+
+    /* ⑥ 关灯：产出变小但惰性每月自降（另一头的能力） */
+    check('§314⑥ 关灯 → 产出 −10% 且惰性每月自降（能练满级的代价）', (function () {
+      reset(null);
+      var p0 = G.cityProdPerSec(c).wood;
+      reset('dark');
+      var p1 = G.cityProdPerSec(c).wood;
+      var bak = c.idle, bakM = st.endMonth;
+      c.idle = 50; st.endMonth = -1;
+      G.ending.tick(true);
+      var v = c.idle;
+      c.idle = bak; st.endMonth = bakM;
+      return p1 < p0 && v < 50;
+    })(), (function () { return '木产变化见拆账 · 惰性每月 −2'; })());
+
+    /* ⑦ 选择会改变三家态度（设定里的修/烧/卖第一次算总账） */
+    check('§314⑦ 关灯 → 灰烬教团认你（怨降信涨），铁砧记恨', (function () {
+      if (!G.faction) return false;
+      reset(null);
+      G.faction.ensure();
+      G.faction.standingOf('oath').g = 50;
+      G.faction.standingOf('oath').t = 50;
+      G.faction.standingOf('anvil').t = 50;
+      var g0 = G.faction.standingOf('oath').g | 0;
+      var t0 = G.faction.standingOf('oath').t | 0;
+      var a0 = G.faction.standingOf('anvil').t | 0;
+      var r = G.ending.choose('dark');
+      if (!r.ok) return false;
+      return (G.faction.standingOf('oath').g | 0) < g0
+        && (G.faction.standingOf('oath').t | 0) > t0
+        && (G.faction.standingOf('anvil').t | 0) < a0;
+    })(), (function () {
+      var o = G.faction.standingOf('oath'), a = G.faction.standingOf('anvil');
+      return '焰誓 怨' + Math.round(o.g) + '/信' + Math.round(o.t) + ' · 铁砧 信' + Math.round(a.t);
+    })());
+
+    /* ⑧ 削掉一家势力核心 → 这是开门条件之一 */
+    check('§314⑧ 把那家削到保底（核心被打散）→ 终局门开', (function () {
+      reset(null);
+      st.ending.won = 0;
+      var all = G.city.all() || [];
+      if (all.length > 1) st.cities = [all[0]];
+      st.world.elapsed = 0;
+      if (G.ending.opened()) return false;
+      var fid = (G.faction.arr() || [])[0].id;
+      var f = (G.faction.arr() || [])[0];
+      /* r=4 → 腰斩得 2，正好落到保底（第一版写 5：5×0.5=2.5，到不了保底，hook 不触发） */
+      f.r = 4;
+      G.faction.onRaidWin(fid);
+      return (st.ending.won | 0) >= 1 && G.ending.opened() === true;
+    })(), (function () { return 'won=' + ((st.ending || {}).won | 0); })());
+
+    /* 收尾：把状态清干净（后面没有用例了，但别把存档形状搞怪） */
+    reset(null);
+    st.ending.won = 0;
   })();
 
 console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');

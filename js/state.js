@@ -3769,6 +3769,7 @@ import './data.js';
       _safeTick('wonderwar');
       _safeTick('expose');
       _safeTick('idle');        /* v97：惰性（自动化越多越懒，压兵员上限） */
+      _safeTick('ending');      /* v98：世界形态（接进去之后惰性单向爬） */
     }
     /* v89.136：老档采集队迁移兜底（幂等 · 正常已被 loadGame 处理） */
     if (GAME.migrateLegacyGathers) GAME.migrateLegacyGathers();
@@ -4048,6 +4049,16 @@ import './data.js';
     if (GAME.story) {
       var sm = GAME.story.prodMult(r);
       if (sm && Math.abs(sm - 1) > 1e-9) list.push({ name: '天时（季/天候）', d: sm - 1 });
+    }
+    /* v98：**世界形态**（终局二选一）。
+       接进去 → 全资源 +35%、税收 +20%；关灯 → 全资源 −10%。
+       走 `prodFactors` 而不是另造乘数：这样 `prodBreakdown` 的拆账
+       自动同口径（smoke 有一条断言钉着"各项之和 = 总值"）。 */
+    if (GAME.ending && GAME.ending.prodAdd) {
+      var _ea98 = GAME.ending.prodAdd(r);
+      if (_ea98 && Math.abs(_ea98) > 1e-9) {
+        list.push({ name: '世界形态（' + ((GAME.ending.optionOf() || {}).name || '') + '）', d: _ea98 });
+      }
     }
     /* v63（老板）：「守将属性只对当前城市起加成作用」——
        这里改成**读本城守将**（唯一出口 `GAME.guardBonus(city)`）。

@@ -43,6 +43,7 @@ import './unrest.js';    /* 民怨攒到头，城会自己反 */
 import './expose.js';    /* 你点亮一格，别人也就看见你了 */
 import './trooplv.js';   /* v96：兵员等级 —— 一级斥候、二级斥候（进战斗 + 任务门槛） */
 import './idle.js';      /* v97：惰性 —— 「照顾得太好，人就废了」（设定灵魂的游戏化） */
+import './ending.js';    /* v98：终局 —— 接进去，还是关灯（一次性全局选择） */
 import './gltf.js';
 import './map3d.js';
 import './battle.js';
@@ -1442,6 +1443,11 @@ import './ui.js';
       case 'deck-toggle': (function () {
         var r = GAME.deck ? GAME.deck.toggle(el.getAttribute('data-card')) : { msg: '未加载' };
         ui.toast(r.msg); ui.openWorldPanel();
+      })(); break;
+      case 'ending-choose': (function () {
+        var r = GAME.ending ? GAME.ending.choose(el.getAttribute('data-eid'))
+          : { msg: '终局系统未加载' };
+        ui.toast(r.msg); ui.openWorldPanel(); GAME.refreshView();
       })(); break;
       case 'idle-work': (function () {
         var r = GAME.idle ? GAME.idle.work(GAME.city.byId(el.getAttribute('data-cid')))

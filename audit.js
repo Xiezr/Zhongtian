@@ -27,7 +27,7 @@ const JSDIR = path.join(__dirname, 'js');
    否则结构审计对它是瞎的：fog / memorial / camp 未加入时，
    `GAME.camp` 在 state.js / ui.js 里的引用被报成"引用了不存在的成员"，
    而真正的成因是 audit 根本没读 camp.js。 */
-const MODULES = ['core', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'domain', 'map', 'sphere', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'rival', 'land', 'taint', 'climate', 'surge', 'relic', 'goals', 'veteran', 'setskill', 'deck', 'bond', 'tower', 'wonderwar', 'delve', 'unrest', 'expose', 'trooplv', 'idle', 'battle', 'strategy', 'icons', 'story', 'ui', 'map3d', 'main'];
+const MODULES = ['core', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'domain', 'map', 'sphere', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'rival', 'land', 'taint', 'climate', 'surge', 'relic', 'goals', 'veteran', 'setskill', 'deck', 'bond', 'tower', 'wonderwar', 'delve', 'unrest', 'expose', 'trooplv', 'idle', 'ending', 'battle', 'strategy', 'icons', 'story', 'ui', 'map3d', 'main'];
 
 const src = {};
 MODULES.forEach(m => { src[m] = fs.readFileSync(path.join(JSDIR, m + '.js'), 'utf8'); });
@@ -304,7 +304,7 @@ const REF_OK = {
    否则表现为"引用了不存在的成员"这种误导性报错。 */
 /* v90.92：任务系统退役 —— 'questdata' 摘除（见①的 MODULES 说明）。
    v91.61：新增 'core'。 */
-const REF_MODULES = ['core', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'domain', 'map', 'sphere', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'rival', 'land', 'taint', 'climate', 'surge', 'relic', 'goals', 'veteran', 'setskill', 'deck', 'bond', 'tower', 'wonderwar', 'delve', 'unrest', 'expose', 'trooplv', 'idle', 'battle', 'strategy', 'tactic',
+const REF_MODULES = ['core', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'domain', 'map', 'sphere', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'rival', 'land', 'taint', 'climate', 'surge', 'relic', 'goals', 'veteran', 'setskill', 'deck', 'bond', 'tower', 'wonderwar', 'delve', 'unrest', 'expose', 'trooplv', 'idle', 'ending', 'battle', 'strategy', 'tactic',
   'icons', 'gicons', 'bitmaps', 'portraits', 'story', 'ui', 'map3d', 'main'];
 /* 剥注释（audit.js 里没有共用版；注释里提到旧名不应算引用 —— 本项目踩过多次） */
 const stripC = s => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '');

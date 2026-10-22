@@ -130,6 +130,10 @@
     if (!city) return null;
     var d = D();
     var drop = (d.battleDrop == null ? 12 : d.battleDrop) * Math.max(0.5, Math.min(2, scale || 1));
+    /* v98：**接进去了就别指望打仗能让人勤快** ——
+       门外什么都没发生，水照供、饭照送，人不会因为"别人家在打仗"就学会种地。
+       保留 10% 的残余（城里总有几个闲不住的人），但压不回上限。 */
+    if (GAME.ending && GAME.ending.battleBlocked && GAME.ending.battleBlocked()) drop *= 0.1;
     var before = ID.of(city);
     city.idle = Math.max(0, Math.round((before - drop) * 10) / 10);
     city.lastBattleMonth = monthNow();

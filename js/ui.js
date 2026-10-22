@@ -8350,6 +8350,27 @@ import './state.js';
         var el = GAME.expose.lineOf();
         if (el) h += sec('👁 谁看见了你', el, '');
       }
+      /* ⑩ 世界形态（v98 终局）：接进去，还是关灯
+         —— 这是全局唯一一次"不可撤销"，所以把代价直接摊在按钮上，
+            不让玩家去猜一个 ×1.35 背后换掉了什么。 */
+      if (GAME.ending) {
+        var eo = GAME.ending.optionOf();
+        var eH;
+        if (eo) {
+          eH = '<div>已经定了：<b>' + U.escape(eo.name) + '</b>　' + U.escape(eo.short) + '</div>'
+            + '<div class="ui-sub" style="margin-top:4px;">' + U.escape(eo.costText || '') + '</div>';
+        } else if (GAME.ending.opened()) {
+          eH = '<div class="chips" style="margin-top:2px;">' + GAME.ending.optionsView().map(function (o) {
+            return '<span class="chip" data-action="ending-choose" data-eid="' + o.id + '"'
+              + ' title="' + U.escape(o.desc) + '">' + U.escape(o.name) + '　' + U.escape(o.short) + '</span>';
+          }).join('') + '</div>'
+            + '<div class="ui-sub" style="margin-top:4px;">'
+            + '选一次，改不了。接进去是效率，关灯是能力 —— 这个废土上只能挑一头。</div>';
+        } else {
+          eH = '<div class="ui-sub">' + GAME.ending.lineOf() + '</div>';
+        }
+        h += sec('🌗 世界形态', GAME.ending.lineOf(), eH);
+      }
     })();
 
     ui.openShell({

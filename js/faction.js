@@ -305,6 +305,11 @@
     FA.remember(fid, 'raidWin');
     FA.witnessed(fid);
     var d = FA.defOf(fid) || {};
+    /* v98：**削到保底 2 = 这家被你打散了** —— 这是终局三条件之一
+       （"打掉一家势力核心"）。只在"刚到 2"的那一次记一次，别反复刷。 */
+    if (before > 2 && f.r <= 2 && GAME.ending && GAME.ending.onFactionDown) {
+      GAME.ending.onFactionDown();
+    }
     return {
       before: before, after: f.r,
       msg: '攻破' + (d.name || fid) + ' 的核心：它的势力范围从 ' + before + ' 缩到 ' + f.r + ' 格'
