@@ -15495,7 +15495,22 @@
       var moodText = rec.mood >= 60 ? '他们认得你的旗子，会点头' : rec.mood >= 30 ? '他们不冷不热地看着你' : '他们把孩子往身后藏';
       h += '<div class="exp-info exp-info-l">' + U.numText(Math.round(rec.pop), 0) + ' 人住在这里。' + moodText + '。</div>';
       if (rec.guardAt > 0) {
-        h += '<div style="font-size:var(--fs-cap);color:var(--green-ok);margin-top:4px;">🛡 你护着这里（剩 ' + Math.max(0, rec.guardAt - V.monthNow()) + ' 个月）</div>';
+        h += '<div style="font-size:var(--fs-cap);color:var(--green-ok);margin-top:4px;">🛡 你护着这里（剩 '
+          + Math.max(0, rec.guardAt - V.monthNow()) + ' 个月）—— 到期他们会把攒下的粮送来</div>';
+      }
+      /* v111：他们记得你做过什么 —— 两头都要写出来，不然"关系"只是个数 */
+      if (rec.giftAt) {
+        var _gm = V.monthNow() - rec.giftAt;
+        if (_gm <= 12) {
+          h += '<div style="font-size:var(--fs-cap);color:var(--gold-light);margin-top:3px;">🎁 '
+            + _gm + ' 个月前他们把攒下的粮送来了 —— 他们记得你护过他们</div>';
+        }
+      }
+      if (rec.raided) {
+        var _rm = V.monthNow() - rec.raided;
+        h += '<div style="font-size:var(--fs-cap);color:var(--red-bad);margin-top:3px;">🔥 '
+          + (_rm <= 0 ? '你刚抢过这里' : _rm + ' 个月前你抢过这里')
+          + ' —— 他们一直记得，人还在往外走</div>';
       }
       var will = (GAME.renown ? GAME.renown.willFollow() : 1) * ((GAME.convoy && GAME.convoy.toolMul) ? GAME.convoy.toolMul() : 1);
       var canCall = Math.max(1, Math.round(rec.pop * (d.callRate == null ? 0.3 : d.callRate) * will));
@@ -15512,8 +15527,9 @@
       h += '</div>';
       h += '<div style="font-size:var(--fs-cap);color:var(--text-dim);line-height:1.6;">'
         + '· 征召：带走三成人。他们不会拦你，但也不会送你。<br>'
-        + '· 保护：给粮，他们的态度会变好；粮一断，护期就结束（不弹窗、不提醒）。<br>'
-        + '· 抢：物资最多，但这一村**会散** —— 第二天就空了。名声也会跟着走。<br>'
+        + '· 保护：给粮，态度会变好；<b>到期他们会把攒下的粮送来</b>（按人口算）。<br>'
+        + '· 抢：物资最多，但这一村**会散** —— 第二天就空了。名声也会跟着走，'
+        + '而且<b>他们会一直记得是你抢的</b>（往后每月都有人往外走）。<br>'
         + '<span style="color:var(--gold-light);">这三种都收不回来。</span></div>';
     }
     h += '</div><div class="panel-foot"><button class="btn" data-action="close-modal">关闭</button></div>';

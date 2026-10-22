@@ -4852,6 +4852,10 @@ window.GAME = window.GAME || {};
   };
 
   DATA.VILLAGE = {
+    /* v111（第二批·5）：护期结束的回礼 + 被抢过的村的持续失血 ——
+       "记住你"必须有两头：护过的会报答，抢过的会一直走。 */
+    giftPerPop: 1.2,          /* 护期结束时按人口给粮（每人 1.2）*/
+    raidBleedPerMonth: -0.012,/* 被抢过且 mood=0 的村，每月额外 -1.2%（人一直在走）*/
     chance: 0.006,              /* 陆地 About 0.6% → 一颗球约 200 处 */
     tiers: [
       { id: 'hamlet',  name: '人家',  pop: 60  },
@@ -27796,6 +27800,8 @@ if (GAME.reg) {
       rec.pop = Math.max(0, rec.pop - loss);
       rec.mood = 0;
       rec.guardAt = 0;
+      /* v111（第二批·5）：**他们记得是你抢的** —— 之后会一直躲你、一直往外走 */
+      rec.raided = V.monthNow();
       rec.at = Date.now();
       if (R()) R().add('cruelty', R().W.raidVillage);
       var fled = false;
@@ -27933,8 +27939,37 @@ if (GAME.reg) {
         rate += (d.factionPerMonth == null ? -0.02 : d.factionPerMonth);
       }
       if (rec.guardAt > 0) {
-        if (rec.guardAt > m) rate += (d.guardPerMonth == null ? 0.005 : d.guardPerMonth);
-        else rec.guardAt = 0;                   /* 护期结束，无声地结束（不弹窗） */
+        if (rec.guardAt > m) {
+          rate += (d.guardPerMonth == null ? 0.005 : d.guardPerMonth);
+        } else {
+          /* ============================================================
+           * v111（第二批·5）：**护期结束，他们会回礼**
+           * ------------------------------------------------------------
+           * 之前这里是"无声地结束（不弹窗）" —— 你花了粮护三个月，
+           * 到期什么也没有。那不是关系，那是订阅服务自动续费失败。
+           *
+           * 现在：到期那天他们把攒下的粮送来（按人口算），并且记住这件事。
+           * 给的东西不多，但它是**你护过的人主动给的**，性质不一样。
+           * ============================================================ */
+          rec.guardAt = 0;
+          var wv = V.at(ci);
+          var vn = (wv && wv.name) || '这处村社';
+          var gc = V.cityNearOf(ci);
+          if (gc && GAME.city && GAME.city.add) {
+            var gift = Math.max(15, Math.round(rec.pop * (d.giftPerPop == null ? 1.2 : d.giftPerPop)));
+            GAME.city.add(gc, 'grain', gift);
+            rec.mood = Math.min(100, rec.mood + 5);
+            rec.giftAt = m;
+            if (GAME.log && GAME.log.war) {
+              GAME.log.war('🎁 ' + vn + '把攒下的一点粮送来了 ' + U.numText(gift, 0)
+                + ' —— 他们说，你护过他们。');
+            }
+          }
+        }
+      }
+      /* 被抢过的村：人心散了，人会一直往外走（不是一次扣完就完事）*/
+      if (rec.raided && rec.mood <= 0) {
+        rate += (d.raidBleedPerMonth == null ? -0.012 : d.raidBleedPerMonth);
       }
       if (R()) rate += R().driftPerMonth();
 

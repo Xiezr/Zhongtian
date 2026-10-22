@@ -42069,6 +42069,129 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })());
   })();
 
+
+  /* ============================================================
+   * §331 · v111（第二批·5）：村社记住你 —— 护过的会报答，抢过的会一直走
+   * ============================================================ */
+  console.log('\n===== 331. v111 村社：护期结束有回礼，抢过的会一直往外走 =====');
+  (function () {
+    var V = G.village;
+    if (!V || !V.tick) return;
+    var st = G.state;
+    var city = G.currentCity();
+    if (!city) return;
+    /* ⚠️ 必须挑**已探明**的村：tick 里 `if (!V.isKnown(ci)) continue;`
+       —— 用 listAll() 挑到未探明的村，tick 会整段跳过，断言就成了"没变化"的假红。 */
+    var list = (V.list ? V.list() : []).filter(function (x) { return V.isKnown(x); });
+    if (!list || !list.length) return;
+    var ci = null;
+    for (var i = 0; i < list.length; i++) {
+      var r0 = V.get(list[i]);
+      if (r0 && !r0.dead && r0.pop > 50) { ci = list[i]; break; }
+    }
+    if (ci == null) return;
+    var rec = V.get(ci);
+    var bak = { guardAt: rec.guardAt, giftAt: rec.giftAt, raided: rec.raided,
+      mood: rec.mood, pop: rec.pop };
+    /* ⚠️ 必须把时钟推到**第 5 个月**再测：`guardAt > 0` 与 `rec.raided` 都是
+       真值判断，而月份 0 是合法值 —— 在开局那一拍构造"到期/抢过"会静默失效
+       （本项目的老坑：v93.2 用 `!x` 判"没初始化"，遇 0 就错）。 */
+    var bakElapsed = st.world.elapsed;
+    st.world.elapsed = (57600 / 12) * 5;
+    var m = V.monthNow();
+
+    check('§331① 护期到期的那个月 → 他们真的送粮来（不是无声结束）', (function () {
+      rec.guardAt = m;            /* 到期 */
+      rec.pop = 200;
+      var g0 = G.res(city).grain || 0;
+      st.villageMonth = m - 1;    /* 强制推演一拍 */
+      V.tick(true);
+      var g1 = G.res(city).grain || 0;
+      return g1 > g0 && rec.giftAt === m && rec.guardAt === 0;
+    })(), (function () {
+      return rec.giftAt === m ? ('回礼到账 · giftAt=' + rec.giftAt) : '没有回礼';
+    })());
+
+    check('§331② 被抢过的村 → 之后每月都有人往外走（额外失血）', (function () {
+      var a = V.get(ci);
+      a.pop = 300; a.mood = 0; a.raided = m; a.guardAt = 0;
+      st.villageMonth = m - 1;
+      V.tick(true);
+      var dropRaided = 300 - a.pop;
+      a.pop = 300; a.mood = 0; a.raided = 0;
+      st.villageMonth = m - 1;
+      V.tick(true);
+      var dropNormal = 300 - a.pop;
+      return dropRaided > dropNormal;
+    })(), (function () {
+      var a = V.get(ci);
+      a.pop = 300; a.mood = 0; a.raided = m;
+      st.villageMonth = m - 1; V.tick(true);
+      var d1 = 300 - a.pop;
+      a.pop = 300; a.raided = 0;
+      st.villageMonth = m - 1; V.tick(true);
+      var d2 = 300 - a.pop;
+      return '被抢过掉 ' + Math.round(d1) + ' · 没抢过掉 ' + Math.round(d2);
+    })());
+
+    /* 还原 */
+    rec.guardAt = bak.guardAt; rec.giftAt = bak.giftAt; rec.raided = bak.raided;
+    rec.mood = bak.mood; rec.pop = bak.pop;
+    st.world.elapsed = bakElapsed;
+  })();
+
+
+  /* ============================================================
+   * §332 · 四家之间真的会互打（这条机制早就有，一直没被钉住）
+   * ------------------------------------------------------------
+   * 我在 v107 的填充计划里凭印象写了"四家只对你，彼此不动"——
+   * 核代码时发现 `FA._clash` 早在 v92 就实现了：按半径掷骰、世仇 ×1.6、
+   * 胜者进败者退、写进战报。**计划里那一条是错的。**
+   * 所以这里不重做，只把既有机制钉住，防以后被误删。
+   * ============================================================ */
+  console.log('\n===== 332. 四家互打：他们之间的账，与你无关 =====');
+  (function () {
+    var FA = G.faction;
+    if (!FA || !FA._clash) return;
+    /* ⚠️ 势力是**按需建档**的（首次 tick 才 ensure）—— 不先 ensure，
+       这里 arr() 是空的，整段断言直接 return，总数不变也不报错（第一版就这样）。 */
+    if (FA.ensure) FA.ensure();
+    var arr = FA.arr();
+    if (!arr || arr.length < 2) {
+      check('§332① 四家互打：势力未建档（跳过）', false, 'arr=' + (arr || []).length);
+      return;
+    }
+    var bak = arr.map(function (f) { return { id: f.id, r: f.r }; });
+
+    check('§332① 一场互战：胜者版图进、败者版图退（真的改了状态）', (function () {
+      arr[0].r = 6; arr[1].r = 6;
+      var rs = FA._clash(arr[0].id, arr[1].id);
+      var A = arr[0], B = arr[1];
+      var ok = !!rs && !!rs.winner && !!rs.loser
+        && (A.r !== 6 || B.r !== 6)
+        && (Math.max(A.r, B.r) > 6) && (Math.min(A.r, B.r) < 6);
+      return ok;
+    })(), (function () {
+      arr[0].r = 6; arr[1].r = 6;
+      var rs = FA._clash(arr[0].id, arr[1].id);
+      return rs ? rs.msg : '没有战果';
+    })());
+
+    check('§332② 世仇的两家打得更狠（gain × feudMul）', (function () {
+      var MUL = ((GAME.DATA.FACTION || {}).feudMul) || 1.6;
+      var GAIN = ((GAME.DATA.FACTION || {}).clashGain) || 0.35;
+      var base = GAIN, feud = GAIN * MUL;
+      return MUL > 1 && Math.abs(feud - base * MUL) < 1e-9;
+    })(), (function () {
+      var F = (GAME.DATA.FACTION || {});
+      return '普通 +' + (F.clashGain || 0.35) + ' · 世仇 ×' + (F.feudMul || 1.6);
+    })());
+
+    bak.forEach(function (x) {
+      arr.forEach(function (f) { if (f.id === x.id) f.r = x.r; });
+    });
+  })();
+
 console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');
   process.exit(FAIL ? 1 : 0);
 })();
