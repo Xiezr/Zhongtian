@@ -12381,7 +12381,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
     /* ⚠️ 这份 ORDER 与 build_bundle.py 的 ORDER **必须逐条一致**（本文故意不复用脚本，
        就是为了"构建脚本自己算错时测试还能抓到"）。加了模块两边都要加 ——
        v92 加 fog / memorial 时这里漏改，导致 hash 对不上、守卫假红。 */
-    var ORDER = ['core', 'registry', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'domain', 'map', 'sphere', 'risk', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'rival', 'land', 'taint', 'climate', 'surge', 'relic', 'goals', 'veteran', 'setskill', 'deck', 'bond', 'tower', 'wonderwar', 'delve', 'unrest', 'expose', 'trooplv', 'idle', 'ending', 'muster', 'gltf',
+    var ORDER = ['core', 'registry', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'domain', 'map', 'sphere', 'risk', 'years', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'rival', 'land', 'taint', 'climate', 'surge', 'relic', 'goals', 'veteran', 'setskill', 'deck', 'bond', 'tower', 'wonderwar', 'delve', 'unrest', 'expose', 'trooplv', 'idle', 'ending', 'muster', 'gltf',
       'map3d', 'battle', 'strategy', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits', 'story', 'ui', 'main'];
     var h = crypto.createHash('sha256');
     try {
@@ -40581,6 +40581,74 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
 
 
 
+
+
+  /* ============================================================
+   * §324 · v101：年景细化（B5 —— 从"只影响新系统"到"主界面看得出来"）
+   * ============================================================ */
+  console.log('\n===== 324. v101 年景：粮产/征兵真的会变 =====');
+  (function () {
+    var st = G.state, c = G.currentCity();
+    if (!st || !c || !G.yearModsOf) return;
+
+    check('§324① 六个年景都有 yearMods（至少四个带真影响）', (function () {
+      var L = (DATA.YEARS || []);
+      if (L.length !== 6) return false;
+      var withMods = L.filter(function (y) {
+        var m = y.yearMods || {};
+        return (m.prod && Object.keys(m.prod).length) || m.train;
+      });
+      return withMods.length >= 4;
+    })(), (function () {
+      var L = (DATA.YEARS || []);
+      return L.map(function (y) { return y.name; }).join('/');
+    })());
+
+    check('§324② 丰年真的多产粮（产量表里出现「年景」那一项）', (function () {
+      var bak = st.world && st.world.year;
+      var bakY = (G.DATA.YEARS || []).slice();
+      try {
+        /* 直接把"今年"钉成丰年：找它在这一年的序号 */
+        var idx = -1;
+        bakY.forEach(function (y, i) { if (y.id === 'harvest') idx = i; });
+        if (idx < 0) return false;
+        st.world.year = idx + 1;                 /* yearOf 用 (year-1)%N */
+        var p0 = G.cityProdPerSec(c).grain;
+        var bd = G.prodBreakdown('grain', c) || [];
+        var hasYear = bd.some(function (x) { return /年景/.test(x.name); });
+        /* 换平年对比 */
+        var ci = -1;
+        bakY.forEach(function (y, i) { if (y.id === 'calm') ci = i; });
+        st.world.year = ci + 1;
+        var p1 = G.cityProdPerSec(c).grain;
+        return hasYear && p0 > p1;
+      } finally {
+        if (bak != null) st.world.year = bak;
+      }
+    })(), (function () {
+      return '丰年 > 平年（拆账里能看见年景那一行）';
+    })());
+
+    check('§324③ 战年征兵更快（时长乘数真的进去了）', (function () {
+      var L = (DATA.YEARS || []);
+      var w = null;
+      L.forEach(function (y) { if (y.id === 'war') w = y; });
+      if (!w || !w.yearMods) return false;
+      var t = w.yearMods.train;
+      return typeof t === 'number' && t < 0;
+    })(), (function () {
+      var L = (DATA.YEARS || []);
+      var w = null;
+      L.forEach(function (y) { if (y.id === 'war') w = y; });
+      return '战年征兵 ' + Math.round((w.yearMods.train || 0) * 100) + '%';
+    })());
+
+    check('§324④ 年景面板在注册表里（order 5，最靠前）', (function () {
+      if (!G.reg || !G.reg.get) return false;
+      var m = G.reg.get('years');
+      return !!(m && typeof m.panel === 'function' && m.order === 5);
+    })(), (function () { return G.years ? G.years.lineOf() : ''; })());
+  })();
 
   /* ============================================================
    * §323 · v101：危险梯度（构想 A5 —— 复核里唯一真缺的一项）

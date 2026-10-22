@@ -4052,6 +4052,13 @@ import './data.js';
       var sm = GAME.story.prodMult(r);
       if (sm && Math.abs(sm - 1) > 1e-9) list.push({ name: '天时（季/天候）', d: sm - 1 });
     }
+    /* v101（B5）：**年景** —— 原来只影响新系统，主界面感觉不到"今年是什么年"。
+       现在粮/铁这些老系统真的会变（丰年 +8% 粮、兴年 +10% 铁、战年 −5% 粮）。 */
+    if (GAME.yearModsOf) {
+      var _ym = GAME.yearModsOf();
+      var _yd = _ym.prod && _ym.prod[r];
+      if (_yd) list.push({ name: '年景（' + _ym.name + '）', d: _yd });
+    }
     /* v98：**世界形态**（终局二选一）。
        接进去 → 全资源 +35%、税收 +20%；关灯 → 全资源 −10%。
        走 `prodFactors` 而不是另造乘数：这样 `prodBreakdown` 的拆账

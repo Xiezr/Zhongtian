@@ -4762,13 +4762,25 @@ window.GAME = window.GAME || {};
    *    不碰粮产、训练、战斗这些核心数值 —— 那些一动就是全部平衡重标，
    *    且现有断言会大面积漂移。年景是"世界的天气"，不是"数值的补丁"。
    * ============================================================ */
+  /* v101（B5 细化）：`yearMods` = **真的影响老系统**的那几项。
+     原来 6 个年景只带 campMul / factionMul / fogPlus / ruinMul —— 全是新系统的参数，
+     玩家在主界面（产量、征兵）上感觉不到"今年是什么年"。
+     现在补三项，都走既有出口：
+       prod  → GAME.prodFactors（拆账自动同口径）
+       train → GAME.train 的时长（正数=更慢，负数=更快）
+     ⚠️ 刻意不碰人口增速：`§105` 钉着"补满时长 = fillHours"，乘一个年景系数会让它漂；
+        年景影响人口的路留给"疫年 → 流民变多"（muster 已经在吃天灾）。 */
   DATA.YEARS = [
-    { id: 'calm', name: '平年', note: '风调雨顺，四方无事。' },
-    { id: 'harvest', name: '丰年', note: '粮仓满溢，来投者众。', campMul: 1.3 },
-    { id: 'war', name: '战年', note: '四方刀兵，军阀并起。', factionMul: 2.0, clashMul: 0.34 },
-    { id: 'explore', name: '开拓年', note: '道路畅通，视野更远。', fogPlus: 1 },
-    { id: 'plague', name: '疫年', note: '病气弥漫，营地闭门。', campMul: 0.7 },
-    { id: 'boom', name: '兴年', note: '百业俱兴，旧世之物重现。', ruinMul: 1.3 }
+    { id: 'calm', name: '平年', note: '风调雨顺，四方无事。', yearMods: {} },
+    { id: 'harvest', name: '丰年', note: '粮仓满溢，来投者众。', campMul: 1.3,
+      yearMods: { prod: { grain: 0.08 } } },
+    { id: 'war', name: '战年', note: '四方刀兵，军阀并起。', factionMul: 2.0, clashMul: 0.34,
+      yearMods: { prod: { grain: -0.05 }, train: -0.15 } },
+    { id: 'explore', name: '开拓年', note: '道路畅通，视野更远。', fogPlus: 1, yearMods: {} },
+    { id: 'plague', name: '疫年', note: '病气弥漫，营地闭门。', campMul: 0.7,
+      yearMods: { prod: { grain: -0.06 } } },
+    { id: 'boom', name: '兴年', note: '百业俱兴，旧世之物重现。', ruinMul: 1.3,
+      yearMods: { prod: { iron: 0.10 } } }
   ];
 
   /* ============================================================
@@ -10801,6 +10813,13 @@ window.GAME = window.GAME || {};
       var sm = GAME.story.prodMult(r);
       if (sm && Math.abs(sm - 1) > 1e-9) list.push({ name: '天时（季/天候）', d: sm - 1 });
     }
+    /* v101（B5）：**年景** —— 原来只影响新系统，主界面感觉不到"今年是什么年"。
+       现在粮/铁这些老系统真的会变（丰年 +8% 粮、兴年 +10% 铁、战年 −5% 粮）。 */
+    if (GAME.yearModsOf) {
+      var _ym = GAME.yearModsOf();
+      var _yd = _ym.prod && _ym.prod[r];
+      if (_yd) list.push({ name: '年景（' + _ym.name + '）', d: _yd });
+    }
     /* v98：**世界形态**（终局二选一）。
        接进去 → 全资源 +35%、税收 +20%；关灯 → 全资源 −10%。
        走 `prodFactors` 而不是另造乘数：这样 `prodBreakdown` 的拆账
@@ -14429,6 +14448,20 @@ window.GAME = window.GAME || {};
     return L[i];
   };
   /* ============================================================
+   * v101：年景对**老系统**的修正 —— 唯一出口
+   * ------------------------------------------------------------
+   * 返回 `{ prod: {资源: 加数}, train: 加数 }`。
+   *   prod  → prodFactors 里加一行（拆账自动同口径）
+   *   train → 征兵时长乘 (1 + train)（负数 = 更快）
+   * 没有 yearMods / 没有年景时，一律返回空对象（调用方不用判空）。
+   * ============================================================ */
+  GAME.yearModsOf = function () {
+    var y = GAME.yearOf ? GAME.yearOf() : null;
+    var m = (y && y.yearMods) || {};
+    return { prod: m.prod || null, train: m.train || 0, name: (y && y.name) || '' };
+  };
+
+  /* ============================================================
    * v92.18（B4）：寒潮 —— 每 periodMonths 个月来一次，持续 lenMonths 个月
    * ------------------------------------------------------------
    * 纯函数：只读 world.elapsed，不落状态（所以读档/重放不会出现"寒潮错位"）。
@@ -15998,6 +16031,11 @@ window.GAME = window.GAME || {};
     var totalTime = count * t.time;
     var trainRed = GAME.systems.techBonus('train', city);   /* v89.191：按城读 */
     totalTime = Math.round(totalTime * (1 - Math.min(0.6, trainRed)));
+    /* v101（B5）：年景也管征兵 —— 战年（−15%）人愿意当兵，招得快 */
+    if (GAME.yearModsOf) {
+      var _ymt = GAME.yearModsOf().train || 0;
+      if (_ymt) totalTime = Math.round(totalTime * Math.max(0.4, 1 + _ymt));
+    }
     /* ⛔ v90.93：训练加速（GAME.story.trainMult，年号国策）随年号纪元退役。 */
     /* v63（老板）：征兵加速取**本城**守将的武力（改前吃全境守将之和） */
     var gbT = GAME.guardBonus(city);
@@ -26500,6 +26538,77 @@ if (GAME.reg) {
 }
 
 })();
+
+/* ---- years.js ---- */
+/* ============================================================
+ * years.js — 年景面板（v101 · B5 细化的界面部分）
+ * ------------------------------------------------------------
+ * 年景的**逻辑**在 `domain.js`（`GAME.yearOf / yearModsOf`，v92.8 起就有），
+ * 这一版补的是：它原来只影响新系统（营地/势力/视野/遗迹），
+ * 玩家在主界面感觉不到"今年是什么年"。
+ *
+ * 所以：
+ *   · 数据层给 6 个年景加了 `yearMods`（粮产 / 征兵时长）；
+ *   · 产量走 `prodFactors`、征兵走 `GAME.train` 的时长 —— 都是既有出口；
+ *   · 这里只负责**把今年是什么、影响了什么写清楚**。
+ *
+ * ⚠️ 不重复定义 `yearOf` —— 那是 domain.js 的出口，这里只读。
+ * ============================================================ */
+(function () {
+  'use strict';
+  var GAME = window.GAME = window.GAME || {};
+  var YR = GAME.years = {};
+  var U = GAME.utils;
+
+  /* 一句话摘要（面板副标题用） */
+  YR.lineOf = function () {
+    var y = GAME.yearOf ? GAME.yearOf() : null;
+    if (!y) return '';
+    var m = (GAME.yearModsOf ? GAME.yearModsOf() : {}) || {};
+    var bits = [];
+    if (m.prod) {
+      for (var k in m.prod) {
+        var v = m.prod[k];
+        if (!v) continue;
+        bits.push(({ grain: '粮', iron: '铁', wood: '木', stone: '石', gold: '旧币' }[k] || k)
+          + ' ' + (v > 0 ? '+' : '') + Math.round(v * 100) + '%');
+      }
+    }
+    if (m.train) bits.push('征兵 ' + (m.train > 0 ? '慢 ' : '快 ')
+      + Math.abs(Math.round(m.train * 100)) + '%');
+    return '📅 ' + y.name + (bits.length ? ('　' + bits.join('　')) : '　没有特别的加成或代价');
+  };
+
+  /* 正文：给"这个年景到底改变了什么"一句实话，不写成散文 */
+  YR.bodyHTML = function () {
+    var y = GAME.yearOf ? GAME.yearOf() : null;
+    if (!y) return '';
+    var more = [];
+    if (y.campMul && y.campMul !== 1) more.push('营地招募 ×' + y.campMul);
+    if (y.factionMul && y.factionMul !== 1) more.push('军阀推进 ×' + y.factionMul);
+    if (y.fogPlus) more.push('视野 +' + y.fogPlus);
+    if (y.ruinMul && y.ruinMul !== 1) more.push('遗迹产出 ×' + y.ruinMul);
+    return '<div class="ui-sub" style="margin-top:4px;">' + U.escape(y.note || '')
+      + (more.length ? ('　·　' + U.escape(more.join('　·　'))) : '') + '</div>';
+  };
+})();
+
+/* ============================================================
+ * 自注册（可插拔 —— 见 registry.js）
+ * order 5：比「人从哪来（10）」还靠前 —— 它是今年整年的背景板。
+ * ============================================================ */
+if (GAME.reg) {
+  GAME.reg.add({
+    id: 'years',
+    order: 5,
+    panel: function (ctx) {
+      var sec = ctx.sec;
+      var y = GAME.yearOf ? GAME.yearOf() : null;
+      if (!y) return '';
+      return sec('📅 今年', GAME.years.lineOf(), GAME.years.bodyHTML());
+    }
+  });
+}
 
 /* ---- fog.js ---- */
 /* ============================================================
@@ -64504,6 +64613,7 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
 /* v91.61 地基第 1 期：main.js 是**唯一入口** —— 下列 import 的先后即**执行顺序**
    （esbuild 按 DFS 发现顺序执行；本列表与旧 index.html 的 18 个 <script> 顺序逐条一致）。
    改顺序 = 改行为；非必要勿动。 */
+
 
 
 

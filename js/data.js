@@ -4613,13 +4613,25 @@ import './core.js';
    *    不碰粮产、训练、战斗这些核心数值 —— 那些一动就是全部平衡重标，
    *    且现有断言会大面积漂移。年景是"世界的天气"，不是"数值的补丁"。
    * ============================================================ */
+  /* v101（B5 细化）：`yearMods` = **真的影响老系统**的那几项。
+     原来 6 个年景只带 campMul / factionMul / fogPlus / ruinMul —— 全是新系统的参数，
+     玩家在主界面（产量、征兵）上感觉不到"今年是什么年"。
+     现在补三项，都走既有出口：
+       prod  → GAME.prodFactors（拆账自动同口径）
+       train → GAME.train 的时长（正数=更慢，负数=更快）
+     ⚠️ 刻意不碰人口增速：`§105` 钉着"补满时长 = fillHours"，乘一个年景系数会让它漂；
+        年景影响人口的路留给"疫年 → 流民变多"（muster 已经在吃天灾）。 */
   DATA.YEARS = [
-    { id: 'calm', name: '平年', note: '风调雨顺，四方无事。' },
-    { id: 'harvest', name: '丰年', note: '粮仓满溢，来投者众。', campMul: 1.3 },
-    { id: 'war', name: '战年', note: '四方刀兵，军阀并起。', factionMul: 2.0, clashMul: 0.34 },
-    { id: 'explore', name: '开拓年', note: '道路畅通，视野更远。', fogPlus: 1 },
-    { id: 'plague', name: '疫年', note: '病气弥漫，营地闭门。', campMul: 0.7 },
-    { id: 'boom', name: '兴年', note: '百业俱兴，旧世之物重现。', ruinMul: 1.3 }
+    { id: 'calm', name: '平年', note: '风调雨顺，四方无事。', yearMods: {} },
+    { id: 'harvest', name: '丰年', note: '粮仓满溢，来投者众。', campMul: 1.3,
+      yearMods: { prod: { grain: 0.08 } } },
+    { id: 'war', name: '战年', note: '四方刀兵，军阀并起。', factionMul: 2.0, clashMul: 0.34,
+      yearMods: { prod: { grain: -0.05 }, train: -0.15 } },
+    { id: 'explore', name: '开拓年', note: '道路畅通，视野更远。', fogPlus: 1, yearMods: {} },
+    { id: 'plague', name: '疫年', note: '病气弥漫，营地闭门。', campMul: 0.7,
+      yearMods: { prod: { grain: -0.06 } } },
+    { id: 'boom', name: '兴年', note: '百业俱兴，旧世之物重现。', ruinMul: 1.3,
+      yearMods: { prod: { iron: 0.10 } } }
   ];
 
   /* ============================================================

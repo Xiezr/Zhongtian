@@ -217,6 +217,20 @@ import './state.js';
     return L[i];
   };
   /* ============================================================
+   * v101：年景对**老系统**的修正 —— 唯一出口
+   * ------------------------------------------------------------
+   * 返回 `{ prod: {资源: 加数}, train: 加数 }`。
+   *   prod  → prodFactors 里加一行（拆账自动同口径）
+   *   train → 征兵时长乘 (1 + train)（负数 = 更快）
+   * 没有 yearMods / 没有年景时，一律返回空对象（调用方不用判空）。
+   * ============================================================ */
+  GAME.yearModsOf = function () {
+    var y = GAME.yearOf ? GAME.yearOf() : null;
+    var m = (y && y.yearMods) || {};
+    return { prod: m.prod || null, train: m.train || 0, name: (y && y.name) || '' };
+  };
+
+  /* ============================================================
    * v92.18（B4）：寒潮 —— 每 periodMonths 个月来一次，持续 lenMonths 个月
    * ------------------------------------------------------------
    * 纯函数：只读 world.elapsed，不落状态（所以读档/重放不会出现"寒潮错位"）。
@@ -1786,6 +1800,11 @@ import './state.js';
     var totalTime = count * t.time;
     var trainRed = GAME.systems.techBonus('train', city);   /* v89.191：按城读 */
     totalTime = Math.round(totalTime * (1 - Math.min(0.6, trainRed)));
+    /* v101（B5）：年景也管征兵 —— 战年（−15%）人愿意当兵，招得快 */
+    if (GAME.yearModsOf) {
+      var _ymt = GAME.yearModsOf().train || 0;
+      if (_ymt) totalTime = Math.round(totalTime * Math.max(0.4, 1 + _ymt));
+    }
     /* ⛔ v90.93：训练加速（GAME.story.trainMult，年号国策）随年号纪元退役。 */
     /* v63（老板）：征兵加速取**本城**守将的武力（改前吃全境守将之和） */
     var gbT = GAME.guardBonus(city);
