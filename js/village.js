@@ -29,7 +29,7 @@
   var V = GAME.village = {};
   var U = GAME.utils;
 
-  var _list = null;
+  var _list = null, _listN = 0;   /* v94.1：还要记住"这份缓存是在多少格时算的" */
   var _listSeed = -1;
 
   function SP() { return GAME.mapSphere || GAME.sphere; }
@@ -84,7 +84,13 @@
     var s = SP();
     if (!s || !s.cells) return [];
     var sd = (s.seed3 ? s.seed3() : 0) | 0;
-    if (_list && _listSeed === sd) return _list;
+    /* ⚠️ v94.1 修既存 bug：缓存只认 seed，不认**格数**。
+       `V.list()` 在星球格还没建好时被调一次（newGame 期间就会），
+       会缓存一个空数组；等格建好、seed 没变 → 之后永远返回空 ——
+       表现是"整个世界一处村社都没有"，而且谁都看不出来
+       （因为断言只检查"没有在水上"，空列表也通过）。 */
+    var nCell = s.cells.length;
+    if (_list && _listSeed === sd && _listN === nCell) return _list;
     var out = [], n = s.cells.length;
     for (var ci = 0; ci < n; ci++) {
       var cell = s.cells[ci];
@@ -92,7 +98,7 @@
       if (cell.type === 'lake') continue;
       if (h(ci, sd + 9100) < (D().chance || 0.006)) out.push(ci);
     }
-    _list = out; _listSeed = sd;
+    _list = out; _listSeed = sd; _listN = nCell;
     return out;
   };
 
@@ -394,6 +400,9 @@
          这里若再写 `-=`，两个负号会抵成一个正数 —— 寒潮里人口反而涨
          （§306⑧ 抓到的就是这个：200 人寒潮一个月变成 203）。 */
       var rate = (d.growPerMonth == null ? 0.002 : d.growPerMonth);
+      /* v94.1：旧锻压机（废墟科技）—— 新垦聚落的人口增长按科技放大。
+         只放大"自然繁衍"那一项，不放大会掉人的项（寒潮/军阀）。 */
+      if (rate > 0 && GAME.relic && GAME.relic.mulOf) rate *= GAME.relic.mulOf('vgrow');
       /* v93.3：医疗档案 → 寒潮里死的人少一半（"下次瘟疫不死那么多人"）。
          这是那趟拓荒唯一的意义，所以必须真的落到 tick 上。 */
       if (cold) rate += (d.coldPerMonth == null ? -0.015 : d.coldPerMonth)

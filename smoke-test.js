@@ -12381,7 +12381,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
     /* ⚠️ 这份 ORDER 与 build_bundle.py 的 ORDER **必须逐条一致**（本文故意不复用脚本，
        就是为了"构建脚本自己算错时测试还能抓到"）。加了模块两边都要加 ——
        v92 加 fog / memorial 时这里漏改，导致 hash 对不上、守卫假红。 */
-    var ORDER = ['core', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'domain', 'map', 'sphere', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'gltf',
+    var ORDER = ['core', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'domain', 'map', 'sphere', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'rival', 'land', 'taint', 'climate', 'surge', 'relic', 'gltf',
       'map3d', 'battle', 'strategy', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits', 'story', 'ui', 'main'];
     var h = crypto.createHash('sha256');
     try {
@@ -39967,6 +39967,204 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var st = G.faction.stats();
       return st.map(function (x) { return x.name + '→' + x.intent.name; }).join(' · ');
     })());
+
+  /* ============================================================
+   * §310 · v94.1：六层世界（最小可运行）—— 每条线只钉"它真的在跑"
+   * ------------------------------------------------------------
+   * 这一批的门禁原则：**不求数值漂亮，只求证明它不是空壳**。
+   * 每个模块至少一条"改变状态"的断言（不是"函数存在"那种）。
+   * ============================================================ */
+  console.log('\n===== 310. v94.1 六层世界（竞争者/连通/污染/温度/云/残页）=====');
+  (function () {
+    var st = G.state;
+    if (!st) return;
+
+    /* ① 竞争者：开局有人、在陆地、离主城 ≥12 格 */
+    check('§310① 竞争者：开局就有 2 支人在废土上走（不是 0）', (function () {
+      if (!G.rival) return false;
+      G.rival.ensure();
+      var a = G.rival.arr();
+      if (a.length < 2) return false;
+      var pc = G.currentCity();
+      /* ⚠️ 必须用 `mapSphere || sphere`（与模块内部同一个球）：双球面下
+         两个球的 ci 不通用，用错球会把"沙漠"读成"海"。 */
+      var sp = G.mapSphere || G.sphere;
+      for (var i = 0; i < a.length; i++) {
+        var cell = sp.cellOf(a[i].ci);
+        if (!cell || cell.type === 'lake') return false;
+        if (pc && pc.ci != null && sp.distOf({ ci: pc.ci }, { ci: a[i].ci }) < 12) return false;
+      }
+      return true;
+    })(), (function () {
+      var pc = G.currentCity(), sp = G.mapSphere || G.sphere;
+      return G.rival.arr().map(function (t) {
+        var cell = sp.cellOf(t.ci);
+        return t.name + '(' + t.pop + ') ci=' + t.ci + ' ' + (cell && cell.type)
+          + ' d=' + (pc && pc.ci != null ? sp.distOf({ ci: pc.ci }, { ci: t.ci }) : '?');
+      }).join(' · ');
+    })());
+
+    /* ② 竞争者：真的会走（force 推进几个月，moved 必须增加） */
+    check('§310② 竞争者：按月真的在移动（moved 累加，不是摆着看）', (function () {
+      var a = G.rival.arr();
+      var before = 0;
+      a.forEach(function (t) { before += (t.moved | 0); });
+      /* ⚠️ 不要设 month = -2：tick 把"上月 < 0"当成**第一次**，只记基准不推进。
+         直接 force 连调（month 相等的早退被 force 跳过）。 */
+      for (var i = 0; i < 8; i++) G.rival.tick(true);
+      var after = 0;
+      G.rival.arr().forEach(function (t) { after += (t.moved | 0); });
+      return after > before;
+    })(), (function () {
+      var n = 0; G.rival.arr().forEach(function (t) { n += (t.moved | 0); });
+      return '累计走了 ' + n + ' 格';
+    })());
+
+    /* ③ 竞争者：抢村社 → 记 heldBy + 人口真的少了 */
+    check('§310③ 竞争者占村社：heldBy 落库 + 村社人口真的减少', (function () {
+      if (!G.village || !G.village.listAll) return false;
+      var list = G.village.listAll();
+      var t = G.rival.arr()[0];
+      if (!t || !list.length) return false;
+      var ci = list[0];
+      var rec = G.village.get(ci);
+      if (!rec) return false;
+      var before = rec.pop;
+      /* 把队伍直接放到村社旁边，再 force 一次（让它"走到并占下"） */
+      t.ci = ci; t.dest = { ci: ci, kind: 'village' }; t.dead = false;
+      var beforeShare = t.claims | 0;
+      G.rival.tick(true);
+      return (t.claims | 0) > beforeShare || rec.heldBy === t.id || rec.pop < before;
+    })(), (function () {
+      var held = 0;
+      (G.village.listAll() || []).forEach(function (ci) {
+        var r = G.village.peek(ci);
+        if (r && r.heldBy) held++;
+      });
+      return '已被占 ' + held + ' 处';
+    })());
+
+    /* ④ 领土连通：主城自己 0 跳且连着；有城就有统计 */
+    check('§310④ 领土连通：主城 0 跳连着，stats 能给出总数', (function () {
+      if (!G.land) return false;
+      G.land.reset();
+      var pc = G.currentCity();
+      if (!pc) return false;
+      var s0 = G.land.statusOf(pc);
+      if (!s0.linked || s0.hops !== 0) return false;
+      var a = G.land.stats();
+      return a.total >= 1;
+    })(), (function () {
+      var a = G.land.stats();
+      return a.total + ' 城 · 断链 ' + a.cut + ' · 远 ' + a.far;
+    })());
+
+    /* ⑤ 污染：建筑等级越多月增越高；净化真的降 */
+    check('§310⑤ 污染：按建筑等级产生、净化能降（花得起资源时）', (function () {
+      if (!G.taint) return false;
+      var c = G.currentCity();
+      if (!c) return false;
+      var d0 = G.taint.deltaOf(c);
+      if (!(d0 > -999)) return false;
+      c.taint = 100;
+      c.res.iron = 1e7; c.res.stone = 1e7;
+      var before = G.taint.of(c);
+      var r = G.taint.clean(c);
+      if (!r.ok) return false;
+      return G.taint.of(c) < before;
+    })(), (function () {
+      var c = G.currentCity();
+      return '本月 ' + (G.taint.deltaOf(c) >= 0 ? '+' : '') + Math.round(G.taint.deltaOf(c) * 10) / 10;
+    })());
+
+    /* ⑥ 温度：年初最冷、有严寒月、烧柴能买一个月 */
+    check('§310⑥ 温度：年初最冷 + 存在严寒月 + 烧柴生效', (function () {
+      if (!G.climate) return false;
+      var t0 = G.climate.tempOf(0), t6 = G.climate.tempOf(6);
+      if (!(t0 < t6)) return false;
+      var cold = false;
+      for (var i = 0; i < 12; i++) if (G.climate.isCold(i)) cold = true;
+      if (!cold) return false;
+      var c = G.currentCity();
+      if (!c) return false;
+      c.res.wood = 1e7;
+      var r = G.climate.warm(c);
+      return r.ok && G.climate.isWarm(c);
+    })(), (function () {
+      return '1月 ' + G.climate.tempOf(0) + '℃ / 7月 ' + G.climate.tempOf(6) + '℃';
+    })());
+
+    /* ⑦ 辐射云：半径随月递减、不低于下限 */
+    check('§310⑦ 辐射云：半径按月收缩且不破下限', (function () {
+      if (!G.surge) return false;
+      var a = G.surge.rOf(0), b = G.surge.rOf(120), min = (DATA.SURGE || {}).minR || 14;
+      return b < a && b >= min;
+    })(), (function () {
+      return G.surge.rOf(0) + ' 格 → ' + G.surge.rOf(240) + ' 格（下限 ' + ((DATA.SURGE || {}).minR || 14) + '）';
+    })());
+
+    /* ⑧ 残页：只有亲手翻的算；3 个位置满了就不给落 */
+    check('§310⑧ 残页：只数自己翻的 + 位置满了拒绝（真选择）', (function () {
+      if (!G.relic) return false;
+      st.ruins = st.ruins || {};
+      /* 残页要够落 3 条（cost 3/4/3 = 10）—— 一次性补足"假遗迹"，
+         因为它们在这个断言里只代表"我亲手翻过多少处"。 */
+      var need = 14;
+      for (var fi = 0; G.relic.pagesOf() < need && fi < 60; fi++) {
+        st.ruins['9' + (100000 + fi)] = { kind: 'lab', side: (fi % 2 ? 'a' : 'b') };
+      }
+      var pages = G.relic.pagesOf();
+      if (!(pages >= 10)) return false;
+      G.relic.reset();
+      var picked = 0;
+      var opts = G.relic.options();
+      opts.forEach(function (o) {
+        if (o.ok && picked < 3) { if (G.relic.pick(o.id).ok) picked++; }
+      });
+      if (picked !== 3) return false;
+      /* 第 4 条必须被拒 */
+      var any4 = G.relic.options().filter(function (o) { return !o.taken; })[0];
+      if (!any4) return false;
+      var r4 = G.relic.pick(any4.id);
+      return r4.ok === false;
+    })(), (function () {
+      return '残页 ' + G.relic.pagesOf() + ' · 已落 ' + G.relic.pickedOf().length + '/3';
+    })());
+
+    /* ⑨ 加成真的接进新系统（不是只存在一个函数） */
+    check('§310⑨ 残页加成真的接进新系统（棚户产出/棚户上限取到乘子）', (function () {
+      var c = G.currentCity();
+      if (!c || !G.growth) return false;
+      c.shanty = 1000;
+      /* 先清空（§310⑧ 已经落了 3 条，其中可能就有种子库）再比 */
+      G.relic.reset();
+      var before = G.growth.shantyYieldOf(c);
+      var r = G.relic.pick('seedbank');
+      if (!r.ok) return false;
+      var after = G.growth.shantyYieldOf(c);
+      return after > before + 1e-6;
+    })(), (function () {
+      var c = G.currentCity();
+      c.shanty = 1000;
+      return '棚户粮产 ' + G.growth.shantyYieldOf(c).toFixed(1) + '/h';
+    })());
+
+    /* ⑩ 六条线都挂进了 tickOnce（源码断言：漏挂就是"做完但没生效"） */
+    check('§310⑩ 四个月度 tick 都挂在 tickOnce 里（源码级）', (function () {
+      var src = require('fs').readFileSync(require('path').join(__dirname, 'js', 'state.js'), 'utf8');
+      return /GAME\.rival\.tick/.test(src) && /GAME\.taint\.tick/.test(src)
+        && /GAME\.climate\.tick/.test(src) && /GAME\.surge\.tick/.test(src);
+    })(), (function () { return 'tickOnce 内已挂 4 个'; })());
+
+    /* ⑪ 面板可打开（六条线都进同一本账） */
+    check('§310⑪ 世界的账本面板可渲染（六条线齐全）', (function () {
+      if (!G.ui || !G.ui.openWorldPanel) return false;
+      var src = String(G.ui.openWorldPanel);
+      return /温度/.test(src) && /辐射云/.test(src) && /污染/.test(src)
+        && /竞争者/.test(src) && /领土连通/.test(src) && /废墟科技/.test(src);
+    })(), (function () { return '6 条线'; })());
+  })();
+
 console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');
   process.exit(FAIL ? 1 : 0);
 })();

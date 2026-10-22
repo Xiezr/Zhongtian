@@ -443,6 +443,36 @@ import './core.js';
     return -1;
   }
   SP.hexDist = hexDist;
+  /* ============================================================
+   * v94.1：**便宜的距离**（用经纬度近似，O(1)）
+   * ------------------------------------------------------------
+   * 起因：hexDist 是一次 BFS（无缓存）。单次调用很便宜，
+   *   但在"每座城 × 每个村社"这种双重循环里就是 25000 次 BFS ——
+   *   smoke §v89.107 的 100 城 tickOnce 直接飙到 271ms。
+   *
+   * 用途边界（必须守住）：
+   *   · 只用于"挑最近的目标 / 判断是否在附近"这类**筛选用途**；
+   *   · 任何要显示给玩家的距离、任何驱动数值的距离，仍然走 hexDist。
+   * ============================================================ */
+  var _degPerCell = 0;
+  SP.degPerCell = function () {
+    if (_degPerCell) return _degPerCell;
+    var nv = SP.nv || (SP.cells && SP.cells.length) || 6000;
+    _degPerCell = Math.sqrt(4 * Math.PI / nv) * 180 / Math.PI;
+    return _degPerCell;
+  };
+  SP.roughDistOf = function (e1, e2) {
+    var c1 = (e1 && e1.ci != null) ? SP.cellOf(e1.ci) : null;
+    var c2 = (e2 && e2.ci != null) ? SP.cellOf(e2.ci) : null;
+    if (!c1 || !c2 || c1.lon == null || c2.lon == null) return 9999;
+    if (e1.ci === e2.ci) return 0;
+    var dLon = Math.abs(c1.lon - c2.lon);
+    if (dLon > 180) dLon = 360 - dLon;
+    var dLat = Math.abs(c1.lat - c2.lat);
+    var mid = (c1.lat + c2.lat) / 2 * Math.PI / 180;
+    var deg = Math.sqrt(dLon * dLon * Math.cos(mid) * Math.cos(mid) + dLat * dLat);
+    return deg / SP.degPerCell();
+  };
   /* 与某格相距 ≤hops 环的全部格（含自身）—— 据点保护区 / 半径族用。 */
   SP.hopsWithin = function (ci, hops) {
     var adj = SP.adj, nv = SP.nv, out = [];

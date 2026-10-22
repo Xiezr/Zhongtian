@@ -8090,6 +8090,105 @@ import './state.js';
    * 世界现在只有玩家会动 —— 这一条就是"别人也在动"的证据。
    * ⚠️ 只报态势，不报战力：介入战斗之前，任何"他们会来打你"的暗示都是假的。
    * ============================================================ */
+  /* ============================================================
+   * v94.1：世界的账本（六层世界最小可运行版的唯一界面）
+   * ------------------------------------------------------------
+   * 为什么单独一个面板而不是塞进城建面板：
+   *   这六件事**没有一件是"这座城的事"** —— 温度是全国的天，辐射云是全图的圈，
+   *   污染是工业的账，竞争者是别人的脚步，补给是地图的连通，残页是旧世界的碎片。
+   *   它们共同回答一个问题：**这个世界在我之外，正在发生什么。**
+   * ============================================================ */
+  ui.openWorldPanel = function () {
+    var s = GAME.state;
+    if (!s) { ui.toast('无存档'); return; }
+    var h = '';
+    var sec = function (title, line, extra) {
+      return '<div style="padding:7px 0;border-bottom:1px dashed var(--wood-light);">'
+        + '<div style="font-size:var(--fs-cap);color:var(--gold-light);font-weight:700;">' + title + '</div>'
+        + '<div style="font-size:var(--fs-cap);line-height:1.75;">' + (line || '') + '</div>'
+        + (extra || '') + '</div>';
+    };
+    var cities = (GAME.city && GAME.city.all) ? GAME.city.all() : [];
+
+    /* ---------- 温度 ---------- */
+    if (GAME.climate) {
+      var CL = GAME.climate;
+      h += sec('🌡 温度', CL.lineOf(),
+        '<div class="chips" style="margin-top:5px;">' + cities.map(function (c) {
+          var warm = CL.isWarm(c);
+          return '<span class="chip' + (warm ? ' dim' : '') + '"'
+            + (warm ? '' : ' data-action="world-warm" data-cid="' + U.escape(c.id) + '"')
+            + '>' + U.escape(c.name) + (warm ? ' · 这个月烧上了' : ' · 烧柴 ' + U.numText(CL.fuelCostOf(c), 0) + ' 木')
+            + '</span>';
+        }).join('') + '</div>');
+    }
+
+    /* ---------- 辐射云 ---------- */
+    if (GAME.surge) {
+      h += sec('☁ 辐射云', GAME.surge.lineOf(),
+        '<div class="ui-sub" style="margin-top:3px;">圈心在你所有城的重心，半径按月往回收、每收 12 个月停 3 个月。'
+        + '云里的城不会立刻崩，只是人会一点一点往圈里搬 —— 要不要把家搬进来，是你的决定。</div>');
+    }
+
+    /* ---------- 污染 ---------- */
+    if (GAME.taint) {
+      var TN = GAME.taint;
+      h += sec('☢ 污染', TN.lineOf(),
+        '<div class="chips" style="margin-top:5px;">' + cities.map(function (c) {
+          var t = TN.of(c), lv = TN.levelOf(c);
+          return '<span class="chip" data-action="world-clean" data-cid="' + U.escape(c.id) + '"'
+            + ' title="净化一次：' + U.escape(JSON.stringify((GAME.DATA.TAINT || {}).cleanCost || {})) + '">'
+            + U.escape(c.name) + ' · ' + Math.round(t) + '（' + lv.name + '）· 净化</span>';
+        }).join('') + '</div>');
+    }
+
+    /* ---------- 竞争者 ---------- */
+    if (GAME.rival) {
+      var RV = GAME.rival;
+      RV.ensure();
+      var live = RV.alive();
+      var teamH = live.length ? live.map(function (t) {
+        return '<div style="margin-top:4px;">🏴 <b>' + U.escape(t.name) + '</b>　约 '
+          + U.numText(t.pop | 0, 0) + ' 人　已抢 ' + (t.claims | 0) + ' 处　'
+          + '<button class="btn" style="font-size:var(--fs-cap);padding:0 6px;"'
+          + ' data-action="world-drive" data-rid="' + U.escape(t.id) + '">驱赶</button></div>';
+      }).join('') : '<div class="ui-sub">暂时没有他们的消息（都被赶散了）。</div>';
+      h += sec('🏴 竞争者', '你之外，还有人在做同一件事：他们抢村子的人，抢遗迹里的东西。',
+        teamH + '<div class="ui-sub" style="margin-top:3px;">驱赶要 300 兵、要在 8 格内 —— 赢了他们散掉，'
+        + '人回附近的村子；输了折兵。他们不会灭，只会再拉一支。</div>');
+    }
+
+    /* ---------- 补给连通 ---------- */
+    if (GAME.land) {
+      h += sec('🛣 领土连通', GAME.land.lineOf(),
+        '<div class="ui-sub" style="margin-top:3px;">按陆地走：只有从老家走得到的城才算"连着的"。'
+        + '现在只算不罚（这一版先把地图算准，扣产出等下一版）。</div>');
+    }
+
+    /* ---------- 废墟科技 ---------- */
+    if (GAME.relic) {
+      var TE = GAME.relic;
+      var opts = TE.options();
+      h += sec('📜 废墟科技',
+        TE.lineOf() + '　<span style="color:var(--text-dim);">一共 6 条，一辈子只有 3 个位置</span>',
+        '<div class="chips" style="margin-top:5px;">' + opts.map(function (o) {
+          return '<span class="chip' + (o.ok ? '' : ' dim') + '"'
+            + (o.ok ? ' data-action="relic-pick" data-tid="' + U.escape(o.id) + '"' : '')
+            + ' title="' + U.escape(o.desc) + '">' + U.escape(o.name) + ' · ' + o.cost + ' 页'
+            + (o.taken ? ' ✓' : (o.ok ? '' : '（' + U.escape(o.why) + '）')) + '</span>';
+        }).join('') + '</div>'
+        + '<div class="ui-sub" style="margin-top:3px;">残页只来自**你自己翻的**遗迹 —— 被竞争者抢先翻走的，'
+        + '一张都不算。落定不能退。</div>');
+    }
+
+    ui.openShell({
+      live: function () { ui.openWorldPanel(); },
+      title: '🌍 世界的账本',
+      sub: '六条线：温度 · 辐射云 · 污染 · 竞争者 · 补给 · 残页',
+      body: h || '<div class="q-empty">这个世界还没有动起来。</div>'
+    });
+  };
+
   ui.factionBarHTML = function () {
     var F = GAME.faction;
     if (!F) return '';
@@ -8187,6 +8286,29 @@ import './state.js';
     h += '</div>';
     h += '<div style="font-size:var(--fs-cap);color:var(--text-dim);margin-top:6px;">'
       + '按月推进（一年约 +10 格 · 半径上限 14）。目前只影响态势与警报 —— 尚未接入战斗。</div>';
+    /* ============================================================
+     * v94.1：世界的另外六件事
+     * ------------------------------------------------------------
+     * 势力只是"别人会不会打你"。这个世界还有六条独立的线：
+     * 温度、辐射云、污染、竞争者、补给、残页。
+     * 全部收在世界账本里 —— 一行摘要 + 一个入口，不占态势版面。
+     * ============================================================ */
+    (function () {
+      var parts = [];
+      if (GAME.climate) parts.push(GAME.climate.lineOf());
+      if (GAME.surge) parts.push(GAME.surge.lineOf());
+      if (GAME.taint) parts.push(GAME.taint.lineOf());
+      if (GAME.rival) parts.push(GAME.rival.lineOf());
+      if (GAME.land) parts.push(GAME.land.lineOf());
+      if (GAME.relic) parts.push(GAME.relic.lineOf());
+      parts = parts.filter(function (x) { return !!x; });
+      if (!parts.length) return;
+      h += '<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--wood-light);'
+        + 'font-size:var(--fs-cap);line-height:1.85;">'
+        + parts.map(function (x) { return '<div>' + x + '</div>'; }).join('')
+        + '<button class="btn" style="font-size:var(--fs-cap);padding:1px 8px;margin-top:5px;"'
+        + ' data-action="open-world">🌍 世界的账本</button></div>';
+    })();
     h += '</div>';
     return h;
   };

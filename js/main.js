@@ -24,6 +24,12 @@ import './convoy.js';   /* v93.3：拓荒队 —— 用这一代人，换下一�
 import './growth.js';   /* v93.5：城会自己长，也会自己朽 */
 import './ruin.js';     /* v92.7：旧世界遗迹 —— 一处只能翻一次，两种翻法互斥 */
 import './faction.js';  /* v92.5：四个军阀 —— 世界在动（态势层）*/
+import './rival.js';    /* v94.1：竞争者 —— 你不是唯一在重建的人 */
+import './land.js';     /* v94.1：领土连通 —— 只有连成一片的才算你的 */
+import './taint.js';    /* v94.1：污染 —— 强是要付账的 */
+import './climate.js';  /* v94.1：温度线 —— 生存三命的第三条 */
+import './surge.js';    /* v94.1：辐射云收缩 —— 扩张的时间压力 */
+import './relic.js';    /* v94.1：废墟残页 —— 科技是挖出来的，只有三个位置 */
 import './gltf.js';
 import './map3d.js';
 import './battle.js';
@@ -1360,6 +1366,30 @@ import './ui.js';
       case 'open-convoy': ui.openConvoyModal(); break;
       /* v93.5：推平城外棚户（把人赶走 —— 民心回来点，名声记一笔 cruelty） */
       case 'shanty-clear': GAME.doClearShanty(el.getAttribute('data-cid')); break;
+      /* ============================================================
+       * v94.1：世界的账本 —— 六层世界（温度/云/污染/竞争者/补给/残页）
+       * ------------------------------------------------------------
+       * 四个动作都走模块自己的出口（不在这里写业务），
+       * 失败原因由模块返回 msg，界面只负责显示。
+       * ============================================================ */
+      case 'open-world': ui.openWorldPanel(); break;
+      case 'world-warm': (function () {
+        var r = GAME.climate ? GAME.climate.warm(GAME.city.byId(el.getAttribute('data-cid'))) : { msg: '温度系统未加载' };
+        ui.toast(r.msg); ui.openWorldPanel();
+      })(); break;
+      case 'world-clean': (function () {
+        var r = GAME.taint ? GAME.taint.clean(GAME.city.byId(el.getAttribute('data-cid'))) : { msg: '污染系统未加载' };
+        ui.toast(r.msg); ui.openWorldPanel();
+      })(); break;
+      case 'world-drive': (function () {
+        var r = GAME.rival ? GAME.rival.drive(el.getAttribute('data-rid'), GAME.currentCity() && GAME.currentCity().id)
+          : { msg: '竞争者系统未加载' };
+        ui.toast(r.msg); ui.openWorldPanel(); GAME.refreshView();
+      })(); break;
+      case 'relic-pick': (function () {
+        var r = GAME.relic ? GAME.relic.pick(el.getAttribute('data-tid')) : { msg: '残页系统未加载' };
+        ui.toast(r.msg); ui.openWorldPanel();
+      })(); break;
       /* v92.14：派将挑衅一座城（赢了那城守军胆寒 24 小时） */
       case 'provoke-city': ui._provoke = null; ui.openProvoke(); break;
       case 'provoke-move': ui.openProvoke(el.getAttribute('data-mv')); break;

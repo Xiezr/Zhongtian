@@ -35,3 +35,17 @@
 - **改大函数的收尾括号，不要拿 `}` 当 Edit 锚点**——会连带吃掉相邻块的闭合。
 - **新模块第一行抄齐** `var GAME / var X / var U = GAME.utils`。
 - 自检产物必须落在 `.workbuddy/tmp/`，**不要写进版本库**（否则检查污染工作区）。
+- **新模块起名前必须先 grep 命名空间**：`grep -rn "GAME.<ns>\|DATA.<NS>" js/`。
+  v94.1 踩过两次：`DATA.TECH` 是**既有科技树（数组）**（data.js:1396），
+  我把它覆盖成对象 → `ui.techHTML` 的 `DATA.TECH.length` 直接崩；
+  `GAME.dig` 系列也被既有的 `GAME.digCapOf / digCapOfMain`（科技等级上限）占着。
+  最后落脚到 `DATA.RELIC` + `GAME.relic`（都空）才算干净。
+- **改名不要用裸 `str.replace('GAME.tech', 'GAME.x')`**：它会把 `GAME.techCapOf`
+  一起改成 `GAME.xCapOf`（本次就是这么把科技上限函数改没的，smoke 报
+  `GAME.digCapOfMain is not a function`）。用 `\b` 或负向前瞻，改完再 grep
+  一遍"旧前缀 + 大写字母"的所有变体。
+- **tickOnce 是每秒跑的**：新系统一律月度语义时，在外面包一层
+  `if (s._wqMonth !== wm)` 门（见 state.js v94.1 注释），
+  否则 100 城压测的 `tickOnce < 6ms` 会被几次函数调用顶穿。
+- **每秒被调的加成出口必须缓存**（`growth.settleYield → relic.mulOf`）：
+  每次重建数组在 100 城下就是 3ms 级开销。

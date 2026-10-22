@@ -46,7 +46,9 @@
   /* 棚户上限：居所容量的三成 —— 再多就不是"棚户"，是无政府 */
   GR.shantyCapOf = function (city) {
     var cap = GAME.effPopCapOf ? GAME.effPopCapOf(city) : (GAME.maxPopOf ? GAME.maxPopOf(city) : 0);
-    return Math.max(0, Math.round(cap * (D().shantyCap == null ? 0.3 : D().shantyCap)));
+    /* v94.1：混凝土配方（废墟科技）—— 同样的地方能搭得更密 */
+    var mul = (GAME.relic && GAME.relic.mulOf) ? GAME.relic.mulOf('shanty') : 1;
+    return Math.max(0, Math.round(cap * (D().shantyCap == null ? 0.3 : D().shantyCap) * mul));
   };
 
   /* ============================================================
@@ -199,7 +201,9 @@
   GR.shantyYieldOf = function (city) {
     var sh = GR.shantyOf(city);
     if (sh <= 0) return 0;
-    return sh * (D().yieldPerPop == null ? 0.02 : D().yieldPerPop);
+    /* v94.1：种子库（废墟科技）—— 同样的地，能种出更多 */
+    var mul = (GAME.relic && GAME.relic.mulOf) ? GAME.relic.mulOf('grain') : 1;
+    return sh * (D().yieldPerPop == null ? 0.02 : D().yieldPerPop) * mul;
   };
 
   /* 结算（与产出同一个 tick 节奏；直接进城的资源，不额外记账） */

@@ -3735,6 +3735,26 @@ import './data.js';
     if (GAME.growth && GAME.growth.settleYield) GAME.growth.settleYield(ts);
     /* v92.5：四个军阀按月推进（按月而非按日：游戏日只有 1.3 现实秒，按日会抽搐） */
     if (GAME.faction && GAME.faction.tick) GAME.faction.tick();
+    /* ============================================================
+     * v94.1：六层世界（最小可运行 · 老板「所有构思都先跑起来」）
+     * ------------------------------------------------------------
+     * 这五个 tick 都**只作用在新系统上**（村社 / 棚户 / 新垦 / 残页），
+     * 不动粮产总表与城防 —— 为的是一轮之内把六个缺口都跑起来，
+     * 而不是做完一个就把门禁撞红一次。
+     *
+     * ⚠️ 外面包一层"月份变了才进"的门：tickOnce 是**每秒**跑的，
+     *    而这五个都是月度语义。不包的话，每秒要付 4 次函数调用 +
+     *    4 次同样的月份除法 —— smoke §v89.107 的 100 城 < 6ms 会直接顶穿。
+     * ============================================================ */
+    var _wm = Math.floor(((s.world && s.world.elapsed) || 0)
+      / (((DATA.CALENDAR || {}).secPerYear || 57600) / 12));
+    if (s._wqMonth !== _wm) {
+      s._wqMonth = _wm;
+      if (GAME.rival && GAME.rival.tick) GAME.rival.tick();      /* 竞争者：抢村社、抢遗迹 */
+      if (GAME.taint && GAME.taint.tick) GAME.taint.tick();      /* 污染：建筑越多账越重 */
+      if (GAME.climate && GAME.climate.tick) GAME.climate.tick(); /* 温度：严寒冻死城外的人 */
+      if (GAME.surge && GAME.surge.tick) GAME.surge.tick();      /* 辐射云：外围慢慢不能住人 */
+    }
     /* v89.136：老档采集队迁移兜底（幂等 · 正常已被 loadGame 处理） */
     if (GAME.migrateLegacyGathers) GAME.migrateLegacyGathers();
     /* v89.152：老档珠宝换算兜底（幂等 · 同款双保险） */

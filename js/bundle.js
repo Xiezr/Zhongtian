@@ -6229,6 +6229,93 @@ window.GAME = window.GAME || {};
      采用 ×1.30 基础 + 每 3 星球追加 ×1.15 的"台阶"：可读、可预期、不指数爆炸。 */
   DATA.PLANET_SCALE = { base: 1.30, step: 0.15, every: 3 };
 
+  /* ============================================================
+   * v94.1 · 六层世界参数（一批"最小可运行模块"的公共表）
+   * ------------------------------------------------------------
+   * 老板 2026-10-22：「对所有构思实现最小可运行模块，再逐步完善」。
+   * 所以这六张表都遵守同一条铁律：
+   *   **新系统的伤害只落在新系统身上**，不改既有平衡数值 ——
+   *   否则一轮六模块一定会撞坏 smoke 的 3958 条既有断言，
+   *   而且分不清是"新玩法不成立"还是"我把老系统弄坏了"。
+   * ============================================================ */
+
+  /* ① 竞争者 —— 你不是唯一在重建的人（军阀占地盘，他们抢人和遗迹） */
+  DATA.RIVAL = {
+    count: 2,                 /* 开局几支（玩家之外，废土上还有别人在做同一件事） */
+    maxTeams: 5,              /* 人口涨到头会分家，上限 */
+    movePerMonth: 1,          /* 每月朝目标走几格 */
+    reach: 1,                 /* 走到目标几格内算"占下" */
+    villageGain: 0.55,        /* 收编一个村社，按它的几成人口算进队伍 */
+    splitAt: 900,             /* 队伍人口超过它 → 分出一支新队 */
+    splitPct: 0.45,
+    driveWinAt: 0.55,         /* 驱赶：兵力够时的基础胜率 */
+    driveCost: 300,           /* 驱赶一次要带的兵（不够不给打） */
+    driveLoseTroop: 0.18,     /* 打输了折损的兵 */
+    names: ['灰烬车队', '铁鸦拾荒团', '第七公路', '白塔重建会', '南岸公社']
+  };
+
+  /* ② 领土连通 —— 只有和主城连成一片的才算你的（A1） */
+  DATA.LAND = {
+    apply: false,             /* ⚠️ 第一版只算不罚：算出来给玩家看，正式扣不加 */
+    hopPenalty: 0.10,         /* 断链每远 1 格再降一成补给 */
+    minMul: 0.35,             /* 补给最低降到三成五 */
+    maxHops: 14               /* BFS 上限（防止荒岛无限算） */
+  };
+
+  /* ③ 污染 —— 用旧世界的东西是要付账的（F 代价） */
+  DATA.TAINT = {
+    perLvl: 0.15,             /* 每座建筑每级每月产这么多污染（"工业"的代价） */
+    decay: 2,                 /* 每月自然衰减（雨水、风、旧植被） */
+    warn: 60,                 /* 警戒线（界面转黄） */
+    bad: 120,                 /* 变质线（开始死人） */
+    shantyLossAt: 0.02,       /* 越过 bad：每 100 点污染，棚户每月死这么多 */
+    villageLoss: 0.004,       /* 云外的村社也在被污染逼走 */
+    cleanCost: { iron: 400, stone: 600 },   /* 净化一次 */
+    cleanAt: 25               /* 一次净化去掉这么多 */
+  };
+
+  /* ④ 温度线 —— 生存三命的第三条（B4：粮 / 温 / 民心） */
+  DATA.CLIMATE = {
+    base: 6,                  /* 年均温（℃） */
+    swing: 24,                /* 一年内的振幅 */
+    coldAt: -10,              /* 低于它算严寒 */
+    fuelPerPop: 0.4,          /* 供暖：每人每月耗木（按月结算，不按秒） */
+    warmHearts: 1.5,          /* 烧上暖，当月民心回来一点 */
+    coldVillageLoss: 0.02,    /* 严寒：村社每月走掉这么多人（2%） */
+    coldShantyLoss: 0.06      /* 严寒：棚户每月冻死这么多 */
+  };
+
+  /* ⑤ 辐射云 —— 会收缩的圈（E 大逃杀：给扩张一个时间压力）
+     ⚠️ 半径用**格**，中心 = 你所有城的重心。不引入新坐标体系。 */
+  DATA.SURGE = {
+    startR: 55,               /* 初始半径（格） */
+    shrinkPerMonth: 0.9,      /* 每月往回收缩几格 */
+    minR: 14,                 /* 最紧收到这里（不把人逼死） */
+    pauseMonths: 12,          /* 每收缩 12 个月停 3 个月（喘一口气） */
+    pauseFor: 3,
+    shantyLoss: 0.10,         /* 云里的城：棚户每月死这么多 */
+    villageLoss: 0.05,        /* 云里的村社：每月走掉这么多 */
+    popLoss: 0.002            /* 云里的城：人口每月流失（很小，主要是赶人） */
+  };
+
+  /* ⑥ 废墟科技 —— 科技不是点出来的，是挖出来的（G）
+     ⚠️ **六条都只作用在新系统上**（棚户 / 新垦 / 严寒致死 / 自净）。
+        不动粮产总表、不动城防 —— 第一条最小可运行版要能一轮做完，
+        而不是把 3958 条既有断言一起拖下水。 */
+  DATA.RELIC = {
+    pagesPerRuin: 1,          /* 翻一处遗迹得几张残页 */
+    pagesPerExtraDist: 60,    /* 每远这么多格多给一张 */
+    picks: 3,                 /* **一生只能落 3 条** —— 残页够，位置不够，这是真选择 */
+    list: [
+      { id: 'seedbank', name: '种子库',   cost: 3, key: 'grain',  mul: 0.25, desc: '城外棚户的粮产 +25%' },
+      { id: 'clinic',   name: '旧诊所',   cost: 4, key: 'resist', mul: 0.35, desc: '严寒与污染致死 −35%' },
+      { id: 'radio',    name: '无线电塔', cost: 3, key: 'scout',  mul: 1,    desc: '每月自动探明老家外一圈' },
+      { id: 'water',    name: '净水厂',   cost: 3, key: 'purge',  mul: 2,    desc: '污染每月多自净 2 点' },
+      { id: 'concrete', name: '混凝土配方', cost: 4, key: 'shanty', mul: 0.15, desc: '城外棚户上限 +15%（能多住人）' },
+      { id: 'forge',    name: '旧锻压机', cost: 4, key: 'vgrow',  mul: 0.30, desc: '新垦聚落的人口增长 +30%' }
+    ]
+  };
+
   window.GAME.DATA = DATA;
 })();
 
@@ -9970,6 +10057,26 @@ window.GAME = window.GAME || {};
     if (GAME.growth && GAME.growth.settleYield) GAME.growth.settleYield(ts);
     /* v92.5：四个军阀按月推进（按月而非按日：游戏日只有 1.3 现实秒，按日会抽搐） */
     if (GAME.faction && GAME.faction.tick) GAME.faction.tick();
+    /* ============================================================
+     * v94.1：六层世界（最小可运行 · 老板「所有构思都先跑起来」）
+     * ------------------------------------------------------------
+     * 这五个 tick 都**只作用在新系统上**（村社 / 棚户 / 新垦 / 残页），
+     * 不动粮产总表与城防 —— 为的是一轮之内把六个缺口都跑起来，
+     * 而不是做完一个就把门禁撞红一次。
+     *
+     * ⚠️ 外面包一层"月份变了才进"的门：tickOnce 是**每秒**跑的，
+     *    而这五个都是月度语义。不包的话，每秒要付 4 次函数调用 +
+     *    4 次同样的月份除法 —— smoke §v89.107 的 100 城 < 6ms 会直接顶穿。
+     * ============================================================ */
+    var _wm = Math.floor(((s.world && s.world.elapsed) || 0)
+      / (((DATA.CALENDAR || {}).secPerYear || 57600) / 12));
+    if (s._wqMonth !== _wm) {
+      s._wqMonth = _wm;
+      if (GAME.rival && GAME.rival.tick) GAME.rival.tick();      /* 竞争者：抢村社、抢遗迹 */
+      if (GAME.taint && GAME.taint.tick) GAME.taint.tick();      /* 污染：建筑越多账越重 */
+      if (GAME.climate && GAME.climate.tick) GAME.climate.tick(); /* 温度：严寒冻死城外的人 */
+      if (GAME.surge && GAME.surge.tick) GAME.surge.tick();      /* 辐射云：外围慢慢不能住人 */
+    }
     /* v89.136：老档采集队迁移兜底（幂等 · 正常已被 loadGame 处理） */
     if (GAME.migrateLegacyGathers) GAME.migrateLegacyGathers();
     /* v89.152：老档珠宝换算兜底（幂等 · 同款双保险） */
@@ -25680,6 +25787,36 @@ window.GAME = window.GAME || {};
     return -1;
   }
   SP.hexDist = hexDist;
+  /* ============================================================
+   * v94.1：**便宜的距离**（用经纬度近似，O(1)）
+   * ------------------------------------------------------------
+   * 起因：hexDist 是一次 BFS（无缓存）。单次调用很便宜，
+   *   但在"每座城 × 每个村社"这种双重循环里就是 25000 次 BFS ——
+   *   smoke §v89.107 的 100 城 tickOnce 直接飙到 271ms。
+   *
+   * 用途边界（必须守住）：
+   *   · 只用于"挑最近的目标 / 判断是否在附近"这类**筛选用途**；
+   *   · 任何要显示给玩家的距离、任何驱动数值的距离，仍然走 hexDist。
+   * ============================================================ */
+  var _degPerCell = 0;
+  SP.degPerCell = function () {
+    if (_degPerCell) return _degPerCell;
+    var nv = SP.nv || (SP.cells && SP.cells.length) || 6000;
+    _degPerCell = Math.sqrt(4 * Math.PI / nv) * 180 / Math.PI;
+    return _degPerCell;
+  };
+  SP.roughDistOf = function (e1, e2) {
+    var c1 = (e1 && e1.ci != null) ? SP.cellOf(e1.ci) : null;
+    var c2 = (e2 && e2.ci != null) ? SP.cellOf(e2.ci) : null;
+    if (!c1 || !c2 || c1.lon == null || c2.lon == null) return 9999;
+    if (e1.ci === e2.ci) return 0;
+    var dLon = Math.abs(c1.lon - c2.lon);
+    if (dLon > 180) dLon = 360 - dLon;
+    var dLat = Math.abs(c1.lat - c2.lat);
+    var mid = (c1.lat + c2.lat) / 2 * Math.PI / 180;
+    var deg = Math.sqrt(dLon * dLon * Math.cos(mid) * Math.cos(mid) + dLat * dLat);
+    return deg / SP.degPerCell();
+  };
   /* 与某格相距 ≤hops 环的全部格（含自身）—— 据点保护区 / 半径族用。 */
   SP.hopsWithin = function (ci, hops) {
     var adj = SP.adj, nv = SP.nv, out = [];
@@ -26098,6 +26235,8 @@ window.GAME = window.GAME || {};
     /* v93.3：广播中继站（拓荒队带回的频率表）—— 视野 +1/处（最多 +2）。
        "有人在那头报过天气"：拿到频率表，你就听得见更远的地方。 */
     if (GAME.convoy && GAME.convoy.radioPlus) r += GAME.convoy.radioPlus();
+    /* v94.1：无线电塔（废墟科技）—— 听得见更远的地方，视野 +1 */
+    if (GAME.relic && GAME.relic.addOf) r += GAME.relic.addOf('scout');
     return r;
   };
   F.outpostRadius = function () {
@@ -26542,7 +26681,7 @@ window.GAME = window.GAME || {};
   var V = GAME.village = {};
   var U = GAME.utils;
 
-  var _list = null;
+  var _list = null, _listN = 0;   /* v94.1：还要记住"这份缓存是在多少格时算的" */
   var _listSeed = -1;
 
   function SP() { return GAME.mapSphere || GAME.sphere; }
@@ -26597,7 +26736,13 @@ window.GAME = window.GAME || {};
     var s = SP();
     if (!s || !s.cells) return [];
     var sd = (s.seed3 ? s.seed3() : 0) | 0;
-    if (_list && _listSeed === sd) return _list;
+    /* ⚠️ v94.1 修既存 bug：缓存只认 seed，不认**格数**。
+       `V.list()` 在星球格还没建好时被调一次（newGame 期间就会），
+       会缓存一个空数组；等格建好、seed 没变 → 之后永远返回空 ——
+       表现是"整个世界一处村社都没有"，而且谁都看不出来
+       （因为断言只检查"没有在水上"，空列表也通过）。 */
+    var nCell = s.cells.length;
+    if (_list && _listSeed === sd && _listN === nCell) return _list;
     var out = [], n = s.cells.length;
     for (var ci = 0; ci < n; ci++) {
       var cell = s.cells[ci];
@@ -26605,7 +26750,7 @@ window.GAME = window.GAME || {};
       if (cell.type === 'lake') continue;
       if (h(ci, sd + 9100) < (D().chance || 0.006)) out.push(ci);
     }
-    _list = out; _listSeed = sd;
+    _list = out; _listSeed = sd; _listN = nCell;
     return out;
   };
 
@@ -26907,6 +27052,9 @@ window.GAME = window.GAME || {};
          这里若再写 `-=`，两个负号会抵成一个正数 —— 寒潮里人口反而涨
          （§306⑧ 抓到的就是这个：200 人寒潮一个月变成 203）。 */
       var rate = (d.growPerMonth == null ? 0.002 : d.growPerMonth);
+      /* v94.1：旧锻压机（废墟科技）—— 新垦聚落的人口增长按科技放大。
+         只放大"自然繁衍"那一项，不放大会掉人的项（寒潮/军阀）。 */
+      if (rate > 0 && GAME.relic && GAME.relic.mulOf) rate *= GAME.relic.mulOf('vgrow');
       /* v93.3：医疗档案 → 寒潮里死的人少一半（"下次瘟疫不死那么多人"）。
          这是那趟拓荒唯一的意义，所以必须真的落到 tick 上。 */
       if (cold) rate += (d.coldPerMonth == null ? -0.015 : d.coldPerMonth)
@@ -27250,7 +27398,9 @@ window.GAME = window.GAME || {};
   /* 棚户上限：居所容量的三成 —— 再多就不是"棚户"，是无政府 */
   GR.shantyCapOf = function (city) {
     var cap = GAME.effPopCapOf ? GAME.effPopCapOf(city) : (GAME.maxPopOf ? GAME.maxPopOf(city) : 0);
-    return Math.max(0, Math.round(cap * (D().shantyCap == null ? 0.3 : D().shantyCap)));
+    /* v94.1：混凝土配方（废墟科技）—— 同样的地方能搭得更密 */
+    var mul = (GAME.relic && GAME.relic.mulOf) ? GAME.relic.mulOf('shanty') : 1;
+    return Math.max(0, Math.round(cap * (D().shantyCap == null ? 0.3 : D().shantyCap) * mul));
   };
 
   /* ============================================================
@@ -27403,7 +27553,9 @@ window.GAME = window.GAME || {};
   GR.shantyYieldOf = function (city) {
     var sh = GR.shantyOf(city);
     if (sh <= 0) return 0;
-    return sh * (D().yieldPerPop == null ? 0.02 : D().yieldPerPop);
+    /* v94.1：种子库（废墟科技）—— 同样的地，能种出更多 */
+    var mul = (GAME.relic && GAME.relic.mulOf) ? GAME.relic.mulOf('grain') : 1;
+    return sh * (D().yieldPerPop == null ? 0.02 : D().yieldPerPop) * mul;
   };
 
   /* 结算（与产出同一个 tick 节奏；直接进城的资源，不额外记账） */
@@ -27738,7 +27890,7 @@ window.GAME = window.GAME || {};
   var R = GAME.ruin = {};
   var U = GAME.utils;
 
-  var _list = null, _listSeed = -1, _sweepAt = 0;
+  var _list = null, _listSeed = -1, _listN = 0, _sweepAt = 0;   /* v94.1：+格数 */
 
   function SP() { return GAME.mapSphere || GAME.sphere; }
   function data() { return (GAME.DATA && GAME.DATA.RUIN) || {}; }
@@ -27769,7 +27921,9 @@ window.GAME = window.GAME || {};
     var s = SP();
     if (!s || !s.cells) return [];
     var sd = (s.seed3 ? s.seed3() : 0) | 0;
-    if (_list && _listSeed === sd) return _list;
+    /* v94.1：同 village —— 只认 seed 不认格数，会把"星球还没建好时算出的空列表"永久缓存 */
+    var nCell = s.cells.length;
+    if (_list && _listSeed === sd && _listN === nCell) return _list;
     var out = [], n = s.cells.length;
     for (var ci = 0; ci < n; ci++) {
       var cell = s.cells[ci];
@@ -27777,7 +27931,7 @@ window.GAME = window.GAME || {};
       if (cell.type === 'lake') continue;
       if (h(ci, sd + 9101) < (data().chance || 0.0025)) out.push(ci);
     }
-    _list = out; _listSeed = sd;
+    _list = out; _listSeed = sd; _listN = nCell;
     return out;
   };
 
@@ -28526,6 +28680,1235 @@ window.GAME = window.GAME || {};
     if (!x) return '';
     return x.name + '（' + x.trait + '）· 半径 ' + x.r + ' ≈ ' + U.numText(x.cells, 0) + ' 格'
       + (x.near != null ? (' · 距你 ' + Math.round(x.near) + ' 格') : '');
+  };
+})();
+
+/* ---- rival.js ---- */
+/* ============================================================
+ * rival.js — 你不是唯一在重建的人（v94.1 · 世界层最小可运行）
+ * ------------------------------------------------------------
+ * 缺口：整个废土上，**只有玩家会做"重建"这件事**。
+ *   · 四个军阀占地盘（faction.js），但他们不建、不垦、不翻遗迹；
+ *   · 村社只会自己流失（village.js），没人抢；
+ *   · 遗迹只会等玩家来翻（ruin.js）。
+ * 于是一个空洞的世界：所有好东西都摆在那儿，等着玩家慢慢拿。
+ *
+ * 这个模块放进去 2 支"也在重建"的人：
+ *   · 他们**占地不占城** —— 抢村社的人、抢遗迹的东西；
+ *   · 他们**会自己长大** —— 队伍人口过线就分家，最多 5 支；
+ *   · 他们对玩家的唯一意义是：**你慢一步，东西就没了**。
+ *
+ * 与军阀的分工（必须写清楚，否则两套东西会打架）：
+ *   军阀 = 领地与兵，按月推进半径，是"压力"。
+ *   竞争者 = 人与物，在地图上逐格走，是"抢跑"。
+ *
+ * ⚠️ 刻意不做：
+ *   · 不新建聚落（那是世界自己会做的事，见 growth/village），
+ *     他们只**接管**已有的人与物 —— 与玩家完全对称的规则。
+ *   · 不碰兵力/城市产出。他们赢了，损失落在"村社/遗迹"上；
+ *     不至于因为一个最小模块就把既有平衡掀了。
+ * ============================================================ */
+(function () {
+  'use strict';
+  var GAME = window.GAME = window.GAME || {};
+  var RV = GAME.rival = {};
+  var U = GAME.utils;
+
+  function D() { return (GAME.DATA && GAME.DATA.RIVAL) || {}; }
+  function SP() { return GAME.mapSphere || GAME.sphere; }
+  function VD() { return GAME.village; }
+
+  function monthNow() {
+    var C = (GAME.DATA && GAME.DATA.CALENDAR) || {};
+    var spm = (C.secPerYear || 57600) / 12;
+    var st = GAME.state || {};
+    return Math.floor(((st.world && st.world.elapsed) || 0) / spm);
+  }
+
+  /* 纯哈希（吃 ci + salt）：同一颗球，起点永远一样 */
+  function h(ci, salt) {
+    var x = (ci * 2654435761 + salt * 40503) >>> 0;
+    x ^= x >>> 13; x = (x * 1274126177) >>> 0; x ^= x >>> 16;
+    return (x >>> 0) / 4294967296;
+  }
+
+  /* ============================================================
+   * ensure —— 开局把两支队伍放进世界
+   * ------------------------------------------------------------
+   * 起点必须在**主城 12 格外**：不能一开局就贴在门口，
+   * 那样玩家第一眼看到的是"家门口有人抢东西"，而不是"远方有人在活"。
+   * ============================================================ */
+  RV.ensure = function () {
+    var st = GAME.state;
+    if (!st) return null;
+    if (!st.rival || typeof st.rival !== 'object') st.rival = { month: -1, teams: [] };
+    if (!Array.isArray(st.rival.teams)) st.rival.teams = [];
+    if (!st.rival.seeded) {
+      /* ⚠️ 只有**真的放到人**才算 seeded。第一版无论结果都置 true，
+         于是"第一次 ensure 时星球还没建好"会把竞争者永久清零 ——
+         而且因为状态被写进存档，之后每局都没有他们。 */
+      var seed = seedTeams();
+      if (seed.length) { st.rival.seeded = true; st.rival.teams = seed; }
+    }
+    return st.rival;
+  };
+
+  function seedTeams() {
+    var s = SP(), out = [];
+    if (!s || !s.cells) return out;
+    var n = s.cells.length;
+    /* ⚠️ 起点必须在**真实的主城**旁边：ensure() 可能在 currentCity 还没设好时被调用
+       （tickOnce 第一帧），那样 pci 会退成 0 —— 而 0 号格不一定是你的城。 */
+    var pc = null, _all = (GAME.city && GAME.city.all) ? (GAME.city.all() || []) : [];
+    for (var q0 = 0; q0 < _all.length; q0++) {
+      if (GAME.isMainCity && GAME.isMainCity(_all[q0])) { pc = _all[q0]; break; }
+    }
+    if (!pc) pc = _all[0] || (GAME.currentCity ? GAME.currentCity() : null);
+    var pci = (pc && pc.ci != null && pc.ci >= 0) ? pc.ci : -1;
+    var names = D().names || ['流浪者'];
+    var want = D().count || 2;
+    var tries = 0;
+    while (out.length < want && tries < 6000) {
+      var ci = Math.floor(h(tries++, 77001) * n) % n;
+      var cell = s.cells[ci];
+      if (!cell || cell.type === 'lake') continue;
+      if (pci >= 0) {
+        var d = (s.roughDistOf ? s.roughDistOf({ ci: pci }, { ci: ci }) : 20);
+        if (d < 12) continue;
+      }
+      var dup = false;
+      for (var i = 0; i < out.length; i++) if (out[i].ci === ci) dup = true;
+      if (dup) continue;
+      out.push({
+        id: 'r' + out.length, name: names[out.length % names.length],
+        ci: ci, pop: 240, claims: 0, dest: null, moved: 0, at: monthNow()
+      });
+    }
+    return out;
+  }
+
+  RV.arr = function () {
+    var st = GAME.state;
+    return (st && st.rival && st.rival.teams) || [];
+  };
+
+  RV.teamOf = function (id) {
+    var a = RV.arr();
+    for (var i = 0; i < a.length; i++) if (a[i].id === id) return a[i];
+    return null;
+  };
+
+  /* ============================================================
+   * 目标：最近的、还有东西可拿的一格
+   * ------------------------------------------------------------
+   * 两类：还没被人拿走的村社（人）· 已发现但没翻的遗迹（物）。
+   * **不按玩家的探明度过滤**（理由见函数内注释）。
+   * ============================================================ */
+  function pickTarget(t) {
+    var s = SP();
+    if (!s || !s.cells) return null;
+    var best = null, bestD = 1e9, bestKind = null;
+    var list = (VD() && VD().listAll) ? VD().listAll() : [];
+    for (var i = 0; i < list.length; i++) {
+      var ci = list[i];
+      /* ⚠️ **不要求已探明**：竞争者不是你的侦察兵，他们是本地人 ——
+         "玩家还没点亮的地方他们也知道"，正是"你慢一步东西就没了"的前提。
+         （第一版要求 isKnown，结果新开局他们一个目标都挑不到，六个月一步没走。） */
+      var rec = (VD().peek ? VD().peek(ci) : null);
+      if (rec && (rec.dead || rec.heldBy)) continue;
+      var d = (s.roughDistOf ? s.roughDistOf({ ci: t.ci }, { ci: ci }) : s.distOf({ ci: t.ci }, { ci: ci }));
+      if (d < bestD) { bestD = d; best = ci; bestKind = 'village'; }
+    }
+    var ru = ((GAME.state || {}).ruins) || {};
+    for (var k in ru) {
+      var rci = +k, rr = ru[k];
+      if (!rr || rr.side) continue;
+      var rd = (s.roughDistOf ? s.roughDistOf({ ci: t.ci }, { ci: rci }) : s.distOf({ ci: t.ci }, { ci: rci }));
+      /* 遗迹给的是"东西"，优先级略低于"人" —— 同距时取村社 */
+      if (rd < bestD - 0.001) { bestD = rd; best = rci; bestKind = 'ruin'; }
+    }
+    if (best == null) return null;
+    return { ci: best, kind: bestKind, dist: bestD };
+  }
+
+  /* 朝目标走一格（走不了就停：山/水不改道，最小版不做寻路） */
+  function stepToward(from, to) {
+    var s = SP();
+    if (!s || !s.adj || from === to) return from;
+    var nb = s.adj[from] || [];
+    var best = from, bestD = s.distOf({ ci: from }, { ci: to });
+    for (var i = 0; i < nb.length; i++) {
+      var x = nb[i];
+      var cell = s.cells[x];
+      if (!cell || cell.type === 'lake') continue;
+      var d = s.distOf({ ci: x }, { ci: to });
+      if (d < bestD) { bestD = d; best = x; }
+    }
+    return best;
+  }
+
+  /* ============================================================
+   * tick —— 每月：找目标 → 走 → 到了就占
+   * ============================================================ */
+  RV.tick = function (force) {
+    var st = GAME.state;
+    if (!st) return null;
+    RV.ensure();
+    var m = monthNow();
+    if (!force && st.rival.month === m) return null;
+    var first = (st.rival.month < 0);
+    st.rival.month = m;
+    if (first) return { month: m, first: true };
+
+    var d = D();
+    var out = { month: m, claimed: [], split: 0 };
+    var s = SP();
+    if (!s || !s.cells) return out;
+
+    RV.arr().forEach(function (t) {
+      if (!t || t.dead) return;
+      /* ① 半年一次重新挑目标（不必每月算，省一次 250 格遍历） */
+      if (!t.dest || !t.dest.ci || m % 2 === 0) {
+        var tg = pickTarget(t);
+        t.dest = tg ? { ci: tg.ci, kind: tg.kind } : null;
+      }
+      if (!t.dest) return;
+
+      /* ② 走 */
+      var step = 0;
+      while (step < (d.movePerMonth || 1) && t.ci !== t.dest.ci) {
+        var nx = stepToward(t.ci, t.dest.ci);
+        if (nx === t.ci) break;                 /* 走不动 */
+        t.ci = nx; t.moved = (t.moved | 0) + 1; step++;
+      }
+
+      /* ③ 到了：占 */
+      var dist = s.distOf ? s.distOf({ ci: t.ci }, { ci: t.dest.ci }) : 99;   /* 到点判定用精确距离 */
+      if (dist <= (d.reach == null ? 1 : d.reach)) {
+        var got = claim(t, t.dest.ci, t.dest.kind, m);
+        if (got) {
+          out.claimed.push(got);
+          t.dest = null;
+        }
+      }
+    });
+
+    /* ④ 分家：人多了会有人离开，自己再拉一支 */
+    var teams = RV.arr();
+    var cap = d.maxTeams || 5;
+    for (var i = 0; i < teams.length; i++) {
+      var t2 = teams[i];
+      if (!t2 || t2.dead) continue;
+      if ((t2.pop | 0) < (d.splitAt || 900)) continue;
+      if (teams.length >= cap) break;
+      var take = Math.round(t2.pop * (d.splitPct || 0.45));
+      t2.pop -= take;
+      teams.push({
+        id: 'r' + (teams.length) + '-' + m, name: (d.names || ['流浪者'])[(teams.length) % (d.names || ['x']).length],
+        ci: t2.ci, pop: take, claims: 0, dest: null, moved: 0, at: m, from: t2.id
+      });
+      out.split++;
+      if (GAME.log && GAME.log.war) {
+        GAME.log.war('👥 ' + take + ' 人离开' + t2.name + '，自己拉了一支队伍（' + teams.length + ' 支在废土上走）。');
+      }
+    }
+
+    if (out.claimed.length && GAME.log && GAME.log.war) {
+      out.claimed.forEach(function (x) { GAME.log.war(x.msg); });
+    }
+    return out;
+  };
+
+  /* 占下一格：村社拿走人，遗迹拿走东西 */
+  function claim(t, ci, kind, m) {
+    var st = GAME.state;
+    if (!st) return null;
+    if (kind === 'village') {
+      var rec = (VD() && VD().get) ? VD().get(ci) : null;
+      if (!rec || rec.dead || rec.heldBy) return null;
+      var take = Math.max(20, Math.round((rec.pop || 0) * (D().villageGain || 0.55)));
+      rec.pop = Math.max(0, (rec.pop || 0) - take);
+      rec.heldBy = t.id;
+      if (rec.pop <= 0) rec.dead = 'rival';
+      t.pop = (t.pop | 0) + take;
+      t.claims = (t.claims | 0) + 1;
+      var nm = (VD().at ? (VD().at(ci) || {}).name : null) || '一处村社';
+      return { kind: kind, ci: ci, n: take,
+        msg: '🏴 ' + t.name + '进了' + nm + '，带走了 ' + U.numText(take, 0) + ' 个人 —— 这座村子从此不听你的了。' };
+    }
+    if (kind === 'ruin') {
+      st.ruins = st.ruins || {};
+      var rr = st.ruins[ci];
+      if (!rr || rr.side) return null;
+      rr.side = 'rival';
+      rr.at = Date.now();
+      rr.got = '被' + t.name + '抢先翻走';
+      t.claims = (t.claims | 0) + 1;
+      var rw = (GAME.ruin && GAME.ruin.at) ? GAME.ruin.at(ci) : null;
+      return { kind: kind, ci: ci,
+        msg: '🏴 ' + t.name + '抢先翻了' + ((rw && rw.name) || '一处遗迹') + '，你去晚了。' };
+    }
+    return null;
+  }
+
+  /* ============================================================
+   * drive —— 赶走一支队伍
+   * ------------------------------------------------------------
+   * 这是玩家唯一能对他们做的事（最小版）：
+   *   · 得带够兵（driveCost），得在城市 8 格内；
+   *   · 赢了：他们散了，人回流到附近村社（世界没变好，只是不在你门口）；
+   *   · 输了：折兵，他们继续走。
+   * ⚠️ 不走 battle 引擎：他们的"战力"是人口，不是城池。
+   *    真接战斗引擎要改 simulate 的入口，那是下一版的事。
+   * ============================================================ */
+  RV.drive = function (tid, cityId) {
+    var st = GAME.state;
+    if (!st) return { ok: false, msg: '无存档' };
+    RV.ensure();
+    var t = RV.teamOf(tid);
+    if (!t) return { ok: false, msg: '没有这支队伍' };
+    var city = cityId ? (GAME.city && GAME.city.byId ? GAME.city.byId(cityId) : null)
+      : (GAME.currentCity ? GAME.currentCity() : null);
+    if (!city) return { ok: false, msg: '没有选城' };
+    var s = SP();
+    if (s && city.ci != null && t.ci != null) {
+      var d0 = s.distOf({ ci: city.ci }, { ci: t.ci });
+      if (d0 > 8) return { ok: false, msg: '他们离得太远（' + Math.round(d0) + ' 格，要 8 格内才好动手）' };
+    }
+    var need = D().driveCost || 300;
+    var have = GAME.city.armyTotal(city);
+    if (have < need) return { ok: false, msg: '至少带 ' + need + ' 兵出去（城里只有 ' + have + '）' };
+
+    var theirPow = Math.max(1, (t.pop | 0) * 0.8);
+    var p = (D().driveWinAt || 0.55) * Math.min(2, have / theirPow);
+    p = Math.max(0.08, Math.min(0.92, p));
+    var roll = GAME.invasionRoll ? GAME.invasionRoll('drive|' + t.id + '|' + monthNow()) : Math.random();
+
+    if (roll < p) {
+      /* 赢了：队伍散掉，人回到附近的村社（不是消失，是"不跟你走了"） */
+      var back = Math.round((t.pop | 0) * 0.6);
+      var list = (VD() && VD().listAll) ? VD().listAll() : [];
+      var bestCi = null, bestD = 1e9;
+      for (var i = 0; i < list.length; i++) {
+        var rec = VD().peek ? VD().peek(list[i]) : null;
+        if (rec && rec.dead) continue;
+        var dd = s ? s.distOf({ ci: t.ci }, { ci: list[i] }) : 99;
+        if (dd < bestD) { bestD = dd; bestCi = list[i]; }
+      }
+      if (bestCi != null && VD().get) {
+        var r2 = VD().get(bestCi);
+        if (r2 && !r2.dead) { r2.pop = (r2.pop | 0) + back; if (r2.heldBy === t.id) delete r2.heldBy; }
+      }
+      t.pop = Math.max(0, (t.pop | 0) - back);
+      t.dead = true; t.deadAt = monthNow();
+      armySub(city, Math.round(need * 0.06));      /* 打散他们也会伤几个人 */
+      if (GAME.log && GAME.log.war) {
+        GAME.log.war('🛡 ' + city.name + '的兵赶散了' + t.name + '，' + U.numText(back, 0) + ' 个人回头去了附近的村子。');
+      }
+      return { ok: true, win: true, msg: '赶散了' + t.name + '。他们不是被消灭，只是不再往前走了。' };
+    }
+
+    var lose = Math.max(1, Math.round(have * (D().driveLoseTroop || 0.18)));
+    armySub(city, lose);
+    t.pop = (t.pop | 0) + Math.round(lose * 0.15);   /* 他们也会收人 */
+    if (GAME.log && GAME.log.war) {
+      GAME.log.war('💀 ' + city.name + '的兵没拦住' + t.name + '，折了 ' + U.numText(lose, 0) + ' 人。');
+    }
+    return { ok: true, win: false, msg: '打输了，折了 ' + U.numText(lose, 0) + ' 兵。他们还在往前走。' };
+  };
+
+  /* 按比例从城里扣总兵（逐兵种分摊；走 armySub 的唯一出口） */
+  function armySub(city, n) {
+    if (!city || n <= 0) return 0;
+    var total = GAME.city.armyTotal(city);
+    if (total <= 0) return 0;
+    var cut = Math.min(n, total), done = 0;
+    var a = city.army || {};
+    for (var k in a) {
+      var v = Math.floor(a[k] || 0);
+      if (v <= 0) continue;
+      var part = Math.floor(cut * v / total);
+      if (part <= 0) continue;
+      var o = {}; o[k] = part;
+      if (GAME.city.armySub) GAME.city.armySub(city, o);
+      done += part;
+    }
+    return done;
+  }
+
+  /* ---------- 只读出口（界面用） ---------- */
+  RV.alive = function () {
+    return RV.arr().filter(function (t) { return t && !t.dead; });
+  };
+
+  RV.summaryOf = function () {
+    var live = RV.alive();
+    var pop = 0, claims = 0;
+    live.forEach(function (t) { pop += (t.pop | 0); claims += (t.claims | 0); });
+    return { n: live.length, pop: pop, claims: claims };
+  };
+
+  RV.lineOf = function () {
+    var a = RV.summaryOf();
+    if (!a.n) return '';
+    return '🏴 废土上还有 ' + a.n + ' 支人在重建（约 ' + U.numText(a.pop, 0) + ' 人），已抢走 ' + a.claims + ' 处';
+  };
+})();
+
+/* ---- land.js ---- */
+/* ============================================================
+ * land.js — 只有连成一片的，才算你的（v94.1 · 构想 A1）
+ * ------------------------------------------------------------
+ * 提案原文：「只有与主城连成一片的亮格才算领地；断链的部队掉补给」。
+ *
+ * 现状：这也是个"全图都算我的"的游戏 ——
+ *   只要打下了，隔着一片海、隔着半个星球，那座城照样满产出。
+ *   于是"打哪儿"没有地理成本，"守补给线"这个概念根本不存在。
+ *
+ * 这个模块做的第一件事只有一件：**把连通性算出来**。
+ *   · 从每座主城出发，沿陆地 BFS，标出"和老家连着的陆地格"；
+ *   · 城 / 前哨 / 野地按自己那格看是否在连通区里，以及离主城多少跳；
+ *   · 断链 → 补给系数按跳数递减（暂不落地，见下）。
+ *
+ * ⚠️ **第一版只算不罚**（`DATA.LAND.apply = false`）。
+ *   理由不是保守，是这个项目踩过太多次"新系统一上来就改老数值，
+ *   结果分不清是玩法不成立还是老系统被弄坏"。
+ *   先把连通性算准、显示对，确认它与真实地理一致，
+ *   再打开那一个开关（`apply`）让它真扣 —— 那时只需要改一行。
+ * ============================================================ */
+(function () {
+  'use strict';
+  var GAME = window.GAME = window.GAME || {};
+  var LD = GAME.land = {};
+
+  function D() { return (GAME.DATA && GAME.DATA.LAND) || {}; }
+  function SP() { return GAME.mapSphere || GAME.sphere; }
+  /* 主城判定：走**既有**出口 `isMainCity`（`city.isMain` 是另一套、口径不同）。
+     v94.1 踩过：用 city.isMain 判主城，结果自家唯一那座城被算成"断链"。 */
+  function isMain(c) {
+    if (!c) return false;
+    if (GAME.isMainCity) return !!GAME.isMainCity(c);
+    return !!(c && (c.isMain || c.id === 1));
+  }
+
+  /* 连通区缓存：城市集合或星球变了才重算 */
+  var _sig = '', _map = null, _main = null;
+
+  function sigNow() {
+    var s = SP();
+    if (!s || !s.cells) return '';
+    var n = s.cells.length;
+    var sd = (s.seed3 ? s.seed3() : 0) | 0;
+    var ids = [];
+    (GAME.city && GAME.city.all ? GAME.city.all() : []).forEach(function (c) {
+      if (c && c.ci != null && isMain(c)) ids.push(c.ci);
+    });
+    return sd + ':' + n + ':' + ids.sort().join(',');
+  }
+
+  /* ============================================================
+   * build —— 从所有主城同时 BFS（多源，一次遍历）
+   * ------------------------------------------------------------
+   * 为什么多源：玩家可能已经有好几座"主城级"的城（占了名城），
+   * 分别 BFS 会重复走同一片陆地；多源一次就够，得到的是
+   * "到最近一座主城的跳数"，正是补给线要的那个数。
+   * ============================================================ */
+  function build() {
+    var s = SP();
+    if (!s || !s.cells) return { dist: null, n: 0 };
+    var n = s.cells.length;
+    var dist = new Int32Array(n);
+    for (var i = 0; i < n; i++) dist[i] = -1;
+    var mains = [], _all = (GAME.city && GAME.city.all ? GAME.city.all() : []);
+    _all.forEach(function (c) {
+      if (c && c.ci != null && c.ci >= 0 && c.ci < n && isMain(c)) mains.push(c.ci);
+    });
+    /* ⚠️ 兜底：主城标记可能对不上（`mainCityId` 与实际城 id 不是一路；
+       还有"占了名城改名主城"之类）。找不到主城时用**第一座城**当老家 ——
+       宁可把连通性算得宽一点，也不要让玩家看到"我唯一的城断链了"。 */
+    if (!mains.length && _all[0] && _all[0].ci >= 0 && _all[0].ci < n) mains.push(_all[0].ci);
+    if (!mains.length) return { dist: dist, n: 0, mains: [] };
+    var maxH = D().maxHops || 14;
+    var q = mains.slice(), head = 0;
+    mains.forEach(function (ci) { dist[ci] = 0; });
+    while (head < q.length) {
+      var cur = q[head++], d = dist[cur] + 1;
+      if (d > maxH) break;
+      var nb = (s.adj && s.adj[cur]) || [];
+      for (var j = 0; j < nb.length; j++) {
+        var x = nb[j];
+        if (dist[x] >= 0) continue;
+        var cell = s.cells[x];
+        if (!cell || cell.type === 'lake') continue;      /* ⚠️ 海是 'lake'，不是 'sea' */
+        dist[x] = d;
+        q.push(x);
+      }
+    }
+    return { dist: dist, n: n, mains: mains };
+  }
+
+  LD.ensure = function (force) {
+    var sg = sigNow();
+    if (!force && _map && _sig === sg) return _map;
+    _sig = sg;
+    _map = build();
+    return _map;
+  };
+
+  LD.reset = function () { _sig = ''; _map = null; };
+
+  /* ============================================================
+   * statusOf —— 这一格/这座城的补给状态
+   * ------------------------------------------------------------
+   * hops = 到最近主城的陆地跳数（-1 = 断链，隔着海或太远）。
+   * mul  = 补给系数。`apply` 关着的时候恒为 1（只显示不扣）。
+   * ============================================================ */
+  LD.statusOf = function (entity) {
+    var m = LD.ensure();
+    if (!m || !m.dist) return { linked: true, hops: 0, mul: 1, apply: false };
+    var ci = (entity && entity.ci != null) ? entity.ci : -1;
+    var hops = (ci >= 0 && ci < m.dist.length) ? m.dist[ci] : -1;
+    /* 主城自己没有"断链"这回事 */
+    if (isMain(entity)) hops = 0;
+    var linked = hops >= 0;
+    var mul = 1;
+    if (linked && hops > 0) {
+      mul = Math.max(D().minMul == null ? 0.35 : D().minMul,
+        1 - hops * (D().hopPenalty == null ? 0.10 : D().hopPenalty) * 0.1);
+      /* 每跳扣 1%（hopPenalty 的十分之一），14 跳才到 0.86 —— 淡，
+         因为"断链"才是重点，"远"只是次要的补给摩擦。 */
+    }
+    if (!linked) mul = D().minMul == null ? 0.35 : D().minMul;
+    if (!D().apply) mul = 1;
+    return { linked: linked, hops: hops, mul: mul, apply: !!D().apply };
+  };
+
+  /* 全境补给体检：给行政页一行 */
+  LD.stats = function () {
+    var out = { total: 0, cut: 0, far: 0, worst: null };
+    var s = SP();
+    if (!s) return out;
+    (GAME.city && GAME.city.all ? GAME.city.all() : []).forEach(function (c) {
+      if (!c) return;
+      out.total++;
+      var st = LD.statusOf(c);
+      if (!st.linked) {
+        out.cut++;
+        if (!out.worst) out.worst = { name: c.name, hops: -1 };
+      } else if (st.hops > 0) {
+        out.far++;
+        if (!out.worst || out.worst.hops < st.hops) out.worst = { name: c.name, hops: st.hops };
+      }
+    });
+    return out;
+  };
+
+  LD.lineOf = function () {
+    var a = LD.stats();
+    if (!a.total) return '';
+    if (!a.cut && !a.far) return '🛣 全境补给：都连着老家';
+    if (!a.cut) return '🛣 全境补给：' + a.total + ' 城都连着（最远 ' + a.worst.hops + ' 跳）';
+    return '🛣 全境补给：' + a.cut + ' 城与老家断了陆路'
+      + (a.worst && a.worst.hops < 0 ? '（最近的断点：' + a.worst.name + '）' : '');
+  };
+
+  /* 单城一行（城面板用） */
+  LD.cityLine = function (city) {
+    var st = LD.statusOf(city);
+    if (!city) return '';
+    if (st.linked && st.hops === 0) return '🛣 补给：老家';
+    if (st.linked) return '🛣 补给：连着老家（' + st.hops + ' 跳）';
+    return '🛣 补给：**断链**（隔着水或太远，走不过去）';
+  };
+})();
+
+/* ---- taint.js ---- */
+/* ============================================================
+ * taint.js — 强是要付账的（v94.1 · 废土内核 F「代价」）
+ * ------------------------------------------------------------
+ * 提案原文：
+ *   「旧世界技术强，但积累污染，污染高会变异/民心崩」
+ *   「强是要付账的」
+ *
+ * 现状：这个游戏里"变强"没有账单 ——
+ *   造得越多、级越高，只有正收益；没有任何一条线会因为"太多"而反过来咬人。
+ *   于是玩家永远不会面对"要不要停下来"。
+ *
+ * 这个模块做的只有一件：**给每座城记一笔污染账**。
+ *   · 来源：建筑总等级（越多越高的城，污染越重）—— 用"工业密度"近似，
+ *     不新增建筑，也不改任何既有产出口；
+ *   · 自净：每月一个常数 + 科技（净水厂）；
+ *   · 越过警戒线：界面转黄；越过变质线：**人开始走**。
+ *
+ * ⚠️ 刻意不扣"民心"（`heartsComfort` 是全局量，一扣会污染器械/征兵等
+ *   与污染毫无关系的系统 —— v93.5 用棚户试过，e2e 立刻抓到）。
+ *   代价落在**人**身上：棚户先死，村社往外搬。这也更像废土。
+ * ============================================================ */
+(function () {
+  'use strict';
+  var GAME = window.GAME = window.GAME || {};
+  var TN = GAME.taint = {};
+  var U = GAME.utils;
+
+  function D() { return (GAME.DATA && GAME.DATA.TAINT) || {}; }
+
+  function monthNow() {
+    var C = (GAME.DATA && GAME.DATA.CALENDAR) || {};
+    var spm = (C.secPerYear || 57600) / 12;
+    var st = GAME.state || {};
+    return Math.floor(((st.world && st.world.elapsed) || 0) / spm);
+  }
+
+  /* 建筑总等级（含围墙）—— 污染的唯一来源，读的都是既有出口 */
+  function lvlSumOf(city) {
+    var n = 0;
+    (city.cells || []).forEach(function (cc) {
+      if (cc && cc.build && cc.build.id) n += (cc.build.lvl | 0);
+    });
+    if (city.wall && city.wall.build && city.wall.build.id) n += (city.wall.build.lvl | 0);
+    return n;
+  }
+
+  TN.of = function (city) { return (city && (city.taint | 0)) || 0; };
+
+  /* 等级：干净 / 警戒 / 变质（界面与伤害都读它） */
+  TN.levelOf = function (city) {
+    var t = TN.of(city), d = D();
+    if (t >= (d.bad == null ? 120 : d.bad)) return { id: 'bad', name: '变质', color: 'var(--red-light)' };
+    if (t >= (d.warn == null ? 60 : d.warn)) return { id: 'warn', name: '警戒', color: 'var(--gold-light)' };
+    return { id: 'clean', name: '干净', color: 'var(--green-ok)' };
+  };
+
+  /* 每月增量（界面显示"这个月会涨多少"用的就是它） */
+  TN.deltaOf = function (city) {
+    var d = D();
+    var purge = (GAME.relic && GAME.relic.addOf) ? GAME.relic.addOf('purge') : 0;
+    return lvlSumOf(city) * (d.perLvl == null ? 0.15 : d.perLvl)
+      - (d.decay == null ? 2 : d.decay) - purge;
+  };
+
+  /* ============================================================
+   * tick —— 每月结一次账（按秒会让它变成"数字在跳"）
+   * ============================================================ */
+  TN.tick = function (force) {
+    var st = GAME.state;
+    if (!st) return null;
+    var m = monthNow();
+    if (!force && st.taintMonth === m) return null;
+    if (st.taintMonth == null) { st.taintMonth = m; return { first: true, month: m }; }
+    st.taintMonth = m;
+
+    var d = D();
+    var out = { month: m, bad: 0, lost: 0 };
+    var resist = (GAME.relic && GAME.relic.mulOf) ? GAME.relic.mulOf('resist') : 1;   /* 旧诊所：1 → 0.65 */
+    resist = Math.max(0.2, resist);
+
+    (GAME.city && GAME.city.all ? GAME.city.all() : []).forEach(function (c) {
+      if (!c) return;
+      var t = Math.max(0, TN.of(c) + TN.deltaOf(c));
+      c.taint = Math.round(t * 10) / 10;
+      var lv = TN.levelOf(c);
+      if (lv.id !== 'bad') return;
+      out.bad++;
+      /* 一次只处理最脏的 8 座城：这是"压力"，不是全境同时崩 */
+      if (out.bad > 8) return;
+
+      /* ① 棚户先死（城外，最脏的地方） */
+      var sh = (GAME.growth && GAME.growth.shantyOf) ? GAME.growth.shantyOf(c) : 0;
+      if (sh > 0) {
+        var over = Math.max(0, t - (d.bad == null ? 120 : d.bad)) / 100;
+        var die = Math.round(sh * Math.min(0.5, (d.shantyLossAt == null ? 0.02 : d.shantyLossAt) * over) * resist);
+        if (die > 0) {
+          c.shanty = Math.max(0, sh - die);
+          out.lost += die;
+          if (GAME.log && GAME.log.war) {
+            GAME.log.war('☢ ' + c.name + '城外的污染到了变质线，棚户里 ' + U.numText(die, 0) + ' 个人没能撑过这个月。');
+          }
+        }
+      }
+      /* ② 附近的村社也在往外搬（只影响**新系统**，不动老产量） */
+      if (GAME.village && GAME.village.listAll) {
+        var list = GAME.village.listAll();
+        var moved = 0;
+        for (var i = 0; i < list.length; i++) {
+          var vci = list[i];
+          if (c.ci == null || !GAME.sphere || !GAME.sphere.distOf) continue;
+          var dd = GAME.sphere.roughDistOf ? GAME.sphere.roughDistOf({ ci: c.ci }, { ci: vci })
+            : GAME.sphere.distOf({ ci: c.ci }, { ci: vci });
+          if (dd > 4) continue;
+          var rec = GAME.village.peek ? GAME.village.peek(vci) : null;
+          if (!rec || rec.dead || rec.heldBy) continue;
+          var n = Math.max(1, Math.round((rec.pop || 0) * (d.villageLoss == null ? 0.004 : d.villageLoss) * resist));
+          rec.pop = Math.max(0, (rec.pop || 0) - n);
+          if (rec.pop <= 0) rec.dead = 'taint';
+          moved += n;
+        }
+        out.lost += moved;
+      }
+    });
+    return out;
+  };
+
+  /* ============================================================
+   * clean —— 净化（花铁与石，把账按下来一截）
+   * ------------------------------------------------------------
+   * 这是"代价"系统能成立的关键：**必须有一个花钱的出口**。
+   * 否则污染只是永久的数值下滑，玩家只能看着，不构成选择。
+   * 但它不能免费：一次净化 = 一笔真资源，而且治不完（下个月还在涨）。
+   * ============================================================ */
+  TN.clean = function (city) {
+    if (!city) return { ok: false, msg: '没有这座城' };
+    var d = D(), cost = d.cleanCost || { iron: 400, stone: 600 };
+    var R = GAME.res(city);
+    var lack = [];
+    for (var k in cost) if ((R[k] || 0) < cost[k]) lack.push(GAME.resName ? GAME.resName(k) : k);
+    if (lack.length) return { ok: false, msg: '净化要 ' + lack.join('、') + ' —— 现在不够' };
+    for (var k2 in cost) if (GAME.city && GAME.city.add) GAME.city.add(city, k2, -cost[k2]);
+
+    var before = TN.of(city);
+    city.taint = Math.max(0, Math.round((before - (d.cleanAt == null ? 25 : d.cleanAt)) * 10) / 10);
+    return { ok: true, msg: '净化了一轮：污染 ' + Math.round(before) + ' → ' + Math.round(TN.of(city))
+      + '。下个月它还会涨 —— 这是治不完的。' };
+  };
+
+  /* ---------- 只读出口 ---------- */
+  TN.stats = function () {
+    var out = { n: 0, warn: 0, bad: 0, worst: null };
+    (GAME.city && GAME.city.all ? GAME.city.all() : []).forEach(function (c) {
+      if (!c) return;
+      out.n++;
+      var t = TN.of(c);
+      if (t >= (D().bad == null ? 120 : D().bad)) out.bad++;
+      else if (t >= (D().warn == null ? 60 : D().warn)) out.warn++;
+      if (!out.worst || out.worst.t < t) out.worst = { name: c.name, t: t };
+    });
+    return out;
+  };
+
+  TN.lineOf = function () {
+    var a = TN.stats();
+    if (!a.n) return '';
+    var w = a.worst || { name: '—', t: 0 };
+    return '☢ 污染：' + a.bad + ' 城变质 · ' + a.warn + ' 城警戒（最重的 ' + w.name + ' ' + Math.round(w.t) + '）';
+  };
+
+  TN.cityLine = function (city) {
+    if (!city) return '';
+    var t = TN.of(city), lv = TN.levelOf(city), dl = TN.deltaOf(city);
+    return '☢ 污染 ' + Math.round(t) + '（' + lv.name + '）'
+      + '　每月 ' + (dl >= 0 ? '+' : '') + Math.round(dl * 10) / 10;
+  };
+})();
+
+/* ---- climate.js ---- */
+/* ============================================================
+ * climate.js — 生存三命的第三条：温度（v94.1 · 构想 B4）
+ * ------------------------------------------------------------
+ * 提案原文：「城市有粮食/温度/民心三条线，冬天或辐射季来临时做抉择」。
+ * 现状：粮有、民心有，**温度这条线不存在** ——
+ *   寒潮（v92.18）是一个"每 24 个月扣粮产"的开关，不是一条能被经营的线：
+ *   玩家不能为它做任何事，只能等它过去。
+ *
+ * 这个模块把温度变成一条线：
+ *   · 一年一个正弦周期（年中最暖，年初最冷），最冷时低于 coldAt 算严寒；
+ *   · 严寒的代价落在**人**身上：城外棚户冻死、附近村社往南走；
+ *   · 玩家能做的事只有一件 —— **烧柴**：每城花一笔木，换这个月不受冻。
+ *     木不是白来的（伐木占建造/锻造的同一份木），所以这是一笔真交易：
+ *     你要么烧城里的木头，要么冻死城外的人。
+ *
+ * ⚠️ 不动全局粮产（`cityProdPerSec`）。寒潮模块已经在扣粮产了，
+ *   这里再叠一层会让"冬天到底扣多少"变成两处口子相乘，谁也说不清。
+ * ============================================================ */
+(function () {
+  'use strict';
+  var GAME = window.GAME = window.GAME || {};
+  var CL = GAME.climate = {};
+  var U = GAME.utils;
+
+  function D() { return (GAME.DATA && GAME.DATA.CLIMATE) || {}; }
+
+  function monthNow() {
+    var C = (GAME.DATA && GAME.DATA.CALENDAR) || {};
+    var spm = (C.secPerYear || 57600) / 12;
+    var st = GAME.state || {};
+    return Math.floor(((st.world && st.world.elapsed) || 0) / spm);
+  }
+
+  /* ============================================================
+   * tempOf —— 现在多少度
+   * ------------------------------------------------------------
+   * 用月份的正弦，不用随机：玩家应该能**预见**冬天（这是"可预判"那一半）。
+   * 年初最冷（-18℃ 左右），年中（30℃）最热。
+   * ============================================================ */
+  CL.tempOf = function (month) {
+    var m = (month == null) ? monthNow() : month;
+    var d = D();
+    var mo = ((m % 12) + 12) % 12;
+    var s = Math.sin(Math.PI * 2 * mo / 12 - Math.PI / 2);   /* mo=0 → -1（最冷） */
+    var t = (d.base == null ? 6 : d.base) + (d.swing == null ? 24 : d.swing) * s;
+    return Math.round(t * 10) / 10;
+  };
+
+  CL.coldAt = function () { return D().coldAt == null ? -10 : D().coldAt; };
+  CL.isCold = function (month) { return CL.tempOf(month) < CL.coldAt(); };
+
+  /* 距离下一个严寒月还有几个月（0 = 现在就是）—— 界面用它给玩家预警 */
+  CL.coldIn = function () {
+    var m = monthNow();
+    for (var i = 0; i < 12; i++) if (CL.isCold(m + i)) return i;
+    return -1;
+  };
+
+  /* 这个月这座城烧了柴没有 */
+  CL.isWarm = function (city) {
+    return !!(city && city.warmMonth != null && city.warmMonth === monthNow());
+  };
+
+  /* 供暖要多少木（一个月） */
+  CL.fuelCostOf = function (city) {
+    if (!city) return 0;
+    var pop = (GAME.res(city).pop || 0);
+    return Math.max(20, Math.round(pop * (D().fuelPerPop == null ? 0.4 : D().fuelPerPop)));
+  };
+
+  /* ============================================================
+   * warm —— 烧柴（这个月这批人不冻着）
+   * ------------------------------------------------------------
+   * 一次只买一个月：不是修好一个建筑就永久解决。
+   * 这是故意的 —— "冬天"应该每年都回来找你一次。
+   * ============================================================ */
+  CL.warm = function (city) {
+    if (!city) return { ok: false, msg: '没有这座城' };
+    var m = monthNow();
+    if (CL.isWarm(city)) return { ok: false, msg: '这个月的柴已经烧上了' };
+    var need = CL.fuelCostOf(city);
+    var R = GAME.res(city);
+    if ((R.wood || 0) < need) {
+      return { ok: false, msg: '烧一个月的柴要 ' + U.numText(need, 0) + ' 木 —— 现在不够' };
+    }
+    if (GAME.city && GAME.city.add) GAME.city.add(city, 'wood', -need);
+    else city.res.wood -= need;
+    city.warmMonth = m;
+    if (GAME.heartsComfortAdd) GAME.heartsComfortAdd(D().warmHearts == null ? 1.5 : D().warmHearts);
+    return { ok: true, msg: '烧上了：这一个月 ' + U.numText(GAME.res(city).pop || 0, 0) + ' 个人不会再冻着（耗柴 '
+      + U.numText(need, 0) + '）。' };
+  };
+
+  /* ============================================================
+   * tick —— 每月结算严寒
+   * ============================================================ */
+  CL.tick = function (force) {
+    var st = GAME.state;
+    if (!st) return null;
+    var m = monthNow();
+    if (!force && st.climateMonth === m) return null;
+    if (st.climateMonth == null) { st.climateMonth = m; return { first: true, month: m }; }
+    st.climateMonth = m;
+
+    var cold = CL.isCold(m);
+    var out = { month: m, temp: CL.tempOf(m), cold: cold, died: 0, moved: 0, warm: 0 };
+    if (!cold) return out;
+
+    var d = D();
+    var resist = (GAME.relic && GAME.relic.mulOf) ? GAME.relic.mulOf('resist') : 1;
+    resist = Math.max(0.2, resist);
+
+    (GAME.city && GAME.city.all ? GAME.city.all() : []).forEach(function (c) {
+      if (!c) return;
+      if (CL.isWarm(c)) { out.warm++; return; }
+
+      /* ① 棚户冻死（城里的人有房子，城外只有油布） */
+      var sh = (GAME.growth && GAME.growth.shantyOf) ? GAME.growth.shantyOf(c) : 0;
+      if (sh > 0) {
+        var die = Math.round(sh * (d.coldShantyLoss == null ? 0.06 : d.coldShantyLoss) * resist);
+        if (die > 0) {
+          c.shanty = Math.max(0, sh - die);
+          out.died += die;
+          if (GAME.log && GAME.log.war) {
+            GAME.log.war('❄ ' + c.name + '零下 ' + Math.abs(CL.tempOf(m)) + ' 度，城外棚户 ' + U.numText(die, 0) + ' 个人冻死了。');
+          }
+        }
+      }
+      /* ② 附近的村社往暖处走 */
+      if (GAME.village && GAME.village.listAll && GAME.sphere && GAME.sphere.distOf) {
+        var list = GAME.village.listAll();
+        for (var i = 0; i < list.length; i++) {
+          var vci = list[i];
+          if (c.ci == null) continue;
+          var dd = GAME.sphere.roughDistOf ? GAME.sphere.roughDistOf({ ci: c.ci }, { ci: vci })
+            : GAME.sphere.distOf({ ci: c.ci }, { ci: vci });
+          if (dd > 6) continue;
+          var rec = GAME.village.peek ? GAME.village.peek(vci) : null;
+          if (!rec || rec.dead || rec.heldBy) continue;
+          var n = Math.max(1, Math.round((rec.pop || 0) * (d.coldVillageLoss == null ? 0.02 : d.coldVillageLoss) * resist));
+          rec.pop = Math.max(0, (rec.pop || 0) - n);
+          if (rec.pop <= 0) rec.dead = 'cold';
+          out.moved += n;
+        }
+      }
+    });
+    return out;
+  };
+
+  /* ---------- 只读出口 ---------- */
+  CL.lineOf = function () {
+    var m = monthNow();          /* ⚠️ 不能省：tempOf/isCold 接受"月份"参数，不传就是 undefined */
+    var t = CL.tempOf(m);
+    var inN = CL.coldIn();
+    var cold = CL.isCold(m);
+    return '🌡 气温 ' + (t > 0 ? '+' : '') + t + '℃'
+      + (cold ? '　<span style="color:var(--red-light);">❄ 严寒：城外的人正在冻死（可以烧柴）</span>'
+        : (inN > 0 ? '　<span style="color:var(--text-dim);">距严寒 ' + inN + ' 个月</span>' : ''));
+  };
+
+  CL.cityLine = function (city) {
+    if (!city) return '';
+    return '🌡 供暖：' + (CL.isWarm(city) ? '这个月烧上了' : '没烧')
+      + '　需要 ' + U.numText(CL.fuelCostOf(city), 0) + ' 木/月'
+      + (CL.isCold() && !CL.isWarm(city) ? '　<span style="color:var(--red-light);">严寒中</span>' : '');
+  };
+})();
+
+/* ---- surge.js ---- */
+/* ============================================================
+ * surge.js — 会收缩的圈（v94.1 · 构想 E「大逃杀收缩圈」）
+ * ------------------------------------------------------------
+ * 提案原文：「辐射云收缩，被迫向中心迁移 —— 给扩张一个时间压力」。
+ *
+ * 现状：这个游戏**没有时间压力**。
+ *   你可以一百万年后再去打那座城，地图上的东西一个都不会少。
+ *   所以"什么时候动手"不是决策 —— 因为它没有代价。
+ *
+ * 这个模块给的是一件事：**外围会慢慢变得不能住人**。
+ *   · 圈心 = 你所有城的重心（不是球心：玩家在哪，"文明"就在哪）；
+ *   · 半径按月往回收，收到 minR 就停（不把人逼死）；
+ *   · 每收缩 12 个月停 3 个月 —— 有节奏，玩家能预见下一次收缩；
+ *   · 留在云里的城：棚户死、人口慢慢流失；村社整村迁走。
+ *
+ * ⚠️ 这是"压力"不是"失败条件"：没有全灭、没有读秒，
+ *   只是**离中心越远，越难维持**。玩家可以选择不搬，代价是慢慢变少。
+ * ============================================================ */
+(function () {
+  'use strict';
+  var GAME = window.GAME = window.GAME || {};
+  var SG = GAME.surge = {};
+  var U = GAME.utils;
+
+  function D() { return (GAME.DATA && GAME.DATA.SURGE) || {}; }
+
+  function monthNow() {
+    var C = (GAME.DATA && GAME.DATA.CALENDAR) || {};
+    var spm = (C.secPerYear || 57600) / 12;
+    var st = GAME.state || {};
+    return Math.floor(((st.world && st.world.elapsed) || 0) / spm);
+  }
+
+  /* ============================================================
+   * centerOf —— 圈心
+   * ------------------------------------------------------------
+   * 用所有己方城的世界坐标重心。没有城时退回地图原点。
+   * 为什么不用球心：球心在海上也没关系，但"文明的中心"是玩家自己定的 ——
+   * 你把家搬到哪，圈就围着哪收。这让"搬家"变成一个有意义的选择。
+   * ============================================================ */
+  SG.centerOf = function () {
+    var arr = (GAME.city && GAME.city.all ? GAME.city.all() : []);
+    var n = 0, sx = 0, sy = 0;
+    for (var i = 0; i < arr.length; i++) {
+      var c = arr[i];
+      if (!c || c.x == null || c.y == null) continue;
+      sx += c.x; sy += c.y; n++;
+    }
+    if (!n) return { x: 0, y: 0, n: 0 };
+    return { x: sx / n, y: sy / n, n: n };
+  };
+
+  /* 当前收缩进度：已经收缩了几个月（跳过停歇期） */
+  SG.shrinkMonths = function (m) {
+    var d = D();
+    var on = Math.max(1, d.pauseMonths || 12);
+    var off = Math.max(0, d.pauseFor == null ? 3 : d.pauseFor);
+    var cycle = on + off;
+    var mm = Math.max(0, m == null ? monthNow() : m);
+    return Math.floor(mm / cycle) * on + Math.min(on, mm % cycle);
+  };
+
+  SG.rOf = function (m) {
+    var d = D();
+    var r = (d.startR == null ? 55 : d.startR) - SG.shrinkMonths(m) * (d.shrinkPerMonth == null ? 0.9 : d.shrinkPerMonth);
+    return Math.max(d.minR == null ? 14 : d.minR, Math.round(r * 10) / 10);
+  };
+
+  SG.rNow = function () { return SG.rOf(monthNow()); };
+
+  /* 某点离圈心多远（格）
+     ⚠️ 用世界格坐标的切比雪夫距离，不用 `sphere.hexDistAt`：
+        后者是一次 BFS，这里要按月对**每座城 + 每处村社**算一遍，
+        100 城 + 250 村的月度结算会直接把 tickOnce 顶穿（实测 271ms）。
+        圈是"慢慢收的大圈"，±1 格的误差对它没有意义。 */
+  SG.distOfPoint = function (x, y) {
+    var c = SG.centerOf();
+    if (!c.n) return 0;
+    return Math.max(Math.abs((x || 0) - c.x), Math.abs((y || 0) - c.y));
+  };
+
+  SG.inCloud = function (x, y) { return SG.distOfPoint(x, y) > SG.rNow(); };
+
+  SG.cityInCloud = function (city) {
+    if (!city || city.x == null) return false;
+    return SG.inCloud(city.x, city.y);
+  };
+
+  /* 还有多少个月就收到底（给玩家一个"还能在外围待多久"的数） */
+  SG.monthsLeft = function () {
+    var d = D();
+    var cur = SG.rNow(), min = d.minR == null ? 14 : d.minR;
+    var per = d.shrinkPerMonth == null ? 0.9 : d.shrinkPerMonth;
+    if (per <= 0 || cur <= min) return 0;
+    return Math.ceil((cur - min) / per);
+  };
+
+  /* ============================================================
+   * tick —— 每月：云里的城交账
+   * ============================================================ */
+  SG.tick = function (force) {
+    var st = GAME.state;
+    if (!st) return null;
+    var m = monthNow();
+    if (!force && st.surgeMonth === m) return null;
+    if (st.surgeMonth == null) { st.surgeMonth = m; return { first: true, month: m }; }
+    st.surgeMonth = m;
+
+    var d = D();
+    var r = SG.rOf(m);
+    var out = { month: m, r: r, cities: 0, died: 0, fled: 0, popLost: 0 };
+
+    /* ① 云里的城 */
+    (GAME.city && GAME.city.all ? GAME.city.all() : []).forEach(function (c) {
+      if (!c || !SG.cityInCloud(c)) return;
+      out.cities++;
+
+      /* 棚户先死（外面没有遮蔽，也没有人给他们送水） */
+      var sh = (GAME.growth && GAME.growth.shantyOf) ? GAME.growth.shantyOf(c) : 0;
+      if (sh > 0) {
+        var die = Math.round(sh * (d.shantyLoss == null ? 0.10 : d.shantyLoss));
+        c.shanty = Math.max(0, sh - die);
+        out.died += die;
+      }
+      /* 人口慢慢流失：走的人比死的人多（他们要往圈里搬） */
+      var R = GAME.res(c);
+      var pop = R.pop || 0;
+      if (pop > 1) {
+        var lose = Math.max(0, Math.round(pop * (d.popLoss == null ? 0.002 : d.popLoss)));
+        if (lose > 0) { R.pop = Math.max(1, pop - lose); out.popLost += lose; }
+      }
+      if (GAME.log && GAME.log.war) {
+        GAME.log.war('☁ ' + c.name + '已经落在辐射云里（离圈心 ' + Math.round(SG.distOfPoint(c.x, c.y))
+          + ' 格 > 圈 ' + r + ' 格）—— 人会一点一点往里搬。');
+      }
+    });
+
+    /* ② 云里的村社整村迁走 */
+    if (GAME.village && GAME.village.listAll && GAME.sphere) {
+      var list = GAME.village.listAll();
+      for (var i = 0; i < list.length; i++) {
+        var vci = list[i];
+        var pos = null;
+        if (GAME.map && GAME.map.cellPos) pos = GAME.map.cellPos(vci);
+        if (!pos) {
+          /* 没有坐标出口就用球面经纬度换算（村社本来就有 ci） */
+          var cell = GAME.sphere.cellOf ? GAME.sphere.cellOf(vci) : null;
+          if (cell && cell.lon != null && GAME.sphere.xyOfLonLat) {
+            var xy = GAME.sphere.xyOfLonLat(cell.lon, cell.lat);
+            pos = xy ? { x: xy.x, y: xy.y } : null;
+          }
+        }
+        if (!pos) continue;
+        if (!SG.inCloud(pos.x, pos.y)) continue;
+        var rec = GAME.village.peek ? GAME.village.peek(vci) : null;
+        if (!rec || rec.dead || rec.heldBy) continue;
+        var n = Math.max(1, Math.round((rec.pop || 0) * (d.villageLoss == null ? 0.05 : d.villageLoss)));
+        rec.pop = Math.max(0, (rec.pop || 0) - n);
+        if (rec.pop <= 0) rec.dead = 'surge';
+        out.fled += n;
+      }
+    }
+    return out;
+  };
+
+  /* ---------- 只读出口 ---------- */
+  SG.lineOf = function () {
+    var r = SG.rNow();
+    var left = SG.monthsLeft();
+    var n = 0;
+    (GAME.city && GAME.city.all ? GAME.city.all() : []).forEach(function (c) {
+      if (SG.cityInCloud(c)) n++;
+    });
+    return '☁ 辐射云：圈 ' + r + ' 格'
+      + (n ? '　<span style="color:var(--red-light);">' + n + ' 座城已在云里</span>' : '')
+      + (left > 0 ? '　<span style="color:var(--text-dim);">还会继续收（约 ' + left + ' 个月到最紧）</span>'
+        : '　<span style="color:var(--gold-light);">已收到最紧，不再收</span>');
+  };
+})();
+
+/* ---- relic.js ---- */
+/* ============================================================
+ * tech.js — 科技不是点出来的，是挖出来的（v94.1 · 提案 G）
+ * ------------------------------------------------------------
+ * 提案原文（G「一个颠覆性建议」）：
+ *   「把科技树换成废墟挖掘：科技不是点出来的，是挖出来的。
+ *     探索 = 成长（迷雾与科技树合并成一个系统），
+ *     每座废墟是一个选择，废土感自动成立。」
+ *
+ * 现状：遗迹只给材料与资源（ruin.js 顶部还特意写了"不给图纸/科技"）。
+ *   于是"翻遗迹"只是拿资源，翻完就忘。而探索本该是**成长**。
+ *
+ * 这个模块补上后半段，做法刻意很小：
+ *   · **残页**：每翻一处遗迹（你亲手翻的，被竞争者抢走的不算）得残页；
+ *   · **只有 3 个位置**：一共 6 条科技，残页会够，位置永远不够 ——
+ *     于是"选哪三条"是这个模块唯一、也是全部的玩法；
+ *   · 每条都**只作用在新系统上**（棚户 / 新垦 / 严寒致死 / 自净 / 视野），
+ *     不动粮产总表与城防 —— 最小可运行版不掀既有平衡。
+ *
+ * ⚠️ 为什么不做"科技树"：树意味着终局是**点满**，那就没有选择。
+ *   这里的位置是 3，且不可退（`GAME.relic.reset` 只在调试里用）。
+ * ============================================================ */
+(function () {
+  'use strict';
+  var GAME = window.GAME = window.GAME || {};
+  var TE = GAME.relic = {};
+  var U = GAME.utils;
+
+  function D() { return (GAME.DATA && GAME.DATA.RELIC) || {}; }
+  function list() { return D().list || []; }
+
+  function st0() {
+    var st = GAME.state;
+    if (!st) return null;
+    if (!st.relic || typeof st.relic !== 'object') st.relic = { picked: [] };
+    if (!Array.isArray(st.relic.picked)) st.relic.picked = [];
+    return st.relic;
+  }
+
+  /* ============================================================
+   * pagesOf —— 手上有多少残页
+   * ------------------------------------------------------------
+   * 只数**你亲手翻的**（side 为 'a'/'b'）。被竞争者抢翻的记成 'rival'，
+   * 一处都不算 —— 这就是"你慢一步，东西就没了"的具体形态。
+   * ============================================================ */
+  TE.pagesOf = function () {
+    var st = GAME.state;
+    if (!st) return 0;
+    var ru = st.ruins || {};
+    var n = 0;
+    for (var k in ru) {
+      var r = ru[k];
+      if (!r) continue;
+      if (r.side === 'a' || r.side === 'b') n += (D().pagesPerRuin == null ? 1 : D().pagesPerRuin);
+    }
+    return n;
+  };
+
+  TE.spentOf = function () {
+    var s = st0();
+    if (!s) return 0;
+    var n = 0;
+    s.picked.forEach(function (id) {
+      list().forEach(function (x) { if (x.id === id) n += (x.cost || 0); });
+    });
+    return n;
+  };
+
+  TE.leftOf = function () { return Math.max(0, TE.pagesOf() - TE.spentOf()); };
+
+  TE.pickedOf = function () { var s = st0(); return s ? s.picked.slice() : []; };
+  TE.has = function (id) { return TE.pickedOf().indexOf(id) >= 0; };
+  TE.slotsLeft = function () { return Math.max(0, (D().picks || 3) - TE.pickedOf().length); };
+
+  /* 列表（带状态：已落 / 可落 / 残页不够 / 位置不够） */
+  TE.options = function () {
+    var left = TE.leftOf(), slots = TE.slotsLeft();
+    return list().map(function (x) {
+      var taken = TE.has(x.id);
+      var ok = !taken && slots > 0 && left >= (x.cost || 0);
+      var why = taken ? '已落' : (slots <= 0 ? '位置已满' : (left < (x.cost || 0) ? ('残页不够（要 ' + x.cost + '）') : ''));
+      return { id: x.id, name: x.name, cost: x.cost, desc: x.desc, taken: taken, ok: ok, why: why };
+    });
+  };
+
+  /* ============================================================
+   * pick —— 落一条（不可退）
+   * ============================================================ */
+  TE.pick = function (id) {
+    var s = st0();
+    if (!s) return { ok: false, msg: '无存档' };
+    var def = null;
+    list().forEach(function (x) { if (x.id === id) def = x; });
+    if (!def) return { ok: false, msg: '没有这条' };
+    if (TE.has(id)) return { ok: false, msg: '已经落过了' };
+    if (TE.slotsLeft() <= 0) {
+      return { ok: false, msg: '位置满了 —— 只能落 ' + (D().picks || 3) + ' 条，这就是"选择"的意思' };
+    }
+    if (TE.leftOf() < (def.cost || 0)) {
+      return { ok: false, msg: '残页不够：要 ' + def.cost + '，手上 ' + TE.leftOf() };
+    }
+    s.picked.push(id);
+    if (GAME.log && GAME.log.war) {
+      GAME.log.war('📜 从旧世界残页里拼出了「' + def.name + '」—— ' + def.desc
+        + '（还能再落 ' + TE.slotsLeft() + ' 条）');
+    }
+    return { ok: true, msg: '落定「' + def.name + '」。剩下 ' + TE.slotsLeft() + ' 个位置，残页 ' + TE.leftOf() + ' 张。' };
+  };
+
+  /* 调试用（界面不暴露）：清空重选 */
+  TE.reset = function () { var s = st0(); if (s) s.picked = []; };
+
+  /* ============================================================
+   * 加成出口 —— 新系统统一从这里取
+   * ------------------------------------------------------------
+   * mulOf(key)：乘子（1 + 累加 mul；resist 是**减免**，返回 1 - 累加）
+   * addOf(key)：加数（pollution 自净、视野 +1）
+   *
+   * ⚠️ 必须带缓存：`growth.settleYield` 是**逐城每游戏秒**调一次 mulOf，
+   *    100 城压测下每次都重建一遍数组会直接顶到 tickOnce 的性能线
+   *    （smoke §v89.107：100 城 < 6ms）。选择变了才重算，O(1) 取值。
+   * ============================================================ */
+  var _cache = null, _cacheKey = '';
+  /* 两类 key：加数型（自净 +2 / 视野 +1）与乘子型（其余都是"按比例"）。
+     resist 是乘子里的**减免**，取值时用 1 − sum。 */
+  function isAdd(key) { return key === 'purge' || key === 'scout'; }
+
+  function effOf() {
+    var s = st0();
+    var picked = s ? s.picked : [];      /* 不 slice：每秒每城都会调过来一次 */
+    var k = picked.join(',');
+    if (_cache && _cacheKey === k) return _cache;
+    var mul = {}, add = {};
+    picked.forEach(function (id) {
+      list().forEach(function (x) {
+        if (x.id !== id) return;
+        if (isAdd(x.key)) add[x.key] = (add[x.key] || 0) + (x.mul || 0);
+        else mul[x.key] = (mul[x.key] || 0) + (x.mul || 0);
+      });
+    });
+    _cache = { mul: mul, add: add };
+    _cacheKey = k;
+    return _cache;
+  }
+
+  TE.mulOf = function (key) {
+    var v = effOf().mul[key] || 0;
+    if (key === 'resist') return Math.max(0.2, 1 - v);   /* 减免：1 → 0.65 */
+    return 1 + v;
+  };
+
+  TE.addOf = function (key) { return effOf().add[key] || 0; };
+
+  /* 一行摘要 */
+  TE.lineOf = function () {
+    var n = TE.pickedOf().length;
+    if (!n && !TE.pagesOf()) return '';
+    return '📜 废墟残页 ' + TE.pagesOf() + ' 张 · 已落 ' + n + '/' + (D().picks || 3)
+      + '（剩 ' + TE.leftOf() + ' 张可用）';
   };
 })();
 
@@ -48346,6 +49729,105 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
    * 世界现在只有玩家会动 —— 这一条就是"别人也在动"的证据。
    * ⚠️ 只报态势，不报战力：介入战斗之前，任何"他们会来打你"的暗示都是假的。
    * ============================================================ */
+  /* ============================================================
+   * v94.1：世界的账本（六层世界最小可运行版的唯一界面）
+   * ------------------------------------------------------------
+   * 为什么单独一个面板而不是塞进城建面板：
+   *   这六件事**没有一件是"这座城的事"** —— 温度是全国的天，辐射云是全图的圈，
+   *   污染是工业的账，竞争者是别人的脚步，补给是地图的连通，残页是旧世界的碎片。
+   *   它们共同回答一个问题：**这个世界在我之外，正在发生什么。**
+   * ============================================================ */
+  ui.openWorldPanel = function () {
+    var s = GAME.state;
+    if (!s) { ui.toast('无存档'); return; }
+    var h = '';
+    var sec = function (title, line, extra) {
+      return '<div style="padding:7px 0;border-bottom:1px dashed var(--wood-light);">'
+        + '<div style="font-size:var(--fs-cap);color:var(--gold-light);font-weight:700;">' + title + '</div>'
+        + '<div style="font-size:var(--fs-cap);line-height:1.75;">' + (line || '') + '</div>'
+        + (extra || '') + '</div>';
+    };
+    var cities = (GAME.city && GAME.city.all) ? GAME.city.all() : [];
+
+    /* ---------- 温度 ---------- */
+    if (GAME.climate) {
+      var CL = GAME.climate;
+      h += sec('🌡 温度', CL.lineOf(),
+        '<div class="chips" style="margin-top:5px;">' + cities.map(function (c) {
+          var warm = CL.isWarm(c);
+          return '<span class="chip' + (warm ? ' dim' : '') + '"'
+            + (warm ? '' : ' data-action="world-warm" data-cid="' + U.escape(c.id) + '"')
+            + '>' + U.escape(c.name) + (warm ? ' · 这个月烧上了' : ' · 烧柴 ' + U.numText(CL.fuelCostOf(c), 0) + ' 木')
+            + '</span>';
+        }).join('') + '</div>');
+    }
+
+    /* ---------- 辐射云 ---------- */
+    if (GAME.surge) {
+      h += sec('☁ 辐射云', GAME.surge.lineOf(),
+        '<div class="ui-sub" style="margin-top:3px;">圈心在你所有城的重心，半径按月往回收、每收 12 个月停 3 个月。'
+        + '云里的城不会立刻崩，只是人会一点一点往圈里搬 —— 要不要把家搬进来，是你的决定。</div>');
+    }
+
+    /* ---------- 污染 ---------- */
+    if (GAME.taint) {
+      var TN = GAME.taint;
+      h += sec('☢ 污染', TN.lineOf(),
+        '<div class="chips" style="margin-top:5px;">' + cities.map(function (c) {
+          var t = TN.of(c), lv = TN.levelOf(c);
+          return '<span class="chip" data-action="world-clean" data-cid="' + U.escape(c.id) + '"'
+            + ' title="净化一次：' + U.escape(JSON.stringify((GAME.DATA.TAINT || {}).cleanCost || {})) + '">'
+            + U.escape(c.name) + ' · ' + Math.round(t) + '（' + lv.name + '）· 净化</span>';
+        }).join('') + '</div>');
+    }
+
+    /* ---------- 竞争者 ---------- */
+    if (GAME.rival) {
+      var RV = GAME.rival;
+      RV.ensure();
+      var live = RV.alive();
+      var teamH = live.length ? live.map(function (t) {
+        return '<div style="margin-top:4px;">🏴 <b>' + U.escape(t.name) + '</b>　约 '
+          + U.numText(t.pop | 0, 0) + ' 人　已抢 ' + (t.claims | 0) + ' 处　'
+          + '<button class="btn" style="font-size:var(--fs-cap);padding:0 6px;"'
+          + ' data-action="world-drive" data-rid="' + U.escape(t.id) + '">驱赶</button></div>';
+      }).join('') : '<div class="ui-sub">暂时没有他们的消息（都被赶散了）。</div>';
+      h += sec('🏴 竞争者', '你之外，还有人在做同一件事：他们抢村子的人，抢遗迹里的东西。',
+        teamH + '<div class="ui-sub" style="margin-top:3px;">驱赶要 300 兵、要在 8 格内 —— 赢了他们散掉，'
+        + '人回附近的村子；输了折兵。他们不会灭，只会再拉一支。</div>');
+    }
+
+    /* ---------- 补给连通 ---------- */
+    if (GAME.land) {
+      h += sec('🛣 领土连通', GAME.land.lineOf(),
+        '<div class="ui-sub" style="margin-top:3px;">按陆地走：只有从老家走得到的城才算"连着的"。'
+        + '现在只算不罚（这一版先把地图算准，扣产出等下一版）。</div>');
+    }
+
+    /* ---------- 废墟科技 ---------- */
+    if (GAME.relic) {
+      var TE = GAME.relic;
+      var opts = TE.options();
+      h += sec('📜 废墟科技',
+        TE.lineOf() + '　<span style="color:var(--text-dim);">一共 6 条，一辈子只有 3 个位置</span>',
+        '<div class="chips" style="margin-top:5px;">' + opts.map(function (o) {
+          return '<span class="chip' + (o.ok ? '' : ' dim') + '"'
+            + (o.ok ? ' data-action="relic-pick" data-tid="' + U.escape(o.id) + '"' : '')
+            + ' title="' + U.escape(o.desc) + '">' + U.escape(o.name) + ' · ' + o.cost + ' 页'
+            + (o.taken ? ' ✓' : (o.ok ? '' : '（' + U.escape(o.why) + '）')) + '</span>';
+        }).join('') + '</div>'
+        + '<div class="ui-sub" style="margin-top:3px;">残页只来自**你自己翻的**遗迹 —— 被竞争者抢先翻走的，'
+        + '一张都不算。落定不能退。</div>');
+    }
+
+    ui.openShell({
+      live: function () { ui.openWorldPanel(); },
+      title: '🌍 世界的账本',
+      sub: '六条线：温度 · 辐射云 · 污染 · 竞争者 · 补给 · 残页',
+      body: h || '<div class="q-empty">这个世界还没有动起来。</div>'
+    });
+  };
+
   ui.factionBarHTML = function () {
     var F = GAME.faction;
     if (!F) return '';
@@ -48443,6 +49925,29 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
     h += '</div>';
     h += '<div style="font-size:var(--fs-cap);color:var(--text-dim);margin-top:6px;">'
       + '按月推进（一年约 +10 格 · 半径上限 14）。目前只影响态势与警报 —— 尚未接入战斗。</div>';
+    /* ============================================================
+     * v94.1：世界的另外六件事
+     * ------------------------------------------------------------
+     * 势力只是"别人会不会打你"。这个世界还有六条独立的线：
+     * 温度、辐射云、污染、竞争者、补给、残页。
+     * 全部收在世界账本里 —— 一行摘要 + 一个入口，不占态势版面。
+     * ============================================================ */
+    (function () {
+      var parts = [];
+      if (GAME.climate) parts.push(GAME.climate.lineOf());
+      if (GAME.surge) parts.push(GAME.surge.lineOf());
+      if (GAME.taint) parts.push(GAME.taint.lineOf());
+      if (GAME.rival) parts.push(GAME.rival.lineOf());
+      if (GAME.land) parts.push(GAME.land.lineOf());
+      if (GAME.relic) parts.push(GAME.relic.lineOf());
+      parts = parts.filter(function (x) { return !!x; });
+      if (!parts.length) return;
+      h += '<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--wood-light);'
+        + 'font-size:var(--fs-cap);line-height:1.85;">'
+        + parts.map(function (x) { return '<div>' + x + '</div>'; }).join('')
+        + '<button class="btn" style="font-size:var(--fs-cap);padding:1px 8px;margin-top:5px;"'
+        + ' data-action="open-world">🌍 世界的账本</button></div>';
+    })();
     h += '</div>';
     return h;
   };
@@ -59305,6 +60810,12 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
 
 
 
+
+
+
+
+
+
 (function () {
   var GAME = window.GAME = window.GAME || {};
   var ui = GAME.ui;
@@ -60630,6 +62141,30 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
       case 'open-convoy': ui.openConvoyModal(); break;
       /* v93.5：推平城外棚户（把人赶走 —— 民心回来点，名声记一笔 cruelty） */
       case 'shanty-clear': GAME.doClearShanty(el.getAttribute('data-cid')); break;
+      /* ============================================================
+       * v94.1：世界的账本 —— 六层世界（温度/云/污染/竞争者/补给/残页）
+       * ------------------------------------------------------------
+       * 四个动作都走模块自己的出口（不在这里写业务），
+       * 失败原因由模块返回 msg，界面只负责显示。
+       * ============================================================ */
+      case 'open-world': ui.openWorldPanel(); break;
+      case 'world-warm': (function () {
+        var r = GAME.climate ? GAME.climate.warm(GAME.city.byId(el.getAttribute('data-cid'))) : { msg: '温度系统未加载' };
+        ui.toast(r.msg); ui.openWorldPanel();
+      })(); break;
+      case 'world-clean': (function () {
+        var r = GAME.taint ? GAME.taint.clean(GAME.city.byId(el.getAttribute('data-cid'))) : { msg: '污染系统未加载' };
+        ui.toast(r.msg); ui.openWorldPanel();
+      })(); break;
+      case 'world-drive': (function () {
+        var r = GAME.rival ? GAME.rival.drive(el.getAttribute('data-rid'), GAME.currentCity() && GAME.currentCity().id)
+          : { msg: '竞争者系统未加载' };
+        ui.toast(r.msg); ui.openWorldPanel(); GAME.refreshView();
+      })(); break;
+      case 'relic-pick': (function () {
+        var r = GAME.relic ? GAME.relic.pick(el.getAttribute('data-tid')) : { msg: '残页系统未加载' };
+        ui.toast(r.msg); ui.openWorldPanel();
+      })(); break;
       /* v92.14：派将挑衅一座城（赢了那城守军胆寒 24 小时） */
       case 'provoke-city': ui._provoke = null; ui.openProvoke(); break;
       case 'provoke-move': ui.openProvoke(el.getAttribute('data-mv')); break;

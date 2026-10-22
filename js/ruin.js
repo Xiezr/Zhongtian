@@ -24,7 +24,7 @@
   var R = GAME.ruin = {};
   var U = GAME.utils;
 
-  var _list = null, _listSeed = -1, _sweepAt = 0;
+  var _list = null, _listSeed = -1, _listN = 0, _sweepAt = 0;   /* v94.1：+格数 */
 
   function SP() { return GAME.mapSphere || GAME.sphere; }
   function data() { return (GAME.DATA && GAME.DATA.RUIN) || {}; }
@@ -55,7 +55,9 @@
     var s = SP();
     if (!s || !s.cells) return [];
     var sd = (s.seed3 ? s.seed3() : 0) | 0;
-    if (_list && _listSeed === sd) return _list;
+    /* v94.1：同 village —— 只认 seed 不认格数，会把"星球还没建好时算出的空列表"永久缓存 */
+    var nCell = s.cells.length;
+    if (_list && _listSeed === sd && _listN === nCell) return _list;
     var out = [], n = s.cells.length;
     for (var ci = 0; ci < n; ci++) {
       var cell = s.cells[ci];
@@ -63,7 +65,7 @@
       if (cell.type === 'lake') continue;
       if (h(ci, sd + 9101) < (data().chance || 0.0025)) out.push(ci);
     }
-    _list = out; _listSeed = sd;
+    _list = out; _listSeed = sd; _listN = nCell;
     return out;
   };
 

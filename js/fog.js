@@ -336,6 +336,8 @@
     /* v93.3：广播中继站（拓荒队带回的频率表）—— 视野 +1/处（最多 +2）。
        "有人在那头报过天气"：拿到频率表，你就听得见更远的地方。 */
     if (GAME.convoy && GAME.convoy.radioPlus) r += GAME.convoy.radioPlus();
+    /* v94.1：无线电塔（废墟科技）—— 听得见更远的地方，视野 +1 */
+    if (GAME.relic && GAME.relic.addOf) r += GAME.relic.addOf('scout');
     return r;
   };
   F.outpostRadius = function () {
