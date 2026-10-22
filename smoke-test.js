@@ -58,7 +58,10 @@
      源码仍是 IIFE + import 依赖图（js/main.js 为入口）；bundle 由
      `.workbuddy/tools/patch/build_bundle.py` 按该 import 顺序拼接生成。
      require 单包即等价于旧的 17 个 require —— 顺序已固化进 bundle。 */
-  require('./js/bundle.js');
+  /* v104：单包 → 三包（core → war → ui），顺序不能改；require 三次等价于原来一次。 */
+  require('./js/bundle-core.js');
+  require('./js/bundle-war.js');
+  require('./js/bundle-ui.js');
   /* 求值顺序不变量（防"import 图退化成乱序"）：data/state 必须已挂上。 */
   if (!window.GAME || !window.GAME.DATA || !window.GAME.utils) {
     throw new Error('bundle 求值顺序异常：GAME.DATA / GAME.utils 缺失（检查 js/main.js 的 import 顺序）');
@@ -12205,7 +12208,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
   var dir = path.join(__dirname, 'js');
   var dead = [];
   /* v91.61：排除构建产物 bundle.js（它是源文件的拼接副本，重复扫描只会制造重复条目）。 */
-  fs.readdirSync(dir).filter(function (f) { return /\.js$/.test(f) && f !== 'bundle.js'; }).forEach(function (f) {
+  fs.readdirSync(dir).filter(function (f) { return /\.js$/.test(f) && !/^bundle(-(core|war|ui))?\.js$/.test(f); }).forEach(function (f) {
     var src = fs.readFileSync(path.join(dir, f), 'utf8');
     /* 先剥注释：注释里会提到已删除的函数名（本轮就写了"tri 已删除"），
        不剥会把"只出现在注释里"误判成"有引用"。 */
@@ -12392,17 +12395,25 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
     } catch (e) { return false; }
     var want = h.digest('hex').slice(0, 16);
     var got = fs.readFileSync(path.join(jsDir, 'bundle.hash'), 'utf8').trim();
-    var bundleOk = fs.existsSync(path.join(jsDir, 'bundle.js'));
-    return bundleOk && want === got;
+    /* v104：三包都要在（缺一包 = 页面 404，但 hash 照样对得上，所以要单独查） */
+    var bundleOk = ['bundle-core', 'bundle-war', 'bundle-ui'].every(function (n) {
+      return fs.existsSync(path.join(jsDir, n + '.js'));
+    });
+    var noOld = !fs.existsSync(path.join(jsDir, 'bundle.js'));
+    return bundleOk && noOld && want === got;
   })(), (function () {
     try {
       var fs = require('fs'), path = require('path');
       return 'hash=' + fs.readFileSync(path.join(__dirname, 'js', 'bundle.hash'), 'utf8').trim();
     } catch (e) { return 'no bundle.hash'; }
   })());
-  check('v91.61：bundle.js 无残留 import/export 语句（必须是经典 IIFE 单包）', (function () {
-    var s = require('fs').readFileSync(require('path').join(__dirname, 'js', 'bundle.js'), 'utf8');
-    return !/^\s*(import|export)\s/m.test(s);
+  check('v104：三个分包都无残留 import/export（必须是经典 IIFE 顺序包）', (function () {
+    var fs = require('fs'), path = require('path');
+    return ['bundle-core', 'bundle-war', 'bundle-ui'].every(function (n) {
+      var p = path.join(__dirname, 'js', n + '.js');
+      if (!fs.existsSync(p)) return false;
+      return !/^\s*(import|export)\s/m.test(fs.readFileSync(p, 'utf8'));
+    });
   })());
   check('v89.77：侦查公文同报**城内与城外**建筑等级，两者相等且 = 该档满配', (function () {
     /* 老板要的是"城**内外**建筑全是 12/16" —— 原先只报城内，他看不到城外那半。 */
@@ -14647,7 +14658,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
          v91.61：排除构建产物 bundle.js（否则同一份定义被数两次）。 */
       var fs2 = require('fs'), px = require('path'), all = '';
       fs2.readdirSync(px.join(__dirname, 'js')).forEach(function (f) {
-        if (/\.js$/.test(f) && f !== 'bundle.js') all += stripComment(fs2.readFileSync(px.join(__dirname, 'js', f), 'utf8'));
+        if (/\.js$/.test(f) && !/^bundle(-(core|war|ui))?\.js$/.test(f)) all += stripComment(fs2.readFileSync(px.join(__dirname, 'js', f), 'utf8'));
       });
       return (all.match(/GAME\.resName\s*=\s*function/g) || []).length === 1;
     })());

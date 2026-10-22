@@ -94,6 +94,18 @@
   `GAME.sphereOf`（同名不同义），把既有的"按 pid 取球面"覆盖掉，audit 的重复定义计数当场照出。
 - **heredoc 里的反斜杠会被编码吃掉**：`\s` 传给 python 后变成 `s`，
   断言里的正则成了 `/playerAtk:/s*true/`（语法错误）。断言里改用 `indexOf`，少用正则。
+- **⛔ Windows 上 `io.open(p,'w')` 会把 `\n` 悄悄变成 `\r\n`**，而这个仓库**混着两种换行**：
+  `smoke-test.js` 是 CRLF，`index.html` / `chain-audit.js` 是 LF。
+  一次"只改三行"的替换会把整个文件重写（v104 实测 smoke 83,365 行全变），
+  并且依赖 `\n` 的正则断言当场假红（§204⑦ 的 `.pager {\n    display: flex;`）。
+  **规矩**：改文件前先 `git show HEAD:<file> | od -c | head -3` 看原换行；
+  用 `io.open(p,'rb')` 读写 + 显式 `replace`；改完 `git diff --stat` 核对
+  "变动的行数 ≈ 我以为改的行数"，对不上就是换行被动了。
+- **三包顺序不能改**（v104 拆分）：`bundle-core`（引擎与数据）→ `bundle-war`（战斗/战术/素材表）
+  → `bundle-ui`（天时数值层 / 界面 / 3D / main）。`index.html` 三个 `<script>` 顺序执行，
+  `window.GAME` 全局共享 —— 挪动任意一个包的位置，求值顺序就变了。
+  构建只认 `build_bundle.py` 的 `GROUPS`（`WAR` / `UI` 两个名单），
+  四份清单（ORDER / smoke ORDER / audit MODULES ×2）里的模块名一个都不用动。
 
 ## 五、设计判据（老板 2026-10-22 立 · 优先级高于"设定写得好"）
 

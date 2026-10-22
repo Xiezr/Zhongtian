@@ -120,16 +120,27 @@ if (!FAST) gate('端到端 e2e', 'node', ['e2e-test.js'], /结果：(\d+) 通过
     dirty ? (dirty + ' 项改动未提交（已暂存 ' + staged + '）') : '无改动');
 })();
 
-/* ---------- ⑤ bundle 体积（异常膨胀是"某模块失控"的信号） ----------
- * ⚠️ 2026-10-22 修：判据原来写 `kb < 4200`，而标签写"4.2MB" ——
- *   4.2MB = 4300.8KB，少算了 100KB，bundle 刚到 4231KB 就假红。
- *   这不是放宽门禁：改成 4301 之后口径才和标签一致。
- *   预算只剩约 70KB，下一次真膨胀（+70KB 以上）仍然会被拦住。 */
+/* ---------- ⑤ 分包体积（异常膨胀是"某模块失控"的信号） ----------
+ * v104（老板 2026-10-23「拆」）：单包曾到 4245KB / 上限 4301KB，只剩 56KB。
+ * 按"何时用到"切成三包（core / war / ui），每包单独量、单独判 ——
+ * 某一包失控（比如 ui 突然涨 800KB）一眼能看出是哪一块，而不是一笔总数。
+ *
+ * 阈值 2600KB：三包当前 core 1525 / war 561 / ui 1234，最大的一包留了 40% 余量。
+ * ⚠️ 同时钉住"旧单包不许回来"：留着它就是第二份产物，迟早有人改错那一份。 */
 (function checkSize() {
-  const p = path.join(ROOT, 'js', 'bundle.js');
-  if (!fs.existsSync(p)) { add('bundle 体积', false, '缺失'); return; }
-  const kb = Math.round(fs.statSync(p).size / 1024);
-  add('bundle 体积 < 4.2MB', kb < 4301, kb + ' KB / 4301 KB');
+  const packs = ['bundle-core', 'bundle-war', 'bundle-ui'];
+  const LIMIT = 2600;
+  const parts = [];
+  let ok = true;
+  for (const n of packs) {
+    const p = path.join(ROOT, 'js', n + '.js');
+    if (!fs.existsSync(p)) { parts.push(n + ' 缺失'); ok = false; continue; }
+    const kb = Math.round(fs.statSync(p).size / 1024);
+    if (kb >= LIMIT) ok = false;
+    parts.push(n.replace('bundle-', '') + ' ' + kb);
+  }
+  if (fs.existsSync(path.join(ROOT, 'js', 'bundle.js'))) { ok = false; parts.push('旧单包仍在'); }
+  add('分包体积（各 < 2.6MB · 无旧单包）', ok, parts.join(' · ') + ' KB / ' + LIMIT + ' KB');
 })();
 
 /* ---------- 输出 ---------- */

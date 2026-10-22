@@ -49,7 +49,10 @@
   }
   function sec(t) { console.log('\n===== ' + t + ' ====='); }
 
-  require('./js/bundle.js');
+  /* v104：三包（core → war → ui）—— 顺序不能改 */
+  require('./js/bundle-core.js');
+  require('./js/bundle-war.js');
+  require('./js/bundle-ui.js');
   if (!window.GAME || !window.GAME.DATA) throw new Error('bundle 求值异常：GAME.DATA 缺失');
   if (global.GAME && global.GAME.DATA && global.GAME.DATA.DEFAULT_SETTINGS) global.GAME.DATA.DEFAULT_SETTINGS.battleWatch = false;
 
