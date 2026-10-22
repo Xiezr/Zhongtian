@@ -82,7 +82,7 @@
       var ci = Math.floor(h(i, sd + kh) * n) % n;
       var cell = s.cells[ci];
       if (!cell) continue;
-      if (cell.type === 'sea' || cell.type === 'ocean') continue;
+      if (cell.type === 'lake') continue;
       var dist = s.distOf ? s.distOf({ ci: home.ci }, { ci: ci }) : 30;
       if (dist < 12 || dist > 70) continue;
       var score = h(ci, sd + kh + 7) - Math.abs(dist - 38) / 200;   /* 越接近 38 格越可能是它 */

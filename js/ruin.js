@@ -41,7 +41,7 @@
     if (!s || !s.cells) return null;
     var cell = s.cells[ci];
     if (!cell) return null;
-    if (cell.type === 'sea' || cell.type === 'ocean') return null;
+    if (cell.type === 'lake') return null;
     var sd = (s.seed3 ? s.seed3() : 0) | 0;
     if (h(ci, sd + 9101) >= (data().chance || 0.0025)) return null;
     var kinds = data().kinds || [];
@@ -60,7 +60,7 @@
     for (var ci = 0; ci < n; ci++) {
       var cell = s.cells[ci];
       if (!cell) continue;
-      if (cell.type === 'sea' || cell.type === 'ocean') continue;
+      if (cell.type === 'lake') continue;
       if (h(ci, sd + 9101) < (data().chance || 0.0025)) out.push(ci);
     }
     _list = out; _listSeed = sd;

@@ -1207,6 +1207,26 @@ import './gltf.js';
       M._shellMat.opacity = o;
       if (tiles) tiles.visible = o > 0.02;
     }
+    /* ============================================================
+     * v93.4：**球背面的标记不要透出来**
+     * ------------------------------------------------------------
+     * 球面材质的 depthWrite 是 false（透明排序需要），代价是：
+     * 球**背面**的标记不会被遮挡，会穿过球体显示在前半球上。
+     * 表现就是截图里"整片海面上都是村子"—— 数据层其实一处都没错
+     * （实机统计：村社 163 / 营地 93 / 遗迹 58，水上 0 处）。
+     *
+     * 所以这里每帧按相机方向裁一次：法线朝背后的整组隐藏。
+     * 阈值 0.05 而不是 0 —— 球体边缘那一圈在掠射角下会突然闪掉。
+     * ============================================================ */
+    if (M._flags && M._flags.children.length) {
+      var _cp = cam.position, _cl = Math.hypot(_cp.x, _cp.y, _cp.z) || 1;
+      var _nx = _cp.x / _cl, _ny = _cp.y / _cl, _nz = _cp.z / _cl;
+      for (var _fi = 0; _fi < M._flags.children.length; _fi++) {
+        var _fo = M._flags.children[_fi], _fp = _fo.position;
+        var _fl2 = Math.hypot(_fp.x, _fp.y, _fp.z) || 1;
+        _fo.visible = ((_fp.x * _nx + _fp.y * _ny + _fp.z * _nz) / _fl2) > 0.05;
+      }
+    }
     scaleLabels();   /* v90.57：名称标签**钉死屏幕尺寸**（不随缩放变大小），每帧归一 */
     /* v90.71（老板 7）：定位光束远端发光点**红光脉动闪烁**（每帧按世界时间调制大小/透明度）。*/
     if (M._beamPos) {

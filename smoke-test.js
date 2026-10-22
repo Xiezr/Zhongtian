@@ -39502,6 +39502,27 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       return r ? Math.round(r.pop) + ' 人' : '?';
     })());
 
+    check('§306⑪ 村社/营地/遗迹都不在水上（海洋的 type 是 lake）', (function () {
+      var sp = G.mapSphere || G.sphere;
+      if (!sp || !sp.cells) return false;
+      var bad = 0, i, ci;
+      var vl = G.village.list(), cl = G.camp.list(), rl = G.ruin.list();
+      [vl, cl, rl].forEach(function (arr) {
+        for (i = 0; i < arr.length; i++) {
+          ci = arr[i];
+          if (sp.cells[ci] && sp.cells[ci].type === 'lake') bad++;
+        }
+      });
+      return bad === 0;
+    })(), (function () {
+      var sp = G.mapSphere || G.sphere;
+      if (!sp || !sp.cells) return '?';
+      var n = 0;
+      var all = G.village.list().concat(G.camp.list(), G.ruin.list());
+      all.forEach(function (ci) { if (sp.cells[ci] && sp.cells[ci].type === 'lake') n++; });
+      return '水上地点 ' + n + ' 处（应为 0）';
+    })());
+
     check('§306⑨ statsOf 汇总得出"还有几处人家"', (function () {
       var st = G.village.statsOf();
       return typeof st.alive === 'number' && typeof st.pop === 'number'

@@ -26496,7 +26496,12 @@ window.GAME = window.GAME || {};
     if (!s || !s.cells) return null;
     var cell = s.cells[ci];
     if (!cell) return null;
-    if (cell.type === 'sea' || cell.type === 'ocean') return null;
+    /* ⚠️ v93.4 修正：**海洋的 type 是 'lake'**（sphere.js cellType：
+       原文 `if (e < 0) return 'lake';` 后面跟着的注释写的是「海 → 湖泊」）。
+       这里原来写的是 'sea' / 'ocean' —— 那两个值**整个项目都不存在**，
+       于是"海里不生成"从来没有生效过（营地 v92.4 起就错了，村社照抄）。
+       表现为水面上有村子/营地/遗迹。 */
+    if (cell.type === 'lake') return null;
     var sd = (s.seed3 ? s.seed3() : 0) | 0;
     if (h(ci, sd + 9100) >= (D().chance || 0.006)) return null;
     var tiers = D().tiers || [];
@@ -26514,7 +26519,7 @@ window.GAME = window.GAME || {};
     for (var ci = 0; ci < n; ci++) {
       var cell = s.cells[ci];
       if (!cell) continue;
-      if (cell.type === 'sea' || cell.type === 'ocean') continue;
+      if (cell.type === 'lake') continue;
       if (h(ci, sd + 9100) < (D().chance || 0.006)) out.push(ci);
     }
     _list = out; _listSeed = sd;
@@ -26712,9 +26717,8 @@ window.GAME = window.GAME || {};
     var st = GAME.state;
     if (!st) return { changed: 0 };
     var m = V.monthNow();
-    /* ⚠️ 判"有没有初始化过"必须用 == null，不能用 `!st.villageMonth` ——
-       月份 0 是合法值（开局就是第 0 个月），用 `!` 会把它当成"还没开始"，
-       于是**整个第一个月永远不推演**（测试 §306⑧ 抓到的就是这个）。 */
+    /* 判"有没有初始化过"必须用 == null 比较：月份 0 本身是合法值（开局就是第 0 个月），
+       把它当成"没开始"会让整个第一个月永不推演（§306⑧ 抓到的就是这个）。 */
     var has = (st.villageMonth != null);
     if (!force && has && st.villageMonth === m) return { changed: 0, month: m };
     if (!has) { st.villageMonth = m; return { changed: 0, month: m, first: true }; }
@@ -26864,7 +26868,7 @@ window.GAME = window.GAME || {};
       var ci = Math.floor(h(i, sd + kh) * n) % n;
       var cell = s.cells[ci];
       if (!cell) continue;
-      if (cell.type === 'sea' || cell.type === 'ocean') continue;
+      if (cell.type === 'lake') continue;
       var dist = s.distOf ? s.distOf({ ci: home.ci }, { ci: ci }) : 30;
       if (dist < 12 || dist > 70) continue;
       var score = h(ci, sd + kh + 7) - Math.abs(dist - 38) / 200;   /* 越接近 38 格越可能是它 */
@@ -27084,7 +27088,12 @@ window.GAME = window.GAME || {};
     var cell = s.cells[ci];
     if (!cell) return null;
     /* 海里没有幸存者 —— 也省掉一大半候选 */
-    if (cell.type === 'sea' || cell.type === 'ocean') return null;
+    /* ⚠️ v93.4 修正：**海洋的 type 是 'lake'**（sphere.js cellType：
+       原文 `if (e < 0) return 'lake';` 后面跟着的注释写的是「海 → 湖泊」）。
+       这里原来写的是 'sea' / 'ocean' —— 那两个值**整个项目都不存在**，
+       于是"海里不生成"从来没有生效过（营地 v92.4 起就错了，村社照抄）。
+       表现为水面上有村子/营地/遗迹。 */
+    if (cell.type === 'lake') return null;
     var sd = (s.seed3 ? s.seed3() : 0) | 0;
     if (h(ci, sd + 8101) >= (data().chance || 0.004)) return null;
     var _r = h(ci, sd + 8102);
@@ -27105,7 +27114,7 @@ window.GAME = window.GAME || {};
     for (var ci = 0; ci < n; ci++) {
       var cell = s.cells[ci];
       if (!cell) continue;
-      if (cell.type === 'sea' || cell.type === 'ocean') continue;
+      if (cell.type === 'lake') continue;
       if (h(ci, sd + 8101) < (data().chance || 0.004)) out.push(ci);
     }
     _list = out; _listSeed = sd;
@@ -27306,7 +27315,7 @@ window.GAME = window.GAME || {};
     if (!s || !s.cells) return null;
     var cell = s.cells[ci];
     if (!cell) return null;
-    if (cell.type === 'sea' || cell.type === 'ocean') return null;
+    if (cell.type === 'lake') return null;
     var sd = (s.seed3 ? s.seed3() : 0) | 0;
     if (h(ci, sd + 9101) >= (data().chance || 0.0025)) return null;
     var kinds = data().kinds || [];
@@ -27325,7 +27334,7 @@ window.GAME = window.GAME || {};
     for (var ci = 0; ci < n; ci++) {
       var cell = s.cells[ci];
       if (!cell) continue;
-      if (cell.type === 'sea' || cell.type === 'ocean') continue;
+      if (cell.type === 'lake') continue;
       if (h(ci, sd + 9101) < (data().chance || 0.0025)) out.push(ci);
     }
     _list = out; _listSeed = sd;
@@ -27484,7 +27493,7 @@ window.GAME = window.GAME || {};
     while (out.length < n && tries < 30000) {
       var ci = Math.floor(h(tries++, sd + 4401) * total) % total;
       var cell = s.cells[ci];
-      if (!cell || cell.type === 'sea' || cell.type === 'ocean') continue;
+      if (!cell || cell.type === 'lake') continue;
       var ok = true;
       for (var i = 0; i < out.length; i++) {
         if (s.distOf({ ci: out[i] }, { ci: ci }) < 55) { ok = false; break; }
@@ -29441,6 +29450,26 @@ window.GAME = window.GAME || {};
       var o = Math.max(0, Math.min(0.6, 0.6 * (camO.dist - near) / (far - near)));
       M._shellMat.opacity = o;
       if (tiles) tiles.visible = o > 0.02;
+    }
+    /* ============================================================
+     * v93.4：**球背面的标记不要透出来**
+     * ------------------------------------------------------------
+     * 球面材质的 depthWrite 是 false（透明排序需要），代价是：
+     * 球**背面**的标记不会被遮挡，会穿过球体显示在前半球上。
+     * 表现就是截图里"整片海面上都是村子"—— 数据层其实一处都没错
+     * （实机统计：村社 163 / 营地 93 / 遗迹 58，水上 0 处）。
+     *
+     * 所以这里每帧按相机方向裁一次：法线朝背后的整组隐藏。
+     * 阈值 0.05 而不是 0 —— 球体边缘那一圈在掠射角下会突然闪掉。
+     * ============================================================ */
+    if (M._flags && M._flags.children.length) {
+      var _cp = cam.position, _cl = Math.hypot(_cp.x, _cp.y, _cp.z) || 1;
+      var _nx = _cp.x / _cl, _ny = _cp.y / _cl, _nz = _cp.z / _cl;
+      for (var _fi = 0; _fi < M._flags.children.length; _fi++) {
+        var _fo = M._flags.children[_fi], _fp = _fo.position;
+        var _fl2 = Math.hypot(_fp.x, _fp.y, _fp.z) || 1;
+        _fo.visible = ((_fp.x * _nx + _fp.y * _ny + _fp.z * _nz) / _fl2) > 0.05;
+      }
     }
     scaleLabels();   /* v90.57：名称标签**钉死屏幕尺寸**（不随缩放变大小），每帧归一 */
     /* v90.71（老板 7）：定位光束远端发光点**红光脉动闪烁**（每帧按世界时间调制大小/透明度）。*/

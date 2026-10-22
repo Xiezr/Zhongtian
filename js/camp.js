@@ -52,7 +52,12 @@
     var cell = s.cells[ci];
     if (!cell) return null;
     /* 海里没有幸存者 —— 也省掉一大半候选 */
-    if (cell.type === 'sea' || cell.type === 'ocean') return null;
+    /* ⚠️ v93.4 修正：**海洋的 type 是 'lake'**（sphere.js cellType：
+       原文 `if (e < 0) return 'lake';` 后面跟着的注释写的是「海 → 湖泊」）。
+       这里原来写的是 'sea' / 'ocean' —— 那两个值**整个项目都不存在**，
+       于是"海里不生成"从来没有生效过（营地 v92.4 起就错了，村社照抄）。
+       表现为水面上有村子/营地/遗迹。 */
+    if (cell.type === 'lake') return null;
     var sd = (s.seed3 ? s.seed3() : 0) | 0;
     if (h(ci, sd + 8101) >= (data().chance || 0.004)) return null;
     var _r = h(ci, sd + 8102);
@@ -73,7 +78,7 @@
     for (var ci = 0; ci < n; ci++) {
       var cell = s.cells[ci];
       if (!cell) continue;
-      if (cell.type === 'sea' || cell.type === 'ocean') continue;
+      if (cell.type === 'lake') continue;
       if (h(ci, sd + 8101) < (data().chance || 0.004)) out.push(ci);
     }
     _list = out; _listSeed = sd;

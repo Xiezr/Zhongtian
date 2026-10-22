@@ -59,7 +59,12 @@
     if (!s || !s.cells) return null;
     var cell = s.cells[ci];
     if (!cell) return null;
-    if (cell.type === 'sea' || cell.type === 'ocean') return null;
+    /* ⚠️ v93.4 修正：**海洋的 type 是 'lake'**（sphere.js cellType：
+       原文 `if (e < 0) return 'lake';` 后面跟着的注释写的是「海 → 湖泊」）。
+       这里原来写的是 'sea' / 'ocean' —— 那两个值**整个项目都不存在**，
+       于是"海里不生成"从来没有生效过（营地 v92.4 起就错了，村社照抄）。
+       表现为水面上有村子/营地/遗迹。 */
+    if (cell.type === 'lake') return null;
     var sd = (s.seed3 ? s.seed3() : 0) | 0;
     if (h(ci, sd + 9100) >= (D().chance || 0.006)) return null;
     var tiers = D().tiers || [];
@@ -77,7 +82,7 @@
     for (var ci = 0; ci < n; ci++) {
       var cell = s.cells[ci];
       if (!cell) continue;
-      if (cell.type === 'sea' || cell.type === 'ocean') continue;
+      if (cell.type === 'lake') continue;
       if (h(ci, sd + 9100) < (D().chance || 0.006)) out.push(ci);
     }
     _list = out; _listSeed = sd;
@@ -275,9 +280,8 @@
     var st = GAME.state;
     if (!st) return { changed: 0 };
     var m = V.monthNow();
-    /* ⚠️ 判"有没有初始化过"必须用 == null，不能用 `!st.villageMonth` ——
-       月份 0 是合法值（开局就是第 0 个月），用 `!` 会把它当成"还没开始"，
-       于是**整个第一个月永远不推演**（测试 §306⑧ 抓到的就是这个）。 */
+    /* 判"有没有初始化过"必须用 == null 比较：月份 0 本身是合法值（开局就是第 0 个月），
+       把它当成"没开始"会让整个第一个月永不推演（§306⑧ 抓到的就是这个）。 */
     var has = (st.villageMonth != null);
     if (!force && has && st.villageMonth === m) return { changed: 0, month: m };
     if (!has) { st.villageMonth = m; return { changed: 0, month: m, first: true }; }

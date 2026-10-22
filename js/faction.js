@@ -41,7 +41,7 @@
     while (out.length < n && tries < 30000) {
       var ci = Math.floor(h(tries++, sd + 4401) * total) % total;
       var cell = s.cells[ci];
-      if (!cell || cell.type === 'sea' || cell.type === 'ocean') continue;
+      if (!cell || cell.type === 'lake') continue;
       var ok = true;
       for (var i = 0; i < out.length; i++) {
         if (s.distOf({ ci: out[i] }, { ci: ci }) < 55) { ok = false; break; }
