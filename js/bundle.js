@@ -6728,6 +6728,21 @@ window.GAME = window.GAME || {};
     delvePop: [40, 160]      /* 到底一次救出的人数范围 */
   };
 
+  /* ============================================================
+   * v101 · 危险梯度（构想 A5 —— 复核里唯一真缺的一项）
+   * ------------------------------------------------------------
+   * 「迷雾边缘最危险，越往中心越安全」。
+   * 之前只有星球的 danger 数字（跟"你去哪儿"无关），往外推是纯赚。
+   * ============================================================ */
+  DATA.RISK = {
+    fogBase: [0.55, 0.30, 0.10],   /* 探明度 0 未探明 / 1 只见地形 / 2 全见 → 基础危险 */
+    farEvery: 40,                   /* 离最近的城每远这么多格，再加一点 */
+    farCap: 0.45,                   /* 距离最多加到这儿（0.45 = 一半危险来自"太远"） */
+    hpAtFull: 0.12,                 /* 危险度拉满时，攻方生命 −12% */
+    midAt: 0.33,                    /* ≥ 这个叫"生疏" */
+    highAt: 0.66                    /* ≥ 这个叫"险地" */
+  };
+
   window.GAME.DATA = DATA;
 })();
 
@@ -26358,6 +26373,134 @@ window.GAME = window.GAME || {};
   GAME.mapSphere = makeSphere();    /* 地图球面（地图在看/渲染/出征选址）—— map3d 读它；切地图星球不碰逻辑球面 */
 })();
 
+/* ---- risk.js ---- */
+/* ============================================================
+ * risk.js — 危险梯度（v101 · 构想 A5，复核里唯一真缺的一项）
+ * ------------------------------------------------------------
+ * 提案原话：「**危险梯度**：迷雾边缘最危险，越往中心越安全」。
+ *
+ * 之前 `sphere.report()` 里有个 danger 数字，但那是**星球的属性**，
+ * 跟"你去哪儿"没有关系 —— 去门口打野地和去三十格外的废墟，战损一样。
+ * 于是"往外推"是纯赚（远处的东西更肥），没有对应的疼。
+ *
+ * 这一版把它变成**按格子的危险度**，两个来源相加：
+ *   ① 你熟不熟：迷雾探明度（0 未探明 / 1 只见地形 / 2 全见）
+ *   ② 离家多远：离最近一座自己的城越远，补给与后送越差
+ *
+ * 它只做一件事：**削攻方的血**（`goalMod.hp`）。
+ * 不加新数值通道（见 v98.5 定下的规矩：战场加成只有 goalMod 一条）。
+ *
+ * ⚠️ 和 v98.2 一样的边界：只在 `opts.playerAtk && !opts.playerDef`
+ *    时生效 —— NPC 互打与测试模拟不受影响。
+ * ⚠️ 上限刻意压到 −12%：危险梯度是"有点疼"，不是"不让你去"。
+ *    真正劝退的应该是守军，不是地形。
+ * ============================================================ */
+(function () {
+  'use strict';
+  var GAME = window.GAME = window.GAME || {};
+  var RK = GAME.risk = {};
+  var U = GAME.utils;
+
+  function D() { return (GAME.DATA && GAME.DATA.RISK) || {}; }
+
+  /* 探明度三档 → 基础危险 */
+  var FOG_BASE = [0.55, 0.30, 0.10];
+
+  function fogOf(ci) {
+    if (!GAME.fog || !GAME.fog.get) return 0;
+    try { return GAME.fog.get(ci) | 0; } catch (e) { return 0; }
+  }
+
+  /* 离最近一座自家的城多远（格）—— 用 rough 版本，别对每次出征做 BFS */
+  function distToHome(ci) {
+    var sp = (GAME.sphereOf ? GAME.sphereOf() : (GAME.mapSphere || GAME.sphere));
+    if (!sp || !sp.roughDistOf) return 0;
+    var all = (GAME.city && GAME.city.all) ? (GAME.city.all() || []) : [];
+    var best = 1e9;
+    for (var i = 0; i < all.length; i++) {
+      var c = all[i];
+      if (!c || c.ci == null || c.ci < 0) continue;
+      var d = sp.roughDistOf({ ci: c.ci }, { ci: ci });
+      if (d < best) best = d;
+    }
+    return best === 1e9 ? 0 : best;
+  }
+
+  /* ============================================================
+   * dangerAt —— 0（家门口、熟得不能再熟）→ 1（深在迷雾里、离谁都远）
+   * ============================================================ */
+  RK.dangerAt = function (ci) {
+    if (ci == null || ci < 0) return 0;
+    var d = D();
+    var base = FOG_BASE[Math.max(0, Math.min(2, fogOf(ci)))];
+    if (d.fogBase && d.fogBase.length === 3) base = d.fogBase[Math.max(0, Math.min(2, fogOf(ci)))];
+    var far = Math.min(d.farCap == null ? 0.45 : d.farCap,
+      distToHome(ci) / (d.farEvery == null ? 40 : d.farEvery));
+    var v = base + far;
+    return Math.max(0, Math.min(1, Math.round(v * 100) / 100));
+  };
+
+  /* 文字档位（UI 用；不搞百分比堆砌，三档够用） */
+  RK.tierOf = function (dg) {
+    var d = D();
+    if (dg >= (d.highAt == null ? 0.66 : d.highAt)) return { id: 'high', name: '险地', color: 'var(--red-light)' };
+    if (dg >= (d.midAt == null ? 0.33 : d.midAt)) return { id: 'mid', name: '生疏', color: 'var(--gold, #d9a441)' };
+    return { id: 'low', name: '熟地', color: 'var(--text-dim)' };
+  };
+
+  /* ============================================================
+   * 只读出口（界面）
+   * ============================================================ */
+  RK.lineOf = function () {
+    var all = (GAME.city && GAME.city.all) ? (GAME.city.all() || []) : [];
+    var c = (GAME.currentCity && GAME.currentCity()) || all[0] || null;
+    if (!c || c.ci == null) return '';
+    /* 取一个"有代表性"的目标：离城 12 格左右的一格（往外推的典型距离） */
+    var sp = (GAME.sphereOf ? GAME.sphereOf() : GAME.sphere);
+    var probe = null;
+    if (sp && sp.cells) {
+      for (var i = 0; i < 200 && probe == null; i++) {
+        var ci = (c.ci + 907 * (i + 1)) % sp.cells.length;
+        if (!sp.cells[ci] || sp.cells[ci].type === 'lake') continue;
+        probe = ci;
+      }
+    }
+    if (probe == null) return '';
+    var near = { ci: c.ci };
+    var dgHome = RK.dangerAt(c.ci);
+    var dgFar = RK.dangerAt(probe);
+    var far = Math.round(distToHome(probe));
+    return '家门口 ' + Math.round(dgHome * 100) + '%（' + RK.tierOf(dgHome).name + '）'
+      + '　·　往外 ' + far + ' 格 ' + Math.round(dgFar * 100) + '%（' + RK.tierOf(dgFar).name + '）';
+  };
+
+  /* 面板正文用：一句话讲清它管什么 */
+  RK.helpText = function () {
+    var d = D();
+    return '越往没探过的地方走，伤得越重（最多 −' + Math.round((d.hpAtFull == null ? 0.12 : d.hpAtFull) * 100)
+      + '% 生命）。它只削你的血，不减你抢到的东西 —— 远处仍然更肥，只是更疼。';
+  };
+
+  void U;
+
+/* ============================================================
+ * v101：自注册（可插拔 —— 见 registry.js）
+ * 只用一块面板，没有动作、没有月度结算。
+ * ============================================================ */
+if (GAME.reg) {
+  GAME.reg.add({
+    id: 'risk',
+    order: 15,          /* 紧跟在「人从哪来（10）」之后：出门前先看这一带危不危险 */
+    panel: function (ctx) {
+      var sec = ctx.sec;
+      return sec('⚠ 危险梯度', GAME.risk.lineOf() || '这一带还没测过',
+        '<div class="ui-sub" style="margin-top:4px;">' + GAME.risk.helpText() + '</div>');
+    }
+  });
+}
+
+})();
+
 /* ---- fog.js ---- */
 /* ============================================================
  * fog.js — 探明度（迷雾）
@@ -37759,6 +37902,18 @@ if (GAME.reg) {
         /* v98.2：**玩家亲自出征** —— 只有这种战斗吃"作战目标"的战场修正
            （平推/强攻/斩首/奇袭）。NPC 互打与测试模拟不受影响。 */
         playerAtk: true,
+        /* v101：**危险梯度**（A5）—— 越往迷雾深处，攻方生命越薄。
+           在这里算成快照（不是运行时读），理由同 atkLv：观战重放/读档重跑必须同源。 */
+        targetCi: (t && t.ci != null) ? t.ci : null,
+        riskHp: (function () {
+          try {
+            if (!GAME.risk || !t || t.ci == null) return 0;
+            var dg = GAME.risk.dangerAt(t.ci);
+            if (!(dg > 0)) return 0;
+            var k = ((GAME.DATA && GAME.DATA.RISK) || {}).hpAtFull;
+            return -dg * (k == null ? 0.12 : k);
+          } catch (e) { return 0; }
+        })(),
         /* v98.5：**老兵等级**也是战场加成（每级 +3% 攻）。与 atkLv 同源取城，
            同样存进 simOpts —— 重放/读档重跑必须用同一份。 */
         atkVet: (function () {
@@ -40880,6 +41035,17 @@ if (GAME.reg) {
          "血勇（攻 +15%）"三张的攻击向效果**一处都没生效**（goals 只读 loot/rep/loss/wound）。
          现在折进同一个 goalMod（相加，不连乘）：两条来源都走 atkPct/defPct，
          战报里就是一份数。 */
+      /* v101：**危险梯度**（A5）—— 越往迷雾深处，攻方生命越薄。
+         它只削血，不减战利品（远处仍然更肥，只是更疼）。
+         值来自 `opts.riskHp`（battle.js 在出征瞬间算好的快照）。 */
+      if (opts.riskHp) {
+        _goalMod = {
+          atk: (_goalMod && _goalMod.atk) || 0,
+          def: (_goalMod && _goalMod.def) || 0,
+          hp: ((_goalMod && _goalMod.hp) || 0) + opts.riskHp
+        };
+      }
+
       /* v98.5：老兵等级（每级 +3% 攻）—— 同一份 goalMod，相加 */
       var _vet = (opts.atkVet || 0);
       if (_vet > 0) {
@@ -64338,6 +64504,7 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
 /* v91.61 地基第 1 期：main.js 是**唯一入口** —— 下列 import 的先后即**执行顺序**
    （esbuild 按 DFS 发现顺序执行；本列表与旧 index.html 的 18 个 <script> 顺序逐条一致）。
    改顺序 = 改行为；非必要勿动。 */
+
 
 
 

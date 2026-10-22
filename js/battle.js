@@ -2632,6 +2632,18 @@ import './state.js';
         /* v98.2：**玩家亲自出征** —— 只有这种战斗吃"作战目标"的战场修正
            （平推/强攻/斩首/奇袭）。NPC 互打与测试模拟不受影响。 */
         playerAtk: true,
+        /* v101：**危险梯度**（A5）—— 越往迷雾深处，攻方生命越薄。
+           在这里算成快照（不是运行时读），理由同 atkLv：观战重放/读档重跑必须同源。 */
+        targetCi: (t && t.ci != null) ? t.ci : null,
+        riskHp: (function () {
+          try {
+            if (!GAME.risk || !t || t.ci == null) return 0;
+            var dg = GAME.risk.dangerAt(t.ci);
+            if (!(dg > 0)) return 0;
+            var k = ((GAME.DATA && GAME.DATA.RISK) || {}).hpAtFull;
+            return -dg * (k == null ? 0.12 : k);
+          } catch (e) { return 0; }
+        })(),
         /* v98.5：**老兵等级**也是战场加成（每级 +3% 攻）。与 atkLv 同源取城，
            同样存进 simOpts —— 重放/读档重跑必须用同一份。 */
         atkVet: (function () {

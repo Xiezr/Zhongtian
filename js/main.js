@@ -16,6 +16,7 @@ import './ship.js';       /* v91.71：空间站/战舰 */
 import './domain.js';
 import './map.js';
 import './sphere.js';
+import './risk.js';     /* v101：危险梯度（A5）—— 越往迷雾深处走，伤得越重 */
 import './fog.js';      /* v92：探明度（迷雾）—— 依赖 sphere 的六边邻接做半径点亮 */
 import './memorial.js'; /* v92：阵亡名录 —— 只记事，不记账 */
 import './camp.js';     /* v92.4：幸存者营地 —— 探索的回报，招人 or 抢物资 */

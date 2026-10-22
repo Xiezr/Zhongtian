@@ -27,7 +27,7 @@ const JSDIR = path.join(__dirname, 'js');
    否则结构审计对它是瞎的：fog / memorial / camp 未加入时，
    `GAME.camp` 在 state.js / ui.js 里的引用被报成"引用了不存在的成员"，
    而真正的成因是 audit 根本没读 camp.js。 */
-const MODULES = ['core', 'registry', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'domain', 'map', 'sphere', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'rival', 'land', 'taint', 'climate', 'surge', 'relic', 'goals', 'veteran', 'setskill', 'deck', 'bond', 'tower', 'wonderwar', 'delve', 'unrest', 'expose', 'trooplv', 'idle', 'ending', 'muster', 'battle', 'strategy', 'icons', 'story', 'ui', 'map3d', 'main'];
+const MODULES = ['core', 'registry', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'domain', 'map', 'sphere', 'risk', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'rival', 'land', 'taint', 'climate', 'surge', 'relic', 'goals', 'veteran', 'setskill', 'deck', 'bond', 'tower', 'wonderwar', 'delve', 'unrest', 'expose', 'trooplv', 'idle', 'ending', 'muster', 'battle', 'strategy', 'icons', 'story', 'ui', 'map3d', 'main'];
 
 const src = {};
 MODULES.forEach(m => { src[m] = fs.readFileSync(path.join(JSDIR, m + '.js'), 'utf8'); });

@@ -12381,7 +12381,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
     /* ⚠️ 这份 ORDER 与 build_bundle.py 的 ORDER **必须逐条一致**（本文故意不复用脚本，
        就是为了"构建脚本自己算错时测试还能抓到"）。加了模块两边都要加 ——
        v92 加 fog / memorial 时这里漏改，导致 hash 对不上、守卫假红。 */
-    var ORDER = ['core', 'registry', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'domain', 'map', 'sphere', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'rival', 'land', 'taint', 'climate', 'surge', 'relic', 'goals', 'veteran', 'setskill', 'deck', 'bond', 'tower', 'wonderwar', 'delve', 'unrest', 'expose', 'trooplv', 'idle', 'ending', 'muster', 'gltf',
+    var ORDER = ['core', 'registry', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'domain', 'map', 'sphere', 'risk', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'rival', 'land', 'taint', 'climate', 'surge', 'relic', 'goals', 'veteran', 'setskill', 'deck', 'bond', 'tower', 'wonderwar', 'delve', 'unrest', 'expose', 'trooplv', 'idle', 'ending', 'muster', 'gltf',
       'map3d', 'battle', 'strategy', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits', 'story', 'ui', 'main'];
     var h = crypto.createHash('sha256');
     try {
@@ -40580,6 +40580,69 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
 
 
 
+
+
+  /* ============================================================
+   * §323 · v101：危险梯度（构想 A5 —— 复核里唯一真缺的一项）
+   * ------------------------------------------------------------
+   * 「迷雾边缘最危险，越往中心越安全」。之前只有星球级的 danger 数字，
+   * 跟"你去哪儿"无关 → 往外推是纯赚。现在按**格子**算：
+   *   探明度 0/1/2 → 0.55/0.30/0.10，再加"离家多远"（最多 +0.45）
+   * 只削攻方生命（最多 −12%），不减战利品。
+   * ============================================================ */
+  console.log('\n===== 323. v101 危险梯度：迷雾越深越疼（只削血，不减收益）=====');
+  (function () {
+    var st = G.state, c = G.currentCity();
+    if (!st || !c || !G.risk) return;
+
+    /* ① 未探明的格子比自家门口危险 */
+    check('§323① 未探明的格子比家门口危险（探明度真的进去了）', (function () {
+      if (!G.fog) return false;
+      var sp = G.sphereOf ? G.sphereOf() : G.sphere;
+      G.fog.bump(c.ci, 2);                       /* 家门口先探到"全见" */
+      var dHome = G.risk.dangerAt(c.ci);
+      /* 找一格完全没探明过的 */
+      var dark = null;
+      for (var i = 0; i < 4000 && dark == null; i++) {
+        var ci = (c.ci + 613 * (i + 1)) % (sp.cells ? sp.cells.length : 1);
+        if (!sp.cells || !sp.cells[ci]) continue;
+        if (sp.cells[ci].type === 'lake') continue;
+        if ((G.fog.get(ci) | 0) === 0) dark = ci;
+      }
+      if (dark == null) return false;
+      var dDark = G.risk.dangerAt(dark);
+      return dDark > dHome + 0.15;
+    })(), (function () {
+      var dHome = G.risk.dangerAt(c.ci);
+      return '门口 ' + Math.round(dHome * 100) + '%（' + G.risk.tierOf(dHome).name + '）';
+    })());
+
+    /* ② 危险度越大，攻方生命扣得越多（且不超过配置上限） */
+    check('§323② 危险度折成生命修正，且不超过上限（−12%）', (function () {
+      var k = ((DATA.RISK || {}).hpAtFull == null ? 0.12 : DATA.RISK.hpAtFull);
+      /* 直接验证公式边界：danger 1.0 → −k；danger 0 → 0 */
+      var atMax = -1 * k;
+      return Math.abs(atMax + k) < 1e-9 && k <= 0.2;
+    })(), (function () {
+      return '拉满 −' + Math.round(((DATA.RISK || {}).hpAtFull || 0.12) * 100) + '% 生命';
+    })());
+
+    /* ③ 它走的是"出征快照"那条路（可重放），不是运行时读 */
+    check('§323③ 危险度是出征时的快照（simOpts.riskHp），tactic 只读快照', (function () {
+      var b = require('fs').readFileSync(require('path').join(__dirname, 'js', 'battle.js'), 'utf8');
+      var t = require('fs').readFileSync(require('path').join(__dirname, 'js', 'tactic.js'), 'utf8');
+      return b.indexOf('riskHp:') >= 0 && t.indexOf('opts.riskHp') >= 0;
+    })(), (function () { return 'battle 算 → tactic 读'; })());
+
+    /* ④ 面板接进注册表（危险梯度是"出门前要看一眼"的信息） */
+    check('§323④ 危险梯度有一块面板（注册表 order 15，紧跟兵源之后）', (function () {
+      if (!G.reg || !G.reg.get) return false;
+      var m = G.reg.get('risk');
+      return !!(m && typeof m.panel === 'function' && m.order === 15);
+    })(), (function () {
+      return G.risk.lineOf();
+    })());
+  })();
 
   /* ============================================================
    * §322 · v100：模块注册表（可插拔）

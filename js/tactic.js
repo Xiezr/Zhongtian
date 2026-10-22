@@ -838,6 +838,17 @@ import './state.js';
          "血勇（攻 +15%）"三张的攻击向效果**一处都没生效**（goals 只读 loot/rep/loss/wound）。
          现在折进同一个 goalMod（相加，不连乘）：两条来源都走 atkPct/defPct，
          战报里就是一份数。 */
+      /* v101：**危险梯度**（A5）—— 越往迷雾深处，攻方生命越薄。
+         它只削血，不减战利品（远处仍然更肥，只是更疼）。
+         值来自 `opts.riskHp`（battle.js 在出征瞬间算好的快照）。 */
+      if (opts.riskHp) {
+        _goalMod = {
+          atk: (_goalMod && _goalMod.atk) || 0,
+          def: (_goalMod && _goalMod.def) || 0,
+          hp: ((_goalMod && _goalMod.hp) || 0) + opts.riskHp
+        };
+      }
+
       /* v98.5：老兵等级（每级 +3% 攻）—— 同一份 goalMod，相加 */
       var _vet = (opts.atkVet || 0);
       if (_vet > 0) {
