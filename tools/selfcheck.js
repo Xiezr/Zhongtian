@@ -143,6 +143,20 @@ if (!FAST) gate('端到端 e2e', 'node', ['e2e-test.js'], /结果：(\d+) 通过
   add('分包体积（各 < 2.6MB · 无旧单包）', ok, parts.join(' · ') + ' KB / ' + LIMIT + ' KB');
 })();
 
+/* ---------- ⑥ 架构棘轮（v106 · 老板 2026-10-23 把架构决定权交过来） ----------
+ * 为什么是"棘轮"而不是"重构干净"：57 个模块 / 4000+ 断言 / 两年迭代，
+ * 把 state（249 出口 · 46 个模块依赖）拆开，失败概率远大于收益。
+ * 但腐化得有闸：基线记下当前每对跨层引用次数，**只许降不许升**。
+ * 新代码一跨层就红 —— 老债按自己的节奏还。 */
+(function checkArch() {
+  const p = path.join(ROOT, 'tools/diag-arch.js');
+  if (!fs.existsSync(p)) { add('架构棘轮', false, '缺 tools/diag-arch.js'); return; }
+  const r = run('node', ['tools/diag-arch.js', '--check'], 120000);
+  const txt = (r.out || '').trim().split('\n').filter(Boolean);
+  const line = (txt[txt.length - 1] || '').replace(/^[✅❌]\s*/, '');
+  add('架构棘轮（跨层引用不增加）', r.ok, line || (r.ok ? 'ok' : '失败'));
+})();
+
 /* ---------- 输出 ---------- */
 const fails = rows.filter(function (x) { return !x.ok; });
 const lines = [];

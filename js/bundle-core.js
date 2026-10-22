@@ -34024,8 +34024,11 @@ if (GAME.reg) {
       var cap = GAME.energyMaxOf(lord);
       GAME.setEnergyNow(lord, Math.min(cap, (lord.energy || 0) + add));
     }
-    if (GAME.staMaxOf && GAME.setStaNow) {
-      var scap = GAME.staMaxOf(lord);
+    /* 正确出口是 GAME.staMax（domain.js:8206）——
+       我第一版写成 staMaxOf，判空写法让它**不报错**，
+       体力一直不恢复。可空判断不代表没问题。 */
+    if (GAME.staMax && GAME.setStaNow) {
+      var scap = GAME.staMax(lord);
       GAME.setStaNow(lord, Math.min(scap, GAME.staNow(lord) + add));
     }
   };
