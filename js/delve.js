@@ -45,6 +45,11 @@
     if (!ids.length) return { ok: false, msg: '至少要带一名将领' };
     var city = GAME.city && GAME.city.byId ? GAME.city.byId(cityId) : null;
     if (!city) return { ok: false, msg: '没有这座城' };
+    /* v96：地下远征要兵员 Lv2（老板：「不同任务对级别有要求」） */
+    if (GAME.trooplv && GAME.trooplv.checkCity) {
+      var chk = GAME.trooplv.checkCity(city, 'delve');
+      if (!chk.ok) return { ok: false, msg: chk.msg };
+    }
     var n = Math.max(50, Math.round(troopN || 300));
     if ((GAME.city.armyTotal(city) || 0) < n) return { ok: false, msg: '城里兵不够（要 ' + n + '）' };
     /* 扣兵（走唯一出口） */

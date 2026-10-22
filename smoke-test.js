@@ -12381,7 +12381,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
     /* ⚠️ 这份 ORDER 与 build_bundle.py 的 ORDER **必须逐条一致**（本文故意不复用脚本，
        就是为了"构建脚本自己算错时测试还能抓到"）。加了模块两边都要加 ——
        v92 加 fog / memorial 时这里漏改，导致 hash 对不上、守卫假红。 */
-    var ORDER = ['core', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'domain', 'map', 'sphere', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'rival', 'land', 'taint', 'climate', 'surge', 'relic', 'goals', 'veteran', 'setskill', 'deck', 'bond', 'tower', 'wonderwar', 'delve', 'unrest', 'expose', 'gltf',
+    var ORDER = ['core', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'domain', 'map', 'sphere', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'rival', 'land', 'taint', 'climate', 'surge', 'relic', 'goals', 'veteran', 'setskill', 'deck', 'bond', 'tower', 'wonderwar', 'delve', 'unrest', 'expose', 'trooplv', 'gltf',
       'map3d', 'battle', 'strategy', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits', 'story', 'ui', 'main'];
     var h = crypto.createHash('sha256');
     try {
@@ -40315,6 +40315,8 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       if (!c) return false;
       st.delve = { run: null, done: 0 };
       c.army = { buxingji: 2000 };
+      /* v96：远征要兵员 Lv2，先把这个兵种训到 2 级（门槛本身由 §312④ 验） */
+      st.troopLv = {}; st.troopLv[c.id] = { buxingji: 2 };
       var a0 = G.city.armyTotal(c);
       var s0 = G.delve.start([(st.generals || [])[0].id], c.id, 300);
       if (!s0.ok) return false;
@@ -40357,6 +40359,92 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var out = G.expose.tick(true);
       return !!(out && (out.spotted > 0 || t.spotted));
     })(), (function () { return G.expose.lineOf(); })());
+  })();
+
+
+  /* ============================================================
+   * §312 · v96：兵员等级（一级斥候、二级斥候）
+   * ============================================================ */
+  console.log('\n===== 312. v96 兵员等级：升级 / 进战斗 / 任务门槛 / 档位降级 =====');
+  (function () {
+    var st = G.state;
+    if (!st) return;
+    var c = G.currentCity();
+    if (!c || !G.trooplv) return;
+
+    /* ① 默认 Lv1；军营不够就升不了 */
+    check('§312① 兵员默认 Lv1，军营等级不够则拒绝整训', (function () {
+      st.troopLv = {};
+      c.army = { buxingji: 500 };
+      c.res.grain = 1e7; c.res.wood = 1e7; c.res.stone = 1e7; c.res.iron = 1e7;
+      if (G.wallSlotOf) { /* 无关，保持城里结构不动 */ }
+      if (G.cellOf) {
+        var cell = G.cellOf(c, 'junying');
+        if (cell) cell.build = null;
+      }
+      var lv0 = G.trooplv.of(c, 'buxingji');
+      var r = G.trooplv.up(c, 'buxingji');
+      return lv0 === 1 && r.ok === false;
+    })(), (function () { return '当前 ' + G.trooplv.of(G.currentCity(), 'buxingji') + ' 级'; })());
+
+    /* ② 军营到位就能升，且真的扣资源、等级真的上去 */
+    check('§312② 军营到位 → 整训成功（等级 +1 且资源减少）', (function () {
+      c.army = { buxingji: 500 };
+      var cell = (c.cells || []).filter(function (x) { return !x.build; })[0];
+      if (cell) cell.build = { id: 'junying', lvl: 3 };
+      var g0 = c.res.grain, lv0 = G.trooplv.of(c, 'buxingji');
+      var r = G.trooplv.up(c, 'buxingji');
+      return r.ok && G.trooplv.of(c, 'buxingji') === lv0 + 1 && c.res.grain < g0;
+    })(), (function () { return G.trooplv.lineOf(G.currentCity()); })());
+
+    /* ③ 等级**真的进战斗**：5 级的兵，生命与攻防都高于 1 级 */
+    check('§312③ 等级进战斗：Lv5 的生/攻/防都高于 Lv1（不是只在面板上好看）', (function () {
+      if (!G.tactic || !G.tactic.unitsOf) return false;
+      var u1 = G.tactic.unitsOf({ buxingji: 100 }, 'atk', null, { lvMap: { buxingji: 1 } });
+      var u5 = G.tactic.unitsOf({ buxingji: 100 }, 'atk', null, { lvMap: { buxingji: 5 } });
+      if (!u1.length || !u5.length) return false;
+      return u5[0].hpPer > u1[0].hpPer && u5[0].atkPct > u1[0].atkPct && u5[0].defPct > u1[0].defPct;
+    })(), (function () {
+      var u1 = G.tactic.unitsOf({ buxingji: 100 }, 'atk', null, { lvMap: { buxingji: 1 } });
+      var u5 = G.tactic.unitsOf({ buxingji: 100 }, 'atk', null, { lvMap: { buxingji: 5 } });
+      return '血 ' + u1[0].hpPer + '→' + u5[0].hpPer + ' · 攻% ' + u1[0].atkPct.toFixed(2) + '→' + u5[0].atkPct.toFixed(2);
+    })());
+
+    /* ④ 任务门槛：Lv1 不许下远征 */
+    check('§312④ 任务门槛：兵员只有 Lv1 时，地下远征被拒', (function () {
+      st.troopLv = {};
+      c.army = { buxingji: 2000 };
+      st.delve = { run: null, done: 0 };
+      var g = (st.generals || [])[0];
+      if (!g) return false;
+      var r = G.delve.start([g.id], c.id, 300);
+      return r.ok === false && /Lv/.test(r.msg || '');
+    })(), (function () {
+      var chk = G.trooplv.checkCity(G.currentCity(), 'delve');
+      return '要求 Lv' + chk.need + ' · 现有 Lv' + chk.have;
+    })());
+
+    /* ⑤ 档位降级：奇袭要 Lv3，Lv1 的兵打赢了也只能按强攻结算 */
+    check('§312⑤ 等级不够 → 作战档位降一级（战利品倍率随之掉）', (function () {
+      st.troopLv = {};
+      c.army = { buxingji: 400 };
+      var bak = G.city.add;
+      var asked = [];
+      G.city.add = function (ct, k, n, cap) { asked.push([k, n]); return 0; };
+      var out;
+      try {
+        out = G.goals.afterBattle(
+          { cityId: c.id, atkArmy: { buxingji: 400 }, side: 'atk' },
+          { winner: 'atk', atkLoss: 20, atkRemain: 380, defLoss: 700, defRemain: 0 },
+          null);
+      } finally { G.city.add = bak; }
+      global.__dbg312 = out ? (out.tier && out.tier.id) : 'null';
+      /* 兵力比 400/700 = 0.57 → 本应是 raiddeep（要 Lv3），Lv1 时降为 behead（要 Lv2）→ 再降 press */
+      return !!(out && out.tier && out.tier.id !== 'raiddeep');
+    })(), (function () {
+      var o = global.__dbg312;
+      return o ? ('档位=' + o) : '未取到结算结果';
+    })());
   })();
 
 console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');

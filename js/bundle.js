@@ -6446,6 +6446,22 @@ window.GAME = window.GAME || {};
     factAlarm: 0.5           /* 势力警报 +0.5 格 */
   };
 
+  /* ============================================================
+   * v96 · 兵员等级（老板：「一级斥候，二级斥候，分三到五级」）
+   * ------------------------------------------------------------
+   * 等级挂在 **城 × 兵种** 上，不改 `city.army` 的结构。
+   * 每级 +7% 生命/攻/防，并且是某些任务的**门槛**。
+   * ============================================================ */
+  DATA.TROOPLV = {
+    maxLv: 5,
+    gainPerLv: 0.07,          /* 每级：生/攻/防 +7%（三级 +14%，五级 +28%） */
+    baseCostPerLv: 40,        /* 每兵每级的基础资源量（再乘等级阶梯） */
+    costLadder: [0, 1, 2.2, 4.2, 7.5, 12],   /* 升到 2/3/4/5 级的倍数（越往上越贵） */
+    needBarrack: [0, 1, 3, 5, 7],            /* 升到 2/3/4/5 级需要的军营等级 */
+    /* 任务门槛：只给**已有任务**加要求，不新造任务 */
+    tasks: { behead: 2, delve: 2, raiddeep: 3, wonderDeep: 4 }
+  };
+
   window.GAME.DATA = DATA;
 })();
 
@@ -10970,6 +10986,8 @@ window.GAME = window.GAME || {};
     var simOpts = {
       kind: 'city', sieging: true, defName: city.name,
       wallLv: wallLv, towers: towers, playerDef: true,
+      /* v96：守城时**我方守军**也吃兵员等级（这座城训到几级就是几级） */
+      defLv: (GAME.trooplv && GAME.trooplv.mapOf) ? GAME.trooplv.mapOf(city) : null,
     };
     var result = null;
     /* v89.118：与出征同办 —— **开打那一刻的加成快照**（科技/天时/羁绊/战鼓）。
@@ -30154,6 +30172,24 @@ window.GAME = window.GAME || {};
     var tier = GO.tierOf(myTotal, foeTotal);
     var win = (result.winner === 'atk') && !result.retreat;
 
+    /* v96：**兵员等级不够，打不出这一档的效果** ——
+       奇袭要 Lv3、斩首要 Lv2（`DATA.TROOPLV.tasks`）。
+       不够就按低一档结算：战利品倍率掉下来。这条让"整训"第一次有直接回报。 */
+    var lvNote = null;
+    if (win && GAME.trooplv && GAME.trooplv.checkCity) {
+      var fromCity = (GAME.city && GAME.city.byId) ? GAME.city.byId(rec.cityId) : null;
+      var chk = fromCity ? GAME.trooplv.checkCity(fromCity, tier.id) : { ok: true };
+      if (chk && !chk.ok) {
+        /* ⚠️ 档位数组是**从易到难**排的（annihilate → raiddeep），
+           "降一档"是 index **减** 1，不是加 1 —— 加 1 会降到更难的那档（第一版就这么写的）。 */
+        var tiers2 = D().tiers || [];
+        var idx = tiers2.findIndex(function (x) { return x.id === tier.id; });
+        var lower = tiers2[Math.max(0, (idx < 0 ? 0 : idx) - 1)] || tier;
+        lvNote = '兵员等级不够（' + chk.msg + '），只能按「' + lower.name + '」结算';
+        tier = lower;
+      }
+    }
+
     var add = { loot: 1, rep: 1, loss: 0, note: [] };
 
     /* ① 作战目标本身的倍率 */
@@ -30217,6 +30253,7 @@ window.GAME = window.GAME || {};
     }
 
     /* ⑦ 战报一行：让玩家知道"这一仗为什么拿得多/死得多" */
+    if (lvNote) add.note.push('⚠ ' + lvNote);
     if (GAME.log && GAME.log.war && (tier.id !== 'annihilate' || add.note.length)) {
       GAME.log.war('🎯 ' + tier.name + '（我军 ' + U.numText(myTotal, 0) + ' vs 守军 '
         + U.numText(foeTotal, 0) + '）：战利品 ×' + Math.round(add.loot * 100) / 100
@@ -30934,6 +30971,11 @@ window.GAME = window.GAME || {};
     if (!ids.length) return { ok: false, msg: '至少要带一名将领' };
     var city = GAME.city && GAME.city.byId ? GAME.city.byId(cityId) : null;
     if (!city) return { ok: false, msg: '没有这座城' };
+    /* v96：地下远征要兵员 Lv2（老板：「不同任务对级别有要求」） */
+    if (GAME.trooplv && GAME.trooplv.checkCity) {
+      var chk = GAME.trooplv.checkCity(city, 'delve');
+      if (!chk.ok) return { ok: false, msg: chk.msg };
+    }
     var n = Math.max(50, Math.round(troopN || 300));
     if ((GAME.city.armyTotal(city) || 0) < n) return { ok: false, msg: '城里兵不够（要 ' + n + '）' };
     /* 扣兵（走唯一出口） */
@@ -31288,6 +31330,187 @@ window.GAME = window.GAME || {};
     GAME.rival.arr().forEach(function (t) { if (t && !t.dead && t.spotted) n++; });
     if (!n) return '';
     return '👁 ' + n + ' 支队伍已经知道你在哪（探明他们 = 他们也看见你）';
+  };
+})();
+
+/* ---- trooplv.js ---- */
+/* ============================================================
+ * trooplv.js — 兵员等级：一级斥候、二级斥候（v96）
+ * ------------------------------------------------------------
+ * 老板 2026-10-22：「老兵新兵是不是以用兵员等级表示，一级斥候，二级斥候，
+ *   分三到五级……不同任务对级别有要求，或者不同等级有属性加成」。
+ *
+ * 上一版（veteran.js）记的是"这支队伍打了多少仗"（经验值），
+ * 那是**一支部队的历史**；老板要的是**兵员本身的档位**。
+ * 两者不冲突：经验决定"打过多硬"，等级决定"训到什么程度"。
+ * 这一版把等级做出来，经验保留（老兵加成还在）。
+ *
+ * 关键设计（为什么这么定）：
+ *   · 等级挂在 **城 × 兵种** 上（`city.troopLv[troopId] = 1..5`），
+ *     **不改 `city.army` 的结构** —— 那是 `{兵种: 数量}`，全仓 100+ 个读点，
+ *     改成 `{兵种: {等级: 数量}}` 一定会炸在某个没人看的分支里。
+ *   · 一座城把一个兵种训到 Lv3，这座城**所有**该兵种都是 Lv3（含新补的兵）。
+ *     语义清楚："你这座城的步行机是三级的"，而不是"这一坨兵里有几个三级"。
+ *   · 等级**真的进战斗**：`tactic.unitsOf` 按 `lvMap` 给生命/攻/防加成，
+ *     不是只战力面板上好看（显示与实战分离是本项目明令禁止的）。
+ *   · 等级同时是**任务门槛**：奇袭要 Lv3、地下远征要 Lv2、奇观深层要 Lv4。
+ *     于是"整训"不是可选项 —— 想打某种仗，得先把兵练上去。
+ * ============================================================ */
+(function () {
+  'use strict';
+  var GAME = window.GAME = window.GAME || {};
+  var LV = GAME.trooplv = {};
+  var U = GAME.utils;
+
+  function D() { return (GAME.DATA && GAME.DATA.TROOPLV) || {}; }
+  function maxLv() { return D().maxLv || 5; }
+
+  function st0() {
+    var s = GAME.state;
+    if (!s) return null;
+    if (!s.troopLv || typeof s.troopLv !== 'object') s.troopLv = {};
+    return s;
+  }
+
+  /* 某城某兵种的等级（默认 1） */
+  LV.of = function (city, troopId) {
+    var s = st0();
+    if (!s || !city) return 1;
+    var m = s.troopLv[city.id];
+    if (!m || !troopId) return 1;
+    return Math.max(1, Math.min(maxLv(), m[troopId] | 0 || 1));
+  };
+
+  /* 某城所有兵种的等级表 —— 直接喂给 `tactic.unitsOf` 的 lvMap */
+  LV.mapOf = function (city) {
+    var s = st0();
+    if (!s || !city) return null;
+    var m = s.troopLv[city.id];
+    return m ? m : null;
+  };
+
+  /* 属性乘子：每级 +7%（生命/攻/防同一把尺） */
+  LV.mulOf = function (lv) {
+    var per = D().gainPerLv == null ? 0.07 : D().gainPerLv;
+    return 1 + per * (Math.max(1, lv || 1) - 1);
+  };
+
+  /* ============================================================
+   * 整训成本 —— 按"这一级要训多少人"算
+   * ------------------------------------------------------------
+   * 用城里该兵种的**实际数量**作基数：兵越多越贵。
+   * 于是"先练一个精锐兵种"和"练一个大兵种"是两笔不同量级的账。
+   * ============================================================ */
+  LV.costOf = function (city, troopId) {
+    if (!city) return null;
+    var lv = LV.of(city, troopId);
+    if (lv >= maxLv()) return null;
+    var n = Math.max(1, Math.floor((city.army || {})[troopId] || 0));
+    var per = D().baseCostPerLv == null ? 40 : D().baseCostPerLv;
+    var ladder = D().costLadder || [0, 1, 2.2, 4.2, 7.5, 12];
+    var k = ladder[lv] || (lv * 2);
+    var total = Math.round(n * per * k);
+    /* 四类资源均摊（兵是"铁+粮+木+石"养出来的） */
+    return {
+      grain: Math.round(total * 0.25), wood: Math.round(total * 0.2),
+      stone: Math.round(total * 0.25), iron: Math.round(total * 0.3),
+      total: total, to: lv + 1
+    };
+  };
+
+  /* ============================================================
+   * up —— 整训一级
+   * ------------------------------------------------------------
+   * 前置：军营等级（`needBarrack`）+ 资源。
+   * 不做"训练时间"：等级是城的长期属性，加个 3 天倒计时只会让玩家等，
+   * 而这次升级的"代价"已经由**资源量级**表达了。
+   * ============================================================ */
+  LV.up = function (city, troopId) {
+    if (!city) return { ok: false, msg: '没有这座城' };
+    var t = (GAME.DATA.TROOPS || {})[troopId];
+    if (!t) return { ok: false, msg: '没有这个兵种' };
+    var lv = LV.of(city, troopId);
+    if (lv >= maxLv()) return { ok: false, msg: t.name + '已经训到 ' + maxLv() + ' 级（上限）' };
+    if (Math.floor((city.army || {})[troopId] || 0) <= 0) {
+      return { ok: false, msg: '城里没有' + t.name + ' —— 先造一批再整训' };
+    }
+    var need = (D().needBarrack || [0, 1, 3, 5, 7])[lv] || 1;
+    var bar = GAME.buildingLevel ? (GAME.buildingLevel(city, 'junying') || 0) : 0;
+    if (bar < need) {
+      return { ok: false, msg: '军营要到 Lv' + need + ' 才能整训到 ' + (lv + 1) + ' 级（现在 Lv' + bar + '）' };
+    }
+    var cost = LV.costOf(city, troopId);
+    if (!cost) return { ok: false, msg: '已经满级' };
+    var R = GAME.res(city), lack = [];
+    ['grain', 'wood', 'stone', 'iron'].forEach(function (k) {
+      if ((R[k] || 0) < cost[k]) lack.push((GAME.resName ? GAME.resName(k) : k) + ' ' + U.numText(cost[k], 0));
+    });
+    if (lack.length) return { ok: false, msg: '缺 ' + lack.join('、') };
+
+    /* ⚠️ 扣资源一律 `city.sub`（`add` 对负数直接返回 0） */
+    ['grain', 'wood', 'stone', 'iron'].forEach(function (k) {
+      if (GAME.city.sub) GAME.city.sub(city, k, cost[k]);
+    });
+    var s = st0();
+    s.troopLv[city.id] = s.troopLv[city.id] || {};
+    s.troopLv[city.id][troopId] = lv + 1;
+    if (GAME.log && GAME.log.war) {
+      GAME.log.war('🪖 ' + city.name + '的' + t.name + '整训完成：Lv' + lv + ' → Lv' + (lv + 1)
+        + '（生/攻/防 +' + Math.round((D().gainPerLv || 0.07) * 100 * (lv + 1 - 1)) + '%）');
+    }
+    return { ok: true, msg: t.name + ' 升到 Lv' + (lv + 1) + '（全军该兵种生效）。' };
+  };
+
+  /* ============================================================
+   * 任务门槛 —— "想打这种仗，先把兵练上去"
+   * ------------------------------------------------------------
+   * 只对**已经存在的任务**加门槛，不新造任务：
+   *   scout（侦察）     Lv1（不设门槛，保持开局可侦察）
+   *   behead（斩首目标）Lv2
+   *   delve（地下远征） Lv2
+   *   raiddeep（奇袭）  Lv3
+   *   wonderDeep（奇观深层）Lv4
+   * ============================================================ */
+  LV.needOf = function (taskId) {
+    return ((D().tasks || {})[taskId]) || 0;
+  };
+
+  /* 这座城打这个任务够不够级 —— 返回 { ok, need, have, worst } */
+  LV.checkCity = function (city, taskId, troopIds) {
+    var need = LV.needOf(taskId);
+    if (!need) return { ok: true, need: 0, have: 99 };
+    var ids = troopIds || Object.keys((city && city.army) || {});
+    var worst = null;
+    for (var i = 0; i < ids.length; i++) {
+      var lv = LV.of(city, ids[i]);
+      if (!worst || lv < worst.lv) worst = { id: ids[i], lv: lv };
+    }
+    if (!ids.length) return { ok: false, need: need, have: 0, worst: null, msg: '没有兵' };
+    var have = worst ? worst.lv : 1;
+    return {
+      ok: have >= need, need: need, have: have, worst: worst,
+      msg: have >= need ? '' : ('「' + (TASK_NAME[taskId] || taskId) + '」要求兵员 Lv' + need
+        + '，' + city.name + '最低的是 ' + (worst ? (((GAME.DATA.TROOPS || {})[worst.id] || {}).name || worst.id) : '—')
+        + ' Lv' + have)
+    };
+  };
+
+  var TASK_NAME = {
+    scout: '侦察', behead: '斩首', raiddeep: '奇袭', delve: '地下远征', wonderDeep: '奇观深层'
+  };
+
+  /* ============================================================
+   * 一行摘要（城面板 / 玩法台）
+   * ============================================================ */
+  LV.lineOf = function (city) {
+    if (!city) return '';
+    var a = city.army || {}, keys = Object.keys(a).filter(function (k) { return (a[k] | 0) > 0; });
+    if (!keys.length) return '兵员：无兵';
+    var seg = keys.map(function (k) {
+      var t = (GAME.DATA.TROOPS || {})[k] || {};
+      return (t.name || k) + ' Lv' + LV.of(city, k);
+    });
+    return '🪖 ' + seg.join(' · ');
   };
 })();
 
@@ -35880,7 +36103,17 @@ window.GAME = window.GAME || {};
            这样中途改设置也不会让同一场仗前后两半用两套 AI。 */
         battleAI: !!(GAME.state && GAME.state.settings && GAME.state.settings.battleAI),
         /* v91.86：目标星球 —— 环境规则按它解析（跨星球出征不能读"当前城"） */
-        pid: (t && t.pid != null) ? t.pid : (GAME.curPid ? GAME.curPid() : 1) };
+        pid: (t && t.pid != null) ? t.pid : (GAME.curPid ? GAME.curPid() : 1),
+        /* v96：**出兵城的兵员等级** —— {兵种: 1..5}。
+           放在 simOpts 里（而不是运行时读），因为 simOpts 会被整存进 `rec.sim`：
+           观战重放/读档重跑必须用**同一份等级快照**，否则同一场仗重跑会变。 */
+        atkLv: (function () {
+          try {
+            var _cid = opts && opts.cityId;
+            var _c = (_cid && GAME.city && GAME.city.byId) ? GAME.city.byId(_cid) : null;
+            return (GAME.trooplv && _c) ? GAME.trooplv.mapOf(_c) : null;
+          } catch (e) { return null; }
+        })() };
     return { scArmy: scArmy, scVal: scVal, scGen: scGen, scNote: scNote, simOpts: simOpts };
   };
 
@@ -38721,6 +38954,12 @@ window.GAME = window.GAME || {};
    * ============================================================ */
   T.unitsOf = function (army, side, gen, ctx) {
     var a = gen && GAME.genAttrs ? GAME.genAttrs(gen) : null;
+    /* v96：**兵员等级**（`ctx.lvMap = {兵种: 1..5}`）—— 每级 +7% 生/攻/防。
+       加成走的是既有的 atkPct/defPct 百分比链与 hpPer，不另造一套数值通道；
+       `lvMap` 由调用方按"这支部队是从哪座城出来的"给。 */
+    var lvMap = (ctx && ctx.lvMap) || null;
+    var lvPer = ((GAME.DATA && GAME.DATA.TROOPLV) || {}).gainPerLv;
+    if (lvPer == null) lvPer = 0.07;
     var out = [];
     Object.keys(army || {}).forEach(function (id) {
       var t = DATA.TROOPS[id], n = Math.floor(army[id] || 0);
@@ -38768,9 +39007,12 @@ window.GAME = window.GAME || {};
       else if (!tgt) tgt = id;
       /* v89.109：防守侧「出城迎战」—— 前出到围墙之外（不改动作，改初始位置） */
       var sortie = !!(tc && tc.sortie);
+      var _lv = lvMap ? Math.max(1, Math.min(5, lvMap[id] | 0 || 1)) : 1;
+      var _lvMul = 1 + lvPer * (_lv - 1);
       out.push({
         id: id, name: t.name, side: side, count: n, start: n,
-        hpPer: t.hp, range: t.range,
+        hpPer: Math.round(t.hp * _lvMul), range: t.range,
+        lv: _lv,
         spd: Math.round(t.spd * spdMult(t) * (1 + (a ? (a.spd || 0) : 0) / 300)),
         cover: cover,
         dr: dr,                     /* v91.92：指挥溢出减伤（受击时按 1−dr 生效） */
@@ -38782,8 +39024,8 @@ window.GAME = window.GAME || {};
            genAttrs 的 atkPct/defPct（唯一换算原子见 domain.js atkPctOf/defPctOf）。
            旧版在这里散装 yw/zm/eqAtk/eqDef 四个字段、在 perAtk/perDef 里各乘一遍，
            与 UI 展示（v52 换算链）相差 4 倍 —— 属"显示与实战分离"，已并链。 */
-        atkPct: a ? (a.atkPct || 0) : 0,
-        defPct: a ? (a.defPct || 0) : 0,
+        atkPct: (a ? (a.atkPct || 0) : 0) + (_lvMul - 1),
+        defPct: (a ? (a.defPct || 0) : 0) + (_lvMul - 1),
         vsCity: !!t.craft,
       });
     });
@@ -38951,12 +39193,14 @@ window.GAME = window.GAME || {};
     var atk = T.unitsOf(atkArmy, 'atk', atkGen,
       /* v89.136（老板 4）：modeId 透传给 GAME.tacticOf —— 出征读"细分（掠夺/占领）覆盖通用" */
       { sieging: !!opts.sieging, override: stances.atk || null, modeId: opts.modeId || null,
+        lvMap: opts.atkLv || null,
         foeArmy: opts.playerDef ? defArmy : null });
     var def = T.unitsOf(defArmy, 'def', defGen,
       /* v89.109：`playerDef` = 守方是**我方城市**（防御战）→ 读玩家「防守战术」设置；
          NPC 守方不传（仍用默认动作）—— 见 GAME.tacticOf 的 def 分支。 */
       { sieging: !!opts.sieging, playerDef: !!opts.playerDef, override: stances.def || null,
         modeId: opts.modeId || null,
+        lvMap: opts.defLv || null,
         foeArmy: opts.playerDef ? null : atkArmy });
     /* v28：起始兵力只算**参战部队** —— 侦察单元不参战也不阵亡，
        若把它的数量算进 aStart，收尾的 atkLoss = aStart − aRemain 会把它记成"损失"。 */
@@ -51225,6 +51469,31 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
           + '战利品倍率越高，伤得也越重。出征界面的战力对比里会显示这一行。</div>');
       }
 
+      /* ①.b 兵员等级（v96）：一级斥候、二级斥候 */
+      if (GAME.trooplv) {
+        var lvH = cities.map(function (c) {
+          var a = c.army || {}, keys = Object.keys(a).filter(function (k) { return (a[k] | 0) > 0; });
+          if (!keys.length) return '';
+          var chips = keys.map(function (tid) {
+            var t = (GAME.DATA.TROOPS || {})[tid] || {};
+            var lv = GAME.trooplv.of(c, tid);
+            var cost = GAME.trooplv.costOf(c, tid);
+            if (!cost) return '<span class="chip dim">' + U.escape(t.name || tid) + ' Lv' + lv + '（满级）</span>';
+            return '<span class="chip" data-action="trooplv-up" data-cid="' + U.escape(c.id)
+              + '" data-tid="' + U.escape(tid) + '" title="'
+              + U.escape('升到 Lv' + cost.to + '：粮 ' + cost.grain + ' · 木 ' + cost.wood
+                + ' · 石 ' + cost.stone + ' · 铁 ' + cost.iron + '（军营等级有要求）') + '">'
+              + U.escape(t.name || tid) + ' Lv' + lv + ' → ' + cost.to
+              + '<span style="color:var(--text-dim);"> · ' + U.numText(cost.total, 0) + '</span></span>';
+          }).join('');
+          return '<div style="margin-top:5px;">🏯 ' + U.escape(c.name) + '<div class="chips" style="margin-top:3px;">'
+            + chips + '</div></div>';
+        }).join('');
+        h += sec('🪖 兵员等级', '每升一级：生/攻/防 +7%；「奇袭」要 Lv3、「远征」要 Lv2',
+          lvH + '<div class="ui-sub" style="margin-top:4px;">等级是**这座城这个兵种**的档位（含以后新补的兵），'
+          + '不是某个人的军衔。整训要资源 + 军营等级，升上去就退不回来。</div>');
+      }
+
       /* ② 伤兵 / 老兵 */
       if (GAME.veteran) {
         var wl = GAME.veteran.totalWounded();
@@ -56557,6 +56826,9 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
           })()) +
           '<div class="attr"><span class="k">⚔ 驻军</span><span class="v">' +
             U.numText(GAME.armyTotal(city), 0) + '　城防 ' + GAME.cityDefense(city) + '</span></div>' +
+          /* v96：兵员等级（这座城训到几级，直接决定战力与能接什么仗） */
+          (GAME.trooplv ? ('<div class="attr"><span class="k">🪖 兵员</span><span class="v">'
+            + U.escape(GAME.trooplv.lineOf(city).replace('🪖 ', '')) + '</span></div>') : '') +
           /* ============================================================
            * v94.1：这座城的**三条线**（污染 / 温度 / 补给）
            * ------------------------------------------------------------
@@ -62371,6 +62643,7 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
 
 
 
+
 (function () {
   var GAME = window.GAME = window.GAME || {};
   var ui = GAME.ui;
@@ -63759,6 +64032,12 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
       case 'deck-toggle': (function () {
         var r = GAME.deck ? GAME.deck.toggle(el.getAttribute('data-card')) : { msg: '未加载' };
         ui.toast(r.msg); ui.openWorldPanel();
+      })(); break;
+      case 'trooplv-up': (function () {
+        var r = GAME.trooplv
+          ? GAME.trooplv.up(GAME.city.byId(el.getAttribute('data-cid')), el.getAttribute('data-tid'))
+          : { msg: '兵员等级未加载' };
+        ui.toast(r.msg); ui.openWorldPanel(); GAME.refreshView();
       })(); break;
       case 'skill-arm': (function () {
         var r = GAME.setskill ? GAME.setskill.arm(el.getAttribute('data-sid')) : { msg: '未加载' };

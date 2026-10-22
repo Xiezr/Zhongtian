@@ -576,6 +576,12 @@ import './state.js';
    * ============================================================ */
   T.unitsOf = function (army, side, gen, ctx) {
     var a = gen && GAME.genAttrs ? GAME.genAttrs(gen) : null;
+    /* v96：**兵员等级**（`ctx.lvMap = {兵种: 1..5}`）—— 每级 +7% 生/攻/防。
+       加成走的是既有的 atkPct/defPct 百分比链与 hpPer，不另造一套数值通道；
+       `lvMap` 由调用方按"这支部队是从哪座城出来的"给。 */
+    var lvMap = (ctx && ctx.lvMap) || null;
+    var lvPer = ((GAME.DATA && GAME.DATA.TROOPLV) || {}).gainPerLv;
+    if (lvPer == null) lvPer = 0.07;
     var out = [];
     Object.keys(army || {}).forEach(function (id) {
       var t = DATA.TROOPS[id], n = Math.floor(army[id] || 0);
@@ -623,9 +629,12 @@ import './state.js';
       else if (!tgt) tgt = id;
       /* v89.109：防守侧「出城迎战」—— 前出到围墙之外（不改动作，改初始位置） */
       var sortie = !!(tc && tc.sortie);
+      var _lv = lvMap ? Math.max(1, Math.min(5, lvMap[id] | 0 || 1)) : 1;
+      var _lvMul = 1 + lvPer * (_lv - 1);
       out.push({
         id: id, name: t.name, side: side, count: n, start: n,
-        hpPer: t.hp, range: t.range,
+        hpPer: Math.round(t.hp * _lvMul), range: t.range,
+        lv: _lv,
         spd: Math.round(t.spd * spdMult(t) * (1 + (a ? (a.spd || 0) : 0) / 300)),
         cover: cover,
         dr: dr,                     /* v91.92：指挥溢出减伤（受击时按 1−dr 生效） */
@@ -637,8 +646,8 @@ import './state.js';
            genAttrs 的 atkPct/defPct（唯一换算原子见 domain.js atkPctOf/defPctOf）。
            旧版在这里散装 yw/zm/eqAtk/eqDef 四个字段、在 perAtk/perDef 里各乘一遍，
            与 UI 展示（v52 换算链）相差 4 倍 —— 属"显示与实战分离"，已并链。 */
-        atkPct: a ? (a.atkPct || 0) : 0,
-        defPct: a ? (a.defPct || 0) : 0,
+        atkPct: (a ? (a.atkPct || 0) : 0) + (_lvMul - 1),
+        defPct: (a ? (a.defPct || 0) : 0) + (_lvMul - 1),
         vsCity: !!t.craft,
       });
     });
@@ -806,12 +815,14 @@ import './state.js';
     var atk = T.unitsOf(atkArmy, 'atk', atkGen,
       /* v89.136（老板 4）：modeId 透传给 GAME.tacticOf —— 出征读"细分（掠夺/占领）覆盖通用" */
       { sieging: !!opts.sieging, override: stances.atk || null, modeId: opts.modeId || null,
+        lvMap: opts.atkLv || null,
         foeArmy: opts.playerDef ? defArmy : null });
     var def = T.unitsOf(defArmy, 'def', defGen,
       /* v89.109：`playerDef` = 守方是**我方城市**（防御战）→ 读玩家「防守战术」设置；
          NPC 守方不传（仍用默认动作）—— 见 GAME.tacticOf 的 def 分支。 */
       { sieging: !!opts.sieging, playerDef: !!opts.playerDef, override: stances.def || null,
         modeId: opts.modeId || null,
+        lvMap: opts.defLv || null,
         foeArmy: opts.playerDef ? null : atkArmy });
     /* v28：起始兵力只算**参战部队** —— 侦察单元不参战也不阵亡，
        若把它的数量算进 aStart，收尾的 atkLoss = aStart − aRemain 会把它记成"损失"。 */

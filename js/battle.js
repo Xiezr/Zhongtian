@@ -2628,7 +2628,17 @@ import './state.js';
            这样中途改设置也不会让同一场仗前后两半用两套 AI。 */
         battleAI: !!(GAME.state && GAME.state.settings && GAME.state.settings.battleAI),
         /* v91.86：目标星球 —— 环境规则按它解析（跨星球出征不能读"当前城"） */
-        pid: (t && t.pid != null) ? t.pid : (GAME.curPid ? GAME.curPid() : 1) };
+        pid: (t && t.pid != null) ? t.pid : (GAME.curPid ? GAME.curPid() : 1),
+        /* v96：**出兵城的兵员等级** —— {兵种: 1..5}。
+           放在 simOpts 里（而不是运行时读），因为 simOpts 会被整存进 `rec.sim`：
+           观战重放/读档重跑必须用**同一份等级快照**，否则同一场仗重跑会变。 */
+        atkLv: (function () {
+          try {
+            var _cid = opts && opts.cityId;
+            var _c = (_cid && GAME.city && GAME.city.byId) ? GAME.city.byId(_cid) : null;
+            return (GAME.trooplv && _c) ? GAME.trooplv.mapOf(_c) : null;
+          } catch (e) { return null; }
+        })() };
     return { scArmy: scArmy, scVal: scVal, scGen: scGen, scNote: scNote, simOpts: simOpts };
   };
 

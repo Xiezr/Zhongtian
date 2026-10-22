@@ -8200,6 +8200,31 @@ import './state.js';
           + '战利品倍率越高，伤得也越重。出征界面的战力对比里会显示这一行。</div>');
       }
 
+      /* ①.b 兵员等级（v96）：一级斥候、二级斥候 */
+      if (GAME.trooplv) {
+        var lvH = cities.map(function (c) {
+          var a = c.army || {}, keys = Object.keys(a).filter(function (k) { return (a[k] | 0) > 0; });
+          if (!keys.length) return '';
+          var chips = keys.map(function (tid) {
+            var t = (GAME.DATA.TROOPS || {})[tid] || {};
+            var lv = GAME.trooplv.of(c, tid);
+            var cost = GAME.trooplv.costOf(c, tid);
+            if (!cost) return '<span class="chip dim">' + U.escape(t.name || tid) + ' Lv' + lv + '（满级）</span>';
+            return '<span class="chip" data-action="trooplv-up" data-cid="' + U.escape(c.id)
+              + '" data-tid="' + U.escape(tid) + '" title="'
+              + U.escape('升到 Lv' + cost.to + '：粮 ' + cost.grain + ' · 木 ' + cost.wood
+                + ' · 石 ' + cost.stone + ' · 铁 ' + cost.iron + '（军营等级有要求）') + '">'
+              + U.escape(t.name || tid) + ' Lv' + lv + ' → ' + cost.to
+              + '<span style="color:var(--text-dim);"> · ' + U.numText(cost.total, 0) + '</span></span>';
+          }).join('');
+          return '<div style="margin-top:5px;">🏯 ' + U.escape(c.name) + '<div class="chips" style="margin-top:3px;">'
+            + chips + '</div></div>';
+        }).join('');
+        h += sec('🪖 兵员等级', '每升一级：生/攻/防 +7%；「奇袭」要 Lv3、「远征」要 Lv2',
+          lvH + '<div class="ui-sub" style="margin-top:4px;">等级是**这座城这个兵种**的档位（含以后新补的兵），'
+          + '不是某个人的军衔。整训要资源 + 军营等级，升上去就退不回来。</div>');
+      }
+
       /* ② 伤兵 / 老兵 */
       if (GAME.veteran) {
         var wl = GAME.veteran.totalWounded();
@@ -13532,6 +13557,9 @@ import './state.js';
           })()) +
           '<div class="attr"><span class="k">⚔ 驻军</span><span class="v">' +
             U.numText(GAME.armyTotal(city), 0) + '　城防 ' + GAME.cityDefense(city) + '</span></div>' +
+          /* v96：兵员等级（这座城训到几级，直接决定战力与能接什么仗） */
+          (GAME.trooplv ? ('<div class="attr"><span class="k">🪖 兵员</span><span class="v">'
+            + U.escape(GAME.trooplv.lineOf(city).replace('🪖 ', '')) + '</span></div>') : '') +
           /* ============================================================
            * v94.1：这座城的**三条线**（污染 / 温度 / 补给）
            * ------------------------------------------------------------

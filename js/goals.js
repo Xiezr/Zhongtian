@@ -80,6 +80,24 @@
     var tier = GO.tierOf(myTotal, foeTotal);
     var win = (result.winner === 'atk') && !result.retreat;
 
+    /* v96：**兵员等级不够，打不出这一档的效果** ——
+       奇袭要 Lv3、斩首要 Lv2（`DATA.TROOPLV.tasks`）。
+       不够就按低一档结算：战利品倍率掉下来。这条让"整训"第一次有直接回报。 */
+    var lvNote = null;
+    if (win && GAME.trooplv && GAME.trooplv.checkCity) {
+      var fromCity = (GAME.city && GAME.city.byId) ? GAME.city.byId(rec.cityId) : null;
+      var chk = fromCity ? GAME.trooplv.checkCity(fromCity, tier.id) : { ok: true };
+      if (chk && !chk.ok) {
+        /* ⚠️ 档位数组是**从易到难**排的（annihilate → raiddeep），
+           "降一档"是 index **减** 1，不是加 1 —— 加 1 会降到更难的那档（第一版就这么写的）。 */
+        var tiers2 = D().tiers || [];
+        var idx = tiers2.findIndex(function (x) { return x.id === tier.id; });
+        var lower = tiers2[Math.max(0, (idx < 0 ? 0 : idx) - 1)] || tier;
+        lvNote = '兵员等级不够（' + chk.msg + '），只能按「' + lower.name + '」结算';
+        tier = lower;
+      }
+    }
+
     var add = { loot: 1, rep: 1, loss: 0, note: [] };
 
     /* ① 作战目标本身的倍率 */
@@ -143,6 +161,7 @@
     }
 
     /* ⑦ 战报一行：让玩家知道"这一仗为什么拿得多/死得多" */
+    if (lvNote) add.note.push('⚠ ' + lvNote);
     if (GAME.log && GAME.log.war && (tier.id !== 'annihilate' || add.note.length)) {
       GAME.log.war('🎯 ' + tier.name + '（我军 ' + U.numText(myTotal, 0) + ' vs 守军 '
         + U.numText(foeTotal, 0) + '）：战利品 ×' + Math.round(add.loot * 100) / 100

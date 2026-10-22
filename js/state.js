@@ -4518,6 +4518,8 @@ import './data.js';
     var simOpts = {
       kind: 'city', sieging: true, defName: city.name,
       wallLv: wallLv, towers: towers, playerDef: true,
+      /* v96：守城时**我方守军**也吃兵员等级（这座城训到几级就是几级） */
+      defLv: (GAME.trooplv && GAME.trooplv.mapOf) ? GAME.trooplv.mapOf(city) : null,
     };
     var result = null;
     /* v89.118：与出征同办 —— **开打那一刻的加成快照**（科技/天时/羁绊/战鼓）。

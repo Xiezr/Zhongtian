@@ -41,6 +41,7 @@ import './wonderwar.js'; /* 奇观归属：全图唯一的争夺点 */
 import './delve.js';     /* 地下远征：逐层，撤不撤每层都要重新决定 */
 import './unrest.js';    /* 民怨攒到头，城会自己反 */
 import './expose.js';    /* 你点亮一格，别人也就看见你了 */
+import './trooplv.js';   /* v96：兵员等级 —— 一级斥候、二级斥候（进战斗 + 任务门槛） */
 import './gltf.js';
 import './map3d.js';
 import './battle.js';
@@ -1440,6 +1441,12 @@ import './ui.js';
       case 'deck-toggle': (function () {
         var r = GAME.deck ? GAME.deck.toggle(el.getAttribute('data-card')) : { msg: '未加载' };
         ui.toast(r.msg); ui.openWorldPanel();
+      })(); break;
+      case 'trooplv-up': (function () {
+        var r = GAME.trooplv
+          ? GAME.trooplv.up(GAME.city.byId(el.getAttribute('data-cid')), el.getAttribute('data-tid'))
+          : { msg: '兵员等级未加载' };
+        ui.toast(r.msg); ui.openWorldPanel(); GAME.refreshView();
       })(); break;
       case 'skill-arm': (function () {
         var r = GAME.setskill ? GAME.setskill.arm(el.getAttribute('data-sid')) : { msg: '未加载' };
