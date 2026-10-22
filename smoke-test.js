@@ -39770,6 +39770,203 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var cell = (c.cells || []).filter(function (x) { return x.build && x.build.id === 'nongtian'; })[0];
       return cell ? ('农垦 Lv' + cell.build.lvl) : '?';
     })());
+
+    console.log('\n===== 309. v93.6 别人也在做决定（性格 · 恩怨 · 意图）=====');
+
+    var fc = (function () {
+      G.newGame({ name: '纵横', cityName: '灰岗', mapSeed: 4321 });
+      G.faction.ensure();
+      G.state.allies = {}; G.state.truces = {};
+      var a = G.faction.arr();
+      a.forEach(function (x) { x.standing = { g: 0, f: 0, t: 0 }; });
+      return a.slice();
+    })();
+
+    check('§309① 恩怨分三个数（怨 / 惧 / 信），不是一根好感条', (function () {
+      if (!fc.length) return false;
+      var s = G.faction.standingOf(fc[0].id);
+      return typeof s.g === 'number' && typeof s.f === 'number' && typeof s.t === 'number';
+    })());
+
+    check('§309② 攻破核心 → 它既恨你又怕你（怨 + 惧 都涨）', (function () {
+      if (!fc.length) return false;
+      var f = fc[0];
+      f.standing = { g: 0, f: 0, t: 0 };
+      G.faction.onRaidWin(f.id);
+      var s = G.faction.standingOf(f.id);
+      return s.g > 0 && s.f > 0;
+    })(), (function () {
+      var s = G.faction.standingOf(fc[0].id);
+      return '怨 ' + s.g + ' · 惧 ' + s.f + ' · 信 ' + s.t;
+    })());
+
+    check('§309③ 你打一家 → 其余各家都看见了（杀鸡儆猴：惧涨）', (function () {
+      if (fc.length < 2) return false;
+      fc.forEach(function (x) { x.standing = { g: 0, f: 0, t: 0 }; });
+      G.faction.onRaidWin(fc[0].id);
+      var others = fc.slice(1).map(function (x) { return G.faction.standingOf(x.id); });
+      return others.every(function (s) { return s.f > 0; });
+    })(), (function () {
+      var n = 0;
+      fc.slice(1).forEach(function (x) { if (G.faction.standingOf(x.id).f > 0) n++; });
+      return fc.length - 1 + ' 家里有 ' + n + ' 家开始怕你';
+    })());
+
+    check('§309④ 纳贡 → 信任涨、怨恨降（钱能买到的东西只有这个）', (function () {
+      if (!fc.length) return false;
+      var f = fc[0];
+      f.standing = { g: 40, f: 10, t: 0 };
+      var c = G.currentCity();
+      c.res = c.res || {};
+      c.res.grain = 999999; c.res.iron = 999999;
+      G.state.truces = {};
+      var r = G.faction.tribute(f.id);
+      var s = G.faction.standingOf(f.id);
+      return r.ok && s.t > 0 && s.g < 40;
+    })(), (function () {
+      var s = G.faction.standingOf(fc[0].id);
+      return '怨 ' + s.g + ' · 信 ' + s.t;
+    })());
+
+    check('§309⑤ 意图：没人注意你时是「推进」', (function () {
+      if (!fc.length) return false;
+      fc.forEach(function (x) { x.standing = { g: 0, f: 0, t: 0 }; });
+      G.state.allies = {}; G.state.truces = {};
+      var it = G.faction.intentOf(fc[0].id);
+      /* 商盟是逐利的，永远 trade —— 用铁砧测 expand */
+      var raider = fc.filter(function (x) {
+        var d = G.faction.defOf(x.id) || {};
+        return d.persona === 'raider';
+      })[0] || fc[0];
+      return G.faction.intentOf(raider.id).id === 'expand';
+    })(), (function () {
+      var raider = fc.filter(function (x) {
+        var d = G.faction.defOf(x.id) || {};
+        return d.persona === 'raider';
+      })[0];
+      return raider ? ('铁砧意图：' + G.faction.intentOf(raider.id).name) : '?';
+    })());
+
+    check('§309⑥ 恨到一定程度 → 「集结」（且理由说得出来）', (function () {
+      if (!fc.length) return false;
+      var f = fc.filter(function (x) {
+        var d = G.faction.defOf(x.id) || {};
+        return d.persona === 'raider';
+      })[0];
+      if (!f) return false;
+      f.standing = { g: 60, f: 10, t: 0 };
+      var it = G.faction.intentOf(f.id);
+      return it.id === 'hunt' && /恨你/.test(it.because);
+    })(), (function () { return fc.length ? G.faction.intentOf(fc[0].id).name : '?'; })());
+
+    check('§309⑦ 怕到一定程度 → 「绕着你走」（恨也没用）', (function () {
+      if (!fc.length) return false;
+      var f = fc.filter(function (x) {
+        var d = G.faction.defOf(x.id) || {};
+        return d.persona === 'raider';
+      })[0];
+      if (!f) return false;
+      f.standing = { g: 90, f: 90, t: 0 };     /* 又恨又怕 */
+      var it = G.faction.intentOf(f.id);
+      return it.id === 'avoid';
+    })());
+
+    check('§309⑧ 焰誓不怕你（畏惧 90 仍然「集结」）', (function () {
+      var zealot = fc.filter(function (x) {
+        var d = G.faction.defOf(x.id) || {};
+        return d.persona === 'zealot';
+      })[0];
+      if (!zealot) return true;                 /* 没这家就不算失败 */
+      zealot.standing = { g: 90, f: 90, t: 0 };
+      var it = G.faction.intentOf(zealot.id);
+      return it.id === 'hunt';
+    })(), (function () {
+      var z = fc.filter(function (x) { return (G.faction.defOf(x.id) || {}).persona === 'zealot'; })[0];
+      return z ? G.faction.intentOf(z.id).name : '无';
+    })());
+
+    check('§309⑨ 灰墙不出去（恨到 60 也只是「加固」，不是「集结」）', (function () {
+      var holder = fc.filter(function (x) {
+        var d = G.faction.defOf(x.id) || {};
+        return d.persona === 'holder';
+      })[0];
+      if (!holder) return true;
+      holder.standing = { g: 60, f: 5, t: 0 };
+      return G.faction.intentOf(holder.id).id === 'fortify';
+    })(), (function () {
+      var h = fc.filter(function (x) { return (G.faction.defOf(x.id) || {}).persona === 'holder'; })[0];
+      return h ? G.faction.intentOf(h.id).name : '无';
+    })());
+
+    check('§309⑩ 商盟只做生意（恨到满也不打你）', (function () {
+      var tr = fc.filter(function (x) {
+        var d = G.faction.defOf(x.id) || {};
+        return d.persona === 'trader';
+      })[0];
+      if (!tr) return true;
+      tr.standing = { g: 100, f: 0, t: 0 };
+      return G.faction.intentOf(tr.id).id === 'trade';
+    })());
+
+    check('§309⑪ 意图真的改变推进速率（集结 > 推进 > 加固 > 绕开）', (function () {
+      var f = fc.filter(function (x) {
+        var d = G.faction.defOf(x.id) || {};
+        return d.persona === 'raider';
+      })[0];
+      if (!f) return false;
+      function growUnder(standing) {
+        f.standing = standing;
+        f.r = 4;
+        G.state.world.elapsed = 0;
+        G.state.factions.lastMonth = -1;
+        G.faction.tick();                       /* 记基准 */
+        G.state.world.elapsed = 4800;           /* 跨一个月 */
+        G.faction.tick();
+        var out = f.r - 4;
+        f.r = 4;
+        return out;
+      }
+      var gHunt = growUnder({ g: 60, f: 10, t: 0 });
+      var gExpand = growUnder({ g: 0, f: 0, t: 0 });
+      var gAvoid = growUnder({ g: 90, f: 90, t: 0 });
+      return gHunt > gExpand && gExpand > gAvoid && gAvoid >= 0;
+    })(), (function () {
+      var f = fc[0];
+      return '本月半径 ' + f.r;
+    })());
+
+    check('§309⑫ 世仇互战更狠（同一对，加了 feudMul）', (function () {
+      var anvil = fc.filter(function (x) { return (G.faction.defOf(x.id) || {}).persona === 'raider'; })[0];
+      var wall = fc.filter(function (x) { return (G.faction.defOf(x.id) || {}).persona === 'holder'; })[0];
+      if (!anvil || !wall) return false;
+      if (!G.faction.isFeud(anvil.id, wall.id)) return false;
+      var g0 = (DATA.FACTION.clashGain || 0.35);
+      var g1 = g0 * (DATA.FACTION.feudMul || 1.6);
+      anvil.r = 8; wall.r = 8;
+      anvil.standing = { g: 0, f: 0, t: 0 }; wall.standing = { g: 0, f: 0, t: 0 };
+      var res = G.faction._clash(anvil.id, wall.id);
+      if (!res) return false;
+      var win = res.winner === anvil.id ? anvil : wall;
+      var lose = res.loser === anvil.id ? anvil : wall;
+      /* 世仇：赢家涨 g1 而不是 g0 */
+      return Math.abs(win.r - (8 + g1)) < 0.01 && Math.abs(lose.r - (8 - g1)) < 0.01;
+    })(), (function () {
+      return '世仇加成 ×' + (DATA.FACTION.feudMul || 1.6);
+    })());
+
+    check('§309⑬ stats 每家都带 intent / stand / persona（面板才显示得出来）', (function () {
+      var st = G.faction.stats();
+      if (!st.length) return false;
+      for (var i = 0; i < st.length; i++) {
+        if (!st[i].intent || !st[i].intent.name) return false;
+        if (!st[i].stand || typeof st[i].stand.g !== 'number') return false;
+        if (!st[i].persona) return false;
+      }
+      return true;
+    })(), (function () {
+      var st = G.faction.stats();
+      return st.map(function (x) { return x.name + '→' + x.intent.name; }).join(' · ');
+    })());
 console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');
   process.exit(FAIL ? 1 : 0);
 })();

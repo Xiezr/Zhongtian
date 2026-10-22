@@ -4777,12 +4777,58 @@ import './core.js';
     clashGain: 0.35,
     clashEveryMonths: 3,
     tributePerR: { grain: 200, iron: 100 },
+    /* ============================================================
+     * v93.6（老板：「别人也在做决定」）
+     * ------------------------------------------------------------
+     * 原来四家只有一个 `aggr` —— 它们**只有一种行为**：往前推。
+     * 你打它、给它钱、跟它结盟，它下一回合还是那样推；四家之间也没有恩怨。
+     * 那不是四个军阀，是四个数值。
+     *
+     * 现在每家有三样东西：
+     *   · persona —— 性格（决定它**怎么算**，不是决定它多快）
+     *   · rivals  —— 世仇（四家之间的账，与玩家无关）
+     *   · line    —— 一句话把它说成人
+     * ============================================================ */
     list: [
-      { id: 'anvil', name: '铁砧', trait: '侵略', aggr: 1.4 },
-      { id: 'wall', name: '灰墙', trait: '守成', aggr: 0.6 },
-      { id: 'oath', name: '焰誓', trait: '狂热', aggr: 1.2 },
-      { id: 'guild', name: '商盟', trait: '贸易', aggr: 0.8 }
-    ]
+      { id: 'anvil', name: '铁砧', trait: '侵略', aggr: 1.4, persona: 'raider', rivals: ['wall'],
+        line: '他们会一直往前推，直到撞上什么。' },
+      { id: 'wall', name: '灰墙', trait: '守成', aggr: 0.6, persona: 'holder', rivals: ['anvil'],
+        line: '他们不出去，但也一步不让。' },
+      { id: 'oath', name: '焰誓', trait: '狂热', aggr: 1.2, persona: 'zealot', rivals: ['guild'],
+        line: '他们烧东西，因为他们相信这样是对的。' },
+      { id: 'guild', name: '商盟', trait: '贸易', aggr: 0.8, persona: 'trader', rivals: ['oath'],
+        line: '他们什么都买，包括人。' }
+    ],
+
+    /* 性格的表：huntAt = 怨恨到这个数就集结打你；
+       avoidAt = 畏惧到这个数就绕着你走（两个都越高越不要命）。
+       焰誓的 avoidAt 是 95 —— **它不怕你**，这是它唯一的特点。 */
+    persona: {
+      raider: { name: '掠夺', huntAt: 45, avoidAt: 70, expandMul: 1.0, huntMul: 1.6,
+        note: '撞上什么就碾过去' },
+      holder: { name: '守成', huntAt: 80, avoidAt: 40, expandMul: 0.6, huntMul: 1.1,
+        note: '不出去，但一步不让' },
+      zealot: { name: '狂热', huntAt: 55, avoidAt: 95, expandMul: 1.0, huntMul: 1.5,
+        note: '不怕你，也不怕死' },
+      trader: { name: '逐利', huntAt: 999, avoidAt: 30, expandMul: 0.9, huntMul: 1.0,
+        note: '不打，但要赚' }
+    },
+
+    /* 恩怨记账：你做了什么 → 它怎么记住。
+       g = 怨恨 · f = 畏惧 · t = 信任（三样可以同时高：
+       一个又恨又怕你的人，和一个又恨又不怕你的人，做的事完全不同）。 */
+    standing: {
+      raidWin:    { g: 22, f: 16, t: -12 },   /* 你攻破它的核心 */
+      invasionHeld: { g: 9, f: 12, t: 0 },    /* 你顶住了它的远征 */
+      invasionBroke: { g: 4, f: -6, t: -6 },  /* 它破了你的城 */
+      tribute:    { g: -8, f: 0, t: 12 },     /* 你纳贡 */
+      ally:       { g: -14, f: 0, t: 22 },    /* 结盟 */
+      provocation: { g: 6, f: 0, t: -3 },     /* 你派将挑衅它 */
+      witness:    { g: 0, f: 7, t: -2 },      /* 你打了别家 —— 它看见了 */
+      giftFloor:  { g: -4, f: 0, t: 3 }       /* 它心情好时送的（见 intent=trade） */
+    },
+    /* 世仇互战的加成：有世仇的两家打起来更狠（半径变化 ×1.6） */
+    feudMul: 1.6
   };
 
   DATA.EXPEDITION = {

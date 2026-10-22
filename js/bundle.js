@@ -4791,12 +4791,58 @@ window.GAME = window.GAME || {};
     clashGain: 0.35,
     clashEveryMonths: 3,
     tributePerR: { grain: 200, iron: 100 },
+    /* ============================================================
+     * v93.6（老板：「别人也在做决定」）
+     * ------------------------------------------------------------
+     * 原来四家只有一个 `aggr` —— 它们**只有一种行为**：往前推。
+     * 你打它、给它钱、跟它结盟，它下一回合还是那样推；四家之间也没有恩怨。
+     * 那不是四个军阀，是四个数值。
+     *
+     * 现在每家有三样东西：
+     *   · persona —— 性格（决定它**怎么算**，不是决定它多快）
+     *   · rivals  —— 世仇（四家之间的账，与玩家无关）
+     *   · line    —— 一句话把它说成人
+     * ============================================================ */
     list: [
-      { id: 'anvil', name: '铁砧', trait: '侵略', aggr: 1.4 },
-      { id: 'wall', name: '灰墙', trait: '守成', aggr: 0.6 },
-      { id: 'oath', name: '焰誓', trait: '狂热', aggr: 1.2 },
-      { id: 'guild', name: '商盟', trait: '贸易', aggr: 0.8 }
-    ]
+      { id: 'anvil', name: '铁砧', trait: '侵略', aggr: 1.4, persona: 'raider', rivals: ['wall'],
+        line: '他们会一直往前推，直到撞上什么。' },
+      { id: 'wall', name: '灰墙', trait: '守成', aggr: 0.6, persona: 'holder', rivals: ['anvil'],
+        line: '他们不出去，但也一步不让。' },
+      { id: 'oath', name: '焰誓', trait: '狂热', aggr: 1.2, persona: 'zealot', rivals: ['guild'],
+        line: '他们烧东西，因为他们相信这样是对的。' },
+      { id: 'guild', name: '商盟', trait: '贸易', aggr: 0.8, persona: 'trader', rivals: ['oath'],
+        line: '他们什么都买，包括人。' }
+    ],
+
+    /* 性格的表：huntAt = 怨恨到这个数就集结打你；
+       avoidAt = 畏惧到这个数就绕着你走（两个都越高越不要命）。
+       焰誓的 avoidAt 是 95 —— **它不怕你**，这是它唯一的特点。 */
+    persona: {
+      raider: { name: '掠夺', huntAt: 45, avoidAt: 70, expandMul: 1.0, huntMul: 1.6,
+        note: '撞上什么就碾过去' },
+      holder: { name: '守成', huntAt: 80, avoidAt: 40, expandMul: 0.6, huntMul: 1.1,
+        note: '不出去，但一步不让' },
+      zealot: { name: '狂热', huntAt: 55, avoidAt: 95, expandMul: 1.0, huntMul: 1.5,
+        note: '不怕你，也不怕死' },
+      trader: { name: '逐利', huntAt: 999, avoidAt: 30, expandMul: 0.9, huntMul: 1.0,
+        note: '不打，但要赚' }
+    },
+
+    /* 恩怨记账：你做了什么 → 它怎么记住。
+       g = 怨恨 · f = 畏惧 · t = 信任（三样可以同时高：
+       一个又恨又怕你的人，和一个又恨又不怕你的人，做的事完全不同）。 */
+    standing: {
+      raidWin:    { g: 22, f: 16, t: -12 },   /* 你攻破它的核心 */
+      invasionHeld: { g: 9, f: 12, t: 0 },    /* 你顶住了它的远征 */
+      invasionBroke: { g: 4, f: -6, t: -6 },  /* 它破了你的城 */
+      tribute:    { g: -8, f: 0, t: 12 },     /* 你纳贡 */
+      ally:       { g: -14, f: 0, t: 22 },    /* 结盟 */
+      provocation: { g: 6, f: 0, t: -3 },     /* 你派将挑衅它 */
+      witness:    { g: 0, f: 7, t: -2 },      /* 你打了别家 —— 它看见了 */
+      giftFloor:  { g: -4, f: 0, t: 3 }       /* 它心情好时送的（见 intent=trade） */
+    },
+    /* 世仇互战的加成：有世仇的两家打起来更狠（半径变化 ×1.6） */
+    feudMul: 1.6
   };
 
   DATA.EXPEDITION = {
@@ -27993,11 +28039,19 @@ window.GAME = window.GAME || {};
     if (first) return null;                          /* 第一次只记基准，不推进 */
     var c = cfg();
     arr.forEach(function (f) {
-      if (FA.truceLeft(f.id) > 0) return;         /* v92.11：纳贡期内停手 */
-      if (FA.isAlly(f.id)) return;                /* v92.17：盟友期内部扩张 */
+      /* v93.6：**它想干什么，决定它长多快**。
+         以前四家一段代码、一个速率；现在"集结"真的比"推进"快，
+         "绕着你走"真的几乎不涨 —— 否则 intent 只是面板上的一句话。 */
+      var it = FA.intentOf(f.id);
+      if (it.id === 'ally' || it.id === 'truce') return;   /* 盟友 / 收了钱的，不动 */
       var d = FA.defOf(f.id) || {};
+      var pm = FA.personaOf(f.id);
+      var mul = pm.expandMul;
+      if (it.id === 'hunt') mul = pm.huntMul;
+      else if (it.id === 'avoid') mul = 0.15;              /* 怕你：几乎不往这边推 */
+      else if (it.id === 'fortify') mul = 0.35;            /* 守成：修墙比扩地重要 */
       /* v92.8：年景（B5）—— 战年军阀并起，推进翻倍。 */
-      var g = (c.growPerMonth || 0.8) * (d.aggr || 1) * (GAME.yearMulOf ? GAME.yearMulOf('factionMul') : 1);
+      var g = (c.growPerMonth || 0.8) * (d.aggr || 1) * (GAME.yearMulOf ? GAME.yearMulOf('factionMul') : 1) * mul;
       f.r = Math.min(c.maxR || 14, Math.round((f.r + g) * 100) / 100);
     });
     /* v92.17：**互战** —— 每 clashEveryMonths 个月，领地相交的两家打一场。
@@ -28085,6 +28139,7 @@ window.GAME = window.GAME || {};
     st.truces = st.truces || {};
     var months = cfg().truceMonths || 6;
     st.truces[fid] = FA.monthNow() + months;
+    FA.remember(fid, 'tribute');          /* v93.6：给钱，它记你的好（也只记钱）*/
     return { ok: true, msg: '向' + def.name + '纳贡：粮 −' + U.numText(cost.grain, 0)
       + '、铁 −' + U.numText(cost.iron, 0) + '，换它 ' + months + ' 个月不动' };
   };
@@ -28140,6 +28195,9 @@ window.GAME = window.GAME || {};
     var before = f.r;
     f.r = Math.max(2, Math.round((f.r * 0.5) * 100) / 100);
     f.hit = (f.hit || 0) + 1;
+    /* v93.6：它记住了（恨 + 怕），**其余各家也看见了**（怕） */
+    FA.remember(fid, 'raidWin');
+    FA.witnessed(fid);
     var d = FA.defOf(fid) || {};
     return {
       before: before, after: f.r,
@@ -28190,6 +28248,7 @@ window.GAME = window.GAME || {};
     st.allies = st.allies || {};
     var months = cfg().allyMonths || 12;
     st.allies[fid] = FA.monthNow() + months;
+    FA.remember(fid, 'ally');             /* v93.6：盟约比纳贡重得多 */
     return { ok: true, msg: '与' + def.name + '结盟：粮 −' + U.numText(cost.grain, 0)
       + '、铁 −' + U.numText(cost.iron, 0) + '，它 ' + months + ' 个月不再扩张' };
   };
@@ -28208,6 +28267,7 @@ window.GAME = window.GAME || {};
     var roll = GAME.invasionRoll ? GAME.invasionRoll('clash|' + aId + '|' + bId + '|' + FA.monthNow()) : 0.5;
     var aWins = (sa / (sa + sb)) > roll;
     var gain = cfg().clashGain || 0.35;
+    if (FA.isFeud(aId, bId)) gain *= (cfg().feudMul || 1.6);   /* v93.6：世仇打得更狠 */
     var win = aWins ? A : B, lose = aWins ? B : A;
     win.r = Math.min(cfg().maxR || 14, Math.round((win.r + gain) * 100) / 100);
     lose.r = Math.max(2, Math.round((lose.r - gain) * 100) / 100);
@@ -28218,6 +28278,15 @@ window.GAME = window.GAME || {};
   };
 
   /* 挑拨：花钱让两家立刻打一场 */
+  /* v93.6：**世仇** —— 它们之间的账，与你无关。
+     四家不是互相等价的关系：铁砧要推平灰墙的墙，焰誓要烧商盟的货栈。
+     有世仇的两家打起来更狠（半径变化 ×feudMul），也更频繁（见 tick 的对手挑选）。 */
+  FA.isFeud = function (aId, bId) {
+    var da = FA.defOf(aId);
+    if (!da || !da.rivals) return false;
+    return da.rivals.indexOf(bId) >= 0;
+  };
+
   FA.incite = function (aId, bId) {
     var st = GAME.state;
     if (!st) return { ok: false, msg: '无存档' };
@@ -28319,6 +28388,8 @@ window.GAME = window.GAME || {};
     f.r = held
       ? Math.max(2, Math.round((f.r - 0.3) * 100) / 100)
       : Math.min(cfg().maxR || 14, Math.round((f.r + 0.3) * 100) / 100);
+    /* v93.6：打赢它，它更恨你也更怕你；它打赢你，它觉得你没那么可怕 */
+    FA.remember(fid, held ? 'invasionHeld' : 'invasionBroke');
     return { before: before, after: f.r, held: !!held,
       msg: held
         ? ('你顶住了' + (d.name || fid) + ' 的远征：它的版图从 ' + before + ' 缩到 ' + f.r)
@@ -28337,6 +28408,11 @@ window.GAME = window.GAME || {};
         r: f.r, cells: Math.round(3 * f.r * f.r), near: near,
         truce: FA.truceLeft(f.id),
         ally: FA.allyLeft(f.id),
+        /* v93.6：**它现在想干什么** —— 面板最该显示的不是半径，是意图 */
+        intent: FA.intentOf(f.id),
+        stand: FA.standingOf(f.id),
+        persona: FA.personaOf(f.id).name,
+        word: d.line || '',
         /* v92.23：惊动次数（在它地盘上动过几次兵）—— 玩家要能看见"它为什么变凶了" */
         alarm: f.alarm | 0,
         /* v92.12（A8「迷雾里的势力」）：**没探明它的核心，就不知道它是谁**。
@@ -28362,6 +28438,90 @@ window.GAME = window.GAME || {};
   };
 
   /* 一行文字（面板与战报共用，避免两处措辞不一致） */
+  /* ============================================================
+   * v93.6：**恩怨账** —— 它们记得你做过什么
+   * ------------------------------------------------------------
+   * 三个数（0~100），可以同时很高：
+   *   g 怨恨 · f 畏惧 · t 信任
+   * 一个"又恨又怕你"的家会绕着你走；一个"又恨又不怕你"的家会来打你。
+   * 只用一个数（比如"好感度"）表达不了这件事 —— 那正是原来四个数值的问题。
+   *
+   * ⚠️ 刻意**不衰减**：做过的事不会因为时间过去就变淡（与名声同一条尺子）。
+   *    想改善只有一条路：给它钱、跟它结盟、或者把它打怕。
+   * ============================================================ */
+  FA.standingOf = function (fid) {
+    var arr = FA.arr();
+    for (var i = 0; i < arr.length; i++) {
+      if (arr[i].id !== fid) continue;
+      if (!arr[i].standing) arr[i].standing = { g: 0, f: 0, t: 0 };
+      return arr[i].standing;
+    }
+    return { g: 0, f: 0, t: 0 };
+  };
+
+  /* 它记住了一件事。kind 见 DATA.FACTION.standing */
+  FA.remember = function (fid, kind) {
+    var w = (cfg().standing || {})[kind];
+    if (!w) return null;
+    var st = FA.standingOf(fid);
+    st.g = Math.max(0, Math.min(100, (st.g | 0) + (w.g || 0)));
+    st.f = Math.max(0, Math.min(100, (st.f | 0) + (w.f || 0)));
+    st.t = Math.max(0, Math.min(100, (st.t | 0) + (w.t || 0)));
+    return st;
+  };
+
+  /* 你打了某一家 → **其余各家都看见了**（杀鸡儆猴）。
+     这是"世界在看着你"的具体形状：不是所有家都恨你，但它们都开始怕你。 */
+  FA.witnessed = function (exceptId) {
+    var arr = FA.arr();
+    for (var i = 0; i < arr.length; i++) {
+      if (arr[i].id === exceptId) continue;
+      FA.remember(arr[i].id, 'witness');
+    }
+  };
+
+  FA.personaOf = function (fid) {
+    var d = FA.defOf(fid) || {};
+    var P = (cfg().persona || {});
+    return P[d.persona] || P.raider || { name: '掠夺', huntAt: 45, avoidAt: 70, expandMul: 1, huntMul: 1.5, note: '' };
+  };
+
+  /* ============================================================
+   * FA.intentOf —— **它下一步想干什么**
+   * ------------------------------------------------------------
+   * 这是整个模块唯一真正重要的出口：不是"它有多少半径"，
+   * 是"它打算拿这个半径做什么"。玩家要能读到这个。
+   *
+   * 返回 { id, name, note, because }
+   *   ally / truce  —— 现在不会动你（原因写清楚）
+   *   trade         —— 逐利的，永远想做生意
+   *   avoid         —— 怕你，绕着你走（半径几乎不涨）
+   *   hunt          —— 恨你且不怕你，集结（半径涨得快）
+   *   fortify       —— 守成的，恨你但不出去（扩得慢）
+   *   expand        —— 默认：往前推
+   * ============================================================ */
+  FA.intentOf = function (fid) {
+    var st = FA.standingOf(fid);
+    var pm = FA.personaOf(fid);
+    var d = FA.defOf(fid) || {};
+    if (FA.isAlly(fid)) return { id: 'ally', name: '盟友', because: '你给了它粮，它现在不动你', note: '按兵不动' };
+    var tl = FA.truceLeft(fid);
+    if (tl > 0) return { id: 'truce', name: '收了钱', because: '纳贡换来的 ' + tl + ' 个月', note: '按兵不动' };
+    if ((d.persona || '') === 'trader') {
+      return { id: 'trade', name: '做生意', because: '它不打仗，它买', note: '想要你的粮和铁' };
+    }
+    if (st.f >= pm.avoidAt) {
+      return { id: 'avoid', name: '绕着你走', because: '它怕你（畏惧 ' + Math.round(st.f) + '）', note: '不敢往你这边推' };
+    }
+    if (st.g >= pm.huntAt) {
+      return { id: 'hunt', name: '集结', because: '它恨你（怨恨 ' + Math.round(st.g) + '）', note: '正在纠集人手' };
+    }
+    if ((d.persona || '') === 'holder' && st.g >= 20) {
+      return { id: 'fortify', name: '加固', because: '它恨你，但它不出去', note: '在修墙' };
+    }
+    return { id: 'expand', name: '推进', because: '还没注意到你', note: '往外扩' };
+  };
+
   FA.lineOf = function (x) {
     if (!x) return '';
     return x.name + '（' + x.trait + '）· 半径 ' + x.r + ' ≈ ' + U.numText(x.cells, 0) + ' 格'
@@ -48245,13 +48405,31 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
           + '</div>';
         return;
       }
+      /* v93.6：**它想干什么**放在第一行。
+         以前这一格只有"半径 12 格"，玩家看得出它多大，看不出它要做什么 ——
+         而"会不会打我"才是玩家真正在算的那件事。 */
+      var _it = x.intent || null;
+      var _itColor = !_it ? 'var(--text-dim)'
+        : (_it.id === 'hunt' ? 'var(--red-light)'
+          : (_it.id === 'avoid' ? 'var(--green-ok)'
+            : (_it.id === 'ally' || _it.id === 'truce' ? 'var(--gold-light)' : 'var(--text-dim)')));
       h += '<div style="font-size:var(--fs-cap);line-height:1.5;">'
-        + '<b>' + U.escape(x.name) + '</b> <span style="color:var(--text-dim);">' + U.escape(x.trait) + '</span><br>'
+        + '<b>' + U.escape(x.name) + '</b> <span style="color:var(--text-dim);">' + U.escape(x.trait) + '</span>'
+        + (_it ? ('　<span style="color:' + _itColor + ';font-weight:700;">' + U.escape(_it.name) + '</span>') : '')
+        + '<br>'
+        + (_it ? ('<span style="color:' + _itColor + ';">' + U.escape(_it.because) + '</span><br>') : '')
         + '半径 ' + x.r + ' · 约 ' + U.numText(x.cells, 0) + ' 格'
         + (x.near != null ? '<br><span style="color:var(--text-dim);">距你 ' + Math.round(x.near) + ' 格</span>' : '')
         + (x.truce > 0 ? ('<br><span style="color:var(--gold-light);">🤝 停战中（剩 ' + x.truce + ' 月）</span>') : '')
         + (x.ally > 0 ? ('<br><span style="color:var(--green-ok);">🛡 盟友（剩 ' + x.ally + ' 月不扩张）</span>') : '')
         + (x.alarm > 0 ? ('<br><span style="color:var(--red-light);">👁 已惊动 ' + x.alarm + ' 次（每次 +0.15 格）</span>') : '')
+        /* v93.6：它怎么看你 —— 怨恨 / 畏惧 / 信任，三个数分开显示。
+           合成一个"好感度"会让玩家看不出"它到底是怕我还是恨我"，
+           而这两者对应的后果完全相反。 */
+        + (x.stand && (x.stand.g || x.stand.f || x.stand.t)
+          ? ('<br><span style="color:var(--text-dim);">怨 ' + Math.round(x.stand.g)
+            + ' · 惧 ' + Math.round(x.stand.f) + ' · 信 ' + Math.round(x.stand.t) + '</span>')
+          : '')
         + '<br><button class="btn" style="font-size:var(--fs-cap);padding:1px 8px;margin-top:3px;"'
         + ' data-action="duel-with" data-fid="' + x.id + '">⚔ 叫阵</button>'
         + (x.truce > 0 ? '' : ('<button class="btn" style="font-size:var(--fs-cap);padding:1px 8px;margin:3px 0 0 4px;"'

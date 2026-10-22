@@ -8149,13 +8149,31 @@ import './state.js';
           + '</div>';
         return;
       }
+      /* v93.6：**它想干什么**放在第一行。
+         以前这一格只有"半径 12 格"，玩家看得出它多大，看不出它要做什么 ——
+         而"会不会打我"才是玩家真正在算的那件事。 */
+      var _it = x.intent || null;
+      var _itColor = !_it ? 'var(--text-dim)'
+        : (_it.id === 'hunt' ? 'var(--red-light)'
+          : (_it.id === 'avoid' ? 'var(--green-ok)'
+            : (_it.id === 'ally' || _it.id === 'truce' ? 'var(--gold-light)' : 'var(--text-dim)')));
       h += '<div style="font-size:var(--fs-cap);line-height:1.5;">'
-        + '<b>' + U.escape(x.name) + '</b> <span style="color:var(--text-dim);">' + U.escape(x.trait) + '</span><br>'
+        + '<b>' + U.escape(x.name) + '</b> <span style="color:var(--text-dim);">' + U.escape(x.trait) + '</span>'
+        + (_it ? ('　<span style="color:' + _itColor + ';font-weight:700;">' + U.escape(_it.name) + '</span>') : '')
+        + '<br>'
+        + (_it ? ('<span style="color:' + _itColor + ';">' + U.escape(_it.because) + '</span><br>') : '')
         + '半径 ' + x.r + ' · 约 ' + U.numText(x.cells, 0) + ' 格'
         + (x.near != null ? '<br><span style="color:var(--text-dim);">距你 ' + Math.round(x.near) + ' 格</span>' : '')
         + (x.truce > 0 ? ('<br><span style="color:var(--gold-light);">🤝 停战中（剩 ' + x.truce + ' 月）</span>') : '')
         + (x.ally > 0 ? ('<br><span style="color:var(--green-ok);">🛡 盟友（剩 ' + x.ally + ' 月不扩张）</span>') : '')
         + (x.alarm > 0 ? ('<br><span style="color:var(--red-light);">👁 已惊动 ' + x.alarm + ' 次（每次 +0.15 格）</span>') : '')
+        /* v93.6：它怎么看你 —— 怨恨 / 畏惧 / 信任，三个数分开显示。
+           合成一个"好感度"会让玩家看不出"它到底是怕我还是恨我"，
+           而这两者对应的后果完全相反。 */
+        + (x.stand && (x.stand.g || x.stand.f || x.stand.t)
+          ? ('<br><span style="color:var(--text-dim);">怨 ' + Math.round(x.stand.g)
+            + ' · 惧 ' + Math.round(x.stand.f) + ' · 信 ' + Math.round(x.stand.t) + '</span>')
+          : '')
         + '<br><button class="btn" style="font-size:var(--fs-cap);padding:1px 8px;margin-top:3px;"'
         + ' data-action="duel-with" data-fid="' + x.id + '">⚔ 叫阵</button>'
         + (x.truce > 0 ? '' : ('<button class="btn" style="font-size:var(--fs-cap);padding:1px 8px;margin:3px 0 0 4px;"'
