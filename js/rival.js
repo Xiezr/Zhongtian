@@ -280,19 +280,74 @@
    *   · 预警在 `tick` 里给（他们刚把目标定成城的那一月），
    *     玩家有时间补守军、建工事、或者花 300 兵去驱赶 —— 不是偷袭。
    * ============================================================ */
+  /* ============================================================
+   * v108（A10 双向情报差）：他们只知道**上次探到的**你
+   * ------------------------------------------------------------
+   * 之前 raidCity 直接读 `GAME.armyTotal(city)` —— 对手全知。
+   * 于是"补防"和"藏兵"这两个动作在世界上都不存在：你怎么调，它都知道。
+   *
+   * 现在它拿的是一份**带误差、会过期**的情报：
+   *   · 第一次盯上这座城 → 当场看一眼（不然它永远不动手）；
+   *   · 之后只有"离得够近（scoutRange）并且过了 intelCd 个月"才刷新，
+   *     而且刷出来的数字有 ±intelErr 的误差；
+   *   · 离得远 → 你的调动它完全看不见。
+   *
+   * 于是：补防在两三个月内是隐形的（它照旧来撞墙、折人）；
+   *       把兵调走也是隐形的（它照样以为你很硬，不敢来）。
+   * **虚张声势和藏兵，第一次都成了真的战术。**
+   * ============================================================ */
+  function intelOf(t, city, m) {
+    var d = D();
+    t.intel = t.intel || {};
+    var rec = t.intel[city.id];
+    var gNow = (GAME.armyTotal ? GAME.armyTotal(city) : 0);
+    var dNow = (GAME.cityDefense ? GAME.cityDefense(city) : 0);
+    if (!rec) {
+      /* 第一次盯上：当场看一眼 —— 没有这一条，情报差就变成了"永远不来" */
+      rec = t.intel[city.id] = { guard: gNow, def: dNow, at: m };
+      return rec;
+    }
+    var sp = (GAME.sphereOf ? GAME.sphereOf() : GAME.sphere);
+    var dist = (sp && sp.distOf && t.ci != null && city.ci != null)
+      ? sp.distOf({ ci: t.ci }, { ci: city.ci }) : 0;
+    var range = d.scoutRange == null ? 12 : d.scoutRange;
+    var cd = d.intelCd == null ? 3 : d.intelCd;
+    if (dist <= range && (m - (rec.at == null ? 0 : rec.at)) >= cd) {
+      var err = d.intelErr == null ? 0.18 : d.intelErr;
+      var jit = function (salt, v) {
+        var r = GAME.invasionRoll
+          ? GAME.invasionRoll('intel|' + t.ci + '|' + city.id + '|' + m + '|' + salt) : 0.5;
+        return Math.max(0, Math.round(v * (1 - err + 2 * err * r)));
+      };
+      rec.guard = jit('g', gNow);
+      rec.def = jit('d', dNow);
+      rec.at = m;
+    }
+    return rec;
+  }
+  RV.intelOf = intelOf;         /* 供面板显示"它以为你多少守军" */
+
   function raidCity(t, city, m) {
     var d = D();
     var cd8 = d.cityCd == null ? 8 : d.cityCd;
     if (city.raidCd != null && (m - city.raidCd) < cd8) return null;
 
+    /* 真实值用于**伤害结算**；判断"打不打得动"用他们的**情报** */
     var guard = (GAME.armyTotal ? GAME.armyTotal(city) : 0);
     var def = (GAME.cityDefense ? GAME.cityDefense(city) : 0);
-    var wall = guard + def;
+    var intel = intelOf(t, city, m);
+    var wall = (intel.guard | 0) + (intel.def | 0);
+    city.raidScouted = { by: t.id || t.name, guard: intel.guard | 0, def: intel.def | 0,
+      real: guard + def, at: intel.at };
     var mine = (t.pop | 0) * (d.cityPowerPerPop == null ? 0.55 : d.cityPowerPerPop);
     var need = wall * (d.cityNeedMul == null ? 1.15 : d.cityNeedMul);
 
-    /* ① 打不进去：他们折人，城只掉一点守军（城防是有用的） */
-    if (mine < need) {
+    /* ① 打不进去：他们折人，城只掉一点守军（城防是有用的）
+       v108：**两重回不了才叫被挡住** —— 他们以为打得动（按情报），
+       但真实的墙还在（你在这三个月里补了兵）。这正是情报差要的效果：
+       他们按旧地图冲上来，撞上新的墙。 */
+    var realWall = guard + def;
+    if (mine < need || mine < realWall * (d.cityNeedMul == null ? 1.15 : d.cityNeedMul)) {
       var died = Math.max(30, Math.round((t.pop | 0) * 0.15));
       t.pop = Math.max(0, (t.pop | 0) - died);
       if ((t.pop | 0) <= 0) t.dead = 'wall';

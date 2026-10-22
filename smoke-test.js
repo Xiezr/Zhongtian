@@ -41878,6 +41878,68 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     st.deck = bak.slice();
   })();
 
+
+  /* ============================================================
+   * §328 · v108（A10 补完）：双向情报差 —— 他们只知道上次探到的你
+   * ------------------------------------------------------------
+   * 之前 raidCity 直接读实时守军，于是"补防"和"藏兵"在世界上都不存在。
+   * 现在他们拿的是**带误差、会过期**的情报：离得近 + 过周期才刷新。
+   * ============================================================ */
+  console.log('\n===== 328. v108 双向情报差：藏兵与虚张声势第一次是真的 =====');
+  (function () {
+    if (!G.rival || !G.rival.intelOf) return;
+    var city = G.currentCity();
+    if (!city) return;
+    var bakArmy = city.army;
+    var t = { id: 'probe_t', name: '探针队', ci: city.ci, pop: 8000 };
+
+    city.army = { buxingji: 200 };
+    var i0 = G.rival.intelOf(t, city, 0);
+
+    check('§328① 第一次盯上 → 当场看一眼（不这样的话它永远不来）', (function () {
+      return (i0.guard | 0) === (G.armyTotal(city) | 0);
+    })(), (function () { return '情报 ' + i0.guard + ' = 实际 ' + G.armyTotal(city); })());
+
+    city.army = { buxingji: 5000 };
+    var i1 = G.rival.intelOf(t, city, 1);
+    check('§328② 没到侦察周期 → 你补的兵它看不见（补防是隐形的）', (function () {
+      return (i1.guard | 0) === (i0.guard | 0) && G.armyTotal(city) > i1.guard * 10;
+    })(), (function () {
+      return '它以为 ' + i1.guard + ' · 实际 ' + G.armyTotal(city);
+    })());
+
+    var i2 = G.rival.intelOf(t, city, 3);
+    check('§328③ 到周期才刷新，而且估不准（±18%）', (function () {
+      var real = G.armyTotal(city);
+      return i2.at === 3 && i2.guard > 0 && Math.abs(i2.guard - real) <= real * 0.25;
+    })(), (function () {
+      return '刷新成 ' + i2.guard + '（实际 ' + G.armyTotal(city) + '）';
+    })());
+
+    city.army = { buxingji: 0 };
+    var i3 = G.rival.intelOf(t, city, 4);
+    check('§328④ 你把兵调走 → 它照样以为你很硬（虚张声势有效）', (function () {
+      return (i3.guard | 0) === (i2.guard | 0) && G.armyTotal(city) === 0;
+    })(), (function () {
+      return '它以为 ' + i3.guard + ' · 实际 ' + G.armyTotal(city);
+    })());
+
+    t.ci = (city.ci + 3000) % 40000;
+    var i4 = G.rival.intelOf(t, city, 30);
+    check('§328⑤ 离得太远 → 情报永远不刷新（看不见的地方就是看不见）', (function () {
+      return (i4.guard | 0) === (i2.guard | 0) && i4.at === 3;
+    })(), (function () { return '第 30 月仍是 ' + i4.guard + '（at=' + i4.at + '）'; })());
+
+    check('§328⑥ 攻城判定用的是情报，不是实时守军（源码口径）', (function () {
+      var s = require('fs').readFileSync(require('path').join(__dirname, 'js', 'rival.js'), 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, '');
+      return s.indexOf('var wall = (intel.guard | 0) + (intel.def | 0);') >= 0
+        && s.indexOf('var realWall = guard + def;') >= 0;
+    })(), (function () { return '判定走 intel，伤害走真实 guard'; })());
+
+    city.army = bakArmy;
+  })();
+
 console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');
   process.exit(FAIL ? 1 : 0);
 })();
