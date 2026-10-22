@@ -6372,9 +6372,11 @@ window.GAME = window.GAME || {};
 
   /* ② 老兵与伤兵 —— 第一次真正的「不可逆」 */
   DATA.VETERAN = {
-    woundShare: 0.45,        /* 阵亡里有多少其实是伤兵（能治回来的那部分） */
+    /* ⚠️ 这里原本还有 woundShare（伤兵回收率）与 healCostPer（治疗单价）——
+       两个都是**重复定义**：既有系统已经有 `GAME.woundedRateOf()` 与
+       `GAME.healFeeOf()`（伤兵 × 10 旧币），而且这两个字段从来没被谁读过。
+       v98.4 扫全表时揪出来，直接删掉 —— 宁缺勿假。 */
     healPerMonth: 0.10,      /* 伤兵每月自愈比例（不花资源的那一档） */
-    healCostPer: 0.05,       /* 花旧币加速：每名伤兵多少旧币 */
     expPerWin: 0.5,          /* 打赢得经验 */
     expPerLose: 0.15,        /* 打输也长记性 */
     maxLvl: 5,
@@ -6399,7 +6401,12 @@ window.GAME = window.GAME || {};
 
   /* ④ 奇观争夺 —— 全图唯一的点，谁占谁用 */
   DATA.WONDERWAR = {
-    guardMul: 1.6,           /* 守卫强度（比同层野地高六成） */
+    /* v98.4：`guardMul` 原来的注释是"守卫强度比同层野地高六成"，但**没有任何代码读过它**
+       （奇观层守军由 `wonderLayerDefOf` 决定，跟这张表无关）—— 又一具"写在表里的尸体"。
+       这一版给它一个真归宿：**驻守**。你占下的奇观可以派兵守着，
+       每 1000 兵，被夺概率 ÷ guardMul（可叠加，2000 兵 ÷2.56）。 */
+    guardMul: 1.6,
+    guardStep: 1000,         /* 每多少兵算一档 */
     holdMonths: 6,           /* 占下后至少守 6 个月才能被别人夺 */
     bonusGrain: 0.06,        /* 占着的时候全境粮产 +6% */
     bonusIron: 0.06
@@ -10310,6 +10317,7 @@ window.GAME = window.GAME || {};
       /* v95：可玩性那一批的月度结算 */
       /* ⚠️ 逐个 try/catch：这是"框架期"，任何一个新模块抛错都不许拖停主循环
          （tickOnce 一停，建造/训练队列全不走 —— smoke §193② 就是这么抓到的）。 */
+      _safeTick('veteran');     /* v98.4：伤兵每月自愈（UI 早就这么写了） */
       _safeTick('unrest');
       _safeTick('wonderwar');
       _safeTick('expose');
@@ -30186,10 +30194,30 @@ window.GAME = window.GAME || {};
     if (!st) return 0;
     var ru = st.ruins || {};
     var n = 0;
+    var base = D().pagesPerRuin == null ? 1 : D().pagesPerRuin;
+    var perDist = D().pagesPerExtraDist || 0;
+    /* v98.4：**离老家越远的遗迹越值钱**（`pagesPerExtraDist` 之前没人读，白写在表里）。
+       用 roughDistOf（经纬度近似）而不是 distOf：这里对每处遗迹算一次，
+       全图一百多处遗迹 × 无缓存 BFS = 一帧几百毫秒（v94.1 踩过同样的坑）。 */
+    var sp = GAME.mapSphere || GAME.sphere;
+    var pc = null, all = (GAME.city && GAME.city.all) ? (GAME.city.all() || []) : [];
+    for (var q = 0; q < all.length; q++) {
+      if (GAME.isMainCity && GAME.isMainCity(all[q])) { pc = all[q]; break; }
+    }
+    if (!pc && all.length) pc = all[0];
     for (var k in ru) {
       var r = ru[k];
       if (!r) continue;
-      if (r.side === 'a' || r.side === 'b') n += (D().pagesPerRuin == null ? 1 : D().pagesPerRuin);
+      if (r.side !== 'a' && r.side !== 'b') continue;
+      var per = base;
+      if (perDist > 0 && pc && pc.ci != null && pc.ci >= 0 && sp) {
+        var ci = +k;
+        if (ci >= 0) {
+          var dd = sp.roughDistOf ? sp.roughDistOf({ ci: pc.ci }, { ci: ci }) : -1;
+          if (dd > 0) per += Math.floor(dd / perDist);
+        }
+      }
+      n += per;
     }
     return n;
   };
@@ -30583,6 +30611,29 @@ window.GAME = window.GAME || {};
       v[k] = Math.min(maxLvl, (v[k] || 0) + gain);
     });
 
+    /* v98.4：**伤兵堆太多，老兵会走**（`deserterAt`）。
+       以前带残兵硬打没有任何长期代价 —— 现在会掉经验。
+       判据用"伤兵 / （手上有的人 + 伤兵）"，超过三成开始走。 */
+    var absent = 0;
+    if (s.wounded) {
+      var myCity = (GAME.city && GAME.city.byId) ? GAME.city.byId(rec.cityId) : null;
+      var here = myCity && GAME.city.armyTotal ? GAME.city.armyTotal(myCity) : 0;
+      var denom = here + (s.wounded | 0);
+      absent = denom > 0 ? ((s.wounded | 0) / denom) : 0;
+    }
+    var arid = d.deserterAt == null ? 0.35 : d.deserterAt;
+    var left = 0;
+    if (absent > arid) {
+      var dec = Math.min(1, 0.5 + (absent - arid));
+      keys.forEach(function (k) {
+        if (!(v[k] > 0)) return;
+        v[k] = Math.max(0, Math.round((v[k] - dec) * 10) / 10);
+        left++;
+      });
+      /* 没有兵种记录时，压一下通用经验 */
+      if (!keys.length && v.__any) v.__any = Math.max(0, Math.round((v.__any - dec) * 10) / 10);
+    }
+
     /* 老兵加成：同一场仗抢得更多（"活下来的人"唯一被看见的地方） */
     var avg = VT.avgLvlOf(rec.cityId);
     return {
@@ -30590,6 +30641,66 @@ window.GAME = window.GAME || {};
       exp: gain,
       note: avg >= 0.5 ? ('老兵 Lv' + (Math.round(avg * 10) / 10)) : null
     };
+  };
+
+  /* ============================================================
+   * v98.4 tick —— 伤兵每月自愈（UI 上早就写着"每月自愈 10%"，
+   *                 但代码里一行都没有 —— 界面在骗人）
+   * ------------------------------------------------------------
+   * 自愈的是"不用花钱的那一档"：伤兵营里每月有一成人自己好起来，
+   * 按 `s.woundedArmy` 的兵种构成逐个归队到当前城。
+   * 想一次治完还是走既有 `battle.heal`（花旧币）。
+   * ============================================================ */
+  function monthNow() {
+    var C = (GAME.DATA && GAME.DATA.CALENDAR) || {};
+    var spm = (C.secPerYear || 57600) / 12;
+    var s = GAME.state || {};
+    return Math.floor(((s.world && s.world.elapsed) || 0) / spm);
+  }
+
+  VT.tick = function (force) {
+    var s = GAME.state;
+    if (!s) return null;
+    var m = monthNow();
+    if (!force && s.vetMonth === m) return null;
+    if (s.vetMonth == null) { s.vetMonth = m; return { first: true }; }
+    s.vetMonth = m;
+
+    var n = s.wounded | 0;
+    if (n <= 0) return { month: m, healed: 0 };
+
+    var per = D().healPerMonth == null ? 0.10 : D().healPerMonth;
+    var city = (GAME.currentCity && GAME.currentCity()) || (s.cities || [])[0] || null;
+    var comp = s.woundedArmy || {};
+    var gave = {}, total = 0;
+
+    for (var id in comp) {
+      var c = comp[id] | 0;
+      if (c <= 0) continue;
+      var take = Math.floor(c * per);
+      if (take <= 0) take = 1;            /* 每月至少好一个：不然小伤兵营永远不动 */
+      take = Math.min(c, take);
+      if (!take) continue;
+      comp[id] = c - take;
+      if (comp[id] <= 0) delete comp[id];
+      total += take;
+      gave[id] = take;
+      if (city && GAME.city && GAME.city.armyAdd) {
+        var one = {};
+        one[id] = take;
+        GAME.city.armyAdd(city, one);
+      }
+    }
+    /* 没有兵种构成的历史存档：只能把数字减下去（无从还原） */
+    if (!total) {
+      total = Math.min(n, Math.max(1, Math.floor(n * per)));
+    }
+    s.wounded = Math.max(0, n - total);
+    if (total > 0 && GAME.log && GAME.log.war) {
+      GAME.log.war('🩹 伤兵营里 ' + U.numText(total, 0) + ' 人自己好了（每月自愈 '
+        + Math.round(per * 100) + '%），回' + (city ? city.name : '城里') + '归队。');
+    }
+    return { month: m, healed: total, by: gave };
   };
 
   /* ---------- 伤兵：直接复用既有系统，不另立一套 ---------- */
@@ -31141,11 +31252,99 @@ window.GAME = window.GAME || {};
         GAME.city.add(city, 'iron', Math.round(base * (D().bonusIron || 0.06) * 6));
         out.income++;
       }
-      /* ② 保护期过后，声望越高越招人惦记 */
+      /* ② 保护期过后，声望越高越招人惦记 —— 但**驻守的兵会让你更难被抢** */
       if (m >= (rec.guardUntil || 0)) {
         var p = 0.04 + (GAME.renown ? Math.min(0.12, (GAME.renown.scoreOf ? GAME.renown.scoreOf() : 0) / 2000) : 0);
+        p = p / WW.guardFactorOf(pid);
         var roll = GAME.invasionRoll ? GAME.invasionRoll('ww|' + pid + '|' + m) : Math.random();
-        if (roll < p) { WW.lose(pid, 'faction'); out.lost++; }
+        if (roll < p) {
+          /* 被夺时驻守的兵不会凭空消失：折损三成，剩下的还能撤回来（见 pull） */
+          if (rec.guard > 0) {
+            rec.guard = Math.max(0, Math.round(rec.guard * 0.7));
+            out.guardLost = (out.guardLost || 0) + Math.round((rec.guard || 0) / 0.7 * 0.3);
+          }
+          WW.lose(pid, 'faction');
+          out.lost++;
+        }
+      }
+    });
+    return out;
+  };
+
+  /* ============================================================
+   * v98.4 驻守 —— 占下来的东西得有人看着
+   * ------------------------------------------------------------
+   * 之前奇观一旦过了保护期，就只能听天由命（按月掷骰被夺）。
+   * 现在你可以**派兵守着**：每 1000 兵，被夺概率 ÷ 1.6（可叠加）。
+   * 代价是真的：这些兵不在城里，主城空虚的时候你得自己权衡。
+   * ============================================================ */
+  WW.guardFactorOf = function (pid) {
+    var o = st0();
+    var rec = o && o[pid];
+    if (!rec || rec.owner !== 'me') return 1;
+    var step = D().guardStep || 1000;
+    var mul = D().guardMul || 1.6;
+    var n = Math.max(0, (rec.guard | 0) / step);
+    return Math.pow(mul, n);
+  };
+
+  /* 派兵驻守（从城扣，记下是哪座城出的，撤回时还它） */
+  WW.keep = function (pid, n, cityId) {
+    var o = st0();
+    if (!o) return { ok: false, msg: '无存档' };
+    var rec = o[pid];
+    if (!rec || rec.owner !== 'me') return { ok: false, msg: '这处奇观不是你的' };
+    var city = cityId ? (GAME.city && GAME.city.byId ? GAME.city.byId(cityId) : null)
+      : (GAME.currentCity ? GAME.currentCity() : null);
+    if (!city) return { ok: false, msg: '没有这座城' };
+    var want = Math.max(100, Math.round(n || 500));
+    var have = GAME.city.armyTotal ? GAME.city.armyTotal(city) : 0;
+    if (have < want) return { ok: false, msg: '城里的兵不够（要 ' + want + '，现有 ' + have + '）' };
+    /* 按比例从各兵种扣（走既有出口） */
+    var a = city.army || {}, take = {};
+    for (var k in a) {
+      var v = Math.floor(a[k] || 0);
+      if (v <= 0) continue;
+      var part = Math.floor(want * v / have);
+      if (part > 0) take[k] = part;
+    }
+    var got = 0;
+    for (var k2 in take) got += take[k2];
+    if (got <= 0) return { ok: false, msg: '凑不出可派的兵' };
+    if (GAME.city.armySub) GAME.city.armySub(city, take);
+    rec.guard = (rec.guard | 0) + got;
+    rec.guardCity = city.id;
+    if (GAME.log && GAME.log.war) {
+      GAME.log.war('🛡 往奇观派了 ' + U.numText(got, 0) + ' 人驻守（被夺概率 ÷'
+        + (Math.round(WW.guardFactorOf(pid) * 100) / 100) + '）');
+    }
+    return { ok: true, msg: '派驻 ' + U.numText(got, 0) + ' 人守奇观（现在 ÷'
+      + (Math.round(WW.guardFactorOf(pid) * 100) / 100) + '）' };
+  };
+
+  /* 撤回驻军（还给出兵的那座城） */
+  WW.pull = function (pid) {
+    var o = st0();
+    if (!o) return { ok: false, msg: '无存档' };
+    var rec = o[pid];
+    if (!rec) return { ok: false, msg: '没有这处奇观' };
+    var n = rec.guard | 0;
+    if (!n) return { ok: false, msg: '这里没有驻军' };
+    var city = (rec.guardCity && GAME.city && GAME.city.byId) ? GAME.city.byId(rec.guardCity)
+      : (GAME.currentCity ? GAME.currentCity() : null);
+    if (!city) return { ok: false, msg: '城不见了，人散了' };
+    if (GAME.city.armyAdd) GAME.city.armyAdd(city, { buxingji: n });
+    rec.guard = 0;
+    return { ok: true, msg: U.numText(n, 0) + ' 人从奇观撤回' + city.name };
+  };
+
+  /* 我占着的奇观列表（UI 渲染驻守按钮用） */
+  WW.mineOf = function () {
+    var o = st0() || {}, out = [];
+    Object.keys(o).forEach(function (pid) {
+      var r = o[pid];
+      if (r && r.owner === 'me') {
+        out.push({ pid: +pid, guard: r.guard | 0, factor: WW.guardFactorOf(pid) });
       }
     });
     return out;
@@ -31156,7 +31355,12 @@ window.GAME = window.GAME || {};
     var mine = 0, total = 0;
     Object.keys(o || {}).forEach(function (k) { total++; if (o[k] && o[k].owner === 'me') mine++; });
     if (!total) return '';
-    return '☄ 奇观：占着 ' + mine + ' 处（全境每月有粮铁入账，保护期过后会被惦记）';
+    var g = 0;
+    Object.keys(o || {}).forEach(function (k) {
+      if (o[k] && o[k].owner === 'me') g += (o[k].guard | 0);
+    });
+    return '☄ 奇观：占着 ' + mine + ' 处' + (g > 0 ? ('（驻守 ' + U.numText(g, 0) + ' 人）') : '')
+      + '　全境每月有粮铁入账，保护期过后会被惦记';
   };
 })();
 
@@ -31225,7 +31429,7 @@ window.GAME = window.GAME || {};
       if (part > 0) { var o = {}; o[k] = part; if (GAME.city.armySub) GAME.city.armySub(city, o); }
     }
     d.run = {
-      cityId: city.id, crew: ids, troops: n, layer: 0,
+      cityId: city.id, crew: ids, troops: n, start: n, layer: 0,
       loot: { grain: 0, iron: 0, wood: 0 }, mats: {}, log: [], at: Date.now()
     };
     return { ok: true, msg: n + ' 人下到第一层。' };
@@ -31272,7 +31476,19 @@ window.GAME = window.GAME || {};
       r.loot.wood = Math.round(r.loot.wood * 0.7);
       ev = { t: 'cave', msg: '第 ' + r.layer + ' 层塌方：丢了 ' + U.numText(lost, 0) + ' 粮和一部分铁木' };
     } else {
-      ev = { t: 'empty', msg: '第 ' + r.layer + ' 层是空的（有人先来过）' };
+      /* v98.4：**空房 = 层间休整**（`restHeal` 之前没人读）。
+         受伤的人在这里喘一口气，回一部分人 —— 但不许超过出发人数
+         （第一版若直接乘，会越休息越多，那是刷兵）。 */
+      var healP = cfg.restHeal == null ? 0.20 : cfg.restHeal;
+      var cap = (r.start == null ? r.troops : r.start);
+      var room = Math.max(0, cap - r.troops);
+      var back = Math.min(room, Math.round(r.troops * healP));
+      if (back <= 0) {
+        ev = { t: 'empty', msg: '第 ' + r.layer + ' 层是空的（有人先来过）' };
+      } else {
+        r.troops += back;
+        ev = { t: 'rest', msg: '第 ' + r.layer + ' 层是空房：就地休整，' + U.numText(back, 0) + ' 人缓过来了' };
+      }
     }
     r.log.push(ev);
 
@@ -52336,11 +52552,30 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
         }
       }
 
-      /* ⑧ 奇观归属 */
+      /* ⑧ 奇观归属 + 驻守（v98.4：占下来的东西得有人看着） */
       if (GAME.wonderwar) {
         var wl2 = GAME.wonderwar.lineOf();
-        if (wl2) h += sec('☄ 奇观', wl2, '<div class="ui-sub" style="margin-top:3px;">'
-          + '打穿奇观就能占下，保护 6 个月；之后声望越高越招人惦记。</div>');
+        if (wl2) {
+          var mineW = GAME.wonderwar.mineOf();
+          var wH = mineW.map(function (w) {
+            /* ⚠️ 这里原来写成 `w.0 || w.pid`（手滑），JS 把它解析成"数字 0 的属性"，
+               竟然不报错但永远是 undefined —— 名字永远退成"奇观 N"。 */
+            var nm = (GAME.wonderOf && GAME.wonderOf(w.pid))
+              ? ((GAME.wonderOf(w.pid) || {}).name || ('奇观 ' + w.pid))
+              : ('奇观 ' + w.pid);
+            return '<div style="margin-top:4px;">☄ ' + U.escape(nm || ('奇观 ' + w.pid)) + '　驻守 '
+              + U.numText(w.guard, 0) + ' 人　被夺概率 ÷' + (Math.round(w.factor * 100) / 100) + '　'
+              + '<button class="btn" style="font-size:var(--fs-cap);padding:0 6px;"'
+              + ' data-action="wonder-keep" data-pid="' + w.pid + '">派 500 人</button>'
+              + (w.guard > 0 ? ('<button class="btn" style="font-size:var(--fs-cap);padding:0 6px;"'
+                + ' data-action="wonder-pull" data-pid="' + w.pid + '">撤回</button>') : '')
+              + '</div>';
+          }).join('');
+          h += sec('☄ 奇观', wl2, (wH ? wH + '<div class="ui-sub" style="margin-top:4px;">' : '')
+            + '<div class="ui-sub" style="margin-top:3px;">打穿奇观就能占下，保护 6 个月；'
+            + '之后声望越高越招人惦记。**派兵驻守能让被夺概率变低**（每 1000 人 ÷1.6），'
+            + '但那些兵就不在城里了。</div>' + (wH ? '</div>' : ''));
+        }
       }
 
       /* ⑨ 暴露 */
@@ -64805,6 +65040,18 @@ if (typeof window !== 'undefined') window.BITMAPS = BITMAPS;
       case 'deck-toggle': (function () {
         var r = GAME.deck ? GAME.deck.toggle(el.getAttribute('data-card')) : { msg: '未加载' };
         ui.toast(r.msg); ui.openWorldPanel();
+      })(); break;
+      case 'wonder-keep': (function () {
+        var c = GAME.currentCity();
+        var r = GAME.wonderwar
+          ? GAME.wonderwar.keep(+el.getAttribute('data-pid'), 500, c && c.id)
+          : { msg: '奇观系统未加载' };
+        ui.toast(r.msg); ui.openWorldPanel(); GAME.refreshView();
+      })(); break;
+      case 'wonder-pull': (function () {
+        var r = GAME.wonderwar ? GAME.wonderwar.pull(+el.getAttribute('data-pid'))
+          : { msg: '奇观系统未加载' };
+        ui.toast(r.msg); ui.openWorldPanel(); GAME.refreshView();
       })(); break;
       case 'ending-choose': (function () {
         var r = GAME.ending ? GAME.ending.choose(el.getAttribute('data-eid'))

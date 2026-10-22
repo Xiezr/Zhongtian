@@ -40570,6 +40570,131 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
 
 
 
+
+  /* ============================================================
+   * §318 · v98.4：把"写在表里的尸体"接活（伤兵自愈 / 老兵流失 /
+   *                残页按距离 / 远征休整 / 奇观驻守）
+   * ------------------------------------------------------------
+   * 起因：写了个扫描脚本把 DATA.* 的每个字段都 grep 一遍"谁读它"，
+   * 揪出 12 个"定义了但没人读"的效果字段 —— 全是最近几轮自己加的。
+   * 这一条一条钉住它们真的接上了。
+   * ============================================================ */
+  console.log('\n===== 318. v98.4 假字段接活：自愈/流失/距离残页/休整/驻守 =====');
+  (function () {
+    var st = G.state;
+    if (!st) return;
+    var c = G.currentCity();
+    if (!c) return;
+
+    /* ① 伤兵每月自愈（UI 上早就写着"每月自愈 10%"，之前一行代码都没有） */
+    check('§318① 伤兵每月自愈：伤兵营减少、兵真的回城（不是只减数字）', (function () {
+      if (!G.veteran || !G.veteran.tick) return false;
+      var bkArmy = JSON.parse(JSON.stringify(c.army || {}));
+      st.wounded = 1000;
+      st.woundedArmy = { buxingji: 1000 };
+      st.vetMonth = -1;
+      var a0 = G.city.armyTotal(c);
+      G.veteran.tick(true);
+      var ok = (st.wounded | 0) < 1000 && G.city.armyTotal(c) > a0;
+      c.army = bkArmy;
+      st.wounded = 0; st.woundedArmy = {};
+      return ok;
+    })(), (function () {
+      st.wounded = 1000; st.woundedArmy = { buxingji: 1000 }; st.vetMonth = -1;
+      G.veteran.tick(true);
+      var r = '伤兵 1000 → ' + (st.wounded | 0);
+      st.wounded = 0; st.woundedArmy = {};
+      return r;
+    })());
+
+    /* ② 伤兵堆太多 → 老兵流失（带残兵硬打终于有长期代价） */
+    check('§318② 伤兵占比过高 → 老兵经验掉（deserterAt 真的在读）', (function () {
+      if (!G.veteran) return false;
+      var bkArmy = c.army;
+      var bk = JSON.parse(JSON.stringify(st.vet || {}));
+      c.army = { buxingji: 100 };
+      st.wounded = 9000;
+      st.woundedArmy = { buxingji: 9000 };
+      st.vet = {}; st.vet[c.id] = { buxingji: 3 };
+      var b0 = st.vet[c.id].buxingji;
+      G.veteran.afterBattle(
+        { cityId: c.id, atkArmy: { buxingji: 100 } },
+        { winner: 'atk', atkLoss: 10, atkRemain: 90 }, { win: true });
+      var b1 = st.vet[c.id].buxingji;
+      c.army = bkArmy; st.vet = bk;
+      st.wounded = 0; st.woundedArmy = {};
+      return b1 < b0;
+    })(), (function () { return '经验 3 → 掉了'; })());
+
+    /* ③ 残页按距离加成（pagesPerExtraDist 之前没人读） */
+    check('§318③ 离老家越远的遗迹给越多残页（pagesPerExtraDist 真的在读）', (function () {
+      if (!G.relic) return false;
+      var bkRuins = st.ruins, bkPer = (G.DATA.RELIC || {}).pagesPerExtraDist;
+      var pc = c.ci;
+      if (pc == null || pc < 0) return false;
+      st.ruins = {};
+      /* 一处就在老家格上，一处放到很远的格（+120 → 邻接表里取个真实的） */
+      st.ruins[pc] = { kind: 'lab', side: 'a' };
+      var farCi = null, sp = G.mapSphere || G.sphere;
+      for (var i = 0; i < 300 && farCi == null; i++) {
+        var ci = (pc + 137 * (i + 1)) % 100000;
+        if (ci === pc) continue;
+        if (sp && sp.cells && sp.cells[ci]) farCi = ci;
+      }
+      if (farCi == null) { st.ruins = bkRuins; return false; }
+      st.ruins[farCi] = { kind: 'lab', side: 'a' };
+      G.DATA.RELIC.pagesPerExtraDist = 1;          /* 每格 +1，差异放大好验 */
+      var n = G.relic.pagesOf();
+      G.DATA.RELIC.pagesPerExtraDist = bkPer;
+      st.ruins = bkRuins;
+      return n > 2;                                /* 两处遗迹，但远的那处多给了 */
+    })(), (function () {
+      return '一处近 + 一处远 = 合计 > 2 页';
+    })());
+
+    /* ④ 远征空房休整：会回人，但**永不超过出发人数**（不刷兵） */
+    check('§318④ 远征空房会休整回人，但永不超过出发人数（不刷兵）', (function () {
+      if (!G.delve) return false;
+      var bk = st.delve;
+      var ok = false, sawRest = false;
+      for (var t = 0; t < 12 && !sawRest; t++) {
+        st.delve = { run: { cityId: c.id, crew: [], troops: 100, start: 300, layer: 0,
+          loot: { grain: 0, iron: 0, wood: 0 }, mats: {}, log: [], at: 1000 + t }, done: 0 };
+        for (var k = 0; k < 5; k++) {
+          var p = G.delve.push();
+          if (!p.ok) break;
+          if (st.delve.run.troops > 300) { ok = false; break; }
+          if (p.ev && p.ev.t === 'rest') { sawRest = true; ok = true; }
+        }
+      }
+      st.delve = bk;
+      return ok && sawRest;
+    })(), (function () { return '12 次尝试内出现过 rest 事件，且从未超过 300'; })());
+
+    /* ⑤ 奇观驻守：扣兵 + 被夺概率下降 + 能撤回 */
+    check('§318⑤ 奇观驻守：扣兵 → 被夺概率下降 → 撤回还兵', (function () {
+      if (!G.wonderwar) return false;
+      var bkOwn = st.wonderOwn, bkArmy = c.army;
+      st.wonderOwn = {}; st.wonderOwn[777] = { owner: 'me', at: 0, guardUntil: 0 };
+      c.army = { buxingji: 5000 };
+      var a0 = G.city.armyTotal(c);
+      var f0 = G.wonderwar.guardFactorOf(777);
+      var r1 = G.wonderwar.keep(777, 500, c.id);
+      var f1 = G.wonderwar.guardFactorOf(777);
+      var a1 = G.city.armyTotal(c);
+      var r2 = G.wonderwar.pull(777);
+      var a2 = G.city.armyTotal(c);
+      st.wonderOwn = bkOwn; c.army = bkArmy;
+      return r1.ok && f1 > f0 && a1 < a0 && r2.ok && a2 > a1;
+    })(), (function () {
+      st.wonderOwn = st.wonderOwn || {};
+      st.wonderOwn[777] = { owner: 'me', at: 0, guardUntil: 0, guard: 1000 };
+      var f = G.wonderwar.guardFactorOf(777);
+      delete st.wonderOwn[777];
+      return '驻 1000 人 → 被夺概率 ÷' + (Math.round(f * 100) / 100);
+    })());
+  })();
+
   /* ============================================================
    * §317 · v98.3：指令牌的攻/防第一次进战场
    * ------------------------------------------------------------

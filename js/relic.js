@@ -47,10 +47,30 @@
     if (!st) return 0;
     var ru = st.ruins || {};
     var n = 0;
+    var base = D().pagesPerRuin == null ? 1 : D().pagesPerRuin;
+    var perDist = D().pagesPerExtraDist || 0;
+    /* v98.4：**离老家越远的遗迹越值钱**（`pagesPerExtraDist` 之前没人读，白写在表里）。
+       用 roughDistOf（经纬度近似）而不是 distOf：这里对每处遗迹算一次，
+       全图一百多处遗迹 × 无缓存 BFS = 一帧几百毫秒（v94.1 踩过同样的坑）。 */
+    var sp = GAME.mapSphere || GAME.sphere;
+    var pc = null, all = (GAME.city && GAME.city.all) ? (GAME.city.all() || []) : [];
+    for (var q = 0; q < all.length; q++) {
+      if (GAME.isMainCity && GAME.isMainCity(all[q])) { pc = all[q]; break; }
+    }
+    if (!pc && all.length) pc = all[0];
     for (var k in ru) {
       var r = ru[k];
       if (!r) continue;
-      if (r.side === 'a' || r.side === 'b') n += (D().pagesPerRuin == null ? 1 : D().pagesPerRuin);
+      if (r.side !== 'a' && r.side !== 'b') continue;
+      var per = base;
+      if (perDist > 0 && pc && pc.ci != null && pc.ci >= 0 && sp) {
+        var ci = +k;
+        if (ci >= 0) {
+          var dd = sp.roughDistOf ? sp.roughDistOf({ ci: pc.ci }, { ci: ci }) : -1;
+          if (dd > 0) per += Math.floor(dd / perDist);
+        }
+      }
+      n += per;
     }
     return n;
   };

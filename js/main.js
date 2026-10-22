@@ -1444,6 +1444,18 @@ import './ui.js';
         var r = GAME.deck ? GAME.deck.toggle(el.getAttribute('data-card')) : { msg: '未加载' };
         ui.toast(r.msg); ui.openWorldPanel();
       })(); break;
+      case 'wonder-keep': (function () {
+        var c = GAME.currentCity();
+        var r = GAME.wonderwar
+          ? GAME.wonderwar.keep(+el.getAttribute('data-pid'), 500, c && c.id)
+          : { msg: '奇观系统未加载' };
+        ui.toast(r.msg); ui.openWorldPanel(); GAME.refreshView();
+      })(); break;
+      case 'wonder-pull': (function () {
+        var r = GAME.wonderwar ? GAME.wonderwar.pull(+el.getAttribute('data-pid'))
+          : { msg: '奇观系统未加载' };
+        ui.toast(r.msg); ui.openWorldPanel(); GAME.refreshView();
+      })(); break;
       case 'ending-choose': (function () {
         var r = GAME.ending ? GAME.ending.choose(el.getAttribute('data-eid'))
           : { msg: '终局系统未加载' };

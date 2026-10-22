@@ -3765,6 +3765,7 @@ import './data.js';
       /* v95：可玩性那一批的月度结算 */
       /* ⚠️ 逐个 try/catch：这是"框架期"，任何一个新模块抛错都不许拖停主循环
          （tickOnce 一停，建造/训练队列全不走 —— smoke §193② 就是这么抓到的）。 */
+      _safeTick('veteran');     /* v98.4：伤兵每月自愈（UI 早就这么写了） */
       _safeTick('unrest');
       _safeTick('wonderwar');
       _safeTick('expose');

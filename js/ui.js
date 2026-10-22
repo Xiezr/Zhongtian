@@ -8366,11 +8366,30 @@ import './state.js';
         }
       }
 
-      /* ⑧ 奇观归属 */
+      /* ⑧ 奇观归属 + 驻守（v98.4：占下来的东西得有人看着） */
       if (GAME.wonderwar) {
         var wl2 = GAME.wonderwar.lineOf();
-        if (wl2) h += sec('☄ 奇观', wl2, '<div class="ui-sub" style="margin-top:3px;">'
-          + '打穿奇观就能占下，保护 6 个月；之后声望越高越招人惦记。</div>');
+        if (wl2) {
+          var mineW = GAME.wonderwar.mineOf();
+          var wH = mineW.map(function (w) {
+            /* ⚠️ 这里原来写成 `w.0 || w.pid`（手滑），JS 把它解析成"数字 0 的属性"，
+               竟然不报错但永远是 undefined —— 名字永远退成"奇观 N"。 */
+            var nm = (GAME.wonderOf && GAME.wonderOf(w.pid))
+              ? ((GAME.wonderOf(w.pid) || {}).name || ('奇观 ' + w.pid))
+              : ('奇观 ' + w.pid);
+            return '<div style="margin-top:4px;">☄ ' + U.escape(nm || ('奇观 ' + w.pid)) + '　驻守 '
+              + U.numText(w.guard, 0) + ' 人　被夺概率 ÷' + (Math.round(w.factor * 100) / 100) + '　'
+              + '<button class="btn" style="font-size:var(--fs-cap);padding:0 6px;"'
+              + ' data-action="wonder-keep" data-pid="' + w.pid + '">派 500 人</button>'
+              + (w.guard > 0 ? ('<button class="btn" style="font-size:var(--fs-cap);padding:0 6px;"'
+                + ' data-action="wonder-pull" data-pid="' + w.pid + '">撤回</button>') : '')
+              + '</div>';
+          }).join('');
+          h += sec('☄ 奇观', wl2, (wH ? wH + '<div class="ui-sub" style="margin-top:4px;">' : '')
+            + '<div class="ui-sub" style="margin-top:3px;">打穿奇观就能占下，保护 6 个月；'
+            + '之后声望越高越招人惦记。**派兵驻守能让被夺概率变低**（每 1000 人 ÷1.6），'
+            + '但那些兵就不在城里了。</div>' + (wH ? '</div>' : ''));
+        }
       }
 
       /* ⑨ 暴露 */

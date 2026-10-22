@@ -89,11 +89,99 @@
         GAME.city.add(city, 'iron', Math.round(base * (D().bonusIron || 0.06) * 6));
         out.income++;
       }
-      /* ② 保护期过后，声望越高越招人惦记 */
+      /* ② 保护期过后，声望越高越招人惦记 —— 但**驻守的兵会让你更难被抢** */
       if (m >= (rec.guardUntil || 0)) {
         var p = 0.04 + (GAME.renown ? Math.min(0.12, (GAME.renown.scoreOf ? GAME.renown.scoreOf() : 0) / 2000) : 0);
+        p = p / WW.guardFactorOf(pid);
         var roll = GAME.invasionRoll ? GAME.invasionRoll('ww|' + pid + '|' + m) : Math.random();
-        if (roll < p) { WW.lose(pid, 'faction'); out.lost++; }
+        if (roll < p) {
+          /* 被夺时驻守的兵不会凭空消失：折损三成，剩下的还能撤回来（见 pull） */
+          if (rec.guard > 0) {
+            rec.guard = Math.max(0, Math.round(rec.guard * 0.7));
+            out.guardLost = (out.guardLost || 0) + Math.round((rec.guard || 0) / 0.7 * 0.3);
+          }
+          WW.lose(pid, 'faction');
+          out.lost++;
+        }
+      }
+    });
+    return out;
+  };
+
+  /* ============================================================
+   * v98.4 驻守 —— 占下来的东西得有人看着
+   * ------------------------------------------------------------
+   * 之前奇观一旦过了保护期，就只能听天由命（按月掷骰被夺）。
+   * 现在你可以**派兵守着**：每 1000 兵，被夺概率 ÷ 1.6（可叠加）。
+   * 代价是真的：这些兵不在城里，主城空虚的时候你得自己权衡。
+   * ============================================================ */
+  WW.guardFactorOf = function (pid) {
+    var o = st0();
+    var rec = o && o[pid];
+    if (!rec || rec.owner !== 'me') return 1;
+    var step = D().guardStep || 1000;
+    var mul = D().guardMul || 1.6;
+    var n = Math.max(0, (rec.guard | 0) / step);
+    return Math.pow(mul, n);
+  };
+
+  /* 派兵驻守（从城扣，记下是哪座城出的，撤回时还它） */
+  WW.keep = function (pid, n, cityId) {
+    var o = st0();
+    if (!o) return { ok: false, msg: '无存档' };
+    var rec = o[pid];
+    if (!rec || rec.owner !== 'me') return { ok: false, msg: '这处奇观不是你的' };
+    var city = cityId ? (GAME.city && GAME.city.byId ? GAME.city.byId(cityId) : null)
+      : (GAME.currentCity ? GAME.currentCity() : null);
+    if (!city) return { ok: false, msg: '没有这座城' };
+    var want = Math.max(100, Math.round(n || 500));
+    var have = GAME.city.armyTotal ? GAME.city.armyTotal(city) : 0;
+    if (have < want) return { ok: false, msg: '城里的兵不够（要 ' + want + '，现有 ' + have + '）' };
+    /* 按比例从各兵种扣（走既有出口） */
+    var a = city.army || {}, take = {};
+    for (var k in a) {
+      var v = Math.floor(a[k] || 0);
+      if (v <= 0) continue;
+      var part = Math.floor(want * v / have);
+      if (part > 0) take[k] = part;
+    }
+    var got = 0;
+    for (var k2 in take) got += take[k2];
+    if (got <= 0) return { ok: false, msg: '凑不出可派的兵' };
+    if (GAME.city.armySub) GAME.city.armySub(city, take);
+    rec.guard = (rec.guard | 0) + got;
+    rec.guardCity = city.id;
+    if (GAME.log && GAME.log.war) {
+      GAME.log.war('🛡 往奇观派了 ' + U.numText(got, 0) + ' 人驻守（被夺概率 ÷'
+        + (Math.round(WW.guardFactorOf(pid) * 100) / 100) + '）');
+    }
+    return { ok: true, msg: '派驻 ' + U.numText(got, 0) + ' 人守奇观（现在 ÷'
+      + (Math.round(WW.guardFactorOf(pid) * 100) / 100) + '）' };
+  };
+
+  /* 撤回驻军（还给出兵的那座城） */
+  WW.pull = function (pid) {
+    var o = st0();
+    if (!o) return { ok: false, msg: '无存档' };
+    var rec = o[pid];
+    if (!rec) return { ok: false, msg: '没有这处奇观' };
+    var n = rec.guard | 0;
+    if (!n) return { ok: false, msg: '这里没有驻军' };
+    var city = (rec.guardCity && GAME.city && GAME.city.byId) ? GAME.city.byId(rec.guardCity)
+      : (GAME.currentCity ? GAME.currentCity() : null);
+    if (!city) return { ok: false, msg: '城不见了，人散了' };
+    if (GAME.city.armyAdd) GAME.city.armyAdd(city, { buxingji: n });
+    rec.guard = 0;
+    return { ok: true, msg: U.numText(n, 0) + ' 人从奇观撤回' + city.name };
+  };
+
+  /* 我占着的奇观列表（UI 渲染驻守按钮用） */
+  WW.mineOf = function () {
+    var o = st0() || {}, out = [];
+    Object.keys(o).forEach(function (pid) {
+      var r = o[pid];
+      if (r && r.owner === 'me') {
+        out.push({ pid: +pid, guard: r.guard | 0, factor: WW.guardFactorOf(pid) });
       }
     });
     return out;
@@ -104,6 +192,11 @@
     var mine = 0, total = 0;
     Object.keys(o || {}).forEach(function (k) { total++; if (o[k] && o[k].owner === 'me') mine++; });
     if (!total) return '';
-    return '☄ 奇观：占着 ' + mine + ' 处（全境每月有粮铁入账，保护期过后会被惦记）';
+    var g = 0;
+    Object.keys(o || {}).forEach(function (k) {
+      if (o[k] && o[k].owner === 'me') g += (o[k].guard | 0);
+    });
+    return '☄ 奇观：占着 ' + mine + ' 处' + (g > 0 ? ('（驻守 ' + U.numText(g, 0) + ' 人）') : '')
+      + '　全境每月有粮铁入账，保护期过后会被惦记';
   };
 })();

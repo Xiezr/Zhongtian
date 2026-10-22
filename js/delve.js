@@ -62,7 +62,7 @@
       if (part > 0) { var o = {}; o[k] = part; if (GAME.city.armySub) GAME.city.armySub(city, o); }
     }
     d.run = {
-      cityId: city.id, crew: ids, troops: n, layer: 0,
+      cityId: city.id, crew: ids, troops: n, start: n, layer: 0,
       loot: { grain: 0, iron: 0, wood: 0 }, mats: {}, log: [], at: Date.now()
     };
     return { ok: true, msg: n + ' 人下到第一层。' };
@@ -109,7 +109,19 @@
       r.loot.wood = Math.round(r.loot.wood * 0.7);
       ev = { t: 'cave', msg: '第 ' + r.layer + ' 层塌方：丢了 ' + U.numText(lost, 0) + ' 粮和一部分铁木' };
     } else {
-      ev = { t: 'empty', msg: '第 ' + r.layer + ' 层是空的（有人先来过）' };
+      /* v98.4：**空房 = 层间休整**（`restHeal` 之前没人读）。
+         受伤的人在这里喘一口气，回一部分人 —— 但不许超过出发人数
+         （第一版若直接乘，会越休息越多，那是刷兵）。 */
+      var healP = cfg.restHeal == null ? 0.20 : cfg.restHeal;
+      var cap = (r.start == null ? r.troops : r.start);
+      var room = Math.max(0, cap - r.troops);
+      var back = Math.min(room, Math.round(r.troops * healP));
+      if (back <= 0) {
+        ev = { t: 'empty', msg: '第 ' + r.layer + ' 层是空的（有人先来过）' };
+      } else {
+        r.troops += back;
+        ev = { t: 'rest', msg: '第 ' + r.layer + ' 层是空房：就地休整，' + U.numText(back, 0) + ' 人缓过来了' };
+      }
     }
     r.log.push(ev);
 
