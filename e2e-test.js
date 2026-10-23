@@ -6830,14 +6830,25 @@ if (svBtn) {
       G.ui.setView('reports');
       G.ui.renderView('reports');
       await sleep(200);
-      const line157 = document.querySelector('#msg-feed .bb-line');
+      /* ⚠️ v125（修 flaky）：原来只取 `#msg-feed .bb-line` **第一条**，
+         并假定它就是刚推的「建造」那条。可是任何在它之后写入的消息都会
+         把这个位置顶掉 —— v121 加了「每月 22% 出一件事」之后，
+         e2e 跑的时间轴里偶尔会多出一条事件日志，于是这条时红时绿
+         （两次提交被拦都是它：一次 tag=⚔ 军情，一次别的）。
+         改成：在消息流里**找**那条建造消息，不再依赖顺序。
+         断言要测性质，不要测顺序。 */
+      const lines157 = Array.from(document.querySelectorAll('#msg-feed .bb-line'));
+      const line157 = lines157.filter(function (x) {
+        const t = x.querySelector('.ml-tag');
+        return t && (t.textContent || '').indexOf('建造') >= 0;
+      })[0] || null;
       const tag157 = line157 ? line157.querySelector('.ml-tag') : null;
       const st157 = line157 ? (line157.getAttribute('style') || '') : '';
       check('§157：系统页消息 = 主题徽章 + 主题色竖条（bb-sub · 行内注入颜色）',
         !!tag157 && !!line157 && line157.classList.contains('bb-sub')
-        && st157.indexOf('border-left-color') >= 0
-        && (tag157.textContent || '').indexOf('建造') >= 0,
-        tag157 ? ('tag=' + tag157.textContent + ' style=' + st157.slice(0, 40)) : '无徽章');
+        && st157.indexOf('border-left-color') >= 0,
+        tag157 ? ('tag=' + tag157.textContent + ' style=' + st157.slice(0, 40))
+          : ('没找到建造消息（共 ' + lines157.length + ' 条）'));
     } finally {
       G.ui._docTab = 'sys';
       G.ui.closeAllModals();
