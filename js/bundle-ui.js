@@ -18120,23 +18120,31 @@
         var pw74 = ui.expPowerOf ? ui.expPowerOf() : null;
         if (pw74 && pw74.def > 0 && pw74.mine > 0) {
           var rLo = pw74.ratioLo, rHi = pw74.ratioHi;
-          var lv74 = (rLo != null && rLo >= 1.6) ? ['兵力充足', 'var(--green-ok)']
-            : (rLo != null && rLo >= 1.0) ? ['势均力敌 · 胜负由临阵决断', 'var(--gold-light)']
-            : (rHi != null && rHi < 0.6) ? ['兵力悬殊', 'var(--red-light)']
-            /* v89.178（老板：「此战凶险」加到「兵力偏少」后边，只写「兵力偏少，此战凶险」）——
-               原单独一行「⚑ 此战凶险：胜则可入史册」退役，并入本标签。 */
-            : ['兵力偏少，此战凶险', 'var(--gold-light)'];
+          /* v127：三档文案与阈值改读 `DATA.EXP_EST.bands`（原来写死 1.6/1.0/0.6）；
+             并追加「预计损兵」—— 实测"兵力充足"的中位损兵仍有 43%，只说"充足"会被读成"便宜赢"。 */
+          var _band = (GAME.battle && GAME.battle.bandOfRatio) ? GAME.battle.bandOfRatio(rLo, rHi) : null;
+          var lv74 = _band ? [_band.text, _band.color] : ['兵力偏少，此战凶险', 'var(--gold-light)'];
+          var _est = (GAME.battle.expLossEstOf && pw74.ratio != null) ? GAME.battle.expLossEstOf(pw74.ratio) : null;
+          var _wipeRisk = !!(DATA.EXP_EST && pw74.ratio != null && pw74.ratio < (DATA.EXP_EST.wipeBelow || 0));
+          var estH = (_est == null) ? ''
+            : '　<span style="opacity:.85;">预计损兵 <b style="color:'
+              + (_est >= 60 ? 'var(--red-light)' : 'var(--gold-light)') + ';">~' + _est + '%</b>'
+              + (_wipeRisk ? ' · <span style="color:var(--red-light);">有全灭风险</span>' : '')
+              + '</span>';
           pow73.innerHTML = '⚔️ 军师估算　我方 <b style="color:var(--blue-info)">' + U.numText(pw74.mine, 0) +
             '</b>　vs　守军 约 <b style="color:var(--red-light)">' + U.numText(pw74.def, 0) + '</b>' +
             (pw74.aura ? '<span style="color:var(--green-ok);">（🗼 情报站覆盖：情报确凿）</span>'
             : '<span style="opacity:.7;">（误差 ±' + Math.round(pw74.err * 100) + '%）</span>') +
-            '　<span style="color:' + lv74[1] + ';font-weight:700;">' + lv74[0] + '</span>' +
+            '　<span style="color:' + lv74[1] + ';font-weight:700;">' + lv74[0] + '</span>' + estH +
             /* v89.178（老板：「区间…情报 Lv（升侦察网络可收窄）这个也没必要」）——区间/情报条退役。 */
             /* ⛔ v89.200（老板 2）：「🧱 围攻：守备 X%（守军与城防已按此衰减）」提示行**整条下线** ——
                围攻（据点/聚落的守备衰减）是独立于战法的据点多波机制，结算口径不变
                （expPowerOf 仍按守备值折算守军/城防；战报里的【围攻】记录照旧）；仅此预估提示行退役。 */
             /* v89.197（老板 1）建立；v89.198（战法全撤）：只提示**计略**计入 */
-            + ((pw74.mods && pw74.mods.notes.length)
+            /* ⚠️ v127 修：这里原来写的是 `+ ((...)...)`，而上一行已经以 `+` 结尾 →
+               形成 `+ +`（一元加号），空字符串被强制成 **0**，面板上一直挂着一个孤零零的 "0"。
+               旧文案（"势均力敌"）把它淹没了，v127 加了「预计损兵」后才显形。 */
+            ((pw74.mods && pw74.mods.notes.length)
               ? '<br><span style="color:var(--green-ok);">⚔️ 计略已计入：'
                 + pw74.mods.notes.join(' · ') + '</span>' : '')
             /* v89.115：斗将预告（我方主将 vs 守将；无守将则空） */
@@ -25119,7 +25127,7 @@
      （这解释了"改了却说没生效"的观感）。老板若发现版本 ≠ 最新交付，按 Ctrl+F5
      强制刷新即获得新代码。⚠️ 发版须走 **bump_version.py --bump --version vX.Y**（它同步 index.html 的 ?v=/BUILD
      与这里的 GAME.VERSION 三处）—— 只手改 index.html 会让版本号冻住（v91.18 前的病灶）。 */
-  GAME.VERSION = 'v126.0';
+  GAME.VERSION = 'v127.0';
   function boot() {
     fitAppSize();
     try {

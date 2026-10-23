@@ -59,6 +59,39 @@ const ok = (name, cond, extra) => {
     ok('  └ ' + k + ' 渲染节点 ≥ ' + TH.nodes, v.nodes[k] >= TH.nodes, v.nodes[k] + ' 个');
   });
 
+  /* ---------- ④ 出征面板：军师估算 ---------- */
+  console.log('④ 出征面板「军师估算」（v127）');
+  const est = await p.evaluate(() => {
+    const G = window.GAME, c = G.currentCity ? G.currentCity() : null;
+    if (!c) return { err: 'no city' };
+    if (G.city && G.city.armyAdd) G.city.armyAdd(c, { buxingji: 6000, daodanche: 3000, dunwei: 2000, zhuzhan: 800 });
+    let ci = -1;
+    const sp = G.sphereOf();
+    for (let i = 0; i < sp.cells.length; i++) {
+      if (sp.cells[i] && sp.cells[i].type && !G.map.ownCityAt(i)) { ci = i; break; }
+    }
+    try { G.ui.openExpModal({ kind: 'wild', ci: ci }); } catch (e) { return { err: e.message }; }
+    const fill = { buxingji: 6000, daodanche: 3000, dunwei: 2000, zhuzhan: 800 };
+    Object.keys(fill).forEach((id) => {
+      const el = document.getElementById('exp-' + id);
+      if (el) { el.value = String(fill[id]); el.dispatchEvent(new Event('input', { bubbles: true })); }
+    });
+    const box = document.getElementById('exp-power');
+    if (!box) return { err: 'no #exp-power' };
+    /* v127 修过一处 `+ +`（一元加号把空字符串变成 0，面板上挂着孤零零的 "0"）——这里钉住它 */
+    const stray = Array.from(box.childNodes)
+      .filter((n) => n.nodeType === 3 && /^\s*\d+\s*$/.test(n.nodeValue || ''))
+      .map((n) => n.nodeValue);
+    return {
+      stray: stray,
+      hasEst: (box.textContent || '').indexOf('预计损兵') >= 0,
+      text: (box.textContent || '').replace(/\s+/g, ' ').slice(0, 110),
+    };
+  });
+  ok('面板能打开且有内容', !est.err, est.err || 'ok');
+  ok('不出现孤立数字节点（+ + 强制转换类 bug）', !!est.stray && est.stray.length === 0, JSON.stringify(est.stray || []));
+  ok('含「预计损兵」', !!est.hasEst, est.text || '');
+
   /* ---------- ②③ 前传态 ---------- */
   const pr = await p.evaluate((th) => {
     const G = window.GAME, out = {};

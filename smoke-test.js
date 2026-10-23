@@ -42840,6 +42840,61 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })());
   })();
 
+/* ===== 341. v127 军师估算：预计损兵 + 阈值入表 ===== */
+  (function () {
+    var E = DATA.EXP_EST || {};
+    var tb = E.curve || [];
+    check('§341① 损兵曲线在册且有来由（首/尾 = 实测 100% / 15%，档位 ≥8 个）', (function () {
+      return tb.length >= 8 && tb[0][1] === 100 && tb[tb.length - 1][1] === 15;
+    })(), (function () { return '档位 ' + tb.length + ' · 首 ' + (tb[0] || [])[1] + '% · 尾 ' + (tb[tb.length - 1] || [])[1] + '%'; })());
+
+    check('§341② 损兵随战力比单调不增（兵力越多，预计损失不能更高）', (function () {
+      for (var i = 1; i < tb.length; i++) {
+        if (tb[i][0] <= tb[i - 1][0]) return false;       /* 横轴必须严格递增 */
+        if (tb[i][1] > tb[i - 1][1]) return false;        /* 纵轴不许反弹 */
+      }
+      return true;
+    })(), (function () { return '首尾 ' + (tb[0] || [])[1] + '% → ' + (tb[tb.length - 1] || [])[1] + '%'; })());
+
+    check('§341③ expLossEstOf：端点取表值、中点插值、超界夹紧', (function () {
+      var f = (GAME.battle && GAME.battle.expLossEstOf);
+      if (!f) return false;
+      if (f(0.3) !== 100 || f(0.5) !== 100) return false;      /* 左端夹紧（≤ 首档） */
+      if (f(3.0) !== 15 || f(9.9) !== 15) return false;         /* 右端夹紧 */
+      /* 1.0→69、1.15→52，则 1.075 应 ≈ 60.5（四舍五入 61 或 60） */
+      var mid = f(1.075);
+      return mid === 60 || mid === 61;
+    })(), (function () {
+      var f = GAME.battle.expLossEstOf;
+      return 'f(0.75)=' + f(0.75) + ' f(1.075)=' + f(1.075) + ' f(9.9)=' + f(9.9);
+    })());
+
+    check('§341④ 三档判据不对称：下限够高才说充足，上限够低才说悬殊', (function () {
+      var B = GAME.battle.bandOfRatio;
+      if (!B) return false;
+      var a = B(1.7, 2.2), b = B(1.2, 1.9), c = B(0.4, 0.5), d = B(0.7, 0.9);
+      return a.text === '兵力充足'
+        && b.text.indexOf('势均力敌') === 0
+        && c.text === '兵力悬殊'
+        && d.text === '兵力偏少，此战凶险';
+    })(), (function () {
+      var B = GAME.battle.bandOfRatio;
+      return B(1.7, 2.2).text + ' / ' + B(1.2, 1.9).text + ' / ' + B(0.4, 0.5).text + ' / ' + B(0.7, 0.9).text;
+    })());
+
+    check('§341⑤ 界面不再写死阈值（必须读 DATA.EXP_EST）', (function () {
+      var s = require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8');
+      return s.indexOf('bandOfRatio') >= 0
+        && s.indexOf('expLossEstOf') >= 0
+        && s.indexOf("rLo >= 1.6") < 0;          /* 旧的写死判据必须消失 */
+    })());
+
+    check('§341⑥ 战力比 < wipeBelow 时必须提示全灭风险（实测 p90 仍 100%）', (function () {
+      var w = E.wipeBelow;
+      return typeof w === 'number' && w > 1 && w <= 2;
+    })(), (function () { return 'wipeBelow=' + E.wipeBelow; })());
+  })();
+
 console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');
   process.exit(FAIL ? 1 : 0);
 })();

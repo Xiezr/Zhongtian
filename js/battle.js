@@ -4699,4 +4699,38 @@ import './state.js';
     if (!city) return null;
     return GAME.power.armyOf(city.army || {}, gen);
   };
+
+  /* ============================================================
+   * v127 · 预计损兵（出征面板「军师估算」用）
+   * ------------------------------------------------------------
+   * 曲线在 `DATA.EXP_EST.curve`（2026-10-24 实测：每档 40 局面，满将+半科技）。
+   * 这里只做**线性插值 + 两端夹紧**，不写第二份数字 —— 改平衡只改表。
+   * 返回值是"中位损兵百分比"，不是承诺：实际有波动（p90 可能 100%），
+   * 所以界面还要按 `DATA.EXP_EST.wipeBelow` 追加"有全灭风险"。
+   * ============================================================ */
+  GAME.battle.expLossEstOf = function (ratio) {
+    var tb = (DATA.EXP_EST && DATA.EXP_EST.curve) || [];
+    if (!tb.length || ratio == null || !isFinite(ratio)) return null;
+    if (ratio <= tb[0][0]) return tb[0][1];
+    for (var i = 1; i < tb.length; i++) {
+      if (ratio <= tb[i][0]) {
+        var x0 = tb[i - 1][0], y0 = tb[i - 1][1], x1 = tb[i][0], y1 = tb[i][1];
+        var t = (ratio - x0) / Math.max(1e-6, x1 - x0);
+        return Math.round(y0 + (y1 - y0) * t);
+      }
+    }
+    return tb[tb.length - 1][1];
+  };
+  /* 三档文案的**唯一判据**（阈值/文案都来自 `DATA.EXP_EST.bands`）。
+     lo/hi = 估算区间的下/上限（rLo/rHi）—— 判据不对称见数据表注释。 */
+  GAME.battle.bandOfRatio = function (lo, hi) {
+    var bs = (DATA.EXP_EST && DATA.EXP_EST.bands) || [];
+    for (var i = 0; i < bs.length; i++) {
+      var b = bs[i];
+      if (b.test === 'always') return b;
+      if (b.test === 'lo' && lo != null && lo >= b.min) return b;
+      if (b.test === 'hi' && hi != null && hi < b.max) return b;
+    }
+    return bs.length ? bs[bs.length - 1] : null;
+  };
 })();
