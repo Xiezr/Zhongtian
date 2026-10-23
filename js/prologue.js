@@ -356,9 +356,8 @@
     var city = GAME.currentCity ? GAME.currentCity() : null;
     var pop = city ? Math.round((GAME.res(city) || {}).pop || 0) : 0;
     var pct = Math.max(0, Math.min(100, Math.round(lv / need * 100)));
-    /* v114：进度条用真 div（字符条 ░ 在深底上像噪点，而且各字体宽度不一致）*/
-    var bar = '<div style="margin-top:7px;width:260px;height:6px;background:#23262b;border-radius:3px;">'
-      + '<div style="height:6px;width:' + pct + '%;background:#c9b06a;border-radius:3px;"></div></div>';
+    /* v114：进度条用真 div（字符条 ░ 在深底上像噪点，而且各字体宽度不一致）
+       v128：条宽改为跟随 HUD 宽度（原来写死 260px，贴在底部条里显得断掉） */
 
     /* 三个动作：先找指定活动，找不到再找同类（近战/试炼/采集） */
     /* 主按钮不许"附近没有" —— 荒野上到处是变异兽，第一次进来就打不了，
@@ -441,28 +440,54 @@
     /* 进度：几场了 + 还差几次的感觉（不写"还差 N 次"，那是数学题，不是游戏） */
     var acts = (st0() && st0().prologue && (st0().prologue.acts | 0)) || 0;
 
-    return '<div style="max-width:520px;padding:28px 26px;line-height:1.9;">'
-      + '<div style="font-size:13px;letter-spacing:.32em;color:#8a7a5c;">第 ' + (day + 1) + ' 天'
-      + (acts ? '　已经出去 ' + acts + ' 趟' : '') + '</div>'
-      + '<div style="font-size:19px;margin-top:10px;color:#e8e2d4;">你们 ' + U.numText(pop, 0)
-      + ' 个人，还没有城。</div>'
-      + '<div style="font-size:13px;color:#9a9284;margin-top:2px;">'
-      + (day < 10 ? '天还没冷。得找点能打的，先把人练出来。'
-        : '天在变冷。撑到能立城那天。')
+    /* v128：**附近可去的具体地点**（不再是三个写死的按钮）
+       —— 玩家能看见"去哪儿、多远、那边什么地形、野地几级"，这才叫选目标。 */
+    var terrainName = function (t) { return ((GAME.DATA.TERRAIN || {})[t] || {}).name || t || '荒野'; };
+    var spotRows = spots.map(function (sp) {
+      var wl = (GAME.map && GAME.map.wildLevelNow) ? GAME.map.wildLevelNow(sp.ci) : 0;
+      var kinds = sp.acts.map(function (a) {
+        return (a.def && a.def.name) || a.id;
+      }).join(' · ');
+      return '<div data-action="prologue-spot" data-ci="' + sp.ci + '"'
+        + ' style="display:flex;align-items:center;gap:8px;padding:5px 8px;margin-top:3px;'
+        + 'border:1px solid #262a30;border-radius:4px;background:#14171c;cursor:pointer;"'
+        + ' title="点开这片野地：' + U.escape(kinds) + '">'
+        + '<b style="color:#d8d0be;font-size:13px;min-width:52px;">' + U.escape(terrainName(sp.type)) + '</b>'
+        + '<span style="color:#8a8272;font-size:12px;">野地 Lv' + wl + '</span>'
+        + '<span style="color:#c9b06a;font-size:12px;">距 ' + sp.dist + ' 格</span>'
+        + '<span style="flex:1;color:#9a9284;font-size:12px;text-align:right;">' + U.escape(kinds) + '</span>'
+        + '<span style="color:#6f6a60;font-size:12px;">›</span></div>';
+    }).join('');
+
+    return '<div style="pointer-events:auto;background:rgba(13,15,19,.93);border:1px solid #2c3037;'
+      + 'border-radius:8px;padding:12px 16px;backdrop-filter:blur(3px);line-height:1.65;'
+      + 'box-shadow:0 10px 30px rgba(0,0,0,.55);">'
+      /* 一行头：天 / 等级 / 精力 / 已出去几趟 */
+      + '<div style="display:flex;align-items:center;gap:12px;font-size:12px;color:#8a7a5c;">'
+      + '<span style="letter-spacing:.22em;">第 ' + (day + 1) + ' 天</span>'
+      + '<span style="color:#b9b0a0;">君主 <b style="color:#e8e2d4;font-size:14px;">Lv' + lv + '</b> / ' + need + '</span>'
+      + '<span>精力 <b style="color:#e8e2d4;">' + Math.round((lord && lord.energy) || 0) + '</b></span>'
+      + (acts ? '<span>已出去 ' + acts + ' 趟</span>' : '')
+      + '<span style="flex:1;"></span>'
+      + '<span style="color:#6f6a60;">' + (day < 10 ? '天还没冷' : '天在变冷') + '</span>'
       + '</div>'
+      + '<div style="margin-top:2px;font-size:13px;color:#a89c86;">你们 ' + U.numText(pop, 0)
+      + ' 个人，还没有城 —— ' + (day < 10 ? '得找点能打的，先把人练出来。' : '撑到能立城那天。') + '</div>'
+      + '<div style="margin-top:6px;height:5px;background:#23262b;border-radius:3px;">'
+      + '<div style="height:5px;width:' + pct + '%;background:#c9b06a;border-radius:3px;"></div></div>'
       + tierLine + nextLine
-      + '<div style="margin-top:20px;font-size:13px;color:#b9b0a0;">君主 <b style="color:#e8e2d4;">Lv'
-      + lv + '</b> / ' + need + '</div>' + bar
-      + comboLine
-      + '<div style="margin-top:20px;display:flex;gap:10px;flex-wrap:wrap;">'
-      + btn(b1, '清剿', '打变异兽与掠夺者')
-      + btn(b2, '试炼', '旧世试炼场，逐层加码')
-      + btn(b3, '采集', '采药拾矿，安稳')
+      + (spotRows
+        ? '<div style="margin-top:8px;font-size:12px;color:#8a7a5c;">附近可去（点一行进那片野地）</div>' + spotRows
+        : '<div style="margin-top:8px;font-size:12px;color:#8a7a5c;">附近今天没什么可做的 —— 明天再看。</div>')
+      + '<div style="margin-top:9px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">'
+      + btn(b1, '就近清剿', '打变异兽与掠夺者')
+      + btn(b2, '就近试炼', '旧世试炼场，逐层加码')
+      + btn(b3, '就近采集', '采药拾矿，安稳')
       + '</div>'
-      + (spots.length ? '' : '<div style="margin-top:12px;font-size:12px;color:#8a7a5c;">附近今天没什么可做的 —— 明天再看。</div>')
-      + (last ? '<div style="margin-top:20px;font-size:12px;color:#7d766a;border-top:1px solid #23262b;padding-top:10px;">最近：'
+      + comboLine
+      + (last ? '<div style="margin-top:9px;font-size:12px;color:#7d766a;border-top:1px solid #23262b;padding-top:7px;">最近：'
         + U.escape(last) + '</div>' : '')
-      + (P.ready() ? '<div style="margin-top:18px;"><span class="chip" data-action="prologue-build">'
+      + (P.ready() ? '<div style="margin-top:10px;"><span class="chip" data-action="prologue-build">'
         + '立城（Lv' + need + ' 已满）</span></div>' : '')
       + '</div>';
   };
@@ -477,7 +502,10 @@
     /* 前传期要藏起来的四块：顶部 12 个 tab、中央视图、**底部那排地图控件**、
        以及左侧资源栏。第一版漏了 #bottom-bar —— 截图里底下还露着
        「隐藏名称 / 指挥战斗 / 前往 / 回主城…」一整排，白藏了上面两块。 */
-    var hide = ['topnav', 'view-container', 'bottom-bar'];
+    /* v128：还要藏**地图搜索条**（#adm-search：老家 / 选择行省 / 地标高亮 / 定位己方城市…）——
+       前传没有城、没有行省可筛，那一排只会让人以为"要先选什么"。
+       同时**不再藏 #view-container**：地图要露出来，玩家才知道自己在一片废土上。 */
+    var hide = ['topnav', 'bottom-bar', 'adm-search'];
     var i;
     if (!P.on()) {
       if (el && el.parentNode) el.parentNode.removeChild(el);
@@ -494,10 +522,30 @@
     if (!el) {
       el = document.createElement('div');
       el.id = 'prologue-screen';
-      el.style.cssText = 'position:fixed;inset:0;z-index:70;background:#0b0d10;'
-        + 'display:flex;align-items:center;justify-content:center;overflow:auto;';
+      /* ⚠️ v128（审核：老板「前20级竟然只是一个弹窗，你在偷什么懒」）——
+         原来是**全屏黑底**（inset:0 + #0b0d10），把地图整块盖住了：
+         1440×900 的屏幕中间就一小段文字 + 三个按钮，玩家根本不知道自己在一片废土上。
+         现在改成**底部 HUD**：地图全程可见，HUD 只占下方一条，
+         且 wrapper 设 pointer-events:none、卡片单独 auto —— 地图仍然可以点。
+         藏起来的只剩「顶栏」和「底部那排地图控件」（它们在没城时确实没意义）。 */
+      el.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);bottom:14px;'
+        + 'z-index:70;width:min(780px,94vw);max-height:46vh;overflow:auto;'
+        + 'pointer-events:none;';
       document.body.appendChild(el);
     }
+    /* v128：起始位置点亮一圈（否则球面全黑 —— 换了皮的黑屏，等于没改）。
+       只在**第一次**做：之后玩家自己走出去看到的就是探索成果，不该反复送视野。 */
+    try {
+      var st = st0();
+      if (st && st.prologue && !st.prologue._lit) {
+        st.prologue._lit = 1;
+        var c0 = GAME.currentCity ? GAME.currentCity() : null;
+        var fromCi = (c0 && c0.ci != null) ? c0.ci : 0;
+        if (GAME.fog && GAME.fog.revealAround) {
+          GAME.fog.revealAround(fromCi, 4, (GAME.fog.TERRAIN || 1));
+        }
+      }
+    } catch (e) { /* 迷雾失败不该挡住界面 */ }
     el.innerHTML = P.screenHTML();
   };
 
@@ -552,6 +600,12 @@ if (GAME.reg) {
         + '君主升到 Lv' + need + ' 才能立城。</div>');
     },
     actions: {
+      /* v128：点"附近可去"的一行 → 打开那片野地（与地图点格同一条路），
+         玩家看到的是**世界**，不是三个写死的按钮。 */
+      'prologue-spot': function (el, ctx) {
+        var ci = Number(el.getAttribute('data-ci'));
+        if (GAME.ui && GAME.ui.openLandModalCi && ci >= 0) GAME.ui.openLandModalCi(ci);
+      },
       'prologue-act': function (el, ctx) {
         var ci = Number(el.getAttribute('data-ci'));
         var act = el.getAttribute('data-act');
