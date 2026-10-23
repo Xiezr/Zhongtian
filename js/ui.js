@@ -8656,6 +8656,12 @@ import './state.js';
     if (v === 'galaxy') requestAnimationFrame(function () { ui.renderGalaxy(); });
     ui.softenBlocked(box);   /* v89.189：视图页的受阻按钮同样转「可点+说明」 */
     ui.paintBottom();
+    /* v114（老板 2026-10-23 评估）：前传期盖一层全屏荒野界面 ——
+       12 个 tab、三级下拉、坐标输入、9 个地图按钮全部藏起来，
+       只留天数 / 等级 / 三个动作。立城后 P.on() 变 false，这里自动撤掉。
+       放在**所有刷新路径的汇合点**（renderView）而不是 setView：
+       ctx.refresh 走的是 GAME.refreshView → renderView，漏了它打完一场界面就不更新。 */
+    if (GAME.prologue && GAME.prologue.syncScreen) GAME.prologue.syncScreen();
   };
 
   /* --------- 辖区岁贡（v14）：占城的持续收益面板 --------- */

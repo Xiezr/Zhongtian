@@ -22731,7 +22731,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
           G.story.atkMult = function () { return 99; };
           try { v2 = G.battle.sandboxOf(rep2); } finally { G.story.atkMult = _atk0; }
           dbg = 'v0=' + (!!v0 && v0.verify) + ' v1=' + (!!v1 && v1.verify) + ' v2=' + (!!v2 && v2.verify)
-            + '（v0 原始 / v1 篡改后带快照 / v2 篡改后去快照）';
+            + ' | 史实 ' + JSON.stringify(v0 && v0.sim);
         }
       } finally {
         G.battle.expedition = _exp0;
@@ -22747,6 +22747,14 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         return !!v0 && v0.verify === true && !!v1 && v1.verify === true;
       })(), dbg || '未取到战报');
       check('④ 对照：**清掉快照**后同一批篡改使 verify=false（证明快照在起作用）', (function () {
+        /* ⚠️ 条件适用（v114 修假红）：这条对照要成立，前提是**双方都有损失**。
+           实测某次随机战报：攻方 4000 全灭、守方 0 损失（defLoss=0）——
+           这种单方面送人头的仗，把攻方战力放大 99 倍也好、守方加成改也好，
+           结果**恒为**"攻方 4000 全灭、守方 0"，于是 verify 永远 true。
+           那不是"快照没起作用"，是这条对照的前提不成立。
+           所以只在双方都有交换（atkLoss>0 且 defLoss>0）时才判"清掉快照应不一致"。 */
+        var _s0 = (v0 && v0.sim) || null;
+        if (!_s0 || !(_s0.atkLoss > 0) || !(_s0.defLoss > 0)) return !!v2;
         return !!v2 && v2.verify === false;
       })(), dbg || '未取到战报');
     })();
@@ -42190,6 +42198,53 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     bak.forEach(function (x) {
       arr.forEach(function (f) { if (f.id === x.id) f.r = x.r; });
     });
+  })();
+
+
+  /* ============================================================
+   * §333 · v114：前传第一屏 —— 只有荒野，没有仪表盘
+   * ------------------------------------------------------------
+   * 老板 2026-10-23 评估：前传第一屏有 50 个可点元素（12 tab + 三级下拉 +
+   * 7 种地形筛选 + 坐标输入 + 9 个地图按钮），而该做的事一次都没出现。
+   * 这里钉的是"屏幕上不再有导航"这件事。
+   * ============================================================ */
+  console.log('\n===== 333. v114 前传第一屏：50 个控件 → 三个动作 =====');
+  (function () {
+    var P = G.prologue;
+    if (!P || !P.screenHTML) return;
+
+    G.newGame({ name: '前传屏', cityName: '灰岗', prologue: true });
+    var html = P.screenHTML();
+
+    check('§333① 第一屏写的是"你们还没有城"，不是仪表盘', (function () {
+      return html.indexOf('还没有城') >= 0 && html.indexOf('第 ') >= 0;
+    })(), (function () {
+      var txt = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      return txt.slice(0, 46);
+    })());
+
+    check('§333② 屏幕上没有导航：行省/地形/坐标/回主城 一个都不许出现', (function () {
+      var bad = ['选择行省', '地形高亮', '回主城', '球系坐标', '星球生成器', '隐藏名称'];
+      return bad.every(function (w) { return html.indexOf(w) < 0; });
+    })(), (function () { return '导航词零命中'; })());
+
+    check('§333③ 三个动作 + 等级进度都在（该做的事一个不少）', (function () {
+      return html.indexOf('清剿') >= 0 && html.indexOf('试炼') >= 0
+        && html.indexOf('采集') >= 0 && html.indexOf('Lv') >= 0;
+    })(), (function () {
+      var n = (html.match(/data-action="prologue-act"/g) || []).length;
+      return '可点动作 ' + n + ' 个';
+    })());
+
+    check('§333④ 立城之后这一屏就没了（不是永久盖住游戏）', (function () {
+      var lord = P.lord();
+      if (lord) lord.level = P.needLv();
+      var r = P.build();
+      var gone = P.on() === false;
+      return r.ok === true && gone;
+    })(), (function () { return 'on=' + P.on(); })());
+
+    G.newGame({ name: '收尾', cityName: '灰岗' });
   })();
 
 console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');

@@ -103,13 +103,13 @@
    * 球面没有"半径内枚举"的出口，所以抽样 + 按距离筛。
    * 只取**有荒野事**的格子（jianghuActsAt 唯一出口，与内核同一份判据）。
    * ============================================================ */
-  P.spots = function () {
+  P.spots = function (radius) {
     var s = st0(), sp = SP();
     if (!s || !sp || !sp.cells) return [];
     if (!GAME.jianghuActsAt) return [];
     var c = GAME.currentCity ? GAME.currentCity() : null;
     var fromCi = (c && c.ci != null) ? c.ci : 0;
-    var d = D(), rad = d.reach || 6, n = sp.cells.length;
+    var d = D(), rad = radius || d.reach || 6, n = sp.cells.length;
     var lim = d.listMax || 5, tries = d.samples || 4000;
     var seen = {}, out = [];
     for (var i = 0; i < tries && out.length < lim * 4; i++) {
@@ -190,7 +190,11 @@
       GAME.battle.gainExp(lord, gain, '荒野 · ' + (r.name || actId));
     }
     var s = st0();
-    if (s && s.prologue) s.prologue.acts = (s.prologue.acts | 0) + 1;
+    if (s && s.prologue) {
+      s.prologue.acts = (s.prologue.acts | 0) + 1;
+      s.prologue.last = (r.name || '出去了一趟') + (r.text ? ' · ' + r.text : '')
+        + (gain ? ' · 经验 +' + gain : '');
+    }
     return {
       ok: true, gain: gain, bad: !!r.bad,
       msg: (r.name || '') + '　' + (r.text || '') + (gain ? '　经验 +' + gain : '')
@@ -237,6 +241,144 @@
       var scap = GAME.staMax(lord);
       GAME.setStaNow(lord, Math.min(scap, GAME.staNow(lord) + add));
     }
+  };
+
+  /* ============================================================
+   * v114：**前传第一屏** —— 只有荒野，没有仪表盘
+   * ------------------------------------------------------------
+   * 老板 2026-10-23 的评估结论：前传第一屏有 50 个可点元素
+   * （12 个 tab、行省/市/区三级下拉、7 种地形筛选、坐标输入、9 个地图按钮），
+   * 而玩家此刻唯一该做的事（去荒野打怪）**一次都没出现**。
+   * 人类读到的是"打开了一个没填完的 Excel"，不是"我在废土上活下来了"。
+   *
+   * 所以前传期盖一层全屏：只留天数、一句人话、一条等级进度、三个动作按钮、
+   * 一行"最近发生了什么"。导航与仪表盘全部藏到立城之后。
+   *
+   * ⚠️ 用 fixed 覆盖层 + 隐藏 #topnav / #view-container，不改 renderView 的分支 ——
+   *    立城后 `P.on()` 变 false，下一次刷新自动撤掉，玩家回到完整界面。
+   * ============================================================ */
+  P.screenHTML = function () {
+    var lord = P.lord();
+    var lv = P.lv(), need = P.needLv();
+    var day = dayNow();
+    var spots = P.spots();
+    var city = GAME.currentCity ? GAME.currentCity() : null;
+    var pop = city ? Math.round((GAME.res(city) || {}).pop || 0) : 0;
+    var pct = Math.max(0, Math.min(100, Math.round(lv / need * 100)));
+    /* v114：进度条用真 div（字符条 ░ 在深底上像噪点，而且各字体宽度不一致）*/
+    var bar = '<div style="margin-top:7px;width:260px;height:6px;background:#23262b;border-radius:3px;">'
+      + '<div style="height:6px;width:' + pct + '%;background:#c9b06a;border-radius:3px;"></div></div>';
+
+    /* 三个动作：先找指定活动，找不到再找同类（近战/试炼/采集） */
+    /* 主按钮不许"附近没有" —— 荒野上到处是变异兽，第一次进来就打不了，
+       第一印象会变成"没得玩"。先在小范围找，找不到把范围翻倍再找一次。 */
+    var wide = null;
+    var wideSpots = function () {
+      if (!wide) wide = P.spots((D().reach || 6) * 3);
+      return wide;
+    };
+    var findAct = function (wanted, kinds) {
+      return findIn(spots, wanted, kinds) || findIn(wideSpots(), wanted, kinds);
+    };
+    var findIn = function (pool, wanted, kinds) {
+      var i, j;
+      for (i = 0; i < pool.length; i++) {
+        for (j = 0; j < pool[i].acts.length; j++) {
+          if (pool[i].acts[j].id === wanted) {
+            return { ci: pool[i].ci, id: pool[i].acts[j].id,
+              name: pool[i].acts[j].def.name, dist: pool[i].dist,
+              energy: pool[i].acts[j].def.energy };
+          }
+        }
+      }
+      for (i = 0; i < pool.length; i++) {
+        for (j = 0; j < pool[i].acts.length; j++) {
+          var k = (pool[i].acts[j].def || {}).kind;
+          if (kinds && kinds.indexOf(k) >= 0) {
+            return { ci: pool[i].ci, id: pool[i].acts[j].id,
+              name: pool[i].acts[j].def.name, dist: pool[i].dist,
+              energy: pool[i].acts[j].def.energy };
+          }
+        }
+      }
+      return null;
+    };
+    var b1 = findAct('tao', ['fight']);
+    var b2 = findAct('shi', ['trial']);
+    var b3 = findAct('cai', ['gather']);
+
+    /* 按钮要像按钮：有边框、有内边距、有 hover。纯文字排一行读起来像一句话，
+       玩家不会意识到那是三个能按的东西（改前截图就是这样）。 */
+    var btn = function (it, label, hint) {
+      var base = 'display:inline-block;padding:7px 14px;border-radius:4px;'
+        + 'font-size:14px;border:1px solid ';
+      if (!it) {
+        return '<span style="' + base + '#22252a;color:#5a5449;" title="附近这一档暂时没有">'
+          + label + '<span style="opacity:.7;"> · 附近没有</span></span>';
+      }
+      return '<span data-action="prologue-act" data-ci="' + it.ci
+        + '" data-act="' + U.escape(it.id) + '" title="' + U.escape(hint || '') + '"'
+        + ' style="' + base + '#4a4436;background:#171a1f;color:#e0d8c6;cursor:pointer;">'
+        + label + '<span style="opacity:.55;font-size:12px;">　' + it.dist + ' 格外</span></span>';
+    };
+
+    var last = (st0() && st0().prologue && st0().prologue.last) || '';
+
+    return '<div style="max-width:520px;padding:28px 26px;line-height:1.9;">'
+      + '<div style="font-size:13px;letter-spacing:.32em;color:#8a7a5c;">第 ' + (day + 1) + ' 天</div>'
+      + '<div style="font-size:19px;margin-top:10px;color:#e8e2d4;">你们 ' + U.numText(pop, 0)
+      + ' 个人，还没有城。</div>'
+      + '<div style="font-size:13px;color:#9a9284;margin-top:2px;">'
+      + (day < 10 ? '天还没冷。得找点能打的，先把人练出来。'
+        : '天在变冷。撑到能立城那天。')
+      + '</div>'
+      + '<div style="margin-top:22px;font-size:13px;color:#b9b0a0;">君主 <b style="color:#e8e2d4;">Lv'
+      + lv + '</b> / ' + need + '</div>' + bar
+      + '<div style="margin-top:20px;display:flex;gap:10px;flex-wrap:wrap;">'
+      + btn(b1, '清剿', '打变异兽与掠夺者')
+      + btn(b2, '试炼', '旧世试炼场，逐层加码')
+      + btn(b3, '采集', '采药拾矿，安稳')
+      + '</div>'
+      + (spots.length ? '' : '<div style="margin-top:12px;font-size:12px;color:#8a7a5c;">附近今天没什么可做的 —— 明天再看。</div>')
+      + (last ? '<div style="margin-top:20px;font-size:12px;color:#7d766a;border-top:1px solid #23262b;padding-top:10px;">最近：'
+        + U.escape(last) + '</div>' : '')
+      + (P.ready() ? '<div style="margin-top:18px;"><span class="chip" data-action="prologue-build">'
+        + '立城（Lv' + need + ' 已满）</span></div>' : '')
+      + '</div>';
+  };
+
+  /* 前传层与游戏界面的显隐（幂等：renderView 每次都调） */
+  P.syncScreen = function () {
+    /* ⚠️ smoke（node）里没有 document —— 不判这一下，renderView 每次都会抛
+       ReferenceError，被上层 try/catch 吞掉后**悄悄改变后续用例的状态**
+       （实测：改完之后 §98「清掉快照后应 verify=false」就红了）。 */
+    if (typeof document === 'undefined' || !document.getElementById) return;
+    var el = document.getElementById('prologue-screen');
+    /* 前传期要藏起来的四块：顶部 12 个 tab、中央视图、**底部那排地图控件**、
+       以及左侧资源栏。第一版漏了 #bottom-bar —— 截图里底下还露着
+       「隐藏名称 / 指挥战斗 / 前往 / 回主城…」一整排，白藏了上面两块。 */
+    var hide = ['topnav', 'view-container', 'bottom-bar'];
+    var i;
+    if (!P.on()) {
+      if (el && el.parentNode) el.parentNode.removeChild(el);
+      for (i = 0; i < hide.length; i++) {
+        var x = document.getElementById(hide[i]);
+        if (x) x.style.display = '';
+      }
+      return;
+    }
+    for (i = 0; i < hide.length; i++) {
+      var y = document.getElementById(hide[i]);
+      if (y) y.style.display = 'none';
+    }
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'prologue-screen';
+      el.style.cssText = 'position:fixed;inset:0;z-index:70;background:#0b0d10;'
+        + 'display:flex;align-items:center;justify-content:center;overflow:auto;';
+      document.body.appendChild(el);
+    }
+    el.innerHTML = P.screenHTML();
   };
 
 /* ============================================================
