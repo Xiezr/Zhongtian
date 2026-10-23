@@ -691,6 +691,26 @@
       if (cellKind[k] === 'own') return;
       if (fogHides(+k)) { delete mark[k]; delete cellKind[k]; delete cellRef[k]; }
     });
+    /* ============================================================
+     * v132：前传里"**我站在这一格**"（平涂部分）。
+     * ------------------------------------------------------------
+     * 前传是君主一个人在大地图上走，之前屏幕上没有任何标记指向自己
+     * （视野区域中心就是自己，但玩家不知道中心在哪）。
+     * 写在 `fogHides` 过滤**之后** —— 脚下必然已探明，放后面省得被雾判掉。
+     * ⚠️ 已核对：`_tileCells = SP.cells`（map3d.js:252/278），
+     * 所以 `mark[ci]` 与消费端 `_tileCells[ci]` 是**同一套索引**。
+     * 悬浮标签另在 floatName 定义之后补（那里 grp/lp 才初始化好）。
+     * ============================================================ */
+    var _lordCi = -1;
+    if (GAME.prologue && GAME.prologue.on && GAME.prologue.on()) {
+      var _ciP = GAME.prologue.pos ? GAME.prologue.pos() : -1;
+      if (_ciP >= 0 && _tileCells[_ciP]) {
+        _lordCi = _ciP;
+        mark[_ciP] = [255, 216, 92];
+        cellKind[_ciP] = 'lord';
+        cellRef[_ciP] = { lord: true };
+      }
+    }
     M.cellKind = cellKind; M.cellRef = cellRef;
     /* 平涂：每格六边形填色（贴地形 · 微抬）*/
     var pos = [], col = [], idx = [], base = 0;
@@ -749,6 +769,10 @@
     /* v90.57（老板）：**己方城市**也引出名称（像名城一样）—— 亮蓝＝己方色。
        v90.97（双球面）：名称取**地图星球分片**的城。 */
     (((GAME.mapSliceOf && GAME.mapSliceOf()) || {}).cities || []).forEach(function (c) { floatName(dirOfCell(c.x, c.y), c.name || '城', '#8fd4ff'); });
+    /* v132 前传：君主头顶一个"▲ 你"（这里 grp/lp 已初始化，才能安全调 floatName） */
+    if (_lordCi >= 0 && _tileCells[_lordCi] && _tileCells[_lordCi].dir) {
+      floatName(_tileCells[_lordCi].dir, '▲ 你', '#ffe28a');
+    }
     if (lp.length) { var lg = new THREE.BufferGeometry(); lg.setAttribute('position', new THREE.Float32BufferAttribute(lp, 3)); grp.add(new THREE.LineSegments(lg, new THREE.LineBasicMaterial({ color: 0x0b0f14, transparent: true, opacity: 0.92, depthWrite: false }))); }
     M._labels = grp; scene.add(grp);
   }
@@ -10923,6 +10947,108 @@
    *   ② 说清**玩家此刻在哪、周围是什么、往哪走** —— 这就是个人冒险的地图页。
    * 只说事实，不写"你要重建文明"之类（沿用 prologue.js 的调性）。
    * ============================================================ */
+  /* ============================================================
+   * v132：**斗将面板**（前传 · 点名单挑）
+   * ------------------------------------------------------------
+   * 只做呈现：四招 + 逐合记录 + 打完的结算。判定全在 `prologue.duelStep`
+   * （内核是 `battle.duelPlay`，这里不重算一分一合）。
+   * 对手的招式**看不到**，但能从他出过的合里反推倾向 —— 那是这个玩法唯一的读点，
+   * 所以面板只写"他露过什么"，不提前泄露下一招。
+   * ============================================================ */
+  ui.openDuelPanel = function () {
+    var P = GAME.prologue || {};
+    var d = P.duelOf ? P.duelOf() : null;
+    if (!d) { ui.toast('没有正在进行的斗将'); return; }
+    var DU = (GAME.DATA && GAME.DATA.DUEL) || {};
+    var MV = DU.moves || {}, ORDER = DU.moveOrder || Object.keys(MV);
+    var lord = P.lord ? P.lord() : null;
+    var f = d.foe || {};
+    var rowTxt = function (r, i) {
+      var cls = r.res === 'a' ? 'var(--green-ok)' : (r.res === 'b' ? 'var(--red-light)' : 'var(--text-dim)');
+      return '<div style="font-size:var(--fs-cap);padding:2px 0;color:' + cls + ';">'
+        + '第' + (i + 1) + '合　我 ' + U.escape(r.aName) + ' ⚔ ' + U.escape(r.bName)
+        + '　' + (r.res === 'a' ? '占先' : r.res === 'b' ? '吃亏' : '相持') + '</div>';
+    };
+    var hist = (d.rows || []).map(rowTxt).join('') || '<div class="ui-sub">还没交手。</div>';
+    var seen = {};
+    (d.rows || []).forEach(function (r) { seen[r.b] = (seen[r.b] | 0) + 1; });
+    var seenTxt = Object.keys(seen).map(function (k) {
+      return ((MV[k] || {}).name || k) + '×' + seen[k];
+    }).join(' · ') || '还没露招';
+    var moves = '';
+    if (!d.done) {
+      moves = '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">'
+        + ORDER.map(function (id) {
+            var m = MV[id] || {};
+            return '<button class="btn gold" data-action="prologue-duel-hit" data-mv="' + id + '"'
+              + ' title="' + U.escape(m.note || '') + '">' + U.escape(m.name || id) + '</button>';
+          }).join('') + '</div>';
+    } else {
+      moves = '<div style="margin-top:10px;padding:8px 10px;border:1px solid var(--wood-light);border-radius:6px;">'
+        + '<b style="color:var(--gold-light);">' + U.escape(d.txt || '') + '</b>'
+        + '<div class="ui-sub" style="margin-top:3px;">经验 +' + (d.gain | 0) + '</div></div>'
+        + '<div style="margin-top:10px;"><button class="btn" data-action="prologue-duel-close">收手</button></div>';
+    }
+    /* v132：**敢不敢打，得先让他知道打不打得过**。
+       实测：Lv1 君主在野地 Lv8 上点"点名斗将"，对面是 Lv100 守将 —— 送。
+       面板不替他决定，但必须把差距摆在眼前（一行红字，不是靠玩家自己算）。 */
+    var myLv = (lord && lord.level) | 0, foeLv = f.level | 0;
+    /* ============================================================
+     * v132：**把"可预判"那半边给玩家**。
+     * ------------------------------------------------------------
+     * `battle.duelTendency` 按四维算每招的偏好权重（武力→突刺 / 统率→格挡 /
+     * 谋略→佯攻），这是设计里明写的"可预判"；落点不可预判。
+     * 之前面板只说"对手露过的招"，第一合前一片空白 —— 玩家等于闭眼打，
+     * 实测连续 0:3。把架势摆出来，第一合就有依据。
+     * ============================================================ */
+    /* ============================================================
+     * ⛔ v132（核对内核后才想明白的一件事）：
+     * `battle.duelPlay` 的胜负**只看招式相克**（am===bm 平；beats 关系定胜负），
+     * **等级与四维完全不参与**。它们唯一的作用是决定"对手爱出哪一招"的权重。
+     * 所以我第一版写的「Lv1 对 Lv100 —— 这一战是送」是**错的**：
+     * 真正决定成败的是"他的倾向读不读得出来"。
+     * 而 balance 型守将四维相同（90/90/90）→ 三项权重几乎相等 → 无从读起 → 只能赌。
+     * 面板现在只说这两件事：他的路数**看得出来 / 看不出来**。
+     * ============================================================ */
+    var tendTxt = '', readable = false;
+    try {
+      if (GAME.battle && GAME.battle.duelTendency) {
+        var w = GAME.battle.duelTendency({ yw: f.yw, zm: f.zm, tong: f.tong });
+        var keys = Object.keys(w), sortv = keys.map(function (k) { return w[k]; }).sort(function (a, b) { return b - a; });
+        var bestK = keys[0];
+        keys.forEach(function (k) { if (w[k] > w[bestK]) bestK = k; });
+        /* 可读性 = 最强项 / 次强项。1.15 以上才算"看得出来" */
+        var ratio = sortv[1] > 0 ? (sortv[0] / sortv[1]) : 9;
+        readable = ratio >= 1.15;
+        if (readable) {
+          var why = bestK === 'stab' ? '手上有劲' : bestK === 'guard' ? '守得稳' : bestK === 'feint' ? '心思多' : '脾气慢';
+          tendTxt = '看他架势：偏' + ((MV[bestK] || {}).name || bestK) + '（' + why + '）';
+        } else {
+          tendTxt = '看他架势：四平八稳 —— 读不出偏哪一手，只能临场赌';
+        }
+      }
+    } catch (e) {}
+    /* 提醒只讲"读不读得出"，不讲"打不打得过"（等级不决定胜负） */
+    var risk = readable ? '' : '⚠ 这人没有明显路数，五合里全是猜';
+    var riskBad = !readable;
+    var html = '<div class="gold-heading">⚔ 斗将 · ' + U.escape(f.name || '对手') + '</div>'
+      + '<div class="ui-sub" style="margin-top:4px;">'
+      + '对手 Lv' + foeLv + '　统' + (f.tong | 0) + ' 勇' + (f.yw | 0)
+      + ' 智' + (f.zm | 0) + ' 政' + (f.nz | 0) + '</div>'
+      + (risk ? '<div style="margin-top:3px;font-size:var(--fs-cap);color:'
+          + (riskBad ? 'var(--gold-light)' : 'var(--green-ok)') + ';">' + U.escape(risk) + '</div>' : '')
+      + (tendTxt ? '<div style="margin-top:2px;font-size:var(--fs-cap);color:var(--gold-light);">'
+          + U.escape(tendTxt) + '</div>' : '')
+      + '<div class="ui-sub">我 ' + U.escape((lord && lord.name) || '君主')
+      + ' Lv' + ((lord && lord.level) | 0) + '　比分 <b>' + (d.wa | 0) + ' : ' + (d.wb | 0) + '</b>'
+      + '　（先到 ' + (DU.winScore || 3) + ' 分 / 共 ' + (DU.playRounds || 5) + ' 合）</div>'
+      + '<div style="margin-top:8px;border-top:1px solid var(--line);padding-top:6px;">' + hist + '</div>'
+      + '<div class="ui-sub" style="margin-top:6px;">对手露过的招：' + U.escape(seenTxt) + '</div>'
+      + moves
+      + '<div class="ui-sub" style="margin-top:8px;opacity:.7;">突刺克蓄力 · 格挡克突刺 · 佯攻克格挡 · 蓄力克佯攻</div>';
+    ui.openModal(html, { size: 'md' });
+  };
+
   ui.campHTML = function () {
     var s = GAME.state || {};
     var P = GAME.prologue || {};
@@ -25199,7 +25325,7 @@
      （这解释了"改了却说没生效"的观感）。老板若发现版本 ≠ 最新交付，按 Ctrl+F5
      强制刷新即获得新代码。⚠️ 发版须走 **bump_version.py --bump --version vX.Y**（它同步 index.html 的 ?v=/BUILD
      与这里的 GAME.VERSION 三处）—— 只手改 index.html 会让版本号冻住（v91.18 前的病灶）。 */
-  GAME.VERSION = 'v131.0';
+  GAME.VERSION = 'v132.0';
   function boot() {
     fitAppSize();
     try {

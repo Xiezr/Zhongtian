@@ -3672,7 +3672,27 @@ import './data.js';
      口径已对照 4,036 份真实长跑存档 + savePayload 往返产物 —— 合法档零误杀。 */
   GAME.saveShapeChk = function (st) {
     if (!st || typeof st !== 'object' || Array.isArray(st)) return { ok: false, msg: '存档状态不是有效对象' };
-    if (!Array.isArray(st.cities) || !st.cities.length) return { ok: false, msg: '存档内容不完整（没有城市数据）' };
+    if (!Array.isArray(st.cities)) return { ok: false, msg: '存档内容不完整（城市数据不是列表）' };
+    /* ⛔ v132（前传存档往返实测抓到，v131 留下的尾巴）：
+       这条原来写 `|| !st.cities.length` —— 只要没有城就判坏档。
+       而 v131 起前传局**真的没有城**（`cities: []`），于是：
+         · `saveShapeChk` 判 false
+         · `adoptState` 抛"存档形状损坏"
+         · `loadGame` 的 catch 吞掉异常 → 返回 null
+       实测后果：**前传玩一段后关掉页面，再打开进度全丢、退回创角界面**。
+       现在按"是不是合法前传局"细分 —— 放宽必须同时满足三条，缺一仍判坏档：
+         ① prologue.on === true（确实在前传）
+         ② generals 里有君主（id === 'lord'）
+         ③ prologue.pos 是合法格索引（不是 undefined/负）
+       这三条保证"无城"是**前传这个正常状态**，而不是"存档被截断了"。 */
+    if (!st.cities.length) {
+      var _pro = !!(st.prologue && st.prologue.on === true);
+      var _lord = Array.isArray(st.generals) && st.generals.some(function (g) { return g && g.id === 'lord'; });
+      var _pos = !!(st.prologue && typeof st.prologue.pos === 'number' && st.prologue.pos >= 0);
+      if (!_pro || !_lord || !_pos) {
+        return { ok: false, msg: '存档内容不完整（没有城市数据）' };
+      }
+    }
     if (!Array.isArray(st.generals)) return { ok: false, msg: '存档内容不完整（英雄数据不是列表）' };
     if (!st.map || typeof st.map !== 'object') return { ok: false, msg: '存档内容不完整（缺少地图数据）' };
     var i, c, g;

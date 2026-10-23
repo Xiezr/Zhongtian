@@ -41837,6 +41837,73 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         + ' · 粮 ' + Math.round(p.grain || 0);
     })());
 
+    /* ============================================================
+     * §326⑧ v132：**前传档必须能进存档**（v131 留下的尾巴，实测抓到）
+     * ------------------------------------------------------------
+     * 病根：`saveShapeChk` 原来写 `!st.cities.length` 就判坏档，而前传局
+     * 真的没有城 → 判假 → `adoptState` 抛 → `loadGame` catch 吞掉返回 null。
+     * 玩家侧表现：**前传玩一段后关掉页面，再打开进度全丢、退回创角界面**。
+     * 这条断言测"序列化 → 形状检查 → 关键字段还在"这一整环。
+     * 三条都要成立才算过：形状 OK / pos 保住 / 城数仍是 0。
+     * ============================================================ */
+    check('§326⑧ 前传档能进存档：形状检查通过且往返保住位置（v132 修）', (function () {
+      var st = G2.newGame({ name: '存档档', cityName: '灰岗', mapSeed: 20261024, prologue: true });
+      var nbs = G2.prologue.neighbors();
+      if (nbs.length) G2.prologue.moveTo(nbs[0].ci);
+      var pos = st.prologue.pos, steps = st.prologue.steps;
+      var json = G2.savePayload ? G2.savePayload() : null;
+      if (!json) return false;
+      var back = JSON.parse(json);
+      var ck = G2.saveShapeChk(back);
+      return ck.ok === true && back.cities.length === 0
+        && back.prologue && back.prologue.on === true
+        && back.prologue.pos === pos && back.prologue.steps === steps;
+    })(), (function () {
+      var st = G2.state;
+      var ck = G2.saveShapeChk(st);
+      return 'shape=' + ck.ok + ' · pos=' + (st.prologue && st.prologue.pos) + ' · cities=' + st.cities.length;
+    })());
+
+    /* ============================================================
+     * §326⑩ v132：**斗将的对手必须每合都是同一个人**
+     * ------------------------------------------------------------
+     * 实测踩到的坑：`duelFoe` 每次调 `makeGeneral` 都会拿到一个新的自增 id，
+     * 而对手出招的种子是 `'duelm|' + id + '|' + round + '|' + seed` ——
+     * 于是"重算前 N 合"时其实换了一个对手，招式序列全变，**比分当场倒退**
+     * （第 2 合 2:0 → 第 3 合 0:1）。这条断言把 id 钉死。
+     * ============================================================ */
+    check('§326⑩ 斗将对手是确定性的：同一格两次取到同一个 id（防"每合换人"）', (function () {
+      var st = G2.newGame({ name: '斗将档', cityName: '灰岗', mapSeed: 20261024, prologue: true });
+      var ci = G2.prologue.pos();
+      var a = G2.prologue.duelFoe(ci), b = G2.prologue.duelFoe(ci);
+      return !!a && !!b && a.id === b.id && a.level === b.level;
+    })(), (function () {
+      var ci = G2.prologue.pos();
+      var a = G2.prologue.duelFoe(ci);
+      return 'id=' + (a && a.id) + ' · Lv' + (a && a.level);
+    })());
+
+    /* 同 seed + 同出招序列 → 同结果（斗将可复算的前提） */
+    check('§326⑪ 同 seed 同出招必得同结果（斗将可复算）', (function () {
+      var lord = G2.prologue.lord(), ci = G2.prologue.pos();
+      var foe = G2.prologue.duelFoe(ci);
+      if (!lord || !foe) return false;
+      var seq = ['stab', 'guard', 'feint', 'charge', 'stab'];
+      var r1 = G2.battle.duelPlay(lord, foe, seq, 12345);
+      var r2 = G2.battle.duelPlay(G2.prologue.lord(), G2.prologue.duelFoe(ci), seq, 12345);
+      return !!r1 && !!r2 && r1.wa === r2.wa && r1.wb === r2.wb;
+    })(), (function () {
+      var lord = G2.prologue.lord(), foe = G2.prologue.duelFoe(G2.prologue.pos());
+      var r = lord && foe ? G2.battle.duelPlay(lord, foe, ['stab', 'guard'], 7) : null;
+      return r ? (r.wa + ':' + r.wb) : '?';
+    })());
+
+    /* 反向守门：**坏档仍然要拦**（放宽不能变成放水） */
+    check('§326⑨ 没有城又不是前传 → 仍然判坏档（放宽没变成放水）', (function () {
+      var bad = { cities: [], generals: [{ id: 'lord', name: '某' }], map: {} };
+      return G2.saveShapeChk(bad).ok === false;
+    })(), (function () { return G2.saveShapeChk({ cities: [], generals: [], map: {} }).msg; })());
+
     /* 收尾：回到普通档，别把前传状态留给后面的用例 */
     G2.newGame({ name: '收尾', cityName: '灰岗' });
   })();

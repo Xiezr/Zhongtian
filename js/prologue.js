@@ -260,6 +260,169 @@
     return { ok: true, msg: '走到' + (tn.name || '荒野') + '了 —— 看看这地方能做什么', ci: ci };
   };
 
+  /* ============================================================
+   * v132：**点名斗将**（老板「就是大地图加地块探索加斗将等」）
+   * ------------------------------------------------------------
+   * 内核早就有（`battle.duelPlay`：4 招相克 · 5 合先到 3 分 · 对手倾向由属性推），
+   * 缺的只是"前传里怎么发起、怎么逐合出招、输了怎样"。
+   * 复用的东西：
+   *   · 对手 —— `GAME.wildDefenseAt(ci)` 的守将（没有守将就按野地等级造"游荡者"）
+   *   · 判定 —— `duelPlay(我, 对手, 累积出招, 固定 seed)`；每合重算前 N 合取最后一行，
+   *             seed 固定所以**同样的出招必然得到同样的结果**（不引入随机漂移）
+   *   · 经验 —— `battle.gainExp`（与荒野行动同一出口）
+   *   · 体力/精力 —— `setStaNow` / `setEnergyNow`（唯一写入口）
+   * 谁能斗：**只有"这格有仗可打"**（有 fight / trial 类动作）时才给入口，
+   *        否则斗将会变成满地图刷经验的捷径。
+   * ============================================================ */
+
+  /* 当前斗将状态（没有就是 null） */
+  P.duelOf = function () {
+    var s = st0();
+    return (s && s.prologue && s.prologue.duel) || null;
+  };
+
+  /* 这一格能不能发起斗将 */
+  P.duelReady = function (ci) {
+    if (!P.on()) return false;
+    if (ci == null) ci = P.pos();
+    var s = st0();
+    var acts = (GAME.jianghuActsAt ? GAME.jianghuActsAt(ci) : []) || [];
+    if (!acts.length) return false;                       /* 纯荒地：没人应战 */
+    /* 每格只叫一次阵（`s.prologue.dueled`）——
+       不设这一条，斗将会变成"在同一格反复刷经验"的捷径。 */
+    var _d = (s && s.prologue && s.prologue.dueled) || {};
+    if (_d['c' + ci]) return false;
+    return true;
+  };
+
+  /* 对手：这一带的头目 —— 但**等级要跟着君主走**。
+     ------------------------------------------------------------
+     第一版直接搬 `wildDefenseAt(ci).gen`（野地守将），实测 Lv1 君主在野地 Lv8 上
+     撞到 Lv100 / 四维 310 的对手，连打两局都是 0:3 —— 斗将等于没有。
+     野地守将的等级是给"带兵打仗"标定的（DATA.WILD_GUARD_LV：30~120），
+     不是给"一个人挑一个人"用的。
+     口径：对手等级上限 = 君主等级 × 1.5 + 10（保住挑战、但不碾压）。
+        · 守将没超上限 → 就用他（有名字有头衔，真实感）
+        · 超了 → 按上限造一个"游荡者"顶上
+     必须用**确定性 rand**（U.rng(ci)）—— 否则每合重算时对手四维会漂，
+     同样的出招会得到不同结果，斗将就不成立了。 */
+  P.duelFoe = function (ci) {
+    var myLv = P.lv();
+    var cap = Math.max(10, Math.round(myLv * 1.5 + 10));
+    var d = GAME.wildDefenseAt ? GAME.wildDefenseAt(ci) : null;
+    if (d && d.gen && (d.gen.level | 0) <= cap) return d.gen;
+    var glv = Math.max(5, Math.min(cap, (d && d.gen && (d.gen.level | 0)) || cap));
+    var rnd = GAME.utils.rng(((ci | 0) * 2654435761) >>> 0);
+    var g = GAME.makeGeneral('游荡者', glv, 'guard', null, false, null, 'balance', rnd);
+    /* ⛔ **对手的 id 必须确定**（v132 实测踩到的坑）：
+       `duelEnemyMove` 的出招种子是 `'duelm|' + defGen.id + '|' + round + '|' + seed`。
+       而 `makeGeneral` 每调一次就自增一个新 id —— 于是每合重算前 N 合时，
+       "对手"其实换了一个人，招式序列全变，**比分当场倒退**
+       （实测：第 2 合 2:0 → 第 3 合 0:1）。
+       固定成 `duelfoe_<ci>` 之后，同一格同一 seed 的对手永远同一个人。 */
+    g.id = 'duelfoe_' + (ci | 0);
+    if (GAME.guardFillOf) GAME.guardFillOf(g, 1);
+    g.wild = true;
+    return g;
+  };
+
+  /* 发起斗将：只扣一点精力（"站出来叫阵"的成本），不出兵、不耗体力 */
+  P.duelStart = function () {
+    if (!P.on()) return { ok: false, msg: '已经立城了' };
+    var s = st0(), lord = P.lord();
+    if (!s || !lord) return { ok: false, msg: '没有君主' };
+    if (!GAME.battle || !GAME.battle.duelPlay) return { ok: false, msg: '斗将内核缺失' };
+    var ci = P.pos();
+    if (!P.duelReady(ci)) return { ok: false, msg: '这地方没人应战 —— 先找有仗可打的格子' };
+    var n = P.duelOf();
+    if (n && !n.done) return { ok: false, msg: '正打着呢' };
+    var cost = (D().duelEnergy == null ? 2 : D().duelEnergy);
+    var en = GAME.energyNowOf ? GAME.energyNowOf(lord) : 100;
+    if (en < cost) return { ok: false, msg: '精力不够，叫不动阵' };
+    if (GAME.setEnergyNow) GAME.setEnergyNow(lord, en - cost);
+    var foe = P.duelFoe(ci);
+    s.prologue.duel = {
+      ci: ci, seed: 20261024 + (s.prologue.acts | 0),   /* 固定 seed：同出招同结果 */
+      moves: [], rows: [], wa: 0, wb: 0, done: false, winner: null,
+      foe: { name: foe.name, level: foe.level | 0,
+        tong: foe.tong | 0, yw: foe.yw | 0, zm: foe.zm | 0, nz: foe.nz | 0 },
+    };
+    return { ok: true, msg: foe.name + '（Lv' + (foe.level | 0) + '）应战 —— 出招吧' };
+  };
+
+  /* 出一招。返回这一合的结果；打完就结算。 */
+  P.duelStep = function (moveId) {
+    var s = st0(), lord = P.lord(), d = P.duelOf();
+    if (!s || !lord || !d || d.done) return { ok: false, msg: '现在没有在打的斗将' };
+    var MV = (GAME.DATA && GAME.DATA.DUEL && GAME.DATA.DUEL.moves) || {};
+    if (!MV[moveId]) return { ok: false, msg: '没有这一招' };
+    var DU = (GAME.DATA && GAME.DATA.DUEL) || {};
+    var maxR = DU.playRounds || 5, need = DU.winScore || 3;
+    d.moves.push(moveId);
+    var foe = P.duelFoe(d.ci);
+    var r = GAME.battle.duelPlay(lord, foe, d.moves, d.seed);
+    if (!r) return { ok: false, msg: '这一合没判出来' };
+    var row = r.rows[r.rows.length - 1];
+    d.rows.push({ a: row.a, b: row.b, res: row.res, aName: row.aName, bName: row.bName });
+    d.wa = r.wa; d.wb = r.wb;
+    var over = (d.moves.length >= maxR) || r.wa >= need || r.wb >= need;
+    var out = { ok: true, row: row, wa: d.wa, wb: d.wb, done: false, msg: '' };
+    if (over) {
+      d.done = true;
+      d.winner = r.winner;
+      var foeLv = foe.level | 0;
+      var gain = 0, txt = '';
+      /* 叫过阵的格子记下来（每格一次） */
+      s.prologue.dueled = s.prologue.dueled || {};
+      s.prologue.dueled['c' + d.ci] = 1;
+      if (r.winner === 'atk') {
+        gain = Math.round(foeLv * 25);
+        txt = '斗将胜 ' + d.wa + ':' + d.wb + ' —— 这片的头目服了';
+        /* **这一战的价值不在经验**：赢了之后这格的战斗难度下降 40%（3 次）。
+           对比：清剿一次 4,000 经验、斗将只有几百 —— 单看经验没人会斗将。
+           它的意义是"打不过的时候，先把头目挑下来"。 */
+        s.prologue.subdued = s.prologue.subdued || {};
+        s.prologue.subdued['c' + d.ci] = 3;
+        /* 战利品：一件辐能核心（前传唯一的硬通货），走既有物品出口 */
+        try {
+          if (GAME.state && GAME.state.items) {
+            GAME.state.items['fucore'] = (GAME.state.items['fucore'] | 0) + 1;
+          }
+        } catch (e) {}
+      } else if (r.winner === 'def') {
+        gain = Math.round(foeLv * 8);
+        txt = '斗将负 ' + d.wa + ':' + d.wb + ' —— 被打退了';
+        /* 输的代价：体力与精力（比全军覆没轻得多，但真的疼） */
+        try {
+          if (GAME.setStaNow) GAME.setStaNow(lord, Math.max(0, GAME.staNow(lord) - 25));
+          if (GAME.setEnergyNow) GAME.setEnergyNow(lord, Math.max(0, GAME.energyNowOf(lord) - 15));
+        } catch (e) {}
+      } else {
+        gain = Math.round(foeLv * 15);
+        txt = '斗将平 ' + d.wa + ':' + d.wb + ' —— 谁也没服谁';
+      }
+      if (gain > 0 && GAME.battle && GAME.battle.gainExp) {
+        GAME.battle.gainExp(lord, gain, '斗将 · ' + (d.foe ? d.foe.name : '对手'));
+      }
+      d.gain = gain;
+      d.txt = txt;
+      s.prologue.last = txt + ' · 经验 +' + gain;
+      s.prologue.acts = (s.prologue.acts | 0) + 1;
+      out.done = true; out.winner = r.winner; out.gain = gain;
+      out.msg = txt + '　经验 +' + gain;
+    } else {
+      out.msg = '第 ' + d.moves.length + ' 合：' + row.aName + ' 对 ' + row.bName + '　'
+        + (row.res === 'a' ? '占先' : row.res === 'b' ? '吃亏' : '相持');
+    }
+    return out;
+  };
+
+  /* 收掉斗将状态（面板关闭时） */
+  P.duelClear = function () {
+    var s = st0();
+    if (s && s.prologue) s.prologue.duel = null;
+  };
+
   P.spots = function (radius) {
     var s = st0(), sp = SP();
     if (!s || !sp || !sp.cells) return [];
@@ -372,14 +535,39 @@
     var tier = P.tier();
     var def = (GAME.DATA.LING_ACT || {})[actId];
     var bakPow = def ? def.power : null;
+    /* v132：**斗将赢了，这一格的头目服了** —— 之后 3 次战斗类动作难度 −40%。
+       这是斗将真正的存在理由：经验远不如清剿（几百 vs 四千），
+       但"打不过的时候先把头目挑下来"是一条真的出路。
+       用现成的 `def.power` 临时缩放（同一套倍率机制，P.act 本来就在用它）。
+       只对 fight / trial / scene 生效 —— 采集/静修没有对手，不该跟着变便宜。 */
+    var _subdued = 0;
+    try {
+      var _sp = st0() && st0().prologue;
+      var _sub = (_sp && _sp.subdued) || {};
+      var _kind2 = (def && def.kind) || '';
+      if (_sub['c' + ci] > 0 && (_kind2 === 'fight' || _kind2 === 'trial' || _kind2 === 'scene')) {
+        _subdued = _sub['c' + ci];
+      }
+    } catch (e) {}
     if (def && bakPow) {
-      def.power = Math.max(1, bakPow * (d.powerMul || 1) * ((tier && tier.powerMul) || 1));
+      def.power = Math.max(1, bakPow * (d.powerMul || 1) * ((tier && tier.powerMul) || 1)
+        * (_subdued ? 0.6 : 1));
     }
     var r;
     try {
       r = GAME.jianghuRoll(chk, { pow: d.powMul || 1 });
     } finally {
       if (def && bakPow) def.power = bakPow;   /* 一定要恢复：这张表是正式阶段的 */
+      /* v132：吃掉了这次"头目服了"的优惠（3 次用完就没了） */
+      if (_subdued) {
+        try {
+          var _sp2 = st0() && st0().prologue;
+          if (_sp2 && _sp2.subdued) {
+            _sp2.subdued['c' + ci] = Math.max(0, _subdued - 1);
+            if (!_sp2.subdued['c' + ci]) delete _sp2.subdued['c' + ci];
+          }
+        } catch (e) {}
+      }
     }
     if (!r || !r.ok) return r || { ok: false, msg: '这一趟没去成' };
     var gain = P.expOf(actId);
@@ -593,6 +781,13 @@
               + 'color:#d8d0be;font-size:13px;cursor:pointer;">' + U.escape(nm) + '</span>';
           }).join('') + '</div>'
         : '<div style="margin-top:3px;font-size:12px;color:#6f6a60;">这块地方没什么可做的 —— 往别处走走。</div>');
+    /* v132：这格有仗可打 → 给"点名斗将"的入口（否则斗将变成满地图刷经验的捷径） */
+    var duelBtn = (P.duelReady && P.duelReady())
+      ? '<div style="margin-top:7px;"><span data-action="prologue-duel"'
+        + ' style="display:inline-block;padding:5px 13px;border:1px solid #7a5a2a;border-radius:4px;'
+        + 'background:#241c10;color:#ffd9a0;font-size:12px;cursor:pointer;">⚔ 点名斗将</span>'
+        + '<span class="ui-sub" style="margin-left:7px;font-size:11px;">不耗兵，赢了他就服</span></div>'
+      : '';
     var nbs = P.neighbors();
     var walkBlock = '<div style="margin-top:9px;font-size:12px;color:#8a7a5c;">四周（点一格走过去 · 每步耗 1 精力）</div>'
       + '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;">' + (nbs.length ? nbs.map(function (n) {
@@ -627,7 +822,7 @@
       + '<div style="margin-top:6px;height:5px;background:#23262b;border-radius:3px;">'
       + '<div style="height:5px;width:' + pct + '%;background:#c9b06a;border-radius:3px;"></div></div>'
       + tierLine + nextLine
-      + hereBlock + walkBlock
+      + hereBlock + duelBtn + walkBlock
       /* v131：原来的「就近清剿 / 就近试炼 / 就近采集」三个按钮撤掉 ——
          它们和「脚下 + 四周」是同一件事的两种说法，而且找不到目标时会印
          「附近没有」，读起来像功能坏了。现在"能做什么"由**站的位置**决定。 */
@@ -803,6 +998,25 @@ if (GAME.reg) {
         var act = el.getAttribute('data-act');
         var r = P.act(ci, act);
         ctx.toast(r.msg);
+        if (GAME.refreshAll) GAME.refreshAll();
+      },
+      /* v132：点名斗将 */
+      'prologue-duel': function (el, ctx) {
+        var r = P.duelStart();
+        ctx.toast(r.msg);
+        if (r.ok && GAME.ui && GAME.ui.openDuelPanel) GAME.ui.openDuelPanel();
+        else if (GAME.refreshAll) GAME.refreshAll();
+      },
+      'prologue-duel-hit': function (el, ctx) {
+        var mv = el.getAttribute('data-mv');
+        var r = P.duelStep(mv);
+        if (r.msg) ctx.toast(r.msg);
+        if (GAME.ui && GAME.ui.openDuelPanel) GAME.ui.openDuelPanel();
+        else if (GAME.refreshAll) GAME.refreshAll();
+      },
+      'prologue-duel-close': function (el, ctx) {
+        P.duelClear();
+        if (GAME.ui && GAME.ui.closeModal) GAME.ui.closeModal();
         if (GAME.refreshAll) GAME.refreshAll();
       },
       /* v131：走一格（营地视图 / 前传面板共用同一动作） */

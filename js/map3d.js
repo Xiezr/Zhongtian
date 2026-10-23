@@ -687,6 +687,26 @@ import './gltf.js';
       if (cellKind[k] === 'own') return;
       if (fogHides(+k)) { delete mark[k]; delete cellKind[k]; delete cellRef[k]; }
     });
+    /* ============================================================
+     * v132：前传里"**我站在这一格**"（平涂部分）。
+     * ------------------------------------------------------------
+     * 前传是君主一个人在大地图上走，之前屏幕上没有任何标记指向自己
+     * （视野区域中心就是自己，但玩家不知道中心在哪）。
+     * 写在 `fogHides` 过滤**之后** —— 脚下必然已探明，放后面省得被雾判掉。
+     * ⚠️ 已核对：`_tileCells = SP.cells`（map3d.js:252/278），
+     * 所以 `mark[ci]` 与消费端 `_tileCells[ci]` 是**同一套索引**。
+     * 悬浮标签另在 floatName 定义之后补（那里 grp/lp 才初始化好）。
+     * ============================================================ */
+    var _lordCi = -1;
+    if (GAME.prologue && GAME.prologue.on && GAME.prologue.on()) {
+      var _ciP = GAME.prologue.pos ? GAME.prologue.pos() : -1;
+      if (_ciP >= 0 && _tileCells[_ciP]) {
+        _lordCi = _ciP;
+        mark[_ciP] = [255, 216, 92];
+        cellKind[_ciP] = 'lord';
+        cellRef[_ciP] = { lord: true };
+      }
+    }
     M.cellKind = cellKind; M.cellRef = cellRef;
     /* 平涂：每格六边形填色（贴地形 · 微抬）*/
     var pos = [], col = [], idx = [], base = 0;
@@ -745,6 +765,10 @@ import './gltf.js';
     /* v90.57（老板）：**己方城市**也引出名称（像名城一样）—— 亮蓝＝己方色。
        v90.97（双球面）：名称取**地图星球分片**的城。 */
     (((GAME.mapSliceOf && GAME.mapSliceOf()) || {}).cities || []).forEach(function (c) { floatName(dirOfCell(c.x, c.y), c.name || '城', '#8fd4ff'); });
+    /* v132 前传：君主头顶一个"▲ 你"（这里 grp/lp 已初始化，才能安全调 floatName） */
+    if (_lordCi >= 0 && _tileCells[_lordCi] && _tileCells[_lordCi].dir) {
+      floatName(_tileCells[_lordCi].dir, '▲ 你', '#ffe28a');
+    }
     if (lp.length) { var lg = new THREE.BufferGeometry(); lg.setAttribute('position', new THREE.Float32BufferAttribute(lp, 3)); grp.add(new THREE.LineSegments(lg, new THREE.LineBasicMaterial({ color: 0x0b0f14, transparent: true, opacity: 0.92, depthWrite: false }))); }
     M._labels = grp; scene.add(grp);
   }
