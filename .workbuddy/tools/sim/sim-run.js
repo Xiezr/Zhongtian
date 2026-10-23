@@ -42,7 +42,12 @@
   global.getComputedStyle = function () { return { getPropertyValue: function () { return ''; } }; };
   global.innerWidth = 1440; global.innerHeight = 900;
 
-  require(require('path').join(__dirname, '..', '..', '..', 'js', 'bundle.js'));
+  /* ⚠️ v124 修：v104 拆包后 `js/bundle.js` 已经不存在，这个探针从那天起就是坏的
+     （没人跑它，所以没人发现）。现在改读三包，顺序不能换。 */
+  var _J = require('path').join(__dirname, '..', '..', '..', 'js');
+  require(require('path').join(_J, 'bundle-core.js'));
+  require(require('path').join(_J, 'bundle-war.js'));
+  require(require('path').join(_J, 'bundle-ui.js'));
   var G = global.GAME;
   G.DATA.DEFAULT_SETTINGS.battleWatch = false;
 
