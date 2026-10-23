@@ -111,6 +111,19 @@ function serve() {
   });
   console.error('CITY ' + JSON.stringify(c4));
 
+  /* ⑤ 行政页（空状态兜底 / 势力块） */
+  await page.evaluate(function () {
+    GAME.ui.closeAllModals && GAME.ui.closeAllModals();
+    GAME.ui.setView('admin');
+  });
+  await page.waitForTimeout(1200);
+  try { await page.screenshot({ path: path.join(OUT, 'e5-admin.png'), timeout: 20000 }); } catch (e) { console.error('E5-TIMEOUT'); }
+  const c5 = await page.evaluate(function () {
+    var r = document.querySelector('#view-container') || document.body;
+    return { text: r.innerText.replace(/\s+/g, ' ').slice(0, 700) };
+  });
+  console.error('ADMIN ' + JSON.stringify(c5));
+
   await browser.close();
   srv.close();
   console.log('done');

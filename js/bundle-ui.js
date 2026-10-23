@@ -10452,12 +10452,20 @@
     h += '<div style="font-size:var(--fs-cap);color:var(--gold-light);margin-bottom:6px;">⚔ 四方势力'
       + (th ? '　<span style="color:var(--red-light);">⚠ ' + U.escape(th.name) + ' 已到 ' + Math.round(th.near) + ' 格内</span>' : '')
       + '</div>';
+    /* v115：四家**全都**没探明时，别铺四块一模一样的「？？？（未探明）派侦察队…」——
+       那不是"有信息"，那是同一句废话抄四遍。引导只写一次，格子里只留「？？？」。 */
+    var allUnknown = arr.length > 0 && arr.every(function (x) { return x.known === false; });
+    if (allUnknown) {
+      h += '<div class="ui-sub" style="line-height:1.7;margin-bottom:6px;">'
+        + '都还没探明 —— 派侦察队出去，找到它们的核心，才知道这是谁、它想干什么。</div>';
+    }
     h += '<div style="display:flex;gap:16px;flex-wrap:wrap;">';
     arr.forEach(function (x) {
       /* v92.12（A8）：核心没探明 → 只知道"有这么一家"，不知道是谁、多大 */
       if (x.known === false) {
         h += '<div style="font-size:var(--fs-cap);line-height:1.5;color:var(--text-dim);">'
-          + '<b>？？？</b> （未探明）<br>派侦察队找到它的老巢，才知道这是谁。'
+          + '<b>？？？</b>'
+          + (allUnknown ? '' : '<br>未探明')      /* 全都未探明时上面已经写过了，不再重复 */
           + '</div>';
         return;
       }
@@ -10593,30 +10601,52 @@
           var n = k; (DATA.TECH || []).forEach(function (x) { if (x.id === k) n = x.name; });
           return '<div class="adm-row"><span class="adm-k">' + U.escape(n) + '</span><span class="adm-v">Lv' + techsC[k] + '</span></div>';
         });
+        /* v115（老板 2026-10-23 评估）：**空状态不许只有一个"— 无 —"**。
+           七个分类里有六个是空的，玩家看到的是六个 0 + 六句"无"，
+           人类读作"这游戏没做完"，而不是"我还没开始"。
+           每个分类给一句"去哪儿搞" —— 玩家不用猜就知道下一步点哪。 */
         var cats = [
-          { id: 'gen', icon: '🧑✈️', label: '管理英雄', rows: genRows },
-          { id: 'fort', icon: '🚩', label: '据点（前哨）', rows: fortRows },
-          { id: 'wild', icon: '🌿', label: '占领野地', rows: wildRows },
-          { id: 'build', icon: '🏗', label: '在建建筑', rows: buildRows },
-          { id: 'train', icon: '⚔️', label: '招募队列', rows: trainRows },
-          { id: 'tech', icon: '🔬', label: '研究中科技', rows: techRows },
-          { id: 'techdone', icon: '📚', label: '已研科技', rows: techLvRows }
+          { id: 'gen', icon: '🧑‍✈️', label: '管理英雄', rows: genRows,
+            tip: '还没有招募过英雄 —— 去「英雄」页看看有没有人愿意跟你' },
+          { id: 'fort', icon: '🚩', label: '据点（前哨）', rows: fortRows,
+            tip: '还没有前哨 —— 先在地图上占一块野地，再在那儿设哨' },
+          { id: 'wild', icon: '🌿', label: '占领野地', rows: wildRows,
+            tip: '还没占野地 —— 去地图点一块无主野地，派兵过去' },
+          { id: 'build', icon: '🏗', label: '在建建筑', rows: buildRows,
+            tip: '没有在建 —— 回城里点一块空地开工' },
+          { id: 'train', icon: '⚔️', label: '招募队列', rows: trainRows,
+            tip: '没有在招 —— 城外军营里训练，先得有人口' },
+          { id: 'tech', icon: '🔬', label: '研究中科技', rows: techRows,
+            tip: '没有在研 —— 先建研究院，再去科技树挑一项' },
+          { id: 'techdone', icon: '📚', label: '已研科技', rows: techLvRows,
+            tip: '还没有科技 —— 研究完的会列在这里' }
         ];
         var cat = ui._admCat, found = false;
         cats.forEach(function (c) { if (c.id === cat) found = true; });
         if (!found) cat = ui._admCat = cats[0].id;
         var selCat = cats.filter(function (c) { return c.id === cat; })[0];
-        var catList = cats.map(function (c) {
-          return '<div class="adm-cat' + (c.id === cat ? ' cur' : '') + '" data-action="adm-cat-pick" data-cat="' + c.id + '">' +
-            '<span class="adm-cat-ic">' + c.icon + '</span><span class="adm-cat-nm">' + c.label + '</span>' +
-            '<span class="adm-cat-n">' + c.rows.length + '</span></div>';
-        }).join('');
+        /* v115：空分类**视觉上退后**，条数不写"0"而写"—"。
+           六个"0"排成一列，人类读作"全是空的、没做完"；
+           "—"读作"这里暂时没东西"，而且视线不会被六个零吸走。 */
+        var catRow = function (arr, c) {
+          var empty2 = !c.rows.length;
+          return '<div class="adm-cat' + (c.id === cat ? ' cur' : '') + '"'
+            + ' style="' + (empty2 && c.id !== cat ? 'opacity:.45;' : '') + '"'
+            + ' data-action="adm-cat-pick" data-cat="' + c.id + '">'
+            + '<span class="adm-cat-ic">' + c.icon + '</span><span class="adm-cat-nm">' + c.label + '</span>'
+            + '<span class="adm-cat-n">' + (empty2 ? '—' : c.rows.length) + '</span></div>';
+        };
+        /* 有内容的排前面 —— 玩家打开这一页是想看"我有什么"，不是看"我没有什么" */
+        var catsSorted = cats.slice().sort(function (a, b) {
+          return (b.rows.length ? 1 : 0) - (a.rows.length ? 1 : 0);
+        });
+        var catList = catsSorted.map(function (c) { return catRow(cats, c); }).join('');
         return '<div class="adm-cat-split">' +
             '<div class="adm-cat-list">' + catList + '</div>' +
             '<div class="adm-cat-body">' +
               '<div class="adm-cat-body-t">' + selCat.icon + ' ' + selCat.label +
                 ' <span class="adm-cmeta">（' + selCat.rows.length + '）</span></div>' +
-              '<div class="adm-cat-rows">' + (selCat.rows.length ? selCat.rows.join('') : empty()) + '</div>' +
+              '<div class="adm-cat-rows">' + (selCat.rows.length ? selCat.rows.join('') : empty(selCat.tip)) + '</div>' +
             '</div>' +
           '</div>';
       })();

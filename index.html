@@ -4264,7 +4264,10 @@
 <div class="create-screen hidden" id="screen-create">
   <div class="create-box wood-frame">
     <div class="inner-panel">
-      <div class="gold-heading">创建城市</div>
+      <!-- v116：原来写「创建城市」，可交付的是**没有城**的前传（50 人、两辆车）。
+           承诺与交付不符，玩家第一秒就觉得自己点错了。改成如实的说法。 -->
+      <div class="gold-heading">给这支队伍起个名</div>
+      <div class="ui-sub" style="text-align:center;margin:-2px 0 8px;">你还一座城都没有 —— 先把人带出去，活到能立城那天。</div>
       <div class="create-inner">
         <div>
           <div class="avatar-select">
@@ -4469,15 +4472,15 @@
 </div><!-- /#app-scale -->
 </div><!-- /#app-fit -->
 
-<!-- BUILD 9355 -->
+<!-- BUILD 9356 -->
 <!-- v104：三包拆分（老板 2026-10-23「拆」）—— 单包曾到 4245KB / 上限 4301KB。
      · vendor/three.min.js 必须在前（gltf/map3d 用全局 THREE）；
      · 三包**顺序不能改**：core（引擎数据）→ war（战斗素材）→ ui（界面启动）。
        经典 script 保证顺序执行，window.GAME 全局共享，行为与单包完全一致。
      · 构建：python .workbuddy/tools/patch/build_bundle.py（改源码后须重建）。 -->
-<script src="vendor/three.min.js?v=9355"></script>
-<script src="js/bundle-core.js?v=9355"></script>
-<script src="js/bundle-war.js?v=9355"></script>
-<script src="js/bundle-ui.js?v=9355"></script>
+<script src="vendor/three.min.js?v=9356"></script>
+<script src="js/bundle-core.js?v=9356"></script>
+<script src="js/bundle-war.js?v=9356"></script>
+<script src="js/bundle-ui.js?v=9356"></script>
 </body>
 </html>
