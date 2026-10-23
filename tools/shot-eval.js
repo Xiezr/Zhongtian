@@ -92,7 +92,9 @@ function serve() {
   } catch (e) { console.error('E3-SHOT-TIMEOUT'); }
   const c3 = await page.evaluate(function () {
     var m = document.querySelector('#modal-root');
-    return { text: (m || {}).innerText ? m.innerText.replace(/\s+/g, ' ').slice(0, 900) : '' };
+    /* ⚠️ 这里原来 slice(0,900) —— 账本一屏放不下，集市面板正好被切掉，
+       我拿这份文本当成"集市没渲染"查了半天。抓全，别省这几个字符。 */
+    return { text: (m || {}).innerText ? m.innerText.replace(/\s+/g, ' ').slice(0, 4000) : '' };
   });
   console.error('WORLD ' + JSON.stringify(c3));
 
@@ -120,7 +122,7 @@ function serve() {
   try { await page.screenshot({ path: path.join(OUT, 'e5-admin.png'), timeout: 20000 }); } catch (e) { console.error('E5-TIMEOUT'); }
   const c5 = await page.evaluate(function () {
     var r = document.querySelector('#view-container') || document.body;
-    return { text: r.innerText.replace(/\s+/g, ' ').slice(0, 700) };
+    return { text: r.innerText.replace(/\s+/g, ' ').slice(0, 3000) };
   });
   console.error('ADMIN ' + JSON.stringify(c5));
 
