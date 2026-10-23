@@ -148,6 +148,8 @@
 - `_v89179c_dataset.txt`（5KB）
 - `audit_v125b_perf_ui.js`（6KB）　— **实机 UI 性能门禁**（v125b）：正式局 `setView` ×5 < 100ms / 前传 `refreshAll` < 400ms / `prologue.spots` 精确距离 ≤ 20 次，全带下限防平凡解。
   为什么单独做一个：smoke 的性能护栏只量 `tickOnce`（逻辑层），**覆盖不到渲染路径**——P0-1「前传每次操作卡 7.2 秒」就是这么漏掉的（3712 次全图 BFS）。动了界面/渲染就跑它。
+- `audit_v125b_playtest_dist.js`（7KB）　— **玩法分布检验**（v125b）：沿用 `tools/fun-audit.js` 的 harness（满将 + 半科技 + `withBoost`），随机抽 200 个局面，报「动作 / 选靶」跨度的中位·p75·p90·最大值。
+  为什么需要它：单点样本会把"条件结论"当普遍结论——`fun-audit` 的 Lv12 苦战样本得出选靶跨度 26 点（真，但只占 7% 局面），我的 Lv8 碾压样本得出 0 点（也真，占 93%）。**只有分布能同时容纳两者。**
 - `audit_colors.js`（5KB）　— 配色审计：把 index.html 里 4 套主题的关键变量解析出来，
 - `audit_refs.py`（3KB）　— 搬迁前普查：谁引用了 DESIGN.md / docs 里的文件 / tools 里的脚本。
 - `audit_v89105_chains.js`（25KB）
