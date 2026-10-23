@@ -32239,12 +32239,24 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         && s5.indexOf('GAME.VERSION') >= 0         /* 代管第 ① 处 */
         && s5.indexOf('MIN_TAGS') >= 0;            /* 断言带下限（防平凡解） */
     })());
-    check('§199⑥ 版本三处自洽：GAME.VERSION 必须已录进需求档案（防「代码升了、档案没升」）', (function () {
+    check('§199⑥ 版本三处自洽：GAME.VERSION 已录进档案，且 == 台账「最新批次」', (function () {
       var fs6 = require('fs'), p6 = require('path');
-      var m6 = /GAME\.VERSION = '(v\d+\.\d+)';/.exec(mS199);
+      var m6 = /GAME\.VERSION = '(v\d+)\.(\d+)';/.exec(mS199);
       if (!m6) return false;
       var arc6 = fs6.readFileSync(p6.join(__dirname, '需求档案.md'), 'utf8');
-      return arc6.indexOf(m6[1]) >= 0;
+      var lb = /LATEST-BATCH:\s*v(\d+)/.exec(arc6);
+      /* v125b（审核 P1-2）：原来只查「版本串在档案里出现过」——
+         2026-10-20 之后档案停在 v92.9，而代码已到 v125，它照样绿。
+         现在要求三件同时成立：
+           ① 完整版本串在册；② 档案有机器可读锚点 LATEST-BATCH；③ 锚点主版本 == 运行版本主版本。 */
+      return arc6.indexOf(m6[1] + '.' + m6[2]) >= 0
+        && !!lb && ('v' + lb[1]) === m6[1];    /* m6[1] 自带 v 前缀，lb[1] 是纯数字 */
+    })(), (function () {
+      var fs6 = require('fs'), p6 = require('path');
+      var m6 = /GAME\.VERSION = '(v\d+)\.(\d+)';/.exec(mS199) || [];
+      var arc6 = fs6.readFileSync(p6.join(__dirname, '需求档案.md'), 'utf8');
+      var lb = /LATEST-BATCH:\s*v(\d+)/.exec(arc6) || [];
+      return '运行 ' + (m6[0] || '?') + ' · 台账最新 v' + (lb[1] || '无');
     })());
     check('§199⑦ 旧称呼退役：活代码与在岗审计不得再现「爵位」（v90.95 · 老板「不再用爵位这个旧称呼」）', (function () {
       /* v90.95：产品与现行口径一律称「威望」（= s.rank 威望档）。史料/参考区/档案历史行保留旧称呼。
@@ -42788,6 +42800,43 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })(), (function () {
       var a = L[0], z = L[L.length - 1];
       return '经验 ×' + (z.expMul / a.expMul) + ' vs 敌人 ×' + (z.powerMul / a.powerMul);
+    })());
+  })();
+
+/* ===== 340. v125b（审核 P0-1）前传渲染：不许按抽样逐格跑 BFS ===== */
+  (function () {
+    /* 背景：原 P.spots 抽 samples(4000) 个格、每格一次 sp.distOf（全图 BFS，40,962 格），
+       实测 3712 次 BFS / 2,363ms，前传一次「清剿」点击同步阻塞 7.2 秒 —— 那是新玩家第一屏。
+       现在改走 SP.hopsWithin（单次 BFS 枚举半径），只有命中的格才取精确距离（≤ lim×4）。
+       两条判据都带**下限**：必须真的找到地方，否则"调用 0 次"也能通过（平凡解）。 */
+    G.newGame({ name: '性能档', cityName: '灰岗', prologue: true });
+    if (!G.state.map.grid && G.map && G.map.generate) G.map.generate();
+
+    check('§340① 前传 spots：精确距离调用 ≤ lim×4（不再逐格 BFS）', (function () {
+      var sp = (G.sphereOf ? G.sphereOf() : G.sphere);
+      if (!sp || !sp.distOf) return false;
+      var n = 0, orig = sp.distOf;
+      sp.distOf = function (a, b) { n++; return orig.apply(this, arguments); };
+      var out = G.prologue.spots();
+      sp.distOf = orig;
+      return out.length >= 1 && n <= 20;
+    })(), (function () {
+      var sp = (G.sphereOf ? G.sphereOf() : G.sphere);
+      var n = 0, orig = sp.distOf;
+      sp.distOf = function (a, b) { n++; return orig.apply(this, arguments); };
+      var k = G.prologue.spots().length;
+      sp.distOf = orig;
+      return 'distOf ' + n + ' 次 · 返回 ' + k + ' 处';
+    })());
+
+    check('§340② 前传 refreshAll < 400ms（修前 2,511ms · 3,712 次 BFS）', (function () {
+      var best = 1e9;
+      for (var i = 0; i < 3; i++) { var t0 = Date.now(); G.refreshAll(); var dt = Date.now() - t0; if (dt < best) best = dt; }
+      return best < 400 && G.prologue.spots().length >= 1;
+    })(), (function () {
+      var best = 1e9;
+      for (var i = 0; i < 3; i++) { var t0 = Date.now(); G.refreshAll(); var dt = Date.now() - t0; if (dt < best) best = dt; }
+      return 'min ' + best + 'ms · 附近 ' + G.prologue.spots().length + ' 处';
     })());
   })();
 

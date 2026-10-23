@@ -37,6 +37,7 @@ const all = allJs + '\n' + htmlSrc;
 
 const STRICT = process.argv.indexOf('--strict') >= 0;
 let problems = 0;
+let vacuous = 0;   /* v125b：解析为空却报"全部通过"的检查项数（平凡解计数） */
 
 function head(title) { console.log('\n' + title); console.log('─'.repeat(Math.min(72, title.length + 4))); }
 
@@ -185,10 +186,16 @@ const TECH_ACCESSORS = findTechAccessors();
 const techBlock = src.data.match(/DATA\.TECH = \[([\s\S]*?)\n  \];/);
 if (techBlock) {
   const techs = [];
+  /* ⚠️ v125b（审核 P2-1）：解析器原来要求 `name` 紧邻 `lv`——
+     v89.231 给科技加了 `cat` 字段后，24 项**命中 0 项**，
+     于是本节输出「科技 0 项 · 无消费点 0 ✅ 全部有消费点」的空转绿灯。
+     现在按字段名非贪婪匹配，顺序无关；并且**解析数 != 声明数时直接报红**，
+     不再让"什么都没检查"看起来像"全部通过"（项目铁律：判据不许有平凡解）。 */
   techBlock[1].split('\n').forEach(line => {
-    const m = line.match(/id: '([a-z]+)', name: '([^']+)', lv: (\d+), type: '([a-z]+)'/);
+    const m = line.match(/id:\s*'([a-z_]+)'[\s\S]*?name:\s*'([^']+)'[\s\S]*?lv:\s*(\d+)[\s\S]*?type:\s*'([a-z]+)'/);
     if (m) techs.push({ id: m[1], name: m[2], lv: +m[3], type: m[4] });
   });
+  const declared = (techBlock[1].match(/\bid:\s*'/g) || []).length;
   /* 通用路径：techMult 覆盖的资源四类（无独立读取点，由 techMult 统一遍历） */
   const GENERIC = ['grain', 'wood', 'stone', 'iron'];
   const alive = [], deadT = [];
@@ -204,7 +211,11 @@ if (techBlock) {
     });
     (ok ? alive : deadT).push(t);
   });
-  console.log('  科技 ' + techs.length + ' 项 · 有效果 ' + alive.length + ' · 无消费点 ' + deadT.length);
+  console.log('  科技 ' + techs.length + ' 项（表内声明 ' + declared + '）· 有效果 ' + alive.length + ' · 无消费点 ' + deadT.length);
+  if (techs.length !== declared) {
+    vacuous++;
+    console.log('  ❌ 解析数 != 声明数：本节结论**不予采信**（正则没跟上表结构，请先修解析器）');
+  }
   if (TECH_ACCESSORS.length) console.log('  （已识别科技取值包装函数：' + TECH_ACCESSORS.join(', ') + '）');
   if (deadT.length) {
     console.log('  ⚠ 下列科技研究了但不产生任何效果（花费黄金却无收益）：');
@@ -429,9 +440,10 @@ if (badChecks.length) {
 head('汇总');
 console.log('  死函数 ' + dead.length + ' · 孤儿按钮 ' + orphanBtn.length
   + ' · 重复定义 ' + dupDefs.length + ' · 零引用字段 ' + zeroRef
-  + ' · 未定义引用 ' + undefRefs.length + ' · 恒真断言 ' + badChecks.length);
+  + ' · 未定义引用 ' + undefRefs.length + ' · 恒真断言 ' + badChecks.length
+  + ' · 空转检查 ' + vacuous);
 console.log('  提示：本脚本只做结构检查，「有没有效果」仍需 smoke/e2e 的断言兜底。');
-if (STRICT && (orphanBtn.length || dupDefs.length || undefRefs.length || badChecks.length)) {
+if (STRICT && (orphanBtn.length || dupDefs.length || undefRefs.length || badChecks.length || vacuous)) {
   console.log('\n  ❌ --strict 模式下存在须修复项，退出码 1');
   process.exit(1);
 }

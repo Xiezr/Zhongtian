@@ -7,9 +7,15 @@
 
 1. 改了 `js/*.js` → `python .workbuddy/tools/patch/build_bundle.py`
 2. `node tools/selfcheck.js --fast`（约 1.5 分钟 · 八项）
-3. 有改动就提交；**提交命令必须后台跑并重定向到文件**
+3. **动了界面 / 渲染路径 → 加跑 `audit_v125b_perf_ui.js`**（实机 UI 性能门禁）：
+   ```
+   NODE_PATH=C:/Users/18811/.workbuddy/binaries/node/workspace/node_modules \
+     node .workbuddy/tools/audit/audit_v125b_perf_ui.js
+   ```
+   理由见 §四「性能护栏覆盖错了对象」——`tickOnce` 的绿灯证明不了渲染不卡。
+4. 有改动就提交；**提交命令必须后台跑并重定向到文件**
    （pre-commit 门禁 3~4 分钟，前台 120 秒会被 SIGTERM，`git commit` 直接失败）
-4. 追加记忆到 `.workbuddy/memory/YYYY-MM-DD.md`
+5. 追加记忆到 `.workbuddy/memory/YYYY-MM-DD.md`
 
 **判据**：`selfcheck --fast` 全绿才允许说"本轮完成"。
 红项必须当场解释清楚——是真问题，还是判据本身写错了（两种情况都要修）。
@@ -27,6 +33,25 @@
   而不是硬凑一个时钟任务。
 
 ## 四、已知的坑（写在这里，省得下次再踩）
+
+- **⛔ 性能护栏覆盖错了对象（v125b 审核查出，已补）**：`smoke §87` 只量 `tickOnce < 6ms`（逻辑层），
+  **完全覆盖不到渲染路径**。于是 `prologue.js:128 P.spots` 用「抽样 4000 格 → 每格一次全图 BFS」
+  跑了 3712 次 BFS / 2.4 秒，前传一次「清剿」同步阻塞 **7.2 秒**，而所有门禁全绿 ——
+  那是新玩家的第一屏。已改为 `SP.hopsWithin(fromCi, rad)`（**单次** BFS 枚举半径，
+  出口本来就在 `sphere.js:477`），实测 `refreshAll` 2,511ms → 2ms、`distOf` 3712 → 20 次。
+  新增两条判据：`smoke §340①②`（带下限，防"空结果飞快"）+ `.workbuddy/tools/audit/audit_v125b_perf_ui.js`（实机）。
+  **教训**：量性能先问"我量的是哪一层"，再问"这层是不是玩家真走的那条路"。
+- **⛔ `tools/` 里的脚本不许再 `require('js/bundle.js')`**：v104 拆包后该文件已不存在，
+  而且 `smoke` 有一条守卫**明令禁止它存在**（`noOld = !fs.existsSync(js/bundle.js)`），
+  所以"加个兼容单包"这条路是堵死的。脚本一律按 core → war → ui 顺序 require 三包：
+  ```js
+  require('../js/bundle-core.js');
+  require('../js/bundle-war.js');
+  require('../js/bundle-ui.js');
+  ```
+  v125b 已批量迁移 59 个文件 + 手改 3 个（`game-audit` / `eval-audit` / `fun-audit`，它们当时被
+  迁移脚本的排除规则误跳过）。**扫 `js/` 做统计的工具记得同时排除三个 bundle**，
+  否则同一份定义会被数三遍（`game-audit` 的 `files` 过滤已修）。
 
 - **模块清单是四份**：`build_bundle.py ORDER` / `smoke-test.js` 守卫 ORDER /
   `audit.js MODULES` / `audit.js REF_MODULES`。加新模块四份都要加。

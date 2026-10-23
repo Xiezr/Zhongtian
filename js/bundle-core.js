@@ -34408,8 +34408,16 @@ if (GAME.reg) {
   /* ============================================================
    * 三、附近能做的事
    * ------------------------------------------------------------
-   * 球面没有"半径内枚举"的出口，所以抽样 + 按距离筛。
-   * 只取**有荒野事**的格子（jianghuActsAt 唯一出口，与内核同一份判据）。
+   * ⚠️ v125b（审核 P0-1）：**不许再按抽样逐格算距离**。
+   *   原实现是「随机抽 samples(4000) 个格 → 每格 sp.distOf()（一次全图 BFS）」，
+   *   在 40,962 格的球面上就是 **3712 次 BFS / 2.4 秒**，而前传是新玩家的第一屏——
+   *   实测一次「清剿」点击同步阻塞 7.2 秒。
+   *
+   *   现在：`SP.hopsWithin(fromCi, rad)`（sphere.js:477）**一次 BFS** 拿到半径内全部格，
+   *   再逐格问"这里有没有荒野事"，只有命中的格才去算精确距离（≤ lim×4 次）。
+   *   输出集与排序规则不变（候选顺序变了，但排序只看 rank/dist）。
+   *
+   *   保留 `hopsWithin` 缺失时的抽样兜底：球面桩 / 老存档 / 探针里可能没有该出口。
    * ============================================================ */
   P.spots = function (radius) {
     var s = st0(), sp = SP();
@@ -34418,19 +34426,33 @@ if (GAME.reg) {
     var c = GAME.currentCity ? GAME.currentCity() : null;
     var fromCi = (c && c.ci != null) ? c.ci : 0;
     var d = D(), rad = radius || d.reach || 6, n = sp.cells.length;
-    var lim = d.listMax || 5, tries = d.samples || 4000;
+    var lim = d.listMax || 5;
     var seen = {}, out = [];
-    for (var i = 0; i < tries && out.length < lim * 4; i++) {
-      var ci = Math.floor((GAME.invasionRoll ? GAME.invasionRoll('pg|s|' + i) : 0.5) * n) % n;
-      if (seen[ci]) continue;
+    var cap = lim * 4;
+    var consider = function (ci) {
+      if (out.length >= cap) return;
+      if (ci == null || ci < 0 || ci >= n) return;
+      if (seen[ci]) return;
       seen[ci] = 1;
-      if (!sp.cells[ci]) continue;
-      if (GAME.map && GAME.map.ownCityAt && GAME.map.ownCityAt(ci)) continue;
-      var dist = sp.distOf ? sp.distOf({ ci: fromCi }, { ci: ci }) : 99;
-      if (dist < 1 || dist > rad) continue;
+      if (!sp.cells[ci]) return;
+      if (GAME.map && GAME.map.ownCityAt && GAME.map.ownCityAt(ci)) return;
+      /* 先问"有没有事"，再算距离 —— 距离是 BFS，不能对没东西的格白跑 */
       var acts = GAME.jianghuActsAt(ci);
-      if (!acts.length) continue;
+      if (!acts.length) return;
+      var dist = sp.distOf ? sp.distOf({ ci: fromCi }, { ci: ci }) : 99;
+      if (dist < 1 || dist > rad) return;
       out.push({ ci: ci, dist: dist, type: sp.cells[ci].type, acts: acts });
+    };
+
+    var ring = (sp.hopsWithin && fromCi >= 0) ? sp.hopsWithin(fromCi, rad) : null;
+    if (ring && ring.length) {
+      for (var i = 0; i < ring.length && out.length < cap; i++) consider(ring[i]);
+    } else {
+      /* 兜底：没有半径枚举出口时的老抽样路径（保留确定性 roll，行为可复现） */
+      var tries = d.samples || 4000;
+      for (var k = 0; k < tries && out.length < cap; k++) {
+        consider(Math.floor((GAME.invasionRoll ? GAME.invasionRoll('pg|s|' + k) : 0.5) * n) % n);
+      }
     }
     /* 能打的排前面 —— 前传要的是"打野兽"，采集/静修只是顺带。
        同类里再按距离（越近越省事）。 */
