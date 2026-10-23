@@ -6918,7 +6918,33 @@ window.GAME = window.GAME || {};
       { id: 'fuel',  name: '燃料块',   from: { wood: 700 },   hours: 16, yield: 55,
         base: 22, desc: '生物质压块。寒潮月最抢手。' }
     ],
-    craftTint: 1.35          /* 寒潮月加工品也涨（燃料块涨得最明显）*/
+    craftTint: 1.35,         /* 寒潮月加工品也涨（燃料块涨得最明显）*/
+
+    /* ============================================================
+     * v119 · 换季大集（星露谷"节日"的移植）
+     * ------------------------------------------------------------
+     * 星露谷的日历是有锚点的：春 13 彩蛋节、秋 16 展览会 —— 一年两次，
+     * 提前知道，到日子就去。它给"年"这一层一个可等的日子。
+     *
+     * 灰岗的年景（years）只影响产量，「什么时候」这件事一直是模糊的。
+     * 所以加两个固定的日子：**第 3 月和第 9 月**（春末秋末），整月大集。
+     *
+     * 大集期间：价格 ×1.2，收购不打折（等于整月都是赶集价），
+     * 并且有**限量稀有货** —— 只有这一个月买得到，每样一次。
+     *
+     * ⚠️ 不搞仪式、不写颂词（老板原话"不用赋予太沉重的意义"）。
+     *    它就是一个"人多的月份"，你能卖个好价、能买到平时买不到的东西。
+     * ============================================================ */
+    fairMonths: [2, 8],      /* 0 起算：第 3 月、第 9 月 */
+    fairMul: 1.2,            /* 大集月全品类上浮 */
+    rare: [
+      { id: 'jinang',  n: 5,  cost: 1800, name: '封存匣 ×5',
+        desc: '施展计谋要用的东西。平时只能靠翻找。' },
+      { id: 'lingsui', n: 12, cost: 2600, name: '辐能核心 ×12',
+        desc: '调校强化件的材料。集市上很少见。' },
+      { res: 'iron',   n: 6000, cost: 2200, name: '废钢 6000',
+        desc: '一整车。平时得自己炼。' }
+    ]
   };
 
   DATA.RISK = {
@@ -34597,11 +34623,31 @@ if (GAME.reg) {
   /* ---------------- 集市窗口 ----------------
    * 一个月切成 perMonth 段，每段开头开市 windowSec 秒。
    * 用"月内剩余秒数"判，不用浮点比例 —— 免得边界抖动。 */
+  /* 这个月是不是大集月（第 3 / 第 9 月，0 起算） */
+  MK.isFair = function (m) {
+    var d = D();
+    var mo = ((m == null ? MK.monthNow() : m) % 12 + 12) % 12;
+    return (d.fairMonths || [2, 8]).indexOf(mo) >= 0;
+  };
+  /* 距下次大集还有几个月（0 = 正在大集） */
+  MK.fairIn = function () {
+    var m = MK.monthNow(), mo = ((m % 12) + 12) % 12;
+    for (var i = 0; i < 12; i++) {
+      if (MK.isFair(m + i)) return i;
+    }
+    return -1;
+  };
+
   MK.openInfo = function () {
     var d = D(), spm = secPerMonth();
     var st = st0() || {};
     var e = ((st.world && st.world.elapsed) || 0);
     var inMonth = ((e % spm) + spm) % spm;
+    /* 大集月：整月都算开市（不用掐那几百秒） */
+    if (MK.isFair()) {
+      return { open: true, fair: true, idx: 0,
+        left: Math.max(0, Math.round(spm - inMonth)), nextIn: 0 };
+    }
     var n = Math.max(1, d.perMonth || 3);
     var seg = spm / n;
     var idx = Math.floor(inMonth / seg);
@@ -34696,8 +34742,9 @@ if (GAME.reg) {
 
   /* 现在是赶集价还是平时价 */
   MK.sellMul = function () {
-    if (MK.open()) return 1;
     var d = D();
+    if (MK.isFair()) return d.fairMul == null ? 1.2 : d.fairMul;
+    if (MK.open()) return 1;
     return d.offlineMul == null ? 0.82 : d.offlineMul;
   };
 
@@ -34737,6 +34784,41 @@ if (GAME.reg) {
     GAME.city.sub(city, 'gold', cost);
     GAME.city.add(city, g.res, n);
     return { ok: true, cost: cost, n: n, name: g.name };
+  };
+
+  /* ---------------- 大集稀有货 ----------------
+   * 每样每次大集只能买一次（记在 s.mkRare，键 = 年-月-货）。
+   * 「限一次」不是为了稀缺感，是为了让玩家**必须挑一样**。 */
+  function rareKey(it) {
+    var m = MK.monthNow();
+    return m + '|' + (it.id || it.res);
+  }
+  MK.rareBought = function (it) {
+    var s = st0();
+    s.mkRare = s.mkRare || {};
+    return !!s.mkRare[rareKey(it)];
+  };
+  MK.rareList = function () {
+    if (!MK.isFair()) return [];
+    return (D().rare || []).map(function (it) {
+      return { it: it, bought: MK.rareBought(it) };
+    });
+  };
+  MK.buyRare = function (idx) {
+    if (!MK.isFair()) return { ok: false, msg: '只有大集月才有这些货' };
+    var it = (D().rare || [])[idx | 0];
+    if (!it) return { ok: false, msg: '没有这一样' };
+    if (MK.rareBought(it)) return { ok: false, msg: '这一样这次大集已经买过了' };
+    var city = mainCity();
+    if (!city) return { ok: false, msg: '没有城' };
+    if (((GAME.res(city) || {}).gold || 0) < it.cost) return { ok: false, msg: '旧币不够' };
+    GAME.city.sub(city, 'gold', it.cost);
+    if (it.id) GAME.items.add(it.id, it.n);
+    else if (it.res) GAME.city.add(city, it.res, it.n);
+    var s = st0();
+    s.mkRare = s.mkRare || {};
+    s.mkRare[rareKey(it)] = 1;
+    return { ok: true, name: it.name };
   };
 
   /* ---------------- 作坊 ----------------
@@ -34834,6 +34916,10 @@ if (GAME.reg) {
   /* ---------------- 面板文案 ---------------- */
   MK.lineOf = function () {
     var oi = MK.openInfo();
+    if (oi.fair) {
+      return '🎪 换季大集（整月）—— 收购价 ×' + MK.sellMul().toFixed(2)
+        + '　本月底收摊，下一次再等半年';
+    }
     if (oi.open) return '🏪 赶集中（本月第 ' + (oi.idx + 1) + ' 次，还剩 ' + oi.left + ' 秒）—— 现在是全价';
     return '🏪 平日的收购价（压低 ' + Math.round((1 - MK.sellMul()) * 100) + '%）'
       + '　下次赶集还有 ' + oi.nextIn + ' 秒';
@@ -34899,10 +34985,26 @@ if (GAME.reg) {
                 + '（' + need.join('+') + ' → ' + c.yield + '，' + c.hours + ' 时）</span>';
             }).join('') + '</div>';
         }
+        /* 大集：整月高价 + 三样只有这时候买得到的东西（每样限一次） */
+        var fairRow;
+        if (MK.isFair()) {
+          fairRow = '<div class="chips" style="margin-top:5px;">'
+            + MK.rareList().map(function (x, i) {
+              return '<span class="chip' + (x.bought ? ' dim' : '') + '"'
+                + (x.bought ? '' : ' data-action="market-rare" data-idx="' + i + '"')
+                + ' title="' + U.escape(x.it.desc || '') + '">'
+                + U.escape(x.it.name) + '　' + x.it.cost + ' 币'
+                + (x.bought ? ' 已买' : '') + '</span>';
+            }).join('') + '</div>';
+        } else {
+          var fi = MK.fairIn();
+          fairRow = '<div class="ui-sub" style="margin-top:4px;">距换季大集 '
+            + fi + ' 个月（每年第 3 / 第 9 月，整月全价收，还有平时买不到的三样东西）</div>';
+        }
         return sec('🏪 集市', MK.lineOf(), MK.bodyHTML()
           + '<div class="chips" style="margin-top:5px;">' + rows + '</div>'
           + (made ? '<div class="chips" style="margin-top:4px;">' + made + '</div>' : '')
-          + craftRow);
+          + craftRow + fairRow);
       },
       /* ⚠️ 提示走 `ctx.toast`，**不直接调界面层** ——
          core 包引用界面包会被架构棘轮拦下（v106 立的规矩），而且
@@ -34934,6 +35036,11 @@ if (GAME.reg) {
           var cid = el.getAttribute('data-cid');
           var r = MK.craft(cid);
           ctx.toast(r.ok ? ('开炉：' + r.rec.name + '，游戏内 ' + r.rec.hours + ' 小时后出货') : r.msg);
+          ctx.refresh();
+        },
+        'market-rare': function (el, ctx) {
+          var r = MK.buyRare(el.getAttribute('data-idx'));
+          ctx.toast(r.ok ? ('买下 ' + r.name) : r.msg);
           ctx.refresh();
         },
         'market-collect': function (el, ctx) {

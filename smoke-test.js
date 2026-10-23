@@ -42441,6 +42441,90 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })());
   })();
 
+
+  /* ============================================================
+   * §336 · v119：换季大集 —— 一年两个可等的日子
+   * ------------------------------------------------------------
+   * 星露谷的日历是有锚点的（春 13 彩蛋节、秋 16 展览会）。
+   * 灰岗的年景只影响产量，"什么时候"一直是模糊的。
+   * 这一版给两个固定的月份：第 3 / 第 9 月整月大集。
+   * ============================================================ */
+  console.log('\n===== 336. v119 换季大集：一年两个可等的日子 =====');
+  (function () {
+    var MK = G.market;
+    if (!MK || !MK.isFair) return;
+    var st = G.state;
+    var city = G.currentCity();
+    if (!city) return;
+    var spm = 57600 / 12;
+    var hadWorld = !!st.world;
+    var bakE = st.world ? st.world.elapsed : 0;
+    if (!st.world) st.world = { elapsed: 0, year: 1 };
+    var at = function (m) { st.world.elapsed = Math.floor(spm * m + 10); };
+
+    check('§336① 第 3 / 第 9 月是大集，其余月份不是', (function () {
+      at(2); var a = MK.isFair();
+      at(5); var b = MK.isFair();
+      at(8); var d2 = MK.isFair();
+      at(0); var e2 = MK.isFair();
+      return a === true && b === false && d2 === true && e2 === false;
+    })(), (function () {
+      var out = [];
+      [0, 2, 5, 8, 11].forEach(function (m) { at(m); out.push((m % 12 + 1) + '月' + (MK.isFair() ? '✓' : '')); });
+      return out.join(' ');
+    })());
+
+    check('§336② 大集月整月都是高价（×1.2，比赶集还高）', (function () {
+      at(2);
+      var fair = MK.sellMul();
+      at(0);
+      var oi = MK.openInfo();
+      var normal = oi.open ? MK.sellMul() : 0;
+      return Math.abs(fair - 1.2) < 1e-6 && fair > normal;
+    })(), (function () { at(2); return '大集 ×' + MK.sellMul().toFixed(2); })());
+
+    check('§336③ 大集月有稀有货，非大集月没有', (function () {
+      at(2);
+      var a = MK.rareList().length;
+      at(5);
+      var b = MK.rareList().length;
+      return a === 3 && b === 0;
+    })(), (function () {
+      at(2); return '大集 ' + MK.rareList().length + ' 样';
+    })());
+
+    check('§336④ 稀有货每样只能买一次（逼玩家挑一样）', (function () {
+      at(2);
+      G.city.add(city, 'gold', 9000);
+      var r1 = MK.buyRare(0);
+      var r2 = MK.buyRare(0);
+      return r1.ok === true && r2.ok === false;
+    })(), (function () {
+      at(2);
+      G.city.add(city, 'gold', 9000);
+      MK.buyRare(0);
+      var r2 = MK.buyRare(0);
+      return r2.ok ? '还能再买（错）' : r2.msg;
+    })());
+
+    check('§336⑤ 距下次大集可预知（面板要能提前告诉玩家）', (function () {
+      at(0);
+      var a = MK.fairIn();     /* 第 1 月 → 2 个月后 */
+      at(2);
+      var b = MK.fairIn();     /* 正在大集 → 0 */
+      return a === 2 && b === 0;
+    })(), (function () {
+      at(0); var a = MK.fairIn();
+      at(2); var b = MK.fairIn();
+      return '第1月距大集 ' + a + ' 月 · 第3月 ' + b;
+    })());
+
+    /* 还原 */
+    st.mkRare = {};
+    st.world.elapsed = bakE;
+    if (!hadWorld) st.world = null;
+  })();
+
 console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');
   process.exit(FAIL ? 1 : 0);
 })();
