@@ -2488,6 +2488,15 @@
 
   /* ============ 弹窗统一规范（v14.1） ============
      统一尺寸档位 + 底部关闭 + 内部滚动，避免超屏与无限下拉 */
+  /* v133：世界账本两列 —— 六条线一屏扫完（单列实测溢出 1968px）。
+     两条都必须写：`minmax(0,1fr)` 限制**列轨道**不撑破，
+     子项 `min-width:0` 才让**内容**能收缩换行（少了后者，右列会被裁）。 */
+  .world-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 0 18px;          /* 18 = 间距标尺内（16 不在白名单，smoke 当场照出） */
+  }
+  .world-grid > * { min-width: 0; }
   .modal { display: flex; flex-direction: column; }
   .modal .inner-panel { flex: 1; min-height: 0; overflow-y: auto; }
   /* v89.105（基调统一）：`.modal-foot` 与 `.m-foot` 是**同一个东西的两个历史名字**
@@ -4516,15 +4525,15 @@
 </div><!-- /#app-scale -->
 </div><!-- /#app-fit -->
 
-<!-- BUILD 9369 -->
+<!-- BUILD 9370 -->
 <!-- v104：三包拆分（老板 2026-10-23「拆」）—— 单包曾到 4245KB / 上限 4301KB。
      · vendor/three.min.js 必须在前（gltf/map3d 用全局 THREE）；
      · 三包**顺序不能改**：core（引擎数据）→ war（战斗素材）→ ui（界面启动）。
        经典 script 保证顺序执行，window.GAME 全局共享，行为与单包完全一致。
      · 构建：python .workbuddy/tools/patch/build_bundle.py（改源码后须重建）。 -->
-<script src="vendor/three.min.js?v=9369"></script>
-<script src="js/bundle-core.js?v=9369"></script>
-<script src="js/bundle-war.js?v=9369"></script>
-<script src="js/bundle-ui.js?v=9369"></script>
+<script src="vendor/three.min.js?v=9370"></script>
+<script src="js/bundle-core.js?v=9370"></script>
+<script src="js/bundle-war.js?v=9370"></script>
+<script src="js/bundle-ui.js?v=9370"></script>
 </body>
 </html>

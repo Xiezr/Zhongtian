@@ -8131,11 +8131,32 @@ import './state.js';
     var s = GAME.state;
     if (!s) { ui.toast('无存档'); return; }
     var h = '';
+    /* ============================================================
+     * v133（逐屏核查 v129 记的账，本轮补上）：**每节改成可折叠**。
+     * ------------------------------------------------------------
+     * 实测：`.m-body` 内容高 2481px、可视 513px —— **溢出 1968px 还带滚动条**，
+     * 违反本项目"弹窗里不许滚动条"的铁律（v129 逐屏核查记的就是这条）。
+     * 六条线（温度/辐射云/污染/竞争者/补给/残页）全有数据时必然撑爆。
+     * 改法：标题行常驻 + **一行摘要**（收起时也看得到大意），明细默认收起。
+     * 走现成的 `fold-toggle` + `ui._foldOpen`（弹窗有 live 回调，会就地重绘）。
+     * 默认收起是刻意的：这页是"看状态"，一屏扫完六条比逐条滚动强。
+     * ============================================================ */
     var sec = function (title, line, extra) {
-      return '<div style="padding:7px 0;border-bottom:1px dashed var(--wood-light);">'
-        + '<div style="font-size:var(--fs-cap);color:var(--gold-light);font-weight:700;">' + title + '</div>'
-        + '<div style="font-size:var(--fs-cap);line-height:1.75;">' + (line || '') + '</div>'
-        + (extra || '') + '</div>';
+      var fkey = 'world|' + title;
+      var open = !!ui._foldOpen[fkey];
+      var brief = String(line || '').replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim().slice(0, 40);
+      return '<div style="border-bottom:1px dashed var(--wood-light);">'
+        + '<div class="op-zone-t" data-action="fold-toggle" data-fold="' + U.escape(fkey) + '"'
+        + ' style="cursor:pointer;user-select:none;padding:4px 0;display:flex;align-items:baseline;gap:7px;">'
+        + '<span style="font-size:var(--fs-cap);color:var(--gold-light);font-weight:700;white-space:nowrap;">'
+        + (open ? '▾ ' : '▸ ') + title + '</span>'
+        + (open ? '' : '<span style="font-size:var(--fs-cap);opacity:.72;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'
+            + U.escape(brief) + (brief.length >= 40 ? '…' : '') + '</span>')
+        + '</div>'
+        + (open ? '<div style="padding:0 0 8px;">'
+            + '<div style="font-size:var(--fs-cap);line-height:1.75;">' + (line || '') + '</div>'
+            + (extra || '') + '</div>' : '')
+        + '</div>';
     };
     var cities = (GAME.city && GAME.city.all) ? GAME.city.all() : [];
 
@@ -8405,7 +8426,14 @@ import './state.js';
       live: function () { ui.openWorldPanel(); },
       title: '🌍 世界的账本',
       sub: '六条线：温度 · 辐射云 · 污染 · 竞争者 · 补给 · 残页',
-      body: h || '<div class="q-empty">这个世界还没有动起来。</div>'
+      /* v133：**两列**。六条线本来就是一屏该扫完的东西，竖着排必然撑爆
+         （实测单列溢出 1968px、加折叠后仍溢出 285px）。
+         两列之后横向空间用起来，纵向直接减半 —— 这比再加滚动条或换大号弹窗都对。 */
+      /* ⚠️ 必须是 `minmax(0,1fr)` 而不是 `1fr` —— grid 子项默认 `min-width:auto`，
+         内容不换行时会把列撑破（实测右列被弹窗边缘裁掉：「竞争者 你之9」「遗骸科技 一3」）。
+         `minmax(0,…)` 允许子项收缩到 0，文字才会换行。 */
+      body: h ? '<div class="world-grid">' + h + '</div>'
+        : '<div class="q-empty">这个世界还没有动起来。</div>'
     });
   };
 
