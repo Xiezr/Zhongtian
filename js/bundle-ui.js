@@ -18845,7 +18845,10 @@
       '<span class="ml-tag" style="color:' + c + ';background:' + ui.colorA(c, 0.12) +
         ';border-color:' + ui.colorA(c, 0.45) + ';">' +
         U.escape(ui.msgTagIconOf(tag) + ' ' + ui.msgTagNameOf(tag)) + '</span>' +
-      U.escape(l.msg) + '</div>';
+      U.escape(l.msg) +
+      /* v129：写入端已把连续重复合并（见 GAME.log），这里补一个可读的计数 */
+      ((l.n | 0) > 1 ? ' <span style="color:var(--text-dim);font-size:var(--fs-cap);">×' + (l.n | 0) + '</span>' : '') +
+      '</div>';
   };
   ui.setMsgTag = function (v) {
     ui._msgTag = v || 'all';
@@ -25127,7 +25130,7 @@
      （这解释了"改了却说没生效"的观感）。老板若发现版本 ≠ 最新交付，按 Ctrl+F5
      强制刷新即获得新代码。⚠️ 发版须走 **bump_version.py --bump --version vX.Y**（它同步 index.html 的 ?v=/BUILD
      与这里的 GAME.VERSION 三处）—— 只手改 index.html 会让版本号冻住（v91.18 前的病灶）。 */
-  GAME.VERSION = 'v128.0';
+  GAME.VERSION = 'v129.0';
   function boot() {
     fitAppSize();
     try {

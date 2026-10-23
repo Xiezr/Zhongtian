@@ -12255,6 +12255,21 @@ window.GAME = window.GAME || {};
     if (sub && DATA.MSG_SUB_BY && DATA.MSG_SUB_BY[sub]) rec.sub = sub;
     GAME.sessionLog.push(rec);
     s.msgLog = s.msgLog || [];
+    /* v129（逐屏核查抓到）：同一条消息在**很短时间内重复**时合并成一条 + 计数。
+       病根：`fog.decay()` 在离线补算里被逐段调用，一次补算能写 24 条一模一样的
+       「远方的记忆淡了：182 格…」，公文第一页全是同一句，别的消息全被顶走。
+       只合并**连续 + 同文案 + 同类别 + 同主题**的重复，不跨消息合并。 */
+    var _prev = s.msgLog.length ? s.msgLog[s.msgLog.length - 1] : null;
+    var _win = ((DATA.CALENDAR && DATA.CALENDAR.secPerYear) || 57600) / 360;   /* 1 游戏天 */
+    if (_prev && _prev.msg === rec.msg && _prev.k === rec.k
+        && (_prev.sub || '') === (rec.sub || '')
+        && Math.abs((rec.gt || 0) - (_prev.gt || 0)) <= _win) {
+      _prev.n = (_prev.n | 0) + 1;
+      _prev.gt = rec.gt; _prev.t = rec.t;
+      GAME.pruneMsgLog();
+      if (GAME.onLog) GAME.onLog(msg);
+      return;
+    }
     s.msgLog.push(rec);
     GAME.pruneMsgLog();
     /* v89.116：`GAME.onLog` 是**试玩工具挂的钩子**（

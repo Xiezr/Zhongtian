@@ -1555,6 +1555,10 @@
   .exp-tbl .et-c-own { width: 19%; }
   .exp-tbl .et-c-in { width: 19%; }
   .exp-tbl .et-c-act { width: 22%; }
+  /* v129（逐屏核查）：兵种名原来 `white-space: normal` —— 窄列里「自走火炮」会折成两行，
+     行高只容一行 → 第二行被裁掉，界面上看到的是「自走火」「狂 猎」（中间那个空格就是折行点）。
+     四字以内的名字在 40% 列宽里本来放得下，禁止折行即可。 */
+  .exp-tbl .et-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .exp-tbl .et-act { white-space: nowrap; text-align: center; }
   .exp-tbl .et-act .btn + .btn { margin-left: var(--sp-1); }
   .exp-tbl .et-in input { width: 100%; box-sizing: border-box; padding: var(--sp-1) var(--sp-2); text-align: center;
@@ -4512,15 +4516,15 @@
 </div><!-- /#app-scale -->
 </div><!-- /#app-fit -->
 
-<!-- BUILD 9365 -->
+<!-- BUILD 9366 -->
 <!-- v104：三包拆分（老板 2026-10-23「拆」）—— 单包曾到 4245KB / 上限 4301KB。
      · vendor/three.min.js 必须在前（gltf/map3d 用全局 THREE）；
      · 三包**顺序不能改**：core（引擎数据）→ war（战斗素材）→ ui（界面启动）。
        经典 script 保证顺序执行，window.GAME 全局共享，行为与单包完全一致。
      · 构建：python .workbuddy/tools/patch/build_bundle.py（改源码后须重建）。 -->
-<script src="vendor/three.min.js?v=9365"></script>
-<script src="js/bundle-core.js?v=9365"></script>
-<script src="js/bundle-war.js?v=9365"></script>
-<script src="js/bundle-ui.js?v=9365"></script>
+<script src="vendor/three.min.js?v=9366"></script>
+<script src="js/bundle-core.js?v=9366"></script>
+<script src="js/bundle-war.js?v=9366"></script>
+<script src="js/bundle-ui.js?v=9366"></script>
 </body>
 </html>

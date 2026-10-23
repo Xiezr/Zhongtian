@@ -16827,7 +16827,10 @@ import './state.js';
       '<span class="ml-tag" style="color:' + c + ';background:' + ui.colorA(c, 0.12) +
         ';border-color:' + ui.colorA(c, 0.45) + ';">' +
         U.escape(ui.msgTagIconOf(tag) + ' ' + ui.msgTagNameOf(tag)) + '</span>' +
-      U.escape(l.msg) + '</div>';
+      U.escape(l.msg) +
+      /* v129：写入端已把连续重复合并（见 GAME.log），这里补一个可读的计数 */
+      ((l.n | 0) > 1 ? ' <span style="color:var(--text-dim);font-size:var(--fs-cap);">×' + (l.n | 0) + '</span>' : '') +
+      '</div>';
   };
   ui.setMsgTag = function (v) {
     ui._msgTag = v || 'all';
