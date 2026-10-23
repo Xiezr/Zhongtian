@@ -34674,7 +34674,9 @@ if (GAME.reg) {
       return '<span data-action="prologue-act" data-ci="' + it.ci
         + '" data-act="' + U.escape(it.id) + '" title="' + U.escape(hint || '') + '"'
         + ' style="' + base + '#4a4436;background:#171a1f;color:#e0d8c6;cursor:pointer;">'
-        + label + '<span style="opacity:.55;font-size:12px;">　' + it.dist + ' 格外</span></span>';
+        /* ⚠️ 原来写「5 格外」—— 那是"5 格之外"的缩写，读起来像"格外(特别)"。
+           三个按钮上并排三个"格外"，第一眼是病句。改成「距 5 格」。 */
+        + label + '<span style="opacity:.55;font-size:12px;">　距 ' + it.dist + ' 格</span></span>';
     };
 
     var last = (st0() && st0().prologue && st0().prologue.last) || '';

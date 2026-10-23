@@ -17755,9 +17755,19 @@ import './state.js';
     if (cur.trim()) out.push(cur);
     return out;
   };
+  /* v123：**战报逐条淡入**
+     ------------------------------------------------------------
+     改前：一屏文字一次性糊上来，读起来像一张打印件 —— 这是"战斗没手感"
+     最便宜的一半（另一半是动画和音效，不在这一轮）。
+     改法只在**视觉层**：DOM 不变、文本不变，只给每条加 0.06s 递增的淡入延迟。
+     所以任何检查战报内容的断言都不受影响（时间到就全在）。
+     上限 12 条：再长就不逐条了，读起来会变成等待。 */
   ui.reportLinesHTML = function (lines, cls) {
-    return '<div class="rp-lines ' + (cls || '') + '">' + (lines || []).map(function (t) {
-      return '<div class="rp-line">' + t + '</div>';
+    var arr = lines || [];
+    var step = arr.length <= 12 ? 0.06 : 0;
+    return '<div class="rp-lines ' + (cls || '') + '">' + arr.map(function (t, i) {
+      var d = step ? (' style="animation-delay:' + (i * step).toFixed(2) + 's"') : '';
+      return '<div class="rp-line rp-in"' + d + '>' + t + '</div>';
     }).join('') + '</div>';
   };
   ui.reportGainHTML = function (lines) {

@@ -545,6 +545,12 @@
   .topnav .nav-more-btn { color: var(--gold-light); opacity: .9; }
   /* v122：待办提醒位（有事件时才显示，会呼吸）
      ⚠️ 间距/圆角/颜色一律走令牌 —— 项目有断言钉着"不许裸 px 与裸 hex"。 */
+  /* v123：战报逐条淡入（DOM 与文本不变，只加动效；12 条以内才逐条） */
+  .rp-in { animation: rp-fade .34s ease both; }
+  @keyframes rp-fade {
+    from { opacity: 0; transform: translateY(var(--sp-0)); }
+    to   { opacity: 1; transform: none; }
+  }
   .topnav .nav-ev {
     margin-left: auto; margin-right: var(--sp-4);
     padding: var(--sp-0) var(--sp-4); border-radius: var(--r-sm); cursor: pointer;
@@ -4506,15 +4512,15 @@
 </div><!-- /#app-scale -->
 </div><!-- /#app-fit -->
 
-<!-- BUILD 9360 -->
+<!-- BUILD 9361 -->
 <!-- v104：三包拆分（老板 2026-10-23「拆」）—— 单包曾到 4245KB / 上限 4301KB。
      · vendor/three.min.js 必须在前（gltf/map3d 用全局 THREE）；
      · 三包**顺序不能改**：core（引擎数据）→ war（战斗素材）→ ui（界面启动）。
        经典 script 保证顺序执行，window.GAME 全局共享，行为与单包完全一致。
      · 构建：python .workbuddy/tools/patch/build_bundle.py（改源码后须重建）。 -->
-<script src="vendor/three.min.js?v=9360"></script>
-<script src="js/bundle-core.js?v=9360"></script>
-<script src="js/bundle-war.js?v=9360"></script>
-<script src="js/bundle-ui.js?v=9360"></script>
+<script src="vendor/three.min.js?v=9361"></script>
+<script src="js/bundle-core.js?v=9361"></script>
+<script src="js/bundle-war.js?v=9361"></script>
+<script src="js/bundle-ui.js?v=9361"></script>
 </body>
 </html>
