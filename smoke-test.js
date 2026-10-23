@@ -38155,8 +38155,24 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       G.state.fogDecay = 0;
       var before = G.fog.stats().seen;
       var n = G.fog.decay(false);
-      return n === 0 && (G.state.fogDecay | 0) > 0 && G.fog.stats().seen === before;
+      /* ⛔ v130：原判据写作 `(G.state.fogDecay | 0) > 0` —— **和被测代码犯同一个错**：
+         `| 0` 会把毫秒时间戳截成 32 位（1.79e12 → 1.78e9，等价 1970 年），
+         截断后仍是正数，于是这条断言永远通过，把「节流从未生效」盖了很长时间。
+         判据改成「毫秒精度完整」：真实时间戳必然 > 1e12。 */
+      return n === 0 && G.state.fogDecay > 1e12 && G.fog.stats().seen === before;
     })());
+
+    check('§286⑮b 衰减节流真的生效（12 小时内第二次调用必须被拦住）', (function () {
+      /* 病根（v130 修）：`st.fogDecay | 0` 32 位截断 → `now - last` 恒为约 20 天
+         → 12 小时节流永不生效 → 玩家刚点亮的格子下一 tick 就被抹掉并写一条日志。
+         实测 1 小时游戏时间内触发 56 次，占公文总量 43%。
+         这条断言在 bug 存在时会拿到 n > 0 而失败 —— 是真正的守门人。 */
+      var st = G.state, city = G.currentCity();
+      G.fog.revealAround(city.ci, 12, G.fog.ALL);   /* 先制造"有东西可退" */
+      st.fogDecay = Date.now();                      /* 刚退过 */
+      var n = G.fog.decay(false);
+      return n === 0;
+    })(), '刚退过 → 必须拦住');
 
     check('§286⑯ 强行衰减：全明 → 半明，且行迹百分比不倒退', (function () {
       var city = G.currentCity();

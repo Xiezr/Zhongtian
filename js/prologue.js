@@ -528,10 +528,21 @@
          现在改成**底部 HUD**：地图全程可见，HUD 只占下方一条，
          且 wrapper 设 pointer-events:none、卡片单独 auto —— 地图仍然可以点。
          藏起来的只剩「顶栏」和「底部那排地图控件」（它们在没城时确实没意义）。 */
-      el.style.cssText = 'position:fixed;left:50%;transform:translateX(-50%);bottom:14px;'
+      /* ⛔ v130（逐链路核查抓到，v128 引入的回归）：
+         v128 把它做成底部 HUD 后仍然 `position:fixed + z-index:70` 且挂在 **body** 上，
+         而全站弹窗活在 `#app-scale` 里 —— 那个节点带 `transform:scale()`，是个**独立的层叠上下文**，
+         内部 `.modal-mask` 的 `z-index:1000` 只在它自己那一层里有效，对外等于 z=auto。
+         结果：前传 HUD（z=70，根栈）**压住整幅画面和所有弹窗**。
+         实测：出征面板「🚩 占领」按钮在 (644,747)，被前传卡片盖住，
+         `elementFromPoint` 命中的是前传层 → 按钮点不动，出征链**走不到终点**。
+         新玩家前 20 级期间会一直碰到（那时前传常驻）。
+         修法：挂进 `#app-scale`（与弹窗同一栈），定位改 absolute —— 与 `.modal-mask`
+         当年 fixed→absolute 是同一个理由（整幅画面统一缩放，画布是唯一坐标系）。 */
+      el.style.cssText = 'position:absolute;left:50%;transform:translateX(-50%);bottom:14px;'
         + 'z-index:70;width:min(780px,94vw);max-height:46vh;overflow:auto;'
         + 'pointer-events:none;';
-      document.body.appendChild(el);
+      var host = document.getElementById('app-scale') || document.body;
+      host.appendChild(el);
     }
     /* v128：起始位置点亮一圈（否则球面全黑 —— 换了皮的黑屏，等于没改）。
        只在**第一次**做：之后玩家自己走出去看到的就是探索成果，不该反复送视野。 */

@@ -123,6 +123,47 @@ const ok = (name, cond, extra) => {
   ok('distOf ≤ ' + TH.distOf + ' 次（原 3,712 次）', pr.distOf <= TH.distOf, pr.distOf + ' 次');
   ok('无页面运行时异常', errs.length === 0, errs.slice(0, 2).join(' | ') || '无');
 
+  /* ---------- ④⑤ 层叠守卫（v130：前传 HUD 压住弹窗的回归） ----------
+     病根：前传层挂在 body 上、z-index:70，而全站弹窗活在 #app-scale 里 ——
+     那个节点带 transform:scale()，是**独立层叠上下文**，内部 z-index:1000 对外等于 auto。
+     于是前传 HUD 压住整幅画面和所有弹窗，出征面板的「占领/掠夺」点不动。
+     判据直接问浏览器"这个坐标最上面是谁"，不猜 z-index 数值。 */
+  const layer = await p.evaluate(() => {
+    const G = window.GAME, out = {};
+    const ps = document.getElementById('prologue-screen');
+    out.hudExists = !!ps;
+    out.hudParent = ps && ps.parentNode ? (ps.parentNode.id || ps.parentNode.tagName) : null;
+    out.hudPos = ps ? getComputedStyle(ps).position : null;
+    /* 打开出征面板（前传态下仍可打开 —— 这是玩家会做的事） */
+    const sp = G.sphereOf ? G.sphereOf() : G.sphere;
+    let ci = -1;
+    for (let i = 0; i < sp.cells.length; i++) {
+      if (sp.cells[i] && sp.cells[i].type && !(G.map.ownCityAt && G.map.ownCityAt(i))) { ci = i; break; }
+    }
+    out.ci = ci;
+    try { G.ui.openExpModal({ kind: 'wild', ci: ci }); } catch (e) { out.openErr = e.message; }
+    const el = document.querySelector('#modal-root [data-action="exp-confirm"]');
+    if (!el) { out.btn = 'missing'; return out; }
+    const rc = el.getBoundingClientRect();
+    const cx = Math.round(rc.left + rc.width / 2), cy = Math.round(rc.top + rc.height / 2);
+    const hit = document.elementsFromPoint(cx, cy)[0];
+    out.btnText = (el.textContent || '').trim();
+    out.btnY = Math.round(rc.top);
+    out.hitIsBtn = !!(hit && (hit === el || el.contains(hit)));
+    out.hitTag = hit ? (hit.tagName + '#' + (hit.id || '-')) : 'null';
+    /* 前传 HUD 的实际占位（判断是否真的与按钮重叠） */
+    const hb = ps ? ps.getBoundingClientRect() : null;
+    out.hudRect = hb ? [Math.round(hb.top), Math.round(hb.bottom)] : null;
+    try { G.ui.closeAllModals(); } catch (e) {}
+    return out;
+  });
+  console.log('④ 前传 HUD 的层叠归属');
+  ok('前传 HUD 必须挂在 #app-scale 内（与弹窗同一栈）', layer.hudParent === 'app-scale', '父节点=' + layer.hudParent);
+  ok('前传 HUD 用 absolute（不是 fixed，fixed 会跳出缩放坐标系）', layer.hudPos === 'absolute', 'position=' + layer.hudPos);
+  console.log('⑤ 前传态下出征确认按钮可点（回归守卫）');
+  ok('面板里找得到确认按钮', layer.btn === 'undefined' || layer.btn === 'missing' ? false : true, '按钮=' + (layer.btnText || layer.btn || '?'));
+  ok('按钮位置在最上层（修前被前传 HUD 盖住）', layer.hitIsBtn === true, '该点最上层=' + layer.hitTag);
+
   console.log('\n结果：' + pass + ' 通过 / ' + fail + ' 失败');
   await b.close();
   process.exit(fail ? 1 : 0);

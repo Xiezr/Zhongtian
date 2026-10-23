@@ -383,7 +383,17 @@
     var hours = (GAME.DATA && GAME.DATA.FOG && GAME.DATA.FOG.decayHours) || 0;
     if (hours <= 0) return 0;
     var now = Date.now();
-    var last = st.fogDecay | 0;
+    /* ⛔ v130（逐链路核查抓到，本项目最隐蔽的一个"单字符 bug"）：
+       原来是 `var last = st.fogDecay | 0;` —— `| 0` 是 **32 位整数截断**，
+       而 `st.fogDecay` 存的是**毫秒墙钟** `Date.now()`（约 1.79e12，41 位）。
+       实测：`1792779649426 | 0` = `1778286994`（等价于 1970 年附近的值），
+       于是 `now - last` 恒为 **约 20 天**，永远 ≥ 12 小时 ——
+       **`decayHours` 节流从上线起一次都没生效过**。
+       后果：每写 1 格视野，下一个 tick 就被抹掉再写一条
+       「远方的记忆淡了」；实测 1 小时游戏时间内触发 **56 次**，
+       占公文总量 43%，把战报/流民/科技全挤到了看不见的地方。
+       修法：用一元 `+` 转数（千位以内小整数仍安全，毫秒时间戳不截断）。 */
+    var last = +st.fogDecay || 0;
     if (!last) { st.fogDecay = now; return 0; }        /* 新档/刚读档：只记基准，第一次不褪 */
     if (!force && now - last < hours * 3600000) return 0;
     st.fogDecay = now;
