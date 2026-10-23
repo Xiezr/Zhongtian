@@ -51,6 +51,7 @@ import './muster.js';    /* v99：兵源 —— 人从哪来（流民/战后/远
 import './founding.js';  /* v103：开城 —— 棚户挤不下时，带他们去开一座城 */
 import './prologue.js';  /* v105：前传 —— 先没有城，打怪升到 20 级才立城 */
 import './market.js';    /* v117：集市与行情 —— 每月三次开市，寒潮月粮贵 */
+import './events.js';    /* v121：路上遇到的事 —— 每月一件，两三条路，代价全摊开 */
 import './gltf.js';
 import './map3d.js';
 import './battle.js';

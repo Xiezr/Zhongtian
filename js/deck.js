@@ -70,7 +70,16 @@
    * 于是"带谁去"第一次有了编成取舍：要打血勇，就得带猛将；
    * 要带智将，就得换牌。
    * ============================================================ */
-  DK.styleOf = function (gen) { return (gen && gen.styleId) || 'balance'; };
+  /* ⚠️ v121 修：真实英雄对象上的字段叫 **`style`**，不是 `styleId`
+     （`generals.js` 造出来的对象是 style:'balance'）。
+     我 v107 写成 styleId，于是**真实游戏里永远返回 'balance'，
+     那张牌与风格的冲突从来没生效过** —— 而 §327 用自己造的
+     `{styleId:'war'}` 去测，全绿。断言测了假对象，门禁就变成了帮凶。
+     现在两个字段都认（老存档可能存的是 styleId）。 */
+  DK.styleOf = function (gen) {
+    if (!gen) return 'balance';
+    return gen.style || gen.styleId || 'balance';
+  };
 
   /* 这张牌这一仗能不能用（gen 缺省 = 不过滤，向后兼容旧调用）*/
   DK.usableOf = function (cardId, gen) {

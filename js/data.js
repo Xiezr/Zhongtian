@@ -6797,6 +6797,139 @@ import './core.js';
     ]
   };
 
+  /* ============================================================
+   * v121 · 事件：不是剧情，是**选择**
+   * ------------------------------------------------------------
+   * 老板 2026-10-23：
+   *   「再开阔一点，发掘典型畅销游戏，学习其可适配本游戏的玩法。
+   *     不要执着于搞点废土感人故事，我要的废土精彩人生。」
+   *
+   * 参考的是两类**畅销且高重玩**的东西：
+   *
+   *   RimWorld —— 它的"故事"不是写的，是**系统撞出来的**：
+   *     小人、事件、代价互相作用，玩家事后自己讲成故事。
+   *   Slay the Spire / Balatro —— 每次三选一，小池子产生巨大分叉。
+   *
+   * 所以这里的事件**不写悲欢**，只写"你现在有两条路，代价是这样"。
+   * 每条路都把数字摊开：花多少、赚多少、赔的概率多大。
+   * **玩家看见风险再选**，这是"赌博"，不是"老虎机"。
+   *
+   * ⚠️ 硬规矩（防我自己又写成散文）：
+   *   · 每段文本 ≤ 45 字，不描写心理、不写死者、不写"曾经"；
+   *   · 每个选项必须能算得出账（成本 / 收益 / 概率）；
+   *   · 「走开」永远是一个选项，且不是最差的 —— 不想赌的人不该被罚。
+   * ============================================================ */
+  DATA.EVENTS = [
+    { id: 'dice', name: '掷骰子', icon: '🎲', weight: 14,
+      text: '三个矿工蹲在棚子底下掷骨头。庄家抬眼看你：押不押？',
+      opts: [
+        { label: '押 800 旧币', cost: { gold: 800 }, odds: 0.45, mul: 2.0 },
+        { label: '押 4000 旧币', cost: { gold: 4000 }, odds: 0.45, mul: 2.0 },
+        { label: '走开' }
+      ] },
+
+    { id: 'smuggle', name: '半夜的货', icon: '📦', weight: 12,
+      text: '有人半夜敲门：一车废钢，市价一半，问你要不要，现在就要。',
+      opts: [
+        { label: '全要（6000）', cost: { gold: 6000 }, gain: { iron: 9000 } },
+        { label: '要一半（3000）', cost: { gold: 3000 }, gain: { iron: 4200 } },
+        { label: '压价到 1/3，赌他急', cost: { gold: 2000 },
+          odds: 0.55, gainIf: { iron: 8000 }, note: '五成半的机会他掉头就走' },
+        { label: '关门睡觉' }
+      ] },
+
+    { id: 'beast', name: '斗兽', icon: '🐗', weight: 11,
+      text: '围栏里关着一头三米长的角兽。庄家出价：打赢给你名声，打输抬走你的人。',
+      opts: [
+        { label: '派 200 兵上场', cost: { troop: 200 }, odds: 0.6,
+          gainIf: { fame: 12 }, loseIf: { troop: 200 } },
+        { label: '派 600 兵上场', cost: { troop: 600 }, odds: 0.85,
+          gainIf: { fame: 20 } },
+        { label: '只看着' }
+      ] },
+
+    { id: 'deserters', name: '一队逃兵', icon: '🪖', weight: 10,
+      text: '九个带枪的人要投你。领头的说他们刚从东边过来，枪是自己的。',
+      opts: [
+        { label: '收下（得兵 300）', gain: { troop: 300 },
+          lose: { fame: 4 }, note: '名声 −4：人说你什么人都收' },
+        { label: '缴枪放人（得废钢）', gain: { iron: 1200 } },
+        { label: '赶走' }
+      ] },
+
+    { id: 'fence', name: '销赃的', icon: '🔧', weight: 10,
+      text: '一个修机器的摊子，柜子里有几件来路不明的东西。他不问你是谁。',
+      opts: [
+        { label: '买一件（900 旧币）', cost: { gold: 900 }, randomItem: 1 },
+        { label: '买三件（2200 旧币）', cost: { gold: 2200 }, randomItem: 3 },
+        { label: '不碰' }
+      ] },
+
+    { id: 'raffle', name: '抽签', icon: '🎫', weight: 10,
+      text: '有人拿一箱不知道哪来的东西抽签，一签 300 旧币。箱子里什么样他自己也不知道。',
+      opts: [
+        { label: '抽一签（300 币）', cost: { gold: 300 }, randomItem: 1 },
+        { label: '抽五签（1400 币）', cost: { gold: 1400 }, randomItem: 5 },
+        { label: '不抽' }
+      ] },
+
+    { id: 'collapse', name: '塌了一段', icon: '⛏', weight: 9,
+      text: '旧矿井塌了半边，露出一个没塌干净的洞。里面可能有货，也可能再塌一次。',
+      opts: [
+        { label: '派人进去（50 人）', cost: { pop: 50 }, odds: 0.6,
+          gainIf: { iron: 4000, gold: 1500 },
+          loseIf: { pop: 50 }, note: '塌了就是白搭 50 人' },
+        { label: '只在外围刮一遍', gain: { iron: 900 } },
+        { label: '封上' }
+      ] },
+
+    { id: 'auction', name: '两个买家', icon: '💰', weight: 9,
+      text: '两支车队同时到了，都要你仓里的粮。一家出价高但要立刻交割，一家出价低但要分两期给。',
+      opts: [
+        { label: '卖给高价那家（4000 粮）', cost: { grain: 4000 }, gain: { gold: 5200 } },
+        { label: '卖给分期那家（4000 粮）', cost: { grain: 4000 }, gain: { gold: 3600 },
+          plus: { fame: 3 }, note: '少赚 1600，但名声 +3' },
+        { label: '都不卖' }
+      ] },
+
+    { id: 'monk', name: '化缘的', icon: '🕯', weight: 8,
+      text: '一个瘦得脱形的人站在门口，不要钱，只要一袋粮。他说他要去北边。',
+      opts: [
+        { label: '给一袋（1500 粮）', cost: { grain: 1500 }, plus: { fame: 5 } },
+        { label: '给一半（700 粮）', cost: { grain: 700 }, plus: { fame: 2 } },
+        { label: '关门' }
+      ] },
+
+    { id: 'gambler', name: '牌桌', icon: '🃏', weight: 8,
+      text: '酒馆里有人开牌桌，赌注是你的马和你的表。他手很稳，看起来不像第一次。',
+      opts: [
+        { label: '赌（押一件旧货）', cost: { gold: 2000 }, odds: 0.4,
+          gainIf: { gold: 5000 }, note: '四成机会，赢两倍半' },
+        { label: '只赌一把小的', cost: { gold: 500 }, odds: 0.45, gainIf: { gold: 1200 } },
+        { label: '看他赌' }
+      ] }
+  ];
+
+  /* 每月出一件事的概率（唯一写点 —— audit 会查"读了没写"） */
+  DATA.EVENTS_CHANCE = 0.22;
+
+  /* 事件战利品池：**只有珠宝和材料**，不给资源 ——
+     资源是"产出"，给了没有惊喜；抽到一块翠玉才有。
+     权重压在低价段（抽签大多数时候抽到小东西），高价段稀。 */
+  DATA.EVENT_LOOT = [
+    { id: 'mila',       name: '琥珀',   w: 22, range: [1, 3] },
+    { id: 'meiyu',      name: '煤玉',   w: 20, range: [1, 3] },
+    { id: 'puyu',       name: '璞玉',   w: 17, range: [1, 2] },
+    { id: 'zijin',      name: '紫晶',   w: 13, range: [1, 2] },
+    { id: 'lvsongshi',  name: '绿松石', w: 10, range: [1, 2] },
+    { id: 'yusui',      name: '玉髓',   w: 7,  range: [1, 1] },
+    { id: 'cuiyu',      name: '翠玉',   w: 4,  range: [1, 1] },
+    { id: 'danbaishi',  name: '蛋白石', w: 3,  range: [1, 1] },
+    { id: 'tianzhu',    name: '天珠',   w: 2,  range: [1, 1] },
+    { id: 'jinang',     name: '封存匣', w: 8,  range: [1, 2] },
+    { id: 'lingsui',    name: '辐能核心', w: 6, range: [2, 6] }
+  ];
+
   DATA.RISK = {
     fogBase: [0.55, 0.30, 0.10],   /* 探明度 0 未探明 / 1 只见地形 / 2 全见 → 基础危险 */
     farEvery: 40,                   /* 离最近的城每远这么多格，再加一点 */

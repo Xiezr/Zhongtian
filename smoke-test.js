@@ -12384,7 +12384,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
     /* ⚠️ 这份 ORDER 与 build_bundle.py 的 ORDER **必须逐条一致**（本文故意不复用脚本，
        就是为了"构建脚本自己算错时测试还能抓到"）。加了模块两边都要加 ——
        v92 加 fog / memorial 时这里漏改，导致 hash 对不上、守卫假红。 */
-    var ORDER = ['core', 'registry', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'domain', 'map', 'sphere', 'risk', 'years', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'rival', 'land', 'taint', 'climate', 'surge', 'relic', 'goals', 'veteran', 'setskill', 'deck', 'bond', 'tower', 'wonderwar', 'delve', 'unrest', 'expose', 'trooplv', 'idle', 'ending', 'muster', 'founding', 'prologue', 'market', 'gltf',
+    var ORDER = ['core', 'registry', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'domain', 'map', 'sphere', 'risk', 'years', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'rival', 'land', 'taint', 'climate', 'surge', 'relic', 'goals', 'veteran', 'setskill', 'deck', 'bond', 'tower', 'wonderwar', 'delve', 'unrest', 'expose', 'trooplv', 'idle', 'ending', 'muster', 'founding', 'prologue', 'market', 'events', 'gltf',
       'map3d', 'battle', 'strategy', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits', 'story', 'ui', 'main'];
     var h = crypto.createHash('sha256');
     try {
@@ -41822,9 +41822,12 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     var bak = (st.deck || []).slice();
 
     function setDeck(list) { st.deck = list.slice(); }
-    var war = { styleId: 'war', name: '猛将甲' };
-    var wis = { styleId: 'wis', name: '智将乙' };
-    var bal = { styleId: 'balance', name: '老好人丙' };
+    /* ⚠️ v121：这里原来写 `{ styleId: 'war' }` —— 而**真实英雄对象的字段叫
+       `style`**（generals.js 造的是 style:'balance'）。于是这条断言一直在测
+       一个游戏里不存在的形状，真功能从 v107 起就没生效过（§327⑥ 补了守卫）。 */
+    var war = { style: 'war', name: '猛将甲' };
+    var wis = { style: 'wis', name: '智将乙' };
+    var bal = { style: 'balance', name: '老好人丙' };
 
     check('§327① 风格门槛：猛将能打血勇不能打斥候；智将反之；均衡全能用', (function () {
       return D3.usableOf('fury', war) === true && D3.usableOf('scoutcard', war) === false
@@ -41881,6 +41884,24 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var cards = (DATA.DECK || {}).cards || [];
       return cards.filter(function (x) { return x.style; })
         .map(function (x) { return x.name + ':' + x.style; }).join(' ');
+    })());
+
+    check('§327⑥ 字段名对得上真实英雄（v107 写成 styleId，冲突从未生效）', (function () {
+      var g = (st.generals || [])[0];
+      if (!g) return false;
+      var bakStyle = g.style;
+      g.style = 'war';
+      var x1 = D3.usableOf('fury', g), x2 = D3.usableOf('scoutcard', g);
+      g.style = bakStyle;
+      return x1 === true && x2 === false && g.styleId === undefined;
+    })(), (function () {
+      var g = (st.generals || [])[0];
+      if (!g) return '';
+      var bakStyle = g.style;
+      g.style = 'war';
+      var ok = D3.usableOf('scoutcard', g);
+      g.style = bakStyle;
+      return '真实英雄 style=war → 斥候牌 ' + (ok ? '能用（错）' : '用不了');
     })());
 
     st.deck = bak.slice();
@@ -42523,6 +42544,116 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     st.mkRare = {};
     st.world.elapsed = bakE;
     if (!hadWorld) st.world = null;
+  })();
+
+
+  /* ============================================================
+   * §337 · v121：事件 —— 不是剧情，是选择
+   * ------------------------------------------------------------
+   * 老板 2026-10-23：「不要执着于搞点废土感人故事，我要的废土精彩人生」。
+   * 参考 RimWorld（涌现）与杀戮尖塔（三选一）：
+   * 游戏不写故事，只提供**条件**，玩家自己算出故事。
+   *
+   * 这里钉五条硬规矩：
+   *   ① 每件事至少两条路，且「走开」永远在（不想赌的人不该被罚）；
+   *   ② 文本 ≤ 45 字（写长了就会变成散文）；
+   *   ③ 每个要付钱的路必须把代价写出来（不能盲选）；
+   *   ④ 概率要真的是标称值（±8%）；
+   *   ⑤ 资源不够时整单拒绝，不扣一半。
+   * ============================================================ */
+  console.log('\n===== 337. v121 事件：两三条路，代价摊开 =====');
+  (function () {
+    var EV = G.events;
+    var LIST = (DATA.EVENTS || []);
+    if (!EV || !LIST.length) return;
+    var st = G.state;
+    var city = G.currentCity();
+    if (!city) return;
+
+    check('§337① 每件事至少两条路，且都有一条「不做事」的退路', (function () {
+      return LIST.every(function (e) {
+        var opts = e.opts || [];
+        if (opts.length < 2) return false;
+        /* 退路 = 不花钱、不掷骰、不要东西的那一条 */
+        return opts.some(function (o) {
+          return !o.cost && !o.odds && !o.gain && !o.gainIf && !o.randomItem;
+        });
+      });
+    })(), (function () {
+      return LIST.length + ' 件事，' + LIST.map(function (e) { return (e.opts || []).length; }).join('/') + ' 条路';
+    })());
+
+    check('§337② 正文 ≤ 45 字（超过就会变成散文）', (function () {
+      return LIST.every(function (e) { return String(e.text || '').length <= 45; });
+    })(), (function () {
+      var mx = 0, who = '';
+      LIST.forEach(function (e) {
+        var n = String(e.text || '').length;
+        if (n > mx) { mx = n; who = e.name; }
+      });
+      return '最长 ' + mx + ' 字（' + who + '）';
+    })());
+
+    check('§337③ 要付代价的路，选项上写得出「付什么」', (function () {
+      var bad = [];
+      LIST.forEach(function (e) {
+        (e.opts || []).forEach(function (o) {
+          if (o.cost && !EV.optionText(o).match(/付/)) bad.push(e.id + ':' + o.label);
+        });
+      });
+      return bad.length === 0;
+    })(), (function () {
+      return EV.optionText({ cost: { gold: 800 }, odds: 0.45, mul: 2.0 });
+    })());
+
+    check('§337④ 概率是标称值（跑 600 次，±8%）', (function () {
+      var bakEv = st.ev;
+      var bakGold = G.res(city).gold | 0;
+      G.city.add(city, 'gold', 800 * 700);
+      var win = 0;
+      for (var i = 0; i < 600; i++) {
+        st.ev = { id: 'dice', at: 0 };
+        var r = EV.choose(0);
+        if (r.win) win++;
+      }
+      st.ev = bakEv;
+      G.city.sub(city, 'gold', Math.max(0, (G.res(city).gold | 0) - bakGold));
+      var rate = win / 600;
+      return Math.abs(rate - 0.45) < 0.08;
+    })(), (function () {
+      return '实测 ' + (function () {
+        var bakEv = st.ev;
+        G.city.add(city, 'gold', 800 * 320);
+        var w = 0;
+        for (var i = 0; i < 300; i++) { st.ev = { id: 'dice', at: 0 }; if (EV.choose(0).win) w++; }
+        st.ev = bakEv;
+        return (w / 300 * 100).toFixed(0) + '%';
+      })() + '（标称 45%）';
+    })());
+
+    check('§337⑤ 兵不够时整单拒绝，不扣一半', (function () {
+      var bakArmy = city.army;
+      city.army = { buxingji: 10 };
+      st.ev = { id: 'beast', at: 0 };
+      var r = EV.choose(0);          /* 要 200 兵 */
+      var still = G.armyTotal(city);
+      st.ev = null;
+      city.army = bakArmy;
+      return r.ok === false && still === 10;
+    })(), (function () { return '要 200 兵，只有 10 → 拒绝且没扣'; })());
+
+    check('§337⑥ 「走开」不花一分钱（退路不是最差的那条）', (function () {
+      var bakArmy = city.army;
+      var g0 = G.res(city).gold | 0;
+      st.ev = { id: 'dice', at: 0 };
+      var r = EV.choose(2);          /* 走开 */
+      var g1 = G.res(city).gold | 0;
+      st.ev = null;
+      city.army = bakArmy;
+      return r.ok === true && g1 === g0;
+    })(), (function () { return '选了走开：旧币没动'; })());
+
+    st.ev = null;
   })();
 
 console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');
