@@ -10735,6 +10735,16 @@
        放在**所有刷新路径的汇合点**（renderView）而不是 setView：
        ctx.refresh 走的是 GAME.refreshView → renderView，漏了它打完一场界面就不更新。 */
     if (GAME.prologue && GAME.prologue.syncScreen) GAME.prologue.syncScreen();
+    /* v123：core 模块不能直接调界面（架构棘轮），所以它们只留一条
+       `state._tip`，由这里消费一次并清空 —— "立城后先建农田"就是这么弹的。 */
+    (function () {
+      var sp = GAME.state;
+      if (sp && sp._tip) {
+        var msg = sp._tip;
+        sp._tip = null;
+        if (msg) ui.toast(msg);
+      }
+    })();
   };
 
   /* --------- 辖区岁贡（v14）：占城的持续收益面板 --------- */

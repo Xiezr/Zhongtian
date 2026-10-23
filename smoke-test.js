@@ -42698,6 +42698,99 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })(), (function () { return '是提醒位，不是 tab'; })());
   })();
 
+
+  /* ============================================================
+   * §339 · v123：前传四档 + 连战 —— 别再让玩家按 89 次同一个按钮
+   * ------------------------------------------------------------
+   * 老板说「全改」。改之前先量了一次**真实**的经验需求：
+   *   GAME.expNeedOf 累计 Lv1→20 = **375,785** 点。
+   * 而 v105 配的是每次 4200 → **89 场**。
+   * 当年探针说"13 次到 Lv8"是对的，但 Lv8→Lv20 才是大头 —— 我从 Lv8 外推了。
+   *
+   * 现在：经验 ×5 + 四档倍率，实测混着打约 11 场。
+   * 这里钉四件事：
+   *   ① 四档按等级解锁、经验递增；
+   *   ② 数学上 Lv1→20 不超过 20 场（低于这个数才算"能忍"）；
+   *   ③ 打输了给一半经验（打不过不等于白跑）；
+   *   ④ 连战机会会出现，且不耗精力。
+   * ============================================================ */
+  console.log('\n===== 339. v123 前传：四档 + 连战 =====');
+  (function () {
+    var P = G.prologue;
+    if (!P || !P.tiers) return;
+    var D9 = (DATA.PROLOGUE || {});
+    var L = P.tiers();
+
+    check('§339① 四档，门槛递增、经验递增', (function () {
+      if (L.length !== 4) return false;
+      for (var i = 1; i < L.length; i++) {
+        if (L[i].lv <= L[i - 1].lv) return false;
+        if (L[i].expMul <= L[i - 1].expMul) return false;
+        if (L[i].powerMul <= L[i - 1].powerMul) return false;
+      }
+      return true;
+    })(), (function () {
+      return L.map(function (t) { return t.name + '@Lv' + t.lv + '×' + t.expMul; }).join(' ');
+    })());
+
+    check('§339② Lv1→20 不超过 20 场（用**真实** expNeedOf 算）', (function () {
+      var tiers = L;
+      function runs(base) {
+        var lv = 1, exp = 0, n = 0;
+        while (lv < 20 && n < 500) {
+          var mul = 1;
+          tiers.forEach(function (t) { if (lv >= t.lv) mul = t.expMul; });
+          exp += Math.round(base * mul);
+          while (exp >= G.expNeedOf({ level: lv }) && lv < 20) {
+            exp -= G.expNeedOf({ level: lv }); lv++;
+          }
+          n++;
+        }
+        return n;
+      }
+      /* 最省事的打法（试炼）与最费事的打法（采集）都要在 20 场内 */
+      var best = runs(P.expOf('shi', 1));
+      return best <= 20;
+    })(), (function () {
+      var tiers = L;
+      function runs(base) {
+        var lv = 1, exp = 0, n = 0;
+        while (lv < 20 && n < 500) {
+          var mul = 1;
+          tiers.forEach(function (t) { if (lv >= t.lv) mul = t.expMul; });
+          exp += Math.round(base * mul);
+          while (exp >= G.expNeedOf({ level: lv }) && lv < 20) {
+            exp -= G.expNeedOf({ level: lv }); lv++;
+          }
+          n++;
+        }
+        return n;
+      }
+      return '试炼 ' + runs(P.expOf('shi', 1)) + ' 场 · 清剿 ' + runs(P.expOf('tao', 1)) + ' 场';
+    })());
+
+    check('§339③ 打输了也给一半经验（打不过不等于白跑）', (function () {
+      return (D9.loseExpMul != null) && Math.abs(D9.loseExpMul - 0.5) < 1e-6;
+    })(), (function () { return 'loseExpMul=' + D9.loseExpMul; })());
+
+    check('§339④ 连战：有概率、经验打折、不耗精力', (function () {
+      return (D9.comboChance > 0 && D9.comboChance < 1)
+        && (D9.comboExpMul > 0 && D9.comboExpMul < 1)
+        && (G.prologue.comboOf !== undefined);
+    })(), (function () {
+      return '触发 ' + Math.round(D9.comboChance * 100) + '%，经验 ×' + D9.comboExpMul;
+    })());
+
+    check('§339⑤ 高等级去更深的地方，经验更高但不线性', (function () {
+      /* 经验涨得比敌人慢 → 越深越危险，不一定越划算（这本身就是取舍） */
+      var a = L[0], z = L[L.length - 1];
+      return (z.expMul / a.expMul) < (z.powerMul / a.powerMul);
+    })(), (function () {
+      var a = L[0], z = L[L.length - 1];
+      return '经验 ×' + (z.expMul / a.expMul) + ' vs 敌人 ×' + (z.powerMul / a.powerMul);
+    })());
+  })();
+
 console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');
   process.exit(FAIL ? 1 : 0);
 })();

@@ -163,6 +163,37 @@ import './items.js';
     return Math.max(1, Math.round(rec.base * mul));
   };
 
+  /* ============================================================
+   * v123：**现在卖什么最划算**
+   * ------------------------------------------------------------
+   * 面板上原来只列五格价格 + 一个"贵/平/贱"。玩家要自己心算：
+   * 粮 1.55 贵，但我仓里有 2 万粮；废钢 1.6 平，但只有 800。
+   * 「贵」和「值得卖」是两件事 —— 前者看单价，后者看**存量 × 涨幅**。
+   *
+   * 这一条把两者合起来算一遍，直接说"哪个最该卖"。
+   * ============================================================ */
+  MK.bestOf = function () {
+    var d = D(), city = mainCity();
+    if (!city) return null;
+    var res = (GAME.res ? GAME.res(city) : {}) || {};
+    var best = null;
+    (d.goods || []).forEach(function (g) {
+      if (g.id === 'gold') return;
+      var have = res[g.res] | 0;
+      if (have < 100) return;                     /* 太少不值得提 */
+      var price = MK.priceOf(g.id);
+      var up = price / (g.base || 1);             /* 相对基准的涨幅 */
+      if (up < 1.05) return;                      /* 不比平时贵就别催他卖 */
+      var worth = have * price;                   /* 真能换多少钱 */
+      var score = worth * up;                     /* 既要有货，又要涨得多 */
+      if (!best || score > best.score) {
+        best = { id: g.id, name: g.name, res: g.res, have: have,
+          price: price, up: up, worth: Math.round(worth), score: score };
+      }
+    });
+    return best;
+  };
+
   /* 一句话：现在贵还是贱（面板用，不写数字堆） */
   MK.moodOf = function (gid) {
     var d = D(), g = null;
@@ -443,7 +474,17 @@ import './items.js';
           fairRow = '<div class="ui-sub" style="margin-top:4px;">距换季大集 '
             + fi + ' 个月（每年第 3 / 第 9 月，整月全价收，还有平时买不到的三样东西）</div>';
         }
-        return sec('🏪 集市', MK.lineOf(), MK.bodyHTML()
+        /* v123：最该卖的那一样，直接点名 —— 不让玩家自己心算五个价格 */
+        var best = MK.bestOf();
+        var bestRow = best
+          ? '<div style="margin-top:4px;font-size:var(--fs-cap);color:var(--gold-light);">'
+            + '💡 现在最该卖：<b>' + U.escape(best.name) + '</b>　仓里 '
+            + U.numText(best.have, 0) + '　单价 ' + best.price.toFixed(2)
+            + '（比平时贵 ' + Math.round((best.up - 1) * 100) + '%）　全卖约 '
+            + U.numText(best.worth, 0) + ' 旧币</div>'
+          : '<div style="margin-top:4px;font-size:var(--fs-cap);color:var(--text-dim);">'
+            + '现在没有哪样比平时贵 —— 不急就压着。</div>';
+        return sec('🏪 集市', MK.lineOf(), MK.bodyHTML() + bestRow
           + '<div class="chips" style="margin-top:5px;">' + rows + '</div>'
           + (made ? '<div class="chips" style="margin-top:4px;">' + made + '</div>' : '')
           + craftRow + fairRow);

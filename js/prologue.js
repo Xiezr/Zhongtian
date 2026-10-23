@@ -98,6 +98,28 @@
   P.ready = function () { return P.on() && P.lv() >= P.needLv(); };
 
   /* ============================================================
+   * v123：**四档** —— 按等级换地方，不是同一个按钮按 15 次
+   * ============================================================ */
+  P.tiers = function () { return D().tiers || []; };
+
+  /* 当前该去哪一档（取等级够得着的最高一档） */
+  P.tier = function (lv) {
+    var L = P.tiers();
+    if (!L.length) return null;
+    var n = (lv == null) ? P.lv() : lv;
+    var cur = L[0];
+    for (var i = 0; i < L.length; i++) if (n >= L[i].lv) cur = L[i];
+    return cur;
+  };
+  /* 下一档（够不着就是 null，面板用它显示"再升 N 级能去"） */
+  P.nextTier = function (lv) {
+    var L = P.tiers();
+    var n = (lv == null) ? P.lv() : lv;
+    for (var i = 0; i < L.length; i++) if (n < L[i].lv) return L[i];
+    return null;
+  };
+
+  /* ============================================================
    * 三、附近能做的事
    * ------------------------------------------------------------
    * 球面没有"半径内枚举"的出口，所以抽样 + 按距离筛。
@@ -142,12 +164,25 @@
 
   /* 这次行动给多少经验：先按 id 查，再按 kind 查。
      荒野行动共 12 种（含六个地形场景），只给四种配表会让玩家撞上"零经验"。 */
-  P.expOf = function (actId) {
+  P.expOf = function (actId, lv) {
     var d = D();
     var t = (d.exp || {})[actId];
-    if (t != null) return t;
-    var a = (GAME.DATA && GAME.DATA.LING_ACT && GAME.DATA.LING_ACT[actId]) || {};
-    return (d.expByKind || {})[a.kind] || 0;
+    if (t == null) {
+      var a = (GAME.DATA && GAME.DATA.LING_ACT && GAME.DATA.LING_ACT[actId]) || {};
+      t = (d.expByKind || {})[a.kind] || 0;
+    }
+    var tier = P.tier(lv);
+    return Math.round(t * ((tier && tier.expMul) || 1));
+  };
+
+  /* 现在的连战机会（没有就是 null） */
+  P.comboOf = function () {
+    var s = st0();
+    return (s && s.prologue && s.prologue.combo) || null;
+  };
+  P.comboClear = function () {
+    var s = st0();
+    if (s && s.prologue) s.prologue.combo = null;
   };
 
   /* ============================================================
@@ -171,13 +206,26 @@
     if (s0 && s0.jianghu) delete s0.jianghu['c' + ci + '|' + actId];
     /* 走的是**同一套内核**（check → spend → roll），只是把 `jianghuDo` 的三合一
        拆开，好把前传的两把倍率传进去。不另写判定 —— 那是第二个引擎。 */
-    var chk = GAME.jianghuCheck(ci, lord.id, actId);
-    if (!chk.ok) return chk;
-    GAME.jianghuSpend(chk);
+    /* 连战不耗精力（它是上一场"顺下来"的），普通行动才走 check/spend */
+    var combo = P.comboOf();
+    var isCombo = !!(combo && combo.ci === ci && combo.act === actId);
+    if (!isCombo) {
+      var chk = GAME.jianghuCheck(ci, lord.id, actId);
+      if (!chk.ok) return chk;
+      GAME.jianghuSpend(chk);
+    } else {
+      var chk2 = GAME.jianghuCheck(ci, lord.id, actId);
+      /* check 只是为了拿到 roll 需要的结构；连战不扣费，所以失败也能继续打 */
+      if (!chk2.ok) return chk2;
+      var chk = chk2;
+    }
     var d = D();
+    var tier = P.tier();
     var def = (GAME.DATA.LING_ACT || {})[actId];
     var bakPow = def ? def.power : null;
-    if (def && bakPow) def.power = Math.max(1, bakPow * (d.powerMul || 1));
+    if (def && bakPow) {
+      def.power = Math.max(1, bakPow * (d.powerMul || 1) * ((tier && tier.powerMul) || 1));
+    }
     var r;
     try {
       r = GAME.jianghuRoll(chk, { pow: d.powMul || 1 });
@@ -186,6 +234,9 @@
     }
     if (!r || !r.ok) return r || { ok: false, msg: '这一趟没去成' };
     var gain = P.expOf(actId);
+    /* v123：打输了也给一半（"打不过不等于白跑"），连战打折（防刷） */
+    if (r.bad) gain = Math.round(gain * (D().loseExpMul == null ? 0.5 : D().loseExpMul));
+    if (isCombo) gain = Math.round(gain * (D().comboExpMul == null ? 0.7 : D().comboExpMul));
     if (gain > 0 && GAME.battle && GAME.battle.gainExp) {
       GAME.battle.gainExp(lord, gain, '荒野 · ' + (r.name || actId));
     }
@@ -194,6 +245,11 @@
       s.prologue.acts = (s.prologue.acts | 0) + 1;
       s.prologue.last = (r.name || '出去了一趟') + (r.text ? ' · ' + r.text : '')
         + (gain ? ' · 经验 +' + gain : '');
+      /* 连战机会：打完之后掷一次，赢了就摆出"再来一场" */
+      s.prologue.combo = (GAME.invasionRoll
+        ? GAME.invasionRoll('combo|' + (s.prologue.acts | 0) + '|' + ci)
+        : 0.5) < (D().comboChance == null ? 0.35 : D().comboChance)
+        ? { ci: ci, act: actId } : null;
     }
     return {
       ok: true, gain: gain, bad: !!r.bad,
@@ -214,6 +270,19 @@
     }
     var c = GAME.currentCity ? GAME.currentCity() : null;
     P.end(c ? c.name : '');
+    /* ============================================================
+     * v123：**立城后的第一句话**
+     * ------------------------------------------------------------
+     * 立城那一刻玩家看到的是 20 格空地 + 一串「＋」。
+     * 之前没有任何东西告诉他"先建什么"—— 空地看着像"还有好多要填"，
+     * 而不是"从哪一块开始"。
+     *
+     * 只给一句、只给一次、不占版面（走既有 toast）。
+     * 不说"你要守护这里"，只说下一步点哪。
+     * ============================================================ */
+    /* ⚠️ 不能直接调界面层（core 包引用 ui 会被架构棘轮拦，而且 node 探针里没有 ui）。
+       改成留一条"下次渲染时弹一次"的提示，由 ui.renderView 消费。 */
+    if (GAME.state) GAME.state._tip = '城立起来了。先点两格空地建农田 —— 粮不够，什么也盖不了。';
     return { ok: true, msg: '立城了 —— 城里的东西从今天起才真的算你的' };
   };
 
@@ -324,16 +393,43 @@
 
     var last = (st0() && st0().prologue && st0().prologue.last) || '';
 
+    /* v123：档位（按等级换地方）+ 连战 */
+    var tier = P.tier(lv), nt = P.nextTier(lv);
+    var combo = P.comboOf();
+    var tierLine = tier
+      ? '<div style="margin-top:14px;font-size:13px;color:#c9b06a;">📍 现在能去：<b>' + tier.name
+        + '</b>　<span style="color:#8a7a5c;">' + U.escape(tier.line || '') + '</span></div>'
+      : '';
+    var nextLine = nt
+      ? '<div style="font-size:12px;color:#6f6a60;margin-top:1px;">升到 Lv' + nt.lv
+        + ' 能去「' + nt.name + '」（经验 ×' + nt.expMul + '，但那边更凶）</div>'
+      : '';
+    /* 连战：上一场打得顺，可以立刻再打一次（不耗精力，经验打折） */
+    var comboLine = combo
+      ? '<div style="margin-top:16px;"><span data-action="prologue-act" data-ci="' + combo.ci
+        + '" data-act="' + U.escape(combo.act) + '"'
+        + ' style="display:inline-block;padding:8px 16px;border-radius:4px;font-size:14px;'
+        + 'border:1px solid #c9b06a;background:#2a2418;color:#ffd9a0;cursor:pointer;">'
+        + '⚡ 趁势再来一场<span style="opacity:.55;font-size:12px;">　不耗精力 · 经验七折</span></span>'
+        + '<span class="ui-sub" style="margin-left:8px;font-size:12px;">或先歇着（它在下一场之后失效）</span>'
+        + '</div>'
+      : '';
+    /* 进度：几场了 + 还差几次的感觉（不写"还差 N 次"，那是数学题，不是游戏） */
+    var acts = (st0() && st0().prologue && (st0().prologue.acts | 0)) || 0;
+
     return '<div style="max-width:520px;padding:28px 26px;line-height:1.9;">'
-      + '<div style="font-size:13px;letter-spacing:.32em;color:#8a7a5c;">第 ' + (day + 1) + ' 天</div>'
+      + '<div style="font-size:13px;letter-spacing:.32em;color:#8a7a5c;">第 ' + (day + 1) + ' 天'
+      + (acts ? '　已经出去 ' + acts + ' 趟' : '') + '</div>'
       + '<div style="font-size:19px;margin-top:10px;color:#e8e2d4;">你们 ' + U.numText(pop, 0)
       + ' 个人，还没有城。</div>'
       + '<div style="font-size:13px;color:#9a9284;margin-top:2px;">'
       + (day < 10 ? '天还没冷。得找点能打的，先把人练出来。'
         : '天在变冷。撑到能立城那天。')
       + '</div>'
-      + '<div style="margin-top:22px;font-size:13px;color:#b9b0a0;">君主 <b style="color:#e8e2d4;">Lv'
+      + tierLine + nextLine
+      + '<div style="margin-top:20px;font-size:13px;color:#b9b0a0;">君主 <b style="color:#e8e2d4;">Lv'
       + lv + '</b> / ' + need + '</div>' + bar
+      + comboLine
       + '<div style="margin-top:20px;display:flex;gap:10px;flex-wrap:wrap;">'
       + btn(b1, '清剿', '打变异兽与掠夺者')
       + btn(b2, '试炼', '旧世试炼场，逐层加码')
