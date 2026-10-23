@@ -161,6 +161,24 @@ function serve() {
     console.error('NAV-SHOP ' + JSON.stringify(c8));
   } catch (e) { console.error('NAV-ERR ' + e.message); }
 
+  /* ⑦ v122：待办提醒位 —— 有事件时顶栏要出现「⚡ 事件名」 */
+  try {
+    const evInfo = await page.evaluate(function () {
+      GAME.ui.setView('city');
+      GAME.state.ev = { id: 'dice', at: 0 };
+      GAME.ui.syncBadges();
+      var el = document.getElementById('nav-ev');
+      return {
+        shown: !!el && el.style.display !== 'none',
+        text: el ? el.innerText : '',
+        action: el ? el.getAttribute('data-action') : ''
+      };
+    });
+    console.error('NAV-EV ' + JSON.stringify(evInfo));
+    await page.waitForTimeout(400);
+    try { await page.screenshot({ path: path.join(OUT, 'e8-nav-event.png'), timeout: 20000 }); } catch (e) {}
+  } catch (e) { console.error('NAV-EV-ERR ' + e.message); }
+
   await browser.close();
   srv.close();
   console.log('done');

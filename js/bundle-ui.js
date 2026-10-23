@@ -3160,6 +3160,21 @@
        v41（需求 4）：公文改用**图标闪黄**（有新战报时），见下。 */
     var docTab = document.querySelector('#topnav .tab[data-view="reports"]');
     if (docTab) docTab.classList.toggle('fresh', (GAME.state.repUnread || 0) > 0);
+    /* v122：**待办提醒位** —— 事件挂在「行政 → 世界的账本」二级弹窗里，
+       玩家不点进去永远不知道这个月出了事。这一条把它顶到顶栏：
+       有事件就显示「⚡ 掷骰子」，点一下直接开账本。
+       没有就不占位（display:none）—— v118 刚把 12 个 tab 收成 6 个，不能再长回去。 */
+    var evEl = document.getElementById('nav-ev');
+    if (evEl) {
+      var evCur = (GAME.events && GAME.events.current) ? GAME.events.current() : null;
+      if (evCur && evCur.def) {
+        evEl.style.display = '';
+        evEl.innerHTML = '⚡ ' + (evCur.def.name || '有件事');
+      } else {
+        evEl.style.display = 'none';
+        evEl.innerHTML = '';
+      }
+    }
     /* ⛔ v89.218：待阅逸闻徽标（tab-badge-story）随故事系统退役。 */
   };
 

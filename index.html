@@ -543,6 +543,21 @@
   .topnav .tab-more { display: none; }
   .topnav.nav-open .tab-more { display: inline-block; }
   .topnav .nav-more-btn { color: var(--gold-light); opacity: .9; }
+  /* v122：待办提醒位（有事件时才显示，会呼吸）
+     ⚠️ 间距/圆角/颜色一律走令牌 —— 项目有断言钉着"不许裸 px 与裸 hex"。 */
+  .topnav .nav-ev {
+    margin-left: auto; margin-right: var(--sp-4);
+    padding: var(--sp-0) var(--sp-4); border-radius: var(--r-sm); cursor: pointer;
+    font-size: var(--fs-cap); font-weight: 700;
+    color: var(--gold-light);
+    background: rgba(var(--gold-soft-rgb), .20);
+    border: 1px solid rgba(var(--gold-soft-rgb), .70);
+    animation: ev-breathe 1.6s ease-in-out infinite;
+  }
+  @keyframes ev-breathe {
+    0%, 100% { box-shadow: 0 0 0 rgba(var(--gold-soft-rgb), 0); }
+    50% { box-shadow: 0 0 var(--sp-3) rgba(var(--gold-soft-rgb), .70); }
+  }
   .topnav.nav-open .nav-more-btn { opacity: 1; box-shadow: inset 0 -2px 0 var(--gold-dark); }
   /* v25（需求 10）：菜单图标（线描，跟随文字颜色） */
   /* v27（需求 7）：菜单图标调小 —— 15px 配上 13px 正文，图标反而比字更抢眼。
@@ -4392,6 +4407,12 @@
     <div class="tab tab-more" data-view="settings"><i class="ti" data-nav="settings"></i>设置</div>
     <!-- v26（需求 3）：天时是**全局**信息（季节/天候/年号影响所有城市），
          放在城市属性里不合逻辑；margin-left:auto 把它推到最右。 -->
+    <!-- v122：**待办提醒位** —— 事件是"每月一件、要你处理"的东西，
+         但它挂在「行政 → 世界的账本」二级弹窗里，玩家不点进去永远不知道。
+         这里只放一个会闪的入口，不加页签（v118 刚把 12 个 tab 收成 6 个，
+         不能再长回去）。没有事件时整块 display:none，不占位。 -->
+    <div class="nav-ev" id="nav-ev" style="display:none;"
+         data-action="open-world" title="这个月发生了一件事，等你决定"></div>
     <div class="nav-sky" id="nav-sky" title="天时（季节 / 天候 / 年号）"></div>
   </div>
 
@@ -4485,15 +4506,15 @@
 </div><!-- /#app-scale -->
 </div><!-- /#app-fit -->
 
-<!-- BUILD 9358 -->
+<!-- BUILD 9359 -->
 <!-- v104：三包拆分（老板 2026-10-23「拆」）—— 单包曾到 4245KB / 上限 4301KB。
      · vendor/three.min.js 必须在前（gltf/map3d 用全局 THREE）；
      · 三包**顺序不能改**：core（引擎数据）→ war（战斗素材）→ ui（界面启动）。
        经典 script 保证顺序执行，window.GAME 全局共享，行为与单包完全一致。
      · 构建：python .workbuddy/tools/patch/build_bundle.py（改源码后须重建）。 -->
-<script src="vendor/three.min.js?v=9358"></script>
-<script src="js/bundle-core.js?v=9358"></script>
-<script src="js/bundle-war.js?v=9358"></script>
-<script src="js/bundle-ui.js?v=9358"></script>
+<script src="vendor/three.min.js?v=9359"></script>
+<script src="js/bundle-core.js?v=9359"></script>
+<script src="js/bundle-war.js?v=9359"></script>
+<script src="js/bundle-ui.js?v=9359"></script>
 </body>
 </html>

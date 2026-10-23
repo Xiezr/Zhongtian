@@ -42656,6 +42656,48 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     st.ev = null;
   })();
 
+
+  /* ============================================================
+   * §338 · v122：待办提醒位 —— 事件不能再藏在二级弹窗里
+   * ------------------------------------------------------------
+   * 事件（每月一件、要你处理）原来只挂在「行政 → 世界的账本」这个
+   * 二级弹窗里。玩家不点进去就永远不知道这个月出了事 ——
+   * 等于做了十个玩法，一个都没被看见。
+   *
+   * 修的是一条**可达性**：顶栏加一个会闪的入口位，
+   * 有事件才显示，点一下直接开账本。不加页签（v118 刚把 12 个收成 6 个）。
+   * ============================================================ */
+  console.log('\n===== 338. v122 待办提醒位：有事件就该看得见 =====');
+  (function () {
+    var fs = require('fs'), path = require('path');
+    var html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+    var ui = fs.readFileSync(path.join(__dirname, 'js', 'ui.js'), 'utf8');
+
+    check('§338① 顶栏有待办位，且默认不占位（没事件时 display:none）', (function () {
+      return html.indexOf('id="nav-ev"') >= 0
+        && /id="nav-ev"[^>]*style="display:none/.test(html);
+    })(), (function () { return 'nav-ev 在，默认隐藏'; })());
+
+    check('§338② 它点一下就是「开账本」（不是又一个要点两次的入口）', (function () {
+      var i = html.indexOf('id="nav-ev"');
+      /* ⚠️ 窗口要给够：这块 <div> 是跨行的（data-action 在第二行），
+         取 +60 会截在属性中间 —— 第一版就是这么假红的。 */
+      var seg = html.slice(Math.max(0, i - 260), i + 240);
+      return seg.indexOf('data-action="open-world"') >= 0;
+    })(), (function () { return 'data-action="open-world"'; })());
+
+    check('§338③ 有事件才显示、写明事件名（不是一句"有更新"）', (function () {
+      return ui.indexOf("getElementById('nav-ev')") >= 0
+        && ui.indexOf("'⚡ ' + (evCur.def.name") >= 0
+        && ui.indexOf("evEl.style.display = 'none'") >= 0;
+    })(), (function () { return '⚡ + 事件名；没有就藏'; })());
+
+    check('§338④ 提醒位不是新页签（顶栏仍是 6 个 + 更多）', (function () {
+      return html.indexOf('class="tab nav-ev"') < 0
+        && html.indexOf('data-view="events"') < 0;
+    })(), (function () { return '是提醒位，不是 tab'; })());
+  })();
+
 console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');
   process.exit(FAIL ? 1 : 0);
 })();
