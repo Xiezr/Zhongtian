@@ -7352,7 +7352,14 @@ window.GAME = window.GAME || {};
   /* 唯一取值口：不传参 = 当前城市 */
   GAME.res = function (city) {
     var c = city || GAME.currentCity();
-    if (!c) return GAME._orphanRes || (GAME._orphanRes = GAME.emptyRes());
+    if (!c) {
+      /* v131：前传 = 没有城（君主个人冒险）→ 资源落在**随身物资**上。
+         存在 state.prologue.res 而不是 GAME._orphanRes，是为了随存档往返
+         （内存兜底会让读档后背包清空）。随机事件消耗/采集所得都走这里。 */
+      var s0 = GAME.state;
+      if (s0 && s0.prologue && s0.prologue.res) return s0.prologue.res;
+      return GAME._orphanRes || (GAME._orphanRes = GAME.emptyRes());
+    }
     if (!c.res) c.res = GAME.emptyRes();
     return c.res;
   };
@@ -7380,10 +7387,19 @@ window.GAME = window.GAME || {};
       Object.defineProperty(st, 'res', {
         get: function () { return GAME.res(); },
         /* 旧档迁移会整体赋值（见 loadGame）；旧代码里没有 `s.res = {...}` 的写法，
-           设成"写进当前城"是为了让极端情况不至于静默丢失。 */
+           设成"写进当前城"是为了让极端情况不至于静默丢失。
+           ⛔ v131：改前是 `if (c && v) c.res = v` —— **无城时整个赋值被静默吞掉**。
+           前传现在真的没有城，于是任何 `s.res = {...}`（读档迁移 / 工具造局 / 测试注入）
+           都会写失败而无人报错；表现出来是"资源莫名其妙是 0"（e2e 当场照出：
+           研究科技报「资源不足」）。现在按三层兜底，一层都不丢：
+             有城 → 写该城 · 前传期 → 写随身物资 · 都没有 → 写内存孤儿池。 */
         set: function (v) {
+          if (!v) return;
           var c = GAME.currentCity();
-          if (c && v) c.res = v;
+          if (c) { c.res = v; return; }
+          var s0 = GAME.state;
+          if (s0 && s0.prologue && s0.prologue.res) { s0.prologue.res = v; return; }
+          GAME._orphanRes = v;
         },
         enumerable: false,
         configurable: true,
@@ -7676,7 +7692,23 @@ window.GAME = window.GAME || {};
        烬环以灰烬城为锚；落不到才回退旧口径的固定点。出生城写明所属区 ——
        展示、岁贡、辖区特产都读同一份归属。 */
     var startPos = GAME.pickStartPos(rulerOpts.region, mapSeed);
-    var city = GAME.makeCity({
+    /* ============================================================
+     * v131（老板：「应当根治，不能再留尾巴」）——
+     * **前传 = 君主作为个人冒险者在大地图上游玩，开局没有城。**
+     * ------------------------------------------------------------
+     * 改前的荒唐事：`newGame` 无条件先建一座城（p1「新城市」），
+     * 然后 `prologue.begin` 才把前传打开 —— 于是前传写着「你们 200 个人，还没有城」，
+     * 而 state 里躺着 20 栋建筑、有驻军、能出兵；点「立城」只是把标记关掉（cities 1→1）。
+     * 前传唯一的戏剧目标是假的。
+     *
+     * 现在按 `prologue` 分流：前传局**不建城**，城要等玩家在某个格子上真的立起来。
+     * 只有玩家走创建界面（ui.doCreate 传 prologue:true）才走这条路；
+     * 324 处直接调 newGame 的测试不传 prologue → 行为一字不动。
+     * 资源：无城时 `GAME.res()` 落到 `_orphanRes`（本项目早预留了这条兜底），
+     * 前传把开局物资放进这口"随身背包"，立城时再一次性搬进城。
+     * ============================================================ */
+    var prologueMode = !!(rulerOpts && rulerOpts.prologue && GAME.prologue);
+    var city = prologueMode ? null : GAME.makeCity({
       id: 'p1',
       name: rulerOpts.cityName || '新城市',
       x: startPos.x, y: startPos.y,
@@ -7684,7 +7716,7 @@ window.GAME = window.GAME || {};
       initialExt: true,          // 首城预置 2 田 1 木 1 石 1 铁
       res: U.deep(DATA.INITIAL_RES),   // v60：开局库存进首城（不再是全境共享的 s.res）
     });
-    var gen = GAME.makeGeneral(DATA.INITIAL_GENERAL, 1, 'idle', city.id, true);
+    var gen = GAME.makeGeneral(DATA.INITIAL_GENERAL, 1, 'idle', city ? city.id : null, true);
     /* v70：君主头像 seed **只摇一次**，ruler 与君主英雄共用 ——
        各摇一次就是两张脸（顶栏一个、英雄页一个），正是"头像不一致"的根因。 */
     var lordSeed = rulerOpts.portraitSeed != null
@@ -7707,13 +7739,17 @@ window.GAME = window.GAME || {};
            所以开局就摇一个种子存进存档 —— 之后每局固定、不再刷新就换脸。
            `rulerOpts.portraitSeed` 供测试注入确定值。 */
         portraitSeed: lordSeed,
+        /* v131：前传局开局没有城，城名得先记在君主名下 ——
+           否则玩家在创建界面输入的名字，要等立城那一刻才发现丢了。
+           非前传局有 city 时它会与 city.name 一致（同一份输入）。 */
+        cityName: rulerOpts.cityName || '新城市',
       },
       /* v60：**state 上不再有 res 字段** —— 它由 attachRes 挂成访问器，
          指向当前城市的库存（`city.res`）。这里写字面量反而会盖掉 getter。 */
-      cities: [city],
+      cities: city ? [city] : [],
       /* v70（老板）：君主本人也是一位英雄 —— 排在末尾，不动既有索引口径
          （`generals[0]` 仍是开局英雄，测试与旧档迁移都按原样） */
-      generals: [gen, GAME.makeLordGeneral(rulerOpts, lordSeed, city.id)],
+      generals: [gen, GAME.makeLordGeneral(rulerOpts, lordSeed, city ? city.id : null)],
       queues: { build: [], train: [], tech: [] },
       marches: [],
       /* v89.87（老板需求 4）：待指挥战斗（观战挂起）—— 纯数据、随存档往返；
@@ -34412,7 +34448,48 @@ if (GAME.reg) {
   P.begin = function (st) {
     var s = st || st0();
     if (!s) return;
-    s.prologue = { on: true, at: 0, day: -1, acts: 0, builtAt: null };
+    /* ============================================================
+     * v131（老板：「应当根治」）：前传 = **君主作为个人冒险者在大地图上游玩**。
+     * ------------------------------------------------------------
+     * 从这里开始，前传局**真的没有城**（newGame 按 prologueMode 跳过建城）。
+     * 所以前传要自己记住两件事：
+     *   · pos  —— 君主现在站在哪个格（立城时就在这一格落下第一座城）
+     *   · res  —— 随身物资（无城时 `GAME.res()` 落到这一份，见 state.js:183）
+     * 立城时这两样一起交给新城，玩家不会"凭空丢东西"。
+     * ============================================================ */
+    var sp = SP();
+    var p0 = (s.map && s.map.startPos) || (GAME.DATA && GAME.DATA.START_POS) || {};
+    var pos = (sp && sp.ciOfXY) ? sp.ciOfXY(p0.x, p0.y) : 0;
+    if (!(pos >= 0)) pos = 0;
+    /* ============================================================
+     * v131：出生格若荒僻，就近挪一格**有事的**。
+     * ------------------------------------------------------------
+     * `jianghuActsAt` 对每格有 30% 概率返回空（`DATA.JH_SPREAD.noneP`）——
+     * 那是"地块探索"该有的不确定性，但**第一格**不能是空的：
+     * 玩家一睁眼看到"脚下没事、四周没动静"，只会以为自己玩不了。
+     * 只挪出生点、不改判据：荒僻格仍然是荒僻格，走两步就能遇到。
+     * ============================================================ */
+    try {
+      if (sp && sp.hopsWithin && GAME.jianghuActsAt && !GAME.jianghuActsAt(pos).length) {
+        var ring = sp.hopsWithin(pos, 2), found = -1, i;
+        for (i = 1; i < ring.length && found < 0; i++) {
+          if (ring[i] !== pos && GAME.jianghuActsAt(ring[i]).length) found = ring[i];
+        }
+        if (found < 0) {
+          ring = sp.hopsWithin(pos, 4);
+          for (i = 1; i < ring.length && found < 0; i++) {
+            if (ring[i] !== pos && GAME.jianghuActsAt(ring[i]).length) found = ring[i];
+          }
+        }
+        if (found >= 0) pos = found;
+      }
+    } catch (e) { /* 找落脚点失败就用原位 */ }
+    s.prologue = {
+      on: true, at: 0, day: -1, acts: 0, builtAt: null,
+      pos: pos,
+      res: U.deep((GAME.DATA && GAME.DATA.INITIAL_RES) || {}),
+      steps: 0,
+    };
   };
 
   P.end = function (why) {
@@ -34420,6 +34497,10 @@ if (GAME.reg) {
     if (!s || !s.prologue) return { ok: false, msg: '没有前传状态' };
     s.prologue.on = false;
     s.prologue.builtAt = monthNow();
+    /* v131：随身物资已经搬进城里（见 P.build），这里把背包清空 ——
+       不清的话 `GAME.res()` 在有城时会读 city.res（无城分支才读背包），
+       存档里会留着两份同源数据，读档后容易对不上。 */
+    s.prologue.res = null;
     if (GAME.log && GAME.log.war) {
       GAME.log.war('🏯 立城了' + (why ? '：' + why : '') + ' —— 从今天起，这些人有地方过冬了。');
     }
@@ -34482,6 +34563,88 @@ if (GAME.reg) {
    *
    *   保留 `hopsWithin` 缺失时的抽样兜底：球面桩 / 老存档 / 探针里可能没有该出口。
    * ============================================================ */
+  /* ============================================================
+   * v131（老板：「直接做一个独立板块，君主作为个人冒险者在大地图进行游玩」）
+   * ------------------------------------------------------------
+   * 前传从"面板上三个按钮"改成"**人在地图上，一格一格走**"。
+   * 复用的是现场资产：
+   *   · 大地图  —— `sphere.adj` 邻接表（已有）+ `hopsWithin(ci,1)` 取六邻
+   *   · 地块探索 —— `jianghuActsAt(ci)`（荒野行动的唯一判据口）
+   *   · 斗将    —— 走 `P.act → jianghuCheck/Spend/Roll`（与正式阶段同一个内核）
+   * 这里只加"移动"这一件事，**不新开一套判定**。
+   * ============================================================ */
+
+  /* 君主现在站在哪一格（老档没有 pos → 落到出生点，不至于走丢） */
+  P.pos = function () {
+    var s = st0(), sp = SP();
+    if (!s) return 0;
+    var pg = s.prologue || {};
+    if (pg.pos != null && pg.pos >= 0) return pg.pos | 0;
+    var p0 = (s.map && s.map.startPos) || (GAME.DATA && GAME.DATA.START_POS) || {};
+    var ci = (sp && sp.ciOfXY) ? sp.ciOfXY(p0.x, p0.y) : 0;
+    return ci >= 0 ? ci : 0;
+  };
+
+  /* 周围六格（含"那格有什么"）—— 面板与营地视图共用这一份 */
+  P.neighbors = function () {
+    var s = st0(), sp = SP();
+    if (!s || !sp || !sp.adj) return [];
+    var pos = P.pos();
+    var list = sp.hopsWithin(pos, 1);
+    var pc = sp.cellOf(pos) || {};
+    /* 方位：玩家得知道"往哪走"，光给六个地名分不清方向（v131）。
+       按球面经纬差算八向 —— 六边形只有六邻，实际会出现东/西/东北/… */
+    var dirName = function (nc) {
+      if (!nc || pc.lon == null || nc.lon == null) return '';
+      var dLon = ((nc.lon - pc.lon + 540) % 360) - 180;
+      var dLat = nc.lat - pc.lat;
+      var ew = dLon > 0 ? '东' : (dLon < 0 ? '西' : '');
+      var ns = dLat > 0 ? '北' : (dLat < 0 ? '南' : '');
+      if (!ns) return ew || '东';
+      if (!ew) return ns;
+      /* 纬度差小、经度差大 → 偏东西；反之偏南北 */
+      return (Math.abs(dLat) < Math.abs(dLon) * 0.45) ? ew : (ns + ew);
+    };
+    var out = [];
+    for (var i = 0; i < list.length; i++) {
+      var ci = list[i];
+      if (ci === pos) continue;
+      var cell = sp.cellOf(ci) || {};
+      var acts = (GAME.jianghuActsAt ? GAME.jianghuActsAt(ci) : []) || [];
+      out.push({ ci: ci, type: cell.type, acts: acts, dir: dirName(cell), here: false });
+    }
+    /* 按方位排一下（东→东北→北→西北→西→西南→南→东南），读起来有顺序 */
+    var ORDER = ['北', '东北', '东', '东南', '南', '西南', '西', '西北'];
+    out.sort(function (a, b) { return ORDER.indexOf(a.dir) - ORDER.indexOf(b.dir); });
+    return out;
+  };
+
+  /* 走一步。只有一件事需要判断：是不是相邻、精力够不够。
+     **不掷骰、不判定** —— 走到哪儿是玩家的选择，能做什么由那格自己决定。 */
+  P.moveTo = function (ci) {
+    if (!P.on()) return { ok: false, msg: '已经立城了，这活儿得派队伍出去' };
+    var s = st0(), sp = SP();
+    if (!s) return { ok: false, msg: '没有对局' };
+    var pos = P.pos(), adj = sp.hopsWithin(pos, 1), ok = false;
+    for (var i = 0; i < adj.length; i++) if (adj[i] === ci) ok = true;
+    if (!ok) return { ok: false, msg: '只能走到相邻的格子' };
+    var lord = P.lord();
+    if (!lord) return { ok: false, msg: '没有君主' };
+    var cost = D().stepEnergy || 1;
+    var en = (GAME.energyNowOf ? GAME.energyNowOf(lord) : 100);
+    if (en < cost) return { ok: false, msg: '精力见底了 —— 明天再走' };
+    if (GAME.setEnergyNow) GAME.setEnergyNow(lord, en - cost);
+    s.prologue.pos = ci;
+    s.prologue.steps = (s.prologue.steps | 0) + 1;
+    /* 站到哪儿就看到哪儿周围一圈（比"探索"窄 —— 走一趟不等于勘察） */
+    try {
+      if (GAME.fog && GAME.fog.revealAround) GAME.fog.revealAround(ci, 2, GAME.fog.ALL);
+    } catch (e) { /* 迷雾失败不该挡住移动 */ }
+    var cell = sp.cellOf(ci) || {};
+    var tn = ((GAME.DATA || {}).TERRAIN || {})[cell.type] || {};
+    return { ok: true, msg: '走到' + (tn.name || '荒野') + '了 —— 看看这地方能做什么', ci: ci };
+  };
+
   P.spots = function (radius) {
     var s = st0(), sp = SP();
     if (!s || !sp || !sp.cells) return [];
@@ -34631,16 +34794,66 @@ if (GAME.reg) {
   /* ============================================================
    * 五、立城
    * ------------------------------------------------------------
-   * 不另起一座：把脚下这座"窝棚"扶正 —— 前传期它是落脚点，不是城。
-   * 立城之后三个闸门同时松开（`P.on()` 变 false，闸门自带）。
+   * v131（老板「应当根治」）：改前这里是**假动作** —— 城在 newGame 就已建好，
+   * 「立城」只是把前传标记关掉（cities 1 → 1）。玩家在前传里说的"还没有城"
+   * 和 state 里的 20 栋建筑、驻军、能出兵完全对不上。
+   * 现在反过来：前传局真的没有城，**立城这一刻才落下第一座城**，
+   * 落点就是君主脚下这一格（`prologue.pos`），随身物资一起搬进城。
    * ============================================================ */
   P.build = function () {
     if (!P.on()) return { ok: false, msg: '已经立过城了' };
     if (!P.ready()) {
       return { ok: false, msg: '君主还没到 Lv' + P.needLv() + '（现在 Lv' + P.lv() + '）' };
     }
-    var c = GAME.currentCity ? GAME.currentCity() : null;
-    P.end(c ? c.name : '');
+    var s = st0(), sp = SP();
+    if (!s) return { ok: false, msg: '没有对局' };
+    if (!GAME.makeCity) return { ok: false, msg: '建城内核缺失' };
+
+    var pos = P.pos();
+    var cell = (sp && sp.cellOf) ? sp.cellOf(pos) : null;
+    if (!cell) return { ok: false, msg: '脚下这块地不对劲，走一步再试' };
+    var xy = (sp && sp.xyOfLonLat && cell.lon != null)
+      ? sp.xyOfLonLat(cell.lon, cell.lat) : null;
+    if (!xy) return { ok: false, msg: '算不出这里的坐标，走一步再试' };
+
+    /* 区归属：沿用出生区（玩家在前传里走不出多远；城要挂岁贡/辖区特产） */
+    var region = (s.map && s.map.startPos && s.map.startPos.state)
+      || (s.ruler && s.ruler.region) || '烬环';
+
+    /* 随身物资搬进城：前传期间采到的东西不能凭空消失 */
+    var carry = (s.prologue && s.prologue.res) ? s.prologue.res : null;
+    var res0 = carry ? GAME.utils.deep(carry) : null;
+
+    var city = GAME.makeCity({
+      id: 'p1',
+      name: (s.ruler && s.ruler.cityName) || '新城市',
+      x: xy.x, y: xy.y,
+      state: region,
+      initialExt: true,
+      res: res0 || undefined,
+    });
+    if (!city) return { ok: false, msg: '建城失败 —— 这块地立不起来' };
+    s.cities = s.cities || [];
+    s.cities.push(city);
+    /* 将领归属回填：前传里两位（开局英雄 + 君主）都还没有城 */
+    (s.generals || []).forEach(function (g) { if (g && !g.cityId) g.cityId = city.id; });
+    if (GAME.ui) GAME.ui._cityId = city.id;
+    /* 城周围点亮（城自带视野半径；走 fog 的唯一出口） */
+    try {
+      if (GAME.fog && GAME.fog.revealOwned) GAME.fog.revealOwned();
+      if (GAME.fog && GAME.fog.revealCity) GAME.fog.revealCity(city);
+    } catch (e) { /* 迷雾失败不该挡住立城 */ }
+    try { if (GAME.attachRes) GAME.attachRes(s); } catch (e) {}
+    /* ⛔ v131（e2e 当场照出）：旧币是**玩家层级唯一池**（`s.gold`），
+       各城的 `res.gold` 只是绑到池子的访问器。`newGame` 里有一句
+       `attachGold(state, {keepCityGold:true})` 负责"把开局旧币上收进池"——
+       前传局没有城，那一步收到的是 0；立城时我把随身物资（含 87 万旧币）
+       搬进了 `city.res.gold`，却没重新上收 → `goldOf()` 恒为 0
+       → 研究科技/升建筑全部报「资源不足」。
+       这一步就是把 newGame 的收尾补齐：立城 = 一次"新局初始化"。 */
+    try { if (GAME.attachGold) GAME.attachGold(s, { keepCityGold: true }); } catch (e) {}
+
+    P.end(city.name);
     /* ============================================================
      * v123：**立城后的第一句话**
      * ------------------------------------------------------------
@@ -34703,65 +34916,16 @@ if (GAME.reg) {
     var day = dayNow();
     var spots = P.spots();
     var city = GAME.currentCity ? GAME.currentCity() : null;
-    var pop = city ? Math.round((GAME.res(city) || {}).pop || 0) : 0;
+    /* v131：无城时人口在**随身物资**里（`GAME.res()` 已兜住这条分支）。
+       旧写法 `city ? ... : 0` 会把它算成 0 —— 面板上"你们 0 个人"，
+       而背包里明明有 200 人，这是最刺眼的一种"数字与事实不符"。 */
+    var pop = Math.round(((GAME.res(city) || {}).pop) || 0);
     var pct = Math.max(0, Math.min(100, Math.round(lv / need * 100)));
     /* v114：进度条用真 div（字符条 ░ 在深底上像噪点，而且各字体宽度不一致）
        v128：条宽改为跟随 HUD 宽度（原来写死 260px，贴在底部条里显得断掉） */
 
-    /* 三个动作：先找指定活动，找不到再找同类（近战/试炼/采集） */
-    /* 主按钮不许"附近没有" —— 荒野上到处是变异兽，第一次进来就打不了，
-       第一印象会变成"没得玩"。先在小范围找，找不到把范围翻倍再找一次。 */
-    var wide = null;
-    var wideSpots = function () {
-      if (!wide) wide = P.spots((D().reach || 6) * 3);
-      return wide;
-    };
-    var findAct = function (wanted, kinds) {
-      return findIn(spots, wanted, kinds) || findIn(wideSpots(), wanted, kinds);
-    };
-    var findIn = function (pool, wanted, kinds) {
-      var i, j;
-      for (i = 0; i < pool.length; i++) {
-        for (j = 0; j < pool[i].acts.length; j++) {
-          if (pool[i].acts[j].id === wanted) {
-            return { ci: pool[i].ci, id: pool[i].acts[j].id,
-              name: pool[i].acts[j].def.name, dist: pool[i].dist,
-              energy: pool[i].acts[j].def.energy };
-          }
-        }
-      }
-      for (i = 0; i < pool.length; i++) {
-        for (j = 0; j < pool[i].acts.length; j++) {
-          var k = (pool[i].acts[j].def || {}).kind;
-          if (kinds && kinds.indexOf(k) >= 0) {
-            return { ci: pool[i].ci, id: pool[i].acts[j].id,
-              name: pool[i].acts[j].def.name, dist: pool[i].dist,
-              energy: pool[i].acts[j].def.energy };
-          }
-        }
-      }
-      return null;
-    };
-    var b1 = findAct('tao', ['fight']);
-    var b2 = findAct('shi', ['trial']);
-    var b3 = findAct('cai', ['gather']);
-
-    /* 按钮要像按钮：有边框、有内边距、有 hover。纯文字排一行读起来像一句话，
-       玩家不会意识到那是三个能按的东西（改前截图就是这样）。 */
-    var btn = function (it, label, hint) {
-      var base = 'display:inline-block;padding:7px 14px;border-radius:4px;'
-        + 'font-size:14px;border:1px solid ';
-      if (!it) {
-        return '<span style="' + base + '#22252a;color:#5a5449;" title="附近这一档暂时没有">'
-          + label + '<span style="opacity:.7;"> · 附近没有</span></span>';
-      }
-      return '<span data-action="prologue-act" data-ci="' + it.ci
-        + '" data-act="' + U.escape(it.id) + '" title="' + U.escape(hint || '') + '"'
-        + ' style="' + base + '#4a4436;background:#171a1f;color:#e0d8c6;cursor:pointer;">'
-        /* ⚠️ 原来写「5 格外」—— 那是"5 格之外"的缩写，读起来像"格外(特别)"。
-           三个按钮上并排三个"格外"，第一眼是病句。改成「距 5 格」。 */
-        + label + '<span style="opacity:.55;font-size:12px;">　距 ' + it.dist + ' 格</span></span>';
-    };
+    /* v131：`wide/wideSpots/findAct/findIn` 随「就近三按钮」一并退役 ——
+       找目标这件工作已经由 `P.neighbors()` + `jianghuActsAt(脚下)` 承担。 */
 
     var last = (st0() && st0().prologue && st0().prologue.last) || '';
 
@@ -34789,24 +34953,44 @@ if (GAME.reg) {
     /* 进度：几场了 + 还差几次的感觉（不写"还差 N 次"，那是数学题，不是游戏） */
     var acts = (st0() && st0().prologue && (st0().prologue.acts | 0)) || 0;
 
-    /* v128：**附近可去的具体地点**（不再是三个写死的按钮）
-       —— 玩家能看见"去哪儿、多远、那边什么地形、野地几级"，这才叫选目标。 */
-    var terrainName = function (t) { return ((GAME.DATA.TERRAIN || {})[t] || {}).name || t || '荒野'; };
-    var spotRows = spots.map(function (sp) {
-      var wl = (GAME.map && GAME.map.wildLevelNow) ? GAME.map.wildLevelNow(sp.ci) : 0;
-      var kinds = sp.acts.map(function (a) {
-        return (a.def && a.def.name) || a.id;
-      }).join(' · ');
-      return '<div data-action="prologue-spot" data-ci="' + sp.ci + '"'
-        + ' style="display:flex;align-items:center;gap:8px;padding:5px 8px;margin-top:3px;'
-        + 'border:1px solid #262a30;border-radius:4px;background:#14171c;cursor:pointer;"'
-        + ' title="点开这片野地：' + U.escape(kinds) + '">'
-        + '<b style="color:#d8d0be;font-size:13px;min-width:52px;">' + U.escape(terrainName(sp.type)) + '</b>'
-        + '<span style="color:#8a8272;font-size:12px;">野地 Lv' + wl + '</span>'
-        + '<span style="color:#c9b06a;font-size:12px;">距 ' + sp.dist + ' 格</span>'
-        + '<span style="flex:1;color:#9a9284;font-size:12px;text-align:right;">' + U.escape(kinds) + '</span>'
-        + '<span style="color:#6f6a60;font-size:12px;">›</span></div>';
-    }).join('');
+    /* v131：`spotRows`（v128 的"附近可去"列表）退役 —— 现在走「脚下 + 四周」。 */
+    /* 地形名：面板与营地视图都要用（删 spotRows 时被一起带走，这里补回）。 */
+    var terrainName = function (t) {
+      return ((GAME.DATA.TERRAIN || {})[t] || {}).name || t || '荒野';
+    };
+
+    /* ============================================================
+     * v131（老板：「君主作为个人冒险者在大地图进行游玩」）
+     * ------------------------------------------------------------
+     * 从"面板上挑一个地方跳过去"改成**人在地图上走**：
+     *   · 脚下 —— 我站的这一格能做什么（探索/采集/斗将，走同一个 jianghuActsAt）
+     *   · 四周 —— 六个邻格，点一下就走过去（`P.moveTo`，耗 1 精力）
+     * 这才有"地块探索"：走到哪、看到哪、能做什么，都由**站的位置**决定。
+     * ============================================================ */
+    var hereActs = (GAME.jianghuActsAt ? GAME.jianghuActsAt(P.pos()) : []) || [];
+    var hereBlock = '<div style="margin-top:8px;font-size:12px;color:#8a7a5c;">📍 你站在这里 · ' +
+      U.escape(terrainName((SP() && SP().cellOf && SP().cellOf(P.pos()) || {}).type)) + '）</div>'
+      + (hereActs.length
+        ? '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;">' + hereActs.map(function (a) {
+            var nm = (a.def && a.def.name) || a.name || a.id;
+            return '<span data-action="prologue-act" data-ci="' + P.pos() + '" data-act="' + U.escape(a.id) + '"'
+              + ' style="padding:5px 12px;border:1px solid #3a3f47;border-radius:4px;background:#191d23;'
+              + 'color:#d8d0be;font-size:13px;cursor:pointer;">' + U.escape(nm) + '</span>';
+          }).join('') + '</div>'
+        : '<div style="margin-top:3px;font-size:12px;color:#6f6a60;">这块地方没什么可做的 —— 往别处走走。</div>');
+    var nbs = P.neighbors();
+    var walkBlock = '<div style="margin-top:9px;font-size:12px;color:#8a7a5c;">四周（点一格走过去 · 每步耗 1 精力）</div>'
+      + '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;">' + (nbs.length ? nbs.map(function (n) {
+          var nm = terrainName(n.type);
+          var has = (n.acts || []).length;
+          return '<span data-action="prologue-move" data-ci="' + n.ci + '"'
+            + ' style="padding:5px 11px;border:1px solid ' + (has ? '#5a4a26' : '#2a2e35') + ';border-radius:4px;'
+            + 'background:' + (has ? '#1e1a12' : '#12151a') + ';color:' + (has ? '#e0c98a' : '#9a9284') + ';'
+            + 'font-size:12px;cursor:pointer;" title="' + (has ? '那边有动静' : '看不出什么') + '">'
+            /* v131：方位在前、地形在后 —— 光给六个"湖泊"，玩家分不清往哪走 */
+            + (n.dir ? '<b style="opacity:.75;">' + U.escape(n.dir) + '</b> ' : '')
+            + U.escape(nm) + (has ? ' ·' : '') + '</span>';
+        }).join('') : '<span class="ui-sub">走不动了</span>') + '</div>';
 
     return '<div style="pointer-events:auto;background:rgba(13,15,19,.93);border:1px solid #2c3037;'
       + 'border-radius:8px;padding:12px 16px;backdrop-filter:blur(3px);line-height:1.65;'
@@ -34815,7 +34999,10 @@ if (GAME.reg) {
       + '<div style="display:flex;align-items:center;gap:12px;font-size:12px;color:#8a7a5c;">'
       + '<span style="letter-spacing:.22em;">第 ' + (day + 1) + ' 天</span>'
       + '<span style="color:#b9b0a0;">君主 <b style="color:#e8e2d4;font-size:14px;">Lv' + lv + '</b> / ' + need + '</span>'
-      + '<span>精力 <b style="color:#e8e2d4;">' + Math.round((lord && lord.energy) || 0) + '</b></span>'
+      /* v131：精力必须走 energyNowOf（唯一读出口）——
+         直读 `lord.energy` 会把 231 这种超上限的原始值直接印在面板上。 */
+      + '<span>精力 <b style="color:#e8e2d4;">' + Math.round(GAME.energyNowOf ? GAME.energyNowOf(lord) : ((lord && lord.energy) || 0))
+      + '</b> / ' + Math.round(GAME.energyMaxOf ? GAME.energyMaxOf(lord) : 100) + '</span>'
       + (acts ? '<span>已出去 ' + acts + ' 趟</span>' : '')
       + '<span style="flex:1;"></span>'
       + '<span style="color:#6f6a60;">' + (day < 10 ? '天还没冷' : '天在变冷') + '</span>'
@@ -34825,14 +35012,10 @@ if (GAME.reg) {
       + '<div style="margin-top:6px;height:5px;background:#23262b;border-radius:3px;">'
       + '<div style="height:5px;width:' + pct + '%;background:#c9b06a;border-radius:3px;"></div></div>'
       + tierLine + nextLine
-      + (spotRows
-        ? '<div style="margin-top:8px;font-size:12px;color:#8a7a5c;">附近可去（点一行进那片野地）</div>' + spotRows
-        : '<div style="margin-top:8px;font-size:12px;color:#8a7a5c;">附近今天没什么可做的 —— 明天再看。</div>')
-      + '<div style="margin-top:9px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">'
-      + btn(b1, '就近清剿', '打变异兽与掠夺者')
-      + btn(b2, '就近试炼', '旧世试炼场，逐层加码')
-      + btn(b3, '就近采集', '采药拾矿，安稳')
-      + '</div>'
+      + hereBlock + walkBlock
+      /* v131：原来的「就近清剿 / 就近试炼 / 就近采集」三个按钮撤掉 ——
+         它们和「脚下 + 四周」是同一件事的两种说法，而且找不到目标时会印
+         「附近没有」，读起来像功能坏了。现在"能做什么"由**站的位置**决定。 */
       + comboLine
       + (last ? '<div style="margin-top:9px;font-size:12px;color:#7d766a;border-top:1px solid #23262b;padding-top:7px;">最近：'
         + U.escape(last) + '</div>' : '')
@@ -34899,13 +35082,40 @@ if (GAME.reg) {
       var st = st0();
       if (st && st.prologue && !st.prologue._lit) {
         st.prologue._lit = 1;
-        var c0 = GAME.currentCity ? GAME.currentCity() : null;
-        var fromCi = (c0 && c0.ci != null) ? c0.ci : 0;
+        /* ⛔ v131：改前这里用 `currentCity().ci`，而前传现在**没有城** →
+           取到 null → `fromCi = 0` → 点亮的是球面另一头的第 0 格。
+           实测截图：整颗球几乎全黑，玩家根本看不见自己站在哪。
+           视野要围着**君主所在格**开，不是围着城。 */
+        var fromCi = P.pos();
         if (GAME.fog && GAME.fog.revealAround) {
           GAME.fog.revealAround(fromCi, 4, (GAME.fog.TERRAIN || 1));
         }
       }
     } catch (e) { /* 迷雾失败不该挡住界面 */ }
+    /* ============================================================
+     * v131：**镜头跟着人**。
+     * ------------------------------------------------------------
+     * 前传是"君主作为个人冒险者在大地图上游玩"，可相机默认在整星总览
+     * （`camO.dist = R*8`）—— 玩家点亮的那 radius 4 在整颗球上就是一个小点，
+     * 截图里看着就是"全黑"。个人冒险必须**贴脸看脚下**：
+     * 位置一变就把镜头对准并拉到最近（`ZOOM_MIN = R*1.2`）。
+     * 只在"位置真的变了"时做（`_camCi` 比对），否则每帧重置会抢玩家的拖动。
+     * ============================================================ */
+    try {
+      var st2 = st0(), M3 = GAME.map3d;
+      if (st2 && st2.prologue && M3 && M3.centerOn) {
+        var pos2 = P.pos();
+        if (st2.prologue._camCi !== pos2) {
+          var cell2 = (SP() && SP().cellOf) ? SP().cellOf(pos2) : null;
+          if (cell2 && cell2.lon != null) {
+            var xy2 = SP().xyOfLonLat(cell2.lon, cell2.lat);
+            st2.prologue._camCi = pos2;
+            if (M3.setZoom) M3.setZoom(0.02);      /* 0 = 最近；留一点余量，别贴到穿模 */
+            M3.centerOn(xy2.x, xy2.y);
+          }
+        }
+      }
+    } catch (e) { /* 相机失败不该挡住界面 */ }
     el.innerHTML = P.screenHTML();
   };
 
@@ -34924,7 +35134,8 @@ if (GAME.reg) {
       if (!P.on()) return '';
       var lord = P.lord();
       var lv = P.lv(), need = P.needLv();
-      var en = Math.round((lord && lord.energy) || 0);
+      /* v131：精力走唯一读出口（直读 lord.energy 会把超上限的原始值印出来） */
+      var en = Math.round(GAME.energyNowOf ? GAME.energyNowOf(lord) : ((lord && lord.energy) || 0));
       var enMax = (lord && GAME.energyMaxOf) ? Math.round(GAME.energyMaxOf(lord)) : 100;
       var spots = P.spots();
 
@@ -34966,15 +35177,30 @@ if (GAME.reg) {
         var ci = Number(el.getAttribute('data-ci'));
         if (GAME.ui && GAME.ui.openLandModalCi && ci >= 0) GAME.ui.openLandModalCi(ci);
       },
+      /* ⛔ v131（真点抓到，极隐蔽）：这里的 `ctx.refresh` **不能信**。
+         `ctx` 是派发方临时拼的对象，而"世界的账本"面板把自己的
+         `refresh: function () { ui.openWorldPanel(); ... }` 也塞进了同一个名字。
+         结果：前传里每走一步，`ctx.refresh()` 就把世界账本弹出来盖住 HUD
+         （实测调用链：openWorldPanel ← Object.refresh ← prologue-move）。
+         这里统一改成**直接调刷新出口**，不依赖 ctx 的来源。 */
       'prologue-act': function (el, ctx) {
         var ci = Number(el.getAttribute('data-ci'));
         var act = el.getAttribute('data-act');
         var r = P.act(ci, act);
-        ctx.toast(r.msg); ctx.refresh();
+        ctx.toast(r.msg);
+        if (GAME.refreshAll) GAME.refreshAll();
+      },
+      /* v131：走一格（营地视图 / 前传面板共用同一动作） */
+      'prologue-move': function (el, ctx) {
+        var ci = Number(el.getAttribute('data-ci'));
+        var r = P.moveTo(ci);
+        ctx.toast(r.msg);
+        if (GAME.refreshAll) GAME.refreshAll();
       },
       'prologue-build': function (el, ctx) {
         var r = P.build();
-        ctx.toast(r.msg); ctx.refresh();
+        ctx.toast(r.msg);
+        if (GAME.refreshAll) GAME.refreshAll();
       }
     }
   });

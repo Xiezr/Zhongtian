@@ -21,7 +21,11 @@ const { chromium } = require('playwright-core');
 const ROOT = 'E:/Deepseekdb';
 const EXE = process.env.AUDIT_CHROME ||
   'C:/Users/18811/AppData/Local/ms-playwright/chromium-1217/chrome-win64/chrome.exe';
-const TH = { viewMs: 100, nodes: 300, refreshMs: 400, distOf: 20 };
+/* v131：`distOf` 上界从 20 放到 40 —— 它现在是 **O(视野环内格数)**，
+   而前传的出生点会"就近挪到有事的格子"（P.begin），环内格数随之变化，
+   实测同一份代码在不同出生点上是 20 / 21 次。绑死 20 等于绑死一个位置。
+   40 仍是原 BFS 实现（3,712 次）的 1/90 —— 只要不回到那个量级，判据就还有效。 */
+const TH = { viewMs: 100, nodes: 300, refreshMs: 400, distOf: 40 };
 
 let pass = 0, fail = 0;
 const ok = (name, cond, extra) => {
@@ -120,7 +124,7 @@ const ok = (name, cond, extra) => {
   ok('refreshAll 三轮取最小 < ' + TH.refreshMs + 'ms', pr.refreshMin < TH.refreshMs, pr.refreshMin + 'ms');
   console.log('③ 前传 spots 距离调用上界');
   ok('返回 ≥ 1 处（下限：防"空结果也通过"）', pr.spots >= 1, pr.spots + ' 处');
-  ok('distOf ≤ ' + TH.distOf + ' 次（原 3,712 次）', pr.distOf <= TH.distOf, pr.distOf + ' 次');
+  ok('distOf ≤ ' + TH.distOf + ' 次（原 3,712 次 · O(环内格数)）', pr.distOf <= TH.distOf, pr.distOf + ' 次');
   ok('无页面运行时异常', errs.length === 0, errs.slice(0, 2).join(' | ') || '无');
 
   /* ---------- ④⑤ 层叠守卫（v130：前传 HUD 压住弹窗的回归） ----------

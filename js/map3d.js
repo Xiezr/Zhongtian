@@ -1246,7 +1246,10 @@ import './gltf.js';
     ctx.drawImage(wcv, 0, 0, cw, ch);
     /* v90.83：**当前星球标识**（左下常驻）—— 换球后一眼可辨"现在是哪颗"（生成/进入星球后即时更新）。
        放左下：右上被地形/行政检索栏占用。 */
-    if (GAME.state && GAME.state.planets) {
+    /* v131：前传不画这条 —— 那时候玩家是**一个人**在野外，不是一颗星球的统治者；
+       「🪐 老家 · 种子 … / 行迹 0.1% · 视野 4 格」摆在那里纯属噪音（截图里最扎眼的一处）。 */
+    var _inPrologue = !!(GAME.prologue && GAME.prologue.on && GAME.prologue.on());
+    if (GAME.state && GAME.state.planets && !_inPrologue) {
       var _ap = GAME.activePlanetOf ? GAME.activePlanetOf() : null;
       if (_ap) {
         var _pt = '🪐 ' + _ap.name + ' · 种子 ' + _ap.seed;

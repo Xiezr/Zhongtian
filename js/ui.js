@@ -8810,6 +8810,14 @@ import './state.js';
   /* --------- 城内（36格：政务厅占右侧4格 + 32格可建；围墙环绕不占格） --------- */
   ui.cityHTML = function () {
     var s = GAME.state, c = GAME.currentCity();
+    /* ============================================================
+     * v131（老板：「应当根治」）：前传 = 君主个人冒险 → **开局真的没有城**。
+     * 这里必须兜住：`renderView` 每秒都会调到本函数，
+     * 旧代码第 2 行就 `c.col` —— 无城时整页抛异常、刷新链整条断掉
+     * （实测：`Cannot read properties of null (reading 'col')`）。
+     * 无城时给一页"营地"：只说你现在站在哪、周围是什么、往哪走。
+     * ============================================================ */
+    if (!c) return ui.campHTML();
     var COLS = c.col || 6, ROWS = c.row || 6;
     ui.fitBoard(COLS, ROWS);              /* v27：按窗口算格子边长 */
     var M = ui.isoMetrics(COLS, ROWS);
@@ -8884,6 +8892,54 @@ import './state.js';
    * `ui.viewBoxSize` 在 jsdom 下拿不到布局（clientWidth 恒 0），
    * 于是回落到基准值 —— 测试因此仍然是确定性的。
    * ------------------------------------------------------------ */
+  /* ============================================================
+   * v131：**营地视图**（前传 · 没有城时的"我的地盘"页）
+   * ------------------------------------------------------------
+   * 前传是君主个人冒险，开局没有城 —— 但 `renderView` 每秒都会调 `cityHTML`，
+   * 那里第 2 行就 `c.col`，无城直接把刷新链炸断。
+   * 所以这一页的职责有两件：
+   *   ① 兜住"无城"这个状态（不抛异常）；
+   *   ② 说清**玩家此刻在哪、周围是什么、往哪走** —— 这就是个人冒险的地图页。
+   * 只说事实，不写"你要重建文明"之类（沿用 prologue.js 的调性）。
+   * ============================================================ */
+  ui.campHTML = function () {
+    var s = GAME.state || {};
+    var P = GAME.prologue || {};
+    var pos = (s.prologue && s.prologue.pos) | 0;
+    var sp = GAME.sphereOf ? GAME.sphereOf() : GAME.sphere;
+    var cell = (sp && sp.cellOf) ? sp.cellOf(pos) : null;
+    var T = ((GAME.DATA || {}).TERRAIN || {})[cell && cell.type] || { name: '荒野', icon: '·' };
+    var lord = P.lord ? P.lord() : null;
+    var lv = lord ? (lord.level | 0) : 1;
+    var need = P.needLv ? P.needLv() : 20;
+    var en = (lord && GAME.energyNowOf) ? Math.round(GAME.energyNowOf(lord)) : 0;
+    var enMax = (lord && GAME.energyMaxOf) ? Math.round(GAME.energyMaxOf(lord)) : 100;
+    var nb = P.neighbors ? P.neighbors() : [];
+    var coord = (sp && sp.dirOf) ? (sp.dirOf(pos) || '') : '';
+    var rows = nb.map(function (n) {
+      var tn = ((GAME.DATA || {}).TERRAIN || {})[n.type] || { name: '荒野', icon: '·' };
+      var marks = (n.acts || []).map(function (a) { return a.name || a.id || ''; }).filter(Boolean);
+      return '<button class="btn" data-action="prologue-move" data-ci="' + n.ci + '" '
+        + 'style="display:flex;justify-content:space-between;align-items:center;width:100%;'
+        + 'margin-bottom:6px;text-align:left;">'
+        + '<span>' + (n.dir ? '<b style="opacity:.7;">' + U.escape(n.dir) + '</b>　' : '')
+        + (tn.icon || '·') + ' ' + U.escape(tn.name || '荒野') + '</span>'
+        + '<span style="opacity:.7;font-size:var(--fs-cap);">'
+        + (marks.length ? U.escape(marks.slice(0, 2).join(' · ')) : '走过去看看')
+        + '</span></button>';
+    }).join('');
+    return '<div class="ui-page" style="max-width:620px;margin:0 auto;padding:10px 4px;">'
+      + '<div class="gold-heading">🏕 营地</div>'
+      + '<div class="ui-sub" style="margin:6px 0 2px;">你们 ' + U.numText(s.prologue && s.prologue.res ? (s.prologue.res.pop || 0) : 0, 0)
+      + ' 个人，还没有城。此刻站在「' + U.escape(T.name || '荒野') + '」' + (coord ? '　' + U.escape(coord) : '') + '。</div>'
+      + '<div class="ui-sub" style="margin-bottom:12px;">君主 Lv<b style="color:var(--gold-light);">' + lv + '</b> / '
+      + need + '　⚡ 精力 ' + en + ' / ' + enMax + '</div>'
+      + (rows || '<div class="ui-sub">四周一片死寂，走不动了。</div>')
+      + '<div class="ui-sub" style="margin-top:12px;opacity:.75;">点一格就往前走一步（耗 1 精力）。'
+      + '走到 Lv' + need + ' 就能在这里立城。</div>'
+      + '</div>';
+  };
+
   ui.DESIGN = { w: 1180, h: 820 };
   ui.SIDE_W = 283;          /* v43：CSS 侧栏宽度已固定为 283px（原为 clamp(272px,24vw,320px) 浮动值），
                                这里必须与之一致 —— 两处不一致时"按基准算"与"按实测算"会给出不同结果 */
@@ -15413,6 +15469,16 @@ import './state.js';
     }
     ui._expOwn = !!(target && target.kind === 'owncity');
     var s = GAME.state, c = (ui._expFrom && GAME.cityById(ui._expFrom)) || GAME.currentCity();
+    /* v131：前传 = 君主个人冒险，**没有城就出不了征**（没有兵、没有出发地）。
+       旧代码在这里直接往下面走，随后 `filter` 里用 `c.id` 抛
+       `Cannot read properties of null (reading 'id')` —— 面板整个打不开。
+       这里给一句人话，比抛异常好：告诉玩家现在该干什么。 */
+    if (!c) {
+      ui.toast(GAME.prologue && GAME.prologue.on && GAME.prologue.on()
+        ? '还没有城 —— 先在野外把君主练到 Lv' + ((GAME.prologue.needLv && GAME.prologue.needLv()) || 20) + '，再立城'
+        : '还没有可用的城');
+      return;
+    }
     var t = GAME.battle.resolveTarget(target);
     if (!t.ok) { ui.toast(t.msg); return; }
     ui._expTarget = target;

@@ -182,7 +182,14 @@ import './data.js';
   /* 唯一取值口：不传参 = 当前城市 */
   GAME.res = function (city) {
     var c = city || GAME.currentCity();
-    if (!c) return GAME._orphanRes || (GAME._orphanRes = GAME.emptyRes());
+    if (!c) {
+      /* v131：前传 = 没有城（君主个人冒险）→ 资源落在**随身物资**上。
+         存在 state.prologue.res 而不是 GAME._orphanRes，是为了随存档往返
+         （内存兜底会让读档后背包清空）。随机事件消耗/采集所得都走这里。 */
+      var s0 = GAME.state;
+      if (s0 && s0.prologue && s0.prologue.res) return s0.prologue.res;
+      return GAME._orphanRes || (GAME._orphanRes = GAME.emptyRes());
+    }
     if (!c.res) c.res = GAME.emptyRes();
     return c.res;
   };
@@ -210,10 +217,19 @@ import './data.js';
       Object.defineProperty(st, 'res', {
         get: function () { return GAME.res(); },
         /* 旧档迁移会整体赋值（见 loadGame）；旧代码里没有 `s.res = {...}` 的写法，
-           设成"写进当前城"是为了让极端情况不至于静默丢失。 */
+           设成"写进当前城"是为了让极端情况不至于静默丢失。
+           ⛔ v131：改前是 `if (c && v) c.res = v` —— **无城时整个赋值被静默吞掉**。
+           前传现在真的没有城，于是任何 `s.res = {...}`（读档迁移 / 工具造局 / 测试注入）
+           都会写失败而无人报错；表现出来是"资源莫名其妙是 0"（e2e 当场照出：
+           研究科技报「资源不足」）。现在按三层兜底，一层都不丢：
+             有城 → 写该城 · 前传期 → 写随身物资 · 都没有 → 写内存孤儿池。 */
         set: function (v) {
+          if (!v) return;
           var c = GAME.currentCity();
-          if (c && v) c.res = v;
+          if (c) { c.res = v; return; }
+          var s0 = GAME.state;
+          if (s0 && s0.prologue && s0.prologue.res) { s0.prologue.res = v; return; }
+          GAME._orphanRes = v;
         },
         enumerable: false,
         configurable: true,
@@ -506,7 +522,23 @@ import './data.js';
        烬环以灰烬城为锚；落不到才回退旧口径的固定点。出生城写明所属区 ——
        展示、岁贡、辖区特产都读同一份归属。 */
     var startPos = GAME.pickStartPos(rulerOpts.region, mapSeed);
-    var city = GAME.makeCity({
+    /* ============================================================
+     * v131（老板：「应当根治，不能再留尾巴」）——
+     * **前传 = 君主作为个人冒险者在大地图上游玩，开局没有城。**
+     * ------------------------------------------------------------
+     * 改前的荒唐事：`newGame` 无条件先建一座城（p1「新城市」），
+     * 然后 `prologue.begin` 才把前传打开 —— 于是前传写着「你们 200 个人，还没有城」，
+     * 而 state 里躺着 20 栋建筑、有驻军、能出兵；点「立城」只是把标记关掉（cities 1→1）。
+     * 前传唯一的戏剧目标是假的。
+     *
+     * 现在按 `prologue` 分流：前传局**不建城**，城要等玩家在某个格子上真的立起来。
+     * 只有玩家走创建界面（ui.doCreate 传 prologue:true）才走这条路；
+     * 324 处直接调 newGame 的测试不传 prologue → 行为一字不动。
+     * 资源：无城时 `GAME.res()` 落到 `_orphanRes`（本项目早预留了这条兜底），
+     * 前传把开局物资放进这口"随身背包"，立城时再一次性搬进城。
+     * ============================================================ */
+    var prologueMode = !!(rulerOpts && rulerOpts.prologue && GAME.prologue);
+    var city = prologueMode ? null : GAME.makeCity({
       id: 'p1',
       name: rulerOpts.cityName || '新城市',
       x: startPos.x, y: startPos.y,
@@ -514,7 +546,7 @@ import './data.js';
       initialExt: true,          // 首城预置 2 田 1 木 1 石 1 铁
       res: U.deep(DATA.INITIAL_RES),   // v60：开局库存进首城（不再是全境共享的 s.res）
     });
-    var gen = GAME.makeGeneral(DATA.INITIAL_GENERAL, 1, 'idle', city.id, true);
+    var gen = GAME.makeGeneral(DATA.INITIAL_GENERAL, 1, 'idle', city ? city.id : null, true);
     /* v70：君主头像 seed **只摇一次**，ruler 与君主英雄共用 ——
        各摇一次就是两张脸（顶栏一个、英雄页一个），正是"头像不一致"的根因。 */
     var lordSeed = rulerOpts.portraitSeed != null
@@ -537,13 +569,17 @@ import './data.js';
            所以开局就摇一个种子存进存档 —— 之后每局固定、不再刷新就换脸。
            `rulerOpts.portraitSeed` 供测试注入确定值。 */
         portraitSeed: lordSeed,
+        /* v131：前传局开局没有城，城名得先记在君主名下 ——
+           否则玩家在创建界面输入的名字，要等立城那一刻才发现丢了。
+           非前传局有 city 时它会与 city.name 一致（同一份输入）。 */
+        cityName: rulerOpts.cityName || '新城市',
       },
       /* v60：**state 上不再有 res 字段** —— 它由 attachRes 挂成访问器，
          指向当前城市的库存（`city.res`）。这里写字面量反而会盖掉 getter。 */
-      cities: [city],
+      cities: city ? [city] : [],
       /* v70（老板）：君主本人也是一位英雄 —— 排在末尾，不动既有索引口径
          （`generals[0]` 仍是开局英雄，测试与旧档迁移都按原样） */
-      generals: [gen, GAME.makeLordGeneral(rulerOpts, lordSeed, city.id)],
+      generals: [gen, GAME.makeLordGeneral(rulerOpts, lordSeed, city ? city.id : null)],
       queues: { build: [], train: [], tech: [] },
       marches: [],
       /* v89.87（老板需求 4）：待指挥战斗（观战挂起）—— 纯数据、随存档往返；

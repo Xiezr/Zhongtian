@@ -41753,29 +41753,30 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })());
 
     /* ③ 三个闸门：产出 0 / 不能建 / 不能招 */
-    check('§326③ 前传期产出真的为 0（辎重不是城产）', (function () {
-      var c = G2.currentCity();
-      if (!c) return false;
-      var p = G2.cityProdPerSec(c);
-      return ['grain', 'wood', 'stone', 'iron', 'gold'].every(function (k) { return !p[k]; });
+    /* v131（老板「应当根治」）：从「有城但不产」改成「**真的没有城**」。
+       旧判据测的是"产出为 0"，可只要 city 还在，玩家点开城市页就能看到
+       20 栋建筑和驻军 —— 那正是前传"还没有城"这句谎话的根源。
+       新判据必须同时管两件事：① 城数为 0；② 随身物资**不是空的**
+       （只测 ① 的话，资源系统整个坏掉也能通过 —— 平凡解）。 */
+    check('§326③ 前传期真的没有城（v131：不是"有城不产"，是根本没有）', (function () {
+      var n = (G2.state.cities || []).length;
+      var r = G2.res() || {};
+      return n === 0 && G2.currentCity() === null
+        && (r.pop || 0) >= 1 && (r.grain || 0) > 0;
     })(), (function () {
-      var c = G2.currentCity();
-      var p = c ? G2.cityProdPerSec(c) : {};
-      return '粮 ' + (p.grain || 0) + ' · 木 ' + (p.wood || 0);
+      var r = G2.res() || {};
+      return 'cities=' + (G2.state.cities || []).length + ' · 随身 人 ' + Math.round(r.pop || 0)
+        + ' · 粮 ' + Math.round(r.grain || 0);
     })());
 
-    check('§326④ 前传期不能建、不能招（闸门在统一出口上，不是面板置灰）', (function () {
-      var c = G2.currentCity();
-      if (!c) return false;
-      var cell = (c.cells || []).filter(function (x) { return !x.build && !x.official; })[0];
-      var bi = cell ? G2.buildAt(c.id, c.cells.indexOf(cell), 'nongtian') : { ok: null };
-      var tr = G2.train('buxingji', 10, c.id);
+    check('§326④ 没有城 → 建不了、招不了（出口自己拒绝，不是面板置灰）', (function () {
+      var bi = G2.buildAt('p1', 0, 'nongtian');
+      var tr = G2.train('buxingji', 10, 'p1');
       return bi.ok === false && tr.ok === false
-        && /还没有城/.test(bi.msg || '') && /还没有城/.test(tr.msg || '');
+        && /城|不存在|没有/.test(bi.msg || '') && /城|不存在|没有/.test(tr.msg || '');
     })(), (function () {
-      var c = G2.currentCity();
-      var tr = c ? G2.train('buxingji', 10, c.id) : {};
-      return (tr.msg || '').slice(0, 30);
+      var tr = G2.train('buxingji', 10, 'p1');
+      return (tr.msg || '（无提示）').slice(0, 34);
     })());
 
     /* ④ 荒野行动给经验（stub 内核，只测前传这层接线） */
@@ -41815,19 +41816,25 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })());
 
     /* ⑥ 到了 Lv20 → 立得成，且三个闸门同时松开 */
-    check('§326⑦ Lv20 → 立城成功，前传结束、产出恢复', (function () {
+    /* v131：立城从"关个开关"改成**真的落下一座城**（cities 0 → 1）。
+       这条断言是根治的守门人：改前这里 cities 恒为 1，玩家点「立城」什么也没发生。 */
+    check('§326⑦ Lv20 → 立城：城真的出现（0→1），前传结束且产出恢复', (function () {
       var lord = G2.prologue.lord();
-      var c = G2.currentCity();
-      if (!lord || !c) return false;
+      if (!lord) return false;
+      var before = (G2.state.cities || []).length;
       lord.level = G2.prologue.needLv();
       var r = G2.prologue.build();
-      var p = G2.cityProdPerSec(c);
+      var after = (G2.state.cities || []).length;
+      var c = G2.currentCity();
+      var p = c ? G2.cityProdPerSec(c) : {};
       var anyProd = ['grain', 'wood', 'stone', 'iron', 'gold'].some(function (k) { return (p[k] || 0) > 0; });
-      return r.ok === true && G2.prologue.on() === false && anyProd;
+      return before === 0 && r.ok === true && after === 1
+        && G2.prologue.on() === false && !!c && anyProd;
     })(), (function () {
       var c = G2.currentCity();
       var p = c ? G2.cityProdPerSec(c) : {};
-      return 'on=' + G2.prologue.on() + ' · 粮 ' + Math.round(p.grain || 0);
+      return 'cities=' + (G2.state.cities || []).length + ' · on=' + G2.prologue.on()
+        + ' · 粮 ' + Math.round(p.grain || 0);
     })());
 
     /* 收尾：回到普通档，别把前传状态留给后面的用例 */
@@ -42277,12 +42284,20 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       return bad.every(function (w) { return html.indexOf(w) < 0; });
     })(), (function () { return '导航词零命中'; })());
 
-    check('§333③ 三个动作 + 等级进度都在（该做的事一个不少）', (function () {
-      return html.indexOf('清剿') >= 0 && html.indexOf('试炼') >= 0
-        && html.indexOf('采集') >= 0 && html.indexOf('Lv') >= 0;
+    /* v131：从「三个写死的动作按钮」改成「**脚下能做什么 + 四周往哪走**」。
+       判据两条都带下限：光有"四周"没有"脚下"就是只能走来走去、不能做事；
+       光有"脚下"没有"四周"就是站桩 —— 两种都算不合规。 */
+    check('§333③ 脚下有可做的事 + 四周有可走的格（个人冒险的两个基本盘）', (function () {
+      var nMove = (html.match(/data-action="prologue-move"/g) || []).length;
+      var nAct = (html.match(/data-action="prologue-act"/g) || []).length;
+      /* v131：文案从「脚下」改成「📍 你站在这里」，判据跟着改 ——
+         但要求不变：**必须同时**有可走的格和可做的事，缺一就是只能走或只能站。 */
+      return nMove >= 1 && nAct >= 1 && html.indexOf('你站在这里') >= 0
+        && html.indexOf('四周') >= 0 && html.indexOf('Lv') >= 0;
     })(), (function () {
-      var n = (html.match(/data-action="prologue-act"/g) || []).length;
-      return '可点动作 ' + n + ' 个';
+      var nMove = (html.match(/data-action="prologue-move"/g) || []).length;
+      var nAct = (html.match(/data-action="prologue-act"/g) || []).length;
+      return '可走 ' + nMove + ' 格 · 可做 ' + nAct + ' 件';
     })());
 
     check('§333④ 立城之后这一屏就没了（不是永久盖住游戏）', (function () {
