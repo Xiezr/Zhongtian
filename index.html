@@ -539,6 +539,11 @@
     transition: color .15s;
   }
   .topnav .tab:hover { color: var(--gold-light); }
+  /* v118：折叠的页签（见 index.html 里 #nav-more-btn 的注释） */
+  .topnav .tab-more { display: none; }
+  .topnav.nav-open .tab-more { display: inline-block; }
+  .topnav .nav-more-btn { color: var(--gold-light); opacity: .9; }
+  .topnav.nav-open .nav-more-btn { opacity: 1; box-shadow: inset 0 -2px 0 var(--gold-dark); }
   /* v25（需求 10）：菜单图标（线描，跟随文字颜色） */
   /* v27（需求 7）：菜单图标调小 —— 15px 配上 13px 正文，图标反而比字更抢眼。
      降到 12px、透明度略降，只在 hover/选中的时候提亮，图标回到"陪衬"的位置。 */
@@ -4357,26 +4362,34 @@
     <!-- v90.97（老板）：**行政大菜单** —— 军务右侧。左 1/4 = 星球→城市分级树；右 3/4 = 所选城市的
          据点/占领野地/管理英雄/在建建筑/招募队列/研究中科技（只读总览）。 -->
     <div class="tab" data-view="admin"><i class="ti" data-nav="admin"></i>行政</div>
+    <!-- v118（老板 2026-10-23「如此专业的问题应该你来确定」）：
+         顶栏 12 个页签 → **6 个常驻 + 一个「更多」**。
+         常驻的是"每天都要点一次"的：城市 / 城外 / 地图 / 英雄 / 军务 / 行政；
+         其余（空间站 / 游商 / 背包 / 收藏 / 公文 / 自动 / 设置）折进「更多」。
+         ⚠️ 折叠**不删节点**：这些 <div> 还在 DOM 里，只是 display:none ——
+            四百多条断言靠 `querySelector('[data-view=shop]')` 找它们，
+            删掉就是一次性废掉一批守卫。折叠改的是**看得见几个**，不是"有没有"。 -->
+    <div class="tab nav-more-btn" id="nav-more-btn" data-action="nav-more" title="空间站 / 游商 / 背包 / 收藏 / 公文 / 自动 / 设置">更多 ▾</div>
     <!-- v91.60（老板）：奇观建造（类星球建造场 · 耗奇观材料 · 全局 buff） -->
-    <div class="tab" data-view="station"><i class="ti" data-nav="build"></i>空间站</div>
+    <div class="tab tab-more" data-view="station"><i class="ti" data-nav="build"></i>空间站</div>
     <!-- ⛔ v90.92：任务系统整条退役 —— 「任务」页签摘除。
          (v89.104 原：「将英雄，军务，任务放一起」，三者之间不插分隔条；现只剩英雄/军务。) -->
     <span class="nav-sep"></span>
-    <div class="tab" data-view="shop"><i class="ti" data-nav="shop"></i>游商</div>
-    <div class="tab" data-view="bag"><i class="ti" data-nav="bag"></i>背包</div>
+    <div class="tab tab-more" data-view="shop"><i class="ti" data-nav="shop"></i>游商</div>
+    <div class="tab tab-more" data-view="bag"><i class="ti" data-nav="bag"></i>背包</div>
     <!-- v89.194（老板 S3）：收藏（陈列馆）—— 与游商 / 背包并列 -->
-    <div class="tab" data-view="collection"><i class="ti" data-nav="collection"></i>收藏</div>
+    <div class="tab tab-more" data-view="collection"><i class="ti" data-nav="collection"></i>收藏</div>
     <span class="nav-sep"></span>
     <!-- ⛔ v89.218（老板「不再保留史册，故事集」）：两个页签整条退役。 -->
-    <div class="tab" data-view="reports"><i class="ti" data-nav="doc"></i>公文</div>
+    <div class="tab tab-more" data-view="reports"><i class="ti" data-nav="doc"></i>公文</div>
     <span class="nav-sep"></span>
     <!-- v29（需求 5）：①「自动」独立成菜单，就放在「设置」旁边 ——
          自动升级/研究/出征是**一类**东西（让系统替你干活），挤在设置里既不好找、
          也没空间放"英雄 / 兵力 / 目标 / 等级 / 类型 / 频率"这些参数。
          ② 顶栏的「存档 / 新游戏」删掉 —— 设置面板里本来就有同一对按钮，
          顶栏再摆一份只是让右手边常年挂着两个危险按钮。 -->
-    <div class="tab" data-view="auto"><i class="ti" data-nav="auto"></i>自动</div>
-    <div class="tab" data-view="settings"><i class="ti" data-nav="settings"></i>设置</div>
+    <div class="tab tab-more" data-view="auto"><i class="ti" data-nav="auto"></i>自动</div>
+    <div class="tab tab-more" data-view="settings"><i class="ti" data-nav="settings"></i>设置</div>
     <!-- v26（需求 3）：天时是**全局**信息（季节/天候/年号影响所有城市），
          放在城市属性里不合逻辑；margin-left:auto 把它推到最右。 -->
     <div class="nav-sky" id="nav-sky" title="天时（季节 / 天候 / 年号）"></div>
@@ -4472,15 +4485,15 @@
 </div><!-- /#app-scale -->
 </div><!-- /#app-fit -->
 
-<!-- BUILD 9356 -->
+<!-- BUILD 9357 -->
 <!-- v104：三包拆分（老板 2026-10-23「拆」）—— 单包曾到 4245KB / 上限 4301KB。
      · vendor/three.min.js 必须在前（gltf/map3d 用全局 THREE）；
      · 三包**顺序不能改**：core（引擎数据）→ war（战斗素材）→ ui（界面启动）。
        经典 script 保证顺序执行，window.GAME 全局共享，行为与单包完全一致。
      · 构建：python .workbuddy/tools/patch/build_bundle.py（改源码后须重建）。 -->
-<script src="vendor/three.min.js?v=9356"></script>
-<script src="js/bundle-core.js?v=9356"></script>
-<script src="js/bundle-war.js?v=9356"></script>
-<script src="js/bundle-ui.js?v=9356"></script>
+<script src="vendor/three.min.js?v=9357"></script>
+<script src="js/bundle-core.js?v=9357"></script>
+<script src="js/bundle-war.js?v=9357"></script>
+<script src="js/bundle-ui.js?v=9357"></script>
 </body>
 </html>

@@ -9419,6 +9419,16 @@
     $$('#topnav .tab[data-view]').forEach(function (el) {
       el.classList.toggle('active', el.dataset.view === v);
     });
+    /* v118：切到"折叠组"里的页签时，把「更多」自动展开 ——
+       否则玩家点了游商 / 背包，高亮那个页签自己藏起来了，
+       屏幕上没有任何东西告诉他在哪儿。 */
+    (function () {
+      var tn = document.getElementById('topnav');
+      if (!tn) return;
+      var cur = document.querySelector('#topnav .tab[data-view="' + v + '"]');
+      var inMore = !!(cur && cur.classList.contains('tab-more'));
+      tn.classList.toggle('nav-open', inMore);
+    })();
     ui.renderView(v);
   };
 
@@ -21498,6 +21508,7 @@
 
 
 
+
 (function () {
   var GAME = window.GAME = window.GAME || {};
   var ui = GAME.ui;
@@ -22882,6 +22893,11 @@
       case 'delve-retreat': (function () {
         var r = GAME.delve ? GAME.delve.retreat() : { msg: '未加载' };
         ui.toast(r.msg); ui.openWorldPanel(); GAME.refreshView();
+      })(); break;
+      /* v118：顶栏「更多」展开 / 收起（纯界面，不改任何状态） */
+      case 'nav-more': (function () {
+        var tn = document.getElementById('topnav');
+        if (tn) tn.classList.toggle('nav-open');
       })(); break;
       case 'deck-toggle': (function () {
         var r = GAME.deck ? GAME.deck.toggle(el.getAttribute('data-card')) : { msg: '未加载' };

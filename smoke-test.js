@@ -12384,7 +12384,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
     /* ⚠️ 这份 ORDER 与 build_bundle.py 的 ORDER **必须逐条一致**（本文故意不复用脚本，
        就是为了"构建脚本自己算错时测试还能抓到"）。加了模块两边都要加 ——
        v92 加 fog / memorial 时这里漏改，导致 hash 对不上、守卫假红。 */
-    var ORDER = ['core', 'registry', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'domain', 'map', 'sphere', 'risk', 'years', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'rival', 'land', 'taint', 'climate', 'surge', 'relic', 'goals', 'veteran', 'setskill', 'deck', 'bond', 'tower', 'wonderwar', 'delve', 'unrest', 'expose', 'trooplv', 'idle', 'ending', 'muster', 'founding', 'prologue', 'gltf',
+    var ORDER = ['core', 'registry', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'domain', 'map', 'sphere', 'risk', 'years', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'rival', 'land', 'taint', 'climate', 'surge', 'relic', 'goals', 'veteran', 'setskill', 'deck', 'bond', 'tower', 'wonderwar', 'delve', 'unrest', 'expose', 'trooplv', 'idle', 'ending', 'muster', 'founding', 'prologue', 'market', 'gltf',
       'map3d', 'battle', 'strategy', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits', 'story', 'ui', 'main'];
     var h = crypto.createHash('sha256');
     try {
@@ -42245,6 +42245,200 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })(), (function () { return 'on=' + P.on(); })());
 
     G.newGame({ name: '收尾', cityName: '灰岗' });
+  })();
+
+
+  /* ============================================================
+   * §334 · v117：集市与行情（星露谷那类"季节性窗口"的移植）
+   * ------------------------------------------------------------
+   * 钉四件事：
+   *   ① 一个月三次赶集，其余时候是压价收购 —— 窗口决定**价格档位**；
+   *   ② 价格随月份浮动，寒潮月粮贵（既有 climate 的读点）；
+   *   ③ 卖货真的进账（不是只弹一句提示）；
+   *   ④ 作坊：原料 → 成品（要等），成品只在集市卖得上价。
+   * ============================================================ */
+  console.log('\n===== 334. v117 集市：什么时候卖，头一回是个决定 =====');
+  (function () {
+    var MK = G.market;
+    if (!MK || !MK.priceOf) return;
+    var st = G.state;
+    var city = G.currentCity();
+    if (!city) return;
+    var spm = 57600 / 12;
+    var hadWorld = !!st.world;
+    var bakE = st.world ? st.world.elapsed : 0;
+    if (!st.world) st.world = { elapsed: 0, year: 1 };
+
+    check('§334① 窗口：月内 0% 在赶集、60% 不在（赶集只占一部分时间）', (function () {
+      st.world.elapsed = Math.floor(spm * 3);
+      var a = MK.openInfo().open;
+      st.world.elapsed = Math.floor(spm * 3 + spm * 0.60);
+      var b = MK.openInfo().open;
+      return a === true && b === false;
+    })(), (function () {
+      st.world.elapsed = Math.floor(spm * 3);
+      var o1 = MK.openInfo();
+      st.world.elapsed = Math.floor(spm * 3 + spm * 0.60);
+      var o2 = MK.openInfo();
+      return '0% → ' + (o1.open ? '赶集' : '平时') + ' · 60% → ' + (o2.open ? '赶集' : '平时 ' + o2.nextIn + 's 后开');
+    })());
+
+    check('§334② 平时压价、赶集全价（档位差就是"等不等"的理由）', (function () {
+      st.world.elapsed = Math.floor(spm * 3);
+      var hi = MK.sellMul();
+      st.world.elapsed = Math.floor(spm * 3 + spm * 0.60);
+      var lo = MK.sellMul();
+      return hi === 1 && lo < 0.95 && lo > 0.5;
+    })(), (function () {
+      st.world.elapsed = Math.floor(spm * 3 + spm * 0.60);
+      return '平时 ×' + MK.sellMul() + ' · 赶集 ×1';
+    })());
+
+    check('§334③ 价格随月份浮动（不是常数 —— 有月份才有"囤着等"）', (function () {
+      var ps = [];
+      for (var m = 0; m < 12; m++) ps.push(MK.priceOf('grain', m));
+      var lo = Math.min.apply(null, ps), hi = Math.max.apply(null, ps);
+      return hi / lo > 1.3 && hi / lo < 4;
+    })(), (function () {
+      var ps = [];
+      for (var m = 0; m < 12; m++) ps.push(MK.priceOf('grain', m));
+      return '粮价 ' + Math.min.apply(null, ps).toFixed(2) + ' ~ ' + Math.max.apply(null, ps).toFixed(2);
+    })());
+
+    check('§334④ 寒潮月粮更贵（接的是既有 climate，不是另造一套季节）', (function () {
+      var cold = [], warm = [];
+      for (var m = 0; m < 24; m++) {
+        (G.climate.isCold(m) ? cold : warm).push(MK.priceOf('grain', m));
+      }
+      if (!cold.length || !warm.length) return false;
+      var ac = cold.reduce(function (a, b) { return a + b; }, 0) / cold.length;
+      var aw = warm.reduce(function (a, b) { return a + b; }, 0) / warm.length;
+      return ac > aw;
+    })(), (function () {
+      var cold = [], warm = [];
+      for (var m = 0; m < 24; m++) (G.climate.isCold(m) ? cold : warm).push(MK.priceOf('grain', m));
+      var ac = cold.reduce(function (a, b) { return a + b; }, 0) / cold.length;
+      var aw = warm.reduce(function (a, b) { return a + b; }, 0) / warm.length;
+      return '冷月均 ' + ac.toFixed(2) + ' · 暖月均 ' + aw.toFixed(2);
+    })());
+
+    check('§334⑤ 卖货真的进账（粮减、旧币增）', (function () {
+      st.world.elapsed = Math.floor(spm * 3);   /* 赶集 */
+      G.city.add(city, 'grain', 3000);
+      var g0 = G.res(city).gold | 0, n0 = G.res(city).grain | 0;
+      var r = MK.sell('grain', 3000);
+      var g1 = G.res(city).gold | 0, n1 = G.res(city).grain | 0;
+      return r.ok === true && r.got > 0 && g1 > g0 && n1 === n0 - 3000;
+    })(), (function () {
+      st.world.elapsed = Math.floor(spm * 3);
+      G.city.add(city, 'grain', 1000);
+      var r = MK.sell('grain', 1000);
+      return r.ok ? ('卖 1000 粮 → 旧币 +' + r.got) : r.msg;
+    })());
+
+    check('§334⑥ 作坊：原料变成品要等，等到了才收得下', (function () {
+      var r0 = MK.collect();
+      if (r0.ok) return false;                  /* 手上不该有现成的 */
+      G.city.add(city, 'grain', 1000);
+      var r1 = MK.craft('flour');
+      if (!r1.ok) return false;
+      var mid = MK.remainOf();
+      if (!mid || mid.done) return false;       /* 刚开炉必须还没好 */
+      st.world.elapsed += 300;                  /* 走过 133 秒 */
+      var r2 = MK.collect();
+      return r2.ok === true && G.items.count('flour') >= 60;
+    })(), (function () {
+      return '干粮 ' + G.items.count('flour') + ' · 现价 ' + MK.craftPriceOf('flour');
+    })());
+
+    check('§334⑦ 成品比原料值钱（不然作坊没意义 —— 这是整条链的立命之处）', (function () {
+      var c = MK.craftInfo('flour');
+      var rawWorth = c.from.grain * MK.priceOf('grain', 6);
+      var madeWorth = c.yield * MK.craftPriceOf('flour', 6);
+      return madeWorth > rawWorth * 1.3;
+    })(), (function () {
+      var c = MK.craftInfo('flour');
+      return '800 粮约 ' + Math.round(800 * MK.priceOf('grain', 6)) + ' · 60 干粮约 ' + (60 * MK.craftPriceOf('flour', 6));
+    })());
+
+    /* 还原 */
+    G.items.sub('flour', G.items.count('flour'));
+    st.mkJobs = [];
+    st.world.elapsed = bakE;
+    if (!hadWorld) st.world = null;
+  })();
+
+
+  /* ============================================================
+   * §335 · v118：顶栏 12 个页签 → 6 个常驻 + 「更多」
+   * ------------------------------------------------------------
+   * 老板 2026-10-23：「如此专业的问题应该你来确定」——
+   * 这件事我自己拍板了，但拍板要有守卫，所以这里钉四条。
+   *
+   * 关键判断：**折叠不删节点**。四百多条断言靠
+   * `querySelector('[data-view=shop]')` 找页签，删了就是一次性废掉一批守卫。
+   * 所以改的是 CSS 的可见性，不是 DOM 的存在性。
+   * ============================================================ */
+  console.log('\n===== 335. v118 顶栏分级：12 个页签 → 6 + 更多 =====');
+  (function () {
+    var fs = require('fs'), path = require('path');
+    var html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+
+    var STAY = ['city', 'ext', 'map', 'generals', 'marches', 'admin'];
+    var MORE = ['station', 'shop', 'bag', 'collection', 'reports', 'auto', 'settings'];
+
+    /* ⚠️ 不能用 `<div class="tab" data-view="` 去数：城市页签带 `active`、
+       自动化页签还带别的类 —— 正则一严就数成 -2（第一次跑就是这样红）。 */
+    function uniqViews() {
+      var m = html.match(/\sdata-view="([a-z]+)"/g) || [];
+      var out = [];
+      m.forEach(function (s) {
+        /* s 形如 `data-view="city"` —— 取两个引号之间 */
+        var a = s.indexOf('"'), b = s.lastIndexOf('"');
+        var v = s.slice(a + 1, b);
+        if (v && out.indexOf(v) < 0) out.push(v);
+      });
+      return out;
+    }
+
+    check('§335① 六个常驻页签都在 DOM 里，且没有 tab-more 类', (function () {
+      return STAY.every(function (v) {
+        if (uniqViews().indexOf(v) < 0) return false;
+        var re = new RegExp('class="tab tab-more" data-view="' + v + '"');
+        return !re.test(html);
+      });
+    })(), (function () { return STAY.join(' / '); })());
+
+    check('§335② 七个别用页签折进「更多」——但**节点仍在**（不删）', (function () {
+      return MORE.every(function (v) {
+        return html.indexOf('class="tab tab-more" data-view="' + v + '"') >= 0;
+      });
+    })(), (function () { return MORE.join(' / '); })());
+
+    check('§335③ 折叠靠 CSS（display:none），不是从 DOM 里删掉', (function () {
+      return html.indexOf('.topnav .tab-more { display: none; }') >= 0
+        && html.indexOf('.topnav.nav-open .tab-more { display: inline-block; }') >= 0;
+    })(), (function () { return 'CSS 规则在'; })());
+
+    check('§335④「更多」按钮有动作、切到折叠页签时会自动展开', (function () {
+      var js = fs.readFileSync(path.join(__dirname, 'js', 'main.js'), 'utf8');
+      var ui = fs.readFileSync(path.join(__dirname, 'js', 'ui.js'), 'utf8');
+      return html.indexOf('data-action="nav-more"') >= 0
+        && js.indexOf("case 'nav-more'") >= 0
+        && ui.indexOf("tn.classList.toggle('nav-open', inMore);") >= 0;
+    })(), (function () { return '按钮 + 动作 + 自动展开'; })());
+
+    check('§335⑤ 顶栏可见页签数 = 6 + 1（「更多」本身）', (function () {
+      var all = uniqViews();
+      var more = all.filter(function (v) { return MORE.indexOf(v) >= 0; });
+      var stay = all.filter(function (v) { return MORE.indexOf(v) < 0; });
+      return stay.length === 6 && more.length === 7;
+    })(), (function () {
+      var all = uniqViews();
+      var more = all.filter(function (v) { return MORE.indexOf(v) >= 0; });
+      var stay = all.filter(function (v) { return MORE.indexOf(v) < 0; });
+      return '常驻 ' + stay.length + ' · 折叠 ' + more.length;
+    })());
   })();
 
 console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');

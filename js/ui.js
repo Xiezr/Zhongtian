@@ -7401,6 +7401,16 @@ import './state.js';
     $$('#topnav .tab[data-view]').forEach(function (el) {
       el.classList.toggle('active', el.dataset.view === v);
     });
+    /* v118：切到"折叠组"里的页签时，把「更多」自动展开 ——
+       否则玩家点了游商 / 背包，高亮那个页签自己藏起来了，
+       屏幕上没有任何东西告诉他在哪儿。 */
+    (function () {
+      var tn = document.getElementById('topnav');
+      if (!tn) return;
+      var cur = document.querySelector('#topnav .tab[data-view="' + v + '"]');
+      var inMore = !!(cur && cur.classList.contains('tab-more'));
+      tn.classList.toggle('nav-open', inMore);
+    })();
     ui.renderView(v);
   };
 

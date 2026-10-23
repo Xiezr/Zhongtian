@@ -50,6 +50,7 @@ import './ending.js';    /* v98：终局 —— 接进去，还是关灯（一�
 import './muster.js';    /* v99：兵源 —— 人从哪来（流民/战后/远征） */
 import './founding.js';  /* v103：开城 —— 棚户挤不下时，带他们去开一座城 */
 import './prologue.js';  /* v105：前传 —— 先没有城，打怪升到 20 级才立城 */
+import './market.js';    /* v117：集市与行情 —— 每月三次开市，寒潮月粮贵 */
 import './gltf.js';
 import './map3d.js';
 import './battle.js';
@@ -1445,6 +1446,11 @@ import './ui.js';
       case 'delve-retreat': (function () {
         var r = GAME.delve ? GAME.delve.retreat() : { msg: '未加载' };
         ui.toast(r.msg); ui.openWorldPanel(); GAME.refreshView();
+      })(); break;
+      /* v118：顶栏「更多」展开 / 收起（纯界面，不改任何状态） */
+      case 'nav-more': (function () {
+        var tn = document.getElementById('topnav');
+        if (tn) tn.classList.toggle('nav-open');
       })(); break;
       case 'deck-toggle': (function () {
         var r = GAME.deck ? GAME.deck.toggle(el.getAttribute('data-card')) : { msg: '未加载' };

@@ -124,6 +124,41 @@ function serve() {
   });
   console.error('ADMIN ' + JSON.stringify(c5));
 
+  /* ⑥ v118：顶栏折叠 —— 数「看得见几个」，不是数 DOM 里几个 */
+  const navCount = async () => page.evaluate(function () {
+    var tabs = [].slice.call(document.querySelectorAll('#topnav .tab'));
+    return {
+      total: tabs.length,
+      visible: tabs.filter(function (t) { return t.offsetParent !== null; })
+        .map(function (t) { return t.dataset.view || t.textContent.trim(); })
+    };
+  });
+  try {
+    if (await page.evaluate(function () {
+      return !!(GAME.prologue && GAME.prologue.on());
+    })) {
+      await page.evaluate(function () {
+        var l = GAME.prologue.lord();
+        if (l) l.level = GAME.prologue.needLv();
+        GAME.prologue.build();
+        GAME.ui.refreshView();
+      });
+      await page.waitForTimeout(1500);
+    }
+    const c6 = await navCount();
+    console.error('NAV-CLOSED ' + JSON.stringify(c6));
+    try { await page.screenshot({ path: path.join(OUT, 'e6-nav-closed.png'), timeout: 20000 }); } catch (e) {}
+    await page.click('#nav-more-btn');
+    await page.waitForTimeout(500);
+    const c7 = await navCount();
+    console.error('NAV-OPEN ' + JSON.stringify(c7));
+    try { await page.screenshot({ path: path.join(OUT, 'e7-nav-open.png'), timeout: 20000 }); } catch (e) {}
+    await page.evaluate(function () { GAME.ui.setView('shop'); });
+    await page.waitForTimeout(600);
+    const c8 = await navCount();
+    console.error('NAV-SHOP ' + JSON.stringify(c8));
+  } catch (e) { console.error('NAV-ERR ' + e.message); }
+
   await browser.close();
   srv.close();
   console.log('done');
