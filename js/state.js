@@ -3131,6 +3131,8 @@ import './data.js';
       /* v89.161（老板 5）：**旧币上收玩家层级** —— 老档把各城 res.gold 相加迁入 s.gold；
          新档以 st.gold 为权威（各城那份只是冗余副本，**不再累加**，否则 ×城数）。 */
       GAME.migrateGoldPool(st);
+      /* v134：**前传档跨版本补字段**（必须在 attachRes 之前 —— attachRes 要读 prologue.res） */
+      if (GAME.migratePrologue) GAME.migratePrologue(st);
       GAME.attachRes(st);
       /* v89.191（老板 3-④）：科技由"全境一份"迁为"各城一份"（老档平移 + 队列补城）。 */
       GAME.migrateTechs191(st);

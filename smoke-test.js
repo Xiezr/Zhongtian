@@ -19803,12 +19803,22 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
 
     /* ---- ② 战报沙盘：配方 → 逐帧（同一把引擎重跑） ---- */
     console.log('  --- ② 战报沙盘（固定沙盘 · 逐兵种逐帧） ---');
+    /* ⛔ v134（**这组用例原本每天可能红一次，不是产品坏**）：
+       `wildLevelNow` 的真实口径是 `(wildLevelBase(ci) + 今天的天数) % 11`
+       —— 同一块地**每天整体平移一级**（v91.89 的设计，不是 bug）。
+       原来这里按 `wildLevelNow` 筛 3~6，于是"能不能扫到目标"取决于**当天日期**：
+         实测 2026-10-24（day=20750，day%11=4）→ base 3~6 全被推到 7~10，
+         而这张 seed 图的 base 只落在 3~9（没有 10/0/1/2）→ **扫不到任何格子**
+         → `expedition` 拿不到目标 → 下面 5 条沙盘用例全红。
+       修法：按**固有等级 `wildLevelBase`** 选地（稳定，与日期无关），
+       实际战斗难度仍由日盐值决定 —— 这组用例要的是"打一仗、出配方、能重跑"，
+       不是"必须打 3~6 级"。改完不再随日期翻脸。 */
     var wild102 = null;
     for (var _y102 = 4; _y102 < 40 && !wild102; _y102++) {
       for (var _x102 = 4; _x102 < 40; _x102++) {
         var _t102 = G.map.tile(_x102, _y102);
         if (_t102 && _t102.terrain !== 'city' && !G.map.fortAt(_ciOf(_x102, _y102))) {
-          var _lv102 = G.map.wildLevelNow ? G.map.wildLevelNow(_ciOf(_x102, _y102)) : 1;
+          var _lv102 = G.map.wildLevelBase ? G.map.wildLevelBase(_ciOf(_x102, _y102)) : 1;
           if (_lv102 >= 3 && _lv102 <= 6) { wild102 = { x: _x102, y: _y102, ci: _ciOf(_x102, _y102) }; break; }
         }
       }
@@ -41896,6 +41906,42 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var lord = G2.prologue.lord(), foe = G2.prologue.duelFoe(G2.prologue.pos());
       var r = lord && foe ? G2.battle.duelPlay(lord, foe, ['stab', 'guard'], 7) : null;
       return r ? (r.wa + ':' + r.wb) : '?';
+    })());
+
+    /* ============================================================
+     * §326⑫ v134：**旧版前传档读进来，人不能凭空少掉**
+     * ------------------------------------------------------------
+     * 实测：把档削成 v131 首版形状（只有 on/at/day/acts/builtAt/pos）再读，
+     * 不报错、不崩，但 `GAME.res()` 落到空背包 → **HUD 显示"你们 0 个人"**。
+     * 这条断言盯的就是"不崩但悄悄少东西"。
+     * 三条同时成立才算过：res 有人 · 200 人（开局量）· steps 补成数字。
+     * ============================================================ */
+    /* ⚠️ 这条**不能走 adoptState**：它内部 `st.map.cities = null` + `GAME.map.generate()`
+       会重建整张地图，把前面的用例铺好的环境抹掉 —— 我第一版就是这么写的，
+       当场把后面 6 条战报沙盘用例打成 `no target`（地图上的目标没了）。
+       改成测**同一个判据的两半**，零副作用：
+         ① `migratePrologue` 把缺的字段补齐（纯函数，只改传入对象）；
+         ② 补完之后**走真正的资源出口** `GAME.res()` 能读到人
+            （只替换当前档的 prologue 段，不换 state、不重建地图）。 */
+    check('§326⑫ 旧版前传档读入后人不丢（缺 res → 补开局量，不是 0 人）', (function () {
+      G2.newGame({ name: '旧档', cityName: '灰岗', mapSeed: 20261024, prologue: true });
+      var snap = JSON.parse(JSON.stringify(G2.state));
+      /* 削成 v131 首版形状：只留 P.begin 当年写的那几个字段 */
+      snap.prologue = { on: true, at: 0, day: -1, acts: 0, builtAt: null, pos: snap.prologue.pos };
+      var n = G2.migratePrologue(snap) | 0;
+      /* 补完之后接到当前（无城）档上，走同一个出口读 */
+      G2.state.prologue = snap.prologue;
+      var r = G2.res() || {};
+      return n >= 1 && (r.pop || 0) >= 100 && (r.grain || 0) > 0
+        && typeof snap.prologue.steps === 'number' && !isNaN(snap.prologue.steps)
+        && snap.prologue.pos === snap.prologue.pos;
+    })(), (function () {
+      G2.newGame({ name: '旧档2', cityName: '灰岗', mapSeed: 20261024, prologue: true });
+      var snap = JSON.parse(JSON.stringify(G2.state));
+      snap.prologue = { on: true, pos: snap.prologue.pos, acts: 0, day: -1 };
+      var n = G2.migratePrologue(snap) | 0;
+      return '补了 ' + n + ' 处 · 形状 ' + G2.saveShapeChk(snap).ok
+        + ' · pop=' + Math.round((snap.prologue.res || {}).pop || 0);
     })());
 
     /* 反向守门：**坏档仍然要拦**（放宽不能变成放水） */

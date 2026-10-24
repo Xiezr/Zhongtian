@@ -11074,7 +11074,9 @@
       + '<div class="ui-sub" style="margin-top:6px;">对手露过的招：' + U.escape(seenTxt) + '</div>'
       + moves
       + '<div class="ui-sub" style="margin-top:8px;opacity:.7;">突刺克蓄力 · 格挡克突刺 · 佯攻克格挡 · 蓄力克佯攻</div>';
-    ui.openModal(html, { size: 'md' });
+    /* v134：斗将的内容随合数增长（1 合 → 5 合差 4 行），没有稳定高度。
+       定死 md（620 高）时实测留白 344px，改成内容自适应。 */
+    ui.openModal(html, { size: 'auto' });
   };
 
   ui.campHTML = function () {
@@ -25353,7 +25355,7 @@
      （这解释了"改了却说没生效"的观感）。老板若发现版本 ≠ 最新交付，按 Ctrl+F5
      强制刷新即获得新代码。⚠️ 发版须走 **bump_version.py --bump --version vX.Y**（它同步 index.html 的 ?v=/BUILD
      与这里的 GAME.VERSION 三处）—— 只手改 index.html 会让版本号冻住（v91.18 前的病灶）。 */
-  GAME.VERSION = 'v133.0';
+  GAME.VERSION = 'v134.0';
   function boot() {
     fitAppSize();
     try {

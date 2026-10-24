@@ -2888,6 +2888,12 @@
     background: rgba(var(--sh-rgb), .85);
   }
   .modal .modal-x:active { transform: scale(.9); }
+  /* v134：**高度跟着内容走**（`ui.openModal(html, {size:'auto'})`）。
+     斗将面板实测：弹窗 624 高、内容只到 272 → **留白 344px（56%）**。
+     固定档位的意义是"同一类页长得一样"，但斗将这种"对话式、内容随合数长"的页
+     没有稳定高度可对齐，定死档位只会空一半。
+     上限仍由 --app-h 兜底；内容超了照样是 .inner-panel 滚动（不动既有兜底链）。 */
+  .modal.modal-auto { height: auto; min-height: 0; }
   .modal-sm { width: 440px; height: 420px; }
   /* v91.00（老板）：**否决性弹窗**（「⛔ 无法执行」—— 缺少条件 / 无法升级 / 无法跳转）用小档 xs ——
      内容只有一句原因，比 sm 更紧凑；内容过长由 .inner-panel 既有滚动兜底。 */
@@ -4525,15 +4531,15 @@
 </div><!-- /#app-scale -->
 </div><!-- /#app-fit -->
 
-<!-- BUILD 9370 -->
+<!-- BUILD 9371 -->
 <!-- v104：三包拆分（老板 2026-10-23「拆」）—— 单包曾到 4245KB / 上限 4301KB。
      · vendor/three.min.js 必须在前（gltf/map3d 用全局 THREE）；
      · 三包**顺序不能改**：core（引擎数据）→ war（战斗素材）→ ui（界面启动）。
        经典 script 保证顺序执行，window.GAME 全局共享，行为与单包完全一致。
      · 构建：python .workbuddy/tools/patch/build_bundle.py（改源码后须重建）。 -->
-<script src="vendor/three.min.js?v=9370"></script>
-<script src="js/bundle-core.js?v=9370"></script>
-<script src="js/bundle-war.js?v=9370"></script>
-<script src="js/bundle-ui.js?v=9370"></script>
+<script src="vendor/three.min.js?v=9371"></script>
+<script src="js/bundle-core.js?v=9371"></script>
+<script src="js/bundle-war.js?v=9371"></script>
+<script src="js/bundle-ui.js?v=9371"></script>
 </body>
 </html>

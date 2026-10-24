@@ -9029,7 +9029,9 @@ import './state.js';
       + '<div class="ui-sub" style="margin-top:6px;">对手露过的招：' + U.escape(seenTxt) + '</div>'
       + moves
       + '<div class="ui-sub" style="margin-top:8px;opacity:.7;">突刺克蓄力 · 格挡克突刺 · 佯攻克格挡 · 蓄力克佯攻</div>';
-    ui.openModal(html, { size: 'md' });
+    /* v134：斗将的内容随合数增长（1 合 → 5 合差 4 行），没有稳定高度。
+       定死 md（620 高）时实测留白 344px，改成内容自适应。 */
+    ui.openModal(html, { size: 'auto' });
   };
 
   ui.campHTML = function () {

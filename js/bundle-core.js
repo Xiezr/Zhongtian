@@ -10301,6 +10301,8 @@ window.GAME = window.GAME || {};
       /* v89.161（老板 5）：**旧币上收玩家层级** —— 老档把各城 res.gold 相加迁入 s.gold；
          新档以 st.gold 为权威（各城那份只是冗余副本，**不再累加**，否则 ×城数）。 */
       GAME.migrateGoldPool(st);
+      /* v134：**前传档跨版本补字段**（必须在 attachRes 之前 —— attachRes 要读 prologue.res） */
+      if (GAME.migratePrologue) GAME.migratePrologue(st);
       GAME.attachRes(st);
       /* v89.191（老板 3-④）：科技由"全境一份"迁为"各城一份"（老档平移 + 队列补城）。 */
       GAME.migrateTechs191(st);
@@ -34510,6 +34512,62 @@ if (GAME.reg) {
       res: U.deep((GAME.DATA && GAME.DATA.INITIAL_RES) || {}),
       steps: 0,
     };
+  };
+
+  /* ============================================================
+   * v134：**前传档跨版本补字段**（读档路径，幂等）
+   * ------------------------------------------------------------
+   * 实测出来的缺口：前传在 v131~v133 之间加过 `res / steps / dueled / subdued`，
+   * 而读档只跑 `saveShapeChk` + 各 v6x/v8x 迁移，**没有一处补 prologue 的字段**。
+   * 后果（真跑过一遍）：
+   *   把存档削成 v131 首版的形状（只有 on/at/day/acts/builtAt/pos）→ 读档不报错，
+   *   但 `GAME.res()` 落到空背包 → **HUD 显示"你们 0 个人"，玩家的 200 人凭空消失**。
+   * 这是"不崩、不报错、就是不说话地少了东西"，比崩溃难发现得多。
+   *
+   * 口径（三条都不能放宽）：
+   *   · 只在 `prologue.on === true` 且**没有城**时补 `res`
+   *     —— `P.end()` 立城后会主动把 res 置 null（资源已搬进城），那是合法状态；
+   *   · 补的是 `INITIAL_RES`（**开局量，不是满额**）：这是止损，不是回补。
+   *     已经花掉的资源不会凭空长回来，但也不会因为读档变成 0 人；
+   *   · 已有 `res` 只补缺失的 key（旧版 INITIAL_RES 可能少字段），不覆盖玩家现有数量。
+   * ============================================================ */
+  GAME.migratePrologue = function (st) {
+    var pg = st && st.prologue;
+    if (!pg || typeof pg !== 'object') return 0;
+    var fixed = 0;
+    var hasCity = !!(st.cities && st.cities.length);
+
+    /* ① pos：缺失或越界 → 按开局坐标重算（否则 HUD 会拿 undefined 去查地形） */
+    var sp = SP();
+    var okPos = (pg.pos >= 0) && sp && sp.cellOf && sp.cellOf(pg.pos);
+    if (!okPos) {
+      var p0 = (st.map && st.map.startPos) || (GAME.DATA && GAME.DATA.START_POS) || {};
+      var np = (sp && sp.ciOfXY) ? sp.ciOfXY(p0.x, p0.y) : 0;
+      pg.pos = (np >= 0) ? np : 0;
+      fixed++;
+    }
+
+    /* ② res：前传进行中且无城 → 缺就补开局量（见函数头注释的口径） */
+    if (pg.on === true && !hasCity) {
+      var IR = (GAME.DATA && GAME.DATA.INITIAL_RES) || {};
+      if (!pg.res || typeof pg.res !== 'object') {
+        pg.res = U.deep(IR);
+        fixed++;
+      } else if (GAME.RES_KEYS) {
+        GAME.RES_KEYS.forEach(function (k) {
+          if (pg.res[k] == null) { pg.res[k] = (IR[k] || 0); fixed++; }
+        });
+      }
+    }
+
+    /* ③ 计数与进度字段：缺就是 0（不补的话 HUD 会印 "走了 undefined 步"） */
+    if (pg.steps == null || isNaN(pg.steps)) { pg.steps = 0; fixed++; }
+    if (pg.acts == null || isNaN(pg.acts)) { pg.acts = 0; fixed++; }
+    if (pg.dueled == null || typeof pg.dueled !== 'object') { pg.dueled = {}; fixed++; }
+    if (pg.subdued == null || typeof pg.subdued !== 'object') { pg.subdued = {}; fixed++; }
+    if (pg.duel === undefined) { pg.duel = null; fixed++; }
+    if (pg.last === undefined) { pg.last = ''; fixed++; }
+    return fixed;
   };
 
   P.end = function (why) {
