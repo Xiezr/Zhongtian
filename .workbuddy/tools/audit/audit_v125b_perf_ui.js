@@ -179,7 +179,7 @@ const ok = (name, cond, extra) => {
     G.newGame({ name: '城内审核', cityName: '灰岗', mapSeed: 20261025 });
     G.ui.enterGame(); G.ui.setView('city');
     const c = G.currentCity();
-    const ids = ['nongtian', 'minfang', 'tiejiang', 'junying', 'cangku', 'shuyuan'];
+    const ids = ['minfang', 'shuyuan', 'junying', 'cangku', 'tiejiangpu', 'shichang'];
     for (let i = 0; i < c.cells.length; i++) {
       if (c.cells[i].official) continue;
       if (i % 4 === 0) continue;
@@ -233,6 +233,37 @@ const ok = (name, cond, extra) => {
   ok('进屋：点建筑 → 打开那一格的建筑面板（3D 已关）',
     enter.ok === true && enter.hasPanel === true && enter.scene === null,
     'idx=' + enter.idx + ' · 面板 ' + enter.len + ' 字');
+
+  /* 地图动线：城市面板 →「进城逛逛（3D）」一步落到街上（v60 老板要求"别一点地图就进城"，
+     所以入口仍在面板里；这一条验的是"点了之后真的进了 3D，而不是停在 2D 棋盘"）。
+     ⚠️ 这一段**开一个新页面**做：同页前面刚走过"进城→出城→进屋"，残留的 live 面板重绘
+     会把结果搅成假红（第一版就是这么红的：按钮在、点了没反应）。 */
+  const p2c = await b.newPage({ viewport: { width: 1600, height: 1000 } });
+  const e2c = [];
+  p2c.on('pageerror', (e) => e2c.push(e.message));
+  await p2c.goto('file:///' + ROOT.replace(/\\/g, '/') + '/index.html');
+  await p2c.waitForFunction('window.GAME && window.GAME.DATA', null, { timeout: 30000 });
+  await p2c.evaluate(() => {
+    const G = window.GAME;
+    G.newGame({ name: '地图进城', cityName: '灰岗', mapSeed: 20261025 });
+    G.ui.enterGame();
+    G.ui.setView('map');
+    G.ui.openCityPanel(G.currentCity());
+  });
+  await p2c.waitForTimeout(400);
+  const mapBtn = await p2c.locator('[data-action="city-enter-3d"]').count();
+  const mapIn = await p2c.evaluate(() => {
+    const G = window.GAME;
+    const b2 = document.querySelector('[data-action="city-enter-3d"]');
+    if (b2) b2.click();
+    const d = G.scene3d._debug ? G.scene3d._debug() : null;
+    return { scene: G.scene3d.current(), pitch: d ? d.pitchDeg : null };
+  });
+  ok('地图面板「进城逛逛（3D）」直接落到街上',
+    mapBtn >= 1 && mapIn.scene === 'city' && mapIn.pitch >= 55,
+    '按钮 ' + mapBtn + ' 个 · scene=' + mapIn.scene + ' · ' + (mapIn.pitch || '-') + '°'
+      + (e2c.length ? ' · 异常 ' + e2c[0] : ''));
+  await p2c.close();
 
   console.log('\n结果：' + pass + ' 通过 / ' + fail + ' 失败');
   await b.close();

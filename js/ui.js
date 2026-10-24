@@ -3765,7 +3765,9 @@ import './state.js';
     /* 政务厅（随城自带、无 buildCost）排最前 */
     ids.sort(function (a, b2) {
       if (a === 'guanfu') return -1; if (b2 === 'guanfu') return 1;
-      return (DATA.BUILDINGS[a].series || '').localeCompare(DATA.BUILDINGS[b2].series || '');
+      /* 判空不是洁癖：`BUILD_ORDER` 与 `BUILDINGS` 是两张表，
+         旧存档 / 改过 id 的构建里随时可能对不上，而这里一崩就是整个建筑清单打不开。 */
+      return ((DATA.BUILDINGS[a] || {}).series || '').localeCompare(((DATA.BUILDINGS[b2] || {}).series || ''));
     });
     var rows = ids.map(function (id) {
       var b = DATA.BUILDINGS[id]; if (!b) return '';
@@ -14030,6 +14032,12 @@ import './state.js';
       foot: '<div class="m-foot">' +
         (isOwn
           ? '<button class="btn gold" data-action="city-enter" data-city="' + city.id + '">进入城市</button>' +
+            /* v142：地图上的城面板直接进 3D 街区（省掉"先进 2D、再点右下角 3D"两步）。
+               v60 老板说过「不要一点击地图就直接进入城市」，所以入口仍在面板里 ——
+               新按钮只是把"进入"这条路的终点从 2D 棋盘换成了街上。 */
+            '<button class="btn" data-action="city-enter-3d" data-city="' + city.id + '"' +
+              ' title="' + U.escape('直接进 3D 街区：走街串巷，走到建筑旁按 E 进屋（建造/升级仍在城市页那套面板）')
+              + '">🏙 进城逛逛（3D）</button>' +
             '<button class="btn" data-action="city-dispatch-exp" data-city="' + city.id + '"' +
               ' title="' + U.escape('派遣：把兵力 / 英雄调往本城 —— 在出征界面选主将 + 兵种，抵达即入城（不带货也可发）')
               + '">🛡️ 派遣</button>' +

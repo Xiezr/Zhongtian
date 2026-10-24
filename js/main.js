@@ -98,6 +98,24 @@ import './ui.js';
         if (!_r3d || !_r3d.ok) toast((_r3d && _r3d.msg) || '打不开 3D 视图');
         break;
       }
+      case 'city-enter-3d': {
+        /* v142：地图 → 城市面板 → **直接落到 3D 街区**。
+           为什么不复用 city-enter 再让玩家点右下角：那是两步，而且第二步在
+           2D 棋盘右下角，第一次玩根本看不见。这里仍是"进入城市"那条路
+           （setCity → setView('city') → refreshAll），只是最后多开一层 3D。 */
+        var c3id = el.dataset.city, c3 = GAME.cityById(c3id);
+        if (!c3) { ui.toast('城市不存在'); break; }
+        ui._swPlanetId = null;
+        ui.closeAllModals();
+        ui.setCity(c3id);
+        /* 视图重绘出问题（比如某个面板拿不到数据）不该让"进城"整个失败 ——
+           v142 实测过一次：2D 城市页抛错，玩家看到的就是"点了没反应"。 */
+        try { ui.setView('city'); } catch (e) { /* 3D 仍然要开 */ }
+        try { GAME.refreshAll(); } catch (e) { /* 同上 */ }
+        var r3d = (GAME.scene3d && GAME.scene3d.openCity) ? GAME.scene3d.openCity() : null;
+        if (!r3d || !r3d.ok) toast((r3d && r3d.msg) || '打不开 3D 视图');
+        break;
+      }
       case 'open-wall': {
         /* v89.128（老板「围墙以环城一圈的结构作为一个建筑」）：环城热区点击 =
            打开**环城槽**的面板（已建 → 升级/拆除；未建 → 修建）。不占格、不找空地。 */

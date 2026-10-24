@@ -8188,7 +8188,9 @@
     /* 政务厅（随城自带、无 buildCost）排最前 */
     ids.sort(function (a, b2) {
       if (a === 'guanfu') return -1; if (b2 === 'guanfu') return 1;
-      return (DATA.BUILDINGS[a].series || '').localeCompare(DATA.BUILDINGS[b2].series || '');
+      /* 判空不是洁癖：`BUILD_ORDER` 与 `BUILDINGS` 是两张表，
+         旧存档 / 改过 id 的构建里随时可能对不上，而这里一崩就是整个建筑清单打不开。 */
+      return ((DATA.BUILDINGS[a] || {}).series || '').localeCompare(((DATA.BUILDINGS[b2] || {}).series || ''));
     });
     var rows = ids.map(function (id) {
       var b = DATA.BUILDINGS[id]; if (!b) return '';
@@ -18453,6 +18455,12 @@
       foot: '<div class="m-foot">' +
         (isOwn
           ? '<button class="btn gold" data-action="city-enter" data-city="' + city.id + '">进入城市</button>' +
+            /* v142：地图上的城面板直接进 3D 街区（省掉"先进 2D、再点右下角 3D"两步）。
+               v60 老板说过「不要一点击地图就直接进入城市」，所以入口仍在面板里 ——
+               新按钮只是把"进入"这条路的终点从 2D 棋盘换成了街上。 */
+            '<button class="btn" data-action="city-enter-3d" data-city="' + city.id + '"' +
+              ' title="' + U.escape('直接进 3D 街区：走街串巷，走到建筑旁按 E 进屋（建造/升级仍在城市页那套面板）')
+              + '">🏙 进城逛逛（3D）</button>' +
             '<button class="btn" data-action="city-dispatch-exp" data-city="' + city.id + '"' +
               ' title="' + U.escape('派遣：把兵力 / 英雄调往本城 —— 在出征界面选主将 + 兵种，抵达即入城（不带货也可发）')
               + '">🛡️ 派遣</button>' +
@@ -24262,6 +24270,24 @@
         /* v140：城内 3D 俯瞰（读同一份 city 数据，不改任何字段） */
         var _r3d = (GAME.scene3d && GAME.scene3d.openCity) ? GAME.scene3d.openCity() : null;
         if (!_r3d || !_r3d.ok) toast((_r3d && _r3d.msg) || '打不开 3D 视图');
+        break;
+      }
+      case 'city-enter-3d': {
+        /* v142：地图 → 城市面板 → **直接落到 3D 街区**。
+           为什么不复用 city-enter 再让玩家点右下角：那是两步，而且第二步在
+           2D 棋盘右下角，第一次玩根本看不见。这里仍是"进入城市"那条路
+           （setCity → setView('city') → refreshAll），只是最后多开一层 3D。 */
+        var c3id = el.dataset.city, c3 = GAME.cityById(c3id);
+        if (!c3) { ui.toast('城市不存在'); break; }
+        ui._swPlanetId = null;
+        ui.closeAllModals();
+        ui.setCity(c3id);
+        /* 视图重绘出问题（比如某个面板拿不到数据）不该让"进城"整个失败 ——
+           v142 实测过一次：2D 城市页抛错，玩家看到的就是"点了没反应"。 */
+        try { ui.setView('city'); } catch (e) { /* 3D 仍然要开 */ }
+        try { GAME.refreshAll(); } catch (e) { /* 同上 */ }
+        var r3d = (GAME.scene3d && GAME.scene3d.openCity) ? GAME.scene3d.openCity() : null;
+        if (!r3d || !r3d.ok) toast((r3d && r3d.msg) || '打不开 3D 视图');
         break;
       }
       case 'open-wall': {
