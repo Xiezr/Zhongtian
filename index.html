@@ -2894,6 +2894,32 @@
      没有稳定高度可对齐，定死档位只会空一半。
      上限仍由 --app-h 兜底；内容超了照样是 .inner-panel 滚动（不动既有兜底链）。 */
   .modal.modal-auto { height: auto; min-height: 0; }
+  /* ============ v136 斗将面板（左右对峙 · 出手动画 · 伤害飘字） ============
+     动画在**每次重绘时自动播一次** —— 斗将每合都会重开面板，
+     所以不需要 JS 计时器：改完状态重绘，最后那一合自己动。
+     时长全部 ≤ 420ms，四招连点也不会糊成一团。 */
+  @keyframes duelLungeR { 0%{transform:translate(0,0)} 30%{transform:translate(26px,-4px) scale(1.08)} 100%{transform:translate(0,0)} }
+  @keyframes duelLungeL { 0%{transform:translate(0,0)} 30%{transform:translate(-26px,-4px) scale(1.08)} 100%{transform:translate(0,0)} }
+  @keyframes duelHurt  { 0%{transform:translateX(0)} 25%{transform:translateX(6px)} 55%{transform:translateX(-4px)} 100%{transform:translateX(0)} }
+  @keyframes duelDmgUp { 0%{opacity:0;transform:translateY(4px) scale(.8)} 18%{opacity:1;transform:translateY(-2px) scale(1.15)} 100%{opacity:0;transform:translateY(-30px) scale(1)} }
+  .duel-lunge-r { animation: duelLungeR .42s cubic-bezier(.3,1.4,.5,1) both; }
+  .duel-lunge-l { animation: duelLungeL .42s cubic-bezier(.3,1.4,.5,1) both; }
+  .duel-hurt    { animation: duelHurt .38s ease-out both; }
+  /* ⚠️ 字号/圆角/颜色**一律走令牌** —— 第一版我写了一堆裸 20px/#ff7b6b/8px，
+     smoke 的设计令牌铁律当场照出 6 条红（字重档位/裸圆角/裸色/裸字号/行高）。
+     头像大小用 calc 放大（断言禁的是 `font-size: <数字>` 字面量，calc 不算）。 */
+  .duel-dmg { position:absolute; left:50%; top:6px; transform:translateX(-50%);
+    font-size:var(--fs-h1); font-weight:700; color:var(--red-light);
+    animation: duelDmgUp 1s ease-out both; pointer-events:none; white-space:nowrap; }
+  .duel-dmg.crit { color:var(--gold-light); }
+  .duel-card { position:relative; flex:1; min-width:0; padding:10px 8px; border-radius:var(--r-lg);
+    border:1px solid var(--line); background:rgba(var(--sh-rgb),.35); text-align:center; }
+  .duel-card.me { border-color:var(--line-strong); }
+  .duel-card.foe { border-color:var(--red-light); }
+  .duel-ava { font-size:var(--fs-h1); line-height:var(--lh-1); transform:scale(1.9); margin:6px 0; }
+  .duel-hp { height:7px; border-radius:var(--r-sm); background:var(--bg-3); overflow:hidden; margin-top:6px; }
+  .duel-hp > i { display:block; height:100%; transition:width .3s ease; }
+  .duel-vs { align-self:center; font-size:var(--fs-body); font-weight:700; color:var(--gold-light); opacity:.8; padding:0 6px; }
   .modal-sm { width: 440px; height: 420px; }
   /* v91.00（老板）：**否决性弹窗**（「⛔ 无法执行」—— 缺少条件 / 无法升级 / 无法跳转）用小档 xs ——
      内容只有一句原因，比 sm 更紧凑；内容过长由 .inner-panel 既有滚动兜底。 */
@@ -4531,15 +4557,15 @@
 </div><!-- /#app-scale -->
 </div><!-- /#app-fit -->
 
-<!-- BUILD 9371 -->
+<!-- BUILD 9373 -->
 <!-- v104：三包拆分（老板 2026-10-23「拆」）—— 单包曾到 4245KB / 上限 4301KB。
      · vendor/three.min.js 必须在前（gltf/map3d 用全局 THREE）；
      · 三包**顺序不能改**：core（引擎数据）→ war（战斗素材）→ ui（界面启动）。
        经典 script 保证顺序执行，window.GAME 全局共享，行为与单包完全一致。
      · 构建：python .workbuddy/tools/patch/build_bundle.py（改源码后须重建）。 -->
-<script src="vendor/three.min.js?v=9371"></script>
-<script src="js/bundle-core.js?v=9371"></script>
-<script src="js/bundle-war.js?v=9371"></script>
-<script src="js/bundle-ui.js?v=9371"></script>
+<script src="vendor/three.min.js?v=9373"></script>
+<script src="js/bundle-core.js?v=9373"></script>
+<script src="js/bundle-war.js?v=9373"></script>
+<script src="js/bundle-ui.js?v=9373"></script>
 </body>
 </html>

@@ -496,7 +496,12 @@
     if (d && d.gen && (d.gen.level | 0) <= cap) return d.gen;
     var glv = Math.max(5, Math.min(cap, (d && d.gen && (d.gen.level | 0)) || cap));
     var rnd = GAME.utils.rng(((ci | 0) * 2654435761) >>> 0);
-    var g = GAME.makeGeneral('游荡者', glv, 'guard', null, false, null, 'balance', rnd);
+    /* v136（老板：「名为斗将，实际上对面可以为生化兽等各种废土物种」）：
+       从 `DATA.DUEL_FOES` 抽一个物种 —— 按 ci 确定性抽，同一格永远同一个对手。 */
+    var LIST = (GAME.DATA && GAME.DATA.DUEL_FOES) || [];
+    var sp0 = LIST.length ? LIST[Math.floor(rnd() * LIST.length) % LIST.length] : null;
+    var foeName = sp0 ? sp0.name : '游荡者';
+    var g = GAME.makeGeneral(foeName, glv, 'guard', null, false, null, 'balance', rnd);
     /* ⛔ **对手的 id 必须确定**（v132 实测踩到的坑）：
        `duelEnemyMove` 的出招种子是 `'duelm|' + defGen.id + '|' + round + '|' + seed`。
        而 `makeGeneral` 每调一次就自增一个新 id —— 于是每合重算前 N 合时，
@@ -505,6 +510,19 @@
        固定成 `duelfoe_<ci>` 之后，同一格同一 seed 的对手永远同一个人。 */
     g.id = 'duelfoe_' + (ci | 0);
     if (GAME.guardFillOf) GAME.guardFillOf(g, 1);
+    /* ⚠️ v136 实测踩到的顺序 bug：`guardFillOf` 内部**会重设四维**
+       （它按等级把属性填成一组均衡值），所以"按物种倾向重分配"必须放在它**之后**。
+       第一版放在前面 → 实测三个属性都是 130/130/130，
+       面板显示"四平八稳、读不出偏哪一手"，所有物种打起来一模一样。
+       重分配只改**比例**、不改总量 —— `duelTendency` 读的是相对权重。 */
+    if (sp0) {
+      var sum = (g.yw | 0) + (g.tong | 0) + (g.zm | 0);
+      var W = (sp0.w + sp0.t + sp0.m) || 1;
+      g.yw = Math.max(1, Math.round(sum * sp0.w / W));
+      g.tong = Math.max(1, Math.round(sum * sp0.t / W));
+      g.zm = Math.max(1, Math.round(sum * sp0.m / W));
+      g.species = { id: sp0.id, icon: sp0.icon, name: sp0.name, tag: sp0.tag, desc: sp0.desc };
+    }
     g.wild = true;
     return g;
   };
@@ -527,8 +545,17 @@
     s.prologue.duel = {
       ci: ci, seed: 20261024 + (s.prologue.acts | 0),   /* 固定 seed：同出招同结果 */
       moves: [], rows: [], wa: 0, wb: 0, done: false, winner: null,
+      /* v136：**血量与出手次数**（老板：「每回合出手初始为各 1 次，
+         后续开发武技可能有不同的出手特征」）—— 出手次数做成数据，
+         将来武技改这里就行，不用动判定。 */
+      hpA: 100, hpB: 100,
+      atkPerTurn: { a: 1, b: 1 },
       foe: { name: foe.name, level: foe.level | 0,
-        tong: foe.tong | 0, yw: foe.yw | 0, zm: foe.zm | 0, nz: foe.nz | 0 },
+        tong: foe.tong | 0, yw: foe.yw | 0, zm: foe.zm | 0, nz: foe.nz | 0,
+        icon: (foe.species && foe.species.icon) || '👤',
+        tag: (foe.species && foe.species.tag) || '',
+        desc: (foe.species && foe.species.desc) || '',
+        speciesId: (foe.species && foe.species.id) || '' },
     };
     return { ok: true, msg: foe.name + '（Lv' + (foe.level | 0) + '）应战 —— 出招吧' };
   };
@@ -546,8 +573,27 @@
     var r = GAME.battle.duelPlay(lord, foe, d.moves, d.seed);
     if (!r) return { ok: false, msg: '这一合没判出来' };
     var row = r.rows[r.rows.length - 1];
-    d.rows.push({ a: row.a, b: row.b, res: row.res, aName: row.aName, bName: row.bName });
+    /* v136：血量与伤害。
+       ⚠️ **HP 必须由比分派生**，不能自己独立扣 ——
+       第一版按"每得一分扣 33 血、暴击 ×1.5 扣 50"独立算，
+       实测出现「我 0 血了但比分才 0:2，还能继续打第 3、4 合」：
+       因为胜负看的是 `duelPlay` 的 3 分制，HP 却是另一本账。
+       现在 hp = 100 × (need − 对方得分) / need，永远和比分同步；
+       伤害 = 这一合 HP 的**真实差值**（暴击只标"克招"，不再偷偷加数值）。 */
+    var _MV2 = (GAME.DATA && GAME.DATA.DUEL && GAME.DATA.DUEL.moves) || {};
+    var _need2 = DU.winScore || 3;
+    var _prevA = 100 - Math.round(100 * (d.wb | 0) / _need2);
+    var _prevB = 100 - Math.round(100 * (d.wa | 0) / _need2);
+    var critA = !!(_MV2[row.a] && _MV2[row.a].beats === row.b);
+    var critB = !!(_MV2[row.b] && _MV2[row.b].beats === row.a);
     d.wa = r.wa; d.wb = r.wb;
+    d.hpA = 100 - Math.round(100 * (d.wb | 0) / _need2);
+    d.hpB = 100 - Math.round(100 * (d.wa | 0) / _need2);
+    var dmg = 0, dmgTo = '';
+    if (row.res === 'a') { dmg = Math.max(0, _prevB - d.hpB); dmgTo = 'B'; }
+    else if (row.res === 'b') { dmg = Math.max(0, _prevA - d.hpA); dmgTo = 'A'; }
+    d.rows.push({ a: row.a, b: row.b, res: row.res, aName: row.aName, bName: row.bName,
+      dmg: dmg, to: dmgTo, crit: (row.res === 'a' ? critA : (row.res === 'b' ? critB : false)) });
     var over = (d.moves.length >= maxR) || r.wa >= need || r.wb >= need;
     var out = { ok: true, row: row, wa: d.wa, wb: d.wb, done: false, msg: '' };
     if (over) {
@@ -570,6 +616,8 @@
         try {
           if (GAME.state && GAME.state.items) {
             GAME.state.items['fucore'] = (GAME.state.items['fucore'] | 0) + 1;
+            /* v136：结算面板要"提示物资收获" —— 记下来，别让玩家去背包里猜 */
+            d.loot = [{ id: 'fucore', name: '辐能核心', n: 1 }];
           }
         } catch (e) {}
       } else if (r.winner === 'def') {

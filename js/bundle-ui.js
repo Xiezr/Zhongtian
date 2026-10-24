@@ -10983,6 +10983,23 @@
    * 对手的招式**看不到**，但能从他出过的合里反推倾向 —— 那是这个玩法唯一的读点，
    * 所以面板只写"他露过什么"，不提前泄露下一招。
    * ============================================================ */
+  /* ============================================================
+   * v136（老板：「立城前的君主升级简直是狗屎，纯点按钮升级。
+   *   制作一个斗将面板，左右侧为敌我双方将领，每回合出手初始为各 1 次
+   *   （后续开发武技可能有不同的出手特征），出手还有动画，以及伤害显示，
+   *   最终胜利有一个弹窗显示，并提示经验和物资收获。
+   *   名为斗将，实际上对面可以为生化兽等各种废土物种」）
+   * ------------------------------------------------------------
+   * 改前：一列文字 + 四个按钮，读起来像调试日志。
+   * 现在：
+   *   · 左右两张卡对峙 —— 左我（君主）· 右敌（废土物种，见 DATA.DUEL_FOES）
+   *   · 每合各出手 **1 次**（读 `d.atkPerTurn`，将来武技改数据即可）
+   *   · 出手动画 + 伤害飘字：**每次重绘自动播一次**
+   *     （每合都会重开面板，所以不需要 JS 计时器，见 index.html 的 keyframes）
+   *   · 打完换结算卡：胜负 + 比分 + 经验 + 物资清单
+   * ⚠️ 一分一合都不在这里算 —— 判定全在 `prologue.duelStep`（内核 battle.duelPlay）。
+   *    面板只呈现，杜绝"两套口径"。
+   * ============================================================ */
   ui.openDuelPanel = function () {
     var P = GAME.prologue || {};
     var d = P.duelOf ? P.duelOf() : null;
@@ -10991,91 +11008,136 @@
     var MV = DU.moves || {}, ORDER = DU.moveOrder || Object.keys(MV);
     var lord = P.lord ? P.lord() : null;
     var f = d.foe || {};
-    var rowTxt = function (r, i) {
-      var cls = r.res === 'a' ? 'var(--green-ok)' : (r.res === 'b' ? 'var(--red-light)' : 'var(--text-dim)');
-      return '<div style="font-size:var(--fs-cap);padding:2px 0;color:' + cls + ';">'
-        + '第' + (i + 1) + '合　我 ' + U.escape(r.aName) + ' ⚔ ' + U.escape(r.bName)
-        + '　' + (r.res === 'a' ? '占先' : r.res === 'b' ? '吃亏' : '相持') + '</div>';
-    };
-    var hist = (d.rows || []).map(rowTxt).join('') || '<div class="ui-sub">还没交手。</div>';
-    var seen = {};
-    (d.rows || []).forEach(function (r) { seen[r.b] = (seen[r.b] | 0) + 1; });
-    var seenTxt = Object.keys(seen).map(function (k) {
-      return ((MV[k] || {}).name || k) + '×' + seen[k];
-    }).join(' · ') || '还没露招';
-    var moves = '';
-    if (!d.done) {
-      moves = '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">'
-        + ORDER.map(function (id) {
-            var m = MV[id] || {};
-            return '<button class="btn gold" data-action="prologue-duel-hit" data-mv="' + id + '"'
-              + ' title="' + U.escape(m.note || '') + '">' + U.escape(m.name || id) + '</button>';
-          }).join('') + '</div>';
-    } else {
-      moves = '<div style="margin-top:10px;padding:8px 10px;border:1px solid var(--wood-light);border-radius:6px;">'
-        + '<b style="color:var(--gold-light);">' + U.escape(d.txt || '') + '</b>'
-        + '<div class="ui-sub" style="margin-top:3px;">经验 +' + (d.gain | 0) + '</div></div>'
-        + '<div style="margin-top:10px;"><button class="btn" data-action="prologue-duel-close">收手</button></div>';
-    }
-    /* v132：**敢不敢打，得先让他知道打不打得过**。
-       实测：Lv1 君主在野地 Lv8 上点"点名斗将"，对面是 Lv100 守将 —— 送。
-       面板不替他决定，但必须把差距摆在眼前（一行红字，不是靠玩家自己算）。 */
+    var hpA = (d.hpA == null ? 100 : d.hpA);
+    var hpB = (d.hpB == null ? 100 : d.hpB);
+    var last = (d.rows && d.rows.length) ? d.rows[d.rows.length - 1] : null;
     var myLv = (lord && lord.level) | 0, foeLv = f.level | 0;
-    /* ============================================================
-     * v132：**把"可预判"那半边给玩家**。
-     * ------------------------------------------------------------
-     * `battle.duelTendency` 按四维算每招的偏好权重（武力→突刺 / 统率→格挡 /
-     * 谋略→佯攻），这是设计里明写的"可预判"；落点不可预判。
-     * 之前面板只说"对手露过的招"，第一合前一片空白 —— 玩家等于闭眼打，
-     * 实测连续 0:3。把架势摆出来，第一合就有依据。
-     * ============================================================ */
-    /* ============================================================
-     * ⛔ v132（核对内核后才想明白的一件事）：
-     * `battle.duelPlay` 的胜负**只看招式相克**（am===bm 平；beats 关系定胜负），
-     * **等级与四维完全不参与**。它们唯一的作用是决定"对手爱出哪一招"的权重。
-     * 所以我第一版写的「Lv1 对 Lv100 —— 这一战是送」是**错的**：
-     * 真正决定成败的是"他的倾向读不读得出来"。
-     * 而 balance 型守将四维相同（90/90/90）→ 三项权重几乎相等 → 无从读起 → 只能赌。
-     * 面板现在只说这两件事：他的路数**看得出来 / 看不出来**。
-     * ============================================================ */
-    var tendTxt = '', readable = false;
+
+    /* ---- 这一合谁打谁：决定动画方向、飘字落点 ---- */
+    var aHit = !!(last && last.to === 'A');   /* 挨打的是我 */
+    var bHit = !!(last && last.to === 'B');   /* 挨打的是他 */
+    var dmgOf = function (on) {
+      /* 结算态不飘字 —— 否则"负"字旁边会挂一个上一合的 -33 */
+      if (d.done) return '';
+      if (!last || !last.dmg) return '';
+      if (on === 'A' && !aHit) return '';
+      if (on === 'B' && !bHit) return '';
+      return '<div class="duel-dmg' + (last.crit ? ' crit' : '') + '">-'
+        + last.dmg + (last.crit ? ' 暴击' : '') + '</div>';
+    };
+    var card = function (side, icon, name, lv, tag, hp, cls, dmgOn) {
+      var pct = Math.max(0, Math.min(100, Math.round(hp)));
+      var col = pct > 60 ? '#6fbf73' : (pct > 30 ? '#d9a441' : '#d9534f');
+      return '<div class="duel-card ' + side + (cls ? ' ' + cls : '') + '">'
+        + dmgOf(dmgOn)
+        + '<div class="duel-ava">' + icon + '</div>'
+        + '<div style="font-size:var(--fs-cap);font-weight:700;margin-top:2px;'
+        + 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + U.escape(name) + '</div>'
+        + '<div class="ui-sub" style="font-size:var(--fs-cap);">Lv' + lv
+        + (tag ? ' · ' + U.escape(tag) : '') + '</div>'
+        + '<div class="duel-hp"><i style="width:' + pct + '%;background:' + col + ';"></i></div>'
+        + '<div class="ui-sub" style="font-size:var(--fs-cap);margin-top:1px;">' + pct + ' / 100</div>'
+        + '</div>';
+    };
+    var myCls = bHit ? 'duel-lunge-r' : (aHit ? 'duel-hurt' : '');
+    var foeCls = aHit ? 'duel-lunge-l' : (bHit ? 'duel-hurt' : '');
+    var arena = '<div style="display:flex;align-items:flex-start;gap:10px;margin-top:8px;">'
+      + card('me', '🧍', (lord && lord.name) || '君主', myLv, '我', hpA, myCls, 'A')
+      + '<div class="duel-vs">VS</div>'
+      + card('foe', f.icon || '👤', f.name || '对手', foeLv, f.tag || '', hpB, foeCls, 'B')
+      + '</div>';
+
+    /* ---- 对手的"路数读不读得出来"（这是策略的那一半） ---- */
+    var tendTxt = '', readable = false, bestK = null;
     try {
       if (GAME.battle && GAME.battle.duelTendency) {
         var w = GAME.battle.duelTendency({ yw: f.yw, zm: f.zm, tong: f.tong });
-        var keys = Object.keys(w), sortv = keys.map(function (k) { return w[k]; }).sort(function (a, b) { return b - a; });
-        var bestK = keys[0];
+        var keys = Object.keys(w);
+        var sortv = keys.map(function (k) { return w[k]; }).sort(function (a, b) { return b - a; });
+        bestK = keys[0];
         keys.forEach(function (k) { if (w[k] > w[bestK]) bestK = k; });
-        /* 可读性 = 最强项 / 次强项。1.15 以上才算"看得出来" */
         var ratio = sortv[1] > 0 ? (sortv[0] / sortv[1]) : 9;
         readable = ratio >= 1.15;
         if (readable) {
-          var why = bestK === 'stab' ? '手上有劲' : bestK === 'guard' ? '守得稳' : bestK === 'feint' ? '心思多' : '脾气慢';
-          tendTxt = '看他架势：偏' + ((MV[bestK] || {}).name || bestK) + '（' + why + '）';
+          var why = bestK === 'stab' ? '手上有劲' : bestK === 'guard' ? '守得稳'
+            : bestK === 'feint' ? '心思多' : '脾气慢';
+          tendTxt = '看它架势：偏' + ((MV[bestK] || {}).name || bestK) + '（' + why + '）';
         } else {
-          tendTxt = '看他架势：四平八稳 —— 读不出偏哪一手，只能临场赌';
+          tendTxt = '看它架势：四平八稳 —— 读不出偏哪一手，只能临场赌';
         }
       }
     } catch (e) {}
-    /* 提醒只讲"读不读得出"，不讲"打不打得过"（等级不决定胜负） */
-    var risk = readable ? '' : '⚠ 这人没有明显路数，五合里全是猜';
-    var riskBad = !readable;
-    var html = '<div class="gold-heading">⚔ 斗将 · ' + U.escape(f.name || '对手') + '</div>'
-      + '<div class="ui-sub" style="margin-top:4px;">'
-      + '对手 Lv' + foeLv + '　统' + (f.tong | 0) + ' 勇' + (f.yw | 0)
-      + ' 智' + (f.zm | 0) + ' 政' + (f.nz | 0) + '</div>'
-      + (risk ? '<div style="margin-top:3px;font-size:var(--fs-cap);color:'
-          + (riskBad ? 'var(--gold-light)' : 'var(--green-ok)') + ';">' + U.escape(risk) + '</div>' : '')
-      + (tendTxt ? '<div style="margin-top:2px;font-size:var(--fs-cap);color:var(--gold-light);">'
-          + U.escape(tendTxt) + '</div>' : '')
-      + '<div class="ui-sub">我 ' + U.escape((lord && lord.name) || '君主')
-      + ' Lv' + ((lord && lord.level) | 0) + '　比分 <b>' + (d.wa | 0) + ' : ' + (d.wb | 0) + '</b>'
-      + '　（先到 ' + (DU.winScore || 3) + ' 分 / 共 ' + (DU.playRounds || 5) + ' 合）</div>'
-      + '<div style="margin-top:8px;border-top:1px solid var(--line);padding-top:6px;">' + hist + '</div>'
-      + '<div class="ui-sub" style="margin-top:6px;">对手露过的招：' + U.escape(seenTxt) + '</div>'
-      + moves
-      + '<div class="ui-sub" style="margin-top:8px;opacity:.7;">突刺克蓄力 · 格挡克突刺 · 佯攻克格挡 · 蓄力克佯攻</div>';
-    /* v134：斗将的内容随合数增长（1 合 → 5 合差 4 行），没有稳定高度。
-       定死 md（620 高）时实测留白 344px，改成内容自适应。 */
+
+    /* ---- 交手记录：只留最近 3 合（再多会把面板撑长） ---- */
+    var hist = '';
+    var rowsAll = d.rows || [];
+    rowsAll.slice(-3).forEach(function (r, k) {
+      var idx = Math.max(1, rowsAll.length - Math.min(3, rowsAll.length) + k + 1);
+      var cls = r.res === 'a' ? 'var(--green-ok)' : (r.res === 'b' ? 'var(--red-light)' : 'var(--text-dim)');
+      hist += '<div style="font-size:var(--fs-cap);padding:1px 0;color:' + cls + ';">'
+        + '第' + idx + '合　我' + U.escape(r.aName) + ' ⚔ ' + U.escape(r.bName)
+        + '　' + (r.res === 'a' ? '占先' : r.res === 'b' ? '吃亏' : '相持')
+        + (r.dmg ? '　<b>-' + r.dmg + '</b>' + (r.crit ? ' 暴击' : '') : '')
+        + '</div>';
+    });
+
+    var atkTxt = '每合各出手 ' + ((d.atkPerTurn && d.atkPerTurn.a) || 1) + ' 次';
+    var body = '';
+
+    if (!d.done) {
+      body = arena
+        + '<div class="ui-sub" style="margin-top:7px;text-align:center;">'
+        + '第 <b>' + ((d.moves || []).length + 1) + '</b> 合　比分 <b>' + (d.wa | 0) + ' : ' + (d.wb | 0)
+        + '</b>　（先到 ' + (DU.winScore || 3) + ' 分 / 共 ' + (DU.playRounds || 5) + ' 合 · ' + atkTxt + '）</div>'
+        + (tendTxt ? '<div style="margin-top:4px;text-align:center;font-size:var(--fs-cap);'
+            + 'color:' + (readable ? 'var(--green-ok)' : 'var(--gold-light)') + ';">' + U.escape(tendTxt) + '</div>' : '')
+        + (f.desc ? '<div class="ui-sub" style="margin-top:3px;text-align:center;opacity:.75;font-size:var(--fs-cap);">'
+            + U.escape(f.desc) + '</div>' : '')
+        + (hist ? '<div style="margin-top:7px;border-top:1px solid var(--line);padding-top:5px;">' + hist + '</div>' : '')
+        + '<div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:10px;">'
+        + ORDER.map(function (id) {
+            var m = MV[id] || {};
+            var hot = bestK && m.beats === bestK ? ' outline:1px solid var(--gold-light);' : '';
+            return '<button class="btn gold" data-action="prologue-duel-hit" data-mv="' + id + '"'
+              + ' style="min-width:76px;' + hot + '"'
+              + ' title="' + U.escape(m.note || '') + '">' + U.escape(m.name || id) + '</button>';
+          }).join('')
+        + '</div>'
+        + '<div class="ui-sub" style="margin-top:7px;text-align:center;opacity:.7;">'
+        + '突刺克蓄力 · 格挡克突刺 · 佯攻克格挡 · 蓄力克佯攻</div>';
+    } else {
+      /* ---- 结算卡（老板：「最终胜利有一个弹窗显示，并提示经验和物资收获」） ---- */
+      var win = d.winner === 'atk', lose = d.winner === 'def';
+      var big = win ? '胜' : (lose ? '负' : '平');
+      var bigCol = win ? '#ffd166' : (lose ? '#d9534f' : '#9a9284');
+      var loot = (d.loot || []).map(function (it) {
+        return '<span style="display:inline-block;padding:2px 8px;border:1px solid var(--wood-light);'
+          + 'border-radius:4px;margin:0 4px;">' + U.escape(it.name) + ' ×' + it.n + '</span>';
+      }).join('');
+      body = arena
+        + '<div style="text-align:center;margin-top:10px;">'
+        /* ⚠️ 结算大字不能写裸 px（smoke 的"零裸字号"会照出来）——
+           走令牌 + transform 放大。 */
+        + '<div style="font-size:var(--fs-h1);font-weight:800;color:' + bigCol
+        + ';line-height:var(--lh-1);transform:scale(1.6);margin:4px 0 8px;">' + big + '</div>'
+        + '<div style="font-size:var(--fs-cap);margin-top:3px;">' + U.escape(d.txt || '') + '</div>'
+        + '<div class="ui-sub" style="margin-top:2px;">比分 ' + (d.wa | 0) + ' : ' + (d.wb | 0) + '</div></div>'
+        + '<div style="margin-top:9px;padding:9px 11px;border:1px solid var(--wood-light);'
+        + 'border-radius:7px;background:rgba(var(--sh-rgb),.3);">'
+        + '<div style="font-size:var(--fs-cap);">经验　<b style="color:var(--gold-light);">+'
+        + (d.gain | 0) + '</b></div>'
+        + (loot ? '<div style="font-size:var(--fs-cap);margin-top:4px;">物资　' + loot + '</div>'
+          : (win ? '' : '<div class="ui-sub" style="margin-top:4px;">这一战没捞到东西</div>'))
+        + '</div>'
+        + (hist ? '<div style="margin-top:7px;border-top:1px solid var(--line);padding-top:5px;">' + hist + '</div>' : '')
+        + '<div style="margin-top:11px;text-align:center;">'
+        + '<button class="btn" data-action="prologue-duel-close">收手</button></div>';
+    }
+
+    var title = d.done
+      ? '⚔ 斗将 · ' + (d.winner === 'atk' ? '拿下' : d.winner === 'def' ? '败退' : '平手')
+      : '⚔ 斗将 · ' + U.escape(f.name || '对手');
+    var html = '<div class="gold-heading">' + title + '</div>' + body;
     ui.openModal(html, { size: 'auto' });
   };
 
@@ -25355,7 +25417,7 @@
      （这解释了"改了却说没生效"的观感）。老板若发现版本 ≠ 最新交付，按 Ctrl+F5
      强制刷新即获得新代码。⚠️ 发版须走 **bump_version.py --bump --version vX.Y**（它同步 index.html 的 ?v=/BUILD
      与这里的 GAME.VERSION 三处）—— 只手改 index.html 会让版本号冻住（v91.18 前的病灶）。 */
-  GAME.VERSION = 'v135.0';
+  GAME.VERSION = 'v136.0';
   function boot() {
     fitAppSize();
     try {
