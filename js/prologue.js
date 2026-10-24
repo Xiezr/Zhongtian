@@ -50,6 +50,20 @@
     return Math.floor(((s && s.world && s.world.elapsed) || 0) / 86400);
   }
   function SP() { return (GAME.sphereOf ? GAME.sphereOf() : GAME.sphere); }
+  /* ============================================================
+   * v139：**取"已经有 cells 的"那颗球**。
+   * ------------------------------------------------------------
+   * `SP()` 走 `GAME.sphereOf()`（地图球面），而 `newGame → P.begin` 这个时点
+   * 地图球面可能还没建 → `ciOfXY` 返回 -1、`hopsWithin` 返回空数组。
+   * 于是"就近挪到有事的格 / 找最近的平地"整段静默失效（外面还有 try/catch 吞异常），
+   * 出生点留在 0 号格（实测 seed 61024 下是**湖**）：
+   *   开局第一屏「可走 6 格 · 可做 0 件」，pos 在 lake 上。
+   * 凡是**需要读地形**的地方一律走这个 helper，不直接用 SP()。 */
+  function SPc() {
+    if (GAME.sphere && GAME.sphere.cells) return GAME.sphere;
+    if (GAME.mapSphere && GAME.mapSphere.cells) return GAME.mapSphere;
+    return SP();
+  }
 
   /* ============================================================
    * 一、阶段开关
@@ -72,7 +86,12 @@
      *   · res  —— 随身物资（无城时 `GAME.res()` 落到这一份，见 state.js:183）
      * 立城时这两样一起交给新城，玩家不会"凭空丢东西"。
      * ============================================================ */
-    var sp = SP();
+    /* ⚠️ v139：**优先用"已经建好 cells"的那颗球**。
+       `SP()` 走的是 `GAME.sphereOf()`（地图球面），而 newGame 走到这里时
+       地图球面可能还没建（cells 为空）→ `ciOfXY` 返回 -1、`hopsWithin` 返回空数组
+       → 下面那串"就近挪到有事的格 / 找平地"全部失效，出生点落回 0 号格（多半是湖）。
+       实测表现为开局第一屏「可走 6 格 · 可做 0 件」（§333③ 红）。 */
+    var sp = SPc();
     var p0 = (s.map && s.map.startPos) || (GAME.DATA && GAME.DATA.START_POS) || {};
     var pos = (sp && sp.ciOfXY) ? sp.ciOfXY(p0.x, p0.y) : 0;
     if (!(pos >= 0)) pos = 0;
@@ -108,7 +127,13 @@
       var RING_PLAIN = 4;
       var actsHere = (GAME.jianghuActsAt ? GAME.jianghuActsAt(pos) : []) || [];
       var nearPlain = P.nearestBuildableN ? P.nearestBuildableN(pos, RING_PLAIN) : null;
-      if (sp && sp.hopsWithin && GAME.jianghuActsAt && (!nearPlain || !actsHere.length)) {
+      /* ⛔ v139（实战暴露的判据错误）：进入搬迁的条件**只能是"脚下没事"**。
+         原来写的是 `(!nearPlain || !actsHere.length)` —— 于是"脚下明明有采集/清剿、
+         只是 4 环内没有平地"也会触发搬迁，最后还可能被挪到一块**没动作的平地**上
+         （`cand` 为空时的退路），开局第一屏就成了「可做 0 件」（§333③ 红）。
+         "4 环内有平地"是**选址偏好**，不是搬迁理由 —— 玩家可以先在原地做事，
+         立城时 HUD 会告诉他最近平地在哪个方向。 */
+      if (sp && sp.hopsWithin && GAME.jianghuActsAt && !actsHere.length) {
         /* ① 先定位最近的平地（用当前 pos 作起点，半径给足） */
         var far = P.nearestBuildable ? P.nearestBuildable(40) : null;
         var base = far ? far.ci : pos;
@@ -126,7 +151,51 @@
           pos = far.ci;                                        /* 退路：站到平地上 */
         }
       }
+      /* ⛔ v139：**最后一道兜底 —— 脚下必须有可做的事**。
+         `jianghuActsAt` 对每格有 30% 概率返回空；上面那条"退路：站到平地上"
+         可能正好落进一个荒僻的平原（平原本来还不能采集）——
+         实测开局第一屏"可走 6 格 · 可做 0 件"，玩家一睁眼无事可做（§333③ 当场红）。
+         这里在 4 环内再找一次"有事的格"，只改起点、不动任何判据。 */
+
     } catch (e) { /* 找落脚点失败就用原位 */ }
+    /* ============================================================
+     * v139：**最后一道兜底（无条件）** —— 出生点不许在水里，也不许脚下没事。
+     * ------------------------------------------------------------
+     * 上面的选址逻辑有多个分支，实测仍有漏网（SEED 61024：pos 落在 lake 上、
+     * `jianghuActsAt` 返回 0 → 开局第一屏「可做 0 件」）。
+     * 这里不再依赖那些分支：只看**最终结果的成色**，不合格就重新挑一次。
+     * 顺序：最近的平地 → 平地 4 环内"动作最多"的格（那是玩家真正能开工的地方）。
+     * ============================================================ */
+    try {
+      var _t1 = P.cellTypeOf(pos);
+      var _a1 = (GAME.jianghuActsAt ? GAME.jianghuActsAt(pos) : []) || [];
+      var _isWater = (_t1 === 'lake' || _t1 === 'zhaoze');
+      if ((_isWater || !_a1.length) && sp && sp.hopsWithin && GAME.jianghuActsAt) {
+        var _f1 = P.nearestBuildable ? P.nearestBuildable(60) : null;
+        /* 找不到"平地"时至少找一块**陆地**（大洋中央也要能上岸）——
+           实测随机 seed 下会出现"60 环内没有平原"的极端情况，
+           而玩家掉在水里比"离平地远一点"糟得多。 */
+        if (!_f1) {
+          var _land = -1;
+          var _rl = sp.hopsWithin(pos, 30) || [];
+          for (var _li = 0; _li < _rl.length && _land < 0; _li++) {
+            var _lt = P.cellTypeOf(_rl[_li]);
+            if (_lt && _lt !== 'lake' && _lt !== 'zhaoze') _land = _rl[_li];
+          }
+          if (_land >= 0) _f1 = { ci: _land };
+        }
+        if (_f1) {
+          /* 在平地 4 环内挑动作最多的格；一个都没有就站平地本身 */
+          var _best = -1, _bestN = 0;
+          var _r1 = sp.hopsWithin(_f1.ci, 4) || [];
+          for (var _i1 = 0; _i1 < _r1.length; _i1++) {
+            var _n1 = (GAME.jianghuActsAt(_r1[_i1]) || []).length;
+            if (_n1 > _bestN) { _bestN = _n1; _best = _r1[_i1]; }
+          }
+          pos = (_best >= 0) ? _best : _f1.ci;
+        }
+      }
+    } catch (e) { /* 兜底失败就让 pos 保持原样，不挡住开局 */ }
     s.prologue = {
       on: true, at: 0, day: -1, acts: 0, builtAt: null,
       pos: pos,
@@ -241,7 +310,7 @@
    *      · HUD 在脚下不能建时，把这句话印出来（而不是让按钮消失）
    * ============================================================ */
   P.cellTypeOf = function (ci) {
-    var sp = SP();
+    var sp = SPc();
     var c = (sp && sp.cellOf) ? sp.cellOf(ci == null ? P.pos() : ci) : null;
     return (c && c.type) || null;
   };
@@ -258,7 +327,7 @@
   };
   /* 从当前站位看过去的方向名（与 P.neighbors 里那套一致，抽出来共用） */
   P.dirNameOf = function (ci) {
-    var sp = SP();
+    var sp = SPc();
     if (!sp || !sp.cellOf) return '';
     var pc = sp.cellOf(P.pos()) || {}, nc = sp.cellOf(ci) || {};
     if (pc.lon == null || nc.lon == null) return '';
@@ -271,15 +340,21 @@
     return (Math.abs(dLat) < Math.abs(dLon) * 0.45) ? ew : (ns + ew);
   };
   /* 最近的能立城的格子（逐环外扩，第一次碰到就是最近） */
-  var _nbCache = { pos: -999, R: 0, val: null };
+  var _nbCache = { key: '', val: null };
   P.nearestBuildable = function (maxR) {
-    var sp = SP();
+    var sp = SPc();
     if (!sp || !sp.hopsWithin) return null;
     var pos = P.pos(), R = maxR || 12;
     /* 缓存：HUD 每次重建都会问一遍，而这里要扫整圈（R=40 约 5000 格）。
-       站位与半径不变就复用 —— 玩家不走动时不重复算。 */
-    if (_nbCache.pos === pos && _nbCache.R === R) return _nbCache.val;
-    var _miss = function (v) { _nbCache = { pos: pos, R: R, val: v }; return v; };
+       ⚠️ v139 实测踩到的坑：缓存键**只放了 pos 和 R**，没放"这是哪颗球"——
+         前传开局时球面还没建好，算出的结果是 `null` 并缓存下来；
+         之后球面建好了、pos 也没变 → 一直命中那个 null，
+         玩家被告知"这一带走很远都没有平地"，而立城永久失败（e2e 当场崩在 cities[0]）。
+       键里补上球面种子与格数：换球/重建球面后自动失效。 */
+    var _sd = (sp.seed3 ? sp.seed3() : 0) + '|' + ((sp.cells && sp.cells.length) || 0);
+    var key = pos + '|' + R + '|' + _sd;
+    if (_nbCache.key === key) return _nbCache.val;
+    var _miss = function (v) { _nbCache = { key: key, val: v }; return v; };
     /* ⚠️ v135 第一版写错：用 `sp.distOf(pos, ci)` 判环数 —— 但 `distOf(e1, e2)`
        收的是**实体对象**（读 `.ci`），传两个数字会走 `hexDistAt(undefined,undefined)`，
        于是"第 r 环"永远判不中 → 5 个 seed 全部误报"30 环内无平地"。
@@ -303,7 +378,7 @@
   /* 从**指定起点**找最近的能立城的格子（出生点选址要用，不能借用"当前站位"）。
      实现与 P.nearestBuildable 同一套环差集，只是起点可传。 */
   P.nearestBuildableN = function (fromCi, maxR) {
-    var sp = SP();
+    var sp = SPc();
     if (!sp || !sp.hopsWithin || fromCi == null) return null;
     var R = maxR || 2;
     var inner = {};

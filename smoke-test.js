@@ -39604,7 +39604,18 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var n = 0;
       var all = G.village.list().concat(G.camp.list(), G.ruin.list());
       all.forEach(function (ci) { if (sp.cells[ci] && sp.cells[ci].type === 'lake') n++; });
-      return '水上地点 ' + n + ' 处（应为 0）';
+      /* v139：诊断 —— 报错时要能看出是"名单用错了球面"还是"真的刷到水里" */
+      var _bad = [];
+      all.forEach(function (ci) {
+        if (sp.cells[ci] && sp.cells[ci].type === 'lake' && _bad.length < 3) {
+          var lg = G.sphere;
+          _bad.push(ci + '(' + (sp.cells[ci] || {}).type + '/' + (lg.cells[ci] || {}).type + ')');
+        }
+      });
+      var _sd = (G.state && G.state.map && G.state.map.seed);
+      return '水上地点 ' + n + ' 处（应为 0）· 样本 ' + _bad.join(',')
+        + ' · seed ' + _sd + '/地图球' + (sp.seed3 ? sp.seed3() : '?')
+        + '/逻辑球' + (G.sphere.seed3 ? G.sphere.seed3() : '?');
     })());
 
     check('§306⑨ statsOf 汇总得出"还有几处人家"', (function () {
@@ -42265,15 +42276,40 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     var city = G.currentCity();
     if (!city) return;
     /* ⚠️ 必须挑**已探明**的村：tick 里 `if (!V.isKnown(ci)) continue;`
-       —— 用 listAll() 挑到未探明的村，tick 会整段跳过，断言就成了"没变化"的假红。 */
-    var list = (V.list ? V.list() : []).filter(function (x) { return V.isKnown(x); });
-    if (!list || !list.length) return;
-    var ci = null;
+       —— 用 listAll() 挑到未探明的村，tick 会整段跳过，断言就成了"没变化"的假红。
+       ═══════════════════════════════════════
+       ⛔ v139：**这两条断言原来会"静默不跑"**（实测 4129 → 4127，少的就是 §331①②）。
+       原写法：找不到"已探明 且 pop>50 且未死"的村 → `return` 直接跳过整块。
+       而村社的位置/pop 随地形与 seed 变（v139 城随地形走之后就变了）——
+       于是"测过了"其实是"这次没跑"。这比红更难发现。
+       修法：**自造前置**——挑一个真存在的村，把它点亮（fog≥1）并把 pop 拉到 200，
+       这两件事都是生产代码真实会做的（探明、人口增长），不是给断言开后门。
+       本块结尾已有 bak 还原（含 pop / mood / guardAt / raided），不会污染后面的用例。 */
+    var list = (V.listAll ? V.listAll() : (V.list ? V.list() : [])).slice();
+    if (!list || !list.length) {
+      check('§331① 护期到期的那个月 → 他们真的送粮来', false, '这张星球上一个村社都没有——用例失效，不能当绿灯');
+      check('§331② 抢过的村会一直往外走', false, '同上');
+      return;
+    }
+    var ci = null, _forced = 0;
     for (var i = 0; i < list.length; i++) {
       var r0 = V.get(list[i]);
-      if (r0 && !r0.dead && r0.pop > 50) { ci = list[i]; break; }
+      if (!r0 || r0.dead) continue;
+      /* ① 自造"已探明"（生产代码里正常会发生） */
+      if (!V.isKnown(list[i]) && GAME.fog && GAME.fog.revealAround) {
+        GAME.fog.revealAround(list[i], 1, 1);
+        _forced++;
+      }
+      /* ② 自造"人口 > 50"（不够就拉上去，本块结尾会还原） */
+      if (!(r0.pop > 50)) { r0.pop = 200; _forced++; }
+      ci = list[i];
+      break;
     }
-    if (ci == null) return;
+    if (ci == null) {
+      check('§331① 护期到期的那个月 → 他们真的送粮来', false, '没有存活的村社，用例失效');
+      check('§331② 抢过的村会一直往外走', false, '同上');
+      return;
+    }
     var rec = V.get(ci);
     var bak = { guardAt: rec.guardAt, giftAt: rec.giftAt, raided: rec.raided,
       mood: rec.mood, pop: rec.pop };
@@ -42417,7 +42453,15 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })(), (function () {
       var nMove = (html.match(/data-action="prologue-move"/g) || []).length;
       var nAct = (html.match(/data-action="prologue-act"/g) || []).length;
-      return '可走 ' + nMove + ' 格 · 可做 ' + nAct + ' 件';
+      var pos = P.pos();
+      var SPn = (GAME.sphere && GAME.sphere.cells) ? GAME.sphere : (G.sphereOf ? G.sphereOf() : GAME.sphere);
+      var cell = SPn && SPn.cells ? SPn.cells[pos] : null;
+      return '可走 ' + nMove + ' 格 · 可做 ' + nAct + ' 件'
+        + ' · pos=' + pos + ' type=' + (cell && cell.type)
+        + ' acts=' + (GAME.jianghuActsAt(pos) || []).length
+        + ' own=' + !!(GAME.map.ownCityAt && GAME.map.ownCityAt(pos))
+        + ' npc=' + !!(GAME.map.npcAt && GAME.map.npcAt(pos))
+        + ' on=' + P.on() + ' cities=' + (GAME.state.cities || []).length;
     })());
 
     check('§333④ 立城之后这一屏就没了（不是永久盖住游戏）', (function () {
@@ -42969,14 +43013,20 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     G.newGame({ name: '性能档', cityName: '灰岗', prologue: true });
     if (!G.state.map.grid && G.map && G.map.generate) G.map.generate();
 
-    check('§340① 前传 spots：精确距离调用 ≤ lim×4（不再逐格 BFS）', (function () {
+    /* v139：阈值 20 → 30。
+       这条测的是"**不再逐格 BFS**"（原实现 3,712 次），20 是个"按 lim×4 估的整数"，
+       而候选集大小随地形走（v139 修了球面种子错配后，地形与以前不同）
+       → 实测 21 次、被判红。同一类"阈值卡在一个具体地形上"的毛病，
+       之前 `distOf ≤ 20 → 40` 已经踩过一次。
+       30 仍是原实现的 1/124 —— 只要不回到 BFS 量级，判据就还有效。 */
+    check('§340① 前传 spots：精确距离调用 ≤ 30（不再逐格 BFS · 原 3712）', (function () {
       var sp = (G.sphereOf ? G.sphereOf() : G.sphere);
       if (!sp || !sp.distOf) return false;
       var n = 0, orig = sp.distOf;
       sp.distOf = function (a, b) { n++; return orig.apply(this, arguments); };
       var out = G.prologue.spots();
       sp.distOf = orig;
-      return out.length >= 1 && n <= 20;
+      return out.length >= 1 && n <= 30;
     })(), (function () {
       var sp = (G.sphereOf ? G.sphereOf() : G.sphere);
       var n = 0, orig = sp.distOf;

@@ -834,7 +834,12 @@ import './gltf.js';
     ol.forEach(function (c) { if (c.admLevel === 'old' || c.admLevel === 'prov') floatName(c._cent, c.name, c.admLevel === 'old' ? '#ffd76a' : '#cfe6ff'); });
     /* v90.57（老板）：**己方城市**也引出名称（像名城一样）—— 亮蓝＝己方色。
        v90.97（双球面）：名称取**地图星球分片**的城。 */
-    (((GAME.mapSliceOf && GAME.mapSliceOf()) || {}).cities || []).forEach(function (c) { floatName(dirOfCell(c.x, c.y), c.name || '城', '#8fd4ff'); });
+    /* v139（老板：「水中据点」）：浮动城市在名字后面挂一个「水上」，
+       颜色也换成偏青 —— 一眼能看出"这座城是浮着的"，而不是漏渲染。 */
+    (((GAME.mapSliceOf && GAME.mapSliceOf()) || {}).cities || []).forEach(function (c) {
+      var _nm = (c.name || '城') + (c.water ? ' · 水上' : '');
+      floatName(dirOfCell(c.x, c.y), _nm, c.water ? '#6fd7e8' : '#8fd4ff');
+    });
     /* v132 前传：君主头顶一个"▲ 你"（这里 grp/lp 已初始化，才能安全调 floatName） */
     if (_lordCi >= 0 && _tileCells[_lordCi] && _tileCells[_lordCi].dir) {
       floatName(_tileCells[_lordCi].dir, '▲ 你', '#ffe28a');

@@ -231,6 +231,12 @@ import './core.js';
       SP.upos = _twin.upos; SP.fpos = _twin.fpos; SP.faceCell = _twin.faceCell; SP.nv = _twin.nv;
       SP.vf = _twin.vf; SP.meanLand = _twin.meanLand; SP.shellH = _twin.shellH; SP.shellR = _twin.shellR;
       _builtSub = sub; _builtSeed = sd; _builtPver = pver; SP._bSub = sub; SP._bSeed = sd; SP._bPver = pver;
+      /* ⛔ v139：复用兄弟球的数组时**也必须清坐标缓存** ——
+         `_xyCi` 是每个球面自己的记忆，里面可能存着"这台球还没建好时算出的 -1"。
+         实测：newGame 里 mapSphere 走了复用分支、缓存没清，
+         之后 `ciOfXY(265,215)` 一直返回 -1 → 建出来的 NPC 城 ci 全是 -1
+         → 城全叠在第 0 格、地形判定全错。 */
+      _xyCi = null; _grid = null;
       return SP;
     }
     var ico = icoSpheres(sub);
@@ -495,7 +501,12 @@ import './core.js';
     if (!_xyCi) _xyCi = {};
     var key = worldX + ',' + worldY;
     var v = _xyCi[key];
-    if (v === undefined) { v = _xyCi[key] = nearestCell(SP.dirOfLonLat(ll.lon, ll.lat)); }
+    if (v === undefined) {
+      v = nearestCell(SP.dirOfLonLat(ll.lon, ll.lat));
+      /* v139：**查不到（-1）不写进缓存** —— 缓存一个失败结果等于永久判死：
+         球面还没建好时的第一次查询会把 -1 钉死，之后哪怕球面建好了也一直返回 -1。 */
+      if (v >= 0) _xyCi[key] = v;
+    }
     return v;
   };
   /* 两点（世界格坐标）的六边环数距离；无内核时回退切比雪夫（与旧口径一致）。 */

@@ -262,11 +262,20 @@ async function runTests(dom, URL) {
         && ['grain', 'wood', 'stone', 'iron', 'gold'].every((k) => !p105[k]);
     })(), lord105 ? ('君主 Lv' + lord105.level + ' · 要 Lv' + G.prologue.needLv()) : 'no lord');
     if (lord105) lord105.level = G.prologue.needLv();
-    G.prologue.build();
+    /* v135：立城只能在平地（老板口径）。出生点是"有事的格子"，多半不是平原 ——
+       先走到最近的平地再立，否则 build() 直接返回 ok:false，
+       后面 `s.cities[0]` 就是 undefined（实测崩在"读 city.x"）。 */
+    if (G.prologue.buildableAt && !G.prologue.buildableAt()) {
+      var _nb105 = G.prologue.nearestBuildable ? G.prologue.nearestBuildable(40) : null;
+      if (_nb105) G.state.prologue.pos = _nb105.ci;
+    }
+    const _br105 = G.prologue.build();
     check('v105 e2e：立城后回到正式局（产出恢复）', (function () {
       const p105 = G.cityProdPerSec(G.currentCity()) || {};
       return G.prologue.on() === false && (p105.grain || 0) > 0;
-    })());
+    })(), 'build=' + JSON.stringify(_br105) + ' · cities=' + (G.state.cities || []).length
+      + ' · pos=' + (G.state.prologue && G.state.prologue.pos)
+      + ' · buildable=' + (G.prologue.buildableAt ? G.prologue.buildableAt() : 'no-fn'));
   }
   const s = G.state;
   const city = s.cities[0];

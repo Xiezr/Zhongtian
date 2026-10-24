@@ -539,10 +539,34 @@ import './data.js';
       : (U.now() % 100000);
     /* v90.70：先建球面内核（随 seed）—— 城/名城的球面六边格索引（ci）与地形判据都要它。
        幂等（同 seed 不重算）。
-       ⚠️ v91.61 记录（未在本轮改）：此处 `seed3()` 读 `GAME.state.map.seed`，而 state
-       尚未换成新局 → 全新会话首局会用 seed 1 建球面（种子错配）。属**既有缺陷**，
-       修复需连同"出生点校验依赖球面"的时序一起调整，留待单独一轮处理。 */
-    if (GAME.sphere && GAME.sphere.ensure) GAME.sphere.ensure();
+       ============================================================
+       ⛔ v139（**修掉 v91.61 记的既有缺陷**，老板这轮的「城随地形走」把它顶到了面上）
+       ------------------------------------------------------------
+       原来：`seed3()` 读的是 `GAME.state.map.seed`，而这一行跑在"新 state 组装之前"
+             → 全新会话首局用 **seed 1** 建球面，然后基于这颗**错的星球**建 NPC 城；
+             等 `map.generate()` 再 `ensure()` 时才按真 seed 重建球面 → **地形全变**。
+       实测（seed 61024）：同一个格 16993 先是 `hill`、之后是 `lake`；
+            城「灰烬城」先在 ci 16999、之后变 17191 —— **一局里两套地图**。
+       这本来只是"视觉上地形变过一次"，靠 `城随地形走` 之后会变成
+            "每座名城在一局里跳一次位置"，所以必须在这里修。
+       修法：**建球面前先把种子喂进去**（`_seedOverride` 优先于 state），建完还原。
+            这样球面从一开始就是真 seed 的那颗，`map.generate()` 不会再重建（幂等命中）。
+       ============================================================ */
+    /* ⚠️ 必须**两个球面都喂同一个种子**：本项目是双球面 ——
+       逻辑球面 `GAME.sphere`（城/建造/科技读它）与 地图球面 `GAME.mapSphere`
+       （地图渲染/出征选址读它）。只喂前者会得到"同一个 ci 在两张球上地形不同"：
+       实测村社/营地/遗迹按逻辑球面判了"不是水"，而断言用地图球面查同一个 ci 是 `lake`
+       → §306⑪ 报「水上地点 98 处」。
+       `build()` 有"同种子兄弟球复用"优化，第二个球直接共享第一个的只读数组，不额外算。 */
+    [GAME.sphere, GAME.mapSphere].forEach(function (_sp) {
+      if (!_sp || !_sp.ensure) return;
+      /* ⚠️ **不要还原旧值**：旧 override 是"多星球切换"留下的另一颗星球的 seed。
+         还原它 → 球面按旧星球建、而 state.map.seed 是新局的 → 一局两套地形
+         （实测 smoke 里 `state.map.seed=4321` 但球面 seed=11，
+           村社/营地/遗迹的名单用 4321 算出来，落在 11 那颗球上就成了"水上地点"）。
+         这里直接设成新局种子；新局若确实要看另一颗星球，由 enterPlanet 再 setPlanet。 */
+      _sp._seedOverride = mapSeed;
+    });
     /* v70（老板需求 5）：出生坐标按**所选区**落位（首府近旁的平原空地），
        烬环以灰烬城为锚；落不到才回退旧口径的固定点。出生城写明所属区 ——
        展示、岁贡、辖区特产都读同一份归属。 */
@@ -612,7 +636,13 @@ import './data.js';
       battles: [],
       /* v70：出生点随"所选区"走 —— 地图生成时的"出生圈强制平原"与据点安全半径
          都读 `map.startPos`（见 map.js），旧档缺字段则回退 DATA.START_POS。 */
-      map: { seed: mapSeed, cities: GAME.buildNpcCities(mapSeed), wilds: null,
+      /* v139：**NPC 城延迟到 newGame 末尾再建**。
+         原来在这里（对象字面量里）就 `buildNpcCities(mapSeed)` ——
+         此刻球面虽然已经按 mapSeed 建好，但 `ciOfXY` 会返回 -1（缓存/网格在
+         这个时点还没就绪），结果 174 座城的 ci 全是 -1、全叠在第 0 格。
+         实测：`capCi = -1`（newGame 后）vs `17191`（generate 后）—— 同一局两种结果。
+         改为 null，由末尾的 generate 统一建（那时球面/网格都定型了）。 */
+      map: { seed: mapSeed, cities: null, wilds: null,
         startPos: { x: startPos.x, y: startPos.y } },
       /* v90.73（老板 9）：**多星球副本** —— 每颗星球一份 {seed, params}；activePlanet 指向当前。
          默认星球 = 本局的 mapSeed + SP.PLANET 默认参数。
@@ -696,7 +726,27 @@ import './data.js';
     /* v105（前传）：**只有显式 prologue:true 才进** —— 324 处测试直接调 newGame，
        默认开会把它们全落进"城不产东西"的阶段，几百条断言集体假红。
        玩家走创建角色界面（ui.doCreate）时传 true。 */
-    if (rulerOpts && rulerOpts.prologue && GAME.prologue) GAME.prologue.begin(GAME.state);
+    /* ⛔ v139：原来的 `P.begin()` 就写在这里 —— 但那一刻球面还没完全定型
+       （实测：第一次 begin 算出 pos=0、脚下 0 件事；手动再跑一次才得到 pos=5891、2 件事）。
+       前传的开局选址（找有事的格 / 找最近平地）全靠球面，所以必须**挪到球面定型之后**。
+       见本函数末尾（generate 之后）的那次调用。 */
+    /* v139：**新局落地后把 override 清掉** —— 从这一刻起"我的星球"由 `state.map.seed` 说了算。
+       随即 ensure 一次：`_builtSeed` 已是 mapSeed，幂等命中，不重算（只是让语义闭合）。
+       这样"球面用哪颗种子"与"state 里记的种子"永远同一个答案。 */
+    [GAME.sphere, GAME.mapSphere].forEach(function (_sp) {
+      if (!_sp || !_sp.ensure) return;
+      _sp._seedOverride = null;
+      try { _sp.ensure(); } catch (e) {}
+    });
+    /* v139：球面定型后再建 NPC 城（见上面 `map.cities: null` 的说明）。
+       `generate()` 内部就是 `if (!s.map.cities) { buildNpcCities(seed) ... }`，
+       幂等：已有城就跳过。 */
+    try { if (GAME.map && GAME.map.generate) GAME.map.generate(); } catch (e) { /* 建城失败不挡住开局 */ }
+    /* v139：前传在这里才开局 —— 球面已定型、NPC 城已落位，
+       此刻算出的出生点才是"真的能用"的那个（脚下有事、平地不远）。 */
+    if (rulerOpts && rulerOpts.prologue && GAME.prologue) {
+      try { GAME.prologue.begin(GAME.state); } catch (e) { /* 开局失败不挡住新局 */ }
+    }
     return GAME.state;
   };
 
@@ -1729,9 +1779,144 @@ import './data.js';
   };
 
   /* 生成 NPC 城。v90.97：加 sphere 形参（默认逻辑球面）—— 地图星球的 NPC 城须按其球面算 ci。 */
+  /* ============================================================
+   * v139（老板：「城随地形走。但不能排除水里有浮动城市，这样吧，
+   *   水中据点，城市分布约为三分之一」）
+   * ------------------------------------------------------------
+   * 病根（v135 量到的）：`DATA.NPC_CITIES` 是**旧 2D 平面时代**硬编码的 x/y，
+   *   而地形早在 v90 就换成了 cube-sphere 生成 —— 两边对不上，结果
+   *   174 座城里 **122 座（70%）泡在水/山/沼泽里**（113 座在湖上），只有 3 座在平原。
+   *
+   * 口径（老板这轮定死了三条）：
+   *   ① **城随地形走** —— 不是改地形迁就城；
+   *   ② 但**不排除水城** —— 保留一部分做「**水中据点**」（浮动城市），不是全赶到陆地；
+   *   ③ 「城市分布约为**三分之一**」—— 按**总城数**的三分之一算（174 → 58 座）。
+   *
+   * 做法（确定性，随 seed 重算，不入存档）：
+   *   · 原位置就在合格陆地上的 → 原样保留（不动，少改一处是一处）；
+   *   · 原位置在山/沼泽/水里的 → 进候选池，按 `hash(seed|id)` 排序：
+   *       前 58 座里、原本**在水上**的 → 留作水中据点（`water: true`）；
+   *       其余的 → 逐环外扩找**最近的合格陆地格**（优先平原），占位不重叠。
+   *   · 山地/沼泽的城不能当"水中据点"（那不是水），一律迁走。
+   *
+   * ⚠️ 为什么挂在 `buildNpcCities` 而不是改 `DATA.NPC_CITIES` 字面量：
+   *   这张表**不入存档**、每次按 seed 重建（见 map.generate），坐标必须跟着
+   *   **当前星球的球面**走。直接改常量会让换星球后城留在上一颗球的位置上。
+   * ============================================================ */
+  GAME._npcHash = function (seed, id) {
+    var h = 2166136261, str = String(seed) + '|' + String(id);
+    for (var i = 0; i < str.length; i++) {
+      h ^= str.charCodeAt(i);
+      h = Math.imul(h, 16777619) >>> 0;
+    }
+    return h >>> 0;
+  };
+  /* 合格陆地（可立城）：平原优先，其次草原/森林/荒漠。
+     山地与沼泽不算 —— 和 `DATA.TERRAIN.buildable` 同一套价值观（那里只有 plain 为真），
+     这里放宽到"能住人的陆地"，是因为名城不是玩家自建城，它们本来就该散在各地。 */
+  GAME._landRank = function (t) {
+    if (t === 'plain') return 0;
+    if (t === 'caoyuan') return 1;
+    if (t === 'forest') return 2;
+    if (t === 'desert') return 3;
+    return -1;                       /* lake / zhaoze / hill / city → 不合格 */
+  };
+  GAME._isWaterTerrain = function (t) { return t === 'lake' || t === 'zhaoze'; };
+  /* 从 fromCi 逐环外扩，找最近的合格陆地格（rank 小者优先，同 rank 取近） */
+  GAME._nearestLandCi = function (SP, fromCi, occupied) {
+    var RAD = [3, 6, 12, 24, 48, 96];
+    for (var r = 0; r < RAD.length; r++) {
+      var all = SP.hopsWithin ? (SP.hopsWithin(fromCi, RAD[r]) || []) : [];
+      var bestCi = -1, bestRank = 99, bestD = 1e9;
+      for (var i = 0; i < all.length; i++) {
+        var ci = all[i];
+        if (ci === fromCi || occupied['' + ci]) continue;
+        var t = ((SP.cells[ci] || {}).type);
+        var rk = GAME._landRank(t);
+        if (rk < 0) continue;
+        var d = (SP.hexDist ? SP.hexDist(fromCi, ci) : RAD[r]);
+        if (rk < bestRank || (rk === bestRank && d < bestD)) { bestRank = rk; bestCi = ci; bestD = d; }
+      }
+      if (bestCi >= 0) return bestCi;
+    }
+    return -1;
+  };
+  /* 重排 NPC 城的落点（原地返回同一批对象，只改 x/y/ci 与水城标记） */
+  GAME._relocateNpcSites = function (list, seed, SP) {
+    if (!SP || !SP.cells || !SP.ciOfXY) return list;
+    var waterKeep = Math.max(1, Math.round((list.length || 0) / 3));   /* 老板：约三分之一 */
+    var occupied = {}, cand = [], i;
+    /* ⛔ v139：**NPC 城必须避开玩家出生点附近**。
+       `jianghuActsAt` 对"城格"一律返回空（城格上没有荒野事）——
+       实测：城随地形走之后，有 NPC 城被迁到了玩家出生点/相邻格，
+       出生格当场变成"城格"，开局第一屏就成了「可做 0 件」（§333③ 红），
+       玩家一睁眼不能采集也不能清剿。
+       把出生点 2 环内先占位，城就只能落在别处。 */
+    try {
+      var _s0 = GAME.state, _sPos = _s0 && _s0.map && _s0.map.startPos;
+      if (_sPos && SP.ciOfXY) {
+        var _sci = SP.ciOfXY(_sPos.x, _sPos.y);
+        if (_sci >= 0) {
+          occupied['' + _sci] = 1;
+          (SP.hopsWithin ? (SP.hopsWithin(_sci, 2) || []) : []).forEach(function (c) { occupied['' + c] = 1; });
+        }
+      }
+    } catch (e) { /* 出生点不可用就按原样走 */ }
+
+    /* 第一遍：定 ci，分出"原样保留"与"要处理" */
+    for (i = 0; i < list.length; i++) {
+      var c = list[i];
+      c.ci = SP.ciOfXY(c.x, c.y);
+      var t = (c.ci >= 0 && SP.cells[c.ci]) ? SP.cells[c.ci].type : 'plain';
+      c.siteTerrain = t;
+      /* ⛔ v139 第二处漏洞：**"原样保留"的城也要让开出生点**。
+         原来只判"地形合不合格"，于是那座本来就落在出生点/相邻格的城被原样留下，
+         出生格变成"城格" → `jianghuActsAt` 返回空（城格上没有荒野事）
+         → 开局第一屏「可做 0 件」。地形合格但位置冲突的，一样要进候选池迁走。 */
+      if (GAME._isWaterTerrain(t) || t === 'hill' || occupied['' + c.ci]) {
+        cand.push({ c: c, t: t, h: GAME._npcHash(seed, c.id) });
+      } else {
+        occupied['' + c.ci] = 1;       /* 原样保留的城先占位 */
+      }
+    }
+    /* 候选排序（确定性）：hash 小者优先拿"水中据点"名额 */
+    cand.sort(function (a, b) { return (a.h - b.h) || (a.c.id < b.c.id ? -1 : 1); });
+
+    var keptWater = 0, moved = 0, failed = 0;
+    for (i = 0; i < cand.length; i++) {
+      var it = cand[i], cc = it.c;
+      /* ① 还能不能当"水中据点"：原本在**湖上** + 名额没满。
+         ⚠️ v139（老板：「不能排除水里有浮动城市」）：**只有湖能漂城**。
+         第一版用 `_isWaterTerrain`（湖 + 沼泽）→ 实测涌出 1 座「沼泽上的浮动城」，
+         沼泽是滩涂不是水面，漂在上面说不通。沼泽的城一律迁走。 */
+      if (it.t === 'lake' && keptWater < waterKeep) {
+        occupied['' + cc.ci] = 1;
+        cc.water = true;                 /* 浮动城市 */
+        keptWater++;
+        continue;
+      }
+      /* ② 迁到最近的合格陆地 */
+      var to = GAME._nearestLandCi(SP, cc.ci, occupied);
+      if (to < 0) {                      /* 极端情况（全图找不到陆地）：留在原地 */
+        cc.water = (it.t === 'lake');   /* v139：浮动城只认湖面 */
+        occupied['' + cc.ci] = 1;
+        failed++;
+        continue;
+      }
+      var cell = SP.cells[to] || {};
+      cc.ci = to;
+      if (cell.x != null) { cc.x = cell.x; cc.y = cell.y; }
+      cc.siteTerrain = cell.type;
+      cc.water = false;
+      occupied['' + to] = 1;
+      moved++;
+    }
+    GAME._npcReloc = { seed: seed, total: list.length, water: keptWater, moved: moved, failed: failed };
+    return list;
+  };
   GAME.buildNpcCities = function (seed, sphere) {
     var SP = sphere || GAME.sphere;
-    return U.deep(DATA.NPC_CITIES).map(function (c) {
+    var list = U.deep(DATA.NPC_CITIES).map(function (c) {
       c.owner = 'npc';
       c.garrison = GAME.genGarrison(c);
       c.maxArmy = c.garrison;
@@ -1739,6 +1924,9 @@ import './data.js';
       c.ci = (SP && SP.ciOfXY) ? SP.ciOfXY(c.x, c.y) : -1;
       return c;
     });
+    /* v139：城随地形走 —— 必须放在 ci 算完之后（判地形要读 cells[ci]） */
+    try { GAME._relocateNpcSites(list, seed, SP); } catch (e) { /* 选址失败不挡住开局 */ }
+    return list;
   };
 
   /* ============================================================
