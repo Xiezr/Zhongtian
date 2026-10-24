@@ -735,7 +735,16 @@
        （无 `garrison` 字段）→ 弹出征/攻打时 `npcCity.garrison` 为空（**0 守军、免战可占**）。
        2D 路径走 `s.map.cities`（buildNpcCities 产、**带守军**）故无此问题 —— 根因是 3D 走了原始模板。
        守军按城 id 派生（`genGarrison` 与星球无关）→ 缺则现算，一次补齐（幂等）。 */
-    (GAME.DATA.NPC_CITIES || []).forEach(function (c) {
+    /* ═══ v139（老板「城随地形走」）：**这里必须读迁移后的名单** ═══
+       原写法读 `DATA.NPC_CITIES`（原始常量表，x/y 是旧 2D 年代的坐标）。
+       v139 把城按地形重选址之后，原始表就是**过期快照**：
+         · 红标记仍画在旧位置（实测 13 座名城里 6 座的旧位置是湖）；
+         · 点中它拿到的 cellRef 也是原始模板（x/y 错、ci 错）→ 出征目标错位。
+       改读 `state.map.cities` —— buildNpcCities 产、**已迁移、带守军与 water 标志**；
+       原始表仅在「还没 buildNpcCities」时兜底（避免开局一瞬没标记）。 */
+    var _npcList = (((GAME.state || {}).map || {}).cities) || [];
+    if (!_npcList.length) _npcList = (GAME.DATA.NPC_CITIES || []);
+    _npcList.forEach(function (c) {
       if (c.lon == null || c.lat == null) { var d = dirOfCell(c.x, c.y); c.lon = (Math.atan2(d[2], d[0]) * 180 / Math.PI + 360) % 360; c.lat = Math.asin(Math.max(-1, Math.min(1, d[1]))) * 180 / Math.PI; }
       if (!c.garrison && GAME.genGarrison) { c.garrison = GAME.genGarrison(c); c.maxArmy = c.garrison; }
       var ci = ciOfRef(c); if (ci >= 0) { mark[ci] = [220, 70, 60]; cellKind[ci] = 'npc'; cellRef[ci] = c; }
@@ -833,16 +842,24 @@
        避免同名双标签叠在一起。判据：本星球分片里已拥有的城，其 `origId` = 该名城的 id。 */
     var _ownOrig = {};
     (((GAME.mapSliceOf && GAME.mapSliceOf()) || {}).cities || []).forEach(function (c) { if (c && c.origId) _ownOrig[c.origId] = 1; });
-    (GAME.DATA.NPC_CITIES || []).forEach(function (c) { if (_ownOrig[c.id]) return; if (c.type === 'capital' || c.type === 'zhou') floatName(dirOfRef(c), c.name || '', '#ffd76a'); });
+    /* v139：同上 —— 金名也必须跟迁移后的坐标走，否则湖面上会漂着一串没有对应物的城名。 */
+    _npcList.forEach(function (c) { if (_ownOrig[c.id]) return; if (c.type === 'capital' || c.type === 'zhou') floatName(dirOfRef(c), c.name || '', '#ffd76a'); });
     var ol = M.admCities || [];
     ol.forEach(function (c) { if (c.admLevel === 'old' || c.admLevel === 'prov') floatName(c._cent, c.name, c.admLevel === 'old' ? '#ffd76a' : '#cfe6ff'); });
     /* v90.57（老板）：**己方城市**也引出名称（像名城一样）—— 亮蓝＝己方色。
        v90.97（双球面）：名称取**地图星球分片**的城。 */
     /* v139（老板：「水中据点」）：浮动城市在名字后面挂一个「水上」，
        颜色也换成偏青 —— 一眼能看出"这座城是浮着的"，而不是漏渲染。 */
+    /* ⚠️ v139 实测采到：这段第一版挂在 `mapSliceOf().cities` 上，
+       而那个列表只有**玩家自己的城**（`sliceOf` → `by(s.cities)`）——
+       水中据点是 NPC 城，在 `s.map.cities` 里，所以「· 水上」标签一条都没画出来（截图确认水面上空白）。
+       现在：自己的城照旧蓝色；NPC 城里的浮动城单独上青色 + 「· 水上」。 */
     (((GAME.mapSliceOf && GAME.mapSliceOf()) || {}).cities || []).forEach(function (c) {
-      var _nm = (c.name || '城') + (c.water ? ' · 水上' : '');
-      floatName(dirOfCell(c.x, c.y), _nm, c.water ? '#6fd7e8' : '#8fd4ff');
+      floatName(dirOfCell(c.x, c.y), c.name || '城', '#8fd4ff');
+    });
+    _npcList.forEach(function (c) {
+      if (!c.water) return;
+      floatName(dirOfCell(c.x, c.y), (c.name || '城') + ' · 水上', '#6fd7e8');
     });
     /* v132 前传：君主头顶一个"▲ 你"（这里 grp/lp 已初始化，才能安全调 floatName） */
     if (_lordCi >= 0 && _tileCells[_lordCi] && _tileCells[_lordCi].dir) {
@@ -25500,7 +25517,7 @@
      （这解释了"改了却说没生效"的观感）。老板若发现版本 ≠ 最新交付，按 Ctrl+F5
      强制刷新即获得新代码。⚠️ 发版须走 **bump_version.py --bump --version vX.Y**（它同步 index.html 的 ?v=/BUILD
      与这里的 GAME.VERSION 三处）—— 只手改 index.html 会让版本号冻住（v91.18 前的病灶）。 */
-  GAME.VERSION = 'v139.0';
+  GAME.VERSION = 'v139.1';
   function boot() {
     fitAppSize();
     try {
