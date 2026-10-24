@@ -42560,6 +42560,97 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })());
   })();
 
+  /* ============================================================
+   * §351 · v141：场景里的"记忆"与"遭遇"
+   * ------------------------------------------------------------
+   * 上一版有两个漏洞，这两条就是堵它们的：
+   *   ① 节点“这一趟收拾过没有”只存在内存里 → 一退出就没了；
+   *   ② 场景里除了摆好的三个点，没有任何意外。
+   * 判据都是**行为**（做了就记住、隔天复位、同参数同结果），
+   * 不是看字段长什么样 —— v130 那次“断言和被测代码犯同一个错”的教训。
+   * ============================================================ */
+  console.log('\n===== 351. v141 场景：收拾过的会记住，走出去会撞上东西 =====');
+  (function () {
+    var SC = G.scene3d;
+    if (!SC || !SC.isDone) { check('§351① 场景节点状态持久化', false, '没有 isDone/markDone'); return; }
+
+    check('§351① 节点状态记在存档里，且隔天会复位', (function () {
+      G.newGame({ name: '场景', cityName: '灰岗', mapSeed: 20261024, prologue: true });
+      var st = G.state;
+      if (!st.world) return false;
+      var d0 = SC.dayNow();
+      SC.markDone('ruin', 0);
+      var sameDay = SC.isDone('ruin', 0) === true;
+      var otherNode = SC.isDone('ruin', 1) === false;      /* 不能一个亮全亮 */
+      var otherScene = SC.isDone('forest', 0) === false;   /* 也不能串场 */
+      /* 推进一天：当天的"收拾过"应该复位（荒野之事每天重长） */
+      st.world.elapsed = (d0 + 1) * 86400 + 60;
+      var nextDay = SC.isDone('ruin', 0) === false;
+      return sameDay && otherNode && otherScene && nextDay;
+    })(), (function () {
+      G.newGame({ name: '场景2', cityName: '灰岗', mapSeed: 20261024, prologue: true });
+      var d0 = SC.dayNow();
+      SC.markDone('ruin', 0);
+      var a = SC.isDone('ruin', 0);
+      G.state.world.elapsed = (d0 + 1) * 86400 + 60;
+      var b = SC.isDone('ruin', 0);
+      return '当天 ' + a + ' · 隔天 ' + b + ' · 键数 ' + Object.keys(G.state.sceneDone || {}).length;
+    })());
+    G.newGame({ name: '收尾', cityName: '灰岗' });
+
+    check('§351② 遭遇是确定的（同场景同格同天 → 同一头）', (function () {
+      G.newGame({ name: '遭遇', cityName: '灰岗', mapSeed: 20261024, prologue: true });
+      var a = SC.encounterFor('ruin', 777), b = SC.encounterFor('ruin', 777);
+      var same = (a ? a.id : null) === (b ? b.id : null);
+      /* 不能永远撞上：换一批格子，应该有"没事"的情形 */
+      var hits = 0, tries = 0;
+      for (var ci = 100; ci < 140; ci++) { tries++; if (SC.encounterFor('ruin', ci)) hits++; }
+      var varied = hits > 0 && hits < tries;
+      G.newGame({ name: '收尾', cityName: '灰岗' });
+      return same && varied;
+    })(), (function () {
+      G.newGame({ name: '遭遇2', cityName: '灰岗', mapSeed: 20261024, prologue: true });
+      var hits = 0, total = 40;
+      for (var ci = 100; ci < 100 + total; ci++) if (SC.encounterFor('ruin', ci)) hits++;
+      var one = SC.encounterFor('ruin', 777);
+      G.newGame({ name: '收尾2', cityName: '灰岗' });
+      return '40 格里 ' + hits + ' 格有遭遇 · ci777=' + (one ? one.name : '无');
+    })());
+
+    /* 前传结束后不该再在野地里"撞见生化兽"（那时已经是带兵的正式局） */
+    check('§351③ 立城后不再抽野地遭遇', (function () {
+      G.newGame({ name: '正式', cityName: '灰岗' });        /* 不带 prologue = 正式局 */
+      if (G.prologue && G.prologue.on && G.prologue.on()) return false;
+      return SC.encounterFor('ruin', 777) === null;
+    })(), (function () {
+      return 'prologue.on=' + (G.prologue.on ? G.prologue.on() : '?') + ' · 遭遇=' + (SC.encounterFor('ruin', 777) ? '有' : '无');
+    })());
+    G.newGame({ name: '收尾3', cityName: '灰岗' });
+
+    /* 指定物种必须生效（v141 实测的坑：被野地守将吞掉） */
+    check('§351④ duelFoe(指定物种) 真的是那个物种', (function () {
+      G.newGame({ name: '物种', cityName: '灰岗', mapSeed: 20261024, prologue: true });
+      var LIST = (G.DATA && G.DATA.DUEL_FOES) || [];
+      if (!LIST.length) return false;
+      var ok = true;
+      LIST.forEach(function (sp) {
+        var f = G.prologue.duelFoe(G.prologue.pos(), sp.id);
+        if (!f || !f.species || f.species.id !== sp.id) ok = false;
+      });
+      G.newGame({ name: '收尾4', cityName: '灰岗' });
+      return ok;
+    })(), (function () {
+      G.newGame({ name: '物种2', cityName: '灰岗', mapSeed: 20261024, prologue: true });
+      var LIST = (G.DATA && G.DATA.DUEL_FOES) || [];
+      var got = LIST.map(function (sp) {
+        var f = G.prologue.duelFoe(G.prologue.pos(), sp.id);
+        return (f && f.species && f.species.id) === sp.id ? '✓' : '✗' + sp.id;
+      }).join(' ');
+      G.newGame({ name: '收尾5', cityName: '灰岗' });
+      return got;
+    })());
+  })();
+
   /* 前传 HUD 的主按钮必须是"进场景"（老板：「这不是个正经游戏」） */
   (function () {
     var P = G.prologue;

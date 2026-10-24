@@ -416,6 +416,39 @@
   }
 
   /* 交互点用的小物件：地面上的"可拾取"标记 */
+  /* 废土物种的实体：四足低伏 + 前倾的头 + 两只辐光眼。
+     不用贴图、不加骨骼 —— 它只要"在那儿"就够了，动作交给斗将面板。 */
+  function gBeast(seed) {
+    var R = rng(seed || 41);
+    var g = new THREE.Group();
+    var body = mesh(new THREE.BoxGeometry(1.15, 0.5, 0.62), lam(0x5c6b52), 0, 0.52, 0);
+    body.rotation.x = 0.06;
+    g.add(body);
+    /* 背上的骨刺 */
+    for (var i = 0; i < 3; i++) {
+      var sp = mesh(new THREE.ConeGeometry(0.08, 0.26 + R() * 0.12, 4), lam(0x8f9a7c), -0.3 + i * 0.3, 0.82, 0);
+      sp.rotation.z = (R() - 0.5) * 0.3;
+      g.add(sp);
+    }
+    /* 头：前倾，压在身体前端 */
+    var head = mesh(new THREE.BoxGeometry(0.42, 0.36, 0.4), lam(0x6b7a5c), 0.66, 0.66, 0);
+    head.rotation.z = -0.18;
+    g.add(head);
+    /* 眼：辐光青（夜里也能看见它在看你） */
+    [-0.11, 0.11].forEach(function (dz) {
+      g.add(mesh(new THREE.SphereGeometry(0.045, 6, 5), lam(C.glow, { emissive: C.glow, emissiveIntensity: 1.0 }), 0.84, 0.72, dz));
+    });
+    /* 四条腿 */
+    [[-0.36, -0.22], [-0.36, 0.22], [0.36, -0.22], [0.36, 0.22]].forEach(function (q) {
+      g.add(mesh(new THREE.CylinderGeometry(0.07, 0.06, 0.42, 5), lam(0x4a5644), q[0], 0.21, q[1]));
+    });
+    /* 尾巴 */
+    var tail = mesh(new THREE.CylinderGeometry(0.05, 0.03, 0.7, 5), lam(0x4a5644), -0.76, 0.62, 0);
+    tail.rotation.z = 0.9;
+    g.add(tail);
+    return g;
+  }
+
   function gNodeRing(col) {
     var g = new THREE.Group();
     var r = mesh(new THREE.RingGeometry(0.55, 0.72, 20), lam(col || C.glow, { transparent: true, opacity: 0.5, side: THREE.DoubleSide }), 0, 0.03, 0);
@@ -431,7 +464,7 @@
     reed: gReed, wheat: gWheat, scarecrow: gScarecrow, hut: gHut, fence: gFence,
     tent: gTent, fire: gFire, solar: gSolar, pipe: gPipe, gate: gGate, statue: gStatue,
     tower: gTower, crystal: gCrystal, wreck: gWreck, stall: gStall, lantern: gLantern,
-    rock: gRock, log: gLog,
+    rock: gRock, log: gLog, beast: gBeast,
   };
 
   /* ══════════════════════════════════════════════════════════════
@@ -941,10 +974,37 @@
       var ring = gNodeRing(C.glow);
       ring.position.set(0, 0, 0);
       o.add(ring);
-      o.userData.node = { idx: i, act: nd.act, label: nd.label, hint: nd.hint, done: false, ring: ring };
+      /* 今天这一处是不是已经收拾过（进出场景、读档都记得） */
+      var _wasDone = S.isDone(cfg.id, i);
+      o.userData.node = { idx: i, act: nd.act, label: nd.label, hint: nd.hint, done: _wasDone, ring: ring };
+      if (_wasDone) { ring.visible = false; dimProp(o); }
       propRoot.add(o);
       nodeList.push(o);
     });
+
+    /* ---------- 遭遇（v141）：撞上一头废土物种 ----------
+       第 11 种"场景内容"：不是布置好的交互点，而是**这一次走出来撞见的**。
+       确定性抽（场景+格+天）→ 读档重进不会换对手；位置也按同一个哈希定。
+       它不消耗"节点次数"，但赢了照常走斗将结算（经验/物资/头目服了）。 */
+    var _enc = encounterFor(cfg, (ctx && ctx.ci != null) ? ctx.ci : 0);
+    if (_enc) {
+      var _eh = hashStr(cfg.id + '|enc|' + ((ctx && ctx.ci) | 0) + '|' + sceneDay());
+      var _ex = ((_eh % 9) - 4) * 0.9, _ez = (((_eh >>> 4) % 7) - 3) * 0.9 - 1.2;
+      var _b = PROP.beast(_eh % 97);
+      _b.position.set(_ex, 0, _ez);
+      var _ering = gNodeRing(C.red || 0xa8332a);
+      _b.add(_ering);
+      _b.userData.node = {
+        idx: 900, duel: true, speciesId: _enc.id,
+        label: '遭遇 · ' + _enc.name,
+        hint: (_enc.tag || '') + '　动手就进斗将',
+        done: false, ring: _ering,
+      };
+      propRoot.add(_b);
+      nodeList.push(_b);
+      ctx = ctx || {};
+      ctx.encounter = _enc.id;
+    }
 
     /* 玩家 */
     player = buildPlayer();
@@ -1348,6 +1408,21 @@
       propRoot.add(wl);
     }
 
+    /* 城门：3D 里的"出城"出口。
+       为什么放在场景里而不是做个悬浮按钮：出城是个**动作**，走过去的动作
+       比点一个按钮更像在城里。 */
+    var gate = new THREE.Group();
+    [-1.25, 1.25].forEach(function (gx) {
+      gate.add(mesh(new THREE.BoxGeometry(0.42, 1.7, 0.42), lam(0xa2967e), gx, 0.85, 0));
+    });
+    gate.add(mesh(new THREE.BoxGeometry(3.1, 0.36, 0.5), lam(0x8d8578), 0, 1.78, 0));
+    gate.add(mesh(new THREE.BoxGeometry(2.0, 0.09, 0.06), lam(C.glow, { emissive: C.glow, emissiveIntensity: 0.85 }), 0, 1.78, 0.29));
+    gate.add(contactShadow(1.3));
+    gate.position.set(0, 0, D / 2 + 1.1);
+    gate.userData.node = { idx: 901, gate: true, label: '城门 · 出城', hint: '走出去，回到野外', done: false };
+    propRoot.add(gate);
+    nodeList.push(gate);
+
     player = buildPlayer();
     player.position.set(0, 0, D / 2 - 0.6);           /* 站在城门内侧 */
     targetPt = null;
@@ -1377,6 +1452,17 @@
     });
   };
   S.isOpen = function () { return !!openId; };
+  /* 节点完成状态（按 场景+节点+游戏内天数）：纯 state 接口，不依赖渲染，
+     所以 smoke 里可以直接断言"做了就记住、隔天会复位"。 */
+  S.isDone = function (sceneId, i) { return !!doneStore()[nodeKey(sceneId, i)]; };
+  S.markDone = function (sceneId, i) { try { doneStore()[nodeKey(sceneId, i)] = 1; return true; } catch (e) { return false; } };
+  S.dayNow = sceneDay;
+  /* 遭遇的决定（同参数同结果）—— 给门禁验"确定性"，不给随机开后门 */
+  S.encounterFor = function (sceneId, ci) {
+    var cfg = sceneCfg(sceneId);
+    if (!cfg) return null;
+    return encounterFor(cfg, ci);
+  };
   /* 城内 3D（入口在城市页右下角） */
   S.openCity = function () { return S.open('city'); };
   S.current = function () { return openId; };
@@ -1428,6 +1514,7 @@
        正交相机按 0×0 算视口 → canvas 后备缓冲只有 1×1，画面看起来"什么都没有"
        （实测 _state().canvas = {w:1,h:1}）。顺序反了就是白屏，而且不报错。 */
     layer.style.display = 'block';
+    try { pruneDone(); } catch (e) {}
     buildScene(cfg);
     resize();
     renderHud();
@@ -1485,6 +1572,27 @@
       showInfo(nd);
       return { ok: true, info: true };
     }
+    /* 城门：走出城门 = 离开这个 3D 视图，回到地图 */
+    if (nd.gate) {
+      S.close();
+      if (G.ui && G.ui.toast) G.ui.toast('你走出城门，回到野外');
+      return { ok: true, gate: true };
+    }
+    /* 遭遇：进斗将（复用 v136 那套面板与内核，不另写一份战斗） */
+    if (nd.duel) {
+      var _ci = (ctx && ctx.ci != null) ? ctx.ci : null;
+      var _foe = G.prologue.duelFoe(_ci, nd.speciesId);
+      var _r = G.prologue.duelBegin(_ci, _foe);
+      if (!_r.ok) {
+        showResult(nd, { ok: false, msg: _r.msg }, 'duel');
+        return _r;
+      }
+      nd.done = true;
+      if (nd.ring) nd.ring.visible = false;
+      dimProp(o);
+      if (G.ui && G.ui.openDuelPanel) G.ui.openDuelPanel();
+      return _r;
+    }
     if (nd.done) return { ok: false, msg: '这里已经收拾过了' };
     var actId = nd.act || (ctx && ctx.actId) || 'cai';
     var ci = (ctx && ctx.ci != null) ? ctx.ci : null;
@@ -1494,13 +1602,9 @@
     } catch (e) { res = { ok: false, msg: '动手时出错了：' + (e.message || '') }; }
     nd.done = true;
     if (nd.ring) nd.ring.visible = false;
-    /* 完成的物件压暗，给"这一处收拾过了"的视觉反馈 */
-    o.traverse(function (c) {
-      if (c.isMesh && c.material && c.material.color) {
-        c.material = c.material.clone();
-        c.material.color.multiplyScalar(0.62);
-      }
-    });
+    dimProp(o);
+    /* 记到 state.sceneDone（按天）：这一趟收拾过的，同一天再进来就是暗的 */
+    if (nd.idx != null && nd.idx < 900) S.markDone(openId, nd.idx);
     showResult(nd, res || { ok: false, msg: '没有结果' }, actId);
     return res || { ok: true };
   };
@@ -1531,6 +1635,57 @@
         try { G.ui.setView('city'); } catch (err) {}
       }
     });
+  }
+
+  /* ---------- 状态持久化（v141） ----------
+   * 缺口：上一版"这一趟收拾过没有"只存在 `userData.node.done` 里，
+   * 一退出场景就没了 —— 玩家采集完再进来，碎石堆又满了。
+   * 现在按 **场景 + 节点 + 游戏内天数** 记在 `state.sceneDone`：
+   *   · 同一天内进出、存档读档都还记得（这就是"收拾过了"该有的意思）；
+   *   · 第二天自动复位（荒野之事每天都会再长出来，与 P.act 的每日锁同口径）；
+   *   · 键里带天数，所以不需要额外的"过期清理"逻辑，顺手 prune 一下旧键防膨胀。
+   * 为什么不挂在 prologue 下：城内场景（正式阶段）也能用，且这是"场景"的事。 */
+  function sceneDay() {
+    return Math.floor((((G.state || {}).world || {}).elapsed || 0) / 86400);
+  }
+  function doneStore() {
+    var st = G.state;
+    if (!st) return {};
+    if (!st.sceneDone || typeof st.sceneDone !== 'object') st.sceneDone = {};
+    return st.sceneDone;
+  }
+  function nodeKey(sceneId, i) { return sceneId + '#' + i + '#' + sceneDay(); }
+  function pruneDone() {
+    var m = doneStore(), today = sceneDay(), keys = Object.keys(m);
+    if (keys.length < 150) return 0;
+    var dropped = 0;
+    keys.forEach(function (k) {
+      var d = parseInt(String(k).split('#')[2], 10);
+      if (!(d >= today - 3)) { delete m[k]; dropped++; }
+    });
+    return dropped;
+  }
+  function dimProp(o) {
+    o.traverse(function (c) {
+      if (c.isMesh && c.material && c.material.color) {
+        c.material = c.material.clone();
+        c.material.color.multiplyScalar(0.62);
+      }
+    });
+  }
+  /* 遭遇：确定性抽（同场景/同格/同一天 → 同一头），免得"读档重进换了个对手" */
+  function hashStr(str) {
+    var h = 2166136261;
+    for (var i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+    return h >>> 0;
+  }
+  function encounterFor(cfg, ci) {
+    if (!(G.prologue && G.prologue.on && G.prologue.on())) return null;   /* 只有前传君主一个人在外面走 */
+    var LIST = (D && D.DUEL_FOES) || [];
+    if (!LIST.length) return null;
+    var h = hashStr(cfg.id + '|' + (ci | 0) + '|' + sceneDay());
+    if ((h % 100) >= 38) return null;                                     /* 约 38% 的场次会撞上 */
+    return LIST[(h >>> 8) % LIST.length];
   }
 
   function showResult(nd, res, actId) {
@@ -1573,9 +1728,11 @@
       open: openId, scene: openId,
       player: player ? { x: +player.position.x.toFixed(2), z: +player.position.z.toFixed(2) } : null,
       near: nearNode ? (nearNode.userData.node.label || '') : null,
+      encounter: (ctx && ctx.encounter) || null,
       nodes: nodeList.map(function (o) {
         var n = o.userData.node;
-        return { x: +o.position.x.toFixed(2), z: +o.position.z.toFixed(2), act: n.act, label: n.label, done: !!n.done };
+        return { x: +o.position.x.toFixed(2), z: +o.position.z.toFixed(2), act: n.act, label: n.label,
+          done: !!n.done, duel: !!n.duel, gate: !!n.gate, info: !!n.info, idx: n.idx };
       }),
       layerShown: !!(layer && layer.style.display !== 'none'),
       canvas: cvs ? { w: cvs.width, h: cvs.height } : null,

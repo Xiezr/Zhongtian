@@ -564,17 +564,26 @@
         · 超了 → 按上限造一个"游荡者"顶上
      必须用**确定性 rand**（U.rng(ci)）—— 否则每合重算时对手四维会漂，
      同样的出招会得到不同结果，斗将就不成立了。 */
-  P.duelFoe = function (ci) {
+  /* v141：`speciesId` 可选 —— 场景遭遇时由场景指定"撞见的是哪一头"，
+     不指定就按 ci 确定性抽（原来的行为）。 */
+  P.duelFoe = function (ci, speciesId) {
     var myLv = P.lv();
     var cap = Math.max(10, Math.round(myLv * 1.5 + 10));
     var d = GAME.wildDefenseAt ? GAME.wildDefenseAt(ci) : null;
-    if (d && d.gen && (d.gen.level | 0) <= cap) return d.gen;
+    /* ⛔ v141 实测踩到：这一行原来**优先返回野地守将**，于是"场景里撞见一头辐光孢子母体"
+       实际打的是该格的守将（掠夺者头目）—— 指定物种被静默吞掉。
+       指定了物种就跳过守将分支，按物种造。 */
+    if (!speciesId && d && d.gen && (d.gen.level | 0) <= cap) return d.gen;
     var glv = Math.max(5, Math.min(cap, (d && d.gen && (d.gen.level | 0)) || cap));
     var rnd = GAME.utils.rng(((ci | 0) * 2654435761) >>> 0);
     /* v136（老板：「名为斗将，实际上对面可以为生化兽等各种废土物种」）：
        从 `DATA.DUEL_FOES` 抽一个物种 —— 按 ci 确定性抽，同一格永远同一个对手。 */
     var LIST = (GAME.DATA && GAME.DATA.DUEL_FOES) || [];
-    var sp0 = LIST.length ? LIST[Math.floor(rnd() * LIST.length) % LIST.length] : null;
+    var sp0 = null;
+    if (speciesId) {
+      for (var _fi = 0; _fi < LIST.length; _fi++) if (LIST[_fi].id === speciesId) sp0 = LIST[_fi];
+    }
+    if (!sp0 && LIST.length) sp0 = LIST[Math.floor(rnd() * LIST.length) % LIST.length];
     var foeName = sp0 ? sp0.name : '游荡者';
     var g = GAME.makeGeneral(foeName, glv, 'guard', null, false, null, 'balance', rnd);
     /* ⛔ **对手的 id 必须确定**（v132 实测踩到的坑）：
@@ -583,7 +592,7 @@
        "对手"其实换了一个人，招式序列全变，**比分当场倒退**
        （实测：第 2 合 2:0 → 第 3 合 0:1）。
        固定成 `duelfoe_<ci>` 之后，同一格同一 seed 的对手永远同一个人。 */
-    g.id = 'duelfoe_' + (ci | 0);
+    g.id = 'duelfoe_' + (ci | 0) + (speciesId ? '_' + speciesId : '');
     if (GAME.guardFillOf) GAME.guardFillOf(g, 1);
     /* ⚠️ v136 实测踩到的顺序 bug：`guardFillOf` 内部**会重设四维**
        （它按等级把属性填成一组均衡值），所以"按物种倾向重分配"必须放在它**之后**。
@@ -603,20 +612,30 @@
   };
 
   /* 发起斗将：只扣一点精力（"站出来叫阵"的成本），不出兵、不耗体力 */
-  P.duelStart = function () {
+  /* ============================================================
+   * v141：**把"开一场斗将"从"只能打脚下这一格"里解耦**
+   * ------------------------------------------------------------
+   * 场景里撞见一头生化兽时，它跟"这一格今天有没有清剿动作"没关系 ——
+   * 撞见就是撞见。所以把开局那段抽成 `P.duelBegin(ci, foe)`：
+   *   · `duelStart()`    = duelBegin(P.pos(), duelFoe(P.pos()))   ← 原来的行为，一字不变
+   *   · 场景遭遇          = duelBegin(ci, 该物种按 ci 派生的对手)
+   * 同时把对手**快照**存进 duel 状态（`foeFull`）：`duelStep` 每合要用它复算，
+   * 而遭遇的对手未必等于 `duelFoe(ci)`（那是"这一格的头目"）。不存快照的话，
+   * 第一合和第三合会是两个人 —— v136 踩过的"每合换人、比分倒退"就是这一类。
+   * ============================================================ */
+  P.duelBegin = function (ci, foe) {
     if (!P.on()) return { ok: false, msg: '已经立城了' };
     var s = st0(), lord = P.lord();
     if (!s || !lord) return { ok: false, msg: '没有君主' };
     if (!GAME.battle || !GAME.battle.duelPlay) return { ok: false, msg: '斗将内核缺失' };
-    var ci = P.pos();
-    if (!P.duelReady(ci)) return { ok: false, msg: '这地方没人应战 —— 先找有仗可打的格子' };
+    if (ci == null) ci = P.pos();
     var n = P.duelOf();
     if (n && !n.done) return { ok: false, msg: '正打着呢' };
+    foe = foe || P.duelFoe(ci);
     var cost = (D().duelEnergy == null ? 2 : D().duelEnergy);
     var en = GAME.energyNowOf ? GAME.energyNowOf(lord) : 100;
     if (en < cost) return { ok: false, msg: '精力不够，叫不动阵' };
     if (GAME.setEnergyNow) GAME.setEnergyNow(lord, en - cost);
-    var foe = P.duelFoe(ci);
     s.prologue.duel = {
       ci: ci, seed: 20261024 + (s.prologue.acts | 0),   /* 固定 seed：同出招同结果 */
       moves: [], rows: [], wa: 0, wb: 0, done: false, winner: null,
@@ -631,8 +650,20 @@
         tag: (foe.species && foe.species.tag) || '',
         desc: (foe.species && foe.species.desc) || '',
         speciesId: (foe.species && foe.species.id) || '' },
+      /* 对手快照：duelStep 每合复算要用它（见函数头注释） */
+      foeFull: { id: foe.id, name: foe.name, level: foe.level | 0,
+        yw: foe.yw | 0, tong: foe.tong | 0, zm: foe.zm | 0, nz: foe.nz | 0,
+        species: (foe.species || null) },
     };
     return { ok: true, msg: foe.name + '（Lv' + (foe.level | 0) + '）应战 —— 出招吧' };
+  };
+
+  /* 原来的"点名斗将"：只能打脚下这一格，且这格得有人应战 */
+  P.duelStart = function () {
+    var ci = P.pos();
+    if (!P.on()) return { ok: false, msg: '已经立城了' };
+    if (!P.duelReady(ci)) return { ok: false, msg: '这地方没人应战 —— 先找有仗可打的格子' };
+    return P.duelBegin(ci, P.duelFoe(ci));
   };
 
   /* 出一招。返回这一合的结果；打完就结算。 */
@@ -644,7 +675,13 @@
     var DU = (GAME.DATA && GAME.DATA.DUEL) || {};
     var maxR = DU.playRounds || 5, need = DU.winScore || 3;
     d.moves.push(moveId);
-    var foe = P.duelFoe(d.ci);
+    /* 对手优先取**开局时的快照**（遭遇的对手不一定等于 duelFoe(ci)）；
+       老存档没有 foeFull 时退回 duelFoe(ci) —— 行为与以前一致。 */
+    var foe = d.foeFull
+      ? { id: d.foeFull.id, name: d.foeFull.name, level: d.foeFull.level,
+          yw: d.foeFull.yw, tong: d.foeFull.tong, zm: d.foeFull.zm, nz: d.foeFull.nz,
+          species: d.foeFull.species }
+      : P.duelFoe(d.ci);
     var r = GAME.battle.duelPlay(lord, foe, d.moves, d.seed);
     if (!r) return { ok: false, msg: '这一合没判出来' };
     var row = r.rows[r.rows.length - 1];
