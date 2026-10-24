@@ -12385,7 +12385,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
        就是为了"构建脚本自己算错时测试还能抓到"）。加了模块两边都要加 ——
        v92 加 fog / memorial 时这里漏改，导致 hash 对不上、守卫假红。 */
     var ORDER = ['core', 'registry', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'domain', 'map', 'sphere', 'risk', 'years', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'rival', 'land', 'taint', 'climate', 'surge', 'relic', 'goals', 'veteran', 'setskill', 'deck', 'bond', 'tower', 'wonderwar', 'delve', 'unrest', 'expose', 'trooplv', 'idle', 'ending', 'muster', 'founding', 'prologue', 'market', 'events', 'gltf',
-      'map3d', 'battle', 'strategy', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits', 'story', 'ui', 'main'];
+      'map3d', 'scene3d', 'battle', 'strategy', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits', 'story', 'ui', 'main'];
     var h = crypto.createHash('sha256');
     try {
       ORDER.forEach(function (m) {
@@ -42478,6 +42478,105 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       return r.ok === true && gone;
     })(), (function () { return 'on=' + P.on(); })());
 
+    G.newGame({ name: '收尾', cityName: '灰岗' });
+  })();
+
+
+  /* ============================================================
+   * §350 · v140：2.5D 场景（老板「前20级还是 PPT，这不是个正经游戏」）
+   * ------------------------------------------------------------
+   * 这是"能不能当正经游戏玩"的承重墙，钉三件事：
+   *   ① 十个场景**都在**，且配置完整（有名字/配色/布景/交互点，没有手误的道具类型）；
+   *   ② 动作 → 场景的映射成立（同样的"采集"，森林砍树、草原割麦、其余翻废墟）；
+   *   ③ 前传 HUD 的**主按钮是"进场景"**，而不是直接弹一行字就完事 ——
+   *      这条最要紧：它守住的就是老板原话里的"PPT"。
+   * ⚠️ 只测数据与呈现，不测 WebGL：smoke 跑在 node 里没有 THREE/DOM，
+   *    真正的渲染由 UI 实机门禁（audit_v125b_perf_ui.js）负责。
+   * ============================================================ */
+  console.log('\n===== 350. v140 2.5D 场景：走进去，而不是弹一行字 =====');
+  (function () {
+    var SC = G.scene3d;
+    if (!SC || !SC.list) { check('§350① 场景系统在位', false, 'GAME.scene3d 缺失'); return; }
+
+    check('§350① 十个场景齐备且配置完整（有名字/配色/布景/交互点/无手误道具）', (function () {
+      var list = SC.list();
+      if (!list || list.length < 10) return false;
+      var ids = {}, ok = true;
+      list.forEach(function (it) {
+        if (ids[it.id]) ok = false;                 /* id 不许重 */
+        ids[it.id] = 1;
+        var pr = SC._probe(it.id);
+        if (!pr) { ok = false; return; }
+        if (!pr.name || pr.props < 3 || pr.nodes < 2) ok = false;
+        if (!pr.colors || typeof pr.colors.ground !== 'number') ok = false;
+        if (pr.unknown && pr.unknown.length) ok = false;   /* 道具类型手误会静默不画 */
+      });
+      return ok;
+    })(), (function () {
+      var list = SC.list() || [];
+      var bad = [];
+      list.forEach(function (it) {
+        var pr = SC._probe(it.id);
+        if (!pr) { bad.push(it.id + ':无配置'); return; }
+        if (pr.unknown && pr.unknown.length) bad.push(it.id + ':未知' + pr.unknown.join('/'));
+        if (pr.nodes < 2) bad.push(it.id + ':节点' + pr.nodes);
+      });
+      return list.length + ' 个场景（' + list.map(function (x) { return x.id; }).join(',') + '）'
+        + (bad.length ? ' · 问题 ' + bad.join(' ') : '');
+    })());
+
+    check('§350② 动作→场景映射成立（采集分森林/庄稼/废墟三种场景）', (function () {
+      var P = SC.pickFor;
+      if (!P) return false;
+      return P('cai', 'forest') === 'forest' && P('cai', 'caoyuan') === 'field'
+        && P('cai', 'desert') === 'ruin' && P('lake_scene', 'lake') === 'lake'
+        && P('tao', 'hill') === 'camp' && P('shi', 'hill') === 'trial'
+        && P('xiu', 'forest') === 'spire' && P('bai', 'forest') === 'hamlet';
+    })(), (function () {
+      var P = SC.pickFor || function () { return '?'; };
+      return '采集: 林=' + P('cai', 'forest') + ' 田=' + P('cai', 'caoyuan') + ' 荒=' + P('cai', 'desert')
+        + ' · 钓=' + P('lake_scene', 'lake') + ' · 剿=' + P('tao', 'hill')
+        + ' · 炼=' + P('shi', 'hill') + ' · 修=' + P('xiu', 'forest') + ' · 访=' + P('bai', 'forest');
+    })());
+
+    /* 每个场景里写的动作，必须都是真实存在的动作 id（写错就是"点了没反应"） */
+    check('§350③ 场景里引用的事件 id 全部真实存在', (function () {
+      var acts = G.DATA.LING_ACT || {};
+      var bad = [];
+      (SC.list() || []).forEach(function (it) {
+        var pr = SC._probe(it.id);
+        (pr.nodeActs || []).forEach(function (a) { if (!acts[a]) bad.push(it.id + ':' + a); });
+        if (pr.act && !acts[pr.act]) bad.push(it.id + ':默认' + pr.act);
+      });
+      return bad.length === 0;
+    })(), (function () {
+      var acts = G.DATA.LING_ACT || {};
+      var bad = [];
+      (SC.list() || []).forEach(function (it) {
+        var pr = SC._probe(it.id);
+        (pr.nodeActs || []).forEach(function (a) { if (!acts[a]) bad.push(it.id + ':' + a); });
+      });
+      return bad.length ? '不存在 ' + bad.join(' ') : '全部对齐 LING_ACT';
+    })());
+  })();
+
+  /* 前传 HUD 的主按钮必须是"进场景"（老板：「这不是个正经游戏」） */
+  (function () {
+    var P = G.prologue;
+    /* ⚠️ 出口名是 screenHTML（第一版写成 hudHTML，断言直接红） */
+    if (!P || !P.screenHTML) { check('§350④ HUD 主按钮是"进场景"', false, '没有 screenHTML'); return; }
+    G.newGame({ name: '场景入口', cityName: '灰岗', mapSeed: 20261024, prologue: true });
+    var html = P.screenHTML() || '';
+    check('§350④ 前传 HUD 主按钮是「进场景」，且仍留一个「就地解决」', (function () {
+      var nScene = (html.match(/data-action="prologue-scene"/g) || []).length;
+      var nAct = (html.match(/data-action="prologue-act"/g) || []).length;
+      /* 两个都要有：只有 scene 是"没有退路"，只有 act 就是退回 PPT */
+      return nScene >= 1 && nAct >= 1;
+    })(), (function () {
+      var nScene = (html.match(/data-action="prologue-scene"/g) || []).length;
+      var nAct = (html.match(/data-action="prologue-act"/g) || []).length;
+      return '进场景 ' + nScene + ' 个 · 就地解决 ' + nAct + ' 个';
+    })());
     G.newGame({ name: '收尾', cityName: '灰岗' });
   })();
 

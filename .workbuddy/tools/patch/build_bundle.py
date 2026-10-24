@@ -20,7 +20,7 @@ HASHF = os.path.join(JS, 'bundle.hash')
 
 # 与 js/main.js 的 import 列表逐条一致（= 旧 index.html 的 <script> 顺序）。
 ORDER = ['core', 'registry', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'domain', 'map', 'sphere', 'risk', 'years', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'rival', 'land', 'taint', 'climate', 'surge', 'relic', 'goals', 'veteran', 'setskill', 'deck', 'bond', 'tower', 'wonderwar', 'delve', 'unrest', 'expose', 'trooplv', 'idle', 'ending', 'muster', 'founding', 'prologue', 'market', 'events', 'gltf',
-         'map3d', 'battle', 'strategy', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits',
+         'map3d', 'scene3d', 'battle', 'strategy', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits',
          'story', 'ui', 'main']
 
 # ============================================================
@@ -38,7 +38,7 @@ ORDER = ['core', 'registry', 'data', 'state', 'systems', 'items', 'generals', 'c
 # 分包只解决"单文件撞线"，不解决"总量"——总量是另一件事，别混为一谈。
 # ============================================================
 WAR = ['gltf', 'battle', 'strategy', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits']
-UI = ['story', 'ui', 'map3d', 'main']
+UI = ['story', 'ui', 'map3d', 'scene3d', 'main']
 
 
 def groups():

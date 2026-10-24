@@ -54,6 +54,7 @@ import './market.js';    /* v117：集市与行情 —— 每月三次开市，�
 import './events.js';    /* v121：路上遇到的事 —— 每月一件，两三条路，代价全摊开 */
 import './gltf.js';
 import './map3d.js';
+import './scene3d.js';   /* v140：2.5D 场景运行时（走进去、动手、结算） */
 import './battle.js';
 import './strategy.js';   /* v91.77：回合战斗策略层（独立模块，只出指令） */
 import './tactic.js';
@@ -91,6 +92,12 @@ import './ui.js';
       case 'page': ui.setPage(el.dataset.key, Number(el.dataset.n)); break;
       /* v20：弹窗内翻页 —— 重绘**弹窗**而非中央视图 */
       case 'mpage': ui.setModalPage(el.dataset.key, Number(el.dataset.n)); break;
+      case 'city-3d': {
+        /* v140：城内 3D 俯瞰（读同一份 city 数据，不改任何字段） */
+        var _r3d = (GAME.scene3d && GAME.scene3d.openCity) ? GAME.scene3d.openCity() : null;
+        if (!_r3d || !_r3d.ok) toast((_r3d && _r3d.msg) || '打不开 3D 视图');
+        break;
+      }
       case 'open-wall': {
         /* v89.128（老板「围墙以环城一圈的结构作为一个建筑」）：环城热区点击 =
            打开**环城槽**的面板（已建 → 升级/拆除；未建 → 修建）。不占格、不找空地。 */
@@ -3637,7 +3644,7 @@ import './ui.js';
      （这解释了"改了却说没生效"的观感）。老板若发现版本 ≠ 最新交付，按 Ctrl+F5
      强制刷新即获得新代码。⚠️ 发版须走 **bump_version.py --bump --version vX.Y**（它同步 index.html 的 ?v=/BUILD
      与这里的 GAME.VERSION 三处）—— 只手改 index.html 会让版本号冻住（v91.18 前的病灶）。 */
-  GAME.VERSION = 'v139.1';
+  GAME.VERSION = 'v140.0';
   function boot() {
     fitAppSize();
     try {

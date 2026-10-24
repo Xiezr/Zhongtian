@@ -35755,12 +35755,22 @@ if (GAME.reg) {
     var hereBlock = '<div style="margin-top:8px;font-size:12px;color:#8a7a5c;">📍 你站在这里 · ' +
       U.escape(terrainName((SP() && SP().cellOf && SP().cellOf(P.pos()) || {}).type)) + '）</div>'
       + (hereActs.length
-        ? '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;">' + hereActs.map(function (a) {
+        /* v140（老板：「目前前20级还是 PPT，这不是个正经游戏」）：
+           主按钮**走进场景**（`prologue-scene`）—— 进到那片废墟/林地/湖边，
+           自己走、走到东西旁边动手。真正的结算仍走 `P.act`（唯一出口）。
+           另留一个「就地解决」（`prologue-act`）给不想走的人：
+           不是所有人都想每次都进去走一趟，但默认是走进去。 */
+        ? '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;">' + hereActs.map(function (a, ai) {
             var nm = (a.def && a.def.name) || a.name || a.id;
-            return '<span data-action="prologue-act" data-ci="' + P.pos() + '" data-act="' + U.escape(a.id) + '"'
-              + ' style="padding:5px 12px;border:1px solid #3a3f47;border-radius:4px;background:#191d23;'
-              + 'color:#d8d0be;font-size:13px;cursor:pointer;">' + U.escape(nm) + '</span>';
+            var kindTxt = (a.def && a.def.kind) === 'fight' ? '⚔' : (a.def && a.def.kind) === 'visit' ? '🏡' : '⛏';
+            return '<span data-action="prologue-scene" data-ci="' + P.pos() + '" data-act="' + U.escape(a.id) + '"'
+              + ' style="padding:5px 12px;border:1px solid #4a4436;border-radius:4px;background:#1c2027;'
+              + 'color:#e0d8c6;font-size:13px;cursor:pointer;" title="走进这个场景，自己过去动手">'
+              + kindTxt + ' ' + U.escape(nm) + '</span>';
           }).join('') + '</div>'
+          + '<div style="margin-top:5px;font-size:11px;color:#6f6a60;">走进去，自己找地方动手　·　'
+          + '<span data-action="prologue-act" data-ci="' + P.pos() + '" data-act="' + U.escape(hereActs[0].id) + '"'
+          + ' style="text-decoration:underline;cursor:pointer;color:#8a7a5c;">就地解决</span></div>'
         : '<div style="margin-top:3px;font-size:12px;color:#6f6a60;">这块地方没什么可做的 —— 往别处走走。</div>');
     /* v132：这格有仗可打 → 给"点名斗将"的入口（否则斗将变成满地图刷经验的捷径） */
     var duelBtn = (P.duelReady && P.duelReady())
@@ -35994,6 +36004,14 @@ if (GAME.reg) {
          结果：前传里每走一步，`ctx.refresh()` 就把世界账本弹出来盖住 HUD
          （实测调用链：openWorldPanel ← Object.refresh ← prologue-move）。
          这里统一改成**直接调刷新出口**，不依赖 ctx 的来源。 */
+      /* v140：走进场景（2.5D）。真正的结算仍在场景里调 P.act，不另开一套。 */
+      'prologue-scene': function (el, ctx) {
+        var ci = Number(el.getAttribute('data-ci'));
+        var act = el.getAttribute('data-act');
+        if (!GAME.scene3d || !GAME.scene3d.play) { ctx.toast('场景系统没加载'); return; }
+        var r = GAME.scene3d.play(act, ci);
+        if (!r || !r.ok) ctx.toast((r && r.msg) || '场景没打开');
+      },
       'prologue-act': function (el, ctx) {
         var ci = Number(el.getAttribute('data-ci'));
         var act = el.getAttribute('data-act');

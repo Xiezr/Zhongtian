@@ -8870,6 +8870,14 @@ import './state.js';
      * ============================================================ */
     return '<div class="ui-page city-pure">' +
       '<div class="city-iso" style="' + ui.zoomStyle() + '">' + board + '</div>' +
+      /* v140（老板：「如何将城内外转成 3D」）：2D 棋盘旁边给一个 3D 俯瞰入口。
+         不是替换 —— 2D 那套是数值与建造的操作面，3D 是"看看我这城长什么样"。
+         两套读**同一份 city 数据**，所以点不点它都不影响存档与测试。 */
+      '<div style="position:absolute;right:12px;bottom:12px;z-index:6;">'
+      + '<span data-action="city-3d" style="display:inline-block;padding:6px 13px;'
+      + 'border:1px solid var(--gold-light);border-radius:5px;background:rgba(18,20,26,.92);'
+      + 'color:var(--gold-light);font-size:var(--fs-cap);cursor:pointer;"'
+      + ' title="按当前城的格子与建筑，现搭一个 3D 俯瞰">🏙 用 3D 看一眼</span></div>' +
       '</div>';
   };
   /* 注意：GAME.extUsed(city) 已由 domain.js 提供（v14 按城市独立），此处不再重复定义 */
