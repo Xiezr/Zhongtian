@@ -42801,6 +42801,27 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       }
       return p2.spawn.z === plan.spawn.z;
     })(), plan.solids.length + ' 个碰撞盒 · 出生点 z=' + plan.spawn.z.toFixed(2) + ' · 出城线 z=' + plan.outZ.toFixed(2));
+
+    /* v142：屋里进得去 —— 3D 里点房子 → 开**那一格**的建筑面板（不在 3D 里另造建造 UI）。
+       判据用"替身接收参数"：只测它有没有把**正确的格号 + 城 id** 交给既有面板，
+       不测面板长什么样（那是城市页自己的事）。 */
+    check('§352⑥ 走进建筑：把那一格的格号交给建筑面板（不是"回城市页"了事）', (function () {
+      if (!SC.enterBuilding) return false;
+      var idx = -1;
+      for (var i = 0; i < plan.cells.length; i++) {
+        if (plan.cells[i].kind === 'house') { idx = plan.cells[i].idx; break; }
+      }
+      if (idx < 0) return false;
+      var got = null, bak = G.ui.openBuildModal;
+      G.ui.openBuildModal = function (i2, cid) { got = { idx: i2, cid: cid }; };
+      var r = SC.enterBuilding(idx);
+      G.ui.openBuildModal = bak;
+      return r.ok === true && !!got && got.idx === idx && got.cid === city.id;
+    })(), (function () {
+      var idx = -1;
+      for (var i = 0; i < plan.cells.length; i++) if (plan.cells[i].kind === 'house') { idx = plan.cells[i].idx; break; }
+      return '首个建筑格 idx=' + idx + ' · enterBuilding=' + (SC.enterBuilding ? '有' : '无');
+    })());
     G.newGame({ name: '收尾', cityName: '灰岗' });
   })();
 

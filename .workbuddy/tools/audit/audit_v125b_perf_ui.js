@@ -214,6 +214,25 @@ const ok = (name, cond, extra) => {
   await p.waitForTimeout(400);
   const closed = await p.evaluate(() => window.GAME.scene3d.current());
   ok('走到城门就出城（不用回头按 E）', closed === null, 'current=' + closed);
+  /* 进屋：3D 里点建筑 → 开**那一格**的建筑面板（不是"回城市页"了事）。
+     这一步是"屋里进得去"的实机证据 —— smoke 只能验参数交接，验不了面板真出现。 */
+  const enter = await p.evaluate(() => {
+    const G = window.GAME;
+    G.scene3d.openCity();
+    const c = G.currentCity();
+    let idx = -1;
+    for (let i = 0; i < c.cells.length; i++) {
+      if (c.cells[i] && c.cells[i].build && c.cells[i].build.id) { idx = i; break; }
+    }
+    const r = idx >= 0 ? G.scene3d.enterBuilding(idx) : { ok: false };
+    const root = document.querySelector('#modal-root');
+    const txt = root ? (root.textContent || '') : '';
+    try { G.ui.closeAllModals(); } catch (e) {}
+    return { ok: !!r.ok, idx: idx, hasPanel: /Lv\s*\d/.test(txt), scene: G.scene3d.current(), len: txt.length };
+  });
+  ok('进屋：点建筑 → 打开那一格的建筑面板（3D 已关）',
+    enter.ok === true && enter.hasPanel === true && enter.scene === null,
+    'idx=' + enter.idx + ' · 面板 ' + enter.len + ' 字');
 
   console.log('\n结果：' + pass + ' 通过 / ' + fail + ' 失败');
   await b.close();

@@ -3386,7 +3386,7 @@
       if (/tiejiang|gongjiang|zuofang|shuyuan|keyan/.test(bid)) return 'craft';
       return cat === 'gov' ? 'gov' : 'other';
     }
-    function house(bid, lvl, x, z) {
+    function house(bid, lvl, x, z, cidx) {
       var grp = new THREE.Group();
       var cat = catOfBid(bid);
       var base = CAT_COL[cat] || CAT_COL.other;
@@ -3496,7 +3496,7 @@
       }
       grp.add(contactShadow(CITY_BW * 0.62));
       grp.position.set(x, 0, z);
-      grp.userData.node = { info: true, label: bname(bid) + ' Lv' + lvl, bid: bid, lvl: lvl, cat: cat };
+      grp.userData.node = { info: true, idx: cidx, label: bname(bid) + ' Lv' + lvl, bid: bid, lvl: lvl, cat: cat };
       propRoot.add(grp);
       nodeList.push(grp);
       /* 碰撞盒不在这里加 —— 在 cityPlan 里按同一套尺寸算好了（渲染只管画） */
@@ -3617,11 +3617,11 @@
         gov.add(mesh(new THREE.BoxGeometry(0.9, 0.10, 0.26), lam(0x8b8272), 0, 0.05, gW / 2 + 0.16));
         gov.add(contactShadow(gW * 0.72));
         gov.position.set(it.gx, 0, it.gz);
-        gov.userData.node = { info: true, label: '政务厅 Lv' + glv, bid: 'guanfu', lvl: glv, cat: 'gov' };
+        gov.userData.node = { info: true, idx: it.idx, label: '政务厅 Lv' + glv, bid: 'guanfu', lvl: glv, cat: 'gov' };
         propRoot.add(gov); nodeList.push(gov);
         continue;
       }
-      if (it.kind === 'house') house(it.bid, it.lvl, x, z);
+      if (it.kind === 'house') house(it.bid, it.lvl, x, z, it.idx);
       else if (it.plaza) plazaPiece(x, z, it.plaza, it.idx + 3000);
       else {
         /* 什么都不放的空地：给一点碎石，别让格子里空得像没加载 */
@@ -3912,19 +3912,40 @@
       + '<div style="margin-top:10px;display:flex;gap:8px;justify-content:flex-end;">'
       + '<button data-scene="card-close" style="padding:5px 12px;border-radius:5px;cursor:pointer;'
       + 'background:#1a1e25;border:1px solid var(--line);color:var(--text);font-size:var(--fs-cap);">关掉</button>'
-      + '<button data-scene="to-city" style="padding:5px 12px;border-radius:5px;cursor:pointer;'
+      + '<button data-scene="to-city" data-enter-idx="' + (nd.idx != null && nd.idx < 900 ? nd.idx : '') + '"'
+      + ' style="padding:5px 12px;border-radius:5px;cursor:pointer;'
       + 'background:#241f14;border:1px solid var(--gold-light);color:var(--gold-light);font-size:var(--fs-cap);">'
-      + '回城内界面</button></div>';
+      + (nd.idx != null && nd.idx < 900 ? '进屋 · 建造/升级' : '回城内界面') + '</button></div>';
     layer.appendChild(card);
     card.addEventListener('click', function (e) {
       if (e.target.closest('[data-scene="card-close"]')) { card.remove(); return; }
-      if (e.target.closest('[data-scene="to-city"]')) {
+      var go = e.target.closest('[data-scene="to-city"]');
+      if (go) {
+        var ix = go.getAttribute('data-enter-idx');
         card.remove();
-        S.close();
-        try { G.ui.setView('city'); } catch (err) {}
+        /* 有格号 = 走进去办事（开这一格的建筑面板）；没有 = 只回城市页 */
+        if (ix !== '' && ix != null) S.enterBuilding(Number(ix));
+        else { S.close(); try { G.ui.setView('city'); } catch (err) {} }
       }
     });
   }
+
+  /* 走进这栋楼（v142）：关掉 3D → 回城市页 → **直接打开这一格的建筑面板**。
+     为什么不造一个"3D 里的建造界面"：建造/升级/队列是城市页那套面板的活，
+     3D 再实现一遍就是两本账（v136 斗将 HP 那个坑）。
+     3D 只负责"带你走到门口"，办不办事交给既有的门。 */
+  S.enterBuilding = function (idx) {
+    var city = G.currentCity ? G.currentCity() : null;
+    S.close();
+    try { if (G.ui && G.ui.setView) G.ui.setView('city'); } catch (e) {}
+    try {
+      if (G.ui && G.ui.openBuildModal && idx != null && idx >= 0) {
+        G.ui.openBuildModal(idx, city ? city.id : null);
+        return { ok: true, idx: idx };
+      }
+    } catch (e) { return { ok: false, msg: e.message || '打不开建筑面板' }; }
+    return { ok: false, msg: '没有建筑面板' };
+  };
 
   /* ---------- 状态持久化（v141） ----------
    * 缺口：上一版"这一趟收拾过没有"只存在 `userData.node.done` 里，
