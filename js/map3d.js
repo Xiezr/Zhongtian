@@ -294,6 +294,9 @@ import './gltf.js';
   function buildFog() {
     var kill = function (m) { if (m) { scene.remove(m); if (m.geometry) m.geometry.dispose(); if (m.material) m.material.dispose(); } };
     kill(_fogDark); kill(_fogHalf); _fogDark = _fogHalf = null;
+    /* v137：云材质数组也要清 —— `kill` 只 dispose 材质，数组里的旧引用还在，
+       而 render 每帧会遍历它推 uTime → 换星球/迷雾重建时越积越多。 */
+    M._cloudMats = [];
     var F = GAME.fog, SPn = GAME.sphere;
     if (!F || !SPn || !SPn.fpos || !SPn.faceCell) return;
     F.ensure();
@@ -303,7 +306,67 @@ import './gltf.js';
       v = F.get(fc[t]);
       if (v === 0) dark.push(t); else if (v === 1) half.push(t);
     }
-    function makeMesh(list, lift, color, opacity, order) {
+    /* ============================================================
+     * v137（老板：「地图上黑魆魆的，能不能做云雾遮盖效果……我看人家又三维又流体的」）
+     * ------------------------------------------------------------
+     * 改前：未探明区 = 一层 `0x070b11`、**不透明度 0.94** 的实心面（见下面 _fogDark）。
+     *      那不是"雾"，是"拿黑布盖住" —— 整球看过去就是一块死黑饼。
+     * 现在：同一批三角面换 **FBM 噪声着色器** ——
+     *   · 3D value noise 四倍频叠加（fbm），乘上缓慢平移的时间 → 云在球面上流动；
+     *   · 厚度决定不透明度与亮度（薄的透出底下地形，厚的更白更实）；
+     *   · 颜色从深蓝灰渐变到灰白 —— 读起来是"高空云层"，不是"没渲染出来的黑"。
+     * 为什么不上 raymarching 体积云（leoawen / jorjboi 那类）：
+     *   那套要 3D 纹理烘焙 + TAA + 后处理管线，是"第一人称飞行穿过云"的方案；
+     *   这里是**俯视一颗球**，云贴在球壳上已经足够"三维又流体"，
+     *   成本从"每像素步进 20+ 次"降到"每像素 4 次噪声"。
+     * ============================================================ */
+    var CLOUD_VS = 'varying vec3 vP;\n'
+      + 'void main(){ vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }';
+    var CLOUD_FS = [
+      'uniform float uTime; uniform float uBase; uniform float uAlpha;',
+      'varying vec3 vP;',
+      'float h31(vec3 p){ return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }',
+      'float n31(vec3 p){',
+      '  vec3 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);',
+      '  return mix(mix(mix(h31(i), h31(i + vec3(1.0,0.0,0.0)), f.x),',
+      '                 mix(h31(i + vec3(0.0,1.0,0.0)), h31(i + vec3(1.0,1.0,0.0)), f.x), f.y),',
+      '             mix(mix(h31(i + vec3(0.0,0.0,1.0)), h31(i + vec3(1.0,0.0,1.0)), f.x),',
+      '                 mix(h31(i + vec3(0.0,1.0,1.0)), h31(i + vec3(1.0,1.0,1.0)), f.x), f.y), f.z);',
+      '}',
+      'float fbm(vec3 p){ float v = 0.0, a = 0.5; for (int i = 0; i < 4; i++){ v += a * n31(p); p *= 2.03; a *= 0.5; } return v; }',
+      'void main(){',
+      '  vec3 d = normalize(vP);',
+      /* 两层不同速度 → 视差感（内层慢、外层快） */
+      /* 各向异性缩放 → 云被拉成**丝带状**（等比例缩放只会得到一团团噪点） */
+      '  vec3 q1 = d * vec3(3.1, 6.4, 3.1) + vec3(uTime * 0.020, uTime * 0.008, uTime * 0.014);',
+      '  vec3 q2 = d * vec3(8.0, 15.0, 8.0) - vec3(uTime * 0.011, uTime * 0.017, uTime * 0.006);',
+      /* ⚠️ 第一版参数（uBase 0.72 + smoothstep 0.30~0.80）实测像"磨砂玻璃球"：
+         整颗球均匀糊一层白，地形一点透不出来 —— 那不是云，是毛玻璃。
+         云要**有空洞**：薄处几乎全透（露出地形）、厚处几乎不透。
+         所以 uBase 降到 0.34，并把 smoothstep 区间收窄（0.42~0.72）——
+         同样一张噪声图，明暗对比拉开，才有"云团 + 云隙"的层次。 */
+      '  float f = fbm(q1) * 0.68 + fbm(q2) * 0.32;',
+      '  float a = uAlpha * (uBase + (1.0 - uBase) * smoothstep(0.42, 0.72, f));',
+      '  vec3 col = mix(vec3(0.13,0.17,0.25), vec3(0.64,0.70,0.80), smoothstep(0.40, 0.74, f));',
+      '  gl_FragColor = vec4(col, a);',
+      '}'
+    ].join('\n');
+    function cloudMat(opacity, base) {
+      var mm = new THREE.ShaderMaterial({
+        uniforms: {
+          uTime: { value: 0 },
+          uBase: { value: base },
+          uAlpha: { value: opacity },
+        },
+        vertexShader: CLOUD_VS,
+        fragmentShader: CLOUD_FS,
+        transparent: true, depthWrite: false, side: THREE.DoubleSide,
+      });
+      mm.frustumCulled = false;
+      (M._cloudMats = M._cloudMats || []).push(mm);
+      return mm;
+    }
+    function makeMesh(list, lift, color, opacity, order, useCloud, cloudBase) {
       if (!list.length) return null;
       var arr = new Float32Array(list.length * 9), o = 0, i, k, b, d;
       for (i = 0; i < list.length; i++) {
@@ -319,10 +382,11 @@ import './gltf.js';
       }
       var g = new THREE.BufferGeometry();
       g.setAttribute('position', new THREE.Float32BufferAttribute(arr, 3));
-      var m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({
-        color: color, transparent: true, opacity: opacity,
-        side: THREE.DoubleSide, depthWrite: false
-      }));
+      var m = new THREE.Mesh(g, useCloud ? cloudMat(opacity, cloudBase == null ? 0.34 : cloudBase)
+        : new THREE.MeshBasicMaterial({
+            color: color, transparent: true, opacity: opacity,
+            side: THREE.DoubleSide, depthWrite: false
+          }));
       m.renderOrder = order;
       m.frustumCulled = false;
       scene.add(m);
@@ -331,8 +395,11 @@ import './gltf.js';
     /* 外扩量：雾面只需盖住**自己脚下那格的地形**（山脊），不必去盖线框 ——
        线框现在由顶点色自己熄掉（paintLineFog）。
        上一版把 lift 提到 14 想盖线框，结果雾壳膨胀到把已探明区也挡住（截图确认）。 */
-    _fogDark = makeMesh(dark, 4, 0x070b11, 0.94, 21);
-    _fogHalf = makeMesh(half, 2.5, 0x2a3444, 0.5, 20);
+    /* v137：未探明 = **厚云**（原来 0x070b11 @0.94 的死黑面）。
+       uBase 0.72 → 薄处也盖住七成，厚处几乎不透 —— 地形轮廓若隐若现。 */
+    _fogDark = makeMesh(dark, 4, 0x070b11, 0.95, 21, true, 0.74);
+    /* 半明 = **薄云**（原来 0x2a3444 @0.5 的灰蓝薄片）：同一套噪声，基底更透 */
+    _fogHalf = makeMesh(half, 2.5, 0x2a3444, 0.55, 20, true, 0.18);
     paintLineFog();
   }
 
@@ -344,7 +411,10 @@ import './gltf.js';
     for (var i = 0; i < uc.length; i++) {
       var v = F ? F.get(uc[i]) : 2;
       var r, g, b;
-      if (v === 0) { r = 0.02; g = 0.03; b = 0.05; }        /* 未探明：近黑，只剩极淡轮廓 */
+      /* v137：未探明线框从**近黑**（0.02/0.03/0.05）提到深灰蓝 ——
+         上面盖的是流动云层，底下若纯黑，云会像"浮在黑布上的白斑"；
+         留一点轮廓，读起来才是"雾里看地形"。 */
+      if (v === 0) { r = 0.13; g = 0.16; b = 0.22; }
       else if (v === 1) { r = 0.28; g = 0.36; b = 0.45; }   /* 半明：灰蓝 */
       else { r = 0.56; g = 0.70; b = 0.84; }                /* 全明：原冷蓝 */
       var o = i * 6;                                        /* 每段 2 顶点 × 3 分量 */
@@ -1263,6 +1333,14 @@ import './gltf.js';
       var base = Math.max(5, camO.dist * 0.02);
       M._beamPos.scale.set(base * (0.6 + 0.7 * k), base * (0.6 + 0.7 * k), 1);
       if (M._beamPos.material) M._beamPos.material.opacity = 0.4 + 0.6 * k;
+    }
+    /* v137：云层时间推进（秒）—— 所有云材质共用一个时钟，避免各层漂移不同步 */
+    if (M._cloudMats && M._cloudMats.length) {
+      var _ct = (Date.now() % 3600000) / 1000;
+      for (var _ci2 = 0; _ci2 < M._cloudMats.length; _ci2++) {
+        var _u = M._cloudMats[_ci2].uniforms;
+        if (_u && _u.uTime) _u.uTime.value = _ct;
+      }
     }
     R3.render(scene, cam);
     var ctx = target2d.getContext('2d');
