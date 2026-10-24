@@ -85,18 +85,46 @@
      * 只挪出生点、不改判据：荒僻格仍然是荒僻格，走两步就能遇到。
      * ============================================================ */
     try {
-      if (sp && sp.hopsWithin && GAME.jianghuActsAt && !GAME.jianghuActsAt(pos).length) {
-        var ring = sp.hopsWithin(pos, 2), found = -1, i;
-        for (i = 1; i < ring.length && found < 0; i++) {
-          if (ring[i] !== pos && GAME.jianghuActsAt(ring[i]).length) found = ring[i];
+      /* ------------------------------------------------------------
+       * v135（老板：「立城为什么在水里」）——出生点必须**靠得近平地**。
+       * 实测：`DATA.TERRAIN` 里只有 `plain` 是可建地形，而它只占 3.7~8.2%；
+       * 5 个 seed 的出生点到最近平地分别是 **23 / 32 / 36 / 28 / 36 格**。
+       * 也就是说：按"只能在平地立城"这条规则，玩家开局要先蒙头走三十步
+       * 才可能见到第一块能立城的地 —— 这比"城立在水里"更难接受。
+       * 所以出生点改口径：**先保证 2 环内有平地**，再在其中挑"有事的格子"。
+       * 找不到就把出生点直接放到最近的平地上（前传本来就是"流浪到这里"）。
+       * ------------------------------------------------------------ */
+      /* ⚠️ 两个目标会打架，优先级必须是**先脚下有事**：
+           ① 站平地 → 能立城，但实测"可做 0 件"（平原本来就不能采集，
+              §333③ 当场照出"可走 6 格 · 可做 0 件"）→ 玩家一睁眼无事可做；
+           ② 站有事的地 → 能玩，但要走三十步才见到平地。
+         所以口径定为：**脚下必须有事，平地放在 4 环内**（走四步就能立城）。
+         先在有事的格里挑，挑不到才退回平地（那种情况下玩家至少能立刻立城）。 */
+      /* ⚠️ 顺序必须是"**先找平地、再在它周围挑有事的格**"。
+         反过来（先在本地点附近找"旁边有平地"的格）测过：平原稀疏、常在 20 格外，
+         5 环内一个候选都没有 → 又退回平地 → 平原不能采集 → "可做 0 件"。
+         现在：取最近的平地 → 在它 4 环内挑脚下有事的格 → 站那儿。
+         这样"脚下有事"和"四步内能立城"同时成立。 */
+      var RING_PLAIN = 4;
+      var actsHere = (GAME.jianghuActsAt ? GAME.jianghuActsAt(pos) : []) || [];
+      var nearPlain = P.nearestBuildableN ? P.nearestBuildableN(pos, RING_PLAIN) : null;
+      if (sp && sp.hopsWithin && GAME.jianghuActsAt && (!nearPlain || !actsHere.length)) {
+        /* ① 先定位最近的平地（用当前 pos 作起点，半径给足） */
+        var far = P.nearestBuildable ? P.nearestBuildable(40) : null;
+        var base = far ? far.ci : pos;
+        /* ② 在平地 4 环内挑"脚下有事"的格（含平地自己：它虽然不能采集，
+              但可能出"静修/斗将"这类动作） */
+        var cand = [], ring = sp.hopsWithin(base, RING_PLAIN), i;
+        for (i = 0; i < ring.length; i++) {
+          var c2 = ring[i];
+          if (!GAME.jianghuActsAt(c2).length) continue;
+          cand.push(c2);
         }
-        if (found < 0) {
-          ring = sp.hopsWithin(pos, 4);
-          for (i = 1; i < ring.length && found < 0; i++) {
-            if (ring[i] !== pos && GAME.jianghuActsAt(ring[i]).length) found = ring[i];
-          }
+        if (cand.length) {
+          pos = cand[0];
+        } else if (far) {
+          pos = far.ci;                                        /* 退路：站到平地上 */
         }
-        if (found >= 0) pos = found;
       }
     } catch (e) { /* 找落脚点失败就用原位 */ }
     s.prologue = {
@@ -197,6 +225,105 @@
   };
   P.needLv = function () { return D().lv || 20; };
   P.ready = function () { return P.on() && P.lv() >= P.needLv(); };
+
+  /* ============================================================
+   * v135（老板：「立城为什么在水里，玩家自建城市应当只在平地」）
+   * ------------------------------------------------------------
+   * 实测根因：`P.build` 从来**没检查过脚下地形** —— 算完坐标就 makeCity。
+   * 而这张星球的湖泊占 49%（20122/40962），所以"城立在水里"不是偶发，是常态。
+   *
+   * 判据直接接项目既有口径 `DATA.TERRAIN[t].buildable`
+   * （全表只有 `plain` 是真），**不自造第二套判定**。
+   *
+   * ⚠️ 但只有判据会把人卡死：平原只占 **3.7%**，实测开局出生点是荒漠、
+   *    2 环 0 块平地、4 环也 0 块。所以配套两件事：
+   *      · `P.nearestBuildable()` —— 告诉玩家最近平地在哪个方向、几格
+   *      · HUD 在脚下不能建时，把这句话印出来（而不是让按钮消失）
+   * ============================================================ */
+  P.cellTypeOf = function (ci) {
+    var sp = SP();
+    var c = (sp && sp.cellOf) ? sp.cellOf(ci == null ? P.pos() : ci) : null;
+    return (c && c.type) || null;
+  };
+  /* 这块地能不能立城（只有 buildable 的地算） */
+  P.buildableAt = function (ci) {
+    var t = P.cellTypeOf(ci);
+    var def = (GAME.DATA.TERRAIN || {})[t] || {};
+    return !!def.buildable;
+  };
+  P.terrainLabel = function (ci) {
+    var t = P.cellTypeOf(ci);
+    var def = (GAME.DATA.TERRAIN || {})[t] || {};
+    return def.name || (t === 'city' ? '城' : '荒地');
+  };
+  /* 从当前站位看过去的方向名（与 P.neighbors 里那套一致，抽出来共用） */
+  P.dirNameOf = function (ci) {
+    var sp = SP();
+    if (!sp || !sp.cellOf) return '';
+    var pc = sp.cellOf(P.pos()) || {}, nc = sp.cellOf(ci) || {};
+    if (pc.lon == null || nc.lon == null) return '';
+    var dLon = ((nc.lon - pc.lon + 540) % 360) - 180;
+    var dLat = nc.lat - pc.lat;
+    var ew = dLon > 0 ? '东' : (dLon < 0 ? '西' : '');
+    var ns = dLat > 0 ? '北' : (dLat < 0 ? '南' : '');
+    if (!ns) return ew || '东';
+    if (!ew) return ns;
+    return (Math.abs(dLat) < Math.abs(dLon) * 0.45) ? ew : (ns + ew);
+  };
+  /* 最近的能立城的格子（逐环外扩，第一次碰到就是最近） */
+  var _nbCache = { pos: -999, R: 0, val: null };
+  P.nearestBuildable = function (maxR) {
+    var sp = SP();
+    if (!sp || !sp.hopsWithin) return null;
+    var pos = P.pos(), R = maxR || 12;
+    /* 缓存：HUD 每次重建都会问一遍，而这里要扫整圈（R=40 约 5000 格）。
+       站位与半径不变就复用 —— 玩家不走动时不重复算。 */
+    if (_nbCache.pos === pos && _nbCache.R === R) return _nbCache.val;
+    var _miss = function (v) { _nbCache = { pos: pos, R: R, val: v }; return v; };
+    /* ⚠️ v135 第一版写错：用 `sp.distOf(pos, ci)` 判环数 —— 但 `distOf(e1, e2)`
+       收的是**实体对象**（读 `.ci`），传两个数字会走 `hexDistAt(undefined,undefined)`，
+       于是"第 r 环"永远判不中 → 5 个 seed 全部误报"30 环内无平地"。
+       改用**环差集**：hopsWithin(p, r) 是 r 内全部，减去 r-1 内全部 = 第 r 环。
+       不依赖任何距离函数，也不怕它以后改语义。 */
+    var inner = { '0': 1 };   /* 0 环 = 自己 */
+    (sp.hopsWithin(pos, 0) || []).forEach(function (c) { inner['' + c] = 1; });
+    for (var r = 1; r <= R; r++) {
+      var all = sp.hopsWithin(pos, r) || [];
+      var ring = [];
+      for (var i = 0; i < all.length; i++) if (!inner['' + all[i]]) ring.push(all[i]);
+      all.forEach(function (c) { inner['' + c] = 1; });
+      for (var j = 0; j < ring.length; j++) {
+        var ci = ring[j];
+        if (ci === pos || !P.buildableAt(ci)) continue;
+        return _miss({ ci: ci, dist: r, dir: P.dirNameOf(ci), type: P.cellTypeOf(ci) });
+      }
+    }
+    return _miss(null);
+  };
+  /* 从**指定起点**找最近的能立城的格子（出生点选址要用，不能借用"当前站位"）。
+     实现与 P.nearestBuildable 同一套环差集，只是起点可传。 */
+  P.nearestBuildableN = function (fromCi, maxR) {
+    var sp = SP();
+    if (!sp || !sp.hopsWithin || fromCi == null) return null;
+    var R = maxR || 2;
+    var inner = {};
+    (sp.hopsWithin(fromCi, 0) || []).forEach(function (c) { inner['' + c] = 1; });
+    for (var r = 1; r <= R; r++) {
+      var all = sp.hopsWithin(fromCi, r) || [];
+      var ring = [];
+      for (var i = 0; i < all.length; i++) if (!inner['' + all[i]]) ring.push(all[i]);
+      all.forEach(function (c) { inner['' + c] = 1; });
+      for (var j = 0; j < ring.length; j++) {
+        var ci = ring[j];
+        if (ci !== fromCi && P.buildableAt(ci)) {
+          return { ci: ci, dist: r, type: P.cellTypeOf(ci) };
+        }
+      }
+    }
+    return null;
+  };
+  /* 能不能立城 = 等级够 **且** 脚下是平地 */
+  P.canFound = function () { return P.ready() && P.buildableAt(P.pos()); };
 
   /* ============================================================
    * v123：**四档** —— 按等级换地方，不是同一个按钮按 15 次
@@ -675,6 +802,18 @@
       ? sp.xyOfLonLat(cell.lon, cell.lat) : null;
     if (!xy) return { ok: false, msg: '算不出这里的坐标，走一步再试' };
 
+    /* ⛔ v135（老板：「立城为什么在水里，玩家自建城市应当只在平地」）：
+       这里原来**什么都不判**——算完坐标直接 makeCity，所以湖泊上也能起城。
+       判据走 DATA.TERRAIN.buildable（全表只有 plain 为真），不自造第二套。
+       拒绝时要说清楚"这是什么地"和"最近的平地在哪"，否则玩家只会反复点。 */
+    if (!P.buildableAt(pos)) {
+      var near = P.nearestBuildable(40);
+      var hint = near
+        ? ('往' + near.dir + '走 ' + near.dist + ' 格就是平地')
+        : '这一带走很远都没有平地 —— 换个方向'
+      return { ok: false, msg: '脚下是' + P.terrainLabel(pos) + '，立不了城 —— ' + hint + '。' };
+    }
+
     /* 区归属：沿用出生区（玩家在前传里走不出多远；城要挂岁贡/辖区特产） */
     var region = (s.map && s.map.startPos && s.map.startPos.state)
       || (s.ruler && s.ruler.region) || '烬环';
@@ -885,8 +1024,21 @@
       + comboLine
       + (last ? '<div style="margin-top:9px;font-size:12px;color:#7d766a;border-top:1px solid #23262b;padding-top:7px;">最近：'
         + U.escape(last) + '</div>' : '')
-      + (P.ready() ? '<div style="margin-top:10px;"><span class="chip" data-action="prologue-build">'
-        + '立城（Lv' + need + ' 已满）</span></div>' : '')
+      + (P.canFound()
+        ? '<div style="margin-top:10px;"><span class="chip" data-action="prologue-build">'
+          + '立城（Lv' + need + ' 已满 · 脚下是' + U.escape(P.terrainLabel()) + '）</span></div>'
+        /* v135：等级够了但脚下不是平地 —— **必须说出来**。
+           原来这里直接不渲染按钮，玩家只会觉得"等级够了怎么还是没按钮"。
+           实测平原只占 3.7%、开局 4 环内 0 块，所以这句话经常要用到。 */
+        : (P.ready()
+          ? (function () {
+              var near = P.nearestBuildable(40);
+              return '<div style="margin-top:10px;font-size:12px;color:#c9a86a;line-height:1.7;">'
+                + '脚下是<b>' + U.escape(P.terrainLabel()) + '</b>，立不了城'
+                + (near ? '　·　最近的平地：<b>' + U.escape(near.dir) + ' ' + near.dist + ' 格</b>' : '　·　这一带没有平地')
+                + '</div>';
+            })()
+          : ''))
       + '</div>';
   };
 
@@ -1025,9 +1177,16 @@ if (GAME.reg) {
       }
 
       var buildH = '';
-      if (P.ready()) {
+      if (P.canFound()) {
         buildH = '<div class="chips" style="margin-top:6px;">'
-          + '<span class="chip" data-action="prologue-build">立城（Lv' + need + ' 已满）</span></div>';
+          + '<span class="chip" data-action="prologue-build">立城（Lv' + need + ' 已满 · 脚下是'
+          + U.escape(P.terrainLabel()) + '）</span></div>';
+      } else if (P.ready()) {
+        var _near = P.nearestBuildable(40);
+        buildH = '<div style="margin-top:6px;font-size:12px;color:#c9a86a;line-height:1.7;">'
+          + '脚下是<b>' + U.escape(P.terrainLabel()) + '</b>，立不了城'
+          + (_near ? '　·　最近的平地：<b>' + U.escape(_near.dir) + ' ' + _near.dist + ' 格</b>'
+            : '　·　这一带没有平地') + '</div>';
       }
 
       return sec('🕯 还没有城', '第 ' + dayNow() + ' 天 · 走到哪儿算哪儿',

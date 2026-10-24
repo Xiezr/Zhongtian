@@ -41833,6 +41833,13 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       if (!lord) return false;
       var before = (G2.state.cities || []).length;
       lord.level = G2.prologue.needLv();
+      /* v135：立城只能在平地（老板：「玩家自建城市应当只在平地」）。
+         出生点是"有事的格子"，多半不是平原 —— **先走到平地**再立，
+         这也更接近玩家真实路径（而不是给断言开后门）。 */
+      if (!G2.prologue.buildableAt()) {
+        var nb = G2.prologue.nearestBuildable(40);
+        if (nb) G2.state.prologue.pos = nb.ci;
+      }
       var r = G2.prologue.build();
       var after = (G2.state.cities || []).length;
       var c = G2.currentCity();
@@ -42416,6 +42423,12 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     check('§333④ 立城之后这一屏就没了（不是永久盖住游戏）', (function () {
       var lord = P.lord();
       if (lord) lord.level = P.needLv();
+      /* v135：立城限平地 —— 出生点是有事的格子，先走到平地（与 §326⑦ 同口径）。
+         ⚠️ 这个区块里没有 `G2`（那是 §326 那段的别名），state 走 GAME。 */
+      if (!P.buildableAt()) {
+        var nb = P.nearestBuildable(40);
+        if (nb) GAME.state.prologue.pos = nb.ci;
+      }
       var r = P.build();
       var gone = P.on() === false;
       return r.ok === true && gone;
