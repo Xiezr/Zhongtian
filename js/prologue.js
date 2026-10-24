@@ -877,6 +877,10 @@
       state: region,
       initialExt: true,
       res: res0 || undefined,
+      /* v138（老板「立城前可以先小村庄……建筑更低级」）：立城只给 4 座居所，
+         其余居所槽留空 —— 从"一落地 26 户"改成"几间窝棚"。
+         格子数（8×6 → 4×4）要动 city.col/row 这个结构常量，留独立一轮。 */
+      village: true,
     });
     if (!city) return { ok: false, msg: '建城失败 —— 这块地立不起来' };
     s.cities = s.cities || [];
