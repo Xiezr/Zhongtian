@@ -42651,6 +42651,160 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })());
   })();
 
+  /* ============================================================
+   * §352 · v142：城内从"俯瞰沙盘"改成"能逛的街区"
+   * ------------------------------------------------------------
+   * 老板的原话是「如何将城内外转成 3D」。v140 交了 3D，但相机钉在 20 米高空，
+   * 整座城一眼看全 —— 那是沙盘，不是进城。v142 把格子放大到 3 米、
+   * 建筑收到 1.4、留出 1.6 米巷道，相机跟着人走，房子还撞得到。
+   *
+   * 这一节钉的不是"好不好看"（那要人眼拍板），而是**走不走得通**：
+   *   ① 巷道比人宽 —— 否则一切免谈；
+   *   ② 每栋房子都有碰撞盒，且政务厅**只画一座**（v140 把 2×2 的四格各画了一遍）；
+   *   ③ 南墙真的留了门洞，人能走到城外（**BFS 实测**，不是看代码）；
+   *   ④ 每栋房门口都走得到（防"巷子被道具堵死"这类只有玩到才发现的死路）；
+   *   ⑤ 几何是确定的（同一座城两次算出同一份）。
+   * ⚠️ smoke 没有 WebGL：只测 cityPlan 这一份**纯几何**。渲染由 UI 实机门禁负责。
+   * ============================================================ */
+  console.log('\n===== 352. v142 城内街区：走不走得通 =====');
+  (function () {
+    var SC = G.scene3d;
+    if (!SC || !SC.cityPlan) { check('§352① 城内几何真值可测（cityPlan）', false, '没有 cityPlan'); return; }
+    G.newGame({ name: '逛城', cityName: '灰岗', mapSeed: 20261025 });
+    var city = G.currentCity();
+    if (!city) { check('§352① 拿得到当前城', false, 'currentCity=null'); return; }
+    var plan = SC.cityPlan(city);
+    var geo = SC.cityGeo;
+
+    function inSolid(x, z) {
+      for (var i = 0; i < plan.solids.length; i++) {
+        var s = plan.solids[i];
+        if (x >= s.x0 && x <= s.x1 && z >= s.z0 && z <= s.z1) return true;
+      }
+      return false;
+    }
+    function blocked(x, z) {
+      for (var i = 0; i < plan.solids.length; i++) {
+        var s = plan.solids[i];
+        var cx = x < s.x0 ? s.x0 : (x > s.x1 ? s.x1 : x);
+        var cz = z < s.z0 ? s.z0 : (z > s.z1 ? s.z1 : z);
+        var dx = x - cx, dz = z - cz;
+        if (dx * dx + dz * dz < geo.r * geo.r) return true;
+      }
+      return false;
+    }
+    /* BFS：0.1 米网格，从出生点出发。
+       **这是这一节的主判据** —— "巷道够宽"是算出来的，"走不走得通"得走一遍。 */
+    function reach() {
+      var STEP = 0.1, b = plan.bounds;
+      var nx = Math.floor((b.x1 - b.x0) / STEP) + 1;
+      var nz = Math.floor((b.z1 - b.z0) / STEP) + 1;
+      var seen = new Uint8Array(nx * nz);
+      var s0 = Math.round((plan.spawn.x - b.x0) / STEP);
+      var s1 = Math.round((plan.spawn.z - b.z0) / STEP);
+      if (s0 < 0 || s1 < 0 || s0 >= nx || s1 >= nz) return null;
+      var q = [s1 * nx + s0]; seen[q[0]] = 1;
+      var head = 0;
+      while (head < q.length) {
+        var cur = q[head++], cx = cur % nx, cz = (cur - cx) / nx;
+        for (var d = 0; d < 4; d++) {
+          var ax = cx + (d === 0 ? 1 : d === 1 ? -1 : 0);
+          var az = cz + (d === 2 ? 1 : d === 3 ? -1 : 0);
+          if (ax < 0 || az < 0 || ax >= nx || az >= nz) continue;
+          var ii = az * nx + ax;
+          if (seen[ii]) continue;
+          if (blocked(b.x0 + ax * STEP, b.z0 + az * STEP)) { seen[ii] = 2; continue; }
+          seen[ii] = 1; q.push(ii);
+        }
+      }
+      return {
+        n: q.length,
+        at: function (x, z) {
+          var ix = Math.round((x - b.x0) / STEP), iz = Math.round((z - b.z0) / STEP);
+          if (ix < 0 || iz < 0 || ix >= nx || iz >= nz) return 'out';
+          return seen[iz * nx + ix];
+        },
+      };
+    }
+    var rr = reach();
+    var houses = plan.cells.filter(function (c) { return c.kind === 'house'; });
+    var govs = plan.cells.filter(function (c) { return c.kind === 'gov'; });
+    var govParts = plan.cells.filter(function (c) { return c.kind === 'govPart'; });
+
+    check('§352① 巷道 1.6 米、比人宽一倍以上（人半径 ' + geo.r + ' 米）', (function () {
+      return Math.abs(geo.T - geo.bw - geo.walk) < 1e-9
+        && geo.walk > geo.r * 2 + 0.5;
+    })(), '格 ' + geo.T + ' − 建筑 ' + geo.bw + ' = 巷 ' + geo.walk.toFixed(2) + ' 米 · 人直径 ' + (geo.r * 2) + ' 米');
+
+    check('§352② 每栋房都有碰撞盒，且政务厅只画一座（不是 2×2 画四遍）', (function () {
+      if (!houses.length) return false;
+      var noHit = 0;
+      houses.forEach(function (c) { if (!inSolid(c.x, c.z)) noHit++; });
+      /* gov 必须**恰好 1 个**：v140 的 `official === 1 || === true` 让四格全中，
+         一座衙门被画了四遍（截图里中央一大块、四角各一面旗）。 */
+      return noHit === 0 && govs.length === 1 && govParts.length === 3
+        && inSolid(govs[0].gx, govs[0].gz);
+    })(), '房 ' + houses.length + ' 栋 · 无碰撞 ' + houses.filter(function (c) { return !inSolid(c.x, c.z); }).length
+      + ' · 政务厅 ' + govs.length + ' 座 + 角落标记 ' + govParts.length);
+
+    check('§352③ 南墙真的断了：门洞净宽 ≥ 2.6 米（不是"按 E 出城"的假门）', (function () {
+      var left = null, right = null;
+      plan.solids.forEach(function (s) {
+        var cz = (s.z0 + s.z1) / 2;
+        if (Math.abs(cz - plan.hd) > 0.5) return;      /* 只看南墙那两段 */
+        if (s.x1 <= 0 && (!left || s.x1 > left)) left = s.x1;
+        if (s.x0 >= 0 && (!right || s.x0 < right)) right = s.x0;
+      });
+      if (left == null || right == null) return false;
+      var gap = right - left;
+      /* 门柱会把洞口再收窄一点，玩家的直径必须过得去 */
+      return gap >= 2.6 && gap > geo.r * 2 + 0.6;
+    })(), (function () {
+      var left = null, right = null;
+      plan.solids.forEach(function (s) {
+        var cz = (s.z0 + s.z1) / 2;
+        if (Math.abs(cz - plan.hd) > 0.5) return;
+        if (s.x1 <= 0 && (!left || s.x1 > left)) left = s.x1;
+        if (s.x0 >= 0 && (!right || s.x0 < right)) right = s.x0;
+      });
+      return '洞口 ' + (left != null && right != null ? (right - left).toFixed(2) : '?') + ' 米（门柱内侧再收 0.3 米）';
+    })());
+
+    check('§352④ BFS：从出生点走到城外，且每栋房门口都走得到', (function () {
+      if (!rr || rr.n < 1000) return false;            /* 下限：防"一步都走不动也算通" */
+      var outOk = rr.at(plan.spawn.x, plan.outZ + 0.3) === 1;
+      var bad = 0;
+      houses.forEach(function (c) {
+        var zz = c.z + plan.T / 2;
+        if (zz > plan.bounds.z1 - 0.4) zz = c.z + 0.9;  /* 最后一排：门前通道在墙根空地 */
+        if (rr.at(c.x, zz) !== 1) bad++;
+      });
+      return outOk && bad === 0;
+    })(), (function () {
+      if (!rr) return '出生点自己就在碰撞盒里';
+      var bad = [];
+      houses.forEach(function (c) {
+        var zz = c.z + plan.T / 2;
+        if (zz > plan.bounds.z1 - 0.4) zz = c.z + 0.9;
+        if (rr.at(c.x, zz) !== 1) bad.push(c.col + ',' + c.row);
+      });
+      return '可走 ' + rr.n + ' 个采样点 · 城外 ' + (rr.at(plan.spawn.x, plan.outZ + 0.3) === 1 ? '可达' : '不可达')
+        + (bad.length ? ' · 走不到门口 ' + bad.join(' ') : ' · 门口全通');
+    })());
+
+    check('§352⑤ 几何是确定的（同一座城两次算出同一份）', (function () {
+      var p2 = SC.cityPlan(city);
+      if (p2.solids.length !== plan.solids.length) return false;
+      for (var i = 0; i < plan.solids.length; i++) {
+        var a = plan.solids[i], b = p2.solids[i];
+        if (Math.abs(a.x0 - b.x0) > 1e-9 || Math.abs(a.z0 - b.z0) > 1e-9) return false;
+      }
+      return p2.spawn.z === plan.spawn.z;
+    })(), plan.solids.length + ' 个碰撞盒 · 出生点 z=' + plan.spawn.z.toFixed(2) + ' · 出城线 z=' + plan.outZ.toFixed(2));
+    G.newGame({ name: '收尾', cityName: '灰岗' });
+  })();
+
+
   /* 前传 HUD 的主按钮必须是"进场景"（老板：「这不是个正经游戏」） */
   (function () {
     var P = G.prologue;

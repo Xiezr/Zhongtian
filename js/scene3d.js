@@ -773,7 +773,7 @@
     scene.add(new THREE.HemisphereLight(0xe4eef5, 0x4a4638, 1.0));
     var amb = new THREE.AmbientLight(0xffffff, 0.22);
     scene.add(amb);
-    var sun = new THREE.DirectionalLight(0xfff1d8, 1.05);
+    var sun = new THREE.DirectionalLight(0xfff1d8, 1.15);
     sun.position.set(9, 16, 7);
     scene.add(sun);
     var rim = new THREE.DirectionalLight(0x9fc4d8, 0.55);
@@ -1019,7 +1019,7 @@
 
   function buildPlayer() {
     var g = new THREE.Group();
-    var body = mesh(new THREE.CylinderGeometry(0.26, 0.32, 0.95, 8), lam(0x6b7d8c), 0, 0.5, 0);
+    var body = mesh(new THREE.CylinderGeometry(0.26, 0.32, 0.95, 8), lam(0x8ea6b8), 0, 0.5, 0);
     body.name = 'body';
     g.add(body);
     g.add(mesh(new THREE.SphereGeometry(0.2, 10, 8), lam(0xd9c7a8), 0, 1.14, 0));
@@ -1033,11 +1033,19 @@
     g.add(sh);
     /* 头顶的指示三角：小场景里人物只有几十像素，不加这个容易"找不到自己"
        （俯视 60° 时人体被压扁，靠颜色分辨不够）。 */
-    var mk = mesh(new THREE.ConeGeometry(0.13, 0.22, 4), new THREE.MeshBasicMaterial({ color: C.glow }),
-      0, 1.62, 0);
+    var mk = mesh(new THREE.ConeGeometry(0.17, 0.30, 4), new THREE.MeshBasicMaterial({ color: C.glow }),
+      0, 1.66, 0);
     mk.rotation.x = Math.PI;         /* 尖朝下 */
     mk.name = 'marker';
     g.add(mk);
+    /* 头顶标记**穿透遮挡**（只有它，不含身体）。
+       第一版把整个人设成 depthTest:false，结果是"人浮在屋顶上"——
+       因为玩家永远贴着南侧那栋房子，人就被画在那栋房的屋顶上（截图确认）。
+       正确的做法是：身体老实被遮（该被挡就挡），
+       但头顶那个三角永远可见 —— 玩家随时知道"我在哪"，画面也不假。 */
+    mk.material.depthTest = false;
+    mk.material.depthWrite = false;
+    mk.renderOrder = 999;
     return g;
   }
 
@@ -1118,6 +1126,15 @@
       }
     }
 
+    /* 走出城门 = 出城。
+       为什么不只留"按 E 出城"：门就开在那儿，人走过去了还要回头按一下键，
+       是"界面在演动作"。走进门洞、越过门槛，这件事本身就该成立。 */
+    if (cityView && cityOutZ && player && player.position.z > cityOutZ) {
+      S.close();
+      if (G.ui && G.ui.toast) G.ui.toast('你走出城门，回到野外');
+      return;
+    }
+
     updateNear();
     animWorld(now);
     updateCamera(dt);
@@ -1136,9 +1153,19 @@
 
   function movePlayer(dx, dz) {
     var nx = player.position.x + dx, nz = player.position.z + dz;
-    nx = Math.max(-BOUND, Math.min(BOUND, nx));
-    nz = Math.max(-BOUND, Math.min(BOUND, nz));
-    player.position.x = nx; player.position.z = nz;
+    if (cityView && cityBounds) {
+      /* 城内：先夹到城的活动范围，再**分轴**推进。
+         分轴（先 x 后 z）的意义：正面撞墙时，另一个方向仍然能走 ——
+         玩家沿着墙根侧滑过去，而不是"贴住就不动了"。整体回退做不到这一点。 */
+      nx = Math.max(cityBounds.x0, Math.min(cityBounds.x1, nx));
+      nz = Math.max(cityBounds.z0, Math.min(cityBounds.z1, nz));
+      if (!hitsSolid(nx, player.position.z, CITY_R)) player.position.x = nx;
+      if (!hitsSolid(player.position.x, nz, CITY_R)) player.position.z = nz;
+    } else {
+      nx = Math.max(-BOUND, Math.min(BOUND, nx));
+      nz = Math.max(-BOUND, Math.min(BOUND, nz));
+      player.position.x = nx; player.position.z = nz;
+    }
     /* 朝向：把身体绕 Y 转到移动方向（影子不动） */
     var ang = Math.atan2(dx, dz);
     player.rotation.y += (ang - player.rotation.y) * 0.25;
@@ -1154,8 +1181,20 @@
   function updateCamera(dt) {
     if (!player) return;
     if (cityView) {
-      /* 城内镜头**固定**：整座城已经在画面里，跟随只会让它晃来晃去。
-         人走到角落也还在画内（城比视口小），所以不需要跟。 */
+      /* 城内镜头 v142：**跟着人走**（v140 是钉死的俯瞰）。
+         相机在玩家后方 12、高 20.6 → 52° 俯角；看向玩家**前方 3.5 米**。
+         ⚠️ 这两个数是**量出来的，不是估的**：第一版看向前方 6 米，
+         结果玩家本身被推到画面下边缘之外（正交投影下，玩家相对视线中心的
+         屏幕偏移 = −lookY·cosθ − L·sinθ = −5.22 米，而半屏只有 5.5 米）——
+         截图里整条街都在，就是看不到自己。改成 3.5 米后玩家落在下方 30%。
+         为什么是 52° 而不是野地那种 45°：巷子只有 1.14 米宽，
+         45° 时前方那排房子会把巷道整个挡住，屏幕上半部全是屋顶。 */
+      var k = Math.min(1, dt * 5);
+      var tx = player.position.x, tz = player.position.z;
+      cam.position.x += (tx - cam.position.x) * k;
+      cam.position.z += (tz + 8 - cam.position.z) * k;
+      cam.position.y = 21.65;
+      cam.lookAt(cam.position.x, 0.8, cam.position.z - 9.72);
       return;
     }
     var tx = player.position.x, tz = player.position.z;
@@ -1226,7 +1265,7 @@
     }
     if (!openId) return;
     var cfg = (openId === 'city')
-      ? { name: '我的城（3D）', sub: '数据就是城市页那一份 —— 3D 只是换个角度看' }
+      ? { name: '我的城', sub: '在街上走走 —— 走出城门就是出城' }
       : (sceneCfg(openId) || {});
     var ui = document.createElement('div');
     ui.className = 'scene-ui';
@@ -1240,7 +1279,11 @@
       + '<div style="font-size:var(--fs-h2);font-weight:700;color:var(--gold-light);letter-spacing:1px;">'
       + U.escape(cfg.name || '') + '</div>'
       + '<div style="font-size:var(--fs-cap);color:var(--text-dim);margin-top:2px;">'
-      + U.escape(cfg.sub || '') + '　<b style="color:var(--green-ok);">' + nodesDone + '/' + nodesTotal + '</b> 处已收拾</div>'
+      + U.escape(cfg.sub || '')
+      /* 城内不报"几处已收拾"：那里的节点是 48 栋房子，不是可采集点，
+         报个 0/48 会让人以为"什么都没做"。 */
+      + (openId === 'city' ? '' : ('　<b style="color:var(--green-ok);">' + nodesDone + '/' + nodesTotal + '</b> 处已收拾'))
+      + '</div>'
       + '</div>'
       /* 交互提示条放底部中间：视线在场景中心，提示不该在角落 */
       + '<div style="position:absolute;left:50%;bottom:52px;transform:translateX(-50%);'
@@ -1251,7 +1294,9 @@
         + U.escape(nd.hint || '') + '</span>') : '走到发光的东西旁边，才能动手')
       + '</div>'
       + '<div style="position:absolute;left:14px;bottom:14px;font-size:var(--fs-cap);color:var(--text-dim);">'
-      + 'WASD / 方向键 走动　·　点地面走过去　·　点发光处自动靠近'
+      + (openId === 'city'
+        ? 'WASD / 方向键 逛街　·　点地面走过去　·　走出城门回野外'
+        : 'WASD / 方向键 走动　·　点地面走过去　·　点发光处自动靠近')
       + '</div>'
       + '<div style="position:absolute;right:14px;bottom:14px;pointer-events:auto;">'
       + '<button data-scene="close" style="padding:6px 14px;border-radius:5px;cursor:pointer;'
@@ -1275,46 +1320,231 @@
    * 数据一个字段都不改 —— 存档、建造、产出、科技前置全部照旧走原来的 `city`，
    * 3D 只是"换个角度看同一份数据"。这也是它能安全上线的唯一理由。
    * ============================================================ */
-  var CITY_T = 2.1;                 /* 每格在世界里的边长（米） */
+  /* ------------------------------------------------------------
+   * v142：从"俯瞰沙盘"改成"能逛的街区"（老板：继续做城内街区）
+   * ------------------------------------------------------------
+   * v140 的城内是这样的：相机钉死在 20 米高空、看全整座 8×6 的城，
+   * 每格 2.1 米、建筑占 70% → 巷子只剩 0.63 米，**比人还窄**，
+   * 所以那时候只能俯瞰：走进去会卡在房子缝里。
+   *
+   * 三个数改完，它才成其为街区：
+   *   CITY_T  3.0   格子边长。8×6 → 24×18 米，一屏（视口 11）看到四分之一，
+   *                 这才有"逛"的余地；2.1 的时候整城只有 16.8 米，一屏全收。
+   *   CITY_BW 1.40  建筑占地 → 巷道 1.60 米。人宽 0.60（半径 0.30）。
+   *                 1.14 是"刚好挤过去"，但**贴墙的距离只有 0.03 米**，
+   *                 相机一有俯角，南侧那面墙就把人挡没了（截图确认：
+   *                 60° 时只剩一个头顶三角在飘）。1.60 让贴身距离变成 0.5 米，
+   *                 65° 俯角下墙顶的遮挡落到脚踝，人才完整可见。
+   *   CITY_R  0.30  人的碰撞半径（比模型略大一点点，贴墙时不会露出半个身子）。
+   *
+   * 碰撞用**分轴推进**（先试 x、再试 z），撞墙就贴着墙滑 ——
+   * 不像"整体回退"那样一碰就定住，沿墙走的手感全靠这一条。
+   * ------------------------------------------------------------ */
+  var CITY_T = 3.0;
+  var CITY_BW = 1.40;
+  var CITY_R = 0.30;
+  /* 围墙离格子区的距离。0.9 的时候，城门内侧只剩 1.35 米空地，
+     玩家出生就站在门楣底下 —— 65° 俯角下门楣把人挡到只剩脚（截图确认）。
+     2.2 让墙根有一圈 2.5 米宽的空地，出生点能退到门外看不见的位置。 */
+  var CITY_PAD = 2.2;
+  var citySolids = [], cityBounds = null, cityOutZ = 0;
+
+  /* 圆 vs 轴对齐盒：把圆心夹到盒上取最近点，比半径近就是撞了。
+     比"点在盒内"多一步，好处是**贴墙滑行时不会在角上抖**。 */
+  function hitsSolid(x, z, r) {
+    for (var i = 0; i < citySolids.length; i++) {
+      var s = citySolids[i];
+      var cx = x < s.x0 ? s.x0 : (x > s.x1 ? s.x1 : x);
+      var cz = z < s.z0 ? s.z0 : (z > s.z1 ? s.z1 : z);
+      var dx = x - cx, dz = z - cz;
+      if (dx * dx + dz * dz < r * r) return true;
+    }
+    return false;
+  }
+
+  /* ============================================================
+   * cityPlan —— 城内的**几何真值**（纯函数，不碰 THREE / DOM）
+   * ------------------------------------------------------------
+   * 为什么要单独一份：渲染要 THREE，门禁跑在 node 里没有 WebGL。
+   * 如果"碰撞盒在哪、巷道多宽、门洞多宽"只在 buildCityScene 里算，
+   * 那这些问题就只能靠肉眼截图验证 —— 而截图看不出"这条路其实走不通"。
+   *
+   * 所以：**几何只算一次**（这里），渲染照着画，碰撞照着用。
+   * 这不是"两本账"，是同一本账的两个读者 —— 与 v136 斗将 HP 那种
+   * "呈现层偷偷算了一份"是两回事。
+   * ============================================================ */
+  function cityPlan(c) {
+    var COLS = c.col || 8, ROWS = c.row || 6;
+    var T = CITY_T, bw = CITY_BW;
+    var W = COLS * T, D = ROWS * T;
+    var hw = W / 2 + CITY_PAD, hd = D / 2 + CITY_PAD;
+    var gateHalf = 1.6;
+    var out = {
+      cols: COLS, rows: ROWS, T: T, bw: bw, walk: T - bw, W: W, D: D,
+      hw: hw, hd: hd, gateHalf: gateHalf, outZ: hd + 1.9,
+      /* 出生点：城门内侧的墙根空地，离门 1.75 米 ——
+         刚好退出门楣在 65° 俯角下的遮挡锥（门楣底 3.02 − 1.75×tan65° = −0.7，
+         也就是说视线到这里已经落到地面以下，人整条都看得见）。
+         这个数是按遮挡锥算的，不是估的。 */
+      spawn: { x: 0, z: hd - 1.75 },
+      bounds: { x0: -hw + 0.35, x1: hw - 0.35, z0: -hd + 0.35, z1: hd + 2.6 },
+      cells: [], solids: [], wall: false,
+    };
+    function solid(cx, cz, w, d) {
+      out.solids.push({ x0: cx - w / 2, x1: cx + w / 2, z0: cz - d / 2, z1: cz + d / 2 });
+    }
+
+    var cells = c.cells || [];
+    /* ⚠️ 政务厅占 2×2，四格的 `official` **都是 true**（不是 1/2/3/4）。
+       v140 写的是 `official === 1 || official === true` —— 前半句永远不成立、
+       后半句四格全中，于是**同一座衙门被画了四遍**（v142 截图确认：
+       中央一大块、四个角各一面红旗）。既有的口径是"取下标最小的那一格做代表"
+       （domain.js:4841 `idx !== gfFirst` 就是这条），这里照抄，不另立规矩。 */
+    var govIdx = -1;
+    for (var gi = 0; gi < cells.length; gi++) {
+      if (cells[gi] && cells[gi].official) { govIdx = gi; break; }
+    }
+    for (var idx = 0; idx < cells.length; idx++) {
+      var cell = cells[idx];
+      var col = idx % COLS, row = Math.floor(idx / COLS);
+      var x = (col - (COLS - 1) / 2) * T;
+      var z = (row - (ROWS - 1) / 2) * T;
+      var it = { idx: idx, col: col, row: row, x: x, z: z, kind: 'empty', bid: null, lvl: 0, plaza: null };
+      if (!cell) { it.kind = 'void'; out.cells.push(it); continue; }
+      if (cell.official) {
+        it.kind = (idx === govIdx) ? 'gov' : 'govPart';
+        if (idx === govIdx) {
+          it.lvl = (c.gov && c.gov.lvl) || 1;
+          it.gx = x + T * 0.5; it.gz = z + T * 0.5;
+          it.gw = T * 2 - (T - bw);
+          solid(it.gx, it.gz, it.gw + 0.3, it.gw + 0.3);
+        }
+      } else if (cell.build && cell.build.id) {
+        it.kind = 'house'; it.bid = cell.build.id; it.lvl = cell.build.lvl || 1;
+        solid(x, z, bw + 0.16, bw + 0.16);
+      } else {
+        /* 空地：按格子下标决定放什么（确定性，不用随机流，免得和建筑抖动抢） */
+        var hv = ((idx * 2654435761) >>> 0) % 1000 / 1000;
+        if (hv < 0.55) {
+          var kinds = ['well', 'pile', 'brazier', 'rack'];
+          it.plaza = kinds[Math.floor(hv * 7) % kinds.length];
+          if (it.plaza === 'well') solid(x, z, 0.9, 0.9);
+          else if (it.plaza === 'pile') solid(x, z, 0.95, 0.95);
+          else if (it.plaza === 'brazier') solid(x, z, 0.6, 0.6);
+          /* rack（晾架）：两根细杆，不占地 */
+        }
+      }
+      out.cells.push(it);
+    }
+
+    /* 墙：南面留门洞。四段 + 两个门柱，都是碰撞体 —— 玩家只能从门洞出去。
+       这就是"城门"能成立的全部机制：不是按钮，是墙上真的少了一块。 */
+    if (c.wall && c.wall.build) {
+      out.wall = true;
+      solid(0, -hd, W + CITY_PAD * 2 + 0.8, 0.7);                    /* 北 */
+      solid(-(hw + gateHalf) / 2, hd, hw - gateHalf + 0.2, 0.7);      /* 南 · 左 */
+      solid((hw + gateHalf) / 2, hd, hw - gateHalf + 0.2, 0.7);       /* 南 · 右 */
+      solid(-hw, 0, 0.7, D + CITY_PAD * 2);                          /* 西 */
+      solid(hw, 0, 0.7, D + CITY_PAD * 2);                           /* 东 */
+    }
+    solid(-gateHalf, hd, 0.5, 0.7);
+    solid(gateHalf, hd, 0.5, 0.7);
+    return out;
+  }
+  S.cityPlan = cityPlan;
+  S.cityGeo = { T: CITY_T, bw: CITY_BW, walk: CITY_T - CITY_BW, r: CITY_R, pad: CITY_PAD };
+
   function buildCityScene() {
     var c = G.currentCity ? G.currentCity() : null;
     if (!c) return false;
-    var COLS = c.col || 8, ROWS = c.row || 6;
-    var W = COLS * CITY_T, D = ROWS * CITY_T;
+    /* 几何真值来自 cityPlan（碰撞、门洞、活动范围都在那一份里算好）。
+       这里只负责"照着画"，不再自己算坐标 —— 各算一份就是两本账。 */
+    var plan = cityPlan(c);
+    var COLS = plan.cols, ROWS = plan.rows, W = plan.W, D = plan.D;
     var R = rng(7788);
+    citySolids = plan.solids;
+    cityBounds = plan.bounds;
+    cityOutZ = plan.outZ;
 
     /* 城内雾 0.006 —— 0.016 在这个距离上把所有颜色洗成灰褐色，
-       整张图像蒙了一层土（截图确认）。城内是"看自己的城"，不该有野地那种空气感。 */
+       整张图像蒙了一层土（截图确认）。城内是"看自己的城"，不该有野地那种空气感。
+       v142 相机拉近到视口 11、贴地 50° 走，雾再淡一档（0.004）：
+       否则街对面的房子已经发灰，"巷子有多深"读不出来。 */
     scene.background = new THREE.Color(0x9db0bd);
-    scene.fog = new THREE.FogExp2(0x9db0bd, 0.006);
+    scene.fog = new THREE.FogExp2(0x9db0bd, 0.004);
 
-    /* 地面：夯土 + 网格线（网格是靠贴图画上去的，不额外加几何） */
+    /* 地面：v142 从"棋盘格线"换成**石板路**
+       —— 格线是给俯瞰沙盘用的（让人数格子）；街区视角要的是"脚下是路"，
+       格线反而把街区切回成表格。石板缝本身就能读出尺度，不需要再画格子。 */
     var cv = document.createElement('canvas');
     cv.width = cv.height = 512;
     var g2 = cv.getContext('2d');
-    g2.fillStyle = '#93856a'; g2.fillRect(0, 0, 512, 512);
-    for (var i = 0; i < 3000; i++) {
-      var v = (R() - 0.5) * 0.16, cc = new THREE.Color(0x93856a).offsetHSL(0, 0, v);
-      g2.fillStyle = '#' + cc.getHexString();
-      g2.fillRect(R() * 512, R() * 512, 2, 2);
+    /* 底色 = 石缝的深色，石块压在上面 */
+    g2.fillStyle = '#4e4739'; g2.fillRect(0, 0, 512, 512);
+    /* 8×8 块石板（每块 0.75 米，512px 对应 6 米）+ 半块错缝：
+       错缝是关键 —— 齐缝看起来像瓷砖，错缝才像人铺的路。 */
+    for (var by2 = 0; by2 < 8; by2++) {
+      var off2 = (by2 % 2) * 32;
+      for (var bx2 = -1; bx2 < 9; bx2++) {
+        var bx0 = bx2 * 64 + off2, by0 = by2 * 64;
+        var lv2 = (R() - 0.5) * 0.15;
+        var sc2 = new THREE.Color(0x6e655a).offsetHSL((R() - 0.5) * 0.02, 0.02 * (R() - 0.5), lv2);
+        g2.fillStyle = '#' + sc2.getHexString();
+        g2.fillRect(bx0 + 2, by0 + 2, 60, 60);
+        /* 每块石板的右上角打亮一点：给"石面"一点高低差，不只是色块 */
+        g2.fillStyle = 'rgba(255,246,224,0.05)';
+        g2.fillRect(bx0 + 2, by0 + 2, 60, 5);
+      }
     }
-    /* 格线：一眼能读出"这是 8×6 的棋盘"，与 2D 页面一一对应 */
-    g2.strokeStyle = 'rgba(40,36,30,0.28)'; g2.lineWidth = 2;
-    for (var cx2 = 0; cx2 <= COLS; cx2++) {
-      g2.beginPath(); g2.moveTo(cx2 / COLS * 512, 0); g2.lineTo(cx2 / COLS * 512, 512); g2.stroke();
+    /* 磨痕：横竖各几道浅色擦痕（被车辙/脚踩出来的） */
+    for (var mg = 0; mg < 24; mg++) {
+      g2.strokeStyle = 'rgba(210,198,170,0.055)';
+      g2.lineWidth = 1 + R() * 3;
+      g2.beginPath();
+      var mx = R() * 512, my = R() * 512;
+      g2.moveTo(mx, my); g2.lineTo(mx + (R() - 0.5) * 90, my + (R() - 0.5) * 20);
+      g2.stroke();
     }
-    for (var cy2 = 0; cy2 <= ROWS; cy2++) {
-      g2.beginPath(); g2.moveTo(0, cy2 / ROWS * 512); g2.lineTo(512, cy2 / ROWS * 512); g2.stroke();
+    /* 碎石与土渣：叠在石缝上，破掉"新铺的路"那种干净 */
+    for (var st2 = 0; st2 < 1400; st2++) {
+      var dv2 = (R() - 0.5) * 0.22;
+      g2.fillStyle = '#' + new THREE.Color(0x6a6152).offsetHSL(0, 0, dv2).getHexString();
+      g2.fillRect(R() * 512, R() * 512, 1 + R() * 2, 1 + R() * 2);
     }
     var tex = new THREE.CanvasTexture(cv);
-    var ground = new THREE.Mesh(new THREE.PlaneGeometry(W + 10, D + 10),
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    var padW = W + CITY_PAD * 2 + 2, padD = D + CITY_PAD * 2 + 2;
+    tex.repeat.set(padW / 6, padD / 6);      /* 纹理 1 tile = 6 米 */
+    var ground = new THREE.Mesh(new THREE.PlaneGeometry(padW, padD),
       new THREE.MeshLambertMaterial({ map: tex }));
     ground.rotation.x = -Math.PI / 2;
+    ground.position.y = 0.01;
     propRoot.add(ground);
+    /* 城外：一大块夯土（不铺石板）。没有它，石板四周就是虚空，
+       走出城门时"城外"和"世界尽头"分不开。 */
+    /* 十字主街：中央一纵一横铺**浅色**石板。
+       所有巷道一样宽的城读不出"主街在哪"，走到哪都像在迷宫；
+       一条亮一点的路，玩家自然往那儿走（也解释了为什么城门开在南面正中）。 */
+    var roadMat = new THREE.MeshLambertMaterial({ color: 0x8a8170 });
+    var roadV = new THREE.Mesh(new THREE.PlaneGeometry(CITY_T - CITY_BW, D + CITY_PAD * 2), roadMat);
+    roadV.rotation.x = -Math.PI / 2; roadV.position.set(0, 0.021, 0);
+    propRoot.add(roadV);
+    var roadH = new THREE.Mesh(new THREE.PlaneGeometry(W + CITY_PAD * 2, CITY_T - CITY_BW), roadMat);
+    roadH.rotation.x = -Math.PI / 2; roadH.position.set(0, 0.022, 0);
+    propRoot.add(roadH);
+
+    var outTex = groundTexture(0x7d6f55, 4242, 'ash');
+    outTex.repeat.set(9, 9);
+    var outG = new THREE.Mesh(new THREE.PlaneGeometry(80, 80),
+      new THREE.MeshLambertMaterial({ map: outTex }));
+    outG.rotation.x = -Math.PI / 2;
+    propRoot.add(outG);
 
     /* 建筑模块：只按"分类 + 等级"给形，不为每个建筑单独建模。
        Lv 决定层数/高度 —— Lv5 的三层楼和 Lv1 的窝棚，一眼能分出来。 */
-    var CAT_COL = { gov: 0xc9b07a, prod: 0xa89a74, mil: 0x8d8a82, live: 0xc0ad8a, craft: 0xc08a56, other: 0xa89f90 };
+    /* 分类配色：v140 全是灰黄，截图里整座城是一块石头 —— 分不出兵营、作坊、民房。
+       v142 按"材质"分开：夯土 / 木 / 铁灰 / 锈红，远看一片街，近看有区别。 */
+    var CAT_COL = { gov: 0xcbb282, prod: 0xb08b4e, mil: 0x7d8790, live: 0xd2bb95, craft: 0xb4643a, other: 0x9a9384 };
     /* 建筑名：三个可能的表都试一遍（DATA.BUILDINGS 在，但早先实测标签印出了裸 id，
        说明取名字这一步在某些加载顺序下拿不到 —— 多兜一层比猜便宜）。 */
     function bname(bid) {
@@ -1339,101 +1569,320 @@
       var grp = new THREE.Group();
       var cat = catOfBid(bid);
       var base = CAT_COL[cat] || CAT_COL.other;
-      /* 一层的绝对高度要给足：城内视口比野地宽一倍（frustum 26），
-         0.9 米高的房子在屏上只有 30px，看着像一堆箱子。 */
-      var h = 1.35 + (lvl - 1) * 0.62;
-      var w = CITY_T * 0.7, d = CITY_T * 0.6;
-      grp.add(mesh(new THREE.BoxGeometry(w, h, d), lam(base), 0, h / 2, 0));
-      /* 屋顶：四棱锥压扁，颜色比墙深一档 */
-      var roof = mesh(new THREE.ConeGeometry(w * 0.8, 0.42 + lvl * 0.05, 4), lam(new THREE.Color(base).multiplyScalar(0.62).getHex()), 0, h + 0.22, 0);
-      roof.rotation.y = Math.PI / 4;
-      grp.add(roof);
-      /* Lv≥3 加一层"楼"；Lv≥4 加塔尖 —— 等级看得见，不用点开面板 */
-      if (lvl >= 3) grp.add(mesh(new THREE.BoxGeometry(w * 0.78, 0.7, d * 0.78), lam(base), 0, h + 0.35, 0));
-      if (lvl >= 4) grp.add(mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.5, 5), lam(0x8a8f96), w * 0.3, h + 0.95, 0));
-      /* 灯火：住人/作坊才点，空建筑不点（夜里的"人气"是这么读出来的） */
-      if (cat === 'live' || cat === 'craft') {
-        grp.add(mesh(new THREE.BoxGeometry(0.16, 0.16, 0.03), lam(C.glow, { emissive: C.glow, emissiveIntensity: 0.7 }), 0, h * 0.6, -d / 2 - 0.01));
+      if (lvl > 6) lvl = 6;
+      /* 高度：v140 是 1.35 + 0.62/级 —— 在 2.1 米的格子里像一根根烟囱。
+         格子放大到 3 米、占地 1.86 之后，房子要"矮而宽"才像沿街的铺面：
+         一层 1.15 米，每级 +0.42（最高 6 级 3.25，是城里最高的楼）。 */
+      var h = 1.0 + (lvl - 1) * 0.30;
+      var w = CITY_BW, d = CITY_BW;
+      /* 地基台：比墙宽一圈的矮台。没有它，墙是"插"在地里的，
+         加了这一圈，房子才像"盖"在地上的。 */
+      grp.add(mesh(new THREE.BoxGeometry(w + 0.16, 0.12, d + 0.16), lam(0x7f786a), 0, 0.06, 0));
+      grp.add(mesh(new THREE.BoxGeometry(w, h, d), lam(base), 0, 0.12 + h / 2, 0));
+      var topY = 0.12 + h;
+
+      /* 屋顶分两种：
+           mil  → 平顶 + 女儿墙（营房/城墙/马厩那种"能站人"的顶）
+           其余 → 四棱锥坡顶
+         两种屋顶一眼能分出"这片是兵营还是民宅"，不用点开面板。 */
+      if (cat === 'mil') {
+        [[0, -d / 2 + 0.06, w + 0.04, 0.07], [0, d / 2 - 0.06, w + 0.04, 0.07],
+         [-w / 2 + 0.06, 0, 0.07, d + 0.04], [w / 2 - 0.06, 0, 0.07, d + 0.04]].forEach(function (q) {
+          grp.add(mesh(new THREE.BoxGeometry(q[2], 0.22, q[3]), lam(0x6f6a5e), q[0], topY + 0.11, q[1]));
+        });
+        /* 沙袋：平顶上码两个，像有人守 */
+        grp.add(mesh(new THREE.BoxGeometry(0.34, 0.16, 0.22), lam(0x8a7a5c), -w * 0.22, topY + 0.30, 0));
+      } else {
+        /* 檐口：比墙宽一圈的薄板，压住墙顶。
+           没有它，坡屋顶在 45° 俯视下只剩一条深边，整栋楼读起来是"平顶盒子"
+           （v142 第一版截图：一整条街全是灰箱子）。 */
+        grp.add(mesh(new THREE.BoxGeometry(w * 1.10, 0.07, d * 1.10),
+          lam(new THREE.Color(base).multiplyScalar(0.44).getHex()), 0, topY + 0.02, 0));
+        var roof = mesh(new THREE.ConeGeometry(w * 0.78, 0.46 + lvl * 0.03, 4),
+          lam(new THREE.Color(base).multiplyScalar(0.50).getHex()), 0, topY + 0.28, 0);
+        roof.rotation.y = Math.PI / 4;
+        grp.add(roof);
+        /* 屋脊：沿 x 一条深色细梁，坡顶就有了"脊"（三件里最便宜的一件） */
+        grp.add(mesh(new THREE.BoxGeometry(w * 0.42, 0.05, 0.07),
+          lam(new THREE.Color(base).multiplyScalar(0.34).getHex()), 0, topY + 0.52 + lvl * 0.03, 0));
+        /* 瓦垄：两条沿坡面的横向细条。65° 俯视时坡顶只占十几像素，
+           没有这两条，屋顶就是一块均匀的色板（"像纸盒"的主要来源）。 */
+        var tileMat = lam(new THREE.Color(base).multiplyScalar(0.40).getHex());
+        [-0.30, 0.30].forEach(function (tz2) {
+          var tl = mesh(new THREE.BoxGeometry(w * 0.86, 0.03, 0.05), tileMat, 0,
+            topY + 0.40 - Math.abs(tz2) * 0.22, tz2 * d * 0.72);
+          grp.add(tl);
+        });
       }
-      grp.add(contactShadow(CITY_T * 0.42));
+
+      /* 门朝 +z（相机在南边往北看，+z 面就是玩家看到的那一面）。
+         门、窗、台阶、招牌都在这一面 —— 巷子两侧全是"店面"，这就是街区感。 */
+      var face = d / 2 + 0.02;
+      grp.add(mesh(new THREE.BoxGeometry(0.36, 0.66, 0.06), lam(0x3f3123), 0, 0.45, face));
+      grp.add(mesh(new THREE.BoxGeometry(0.42, 0.06, 0.10), lam(0x5a4a34), 0, 0.79, face + 0.02));
+      /* 台阶：一小条石阶，暗示"要跨一步才进去" */
+      grp.add(mesh(new THREE.BoxGeometry(0.62, 0.07, 0.18), lam(0x8b8272), 0, 0.035, face + 0.10));
+      /* 窗：住人/作坊才点灯（空建筑不点 —— 夜里的"人气"就是这么读出来的） */
+      if (cat === 'live' || cat === 'craft' || cat === 'gov') {
+        var wm = lam(C.glow, { emissive: C.glow, emissiveIntensity: 0.55 });
+        grp.add(mesh(new THREE.BoxGeometry(0.20, 0.20, 0.04), wm, -w * 0.30, 0.82 + h * 0.28, face));
+        grp.add(mesh(new THREE.BoxGeometry(0.20, 0.20, 0.04), wm, w * 0.30, 0.82 + h * 0.28, face));
+      }
+      /* 门雨棚：门上一块斜板。有它，门口就有"阴影"，
+         不然门只是墙上一块深色贴片（截图确认：远看像一个个洞）。 */
+      var awn = mesh(new THREE.BoxGeometry(0.78, 0.05, 0.34), lam(new THREE.Color(base).multiplyScalar(0.52).getHex()),
+        0, 0.92, face + 0.14);
+      awn.rotation.x = -0.22;
+      grp.add(awn);
+      /* 招牌：一小块按分类上色的板，挂在门楣上。远看是一排彩色小块，
+         近看知道"这栋是作坊/民房/兵营"。 */
+      if (lvl >= 2) {
+        grp.add(mesh(new THREE.BoxGeometry(0.56, 0.13, 0.04), lam(C.neon, { emissive: C.neon, emissiveIntensity: 0.4 }),
+          0, 0.98 + h * 0.22, face + 0.04));
+      }
+      /* 街边小物件：木桶 / 货箱 / 花盆 / 拴马桩（4 成房子有，贴着自己的墙边放）。
+         尺寸压到 0.26 以内、位置贴墙 —— 巷道 1.6 米，剩 1.3 米给人走。
+         这类东西**不进碰撞表**：挡路的装饰是纯负担，踩过去就好。 */
+      var side = R() < 0.5 ? -1 : 1;
+      var sx2 = side * (w / 2 + 0.16), sz2 = face + 0.22;
+      var kind2 = Math.floor(R() * 4);
+      if (R() < 0.42) {
+        if (kind2 === 0) {
+          grp.add(mesh(new THREE.CylinderGeometry(0.13, 0.14, 0.34, 8), lam(C.wood), sx2, 0.17, sz2));
+          grp.add(mesh(new THREE.CylinderGeometry(0.135, 0.135, 0.04, 8), lam(0x4a3b28), sx2, 0.36, sz2));
+        } else if (kind2 === 1) {
+          grp.add(mesh(new THREE.BoxGeometry(0.26, 0.24, 0.26), lam(0x8a7a5c), sx2, 0.12, sz2));
+        } else if (kind2 === 2) {
+          grp.add(mesh(new THREE.CylinderGeometry(0.10, 0.13, 0.16, 6), lam(0x9a6a4a), sx2, 0.08, sz2));
+          grp.add(mesh(new THREE.ConeGeometry(0.16, 0.20, 5), lam(C.moss), sx2, 0.24, sz2));
+        } else {
+          grp.add(mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.5, 5), lam(C.woodDark), sx2, 0.25, sz2));
+          grp.add(mesh(new THREE.BoxGeometry(0.22, 0.05, 0.05), lam(C.woodDark), sx2, 0.46, sz2));
+        }
+      }
+      /* Lv≥3 加一层"楼"；Lv≥4 加水塔/天线 —— 等级看得见，不用点开面板 */
+      if (lvl >= 3) {
+        grp.add(mesh(new THREE.BoxGeometry(w * 0.78, 0.56, d * 0.78), lam(base), 0, topY + 0.28, 0));
+        grp.add(mesh(new THREE.BoxGeometry(w * 0.62, 0.05, d * 0.62), lam(0x6f6a5e), 0, topY + 0.56, 0));
+      }
+      if (lvl >= 4) {
+        grp.add(mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.22, 8), lam(0x8a8f96), w * 0.24, topY + 0.70, -d * 0.2));
+        grp.add(mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.62, 5), lam(0x6b7684), w * 0.24, topY + 1.06, -d * 0.2));
+      }
+      /* 烟囱：三成的房子有（确定性随机，同一座城每次进来一样） */
+      if (R() < 0.32) {
+        grp.add(mesh(new THREE.BoxGeometry(0.16, 0.34, 0.16), lam(0x6f6a5e), -w * 0.26, topY + 0.30, -d * 0.22));
+      }
+      grp.add(contactShadow(CITY_BW * 0.62));
       grp.position.set(x, 0, z);
-      grp.userData.node = { info: true, label: bname(bid) + ' Lv' + lvl, bid: bid, lvl: lvl };
+      grp.userData.node = { info: true, label: bname(bid) + ' Lv' + lvl, bid: bid, lvl: lvl, cat: cat };
       propRoot.add(grp);
       nodeList.push(grp);
+      /* 碰撞盒不在这里加 —— 在 cityPlan 里按同一套尺寸算好了（渲染只管画） */
       return grp;
     }
 
-    for (var idx = 0; idx < c.cells.length; idx++) {
-      var cell = c.cells[idx];
-      if (!cell) continue;
-      var col = idx % COLS, row = Math.floor(idx / COLS);
-      var x = (col - (COLS - 1) / 2) * CITY_T;
-      var z = (row - (ROWS - 1) / 2) * CITY_T;
-      /* 政务厅占 4 格：只在左上角那一格画一次 */
-      if (cell.official) {
-        if (cell.official === 1 || cell.official === true) {
-          var gov = new THREE.Group();
-          gov.add(mesh(new THREE.BoxGeometry(CITY_T * 1.5, 1.6, CITY_T * 1.4), lam(0xc9b07a), 0, 0.8, 0));
-          /* 半径 3.15、高 0.7 的四棱锥在俯视 57° 下就是"一块斜置的地毯"（截图确认）。
-             收半径、加高度，才读得出是屋顶。 */
-          var gr2 = mesh(new THREE.ConeGeometry(CITY_T * 0.78, 1.25, 4), lam(0x7a6440), 0, 2.15, 0);
-          gr2.rotation.y = Math.PI / 4; gov.add(gr2);
-          gov.add(mesh(new THREE.BoxGeometry(0.5, 0.16, 0.05), lam(C.glow, { emissive: C.glow, emissiveIntensity: 0.9 }), 0, 1.2, CITY_T * 0.71));
-          gov.add(contactShadow(CITY_T));
-          gov.position.set(x + CITY_T * 0.5, 0, z + CITY_T * 0.5);
-          gov.userData.node = { info: true, label: '政务厅', bid: 'guanfu', lvl: (c.gov && c.gov.lvl) || 1 };
-          propRoot.add(gov); nodeList.push(gov);
+    /* 街道道具：只在"能站人的地方"放，且**一律不挡主通道**
+       —— 玩家要在 1.14 米的巷子里走，任何占地的装饰都会把巷子卡成死胡同。
+       所以：装饰要么挂高（灯笼）、要么贴在墙面（招牌/窗），
+       要么放在空地格中间（那一格本来就空）。 */
+    function laneLamp(x, z) {
+      var g = new THREE.Group();
+      g.add(mesh(new THREE.CylinderGeometry(0.035, 0.045, 1.95, 6), lam(0x4a4740), 0, 0.98, 0));
+      /* 灯头：一个倒锥铁皮罩 + 里面的暖光球（夜里是城里的"星星"） */
+      /* 灯头：一个**尖朝下**的漏斗铁罩 + 罩口露出来的暖光球。
+         v142 第一版罩子尖朝上（Three 的 Cone 默认），球被罩在里面 ——
+         52° 俯视时只看得见一个灰罩子，灯是"灭"的（截图确认）。
+         翻过来，光就露出来了。 */
+      var shade = mesh(new THREE.ConeGeometry(0.17, 0.16, 6), lam(0x5a5449), 0, 1.95, 0);
+      shade.rotation.x = Math.PI;
+      g.add(shade);
+      g.add(mesh(new THREE.SphereGeometry(0.085, 8, 6), lam(C.neon, { emissive: C.neon, emissiveIntensity: 0.95 }), 0, 1.86, 0));
+      g.add(contactShadow(0.16));
+      g.position.set(x, 0, z);
+      propRoot.add(g);
+      /* 细杆不进碰撞表：玩家宁可穿过去，也不要被一根灯杆卡在巷口 */
+      return g;
+    }
+
+    function plazaPiece(x, z, kind, seed) {
+      var g = new THREE.Group(), Rp = rng(seed);
+      if (kind === 'well') {
+        /* 水井：井圈 + 两根立柱 + 小顶 —— 空地格的"中心物" */
+        g.add(mesh(new THREE.CylinderGeometry(0.42, 0.46, 0.34, 12), lam(0x8b8272), 0, 0.17, 0));
+        g.add(mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.06, 12), lam(0x2d2a24), 0, 0.33, 0));
+        [-0.34, 0.34].forEach(function (qx) {
+          g.add(mesh(new THREE.BoxGeometry(0.07, 0.86, 0.07), lam(C.woodDark), qx, 0.43, 0));
+        });
+        g.add(mesh(new THREE.BoxGeometry(0.86, 0.06, 0.5), lam(C.wood), 0, 0.86, 0));
+      } else if (kind === 'pile') {
+        /* 货堆：几个箱子 + 一个桶，空地上"这里有人做生意" */
+        for (var pi = 0; pi < 4; pi++) {
+          var pw = 0.26 + Rp() * 0.12, ph = 0.22 + Rp() * 0.12;
+          var px2 = (Rp() - 0.5) * 0.5, pz2 = (Rp() - 0.5) * 0.5;
+          g.add(mesh(new THREE.BoxGeometry(pw, ph, pw), lam(Rp() < 0.5 ? C.wood : 0x8a7a5c),
+            px2, ph / 2, pz2));
         }
+      } else if (kind === 'brazier') {
+        /* 火盆：营地里那口烧着的铁盆，夜里能看见城还活着 */
+        g.add(mesh(new THREE.CylinderGeometry(0.20, 0.28, 0.30, 8), lam(0x3a3630), 0, 0.15, 0));
+        var fl = mesh(new THREE.ConeGeometry(0.18, 0.44, 6), lam(0xff8b3d, { emissive: 0xff8b3d, emissiveIntensity: 0.9, transparent: true, opacity: 0.9 }), 0, 0.48, 0);
+        fl.name = 'flame';
+        g.add(fl);
+      } else {
+        /* 晾衣/木架：两根杆 + 一条横木（不占地，纯剪影） */
+        [-0.4, 0.4].forEach(function (qx) {
+          g.add(mesh(new THREE.CylinderGeometry(0.04, 0.05, 1.5, 5), lam(C.woodDark), qx, 0.75, 0));
+        });
+        g.add(mesh(new THREE.BoxGeometry(0.9, 0.05, 0.05), lam(C.wood), 0, 1.45, 0));
+        g.add(mesh(new THREE.BoxGeometry(0.34, 0.4, 0.02), lam(0x9a8d74), -0.18, 1.18, 0));
+        g.add(mesh(new THREE.BoxGeometry(0.28, 0.34, 0.02), lam(0x7a6a52), 0.2, 1.21, 0));
+      }
+      g.position.set(x, 0, z);
+      propRoot.add(g);
+      return g;
+    }
+
+    for (var ci2 = 0; ci2 < plan.cells.length; ci2++) {
+      var it = plan.cells[ci2];
+      if (it.kind === 'void') continue;
+      var x = it.x, z = it.z;
+      /* 政务厅占 4 格：只有 lead 那一格画，其余三格跳过 */
+      if (it.kind === 'govPart') continue;
+      if (it.kind === 'gov') {
+        var glv = it.lvl;
+        var gW = it.gw;
+        /* 墙面要"露得出来"：v142 第一版 gh=1.8、屋顶半径 gW*0.82（底面 5.1 米），
+           65° 俯角下屋顶把 4.4 米的墙面**整面盖住** —— 截图里政务厅就是一块棕色大板，
+           门、窗、匾额一个都看不见。gh 抬到 2.2、屋顶收到 0.66（底面 4.1 米），
+           墙面才露出来。 */
+        var gh = 2.2;
+        var gov = new THREE.Group();
+        gov.add(mesh(new THREE.BoxGeometry(gW + 0.26, 0.18, gW + 0.26), lam(0x7f786a), 0, 0.09, 0));
+        gov.add(mesh(new THREE.BoxGeometry(gW, gh, gW), lam(0xc9b07a), 0, 0.18 + gh / 2, 0));
+        /* 屋顶：大四棱锥 + 正脊上的旗杆。政务厅是全城最高的那栋，
+           "一眼能找到衙门"比任何标签都省事。 */
+        gov.add(mesh(new THREE.BoxGeometry(gW * 1.02, 0.09, gW * 1.02), lam(0x4e5a58), 0, 0.18 + gh + 0.05, 0));
+        /* 重檐：下大上小两层坡顶。单层大锥在 45° 下是一整块棕色，
+           加一层小的，屋脊的位置就出来了（衙门的分量也在这）。 */
+        var gr2 = mesh(new THREE.ConeGeometry(gW * 0.66, 0.62, 4), lam(0x62706e), 0, 0.18 + gh + 0.36, 0);
+        gr2.rotation.y = Math.PI / 4; gov.add(gr2);
+        var gr3 = mesh(new THREE.ConeGeometry(gW * 0.46, 0.50, 4), lam(0x4e5a58), 0, 0.18 + gh + 0.90, 0);
+        gr3.rotation.y = Math.PI / 4; gov.add(gr3);
+        gov.add(mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.9, 5), lam(0x6b7684), 0, 0.18 + gh + 1.55, 0));
+        gov.add(mesh(new THREE.BoxGeometry(0.46, 0.28, 0.03), lam(C.blood, { emissive: C.blood, emissiveIntensity: 0.3 }), 0.24, 0.18 + gh + 1.68, 0));
+        /* 柱廊：正门四根柱子撑一段檐（衙门感全在这四根柱子上） */
+        [-gW * 0.36, -gW * 0.12, gW * 0.12, gW * 0.36].forEach(function (qx) {
+          gov.add(mesh(new THREE.CylinderGeometry(0.075, 0.085, 1.25, 6), lam(0xd6c49a), qx, 0.72, gW / 2 + 0.42));
+        });
+        gov.add(mesh(new THREE.BoxGeometry(gW * 0.92, 0.14, 0.9), lam(0x9a8a68), 0, 1.4, gW / 2 + 0.42));
+        gov.add(mesh(new THREE.BoxGeometry(0.62, 0.86, 0.07), lam(0x3f3123), 0, 0.61, gW / 2 + 0.02));
+        /* 匾额 + 两排窗：衙门那面墙 4.4 米宽，只有一扇门的话就是一块"棕色大板"
+           （v142 截图确认：整栋楼读不出是房子）。 */
+        gov.add(mesh(new THREE.BoxGeometry(1.5, 0.34, 0.05), lam(0x2f2a22), 0, 1.28, gW / 2 + 0.05));
+        gov.add(mesh(new THREE.BoxGeometry(1.3, 0.20, 0.03), lam(C.glow, { emissive: C.glow, emissiveIntensity: 0.45 }), 0, 1.28, gW / 2 + 0.07));
+        [-0.30, 0.30].forEach(function (wx2) {
+          [-0.34, 0.34].forEach(function (wy2) {
+            gov.add(mesh(new THREE.BoxGeometry(0.34, 0.30, 0.04), lam(0x4a3d2c),
+              wx2 * gW, (0.18 + gh * 0.5) + wy2 * gh * 0.28, gW / 2 + 0.03));
+          });
+        });
+        /* 瓦垄：正南这一面坡加四条横线，重檐才不是两块纯色 */
+        var gTile = lam(0x3f4a49);
+        [-0.34, -0.11, 0.11, 0.34].forEach(function (tx3) {
+          gov.add(mesh(new THREE.BoxGeometry(gW * 0.70, 0.03, 0.05), gTile,
+            tx3 * gW * 0.5, 0.18 + gh + 0.42, gW * 0.30));
+        });
+        gov.add(mesh(new THREE.BoxGeometry(0.9, 0.10, 0.26), lam(0x8b8272), 0, 0.05, gW / 2 + 0.16));
+        gov.add(contactShadow(gW * 0.72));
+        gov.position.set(it.gx, 0, it.gz);
+        gov.userData.node = { info: true, label: '政务厅 Lv' + glv, bid: 'guanfu', lvl: glv, cat: 'gov' };
+        propRoot.add(gov); nodeList.push(gov);
         continue;
       }
-      if (cell.build && cell.build.id) house(cell.build.id, cell.build.lvl || 1, x, z);
+      if (it.kind === 'house') house(it.bid, it.lvl, x, z);
+      else if (it.plaza) plazaPiece(x, z, it.plaza, it.idx + 3000);
       else {
-        /* 空地：矮台 + 很淡的虚框，表示"这里能建"（不放建筑，别冒充已建） */
-        /* 空地不该"重"：0.06 高的深砖在正交视角下会成为一排黑块。
-           压到 0.02、提亮、收小 —— 它是"这里能建"的暗示，不是建筑。 */
-        var pad = mesh(new THREE.BoxGeometry(CITY_T * 0.52, 0.02, CITY_T * 0.42), lam(0x9c9382), x, 0.012, z);
-        pad.userData.node = { info: true, label: '空地', bid: null, lvl: 0 };
-        propRoot.add(pad); nodeList.push(pad);
+        /* 什么都不放的空地：给一点碎石，别让格子里空得像没加载 */
+        var pad = mesh(new THREE.BoxGeometry(0.5, 0.03, 0.42), lam(0x7e7565), x + 0.4, 0.02, z - 0.3);
+        propRoot.add(pad);
       }
     }
 
-    /* 围墙：建了才画（与 2D 那边 `c.wall.build` 同一判据） */
+    /* 巷口的路灯：每三个格子一盏（放在格子的左上角，正好是十字巷口） */
+    for (var li = 0; li < c.cells.length; li++) {
+      if (((li % COLS) + Math.floor(li / COLS)) % 3 !== 0) continue;
+      var lcol = li % COLS, lrow = Math.floor(li / COLS);
+      laneLamp((lcol - (COLS - 1) / 2) * CITY_T - CITY_T / 2,
+        (lrow - (ROWS - 1) / 2) * CITY_T - CITY_T / 2);
+    }
+
+    /* 围墙：南面**留一个门洞**（宽 3.2）。v140 的墙是整圈封死的，
+       城门只是个"按 E 出城"的牌子 —— 玩家看得出那是假的（墙没断）。
+       v142 墙真的断开，人真的走出去。 */
+    var hw = W / 2 + CITY_PAD, hd = D / 2 + CITY_PAD;
+    var gateHalf = 1.6;
     if (c.wall && c.wall.build) {
       var wl = new THREE.Group();
-      var hw = W / 2 + 0.9, hd = D / 2 + 0.9;
-      [[0, -hd, W + 1.8, 0.4], [0, hd, W + 1.8, 0.4], [-hw, 0, 0.4, D + 1.8], [hw, 0, 0.4, D + 1.8]].forEach(function (q) {
-        var seg = mesh(new THREE.BoxGeometry(q[2], 1.1, q[3]), lam(0x8d8578), q[0], 0.55, q[1]);
-        wl.add(seg);
-      });
+      var wallSeg = function (cx0, cz0, sw, sd) {
+        wl.add(mesh(new THREE.BoxGeometry(sw, 1.3, sd), lam(0x8d8578), cx0, 0.65, cz0));
+        /* 墙头压顶：一条比墙薄的深色石条，墙就不再是"一块灰板" */
+        wl.add(mesh(new THREE.BoxGeometry(sw + 0.06, 0.1, sd + 0.06), lam(0x6f6a5e), cx0, 1.34, cz0));
+      };
+      wallSeg(0, -hd, W + CITY_PAD * 2 + 0.6, 0.5);                       /* 北 */
+      wallSeg(-(hw + gateHalf) / 2 - 0.0, hd, hw - gateHalf, 0.5);        /* 南 · 左 */
+      wallSeg((hw + gateHalf) / 2, hd, hw - gateHalf, 0.5);               /* 南 · 右 */
+      wallSeg(-hw, 0, 0.5, D + CITY_PAD * 2);                            /* 西 */
+      wallSeg(hw, 0, 0.5, D + CITY_PAD * 2);                             /* 东 */
       propRoot.add(wl);
     }
 
-    /* 城门：3D 里的"出城"出口。
-       为什么放在场景里而不是做个悬浮按钮：出城是个**动作**，走过去的动作
-       比点一个按钮更像在城里。 */
+    /* 城门：立在墙的缺口里（不是墙前面）。
+       门柱、门楣、一块发光的门牌 —— 三件就够读出"这是主出入口"。
+       ⚠️ 门楼必须**够高**：v142 第一版门楣在 2.12 米，玩家出生在门内 0.95 米，
+       52° 俯角下视线从门楣顶继续下落 0.95×tan52°=1.22 米 → 到玩家头上只剩 1.13 米，
+       正好把 1.35 米高的人**整个脑袋盖掉**（截图里"人不见了"，其实是站在门底下）。
+       现在门楣底 2.72 米 > 玩家头顶投影 2.57 米，站在门里也看得见自己。 */
     var gate = new THREE.Group();
-    [-1.25, 1.25].forEach(function (gx) {
-      gate.add(mesh(new THREE.BoxGeometry(0.42, 1.7, 0.42), lam(0xa2967e), gx, 0.85, 0));
+    [-gateHalf, gateHalf].forEach(function (gx) {
+      gate.add(mesh(new THREE.BoxGeometry(0.46, 2.2, 0.62), lam(0xa2967e), gx, 1.1, 0));
+      gate.add(mesh(new THREE.BoxGeometry(0.56, 0.14, 0.72), lam(0x7a6f5e), gx, 2.27, 0));
     });
-    gate.add(mesh(new THREE.BoxGeometry(3.1, 0.36, 0.5), lam(0x8d8578), 0, 1.78, 0));
-    gate.add(mesh(new THREE.BoxGeometry(2.0, 0.09, 0.06), lam(C.glow, { emissive: C.glow, emissiveIntensity: 0.85 }), 0, 1.78, 0.29));
-    gate.add(contactShadow(1.3));
-    gate.position.set(0, 0, D / 2 + 1.1);
+    gate.add(mesh(new THREE.BoxGeometry(gateHalf * 2 + 1.2, 0.4, 0.66), lam(0x8d8578), 0, 2.52, 0));
+    gate.add(mesh(new THREE.BoxGeometry(gateHalf * 2 - 0.4, 0.12, 0.06), lam(C.glow, { emissive: C.glow, emissiveIntensity: 0.9 }), 0, 2.52, 0.35));
+    gate.add(mesh(new THREE.BoxGeometry(1.5, 0.34, 0.08), lam(0x6b533a), 0, 2.06, 0.3));
+    gate.add(contactShadow(1.5));
+    gate.position.set(0, 0, hd);
     gate.userData.node = { idx: 901, gate: true, label: '城门 · 出城', hint: '走出去，回到野外', done: false };
     propRoot.add(gate);
     nodeList.push(gate);
+    /* 门外的路：一条伸出去的土路，告诉玩家"往这儿走就是外面" */
+    var road = new THREE.Mesh(new THREE.PlaneGeometry(3.0, 4.2),
+      new THREE.MeshLambertMaterial({ color: 0x7a6e58 }));
+    road.rotation.x = -Math.PI / 2;
+    road.position.set(0, 0.015, hd + 2.1);
+    propRoot.add(road);
+
+    /* 城的活动范围：比格子区多一圈墙根，南面多放 2.6 米（门外） */
+    cityBounds = { x0: -hw + 0.35, x1: hw - 0.35, z0: -hd + 0.35, z1: hd + 2.6 };
+    /* 走到这道线就算出城（不必回头点门） */
+    cityOutZ = hd + 1.9;
 
     player = buildPlayer();
-    player.position.set(0, 0, D / 2 - 0.6);           /* 站在城门内侧 */
+    /* ⚠️ 必须挂进 propRoot。v140 漏了这一行 —— 城内"能走"，但**从来没有画过人**：
+       相机跟着一个看不见的点跑，玩家只能靠底部提示条猜自己在哪（v142 截图才发现）。
+       野地那边挂了，城内照抄时漏了，这类"只在一处生效"的 bug 截图比断言管用。 */
+    propRoot.add(player);
+    /* 出生点：来自 plan（与门禁量的是同一个点 —— 两处各写一个数就会漂） */
+    player.position.set(plan.spawn.x, 0, plan.spawn.z);
     targetPt = null;
-    /* 城内用更大的视口（26）：整座 8×6 的城要能一眼看全 ——
-       野地那个 17.5 是"人在场景里"，城内是"看我的城"，取景目的不同。 */
-    /* 城很小（16.8 × 12.6 米）：视口 15.5 就能整城入画，
-       26 的时候城只占中间一条，上下全是空天（截图确认）。 */
+    /* 城内相机跟随（v142）：视口 11 米 —— 一屏看到约 4 格宽、5 格深，
+       差不多"一条街 + 对面一排房子"，这是"逛"的取景。
+       v140 的 15.5 是俯瞰全城用的，跟着人走会晃得厉害。 */
     cityView = true;
-    frustumH = 15.5;
-    cam.position.set(0, 20, 14);
-    cam.lookAt(0, 0.5, 0);
+    frustumH = 9.5;
+    cam.position.set(0, 21.65, plan.spawn.z + 8);
+    cam.lookAt(0, 0.8, plan.spawn.z - 1.72);
     resize();
     return true;
   }
@@ -1466,6 +1915,25 @@
   /* 城内 3D（入口在城市页右下角） */
   S.openCity = function () { return S.open('city'); };
   S.current = function () { return openId; };
+  /* 相机/玩家的真实位姿（给门禁和排障用）。
+     为什么要有它：v142 调镜头时，"玩家不在画面里"和"俯角只有 20°"这种问题
+     只能靠**量**——截图里看不出相机到底朝哪。这里把俯角、玩家在 NDC 里的位置
+     直接算出来，断言就能钉住"玩家必须在画面内、俯角必须在 45°~60°"。 */
+  S._debug = function () {
+    if (!player || !cam) return null;
+    var dir = new THREE.Vector3();
+    cam.getWorldDirection(dir);
+    var pv = new THREE.Vector3(player.position.x, 0.8, player.position.z).project(cam);
+    return {
+      player: { x: player.position.x, z: player.position.z },
+      cam: { x: cam.position.x, y: cam.position.y, z: cam.position.z },
+      dir: { x: dir.x, y: dir.y, z: dir.z },
+      pitchDeg: Math.round(Math.atan2(-dir.y, Math.sqrt(dir.x * dir.x + dir.z * dir.z)) * 180 / Math.PI),
+      ndc: { x: pv.x, y: pv.y },
+      frustumH: frustumH, cityView: cityView, solids: citySolids.length,
+      bounded: !!cityBounds,
+    };
+  };
 
   /* 动作 → 场景。地形决定"同样的采集，长什么样"：
        森林里砍树、草原上割麦、其余翻废墟 —— 这是"采集"三个不同场景的来源。 */

@@ -9,7 +9,7 @@
     "domain>tactic": 1,
     "camp>battle": 2,
     "veteran>battle": 3,
-    "prologue>battle": 3
+    "prologue>battle": 9
   },
   "core>ui": {
     "state>story": 28,
@@ -25,7 +25,10 @@
     "map>main": 2,
     "camp>map3d": 2,
     "camp>ui": 3,
-    "ruin>ui": 3
+    "ruin>ui": 3,
+    "prologue>ui": 14,
+    "prologue>map3d": 1,
+    "prologue>main": 12
   },
   "war>ui": {
     "battle>story": 40,

@@ -131,6 +131,14 @@
   **规矩**：改文件前先 `git show HEAD:<file> | od -c | head -3` 看原换行；
   用 `io.open(p,'rb')` 读写 + 显式 `replace`；改完 `git diff --stat` 核对
   "变动的行数 ≈ 我以为改的行数"，对不上就是换行被动了。
+- **`js/*.js` 一律 LF，写文件时必须显式 `newline='\n'`**（v142 踩过）：
+  `io.open(p,'w').write(s)` 在 Windows 上会把每个 `\n` 变成 `\r\n`，
+  而 `build_bundle.py` 用 Python 读源码时**做的是 universal newline（CRLF→LF）**，
+  `smoke §v91.61` 却用 Node 原样读 —— 同一份源码在两边算出两个 hash，
+  于是"bundle 与源码不同步"这条会红，而 `selfcheck` 自己的 bundle 检查是绿的
+  （它复用 Python 算法）。表现极具误导性：以为是忘了重建。
+  **正确写法**：`io.open(p,'w',encoding='utf-8',newline='\n')`，
+  或改完用 `open(p,'rb').read().replace(b'\r\n',b'\n')` 兜一遍再重建。
 - **三包顺序不能改**（v104 拆分）：`bundle-core`（引擎与数据）→ `bundle-war`（战斗/战术/素材表）
   → `bundle-ui`（天时数值层 / 界面 / 3D / main）。`index.html` 三个 `<script>` 顺序执行，
   `window.GAME` 全局共享 —— 挪动任意一个包的位置，求值顺序就变了。

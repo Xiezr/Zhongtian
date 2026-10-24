@@ -168,6 +168,53 @@ const ok = (name, cond, extra) => {
   ok('面板里找得到确认按钮', layer.btn === 'undefined' || layer.btn === 'missing' ? false : true, '按钮=' + (layer.btnText || layer.btn || '?'));
   ok('按钮位置在最上层（修前被前传 HUD 盖住）', layer.hitIsBtn === true, '该点最上层=' + layer.hitTag);
 
+  /* ---------- ⑥ 城内 3D（v142）：进得去、看得见人、走得出城门 ----------
+     为什么这三条必须在实机里量：
+       · **俯角**是相机算出来的，smoke 里没有 THREE，算不出来；
+       · **玩家在不在画面里**要投影到 NDC —— 这个问题让老板看到的就是"城里没人"；
+       · **走出城门**是键盘走出来的，改代码看不出来。
+     判据都带上下限（俯角区间、NDC 区间、像素体积下限），"等于某个值"那种校验过不了平凡解。 */
+  const cityIn = await p.evaluate(() => {
+    const G = window.GAME;
+    G.newGame({ name: '城内审核', cityName: '灰岗', mapSeed: 20261025 });
+    G.ui.enterGame(); G.ui.setView('city');
+    const c = G.currentCity();
+    const ids = ['nongtian', 'minfang', 'tiejiang', 'junying', 'cangku', 'shuyuan'];
+    for (let i = 0; i < c.cells.length; i++) {
+      if (c.cells[i].official) continue;
+      if (i % 4 === 0) continue;
+      c.cells[i].build = { id: ids[i % ids.length], lvl: (i % 5) + 1 };
+    }
+    const r = G.scene3d.openCity();
+    return { ok: !!r.ok, buildings: c.cells.filter((x) => x.build).length };
+  });
+  await p.waitForTimeout(900);
+  const cd = await p.evaluate(() => window.GAME.scene3d._debug());
+  console.log('⑥ 城内 3D（v142：能逛的街区）');
+  ok('进得去（openCity 成功 · cityView=true · 有碰撞体）',
+    cityIn.ok === true && !!cd && cd.cityView === true && cd.bounded === true,
+    '建筑 ' + cityIn.buildings + ' 栋 · 碰撞盒 ' + (cd ? cd.solids : '?' ));
+  ok('俯角在 55°~75°（街区视角，不是俯瞰也不是平视）',
+    !!cd && cd.pitchDeg >= 55 && cd.pitchDeg <= 75, (cd ? cd.pitchDeg : '?') + '°');
+  ok('玩家投影落在画面内（NDC x∈[-1,1] · y∈[-0.9,0.5]）',
+    !!cd && Math.abs(cd.ndc.x) < 1 && cd.ndc.y > -0.9 && cd.ndc.y < 0.5,
+    cd ? ('ndc=' + cd.ndc.x.toFixed(2) + ',' + cd.ndc.y.toFixed(2)) : '无 _debug');
+  /* 画面真的画了东西：纯色 PNG 会非常小，有建筑/街道/人物的会大一个量级 */
+  const shotPath = path.join(ROOT, '.workbuddy', 'shots', 'audit-city.png');
+  let shotSize = 0;
+  try {
+    await p.screenshot({ path: shotPath });
+    shotSize = require('fs').statSync(shotPath).size;
+  } catch (e) { shotSize = 0; }
+  ok('画面有内容（截图 ≥ 60KB，防"白屏也算通过"）', shotSize >= 60000, Math.round(shotSize / 1024) + 'KB');
+  /* 走出城门：一路往南按 S，越过门槛就该关场景 */
+  await p.keyboard.down('s');
+  await p.waitForTimeout(3200);
+  await p.keyboard.up('s');
+  await p.waitForTimeout(400);
+  const closed = await p.evaluate(() => window.GAME.scene3d.current());
+  ok('走到城门就出城（不用回头按 E）', closed === null, 'current=' + closed);
+
   console.log('\n结果：' + pass + ' 通过 / ' + fail + ' 失败');
   await b.close();
   process.exit(fail ? 1 : 0);
