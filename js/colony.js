@@ -121,6 +121,15 @@ import './ship.js';
     CO.state().missions.forEach(function (m) { if (m.shipId === shipId) out = m; });
     return out;
   };
+  /* 可投送的船（运输系母舰）—— 面板的"选母舰"列表读它（唯一出口） */
+  CO.carrierShips = function () {
+    var out = [];
+    SH.ships().forEach(function (sh) {
+      var cls = SH.classOf(sh.classId);
+      if (cls && cls.role === 'carrier') out.push(sh);
+    });
+    return out;
+  };
 
   /* ---------- 校验（界面置灰与真执行同读这一份） ---------- */
   CO.canSend = function (opts) {
@@ -129,9 +138,7 @@ import './ship.js';
     if (!s) return { ok: false, msg: '尚未开局' };
     var from = (opts.fromCityId && GAME.cityById(opts.fromCityId)) || (GAME.currentCity ? GAME.currentCity() : null);
     if (!from) return { ok: false, msg: '没有出发城' };
-    if (GAME.pidOf(from) !== GAME.curPid()) {
-      return { ok: false, msg: '出发城不在当前星球 —— 先切回那座城所在的星球' };
-    }
+    /* 不要求"出发城在当前星球"：空间站是全局的，投送本来就是跨星动作 */
     var ship = null;
     SH.ships().forEach(function (x) { if (x.id === opts.shipId) ship = x; });
     if (!ship) return { ok: false, msg: '没有这艘战舰' };
@@ -187,6 +194,9 @@ import './ship.js';
     GAME.city.armySub(city, chk.army);
     GAME.items.sub(chk.fuelItem, chk.fuel);
     st._seq += 1;
+    /* ⚠️ flightSecOf 是**游戏秒**（与行军同尺），现实时间锚点要 ÷ 时间倍率 ——
+       第一版直接 ×1000 当成毫秒，一趟跨星变成 28 天（实机截图当场抓到）。 */
+    var flightMs = Math.round(chk.flightSec / Math.max(1, GAME.timeScale()) * 1000);
     var m = {
       id: 'ix' + st._seq,
       shipId: chk.ship.id, classId: chk.ship.classId,
@@ -195,12 +205,12 @@ import './ship.js';
       army: U.deep(chk.army), colonists: chk.colonists,
       fuel: chk.fuel, fuelItem: chk.fuelItem,
       cap: chk.cap, load: chk.load,
-      departAt: now, arriveAt: now + chk.flightSec * 1000,
+      departAt: now, arriveAt: now + flightMs,
       phase: 'out',
     };
     st.missions.push(m);
     var shipName = chk.cls.name || m.classId;
-    var realSec = chk.flightSec / GAME.timeScale();
+    var realSec = Math.round(flightMs / 1000);
     GAME.log('🚀 「' + shipName + '」启航 → ' + chk.planet.name + '：' + U.fmt(chk.colonists) + ' 人 · '
       + U.fmt(CO.armyN(chk.army)) + ' 兵（单程约 ' + U.dur(realSec) + ' 现实时间）', 'sys', 'admin');
     return { ok: true, msg: '已启航 → ' + chk.planet.name + '（单程约 ' + U.dur(realSec) + '，抵达后勘测 '
@@ -289,6 +299,16 @@ import './ship.js';
     return w;
   };
 
+  /* 锚地：没有就圈一块（幂等 · 唯一出口）。
+     enterPlanet（落脚点）与 _arrive（首次投送）都走这里 —— 同一颗球不会圈出第二块。 */
+  CO.ensureMooring = function (pid) {
+    var w = CO.mooringOf(pid);
+    if (w) return w;
+    var c = CO.cityAt(pid);
+    if (c) return null;                    /* 已经有城 → 不需要锚地 */
+    return CO._moorAt(pid);
+  };
+
   /* ---------- 抵达结算 ---------- */
   CO._arrive = function (m) {
     var s = GAME.state, pl = CO.planetOf(m.pid);
@@ -318,7 +338,7 @@ import './ship.js';
         + (Object.keys(res.goods).length ? (' · 装船回运 ' + Object.keys(res.goods).join('/')) : ''), 'sys', 'admin');
     } else {
       var had = !!CO.mooringOf(m.pid);
-      var w = CO.mooringOf(m.pid) || CO._moorAt(m.pid);
+      var w = CO.ensureMooring(m.pid);      /* 幂等：没有才圈（唯一出口） */
       if (w && m.colonists > 0) w.colonists = (w.colonists || 0) + m.colonists;
       if (w && res.troops > 0) {
         w.garrison = w.garrison || { troops: {} };

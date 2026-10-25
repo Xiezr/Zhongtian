@@ -44378,15 +44378,19 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     }
     try {
       /* ---- ① 新星球不白送前哨城 ---- */
-      check('§566① 进毛胚星球**不再白送前哨城**（只留登陆点，城市数不变）', (function () {
+      check('§566① 进毛胚星球**不再白送前哨城/锚地**（只留登陆点 · 补给线须投送）', (function () {
         var st = fresh(566002);
         var n0 = st.cities.length;
         var p = G.addPlanet({ seed: 566111 });
         G.enterPlanet(p.id);
         var n1 = st.cities.filter(function (c) { return G.pidOf(c) === p.id; }).length;
         var ws = (G._planetById(p.id) || {}).worldStart;
+        /* v145：进球也不白送锚地 —— 补给线只能靠投送建立（否则"先投送"那道闸就被绕过了） */
+        var noMoor = !G.colony.mooringOf(p.id);
+        var noSup = G.colonySupplyChk(p.id);
         G.enterPlanet(1);
-        return n1 === 0 && st.cities.length === n0 && !!ws && typeof ws.x === 'number';
+        return n1 === 0 && st.cities.length === n0 && !!ws && typeof ws.x === 'number'
+          && noMoor && noSup.ok === false;
       })(), '落地只有 worldStart 登陆点，没有城');
 
       /* ---- ② 船型闸 ---- */
