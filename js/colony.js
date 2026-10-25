@@ -100,6 +100,8 @@ import './ship.js';
     return Math.max(0, Math.round(base + (st.cap || 0) * perCap));
   };
   CO.fuelCostOf = function (ship, pid) {
+    /* v146：选了「深空无响应」→ 母舰从深空取燃料，投送不烧燃料 */
+    if (GAME.ending && GAME.ending.noFuel && GAME.ending.noFuel()) return 0;
     var per = cfg('fuelPerCap', 0.05);
     var km = 1 + (Math.max(1, pid | 0) - 1) * (cfg('fuelPerStar', 0.25));
     return Math.max(1, Math.ceil(CO.capacityOf(ship) * per * km));
@@ -149,6 +151,9 @@ import './ship.js';
     }
     var busy = CO.busyOf(ship.id);
     if (busy) return { ok: false, msg: '「' + cls.name + '」正在执行投送（' + Math.round(CO.progressOf(busy) * 100) + '%），须先返航' };
+    if (GAME.fleet && GAME.fleet.busyOf && GAME.fleet.busyOf(ship.id)) {
+      return { ok: false, msg: '「' + cls.name + '」已在舰队编成中 —— 先解散舰队再投送' };
+    }
     var pid = Number(opts.pid);
     var pl = CO.planetOf(pid);
     if (!pl) return { ok: false, msg: '目标星球不存在' };

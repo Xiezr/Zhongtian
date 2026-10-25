@@ -12391,7 +12391,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
     /* ⚠️ 这份 ORDER 与 build_bundle.py 的 ORDER **必须逐条一致**（本文故意不复用脚本，
        就是为了"构建脚本自己算错时测试还能抓到"）。加了模块两边都要加 ——
        v92 加 fog / memorial 时这里漏改，导致 hash 对不上、守卫假红。 */
-    var ORDER = ['core', 'registry', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'colony', 'domain', 'map', 'sphere', 'risk', 'years', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'rival', 'land', 'taint', 'climate', 'surge', 'relic', 'goals', 'veteran', 'setskill', 'deck', 'bond', 'tower', 'wonderwar', 'delve', 'unrest', 'expose', 'trooplv', 'idle', 'ending', 'muster', 'founding', 'prologue', 'duel', 'market', 'events', 'gltf',
+    var ORDER = ['core', 'registry', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'colony', 'fleet', 'domain', 'map', 'sphere', 'risk', 'years', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'rival', 'land', 'taint', 'climate', 'surge', 'relic', 'goals', 'veteran', 'setskill', 'deck', 'bond', 'tower', 'wonderwar', 'delve', 'unrest', 'expose', 'trooplv', 'idle', 'ending', 'muster', 'founding', 'prologue', 'duel', 'market', 'events', 'gltf',
       'map3d', 'scene3d', 'battle', 'battlelog', 'strategy', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits', 'story', 'ui', 'main'];
     var h = crypto.createHash('sha256');
     try {
@@ -44524,6 +44524,231 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       check('§566 链路异常（不应发生）', false, 'err=' + ((e566 && e566.message) || e566));
     } finally {
       G.state = bk; G._realNowOf = bkNow;
+    }
+    G.newGame({ name: '收尾', cityName: '灰岗' });
+  })();
+
+  /* ============================================================
+   * §567. v146 舰队战 / 深空远征（F 期）
+   * ------------------------------------------------------------
+   * 钉七件事：
+   *   ① 编成闸：空舰队/超编/未知舰/已在舰队 → 全拒；正常编成不扣舰
+   *   ② 舰队属性 = 逐舰汇总（读 SH.statsOf · 不另造第二套）
+   *   ③ 交战确定性：同 (舰队, 目标, seed) → 逐位同结果
+   *   ④ 胜负两端：小舰队打软目标能赢；打 Boss 打不穿（不能默认全赢）
+   *   ⑤ 战利品：赢了物品进背包、资源随返航并入城
+   *   ⑥ 损舰只发生在"被打沉"（未破不损）；折舰先掉僚舰，旗舰最后掉
+   *   ⑦ 出港锁：舰队在编/在途时，舰船不能拆、不能升部件、不能投送
+   * ============================================================ */
+  (function () {
+    var NL = String.fromCharCode(10);
+    console.log(NL + '===== 567. v146 舰队战 / 深空远征（F 期） =====');
+    var bk = G.state, bkNow = G._realNowOf, bkUNow = U.now;
+    function fresh(seed) {
+      U.now = bkUNow;
+      var st = G.newGame({ name: 'fl567', cityName: '灰岗', mapSeed: seed || 567001 });
+      G.state = st;
+      if (st.cities[0]) st.cities[0].pid = 1;
+      st.activePlanet = 1; st.mapPlanetId = 1;
+      if (G._extraSpheres) G._extraSpheres = {};
+      /* U.now 拨钟（与 §566⑤ 同规）—— fleet/colony 的现实时间锚点读的都是它 */
+      G._realNowOf = function () { return 1700000000000; };
+      U.now = function () { return 1700000000000; };
+      st.ds = { fleets: [], cleared: {}, _seq: 0, history: [] };
+      st.station = { lv: 10, ships: [], _seq: 0 };
+      (G.DATA.SHIP_BLUEPRINTS || []).forEach(function (b) { st.items[b.id] = 1; });
+      (G.DATA.SHIP_PARTS || []).forEach(function (p) { if (p.mat) st.items[p.mat] = 9999; });
+      st.items.w_stariron = 9999;
+      ['c_w1', 'c_b1', 'c_g1', 'c_w2', 'c_w3'].forEach(function (cid) { G.ship.build(cid); });
+      return st;
+    }
+    try {
+      /* ---- ① 编成闸 ---- */
+      check('§567① 编成闸：空/超编/未知舰/已在舰队 → 拒；正常编成不扣舰', (function () {
+        fresh(567002);
+        var ids = G.ship.ships().map(function (s) { return s.id; });
+        var t0 = G.fleet.targets()[0].id;
+        var empty = G.fleet.canForm({ shipIds: [], targetId: t0 });
+        var over = G.fleet.canForm({ shipIds: ['a', 'b', 'c', 'd', 'e', 'f'], targetId: t0 });
+        var bogus = G.fleet.canForm({ shipIds: ['nope'], targetId: t0 });
+        var ok = G.fleet.canForm({ shipIds: ids.slice(0, 3), targetId: t0 });
+        if (!ok.ok) return false;
+        var r = G.fleet.form({ shipIds: ids.slice(0, 3), targetId: t0 });
+        var dup = G.fleet.canForm({ shipIds: [ids[0]], targetId: t0 });
+        return empty.ok === false && over.ok === false && bogus.ok === false
+          && r.ok === true && G.ship.ships().length === 5
+          && dup.ok === false && G.fleet.fleets().length === 1;
+      })(), '拒四种坏输入 · 正常编成不扣舰');
+
+      /* ---- ② 舰队属性 = 逐舰汇总 ---- */
+      check('§567② 舰队属性 = SH.statsOf 逐舰汇总（不另造第二套）', (function () {
+        fresh(567003);
+        var ships = G.ship.ships();
+        var f = { ships: ships.slice(0, 3).map(function (s) { return s.id; }) };
+        var st2 = G.fleet.statsOf(f);
+        var sum = { atk: 0, hp: 0, shield: 0, armor: 0 };
+        ships.slice(0, 3).forEach(function (s) {
+          var x = G.ship.statsOf(s);
+          sum.atk += x.atk; sum.hp += x.hp; sum.shield += x.shield; sum.armor += x.armor;
+        });
+        var loses = G.fleet.statsOf({ ships: f.ships, flagshipLost: true });
+        return st2.atk === sum.atk && st2.hp === sum.hp && st2.shield === sum.shield && st2.armor === sum.armor
+          && st2.n === 3 && loses.atk === Math.round(sum.atk * 0.8);
+      })(), '攻/血/盾/甲逐项相等 · 掉旗舰 −20% 攻');
+
+      /* ---- ③ 确定性 ---- */
+      check('§567③ 交战确定性：同 (舰队, 目标, seed) → 逐位同结果', (function () {
+        fresh(567004);
+        var mine = G.fleet.mineOf({ ships: G.ship.ships().map(function (s) { return s.id; }) });
+        var t = G.fleet.targets()[2];
+        var a = G.fleet.battle(mine, t, 'seed-x');
+        var b = G.fleet.battle(mine, t, 'seed-x');
+        var c = G.fleet.battle(mine, t, 'seed-y');
+        return JSON.stringify(a) === JSON.stringify(b)
+          && JSON.stringify(a) !== JSON.stringify(c);
+      })(), '同 seed 逐位相等 · 换 seed 不同');
+
+      /* ---- ④ 胜负两端 ---- */
+      check('§567④ 胜负两端：三舰打软目标能赢；三舰打 Boss 打不穿', (function () {
+        fresh(567005);
+        var mine = G.fleet.mineOf({ ships: G.ship.ships().slice(0, 3).map(function (s) { return s.id; }) });
+        var tg = G.fleet.targets();
+        var easy = G.fleet.battle(mine, tg[0], 's567');
+        var boss = G.fleet.battle(mine, tg[tg.length - 1], 's567');
+        return easy.win === true && boss.win === false;
+      })(), '软目标胜 · Boss 未破（不是默认全赢）');
+
+      /* ---- ⑤ 战利品 / 归港入城 ---- */
+      check('§567⑤ 战利品：赢了物品进背包、资源随返航入城、归港清队', (function () {
+        var st = fresh(567006);
+        var T = 1700000000000;
+        var bk2 = G._realNowOf, bkU2 = U.now;
+        G._realNowOf = function () { return T; };
+        U.now = function () { return T; };
+        var r = G.fleet.form({ shipIds: G.ship.ships().map(function (s) { return s.id; }), targetId: 'ds_belt' });
+        if (!r.ok) { G._realNowOf = bk2; return false; }
+        var tgt = G.fleet.targetOf('ds_belt');
+        var itKey = Object.keys(tgt.loot.items)[0];
+        var resKey = Object.keys(tgt.loot.res)[0];
+        G.items.sub(itKey, 1e9);
+        var it0 = G.items.count(itKey), city = st.cities[0];
+        var res0 = Math.floor(GAME.res(city)[resKey] || 0);
+        G.fleet.launch(r.fleet.id);
+        G._realNowOf = function () { return r.fleet.arriveAt + 1000; };
+        U.now = G._realNowOf;
+        G.fleet.tick();
+        var it1 = G.items.count(itKey);
+        G._realNowOf = function () { return r.fleet.returnAt + 1000; };
+        U.now = G._realNowOf;
+        G.fleet.tick();
+        U.now = bkU2;
+        var res1 = Math.floor(GAME.res(city)[resKey] || 0);
+        var won = !!(G.fleet.history()[0] || {}).win;
+        G._realNowOf = bk2;
+        return it1 > it0 && res1 > res0 && won && G.fleet.fleets().length === 0;
+      })(), '物品进背包 · 资源入城 · 归港清队');
+
+      /* ---- ⑥ 损舰规则 ---- */
+      check('§567⑥ 损舰：未破不损；被打沉才折（先掉僚舰）', (function () {
+        fresh(567007);
+        var ships = G.ship.ships();
+        var ids = ships.map(function (s) { return s.id; });
+        var mine = G.fleet.mineOf({ ships: ids });
+        var boss = G.fleet.targets()[G.fleet.targets().length - 1];
+        var tough = { hp: 999999, shield: 0, atk: 1, def: 0 };
+        var r1 = G.fleet.battle(mine, tough, 'x');
+        var r2 = G.fleet.battle(mine, boss, 'x');
+        return r1.timeout === true && r1.lostShips.length === 0
+          && r2.win === false && r2.lostShips.length > 0
+          && r2.lostShips.indexOf(ids[0]) < 0;
+      })(), '超时不损舰 · 被打沉折僚舰');
+
+      /* ---- ⑦ 出港锁 ---- */
+      check('§567⑦ 出港锁：在编/在途的舰不能拆、不能升部件、不能投送', (function () {
+        fresh(567008);
+        var ids = G.ship.ships().map(function (s) { return s.id; });
+        var carrier = null;
+        G.ship.ships().forEach(function (x) { var c = G.ship.classOf(x.classId); if (c && c.role === 'carrier') carrier = x; });
+        var r = G.fleet.form({ shipIds: [ids[0], carrier.id], targetId: G.fleet.targets()[0].id });
+        if (!r.ok) return false;
+        var scrap = G.ship.scrap(ids[0]);
+        var part = G.ship.canUpgrade(ids[0], 'weapon');
+        var colony = G.colony.canSend({ shipId: carrier.id, pid: 9999, colonists: 1, army: {} });
+        return scrap.ok === false && part.ok === false && colony.ok === false
+          && /舰队/.test(scrap.msg || '') && /舰队/.test(part.msg || '') && /舰队/.test(colony.msg || '');
+      })(), '拆/升/投送三处全拒，且提示指向舰队');
+    } catch (e567) {
+      check('§567 链路异常（不应发生）', false, 'err=' + ((e567 && e567.message) || e567));
+    } finally {
+      G.state = bk; G._realNowOf = bkNow; U.now = bkUNow;
+    }
+    G.newGame({ name: '收尾', cityName: '灰岗' });
+  })();
+
+  /* ============================================================
+   * §568. v146 终局第三条：「深空无响应」（F 期 · 舰队战之后才出现）
+   * ------------------------------------------------------------
+   * 钉三件事：
+   *   ① 出现条件：打下深空 Boss 才揭晓（没打之前，门开了也只有原来两个）
+   *   ② 效果：全境产出 −15% · 舰队被打沉不折舰 · 投送不烧燃料
+   *   ③ 规则：和其它两个一样——选了继续玩，不结束游戏
+   * ============================================================ */
+  (function () {
+    var NL = String.fromCharCode(10);
+    console.log(NL + '===== 568. v146 终局第三条：深空无响应 =====');
+    var bk = G.state;
+    function fresh(seed) {
+      var st = G.newGame({ name: 'en568', cityName: '灰岗', mapSeed: seed || 568001 });
+      G.state = st;
+      if (st.cities[0]) st.cities[0].pid = 1;
+      st.activePlanet = 1; st.mapPlanetId = 1;
+      if (G._extraSpheres) G._extraSpheres = {};
+      st.ending = { choice: null, at: null, won: 1 };     /* 门已开（打掉过一家势力核心） */
+      st.ds = { fleets: [], cleared: {}, _seq: 0, history: [] };
+      return st;
+    }
+    function optIds() {
+      return G.ending.optionsView().map(function (o) { return o.id; });
+    }
+    try {
+      check('§568① 出现条件：没打下深空 Boss → 只有原来两个；打下 → 第三个揭晓', (function () {
+        var st = fresh(568002);
+        var ids0 = optIds();
+        var boss = G.fleet.targets()[G.fleet.targets().length - 1].id;
+        G.fleet.state().cleared[boss] = 1;
+        var ids1 = optIds();
+        return ids0.indexOf('stars') < 0 && ids1.indexOf('stars') >= 0
+          && ids1.length === 3;
+      })(), '两选项 → 打下 Boss → 三选项');
+
+      check('§568② 效果：全境产出 −15% · 舰队不折舰 · 投送不烧燃料', (function () {
+        var st = fresh(568003);
+        var c = st.cities[0];
+        var p0 = G.cityProdPerSec(c).grain;
+        var r = G.ending.choose('stars');
+        if (!r.ok) return false;
+        var p1 = G.cityProdPerSec(c).grain;
+        /* 折舰：拿一支必然被打沉的舰队（打 Boss）→ chaos 下 lostShips 必须为空 */
+        var mine = { atk: 60, hp: 200, shield: 0, armor: 0, eva: 0, n: 1, ships: [{ id: 'sx', atk: 60, hp: 200 }] };
+        var bossT = G.fleet.targets()[G.fleet.targets().length - 1];
+        var sim = G.fleet.battle(mine, bossT, 'x568');
+        var fuel = G.colony.fuelCostOf({ id: 'sp9', classId: 'c_w3', tier: 1, enh: {} }, 2);
+        return p1 < p0 && G.ending.fleetNoLoss() === true && sim.win === false && sim.lostShips.length === 0
+          && fuel === 0;
+      })(), '产出降 · 沉船不折 · 燃料 0');
+
+      check('§568③ 规则：选了继续玩（不结束游戏 · 和另外两个同一张表）', (function () {
+        fresh(568004);
+        G.ending.choose('stars');
+        var c2 = G.ending.choose('plug');
+        return G.ending.choiceOf() === 'stars' && c2.ok === false
+          && G.state && !!G.state.cities && G.state.cities.length > 0
+          && G.ending.opened() === true;
+      })(), '不可撤销 · 世界继续跑');
+    } catch (e568) {
+      check('§568 链路异常（不应发生）', false, 'err=' + ((e568 && e568.message) || e568));
+    } finally {
+      G.state = bk;
     }
     G.newGame({ name: '收尾', cityName: '灰岗' });
   })();

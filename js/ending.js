@@ -61,8 +61,20 @@
    *   · 撑过 5 年（60 个游戏月）
    *   · 打掉过一家势力核心（`state.ending.won`，由战果层写）
    * ============================================================ */
+  /* v146：已攻克深空 Boss → 第三个世界形态「深空无响应」揭晓（没有舰队战就不会出现） */
+  EN.starsOpen = function () {
+    try {
+      if (GAME.fleet && GAME.fleet.state && GAME.fleet.targets) {
+        var tg = GAME.fleet.targets();
+        var boss = tg.length ? tg[tg.length - 1] : null;
+        if (boss && GAME.fleet.state().cleared[boss.id]) return true;
+      }
+    } catch (eDs) { /* 舰队模块不在 = 没有这条路 */ }
+    return false;
+  };
   EN.opened = function () {
     var d = D();
+    if (EN.starsOpen()) return true;
     var cities = (GAME.city && GAME.city.all) ? (GAME.city.all() || []) : [];
     var mx = 0;
     cities.forEach(function (c) { if (c && ((c.ci | 0) >= 0)) mx++; });
@@ -145,6 +157,17 @@
     var o = EN.optionOf();
     return !!(o && o.battleBlock);
   };
+  /* v146（F 期）：**深空无响应** 的两条效果出口（舰队/投送读这里，别自己读选项）
+     · fleetNoLoss —— 舰队被打沉也不折舰（代价已经用产出付过了）
+     · noFuel      —— 星际投送不烧燃料 */
+  EN.fleetNoLoss = function () {
+    var o = EN.optionOf();
+    return !!(o && o.fleetNoLoss);
+  };
+  EN.noFuel = function () {
+    var o = EN.optionOf();
+    return !!(o && o.noFuel);
+  };
 
   /* ============================================================
    * tick —— 每月一条"世界形态"的账
@@ -205,7 +228,9 @@
 
   /* 面板用：两个选项的实时代价（把数字直接摆出来，不让玩家猜） */
   EN.optionsView = function () {
-    var list = D().options || [];
+    var list = (D().options || []).filter(function (o) {
+      return !(o && o.id === 'stars') || EN.starsOpen();
+    });
     return list.map(function (o) {
       return {
         id: o.id, name: o.name, short: o.short, desc: o.desc,

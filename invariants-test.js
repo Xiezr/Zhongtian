@@ -792,6 +792,72 @@
   /* ============================================================
    * §5 策略层不变量（strat.plan / planSide）
    * ============================================================ */
+
+  /* ============================================================
+   * §4.6 舰队战（v146 · F 期）—— 确定性 / 有界 / 账实相符
+   * ------------------------------------------------------------
+   * 与 §4 同一套夹具（ST 共享对局 + grantAll/clearDock）。
+   * ⚠️ 舰队战是**纯函数**（不落状态）：这里只打 `FL.battle`，
+   *    `_resolve` 的落账（背包/折舰）由 smoke §567 钉。
+   * ============================================================ */
+  console.log('\n===== 4.6 舰队战（确定性 / 回合有界 / 伤害有界 / 胜负判定） =====');
+
+  function randMine(rng) {
+    var n = ri(rng, 1, 5);
+    var atk = 0, hp = 0, shield = 0, armor = 0, eva = 0, ships = [];
+    for (var i = 0; i < n; i++) {
+      var a = ri(rng, 20, 400), h = ri(rng, 300, 3000);
+      atk += a; hp += h;
+      shield += ri(rng, 0, 1200);
+      armor += ri(rng, 0, 20);
+      eva += ri(rng, 0, 20) / 100;
+      ships.push({ id: 's' + i, atk: a, hp: h });
+    }
+    return { atk: atk, hp: hp, shield: shield, armor: armor, eva: eva / n, n: n, ships: ships };
+  }
+  function randTarget(rng) {
+    var list = (DATA.DS || {}).targets || [];
+    if (!list.length) return { id: 'x', name: 'x', hp: 5000, shield: 0, atk: 200, def: 5 };
+    var t = pick(rng, list);
+    return { id: t.id, name: t.name, hp: t.hp, shield: t.shield, atk: t.atk, def: t.def };
+  }
+
+  /* ① 确定性：同输入 → 逐位同结果（战报可复算的根） */
+  prop('舰队战·确定性（同舰队/目标/seed → 逐位同结果）', 50, function (rng) {
+    return { mine: randMine(rng), tgt: randTarget(rng), seed: 'k' + ri(rng, 1, 999999) };
+  }, function (b) {
+    var a = G.fleet.battle(b.mine, b.tgt, b.seed);
+    var c = G.fleet.battle(b.mine, b.tgt, b.seed);
+    return JSON.stringify(a) === JSON.stringify(c) && a.rows.length === a.rounds;
+  }, null, function (b) { return 'n=' + b.mine.n + ' tgt=' + b.tgt.id; });
+
+  /* ② 回合有界：1 ≤ rounds ≤ maxRounds，且 rows 逐回合连续 */
+  prop('舰队战·回合有界（1..maxRounds · 逐回合连续）', 50, function (rng) {
+    return { mine: randMine(rng), tgt: randTarget(rng), seed: 'r' + ri(rng, 1, 999999) };
+  }, function (b) {
+    var r = G.fleet.battle(b.mine, b.tgt, b.seed);
+    var maxR = ((DATA.DS || {}).maxRounds) || 10;
+    if (!(r.rounds >= 1 && r.rounds <= maxR)) return false;
+    for (var i = 0; i < r.rows.length; i++) if (r.rows[i].r !== i + 1) return false;
+    return true;
+  }, null, function (b) { return 'n=' + b.mine.n; });
+
+  /* ③ 伤害与血量有界：每回合伤害 ≥1；血/盾不下穿 0；赢 = 敌血归零 */
+  prop('舰队战·伤害有界（每回合≥1 · 血/盾不为负 · 赢=敌血归零）', 60, function (rng) {
+    return { mine: randMine(rng), tgt: randTarget(rng), seed: 'd' + ri(rng, 1, 999999) };
+  }, function (b) {
+    var r = G.fleet.battle(b.mine, b.tgt, b.seed);
+    for (var i = 0; i < r.rows.length; i++) {
+      var row = r.rows[i];
+      if (!(row.dmgToEnemy >= 1) || !(row.dmgToFleet >= 1)) return false;
+      if (row.fleetHp < 0 || row.enemyHp < 0) return false;
+      if (row.fleetShield < 0 || row.enemyShield < 0) return false;
+    }
+    if (r.win && r.enemyHpLeft !== 0) return false;
+    if (!r.win && r.hpLeft <= 0 && r.lostShips.length === 0) return false;   /* 沉了就必须折舰 */
+    return true;
+  }, null, function (b) { return 'n=' + b.mine.n + ' tgt=' + b.tgt.id; });
+
   console.log('\n===== 5. 策略层不变量（纯函数 / 输出域闭合 / 空侧不抛错） =====');
 
   function genSnap(rng) {

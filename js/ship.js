@@ -143,6 +143,9 @@ import './state.js';
     if (GAME.colony && GAME.colony.busyOf && GAME.colony.busyOf(shipId)) {
       return { ok: false, msg: '该舰正在执行星际投送 —— 等它返航后再拆解' };
     }
+    if (GAME.fleet && GAME.fleet.busyOf && GAME.fleet.busyOf(shipId)) {
+      return { ok: false, msg: '该舰已在舰队编成中 —— 先解散舰队再拆解' };
+    }
     var ship = st.ships[idx], cls = SH.classOf(ship.classId), C = DATA.SHIP_COST || {};
     var back = Math.floor(SH.hullCost(cls) * (C.scrapPct == null ? 0.5 : C.scrapPct));
     st.ships.splice(idx, 1);
@@ -164,6 +167,9 @@ import './state.js';
     /* v145（E 期）：在外投送的船不能改装 */
     if (GAME.colony && GAME.colony.busyOf && GAME.colony.busyOf(shipId)) {
       return { ok: false, msg: '该舰正在执行星际投送 —— 等它返航后再升级部件' };
+    }
+    if (GAME.fleet && GAME.fleet.busyOf && GAME.fleet.busyOf(shipId)) {
+      return { ok: false, msg: '该舰已在舰队编成中 —— 先解散舰队再升级部件' };
     }
     var part = SH.partOf(pid);
     if (!part) return { ok: false, msg: '未知部件' };

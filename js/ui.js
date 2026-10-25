@@ -13204,6 +13204,131 @@ import './state.js';
     return GAME.colony ? GAME.colony.armyN(army) : 0;
   };
 
+  /* ============================================================
+   * v146（F 期）：**深空远征**面板（空间站内一块）
+   * ------------------------------------------------------------
+   * 设计提案 5-C：派舰队去深空目标 → 遭遇战 → 带回蓝图/资源（3 点 + 1 Boss）。
+   * 面板只做"选舰 / 选目标 / 出港 / 召回 / 看战报"；
+   * 数值与判定全读 `GAME.fleet`（唯一出口），界面不另算。
+   * ============================================================ */
+  ui._dsShips = {};    /* 勾选中的舰 { shipId:true } */
+  ui._dsTargetId = null;
+
+  ui.fleetHTML = function () {
+    var FL = GAME.fleet, SH = GAME.ship;
+    if (!FL || !SH) return '';
+    var IBY = DATA.ITEM_BY_ID || {};
+    var ships = SH.ships();
+    var fleets = FL.fleets();
+    var tgts = FL.targets();
+    var sel = Object.keys(ui._dsShips || {}).filter(function (k) { return ui._dsShips[k]; });
+    var tid = ui._dsTargetId || (tgts[0] && tgts[0].id);
+
+    /* ---- 船坞：勾选编成（已被投送/舰队占用的船置灰） ---- */
+    var pickRows = ships.map(function (sh) {
+      var cls = SH.classOf(sh.classId) || {};
+      var inFleet = FL.fleetOfShip(sh.id);
+      var inColony = GAME.colony && GAME.colony.busyOf && GAME.colony.busyOf(sh.id);
+      var lock = !!(inFleet || inColony);
+      var on = !!ui._dsShips[sh.id] && !lock;
+      return '<label style="display:flex;align-items:center;gap:6px;padding:6px 8px;border:1px solid ' + (on ? 'var(--gold)' : 'var(--line)') + ';border-radius:var(--r-sm);background:' + (on ? 'rgba(var(--gold-rgb),.12)' : 'var(--bg-2)') + ';' + (lock ? 'opacity:.45;' : 'cursor:pointer;') + '">' +
+        '<input type="checkbox" data-action="ds-pick" data-ship="' + sh.id + '"' + (on ? ' checked' : '') + (lock ? ' disabled' : '') + ' />' +
+        '<span>' + (cls.icon || '🚀') + ' ' + U.escape(cls.name || sh.classId) + '</span>' +
+        '<span class="ui-sub" style="font-size:var(--fs-cap);">战力 ' + SH.powerOf(sh) + '</span>' +
+        '<span class="ui-sub" style="font-size:var(--fs-cap);margin-left:auto;">' + (inFleet ? '在舰队' : (inColony ? '在投送' : '')) + '</span>' +
+        '</label>';
+    }).join('') || '<div class="ui-sub">船坞是空的 —— 先在上面造舰。</div>';
+
+    /* ---- 目标 ---- */
+    var tgtRows = tgts.map(function (t) {
+      var on = tid === t.id;
+      var cleared = (FL.state().cleared || {})[t.id];
+      return '<div data-action="ds-target" data-id="' + t.id + '" style="cursor:pointer;padding:8px 10px;border:1px solid ' + (on ? 'var(--gold)' : 'var(--line)') + ';border-radius:var(--r-sm);background:' + (on ? 'rgba(var(--gold-rgb),.14)' : 'var(--bg-2)') + ';">' +
+        '<div style="display:flex;align-items:center;gap:6px;"><b>' + (t.icon || '🌌') + ' ' + U.escape(t.name) + '</b>' +
+          '<span class="ui-sub">单程 ' + U.dur((t.flightSec || 0)) + (cleared ? '　·　已攻克' : '') + '</span></div>' +
+        '<div class="ui-sub" style="font-size:var(--fs-cap);">敌 血 ' + U.fmt(t.hp) + ' · 盾 ' + U.fmt(t.shield)
+          + ' · 攻 ' + U.fmt(t.atk) + ' · 防 ' + U.fmt(t.def) + '</div>' +
+        '<div class="ui-sub" style="font-size:var(--fs-cap);opacity:.8;">' + U.escape(t.desc || '') + '</div>' +
+        (t.first ? '<div style="font-size:var(--fs-cap);color:var(--gold-light);">首通：' + Object.keys(t.first.items || {}).map(function (k) { return ((IBY[k] || {}).name || k) + '×' + t.first.items[k]; }).join('、') + '</div>' : '') +
+        '</div>';
+    }).join('');
+
+    /* ---- 编成 / 在途 / 战报 ---- */
+    var fleetRows = fleets.map(function (f) {
+      var t = FL.targetOf(f.targetId) || {};
+      var txt = FL.previewText(f);
+      var op = f.phase === 'ready'
+        ? ('<button class="btn sm gold" data-action="ds-launch" data-id="' + f.id + '">出港</button> ' +
+           '<button class="btn sm" data-action="ds-disband" data-id="' + f.id + '">解散</button>')
+        : (f.phase === 'out'
+          ? ('<span class="ui-sub">在途 → ' + U.escape(t.name || f.targetId) + '</span> ' +
+             '<button class="btn sm" data-action="ds-cancel" data-id="' + f.id + '">召回</button>')
+          : '<span class="ui-sub">返航中</span>');
+      var last = (f.log || []).slice(-2).join('　');
+      return '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line);">' +
+        '<span><b>' + U.escape(f.name) + '</b> <span class="ui-sub">' + txt + '</span></span>' +
+        '<span style="margin-left:auto;">' + op + '</span>' +
+        '</div>' + (last ? '<div class="ui-sub" style="font-size:var(--fs-cap);padding:0 0 4px;">' + U.escape(last) + '</div>' : '');
+    }).join('') || '<div class="ui-sub">还没有舰队。</div>';
+
+    var hist = FL.history().slice(0, 5).map(function (h) {
+      return '<div class="ui-sub" style="font-size:var(--fs-cap);padding:2px 0;">'
+        + (h.win ? '✅ 胜' : (h.timeout ? '⏳ 未破' : '❌ 败'))
+        + ' · ' + U.escape(h.targetName || h.target) + ' · ' + h.rounds + ' 回合'
+        + (h.lost && h.lost.length ? (' · 折舰 ' + h.lost.join('、')) : '')
+        + '</div>';
+    }).join('') || '<div class="ui-sub">（还没打过）</div>';
+
+    var preview = sel.length && tid ? (function () {
+      var st = FL.statsOf({ ships: sel });
+      return '预演：' + sel.length + ' 艘 · 合计攻 ' + U.fmt(st.atk) + ' · 血 ' + U.fmt(st.hp)
+        + ' · 盾 ' + U.fmt(st.shield) + ' · 甲 ' + U.fmt(st.armor);
+    })() : '（先勾选舰、再选目标）';
+
+    return '<div style="margin-top:16px;padding:var(--sp-3);border:1px solid var(--line);border-radius:var(--r-sm);background:var(--bg-2);">' +
+      '<div class="gold-heading" style="margin:0;">🌌 深空远征（F 期 · 舰队战）' +
+        ui.help('把船坞里的舰**编成舰队**（1~5 艘），派往深空目标。\n' +
+          '· 出港后舰船锁定：不能拆、不能升部件、不能投送，也不能解散；\n' +
+          '· 抵达即打一场**确定性回合战**（同编成同目标 → 结果可复算）；\n' +
+          '· 赢了把蓝图/资源带回来；打满回合未破 = 撤回不损舰；被打沉 = 折掉最多一半（先掉僚舰）。') +
+      '</div>' +
+      '<div class="ui-sub" style="margin:6px 0 6px;">① 选舰（' + sel.length + ' / ' + ((GAME.DATA.DS || {}).maxShips || 5) + '）</div>' +
+      '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:var(--sp-1);">' + pickRows + '</div>' +
+      '<div class="ui-sub" style="margin:10px 0 6px;">② 选目标</div>' +
+      '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:var(--sp-1);">' + tgtRows + '</div>' +
+      '<div class="ui-sub" style="margin:8px 0 4px;">' + U.escape(preview) + '</div>' +
+      '<div style="margin-top:6px;display:flex;gap:8px;">' +
+        '<button class="btn' + (sel.length && tid ? ' gold' : ' dim') + '" data-action="ds-form"' + (sel.length && tid ? '' : ' disabled') + '>⚓ 编成舰队</button>' +
+      '</div>' +
+      '<div class="ui-sub" style="margin:12px 0 4px;">舰队</div>' + fleetRows +
+      '<div class="ui-sub" style="margin:10px 0 4px;">最近战报（只留 10 场）</div>' + hist +
+    '</div>';
+  };
+
+  ui.dsPick = function (shipId) {
+    var FL = GAME.fleet;
+    if (!FL) return;
+    ui._dsShips = ui._dsShips || {};
+    if (!ui._dsShips[shipId] && FL.fleetOfShip(shipId)) { ui.toast('该舰已在舰队中'); return; }
+    ui._dsShips[shipId] = !ui._dsShips[shipId];
+    ui.renderView('station');
+  };
+  ui.dsTarget = function (id) {
+    ui._dsTargetId = id;
+    ui.renderView('station');
+  };
+  ui.dsForm = function () {
+    var FL = GAME.fleet;
+    if (!FL) { ui.toast('舰队模块未加载'); return; }
+    var ids = Object.keys(ui._dsShips || {}).filter(function (k) { return ui._dsShips[k]; });
+    var r = FL.form({ shipIds: ids, targetId: ui._dsTargetId });
+    ui.toast(r.msg);
+    if (r.ok) { ui._dsShips = {}; GAME.refreshAll(); ui.renderView('station'); }
+  };
+  ui.dsLaunch = function (id) { ui.toast(GAME.fleet.launch(id).msg); GAME.refreshAll(); ui.renderView('station'); };
+  ui.dsCancel = function (id) { ui.toast(GAME.fleet.cancel(id).msg); GAME.refreshAll(); ui.renderView('station'); };
+  ui.dsDisband = function (id) { ui.toast(GAME.fleet.disband(id).msg); GAME.refreshAll(); ui.renderView('station'); };
+
   ui.stationHTML = function () {
     var SH = GAME.ship;
     if (!SH) return '<div class="q-empty">战舰模块未加载</div>';
@@ -13354,6 +13479,7 @@ import './state.js';
       '<div style="display:flex;flex-direction:column;gap:var(--sp-1);">' + shipCards + '</div>' +
       detail +
       ui.colonyHTML() +
+      ui.fleetHTML() +
     '</div>';
   };
   /* 旧建造场：保留函数名以免外部引用断裂，但**视图已改走 station**。 */

@@ -14,6 +14,7 @@ import './generals.js';   /* v91.65：英雄名册/状态归属 */
 import './cities.js';     /* v91.66：城市只读出口 */
 import './ship.js';       /* v91.71：空间站/战舰 */
 import './colony.js';     /* v145：星际投送 / 殖民（E 期 · 母舰把人送到新星球） */
+import './fleet.js';      /* v146：舰队战 / 深空远征（F 期） */
 import './domain.js';
 import './map.js';
 import './sphere.js';
@@ -1532,6 +1533,13 @@ import './ui.js';
       case 'ix-cols': ui._ixCols = Math.max(0, Number(el.value) || 0); break;
       /* 带兵数字框：只记状态（change 失焦才触发） */
       case 'ix-troop': ui.ixSetTroop(el.dataset.troop, el.value); break;
+      /* v146（F 期）：深空远征 —— 选舰 / 选目标 / 编成 / 出港 / 召回 / 解散 */
+      case 'ds-pick': ui.dsPick(el.dataset.ship); break;
+      case 'ds-target': ui.dsTarget(el.dataset.id); break;
+      case 'ds-form': ui.dsForm(); break;
+      case 'ds-launch': ui.dsLaunch(el.dataset.id); break;
+      case 'ds-cancel': ui.dsCancel(el.dataset.id); break;
+      case 'ds-disband': ui.dsDisband(el.dataset.id); break;
       /* v40：`case 'set-timescale'` / `case 'set-tax'` 已删 ——
          v22 起税率与倍率改走 `chip-set + data-after='tax'/'timescale'`，
          这两个旧分支在界面上查无触发点（audit 会一直报"不可达分支"）。 */
@@ -3696,7 +3704,7 @@ import './ui.js';
      （这解释了"改了却说没生效"的观感）。老板若发现版本 ≠ 最新交付，按 Ctrl+F5
      强制刷新即获得新代码。⚠️ 发版须走 **bump_version.py --bump --version vX.Y**（它同步 index.html 的 ?v=/BUILD
      与这里的 GAME.VERSION 三处）—— 只手改 index.html 会让版本号冻住（v91.18 前的病灶）。 */
-  GAME.VERSION = 'v145.1';
+  GAME.VERSION = 'v146.0';
   function boot() {
     fitAppSize();
     try {

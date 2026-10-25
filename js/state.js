@@ -4242,6 +4242,7 @@ import './data.js';
     /* v145（E 期）：星际投送 —— 现实时间锚点（与奇观同规：后台推进、离线补算）。
        ⚠️ 直接调引擎出口、**不靠月度注册表** —— 投送按现实钟走，不能等换月。 */
     if (GAME.colony && GAME.colony.tick) { try { GAME.colony.tick(); } catch (eCo) { /* 投送推进失败不拖垮主循环 */ } }
+    if (GAME.fleet && GAME.fleet.tick) { try { GAME.fleet.tick(); } catch (eFl) { /* 舰队远征推进失败不拖垮主循环 */ } }
 
     /* 10) 历法天时推进（story.js；年号纪元随 v90.93 退役，史册记账随 v89.218 退役） */
     if (GAME.story) GAME.story.tick(ts);
