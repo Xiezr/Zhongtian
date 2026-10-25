@@ -37374,7 +37374,7 @@ if (GAME.reg) {
      * 这才有"地块探索"：走到哪、看到哪、能做什么，都由**站的位置**决定。
      * ============================================================ */
     var hereActs = (GAME.jianghuActsAt ? GAME.jianghuActsAt(P.pos()) : []) || [];
-    var hereBlock = '<div style="margin-top:8px;font-size:12px;color:#8a7a5c;">📍 你站在这里 · ' +
+    var hereBlock = '<div style="margin-top:8px;font-size:16px;color:#8a7a5c;">📍 你站在这里 · ' +
       U.escape(terrainName((SP() && SP().cellOf && SP().cellOf(P.pos()) || {}).type)) + '）</div>'
       + (hereActs.length
         /* v140（老板：「目前前20级还是 PPT，这不是个正经游戏」）：
@@ -37387,29 +37387,29 @@ if (GAME.reg) {
             var kindTxt = (a.def && a.def.kind) === 'fight' ? '⚔' : (a.def && a.def.kind) === 'visit' ? '🏡' : '⛏';
             return '<span data-action="prologue-scene" data-ci="' + P.pos() + '" data-act="' + U.escape(a.id) + '"'
               + ' style="padding:5px 12px;border:1px solid #4a4436;border-radius:4px;background:#1c2027;'
-              + 'color:#e0d8c6;font-size:13px;cursor:pointer;" title="走进这个场景，自己过去动手">'
+              + 'color:#e0d8c6;font-size:15px;cursor:pointer;" title="走进这个场景，自己过去动手">'
               + kindTxt + ' ' + U.escape(nm) + '</span>';
           }).join('') + '</div>'
-          + '<div style="margin-top:5px;font-size:11px;color:#6f6a60;">走进去，自己找地方动手　·　'
+          + '<div style="margin-top:5px;font-size:15px;color:#6f6a60;">走进去，自己找地方动手　·　'
           + '<span data-action="prologue-act" data-ci="' + P.pos() + '" data-act="' + U.escape(hereActs[0].id) + '"'
           + ' style="text-decoration:underline;cursor:pointer;color:#8a7a5c;">就地解决</span></div>'
-        : '<div style="margin-top:3px;font-size:12px;color:#6f6a60;">这块地方没什么可做的 —— 往别处走走。</div>');
+        : '<div style="margin-top:3px;font-size:16px;color:#6f6a60;">这块地方没什么可做的 —— 往别处走走。</div>');
     /* v132：这格有仗可打 → 给"点名斗将"的入口（否则斗将变成满地图刷经验的捷径） */
     var duelBtn = (P.duelReady && P.duelReady())
       ? '<div style="margin-top:7px;"><span data-action="prologue-duel"'
         + ' style="display:inline-block;padding:5px 13px;border:1px solid #7a5a2a;border-radius:4px;'
-        + 'background:#241c10;color:#ffd9a0;font-size:12px;cursor:pointer;">⚔ 点名斗将</span>'
-        + '<span class="ui-sub" style="margin-left:7px;font-size:11px;">不耗兵，赢了他就服</span></div>'
+        + 'background:#241c10;color:#ffd9a0;font-size:16px;cursor:pointer;">⚔ 点名斗将</span>'
+        + '<span class="ui-sub" style="margin-left:7px;font-size:15px;">不耗兵，赢了他就服</span></div>'
       : '';
     var nbs = P.neighbors();
-    var walkBlock = '<div style="margin-top:9px;font-size:12px;color:#8a7a5c;">四周（点一格走过去 · 每步耗 1 精力）</div>'
+    var walkBlock = '<div style="margin-top:9px;font-size:16px;color:#8a7a5c;">四周（点一格走过去 · 每步耗 1 精力）</div>'
       + '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;">' + (nbs.length ? nbs.map(function (n) {
           var nm = terrainName(n.type);
           var has = (n.acts || []).length;
           return '<span data-action="prologue-move" data-ci="' + n.ci + '"'
             + ' style="padding:5px 11px;border:1px solid ' + (has ? '#5a4a26' : '#2a2e35') + ';border-radius:4px;'
             + 'background:' + (has ? '#1e1a12' : '#12151a') + ';color:' + (has ? '#e0c98a' : '#9a9284') + ';'
-            + 'font-size:12px;cursor:pointer;" title="' + (has ? '那边有动静' : '看不出什么') + '">'
+            + 'font-size:16px;cursor:pointer;" title="' + (has ? '那边有动静' : '看不出什么') + '">'
             /* v131：方位在前、地形在后 —— 光给六个"湖泊"，玩家分不清往哪走 */
             + (n.dir ? '<b style="opacity:.75;">' + U.escape(n.dir) + '</b> ' : '')
             + U.escape(nm) + (has ? ' ·' : '') + '</span>';
@@ -37419,9 +37419,9 @@ if (GAME.reg) {
       + 'border-radius:8px;padding:12px 16px;backdrop-filter:blur(3px);line-height:1.65;'
       + 'box-shadow:0 10px 30px rgba(0,0,0,.55);">'
       /* 一行头：天 / 等级 / 精力 / 已出去几趟 */
-      + '<div style="display:flex;align-items:center;gap:12px;font-size:12px;color:#8a7a5c;">'
+      + '<div style="display:flex;align-items:center;gap:12px;font-size:16px;color:#8a7a5c;">'
       + '<span style="letter-spacing:.22em;">第 ' + (day + 1) + ' 天</span>'
-      + '<span style="color:#b9b0a0;">君主 <b style="color:#e8e2d4;font-size:14px;">Lv' + lv + '</b> / ' + need + '</span>'
+      + '<span style="color:#b9b0a0;">君主 <b style="color:#e8e2d4;font-size:16px;">Lv' + lv + '</b> / ' + need + '</span>'
       /* v131：精力必须走 energyNowOf（唯一读出口）——
          直读 `lord.energy` 会把 231 这种超上限的原始值直接印在面板上。 */
       + '<span>精力 <b style="color:#e8e2d4;">' + Math.round(GAME.energyNowOf ? GAME.energyNowOf(lord) : ((lord && lord.energy) || 0))
@@ -37430,7 +37430,7 @@ if (GAME.reg) {
       + '<span style="flex:1;"></span>'
       + '<span style="color:#6f6a60;">' + (day < 10 ? '天还没冷' : '天在变冷') + '</span>'
       + '</div>'
-      + '<div style="margin-top:2px;font-size:13px;color:#a89c86;">你们 ' + U.numText(pop, 0)
+      + '<div style="margin-top:2px;font-size:15px;color:#a89c86;">你们 ' + U.numText(pop, 0)
       + ' 个人，还没有城 —— ' + (day < 10 ? '得找点能打的，先把人练出来。' : '撑到能立城那天。') + '</div>'
       + '<div style="margin-top:6px;height:5px;background:#23262b;border-radius:3px;">'
       + '<div style="height:5px;width:' + pct + '%;background:#c9b06a;border-radius:3px;"></div></div>'
@@ -37440,7 +37440,7 @@ if (GAME.reg) {
          它们和「脚下 + 四周」是同一件事的两种说法，而且找不到目标时会印
          「附近没有」，读起来像功能坏了。现在"能做什么"由**站的位置**决定。 */
       + comboLine
-      + (last ? '<div style="margin-top:9px;font-size:12px;color:#7d766a;border-top:1px solid #23262b;padding-top:7px;">最近：'
+      + (last ? '<div style="margin-top:9px;font-size:16px;color:#7d766a;border-top:1px solid #23262b;padding-top:7px;">最近：'
         + U.escape(last) + '</div>' : '')
       + (P.canFound()
         ? '<div style="margin-top:10px;"><span class="chip" data-action="prologue-build">'
@@ -37451,7 +37451,7 @@ if (GAME.reg) {
         : (P.ready()
           ? (function () {
               var near = P.nearestBuildable(40);
-              return '<div style="margin-top:10px;font-size:12px;color:#c9a86a;line-height:1.7;">'
+              return '<div style="margin-top:10px;font-size:16px;color:#c9a86a;line-height:1.7;">'
                 + '脚下是<b>' + U.escape(P.terrainLabel()) + '</b>，立不了城'
                 + (near ? '　·　最近的平地：<b>' + U.escape(near.dir) + ' ' + near.dist + ' 格</b>' : '　·　这一带没有平地')
                 + '</div>';
@@ -37507,7 +37507,7 @@ if (GAME.reg) {
          修法：挂进 `#app-scale`（与弹窗同一栈），定位改 absolute —— 与 `.modal-mask`
          当年 fixed→absolute 是同一个理由（整幅画面统一缩放，画布是唯一坐标系）。 */
       el.style.cssText = 'position:absolute;left:50%;transform:translateX(-50%);bottom:14px;'
-        + 'z-index:70;width:min(780px,94vw);max-height:46vh;overflow:auto;'
+        + 'z-index:70;width:min(880px,94vw);max-height:50vh;overflow:auto;'
         + 'pointer-events:none;';
       var host = document.getElementById('app-scale') || document.body;
       host.appendChild(el);
