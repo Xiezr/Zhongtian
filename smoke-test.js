@@ -12385,12 +12385,19 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
        就是为了"构建脚本自己算错时测试还能抓到"）。加了模块两边都要加 ——
        v92 加 fog / memorial 时这里漏改，导致 hash 对不上、守卫假红。 */
     var ORDER = ['core', 'registry', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'domain', 'map', 'sphere', 'risk', 'years', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'rival', 'land', 'taint', 'climate', 'surge', 'relic', 'goals', 'veteran', 'setskill', 'deck', 'bond', 'tower', 'wonderwar', 'delve', 'unrest', 'expose', 'trooplv', 'idle', 'ending', 'muster', 'founding', 'prologue', 'market', 'events', 'gltf',
-      'map3d', 'scene3d', 'battle', 'strategy', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits', 'story', 'ui', 'main'];
+      'map3d', 'scene3d', 'battle', 'battlelog', 'strategy', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits', 'story', 'ui', 'main'];
     var h = crypto.createHash('sha256');
     try {
       ORDER.forEach(function (m) {
+        /* v143.4：换行归一后再 hash —— 与 build_bundle.py 的 _norm 同口径。
+           python 读文本会把 CRLF 归一成 LF、node 原样读；不归一的话，
+           任何人用文本模式重存一次 js 文件（编辑器/python 脚本），
+           两边 hash 就分叉、本守卫假红而"内容一模一样"（实测踩过）。
+           归一之后 hash 只认内容，不认行尾风格。 */
+        var src = fs.readFileSync(path.join(jsDir, m + '.js'), 'utf8')
+          .replace(/\r\n/g, '\n').replace(/\r/g, '\n');
         h.update(m, 'utf8'); h.update(Buffer.from([0]));
-        h.update(fs.readFileSync(path.join(jsDir, m + '.js'), 'utf8'), 'utf8');
+        h.update(src, 'utf8');
       });
     } catch (e) { return false; }
     var want = h.digest('hex').slice(0, 16);
@@ -29692,6 +29699,16 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
    * §185（v89.185）老板 7 条：六维不封口 · 守将体系 · 衰减-2 · 民心幸存者 · 智能 weak · 撤退沙盘同源
    * ═══════════════════════════════════════════════════════════ */
   (function () {
+    /* v143.3：questDayIndex 读**真实日期**（Date.now()/86400000）→
+       wildDefenseAt 的哈希每天变一次 → 本节的守将实测**跨 UTC 天就可能红**
+       （2026-10-25 实证：同代码同输入，day 20750→20751 后 got=8→0，
+        等级区间与资质全部换人 —— 与产品改动无关，纯粹是"测试看了日历"）。
+       测试不许看日历：进本节先把 day 钉死（20750 = 有代表性的一天：got 满 8、
+       等级 72~74、资质全 ming），出去 finally 恢复（异常也不许把钉漏在外面）。
+       钉法与 invariants 的钉天气 / 钉 mapSeed 同构。 */
+    var _wdd = G.wildDefenseDay;
+    G.wildDefenseDay = function () { return 20750; };
+    try {
     /* ① 六维不封口 */
     check('§185① 六维尾段不封口：450 后恒定 +0.25%/点（治理）· 表无 maxK 截断', (function () {
       var f = G.curveBonusOf;
@@ -29853,6 +29870,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         G.state = keep; G.ui._cityId = kcid;
       }
     })());
+    } finally { G.wildDefenseDay = _wdd; }
   })();
 
   /* ═══════════════════════════════════════════════════════════
@@ -42843,6 +42861,290 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var nAct = (html.match(/data-action="prologue-act"/g) || []).length;
       return '进场景 ' + nScene + ' 个 · 就地解决 ' + nAct + ' 个';
     })());
+    G.newGame({ name: '收尾', cityName: '灰岗' });
+  })();
+
+
+  /* ============================================================
+   * §353 · v143：正式阶段也走 3D 场景（v140 的最后一公里）
+   * ------------------------------------------------------------
+   * 背景：v140 建好 10 个场景，但只有序章用；正式阶段的江湖动作
+   *   （ui.doJianghu）还是"弹一行字"。本接地面守四件事：
+   *   ① 门槛先于渲染 —— 今天没这事儿的地，进不去场景（why=gate）；
+   *   ② ctx 透传 —— live/gen/exitTo 一路带到 open（宿主不能丢）；
+   *   ③ 地形回退 —— 正式局没有 prologue.cellTypeOf，得走 sphere.cells.type，
+   *      否则"森林采集进林地场景"这个 v140 的设计意图在正式阶段是空的；
+   *   ④ 入口不退化 —— ui.doJianghu 必须先走 3D，不许直接结算（弹字回归）。
+   * ⚠️ 只测接线与数据：open 被 stub 截获，不碰 WebGL（node 里没有 THREE）。
+   * ============================================================ */
+  console.log('\n===== 353. v143 正式阶段：走进去，而不是弹一行字 =====');
+  (function () {
+    var SC = G.scene3d;
+    if (!SC || !SC.play) { check('§353① 场景入口在位', false, 'GAME.scene3d.play 缺失'); return; }
+    G.newGame({ name: '接线', cityName: '灰岗', mapSeed: 20261025 });
+
+    /* ① 门槛先于渲染：今天没这事儿的地进不去（返回里带 why=gate）。
+       注：门槛失效时 play 会走到 open（node 无 THREE 抛错）—— 那也算红，
+       所以这里 try 住：精确红在①，后面的断言还能继续跑。 */
+    check('§353① 门槛先于渲染（此地今日无此事 → 拒绝，why=gate）', (function () {
+      var _ja = G.jianghuActsAt;
+      G.jianghuActsAt = function () { return [{ id: 'shi', def: {} }]; };
+      var r = null, err = null;
+      try { r = SC.play('cai', 1234, { host: 'live' }); } catch (e) { err = e; }
+      G.jianghuActsAt = _ja;
+      if (err) return false;
+      return !!(r && r.ok === false && r.why === 'gate' && r.msg);
+    })(), 'why=gate');
+
+    /* ② 正式宿主的 ctx 透传：live/gen/exitTo/availableActs 一路到 open */
+    check('§353② 正式宿主 ctx 透传（live/gen/exitTo 带到 open，可用动作清单不丢）', (function () {
+      var _open = SC.open, cap = null;
+      SC.open = function (id, ctxIn) { cap = { id: id, ctx: ctxIn }; return { ok: true }; };
+      var _ja = G.jianghuActsAt;
+      G.jianghuActsAt = function () { return [{ id: 'cai', def: {} }]; };
+      var r = SC.play('cai', 4321, { host: 'live', gen: 'g-test', exitTo: 'land' });
+      SC.open = _open; G.jianghuActsAt = _ja;
+      return !!(r && r.ok && cap && cap.ctx
+        && cap.ctx.live === true && cap.ctx.gen === 'g-test' && cap.ctx.exitTo === 'land'
+        && cap.ctx.availableActs && cap.ctx.availableActs.indexOf('cai') >= 0);
+    })(), 'live/gen/exitTo 透传');
+
+    /* ③ 地形回退：正式局无 cellTypeOf → sphere.cells.type → 森林采集进林地场景 */
+    check('§353③ 正式阶段地形回退（无 cellTypeOf → sphere.cells.type → 森林采集进 forest）', (function () {
+      var _open = SC.open, cap = null;
+      SC.open = function (id, ctxIn) { cap = { id: id, ctx: ctxIn }; return { ok: true }; };
+      var _ja = G.jianghuActsAt;
+      G.jianghuActsAt = function () { return [{ id: 'cai', def: {} }]; };
+      var _ct = G.prologue && G.prologue.cellTypeOf;
+      if (G.prologue) G.prologue.cellTypeOf = null;      /* 正式局本来就没有它 */
+      var fci = -1;
+      var cells = (G.sphere && G.sphere.cells) || [];
+      for (var i = 0; i < cells.length; i++) { if (cells[i] && cells[i].type === 'forest') { fci = i; break; } }
+      var r = (fci >= 0) ? SC.play('cai', fci, { host: 'live' }) : null;
+      if (G.prologue) G.prologue.cellTypeOf = _ct;
+      SC.open = _open; G.jianghuActsAt = _ja;
+      return !!(r && r.ok && cap && cap.id === 'forest' && cap.ctx.terrain === 'forest' && r.act === 'cai');
+    })(), 'forest 格 → forest 场景');
+
+    /* ④ 入口不退化：ui.doJianghu 必须先走 3D 接线（play 被调 · jianghuDo 不抢先） */
+    check('§353④ 正式入口 doJianghu 走 3D（play 被调 · jianghuDo 不被抢先调用）', (function () {
+      var _play = SC.play, _jd = G.jianghuDo;
+      var playCalls = [], jdCalls = 0;
+      SC.play = function (actId, ci, opts) { playCalls.push({ actId: actId, ci: ci, opts: opts }); return { ok: true, scene: 'forest' }; };
+      G.jianghuDo = function () { jdCalls++; return { ok: false, msg: '不该走到' }; };
+      var r = null, err = null;
+      try { r = G.ui.doJianghu(4321, 'cai'); } catch (e) { err = e; }
+      SC.play = _play; G.jianghuDo = _jd;
+      return !err && playCalls.length === 1 && jdCalls === 0
+        && playCalls[0].opts && playCalls[0].opts.host === 'live';
+    })(), 'play 1 次 · jianghuDo 0 次');
+
+    /* ⑤ 兜底仍在：scene3d 整个不在（老设备无 WebGL）时 2D 一次性结算照旧 */
+    check('§353⑤ 无场景系统时 2D 兜底照旧（进不去场景不卡死玩法）', (function () {
+      var _sc = G.scene3d, _jd = G.jianghuDo;
+      G.scene3d = null;
+      G.jianghuDo = function () { return { ok: true, name: '翻找', text: '拉到些废铁' }; };
+      var _olm = G.ui.openLandModalCi, landCalled = 0;
+      G.ui.openLandModalCi = function () { landCalled++; };
+      var _ra = G.refreshAll; G.refreshAll = function () {};
+      var err = null;
+      try { G.ui.doJianghu(4321, 'cai'); } catch (e) { err = e; }
+      G.scene3d = _sc; G.jianghuDo = _jd; G.ui.openLandModalCi = _olm; G.refreshAll = _ra;
+      return !err && landCalled === 1;   /* 2D 兜底结算后回开地块界面（老行为不变） */
+    })(), '兜底回地块 1 次');
+
+    /* ⑥ 野地等级透传：HUD 要显示"野地 LvN"（与地块界面同一口径）；
+       坏格不许抛错（wildLevelNow 对越界输入有既有缺省值，lv 是数或 null 都算数）。 */
+    check('§353⑥ 野地等级透传（野地格 → ctx.lv 是数字；坏格 → 不抛错）', (function () {
+      var _open = SC.open, caps = [];
+      SC.open = function (id, ctxIn) { caps.push(ctxIn); return { ok: true }; };
+      var _ja = G.jianghuActsAt;
+      G.jianghuActsAt = function () { return [{ id: 'cai', def: {} }]; };
+      var fci = -1;
+      var cells = (G.sphere && G.sphere.cells) || [];
+      for (var i = 0; i < cells.length; i++) { if (cells[i] && cells[i].type === 'forest') { fci = i; break; } }
+      var rW = (fci >= 0) ? SC.play('cai', fci, { host: 'live' }) : null;
+      var rBad = SC.play('cai', -999, { host: 'live' });
+      SC.open = _open; G.jianghuActsAt = _ja;
+      return !!(rW && rW.ok && caps[0] && typeof caps[0].lv === 'number'
+        && rBad && rBad.ok === true && caps[1] && (caps[1].lv == null || typeof caps[1].lv === 'number'));
+    })(), '野地 lv=' + (function () { var c = (G.sphere && G.sphere.cells) || []; for (var i = 0; i < c.length; i++) if (c[i] && c[i].type === 'forest') return String(G.map.wildLevelNow(i)); return '?'; })());
+
+    /* ⑦ 两宿主不串：序章局默认走序章宿主（不锁日 · 双倍率是前传设计），
+       正式局默认走正式宿主 —— 默认推断错一步，序章就会被日锁卡死。 */
+    check('§353⑦ 宿主默认推断（序章局 → 序章宿主；正式局 → 正式宿主，不串）', (function () {
+      var _open = SC.open, caps = [];
+      SC.open = function (id, ctxIn) { caps.push(ctxIn); return { ok: true }; };
+      var _ja = G.jianghuActsAt;
+      G.jianghuActsAt = function () { return [{ id: 'cai', def: {} }]; };
+      G.newGame({ name: '前传', cityName: '灰岗', mapSeed: 20261025, prologue: true });
+      var rPro = SC.play('cai', 4321);            /* 不传 opts —— 老调用方（prologue.js）的口径 */
+      G.newGame({ name: '立城后', cityName: '灰岗', mapSeed: 20261025 });
+      var rLive = SC.play('cai', 4321);           /* 不传 opts —— 正式局应推断为 live */
+      SC.open = _open; G.jianghuActsAt = _ja;
+      return !!(rPro && rPro.ok && caps[0] && caps[0].live === false
+        && rLive && rLive.ok && caps[1] && caps[1].live === true);
+    })(), '序章 live=false · 正式 live=true');
+
+    /* ⑧ 时段划分边界：0/5:59→夜 · 6→晨 · 11→昼 · 17→昏 · 20→夜（24h 回绕），
+       且 phase() 与 sceneDay 同源（都读 world.elapsed）—— 否则"天怎么没黑"说不清。 */
+    check('§353⑧ 时段划分边界与同源（0/5:59→夜 6→晨 11→昼 17→昏 20→夜 · elapsed 驱动）', (function () {
+      var pf = SC._phaseOf;
+      if (!pf) return false;
+      var ok = pf(0) === 'night' && pf(5.9) === 'night'
+        && pf(6) === 'dawn' && pf(10.9) === 'dawn'
+        && pf(11) === 'day' && pf(16.9) === 'day'
+        && pf(17) === 'dusk' && pf(19.9) === 'dusk'
+        && pf(20) === 'night' && pf(23.9) === 'night'
+        && pf(24) === 'night' && pf(30) === 'dawn';   /* 环绕：超过 24h 回绕 */
+      var st = G.state, d0 = SC.dayNow();
+      st.world.elapsed = d0 * 86400 + 21 * 3600;
+      var p21 = SC.phase();
+      st.world.elapsed = d0 * 86400 + 12 * 3600;
+      var p12 = SC.phase();
+      return ok && p21 === 'night' && p12 === 'day';
+    })(), '边界 0/6/11/17/20 回绕 · 21点夜/12点昼');
+
+    /* ⑨ v143.3：正式局遭遇（红圈）走唯一账本 jianghuDo(…,'tao')。
+       断裂实录：duel 分支原来无条件调 prologue.duelBegin，正式局必报
+       「已经立城了」—— 撞见了却什么都不能干。现在正式宿主的遭遇 =
+       「这一格撞见的仗」，判定与呈现分离（_encounterSettle 只判，interact 只演）。
+       四条契约 + 一条真账本集成。 */
+    check('§353⑨ 正式局遭遇走唯一账本（ok→标done+回地块 · 败→不标 · 抛错→不炸 · 无账本→拒 · 真账本真扣）', (function () {
+      var cells = (G.sphere && G.sphere.cells) || [];
+      var fci = -1;
+      for (var i = 0; i < cells.length; i++) if (cells[i] && cells[i].type === 'forest') { fci = i; break; }
+      if (fci < 0 || !SC._encounterSettle) return false;
+      var _jd = G.jianghuDo, _ja = G.jianghuActsAt;
+      /* ① ok → 标 done + 退出落点 land + res 透传 */
+      G.jianghuDo = function () { return { ok: true, name: '清剿', text: '大胜' }; };
+      var r1 = SC._encounterSettle(fci, 'g1');
+      var ok1 = r1.ok && r1.markDone === true && r1.exitTo === 'land' && r1.res && r1.res.ok;
+      /* ② 干不成（日锁/精力）→ 不标 done：那是"没干成"，不是"收拾过了" */
+      G.jianghuDo = function () { return { ok: false, msg: '精力不够，打不动' }; };
+      var r2 = SC._encounterSettle(fci, 'g1');
+      var ok2 = !r2.ok && r2.markDone === false && r2.res && r2.res.ok === false && !!r2.res.msg;
+      /* ③ 账本抛错 → 不炸（观测层不许把故障升级成玩法故障） */
+      G.jianghuDo = function () { throw new Error('boom'); };
+      var r3 = null, err3 = null;
+      try { r3 = SC._encounterSettle(fci, 'g1'); } catch (e) { err3 = e; }
+      var ok3 = !err3 && r3 && r3.ok === false && r3.markDone === false;
+      /* ④ 账本缺失 → 拒 */
+      G.jianghuDo = null;
+      var r4 = SC._encounterSettle(fci, 'g1');
+      var ok4 = r4 && r4.ok === false && r4.markDone === false;
+      /* ⑤ 真账本集成：这一格今天有清剿 → 真调真扣（精力按 LING_ACT.tao.energy 精确扣），
+         且**日锁真生效**（同格同动作今天第二次必被拒 —— 账本口径，
+           注意 day 是游戏内天数 elapsed/86400，不是 questDayIndex 现实日锚点）。 */
+      G.jianghuDo = _jd;
+      G.jianghuActsAt = function () { return [{ id: 'tao', def: G.DATA.LING_ACT.tao }]; };
+      var gen = G.lordGeneralOf && G.lordGeneralOf();
+      var e0 = gen ? gen.energy : 0;
+      var r5 = gen ? SC._encounterSettle(fci, gen.id) : null;
+      var e1 = gen ? gen.energy : 0;
+      var r5b = gen ? SC._encounterSettle(fci, gen.id) : null;   /* 同一架，今天第二次 */
+      G.jianghuActsAt = _ja; G.jianghuDo = _jd;
+      var ok5 = !!r5 && r5.ok && gen
+        && e1 === Math.max(0, e0 - G.DATA.LING_ACT.tao.energy)
+        && !!r5b && r5b.ok === false && r5b.markDone === false;   /* 日锁：不重复结算 */
+      return ok1 && ok2 && ok3 && ok4 && ok5;
+    })(), 'ok标done · 败不标 · 抛错不炸 · 无账本拒 · 真扣 ' + G.DATA.LING_ACT.tao.energy + ' 精力+日锁');
+
+    G.newGame({ name: '收尾', cityName: '灰岗' });
+  })();
+
+  /* ============================================================
+   * §354 · v143.2：城内行人（氛围层 · 三不：不交互 / 不挡路 / 不造假）
+   * ------------------------------------------------------------
+   * 背景：3D 场景接进主玩法后，城是"能逛"了，但街上是死的 ——
+   *   48 栋房子零个人。星露谷感的来源不是画质，是"城里有人在过日子"。
+   * 本组守五件事（全测纯数据 _npcPlan，node 里没有 WebGL，不起渲染器）：
+   *   ① 数量有界：随城大小 4~10，且没有空地（全盖房）就一个没有；
+   *   ② 走位合法：所有航点 bounds 内、不在任何碰撞盒上（不穿墙不站房顶）；
+   *   ③ 确定性：同 plan 同 seed → 逐字节相等（同一座城每次进来人在同一处）；
+   *   ④ 坏输入不抛错：null / {} / cells 空 / solids 缺 —— 观测层不许炸玩法；
+   *   ⑤ 清理语义：没建过城 → _cityNpcs() 为空（不残留上一场的幽灵行人）。
+   * ============================================================ */
+  (function () {
+    var SC = G.scene3d;
+    if (!SC || !SC._npcPlan) { console.log('===== 354. 城内行人（scene3d._npcPlan 缺失，跳过） ====='); return; }
+    console.log('===== 354. 城内行人（氛围层 · 纯数据 _npcPlan） =====');
+
+    /* 造 plan-like：与 cityPlan 输出同构的最小面（cells/solids/bounds）
+       mode：'none' 全空 · 'even' 隔格盖房（solid 非空，测走位）· 'all' 全盖（free=0） */
+    var mkPlan = function (cols, rows, mode) {
+      var T = 2.1, cells = [], solids = [];
+      for (var i = 0; i < cols * rows; i++) {
+        var col = i % cols, row = Math.floor(i / cols);
+        var x = (col - (cols - 1) / 2) * T, z = (row - (rows - 1) / 2) * T;
+        var isHouse = mode === 'all' ? true : (mode === 'even' && (i % 2 === 0));
+        cells.push({ idx: i, col: col, row: row, x: x, z: z,
+          kind: isHouse ? 'house' : 'empty', bid: isHouse ? 'minfang' : null, lvl: 1, plaza: null });
+        if (isHouse) solids.push({ x0: x - 0.6, x1: x + 0.6, z0: z - 0.6, z1: z + 0.6 });
+      }
+      return { cols: cols, rows: rows, T: T, cells: cells, solids: solids,
+        bounds: { x0: -99, x1: 99, z0: -99, z1: 99 } };
+    };
+    var inAny = function (solids, x, z) {
+      for (var i = 0; i < solids.length; i++) {
+        var s = solids[i];
+        if (x >= s.x0 && x <= s.x1 && z >= s.z0 && z <= s.z1) return true;
+      }
+      return false;
+    };
+
+    /* ① 数量有界：小城 4、大城封 10、全盖房 0 */
+    check('§354① 数量有界（小城≥4 · 大城≤10 · 无空地→0）', (function () {
+      var small = SC._npcPlan(mkPlan(6, 4, 'none'), 4242);
+      var big = SC._npcPlan(mkPlan(20, 12, 'none'), 4242);
+      var full = SC._npcPlan(mkPlan(6, 4, 'all'), 4242);
+      return small.length === 4 && big.length === 10 && full.length === 0;
+    })(), '小城 ' + SC._npcPlan(mkPlan(6, 4, 'none'), 4242).length +
+      ' · 大城 ' + SC._npcPlan(mkPlan(20, 12, 'none'), 4242).length +
+      ' · 满房 ' + SC._npcPlan(mkPlan(6, 4, 'all'), 4242).length);
+
+    /* ② 走位合法：每个航点都在 bounds 内、不在任何碰撞盒上 */
+    check('§354② 走位合法（航点 bounds 内 · 不在碰撞盒上）', (function () {
+      var pl = mkPlan(8, 6, 'even');              /* 一半房一半空：solid 非空才测得出 */
+      var list = SC._npcPlan(pl, 7788);
+      if (!list.length) return false;
+      for (var i = 0; i < list.length; i++) {
+        var wps = list[i].wps;
+        if (!wps.length || wps.length !== 3) return false;   /* 家 + 2 航点，结构固定 */
+        for (var w = 0; w < wps.length; w++) {
+          var x = wps[w].x, z = wps[w].z;
+          if (!(x >= pl.bounds.x0 && x <= pl.bounds.x1 && z >= pl.bounds.z0 && z <= pl.bounds.z1)) return false;
+          if (inAny(pl.solids, x, z)) return false;          /* 站到房盖上 = 挡路/穿墙 */
+        }
+        if (!(list[i].speed > 0.3 && list[i].speed < 1.2)) return false;  /* 比玩家慢一半多 */
+      }
+      return true;
+    })(), '8×6 半房城 · ' + SC._npcPlan(mkPlan(8, 6, 'even'), 7788).length + ' 人 × 3 航点');
+
+    /* ③ 确定性：同 plan 同 seed 两次调用深相等（换 seed 才换人） */
+    check('§354③ 确定性（同 plan 同 seed 深相等 · 换 seed 不同）', (function () {
+      var pl = mkPlan(8, 6, 'even');
+      var a = JSON.stringify(SC._npcPlan(pl, 7788));
+      var b = JSON.stringify(SC._npcPlan(pl, 7788));
+      var c = JSON.stringify(SC._npcPlan(pl, 9999));
+      return a === b && a.length > 10 && a !== c;
+    })(), '同 seed 深相等 · 异 seed 相异');
+
+    /* ④ 坏输入不抛错（观测层不许炸玩法） */
+    check('§354④ 坏输入不抛错（null/{}/cells 空/solids 缺 → 空数组）', (function () {
+      try {
+        return SC._npcPlan(null, 1).length === 0
+          && SC._npcPlan({}, 1).length === 0
+          && SC._npcPlan({ cells: [] }, 1).length === 0
+          && SC._npcPlan({ cells: [{ x: 0, z: 0, kind: 'empty' }] }, 1).length === 4;  /* solids 缺 → 全可用 */
+      } catch (e) { return false; }
+    })(), 'null/{} 空 cells → [] · solids 缺 → 照常');
+
+    /* ⑤ 清理语义：没建过城 → 无幽灵行人 */
+    check('§354⑤ 清理语义（未建城 → _cityNpcs() 为空）', (function () {
+      try { return SC._cityNpcs().length === 0; } catch (e) { return false; }
+    })(), 'cityNpcs 长度 ' + SC._cityNpcs().length);
+
     G.newGame({ name: '收尾', cityName: '灰岗' });
   })();
 

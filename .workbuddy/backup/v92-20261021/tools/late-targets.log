@@ -1,0 +1,20 @@
+=== 目标强度：10 万军（主战5万/东风3万/泰坦2万 · 顶级将）===
+  目标                 守军数   结果  攻损   回合
+  野地 Lv13              37834   胜    21.5%    8
+  野地 Lv15              59079   胜    88.2%   12
+E:\Deepseekdb\tools\late-targets.js:36
+  const g = G.map.fortGarrison(lv), gd = G.map.fortGuardOf(fort);
+                                               ^
+
+TypeError: G.map.fortGuardOf is not a function
+    at Object.<anonymous> (E:\Deepseekdb\tools\late-targets.js:36:48)
+    at Module._compile (node:internal/modules/cjs/loader:1705:14)
+    at Object..js (node:internal/modules/cjs/loader:1838:10)
+    at Module.load (node:internal/modules/cjs/loader:1441:32)
+    at Function._load (node:internal/modules/cjs/loader:1263:12)
+    at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+    at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:171:5)
+    at node:internal/main/run_main_module:36:49
+
+Node.js v22.22.2

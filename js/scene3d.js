@@ -40,11 +40,15 @@
  *   · 想加第 11 个场景 = 加一条配置，不用等美术。
  *
  * ══════════════════════════════════════════════════════════════
- * 四、交互闭环：**只走一条结算出口**
+ * 四、交互闭环：**结算只走既有出口，场景不自己算**
  * ══════════════════════════════════════════════════════════════
- * 场景里动手 → 调 `G.prologue.act(ci, actId)`（前传既有出口：扣精力体力、掷骰、给辐能核心/经验）。
+ * 场景里动手 → 按宿主调**既有的那一个出口**：
+ *   · 序章宿主 → `G.prologue.act(ci, actId)`（不锁日 · 双倍率 · 前传专属）；
+ *   · 正式宿主 → `GAME.jianghuDo(ci, genId, actId)`（日锁 · 将选 · 与地块按钮同口）。
  * 场景**不自己算产出**。以前的教训（v136 斗将 HP 与比分两本账）就是"呈现层偷偷算了一份"，
  * 那种 bug 查起来极贵。这里场景只负责"你走到了没有"。
+ * v143 之前正式阶段的江湖动作是"弹一行字"（v90.93 去全屏剧本的后遗症）；
+ * v143 起 `ui.doJianghu` 也走 `S.play` 进场景 —— 3D 场景不再是序章限定。
  *
  * ══════════════════════════════════════════════════════════════
  * 五、10 个场景（`S.list()` 可查）
@@ -68,6 +72,10 @@
   var G = GAME, D = GAME.DATA || {};
   var U = GAME.utils;   /* `U` 也不是全局：每个模块自己 `var U = GAME.utils;`（prologue.js:37 同） */
   var S = G.scene3d = {};
+  /* v143：时段光照（晨/昼/昏/夜）—— 星露谷感的另一半是"天会黑"。
+     LGT 指向 ensure() 建的三盏灯；_skyBase/_fogBase 是 buildScene 设的
+     场景本色（tint 只做乘法，不改配置 —— 数据与呈现分开）。 */
+  var LGT = null, _skyBase = 0x8e97a4, _fogBase = 0x8e97a4, _lastPhase = null;
 
   /* ============================================================
    * 0. 调色板（废土科技）
@@ -779,6 +787,7 @@
     var rim = new THREE.DirectionalLight(0x9fc4d8, 0.55);
     rim.position.set(-8, 6, -9);
     scene.add(rim);
+    LGT = { sun: sun, amb: amb, rim: rim };   /* v143：时段光照要能改这三盏 */
 
     /* 键鼠 */
     window.addEventListener('keydown', onKeyDown, true);
@@ -848,8 +857,9 @@
     scene.add(propRoot);
 
     /* 天光与雾：改 scene.background / fog 比换材质便宜，一眼就换风格 */
-    scene.background = new THREE.Color(cfg.sky || 0x8e97a4);
-    scene.fog = new THREE.FogExp2(cfg.fog || cfg.sky || 0x8e97a4, 0.020);
+    _skyBase = cfg.sky || 0x8e97a4; _fogBase = cfg.fog || cfg.sky || 0x8e97a4;
+    scene.background = new THREE.Color(_skyBase);
+    scene.fog = new THREE.FogExp2(_fogBase, 0.020);
 
     /* 地面 */
     var kind = (cfg.id === 'forest' || cfg.id === 'field') ? 'grass' : 'ash';
@@ -1096,6 +1106,8 @@
     rafId = requestAnimationFrame(step);
     var dt = Math.min(0.05, (now - lastT) / 1000 || 0.016);
     lastT = now;
+    /* v143：跨时段重算光照（phaseOf 是纯算术，不变就不 apply —— 近零成本） */
+    if (_lastPhase !== phaseOf(hourNow())) applyPhase();
 
     if (player) {
       var vx = 0, vz = 0;
@@ -1137,6 +1149,8 @@
 
     updateNear();
     animWorld(now);
+    /* v143.2：行人巡逻（城内场景才有；night 隐藏是 stepNpcs 内部判的） */
+    if (cityView) stepNpcs(dt, now);
     updateCamera(dt);
     if (waterMesh) {
       var pos = waterMesh.geometry.attributes.position;
@@ -1249,6 +1263,50 @@
   }
 
   /* ---------- HUD（DOM 叠在 canvas 上） ---------- */
+  /* ============================================================
+   * v143：时段光照（晨 / 昼 / 昏 / 夜）
+   * ------------------------------------------------------------
+   * 为什么：10 个场景再好看，天永远是亮的也就少了"过日子"的感觉。
+   *   星露谷那种沉浸感，一半是昼夜循环给的。
+   * 怎么做：**不改任何场景配置**，只按游戏内小时改三盏灯的色/强，
+   *   天光与雾乘一个 tint（本色 × 系数）。数据归数据，呈现归呈现。
+   * 性能：phaseOf 是纯算术，每帧判"变没变"近零成本；只有跨时段才 apply。
+   * ============================================================ */
+  var PHASES = {
+    night: { sun: 0x2a3550, sunI: 0.16, ambI: 0.30, rim: 0x35507a, rimI: 0.32, tint: 0.55 },
+    dawn:  { sun: 0xffb37a, sunI: 0.72, ambI: 0.26, rim: 0x8fa8c8, rimI: 0.42, tint: 0.86 },
+    day:   { sun: 0xfff1d8, sunI: 1.15, ambI: 0.22, rim: 0x9fc4d8, rimI: 0.55, tint: 1.0 },
+    dusk:  { sun: 0xff8a4a, sunI: 0.68, ambI: 0.26, rim: 0x7a6a9a, rimI: 0.42, tint: 0.82 }
+  };
+  /* 时段划分（游戏内小时）：0~5 夜 · 6~10 晨 · 11~16 昼 · 17~19 昏 · 20~23 夜 */
+  function phaseOf(hour) {
+    var h = ((hour % 24) + 24) % 24;
+    if (h < 6) return 'night';
+    if (h < 11) return 'dawn';
+    if (h < 17) return 'day';
+    if (h < 20) return 'dusk';
+    return 'night';
+  }
+  function hourNow() {
+    return ((((G.state || {}).world || {}).elapsed || 0) % 86400) / 3600;
+  }
+  function applyPhase() {
+    var ph = PHASES[phaseOf(hourNow())];
+    if (!ph || !LGT || !scene) return;
+    try {
+      LGT.sun.color.setHex(ph.sun); LGT.sun.intensity = ph.sunI;
+      LGT.amb.intensity = ph.ambI;
+      LGT.rim.color.setHex(ph.rim); LGT.rim.intensity = ph.rimI;
+      if (scene.background && scene.background.set) {
+        scene.background.setHex(_skyBase).multiplyScalar(ph.tint);
+      }
+      if (scene.fog && scene.fog.color && scene.fog.color.set) {
+        scene.fog.color.setHex(_fogBase).multiplyScalar(ph.tint);
+      }
+    } catch (e) { /* 观测层不许影响玩法 */ }
+    _lastPhase = phaseOf(hourNow());
+  }
+
   function renderHud() {
     if (!layer) return;
     var old = layer.querySelector('.scene-ui');
@@ -1283,6 +1341,9 @@
       /* 城内不报"几处已收拾"：那里的节点是 48 栋房子，不是可采集点，
          报个 0/48 会让人以为"什么都没做"。 */
       + (openId === 'city' ? '' : ('　<b style="color:var(--green-ok);">' + nodesDone + '/' + nodesTotal + '</b> 处已收拾'))
+      /* v143：野地等级（难度/收益倍率都乘在它上 —— 与地块界面同一口径）。
+         正式/序章两宿主都有；城市场景没有这个概念，不显示。 */
+      + ((ctx && ctx.lv != null && openId !== 'city') ? ('　<b style="color:var(--gold-light);">野地 Lv' + ctx.lv + '</b>') : '')
       + '</div>'
       + '</div>'
       /* 交互提示条放底部中间：视线在场景中心，提示不该在角落 */
@@ -1348,6 +1409,9 @@
      2.2 让墙根有一圈 2.5 米宽的空地，出生点能退到门外看不见的位置。 */
   var CITY_PAD = 2.2;
   var citySolids = [], cityBounds = null, cityOutZ = 0;
+  /* v143.2：城内行人（氛围层）。plan 是纯数据（_npcPlan 生成，可无 THREE 测），
+     grp 是渲染产物（buildCityScene 里建）。二者分开：测逻辑不用起 WebGL。 */
+  var cityNpcs = [];
 
   /* 圆 vs 轴对齐盒：把圆心夹到盒上取最近点，比半径近就是撞了。
      比"点在盒内"多一步，好处是**贴墙滑行时不会在角上抖**。 */
@@ -1452,6 +1516,70 @@
     return out;
   }
   S.cityPlan = cityPlan;
+
+  /* ============================================================
+   * v143.2 · 城内行人计划（**纯数据 · 无 THREE 依赖**）
+   * ------------------------------------------------------------
+   * 为什么 plan 与渲染分开：smoke 里没有 WebGL/THREE，可测的只有数据。
+   * 「行人在哪、走哪、多快」全部在这一层算完，buildCityScene 只负责照着摆 mesh。
+   *
+   * 设计约束（氛围层三不）：
+   *   · 不可交互 —— 不进 nodeList，玩家点不到（免得挡着采集/建筑的点选）；
+   *   · 不挡路   —— 站位与航点全部落在非碰撞格（进不去房子的内部）；
+   *   · 不造假   —— 全城的格都盖了房子（free 为空）就返回 []，不硬塞。
+   * 数量随城大小 4~10：城是"活的"，但不是庙会。
+   * 确定性：同 plan 同 seed → 同一份计划（同一座城每次进来人在同一处）。
+   * ============================================================ */
+  function npcInSolid(plan, x, z) {
+    var ss = plan.solids || [];
+    for (var i = 0; i < ss.length; i++) {
+      var s = ss[i];
+      if (x >= s.x0 && x <= s.x1 && z >= s.z0 && z <= s.z1) return true;
+    }
+    return false;
+  }
+  S._npcPlan = function (plan, seed) {
+    var out = [];
+    try {
+      if (!plan || !plan.cells || !plan.cells.length) return out;
+      var R = rng((seed || 4242) >>> 0);
+      /* 候选站立点：空地格中心，且不在任何碰撞盒里（well/pile/brazier 也算占地） */
+      var free = [];
+      for (var i = 0; i < plan.cells.length; i++) {
+        var it = plan.cells[i];
+        if (!it || it.kind !== 'empty') continue;
+        if (npcInSolid(plan, it.x, it.z)) continue;
+        free.push(it);
+      }
+      if (!free.length) return out;               /* 没有空地 → 没有行人，不假修建 */
+      var n = Math.max(4, Math.min(10, Math.round(plan.cells.length / 8)));
+      for (var p = 0; p < n; p++) {
+        var home = free[Math.floor(R() * free.length)];
+        /* 每人 3 个航点：家 + 两个随机空地（带 0.8 米内抖动，别走成尺子）。
+           航点循环 = 巡逻，不用每步重选目标 —— 状态少、可回放。 */
+        var wps = [{ x: home.x, z: home.z }];
+        for (var w = 0; w < 2; w++) {
+          var t = free[Math.floor(R() * free.length)];
+          wps.push({ x: t.x + (R() - 0.5) * 0.8, z: t.z + (R() - 0.5) * 0.8 });
+        }
+        out.push({
+          id: p, x: home.x, z: home.z,
+          wps: wps,
+          speed: 0.55 + R() * 0.5,               /* 米/秒：比玩家（SPEED≈3.2）慢一半多 */
+          tint: Math.floor(R() * 4),             /* 衣色 4 选 1 */
+          phase: R() * 6.283                      /* 摆腿相位：各走各的，免得同进同退像广播操 */
+        });
+      }
+    } catch (e) { return []; }
+    return out;
+  };
+  /* 行人总览（渲染层状态摘要，供守卫断言；不返回 THREE 对象） */
+  S._cityNpcs = function () {
+    return cityNpcs.map(function (np) {
+      return { id: np.plan.id, x: np.grp.position.x, z: np.grp.position.z, wi: np.wi,
+        wps: np.plan.wps.length, visible: np.grp.visible };
+    });
+  };
   S.cityGeo = { T: CITY_T, bw: CITY_BW, walk: CITY_T - CITY_BW, r: CITY_R, pad: CITY_PAD };
 
   function buildCityScene() {
@@ -1470,9 +1598,9 @@
        整张图像蒙了一层土（截图确认）。城内是"看自己的城"，不该有野地那种空气感。
        v142 相机拉近到视口 11、贴地 50° 走，雾再淡一档（0.004）：
        否则街对面的房子已经发灰，"巷子有多深"读不出来。 */
+    _skyBase = 0x9db0bd; _fogBase = 0x9db0bd;
     scene.background = new THREE.Color(0x9db0bd);
     scene.fog = new THREE.FogExp2(0x9db0bd, 0.004);
-
     /* 地面：v142 从"棋盘格线"换成**石板路**
        —— 格线是给俯瞰沙盘用的（让人数格子）；街区视角要的是"脚下是路"，
        格线反而把街区切回成表格。石板缝本身就能读出尺度，不需要再画格子。 */
@@ -1884,7 +2012,93 @@
     cam.position.set(0, 21.65, plan.spawn.z + 8);
     cam.lookAt(0, 0.8, plan.spawn.z - 1.72);
     resize();
+    /* v143.2：行人放在最后 —— 城先盖起来，人再上街（顺序反了会看到空城走人） */
+    npcBuild(plan);
     return true;
+  }
+
+  /* ============================================================
+   * v143.2 · 城内行人渲染 + 巡逻动画
+   * ------------------------------------------------------------
+   * 形体：4 个 mesh/人（身体 + 头 + 两腿）—— 腿各挂一个 pivot Group，
+   *   绕 pivot 转才不会插进地里。预算 10 人 × 4 = 40 mesh，
+   *   对全城 400+ 的存量是 +10%，可接受；再多就换 InstancedMesh（现在不必）。
+   * 材质：肤色/衣色**共享**（4 衣色），不每人一份 —— 少 30 次材质切换。
+   * 生命：挂 propRoot 下，close 时随 propRoot 一起清（cityNpcs 数组同步清空）。
+   * ============================================================ */
+  var NPC_SKIN = 0xd9b08c, NPC_TINT = [0x8a6f4d, 0x5f7a6a, 0x7d5a5a, 0x4f5f7d];
+  var npcMatSkin = null, npcMatTint = null, npcMatPants = null;
+  function npcMats() {
+    if (!npcMatSkin) {
+      npcMatSkin = new THREE.MeshLambertMaterial({ color: NPC_SKIN });
+      npcMatPants = new THREE.MeshLambertMaterial({ color: 0x5a5248 });
+      npcMatTint = NPC_TINT.map(function (c) { return new THREE.MeshLambertMaterial({ color: c }); });
+    }
+    return { skin: npcMatSkin, pants: npcMatPants, tint: npcMatTint };
+  }
+  function npcBuild(plan) {
+    try {
+      cityNpcs = [];
+      var pl = S._npcPlan(plan, 7788 + plan.cols * 100 + plan.rows);
+      if (!pl.length) return;
+      var M = npcMats();
+      for (var i = 0; i < pl.length; i++) {
+        var pd = pl[i];
+        var grp = new THREE.Group();
+        /* 身体（0.60）+ 腿（0.42）≈ 1.02，加头 0.23 → 总高约 1.25 米：
+           比玩家（1.35）略矮 —— 一眼能分"这是路人不是我自己"。 */
+        var body = new THREE.Mesh(new THREE.BoxGeometry(0.30, 0.60, 0.20), M.tint[pd.tint % M.tint.length]);
+        body.position.y = 0.42 + 0.30;
+        grp.add(body);
+        var head = new THREE.Mesh(new THREE.SphereGeometry(0.115, 8, 6), M.skin);
+        head.position.y = 1.13;
+        grp.add(head);
+        /* 腿：pivot 在髋（y=0.42），腿 mesh 下移半个腿高，绕 pivot 摆 */
+        var mkLeg = function (sx) {
+          var pv = new THREE.Group();
+          pv.position.set(sx * 0.075, 0.42, 0);
+          var lm = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.42, 0.09), M.pants);
+          lm.position.y = -0.21;
+          pv.add(lm);
+          grp.add(pv);
+          return pv;
+        };
+        var legL = mkLeg(-1), legR = mkLeg(1);
+        var sh = new THREE.Mesh(new THREE.CircleGeometry(0.22, 10),
+          new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.22 }));
+        sh.rotation.x = -Math.PI / 2;
+        sh.position.y = 0.015;
+        grp.add(sh);
+        grp.position.set(pd.x, 0, pd.z);
+        propRoot.add(grp);
+        /* 不进 nodeList（不可交互）· 不进 solids（不挡路）—— 氛围层三不的后两条 */
+        cityNpcs.push({ plan: pd, grp: grp, legL: legL, legR: legR, wi: 0 });
+      }
+    } catch (e) { cityNpcs = []; }
+  }
+  function stepNpcs(dt, now) {
+    if (!cityNpcs.length) return;
+    /* 夜里路上没人：整组隐藏（省 draw call，也比"半夜还逛街"讲得通）。
+       出门另说 —— 玩家走到哪跟到哪的逻辑不在这层。 */
+    var night = _lastPhase === 'night';
+    for (var i = 0; i < cityNpcs.length; i++) {
+      var np = cityNpcs[i];
+      if (np.grp.visible === night) np.grp.visible = !night;
+      if (night) continue;
+      var wp = np.plan.wps[np.wi % np.plan.wps.length];
+      var dx = wp.x - np.grp.position.x, dz = wp.z - np.grp.position.z;
+      var d2 = dx * dx + dz * dz;
+      if (d2 < 0.02) { np.wi = (np.wi + 1) % np.plan.wps.length; continue; }
+      var d = Math.sqrt(d2), stp = Math.min(d, np.plan.speed * dt);
+      np.grp.position.x += dx / d * stp;
+      np.grp.position.z += dz / d * stp;
+      np.grp.rotation.y = Math.atan2(dx, dz);
+      /* 摆腿 + 身体微沉：走起来的关键是"动"，不是"像" */
+      var sw = Math.sin(now / 1000 * 7 + np.plan.phase);
+      np.legL.rotation.x = sw * 0.6;
+      np.legR.rotation.x = -sw * 0.6;
+      np.grp.position.y = Math.abs(sw) * 0.02;
+    }
   }
 
   function sceneCfg(id) {
@@ -1906,6 +2120,10 @@
   S.isDone = function (sceneId, i) { return !!doneStore()[nodeKey(sceneId, i)]; };
   S.markDone = function (sceneId, i) { try { doneStore()[nodeKey(sceneId, i)] = 1; return true; } catch (e) { return false; } };
   S.dayNow = sceneDay;
+  /* v143：当前时段（night/dawn/day/dusk）—— 给门禁验时段划分边界，
+     也给排障（"天怎么没黑"先看这里返回什么）。 */
+  S.phase = function () { return phaseOf(hourNow()); };
+  S._phaseOf = phaseOf;
   /* 遭遇的决定（同参数同结果）—— 给门禁验"确定性"，不给随机开后门 */
   S.encounterFor = function (sceneId, ci) {
     var cfg = sceneCfg(sceneId);
@@ -1967,6 +2185,7 @@
       scene.add(propRoot);
       var okc = buildCityScene();
       if (!okc) { openId = null; layer.style.display = 'none'; return { ok: false, msg: '现在没有城' }; }
+      applyPhase();          /* v143：进城就按当前时辰点亮（天会黑） */
       renderHud();
       lastT = performance.now();
       if (!rafId) rafId = requestAnimationFrame(step);
@@ -1985,6 +2204,7 @@
     try { pruneDone(); } catch (e) {}
     buildScene(cfg);
     resize();
+    applyPhase();          /* v143：进场景就按当前时辰点亮（天会黑） */
     renderHud();
     lastT = performance.now();
     if (!rafId) rafId = requestAnimationFrame(step);
@@ -1998,6 +2218,10 @@
 
   S.close = function () {
     if (!openId) return { ok: false };
+    /* v143：结算过的正式局，退出落点是地块界面（玩家从那儿点按钮进来的）。
+       先取出再走后面的清场 —— ctx 会被下一次 open 重置。 */
+    var exitTo = (ctx && ctx.exitTo) || null;
+    var exitCi = (ctx && ctx.ci != null) ? ctx.ci : null;
     openId = null;
     if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
     if (layer) { layer.style.display = 'none'; layer.innerHTML = ''; layer.appendChild(cvs); }
@@ -2005,28 +2229,75 @@
     if (layer && cvs && cvs.parentNode !== layer) layer.appendChild(cvs);
     if (propRoot) { scene.remove(propRoot); propRoot = null; }
     nodeList = []; nearNode = null; keys = {};
+    /* v143.2：行人随 propRoot 清（数组同步空，_cityNpcs() 归零） */
+    cityNpcs = [];
+    npcMatSkin = null; npcMatTint = null; npcMatPants = null;
     var ph = document.getElementById('prologue-screen');
     if (ph) ph.style.display = '';
     if (G.refreshAll) { try { G.refreshAll(); } catch (e) {} }
+    /* v143：回地块界面（带 ci 重开那一格的面板）—— 失败不挡关门，场景必须能退 */
+    if (exitTo === 'land' && exitCi != null && G.ui && G.ui.openLandModalCi) {
+      try { G.ui.openLandModalCi(exitCi); } catch (e) {}
+    }
     return { ok: true };
   };
 
   /* 场景入口（由 UI 调）：按动作 + 地形选场景 */
-  S.play = function (actId, ci) {
+  S.play = function (actId, ci, opts) {
+    opts = opts || {};
+    /* v143（正式阶段也走场景）：宿主分序章/正式两路。
+       序章：结算走 G.prologue.act（不锁日、双倍率）—— 老路不动；
+       正式：结算走 GAME.jianghuDo（日锁/将选/账目全在那儿）—— 也不新写一份。
+       默认按 prologue.on() 推断；调用方（ui.doJianghu）显式传 host:'live'。 */
+    var live = opts.host === 'live'
+      || (opts.host == null && !(G.prologue && G.prologue.on && G.prologue.on()));
     var terrain = null;
     if (G.prologue && G.prologue.cellTypeOf && ci != null) terrain = G.prologue.cellTypeOf(ci);
+    /* 正式阶段没有 prologue.cellTypeOf —— 回退到逻辑球面的地形字段
+       （jianghuActsAt 判「有没有荒野事」用的就是它，同源不会打架）。 */
+    if (terrain == null && ci != null && G.sphere && G.sphere.cells && G.sphere.cells[ci]) {
+      terrain = G.sphere.cells[ci].type;
+    }
     /* 进场景的门槛与按钮一致：这一格今天能做这件事，才让进 */
     var avail = [];
     if (G.jianghuActsAt && ci != null) {
       try { avail = (G.jianghuActsAt(ci) || []).map(function (a) { return a.id; }); } catch (e) { avail = []; }
     }
     if (actId && avail.length && avail.indexOf(actId) < 0) {
-      return { ok: false, msg: '这地方今天做不了这件事 —— 换一处或明天再来' };
+      return { ok: false, why: 'gate', msg: '这地方今天做不了这件事 —— 换一处或明天再来' };
     }
     var id = S.pickFor(actId, terrain);
-    var r = S.open(id, { ci: ci, actId: actId, terrain: terrain, availableActs: avail });
+    /* v143：野地等级带进 ctx —— HUD 显示"野地 LvN"（与地块界面"野地 LvN · 难度 ×"
+       同一口径：难度/收益倍率都乘在它上面）。非野地格取不到就 null，HUD 不显示。 */
+    var lv = null;
+    try { if (G.map && G.map.wildLevelNow && ci != null) lv = G.map.wildLevelNow(ci); } catch (e) { lv = null; }
+    var r = S.open(id, {
+      ci: ci, actId: actId, terrain: terrain, availableActs: avail,
+      live: live, gen: opts.gen || null, exitTo: opts.exitTo || null,
+      lv: (typeof lv === 'number' ? lv : null)
+    });
     if (r.ok) r.act = actId;
     return r;
+  };
+
+  /* ============================================================
+   * v143.3 · 正式阶段遭遇的结算路由（**判定与呈现分离**）
+   * ------------------------------------------------------------
+   * 场景里的红圈（遭遇 · 废土物种）在正式局的归属：它不是每日动作，
+   * 是"这一次撞见的仗" —— 结算走唯一账本 jianghuDo(…,'tao')。
+   * 这里只做**判定**（调账本 + 决定 done/exitTo），呈现（飘字/暗化/关场景）
+   * 留在 interact —— 分离是为了这条路由可以在没有 WebGL 的 smoke 里测。
+   * 契约：
+   *   · ok        → { ok:true, res, markDone:true, exitTo:'land' }
+   *   · 干不成     → { ok:false, res:{ok:false,msg}, markDone:false }（不标 done）
+   *   · 账本抛错   → 同上（观测层不许把渲染故障升级成玩法故障）
+   * ============================================================ */
+  S._encounterSettle = function (ci, genId) {
+    var res = null;
+    try { res = G.jianghuDo ? G.jianghuDo(ci, genId, 'tao') : null; }
+    catch (e) { res = { ok: false, msg: '动手时出错了：' + (e.message || '') }; }
+    if (res && res.ok) return { ok: true, res: res, markDone: true, exitTo: 'land' };
+    return { ok: false, res: res || { ok: false, msg: '现在打不了这一架' }, markDone: false };
   };
 
   /* 交互：真正结算仍走 prologue.act（唯一出口） */
@@ -2049,25 +2320,69 @@
     /* 遭遇：进斗将（复用 v136 那套面板与内核，不另写一份战斗） */
     if (nd.duel) {
       var _ci = (ctx && ctx.ci != null) ? ctx.ci : null;
+      /* v143.3：正式阶段的遭遇 ≠ 序章斗将 —— 先修一个断裂：
+         duel 分支原来无条件调 G.prologue.duelBegin，正式局（立城后）必报
+         「已经立城了」：红圈撞见了，却什么都不能干。
+         正式宿主的遭遇 = 「这一格撞见的仗」→ 走**既有唯一账本**
+         jianghuDo(ci, gen, 'tao')（清剿：扣精力体力、按战力与野地等级判胜败、
+         辐能核心/负伤全在那本账上）。不新开斗将口径 —— 斗将正式化涉及
+         结算口径变更，是拍板项（见 HANDOVER 候选）。 */
+      if (ctx && ctx.live) {
+        var _set = S._encounterSettle(_ci,
+          (ctx && ctx.gen) || (G.lordGeneralOf && (G.lordGeneralOf() || {}).id) || null);
+        if (_set.ok) {
+          nd.done = true;
+          if (nd.ring) nd.ring.visible = false;
+          dimProp(o);
+          if (nd.idx != null && nd.idx < 900) S.markDone(openId, nd.idx);
+          showResult(nd, _set.res, 'tao');
+          ctx.exitTo = 'land';                 /* 与采集同一条退出落点 */
+          return _set.res;
+        }
+        /* 打不了（日锁/精力/此地今日无此事）→ **不标 done**：
+           那是"没干成"，不是"收拾过了" —— 标了这架今天就白撞了。 */
+        showResult(nd, _set.res, 'tao');
+        return _set.res;
+      }
       var _foe = G.prologue.duelFoe(_ci, nd.speciesId);
-      var _r = G.prologue.duelBegin(_ci, _foe);
-      if (!_r.ok) {
-        showResult(nd, { ok: false, msg: _r.msg }, 'duel');
-        return _r;
+      var _r2 = G.prologue.duelBegin(_ci, _foe);
+      if (!_r2.ok) {
+        showResult(nd, { ok: false, msg: _r2.msg }, 'duel');
+        return _r2;
       }
       nd.done = true;
       if (nd.ring) nd.ring.visible = false;
       dimProp(o);
       if (G.ui && G.ui.openDuelPanel) G.ui.openDuelPanel();
-      return _r;
+      return _r2;
     }
     if (nd.done) return { ok: false, msg: '这里已经收拾过了' };
     var actId = nd.act || (ctx && ctx.actId) || 'cai';
     var ci = (ctx && ctx.ci != null) ? ctx.ci : null;
     var res = null;
-    try {
-      res = G.prologue && G.prologue.act ? G.prologue.act(ci, actId) : null;
-    } catch (e) { res = { ok: false, msg: '动手时出错了：' + (e.message || '') }; }
+    if (ctx && ctx.live) {
+      /* v143：正式宿主 —— 结算走 GAME.jianghuDo（地块按钮那一个出口）。
+         失败（日锁/精力体力不够）不标 done：那不是"收拾过了"，是"今天没干成"，
+         节点得留着，明天还能来。成功才落 done + 记退出落点（回地块界面）。 */
+      var genId = (ctx && ctx.gen) || (G.lordGeneralOf && G.lordGeneralOf() || {}).id;
+      try {
+        var r0 = GAME.jianghuDo ? GAME.jianghuDo(ci, genId, actId) : null;
+      } catch (e) { r0 = { ok: false, msg: '动手时出错了：' + (e.message || '') }; }
+      if (r0 && r0.ok === false) {
+        showResult(nd, { ok: false, msg: r0.msg || '今天在这儿做不了这件事' }, actId);
+        return r0;
+      }
+      res = r0 ? {
+        ok: true,
+        msg: (r0.name || '收拾') + (r0.text ? '：' + r0.text : ''),
+        bad: r0.bad
+      } : { ok: false, msg: '没有结果' };
+      if (res.ok) ctx.exitTo = 'land';   /* 结算成功 → 退出时回地块界面（ux：看完结果回主线） */
+    } else {
+      try {
+        res = G.prologue && G.prologue.act ? G.prologue.act(ci, actId) : null;
+      } catch (e) { res = { ok: false, msg: '动手时出错了：' + (e.message || '') }; }
+    }
     nd.done = true;
     if (nd.ring) nd.ring.visible = false;
     dimProp(o);

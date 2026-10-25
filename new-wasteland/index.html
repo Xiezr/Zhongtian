@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>灰烬纪元 · 新废土</title>
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ============ 顶栏 ============ -->
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">◈</span>
+      <span class="brand-name">灰烬纪元</span>
+      <span class="brand-sub">ASHES · 第 <b id="dayLabel">1</b> 年</span>
+    </div>
+    <div class="res" id="resBar"></div>
+    <div class="clock" id="clockLabel">01年 · 00:00</div>
+    <div class="actions">
+      <button class="btn" data-adv="1">推进 1 时</button>
+      <button class="btn btn-primary" data-adv="8">推进 8 时</button>
+    </div>
+  </header>
+
+  <!-- ============ 主区 ============ -->
+  <main class="layout">
+
+    <!-- 左：城市 + 队伍 -->
+    <aside class="panel panel-left">
+      <h2 class="panel-title">据 点</h2>
+      <div id="cityPanel"></div>
+
+      <h2 class="panel-title">拓 荒 队</h2>
+      <div id="teamList"></div>
+      <button class="btn btn-ghost" id="btnRecruit">
+        招募新队（粮 60 · 铁 30）
+      </button>
+    </aside>
+
+    <!-- 中：地图 -->
+    <section class="map-wrap">
+      <div class="map-head">
+        <span class="map-title">黑 区</span>
+        <span class="map-hint" id="mapHint">选一支队伍 → 点一个格子派遣（八方向直线）</span>
+      </div>
+      <div class="map" id="map"></div>
+      <div class="legend">
+        <span class="lg-title">地点</span>
+        <span class="lg-item"><img src="assets/icon/yizhan.png" alt="">物资站</span>
+        <span class="lg-item"><img src="assets/icon/cangku.png" alt="">种子库</span>
+        <span class="lg-item"><img src="assets/icon/city_jun.png" alt="">聚落</span>
+        <span class="lg-item"><img src="assets/icon/city_capital.png" alt="">旧都</span>
+        <span class="lg-item"><img src="assets/icon/fort.png" alt="">据点</span>
+        <span class="lg-title">地形</span>
+        <span class="lg-item"><i class="sw sw-swamp"></i>沼泽耗 2</span>
+        <span class="lg-item"><i class="sw sw-desert"></i>沙地</span>
+        <span class="lg-item" style="color:#b0432f">† 有人没回来</span>
+      </div>
+    </section>
+
+    <!-- 右：日志 -->
+    <aside class="panel panel-right">
+      <h2 class="panel-title">日 志</h2>
+      <div class="log" id="logList"></div>
+    </aside>
+
+  </main>
+
+  <!-- ============ 纪念碑 ============ -->
+  <footer class="memorial">
+    <div class="mem-head">
+      <span class="mem-title">纪 念 碑</span>
+      <span class="mem-count" id="memCount"></span>
+    </div>
+    <div class="mem-list" id="memList"></div>
+  </footer>
+
+</div>
+
+<!-- ============ 势力来使 ============ -->
+<div class="modal" id="envoyModal" hidden>
+  <div class="modal-card envoy-card">
+    <div class="modal-kind" id="ev2Kind">来 使</div>
+    <h3 class="modal-title" id="ev2Title"></h3>
+    <p class="modal-body" id="ev2Body"></p>
+    <div class="modal-choices" id="ev2Choices"></div>
+  </div>
+</div>
+
+<!-- ============ 斗将 ============ -->
+<div class="modal" id="duelModal" hidden>
+  <div class="modal-card duel-card">
+    <div class="modal-kind" id="duKind">斗 将</div>
+    <div class="duel-bars">
+      <div class="du-side">
+        <div class="du-name" id="duPName">我方</div>
+        <div class="du-bar"><i id="duPBar"></i></div>
+      </div>
+      <div class="du-vs">对</div>
+      <div class="du-side">
+        <div class="du-name" id="duEName">守将</div>
+        <div class="du-bar foe"><i id="duEBar"></i></div>
+      </div>
+    </div>
+    <div class="duel-log" id="duLog"></div>
+    <div class="duel-moves" id="duMoves"></div>
+    <div class="modal-timer" id="duTimer"></div>
+  </div>
+</div>
+
+<!-- ============ 编成 ============ -->
+<div class="modal" id="compModal" hidden>
+  <div class="modal-card comp-card">
+    <div class="modal-kind" id="cpKind">编 成</div>
+    <h3 class="modal-title" id="cpTitle"></h3>
+    <div class="cp-stats" id="cpStats"></div>
+    <div class="cp-list" id="cpList"></div>
+    <div class="modal-choices">
+      <button class="choice" id="cpClose">
+        <span>合上</span><span class="note">回城才能换装 · 每加一个 40 铁</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ 纪事（每年冬天一页） ============ -->
+<div class="modal story-modal" id="storyModal" hidden>
+  <div class="modal-card story-card">
+    <div class="modal-kind" id="stKind">纪 事</div>
+    <h3 class="modal-title" id="stTitle"></h3>
+    <div class="story-body" id="stBody"></div>
+    <div class="modal-choices" id="stChoices"></div>
+  </div>
+</div>
+
+<!-- ============ 事件卡 ============ -->
+<div class="modal" id="eventModal" hidden>
+  <div class="modal-card">
+    <div class="modal-kind" id="evKind"></div>
+    <h3 class="modal-title" id="evTitle"></h3>
+    <p class="modal-body" id="evBody"></p>
+    <div class="modal-choices" id="evChoices"></div>
+    <div class="modal-timer" id="evTimer"></div>
+  </div>
+</div>
+
+<script src="js/data.js"></script>
+<script src="js/state.js"></script>
+<script src="js/engine.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

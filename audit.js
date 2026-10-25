@@ -27,7 +27,7 @@ const JSDIR = path.join(__dirname, 'js');
    否则结构审计对它是瞎的：fog / memorial / camp 未加入时，
    `GAME.camp` 在 state.js / ui.js 里的引用被报成"引用了不存在的成员"，
    而真正的成因是 audit 根本没读 camp.js。 */
-const MODULES = ['core', 'registry', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'domain', 'map', 'sphere', 'risk', 'years', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'rival', 'land', 'taint', 'climate', 'surge', 'relic', 'goals', 'veteran', 'setskill', 'deck', 'bond', 'tower', 'wonderwar', 'delve', 'unrest', 'expose', 'trooplv', 'idle', 'ending', 'muster', 'founding', 'prologue', 'market', 'events', 'battle', 'strategy', 'icons', 'story', 'ui', 'map3d', 'main'];
+const MODULES = ['core', 'registry', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'domain', 'map', 'sphere', 'risk', 'years', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'rival', 'land', 'taint', 'climate', 'surge', 'relic', 'goals', 'veteran', 'setskill', 'deck', 'bond', 'tower', 'wonderwar', 'delve', 'unrest', 'expose', 'trooplv', 'idle', 'ending', 'muster', 'founding', 'prologue', 'market', 'events', 'battle', 'battlelog', 'strategy', 'icons', 'story', 'ui', 'map3d', 'main'];
 
 const src = {};
 MODULES.forEach(m => { src[m] = fs.readFileSync(path.join(JSDIR, m + '.js'), 'utf8'); });
@@ -64,8 +64,10 @@ if (dupDefs.length) {
 }
 
 /* 无引用 */
+/* v142.3：属性测试也计入引用来源（否则 invariants-test.js 里的专用断言函数会被误判死代码） */
 const testAll = fs.readFileSync(path.join(__dirname, 'smoke-test.js'), 'utf8')
-  + fs.readFileSync(path.join(__dirname, 'e2e-test.js'), 'utf8');
+  + fs.readFileSync(path.join(__dirname, 'e2e-test.js'), 'utf8')
+  + fs.readFileSync(path.join(__dirname, 'invariants-test.js'), 'utf8');
 /* 单字母命名空间（icons.js 内的图标表 B/E/T/W 等）由查表函数统一派发，
    静态看不到直接调用，属内部实现，不计入死代码 */
 const localTable = d => /^[A-Z]$/.test(d.ns.split('.')[0]) || d.ns === 'ICON';

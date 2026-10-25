@@ -20,7 +20,7 @@ HASHF = os.path.join(JS, 'bundle.hash')
 
 # 与 js/main.js 的 import 列表逐条一致（= 旧 index.html 的 <script> 顺序）。
 ORDER = ['core', 'registry', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'domain', 'map', 'sphere', 'risk', 'years', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'rival', 'land', 'taint', 'climate', 'surge', 'relic', 'goals', 'veteran', 'setskill', 'deck', 'bond', 'tower', 'wonderwar', 'delve', 'unrest', 'expose', 'trooplv', 'idle', 'ending', 'muster', 'founding', 'prologue', 'market', 'events', 'gltf',
-         'map3d', 'scene3d', 'battle', 'strategy', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits',
+         'map3d', 'scene3d', 'battle', 'battlelog', 'strategy', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits',
          'story', 'ui', 'main']
 
 # ============================================================
@@ -37,7 +37,7 @@ ORDER = ['core', 'registry', 'data', 'state', 'systems', 'items', 'generals', 'c
 # 为什么不懒加载：全项目 200+ 探针按"顺序拼接"求值，动态 import 会改掉求值时机。
 # 分包只解决"单文件撞线"，不解决"总量"——总量是另一件事，别混为一谈。
 # ============================================================
-WAR = ['gltf', 'battle', 'strategy', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits']
+WAR = ['gltf', 'battle', 'battlelog', 'strategy', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits']
 UI = ['story', 'ui', 'map3d', 'scene3d', 'main']
 
 
@@ -51,8 +51,21 @@ def groups():
 RE_IMPORT = re.compile(r'^\s*import\s+[\'"].*?[\'"]\s*;?[ \t]*(?:/\*.*?\*/[ \t]*)?$', re.M)
 
 
+def _norm(src):
+    """v143.4：换行归一（CRLF/CR → LF）后再进 hash。
+
+    为什么必须归一再 hash：本机 python 读文本默认 universal newlines
+    （CRLF→LF），而 node 的 fs.readFileSync(p,'utf8') **原样保留 CRLF**。
+    谁用文本模式重存过一次 js 文件（编辑器存盘 / python 脚本改写），
+    文件就变 CRLF —— python 算出的 hash 不变、node 算出的变，
+    smoke 的 v91.61 陈旧守卫当场假红，而两边"内容一模一样"，
+    这种红能查一整天（2026-10-25 变异测试实测踩到）。
+    归一之后：hash 只认内容，不认行尾风格。"""
+    return src.replace('\r\n', '\n').replace('\r', '\n')
+
+
 def sources():
-    return {m: open(os.path.join(JS, m + '.js'), encoding='utf-8').read() for m in ORDER}
+    return {m: _norm(open(os.path.join(JS, m + '.js'), encoding='utf-8').read()) for m in ORDER}
 
 
 def source_hash(srcs):

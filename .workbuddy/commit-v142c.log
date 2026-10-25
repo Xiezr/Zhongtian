@@ -1,0 +1,14 @@
+━━ 三件套门禁 ━━ 改动了代码（index.html 或 js/**）→ 三件套 + 数据表卫生全跑
+   改动 6 个文件
+
+  ✅ audit.js 死函数/孤儿/重复/零引用 全 0
+  ✅ chain-audit.js 47 通过 / 0 失败
+  ✅ smoke-test.js 4143 通过 / 0 失败
+  ✅ e2e-test.js 1100 通过 / 0 失败
+  ✅ .workbuddy/tools/audit/audit_v89134_tables.js 四查全过（跨文件写/重复定义/孤儿/悬空）
+  ✅ .workbuddy/tools/audit/audit_v89179c_dataset_refs.js 62 通过 / 0 失败
+  ✅ .workbuddy/tools/audit/audit_v89229b_troopchain.js 兵种链错误 0（14 兵种 × 依赖/被引）
+
+✓ 门禁通过。
+[main 3a65dcd] v142.2 地图一步到街上：城面板「进城逛逛（3D）」
+ 6 files changed, 95 insertions(+), 6 deletions(-)

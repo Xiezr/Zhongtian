@@ -43,6 +43,7 @@ core → data → state → systems → items → generals → cities → ship �
 | `map.js` | 地形/据点/名城/野地逻辑 + 球面投影视图；`DATA.MAP_W=MAP_H=500`。 |
 | `sphere.js` | **球面世界内核**（纯 JS · 可多实例工厂 `GAME.createSphere()`）；六边格 `cells`（40962）。 |
 | `map3d.js` | 3D 星球地图（Three.js · 只做渲染与拾取）。 |
+| `scene3d.js` | **2.5D 场景运行时**（v140 · 10 场景 + city 街区 · 正交相机 + WASD + 交互节点 · v143 起正式玩法也走它：`ui.doJianghu → S.play`，双宿主结算 + 时段光照 + 城内行人；v143.3 起正式局红圈遭遇走 `jianghuDo('tao')` 唯一账本）。 |
 | `battle.js` / `tactic.js` | 行军/战斗结算 / 战斗沙盘引擎。 |
 | `icons.js` / `gicons.js` / `bitmaps.js` | 图标出口（矢量兜底 / game-icons / AI 位图注册表）。 |
 | `ui.js` | **全部界面**（视图 + 弹窗）。 |
@@ -126,7 +127,7 @@ python .workbuddy/tools/patch/build_bundle.py   # 改 js 后必须重建
 
 **星际战舰后续分期**（见 `docs/接力卡-星际战舰.md`）：
 - **C** 部件/属性深化（数值调优、部件协同）
-- **D** 3D 构造图（three.js 程序化几何；无 WebGL 必须降级为静态图）
+- **D** 3D 构造图（three.js 程序化几何；无 WebGL 必须降级为静态图）。※ v143.1~v143.4 已通最后一公里：10 个 2.5D 场景接入正式玩法（含红圈遭遇走清剿账）+ 城内行人 + 时段光照；D 期剩余 = 建造时的 3D 预览。**斗将正式化**（序章 duel 内核 + v136 面板 → 正式局场景遭遇改交互斗将）是待拍板候选：动它 = 改战斗结算口径（LING_ACT.win/lose 映射），需老板定数值；现状正式局遭遇走数值账本 `jianghuDo('tao')`（唯一账本，不两本账）
 - **E** 投送（`s.interstellar` 顶层通道）+ 殖民
 - **F** 舰队战 + 终局
 
@@ -139,7 +140,7 @@ python .workbuddy/tools/patch/build_bundle.py   # 改 js 后必须重建
 
 **需要老板定夺**：
 - 探索层级语义（挑战守军 / 采集深度 / 两者合并）——当前按“挑战守军”实现。
-- 星际战舰 C 期的具体数值方向。
+- 星际战舰 C 期的具体数值方向（**机制已就绪**：v142.4 modifier 管道试点落地 —— 属性计算改走可插拔管道、公式冻结数据生长；老板拍板数值后，新系统 = 一张 `DATA.SHIP_*` 表 + 一行来源注册，评估结论见 `需求档案.md` v142.4）。
 
 ---
 

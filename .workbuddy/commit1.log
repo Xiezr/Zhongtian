@@ -1,0 +1,3 @@
+· 门禁已由 sync.py 跑过并通过，跳过重复执行
+[main c630667] v91.79~v91.82 · 自动出征/自动探索：玩家设定编成 + 按城指定英雄 + 全域探索
+ 10 files changed, 1769 insertions(+), 286 deletions(-)

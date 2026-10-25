@@ -1,0 +1,3 @@
+openCity = {"r":{"ok":true,"scene":"city","name":"我的城（3D）"},"cells":48,"col":8,"row":6,"geo":{"T":3,"bw":1.4,"walk":1.6,"r":0.3,"pad":2.2}}
+after walk = {"open":"city","player":{"player":{"x":-7.543539999999995,"z":3.352300000000004},"cam":{"x":-7.543539999317467,"y":21.65,"z":11.352299960410814},"dir":{"x":0,"y":-0.9063496518331521,"z":-0.42252847078264955},"pitchDeg":65,"ndc":{"x":-8.980629105867353e-11,"y":-0.32819398674414185},"frustumH":9.5,"cityView":true,"solids":44,"bounded":true}}
+errors = []

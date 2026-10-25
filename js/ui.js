@@ -5795,7 +5795,7 @@ import './state.js';
         h += done
           ? '<span class="op-done" style="font-size:var(--fs-sub);padding:5px 8px;">' + a.def.icon + ' ' + a.def.name + '（今日已做）</span>'
           : '<button class="btn sm" data-action="do-jianghu" data-ci="' + ci + '" data-act="' + a.id + '"' +
-              ' title="' + U.escape(a.def.desc || '') + '">' + a.def.icon + ' ' + a.def.name + '（精' + a.def.energy + ' · 体' + a.def.stam + '）</button>';
+              ' title="' + U.escape(a.def.desc || '') + '（点按钮走进场景，走到东西旁边动手）">' + a.def.icon + ' ' + a.def.name + '（精' + a.def.energy + ' · 体' + a.def.stam + '）</button>';
       });
       h += '</div>';
     }
@@ -5820,6 +5820,19 @@ import './state.js';
     if (gid) ui._jhGen = gid;
     var lg = GAME.lordGeneralOf();       /* v89：君主专属（闸门在 jianghuCheck，这里便于兜底） */
     if (lg && (!gid || gid !== lg.id)) gid = lg.id;
+    /* v143（3D 化最后一公里）：正式阶段也走 3D 场景 —— 走进去、动手、才结算，
+       不再"弹一行字"（那是 v90.93 去全屏剧本留下的后遗症）。
+       场景内交互的结算出口与下面的 2D 兜底是**同一个**（GAME.jianghuDo），
+       账不会有两本。门槛拒绝（今日无此事）toast 后即返回，不重复走 2D；
+       场景打不开（无 WebGL 的老设备）才落 2D 一次性结算兜底。 */
+    if (GAME.scene3d && GAME.scene3d.play) {
+      var r3 = null;
+      try {
+        r3 = GAME.scene3d.play(actId, ci, { host: 'live', gen: gid, exitTo: 'land' });
+      } catch (e) { r3 = null; }   /* 渲染层炸了 → 兜底，玩法必须还能玩 */
+      if (r3 && r3.ok) return;
+      if (r3 && r3.why === 'gate') { ui.toast(r3.msg); return; }
+    }
     var r0 = GAME.jianghuDo(ci, gid, actId);
     if (!r0.ok) { ui.toast(r0.msg); return; }
     ui._jhResult = { ci: ci, name: r0.name, text: r0.text, bad: r0.bad };

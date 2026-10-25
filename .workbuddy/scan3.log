@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "E:\Deepseekdb\.workbuddy\tools\asset\scan_asset_vs_source.py", line 283, in <module>
+    main()
+    ~~~~^^
+  File "E:\Deepseekdb\.workbuddy\tools\asset\scan_asset_vs_source.py", line 254, in main
+    placed = ('ai_%s.png' % bid) if lv == '1' else ('ai_%s_t%s.png' % bid, )[0]
+                                                    ~~~~~~~~~~~~~~~~^~~~~
+TypeError: not enough arguments for format string

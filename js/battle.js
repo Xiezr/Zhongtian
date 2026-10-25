@@ -491,6 +491,9 @@ import './state.js';
       bornAt: U.now(),
     };
     s.battles.push(rec);
+    /* v142.3：战斗日志第一笔（create）—— 此后每个动作都往 rec.blog 记一条 */
+    GAME.battlelog.push(id, 'create', { target: (rec.target && rec.target.name) || null,
+      modeId: rec.modeId, genId: rec.genId || null });
     GAME._bsess = GAME._bsess || {};
     GAME._bsess[id] = GAME.battle._makeEnv(rec);
     GAME.log.war('⚔️ 大军已抵 ' + ((rec.target && rec.target.name) || '目标')
@@ -748,11 +751,14 @@ import './state.js';
       return !!(t.npc && GAME.isFamousCity && GAME.isFamousCity(t.npc));
     } catch (e) { return false; }
   };
-  /* 推进一回合：指令先落会话、快照进 history（重放一致），再 step */
+  /* 推进一回合：指令先落会话、快照进 history（重放一致），再 step
+     ------------------------------------------------------------
+     v142.3：状态闸改判据到 `battlelog` 的转移表白名单（`can('step', state)`），
+     与原先的 `rec.state !== 'live'` 完全同口径 —— 单一事实源，改表即改判据。 */
   GAME.battle.stepBattle = function (id) {
     var ses = GAME._bsess && GAME._bsess[id];
     var rec = GAME.battle._recOf(id);
-    if (!ses || !rec || rec.state !== 'live') return null;
+    if (!ses || !rec || !GAME.battlelog.can('step', rec.state).ok) return null;
     /* v89.164：智能战斗（默认开）——本回合先改写我方指令（姿态+目标），
        改写落 rec.cmd → 随后照常进 history 快照（重放/读档逐回合一致）。
        v89.175（老板「多种最优路径比较」）：首回合**赛马**（4 套策略全速模拟 → 选最优，
@@ -803,6 +809,8 @@ import './state.js';
     rec.gapLast = r.gap;
     rec.evLast = r.events || [];
     rec.snapLast = r.snap || null;
+    /* v142.3：记一笔 step（round/over/gap 随日志走，出问题可按日志复现） */
+    GAME.battlelog.push(id, 'step', { round: r.r, over: !!r.over, gap: r.gap });
     if (r.over) GAME.battle.finishBattle(id);
     return r;
   };
@@ -818,7 +826,7 @@ import './state.js';
   GAME.battle.autoBattle = function (id) {
     var ses = GAME._bsess && GAME._bsess[id];
     var rec = GAME.battle._recOf(id);
-    if (!ses || !rec || rec.state !== 'live') return null;
+    if (!ses || !rec || !GAME.battlelog.can('auto', rec.state).ok) return null;
     var guard = 0;
     var last = null;
     while (!ses.over && guard++ < 200) {
@@ -836,8 +844,11 @@ import './state.js';
   GAME.battle.finishBattle = function (id) {
     var ses = GAME._bsess && GAME._bsess[id];
     var rec = GAME.battle._recOf(id);
-    if (!ses || !rec || rec.state !== 'live') return null;
-    return GAME.battle._settleBattle(id, ses.finish());
+    if (!ses || !rec || !GAME.battlelog.can('finish', rec.state).ok) return null;
+    /* v142.3：finish = "请求落账"（→ settling）；真正落账在共用的 _settleBattle */
+    var _r86 = ses.finish();
+    GAME.battlelog.push(id, 'finish', { winner: _r86.winner, rounds: _r86.rounds });
+    return GAME.battle._settleBattle(id, _r86);
   };
 
   /* v89.94（B2 · E1）：主动撤退 —— 撤出战斗、带走残部、保留已造成的破防（按半计）。
@@ -846,10 +857,12 @@ import './state.js';
   GAME.battle.retreatBattle = function (id) {
     var ses = GAME._bsess && GAME._bsess[id];
     var rec = GAME.battle._recOf(id);
-    if (!ses || !rec || rec.state !== 'live') return null;
+    if (!ses || !rec || !GAME.battlelog.can('retreat', rec.state).ok) return null;
     var result = ses.finish();
     result.retreat = true;
     if (result.winner === 'atk') result.winner = 'def';
+    /* v142.3：撤退与打完走同一落账段，日志里靠 retreat 旗标可区分 */
+    GAME.battlelog.push(id, 'retreat', { winner: result.winner, rounds: result.rounds, retreat: true });
     return GAME.battle._settleBattle(id, result);
   };
 
@@ -859,6 +872,9 @@ import './state.js';
     var ses = GAME._bsess && GAME._bsess[id];
     var rec = GAME.battle._recOf(id);
     if (!rec) return null;
+    /* v142.3：settle 是唯一的终态动作 —— 记在改 state 之前（记的是 live→settling 的请求） */
+    GAME.battlelog.push(id, 'settle', { winner: result.winner, retreat: !!result.retreat,
+      rounds: result.rounds, atkLoss: result.atkLoss, defLoss: result.defLoss });
     rec.state = 'done';
     /* v89.102（沙盘）：把**逐回合指令**一并带进落账 —— 战报里的沙盘配方要靠它
        重放（否则玩家在战场上改过的动作/目标会丢，重跑跑出另一场仗）。 */

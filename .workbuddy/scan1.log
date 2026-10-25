@@ -1,0 +1,10 @@
+Traceback (most recent call last):
+  File "E:\Deepseekdb\.workbuddy\tools\asset\scan_asset_vs_source.py", line 237, in <module>
+    main()
+    ~~~~^^
+  File "E:\Deepseekdb\.workbuddy\tools\asset\scan_asset_vs_source.py", line 99, in main
+    reg = registered()
+  File "E:\Deepseekdb\.workbuddy\tools\asset\scan_asset_vs_source.py", line 94, in registered
+    s = io.open(BITMAPS, encoding='utf-8').read()
+        ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: 'E:\\Deepseekdb\\.workbuddy\\js\\bitmaps.js'

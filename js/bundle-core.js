@@ -14758,12 +14758,13 @@ window.GAME = window.GAME || {};
 
 /* ---- ship.js ---- */
 /* ============================================================
- * js/ship.js — **星际战舰 / 空间站** 引擎（v91.71 · 第 A 期）
+ * js/ship.js — **星际战舰 / 空间站** 引擎（v91.71 · 第 A 期 · v142.4 C 期 modifier 管道试点）
  * ------------------------------------------------------------
  * 三层结构：
  *   空间站 s.station = { lv, ships:[ ship ] }        ← 全局一座（母港）
  *   战舰 ship = { id, classId, tier, role, enh:{部件:等级}, hp, builtAt }
- *   属性 statsOf(ship) —— **唯一出口**（基础值 × 档位倍率 + 部件加成）
+ *   属性 statsOf(ship) —— **唯一出口**（v142.4 起走 modifier 管道：
+ *      基础值 × 档位倍率 + 部件加成 = 两个内置来源，C 期新系统只注册来源）
  *
  * 老板（v91.71）：「先建造空间站，再建造战舰；战舰奇观出蓝图，12 种 3*4 白蓝金红；
  *   建造/管理采用**卡牌式**；**先构造船体，再升级其他部件**。」
@@ -14939,29 +14940,78 @@ window.GAME = window.GAME || {};
     return { ok: true, msg: '「' + chk.part.name + '」已升至 Lv' + chk.lvNext, lv: chk.lvNext };
   };
 
-  /* ---------- 属性（**唯一出口**） ---------- */
-  /* 基础值 = SHIP_BASE[role] × 档位倍率；再逐部件累加 per × 等级。 */
-  SH.statsOf = function (ship) {
-    var out = {}, i;
-    var stats = DATA.SHIP_STATS || [];
-    var cls = SH.classOf(ship && ship.classId);
-    var base = (DATA.SHIP_BASE || {})[(cls && cls.role) || 'assault'] || {};
-    var tmul = (SH.tierOf((cls && cls.tier) || 1).mul) || 1;
-    stats.forEach(function (st) { out[st.k] = (base[st.k] || 0) * tmul; });
-    /* 部件加成（船体无加成；其余按等级累加） */
-    (DATA.SHIP_PARTS || []).forEach(function (p) {
-      if (p.id === 'hull') return;
-      var lv = SH.partLvOf(ship, p.id);
-      if (lv <= 0) return;
-      for (var k in (p.per || {})) out[k] = (out[k] || 0) + p.per[k] * lv;
-    });
-    /* 取整：百分比类保留 2 位，其余整数 */
-    stats.forEach(function (st) {
-      var v = out[st.k] || 0;
-      out[st.k] = st.pct ? Math.round(v * 100) / 100 : Math.round(v);
-    });
-    return out;
+  /* ---------- 属性（**唯一出口**） ----------
+   * v142.4（C 期试点）：改走 **modifier 管道**（借鉴 Unciv —— 规则数据化，
+   * 消灭"每加一个系统就打一段补偿表"）。
+   *   旧公式 = 基础值 × 档位倍率 + Σ(部件 per × 等级)（纯加法，两来源写死）；
+   *   管道   = flat 相加 → pct 相乘 → 取整收口（与旧取整口径逐位一致）。
+   * 零 pct 修饰时两者**逐位相等**（invariants §4.4 有性质钉着，防迁移漂移）。
+   * C 期起新系统（科技/英雄/奇观/空间站共鸣…）只许往 `SH.mod.add(id, fn)`
+   * 注册一个来源，**不许再改 statsOf** —— 公式冻结，数据生长。 */
+  SH.mod = {
+    _src: [],
+    _bad: [],
+    /* 注册/摘除一个修饰来源。fn(ship) → [{ k, op:'flat'|'pct', v, src }]；
+       fn 传 null = 摘除（测试摘挂用；生产来源常驻）。同 id 重复注册=替换。 */
+    add: function (id, fn) {
+      var i = this._src.length;
+      while (i--) if (this._src[i].id === id) this._src.splice(i, 1);
+      if (typeof fn === 'function') this._src.push({ id: id, fn: fn });
+    },
+    /* 收集全部修饰：内置 ① 基础值（角色 × 档位）② 部件 per × 等级，再加注册来源。
+       注册来源异常**静默跳过**（观测层故障不许拖垮属性口径）。 */
+    collect: function (ship) {
+      var mods = [];
+      var cls = SH.classOf(ship && ship.classId);
+      var base = (DATA.SHIP_BASE || {})[(cls && cls.role) || 'assault'] || {};
+      var tmul = (SH.tierOf((cls && cls.tier) || 1).mul) || 1;
+      for (var k in base) mods.push({ k: k, op: 'flat', v: (base[k] || 0) * tmul, src: 'base' });
+      (DATA.SHIP_PARTS || []).forEach(function (p) {
+        var lv = SH.partLvOf(ship, p.id);
+        if (lv <= 0) return;
+        for (var k2 in (p.per || {})) mods.push({ k: k2, op: 'flat', v: p.per[k2] * lv, src: 'part:' + p.id });
+      });
+      this._src.forEach(function (s) {
+        var r = null;
+        try { r = s.fn(ship); } catch (e) { r = null; }
+        if (r && r.length) mods = mods.concat(r);
+      });
+      return mods;
+    },
+    /* 应用：flat 先相加、pct 后相乘（顺序确定，与来源注册顺序无关）；
+       未知属性键 / 非有限数值 → **拒绝并记录**（数据防错，不静默吞、不污染 out）。 */
+    apply: function (base, mods) {
+      var out = {}, flat = {}, pct = {}, bad = [], keys = {};
+      (DATA.SHIP_STATS || []).forEach(function (st) { keys[st.k] = true; });
+      for (var k in (base || {})) out[k] = base[k] || 0;
+      (mods || []).forEach(function (m) {
+        if (!m || !keys[m.k] || typeof m.v !== 'number' || !isFinite(m.v)) { bad.push(m || null); return; }
+        if (m.op === 'pct') pct[m.k] = (pct[m.k] || 0) + m.v;
+        else flat[m.k] = (flat[m.k] || 0) + m.v;
+      });
+      for (var kf in flat) out[kf] = (out[kf] || 0) + flat[kf];
+      for (var kp in pct) out[kp] = (out[kp] || 0) * (1 + pct[kp]);
+      /* 取整收口（与旧口径一致：pct 类 2 位，其余整数） */
+      (DATA.SHIP_STATS || []).forEach(function (st) {
+        var v = out[st.k] || 0;
+        out[st.k] = st.pct ? Math.round(v * 100) / 100 : Math.round(v);
+      });
+      return { out: out, bad: bad };
+    },
+    /* 完整管线（statsOf 的唯一实现路径） */
+    of: function (ship) {
+      var r = this.apply({}, this.collect(ship));
+      if (r.bad.length) {
+        this._bad = this._bad.concat(r.bad);
+        if (this._bad.length > 50) this._bad.splice(0, this._bad.length - 50);
+      }
+      return r;
+    },
+    /* 被拒绝的修饰（数据写错时的证据；有界 50 条） */
+    bad: function () { return this._bad.slice(); }
   };
+  /* 基础值 = SHIP_BASE[role] × 档位倍率；再逐部件累加 per × 等级（经管道）。 */
+  SH.statsOf = function (ship) { return SH.mod.of(ship).out; };
   /* 某舰的战力粗值（排序/概览用；不是战斗公式） */
   SH.powerOf = function (ship) {
     var s = SH.statsOf(ship);

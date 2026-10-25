@@ -1,0 +1,75 @@
+
+① 函数引用完整性
+─────────────
+  ✅ 无重复定义（1792 个函数名唯一）
+  函数总数 1792 · 有引用 1612 · 仅测试引用 25 · 无引用 0 · 内部图表 155
+  ✅ 无死函数
+  · 仅测试引用（生产代码未用，可考虑收敛）：
+     GAME.techSet                [state.js]
+     IT.addAll                   [items.js]
+     GAME.genFreeOf              [domain.js]
+     GAME.autoPickTroops         [domain.js]
+     GAME.buildPlace             [domain.js]
+     GAME.buildRemove            [domain.js]
+     GAME.hasEquipInBag          [domain.js]
+     GAME.expBlocked             [domain.js]
+     GAME.wonderShipBpPick       [domain.js]
+     GAME.map.cityArtKeyAt       [map.js]
+     GAME.map._fortHash          [map.js]
+     GAME.map.hasFort            [map.js]
+     GAME.map.artCount           [map.js]
+     GAME.battle.armySpeedOf     [battle.js]
+     GAME.battle.attackCity      [battle.js]
+     GAME.battle.applyWounded    [battle.js]
+     GAME.power.cityOf           [battle.js]
+     STORY.seasonName            [story.js]
+     ui.queueBody                [ui.js]
+     ui.openItemsPanel           [ui.js]
+     ui.pageRows                 [ui.js]
+     ui.yieldHTML                [ui.js]
+     ui.isoOutline               [ui.js]
+     ui.scrollOpen               [ui.js]
+     ui.scrollClose              [ui.js]
+
+② 按钮动作绑定
+────────────
+  data-action 317 个 · main.js case 356 个
+  ✅ 所有按钮都有处理器
+  ⚠ 下列 case 在界面代码中查无触发点（不可达分支，建议清理）：
+     lord-city-enter, lord-est-sel, lord-fort-go, lord-wild-go, open-wilds
+
+③ 科技效果消费点
+─────────────
+  科技 0 项 · 有效果 0 · 无消费点 0
+  （已识别科技取值包装函数：techB, TB）
+  ✅ 全部科技均有消费点
+
+④ 叙事层修正值消费点
+───────────────
+  STORY 修正函数 9 个 · 无消费点 0
+  ✅ 全部有消费点
+  国策 boon 声明 0 处 · 读点 0 处 ✅ 零残留（v90.93 年号纪元退役）
+  天气字段 6 个 · 无消费 0  （天气变量：wMove,cmW,we）
+  ✅ 全部天气字段均有消费点
+
+⑤ 数据字段引用检查
+──────────────
+  ✅ wildCap      消费于 state, battle, ui
+  · techLv       只出现在 battle.js（自产自销，需人工确认是否真有消费点）
+  ✅ marches      消费于 state, domain, battle, ui, map3d, main
+
+⑥ 引用了不存在的成员（拼错 / 未接线）
+─────────────────────────
+  去重后 1173 个成员名（GAME / DATA / U）
+  ✅ 未发现"引用了不存在的成员"
+
+⑦ 恒真断言（check 第二参传函数引用）
+──────────────────────────
+  ✅ 未发现"把函数当布尔传"的恒真断言（IIFE / 求值写法合规）
+
+汇总
+──────
+  死函数 0 · 孤儿按钮 0 · 重复定义 0 · 零引用字段 0 · 未定义引用 0 · 恒真断言 0
+  提示：本脚本只做结构检查，「有没有效果」仍需 smoke/e2e 的断言兜底。
+
+  审计完成。

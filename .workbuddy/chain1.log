@@ -1,0 +1,39 @@
+
+===== A. 奇观行为链（9 个奇观 × 6 层 × 全部行动） =====
+  ✅ A1 开局（0 层）全部行动被锁 —— 链头是"破层"  [18/18]
+  ✅ A2 六层守军逐层可破（每破一层 clearedLv 必 +1）  [失败 0 层]
+  ✅ A3 清完六层后全部行动可派队  [失败 0 次]
+  ✅ A4 抵达后累计生效（3 份）· 期满转返航  [失败 0]
+  ✅ A5 返抵落账（出队 + 产出进包）  [失败 0]
+  ✅ A6 落账后兵归城 · 英雄释放为空闲  [兵 0 / 将 0]
+
+===== B. 自动探索链 =====
+  ✅ B1 未清层 + 未开自动清层 → 明确报"无可派行动"（不静默）  [「链路城」无可派行动（需先击败第 1 层守卫（青铜守卫）才可采集）]
+  ✅ B2 开自动清层 → 真去打下一层（行为链自愈）  [第 1 层『青铜守卫』已破（已清 1 层）]
+  ✅ B3 自动清层后已清层 ≥ 1（解锁采集/研读）  [cleared=1]
+  ✅ B4 解锁后可正常派队探查  [已派出：行军 1 小时后抵达，持续累计奖励（同时上限 5 队）]
+
+===== C. 自动出征编成匹配（autoMarchMatchCity） =====
+  ✅ C1 编成足量 → ok  [total=1000]
+  ✅ C2 兵力不足 → reason=short  [short]
+  ❌ C3 超练兵场出征容量 → reason=cap  [cap=0 reason=undefined]
+  ✅ C4 空编成 → ok 且 0 兵（= 不限，退回旧口径）
+
+===== D. 自动研究（本城 6 格互异） =====
+E:\Deepseekdb\chain-audit.js:200
+  f.plots.forEach(function (pp) { pp.crop = null; pp.t0 = 0; pp.hours = 0; });
+                                          ^
+
+TypeError: Cannot set properties of null (setting 'crop')
+    at E:\Deepseekdb\chain-audit.js:200:43
+    at Array.forEach (<anonymous>)
+    at E:\Deepseekdb\chain-audit.js:200:11
+    at Object.<anonymous> (E:\Deepseekdb\chain-audit.js:265:3)
+    at Module._compile (node:internal/modules/cjs/loader:1705:14)
+    at Object..js (node:internal/modules/cjs/loader:1838:10)
+    at Module.load (node:internal/modules/cjs/loader:1441:32)
+    at Function._load (node:internal/modules/cjs/loader:1263:12)
+    at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)
+
+Node.js v22.22.2
