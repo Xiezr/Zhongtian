@@ -86,7 +86,8 @@ import './ui.js';
       case 'create-continue': ui.doContinue(); break;
 
       /* v70（老板需求 3/4）：城市坐标 —— 一键随机 / 坐标切换 */
-      case 'city-move-ask': ui.openCityMoveAsk(); break;
+      /* v144.4：带 data-city 时迁**那座城**（辐射云面板的「迁出云外」），否则当前城。 */
+      case 'city-move-ask': ui.openCityMoveAsk(el.dataset.city ? GAME.cityById(el.dataset.city) : null); break;
       case 'open-bldg-list': ui.openBuildingList(); break;
       case 'city-move-do': GAME.doCityMove(); break;
       case 'city-random': GAME.doRandomCityMove(); break;
@@ -1409,6 +1410,8 @@ import './ui.js';
       /* v92.17：结盟 / 挑拨（B2 补完） */
       case 'faction-ally': GAME.doFactionAlly(el.getAttribute('data-fid')); break;
       case 'faction-incite': GAME.doFactionIncite(el.getAttribute('data-fid')); break;
+      /* v144.5（B2「打」）：宣战 —— 之后按月来犯（真战斗）。 */
+      case 'faction-war': GAME.doFactionWar(el.getAttribute('data-fid')); break;
       /* v93.2 / v93.3：村社互动 · 拓荒队出发 */
       case 'village-act': GAME.doVillageAct(el.getAttribute('data-ci'), el.getAttribute('data-vm')); break;
       case 'convoy-send': GAME.doConvoySend(el.getAttribute('data-ck'), el.getAttribute('data-n')); break;
@@ -2116,6 +2119,14 @@ import './ui.js';
     if (!r) { ui.toast('结盟不可用'); return; }
     ui.toast((r.ok ? '✅ ' : '⏸ ') + r.msg);
     if (r.ok) { GAME.log(r.msg, 'sys', 'wild'); GAME.refreshAll(); }
+    else GAME.refreshView();
+  };
+  /* v144.5（B2「打」）：宣战（花军费；之后按月来犯） */
+  GAME.doFactionWar = function (fid) {
+    var r = GAME.faction && GAME.faction.declareWar ? GAME.faction.declareWar(fid) : null;
+    if (!r) { ui.toast('宣战不可用'); return; }
+    ui.toast((r.ok ? '⚔ ' : '⏸ ') + r.msg);
+    if (r.ok) { GAME.refreshAll(); }
     else GAME.refreshView();
   };
   /* v92.17：挑拨（让这家与它最近的那家开打） */
@@ -2893,8 +2904,11 @@ import './ui.js';
     }
     var _genSend137 = _stGen137m ? '' : genId76;
     var _schemeSend137 = _stGen137m ? null : (ui._expScheme || null);
+    /* v144.4（C2）：作战目标（护送/斩首）随军带入（只对接战方式有效）。 */
+    var _objSend = (ui._expObj && (mode === 'scout' || mode === 'raid' || mode === 'occupy'))
+      ? { kind: ui._expObj, rounds: 6 } : null;
     var r = GAME.march.dispatch(target, mode, atk, _genSend137, _schemeSend137,
-      ui._expFrom ? { fromCityId: ui._expFrom } : null);   /* v91.21（老板 C1）：派出城 */
+      { fromCityId: (ui._expFrom || null), obj: _objSend });   /* v91.21（老板 C1）：派出城 */
     ui.toast(r.msg);
     if (r.ok) {
       ui._expScheme = null;      /* v86：计已随军出发，面板状态清空 */
@@ -3664,7 +3678,7 @@ import './ui.js';
      （这解释了"改了却说没生效"的观感）。老板若发现版本 ≠ 最新交付，按 Ctrl+F5
      强制刷新即获得新代码。⚠️ 发版须走 **bump_version.py --bump --version vX.Y**（它同步 index.html 的 ?v=/BUILD
      与这里的 GAME.VERSION 三处）—— 只手改 index.html 会让版本号冻住（v91.18 前的病灶）。 */
-  GAME.VERSION = 'v141.0';
+  GAME.VERSION = 'v144.5';
   function boot() {
     fitAppSize();
     try {

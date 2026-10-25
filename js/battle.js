@@ -2402,6 +2402,9 @@ import './state.js';
 
     var t = GAME.battle.resolveTarget(target);
     if (!t.ok) return { ok: false, msg: t.msg || '目标无效' };
+    /* v144.4（C2）：作战目标（护送/斩首）—— 随 prepare 结果带进结算（simOpts）。
+       只对接战方式有效；其余方式忽略。 */
+    if (opts.obj && opts.obj.kind && mode.battle) t.obj = opts.obj;
 
     /* v89.87（老板需求 2）：调兵 / 驻守 / 采集的前置校验（统一出口的口子）
        v91.76：派遣 / 运输同属"己方城市间"通道。 */
@@ -2643,6 +2646,8 @@ import './state.js';
            观战/读档重跑都从 simOpts 重建会话 —— 只认这里的快照，不认"现在"的全局设置，
            这样中途改设置也不会让同一场仗前后两半用两套 AI。 */
         battleAI: !!(GAME.state && GAME.state.settings && GAME.state.settings.battleAI),
+        /* v144.4（C2）：作战目标（护送/斩首）—— 由 prepare 的 opts.obj 透传（t.obj）。 */
+        obj: (t && t.obj) || null,
         /* v91.86：目标星球 —— 环境规则按它解析（跨星球出征不能读"当前城"） */
         pid: (t && t.pid != null) ? t.pid : (GAME.curPid ? GAME.curPid() : 1),
         /* v98.2：**玩家亲自出征** —— 只有这种战斗吃"作战目标"的战场修正
@@ -2678,6 +2683,20 @@ import './state.js';
             var _c = (_cid && GAME.city && GAME.city.byId) ? GAME.city.byId(_cid) : null;
             return (GAME.trooplv && _c) ? GAME.trooplv.mapOf(_c) : null;
           } catch (e) { return null; }
+        })(),
+        /* v144.3（D 构想「羁绊」落地）：**带错人要付代价**。
+           `bond.penaltyOf(出发城, 主将)` 看主将与出发城守将/城主风格是否不合（−10% 全军战力）。
+           与老兵/风险同规矩：出征瞬间算成**数值快照**（存进 simOpts，重放/读档重跑同源）。 */
+        bondPct: (function () {
+          try {
+            if (!GAME.bond || !opts || !opts.cityId) return 0;
+            var _bc = (GAME.city && GAME.city.byId) ? GAME.city.byId(opts.cityId) : null;
+            var _bg = null;
+            (GAME.state.generals || []).forEach(function (g) { if (g && g.id === opts.genId) _bg = g; });
+            if (!_bc || !_bg) return 0;
+            var _b = GAME.bond.penaltyOf(_bc, _bg);
+            return (_b && _b.penalty) ? -_b.penalty : 0;
+          } catch (e) { return 0; }
         })() };
     return { scArmy: scArmy, scVal: scVal, scGen: scGen, scNote: scNote, simOpts: simOpts };
   };
@@ -3018,7 +3037,9 @@ import './state.js';
      * 结算与「战前推演」（previewOf）共用同一份构造（逐字节搬运，行为不变）：
      *   defBonus / tWallLv / scArmy·scVal·scGen·scNote / 计谋效果 / 围攻缩放 / simOpts。
      * ============================================================ */
-    var _di210 = GAME.battle.defenseInputsOf(t, modeId, opts);
+    /* v144.3：羁绊快照需要「出发城 + 主将」—— genId 在后续作用域，这里补一次 opts。 */
+    var _di210 = GAME.battle.defenseInputsOf(t, modeId,
+      Object.assign({}, opts, { cityId: city ? city.id : (opts && opts.cityId), genId: genId }));
     var scArmy = _di210.scArmy, scVal = _di210.scVal, scGen = _di210.scGen, scNote = _di210.scNote;
     var simOpts = _di210.simOpts;
 
@@ -3516,6 +3537,11 @@ import './state.js';
         { cmds: (opts._sim && opts._sim.history) || null,
           place: { kind: t.kind, terrain: t.terrain || null },
           boost: _boost }),
+      /* v144.3（战报可见性）：战场修正快照（作战目标 / 危险梯度 / 老兵 / 羁绊 / 指令牌）——
+         详情页直接摊出来，玩家能回答"这一仗为什么这么打"。老战报无此字段 → 不显示该段。 */
+      modTotal: result.modTotal || null,
+      /* v144.4（C2）：作战目标是否达成（护送/斩首/坚守）—— 详情页给一行结论。 */
+      objective: result.objective || null,
       /* v89.94（B2 · E3）：以少胜多 —— 以弱胜强的一仗才值得晒（出征=攻方视角） */
       underdog: GAME.battle.underdogOf(result, 'atk'),
       /* v89.94（B2 · E1）：围攻战果（据点/聚落才有）—— 列表与详情都要显示"还差多少" */
@@ -4281,7 +4307,9 @@ import './state.js';
   GAME.march.dispatch = function (target, modeId, army, genId, schemeId, extra) {
     var s = GAME.state;
     /* ⛔ v89.198（老板「清除战法这个玩法」）：第 6 参 ops（随军战法）随玩法全撤退役。 */
-    var p = GAME.battle.prepare(target, modeId, army, genId, { scheme: schemeId || null, cityId: (extra && extra.fromCityId) || null });
+    var p = GAME.battle.prepare(target, modeId, army, genId,
+      { scheme: schemeId || null, cityId: (extra && extra.fromCityId) || null,
+        obj: (extra && extra.obj) || null });
     if (!p.ok) return p;
     var city = p.city, gen = p.gen, mode = p.mode, t = p.t;
     /* ============================================================
@@ -4360,6 +4388,7 @@ import './state.js';
       scheme: scheme,                    /* v86：随军计谋（抵达时读） */
       cargo: cargo || null,              /* v89.103：随军辎重（抵达落账 / 失败退回） */
       roundTrip: !!(mode && mode.roundTrip),   /* v91.76：运输送达后原路返程 */
+      obj: (extra && extra.obj) || null,       /* v144.5：作战目标（护送/斩首）随军走 */
     };
     s.marches.push(m);
     /* v92：出征 = 走过去看见什么。
@@ -4436,7 +4465,7 @@ import './state.js';
     try {
       r = GAME.battle.expedition(m.target, m.modeId, m.army, m.genId,
         { arrived: true, cityId: m.cityId, scheme: m.scheme || null,
-          cargo: m.cargo || null });      /* v89.103：随军辎重（owncity 分支落账） */
+          cargo: m.cargo || null, obj: m.obj || null });   /* v144.5：作战目标随军抵达 */
     } catch (e) { err = e; }
     /* v92：抵达 = 这一带并入已知（全明）。**不论战果** —— 人已经站在那儿了，
        看没看见、打没打赢，都不影响"这里有什么"这件事已经被知道。 */

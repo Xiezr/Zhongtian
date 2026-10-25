@@ -148,6 +148,37 @@
     st.factions.lastMonth = month;
     if (first) return null;                          /* 第一次只记基准，不推进 */
     var c = cfg();
+    /* v144.5（B2「打」）：**宣战中的势力按月真的来犯** ——
+       每场落在一座**最近的我方城**上，走既有入侵结算（真战斗，非播报）。
+       与「定期来袭」共用同一个结算出口 GAME.invasionResolve；
+       宣战期内在 `tick` 这里额外触发，避免改 invasionTick 的时间轮口径。 */
+    var _warHits = [];
+    if (GAME.invasionResolve && GAME.invasionAcceptOn && GAME.invasionAcceptOn()) {
+      arr.forEach(function (f) {
+        if (!FA.isAtWar(f.id)) return;
+        var fdef = FA.defOf(f.id) || {};
+        var cities = (GAME.city && GAME.city.all ? GAME.city.all() : []);
+        var best = null, bd = 1e9, sp0 = SP();
+        cities.forEach(function (cc) {
+          if (!cc || cc.ci == null || !sp0 || !sp0.distOf) return;
+          var dd = sp0.distOf({ ci: f.core }, { ci: cc.ci });
+          if (dd < bd) { bd = dd; best = cc; }
+        });
+        if (!best) return;
+        /* 只有"够得着"才出征（半径 14 + 6 格机动） */
+        if (!(bd <= (f.r || 2) + 6)) {
+          GAME.log.war('⚔ ' + (fdef.name || f.id) + ' 宣战了，但它在 ' + Math.round(bd) + ' 格外 —— 这一月没能出发。');
+          return;
+        }
+        try {
+          var _slot = GAME.invasionSlotOf ? GAME.invasionSlotOf(GAME.realNow()) : 0;
+          var _det = GAME.invasionResolve(best, (fdef.name || f.id), _slot + 900);
+          _warHits.push({ fid: f.id, city: best.name, held: !!(_det && _det.held) });
+          /* 战果回写它的版图（与定期来袭同一出口） */
+          if (GAME.faction.onInvasionResult) GAME.faction.onInvasionResult(f.id, !!(_det && _det.held));
+        } catch (e) { /* 单场异常不影响月度推进 */ }
+      });
+    }
     arr.forEach(function (f) {
       /* v93.6：**它想干什么，决定它长多快**。
          以前四家一段代码、一个速率；现在"集结"真的比"推进"快，
@@ -191,6 +222,7 @@
         out.clashes.forEach(function (x) { GAME.log.war('⚔ ' + x.msg); });
       }
     }
+    out.war = _warHits;
     return out;
   };
 
@@ -366,6 +398,53 @@
     FA.remember(fid, 'ally');             /* v93.6：盟约比纳贡重得多 */
     return { ok: true, msg: '与' + def.name + '结盟：粮 −' + U.numText(cost.grain, 0)
       + '、铁 −' + U.numText(cost.iron, 0) + '，它 ' + months + ' 个月不再扩张' };
+  };
+
+  /* ============================================================
+   * v144.5（B2「打」）：**宣战** —— 从态势层升级为真正的战争
+   * ------------------------------------------------------------
+   * 面板原话是「目前只影响态势与警报 —— 尚未接入战斗」。现在接入：
+   *   · 宣战 = 花军费，把这家对你的「怨」顶到 warGrudge（高于 persona.huntAt 才可能集结）；
+   *   · 之后每月 `tick` 的集结判定会真的派远征军来打你**最近的城**
+   *     （入侵通道是既有的 `GAME.invasionResolve` → 真战斗，不是播报）；
+   *   · 有冷却（warCdMonths），不会无限重开。
+   * ============================================================ */
+  FA.isAtWar = function (fid) {
+    var w = ((GAME.state || {}).factionWar) || {};
+    return (w[fid] | 0) > FA.monthNow();
+  };
+  FA.warLeft = function (fid) {
+    var w = ((GAME.state || {}).factionWar) || {};
+    var t = w[fid] | 0, m = FA.monthNow();
+    return t > m ? (t - m) : 0;
+  };
+  FA.declareWar = function (fid) {
+    var st = GAME.state;
+    if (!st) return { ok: false, msg: '无存档' };
+    FA.ensure();
+    var def = FA.defOf(fid);
+    if (!def) return { ok: false, msg: '没有这家势力' };
+    if (FA.isAtWar(fid)) return { ok: false, msg: '已经在交战（剩 ' + FA.warLeft(fid) + ' 个月）' };
+    var city = GAME.currentCity ? GAME.currentCity() : null;
+    if (!city) return { ok: false, msg: '没有可支付的城市' };
+    var cost = cfg().warCost || { grain: 4000, iron: 2000, gold: 20000 };
+    var R = GAME.res(city);
+    if ((R.grain || 0) < cost.grain) return { ok: false, msg: '粮不够：要 ' + U.numText(cost.grain, 0) };
+    if ((R.iron || 0) < cost.iron) return { ok: false, msg: '铁不够：要 ' + U.numText(cost.iron, 0) };
+    if ((st.res.gold || 0) < cost.gold) return { ok: false, msg: '旧币不够：要 ' + U.numText(cost.gold, 0) };
+    if (GAME.city && GAME.city.sub) { GAME.city.sub(city, 'grain', cost.grain); GAME.city.sub(city, 'iron', cost.iron); }
+    if (GAME.goldAdd) GAME.goldAdd(-cost.gold);
+    st.factionWar = st.factionWar || {};
+    var months = cfg().warCdMonths || 6;
+    st.factionWar[fid] = FA.monthNow() + months;
+    /* 把怨顶到开战线（三数增量：怨涨、信跌）—— 走既有的 standingOf 三数 */
+    var _st = FA.standingOf(fid);
+    _st.g = Math.max(0, Math.min(100, (_st.g | 0) + (cfg().warGrudge || 55)));
+    _st.t = Math.max(0, Math.min(100, (_st.t | 0) - 30));
+    GAME.log.war('⚔ 向' + def.name + '宣战：粮 −' + U.numText(cost.grain, 0)
+      + '、铁 −' + U.numText(cost.iron, 0) + '、旧币 −' + U.numText(cost.gold, 0)
+      + '。他们会按月集结，来打你最近的城。');
+    return { ok: true, msg: '已向' + def.name + '宣战（' + months + ' 个月内它会陆续来犯）' };
   };
 
   /* 一场互战：按半径掷骰，强者进、弱者退。返回战果（便于播报与测试） */

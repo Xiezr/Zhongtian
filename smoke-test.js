@@ -3099,8 +3099,15 @@
   V14.cities[0].extGrid[0] = { id: 'e1', type: 'farm', lv: 10, pending: null };
   nCity.extGrid[0] = { id: 'e1', type: 'farm', lv: 10, pending: null };
   check('产量遍历所有城市的地块（两城各 5500/h）', (function () {
-    var p = G.productionPerSec();
-    return p.grain > 0 && p.grain >= (5500 * 2) / 3600 * G.timeScale() * 0.5;
+    /* v144.4（A1 领土连通真生效）：本用例测的是「产量遍历所有城」，
+       而测试第二城落在远隔海域的坐标（255,335），连通系数会把它压到 0.35。
+       为了只测遍历口径，这里临时关掉连通惩罚（用完还原）—— 连通本身的断言另见 §563。 */
+    var _la0 = DATA.LAND.apply;
+    DATA.LAND.apply = false;
+    try {
+      var p = G.productionPerSec();
+      return p.grain > 0 && p.grain >= (5500 * 2) / 3600 * G.timeScale() * 0.5;
+    } finally { DATA.LAND.apply = _la0; }
   })(), '粮/s=' + G.productionPerSec().grain.toFixed(2));
 
   /* --- 辖区特产 --- */
@@ -11815,10 +11822,10 @@ console.log('\n===== 46. v61 满配城市城内布局 =====');
       .map(function (k) { return exp.indexOf(k, q); });
     var iR = exp.indexOf('exp-col-r', q);
     var iEstCall = exp.indexOf('ui.expEstBlockHTML()', q);
-    return secs.length >= 5
-      && idx[0] === secs[0] + OFF && idx[1] === secs[1] + OFF
-      && idx[2] === secs[2] + OFF && idx[3] === secs[3] + OFF
-      && idx[4] === secs[4] + OFF                               /* 第 5 块 = 可用道具 */
+    /* v144.4：方案之后多了一块「作战目标」（exp-a-objective）——
+       因此只要求前四块保序、可用道具仍在这批之后（其余块的插入不改变行序规则）。 */
+    var _ordered = idx.every(function (v, i) { return v > 0 && (i === 0 || v > idx[i - 1]); });
+    return secs.length >= 5 && _ordered
       && iR > 0 && iEstCall > idx[4] && iEstCall < iR           /* v89.200：预估调用点在左列下方（可用道具之后） */
       && /html \+= ui\.expEstBlockHTML\(\);/.test(exp)   /* v91.76：预估恒渲染（内容按方式） */
       && /\.exp-quad \{ display: grid; grid-template-columns: minmax\(0, 1fr\);/.test(body)
@@ -33293,7 +33300,8 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     check('§210③b 守方输入唯一出口（结算与推演同源 · 源码形态）', (function () {
       var run = codeOf(bS210, 'GAME.battle._expeditionRun = function');
       var pv = codeOf(bS210, 'GAME.battle.previewOf = function');
-      return /GAME\.battle\.defenseInputsOf\(t, modeId, opts\)/.test(run)
+      /* v144.3：结算侧多传 cityId/genId（羁绊快照需要出发城+主将）—— 仍是同一出口。 */
+      return /GAME\.battle\.defenseInputsOf\(t, modeId,/.test(run)
         && /GAME\.battle\.defenseInputsOf\(t, modeId, \{ scheme: opts\.scheme \}\)/.test(pv);
     })());
     check('§210③c 推演与实战同源对照（真打一场 · 结果逐项相等 + 零落账）', (function () {
@@ -44173,6 +44181,159 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })());
 
     G.newGame({ name: '收尾', cityName: '灰岗' });
+  })();
+
+  /* ============================================================
+   * §563. v144.4 A1 领土连通真生效
+   * ============================================================ */
+  (function () {
+    var NL = String.fromCharCode(10);
+    console.log(NL + '===== 563. A1 领土连通真生效 =====');
+    check('§563① 断链的城产量按 minMul 折算（不再"只算不罚"）', (function () {
+      var bk = GAME.state, bkA = DATA.LAND.apply, bkM = DATA.LAND.minMul;
+      var bkCold = DATA.CLIMATE.coldProdLoss;
+      try {
+        var st = G.newGame({ name: 'land563', cityName: '灰岗', region: '碎垣', mapSeed: 8 });
+        G.state = st;
+        DATA.LAND.apply = true; DATA.LAND.minMul = 0.35;
+        DATA.CLIMATE.coldProdLoss = 0;      /* 隔离：本用例只测连通系数 */
+        var sp = G.sphere, seaCi = -1;
+        for (var i = 0; i < sp.cells.length; i++) { if (sp.cells[i] && sp.cells[i].type === 'lake') { seaCi = i; break; } }
+        if (seaCi < 0) return 'SKIP-无海面格';
+        var c2 = G.makeCity({ id: 'cut563', name: '断链城', ci: seaCi, type: 'self', pid: 1,
+          res: { grain: 0, wood: 0, stone: 0, iron: 0 } });
+        c2.extGrid[0] = { id: 'e1', type: 'farm', lv: 10, pending: null };
+        st.cities.push(c2);
+        G.land.reset();
+        var rawBase = G.prodBasePerHourOf(c2).grain;
+        var stt = G.land.statusOf(c2);
+        return stt.linked === false && stt.mul === 0.35 && rawBase > 0
+          && Math.abs(rawBase - 5500 * 0.35) < 1;
+      } finally { GAME.state = bk; DATA.LAND.apply = bkA; DATA.LAND.minMul = bkM;
+        DATA.CLIMATE.coldProdLoss = bkCold; try { G.land.reset(); } catch (e) {} }
+    })());
+    check('§563② 连着的城按 1 计', (function () {
+      var bk = GAME.state;
+      try {
+        var st = G.newGame({ name: 'land563b', cityName: '灰岗', region: '碎垣', mapSeed: 8 });
+        G.state = st;
+        var c = st.cities[0];
+        G.land.reset();
+        var stt = G.land.statusOf(c);
+        return stt.linked === true && stt.hops === 0 && stt.mul === 1;
+      } finally { GAME.state = bk; try { G.land.reset(); } catch (e) {} }
+    })());
+    check('§563③ 关闭开关即恢复原口径（apply 是唯一闸）', (function () {
+      var bk = GAME.state, bkA = DATA.LAND.apply, bkCold3 = DATA.CLIMATE.coldProdLoss;
+      try {
+        var st = G.newGame({ name: 'land563c', cityName: '灰岗', region: '碎垣', mapSeed: 8 });
+        G.state = st;
+        DATA.CLIMATE.coldProdLoss = 0;      /* 隔离：本用例只测连通开关 */
+        var sp = G.sphere, seaCi = -1;
+        for (var i = 0; i < sp.cells.length; i++) { if (sp.cells[i] && sp.cells[i].type === 'lake') { seaCi = i; break; } }
+        if (seaCi < 0) return 'SKIP-无海面格';
+        var c2 = G.makeCity({ id: 'cut563c', name: '断链城', ci: seaCi, type: 'self', pid: 1,
+          res: { grain: 0, wood: 0, stone: 0, iron: 0 } });
+        c2.extGrid[0] = { id: 'e1', type: 'farm', lv: 10, pending: null };
+        st.cities.push(c2); G.land.reset();
+        DATA.LAND.apply = false;
+        var off = G.prodBasePerHourOf(c2).grain;
+        DATA.LAND.apply = true;
+        var on = G.prodBasePerHourOf(c2).grain;
+        return off > on && Math.abs(off - 5500) < 1;
+      } finally { GAME.state = bk; DATA.LAND.apply = bkA; DATA.CLIMATE.coldProdLoss = bkCold3;
+        try { G.land.reset(); } catch (e) {} }
+    })());
+  })();
+
+  /* ============================================================
+   * §564. v144.4 B4 严寒进粮产 · F 变异折产
+   * ============================================================ */
+  (function () {
+    var NL = String.fromCharCode(10);
+    console.log(NL + '===== 564. 严寒折产 / 污染变异 =====');
+    check('§564① 严寒月且没烧柴 → 产量打折；烧了柴不吃', (function () {
+      var bk = GAME.state, bkLoss = DATA.CLIMATE.coldProdLoss;
+      try {
+        var st = G.newGame({ name: 'cold564', cityName: '灰岗', region: '碎垣', mapSeed: 8 });
+        G.state = st;
+        var c = st.cities[0];
+        c.extGrid[0] = { id: 'e1', type: 'farm', lv: 10, pending: null };
+        DATA.CLIMATE.coldProdLoss = 0.12;
+        /* 直接钉一个月：用假月份让 isCold 成立 —— 通过 CL.tempOf 的真实正弦不可控，
+           这里改 coldAt 抬高到一定"恒冷"（模拟严寒月），用完还原。 */
+        var bkColdAt = DATA.CLIMATE.coldAt;
+        DATA.CLIMATE.coldAt = 999;      /* 恒冷：任何温度都 < coldAt */
+        var m1 = G.climate.prodMulOf(c);
+        c.warmMonth = G.climate.monthNow ? G.climate.monthNow() : null;
+        if (c.warmMonth == null) {
+          /* 没有 monthNow 出口时用内部同口径：按 CALENDAR 算 */
+          var C = DATA.CALENDAR || {}, spm = (C.secPerYear || 57600) / 12;
+          c.warmMonth = Math.floor(((st.world && st.world.elapsed) || 0) / spm);
+        }
+        var m2 = G.climate.prodMulOf(c);
+        DATA.CLIMATE.coldAt = bkColdAt;
+        return m1 > 0 && m1 < 1 && m2 === 1;
+      } finally { GAME.state = bk; DATA.CLIMATE.coldProdLoss = bkLoss; }
+    })());
+    check('§564② 污染越过变质线 → 产量折损；未越过不吃', (function () {
+      var bk = GAME.state;
+      try {
+        var st = G.newGame({ name: 'taint564', cityName: '灰岗', region: '碎垣', mapSeed: 8 });
+        G.state = st;
+        var c = st.cities[0];
+        var bad = DATA.TAINT.bad == null ? 120 : DATA.TAINT.bad;
+        c.taint = bad - 1;
+        var m1 = G.taint.mutMulOf(c);
+        c.taint = bad * 2;
+        var m2 = G.taint.mutMulOf(c);
+        return m1 === 1 && m2 > 0 && m2 < 1;
+      } finally { GAME.state = bk; }
+    })());
+    check('§564③ 三个系数都只乘基础产量（prodBasePerHourOf 是唯一落点）', (function () {
+      var src = require('fs').readFileSync(require('path').join(__dirname, 'js', 'state.js'), 'utf8');
+      var fn = src.slice(src.indexOf('GAME.prodBasePerHourOf = function'));
+      fn = fn.slice(0, fn.indexOf('GAME.prodBasePerHour = function'));
+      return /GAME\.land\.statusOf\(city\)/.test(fn)
+        && /GAME\.climate\.prodMulOf\(city\)/.test(fn)
+        && /GAME\.taint\.mutMulOf\(city\)/.test(fn);
+    })());
+  })();
+
+  /* ============================================================
+   * §565. v144.5 B2 宣战 · C2 护送/斩首
+   * ============================================================ */
+  (function () {
+    var NL = String.fromCharCode(10);
+    console.log(NL + '===== 565. 宣战 / 护送 / 斩首 =====');
+    check('§565① 宣战：扣军费 → 进入交战期（warLeft > 0）· 重复宣战被拒', (function () {
+      var bk = GAME.state;
+      try {
+        var st = G.newGame({ name: 'war565', cityName: '灰岗', region: '碎垣', mapSeed: 8 });
+        G.state = st;
+        G.faction.ensure();
+        var arr = G.faction.arr();
+        if (!arr.length) return 'SKIP-无势力';
+        var fid = arr[0].id;
+        var c = st.cities[0];
+        c.res.grain = 1e6; c.res.iron = 1e6; st.res.gold = 1e6;
+        var g0 = st.res.gold;
+        var r = G.faction.declareWar(fid);
+        var left = G.faction.warLeft(fid);
+        var r2 = G.faction.declareWar(fid);
+        return r.ok && left > 0 && st.res.gold < g0 && r2.ok === false;
+      } finally { GAME.state = bk; }
+    })());
+    check('§565② 护送 / 斩首：只改"什么算赢"，不改攻防数值', (function () {
+      var src = require('fs').readFileSync(require('path').join(__dirname, 'js', 'tactic.js'), 'utf8');
+      var seg = src.slice(src.indexOf("_objKind === 'escort'"), src.indexOf("_objKind === 'escort'") + 1400);
+      return /_escortOk/.test(seg) && /_beheadOk/.test(seg)
+        && !/goalMod\.atk\s*[+\-]=/.test(seg);   /* 目标不往 goalMod 里加攻防 */
+    })());
+    check('§565③ 作战目标随军入快照（simOpts.obj → 战报 objective）', (function () {
+      var b = require('fs').readFileSync(require('path').join(__dirname, 'js', 'battle.js'), 'utf8');
+      return /obj: \(t && t\.obj\) \|\| null/.test(b) && /objective: result\.objective/.test(b);
+    })());
   })();
 
 console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');

@@ -49,6 +49,29 @@
   CL.coldAt = function () { return D().coldAt == null ? -10 : D().coldAt; };
   CL.isCold = function (month) { return CL.tempOf(month) < CL.coldAt(); };
 
+  /* ============================================================
+   * v144.4（B4 落地）：**严寒进粮产** —— 与"寒潮"同一件事的第二个出口？
+   * ------------------------------------------------------------
+   * 审计里记着"不叠到全局粮产（寒潮已在扣）"。但寒潮是**随机事件开关**，
+   * 温度是**可预判的季节**：玩家看着温度往下走，却对粮产毫无感觉 —— 这条线是空的。
+   * 所以这里只加一个**温和的坡度**（最多 −12%），并且：
+   *   · **烧了柴的城不吃**（CL.isWarm）—— 于是"烧柴"第一次也有产出上的回报；
+   *   · 严寒月才生效（coldAt 以下），其余月份系数恒 1（不影响既有平衡断言）。
+   * 消费点：`GAME.prodBasePerHourOf` 与野地上限/仓储无关，只乘资源基础产量。
+   * ============================================================ */
+  CL.prodMulOf = function (city) {
+    try {
+      var m = monthNow();
+      if (!CL.isCold(m)) return 1;
+      if (CL.isWarm(city)) return 1;
+      var d = D();
+      var t = CL.tempOf(m), cold = CL.coldAt();
+      var depth = Math.max(0, Math.min(1, (cold - t) / Math.max(1, Math.abs(cold) || 10)));
+      var worst = (d.coldProdLoss == null ? 0.12 : d.coldProdLoss);
+      return 1 - depth * worst;
+    } catch (e) { return 1; }
+  };
+
   /* 距离下一个严寒月还有几个月（0 = 现在就是）—— 界面用它给玩家预警 */
   CL.coldIn = function () {
     var m = monthNow();

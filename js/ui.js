@@ -8188,10 +8188,21 @@ import './state.js';
         }).join('') + '</div>');
     }
 
-    /* ---------- 辐射云 ---------- */
+    /* ---------- 辐射云（v144.4：给云里的城一个真入口 —— 迁址） ---------- */
     if (GAME.surge) {
+      var _cloudCities = cities.filter(function (c) { return GAME.surge.cityInCloud(c); });
+      var _cloudAct = _cloudCities.length
+        ? '<div class="chips" style="margin-top:5px;">' + _cloudCities.map(function (c) {
+          var mv = GAME.isMovableCity && GAME.isMovableCity(c);
+          return '<span class="chip' + (mv ? '' : ' dim') + '"' + (mv
+            ? ' data-action="city-move-ask" data-city="' + U.escape(c.id) + '"'
+            : ' title="名城地望固定，不可迁址"') + '>'
+            + U.escape(c.name) + (mv ? ' · 迁出云外' : ' · 名城不可迁') + '</span>';
+        }).join('') + '</div>'
+        : '';
       h += sec('☁ 辐射云', GAME.surge.lineOf(),
-        '<div class="ui-sub" style="margin-top:3px;">圈心在你所有城的重心，半径按月往回收、每收 12 个月停 3 个月。'
+        _cloudAct
+        + '<div class="ui-sub" style="margin-top:3px;">圈心在你所有城的重心，半径按月往回收、每收 12 个月停 3 个月。'
         + '云里的城不会立刻崩，只是人会一点一点往圈里搬 —— 要不要把家搬进来，是你的决定。</div>');
     }
 
@@ -8430,10 +8441,25 @@ import './state.js';
         }
       }
 
-      /* ⑨ 暴露 */
+      /* ⑨ 暴露（v144.4：逐队给名字/人数/目标城/到城倒计时） */
       if (GAME.expose) {
         var el = GAME.expose.lineOf();
-        if (el) h += sec('👁 谁看见了你', el, '');
+        if (el) {
+          var _wt = GAME.expose.watchTextOf ? GAME.expose.watchTextOf() : '';
+          var _rows = (GAME.expose.watchersOf ? GAME.expose.watchersOf() : []).map(function (w) {
+            return '<div style="margin-top:3px;">👁 <b>' + U.escape(w.name) + '</b>　'
+              + U.numText(w.pop, 0) + ' 人　'
+              + (w.target
+                ? ('→ ' + U.escape(w.target) + (w.eta != null ? ('　<span style="color:var(--red-light);">约 '
+                  + w.eta + ' 月后到城</span>') : ''))
+                : '<span style="color:var(--text-dim);">还在游荡</span>')
+              + '</div>';
+          }).join('');
+          h += sec('👁 谁看见了你', el, (warn ? _rows : _rows)
+            + '<div class="ui-sub" style="margin-top:4px;">' + U.escape(_wt) + '</div>'
+            + '<div class="ui-sub" style="margin-top:3px;">被发现之后他们会转向最近的城 —— '
+            + '要么补守军、要么建工事、要么花 300 兵驱赶（都在竞者面板里）。</div>');
+        }
       }
     })();
 
@@ -8552,11 +8578,17 @@ import './state.js';
           + ' data-action="faction-ally" data-fid="' + x.id + '">🛡 结盟</button>'))
         + ((x.ally > 0 || x.truce > 0) ? '' : ('<button class="btn" style="font-size:var(--fs-cap);padding:1px 8px;margin:3px 0 0 4px;"'
           + ' data-action="faction-incite" data-fid="' + x.id + '">🔥 挑拨</button>'))
+        /* v144.5（B2「打」）：宣战 —— 花军费让它按月真的来打你最近的城。 */
+        + (GAME.faction.warLeft && GAME.faction.warLeft(x.id) > 0
+          ? ('<br><span style="color:var(--red-light);">⚔ 交战中（剩 ' + GAME.faction.warLeft(x.id) + ' 月 · 按月来犯）</span>')
+          : ('<button class="btn" style="font-size:var(--fs-cap);padding:1px 8px;margin:3px 0 0 4px;"'
+            + ' data-action="faction-war" data-fid="' + x.id + '">⚔ 宣战</button>'))
         + '</div>';
     });
     h += '</div>';
     h += '<div style="font-size:var(--fs-cap);color:var(--text-dim);margin-top:6px;">'
-      + '按月推进（一年约 +10 格 · 半径上限 14）。目前只影响态势与警报 —— 尚未接入战斗。</div>';
+      + '按月推进（一年约 +10 格 · 半径上限 14）。**宣战**之后它会按月集结来打你最近的城'
+      + '（走真实战斗结算，不是播报）；纳贡/结盟能买时间。</div>';
     /* ============================================================
      * v94.1：世界的另外六件事
      * ------------------------------------------------------------
@@ -16057,6 +16089,9 @@ import './state.js';
       ? '据点：占领=拔除并收为「我方前哨」（不转城市、不占城市名额）——辐射 6~14 格（随据点等级）内野地：衰减减半 / 采集增产 / 驻军上限加成 / 情报 / 商税（均随后哨等级）。'
       : null;
     html += '<div class="exp-sec exp-a-modes">' + ui.expRowHTML('出征方式', modeSelHTML, fortModeNote) + '</div>';
+    /* v144.4（C2）：**作战目标**（可选；不选 = 按兵力比自动定档）。
+       护送/斩首改变"什么算赢"（不改攻防数值），战报会写明达成与否。 */
+
 
     /* v89.156：调运（transfer · 不接战）**不渲染接战专属三块**（方案）——
        原本 2×2 两行、改单列后四块 439px 把左列顶爆（调运面板溢出 141px · modals 审计实锤）；
@@ -16072,6 +16107,20 @@ import './state.js';
       '<span class="exp-tac-link" data-action="open-plan">设置</span>',
       '沿用当前设置 · 套用后按派出城的练兵场上限裁剪');
     html += '</div>';
+    /* v144.4（C2）：**作战目标**（可选；不选 = 按兵力比自动定档）。
+       护送/斩首改变"什么算赢"（不改攻防数值），战报写明达成与否。 */
+    if (_combat76) {
+      var _objOpts = [
+        { id: '', name: '自动（按兵力比定档）' },
+        { id: 'escort', name: '护送 · 撑满回合且还有兵算过' },
+        { id: 'behead', name: '斩首 · 打崩守军三成算过' }
+      ];
+      html += '<div class="exp-sec exp-a-objective">' + ui.expRowHTML('作战目标',
+        '<select id="exp-obj">' + _objOpts.map(function (o) {
+          return '<option value="' + o.id + '"' + ((ui._expObj || '') === o.id ? ' selected' : '') + '>' + o.name + '</option>';
+        }).join('') + '</select>',
+        '护送/斩首会改变"什么算赢"（不改攻防数值）') + '</div>';
+    }
     /* v89.156：调运（transfer · 不接战）**不渲染接战专属三块**（出征战术）——
        原本 2×2 两行、改单列后四块 439px 把左列顶爆（调运面板溢出 141px · modals 审计实锤）；
        语义也正：transfer 是"兵力押运、不接战"，计略/阵位/阵型配置无用途。 */
@@ -16177,6 +16226,9 @@ import './state.js';
     /* v89.57：计略下拉框 → 显式设定（与面板的「再点撤下」共存） */
     var _scSel = document.getElementById('exp-scheme-sel');
     if (_scSel) _scSel.addEventListener('change', function () { ui.setExpScheme(_scSel.value); });
+    /* v144.4：作战目标下拉 → 记在界面态（提交时带给执行端） */
+    var _objSel = document.getElementById('exp-obj');
+    if (_objSel) _objSel.addEventListener('change', function () { ui._expObj = _objSel.value || ''; });
     /* v89.58：出征方式下拉框 → setExpMode（锁 + 按钮文案 + 兵力区置灰） */
     var _mdSel = document.getElementById('exp-mode');
     if (_mdSel) _mdSel.addEventListener('change', function () { ui.setExpMode(_mdSel.value); });
@@ -18125,6 +18177,37 @@ import './state.js';
     /* ---- ② 战斗收获（两列：类别 │ 内容） ---- */
     html += ui.sealH('战斗收获', '经验 · 声望 · 战利品');
     html += ui.reportGainHTML(_sect150.gain);
+
+    /* ---- ②″ v144.4 作战目标：达成了没有（护送/斩首/坚守） ---- */
+    if (r.objective && r.objective.label) {
+      html += '<div class="rp-under" style="color:' + (r.objective.ok ? 'var(--green-ok)' : 'var(--red-light)') + ';">'
+        + '🎯 作战目标「' + U.escape(r.objective.label) + '」'
+        + (r.objective.ok ? '：达成' : '：未达成') + '</div>';
+    }
+
+    /* ---- ②′ v144.3 战场修正（本仗真吃到的加减，逐项列明） ---- */
+    if (r.modTotal) {
+      var _mt = r.modTotal, _rows = [];
+      var _pct = function (v) { return (v > 0 ? '+' : '') + Math.round(v * 100) + '%'; };
+      if (_mt.tier) _rows.push(['作战目标', _mt.tier]);
+      if (_mt.atk || _mt.def || _mt.hp) {
+        _rows.push(['合计修正', '攻 ' + _pct(_mt.atk || 0) + ' · 防 ' + _pct(_mt.def || 0)
+          + ' · 血 ' + _pct(_mt.hp || 0)]);
+      }
+      if (_mt.risk) _rows.push(['危险梯度', '血 ' + _pct(_mt.risk)]);
+      if (_mt.veteran) _rows.push(['老兵', '攻 ' + _pct(_mt.veteran)]);
+      if (_mt.bond) _rows.push(['羁绊不合', '攻防 ' + _pct(_mt.bond)]);
+      if (_mt.deck && (_mt.deck.atk || _mt.deck.def)) {
+        _rows.push(['指令牌', '攻 ' + _pct(_mt.deck.atk || 0) + ' · 防 ' + _pct(_mt.deck.def || 0)]);
+      }
+      if (_rows.length) {
+        html += ui.sealH('战场修正', '这一仗到底吃到了什么');
+        html += '<table class="tbl rp-tbl"><thead><tr><th>来源</th><th>修正</th></tr></thead><tbody>'
+          + _rows.map(function (x) {
+            return '<tr><td>' + U.escape(x[0]) + '</td><td>' + U.escape(x[1]) + '</td></tr>';
+          }).join('') + '</tbody></table>';
+      }
+    }
 
     /* ---- ③ 兵种损耗表（初始 → 剩余，逐项核对） ---- */
     var bk = ui._reportLoss(r);

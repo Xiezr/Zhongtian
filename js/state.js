@@ -4275,6 +4275,31 @@ import './data.js';
       if (!b || !b.prod) return;
       b.prod.forEach(function (p) { base[p.res] = (base[p.res] || 0) + p.amount * cell.build.lvl; });
     });
+    /* v144.4（A1）：**补给连通系数** —— 断链的城按 minMul 折算，远城按跳数轻微递减。
+       唯一出口 `GAME.land.statusOf(city).mul`（界面与结算同源；apply 关时恒为 1）。 */
+    try {
+      if (GAME.land && GAME.land.statusOf) {
+        var _lm = GAME.land.statusOf(city).mul;
+        if (_lm != null && _lm !== 1) {
+          for (var _bk in base) base[_bk] = base[_bk] * _lm;
+        }
+      }
+    } catch (e) { /* 连通性异常不影响产出主链 */ }
+    /* v144.4（B4）：**严寒月粮产折扣**（最多 −12%；烧了柴的城不吃）。
+       与连通系数一样只乘基础产量，不连乘其它修正。 */
+    try {
+      if (GAME.climate && GAME.climate.prodMulOf) {
+        var _cm = GAME.climate.prodMulOf(city);
+        if (_cm != null && _cm !== 1) { for (var _ck in base) base[_ck] = base[_ck] * _cm; }
+      }
+    } catch (e2) { /* 温度异常不影响产出主链 */ }
+    /* v144.4（F）：**变质城变异** —— 污染越过变质线，材料/水/作物开始长歪（−8%~−20%）。 */
+    try {
+      if (GAME.taint && GAME.taint.mutMulOf) {
+        var _tm = GAME.taint.mutMulOf(city);
+        if (_tm != null && _tm !== 1) { for (var _tk in base) base[_tk] = base[_tk] * _tm; }
+      }
+    } catch (e3) { /* 污染异常不影响产出主链 */ }
     return base;
   };
   GAME.prodBasePerHour = function () {

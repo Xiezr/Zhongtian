@@ -4901,6 +4901,12 @@ import './core.js';
        都是态势层的账 —— 不碰战斗引擎。 */
     allyMonths: 12,
     allyCost: { grain: 6000, iron: 3000 },
+    /* v144.5（B2「打」真落地）：**宣战** —— 花一笔军费把关系的"怨"顶到开战线，
+       之后每月由 faction.tick 的集结判定决定它是否真的出征来打你。
+       与「叫阵」的区别：叫阵是武将单挑（士气），宣战是**真的让它带兵来攻你的城**。 */
+    warCost: { grain: 4000, iron: 2000, gold: 20000 },
+    warGrudge: 55,
+    warCdMonths: 6,
     clashCost: { grain: 3000, iron: 1500 },
     clashGain: 0.35,
     clashEveryMonths: 3,
@@ -6396,7 +6402,10 @@ import './core.js';
 
   /* ② 领土连通 —— 只有和主城连成一片的才算你的（A1） */
   DATA.LAND = {
-    apply: false,             /* ⚠️ 第一版只算不罚：算出来给玩家看，正式扣不加 */
+    /* v144.4（A1 落地）：由「只算不罚」改为**真扣** ——
+       断链的城产量按 minMul 折算；远城每跳轻微递减（hopPenalty）。
+       判据唯一出口 `GAME.land.statusOf(city).mul`，接入点 `prodBasePerHourOf`。 */
+    apply: true,
     hopPenalty: 0.10,         /* 断链每远 1 格再降一成补给 */
     minMul: 0.35,             /* 补给最低降到三成五 */
     maxHops: 14               /* BFS 上限（防止荒岛无限算） */
@@ -6415,7 +6424,9 @@ import './core.js';
     shantyLossAt: 0.02,       /* 越过 bad：每 100 点污染，棚户每月死这么多 */
     villageLoss: 0.004,       /* 云外的村社也在被污染逼走 */
     cleanCost: { iron: 400, stone: 600 },   /* 净化一次 */
-    cleanAt: 25               /* 一次净化去掉这么多 */
+    cleanAt: 25,              /* 一次净化去掉这么多 */
+    /* v144.4（F 落地）：**变异** —— 变质城（>= bad）的产量折损上限（越脏越深）。 */
+    mutLoss: 0.20
   };
 
   /* ④ 温度线 —— 生存三命的第三条（B4：粮 / 温 / 民心） */
@@ -6426,7 +6437,10 @@ import './core.js';
     fuelPerPop: 0.4,          /* 供暖：每人每月耗木（按月结算，不按秒） */
     warmHearts: 1.5,          /* 烧上暖，当月民心回来一点 */
     coldVillageLoss: 0.02,    /* 严寒：村社每月走掉这么多人（2%） */
-    coldShantyLoss: 0.06      /* 严寒：棚户每月冻死这么多 */
+    coldShantyLoss: 0.06,     /* 严寒：棚户每月冻死这么多 */
+    /* v144.4（B4 落地）：严寒月的粮产折扣上限（最冷时 −12%；烧了柴的城不吃）。
+       只乘**基础产量**，不连乘其它修正（与 v89.157 加法口径一致）。 */
+    coldProdLoss: 0.12
   };
 
   /* ⑤ 辐射云 —— 会收缩的圈（E 大逃杀：给扩张一个时间压力）

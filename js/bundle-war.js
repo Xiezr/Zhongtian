@@ -2674,6 +2674,9 @@
 
     var t = GAME.battle.resolveTarget(target);
     if (!t.ok) return { ok: false, msg: t.msg || '目标无效' };
+    /* v144.4（C2）：作战目标（护送/斩首）—— 随 prepare 结果带进结算（simOpts）。
+       只对接战方式有效；其余方式忽略。 */
+    if (opts.obj && opts.obj.kind && mode.battle) t.obj = opts.obj;
 
     /* v89.87（老板需求 2）：调兵 / 驻守 / 采集的前置校验（统一出口的口子）
        v91.76：派遣 / 运输同属"己方城市间"通道。 */
@@ -2915,6 +2918,8 @@
            观战/读档重跑都从 simOpts 重建会话 —— 只认这里的快照，不认"现在"的全局设置，
            这样中途改设置也不会让同一场仗前后两半用两套 AI。 */
         battleAI: !!(GAME.state && GAME.state.settings && GAME.state.settings.battleAI),
+        /* v144.4（C2）：作战目标（护送/斩首）—— 由 prepare 的 opts.obj 透传（t.obj）。 */
+        obj: (t && t.obj) || null,
         /* v91.86：目标星球 —— 环境规则按它解析（跨星球出征不能读"当前城"） */
         pid: (t && t.pid != null) ? t.pid : (GAME.curPid ? GAME.curPid() : 1),
         /* v98.2：**玩家亲自出征** —— 只有这种战斗吃"作战目标"的战场修正
@@ -2950,6 +2955,20 @@
             var _c = (_cid && GAME.city && GAME.city.byId) ? GAME.city.byId(_cid) : null;
             return (GAME.trooplv && _c) ? GAME.trooplv.mapOf(_c) : null;
           } catch (e) { return null; }
+        })(),
+        /* v144.3（D 构想「羁绊」落地）：**带错人要付代价**。
+           `bond.penaltyOf(出发城, 主将)` 看主将与出发城守将/城主风格是否不合（−10% 全军战力）。
+           与老兵/风险同规矩：出征瞬间算成**数值快照**（存进 simOpts，重放/读档重跑同源）。 */
+        bondPct: (function () {
+          try {
+            if (!GAME.bond || !opts || !opts.cityId) return 0;
+            var _bc = (GAME.city && GAME.city.byId) ? GAME.city.byId(opts.cityId) : null;
+            var _bg = null;
+            (GAME.state.generals || []).forEach(function (g) { if (g && g.id === opts.genId) _bg = g; });
+            if (!_bc || !_bg) return 0;
+            var _b = GAME.bond.penaltyOf(_bc, _bg);
+            return (_b && _b.penalty) ? -_b.penalty : 0;
+          } catch (e) { return 0; }
         })() };
     return { scArmy: scArmy, scVal: scVal, scGen: scGen, scNote: scNote, simOpts: simOpts };
   };
@@ -3290,7 +3309,9 @@
      * 结算与「战前推演」（previewOf）共用同一份构造（逐字节搬运，行为不变）：
      *   defBonus / tWallLv / scArmy·scVal·scGen·scNote / 计谋效果 / 围攻缩放 / simOpts。
      * ============================================================ */
-    var _di210 = GAME.battle.defenseInputsOf(t, modeId, opts);
+    /* v144.3：羁绊快照需要「出发城 + 主将」—— genId 在后续作用域，这里补一次 opts。 */
+    var _di210 = GAME.battle.defenseInputsOf(t, modeId,
+      Object.assign({}, opts, { cityId: city ? city.id : (opts && opts.cityId), genId: genId }));
     var scArmy = _di210.scArmy, scVal = _di210.scVal, scGen = _di210.scGen, scNote = _di210.scNote;
     var simOpts = _di210.simOpts;
 
@@ -3788,6 +3809,11 @@
         { cmds: (opts._sim && opts._sim.history) || null,
           place: { kind: t.kind, terrain: t.terrain || null },
           boost: _boost }),
+      /* v144.3（战报可见性）：战场修正快照（作战目标 / 危险梯度 / 老兵 / 羁绊 / 指令牌）——
+         详情页直接摊出来，玩家能回答"这一仗为什么这么打"。老战报无此字段 → 不显示该段。 */
+      modTotal: result.modTotal || null,
+      /* v144.4（C2）：作战目标是否达成（护送/斩首/坚守）—— 详情页给一行结论。 */
+      objective: result.objective || null,
       /* v89.94（B2 · E3）：以少胜多 —— 以弱胜强的一仗才值得晒（出征=攻方视角） */
       underdog: GAME.battle.underdogOf(result, 'atk'),
       /* v89.94（B2 · E1）：围攻战果（据点/聚落才有）—— 列表与详情都要显示"还差多少" */
@@ -4553,7 +4579,9 @@
   GAME.march.dispatch = function (target, modeId, army, genId, schemeId, extra) {
     var s = GAME.state;
     /* ⛔ v89.198（老板「清除战法这个玩法」）：第 6 参 ops（随军战法）随玩法全撤退役。 */
-    var p = GAME.battle.prepare(target, modeId, army, genId, { scheme: schemeId || null, cityId: (extra && extra.fromCityId) || null });
+    var p = GAME.battle.prepare(target, modeId, army, genId,
+      { scheme: schemeId || null, cityId: (extra && extra.fromCityId) || null,
+        obj: (extra && extra.obj) || null });
     if (!p.ok) return p;
     var city = p.city, gen = p.gen, mode = p.mode, t = p.t;
     /* ============================================================
@@ -4632,6 +4660,7 @@
       scheme: scheme,                    /* v86：随军计谋（抵达时读） */
       cargo: cargo || null,              /* v89.103：随军辎重（抵达落账 / 失败退回） */
       roundTrip: !!(mode && mode.roundTrip),   /* v91.76：运输送达后原路返程 */
+      obj: (extra && extra.obj) || null,       /* v144.5：作战目标（护送/斩首）随军走 */
     };
     s.marches.push(m);
     /* v92：出征 = 走过去看见什么。
@@ -4708,7 +4737,7 @@
     try {
       r = GAME.battle.expedition(m.target, m.modeId, m.army, m.genId,
         { arrived: true, cityId: m.cityId, scheme: m.scheme || null,
-          cargo: m.cargo || null });      /* v89.103：随军辎重（owncity 分支落账） */
+          cargo: m.cargo || null, obj: m.obj || null });   /* v144.5：作战目标随军抵达 */
     } catch (e) { err = e; }
     /* v92：抵达 = 这一带并入已知（全明）。**不论战果** —— 人已经站在那儿了，
        看没看见、打没打赢，都不影响"这里有什么"这件事已经被知道。 */
@@ -6289,6 +6318,16 @@
         };
       }
 
+      /* v144.3（D 构想「羁绊」）：主将与出发城守将/城主风格不合 → 全军战力 −10%。
+         与其余来源同一条 goalMod（相加，不连乘）；快照存进 simOpts（重放同源）。 */
+      if (opts.bondPct) {
+        _goalMod = {
+          atk: ((_goalMod && _goalMod.atk) || 0) + opts.bondPct,
+          def: ((_goalMod && _goalMod.def) || 0) + opts.bondPct,
+          hp: (_goalMod && _goalMod.hp) || 0
+        };
+      }
+
       if (GAME.deck && GAME.deck.effOf) {
         /* v107（D3）：把主将传进去 —— 风格对不上的牌这一仗打不出去 */
         var _dk = GAME.deck.effOf(atkGen);
@@ -6918,6 +6957,35 @@
       ? Math.max(1, opts.obj.rounds || 6) : 0;
     var holdHeld = !!(_holdN9f > 0 && dRemain > 0 && round >= _holdN9f
       && !(dRemain <= 0));
+    /* v144.4（C2）：**护送 / 斩首** —— 两种新的胜负条件（只在玩家亲自出征时由 UI 指定）。
+       · escort 护送：攻方带着车队出城，只要车队还活着并且打满 rounds → 攻方算过；
+         车队全灭 → 无论歼敌多少都算失败（这就是"护送"和"歼灭"的区别）。
+       · behead 斩首：击杀守将所在的那支部队 / 或守将重伤 → 攻方算成；
+         打满回合守将还活着 → 失败。
+       两项都**不改战斗数值**（不调攻防），只改"什么算赢"。 */
+    /* 斩首：守将是否倒下 —— 守方英雄不参与部队计数，按"守方剩余不足开局 30%"近似 */
+    var _guardDownNow = false;
+    if (opts.obj && opts.obj.kind === 'behead') {
+      _guardDownNow = (dRemain <= Math.max(0, Math.floor(dStart * 0.3)));
+      opts.obj.guardDown = _guardDownNow;
+    }
+    var _objKind = (opts.obj && opts.obj.kind) || '';
+    var _holdAtk = !!holdHeld;
+    var _escortOk = false, _beheadOk = false;
+    if (_objKind === 'escort') {
+      /* 车队 = 攻方最先阵亡的那一支（UI 会把"车队"编成一队特殊兵种计数）。
+         简化口径：打满 rounds 且攻方还剩人 → 过。 */
+      var _needR = Math.max(1, opts.obj.rounds || 6);
+      _escortOk = (aRemain > 0 && round >= _needR);
+      if (aRemain <= 0) winner = 'def';
+      else if (_escortOk) winner = 'atk';
+    } else if (_objKind === 'behead') {
+      var _genDown = !!(opts.obj.guardDown);
+      _beheadOk = _genDown || (dRemain <= 0 && aRemain > 0);
+      if (_beheadOk) winner = 'atk';
+      else if (aRemain <= 0) winner = 'def';
+      /* 没斩到将、也没全歼 → 打满回合按消耗算（保持原有判定，不额外惩罚） */
+    }
     var winner;
     if (holdHeld) winner = 'def';
     else if (dRemain <= 0 && aRemain > 0) winner = 'atk';
@@ -7008,6 +7076,24 @@
       /* v59：城防箭塔 —— 开局座数 / 剩余座数（战报与界面都要显示"拆了几座"） */
       towerStart: towerStart, towerLeft: towerAliveNow(),
       roundsLog: roundsLog, strips: strips,
+      /* v144.3（战报可见性）：把本场吃到的**全量战场修正**原样带出战报 ——
+         玩家要能回答"为什么这一仗我被打成这样"。数值就是引擎真用的那份（同一快照）。 */
+      /* v144.4（C2）：目标达成的说明（战报直接展示；没有目标时为 null） */
+      objective: (_objKind
+        ? { kind: _objKind, ok: _objKind === 'hold' ? _holdAtk
+            : _objKind === 'escort' ? _escortOk : _objKind === 'behead' ? _beheadOk : null,
+            label: _objKind === 'hold' ? '坚守' : _objKind === 'escort' ? '护送' : '斩首' }
+        : null),
+      modTotal: (function () {
+        var m = _goalMod || {};
+        return { atk: m.atk || 0, def: m.def || 0, hp: m.hp || 0,
+          tier: (_t98 && _t98.name) || null,
+          risk: opts.riskHp || 0, veteran: opts.atkVet || 0,
+          bond: opts.bondPct || 0, deck: (function () {
+            try { var d = GAME.deck && GAME.deck.effOf && GAME.deck.effOf(atkGen); return d ? { atk: d.atk || 0, def: d.def || 0 } : null; }
+            catch (e) { return null; }
+          })() };
+      })(),
       /* v89.102：初始列阵（沙盘回放/推演起点；见 initSnap 处注释） */
       unitsInit: initSnap,
       atkLossBy: aBy.loss, defLossBy: dBy.loss,

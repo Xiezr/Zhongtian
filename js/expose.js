@@ -90,4 +90,42 @@
     if (!n) return '';
     return '👁 ' + n + ' 支队伍已经知道你在哪（探明他们 = 他们也看见你）';
   };
+
+  /* ============================================================
+   * v144.4（A7 落地）：**被谁盯上，持续可见 + 到城倒计时**
+   * ------------------------------------------------------------
+   * 原版只有一行"有 N 支看见你了"，玩家不知道是谁、还有几个月到、
+   * 该往哪座城补防 —— 于是"暴露"这个后果在界面上是空心的。
+   * 这里逐队给出：名字 / 人数 / 目标城 / 到城倒计时（按两格/月粗估）。
+   * ============================================================ */
+  EX.watchersOf = function () {
+    var out = [];
+    if (!GAME.rival) return out;
+    var sp = (GAME.sphereOf ? GAME.sphereOf() : (GAME.mapSphere || GAME.sphere));
+    GAME.rival.arr().forEach(function (t) {
+      if (!t || t.dead || !t.spotted) return;
+      var near = nearestCityOf(t.ci);
+      var dest = t.dest && t.dest.kind === 'city' ? (GAME.city && GAME.city.byId ? GAME.city.byId(t.dest.ci) : null) : null;
+      /* dest.ci 存的是格号（见 rival.js），按格找城 */
+      if (!dest && t.dest && t.dest.kind === 'city' && GAME.city && GAME.city.all) {
+        GAME.city.all().forEach(function (c) { if (!dest && c.ci === t.dest.ci) dest = c; });
+      }
+      var dist = near ? near.dist : null;
+      if (dest && sp && sp.distOf) dist = sp.distOf({ ci: t.ci }, { ci: dest.ci });
+      var eta = (dist == null) ? null : Math.max(0, Math.ceil(dist / 2));   /* 竞争者约 2 格/月 */
+      out.push({ id: t.id, name: t.name, pop: t.pop || 0, aggr: !!t.aggr,
+        target: dest ? dest.name : null, eta: eta });
+    });
+    out.sort(function (a, b) { return (a.eta == null ? 999 : a.eta) - (b.eta == null ? 999 : b.eta); });
+    return out;
+  };
+
+  EX.watchTextOf = function () {
+    var list = EX.watchersOf();
+    if (!list.length) return '';
+    return list.slice(0, 3).map(function (w) {
+      return w.name + '（' + U.numText(w.pop, 0) + ' 人）'
+        + (w.target ? (' → ' + w.target + (w.eta != null ? '（约 ' + w.eta + ' 月后）' : '')) : '（还在游荡）');
+    }).join('　·　') + (list.length > 3 ? '　…共 ' + list.length + ' 支' : '');
+  };
 })();

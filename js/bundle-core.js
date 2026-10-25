@@ -5051,6 +5051,12 @@ window.GAME = window.GAME || {};
        都是态势层的账 —— 不碰战斗引擎。 */
     allyMonths: 12,
     allyCost: { grain: 6000, iron: 3000 },
+    /* v144.5（B2「打」真落地）：**宣战** —— 花一笔军费把关系的"怨"顶到开战线，
+       之后每月由 faction.tick 的集结判定决定它是否真的出征来打你。
+       与「叫阵」的区别：叫阵是武将单挑（士气），宣战是**真的让它带兵来攻你的城**。 */
+    warCost: { grain: 4000, iron: 2000, gold: 20000 },
+    warGrudge: 55,
+    warCdMonths: 6,
     clashCost: { grain: 3000, iron: 1500 },
     clashGain: 0.35,
     clashEveryMonths: 3,
@@ -6546,7 +6552,10 @@ window.GAME = window.GAME || {};
 
   /* ② 领土连通 —— 只有和主城连成一片的才算你的（A1） */
   DATA.LAND = {
-    apply: false,             /* ⚠️ 第一版只算不罚：算出来给玩家看，正式扣不加 */
+    /* v144.4（A1 落地）：由「只算不罚」改为**真扣** ——
+       断链的城产量按 minMul 折算；远城每跳轻微递减（hopPenalty）。
+       判据唯一出口 `GAME.land.statusOf(city).mul`，接入点 `prodBasePerHourOf`。 */
+    apply: true,
     hopPenalty: 0.10,         /* 断链每远 1 格再降一成补给 */
     minMul: 0.35,             /* 补给最低降到三成五 */
     maxHops: 14               /* BFS 上限（防止荒岛无限算） */
@@ -6565,7 +6574,9 @@ window.GAME = window.GAME || {};
     shantyLossAt: 0.02,       /* 越过 bad：每 100 点污染，棚户每月死这么多 */
     villageLoss: 0.004,       /* 云外的村社也在被污染逼走 */
     cleanCost: { iron: 400, stone: 600 },   /* 净化一次 */
-    cleanAt: 25               /* 一次净化去掉这么多 */
+    cleanAt: 25,              /* 一次净化去掉这么多 */
+    /* v144.4（F 落地）：**变异** —— 变质城（>= bad）的产量折损上限（越脏越深）。 */
+    mutLoss: 0.20
   };
 
   /* ④ 温度线 —— 生存三命的第三条（B4：粮 / 温 / 民心） */
@@ -6576,7 +6587,10 @@ window.GAME = window.GAME || {};
     fuelPerPop: 0.4,          /* 供暖：每人每月耗木（按月结算，不按秒） */
     warmHearts: 1.5,          /* 烧上暖，当月民心回来一点 */
     coldVillageLoss: 0.02,    /* 严寒：村社每月走掉这么多人（2%） */
-    coldShantyLoss: 0.06      /* 严寒：棚户每月冻死这么多 */
+    coldShantyLoss: 0.06,     /* 严寒：棚户每月冻死这么多 */
+    /* v144.4（B4 落地）：严寒月的粮产折扣上限（最冷时 −12%；烧了柴的城不吃）。
+       只乘**基础产量**，不连乘其它修正（与 v89.157 加法口径一致）。 */
+    coldProdLoss: 0.12
   };
 
   /* ⑤ 辐射云 —— 会收缩的圈（E 大逃杀：给扩张一个时间压力）
@@ -11539,6 +11553,31 @@ window.GAME = window.GAME || {};
       if (!b || !b.prod) return;
       b.prod.forEach(function (p) { base[p.res] = (base[p.res] || 0) + p.amount * cell.build.lvl; });
     });
+    /* v144.4（A1）：**补给连通系数** —— 断链的城按 minMul 折算，远城按跳数轻微递减。
+       唯一出口 `GAME.land.statusOf(city).mul`（界面与结算同源；apply 关时恒为 1）。 */
+    try {
+      if (GAME.land && GAME.land.statusOf) {
+        var _lm = GAME.land.statusOf(city).mul;
+        if (_lm != null && _lm !== 1) {
+          for (var _bk in base) base[_bk] = base[_bk] * _lm;
+        }
+      }
+    } catch (e) { /* 连通性异常不影响产出主链 */ }
+    /* v144.4（B4）：**严寒月粮产折扣**（最多 −12%；烧了柴的城不吃）。
+       与连通系数一样只乘基础产量，不连乘其它修正。 */
+    try {
+      if (GAME.climate && GAME.climate.prodMulOf) {
+        var _cm = GAME.climate.prodMulOf(city);
+        if (_cm != null && _cm !== 1) { for (var _ck in base) base[_ck] = base[_ck] * _cm; }
+      }
+    } catch (e2) { /* 温度异常不影响产出主链 */ }
+    /* v144.4（F）：**变质城变异** —— 污染越过变质线，材料/水/作物开始长歪（−8%~−20%）。 */
+    try {
+      if (GAME.taint && GAME.taint.mutMulOf) {
+        var _tm = GAME.taint.mutMulOf(city);
+        if (_tm != null && _tm !== 1) { for (var _tk in base) base[_tk] = base[_tk] * _tm; }
+      }
+    } catch (e3) { /* 污染异常不影响产出主链 */ }
     return base;
   };
   GAME.prodBasePerHour = function () {
@@ -29943,6 +29982,37 @@ if (GAME.reg) {
     st.factions.lastMonth = month;
     if (first) return null;                          /* 第一次只记基准，不推进 */
     var c = cfg();
+    /* v144.5（B2「打」）：**宣战中的势力按月真的来犯** ——
+       每场落在一座**最近的我方城**上，走既有入侵结算（真战斗，非播报）。
+       与「定期来袭」共用同一个结算出口 GAME.invasionResolve；
+       宣战期内在 `tick` 这里额外触发，避免改 invasionTick 的时间轮口径。 */
+    var _warHits = [];
+    if (GAME.invasionResolve && GAME.invasionAcceptOn && GAME.invasionAcceptOn()) {
+      arr.forEach(function (f) {
+        if (!FA.isAtWar(f.id)) return;
+        var fdef = FA.defOf(f.id) || {};
+        var cities = (GAME.city && GAME.city.all ? GAME.city.all() : []);
+        var best = null, bd = 1e9, sp0 = SP();
+        cities.forEach(function (cc) {
+          if (!cc || cc.ci == null || !sp0 || !sp0.distOf) return;
+          var dd = sp0.distOf({ ci: f.core }, { ci: cc.ci });
+          if (dd < bd) { bd = dd; best = cc; }
+        });
+        if (!best) return;
+        /* 只有"够得着"才出征（半径 14 + 6 格机动） */
+        if (!(bd <= (f.r || 2) + 6)) {
+          GAME.log.war('⚔ ' + (fdef.name || f.id) + ' 宣战了，但它在 ' + Math.round(bd) + ' 格外 —— 这一月没能出发。');
+          return;
+        }
+        try {
+          var _slot = GAME.invasionSlotOf ? GAME.invasionSlotOf(GAME.realNow()) : 0;
+          var _det = GAME.invasionResolve(best, (fdef.name || f.id), _slot + 900);
+          _warHits.push({ fid: f.id, city: best.name, held: !!(_det && _det.held) });
+          /* 战果回写它的版图（与定期来袭同一出口） */
+          if (GAME.faction.onInvasionResult) GAME.faction.onInvasionResult(f.id, !!(_det && _det.held));
+        } catch (e) { /* 单场异常不影响月度推进 */ }
+      });
+    }
     arr.forEach(function (f) {
       /* v93.6：**它想干什么，决定它长多快**。
          以前四家一段代码、一个速率；现在"集结"真的比"推进"快，
@@ -29986,6 +30056,7 @@ if (GAME.reg) {
         out.clashes.forEach(function (x) { GAME.log.war('⚔ ' + x.msg); });
       }
     }
+    out.war = _warHits;
     return out;
   };
 
@@ -30161,6 +30232,53 @@ if (GAME.reg) {
     FA.remember(fid, 'ally');             /* v93.6：盟约比纳贡重得多 */
     return { ok: true, msg: '与' + def.name + '结盟：粮 −' + U.numText(cost.grain, 0)
       + '、铁 −' + U.numText(cost.iron, 0) + '，它 ' + months + ' 个月不再扩张' };
+  };
+
+  /* ============================================================
+   * v144.5（B2「打」）：**宣战** —— 从态势层升级为真正的战争
+   * ------------------------------------------------------------
+   * 面板原话是「目前只影响态势与警报 —— 尚未接入战斗」。现在接入：
+   *   · 宣战 = 花军费，把这家对你的「怨」顶到 warGrudge（高于 persona.huntAt 才可能集结）；
+   *   · 之后每月 `tick` 的集结判定会真的派远征军来打你**最近的城**
+   *     （入侵通道是既有的 `GAME.invasionResolve` → 真战斗，不是播报）；
+   *   · 有冷却（warCdMonths），不会无限重开。
+   * ============================================================ */
+  FA.isAtWar = function (fid) {
+    var w = ((GAME.state || {}).factionWar) || {};
+    return (w[fid] | 0) > FA.monthNow();
+  };
+  FA.warLeft = function (fid) {
+    var w = ((GAME.state || {}).factionWar) || {};
+    var t = w[fid] | 0, m = FA.monthNow();
+    return t > m ? (t - m) : 0;
+  };
+  FA.declareWar = function (fid) {
+    var st = GAME.state;
+    if (!st) return { ok: false, msg: '无存档' };
+    FA.ensure();
+    var def = FA.defOf(fid);
+    if (!def) return { ok: false, msg: '没有这家势力' };
+    if (FA.isAtWar(fid)) return { ok: false, msg: '已经在交战（剩 ' + FA.warLeft(fid) + ' 个月）' };
+    var city = GAME.currentCity ? GAME.currentCity() : null;
+    if (!city) return { ok: false, msg: '没有可支付的城市' };
+    var cost = cfg().warCost || { grain: 4000, iron: 2000, gold: 20000 };
+    var R = GAME.res(city);
+    if ((R.grain || 0) < cost.grain) return { ok: false, msg: '粮不够：要 ' + U.numText(cost.grain, 0) };
+    if ((R.iron || 0) < cost.iron) return { ok: false, msg: '铁不够：要 ' + U.numText(cost.iron, 0) };
+    if ((st.res.gold || 0) < cost.gold) return { ok: false, msg: '旧币不够：要 ' + U.numText(cost.gold, 0) };
+    if (GAME.city && GAME.city.sub) { GAME.city.sub(city, 'grain', cost.grain); GAME.city.sub(city, 'iron', cost.iron); }
+    if (GAME.goldAdd) GAME.goldAdd(-cost.gold);
+    st.factionWar = st.factionWar || {};
+    var months = cfg().warCdMonths || 6;
+    st.factionWar[fid] = FA.monthNow() + months;
+    /* 把怨顶到开战线（三数增量：怨涨、信跌）—— 走既有的 standingOf 三数 */
+    var _st = FA.standingOf(fid);
+    _st.g = Math.max(0, Math.min(100, (_st.g | 0) + (cfg().warGrudge || 55)));
+    _st.t = Math.max(0, Math.min(100, (_st.t | 0) - 30));
+    GAME.log.war('⚔ 向' + def.name + '宣战：粮 −' + U.numText(cost.grain, 0)
+      + '、铁 −' + U.numText(cost.iron, 0) + '、旧币 −' + U.numText(cost.gold, 0)
+      + '。他们会按月集结，来打你最近的城。');
+    return { ok: true, msg: '已向' + def.name + '宣战（' + months + ' 个月内它会陆续来犯）' };
   };
 
   /* 一场互战：按半径掷骰，强者进、弱者退。返回战果（便于播报与测试） */
@@ -31308,6 +31426,26 @@ if (GAME.reg) {
       + '。下个月它还会涨 —— 这是治不完的。' };
   };
 
+  /* ============================================================
+   * v144.4（F 落地）：**变异** —— 越过变质线，这座城的东西开始长歪。
+   * ------------------------------------------------------------
+   * 审计里写"不做变异单位（要新兵种，属独立版本）"。这里给一个**不改兵种表**的版本：
+   *   · 变质城（>= bad）产量轻微下降（菌群/水/作物被污染，−8%~−20%）；
+   *   · 越脏越明显（bad 到 2×bad 线性加深）；
+   *   · 只在变质城生效 → 正常城一个数都不动（既有断言不受影响）。
+   * 消费点：`prodBasePerHourOf`（与连通/严寒同一条「只乘基础产量」的路）。
+   * ============================================================ */
+  TN.mutMulOf = function (city) {
+    try {
+      if (!city) return 1;
+      var t = TN.of(city), bad = (D().bad == null ? 120 : D().bad);
+      if (!(t >= bad)) return 1;
+      var worst = (D().mutLoss == null ? 0.20 : D().mutLoss);
+      var k = Math.max(0, Math.min(1, (t - bad) / Math.max(1, bad)));
+      return 1 - k * worst;
+    } catch (e) { return 1; }
+  };
+
   /* ---------- 只读出口 ---------- */
   TN.stats = function () {
     var out = { n: 0, warn: 0, bad: 0, worst: null };
@@ -31388,6 +31526,29 @@ if (GAME.reg) {
 
   CL.coldAt = function () { return D().coldAt == null ? -10 : D().coldAt; };
   CL.isCold = function (month) { return CL.tempOf(month) < CL.coldAt(); };
+
+  /* ============================================================
+   * v144.4（B4 落地）：**严寒进粮产** —— 与"寒潮"同一件事的第二个出口？
+   * ------------------------------------------------------------
+   * 审计里记着"不叠到全局粮产（寒潮已在扣）"。但寒潮是**随机事件开关**，
+   * 温度是**可预判的季节**：玩家看着温度往下走，却对粮产毫无感觉 —— 这条线是空的。
+   * 所以这里只加一个**温和的坡度**（最多 −12%），并且：
+   *   · **烧了柴的城不吃**（CL.isWarm）—— 于是"烧柴"第一次也有产出上的回报；
+   *   · 严寒月才生效（coldAt 以下），其余月份系数恒 1（不影响既有平衡断言）。
+   * 消费点：`GAME.prodBasePerHourOf` 与野地上限/仓储无关，只乘资源基础产量。
+   * ============================================================ */
+  CL.prodMulOf = function (city) {
+    try {
+      var m = monthNow();
+      if (!CL.isCold(m)) return 1;
+      if (CL.isWarm(city)) return 1;
+      var d = D();
+      var t = CL.tempOf(m), cold = CL.coldAt();
+      var depth = Math.max(0, Math.min(1, (cold - t) / Math.max(1, Math.abs(cold) || 10)));
+      var worst = (d.coldProdLoss == null ? 0.12 : d.coldProdLoss);
+      return 1 - depth * worst;
+    } catch (e) { return 1; }
+  };
 
   /* 距离下一个严寒月还有几个月（0 = 现在就是）—— 界面用它给玩家预警 */
   CL.coldIn = function () {
@@ -33468,6 +33629,44 @@ if (GAME.reg) {
     GAME.rival.arr().forEach(function (t) { if (t && !t.dead && t.spotted) n++; });
     if (!n) return '';
     return '👁 ' + n + ' 支队伍已经知道你在哪（探明他们 = 他们也看见你）';
+  };
+
+  /* ============================================================
+   * v144.4（A7 落地）：**被谁盯上，持续可见 + 到城倒计时**
+   * ------------------------------------------------------------
+   * 原版只有一行"有 N 支看见你了"，玩家不知道是谁、还有几个月到、
+   * 该往哪座城补防 —— 于是"暴露"这个后果在界面上是空心的。
+   * 这里逐队给出：名字 / 人数 / 目标城 / 到城倒计时（按两格/月粗估）。
+   * ============================================================ */
+  EX.watchersOf = function () {
+    var out = [];
+    if (!GAME.rival) return out;
+    var sp = (GAME.sphereOf ? GAME.sphereOf() : (GAME.mapSphere || GAME.sphere));
+    GAME.rival.arr().forEach(function (t) {
+      if (!t || t.dead || !t.spotted) return;
+      var near = nearestCityOf(t.ci);
+      var dest = t.dest && t.dest.kind === 'city' ? (GAME.city && GAME.city.byId ? GAME.city.byId(t.dest.ci) : null) : null;
+      /* dest.ci 存的是格号（见 rival.js），按格找城 */
+      if (!dest && t.dest && t.dest.kind === 'city' && GAME.city && GAME.city.all) {
+        GAME.city.all().forEach(function (c) { if (!dest && c.ci === t.dest.ci) dest = c; });
+      }
+      var dist = near ? near.dist : null;
+      if (dest && sp && sp.distOf) dist = sp.distOf({ ci: t.ci }, { ci: dest.ci });
+      var eta = (dist == null) ? null : Math.max(0, Math.ceil(dist / 2));   /* 竞争者约 2 格/月 */
+      out.push({ id: t.id, name: t.name, pop: t.pop || 0, aggr: !!t.aggr,
+        target: dest ? dest.name : null, eta: eta });
+    });
+    out.sort(function (a, b) { return (a.eta == null ? 999 : a.eta) - (b.eta == null ? 999 : b.eta); });
+    return out;
+  };
+
+  EX.watchTextOf = function () {
+    var list = EX.watchersOf();
+    if (!list.length) return '';
+    return list.slice(0, 3).map(function (w) {
+      return w.name + '（' + U.numText(w.pop, 0) + ' 人）'
+        + (w.target ? (' → ' + w.target + (w.eta != null ? '（约 ' + w.eta + ' 月后）' : '')) : '（还在游荡）');
+    }).join('　·　') + (list.length > 3 ? '　…共 ' + list.length + ' 支' : '');
   };
 })();
 
