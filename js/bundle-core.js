@@ -1,4 +1,4 @@
-/*! Deepseekdb bundle-core — 第 1/3 包（47 个模块）
+/*! Deepseekdb bundle-core — 第 1/3 包（48 个模块）
  *  由 .workbuddy/tools/patch/build_bundle.py 生成，请勿手改。
  *  ⚠️ 三包必须按 core → war → ui 顺序加载（window.GAME 全局共享）。 */
 /* ---- core.js ---- */
@@ -2565,11 +2565,18 @@ window.GAME = window.GAME || {};
      *   高武力爱突刺、高谋略爱佯攻、高统率爱格挡。观察两合就能猜。
      *   这就是"不可预判 × 可预判"那条尺子：随机里带倾向，不是纯掷骰。
      * ============================================================ */
+    /* ============================================================
+     * v144.1（斗将正式化）：招式加两个数值 ——
+     *   mul   = 这一招**打出去**的伤害倍率（蓄力最重、格挡最轻）
+     *   taken = 出这一招时**自己挨打**的倍率（格挡缩身、蓄力门户大开）
+     * 相克关系（beats）不变 —— 那张表是"心理战"的一半，两处共用。
+     * ⚠️ 只加字段不改既有字段：比分制（duelPlay）读的是 name/beats/note，不受影响。
+     * ============================================================ */
     moves: {
-      stab: { name: '突刺', beats: 'charge', note: '打断蓄力' },
-      guard: { name: '格挡', beats: 'stab', note: '挡住直取' },
-      feint: { name: '佯攻', beats: 'guard', note: '骗开架势' },
-      charge: { name: '蓄力', beats: 'feint', note: '不理虚招' }
+      stab:   { name: '突刺', beats: 'charge', note: '打断蓄力', mul: 1.15, taken: 1.00 },
+      guard:  { name: '格挡', beats: 'stab',   note: '挡住直取', mul: 0.65, taken: 0.70 },
+      feint:  { name: '佯攻', beats: 'guard',  note: '骗开架势', mul: 0.95, taken: 1.10 },
+      charge: { name: '蓄力', beats: 'feint',  note: '不理虚招', mul: 1.45, taken: 1.25 }
     },
     moveOrder: ['stab', 'guard', 'feint', 'charge'],
     playRounds: 5,       /* 手动斗将 5 合，先到 3 分胜 */
@@ -2581,6 +2588,30 @@ window.GAME = window.GAME || {};
     fearHours: 24,
     provokeStaCost: 20,
     winScore: 3
+  };
+
+  /* ============================================================
+   * v144.1（老板「斗将正式化」）：**斗将竞技场** 的数值表
+   * ------------------------------------------------------------
+   * 老板原话：「一个对战场景，两边是双方画像，每回合各自主动出手一次，
+   *   画像飞向对方并造成伤害，伤害有英雄攻击，防御决定，血量由体力决定」。
+   * 三条口径（实现见 `js/duel.js` 的 GAME.duel —— 引擎与界面同读这一张表）：
+   *   · 血量 = 体力上限（staMax）；开打时的血 = 当前体力（体力即本钱）
+   *   · 伤害 = 血池基准 × 攻防对冲 × 招式倍率 × 克制 × 确定性抖动
+   *     攻防对冲沿用 DATA.CLASH 的 K·A/(A+D)（与军队战同一把尺）
+   *   · 血池基准 = √(双方体力上限)（几何平均）—— 体力与攻防两头都真起作用，
+   *     且对等级/装备跨度免疫（改用"挨打方自己的血条"当基准，体力就成了摆设）
+   * 每合**双方都出手、都掉血**；相克只改倍率，不改"谁出手"。
+   * ⚠️ rate 是"几合见分晓"的唯一旋钮：0.18 ≈ 5~6 合；改大更快、改小更胶着。
+   * ============================================================ */
+  DATA.DUEL_ARENA = {
+    enabled: true,
+    rate: 0.18,        /* 每合基准掉血（占血池基准的比例） */
+    maxRounds: 12,     /* 打满上限：都没倒下就比谁剩得多（按剩余比例） */
+    jitter: 0.12,      /* 确定性抖动 ±12%（同 seed 同招必得同结果） */
+    critMul: 1.60,     /* 克招方的伤害倍率 */
+    weakMul: 0.60,     /* 被克方的伤害倍率 */
+    minStaPct: 0.15,   /* 叫阵门槛：体力低于上限 15% 不许叫阵（血就是体力） */
   };
 
   DATA.WILD_GARRISON = { perLevel: 10000 };
@@ -4526,6 +4557,41 @@ window.GAME = window.GAME || {};
     { k: 'ammo',   name: '载弹量', pct: false },
     { k: 'repair', name: '维修',   pct: false },
   ];
+  /* ============================================================
+   * v144.2（C 期数值 · 老板「战舰继续」）：**加成表**
+   * ------------------------------------------------------------
+   * 三条来源（实现见 js/ship.js 的 SH.mod.add —— 只注册来源，不改公式）：
+   *   · station 母港共振：空间站**每升一级** → 全舰属性 +perLv（封顶 cap）
+   *   · synergy 部件协同：一组部件里**最短板**那件达标 → 该组属性加成
+   *     （偏科不奖励 —— 逼玩家配平；tiers 按 min 升序，达标的档**都**生效）
+   *   · fleet   编队共鸣：同 role 的舰 ≥ minShips 艘 → 该 role 主力属性加成
+   * ⚠️ 数值是**待老板拍板**的初值（本轮定的口径：站满级 +18%、协同单组 ≤+24%、
+   *    编队 +6~8%）。调平衡只动这张表。
+   * ⚠️ 键名必须是 SHIP_STATS 里的 k —— 写错会被管道**拒绝并进 bad()**
+   *    （invariants §4.4③ 与 smoke §356⑤ 都盯着这件事）。
+   * ============================================================ */
+  DATA.SHIP_SYNERGY = {
+    station: { perLv: 0.02, cap: 0.30 },
+    sets: [
+      { id: 'fire', name: '火力组', parts: ['weapon', 'command'],
+        tiers: [{ min: 3, v: { atk: 0.12, hit: 0.04 } }, { min: 6, v: { atk: 0.12, hit: 0.04 } }] },
+      { id: 'survive', name: '生存组', parts: ['armor', 'shield'],
+        tiers: [{ min: 3, v: { hp: 0.10, shield: 0.10 } }, { min: 6, v: { hp: 0.10, shield: 0.10 } }] },
+      { id: 'move', name: '机动组', parts: ['engine', 'warp'],
+        tiers: [{ min: 3, v: { spd: 0.10, eva: 0.08 } }, { min: 6, v: { spd: 0.10, eva: 0.08 } }] },
+      { id: 'logistics', name: '后勤组', parts: ['cargo', 'repair'],
+        tiers: [{ min: 3, v: { cap: 0.10, repair: 0.15 } }, { min: 6, v: { cap: 0.10, repair: 0.15 } }] },
+    ],
+    fleet: {
+      minShips: 2,
+      per: {
+        assault: { atk: 0.06 },
+        escort: { hp: 0.06, armor: 0.06 },
+        carrier: { cap: 0.08 }
+      }
+    },
+  };
+
   /* 各舰种的基础值（造舰时一次给；档位倍率再乘）。 */
   DATA.SHIP_BASE = {
     assault: { atk: 120, hit: 0.85, hp: 900,  shield: 200, armor: 6,  eva: 0.15, cap: 4,  spd: 12, warp: 1.0, ammo: 30, repair: 0 },
@@ -15008,8 +15074,96 @@ window.GAME = window.GAME || {};
       return r;
     },
     /* 被拒绝的修饰（数据写错时的证据；有界 50 条） */
-    bad: function () { return this._bad.slice(); }
+    bad: function () { return this._bad.slice(); },
+    /* v144.2：来源清单（测试要"摘掉生产来源、只比内置两来源" ——
+       迁移保真那条性质靠它回到零修饰态，见 invariants §4.4） */
+    ids: function () { return this._src.map(function (s) { return s.id; }); },
+    snapshot: function () { return this._src.map(function (s) { return { id: s.id, fn: s.fn }; }); },
+    restore: function (snap) {
+      var self = this;
+      (snap || []).forEach(function (s) { self.add(s.id, s.fn); });
+    }
   };
+  /* ============================================================
+   * v144.2（C 期数值 · 老板「战舰继续」）：**三个修饰来源**
+   * ------------------------------------------------------------
+   * v142.4 只是把公式搬进管道（零行为变化）。这一期往管道里**长数据** ——
+   *   · `station`  **母港共振**：空间站每级 → 全舰属性 +perLv（封顶 cap）
+   *   · `synergy`  **部件协同**：一组部件**双双**达标 → 该组属性加成
+   *                 （只看最短板那件 —— 偏科不奖励，逼玩家配平）
+   *   · `fleet`    **编队共鸣**：同 role 的舰 ≥ minShips 艘 → 该 role 主力属性加成
+   * 三条都**只注册来源、不改公式**（C 期试点定的规矩：公式冻结、数据生长）。
+   * 数值全在 DATA.SHIP_SYNERGY —— 调平衡只动那张表，本文件不动。
+   * ⚠️ 出厂态（站 Lv1 · 部件 0 级 · 单舰）三条都是**零修饰** ——
+   *    所以"管道 = 旧公式逐位相等"这条性质在零修饰态下依然成立（invariants §4.4）。
+   * ============================================================ */
+  SH.mod.add('station', function () {
+    var S = DATA.SHIP_SYNERGY || {}, cfg = S.station || {};
+    var per = cfg.perLv == null ? 0.02 : cfg.perLv;
+    var cap = cfg.cap == null ? 0.30 : cfg.cap;
+    var pct = Math.min(cap, Math.max(0, (SH.lv() - 1) * per));
+    if (!(pct > 0)) return [];
+    return (DATA.SHIP_STATS || []).map(function (st) {
+      return { k: st.k, op: 'pct', v: pct, src: 'station' };
+    });
+  });
+  SH.mod.add('synergy', function (ship) {
+    var S = DATA.SHIP_SYNERGY || {}, sets = S.sets || [], out = [];
+    sets.forEach(function (g) {
+      var min = Infinity;
+      (g.parts || []).forEach(function (pid) { min = Math.min(min, SH.partLvOf(ship, pid)); });
+      if (!isFinite(min)) return;
+      /* 达标的每一档都生效（可以叠加），所以 tiers 按 min 升序写 */
+      (g.tiers || []).forEach(function (t) {
+        if (min < (t.min || 0)) return;
+        for (var k in (t.v || {})) out.push({ k: k, op: 'pct', v: t.v[k], src: 'synergy:' + g.id });
+      });
+    });
+    return out;
+  });
+  SH.mod.add('fleet', function (ship) {
+    var S = DATA.SHIP_SYNERGY || {}, cfg = S.fleet || {}, per = cfg.per || {};
+    var cls = SH.classOf(ship && ship.classId), role = cls && cls.role;
+    if (!role || !per[role]) return [];
+    var n = 0;
+    SH.ships().forEach(function (x) {
+      var c = SH.classOf(x.classId);
+      if (c && c.role === role) n++;
+    });
+    if (n < (cfg.minShips || 2)) return [];
+    var out = [];
+    for (var k in per[role]) out.push({ k: k, op: 'pct', v: per[role][k], src: 'fleet:' + role });
+    return out;
+  });
+  /* 加成来源 → 显示名（界面与断言共读 —— 不许各处自己拼字符串） */
+  SH.bonusLabel = function (src) {
+    var S = DATA.SHIP_SYNERGY || {}, s = String(src || '');
+    if (s === 'station') return '母港共振';
+    if (s.indexOf('synergy:') === 0) {
+      var g = null;
+      (S.sets || []).forEach(function (x) { if (x.id === s.slice(8)) g = x; });
+      return '协同·' + ((g && g.name) || s.slice(8));
+    }
+    if (s.indexOf('fleet:') === 0) {
+      var r = SH.roleOf(s.slice(6));
+      return '编队·' + ((r && r.name) || s.slice(6));
+    }
+    return s;
+  };
+  /* 当前生效的加成清单（界面与断言共读 —— 不许各自再算一遍） */
+  SH.bonusListOf = function (ship) {
+    var r = SH.mod.of(ship);
+    var by = {};
+    (SH.mod.collect(ship) || []).forEach(function (m) {
+      if (m.src === 'base' || (m.src || '').indexOf('part:') === 0) return;
+      var k = m.src || '?';
+      by[k] = (by[k] || 0) + (m.op === 'pct' ? m.v : 0);
+    });
+    return Object.keys(by).map(function (k) {
+      return { src: k, pct: Math.round(by[k] * 10000) / 10000 };
+    });
+  };
+
   /* 基础值 = SHIP_BASE[role] × 档位倍率；再逐部件累加 per × 等级（经管道）。 */
   SH.statsOf = function (ship) { return SH.mod.of(ship).out; };
   /* 某舰的战力粗值（排序/概览用；不是战斗公式） */
@@ -35272,18 +35426,26 @@ if (GAME.reg) {
         · 守将没超上限 → 就用他（有名字有头衔，真实感）
         · 超了 → 按上限造一个"游荡者"顶上
      必须用**确定性 rand**（U.rng(ci)）—— 否则每合重算时对手四维会漂，
-     同样的出招会得到不同结果，斗将就不成立了。 */
+     同样的出招会得到不同结果，斗将就不成立了。
+
+     ⚠️ v144.1（斗将正式化）改了这条：**上限从 myLv×1.5+10 改成 = 君主等级**。
+     原口径在"血 = 体力"之后不再成立 —— 等级直接买体力上限，
+     于是对手常年比君主高 1.5~2.5 倍血（实测 Lv1 君主 vs Lv12 对手：
+     124 血对 100 血，读招到位也只有 **40%** 胜率；Lv10 时差距更大）。
+     单挑要的是"**读招定胜负**"，不是"血条定胜负" —— 挑战性交给
+     物种偏科（四维重分配 → 招式倾向）与资质差异，不交给等级。 */
   /* v141：`speciesId` 可选 —— 场景遭遇时由场景指定"撞见的是哪一头"，
      不指定就按 ci 确定性抽（原来的行为）。 */
   P.duelFoe = function (ci, speciesId) {
     var myLv = P.lv();
-    var cap = Math.max(10, Math.round(myLv * 1.5 + 10));
+    /* v144.1：单挑对挑 —— 对手等级 = 君主等级（见函数头注释；旧 cap = myLv×1.5+10） */
+    var cap = Math.max(1, myLv | 0);
     var d = GAME.wildDefenseAt ? GAME.wildDefenseAt(ci) : null;
     /* ⛔ v141 实测踩到：这一行原来**优先返回野地守将**，于是"场景里撞见一头辐光孢子母体"
        实际打的是该格的守将（掠夺者头目）—— 指定物种被静默吞掉。
        指定了物种就跳过守将分支，按物种造。 */
     if (!speciesId && d && d.gen && (d.gen.level | 0) <= cap) return d.gen;
-    var glv = Math.max(5, Math.min(cap, (d && d.gen && (d.gen.level | 0)) || cap));
+    var glv = Math.max(1, Math.min(cap, (d && d.gen && (d.gen.level | 0)) || cap));
     var rnd = GAME.utils.rng(((ci | 0) * 2654435761) >>> 0);
     /* v136（老板：「名为斗将，实际上对面可以为生化兽等各种废土物种」）：
        从 `DATA.DUEL_FOES` 抽一个物种 —— 按 ci 确定性抽，同一格永远同一个对手。 */
@@ -35337,10 +35499,16 @@ if (GAME.reg) {
     var s = st0(), lord = P.lord();
     if (!s || !lord) return { ok: false, msg: '没有君主' };
     if (!GAME.battle || !GAME.battle.duelPlay) return { ok: false, msg: '斗将内核缺失' };
+    if (!GAME.duel || !GAME.duel.play) return { ok: false, msg: '斗将竞技场缺失' };
     if (ci == null) ci = P.pos();
     var n = P.duelOf();
     if (n && !n.done) return { ok: false, msg: '正打着呢' };
     foe = foe || P.duelFoe(ci);
+    /* v144.1（老板「血量由体力决定」）：**体力就是这一仗的血** ——
+       气力不足不许叫阵（否则开打即残血，白送一场）。判据走 `GAME.duel.gate`
+       （唯一出口），不在这里另写一条。 */
+    var gt = GAME.duel.gate(lord);
+    if (!gt.ok) return { ok: false, msg: gt.msg };
     var cost = (D().duelEnergy == null ? 2 : D().duelEnergy);
     var en = GAME.energyNowOf ? GAME.energyNowOf(lord) : 100;
     if (en < cost) return { ok: false, msg: '精力不够，叫不动阵' };
@@ -35348,11 +35516,13 @@ if (GAME.reg) {
     s.prologue.duel = {
       ci: ci, seed: 20261024 + (s.prologue.acts | 0),   /* 固定 seed：同出招同结果 */
       moves: [], rows: [], wa: 0, wb: 0, done: false, winner: null,
-      /* v136：**血量与出手次数**（老板：「每回合出手初始为各 1 次，
-         后续开发武技可能有不同的出手特征」）—— 出手次数做成数据，
-         将来武技改这里就行，不用动判定。 */
-      hpA: 100, hpB: 100,
-      atkPerTurn: { a: 1, b: 1 },
+      /* v144.1：**血量与伤害不再自己算** —— 交给 `GAME.duel.play` 从头复算
+         （同 seed 同招序列必得同一结果，见 duelStep 注释）。
+         v136 的 hpA/hpB/atkPerTurn 三字段退役：那时的血是"比分派生"的（
+         100×(3−对方得分)/3），与老板要的"血=体力"是两本账。
+         老存档带这几个字段也无害 —— 走新口径后它们根本不被读。 */
+      mode: 'arena',
+      res: null,
       foe: { name: foe.name, level: foe.level | 0,
         tong: foe.tong | 0, yw: foe.yw | 0, zm: foe.zm | 0, nz: foe.nz | 0,
         icon: (foe.species && foe.species.icon) || '👤',
@@ -35375,6 +35545,21 @@ if (GAME.reg) {
     return P.duelBegin(ci, P.duelFoe(ci));
   };
 
+  /* 斗将对手（**从开局快照还原**）—— 单一出口。
+     ------------------------------------------------------------
+     `duelStep` 每合复算与 `ui.openDuelPanel` 呈现必须用**同一份对手**：
+     v136 踩过"每合换人 → 比分倒退"，v141 又踩过"遭遇指定的物种被静默换成守将"。
+     老存档没有 foeFull → 退回 duelFoe(ci)（行为与以前一致）。 */
+  P.duelFoeFull = function (d) {
+    if (!d) return null;
+    if (d.foeFull) {
+      return { id: d.foeFull.id, name: d.foeFull.name, level: d.foeFull.level,
+        yw: d.foeFull.yw, tong: d.foeFull.tong, zm: d.foeFull.zm, nz: d.foeFull.nz,
+        species: d.foeFull.species };
+    }
+    return P.duelFoe(d.ci);
+  };
+
   /* 出一招。返回这一合的结果；打完就结算。 */
   P.duelStep = function (moveId) {
     var s = st0(), lord = P.lord(), d = P.duelOf();
@@ -35382,41 +35567,30 @@ if (GAME.reg) {
     var MV = (GAME.DATA && GAME.DATA.DUEL && GAME.DATA.DUEL.moves) || {};
     if (!MV[moveId]) return { ok: false, msg: '没有这一招' };
     var DU = (GAME.DATA && GAME.DATA.DUEL) || {};
-    var maxR = DU.playRounds || 5, need = DU.winScore || 3;
+    if (!GAME.duel || !GAME.duel.play) return { ok: false, msg: '斗将竞技场缺失' };
     d.moves.push(moveId);
-    /* 对手优先取**开局时的快照**（遭遇的对手不一定等于 duelFoe(ci)）；
-       老存档没有 foeFull 时退回 duelFoe(ci) —— 行为与以前一致。 */
-    var foe = d.foeFull
-      ? { id: d.foeFull.id, name: d.foeFull.name, level: d.foeFull.level,
-          yw: d.foeFull.yw, tong: d.foeFull.tong, zm: d.foeFull.zm, nz: d.foeFull.nz,
-          species: d.foeFull.species }
-      : P.duelFoe(d.ci);
-    var r = GAME.battle.duelPlay(lord, foe, d.moves, d.seed);
+    /* 对手取**开局时的快照**（遭遇的对手不一定等于 duelFoe(ci)）——
+       与面板同一出口 `P.duelFoeFull`，杜绝"判定一个对手、画面另一个"。 */
+    var foe = P.duelFoeFull(d);
+    /* ============================================================
+     * v144.1（老板「斗将正式化」）：判定改走 **竞技场内核** `GAME.duel.play`
+     * ------------------------------------------------------------
+     * 改前（v136）：判定 = 5 合比分制（先到 3 分胜），血条是**比分派生**的
+     *   （hp = 100×(3−对方得分)/3）—— 于是"掉血"只是比分的另一种画法，
+     *   攻防（atk/def）在这场里**完全不参与**，体力也不参与。
+     * 改后：血 = 体力，伤害 = 攻防对冲 × 招式倍率（见 js/duel.js 的三条口径）。
+     * ⚠️ 仍是**累积出招从头复算**（与旧内核同构）：不存中间血量，
+     *   所以挂起/重开/回档都不会漂 —— 血条永远是"这一串招式"的确定结果。
+     * ============================================================ */
+    var r = GAME.duel.play(lord, foe, d.moves, d.seed);
     if (!r) return { ok: false, msg: '这一合没判出来' };
-    var row = r.rows[r.rows.length - 1];
-    /* v136：血量与伤害。
-       ⚠️ **HP 必须由比分派生**，不能自己独立扣 ——
-       第一版按"每得一分扣 33 血、暴击 ×1.5 扣 50"独立算，
-       实测出现「我 0 血了但比分才 0:2，还能继续打第 3、4 合」：
-       因为胜负看的是 `duelPlay` 的 3 分制，HP 却是另一本账。
-       现在 hp = 100 × (need − 对方得分) / need，永远和比分同步；
-       伤害 = 这一合 HP 的**真实差值**（暴击只标"克招"，不再偷偷加数值）。 */
-    var _MV2 = (GAME.DATA && GAME.DATA.DUEL && GAME.DATA.DUEL.moves) || {};
-    var _need2 = DU.winScore || 3;
-    var _prevA = 100 - Math.round(100 * (d.wb | 0) / _need2);
-    var _prevB = 100 - Math.round(100 * (d.wa | 0) / _need2);
-    var critA = !!(_MV2[row.a] && _MV2[row.a].beats === row.b);
-    var critB = !!(_MV2[row.b] && _MV2[row.b].beats === row.a);
+    var row = r.rounds[r.rounds.length - 1] || null;
+    d.res = r;
+    d.rows = r.rounds;                 /* 面板与旧读点同源（不再另存一份血量） */
     d.wa = r.wa; d.wb = r.wb;
-    d.hpA = 100 - Math.round(100 * (d.wb | 0) / _need2);
-    d.hpB = 100 - Math.round(100 * (d.wa | 0) / _need2);
-    var dmg = 0, dmgTo = '';
-    if (row.res === 'a') { dmg = Math.max(0, _prevB - d.hpB); dmgTo = 'B'; }
-    else if (row.res === 'b') { dmg = Math.max(0, _prevA - d.hpA); dmgTo = 'A'; }
-    d.rows.push({ a: row.a, b: row.b, res: row.res, aName: row.aName, bName: row.bName,
-      dmg: dmg, to: dmgTo, crit: (row.res === 'a' ? critA : (row.res === 'b' ? critB : false)) });
-    var over = (d.moves.length >= maxR) || r.wa >= need || r.wb >= need;
-    var out = { ok: true, row: row, wa: d.wa, wb: d.wb, done: false, msg: '' };
+    d.hpA = r.hpA; d.hpB = r.hpB;      /* 兼容旧读点：读的是**复算出来的**真血 */
+    var over = !!r.over;
+    var out = { ok: true, row: row, res: r, wa: d.wa, wb: d.wb, done: false, msg: '' };
     if (over) {
       d.done = true;
       d.winner = r.winner;
@@ -35427,7 +35601,8 @@ if (GAME.reg) {
       s.prologue.dueled['c' + d.ci] = 1;
       if (r.winner === 'atk') {
         gain = Math.round(foeLv * 25);
-        txt = '斗将胜 ' + d.wa + ':' + d.wb + ' —— 这片的头目服了';
+        txt = '斗将胜 —— ' + ((d.foe && d.foe.name) || '对手') + ' 先倒下了（我 '
+          + r.hpA + '/' + r.maxA + ' · 他 ' + r.hpB + '/' + r.maxB + '）';
         /* **这一战的价值不在经验**：赢了之后这格的战斗难度下降 40%（3 次）。
            对比：清剿一次 4,000 经验、斗将只有几百 —— 单看经验没人会斗将。
            它的意义是"打不过的时候，先把头目挑下来"。 */
@@ -35443,7 +35618,8 @@ if (GAME.reg) {
         } catch (e) {}
       } else if (r.winner === 'def') {
         gain = Math.round(foeLv * 8);
-        txt = '斗将负 ' + d.wa + ':' + d.wb + ' —— 被打退了';
+        txt = '斗将负 —— 血先见底（我 ' + r.hpA + '/' + r.maxA + ' · 他 '
+          + r.hpB + '/' + r.maxB + '）';
         /* 输的代价：体力与精力（比全军覆没轻得多，但真的疼） */
         try {
           if (GAME.setStaNow) GAME.setStaNow(lord, Math.max(0, GAME.staNow(lord) - 25));
@@ -35451,7 +35627,8 @@ if (GAME.reg) {
         } catch (e) {}
       } else {
         gain = Math.round(foeLv * 15);
-        txt = '斗将平 ' + d.wa + ':' + d.wb + ' —— 谁也没服谁';
+        txt = '斗将平 —— 打满 ' + (r.maxRounds || 12) + ' 合谁也没倒（我 '
+          + r.hpA + '/' + r.maxA + ' · 他 ' + r.hpB + '/' + r.maxB + '）';
       }
       if (gain > 0 && GAME.battle && GAME.battle.gainExp) {
         GAME.battle.gainExp(lord, gain, '斗将 · ' + (d.foe ? d.foe.name : '对手'));
@@ -35463,8 +35640,9 @@ if (GAME.reg) {
       out.done = true; out.winner = r.winner; out.gain = gain;
       out.msg = txt + '　经验 +' + gain;
     } else {
-      out.msg = '第 ' + d.moves.length + ' 合：' + row.aName + ' 对 ' + row.bName + '　'
-        + (row.res === 'a' ? '占先' : row.res === 'b' ? '吃亏' : '相持');
+      out.msg = '第 ' + d.moves.length + ' 合：' + row.aName + ' 对 ' + row.bName
+        + '　我掉 ' + row.dmgToA + ' · 他掉 ' + row.dmgToB
+        + (row.res === 'a' ? '（我占先）' : row.res === 'b' ? '（我吃亏）' : '（相持）');
     }
     return out;
   };
@@ -36141,6 +36319,171 @@ if (GAME.reg) {
   });
 }
 
+})();
+
+/* ---- duel.js ---- */
+/* ============================================================
+ * js/duel.js — **斗将竞技场** 引擎（v144.1 · 老板「斗将正式化」）
+ * ------------------------------------------------------------
+ * 老板原话：「一个对战场景，两边是双方画像，每回合各自主动出手一次，
+ *   画像飞向对方并造成伤害，伤害有英雄攻击，防御决定，血量由体力决定」。
+ *
+ * 三条口径（**只此一份**，界面/前传/场景遭遇/测试同读）：
+ *   ① 血量 = 体力上限（staMax）；开打时的血 = **当前体力**（体力就是这一仗的本钱）
+ *   ② 伤害 = 血池基准 × 攻防对冲 × 出手倍率 × 挨打倍率 × 克制 × 确定性抖动
+ *       · 攻防对冲沿用 `DATA.CLASH` 的 K·A/(A+D)（与军队战**同一把尺**）
+ *       · 血池基准 = √(双方体力上限)（几何平均）——
+ *         于是"体力"与"攻防"两头都真起作用，且对等级/装备跨度免疫：
+ *         血厚者更耐打（挨的绝对血更多），攻高防低者打得更疼。
+ *         若改用"挨打方自己的血条"当基准，体力就成了摆设（掉血按比例，几合必死不变）。
+ *   ③ 每合**双方各出手一次**（都出手、都掉血），不是"你一下我一下"；
+ *      招式相克只改倍率（克招方 ×critMul / 被克方 ×weakMul），不改"谁出手"。
+ *
+ * 纯函数：`play()` 用**累积出招序列**从头复算（同 seed 同招 → 逐位同结果），
+ *   不落任何状态 —— 与 `battle.duelPlay` 同构，挂起/重开都不会漂。
+ *   落账（经验/体力/战利品/难度下降）由调用方（prologue.duelStep）负责。
+ *
+ * ⚠️ 与 `battle.duelPlay`（5 合比分制 · 势力叫阵/挑衅在用）是**两个玩法**：
+ *   那个是"心理战比谁占先"，这个是"真打血量"。相克表与对手倾向**共用**
+ *   （`DATA.DUEL.moves` / `battle.duelEnemyMove`），不另起一套。
+ * ============================================================ */
+
+
+(function () {
+  var GAME = window.GAME = window.GAME || {};
+  var DATA = GAME.DATA;
+
+  var DU = GAME.duel = {};
+
+  /* ---------- 配置（数值全在 DATA.DUEL_ARENA，改平衡只改那里） ---------- */
+  DU.cfg = function () { return DATA.DUEL_ARENA || {}; };
+
+  /* ---------- 三条口径的零件（界面与断言都要读，故逐个开出口） ---------- */
+  /* 血量：体力上限（下限 1 —— 不允许出现 0 血开打） */
+  DU.hpMaxOf = function (g) {
+    var a = (g && GAME.genAttrs) ? GAME.genAttrs(g) : null;
+    var v = a ? (a.staMax || 0) : (g && g.staMax) || 0;
+    return Math.max(1, Math.round(v || 100));
+  };
+  /* 开打时的血 = 当前体力（体力不满 = 这一仗的本钱就薄） */
+  DU.hp0Of = function (g) {
+    var a = (g && GAME.genAttrs) ? GAME.genAttrs(g) : null;
+    var now = a ? (a.sta != null ? a.sta : a.staMax) : (g && g.stamina) || 0;
+    var mx = DU.hpMaxOf(g);
+    return Math.max(1, Math.min(mx, Math.round(now || mx)));
+  };
+  DU.atkOf = function (g) {
+    var a = (g && GAME.genAttrs) ? GAME.genAttrs(g) : null;
+    return Math.max(1, Math.round(a ? (a.atk || 0) : (g && g.attack) || 0));
+  };
+  DU.defOf = function (g) {
+    var a = (g && GAME.genAttrs) ? GAME.genAttrs(g) : null;
+    return Math.max(0, Math.round(a ? (a.def || 0) : (g && g.defense) || 0));
+  };
+  /* 攻防对冲（与军队战同一把尺 —— 见 tactic.clashFactor 的注释） */
+  DU.clash = function (A, D) {
+    var K = ((DATA.CLASH || {}).K == null ? 2 : DATA.CLASH.K);
+    A = Math.max(0, A || 0); D = Math.max(0, D || 0);
+    if (A + D <= 0) return 1;
+    return K * A / (A + D);
+  };
+  /* 血池基准 = √(双方体力上限) */
+  DU.hpRefOf = function (a, b) {
+    return Math.sqrt(DU.hpMaxOf(a) * DU.hpMaxOf(b));
+  };
+  /* 单次伤害（纯函数）：血池基准 × 对冲 × 倍率 × 抖动，下限 1（没有"零伤害的出手"） */
+  DU.hitOf = function (hpRef, atk, def, mul, taken, advMul, jitter) {
+    var C = DU.cfg();
+    var rate = C.rate == null ? 0.18 : C.rate;
+    var v = hpRef * rate * DU.clash(atk, def) * (mul || 1) * (taken || 1) * (advMul || 1) * (jitter || 1);
+    return Math.max(1, Math.round(v));
+  };
+
+  /* ---------- 叫阵门槛：体力就是血，低于比例不许叫阵 ---------- */
+  DU.gate = function (g) {
+    var C = DU.cfg();
+    var need = C.minStaPct == null ? 0.15 : C.minStaPct;
+    var mx = DU.hpMaxOf(g), now = DU.hp0Of(g);
+    if (mx <= 0 || now / mx >= need) return { ok: true, pct: mx ? now / mx : 1 };
+    return { ok: false, pct: now / mx,
+      msg: '气力只剩 ' + Math.round(now / mx * 100) + '%（血就是体力）—— 先歇过再来叫阵' };
+  };
+
+  /* ---------- 复算一整场（纯函数 · 唯一判定出口） ----------
+     moves：我方逐合出招（长度 = 已打合数）；对手每合的招由
+     `battle.duelEnemyMove` 按属性倾向确定（与比分制共用 —— 不另起一套）。
+     返回 null 仅当"人都不齐"（调用方按失败处理）。 */
+  DU.play = function (a, b, moves, seed) {
+    var C = DU.cfg();
+    var D = DATA.DUEL || {}, MV = D.moves || {};
+    if (!a || !b) return null;
+    moves = moves || [];
+    var maxA = DU.hpMaxOf(a), maxB = DU.hpMaxOf(b);
+    var hpRef = DU.hpRefOf(a, b);
+    var atkA = DU.atkOf(a), defA = DU.defOf(a);
+    var atkB = DU.atkOf(b), defB = DU.defOf(b);
+    var hpA = DU.hp0Of(a), hpB = DU.hp0Of(b);
+    var jitter = C.jitter == null ? 0.12 : C.jitter;
+    var critMul = C.critMul == null ? 1.6 : C.critMul;
+    var weakMul = C.weakMul == null ? 0.6 : C.weakMul;
+    var maxR = C.maxRounds || 12;
+    var rows = [], log = [], wa = 0, wb = 0, winner = null, over = false;
+    var ida = a.id || 'a', idb = b.id || 'b';
+    var nmA = a.name || '我', nmB = b.name || '对手';
+
+    for (var i = 0; i < moves.length && i < maxR; i++) {
+      var ma = moves[i];
+      var mb = (GAME.battle && GAME.battle.duelEnemyMove) ? GAME.battle.duelEnemyMove(b, i + 1, seed) : 'stab';
+      /* 克制：只改倍率，不改"谁出手"（每合双方都出手） */
+      var adv = 0;
+      if (ma !== mb) {
+        if (MV[ma] && MV[ma].beats === mb) adv = 1;
+        else if (MV[mb] && MV[mb].beats === ma) adv = -1;
+      }
+      var mvA = MV[ma] || {}, mvB = MV[mb] || {};
+      var jA = 1 + ((GAME.invasionRoll ? GAME.invasionRoll('duelj|' + ida + '|' + (i + 1) + '|' + seed) : 0.5) * 2 - 1) * jitter;
+      var jB = 1 + ((GAME.invasionRoll ? GAME.invasionRoll('duelj|' + idb + '|' + (i + 1) + '|' + seed) : 0.5) * 2 - 1) * jitter;
+      /* 我打他：我的出手倍率 × 他这一招的破绽（taken） × 克制倍率 */
+      var dmgToB = DU.hitOf(hpRef, atkA, defB, mvA.mul, mvB.taken,
+        adv > 0 ? critMul : (adv < 0 ? weakMul : 1), jA);
+      /* 他打我：同理 */
+      var dmgToA = DU.hitOf(hpRef, atkB, defA, mvB.mul, mvA.taken,
+        adv < 0 ? critMul : (adv > 0 ? weakMul : 1), jB);
+      hpA = Math.max(0, hpA - dmgToA);
+      hpB = Math.max(0, hpB - dmgToB);
+      if (adv > 0) wa++; else if (adv < 0) wb++;
+      rows.push({
+        r: i + 1, a: ma, b: mb,
+        aName: mvA.name || ma, bName: mvB.name || mb,
+        res: adv > 0 ? 'a' : (adv < 0 ? 'b' : 'tie'),
+        dmgToA: dmgToA, dmgToB: dmgToB, hpA: hpA, hpB: hpB
+      });
+      log.push('第' + (i + 1) + '合：' + (mvA.name || ma) + ' 对 ' + (mvB.name || mb)
+        + '　我掉 ' + dmgToA + ' · 他掉 ' + dmgToB);
+      if (hpA <= 0 || hpB <= 0) break;
+    }
+
+    if (hpB <= 0 && hpA > 0) { winner = 'atk'; over = true; }
+    else if (hpA <= 0 && hpB > 0) { winner = 'def'; over = true; }
+    else if (hpA <= 0 && hpB <= 0) {                 /* 同归于尽：按这一合谁打得多 */
+      winner = (rows.length && rows[rows.length - 1].dmgToB >= rows[rows.length - 1].dmgToA) ? 'atk' : 'def';
+      over = true;
+    } else if (moves.length >= maxR) {               /* 打满：比谁剩得多（按比例） */
+      var ra = hpA / maxA, rb = hpB / maxB;
+      winner = ra > rb ? 'atk' : (rb > ra ? 'def' : 'draw');
+      over = true;
+    }
+    if (over) {
+      log.push(winner === 'atk' ? (nmA + ' 拿下（' + hpA + '/' + maxA + ' 对 ' + hpB + '/' + maxB + '）')
+        : winner === 'def' ? (nmB + ' 拿下（' + hpA + '/' + maxA + ' 对 ' + hpB + '/' + maxB + '）')
+        : '打满 ' + maxR + ' 合，谁也没倒（平手）');
+    }
+    return {
+      rounds: rows, hpA: hpA, hpB: hpB, maxA: maxA, maxB: maxB, hpRef: Math.round(hpRef),
+      atkA: atkA, atkB: atkB, defA: defA, defB: defB,
+      wa: wa, wb: wb, winner: winner, over: over, maxRounds: maxR, log: log
+    };
+  };
 })();
 
 /* ---- market.js ---- */

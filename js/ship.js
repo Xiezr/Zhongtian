@@ -249,8 +249,96 @@ import './state.js';
       return r;
     },
     /* 被拒绝的修饰（数据写错时的证据；有界 50 条） */
-    bad: function () { return this._bad.slice(); }
+    bad: function () { return this._bad.slice(); },
+    /* v144.2：来源清单（测试要"摘掉生产来源、只比内置两来源" ——
+       迁移保真那条性质靠它回到零修饰态，见 invariants §4.4） */
+    ids: function () { return this._src.map(function (s) { return s.id; }); },
+    snapshot: function () { return this._src.map(function (s) { return { id: s.id, fn: s.fn }; }); },
+    restore: function (snap) {
+      var self = this;
+      (snap || []).forEach(function (s) { self.add(s.id, s.fn); });
+    }
   };
+  /* ============================================================
+   * v144.2（C 期数值 · 老板「战舰继续」）：**三个修饰来源**
+   * ------------------------------------------------------------
+   * v142.4 只是把公式搬进管道（零行为变化）。这一期往管道里**长数据** ——
+   *   · `station`  **母港共振**：空间站每级 → 全舰属性 +perLv（封顶 cap）
+   *   · `synergy`  **部件协同**：一组部件**双双**达标 → 该组属性加成
+   *                 （只看最短板那件 —— 偏科不奖励，逼玩家配平）
+   *   · `fleet`    **编队共鸣**：同 role 的舰 ≥ minShips 艘 → 该 role 主力属性加成
+   * 三条都**只注册来源、不改公式**（C 期试点定的规矩：公式冻结、数据生长）。
+   * 数值全在 DATA.SHIP_SYNERGY —— 调平衡只动那张表，本文件不动。
+   * ⚠️ 出厂态（站 Lv1 · 部件 0 级 · 单舰）三条都是**零修饰** ——
+   *    所以"管道 = 旧公式逐位相等"这条性质在零修饰态下依然成立（invariants §4.4）。
+   * ============================================================ */
+  SH.mod.add('station', function () {
+    var S = DATA.SHIP_SYNERGY || {}, cfg = S.station || {};
+    var per = cfg.perLv == null ? 0.02 : cfg.perLv;
+    var cap = cfg.cap == null ? 0.30 : cfg.cap;
+    var pct = Math.min(cap, Math.max(0, (SH.lv() - 1) * per));
+    if (!(pct > 0)) return [];
+    return (DATA.SHIP_STATS || []).map(function (st) {
+      return { k: st.k, op: 'pct', v: pct, src: 'station' };
+    });
+  });
+  SH.mod.add('synergy', function (ship) {
+    var S = DATA.SHIP_SYNERGY || {}, sets = S.sets || [], out = [];
+    sets.forEach(function (g) {
+      var min = Infinity;
+      (g.parts || []).forEach(function (pid) { min = Math.min(min, SH.partLvOf(ship, pid)); });
+      if (!isFinite(min)) return;
+      /* 达标的每一档都生效（可以叠加），所以 tiers 按 min 升序写 */
+      (g.tiers || []).forEach(function (t) {
+        if (min < (t.min || 0)) return;
+        for (var k in (t.v || {})) out.push({ k: k, op: 'pct', v: t.v[k], src: 'synergy:' + g.id });
+      });
+    });
+    return out;
+  });
+  SH.mod.add('fleet', function (ship) {
+    var S = DATA.SHIP_SYNERGY || {}, cfg = S.fleet || {}, per = cfg.per || {};
+    var cls = SH.classOf(ship && ship.classId), role = cls && cls.role;
+    if (!role || !per[role]) return [];
+    var n = 0;
+    SH.ships().forEach(function (x) {
+      var c = SH.classOf(x.classId);
+      if (c && c.role === role) n++;
+    });
+    if (n < (cfg.minShips || 2)) return [];
+    var out = [];
+    for (var k in per[role]) out.push({ k: k, op: 'pct', v: per[role][k], src: 'fleet:' + role });
+    return out;
+  });
+  /* 加成来源 → 显示名（界面与断言共读 —— 不许各处自己拼字符串） */
+  SH.bonusLabel = function (src) {
+    var S = DATA.SHIP_SYNERGY || {}, s = String(src || '');
+    if (s === 'station') return '母港共振';
+    if (s.indexOf('synergy:') === 0) {
+      var g = null;
+      (S.sets || []).forEach(function (x) { if (x.id === s.slice(8)) g = x; });
+      return '协同·' + ((g && g.name) || s.slice(8));
+    }
+    if (s.indexOf('fleet:') === 0) {
+      var r = SH.roleOf(s.slice(6));
+      return '编队·' + ((r && r.name) || s.slice(6));
+    }
+    return s;
+  };
+  /* 当前生效的加成清单（界面与断言共读 —— 不许各自再算一遍） */
+  SH.bonusListOf = function (ship) {
+    var r = SH.mod.of(ship);
+    var by = {};
+    (SH.mod.collect(ship) || []).forEach(function (m) {
+      if (m.src === 'base' || (m.src || '').indexOf('part:') === 0) return;
+      var k = m.src || '?';
+      by[k] = (by[k] || 0) + (m.op === 'pct' ? m.v : 0);
+    });
+    return Object.keys(by).map(function (k) {
+      return { src: k, pct: Math.round(by[k] * 10000) / 10000 };
+    });
+  };
+
   /* 基础值 = SHIP_BASE[role] × 档位倍率；再逐部件累加 per × 等级（经管道）。 */
   SH.statsOf = function (ship) { return SH.mod.of(ship).out; };
   /* 某舰的战力粗值（排序/概览用；不是战斗公式） */

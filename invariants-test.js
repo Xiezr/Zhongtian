@@ -538,6 +538,17 @@
     return true;
   }, null, function (b) { return 'classId=' + b.classId; });
 
+  /* ②③④ 起（含① 迁移保真）：**摘掉 C 期的三个生产来源**
+     ------------------------------------------------------------
+     v144.2：管道里现在常驻母港共振 / 部件协同 / 编队共鸣三条 ——
+     它们本来就是要让属性偏离旧公式的。本节（§4.4）测的是**管道本身**
+     （迁移保真 / 可插拔 / 坏数据 / 异常免疫），生产数据由 smoke §356 单独钉。
+     不摘的后果：② 的"精确翻倍"写成 base0.atk*2、③ 的"好修饰 +7"写成
+     base0.atk+7 —— 那两个式子只在**零 pct** 下成立，生产 pct 一进来就假红。
+       ① 出厂数据干净（上一条）**在生产态**跑 —— 它盯的就是生产数据不出坏修饰。 */
+  var PROD_SNAP = G.ship.mod.snapshot();
+  PROD_SNAP.forEach(function (s) { G.ship.mod.add(s.id, null); });
+
   /* ① 迁移保真：statsOf（管道）与 v142.4 前旧公式手算逐位相等（防迁移漂移） */
   prop('战舰·modifier 管道零行为变化（statsOf = 旧公式手算逐位相等）', 40, function (rng) {
     return modShip(rng);
@@ -645,6 +656,7 @@
     return true;
   }, null, null);
   modClear();
+  G.ship.mod.restore(PROD_SNAP);        /* 生产来源归位（见上：不许留成摘除态） */
   ST.station.lv = 1;                    /* 复原：本节把空间站临时开到了 9 级 */
 
   /* ============================================================

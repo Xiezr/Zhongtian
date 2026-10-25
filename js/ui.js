@@ -8954,78 +8954,82 @@ import './state.js';
    * 只说事实，不写"你要重建文明"之类（沿用 prologue.js 的调性）。
    * ============================================================ */
   /* ============================================================
-   * v132：**斗将面板**（前传 · 点名单挑）
+   * v132：**点名斗将**（老板「就是大地图加地块探索加斗将等」）
    * ------------------------------------------------------------
-   * 只做呈现：四招 + 逐合记录 + 打完的结算。判定全在 `prologue.duelStep`
-   * （内核是 `battle.duelPlay`，这里不重算一分一合）。
-   * 对手的招式**看不到**，但能从他出过的合里反推倾向 —— 那是这个玩法唯一的读点，
-   * 所以面板只写"他露过什么"，不提前泄露下一招。
+   * 只做呈现：四招 + 逐合记录 + 打完的结算。判定不在本文件。
    * ============================================================ */
   /* ============================================================
-   * v136（老板：「立城前的君主升级简直是狗屎，纯点按钮升级。
-   *   制作一个斗将面板，左右侧为敌我双方将领，每回合出手初始为各 1 次
-   *   （后续开发武技可能有不同的出手特征），出手还有动画，以及伤害显示，
-   *   最终胜利有一个弹窗显示，并提示经验和物资收获。
-   *   名为斗将，实际上对面可以为生化兽等各种废土物种」）
+   * v144.1（老板「斗将正式化」）：**斗将竞技场**
    * ------------------------------------------------------------
-   * 改前：一列文字 + 四个按钮，读起来像调试日志。
+   * 老板原话：「一个对战场景，两边是双方画像，每回合各自主动出手一次，
+   *   画像飞向对方并造成伤害，伤害有英雄攻击，防御决定，血量由体力决定」。
+   * 改前（v136）：血条是**比分派生**的（hp = 100×(3−对方得分)/3）——
+   *   掉血只是比分的另一种画法，攻防与体力在这场里完全不参与；
+   *   出手是"谁占先谁飞"，另一边站着不动。
    * 现在：
-   *   · 左右两张卡对峙 —— 左我（君主）· 右敌（废土物种，见 DATA.DUEL_FOES）
-   *   · 每合各出手 **1 次**（读 `d.atkPerTurn`，将来武技改数据即可）
-   *   · 出手动画 + 伤害飘字：**每次重绘自动播一次**
-   *     （每合都会重开面板，所以不需要 JS 计时器，见 index.html 的 keyframes）
-   *   · 打完换结算卡：胜负 + 比分 + 经验 + 物资清单
-   * ⚠️ 一分一合都不在这里算 —— 判定全在 `prologue.duelStep`（内核 battle.duelPlay）。
-   *    面板只呈现，杜绝"两套口径"。
+   *   · 左右两张**画像**对峙 —— 左我（君主真人头像）· 右敌（废土物种图鉴像）
+   *   · **每合双方各出手一次** → 两张画像**同时飞向对方**，两边各飘一个伤害数
+   *   · 血 = **体力**（上限 staMax，开打时按当前体力起手），面板写明"体力即血"
+   *   · 面板直接显示**攻/防**两个数 —— 伤害就是这两个数定的，不能让玩家猜
+   * ⚠️ 一分一合都不在这里算：血量与伤害全由 `GAME.duel.play` 从头复算
+   *   （见 js/duel.js —— 三条口径与数值表都在那里），面板只负责画。
    * ============================================================ */
   ui.openDuelPanel = function () {
     var P = GAME.prologue || {};
     var d = P.duelOf ? P.duelOf() : null;
     if (!d) { ui.toast('没有正在进行的斗将'); return; }
+    var DUA = (GAME.DATA && GAME.DATA.DUEL_ARENA) || {};
     var DU = (GAME.DATA && GAME.DATA.DUEL) || {};
     var MV = DU.moves || {}, ORDER = DU.moveOrder || Object.keys(MV);
     var lord = P.lord ? P.lord() : null;
     var f = d.foe || {};
-    var hpA = (d.hpA == null ? 100 : d.hpA);
-    var hpB = (d.hpB == null ? 100 : d.hpB);
-    var last = (d.rows && d.rows.length) ? d.rows[d.rows.length - 1] : null;
-    var myLv = (lord && lord.level) | 0, foeLv = f.level | 0;
-
-    /* ---- 这一合谁打谁：决定动画方向、飘字落点 ---- */
-    var aHit = !!(last && last.to === 'A');   /* 挨打的是我 */
-    var bHit = !!(last && last.to === 'B');   /* 挨打的是他 */
-    var dmgOf = function (on) {
-      /* 结算态不飘字 —— 否则"负"字旁边会挂一个上一合的 -33 */
-      if (d.done) return '';
-      if (!last || !last.dmg) return '';
-      if (on === 'A' && !aHit) return '';
-      if (on === 'B' && !bHit) return '';
-      return '<div class="duel-dmg' + (last.crit ? ' crit' : '') + '">-'
-        + last.dmg + (last.crit ? ' 暴击' : '') + '</div>';
+    /* 复算（不存血量）：血条永远是"这一串招式"的确定结果 —— 与 duelStep 同源。
+       对手走 `P.duelFoeFull`（开局快照），杜绝"判定一个对手、画面另一个"。 */
+    var foe = P.duelFoeFull ? P.duelFoeFull(d) : null;
+    var r = (GAME.duel && GAME.duel.play && lord && foe)
+      ? GAME.duel.play(lord, foe, d.moves || [], d.seed) : null;
+    if (!r) { ui.toast('斗将状态读不出来'); return; }
+    var last = r.rounds.length ? r.rounds[r.rounds.length - 1] : null;
+    var mvShow = function (m) {
+      var x = MV[m] || {};
+      var mu = (x.mul == null ? 1 : x.mul), tk = (x.taken == null ? 1 : x.taken);
+      return (x.name || m) + ' ×' + mu.toFixed(2) + '/×' + tk.toFixed(2);
     };
-    var card = function (side, icon, name, lv, tag, hp, cls, dmgOn) {
-      var pct = Math.max(0, Math.min(100, Math.round(hp)));
+
+    /* ---- 一张卡：画像 + 名字 + 攻防 + 血条（血 = 体力） ---- */
+    var card = function (side, g, icon, name, lv, tag, hp, max, atk, def, cls, dmg, crit) {
+      var pct = Math.max(0, Math.min(100, Math.round(hp / Math.max(1, max) * 100)));
       var col = pct > 60 ? '#6fbf73' : (pct > 30 ? '#d9a441' : '#d9534f');
+      var ava;
+      if (icon) ava = '<div class="duel-ava">' + icon + '</div>';
+      else if (GAME.portraits && GAME.portraits.html) ava = '<div class="duel-por">' + GAME.portraits.html(g, 72) + '</div>';
+      else ava = '<div class="duel-ava">🧍</div>';
       return '<div class="duel-card ' + side + (cls ? ' ' + cls : '') + '">'
-        + dmgOf(dmgOn)
-        + '<div class="duel-ava">' + icon + '</div>'
+        + (dmg ? '<div class="duel-dmg' + (crit ? ' crit' : '') + '">-' + dmg + (crit ? ' 暴击' : '') + '</div>' : '')
+        + ava
         + '<div style="font-size:var(--fs-cap);font-weight:700;margin-top:2px;'
         + 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + U.escape(name) + '</div>'
         + '<div class="ui-sub" style="font-size:var(--fs-cap);">Lv' + lv
         + (tag ? ' · ' + U.escape(tag) : '') + '</div>'
+        + '<div class="ui-sub" style="font-size:var(--fs-cap);">攻 ' + atk + ' · 防 ' + def + '</div>'
         + '<div class="duel-hp"><i style="width:' + pct + '%;background:' + col + ';"></i></div>'
-        + '<div class="ui-sub" style="font-size:var(--fs-cap);margin-top:1px;">' + pct + ' / 100</div>'
+        + '<div class="ui-sub" style="font-size:var(--fs-cap);margin-top:1px;">' + hp + ' / ' + max + '</div>'
         + '</div>';
     };
-    var myCls = bHit ? 'duel-lunge-r' : (aHit ? 'duel-hurt' : '');
-    var foeCls = aHit ? 'duel-lunge-l' : (bHit ? 'duel-hurt' : '');
+    /* 每合双方都出手 → 两张画像同时飞向对方（结算态不飞，免得"负"字旁边乱动） */
+    var fly = !!last && !r.over;
     var arena = '<div style="display:flex;align-items:flex-start;gap:10px;margin-top:8px;">'
-      + card('me', '🧍', (lord && lord.name) || '君主', myLv, '我', hpA, myCls, 'A')
+      + card('me', lord, '', (lord && lord.name) || '君主', (lord && lord.level) | 0, '我',
+        r.hpA, r.maxA, r.atkA, r.defA, fly ? 'duel-fly-r' : '',
+        fly ? last.dmgToA : 0, !!(last && last.res === 'b'))
       + '<div class="duel-vs">VS</div>'
-      + card('foe', f.icon || '👤', f.name || '对手', foeLv, f.tag || '', hpB, foeCls, 'B')
+      + card('foe', foe, (f.icon || (foe && foe.species && foe.species.icon) || '👤'),
+        f.name || '对手', f.level | 0, f.tag || '',
+        r.hpB, r.maxB, r.atkB, r.defB, fly ? 'duel-fly-l' : '',
+        fly ? last.dmgToB : 0, !!(last && last.res === 'a'))
       + '</div>';
 
-    /* ---- 对手的"路数读不读得出来"（这是策略的那一半） ---- */
+    /* ---- 对手路数读不读得出来（心理战那一半仍保留） ---- */
     var tendTxt = '', readable = false, bestK = null;
     try {
       if (GAME.battle && GAME.battle.duelTendency) {
@@ -9046,27 +9050,24 @@ import './state.js';
       }
     } catch (e) {}
 
-    /* ---- 交手记录：只留最近 3 合（再多会把面板撑长） ---- */
+    /* ---- 交手记录：只留最近 3 合 ---- */
     var hist = '';
-    var rowsAll = d.rows || [];
-    rowsAll.slice(-3).forEach(function (r, k) {
-      var idx = Math.max(1, rowsAll.length - Math.min(3, rowsAll.length) + k + 1);
-      var cls = r.res === 'a' ? 'var(--green-ok)' : (r.res === 'b' ? 'var(--red-light)' : 'var(--text-dim)');
-      hist += '<div style="font-size:var(--fs-cap);padding:1px 0;color:' + cls + ';">'
-        + '第' + idx + '合　我' + U.escape(r.aName) + ' ⚔ ' + U.escape(r.bName)
-        + '　' + (r.res === 'a' ? '占先' : r.res === 'b' ? '吃亏' : '相持')
-        + (r.dmg ? '　<b>-' + r.dmg + '</b>' + (r.crit ? ' 暴击' : '') : '')
-        + '</div>';
+    r.rounds.slice(-3).forEach(function (rr, k) {
+      var idx = Math.max(1, r.rounds.length - Math.min(3, r.rounds.length) + k + 1);
+      var cl = rr.res === 'a' ? 'var(--green-ok)' : (rr.res === 'b' ? 'var(--red-light)' : 'var(--text-dim)');
+      hist += '<div style="font-size:var(--fs-cap);padding:1px 0;color:' + cl + ';">'
+        + '第' + idx + '合　我' + U.escape(rr.aName) + ' ⚔ ' + U.escape(rr.bName)
+        + '　我掉 <b>' + rr.dmgToA + '</b> · 他掉 <b>' + rr.dmgToB + '</b></div>';
     });
 
-    var atkTxt = '每合各出手 ' + ((d.atkPerTurn && d.atkPerTurn.a) || 1) + ' 次';
     var body = '';
-
-    if (!d.done) {
+    if (!r.over) {
       body = arena
         + '<div class="ui-sub" style="margin-top:7px;text-align:center;">'
-        + '第 <b>' + ((d.moves || []).length + 1) + '</b> 合　比分 <b>' + (d.wa | 0) + ' : ' + (d.wb | 0)
-        + '</b>　（先到 ' + (DU.winScore || 3) + ' 分 / 共 ' + (DU.playRounds || 5) + ' 合 · ' + atkTxt + '）</div>'
+        + '第 <b>' + (r.rounds.length + 1) + '</b> 合　每合双方各出手 <b>1</b> 次'
+        + '（打满 ' + (r.maxRounds || 12) + ' 合 · 血见底即分胜负）</div>'
+        + '<div class="ui-sub" style="margin-top:2px;text-align:center;opacity:.75;">'
+        + '血 = 体力（我的 ' + r.maxA + ' · 他的 ' + r.maxB + '）　伤害 = 攻防对冲 × 招式倍率</div>'
         + (tendTxt ? '<div style="margin-top:4px;text-align:center;font-size:var(--fs-cap);'
             + 'color:' + (readable ? 'var(--green-ok)' : 'var(--gold-light)') + ';">' + U.escape(tendTxt) + '</div>' : '')
         + (f.desc ? '<div class="ui-sub" style="margin-top:3px;text-align:center;opacity:.75;font-size:var(--fs-cap);">'
@@ -9077,33 +9078,34 @@ import './state.js';
             var m = MV[id] || {};
             var hot = bestK && m.beats === bestK ? ' outline:1px solid var(--gold-light);' : '';
             return '<button class="btn gold" data-action="prologue-duel-hit" data-mv="' + id + '"'
-              + ' style="min-width:76px;' + hot + '"'
-              + ' title="' + U.escape(m.note || '') + '">' + U.escape(m.name || id) + '</button>';
+              + ' style="min-width:96px;' + hot + '"'
+              + ' title="' + U.escape(m.note || '') + '">' + U.escape(mvShow(id)) + '</button>';
           }).join('')
         + '</div>'
-        + '<div class="ui-sub" style="margin-top:7px;text-align:center;opacity:.7;">'
-        + '突刺克蓄力 · 格挡克突刺 · 佯攻克格挡 · 蓄力克佯攻</div>';
+        + '<div class="ui-sub" style="margin-top:7px;text-align:center;opacity:.7;font-size:var(--fs-cap);">'
+        + '出手× / 挨打×　·　突刺克蓄力 · 格挡克突刺 · 佯攻克格挡 · 蓄力克佯攻</div>';
     } else {
       /* ---- 结算卡（老板：「最终胜利有一个弹窗显示，并提示经验和物资收获」） ---- */
-      var win = d.winner === 'atk', lose = d.winner === 'def';
+      var win = r.winner === 'atk', lose = r.winner === 'def';
       var big = win ? '胜' : (lose ? '负' : '平');
       var bigCol = win ? '#ffd166' : (lose ? '#d9534f' : '#9a9284');
-      var loot = (d.loot || []).map(function (it) {
+      var d0 = d || {};
+      var loot = (d0.loot || []).map(function (it) {
         return '<span style="display:inline-block;padding:2px 8px;border:1px solid var(--wood-light);'
           + 'border-radius:4px;margin:0 4px;">' + U.escape(it.name) + ' ×' + it.n + '</span>';
       }).join('');
       body = arena
         + '<div style="text-align:center;margin-top:10px;">'
-        /* ⚠️ 结算大字不能写裸 px（smoke 的"零裸字号"会照出来）——
-           走令牌 + transform 放大。 */
+        /* ⚠️ 结算大字不能写裸 px（smoke 的"零裸字号"会照出来）——走令牌 + transform 放大。 */
         + '<div style="font-size:var(--fs-h1);font-weight:800;color:' + bigCol
         + ';line-height:var(--lh-1);transform:scale(1.6);margin:4px 0 8px;">' + big + '</div>'
-        + '<div style="font-size:var(--fs-cap);margin-top:3px;">' + U.escape(d.txt || '') + '</div>'
-        + '<div class="ui-sub" style="margin-top:2px;">比分 ' + (d.wa | 0) + ' : ' + (d.wb | 0) + '</div></div>'
+        + '<div style="font-size:var(--fs-cap);margin-top:3px;">' + U.escape(d0.txt || '') + '</div>'
+        + '<div class="ui-sub" style="margin-top:2px;">共 ' + r.rounds.length + ' 合 · 占先 '
+        + (r.wa | 0) + ' : ' + (r.wb | 0) + '</div></div>'
         + '<div style="margin-top:9px;padding:9px 11px;border:1px solid var(--wood-light);'
         + 'border-radius:7px;background:rgba(var(--sh-rgb),.3);">'
         + '<div style="font-size:var(--fs-cap);">经验　<b style="color:var(--gold-light);">+'
-        + (d.gain | 0) + '</b></div>'
+        + (d0.gain | 0) + '</b></div>'
         + (loot ? '<div style="font-size:var(--fs-cap);margin-top:4px;">物资　' + loot + '</div>'
           : (win ? '' : '<div class="ui-sub" style="margin-top:4px;">这一战没捞到东西</div>'))
         + '</div>'
@@ -9112,12 +9114,12 @@ import './state.js';
         + '<button class="btn" data-action="prologue-duel-close">收手</button></div>';
     }
 
-    var title = d.done
-      ? '⚔ 斗将 · ' + (d.winner === 'atk' ? '拿下' : d.winner === 'def' ? '败退' : '平手')
+    var title = r.over
+      ? '⚔ 斗将 · ' + (r.winner === 'atk' ? '拿下' : r.winner === 'def' ? '败退' : '平手')
       : '⚔ 斗将 · ' + U.escape(f.name || '对手');
-    var html = '<div class="gold-heading">' + title + '</div>' + body;
-    ui.openModal(html, { size: 'auto' });
+    ui.openModal('<div class="gold-heading">' + title + '</div>' + body, { size: 'auto' });
   };
+
 
   ui.campHTML = function () {
     var s = GAME.state || {};
@@ -13043,6 +13045,15 @@ import './state.js';
         return '<span style="display:inline-block;min-width:96px;font-size:var(--fs-cap);color:var(--text-dim);">' +
           sdef.name + ' <b style="color:var(--text);">' + (sdef.pct ? Math.round(v * 100) + '%' : v) + '</b></span>';
       }).join('');
+      /* v144.2（C 期数值）：把"属性为什么是这个数"摊开 ——
+         母港共振 / 部件协同 / 编队共鸣都走 SH.mod 管道，玩家不看见就只会觉得数字玄学。
+         读 `SH.bonusListOf`（唯一出口），不在界面里另算一遍。 */
+      var bonusRows = (SH.bonusListOf ? SH.bonusListOf(selShip) : []).map(function (b) {
+        return '<span style="display:inline-block;padding:0 6px;margin:0 4px 2px 0;'
+          + 'border:1px solid var(--wood-light);border-radius:var(--r-sm);'
+          + 'font-size:var(--fs-cap);color:var(--gold-light);">'
+          + U.escape(SH.bonusLabel(b.src)) + ' +' + Math.round(b.pct * 100) + '%</span>';
+      }).join('') || '<span class="ui-sub">（无加成：升空间站 / 配平部件 / 凑同系编队）</span>';
       var partRows = (DATA.SHIP_PARTS || []).filter(function (p) { return p.id !== 'hull'; }).map(function (p) {
         var plv = SH.partLvOf(selShip, p.id), mx = p.max || 10;
         var chkP = SH.canUpgrade(selShip.id, p.id);
@@ -13065,6 +13076,7 @@ import './state.js';
           '<button class="btn sm" data-action="sp-scrap" data-ship="' + selShip.id + '" style="margin-left:auto;">♻️ 拆解</button>' +
         '</div>' +
         '<div style="margin:8px 0;display:flex;flex-wrap:wrap;gap:2px 6px;">' + statRows + '</div>' +
+        '<div style="margin:0 0 6px;display:flex;flex-wrap:wrap;gap:2px 4px;">' + bonusRows + '</div>' +
         '<div class="ui-sub" style="margin-bottom:4px;">部件（先造好船体，再逐级升级）</div>' +
         partRows +
         '</div>';

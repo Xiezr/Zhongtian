@@ -55,6 +55,7 @@ import './events.js';    /* v121：路上遇到的事 —— 每月一件，两�
 import './gltf.js';
 import './map3d.js';
 import './scene3d.js';   /* v140：2.5D 场景运行时（走进去、动手、结算） */
+import './duel.js';        /* v144.1：斗将竞技场内核（血=体力 · 伤害=攻防 · 每合双方各出手一次） */
 import './battle.js';
 import './battlelog.js';   /* v142.3：战斗回合推进的转移表白名单 + 操作日志（观测层） */
 import './strategy.js';   /* v91.77：回合战斗策略层（独立模块，只出指令） */

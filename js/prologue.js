@@ -563,18 +563,26 @@
         · 守将没超上限 → 就用他（有名字有头衔，真实感）
         · 超了 → 按上限造一个"游荡者"顶上
      必须用**确定性 rand**（U.rng(ci)）—— 否则每合重算时对手四维会漂，
-     同样的出招会得到不同结果，斗将就不成立了。 */
+     同样的出招会得到不同结果，斗将就不成立了。
+
+     ⚠️ v144.1（斗将正式化）改了这条：**上限从 myLv×1.5+10 改成 = 君主等级**。
+     原口径在"血 = 体力"之后不再成立 —— 等级直接买体力上限，
+     于是对手常年比君主高 1.5~2.5 倍血（实测 Lv1 君主 vs Lv12 对手：
+     124 血对 100 血，读招到位也只有 **40%** 胜率；Lv10 时差距更大）。
+     单挑要的是"**读招定胜负**"，不是"血条定胜负" —— 挑战性交给
+     物种偏科（四维重分配 → 招式倾向）与资质差异，不交给等级。 */
   /* v141：`speciesId` 可选 —— 场景遭遇时由场景指定"撞见的是哪一头"，
      不指定就按 ci 确定性抽（原来的行为）。 */
   P.duelFoe = function (ci, speciesId) {
     var myLv = P.lv();
-    var cap = Math.max(10, Math.round(myLv * 1.5 + 10));
+    /* v144.1：单挑对挑 —— 对手等级 = 君主等级（见函数头注释；旧 cap = myLv×1.5+10） */
+    var cap = Math.max(1, myLv | 0);
     var d = GAME.wildDefenseAt ? GAME.wildDefenseAt(ci) : null;
     /* ⛔ v141 实测踩到：这一行原来**优先返回野地守将**，于是"场景里撞见一头辐光孢子母体"
        实际打的是该格的守将（掠夺者头目）—— 指定物种被静默吞掉。
        指定了物种就跳过守将分支，按物种造。 */
     if (!speciesId && d && d.gen && (d.gen.level | 0) <= cap) return d.gen;
-    var glv = Math.max(5, Math.min(cap, (d && d.gen && (d.gen.level | 0)) || cap));
+    var glv = Math.max(1, Math.min(cap, (d && d.gen && (d.gen.level | 0)) || cap));
     var rnd = GAME.utils.rng(((ci | 0) * 2654435761) >>> 0);
     /* v136（老板：「名为斗将，实际上对面可以为生化兽等各种废土物种」）：
        从 `DATA.DUEL_FOES` 抽一个物种 —— 按 ci 确定性抽，同一格永远同一个对手。 */
@@ -628,10 +636,16 @@
     var s = st0(), lord = P.lord();
     if (!s || !lord) return { ok: false, msg: '没有君主' };
     if (!GAME.battle || !GAME.battle.duelPlay) return { ok: false, msg: '斗将内核缺失' };
+    if (!GAME.duel || !GAME.duel.play) return { ok: false, msg: '斗将竞技场缺失' };
     if (ci == null) ci = P.pos();
     var n = P.duelOf();
     if (n && !n.done) return { ok: false, msg: '正打着呢' };
     foe = foe || P.duelFoe(ci);
+    /* v144.1（老板「血量由体力决定」）：**体力就是这一仗的血** ——
+       气力不足不许叫阵（否则开打即残血，白送一场）。判据走 `GAME.duel.gate`
+       （唯一出口），不在这里另写一条。 */
+    var gt = GAME.duel.gate(lord);
+    if (!gt.ok) return { ok: false, msg: gt.msg };
     var cost = (D().duelEnergy == null ? 2 : D().duelEnergy);
     var en = GAME.energyNowOf ? GAME.energyNowOf(lord) : 100;
     if (en < cost) return { ok: false, msg: '精力不够，叫不动阵' };
@@ -639,11 +653,13 @@
     s.prologue.duel = {
       ci: ci, seed: 20261024 + (s.prologue.acts | 0),   /* 固定 seed：同出招同结果 */
       moves: [], rows: [], wa: 0, wb: 0, done: false, winner: null,
-      /* v136：**血量与出手次数**（老板：「每回合出手初始为各 1 次，
-         后续开发武技可能有不同的出手特征」）—— 出手次数做成数据，
-         将来武技改这里就行，不用动判定。 */
-      hpA: 100, hpB: 100,
-      atkPerTurn: { a: 1, b: 1 },
+      /* v144.1：**血量与伤害不再自己算** —— 交给 `GAME.duel.play` 从头复算
+         （同 seed 同招序列必得同一结果，见 duelStep 注释）。
+         v136 的 hpA/hpB/atkPerTurn 三字段退役：那时的血是"比分派生"的（
+         100×(3−对方得分)/3），与老板要的"血=体力"是两本账。
+         老存档带这几个字段也无害 —— 走新口径后它们根本不被读。 */
+      mode: 'arena',
+      res: null,
       foe: { name: foe.name, level: foe.level | 0,
         tong: foe.tong | 0, yw: foe.yw | 0, zm: foe.zm | 0, nz: foe.nz | 0,
         icon: (foe.species && foe.species.icon) || '👤',
@@ -666,6 +682,21 @@
     return P.duelBegin(ci, P.duelFoe(ci));
   };
 
+  /* 斗将对手（**从开局快照还原**）—— 单一出口。
+     ------------------------------------------------------------
+     `duelStep` 每合复算与 `ui.openDuelPanel` 呈现必须用**同一份对手**：
+     v136 踩过"每合换人 → 比分倒退"，v141 又踩过"遭遇指定的物种被静默换成守将"。
+     老存档没有 foeFull → 退回 duelFoe(ci)（行为与以前一致）。 */
+  P.duelFoeFull = function (d) {
+    if (!d) return null;
+    if (d.foeFull) {
+      return { id: d.foeFull.id, name: d.foeFull.name, level: d.foeFull.level,
+        yw: d.foeFull.yw, tong: d.foeFull.tong, zm: d.foeFull.zm, nz: d.foeFull.nz,
+        species: d.foeFull.species };
+    }
+    return P.duelFoe(d.ci);
+  };
+
   /* 出一招。返回这一合的结果；打完就结算。 */
   P.duelStep = function (moveId) {
     var s = st0(), lord = P.lord(), d = P.duelOf();
@@ -673,41 +704,30 @@
     var MV = (GAME.DATA && GAME.DATA.DUEL && GAME.DATA.DUEL.moves) || {};
     if (!MV[moveId]) return { ok: false, msg: '没有这一招' };
     var DU = (GAME.DATA && GAME.DATA.DUEL) || {};
-    var maxR = DU.playRounds || 5, need = DU.winScore || 3;
+    if (!GAME.duel || !GAME.duel.play) return { ok: false, msg: '斗将竞技场缺失' };
     d.moves.push(moveId);
-    /* 对手优先取**开局时的快照**（遭遇的对手不一定等于 duelFoe(ci)）；
-       老存档没有 foeFull 时退回 duelFoe(ci) —— 行为与以前一致。 */
-    var foe = d.foeFull
-      ? { id: d.foeFull.id, name: d.foeFull.name, level: d.foeFull.level,
-          yw: d.foeFull.yw, tong: d.foeFull.tong, zm: d.foeFull.zm, nz: d.foeFull.nz,
-          species: d.foeFull.species }
-      : P.duelFoe(d.ci);
-    var r = GAME.battle.duelPlay(lord, foe, d.moves, d.seed);
+    /* 对手取**开局时的快照**（遭遇的对手不一定等于 duelFoe(ci)）——
+       与面板同一出口 `P.duelFoeFull`，杜绝"判定一个对手、画面另一个"。 */
+    var foe = P.duelFoeFull(d);
+    /* ============================================================
+     * v144.1（老板「斗将正式化」）：判定改走 **竞技场内核** `GAME.duel.play`
+     * ------------------------------------------------------------
+     * 改前（v136）：判定 = 5 合比分制（先到 3 分胜），血条是**比分派生**的
+     *   （hp = 100×(3−对方得分)/3）—— 于是"掉血"只是比分的另一种画法，
+     *   攻防（atk/def）在这场里**完全不参与**，体力也不参与。
+     * 改后：血 = 体力，伤害 = 攻防对冲 × 招式倍率（见 js/duel.js 的三条口径）。
+     * ⚠️ 仍是**累积出招从头复算**（与旧内核同构）：不存中间血量，
+     *   所以挂起/重开/回档都不会漂 —— 血条永远是"这一串招式"的确定结果。
+     * ============================================================ */
+    var r = GAME.duel.play(lord, foe, d.moves, d.seed);
     if (!r) return { ok: false, msg: '这一合没判出来' };
-    var row = r.rows[r.rows.length - 1];
-    /* v136：血量与伤害。
-       ⚠️ **HP 必须由比分派生**，不能自己独立扣 ——
-       第一版按"每得一分扣 33 血、暴击 ×1.5 扣 50"独立算，
-       实测出现「我 0 血了但比分才 0:2，还能继续打第 3、4 合」：
-       因为胜负看的是 `duelPlay` 的 3 分制，HP 却是另一本账。
-       现在 hp = 100 × (need − 对方得分) / need，永远和比分同步；
-       伤害 = 这一合 HP 的**真实差值**（暴击只标"克招"，不再偷偷加数值）。 */
-    var _MV2 = (GAME.DATA && GAME.DATA.DUEL && GAME.DATA.DUEL.moves) || {};
-    var _need2 = DU.winScore || 3;
-    var _prevA = 100 - Math.round(100 * (d.wb | 0) / _need2);
-    var _prevB = 100 - Math.round(100 * (d.wa | 0) / _need2);
-    var critA = !!(_MV2[row.a] && _MV2[row.a].beats === row.b);
-    var critB = !!(_MV2[row.b] && _MV2[row.b].beats === row.a);
+    var row = r.rounds[r.rounds.length - 1] || null;
+    d.res = r;
+    d.rows = r.rounds;                 /* 面板与旧读点同源（不再另存一份血量） */
     d.wa = r.wa; d.wb = r.wb;
-    d.hpA = 100 - Math.round(100 * (d.wb | 0) / _need2);
-    d.hpB = 100 - Math.round(100 * (d.wa | 0) / _need2);
-    var dmg = 0, dmgTo = '';
-    if (row.res === 'a') { dmg = Math.max(0, _prevB - d.hpB); dmgTo = 'B'; }
-    else if (row.res === 'b') { dmg = Math.max(0, _prevA - d.hpA); dmgTo = 'A'; }
-    d.rows.push({ a: row.a, b: row.b, res: row.res, aName: row.aName, bName: row.bName,
-      dmg: dmg, to: dmgTo, crit: (row.res === 'a' ? critA : (row.res === 'b' ? critB : false)) });
-    var over = (d.moves.length >= maxR) || r.wa >= need || r.wb >= need;
-    var out = { ok: true, row: row, wa: d.wa, wb: d.wb, done: false, msg: '' };
+    d.hpA = r.hpA; d.hpB = r.hpB;      /* 兼容旧读点：读的是**复算出来的**真血 */
+    var over = !!r.over;
+    var out = { ok: true, row: row, res: r, wa: d.wa, wb: d.wb, done: false, msg: '' };
     if (over) {
       d.done = true;
       d.winner = r.winner;
@@ -718,7 +738,8 @@
       s.prologue.dueled['c' + d.ci] = 1;
       if (r.winner === 'atk') {
         gain = Math.round(foeLv * 25);
-        txt = '斗将胜 ' + d.wa + ':' + d.wb + ' —— 这片的头目服了';
+        txt = '斗将胜 —— ' + ((d.foe && d.foe.name) || '对手') + ' 先倒下了（我 '
+          + r.hpA + '/' + r.maxA + ' · 他 ' + r.hpB + '/' + r.maxB + '）';
         /* **这一战的价值不在经验**：赢了之后这格的战斗难度下降 40%（3 次）。
            对比：清剿一次 4,000 经验、斗将只有几百 —— 单看经验没人会斗将。
            它的意义是"打不过的时候，先把头目挑下来"。 */
@@ -734,7 +755,8 @@
         } catch (e) {}
       } else if (r.winner === 'def') {
         gain = Math.round(foeLv * 8);
-        txt = '斗将负 ' + d.wa + ':' + d.wb + ' —— 被打退了';
+        txt = '斗将负 —— 血先见底（我 ' + r.hpA + '/' + r.maxA + ' · 他 '
+          + r.hpB + '/' + r.maxB + '）';
         /* 输的代价：体力与精力（比全军覆没轻得多，但真的疼） */
         try {
           if (GAME.setStaNow) GAME.setStaNow(lord, Math.max(0, GAME.staNow(lord) - 25));
@@ -742,7 +764,8 @@
         } catch (e) {}
       } else {
         gain = Math.round(foeLv * 15);
-        txt = '斗将平 ' + d.wa + ':' + d.wb + ' —— 谁也没服谁';
+        txt = '斗将平 —— 打满 ' + (r.maxRounds || 12) + ' 合谁也没倒（我 '
+          + r.hpA + '/' + r.maxA + ' · 他 ' + r.hpB + '/' + r.maxB + '）';
       }
       if (gain > 0 && GAME.battle && GAME.battle.gainExp) {
         GAME.battle.gainExp(lord, gain, '斗将 · ' + (d.foe ? d.foe.name : '对手'));
@@ -754,8 +777,9 @@
       out.done = true; out.winner = r.winner; out.gain = gain;
       out.msg = txt + '　经验 +' + gain;
     } else {
-      out.msg = '第 ' + d.moves.length + ' 合：' + row.aName + ' 对 ' + row.bName + '　'
-        + (row.res === 'a' ? '占先' : row.res === 'b' ? '吃亏' : '相持');
+      out.msg = '第 ' + d.moves.length + ' 合：' + row.aName + ' 对 ' + row.bName
+        + '　我掉 ' + row.dmgToA + ' · 他掉 ' + row.dmgToB
+        + (row.res === 'a' ? '（我占先）' : row.res === 'b' ? '（我吃亏）' : '（相持）');
     }
     return out;
   };

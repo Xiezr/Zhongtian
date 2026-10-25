@@ -2898,13 +2898,14 @@
      动画在**每次重绘时自动播一次** —— 斗将每合都会重开面板，
      所以不需要 JS 计时器：改完状态重绘，最后那一合自己动。
      时长全部 ≤ 420ms，四招连点也不会糊成一团。 */
-  @keyframes duelLungeR { 0%{transform:translate(0,0)} 30%{transform:translate(26px,-4px) scale(1.08)} 100%{transform:translate(0,0)} }
-  @keyframes duelLungeL { 0%{transform:translate(0,0)} 30%{transform:translate(-26px,-4px) scale(1.08)} 100%{transform:translate(0,0)} }
-  @keyframes duelHurt  { 0%{transform:translateX(0)} 25%{transform:translateX(6px)} 55%{transform:translateX(-4px)} 100%{transform:translateX(0)} }
   @keyframes duelDmgUp { 0%{opacity:0;transform:translateY(4px) scale(.8)} 18%{opacity:1;transform:translateY(-2px) scale(1.15)} 100%{opacity:0;transform:translateY(-30px) scale(1)} }
-  .duel-lunge-r { animation: duelLungeR .42s cubic-bezier(.3,1.4,.5,1) both; }
-  .duel-lunge-l { animation: duelLungeL .42s cubic-bezier(.3,1.4,.5,1) both; }
-  .duel-hurt    { animation: duelHurt .38s ease-out both; }
+  /* v144.1（老板「画像飞向对方」）：**每合双方各出手一次** → 两张画像**同时**飞向对方。
+     旧 duelLungeR/L + duelHurt 是"谁占先谁飞"（比分制时代的画法）——
+     出手不再有先后，那三条动画与旧口径一起退役，不留死样式。 */
+  @keyframes duelFlyR { 0%{transform:translate(0,0)} 45%{transform:translate(30px,-6px) scale(1.06)} 100%{transform:translate(0,0)} }
+  @keyframes duelFlyL { 0%{transform:translate(0,0)} 45%{transform:translate(-30px,-6px) scale(1.06)} 100%{transform:translate(0,0)} }
+  .duel-fly-r { animation: duelFlyR .46s cubic-bezier(.3,1.3,.5,1) both; }
+  .duel-fly-l { animation: duelFlyL .46s cubic-bezier(.3,1.3,.5,1) both; }
   /* ⚠️ 字号/圆角/颜色**一律走令牌** —— 第一版我写了一堆裸 20px/#ff7b6b/8px，
      smoke 的设计令牌铁律当场照出 6 条红（字重档位/裸圆角/裸色/裸字号/行高）。
      头像大小用 calc 放大（断言禁的是 `font-size: <数字>` 字面量，calc 不算）。 */
@@ -2917,6 +2918,9 @@
   .duel-card.me { border-color:var(--line-strong); }
   .duel-card.foe { border-color:var(--red-light); }
   .duel-ava { font-size:var(--fs-h1); line-height:var(--lh-1); transform:scale(1.9); margin:6px 0; }
+  /* 画像（v144.1）：君主走真人头像（portraits.js），废土物种走图鉴图标（duel-ava） */
+  .duel-por { display:flex; align-items:center; justify-content:center; margin:4px 0; }
+  .duel-por .portrait-img { border-radius:var(--r-sm); }
   .duel-hp { height:7px; border-radius:var(--r-sm); background:var(--bg-3); overflow:hidden; margin-top:6px; }
   .duel-hp > i { display:block; height:100%; transition:width .3s ease; }
   .duel-vs { align-self:center; font-size:var(--fs-body); font-weight:700; color:var(--gold-light); opacity:.8; padding:0 6px; }

@@ -12384,7 +12384,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
     /* ⚠️ 这份 ORDER 与 build_bundle.py 的 ORDER **必须逐条一致**（本文故意不复用脚本，
        就是为了"构建脚本自己算错时测试还能抓到"）。加了模块两边都要加 ——
        v92 加 fog / memorial 时这里漏改，导致 hash 对不上、守卫假红。 */
-    var ORDER = ['core', 'registry', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'domain', 'map', 'sphere', 'risk', 'years', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'rival', 'land', 'taint', 'climate', 'surge', 'relic', 'goals', 'veteran', 'setskill', 'deck', 'bond', 'tower', 'wonderwar', 'delve', 'unrest', 'expose', 'trooplv', 'idle', 'ending', 'muster', 'founding', 'prologue', 'market', 'events', 'gltf',
+    var ORDER = ['core', 'registry', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'domain', 'map', 'sphere', 'risk', 'years', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'rival', 'land', 'taint', 'climate', 'surge', 'relic', 'goals', 'veteran', 'setskill', 'deck', 'bond', 'tower', 'wonderwar', 'delve', 'unrest', 'expose', 'trooplv', 'idle', 'ending', 'muster', 'founding', 'prologue', 'duel', 'market', 'events', 'gltf',
       'map3d', 'scene3d', 'battle', 'battlelog', 'strategy', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits', 'story', 'ui', 'main'];
     var h = crypto.createHash('sha256');
     try {
@@ -43767,6 +43767,412 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var w = E.wipeBelow;
       return typeof w === 'number' && w > 1 && w <= 2;
     })(), (function () { return 'wipeBelow=' + E.wipeBelow; })());
+  })();
+
+
+  /* ============================================================
+   * §355 · v144.1：**斗将正式化**（老板原话）
+   * ------------------------------------------------------------
+   * 「一个对战场景，两边是双方画像，每回合各自主动出手一次，
+   *   画像飞向对方并造成伤害，伤害有英雄攻击，防御决定，血量由体力决定」
+   * 钉八件事（改前是 v136 的"比分制"：血条是比分派生的，攻防与体力都不参与，
+   *   出手是"谁占先谁飞" —— 这一节就是防它回潮）：
+   *   ① 血量 = 体力（上限 = staMax · 开局血 = 当前体力）
+   *   ② 伤害 = 攻防（攻↑→对方掉更多 · 防↑→自己掉更少 · 对方掉多少与"我的防"无关）
+   *   ③ 每合**双方各出手一次**（每合两条伤害、都 ≥1、两条血都在掉）
+   *   ④ 相克只改倍率（克招 > 平招 > 被克），不改"谁出手"
+   *   ⑤ 从头复算（同 seed 同招序列 → 逐位同结果）；血空即分胜负；打满比剩余
+   *   ⑥ 叫阵门槛：血就是体力，低于 15% 拒
+   *   ⑦ 单挑对挑：对手等级 = 君主等级（否则对手常年多一截血，"读招"无意义）
+   *   ⑧ 界面：双方画像 + 每合双方都飞（旧"谁占先谁飞"的样式已退役）
+   *   ⑨ 真链路：叫阵 → 逐合出招 → 结算（经验 / 战利品 / 叫过阵的格子记账）
+   * ============================================================ */
+  console.log('\n===== 355. v144.1 斗将正式化：血=体力 · 伤害=攻防 · 每合双方各出手 =====');
+  (function () {
+    var DU = G.duel;
+    var A = { id: 'A355', name: '甲', level: 10, yw: 50, tong: 50, zm: 50, nz: 50, attack: 100, defense: 50, stamina: 200 };
+    var B = { id: 'B355', name: '乙', level: 10, yw: 50, tong: 50, zm: 50, nz: 50, attack: 100, defense: 50, stamina: 200 };
+    var seq = ['stab', 'guard', 'feint', 'charge', 'stab', 'guard'];
+
+    check('§355① 血量 = 体力（上限 = staMax · 开局血 = 当前体力 · 不满就少）', (function () {
+      if (!DU) return false;
+      var bk = G.state;
+      try {
+        var st = G.newGame({ name: '斗将档355', cityName: '灰岗', region: '碎垣', mapSeed: 20261024, prologue: true });
+        G.state = st;
+        var lord = G.prologue.lord();
+        if (!lord) return false;
+        var mx = DU.hpMaxOf(lord);
+        if (mx !== Math.round(G.staMax(lord))) return false;         /* 上限就是体力上限 */
+        if (DU.hp0Of(lord) !== Math.round(G.staNow(lord))) return false;
+        G.setStaNow(lord, Math.round(mx * 0.3));                     /* 打到 30% → 开局血也 30% */
+        var hp1 = DU.hp0Of(lord);
+        return hp1 < mx && Math.abs(hp1 - Math.round(mx * 0.3)) <= 1;
+      } finally { G.state = bk; }
+    })(), (function () {
+      return DU ? 'hpMax/hp0 出口在册' : 'GAME.duel 缺失';
+    })());
+
+    check('§355② 伤害由攻防决定（我攻×2→他掉更多 · 他防×4→他掉更少 · 我掉的只看他攻）', (function () {
+      if (!DU) return false;
+      var r0 = DU.play(A, B, ['stab'], 7);
+      var A2 = { id: 'A355', name: '甲', level: 10, yw: 50, tong: 50, zm: 50, nz: 50, attack: 200, defense: 50, stamina: 200 };
+      var B2 = { id: 'B355', name: '乙', level: 10, yw: 50, tong: 50, zm: 50, nz: 50, attack: 100, defense: 200, stamina: 200 };
+      var r1 = DU.play(A2, B, ['stab'], 7);
+      var r2 = DU.play(A, B2, ['stab'], 7);
+      if (!r0 || !r1 || !r2) return false;
+      return r1.rounds[0].dmgToB > r0.rounds[0].dmgToB
+        && r2.rounds[0].dmgToB < r0.rounds[0].dmgToB
+        && r2.rounds[0].dmgToA === r0.rounds[0].dmgToA;     /* 他攻没变 → 我掉的也不变 */
+    })(), (function () {
+      if (!DU) return 'n/a';
+      var r0 = DU.play(A, B, ['stab'], 7);
+      var B2 = { id: 'B355', name: '乙', level: 10, yw: 50, tong: 50, zm: 50, nz: 50, attack: 100, defense: 200, stamina: 200 };
+      var r2 = DU.play(A, B2, ['stab'], 7);
+      return '他掉 ' + r0.rounds[0].dmgToB + ' → 防×4 后 ' + r2.rounds[0].dmgToB;
+    })());
+
+    check('§355③ 每合双方各出手一次（每合两条伤害都 ≥1 · 两边血都在掉）', (function () {
+      if (!DU) return false;
+      var r = DU.play(A, B, ['stab', 'stab', 'stab'], 7);
+      if (!r || r.rounds.length !== 3) return false;
+      for (var i = 0; i < r.rounds.length; i++) {
+        var x = r.rounds[i];
+        if (!(x.dmgToA >= 1) || !(x.dmgToB >= 1)) return false;
+        if (i > 0) {
+          if (r.rounds[i - 1].hpA > 0 && !(x.hpA < r.rounds[i - 1].hpA)) return false;
+          if (r.rounds[i - 1].hpB > 0 && !(x.hpB < r.rounds[i - 1].hpB)) return false;
+        }
+      }
+      return true;
+    })(), (function () {
+      if (!DU) return 'n/a';
+      var r = DU.play(A, B, ['stab', 'stab', 'stab'], 7);
+      return '三合后 我' + r.hpA + '/' + r.maxA + ' 他' + r.hpB + '/' + r.maxB;
+    })());
+
+    check('§355④ 相克只改倍率：克招 > 平招 > 被克', (function () {
+      if (!DU || !DU.hitOf) return false;
+      var C = G.DATA.DUEL_ARENA || {};
+      var ref = DU.hpRefOf(A, B);
+      var n = DU.hitOf(ref, 100, 50, 1, 1, 1, 1);
+      var c = DU.hitOf(ref, 100, 50, 1, 1, C.critMul, 1);
+      var w = DU.hitOf(ref, 100, 50, 1, 1, C.weakMul, 1);
+      return c > n && n > w;
+    })(), (function () {
+      var C = G.DATA.DUEL_ARENA || {}, ref = DU.hpRefOf(A, B);
+      return '平' + DU.hitOf(ref, 100, 50, 1, 1, 1, 1) + ' 克' + DU.hitOf(ref, 100, 50, 1, 1, C.critMul, 1)
+        + ' 被克' + DU.hitOf(ref, 100, 50, 1, 1, C.weakMul, 1);
+    })());
+
+    check('§355⑤ 同 seed 同招序列必得同一结果（从头复算 · 不存中间血量）', (function () {
+      if (!DU) return false;
+      var r1 = DU.play(A, B, seq, 12345);
+      var r2 = DU.play(A, B, seq, 12345);
+      var r3 = DU.play(A, B, seq, 99999);
+      if (!r1 || !r2 || !r3) return false;
+      var same = JSON.stringify(r1.rounds) === JSON.stringify(r2.rounds) && r1.winner === r2.winner;
+      var diff = JSON.stringify(r1.rounds) !== JSON.stringify(r3.rounds);   /* 换 seed 必须变（防平凡解） */
+      return same && diff;
+    })(), (function () {
+      if (!DU) return 'n/a';
+      var r = DU.play(A, B, seq, 12345);
+      return r.rounds.length + ' 合 · winner=' + r.winner;
+    })());
+
+    check('§355⑥ 血空即分胜负（弱方必负）· 打满则比谁剩得多', (function () {
+      if (!DU) return false;
+      var Weak = { id: 'W355', name: '弱', level: 1, yw: 10, tong: 10, zm: 10, nz: 10, attack: 10, defense: 5, stamina: 30 };
+      var Strong = { id: 'S355', name: '强', level: 1, yw: 99, tong: 99, zm: 99, nz: 99, attack: 400, defense: 400, stamina: 100 };
+      var r1 = DU.play(Weak, Strong, new Array(12).fill('stab'), 9);
+      /* 打满：双方都打不动谁（伤害触底 1），血多的一方赢 */
+      var Tank = { id: 'T355', name: '甲', level: 1, yw: 10, tong: 10, zm: 10, nz: 10, attack: 1, defense: 1000, stamina: 50 };
+      var Tank2 = { id: 'U355', name: '乙', level: 1, yw: 10, tong: 10, zm: 10, nz: 10, attack: 1, defense: 1000, stamina: 100 };
+      var r2 = DU.play(Tank, Tank2, new Array(12).fill('stab'), 5);
+      if (!r1 || !r2) return false;
+      return r1.over === true && r1.winner === 'def' && r1.hpA === 0
+        && r2.over === true && r2.rounds.length === 12 && r2.winner === 'def'
+        && r2.hpA > 0 && r2.hpB > 0;
+    })(), (function () {
+      if (!DU) return 'n/a';
+      var W = { id: 'W355', name: '弱', level: 1, attack: 10, defense: 5, stamina: 30 };
+      var S = { id: 'S355', name: '强', level: 1, attack: 400, defense: 400, stamina: 100 };
+      var r = DU.play(W, S, new Array(12).fill('stab'), 9);
+      return '弱方 ' + r.hpA + '/' + r.maxA + ' · winner=' + r.winner;
+    })());
+
+    check('§355⑦ 血就是体力：低于门槛不许叫阵（GAME.duel.gate 唯一出口）', (function () {
+      if (!DU || !DU.gate) return false;
+      var g = { id: 'G355', name: '将', level: 1, yw: 10, tong: 10, zm: 10, nz: 10, stamina: 100 };
+      var full = DU.gate(g);
+      if (G.setStaNow) G.setStaNow(g, Math.round(G.staMax(g) * 0.05));
+      var low = DU.gate(g);
+      return full.ok === true && low.ok === false && /气力/.test(low.msg || '');
+    })(), (function () {
+      if (!DU || !DU.gate) return 'n/a';
+      var g = { id: 'G355', name: '将', level: 1, stamina: 100 };
+      var ok = DU.gate(g);
+      if (G.setStaNow) G.setStaNow(g, Math.round(G.staMax(g) * 0.05));
+      var low = DU.gate(g);
+      return '满=' + ok.ok + ' · 5%=' + low.ok + '（“' + (low.msg || '') + '”）';
+    })());
+
+    check('§355⑧ 单挑对挑：对手等级 = 君主等级（血=体力后不让对手常年多一截血）', (function () {
+      var bk = G.state;
+      try {
+        var st = G.newGame({ name: '斗将档355b', cityName: '灰岗', region: '碎垣', mapSeed: 20261024, prologue: true });
+        G.state = st;
+        var P = G.prologue, lord = P.lord(), foe = P.duelFoe(P.pos());
+        if (!lord || !foe) return false;
+        return (foe.level | 0) === (lord.level | 0);
+      } finally { G.state = bk; }
+    })(), (function () {
+      var bk = G.state;
+      try {
+        G.state = G.newGame({ name: 'x355', cityName: '灰岗', region: '碎垣', mapSeed: 20261024, prologue: true });
+        var P = G.prologue;
+        return '君主 Lv' + (P.lord().level | 0) + ' · 对手 Lv' + (P.duelFoe(P.pos()).level | 0);
+      } catch (e) { return '?'; } finally { G.state = bk; }
+    })());
+
+    check('§355⑨ 界面：双方画像 + 每合**双方都飞**（旧"谁占先谁飞"样式已退役）', (function () {
+      var fs = require('fs'), p = require('path');
+      var s = fs.readFileSync(p.join(__dirname, 'js', 'ui.js'), 'utf8');
+      var h = fs.readFileSync(p.join(__dirname, 'index.html'), 'utf8');
+      return s.indexOf('duel-por') >= 0                   /* 画像容器 */
+        && s.indexOf('portraits.html') >= 0               /* 真头像出口（不是 emoji 占位） */
+        && s.indexOf("'duel-fly-r'") >= 0                 /* 我飞向他 */
+        && s.indexOf("'duel-fly-l'") >= 0                 /* 他飞向我 */
+        && s.indexOf('prologue-duel-hit') >= 0            /* 出手按钮仍在册 */
+        && h.indexOf('.duel-fly-r') >= 0 && h.indexOf('.duel-fly-l') >= 0
+        && h.indexOf('duel-lunge') < 0;                   /* 旧动画整族退役 */
+    })(), 'ui.js / index.html 源码在册');
+
+    check('§355⑩ 真链路：叫阵 → 逐合出招 → 结算（经验 / 战利品 / 叫过阵的格子都入账）', (function () {
+      if (!DU) return false;
+      var bk = G.state;
+      try {
+        var st = G.newGame({ name: '斗将链355', cityName: '灰岗', region: '碎垣', mapSeed: 20261024, prologue: true });
+        G.state = st;
+        var P = G.prologue, ci = P.pos();
+        var b = P.duelBegin(ci, P.duelFoe(ci));
+        if (!b.ok) return false;
+        var guard = 0, last = null;
+        while (guard++ < 20) {
+          var d0 = P.duelOf();
+          if (!d0 || d0.done) break;
+          last = P.duelStep(G.DATA.DUEL.moveOrder[guard % 4]);
+          if (!last || !last.ok) break;
+        }
+        var d = P.duelOf();
+        return !!d && d.done === true && !!d.winner
+          && !!d.res && d.res.rounds.length >= 1
+          && (d.gain | 0) >= 0
+          && !!(d.dueled || (st.prologue.dueled || {})['c' + ci]);
+      } finally { G.state = bk; }
+    })(), (function () {
+      var bk = G.state;
+      try {
+        G.state = G.newGame({ name: '链355b', cityName: '灰岗', region: '碎垣', mapSeed: 20261024, prologue: true });
+        var P = G.prologue, b = P.duelBegin(P.pos(), P.duelFoe(P.pos()));
+        if (!b.ok) return '叫阵失败：' + b.msg;
+        var n = 0;
+        while (n++ < 20) {
+          var d0 = P.duelOf();
+          if (!d0 || d0.done) break;
+          if (!P.duelStep(G.DATA.DUEL.moveOrder[n % 4]).ok) break;
+        }
+        var d = P.duelOf();
+        return (d ? (d.winner + ' · ' + d.res.rounds.length + ' 合 · 经验 +' + d.gain) : '无状态');
+      } catch (e) { return '抛错 ' + e.message; } finally { G.state = bk; }
+    })());
+
+    check('§355⑪ 两套内核边界清楚：竞技场走 GAME.duel.play，叫阵/挑衅仍走 battle.duelPlay', (function () {
+      return typeof G.battle.duelPlay === 'function'
+        && typeof DU.play === 'function'
+        && typeof G.prologue.duelFoeFull === 'function'
+        && (G.DATA.DUEL_ARENA || {}).enabled === true;
+    })(), 'duelPlay 保留 · duel.play 新增');
+
+    G.newGame({ name: '收尾', cityName: '灰岗' });
+  })();
+
+
+  /* ============================================================
+   * §356 · v144.2：**战舰 C 期数值**（老板「战舰继续」）
+   * ------------------------------------------------------------
+   * v142.4 只把公式搬进管道（零行为变化）；这一期往管道里长数据 ——
+   *   母港共振（站等级）· 部件协同（同组双双达标）· 编队共鸣（同系 ≥2 艘）
+   * 钉六件事：
+   *   ① 出厂态零加成：站 Lv1 + 部件 0 级 + 单舰 → 与旧公式逐位相等（老档不变）
+   *   ② 母港共振：站升级 → 全属性同步涨，且封顶
+   *   ③ 部件协同：看**最短板**（一件不达标就不生效）
+   *   ④ 编队共鸣：同系 ≥2 艘才生效，拆到 1 艘回落
+   *   ⑤ 坏数据拒绝：协同表键名写错 → 进 bad() 且不污染属性
+   *   ⑥ 数据完整性 + 界面可见（协同表引用的部件/属性键都在册 · 面板读 bonusListOf）
+   * ============================================================ */
+  console.log('\n===== 356. v144.2 战舰 C 期数值：母港共振 / 部件协同 / 编队共鸣 =====');
+  (function () {
+    var SH = G.ship, DATA = G.DATA;
+    var SY = DATA.SHIP_SYNERGY || {};
+    var HULL = (DATA.SHIP_COST || {}).hullMat || 'w_stariron';
+    function newSt(name) {
+      var st = G.newGame({ name: name, cityName: '灰岗', region: '碎垣', mapSeed: 8 });
+      st.items = {};
+      st.items[HULL] = 400;
+      st.items.bp_ship_c_w1 = 1;                       /* 白档突击「游隼艇」蓝图 */
+      st.items.w_meteor = 400;                         /* 武器 */
+      st.items.w_coldcrystal = 400;                    /* 指挥舱 */
+      st.items.w_stariron = 400;                       /* 装甲 */
+      st.items.w_crystal = 400;                        /* 护盾 */
+      return st;
+    }
+    function withSt(name, fn) {
+      var bk = G.state;
+      try { G.state = newSt(name); return fn(G.state); } finally { G.state = bk; }
+    }
+
+    check('§356① 出厂态零加成（站 Lv1 · 部件 0 级 · 单舰）→ 与旧公式逐位相等（老档不变）', withSt('sp356a', function (st) {
+      var r = SH.build('c_w1');
+      if (!r.ok) return false;
+      var s = SH.statsOf(r.ship);
+      /* 旧公式手算（v142.4 前） */
+      var cls = SH.classOf('c_w1'), base = (DATA.SHIP_BASE || {})[cls.role] || {};
+      var tmul = (SH.tierOf(cls.tier).mul) || 1;
+      var ok = true;
+      (DATA.SHIP_STATS || []).forEach(function (sd) {
+        var want = sd.pct ? Math.round((base[sd.k] || 0) * tmul * 100) / 100 : Math.round((base[sd.k] || 0) * tmul);
+        if (s[sd.k] !== want) ok = false;
+      });
+      return ok && SH.bonusListOf(r.ship).length === 0;
+    }), (function () {
+      return withSt('sp356a2', function (st) {
+        var r = SH.build('c_w1');
+        return 'atk=' + SH.statsOf(r.ship).atk + ' · 加成条数=' + SH.bonusListOf(r.ship).length;
+      });
+    })());
+
+    check('§356② 母港共振：站 Lv↑ → 全属性同步涨（且封顶 cap）', withSt('sp356b', function (st) {
+      var r = SH.build('c_w1');
+      if (!r.ok) return false;
+      var s1 = SH.statsOf(r.ship);
+      SH.state().lv = 5;
+      var s5 = SH.statsOf(r.ship);
+      SH.state().lv = 99;                                  /* 远超封顶 */
+      var sX = SH.statsOf(r.ship);
+      var per = (SY.station || {}).perLv, cap = (SY.station || {}).cap;
+      var want5 = Math.round(s1.atk * (1 + Math.min(cap, 4 * per)));
+      var wantX = Math.round(s1.atk * (1 + cap));
+      return s5.atk === want5 && s5.hp === Math.round(s1.hp * (1 + Math.min(cap, 4 * per)))
+        && sX.atk === wantX;                                /* 封顶生效 */
+    }), (function () {
+      return withSt('sp356b2', function (st) {
+        var r = SH.build('c_w1');
+        var a = SH.statsOf(r.ship).atk;
+        SH.state().lv = 5;
+        return 'Lv1 atk=' + a + ' → Lv5 atk=' + SH.statsOf(r.ship).atk;
+      });
+    })());
+
+    /* ⚠️ 两组必须各起一个独立档：船坞里第二艘会触发"编队共鸣"（同系 ≥2 艘），
+       把对照组污染成"也有加成" —— 第一版就是这么写，③ 当场假红。 */
+    function solo(name, up) {
+      return withSt(name, function (st) {
+        var r = SH.build('c_w1');
+        if (!r.ok) return null;
+        var base = SH.statsOf(r.ship).atk;
+        (up || []).forEach(function (pid) {
+          for (var i = 0; i < 3; i++) SH.upgradePart(r.ship.id, pid);
+        });
+        var s = SH.statsOf(r.ship);
+        return { base: base, atk: s.atk,
+          fire: SH.bonusListOf(r.ship).filter(function (b) { return b.src === 'synergy:fire'; }).length };
+      });
+    }
+    check('§356③ 部件协同看**最短板**：武器3+指挥3 → atk 涨；只升武器 → 不生效', (function () {
+      var a = solo('sp356c', ['weapon', 'command']);       /* 双双 3 级 */
+      var b = solo('sp356c2', ['weapon']);                 /* 只有武器 3 级（指挥 0 = 短板） */
+      if (!a || !b) return false;
+      return a.fire === 1 && b.fire === 0
+        && a.atk > b.atk                                   /* 协同生效 → 同样的部件，atk 更高 */
+        && b.atk === a.base + 36;                          /* 对照组 = 基础 + 武器 3 级（+36），无 pct */
+    })(), (function () {
+      var a = solo('sp356c3', ['weapon', 'command']), b = solo('sp356c4', ['weapon']);
+      return '双3级 atk=' + (a && a.atk) + '（协同' + (a && a.fire) + '条） · 只武器 atk=' + (b && b.atk) + '（协同' + (b && b.fire) + '条）';
+    })());
+
+    check('§356④ 编队共鸣：同系 ≥2 艘才生效（拆到 1 艘回落）', withSt('sp356d', function (st) {
+      var r = SH.build('c_w1');
+      if (!r.ok) return false;
+      var one = SH.statsOf(r.ship).atk;
+      var r2 = SH.build('c_w1');                       /* 同系第二艘（assault） */
+      if (!r2.ok) return false;                        /* 船坞满时不算失败场景，返 false 由下一局覆盖 */
+      var two = SH.statsOf(r.ship).atk;
+      var has = SH.bonusListOf(r.ship).filter(function (b) { return b.src === 'fleet:assault'; }).length;
+      SH.scrap(r2.ship.id);
+      var back = SH.statsOf(r.ship).atk;
+      return has === 1 && two > one && back === one;
+    }), (function () {
+      return withSt('sp356d2', function (st) {
+        var r = SH.build('c_w1');
+        var a = SH.statsOf(r.ship).atk;
+        var r2 = SH.build('c_w1');
+        return '1 艘 atk=' + a + ' → 2 艘 atk=' + (r2.ok ? SH.statsOf(r.ship).atk : '?');
+      });
+    })());
+
+    check('§356⑤ 坏数据拒绝：协同表键名写错 → 进 bad() 且属性不被污染', withSt('sp356e', function (st) {
+      var r = SH.build('c_w1');
+      if (!r.ok) return false;
+      for (var i = 0; i < 3; i++) { SH.upgradePart(r.ship.id, 'weapon'); SH.upgradePart(r.ship.id, 'command'); }
+      var sets = ((DATA.SHIP_SYNERGY || {}).sets || [])[0];
+      if (!sets || !sets.tiers || !sets.tiers[0]) return false;
+      var bak = sets.tiers[0].v;
+      sets.tiers[0].v = {};                             /* 参照组：这一档"没有加成" */
+      var ref = SH.statsOf(r.ship).atk;
+      sets.tiers[0].v = { nosuchstat: 0.5 };            /* 写错键名 */
+      var s = SH.statsOf(r.ship);
+      var tail = SH.mod.bad().slice(-1)[0];
+      sets.tiers[0].v = bak;                            /* 立刻还原 */
+      /* 判据：写错的键被拒绝（进 bad 且记录原值）· 不进 out ·
+         属性退化到"这一档没有加成"的同一数值（不是 NaN、不是多一份） */
+      return !!tail && tail.k === 'nosuchstat' && tail.v === 0.5
+        && !('nosuchstat' in s) && s.atk === ref && typeof s.atk === 'number';
+    }), 'bad() 记录未知键 · out 不受污染 · 属性退化到"该档无加成"');
+
+    check('§356⑥ 数据完整性：协同表引用的部件 id 与属性键都在册（防 typo 静默失效）', (function () {
+      var partIds = (DATA.SHIP_PARTS || []).map(function (p) { return p.id; });
+      var statKeys = (DATA.SHIP_STATS || []).map(function (s) { return s.k; });
+      var ok = true;
+      (SY.sets || []).forEach(function (g) {
+        (g.parts || []).forEach(function (pid) { if (partIds.indexOf(pid) < 0) ok = false; });
+        (g.tiers || []).forEach(function (t) {
+          Object.keys(t.v || {}).forEach(function (k) { if (statKeys.indexOf(k) < 0) ok = false; });
+        });
+      });
+      Object.keys((SY.fleet || {}).per || {}).forEach(function (role) {
+        if (!DATA.SHIP_ROLES[role]) ok = false;
+        Object.keys(((SY.fleet || {}).per || {})[role] || {}).forEach(function (k) {
+          if (statKeys.indexOf(k) < 0) ok = false;
+        });
+      });
+      return ok && (SY.sets || []).length >= 4;
+    })(), (function () {
+      return '协同组 ' + ((SY.sets || []).length) + ' 组 · 编队 ' + Object.keys((SY.fleet || {}).per || {}).length + ' 系';
+    })());
+
+    check('§356⑦ 界面看得见：加成走 SH.bonusListOf 摊在空间站面板（不是玄学数字）', (function () {
+      var fs = require('fs'), p = require('path');
+      var s = fs.readFileSync(p.join(__dirname, 'js', 'ui.js'), 'utf8');
+      return typeof SH.bonusListOf === 'function'
+        && typeof SH.bonusLabel === 'function'
+        && s.indexOf('SH.bonusListOf') >= 0
+        && s.indexOf('SH.bonusLabel') >= 0;
+    })(), (function () {
+      return SH.bonusLabel ? 'station→' + SH.bonusLabel('station') + ' · synergy:fire→' + SH.bonusLabel('synergy:fire') : 'n/a';
+    })());
+
+    G.newGame({ name: '收尾', cityName: '灰岗' });
   })();
 
 console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');
