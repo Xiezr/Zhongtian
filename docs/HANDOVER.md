@@ -1,176 +1,218 @@
 # 《我在废土有座城》项目交接文档
 
-> 交接时点：**2026-10-18** · 版本：**v91.76 / BUILD 9330** · 面向**下一位接手的会话（人或 AI）**：先读本文，再读 `docs/接力卡-星际战舰.md`，再动手。
+> 交接时点：**2026-10-18** · 版本：**v144.5 / BUILD 9380** · 面向**下一位接手的会话（人或 AI）**：
+> 先读本文 → 再读 `docs/接力卡-星际战舰.md`（进度/下一步）→ 再动手。**不要从零探索。**
 
 ---
 
 ## 一、30 秒上手
 
 - **形态**：纯前端单机网页游戏（废土换皮）。**零后端**；`index.html` 双击即玩（`file://`）。
-- **跑起来**：直接开 `E:/Deepseekdb/index.html` 即可；或
+- **跑起来**：直接开 `E:/Deepseekdb/index.html`；或
   `python -m http.server 8777 --directory E:/Deepseekdb` → `http://localhost:8777/`。
-- **源码根**：`E:\Deepseekdb`（当前工作目录 `E:\app_projects\biztrip` 是**另一份无关项目**，别改错仓）。
-- **目录**：`index.html`（全部 CSS）· `js/`（23 个源文件 + `bundle.js` 构建产物）· `assets/` · `docs/` · `.workbuddy/`（门禁/工具/历史备份）。
-- **门禁三件套**（改完必跑）：audit **0** · smoke **3768/0** · e2e **1099/0**。
+- **源码根**：`E:\Deepseekdb`（注意：当前会话的工作目录 `E:\app_projects\biztrip` 是**另一份无关项目**，别改错仓）。
+- **目录**：`index.html`（全部 CSS）· `js/`（62 个源文件 + 3 个 bundle 产物）· `assets/` · `docs/` · `.workbuddy/`（门禁/工具/历史备份）。
+- **门禁五件套**（改完必跑）：audit **0** · chain-audit **47/0** · invariants **28/0** · smoke **4184/0** · e2e **1100/0**。
 
 ---
 
-## 二、架构速览（v91.61 地基改造后）
+## 二、架构速览
 
-**加载方式**：`index.html` 只加载 2 个脚本 —— `vendor/three.min.js` + **`js/bundle.js`**。
-`js/main.js` 的 **import 列表 = 执行顺序**：
+### 加载方式（v104 起**三包**）
+`index.html` 只加载 4 个脚本，**顺序即求值顺序**：
 
-```
-core → data → state → systems → items → generals → cities → ship → domain
-→ map → sphere → gltf → map3d → battle → tactic → icons → gicons → bitmaps
-→ portraits → story → ui → main
+```html
+vendor/three.min.js → js/bundle-core.js → js/bundle-war.js → js/bundle-ui.js
 ```
 
-> ⚠️ **改任何 `js/*.js` 后必须重建 bundle**：
-> `python .workbuddy/tools/patch/build_bundle.py`（漏了会被 smoke 的陈旧守卫拦下）。
-> 校验：`python .workbuddy/tools/patch/build_bundle.py --check`。
+- **bundle-core**：数据 + 状态 + 领域 + 全部玩法模块（开局就要）
+- **bundle-war**：`gltf / battle / battlelog / strategy / tactic / icons / gicons / bitmaps / portraits`
+- **bundle-ui**：`story / ui / map3d / scene3d / main`（必须最后，`main.js` 是入口）
 
+> 分包只解决「单文件撞线」，**不改求值时机**（全项目 200+ 探针按顺序拼接求值，动态 import 会打破它）。
+> 拆分依据在 `.workbuddy/tools/patch/build_bundle.py` 的 `ORDER / WAR / UI` 三张表。
+
+> ⚠️ **改任何 `js/*.js` 后必须重建 bundle**：`python .workbuddy/tools/patch/build_bundle.py`
+> （漏了会被 smoke 的陈旧守卫拦下）。校验：`build_bundle.py --check`（会报「三包与源码一致」）。
+> **新增模块要同步四份静态清单**：`build_bundle.ORDER` + `smoke-test` SECTION 列表 + `audit.MODULES` + `audit.REF_MODULES`。
+> （v144.5 刚因漏了后两份，audit 长期误报 `GAME.scene3d / GAME.battlelog`「引用了不存在的成员」。）
+
+### 模块地图（62 个源文件，按层）
+
+**地基 / 状态**
 | 模块 | 职责 |
 |---|---|
-| `core.js` | `window.GAME` 单例。 |
-| `data.js` | **全部静态配置**（建筑/科技/装备/兵种/奇观/战舰/据点/遗迹…）。改数值先来这里。 |
-| `state.js` | 存档结构、`newGame`、`adoptState`（**读档迁移链**）、`tickOnce`（主循环）、`simulateBulk`（离线补算）、**星球与世界归一出口**、`GAME.res`。 |
-| `items.js` | 背包归属 `GAME.items`（count/has/add/sub/take/addAll/list）。 |
-| `generals.js` | 英雄状态机 `GAME.gen`（7 态 · claim 原子互斥）。 |
-| `cities.js` | 城市只读出口 `GAME.city`（byId/anywhere/all/armyTotal/…）+ 资源/队列/城兵唯一写入口。 |
-| `ship.js` | 星际战舰/空间站引擎 `GAME.ship`（12 舰种 · 蓝图门槛 · 部件/属性）。 |
-| `domain.js` | 领域逻辑（城建/出征/弃城/装备/基因实验室/奇观/战储压缩…）。 |
-| `map.js` | 地形/据点/名城/野地逻辑 + 球面投影视图；`DATA.MAP_W=MAP_H=500`。 |
-| `sphere.js` | **球面世界内核**（纯 JS · 可多实例工厂 `GAME.createSphere()`）；六边格 `cells`（40962）。 |
-| `map3d.js` | 3D 星球地图（Three.js · 只做渲染与拾取）。 |
-| `scene3d.js` | **2.5D 场景运行时**（v140 · 10 场景 + city 街区 · 正交相机 + WASD + 交互节点 · v143 起正式玩法也走它：`ui.doJianghu → S.play`，双宿主结算 + 时段光照 + 城内行人；v143.3 起正式局红圈遭遇走 `jianghuDo('tao')` 唯一账本）。 |
-| `duel.js` | **斗将竞技场内核** `GAME.duel`（v144.1 · 血=体力 / 伤害=攻防对冲×招式倍率 / 每合双方各出手一次）。数值表 `DATA.DUEL_ARENA`。 |
-| `battle.js` / `tactic.js` | 行军/战斗结算 / 战斗沙盘引擎（`battle.duelPlay` = 叫阵/挑衅的**比分制**内核，与竞技场是两个玩法，共用相克表与对手倾向）。 |
-| `icons.js` / `gicons.js` / `bitmaps.js` | 图标出口（矢量兜底 / game-icons / AI 位图注册表）。 |
-| `ui.js` | **全部界面**（视图 + 弹窗）。 |
-| `main.js` | 启动 + **点击事件总派发**（`data-action` → `case`）+ `GAME.doXxx`。 |
+| `core.js` | `window.GAME` 单例 |
+| `registry.js` | 模块注册表 `GAME.reg`：`tick`（月度）、`panel`（世界账本）、`actions`（动作分发） |
+| `data.js` | **全部静态配置**（建筑/科技/装备/兵种/奇观/战舰/据点/遗迹/构想各系统的数值表）。改数值先来这 |
+| `state.js` | 存档结构、`newGame`、`adoptState`（迁移链）、`tickOnce`（主循环）、`simulateBulk`（离线）、星球与世界归一、`GAME.res` |
+| `items.js` / `generals.js` / `cities.js` | 三个归属出口：`GAME.items`（背包）/ `GAME.gen`（英雄 7 态状态机）/ `GAME.city`（城市资源·队列·城兵） |
+| `ship.js` | 星际战舰/空间站 `GAME.ship`（12 舰种 · 蓝图门槛 · 部件/属性 · v142.4 modifier 管道） |
+
+**世界 / 地图**
+| 模块 | 职责 |
+|---|---|
+| `sphere.js` | **球面世界内核**（纯 JS · 多实例工厂）→ 地形唯一事实源，`cells` 40962 格 |
+| `map.js` | 地形/据点/名城/野地逻辑 + 平面投影视图（`MAP_W=MAP_H=500`） |
+| `map3d.js` | Three.js 星球 3D 地图（只做渲染与拾取） |
+| `scene3d.js` | 2.5D 场景运行时（10 场景 + 城内街区 · 正交相机 · 交互节点 · 时段光照 · 行人） |
+| `fog.js` | 探明度 / 迷雾 |
+
+**玩法模块（v92–v144 的「构想清单」落地）**
+`camp` 幸存者营地 · `ruin` 旧世界遗迹 · `relic` 废墟科技 · `faction` 四方势力 · `rival` 竞争者 ·
+`land` 领土连通 · `taint` 污染 · `climate` 温度 · `surge` 辐射云 · `village` 村社 · `convoy` 拓荒队 ·
+`growth` 城市自长自朽 · `muster` 兵源 · `idle` 惰性 · `expose` 暴露 · `renown` 名声 · `memorial` 阵亡名录 ·
+`goals` 作战目标 · `veteran` 老兵 · `setskill` 套装指令 · `deck` 指令牌 · `bond` 羁绊 · `tower` 城防工事 ·
+`wonderwar` 奇观争夺 · `delve` 地下远征 · `unrest` 民怨 · `trooplv` 兵员等级 · `years` 年景 · `ending` 终局 ·
+`founding` 开城 · `prologue` 前传 · `events` 路上遇到的事 · `market` 集市行情 · `risk` 危险梯度
+
+**战斗 / 界面**
+| 模块 | 职责 |
+|---|---|
+| `battle.js` | 行军 / 出征 / 战斗结算（`simOpts` 快照是重放同源的根） |
+| `tactic.js` | 战斗引擎（`goalMod` 是所有战场加成的**唯一通道**） |
+| `battlelog.js` | 回合推进转移表 + 操作日志（观测层，零行为变化） |
+| `strategy.js` | NPC 侧策略层（默认关，`battleAI`） |
+| `duel.js` | 斗将竞技场内核（v144.1 · 血=体力 / 每合双方各出手） |
+| `systems.js` | 科技研究 / 装备穿戴 / 宝物使用 / 威望晋升 |
+| `ui.js` | **全部界面**（视图 + 弹窗） |
+| `main.js` | 启动 + 事件总派发（`data-action` → case → 注册表兜底）+ `GAME.doXxx` |
 
 ### 坐标 / 地形口径
-- **地形 SSOT = 球面内核**：`GAME.sphere.terrainAt(x,y)` / `ciOfXY` / `cells[ci].type`。
-- **平面 `(x,y)`** 仍是存储/显示主键；界面显示经纬（`GAME.map.coordText`）。
-- **`ci` 只在球内唯一** —— 跨星球实体一律带 `pid`（见下）。
+- **地形 SSOT = 球面内核**：`GAME.sphere.cells` / `ciOfXY` / `terrainAt`。
+- 平面 `(x,y)` 是存储/显示主键；界面显示经纬（`GAME.map.coordText`）。
+- **`ci` 只在球内唯一** —— 跨星球实体一律带 `pid`（见 §三）。
 
 ---
 
-## 三、本批大改（v91.71 → v91.76）
+## 三、最重要的结构性变化（v91.74 世界归一 · 至今有效）
+
+- **世界数据全局一份**：`s.cities / s.wilds / s.forts / s.queues / s.marches / s.gathers / s.battles / s.sieges`，每条记录带 **`pid`**。
+- **`s.mapSlices` 已退役**（老档 `migratePlanetWorld74` 一次性合并，幂等标记 `planetWorldMig74`）。
+- **据点类字典键**：`p<pid>|c<ci>`；唯一出口 `GAME.fortKey / GAME.fk(pid) / GAME._fkGet`；老裸键 `c<ci>` 兼容读（= 当前星）。
+- **`sliceOf(pid)` / `mapSliceOf(pid)` 只是过滤视图**（只读）；`_savePlanetSlice / _loadPlanetSlice` 已空实现。
+- **`enterPlanet(id)` 只换球面 + 重建地图投影**，不换数据；每星球自己的开始圈 `planet.worldStart`。
+- **全境推进**：`tickOnce` / `simulateBulk` / 自动升级·征兵·研究·基因研究·采集 / 外敌来犯 都遍历所有星球。
+- ⚠️ **新增按格查表必须带 `pid`**：`map.wildAt(ci,pid)`、`gatherAt(ci,pid)`、`fortOwnAt(ci,pid)`、`fortAuraAt(ci,pid)`。
+- 🔴 **血泪坑**：v144.5 之前 `expose / land / faction / rival / village / camp / ruin / taint / climate / surge / relic`
+  等模块都写 `GAME.mapSphere || GAME.sphere` —— `mapSphere` 对象存在但**没 build**（没 cells），
+  于是全部返回空、**"世界是空的"且零报错**。统一改走 **`GAME.sphereOf()`**（既有的「按 pid 取球面」出口）。
+  **新模块一律用 `GAME.sphereOf()`，不要自己拼 `||` 兜底。**
+
+---
+
+## 四、本批大改（v91.71 → v144.5，按时间）
 
 | 版本 | 内容 |
 |---|---|
-| **v91.76** | 出征界面**固定化**：7 方式（侦查/掠夺/占领/派遣/运输/派驻/探索）· 目标/出发分层 · 运输原路返回 · 目标“其他目标”弹窗 |
-| v91.75 | 出征界面汇总整理（目标只列一个 / 主将只列一个 · 形态摘要） |
-| **v91.74** | **星球世界归一**：不做切片，只做地图显示切片（见 §四） |
-| v91.73 | 奇观⚡不可选中 · 自动基因研究默认开启 |
-| v91.72 | 星际战舰 B 期（12 舰种蓝图）+ 本批十六条（见 `需求档案.md`） |
-| v91.71 | 星际战舰 A 期：空间站 + 卡牌船坞 + 10 部件 + 11 属性 |
-
-### v91.74 世界归一（最重要的结构性变化）
-- **世界数据全局一份**：`s.cities / s.wilds / s.forts / s.queues / s.marches / s.gathers / s.battles / s.sieges`，每条记录带 **`pid`**。
-- **`s.mapSlices` 已退役**（老档 `migratePlanetWorld74` 一次性合并，幂等标记 `planetWorldMig74`）。
-- **据点类字典键**：`p<pid>|c<ci>`；`GAME.fortKey / GAME.fk(pid)` 是唯一键出口；老裸键 `c<ci>` 兼容读（= 当前星）。
-- **`sliceOf(pid)` / `mapSliceOf(pid)` 只是过滤视图**（只读）；`_savePlanetSlice / _loadPlanetSlice` 已空实现。
-- **`enterPlanet(id)` 只换球面 + 重建地图投影**，不再换数据；每星球自己的开始圈 `planet.worldStart`。
-- **全境推进**：`tickOnce` / `simulateBulk` / 自动升级·征兵·研究·基因研究·采集 / **外敌来犯** 都遍历所有星球（背景星球不再停表）。
-- ⚠️ **新增按格查表的代码必须带 `pid`**：`map.wildAt(ci, pid)`、`gatherAt(ci,pid)`、`fortOwnAt(ci,pid)`、`fortAuraAt(ci,pid)`；否则跨星球会重号误命中。
-
-### v91.76 出征界面（固定界面）
-- 方式恒列 7 种，不适用**置灰**并写原因（唯一判定 `ui.expModeAvailOf`，执行端 `battle.prepare` 同源）。
-- **到达性限制由目标决定，出发性限制由派出城决定**；主将/方案/预估/限制性信息/辎重统一读 `ui.expFromCity()`。
-- 目标 = **当前目标 + 「其他目标」弹窗**（本星球：己方城市/己方野地/周围30格野地/周围30格据点/名城按区/奇观）。
-- 奇观统一为 **探索**：`探索层级` >0 = 挑战该层守卫，否则按探索行动采集。
-- **派遣** = 兵将归属变化；**运输** = 负重调资源（送达后原路返回 `roundTrip`）；**派驻** = 己方野地藏兵（无将不可采集）。
-- 派遣/运输/派驻**可不带英雄**；运输只按运力校验。
-- 详见 **`docs/出征界面汇总.md`**（入口清单 + 共用主档 + 7 方式差异 + 门禁）。
+| **v144.5** | **构想补齐（能做的全做）**：羁绊进战场 · 战报「⚔ 战场修正」表 · A1 领土连通真生效 · B4 严寒折产 · F 污染变异 · A7 暴露逐队可见 · E 云内搬城入口 · B2 宣战真来犯 · C2 护送/斩首 |
+| v144.2 | 战舰 C 期数值：母港共振 / 部件协同 / 编队共鸣（只长数据不改公式，`DATA.SHIP_SYNERGY`，**待老板复核**） |
+| v144.1 | **斗将正式化**：`js/duel.js`（血=体力、每合双方各出手）+ 左右画像竞技场 + `DATA.DUEL_ARENA` |
+| v143.x | 3D 最后一公里：正式阶段江湖动作进 2.5D 场景（双宿主唯一账本）· 城内行人 · 时段光照 · hash 换行归一 |
+| v142.x | 战斗回合表白名单 + 守恒律属性测试（新增 `invariants-test.js` 进门禁）· 战舰 modifier 管道 · 城内街区 3D |
+| v91.77–v91.84 | 出征界面：固定界面 + 7 方式 + 目标「其他目标」弹窗 + 自动出征/探索/研究系列（详见 `docs/出征界面汇总.md`） |
+| v91.71–v91.76 | 星际战舰 A/B 期（空间站 + 卡牌船坞 + 12 舰种蓝图门槛）· 世界归一 · 本批十六条 |
+| v91.61–v91.70 | 地基第 1 期（ES import + 单包）→ 第 2 期（items/inventory/generals/cities 归属化 + 7 条回潮守卫） |
 
 ---
 
-## 四、门禁（改完必跑）
+## 五、门禁（改完必跑）
 
 ```bash
 NODE=C:/Users/18811/.workbuddy/binaries/node/versions/22.22.2-6/node.exe
 export NODE_PATH=C:/Users/18811/.workbuddy/binaries/node/workspace/node_modules
-$NODE audit.js          # 结构审计：死函数/孤儿/重复/零引用 → 全 0
-$NODE smoke-test.js     # 逻辑冒烟 → 3768 通过 / 0 失败
-$NODE e2e-test.js       # 端到端（真实 DOM + HTTP）→ 1099 通过 / 0 失败
+$NODE audit.js            # 结构审计（含数据表卫生子审计）→ 全 0
+$NODE chain-audit.js      # 链路走查（派队→落账）            → 47/0
+$NODE invariants-test.js  # 守恒律属性测试（种子随机 + 收缩） → 28/0
+$NODE smoke-test.js       # 逻辑冒烟                          → 4184/0
+$NODE e2e-test.js         # 端到端（真实 DOM + HTTP）          → 1100/0
 python .workbuddy/tools/patch/build_bundle.py   # 改 js 后必须重建
 ```
 
-- **pre-commit 钩子**会再跑一遍三件套 + 数据表卫生；Windows 下建议前缀
+- **pre-commit 钩子**（`.workbuddy/tools/git/gate.py`）会再跑一遍五件套 + 表卫生；Windows 建议前缀
   `PYTHONIOENCODING=utf-8 PYTHONUTF8=1 git commit ...`。**不要 `SKIP_GATE=1` 绕过。**
 - **提交只 add 自己的文件**：`git add -A` 会卷进 `.workbuddy/eval_*/browser-profile/Cookies`（被锁 → fatal）。
-- 工作区里若有 `assets/icons/其他种族兵种/` 等**未跟踪目录**，可能是老板另放的素材，**别删**。
+- 工作区若有 `assets/icons/其他种族兵种/` 等**未跟踪目录**，可能是老板另放的素材，**别删**。
+- 后端提交钩子偶尔因 `audit_v89134_tables.js` 撞名报红 —— 那是**真问题**（重复定义/孤儿表），按提示改数据。
 
 ---
 
-## 五、必守约定 / 常见坑
+## 六、必守约定 / 常见坑（都是踩过的）
 
 1. **改 js 必须重建 bundle**（见 §二），否则 smoke 红。
-2. **改 `js/*.js` 保 LF**：CRLF 会挂 smoke 的 `\n` 正则断言。
-3. **禁止正则批量改“键名是变量”的代码**：v91.69 曾把 `army[k]` 批量写成 `{ k: … }`，25 处静默错兵。
-4. **SSOT**：一个数/一处逻辑只有一个出口；界面与执行端读同一出口（例：`expModeAvailOf` ↔ `battle.prepare`）。
-5. **设计令牌 lint**：`index.html` 样式表禁裸 px/hex/字号/圆角；网格/canvas 类视图用**内联 style** + `var(--*)` 令牌。
-6. **改数值/规则的测试口径**：改断言口径，**别删断言、别放宽到失去意义**。
+2. **`js/*.js` 保 LF**：CRLF 会挂 smoke 的 `\n` 正则断言；`build_bundle` 与 smoke 两侧已做换行归一再算 hash，
+   但**编辑器/脚本重存文件**仍可能污染工作树行尾 —— 用 `newline=''` 或 `newline='\n'` 显式写。
+3. **禁止正则批量改「键名是变量」的代码**（v91.69：`army[k]` 被写成 `{ k: … }`，25 处静默错兵）。
+4. **SSOT**：一个数/一处逻辑只有一个出口；**界面与执行端读同一出口**
+   （例：`ui.expModeAvailOf` ↔ `battle.prepare`；`goalMod` 是所有战场加成的唯一通道）。
+5. **设计令牌 lint**：`index.html` 样式表禁裸 px/hex/字号/圆角；网格/canvas 视图用**内联 style** + `var(--*)` 令牌。
+6. **改规则就改断言口径，别删断言、别放宽到失去意义**。
 7. **版本三连**：`bump_version.py --bump --version vX.YY`（改 `GAME.VERSION` + `index.html` BUILD/`?v=`）。
-   版本号必须写进 `需求档案.md`，smoke §199⑥ 会查“代码升了、档案没升”。
+   **台账必须手补**：新增「逐轮明细」段 + 更新 `LATEST-BATCH: vNNN` 锚点（smoke §199⑥ 校验主版本一致）。
 8. **性能护栏**：`100 城 tickOnce` 取三轮最小值 < 6ms（真回归 ≈10.5ms）；新增逐城逻辑别破坏它。
 9. **并发会话**：本仓可能与别的会话同时在改；动手前看 `git status` / 文件 mtime，冲突先问老板。
+10. **`GAME.city.add` 不吃负数**（内部 `n >= 0 ? … : 0`）—— 扣资源一律用 `GAME.city.sub`。
+11. **「手写字段清单」的打包函数**（`snapUnits` / `simOpts`）必须逐字段核对，
+    漏一个就是静默失真（v89.151 战报血量全 0 就是这么来的）。
+12. **新增模块**：四份静态清单都要登记（见 §二末），否则 audit 误报或模块不参与扫描。
 
 ---
 
-## 六、当前状态与下一步
+## 七、当前状态与下一步
 
-**已完成**：地基改造（v91.61–v91.69）· 星际战舰 A/B 期（v91.71–v91.72）· 本批十六条（v91.73）·
-星球世界归一（v91.74）· 出征界面汇总与固定化（v91.75–v91.76）。
+**已完成**：地基两期 · 星际战舰 A/B/C · 斗将正式化 · 3D 化最后一公里 ·
+构想清单 A/B/C/D/E/F/G 的**最小可运行 + 第二轮接活**（v144.5 把「引擎有但没接进玩法」的断点全部接通）。
 
 **星际战舰后续分期**（见 `docs/接力卡-星际战舰.md`）：
-- **C** 部件/属性深化（数值调优、部件协同）→ **v144.2 已落地**：母港共振 / 部件协同 / 编队共鸣三个来源（数值待老板复核）
-- **D** 3D 构造图（three.js 程序化几何；无 WebGL 必须降级为静态图）。※ v143.1~v143.4 已通最后一公里：10 个 2.5D 场景接入正式玩法（含红圈遭遇走清剿账）+ 城内行人 + 时段光照；D 期剩余 = 建造时的 3D 预览。**斗将正式化**（序章 duel 内核 + v136 面板 → 正式局场景遭遇改交互斗将）是待拍板候选：动它 = 改战斗结算口径（LING_ACT.win/lose 映射），需老板定数值；现状正式局遭遇走数值账本 `jianghuDo('tao')`（唯一账本，不两本账）
-- **E** 投送（`s.interstellar` 顶层通道）+ 殖民
+- **C** 部件/属性深化 → 机制已落地（v144.2 三来源），**数值待复核**
+- **D** 3D 构造图（剩余 = 建造时的 3D 预览）
+- **E** 投送（`s.interstellar`）+ 殖民
 - **F** 舰队战 + 终局
 
 **已知未修 / 待办**：
-1. **`newGame` 球面时序**：`sphere.ensure()` 早于 `GAME.state` 赋值 → 全新会话首局球面按 seed 1 构建（种子错配）。修复会移动地形、波及布局断言，需单独一轮。
-2. **旧 `transfer` 别名**：`DATA.EXPEDITION.modes` 里保留 `transfer`（内部/自动/脚本兼容），界面不展示；后续可评估是否彻底移除。
-3. **奇观层级**：层级 = 挑战该层守卫；界面已接，若老板希望“层级 = 采集深度”再改口径。
-4. **运输返程**：当前按“去程耗时”返程；未做中途召回的特殊显示（沿用通用召回）。
-5. **2D 兜底地图**（`map3d` 关闭时）不支持“地图看别星”，仍强制 map = active。
+1. **`newGame` 球面时序**：`sphere.ensure()` 早于 `GAME.state` 赋值 → 全新会话首局球面按 seed 1 构建（种子错配）。
+   修复会移动地形、波及布局断言，需单独一轮。
+2. **旧 `transfer` 别名**：`DATA.EXPEDITION.modes` 里保留 `transfer`（内部/自动/脚本兼容），界面不展示。
+3. **2D 兜底地图**（`map3d` 关闭时）不支持「地图看别星」，仍强制 map = active。
+4. **运输返程**：按「去程耗时」返程，未做中途召回的特殊显示（沿用通用召回）。
+5. **护送/斩首的细化**：当前「护送」近似为「撑满回合且还有兵」，「斩首」近似为「打崩守军三成」——
+   没有真正的车队单位 / 守将个体目标（要做需要新兵种或改守将建模）。
 
-**需要老板定夺**：
-- 探索层级语义（挑战守军 / 采集深度 / 两者合并）——当前按“挑战守军”实现。
-- **星际战舰 C 期数值**：机制已落地（v144.2 三个来源：母港共振 +2%/级封顶 30% · 部件协同 12% 两档 · 编队共鸣 6~8%），
-  但**都是可玩初值、不是定案**，请老板复核。
-- **斗将数值**（v144.1）：`DATA.DUEL_ARENA`（rate 0.18 / critMul 1.6 / weakMul 0.6 / minStaPct 0.15 / maxRounds 12）
-  与四招的 `mul`/`taken`，以及**对手等级 = 君主等级**（改前 = myLv×1.5+10）——同上，待复核。
-- **叫阵/挑衅要不要并入竞技场口径**：目前 `battle.duelPlay`（5 合比分制）与 `GAME.duel.play`（血量制）**并存**，
-  相克表与对手倾向共用。并入 = 改挑衅的胜负判定口径，需老板定。
-- 星际战舰 C 期的具体数值方向（**机制已就绪**：v142.4 modifier 管道试点落地 —— 属性计算改走可插拔管道、公式冻结数据生长；老板拍板数值后，新系统 = 一张 `DATA.SHIP_*` 表 + 一行来源注册，评估结论见 `需求档案.md` v142.4）。
+**需要老板定夺**（我没擅自做）：
+- **星际战舰 C 期数值**：母港共振 +2%/级封顶 30% · 部件协同 12% 两档 · 编队共鸣 6~8%（可玩初值，非定案）。
+- **斗将数值**：`DATA.DUEL_ARENA`（rate 0.18 / critMul 1.6 / weakMul 0.6 / minStaPct 0.15 / maxRounds 12）
+  与四招 `mul`/`taken`；对手等级 = 君主等级。
+- **叫阵/挑衅要不要并入竞技场口径**：目前 `battle.duelPlay`（5 合比分制）与 `GAME.duel.play`（血量制）并存，相克表共用。
+- **探索层级语义**：当前 = 挑战该层守卫；若要「层级 = 采集深度」需改口径。
+- **G 科技树 → 废墟挖掘**：等于换掉整条主线，风险最高，未做。
+- **C4 异步 PvP**：单机无对手；可做「本地影子防守」，需授权。
 
 ---
 
-## 七、去哪找信息
+## 八、去哪找信息
 
 | 想知道… | 看 |
 |---|---|
 | **当前进度 / 下一步** | `docs/接力卡-星际战舰.md`（最优先） |
-| **逐条需求 + 落地状态** | `需求档案.md`（**唯一台账**，末尾「逐轮明细」） |
+| **逐条需求 + 落地状态** | `需求档案.md`（**唯一台账**，末尾「逐轮明细」；`LATEST-BATCH` 锚点） |
+| **构想清单逐项判定** | `docs/构想实现审计.md`（已有/部分/真缺/不建议，25 项） |
+| 玩法提案原文 | `docs/玩法提案-从进度条到选择.md` |
 | **出征界面细节** | `docs/出征界面汇总.md` |
 | 项目全貌 / 文件索引 | `docs/项目地图.md` |
 | 踩坑教训 | `docs/AI工作备忘.md` |
 | 数据表含义 | `docs/数值系统数据字典.md` · `docs/数据表索引.md` |
-| 门禁/工具脚本 | `.workbuddy/tools/`（`git/gate.py`、`patch/build_bundle.py`、`patch/bump_version.py`） |
+| 场景/3D | `docs/场景系统-v140.md` · `场景补完-v141.md` · `城内街区-v142.md` · `城随地形走-v139.md` |
+| 门禁/工具 | `.workbuddy/tools/`（`git/gate.py`、`patch/build_bundle.py`、`patch/bump_version.py`、`show/` 实机脚本模板） |
 
-**git**：`main` 分支；post-commit 自动 push。远程 `Xiezr/Zhongtian`（GitHub 偶不可达 → `git ls-remote origin main` 核验）。
+**git**：`main` 分支；post-commit 自动 push。远程 `Xiezr/Zhongtian`（GitHub 偶尔不可达 → 提交仍落本地，恢复后再 push）。
 
 ---
 
-## 八、工作方式（老板偏好）
+## 九、工作方式（老板偏好）
 
-- **别磨、果断执行**：先一次想全约束/依赖/可行解；探查并行一次到位。
-- **不清楚就问**：边界不明/多种可能时先问，问了就一次问全。
-- **视觉/布局改动**：先截图/量尺寸定位，再改。
-- **大改先落可验收子集**：每刀过门禁再下一刀，别把半成品留在工作区。
-- **改完立即跑门禁**；报红先判断是“口径该更新”还是“真回归”。
+- **别磨、果断执行**：先一次想全约束/依赖/可行解；探查并行一次到位；别增量试错、反复预览、过度拆分。
+- **不清楚就问**：边界不明/多种可能时先问，且**一次问全**（用 AskUserQuestion）。
+- **视觉/布局改动**：先截图或量尺寸定位，再改代码。
+- **大改先落可验收子集**：每刀过门禁再下一刀，不把半成品留在工作区。
+- **「能做的全做」= 按清单一次做完**，但**不擅自 invent 数值**；需要拍板的列清单交回。
+- 改完立即跑五件套；报红先判断「口径该更新」还是「真回归」。
