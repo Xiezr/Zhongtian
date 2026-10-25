@@ -44776,7 +44776,9 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         return /data-action="bld-preview"/.test(u5)
           && (u5.match(/data-action="bld-preview"/g) || []).length >= 2      /* 候选 + 已建两处 */
           && /case 'bld-preview'/.test(m5)
-          && /ui\.openBuildPreview = function/.test(u5);
+          && /ui\.openBuildPreview = function/.test(u5)
+          /* v149：不再用占版面的"大按钮"，改成卡片右上角的小眼睛 */
+          && /class="bld-eye"/.test(u5) && /class="bldg-eye"/.test(u5);
       })(), '两处按钮 + 一个 case + 一个出口');
 
       check('§569② 无 WebGL 兜底：按下去一定有反应（静态示意图），不是静默失败', (function () {
@@ -44814,6 +44816,184 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       check('§569 链路异常（不应发生）', false, 'err=' + ((e569 && e569.message) || e569));
     } finally {
       G.state = bk; G.ui._cityId = bkCity;
+    }
+    G.newGame({ name: '收尾', cityName: '灰岗' });
+  })();
+
+  /* ============================================================
+   * §570. v148 舰队阵位（5-B 角色互补的最小可玩版）
+   * ------------------------------------------------------------
+   * 钉五件事：
+   *   ① 自动落位：按舰种进对应位子（护卫→前卫 / 突击→中坚 / 母舰→后卫）
+   *   ② 对口才生效：同系多艘可轮换；没对口舰 = 空位零加成（不误导）
+   *   ③ 数字落地：中坚 +15% 攻 · 前卫 −15% 受伤 · 后卫 +15% 战利品
+   *   ④ 预览与实战同数（都读 mineOf）
+   *   ⑤ 出港后不能调整阵位
+   * ============================================================ */
+  (function () {
+    var NL = String.fromCharCode(10);
+    console.log(NL + '===== 570. v148 舰队阵位（5-B 角色互补） =====');
+    var bk = G.state;
+    function fresh(seed) {
+      var st = G.newGame({ name: 'fm570', cityName: '灰岗', mapSeed: seed || 570001 });
+      G.state = st;
+      if (st.cities[0]) st.cities[0].pid = 1;
+      st.activePlanet = 1; st.mapPlanetId = 1;
+      if (G._extraSpheres) G._extraSpheres = {};
+      G._realNowOf = function () { return 1700000000000; };
+      U.now = function () { return 1700000000000; };
+      st.ds = { fleets: [], cleared: {}, _seq: 0, history: [] };
+      st.station = { lv: 10, ships: [], _seq: 0 };
+      (G.DATA.SHIP_BLUEPRINTS || []).forEach(function (b) { st.items[b.id] = 1; });
+      (G.DATA.SHIP_PARTS || []).forEach(function (p) { if (p.mat) st.items[p.mat] = 9999; });
+      st.items.w_stariron = 9999;
+      ['c_w1', 'c_w2', 'c_w3'].forEach(function (cid) { G.ship.build(cid); });   /* 突击/护卫/母舰各一 */
+      return st;
+    }
+    try {
+      check('§570① 自动落位：护卫→前卫 · 突击→中坚 · 母舰→后卫', (function () {
+        fresh(570002);
+        var ids = G.ship.ships().map(function (s) { return s.id; });
+        var r = G.fleet.form({ shipIds: ids, targetId: G.fleet.targets()[0].id });
+        if (!r.ok) return false;
+        var slot = G.fleet.slotOf(r.fleet);
+        function role(id) { var c = null; G.ship.ships().forEach(function (x) { if (x.id === id) c = G.ship.classOf(x.classId); }); return c && c.role; }
+        return role(slot.van) === 'escort' && role(slot.mid) === 'assault' && role(slot.rear) === 'carrier';
+      })(), '三个位子各就各位');
+
+      check('§570② 对口才生效：只有突击没有护卫 → 前卫空位零加成', (function () {
+        fresh(570003);
+        var assault = [];
+        G.ship.ships().forEach(function (x) { if (G.ship.classOf(x.classId).role === 'assault') assault.push(x.id); });
+        var r = G.fleet.form({ shipIds: assault, targetId: G.fleet.targets()[0].id });
+        if (!r.ok) return false;
+        var fm = G.fleet.formationOf(r.fleet);
+        var van = fm.used.filter(function (u) { return u.slot === 'van'; })[0];
+        return van && van.ok === false && fm.dmgCut === 0 && fm.atkAdd > 0;
+      })(), '缺护卫 → 没有挡伤，但中坚照吃');
+
+      check('§570③ 数字落地：中坚 +15% 攻 · 前卫 −15% 受伤 · 后卫 +15% 战利品', (function () {
+        fresh(570004);
+        var ids = G.ship.ships().map(function (s) { return s.id; });
+        var r = G.fleet.form({ shipIds: ids, targetId: G.fleet.targets()[0].id });
+        if (!r.ok) return false;
+        var base = G.fleet.statsOf(r.fleet);
+        var mine = G.fleet.mineOf(r.fleet);
+        var tgt = G.fleet.targets()[0];
+        var plain = { atk: base.atk, hp: base.hp, shield: base.shield, armor: base.armor, eva: base.eva, n: base.n, ships: base.ships };
+        var withF = G.fleet.battle(mine, tgt, 'k570');
+        var without = G.fleet.battle(plain, tgt, 'k570');
+        var itKey = Object.keys(tgt.loot.items)[0];
+        var lootWith = withF.loot.items[itKey] || 0;
+        var lootPlain = without.loot.items[itKey] || 0;
+        return mine.atk === Math.round(base.atk * 1.15)
+          && mine.dmgCut === 0.15 && mine.lootAdd === 0.15
+          && withF.win === true
+          && lootWith >= lootPlain
+          && withF.rows[0].dmgToFleet < without.rows[0].dmgToFleet;     /* 前卫挡伤 → 第一回合挨得更少 */
+      })(), '攻×1.15 · 挡伤 15% · 战利品不缩水');
+
+      check('§570④ 预览与实战同数（都读 mineOf）', (function () {
+        fresh(570005);
+        var ids = G.ship.ships().map(function (s) { return s.id; });
+        var r = G.fleet.form({ shipIds: ids, targetId: G.fleet.targets()[0].id });
+        if (!r.ok) return false;
+        var txt = G.fleet.previewText(r.fleet);
+        return /阵位 .*前卫.*中坚.*后卫|阵位 中坚|阵位 前卫/.test(txt)
+          && txt.indexOf('攻 ' + U.fmt(G.fleet.mineOf(r.fleet).atk)) >= 0;
+      })(), '面板上的攻就是开打时的攻');
+
+      check('§570⑤ 出港后不能调整阵位 · 同系多艘可轮换', (function () {
+        fresh(570006);
+        /* 再建一艘护卫：同系两艘即可轮换 */
+        (G.DATA.SHIP_BLUEPRINTS || []).forEach(function (b) { G.state.items[b.id] = 1; });
+        G.ship.build('c_b2');
+        var ids = G.ship.ships().map(function (s) { return s.id; });
+        var r = G.fleet.form({ shipIds: ids, targetId: G.fleet.targets()[0].id });
+        if (!r.ok) return false;
+        var before = G.fleet.slotOf(r.fleet).van;
+        var c1 = G.fleet.cycleSlot(r.fleet.id, 'van');
+        var after = G.fleet.slotOf(r.fleet).van;
+        G.fleet.launch(r.fleet.id);
+        var c2 = G.fleet.cycleSlot(r.fleet.id, 'van');
+        return c1.ok === true && after !== before && c2.ok === false;
+      })(), '地面可换 · 出发后锁死');
+    } catch (e570) {
+      check('§570 链路异常（不应发生）', false, 'err=' + ((e570 && e570.message) || e570));
+    } finally {
+      G.state = bk;
+    }
+    G.newGame({ name: '收尾', cityName: '灰岗' });
+  })();
+
+  /* ============================================================
+   * §571. v149 玩家视角自检（纯视觉走查后补的四处"
+   * ------------------------------------------------------------
+   * 起因：站在玩家角度无头实机走了一遍（创建→前传→城→地图→账本→出征→
+   * 建城→空间站→行政→英雄→背包→科技→设置→手机），逐屏截图找卡点。
+   * 四处改了，这里各钉一条（防止以后被"顺手优化"回去）：
+   *   ① 新手一条：进游戏第一眼就有"下一步该干什么"（兵少先募兵）
+   *   ② 世界账本每节都有「去办」→（只讲问题不给去处的那些小节）
+   *   ③ 建造预览改成小眼睛（不占卡片高度、不跟建造抢点击）
+   *   ④ 窄屏提示（画布缩放后字太小，告诉玩家横屏/关闭）
+   * ============================================================ */
+  (function () {
+    var NL = String.fromCharCode(10);
+    console.log(NL + '===== 571. v149 玩家视角自检补丁 =====');
+    var bk = G.state;
+    try {
+      var fs7 = require('fs'), pth7 = require('path');
+      var u7 = fs7.readFileSync(pth7.join(__dirname, 'js', 'ui.js'), 'utf8');
+      var h7 = fs7.readFileSync(pth7.join(__dirname, 'index.html'), 'utf8');
+      var m7 = fs7.readFileSync(pth7.join(__dirname, 'js', 'main.js'), 'utf8');
+
+      check('§571① 新手一条：兵少先募兵 → 有兵先建城 → 都够就出门', (function () {
+        G.newGame({ name: 'hint571', cityName: '灰岗', mapSeed: 571001 });
+        var st = G.state;
+        if (st.cities[0]) st.cities[0].pid = 1;
+        G.ui._cityId = st.cities[0].id;      /* 钉住当前城（否则可能指着上一局的城） */
+        var c = G.currentCity();
+        /* 立城自带 4 座居所 —— 先清空建筑，才能验"第二段提示"（实机第一版就因为
+           默认已有建筑而跳过建城那段，断言顺序错了） */
+        (c.cells || []).forEach(function (x) { if (x.build && !x.official) x.build = null; });
+        c.army = {};
+        var h0 = G.ui.nextHintOf(c);
+        c.army = { buxingji: 120 };
+        var h1 = G.ui.nextHintOf(c);
+        /* 把建筑补到 4 座以上 → 应该变成"该出门了" */
+        var put = 0;
+        (c.cells || []).forEach(function (x) {
+          if (put < 6 && !x.build && !x.official) { x.build = { id: 'minfang', lvl: 1 }; put++; }
+        });
+        var h2 = G.ui.nextHintOf(c);
+        return h0 && h0.id === 'train' && h1 && h1.id === 'build' && h2 && h2.id === 'map'
+          && /hint-go/.test(h7) === false && /renderNextHint/.test(u7)
+          && /case 'hint-go'/.test(m7);
+      })(), '三段式提示 · 侧栏有槽位 · 动作有处理器');
+
+      check('§571② 世界账本每节都有「去办 →」（不只讲问题，还给去处）', (function () {
+        var seg = u7.slice(u7.indexOf('ui.openWorldPanel = function'), u7.indexOf('ui.openWorldPanel = function') + 6000);
+        return /data-action="hint-go"/.test(seg)
+          && /去办 →/.test(seg)
+          && /var gotoOf = function/.test(seg)
+          && h7.indexOf('id="next-hint"') >= 0;
+      })(), '小节头右侧的跳转键在册');
+
+      check('§571③ 建造预览 = 小眼睛（不占卡片高度、不跟建造抢点击）', (function () {
+        return /class="bld-eye"/.test(u7) && /class="bldg-eye"/.test(u7)
+          && /\.bld-eye \{/.test(h7) && /\.bldg-eye \{/.test(h7)
+          && !/先看看<\/button>/.test(u7);       /* 旧的大按钮已退役 */
+      })(), '两处小眼睛 + 样式在册');
+
+      check('§571④ 窄屏提示：画布缩放后字太小 → 告诉玩家横屏/关闭', (function () {
+        return h7.indexOf('id="mobile-tip"') >= 0
+          && /k < 0\.66/.test(m7)
+          && /_mobileTipOff/.test(m7);
+      })(), 'k<0.66 才提示 · 点一下关掉');
+    } catch (e571) {
+      check('§571 链路异常（不应发生）', false, 'err=' + ((e571 && e571.message) || e571));
+    } finally {
+      G.state = bk;
     }
     G.newGame({ name: '收尾', cityName: '灰岗' });
   })();

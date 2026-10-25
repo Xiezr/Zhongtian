@@ -886,6 +886,15 @@ import './ui.js';
       /* v147（D 期）：建造前的 3D 预览（不占格、不扣费）。
          点击委托取的是**最近的 data-action**（内层按钮），所以不会误触卡片的 confirm-build。 */
       case 'bld-preview': ui.openBuildPreview(el.dataset.build, Number(el.dataset.lvl) || 1); break;
+      /* v149（实机自检）：侧栏「新手一条」→ 去那一页（做完那一步提示自动消失） */
+      case 'hint-go': {
+        var _hv = el.dataset.view || 'map';
+        if (el.dataset.list) { ui.openBuildingList(); break; }
+        /* 有专门面板的入口（集市是弹窗，不是视图）→ 先关掉账本再开 */
+        if (_hv === 'open-market') { ui.closeAllModals(); ui.openMarket(); break; }
+        ui.setView(_hv);
+        break;
+      }
       case 'confirm-upgrade': GAME.doUpgrade(GAME.slotKey(el.dataset.idx)); break;
       case 'demolish-ask': ui.openDemolishConfirm(el.dataset.kind, GAME.slotKey(el.dataset.idx)); break;
       case 'demolish-do': GAME.doDemolishDo(el.dataset.kind, GAME.slotKey(el.dataset.idx)); break;
@@ -1543,6 +1552,7 @@ import './ui.js';
       case 'ds-launch': ui.dsLaunch(el.dataset.id); break;
       case 'ds-cancel': ui.dsCancel(el.dataset.id); break;
       case 'ds-disband': ui.dsDisband(el.dataset.id); break;
+      case 'ds-slot': ui.dsSlot(el.dataset.id, el.dataset.slot); break;
       /* v40：`case 'set-timescale'` / `case 'set-tax'` 已删 ——
          v22 起税率与倍率改走 `chip-set + data-after='tax'/'timescale'`，
          这两个旧分支在界面上查无触发点（audit 会一直报"不可达分支"）。 */
@@ -3685,6 +3695,21 @@ import './ui.js';
       var _sc151 = (GAME.DATA && GAME.DATA.APP_SCALE) || { min: 0.6, max: 1.6 };
       k = Math.max(_sc151.min, Math.min(_sc151.max, k));
       el.style.setProperty('--app-k', String(Math.round(k * 10000) / 10000));
+      /* v149：窄屏（k 太小 = 字会缩到看不清）→ 给一条可关闭的提示 */
+      try {
+        var tip = document.getElementById('mobile-tip');
+        if (tip) {
+          if (k < 0.66 && !GAME._mobileTipOff) {
+            tip.style.display = 'block';
+            if (!tip._bound) {
+              tip._bound = 1;
+              tip.addEventListener('click', function () {
+                GAME._mobileTipOff = true; tip.style.display = 'none';
+              });
+            }
+          } else tip.style.display = 'none';
+        }
+      } catch (e2) { /* 提示失败不影响缩放 */ }
     } catch (e) { /* 桩环境：保持 CSS 默认 */ }
   }
   GAME.fitAppSize = fitAppSize;
@@ -3707,7 +3732,7 @@ import './ui.js';
      （这解释了"改了却说没生效"的观感）。老板若发现版本 ≠ 最新交付，按 Ctrl+F5
      强制刷新即获得新代码。⚠️ 发版须走 **bump_version.py --bump --version vX.Y**（它同步 index.html 的 ?v=/BUILD
      与这里的 GAME.VERSION 三处）—— 只手改 index.html 会让版本号冻住（v91.18 前的病灶）。 */
-  GAME.VERSION = 'v147.0';
+  GAME.VERSION = 'v149.0';
   function boot() {
     fitAppSize();
     try {

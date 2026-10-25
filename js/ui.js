@@ -3708,9 +3708,45 @@ import './state.js';
   ui.renderSide = function () {
     var s = GAME.state, c = GAME.currentCity();
     if (!s || !c) return;
+    ui.renderNextHint(c, s);
     ui.renderCityAttrs(c, s);
     ui.renderResBar(c, s);
     ui.renderGarrison(c, s);
+  };
+
+  /* ============================================================
+   * v149（实机自检）· **新手一条**
+   * ------------------------------------------------------------
+   * 问题（无头实机截图确认）：新玩家进游戏，主界面**没有任何一句话**
+   * 告诉他"现在该干什么"——顶栏 9 个菜单、城内 48 格、侧栏三块数字，
+   * 全靠自己猜。这不是"信息不足"，是**没有下一步**。
+   *
+   * 所以加**一行**（只一行，不弹窗、不遮挡）：
+   *   ① 兵 < 60 → 「先募点兵」      → 点它跳到练兵场
+   *   ② 已造建筑 < 4 → 「先把空地盖上」→ 点它看建筑一览
+   *   ③ 其余 → 「出发去野外」        → 点它回地图
+   * 做完对应那一步就**自动消失**（不打扰）。
+   * ============================================================ */
+  ui.nextHintOf = function (c) {
+    if (!c) return null;
+    var n = GAME.armyTotal ? GAME.armyTotal(c) : 0;
+    if (n < 60) return { id: 'train', text: '先募一点兵 —— 出门才有底气', act: 'hint-go', view: 'marches' };
+    /* ⚠️ 只数**非政务厅**的建筑 —— 立城自带 4 座居所 + 1 座政务厅（共 5 个 build 项），
+       直接数 build 会让"建城"这一段永远跳过（实机自测当场抓到：第一次进游戏就提示"该出门了"）。 */
+    var built = ((c.cells || []).filter(function (x) { return x.build && x.build.id !== 'guanfu'; })).length;
+    if (built < 4) return { id: 'build', text: '先把空地盖上 —— 城才有产出', act: 'hint-go', view: 'city', list: 1 };
+    return { id: 'map', text: '该出门了 —— 地图上能看见的都能去', act: 'hint-go', view: 'map' };
+  };
+  ui.renderNextHint = function (c) {
+    var box = $('#next-hint');
+    if (!box) return;
+    var h = ui.nextHintOf(c);
+    if (!h) { box.innerHTML = ''; return; }
+    box.innerHTML = '<div data-action="' + h.act + '"' + (h.list ? ' data-list="1"' : '') +
+      ' data-view="' + h.view + '" title="点一下就去（做完这一步就不再提示）"' +
+      ' style="cursor:pointer;padding:6px 10px;border:1px solid var(--gold-dark);border-radius:var(--r-sm);' +
+      'background:rgba(var(--gold-rgb),.10);font-size:var(--fs-sub);color:var(--gold-light);">' +
+      '👉 ' + U.escape(h.text) + '</div>';
   };
 
 
@@ -8157,16 +8193,37 @@ import './state.js';
      * 默认收起是刻意的：这页是"看状态"，一屏扫完六条比逐条滚动强。
      * ============================================================ */
     var sec = function (title, line, extra) {
+      /* v149（实机自检）：每节右上角给一个「去办」入口 —— 之前"账本说得出问题，
+         但每一条都要玩家自己去别的菜单里找得到地方处理"（截图确认：一屏 20 条，0 个可点去处）。
+         入口按关键词落到既有页面，不新造功能。 */
+      var gotoOf = function (t) {
+        var map = [
+          [/温度|辐射云|污染|领土|暴露/, 'map'],
+          [/竞争|势力|宣战|传闻|世界里/, 'admin'],
+          [/兵源|人从哪来|老兵|兵员/, 'marches'],
+          [/年景|历法/, 'admin'],
+          [/危险梯度/, 'map'],
+          [/集市|交易/, 'open-market'],
+          [/奇观|废墟|残页|远行|地下/, 'map'],
+          [/作战目标|护送|斩首/, 'marches']
+        ];
+        for (var i = 0; i < map.length; i++) if (map[i][0].test(t || '')) return map[i][1];
+        return null;
+      };
       var fkey = 'world|' + title;
       var open = !!ui._foldOpen[fkey];
+      var goView = gotoOf(title);
       var brief = String(line || '').replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim().slice(0, 40);
       return '<div style="border-bottom:1px dashed var(--wood-light);">'
         + '<div class="op-zone-t" data-action="fold-toggle" data-fold="' + U.escape(fkey) + '"'
         + ' style="cursor:pointer;user-select:none;padding:4px 0;display:flex;align-items:baseline;gap:7px;">'
         + '<span style="font-size:var(--fs-cap);color:var(--gold-light);font-weight:700;white-space:nowrap;">'
         + (open ? '▾ ' : '▸ ') + title + '</span>'
-        + (open ? '' : '<span style="font-size:var(--fs-cap);opacity:.72;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'
+        + (open ? '' : '<span style="font-size:var(--fs-cap);opacity:.72;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">'
             + U.escape(brief) + (brief.length >= 40 ? '…' : '') + '</span>')
+        + (goView ? '<span data-action="hint-go" data-view="' + goView + '" title="去处理这一条"'
+            + ' style="margin-left:auto;cursor:pointer;font-size:var(--fs-cap);color:var(--gold-light);'
+            + 'border:1px solid rgba(var(--gold-rgb),.35);border-radius:var(--r-sm);padding:0 6px;white-space:nowrap;">去办 →</span>' : '')
         + '</div>'
         + (open ? '<div style="padding:0 0 8px;">'
             + '<div style="font-size:var(--fs-cap);line-height:1.75;">' + (line || '') + '</div>'
@@ -10182,10 +10239,11 @@ import './state.js';
            上排＝操作三键，下排＝关闭。 */
         '<div class="bldg-bottom">' +
           '<div class="bldg-acts">' +
-          /* v147（D 期）：升级前先看下一级（不占格、不扣费） */
-          '<button class="btn bldg-act" data-action="bld-preview" data-build="' + b.id +
-            '" data-lvl="' + (cell.build.lvl + 1) + '" title="进 3D 看一眼 Lv' + (cell.build.lvl + 1) + ' 的样子">🔍 预览<span class="ba-sub">Lv' +
-            cell.build.lvl + ' → Lv' + (cell.build.lvl + 1) + '</span></button>' +
+          /* v147/v149：升级前先看下一级 —— 用**小眼睛**浮在操作区右上角，
+             不占三键的位置（实机自检：四个大键会把"升级"挤出主视线）。 */
+          '<span class="bldg-eye" data-action="bld-preview" data-build="' + b.id +
+            '" data-lvl="' + (cell.build.lvl + 1) + '" title="进 3D 看一眼 Lv' + (cell.build.lvl + 1) + ' 的样子（不占格、不扣费）">👁 Lv' +
+            (cell.build.lvl + 1) + '</span>' +
           (upCost
             ? '<button class="btn gold bldg-act" data-action="confirm-upgrade" data-idx="' + idx + '"' +
                 ' title="' + U.escape(ui.buildCostTip(upCost)) + '">升级' +
@@ -10244,8 +10302,8 @@ import './state.js';
           '" data-build="' + bid + '" style="cursor:pointer;" title="' + U.escape(tip) + '">' +
           '<div class="ticon">' + ic + '</div><div class="tname">' + b.name + '</div>' +
           (lockMsg ? '<div class="tstat" style="color:var(--red-light);">' + lockMsg + '</div>' : '') +
-          '<button class="btn xs" data-action="bld-preview" data-build="' + bid +
-            '" style="margin-top:4px;" title="进 3D 看一眼它建成后的样子（不占格、不扣费）">🔍 先看看</button>' +
+          '<span class="bld-eye" data-action="bld-preview" data-build="' + bid +
+            '" title="进 3D 看一眼它建成后的样子（不占格、不扣费）">👁</span>' +
           '</div>';
       });
       var pgB = ui.modalPage('buildpick', all, 9, function () { ui.openBuildModal(idx); });
@@ -13228,6 +13286,7 @@ import './state.js';
     var FL = GAME.fleet, SH = GAME.ship;
     if (!FL || !SH) return '';
     var IBY = DATA.ITEM_BY_ID || {};
+    var R = DATA.SHIP_ROLES || {};    /* ⚠️ 舰种系名（实机自检抓到：漏了这句 → 整页白屏） */
     var ships = SH.ships();
     var fleets = FL.fleets();
     var tgts = FL.targets();
@@ -13244,7 +13303,8 @@ import './state.js';
       return '<label style="display:flex;align-items:center;gap:6px;padding:6px 8px;border:1px solid ' + (on ? 'var(--gold)' : 'var(--line)') + ';border-radius:var(--r-sm);background:' + (on ? 'rgba(var(--gold-rgb),.12)' : 'var(--bg-2)') + ';' + (lock ? 'opacity:.45;' : 'cursor:pointer;') + '">' +
         '<input type="checkbox" data-action="ds-pick" data-ship="' + sh.id + '"' + (on ? ' checked' : '') + (lock ? ' disabled' : '') + ' />' +
         '<span>' + (cls.icon || '🚀') + ' ' + U.escape(cls.name || sh.classId) + '</span>' +
-        '<span class="ui-sub" style="font-size:var(--fs-cap);">战力 ' + SH.powerOf(sh) + '</span>' +
+        '<span class="ui-sub" style="font-size:var(--fs-cap);">' + U.escape((R[cls.role] || {}).name || '') +
+          '系 · 战力 ' + SH.powerOf(sh) + '</span>' +
         '<span class="ui-sub" style="font-size:var(--fs-cap);margin-left:auto;">' + (inFleet ? '在舰队' : (inColony ? '在投送' : '')) + '</span>' +
         '</label>';
     }).join('') || '<div class="ui-sub">船坞是空的 —— 先在上面造舰。</div>';
@@ -13275,10 +13335,26 @@ import './state.js';
              '<button class="btn sm" data-action="ds-cancel" data-id="' + f.id + '">召回</button>')
           : '<span class="ui-sub">返航中</span>');
       var last = (f.log || []).slice(-2).join('　');
+      /* v148：阵位三个位子 —— 对口舰种才亮（没对口舰写"空"，并说明该上什么系） */
+      var fm = FL.formationOf(f);
+      var roleName = { escort: '护卫', assault: '突击', carrier: '母舰' };
+      var slotChips = fm.used.map(function (u) {
+        var on = !!u.ok;
+        var label = u.name + ' · ' + (on ? U.escape(u.shipName || '') : '空');
+        var tip = u.desc + (on ? '' : ('　—— 这个位子要「' + (roleName[u.role] || u.role) + '系」舰'));
+        return '<span class="chip"' + (f.phase === 'ready' ? ' data-action="ds-slot" data-id="' + f.id +
+          '" data-slot="' + u.slot + '"' : '') + ' style="margin-right:6px;cursor:' + (f.phase === 'ready' ? 'pointer' : 'default') +
+          ';opacity:' + (on ? '1' : '.55') + ';" title="' + U.escape(tip) + '">' +
+          U.escape(label) + '</span>';
+      }).join(' ');
       return '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line);">' +
         '<span><b>' + U.escape(f.name) + '</b> <span class="ui-sub">' + txt + '</span></span>' +
         '<span style="margin-left:auto;">' + op + '</span>' +
-        '</div>' + (last ? '<div class="ui-sub" style="font-size:var(--fs-cap);padding:0 0 4px;">' + U.escape(last) + '</div>' : '');
+        '</div>' +
+        '<div style="padding:0 0 6px;display:flex;gap:4px;flex-wrap:wrap;align-items:center;">' +
+          '<span class="ui-sub" style="font-size:var(--fs-cap);">阵位（点一下换同系舰）</span>' + slotChips +
+        '</div>' +
+        (last ? '<div class="ui-sub" style="font-size:var(--fs-cap);padding:0 0 4px;">' + U.escape(last) + '</div>' : '');
     }).join('') || '<div class="ui-sub">还没有舰队。</div>';
 
     var hist = FL.history().slice(0, 5).map(function (h) {
@@ -13303,7 +13379,7 @@ import './state.js';
           '· 赢了把蓝图/资源带回来；打满回合未破 = 撤回不损舰；被打沉 = 折掉最多一半（先掉僚舰）。') +
       '</div>' +
       '<div class="ui-sub" style="margin:6px 0 6px;">① 选舰（' + sel.length + ' / ' + ((GAME.DATA.DS || {}).maxShips || 5) + '）</div>' +
-      '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:var(--sp-1);">' + pickRows + '</div>' +
+      '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:var(--sp-1);">' + pickRows + '</div>' +
       '<div class="ui-sub" style="margin:10px 0 6px;">② 选目标</div>' +
       '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:var(--sp-1);">' + tgtRows + '</div>' +
       '<div class="ui-sub" style="margin:8px 0 4px;">' + U.escape(preview) + '</div>' +
@@ -13336,6 +13412,12 @@ import './state.js';
     if (r.ok) { ui._dsShips = {}; GAME.refreshAll(); ui.renderView('station'); }
   };
   ui.dsLaunch = function (id) { ui.toast(GAME.fleet.launch(id).msg); GAME.refreshAll(); ui.renderView('station'); };
+  /* v148：阵位轮换（点一下换同系下一艘；没有同系舰 → 提示该位该上什么） */
+  ui.dsSlot = function (id, slotKey) {
+    var r = GAME.fleet.cycleSlot(id, slotKey);
+    ui.toast(r.msg);
+    if (r.ok) { GAME.refreshAll(); ui.renderView('station'); }
+  };
   ui.dsCancel = function (id) { ui.toast(GAME.fleet.cancel(id).msg); GAME.refreshAll(); ui.renderView('station'); };
   ui.dsDisband = function (id) { ui.toast(GAME.fleet.disband(id).msg); GAME.refreshAll(); ui.renderView('station'); };
 

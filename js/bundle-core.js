@@ -4658,6 +4658,20 @@ window.GAME = window.GAME || {};
     maxRounds: 10,            /* 打满这么多回合算"未破" */
     jitter: 0.12,             /* 确定性抖动幅度 */
     lossPct: 0.5,             /* 输了最多折掉几成（先掉僚舰） */
+    /* ============================================================
+     * v148（F 期深化 · 设计提案 5-B「角色互补」）：**阵位**
+     * ------------------------------------------------------------
+     * 三个位子，**只有对口舰种吃到**（不对口 = 无加成，不误导）：
+     *   前卫 van   ← 护卫（escort）  挨打少 15%（挡在最前）
+     *   中坚 mid   ← 突击（assault） 输出 +15%（主炮在阵中）
+     *   后卫 rear  ← 母舰（carrier） 战利品 +15%（后方清点战场）
+     * 三个位子各一艘；空位 = 没加成。编成时按舰种**自动落位**，之后可点着轮换。
+     * ============================================================ */
+    positions: {
+      van:  { id: 'van',  name: '前卫', role: 'escort',  dmgCut: 0.15, desc: '护卫挡在最前：受到伤害 −15%' },
+      mid:  { id: 'mid',  name: '中坚', role: 'assault', atkAdd: 0.15, desc: '突击居阵中：全队输出 +15%' },
+      rear: { id: 'rear', name: '后卫', role: 'carrier', lootAdd: 0.15, desc: '母舰压后阵：战利品 +15%' },
+    },
     targets: [
       { id: 'ds_belt', name: '碎星带 · 废料场', icon: '🪨', flightSec: 1200,
         hp: 1800, shield: 0, atk: 250, def: 4,
@@ -15892,6 +15906,81 @@ window.GAME = window.GAME || {};
     return Math.max(1, Math.round(t * 1000));
   };
 
+  /* ============================================================
+   * v148 · **阵位**（设计提案 5-B「角色互补」的最小可玩版）
+   * ------------------------------------------------------------
+   * 三个位子各一艘；**只有对口舰种才吃到加成**（不对口 = 空占位、零加成）。
+   *   slotOf(fleet)      → { van, mid, rear } 舰 id（缺省按舰种自动落位）
+   *   formationOf(fleet) → { atkAdd, dmgCut, lootAdd, used[] }
+   * 界面与战斗都只读这两个出口 —— 不会"面板上一个数、打的时候另一个数"。
+   * ============================================================ */
+  var SLOT_ORDER = ['van', 'mid', 'rear'];
+  function roleOfShip(id) {
+    var cls = null;
+    SH.ships().forEach(function (x) { if (x.id === id) cls = SH.classOf(x.classId); });
+    return cls ? cls.role : null;
+  }
+  function shipNameOf(id) {
+    var cls = null;
+    SH.ships().forEach(function (x) { if (x.id === id) cls = SH.classOf(x.classId); });
+    return cls ? cls.name : id;
+  }
+  /* 自动落位：把**第一艘**对口舰放进对应位子（其余同系舰是候补） */
+  FL.autoSlots = function (fleet) {
+    var out = { van: null, mid: null, rear: null };
+    var P = cfg('positions', {}) || {};
+    (fleet && fleet.ships || []).forEach(function (id) {
+      var role = roleOfShip(id);
+      SLOT_ORDER.forEach(function (k) {
+        if (out[k]) return;
+        if (P[k] && P[k].role === role) out[k] = id;
+      });
+    });
+    return out;
+  };
+  FL.slotOf = function (fleet) {
+    var auto = FL.autoSlots(fleet);
+    var cur = (fleet && fleet.slots) || {};
+    var out = {};
+    SLOT_ORDER.forEach(function (k) {
+      var v = cur[k];
+      out[k] = (v && (fleet.ships || []).indexOf(v) >= 0) ? v : auto[k];
+    });
+    return out;
+  };
+  FL.formationOf = function (fleet) {
+    var P = cfg('positions', {}) || {}, slot = FL.slotOf(fleet);
+    var out = { atkAdd: 0, dmgCut: 0, lootAdd: 0, used: [] };
+    SLOT_ORDER.forEach(function (k) {
+      var def = P[k] || {};
+      var sid = slot[k], ok = false;
+      if (sid && roleOfShip(sid) === def.role) {
+        ok = true;
+        out.atkAdd += (def.atkAdd || 0);
+        out.dmgCut += (def.dmgCut || 0);
+        out.lootAdd += (def.lootAdd || 0);
+      }
+      out.used.push({ slot: k, name: def.name || k, role: def.role || '',
+        shipId: sid, shipName: sid ? shipNameOf(sid) : null, ok: ok, desc: def.desc || '' });
+    });
+    return out;
+  };
+  /* 在位子上轮换候选舰（点一下换下一艘） */
+  FL.cycleSlot = function (fleetId, slotKey) {
+    var f = FL.fleetOf(fleetId);
+    if (!f) return { ok: false, msg: '没有这支舰队' };
+    if (f.phase !== 'ready') return { ok: false, msg: '舰队已出发 —— 返航后再调整阵位' };
+    var P = cfg('positions', {}) || {}, def = P[slotKey];
+    if (!def) return { ok: false, msg: '没有这个阵位' };
+    var cands = (f.ships || []).filter(function (id) { return roleOfShip(id) === def.role; });
+    if (!cands.length) return { ok: false, msg: '队里没有' + ((SH.roleOf(def.role) || {}).name || '') + '系舰 —— 这个位子空着' };
+    var slot = FL.slotOf(f);
+    var next = cands[(cands.indexOf(slot[slotKey]) + 1) % cands.length];
+    f.slots = f.slots || {};
+    f.slots[slotKey] = next;
+    return { ok: true, msg: def.name + ' → ' + shipNameOf(next), shipId: next };
+  };
+
   /* ---------- 编成 ---------- */
   FL.canForm = function (opts) {
     opts = opts || {};
@@ -15924,6 +16013,7 @@ window.GAME = window.GAME || {};
       id: 'fl' + st._seq,
       name: String(opts.name || '').trim().slice(0, 10) || ('远征队 ' + st._seq),
       ships: chk.ships.slice(),
+      slots: FL.autoSlots({ ships: chk.ships }),      /* v148：按舰种自动落位 */
       fromCityId: (GAME.currentCity() || {}).id || null,
       targetId: chk.target.id,
       flagshipLost: false,
@@ -15975,7 +16065,8 @@ window.GAME = window.GAME || {};
       /* 敌方输出：护甲按 armorScale 折算；全队平均闪避减伤（最多一半） */
       var evaCut = Math.min(0.5, Math.max(0, mine.eva || 0));
       var dmgM = Math.max(1, Math.round(
-        (T.atk || 1) * eAtkMul * clash(T.atk || 1, (mine.armor || 0) * armorScale) * jE * (1 - evaCut)));
+        (T.atk || 1) * eAtkMul * clash(T.atk || 1, (mine.armor || 0) * armorScale) * jE
+        * (1 - evaCut) * (1 - Math.min(0.5, Math.max(0, mine.dmgCut || 0)))));   /* v148 前卫挡伤 */
       /* 护盾先吃伤害 */
       var toShield = Math.min(eShield, dmgE); eShield -= toShield; eHp = Math.max(0, eHp - (dmgE - toShield));
       var toShield2 = Math.min(shield, dmgM); shield -= toShield2; hp = Math.max(0, hp - (dmgM - toShield2));
@@ -15986,8 +16077,18 @@ window.GAME = window.GAME || {};
     }
     var loot = {};
     if (win) {
-      loot.items = U.deep((T.loot && T.loot.items) || {});
-      loot.res = U.deep((T.loot && T.loot.res) || {});
+      /* v148 后卫（母舰压后阵）：战利品 +X% —— 逐项向下取整（不凭空多出零头） */
+      var lm = 1 + Math.max(0, mine.lootAdd || 0);
+      var gm = function (m) {
+        var o = {};
+        for (var k in (m || {})) {
+          var n = Math.floor((m[k] || 0) * lm + 1e-9);
+          if (n > 0) o[k] = n;
+        }
+        return o;
+      };
+      loot.items = gm((T.loot && T.loot.items) || {});
+      loot.res = gm((T.loot && T.loot.res) || {});
     }
     var lost = [];
     /* v146：选了「深空无响应」→ 沉船也不折舰（代价已用全境产出付过 —— 唯一出口读 ending） */
@@ -16000,11 +16101,15 @@ window.GAME = window.GAME || {};
       hpLeft: hp, shieldLeft: shield, enemyHpLeft: eHp, timeout: !win && hp > 0 };
   };
 
-  /* 我方舰队 → 一场战斗的输入（纯数据，测试可自造） */
+  /* 我方舰队 → 一场战斗的输入（纯数据，测试可自造）。
+     v148：**阵位加成在这里折算** —— 同一条数据既给界面预览、也给战斗结算。 */
   FL.mineOf = function (fleet) {
     var st = FL.statsOf(fleet);
-    return { atk: st.atk, hp: st.hp, shield: st.shield, armor: st.armor, eva: st.eva,
-      n: st.n, ships: st.ships };
+    var fm = FL.formationOf(fleet);
+    return { atk: Math.round(st.atk * (1 + (fm.atkAdd || 0))), hp: st.hp, shield: st.shield,
+      armor: st.armor, eva: st.eva, n: st.n, ships: st.ships,
+      dmgCut: fm.dmgCut || 0, lootAdd: fm.lootAdd || 0,
+      formation: fm.used };
   };
 
   /* ---------- 出征 / 返航 ---------- */
@@ -16142,10 +16247,12 @@ window.GAME = window.GAME || {};
 
   /* ---------- 队形预览（界面用：哪些舰在队里 / 谁旗舰） ---------- */
   FL.previewText = function (fleet) {
-    var st = FL.statsOf(fleet);
+    var st = FL.mineOf(fleet);        /* v148：走同一份（含阵位）—— 预览与实战同数 */
+    var used = (st.formation || []).filter(function (x) { return x.ok; });
     return st.n + ' 艘 · 攻 ' + U.fmt(st.atk) + ' · 血 ' + U.fmt(st.hp)
       + ' · 盾 ' + U.fmt(st.shield) + ' · 甲 ' + U.fmt(st.armor)
-      + ' · 闪 ' + Math.round(st.eva * 100) + '%';
+      + ' · 闪 ' + Math.round(st.eva * 100) + '%'
+      + (used.length ? ' · 阵位 ' + used.map(function (x) { return x.name; }).join('/') : '');
   };
 
   /* ============================================================
