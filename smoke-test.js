@@ -44753,6 +44753,71 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     G.newGame({ name: '收尾', cityName: '灰岗' });
   })();
 
+  /* ============================================================
+   * §569. v147 建造预览（D 期「建造时的 3D 预览」）
+   * ------------------------------------------------------------
+   * 钉四件事：
+   *   ① 入口在册：候选卡片 / 已建面板都有「先看看」· main.js 有处理器
+   *   ② 无 WebGL 兜底：node 里按下去**一定有反应**（静态示意图），不是静默失败
+   *   ③ 预览是纯看看：不扣资源、不占格、不改城
+   *   ④ 预览场景入口在册（S.openBuildPreview → open('pv')）
+   * ============================================================ */
+  (function () {
+    var NL = String.fromCharCode(10);
+    console.log(NL + '===== 569. v147 建造预览（D 期） =====');
+    var bk = G.state, bkCity = G.ui._cityId;
+    try {
+      var fs5 = require('fs'), pth5 = require('path');
+      var u5 = fs5.readFileSync(pth5.join(__dirname, 'js', 'ui.js'), 'utf8');
+      var m5 = fs5.readFileSync(pth5.join(__dirname, 'js', 'main.js'), 'utf8');
+      var s5 = fs5.readFileSync(pth5.join(__dirname, 'js', 'scene3d.js'), 'utf8');
+
+      check('§569① 入口在册：候选卡片 / 已建面板都有「先看看」· main.js 有处理器', (function () {
+        return /data-action="bld-preview"/.test(u5)
+          && (u5.match(/data-action="bld-preview"/g) || []).length >= 2      /* 候选 + 已建两处 */
+          && /case 'bld-preview'/.test(m5)
+          && /ui\.openBuildPreview = function/.test(u5);
+      })(), '两处按钮 + 一个 case + 一个出口');
+
+      check('§569② 无 WebGL 兜底：按下去一定有反应（静态示意图），不是静默失败', (function () {
+        G.newGame({ name: 'pv569', cityName: '灰岗', mapSeed: 569001 });
+        G.state.cities[0].pid = 1;
+        G.ui._cityId = G.state.cities[0].id;
+        var r = G.ui.openBuildPreview('minfang', 3);
+        return !!r && r.ok === true && r.fallback === true;
+      })(), 'node 无 THREE → fallback 示意图');
+
+      check('§569③ 预览是纯看看：不扣资源、不占格、不改城', (function () {
+        var c = GAME.currentCity();
+        var R0 = GAME.res(c), keys = ['grain', 'wood', 'stone', 'iron', 'gold'];
+        var before = keys.map(function (k) { return R0[k] || 0; });
+        var cells0 = JSON.stringify(c.cells);
+        var n0 = (GAME.state.cities || []).length;
+        var rv = G.ui.openBuildPreview('tiejiangpu', 5);
+        var R1 = GAME.res(c);
+        var after = keys.map(function (k) { return R1[k] || 0; });
+        /* ⚠️ 必须要求"真的打开了"—— 否则传错建筑 id 也能"什么都没变"而假绿（第一版本就踩了） */
+        return !!rv && rv.ok === true
+          && JSON.stringify(before) === JSON.stringify(after)
+          && JSON.stringify(c.cells) === cells0
+          && (GAME.state.cities || []).length === n0;
+      })(), '资源 / 格子 / 城数全不变');
+
+      check('§569④ 预览场景入口在册：S.openBuildPreview → open(\'pv\')', (function () {
+        return /S\.openBuildPreview = function/.test(s5)
+          && /S\.open\('pv'/.test(s5)
+          && /function buildPreviewScene/.test(s5)
+          && /sceneId === 'pv'/.test(s5)
+          && typeof G.scene3d.openBuildPreview === 'function';
+      })(), '入口 + 分支 + 渲染三件齐');
+    } catch (e569) {
+      check('§569 链路异常（不应发生）', false, 'err=' + ((e569 && e569.message) || e569));
+    } finally {
+      G.state = bk; G.ui._cityId = bkCity;
+    }
+    G.newGame({ name: '收尾', cityName: '灰岗' });
+  })();
+
 console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');
   process.exit(FAIL ? 1 : 0);
 })();

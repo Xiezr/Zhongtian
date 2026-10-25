@@ -883,6 +883,9 @@ import './ui.js';
         break;
       }
       case 'confirm-build': GAME.doBuild(GAME.slotKey(el.dataset.idx), el.dataset.build); break;
+      /* v147（D 期）：建造前的 3D 预览（不占格、不扣费）。
+         点击委托取的是**最近的 data-action**（内层按钮），所以不会误触卡片的 confirm-build。 */
+      case 'bld-preview': ui.openBuildPreview(el.dataset.build, Number(el.dataset.lvl) || 1); break;
       case 'confirm-upgrade': GAME.doUpgrade(GAME.slotKey(el.dataset.idx)); break;
       case 'demolish-ask': ui.openDemolishConfirm(el.dataset.kind, GAME.slotKey(el.dataset.idx)); break;
       case 'demolish-do': GAME.doDemolishDo(el.dataset.kind, GAME.slotKey(el.dataset.idx)); break;
@@ -3704,7 +3707,7 @@ import './ui.js';
      （这解释了"改了却说没生效"的观感）。老板若发现版本 ≠ 最新交付，按 Ctrl+F5
      强制刷新即获得新代码。⚠️ 发版须走 **bump_version.py --bump --version vX.Y**（它同步 index.html 的 ?v=/BUILD
      与这里的 GAME.VERSION 三处）—— 只手改 index.html 会让版本号冻住（v91.18 前的病灶）。 */
-  GAME.VERSION = 'v146.0';
+  GAME.VERSION = 'v147.0';
   function boot() {
     fitAppSize();
     try {

@@ -10182,6 +10182,10 @@ import './state.js';
            上排＝操作三键，下排＝关闭。 */
         '<div class="bldg-bottom">' +
           '<div class="bldg-acts">' +
+          /* v147（D 期）：升级前先看下一级（不占格、不扣费） */
+          '<button class="btn bldg-act" data-action="bld-preview" data-build="' + b.id +
+            '" data-lvl="' + (cell.build.lvl + 1) + '" title="进 3D 看一眼 Lv' + (cell.build.lvl + 1) + ' 的样子">🔍 预览<span class="ba-sub">Lv' +
+            cell.build.lvl + ' → Lv' + (cell.build.lvl + 1) + '</span></button>' +
           (upCost
             ? '<button class="btn gold bldg-act" data-action="confirm-upgrade" data-idx="' + idx + '"' +
                 ' title="' + U.escape(ui.buildCostTip(upCost)) + '">升级' +
@@ -10233,10 +10237,16 @@ import './state.js';
           lockMsg = preTxt; tip += '｜' + preTxt;
         }
         var ic = GAME.icons.forBuilding(bid) || b.icon;
+        /* v147（D 期）：**先看看** —— 建造前先进 3D 预览（不占格、不扣费）。
+           ⚠️ 卡片自身带 data-action（整卡点击 = 建造），里面的小按钮必须
+              `event.stopPropagation` 才能不触发外层（见 main.js 的 bld-preview case）。 */
         return '<div class="troop-card bldg-pick' + afford + '" data-action="confirm-build" data-idx="' + idx +
           '" data-build="' + bid + '" style="cursor:pointer;" title="' + U.escape(tip) + '">' +
           '<div class="ticon">' + ic + '</div><div class="tname">' + b.name + '</div>' +
-          (lockMsg ? '<div class="tstat" style="color:var(--red-light);">' + lockMsg + '</div>' : '') + '</div>';
+          (lockMsg ? '<div class="tstat" style="color:var(--red-light);">' + lockMsg + '</div>' : '') +
+          '<button class="btn xs" data-action="bld-preview" data-build="' + bid +
+            '" style="margin-top:4px;" title="进 3D 看一眼它建成后的样子（不占格、不扣费）">🔍 先看看</button>' +
+          '</div>';
       });
       var pgB = ui.modalPage('buildpick', all, 9, function () { ui.openBuildModal(idx); });
       ui.openShell({
@@ -13484,6 +13494,48 @@ import './state.js';
   };
   /* 旧建造场：保留函数名以免外部引用断裂，但**视图已改走 station**。 */
   ui.buildHTML = ui.stationHTML;
+
+  /* ============================================================
+   * v147（D 期「建造时的 3D 预览」）
+   * ------------------------------------------------------------
+   * 建造前/升级前进 3D 看一眼它建成后的样子：**不占格、不扣费**。
+   * 有 WebGL → `GAME.scene3d.openBuildPreview` 走 v140 那套正交场景；
+   * 没有 WebGL（老设备/门禁环境）→ 静态兜底图（CSS 画的一块示意图），
+   * 保证"按钮按下去一定有反应"，不会点了没动。
+   * ============================================================ */
+  ui.openBuildPreview = function (bid, lvl, cityId) {
+    var B = (DATA.BUILDINGS || {})[bid];
+    if (!B) { ui.toast('没有这个建筑'); return; }
+    var L = Math.max(1, Math.min(DATA.MAX_BLEVEL || 24, (lvl | 0) || 1));
+    var ok = null;
+    try {
+      if (typeof THREE !== 'undefined' && GAME.scene3d && GAME.scene3d.openBuildPreview) {
+        ok = GAME.scene3d.openBuildPreview(bid, L, cityId);
+      }
+    } catch (e) { ok = null; }
+    if (ok && ok.ok) return ok;
+    /* 无 WebGL 兜底：一块静态示意图（颜色/层数照原建筑的分类口径） */
+    var cat = (B.mil ? 'mil' : (/minfang|juzhu/.test(bid) ? 'live'
+      : (/nongtian|linchang|caikuang|shuijing/.test(bid) ? 'prod'
+        : (/tiejiang|gongjiang|zuofang|shuyuan|keyan/.test(bid) ? 'craft'
+          : (B.cat === 'gov' ? 'gov' : 'other')))));
+    var col = { gov: '#cbb282', prod: '#b08b4e', mil: '#7d8790', live: '#d2bb95', craft: '#b4643a', other: '#9a9384' }[cat] || '#9a9384';
+    var hh = 40 + L * 10;
+    ui.openModal(
+      '<div class="gold-heading">🔍 建造预览 · ' + U.escape(B.name) + ' Lv' + L + '</div>' +
+      '<div style="display:flex;justify-content:center;align-items:flex-end;height:220px;'
+        + 'background:linear-gradient(#9db0bd,#6f6553);border:1px solid var(--line);border-radius:var(--r-sm);">'
+        + '<div style="width:120px;height:' + hh + 'px;background:' + col + ';'
+        + 'box-shadow:0 0 0 4px rgba(0,0,0,.18);position:relative;">'
+        + '<div style="position:absolute;left:50%;bottom:-18px;transform:translateX(-50%);'
+        + 'width:0;height:0;border-left:66px solid transparent;border-right:66px solid transparent;'
+        + 'border-bottom:26px solid ' + col + ';"></div></div></div>' +
+      '<div class="ui-sub" style="margin-top:8px;">这台设备没有 WebGL —— 用示意图代替 3D 预览。'
+        + '（预览不占格、不扣费；真正建造仍走原来的面板。）</div>',
+      'sm'
+    );
+    return { ok: true, fallback: true };
+  };
 
   ui.stationPick = function (classId) {
     ui._stationSel = (ui._stationSel === classId) ? null : classId;

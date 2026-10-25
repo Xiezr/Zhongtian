@@ -3145,7 +3145,9 @@
     if (!openId) return;
     var cfg = (openId === 'city')
       ? { name: '我的城', sub: '在街上走走 —— 走出城门就是出城' }
-      : (sceneCfg(openId) || {});
+      : (openId === 'pv'
+        ? { name: '建造预览', sub: '这是它建成后的样子 —— 左右是邻格参照物' }
+        : (sceneCfg(openId) || {}));
     var ui = document.createElement('div');
     ui.className = 'scene-ui';
     ui.style.cssText = 'position:absolute;left:0;top:0;right:0;bottom:0;pointer-events:none;';
@@ -3161,7 +3163,7 @@
       + U.escape(cfg.sub || '')
       /* 城内不报"几处已收拾"：那里的节点是 48 栋房子，不是可采集点，
          报个 0/48 会让人以为"什么都没做"。 */
-      + (openId === 'city' ? '' : ('　<b style="color:var(--green-ok);">' + nodesDone + '/' + nodesTotal + '</b> 处已收拾'))
+      + ((openId === 'city' || openId === 'pv') ? '' : ('　<b style="color:var(--green-ok);">' + nodesDone + '/' + nodesTotal + '</b> 处已收拾'))
       /* v143：野地等级（难度/收益倍率都乘在它上 —— 与地块界面同一口径）。
          正式/序章两宿主都有；城市场景没有这个概念，不显示。 */
       + ((ctx && ctx.lv != null && openId !== 'city') ? ('　<b style="color:var(--gold-light);">野地 Lv' + ctx.lv + '</b>') : '')
@@ -3173,12 +3175,15 @@
       + (nd ? 'var(--gold-light)' : 'var(--line)') + ';color:' + (nd ? 'var(--gold-light)' : 'var(--text-dim)')
       + ';font-size:var(--fs-body);white-space:nowrap;">'
       + (nd ? ('<b>[E]</b> ' + U.escape(nd.label || '动手') + '　<span style="opacity:.7;font-size:var(--fs-cap);">'
-        + U.escape(nd.hint || '') + '</span>') : '走到发光的东西旁边，才能动手')
+        + U.escape(nd.hint || '') + '</span>')
+        : (openId === 'pv' ? '预览不会改变任何东西 —— 关掉它再决定建不建' : '走到发光的东西旁边，才能动手'))
       + '</div>'
       + '<div style="position:absolute;left:14px;bottom:14px;font-size:var(--fs-cap);color:var(--text-dim);">'
       + (openId === 'city'
         ? 'WASD / 方向键 逛街　·　点地面走过去　·　走出城门回野外'
-        : 'WASD / 方向键 走动　·　点地面走过去　·　点发光处自动靠近')
+        : (openId === 'pv'
+          ? '这是预览（不占格、不扣费）·　Esc 返回建造面板'
+          : 'WASD / 方向键 走动　·　点地面走过去　·　点发光处自动靠近'))
       + '</div>'
       + '<div style="position:absolute;right:14px;bottom:14px;pointer-events:auto;">'
       + '<button data-scene="close" style="padding:6px 14px;border-radius:5px;cursor:pointer;'
@@ -3229,7 +3234,11 @@
      玩家出生就站在门楣底下 —— 65° 俯角下门楣把人挡到只剩脚（截图确认）。
      2.2 让墙根有一圈 2.5 米宽的空地，出生点能退到门外看不见的位置。 */
   var CITY_PAD = 2.2;
+  /* v147（D 期「建造时的 3D 预览」）：预览场景的格子边长（只给预览用，不动城内街区） */
+  var PV_T = 3.2, PV_GAP = 0.8;
   var citySolids = [], cityBounds = null, cityOutZ = 0;
+  /* v147：预览用的分类色（城内街区与建造预览**同一份** —— 不另起一套配色） */
+  var PV_CAT_COL = { gov: 0xcbb282, prod: 0xb08b4e, mil: 0x7d8790, live: 0xd2bb95, craft: 0xb4643a, other: 0x9a9384 };
   /* v143.2：城内行人（氛围层）。plan 是纯数据（_npcPlan 生成，可无 THREE 测），
      grp 是渲染产物（buildCityScene 里建）。二者分开：测逻辑不用起 WebGL。 */
   var cityNpcs = [];
@@ -3403,6 +3412,163 @@
   };
   S.cityGeo = { T: CITY_T, bw: CITY_BW, walk: CITY_T - CITY_BW, r: CITY_R, pad: CITY_PAD };
 
+  /* ============================================================
+   * v147（D 期「建造时的 3D 预览」）—— 建造前先看一眼它长什么样
+   * ------------------------------------------------------------
+   * 老板（v91.71）：「主题 = 军事投送」，接力卡 D 期剩下的那一条就是
+   * **建造时的 3D 预览**（D 期其余部分 v143.x 已经把 2.5D 场景接进玩法了）。
+   *
+   * 为什么单独一个函数、而不是复用 buildCityScene：
+   *   城内街区是"整座城的现状"（48 格 + 碰撞 + 行人 + 城门），
+   *   预览是"一栋候选建筑"（比邻格高一点，好读体量）。
+   *   两者共用**同一套道具与配色**（`PV_CAT_COL` / `house()` 的形体口径），
+   *   但布局、相机、交互都不同 —— 硬塞进一个函数会立刻变成两本账。
+   *
+   * ctx = { bid, lvl, cityId } —— 纯数据进，渲染出；失败返回 null（调用方 toast）。
+   * 无 WebGL 时由调用方（ui.openBuildPreview）按 `typeof THREE` 兜底成静态图。
+   * ============================================================ */
+  function buildPreviewScene(ctxIn) {
+    var c = ctxIn.cityId ? G.cityById(ctxIn.cityId) : G.currentCity();
+    if (!c) return null;
+    var bid = ctxIn.bid, lvl = Math.max(1, Math.min(6, (ctxIn.lvl | 0) || 1));
+    var B = (G.DATA.BUILDINGS || {})[bid];
+    if (!B) return null;
+    /* ⚠️ 先置 openId —— renderHud 的第一行是 `if (!openId) return;`
+       （它由 S.open 在 cfg 分支里设置；预览分支自己装配，必须自己置） */
+    openId = 'pv';
+    layer.style.display = 'block';
+    if (propRoot) { scene.remove(propRoot); propRoot = null; }
+    nodeList = []; nearNode = null; waterMesh = null;
+    propRoot = new THREE.Group();
+    scene.add(propRoot);
+    cityView = false;
+    frustumH = 8.5;
+    _skyBase = 0x9db0bd; _fogBase = 0x9db0bd;
+    scene.background = new THREE.Color(0x9db0bd);
+    scene.fog = new THREE.FogExp2(0x9db0bd, 0.006);
+
+    var R = rng(90210);
+    function lamP(color, o) {
+      var p = { color: color };
+      if (o) for (var k in o) p[k] = o[k];
+      return new THREE.MeshLambertMaterial(p);
+    }
+    /* 地面：夯土棋盘（格线画在地上，让"一格占多大"读得出来） */
+    var cv = document.createElement('canvas');
+    cv.width = cv.height = 512;
+    var g2 = cv.getContext('2d');
+    g2.fillStyle = '#6f6553'; g2.fillRect(0, 0, 512, 512);
+    for (var i = 0; i < 2400; i++) {
+      var dv = (R() - 0.5) * 0.22;
+      g2.fillStyle = '#' + new THREE.Color(0x6a6152).offsetHSL(0, 0, dv).getHexString();
+      g2.fillRect(R() * 512, R() * 512, 1 + R() * 2.5, 1 + R() * 2.5);
+    }
+    g2.strokeStyle = 'rgba(40,36,28,0.30)'; g2.lineWidth = 2;
+    for (var gl = 0; gl <= 512; gl += 128) {
+      g2.beginPath(); g2.moveTo(gl, 0); g2.lineTo(gl, 512); g2.stroke();
+      g2.beginPath(); g2.moveTo(0, gl); g2.lineTo(512, gl); g2.stroke();
+    }
+    var tex = new THREE.CanvasTexture(cv);
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(6, 6);
+    var ground = new THREE.Mesh(new THREE.PlaneGeometry(26, 26), new THREE.MeshLambertMaterial({ map: tex }));
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.y = 0.01;
+    propRoot.add(ground);
+    /* 台基：候选建筑脚下比地面亮半档 —— "它会被放在这儿" */
+    var pad = new THREE.Mesh(new THREE.PlaneGeometry(PV_T - 0.2, PV_T - 0.2),
+      lamP(0x8b8272));
+    pad.rotation.x = -Math.PI / 2; pad.position.set(0, 0.03, 0);
+    propRoot.add(pad);
+
+    /* 主建筑：形状照 `house()` 的口径重画一份（预览不依赖城内那套布局） */
+    var cat = (B.mil ? 'mil' : (/minfang|juzhu/.test(bid) ? 'live'
+      : (/nongtian|linchang|caikuang|shuijing/.test(bid) ? 'prod'
+        : (/tiejiang|gongjiang|zuofang|shuyuan|keyan/.test(bid) ? 'craft'
+          : (B.cat === 'gov' ? 'gov' : 'other')))));
+    var base = PV_CAT_COL[cat] || PV_CAT_COL.other;
+    var h = 1.0 + (lvl - 1) * 0.30;
+    var w = PV_T - PV_GAP, d = PV_T - PV_GAP;
+    var grp = new THREE.Group();
+    grp.add(new THREE.Mesh(new THREE.BoxGeometry(w + 0.16, 0.12, d + 0.16), lamP(0x7f786a)).translateY(0.06));
+    var box = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), lamP(base));
+    box.position.y = 0.12 + h / 2;
+    grp.add(box);
+    var topY = 0.12 + h;
+    if (cat === 'mil') {
+      [[0, -d / 2 + 0.06, w + 0.04, 0.07], [0, d / 2 - 0.06, w + 0.04, 0.07],
+       [-w / 2 + 0.06, 0, 0.07, d + 0.04], [w / 2 - 0.06, 0, 0.07, d + 0.04]].forEach(function (q) {
+        var m = new THREE.Mesh(new THREE.BoxGeometry(q[2], 0.22, q[3]), lamP(0x6f6a5e));
+        m.position.set(q[0], topY + 0.11, q[1]); grp.add(m);
+      });
+      var bag = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.16, 0.22), lamP(0x8a7a5c));
+      bag.position.set(-w * 0.22, topY + 0.30, 0); grp.add(bag);
+    } else {
+      var eave = new THREE.Mesh(new THREE.BoxGeometry(w * 1.10, 0.07, d * 1.10),
+        lamP(new THREE.Color(base).multiplyScalar(0.44).getHex()));
+      eave.position.y = topY + 0.02; grp.add(eave);
+      var roof = new THREE.Mesh(new THREE.ConeGeometry(w * 0.78, 0.46 + lvl * 0.03, 4),
+        lamP(new THREE.Color(base).multiplyScalar(0.50).getHex()));
+      roof.position.y = topY + 0.28; roof.rotation.y = Math.PI / 4; grp.add(roof);
+      var ridge = new THREE.Mesh(new THREE.BoxGeometry(w * 0.42, 0.05, 0.07),
+        lamP(new THREE.Color(base).multiplyScalar(0.34).getHex()));
+      ridge.position.y = topY + 0.52 + lvl * 0.03; grp.add(ridge);
+    }
+    /* 门 / 窗 / 招牌（朝 +z，与城内同一个"玩家看到的那一面"口径） */
+    var face = d / 2 + 0.02;
+    var door = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.66, 0.06), lamP(0x3f3123));
+    door.position.set(0, 0.45, face); grp.add(door);
+    /* ⚠️ 变量名不能叫 `step` —— 会遮住外层的**每帧函数** `function step(now)`，
+       `requestAnimationFrame(step)` 当场报 "parameter 1 is not of type 'Function'"（实测踩到） */
+    var stepM = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.07, 0.18), lamP(0x8b8272));
+    stepM.position.set(0, 0.035, face + 0.10); grp.add(stepM);
+    if (cat === 'live' || cat === 'craft' || cat === 'gov') {
+      var glow = 0xffd27a;
+      [-w * 0.30, w * 0.30].forEach(function (wx) {
+        var winm = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.20, 0.04),
+          new THREE.MeshLambertMaterial({ color: glow, emissive: glow, emissiveIntensity: 0.55 }));
+        winm.position.set(wx, 0.82 + h * 0.28, face); grp.add(winm);
+      });
+    }
+    grp.position.set(0, 0, 0);
+    propRoot.add(grp);
+
+    /* 参照物：左邻（居所 Lv1）· 右邻（作坊 Lv1）—— "它比旁边高多少"一眼能读 */
+    function neighbor(px, col, lh) {
+      var g = new THREE.Group();
+      var b0 = new THREE.Mesh(new THREE.BoxGeometry(w + 0.16, 0.12, d + 0.16), lamP(0x7f786a));
+      b0.position.y = 0.06; g.add(b0);
+      var b1 = new THREE.Mesh(new THREE.BoxGeometry(w, lh, d), lamP(col));
+      b1.position.y = 0.12 + lh / 2; g.add(b1);
+      var rf = new THREE.Mesh(new THREE.ConeGeometry(w * 0.78, 0.5, 4),
+        lamP(new THREE.Color(col).multiplyScalar(0.5).getHex()));
+      rf.position.y = 0.12 + lh + 0.25; rf.rotation.y = Math.PI / 4; g.add(rf);
+      g.position.set(px, 0, 0.6);
+      propRoot.add(g);
+    }
+    neighbor(-(PV_T + 0.9), PV_CAT_COL.live, 1.0);
+    neighbor((PV_T + 0.9), PV_CAT_COL.craft, 1.3);
+    /* 施工围栏：围在候选建筑外侧（"这是还没建的东西"，不是现状） */
+    var fenceMat = lamP(0x9a7448);
+    [[-(PV_T / 2 + 0.25), 0], [(PV_T / 2 + 0.25), 0]].forEach(function (q) {
+      var post = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.55, 0.08), fenceMat);
+      post.position.set(q[0], 0.275, q[1] + 0.9); propRoot.add(post);
+    });
+
+    /* 相机：正交 · 55° 俯角 · 南侧看过去（与城内同一个"读体量"的角度） */
+    cam.position.set(0, 9.2, 7.6);
+    cam.lookAt(0, 0.9, 0);
+    resize();
+    applyPhase();          /* 跟随当前时辰（夜里点灯） */
+    renderHud();
+    lastT = performance.now();
+    if (!rafId) rafId = requestAnimationFrame(step);
+    var ph = document.getElementById('prologue-screen');
+    if (ph) ph.style.display = 'none';
+    return { name: B.name || bid, bid: bid, lvl: lvl };
+  }
+  S._buildPreviewScene = buildPreviewScene;   /* 排障/探针：直接看它建得出来建不出来 */
+
   function buildCityScene() {
     var c = G.currentCity ? G.currentCity() : null;
     if (!c) return false;
@@ -3493,7 +3659,7 @@
        Lv 决定层数/高度 —— Lv5 的三层楼和 Lv1 的窝棚，一眼能分出来。 */
     /* 分类配色：v140 全是灰黄，截图里整座城是一块石头 —— 分不出兵营、作坊、民房。
        v142 按"材质"分开：夯土 / 木 / 铁灰 / 锈红，远看一片街，近看有区别。 */
-    var CAT_COL = { gov: 0xcbb282, prod: 0xb08b4e, mil: 0x7d8790, live: 0xd2bb95, craft: 0xb4643a, other: 0x9a9384 };
+    var CAT_COL = PV_CAT_COL;
     /* 建筑名：三个可能的表都试一遍（DATA.BUILDINGS 在，但早先实测标签印出了裸 id，
        说明取名字这一步在某些加载顺序下拿不到 —— 多兜一层比猜便宜）。 */
     function bname(bid) {
@@ -3953,6 +4119,8 @@
   };
   /* 城内 3D（入口在城市页右下角） */
   S.openCity = function () { return S.open('city'); };
+  /* v147（D 期）：**建造预览** —— 建造面板上的「先看看」入口 */
+  S.openBuildPreview = function (bid, lvl, cityId) { return S.open('pv', { bid: bid, lvl: lvl, cityId: cityId }); };
   S.current = function () { return openId; };
   /* 相机/玩家的真实位姿（给门禁和排障用）。
      为什么要有它：v142 调镜头时，"玩家不在画面里"和"俯角只有 20°"这种问题
@@ -4013,6 +4181,13 @@
       var ph0 = document.getElementById('prologue-screen');
       if (ph0) ph0.style.display = 'none';
       return { ok: true, scene: 'city', name: '我的城（3D）' };
+    }
+    /* v147：**建造预览**不是一张静态场景，而是照着候选建筑现搭一格 + 当前城做参照 */
+    if (sceneId === 'pv') {
+      var okp = buildPreviewScene(ctxIn || {});
+      if (!okp) return { ok: false, msg: '没有这个建造项' };
+      openId = 'pv';
+      return { ok: true, scene: 'pv', name: '建造预览 · ' + okp.name };
     }
     var cfg = sceneCfg(sceneId);
     if (!cfg) return { ok: false, msg: '没有这个场景：' + sceneId };
@@ -14920,6 +15095,10 @@
            上排＝操作三键，下排＝关闭。 */
         '<div class="bldg-bottom">' +
           '<div class="bldg-acts">' +
+          /* v147（D 期）：升级前先看下一级（不占格、不扣费） */
+          '<button class="btn bldg-act" data-action="bld-preview" data-build="' + b.id +
+            '" data-lvl="' + (cell.build.lvl + 1) + '" title="进 3D 看一眼 Lv' + (cell.build.lvl + 1) + ' 的样子">🔍 预览<span class="ba-sub">Lv' +
+            cell.build.lvl + ' → Lv' + (cell.build.lvl + 1) + '</span></button>' +
           (upCost
             ? '<button class="btn gold bldg-act" data-action="confirm-upgrade" data-idx="' + idx + '"' +
                 ' title="' + U.escape(ui.buildCostTip(upCost)) + '">升级' +
@@ -14971,10 +15150,16 @@
           lockMsg = preTxt; tip += '｜' + preTxt;
         }
         var ic = GAME.icons.forBuilding(bid) || b.icon;
+        /* v147（D 期）：**先看看** —— 建造前先进 3D 预览（不占格、不扣费）。
+           ⚠️ 卡片自身带 data-action（整卡点击 = 建造），里面的小按钮必须
+              `event.stopPropagation` 才能不触发外层（见 main.js 的 bld-preview case）。 */
         return '<div class="troop-card bldg-pick' + afford + '" data-action="confirm-build" data-idx="' + idx +
           '" data-build="' + bid + '" style="cursor:pointer;" title="' + U.escape(tip) + '">' +
           '<div class="ticon">' + ic + '</div><div class="tname">' + b.name + '</div>' +
-          (lockMsg ? '<div class="tstat" style="color:var(--red-light);">' + lockMsg + '</div>' : '') + '</div>';
+          (lockMsg ? '<div class="tstat" style="color:var(--red-light);">' + lockMsg + '</div>' : '') +
+          '<button class="btn xs" data-action="bld-preview" data-build="' + bid +
+            '" style="margin-top:4px;" title="进 3D 看一眼它建成后的样子（不占格、不扣费）">🔍 先看看</button>' +
+          '</div>';
       });
       var pgB = ui.modalPage('buildpick', all, 9, function () { ui.openBuildModal(idx); });
       ui.openShell({
@@ -18222,6 +18407,48 @@
   };
   /* 旧建造场：保留函数名以免外部引用断裂，但**视图已改走 station**。 */
   ui.buildHTML = ui.stationHTML;
+
+  /* ============================================================
+   * v147（D 期「建造时的 3D 预览」）
+   * ------------------------------------------------------------
+   * 建造前/升级前进 3D 看一眼它建成后的样子：**不占格、不扣费**。
+   * 有 WebGL → `GAME.scene3d.openBuildPreview` 走 v140 那套正交场景；
+   * 没有 WebGL（老设备/门禁环境）→ 静态兜底图（CSS 画的一块示意图），
+   * 保证"按钮按下去一定有反应"，不会点了没动。
+   * ============================================================ */
+  ui.openBuildPreview = function (bid, lvl, cityId) {
+    var B = (DATA.BUILDINGS || {})[bid];
+    if (!B) { ui.toast('没有这个建筑'); return; }
+    var L = Math.max(1, Math.min(DATA.MAX_BLEVEL || 24, (lvl | 0) || 1));
+    var ok = null;
+    try {
+      if (typeof THREE !== 'undefined' && GAME.scene3d && GAME.scene3d.openBuildPreview) {
+        ok = GAME.scene3d.openBuildPreview(bid, L, cityId);
+      }
+    } catch (e) { ok = null; }
+    if (ok && ok.ok) return ok;
+    /* 无 WebGL 兜底：一块静态示意图（颜色/层数照原建筑的分类口径） */
+    var cat = (B.mil ? 'mil' : (/minfang|juzhu/.test(bid) ? 'live'
+      : (/nongtian|linchang|caikuang|shuijing/.test(bid) ? 'prod'
+        : (/tiejiang|gongjiang|zuofang|shuyuan|keyan/.test(bid) ? 'craft'
+          : (B.cat === 'gov' ? 'gov' : 'other')))));
+    var col = { gov: '#cbb282', prod: '#b08b4e', mil: '#7d8790', live: '#d2bb95', craft: '#b4643a', other: '#9a9384' }[cat] || '#9a9384';
+    var hh = 40 + L * 10;
+    ui.openModal(
+      '<div class="gold-heading">🔍 建造预览 · ' + U.escape(B.name) + ' Lv' + L + '</div>' +
+      '<div style="display:flex;justify-content:center;align-items:flex-end;height:220px;'
+        + 'background:linear-gradient(#9db0bd,#6f6553);border:1px solid var(--line);border-radius:var(--r-sm);">'
+        + '<div style="width:120px;height:' + hh + 'px;background:' + col + ';'
+        + 'box-shadow:0 0 0 4px rgba(0,0,0,.18);position:relative;">'
+        + '<div style="position:absolute;left:50%;bottom:-18px;transform:translateX(-50%);'
+        + 'width:0;height:0;border-left:66px solid transparent;border-right:66px solid transparent;'
+        + 'border-bottom:26px solid ' + col + ';"></div></div></div>' +
+      '<div class="ui-sub" style="margin-top:8px;">这台设备没有 WebGL —— 用示意图代替 3D 预览。'
+        + '（预览不占格、不扣费；真正建造仍走原来的面板。）</div>',
+      'sm'
+    );
+    return { ok: true, fallback: true };
+  };
 
   ui.stationPick = function (classId) {
     ui._stationSel = (ui._stationSel === classId) ? null : classId;
@@ -25833,6 +26060,9 @@
         break;
       }
       case 'confirm-build': GAME.doBuild(GAME.slotKey(el.dataset.idx), el.dataset.build); break;
+      /* v147（D 期）：建造前的 3D 预览（不占格、不扣费）。
+         点击委托取的是**最近的 data-action**（内层按钮），所以不会误触卡片的 confirm-build。 */
+      case 'bld-preview': ui.openBuildPreview(el.dataset.build, Number(el.dataset.lvl) || 1); break;
       case 'confirm-upgrade': GAME.doUpgrade(GAME.slotKey(el.dataset.idx)); break;
       case 'demolish-ask': ui.openDemolishConfirm(el.dataset.kind, GAME.slotKey(el.dataset.idx)); break;
       case 'demolish-do': GAME.doDemolishDo(el.dataset.kind, GAME.slotKey(el.dataset.idx)); break;
@@ -28654,7 +28884,7 @@
      （这解释了"改了却说没生效"的观感）。老板若发现版本 ≠ 最新交付，按 Ctrl+F5
      强制刷新即获得新代码。⚠️ 发版须走 **bump_version.py --bump --version vX.Y**（它同步 index.html 的 ?v=/BUILD
      与这里的 GAME.VERSION 三处）—— 只手改 index.html 会让版本号冻住（v91.18 前的病灶）。 */
-  GAME.VERSION = 'v146.0';
+  GAME.VERSION = 'v147.0';
   function boot() {
     fitAppSize();
     try {
