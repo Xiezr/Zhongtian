@@ -12391,7 +12391,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
     /* ⚠️ 这份 ORDER 与 build_bundle.py 的 ORDER **必须逐条一致**（本文故意不复用脚本，
        就是为了"构建脚本自己算错时测试还能抓到"）。加了模块两边都要加 ——
        v92 加 fog / memorial 时这里漏改，导致 hash 对不上、守卫假红。 */
-    var ORDER = ['core', 'registry', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'domain', 'map', 'sphere', 'risk', 'years', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'rival', 'land', 'taint', 'climate', 'surge', 'relic', 'goals', 'veteran', 'setskill', 'deck', 'bond', 'tower', 'wonderwar', 'delve', 'unrest', 'expose', 'trooplv', 'idle', 'ending', 'muster', 'founding', 'prologue', 'duel', 'market', 'events', 'gltf',
+    var ORDER = ['core', 'registry', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'colony', 'domain', 'map', 'sphere', 'risk', 'years', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'rival', 'land', 'taint', 'climate', 'surge', 'relic', 'goals', 'veteran', 'setskill', 'deck', 'bond', 'tower', 'wonderwar', 'delve', 'unrest', 'expose', 'trooplv', 'idle', 'ending', 'muster', 'founding', 'prologue', 'duel', 'market', 'events', 'gltf',
       'map3d', 'scene3d', 'battle', 'battlelog', 'strategy', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits', 'story', 'ui', 'main'];
     var h = crypto.createHash('sha256');
     try {
@@ -44334,6 +44334,194 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var b = require('fs').readFileSync(require('path').join(__dirname, 'js', 'battle.js'), 'utf8');
       return /obj: \(t && t\.obj\) \|\| null/.test(b) && /objective: result\.objective/.test(b);
     })());
+  })();
+
+  /* ============================================================
+   * §566. v145 星际投送 / 殖民（E 期 · 老板「主题 = 军事投送」）
+   * ------------------------------------------------------------
+   * 钉七件事：
+   *   ① 新星球**不再白送前哨城**：进毛胚星 → 只有登陆点，城市数不变
+   *   ② 船型闸：突击/护卫不能投送，母舰可以
+   *   ③ 载量/燃料/航程的唯一出口（数字同源；跨星航程 > 同星最远）
+   *   ④ 派出账：人/兵/燃料逐项扣；在途时「城里 + 船上 = 出发前」
+   *   ⑤ 抵达：无城 → 圈锚地（人/兵落地 + 首批物资）；有城 → 人入城
+   *   ⑥ 殖民规则：没锚地不许立城；锚地可立城并**转正**（盈余物资随城入库）
+   *   ⑦ 陆路不能跨星（本境调运拦截）
+   * ============================================================ */
+  (function () {
+    var NL = String.fromCharCode(10);
+    console.log(NL + '===== 566. v145 星际投送 / 殖民（E 期） =====');
+    var bk = G.state, bkNow = G._realNowOf;
+    function fresh(seed) {
+      var st = G.newGame({ name: 'col566', cityName: '灰岗', mapSeed: seed || 566001 });
+      G.state = st;
+      /* ⚠️ newGame 里 makeCity 早于 GAME.state 赋值，首城 pid 会继承**上一局**的 activePlanet
+         （CLAUDE.md 里记着的"球面时序"同一类问题）—— 本节直接把首城钉回母星 1。 */
+      if (st.cities[0]) st.cities[0].pid = 1;
+      st.activePlanet = 1; st.mapPlanetId = 1;
+      /* ⚠️ `GAME._extraSpheres` 是按 pid 缓存的**跨对局**球面：前面几百条用例可能已经
+         用同一个 pid 建过别的种子 → 不清掉会拿到一颗"跟本局 seed 无关"的球。 */
+      if (G._extraSpheres) G._extraSpheres = {};
+      return st;
+    }
+    function carrierSetup(st) {
+      st.items = st.items || {};
+      (G.DATA.SHIP_BLUEPRINTS || []).forEach(function (b) { st.items[b.id] = 1; });
+      var HULL = (G.DATA.SHIP_COST || {}).hullMat || 'w_stariron';
+      (G.DATA.SHIP_PARTS || []).forEach(function (p) { if (p.mat) st.items[p.mat] = 9999; });
+      st.items[HULL] = 9999;
+      st.station = st.station || { lv: 9, ships: [], _seq: 0 };
+      st.station.lv = 9;
+      var cls = (G.DATA.SHIP_CLASSES || []).filter(function (c) { return c.role === 'carrier'; })[0];
+      var r = G.ship.build(cls.id);
+      return r;
+    }
+    try {
+      /* ---- ① 新星球不白送前哨城 ---- */
+      check('§566① 进毛胚星球**不再白送前哨城**（只留登陆点，城市数不变）', (function () {
+        var st = fresh(566002);
+        var n0 = st.cities.length;
+        var p = G.addPlanet({ seed: 566111 });
+        G.enterPlanet(p.id);
+        var n1 = st.cities.filter(function (c) { return G.pidOf(c) === p.id; }).length;
+        var ws = (G._planetById(p.id) || {}).worldStart;
+        G.enterPlanet(1);
+        return n1 === 0 && st.cities.length === n0 && !!ws && typeof ws.x === 'number';
+      })(), '落地只有 worldStart 登陆点，没有城');
+
+      /* ---- ② 船型闸 ---- */
+      check('§566② 船型闸：突击/护卫不可投送，母舰可投送', (function () {
+        var st = fresh(566003);
+        var r = carrierSetup(st);
+        if (!r.ok) return false;
+        var p = G.addPlanet({ seed: 566222 });
+        st.planets.push(p);
+        st.items[G.colony.fuelItem()] = 999;
+        var assault = (G.DATA.SHIP_CLASSES || []).filter(function (c) { return c.role === 'assault'; })[0];
+        st.station.lv = 9;
+        var ra = G.ship.build(assault.id);
+        st.cities[0].res.pop = 200;
+        st.cities[0].army = { buxingji: 200 };
+        var bad = G.colony.canSend({ shipId: ra.ship.id, pid: p.id, colonists: 5, army: {} });
+        var good = G.colony.canSend({ shipId: r.ship.id, pid: p.id, colonists: 5, army: {} });
+        return !bad.ok && /运输系|母舰/.test(bad.msg || '') && good.ok === true;
+      })(), '突击 → 拒；母舰 → 放');
+
+      /* ---- ③ 唯一出口的数字 ---- */
+      check('§566③ 载量 / 燃料 / 航程唯一出口：数字同源，且跨星航程 > 同星最远', (function () {
+        var st = fresh(566004);
+        var r = carrierSetup(st);
+        if (!r.ok) return false;
+        var sh = r.ship, CO = G.colony;
+        var cap1 = CO.capacityOf(sh);
+        var cap2 = CO.capacityOf(sh);
+        var fuel = CO.fuelCostOf(sh, 2), fuelFar = CO.fuelCostOf(sh, 5);
+        var f2 = CO.flightSecOf(2);
+        var sp = G.sphereOf(1);
+        var localMax = (sp.nv || 0) - 1;
+        var dist = (G.DATA.COLONY || {}).starDist || G.STAR_DIST;
+        return cap1 === cap2 && cap1 > 0 && fuel > 0 && fuelFar > fuel
+          && f2 === Math.round(Math.max(dist, localMax) * (G.DATA.COLONY.secPerDist || 60));
+      })(), '同输入同输出 · 越远越费油');
+
+      /* ---- ④ 派出账：在途「城里 + 船上 = 出发前」 ---- */
+      check('§566④ 派出：人/兵/燃料逐项扣；在途时「城里 + 船上 = 出发前」', (function () {
+        var st = fresh(566005);
+        var r = carrierSetup(st);
+        if (!r.ok) return false;
+        var p = G.addPlanet({ seed: 566333 });
+        var fuelId = G.colony.fuelItem();
+        st.items[fuelId] = 999;
+        var c = st.cities[0];
+        c.res.pop = 300; c.army = { buxingji: 400 };
+        var r2 = G.colony.send({ shipId: r.ship.id, pid: p.id, colonists: 120, army: { buxingji: 50 } });
+        if (!r2.ok) return false;
+        var m = G.colony.missions()[0];
+        return c.res.pop === 180 && (c.army.buxingji || 0) === 350
+          && G.items.count(fuelId) === 999 - m.fuel
+          && (c.army.buxingji || 0) + G.colony.troopsAboard(m) === 400;
+      })(), '120 人 + 50 兵 + 燃料 → 一处不差');
+
+      /* ---- ⑤ 抵达：无城圈锚地 / 有城人入城 ---- */
+      check('§566⑤ 抵达：无城 → 圈锚地（人兵落地 + 首批物资）；返航不重复入账', (function () {
+        var st = fresh(566006);
+        var r = carrierSetup(st);
+        if (!r.ok) return false;
+        var p = G.addPlanet({ seed: 566444 });
+        st.items[G.colony.fuelItem()] = 999;
+        st.cities[0].res.pop = 300; st.cities[0].army = { buxingji: 400 };
+        var T = 1700000000000;
+        /* ⚠️ 投送的时间锚点是 U.now()（不是 GAME.realNow）—— 两条都要拨 */
+        var _bkNow = U.now;
+        G._realNowOf = function () { return T; };
+        U.now = function () { return T; };
+        var r2 = G.colony.send({ shipId: r.ship.id, pid: p.id, colonists: 60, army: { buxingji: 20 } });
+        if (!r2.ok) return false;
+        var m = G.colony.missions()[0];
+        G._realNowOf = function () { return m.arriveAt + 1000; };
+        U.now = G._realNowOf;
+        G.colony.tick();
+        var w = G.colony.mooringOf(p.id);
+        var ok1 = !!w && (w.colonists || 0) === 60 && G.wildGarrisonTotal(w.garrison) === 20
+          && !!(w.seedRes && (w.seedRes.grain || 0) > 0);
+        G._realNowOf = function () { return G.colony.returnAtOf(m) + 1000; };
+        U.now = G._realNowOf;
+        G.colony.tick();
+        U.now = _bkNow;
+        var w2 = G.colony.mooringOf(p.id);
+        return ok1 && G.colony.missions().length === 0
+          && (w2.colonists || 0) === 60 && G.wildGarrisonTotal(w2.garrison) === 20;
+      })(), '锚地：60 人 · 20 兵 · 首批物资；返航后不翻倍');
+
+      /* ---- ⑥ 殖民规则：没锚地不许立城；锚地立城并转正 ---- */
+      check('§566⑥ 殖民规则：无锚地拒绝立城；锚地可立城且**转正**（盈余物资随城入库）', (function () {
+        var st = fresh(566007);
+        var p = G.addPlanet({ seed: 566555 });
+        G.enterPlanet(p.id);
+        var geo = null;
+        var SP = G.sphereOf(p.id);
+        for (var i = 0; i < SP.nv && !geo; i++) {
+          var cell = SP.cells[i];
+          if (!cell || cell.type !== 'plain') continue;
+          if (G.map.wildAt(i, p.id)) continue;
+          geo = i;
+        }
+        if (geo == null) return false;
+        /* ① 没锚地：不但地理通过，补给线要拦 */
+        st.wilds.push({ pid: p.id, ci: geo, type: 'plain', level: 1, garrison: { troops: {} } });
+        var noSup = G.canBuildCityAt(geo);
+        var okBlocked = noSup.ok === false && /补给线/.test(noSup.msg || '');
+        /* ② 投送圈锚地（直接造一条锚地，等价于抵达结算的产物） */
+        var w = st.wilds.filter(function (x) { return x.ci === geo && G.pidOf(x) === p.id; })[0];
+        w.colony = { at: 1, mooring: true, name: '星际锚地' };
+        w.seedRes = { grain: 20000, wood: 20000, stone: 20000, iron: 20000, gold: 20000 };
+        var sup = G.colonySupplyChk(p.id);
+        var n0 = st.cities.length;
+        var built = G.buildCityAt(geo);
+        if (!built.ok) return false;
+        var nc = built.city;
+        var R = G.res(nc);
+        return okBlocked && sup.ok === true && st.cities.length === n0 + 1
+          && (R.grain || 0) >= 10000                          /* 扣了 10000 筑城费，盈余 10000 随城入库 */
+          && !G.colony.mooringOf(p.id);                       /* 锚地已转正（不是锚地了） */
+      })(), '无锚地：拦；锚地：立城 + 盈余入库');
+
+      /* ---- ⑦ 陆路不能跨星 ---- */
+      check('§566⑦ 陆路不能跨星：本境调运跨星球被拦（指路星际投送）', (function () {
+        var st = fresh(566008);
+        var p = G.addPlanet({ seed: 566666 });
+        /* 两颗球上的城都必须在 s.cities 里 —— cityById 只收已入库的城 */
+        var c2 = G.makeCity({ id: 'x566_' + p.id, name: '星2城', ci: 0, type: 'self', pid: p.id, res: {} });
+        st.cities.push(c2);
+        var r = G.doTransferCargo(st.cities[0].id, c2.id, { buxingji: 10 }, '', null, null);
+        return r.ok === false && /星际投送/.test(r.msg || '');
+      })(), '跨星球 → 拒，并告诉玩家走哪');
+    } catch (e566) {
+      check('§566 链路异常（不应发生）', false, 'err=' + ((e566 && e566.message) || e566));
+    } finally {
+      G.state = bk; G._realNowOf = bkNow;
+    }
+    G.newGame({ name: '收尾', cityName: '灰岗' });
   })();
 
 console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');

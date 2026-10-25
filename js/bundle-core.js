@@ -1,4 +1,4 @@
-/*! Deepseekdb bundle-core — 第 1/3 包（48 个模块）
+/*! Deepseekdb bundle-core — 第 1/3 包（49 个模块）
  *  由 .workbuddy/tools/patch/build_bundle.py 生成，请勿手改。
  *  ⚠️ 三包必须按 core → war → ui 顺序加载（window.GAME 全局共享）。 */
 /* ---- core.js ---- */
@@ -4607,6 +4607,34 @@ window.GAME = window.GAME || {};
     scrapPct: 0.5,           /* 拆舰返还比例 */
   };
 
+  /* ============================================================
+   * v145（E 期 · 老板「主题 = 军事投送」）：**星际投送 / 殖民**
+   * ------------------------------------------------------------
+   * 新星球不再白送前哨城 —— 人和兵只能由空间站的母舰送过去。
+   * 数值全在这张表里；引擎见 js/colony.js（GAME.colony）。
+   *   · 航程 = max(星球间距, 本星最远两端) × secPerDist（游戏秒 → 现实秒 ÷ 时间倍率）
+   *   · 运力 = capBase × 档位倍率 + 容量属性 × capPerStat（人/兵同池）
+   *   · 燃料 = 运力 × fuelPerCap × (1 + (星球号-1) × fuelPerStar)
+   *   · 抵达后勘测 surveyMs（现实毫秒）→ 返航段 returnPct × 单程
+   * ⚠️ 这些是**可玩初值**，平衡留待老板复核（与 C 期数值同规）。
+   * ============================================================ */
+  DATA.COLONY = {
+    starDist: 10000,          /* 与 GAME.STAR_DIST 同源（星球间六边格数） */
+    secPerDist: 60,           /* 1 格 = 60 游戏秒（与行军同尺） */
+    capBase: 300,             /* 白档母舰基础运力（× 档位 matMul） */
+    capPerStat: 10,           /* 每 1 点「容量」折算几人 */
+    fuelItem: 'w_he3',        /* 燃料 = 聚变燃料（奇观特产） */
+    fuelPerCap: 0.05,         /* 每点运力烧多少燃料 */
+    fuelPerStar: 0.25,        /* 每远一颗星球，燃料 +25% */
+    surveyMs: 1800000,        /* 抵达后勘测 30 分钟（现实时间） */
+    returnPct: 0.25,          /* 返航段 = 单程的 25% */
+    moorRings: [2, 4, 8, 16, 32],   /* 锚地选址：登陆点周围逐圈外扩找平原（找不到再全星兜底） */
+    returnShare: 0.5,         /* 回程装货 = 运力的一半 */
+    returnMats: ['iron', 'stone'],   /* 殖民地能装回母星的物资（废钢/电能） */
+    /* 锚地首批开拓物资 —— 够付一次筑城（BUILD_CITY_COST 各 10000 + 旧币 10000）并留点余量 */
+    seedGoods: { grain: 15000, wood: 15000, stone: 15000, iron: 15000, gold: 12000 },
+  };
+
   /* v91.51：奇观「产出档位」→ 珠宝池（越强的材料，掉越贵的珠宝）。按 price 派生，不手抄 id。 */
   DATA.WONDER_JEWEL_BANDS = {
     1: ['bengzhu', 'mila', 'meiyu'],                     /* 低阶 */
@@ -8484,10 +8512,11 @@ window.GAME = window.GAME || {};
       return r;
     }
     if (GAME.attachRes) GAME.attachRes(s);                /* 资源访问器指向当前城 */
-    /* v90.84：进入的是**毛胚**星球（该星球还没有城）→ 给一个落地前哨城（否则 currentCity 为 null，无法操作）。
-       该星球的 NPC 城/野地/据点/奇观由 seed 自动派生（已在 map.generate + 内核里）。 */
-    var _hasHere = (s.cities || []).some(function (c) { return GAME.pidOf(c) === id; });
-    if (!_hasHere) GAME.seedFoothold(id, r.planet);
+    /* v145（E 期 · 老板「主题 = 军事投送」）：**新星球不再白送前哨城**。
+       改前：进一颗没有城的球 → seedFoothold 白给一座城，于是"星际战舰投送"没有存在理由。
+       现在：只给一处**登陆点**（地图上的落脚圈，不是城、不产资源）；
+       要有人、有地，只能靠空间站「星际投送」把人和兵送过去、在锚地上立城。 */
+    GAME.footholdAt(id, r.planet);
     /* UI 选城指针重指到本星球首城（否则仍指旧星球某城 id → 界面异常）*/
     if (GAME.ui) {
       var _first = (s.cities || []).filter(function (c) { return GAME.pidOf(c) === id; })[0];
@@ -8495,9 +8524,11 @@ window.GAME = window.GAME || {};
     }
     return r;
   };
-  /* 毛胚星球落地前哨：在球面找一块平原立城 + 周边几块野地 */
-  GAME.seedFoothold = function (pid, planet) {
-    var s = GAME.state, SP = GAME.sphere;
+  /* 毛胚星球的**登陆点**（v145：不再是白送的前哨城）。
+     把 s.map.startPos / worldStart 指到一块平原 —— 地图"我在这"、锚地选址、
+     前传"脚下有事"都读同一处；**不建城、不发资源**。 */
+  GAME.footholdAt = function (pid, planet) {
+    var s = GAME.state, SP = GAME.sphereOf ? GAME.sphereOf(pid) : GAME.sphere;
     var x = DATA.START_POS.x, y = DATA.START_POS.y;
     if (SP && SP.cells) {
       var found = -1;
@@ -8505,16 +8536,16 @@ window.GAME = window.GAME || {};
       if (found < 0) for (var j = 0; j < SP.cells.length; j++) { if (SP.cells[j]) { found = j; break; } }
       if (found >= 0) { x = SP.cells[found].x; y = SP.cells[found].y; }
     }
-    var city = GAME.makeCity({
-      id: 'fp' + pid, name: (planet && planet.name ? planet.name : '星球') + '·前哨', x: x, y: y, type: 'self',
-      initialExt: 'new', res: DATA.NEW_CITY_RES || DATA.INITIAL_RES, pid: pid,
-    });
-    s.cities = s.cities || [];
-    s.cities.push(city);
-    if (!s.mainCityId || !GAME.cityById(s.mainCityId)) s.mainCityId = city.id;
-    if (s.map) s.map.startPos = { x: x, y: y };
     if (planet) planet.worldStart = { x: x, y: y };       /* v91.74：随星球保存开始圈 */
-    GAME.log('🪐 登陆「' + (planet && planet.name) + '」—— 落地前哨「' + city.name + '」已建立，四周待拓。', 'sys', 'admin');
+    if (pid === GAME.curPid() && s.map) s.map.startPos = { x: x, y: y };
+    return { x: x, y: y };
+  };
+  /* 登陆点格（投送的锚地只落在它 2 环内 —— 与地图出圈口径同源） */
+  GAME._landingCiOf = function (pid) {
+    var p = GAME._planetById ? GAME._planetById(pid) : null;
+    var ws = (p && p.worldStart) || (pid === GAME.curPid() && GAME.state.map ? GAME.state.map.startPos : null) || DATA.START_POS;
+    var sp = GAME.sphereOf ? GAME.sphereOf(pid) : GAME.sphere;
+    return (sp && sp.ciOfXY && ws) ? sp.ciOfXY(ws.x, ws.y) : -1;
   };
 
   /* ---------------- 读档 ---------------- */
@@ -11514,6 +11545,9 @@ window.GAME = window.GAME || {};
     /* 9f) 行军队列推进（抵达即结算 —— 见 battle.js GAME.march） */
     if (GAME.march && GAME.march.tick) GAME.march.tick();
     if (GAME.wonderTick) GAME.wonderTick();   /* v91.30：奇观探索推进（现实时间锚点 · 离线补算） */
+    /* v145（E 期）：星际投送 —— 现实时间锚点（与奇观同规：后台推进、离线补算）。
+       ⚠️ 直接调引擎出口、**不靠月度注册表** —— 投送按现实钟走，不能等换月。 */
+    if (GAME.colony && GAME.colony.tick) { try { GAME.colony.tick(); } catch (eCo) { /* 投送推进失败不拖垮主循环 */ } }
 
     /* 10) 历法天时推进（story.js；年号纪元随 v90.93 退役，史册记账随 v89.218 退役） */
     if (GAME.story) GAME.story.tick(ts);
@@ -15003,6 +15037,10 @@ window.GAME = window.GAME || {};
     var st = SH.state(), i, idx = -1;
     for (i = 0; i < st.ships.length; i++) if (st.ships[i].id === shipId) { idx = i; break; }
     if (idx < 0) return { ok: false, msg: '没有这艘战舰' };
+    /* v145（E 期）：在途投送中的船不能拆 —— 船上还有人/兵 */
+    if (GAME.colony && GAME.colony.busyOf && GAME.colony.busyOf(shipId)) {
+      return { ok: false, msg: '该舰正在执行星际投送 —— 等它返航后再拆解' };
+    }
     var ship = st.ships[idx], cls = SH.classOf(ship.classId), C = DATA.SHIP_COST || {};
     var back = Math.floor(SH.hullCost(cls) * (C.scrapPct == null ? 0.5 : C.scrapPct));
     st.ships.splice(idx, 1);
@@ -15021,6 +15059,10 @@ window.GAME = window.GAME || {};
     var st = SH.state(), ship = null;
     st.ships.forEach(function (x) { if (x.id === shipId) ship = x; });
     if (!ship) return { ok: false, msg: '没有这艘战舰' };
+    /* v145（E 期）：在外投送的船不能改装 */
+    if (GAME.colony && GAME.colony.busyOf && GAME.colony.busyOf(shipId)) {
+      return { ok: false, msg: '该舰正在执行星际投送 —— 等它返航后再升级部件' };
+    }
     var part = SH.partOf(pid);
     if (!part) return { ok: false, msg: '未知部件' };
     if (part.id === 'hull') return { ok: false, msg: '船体在造舰时一次性建成，不可升级' };
@@ -15211,6 +15253,451 @@ window.GAME = window.GAME || {};
     return Math.round((s.atk || 0) * 2 + (s.hp || 0) * 0.5 + (s.shield || 0) * 0.4
       + (s.armor || 0) * 10 + (s.cap || 0) * 5);
   };
+})();
+
+/* ---- colony.js ---- */
+/* ============================================================
+ * js/colony.js — **星际投送 / 殖民**（v145 · 星际战舰 E 期）
+ * ------------------------------------------------------------
+ * 老板（v91.71）：「战舰……主题 = 军事投送」；接力卡 E 期：
+ *   「投送（`s.interstellar` 顶层通道，参考 `wonderExp` 的"独立计时器"先例）+ 殖民」。
+ * 设计提案 5-A：「1 艘船 = 移动兵营，跨星行军时间 −50%」。
+ *
+ * 一句话规则：
+ *   新星球落地**不再白送前哨城**；要有人、有地，只能靠空间站把人和兵**投送**过去。
+ *
+ * 三层：
+ *   ① 载量（唯一出口）—— 母舰运力 = 基础 × 档位 + 容量属性；兵/人同占一个池
+ *   ② 在途（`s.interstellar` · 现实时间锚点）—— 前段飞行 + 落点勘测 + 后段返航；
+ *      航程取「跨星球距离」与「本星最远两端」的**较大值**（同一个球上不会更快）
+ *   ③ 落地 —— 没有城时：就地圈一块落脚野地（星际锚地，带首批开拓物资）；
+ *      有城时：人入新城、兵并入城防，返程把该星物资带回出发城
+ *
+ * 纪律（与全仓一致）：
+ *   · 兵不丢：校验失败不动账；航程中止原路退兵、退人；燃料不退（已经烧掉了）
+ *   · 现实时间锚点（U.now）：后台推进、离线补算；与 wonderExp 同一套先例
+ *   · 跨星球不能走陆路：陆上调运「本境」拦截（domain.doTransferCargo）
+ *   · 新星球立城必须有补给线（锚地或已有城），否则拒绝（domain.canBuildCityAt）
+ *   · 数值全在 `DATA.COLONY` —— 调平衡只动那张表
+ * ============================================================ */
+
+
+
+
+
+(function () {
+  var GAME = window.GAME = window.GAME || {};
+  var DATA = GAME.DATA, U = GAME.utils;
+  var SH = GAME.ship;
+
+  var CO = GAME.colony = {};
+
+  function D() { return (DATA && DATA.COLONY) || {}; }
+  function cfg(k, dflt) { var v = D()[k]; return v == null ? dflt : v; }
+
+  /* ---------- 状态（顶层 · 惰性建 · 老档零迁移） ---------- */
+  CO.state = function () {
+    var s = GAME.state;
+    if (!s) return { missions: [], _seq: 0 };
+    s.interstellar = s.interstellar || { missions: [], _seq: 0 };
+    if (!Array.isArray(s.interstellar.missions)) s.interstellar.missions = [];
+    if (s.interstellar._seq == null) s.interstellar._seq = 0;
+    return s.interstellar;
+  };
+  CO.missions = function () { return CO.state().missions.slice(); };
+  CO.byId = function (id) {
+    var out = null;
+    CO.state().missions.forEach(function (m) { if (m.id === id) out = m; });
+    return out;
+  };
+
+  /* ---------- 行星 / 城 / 锚地 ---------- */
+  CO.planetOf = function (pid) {
+    var out = null;
+    (GAME.planetsOf ? GAME.planetsOf() : []).forEach(function (p) { if (p && p.id === pid) out = p; });
+    return out;
+  };
+  CO.cityAt = function (pid) {
+    var out = null;
+    ((GAME.state && GAME.state.cities) || []).forEach(function (c) {
+      if (!out && GAME.pidOf(c) === pid) out = c;
+    });
+    return out;
+  };
+  CO.mooringOf = function (pid) {
+    var out = null;
+    ((GAME.state && GAME.state.wilds) || []).forEach(function (w) {
+      if (!out && GAME.pidOf(w) === pid && w.colony) out = w;
+    });
+    return out;
+  };
+  /* 目标星球能不能接船 */
+  CO.anchorOf = function (pid) {
+    var c = CO.cityAt(pid);
+    if (c) return { ok: true, kind: 'city', city: c, name: c.name };
+    var w = CO.mooringOf(pid);
+    if (w) return { ok: true, kind: 'mooring', ci: w.ci, wild: w, name: (w.colony && w.colony.name) || '星际锚地' };
+    return { ok: false, msg: '该星球没有落脚点（无城、无锚地）—— 首次投送会自动圈一处锚地' };
+  };
+
+  /* ---------- 航程 / 载量 / 燃料 ---------- */
+  /* 跨星球航程（游戏秒 · 唯一出口）。max(星球间距, 本星最远两端)。 */
+  CO.flightSecOf = function (pid) {
+    if (pid == null) return 0;
+    var dist = cfg('starDist', GAME.STAR_DIST || 10000);
+    var sp = (GAME.sphereOf ? GAME.sphereOf(pid) : GAME.sphere);
+    if (sp && sp.nv) dist = Math.max(dist, sp.nv - 1);
+    return Math.max(1, Math.round(dist * (cfg('secPerDist', 60) || 60)));
+  };
+  /* 运力（人/兵同池）：基础 × 档位 + 容量属性 × 每点折算 */
+  CO.capacityOf = function (ship) {
+    var tier = SH.tierOf((ship && ship.tier) || 1);
+    var st = SH.statsOf(ship || {});
+    var base = cfg('capBase', 300) * (tier.matMul || 1);
+    var perCap = cfg('capPerStat', 10);
+    return Math.max(0, Math.round(base + (st.cap || 0) * perCap));
+  };
+  CO.fuelCostOf = function (ship, pid) {
+    var per = cfg('fuelPerCap', 0.05);
+    var km = 1 + (Math.max(1, pid | 0) - 1) * (cfg('fuelPerStar', 0.25));
+    return Math.max(1, Math.ceil(CO.capacityOf(ship) * per * km));
+  };
+  CO.fuelItem = function () { return cfg('fuelItem', 'w_he3'); };
+  CO.cargoOf = function (army, colonists) {
+    var n = Math.max(0, Math.floor(colonists || 0));
+    for (var k in (army || {})) n += Math.max(0, Math.floor(army[k] || 0));
+    return n;
+  };
+  CO.armyN = function (army) {
+    var n = 0;
+    for (var k in (army || {})) n += Math.max(0, Math.floor(army[k] || 0));
+    return n;
+  };
+  /* 这艘船是不是正在执行投送（界面置灰 / canSend 拒绝 / SH 拆解闸共用） */
+  CO.busyOf = function (shipId) {
+    var out = null;
+    CO.state().missions.forEach(function (m) { if (m.shipId === shipId) out = m; });
+    return out;
+  };
+
+  /* ---------- 校验（界面置灰与真执行同读这一份） ---------- */
+  CO.canSend = function (opts) {
+    opts = opts || {};
+    var s = GAME.state;
+    if (!s) return { ok: false, msg: '尚未开局' };
+    var from = (opts.fromCityId && GAME.cityById(opts.fromCityId)) || (GAME.currentCity ? GAME.currentCity() : null);
+    if (!from) return { ok: false, msg: '没有出发城' };
+    if (GAME.pidOf(from) !== GAME.curPid()) {
+      return { ok: false, msg: '出发城不在当前星球 —— 先切回那座城所在的星球' };
+    }
+    var ship = null;
+    SH.ships().forEach(function (x) { if (x.id === opts.shipId) ship = x; });
+    if (!ship) return { ok: false, msg: '没有这艘战舰' };
+    var cls = SH.classOf(ship.classId);
+    if (!cls) return { ok: false, msg: '未知舰种' };
+    if (cls.role !== 'carrier') {
+      return { ok: false, msg: '「' + cls.name + '」不是运输系 —— 投送要用母舰（运输梭 / 远洋运输舰 / 方舟运载舰 / 星际母舰）' };
+    }
+    var busy = CO.busyOf(ship.id);
+    if (busy) return { ok: false, msg: '「' + cls.name + '」正在执行投送（' + Math.round(CO.progressOf(busy) * 100) + '%），须先返航' };
+    var pid = Number(opts.pid);
+    var pl = CO.planetOf(pid);
+    if (!pl) return { ok: false, msg: '目标星球不存在' };
+    if (pid === GAME.curPid()) return { ok: false, msg: '目标就是当前所在星球 —— 同球转运请用「本境调运」' };
+    var anc = CO.anchorOf(pid);
+    /* 首次投送（无城无锚地）允许：抵达时自动圈锚地 —— 这是唯一的开荒入口 */
+    if (!anc.ok && CO.cityAt(pid)) return { ok: false, msg: anc.msg };
+    var army = {}, moved = 0;
+    for (var k in (opts.army || {})) {
+      var n = Math.floor(opts.army[k] || 0);
+      if (n <= 0) continue;
+      if ((from.army[k] || 0) < n) {
+        return { ok: false, msg: '兵力不足（' + ((DATA.TROOPS[k] || {}).name || k) + '）' };
+      }
+      army[k] = n; moved += n;
+    }
+    var pop = Math.floor(GAME.res(from).pop || 0);
+    var cols = Math.max(0, Math.floor(opts.colonists || 0));
+    if (cols > pop) return { ok: false, msg: '幸存者不足（' + from.name + ' 现有 ' + U.fmt(pop) + ' 人）' };
+    if (!moved && cols <= 0) return { ok: false, msg: '船上什么都没有 —— 至少带人（殖民）或带兵（驻防）' };
+    var cap = CO.capacityOf(ship), load = CO.cargoOf(army, cols);
+    if (load > cap) {
+      return { ok: false, msg: '超载：' + U.fmt(load) + ' ＞ 运力 ' + U.fmt(cap) + '（升「仓储」部件 / 换更大的船）' };
+    }
+    var fuelItem = CO.fuelItem(), fuel = CO.fuelCostOf(ship, pid);
+    var own = GAME.items ? GAME.items.count(fuelItem) : 0;
+    if (own < fuel) {
+      var fn = ((DATA.ITEM_BY_ID || {})[fuelItem] || {}).name || fuelItem;
+      return { ok: false, msg: '燃料不足：需 ' + fn + ' ×' + fuel + '（现有 ' + own + ' · 奇观探索产出）' };
+    }
+    return { ok: true, ship: ship, cls: cls, pid: pid, planet: pl, anchor: anc,
+      army: army, colonists: cols, load: load, cap: cap, fuel: fuel, fuelItem: fuelItem,
+      flightSec: CO.flightSecOf(pid), city: from };
+  };
+
+  /* ---------- 派出（扣兵/人/燃料 → 入在途） ---------- */
+  CO.send = function (opts) {
+    var chk = CO.canSend(opts);
+    if (!chk.ok) return chk;
+    var st = CO.state();
+    var city = chk.city, now = U.now();
+    if (chk.colonists > 0) GAME.city.sub(city, 'pop', chk.colonists);
+    GAME.city.armySub(city, chk.army);
+    GAME.items.sub(chk.fuelItem, chk.fuel);
+    st._seq += 1;
+    var m = {
+      id: 'ix' + st._seq,
+      shipId: chk.ship.id, classId: chk.ship.classId,
+      fromPid: GAME.curPid(), pid: chk.pid,
+      fromCityId: city ? city.id : null,
+      army: U.deep(chk.army), colonists: chk.colonists,
+      fuel: chk.fuel, fuelItem: chk.fuelItem,
+      cap: chk.cap, load: chk.load,
+      departAt: now, arriveAt: now + chk.flightSec * 1000,
+      phase: 'out',
+    };
+    st.missions.push(m);
+    var shipName = chk.cls.name || m.classId;
+    var realSec = chk.flightSec / GAME.timeScale();
+    GAME.log('🚀 「' + shipName + '」启航 → ' + chk.planet.name + '：' + U.fmt(chk.colonists) + ' 人 · '
+      + U.fmt(CO.armyN(chk.army)) + ' 兵（单程约 ' + U.dur(realSec) + ' 现实时间）', 'sys', 'admin');
+    return { ok: true, msg: '已启航 → ' + chk.planet.name + '（单程约 ' + U.dur(realSec) + '，抵达后勘测 '
+      + U.dur((cfg('surveyMs', 1800000) || 0) / 1000) + '）', mission: m };
+  };
+
+  /* ---------- 进度（0~1 · 界面与断言同读） ----------
+     0~0.8 飞行 · 0.8~0.9 勘测 · 0.9~1 返航（船靠港） */
+  CO.progressOf = function (m, now) {
+    if (!m) return 0;
+    var t = (now == null ? U.now() : now);
+    if (t < m.arriveAt) {
+      var span = Math.max(1, m.arriveAt - m.departAt);
+      return Math.max(0, Math.min(0.8, (t - m.departAt) / span * 0.8));
+    }
+    var mid = cfg('surveyMs', 1800000) || 0;
+    if (t < m.arriveAt + mid) return 0.8 + 0.1 * ((t - m.arriveAt) / Math.max(1, mid));
+    var back = CO.returnAtOf(m);
+    if (t >= back) return 1;
+    return 0.9 + 0.1 * ((t - m.arriveAt - mid) / Math.max(1, back - m.arriveAt - mid));
+  };
+  CO.returnAtOf = function (m) {
+    if (!m) return Infinity;
+    if (m.returnAt != null) return m.returnAt;
+    var mid = cfg('surveyMs', 1800000) || 0;
+    return m.arriveAt + mid + Math.round((m.arriveAt - m.departAt) * (cfg('returnPct', 0.25) || 0));
+  };
+  CO.phaseOf = function (m, now) {
+    var p = CO.progressOf(m, now);
+    if (p < 0.8) return 'out';
+    if (p < 0.9) return 'survey';
+    return 'back';
+  };
+
+  /* ---------- 落点：没有城时圈一块锚地（与地图"登陆点"共用一处） ----------
+     锚地优先落**平原**（将来能在锚地直接立城）；
+     登陆点周围没平原就逐圈外扩，最后兜底全星第一块平原 —— 投送必须有个落脚处。 */
+  CO._moorAt = function (pid) {
+    var s = GAME.state, sp = (GAME.sphereOf ? GAME.sphereOf(pid) : GAME.sphere);
+    if (!s || !sp || !sp.cells) return null;
+    var startCi = GAME._landingCiOf ? GAME._landingCiOf(pid) : -1;
+    var forts = GAME.fortsOf ? GAME.fortsOf() : (s.forts || {});
+    var isCur = (pid === GAME.curPid());
+    function freeAt(ci) {
+      var cell = sp.cells[ci];
+      if (!cell) return false;
+      if (GAME.map.wildAt(ci, pid)) return false;
+      /* ⚠️ `_cityCiSet` / `npcAt` 里的 NPC 城是**当前地图星球**的 —— 只在 pid = 当前星时才可用，
+         否则 ci 会跨星错位（把别星的城格当成这里的城格）。 */
+      if (isCur) {
+        if (GAME.map._cityCiSet && GAME.map._cityCiSet()[ci]) return false;
+        if (GAME.map.npcAt && GAME.map.npcAt(ci)) return false;
+      }
+      if (GAME._fkGet(forts, ci, pid)) return false;
+      return true;
+    }
+    var pick = -1;
+    var rings = (cfg('moorRings', [2, 4, 8, 16, 32]) || [2, 4, 8, 16, 32]);
+    for (var ri = 0; ri < rings.length && pick < 0; ri++) {
+      var hops = [];
+      if (startCi >= 0 && sp.hopsWithin) hops = sp.hopsWithin(startCi, rings[ri]);
+      for (var i = 0; i < hops.length; i++) {
+        var ci = hops[i];
+        if (!freeAt(ci)) continue;
+        if (sp.cells[ci].type === 'plain') { pick = ci; break; }
+      }
+    }
+    if (pick < 0) {
+      /* 兜底：全星第一块空着的平原 */
+      for (var j = 0; j < (sp.cells || []).length; j++) {
+        if (sp.cells[j] && sp.cells[j].type === 'plain' && freeAt(j)) { pick = j; break; }
+      }
+    }
+    if (pick < 0) return null;
+    var wc = sp.cells[pick];
+    var w = {
+      pid: pid, ci: pick, type: wc.type, level: 1,
+      lon: wc.lon, lat: wc.lat,
+      levelDay: GAME.questDayIndex ? GAME.questDayIndex() : 0,
+      garrison: { troops: {} },
+      colony: { at: U.now(), mooring: true, name: '星际锚地' },
+      seedRes: U.deep(cfg('seedGoods', {}) || {}),
+    };
+    s.wilds = s.wilds || [];
+    s.wilds.push(w);
+    return w;
+  };
+
+  /* ---------- 抵达结算 ---------- */
+  CO._arrive = function (m) {
+    var s = GAME.state, pl = CO.planetOf(m.pid);
+    var res = { ok: true, pid: m.pid, colonists: m.colonists, troops: CO.armyN(m.army), goods: {}, found: null };
+    var city = CO.cityAt(m.pid);
+    if (city) {
+      if (m.colonists > 0) GAME.city.add(city, 'pop', m.colonists);
+      for (var k in (m.army || {})) {
+        var n = Math.floor(m.army[k] || 0);
+        if (n > 0) GAME.city.armyAdd(city, { [k]: n });
+      }
+      res.city = city.id;
+      /* 回程装货：只用返程运力的一半，且必须该城真有货 */
+      var backCap = Math.floor((m.cap || 0) * (cfg('returnShare', 0.5)));
+      var mats = cfg('returnMats', []);
+      var R = GAME.res(city);
+      mats.forEach(function (id) {
+        if (backCap <= 0 || !mats.length) return;
+        var have = Math.floor(R[id] || 0);
+        var take = Math.min(have, Math.floor(backCap / mats.length));
+        if (take <= 0) return;
+        GAME.city.sub(city, id, take);
+        res.goods[id] = (res.goods[id] || 0) + take;
+      });
+      GAME.log('🛬 投送抵达「' + (pl ? pl.name : ('星球 ' + m.pid)) + '」：' + (city.name || '新城')
+        + ' 人口 +' + U.fmt(m.colonists) + ' · 驻军 +' + U.fmt(res.troops)
+        + (Object.keys(res.goods).length ? (' · 装船回运 ' + Object.keys(res.goods).join('/')) : ''), 'sys', 'admin');
+    } else {
+      var had = !!CO.mooringOf(m.pid);
+      var w = CO.mooringOf(m.pid) || CO._moorAt(m.pid);
+      if (w && m.colonists > 0) w.colonists = (w.colonists || 0) + m.colonists;
+      if (w && res.troops > 0) {
+        w.garrison = w.garrison || { troops: {} };
+        for (var a in (m.army || {})) {
+          var c0 = Math.floor(m.army[a] || 0);
+          if (c0 > 0) w.garrison.troops[a] = (w.garrison.troops[a] || 0) + c0;
+        }
+      }
+      res.mooring = w ? w.ci : null;
+      /* 首批开拓物资只在**第一次**圈锚地时给（重复投送不会凭空长资源） */
+      res.goods = (w && !had) ? U.deep(w.seedRes || {}) : {};
+      GAME.log('🛬 投送抵达「' + (pl ? pl.name : ('星球 ' + m.pid)) + '」：'
+        + (w ? ('圈下锚地（' + GAME.map.coordTextCi(w.ci) + '）—— ' + U.fmt(m.colonists) + ' 人 · '
+          + U.fmt(res.troops) + ' 兵' + (had ? '' : ' + 首批开拓物资')) : '没有落脚点，人和兵随船返航'), 'sys', 'admin');
+    }
+    return res;
+  };
+
+  /* ---------- 返航 ---------- */
+  CO._returnHome = function (m) {
+    var s = GAME.state;
+    var city = GAME.cityById(m.fromCityId) || CO.cityAt(m.fromPid) || (s.cities || [])[0] || null;
+    var back = { army: 0, goods: 0 };
+    /* 兵：没在目标星球留下（无城无锚地）的随船回来；有落脚点时已入驻/驻防，不回 */
+    if (!m._landedTroops && city) {
+      for (var k in (m.army || {})) {
+        var n = Math.floor(m.army[k] || 0);
+        if (n > 0) { GAME.city.armyAdd(city, { [k]: n }); back.army += n; }
+      }
+    }
+    if (m.returnGoods && city) {
+      for (var g in m.returnGoods) {
+        var q = Math.floor(m.returnGoods[g] || 0);
+        if (q > 0) { GAME.city.add(city, g, q, true); back.goods += q; }
+      }
+    }
+    GAME.log('🏠 「' + ((SH.classOf(m.classId) || {}).name || m.classId) + '」投送归来'
+      + (city ? ('：' + city.name) : '')
+      + (back.army ? (' · 兵归 ' + U.fmt(back.army)) : '')
+      + (back.goods ? (' · 物资 ' + U.fmt(back.goods)) : ''), 'sys', 'admin');
+    return back;
+  };
+
+  /* ---------- 主循环 tick（现实时间锚点 · 与 wonderTick 同规） ----------
+     飞到点 → 结算（人/兵/锚地/回程货）；勘测后进返航段；返航到点 → 船靠港。 */
+  CO.tick = function (now) {
+    var s = GAME.state;
+    if (!s || !s.interstellar || !s.interstellar.missions || !s.interstellar.missions.length) return 0;
+    var t = (now == null ? U.now() : now);
+    var st = CO.state(), keep = [], landed = 0;
+    st.missions.forEach(function (m) {
+      if (!m._arrived && t >= m.arriveAt) {
+        var r = CO._arrive(m);
+        m._arrived = true;
+        m._landedTroops = !!(r.city || r.mooring);
+        m.returnGoods = r.goods || {};
+        landed++;
+      }
+      if (m.phase === 'out' && t >= m.arriveAt) m.phase = 'survey';
+      if (m.phase === 'survey' && t >= CO.returnAtOf(m)) m.phase = 'back';
+      if (t >= CO.returnAtOf(m)) { CO._returnHome(m); return; }
+      keep.push(m);
+    });
+    st.missions = keep;
+    return landed;
+  };
+
+  /* ---------- 降落前后：全船的兵在哪 ----------
+     飞行中在船上；抵达后——有城入城防、有锚地进锚地、都没有随船返航；
+     返航段已经在目的地落下的不算「船上」（避免"来回都算一遍"的重复入账）。 */
+  CO.troopsAboard = function (m, now) {
+    if (!m) return 0;
+    var t = (now == null ? U.now() : now);
+    if (t < m.arriveAt) return CO.armyN(m.army);
+    if (m._landedTroops) return 0;
+    return CO.armyN(m.army);
+  };
+
+  /* 撤销：前段飞行期内原路退人退兵（燃料不退） */
+  CO.cancel = function (id) {
+    var m = CO.byId(id);
+    if (!m) return { ok: false, msg: '没有这次投送' };
+    if (m._arrived || m.phase !== 'out') return { ok: false, msg: '已经抵达目标星球，不能中止（等它返航）' };
+    var city = GAME.cityById(m.fromCityId) || CO.cityAt(m.fromPid);
+    if (!city) return { ok: false, msg: '出发城已不在 —— 无法返航' };
+    for (var k in (m.army || {})) {
+      var n = Math.floor(m.army[k] || 0);
+      if (n > 0) GAME.city.armyAdd(city, { [k]: n });
+    }
+    if (m.colonists > 0) GAME.city.add(city, 'pop', m.colonists);
+    CO.state().missions = CO.state().missions.filter(function (x) { return x !== m; });
+    GAME.log('↩️ 投送中止：「' + ((SH.classOf(m.classId) || {}).name || m.classId)
+      + '」折返 ' + city.name + '（人/兵已归，燃料不退）', 'sys', 'admin');
+    return { ok: true, msg: '已中止并折返（人/兵归城，燃料不退）' };
+  };
+
+  /* 船是否在外（界面与 SH.canUpgrade/scrap 共读） */
+  CO.shipBusy = function (shipId) { return !!CO.busyOf(shipId); };
+
+  /* ---------- 跨星调运拦截（陆路到不了另一颗球） ---------- */
+  CO.blockTransfer = function (fromId, toId) {
+    var a = GAME.cityByIdAnywhere ? GAME.cityByIdAnywhere(fromId) : GAME.cityById(fromId);
+    var b = GAME.cityByIdAnywhere ? GAME.cityByIdAnywhere(toId) : GAME.cityById(toId);
+    if (a && b && GAME.pidOf(a) !== GAME.pidOf(b)) {
+      return { ok: false, msg: '两座城不在同一颗星球 —— 跨星补给请走空间站「星际投送」' };
+    }
+    return null;
+  };
+
+  /* 补给线 / 立城资金（新星球不能白手起家）——
+     定义在 domain.js（GAME.colonyFundOf / colonySupplyChk / colonyMooringAfford / colonyMooringPay），
+     因为 `canBuildCityAt` 也在那里；本文件只管投送本身。 */
+
+  /* ============================================================
+   * 自注册（registry.js · v100 可插拔）
+   * ⚠️ 只登记、不推进：投送按**现实钟**走（state.tickOnce 里直接调 CO.tick），
+   *    不能等换月；tick 留空 = 让 registry.stats 能看见本模块。
+   * ============================================================ */
+  if (GAME.reg) {
+    GAME.reg.add({ id: 'colony', order: 66, tick: function () {} });
+  }
 })();
 
 /* ---- domain.js ---- */
@@ -21199,6 +21686,63 @@ window.GAME = window.GAME || {};
     }
     return { ok: true, wild: w };
   };
+  /* ============================================================
+   * v145（E 期）：**殖民地立城必须先有补给线**
+   * ------------------------------------------------------------
+   * 老板：「主题 = 军事投送」—— 新星球不再白送前哨城（state.enterPlanet 只留登陆点），
+   * 所以立城判据多一层：
+   *   · 母星（pid 1）/ 前传（还没立城）→ 不受限（那是开局，不是殖民地）
+   *   · 该星球已有城 → 正常（城自筹，同今天）
+   *   · 只有**锚地**（投送圈下的落脚野地）→ 用锚地的「首批开拓物资」付账，
+   *     且必须是在锚地那格上立城（城 = 锚地转正，物资盈余并入新城）
+   *   · 连锚地都没有 → 拒绝（先投送一船人过去）
+   * 判据是 `GAME.colonyFundOf`（域层唯一出口；colony.js 只管投送本身）。
+   * ============================================================ */
+  GAME.colonyFundOf = function (pid) {
+    var s = GAME.state, out = null;
+    pid = (pid == null) ? GAME.curPid() : pid;
+    (s.cities || []).forEach(function (c) { if (!out && GAME.pidOf(c) === pid) out = { kind: 'city', city: c }; });
+    if (out) return out;
+    (s.wilds || []).forEach(function (w) { if (!out && GAME.pidOf(w) === pid && w.colony) out = { kind: 'mooring', wild: w }; });
+    return out;
+  };
+  GAME.colonySupplyChk = function (pid) {
+    var s = GAME.state;
+    if (!s) return { ok: false, msg: '尚未开局' };
+    pid = (pid == null) ? GAME.curPid() : pid;
+    if (pid === 1 || (s.prologue && s.prologue.on)) return { ok: true };
+    var f = GAME.colonyFundOf(pid);
+    if (f) return { ok: true, fund: f };
+    return { ok: false, msg: '这颗星球没有补给线 —— 先在空间站「星际投送」一船人过去圈锚地' };
+  };
+  /* 锚地物资付款；返回 null = 该走既有 canAfford/payCost（有城 / 母星） */
+  GAME.colonyMooringAfford = function (fund, cost) {
+    if (!fund || fund.kind !== 'mooring') return null;
+    var res = fund.wild.seedRes || {}, lack = [];
+    for (var k in (cost || {})) {
+      if (k === 'time' || k === 'jewel') continue;
+      var need = Math.floor(cost[k] || 0);
+      if (need <= 0) continue;
+      if (Math.floor(res[k] || 0) < need) lack.push(k);
+    }
+    if (lack.length) {
+      return { ok: false, msg: '锚地物资不足：' + lack.map(function (k) {
+        return (GAME.resName ? GAME.resName(k) : k) + ' ' + U.fmt(res[k] || 0) + '/' + U.fmt(cost[k]);
+      }).join('、') + '（再投送一船物资，或就地在锚地采集）' };
+    }
+    return { ok: true };
+  };
+  GAME.colonyMooringPay = function (fund, cost) {
+    var res = (fund && fund.wild && fund.wild.seedRes) || {};
+    for (var k in (cost || {})) {
+      if (k === 'time' || k === 'jewel') continue;
+      var need = Math.floor(cost[k] || 0);
+      if (need > 0) res[k] = Math.max(0, Math.floor(res[k] || 0) - need);
+    }
+    fund.wild.seedRes = res;
+    return res;
+  };
+
   GAME.canBuildCityAt = function (ci, cost) {
     var geo = GAME.canBuildCityGeo(ci);
     if (!geo.ok) return geo;
@@ -21206,11 +21750,16 @@ window.GAME = window.GAME || {};
        顺序：先地理（能不能在这建）→ 再资格（领地上限）→ 再资源 —— 逐层归因。 */
     var _cc108 = GAME.cityCapChk ? GAME.cityCapChk() : { ok: true };
     if (!_cc108.ok) return _cc108;
+    /* v145：殖民地补给线（新星球没有城/锚地就不许白手起家） */
+    var _sup = GAME.colonySupplyChk();
+    if (!_sup.ok) return _sup;
     var c = cost || GAME.BUILD_CITY_COST;
+    var _mf = GAME.colonyMooringAfford(_sup.fund, c);
+    if (_mf) return _mf.ok ? { ok: true, wild: geo.wild, fund: _sup.fund } : _mf;
     if (!GAME.canAfford(c)) {
       return { ok: false, msg: '资源不足（需 净水/生物质/电能/废钢/旧币 各 ' + U.fmt(c.grain) + '）' };
     }
-    return { ok: true, wild: geo.wild };
+    return { ok: true, wild: geo.wild, fund: _sup.fund || null };
   };
   GAME.buildCityAt = function (ci, cost) {
     var s = GAME.state;
@@ -21218,7 +21767,12 @@ window.GAME = window.GAME || {};
     var useCost = cost || GAME.BUILD_CITY_COST;
     var chk = GAME.canBuildCityAt(ci, useCost);
     if (!chk.ok) return chk;
-    GAME.payCost(useCost);
+    var _left = null;
+    if (chk.fund && chk.fund.kind === 'mooring') {
+      _left = GAME.colonyMooringPay(chk.fund, useCost);            /* 锚地付费（不走城市库存） */
+    } else {
+      GAME.payCost(useCost);
+    }
     var stName = GAME.stateOfCity(chk.wild);
     var city = GAME.makeCity({
       /* v91.03 / v90.100：城 id 带**星球前缀** + **格索引 ci**（防跨星球/同格撞）。 */
@@ -21226,10 +21780,18 @@ window.GAME = window.GAME || {};
       ci: ci, type: 'self', state: stName,
       initialExt: 'new',   /* v89.93（整改 E12）：自建城预置 6 块城外资源地，落地即可产 */
     });
+    /* 锚地转正：盈余物资并入新城（不凭空消失，也不凭空多出来） */
+    if (_left) {
+      var _R = GAME.res(city);
+      for (var _k in _left) { var _n = Math.floor(_left[_k] || 0); if (_n > 0) _R[_k] = (_R[_k] || 0) + _n; }
+    }
     GAME.registerCity(city);   /* v89.161：入库唯一出口（含旧币池接线） */
-    /* 筑城后该野地转为城市地块，从附属野地中移除 */
-    s.wilds = (s.wilds || []).filter(function (w) { return w.ci !== ci; });
+    /* 筑城后该野地转为城市地块，从附属野地中移除。
+       v145：按 (pid, ci) 精确剔除 —— ci 只在球内唯一，只按 ci 会误删别星的同格野地。 */
+    var _bpid = GAME.pidOf(chk.wild);
+    s.wilds = (s.wilds || []).filter(function (w) { return !(w.ci === ci && GAME.pidOf(w) === _bpid); });
     GAME.log('🏯 于 格#' + ci + ' 筑新城「' + city.name + '」（耗 净水/生物质/电能/废钢/旧币 各 ' + U.fmt(useCost.grain) + '）', 'sys', 'admin');
+    if (_left) GAME.log('🚩 锚地转正：殖民地「' + city.name + '」已立城（盈余开拓物资随城入库）', 'sys', 'planet');
     return { ok: true, msg: '筑城成功：' + city.name, city: city };
   };
 
@@ -23742,6 +24304,11 @@ window.GAME = window.GAME || {};
     var from = GAME.cityById(fromId), to = GAME.cityById(toId);
     if (!from || !to) return { ok: false, msg: '城市不存在' };
     if (from.id === to.id) return { ok: false, msg: '不能派驻本城' };
+    /* v145（E 期）：**陆路到不了另一颗球** —— 跨星补给走空间站「星际投送」 */
+    if (GAME.colony && GAME.colony.blockTransfer) {
+      var _xst = GAME.colony.blockTransfer(from.id, to.id);
+      if (_xst) return _xst;
+    }
     var moved = 0;
     for (var k in (army || {})) {
       var n = Math.floor(army[k] || 0);
@@ -34902,6 +35469,8 @@ if (GAME.reg) {
     for (var i = 0; i < list.length; i++) {
       var w = list[i];
       if (!w || w.ci == null) continue;
+      /* v145：只在本星球找地 —— 归一世界里野地全局一份，跨星 ci 会乱指 */
+      if (GAME.pidOf(w) !== GAME.curPid()) continue;
       if (!GAME.canBuildCityGeo(w.ci).ok) continue;
       var dist = (s && s.distOf && fromCi != null) ? s.distOf({ ci: fromCi }, { ci: w.ci }) : 1;
       if (dist < minD || dist > maxD) continue;

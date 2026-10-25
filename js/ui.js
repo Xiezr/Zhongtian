@@ -12977,6 +12977,232 @@ import './state.js';
    * ============================================================ */
   ui._stationSel = null;   /* 选中的舰种 classId（造舰用） */
   ui._shipSel = null;      /* 选中的战舰实例 id（升级部件用） */
+  /* v145（E 期 · 星际投送）：面板态 —— 选船 / 选目标星球 / 带多少人（兵走出征界面） */
+  ui._ixShipId = null;
+  ui._ixPid = null;
+  ui._ixCols = 0;
+
+  /* ============================================================
+   * v145：**星际投送 / 殖民**面板（空间站内一块）
+   * ------------------------------------------------------------
+   * 老板：「主题 = 军事投送」；E 期接力卡 = 投送 + 殖民。
+   * 新星球不再白送前哨城 → 这里就是**唯一的开荒入口**：
+   *   选一艘母舰 → 选目标星球 → 看航程/运力/燃料 → 带人（滑块）→ 启航；
+   *   抵达即把人/兵落到目标（有城入城、没城圈锚地），返航把该星物资带回。
+   * 兵的编成走**出征界面**（那边有兵种面板与预备兵上限），这里给入口与在途清单。
+   * 所有数字读 `GAME.colony`（唯一出口 · 唯一算法），界面不另算。
+   * ============================================================ */
+  ui.colonyHTML = function () {
+    var CO = GAME.colony, SH = GAME.ship;
+    if (!CO || !SH) return '<div class="q-empty">投送模块未加载</div>';
+    var IBY = DATA.ITEM_BY_ID || {};
+    var from = GAME.currentCity();
+    var here = GAME.curPid ? GAME.curPid() : 1;
+    var ps = (GAME.planetsOf && GAME.planetsOf()) || [];
+    var ships = CO.carrierShips ? CO.carrierShips() : [];
+    var fuelItem = CO.fuelItem ? CO.fuelItem() : 'w_he3';
+    var fuelN = GAME.items ? GAME.items.count(fuelItem) : 0;
+    var fuelName = (IBY[fuelItem] || {}).name || fuelItem;
+
+    /* ---- 在途投送 ---- */
+    var ms = CO.missions ? CO.missions() : [];
+    var rows = ms.map(function (m) {
+      var pl = CO.planetOf ? CO.planetOf(m.pid) : null;
+      var cls = SH.classOf(m.classId) || {};
+      var prog = Math.round((CO.progressOf ? CO.progressOf(m) : 0) * 100);
+      var ph = (CO.phaseOf ? CO.phaseOf(m) : 'out');
+      var phTxt = ph === 'out' ? '飞行中' : ph === 'survey' ? '抵达勘测中' : '返航中';
+      var left = Math.max(0, Math.round(((CO.returnAtOf ? CO.returnAtOf(m) : m.arriveAt) - U.now()) / 1000));
+      return '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--line);">' +
+        '<span>' + (cls.icon || '🛸') + ' ' + U.escape(cls.name || m.classId) + '</span>' +
+        '<span class="ui-sub" style="flex:1;">→ ' + U.escape(pl ? pl.name : ('星球 ' + m.pid)) +
+          '　·　' + U.numText(m.colonists, 0) + ' 人 · ' + U.numText(CO.armyN(m.army), 0) + ' 兵　·　' + phTxt +
+          '　<b style="color:var(--gold-light);">' + prog + '%</b></span>' +
+        (ph === 'out'
+          ? '<button class="btn sm" data-action="ix-cancel" data-id="' + m.id + '" title="前段飞行期内中止（人/兵原路归城，燃料不退）">中止</button>'
+          : '<span class="ui-sub">' + U.dur(left) + '</span>') +
+        '</div>';
+    }).join('') || '<div class="ui-sub">目前在途：0 批</div>';
+
+    /* ---- ① 选船 ---- */
+    var shipCards = ships.map(function (sh) {
+      var cls = SH.classOf(sh.classId) || {};
+      var busy = CO.shipBusy ? CO.shipBusy(sh.id) : false;
+      var on = ui._ixShipId === sh.id;
+      var capN = CO.capacityOf ? CO.capacityOf(sh) : 0;
+      return '<div' + (busy ? '' : ' data-action="ix-ship" data-ship="' + sh.id + '"') +
+        ' style="' + (busy ? '' : 'cursor:pointer;') + 'padding:8px 10px;border:1px ' + (busy ? 'dashed' : 'solid') + ' ' + (on ? 'var(--gold)' : 'var(--line)') + ';border-radius:var(--r-sm);background:' + (on ? 'rgba(var(--gold-rgb),.14)' : 'var(--bg-2)') + ';' + (busy ? 'opacity:.45;' : '') + '">' +
+        '<div style="display:flex;align-items:center;gap:6px;"><span>' + (cls.icon || '🛸') + '</span><b>' + U.escape(cls.name || sh.classId) + '</b></div>' +
+        '<div class="ui-sub" style="font-size:var(--fs-cap);">运力 ' + U.numText(capN, 0) + ' 人/兵' +
+          (busy ? '　·　在执行投送' : '') + '</div>' +
+        '</div>';
+    }).join('');
+    if (!ships.length) {
+      shipCards = '<div class="ui-sub">船坞里还没有运输系（母舰）—— 白档「运输梭」即可开始投送' +
+        '（母舰 = 突击/护卫之外的第三系，白蓝紫红各一艘）。</div>';
+    }
+
+    /* ---- ② 选目标星球 ---- */
+    var selShip = null;
+    ships.forEach(function (x) { if (x.id === ui._ixShipId) selShip = x; });
+    var pidSel = ui._ixPid;
+    var planetRows = ps.filter(function (p) { return p.id !== here; }).map(function (p) {
+      var on = pidSel === p.id;
+      var anc = CO.anchorOf ? CO.anchorOf(p.id) : { ok: false };
+      var fsec = CO.flightSecOf ? CO.flightSecOf(p.id) : 0;
+      var realSec = fsec / (GAME.timeScale ? GAME.timeScale() : 1);
+      var fuel = selShip ? (CO.fuelCostOf ? CO.fuelCostOf(selShip, p.id) : 0) : 0;
+      return '<div data-action="ix-planet" data-pid="' + p.id + '"' +
+        ' style="cursor:pointer;padding:8px 10px;border:1px solid ' + (on ? 'var(--gold)' : 'var(--line)') + ';border-radius:var(--r-sm);background:' + (on ? 'rgba(var(--gold-rgb),.14)' : 'var(--bg-2)') + ';">' +
+        '<div style="display:flex;align-items:center;gap:6px;"><b>🪐 ' + U.escape(p.name) + '</b>' +
+          '<span class="ui-sub">#' + p.id + (anc.ok === true ? (anc.kind === 'city' ? '　·　已有城「' + U.escape(anc.name || '') + '」' : '　·　已有锚地') : '　·　未开发（首投圈锚地）') + '</span></div>' +
+        '<div class="ui-sub" style="font-size:var(--fs-cap);">单程 ' + U.dur(realSec) + '　·　燃料 ' +
+          fuelName + ' ×' + U.numText(fuel, 0) + '　·　守军 ×' +
+          (GAME.planetScaleOf ? GAME.planetScaleOf(p.id).toFixed(2) : '1') + '</div>' +
+        '</div>';
+    }).join('') || '<div class="ui-sub">只有一颗星球 —— 先到「星球生成」造一颗新的（副本列表里可进入）。</div>';
+
+    /* ---- ③ 带人 / 带兵（兵+人同占运力） ---- */
+    var cap = selShip && CO.capacityOf ? CO.capacityOf(selShip) : 0;
+    var pop = from ? Math.floor(GAME.res(from).pop || 0) : 0;
+    var cols = Math.min(Math.max(0, ui._ixCols || 0), pop, cap);
+    /* 本城驻军 → 可选投送的兵种（每行一个数字框，先按运力封顶；超出由 canSend 拦） */
+    var troops = [];
+    if (from) {
+      Object.keys(from.army || {}).forEach(function (k) {
+        var have = Math.floor(from.army[k] || 0);
+        if (have <= 0) return;
+        var it = (DATA.TROOPS || {})[k] || {};
+        var want = Math.max(0, Math.floor((ui._ixArmy || {})[k] || 0));
+        want = Math.min(want, have);
+        ui._ixArmy = ui._ixArmy || {};
+        ui._ixArmy[k] = want;
+        troops.push({ k: k, have: have, name: it.name || k });
+      });
+    }
+    var armyN = CO.cargoOf ? (CO.cargoOf(ui._ixArmy || {}, 0)) : 0;
+    var overCap = (cols + armyN) > cap;
+    var troopsRow = '';
+    if (!from) {
+      troopsRow = '<div class="ui-sub">（没有出发城 —— 先到城里再投送）</div>';
+    } else if (!troops.length) {
+      troopsRow = '<div class="ui-sub">本城当前没有驻军（可只投人 —— 到地方再募兵）。</div>';
+    } else {
+      troopsRow = '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px;">' +
+        troops.map(function (t) {
+          return '<label style="display:flex;align-items:center;gap:4px;padding:4px 6px;border:1px solid var(--line);border-radius:var(--r-sm);background:var(--bg-1);">' +
+            '<span>' + U.escape(t.name) + '</span>' +
+            '<input type="number" min="0" max="' + t.have + '" value="' + ((ui._ixArmy || {})[t.k] || 0) + '"' +
+              ' data-action="ix-troop" data-troop="' + t.k + '"' +
+              ' style="width:72px;padding:2px 4px;background:var(--slab-1);border:1px solid var(--gold-dark);color:var(--text);border-radius:4px;" />' +
+            '<span class="ui-sub">/ ' + U.numText(t.have, 0) + '</span>' +
+            '</label>';
+        }).join('') +
+        '<span class="ui-sub" style="align-self:center;">已装 ' + U.numText(cols + armyN, 0) + ' / ' + U.numText(cap, 0) + ' 运力' +
+          (overCap ? '（超载）' : '') + '</span>' +
+        '</div>';
+    }
+    var chk = (selShip && pidSel != null && CO.canSend)
+      ? CO.canSend({ shipId: selShip.id, pid: pidSel, colonists: cols, army: ui._ixArmy || {} }) : null;
+    var colsRow = '';
+    if (selShip && pidSel != null) {
+      colsRow = '<div style="margin-top:6px;display:flex;align-items:center;gap:8px;">' +
+        '<span class="ui-sub">带人</span>' +
+        '<input type="range" min="0" max="' + Math.max(0, Math.min(pop, cap)) + '" value="' + cols + '" data-action="ix-cols" style="flex:1;" />' +
+        '<b style="color:var(--gold-light);min-width:70px;text-align:right;">' + U.numText(cols, 0) + ' / ' + U.numText(pop, 0) + '</b>' +
+        '<span class="ui-sub">（本城幸存者）</span>' +
+        '</div>';
+    }
+
+    return '<div style="margin-top:16px;padding:var(--sp-3);border:1px solid var(--line);border-radius:var(--r-sm);background:var(--bg-2);">' +
+      '<div class="gold-heading" style="margin:0;">🚀 星际投送（E 期 · 殖民的唯一入口）' +
+        ui.help('新星球**不再白送前哨城**：要人、要地，只能把母舰上的**人和兵**送过去。\n' +
+          '· 目标有城 → 人入新城、兵并入城防，返程把该星物资带回；\n' +
+          '· 目标没城 → 就地圈一处「星际锚地」，并给首批开拓物资（够立一次城）；\n' +
+          '· 陆路不能跨星球：本境调运只在本星，跨星补给一律走这里。') +
+      '</div>' +
+      '<div class="ui-sub" style="margin:6px 0 8px;">① 选母舰（运输系）</div>' +
+      '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:var(--sp-1);">' + shipCards + '</div>' +
+      '<div class="ui-sub" style="margin:10px 0 8px;">② 选目标星球（单程按跨星距离算，比同星最远还远）</div>' +
+      '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:var(--sp-1);">' + planetRows + '</div>' +
+      colsRow +
+      '<div class="ui-sub" style="margin:8px 0 2px;">③ 带兵（本城驻军，可选）—— 兵与人同占运力' +
+        (chk && !chk.ok ? '<br><span style="color:var(--red-light);">当前不可投送：' + U.escape(chk.msg || '') + '</span>' : '') +
+      '</div>' +
+      troopsRow +
+      '<div style="margin-top:8px;display:flex;gap:8px;">' +
+        '<button class="btn' + (chk && chk.ok && (cols > 0 || armyN > 0) ? ' gold' : ' dim') + '" data-action="ix-go"' +
+          (chk && chk.ok && (cols > 0 || armyN > 0) ? '' : ' disabled') +
+          (chk && !chk.ok ? ' data-why="' + U.escape(chk.msg || '') + '"' : '') + '>🚀 启航（人 ' + U.numText(cols, 0) + ' · 兵 ' + U.numText(armyN, 0) + '）</button>' +
+        '<button class="btn" data-action="ix-exp">⚔️ 出征界面（编成/运货）</button>' +
+        '<span class="ui-sub" style="align-self:center;">燃料：' + fuelName + ' 现有 ' + U.numText(fuelN, 0) + '</span>' +
+      '</div>' +
+      '<div class="ui-sub" style="margin:12px 0 4px;">在途投送</div>' +
+      rows +
+    '</div>';
+  };
+
+  /* 投送面板动作（单独出口，stationHTML 底部的 `+=` 调用它们） */
+  ui.ixPickShip = function (shipId) {
+    ui._ixShipId = (ui._ixShipId === shipId) ? null : shipId;
+    GAME.refreshAll(); ui.renderView('station');
+  };
+  ui.ixPickPlanet = function (pid) {
+    ui._ixPid = (ui._ixPid === Number(pid)) ? null : Number(pid);
+    GAME.refreshAll(); ui.renderView('station');
+  };
+  ui.ixGo = function () {
+    var CO = GAME.colony;
+    if (!CO) { ui.toast('投送模块未加载'); return; }
+    var r = CO.send({ shipId: ui._ixShipId, pid: ui._ixPid, colonists: ui._ixCols || 0, army: ui._ixArmy || {} });
+    ui.toast(r.msg);
+    if (r.ok) { ui._ixCols = 0; ui._ixArmy = {}; GAME.refreshAll(); ui.renderView('station'); }
+  };
+  /* 兵种数字框：只记状态 + 让「启航」按钮当场响应（不重绘，输入不丢） */
+  ui.ixSetTroop = function (k, n) {
+    ui._ixArmy = ui._ixArmy || {};
+    ui._ixArmy[k] = Math.max(0, Math.floor(Number(n) || 0));
+    ui.ixColsPreview(ui._ixCols || 0);
+  };
+  ui.ixCancel = function (id) {
+    var r = GAME.colony ? GAME.colony.cancel(id) : { ok: false, msg: '投送模块未加载' };
+    ui.toast(r.msg);
+    if (r.ok) { GAME.refreshAll(); ui.renderView('station'); }
+  };
+  /* 滑块拖动：只改状态 + 让「启航」按钮当场响应（不重绘整页，拖动不断） */
+  ui.ixColsPreview = function (n) {
+    ui._ixCols = Math.max(0, Math.floor(Number(n) || 0));
+    var root = document.getElementById('modal-root');
+    var btn = null;
+    (root ? root.querySelectorAll('[data-action="ix-go"]') : []).forEach(function (b) { if (!btn) btn = b; });
+    if (!btn) btn = document.querySelector('[data-action="ix-go"]');
+    if (!btn) return;
+    var can = (ui._ixCols > 0 || ui.cargoN(ui._ixArmy)) && ui._ixShipId && ui._ixPid != null && GAME.colony
+      && GAME.colony.canSend({ shipId: ui._ixShipId, pid: ui._ixPid, colonists: ui._ixCols, army: ui._ixArmy || {} }).ok;
+    btn.disabled = !can;
+    btn.classList.toggle('gold', !!can);
+    btn.classList.toggle('dim', !can);
+  };
+  /* 出征界面：目标下拉里挑目标星球的城市/锚地；这里只负责把面板打开 */
+  ui.ixOpenExpedition = function () {
+    var CO = GAME.colony;
+    var pid = ui._ixPid;
+    var tg = null;
+    if (CO && pid != null) {
+      var anc = CO.anchorOf(pid);
+      if (anc.ok) {
+        tg = (anc.kind === 'city') ? { kind: 'own', id: anc.city.id }
+          : { kind: 'wild', ci: anc.ci, pid: pid };
+      }
+    }
+    ui.openExpModal(tg || { kind: 'own' },
+      { hint: '星际投送：选「调运 / 运输」把兵与货送上母舰；目标星球有城则入城，没城则落在锚地。' });
+  };
+
+  /* 兵总数（投送面板：按钮文案与可用态共用） */
+  ui.cargoN = function (army) {
+    return GAME.colony ? GAME.colony.armyN(army) : 0;
+  };
 
   ui.stationHTML = function () {
     var SH = GAME.ship;
@@ -13127,6 +13353,7 @@ import './state.js';
       '<div class="ui-sub" style="margin:16px 0 6px;">已造战舰（' + ships.length + ' / ' + slots + '）</div>' +
       '<div style="display:flex;flex-direction:column;gap:var(--sp-1);">' + shipCards + '</div>' +
       detail +
+      ui.colonyHTML() +
     '</div>';
   };
   /* 旧建造场：保留函数名以免外部引用断裂，但**视图已改走 station**。 */

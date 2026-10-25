@@ -139,6 +139,10 @@ import './state.js';
     var st = SH.state(), i, idx = -1;
     for (i = 0; i < st.ships.length; i++) if (st.ships[i].id === shipId) { idx = i; break; }
     if (idx < 0) return { ok: false, msg: '没有这艘战舰' };
+    /* v145（E 期）：在途投送中的船不能拆 —— 船上还有人/兵 */
+    if (GAME.colony && GAME.colony.busyOf && GAME.colony.busyOf(shipId)) {
+      return { ok: false, msg: '该舰正在执行星际投送 —— 等它返航后再拆解' };
+    }
     var ship = st.ships[idx], cls = SH.classOf(ship.classId), C = DATA.SHIP_COST || {};
     var back = Math.floor(SH.hullCost(cls) * (C.scrapPct == null ? 0.5 : C.scrapPct));
     st.ships.splice(idx, 1);
@@ -157,6 +161,10 @@ import './state.js';
     var st = SH.state(), ship = null;
     st.ships.forEach(function (x) { if (x.id === shipId) ship = x; });
     if (!ship) return { ok: false, msg: '没有这艘战舰' };
+    /* v145（E 期）：在外投送的船不能改装 */
+    if (GAME.colony && GAME.colony.busyOf && GAME.colony.busyOf(shipId)) {
+      return { ok: false, msg: '该舰正在执行星际投送 —— 等它返航后再升级部件' };
+    }
     var part = SH.partOf(pid);
     if (!part) return { ok: false, msg: '未知部件' };
     if (part.id === 'hull') return { ok: false, msg: '船体在造舰时一次性建成，不可升级' };

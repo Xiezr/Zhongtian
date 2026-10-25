@@ -420,6 +420,136 @@
     if (G.ship.ships().length) ST.station.ships.length = 0;
   }
 
+  /* ============================================================
+   * §5 星际投送（v145 · E 期）—— 账实相符 / 兵不丢 / 中止原路退 / 抵达守恒
+   * ------------------------------------------------------------
+   * 与 §4 同一套夹具（ST 共享对局 + grantAll/clearDock），只换"派一船人去另一颗球"。
+   * ⚠️ 这里**不真飞** —— 用 `_realNowOf` 拨钟推进 tick（真实钟锚点的正确测法）；
+   *    每个性质自己清 `s.interstellar` 与目标星的野地/城，不依赖全局干净。
+   * ============================================================ */
+  console.log('\n===== 4.5 星际投送（运力/燃料/兵不丢/中止退人/抵达守恒） =====');
+
+  var COL_PID = 9001;   /* 固定的"殖民地星球"（只在本节用） */
+  function colonySetup(rng) {
+    clearDock(); grantAll();
+    ST.planets = ST.planets || [];
+    if (!ST.planets.some(function (p) { return p.id === COL_PID; })) {
+      ST.planets.push({ id: COL_PID, name: '测试星', seed: 424242,
+        params: { seaFrac: 0.45, ridge: 1.5, detail: 0.7, temp: 1.0 } });
+    }
+    ST.wilds = (ST.wilds || []).filter(function (w) { return G.pidOf(w) !== COL_PID; });
+    ST.cities = (ST.cities || []).filter(function (c) { return G.pidOf(c) !== COL_PID; });
+    ST.interstellar = { missions: [], _seq: 0 };
+    ST.station.lv = 9;
+    (DATA.SHIP_BLUEPRINTS || []).forEach(function (b) { G.items.sub(b.id, 1e9); G.items.add(b.id, 1); });
+    var cls = (DATA.SHIP_CLASSES || []).filter(function (c) { return c.role === 'carrier'; })[0];
+    var r = G.ship.build(cls.id);
+    if (!r.ok) throw new Error('carrier build failed: ' + r.msg);
+    var fuelId = G.colony.fuelItem();
+    G.items.sub(fuelId, 1e9); G.items.add(fuelId, ri(rng, 1, 60));
+    var city = ST.cities[0];
+    city.res.pop = ri(rng, 10, 400);
+    city.army = { buxingji: ri(rng, 10, 500) };
+    return {
+      shipId: r.ship.id,
+      colonists: ri(rng, 0, Math.min(50, city.res.pop)),
+      army: { buxingji: ri(rng, 0, Math.min(60, city.army.buxingji)) },
+    };
+  }
+  function colonyReset() {
+    ST.interstellar = { missions: [], _seq: 0 };
+    ST.wilds = (ST.wilds || []).filter(function (w) { return G.pidOf(w) !== COL_PID; });
+    ST.cities = (ST.cities || []).filter(function (c) { return G.pidOf(c) !== COL_PID; });
+  }
+  /* 拨钟：fn(setMs) —— setMs 把"现在"挪到 t0 + 偏移 */
+  function withClock(t0, fn) {
+    var bk = G._realNowOf;
+    try {
+      G._realNowOf = function () { return t0; };
+      return fn(function (ms) { G._realNowOf = function () { return t0 + ms; }; });
+    } finally { G._realNowOf = bk; }
+  }
+
+  /* §5.1 派出扣费精确：人/兵/燃料逐项 = 面板口径；超载/缺燃料时一处不动 */
+  prop('投送·派出扣费精确（人/兵/燃料 · 拒绝不动账）', 40, function (rng) {
+    return colonySetup(rng);
+  }, function (b) {
+    colonyReset();
+    var fuelId = G.colony.fuelItem(), city = ST.cities[0];
+    var pop0 = city.res.pop, army0 = city.army.buxingji, fuel0 = G.items.count(fuelId);
+    var chk = G.colony.canSend({ shipId: b.shipId, pid: COL_PID, colonists: b.colonists, army: b.army });
+    if (!chk.ok) {
+      return city.res.pop === pop0 && city.army.buxingji === army0 && G.items.count(fuelId) === fuel0
+        && G.colony.missions().length === 0;
+    }
+    var r = G.colony.send({ shipId: b.shipId, pid: COL_PID, colonists: b.colonists, army: b.army });
+    if (!r.ok) return false;
+    if (city.res.pop !== pop0 - b.colonists) return false;
+    if (city.army.buxingji !== army0 - b.army.buxingji) return false;
+    if (G.items.count(fuelId) !== fuel0 - chk.fuel) return false;
+    var m = G.colony.missions()[0];
+    return !!m && m.colonists === b.colonists && (m.army.buxingji || 0) === b.army.buxingji
+      && G.colony.troopsAboard(m) === b.army.buxingji;
+  }, null, function (b) { return 'ship=' + b.shipId + ' cols=' + b.colonists + ' army=' + briefArmy(b.army); });
+
+  /* §5.2 兵不丢：飞出去的那一刻，「城里的兵 + 船上的兵」恒等于出发前 */
+  prop('投送·兵不丢（在途时：城里的兵 + 船上的兵 = 出发前）', 40, function (rng) {
+    return colonySetup(rng);
+  }, function (b) {
+    colonyReset();
+    var city = ST.cities[0];
+    var before = city.army.buxingji || 0;
+    var r = G.colony.send({ shipId: b.shipId, pid: COL_PID, colonists: b.colonists, army: b.army });
+    if (!r.ok) return !G.colony.missions().length && (city.army.buxingji || 0) === before;
+    var onboard = 0;
+    G.colony.missions().forEach(function (m) { onboard += G.colony.troopsAboard(m); });
+    return (city.army.buxingji || 0) + onboard === before;
+  }, null, function (b) { return 'army=' + briefArmy(b.army) + ' cols=' + b.colonists; });
+
+  /* §5.3 中止（前段飞行期）：人/兵原路归城，燃料不退，任务清空 */
+  prop('投送·中止原路退（人/兵归城 · 燃料不退 · 任务清空）', 40, function (rng) {
+    return colonySetup(rng);
+  }, function (b) {
+    colonyReset();
+    var fuelId = G.colony.fuelItem(), city = ST.cities[0];
+    var r = G.colony.send({ shipId: b.shipId, pid: COL_PID, colonists: b.colonists, army: b.army });
+    if (!r.ok) return true;                       /* 这一例没派出去 → 不构成违背 */
+    var popMid = city.res.pop, armyMid = city.army.buxingji || 0, fuelMid = G.items.count(fuelId);
+    var c = G.colony.cancel(r.mission.id);
+    if (!c.ok) return false;
+    return city.res.pop === popMid + b.colonists
+      && (city.army.buxingji || 0) === armyMid + b.army.buxingji
+      && G.items.count(fuelId) === fuelMid                       /* 燃料不退 */
+      && G.colony.missions().length === 0;
+  }, null, function (b) { return 'cols=' + b.colonists + ' army=' + briefArmy(b.army); });
+
+  /* §5.4 抵达守恒：人/兵落进锚地；返航到点后任务清空且不重复入账 */
+  prop('投送·抵达守恒（落地后：锚地人+兵 = 船上原数；返航清空不重复）', 30, function (rng) {
+    var b = colonySetup(rng);
+    b.colonists = Math.max(3, b.colonists);      /* 至少带点人，便于对账 */
+    b.army = { buxingji: Math.max(2, b.army.buxingji) };
+    return b;
+  }, function (b) {
+    colonyReset();
+    return withClock(1700000000000, function (setT) {
+      var r = G.colony.send({ shipId: b.shipId, pid: COL_PID, colonists: b.colonists, army: b.army });
+      if (!r.ok) return true;
+      var m = G.colony.missions()[0];
+      setT(m.arriveAt - m.departAt + 1000);      /* 拨到「刚到」 */
+      G.colony.tick();
+      var w = G.colony.mooringOf(COL_PID);
+      if (!w) return false;
+      if ((w.colonists || 0) !== b.colonists) return false;
+      if (G.wildGarrisonTotal(w.garrison) !== b.army.buxingji) return false;
+      if (G.colony.missions().length !== 1) return false;
+      setT(G.colony.returnAtOf(m) - m.departAt + 1000);   /* 拨到「返航到点」 */
+      G.colony.tick();
+      if (G.colony.missions().length !== 0) return false;
+      var w2 = G.colony.mooringOf(COL_PID);
+      return !!w2 && (w2.colonists || 0) === b.colonists && G.wildGarrisonTotal(w2.garrison) === b.army.buxingji;
+    });
+  }, null, function (b) { return 'cols=' + b.colonists + ' army=' + briefArmy(b.army); });
+
   /* §4.1 造舰扣费精确 + 蓝图门槛：成功扣 hullCost；缺蓝图/缺料时拒绝且不动账 */
   prop('战舰·造舰扣费精确（成功= hullCost，缺蓝图拒绝且不动账）', 40, function (rng) {
     clearDock(); grantAll();

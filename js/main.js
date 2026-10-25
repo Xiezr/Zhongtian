@@ -13,6 +13,7 @@ import './items.js';
 import './generals.js';   /* v91.65：英雄名册/状态归属 */
 import './cities.js';     /* v91.66：城市只读出口 */
 import './ship.js';       /* v91.71：空间站/战舰 */
+import './colony.js';     /* v145：星际投送 / 殖民（E 期 · 母舰把人送到新星球） */
 import './domain.js';
 import './map.js';
 import './sphere.js';
@@ -1521,6 +1522,16 @@ import './ui.js';
       case 'sp-ship': ui.shipPick(el.dataset.ship); break;
       case 'sp-part': ui.stationUpgradePart(el.dataset.part); break;
       case 'sp-scrap': ui.stationScrap(el.dataset.ship); break;
+      /* v145（E 期）：星际投送 —— 选船 / 选目标星球 / 带人 / 启航 / 中止 / 去出征界面 */
+      case 'ix-ship': ui.ixPickShip(el.dataset.ship); break;
+      case 'ix-planet': ui.ixPickPlanet(el.dataset.pid); break;
+      case 'ix-go': ui.ixGo(); break;
+      case 'ix-cancel': ui.ixCancel(el.dataset.id); break;
+      case 'ix-exp': ui.closeAllModals(); ui.ixOpenExpedition(); break;
+      /* 带人滑块：input 事件走动作表（与 zoom/train-count 同一分发），只记状态不重绘 */
+      case 'ix-cols': ui._ixCols = Math.max(0, Number(el.value) || 0); break;
+      /* 带兵数字框：只记状态（change 失焦才触发） */
+      case 'ix-troop': ui.ixSetTroop(el.dataset.troop, el.value); break;
       /* v40：`case 'set-timescale'` / `case 'set-tax'` 已删 ——
          v22 起税率与倍率改走 `chip-set + data-after='tax'/'timescale'`，
          这两个旧分支在界面上查无触发点（audit 会一直报"不可达分支"）。 */
@@ -3427,6 +3438,13 @@ import './ui.js';
       var el = e.target;
       if (el && el.id === 'sd-range' && ui.sdSet) ui.sdSet(Number(el.value));
     });
+    /* v145：投送面板「带人」滑块 —— 拖动时实时改启动按钮的可用态（不重绘整页） */
+    document.addEventListener('input', function (e) {
+      var el = e.target;
+      if (el && el.getAttribute && el.getAttribute('data-action') === 'ix-cols') {
+        ui.ixColsPreview(Number(el.value) || 0);
+      }
+    });
     document.addEventListener('click', function (e) {
       var tab = e.target.closest('.topnav .tab[data-view]');
       if (tab) { ui.setView(tab.dataset.view); }
@@ -3678,7 +3696,7 @@ import './ui.js';
      （这解释了"改了却说没生效"的观感）。老板若发现版本 ≠ 最新交付，按 Ctrl+F5
      强制刷新即获得新代码。⚠️ 发版须走 **bump_version.py --bump --version vX.Y**（它同步 index.html 的 ?v=/BUILD
      与这里的 GAME.VERSION 三处）—— 只手改 index.html 会让版本号冻住（v91.18 前的病灶）。 */
-  GAME.VERSION = 'v144.5';
+  GAME.VERSION = 'v145.0';
   function boot() {
     fitAppSize();
     try {

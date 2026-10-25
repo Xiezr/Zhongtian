@@ -104,6 +104,8 @@
     for (var i = 0; i < list.length; i++) {
       var w = list[i];
       if (!w || w.ci == null) continue;
+      /* v145：只在本星球找地 —— 归一世界里野地全局一份，跨星 ci 会乱指 */
+      if (GAME.pidOf(w) !== GAME.curPid()) continue;
       if (!GAME.canBuildCityGeo(w.ci).ok) continue;
       var dist = (s && s.distOf && fromCi != null) ? s.distOf({ ci: fromCi }, { ci: w.ci }) : 1;
       if (dist < minD || dist > maxD) continue;

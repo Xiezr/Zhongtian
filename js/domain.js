@@ -5983,6 +5983,63 @@ import './state.js';
     }
     return { ok: true, wild: w };
   };
+  /* ============================================================
+   * v145（E 期）：**殖民地立城必须先有补给线**
+   * ------------------------------------------------------------
+   * 老板：「主题 = 军事投送」—— 新星球不再白送前哨城（state.enterPlanet 只留登陆点），
+   * 所以立城判据多一层：
+   *   · 母星（pid 1）/ 前传（还没立城）→ 不受限（那是开局，不是殖民地）
+   *   · 该星球已有城 → 正常（城自筹，同今天）
+   *   · 只有**锚地**（投送圈下的落脚野地）→ 用锚地的「首批开拓物资」付账，
+   *     且必须是在锚地那格上立城（城 = 锚地转正，物资盈余并入新城）
+   *   · 连锚地都没有 → 拒绝（先投送一船人过去）
+   * 判据是 `GAME.colonyFundOf`（域层唯一出口；colony.js 只管投送本身）。
+   * ============================================================ */
+  GAME.colonyFundOf = function (pid) {
+    var s = GAME.state, out = null;
+    pid = (pid == null) ? GAME.curPid() : pid;
+    (s.cities || []).forEach(function (c) { if (!out && GAME.pidOf(c) === pid) out = { kind: 'city', city: c }; });
+    if (out) return out;
+    (s.wilds || []).forEach(function (w) { if (!out && GAME.pidOf(w) === pid && w.colony) out = { kind: 'mooring', wild: w }; });
+    return out;
+  };
+  GAME.colonySupplyChk = function (pid) {
+    var s = GAME.state;
+    if (!s) return { ok: false, msg: '尚未开局' };
+    pid = (pid == null) ? GAME.curPid() : pid;
+    if (pid === 1 || (s.prologue && s.prologue.on)) return { ok: true };
+    var f = GAME.colonyFundOf(pid);
+    if (f) return { ok: true, fund: f };
+    return { ok: false, msg: '这颗星球没有补给线 —— 先在空间站「星际投送」一船人过去圈锚地' };
+  };
+  /* 锚地物资付款；返回 null = 该走既有 canAfford/payCost（有城 / 母星） */
+  GAME.colonyMooringAfford = function (fund, cost) {
+    if (!fund || fund.kind !== 'mooring') return null;
+    var res = fund.wild.seedRes || {}, lack = [];
+    for (var k in (cost || {})) {
+      if (k === 'time' || k === 'jewel') continue;
+      var need = Math.floor(cost[k] || 0);
+      if (need <= 0) continue;
+      if (Math.floor(res[k] || 0) < need) lack.push(k);
+    }
+    if (lack.length) {
+      return { ok: false, msg: '锚地物资不足：' + lack.map(function (k) {
+        return (GAME.resName ? GAME.resName(k) : k) + ' ' + U.fmt(res[k] || 0) + '/' + U.fmt(cost[k]);
+      }).join('、') + '（再投送一船物资，或就地在锚地采集）' };
+    }
+    return { ok: true };
+  };
+  GAME.colonyMooringPay = function (fund, cost) {
+    var res = (fund && fund.wild && fund.wild.seedRes) || {};
+    for (var k in (cost || {})) {
+      if (k === 'time' || k === 'jewel') continue;
+      var need = Math.floor(cost[k] || 0);
+      if (need > 0) res[k] = Math.max(0, Math.floor(res[k] || 0) - need);
+    }
+    fund.wild.seedRes = res;
+    return res;
+  };
+
   GAME.canBuildCityAt = function (ci, cost) {
     var geo = GAME.canBuildCityGeo(ci);
     if (!geo.ok) return geo;
@@ -5990,11 +6047,16 @@ import './state.js';
        顺序：先地理（能不能在这建）→ 再资格（领地上限）→ 再资源 —— 逐层归因。 */
     var _cc108 = GAME.cityCapChk ? GAME.cityCapChk() : { ok: true };
     if (!_cc108.ok) return _cc108;
+    /* v145：殖民地补给线（新星球没有城/锚地就不许白手起家） */
+    var _sup = GAME.colonySupplyChk();
+    if (!_sup.ok) return _sup;
     var c = cost || GAME.BUILD_CITY_COST;
+    var _mf = GAME.colonyMooringAfford(_sup.fund, c);
+    if (_mf) return _mf.ok ? { ok: true, wild: geo.wild, fund: _sup.fund } : _mf;
     if (!GAME.canAfford(c)) {
       return { ok: false, msg: '资源不足（需 净水/生物质/电能/废钢/旧币 各 ' + U.fmt(c.grain) + '）' };
     }
-    return { ok: true, wild: geo.wild };
+    return { ok: true, wild: geo.wild, fund: _sup.fund || null };
   };
   GAME.buildCityAt = function (ci, cost) {
     var s = GAME.state;
@@ -6002,7 +6064,12 @@ import './state.js';
     var useCost = cost || GAME.BUILD_CITY_COST;
     var chk = GAME.canBuildCityAt(ci, useCost);
     if (!chk.ok) return chk;
-    GAME.payCost(useCost);
+    var _left = null;
+    if (chk.fund && chk.fund.kind === 'mooring') {
+      _left = GAME.colonyMooringPay(chk.fund, useCost);            /* 锚地付费（不走城市库存） */
+    } else {
+      GAME.payCost(useCost);
+    }
     var stName = GAME.stateOfCity(chk.wild);
     var city = GAME.makeCity({
       /* v91.03 / v90.100：城 id 带**星球前缀** + **格索引 ci**（防跨星球/同格撞）。 */
@@ -6010,10 +6077,18 @@ import './state.js';
       ci: ci, type: 'self', state: stName,
       initialExt: 'new',   /* v89.93（整改 E12）：自建城预置 6 块城外资源地，落地即可产 */
     });
+    /* 锚地转正：盈余物资并入新城（不凭空消失，也不凭空多出来） */
+    if (_left) {
+      var _R = GAME.res(city);
+      for (var _k in _left) { var _n = Math.floor(_left[_k] || 0); if (_n > 0) _R[_k] = (_R[_k] || 0) + _n; }
+    }
     GAME.registerCity(city);   /* v89.161：入库唯一出口（含旧币池接线） */
-    /* 筑城后该野地转为城市地块，从附属野地中移除 */
-    s.wilds = (s.wilds || []).filter(function (w) { return w.ci !== ci; });
+    /* 筑城后该野地转为城市地块，从附属野地中移除。
+       v145：按 (pid, ci) 精确剔除 —— ci 只在球内唯一，只按 ci 会误删别星的同格野地。 */
+    var _bpid = GAME.pidOf(chk.wild);
+    s.wilds = (s.wilds || []).filter(function (w) { return !(w.ci === ci && GAME.pidOf(w) === _bpid); });
     GAME.log('🏯 于 格#' + ci + ' 筑新城「' + city.name + '」（耗 净水/生物质/电能/废钢/旧币 各 ' + U.fmt(useCost.grain) + '）', 'sys', 'admin');
+    if (_left) GAME.log('🚩 锚地转正：殖民地「' + city.name + '」已立城（盈余开拓物资随城入库）', 'sys', 'planet');
     return { ok: true, msg: '筑城成功：' + city.name, city: city };
   };
 
@@ -8526,6 +8601,11 @@ import './state.js';
     var from = GAME.cityById(fromId), to = GAME.cityById(toId);
     if (!from || !to) return { ok: false, msg: '城市不存在' };
     if (from.id === to.id) return { ok: false, msg: '不能派驻本城' };
+    /* v145（E 期）：**陆路到不了另一颗球** —— 跨星补给走空间站「星际投送」 */
+    if (GAME.colony && GAME.colony.blockTransfer) {
+      var _xst = GAME.colony.blockTransfer(from.id, to.id);
+      if (_xst) return _xst;
+    }
     var moved = 0;
     for (var k in (army || {})) {
       var n = Math.floor(army[k] || 0);

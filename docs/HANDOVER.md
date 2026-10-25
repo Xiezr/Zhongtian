@@ -1,6 +1,6 @@
 # 《我在废土有座城》项目交接文档
 
-> 交接时点：**2026-10-18** · 版本：**v144.5 / BUILD 9380** · 面向**下一位接手的会话（人或 AI）**：
+> 交接时点：**2026-10-26** · 版本：**v145.0 / BUILD 9381** · 面向**下一位接手的会话（人或 AI）**：
 > 先读本文 → 再读 `docs/接力卡-星际战舰.md`（进度/下一步）→ 再动手。**不要从零探索。**
 
 ---
@@ -11,8 +11,8 @@
 - **跑起来**：直接开 `E:/Deepseekdb/index.html`；或
   `python -m http.server 8777 --directory E:/Deepseekdb` → `http://localhost:8777/`。
 - **源码根**：`E:\Deepseekdb`（注意：当前会话的工作目录 `E:\app_projects\biztrip` 是**另一份无关项目**，别改错仓）。
-- **目录**：`index.html`（全部 CSS）· `js/`（62 个源文件 + 3 个 bundle 产物）· `assets/` · `docs/` · `.workbuddy/`（门禁/工具/历史备份）。
-- **门禁五件套**（改完必跑）：audit **0** · chain-audit **47/0** · invariants **28/0** · smoke **4184/0** · e2e **1100/0**。
+- **目录**：`index.html`（全部 CSS）· `js/`（63 个源文件 + 3 个 bundle 产物）· `assets/` · `docs/` · `.workbuddy/`（门禁/工具/历史备份）。
+- **门禁五件套**（改完必跑）：audit **0** · chain-audit **47/0** · invariants **32/0** · smoke **4191/0** · e2e **1100/0**。
 
 ---
 
@@ -37,7 +37,7 @@ vendor/three.min.js → js/bundle-core.js → js/bundle-war.js → js/bundle-ui.
 > **新增模块要同步四份静态清单**：`build_bundle.ORDER` + `smoke-test` SECTION 列表 + `audit.MODULES` + `audit.REF_MODULES`。
 > （v144.5 刚因漏了后两份，audit 长期误报 `GAME.scene3d / GAME.battlelog`「引用了不存在的成员」。）
 
-### 模块地图（62 个源文件，按层）
+### 模块地图（63 个源文件，按层）
 
 **地基 / 状态**
 | 模块 | 职责 |
@@ -48,6 +48,7 @@ vendor/three.min.js → js/bundle-core.js → js/bundle-war.js → js/bundle-ui.
 | `state.js` | 存档结构、`newGame`、`adoptState`（迁移链）、`tickOnce`（主循环）、`simulateBulk`（离线）、星球与世界归一、`GAME.res` |
 | `items.js` / `generals.js` / `cities.js` | 三个归属出口：`GAME.items`（背包）/ `GAME.gen`（英雄 7 态状态机）/ `GAME.city`（城市资源·队列·城兵） |
 | `ship.js` | 星际战舰/空间站 `GAME.ship`（12 舰种 · 蓝图门槛 · 部件/属性 · v142.4 modifier 管道） |
+| `colony.js` | **星际投送 / 殖民** `GAME.colony`（v145 · 母舰跨星投人投兵 · `s.interstellar` 现实时间锚点 · 锚地 → 立城转正） |
 
 **世界 / 地图**
 | 模块 | 职责 |
@@ -101,10 +102,11 @@ vendor/three.min.js → js/bundle-core.js → js/bundle-war.js → js/bundle-ui.
 
 ---
 
-## 四、本批大改（v91.71 → v144.5，按时间）
+## 四、本批大改（v91.71 → v145.0，按时间）
 
 | 版本 | 内容 |
 |---|---|
+| **v145.0** | **星际战舰 E 期：投送 + 殖民**：`js/colony.js`（母舰运人/兵过星 · 运力/燃料/航程唯一出口 · 在途进度与中止）· **新星球不再白送前哨城**（只留登陆点）· 抵达无城圈「星际锚地」→ 立城转正 · 殖民立城须补给线 · 跨星陆路调运拦截 · smoke §566 七条 + invariants §4.5 · **数值待老板复核** |
 | **v144.5** | **构想补齐（能做的全做）**：羁绊进战场 · 战报「⚔ 战场修正」表 · A1 领土连通真生效 · B4 严寒折产 · F 污染变异 · A7 暴露逐队可见 · E 云内搬城入口 · B2 宣战真来犯 · C2 护送/斩首 |
 | v144.2 | 战舰 C 期数值：母港共振 / 部件协同 / 编队共鸣（只长数据不改公式，`DATA.SHIP_SYNERGY`，**待老板复核**） |
 | v144.1 | **斗将正式化**：`js/duel.js`（血=体力、每合双方各出手）+ 左右画像竞技场 + `DATA.DUEL_ARENA` |
@@ -123,8 +125,8 @@ NODE=C:/Users/18811/.workbuddy/binaries/node/versions/22.22.2-6/node.exe
 export NODE_PATH=C:/Users/18811/.workbuddy/binaries/node/workspace/node_modules
 $NODE audit.js            # 结构审计（含数据表卫生子审计）→ 全 0
 $NODE chain-audit.js      # 链路走查（派队→落账）            → 47/0
-$NODE invariants-test.js  # 守恒律属性测试（种子随机 + 收缩） → 28/0
-$NODE smoke-test.js       # 逻辑冒烟                          → 4184/0
+$NODE invariants-test.js  # 守恒律属性测试（种子随机 + 收缩） → 32/0
+$NODE smoke-test.js       # 逻辑冒烟                          → 4191/0
 $NODE e2e-test.js         # 端到端（真实 DOM + HTTP）          → 1100/0
 python .workbuddy/tools/patch/build_bundle.py   # 改 js 后必须重建
 ```
@@ -166,7 +168,7 @@ python .workbuddy/tools/patch/build_bundle.py   # 改 js 后必须重建
 **星际战舰后续分期**（见 `docs/接力卡-星际战舰.md`）：
 - **C** 部件/属性深化 → 机制已落地（v144.2 三来源），**数值待复核**
 - **D** 3D 构造图（剩余 = 建造时的 3D 预览）
-- **E** 投送（`s.interstellar`）+ 殖民
+- **E** ✅ 已落地（v145.0 · `js/colony.js`）；剩「落地后就地操作」与「殖民地自动补给线」
 - **F** 舰队战 + 终局
 
 **已知未修 / 待办**：

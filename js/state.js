@@ -1206,10 +1206,11 @@ import './data.js';
       return r;
     }
     if (GAME.attachRes) GAME.attachRes(s);                /* 资源访问器指向当前城 */
-    /* v90.84：进入的是**毛胚**星球（该星球还没有城）→ 给一个落地前哨城（否则 currentCity 为 null，无法操作）。
-       该星球的 NPC 城/野地/据点/奇观由 seed 自动派生（已在 map.generate + 内核里）。 */
-    var _hasHere = (s.cities || []).some(function (c) { return GAME.pidOf(c) === id; });
-    if (!_hasHere) GAME.seedFoothold(id, r.planet);
+    /* v145（E 期 · 老板「主题 = 军事投送」）：**新星球不再白送前哨城**。
+       改前：进一颗没有城的球 → seedFoothold 白给一座城，于是"星际战舰投送"没有存在理由。
+       现在：只给一处**登陆点**（地图上的落脚圈，不是城、不产资源）；
+       要有人、有地，只能靠空间站「星际投送」把人和兵送过去、在锚地上立城。 */
+    GAME.footholdAt(id, r.planet);
     /* UI 选城指针重指到本星球首城（否则仍指旧星球某城 id → 界面异常）*/
     if (GAME.ui) {
       var _first = (s.cities || []).filter(function (c) { return GAME.pidOf(c) === id; })[0];
@@ -1217,9 +1218,11 @@ import './data.js';
     }
     return r;
   };
-  /* 毛胚星球落地前哨：在球面找一块平原立城 + 周边几块野地 */
-  GAME.seedFoothold = function (pid, planet) {
-    var s = GAME.state, SP = GAME.sphere;
+  /* 毛胚星球的**登陆点**（v145：不再是白送的前哨城）。
+     把 s.map.startPos / worldStart 指到一块平原 —— 地图"我在这"、锚地选址、
+     前传"脚下有事"都读同一处；**不建城、不发资源**。 */
+  GAME.footholdAt = function (pid, planet) {
+    var s = GAME.state, SP = GAME.sphereOf ? GAME.sphereOf(pid) : GAME.sphere;
     var x = DATA.START_POS.x, y = DATA.START_POS.y;
     if (SP && SP.cells) {
       var found = -1;
@@ -1227,16 +1230,16 @@ import './data.js';
       if (found < 0) for (var j = 0; j < SP.cells.length; j++) { if (SP.cells[j]) { found = j; break; } }
       if (found >= 0) { x = SP.cells[found].x; y = SP.cells[found].y; }
     }
-    var city = GAME.makeCity({
-      id: 'fp' + pid, name: (planet && planet.name ? planet.name : '星球') + '·前哨', x: x, y: y, type: 'self',
-      initialExt: 'new', res: DATA.NEW_CITY_RES || DATA.INITIAL_RES, pid: pid,
-    });
-    s.cities = s.cities || [];
-    s.cities.push(city);
-    if (!s.mainCityId || !GAME.cityById(s.mainCityId)) s.mainCityId = city.id;
-    if (s.map) s.map.startPos = { x: x, y: y };
     if (planet) planet.worldStart = { x: x, y: y };       /* v91.74：随星球保存开始圈 */
-    GAME.log('🪐 登陆「' + (planet && planet.name) + '」—— 落地前哨「' + city.name + '」已建立，四周待拓。', 'sys', 'admin');
+    if (pid === GAME.curPid() && s.map) s.map.startPos = { x: x, y: y };
+    return { x: x, y: y };
+  };
+  /* 登陆点格（投送的锚地只落在它 2 环内 —— 与地图出圈口径同源） */
+  GAME._landingCiOf = function (pid) {
+    var p = GAME._planetById ? GAME._planetById(pid) : null;
+    var ws = (p && p.worldStart) || (pid === GAME.curPid() && GAME.state.map ? GAME.state.map.startPos : null) || DATA.START_POS;
+    var sp = GAME.sphereOf ? GAME.sphereOf(pid) : GAME.sphere;
+    return (sp && sp.ciOfXY && ws) ? sp.ciOfXY(ws.x, ws.y) : -1;
   };
 
   /* ---------------- 读档 ---------------- */
@@ -4236,6 +4239,9 @@ import './data.js';
     /* 9f) 行军队列推进（抵达即结算 —— 见 battle.js GAME.march） */
     if (GAME.march && GAME.march.tick) GAME.march.tick();
     if (GAME.wonderTick) GAME.wonderTick();   /* v91.30：奇观探索推进（现实时间锚点 · 离线补算） */
+    /* v145（E 期）：星际投送 —— 现实时间锚点（与奇观同规：后台推进、离线补算）。
+       ⚠️ 直接调引擎出口、**不靠月度注册表** —— 投送按现实钟走，不能等换月。 */
+    if (GAME.colony && GAME.colony.tick) { try { GAME.colony.tick(); } catch (eCo) { /* 投送推进失败不拖垮主循环 */ } }
 
     /* 10) 历法天时推进（story.js；年号纪元随 v90.93 退役，史册记账随 v89.218 退役） */
     if (GAME.story) GAME.story.tick(ts);
