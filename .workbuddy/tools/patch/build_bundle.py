@@ -101,6 +101,12 @@ def build():
     h = source_hash(srcs)
     with open(HASHF, 'w', encoding='utf-8', newline='\n') as f:
         f.write(h + '\n')
+        # v150.1：**产物指纹** —— 只记源码 hash 挡不住"bundle 漏提交/被回退"：
+        #   源码一旦提交，hash 照样对得上，而页面跑的却是旧包
+        #   （v150 就这样漏掉了 js/bundle-war.js：7 个新函数没进产物，守卫却报"一致"）。
+        for _bn, _bz, _bk in outs:
+            with open(os.path.join(JS, _bn + '.js'), 'rb') as _bf:
+                f.write('bundle:%s:%s\n' % (_bn, hashlib.sha256(_bf.read()).hexdigest()[:16]))
     return h, outs
 
 
@@ -110,9 +116,25 @@ def check():
         return False, '缺 %s 或 js/bundle.hash（未构建）' % (', '.join(missing) or '产物')
     srcs = sources()
     want = source_hash(srcs)
-    got = open(HASHF, encoding='utf-8').read().strip()
+    _lines = [x.strip() for x in open(HASHF, encoding='utf-8').read().splitlines() if x.strip()]
+    got = _lines[0] if _lines else ''
     if want != got:
         return False, '产物陈旧：源码哈希 %s ≠ bundle.hash %s（改了源码未重新构建）' % (want, got)
+    # v150.1：产物指纹 —— 磁盘上的包必须与构建时算出的那几包一致
+    _fp = {}
+    for _ln in _lines[1:]:
+        _pt = _ln.split(':')
+        if len(_pt) == 3 and _pt[0] == 'bundle':
+            _fp[_pt[1]] = _pt[2]
+    for _gp in groups():
+        _name, _mods = _gp[0], _gp[1]
+        _path = os.path.join(JS, _name + '.js')
+        if not os.path.exists(_path):
+            continue
+        _real = hashlib.sha256(open(_path, 'rb').read()).hexdigest()[:16]
+        if _fp.get(_name) and _fp[_name] != _real:
+            return False, ('产物被改过/回退：js/%s.js 指纹 %s ≠ 构建时 %s'
+                           '（多半是漏提交或有人手改产物）' % (_name, _real, _fp[_name]))
     return True, '三包与源码一致（%s）' % want
 
 

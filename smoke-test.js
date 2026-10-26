@@ -12408,13 +12408,32 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
       });
     } catch (e) { return false; }
     var want = h.digest('hex').slice(0, 16);
-    var got = fs.readFileSync(path.join(jsDir, 'bundle.hash'), 'utf8').trim();
+    var raw = fs.readFileSync(path.join(jsDir, 'bundle.hash'), 'utf8');
+    var _lines = raw.split(/\r?\n/).map(function (x) { return x.trim(); }).filter(Boolean);
+    var got = _lines[0] || '';
     /* v104：三包都要在（缺一包 = 页面 404，但 hash 照样对得上，所以要单独查） */
     var bundleOk = ['bundle-core', 'bundle-war', 'bundle-ui'].every(function (n) {
       return fs.existsSync(path.join(jsDir, n + '.js'));
     });
     var noOld = !fs.existsSync(path.join(jsDir, 'bundle.js'));
-    return bundleOk && noOld && want === got;
+    /* ============================================================
+     * v150.1 · **产物指纹**（本次补上的守卫）—— 只对源码 hash 会漏"包被漏提交/回退"：
+     *   v150.0 就是这样：源码提交了、hash 对得上，但 `js/bundle-war.js`
+     *   没进提交，线上跑的是旧包（7 个新函数不存在，功能静默消失）。
+     * 现在 bundle.hash 里还写着三包各自的 sha256；这里核对磁盘上的包与之一致。
+     * ============================================================ */
+    var fp = {};
+    _lines.slice(1).forEach(function (ln) {
+      var pt = ln.split(':');
+      if (pt.length === 3 && pt[0] === 'bundle') fp[pt[1]] = pt[2];
+    });
+    var fpOk = ['bundle-core', 'bundle-war', 'bundle-ui'].every(function (n) {
+      if (!fp[n]) return true;                 /* 老 hash 文件没有指纹：不因此判红 */
+      var buf = fs.readFileSync(path.join(jsDir, n + '.js'));
+      var real = crypto.createHash('sha256').update(buf).digest('hex').slice(0, 16);
+      return real === fp[n];
+    });
+    return bundleOk && noOld && fpOk && want === got;
   })(), (function () {
     try {
       var fs = require('fs'), path = require('path');
@@ -45450,6 +45469,73 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       try { GAME.ui.closeAllModals(); } catch (e3) {}
     }
     G.newGame({ name: '收尾', cityName: '灰岗' });
+  })();
+
+  /* ============================================================
+   * §575. v150.1 产物指纹守卫（**给守卫本身做破坏测试**）
+   * ------------------------------------------------------------
+   * v150.0 的真实事故：源码提交了、`bundle.hash` 也对得上，但 `js/bundle-war.js`
+   * 没进那次提交 —— 线上跑旧包，7 个新函数静默消失，门禁却全绿。
+   * 这条用一个**临时副本目录**验证：包被改动 → 指纹对不上（真红），
+   * 而源码 hash 仍然对得上（说明这不是"源码变了"那类误报）。
+   * ============================================================ */
+  (function () {
+    var NL = String.fromCharCode(10);
+    console.log(NL + '===== 575. v150.1 产物指纹守卫（破坏测试） =====');
+    var fs8 = require('fs'), pth8 = require('path'), os8 = require('os');
+    function readHash(dir) {
+      var raw = fs8.readFileSync(pth8.join(dir, 'bundle.hash'), 'utf8');
+      var lines = raw.split(/\r?\n/).map(function (x) { return x.trim(); }).filter(Boolean);
+      var fp = {};
+      lines.slice(1).forEach(function (ln) {
+        var pt = ln.split(':');
+        if (pt.length === 3 && pt[0] === 'bundle') fp[pt[1]] = pt[2];
+      });
+      return { srcHash: lines[0] || '', fp: fp };
+    }
+    function fpOf(dir, name) {
+      var buf = fs8.readFileSync(pth8.join(dir, name + '.js'));
+      /* ⚠️ 本文件里 `crypto` 只在别处的局部作用域里 require 过 ——
+         这里必须自己取一份（第一版直接引用 → `crypto.createHash is not a function`）。 */
+      return require('crypto').createHash('sha256').update(buf).digest('hex').slice(0, 16);
+    }
+    var tmp = null;
+    try {
+      var srcDir = pth8.join(__dirname, 'js');
+      tmp = fs8.mkdtempSync(pth8.join(os8.tmpdir(), 'bundle-guard-'));
+      /* ⚠️ bundle.hash 不是 .js —— 别混在同一个循环里拼后缀（第一版就是这么挂的） */
+      ['bundle-core', 'bundle-war', 'bundle-ui'].forEach(function (n) {
+        fs8.copyFileSync(pth8.join(srcDir, n + '.js'), pth8.join(tmp, n + '.js'));
+      });
+      fs8.copyFileSync(pth8.join(srcDir, 'bundle.hash'), pth8.join(tmp, 'bundle.hash'));
+
+      var h0 = readHash(tmp);
+      var okBefore = ['bundle-core', 'bundle-war', 'bundle-ui'].every(function (n) {
+        return !h0.fp[n] || fpOf(tmp, n) === h0.fp[n];
+      });
+      check('§575① 指纹齐全：bundle.hash 里三包都有 sha256，且与磁盘一致', (function () {
+        return !!h0.fp['bundle-core'] && !!h0.fp['bundle-war'] && !!h0.fp['bundle-ui'] && okBefore;
+      })(), Object.keys(h0.fp).join(','));
+
+      /* 篡改一包（模拟"漏提交/被回退成了旧版本"）：源码 hash 不变，包指纹变 */
+      fs8.appendFileSync(pth8.join(tmp, 'bundle-war.js'), '\n/* tampered */\n');
+      var h1 = readHash(tmp);
+      var warOk = (fpOf(tmp, 'bundle-war') === h1.fp['bundle-war']);
+      check('§575② 包被改动 → 指纹对不上（真红），而源码 hash 仍然一致（不是误报）', (function () {
+        return h1.srcHash === h0.srcHash && warOk === false;
+      })(), 'srcHash 未变 · bundle-war 指纹不匹配');
+
+      /* 还原后再次一致（证明判据不是"恒红"） */
+      fs8.copyFileSync(pth8.join(srcDir, 'bundle-war.js'), pth8.join(tmp, 'bundle-war.js'));
+      var h2 = readHash(tmp);
+      check('§575③ 还原后指纹重新一致（判据可恢复，不是恒红）', (function () {
+        return fpOf(tmp, 'bundle-war') === h2.fp['bundle-war'];
+      })(), '还原一致');
+    } catch (e575) {
+      check('§575 链路异常（不应发生）', false, 'err=' + ((e575 && e575.message) || e575));
+    } finally {
+      try { if (tmp) fs8.rmSync(tmp, { recursive: true, force: true }); } catch (e2) { /* 临时目录清理失败无所谓 */ }
+    }
   })();
 
 console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');

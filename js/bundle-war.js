@@ -844,6 +844,10 @@
      只托管攻方；返回"本回合改了几支部队"（探针/断言用）。 */
   GAME.battle.smartApply = function (rec, env) {
     if (!rec || rec.side !== 'atk' || !env || !env.setCmd) return { n: 0, notes: [] };
+    /* v150（P0-2）：**玩家接管**（手点过任何一条指令）→ 托管不再覆盖他的指令。
+       改前这里无条件重写 rec.cmd：玩家点「驻守」，下一回合被改回「前进」，
+       面板上又没提示 —— 是"假控制"（实测确认）。 */
+    if (rec.autoOff) return { n: 0, notes: [], off: true };
     var plan = GAME.battle.smartPlanOf();
     /* v89.175：目标规则（首回合赛马选定；缺省 static = v89.164 静态表，行为不变）
        v89.176：阵型模式（modes × rules 联合赛马；缺省 echelon = v89.164 标定，行为不变） */
@@ -1084,7 +1088,73 @@
     /* v142.3：记一笔 step（round/over/gap 随日志走，出问题可按日志复现） */
     GAME.battlelog.push(id, 'step', { round: r.r, over: !!r.over, gap: r.gap });
     if (r.over) GAME.battle.finishBattle(id);
+    /* v150（P0-2）：每 N 回合置一个"该你拍板了"的标记（**只置标记，不阻塞**）——
+       后台推进/自动战斗也会走到这里，但没有面板 → 标记留着，玩家回到战场才看到。 */
+    try {
+      var A = (GAME.DATA && GAME.DATA.BATTLE_ASK) || {};
+      var every = A.every || 3;
+      if (!r.over && !rec.askOff && rec.side === 'atk' && (r.r % every) === 0) rec.askAt = r.r;
+    } catch (eAsk) { /* 标记失败不影响战斗推进 */ }
     return r;
+  };
+
+  /* ============================================================
+   * v150（P0-2）· **战场三选一**（唯一出口）
+   * ------------------------------------------------------------
+   * 三个选项全部落到**既有出口**上：
+   *   assault → 全军 stance='advance' + 集火敌方现存最少的一支
+   *   hold    → 全军 stance='hold'
+   *   flee    → 走既有 retreatBattle（残部带回、破防按半计）
+   * 不新增战斗公式、不改 tactic 结算；选择记进 rec.choiceLog（战报可回看），
+   * 指令照常进 rec.cmd/history —— 重放与读档一致。
+   * ============================================================ */
+  GAME.battle.pickDecision = function (id, choice) {
+    var rec = GAME.battle._recOf(id);
+    if (!rec || !GAME.battlelog.can('choose', rec.state).ok) {
+      return { ok: false, msg: '现在不能做这个选择' };
+    }
+    var A = (GAME.DATA && GAME.DATA.BATTLE_ASK) || {};
+    var def = (A.choices || {})[choice];
+    if (!def) return { ok: false, msg: '没有这个选项' };
+    if (choice === 'flee') {
+      rec.askAt = null;
+      var rr = GAME.battle.retreatBattle(id);        /* 既有出口：残部带回 */
+      GAME.battlelog.push(id, 'choose', { round: rec.round, choice: choice });
+      return { ok: true, msg: '已下令撤退', retreat: true, result: rr };
+    }
+    var ses = GAME._bsess && GAME._bsess[id];
+    var snap = (ses && ses.snap && ses.snap()) || rec.snapLast || {};
+    var foes = (snap.def || []).filter(function (x) { return (x.count | 0) > 0; });
+    var weak = null;
+    foes.forEach(function (x) { if (!weak || (x.count | 0) < (weak.count | 0)) weak = x; });
+    rec.cmd = rec.cmd || {};
+    var n = 0;
+    ((snap.atk || [])).forEach(function (u) {
+      if (!((u.count | 0) > 0)) return;
+      var c = rec.cmd[u.id] = rec.cmd[u.id] || {};
+      if (def.stance) c.s = def.stance;
+      if (def.focus === 'weakest' && weak) c.t = weak.id;
+      if (ses && ses.setCmd) ses.setCmd('atk', u.id, c);   /* 本回合立即生效 */
+      n++;
+    });
+    rec.askAt = null;
+    /* 做了决定 = 本场由你指挥（否则托管下一回合又把指令改回去，等于没选） */
+    rec.autoOff = true;
+    (rec.choiceLog = rec.choiceLog || []).push({ r: rec.round, choice: choice, n: n,
+      target: weak ? weak.id : null });
+    GAME.battlelog.push(id, 'choose', { round: rec.round, choice: choice, n: n });
+    GAME.log.war((def.name || choice) + '：全军按令调整（' + n + ' 支）'
+      + (weak ? '，集火 ' + (weak.name || weak.id) : ''));
+    return { ok: true, msg: def.name + '（' + n + ' 支已调整）', n: n };
+  };
+
+  /* 托管开关（玩家点"以后都托管" / 手点指令时自动接管） */
+  GAME.battle.setAutoOff = function (id, on) {
+    var rec = GAME.battle._recOf(id);
+    if (!rec) return { ok: false };
+    rec.autoOff = !!on;
+    if (on) rec.askAt = null;        /* 托管 = 连三选一也不问了 */
+    return { ok: true, autoOff: rec.autoOff };
   };
 
   /* 自动：用当前指令一键跑完（history 逐回合同步，读档重放仍一致）
@@ -5113,7 +5183,9 @@
     auto:    { from: ['live'],    to: 'live',    desc: '一键跑完（内部仍是 step 循环）' },
     finish:  { from: ['live'],    to: 'settling', desc: '打完收尾落账' },
     retreat: { from: ['live'],    to: 'settling', desc: '主动撤退（残部带回、破防按半计）' },
-    settle:  { from: ['settling'], to: 'done',   desc: '落账段（finish/retreat 共用）' }
+    settle:  { from: ['settling'], to: 'done',   desc: '落账段（finish/retreat 共用）' },
+    /* v150（P0-2）：战场三选一 —— 只改指令，不改状态（live → live，回合号不倒退） */
+    choose:  { from: ['live'],    to: 'live',    desc: '玩家在战场上做的选择（突击/稳住/撤退）' }
   };
 
   /* 合法性判定（**唯一出口**）：动作在不在表白名单 + 当前状态允不允许 */
