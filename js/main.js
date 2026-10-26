@@ -889,6 +889,11 @@ import './ui.js';
       /* v149（实机自检）：侧栏「新手一条」→ 去那一页（做完那一步提示自动消失） */
       case 'hint-go': {
         var _hv = el.dataset.view || 'map';
+        /* 有具体落点（'这一格' / '空地去建造'）→ 直接开面板，别只给个只读清单 */
+        if (el.dataset.cell || el.dataset.pick) {
+          ui.hintGoto({ cell: el.dataset.cell || null, pick: !!el.dataset.pick });
+          break;
+        }
         if (el.dataset.list) { ui.openBuildingList(); break; }
         /* 有专门面板的入口（集市是弹窗，不是视图）→ 先关掉账本再开 */
         if (_hv === 'open-market') { ui.closeAllModals(); ui.openMarket(); break; }
@@ -3732,7 +3737,7 @@ import './ui.js';
      （这解释了"改了却说没生效"的观感）。老板若发现版本 ≠ 最新交付，按 Ctrl+F5
      强制刷新即获得新代码。⚠️ 发版须走 **bump_version.py --bump --version vX.Y**（它同步 index.html 的 ?v=/BUILD
      与这里的 GAME.VERSION 三处）—— 只手改 index.html 会让版本号冻住（v91.18 前的病灶）。 */
-  GAME.VERSION = 'v149.1';
+  GAME.VERSION = 'v149.2';
   function boot() {
     fitAppSize();
     try {

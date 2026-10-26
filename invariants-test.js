@@ -858,6 +858,75 @@
     return true;
   }, null, function (b) { return 'n=' + b.mine.n + ' tgt=' + b.tgt.id; });
 
+
+  /* ④ 账实相符：每回合「上回合血 − 本回合血」= 本回合伤害；护盾同理。
+     复核补：前三条只验了"不为负"，没验"扣的和报的是同一件事"。 */
+  prop('舰队战·账实相符（逐回合血量差 = 本回合伤害 · 护盾同理）', 60, function (rng) {
+    return { mine: randMine(rng), tgt: randTarget(rng), seed: 'n' + ri(rng, 1, 999999) };
+  }, function (b) {
+    var r = G.fleet.battle(b.mine, b.tgt, b.seed);
+    var hp = b.mine.hp, sh = Math.max(0, b.mine.shield || 0);
+    var ehp = Math.max(1, b.tgt.hp), esh = Math.max(0, b.tgt.shield || 0);
+    for (var i = 0; i < r.rows.length; i++) {
+      var row = r.rows[i];
+      /* 护盾先吃：被扣的血 = 伤害 − 落进护盾的部分 */
+      /* ⚠️ 账实相符要算上**溢出**：血不会扣成负数（Math.max(0)），
+         所以"上回合血 − 本回合伤害"在最后一击可能小于 0，而记录是 0。 */
+      var absorbed = Math.min(esh, row.dmgToEnemy);
+      var hpLoss = row.dmgToEnemy - absorbed;
+      if (Math.max(0, ehp - hpLoss) !== row.enemyHp) return false;
+      if (esh - absorbed !== row.enemyShield) return false;
+      var absorbed2 = Math.min(sh, row.dmgToFleet);
+      var hpLoss2 = row.dmgToFleet - absorbed2;
+      if (Math.max(0, hp - hpLoss2) !== row.fleetHp) return false;
+      if (sh - absorbed2 !== row.fleetShield) return false;
+      ehp = row.enemyHp; esh = row.enemyShield; hp = row.fleetHp; sh = row.fleetShield;
+    }
+    return true;
+  }, null, function (b) { return 'n=' + b.mine.n + ' tgt=' + b.tgt.id; });
+
+  /* ⑤ 阵位单调：只把阵位加成**加在**同一支舰队上，结果不许变差
+     （前卫挡伤 → 挨打更少；中坚增攻 → 输出更高；后卫加战利品 → 不会更少）。
+     复核补：§570③ 只验了"某一组数字"，这条用随机属性验"方向永远是对的"。 */
+  prop('舰队战·阵位单调（加了阵位加成，输出/生存/战利品都不许变差）', 50, function (rng) {
+    return { mine: randMine(rng), tgt: randTarget(rng), seed: 'f' + ri(rng, 1, 999999) };
+  }, function (b) {
+    var plain = b.mine;
+    var buffed = {
+      atk: plain.atk, hp: plain.hp, shield: plain.shield, armor: plain.armor, eva: plain.eva,
+      n: plain.n, ships: plain.ships, dmgCut: 0.15, lootAdd: 0.15
+    };
+    buffed.atk = Math.round(plain.atk * 1.15);        /* 中坚 +15% 攻 */
+    var a = G.fleet.battle(buffed, b.tgt, b.seed);
+    var p0 = G.fleet.battle(plain, b.tgt, b.seed);
+    if (a.win && !p0.win) return true;                /* 变好：无阵位打不过、带阵位打过 */
+    if (!a.win && p0.win) return false;               /* 变差：不许 */
+    if (a.rows.length && p0.rows.length && a.rows[0].dmgToFleet > p0.rows[0].dmgToFleet) return false;
+    if (a.rows.length && p0.rows.length && a.rows[0].dmgToEnemy < p0.rows[0].dmgToEnemy) return false;
+    if (a.win) {
+      for (var k in (p0.loot.items || {})) {
+        if ((a.loot.items[k] || 0) < (p0.loot.items[k] || 0)) return false;
+      }
+    }
+    return true;
+  }, null, function (b) { return 'n=' + b.mine.n + ' tgt=' + b.tgt.id; });
+
+  /* ⑥ 必输时也不许"多掉舰"：同 seed、同舰队，伤害越低掉的舰不得更多 */
+  prop('舰队战·折舰有界（1 ≤ 折舰数 ≤ 一半向上取整 · 不含旗舰优先）', 40, function (rng) {
+    var mine = randMine(rng);
+    var boss = (DATA.DS.targets || [])[(DATA.DS.targets || []).length - 1] || { hp: 99999, atk: 5000, def: 12, shield: 0 };
+    return { mine: mine, tgt: boss, seed: 'l' + ri(rng, 1, 999999) };
+  }, function (b) {
+    var r = G.fleet.battle(b.mine, b.tgt, b.seed);
+    var cap = Math.max(1, Math.ceil((b.mine.n || 1) * (((DATA.DS || {}).lossPct) || 0.5)));
+    if (r.lostShips.length > cap) return false;
+    /* 旗舰（第一艘）只有在折舰数 > 1 时才可能被算进去 —— 反向切片保证它最后 */
+    if (r.lostShips.indexOf((b.mine.ships[0] || {}).id) >= 0 && b.mine.n > 1 && r.lostShips.length < b.mine.n) {
+      return false;
+    }
+    return true;
+  }, null, function (b) { return 'n=' + b.mine.n + ' lost=' + b.mine.n; });
+
   console.log('\n===== 5. 策略层不变量（纯函数 / 输出域闭合 / 空侧不抛错） =====');
 
   function genSnap(rng) {

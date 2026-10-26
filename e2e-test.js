@@ -9312,6 +9312,69 @@ console.log('\n--- §180. 拆械与 live 滚动（v89.180） ---');
       'A=' + nA + ' B=' + nB + (bad241E.length ? (' 失败: ' + bad241E.join(' / ')) : ''));
   })();
 
+  /* ============================================================
+   * v149.2 · 新内容的真实 DOM 冒烟（复核补）
+   * ------------------------------------------------------------
+   * smoke 用的是 DOM stub —— `ui.fleetHTML()` 里漏一个局部变量（`R`）它不会红，
+   * 但真实浏览器整页白屏（v149 自检当场撞到）。这里把新面板在真 DOM 里真渲染一遍。
+   * ============================================================ */
+  try {
+    G.newGame({ name: 'e2e149', cityName: '灰岗', region: '碎垣', mapSeed: 20261026 });
+    G.ui.enterGame();
+    var _st149 = G.state;
+    _st149.station = { lv: 9, ships: [], _seq: 0 };
+    (G.DATA.SHIP_BLUEPRINTS || []).forEach(function (x) { _st149.items[x.id] = 1; });
+    _st149.items.w_stariron = 99; _st149.items.w_he3 = 99;
+    ['c_w1', 'c_w2', 'c_w3'].forEach(function (cid) { G.ship.build(cid); });
+    G.addPlanet({ seed: 20261027 });
+    var _ships149 = G.ship.ships().map(function (x) { return x.id; });
+    G.fleet.form({ shipIds: _ships149, targetId: 'ds_derelict' });
+
+    G.ui.setView('station');
+    await sleep(150);
+    /* ⚠️ jsdom 没有布局 → `innerText` 恒为空串（②能查到 chip 就证明面板其实渲染了）。用 textContent。 */
+    var _stationTxt = (document.getElementById('view-container') || {}).textContent || '';
+    check('e2e-v149① 空间站在真 DOM 里渲染（投送 + 舰队阵位都在）',
+      _stationTxt.indexOf('星际投送') >= 0 && _stationTxt.indexOf('深空远征') >= 0
+      && _stationTxt.indexOf('阵位') >= 0,
+      (_stationTxt.length + ' 字'));
+
+    var _slotTxt = (document.querySelector('.chip[data-action="ds-slot"]') || {}).textContent || '';
+    check('e2e-v149② 阵位 chip 可点（真实 DOM）', /前卫|中坚|后卫/.test(_slotTxt), _slotTxt);
+
+    G.ui.setView('city');
+    await sleep(120);
+    var _hintTxt = (document.getElementById('next-hint') || {}).textContent || '';
+    check('e2e-v149③ 侧栏「新手一条」在真 DOM 里出现且指向非死路',
+      _hintTxt.length > 4 && /军营|募|建|出门/.test(_hintTxt), _hintTxt.slice(0, 40));
+
+    /* 建造候选：小眼睛可点 → 预览不崩（无 WebGL 时走兜底） */
+    var _c149 = G.currentCity(), _idx149 = -1;
+    (_c149.cells || []).forEach(function (x, i) { if (_idx149 < 0 && !x.build && !x.official) _idx149 = i; });
+    G.ui.openBuildModal(_idx149);
+    await sleep(120);
+    var _eye = document.querySelector('.bld-eye');
+    check('e2e-v149④ 建造卡片上有小眼睛', !!_eye, _eye ? _eye.textContent : 'none');
+    if (_eye) {
+      _eye.click();
+      await sleep(200);
+      /* ⚠️ 页面脚本的错误由本文件顶部的 onerror 收集器统计（ERRORS），
+         这里只验"点了之后场景层真的起来了" —— 不是断言一个不存在的变量。 */
+      check('e2e-v149⑤ 点小眼睛不白屏（场景层真的起来，或弹了静态兜底）', (function () {
+        var lay = document.getElementById('scene-layer');
+        var modal = document.getElementById('modal-root');
+        return !!(lay && lay.style.display === 'block') || !!(modal && modal.innerHTML.length > 200);
+      })(), (function () {
+        var lay = document.getElementById('scene-layer');
+        var modal = document.getElementById('modal-root');
+        return 'layer=' + (lay ? (lay.style.display || 'none') : 'none') + ' modal=' + (modal ? modal.innerHTML.length : 0);
+      })());
+    }
+    G.ui.closeAllModals();
+  } catch (e149) {
+    check('e2e-v149 链路异常（不应发生）', false, String(e149 && e149.message));
+  }
+
   return finish();
 }
 
@@ -9334,6 +9397,8 @@ function finish() {
     console.log('\n--- 警告（去重前 10 条）---');
     Array.from(new Set(WARNINGS)).slice(0, 10).forEach((w) => console.log('     ⚠ ' + w.slice(0, 160)));
   }
+
+
   console.log('\n========================================');
   console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败   （真实 DOM + HTTP 环境）');
   console.log('========================================');

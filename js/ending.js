@@ -40,6 +40,10 @@
     return s.ending;
   }
   function optOf(id) {
+    /* v149.2（复核）：`stars` 是"打下深空 Boss 才揭晓"的选项 ——
+       界面已按 starsOpen() 过滤，这里再守一道：未解锁时连 `choose('stars')` 都不给过
+       （否则老档/脚本可以绕过界面直接选中它）。 */
+    if (id === 'stars' && !EN.starsOpen()) return null;
     var list = D().options || [];
     for (var i = 0; i < list.length; i++) if (list[i].id === id) return list[i];
     return null;

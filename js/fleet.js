@@ -271,10 +271,14 @@ import './ship.js';
     if (win) {
       /* v148 后卫（母舰压后阵）：战利品 +X% —— 逐项向下取整（不凭空多出零头） */
       var lm = 1 + Math.max(0, mine.lootAdd || 0);
+      /* 复核抓到：向下取整会让 "+15%" 对 6 件 = 6 件（零收益），面板写着加成却什么都没有。
+         改成**向上取整**：只增不减，且小批量也真的多拿一件。 */
       var gm = function (m) {
         var o = {};
         for (var k in (m || {})) {
-          var n = Math.floor((m[k] || 0) * lm + 1e-9);
+          var base0 = Math.max(0, Math.floor(m[k] || 0));
+          if (base0 <= 0) continue;
+          var n = lm > 1 ? Math.max(base0, Math.ceil(base0 * lm - 1e-9)) : base0;
           if (n > 0) o[k] = n;
         }
         return o;

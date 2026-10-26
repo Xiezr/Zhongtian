@@ -3727,12 +3727,80 @@ import './state.js';
    *   ③ 其余 → 「出发去野外」        → 点它回地图
    * 做完对应那一步就**自动消失**（不打扰）。
    * ============================================================ */
+  /* 侧栏提示的"去这一格"：按建筑 id 找第一格、或找第一块空地，直接开它的面板。
+     找不到就退回建筑一览（至少不是死路）。 */
+  ui.hintGoto = function (h) {
+    var c = GAME.currentCity();
+    if (!c) return;
+    var idx = -1;
+    if (h.cell) {
+      (c.cells || []).forEach(function (x, i) { if (idx < 0 && x.build && x.build.id === h.cell) idx = i; });
+    } else if (h.pick) {
+      (c.cells || []).forEach(function (x, i) { if (idx < 0 && !x.build && !x.official) idx = i; });
+    }
+    if (idx >= 0) {
+      ui.setView('city');
+      ui.openBuildModal(idx, c.id);
+      return;
+    }
+    ui.openBuildingList();
+  };
+
+  /* 沿前置链找到**最底那一环**（玩家真正能动手的那一步）。
+     复核第三处：军营要居所 Lv2 → 居所要政务厅 Lv2 —— 只指一层的话，
+     点过去还是"需政务厅 Lv2"，等于把人从一个关着的门送到另一个关着的门。 */
+  ui._firstBlocker = function (c, bid, depth) {
+    if (!GAME.buildPrereqOf) return null;
+    /* ⚠️ 要查的是"下一级"（建军营 = 新建，nextLv=1；升居所 = Lv+1）。
+       复核第四处：这里一律传 1 时，居所的"升级前置（需政务厅 Lv2）"根本不会被查出来
+       —— 提示于是停在"先升居所"，点过去还是那句"需政务厅 Lv2"，链条断在中间。 */
+    var nextLv = (GAME.buildingLevel(c, bid) || 0) + 1;
+    var pre = GAME.buildPrereqOf(c, bid, nextLv);
+    if (!pre || pre.ok || !pre.list || !pre.list.length) return null;
+    /* 硬依赖优先（政务厅总闸 / 升级依赖）：那才是"必须先做"的一环；
+       软前置（缺某建筑）只有它本身也能建/升时才值得继续往下钻。 */
+    var hard = null, soft = null;
+    pre.list.forEach(function (x) {
+      if (!hard && (x.gate || x.upGate || x.wallGate)) hard = x;
+      if (!soft && !(x.gate || x.upGate || x.wallGate)) soft = x;
+    });
+    var first = hard || soft;
+    if (!first) return null;
+    if ((depth | 0) >= 4) return first;
+    return ui._firstBlocker(c, first.bid, (depth | 0) + 1) || first;
+  };
+  /* 这一格是不是正在施工（排队中）—— 是的话提示改口，别再让人重复点 */
+  ui._buildingNow = function (c, bid) {
+    var hit = false;
+    ((c && c.cells) || []).forEach(function (x) {
+      if (x && x.pending && x.pending.buildId === bid) hit = true;
+    });
+    return hit;
+  };
+
   ui.nextHintOf = function (c) {
     if (!c) return null;
     var n = GAME.armyTotal ? GAME.armyTotal(c) : 0;
+    /* v149.2（复核）：旧版"先募兵 → 去军务"是死路（军营没建、居所才 Lv1，
+       募兵页只有一句"本城尚未建造军营"）。现在按**真实前置链**给下一步：
+         军营缺 → 沿前置链找到最底一环（可能是政务厅 / 居所）→ 指向那一格；
+         正在施工 → 告诉他"等一等"，别让人对着同一个按钮点十次。 */
+    var hasBar = (GAME.buildingLevel(c, 'junying') || 0) > 0;
+    if (!hasBar) {
+      var fb = ui._firstBlocker(c, 'junying');
+      if (fb && ui._buildingNow(c, fb.bid)) {
+        return { id: 'wait', text: '「' + fb.name + '」正在施工 —— 造好就能接着往下走',
+          act: 'hint-go', view: 'city', cell: fb.bid };
+      }
+      if (fb) {
+        return { id: 'barracks', text: '先把「' + fb.name + '」升到 Lv' + fb.need + ' —— 这是建军营的第一道门槛',
+          act: 'hint-go', view: 'city', cell: fb.bid };
+      }
+      return { id: 'barracks', text: '建一座军营 —— 有军营才能募兵', act: 'hint-go', view: 'city', pick: 1 };
+    }
     if (n < 60) return { id: 'train', text: '先募一点兵 —— 出门才有底气', act: 'hint-go', view: 'marches' };
     /* ⚠️ 只数**非政务厅**的建筑 —— 立城自带 4 座居所 + 1 座政务厅（共 5 个 build 项），
-       直接数 build 会让"建城"这一段永远跳过（实机自测当场抓到：第一次进游戏就提示"该出门了"）。 */
+       直接数 build 会让"建城"这一段永远跳过（实机自测当场抓到）。 */
     var built = ((c.cells || []).filter(function (x) { return x.build && x.build.id !== 'guanfu'; })).length;
     if (built < 4) return { id: 'build', text: '先把空地盖上 —— 城才有产出', act: 'hint-go', view: 'city', list: 1 };
     return { id: 'map', text: '该出门了 —— 地图上能看见的都能去', act: 'hint-go', view: 'map' };
@@ -3743,6 +3811,8 @@ import './state.js';
     var h = ui.nextHintOf(c);
     if (!h) { box.innerHTML = ''; return; }
     box.innerHTML = '<div data-action="' + h.act + '"' + (h.list ? ' data-list="1"' : '') +
+      (h.cell ? ' data-cell="' + U.escape(h.cell) + '"' : '') +
+      (h.pick ? ' data-pick="1"' : '') +
       ' data-view="' + h.view + '" title="点一下就去（做完这一步就不再提示）"' +
       ' style="cursor:pointer;padding:6px 10px;border:1px solid var(--gold-dark);border-radius:var(--r-sm);' +
       'background:rgba(var(--gold-rgb),.10);font-size:var(--fs-sub);color:var(--gold-light);">' +
@@ -10648,7 +10718,9 @@ import './state.js';
     var bar = ui.trainBarracks();
     var slotsLeft = bar ? GAME.trainSlotsLeft(c, bar.idx, kind) : 0;
     var barLine = bar ? ''
-      : '<div class="q-empty">本城尚未建造' + (kind === 'craft' ? '精密制造厂，无法制造器械。' : '军营，无法募兵。') + '</div>';
+      : '<div class="q-empty">本城尚未建造' + (kind === 'craft' ? '精密制造厂，无法制造器械。' : '军营，无法募兵。') +
+        '<div style="margin-top:6px;"><button class="btn sm gold" data-action="hint-go" data-view="city" data-list="1">' +
+        '→ 去建一座（军营需居所 Lv2）</button></div></div>';
     var listHTML = '<div class="troop-list">' + cards + '</div>';
     /* v90.65（老板）：右侧 = 选中兵种的**展示栏**（大图 + 属性 + 驻军/上限/消耗；**纯展示，无控件**）。 */
     var detailHead = !sel ? '' :

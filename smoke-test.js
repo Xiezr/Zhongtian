@@ -44723,6 +44723,9 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
 
       check('§568② 效果：全境产出 −15% · 舰队不折舰 · 投送不烧燃料', (function () {
         var st = fresh(568003);
+        /* v149.2（复核）：`stars` 现在有**数据层守卫**（未打 Boss 连 choose 都拒），
+           所以这里必须先满足真实前置 —— 不是放宽断言，是补上前置。 */
+        G.fleet.state().cleared[G.fleet.targets()[G.fleet.targets().length - 1].id] = 1;
         var c = st.cities[0];
         var p0 = G.cityProdPerSec(c).grain;
         var r = G.ending.choose('stars');
@@ -44739,12 +44742,22 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
 
       check('§568③ 规则：选了继续玩（不结束游戏 · 和另外两个同一张表）', (function () {
         fresh(568004);
+        G.fleet.state().cleared[G.fleet.targets()[G.fleet.targets().length - 1].id] = 1;
+        /* 未解锁的守卫：没打 Boss 时 choose('stars') 必须被拒 */
+        var unlocked = G.ending.starsOpen();
         G.ending.choose('stars');
         var c2 = G.ending.choose('plug');
-        return G.ending.choiceOf() === 'stars' && c2.ok === false
+        return unlocked === true && G.ending.choiceOf() === 'stars' && c2.ok === false
           && G.state && !!G.state.cities && G.state.cities.length > 0
           && G.ending.opened() === true;
       })(), '不可撤销 · 世界继续跑');
+      check('§568④ 守卫：没打下深空 Boss 时，choose(stars) 直接被拒（界面过滤之外的第二道）', (function () {
+        var st = fresh(568005);
+        var before = G.ending.choiceOf();
+        var r = G.ending.choose('stars');
+        var ids = G.ending.optionsView().map(function (o) { return o.id; });
+        return r.ok === false && before === null && ids.indexOf('stars') < 0;
+      })(), '数据层也守一道 · 选项列表里也不出现');
     } catch (e568) {
       check('§568 链路异常（不应发生）', false, 'err=' + ((e568 && e568.message) || e568));
     } finally {
@@ -44947,16 +44960,18 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var h7 = fs7.readFileSync(pth7.join(__dirname, 'index.html'), 'utf8');
       var m7 = fs7.readFileSync(pth7.join(__dirname, 'js', 'main.js'), 'utf8');
 
-      check('§571① 新手一条：兵少先募兵 → 有兵先建城 → 都够就出门', (function () {
+      check('§571① 新手一条：先军营 → 再募兵 → 再建城 → 再出门（不许指进死路）', (function () {
         G.newGame({ name: 'hint571', cityName: '灰岗', mapSeed: 571001 });
         var st = G.state;
         if (st.cities[0]) st.cities[0].pid = 1;
         G.ui._cityId = st.cities[0].id;      /* 钉住当前城（否则可能指着上一局的城） */
         var c = G.currentCity();
-        /* 立城自带 4 座居所 —— 先清空建筑，才能验"第二段提示"（实机第一版就因为
-           默认已有建筑而跳过建城那段，断言顺序错了） */
-        (c.cells || []).forEach(function (x) { if (x.build && !x.official) x.build = null; });
+        /* v149.2（复核）：提示顺序改成"先军营、后募兵"——
+           没有军营时点"去募兵"是死路（募兵页只有一句"无法募兵"）。
+           因此这里先用**真实新局**验第一段，再清空建筑验第二段。 */
         c.army = {};
+        var hReal = G.ui.nextHintOf(c);          /* 新局：居所 Lv1、无军营 */
+        (c.cells || []).forEach(function (x) { if (x.build && !x.official) x.build = null; });
         var h0 = G.ui.nextHintOf(c);
         c.army = { buxingji: 120 };
         var h1 = G.ui.nextHintOf(c);
@@ -44966,7 +44981,15 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
           if (put < 6 && !x.build && !x.official) { x.build = { id: 'minfang', lvl: 1 }; put++; }
         });
         var h2 = G.ui.nextHintOf(c);
-        return h0 && h0.id === 'train' && h1 && h1.id === 'build' && h2 && h2.id === 'map'
+        /* 建好军营 → 才轮到"先募兵" */
+        (c.cells || []).forEach(function (x) { if (!x.build && !x.official) { x.build = { id: 'junying', lvl: 1 }; return; } });
+        c.army = {};
+        var h3 = G.ui.nextHintOf(c);
+        /* v149.2（复核二）：光有 view 不够 —— 必须落到**可操作**的落点（cell / pick） */
+        /* 新局：军营要居所 Lv2、居所要政务厅 Lv2 → 提示必须指到**最底那一环（政务厅）** */
+        return hReal && hReal.id === 'barracks' && hReal.view === 'city' && hReal.cell === 'guanfu'
+          && /政务厅/.test(hReal.text)
+          && h0 && h0.id === 'barracks' && h3 && h3.id === 'train'
           && /hint-go/.test(h7) === false && /renderNextHint/.test(u7)
           && /case 'hint-go'/.test(m7);
       })(), '三段式提示 · 侧栏有槽位 · 动作有处理器');
@@ -44985,6 +45008,54 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
           && !/先看看<\/button>/.test(u7);       /* 旧的大按钮已退役 */
       })(), '两处小眼睛 + 样式在册');
 
+      check('§571⑤ 引导链走得通：照提示走 3 步（政务厅→居所→军营）', (function () {
+        /* 复核第四处：只验"提示文案对不对"不够 —— 要验"照它做，那一步真的成功"。
+           这条沿链走：提示说哪一格 → 升级它 → 再问提示 → 直到军营建成为止。 */
+        G.newGame({ name: 'hint575', cityName: '灰岗', mapSeed: 571005 });
+        var st = GAME.state;
+        st.cities[0].pid = 1;
+        G.ui._cityId = st.cities[0].id;
+        var c = G.currentCity();
+        function idxOf(bid) {
+          var k = -1;
+          (c.cells || []).forEach(function (x, i) { if (k < 0 && x.build && x.build.id === bid) k = i; });
+          return k;
+        }
+        function settle() {
+          /* 把"时间"推过去（真实主循环走的是 elapsed += dt；测试里直接推满） */
+          (GAME.state.queues.build || []).forEach(function (it) { it.elapsed = it.totalTime; });
+          for (var guard = 0; guard < 20; guard++) {
+            var done = (GAME.state.queues.build || []).filter(function (it) { return it.elapsed >= it.totalTime; });
+            if (!done.length) break;
+            done.forEach(function (it) {
+              GAME.state.queues.build = GAME.state.queues.build.filter(function (x) { return x !== it; });
+              GAME.applyBuildDone(it);
+            });
+          }
+        }
+        var steps = 0, ok = true;
+        while (steps < 4) {
+          var h = G.ui.nextHintOf(c);
+          if (!h || h.id !== 'barracks') break;            /* 军营那段走完了 */
+          if (h.cell) {
+            var i = idxOf(h.cell);
+            if (i < 0) { ok = false; break; }
+            var r = GAME.upgradeAt(c.id, i);
+            if (!r.ok) { ok = false; break; }
+            settle();
+          } else if (h.pick) {
+            var e = -1;
+            (c.cells || []).forEach(function (x, k2) { if (e < 0 && !x.build && !x.official) e = k2; });
+            var rb = GAME.buildAt(c.id, e, 'junying');
+            if (!rb.ok) { ok = false; break; }
+            settle();
+          } else { ok = false; break; }
+          steps++;
+        }
+        var finalLv = GAME.buildingLevel(c, 'junying');
+        return ok && finalLv >= 1 && steps <= 3;
+      })(), '照提示走 3 步内建出军营（政务厅→居所→军营）');
+
       check('§571④ 窄屏提示：画布缩放后字太小 → 告诉玩家横屏/关闭', (function () {
         return h7.indexOf('id="mobile-tip"') >= 0
           && /k < 0\.66/.test(m7)
@@ -44994,6 +45065,79 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       check('§571 链路异常（不应发生）', false, 'err=' + ((e571 && e571.message) || e571));
     } finally {
       G.state = bk;
+    }
+    G.newGame({ name: '收尾', cityName: '灰岗' });
+  })();
+
+  /* ============================================================
+   * §572. v149.2 复核补丁（三条）
+   * ------------------------------------------------------------
+   * 复核逐条追"这个数到底会不会记账"时抓到的：
+   *   ① 投送人口入城**不封顶**（全仓其它加人路径都封顶）→ 补，且装不下的随船回来
+   *   ② 后卫"+15% 战利品"对 6 件小数向下取整 = 零收益 → 改向上取整（只增不减）
+   *   ③ `stars` 选项只在界面过滤 → 数据层 `choose()` 也能绕过 → 补守卫
+   * ============================================================ */
+  (function () {
+    var NL = String.fromCharCode(10);
+    console.log(NL + '===== 572. v149.2 复核补丁（人口封顶 / 战利品取整 / 选项守卫） =====');
+    var bk = G.state, bkNow = G._realNowOf, bkU = U.now;
+    try {
+      check('§572① 投送人口封顶：目标城满员时 0 人入城，人随船回出发城（不蒸发）', (function () {
+        G.newGame({ name: 'cap572', cityName: '灰岗', mapSeed: 572001 });
+        var st = GAME.state;
+        st.cities[0].pid = 1;
+        G.ui._cityId = st.cities[0].id;
+        var pl = G.addPlanet({ seed: 572111 });
+        var tgt = G.makeCity({ id: 'tgt572', name: '殖民地', ci: 100, type: 'self', pid: pl.id, res: {} });
+        st.cities.push(tgt);
+        var capT = GAME.effPopCapOf(tgt);
+        tgt.res.pop = capT;                       /* 先占满 */
+        var src = st.cities[0];
+        src.res.pop = 300;
+        st.items.w_he3 = 999; st.items.w_stariron = 999;
+        st.station = { lv: 9, ships: [], _seq: 0 };
+        (G.DATA.SHIP_BLUEPRINTS || []).forEach(function (x) { st.items[x.id] = 1; });
+        var T = 1700000000000;
+        G._realNowOf = function () { return T; };
+        U.now = function () { return T; };
+        var br = G.ship.build('c_w3');
+        var r = G.colony.send({ shipId: br.ship.id, pid: pl.id, colonists: 150, army: {} });
+        if (!r.ok) return false;
+        G.colony.tick(T + 3 * 3600 * 1000);        /* 抵达 */
+        var atArrival = tgt.res.pop;
+        G.colony.tick(T + 40 * 3600 * 1000);       /* 返航 */
+        return atArrival === capT && tgt.res.pop === capT
+          && src.res.pop === 300;                  /* 150 出发 → 返航 150 回来 */
+      })(), '满员城不多收 · 出发城人数复原');
+
+      check('§572② 后卫 +15% 战利品对 6 件也真的多一件（向上取整 · 只增不减）', (function () {
+        var t = G.fleet.targetOf('ds_belt');
+        var base = { atk: 900, hp: 8000, shield: 2000, armor: 60, eva: 0.2, n: 5,
+          ships: [{ id: 'a' }], dmgCut: 0, lootAdd: 0 };
+        var rear = { atk: 900, hp: 8000, shield: 2000, armor: 60, eva: 0.2, n: 5,
+          ships: [{ id: 'a' }], dmgCut: 0, lootAdd: 0.15 };
+        var a = G.fleet.battle(rear, t, 'k572').loot.items;
+        var b = G.fleet.battle(base, t, 'k572').loot.items;
+        var better = false, neverWorse = true;
+        Object.keys(b).forEach(function (k) {
+          if ((a[k] || 0) > (b[k] || 0)) better = true;
+          if ((a[k] || 0) < (b[k] || 0)) neverWorse = false;
+        });
+        return better && neverWorse;
+      })(), '6 件 → 7 件（不是"写着 +15% 却一件不多"）');
+
+      check('§572③ 未解锁的 stars 选项在数据层也被拒（界面之外的第二道）', (function () {
+        G.newGame({ name: 'star572', cityName: '灰岗', mapSeed: 572002 });
+        var st = GAME.state;
+        st.ending = { choice: null, at: null, won: 1 };     /* 门开着，但没打深空 Boss */
+        var r = G.ending.choose('stars');
+        var ids = G.ending.optionsView().map(function (o) { return o.id; });
+        return r.ok === false && G.ending.choiceOf() === null && ids.indexOf('stars') < 0;
+      })(), 'choose 拒 · 选项列表里也不出现');
+    } catch (e572) {
+      check('§572 链路异常（不应发生）', false, 'err=' + ((e572 && e572.message) || e572));
+    } finally {
+      G.state = bk; G._realNowOf = bkNow; U.now = bkU;
     }
     G.newGame({ name: '收尾', cityName: '灰岗' });
   })();

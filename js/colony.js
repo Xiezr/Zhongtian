@@ -314,13 +314,33 @@ import './ship.js';
     return CO._moorAt(pid);
   };
 
+  /* ---------- 入城人口（**封顶**） ----------
+     复核抓到：投送到"已有城"的星球时直接 `city.add('pop', n)` —— 不走任何上限，
+     而全仓其它加人路径（muster.addPop / 人口自发增长）都按 `effPopCapOf` 封顶。
+     这里补齐同一口径：装不下的**留在船上**（记进 carryPop，返航时分回出发城，不蒸发）。 */
+  function addPopCapped(city, n) {
+    var R = GAME.res(city);
+    var cap = GAME.effPopCapOf ? GAME.effPopCapOf(city) : (GAME.maxPopOf ? GAME.maxPopOf(city) : 0);
+    var before = R.pop || 0;
+    var room = cap > 0 ? Math.max(0, cap - before) : n;
+    var put = Math.min(room, n);
+    if (put > 0) GAME.city.add(city, 'pop', put);
+    return { put: put, left: n - put };
+  }
+
   /* ---------- 抵达结算 ---------- */
   CO._arrive = function (m) {
     var s = GAME.state, pl = CO.planetOf(m.pid);
     var res = { ok: true, pid: m.pid, colonists: m.colonists, troops: CO.armyN(m.army), goods: {}, found: null };
     var city = CO.cityAt(m.pid);
     if (city) {
-      if (m.colonists > 0) GAME.city.add(city, 'pop', m.colonists);
+      var _pv = { put: 0, left: 0 };
+      if (m.colonists > 0) _pv = addPopCapped(city, m.colonists);
+      m._popLeft = _pv.left;                  /* 装不下的随船回去，返航时送回出发城 */
+      if (_pv.left > 0) {
+        GAME.log('⚠ 投送：「' + city.name + '」居所已满 —— ' + U.fmt(_pv.left) + ' 人留在船上，随船返航',
+          'sys', 'admin');
+      }
       for (var k in (m.army || {})) {
         var n = Math.floor(m.army[k] || 0);
         if (n > 0) GAME.city.armyAdd(city, { [k]: n });
@@ -366,12 +386,21 @@ import './ship.js';
   CO._returnHome = function (m) {
     var s = GAME.state;
     var city = GAME.cityById(m.fromCityId) || CO.cityAt(m.fromPid) || (s.cities || [])[0] || null;
-    var back = { army: 0, goods: 0 };
+    var back = { army: 0, goods: 0, pop: 0 };
     /* 兵：没在目标星球留下（无城无锚地）的随船回来；有落脚点时已入驻/驻防，不回 */
     if (!m._landedTroops && city) {
       for (var k in (m.army || {})) {
         var n = Math.floor(m.army[k] || 0);
         if (n > 0) { GAME.city.armyAdd(city, { [k]: n }); back.army += n; }
+      }
+    }
+    /* 人：目标城住不下的那部分，随船回到出发城（同样封顶 —— 装不下就真的没地方去） */
+    if (m._popLeft > 0 && city) {
+      var _pp = addPopCapped(city, m._popLeft);
+      back.pop = _pp.put;
+      if (_pp.left > 0) {
+        GAME.log('⚠ 投送返航：' + city.name + ' 也住不下，' + U.fmt(_pp.left) + ' 人自行散入荒野',
+          'sys', 'admin');
       }
     }
     if (m.returnGoods && city) {
@@ -383,6 +412,7 @@ import './ship.js';
     GAME.log('🏠 「' + ((SH.classOf(m.classId) || {}).name || m.classId) + '」投送归来'
       + (city ? ('：' + city.name) : '')
       + (back.army ? (' · 兵归 ' + U.fmt(back.army)) : '')
+      + (back.pop ? (' · 人归 ' + U.fmt(back.pop)) : '')
       + (back.goods ? (' · 物资 ' + U.fmt(back.goods)) : ''), 'sys', 'admin');
     return back;
   };
