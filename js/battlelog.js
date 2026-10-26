@@ -58,7 +58,9 @@ import './state.js';
     auto:    { from: ['live'],    to: 'live',    desc: '一键跑完（内部仍是 step 循环）' },
     finish:  { from: ['live'],    to: 'settling', desc: '打完收尾落账' },
     retreat: { from: ['live'],    to: 'settling', desc: '主动撤退（残部带回、破防按半计）' },
-    settle:  { from: ['settling'], to: 'done',   desc: '落账段（finish/retreat 共用）' }
+    settle:  { from: ['settling'], to: 'done',   desc: '落账段（finish/retreat 共用）' },
+    /* v150（P0-2）：战场三选一 —— 只改指令，不改状态（live → live，回合号不倒退） */
+    choose:  { from: ['live'],    to: 'live',    desc: '玩家在战场上做的选择（突击/稳住/撤退）' }
   };
 
   /* 合法性判定（**唯一出口**）：动作在不在表白名单 + 当前状态允不允许 */

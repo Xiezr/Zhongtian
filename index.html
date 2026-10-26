@@ -542,6 +542,8 @@
   /* v118：折叠的页签（见 index.html 里 #nav-more-btn 的注释） */
   .topnav .tab-more { display: none; }
   .topnav.nav-open .tab-more { display: inline-block; }
+  /* v150（P0-1）：阶段未到 → 页签不显示（节点保留，见 js/ui.js 的 ui.syncPhase） */
+  .topnav .tab-locked { display: none; }
   .topnav .nav-more-btn { color: var(--gold-light); opacity: .9; }
   /* v122：待办提醒位（有事件时才显示，会呼吸）
      ⚠️ 间距/圆角/颜色一律走令牌 —— 项目有断言钉着"不许裸 px 与裸 hex"。 */
@@ -4457,14 +4459,14 @@
             删掉就是一次性废掉一批守卫。折叠改的是**看得见几个**，不是"有没有"。 -->
     <div class="tab nav-more-btn" id="nav-more-btn" data-action="nav-more" title="空间站 / 游商 / 背包 / 收藏 / 公文 / 自动 / 设置">更多 ▾</div>
     <!-- v91.60（老板）：奇观建造（类星球建造场 · 耗奇观材料 · 全局 buff） -->
-    <div class="tab tab-more" data-view="station"><i class="ti" data-nav="build"></i>空间站</div>
+    <div class="tab tab-more tab-locked" data-view="station"><i class="ti" data-nav="build"></i>空间站</div>
     <!-- ⛔ v90.92：任务系统整条退役 —— 「任务」页签摘除。
          (v89.104 原：「将英雄，军务，任务放一起」，三者之间不插分隔条；现只剩英雄/军务。) -->
     <span class="nav-sep"></span>
-    <div class="tab tab-more" data-view="shop"><i class="ti" data-nav="shop"></i>游商</div>
+    <div class="tab tab-more tab-locked" data-view="shop"><i class="ti" data-nav="shop"></i>游商</div>
     <div class="tab tab-more" data-view="bag"><i class="ti" data-nav="bag"></i>背包</div>
     <!-- v89.194（老板 S3）：收藏（陈列馆）—— 与游商 / 背包并列 -->
-    <div class="tab tab-more" data-view="collection"><i class="ti" data-nav="collection"></i>收藏</div>
+    <div class="tab tab-more tab-locked" data-view="collection"><i class="ti" data-nav="collection"></i>收藏</div>
     <span class="nav-sep"></span>
     <!-- ⛔ v89.218（老板「不再保留史册，故事集」）：两个页签整条退役。 -->
     <div class="tab tab-more" data-view="reports"><i class="ti" data-nav="doc"></i>公文</div>
@@ -4581,15 +4583,15 @@
 </div><!-- /#app-scale -->
 </div><!-- /#app-fit -->
 
-<!-- BUILD 9387 -->
+<!-- BUILD 9388 -->
 <!-- v104：三包拆分（老板 2026-10-23「拆」）—— 单包曾到 4245KB / 上限 4301KB。
      · vendor/three.min.js 必须在前（gltf/map3d 用全局 THREE）；
      · 三包**顺序不能改**：core（引擎数据）→ war（战斗素材）→ ui（界面启动）。
        经典 script 保证顺序执行，window.GAME 全局共享，行为与单包完全一致。
      · 构建：python .workbuddy/tools/patch/build_bundle.py（改源码后须重建）。 -->
-<script src="vendor/three.min.js?v=9387"></script>
-<script src="js/bundle-core.js?v=9387"></script>
-<script src="js/bundle-war.js?v=9387"></script>
-<script src="js/bundle-ui.js?v=9387"></script>
+<script src="vendor/three.min.js?v=9388"></script>
+<script src="js/bundle-core.js?v=9388"></script>
+<script src="js/bundle-war.js?v=9388"></script>
+<script src="js/bundle-ui.js?v=9388"></script>
 </body>
 </html>

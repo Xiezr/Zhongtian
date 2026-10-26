@@ -927,6 +927,59 @@
     return true;
   }, null, function (b) { return 'n=' + b.mine.n + ' lost=' + b.mine.n; });
 
+
+  /* ============================================================
+   * §4.7 战场决策（v150 · P0-2）—— 决策不改守恒 / 重放一致
+   * ------------------------------------------------------------
+   * 只验**决策层**的空调：任意关卡下的指令都只能改姿态/目标，不许改结算守恒；
+   * 以及"同一份指令序列重放两次 → 逐回合一致"（战场面板与本文件共用同一引擎）。
+   * ============================================================ */
+  console.log('\n===== 4.7 战场决策（不改守恒 / 同序重放一致） =====');
+
+  function askArmy(rng) {
+    var a = {}, n = ri(rng, 2, 3), pool = COMBAT.slice();
+    for (var i = 0; i < n && pool.length; i++) {
+      var k = pick(rng, pool); pool.splice(pool.indexOf(k), 1);
+      a[k] = ri(rng, 300, 2000);
+    }
+    return a;
+  }
+
+  /* ① 决策不改守恒：先手打一个「稳住/突击/无指令」三种指令序列，兵力不增不减账实相符 */
+  prop('战场决策·不改守恒（任意姿态/目标下 兵力不增 · 账实相符）', 40, function (rng) {
+    return { atk: askArmy(rng), def: askArmy(rng), stance: pick(rng, ['advance', 'hold', 'retreat']),
+      focus: rng() < 0.5 };
+  }, function (b) {
+    var stances = {};
+    Object.keys(b.atk).forEach(function (k) {
+      var c = { s: b.stance };
+      stances[k] = c;
+    });
+    var r = G.battle.simulate(U.deep(b.atk), null, U.deep(b.def), 0, null,
+      { stances: stances, playerAtk: true });
+    if (!r) return false;
+    if (r.atkRemain > sumBy(r.atkStartBy)) return false;
+    if (r.atkLoss !== sumBy(r.atkStartBy) - r.atkRemain) return false;
+    if (r.defLoss !== sumBy(r.defStartBy) - r.defRemain) return false;
+    return true;
+  }, null, function (b) { return 'stance=' + b.stance; });
+
+  /* ② 同序重放一致：同一支军队 + 同一指令序列（逐回合）→ 两次跑出逐回合相同的损失 */
+  prop('战场决策·同序重放一致（同输入同指令 → 逐回合同结果）', 30, function (rng) {
+    return { atk: askArmy(rng), def: askArmy(rng), stance: pick(rng, ['advance', 'hold']) };
+  }, function (b) {
+    function run() {
+      var stances = {};
+      Object.keys(b.atk).forEach(function (k) { stances[k] = { s: b.stance }; });
+      var r = G.battle.simulate(U.deep(b.atk), null, U.deep(b.def), 0, null,
+        { stances: stances, playerAtk: true });
+      return JSON.stringify((r.roundsLog || []).map(function (x) {
+        return [x.r, x.a, x.d, x.gap];
+      }));
+    }
+    return run() === run();
+  }, null, function (b) { return 'stance=' + b.stance; });
+
   console.log('\n===== 5. 策略层不变量（纯函数 / 输出域闭合 / 空侧不抛错） =====');
 
   function genSnap(rng) {

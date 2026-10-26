@@ -1843,6 +1843,37 @@ import './state.js';
     return '<span class="bt-smart" title="' + U.escape(tip175) + '">⚡ 智能'
       + (sn175 ? (' · ' + (sn175.n ? ('调整 ' + sn175.n) : '维持')) : '') + '</span>';
   };
+  /* v150（P0-2）：**指挥模式行** —— 托管 / 已接管，一眼看清"现在听谁的"。
+     假控制的病根就是"改了却被打回、还看不出来"，所以这一行必须常驻。 */
+  ui.btModeHTML = function (rec) {
+    var off = !!rec.autoOff;
+    return '<span class="bt-mode" id="bt-mode" data-action="bt-auto-off"'
+      + ' style="cursor:pointer;font-size:var(--fs-cap);padding:0 var(--sp-1);'
+      + 'border-radius:var(--r-sm);border:1px solid var(--line);color:'
+      + (off ? 'var(--gold-light)' : 'var(--text-dim)') + ';"'
+      + ' title="' + U.escape(off ? '你现在说的算。点一下交回托管（每回合自动调整）'
+        : '正在托管：每回合自动调整指令。点一下由你接管') + '">'
+      + (off ? '✋ 已接管' : '🤖 托管中') + '</span>';
+  };
+  /* 三选一条：第 N 回合结算后出现（**嵌在面板里，不弹窗**，不阻塞主循环）。 */
+  ui.btAskHTML = function (rec) {
+    if (!rec || rec.askAt == null) return '';
+    var A = (GAME.DATA && GAME.DATA.BATTLE_ASK) || {}, C = A.choices || {};
+    var btn = function (k) {
+      var d = C[k]; if (!d) return '';
+      return '<button class="btn sm' + (k === 'flee' ? '' : ' gold') + '" data-action="bt-pick" data-choice="' + k + '"'
+        + ' title="' + U.escape(d.desc || '') + '">' + d.name + '</button>';
+    };
+    return '<div id="bt-ask" style="display:flex;align-items:center;gap:var(--sp-2);flex-wrap:wrap;'
+      + 'padding:var(--sp-2) var(--sp-3);margin:var(--sp-1) 0;border:1px solid var(--gold-dark);'
+      + 'border-radius:var(--r-sm);background:rgba(var(--gold-rgb),.10);">'
+      + '<b style="color:var(--gold-light);">第 ' + rec.askAt + ' 回合 · 你来定</b>'
+      + btn('assault') + btn('hold') + btn('flee')
+      + '<span data-action="bt-auto-off" style="cursor:pointer;font-size:var(--fs-cap);'
+      + 'color:var(--text-dim);text-decoration:underline;">以后都托管</span>'
+      + '</div>';
+  };
+
   ui.btTopHTML = function (rec, snap) {
     var sec = (GAME.state.settings && GAME.state.settings.battleSec) || 60;
     var cnt = (rec.cnt == null) ? sec : rec.cnt;
@@ -1861,6 +1892,7 @@ import './state.js';
            ⚠️ 顶栏首绘于"进战场"那一刻、打回合时**不整体重建** —— 所以 btAfterStep
            必须显式同步这个 span（否则后缀停在上一次快照 = "看不见调整"）。 */
         ui.btSmartHTML(rec) +
+        ui.btModeHTML(rec) +
         ui.btGapTextOf(rec, snap) +
         ui.btLossHTML(rec, snap) +
       '</span>' +
@@ -2198,7 +2230,7 @@ import './state.js';
     /* v89.116（老板需求 8）：上 = 三列（兵种列表 · 战场 · 兵种列表）；
        下 = **战况回合播报**（一回合一行，行动与战果同行）。
        v89.142：播报窗**预置战前斗将行**（重绘即恢复，不额外挂载）。 */
-    return ui.btTopHTML(rec, snap) + ui.btBoardHTML(snap) +
+    return ui.btTopHTML(rec, snap) + ui.btAskHTML(rec) + ui.btBoardHTML(snap) +
       '<div class="bt-log" id="bt-log">' + ui.btDuelHTML(rec) + '</div>';
   };
 
@@ -2476,6 +2508,11 @@ import './state.js';
 
   /* ---- 指令写入（chips / 下拉）→ 会话即时生效（本回合结算用得上） ---- */
   ui.btSetCmd = function (rec, troopId, patch) {
+    /* v150（P0-2）：手点任何一条指令 = 本场**由你指挥**（否则托管下一回合就把它改回去）。 */
+    if (rec && !rec.autoOff) {
+      rec.autoOff = true;
+      ui.toast('已接管本场战斗：你的指令优先（点顶部「已接管」可交回托管）');
+    }
     rec.cmd = rec.cmd || {};
     var c = rec.cmd[troopId] = rec.cmd[troopId] || {};
     if (patch && patch.s) c.s = patch.s;
@@ -2493,6 +2530,23 @@ import './state.js';
   };
 
   /* ---- 一回合结算后：更新顶栏 → 位移动画 → 逐条事件字幕 ---- */
+  /* 三选一条 + 模式行的**唯一同步出口**（回合推进后、玩家点完之后都走它）——
+     局部换 DOM，不整页重建：不打断位移动画，也不丢玩家正在填的输入。 */
+  ui.btSyncAsk = function (rec) {
+    if (!rec) return;
+    try {
+      var askEl = document.getElementById('bt-ask');
+      var askNew = ui.btAskHTML(rec);
+      if (askEl && !askNew) askEl.remove();
+      else if (!askEl && askNew) {
+        var _top = document.getElementById('bt-board');
+        if (_top && _top.parentNode) _top.insertAdjacentHTML('beforebegin', askNew);
+      } else if (askEl && askNew) askEl.outerHTML = askNew;
+      var mdEl = document.getElementById('bt-mode');
+      if (mdEl) mdEl.outerHTML = ui.btModeHTML(rec);
+    } catch (e) { /* 同步失败不打断战斗 */ }
+  };
+
   ui.btAfterStep = function (rec, r) {
     var bt = ui._bt;
     if (!bt || bt.id !== rec.id) return;
@@ -2504,6 +2558,8 @@ import './state.js';
     if (gp) gp.innerHTML = ui.gapReadOf(r.gap, (r.snap || rec.snapLast || {}).field);
     /* v89.175（老板 1）：智能指示随回合同步 —— 顶栏只在"进战场"时整绘一次，
        打回合不重建它，必须在这里显式刷新（否则"调整 N/维持"停在旧快照）。 */
+    /* v150（P0-2）：三选一条 / 模式行随状态同步（唯一出口 ui.btSyncAsk） */
+    ui.btSyncAsk(rec);
     var smEl = document.querySelector('#modal-root .bt-smart');
     if (smEl) {
       var smNew = ui.btSmartHTML(rec);
@@ -4457,6 +4513,76 @@ import './state.js';
    * （保存滚动位），无 live 时退回整页重绘。
    * ============================================================ */
   ui._foldOpen = {};
+
+  /* ============================================================
+   * v150（P0-1）· **阶段**：让第一小时只露出"这一小时该做的事"
+   * ------------------------------------------------------------
+   * 问题（实测）：开局能建 2/15 种建筑、能研 3/29 项科技，但界面把**全部**
+   * 都摆出来；账本一屏 12 条（另有模块面板）。行业参照是前 30 分钟 ≤3 个可见目标。
+   *
+   * 三条硬约束（决定了下面的写法）：
+   *   ① **不新增存档字段** —— phase 完全派生（城数 / 胜场 / 是否立城），
+   *      读档、重开、老档都自动正确，零迁移；
+   *   ② **不删 DOM** —— 上百条断言用 `[data-view=…]` 查顶栏；这里只加 class，
+   *      由 CSS `.topnav .tab-locked{display:none}` 藏（与既有 `.tab-more` 同一手法）；
+   *   ③ **不拦 setView** —— 老档/脚本/测试直接 `setView('station')` 照常可用；
+   *      收的只是"界面上看不看得见、点不点得到"。
+   * ============================================================ */
+  ui.phaseOf = function () {
+    var s = GAME.state;
+    if (!s) return 'prologue';
+    if (GAME.prologue && GAME.prologue.on && GAME.prologue.on()) return 'prologue';
+    var n = ((GAME.city && GAME.city.all) ? GAME.city.all() : (s.cities || [])).length;
+    var wins = GAME.stat ? (GAME.stat('wins') | 0) : 0;
+    /* early 的退出口径只看「城 + 胜场」：
+       军营是新手链的第三环，建好它不算"会玩了"——还得募兵、打第一场。 */
+    if (n <= 1 && wins < 3) return 'early';
+    if (n < 5) return 'mid';
+    return 'late';
+  };
+
+  /* 晚解锁的账本小节（按标题关键词）：early 一律折成一条灰行，点了告诉你还差什么。 */
+  ui.GATE_SEC = [
+    ['☁ 辐射云', 'mid'], ['☢ 污染', 'mid'], ['🏴 竞争者', 'mid'],
+    ['🛣 领土连通', 'mid'], ['📜 废墟科技', 'mid'], ['🎯 作战目标', 'mid'],
+    ['🩹 伤兵与老兵', 'mid'], ['🔥 民怨', 'mid'], ['🏯 守城工事', 'mid'],
+    ['🕳 地下远征', 'mid'], ['🃏 指令牌', 'mid'], ['🧩 套装指令', 'mid'],
+    ['☄ 奇观', 'late'], ['👁 谁看见了你', 'late']
+  ];
+  ui.gateRankOf = function (ph) { return ph === 'early' ? 0 : (ph === 'mid' ? 1 : 2); };
+  ui.gatedOut = function (need) {
+    var rank = ui.gateRankOf(ui.phaseOf());
+    var needRank = need === 'late' ? 2 : (need === 'mid' ? 1 : 0);
+    return needRank > rank;
+  };
+  /* 还差什么才解锁（给灰行用一句人话） */
+  ui.gateWhyText = function () {
+    var ph = ui.phaseOf();
+    if (ph === 'early') return '再打几场、或再开一座城就解锁';
+    if (ph === 'mid') return '开满 5 座城（或打下更远的地方）后解锁';
+    return '';
+  };
+
+  /* 顶栏软隐藏（幂等）：把 station / shop / collection 标成 locked。
+     只加 class，不动 DOM —— 见上面第 ② 条。 */
+  ui.syncPhase = function () {
+    try {
+      var ph = ui.phaseOf();
+      if (ui._phaseShown === ph) return;
+      ui._phaseShown = ph;
+      var hide = (ph === 'early') ? ['station', 'shop', 'collection'] : [];
+      var tabs = document.querySelectorAll('#topnav .tab[data-view]');
+      for (var i = 0; i < tabs.length; i++) {
+        var v = tabs[i].getAttribute('data-view');
+        var locked = hide.indexOf(v) >= 0;
+        tabs[i].classList.toggle('tab-locked', locked);
+        /* 锁着的时候给一句为什么（悬停）：不解释的隐藏＝玩家以为坏了 */
+        if (locked) tabs[i].setAttribute('title', '站稳脚跟后解锁：' + ui.gateWhyText());
+        else tabs[i].removeAttribute('title');
+      }
+    } catch (e) { /* 桩环境（无 classList/元素）：静默跳过，不影响测试口径 */ }
+  };
+
   ui.foldBlock = function (key, title, rows, opts) {
     opts = opts || {};
     var n = (rows || []).length;
@@ -8262,7 +8388,10 @@ import './state.js';
      * 走现成的 `fold-toggle` + `ui._foldOpen`（弹窗有 live 回调，会就地重绘）。
      * 默认收起是刻意的：这页是"看状态"，一屏扫完六条比逐条滚动强。
      * ============================================================ */
-    var sec = function (title, line, extra) {
+    /* v150（P0-1）：第 4 参 `need` = 该节需要的阶段（'mid'/'late'）。
+       early 期不放行的节**不消失**，而是折成一条灰行 —— 让玩家知道"还有东西在后面"，
+       又不把 12 条信息一次砸在脸上（"空屏"和"菜单墙"两头都不好）。 */
+    var sec = function (title, line, extra, need) {
       /* v149（实机自检）：每节右上角给一个「去办」入口 —— 之前"账本说得出问题，
          但每一条都要玩家自己去别的菜单里找得到地方处理"（截图确认：一屏 20 条，0 个可点去处）。
          入口按关键词落到既有页面，不新造功能。 */
@@ -8281,6 +8410,16 @@ import './state.js';
         return null;
       };
       var fkey = 'world|' + title;
+      /* 阶段门控：需要更高阶段而当前不够 → 灰行（可点，点了只说还差什么） */
+      if (need && ui.gatedOut(need)) {
+        return '<div style="border-bottom:1px dashed var(--wood-light);">'
+          + '<div style="padding:4px 0;display:flex;align-items:baseline;gap:7px;opacity:.55;">'
+          + '<span style="font-size:var(--fs-cap);color:var(--text-dim);font-weight:700;white-space:nowrap;">'
+          + '🔒 ' + title + '</span>'
+          + '<span style="font-size:var(--fs-cap);opacity:.8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">'
+          + U.escape(ui.gateWhyText()) + '</span>'
+          + '</div></div>';
+      }
       var open = !!ui._foldOpen[fkey];
       var goView = gotoOf(title);
       var brief = String(line || '').replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim().slice(0, 40);
@@ -8330,7 +8469,7 @@ import './state.js';
       h += sec('☁ 辐射云', GAME.surge.lineOf(),
         _cloudAct
         + '<div class="ui-sub" style="margin-top:3px;">圈心在你所有城的重心，半径按月往回收、每收 12 个月停 3 个月。'
-        + '云里的城不会立刻崩，只是人会一点一点往圈里搬 —— 要不要把家搬进来，是你的决定。</div>');
+        + '云里的城不会立刻崩，只是人会一点一点往圈里搬 —— 要不要把家搬进来，是你的决定。</div>', 'mid');
     }
 
     /* ---------- 污染 ---------- */
@@ -8342,7 +8481,7 @@ import './state.js';
           return '<span class="chip" data-action="world-clean" data-cid="' + U.escape(c.id) + '"'
             + ' title="净化一次：' + U.escape(JSON.stringify((GAME.DATA.TAINT || {}).cleanCost || {})) + '">'
             + U.escape(c.name) + ' · ' + Math.round(t) + '（' + lv.name + '）· 净化</span>';
-        }).join('') + '</div>');
+        }).join('') + '</div>', 'mid');
     }
 
     /* ---------- 竞争者 ---------- */
@@ -8372,14 +8511,14 @@ import './state.js';
         + '人回附近的村子；输了折兵。他们不会灭，只会再拉一支。'
         + '人口过 ' + U.numText((GAME.DATA.RIVAL || {}).cityAtPop || 1200, 0)
         + ' 就会开始惦记你的城：城防 + 守军顶得住就打退他们，顶不住就抢走两成半库存、'
-        + '打掉一成二守军（抢完 8 个月不再来）。</div>');
+        + '打掉一成二守军（抢完 8 个月不再来）。</div>', 'mid');
     }
 
     /* ---------- 补给连通 ---------- */
     if (GAME.land) {
       h += sec('🛣 领土连通', GAME.land.lineOf(),
         '<div class="ui-sub" style="margin-top:3px;">按陆地走：只有从老家走得到的城才算"连着的"。'
-        + '现在只算不罚（这一版先把地图算准，扣产出等下一版）。</div>');
+        + '现在只算不罚（这一版先把地图算准，扣产出等下一版）。</div>', 'mid');
     }
 
     /* ---------- 废墟科技 ---------- */
@@ -8395,7 +8534,7 @@ import './state.js';
             + (o.taken ? ' ✓' : (o.ok ? '' : '（' + U.escape(o.why) + '）')) + '</span>';
         }).join('') + '</div>'
         + '<div class="ui-sub" style="margin-top:3px;">残页只来自**你自己翻的**遗迹 —— 被竞争者抢先翻走的，'
-        + '一张都不算。落定不能退。</div>');
+        + '一张都不算。落定不能退。</div>', 'mid');
     }
 
 
@@ -8412,7 +8551,20 @@ import './state.js';
 
       /* v100：**注册表渲染** —— 兵源/兵员等级/惰性/世界形态四块由模块自己声明
          （见各模块末尾的 `GAME.reg.add`）。order 决定顺序：兵源 10 → 兵员 60 → 惰性 70 → 世界形态 90。 */
-      h += GAME.reg.panels({ sec: sec, U: U, cities: cities, c0: c0,
+      /* v150（P0-1）：模块面板也按阶段门控 —— 给它们一个**包了门控的 sec**：
+         达到阶段用真的 sec，没到就返回一条灰行（模块自己不感知阶段，零改动）。 */
+      var secG = function (title, line, extra) {
+        var need = null;
+        var list = ui.GATE_SEC || [];
+        for (var gi = 0; gi < list.length; gi++) if (title.indexOf(list[gi][0]) >= 0) need = list[gi][1];
+        /* 注册表模块按 id 门控（trooplv/idle/events/founding 是 mid，ending 是 late）——
+           这里用标题反查不到 id，所以按标题前缀表补上 */
+        var byTitle = { '🪖 兵员等级': 'mid', '🧠 惰性': 'mid', '🤝 遇到什么': 'mid',
+          '🏯 该不该开一座城': 'mid', '🌗 世界形态': 'late' };
+        for (var tk in byTitle) if (title.indexOf(tk) >= 0) need = byTitle[tk];
+        return sec(title, line, extra, need);
+      };
+      h += GAME.reg.panels({ sec: secG, U: U, cities: cities, c0: c0,
         toast: ui.toast, refresh: function () { ui.openWorldPanel(); GAME.refreshView(); } });
 
 
@@ -8434,7 +8586,7 @@ import './state.js';
           tierH + '<div class="ui-sub" style="margin-top:4px;">没有单独的下拉框 —— '
           + '**你带多少兵就决定了怎么打**：带满平推（稳），带少就自动变成斩首/奇袭'
           + '（攻更高、防更低、血更薄，但战利品翻倍）。'
-          + '这一行不是说明，是战场上的真数值。</div>');
+          + '这一行不是说明，是战场上的真数值。</div>', 'mid');
       }
 
       /* ② 伤兵 / 老兵 */
@@ -8448,7 +8600,7 @@ import './state.js';
             + '花旧币治好 ' + U.numText(wl, 0) + ' 人</span>') : '')
           + '</div>'
           + '<div class="ui-sub" style="margin-top:3px;">伤兵是这一版唯一的「不可逆」：他们占着你的人，'
-          + '要等十个月才好。以前这些人是直接死掉再 2 小时补满的。</div>');
+          + '要等十个月才好。以前这些人是直接死掉再 2 小时补满的。</div>', 'mid');
       }
 
       /* ③ 民怨 */
@@ -8461,7 +8613,7 @@ import './state.js';
               + U.escape(c.name) + ' · ' + v + '/100 · 安抚</span>';
           }).join('') + '</div>'
           + '<div class="ui-sub" style="margin-top:3px;">民心低于 55 就开始攒；攒满 100 会反：'
-          + '库房被抢两成半、守军跑一成二。降税治本，安抚只压一阵。</div>');
+          + '库房被抢两成半、守军跑一成二。降税治本，安抚只压一阵。</div>', 'mid');
       }
 
       /* ④ 守城工事 + 破墙 */
@@ -8480,7 +8632,7 @@ import './state.js';
         }).join('');
         h += sec('🏯 守城工事', '每城 3 个槽：炮塔 / 拒马 / 雷区，算进城防',
           worksH + '<div class="ui-sub" style="margin-top:3px;">攻不下来的城，墙会裂 22% —— '
-          + '下个月再来就更好打。这就是两阶段攻城。</div>');
+          + '下个月再来就更好打。这就是两阶段攻城。</div>', 'mid');
       }
 
       /* ⑤ 地下远征 */
@@ -8503,7 +8655,7 @@ import './state.js';
             + '<div class="ui-sub" style="margin-top:3px;">逐层推进，随时可撤。到底一次大丰收；'
             + '塌方会吞掉你已经拿到的东西。人是要留在地下的。</div>';
         }
-        h += sec('🕳 地下远征', '五层，越深越肥，也越容易折人', dh);
+        h += sec('🕳 地下远征', '五层，越深越肥，也越容易折人', dh, 'mid');
       }
 
       /* ⑥ 指令牌（8 选 5） */
@@ -8525,7 +8677,7 @@ import './state.js';
           }).join('') + '</div>'
           + '<div class="ui-sub" style="margin-top:3px;">只能带 ' + GAME.deck.pickLimit()
           + ' 张。<b>带队的将风格对不上的牌，这一仗打不出去</b>（均衡型的将什么牌都能打）。'
-          + '狂怒那种"攻高但多死人"的牌，是你自己选的代价。</div>');
+          + '狂怒那种"攻高但多死人"的牌，是你自己选的代价。</div>', 'mid');
       }
 
       /* ⑦ 套装指令 */
@@ -8538,7 +8690,7 @@ import './state.js';
               return '<span class="chip' + (x.cdLeft ? ' dim' : '') + '" data-action="skill-arm" data-sid="' + x.id + '"'
                 + ' title="' + U.escape(x.desc) + '">' + U.escape(x.name)
                 + '（' + x.tier + '件' + (x.cdLeft ? ' · 冷却 ' + x.cdLeft : '') + (armed ? ' · 已备' : '') + '）</span>';
-            }).join('') + '</div>');
+            }).join('') + '</div>', 'mid');
         }
       }
 
@@ -8564,7 +8716,7 @@ import './state.js';
           h += sec('☄ 奇观', wl2, (wH ? wH + '<div class="ui-sub" style="margin-top:4px;">' : '')
             + '<div class="ui-sub" style="margin-top:3px;">打穿奇观就能占下，保护 6 个月；'
             + '之后声望越高越招人惦记。**派兵驻守能让被夺概率变低**（每 1000 人 ÷1.6），'
-            + '但那些兵就不在城里了。</div>' + (wH ? '</div>' : ''));
+            + '但那些兵就不在城里了。</div>' + (wH ? '</div>' : ''), 'late');
         }
       }
 
@@ -8585,7 +8737,7 @@ import './state.js';
           h += sec('👁 谁看见了你', el, (warn ? _rows : _rows)
             + '<div class="ui-sub" style="margin-top:4px;">' + U.escape(_wt) + '</div>'
             + '<div class="ui-sub" style="margin-top:3px;">被发现之后他们会转向最近的城 —— '
-            + '要么补守军、要么建工事、要么花 300 兵驱赶（都在竞者面板里）。</div>');
+            + '要么补守军、要么建工事、要么花 300 兵驱赶（都在竞者面板里）。</div>', 'late');
         }
       }
     })();
@@ -8919,6 +9071,9 @@ import './state.js';
        放在**所有刷新路径的汇合点**（renderView）而不是 setView：
        ctx.refresh 走的是 GAME.refreshView → renderView，漏了它打完一场界面就不更新。 */
     if (GAME.prologue && GAME.prologue.syncScreen) GAME.prologue.syncScreen();
+    /* v150（P0-1）：顶栏按阶段软隐藏（幂等、不删节点）——
+       放在同一个汇合点：任何刷新路径都会经过这里。 */
+    ui.syncPhase();
     /* v123：core 模块不能直接调界面（架构棘轮），所以它们只留一条
        `state._tip`，由这里消费一次并清空 —— "立城后先建农田"就是这么弹的。 */
     (function () {

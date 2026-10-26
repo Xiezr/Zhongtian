@@ -25789,7 +25789,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var okSrc = /ui\.btDuelLine = function/.test(u124)
         && /ui\.btDuelBarHTML = function/.test(u124) === false      /* 顶部行函数整条删除 */
         && /\.bt-duelbar \{/.test(h124) === false                  /* 样式同删 */
-        && /return ui\.btTopHTML\(rec, snap\) \+ ui\.btBoardHTML\(snap\)/.test(u124);
+        && /return ui\.btTopHTML\(rec, snap\) \+ ui\.btAskHTML\(rec\) \+ ui\.btBoardHTML\(snap\)/.test(u124);
       var g = (GAME.state.generals || [])[0];
       if (!g) return false;
       var foe = G.makeGeneral('顶部行测乙', 22, 'guard', null, false);
@@ -26125,7 +26125,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         && /ui\.btDuelHTML = function/.test(u128)
         && u128.indexOf('ui.btDuelBarHTML') < 0
         && h128s.indexOf('.bt-duelbar') < 0
-        && /return ui\.btTopHTML\(rec, snap\) \+ ui\.btBoardHTML\(snap\)/.test(u128);
+        && /return ui\.btTopHTML\(rec, snap\) \+ ui\.btAskHTML\(rec\) \+ ui\.btBoardHTML\(snap\)/.test(u128);
     })());
 
     /* ---- ③ 战斗界面定高布局（wrap 不滚 / log 50% / field 330 / 表头无队数） ---- */
@@ -43319,8 +43319,12 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })(), (function () { return STAY.join(' / '); })());
 
     check('§335② 七个别用页签折进「更多」——但**节点仍在**（不删）', (function () {
+      /* v150（P0-1）：三个页签多了 `tab-locked`（阶段未到不显示）——
+         这里放宽为"class 里含 tab-more、且 data-view 对得上"，口径仍是
+         「节点在 DOM、仍属折叠组」，**不**放宽到"只要出现 data-view 就算"。 */
       return MORE.every(function (v) {
-        return html.indexOf('class="tab tab-more" data-view="' + v + '"') >= 0;
+                var re = new RegExp('class="[^"]*tab-more[^"]*" data-view="' + v + '"');
+        return re.test(html);
       });
     })(), (function () { return MORE.join(' / '); })());
 
@@ -45138,6 +45142,312 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       check('§572 链路异常（不应发生）', false, 'err=' + ((e572 && e572.message) || e572));
     } finally {
       G.state = bk; G._realNowOf = bkNow; U.now = bkU;
+    }
+    G.newGame({ name: '收尾', cityName: '灰岗' });
+  })();
+
+  /* ============================================================
+   * §573. v150（P0-1）收敛第一小时：阶段门控
+   * ------------------------------------------------------------
+   * 实测问题：开局能建 2/15 种建筑、能研 3/29 项科技，但界面全摆出来；
+   * 账本一屏 12+ 节。行业参照是前 30 分钟 ≤3 个可见目标。
+   * 钉五件事：
+   *   ① 阶段派生正确（prologue / early / mid / late），不读存档新字段
+   *   ② early 期顶栏三个页签带 tab-locked（节点仍在 DOM）
+   *   ③ early 期账本：放行 5 节 · 其余折成灰行（不消失）
+   *   ④ 阶段推进后自动解锁（3 胜 → mid；5 城 → late）
+   *   ⑤ 只收界面：setView 不拦，老档/脚本照常可用
+   * ============================================================ */
+  (function () {
+    var NL = String.fromCharCode(10);
+    console.log(NL + '===== 573. v150 收敛第一小时（阶段门控） =====');
+    var bk = G.state, bkCity = G.ui._cityId, bkShown = G.ui._phaseShown;
+    try {
+      var fs9 = require('fs'), pth9 = require('path');
+      var h9 = fs9.readFileSync(pth9.join(__dirname, 'index.html'), 'utf8');
+      var u9 = fs9.readFileSync(pth9.join(__dirname, 'js', 'ui.js'), 'utf8');
+
+      G.newGame({ name: 'phase573', cityName: '灰岗', mapSeed: 573001 });
+      var st = GAME.state;
+      st.cities[0].pid = 1;
+      G.ui._cityId = st.cities[0].id;
+      G.ui._phaseShown = null;
+
+      check('§573① 阶段派生：新局 = early · 3 胜 = mid · 5 城 = late', (function () {
+        var p0 = G.ui.phaseOf();
+        st.stats = st.stats || {};
+        st.stats.wins = 3;
+        var p1 = G.ui.phaseOf();
+        var c = G.currentCity();
+        for (var i = 0; i < 4; i++) {
+          st.cities.push(G.makeCity({ id: 'p573_' + i, name: '城' + i, ci: 950 + i, type: 'self', pid: 1, res: {} }));
+        }
+        var p2 = G.ui.phaseOf();
+        while (st.cities.length > 1) st.cities.pop();
+        st.stats.wins = 0;
+        return p0 === 'early' && p1 === 'mid' && p2 === 'late';
+      })(), 'early → mid → late');
+
+      check('§573② early 顶栏：station/shop/collection 标 tab-locked，节点仍在 DOM', (function () {
+        /* ① 静态：三个页签在 index.html 里带 tab-locked 初始类（首帧不闪） */
+        var staticOk = /class="tab tab-more tab-locked" data-view="station"/.test(h9)
+          && /class="tab tab-more tab-locked" data-view="shop"/.test(h9)
+          && /class="tab tab-more tab-locked" data-view="collection"/.test(h9)
+          && /\.topnav \.tab-locked \{ display: none; \}/.test(h9);
+        /* ② 动态：syncPhase 对 early 期的三个页签加类、对其它页签不加 */
+        G.ui._phaseShown = null;
+        /* ⚠️ classList 的方法必须闭包住自己的状态：`toggle` 被拆开调用时
+           `this` 不再是元素（实测踩到：`reading 'tab-locked' of undefined`）。 */
+        var el = function (v) {
+          var cls = {};
+          return {
+            _c: cls, dataset: { view: v },
+            classList: { toggle: function (c, on) { if (on) cls[c] = 1; else delete cls[c]; },
+              contains: function (c) { return !!cls[c]; } },
+            setAttribute: function () {}, removeAttribute: function () {},
+            getAttribute: function (k) { return k === 'data-view' ? v : null; }
+          };
+        };
+        var tabs = ['station', 'shop', 'collection', 'city', 'map'].map(el);
+        var bkQ = document.querySelectorAll;
+        document.querySelectorAll = function (sel) {
+          if (String(sel).indexOf('#topnav') >= 0) return tabs;
+          return bkQ.apply(document, arguments);
+        };
+        G.ui.syncPhase();
+        document.querySelectorAll = bkQ;
+        return staticOk
+          && tabs[0].classList.contains('tab-locked')
+          && tabs[1].classList.contains('tab-locked')
+          && tabs[2].classList.contains('tab-locked')
+          && !tabs[3].classList.contains('tab-locked')
+          && !tabs[4].classList.contains('tab-locked');
+      })(), '静态类 + 动态 syncPhase 都是"只加类、不删节点"');
+
+      check('§573③ early 账本：放行 5 节 · 其余灰行不消失（标题全部仍在）', (function () {
+        var html = '';
+        var bkOpen = G.ui.openModal;
+        G.ui.openModal = function (h) { html = h; };
+        try { G.ui.openWorldPanel(); } finally { G.ui.openModal = bkOpen; }
+        var locked = (html.match(/🔒 [^<]+/g) || []).length;
+        var heads = (html.match(/[▸▾] [^<]+/g) || []).length;
+        /* 五个放行的节都在（标题字面量保留 —— 源码断言也靠它） */
+        var kept = ['🌡 温度', '🚶 人从哪来', '⚠ 危险梯度', '📅 今年', '🏪 集市'].every(function (t) {
+          return html.indexOf(t) >= 0;
+        });
+        /* 后解锁的节以灰行出现（不是删除） */
+        /* v150：必须**以灰行形式**出现（`🔒 标题`）—— 弱化成"标题出现过"就等于
+           放弃了"不消失"这一整条判据（第一次写成 `||` 当场被抓）。 */
+        /* ⚠️ 只断言"这个状态下**本来就存在**的节"—— `☄ 奇观`/`🧩 套装指令`/`👁 谁看见了你`
+           在还没占下奇观时**本来就不渲染**（既有条件），拿它们当判据会假红。 */
+        var greyed = ['☁ 辐射云', '☢ 污染', '🏴 竞争者', '🛣 领土连通',
+          '🕳 地下远征', '🪖 兵员等级'].every(function (t) {
+          return html.indexOf('🔒 ' + t) >= 0;
+        });
+        return kept && greyed && locked >= 10 && heads >= 4 && (heads + locked) >= 15;
+      })(), '放行 5 · 灰行 ≥10 · 总数 ≥15');
+
+      check('§573④ 阶段推进后自动解锁（mid 放行 mid 节、late 才放奇观）', (function () {
+        var st2 = GAME.state;
+        function render() {
+          var html = '', bkOpen = G.ui.openModal;
+          G.ui.openModal = function (h) { html = h; };
+          try { G.ui.openWorldPanel(); } finally { G.ui.openModal = bkOpen; }
+          return html;
+        }
+        var earlyLocked = (render().match(/🔒 /g) || []).length;
+        st2.stats = st2.stats || {}; st2.stats.wins = 3;      /* → mid */
+        var midLocked = (render().match(/🔒 /g) || []).length;
+        for (var i = 0; i < 4; i++) {
+          st2.cities.push(G.makeCity({ id: 'p573b_' + i, name: '城b' + i, ci: 960 + i, type: 'self', pid: 1, res: {} }));
+        }
+        var htmlLate = render();
+        var lateLocked = (htmlLate.match(/🔒 /g) || []).length;
+        while (st2.cities.length > 1) st2.cities.pop();
+        st2.stats.wins = 0;
+        return earlyLocked > midLocked && midLocked > lateLocked && lateLocked === 0;
+      })(), '灰行数随阶段严格递减，late 归零');
+
+      check('§573⑤ 只收界面：setView 不拦（老档/脚本照常进入空间站）', (function () {
+        var u9has = /ui\.syncPhase = function/.test(u9) && /ui\.phaseOf = function/.test(u9);
+        /* 源码级：setView 函数体内不许出现 phaseOf / gatedOut（否则测试与老档会被拦） */
+        var seg = u9.slice(u9.indexOf('ui.setView = function'), u9.indexOf('ui.setView = function') + 1600);
+        var noGate = seg.indexOf('phaseOf') < 0 && seg.indexOf('gatedOut') < 0;
+        return u9has && noGate;
+      })(), 'syncPhase 只加 class · setView 零拦截');
+    } catch (e573) {
+      check('§573 链路异常（不应发生）', false, 'err=' + ((e573 && e573.message) || e573));
+    } finally {
+      G.state = bk; G.ui._cityId = bkCity; G.ui._phaseShown = bkShown;
+    }
+    G.newGame({ name: '收尾', cityName: '灰岗' });
+  })();
+
+  /* ============================================================
+   * §574. v150（P0-2）战场三选一 + 真正的指挥权
+   * ------------------------------------------------------------
+   * 钉六件事：
+   *   ① 手点指令 = 接管（autoOff），此后托管不再覆盖 rec.cmd
+   *   ② 每 3 回合置 askAt（只置标记、不阻塞推进）
+   *   ③ 突击 = 全军 advance + 集火敌方现存最少那支
+   *   ④ 稳住 = 全军 hold
+   *   ⑤ 撤退走既有 retreatBattle（残部带回）
+   *   ⑥ 「以后都托管」后本场不再出题；三选一被记进 battlelog（转移表新增 choose）
+   * ============================================================ */
+  (function () {
+    var NL = String.fromCharCode(10);
+    console.log(NL + '===== 574. v150 战场三选一 =====');
+    var bk = G.state, bkId = G.ui._cityId;
+    function fresh(seed) {
+      /* ⚠️ `GAME._bsess` 是**全局内存会话**，换 state 不会自动清 ——
+         不清的话上一节的会话会用同一个 rec.id 命中（实测：④ 取到旧 snap 假红）。 */
+      try { GAME._bsess = {}; } catch (e) {}
+      var st = G.newGame({ name: 'ask574', cityName: '灰岗', mapSeed: seed || 574001 });
+      G.state = st;
+      if (st.cities[0]) st.cities[0].pid = 1;
+      G.ui._cityId = st.cities[0].id;
+      st.settings.battleWatch = true;          /* 走"挂起 → 逐回合"这条路 */
+      return st;
+    }
+    /* 造一场真战斗（抵达即挂起），返回 rec */
+    function liveBattle(st) {
+      var c = st.cities[0], g = st.generals[0];
+      g.status = 'idle'; g.cityId = c.id;
+      c.army = { buxingji: 3000 };
+      st.marches = [];
+      var wt = null;
+      /* ⚠️ 每局地图不同 —— 只扫 13~20 环时有些种子找不到可打野地（实测 §574④/⑥ 静默返回 null）。
+         改成由近到远、扫到 40 环，并且**打日志**而不是静默假红。 */
+      for (var r0 = 6; r0 <= 40 && wt == null; r0++) {
+        for (var dy = -r0; dy <= r0 && wt == null; dy++) {
+          for (var dx = -r0; dx <= r0 && wt == null; dx++) {
+            if (Math.max(Math.abs(dx), Math.abs(dy)) !== r0) continue;
+            var ci = G.sphere.ciOfXY(c.x + dx, c.y + dy);
+            if (ci < 0) continue;
+            var cell = G.sphere.cells[ci];
+            if (!cell || cell.type === 'city' || cell.type === 'lake') continue;
+            if (G.map.wildAt(ci)) continue;
+            wt = ci;
+          }
+        }
+      }
+      if (wt == null) { console.log('     （跳过：本局 40 环内找不到可打野地）'); return null; }
+      var d = G.march.dispatch({ kind: 'wild', ci: wt }, 'raid', { buxingji: 1500 }, g.id, null, { fromCityId: c.id });
+      if (!d || !d.ok) return null;
+      var m = st.marches[0];
+      m.elapsed = m.totalTime;
+      G.march.tick();
+      return (st.battles || [])[0] || null;
+    }
+    function endAll() {
+      try {
+        (GAME.state.battles || []).slice().forEach(function (r) { GAME.battle.autoBattle(r.id); });
+      } catch (e) { /* 收尾失败不记账 */ }
+      GAME.state.settings.battleWatch = false;
+      try { GAME.ui.closeAllModals(); } catch (e2) {}
+    }
+    try {
+      check('§574① 手点一条指令 = 接管本场；此后托管不再覆盖 rec.cmd', (function () {
+        var st = fresh(574002);
+        var rec = liveBattle(st);
+        if (!rec) return false;
+        var ses = GAME._bsess[rec.id];
+        if (!ses || !(ses.snap().atk || []).length) { endAll(); return false; }
+        var uid = ses.snap().atk[0].id;
+        G.ui.btSetCmd(rec, uid, { s: 'hold' });          /* 玩家手点「驻守」 */
+        var tookOver = rec.autoOff === true;
+        GAME.battle.stepBattle(rec.id);                  /* 推进一回合（托管本会改写） */
+        var kept = rec.cmd && rec.cmd[uid] && rec.cmd[uid].s === 'hold';
+        endAll();
+        return tookOver && kept;
+      })(), 'autoOff=true · 指令没被改回');
+
+      check('§574② 每 3 回合置 askAt（只置标记，不阻塞推进）', (function () {
+        var st = fresh(574003);
+        var rec = liveBattle(st);
+        if (!rec) return false;
+        /* 托管态下推进到第 3 回合 */
+        var okAt = false, rounds = 0;
+        for (var i = 0; i < 4; i++) {
+          var rr = GAME.battle.stepBattle(rec.id);
+          if (!rr) break;
+          rounds = rr.r;
+          if (rr.over) break;
+        }
+        okAt = (rec.askAt != null) && rounds >= 3;
+        endAll();
+        return okAt;
+      })(), '第 3 回合后 askAt 有值');
+
+      check('§574③ 突击：全军 advance + 集火敌方现存最少的一支', (function () {
+        var st = fresh(574004);
+        var rec = liveBattle(st);
+        if (!rec) return false;
+        var ses = GAME._bsess[rec.id];
+        var r = GAME.battle.pickDecision(rec.id, 'assault');
+        var snap = ses.snap();
+        var alive = (snap.atk || []).filter(function (x) { return (x.count | 0) > 0; });
+        var foes = (snap.def || []).filter(function (x) { return (x.count | 0) > 0; });
+        var weak = null;
+        foes.forEach(function (x) { if (!weak || x.count < weak.count) weak = x; });
+        var allAdv = alive.every(function (u) { return (rec.cmd[u.id] || {}).s === 'advance'; });
+        var focused = !!weak && alive.every(function (u) { return (rec.cmd[u.id] || {}).t === weak.id; });
+        endAll();
+        return r.ok && allAdv && focused && rec.askAt == null;
+      })(), '姿态=advance · 目标=最弱');
+
+      check('§574④ 稳住：全军 hold', (function () {
+        var st = fresh(574005);
+        var rec = liveBattle(st);
+        if (!rec) return false;
+        var ses = GAME._bsess[rec.id];
+        var r = GAME.battle.pickDecision(rec.id, 'hold');
+        var snap = ses.snap();
+        var alive = (snap.atk || []).filter(function (x) { return (x.count | 0) > 0; });
+        var allHold = alive.every(function (u) { return (rec.cmd[u.id] || {}).s === 'hold'; });
+        endAll();
+        return r.ok && allHold;
+      })(), '全军 hold');
+
+      check('§574⑤ 撤退：走既有 retreatBattle（残部带回 · 战斗结束）', (function () {
+        var st = fresh(574006);
+        var rec = liveBattle(st);
+        if (!rec) return false;
+        var before = GAME.armyTotal(st.cities[0]);
+        var r = GAME.battle.pickDecision(rec.id, 'flee');
+        var gone = !GAME.battle._recOf(rec.id);
+        var after = GAME.armyTotal(st.cities[0]);
+        endAll();
+        return r.ok === true && r.retreat === true && gone && after >= before;
+      })(), '残部归城 · 会话结束');
+
+      check('§574⑥ 「以后都托管」后不再出题 · 选择记进 battlelog（choose 动作）', (function () {
+        var st = fresh(574007);
+        var rec = liveBattle(st);
+        if (!rec) return false;
+        GAME.battle.setAutoOff(rec.id, true);
+        /* ⚠️ 只能推 **2 回合**：本场总共约 5 回合，推 4 回合会先打完（state=done），
+           后面 choose 自然被转移表拒 —— 那是正确行为，不是被测对象。 */
+        for (var i = 0; i < 2; i++) {
+          var rr = GAME.battle.stepBattle(rec.id);
+          if (!rr || rr.over) break;
+        }
+        var noAsk = rec.askAt == null && rec.state === 'live';
+        var stNow = rec.state;
+        GAME.battle.setAutoOff(rec.id, false);
+        var pick = GAME.battle.pickDecision(rec.id, 'hold');
+        var blog = GAME.battlelog.of(rec.id) || [];
+        var hasChoose = blog.some(function (e) { return e.move === 'choose'; });
+        var legal = GAME.battlelog.can('choose', 'live').ok && GAME.battlelog.can('choose', 'settling').ok === false;
+        endAll();
+        return noAsk && pick.ok && hasChoose && legal;
+      })(), 'askAt 保持空 · 日志有 choose · 转移表合法');
+    } catch (e574) {
+      check('§574 链路异常（不应发生）', false, 'err=' + ((e574 && e574.message) || e574));
+      endAll();
+    } finally {
+      G.state = bk; G.ui._cityId = bkId;
+      try { GAME.ui.closeAllModals(); } catch (e3) {}
     }
     G.newGame({ name: '收尾', cityName: '灰岗' });
   })();

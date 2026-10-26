@@ -170,6 +170,23 @@ import './ui.js';
         if (r && ui.btAfterStep) ui.btAfterStep(rec, r);
       })(); break;
       /* v89.94（B2 · E1）：主动撤退 —— 两段确认（第一下"上膛"、第二下真撤） */
+      /* v150（P0-2）：战场三选一 / 托管开关 */
+      case 'bt-pick': {
+        var _bpk = GAME.battle.pickDecision(ui._bt && ui._bt.id, el.dataset.choice);
+        ui.toast(_bpk.msg);
+        /* ⚠️ 只同步战场面板，**不要 renderView** —— 那会跳到别的视图，把战场弹窗顶掉 */
+        if (_bpk.ok) ui.btSyncAsk(GAME.battle._recOf(ui._bt.id));
+        break;
+      }
+      case 'bt-auto-off': {
+        var _brec = ui._bt && GAME.battle._recOf(ui._bt.id);
+        if (!_brec) break;
+        var _bon = !!_brec.autoOff;            /* 已接管 → 交回托管 */
+        GAME.battle.setAutoOff(_brec.id, !_bon);
+        ui.toast(_bon ? '已交回托管：每回合自动调整' : '已接管：你的指令优先');
+        ui.btSyncAsk(_brec);
+        break;
+      }
       case 'bt-retreat': (function () {
         var _bid94 = ui._bt && ui._bt.id;
         if (!_bid94 || !GAME.battle._recOf(_bid94)) { ui.toast('战斗已结束（战报见公文）'); return; }
@@ -3737,7 +3754,7 @@ import './ui.js';
      （这解释了"改了却说没生效"的观感）。老板若发现版本 ≠ 最新交付，按 Ctrl+F5
      强制刷新即获得新代码。⚠️ 发版须走 **bump_version.py --bump --version vX.Y**（它同步 index.html 的 ?v=/BUILD
      与这里的 GAME.VERSION 三处）—— 只手改 index.html 会让版本号冻住（v91.18 前的病灶）。 */
-  GAME.VERSION = 'v149.2';
+  GAME.VERSION = 'v150.0';
   function boot() {
     fitAppSize();
     try {
