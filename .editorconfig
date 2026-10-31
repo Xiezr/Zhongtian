@@ -1,0 +1,47 @@
+# .editorconfig —— 编辑器侧口径（配合 .gitattributes 一起看）
+#
+# ⚠️ 本仓 .gitattributes 是 `* -text`（故意关闭 git 的行尾转换，见那里的说明）：
+#    md 文件行尾本来就是混的，且项目有 md5 落盘校验 / 破坏测试比对还原。
+#    所以这里**不追求全仓统一 LF**，只做两件事：
+#      ① 新写的代码/页面一律 UTF-8 + LF（js/py/html/css/json）
+#      ② 别把 UTF-8 存成 GBK、别在文件末尾乱加空行
+root = true
+
+[*]
+charset = utf-8
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+# 游戏源码与工具：必须是 LF（smoke 的 `\n` 正则断言与 bundle hash 都吃这个）
+[js/*.js]
+end_of_line = lf
+insert_final_newline = true
+[{*.py,*.html,*.css,*.json}]
+end_of_line = lf
+insert_final_newline = true
+
+# Python 工具链：4 空格
+[*.py]
+indent_size = 4
+
+# Markdown：行尾空格有意义（硬换行），**不修剪**；行尾风格**不强制**（仓里本来就是混的）
+[*.md]
+trim_trailing_whitespace = false
+end_of_line = unset
+
+# 三包产物：自动生成，别手改（手改会被 build --check 的产物指纹抓到）
+[{js/bundle-core.js,js/bundle-war.js,js/bundle-ui.js,js/bundle.hash}]
+insert_final_newline = false
+trim_trailing_whitespace = false
+
+# Windows 脚本
+[*.{bat,cmd}]
+end_of_line = crlf
+
+# 素材与二进制：不参与任何格式约定
+[*.{png,jpg,jpeg,webp,gif,ico,glb,gltf,bin,zip,xlsx}]
+charset = unset
+end_of_line = unset
+insert_final_newline = unset
+trim_trailing_whitespace = unset

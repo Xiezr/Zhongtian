@@ -128,14 +128,25 @@ def _dump_fail(script, out, err):
 
 
 def run_one(node, node_path, script, label):
-    """跑一个测试，返回 (ok, 摘要行, 详情)。必须连「是否中断」一起看 —— 项目铁律。"""
+    """跑一个测试，返回 (ok, 摘要行, 详情)。必须连「是否中断」一起看 —— 项目铁律。
+
+    v156.15：超时从写死 600s 改成**可配**（`GATE_TIMEOUT` 环境变量，默认 1800s）。
+    来历：2026-10-31 在本机提交 v151–v156.15 那一批时，smoke 在门禁里被 600s 掐掉
+    （``smoke-test.js 超时 600 秒``），而同一份代码在门禁外手跑是 4282/0 全绿 ——
+    门禁的常数比机器慢，就会把"绿"报成"红"，这和判据写错一样危险。
+    1800s 仍然是个上界（真卡死还是要拦），但不再误杀慢机器上的全量 smoke。
+    ``GATE_TIMEOUT=600`` 可在快机器上恢复旧行为。"""
+    try:
+        _to = int(os.environ.get('GATE_TIMEOUT', '1800'))
+    except Exception:
+        _to = 1800
     env = dict(os.environ)
     if node_path:
         env['NODE_PATH'] = node_path
     try:
-        r = subprocess.run([node, script], cwd=ROOT, capture_output=True, env=env, timeout=600)
+        r = subprocess.run([node, script], cwd=ROOT, capture_output=True, env=env, timeout=_to)
     except subprocess.TimeoutExpired:
-        return False, f'{script} 超时 600 秒', ''
+        return False, f'{script} 超时 {_to} 秒（GATE_TIMEOUT 可调）', ''
 
     out = r.stdout.decode('utf-8', 'replace')
     err = r.stderr.decode('utf-8', 'replace')

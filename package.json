@@ -1,0 +1,28 @@
+{
+  "name": "deepseekdb",
+  "version": "156.14.0",
+  "private": true,
+  "description": "《我在有座城》纯静态单机网页游戏 —— 运行期零依赖；本文件只服务开发期工具链（lint / 文档 / 钩子）",
+  "//运行时": "index.html 直接加载 vendor/three.min.js + js/bundle-core.js|war|ui，不经过 npm、不经过打包器。",
+  "scripts": {
+    "lint": "eslint js/",
+    "docs:lint": "markdownlint-cli2 \"CLAUDE.md\" \"AGENTS.md\" \"docs/*.md\"",
+    "arch": "node tools/diag-arch.js --check",
+    "arch:write": "node tools/diag-arch.js --write",
+    "arch:json": "node tools/diag-arch.js --json",
+    "build": "python .workbuddy/tools/patch/build_bundle.py",
+    "build:check": "python .workbuddy/tools/patch/build_bundle.py --check",
+    "gate:audit": "node audit.js",
+    "gate:chain": "node chain-audit.js",
+    "gate:invariants": "node invariants-test.js",
+    "gate:smoke": "node smoke-test.js",
+    "gate:e2e": "node e2e-test.js",
+    "gate:light": "node audit.js && node chain-audit.js && node invariants-test.js",
+    "gate:all": "npm run gate:audit && npm run gate:chain && npm run gate:invariants && npm run gate:smoke && npm run gate:e2e",
+    "hooks:install": "lefthook install"
+  },
+  "devDependencies": {},
+  "engines": {
+    "node": ">=22"
+  }
+}
