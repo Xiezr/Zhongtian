@@ -46387,6 +46387,41 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       /M\.openMapBar|ui\.openMapBar/.test(mdj) && /mapBarTry2D\(hit\)/.test(mj));
   })();
 
+  /* ============================================================
+   * §581 v156.16：三条**实机才抓得到**的现象，在这里钉死防回归
+   * ------------------------------------------------------------
+   * 三条都是 jsdom 结构上验不了（没有 WebGL），但源码里是**可以精确钉住**的：
+   *   ① 注入 uniform 必须是 `{ value: … }` 条目 —— 塞裸 Vector3 会让
+   *      `setValue(gl, undefined)` 去读 `undefined.x`，页面报
+   *      "Cannot read properties of undefined (reading 'x')"；
+   *   ② 海面顶点着色器必须自己声明 `attribute float uCoast;` / `varying float vCoast;`
+   *      —— 少一行就 `'vCoast' : undeclared identifier`，水面整条报废；
+   *   ③ 以上两条的病根都是"自定义着色器里的名字没对上"，所以再加一条：
+   *      `uCoast` 只要出现在 VS 里，就必须有对应的 attribute 声明。
+   * ============================================================ */
+  (function () {
+    var fs581 = require('fs');
+    var p581 = require('path');
+    var md = fs581.readFileSync(p581.join(__dirname, 'js', 'map3d.js'), 'utf8');
+
+    check('§581① 注入 uniform 用 { value: … } 条目（不是裸 Vector3）',
+      /sh\.uniforms\.uSunDir\s*=\s*\{\s*value:/.test(md)
+      && !/sh\.uniforms\.uSunDir\s*=\s*M\._sunDir\s*;/.test(md),
+      'uSunDir 赋值形态');
+    check('§581② 昼夜线注入的 uTerm 仍是条目（_termU = { value } 直接赋）',
+      /sh\.uniforms\.uTerm\s*=\s*M\._termU\s*;/.test(md)
+      && /M\._termU\s*=\s*\{\s*value:/.test(md));
+    check('§581③ 海面 VS 声明了 uCoast 属性（自定义 attribute 必须自己声明）',
+      /'attribute float uCoast;'/.test(md),
+      '缺了就是 “' + 'vCoast' + ' : undeclared identifier”');
+    check('§581④ 海面 VS 声明了 vCoast varying（main 里要写它）',
+      /'varying float vCoast;'/.test(md));
+    /* 一般化：VS 里用了 uCoast，就必须有 attribute 声明 —— 防止只删声明不删用 */
+    check('§581⑤ uCoast 用了就必须有声明（两个都要在，缺一即红）',
+      (md.indexOf('uCoast') < 0)
+      || (md.indexOf('attribute float uCoast;') >= 0 && md.indexOf('varying float vCoast;') >= 0));
+  })();
+
 console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');
   process.exit(FAIL ? 1 : 0);
 })();

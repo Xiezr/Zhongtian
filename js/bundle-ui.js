@@ -420,7 +420,14 @@
   function applyTerminator(mat) {
     if (!mat || typeof mat.onBeforeCompile !== 'function') return mat;
     mat.onBeforeCompile = function (sh) {
-      sh.uniforms.uSunDir = M._sunDir;
+      /* ⚠️ v156.16：这里必须是 `{ value: … }` 的 **uniform 条目**，不能塞裸 Vector3。
+         three 的 `WebGLUniforms.upload` 读的是 `entry.value`；塞裸对象时 `.value` 是 undefined，
+         接着 `setValue(gl, undefined)` 就去读 `undefined.x` →
+         页面报 `Cannot read properties of undefined (reading 'x')`（每个 program 首次上传炸一次，
+         之后 three 认为已上传、不再炸 —— 所以看起来"偶发一次"而不是白屏）。
+         这条从 v92.243 起一直在，也意味着**昼夜线（terminator）其实从未生效**。
+         现在条目持有同一个 Vector3 引用，`applyLight()` 里 `.set(...)` 仍然生效。 */
+      sh.uniforms.uSunDir = { value: M._sunDir };
       sh.uniforms.uTerm = M._termU;
       sh.vertexShader = 'varying vec3 vWn;\n' + sh.vertexShader.replace(
         '#include <begin_vertex>',
