@@ -46298,93 +46298,37 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   })();
 
   /* ============================================================
-   * §580 v156.15：地图手势条（老板：「点那个敌人 → 派兵打它」）
+   * §580 v156.15b：**点地块 = 直接开面板，不许多一层菜单**
    * ------------------------------------------------------------
-   * 3D 点击在 jsdom 里跑不到（无 WebGL），所以这里验**能被 node 验的那部分**：
-   *   ① 接手范围：空野地给条；**已占野地 / 我方据点 / 营地 / 遗迹**不给条（回旧面板）
-   *   ② 条上三个动作在 main.js 里都真有 case（点了不会没反应）
-   *   ③ 条的 HTML 真带了三个 data-action
-   *   ④ 「详情」回旧面板（不吞能力）
-   *   ⑤ 出征仍然只有一条出口：doMarchTarget 把 target **原样**交给 march.dispatch
-   * 真机效果另由 `.workbuddy/tools/show/shot_v15615_mapbar.js` 截图验（3D 只有实机能验）。
+   * 来历：v156.15 曾在"点地块"和"原本的面板"之间插了一层短条（⚔出征/🔍侦查/📜详情），
+   * 老板当场指出「这不是套娃吗」—— 那三个动作本来就在面板里（未占野地底部
+   * 「侦查/掠夺/占领」是 v89.152 老板亲自定的位置），插一层等于把 1 步变 2 步。
+   * 整条已撤除，这里改成**反向守卫**：谁再往这一层加菜单就红。
    * ============================================================ */
   (function () {
-    var fs580 = require('fs');
-    var p580 = require('path');
-    var G = (typeof window !== 'undefined' && window.GAME) ? window.GAME : GAME;
-    var M = G && G.map3d, U = G && G.ui;
-    if (!M || !U) { check('§580 地图手势条（需要 map3d + ui）', false, '模块未加载'); return; }
-    var has = typeof M.barTargetOf === 'function' && typeof U.openMapBar === 'function'
-      && typeof U.mapBarDetail === 'function';
-    check('§580① 手势条的三个入口都在（barTargetOf / openMapBar / mapBarDetail）', has);
-    if (!has) return;
+    var fs580 = require('fs'), p580 = require('path');
+    var rd = function (f) { return fs580.readFileSync(p580.join(__dirname, 'js', f), 'utf8'); };
+    var md = rd('map3d.js'), mj = rd('main.js'), uj = rd('ui.js');
 
-    /* 找一块"干净的"野地：不是城/据点/营地/村社/遗迹/已占野地 */
-    var sph = (G.sphereOf ? G.sphereOf() : G.sphere);
-    var n = (sph && sph.cells && sph.cells.length) || 0;
-    var ci = -1;
-    for (var i = 8; i < n && ci < 0; i++) {
-      if (G.map.ownCityAt && G.map.ownCityAt(i)) continue;
-      if (G.map.npcAt && G.map.npcAt(i)) continue;
-      if (G.map.wildAt && G.map.wildAt(i)) continue;
-      if (G.fortOwnAt && G.fortOwnAt(i)) continue;
-      if (G.camp && G.camp.isFound && G.camp.isFound(i)) continue;
-      if (G.ruin && G.ruin.isFound && G.ruin.isFound(i)) continue;
-      if (G.village && G.village.at && G.village.at(i)) continue;
-      ci = i;
-    }
-    var bt = ci >= 0 ? M.barTargetOf(ci, 'wild') : null;
-    check('§580② 空野地 → 给条，target 是 {kind:wild, ci}（走唯一出征口径）',
-      !!bt && !!bt.target && bt.target.kind === 'wild' && bt.target.ci === ci,
-      'ci=' + ci + ' target=' + JSON.stringify(bt && bt.target));
-
-    /* 已占野地不给条（把 wildAt 打桩成"占下来了"，用完立刻还原） */
-    var _w = G.map.wildAt, stubOwned = false;
-    G.map.wildAt = function () { return { ci: ci, lv: 1 }; };
-    try { stubOwned = (M.barTargetOf(ci, 'wild') === null); } catch (e) { stubOwned = false; }
-    G.map.wildAt = _w;
-    check('§580③ 已占野地**不给**出征条（点它想的是采集/派驻，回旧面板）', stubOwned);
-
-    /* 我方据点不给条 */
-    var _fo = G.fortOwnAt, stubFort = false;
-    if (typeof _fo === 'function') {
-      G.fortOwnAt = function () { return { ci: ci }; };
-      try { stubFort = (M.barTargetOf(ci, 'fort') === null); } catch (e) { stubFort = false; }
-      G.fortOwnAt = _fo;
-      check('§580④ 我方据点**不给**出征条（回旧驻军/情报面板）', stubFort);
-    }
-
-    /* 条的 HTML：截 openModal 拿到真实 HTML（不真的弹窗） */
-    var html = '';
-    var _om = U.openModal;
-    U.openModal = function (h) { html = String(h || ''); };
-    try { U.openMapBar({ ci: ci, kind: 'wild', target: { kind: 'wild', ci: ci }, openAs: 'land' }); }
-    catch (e) { html = ''; }
-    U.openModal = _om;
-    U._mapBar = null;
-    check('§580⑤ 条上三个动作齐全（⚔️出征 / 🔍侦查 / 📜详情）',
-      html.indexOf('data-action="mapbar-march"') >= 0
-      && html.indexOf('data-action="mapbar-scout"') >= 0
-      && html.indexOf('data-action="mapbar-detail"') >= 0,
-      html.length + ' 字');
-
-    /* 三个动作都必须有 case —— audit 也守，这里是双保险（条是动态 HTML，audit 只看源码模板） */
-    var mj = fs580.readFileSync(p580.join(__dirname, 'js', 'main.js'), 'utf8');
-    check('§580⑥ 三个动作在 main.js 都有 case（点下去不会没反应）',
-      /case 'mapbar-march':/.test(mj) && /case 'mapbar-scout':/.test(mj)
-      && /case 'mapbar-detail':/.test(mj));
-    /* 出征仍走唯一出口，且 target 原样透传（不许在这里另造一份目标） */
-    check('§580⑦ 出征只有一条出口：doMarchTarget(target) → march.dispatch(target, \'occupy\')',
-      /GAME\.doMarchTarget = function \(target\)[\s\S]{0,2600}?GAME\.march\.dispatch\(target, 'occupy'/.test(mj),
-      'window=' + (/GAME\.doMarchTarget = function/.test(mj) ? 'ok' : 'missing'));
-    /* 详情回旧面板（openAs=land 时落到 map3d.openCellPanel 或 openLandModalCi） */
-    var uj = fs580.readFileSync(p580.join(__dirname, 'js', 'ui.js'), 'utf8');
-    check('§580⑧ 「详情」回旧面板（能力一个不少）',
-      /ui\.mapBarDetail = function[\s\S]{0,1000}?(GAME\.map3d\.openCellPanel|ui\.openLandModalCi)/.test(uj));
-    /* 3D 与 2D 同一口径：两条点击路径都要接条 */
-    var mdj = fs580.readFileSync(p580.join(__dirname, 'js', 'map3d.js'), 'utf8');
-    check('§580⑨ 3D 与 2D 点击同一口径（pickAt 与 handleCanvasClick 都接条）',
-      /M\.openMapBar|ui\.openMapBar/.test(mdj) && /mapBarTry2D\(hit\)/.test(mj));
+    check('§580① 地图点击不再有中间层（pickAt 不调 openMapBar / 无 barTargetOf）',
+      md.indexOf('ui.openMapBar') < 0 && md.indexOf('M.barTargetOf') < 0
+      && md.indexOf('barTargetOf: _barTargetOf') < 0);
+    check('§580② 点地块直接开那一格的面板（pickAt 里调 openCellPanel）',
+      /M\.openCellPanel\(ci\);/.test(md));
+    check('§580③ 2D 兜底同样直调面板（npc/fort/wild 三个分支都没有中转）',
+      /hit\.kind === 'npc'\) \{\s*\n\s*ui\.openAttackModal\(hit\.city\);/.test(mj)
+      && /ui\.openFortModal\(hit\.fort\);/.test(mj)
+      && /ui\.openLandModalCi\(hit\.ci\);/.test(mj)
+      && mj.indexOf('mapBarTry2D') < 0);
+    check('§580④ ui 里没有手势条实现（openMapBar / mapBarDetail 都不在）',
+      uj.indexOf('ui.openMapBar = function') < 0 && uj.indexOf('ui.mapBarDetail = function') < 0);
+    check('§580⑤ 三个退役动作不会复活（main.js 无 mapbar-* case）',
+      mj.indexOf("case 'mapbar-march'") < 0 && mj.indexOf("case 'mapbar-scout'") < 0
+      && mj.indexOf("case 'mapbar-detail'") < 0);
+    /* 一键出征仍在：撤掉的是"多一层"，不是"省一步"的能力 */
+    check('§580⑥ 一键出征还在（onekey-march → doMarchTarget → march.dispatch）',
+      /case 'onekey-march'/.test(mj) && /GAME\.doMarchTarget = function/.test(mj)
+      && /GAME\.doOneKeyMarch = function[\s\S]{0,600}GAME\.doMarchTarget\(/.test(mj));
   })();
 
   /* ============================================================

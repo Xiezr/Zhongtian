@@ -25,45 +25,15 @@ import './gltf.js';
    * 和 `GAME.map3d.cellRef|cellKind`，**一行 THREE 都不需要** → 提到守卫之前，
    * 两种环境都挂上同一份实现（不许在无 THREE 分支里另写一份）。
    * ============================================================ */
-  function _barTargetOf(ci, kind) {
-    if (GAME.camp && GAME.camp.isFound && GAME.camp.isFound(ci)) return null;
-    if (GAME.village && GAME.village.at && GAME.village.at(ci)
-        && (!GAME.village.isKnown || GAME.village.isKnown(ci))) return null;
-    if (GAME.ruin && GAME.ruin.isFound && GAME.ruin.isFound(ci)) return null;
-    if (kind === 'wild' || kind === 'lord' || kind === 'actspot') {
-      /* 已经占下来的野地：玩家点它想的是采集/派驻/放弃，不是再打一次。
-         `openLandModalCi` 判 owned 的口径就是 `!!GAME.map.wildAt(ci)`，这里照抄。 */
-      if (GAME.map.wildAt && GAME.map.wildAt(ci)) return null;
-      return { target: { kind: 'wild', ci: ci }, openAs: 'land' };
-    }
-    if (kind === 'npc' || kind === 'adm') {
-      var md = GAME.map3d || {};
-      var ref = md.cellRef && md.cellRef[ci];
-      if (!ref) return null;
-      return { target: { kind: 'city', id: ref.id, npc: ref }, openAs: 'city', npc: ref };
-    }
-    if (kind === 'fort' && GAME.map.fortAt) {
-      /* 我方前哨：点它想的是驻军/采集/情报，同样不要"出征"键。 */
-      if (GAME.fortOwnAt && GAME.fortOwnAt(ci)) return null;
-      var ff = GAME.map.fortAt(ci, GAME.map._pctx(GAME.mapPlanetOf ? GAME.mapPlanetOf().id : null));
-      if (!ff) return null;
-      return {
-        target: { kind: 'fort', x: ff.x, y: ff.y, fort: ff },
-        openAs: 'fort', fort: ff
-      };
-    }
-    return null;   /* own / 未知类型 → 交回原分派 */
-  }
   /* ============================================================
    * v156.17（老板：「地图上各颜色地块是啥意思，能不能悬停显示」）
    * `_cellBrief(ci)` —— 一格到底**是什么**（纯数据，不碰 THREE）
    * ------------------------------------------------------------
    * 返回 { icon, title, lv, facts[], tasks[], coord, kind }：
    *   facts = 它是什么（地形 / 归属 / 状态）
-   *   tasks = 点它能干什么（有"任务"就写任务：营地可清剿、遗迹可探索、村社可交涉、
-   *           未占野地可占领、名城/据点可出征……没有就空）
+   *   tasks = 点它能干什么（营地可清剿、遗迹可探索、村社可交涉、未占野地可占领……）
    * 为什么做成纯函数：悬停提示在 jsdom 里没法测（无 WebGL），但这套判定必须能测 ——
-   * 所以判定与渲染分开，smoke 直接调它。
+   * 所以判定与渲染分开，smoke 直接调它（§582）。
    * ============================================================ */
   function _cellBrief(ci) {
     var S = GAME.mapSphere || GAME.sphere || {};
@@ -85,7 +55,6 @@ import './gltf.js';
         ? GAME.map.coordText(c.x, c.y) : null,
       kind: kind
     };
-    /* 迷雾优先：没探明就什么都不该剧透 */
     var hidden = false;
     try { hidden = !!(GAME.fog && GAME.fog.get && GAME.fog.get(ci) === 0); } catch (e) { hidden = false; }
     if (hidden) {
@@ -100,7 +69,6 @@ import './gltf.js';
       : kind === 'npc' ? '名城'
         : kind === 'adm' ? '行政城' : null);
     out.facts = out.facts.filter(Boolean);
-    /* 归属 / 状态 —— 顺序与 openCellPanel 一致（城 → 据点 → 营地 → 村社 → 遗迹 → 野地） */
     var ownCity = GAME.map && GAME.map.ownCityAt ? GAME.map.ownCityAt(ci) : null;
     var npc = GAME.map && GAME.map.npcAt ? GAME.map.npcAt(ci) : null;
     if (ownCity) {
@@ -108,7 +76,7 @@ import './gltf.js';
       out.tasks.push('点它 = 进城 / 运输 / 派遣');
     } else if (npc) {
       out.facts.push('名城：' + (npc.name || '无名'));
-      out.tasks.push('点它 = 出征（会先给 ⚔️出征 / 🔍侦查 / 📜详情）');
+      out.tasks.push('点它 = 出征（面板底部有侦查 / 掠夺 / 占领）');
     } else {
       var fort = null;
       try {
@@ -140,7 +108,6 @@ import './gltf.js';
         }
       }
     }
-    if (out.tasks.length) { /* 已按优先级排好 */ }
     return out;
   }
   /* 那一格**原来的**面板分派（v156.15 从 pickAt 里原样抽出）。
@@ -174,13 +141,13 @@ import './gltf.js';
   if (typeof THREE === 'undefined') {
     /* 无 THREE（jsdom）：只留这几个纯数据出口 —— smoke 靠它们验"这一格是什么" */
     GAME.map3d = { enabled: false, why: 'no-three',
-      barTargetOf: _barTargetOf, openCellPanel: _openCellPanel, cellBrief: _cellBrief,
+      openCellPanel: _openCellPanel, cellBrief: _cellBrief,
       townScaleOf: _townScaleOf };
     return;
   }
   var SP = GAME.mapSphere;                         /* v90.97（双球面）：地图渲染走**地图球面**（与逻辑球面 GAME.sphere 解耦）*/
   var M = GAME.map3d = { enabled: true,
-    barTargetOf: _barTargetOf, openCellPanel: _openCellPanel, cellBrief: _cellBrief,
+    openCellPanel: _openCellPanel, cellBrief: _cellBrief,
     townScaleOf: _townScaleOf };
 
   var R = (SP && SP.R) || 300;                    /* 星球海平面半径 */
@@ -3432,21 +3399,14 @@ import './gltf.js';
     M._cellKind = kind;
     var reg = M.regionAt(ci);                                  /* 该地块的省/市/区归属 */
     /* ============================================================
-     * v156.15（老板：「点那个敌人 → 派兵打它」）：**先给地图手势条**
+     * ⛔ v156.15b（老板：「为什么地图上地块现在多了一层菜单，出征侦查详情。这不是套娃吗」）
      * ------------------------------------------------------------
-     * 立城之后，玩家点一格的第一反应是"下手"，而不是"读一张账本"。
-     * 所以"能下手"的地块先出短条（⚔️出征 / 🔍侦查 / 📜详情），详情回旧面板。
-     * 判断谁该给条在 `M.barTargetOf`（己方城/营地/村社/遗迹不抢）。
+     * v156.15 曾在这里先弹一条「⚔出征 / 🔍侦查 / 📜详情」的短条，点「详情」才开原面板。
+     * 那是**把 1 步变成 2 步**：这三个动作原本就在面板里（未占野地底部「侦查/掠夺/占领」
+     * 是 v89.152 老板亲自定在菜单底部的）。已整条撤除。
+     * 现在的口径：**点地块 = 直接开那一格的面板**，不再有中间层。
+     * smoke §580 已改成反向守卫：谁再往这一层加菜单就红。
      * ============================================================ */
-    var ui = GAME.ui;
-    if (ui && ui.openMapBar) {
-      var bt = M.barTargetOf(ci, kind);
-      if (bt && ui.openMapBar({ ci: ci, kind: kind, target: bt.target,
-        openAs: bt.openAs, npc: bt.npc, fort: bt.fort })) {
-        if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
-        return;
-      }
-    }
     M.openCellPanel(ci);
     if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
   };

@@ -21355,58 +21355,11 @@ ui.openDuel = function (fid, moveId) {
       '<div class="modal-foot"><button class="btn" data-action="close-modal">关闭</button></div>',
       { size: 'xl' });
   };
-  /* ============================================================
-   * v156.15（老板：「地图就是游戏本体 —— 点那个敌人 → 派兵打它」）
-   * 地图手势条 `ui.openMapBar`
-   * ------------------------------------------------------------
-   * 改前：立城之后点地图 = 弹一张**十几年攒下来的账本式长面板**，
-   *   玩家第一反应的手势（想打它）要先滚到"地块操作"那一行才找得到按钮。
-   * 改后：点到"能下手"的地块，先给一条**短条** —— 一句话 + 三个动作：
-   *   ⚔️ 出征（一键，走 `GAME.doMarchTarget` → `march.dispatch` 唯一出口）
-   *   🔍 侦查（组好 target 直接开统一出征面板，默认方式=scout）
-   *   📜 详情（**回到原来的面板**，能力一个不少）
-   * 三条边界（写死在这里，别再扩张）：
-   *   ① **不替代**旧面板 —— 详情一键可达；旧入口一个都没删（判据依赖它们）。
-   *   ② 只接手"能下手"的地块：野地 / 名城 / 据点。己方城、已发现营地、村社、
-   *      已探明遗迹、奇观、陨石带、迷雾 —— 一律交回原分派（它们本来就是就地动手）。
-   *   ③ 不写新账本：出征/侦查都调既有出口，条本身不扣资源、不改状态。
-   * ============================================================ */
-  ui.openMapBar = function (h) {
-    if (!h || !(h.ci >= 0) || !h.target) return false;
-    var t = h.target;
-    ui._mapBar = { ci: h.ci, kind: h.kind, target: t, openAs: h.openAs || 'land',
-      npc: h.npc || null, fort: h.fort || null };
-    var ttl = t.kind === 'city'
-      ? ('🏙 ' + ((h.npc && h.npc.name) || '名城'))
-      : t.kind === 'fort' ? '🏯 据点' : '🏕️ 野地';
-    var sub = t.kind === 'city'
-      ? '点「出征」＝按你的自动出征配置直接下令；看不清兵力就先「侦查」。'
-      : t.kind === 'fort'
-        ? '点「出征」＝按自动出征配置直接打这个据点；先「侦查」可看守军。'
-        : '点「出征」＝按自动出征配置直接出兵；先「侦查」再决定也行。';
-    ui.openModal(
-      '<div class="gold-heading">' + ttl + '</div>' +
-      '<div class="ui-sub" style="text-align:center;line-height:1.75;">' + sub + '</div>' +
-      '<div class="op-row" style="justify-content:center;margin-top:10px;">' +
-        '<button class="btn gold" data-action="mapbar-march" data-ci="' + h.ci + '">⚔️ 出征</button>' +
-        '<button class="btn gold" data-action="mapbar-scout">🔍 侦查</button>' +
-        '<button class="btn" data-action="mapbar-detail">📜 详情</button>' +
-      '</div>'
-    );
-    return true;
-  };
-  /* 详情：回到"那一格原来的面板"。3D 可用时优先走 map3d 的统一分派（保营地/村社/
-     遗迹的优先级链）；2D 兜底或没 build 球面时按 openAs 直接开。 */
-  ui.mapBarDetail = function () {
-    var b = ui._mapBar;
-    if (!b) return false;
-    ui.closeAllModals();
-    if (b.openAs === 'city' && b.npc && ui.openAttackModal) { ui.openAttackModal(b.npc); return true; }
-    if (b.openAs === 'fort' && b.fort && ui.openFortModal) { ui.openFortModal(b.fort); return true; }
-    if (GAME.map3d && GAME.map3d.openCellPanel) { GAME.map3d.openCellPanel(b.ci); return true; }
-    if (ui.openLandModalCi) { ui.openLandModalCi(b.ci); return true; }
-    return false;
-  };
+  /* ⛔ v156.15b（老板：「为什么地图上地块现在多了一层菜单…这不是套娃吗」）：
+     `ui.openMapBar` / `ui.mapBarDetail` 整条撤除 —— 它们只做了一件事：
+     把"点地块 → 原面板"多插了一层（出征/侦查/详情）。
+     那三个动作原本就在面板里，所以这层是纯冗余；点地块现在直接开面板（见 map3d.pickAt）。
+     smoke §580 反向钉住"不许多一层"。 */
   /* ⛔ v89.218（老板）：「故事全部去除」——
      文字游戏阅读器（#story-fx / SG_KIND / SG_MURAL / openStory / sgDefer /
      sgTryTrigger / sgTryAct / sgPendingHTML / sgReadPending / sgDropPending /

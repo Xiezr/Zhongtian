@@ -1779,34 +1779,8 @@ import './ui.js';
          目标 = 地图/面板上刚点的那一格；编成与主将读「自动出征」配置；
          没有配置就按驻军顺位取满、主将取本城空闲英雄。走同一条 march.dispatch。 */
       case 'onekey-march': GAME.doOneKeyMarch(el.dataset.ci, el.dataset.kind || 'wild'); break;
-      /* ============================================================
-       * v156.15（老板：「点那个敌人 → 派兵打它」）：**地图手势条**的三个动作
-       * ------------------------------------------------------------
-       * 条（`ui.openMapBar`）在点地块时先出来，三个键都只调既有出口：
-       *   mapbar-march  → GAME.doMarchTarget（与一键出征同一条 march.dispatch）
-       *   mapbar-scout  → 组好 target 后开统一出征面板，方式默认 scout
-       *   mapbar-detail → 回到那一格**原来的面板**（ui.mapBarDetail）
-       * 条本身不扣资源、不改状态；target 是点图那一刻就确定好的（`ui._mapBar.target`）。
-       * ============================================================ */
-      case 'mapbar-march': {
-        var _mb1 = ui._mapBar;
-        if (!_mb1) { ui.toast('先在地图上点一块地'); break; }
-        GAME.doMarchTarget(_mb1.target);
-        break;
-      }
-      case 'mapbar-scout': {
-        var _mb2 = ui._mapBar;
-        if (!_mb2 || !_mb2.target) { ui.toast('先在地图上点一块地'); break; }
-        /* 侦查 = "先看清再决定"。把 target 摆到出征面板认的位置，方式预设 scout；
-           面板本身还是**唯一**的出征界面（不另开一份）。 */
-        ui._expTarget = _mb2.target;
-        ui._expMode = 'scout';
-        if (_mb2.target.kind === 'city' && _mb2.npc) ui._attackNpc = _mb2.npc;
-        ui.openExpModal(_mb2.target,
-          { hint: '侦查：先看清守军与地形，再决定打不打（不接战，不落账）' });
-        break;
-      }
-      case 'mapbar-detail': ui.mapBarDetail(); break;
+      /* ⛔ v156.15b：`mapbar-march / mapbar-scout / mapbar-detail` 三个动作随手势条一起撤除
+         （老板：「这不是套娃吗」）。出征/侦查仍在各自面板里，一键出征仍是 `onekey-march`。 */
       /* v156.17（老板：「各颜色地块是啥意思」）：地形图例（色块从真实渲染色采样）。
          ⚠️ 入口在顶栏「更多」菜单，**不在地图上** —— 老板 v37 定过「地图不再输出标题/图例/提示」。 */
       case 'terr-legend': ui.openTerrainLegend(); break;
@@ -3492,41 +3466,6 @@ import './ui.js';
   };
 
   /* --------- 地图点击 --------- */
-  /* ============================================================
-   * v156.15（老板：「点那个敌人 → 派兵打它」）：**2D 兜底路径的手势条**
-   * ------------------------------------------------------------
-   * 与 3D `map3d.pickAt` 同口径：能下手的地块先给短条，条开不出来才回旧面板。
-   * 只在**没有 WebGL / 未 build 球面**时才走到这里（e2e/jsdom 也走这条），
-   * 所以判据（smoke 龙门）依赖的 `ui.openLandModalCi(hit.ci)` 等调用**一个都没删**，
-   * 只是变成"条没接住时的兜底"。
-   * ============================================================ */
-  function mapBarTry2D(hit) {
-    if (!hit || !ui.openMapBar) return false;
-    if (hit.kind === 'npc') {
-      var npc = hit.city;
-      if (!npc) return false;
-      return !!ui.openMapBar({
-        ci: hit.ci, kind: 'npc', openAs: 'city', npc: npc,
-        target: { kind: 'city', id: npc.id, npc: npc }
-      });
-    }
-    if (hit.kind === 'fort') {
-      var f = hit.fort;
-      if (!f) return false;
-      return !!ui.openMapBar({
-        ci: hit.ci, kind: 'fort', openAs: 'fort', fort: f,
-        target: { kind: 'fort', x: f.x, y: f.y, fort: f }
-      });
-    }
-    if (hit.kind === 'wild' || hit.kind === 'land') {
-      if (!(hit.ci >= 0)) return false;
-      return !!ui.openMapBar({
-        ci: hit.ci, kind: hit.kind, openAs: 'land',
-        target: { kind: 'wild', ci: hit.ci }
-      });
-    }
-    return false;   /* 己方城/其它 → 交回原面板 */
-  }
   function handleCanvasClick(e) {
     var t = e.target;
     /* v91.30：星系视图 —— 点星球进入其管理界面。 */
@@ -3547,7 +3486,7 @@ import './ui.js';
           return;
         }
         if (hit.kind === 'npc') {
-          if (!mapBarTry2D(hit)) ui.openAttackModal(hit.city);
+          ui.openAttackModal(hit.city);
         } else if (hit.kind === 'player') {
           /* v60（需求 4）：老板：「**不要一点击地图就直接进入城市**」。
              改前点自己的城会立刻 setView('city') + setCity（副作用：当前城被换掉、
@@ -3555,11 +3494,11 @@ import './ui.js';
              现在弹「城市面板」：先看摘要，再自己选 进入 / 运输 / 派遣 / 改名。 */
           ui.openCityPanel(hit.city);
         } else if (hit.kind === 'fort') {
-          if (!mapBarTry2D(hit)) ui.openFortModal(hit.fort);
+          ui.openFortModal(hit.fort);
         } else if (hit.kind === 'wild') {
           /* v23（需求 1）：已占野地不再是"只弹一句提示"，直接进管理面板。
-             v156.15：先给手势条（⚔️出征/🔍侦查/📜详情）；条开不出来才回旧面板。 */
-          if (!mapBarTry2D(hit)) ui.openLandModalCi(hit.ci);
+             ⛔ v156.15b：这里曾先弹手势条再进面板（老板：「这不是套娃吗」）→ 恢复直调。 */
+          ui.openLandModalCi(hit.ci);
         } else {
           /* v151（老板「地图就是本体」）：2D 兜底路径也要给未探明格一个手势 ——
              与 3D 的 map3d.pickAt 同口径：点雾里 = 派队过去看看。 */
