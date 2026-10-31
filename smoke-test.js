@@ -46556,6 +46556,48 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       && !/map-legend/.test(require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8')));
   })();
 
+  /* ============================================================
+   * §584 v156.18：城市/据点的 3D 城镇模型（老板：「整成一个 3D 模型，废土风格」）
+   * ------------------------------------------------------------
+   * jsdom 建不出几何（无 WebGL），所以这里钉三样**结构与口径**：
+   *   ① 尺寸纯函数 `map3d.townScaleOf(kind, lv, cellW)`（据点比城市小、随等级长、有封顶）；
+   *   ② 必须是 **InstancedMesh**（一城一个 Group = 上万次 draw call，这是硬要求）；
+   *   ③ 三条纪律：雾里不画 · 明暗烘进顶点色+unlit（吃光照会变黑剪影）· 留一键关掉的开关。
+   * 几何本身在实机验（`.workbuddy/shots/v15618-near006-crop.png`）。
+   * ============================================================ */
+  (function () {
+    var G = (typeof window !== 'undefined' && window.GAME) ? window.GAME : GAME;
+    var M = G && G.map3d;
+    var fs584 = require('fs'), p584 = require('path');
+    var md = fs584.readFileSync(p584.join(__dirname, 'js', 'map3d.js'), 'utf8');
+
+    if (!M || typeof M.townScaleOf !== 'function') {
+      check('§584 城镇尺寸纯函数在位（townScaleOf）', false); return;
+    }
+    var cw = 5.25;                                  /* ≈ 40962 格时的格宽 */
+    var fort = M.townScaleOf('fort', 1, cw);
+    var city1 = M.townScaleOf('city', 1, cw);
+    var city6 = M.townScaleOf('city', 6, cw);
+    check('§584① 据点是"小前哨"、城市更大（据点 < 城市）',
+      fort > 0 && fort < city1, 'fort=' + fort.toFixed(2) + ' city=' + city1.toFixed(2));
+    check('§584② 规模随等级变大，且**有封顶**（99 级 == 12 级）',
+      city6 > city1 && M.townScaleOf('city', 99, cw) === M.townScaleOf('city', 12, cw)
+      && M.townScaleOf('city', 0, cw) === M.townScaleOf('city', 1, cw),
+      'lv1=' + city1.toFixed(2) + ' lv6=' + city6.toFixed(2));
+    check('§584③ 城镇用 InstancedMesh（一城一个 Group 会是上万 draw call）',
+      /function buildTowns\(\)[\s\S]{0,3000}?new THREE\.InstancedMesh/.test(md));
+    check('§584④ 雾里的城镇不画（与地块标记同口径）',
+      /function buildTowns\(\)[\s\S]{0,4000}?!fogHides\(e\.ci\)/.test(md));
+    check('§584⑤ 明暗烘进顶点色 + unlit 材质（吃场景光照会变黑剪影，实测踩过）',
+      /var shade = 0\./.test(md)
+      && /new THREE\.MeshBasicMaterial\(\{ vertexColors: true \}\)/.test(md)
+      && md.indexOf('MeshLambertMaterial({ vertexColors: true })') < 0);
+    check('§584⑥ 留了"一键关掉城镇"的开关（低配兜底）',
+      /M\.townsEnabled === false/.test(md));
+    check('§584⑦ 城镇随 markers 一起重建（换星球/占放变化都跟着走）',
+      /buildMarkers\(\); buildTowns\(\);/.test(md));
+  })();
+
 console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');
   process.exit(FAIL ? 1 : 0);
 })();

@@ -178,12 +178,14 @@
   if (typeof THREE === 'undefined') {
     /* 无 THREE（jsdom）：只留这几个纯数据出口 —— smoke 靠它们验"这一格是什么" */
     GAME.map3d = { enabled: false, why: 'no-three',
-      barTargetOf: _barTargetOf, openCellPanel: _openCellPanel, cellBrief: _cellBrief };
+      barTargetOf: _barTargetOf, openCellPanel: _openCellPanel, cellBrief: _cellBrief,
+      townScaleOf: _townScaleOf };
     return;
   }
   var SP = GAME.mapSphere;                         /* v90.97（双球面）：地图渲染走**地图球面**（与逻辑球面 GAME.sphere 解耦）*/
   var M = GAME.map3d = { enabled: true,
-    barTargetOf: _barTargetOf, openCellPanel: _openCellPanel, cellBrief: _cellBrief };
+    barTargetOf: _barTargetOf, openCellPanel: _openCellPanel, cellBrief: _cellBrief,
+    townScaleOf: _townScaleOf };
 
   var R = (SP && SP.R) || 300;                    /* 星球海平面半径 */
   var HSC = (SP && SP.HSC) || 26;                 /* 高度 → 世界单位（山≈40 · 陆地≈5）*/
@@ -448,7 +450,7 @@
       { label: 'wonder', run: function () { buildWonder(); } },
       { label: 'globe+tiles', run: function () { buildGlobe(); buildTiles(TILE_SUB); } },
       { label: 'regions', run: function () { buildRegions(); } },
-      { label: 'markers', run: function () { buildMarkers(); buildFlags(); buildMarchArrows(); } },
+      { label: 'markers', run: function () { buildMarkers(); buildTowns(); buildFlags(); buildMarchArrows(); } },
       /* 陨石带是**装饰**：失败也不能中断分帧加载（否则 built 永远不置 true，地图不渲染）。 */
       { label: 'belt', run: function () { try { if (buildBelt) buildBelt(); } catch (eBelt0) { } } },
       /* v91.46：**等奇观就绪再出图**（轮询让出主线程 → glb onload + 解析能跑完）。
@@ -1535,9 +1537,16 @@
     var mark = {};                                          /* cellIndex → [r,g,b]（平涂地块）*/
     /* 地块**属性索引**：每格 = 野地 / 城市 / 据点（明确区分）*/
     var cellKind = {}, cellRef = {};
+    /* ═══ v156.18（老板：「城市或据点整成一个 3D 模型，废土风格」）═══
+       城镇模型的数据源就在这里顺手攒一份 —— `buildTowns()` 直接吃 `M._settles`，
+       不再自己去扫一遍地图（两处各算一遍，迟早出现"色块在这、模型在那"的错位）。
+       每条 = { ci, kind, lv }；lv 用来决定城镇规模（等级越高越大）。 */
+    var settles = M._settles = { own: [], npc: [], adm: [], fort: [] };
     for (var vi0 = 0; vi0 < M._vdirs.length; vi0++) if (M._vdirs[vi0] && S.provOf[vi0] >= 0) { cellKind[vi0] = 'wild'; }   /* 默认：陆地块 = 野地 */
     /* 据点 = 黄 */
-    for (var fi = 0; fi < _tileCells.length; fi++) { var fc = _tileCells[fi]; if (fc && GAME.map.fortAt(fc.ci, mctx)) { mark[fi] = [226, 202, 64]; cellKind[fi] = 'fort'; } }
+    for (var fi = 0; fi < _tileCells.length; fi++) { var fc = _tileCells[fi]; if (fc && GAME.map.fortAt(fc.ci, mctx)) { mark[fi] = [226, 202, 64]; cellKind[fi] = 'fort';
+      var _ffo = GAME.map.fortAt(fc.ci, mctx);
+      settles.fort.push({ ci: fi, lv: (_ffo && (_ffo.lv || _ffo.level)) || 1 }); } }
     /* v90.70：实体 → 六边格索引。带 .ci 直用（球系唯一身份）；否则按 (x,y) 现算（旧档/未标注）。 */
     function ciOfRef(ref) {
       if (!ref) return -1;
@@ -1562,10 +1571,12 @@
     _npcList.forEach(function (c) {
       if (c.lon == null || c.lat == null) { var d = dirOfCell(c.x, c.y); c.lon = (Math.atan2(d[2], d[0]) * 180 / Math.PI + 360) % 360; c.lat = Math.asin(Math.max(-1, Math.min(1, d[1]))) * 180 / Math.PI; }
       if (!c.garrison && GAME.genGarrison) { c.garrison = GAME.genGarrison(c); c.maxArmy = c.garrison; }
-      var ci = ciOfRef(c); if (ci >= 0) { mark[ci] = [220, 70, 60]; cellKind[ci] = 'npc'; cellRef[ci] = c; }
+      var ci = ciOfRef(c); if (ci >= 0) { mark[ci] = [220, 70, 60]; cellKind[ci] = 'npc'; cellRef[ci] = c;
+        settles.npc.push({ ci: ci, lv: c.lv || c.level || 3 }); }
     });
     /* 行政中心城 = 紫色（按球面质心方向取格）*/
-    (M.admCities || []).forEach(function (c) { var ci = (c.ci != null && c.ci >= 0) ? c.ci : nearestCell(c._cent); if (ci >= 0) { mark[ci] = [180, 120, 210]; cellKind[ci] = 'adm'; cellRef[ci] = c; } });
+    (M.admCities || []).forEach(function (c) { var ci = (c.ci != null && c.ci >= 0) ? c.ci : nearestCell(c._cent); if (ci >= 0) { mark[ci] = [180, 120, 210]; cellKind[ci] = 'adm'; cellRef[ci] = c;
+      settles.adm.push({ ci: ci, lv: c.lv || 4 }); } });
     /* 己方城 = 蓝：落在其**球面六边格索引 ci**（球系唯一身份，免 (x,y) 往返）
        v90.97（双球面）：读**地图星球分片**的城（未必 = 当前城所在星球）。 */
     M._ownCells = {};
@@ -1576,6 +1587,7 @@
       c.lat = Math.asin(Math.max(-1, Math.min(1, dir[1]))) * 180 / Math.PI;
       if (ci < 0) return;
       mark[ci] = [80, 150, 230]; cellKind[ci] = 'own'; cellRef[ci] = c; M._ownCells[ci] = c;
+      settles.own.push({ ci: ci, lv: c.lv || c.level || 1 });
     });
     /* v92：**未探明的格子一律不出标记**。
        只把地形画暗却照样显示每座城/每块野地，迷雾就只是"地图变暗"，
@@ -1741,6 +1753,225 @@
      数据 = 当前地图星球的 `s.marches`（在途行军）：出发城(cityId) → 目标(tx,ty)。
      弧线走球面：起点/终点方向球面插值（slerp）并**沿法线外拱**（越高越像弹道）。
      淡金线 + 悬浮箭头头（Sprite）；随行军增减/抵达而重建（版本键 _arVer）。 */
+  /* ============================================================
+   * v156.18（老板：「城市或据点整成一个 3D 模型，用废土风格的城市或城镇模型」）
+   * buildTowns() —— 整格色块 → **立体的废土城镇 / 前哨**
+   * ------------------------------------------------------------
+   * 口径（沿项目一贯做法）：
+   *   · **纯程序化几何**：零外链、零贴图（同 makeFigure / makeProp / makeTree）；
+   *   · 两套模板：`city` 城墙 + 6 角楼 + 主楼 + 棚屋 + 水塔 + 烟囱 + 废料堆；
+   *     `fort` 围墙 + 瞭望塔 + 一间棚屋 + 碎料（据点有 1106 个，模板必须便宜）；
+   *   · **InstancedMesh**：一个模板一次 draw call，四类归属（己方城 / 名城 / 行政 / 据点）
+   *     各一个实例化网格，颜色靠 `instanceColor` 乘上去 —— 不是"一城一个 Group"（那是上万次 draw call）；
+   *   · 规模随等级：城市 1 级 ≈ 0.7 格宽，每级 +6%，封顶 ~1.2 格；据点固定 ~0.35 格；
+   *   · 雾里不画（与地块标记同一口径：没探明就不该看见城镇）；
+   *   · `M.townsEnabled === false` 可一键关掉（低配兜底）。
+   * 朝向：+Y 对齐格子法线，再按 ci 派生稳定转角（同一座城每次重建朝向一致，不会"转圈"）。
+   * ============================================================ */
+  /* 城镇尺寸 = f(kind, lv, 格宽) —— **纯函数**，故意不碰 THREE：
+     jsdom 里建不出几何，但"多大、随等级怎么长、有没有封顶"这段口径必须能测（smoke §584）。 */
+  function _townScaleOf(kind, lv, cellW) {
+    var l = Math.max(1, Math.min(12, (lv | 0) || 1));
+    return (kind === 'fort') ? (cellW * 0.18) : (cellW * 0.30 * (1 + 0.05 * (l - 1)));
+  }
+  var _townGeoCache = {};
+  function _townRnd(i) {                     /* 稳定伪随机：同一 ci 每次一样 */
+    var x = ((i | 0) * 2654435761) >>> 0;
+    x ^= x >>> 15; x = (x * 2246822519) >>> 0; x ^= x >>> 13;
+    return ((x >>> 0) % 100000) / 100000;
+  }
+  var _TOWN_C = {                            /* 废土调色（灰烬 / 锈 / 钢 / 骨白 / 灯）
+                                                  ⚠️ 基准色比"写实废土"整体提亮 ~1.3×：
+                                                  城镇在地图上是**小尺度远景**，暗色一压就成黑疙瘩。 */
+    ash: [0.78, 0.75, 0.68], rust: [0.74, 0.45, 0.29], rustD: [0.52, 0.34, 0.22],
+    steel: [0.58, 0.62, 0.66], wood: [0.55, 0.46, 0.34], bone: [0.90, 0.86, 0.74],
+    glow: [1.00, 0.86, 0.45], dark: [0.30, 0.30, 0.32], sand: [0.80, 0.73, 0.58]
+  };
+  /* 把若干"几何 + 变换"合并成一个 BufferGeometry（带顶点色）。
+     three r160 的 UMD **不带 BufferGeometryUtils**（那是 addon）→ 这里手写最小版合并。 */
+  function _townMerge(parts) {
+    var pos = [], nor = [], col = [], idx = [];
+    var v = new THREE.Vector3(), n = new THREE.Vector3(), nm = new THREE.Matrix3();
+    parts.forEach(function (p) {
+      var g = p.geo, m = p.m, c = p.c || _TOWN_C.ash;
+      var pa = g.attributes.position, na = g.attributes.normal, ia = g.index;
+      nm.getNormalMatrix(m);
+      var base = pos.length / 3;
+      for (var i = 0; i < pa.count; i++) {
+        v.fromBufferAttribute(pa, i).applyMatrix4(m);
+        pos.push(v.x, v.y, v.z);
+        var ny = 1, nx = 0;
+        if (na) {
+          n.fromBufferAttribute(na, i).applyMatrix3(nm).normalize();
+          nor.push(n.x, n.y, n.z);
+          ny = n.y; nx = n.x;
+        } else { nor.push(0, 1, 0); }
+        /* ⚠️ v156.18：**明暗直接烘进顶点色**，材质用 unlit（MeshBasicMaterial）。
+           为什么不用 Lambert：地表是 MeshBasic（v154 口径：写入即所见），
+           城镇若吃场景光照，转到背光面就整片变纯黑剪影（实测截图就是一团黑）。
+           这里按面法线做假光照：顶面最亮、侧面压暗、并按 x 方向再分一点左右明暗，
+           不依赖灯，转到哪儿都读得出体块。 */
+        var shade = 0.74 + 0.32 * Math.max(0, ny) - 0.10 * Math.max(0, -nx);
+        col.push(Math.min(1, c[0] * shade), Math.min(1, c[1] * shade), Math.min(1, c[2] * shade));
+      }
+      if (ia) { for (var k = 0; k < ia.count; k++) idx.push(base + ia.getX(k)); }
+      else { for (var k2 = 0; k2 < pa.count; k2++) idx.push(base + k2); }
+      g.dispose();
+    });
+    var out = new THREE.BufferGeometry();
+    out.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    out.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+    out.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    out.setIndex(idx);
+    out.computeBoundingSphere();
+    return out;
+  }
+  function _townM(x, y, z, ry, sx, sy, sz) {
+    var m = new THREE.Matrix4();
+    var q = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), ry || 0);
+    m.compose(new THREE.Vector3(x, y, z), q, new THREE.Vector3(sx || 1, sy || 1, sz || 1));
+    return m;
+  }
+  /* ============================================================
+   * 城市模板（本地单位，跨度约 3.2；调用方按格宽缩放）
+   * ------------------------------------------------------------
+   * v156.18 第二版：**按轮廓建模，不按细节建模**。
+   *   第一版做了墙段/烟囱/废料等 30 多个零件，实机截图一看全糊成"散落木条"——
+   *   地图上一座城只有 ~0.6 格宽，细杆在这个尺度就是噪点。
+   * 第二版换成**粗体块**：抬起的六边形台基（一眼看出"这里是一块地"）
+   *   + 实心六边柱环墙（比 6 段方块连贯）+ 主楼（最高）+ 2 副楼 + 3 角楼 + 水塔。
+   *   零件从 34 个降到 ~12 个，面数反而更少，剪影却清楚了。
+   * ============================================================ */
+  function _townGeoCity() {
+    var P = [];
+    var box = function (w, h, d, x, y, z, ry, c) {
+      P.push({ geo: new THREE.BoxGeometry(w, h, d), m: _townM(x, y, z, ry), c: c });
+    };
+    var cyl = function (rt, rb, h, x, y, z, seg, c) {
+      P.push({ geo: new THREE.CylinderGeometry(rt, rb, h, seg), m: _townM(x, y + h / 2, z), c: c });
+    };
+    var cone = function (r, h, x, y, z, seg, c) {
+      P.push({ geo: new THREE.ConeGeometry(r, h, seg), m: _townM(x, y + h / 2, z), c: c });
+    };
+    /* ① 台基：六边形矮台（城镇从地表"抬起来"，一眼分辨"这一格有东西"） */
+    cyl(1.58, 1.66, 0.20, 0, 0, 0, 6, _TOWN_C.dark);   /* 深色底盘：与地形拉对比，城镇才跳得出来 */
+    /* ② 环墙：**空心**六边柱（openEnded=true）。
+       ⚠️ 第一版用实心 CylinderGeometry：它自带顶盖 → 俯视时顶盖把整座城盖成一个
+       大六边形色块，城内什么都看不见（截图当场抓到）。openEnded 之后才是一圈墙。 */
+    /* 城墙用**深锈色 + 更厚更高**：它是"废土城镇"的身份标识，
+       浅色薄墙在远景里直接消失（第三版实测），深色一圈才看得出"这里被围起来了"。 */
+    P.push({ geo: new THREE.CylinderGeometry(1.50, 1.66, 0.96, 6, 1, true),
+      m: _townM(0, 0.20 + 0.48, 0), c: _TOWN_C.rustD });
+    /* 墙头一圈浅色压顶（给轮廓一条高光线，俯视也认得出墙） */
+    P.push({ geo: new THREE.CylinderGeometry(1.53, 1.55, 0.09, 6, 1, true),
+      m: _townM(0, 1.20, 0), c: _TOWN_C.bone });
+    /* ③ 城门：前墙上一块深色门洞 */
+    box(0.44, 0.36, 0.16, 0, 0.34, 1.44, 0, _TOWN_C.dark);
+    /* ④ 主楼：全城最高，坡屋顶 + 两扇亮窗 */
+    box(1.00, 1.90, 1.00, 0, 1.15, 0, 0.18, _TOWN_C.bone);
+    cone(0.86, 0.66, 0, 2.10, 0, 4, _TOWN_C.rust);
+    box(0.18, 0.16, 0.08, 0.24, 1.24, 0.50, 0.18, _TOWN_C.glow);
+    box(0.18, 0.16, 0.08, -0.22, 0.80, 0.50, 0.18, _TOWN_C.glow);
+    /* ⑤ 两座副楼（高度不同 → 有高低错落的天际线） */
+    box(0.58, 0.96, 0.58, -0.66, 0.64, 0.34, 0.5, _TOWN_C.ash);
+    cone(0.48, 0.30, -0.66, 1.12, 0.34, 4, _TOWN_C.rustD);
+    box(0.52, 0.74, 0.52, 0.62, 0.53, -0.52, 1.1, _TOWN_C.rustD);
+    /* ⑥ 三座角楼（只放三个：全放会变成"一圈细柱子"的噪点） */
+    for (var t = 0; t < 3; t++) {
+      var ta = t * Math.PI * 2 / 3 + 0.4;
+      var tx = Math.cos(ta) * 1.30, tz = Math.sin(ta) * 1.30;
+      cyl(0.32, 0.36, 1.42, tx, 0.20, tz, 6, _TOWN_C.bone);
+      cone(0.44, 0.38, tx, 1.62, tz, 6, _TOWN_C.rust);
+      box(0.15, 0.12, 0.15, tx, 1.20, tz, 0, _TOWN_C.glow);    /* 塔灯 */
+    }
+    /* ⑦ 水塔：废土城镇的招牌剪影（做粗一点才看得见） */
+    cyl(0.17, 0.21, 1.16, -1.06, 0.16, -0.72, 6, _TOWN_C.steel);
+    P.push({ geo: new THREE.SphereGeometry(0.27, 7, 5), m: _townM(-1.06, 1.44, -0.72), c: _TOWN_C.rust });
+    return _townMerge(P);
+  }
+  /* ---- 据点模板（便宜版：台基 + 3 段粗墙 + 瞭望塔 + 一间棚屋，约 80 面）---- */
+  function _townGeoFort() {
+    var P = [];
+    var box = function (w, h, d, x, y, z, ry, c) {
+      P.push({ geo: new THREE.BoxGeometry(w, h, d), m: _townM(x, y, z, ry), c: c });
+    };
+    /* 台基 + 三面粗墙（围出半圈，留一口子当"还没有门"的前哨） */
+    P.push({ geo: new THREE.CylinderGeometry(1.05, 1.10, 0.14, 6), m: _townM(0, 0.07, 0), c: _TOWN_C.sand });
+    /* 台基顶盖用**开口**圆柱做一圈矮护栏时要注意：这里保留实心底板（据点需要"地"） */
+    for (var i = 0; i < 3; i++) {
+      var a = i * Math.PI * 2 / 3;
+      box(1.34, 0.46, 0.24, Math.cos(a) * 0.92, 0.37, Math.sin(a) * 0.92, -a, _TOWN_C.ash);
+    }
+    /* 瞭望塔（据点唯一的高点）+ 塔灯 */
+    P.push({ geo: new THREE.CylinderGeometry(0.24, 0.30, 1.06, 6), m: _townM(0.26, 0.67, -0.26), c: _TOWN_C.ash });
+    P.push({ geo: new THREE.ConeGeometry(0.36, 0.34, 6), m: _townM(0.26, 1.37, -0.26), c: _TOWN_C.rust });
+    box(0.15, 0.11, 0.15, 0.26, 1.06, -0.26, 0, _TOWN_C.glow);
+    /* 一间棚屋 + 一个油桶（够认出"有人驻"就行） */
+    box(0.58, 0.44, 0.50, -0.40, 0.34, 0.30, 0.6, _TOWN_C.rustD);
+    P.push({ geo: new THREE.CylinderGeometry(0.16, 0.16, 0.34, 6), m: _townM(-0.78, 0.30, -0.34), c: _TOWN_C.steel });
+    return _townMerge(P);
+  }
+  function buildTowns() {
+    /* 重建：只摘掉实例化网格并释放**材质**；几何是 `_townGeoCache` 里共享的，
+       在这里 dispose 会让下次重建拿到空几何（一次就白屏）。 */
+    if (M._towns) {
+      M._towns.forEach(function (o) {
+        scene.remove(o);
+        if (o.material && o.material.dispose) o.material.dispose();
+        if (o.dispose) o.dispose();
+      });
+    }
+    M._towns = [];
+    if (M.townsEnabled === false) return;
+    if (!_tileCells || !_tileCells.length || !M._settles) return;
+    var S = M._settles;
+    var cellW = Math.sqrt(4 * Math.PI * R * R / Math.max(1, _tileCells.filter(Boolean).length)) || 5;
+    /* 四类归属 → 一个实例化网格各一份（颜色靠 instanceColor 乘，不是四套几何） */
+    var GROUPS = [
+      { key: 'own', kind: 'city', tint: [0.96, 1.04, 1.16] },   /* 己方：极淡冷调（归属主要看底下六边形色块） */
+      { key: 'npc', kind: 'city', tint: [1.16, 0.94, 0.90] },   /* 名城：淡锈红 */
+      { key: 'adm', kind: 'city', tint: [1.06, 0.94, 1.14] },   /* 行政：淡紫 */
+      { key: 'fort', kind: 'fort', tint: [1.14, 1.06, 0.88] }    /* 据点：淡土黄 */
+    ];
+    var up = new THREE.Vector3(0, 1, 0);
+    var nn = new THREE.Vector3(), q = new THREE.Quaternion(), qr = new THREE.Quaternion();
+    var m4 = new THREE.Matrix4(), pp = new THREE.Vector3(), ss = new THREE.Vector3();
+    var col = new THREE.Color();
+    GROUPS.forEach(function (G) {
+      var list = (S[G.key] || []).filter(function (e) {
+        return e && e.ci >= 0 && e.ci < _tileCells.length && _tileCells[e.ci] && _tileCells[e.ci].dir
+          && !fogHides(e.ci);
+      });
+      if (!list.length) return;
+      var geo = _townGeoCache[G.kind] || (_townGeoCache[G.kind] = (G.kind === 'fort' ? _townGeoFort() : _townGeoCity()));
+      /* unlit：明暗已在 _townMerge 里烘进顶点色（同地表口径，转到哪都看得清体块） */
+      var mat = new THREE.MeshBasicMaterial({ vertexColors: true });
+      var im = new THREE.InstancedMesh(geo, mat, list.length);
+      list.forEach(function (e, i) {
+        var d = _tileCells[e.ci].dir;
+        var rr = R + Math.max(0, sphElev(d)) * HSC + 0.30;
+        nn.set(d[0], d[1], d[2]).normalize();
+        q.setFromUnitVectors(up, nn);
+        qr.setFromAxisAngle(nn, _townRnd(e.ci) * Math.PI * 2);
+        q.multiply(qr);
+        var lv = Math.max(1, Math.min(12, (e.lv | 0) || 1));
+        var sc = _townScaleOf(G.kind, lv, cellW);
+        pp.set(d[0] * rr, d[1] * rr, d[2] * rr);
+        ss.set(sc, sc, sc);
+        m4.compose(pp, q, ss);
+        im.setMatrixAt(i, m4);
+        col.setRGB(G.tint[0], G.tint[1], G.tint[2]);
+        im.setColorAt(i, col);
+      });
+      im.instanceMatrix.needsUpdate = true;
+      if (im.instanceColor) im.instanceColor.needsUpdate = true;
+      im.frustumCulled = false;
+      im.renderOrder = 3;
+      scene.add(im);
+      M._towns.push(im);
+    });
+  }
+
   function buildMarchArrows() {
     if (M._arrows) { scene.remove(M._arrows); M._arrows = null; }
     if (!GAME.map || !GAME.map.lonlatOf || !_tileCells || !_tileCells.length) return;
@@ -2257,7 +2488,7 @@
        旧判据只数**城市条数** —— 迁址时条数不变 → 标记不重建 → 旧色块/名称留在原地。
        改：把各城的 **id + 坐标** 拼进版本号，任一城移动即触发重建（色块与连线随城走）。 */
     var _mkVer = M._mkVerOf();
-    if (_mkVer !== M._mkVer) { M._mkVer = _mkVer; buildMarkers(); }
+    if (_mkVer !== M._mkVer) { M._mkVer = _mkVer; buildMarkers(); buildTowns(); }
     /* v153：地表上的 3D 小人（君主 / 当前城 / 指认格）—— 每帧同步，换格只挪不重建 */
     try { syncFigures(); } catch (eFig) { if (typeof console !== 'undefined' && console.warn) console.warn('[figures]', eFig && eFig.message); }
     /* v91.05（老板）：己方**据点/野地插旗** —— 归属随占/放/迁变，同款"坐标拼版本号"触发重建。 */
