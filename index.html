@@ -4457,7 +4457,11 @@
          ⚠️ 折叠**不删节点**：这些 <div> 还在 DOM 里，只是 display:none ——
             四百多条断言靠 `querySelector('[data-view=shop]')` 找它们，
             删掉就是一次性废掉一批守卫。折叠改的是**看得见几个**，不是"有没有"。 -->
-    <div class="tab nav-more-btn" id="nav-more-btn" data-action="nav-more" title="空间站 / 游商 / 背包 / 收藏 / 公文 / 自动 / 设置">更多 ▾</div>
+    <div class="tab nav-more-btn" id="nav-more-btn" data-action="nav-more" title="空间站 / 游商 / 背包 / 收藏 / 公文 / 自动 / 设置 / 图例">更多 ▾</div>
+    <!-- v156.17（老板「各颜色地块是啥意思」）：地形图例。
+         ⚠️ 放在「更多」里、**不放在地图上** —— 老板 v37 定过「地图不再输出标题/图例/提示」，
+         smoke 那条 `!/map-legend/.test(ui.js)` 就是钉这个的；地图画布与底栏保持零装饰。 -->
+    <div class="tab tab-more" data-action="terr-legend" title="地形图例：每种颜色是什么地 · 能采什么 · 哪里能立城">🗺 图例</div>
     <!-- v91.60（老板）：奇观建造（类星球建造场 · 耗奇观材料 · 全局 buff） -->
     <div class="tab tab-more tab-locked" data-view="station"><i class="ti" data-nav="build"></i>空间站</div>
     <!-- ⛔ v90.92：任务系统整条退役 —— 「任务」页签摘除。

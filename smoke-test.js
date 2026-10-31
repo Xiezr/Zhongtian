@@ -46422,6 +46422,140 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       || (md.indexOf('attribute float uCoast;') >= 0 && md.indexOf('varying float vCoast;') >= 0));
   })();
 
+  /* ============================================================
+   * §582 v156.17：地图悬停小卡（老板：「各颜色地块是啥意思，能不能悬停显示」）
+   * ------------------------------------------------------------
+   * 悬停本身要 WebGL（jsdom 验不了），但**判定**与**渲染**都被拆成了纯函数：
+   *   `GAME.map3d.cellBrief(ci)` → { title, lv, facts[], tasks[] }  ← 这一格是什么
+   *   `ui.mapTipHTML(brief)`     → 浮层 HTML                        ← 怎么显示
+   * ⚠️ 本段**自带桩**：不依赖"球面/迷雾已经建好"（smoke 里根本没有 WebGL 建球面）。
+   *    第一版就是这么挂的：拿真球面去测 → cells 空 → 6 条全红。判据不该依赖启动状态。
+   * ============================================================ */
+  (function () {
+    var G = (typeof window !== 'undefined' && window.GAME) ? window.GAME : GAME;
+    var M = G && G.map3d, U = G && G.ui;
+    if (!M || !U || typeof M.cellBrief !== 'function' || typeof U.mapTipHTML !== 'function') {
+      check('§582 悬停小卡的两个纯函数都在（cellBrief / mapTipHTML）', false,
+        '缺 ' + (!M ? 'map3d' : (!U ? 'ui' : 'cellBrief 或 mapTipHTML')));
+      return;
+    }
+    check('§582① 非法格返回 null（不许抛）', M.cellBrief(-1) === null && M.cellBrief(999999) === null);
+
+    /* ---------- 自带桩：一格平地 + 一套"什么都没有"的查询 ---------- */
+    var sv = {
+      sphere: G.sphere, mapSphere: G.mapSphere, fog: G.fog, map: G.map,
+      camp: G.camp, village: G.village, ruin: G.ruin, fortOwnAt: G.fortOwnAt
+    };
+    function stubAll(opts) {
+      opts = opts || {};
+      G.mapSphere = null;
+      G.sphere = { cells: [{ type: opts.type || 'plain', level: opts.lv == null ? 6 : opts.lv, x: 12, y: 34 }],
+        TYPE_NAME: { plain: '平地', lake: '湖泊', forest: '森林' } };
+      G.fog = { get: function () { return (opts.fog == null) ? 1 : opts.fog; } };
+      G.map = {
+        ownCityAt: function () { return null; },
+        npcAt: function () { return null; },
+        wildAt: opts.ownedWild ? function () { return { ci: 0, lv: 3 }; } : function () { return null; },
+        fortAt: null, _pctx: null,
+        coordText: function () { return '12°E 34°N'; }
+      };
+      G.camp = opts.camp ? { isFound: function () { return true; } } : { isFound: function () { return false; } };
+      G.village = { at: function () { return null; }, isKnown: function () { return false; } };
+      G.ruin = { isFound: function () { return false; } };
+      G.fortOwnAt = function () { return null; };
+    }
+    try {
+      stubAll({});
+      var b = M.cellBrief(0);
+      check('§582② 平地 → 标题是地形名 + 等级（「平地 Lv6」口径）',
+        !!b && b.title === '平地' && b.lv === 6 && b.icon === '🌿',
+        b ? (b.title + ' Lv' + b.lv) : 'null');
+      var html = b ? U.mapTipHTML(b) : '';
+      check('§582③ 小卡里带 Lv 与坐标（老板要的「平地 LvX」）',
+        html.indexOf('Lv6') >= 0 && html.indexOf('12°E') >= 0, html.length + ' 字');
+      check('§582④ 空野地写「野地（未占）」+ 可出征',
+        !!b && String(b.facts.join('')).indexOf('未占') >= 0
+        && String(b.tasks.join('')).indexOf('出征') >= 0,
+        b ? b.facts.join('/') : 'null');
+
+      stubAll({ fog: 0 });
+      var bf = M.cellBrief(0);
+      check('§582⑤ 未探明只写"未探明"（不剧透地形，且给"派队过去"）',
+        !!bf && bf.title === '未探明' && bf.lv === null
+        && String(bf.tasks.join('')).indexOf('派') >= 0,
+        bf ? bf.title : 'null');
+
+      stubAll({ camp: true });
+      var bc = M.cellBrief(0);
+      check('§582⑥ 营地格写「营地 + 可清剿」（有任务就写任务）',
+        !!bc && String(bc.facts.join('')).indexOf('营地') >= 0
+        && String(bc.tasks.join('')).indexOf('清剿') >= 0);
+
+      stubAll({ ownedWild: true });
+      var bw = M.cellBrief(0);
+      check('§582⑦ 已占野地写「已占 + 采集/派驻」（不是再打一次）',
+        !!bw && String(bw.facts.join('')).indexOf('已占') >= 0
+        && String(bw.tasks.join('')).indexOf('采集') >= 0);
+
+      stubAll({ type: 'lake' });
+      var bl = M.cellBrief(0);
+      check('§582⑧ 湖泊不写"可立城"（立城只在平地）',
+        !!bl && bl.title === '湖泊' && String(bl.tasks.join('')).indexOf('立城') < 0,
+        bl ? bl.tasks.join('/') : 'null');
+    } finally {
+      G.sphere = sv.sphere; G.mapSphere = sv.mapSphere; G.fog = sv.fog; G.map = sv.map;
+      G.camp = sv.camp; G.village = sv.village; G.ruin = sv.ruin; G.fortOwnAt = sv.fortOwnAt;
+    }
+    /* 转义：地形名里若混进标签也不能当 HTML 渲染 */
+    var evil = U.mapTipHTML({ icon: '🌿', title: '<img src=x onerror=1>', lv: 1, facts: ['<b>x</b>'], tasks: [], coord: null });
+    check('§582⑨ 小卡 HTML 转义（注入的标签不生效）',
+      evil.indexOf('<img') < 0 && evil.indexOf('&lt;img') >= 0);
+  })();
+
+  /* ============================================================
+   * §583 v156.17：地形**图例**（老板：「地图上各颜色地块是啥意思」）
+   * ------------------------------------------------------------
+   * 颜色只表达地形；图例回答「这个颜色是什么地、能拿它干什么」。
+   * 两条易错点在这里钉住：
+   *   ① `map3d.cellColorOf` 是 **0~255** 口径，按 0~1 clamp 会全白（第一版真踩了）；
+   *   ② 「平地可立城」这条玩法含义必须出现在行数据里（不然图例只剩颜色，没有意义）。
+   * ============================================================ */
+  (function () {
+    var G = (typeof window !== 'undefined' && window.GAME) ? window.GAME : GAME;
+    var U = G && G.ui;
+    if (!U || typeof U.terrainLegendRows !== 'function' || typeof U.colorCssOf !== 'function') {
+      check('§583 图例两个出口都在（terrainLegendRows / colorCssOf）', false); return;
+    }
+    var rows = U.terrainLegendRows() || [];
+    check('§583① 图例列出 ≥6 种地形，且每行都有 名字/色块/说明',
+      rows.length >= 6 && rows.every(function (r) {
+        return r && r.name && r.css && r.note;
+      }), rows.length + ' 行');
+    var plain = rows.filter(function (r) { return r.type === 'plain'; })[0];
+    var lake = rows.filter(function (r) { return r.type === 'lake'; })[0];
+    check('§583② 「平地」明确写可立城、「湖泊」不写（玩法含义必须有）',
+      !!plain && plain.canCity === true && String(plain.note).indexOf('立城') >= 0
+      && (!lake || (lake.canCity === false && String(lake.note).indexOf('立城') < 0)),
+      plain ? plain.note : 'no plain');
+    /* 值域自适应：0~255 与 0~1 必须给出同一个色 */
+    var a = U.colorCssOf([165, 169, 128]);
+    var b = U.colorCssOf([165 / 255, 169 / 255, 128 / 255]);
+    check('§583③ 色块值域自适应（0~255 与 0~1 结果一致，且不是纯白）',
+      a === b && a === 'rgb(165,169,128)',
+      a + ' vs ' + b);
+    check('§583④ 缺色/坏输入回落到主题色，不抛',
+      U.colorCssOf(null) === 'var(--slab-1)' && U.colorCssOf([1]) === 'var(--slab-1)');
+    /* 按钮与动作：图例入口必须真的有 case（否则点了没反应） */
+    var mj583 = require('fs').readFileSync(require('path').join(__dirname, 'js', 'main.js'), 'utf8');
+    /* 入口在**顶栏「更多」菜单**，不在地图上 —— 老板 v37 定过「地图不再输出标题/图例/提示」，
+       smoke 那条 `!/map-legend/.test(ui.js)` 钉的就是这个，不许把图例又贴回地图（v156.17 第一版就撞上了）。 */
+    var hj583 = require('fs').readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
+    check('§583⑤ 「🗺 图例」入口在「更多」菜单里 + main.js 有 case（且不在地图上）',
+      /data-action="terr-legend"/.test(hj583)
+      && /case 'terr-legend':/.test(mj583)
+      && !/map-legend/.test(require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8')));
+  })();
+
 console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');
   process.exit(FAIL ? 1 : 0);
 })();

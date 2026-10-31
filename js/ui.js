@@ -1311,6 +1311,125 @@ import './state.js';
     el.classList.add('on');
     ui.tipPlace(anchor);
   };
+  /* ============================================================
+   * v156.17（老板：「地图上各颜色地块是啥意思，能不能悬停显示」）
+   * 地图悬停小卡
+   * ------------------------------------------------------------
+   * 拆两半：`ui.mapTipHTML(brief)` 是**纯函数**（jsdom/smoke 能测），
+   * `ui.showMapCellTip` 只管把浮层摆到鼠标旁边（复用全站唯一 #tip-layer）。
+   * 内容来自 `GAME.map3d.cellBrief(ci)`：地形+等级 / 它是什么 / 点它能干什么。
+   * ============================================================ */
+  ui.mapTipHTML = function (b) {
+    if (!b) return '';
+    var esc = (U && U.escape) ? U.escape : function (x) { return String(x == null ? '' : x); };
+    var head = (b.icon ? b.icon + ' ' : '') + esc(b.title || '地块')
+      + ((b.lv != null) ? ' <b>Lv' + (b.lv | 0) + '</b>' : '');
+    var html = '<div class="tip-t">' + head + '</div>';
+    if (b.facts && b.facts.length) html += '<div class="tip-l">' + b.facts.map(esc).join('<br>') + '</div>';
+    if (b.tasks && b.tasks.length) html += '<div class="tip-a">' + b.tasks.map(esc).join('<br>') + '</div>';
+    if (b.coord) html += '<div class="tip-l" style="opacity:.55;margin-top:2px;">' + esc(b.coord) + '</div>';
+    return html;
+  };
+  ui.showMapCellTip = function (b, cx, cy) {
+    if (!b) { ui.tipHide(); return; }
+    var el = ui._mapTipAnchor;
+    if (!el && document.createElement && document.body) {
+      /* 画布上悬停没有 DOM 锚点：造一个 1px 的隐身锚点跟着鼠标走，
+         这样 `tipPlace` 那套「贴锚点 + 夹进视口」的逻辑可以原样复用（不用另写一套定位）。 */
+      el = document.createElement('div');
+      el.id = 'map-tip-anchor';
+      el.style.cssText = 'position:fixed;left:0;top:0;width:1px;height:1px;visibility:hidden;pointer-events:none;';
+      document.body.appendChild(el);
+      ui._mapTipAnchor = el;
+    }
+    if (!el) return;
+    el.style.left = (Math.round(cx) - 1) + 'px';
+    el.style.top = (Math.round(cy) - 1) + 'px';
+    ui.tipShow(ui.mapTipHTML(b), el);
+  };
+  /* ============================================================
+   * v156.17（老板：「地图上各颜色地块是啥意思」）—— **地形图例**
+   * ------------------------------------------------------------
+   * ⚠️ 入口**不放在地图上**：老板 v37 定过「地图不再输出标题/图例/提示」
+   * （smoke 里有一条老口径：ui.js 不许出现"地图图例"那类命名，钉的就是这个）。
+   * 所以图例挂到顶栏「更多」菜单里（`data-action="terr-legend"`），
+   * 地图画布与底栏仍然一个装饰都不加 —— 想知道颜色含义，要么悬停看那一格，
+   * 要么从「更多 → 🗺 图例」查整张表。
+   * 颜色只表达**地形**（v154 定的：同类型同色、类型交界处自然断开，不另画线），
+   * 所以图例只回答一件事：**这个颜色是什么地、能拿它干什么**。
+   * 色块不写死 —— 直接用 `map3d.cellColorOf(ci)` 从真实渲染色里**采样**，
+   * 保证"图例上的颜色 == 地图上的颜色"（写死一份迟早漂移）。
+   * ============================================================ */
+  /* 颜色值域 → CSS。`map3d.cellColorOf` 给的是 **0~255**（顶点色口径），
+     但其它调用方（主题色之类）可能是 0~1；这里按最大值自适应。
+     为什么单独抽出来：v156.17 第一版把它内联在图例行里、按 0~1 clamp，
+     于是七个色块全渲染成纯白（截图当场抓到）。抽成纯函数后 smoke 能钉住两种值域。 */
+  ui.colorCssOf = function (col) {
+    if (!col || col.length < 3) return 'var(--slab-1)';
+    var mx = Math.max(col[0], col[1], col[2]);
+    var k = (mx > 1.5) ? 1 : 255;          /* 0~255 还是 0~1 */
+    var c8 = function (v) { return Math.max(0, Math.min(255, Math.round((v || 0) * k))); };
+    return 'rgb(' + c8(col[0]) + ',' + c8(col[1]) + ',' + c8(col[2]) + ')';
+  };
+  ui.terrainLegendRows = function () {
+    var SPH = (GAME.mapSphere || GAME.sphere) || {};
+    var TN = SPH.TYPE_NAME || {};
+    var cells = SPH.cells || [];
+    var order = ['plain', 'caoyuan', 'forest', 'hill', 'desert', 'zhaoze', 'lake'];
+    /* 每种地形取第一格的**真实渲染色**当色块 */
+    var firstOf = {};
+    for (var i = 0; i < cells.length; i++) {
+      var t = cells[i] && cells[i].type;
+      if (t && firstOf[t] == null) firstOf[t] = i;
+    }
+    var RN = ui.RES_NAME || {};
+    var rows = [];
+    for (var k = 0; k < order.length; k++) {
+      var ty = order[k];
+      if (!TN[ty]) continue;
+      var col = null;
+      try {
+        if (GAME.map3d && GAME.map3d.cellColorOf && firstOf[ty] != null) col = GAME.map3d.cellColorOf(firstOf[ty]);
+      } catch (e) { col = null; }
+      var css = 'var(--slab-1)';
+      if (col) {
+        /* ⚠️ `cellColorOf` 给的是 **0~255**（顶点色口径），不是 0~1 ——
+           直接按 0~1 clamp 会全变纯白（v156.17 第一版就踩了，截图里七个色块全白）。
+           值域换算收在 `ui.colorCssOf` 里（纯函数，smoke 有判据）。 */
+        css = ui.colorCssOf(col);
+      }
+      var res = null;
+      try { res = GAME.gatherResOf ? GAME.gatherResOf(ty) : null; } catch (e2) { res = null; }
+      var canCity = (ty === 'plain');
+      rows.push({
+        type: ty,
+        name: TN[ty],
+        css: css,
+        res: res ? (RN[res] || res) : null,
+        canCity: canCity,
+        note: res ? ('可采：' + (RN[res] || res)) : (canCity ? '不可采 · **可立城**' : '不可采')
+      });
+    }
+    return rows;
+  };
+  ui.openTerrainLegend = function () {
+    var rows = ui.terrainLegendRows();
+    var html = '<div class="panel-body" style="line-height:1.9;">' +
+      '<div class="ui-sub" style="margin-bottom:8px;">颜色 = 地形（同色同类；类型交界处自然断开）。'
+      + '鼠标停在地块上会显示那一格的地形/等级与可做的事。</div>';
+    for (var i = 0; i < rows.length; i++) {
+      var r = rows[i];
+      html += '<div style="display:flex;align-items:center;gap:10px;padding:5px 0;'
+        + 'border-bottom:1px solid rgba(255,255,255,.06);">'
+        + '<span style="width:22px;height:22px;border-radius:4px;flex:none;'
+        + 'border:1px solid rgba(255,255,255,.25);background:' + r.css + ';"></span>'
+        + '<span style="font-weight:700;min-width:52px;">' + U.escape(r.name) + '</span>'
+        + '<span class="ui-sub" style="flex:1;">' + U.escape(r.note).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>') + '</span>'
+        + '</div>';
+    }
+    html += '</div>' + '<div class="modal-foot"><button class="btn" data-action="close-modal">关闭</button></div>';
+    ui.openModal('<div class="gold-heading">🗺 地形图例</div>' + html, { size: 'md' });
+  };
   ui.tipPlace = function (anchor) {
     var el = ui.tipEl();
     if (!el || !anchor || !anchor.getBoundingClientRect || !el.getBoundingClientRect) return;

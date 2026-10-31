@@ -58,6 +58,95 @@
     }
     return null;   /* own / 未知类型 → 交回原分派 */
   }
+  /* ============================================================
+   * v156.17（老板：「地图上各颜色地块是啥意思，能不能悬停显示」）
+   * `_cellBrief(ci)` —— 一格到底**是什么**（纯数据，不碰 THREE）
+   * ------------------------------------------------------------
+   * 返回 { icon, title, lv, facts[], tasks[], coord, kind }：
+   *   facts = 它是什么（地形 / 归属 / 状态）
+   *   tasks = 点它能干什么（有"任务"就写任务：营地可清剿、遗迹可探索、村社可交涉、
+   *           未占野地可占领、名城/据点可出征……没有就空）
+   * 为什么做成纯函数：悬停提示在 jsdom 里没法测（无 WebGL），但这套判定必须能测 ——
+   * 所以判定与渲染分开，smoke 直接调它。
+   * ============================================================ */
+  function _cellBrief(ci) {
+    var S = GAME.mapSphere || GAME.sphere || {};
+    var cells = S.cells;
+    if (!cells || !(ci >= 0) || !cells[ci]) return null;
+    var c = cells[ci];
+    var TN = S.TYPE_NAME || (GAME.sphere && GAME.sphere.TYPE_NAME) || {};
+    var ICON = { lake: '💧', zhaoze: '🪵', plain: '🌿', caoyuan: '🌾', forest: '🌲', desert: '🏜', hill: '⛰' };
+    var lv = (c.level != null) ? Math.max(0, c.level | 0) : 0;
+    var kind = null;
+    try { kind = (GAME.map3d && GAME.map3d.cellKind) ? GAME.map3d.cellKind[ci] : null; } catch (e) { kind = null; }
+    var out = {
+      icon: ICON[c.type] || '🗺',
+      title: (TN[c.type] || '地块'),
+      lv: lv,
+      facts: [],
+      tasks: [],
+      coord: (GAME.map && GAME.map.coordText && c.x != null && c.y != null)
+        ? GAME.map.coordText(c.x, c.y) : null,
+      kind: kind
+    };
+    /* 迷雾优先：没探明就什么都不该剧透 */
+    var hidden = false;
+    try { hidden = !!(GAME.fog && GAME.fog.get && GAME.fog.get(ci) === 0); } catch (e) { hidden = false; }
+    if (hidden) {
+      out.icon = '🌫';
+      out.title = '未探明';
+      out.lv = null;
+      out.facts.push('这一带还没有记载');
+      out.tasks.push('派一队过去（点它 = 派队），抵达后周围显现');
+      return out;
+    }
+    out.facts.push(kind === 'own' ? '己方城市'
+      : kind === 'npc' ? '名城'
+        : kind === 'adm' ? '行政城' : null);
+    out.facts = out.facts.filter(Boolean);
+    /* 归属 / 状态 —— 顺序与 openCellPanel 一致（城 → 据点 → 营地 → 村社 → 遗迹 → 野地） */
+    var ownCity = GAME.map && GAME.map.ownCityAt ? GAME.map.ownCityAt(ci) : null;
+    var npc = GAME.map && GAME.map.npcAt ? GAME.map.npcAt(ci) : null;
+    if (ownCity) {
+      out.facts.push('你的城：' + (ownCity.name || '无名'));
+      out.tasks.push('点它 = 进城 / 运输 / 派遣');
+    } else if (npc) {
+      out.facts.push('名城：' + (npc.name || '无名'));
+      out.tasks.push('点它 = 出征（会先给 ⚔️出征 / 🔍侦查 / 📜详情）');
+    } else {
+      var fort = null;
+      try {
+        fort = (GAME.map.fortAt && GAME.map.fortAt(ci,
+          GAME.map._pctx && GAME.mapPlanetOf ? GAME.map._pctx(GAME.mapPlanetOf().id) : null)) || null;
+      } catch (e2) { fort = null; }
+      var ownFort = null;
+      try { ownFort = (GAME.fortOwnAt && GAME.fortOwnAt(ci)) || null; } catch (e3) { ownFort = null; }
+      if (ownFort) { out.facts.push('我方前哨'); out.tasks.push('点它 = 驻军 / 采集 / 据点情报'); }
+      else if (fort) { out.facts.push('据点（未占）'); out.tasks.push('点它 = 出征攻打（先侦查可看守军）'); }
+      else if (GAME.camp && GAME.camp.isFound && GAME.camp.isFound(ci)) {
+        out.facts.push('营地');
+        out.tasks.push('⚔️ 可清剿（走到跟前动手，给经验与物资）');
+      } else if (GAME.village && GAME.village.at && GAME.village.at(ci)
+        && (!GAME.village.isKnown || GAME.village.isKnown(ci))) {
+        out.facts.push('村社');
+        out.tasks.push('🏘️ 可交涉（关系长期变化）');
+      } else if (GAME.ruin && GAME.ruin.isFound && GAME.ruin.isFound(ci)) {
+        out.facts.push('遗迹');
+        out.tasks.push('🏚️ 可探索（给材料）');
+      } else {
+        var w = null;
+        try { w = GAME.map.wildAt ? GAME.map.wildAt(ci) : null; } catch (e4) { w = null; }
+        if (w) { out.facts.push('野地（已占）'); out.tasks.push('点它 = 采集 / 派驻 / 放弃'); }
+        else {
+          out.facts.push('野地（未占）');
+          out.tasks.push('点它 = 出征占领 / 掠夺（可先侦查）');
+          if (c.type === 'plain') out.tasks.push('平地：占领后可在这里立城');
+        }
+      }
+    }
+    if (out.tasks.length) { /* 已按优先级排好 */ }
+    return out;
+  }
   /* 那一格**原来的**面板分派（v156.15 从 pickAt 里原样抽出）。
      ⚠️ 分支顺序是 v92 定的语义，一个字别动：
        己方城 → 名城 → 行政城 → 据点 → **营地**（人）→ **村社**（关系）→ **遗迹**（死物）→ 野地兜底。 */
@@ -87,14 +176,14 @@
     }
   }
   if (typeof THREE === 'undefined') {
-    /* 无 THREE（jsdom）：只留这两个纯数据出口 —— smoke 靠它们验"谁该给条" */
+    /* 无 THREE（jsdom）：只留这几个纯数据出口 —— smoke 靠它们验"这一格是什么" */
     GAME.map3d = { enabled: false, why: 'no-three',
-      barTargetOf: _barTargetOf, openCellPanel: _openCellPanel };
+      barTargetOf: _barTargetOf, openCellPanel: _openCellPanel, cellBrief: _cellBrief };
     return;
   }
   var SP = GAME.mapSphere;                         /* v90.97（双球面）：地图渲染走**地图球面**（与逻辑球面 GAME.sphere 解耦）*/
   var M = GAME.map3d = { enabled: true,
-    barTargetOf: _barTargetOf, openCellPanel: _openCellPanel };
+    barTargetOf: _barTargetOf, openCellPanel: _openCellPanel, cellBrief: _cellBrief };
 
   var R = (SP && SP.R) || 300;                    /* 星球海平面半径 */
   var HSC = (SP && SP.HSC) || 26;                 /* 高度 → 世界单位（山≈40 · 陆地≈5）*/
@@ -2409,6 +2498,44 @@
       M._ghostCi = ci0;
       M.ghost(ui._placeItem, ci0);
       redraw();
+    });
+    /* ============================================================
+     * v156.17（老板：「各颜色地块是啥意思，能不能悬停显示」）
+     * ------------------------------------------------------------
+     * 悬停 = 一格一张小卡：**地形 + 等级 + 它是什么 + 点它能干什么**。
+     * 颜色只表达地形，所以先回答"这一格是什么地形"，再回答"上面有什么"。
+     * 三条边界：
+     *   ① 节流 90ms —— 每帧 raycast 太浪费（放置模式那条已经证明单次很便宜，但没必要）；
+     *   ② 拖拽转视角时不弹（`drag` 为真就静默），离开画布即收起；
+     *   ③ 只在正式期弹（前传另有 HUD 指路，别两套提示打架）。
+     * ============================================================ */
+    var _hovLast = 0, _hovCi = -1;
+    canvas.addEventListener('mousemove', function (e) {
+      if (!M._collider || drag) return;
+      if (GAME.prologue && GAME.prologue.on && GAME.prologue.on()) return;
+      var now = (Date.now ? Date.now() : 0);
+      if (now - _hovLast < 90) return;
+      _hovLast = now;
+      var ui2 = GAME.ui;
+      if (!ui2 || !ui2.showMapCellTip) return;
+      var r1 = canvas.getBoundingClientRect();
+      if (!r1.width) return;
+      var nx1 = ((e.clientX - r1.left) / r1.width) * 2 - 1;
+      var ny1 = -((e.clientY - r1.top) / r1.height) * 2 + 1;
+      var rc1 = new THREE.Raycaster();
+      rc1.setFromCamera(new THREE.Vector2(nx1, ny1), cam);
+      var h1 = rc1.intersectObject(M._collider, false);
+      if (!h1.length) { if (_hovCi !== -1) { _hovCi = -1; ui2.tipHide(); } return; }
+      var p1 = h1[0].point;
+      var ci1 = (SP && SP.nearestCell) ? SP.nearestCell([p1.x, p1.y, p1.z]) : -1;
+      if (ci1 < 0) { ui2.tipHide(); return; }
+      if (ci1 === _hovCi) { ui2.showMapCellTip(M.cellBrief(ci1), e.clientX, e.clientY); return; }
+      _hovCi = ci1;
+      ui2.showMapCellTip(M.cellBrief(ci1), e.clientX, e.clientY);
+    });
+    canvas.addEventListener('mouseleave', function () {
+      _hovCi = -1;
+      if (GAME.ui && GAME.ui.tipHide) GAME.ui.tipHide();
     });
     window.addEventListener('mousemove', function (e) {
       if (!drag) return;
@@ -7784,6 +7911,125 @@
     el.innerHTML = html;
     el.classList.add('on');
     ui.tipPlace(anchor);
+  };
+  /* ============================================================
+   * v156.17（老板：「地图上各颜色地块是啥意思，能不能悬停显示」）
+   * 地图悬停小卡
+   * ------------------------------------------------------------
+   * 拆两半：`ui.mapTipHTML(brief)` 是**纯函数**（jsdom/smoke 能测），
+   * `ui.showMapCellTip` 只管把浮层摆到鼠标旁边（复用全站唯一 #tip-layer）。
+   * 内容来自 `GAME.map3d.cellBrief(ci)`：地形+等级 / 它是什么 / 点它能干什么。
+   * ============================================================ */
+  ui.mapTipHTML = function (b) {
+    if (!b) return '';
+    var esc = (U && U.escape) ? U.escape : function (x) { return String(x == null ? '' : x); };
+    var head = (b.icon ? b.icon + ' ' : '') + esc(b.title || '地块')
+      + ((b.lv != null) ? ' <b>Lv' + (b.lv | 0) + '</b>' : '');
+    var html = '<div class="tip-t">' + head + '</div>';
+    if (b.facts && b.facts.length) html += '<div class="tip-l">' + b.facts.map(esc).join('<br>') + '</div>';
+    if (b.tasks && b.tasks.length) html += '<div class="tip-a">' + b.tasks.map(esc).join('<br>') + '</div>';
+    if (b.coord) html += '<div class="tip-l" style="opacity:.55;margin-top:2px;">' + esc(b.coord) + '</div>';
+    return html;
+  };
+  ui.showMapCellTip = function (b, cx, cy) {
+    if (!b) { ui.tipHide(); return; }
+    var el = ui._mapTipAnchor;
+    if (!el && document.createElement && document.body) {
+      /* 画布上悬停没有 DOM 锚点：造一个 1px 的隐身锚点跟着鼠标走，
+         这样 `tipPlace` 那套「贴锚点 + 夹进视口」的逻辑可以原样复用（不用另写一套定位）。 */
+      el = document.createElement('div');
+      el.id = 'map-tip-anchor';
+      el.style.cssText = 'position:fixed;left:0;top:0;width:1px;height:1px;visibility:hidden;pointer-events:none;';
+      document.body.appendChild(el);
+      ui._mapTipAnchor = el;
+    }
+    if (!el) return;
+    el.style.left = (Math.round(cx) - 1) + 'px';
+    el.style.top = (Math.round(cy) - 1) + 'px';
+    ui.tipShow(ui.mapTipHTML(b), el);
+  };
+  /* ============================================================
+   * v156.17（老板：「地图上各颜色地块是啥意思」）—— **地形图例**
+   * ------------------------------------------------------------
+   * ⚠️ 入口**不放在地图上**：老板 v37 定过「地图不再输出标题/图例/提示」
+   * （smoke 里有一条老口径：ui.js 不许出现"地图图例"那类命名，钉的就是这个）。
+   * 所以图例挂到顶栏「更多」菜单里（`data-action="terr-legend"`），
+   * 地图画布与底栏仍然一个装饰都不加 —— 想知道颜色含义，要么悬停看那一格，
+   * 要么从「更多 → 🗺 图例」查整张表。
+   * 颜色只表达**地形**（v154 定的：同类型同色、类型交界处自然断开，不另画线），
+   * 所以图例只回答一件事：**这个颜色是什么地、能拿它干什么**。
+   * 色块不写死 —— 直接用 `map3d.cellColorOf(ci)` 从真实渲染色里**采样**，
+   * 保证"图例上的颜色 == 地图上的颜色"（写死一份迟早漂移）。
+   * ============================================================ */
+  /* 颜色值域 → CSS。`map3d.cellColorOf` 给的是 **0~255**（顶点色口径），
+     但其它调用方（主题色之类）可能是 0~1；这里按最大值自适应。
+     为什么单独抽出来：v156.17 第一版把它内联在图例行里、按 0~1 clamp，
+     于是七个色块全渲染成纯白（截图当场抓到）。抽成纯函数后 smoke 能钉住两种值域。 */
+  ui.colorCssOf = function (col) {
+    if (!col || col.length < 3) return 'var(--slab-1)';
+    var mx = Math.max(col[0], col[1], col[2]);
+    var k = (mx > 1.5) ? 1 : 255;          /* 0~255 还是 0~1 */
+    var c8 = function (v) { return Math.max(0, Math.min(255, Math.round((v || 0) * k))); };
+    return 'rgb(' + c8(col[0]) + ',' + c8(col[1]) + ',' + c8(col[2]) + ')';
+  };
+  ui.terrainLegendRows = function () {
+    var SPH = (GAME.mapSphere || GAME.sphere) || {};
+    var TN = SPH.TYPE_NAME || {};
+    var cells = SPH.cells || [];
+    var order = ['plain', 'caoyuan', 'forest', 'hill', 'desert', 'zhaoze', 'lake'];
+    /* 每种地形取第一格的**真实渲染色**当色块 */
+    var firstOf = {};
+    for (var i = 0; i < cells.length; i++) {
+      var t = cells[i] && cells[i].type;
+      if (t && firstOf[t] == null) firstOf[t] = i;
+    }
+    var RN = ui.RES_NAME || {};
+    var rows = [];
+    for (var k = 0; k < order.length; k++) {
+      var ty = order[k];
+      if (!TN[ty]) continue;
+      var col = null;
+      try {
+        if (GAME.map3d && GAME.map3d.cellColorOf && firstOf[ty] != null) col = GAME.map3d.cellColorOf(firstOf[ty]);
+      } catch (e) { col = null; }
+      var css = 'var(--slab-1)';
+      if (col) {
+        /* ⚠️ `cellColorOf` 给的是 **0~255**（顶点色口径），不是 0~1 ——
+           直接按 0~1 clamp 会全变纯白（v156.17 第一版就踩了，截图里七个色块全白）。
+           值域换算收在 `ui.colorCssOf` 里（纯函数，smoke 有判据）。 */
+        css = ui.colorCssOf(col);
+      }
+      var res = null;
+      try { res = GAME.gatherResOf ? GAME.gatherResOf(ty) : null; } catch (e2) { res = null; }
+      var canCity = (ty === 'plain');
+      rows.push({
+        type: ty,
+        name: TN[ty],
+        css: css,
+        res: res ? (RN[res] || res) : null,
+        canCity: canCity,
+        note: res ? ('可采：' + (RN[res] || res)) : (canCity ? '不可采 · **可立城**' : '不可采')
+      });
+    }
+    return rows;
+  };
+  ui.openTerrainLegend = function () {
+    var rows = ui.terrainLegendRows();
+    var html = '<div class="panel-body" style="line-height:1.9;">' +
+      '<div class="ui-sub" style="margin-bottom:8px;">颜色 = 地形（同色同类；类型交界处自然断开）。'
+      + '鼠标停在地块上会显示那一格的地形/等级与可做的事。</div>';
+    for (var i = 0; i < rows.length; i++) {
+      var r = rows[i];
+      html += '<div style="display:flex;align-items:center;gap:10px;padding:5px 0;'
+        + 'border-bottom:1px solid rgba(255,255,255,.06);">'
+        + '<span style="width:22px;height:22px;border-radius:4px;flex:none;'
+        + 'border:1px solid rgba(255,255,255,.25);background:' + r.css + ';"></span>'
+        + '<span style="font-weight:700;min-width:52px;">' + U.escape(r.name) + '</span>'
+        + '<span class="ui-sub" style="flex:1;">' + U.escape(r.note).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>') + '</span>'
+        + '</div>';
+    }
+    html += '</div>' + '<div class="modal-foot"><button class="btn" data-action="close-modal">关闭</button></div>';
+    ui.openModal('<div class="gold-heading">🗺 地形图例</div>' + html, { size: 'md' });
   };
   ui.tipPlace = function (anchor) {
     var el = ui.tipEl();
@@ -29578,6 +29824,9 @@ ui.openDuel = function (fid, moveId) {
         break;
       }
       case 'mapbar-detail': ui.mapBarDetail(); break;
+      /* v156.17（老板：「各颜色地块是啥意思」）：地形图例（色块从真实渲染色采样）。
+         ⚠️ 入口在顶栏「更多」菜单，**不在地图上** —— 老板 v37 定过「地图不再输出标题/图例/提示」。 */
+      case 'terr-legend': ui.openTerrainLegend(); break;
       /* v89.210：战前推演（出征前预演一场 · 与实战同源引擎、不落账） */
       case 'exp-sim': ui.openExpSim(); break;
       /* ⛔ v89.198（老板「清除战法这个玩法」）：战法三选动作整条退役（连 ui.setExpOps 一起清除）。 */

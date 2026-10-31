@@ -54,6 +54,95 @@ import './gltf.js';
     }
     return null;   /* own / 未知类型 → 交回原分派 */
   }
+  /* ============================================================
+   * v156.17（老板：「地图上各颜色地块是啥意思，能不能悬停显示」）
+   * `_cellBrief(ci)` —— 一格到底**是什么**（纯数据，不碰 THREE）
+   * ------------------------------------------------------------
+   * 返回 { icon, title, lv, facts[], tasks[], coord, kind }：
+   *   facts = 它是什么（地形 / 归属 / 状态）
+   *   tasks = 点它能干什么（有"任务"就写任务：营地可清剿、遗迹可探索、村社可交涉、
+   *           未占野地可占领、名城/据点可出征……没有就空）
+   * 为什么做成纯函数：悬停提示在 jsdom 里没法测（无 WebGL），但这套判定必须能测 ——
+   * 所以判定与渲染分开，smoke 直接调它。
+   * ============================================================ */
+  function _cellBrief(ci) {
+    var S = GAME.mapSphere || GAME.sphere || {};
+    var cells = S.cells;
+    if (!cells || !(ci >= 0) || !cells[ci]) return null;
+    var c = cells[ci];
+    var TN = S.TYPE_NAME || (GAME.sphere && GAME.sphere.TYPE_NAME) || {};
+    var ICON = { lake: '💧', zhaoze: '🪵', plain: '🌿', caoyuan: '🌾', forest: '🌲', desert: '🏜', hill: '⛰' };
+    var lv = (c.level != null) ? Math.max(0, c.level | 0) : 0;
+    var kind = null;
+    try { kind = (GAME.map3d && GAME.map3d.cellKind) ? GAME.map3d.cellKind[ci] : null; } catch (e) { kind = null; }
+    var out = {
+      icon: ICON[c.type] || '🗺',
+      title: (TN[c.type] || '地块'),
+      lv: lv,
+      facts: [],
+      tasks: [],
+      coord: (GAME.map && GAME.map.coordText && c.x != null && c.y != null)
+        ? GAME.map.coordText(c.x, c.y) : null,
+      kind: kind
+    };
+    /* 迷雾优先：没探明就什么都不该剧透 */
+    var hidden = false;
+    try { hidden = !!(GAME.fog && GAME.fog.get && GAME.fog.get(ci) === 0); } catch (e) { hidden = false; }
+    if (hidden) {
+      out.icon = '🌫';
+      out.title = '未探明';
+      out.lv = null;
+      out.facts.push('这一带还没有记载');
+      out.tasks.push('派一队过去（点它 = 派队），抵达后周围显现');
+      return out;
+    }
+    out.facts.push(kind === 'own' ? '己方城市'
+      : kind === 'npc' ? '名城'
+        : kind === 'adm' ? '行政城' : null);
+    out.facts = out.facts.filter(Boolean);
+    /* 归属 / 状态 —— 顺序与 openCellPanel 一致（城 → 据点 → 营地 → 村社 → 遗迹 → 野地） */
+    var ownCity = GAME.map && GAME.map.ownCityAt ? GAME.map.ownCityAt(ci) : null;
+    var npc = GAME.map && GAME.map.npcAt ? GAME.map.npcAt(ci) : null;
+    if (ownCity) {
+      out.facts.push('你的城：' + (ownCity.name || '无名'));
+      out.tasks.push('点它 = 进城 / 运输 / 派遣');
+    } else if (npc) {
+      out.facts.push('名城：' + (npc.name || '无名'));
+      out.tasks.push('点它 = 出征（会先给 ⚔️出征 / 🔍侦查 / 📜详情）');
+    } else {
+      var fort = null;
+      try {
+        fort = (GAME.map.fortAt && GAME.map.fortAt(ci,
+          GAME.map._pctx && GAME.mapPlanetOf ? GAME.map._pctx(GAME.mapPlanetOf().id) : null)) || null;
+      } catch (e2) { fort = null; }
+      var ownFort = null;
+      try { ownFort = (GAME.fortOwnAt && GAME.fortOwnAt(ci)) || null; } catch (e3) { ownFort = null; }
+      if (ownFort) { out.facts.push('我方前哨'); out.tasks.push('点它 = 驻军 / 采集 / 据点情报'); }
+      else if (fort) { out.facts.push('据点（未占）'); out.tasks.push('点它 = 出征攻打（先侦查可看守军）'); }
+      else if (GAME.camp && GAME.camp.isFound && GAME.camp.isFound(ci)) {
+        out.facts.push('营地');
+        out.tasks.push('⚔️ 可清剿（走到跟前动手，给经验与物资）');
+      } else if (GAME.village && GAME.village.at && GAME.village.at(ci)
+        && (!GAME.village.isKnown || GAME.village.isKnown(ci))) {
+        out.facts.push('村社');
+        out.tasks.push('🏘️ 可交涉（关系长期变化）');
+      } else if (GAME.ruin && GAME.ruin.isFound && GAME.ruin.isFound(ci)) {
+        out.facts.push('遗迹');
+        out.tasks.push('🏚️ 可探索（给材料）');
+      } else {
+        var w = null;
+        try { w = GAME.map.wildAt ? GAME.map.wildAt(ci) : null; } catch (e4) { w = null; }
+        if (w) { out.facts.push('野地（已占）'); out.tasks.push('点它 = 采集 / 派驻 / 放弃'); }
+        else {
+          out.facts.push('野地（未占）');
+          out.tasks.push('点它 = 出征占领 / 掠夺（可先侦查）');
+          if (c.type === 'plain') out.tasks.push('平地：占领后可在这里立城');
+        }
+      }
+    }
+    if (out.tasks.length) { /* 已按优先级排好 */ }
+    return out;
+  }
   /* 那一格**原来的**面板分派（v156.15 从 pickAt 里原样抽出）。
      ⚠️ 分支顺序是 v92 定的语义，一个字别动：
        己方城 → 名城 → 行政城 → 据点 → **营地**（人）→ **村社**（关系）→ **遗迹**（死物）→ 野地兜底。 */
@@ -83,14 +172,14 @@ import './gltf.js';
     }
   }
   if (typeof THREE === 'undefined') {
-    /* 无 THREE（jsdom）：只留这两个纯数据出口 —— smoke 靠它们验"谁该给条" */
+    /* 无 THREE（jsdom）：只留这几个纯数据出口 —— smoke 靠它们验"这一格是什么" */
     GAME.map3d = { enabled: false, why: 'no-three',
-      barTargetOf: _barTargetOf, openCellPanel: _openCellPanel };
+      barTargetOf: _barTargetOf, openCellPanel: _openCellPanel, cellBrief: _cellBrief };
     return;
   }
   var SP = GAME.mapSphere;                         /* v90.97（双球面）：地图渲染走**地图球面**（与逻辑球面 GAME.sphere 解耦）*/
   var M = GAME.map3d = { enabled: true,
-    barTargetOf: _barTargetOf, openCellPanel: _openCellPanel };
+    barTargetOf: _barTargetOf, openCellPanel: _openCellPanel, cellBrief: _cellBrief };
 
   var R = (SP && SP.R) || 300;                    /* 星球海平面半径 */
   var HSC = (SP && SP.HSC) || 26;                 /* 高度 → 世界单位（山≈40 · 陆地≈5）*/
@@ -2405,6 +2494,44 @@ import './gltf.js';
       M._ghostCi = ci0;
       M.ghost(ui._placeItem, ci0);
       redraw();
+    });
+    /* ============================================================
+     * v156.17（老板：「各颜色地块是啥意思，能不能悬停显示」）
+     * ------------------------------------------------------------
+     * 悬停 = 一格一张小卡：**地形 + 等级 + 它是什么 + 点它能干什么**。
+     * 颜色只表达地形，所以先回答"这一格是什么地形"，再回答"上面有什么"。
+     * 三条边界：
+     *   ① 节流 90ms —— 每帧 raycast 太浪费（放置模式那条已经证明单次很便宜，但没必要）；
+     *   ② 拖拽转视角时不弹（`drag` 为真就静默），离开画布即收起；
+     *   ③ 只在正式期弹（前传另有 HUD 指路，别两套提示打架）。
+     * ============================================================ */
+    var _hovLast = 0, _hovCi = -1;
+    canvas.addEventListener('mousemove', function (e) {
+      if (!M._collider || drag) return;
+      if (GAME.prologue && GAME.prologue.on && GAME.prologue.on()) return;
+      var now = (Date.now ? Date.now() : 0);
+      if (now - _hovLast < 90) return;
+      _hovLast = now;
+      var ui2 = GAME.ui;
+      if (!ui2 || !ui2.showMapCellTip) return;
+      var r1 = canvas.getBoundingClientRect();
+      if (!r1.width) return;
+      var nx1 = ((e.clientX - r1.left) / r1.width) * 2 - 1;
+      var ny1 = -((e.clientY - r1.top) / r1.height) * 2 + 1;
+      var rc1 = new THREE.Raycaster();
+      rc1.setFromCamera(new THREE.Vector2(nx1, ny1), cam);
+      var h1 = rc1.intersectObject(M._collider, false);
+      if (!h1.length) { if (_hovCi !== -1) { _hovCi = -1; ui2.tipHide(); } return; }
+      var p1 = h1[0].point;
+      var ci1 = (SP && SP.nearestCell) ? SP.nearestCell([p1.x, p1.y, p1.z]) : -1;
+      if (ci1 < 0) { ui2.tipHide(); return; }
+      if (ci1 === _hovCi) { ui2.showMapCellTip(M.cellBrief(ci1), e.clientX, e.clientY); return; }
+      _hovCi = ci1;
+      ui2.showMapCellTip(M.cellBrief(ci1), e.clientX, e.clientY);
+    });
+    canvas.addEventListener('mouseleave', function () {
+      _hovCi = -1;
+      if (GAME.ui && GAME.ui.tipHide) GAME.ui.tipHide();
     });
     window.addEventListener('mousemove', function (e) {
       if (!drag) return;

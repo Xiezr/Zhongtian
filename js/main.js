@@ -1807,6 +1807,9 @@ import './ui.js';
         break;
       }
       case 'mapbar-detail': ui.mapBarDetail(); break;
+      /* v156.17（老板：「各颜色地块是啥意思」）：地形图例（色块从真实渲染色采样）。
+         ⚠️ 入口在顶栏「更多」菜单，**不在地图上** —— 老板 v37 定过「地图不再输出标题/图例/提示」。 */
+      case 'terr-legend': ui.openTerrainLegend(); break;
       /* v89.210：战前推演（出征前预演一场 · 与实战同源引擎、不落账） */
       case 'exp-sim': ui.openExpSim(); break;
       /* ⛔ v89.198（老板「清除战法这个玩法」）：战法三选动作整条退役（连 ui.setExpOps 一起清除）。 */
