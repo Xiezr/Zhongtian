@@ -1,8 +1,0 @@
-5642ea6ee8c382deaf85be342370018a *js/data.js
-fefeb67dcf7d8685d4dbc5202735728a *js/state.js
-321f9cabfdcf4d4001c79866a0b1d2cb *js/map.js
-ae46605fd07e653f7ab4617617068607 *js/main.js
-23c06e4217bbdefd7ffa81d5c1c343fe *js/ui.js
-e47bd9bceb59531fbd32213e5e9f4127 *index.html
-a64315da20a235c9a27388045e8865d1 *smoke-test.js
-0fc4549c3631ea04b8676f15990646af *e2e-test.js

@@ -1,6 +1,0 @@
-[HB] ===== 评测启动 hours=0.02 fast=true =====
-[HB] 浏览器已启动（持久化上下文）
-[HB] —— 建档阶段 ——
-[HB] —— 收尾 ——
-[HB] ===== 评测结束 0:00:43 覆盖={"touched":8,"opened":0,"blocked":0,"pending":335,"unreachable":0,"total":343} 点击=20 =====
-ANALYZE_OK behavior=24 clicks=20 fired=0 cov={"touched":8,"opened":0,"blocked":0,"pending":335,"unreachable":0,"total":343} bugs=1

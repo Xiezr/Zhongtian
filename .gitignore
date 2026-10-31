@@ -39,3 +39,16 @@ desktop.ini
 # assets/icons/ui/          91 张，bitmaps.js 注册表就是这个目录的映射
 # assets/portraits/pool/    91 张，通用头像池（v90 换代：m 66 / f 25）
 # assets/portraits/hero_*.webp  30 张名将回退层 —— v90 起退役（磁盘已清 · git 快照可恢复）
+
+# ─────────── v92.240 精简补丁：WorkBuddy 产物曾把 .git 撑到 1.3G ───────────
+# head = 整份项目镜像副本（1.9G，WorkBuddy 运行时重建，无需入库）
+.workbuddy/head/
+# shots = 工具截图（908 张 / 393M，非源码）
+.workbuddy/shots/
+# backup = WorkBuddy 自身备份 + 顶层手动备份（冗余，git 历史才是真备份）
+.workbuddy/backup/
+backup/
+# eval_20261016 = 一次性评估脚手架产物（29M，非运行期/非源码）
+.workbuddy/eval_20261016/
+# 各类日志
+*.log
