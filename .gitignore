@@ -52,3 +52,23 @@ backup/
 .workbuddy/eval_20261016/
 # 各类日志
 *.log
+
+# ─────────── v156.14（2026-10-31 · 本轮工程轮补的）───────────
+# 工具产物：实机截图（tools/_shots 31 张 / 6MB）与 preserve 快照库（8.7MB blobs）
+# —— 都不是源码，看 git 历史或直接重跑脚本即可；只在本地留。
+tools/_shots/
+tools/_preserve/
+# 并行会话的开发脚手架（不属于本项目运行期，也不该由本轮入库）
+tools/auto_dev.js
+tools/dev_orchestrator.js
+tools/dev_ui_agent.js
+tools/preserve.js
+tools/probe_save.js
+tools/probe_save2.js
+tools/probe_ui_feedback.js
+# node 依赖（v156.14 起的 lint / 依赖检查是纯 dev，不进运行期）
+node_modules/
+# Claude Code / 临时探针的散落产物
+.claude/
+_*.txt
+

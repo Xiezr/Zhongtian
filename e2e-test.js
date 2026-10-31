@@ -447,6 +447,11 @@ async function runTests(dom, URL) {
   }
 
   console.log('\n--- 7. 读秒：真实等待 3.2 秒 ---');
+  /* v152：这条测的是"倒计时真的在走"，不是"队列多久完工"。原来跑在 120×：
+     被测队列约 953 游戏秒（≈8 真实秒），前面的用例已耗掉大半 → 恰在测量窗口里完工、元素被清。
+     钉 1× 后窗口内必然没完工（读完还原）。 */
+  const tsBk7 = s.settings.timeScale;
+  s.settings.timeScale = 1;
   G.ui.closeAllModals();
   G.ui.setView('city');
   await sleep(60);
@@ -455,6 +460,11 @@ async function runTests(dom, URL) {
   const t1 = pe1 ? pe1.textContent.trim() : '';
   const p1 = G.buildProgress('city', emptyIdx);
   await sleep(3200);
+  /* v152：前传/新手引导在首局会自己升级政务厅 —— 它排在科研中心之前，会把我们的
+     读秒格挤掉。这段时间里**保持城内视图**（渲染路径的汇合点），否则元素被重建。
+     判据不变：只要求"同一条队列的剩余时间真的在减少"。 */
+  if (G.ui.view !== 'city') G.ui.setView('city');
+  await sleep(60);
   const pe2 = document.querySelector('[data-build-progress]');
   const t2 = pe2 ? pe2.textContent.trim() : '';
   const p2 = G.buildProgress('city', emptyIdx);
@@ -468,7 +478,13 @@ async function runTests(dom, URL) {
   await sleep(1300);
   const bar2 = document.querySelector('[data-build-bar]');
   const w2 = bar2 ? bar2.style.width : '';
-  check('进度条宽度递增', parseFloat(w2) > parseFloat(w1), w1 + ' → ' + w2);
+  /* v152：1× 下 1.3 秒只推进 ~0.1%，界面按 1% 取整 → 宽度常常"看起来没变"。
+     判据改成：**宽度不减**，且**剩余时间确实又少了**（那才是"在走"）。 */
+  const p3 = G.buildProgress('city', emptyIdx);
+  check('进度条宽度递增（或不减）且剩余时间继续减少',
+    parseFloat(w2) >= parseFloat(w1) && !!p3 && !!p1 && p3.left < p1.left,
+    w1 + ' → ' + w2 + ' · ' + (p1 && p3 ? (p1.left - p3.left).toFixed(2) + 's' : 'n/a'));
+  s.settings.timeScale = tsBk7;   /* 还原（后续用例按各自设定跑） */
 
   console.log('\n--- 8. 侧栏三段式 ---');
   const lordName = document.querySelector('#lord-name');
@@ -6310,12 +6326,17 @@ if (svBtn) {
 
       /* ③ 先找一块空野地格（供节流"换格"与内容断言共用） */
       let wt91 = null;
-      for (let r = 1; r <= 4 && !wt91; r++) {
+      /* v152：浮层里"野地"的前提是**不是水**（湖泊格会显示成"湖泊 野地 Lv2"，
+         那是另一条文案）。这里要求 cell.type !== lake 且未被我方占据。 */
+      for (let r = 1; r <= 6 && !wt91; r++) {
         for (let dy = -r; dy <= r && !wt91; dy++) {
           for (let dx = -r; dx <= r && !wt91; dx++) {
             const x = pc91.x + dx, y = pc91.y + dy;
             if (x < 0 || y < 0 || x >= G.DATA.MAP_W || y >= G.DATA.MAP_H) continue;
             if (G.map.npcAt(_ciOf(x, y)) || G.map.ownCityAt(_ciOf(x, y)) || G.map.fortAt(_ciOf(x, y)) || G.map.wildAt(_ciOf(x, y))) continue;
+            /* v152：水域不算"野地格"（浮层写法不同 → 内容断言会误红） */
+            const _c91 = G.sphere && G.sphere.cells ? G.sphere.cells[_ciOf(x, y)] : null;
+            if (!_c91 || _c91.type === 'lake' || _c91.type === 'zhaoze') continue;
             wt91 = { x: x, y: y, ci: _ciOf(x, y) };
           }
         }
@@ -6342,10 +6363,12 @@ if (svBtn) {
       if (wt91) {
         await sleep(40);
         const th2 = tipEl ? tipEl.innerHTML : '';
+        /* v152：坐标断言按 **ci** 读（x/y 是过渡遗留；球网格下同格可能给出不同 x/y） */
         check('v89.88（悬浮）：野地格浮层（野地等级 · 坐标）',
           th2.indexOf('野地') >= 0 && th2.indexOf('Lv' + G.map.wildLevelNow(wt91.ci)) >= 0
-            && th2.indexOf(G.map.coordText(wt91.x, wt91.y)) >= 0,
-          th2.replace(/<[^>]*>/g, ' ').trim().slice(0, 80));
+            && th2.indexOf(G.map.coordTextCi ? G.map.coordTextCi(wt91.ci) : G.map.coordText(wt91.x, wt91.y)) >= 0,
+          'want Lv' + G.map.wildLevelNow(wt91.ci) + ' @ ' + (G.map.coordTextCi ? G.map.coordTextCi(wt91.ci) : '?')
+            + ' | got ' + th2.replace(/<[^>]*>/g, ' ').trim().slice(0, 80));
       } else {
         check('v89.88（悬浮）：野地格浮层（野地等级 · 坐标）', false, '主城周边未找到空野地格');
       }
@@ -9344,9 +9367,24 @@ console.log('\n--- §180. 拆械与 live 滚动（v89.180） ---');
 
     G.ui.setView('city');
     await sleep(120);
-    var _hintTxt = (document.getElementById('next-hint') || {}).textContent || '';
-    check('e2e-v149③ 侧栏「新手一条」在真 DOM 里出现且指向非死路',
-      _hintTxt.length > 4 && /军营|募|建|出门/.test(_hintTxt), _hintTxt.slice(0, 40));
+    /* v156.14 口径更新（v156.10 老板：「给开局提示做连续弹窗，不要在左侧统计栏显示」）：
+       左侧 `#next-hint` 槽位**已被撤除**（index.html 保留"已撤除"注释，防回潮）；
+       指引改走**连续弹窗**。断言改成查三件事，判据不放宽：
+         ① 左栏槽位确实不在了（撤除是设计，回来就该红）
+         ② 「下一步」的唯一决策源 `ui.nextHintOf` 仍在岗，且给出非空文案
+         ③ 连续弹窗真的能开、首步有内容 */
+    var _hintSlot = document.getElementById('next-hint');
+    var _c149h = G.currentCity();
+    var _hintObj = (_c149h && G.ui.nextHintOf) ? G.ui.nextHintOf(_c149h) : null;
+    G.ui.openTutorial(0);
+    await sleep(150);
+    var _tutTxt = (document.getElementById('modal-root') || {}).textContent || '';
+    G.ui.closeAllModals();
+    check('e2e-v149③ 开局指引走连续弹窗（左栏槽位已撤除 · nextHintOf 仍给下一步 · 弹窗能开）',
+      !_hintSlot && !!(_hintObj && _hintObj.text && _hintObj.text.length > 4) && _tutTxt.length > 10,
+      'slot=' + (_hintSlot ? '在' : '撤除')
+      + ' hint=' + ((_hintObj && _hintObj.text) || '无').slice(0, 24)
+      + ' tut=' + _tutTxt.slice(0, 24));
 
     /* 建造候选：小眼睛可点 → 预览不崩（无 WebGL 时走兜底） */
     var _c149 = G.currentCity(), _idx149 = -1;

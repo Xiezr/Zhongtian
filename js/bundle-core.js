@@ -1,4 +1,4 @@
-/*! Deepseekdb bundle-core — 第 1/3 包（50 个模块）
+/*! Deepseekdb bundle-core — 第 1/3 包（53 个模块）
  *  由 .workbuddy/tools/patch/build_bundle.py 生成，请勿手改。
  *  ⚠️ 三包必须按 core → war → ui 顺序加载（window.GAME 全局共享）。 */
 /* ---- core.js ---- */
@@ -2573,12 +2573,19 @@ window.GAME = window.GAME || {};
      * ⚠️ 只加字段不改既有字段：比分制（duelPlay）读的是 name/beats/note，不受影响。
      * ============================================================ */
     moves: {
-      stab:   { name: '突刺', beats: 'charge', note: '打断蓄力', mul: 1.15, taken: 1.00 },
-      guard:  { name: '格挡', beats: 'stab',   note: '挡住直取', mul: 0.65, taken: 0.70 },
-      feint:  { name: '佯攻', beats: 'guard',  note: '骗开架势', mul: 0.95, taken: 1.10 },
-      charge: { name: '蓄力', beats: 'feint',  note: '不理虚招', mul: 1.45, taken: 1.25 }
+      stab:   { name: '突刺', icon: '⚔️', beats: 'charge', note: '打断蓄力', mul: 1.15, taken: 1.00 },
+      guard:  { name: '格挡', icon: '🛡️', beats: 'stab',   note: '挡住直取', mul: 0.65, taken: 0.70 },
+      feint:  { name: '佯攻', icon: '💨', beats: 'guard',  note: '骗开架势', mul: 0.95, taken: 1.10 },
+      charge: { name: '蓄力', icon: '🔥', beats: 'feint',  note: '不理虚招', mul: 1.45, taken: 1.25 }
     },
     moveOrder: ['stab', 'guard', 'feint', 'charge'],
+    /* v92.240c：英雄技能（易拓展）。技能是一招带冷却的强化招式，走与基础招式同一 duelRoundResolve 路径
+       （靠 move.skill 标记在结算里强制占先）。将领用 g.skill 指定专属绝活；未指定则回落 defaultSkill，
+       让每个英雄默认都有一手。想加新技能 = 在 skills 表里加一条；想给某将专属 = 在将领数据写 g.skill。 */
+    skills: {
+      break_array: { name: '破阵斩', icon: '🗡️', beats: 'guard', note: '蓄力一记重劈，破开敌阵架势（绝活·冷却 3 合）', mul: 1.9, taken: 1.3, skill: true, cd: 3 }
+    },
+    defaultSkill: 'break_array',
     playRounds: 5,       /* 手动斗将 5 合，先到 3 分胜 */
     /* v92.14（老板：斗将可以派将领去挑衅其他城池，获得特殊奖励）——
        挑衅赢了，那座城的守军会**胆寒**：接下来 24 小时守军少一成。
@@ -2587,7 +2594,22 @@ window.GAME = window.GAME || {};
     fearPct: 0.12,
     fearHours: 24,
     provokeStaCost: 20,
-    winScore: 3
+    winScore: 3,
+    /* v92.240b：派将挑衅 = 体力即血 · 回合制打到死（无回合上限，参考冒险岛回合制）
+       血量 = 体力：我方开打血 = 当前体力 staNow，血槽 = 体力上限 staMax；
+       守将 NPC 无体力系统，按属性派生一份"体力池"。每合双方都出手、都掉体力，
+       谁先归零谁倒下（被打死）。改平衡只动下面这些旋钮。 */
+    hpPerSta: 10,                          /* 血量 = 体力 × 此倍数 */
+    duelAtkLv: 3, duelDefLv: 3,            /* 攻 = 武 + 等级×此；防 = 统 + 等级×此 */
+    provokeGuardStaBase: 60, provokeGuardStaLv: 6, provokeGuardStaAttr: 0.3,  /* 守将虚拟体力 = base + 等级×lv + (武+统)×attr */
+    provokeDmgScale: 3,                    /* 伤害总缩放：常规伤害 = (攻 − 防×折算) × 招式倍率 × 此 */
+    provokeDefFactor: 0.7,                 /* 防御折算比例（<1 避免攻防相近时互殴到 0 卡死） */
+    provokeSkillMul: 2.2,                  /* 特殊技能伤害额外倍率（玩家手动释放） */
+    provokeSkillPierce: 0.45,              /* 技能破防比例（防御被忽略部分） */
+    provokeAutoSpeed: 1100,                /* 自动战斗每回合间隔(ms) */
+    provokeDmgFloor: 1,
+    provokeStaGatePct: 0,                  /* 当前体力低于上限此比例不许挑衅（0=不限制；建议 0.15 防送死） */
+    provokeMaxRounds: 80                    /* 纯防死循环安全闸（正常不会触发） */
   };
 
   /* ============================================================
@@ -4648,8 +4670,11 @@ window.GAME = window.GAME || {};
    * ⚠️ 三个选项只改"指令"，不改结算 —— 战报重放仍然只认 rec.cmd/history。
    * ============================================================ */
   DATA.BATTLE_ASK = {
-    every: 3,            /* 每 N 回合问一次 */
-    firstAt: 3,          /* 第一次出现的回合 */
+    /* v151（老板：「决策要到第 3 分钟才出现 —— 机制对，时机错」）：
+       每 3 回合改成**每回合都能拍板**。只置标记、不阻塞推进；
+       玩家在战场就当场选，不在就继续托管。 */
+    every: 1,            /* 每 N 回合问一次 */
+    firstAt: 1,          /* 第一次出现的回合 */
     choices: {
       assault: { name: '⚔ 突击', stance: 'advance', focus: 'weakest',
         desc: '全军压上并集火最薄弱的一支 —— 输出更高，挨打也更多' },
@@ -5497,6 +5522,9 @@ window.GAME = window.GAME || {};
   DATA.CALENDAR = {
     secPerYear: 57600,          // 游戏秒/年（= 480 现实秒 @120×）
     seasonsPerYear: 4,
+    /* v151：离线补跑月份的上限 —— 挂机回来世界该"动过"，但也不能把主线程卡死。
+       24 个月 ≈ 2 游戏年（默认 120× 下约 2 小时现实时间），超出按上限截断。 */
+    offlineMaxMonths: 24,
   };
   /* ⛔ v90.93 退役：原本表内的「每季检查一次里程碑」开关整条删除 ——
      它的唯一读点是 story.js 的 checkEra（随年号纪元退役），留之即成「声明了但没接线」的死配置。 */
@@ -5579,10 +5607,14 @@ window.GAME = window.GAME || {};
     /* v89.86（整改 P-18）：自动化预算闸门 —— 每次消费后至少留下花前存量的 pct%；0 = 不设限 */
     autoReservePct: 5, autoTechMaxLv: 0,
     /* v89.86（整改 P-17）：离线推进上限（游戏日；0 = 不限）—— 超出部分五折折算资源/供奉 */
-    offlineCapDays: 7,
-    /* v89.87（老板需求 4）：战斗观战 —— 出征战斗抵达后进入战场界面，
-       每回合 battleSec 真实秒（60 预设，可提前点「完成」结算）；false = 全自动 */
-    battleWatch: true, battleSec: 60,
+    offlineCapDays: 7,    /* v89.87（老板需求 4）：战斗观战 —— 出征战斗抵达后进入战场界面，
+       每回合 battleSec 真实秒（**v151：60 → 10** —— 60 秒 × 3~5 回合 = 盯着屏幕
+       3~5 分钟却做不了几个决定，实测头号"反人类"；想慢看可在 设置·战斗 调回 30/60，
+       或直接点「完成回合」跳过）。false = 全自动（不进战场，一帧结算）。 */
+    battleWatch: true, battleSec: 10,
+    /* v151：阵前斗将 —— 出征时是否请战（true = 打，false = 不叫阵直接开打）。
+       原来它是 50% 概率自动跑、玩家零输入；现在由玩家逐场决定。 */
+    duelAsk: true,
     /* v91.87：守将平衡套餐（资质爬梯 + 折损 0.8 + 守军数量补偿），默认关 */
     guardBalance: true,   /* v91.88：取消差异系数 + 守将装备等效（老板定案，默认生效） */
     /* v91.85：回合战斗策略层（js/strategy.js · GAME.strat）—— **默认关闭**。
@@ -7971,6 +8003,16 @@ window.GAME = window.GAME || {};
          这里直接设成新局种子；新局若确实要看另一颗星球，由 enterPlanet 再 setPlanet。 */
       _sp._seedOverride = mapSeed;
     });
+    /* ============================================================
+     * v155b（老板：「城市的坐标好像又对不上了」「应当顺次划定」）
+     * ------------------------------------------------------------
+     * **顺次**：种子 → 球面地形 → 坐标(出生点/城) → 行政区划。
+     * 改前：出生点在球面**建好之前**就算 → 读的是上一局的旧地形/旧行政区，
+     *       于是"城在地图上显示在这、点下去却是别处"。
+     * 现在：喂完种子先 `ensure()` 把球面建出来，再算出生点。
+     * ============================================================ */
+    try { if (GAME.sphere && GAME.sphere.ensure) GAME.sphere.ensure(); } catch (eSE) { }
+    try { if (GAME.mapSphere && GAME.mapSphere.ensure) GAME.mapSphere.ensure(); } catch (eSE2) { }
     /* v70（老板需求 5）：出生坐标按**所选区**落位（首府近旁的平原空地），
        烬环以灰烬城为锚；落不到才回退旧口径的固定点。出生城写明所属区 ——
        展示、岁贡、辖区特产都读同一份归属。 */
@@ -8295,10 +8337,18 @@ window.GAME = window.GAME || {};
     var seed = ui && ui._planetSeedFrom ? ui._planetSeedFrom() : ((U.now() % 900000) || 1);
     var p = GAME.addPlanet({ seed: seed, params: params });
     if (!p) { if (ui) ui.toast('生成失败'); return; }
-    /* v90.81：生成后**即时**算体检报告 + 自动奇观（临时把内核切到新球算完再还原）*/
+    /* v90.81：生成后**即时**算体检报告 + 自动奇观（临时把内核切到新球算完再还原）。
+       v92.241（老板「把星球生成规划一个标准化流程」）：改为走**唯一流水线** `GAME.planetgen` ——
+       L0 骨架 → L1 岩石圈 → L2 水圈 → L3 大气圈 → L4 气候 → L5 生物圈 → L6 行政区划 →
+       L7 地标 → L8 轨道系（陨石带）。顺序由 PG.STAGES 声明，不在这里手搓。
+       若无 planetgen（极端降级），退回旧的两行。 */
     var report = null, artifact = null;
-    if (GAME.sphere && GAME.sphere.setPlanet) {
+    if (GAME.planetgen && GAME.planetgen.generate) {
+      try { GAME.planetgen.generate(p.seed, p.params, { planet: p }); } catch (ePG) { }
+    } else if (GAME.sphere && GAME.sphere.setPlanet) {
       GAME.sphere.setPlanet(p.seed, p.params);
+    }
+    if (GAME.sphere && GAME.sphere.report) {
       report = GAME.sphere.report(); artifact = GAME.sphere.artifactOf();
     }
     p.report = report; p.artifact = artifact;
@@ -8786,31 +8836,87 @@ window.GAME = window.GAME || {};
       if (!anchor && name === '烬环' && c.type === 'capital') anchor = c;
     });
     if (!anchor) anchor = { x: DATA.START_POS.x, y: DATA.START_POS.y };
-    var free = function (x, y) {
-      if (x < 3 || y < 3 || x > DATA.MAP_W - 4 || y > DATA.MAP_H - 4) return false;
+    /* v155b：**地形优先** —— 出生点必须落在平原（`cells[ci].type === 'plain'`），
+       并且不压任何系统城。归属（stateOfCity）作为第二道偏好，找不到才放宽。 */
+    var _terrAt = function (x, y) {
+      var SP = GAME.sphere, ci = (SP && SP.ciOfXY) ? SP.ciOfXY(x, y) : -1;
+      if (ci < 0 || !SP.cells || !SP.cells[ci]) return null;
+      return SP.cells[ci].type;
+    };
+    var _nearCity = function (x, y) {
       var hit = false;
       (DATA.NPC_CITIES || []).forEach(function (c) {
         if (Math.abs(c.x - x) <= 2 && Math.abs(c.y - y) <= 2) hit = true;
       });
-      if (hit) return false;
-      return GAME.stateOfCity({ x: x, y: y }) === name;
+      return hit;
     };
+    var free = function (x, y, strict) {
+      if (x < 3 || y < 3 || x > DATA.MAP_W - 4 || y > DATA.MAP_H - 4) return false;
+      if (_nearCity(x, y)) return false;
+      var t = _terrAt(x, y);
+      if (t !== 'plain') return false;                 /* 地形优先：只和平原 */
+      if (strict) return GAME.stateOfCity({ x: x, y: y }) === name;
+      return true;
+    };
+    /* 第一轮：环带内 + 地形是平原 + 归属该区 */
     for (var i = 0; i < 240; i++) {
       var ang = rand() * Math.PI * 2, rad = 3 + rand() * 5;
       var x = Math.round(anchor.x + Math.cos(ang) * rad);
       var y = Math.round(anchor.y + Math.sin(ang) * rad);
-      if (free(x, y)) return { x: x, y: y, state: name };
+      if (free(x, y, true)) return { x: x, y: y, state: name };
     }
-    /* 兜底：环带扫不到就自锚点向外做确定性扫描（保证**必有**可用点） */
+    /* 第二轮：自锚点向外扫描（地形是平原即可，归属放宽） */
     for (var r = 3; r <= 26; r++) {
       for (var dx = -r; dx <= r; dx++) {
         for (var dy = -r; dy <= r; dy++) {
           if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
           var bx = anchor.x + dx, by = anchor.y + dy;
-          if (free(bx, by)) return { x: bx, y: by, state: name };
+          if (free(bx, by, false)) return { x: bx, y: by, state: name };
         }
       }
     }
+    /* ============================================================
+     * v155c（性能）：**先排序、再验证**。
+     * 上一版对每一个平原格都调 `stateOfCity`（每次都跑一遍全图行政区）——
+     * 实测 13 次 = 195 秒，把整条门禁拖到十几分钟。
+     * 现在：平原按"到锚点的近似距离"排序，只对**前 240 个**验归属；
+     * 都验不过就退到第四轮（不限归属）。
+     * ============================================================ */
+    try {
+      var SP3 = GAME.sphere;
+      if (SP3 && SP3.cells && SP3.ciOfXY) {
+        var ancCi3 = SP3.ciOfXY(anchor.x, anchor.y);
+        var cand3 = [];
+        for (var ci3 = 0; ci3 < SP3.cells.length; ci3++) {
+          var cc3 = SP3.cells[ci3];
+          if (!cc3 || cc3.type !== 'plain') continue;
+          if (_nearCity(cc3.x, cc3.y)) continue;
+          var d3 = (ancCi3 >= 0 && SP3.roughDistOf) ? SP3.roughDistOf({ ci: ancCi3 }, { ci: ci3 }) : 0;
+          cand3.push([d3, cc3.x, cc3.y, ci3]);
+        }
+        cand3.sort(function (a, b) { return a[0] - b[0]; });
+        for (var k3 = 0; k3 < cand3.length && k3 < 240; k3++) {
+          var e3 = cand3[k3];
+          if (GAME.stateOfCity({ x: e3[1], y: e3[2], ci: e3[3] }) !== name) continue;
+          return { x: e3[1], y: e3[2], state: name };
+        }
+      }
+    } catch (ePS3) { }
+    /* 第四轮（兜底）：**全星球**找离锚点最近的平原（同一颗球上一定有平原） */
+    try {
+      var SP2 = GAME.sphere, ancCi = (SP2 && SP2.ciOfXY) ? SP2.ciOfXY(anchor.x, anchor.y) : -1;
+      if (ancCi >= 0 && SP2.hopsWithin) {
+        for (var rr = 1; rr <= 200; rr++) {
+          var ring = SP2.hopsWithin(ancCi, rr) || [];
+          for (var k2 = 0; k2 < ring.length; k2++) {
+            var c2 = SP2.cells[ring[k2]];
+            if (!c2 || c2.type !== 'plain') continue;
+            if (_nearCity(c2.x, c2.y)) continue;
+            return { x: c2.x, y: c2.y, state: name };
+          }
+        }
+      }
+    } catch (ePS) { }
     return { x: DATA.START_POS.x, y: DATA.START_POS.y, state: name };
   };
 
@@ -10658,6 +10764,45 @@ window.GAME = window.GAME || {};
        本段已通过上面的 story.tick 推进 world.elapsed（与在线每 tick 同刻度），此处结清
        → 与 exact 段（simulateSeconds→tickOnce→settleGenSalary）共用同一锚点，不重复不漏扣。 */
     if (GAME.settleGenSalary) GAME.settleGenSalary();
+    /* ============================================================
+     * v151（老板：「不在线上的几小时里世界是冻的」）
+     * ------------------------------------------------------------
+     * 离线补算原来只走 队列/资源/体力/外敌 —— 村社、军阀、竞争者、事件、
+     * 奇观争夺、惰性、民怨这些**月度**系统不推进。于是挂机 8 小时回来，
+     * 世界一格没动，"世界是活的"这件事只在开着页面时才成立。
+     * 现在：按离线时长**补跑月份**（每个跨过的游戏月调一次同一批 tick，
+     * 与在线 tickOnce 的月度段**同一份出口**，不另写一套）——
+     *   · 上限 `DATA.CALENDAR.offlineMaxMonths`（默认 24），防止超长离线把主线程卡住；
+     *   · 逐个包 try/catch：任何一个月度模块抛错都不许拖垮读档；
+     *   · 事件只补"挂出来"的那部分（events.tick 是月度随机），不替玩家做选择。
+     * ============================================================ */
+    try {
+      var _C = DATA.CALENDAR || {};
+      var _spm = ((_C.secPerYear || 57600) / 12) || 4800;
+      var _gameSec = secReal * ts;
+      var _months = Math.floor(_gameSec / _spm);
+      var _capM = (_C.offlineMaxMonths == null) ? 24 : _C.offlineMaxMonths;
+      if (_months > _capM) _months = _capM;
+      var _tickOneMonth = function (mIdx) {
+        var mods = ['faction', 'rival', 'village', 'growth', 'taint', 'climate', 'surge',
+          'veteran', 'unrest', 'wonderwar', 'expose', 'wonderwar'];
+        for (var mi = 0; mi < mods.length; mi++) {
+          var mod = GAME[mods[mi]];
+          if (!mod || !mod.tick) continue;
+          try { mod.tick(); } catch (eM) { /* 单模块失败不拖垮整段 */ }
+        }
+        /* 事件 / 兵源 / 等等走注册表（与在线同一出口） */
+        try { if (GAME.reg && GAME.reg.tickAll) GAME.reg.tickAll(); } catch (eR) { /* 同上 */ }
+        /* 让"月份变了才结算"的模块真正看到月份变化（tickOnce 里用 s._wqMonth 门控） */
+        s._wqMonth = mIdx;
+      };
+      /* 离线推进要真的让 world.elapsed 跨月 —— story.tick 已在上面推进过；
+         这里按"跨过的整月数"逐月补跑（mIdx 用当前月倒推）。 */
+      if (_months > 0) {
+        var _wm0 = Math.floor((((s.world && s.world.elapsed) || 0) - _gameSec) / _spm);
+        for (var _k = 1; _k <= _months; _k++) _tickOneMonth(_wm0 + _k);
+      }
+    } catch (eOff) { /* 离线补月失败不该挡住读档 */ }
   };
 
   /* ---------------- 存档 / 读档（v3，旧档作废） ---------------- */
@@ -10706,6 +10851,66 @@ window.GAME = window.GAME || {};
    * 就会出现"迁移逻辑两份、只改一处"的经典失效（本项目已发生多次）。
    * 现在 loadGame（主档）与 loadFrom（任意槽位）都走它。
    * ============================================================ */
+  /* ============================================================
+   * v153 · 格网细分迁移（40962 ↔ 10242）
+   * ------------------------------------------------------------
+   * 存档位置全用 ci；换格网后同一 ci 指到别的土地。口径：**按经纬重落**。
+   * `FROM_SUB` = 老档是哪一套格网（v152 期间存过 10242）。
+   * 幂等标记 `_sub153`（当前目标格数）。
+   * ============================================================ */
+  GAME.migrateSphereSub = function (st) {
+    if (!st) st = GAME.state;
+    if (!st) return 0;
+    var sp0 = GAME.sphere;
+    var cur = (sp0 && sp0.cells) ? sp0.cells.length : 0;
+    if (!cur) return 0;
+    if (st._sub153 === cur) return 0;
+    var FROM_SUB = 6;                       /* 缺省：老档按 40962 解释 */
+    if (st._sub152 === 10242) FROM_SUB = 5; /* v152 期间存下的档是 10242 */
+    var oldLL = st._sub153LL || null;
+    if (!oldLL) {
+      var tmp = GAME.createSphere ? GAME.createSphere() : null;
+      if (!tmp || !tmp.ensure) return 0;
+      try { tmp._seedOverride = (st.map && st.map.seed) || 1; tmp.ensure(FROM_SUB); } catch (e0) { return 0; }
+      if (!tmp.cells || !tmp.cells.length) return 0;
+      oldLL = tmp.cells.map(function (c) { return c ? [c.lon, c.lat] : null; });
+      st._sub153LL = oldLL;
+    }
+    if (oldLL.length === cur) { st._sub153 = cur; return 0; }
+    var nc = sp0.cells, map1 = function (ci) {
+      if (ci == null || ci < 0 || ci >= oldLL.length || !oldLL[ci]) return ci;
+      var ll = oldLL[ci], best = 0, bd = 1e18;
+      for (var i = 0; i < nc.length; i++) {
+        var c = nc[i]; if (!c || c.lon == null) continue;
+        var dLon = Math.abs(((c.lon - ll[0] + 540) % 360) - 180);
+        var dLat = Math.abs(c.lat - ll[1]);
+        var d = dLon * dLon * 0.7 + dLat * dLat;
+        if (d < bd) { bd = d; best = i; }
+      }
+      return best;
+    };
+    var n = 0;
+    var each = function (arr, f) { (arr || []).forEach(function (x) { if (x && typeof f === 'function') f(x); }); };
+    each(st.cities, function (c) { if (c.ci != null) { c.ci = map1(c.ci); n++; } });
+    each(st.wilds, function (w) { if (w.ci != null) { w.ci = map1(w.ci); n++; } });
+    each(st.forts, function (f) { if (f.ci != null) { f.ci = map1(f.ci); n++; } });
+    each(st.gathers, function (g) { if (g.ci != null) { g.ci = map1(g.ci); n++; } });
+    each(st.marches, function (m) { if (m.tci != null) { m.tci = map1(m.tci); n++; } });
+    each(st.battles, function (b) { if (b.ci != null) { b.ci = map1(b.ci); n++; } });
+    if (st.prologue && st.prologue.pos != null) { st.prologue.pos = map1(st.prologue.pos); n++; }
+    Object.keys(st.sieges || {}).forEach(function (k) {
+      var m2 = /^p(\d+)\|c(\d+)$/.exec(k);
+      if (m2) {
+        var nk = 'p' + m2[1] + '|c' + map1(+m2[2]);
+        if (nk !== k) { st.sieges[nk] = st.sieges[k]; delete st.sieges[k]; n++; }
+      }
+    });
+    st._sub153 = cur;
+    try { if (GAME.fog && GAME.fog.reset) GAME.fog.reset(); } catch (eF) {}
+    try { if (GAME.map3d && GAME.map3d.rebuild) GAME.map3d.rebuild(); } catch (eM) {}
+    return n;
+  };
+
   GAME.adoptState = function (st) {
     /* v89.209（v89.208 评估缺陷链 ①）：形状抽检（读路径同闸）—— importText 已拦一道，
        这里再拦一道：手改 localStorage / 旧版导入残留的坏档同样进不了迁移链；
@@ -11077,6 +11282,8 @@ window.GAME = window.GAME || {};
         GAME.mapSphere.setPlanet(_mp97.seed, _mp97.params);
         if (GAME.map3d && GAME.map3d.rebuild) GAME.map3d.rebuild();
       }
+      /* v152：格网细分 40962 → 10242 —— 读档按经纬把 ci 重落新格网（幂等 `_sub152`）。 */
+      try { GAME.migrateSphereSub(st); } catch (eSub) { /* 迁移失败不挡读档 */ }
       /* v92：探明度。球面已切好（上面的 setPlanet）才有格数，故放在这里。
          · 老档（无 fog 数据）→ backfill：把走过的城/野地/据点补成已知，
            **不清零** —— 加迷雾不该抹掉玩家几十小时的成果。
@@ -11088,6 +11295,17 @@ window.GAME = window.GAME || {};
         if (!_hadFog) GAME.fog.backfill();
         else GAME.fog.revealOwned();
       }
+      /* ============================================================
+       * v92.246（全面复核补口）：**地块放置物读档自检**。
+       * ------------------------------------------------------------
+       * `state.placements` 里可能残留两类坏记录：
+       *   ① 物品 id 已从目录删除（改过 PLACEABLES 的老档）；
+       *   ② 格索引在这颗星球上不存在（换过星球/细分）。
+       * 这两类记录**渲染不出来**（buildPlacements 会跳过），但 `PL.at(ci)` 照样返回它，
+       * 于是那格永久"已经有东西了" —— 玩家拆不掉（面板列不出来）、也放不进新的。
+       * `PL.sanitize()` 就是为这件事写的，之前**一直没有调用点**（复核发现的死出口）。
+       * ============================================================ */
+      try { if (GAME.place && GAME.place.sanitize) GAME.place.sanitize(); } catch (ePl) { }
       return st;
     } catch (e209) {
       GAME.state = _prev209;   /* v89.209：回滚 —— 坏档失败不留半迁移态 */
@@ -13192,6 +13410,10 @@ window.GAME = window.GAME || {};
     var lvW = 1 + lv * (sp4.lvDmg || 0);
     var mo = mods || {};
     var mPow = mo.pow || 1, mRw = mo.reward || 1, mWound = mo.wound || 1, mLuck = mo.luck || 0;
+    /* v151：**回合制打斗的胜负回灌** —— 前传的 fight/trial 现在先打几个回合
+       （`GAME.duel.play`），打完把结果以 `force:'win'|'lose'` 传进来。
+       只在有对手的两类上生效；采集/静修/拜访没有对手，传了也不改（防止串账）。 */
+    var mForce = mo.force || null;
     var mi = function (n) { return Math.max(1, Math.round(n * mRw * lvR)); };
     var mw = function (n) { return Math.max(1, Math.round(n * mWound * lvW)); };
     /* 机能（读基因强化件；与当前生效套无关） */
@@ -13222,7 +13444,8 @@ window.GAME = window.GAME || {};
       /* 机能判定：我方战力 =（机能 + 等级 x2）x 种子波动；难度随野地等级 +35%/级 */
       var pow = (ling + (gen.level || 1) * 2) * (0.9 + roll('pow') * 0.2) * mPow;
       var need = a.power * lvN;
-      if (pow >= need) {
+      var fightWin = (mForce === 'win' || mForce === 'lose') ? (mForce === 'win') : (pow >= need);
+      if (fightWin) {
         ess(a.win.ess[0], a.win.ess[1]);
         tryDrop('drop');
         title = '旗开得胜';
@@ -13239,7 +13462,10 @@ window.GAME = window.GAME || {};
     } else if (a.kind === 'trial') {
       /* 三层试炼：逐层加码；失败止步（已过层奖励保留）——「见好就收」无损 */
       var layer = 0;
-      for (var i = 1; i <= 3; i++) {
+      /* v151：回合打斗的胜负回灌 —— 赢了记"三层皆过"，输了记"第一层便受阻" */
+      if (mForce === 'win') layer = 3;
+      else if (mForce === 'lose') layer = 0;
+      else for (var i = 1; i <= 3; i++) {
         var p2 = (ling + (gen.level || 1) * 2) * (0.9 + roll('t' + i) * 0.2) * mPow;
         var nd = a.power * lvN * (1 + (i - 1) * 0.45);
         if (p2 < nd) break;
@@ -16210,6 +16436,9 @@ window.GAME = window.GAME || {};
     f.result = { win: r.win, rounds: r.rounds, timeout: r.timeout,
       hpLeft: r.hpLeft, enemyHpLeft: r.enemyHpLeft, loot: r.loot, lost: r.lostShips,
       target: f.targetId, targetName: tgt.name, rows: r.rows };
+    /* v151（老板「舰队战是纯自动结算，玩家一合都操作不了」）：**把逐回合记下来**，
+       战报里能看到每一合掉多少血、打穿没打穿 —— 结算仍是确定性的，但不再是黑箱。 */
+    f.result.rows = r.rows;
     f.log.push('⚔ 与「' + tgt.name + '」交战 ' + r.rounds + ' 回合：'
       + (r.win ? '全胜' : (r.timeout ? '未破（舰队撤回）' : '败退')));
     /* 损舰：从船坞永久移除 */
@@ -16302,6 +16531,32 @@ window.GAME = window.GAME || {};
     });
     st.fleets = keep;
     return fought;
+  };
+
+  /* ============================================================
+   * v151（老板「深空远征 = 纯函数自动结算，玩家没有一合操作」）
+   * ------------------------------------------------------------
+   * 把"抵达即自动打完"改成**战报式回合逐条回放**：战斗仍是确定性的
+   * （同编成同目标 → 同一份 rows），但玩家能一合一看，看得懂自己为什么输。
+   * 实现：抵达时照旧 `_resolve`（一次算完、结果确定），随后面板提供
+   *   · `FL.resultOf(id)`   —— 每合一行的数据（纯读）；
+   *   · `FL.replayTextOf(id)` —— 一句话摘要（战报用）。
+   * ⚠️ 不改成"途中挂起等玩家出招"：舰队战是**编成决定胜负**的玩法，
+   *    中途出招会与"同一份编成同结果"的确定性口径冲突（v146 定的铁律）。
+   * ============================================================ */
+  FL.resultOf = function (id) {
+    var f = FL.fleetOf(id);
+    return (f && f.result) || null;
+  };
+  FL.replayTextOf = function (id) {
+    var r = FL.resultOf(id);
+    if (!r) return '';
+    var rows = r.rows || [];
+    var lines = rows.map(function (x) {
+      return '第' + x.r + '合：我打 ' + U.fmt(x.dmgToEnemy) + ' · 挨 ' + U.fmt(x.dmgToFleet)
+        + '（敌 ' + U.fmt(Math.max(0, x.enemyHp)) + ' / 我 ' + U.fmt(Math.max(0, x.fleetHp)) + '）';
+    });
+    return lines.join('\n');
   };
 
   /* ---------- 队形预览（界面用：哪些舰在队里 / 谁旗舰） ---------- */
@@ -21180,7 +21435,10 @@ window.GAME = window.GAME || {};
       (ct.extGrid || []).forEach(function (e, idx) {
         if (!e || !e.type || e.pending) return;
         var eb = DATA.EXT_BUILDINGS[e.type];
-        if (!eb || e.lv >= GAME.buildCapOf(ct)) return;
+        /* v92.240e：候选上限必须与真升级用同一把尺（含政务厅闸/科技闸/hiLv 宽限）。
+           漏传 bid/piece 会让城外建筑被误判为"可升到通用上限 12"而真实上限是 11，
+           导致 autoUpgrade 每 tick 谎报"→Lv12"、建筑却卡在真实 11（伪振荡）。 */
+        if (!eb || e.lv >= GAME.buildCapOf(ct, e.type, e)) return;
         cands.push({ kind: 'ext', idx: idx, cityId: ct.id, lv: e.lv,
           name: (multi ? ct.name + '·' : '') + eb.name });
       });
@@ -25645,6 +25903,11 @@ window.GAME = window.GAME || {};
     for (var k5 in army) { var v = Math.round((army[k5] || 0) * _frac); if (v > 0) { GAME.city.armyAdd(city, { [k5]: v }); back[k5] = v; } }
     if (won) {
       pl.wonderClearedLv = Math.max(cleared, lv);
+      /* v151（老板「打穿奇观归你 —— 代码里没有调用者」）：打穿任意一层 = 这处奇观归你。
+         原来 `wonderwar.claim` 全仓零调用，模块注释写着"打穿归你"、实际永远归不了。 */
+      try {
+        if (GAME.wonderwar && GAME.wonderwar.claim) GAME.wonderwar.claim(pid, lv);
+      } catch (e0) { /* 归属失败不挡战果 */ }
       GAME.log('⚔ 奇观「' + (GAME.wonderOf(pid) || {}).name + '」第 ' + lv + ' 层『' + def.rank.title + '』告破！'
         + '（我军损 ' + U.fmt((r && r.atkLoss) || 0) + ' · 守军 ' + U.fmt(def.total) + ' 覆灭）', 'sys', 'war');
       if (gen && gen.status === 'idle') { /* 英雄留在城，不置忙 */ }
@@ -25959,8 +26222,9 @@ window.GAME = window.GAME || {};
   GAME.map.terrainAt = function (x, y) {
     var s = GAME.state;
     if (x < 0 || y < 0 || x >= DATA.MAP_W || y >= DATA.MAP_H) return null;
-    var sp = (s.map && s.map.startPos) || DATA.START_POS;
-    if (sp && Math.abs(x - sp.x) <= 2 && Math.abs(y - sp.y) <= 2) return 'plain';
+    /* ⛔ v155b：删掉旧补丁「出生点 2 环内一律当平地」。
+       它让 `terrainAt`（2D/建造判定读它）与**球面地块类型**（3D/前传读它）对不上 ——
+       同一个坐标，地图显示平地、点下去却是海，就是这条。出生点另行保证在平地上。 */
     var SP = GAME.sphere, ci = (SP && SP.ciOfXY) ? SP.ciOfXY(x, y) : -1;
     if (ci >= 0) {
       if (GAME.map._cityCiSet()[ci]) return 'city';
@@ -26169,7 +26433,17 @@ window.GAME = window.GAME || {};
     for (var i = 0; i < arr.length; i++) {
       var c = arr[i]; if (!c) continue;
       var cci = (c.ci != null && c.ci >= 0) ? c.ci : SP.ciOfXY(c.x, c.y);
+      /* v154：城格若落在水里（换格网/地形变化）→ 视为"最近陆地格上的那座城" */
+      if (cci >= 0 && SP.cells && SP.cells[cci] && (SP.cells[cci].type === 'lake' || SP.cells[cci].type === 'zhaoze')) {
+        var _nb = SP.adj && SP.adj[cci] ? SP.adj[cci] : [];
+        for (var _j = 0; _j < _nb.length; _j++) if (_nb[_j] === ci) return true;
+      }
       if (cci === ci) return true;
+      /* v154：城的记录坐标（x,y）与**当前格网**偶尔对不上（老档/换过格网/地形重选址）——
+         于是"城脚下居然能生成据点"（实测 1 座名城）。用近似距离容忍 1.5 格。 */
+      if (cci >= 0 && SP.roughDistOf) {
+        try { if (SP.roughDistOf({ ci: cci }, { ci: ci }) <= 1.5) return true; } catch (e0) { }
+      }
     }
     return false;
   };
@@ -26178,6 +26452,9 @@ window.GAME = window.GAME || {};
     ctx = ctx || GAME.map._pctx();
     var F = DATA.FORT, SP = ctx.sphere;
     if (!F || !SP || !SP.cells || !SP.cells[ci]) return false;
+    /* v154：水/沼泽**永远不生成据点**（城可以落水/浮岛，据点不行 —— 据点要步兵驻守）。
+       实测换格网后各seed都有 1 处据点亮在水/沼泽上。 */
+    if (SP.cells[ci].type === 'lake' || SP.cells[ci].type === 'zhaoze') return false;
     if (GAME.map._cellHasCity(ci, ctx)) return false;
     return GAME.map._fortActive(ci, ctx);
   };
@@ -26198,6 +26475,28 @@ window.GAME = window.GAME || {};
     var SP = ctx.sphere;
     if (!ctx || !SP || !SP.cells) return [];           /* 内核未建 → 无候选 */
     var seed = ctx.seed, _cp = ctx.id;
+    /* ============================================================
+     * v154（实测抓到）：**城随地形重选址**之后，有些 NPC 城的记录 ci 实测是水格
+     * （例如 jun_21 落在 zhaoze 上）—— 但"城格"在玩家眼里是**它站的那块陆地**。
+     * 这里把"城实际占的格"也剔掉（城格 + 它周围的陆地邻格），
+     * 否则据点会紧贴着城冒出来（跟"名城位置不生成据点"冲突，且看起来像贴脸野怪）。
+     * 只在候选阶段剔 —— 判定 `hasFort` 仍走城格本身，不扩大语义。
+     * ============================================================ */
+    var _cityGuard = {};
+    try {
+      (ctx.cities || []).forEach(function (c) {
+        if (!c) return;
+        var cci = (c.ci != null && c.ci >= 0) ? c.ci : SP.ciOfXY(c.x, c.y);
+        if (cci < 0) return;
+        var cell0 = SP.cells[cci];
+        if (!cell0) return;
+        if (cell0.type === 'lake' || cell0.type === 'zhaoze') {
+          /* 城落在水上 → 视为占住最近的陆地邻格 */
+          var adj = (SP.adj && SP.adj[cci]) ? SP.adj[cci] : [];
+          adj.forEach(function (a) { if (!_cityGuard[a]) _cityGuard[a] = 1; });
+        } else _cityGuard[cci] = 1;
+      });
+    } catch (eCG) { }
     var cch = GAME.map._fortCand;
     /* v91.74：缓存按**星球**分桶（各星球面/城集不同，共用一份会串）。 */
     if (!GAME.map._fortCandBy) GAME.map._fortCandBy = {};
@@ -26209,6 +26508,7 @@ window.GAME = window.GAME || {};
     for (var ci = 0; ci < cells.length; ci++) {
       if (!cells[ci]) continue;
       if (GAME.map._cellHasCity(ci, ctx)) continue;          /* 城格不生成据点 */
+      if (_cityGuard[ci]) continue;                          /* v154：城实际站的陆地格 */
       if (!GAME.map._fortActive(ci, ctx)) continue;          /* 海面由 _fortThr 折半（非排除） */
       list.push(ci);
     }
@@ -28077,6 +28377,16 @@ window.GAME = window.GAME || {};
   function makeSphere() {
     var SP = {};
 
+  /* v152：细分**保持 6**（40962 格）。
+     老板那句"六边形边在缩小 1 倍"紧接着说的是
+     "地块不再高出地表而是全部贴近地形…圆形放射出来的六边形，在地表上切出的边"——
+     要的是**六边形贴地、无缝铺满地形**（见下方网格壳改造），不是改格网密度。
+     改密度会改动全图距离语义（行军/迷雾/据点间距都按格数算），得不偿失。 */
+  /* v153（老板：「看着格子增大了，我想要格子变小」）——
+     v152 把 40962 改成了 10242（格子放大一倍），方向反了。退回 **40962**：
+     细分 6 = 10×4^6+2 格，每格线性尺寸只有 10242 方案的一半。
+     ⚠️ 想再细一档是 sub=7（163842 格），实测构建 5.9s / +360MB，浏览器扛不住 ——
+     真要更细，得走"惰性分面生成"，不是改这一个常数。 */
   var SUB = 6;                    /* icosphere 细分（固定）：顶点/地块数 = 10×4^6+2 = 40962 */
   SP.sub = SUB;
   var R = 300;                    /* 星球海平面半径（世界单位） */
@@ -28224,22 +28534,219 @@ window.GAME = window.GAME || {};
   }
   SP.sphElev = sphElev;
 
-  /* 球面地块 → **游戏 7 地形**（按高度+纬度最大近似分配）：湖泊/沼泽/平原/草原/森林/荒漠/山地。*/
+  /* ============================================================
+   * v154 · 地形分类与配色**同源**（老板：「黄黄的一看以为是荒漠，结果一点是森林」）
+   * ------------------------------------------------------------
+   * 病根：分类（cellType）只看高度+纬度；上色（sphBiome）按另一套高度色带 ——
+   * 两条路径算的地区根本不是一回事，于是"看起来是沙漠，点下去是森林"。
+   *
+   * 现在：**一个格子的样子 = 它的类型**。先算出一个三元组：
+   *   temp（温度 0~1，纬度 + 海拔）、moist（湿度 0~1，噪声 + 近水）、alt（海拔 0~1）
+   * 由这三样决定类型；同一套阈值反推颜色（见 map3d.climateOf）。
+   *
+   * 类型与样子（颜色在 map3d 里按类型取基色，再叠一点同类型的明暗噪声）：
+   *   山地 hill    高海拔        → 灰岩 / 高处积雪
+   *   森林 forest  海拔中 + 湿   → 深绿（黄绿一律不叫森林）
+   *   草原 caoyuan 海拔中 + 干   → 黄绿 / 草黄
+   *   荒漠 desert  热 + 极干     → 沙黄
+   *   平地 plain   低海拔 + 中湿 → 浅土黄（能立城的那种"空地"）
+   *   沼泽 zhaoze  低 + 很湿     → 墨绿 / 浑浊青
+   *   湖泊 lake    海平面以下     → 深蓝
+   * ============================================================ */
   var TYPE_NAME = { lake: '湖泊', zhaoze: '沼泽', plain: '平地', caoyuan: '草原', forest: '森林', desert: '荒漠', hill: '山地' };
   SP.TYPE_NAME = TYPE_NAME;
-  function cellType(e, dy, emax) {
-    var en = emax > 0 ? e / emax : 0;                     /* 归一化高度 0~1 */
-    if (e < 0) return 'lake';                             /* 海 → 湖泊 */
-    if (e < 0.025) return 'zhaoze';                       /* 低平湿岸 → 沼泽 */
-    var temp = 1 - dy * dy;
-    /* v90.67（老板 1）：荒漠先于平地判（原 `en<0.16 → plain` 在前 + `e<0.25` 与量纲冲突 → 荒漠恒 0）。 */
-    if (temp > 0.62 && en < 0.34) return 'desert';        /* 低纬干热 → 荒漠 */
-    if (en < 0.16) return 'plain';
-    if (en < 0.34) return 'caoyuan';
-    if (en < 0.56) return 'forest';
-    return 'hill';                                        /* 高 → 山地 */
+
+  /* ============================================================
+   * v155 · **地形划分流水线**（老板给的因子表 → 一条有序的推导）
+   * ------------------------------------------------------------
+   * 因子与它真正影响的东西：
+   *
+   *   纬度          → 热量带（主导外力：冰/水/风）
+   *   海拔          → 温度直减率；植被垂直带；高差决定切割强度
+   *   坡度 / 坡向   → 陡坡侵蚀强、难积土（→ 裸岩）；阳坡暖、阴坡湿
+   *   距水源距离    → 近水＝沉积/湿润（→ 沼泽、冲积平地）；远水＝风蚀干旱
+   *   距海远近 / 风 → 水汽输送：近海湿润、内陆干旱（大陆性）
+   *   岩石/土壤     → 硬岩陡峻保留；松软易蚀成丘谷（此处并入"坡度"）
+   *   植被覆盖      → 有林固土、裸地加速侵蚀（此处并入"湿度/坡度"反馈）
+   *   人类活动      → 属于**玩家**，不在地形生成里
+   *
+   * 流水线（顺序固定，缺一不可）：
+   *   ① 海拔 e            （已有：contField + mountainField + 细节噪声）
+   *   ② 距海岸 BFS        （从所有海格一次多源 BFS）
+   *   ③ 坡度 = 与邻居的最大高差（归一化）
+   *   ④ 气候场：
+   *        温度 T = f(纬度) − 海拔直减率
+   *        湿度 W = f(噪声, 距海, 距水源, 风带)
+   *      **三者都转成"分位数 0~1"** —— 这样类型比例由地类表决定，不看运气。
+   *   ⑤ 地类表（按海拔带 → 温度带 → 湿度带 → 坡度 的顺序短路）
+   *   ⑥ 连续性平滑：邻域投票（同类邻居不够就并进主流类型）—— 保证"成片"
+   *   ⑦ 落库：cells[ci].type（颜色/掉落/场景/立城全部读它）
+   *
+   * 改比例只改 ⑤ 的数；改"样子"只改 map3d.TERRAIN_RGB。两处不会打架。
+   * ============================================================ */
+  var TYPE_NAME = { lake: '湖泊', zhaoze: '沼泽', plain: '平地', caoyuan: '草原', forest: '森林', desert: '荒漠', hill: '山地' };
+  SP.TYPE_NAME = TYPE_NAME;
+
+  /* 地类表（**唯一**的判定规则；按顺序短路） */
+  SP.TERRAIN_RULES = [
+    { when: 'sea',                                    id: 'lake',    why: '海平面以下' },
+    { when: 'alt > 0.86',                             id: 'hill',    why: '雪线以上裸岩' },
+    { when: 'alt > 0.70 && slope > 0.62',             id: 'hill',    why: '陡坡：侵蚀强、积不住土' },
+    { when: 'coast <= 1 && wet > 0.55',                id: 'zhaoze',  why: '近水低地：沉积+滞水' },
+    { when: 'alt < 0.16 && wet > 0.62',               id: 'zhaoze',  why: '低洼湿地' },
+    { when: 'heat > 0.60 && wet < 0.38',              id: 'desert',  why: '热+干（内陆/背风）' },
+    { when: 'alt < 0.32 && slope < 0.46 && wet < 0.66', id: 'plain', why: '低平冲积：能立城' },
+    { when: 'wet > 0.56',                             id: 'forest',  why: '湿润：成林' },
+    { when: 'cold > 0.72',                            id: 'forest',  why: '高纬/高寒：针叶林' },
+    { when: '*',                                      id: 'caoyuan', why: '其余：草原' }
+  ];
+
+  /* 分位数归一（0~1）：用排序 + 二分，O(n log n)，40k 格无压力 */
+  function rank01(vals, idxs) {
+    var rank = new Float32Array(vals.length);
+    var arr = idxs.map(function (i) { return vals[i]; }).sort(function (a, b) { return a - b; });
+    var n = arr.length || 1;
+    for (var k = 0; k < idxs.length; k++) {
+      var i2 = idxs[k], v = vals[i2], lo = 0, hi = n;
+      while (lo < hi) { var mid = (lo + hi) >> 1; if (arr[mid] < v) lo = mid + 1; else hi = mid; }
+      rank[i2] = lo / n;
+    }
+    return rank;
+  }
+
+  /* 主流水线：给定顶点/邻接/高程，产出类型数组 */
+  SP.buildTerrainTypes = function (V, adj, eArr, emax) {
+    var nv = V.length, i;
+    var land = [], sea = [];
+    for (i = 0; i < nv; i++) { if (eArr[i] >= 0) land.push(i); else sea.push(i); }
+    SP._emax = emax || 1;
+    if (!land.length) return new Array(nv).fill('lake');
+
+    /* ---- ② 距海岸：从所有海格做一次**多源 BFS**（陆地上的距离；海上为 0） ---- */
+    var coast = new Int16Array(nv); coast.fill(999);
+    var q = sea.slice(), head = 0;
+    for (i = 0; i < q.length; i++) coast[q[i]] = 0;
+    while (head < q.length) {
+      var cur = q[head++], an = adj[cur];
+      for (var j = 0; j < an.length; j++) {
+        var nb = an[j];
+        if (coast[nb] > coast[cur] + 1) { coast[nb] = coast[cur] + 1; q.push(nb); }
+      }
+    }
+
+    /* ---- ③ 坡度：与邻居的最大高差（按全星高差归一） ---- */
+    var slopeRaw = new Float32Array(nv), dmax = 0.01;
+    for (i = 0; i < nv; i++) {
+      var an2 = adj[i], m = 0;
+      for (var j2 = 0; j2 < an2.length; j2++) {
+        var d2 = Math.abs(eArr[i] - eArr[an2[j2]]);
+        if (d2 > m) m = d2;
+      }
+      slopeRaw[i] = m; if (m > dmax) dmax = m;
+    }
+    for (i = 0; i < nv; i++) slopeRaw[i] = slopeRaw[i] / dmax;
+
+    /* ---- ④ 气候场（温度/湿度/海拔/距海），再统一转分位 ---- */
+    var P = SP.PLANET || {}, s = seed3();
+    var altRaw = new Float32Array(nv), heatRaw = new Float32Array(nv), wetRaw = new Float32Array(nv);
+    for (i = 0; i < nv; i++) {
+      var dd = V[i], e3 = Math.max(0, eArr[i]);
+      var alt = e3 / (emax || 1);
+      altRaw[i] = alt;
+      /* 温度：先看纬度（热量带），再按海拔直减（每升一档更冷） */
+      var lat = Math.abs(dd[1]);
+      heatRaw[i] = (1 - lat * lat) * (P.temp == null ? 1 : P.temp) - alt * 0.55;
+      /* 湿度：① 噪声（季风/地形雨） ② 离海越远越干 ③ 风带（信风带干、西风带湿） */
+      var m1 = fbm3(dd, 2.0, s + 811), m2 = fbm3(dd, 5.1, s + 977);
+      var wind = 0.5 + 0.22 * Math.sin(dd[1] * Math.PI * 2.2);     /* 纬度风带 */
+      var sea7 = Math.min(1, (coast[i] || 0) / 14);                /* 距海归一（14 格外算内陆） */
+      wetRaw[i] = (m1 * 0.55 + m2 * 0.25 + wind * 0.20) - sea7 * 0.55 - alt * 0.10;
+    }
+    var altN = rank01(altRaw, land);
+    var heatN = rank01(heatRaw, land);
+    var wetN = rank01(wetRaw, land);
+    var slopeN = rank01(slopeRaw, land);
+
+    /* ---- ⑤ 地类表 ---- */
+    var typ = new Array(nv);
+    for (i = 0; i < nv; i++) typ[i] = 'lake';
+    for (var li = 0; li < land.length; li++) {
+      var ci = land[li], alt2 = altN[ci], heat = heatN[ci], wet = wetN[ci], sl = slopeN[ci], cst = coast[ci];
+      var id = 'caoyuan';
+      if (alt2 > 0.86) id = 'hill';
+      else if (alt2 > 0.70 && sl > 0.62) id = 'hill';
+      else if (cst <= 1 && wet > 0.55) id = 'zhaoze';
+      else if (alt2 < 0.16 && wet > 0.62) id = 'zhaoze';
+      else if (heat > 0.50 && wet < 0.42) id = 'desert';
+      else if (alt2 < 0.42 && sl < 0.58 && wet < 0.74) id = 'plain';
+      else if (wet > 0.56) id = 'forest';
+      else if (heat < 0.28) id = 'forest';       /* 高寒针叶林 */
+      typ[ci] = id;
+    }
+
+    /* ---- ⑥ 连续性平滑：同类邻居不够 → 并进邻居里的主流类型（迭代 2 轮） ---- */
+    var PRI = { hill: 5, forest: 4, plain: 4, caoyuan: 3, desert: 2, zhaoze: 2, lake: 0 };
+    for (var iter = 0; iter < 2; iter++) {
+      var next = typ.slice();
+      for (var li2 = 0; li2 < land.length; li2++) {
+        var c2 = land[li2], nbs = adj[c2], same = 0, cnt = {};
+        for (var k2 = 0; k2 < nbs.length; k2++) {
+          var t2 = typ[nbs[k2]];
+          if (t2 === typ[c2]) same++;
+          cnt[t2] = (cnt[t2] || 0) + 1;
+        }
+        if (same >= 2) continue;                 /* v155b：阈值 3→2（平地太薄，会被整片吃掉） */
+        var bestT = typ[c2], bestN = -1;
+        for (var kk in cnt) {
+          if (cnt[kk] > bestN || (cnt[kk] === bestN && (PRI[kk] || 0) > (PRI[bestT] || 0))) { bestN = cnt[kk]; bestT = kk; }
+        }
+        next[c2] = bestT;
+      }
+      typ = next;
+    }
+    /* 落库到每个格（颜色/掉落/场景都读这里） */
+    SP._terr = { coast: coast, slope: slopeN, alt: altN, heat: heatN, wet: wetN };
+    return typ;
+  };
+
+  /* 兼容旧签名（外部只用来"看一眼"某格是什么地形；真正的判定在流水线里） */
+  function cellType(e, dy, emax, dir) {
+    if (e < 0) return 'lake';
+    try {
+      var ci = (dir && SP.nearestCell) ? SP.nearestCell(dir) : -1;
+      if (ci >= 0 && SP.cells && SP.cells[ci] && SP.cells[ci].type) return SP.cells[ci].type;
+    } catch (e0) { }
+    return 'caoyuan';
   }
   SP.cellType = cellType;
+
+  /* ============================================================
+   * v155k · cube-sphere 六面参数化 + **绕向判定**（几何唯一约定）
+   * ------------------------------------------------------------
+   * 老板「球体上有明显的直线分界」→「球体变成透明的了」的根因链：
+   *   · 六个面**分开参数化**，其中几个面是镜像的 → 三角形的**绕向**有正有反；
+   *   · 渲染改成 FrontSide 后，绕向反的面被背面剔除（直线分界 / 整球透明）。
+   * 约定写在这里（sphere.js 是地形几何的唯一事实源），渲染层只消费：
+   *   `SP.faceFlipOf(fn, du)` → true = 这个面的索引顺序要翻转
+   * 判定方法：按**实际压入的三角形顺序** (a, c, b) 求法线，
+   * 与面中心方向点乘，朝里就要翻。
+   * ⚠️ 第一版判定用了 (b-a)×(c-a) —— 与实际顺序正好反号 → 六个面全被翻 → 整球透明。
+   * ============================================================ */
+  SP.CUBE_FACES = [
+    function (u, v) { return [1, v, u]; }, function (u, v) { return [-1, v, -u]; },
+    function (u, v) { return [u, 1, -v]; }, function (u, v) { return [u, -1, v]; },
+    function (u, v) { return [u, v, 1]; }, function (u, v) { return [-u, v, -1]; }
+  ];
+  /* du = 一个格子对应的参数步长；用 (a, c, b) 的叉积（= 索引 push 的顺序） */
+  SP.faceFlipOf = function (fn, du) {
+    if (!fn || !(du > 0)) return false;
+    var a = fn(-1, -1), c = fn(-1, -1 + du), b = fn(-1 + du, -1);
+    var e1 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];      /* a → c */
+    var e2 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];      /* a → b */
+    var n = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]];
+    var m = [a[0] + b[0] + c[0], a[1] + b[1] + c[1], a[2] + b[2] + c[2]];
+    return (n[0] * m[0] + n[1] * m[1] + n[2] * m[2]) < 0;
+  };
 
   /* ---- icosphere 拓扑 ---- */
   function icoSpheres(sub) {
@@ -28310,11 +28817,11 @@ window.GAME = window.GAME || {};
     /* 类型 + 等级（BFS：同类区域内，离异类越远越高）*/
     var typ = new Array(nv), lvl = new Int16Array(nv), eArr = new Float32Array(nv), emax = 0.01;
     for (vi = 0; vi < nv; vi++) { eArr[vi] = sphElev(V[vi]); if (eArr[vi] > emax) emax = eArr[vi]; }
-    for (vi = 0; vi < nv; vi++) {
-      var e = eArr[vi];
-      typ[vi] = cellType(e, V[vi][1], emax); lvl[vi] = -1;
-      V[vi]._e = e;
-    }
+    SP._emax = emax;                                  /* 分类与配色共用的归一尺 */
+    for (vi = 0; vi < nv; vi++) { V[vi]._e = eArr[vi]; lvl[vi] = -1; }
+    /* v155：类型**整批**由流水线产出（距海/坡度/湿度分位/地类表/连续性平滑）——
+       逐格调 cellType 拿不到邻域信息，无法保证"成片"。 */
+    typ = SP.buildTerrainTypes(V, adj, eArr, emax);
     /* v90.71（老板 10）：**网格浮起成球壳** —— 六边网格铺在一个**平均海拔半径**的球面上
        （构成包裹球系的完球体）；地形/建筑高于该半径的部分自然**穿出网格**。
        shellH = shellFrac × 平均陆地高程 × HSC（距球心高度）。 */
@@ -28323,8 +28830,13 @@ window.GAME = window.GAME || {};
     var _meanLand = _mcnt ? _msum / _mcnt : 0;
     /* 地块壳半径 = R + shellFrac × 平均陆地高程 × HSC。shellFrac=1 → 恰在平均海拔面上；
        取略大于 1 让它**浮在平均面之上**（地形/建筑高于此者穿出网格）。可调 SP.shellFrac。 */
-    var _shellH = (SP.shellFrac == null ? 1.5 : SP.shellFrac) * _meanLand * HSC;
-    var _shellR = R + _shellH + 0.3;
+    /* v152（老板：「地块不再高出地表，而是全部贴近地形 —— 圆形放射出来的六边形，
+       在地表上切出的边，本质上是等边六边形，只是地形变化导致边扭曲」）：
+       网格线框**不再统一浮在平均海拔球壳上**（那会变成"套在球外面的一层铁丝笼"），
+       而是每一格**按自己的地形高度**投到地表 —— 网格成了贴在地形上的六边形纹路，
+       地形起伏时边自然被拉弯。抬升只留 0.25（z-fighting 余量）。 */
+    var _shellH = 0;
+    var _shellR = R;
     SP.meanLand = _meanLand; SP.shellH = _shellH; SP.shellR = _shellR;
     var q = [];
     for (vi = 0; vi < nv; vi++) {
@@ -28342,8 +28854,20 @@ window.GAME = window.GAME || {};
     var upos = [], uposCell = [], fpos = [], cells = [], off = 0;
     function cross(a, b) { return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]; }
     function dot(a, b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
-    /* 地块**贴地形**：某方向的表面半径 = 海平面 + max(0, 球面高度)×HSC + 微抬升 */
-    function terrainR(d) { return R + Math.max(0, sphElev(d)) * HSC + 0.5; }
+    /* ============================================================
+     * v154（老板：「地块紧贴地形，而不是高于地形一定距离」）
+     * ------------------------------------------------------------
+     * 改前：地块顶点 = R + 地形高度×HSC（最高 +2 个单位），于是整片六边形**浮在地表之上**，
+     * 与底下的地形网格形成"两层壳"，侧看就是重影/悬空。
+     * 现在：地块 = **海平面 + 极薄一层**（0.15），地形起伏由底下的地形面自己表现；
+     * 六边形是"地表上的纹路"，不是"盖在球上的一层板"。
+     * ============================================================ */
+    /* v154e：地块"紧贴地形" —— 几何上只离 0.05（几乎重合），
+       看得见靠的是线框材质的 **polygonOffset**（往镜头方向拉一点深度），
+       而不是把整块六边形抬高成"桌面"。 */
+    var PLATEAU = 0.05;
+    /* 跟随地形，但只离地 0.15（原来 0.5 → 现在几乎贴着；压平到海平面会让网格沉进地下）。 */
+    function terrainR(d) { return R + Math.max(0, sphElev(d)) * HSC + PLATEAU; }
     for (var vs in vf) {
       vi = +vs; var n = V[vi], fs = vf[vs];
       if (fs.length < 3) continue;
@@ -28352,12 +28876,31 @@ window.GAME = window.GAME || {};
       var ty2 = cross(n, tx);
       fs.sort(function (A, B) { var cA = cent[A], cB = cent[B]; return Math.atan2(dot(cA, ty2), dot(cA, tx)) - Math.atan2(dot(cB, ty2), dot(cB, tx)); });
       var rn = terrainR(n), P = [n[0] * rn, n[1] * rn, n[2] * rn];      /* 顶点坐在地形高度上（拾取碰撞体用）*/
-      var mm = fs.length, RIM = [];
-      for (var i2 = 0; i2 < mm; i2++) { var cc = cent[fs[i2]], rr2 = terrainR(cc); RIM.push([cc[0] * rr2, cc[1] * rr2, cc[2] * rr2]); }
-      /* v90.71（老板 10）：网格线框顶点落在 **平均海拔球壳**（_shellR）上 —— 浮起成完球体包裹球系 */
+      var mm = fs.length, RIM = [], RIM_UI = [];
+      /* ============================================================
+       * v154（老板：「地块紧贴地形，而不是高于地形一定距离」）
+       * ------------------------------------------------------------
+       * 面（拾取/地皮）逐顶点贴地形：已知。
+       * 线框原来按**每个角点自己的**地形高度抬 0.25 —— 起伏大的地方，
+       * 同一条边在两格各算一次、高度不同 → 视觉上出现两条错开的边（重影）。
+       * 现在：角点高度 = **相邻几格地形高度的平均**（同一条边两侧算出的值相同），
+       * 只抬 0.12 做 z-fight 余量 → 边压在地形上、并且**不会重影**。
+       * ============================================================ */
+      var _lift = 0.05;
+      for (var i3 = 0; i3 < mm; i3++) { var cc3 = cent[fs[i3]], rr3 = terrainR(cc3); RIM.push([cc3[0] * rr3, cc3[1] * rr3, cc3[2] * rr3]); }
+      /* 用「顶点位置(取整) → 高度」的全局表求平均：同一条边两侧共享同一批采样点 */
+      if (!SP._rimHMap) SP._rimHMap = {};
       for (var e2 = 0; e2 < mm; e2++) {
         var s1c = cent[fs[e2]], s2c = cent[fs[(e2 + 1) % mm]];
-        upos.push(s1c[0] * _shellR, s1c[1] * _shellR, s1c[2] * _shellR, s2c[0] * _shellR, s2c[1] * _shellR, s2c[2] * _shellR);
+        var k1 = [Math.round(s1c[0] * 1000), Math.round(s1c[1] * 1000), Math.round(s1c[2] * 1000)].join(',');
+        var k2 = [Math.round(s2c[0] * 1000), Math.round(s2c[1] * 1000), Math.round(s2c[2] * 1000)].join(',');
+        if (SP._rimHMap[k1] == null) SP._rimHMap[k1] = sphElev(s1c);
+        if (SP._rimHMap[k2] == null) SP._rimHMap[k2] = sphElev(s2c);
+        /* v154：线框跟随地形，但用**共享的顶点高度表**（同一条边两侧算出同一个值 → 无重影），
+           只比面高 0.05 做 z-fight 余量。 */
+        var r1 = R + Math.max(0, SP._rimHMap[k1]) * HSC + PLATEAU + _lift;
+        var r2 = R + Math.max(0, SP._rimHMap[k2]) * HSC + PLATEAU + _lift;
+        upos.push(s1c[0] * r1, s1c[1] * r1, s1c[2] * r1, s2c[0] * r2, s2c[1] * r2, s2c[2] * r2);
         /* v92：线框**逐段归属格**（与 upos 同步 push，一条线一个 ci）。
            map3d 用它在未探明区域把线框染黑 —— 否则线框球壳会从雾面里穿出来，
            暗区满屏白点（实测截图确认）。 */
@@ -28405,7 +28948,9 @@ window.GAME = window.GAME || {};
   };
   SP.load = function (blob) {
     if (!blob || !blob.cells) return false;
-    build(blob.sub == null ? SUB : blob.sub);         /* 建骨架（几何/邻接）；随后覆盖地形 */
+    /* v152：格网只认当前 SUB（老档 sub=6 的 40962 格不能铺新格网）；
+       旧记录的 ci 由 `GAME.migrateSphereSub` 按经纬重落。 */
+    build(SUB);                                       /* 建骨架（几何/邻接）；随后覆盖地形 */
     var cs = SP.cells, src = blob.cells;
     for (var i = 0; i < cs.length; i++) {
       var c = cs[i], b = src[i];
@@ -28447,6 +28992,73 @@ window.GAME = window.GAME || {};
   SP.dirOfLonLat = function (lon, lat) {
     var a = lat * Math.PI / 180, b = lon * Math.PI / 180, cl = Math.cos(a);
     return [cl * Math.cos(b), Math.sin(a), cl * Math.sin(b)];
+  };
+  /* ============================================================
+   * v92.247（老板）：「给星球定一个南北极，适配上下左右按键。现在是乱走的」
+   * ------------------------------------------------------------
+   * **南北极是唯一的，就在 +Y 轴上** —— 这不是新规矩，而是既有口径的显式化：
+   *   `dirOfLonLat` = [cosφcosλ, sinφ, cosφsinλ] → 纬度 φ 是 asin(y)，
+   *   即 +Y = 北极、−Y = 南极；经度 λ = atan2(z, x)（+X 为 0°，+Z 为 90°）。
+   *   （`PLANET.tilt` 是**轴倾角设定**，渲染里未施加旋转，所以视觉北极也就是 +Y。）
+   *
+   * **为什么"乱走"**：旧的方向键是在"经纬差"上判方位
+   *   （`dLon = ((nc.lon - pc.lon + 540) % 360) - 180; dLat = ...`）——
+   *   · 靠近两极时经度线收拢，正北的邻格能算出 dLon=180 → 被叫成"东/西"；
+   *   · 复合名"东北"同时含"北"和"东"，上键与右键抢同一个邻格；
+   *   · 匹配不到时回落 `nbs[0]`（排序后的第一个）→ 按左键却往北走。
+   * 正解：在**该格自己的切平面**里量"到北极的方位角"，
+   *   0°=北、90°=东、180°=南、270°=西，按最小夹角取邻格 —— 极点附近也成立。
+   * ============================================================ */
+  SP.NORTH = [0, 1, 0];                     /* 星球北极方向（球系坐标） */
+  /* 某点处的切平面基：up = 指向北极的切向，east = 向东的切向（n × up）。*/
+  SP.tangentOf = function (dir) {
+    var n = dir;
+    var N = SP.NORTH;
+    var d = n[0] * N[0] + n[1] * N[1] + n[2] * N[2];
+    var up = [N[0] - n[0] * d, N[1] - n[1] * d, N[2] - n[2] * d];
+    var ul = Math.hypot(up[0], up[1], up[2]);
+    if (ul < 1e-6) {
+      /* 正好站在极点上：切平面里"北"无定义，任取一条经线方向当北，
+         保证"左右"仍然绕极轴转、"上下"沿那条经线走。 */
+      var ref = Math.abs(n[1]) > 0.9 ? [0, 0, 1] : [0, 1, 0];
+      up = [ref[0] - n[0] * (ref[0] * n[0] + ref[1] * n[1] + ref[2] * n[2]),
+            ref[1] - n[1] * (ref[0] * n[0] + ref[1] * n[1] + ref[2] * n[2]),
+            ref[2] - n[2] * (ref[0] * n[0] + ref[1] * n[1] + ref[2] * n[2])];
+      ul = Math.hypot(up[0], up[1], up[2]) || 1;
+    }
+    up = [up[0] / ul, up[1] / ul, up[2] / ul];
+    /* east = n × up：在赤道 n=(1,0,0)、up=(0,1,0) 时得 (0,0,1)，
+       与"经度 λ=atan2(z,x) 向东增大"一致。 */
+    var east = [n[1] * up[2] - n[2] * up[1], n[2] * up[0] - n[0] * up[2], n[0] * up[1] - n[1] * up[0]];
+    return { up: up, east: east };
+  };
+  /* 从 fromCi 看 toCi 的方位角（度 · 0=北 90=东 180=南 270=西 · 顺时针）*/
+  SP.bearingOf = function (fromCi, toCi) {
+    var a = SP.cellOf(fromCi), b = SP.cellOf(toCi);
+    if (!a || !b || !a.dir || !b.dir) return null;
+    var T = SP.tangentOf(a.dir);
+    var t = [b.dir[0] - a.dir[0], b.dir[1] - a.dir[1], b.dir[2] - a.dir[2]];
+    var l = Math.hypot(t[0], t[1], t[2]);
+    if (l < 1e-9) return null;
+    t = [t[0] / l, t[1] / l, t[2] / l];
+    var nE = t[0] * T.east[0] + t[1] * T.east[1] + t[2] * T.east[2];
+    var nN = t[0] * T.up[0] + t[1] * T.up[1] + t[2] * T.up[2];
+    var deg = Math.atan2(nE, nN) * 180 / Math.PI;
+    return (deg + 360) % 360;
+  };
+  /* 方位角 → 八向中文名（与 bearingOf 同一把尺，极区也不会串）*/
+  SP.dirNameOfBearing = function (deg) {
+    if (deg == null) return '';
+    var names = ['北', '东北', '东', '东南', '南', '西南', '西', '西北'];
+    return names[Math.round(((deg % 360) + 360) % 360 / 45) % 8];
+  };
+  /* 方向键 → 方位角（度）。keys: up/down/left/right（WASD 同义）*/
+  /* 键名一律小写比对（`ev.key.toLowerCase()`）：arrowup / w 都算"北" */
+  SP.KEY_BEARING = {
+    arrowup: 0, up: 0, w: 0,
+    arrowright: 90, right: 90, d: 90,
+    arrowdown: 180, down: 180, s: 180,
+    arrowleft: 270, left: 270, a: 270
   };
   /* 球面地形查询（按世界格坐标 x,y）—— **地形判据的唯一出口**（所见即所得）。
      世界格 → 经纬（与 GAME.map.lonlatOf 同一映射）→ 最近六边格 → 该格球面地形。
@@ -31062,7 +31674,13 @@ if (GAME.reg) {
     return (x >>> 0) / 4294967296;
   }
 
-  /* 挑 4 个核心：彼此至少 55 格、离玩家主城至少 25 格（别一开局就贴脸） */
+  /* 挑 4 个核心：彼此至少 `DATA.FACTION.coreMinGap` 格（v152：格数 40962→10242 后
+     55 格在大球上放不下四家 —— 按**球面尺度**折算成 27 格，即原间距的 √(1/4)），
+     离玩家主城至少 `coreMinCity` 格（别一开局就贴脸）。 */
+  function _gap(k, d) {
+    var D = (GAME.DATA && GAME.DATA.FACTION) || {};
+    return D[k] == null ? d : D[k];
+  }
   function pickCores(sd, s, n) {
     var out = [], tries = 0, total = s.cells.length;
     var pc = GAME.currentCity ? GAME.currentCity() : null;
@@ -31072,10 +31690,10 @@ if (GAME.reg) {
       if (!cell || cell.type === 'lake') continue;
       var ok = true;
       for (var i = 0; i < out.length; i++) {
-        if (s.distOf({ ci: out[i] }, { ci: ci }) < 55) { ok = false; break; }
+        if (s.distOf({ ci: out[i] }, { ci: ci }) < _gap('coreMinGap', 55)) { ok = false; break; }
       }
       if (!ok) continue;
-      if (pc && pc.ci >= 0 && s.distOf({ ci: pc.ci }, { ci: ci }) < 25) continue;
+      if (pc && pc.ci >= 0 && s.distOf({ ci: pc.ci }, { ci: ci }) < _gap('coreMinCity', 25)) continue;
       out.push(ci);
     }
     return out;
@@ -36379,6 +36997,14 @@ if (GAME.reg) {
     var pos = (sp && sp.ciOfXY) ? sp.ciOfXY(p0.x, p0.y) : 0;
     if (!(pos >= 0)) pos = 0;
     /* ============================================================
+     * v155b（顺次划定）：前传**不再自己另选一个"最佳落脚点"**。
+     * 改前它会按"有事的格子 / 附近平地"另挑一个 —— 于是 `s.map.startPos`
+     * （城、2D 地图、行政区都在用的那个坐标）与君主实际站的位置**不一致**，
+     * 立城又落在脚下 → "城坐标对不上"。
+     * 现在：出生点 = `pickStartPos`（已在平原上），前传**原样站那儿**；
+     * 周围有没有事由"最近动静"提示与地图发光来引导。
+     * ============================================================ */
+    /* ============================================================
      * v131：出生格若荒僻，就近挪一格**有事的**。
      * ------------------------------------------------------------
      * `jianghuActsAt` 对每格有 30% 概率返回空（`DATA.JH_SPREAD.noneP`）——
@@ -36386,99 +37012,8 @@ if (GAME.reg) {
      * 玩家一睁眼看到"脚下没事、四周没动静"，只会以为自己玩不了。
      * 只挪出生点、不改判据：荒僻格仍然是荒僻格，走两步就能遇到。
      * ============================================================ */
-    try {
-      /* ------------------------------------------------------------
-       * v135（老板：「立城为什么在水里」）——出生点必须**靠得近平地**。
-       * 实测：`DATA.TERRAIN` 里只有 `plain` 是可建地形，而它只占 3.7~8.2%；
-       * 5 个 seed 的出生点到最近平地分别是 **23 / 32 / 36 / 28 / 36 格**。
-       * 也就是说：按"只能在平地立城"这条规则，玩家开局要先蒙头走三十步
-       * 才可能见到第一块能立城的地 —— 这比"城立在水里"更难接受。
-       * 所以出生点改口径：**先保证 2 环内有平地**，再在其中挑"有事的格子"。
-       * 找不到就把出生点直接放到最近的平地上（前传本来就是"流浪到这里"）。
-       * ------------------------------------------------------------ */
-      /* ⚠️ 两个目标会打架，优先级必须是**先脚下有事**：
-           ① 站平地 → 能立城，但实测"可做 0 件"（平原本来就不能采集，
-              §333③ 当场照出"可走 6 格 · 可做 0 件"）→ 玩家一睁眼无事可做；
-           ② 站有事的地 → 能玩，但要走三十步才见到平地。
-         所以口径定为：**脚下必须有事，平地放在 4 环内**（走四步就能立城）。
-         先在有事的格里挑，挑不到才退回平地（那种情况下玩家至少能立刻立城）。 */
-      /* ⚠️ 顺序必须是"**先找平地、再在它周围挑有事的格**"。
-         反过来（先在本地点附近找"旁边有平地"的格）测过：平原稀疏、常在 20 格外，
-         5 环内一个候选都没有 → 又退回平地 → 平原不能采集 → "可做 0 件"。
-         现在：取最近的平地 → 在它 4 环内挑脚下有事的格 → 站那儿。
-         这样"脚下有事"和"四步内能立城"同时成立。 */
-      var RING_PLAIN = 4;
-      var actsHere = (GAME.jianghuActsAt ? GAME.jianghuActsAt(pos) : []) || [];
-      var nearPlain = P.nearestBuildableN ? P.nearestBuildableN(pos, RING_PLAIN) : null;
-      /* ⛔ v139（实战暴露的判据错误）：进入搬迁的条件**只能是"脚下没事"**。
-         原来写的是 `(!nearPlain || !actsHere.length)` —— 于是"脚下明明有采集/清剿、
-         只是 4 环内没有平地"也会触发搬迁，最后还可能被挪到一块**没动作的平地**上
-         （`cand` 为空时的退路），开局第一屏就成了「可做 0 件」（§333③ 红）。
-         "4 环内有平地"是**选址偏好**，不是搬迁理由 —— 玩家可以先在原地做事，
-         立城时 HUD 会告诉他最近平地在哪个方向。 */
-      if (sp && sp.hopsWithin && GAME.jianghuActsAt && !actsHere.length) {
-        /* ① 先定位最近的平地（用当前 pos 作起点，半径给足） */
-        var far = P.nearestBuildable ? P.nearestBuildable(40) : null;
-        var base = far ? far.ci : pos;
-        /* ② 在平地 4 环内挑"脚下有事"的格（含平地自己：它虽然不能采集，
-              但可能出"静修/斗将"这类动作） */
-        var cand = [], ring = sp.hopsWithin(base, RING_PLAIN), i;
-        for (i = 0; i < ring.length; i++) {
-          var c2 = ring[i];
-          if (!GAME.jianghuActsAt(c2).length) continue;
-          cand.push(c2);
-        }
-        if (cand.length) {
-          pos = cand[0];
-        } else if (far) {
-          pos = far.ci;                                        /* 退路：站到平地上 */
-        }
-      }
-      /* ⛔ v139：**最后一道兜底 —— 脚下必须有可做的事**。
-         `jianghuActsAt` 对每格有 30% 概率返回空；上面那条"退路：站到平地上"
-         可能正好落进一个荒僻的平原（平原本来还不能采集）——
-         实测开局第一屏"可走 6 格 · 可做 0 件"，玩家一睁眼无事可做（§333③ 当场红）。
-         这里在 4 环内再找一次"有事的格"，只改起点、不动任何判据。 */
+    /* （v155b：v135/v139 的"另选落脚点"整段已停用 —— 出生点由 pickStartPos 唯一定义） */
 
-    } catch (e) { /* 找落脚点失败就用原位 */ }
-    /* ============================================================
-     * v139：**最后一道兜底（无条件）** —— 出生点不许在水里，也不许脚下没事。
-     * ------------------------------------------------------------
-     * 上面的选址逻辑有多个分支，实测仍有漏网（SEED 61024：pos 落在 lake 上、
-     * `jianghuActsAt` 返回 0 → 开局第一屏「可做 0 件」）。
-     * 这里不再依赖那些分支：只看**最终结果的成色**，不合格就重新挑一次。
-     * 顺序：最近的平地 → 平地 4 环内"动作最多"的格（那是玩家真正能开工的地方）。
-     * ============================================================ */
-    try {
-      var _t1 = P.cellTypeOf(pos);
-      var _a1 = (GAME.jianghuActsAt ? GAME.jianghuActsAt(pos) : []) || [];
-      var _isWater = (_t1 === 'lake' || _t1 === 'zhaoze');
-      if ((_isWater || !_a1.length) && sp && sp.hopsWithin && GAME.jianghuActsAt) {
-        var _f1 = P.nearestBuildable ? P.nearestBuildable(60) : null;
-        /* 找不到"平地"时至少找一块**陆地**（大洋中央也要能上岸）——
-           实测随机 seed 下会出现"60 环内没有平原"的极端情况，
-           而玩家掉在水里比"离平地远一点"糟得多。 */
-        if (!_f1) {
-          var _land = -1;
-          var _rl = sp.hopsWithin(pos, 30) || [];
-          for (var _li = 0; _li < _rl.length && _land < 0; _li++) {
-            var _lt = P.cellTypeOf(_rl[_li]);
-            if (_lt && _lt !== 'lake' && _lt !== 'zhaoze') _land = _rl[_li];
-          }
-          if (_land >= 0) _f1 = { ci: _land };
-        }
-        if (_f1) {
-          /* 在平地 4 环内挑动作最多的格；一个都没有就站平地本身 */
-          var _best = -1, _bestN = 0;
-          var _r1 = sp.hopsWithin(_f1.ci, 4) || [];
-          for (var _i1 = 0; _i1 < _r1.length; _i1++) {
-            var _n1 = (GAME.jianghuActsAt(_r1[_i1]) || []).length;
-            if (_n1 > _bestN) { _bestN = _n1; _best = _r1[_i1]; }
-          }
-          pos = (_best >= 0) ? _best : _f1.ci;
-        }
-      }
-    } catch (e) { /* 兜底失败就让 pos 保持原样，不挡住开局 */ }
     s.prologue = {
       on: true, at: 0, day: -1, acts: 0, builtAt: null,
       pos: pos,
@@ -36750,15 +37285,24 @@ if (GAME.reg) {
     var pc = sp.cellOf(pos) || {};
     /* 方位：玩家得知道"往哪走"，光给六个地名分不清方向（v131）。
        按球面经纬差算八向 —— 六边形只有六邻，实际会出现东/西/东北/… */
-    var dirName = function (nc) {
-      if (!nc || pc.lon == null || nc.lon == null) return '';
+    /* v92.247（老板）：「给星球定一个南北极，适配上下左右按键。现在是乱走的」
+       —— 方位改成**切平面里的真实方位角**（0=北 90=东），不再拿经纬差拼字。
+       旧写法在两极附近必然串（经线收拢 → 正北的邻格算出 dLon=180 → 叫成"东"），
+       而"东北"这种复合名又会同时命中上/右两个键。 */
+    var dirName = function (ci, nc) {
+      if (!nc) return '';
+      if (sp && sp.bearingOf) {
+        var deg = sp.bearingOf(pos, ci);
+        if (deg != null && sp.dirNameOfBearing) return sp.dirNameOfBearing(deg);
+      }
+      /* 兜底：旧口径（无 bearingOf 的极端情况）*/
+      if (pc.lon == null || nc.lon == null) return '';
       var dLon = ((nc.lon - pc.lon + 540) % 360) - 180;
       var dLat = nc.lat - pc.lat;
       var ew = dLon > 0 ? '东' : (dLon < 0 ? '西' : '');
       var ns = dLat > 0 ? '北' : (dLat < 0 ? '南' : '');
       if (!ns) return ew || '东';
       if (!ew) return ns;
-      /* 纬度差小、经度差大 → 偏东西；反之偏南北 */
       return (Math.abs(dLat) < Math.abs(dLon) * 0.45) ? ew : (ns + ew);
     };
     var out = [];
@@ -36767,7 +37311,7 @@ if (GAME.reg) {
       if (ci === pos) continue;
       var cell = sp.cellOf(ci) || {};
       var acts = (GAME.jianghuActsAt ? GAME.jianghuActsAt(ci) : []) || [];
-      out.push({ ci: ci, type: cell.type, acts: acts, dir: dirName(cell), here: false });
+      out.push({ ci: ci, type: cell.type, acts: acts, dir: dirName(ci, cell), here: false });
     }
     /* 按方位排一下（东→东北→北→西北→西→西南→南→东南），读起来有顺序 */
     var ORDER = ['北', '东北', '东', '东南', '南', '西南', '西', '西北'];
@@ -36775,30 +37319,138 @@ if (GAME.reg) {
     return out;
   };
 
-  /* 走一步。只有一件事需要判断：是不是相邻、精力够不够。
-     **不掷骰、不判定** —— 走到哪儿是玩家的选择，能做什么由那格自己决定。 */
+  /* ============================================================
+   * v151（老板：「地图就是游戏本体」）—— **手势就是点地图**
+   * ------------------------------------------------------------
+   * 改前：走路是 HUD 上六个 `<span>`、一次一步，点地图只会弹"未占领野地"面板。
+   * 改后：玩家点地图上任意一格 → 沿最短路径走过去（精力够到哪走到哪），
+   *       HUD 不再给任何走路按钮。
+   *
+   * 三条判据（老板的验收标准）：
+   *   · 手势：想走路 → 手指去点地图那一格（成立）；
+   *   · 闭环：走完立刻看见人在新格子上、精力少了 N、迷雾退开（成立）；
+   *   · 代价可见：动手前 HUD 给出"约走 N 步 / 耗 N 精力"，点远处时照此截断。
+   * 不掷骰、不判定 —— 走到哪儿是玩家的选择，能做什么由那格自己决定。
+   * ============================================================ */
+  /* 最短路径：当前位置 → 目标格（只走已探明的格子 —— 不能借迷雾抄近路）。
+     返回 { ci: [...不含起点], complete, why } —— 走不到就是 complete:false。 */
+  P.pathTo = function (target) {
+    var s = st0(), sp = SPc();
+    if (!s || !sp || !sp.adj || target == null) return { ci: [], complete: false, why: 'nosp' };
+    var nv = sp.nv || (sp.cells && sp.cells.length) || 0;
+    if (target < 0 || target >= nv) return { ci: [], complete: false, why: 'out' };
+    var start = P.pos();
+    if (target === start) return { ci: [], complete: true };
+    /* ============================================================
+     * v152（老板：「球面是可活动区域，玩家在上边直接走动」「说好未探索区域
+     * 只要云雾缭绕微暗就行」）
+     * ------------------------------------------------------------
+     * 改前：雾里的格子**不许踩**，点远处会被"自动瞄到已探明边缘"截断 ——
+     * 于是玩家被一圈看不见的墙围住，点哪都说"没探明"。
+     * 改后：**雾不是墙，是看不清**。点哪走哪（全图可走），雾照常遮信息；
+     * 走到哪儿，哪儿就亮起来。「看不见」不再是「去不了」。
+     * ============================================================ */
+    var seen = function (ci) {
+      try { return !(GAME.fog && GAME.fog.get && GAME.fog.get(ci) === 0); } catch (e) { return true; }
+    };
+    var prev = new Int32Array(nv).fill(-1);
+    var q = [start], head = 0, found = false;
+    prev[start] = start;
+    while (head < q.length) {
+      var cur = q[head++];
+      if (cur === target) { found = true; break; }
+      var an = sp.adj[cur] || [];
+      for (var i = 0; i < an.length; i++) {
+        var nb2 = an[i];
+        if (prev[nb2] !== -1) continue;
+        prev[nb2] = cur;
+        q.push(nb2);
+      }
+    }
+    if (!found) return { ci: [], complete: false, why: 'unreach' };
+    var out = [];
+    for (var c2 = target; c2 !== start; c2 = prev[c2]) {
+      out.push(c2);
+      if (prev[c2] === c2 || out.length > nv) break;
+    }
+    out.reverse();
+    return { ci: out, complete: true };
+  };
+
+  /* 这一步要花多少精力（唯一口径，HUD 的"约耗 N"与真正走路同源） */
+  P.stepCost = function () { return D().stepEnergy || 1; };
+  /* 以当前精力还能走几步 */
+  P.moveBudget = function () {
+    var lord = P.lord();
+    if (!lord) return 0;
+    var en = GAME.energyNowOf ? GAME.energyNowOf(lord) : ((lord && lord.energy) || 0);
+    return Math.max(0, Math.floor(en / P.stepCost()));
+  };
+
+  /* 走一步。只有一件事需要判断：是不是相邻、精力够不够。 */
   P.moveTo = function (ci) {
     if (!P.on()) return { ok: false, msg: '已经立城了，这活儿得派队伍出去' };
-    var s = st0(), sp = SP();
+    var s = st0(), sp = SPc();
     if (!s) return { ok: false, msg: '没有对局' };
-    var pos = P.pos(), adj = sp.hopsWithin(pos, 1), ok = false;
+    var pos = P.pos(), adj = sp && sp.hopsWithin ? sp.hopsWithin(pos, 1) : [], ok = false;
     for (var i = 0; i < adj.length; i++) if (adj[i] === ci) ok = true;
     if (!ok) return { ok: false, msg: '只能走到相邻的格子' };
     var lord = P.lord();
     if (!lord) return { ok: false, msg: '没有君主' };
-    var cost = D().stepEnergy || 1;
+    var cost = P.stepCost();
     var en = (GAME.energyNowOf ? GAME.energyNowOf(lord) : 100);
     if (en < cost) return { ok: false, msg: '精力见底了 —— 明天再走' };
     if (GAME.setEnergyNow) GAME.setEnergyNow(lord, en - cost);
+    /* v153：记下上一格 —— map3d 的小人据此做"沿地表走过来"的插值（不瞬移） */
+    s.prologue._fromCi = pos;
     s.prologue.pos = ci;
     s.prologue.steps = (s.prologue.steps | 0) + 1;
-    /* 站到哪儿就看到哪儿周围一圈（比"探索"窄 —— 走一趟不等于勘察） */
+    /* 站到哪儿就看到哪儿周围一圈（比"探索"窄 —— 走一趟不等于勘察）。
+       v152：脚下这一格**必须**全明（人站在那儿，不可能"看不见自己脚下"）。 */
     try {
-      if (GAME.fog && GAME.fog.revealAround) GAME.fog.revealAround(ci, 2, GAME.fog.ALL);
+      if (GAME.fog && GAME.fog.revealAround) GAME.fog.revealAround(ci, 3, GAME.fog.ALL);
+      if (GAME.fog && GAME.fog.bump) GAME.fog.bump(ci, GAME.fog.ALL);
     } catch (e) { /* 迷雾失败不该挡住移动 */ }
     var cell = sp.cellOf(ci) || {};
     var tn = ((GAME.DATA || {}).TERRAIN || {})[cell.type] || {};
     return { ok: true, msg: '走到' + (tn.name || '荒野') + '了 —— 看看这地方能做什么', ci: ci };
+  };
+
+  /* 沿最短路径走到底（精力不足就停在中途）。
+     返回 { ok, ci, steps, spent, complete, why, arrived } ——
+     `arrived` = 最终是不是就站在目标格（决定地图点击后要不要就地弹动手面板）。 */
+  P.walkTo = function (target) {
+    if (!P.on()) return { ok: false, msg: '已经立城了，这活儿得派队伍出去' };
+    var s = st0();
+    if (!s) return { ok: false, msg: '没有对局' };
+    var pth = P.pathTo(target);
+    if (!pth.ci.length && !pth.complete) {
+      return { ok: false, why: pth.why || 'no', msg: '走不过去' };
+    }
+    var budget = P.moveBudget();
+    var path = pth.ci;
+    if (!path.length) {
+      return { ok: true, ci: P.pos(), steps: 0, spent: 0, complete: pth.complete, arrived: true };
+    }
+    var n = Math.min(budget, path.length);
+    var last = null;
+    for (var i = 0; i < n; i++) {
+      var r = P.moveTo(path[i]);
+      if (!r.ok) break;
+      last = r;
+    }
+    var spent = n * P.stepCost();
+    var arrived = n > 0 && path[n - 1] === target;
+    var cur = P.pos();
+    var cell = (SPc() && SPc().cellOf) ? SPc().cellOf(cur) : null;
+    var tn = ((GAME.DATA || {}).TERRAIN || {})[(cell || {}).type] || {};
+    var msg;
+    if (!n) msg = '精力见底了 —— 明天再走';
+    else if (arrived) msg = '走到' + (tn.name || '荒野') + '了（' + n + ' 步 · 精力 −' + spent + '）';
+    else msg = '走了 ' + n + ' 步，精力不够了 —— 停在' + (tn.name || '荒野') + '（还差 '
+      + (path.length - n) + ' 步）';
+    return { ok: n > 0, ci: cur, steps: n, spent: spent, complete: pth.complete,
+      arrived: arrived, msg: msg };
   };
 
   /* ============================================================
@@ -37154,16 +37806,27 @@ if (GAME.reg) {
    * **给经验**。内核给的是辐能核心与装备，不给经验 —— 前传要的正是经验。
    * 经验走既有 `GAME.battle.gainExp`（含升级、音效、日志）。
    * ============================================================ */
-  P.act = function (ci, actId) {
+  /* 能不能在这一格做这件事（**不扣费、不落锁** —— 给"先问再走"的前置检查用） */
+  P.actCheck = function (ci, actId) {
     if (!P.on()) return { ok: false, msg: '已经立城了，这活儿得派队伍出去' };
     var lord = P.lord();
     if (!lord) return { ok: false, msg: '没有君主' };
-    if (!GAME.jianghuDo || !GAME.jianghuCheck || !GAME.jianghuRoll) {
-      return { ok: false, msg: '荒野行动内核缺失' };
-    }
+    if (!GAME.jianghuCheck) return { ok: false, msg: '荒野行动内核缺失' };
     /* 前传期**不锁日**：野外就在脚下，翻过一遍还能再翻。
        正式阶段的"此地今日已做过"是防止在城里刷行动，前传没有这个场景；
        真正的限制是精力与体力（有限资源才有取舍）。 */
+    var s0 = st0();
+    if (s0 && s0.jianghu) delete s0.jianghu['c' + ci + '|' + actId];
+    return GAME.jianghuCheck(ci, lord.id, actId);
+  };
+
+  /* 结算一次行动（扣费 + 掷结果 + 给经验）；`force` 由回合制打斗传进来，
+     直接改写 `jianghuRoll` 的胜负 —— 不另写第二套账（见 jianghuRoll 的 force 注释）。
+     `preChk` = 这笔费用**已经付过**（回合打斗在开打时扣），此时不再重复校验与扣费。 */
+  P.resolve = function (ci, actId, force, preChk) {
+    var lord = P.lord();
+    if (!lord) return { ok: false, msg: '没有君主' };
+    if (!GAME.jianghuCheck || !GAME.jianghuRoll) return { ok: false, msg: '荒野行动内核缺失' };
     var s0 = st0();
     if (s0 && s0.jianghu) delete s0.jianghu['c' + ci + '|' + actId];
     /* 走的是**同一套内核**（check → spend → roll），只是把 `jianghuDo` 的三合一
@@ -37171,16 +37834,9 @@ if (GAME.reg) {
     /* 连战不耗精力（它是上一场"顺下来"的），普通行动才走 check/spend */
     var combo = P.comboOf();
     var isCombo = !!(combo && combo.ci === ci && combo.act === actId);
-    if (!isCombo) {
-      var chk = GAME.jianghuCheck(ci, lord.id, actId);
-      if (!chk.ok) return chk;
-      GAME.jianghuSpend(chk);
-    } else {
-      var chk2 = GAME.jianghuCheck(ci, lord.id, actId);
-      /* check 只是为了拿到 roll 需要的结构；连战不扣费，所以失败也能继续打 */
-      if (!chk2.ok) return chk2;
-      var chk = chk2;
-    }
+    var chk = preChk || GAME.jianghuCheck(ci, lord.id, actId);
+    if (!chk.ok) return chk;
+    if (!isCombo && !preChk && GAME.jianghuSpend) GAME.jianghuSpend(chk);
     var d = D();
     var tier = P.tier();
     var def = (GAME.DATA.LING_ACT || {})[actId];
@@ -37188,7 +37844,7 @@ if (GAME.reg) {
     /* v132：**斗将赢了，这一格的头目服了** —— 之后 3 次战斗类动作难度 −40%。
        这是斗将真正的存在理由：经验远不如清剿（几百 vs 四千），
        但"打不过的时候先把头目挑下来"是一条真的出路。
-       用现成的 `def.power` 临时缩放（同一套倍率机制，P.act 本来就在用它）。
+       用现成的 `def.power` 临时缩放（同一套倍率机制，P.resolve 本来就在用它）。
        只对 fight / trial / scene 生效 —— 采集/静修没有对手，不该跟着变便宜。 */
     var _subdued = 0;
     try {
@@ -37205,7 +37861,9 @@ if (GAME.reg) {
     }
     var r;
     try {
-      r = GAME.jianghuRoll(chk, { pow: d.powMul || 1 });
+      var mods = { pow: d.powMul || 1 };
+      if (force) mods.force = force;
+      r = GAME.jianghuRoll(chk, mods);
     } finally {
       if (def && bakPow) def.power = bakPow;   /* 一定要恢复：这张表是正式阶段的 */
       /* v132：吃掉了这次"头目服了"的优惠（3 次用完就没了） */
@@ -37242,6 +37900,108 @@ if (GAME.reg) {
       ok: true, gain: gain, bad: !!r.bad,
       msg: (r.name || '') + '　' + (r.text || '') + (gain ? '　经验 +' + gain : '')
     };
+  };
+
+  /* 就地解决（一次性结算）。回合制打斗走 P.duelAct（见 §v151）。 */
+  P.act = function (ci, actId) { return P.resolve(ci, actId, null); };
+
+  /* ============================================================
+   * v151-b：**打斗给回合**（老板：「点那个敌人 → 打几个回合」）
+   * ------------------------------------------------------------
+   * 改前：点一下 = 掷一次骰 = 一行字。没有出手，没有读招。
+   * 改后：先扣费（jianghuSpend 与一次性结算同一本账），再开一场**斗将竞技场**：
+   *   复用 `GAME.duel.play`（血 = 体力上限、每合双方各出手一次、招式相克），
+   *   每合玩家选一招 → 打完把胜负**回灌** `jianghuRoll({force})` 落账。
+   * 于是"回合"长在前端，"账"仍在唯一出口 —— 不新写第二套判定。
+   * 谁会开回合：fight / trial / scene（有对手）；采集/静修/拜访仍是一次性。
+   * ============================================================ */
+  P.combatKind = function (actId) {
+    var def = (GAME.DATA.LING_ACT || {})[actId];
+    return !!(def && (def.kind === 'fight' || def.kind === 'trial'));
+  };
+
+  /* 开一场"做事"的回合：先付费 → 建 foe 快照 → 存 prologue.duel(mode:'act') */
+  P.duelAct = function (ci, actId) {
+    if (!P.on()) return { ok: false, msg: '已经立城了，这活儿得派队伍出去' };
+    var lord = P.lord();
+    if (!lord) return { ok: false, msg: '没有君主' };
+    if (!GAME.duel || !GAME.duel.play) return { ok: false, msg: '斗将竞技场缺失' };
+    var n = P.duelOf();
+    if (n && !n.done) return { ok: false, msg: '正打着呢' };
+    var chk = P.actCheck(ci, actId);
+    if (!chk.ok) return chk;
+    /* 血就是体力：气力不足不许动手（与叫阵同一条门槛） */
+    var gt = GAME.duel.gate(lord);
+    if (!gt.ok) return { ok: false, msg: gt.msg };
+    GAME.jianghuSpend(chk);                       /* 扣费与一次性结算同一本账 */
+    var foe = P.duelFoe(ci);
+    var s = st0();
+    s.prologue.duel = {
+      mode: 'act', ci: ci, act: actId,
+      seed: 20261024 + (s.prologue.acts | 0),
+      moves: [], rows: [], wa: 0, wb: 0, done: false, winner: null, res: null,
+      foe: { name: foe.name, level: foe.level | 0,
+        tong: foe.tong | 0, yw: foe.yw | 0, zm: foe.zm | 0, nz: foe.nz | 0,
+        icon: (foe.species && foe.species.icon) || '👤',
+        tag: (foe.species && foe.species.tag) || '',
+        desc: (foe.species && foe.species.desc) || '',
+        speciesId: (foe.species && foe.species.id) || '' },
+      foeFull: { id: foe.id, name: foe.name, level: foe.level | 0,
+        yw: foe.yw | 0, tong: foe.tong | 0, zm: foe.zm | 0, nz: foe.nz | 0,
+        species: (foe.species || null) },
+    };
+    return { ok: true, msg: foe.name + '（Lv' + (foe.level | 0) + '）挡住了去路 —— 出招吧' };
+  };
+
+  /* 出一招（mode:'act'）。打满不判负死的，按 duel 内核的"剩血比例"分胜负。 */
+  P.duelActStep = function (moveId) {
+    var s = st0(), lord = P.lord(), d = P.duelOf();
+    if (!s || !lord || !d || d.done || d.mode !== 'act') return { ok: false, msg: '现在没有在打的斗将' };
+    var MV = (GAME.DATA && GAME.DATA.DUEL && GAME.DATA.DUEL.moves) || {};
+    if (!MV[moveId]) return { ok: false, msg: '没有这一招' };
+    if (!GAME.duel || !GAME.duel.play) return { ok: false, msg: '斗将竞技场缺失' };
+    d.moves.push(moveId);
+    var foe = P.duelFoeFull(d);
+    var r = GAME.duel.play(lord, foe, d.moves, d.seed);
+    if (!r) return { ok: false, msg: '这一合没判出来' };
+    var row = r.rounds[r.rounds.length - 1] || null;
+    d.res = r; d.rows = r.rounds; d.wa = r.wa; d.wb = r.wb;
+    d.hpA = r.hpA; d.hpB = r.hpB;
+    var out = { ok: true, row: row, res: r, done: false, msg: '' };
+    if (!r.over) {
+      out.msg = '第 ' + d.moves.length + ' 合：' + row.aName + ' 对 ' + row.bName
+        + '　我掉 ' + row.dmgToA + ' · 他掉 ' + row.dmgToB;
+      return out;
+    }
+    /* 打完：把胜负回灌唯一账本（force）—— 经验/物资/负伤全在那一本账上。
+       `已付费`（preChk）：开打时扣过，这里只结算，不再校验体力/精力。 */
+    d.done = true;
+    d.winner = r.winner;
+    var force = (r.winner === 'atk') ? 'win' : (r.winner === 'def' ? 'lose'
+      : (r.winner === 'draw' ? 'draw' : 'win'));
+    var act = P.resolve(d.ci, d.act, force, {
+      ok: true, act: (GAME.DATA.LING_ACT || {})[d.act], gen: lord, ci: d.ci, actId: d.act,
+      day: Math.floor(((s.world && s.world.elapsed) || 0) / 86400),
+      lv: (GAME.map && GAME.map.wildLevelNow) ? GAME.map.wildLevelNow(d.ci) : 0
+    });
+    d.actRes = act || null;
+    d.txt = (act && act.msg) || '';
+    d.gain = (act && act.gain) | 0;
+    out.done = true; out.winner = r.winner; out.act = act;
+    out.msg = (r.winner === 'atk' ? '拿下' : r.winner === 'def' ? '不敌' : '相持')
+      + (d.txt ? ' —— ' + d.txt : '');
+    return out;
+  };
+
+  /* 打斗里"先撤"：账不结（已扣的费用不退，回合作废）——
+     退的是命，不是白打；给玩家一条"打不动就走"的路。 */
+  P.duelActFlee = function () {
+    var d = P.duelOf();
+    if (!d || d.mode !== 'act' || d.done) return { ok: false, msg: '现在没有在打的斗将' };
+    d.done = true; d.winner = 'flee';
+    d.txt = '你退开了 —— 这一趟白跑，精力和体力照扣';
+    d.gain = 0;
+    return { ok: true, msg: d.txt };
   };
 
   /* ============================================================
@@ -37421,6 +38181,7 @@ if (GAME.reg) {
       : '';
     /* 进度：几场了 + 还差几次的感觉（不写"还差 N 次"，那是数学题，不是游戏） */
     var acts = (st0() && st0().prologue && (st0().prologue.acts | 0)) || 0;
+    var steps = (st0() && st0().prologue && (st0().prologue.steps | 0)) || 0;
 
     /* v131：`spotRows`（v128 的"附近可去"列表）退役 —— 现在走「脚下 + 四周」。 */
     /* 地形名：面板与营地视图都要用（删 spotRows 时被一起带走，这里补回）。 */
@@ -37429,54 +38190,90 @@ if (GAME.reg) {
     };
 
     /* ============================================================
-     * v131（老板：「君主作为个人冒险者在大地图进行游玩」）
+     * v151（老板：「地图就是游戏本体」）
      * ------------------------------------------------------------
-     * 从"面板上挑一个地方跳过去"改成**人在地图上走**：
-     *   · 脚下 —— 我站的这一格能做什么（探索/采集/斗将，走同一个 jianghuActsAt）
-     *   · 四周 —— 六个邻格，点一下就走过去（`P.moveTo`，耗 1 精力）
-     * 这才有"地块探索"：走到哪、看到哪、能做什么，都由**站的位置**决定。
+     * 走路、动手、叫阵**全部在地图上用手势完成** —— HUD 不给任何操作按钮：
+     *   · 点地图上的格 → `P.walkTo` 沿最短路径走过去（精力够到哪走到哪）
+     *   · 点脚下有事的格 → 地图上就地弹出动手面板（`ui.openLandModalCi`）
+     *   · 破雾 → 雾里有动静的格子在地图上自己闪光
+     * HUD 只留：读数（天数/等级/精力）、脚下是什么（一行字，**不是按钮**）、
+     * 去哪儿（指路文案）、立城。
      * ============================================================ */
     var hereActs = (GAME.jianghuActsAt ? GAME.jianghuActsAt(P.pos()) : []) || [];
-    var hereBlock = '<div style="margin-top:8px;font-size:16px;color:#8a7a5c;">📍 你站在这里 · ' +
-      U.escape(terrainName((SP() && SP().cellOf && SP().cellOf(P.pos()) || {}).type)) + '）</div>'
+    var hereCell = (SPc() && SPc().cellOf) ? SPc().cellOf(P.pos()) : {};
+    var hereName = terrainName((hereCell || {}).type);
+    var budget = P.moveBudget();
+    var hereLine = '<div style="margin-top:8px;font-size:15px;color:#8a7a5c;">📍 你现在站在「<b style="color:#c9b06a;">'
+      + U.escape(hereName) + '</b>」　·　点地图上的格子就走过去（每步 ' + P.stepCost() + ' 精力，还能走 '
+      + budget + ' 步）</div>'
       + (hereActs.length
-        /* v140（老板：「目前前20级还是 PPT，这不是个正经游戏」）：
-           主按钮**走进场景**（`prologue-scene`）—— 进到那片废墟/林地/湖边，
-           自己走、走到东西旁边动手。真正的结算仍走 `P.act`（唯一出口）。
-           另留一个「就地解决」（`prologue-act`）给不想走的人：
-           不是所有人都想每次都进去走一趟，但默认是走进去。 */
-        ? '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;">' + hereActs.map(function (a, ai) {
-            var nm = (a.def && a.def.name) || a.name || a.id;
-            var kindTxt = (a.def && a.def.kind) === 'fight' ? '⚔' : (a.def && a.def.kind) === 'visit' ? '🏡' : '⛏';
-            return '<span data-action="prologue-scene" data-ci="' + P.pos() + '" data-act="' + U.escape(a.id) + '"'
-              + ' style="padding:5px 12px;border:1px solid #4a4436;border-radius:4px;background:#1c2027;'
-              + 'color:#e0d8c6;font-size:15px;cursor:pointer;" title="走进这个场景，自己过去动手">'
-              + kindTxt + ' ' + U.escape(nm) + '</span>';
-          }).join('') + '</div>'
-          + '<div style="margin-top:5px;font-size:15px;color:#6f6a60;">走进去，自己找地方动手　·　'
-          + '<span data-action="prologue-act" data-ci="' + P.pos() + '" data-act="' + U.escape(hereActs[0].id) + '"'
-          + ' style="text-decoration:underline;cursor:pointer;color:#8a7a5c;">就地解决</span></div>'
-        : '<div style="margin-top:3px;font-size:16px;color:#6f6a60;">这块地方没什么可做的 —— 往别处走走。</div>');
-    /* v132：这格有仗可打 → 给"点名斗将"的入口（否则斗将变成满地图刷经验的捷径） */
-    var duelBtn = (P.duelReady && P.duelReady())
-      ? '<div style="margin-top:7px;"><span data-action="prologue-duel"'
-        + ' style="display:inline-block;padding:5px 13px;border:1px solid #7a5a2a;border-radius:4px;'
-        + 'background:#241c10;color:#ffd9a0;font-size:16px;cursor:pointer;">⚔ 点名斗将</span>'
-        + '<span class="ui-sub" style="margin-left:7px;font-size:15px;">不耗兵，赢了他就服</span></div>'
+        ? '<div style="margin-top:3px;font-size:15px;color:#c9b06a;">这一格有动静 —— '
+          + hereActs.slice(0, 3).map(function (a) {
+              var nm = (a.def && a.def.name) || a.name || a.id;
+              var k = (a.def && a.def.kind) === 'fight' ? '⚔' : (a.def && a.def.kind) === 'visit' ? '🏡' : '⛏';
+              return k + ' ' + U.escape(nm);
+            }).join('　')
+          + '　·　<b style="color:#ffd9a0;">再点脚下这一格动手</b></div>'
+        : '<div style="margin-top:3px;font-size:15px;color:#6f6a60;">脚下是空地（能立城）—— '
+          + (function () {
+              /* v152c: if a neighbor has something to do, say so (the boss hated "nothing here"). */
+              var nb5 = P.neighbors(), best5 = null;
+              for (var i5 = 0; i5 < nb5.length && !best5; i5++) if ((nb5[i5].acts || []).length) best5 = nb5[i5];
+              return best5
+                ? ('<b style="color:#e0c98a;">' + U.escape(best5.dir) + '边上有动静</b> —— 点那一格走过去')
+                : '这一带很静 —— 点地图往远处走走';
+            })() + '</div>');
+    /* 指路：最近的平地（立城）+ 最近的"有动静"格子（破雾之后地图上也会闪光） */
+    var nearFlat = P.ready() ? P.nearestBuildable(40) : null;
+    var nearAct = null;
+    try {
+      var ring2 = (SPc() && SPc().hopsWithin) ? SPc().hopsWithin(P.pos(), D().reach || 6) : [];
+      for (var ri = 1; ri < ring2.length && !nearAct; ri++) {
+        var c3 = ring2[ri];
+        if (c3 === P.pos()) continue;
+        if ((GAME.jianghuActsAt(c3) || []).length) nearAct = c3;
+      }
+    } catch (e) { nearAct = null; }
+    /* ============================================================
+     * v152（实测「精力见底 → 点地图只弹一句'明天再走'，人就卡死了」）
+     * 精力耗尽必须给出**下一步**：歇到天亮（快进一游戏日）/ 用一个辐能核心提神。
+     * 两条都是"玩家做一次选择"，不是自动帮玩家跳过时间。
+     * ============================================================ */
+    var lowBlock = '';
+    if (budget <= 0) {
+      var cores = (GAME.items && GAME.items.count) ? GAME.items.count('lingsui') : 0;
+      lowBlock = '<div style="margin-top:7px;padding:7px 9px;border:1px solid #6a4b22;border-radius:5px;'
+        + 'background:#221a10;font-size:15px;color:#e8c88a;">精力见底 —— 走不动了。</div>'
+        + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:5px;">'
+        + '<span class="chip" data-action="prologue-rest" style="cursor:pointer;">🌙 歇到天亮（明天再走）</span>'
+        + '<span class="chip' + (cores > 0 ? '' : ' dim') + '" data-action="prologue-tonic"'
+        + (cores > 0 ? ' style="cursor:pointer;"' : ' data-why="背包里没有辐能核心（荒野行动 / 斗将会掉）"')
+        + '>💊 吃个辐能核心提神（+30 精力 · 现有 ' + cores + '）</span></div>';
+    }
+    /* v153: legend for the 3D figure */
+    var figLine = (GAME.map3d && GAME.map3d.enabled)
+      ? '<div style="margin-top:3px;font-size:13px;color:#6f6a60;">🟡 地图上那个小黄人就是你 —— 点旁边的格子，他会走过去</div>'
       : '';
-    var nbs = P.neighbors();
-    var walkBlock = '<div style="margin-top:9px;font-size:16px;color:#8a7a5c;">四周（点一格走过去 · 每步耗 1 精力）</div>'
-      + '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;">' + (nbs.length ? nbs.map(function (n) {
-          var nm = terrainName(n.type);
-          var has = (n.acts || []).length;
-          return '<span data-action="prologue-move" data-ci="' + n.ci + '"'
-            + ' style="padding:5px 11px;border:1px solid ' + (has ? '#5a4a26' : '#2a2e35') + ';border-radius:4px;'
-            + 'background:' + (has ? '#1e1a12' : '#12151a') + ';color:' + (has ? '#e0c98a' : '#9a9284') + ';'
-            + 'font-size:16px;cursor:pointer;" title="' + (has ? '那边有动静' : '看不出什么') + '">'
-            /* v131：方位在前、地形在后 —— 光给六个"湖泊"，玩家分不清往哪走 */
-            + (n.dir ? '<b style="opacity:.75;">' + U.escape(n.dir) + '</b> ' : '')
-            + U.escape(nm) + (has ? ' ·' : '') + '</span>';
-        }).join('') : '<span class="ui-sub">走不动了</span>') + '</div>';
+    var hintBlock = '';
+    if (P.ready()) {
+      var nsTag = nearFlat ? 'now' : 'far';
+      hintBlock = (nearFlat
+        ? '<div style="margin-top:5px;font-size:15px;color:#c9a86a;">最近的平地（能立城）：<b>'
+          + U.escape(nearFlat.dir) + ' ' + nearFlat.dist + ' 格</b> —— 点地图走过去</div>'
+        : '<div style="margin-top:5px;font-size:15px;color:#c9a86a;">这一带走很远都没有平地 —— 换个方向</div>');
+      /* +B（立城导航）：点地图上的框 = 直接走到那块平地；到了就地立城。
+         ⚠️ 这是 HUD 里唯一的"动作"，而且它也是地图坐标 —— 不是换一套操作，
+         只是把"哪块能立城"这件事从文字变成可以点的东西。 */
+      hintBlock += '<div style="margin-top:6px;display:flex;gap:8px;align-items:center;">'
+        + '<span class="chip" data-action="prologue-build-nav" data-ci="' + (nearFlat ? nearFlat.ci : '') + '" data-tag="' + nsTag + '"'
+        + ' style="cursor:pointer;">'
+        + (nearFlat ? ('🏯 走到平地立城（' + U.escape(nearFlat.dir) + ' ' + nearFlat.dist + ' 步）') : '🌀 换一块地方找平地')
+        + '</span>'
+        + '<span class="ui-sub" style="font-size:13px;">到了平地，这一格会亮起「立城」</span></div>';
+    } else if (nearAct != null) {
+      hintBlock = '<div style="margin-top:5px;font-size:15px;color:#8a7a5c;">最近的动静：<b>'
+        + U.escape(P.dirNameOf(nearAct)) + '</b>（雾里有东西在动，地图上会亮）</div>';
+    }
 
     return '<div style="pointer-events:auto;background:rgba(13,15,19,.93);border:1px solid #2c3037;'
       + 'border-radius:8px;padding:12px 16px;backdrop-filter:blur(3px);line-height:1.65;'
@@ -37489,7 +38286,8 @@ if (GAME.reg) {
          直读 `lord.energy` 会把 231 这种超上限的原始值直接印在面板上。 */
       + '<span>精力 <b style="color:#e8e2d4;">' + Math.round(GAME.energyNowOf ? GAME.energyNowOf(lord) : ((lord && lord.energy) || 0))
       + '</b> / ' + Math.round(GAME.energyMaxOf ? GAME.energyMaxOf(lord) : 100) + '</span>'
-      + (acts ? '<span>已出去 ' + acts + ' 趟</span>' : '')
+      + (acts ? '<span>出去 ' + acts + ' 趟</span>' : '')
+      + (steps ? '<span>走了 ' + steps + ' 步</span>' : '')
       + '<span style="flex:1;"></span>'
       + '<span style="color:#6f6a60;">' + (day < 10 ? '天还没冷' : '天在变冷') + '</span>'
       + '</div>'
@@ -37498,10 +38296,11 @@ if (GAME.reg) {
       + '<div style="margin-top:6px;height:5px;background:#23262b;border-radius:3px;">'
       + '<div style="height:5px;width:' + pct + '%;background:#c9b06a;border-radius:3px;"></div></div>'
       + tierLine + nextLine
-      + hereBlock + duelBtn + walkBlock
+      + hereLine + hintBlock + lowBlock + figLine
       /* v131：原来的「就近清剿 / 就近试炼 / 就近采集」三个按钮撤掉 ——
          它们和「脚下 + 四周」是同一件事的两种说法，而且找不到目标时会印
-         「附近没有」，读起来像功能坏了。现在"能做什么"由**站的位置**决定。 */
+         「附近没有」，读起来像功能坏了。现在"能做什么"由**站的位置**决定。
+         v151：v131 补上的「脚下 + 四周」按钮也撤掉 —— 走路与动手都已回到地图手势上。 */
       + comboLine
       + (last ? '<div style="margin-top:9px;font-size:16px;color:#7d766a;border-top:1px solid #23262b;padding-top:7px;">最近：'
         + U.escape(last) + '</div>' : '')
@@ -37581,13 +38380,13 @@ if (GAME.reg) {
       var st = st0();
       if (st && st.prologue && !st.prologue._lit) {
         st.prologue._lit = 1;
-        /* ⛔ v131：改前这里用 `currentCity().ci`，而前传现在**没有城** →
-           取到 null → `fromCi = 0` → 点亮的是球面另一头的第 0 格。
-           实测截图：整颗球几乎全黑，玩家根本看不见自己站在哪。
-           视野要围着**君主所在格**开，不是围着城。 */
+        /* v152（老板：「说好未探索区域只要云雾缭绕微暗就行」）——
+           开局把脚下这一带**整片点亮**（半径 8 全明）。原来是半径 4 的"半明"
+           （只看见地形、不知道上面有什么）→ 周围六格全在雾里，点哪都是
+           "没探明"，人一睁眼就寸步难行。现在：脚下亮，远处才是雾。 */
         var fromCi = P.pos();
         if (GAME.fog && GAME.fog.revealAround) {
-          GAME.fog.revealAround(fromCi, 4, (GAME.fog.TERRAIN || 1));
+          GAME.fog.revealAround(fromCi, 3, GAME.fog.ALL);
         }
       }
     } catch (e) { /* 迷雾失败不该挡住界面 */ }
@@ -37602,20 +38401,119 @@ if (GAME.reg) {
      * ============================================================ */
     try {
       var st2 = st0(), M3 = GAME.map3d;
+      /* v152c：**首帧之前**就把相机压到近地 —— 否则第一帧按默认 camO（总览）画出去，
+         之后再 focusOnCell 也只是重绘，玩家看到的还是"远处一颗球"。
+         放在"是否换格"的判断**外面**：每次进前传都确保贴着地。 */
+      if (st2 && st2.prologue && M3 && M3.focusOnCell && st2.prologue._camCi == null) {
+        st2.prologue._camCi = -1;   /* 强制下一段走一次 focus */
+      }
       if (st2 && st2.prologue && M3 && M3.centerOn) {
         var pos2 = P.pos();
         if (st2.prologue._camCi !== pos2) {
-          var cell2 = (SP() && SP().cellOf) ? SP().cellOf(pos2) : null;
-          if (cell2 && cell2.lon != null) {
-            var xy2 = SP().xyOfLonLat(cell2.lon, cell2.lat);
-            st2.prologue._camCi = pos2;
-            if (M3.setZoom) M3.setZoom(0.02);      /* 0 = 最近；留一点余量，别贴到穿模 */
-            M3.centerOn(xy2.x, xy2.y);
+          st2.prologue._camCi = pos2;
+          /* v152：贴地跟随 —— 相机对准**脚下这一格**并压到近地（focusOnCell）。
+             不再走 centerOn（那会把距离设成 R*1.9 的中景，一格只有几个像素）。 */
+          if (M3.focusOnCell) M3.focusOnCell(pos2);
+          else {
+            var cell2 = (SP() && SP().cellOf) ? SP().cellOf(pos2) : null;
+            if (cell2 && cell2.lon != null) {
+              var xy2 = SP().xyOfLonLat(cell2.lon, cell2.lat);
+              M3.centerOn(xy2.x, xy2.y);
+              if (M3.setZoom) M3.setZoom(0);
+            }
           }
         }
       }
     } catch (e) { /* 相机失败不该挡住界面 */ }
+    /* v151：地图就是本体 —— 视图切换由进游戏那条路（ui.js 开局 setView）负责，
+       这里**不再每次刷新都强制 setView**（那会让 smoke §340② 的 refreshAll 变慢一倍）。 */
     el.innerHTML = P.screenHTML();
+
+    /* ============================================================
+     * v151-a（老板：「点地图 = 走路」，靠键盘也能闭环）
+     * ------------------------------------------------------------
+     * 世界坐标里的"点哪走哪"要求玩家看得懂 3D/2D 投影 —— 屏读器、无鼠标、
+     * 以及 e2e（jsdom 没有 WebGL / 布局）拿不到这层手势。这里补一条**同构入口**：
+     *   方向键 / WASD → 走一格；E → 对脚下这一格动手；B → 立城。
+     * 它走的是**同一套** P.moveTo / ui.openPrologueLand / P.build ——
+     * 不是第二个玩法，只是同一手势的另一种输入。⚠️ 只在 document 上挂一次。
+     * ============================================================ */
+    if (!P._keyBound && document.addEventListener) {
+      P._keyBound = 1;
+      document.addEventListener('keydown', function (ev) {
+        try {
+          if (!P.on()) return;
+          var tag = (ev.target && ev.target.tagName) || '';
+          if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+          var k = String(ev.key || '').toLowerCase();
+          /* v92.247：方向键 = **绕星球南北极的方位**（上=北 下=南 左=西 右=东）。
+             旧写法按方位**名**匹配（"东北"同时含北与东 → 上/右抢同一格），
+             匹配不到还会回落 `nbs[0]`（排序后的第一个）—— 按左键却往北走，就是"乱走"。
+             现在按切平面方位角取最小夹角，极区也成立；真的没有邻格就不动。 */
+          var spK = SP();
+          var wantB = (spK && spK.KEY_BEARING) ? spK.KEY_BEARING[k] : undefined;
+          if (wantB != null) {
+            var nbs = P.neighbors();
+            var from = P.pos();
+            var best = null, bestDiff = 1e9;
+            nbs.forEach(function (n) {
+              var deg = (spK && spK.bearingOf) ? spK.bearingOf(from, n.ci) : null;
+              if (deg == null) return;
+              var diff = Math.abs(((deg - wantB + 540) % 360) - 180);
+              if (diff < bestDiff) { bestDiff = diff; best = n; }
+            });
+            if (best) {
+              var mr = P.moveTo(best.ci);
+              if (mr.msg && GAME.ui && GAME.ui.toast) GAME.ui.toast(mr.msg);
+              if (GAME.refreshAll) GAME.refreshAll();
+            } else if (GAME.ui && GAME.ui.toast) {
+              GAME.ui.toast('这边没有能落脚的地方');
+            }
+            ev.preventDefault();
+            return;
+          }
+          if (k === 'e' || k === 'enter') {
+            if (GAME.ui && GAME.ui.openPrologueLand) GAME.ui.openPrologueLand(P.pos());
+            ev.preventDefault();
+          } else if (k === 'b') {
+            if (P.canFound && P.canFound()) {
+              var rb = P.build();
+              if (rb && rb.msg && GAME.ui && GAME.ui.toast) GAME.ui.toast(rb.msg);
+              if (GAME.refreshAll) GAME.refreshAll();
+              ev.preventDefault();
+            }
+          }
+        } catch (e) { /* 键盘失败不该挡住界面 */ }
+      });
+    }
+  };
+
+  /* ============================================================
+   * v151：**地图上就地动手**（老板：「点那个敌人 → 打几个回合」）
+   * ------------------------------------------------------------
+   * 入口只有两个，都在地图手势上：
+   *   · 点**脚下**这一格（有动静）→ 就地弹动手面板（`ui.openLandModalCi`）
+   *   · 手动点「⚔ 斗将」/ 有回合的打斗走 `P.duelAct`（回合制）
+   * 一次性结算（采集/静修/拜访）仍走 `P.act` —— 与以前同一出口，只是入口换到地图。
+   * ============================================================ */
+  P.mapClick = function (ci) {
+    if (!P.on()) return { ok: false, msg: '' };
+    if (ci == null || ci < 0) return { ok: false, msg: '' };
+    var pos = P.pos();
+    /* 脚下这一格：直接开"动手"面板（面板里的按钮说的就是这一格能做什么） */
+    if (ci === pos) {
+      if (!(GAME.jianghuActsAt ? GAME.jianghuActsAt(ci) : []).length) return { ok: false, msg: '这儿没什么可做的 —— 往别处走走' };
+      if (GAME.ui && GAME.ui.openLandModalCi) { GAME.ui.openLandModalCi(ci); return { ok: true, here: true }; }
+      return { ok: false, msg: '动手面板没加载' };
+    }
+    var r = P.walkTo(ci);
+    if (!r.ok) return r;
+    if (GAME.refreshAll) GAME.refreshAll();
+    /* 走到了一个"有动静"的新格子：立刻把动手面板摆出来（少一次点击就是一次闭环） */
+    if (r.arrived && (GAME.jianghuActsAt ? GAME.jianghuActsAt(ci) : []).length && GAME.ui && GAME.ui.openLandModalCi) {
+      GAME.ui.openLandModalCi(ci);
+    }
+    return r;
   };
 
 /* ============================================================
@@ -37677,8 +38575,8 @@ if (GAME.reg) {
         + '君主升到 Lv' + need + ' 才能立城。</div>');
     },
     actions: {
-      /* v128：点"附近可去"的一行 → 打开那片野地（与地图点格同一条路），
-         玩家看到的是**世界**，不是三个写死的按钮。 */
+      /* v151：走到有动静的格子 → 直接开这一格的动手面板。
+         入口在地图手势上（点地图），面板只是"这一格能做什么"的唯一呈现。 */
       'prologue-spot': function (el, ctx) {
         var ci = Number(el.getAttribute('data-ci'));
         if (GAME.ui && GAME.ui.openLandModalCi && ci >= 0) GAME.ui.openLandModalCi(ci);
@@ -37694,14 +38592,37 @@ if (GAME.reg) {
         var ci = Number(el.getAttribute('data-ci'));
         var act = el.getAttribute('data-act');
         if (!GAME.scene3d || !GAME.scene3d.play) { ctx.toast('场景系统没加载'); return; }
-        var r = GAME.scene3d.play(act, ci);
-        if (!r || !r.ok) ctx.toast((r && r.msg) || '场景没打开');
+        var rr = GAME.scene3d.play(act, ci);
+        if (!rr || !rr.ok) ctx.toast((rr && rr.msg) || '场景没打开');
       },
       'prologue-act': function (el, ctx) {
         var ci = Number(el.getAttribute('data-ci'));
         var act = el.getAttribute('data-act');
         var r = P.act(ci, act);
         ctx.toast(r.msg);
+        if (GAME.refreshAll) GAME.refreshAll();
+      },
+      /* v151：打斗给回合 —— 先扣费、开竞技场，再由面板逐合出招（mode:'act'） */
+      'prologue-fight': function (el, ctx) {
+        var ci = Number(el.getAttribute('data-ci'));
+        var act = el.getAttribute('data-act');
+        var r = P.duelAct(ci, act);
+        ctx.toast(r.msg);
+        if (r.ok && GAME.ui && GAME.ui.openDuelPanel) GAME.ui.openDuelPanel();
+        else if (GAME.refreshAll) GAME.refreshAll();
+      },
+      'prologue-fight-hit': function (el, ctx) {
+        var mv = el.getAttribute('data-mv');
+        var r = P.duelActStep(mv);
+        if (r.msg) ctx.toast(r.msg);
+        if (GAME.ui && GAME.ui.openDuelPanel) GAME.ui.openDuelPanel();
+        else if (GAME.refreshAll) GAME.refreshAll();
+      },
+      'prologue-fight-flee': function (el, ctx) {
+        var r = P.duelActFlee();
+        if (r.msg) ctx.toast(r.msg);
+        if (GAME.ui && GAME.ui.closeModal) GAME.ui.closeModal();
+        if (GAME.ui && GAME.ui.openLandModalCi) GAME.ui.openLandModalCi(Number(el.getAttribute('data-ci')));
         if (GAME.refreshAll) GAME.refreshAll();
       },
       /* v132：点名斗将 */
@@ -37728,6 +38649,54 @@ if (GAME.reg) {
         var ci = Number(el.getAttribute('data-ci'));
         var r = P.moveTo(ci);
         ctx.toast(r.msg);
+        if (GAME.refreshAll) GAME.refreshAll();
+      },
+      /* v151：立城导航 —— 点 HUD 的"走到平地立城"= 走到那块平地；到了再点一次就立城。
+         `data-tag='far'` 表示这一带找不到平地 → 换个方向走两步再找。 */
+      'prologue-build-nav': function (el, ctx) {
+        var tag = el.getAttribute('data-tag');
+        var ci = Number(el.getAttribute('data-ci'));
+        if (tag === 'now' && ci >= 0) {
+          var r = P.mapClick(ci);
+          if (r && r.msg) ctx.toast(r.msg);
+          /* 到了平地且等级够 → 直接把"立城"摆到眼前（不多走一次菜单） */
+          if (P.canFound()) {
+            var rb = P.build();
+            ctx.toast(rb.msg || '立城了');
+          }
+        } else {
+          var nb = P.nearestBuildable ? P.nearestBuildable(60) : null;
+          if (nb) {
+            var rr = P.walkTo(nb.ci);
+            if (rr && rr.msg) ctx.toast(rr.msg);
+          } else {
+            var ring3 = (SPc() && SPc().hopsWithin) ? SPc().hopsWithin(P.pos(), 4) : [];
+            if (ring3.length > 1) P.moveTo(ring3[ring3.length - 1]);
+            ctx.toast('这一带没有平地 —— 往别处走几步再找');
+          }
+        }
+        if (GAME.refreshAll) GAME.refreshAll();
+      },
+      /* v152：精力见底的两个出口（HUD 上真正点得到的下一步） */
+      'prologue-rest': function (el, ctx) {
+        var s2 = st0();
+        if (!s2) return;
+        /* v152c: dayNow = elapsed / 86400 -> must advance by 86400 (not secPerYear/360). */
+        var perDay = 86400;
+        var day = dayNow();
+        s2.world = s2.world || {};
+        s2.world.elapsed = (day + 1) * perDay + 1;
+        if (P.tick) P.tick();
+        ctx.toast('睡了一夜 —— 精力与体力都回了一些');
+        if (GAME.refreshAll) GAME.refreshAll();
+      },
+      'prologue-tonic': function (el, ctx) {
+        var lord2 = P.lord();
+        if (!lord2 || !GAME.items) return;
+        if ((GAME.items.count('lingsui') | 0) <= 0) { ctx.toast('背包里没有辐能核心'); return; }
+        GAME.items.sub('lingsui', 1);
+        if (GAME.setEnergyNow) GAME.setEnergyNow(lord2, Math.min(GAME.energyMaxOf(lord2), GAME.energyNowOf(lord2) + 30));
+        ctx.toast('嚼碎一枚辐能核心 —— 精力 +30');
         if (GAME.refreshAll) GAME.refreshAll();
       },
       'prologue-build': function (el, ctx) {
@@ -38817,4 +39786,1035 @@ if (GAME.reg) {
       }
     });
   }
+})();
+
+/* ---- placement.js ---- */
+/* ============================================================
+ * placement.js — 地块放置物引擎（P1：纯放置，组件接口预留）
+ * ------------------------------------------------------------
+ * 老板 2026-10-30：「能不能在地图界面的地块上进行建造，就是放置物体模块，
+ *                   像我的世界那样，形成一个标准化的物品放置和组件引擎」。
+ *
+ * 这个模块只管**数据**：谁在哪一格、放了什么、朝哪儿、什么版本。
+ * 渲染（map3d.js）和交互（ui.js / main.js）都不在这里 ——
+ * 它们只认 `GAME.place` 这套 API 和 `_ver` 版本号。
+ *
+ * ── 定下的三条口径（老板拍板）──────────────────────────────
+ *   1. **一格一件**：每个六边形格子最多放一件物品，落在格子中心。
+ *      数据结构最简单（placements[ci] = item），冲突判定 O(1)，
+ *      与既有 `GAME.extGridOf(city)` 同款。
+ *   2. **程序化几何**：物品外观由 `geo.parts` 描述（box / cyl / cone /
+ *      sphere），不依赖美术资源 —— 想加物品随时加一行目录。
+ *   3. **P1 只做放置**：物品目录 + 放置/拆除/旋转 + 存档。
+ *      `COMPONENTS` 钩子（onPlace/onTick/onRemove/save/load）**先预留**，
+ *      P2 再实现具体组件（产出 / 存储 / 防御 / 光照）。
+ *
+ * ── 存档 ──────────────────────────────────────────────────
+ * 存档是整体序列化 `state`（`savePayload` 只剥 `grid`），
+ * 所以放置物挂在 `state.placements` 上就**自动入档**，不用改 save/load。
+ * 按星球 id 分桶 —— 换星球不串味：
+ *     state.placements = { <pid>: { <ci>: { i, y, s, t } } }
+ *     i=物品id  y=朝向(度)  s=缩放  t=放置时刻
+ *
+ * ⚠️ 刻意不做的事（P1）：
+ *   · 不扣资源（`PL.free = true`）。目录里带 `cost` 字段，等经济系统接好再开闸。
+ *   · 不做格内子坐标 / 三维碰撞。
+ *   · 不跑组件 tick（`PL.tick()` 留着，但没人调 —— 接了才会跑）。
+ * ============================================================ */
+(function () {
+  'use strict';
+  var GAME = window.GAME = window.GAME || {};
+  var PL = GAME.place = {};
+
+  /* ============================================================
+   * 1. 物品目录
+   * ------------------------------------------------------------
+   * geo.parts 的每个零件：
+   *   { k:'box'|'cyl'|'cone'|'sphere', w,h,d, r, y, c, x, z, rx }
+   *   w/h/d = 尺寸（世界单位，1 ≈ 一格宽的 0.35）；r = 半径（cyl/cone/sphere）
+   *   x/y/z = 相对格心的偏移（y 为沿法线向上）；c = 颜色；rx = 绕 x 轴翻（度）
+   * 整件物品的占地宽度 = `w`，高度 = `h`（渲染层用它做视距剔除与幽灵比例）。
+   * ============================================================ */
+  var ITEMS = {
+    cairn: {
+      id: 'cairn', name: '石堆', tag: 'decor', w: 0.9, h: 1.1,
+      desc: '几块垒起来的石头。路过的人会加一块，所以它只会越长越高。',
+      cost: { stone: 2 },
+      geo: { parts: [
+        { k: 'box', w: 0.90, h: 0.30, d: 0.90, y: 0.15, c: 0x8a8577 },
+        { k: 'box', w: 0.66, h: 0.28, d: 0.66, y: 0.43, c: 0x9b9689 },
+        { k: 'box', w: 0.44, h: 0.24, d: 0.44, y: 0.68, c: 0x7d7869 },
+        { k: 'cone', r: 0.16, h: 0.34, y: 0.94, c: 0xb0aa9c }
+      ] }
+    },
+    totem: {
+      id: 'totem', name: '图腾柱', tag: 'decor', w: 0.8, h: 2.2,
+      desc: '一根刻满眼睛的柱子。没人记得它最初刻的是谁。',
+      cost: { wood: 6 },
+      geo: { parts: [
+        { k: 'cyl', r: 0.34, h: 0.18, y: 0.09, c: 0x6b5f4e },
+        { k: 'box', w: 0.34, h: 1.60, d: 0.34, y: 0.98, c: 0x7a6a54 },
+        { k: 'box', w: 0.46, h: 0.22, d: 0.46, y: 1.62, c: 0x8d5f3c },
+        { k: 'cone', r: 0.28, h: 0.44, y: 1.94, c: 0x9d6b45 }
+      ] }
+    },
+    watchtower: {
+      id: 'watchtower', name: '望塔', tag: 'sight', w: 1.1, h: 3.0,
+      desc: '四根柱子撑起一个平台。站上去能多看两格 —— 前提是它还没塌。',
+      cost: { wood: 14, stone: 4 },
+      geo: { parts: [
+        { k: 'cyl', r: 0.14, h: 2.20, y: 1.10, c: 0x6d5c48, x: -0.32, z: -0.32 },
+        { k: 'cyl', r: 0.14, h: 2.20, y: 1.10, c: 0x6d5c48, x: 0.32, z: -0.32 },
+        { k: 'cyl', r: 0.14, h: 2.20, y: 1.10, c: 0x6d5c48, x: -0.32, z: 0.32 },
+        { k: 'cyl', r: 0.14, h: 2.20, y: 1.10, c: 0x6d5c48, x: 0.32, z: 0.32 },
+        { k: 'box', w: 1.00, h: 0.16, d: 1.00, y: 2.28, c: 0x7d6a52 },
+        { k: 'cone', r: 0.62, h: 0.52, y: 2.62, c: 0x8a5c3b }
+      ] }
+    },
+    banner: {
+      id: 'banner', name: '旗标', tag: 'mark', w: 0.7, h: 2.4,
+      desc: '一面布。它不挡风，也不挡人，只告诉别人"这儿有人来过"。',
+      cost: { wood: 3, cloth: 2 },
+      geo: { parts: [
+        { k: 'cyl', r: 0.07, h: 2.20, y: 1.10, c: 0x5f5140 },
+        { k: 'box', w: 0.06, h: 0.90, d: 0.52, y: 1.85, c: 0xc0483c, x: 0.06 }
+      ] }
+    },
+    brazier: {
+      id: 'brazier', name: '火盆', tag: 'light', w: 0.8, h: 1.0,
+      desc: '夜里能照出一圈光。也照出你不想看见的东西。',
+      cost: { stone: 3, wood: 2 },
+      geo: { parts: [
+        { k: 'cyl', r: 0.16, h: 0.44, y: 0.22, c: 0x5b544a },
+        { k: 'cyl', r: 0.38, h: 0.24, y: 0.56, c: 0x6d6357 },
+        { k: 'cone', r: 0.26, h: 0.46, y: 0.90, c: 0xff8a3c }
+      ] }
+    },
+    crate: {
+      id: 'crate', name: '补给箱', tag: 'store', w: 0.9, h: 0.8,
+      desc: '钉死的木箱。里面是什么取决于你最后一次补给还剩什么。',
+      cost: { wood: 5 },
+      geo: { parts: [
+        { k: 'box', w: 0.86, h: 0.66, d: 0.86, y: 0.33, c: 0x7a6448 },
+        { k: 'box', w: 0.90, h: 0.08, d: 0.90, y: 0.66, c: 0x5f4e37 }
+      ] }
+    },
+    palisade: {
+      id: 'palisade', name: '木栅', tag: 'def', w: 1.1, h: 1.6,
+      desc: '削尖的木桩围一圈。挡不住大军，但能让狼多想两秒。',
+      cost: { wood: 8 },
+      geo: { parts: [
+        { k: 'box', w: 1.05, h: 0.14, d: 0.18, y: 0.72, c: 0x6f5c45 },
+        { k: 'cone', r: 0.11, h: 0.30, y: 1.42, c: 0x7d6a50, x: -0.44 },
+        { k: 'cone', r: 0.11, h: 0.30, y: 1.42, c: 0x7d6a50, x: -0.14 },
+        { k: 'cone', r: 0.11, h: 0.30, y: 1.42, c: 0x7d6a50, x: 0.14 },
+        { k: 'cone', r: 0.11, h: 0.30, y: 1.42, c: 0x7d6a50, x: 0.44 }
+      ] }
+    },
+    shrine: {
+      id: 'shrine', name: '神龛', tag: 'relic', w: 1.0, h: 1.8,
+      desc: '供着没人叫得出名字的东西。香火断了很久，石头还在。',
+      cost: { stone: 8 },
+      geo: { parts: [
+        { k: 'box', w: 1.00, h: 0.22, d: 1.00, y: 0.11, c: 0x6a6559 },
+        { k: 'box', w: 0.72, h: 1.00, d: 0.72, y: 0.72, c: 0x827b6c },
+        { k: 'box', w: 0.94, h: 0.16, d: 0.94, y: 1.30, c: 0x716a5c },
+        { k: 'sphere', r: 0.22, y: 1.58, c: 0xd8c98a }
+      ] }
+    },
+    /* ---- 水面类（v92.241 · 老板：「有些船舶或者浮台类的，可以在海洋上」）---- */
+    pontoon: {
+      id: 'pontoon', name: '浮台', tag: 'water', ground: 'water', w: 1.3, h: 0.5,
+      desc: '几只空桶扎成的台子。踩上去晃，但能站人、能堆货。',
+      cost: { wood: 10 },
+      geo: { parts: [
+        { k: 'box', w: 1.30, h: 0.20, d: 1.00, y: 0.06, c: 0x8a7355 },
+        { k: 'cyl', r: 0.20, h: 0.92, y: 0.02, c: 0x6f5c45, x: -0.40, z: -0.30, rx: 90 },
+        { k: 'cyl', r: 0.20, h: 0.92, y: 0.02, c: 0x6f5c45, x: 0.40, z: -0.30, rx: 90 },
+        { k: 'cyl', r: 0.20, h: 0.92, y: 0.02, c: 0x6f5c45, x: -0.40, z: 0.30, rx: 90 },
+        { k: 'cyl', r: 0.20, h: 0.92, y: 0.02, c: 0x6f5c45, x: 0.40, z: 0.30, rx: 90 }
+      ] }
+    },
+    boat: {
+      id: 'boat', name: '小舟', tag: 'water', ground: 'water', w: 0.9, h: 0.6,
+      desc: '一条只能坐两个人的船。它去不了远海，但足够过一条河。',
+      cost: { wood: 8 },
+      geo: { parts: [
+        { k: 'box', w: 0.42, h: 0.26, d: 0.90, y: 0.10, c: 0x7a6244 },
+        { k: 'box', w: 0.20, h: 0.30, d: 0.86, y: 0.26, c: 0x6b5439 },
+        { k: 'box', w: 0.06, h: 0.70, d: 0.06, y: 0.55, c: 0x5f4c33 }
+      ] }
+    },
+    pier: {
+      id: 'pier', name: '栈桥', tag: 'water', ground: 'coast', w: 1.2, h: 0.6,
+      desc: '从岸边伸出去的几块板。有它，船才知道该停在哪。',
+      cost: { wood: 12, stone: 4 },
+      geo: { parts: [
+        { k: 'box', w: 0.70, h: 0.14, d: 1.20, y: 0.28, c: 0x8a7355 },
+        { k: 'cyl', r: 0.08, h: 0.60, y: 0.10, c: 0x6b5439, x: -0.22, z: 0.40 },
+        { k: 'cyl', r: 0.08, h: 0.60, y: 0.10, c: 0x6b5439, x: 0.22, z: 0.40 },
+        { k: 'cyl', r: 0.08, h: 0.60, y: 0.10, c: 0x6b5439, x: -0.22, z: -0.40 },
+        { k: 'cyl', r: 0.08, h: 0.60, y: 0.10, c: 0x6b5439, x: 0.22, z: -0.40 }
+      ] }
+    }
+  };
+  /* ============================================================
+   * 1b. 落地要求 —— **按建筑类型区分地形**（v92.241 · 老板）
+   * ------------------------------------------------------------
+   * 老板原话：「星球表面的建造只允许在平原地带进行，或者至少要对建筑类型进行区分；
+   *   比如船舶/浮台类可以在海洋上；对地面平整度有要求，高山不太适合建造。」
+   *
+   * ground：
+   *   'flat'  —— 只能建在**平原类**（平地/草原）且起伏不超过 slopeMax 的格子上
+   *   'land'  —— 任意陆地（含森林/荒漠；**山地不行**，山坡立不住）
+   *   'water' —— 只能在**水面**（海 e<0 或湖泊）
+   *   'coast' —— 水陆交界的格子（有一侧是水、一侧是陆）
+   * slopeMax：单位是**世界单位**（一格约 21 弧长，陆地高差 ≈1，山峰 ≈40）。
+   *   判定口径与 SP 的 HSC 一致：高差(e) × HSC。改这块阈值就能整体松/紧。
+   * ============================================================ */
+  /* 阈值来自**实测标定**（seed 4321 · 40962 格 · HSC=26 · 只比同侧邻格）：
+   *   plain   坡度 p50=1.48  p75=1.88  p90=2.18  max=4.05
+   *   caoyuan 坡度 p50=2.12  p75=2.63  p90=3.18
+   *   hill    坡度 p50=3.14  p75=3.90  p90=4.70  max=8.07
+   *   forest  坡度 p75=2.88 · desert 1.95 · zhaoze 1.89
+   * 取 2.2~2.8 → 平地绝大多数可建、草原约七成可建；取 5~6.5 → 森林/荒漠/湿地大体可建。 */
+  var GROUND = {
+    cairn: { g: 'land', slopeMax: 12 },        /* 石堆：本来就在山里堆的，几乎不挑 */
+    totem: { g: 'flat', slopeMax: 2.8 },       /* 柱子要立正 */
+    watchtower: { g: 'flat', slopeMax: 2.5 },  /* 四根柱脚，差一点就歪 */
+    banner: { g: 'land', slopeMax: 5.0 },      /* 插根杆子，坡上也能插 */
+    brazier: { g: 'flat', slopeMax: 2.5 },     /* 火盆得放平，不然油会流出来 */
+    crate: { g: 'land', slopeMax: 5.5 },       /* 箱子歪着也能堆 */
+    palisade: { g: 'land', slopeMax: 6.5 },    /* 栅栏本来就顺着坡走 */
+    shrine: { g: 'flat', slopeMax: 2.2 },      /* 神龛：最挑地的一段 */
+    pontoon: { g: 'water' },
+    boat: { g: 'water' },
+    pier: { g: 'coast' }
+  };
+  (function () {
+    for (var k in GROUND) {
+      if (!ITEMS[k]) continue;
+      ITEMS[k].ground = GROUND[k].g;
+      if (GROUND[k].slopeMax != null) ITEMS[k].slopeMax = GROUND[k].slopeMax;
+    }
+  })();
+  PL.GROUND = GROUND;
+  PL.GROUND_NAME = { flat: '平地', land: '陆地', water: '水面', coast: '岸线' };
+  PL.ITEMS = ITEMS;
+  PL.list = function () {
+    var out = [], k;
+    for (k in ITEMS) if (ITEMS[k]) out.push(ITEMS[k]);
+    return out;
+  };
+  PL.item = function (id) { return (id && ITEMS[id]) || null; };
+
+  /* 让别处也能走 DATA 这把尺（将来目录搬进 data.js 时不用改调用方）。 */
+  if (GAME.DATA) GAME.DATA.PLACEABLES = ITEMS;
+
+  /* ============================================================
+   * 2. 组件注册表（P1：只预留，不实现）
+   * ------------------------------------------------------------
+   * 用法（P2）：
+   *   GAME.place.comp('produce', { onPlace:function(ctx){}, onTick:function(ctx){},
+   *                                onRemove:function(ctx){},
+   *                                save:function(p){return {};}, load:function(p,o){} });
+   *   物品用 `comps:['produce']` 声明自己带哪些组件。
+   * ============================================================ */
+  var COMPS = {};
+  PL.comp = function (id, def) { if (id && def) COMPS[id] = def; return COMPS[id] || null; };
+  PL.comps = function () { return COMPS; };
+
+  /* 触发某组件钩子。P1 没有任何组件，`_fire` 就是个空转的安全网 ——
+     将来接了组件也不会因为"没人调用"而漏跑。异常一律吞掉：
+     一个组件报错不该让整张地图摆不出来。 */
+  function _fire(hook, ctx) {
+    var it = ctx && PL.item(ctx.i), cs = (it && it.comps) || [];
+    for (var i = 0; i < cs.length; i++) {
+      var c = COMPS[cs[i]];
+      if (!c || typeof c[hook] !== 'function') continue;
+      try { c[hook](ctx); } catch (e) { /* 组件异常不影响放置本体 */ }
+    }
+  }
+  PL.fire = _fire;
+
+  /* 每月/每日跑一次（P1 无人调用；P2 由 growth.monthly 或主循环接上）。 */
+  PL.tick = function () {
+    var b = bucket(); if (!b) return 0;
+    var n = 0;
+    for (var ci in b) {
+      if (!b[ci]) continue;
+      _fire('onTick', { ci: +ci, i: b[ci].i, p: b[ci] });
+      n++;
+    }
+    return n;
+  };
+
+  /* ============================================================
+   * 3. 存档桶
+   * ------------------------------------------------------------
+   * 按星球 id 分桶：换星球时放置物互不干扰，也不必迁移。
+   * ⚠️ 必须在 `GAME.state` 存在时才建桶 —— 模块加载早于建局。
+   * ============================================================ */
+  var _ver = 1;                       /* 渲染层靠它做增量重建 */
+
+  PL.pid = function () {
+    var p = GAME.activePlanetOf && GAME.activePlanetOf();
+    var id = (p && p.id) != null ? p.id : (GAME.state && GAME.state.activePlanet);
+    return (id != null ? id : 1);
+  };
+
+  function root() {
+    var s = GAME.state;
+    if (!s) return null;
+    if (!s.placements || typeof s.placements !== 'object') s.placements = {};
+    return s.placements;
+  }
+  function bucket(create) {
+    var r = root(); if (!r) return null;
+    var pid = String(PL.pid());
+    if (!r[pid] || typeof r[pid] !== 'object') {
+      if (!create) return null;
+      r[pid] = {};
+    }
+    return r[pid];
+  }
+  PL.ver = function () { return _ver; };
+  PL.bump = function () { _ver++; return _ver; };
+  PL.all = function () { return bucket(false) || {}; };
+  PL.at = function (ci) { var b = bucket(false); return (b && b[ci]) || null; };
+  PL.count = function () { var b = bucket(false), n = 0; if (b) for (var k in b) if (b[k]) n++; return n; };
+
+  /* ============================================================
+   * 4. 放置规则
+   * ------------------------------------------------------------
+   * 返回 { ok, msg } —— 交互层直接把 msg 弹出去，渲染层拿 ok 给幽灵上色。
+   * ============================================================ */
+  /* 单格地形档案 —— 判定"这块地能不能盖"的唯一出口。
+     slope = 与**邻格的最大高差**（世界单位）；rough = 平均起伏（做"平不平"的手感指标）。*/
+  PL.terrainOf = function (ci) {
+    ci = +ci;
+    var s = GAME.sphere, c = s && s.cells && s.cells[ci];
+    if (!c) return null;
+    var HSC = s.HSC || 26;
+    var e = (c.e != null) ? +c.e : 0;
+    var adj = s.adj && s.adj[ci], mx = 0, sum = 0, n = 0, wet = 0, dry = 0, i;
+    var selfWet = (e < 0) || (c.type === 'lake');
+    if (adj) {
+      for (i = 0; i < adj.length; i++) {
+        var nc = s.cells[adj[i]];
+        if (!nc || nc.e == null) continue;
+        var ncWet = (+nc.e < 0) || (nc.type === 'lake');
+        if (ncWet) wet++; else dry++;
+        /* ⚠️ 只跟**同一侧**（陆对陆 / 水对水）的邻格比高差。
+           海岸格若跟海底比，坡度会被水深拉爆（实测海岸平原能算出 4~11），
+           于是"海边一小块平地"永远判成陡坡 —— 而它恰恰是最该能盖房子的地方。 */
+        if (ncWet !== selfWet) continue;
+        var d = Math.abs(+nc.e - e);
+        if (d > mx) mx = d;
+        sum += d; n++;
+      }
+    }
+    var type = c.type;
+    var nm = c.name || ((s.TYPE_NAME || {})[type] || type || '未知');
+    var water = (e < 0) || type === 'lake';
+    /* 岸线：本格与邻格水陆混杂（本身就是水陆交界）；沼泽也算岸线（湿地能靠船）*/
+    var coast = (wet > 0 && dry > 0) || type === 'zhaoze';
+    return {
+      ci: ci, e: +(+e).toFixed(3), type: type, name: nm,
+      slope: +(mx * HSC).toFixed(2), rough: +(n ? (sum / n) * HSC : 0).toFixed(2),
+      water: water, land: !water, coast: coast,
+      plain: !water && (type === 'plain' || type === 'caoyuan'),
+      hill: (type === 'hill')
+    };
+  };
+
+  PL.canPlace = function (ci, itemId) {
+    ci = +ci;
+    if (!(ci >= 0)) return { ok: false, msg: '这儿不是一格地。' };
+    var it = PL.item(itemId);
+    if (!it) return { ok: false, msg: '没有这种东西可放。' };
+    var SPn = GAME.sphere;
+    if (!SPn || !SPn.cells || !SPn.cells[ci]) return { ok: false, msg: '这儿不是一格地。' };
+    var F = GAME.fog;
+    /* 未探明的格子不许放 —— 否则等于"往没去过的地方空投"，
+       也和 fog 的口径（未探明 = 什么都不知道）冲突。 */
+    if (F && F.get && F.get(ci) < 2) return { ok: false, msg: '这片地还没探明，放不了。' };
+    var b = bucket(false);
+    if (b && b[ci]) {
+      /* v92.246（全面复核补口）：残留的"坏记录"不该继续占位 ——
+         物品 id 已从目录删除时它渲染不出来、面板也列不出来（拆不掉），
+         却会让这一格永久"已经有东西了"。发现即清，然后当空格处理。 */
+      if (!PL.item(b[ci].i)) { delete b[ci]; _ver++; }
+      else return { ok: false, msg: '这格已经有东西了（先拆再放）。' };
+    }
+    /* ---- 地形/平整度判定（老板：建造要分地形，高山不能盖，船/浮台下水）---- */
+    var T = PL.terrainOf(ci);
+    var g = it.ground || 'land';
+    if (g === 'water') {
+      if (!T.water) return { ok: false, msg: '「' + it.name + '」只能下水 —— 这是' + T.name + '。' };
+    } else if (g === 'coast') {
+      if (!T.coast) return { ok: false, msg: '「' + it.name + '」要立在水陆交界处（岸线/湿地）。' };
+    } else {
+      if (T.water) return { ok: false, msg: '水里立不住「' + it.name + '」—— 水面上请用浮台 / 小舟。' };
+      if (g === 'flat') {
+        /* 结构类：山地一律不许（"高山不适合建造"），且必须是平原/草原 + 足够平 */
+        if (T.hill) return { ok: false, msg: '山地太陡，「' + it.name + '」盖不上去（换个平地或先改地形）。' };
+        if (!T.plain) return { ok: false, msg: '「' + it.name + '」要建在平地上 —— 这里是' + T.name + '。' };
+        var sMax = (it.slopeMax != null) ? it.slopeMax : 3;
+        if (T.slope > sMax) {
+          return { ok: false, msg: '这块地不够平（起伏 ' + T.slope + '，上限 ' + sMax + '）——「' + it.name + '」立不住。' };
+        }
+      } else {
+        /* land：任意陆地，但陡坡仍然不行（用 slopeMax 兜住）*/
+        var lMax = (it.slopeMax != null) ? it.slopeMax : 8;
+        if (T.slope > lMax) return { ok: false, msg: '坡太陡（起伏 ' + T.slope + '，上限 ' + lMax + '）——「' + it.name + '」搁不住。' };
+      }
+    }
+    return { ok: true, msg: '', terrain: T };
+  };
+
+  /* ============================================================
+   * 5. 放置 / 拆除 / 旋转
+   * ============================================================ */
+  PL.add = function (ci, itemId, opt) {
+    ci = +ci;
+    var chk = PL.canPlace(ci, itemId);
+    if (!chk.ok) return chk;
+    opt = opt || {};
+    var b = bucket(true); if (!b) return { ok: false, msg: '世界还没建好。' };
+    var rec = {
+      i: itemId,
+      y: (opt.yaw != null ? +opt.yaw : 0),
+      s: (opt.scale != null ? +opt.scale : 1),
+      t: Date.now()
+    };
+    b[ci] = rec;
+    _fire('onPlace', { ci: ci, i: itemId, p: rec });
+    _ver++;
+    return { ok: true, msg: '', rec: rec };
+  };
+
+  PL.remove = function (ci) {
+    ci = +ci;
+    var b = bucket(false);
+    if (!b || !b[ci]) return { ok: false, msg: '这格没东西可拆。' };
+    var rec = b[ci];
+    _fire('onRemove', { ci: ci, i: rec.i, p: rec });
+    delete b[ci];
+    _ver++;
+    return { ok: true, msg: '', rec: rec };
+  };
+
+  /* 旋转：默认每次 45°。返回新的朝向（度）。 */
+  PL.rotate = function (ci, step) {
+    ci = +ci;
+    var b = bucket(false);
+    if (!b || !b[ci]) return { ok: false, msg: '这格没东西可转。' };
+    var d = (step != null ? +step : 45);
+    b[ci].y = ((+b[ci].y || 0) + d) % 360;
+    if (b[ci].y < 0) b[ci].y += 360;
+    _ver++;
+    return { ok: true, msg: '', yaw: b[ci].y };
+  };
+
+  PL.clear = function () {
+    var b = bucket(false); if (!b) return 0;
+    var n = 0;
+    for (var k in b) if (b[k]) { n++; delete b[k]; }
+    _ver++;
+    return n;
+  };
+
+  /* ============================================================
+   * 6. 读档兜底
+   * ------------------------------------------------------------
+   * `savePayload` 只剥 `grid`，placements 自动往返。但**老档没有这个字段**，
+   * 且读档可能带进脏数据（id 不在目录里 / ci 越界） —— 这里统一洗一遍。
+   * ============================================================ */
+  PL.sanitize = function () {
+    var r = root(); if (!r) return 0;
+    var SPn = GAME.sphere, dropped = 0, kept = 0;
+    for (var pid in r) {
+      var b = r[pid];
+      if (!b || typeof b !== 'object') { delete r[pid]; continue; }
+      for (var ci in b) {
+        var p = b[ci];
+        if (!p || !p.i || !PL.item(p.i)) { delete b[ci]; dropped++; continue; }
+        if (SPn && SPn.cells && !SPn.cells[+ci]) { delete b[ci]; dropped++; continue; }
+        if (p.y == null) p.y = 0;
+        if (p.s == null) p.s = 1;
+        kept++;
+      }
+    }
+    _ver++;
+    return kept;
+  };
+})();
+
+/* ---- belt.js ---- */
+/* ============================================================
+ * js/belt.js — **陨石带 / 轨道系**
+ * ------------------------------------------------------------
+ * 老板：「在星球周围生成陨石带。后续发展星际采矿，将陨石带生成加入到星球生成器当中。」
+ *
+ * 设计原则（与本项目其它生成器一致）：
+ *   ① **确定性**：同 (seed, spec) → 同一条带。因此**不必进存档** —— 读档时按
+ *      planet.params.belt 重算即得，存档体积零增长，也不会出现"存档里的带和星球对不上"。
+ *   ② **纯数据**：本模块只产数据，不碰 THREE / 不碰 DOM。渲染由 map3d 读 BL.posOf() 画。
+ *   ③ **为采矿预留**：每块石头自带 ore 储量与 mass，P1 不做玩法，但字段先定死，
+ *      后续「星际采矿」直接读 BL.rockOf(id) / BL.yieldOf(rock) 即可，不用再改数据结构。
+ *   ④ **由星球特征派生**（不是独立随机）：带宽/倾角/富度都乘星球参数
+ *      （impact 撞击史 → 带更密更富；atmo 大气 → 无大气的星球碎屑更粗糙）。
+ * ============================================================ */
+(function () {
+  var GAME = (typeof window !== 'undefined' ? (window.GAME || {}) : (global.GAME || {}));
+  if (!GAME) return;
+  var BL = GAME.belt = GAME.belt || {};
+
+  /* ---- 规格默认值（玩家可在星球生成器「L5 轨道系」里细调）---- */
+  BL.SPEC = {
+    enabled: 1,        /* 0 = 不生成带；1 = 生成 */
+    count: 240,        /* 石块数量 */
+    innerMul: 1.55,    /* 内缘半径 = 星球半径 × 此值（R=300 → 465）*/
+    widthMul: 0.62,    /* 带宽 = 星球半径 × 此值 */
+    inclDeg: 16,       /* 轨道倾角上限（度）*/
+    thickMul: 0.05,    /* 带厚（法向散布）= 星球半径 × 此值 */
+    /* v92.245（老板：「星空中物体应有体积」）：原来 0.5~3.4 世界单位，
+       在 R=300 / 视距 870 下只有 1~2 像素 —— 看着像噪点、更没有"体积"。
+       现在 2.2~13（≈ 屏幕高度的 1%~6%，肉眼能读出是块石头）。
+       两个值按 **R=300 基准**写，实际按 `R/300` 等比缩放（见 BL.gen）。 */
+    sizeMin: 2.2,      /* 最小石块半径（世界单位 @R=300）*/
+    sizeMax: 13,       /* 最大石块半径 */
+    clump: 0.55,       /* 成团程度 0=沿带均匀 1=聚成几团 */
+    periodSec: 900,    /* 内缘绕行一圈的秒数（外缘按开普勒第三定律更慢）*/
+    oreRich: 1.0       /* 矿石富度总系数 */
+  };
+  BL.SPEC_DEFAULT = JSON.parse(JSON.stringify(BL.SPEC));
+
+  /* ---- 确定性随机（mulberry32）—— 与球面噪声解耦，改带参数不会动地形 ---- */
+  function rng(seed) {
+    var a = (seed >>> 0) || 1;
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      var t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  BL.rng = rng;
+
+  /* ---- 规格规范化：合并默认 + 玩家细调 + **星球特征修正** ---- */
+  BL.specOf = function (raw, planet) {
+    var s = {}, k;
+    for (k in BL.SPEC_DEFAULT) s[k] = BL.SPEC_DEFAULT[k];
+    if (raw) for (k in raw) if (raw[k] != null) s[k] = raw[k];
+    /* 星球特征 → 带的形态（"根据星球特征生成"）*/
+    var P = (planet && planet.params) || {};
+    var imp = Number(P.impact) || 0;                 /* 撞击史：撞得狠 → 碎屑多、更富矿 */
+    var atmo = (P.atmo == null) ? 1 : Number(P.atmo);
+    if (imp > 0) {
+      s.count = Math.round(s.count * (1 + imp * 0.9));
+      s.oreRich = +(s.oreRich * (1 + imp * 0.6)).toFixed(3);
+      s.sizeMax = +(s.sizeMax * (1 + imp * 0.35)).toFixed(3);
+    }
+    /* 无大气 = 没有烧蚀/风化的筛选 → 碎屑棱角分明（视觉上更"糙"），这里体现为尺寸方差更大 */
+    if (atmo < 0.4) s.clump = Math.min(1, +(s.clump + 0.15).toFixed(3));
+    s.count = Math.max(0, Math.min(2000, s.count | 0));
+    return s;
+  };
+
+  /* ---- 矿石谱：内缘富金属/稀有，外缘富石料/冰晶（贴合真实小行星带）---- */
+  var ORE_KEYS = ['stone', 'iron', 'rare', 'crystal'];
+  BL.ORE_KEYS = ORE_KEYS;
+  BL.ORE_NAME = { stone: '石料', iron: '铁', rare: '稀有金属', crystal: '晶石' };
+
+  function oreOf(u, rich, r) {
+    /* u = 归一化半径位置(0 内缘 → 1 外缘) */
+    var stone = 60 + 90 * u;                 /* 外圈石头多 */
+    var iron = 70 - 45 * u;                  /* 内圈金属多 */
+    var rare = 6 + 26 * (1 - u);
+    var crystal = 4 + 22 * u;
+    var m = 1 + 0.5 * (r() - 0.5);           /* ±25% 个体差 */
+    return {
+      stone: Math.round(stone * m * rich),
+      iron: Math.round(iron * m * rich),
+      rare: Math.round(rare * m * rich),
+      crystal: Math.round(crystal * m * rich)
+    };
+  }
+
+  /* ---- 生成一条带 ---- */
+  /* seed：星球种子（与地形同一个，保证"这颗星球的带"唯一）
+     spec：BL.specOf 的产物
+     R   ：星球半径（缺省读 SP.R）*/
+  BL.gen = function (seed, spec, R) {
+    var sd = (Math.round(Number(seed)) || 1) | 0;
+    var s = spec || BL.specOf(null, null);
+    var RR = (R != null) ? R : ((GAME.sphere && GAME.sphere.R) || 300);
+    if (!s.enabled) return { seed: sd, spec: s, R: RR, rocks: [], ver: 0 };
+
+    var r = rng(sd ^ 0x5bf03635);
+    var rIn = RR * s.innerMul, rOut = rIn + RR * s.widthMul;
+    var n = s.count | 0, out = [], i;
+    /* 成团：先抽 K 个"团心相位"，多数石块落在团心附近（clump 越大越集中）*/
+    var K = Math.max(1, Math.round(3 + s.clump * 9));
+    var clumpPh = [], clumpU = [];
+    for (i = 0; i < K; i++) { clumpPh.push(r() * Math.PI * 2); clumpU.push(r()); }
+    for (i = 0; i < n; i++) {
+      var u, ph;
+      if (r() < s.clump) {
+        var cix = (r() * K) | 0;
+        u = Math.max(0, Math.min(1, clumpU[cix] + (r() - 0.5) * 0.10));
+        ph = clumpPh[cix] + (r() - 0.5) * 0.30;
+      } else {
+        /* 均匀成分：u 取 sqrt 分布 → 环带面积均匀（不然内圈会挤成一团）*/
+        u = Math.sqrt(r());
+        ph = r() * Math.PI * 2;
+      }
+      var a = rIn + (rOut - rIn) * u;                       /* 半长轴 */
+      var inc = (r() * 2 - 1) * s.inclDeg * Math.PI / 180;  /* 轨道倾角 */
+      var node = r() * Math.PI * 2;                          /* 升交点 */
+      var thick = (r() * 2 - 1) * RR * s.thickMul * 0.5;     /* 离带中面的法向偏移 */
+      /* 尺寸：幂律分布（小石块远多于大石块）—— 真实小行星带的尺寸谱。
+         v92.245：再乘 `R/300`，换了星球半径石块跟着等比变，不会"大星球上全是沙粒"。 */
+      var t = Math.pow(r(), 2.6);
+      var size = (s.sizeMin + (s.sizeMax - s.sizeMin) * t) * (RR / 300);
+      var ore = oreOf(u, s.oreRich, r);
+      out.push({
+        id: 'b' + sd + '_' + i,
+        a: a, u: u, phase: ph, inc: inc, node: node, off: thick,
+        size: size, shape: (r() * 1e6) | 0,
+        spin: (r() * 2 - 1) * 0.9,
+        /* 开普勒第三定律：T ∝ a^1.5 —— 外圈绕得更慢，带看着才"活" */
+        w: (Math.PI * 2 / Math.max(30, s.periodSec)) * Math.pow(rIn / a, 1.5),
+        ore: ore,
+        mass: Math.round(size * size * size * 12)           /* 质量 ∝ 体积（采矿/牵引用）*/
+      });
+    }
+    return { seed: sd, spec: s, R: RR, rIn: rIn, rOut: rOut, rocks: out, ver: (sd ^ (n * 2654435761)) >>> 0 };
+  };
+
+  /* ---- 缓存（按 seed+spec 指纹；确定性 → 不进存档）---- */
+  var _cache = null, _cacheKey = '';
+  function keyOf(seed, spec, R) {
+    return [seed, R, spec.enabled, spec.count, spec.innerMul, spec.widthMul, spec.inclDeg,
+      spec.thickMul, spec.sizeMin, spec.sizeMax, spec.clump, spec.periodSec, spec.oreRich].join('|');
+  }
+  BL.current = function (seed, spec, R) {
+    var s = spec || BL.specOf(null, null);
+    var RR = (R != null) ? R : ((GAME.sphere && GAME.sphere.R) || 300);
+    var k = keyOf(seed, s, RR);
+    if (_cache && _cacheKey === k) return _cache;
+    _cache = BL.gen(seed, s, RR); _cacheKey = k;
+    return _cache;
+  };
+  BL.invalidate = function () { _cache = null; _cacheKey = ''; };
+
+  /* ---- 位置：给定"带内时刻 t(秒)"求世界坐标 ----
+     轨道 = 半径 a 的圆，绕倾角 inc 的轴；node 决定倾角轴的朝向。 */
+  BL.posOf = function (rock, t, out) {
+    var th = rock.phase + rock.w * (t || 0);
+    var x = Math.cos(th) * rock.a, z = Math.sin(th) * rock.a, y = rock.off;
+    var ci = Math.cos(rock.inc), si = Math.sin(rock.inc);
+    /* 绕 node 轴（位于赤道面内，方位角 node）旋转 inc */
+    var cn = Math.cos(rock.node), sn = Math.sin(rock.node);
+    /* 先把点转到 node 轴为 x 的坐标系 → 绕 x 转 inc → 转回 */
+    var x1 = x * cn + z * sn, z1 = -x * sn + z * cn;
+    var y2 = y * ci - z1 * si, z2 = y * si + z1 * ci;
+    var x2 = x1 * cn - z2 * sn, z3 = x1 * sn + z2 * cn;
+    out = out || [0, 0, 0]; out[0] = x2; out[1] = y2; out[2] = z3;
+    return out;
+  };
+
+  BL.rockOf = function (id) {
+    var c = _cache; if (!c) return null;
+    for (var i = 0; i < c.rocks.length; i++) if (c.rocks[i].id === id) return c.rocks[i];
+    return null;
+  };
+  /* 采矿预留：某种矿的可采量 = 储量（后续再乘 采集效率/距离惩罚）*/
+  BL.yieldOf = function (rock, kind) {
+    if (!rock || !rock.ore) return 0;
+    return (kind ? (rock.ore[kind] || 0) : rock.ore);
+  };
+
+  /* ---- 汇总（给 UI / 后续采矿面板用）---- */
+  BL.summary = function (belt) {
+    var b = belt || _cache; if (!b || !b.rocks) return null;
+    var tot = { stone: 0, iron: 0, rare: 0, crystal: 0 }, mass = 0, i, k;
+    for (i = 0; i < b.rocks.length; i++) {
+      mass += b.rocks[i].mass;
+      for (k = 0; k < ORE_KEYS.length; k++) tot[ORE_KEYS[k]] += b.rocks[i].ore[ORE_KEYS[k]];
+    }
+    var big = 0;
+    for (i = 0; i < b.rocks.length; i++) if (b.rocks[i].size >= (b.spec.sizeMin + b.spec.sizeMax) * 0.5) big++;
+    return {
+      count: b.rocks.length, mass: mass, ore: tot, big: big,
+      rIn: Math.round(b.rIn || 0), rOut: Math.round(b.rOut || 0),
+      innerMul: b.spec.innerMul, widthMul: b.spec.widthMul, inclDeg: b.spec.inclDeg
+    };
+  };
+
+  BL.ver = function () { return _cache ? _cache.ver : 0; };
+})();
+
+/* ---- planetgen.js ---- */
+/* ============================================================
+ * js/planetgen.js — **星球生成流水线（强规范）**
+ * ------------------------------------------------------------
+ * 老板原话：「将星球生成规划一个标准化流程 —— 从星球参数到生成后，
+ *   它相应地根据星球特征生成大气、海洋、省市区分野等等；
+ *   把现有星球的要素（或者说一个地球的要素）从头到尾规范起来。
+ *   目前是在这个过程当中进行很多修补，但这个修补不是一个顺序性的、规范性的。
+ *   要求是这种强规范性的：我们把流程规定下来，然后如果有细调的话，可以由玩家自行细调。」
+ *
+ * ⛔ 本模块的定位（务必按此使用，别再各处打补丁）
+ * ------------------------------------------------------------
+ *   · 这里是**唯一的顺序定义处**。任何"生成某样东西"的新代码，先在此登记成一级，
+ *     再实现；不许在 newGame / switchPlanet / ensure 里随手插一段。
+ *   · 每级声明：id / 层 / 名字 / 依赖 / 输入参数 / 产出 / 执行体 / 校验体。
+ *   · 执行**严格按 STAGES 的声明顺序**，不得跳级；依赖未满足即视为失败。
+ *   · 玩家细调 = 改参数后 `PG.restage(级id)`：从该级重跑到末尾（上游不动）。
+ *
+ * ⚠️ 诚实地标注现状：**L0~L5 共用一个"球面内核重建"**（sphere.js 的 `SP.setPlanet`
+ *    一次就把地形/海陆/地类全部重算，目前没有分层粒度）。所以这几级在物理上
+ *    不可单独重跑 —— `restage` 对它们会**从 L0 整段重跑**并在回执里写清楚。
+ *    这是"把现状规定下来"，不是粉饰：下游（L6/L7/L8）才是真正可单级重跑的。
+ * ============================================================ */
+(function () {
+  var GAME = (typeof window !== 'undefined' ? (window.GAME || {}) : (global.GAME || {}));
+  if (!GAME) return;
+  var PG = GAME.planetgen = GAME.planetgen || {};
+
+  function SP() { return GAME.sphere || null; }
+  function DATA() { return GAME.DATA || (GAME.data) || {}; }
+  function num(v, d) { var n = Number(v); return isFinite(n) ? n : d; }
+  function clamp(v, a, b) { v = num(v, a); return v < a ? a : v > b ? b : v; }
+
+  /* ============================================================
+   * 一、参数规格（SPEC）—— 星球参数的**唯一口径**
+   *   玩家细调改的是这里；各级只准从 ctx.spec 读，不准自己去摸 DOM / 全局变量。
+   * ============================================================ */
+  PG.SPEC = {
+    /* L0 骨架 */
+    seed: 1, radius: 300, spinSec: 60, tilt: 23, atmo: 1.0, starColor: 0xffe6b8, impact: 0,
+    /* L1 岩石圈（形貌）*/
+    seaFrac: 0.45, contCount: 0, ridge: 1.5, mountain: 'fold', oceanDepth: 1.0, detail: 0.7,
+    /* L2 水圈 */
+    /* 海平面由 seaFrac 反推（sphere.js 内部算），这里放"可细调的偏置"：
+       ±0.05 相当于把海岸线整体推/拉一点点，用来修"岛太多/太少"而不动地貌。 */
+    seaBias: 0,
+    /* L3 大气圈 */
+    cloud: 1.0,                  /* 云量 */
+    /* L4 气候 */
+    temp: 1.0, tempBands: 3,
+    /* L5 生物圈 / 地类 */
+    ecoNature: '', ecoCiv: '', ecoMood: '', ecoClassic: '',
+    /* L6 行政区划 */
+    admin: 1,                    /* 1=划定区·镇·聚落 */
+    /* L7 地标 */
+    wonder: 1,                   /* 1=生成奇观 */
+    npc: 1,                      /* 1=生成名城/聚落 */
+    /* L8 轨道系（陨石带）*/
+    belt: null                   /* null → 用 GAME.belt.SPEC 默认；详见 BL.specOf */
+  };
+  PG.SPEC_DEFAULT = JSON.parse(JSON.stringify(PG.SPEC));
+
+  /* 规范化：合并默认 + 传入参数（null/undefined 项沿用默认）*/
+  PG.specOf = function (planet) {
+    var s = {}, k;
+    var SPd = (SP() && SP().PLANET) || {};
+    for (k in PG.SPEC_DEFAULT) {
+      var d = PG.SPEC_DEFAULT[k];
+      if (SPd[k] != null && PG.SPEC_DEFAULT[k] === PG.SPEC_DEFAULT[k]) { /* 结构缺省先取默认 */ }
+      s[k] = (typeof d === 'object' && d) ? JSON.parse(JSON.stringify(d)) : d;
+    }
+    /* 星球规格（SP.PLANET）覆盖 —— 它是"这颗星球当前生效的规格" */
+    for (k in s) if (SPd[k] != null) s[k] = SPd[k];
+    var P = (planet && planet.params) || planet || {};
+    for (k in s) if (P[k] != null) s[k] = P[k];
+    s.seed = num((planet && planet.seed) != null ? planet.seed : s.seed, 1) | 0;
+    s.radius = clamp(s.radius, 120, 900);
+    s.seaFrac = clamp(s.seaFrac, 0.02, 0.95);
+    s.ridge = clamp(s.ridge, 0.2, 4);
+    s.temp = clamp(s.temp, 0.2, 2.5);
+    s.atmo = clamp(s.atmo, 0, 2.5);
+    s.cloud = clamp(s.cloud, 0, 2.5);
+    s.tempBands = Math.max(1, Math.min(12, s.tempBands | 0));
+    s.contCount = Math.max(0, Math.min(24, s.contCount | 0));
+    /* v92.246（复核补口）：**数值兜底**。`ui._planetParamsFrom()` 是 `Number(f.starColor)`，
+       表单没填过时 f 是空对象 → `Number(undefined)` = **NaN**，一路传进 setPlanet，
+       最终喂给 `light.color.setHex(NaN)`（灯变黑）与几何参数。所有数值型规格在此收口。 */
+    if (!isFinite(+s.starColor)) s.starColor = 0xffe6b8;
+    s.spinSec = Math.max(5, Math.min(1200, +s.spinSec || 60));
+    s.tilt = Math.max(-90, Math.min(90, isFinite(+s.tilt) ? +s.tilt : 23));
+    s.detail = Math.max(0, Math.min(3, isFinite(+s.detail) ? +s.detail : 0.7));
+    s.oceanDepth = Math.max(0.2, Math.min(2.5, isFinite(+s.oceanDepth) ? +s.oceanDepth : 1));
+    return s;
+  };
+
+  /* ============================================================
+   * 二、派生量 —— **根据星球特征**算出下游要用的数（大气高度/浓度、海深…）
+   *   这里是"特征 → 要素"的明文公式，改观感只改这里，不要散到渲染里。
+   * ============================================================ */
+  PG.derive = function (spec) {
+    var R = num(spec.radius, 300);
+    var atmo = clamp(spec.atmo, 0, 2.5);
+    var cloud = clamp(spec.cloud, 0, 2.5);
+    var impact = clamp(spec.impact, 0, 1);
+    /* 大气层高度：= 最高峰之上一点点（峰高 ≈ 0.15R×ridge），再随大气密度增厚。
+       改前是写死的 55 —— 换个半径/山脉强度的星球就穿帮（山捅破大气壳）。 */
+    var peak = R * 0.055 * clamp(spec.ridge, 0.2, 4) * clamp(spec.detail + 0.6, 0.4, 2.2);
+    var atmH = Math.round(R * 0.055 + peak + atmo * R * 0.045);
+    /* 大气浓度：0（真空）~ 0.5（浓密遮天）；云量再叠一层。 */
+    var atmA = +(clamp(0.10 + atmo * 0.16 + cloud * 0.06, 0, 0.55)).toFixed(3);
+    /* 海深剖面 → 深海占比（oceanDepth 大 = 更深 = 浅滩更少）*/
+    var deepFrac = clamp(0.30 + (clamp(spec.oceanDepth, 0.4, 1.6) - 0.4) * 0.42, 0.1, 0.8);
+    return {
+      R: R, peak: +peak.toFixed(2), atmH: atmH, atmA: atmA,
+      seaBias: clamp(spec.seaBias, -0.2, 0.2),
+      deepFrac: +deepFrac.toFixed(3),
+      /* 陨石带：撞击史重的星球带更密更富（BL.specOf 里具体乘）*/
+      beltSpec: (GAME.belt && GAME.belt.specOf)
+        ? GAME.belt.specOf(spec.belt, { params: spec }) : null
+    };
+  };
+
+  /* ============================================================
+   * 三、流水线定义 —— **顺序即规范**
+   * ============================================================ */
+  PG.STAGES = [
+    /* ---- L0 ---- */
+    {
+      id: 'L0', layer: 'L0 骨架', name: '球体与自转', group: 'core',
+      deps: [], params: ['seed', 'radius', 'spinSec', 'tilt', 'starColor', 'impact'],
+      out: ['SP.PLANET', 'SP.R', 'SP.PLANET.spinSec', 'SP.PLANET.tilt'],
+      desc: '定种子/半径/自转周期/轴倾角/恒星色温/撞击史 —— 下游一切的地基',
+      run: function () { return true; },
+      verify: function (ctx) { return !!(SP() && SP().PLANET && SP().R > 0); }
+    },
+    /* ---- L1 ---- */
+    {
+      id: 'L1', layer: 'L1 岩石圈', name: '大陆与山脉', group: 'core',
+      deps: ['L0'], params: ['contCount', 'ridge', 'mountain', 'detail'],
+      out: ['SP.cells[].e', 'SP._emax', 'contField'],
+      desc: '大陆掩膜 + 褶皱/火山/断块/撞击四型山脉 + 颗粒细节 → 高程场',
+      run: function () { return true; },
+      verify: function (ctx) { var s = SP(); return !!(s && s.cells && s._emax > 0); }
+    },
+    /* ---- L2 ---- */
+    {
+      id: 'L2', layer: 'L2 水圈', name: '海平面与海深', group: 'core',
+      deps: ['L1'], params: ['seaFrac', 'oceanDepth', 'seaBias'],
+      out: ['SP.seaLevel()', 'deepFrac'],
+      desc: '按目标海洋占比反推海平面（+ 玩家细调偏置），海深剖面决定深海/浅滩比',
+      run: function (ctx) {
+        if (SP() && SP().seaLevel) { SP().seaLevel(); return true; }
+        return false;
+      },
+      verify: function (ctx) { return !!(SP() && typeof SP().seaLevel === 'function' && isFinite(SP().seaLevel())); }
+    },
+    /* ---- L3 ---- */
+    {
+      id: 'L3', layer: 'L3 大气圈', name: '大气层与云', group: 'core',
+      deps: ['L2'], params: ['atmo', 'cloud', 'radius', 'ridge', 'detail'],
+      out: ['SP.ATM_H', 'SP.ATM_A'],
+      desc: '大气高度/浓度由半径·山脉强度·大气密度·云量派生（改前是写死的 55 / 0.30）',
+      run: function (ctx) {
+        var s = SP(); if (!s) return false;
+        var d = ctx.d;
+        s.ATM_H = d.atmH; s.ATM_A = d.atmA;
+        if (GAME.map3d && GAME.map3d.invalidateAtmo) GAME.map3d.invalidateAtmo();
+        return true;
+      },
+      verify: function (ctx) { var s = SP(); return !!(s && s.ATM_H > 0 && s.ATM_A >= 0); }
+    },
+    /* ---- L4 ---- */
+    {
+      id: 'L4', layer: 'L4 气候', name: '温度带', group: 'core',
+      deps: ['L3'], params: ['temp', 'tempBands'],
+      out: ['SP.PLANET.temp', 'SP.PLANET.tempBands'],
+      desc: '纬度温差 + 温度带数量（气候带）→ 下游地类的地带性',
+      run: function () { return !!(SP() && SP().PLANET); },
+      verify: function (ctx) { var s = SP(); return !!(s && s.PLANET && s.PLANET.tempBands >= 1); }
+    },
+    /* ---- L5 ---- */
+    {
+      id: 'L5', layer: 'L5 生物圈', name: '地类与生态', group: 'core',
+      deps: ['L4'], params: ['ecoNature', 'ecoCiv', 'ecoMood', 'ecoClassic'],
+      out: ['SP.cells[].type', 'SP.cells[].name', 'SP.ecoNatureOf()'],
+      desc: '整批定地类（距海/坡度/湿度分位/连续性平滑）→ 成片而非逐格噪点；再挂生态三轴标签',
+      run: function () { return true; },
+      verify: function (ctx) { var s = SP(); return !!(s && s.cells && s.cells.length && s.cells[0] && s.cells[0].type != null); }
+    },
+    /* ---- L6 ---- */
+    {
+      id: 'L6', layer: 'L6 行政区划', name: '区 · 镇 · 聚落', group: 'regions',
+      deps: ['L5'], params: ['admin'],
+      out: ['GAME.map._countyField()', 'GAME.regionOf(ci)'],
+      desc: '**顺次划定**：必须在地形与地类定型之后。多源 BFS 铺区域场 → 任一格 O(1) 归属',
+      run: function (ctx) {
+        if (!ctx.spec.admin) return true;
+        if (GAME.map && GAME.map._countyField) { GAME.map._countyField(); return true; }
+        return !!GAME.regionOf;
+      },
+      verify: function (ctx) { return typeof GAME.regionOf === 'function'; }
+    },
+    /* ---- L7 ---- */
+    {
+      id: 'L7', layer: 'L7 地标', name: '奇观与名城', group: 'landmarks',
+      deps: ['L6'], params: ['wonder', 'npc'],
+      out: ['planet.report', 'planet.artifact'],
+      desc: '按地形/危险度出奇观；名城落位（必须晚于行政区划，否则归属漂移）',
+      run: function (ctx) {
+        var pl = ctx.planet;
+        if (!pl) return true;
+        var s = SP();
+        if (ctx.spec.wonder && s && s.artifactOf) { pl.artifact = s.artifactOf(); if (pl.params) pl.params.artifact = pl.artifact; }
+        if (s && s.report) pl.report = s.report();
+        return true;
+      },
+      verify: function (ctx) { return !ctx.planet || ctx.planet.report != null || !(SP() && SP().report); }
+    },
+    /* ---- L8 ---- */
+    {
+      id: 'L8', layer: 'L8 轨道系', name: '陨石带', group: 'orbit',
+      deps: ['L5'], params: ['belt', 'impact', 'atmo'],
+      out: ['GAME.belt.current()', 'rocks'],
+      desc: '由撞击史/大气派生带宽与富度，确定性生成（不进存档）—— 星际采矿的数据源',
+      run: function (ctx) {
+        if (!GAME.belt) return false;
+        GAME.belt.invalidate();
+        var b = GAME.belt.current(ctx.spec.seed, ctx.d.beltSpec, ctx.d.R);
+        if (ctx.planet && ctx.planet.params) ctx.planet.params.belt = ctx.d.beltSpec;
+        return !!(b && b.rocks);
+      },
+      verify: function (ctx) { return !!(GAME.belt && GAME.belt.current(null, ctx.d.beltSpec, ctx.d.R)); }
+    }
+  ];
+  PG.STAGE_OF = {};
+  PG.STAGES.forEach(function (st, i) { st.order = i; PG.STAGE_OF[st.id] = st; });
+  /* 核心组：L0~L5 共用一次球面重建，物理上不可分 */
+  PG.CORE_IDS = PG.STAGES.filter(function (s) { return s.group === 'core'; }).map(function (s) { return s.id; });
+
+  /* ============================================================
+   * 四、执行器
+   * ============================================================ */
+  function coreRebuild(ctx) {
+    var s = SP(); if (!s || !s.setPlanet) return false;
+    var sp = {};
+    ['radius', 'spinSec', 'tilt', 'atmo', 'starColor', 'impact', 'seaFrac', 'contCount',
+      'ridge', 'mountain', 'oceanDepth', 'detail', 'temp', 'tempBands', 'cloud',
+      'ecoNature', 'ecoCiv', 'ecoMood', 'ecoClassic', 'artifact'].forEach(function (k) {
+        if (ctx.spec[k] != null) sp[k] = ctx.spec[k];
+      });
+    s.setPlanet(ctx.spec.seed, sp);
+    /* ⚠️ 只重建**逻辑球面**。地图球面由 `GAME.enterPlanet` 统一对齐 ——
+       在这里也 setPlanet 会多花一次全量重建（~1.6s），且与"只算不切"的调用者（生成副本后不进入）
+       语义冲突：那会把 `_planetDoCreate` 的"算完还原"路径打乱。 */
+    return true;
+  }
+
+  PG.last = null;
+  /* 按序跑完整条流水线。opts: { planet, only:'L6'（从该级起）, silent } */
+  PG.generate = function (seed, spec, opts) {
+    opts = opts || {};
+    var s = PG.specOf(spec ? (spec.seed == null ? Object.assign({}, spec, { seed: seed }) : spec) : { seed: seed });
+    if (seed != null) s.seed = num(seed, s.seed) | 0;
+    var ctx = { seed: s.seed, spec: s, d: PG.derive(s), planet: opts.planet || null, done: {}, log: [] };
+    var from = opts.only ? (PG.STAGE_OF[opts.only] ? PG.STAGE_OF[opts.only].order : 0) : 0;
+    var coreDone = (from > 0);   /* 单级重跑时不重建内核（除非该级属于核心组）*/
+    var i, st, t0, ok;
+    for (i = from; i < PG.STAGES.length; i++) {
+      st = PG.STAGES[i]; t0 = Date.now(); ok = false;
+      /* 依赖检查：不得跳级。
+         ⛔ v92.246（全面复核修）：原判据是
+             `from>0 && CORE_IDS.indexOf(d)>=0 && CORE_IDS.indexOf(d) < CORE_IDS.indexOf(st.id)`
+         对**非核心级**（L6/L7/L8）永远不成立 —— 因为它们不在 CORE_IDS 里，
+         `indexOf(st.id)` 是 -1，任何下标都不会 < -1。后果：`restage('L6'|'L7'|'L8')`
+         全部被判"依赖未满足"而**静默跳过**，也就是我声称"可单级重跑"的那三级其实跑不动。
+         正解：单级重跑时球面内核早已在位（L0~L5 的产物是既成事实），核心依赖一律视为满足。 */
+      var depOK = st.deps.every(function (d) {
+        if (ctx.done[d]) return true;
+        if (from > 0 && PG.CORE_IDS.indexOf(d) >= 0) return true;
+        return false;
+      });
+      if (!depOK) { ctx.log.push({ id: st.id, ok: false, ms: 0, note: '依赖未满足：' + st.deps.join(',') }); continue; }
+      /* 核心组：整段一次性重建，只在第一次遇到时真正执行 */
+      if (st.group === 'core') {
+        if (!coreDone) { coreRebuild(ctx); coreDone = true; PG.CORE_IDS.forEach(function (id) { ctx.done[id] = true; }); }
+        try { ok = !!st.run(ctx); } catch (e) { ok = false; ctx.log.push({ id: st.id, ok: false, ms: 0, note: '抛错：' + (e && e.message) }); continue; }
+      } else {
+        try { ok = !!st.run(ctx); } catch (e) { ok = false; ctx.log.push({ id: st.id, ok: false, ms: 0, note: '抛错：' + (e && e.message) }); continue; }
+        ctx.done[st.id] = true;
+      }
+      var vOK = true;
+      try { vOK = st.verify ? !!st.verify(ctx) : true; } catch (e2) { vOK = false; }
+      ctx.log.push({ id: st.id, name: st.layer + ' ' + st.name, ok: ok && vOK, ms: Date.now() - t0,
+        note: ok ? (vOK ? '' : '执行成功但校验不过') : '执行失败' });
+    }
+    PG.last = { at: Date.now(), seed: ctx.seed, spec: ctx.spec, derived: ctx.d, stages: ctx.log,
+      ok: ctx.log.every(function (r) { return r.ok; }) };
+    return PG.last;
+  };
+
+  /* 玩家细调入口：改了参数后从某一级重跑。
+     核心组（L0~L5）共用一次球面重建 → 会**从 L0 整段重跑**（回执里写明）。*/
+  PG.restage = function (stageId, seed, spec, opts) {
+    var st = PG.STAGE_OF[stageId];
+    if (!st) return { ok: false, msg: '未知的级：' + stageId };
+    var from = st.id;
+    var note = '';
+    if (st.group === 'core') { from = 'L0'; note = 'L0~L5 共用一次球面内核重建，不可单级重跑 —— 已整体重跑'; }
+    var r = PG.generate(seed, spec, Object.assign({}, opts || {}, { only: from }));
+    r.restageNote = note || ('已从 ' + from + ' 重跑到末尾');
+    return r;
+  };
+
+  /* ============================================================
+   * 五、自检 —— 保证"规范"本身是成立的（顺序/依赖/参数/产出）
+   * ============================================================ */
+  PG.audit = function () {
+    var errs = [], ids = {}, i, st, k;
+    for (i = 0; i < PG.STAGES.length; i++) {
+      st = PG.STAGES[i];
+      if (ids[st.id]) errs.push('级 id 重复：' + st.id); ids[st.id] = 1;
+      if (!st.run) errs.push(st.id + ' 缺 run');
+      if (!st.verify) errs.push(st.id + ' 缺 verify');
+      if (!st.layer || !st.name) errs.push(st.id + ' 缺 layer/name');
+      if (!st.params || !st.params.length) errs.push(st.id + ' 未声明 params');
+      if (!st.out || !st.out.length) errs.push(st.id + ' 未声明 out');
+      /* 依赖必须**在前**（顺序即规范）*/
+      (st.deps || []).forEach(function (d) {
+        if (!PG.STAGE_OF[d]) errs.push(st.id + ' 依赖了不存在的级 ' + d);
+        else if (PG.STAGE_OF[d].order >= st.order) errs.push(st.id + ' 的依赖 ' + d + ' 排在它之后（违反顺序）');
+      });
+      /* 声明的参数必须在 SPEC 里有定义（否则玩家无从细调）*/
+      (st.params || []).forEach(function (p) {
+        if (!(p in PG.SPEC_DEFAULT)) errs.push(st.id + ' 声明了 SPEC 里没有的参数 ' + p);
+      });
+    }
+    /* 每个 SPEC 参数都应至少被一级声明（否则是死参数）*/
+    var used = {};
+    PG.STAGES.forEach(function (s2) { (s2.params || []).forEach(function (p) { used[p] = 1; }); });
+    for (k in PG.SPEC_DEFAULT) if (!used[k] && k !== 'seed') errs.push('SPEC 参数 ' + k + ' 没有任何一级声明使用');
+    return { ok: !errs.length, errors: errs, stages: PG.STAGES.length };
+  };
+
+  /* 人读的流程报告（给 UI「流程」页用）*/
+  PG.report = function () {
+    var last = PG.last;
+    var rows = PG.STAGES.map(function (st) {
+      var r = null;
+      if (last) last.stages.forEach(function (x) { if (x.id === st.id) r = x; });
+      return {
+        id: st.id, layer: st.layer, name: st.name, group: st.group,
+        deps: st.deps.join(','), params: st.params.join(','), out: st.out.join(' / '),
+        desc: st.desc,
+        state: r ? (r.ok ? 'done' : 'fail') : (last ? 'skipped' : 'idle'),
+        ms: r ? r.ms : 0, note: r ? r.note : ''
+      };
+    });
+    return { ok: !!(last && last.ok), at: last ? last.at : 0, seed: last ? last.seed : 0,
+      derived: last ? last.derived : PG.derive(PG.specOf(null)), rows: rows };
+  };
 })();

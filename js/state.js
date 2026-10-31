@@ -567,6 +567,16 @@ import './data.js';
          这里直接设成新局种子；新局若确实要看另一颗星球，由 enterPlanet 再 setPlanet。 */
       _sp._seedOverride = mapSeed;
     });
+    /* ============================================================
+     * v155b（老板：「城市的坐标好像又对不上了」「应当顺次划定」）
+     * ------------------------------------------------------------
+     * **顺次**：种子 → 球面地形 → 坐标(出生点/城) → 行政区划。
+     * 改前：出生点在球面**建好之前**就算 → 读的是上一局的旧地形/旧行政区，
+     *       于是"城在地图上显示在这、点下去却是别处"。
+     * 现在：喂完种子先 `ensure()` 把球面建出来，再算出生点。
+     * ============================================================ */
+    try { if (GAME.sphere && GAME.sphere.ensure) GAME.sphere.ensure(); } catch (eSE) { }
+    try { if (GAME.mapSphere && GAME.mapSphere.ensure) GAME.mapSphere.ensure(); } catch (eSE2) { }
     /* v70（老板需求 5）：出生坐标按**所选区**落位（首府近旁的平原空地），
        烬环以灰烬城为锚；落不到才回退旧口径的固定点。出生城写明所属区 ——
        展示、岁贡、辖区特产都读同一份归属。 */
@@ -891,10 +901,18 @@ import './data.js';
     var seed = ui && ui._planetSeedFrom ? ui._planetSeedFrom() : ((U.now() % 900000) || 1);
     var p = GAME.addPlanet({ seed: seed, params: params });
     if (!p) { if (ui) ui.toast('生成失败'); return; }
-    /* v90.81：生成后**即时**算体检报告 + 自动奇观（临时把内核切到新球算完再还原）*/
+    /* v90.81：生成后**即时**算体检报告 + 自动奇观（临时把内核切到新球算完再还原）。
+       v92.241（老板「把星球生成规划一个标准化流程」）：改为走**唯一流水线** `GAME.planetgen` ——
+       L0 骨架 → L1 岩石圈 → L2 水圈 → L3 大气圈 → L4 气候 → L5 生物圈 → L6 行政区划 →
+       L7 地标 → L8 轨道系（陨石带）。顺序由 PG.STAGES 声明，不在这里手搓。
+       若无 planetgen（极端降级），退回旧的两行。 */
     var report = null, artifact = null;
-    if (GAME.sphere && GAME.sphere.setPlanet) {
+    if (GAME.planetgen && GAME.planetgen.generate) {
+      try { GAME.planetgen.generate(p.seed, p.params, { planet: p }); } catch (ePG) { }
+    } else if (GAME.sphere && GAME.sphere.setPlanet) {
       GAME.sphere.setPlanet(p.seed, p.params);
+    }
+    if (GAME.sphere && GAME.sphere.report) {
       report = GAME.sphere.report(); artifact = GAME.sphere.artifactOf();
     }
     p.report = report; p.artifact = artifact;
@@ -1382,31 +1400,87 @@ import './data.js';
       if (!anchor && name === '烬环' && c.type === 'capital') anchor = c;
     });
     if (!anchor) anchor = { x: DATA.START_POS.x, y: DATA.START_POS.y };
-    var free = function (x, y) {
-      if (x < 3 || y < 3 || x > DATA.MAP_W - 4 || y > DATA.MAP_H - 4) return false;
+    /* v155b：**地形优先** —— 出生点必须落在平原（`cells[ci].type === 'plain'`），
+       并且不压任何系统城。归属（stateOfCity）作为第二道偏好，找不到才放宽。 */
+    var _terrAt = function (x, y) {
+      var SP = GAME.sphere, ci = (SP && SP.ciOfXY) ? SP.ciOfXY(x, y) : -1;
+      if (ci < 0 || !SP.cells || !SP.cells[ci]) return null;
+      return SP.cells[ci].type;
+    };
+    var _nearCity = function (x, y) {
       var hit = false;
       (DATA.NPC_CITIES || []).forEach(function (c) {
         if (Math.abs(c.x - x) <= 2 && Math.abs(c.y - y) <= 2) hit = true;
       });
-      if (hit) return false;
-      return GAME.stateOfCity({ x: x, y: y }) === name;
+      return hit;
     };
+    var free = function (x, y, strict) {
+      if (x < 3 || y < 3 || x > DATA.MAP_W - 4 || y > DATA.MAP_H - 4) return false;
+      if (_nearCity(x, y)) return false;
+      var t = _terrAt(x, y);
+      if (t !== 'plain') return false;                 /* 地形优先：只和平原 */
+      if (strict) return GAME.stateOfCity({ x: x, y: y }) === name;
+      return true;
+    };
+    /* 第一轮：环带内 + 地形是平原 + 归属该区 */
     for (var i = 0; i < 240; i++) {
       var ang = rand() * Math.PI * 2, rad = 3 + rand() * 5;
       var x = Math.round(anchor.x + Math.cos(ang) * rad);
       var y = Math.round(anchor.y + Math.sin(ang) * rad);
-      if (free(x, y)) return { x: x, y: y, state: name };
+      if (free(x, y, true)) return { x: x, y: y, state: name };
     }
-    /* 兜底：环带扫不到就自锚点向外做确定性扫描（保证**必有**可用点） */
+    /* 第二轮：自锚点向外扫描（地形是平原即可，归属放宽） */
     for (var r = 3; r <= 26; r++) {
       for (var dx = -r; dx <= r; dx++) {
         for (var dy = -r; dy <= r; dy++) {
           if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
           var bx = anchor.x + dx, by = anchor.y + dy;
-          if (free(bx, by)) return { x: bx, y: by, state: name };
+          if (free(bx, by, false)) return { x: bx, y: by, state: name };
         }
       }
     }
+    /* ============================================================
+     * v155c（性能）：**先排序、再验证**。
+     * 上一版对每一个平原格都调 `stateOfCity`（每次都跑一遍全图行政区）——
+     * 实测 13 次 = 195 秒，把整条门禁拖到十几分钟。
+     * 现在：平原按"到锚点的近似距离"排序，只对**前 240 个**验归属；
+     * 都验不过就退到第四轮（不限归属）。
+     * ============================================================ */
+    try {
+      var SP3 = GAME.sphere;
+      if (SP3 && SP3.cells && SP3.ciOfXY) {
+        var ancCi3 = SP3.ciOfXY(anchor.x, anchor.y);
+        var cand3 = [];
+        for (var ci3 = 0; ci3 < SP3.cells.length; ci3++) {
+          var cc3 = SP3.cells[ci3];
+          if (!cc3 || cc3.type !== 'plain') continue;
+          if (_nearCity(cc3.x, cc3.y)) continue;
+          var d3 = (ancCi3 >= 0 && SP3.roughDistOf) ? SP3.roughDistOf({ ci: ancCi3 }, { ci: ci3 }) : 0;
+          cand3.push([d3, cc3.x, cc3.y, ci3]);
+        }
+        cand3.sort(function (a, b) { return a[0] - b[0]; });
+        for (var k3 = 0; k3 < cand3.length && k3 < 240; k3++) {
+          var e3 = cand3[k3];
+          if (GAME.stateOfCity({ x: e3[1], y: e3[2], ci: e3[3] }) !== name) continue;
+          return { x: e3[1], y: e3[2], state: name };
+        }
+      }
+    } catch (ePS3) { }
+    /* 第四轮（兜底）：**全星球**找离锚点最近的平原（同一颗球上一定有平原） */
+    try {
+      var SP2 = GAME.sphere, ancCi = (SP2 && SP2.ciOfXY) ? SP2.ciOfXY(anchor.x, anchor.y) : -1;
+      if (ancCi >= 0 && SP2.hopsWithin) {
+        for (var rr = 1; rr <= 200; rr++) {
+          var ring = SP2.hopsWithin(ancCi, rr) || [];
+          for (var k2 = 0; k2 < ring.length; k2++) {
+            var c2 = SP2.cells[ring[k2]];
+            if (!c2 || c2.type !== 'plain') continue;
+            if (_nearCity(c2.x, c2.y)) continue;
+            return { x: c2.x, y: c2.y, state: name };
+          }
+        }
+      }
+    } catch (ePS) { }
     return { x: DATA.START_POS.x, y: DATA.START_POS.y, state: name };
   };
 
@@ -3254,6 +3328,45 @@ import './data.js';
        本段已通过上面的 story.tick 推进 world.elapsed（与在线每 tick 同刻度），此处结清
        → 与 exact 段（simulateSeconds→tickOnce→settleGenSalary）共用同一锚点，不重复不漏扣。 */
     if (GAME.settleGenSalary) GAME.settleGenSalary();
+    /* ============================================================
+     * v151（老板：「不在线上的几小时里世界是冻的」）
+     * ------------------------------------------------------------
+     * 离线补算原来只走 队列/资源/体力/外敌 —— 村社、军阀、竞争者、事件、
+     * 奇观争夺、惰性、民怨这些**月度**系统不推进。于是挂机 8 小时回来，
+     * 世界一格没动，"世界是活的"这件事只在开着页面时才成立。
+     * 现在：按离线时长**补跑月份**（每个跨过的游戏月调一次同一批 tick，
+     * 与在线 tickOnce 的月度段**同一份出口**，不另写一套）——
+     *   · 上限 `DATA.CALENDAR.offlineMaxMonths`（默认 24），防止超长离线把主线程卡住；
+     *   · 逐个包 try/catch：任何一个月度模块抛错都不许拖垮读档；
+     *   · 事件只补"挂出来"的那部分（events.tick 是月度随机），不替玩家做选择。
+     * ============================================================ */
+    try {
+      var _C = DATA.CALENDAR || {};
+      var _spm = ((_C.secPerYear || 57600) / 12) || 4800;
+      var _gameSec = secReal * ts;
+      var _months = Math.floor(_gameSec / _spm);
+      var _capM = (_C.offlineMaxMonths == null) ? 24 : _C.offlineMaxMonths;
+      if (_months > _capM) _months = _capM;
+      var _tickOneMonth = function (mIdx) {
+        var mods = ['faction', 'rival', 'village', 'growth', 'taint', 'climate', 'surge',
+          'veteran', 'unrest', 'wonderwar', 'expose', 'wonderwar'];
+        for (var mi = 0; mi < mods.length; mi++) {
+          var mod = GAME[mods[mi]];
+          if (!mod || !mod.tick) continue;
+          try { mod.tick(); } catch (eM) { /* 单模块失败不拖垮整段 */ }
+        }
+        /* 事件 / 兵源 / 等等走注册表（与在线同一出口） */
+        try { if (GAME.reg && GAME.reg.tickAll) GAME.reg.tickAll(); } catch (eR) { /* 同上 */ }
+        /* 让"月份变了才结算"的模块真正看到月份变化（tickOnce 里用 s._wqMonth 门控） */
+        s._wqMonth = mIdx;
+      };
+      /* 离线推进要真的让 world.elapsed 跨月 —— story.tick 已在上面推进过；
+         这里按"跨过的整月数"逐月补跑（mIdx 用当前月倒推）。 */
+      if (_months > 0) {
+        var _wm0 = Math.floor((((s.world && s.world.elapsed) || 0) - _gameSec) / _spm);
+        for (var _k = 1; _k <= _months; _k++) _tickOneMonth(_wm0 + _k);
+      }
+    } catch (eOff) { /* 离线补月失败不该挡住读档 */ }
   };
 
   /* ---------------- 存档 / 读档（v3，旧档作废） ---------------- */
@@ -3302,6 +3415,66 @@ import './data.js';
    * 就会出现"迁移逻辑两份、只改一处"的经典失效（本项目已发生多次）。
    * 现在 loadGame（主档）与 loadFrom（任意槽位）都走它。
    * ============================================================ */
+  /* ============================================================
+   * v153 · 格网细分迁移（40962 ↔ 10242）
+   * ------------------------------------------------------------
+   * 存档位置全用 ci；换格网后同一 ci 指到别的土地。口径：**按经纬重落**。
+   * `FROM_SUB` = 老档是哪一套格网（v152 期间存过 10242）。
+   * 幂等标记 `_sub153`（当前目标格数）。
+   * ============================================================ */
+  GAME.migrateSphereSub = function (st) {
+    if (!st) st = GAME.state;
+    if (!st) return 0;
+    var sp0 = GAME.sphere;
+    var cur = (sp0 && sp0.cells) ? sp0.cells.length : 0;
+    if (!cur) return 0;
+    if (st._sub153 === cur) return 0;
+    var FROM_SUB = 6;                       /* 缺省：老档按 40962 解释 */
+    if (st._sub152 === 10242) FROM_SUB = 5; /* v152 期间存下的档是 10242 */
+    var oldLL = st._sub153LL || null;
+    if (!oldLL) {
+      var tmp = GAME.createSphere ? GAME.createSphere() : null;
+      if (!tmp || !tmp.ensure) return 0;
+      try { tmp._seedOverride = (st.map && st.map.seed) || 1; tmp.ensure(FROM_SUB); } catch (e0) { return 0; }
+      if (!tmp.cells || !tmp.cells.length) return 0;
+      oldLL = tmp.cells.map(function (c) { return c ? [c.lon, c.lat] : null; });
+      st._sub153LL = oldLL;
+    }
+    if (oldLL.length === cur) { st._sub153 = cur; return 0; }
+    var nc = sp0.cells, map1 = function (ci) {
+      if (ci == null || ci < 0 || ci >= oldLL.length || !oldLL[ci]) return ci;
+      var ll = oldLL[ci], best = 0, bd = 1e18;
+      for (var i = 0; i < nc.length; i++) {
+        var c = nc[i]; if (!c || c.lon == null) continue;
+        var dLon = Math.abs(((c.lon - ll[0] + 540) % 360) - 180);
+        var dLat = Math.abs(c.lat - ll[1]);
+        var d = dLon * dLon * 0.7 + dLat * dLat;
+        if (d < bd) { bd = d; best = i; }
+      }
+      return best;
+    };
+    var n = 0;
+    var each = function (arr, f) { (arr || []).forEach(function (x) { if (x && typeof f === 'function') f(x); }); };
+    each(st.cities, function (c) { if (c.ci != null) { c.ci = map1(c.ci); n++; } });
+    each(st.wilds, function (w) { if (w.ci != null) { w.ci = map1(w.ci); n++; } });
+    each(st.forts, function (f) { if (f.ci != null) { f.ci = map1(f.ci); n++; } });
+    each(st.gathers, function (g) { if (g.ci != null) { g.ci = map1(g.ci); n++; } });
+    each(st.marches, function (m) { if (m.tci != null) { m.tci = map1(m.tci); n++; } });
+    each(st.battles, function (b) { if (b.ci != null) { b.ci = map1(b.ci); n++; } });
+    if (st.prologue && st.prologue.pos != null) { st.prologue.pos = map1(st.prologue.pos); n++; }
+    Object.keys(st.sieges || {}).forEach(function (k) {
+      var m2 = /^p(\d+)\|c(\d+)$/.exec(k);
+      if (m2) {
+        var nk = 'p' + m2[1] + '|c' + map1(+m2[2]);
+        if (nk !== k) { st.sieges[nk] = st.sieges[k]; delete st.sieges[k]; n++; }
+      }
+    });
+    st._sub153 = cur;
+    try { if (GAME.fog && GAME.fog.reset) GAME.fog.reset(); } catch (eF) {}
+    try { if (GAME.map3d && GAME.map3d.rebuild) GAME.map3d.rebuild(); } catch (eM) {}
+    return n;
+  };
+
   GAME.adoptState = function (st) {
     /* v89.209（v89.208 评估缺陷链 ①）：形状抽检（读路径同闸）—— importText 已拦一道，
        这里再拦一道：手改 localStorage / 旧版导入残留的坏档同样进不了迁移链；
@@ -3673,6 +3846,8 @@ import './data.js';
         GAME.mapSphere.setPlanet(_mp97.seed, _mp97.params);
         if (GAME.map3d && GAME.map3d.rebuild) GAME.map3d.rebuild();
       }
+      /* v152：格网细分 40962 → 10242 —— 读档按经纬把 ci 重落新格网（幂等 `_sub152`）。 */
+      try { GAME.migrateSphereSub(st); } catch (eSub) { /* 迁移失败不挡读档 */ }
       /* v92：探明度。球面已切好（上面的 setPlanet）才有格数，故放在这里。
          · 老档（无 fog 数据）→ backfill：把走过的城/野地/据点补成已知，
            **不清零** —— 加迷雾不该抹掉玩家几十小时的成果。
@@ -3684,6 +3859,17 @@ import './data.js';
         if (!_hadFog) GAME.fog.backfill();
         else GAME.fog.revealOwned();
       }
+      /* ============================================================
+       * v92.246（全面复核补口）：**地块放置物读档自检**。
+       * ------------------------------------------------------------
+       * `state.placements` 里可能残留两类坏记录：
+       *   ① 物品 id 已从目录删除（改过 PLACEABLES 的老档）；
+       *   ② 格索引在这颗星球上不存在（换过星球/细分）。
+       * 这两类记录**渲染不出来**（buildPlacements 会跳过），但 `PL.at(ci)` 照样返回它，
+       * 于是那格永久"已经有东西了" —— 玩家拆不掉（面板列不出来）、也放不进新的。
+       * `PL.sanitize()` 就是为这件事写的，之前**一直没有调用点**（复核发现的死出口）。
+       * ============================================================ */
+      try { if (GAME.place && GAME.place.sanitize) GAME.place.sanitize(); } catch (ePl) { }
       return st;
     } catch (e209) {
       GAME.state = _prev209;   /* v89.209：回滚 —— 坏档失败不留半迁移态 */
@@ -5788,6 +5974,10 @@ import './data.js';
     var lvW = 1 + lv * (sp4.lvDmg || 0);
     var mo = mods || {};
     var mPow = mo.pow || 1, mRw = mo.reward || 1, mWound = mo.wound || 1, mLuck = mo.luck || 0;
+    /* v151：**回合制打斗的胜负回灌** —— 前传的 fight/trial 现在先打几个回合
+       （`GAME.duel.play`），打完把结果以 `force:'win'|'lose'` 传进来。
+       只在有对手的两类上生效；采集/静修/拜访没有对手，传了也不改（防止串账）。 */
+    var mForce = mo.force || null;
     var mi = function (n) { return Math.max(1, Math.round(n * mRw * lvR)); };
     var mw = function (n) { return Math.max(1, Math.round(n * mWound * lvW)); };
     /* 机能（读基因强化件；与当前生效套无关） */
@@ -5818,7 +6008,8 @@ import './data.js';
       /* 机能判定：我方战力 =（机能 + 等级 x2）x 种子波动；难度随野地等级 +35%/级 */
       var pow = (ling + (gen.level || 1) * 2) * (0.9 + roll('pow') * 0.2) * mPow;
       var need = a.power * lvN;
-      if (pow >= need) {
+      var fightWin = (mForce === 'win' || mForce === 'lose') ? (mForce === 'win') : (pow >= need);
+      if (fightWin) {
         ess(a.win.ess[0], a.win.ess[1]);
         tryDrop('drop');
         title = '旗开得胜';
@@ -5835,7 +6026,10 @@ import './data.js';
     } else if (a.kind === 'trial') {
       /* 三层试炼：逐层加码；失败止步（已过层奖励保留）——「见好就收」无损 */
       var layer = 0;
-      for (var i = 1; i <= 3; i++) {
+      /* v151：回合打斗的胜负回灌 —— 赢了记"三层皆过"，输了记"第一层便受阻" */
+      if (mForce === 'win') layer = 3;
+      else if (mForce === 'lose') layer = 0;
+      else for (var i = 1; i <= 3; i++) {
         var p2 = (ling + (gen.level || 1) * 2) * (0.9 + roll('t' + i) * 0.2) * mPow;
         var nd = a.power * lvN * (1 + (i - 1) * 0.45);
         if (p2 < nd) break;

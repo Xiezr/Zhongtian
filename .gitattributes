@@ -10,3 +10,19 @@
 #
 # 因此：全仓关闭文本转换。所有文件按二进制原样存取。
 * -text
+
+# ─────────── v156.14（2026-10-31）补记：为什么这里**没有** `text=auto eol=lf` ───────────
+# 通用建议是「* text=auto eol=lf 根治 CRLF/LF 假红」，本仓**不能照抄**：
+#   ① 上面那条 `* -text` 是实测结论（md 混合行尾 + md5 落盘校验 + 破坏测试比对还原）；
+#   ② 一旦开文本转换，首次提交会把 6000+ 个 md 的行尾批量改写 → 落盘 md5 全线误报，
+#      且 diff 一次几万行，真改动被埋掉。
+# 行尾风险的正确出口在别处（都已就位）：
+#   · `build_bundle.py::_norm()` 与 smoke 陈旧守卫**两侧都做 CRLF→LF 归一**再算 hash；
+#   · 编辑器侧由 `.editorconfig` 约束（只对 js/py/html/css/json 强制 LF，md 不强改）；
+#   · 改动前后用 `git diff --stat` 核对「变动行数 ≈ 我以为改的行数」。
+# 下面这些是**纯元数据**、不动任何字节，只影响 GitHub 的 diff 折叠与语言统计：
+js/bundle-core.js linguist-generated=true
+js/bundle-war.js  linguist-generated=true
+js/bundle-ui.js   linguist-generated=true
+js/bundle.hash    linguist-generated=true
+

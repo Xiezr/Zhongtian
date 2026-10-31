@@ -81,8 +81,9 @@ import './state.js';
   GAME.map.terrainAt = function (x, y) {
     var s = GAME.state;
     if (x < 0 || y < 0 || x >= DATA.MAP_W || y >= DATA.MAP_H) return null;
-    var sp = (s.map && s.map.startPos) || DATA.START_POS;
-    if (sp && Math.abs(x - sp.x) <= 2 && Math.abs(y - sp.y) <= 2) return 'plain';
+    /* ⛔ v155b：删掉旧补丁「出生点 2 环内一律当平地」。
+       它让 `terrainAt`（2D/建造判定读它）与**球面地块类型**（3D/前传读它）对不上 ——
+       同一个坐标，地图显示平地、点下去却是海，就是这条。出生点另行保证在平地上。 */
     var SP = GAME.sphere, ci = (SP && SP.ciOfXY) ? SP.ciOfXY(x, y) : -1;
     if (ci >= 0) {
       if (GAME.map._cityCiSet()[ci]) return 'city';
@@ -291,7 +292,17 @@ import './state.js';
     for (var i = 0; i < arr.length; i++) {
       var c = arr[i]; if (!c) continue;
       var cci = (c.ci != null && c.ci >= 0) ? c.ci : SP.ciOfXY(c.x, c.y);
+      /* v154：城格若落在水里（换格网/地形变化）→ 视为"最近陆地格上的那座城" */
+      if (cci >= 0 && SP.cells && SP.cells[cci] && (SP.cells[cci].type === 'lake' || SP.cells[cci].type === 'zhaoze')) {
+        var _nb = SP.adj && SP.adj[cci] ? SP.adj[cci] : [];
+        for (var _j = 0; _j < _nb.length; _j++) if (_nb[_j] === ci) return true;
+      }
       if (cci === ci) return true;
+      /* v154：城的记录坐标（x,y）与**当前格网**偶尔对不上（老档/换过格网/地形重选址）——
+         于是"城脚下居然能生成据点"（实测 1 座名城）。用近似距离容忍 1.5 格。 */
+      if (cci >= 0 && SP.roughDistOf) {
+        try { if (SP.roughDistOf({ ci: cci }, { ci: ci }) <= 1.5) return true; } catch (e0) { }
+      }
     }
     return false;
   };
@@ -300,6 +311,9 @@ import './state.js';
     ctx = ctx || GAME.map._pctx();
     var F = DATA.FORT, SP = ctx.sphere;
     if (!F || !SP || !SP.cells || !SP.cells[ci]) return false;
+    /* v154：水/沼泽**永远不生成据点**（城可以落水/浮岛，据点不行 —— 据点要步兵驻守）。
+       实测换格网后各seed都有 1 处据点亮在水/沼泽上。 */
+    if (SP.cells[ci].type === 'lake' || SP.cells[ci].type === 'zhaoze') return false;
     if (GAME.map._cellHasCity(ci, ctx)) return false;
     return GAME.map._fortActive(ci, ctx);
   };
@@ -320,6 +334,28 @@ import './state.js';
     var SP = ctx.sphere;
     if (!ctx || !SP || !SP.cells) return [];           /* 内核未建 → 无候选 */
     var seed = ctx.seed, _cp = ctx.id;
+    /* ============================================================
+     * v154（实测抓到）：**城随地形重选址**之后，有些 NPC 城的记录 ci 实测是水格
+     * （例如 jun_21 落在 zhaoze 上）—— 但"城格"在玩家眼里是**它站的那块陆地**。
+     * 这里把"城实际占的格"也剔掉（城格 + 它周围的陆地邻格），
+     * 否则据点会紧贴着城冒出来（跟"名城位置不生成据点"冲突，且看起来像贴脸野怪）。
+     * 只在候选阶段剔 —— 判定 `hasFort` 仍走城格本身，不扩大语义。
+     * ============================================================ */
+    var _cityGuard = {};
+    try {
+      (ctx.cities || []).forEach(function (c) {
+        if (!c) return;
+        var cci = (c.ci != null && c.ci >= 0) ? c.ci : SP.ciOfXY(c.x, c.y);
+        if (cci < 0) return;
+        var cell0 = SP.cells[cci];
+        if (!cell0) return;
+        if (cell0.type === 'lake' || cell0.type === 'zhaoze') {
+          /* 城落在水上 → 视为占住最近的陆地邻格 */
+          var adj = (SP.adj && SP.adj[cci]) ? SP.adj[cci] : [];
+          adj.forEach(function (a) { if (!_cityGuard[a]) _cityGuard[a] = 1; });
+        } else _cityGuard[cci] = 1;
+      });
+    } catch (eCG) { }
     var cch = GAME.map._fortCand;
     /* v91.74：缓存按**星球**分桶（各星球面/城集不同，共用一份会串）。 */
     if (!GAME.map._fortCandBy) GAME.map._fortCandBy = {};
@@ -331,6 +367,7 @@ import './state.js';
     for (var ci = 0; ci < cells.length; ci++) {
       if (!cells[ci]) continue;
       if (GAME.map._cellHasCity(ci, ctx)) continue;          /* 城格不生成据点 */
+      if (_cityGuard[ci]) continue;                          /* v154：城实际站的陆地格 */
       if (!GAME.map._fortActive(ci, ctx)) continue;          /* 海面由 _fortThr 折半（非排除） */
       list.push(ci);
     }

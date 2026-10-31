@@ -37,24 +37,35 @@
 - 无头实机（playwright）：见记忆 `reference_deepseekdb_headless`
 - 版本号：走 `.workbuddy/tools/patch/bump_version.py`
 
-## 代码结构（地基第 1 期后）
+## 代码结构（v104 起三包 · 67 个源模块）
 
 ```
-index.html          只加载 2 个脚本：vendor/three.min.js + js/bundle.js
-js/main.js          唯一入口（import 列表 = 执行顺序）
+index.html          只加载 4 个脚本，顺序即求值顺序：
+                    vendor/three.min.js → js/bundle-core.js → js/bundle-war.js → js/bundle-ui.js
+js/main.js          动作层（不是入口脚本）：启动 + 事件总派发（data-action）+ GAME.doXxx
+js/registry.js      模块注册表 GAME.reg：tick（月度）/ panel（世界账本）/ actions（动作）
 js/core.js          window.GAME 单例
+js/data.js          全部静态配置（建筑/科技/兵种/奇观/战舰/投送/战场提问…）
+js/state.js         存档结构·newGame·tickOnce 主循环·simulateBulk 离线·世界归一
 js/items.js         GAME.items   背包（唯一出口）
 js/generals.js      GAME.gen     英雄状态机
-js/cities.js        GAME.city    城市/资源/队列/城兵
-js/ship.js          GAME.ship    空间站/战舰
-js/strategy.js      GAME.strat   回合战斗策略（选靶/姿态，独立模块）
-js/bundle.js        构建产物（提交入库）
+js/cities.js        GAME.city    资源·队列·城兵
+js/ship.js          GAME.ship    空间站/战舰（12 舰种 · 蓝图 · modifier 管道）
+js/colony.js        GAME.colony  星际投送/殖民        js/fleet.js  GAME.fleet 舰队远征
+js/sphere.js        地形唯一事实源（球面内核，40962 格）   js/map.js  据点/野地/投影
+js/map3d.js         Three.js 星球      js/scene3d.js  10 个 2.5D 场景 + 城内街区
+js/ui.js            全部界面（约 21k 行）  js/gltf.js  自研极简 GLB 解析（零外链）
+js/bundle-core.js / bundle-war.js / bundle-ui.js   构建产物（提交入库）
 ```
 
-**改源码 → 重建 bundle → 提交**，三步缺一不可。
+**改源码 → 重建三包 → 五件套 → 提交**，四步缺一不可
+（重建：`python .workbuddy/tools/patch/build_bundle.py`；门禁见 `docs/HANDOVER.md` §五）。
 
 ## 已知未修
 
-`GAME.newGame` 里 `sphere.ensure()` 早于 `GAME.state` 赋值 → 全新会话首局球面按 seed 1 构建
-（种子错配）。修它要连同"出生点校验依赖球面"的时序一起改，会移动地形并波及布局断言，
-留待单独一轮。
+~~`GAME.newGame` 里 `sphere.ensure()` 早于 `GAME.state` 赋值（首局球面按 seed 1 构建）~~
+→ **v155b 已修**：新局顺序改成 种子 → 建球面 → 算出生点 → 生成城。
+
+其余未修项见 `docs/HANDOVER.md` §七「已知未修」（buildCapOf 次座口径 · transfer 旧别名 ·
+2D 兜底不看别星 · 运输返程 · 护送/斩首近似 · flaky ⑧c⑨ · 更细格网 · 据点抽稀 · 奇观形状）。
+

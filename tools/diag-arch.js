@@ -195,24 +195,48 @@ else {
 const BASE = path.join(ROOT, 'arch-baseline.json');
 const mode = process.argv[2] || '';
 
+/* v156.14 口径修正（老板「优先采用市场现有成熟方式」）：
+ * 旧口径把**同一个符号被调用 N 次**算成 N 处跨层引用 —— 于是 prologue 里多调几次
+ * `GAME.ui`/`GAME.main`，棘轮就红（14→44 / 12→30），但那不是分层被捅穿，只是同一根
+ * 线用得多。成熟做法（dependency-cruiser 的 **known-violations 基线**）按**边**计数：
+ * 一条边 = (来源模块, 目标模块, 越界符号) 的**存在性**，不乘调用次数。
+ * 所以：基线单位 = **跨界符号数**（distinct symbol），调用次数只作为参考记录在
+ * `_occurrences` 里（不进判据），真要追"用得越来越多"看它，但不当成架构违规。 */
 function aggregate() {
-  const out = {};
+  const out = { _occurrences: {} };
   Object.keys(cross).forEach((g) => {
-    const agg = {};
+    const syms = {};
     cross[g].forEach((x) => {
       const k = x.from + '>' + x.to;
-      agg[k] = (agg[k] || 0) + x.n;
+      if (!syms[k]) syms[k] = {};                 /* 去重集合：符号 → 出现次数 */
+      syms[k][x.sym] = (syms[k][x.sym] || 0) + x.n;
+    });
+    const agg = {};
+    Object.keys(syms).forEach((k) => {
+      agg[k] = Object.keys(syms[k]).length;       /* 判据单位：跨界符号数 */
+      out._occurrences[g + ' ' + k] = Object.keys(syms[k])
+        .reduce((a, s) => a + syms[k][s], 0);     /* 参考：调用次数（不进判据） */
     });
     out[g] = agg;
   });
   return out;
 }
 
+const groupsOf = (o) => Object.keys(o).filter((g) => g.charAt(0) !== '_');
+
 if (mode === '--write') {
   const cur = aggregate();
   fs.writeFileSync(BASE, JSON.stringify(cur, null, 2) + '\n', 'utf8');
-  const n = Object.keys(cur).reduce((a, g) => a + Object.keys(cur[g]).length, 0);
-  console.log('✅ 已写入基线 arch-baseline.json（' + n + ' 对跨层引用）');
+  const n = groupsOf(cur).reduce((a, g) => a + Object.keys(cur[g]).length, 0);
+  const occ = Object.keys(cur._occurrences).reduce((a, k) => a + cur._occurrences[k], 0);
+  console.log('✅ 已写入基线 arch-baseline.json（' + n + ' 条跨界边 · 参考调用 ' + occ + ' 次）');
+  process.exit(0);
+}
+
+if (mode === '--json') {
+  /* v156.14：机器可读输出（CI/其它脚本要对比基线时用它，别再正则抓人话）。
+     只打印、不落盘 —— 需要在沙箱/CI 里重立基线时，把它重定向成 arch-baseline.json。 */
+  process.stdout.write(JSON.stringify(aggregate(), null, 2) + '\n');
   process.exit(0);
 }
 
@@ -224,20 +248,22 @@ if (mode === '--check') {
   const base = JSON.parse(fs.readFileSync(BASE, 'utf8'));
   const cur = aggregate();
   const over = [];
-  Object.keys(cur).forEach((g) => {
+  groupsOf(cur).forEach((g) => {
     Object.keys(cur[g]).forEach((k) => {
       const was = (base[g] || {})[k] || 0;
-      if (cur[g][k] > was) over.push(g + ' ' + k + ' ' + was + ' → ' + cur[g][k]);
+      if (cur[g][k] > was) over.push(g + ' ' + k + ' 跨界符号 ' + was + ' → ' + cur[g][k]);
     });
   });
-  const total = Object.keys(cur).reduce((a, g) => a + Object.keys(cur[g]).length, 0);
+  const total = groupsOf(cur).reduce((a, g) => a + Object.keys(cur[g]).length, 0);
+  const occ = Object.keys(cur._occurrences).reduce((a, k) => a + cur._occurrences[k], 0);
   if (over.length) {
-    console.log('❌ 跨层引用比基线多了 ' + over.length + ' 处：');
+    console.log('❌ 跨层引用比基线多了 ' + over.length + ' 条：');
     over.slice(0, 12).forEach((s) => console.log('   ' + s));
     console.log('   新增跨层依赖要判空调用（GAME.x && GAME.x.y），或改用注册表挂载。');
     process.exit(1);
   }
-  console.log('✅ 架构棘轮：' + total + ' 对跨层引用，无新增（基线只降不升）');
+  console.log('✅ 架构棘轮：' + total + ' 条跨界边 / 参考调用 ' + occ
+    + ' 次，无新增（基线只降不升）');
   process.exit(0);
 }
 

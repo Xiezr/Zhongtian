@@ -38,7 +38,13 @@
     return (x >>> 0) / 4294967296;
   }
 
-  /* 挑 4 个核心：彼此至少 55 格、离玩家主城至少 25 格（别一开局就贴脸） */
+  /* 挑 4 个核心：彼此至少 `DATA.FACTION.coreMinGap` 格（v152：格数 40962→10242 后
+     55 格在大球上放不下四家 —— 按**球面尺度**折算成 27 格，即原间距的 √(1/4)），
+     离玩家主城至少 `coreMinCity` 格（别一开局就贴脸）。 */
+  function _gap(k, d) {
+    var D = (GAME.DATA && GAME.DATA.FACTION) || {};
+    return D[k] == null ? d : D[k];
+  }
   function pickCores(sd, s, n) {
     var out = [], tries = 0, total = s.cells.length;
     var pc = GAME.currentCity ? GAME.currentCity() : null;
@@ -48,10 +54,10 @@
       if (!cell || cell.type === 'lake') continue;
       var ok = true;
       for (var i = 0; i < out.length; i++) {
-        if (s.distOf({ ci: out[i] }, { ci: ci }) < 55) { ok = false; break; }
+        if (s.distOf({ ci: out[i] }, { ci: ci }) < _gap('coreMinGap', 55)) { ok = false; break; }
       }
       if (!ok) continue;
-      if (pc && pc.ci >= 0 && s.distOf({ ci: pc.ci }, { ci: ci }) < 25) continue;
+      if (pc && pc.ci >= 0 && s.distOf({ ci: pc.ci }, { ci: ci }) < _gap('coreMinCity', 25)) continue;
       out.push(ci);
     }
     return out;

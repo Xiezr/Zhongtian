@@ -69,15 +69,43 @@ function listIn(file, marker) {
   const problems = [];
   /* build_bundle ORDER 与 smoke 守卫 ORDER 必须是**完全同一份**（同一个视角：加载顺序）*/
   if (!eq(b, s)) problems.push('build_bundle ORDER ≠ smoke ORDER');
-  /* 但 audit 的两份**不该**要求和 ORDER 相等：它们是"谁参与静态扫描"的视角，
-     ORDER 里有 gltf/tactic/gicons/bitmaps/portraits（不参与函数引用统计）。
-     正确判据只有两条：audit 扫的模块必须在 bundle 里；REF 必须覆盖 MODULES。 */
+
+  /* ── 双向校验（判据A · 2026-10-31）──
+     来历：以前只查「audit 扫的 ⊆ bundle」这一个方向，于是**新增模块漏收进 audit 清单**
+     时没有任何一条红 —— audit 对它完全是瞎的：它定义的东西看不见，别人对它的引用
+     就被误报成「⑥ 引用了不存在的成员」。实测：belt / placement / planetgen
+     三个新模块漏收 → `GAME.planetgen` 假红（定义在 planetgen.js，audit 没读）。
+     所以 ORDER → 清单 这个反方向也必须查。反向豁免**必须写理由**，且只许下面两张表。 */
+
+  /* audit MODULES 的豁免：不参与 ①「函数定义 / 引用」统计的模块（逐个核过，别加"顺手"豁免）：
+       · gltf     —— 自研 GLB 解析器，只在 window 级挂 GAME.gltf / GAME.gltfVersion
+                     （⑥ 的 REF_OK 已写清来源）；函数是 GTF.* 内部别名，① 数它只污染函数总数；
+       · tactic   —— 战斗引擎内核，函数是 T.* 内部别名（31 个），只被 battle 消费；
+                     **它的引用必须扫**（在 REF_MODULES 里），但不必进①的死函数统计；
+       · gicons / bitmaps —— 图标 / 位图**纯数据表挂载**，0 个 `X.y = function` 定义；
+       · portraits —— 立绘表挂载，函数是 P.* 内部别名（7 个），同 gicons。 */
+  const MODULES_EXEMPT = ['gltf', 'tactic', 'gicons', 'bitmaps', 'portraits'];
+  /* audit REF_MODULES 的豁免：⑥ 的引用扫描面也要求覆盖 ORDER。只豁免 gltf 一个 ——
+     它挂的 GAME.gltf / GAME.gltfVersion 已在 REF_OK 里写清来源，扫它不再产出可行动信号。 */
+  const REF_MODULES_EXEMPT = ['gltf'];
+
+  /* 正向：清单里的模块必须在 bundle 里（否则读取的是不存在的文件，检查会崩或静默漏） */
   const missBundle = m.filter(function (x) { return b.indexOf(x) < 0; });
   if (missBundle.length) problems.push('audit MODULES 不在 bundle ORDER 里: ' + missBundle.join(','));
+  const missBundleR = r.filter(function (x) { return b.indexOf(x) < 0; });
+  if (missBundleR.length) problems.push('audit REF_MODULES 不在 bundle ORDER 里: ' + missBundleR.join(','));
+  /* 反向：ORDER 里的模块必须被 audit 扫到（除上面两张有理由的豁免表） */
+  const missMod = b.filter(function (x) { return m.indexOf(x) < 0 && MODULES_EXEMPT.indexOf(x) < 0; });
+  if (missMod.length) problems.push('audit MODULES 漏收（bundle ORDER 有、①没扫 → audit 对它是瞎的）: ' + missMod.join(','));
+  const missRef = b.filter(function (x) { return r.indexOf(x) < 0 && REF_MODULES_EXEMPT.indexOf(x) < 0; });
+  if (missRef.length) problems.push('audit REF_MODULES 漏收（bundle ORDER 有、⑥没扫）: ' + missRef.join(','));
+  /* REF 必须覆盖 MODULES（⑥ 的扫描面是 ① 的超集） */
   const missing = m.filter(function (x) { return r.indexOf(x) < 0; });
   if (missing.length) problems.push('audit REF_MODULES 漏: ' + missing.join(','));
   add('四份模块清单一致', problems.length === 0,
-    problems.length ? problems.join(' · ') : (b.length + ' 个模块'));
+    problems.length ? problems.join(' · ')
+      : (b.length + ' 个模块 · 双向校验通过（MODULES 豁免 ' + MODULES_EXEMPT.length
+         + ' · REF_MODULES 豁免 ' + REF_MODULES_EXEMPT.length + '）'));
 })();
 
 /* ---------- ② bundle 与源码同步 ---------- */

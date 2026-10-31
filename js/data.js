@@ -2423,12 +2423,19 @@ import './core.js';
      * ⚠️ 只加字段不改既有字段：比分制（duelPlay）读的是 name/beats/note，不受影响。
      * ============================================================ */
     moves: {
-      stab:   { name: '突刺', beats: 'charge', note: '打断蓄力', mul: 1.15, taken: 1.00 },
-      guard:  { name: '格挡', beats: 'stab',   note: '挡住直取', mul: 0.65, taken: 0.70 },
-      feint:  { name: '佯攻', beats: 'guard',  note: '骗开架势', mul: 0.95, taken: 1.10 },
-      charge: { name: '蓄力', beats: 'feint',  note: '不理虚招', mul: 1.45, taken: 1.25 }
+      stab:   { name: '突刺', icon: '⚔️', beats: 'charge', note: '打断蓄力', mul: 1.15, taken: 1.00 },
+      guard:  { name: '格挡', icon: '🛡️', beats: 'stab',   note: '挡住直取', mul: 0.65, taken: 0.70 },
+      feint:  { name: '佯攻', icon: '💨', beats: 'guard',  note: '骗开架势', mul: 0.95, taken: 1.10 },
+      charge: { name: '蓄力', icon: '🔥', beats: 'feint',  note: '不理虚招', mul: 1.45, taken: 1.25 }
     },
     moveOrder: ['stab', 'guard', 'feint', 'charge'],
+    /* v92.240c：英雄技能（易拓展）。技能是一招带冷却的强化招式，走与基础招式同一 duelRoundResolve 路径
+       （靠 move.skill 标记在结算里强制占先）。将领用 g.skill 指定专属绝活；未指定则回落 defaultSkill，
+       让每个英雄默认都有一手。想加新技能 = 在 skills 表里加一条；想给某将专属 = 在将领数据写 g.skill。 */
+    skills: {
+      break_array: { name: '破阵斩', icon: '🗡️', beats: 'guard', note: '蓄力一记重劈，破开敌阵架势（绝活·冷却 3 合）', mul: 1.9, taken: 1.3, skill: true, cd: 3 }
+    },
+    defaultSkill: 'break_array',
     playRounds: 5,       /* 手动斗将 5 合，先到 3 分胜 */
     /* v92.14（老板：斗将可以派将领去挑衅其他城池，获得特殊奖励）——
        挑衅赢了，那座城的守军会**胆寒**：接下来 24 小时守军少一成。
@@ -2437,7 +2444,22 @@ import './core.js';
     fearPct: 0.12,
     fearHours: 24,
     provokeStaCost: 20,
-    winScore: 3
+    winScore: 3,
+    /* v92.240b：派将挑衅 = 体力即血 · 回合制打到死（无回合上限，参考冒险岛回合制）
+       血量 = 体力：我方开打血 = 当前体力 staNow，血槽 = 体力上限 staMax；
+       守将 NPC 无体力系统，按属性派生一份"体力池"。每合双方都出手、都掉体力，
+       谁先归零谁倒下（被打死）。改平衡只动下面这些旋钮。 */
+    hpPerSta: 10,                          /* 血量 = 体力 × 此倍数 */
+    duelAtkLv: 3, duelDefLv: 3,            /* 攻 = 武 + 等级×此；防 = 统 + 等级×此 */
+    provokeGuardStaBase: 60, provokeGuardStaLv: 6, provokeGuardStaAttr: 0.3,  /* 守将虚拟体力 = base + 等级×lv + (武+统)×attr */
+    provokeDmgScale: 3,                    /* 伤害总缩放：常规伤害 = (攻 − 防×折算) × 招式倍率 × 此 */
+    provokeDefFactor: 0.7,                 /* 防御折算比例（<1 避免攻防相近时互殴到 0 卡死） */
+    provokeSkillMul: 2.2,                  /* 特殊技能伤害额外倍率（玩家手动释放） */
+    provokeSkillPierce: 0.45,              /* 技能破防比例（防御被忽略部分） */
+    provokeAutoSpeed: 1100,                /* 自动战斗每回合间隔(ms) */
+    provokeDmgFloor: 1,
+    provokeStaGatePct: 0,                  /* 当前体力低于上限此比例不许挑衅（0=不限制；建议 0.15 防送死） */
+    provokeMaxRounds: 80                    /* 纯防死循环安全闸（正常不会触发） */
   };
 
   /* ============================================================
@@ -4498,8 +4520,11 @@ import './core.js';
    * ⚠️ 三个选项只改"指令"，不改结算 —— 战报重放仍然只认 rec.cmd/history。
    * ============================================================ */
   DATA.BATTLE_ASK = {
-    every: 3,            /* 每 N 回合问一次 */
-    firstAt: 3,          /* 第一次出现的回合 */
+    /* v151（老板：「决策要到第 3 分钟才出现 —— 机制对，时机错」）：
+       每 3 回合改成**每回合都能拍板**。只置标记、不阻塞推进；
+       玩家在战场就当场选，不在就继续托管。 */
+    every: 1,            /* 每 N 回合问一次 */
+    firstAt: 1,          /* 第一次出现的回合 */
     choices: {
       assault: { name: '⚔ 突击', stance: 'advance', focus: 'weakest',
         desc: '全军压上并集火最薄弱的一支 —— 输出更高，挨打也更多' },
@@ -5347,6 +5372,9 @@ import './core.js';
   DATA.CALENDAR = {
     secPerYear: 57600,          // 游戏秒/年（= 480 现实秒 @120×）
     seasonsPerYear: 4,
+    /* v151：离线补跑月份的上限 —— 挂机回来世界该"动过"，但也不能把主线程卡死。
+       24 个月 ≈ 2 游戏年（默认 120× 下约 2 小时现实时间），超出按上限截断。 */
+    offlineMaxMonths: 24,
   };
   /* ⛔ v90.93 退役：原本表内的「每季检查一次里程碑」开关整条删除 ——
      它的唯一读点是 story.js 的 checkEra（随年号纪元退役），留之即成「声明了但没接线」的死配置。 */
@@ -5429,10 +5457,14 @@ import './core.js';
     /* v89.86（整改 P-18）：自动化预算闸门 —— 每次消费后至少留下花前存量的 pct%；0 = 不设限 */
     autoReservePct: 5, autoTechMaxLv: 0,
     /* v89.86（整改 P-17）：离线推进上限（游戏日；0 = 不限）—— 超出部分五折折算资源/供奉 */
-    offlineCapDays: 7,
-    /* v89.87（老板需求 4）：战斗观战 —— 出征战斗抵达后进入战场界面，
-       每回合 battleSec 真实秒（60 预设，可提前点「完成」结算）；false = 全自动 */
-    battleWatch: true, battleSec: 60,
+    offlineCapDays: 7,    /* v89.87（老板需求 4）：战斗观战 —— 出征战斗抵达后进入战场界面，
+       每回合 battleSec 真实秒（**v151：60 → 10** —— 60 秒 × 3~5 回合 = 盯着屏幕
+       3~5 分钟却做不了几个决定，实测头号"反人类"；想慢看可在 设置·战斗 调回 30/60，
+       或直接点「完成回合」跳过）。false = 全自动（不进战场，一帧结算）。 */
+    battleWatch: true, battleSec: 10,
+    /* v151：阵前斗将 —— 出征时是否请战（true = 打，false = 不叫阵直接开打）。
+       原来它是 50% 概率自动跑、玩家零输入；现在由玩家逐场决定。 */
+    duelAsk: true,
     /* v91.87：守将平衡套餐（资质爬梯 + 折损 0.8 + 守军数量补偿），默认关 */
     guardBalance: true,   /* v91.88：取消差异系数 + 守将装备等效（老板定案，默认生效） */
     /* v91.85：回合战斗策略层（js/strategy.js · GAME.strat）—— **默认关闭**。

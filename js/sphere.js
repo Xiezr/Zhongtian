@@ -24,6 +24,16 @@ import './core.js';
   function makeSphere() {
     var SP = {};
 
+  /* v152：细分**保持 6**（40962 格）。
+     老板那句"六边形边在缩小 1 倍"紧接着说的是
+     "地块不再高出地表而是全部贴近地形…圆形放射出来的六边形，在地表上切出的边"——
+     要的是**六边形贴地、无缝铺满地形**（见下方网格壳改造），不是改格网密度。
+     改密度会改动全图距离语义（行军/迷雾/据点间距都按格数算），得不偿失。 */
+  /* v153（老板：「看着格子增大了，我想要格子变小」）——
+     v152 把 40962 改成了 10242（格子放大一倍），方向反了。退回 **40962**：
+     细分 6 = 10×4^6+2 格，每格线性尺寸只有 10242 方案的一半。
+     ⚠️ 想再细一档是 sub=7（163842 格），实测构建 5.9s / +360MB，浏览器扛不住 ——
+     真要更细，得走"惰性分面生成"，不是改这一个常数。 */
   var SUB = 6;                    /* icosphere 细分（固定）：顶点/地块数 = 10×4^6+2 = 40962 */
   SP.sub = SUB;
   var R = 300;                    /* 星球海平面半径（世界单位） */
@@ -171,22 +181,219 @@ import './core.js';
   }
   SP.sphElev = sphElev;
 
-  /* 球面地块 → **游戏 7 地形**（按高度+纬度最大近似分配）：湖泊/沼泽/平原/草原/森林/荒漠/山地。*/
+  /* ============================================================
+   * v154 · 地形分类与配色**同源**（老板：「黄黄的一看以为是荒漠，结果一点是森林」）
+   * ------------------------------------------------------------
+   * 病根：分类（cellType）只看高度+纬度；上色（sphBiome）按另一套高度色带 ——
+   * 两条路径算的地区根本不是一回事，于是"看起来是沙漠，点下去是森林"。
+   *
+   * 现在：**一个格子的样子 = 它的类型**。先算出一个三元组：
+   *   temp（温度 0~1，纬度 + 海拔）、moist（湿度 0~1，噪声 + 近水）、alt（海拔 0~1）
+   * 由这三样决定类型；同一套阈值反推颜色（见 map3d.climateOf）。
+   *
+   * 类型与样子（颜色在 map3d 里按类型取基色，再叠一点同类型的明暗噪声）：
+   *   山地 hill    高海拔        → 灰岩 / 高处积雪
+   *   森林 forest  海拔中 + 湿   → 深绿（黄绿一律不叫森林）
+   *   草原 caoyuan 海拔中 + 干   → 黄绿 / 草黄
+   *   荒漠 desert  热 + 极干     → 沙黄
+   *   平地 plain   低海拔 + 中湿 → 浅土黄（能立城的那种"空地"）
+   *   沼泽 zhaoze  低 + 很湿     → 墨绿 / 浑浊青
+   *   湖泊 lake    海平面以下     → 深蓝
+   * ============================================================ */
   var TYPE_NAME = { lake: '湖泊', zhaoze: '沼泽', plain: '平地', caoyuan: '草原', forest: '森林', desert: '荒漠', hill: '山地' };
   SP.TYPE_NAME = TYPE_NAME;
-  function cellType(e, dy, emax) {
-    var en = emax > 0 ? e / emax : 0;                     /* 归一化高度 0~1 */
-    if (e < 0) return 'lake';                             /* 海 → 湖泊 */
-    if (e < 0.025) return 'zhaoze';                       /* 低平湿岸 → 沼泽 */
-    var temp = 1 - dy * dy;
-    /* v90.67（老板 1）：荒漠先于平地判（原 `en<0.16 → plain` 在前 + `e<0.25` 与量纲冲突 → 荒漠恒 0）。 */
-    if (temp > 0.62 && en < 0.34) return 'desert';        /* 低纬干热 → 荒漠 */
-    if (en < 0.16) return 'plain';
-    if (en < 0.34) return 'caoyuan';
-    if (en < 0.56) return 'forest';
-    return 'hill';                                        /* 高 → 山地 */
+
+  /* ============================================================
+   * v155 · **地形划分流水线**（老板给的因子表 → 一条有序的推导）
+   * ------------------------------------------------------------
+   * 因子与它真正影响的东西：
+   *
+   *   纬度          → 热量带（主导外力：冰/水/风）
+   *   海拔          → 温度直减率；植被垂直带；高差决定切割强度
+   *   坡度 / 坡向   → 陡坡侵蚀强、难积土（→ 裸岩）；阳坡暖、阴坡湿
+   *   距水源距离    → 近水＝沉积/湿润（→ 沼泽、冲积平地）；远水＝风蚀干旱
+   *   距海远近 / 风 → 水汽输送：近海湿润、内陆干旱（大陆性）
+   *   岩石/土壤     → 硬岩陡峻保留；松软易蚀成丘谷（此处并入"坡度"）
+   *   植被覆盖      → 有林固土、裸地加速侵蚀（此处并入"湿度/坡度"反馈）
+   *   人类活动      → 属于**玩家**，不在地形生成里
+   *
+   * 流水线（顺序固定，缺一不可）：
+   *   ① 海拔 e            （已有：contField + mountainField + 细节噪声）
+   *   ② 距海岸 BFS        （从所有海格一次多源 BFS）
+   *   ③ 坡度 = 与邻居的最大高差（归一化）
+   *   ④ 气候场：
+   *        温度 T = f(纬度) − 海拔直减率
+   *        湿度 W = f(噪声, 距海, 距水源, 风带)
+   *      **三者都转成"分位数 0~1"** —— 这样类型比例由地类表决定，不看运气。
+   *   ⑤ 地类表（按海拔带 → 温度带 → 湿度带 → 坡度 的顺序短路）
+   *   ⑥ 连续性平滑：邻域投票（同类邻居不够就并进主流类型）—— 保证"成片"
+   *   ⑦ 落库：cells[ci].type（颜色/掉落/场景/立城全部读它）
+   *
+   * 改比例只改 ⑤ 的数；改"样子"只改 map3d.TERRAIN_RGB。两处不会打架。
+   * ============================================================ */
+  var TYPE_NAME = { lake: '湖泊', zhaoze: '沼泽', plain: '平地', caoyuan: '草原', forest: '森林', desert: '荒漠', hill: '山地' };
+  SP.TYPE_NAME = TYPE_NAME;
+
+  /* 地类表（**唯一**的判定规则；按顺序短路） */
+  SP.TERRAIN_RULES = [
+    { when: 'sea',                                    id: 'lake',    why: '海平面以下' },
+    { when: 'alt > 0.86',                             id: 'hill',    why: '雪线以上裸岩' },
+    { when: 'alt > 0.70 && slope > 0.62',             id: 'hill',    why: '陡坡：侵蚀强、积不住土' },
+    { when: 'coast <= 1 && wet > 0.55',                id: 'zhaoze',  why: '近水低地：沉积+滞水' },
+    { when: 'alt < 0.16 && wet > 0.62',               id: 'zhaoze',  why: '低洼湿地' },
+    { when: 'heat > 0.60 && wet < 0.38',              id: 'desert',  why: '热+干（内陆/背风）' },
+    { when: 'alt < 0.32 && slope < 0.46 && wet < 0.66', id: 'plain', why: '低平冲积：能立城' },
+    { when: 'wet > 0.56',                             id: 'forest',  why: '湿润：成林' },
+    { when: 'cold > 0.72',                            id: 'forest',  why: '高纬/高寒：针叶林' },
+    { when: '*',                                      id: 'caoyuan', why: '其余：草原' }
+  ];
+
+  /* 分位数归一（0~1）：用排序 + 二分，O(n log n)，40k 格无压力 */
+  function rank01(vals, idxs) {
+    var rank = new Float32Array(vals.length);
+    var arr = idxs.map(function (i) { return vals[i]; }).sort(function (a, b) { return a - b; });
+    var n = arr.length || 1;
+    for (var k = 0; k < idxs.length; k++) {
+      var i2 = idxs[k], v = vals[i2], lo = 0, hi = n;
+      while (lo < hi) { var mid = (lo + hi) >> 1; if (arr[mid] < v) lo = mid + 1; else hi = mid; }
+      rank[i2] = lo / n;
+    }
+    return rank;
+  }
+
+  /* 主流水线：给定顶点/邻接/高程，产出类型数组 */
+  SP.buildTerrainTypes = function (V, adj, eArr, emax) {
+    var nv = V.length, i;
+    var land = [], sea = [];
+    for (i = 0; i < nv; i++) { if (eArr[i] >= 0) land.push(i); else sea.push(i); }
+    SP._emax = emax || 1;
+    if (!land.length) return new Array(nv).fill('lake');
+
+    /* ---- ② 距海岸：从所有海格做一次**多源 BFS**（陆地上的距离；海上为 0） ---- */
+    var coast = new Int16Array(nv); coast.fill(999);
+    var q = sea.slice(), head = 0;
+    for (i = 0; i < q.length; i++) coast[q[i]] = 0;
+    while (head < q.length) {
+      var cur = q[head++], an = adj[cur];
+      for (var j = 0; j < an.length; j++) {
+        var nb = an[j];
+        if (coast[nb] > coast[cur] + 1) { coast[nb] = coast[cur] + 1; q.push(nb); }
+      }
+    }
+
+    /* ---- ③ 坡度：与邻居的最大高差（按全星高差归一） ---- */
+    var slopeRaw = new Float32Array(nv), dmax = 0.01;
+    for (i = 0; i < nv; i++) {
+      var an2 = adj[i], m = 0;
+      for (var j2 = 0; j2 < an2.length; j2++) {
+        var d2 = Math.abs(eArr[i] - eArr[an2[j2]]);
+        if (d2 > m) m = d2;
+      }
+      slopeRaw[i] = m; if (m > dmax) dmax = m;
+    }
+    for (i = 0; i < nv; i++) slopeRaw[i] = slopeRaw[i] / dmax;
+
+    /* ---- ④ 气候场（温度/湿度/海拔/距海），再统一转分位 ---- */
+    var P = SP.PLANET || {}, s = seed3();
+    var altRaw = new Float32Array(nv), heatRaw = new Float32Array(nv), wetRaw = new Float32Array(nv);
+    for (i = 0; i < nv; i++) {
+      var dd = V[i], e3 = Math.max(0, eArr[i]);
+      var alt = e3 / (emax || 1);
+      altRaw[i] = alt;
+      /* 温度：先看纬度（热量带），再按海拔直减（每升一档更冷） */
+      var lat = Math.abs(dd[1]);
+      heatRaw[i] = (1 - lat * lat) * (P.temp == null ? 1 : P.temp) - alt * 0.55;
+      /* 湿度：① 噪声（季风/地形雨） ② 离海越远越干 ③ 风带（信风带干、西风带湿） */
+      var m1 = fbm3(dd, 2.0, s + 811), m2 = fbm3(dd, 5.1, s + 977);
+      var wind = 0.5 + 0.22 * Math.sin(dd[1] * Math.PI * 2.2);     /* 纬度风带 */
+      var sea7 = Math.min(1, (coast[i] || 0) / 14);                /* 距海归一（14 格外算内陆） */
+      wetRaw[i] = (m1 * 0.55 + m2 * 0.25 + wind * 0.20) - sea7 * 0.55 - alt * 0.10;
+    }
+    var altN = rank01(altRaw, land);
+    var heatN = rank01(heatRaw, land);
+    var wetN = rank01(wetRaw, land);
+    var slopeN = rank01(slopeRaw, land);
+
+    /* ---- ⑤ 地类表 ---- */
+    var typ = new Array(nv);
+    for (i = 0; i < nv; i++) typ[i] = 'lake';
+    for (var li = 0; li < land.length; li++) {
+      var ci = land[li], alt2 = altN[ci], heat = heatN[ci], wet = wetN[ci], sl = slopeN[ci], cst = coast[ci];
+      var id = 'caoyuan';
+      if (alt2 > 0.86) id = 'hill';
+      else if (alt2 > 0.70 && sl > 0.62) id = 'hill';
+      else if (cst <= 1 && wet > 0.55) id = 'zhaoze';
+      else if (alt2 < 0.16 && wet > 0.62) id = 'zhaoze';
+      else if (heat > 0.50 && wet < 0.42) id = 'desert';
+      else if (alt2 < 0.42 && sl < 0.58 && wet < 0.74) id = 'plain';
+      else if (wet > 0.56) id = 'forest';
+      else if (heat < 0.28) id = 'forest';       /* 高寒针叶林 */
+      typ[ci] = id;
+    }
+
+    /* ---- ⑥ 连续性平滑：同类邻居不够 → 并进邻居里的主流类型（迭代 2 轮） ---- */
+    var PRI = { hill: 5, forest: 4, plain: 4, caoyuan: 3, desert: 2, zhaoze: 2, lake: 0 };
+    for (var iter = 0; iter < 2; iter++) {
+      var next = typ.slice();
+      for (var li2 = 0; li2 < land.length; li2++) {
+        var c2 = land[li2], nbs = adj[c2], same = 0, cnt = {};
+        for (var k2 = 0; k2 < nbs.length; k2++) {
+          var t2 = typ[nbs[k2]];
+          if (t2 === typ[c2]) same++;
+          cnt[t2] = (cnt[t2] || 0) + 1;
+        }
+        if (same >= 2) continue;                 /* v155b：阈值 3→2（平地太薄，会被整片吃掉） */
+        var bestT = typ[c2], bestN = -1;
+        for (var kk in cnt) {
+          if (cnt[kk] > bestN || (cnt[kk] === bestN && (PRI[kk] || 0) > (PRI[bestT] || 0))) { bestN = cnt[kk]; bestT = kk; }
+        }
+        next[c2] = bestT;
+      }
+      typ = next;
+    }
+    /* 落库到每个格（颜色/掉落/场景都读这里） */
+    SP._terr = { coast: coast, slope: slopeN, alt: altN, heat: heatN, wet: wetN };
+    return typ;
+  };
+
+  /* 兼容旧签名（外部只用来"看一眼"某格是什么地形；真正的判定在流水线里） */
+  function cellType(e, dy, emax, dir) {
+    if (e < 0) return 'lake';
+    try {
+      var ci = (dir && SP.nearestCell) ? SP.nearestCell(dir) : -1;
+      if (ci >= 0 && SP.cells && SP.cells[ci] && SP.cells[ci].type) return SP.cells[ci].type;
+    } catch (e0) { }
+    return 'caoyuan';
   }
   SP.cellType = cellType;
+
+  /* ============================================================
+   * v155k · cube-sphere 六面参数化 + **绕向判定**（几何唯一约定）
+   * ------------------------------------------------------------
+   * 老板「球体上有明显的直线分界」→「球体变成透明的了」的根因链：
+   *   · 六个面**分开参数化**，其中几个面是镜像的 → 三角形的**绕向**有正有反；
+   *   · 渲染改成 FrontSide 后，绕向反的面被背面剔除（直线分界 / 整球透明）。
+   * 约定写在这里（sphere.js 是地形几何的唯一事实源），渲染层只消费：
+   *   `SP.faceFlipOf(fn, du)` → true = 这个面的索引顺序要翻转
+   * 判定方法：按**实际压入的三角形顺序** (a, c, b) 求法线，
+   * 与面中心方向点乘，朝里就要翻。
+   * ⚠️ 第一版判定用了 (b-a)×(c-a) —— 与实际顺序正好反号 → 六个面全被翻 → 整球透明。
+   * ============================================================ */
+  SP.CUBE_FACES = [
+    function (u, v) { return [1, v, u]; }, function (u, v) { return [-1, v, -u]; },
+    function (u, v) { return [u, 1, -v]; }, function (u, v) { return [u, -1, v]; },
+    function (u, v) { return [u, v, 1]; }, function (u, v) { return [-u, v, -1]; }
+  ];
+  /* du = 一个格子对应的参数步长；用 (a, c, b) 的叉积（= 索引 push 的顺序） */
+  SP.faceFlipOf = function (fn, du) {
+    if (!fn || !(du > 0)) return false;
+    var a = fn(-1, -1), c = fn(-1, -1 + du), b = fn(-1 + du, -1);
+    var e1 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];      /* a → c */
+    var e2 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];      /* a → b */
+    var n = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]];
+    var m = [a[0] + b[0] + c[0], a[1] + b[1] + c[1], a[2] + b[2] + c[2]];
+    return (n[0] * m[0] + n[1] * m[1] + n[2] * m[2]) < 0;
+  };
 
   /* ---- icosphere 拓扑 ---- */
   function icoSpheres(sub) {
@@ -257,11 +464,11 @@ import './core.js';
     /* 类型 + 等级（BFS：同类区域内，离异类越远越高）*/
     var typ = new Array(nv), lvl = new Int16Array(nv), eArr = new Float32Array(nv), emax = 0.01;
     for (vi = 0; vi < nv; vi++) { eArr[vi] = sphElev(V[vi]); if (eArr[vi] > emax) emax = eArr[vi]; }
-    for (vi = 0; vi < nv; vi++) {
-      var e = eArr[vi];
-      typ[vi] = cellType(e, V[vi][1], emax); lvl[vi] = -1;
-      V[vi]._e = e;
-    }
+    SP._emax = emax;                                  /* 分类与配色共用的归一尺 */
+    for (vi = 0; vi < nv; vi++) { V[vi]._e = eArr[vi]; lvl[vi] = -1; }
+    /* v155：类型**整批**由流水线产出（距海/坡度/湿度分位/地类表/连续性平滑）——
+       逐格调 cellType 拿不到邻域信息，无法保证"成片"。 */
+    typ = SP.buildTerrainTypes(V, adj, eArr, emax);
     /* v90.71（老板 10）：**网格浮起成球壳** —— 六边网格铺在一个**平均海拔半径**的球面上
        （构成包裹球系的完球体）；地形/建筑高于该半径的部分自然**穿出网格**。
        shellH = shellFrac × 平均陆地高程 × HSC（距球心高度）。 */
@@ -270,8 +477,13 @@ import './core.js';
     var _meanLand = _mcnt ? _msum / _mcnt : 0;
     /* 地块壳半径 = R + shellFrac × 平均陆地高程 × HSC。shellFrac=1 → 恰在平均海拔面上；
        取略大于 1 让它**浮在平均面之上**（地形/建筑高于此者穿出网格）。可调 SP.shellFrac。 */
-    var _shellH = (SP.shellFrac == null ? 1.5 : SP.shellFrac) * _meanLand * HSC;
-    var _shellR = R + _shellH + 0.3;
+    /* v152（老板：「地块不再高出地表，而是全部贴近地形 —— 圆形放射出来的六边形，
+       在地表上切出的边，本质上是等边六边形，只是地形变化导致边扭曲」）：
+       网格线框**不再统一浮在平均海拔球壳上**（那会变成"套在球外面的一层铁丝笼"），
+       而是每一格**按自己的地形高度**投到地表 —— 网格成了贴在地形上的六边形纹路，
+       地形起伏时边自然被拉弯。抬升只留 0.25（z-fighting 余量）。 */
+    var _shellH = 0;
+    var _shellR = R;
     SP.meanLand = _meanLand; SP.shellH = _shellH; SP.shellR = _shellR;
     var q = [];
     for (vi = 0; vi < nv; vi++) {
@@ -289,8 +501,20 @@ import './core.js';
     var upos = [], uposCell = [], fpos = [], cells = [], off = 0;
     function cross(a, b) { return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]; }
     function dot(a, b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
-    /* 地块**贴地形**：某方向的表面半径 = 海平面 + max(0, 球面高度)×HSC + 微抬升 */
-    function terrainR(d) { return R + Math.max(0, sphElev(d)) * HSC + 0.5; }
+    /* ============================================================
+     * v154（老板：「地块紧贴地形，而不是高于地形一定距离」）
+     * ------------------------------------------------------------
+     * 改前：地块顶点 = R + 地形高度×HSC（最高 +2 个单位），于是整片六边形**浮在地表之上**，
+     * 与底下的地形网格形成"两层壳"，侧看就是重影/悬空。
+     * 现在：地块 = **海平面 + 极薄一层**（0.15），地形起伏由底下的地形面自己表现；
+     * 六边形是"地表上的纹路"，不是"盖在球上的一层板"。
+     * ============================================================ */
+    /* v154e：地块"紧贴地形" —— 几何上只离 0.05（几乎重合），
+       看得见靠的是线框材质的 **polygonOffset**（往镜头方向拉一点深度），
+       而不是把整块六边形抬高成"桌面"。 */
+    var PLATEAU = 0.05;
+    /* 跟随地形，但只离地 0.15（原来 0.5 → 现在几乎贴着；压平到海平面会让网格沉进地下）。 */
+    function terrainR(d) { return R + Math.max(0, sphElev(d)) * HSC + PLATEAU; }
     for (var vs in vf) {
       vi = +vs; var n = V[vi], fs = vf[vs];
       if (fs.length < 3) continue;
@@ -299,12 +523,31 @@ import './core.js';
       var ty2 = cross(n, tx);
       fs.sort(function (A, B) { var cA = cent[A], cB = cent[B]; return Math.atan2(dot(cA, ty2), dot(cA, tx)) - Math.atan2(dot(cB, ty2), dot(cB, tx)); });
       var rn = terrainR(n), P = [n[0] * rn, n[1] * rn, n[2] * rn];      /* 顶点坐在地形高度上（拾取碰撞体用）*/
-      var mm = fs.length, RIM = [];
-      for (var i2 = 0; i2 < mm; i2++) { var cc = cent[fs[i2]], rr2 = terrainR(cc); RIM.push([cc[0] * rr2, cc[1] * rr2, cc[2] * rr2]); }
-      /* v90.71（老板 10）：网格线框顶点落在 **平均海拔球壳**（_shellR）上 —— 浮起成完球体包裹球系 */
+      var mm = fs.length, RIM = [], RIM_UI = [];
+      /* ============================================================
+       * v154（老板：「地块紧贴地形，而不是高于地形一定距离」）
+       * ------------------------------------------------------------
+       * 面（拾取/地皮）逐顶点贴地形：已知。
+       * 线框原来按**每个角点自己的**地形高度抬 0.25 —— 起伏大的地方，
+       * 同一条边在两格各算一次、高度不同 → 视觉上出现两条错开的边（重影）。
+       * 现在：角点高度 = **相邻几格地形高度的平均**（同一条边两侧算出的值相同），
+       * 只抬 0.12 做 z-fight 余量 → 边压在地形上、并且**不会重影**。
+       * ============================================================ */
+      var _lift = 0.05;
+      for (var i3 = 0; i3 < mm; i3++) { var cc3 = cent[fs[i3]], rr3 = terrainR(cc3); RIM.push([cc3[0] * rr3, cc3[1] * rr3, cc3[2] * rr3]); }
+      /* 用「顶点位置(取整) → 高度」的全局表求平均：同一条边两侧共享同一批采样点 */
+      if (!SP._rimHMap) SP._rimHMap = {};
       for (var e2 = 0; e2 < mm; e2++) {
         var s1c = cent[fs[e2]], s2c = cent[fs[(e2 + 1) % mm]];
-        upos.push(s1c[0] * _shellR, s1c[1] * _shellR, s1c[2] * _shellR, s2c[0] * _shellR, s2c[1] * _shellR, s2c[2] * _shellR);
+        var k1 = [Math.round(s1c[0] * 1000), Math.round(s1c[1] * 1000), Math.round(s1c[2] * 1000)].join(',');
+        var k2 = [Math.round(s2c[0] * 1000), Math.round(s2c[1] * 1000), Math.round(s2c[2] * 1000)].join(',');
+        if (SP._rimHMap[k1] == null) SP._rimHMap[k1] = sphElev(s1c);
+        if (SP._rimHMap[k2] == null) SP._rimHMap[k2] = sphElev(s2c);
+        /* v154：线框跟随地形，但用**共享的顶点高度表**（同一条边两侧算出同一个值 → 无重影），
+           只比面高 0.05 做 z-fight 余量。 */
+        var r1 = R + Math.max(0, SP._rimHMap[k1]) * HSC + PLATEAU + _lift;
+        var r2 = R + Math.max(0, SP._rimHMap[k2]) * HSC + PLATEAU + _lift;
+        upos.push(s1c[0] * r1, s1c[1] * r1, s1c[2] * r1, s2c[0] * r2, s2c[1] * r2, s2c[2] * r2);
         /* v92：线框**逐段归属格**（与 upos 同步 push，一条线一个 ci）。
            map3d 用它在未探明区域把线框染黑 —— 否则线框球壳会从雾面里穿出来，
            暗区满屏白点（实测截图确认）。 */
@@ -352,7 +595,9 @@ import './core.js';
   };
   SP.load = function (blob) {
     if (!blob || !blob.cells) return false;
-    build(blob.sub == null ? SUB : blob.sub);         /* 建骨架（几何/邻接）；随后覆盖地形 */
+    /* v152：格网只认当前 SUB（老档 sub=6 的 40962 格不能铺新格网）；
+       旧记录的 ci 由 `GAME.migrateSphereSub` 按经纬重落。 */
+    build(SUB);                                       /* 建骨架（几何/邻接）；随后覆盖地形 */
     var cs = SP.cells, src = blob.cells;
     for (var i = 0; i < cs.length; i++) {
       var c = cs[i], b = src[i];
@@ -394,6 +639,73 @@ import './core.js';
   SP.dirOfLonLat = function (lon, lat) {
     var a = lat * Math.PI / 180, b = lon * Math.PI / 180, cl = Math.cos(a);
     return [cl * Math.cos(b), Math.sin(a), cl * Math.sin(b)];
+  };
+  /* ============================================================
+   * v92.247（老板）：「给星球定一个南北极，适配上下左右按键。现在是乱走的」
+   * ------------------------------------------------------------
+   * **南北极是唯一的，就在 +Y 轴上** —— 这不是新规矩，而是既有口径的显式化：
+   *   `dirOfLonLat` = [cosφcosλ, sinφ, cosφsinλ] → 纬度 φ 是 asin(y)，
+   *   即 +Y = 北极、−Y = 南极；经度 λ = atan2(z, x)（+X 为 0°，+Z 为 90°）。
+   *   （`PLANET.tilt` 是**轴倾角设定**，渲染里未施加旋转，所以视觉北极也就是 +Y。）
+   *
+   * **为什么"乱走"**：旧的方向键是在"经纬差"上判方位
+   *   （`dLon = ((nc.lon - pc.lon + 540) % 360) - 180; dLat = ...`）——
+   *   · 靠近两极时经度线收拢，正北的邻格能算出 dLon=180 → 被叫成"东/西"；
+   *   · 复合名"东北"同时含"北"和"东"，上键与右键抢同一个邻格；
+   *   · 匹配不到时回落 `nbs[0]`（排序后的第一个）→ 按左键却往北走。
+   * 正解：在**该格自己的切平面**里量"到北极的方位角"，
+   *   0°=北、90°=东、180°=南、270°=西，按最小夹角取邻格 —— 极点附近也成立。
+   * ============================================================ */
+  SP.NORTH = [0, 1, 0];                     /* 星球北极方向（球系坐标） */
+  /* 某点处的切平面基：up = 指向北极的切向，east = 向东的切向（n × up）。*/
+  SP.tangentOf = function (dir) {
+    var n = dir;
+    var N = SP.NORTH;
+    var d = n[0] * N[0] + n[1] * N[1] + n[2] * N[2];
+    var up = [N[0] - n[0] * d, N[1] - n[1] * d, N[2] - n[2] * d];
+    var ul = Math.hypot(up[0], up[1], up[2]);
+    if (ul < 1e-6) {
+      /* 正好站在极点上：切平面里"北"无定义，任取一条经线方向当北，
+         保证"左右"仍然绕极轴转、"上下"沿那条经线走。 */
+      var ref = Math.abs(n[1]) > 0.9 ? [0, 0, 1] : [0, 1, 0];
+      up = [ref[0] - n[0] * (ref[0] * n[0] + ref[1] * n[1] + ref[2] * n[2]),
+            ref[1] - n[1] * (ref[0] * n[0] + ref[1] * n[1] + ref[2] * n[2]),
+            ref[2] - n[2] * (ref[0] * n[0] + ref[1] * n[1] + ref[2] * n[2])];
+      ul = Math.hypot(up[0], up[1], up[2]) || 1;
+    }
+    up = [up[0] / ul, up[1] / ul, up[2] / ul];
+    /* east = n × up：在赤道 n=(1,0,0)、up=(0,1,0) 时得 (0,0,1)，
+       与"经度 λ=atan2(z,x) 向东增大"一致。 */
+    var east = [n[1] * up[2] - n[2] * up[1], n[2] * up[0] - n[0] * up[2], n[0] * up[1] - n[1] * up[0]];
+    return { up: up, east: east };
+  };
+  /* 从 fromCi 看 toCi 的方位角（度 · 0=北 90=东 180=南 270=西 · 顺时针）*/
+  SP.bearingOf = function (fromCi, toCi) {
+    var a = SP.cellOf(fromCi), b = SP.cellOf(toCi);
+    if (!a || !b || !a.dir || !b.dir) return null;
+    var T = SP.tangentOf(a.dir);
+    var t = [b.dir[0] - a.dir[0], b.dir[1] - a.dir[1], b.dir[2] - a.dir[2]];
+    var l = Math.hypot(t[0], t[1], t[2]);
+    if (l < 1e-9) return null;
+    t = [t[0] / l, t[1] / l, t[2] / l];
+    var nE = t[0] * T.east[0] + t[1] * T.east[1] + t[2] * T.east[2];
+    var nN = t[0] * T.up[0] + t[1] * T.up[1] + t[2] * T.up[2];
+    var deg = Math.atan2(nE, nN) * 180 / Math.PI;
+    return (deg + 360) % 360;
+  };
+  /* 方位角 → 八向中文名（与 bearingOf 同一把尺，极区也不会串）*/
+  SP.dirNameOfBearing = function (deg) {
+    if (deg == null) return '';
+    var names = ['北', '东北', '东', '东南', '南', '西南', '西', '西北'];
+    return names[Math.round(((deg % 360) + 360) % 360 / 45) % 8];
+  };
+  /* 方向键 → 方位角（度）。keys: up/down/left/right（WASD 同义）*/
+  /* 键名一律小写比对（`ev.key.toLowerCase()`）：arrowup / w 都算"北" */
+  SP.KEY_BEARING = {
+    arrowup: 0, up: 0, w: 0,
+    arrowright: 90, right: 90, d: 90,
+    arrowdown: 180, down: 180, s: 180,
+    arrowleft: 270, left: 270, a: 270
   };
   /* 球面地形查询（按世界格坐标 x,y）—— **地形判据的唯一出口**（所见即所得）。
      世界格 → 经纬（与 GAME.map.lonlatOf 同一映射）→ 最近六边格 → 该格球面地形。

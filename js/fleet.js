@@ -347,6 +347,9 @@ import './ship.js';
     f.result = { win: r.win, rounds: r.rounds, timeout: r.timeout,
       hpLeft: r.hpLeft, enemyHpLeft: r.enemyHpLeft, loot: r.loot, lost: r.lostShips,
       target: f.targetId, targetName: tgt.name, rows: r.rows };
+    /* v151（老板「舰队战是纯自动结算，玩家一合都操作不了」）：**把逐回合记下来**，
+       战报里能看到每一合掉多少血、打穿没打穿 —— 结算仍是确定性的，但不再是黑箱。 */
+    f.result.rows = r.rows;
     f.log.push('⚔ 与「' + tgt.name + '」交战 ' + r.rounds + ' 回合：'
       + (r.win ? '全胜' : (r.timeout ? '未破（舰队撤回）' : '败退')));
     /* 损舰：从船坞永久移除 */
@@ -439,6 +442,32 @@ import './ship.js';
     });
     st.fleets = keep;
     return fought;
+  };
+
+  /* ============================================================
+   * v151（老板「深空远征 = 纯函数自动结算，玩家没有一合操作」）
+   * ------------------------------------------------------------
+   * 把"抵达即自动打完"改成**战报式回合逐条回放**：战斗仍是确定性的
+   * （同编成同目标 → 同一份 rows），但玩家能一合一看，看得懂自己为什么输。
+   * 实现：抵达时照旧 `_resolve`（一次算完、结果确定），随后面板提供
+   *   · `FL.resultOf(id)`   —— 每合一行的数据（纯读）；
+   *   · `FL.replayTextOf(id)` —— 一句话摘要（战报用）。
+   * ⚠️ 不改成"途中挂起等玩家出招"：舰队战是**编成决定胜负**的玩法，
+   *    中途出招会与"同一份编成同结果"的确定性口径冲突（v146 定的铁律）。
+   * ============================================================ */
+  FL.resultOf = function (id) {
+    var f = FL.fleetOf(id);
+    return (f && f.result) || null;
+  };
+  FL.replayTextOf = function (id) {
+    var r = FL.resultOf(id);
+    if (!r) return '';
+    var rows = r.rows || [];
+    var lines = rows.map(function (x) {
+      return '第' + x.r + '合：我打 ' + U.fmt(x.dmgToEnemy) + ' · 挨 ' + U.fmt(x.dmgToFleet)
+        + '（敌 ' + U.fmt(Math.max(0, x.enemyHp)) + ' / 我 ' + U.fmt(Math.max(0, x.fleetHp)) + '）';
+    });
+    return lines.join('\n');
   };
 
   /* ---------- 队形预览（界面用：哪些舰在队里 / 谁旗舰） ---------- */

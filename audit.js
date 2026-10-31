@@ -27,7 +27,7 @@ const JSDIR = path.join(__dirname, 'js');
    否则结构审计对它是瞎的：fog / memorial / camp 未加入时，
    `GAME.camp` 在 state.js / ui.js 里的引用被报成"引用了不存在的成员"，
    而真正的成因是 audit 根本没读 camp.js。 */
-const MODULES = ['core', 'registry', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'colony', 'fleet', 'domain', 'map', 'sphere', 'risk', 'years', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'rival', 'land', 'taint', 'climate', 'surge', 'relic', 'goals', 'veteran', 'setskill', 'deck', 'bond', 'tower', 'wonderwar', 'delve', 'unrest', 'expose', 'trooplv', 'idle', 'ending', 'muster', 'founding', 'prologue', 'duel', 'market', 'events', 'battle', 'battlelog', 'strategy', 'icons', 'scene3d', 'story', 'ui', 'map3d', 'main'];
+const MODULES = ['core', 'registry', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'colony', 'fleet', 'domain', 'map', 'sphere', 'risk', 'years', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'rival', 'land', 'taint', 'climate', 'surge', 'relic', 'goals', 'veteran', 'setskill', 'deck', 'bond', 'tower', 'wonderwar', 'delve', 'unrest', 'expose', 'trooplv', 'idle', 'ending', 'muster', 'founding', 'prologue', 'duel', 'market', 'events', 'battle', 'battlelog', 'strategy', 'icons', 'scene3d', 'placement', 'belt', 'planetgen', 'story', 'ui', 'map3d', 'main'];
 
 const src = {};
 MODULES.forEach(m => { src[m] = fs.readFileSync(path.join(JSDIR, m + '.js'), 'utf8'); });
@@ -38,6 +38,24 @@ const all = allJs + '\n' + htmlSrc;
 const STRICT = process.argv.indexOf('--strict') >= 0;
 let problems = 0;
 let vacuous = 0;   /* v125b：解析为空却报"全部通过"的检查项数（平凡解计数） */
+
+/* ── 白名单 REF_OK ───────────────────────────
+ * **白名单必须有理由**（空口豁免 = 门禁自残）。两类键共用这一张表：
+ *   ① 定义在扫描清单之外的挂载 —— ⑥ 会把它报成"引用了不存在的成员"
+ *      （其实有人定义，只是 audit 没读那个文件，如 icons/gicons/bitmaps/portraits）；
+ *   ② 有理由暂留的死函数 —— ① 会把它报成死代码（有人定义、暂时没接线，删了会断链）。
+ * 键名一律 `命名空间.成员` 全名；注释写清"谁定义 / 为什么先留着"。
+ * （判据A 修正（2026-10-31）：原先只被 ⑥ 使用；把 ① 的死函数也接进来，白名单才覆盖"暂留"这类合法情形。
+ *   放在文件顶部是因为 ① 在 ⑥ 之前执行，const 有 TDZ，不能后置声明。）*/
+const REF_OK = {
+  'GAME.onLog': '试玩工具挂的钩子（tools/playtest/*.js 里 G.onLog = …）',
+  'GAME._realNowOf': '测试拨钟钩子（smoke/e2e 覆写它把"现实时间"固定住，见 GAME.realNow）',
+  'GAME.icons': 'icons.js 挂载', 'GAME.gicons': 'gicons.js 挂载',
+  'GAME.bitmaps': 'bitmaps.js 挂载', 'GAME.portraits': 'portraits.js 挂载',
+  'GAME.gltf': 'gltf.js 挂载（GLB 加载器）', 'GAME.gltfVersion': 'gltf.js 挂载锚',
+  'GAME.battle.provokeReward': '暂留（battle.js:1649 有定义、无调用）：叫阵/挑衅并入竞技场口径待老板拍板'
+    + '（见 docs/HANDOVER.md:256「需要老板拍板」清单），先留着避免 v144 叫阵奖励断链；拍板后接线或删掉本行',
+};
 
 function head(title) { console.log('\n' + title); console.log('─'.repeat(Math.min(72, title.length + 4))); }
 
@@ -72,7 +90,7 @@ const testAll = fs.readFileSync(path.join(__dirname, 'smoke-test.js'), 'utf8')
    静态看不到直接调用，属内部实现，不计入死代码 */
 const localTable = d => /^[A-Z]$/.test(d.ns.split('.')[0]) || d.ns === 'ICON';
 
-const dead = [], testOnly = [], internal = [];
+const dead = [], testOnly = [], internal = [], kept = [];
 defs.forEach(d => {
   const esc = d.name.replace(/\$/g, '\\$');
   const callRe = new RegExp('\\.' + esc + '\\s*[\\s(,;)\\]}]', 'g');
@@ -84,15 +102,23 @@ defs.forEach(d => {
   /* 字符串引用：分发式调用（如 questMetric 的指标名、动作名） */
   const asString = new RegExp("['\"]" + esc + "['\"]").test(all) || new RegExp("['\"]" + esc + "['\"]").test(testAll);
   if (localTable(d)) internal.push(d);
-  else if (net <= 0 && !asString) (inTest ? testOnly : dead).push(d);
+  else if (net <= 0 && !asString) {
+    /* 有理由暂留的（白名单见文件顶部 REF_OK）不算死代码，单独列出，仍可见 */
+    if (REF_OK[d.full]) kept.push(d);
+    else (inTest ? testOnly : dead).push(d);
+  }
 });
-console.log('  函数总数 ' + defs.length + ' · 有引用 ' + (defs.length - dead.length - testOnly.length - internal.length)
+console.log('  函数总数 ' + defs.length + ' · 有引用 ' + (defs.length - dead.length - testOnly.length - internal.length - kept.length)
   + ' · 仅测试引用 ' + testOnly.length + ' · 无引用 ' + dead.length
-  + ' · 内部图表 ' + internal.length);
+  + ' · 内部图表 ' + internal.length + ' · 白名单暂留 ' + kept.length);
 if (dead.length) {
   console.log('  ⚠ 无任何引用的函数（死代码，或功能未接线）：');
   dead.forEach(d => console.log('     ' + d.full.padEnd(28) + '[' + d.file + '.js]'));
 } else console.log('  ✅ 无死函数');
+if (kept.length) {
+  console.log('  · 白名单暂留（有理由，见文件顶部 REF_OK）：');
+  kept.forEach(d => console.log('     ' + d.full.padEnd(28) + '[' + d.file + '.js]'));
+}
 if (testOnly.length) {
   console.log('  · 仅测试引用（生产代码未用，可考虑收敛）：');
   testOnly.forEach(d => console.log('     ' + d.full.padEnd(28) + '[' + d.file + '.js]'));
@@ -316,23 +342,19 @@ watchFields.forEach(f => {
  * ───────────────────────────────────────────── */
 head('⑥ 引用了不存在的成员（拼错 / 未接线）');
 const REF_NS = ['GAME', 'DATA', 'U'];
-/* 白名单：白名单必须有**理由**，且理由得是"这里确实有人定义它" */
-const REF_OK = {
-  'GAME.onLog': '试玩工具挂的钩子（tools/playtest/*.js 里 G.onLog = …）',
-  'GAME._realNowOf': '测试拨钟钩子（smoke/e2e 覆写它把"现实时间"固定住，见 GAME.realNow）',
-  'GAME.icons': 'icons.js 挂载', 'GAME.gicons': 'gicons.js 挂载',
-  'GAME.bitmaps': 'bitmaps.js 挂载', 'GAME.portraits': 'portraits.js 挂载',
-  'GAME.gltf': 'gltf.js 挂载（GLB 加载器）', 'GAME.gltfVersion': 'gltf.js 挂载锚',
-};
+/* 白名单 REF_OK 定义在**文件顶部**（① 先于 ⑥ 执行，const 有 TDZ，不能后置声明）——
+   条目与理由见那里；⑥ 这里只消费它。 */
 /* 本节的模块清单**独立于①的 MODULES**：引用扫描要把 tactic / gicons / bitmaps /
    portraits 也算进来（它们也是 GAME.* 的生产者与消费者）。
    ⚠️ v92：这是**第三份**模块清单（另外两份：build_bundle.py 的 ORDER、
    smoke-test.js 里 bundle 同步守卫的 ORDER）。加新模块时四份都要加，
-   否则表现为"引用了不存在的成员"这种误导性报错。 */
-/* v90.92：任务系统退役 —— 'questdata' 摘除（见①的 MODULES 说明）。
-   v91.61：新增 'core'。 */
+   否则表现为"引用了不存在的成员"这种误导性报错。
+   ⚠️ 判据A（2026-10-31）：`tools/selfcheck.js` 第①项已改为**双向**校验 —— ORDER 里有、这里漏收的模块
+   会直接报红（GAME.planetgen 假红就是"漏收"造成的：定义在 planetgen.js，audit 没读它）。
+   v90.92：任务系统退役 —— 'questdata' 摘除（见①的 MODULES 说明）。
+   v91.61：新增 'core'。判据A：新增 placement / belt / planetgen（顺序随 build_bundle.py ORDER）。 */
 const REF_MODULES = ['core', 'registry', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'colony', 'fleet', 'domain', 'map', 'sphere', 'risk', 'years', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'rival', 'land', 'taint', 'climate', 'surge', 'relic', 'goals', 'veteran', 'setskill', 'deck', 'bond', 'tower', 'wonderwar', 'delve', 'unrest', 'expose', 'trooplv', 'idle', 'ending', 'muster', 'founding', 'prologue', 'duel', 'market', 'events', 'battle', 'battlelog', 'strategy', 'tactic',
-  'icons', 'gicons', 'bitmaps', 'portraits', 'scene3d', 'story', 'ui', 'map3d', 'main'];
+  'icons', 'gicons', 'bitmaps', 'portraits', 'placement', 'belt', 'planetgen', 'scene3d', 'story', 'ui', 'map3d', 'main'];
 /* 剥注释（audit.js 里没有共用版；注释里提到旧名不应算引用 —— 本项目踩过多次） */
 const stripC = s => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '');
 const refSrc = {};

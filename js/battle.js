@@ -817,11 +817,16 @@ import './state.js';
     GAME.battlelog.push(id, 'step', { round: r.r, over: !!r.over, gap: r.gap });
     if (r.over) GAME.battle.finishBattle(id);
     /* v150（P0-2）：每 N 回合置一个"该你拍板了"的标记（**只置标记，不阻塞**）——
-       后台推进/自动战斗也会走到这里，但没有面板 → 标记留着，玩家回到战场才看到。 */
+       后台推进/自动战斗也会走到这里，但没有面板 → 标记留着，玩家回到战场才看到。
+       v151（老板「机制对、时机错：要到第 3 分钟才轮到我」）：
+         · `every` 默认改成 1（每回合都能拍板）；
+         · 并**尊重 `firstAt`** —— 之前写了不读，等于没配。 */
     try {
       var A = (GAME.DATA && GAME.DATA.BATTLE_ASK) || {};
-      var every = A.every || 3;
-      if (!r.over && !rec.askOff && rec.side === 'atk' && (r.r % every) === 0) rec.askAt = r.r;
+      var every = Math.max(1, A.every || 1);
+      var firstAt = Math.max(1, A.firstAt || 1);
+      if (!r.over && !rec.askOff && rec.side === 'atk'
+        && r.r >= firstAt && ((r.r - firstAt) % every) === 0) rec.askAt = r.r;
     } catch (eAsk) { /* 标记失败不影响战斗推进 */ }
     return r;
   };
@@ -1487,6 +1492,18 @@ import './state.js';
     }
     return order[order.length - 1];
   };
+  /* v92.240d：常规攻击自动出招 —— 按 moveOrder 概率抽一手（将领性格决定倾向，与敌将同源） */
+  GAME.battle.duelAutoMove = function (g, round, seed) {
+    var D = DATA.DUEL || {};
+    var order = D.moveOrder || ['stab', 'guard', 'feint', 'charge'];
+    var w = GAME.battle.duelTendency(g);
+    var tot = 0, i;
+    for (i = 0; i < order.length; i++) tot += (w[order[i]] || 1);
+    var r = (GAME.invasionRoll ? GAME.invasionRoll('duelauto|' + (g && g.id) + '|' + round + '|' + (seed == null ? 0 : seed)) : Math.random()) * tot;
+    var acc = 0;
+    for (i = 0; i < order.length; i++) { acc += (w[order[i]] || 1); if (r < acc) return order[i]; }
+    return order[order.length - 1];
+  };
   /* 打一场手动斗将：moves = ['stab','guard',...]（长度 playRounds） */
   GAME.battle.duelPlay = function (atkGen, defGen, moves, seed) {
     var D = DATA.DUEL || {};
@@ -1577,33 +1594,188 @@ import './state.js';
     return f.pct || 0;
   };
 
-  GAME.battle.provoke = function (npc, gen, moves, seed) {
+  /* v92.240：派将挑衅 = 回合制血量对打（属性驱动攻防血，不再只是比招式大小） */
+  /* v92.240b：体力即血。我方读真实体力(staNow/staMax)，守将 NPC 派生体力池 */
+  /* v92.240d：派将挑衅 = 体力即血 · 自动回合制打到死（无回合上限）
+     血量 = 体力 × hpPerSta（默认 10 倍）；守将无体力 → 按属性派生"虚拟体力"再 ×hpPerSta */
+  GAME.battle.duelProfile = function (g) {
+    if (!g) return { hp: 1, max: 1, atk: 1, def: 1 };
     var D = DATA.DUEL || {};
-    if (!npc) return { ok: false, msg: '没有目标城' };
-    if (!gen) return { ok: false, msg: '要派一位英雄去' };
+    var hpPerSta = D.hpPerSta == null ? 10 : D.hpPerSta;
+    var lv = g.level || 1, yw = g.yw || 0, tong = g.tong || 0;
+    var atk = Math.max(1, Math.round(yw + lv * (D.duelAtkLv == null ? 3 : D.duelAtkLv)));
+    var def = Math.max(1, Math.round(tong + lv * (D.duelDefLv == null ? 3 : D.duelDefLv)));
+    var maxHp, curHp;
+    var hasSta = GAME.staMax && typeof GAME.staMax(g) === 'number' && GAME.staMax(g) > 0;
+    if (hasSta) {
+      /* 每场满血开打；余血按比例（÷hpPerSta）回写真实体力 */
+      maxHp = GAME.staMax(g) * hpPerSta;
+      curHp = maxHp;
+    } else {
+      var staProxy = Math.max(1, Math.round((D.provokeGuardStaBase == null ? 60 : D.provokeGuardStaBase)
+        + lv * (D.provokeGuardStaLv == null ? 6 : D.provokeGuardStaLv)
+        + (yw + tong) * (D.provokeGuardStaAttr == null ? 0.3 : D.provokeGuardStaAttr)));
+      maxHp = staProxy * hpPerSta; curHp = maxHp;
+    }
+    return { hp: curHp, max: maxHp, atk: atk, def: def };
+  };
+  /* v92.240d：自动回合制。普通攻击 = (攻击力 − 防御力×折算) × 招式倍率 × 缩放；
+     绝活 = 同式但再 ×skillMul 且破防(防御×1−pierce)。双方每合都出手、都掉血。
+     r.dmgA = 打向我方的伤害；r.dmgB = 打向守将的伤害。 */
+  GAME.battle.duelRoundResolve = function (profA, profB, am, bm, MV) {
+    MV = MV || (DATA.DUEL && DATA.DUEL.moves) || {};
+    var D = DATA.DUEL || {};
+    var scale = D.provokeDmgScale == null ? 3 : D.provokeDmgScale;
+    var defFactor = D.provokeDefFactor == null ? 0.7 : D.provokeDefFactor;
+    var floor = D.provokeDmgFloor == null ? 1 : D.provokeDmgFloor;
+    var skillMul = D.provokeSkillMul == null ? 2.2 : D.provokeSkillMul;
+    var skillPierce = D.provokeSkillPierce == null ? 0.45 : D.provokeSkillPierce;
+    var mA = (MV[am] && MV[am].mul != null) ? MV[am].mul : 1;
+    var mB = (MV[bm] && MV[bm].mul != null) ? MV[bm].mul : 1;
+    var aSkill = MV[am] && MV[am].skill, bSkill = MV[bm] && MV[bm].skill;
+    function _dmg(atk, def, mul, isSkill) {
+      var eff = isSkill ? def * (1 - skillPierce) : def * defFactor;
+      var base = (atk - eff) * mul * scale;
+      if (isSkill) base *= skillMul;
+      return Math.max(floor, Math.round(base));
+    }
+    var dmgToB = _dmg(profA.atk, profB.def, mA, aSkill);   /* A 打 B（守将） */
+    var dmgToA = _dmg(profB.atk, profA.def, mB, bSkill);   /* B 打 A（我方） */
+    var res = dmgToB > dmgToA ? 'a' : dmgToA > dmgToB ? 'b' : 'tie';
+    return { res: res, dmgA: dmgToA, dmgB: dmgToB };
+  };
+  /* v92.240b：结算时把剩余体力真实写回（体力即血）；赢加胆寒+士气，输力竭归零 */
+  /* v92.240d：结算。余血(hpA，已 ×hpPerSta)按比例 ÷hpPerSta 回写真实体力；赢加胆寒+士气，输力竭 */
+  GAME.battle.provokeReward = function (npc, gen, winner, hpA) {
+    var D = DATA.DUEL || {};
+    var st = GAME.state; st.cityFear = st.cityFear || {};
+    var guard = GAME.npcCityInfo && GAME.npcCityInfo(npc) && GAME.npcCityInfo(npc).guard;
+    var hpPerSta = D.hpPerSta == null ? 10 : D.hpPerSta;
+    var restSta = (hpA == null) ? null : Math.max(0, Math.round(hpA / hpPerSta));
+    if (restSta != null && GAME.setStaNow) GAME.setStaNow(gen, restSta);   /* 余血 ÷hpPerSta = 余体力 */
+    if (winner === 'atk') {
+      var hours = D.fearHours == null ? 24 : D.fearHours;
+      var pct = D.fearPct == null ? 0.12 : D.fearPct;
+      st.cityFear[npc.id] = { until: Date.now() + hours * 3600000, pct: pct };
+      gen.duelW = (gen.duelW || 0) + 1;
+      gen.duelMoraleUntil = Date.now() + (GAME.battle.MORALE_MS || 7200000);
+      var msg = '挑衅得手：' + (GAME.cityFullName ? GAME.cityFullName(npc) : '该城') + ' 守军胆寒 ' + hours + ' 小时（守军 −' + Math.round(pct * 100) + '%）';
+      if (restSta != null) msg += '　— ' + gen.name + ' 余体力 ' + restSta;
+      return { ok: true, msg: msg };
+    }
+    if (winner === 'def') {
+      gen.duelL = (gen.duelL || 0) + 1;
+      return { ok: false, msg: '挑衅失手：' + (guard ? guard.name : '守将') + ' 力压一头，' + gen.name + ' 力竭倒地（体力归零）' };
+    }
+    return { ok: false, msg: '两败俱伤，各自收兵（未分胜负）' };
+  };
+  /* v92.240b：原 GAME.battle.provoke（一次性结算 5 招）已弃用 —— 回合制改为 openProvoke 内逐合 duelRoundResolve 驱动 */
+
+  /* v92.240f：多将领 3v3 挑衅。
+     模型：每方一个出战队列；当前将倒下则轮换下一个；一方无人则结束。
+     常规攻击自动进行（无需玩家操作）；玩家可手动释放"当前将"的绝活（S.pendingSkill）。 */
+  GAME.battle.provokeEnemyGens = function (npc) {
     var nci = GAME.npcCityInfo ? GAME.npcCityInfo(npc) : null;
     var guard = nci && nci.guard;
-    if (!guard) return { ok: false, msg: '这座城没有守将，叫阵无人应' };
-    var res = GAME.battle.duelPlay(gen, guard, moves, seed);
-    if (!res) return { ok: false, msg: '斗将无法开始' };
-    var st = GAME.state;
-    st.cityFear = st.cityFear || {};
-    if (res.winner === 'atk') {
+    var lv = (npc && (npc.level || npc.lv)) || 10;
+    var out = [];
+    /* v92.240h：没有守将的城 = 叫阵无人应。不得凭空合成守军 ——
+       否则空城会派出一队合成守军、被瞬间打光，等于白送一场胜利和胆寒。 */
+    if (!guard) return [];
+    if (guard) out.push(guard);
+    var titles = ['副将', '偏将', '牙将'];
+    var i = 0;
+    while (out.length < 3) {
+      var v = i + 1;
+      var yw = Math.max(20, Math.round(30 + lv * 4 + ((v * 7) % 18) - 9));
+      var tong = Math.max(20, Math.round(28 + lv * 4 + ((v * 11) % 18) - 9));
+      out.push({
+        id: 'provoke_lt_' + (npc && npc.id) + '_' + v, _synthetic: true,
+        name: (npc && npc.name ? npc.name : '名城') + titles[i % titles.length],
+        title: '守军', level: lv, yw: yw, tong: tong
+      });
+      i++;
+    }
+    return out.slice(0, 3);
+  };
+  /* 把一组将领转成含血量/攻防的出战队列 */
+  GAME.battle.provokeLineup = function (gens) {
+    return (gens || []).map(function (g) {
+      var p = GAME.battle.duelProfile(g);
+      return { g: g, hp: p.hp, max: p.max, atk: p.atk, def: p.def, alive: true, skillCd: 0 };
+    });
+  };
+  /* 推进一回合。返回 { over, winner, event }；event 含本合动作与双方当前将血量 */
+  GAME.battle.provokeStep = function (S, MV, D) {
+    if (S.over) return { over: true };
+    MV = MV || {}; D = D || {};
+    /* 跳过已阵亡，定位当前将 */
+    while (S.mi < S.me.length && !S.me[S.mi].alive) S.mi++;
+    while (S.hi < S.him.length && !S.him[S.hi].alive) S.hi++;
+    if (S.mi >= S.me.length || S.hi >= S.him.length) {
+      S.over = true;
+      S.winner = (S.hi >= S.him.length && S.mi < S.me.length) ? 'atk'
+        : (S.mi >= S.me.length && S.hi < S.him.length) ? 'def' : 'draw';
+      return { over: true, winner: S.winner };
+    }
+    var aP = S.me[S.mi], bP = S.him[S.hi];
+    S.round++;
+    S.me.forEach(function (x) { if (x.skillCd > 0) x.skillCd--; });
+    /* 我方出招：玩家点了绝活且当前将冷却好 → 放技能；否则自动常规 */
+    var am;
+    var pSkillId = aP.g.skill || D.defaultSkill;
+    var pSkill = pSkillId && MV[pSkillId] && MV[pSkillId].skill ? MV[pSkillId] : null;
+    if (S.pendingSkill && pSkill && aP.skillCd === 0) {
+      am = pSkillId; aP.skillCd = (pSkill.cd || 3);
+    } else {
+      am = GAME.battle.duelAutoMove(aP.g, S.round, S.seed);
+    }
+    S.pendingSkill = false;
+    var bm = GAME.battle.duelAutoMove(bP.g, S.round, S.seed);
+    var r = GAME.battle.duelRoundResolve({ atk: aP.atk, def: aP.def }, { atk: bP.atk, def: bP.def }, am, bm, MV);
+    /* 双方当前将本合互攻（同时结算） */
+    aP.hp = Math.max(0, aP.hp - r.dmgA);
+    bP.hp = Math.max(0, bP.hp - r.dmgB);
+    var koA = aP.hp <= 0, koB = bP.hp <= 0;
+    if (koA) aP.alive = false;
+    if (koB) bP.alive = false;
+    var event = { r: S.round, am: am, bm: bm, res: r.res, dmgA: r.dmgA, dmgB: r.dmgB,
+      hpA: aP.hp, hpB: bP.hp, koA: koA, koB: koB, mi: S.mi, hi: S.hi };
+    S.log.push(event);
+    if (S.round >= (D.provokeMaxRounds || 80)) {
+      S.over = true;
+      var totA = S.me.reduce(function (s, x) { return s + (x.hp || 0); }, 0);
+      var totB = S.him.reduce(function (s, x) { return s + (x.hp || 0); }, 0);
+      S.winner = totA > totB ? 'atk' : (totB > totA ? 'def' : 'draw');
+    }
+    return { over: S.over, winner: S.winner, event: event };
+  };
+  /* 结算：把每个参战玩家将的剩余血 ÷hpPerSta 回写真实体力；赢加胆寒+士气 */
+  GAME.battle.provokeFinalize = function (npc, S) {
+    var D = DATA.DUEL || {}, st = GAME.state; st.cityFear = st.cityFear || {};
+    var hpPerSta = D.hpPerSta == null ? 10 : D.hpPerSta;
+    S.me.forEach(function (x) {
+      if (!x.g) return;
+      var restSta = Math.max(0, Math.round((x.hp || 0) / hpPerSta));
+      if (GAME.setStaNow) GAME.setStaNow(x.g, restSta);
+      x.restSta = restSta;
+    });
+    var aliveMe = S.me.filter(function (x) { return x.alive; }).length;
+    var deadMe = S.me.length - aliveMe;
+    if (S.winner === 'atk') {
       var hours = D.fearHours == null ? 24 : D.fearHours;
-      st.cityFear[npc.id] = { until: Date.now() + hours * 3600000, pct: (D.fearPct == null ? 0.12 : D.fearPct) };
-      gen.duelW = (gen.duelW || 0) + 1;
-      gen.duelMoraleUntil = Date.now() + ((GAME.battle.MORALE_MS) || 7200000);
-      return { ok: true, res: res,
-        msg: '挑衅得手：' + (GAME.cityFullName ? GAME.cityFullName(npc) : '该城')
-          + ' 守军胆寒 ' + hours + ' 小时（守军 −' + Math.round((D.fearPct == null ? 0.12 : D.fearPct) * 100) + '%）' };
+      var pct = D.fearPct == null ? 0.12 : D.fearPct;
+      st.cityFear[npc.id] = { until: Date.now() + hours * 3600000, pct: pct };
+      S.me.forEach(function (x) { if (x.g) { x.g.duelW = (x.g.duelW || 0) + 1; x.g.duelMoraleUntil = Date.now() + (GAME.battle.MORALE_MS || 7200000); } });
+      var msg = '挑衅得手：' + (GAME.cityFullName ? GAME.cityFullName(npc) : '该城') + ' 守军胆寒 ' + hours + ' 小时（守军 −' + Math.round(pct * 100) + '%）'
+        + '　— 我方 ' + aliveMe + '/' + S.me.length + ' 将幸存';
+      return { ok: true, msg: msg };
     }
-    if (res.winner === 'def') {
-      gen.duelL = (gen.duelL || 0) + 1;
-      var cost = D.provokeStaCost == null ? 20 : D.provokeStaCost;
-      if (GAME.setStaNow && GAME.staNow) GAME.setStaNow(gen, Math.max(0, GAME.staNow(gen) - cost));
-      return { ok: false, res: res, msg: '挑衅失手：' + guard.name + ' 占了上风，' + gen.name + ' 折了一阵（体力 −' + cost + '）' };
+    if (S.winner === 'def') {
+      S.me.forEach(function (x) { if (x.g) x.g.duelL = (x.g.duelL || 0) + 1; });
+      return { ok: false, msg: '挑衅失手：' + (GAME.cityFullName ? GAME.cityFullName(npc) : '该城') + ' 守将力压一头，我方 ' + deadMe + '/' + S.me.length + ' 将力竭倒地' };
     }
-    return { ok: false, res: res, msg: '势均力敌，双方各自收兵（不算得手）' };
+    return { ok: false, msg: '两败俱伤，各自收兵（未分胜负）' };
   };
 
   /* 战利品按城类型 */
@@ -3119,7 +3291,18 @@ import './state.js';
        由 genAttrs 加成链传导到全军。结果随 `_sim` 存走 —— 重放/挂起不重掷。 */
     var duel = null, genSim = gen;
     function _doDuel() {
-      duel = GAME.battle.rollDuel(gen, scGen, GAME.battle.duelSeedOf(target));
+      /* v151（老板「阵前斗将是 50% 自动跑，玩家零输入」）：
+         出征时可以选择「请战 / 不叫阵」——
+           · opts.duel !== undefined → 用玩家这一场的选择（true=请战 false=不叫阵）；
+           · 未指定 → 读设置 `settings.duelAsk`（默认请战）。
+         请战仍走原来的概率闸（DATA.DUEL.chance）与同一颗种子，不改任何数值。 */
+      var _D = (GAME.DATA && GAME.DATA.DUEL) || {};
+      var _want = (opts.duel !== undefined) ? !!opts.duel
+        : (((GAME.state || {}).settings || {}).duelAsk !== false);
+      var _bak = _D.chance;
+      if (!_want) { try { _D.chance = 0; } catch (e0) {} }
+      try { duel = GAME.battle.rollDuel(gen, scGen, GAME.battle.duelSeedOf(target)); }
+      finally { if (!_want) { try { _D.chance = _bak; } catch (e1) {} } }
       /* v92.13（C1 补完）：手动斗将赢过的英雄，这一战先声夺人。
          只补"本来没触发斗将"的空档，不改写已经打过的结果 —— 士气不是外挂。 */
       duel = GAME.battle.applyMorale(duel, gen);
@@ -4379,7 +4562,7 @@ import './state.js';
     /* ⛔ v89.198（老板「清除战法这个玩法」）：第 6 参 ops（随军战法）随玩法全撤退役。 */
     var p = GAME.battle.prepare(target, modeId, army, genId,
       { scheme: schemeId || null, cityId: (extra && extra.fromCityId) || null,
-        obj: (extra && extra.obj) || null });
+        obj: (extra && extra.obj) || null, duel: (extra ? extra.duel : undefined) });
     if (!p.ok) return p;
     var city = p.city, gen = p.gen, mode = p.mode, t = p.t;
     /* ============================================================
@@ -4459,6 +4642,7 @@ import './state.js';
       cargo: cargo || null,              /* v89.103：随军辎重（抵达落账 / 失败退回） */
       roundTrip: !!(mode && mode.roundTrip),   /* v91.76：运输送达后原路返程 */
       obj: (extra && extra.obj) || null,       /* v144.5：作战目标（护送/斩首）随军走 */
+      duel: (extra && extra.duel !== undefined) ? !!extra.duel : undefined,  /* v151：阵前是否请战 */
     };
     s.marches.push(m);
     /* v92：出征 = 走过去看见什么。
@@ -4535,7 +4719,7 @@ import './state.js';
     try {
       r = GAME.battle.expedition(m.target, m.modeId, m.army, m.genId,
         { arrived: true, cityId: m.cityId, scheme: m.scheme || null,
-          cargo: m.cargo || null, obj: m.obj || null });   /* v144.5：作战目标随军抵达 */
+          cargo: m.cargo || null, obj: m.obj || null, duel: m.duel });   /* v144.5 作战目标 / v151 阵前请战 */
     } catch (e) { err = e; }
     /* v92：抵达 = 这一带并入已知（全明）。**不论战果** —— 人已经站在那儿了，
        看没看见、打没打赢，都不影响"这里有什么"这件事已经被知道。 */

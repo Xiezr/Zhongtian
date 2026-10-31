@@ -4854,7 +4854,10 @@ import './state.js';
       (ct.extGrid || []).forEach(function (e, idx) {
         if (!e || !e.type || e.pending) return;
         var eb = DATA.EXT_BUILDINGS[e.type];
-        if (!eb || e.lv >= GAME.buildCapOf(ct)) return;
+        /* v92.240e：候选上限必须与真升级用同一把尺（含政务厅闸/科技闸/hiLv 宽限）。
+           漏传 bid/piece 会让城外建筑被误判为"可升到通用上限 12"而真实上限是 11，
+           导致 autoUpgrade 每 tick 谎报"→Lv12"、建筑却卡在真实 11（伪振荡）。 */
+        if (!eb || e.lv >= GAME.buildCapOf(ct, e.type, e)) return;
         cands.push({ kind: 'ext', idx: idx, cityId: ct.id, lv: e.lv,
           name: (multi ? ct.name + '·' : '') + eb.name });
       });
@@ -9319,6 +9322,11 @@ import './state.js';
     for (var k5 in army) { var v = Math.round((army[k5] || 0) * _frac); if (v > 0) { GAME.city.armyAdd(city, { [k5]: v }); back[k5] = v; } }
     if (won) {
       pl.wonderClearedLv = Math.max(cleared, lv);
+      /* v151（老板「打穿奇观归你 —— 代码里没有调用者」）：打穿任意一层 = 这处奇观归你。
+         原来 `wonderwar.claim` 全仓零调用，模块注释写着"打穿归你"、实际永远归不了。 */
+      try {
+        if (GAME.wonderwar && GAME.wonderwar.claim) GAME.wonderwar.claim(pid, lv);
+      } catch (e0) { /* 归属失败不挡战果 */ }
       GAME.log('⚔ 奇观「' + (GAME.wonderOf(pid) || {}).name + '」第 ' + lv + ' 层『' + def.rank.title + '』告破！'
         + '（我军损 ' + U.fmt((r && r.atkLoss) || 0) + ' · 守军 ' + U.fmt(def.total) + ' 覆灭）', 'sys', 'war');
       if (gen && gen.status === 'idle') { /* 英雄留在城，不置忙 */ }

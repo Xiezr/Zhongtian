@@ -96,6 +96,14 @@
     var pos = (sp && sp.ciOfXY) ? sp.ciOfXY(p0.x, p0.y) : 0;
     if (!(pos >= 0)) pos = 0;
     /* ============================================================
+     * v155b（顺次划定）：前传**不再自己另选一个"最佳落脚点"**。
+     * 改前它会按"有事的格子 / 附近平地"另挑一个 —— 于是 `s.map.startPos`
+     * （城、2D 地图、行政区都在用的那个坐标）与君主实际站的位置**不一致**，
+     * 立城又落在脚下 → "城坐标对不上"。
+     * 现在：出生点 = `pickStartPos`（已在平原上），前传**原样站那儿**；
+     * 周围有没有事由"最近动静"提示与地图发光来引导。
+     * ============================================================ */
+    /* ============================================================
      * v131：出生格若荒僻，就近挪一格**有事的**。
      * ------------------------------------------------------------
      * `jianghuActsAt` 对每格有 30% 概率返回空（`DATA.JH_SPREAD.noneP`）——
@@ -103,99 +111,8 @@
      * 玩家一睁眼看到"脚下没事、四周没动静"，只会以为自己玩不了。
      * 只挪出生点、不改判据：荒僻格仍然是荒僻格，走两步就能遇到。
      * ============================================================ */
-    try {
-      /* ------------------------------------------------------------
-       * v135（老板：「立城为什么在水里」）——出生点必须**靠得近平地**。
-       * 实测：`DATA.TERRAIN` 里只有 `plain` 是可建地形，而它只占 3.7~8.2%；
-       * 5 个 seed 的出生点到最近平地分别是 **23 / 32 / 36 / 28 / 36 格**。
-       * 也就是说：按"只能在平地立城"这条规则，玩家开局要先蒙头走三十步
-       * 才可能见到第一块能立城的地 —— 这比"城立在水里"更难接受。
-       * 所以出生点改口径：**先保证 2 环内有平地**，再在其中挑"有事的格子"。
-       * 找不到就把出生点直接放到最近的平地上（前传本来就是"流浪到这里"）。
-       * ------------------------------------------------------------ */
-      /* ⚠️ 两个目标会打架，优先级必须是**先脚下有事**：
-           ① 站平地 → 能立城，但实测"可做 0 件"（平原本来就不能采集，
-              §333③ 当场照出"可走 6 格 · 可做 0 件"）→ 玩家一睁眼无事可做；
-           ② 站有事的地 → 能玩，但要走三十步才见到平地。
-         所以口径定为：**脚下必须有事，平地放在 4 环内**（走四步就能立城）。
-         先在有事的格里挑，挑不到才退回平地（那种情况下玩家至少能立刻立城）。 */
-      /* ⚠️ 顺序必须是"**先找平地、再在它周围挑有事的格**"。
-         反过来（先在本地点附近找"旁边有平地"的格）测过：平原稀疏、常在 20 格外，
-         5 环内一个候选都没有 → 又退回平地 → 平原不能采集 → "可做 0 件"。
-         现在：取最近的平地 → 在它 4 环内挑脚下有事的格 → 站那儿。
-         这样"脚下有事"和"四步内能立城"同时成立。 */
-      var RING_PLAIN = 4;
-      var actsHere = (GAME.jianghuActsAt ? GAME.jianghuActsAt(pos) : []) || [];
-      var nearPlain = P.nearestBuildableN ? P.nearestBuildableN(pos, RING_PLAIN) : null;
-      /* ⛔ v139（实战暴露的判据错误）：进入搬迁的条件**只能是"脚下没事"**。
-         原来写的是 `(!nearPlain || !actsHere.length)` —— 于是"脚下明明有采集/清剿、
-         只是 4 环内没有平地"也会触发搬迁，最后还可能被挪到一块**没动作的平地**上
-         （`cand` 为空时的退路），开局第一屏就成了「可做 0 件」（§333③ 红）。
-         "4 环内有平地"是**选址偏好**，不是搬迁理由 —— 玩家可以先在原地做事，
-         立城时 HUD 会告诉他最近平地在哪个方向。 */
-      if (sp && sp.hopsWithin && GAME.jianghuActsAt && !actsHere.length) {
-        /* ① 先定位最近的平地（用当前 pos 作起点，半径给足） */
-        var far = P.nearestBuildable ? P.nearestBuildable(40) : null;
-        var base = far ? far.ci : pos;
-        /* ② 在平地 4 环内挑"脚下有事"的格（含平地自己：它虽然不能采集，
-              但可能出"静修/斗将"这类动作） */
-        var cand = [], ring = sp.hopsWithin(base, RING_PLAIN), i;
-        for (i = 0; i < ring.length; i++) {
-          var c2 = ring[i];
-          if (!GAME.jianghuActsAt(c2).length) continue;
-          cand.push(c2);
-        }
-        if (cand.length) {
-          pos = cand[0];
-        } else if (far) {
-          pos = far.ci;                                        /* 退路：站到平地上 */
-        }
-      }
-      /* ⛔ v139：**最后一道兜底 —— 脚下必须有可做的事**。
-         `jianghuActsAt` 对每格有 30% 概率返回空；上面那条"退路：站到平地上"
-         可能正好落进一个荒僻的平原（平原本来还不能采集）——
-         实测开局第一屏"可走 6 格 · 可做 0 件"，玩家一睁眼无事可做（§333③ 当场红）。
-         这里在 4 环内再找一次"有事的格"，只改起点、不动任何判据。 */
+    /* （v155b：v135/v139 的"另选落脚点"整段已停用 —— 出生点由 pickStartPos 唯一定义） */
 
-    } catch (e) { /* 找落脚点失败就用原位 */ }
-    /* ============================================================
-     * v139：**最后一道兜底（无条件）** —— 出生点不许在水里，也不许脚下没事。
-     * ------------------------------------------------------------
-     * 上面的选址逻辑有多个分支，实测仍有漏网（SEED 61024：pos 落在 lake 上、
-     * `jianghuActsAt` 返回 0 → 开局第一屏「可做 0 件」）。
-     * 这里不再依赖那些分支：只看**最终结果的成色**，不合格就重新挑一次。
-     * 顺序：最近的平地 → 平地 4 环内"动作最多"的格（那是玩家真正能开工的地方）。
-     * ============================================================ */
-    try {
-      var _t1 = P.cellTypeOf(pos);
-      var _a1 = (GAME.jianghuActsAt ? GAME.jianghuActsAt(pos) : []) || [];
-      var _isWater = (_t1 === 'lake' || _t1 === 'zhaoze');
-      if ((_isWater || !_a1.length) && sp && sp.hopsWithin && GAME.jianghuActsAt) {
-        var _f1 = P.nearestBuildable ? P.nearestBuildable(60) : null;
-        /* 找不到"平地"时至少找一块**陆地**（大洋中央也要能上岸）——
-           实测随机 seed 下会出现"60 环内没有平原"的极端情况，
-           而玩家掉在水里比"离平地远一点"糟得多。 */
-        if (!_f1) {
-          var _land = -1;
-          var _rl = sp.hopsWithin(pos, 30) || [];
-          for (var _li = 0; _li < _rl.length && _land < 0; _li++) {
-            var _lt = P.cellTypeOf(_rl[_li]);
-            if (_lt && _lt !== 'lake' && _lt !== 'zhaoze') _land = _rl[_li];
-          }
-          if (_land >= 0) _f1 = { ci: _land };
-        }
-        if (_f1) {
-          /* 在平地 4 环内挑动作最多的格；一个都没有就站平地本身 */
-          var _best = -1, _bestN = 0;
-          var _r1 = sp.hopsWithin(_f1.ci, 4) || [];
-          for (var _i1 = 0; _i1 < _r1.length; _i1++) {
-            var _n1 = (GAME.jianghuActsAt(_r1[_i1]) || []).length;
-            if (_n1 > _bestN) { _bestN = _n1; _best = _r1[_i1]; }
-          }
-          pos = (_best >= 0) ? _best : _f1.ci;
-        }
-      }
-    } catch (e) { /* 兜底失败就让 pos 保持原样，不挡住开局 */ }
     s.prologue = {
       on: true, at: 0, day: -1, acts: 0, builtAt: null,
       pos: pos,
@@ -467,15 +384,24 @@
     var pc = sp.cellOf(pos) || {};
     /* 方位：玩家得知道"往哪走"，光给六个地名分不清方向（v131）。
        按球面经纬差算八向 —— 六边形只有六邻，实际会出现东/西/东北/… */
-    var dirName = function (nc) {
-      if (!nc || pc.lon == null || nc.lon == null) return '';
+    /* v92.247（老板）：「给星球定一个南北极，适配上下左右按键。现在是乱走的」
+       —— 方位改成**切平面里的真实方位角**（0=北 90=东），不再拿经纬差拼字。
+       旧写法在两极附近必然串（经线收拢 → 正北的邻格算出 dLon=180 → 叫成"东"），
+       而"东北"这种复合名又会同时命中上/右两个键。 */
+    var dirName = function (ci, nc) {
+      if (!nc) return '';
+      if (sp && sp.bearingOf) {
+        var deg = sp.bearingOf(pos, ci);
+        if (deg != null && sp.dirNameOfBearing) return sp.dirNameOfBearing(deg);
+      }
+      /* 兜底：旧口径（无 bearingOf 的极端情况）*/
+      if (pc.lon == null || nc.lon == null) return '';
       var dLon = ((nc.lon - pc.lon + 540) % 360) - 180;
       var dLat = nc.lat - pc.lat;
       var ew = dLon > 0 ? '东' : (dLon < 0 ? '西' : '');
       var ns = dLat > 0 ? '北' : (dLat < 0 ? '南' : '');
       if (!ns) return ew || '东';
       if (!ew) return ns;
-      /* 纬度差小、经度差大 → 偏东西；反之偏南北 */
       return (Math.abs(dLat) < Math.abs(dLon) * 0.45) ? ew : (ns + ew);
     };
     var out = [];
@@ -484,7 +410,7 @@
       if (ci === pos) continue;
       var cell = sp.cellOf(ci) || {};
       var acts = (GAME.jianghuActsAt ? GAME.jianghuActsAt(ci) : []) || [];
-      out.push({ ci: ci, type: cell.type, acts: acts, dir: dirName(cell), here: false });
+      out.push({ ci: ci, type: cell.type, acts: acts, dir: dirName(ci, cell), here: false });
     }
     /* 按方位排一下（东→东北→北→西北→西→西南→南→东南），读起来有顺序 */
     var ORDER = ['北', '东北', '东', '东南', '南', '西南', '西', '西北'];
@@ -492,30 +418,138 @@
     return out;
   };
 
-  /* 走一步。只有一件事需要判断：是不是相邻、精力够不够。
-     **不掷骰、不判定** —— 走到哪儿是玩家的选择，能做什么由那格自己决定。 */
+  /* ============================================================
+   * v151（老板：「地图就是游戏本体」）—— **手势就是点地图**
+   * ------------------------------------------------------------
+   * 改前：走路是 HUD 上六个 `<span>`、一次一步，点地图只会弹"未占领野地"面板。
+   * 改后：玩家点地图上任意一格 → 沿最短路径走过去（精力够到哪走到哪），
+   *       HUD 不再给任何走路按钮。
+   *
+   * 三条判据（老板的验收标准）：
+   *   · 手势：想走路 → 手指去点地图那一格（成立）；
+   *   · 闭环：走完立刻看见人在新格子上、精力少了 N、迷雾退开（成立）；
+   *   · 代价可见：动手前 HUD 给出"约走 N 步 / 耗 N 精力"，点远处时照此截断。
+   * 不掷骰、不判定 —— 走到哪儿是玩家的选择，能做什么由那格自己决定。
+   * ============================================================ */
+  /* 最短路径：当前位置 → 目标格（只走已探明的格子 —— 不能借迷雾抄近路）。
+     返回 { ci: [...不含起点], complete, why } —— 走不到就是 complete:false。 */
+  P.pathTo = function (target) {
+    var s = st0(), sp = SPc();
+    if (!s || !sp || !sp.adj || target == null) return { ci: [], complete: false, why: 'nosp' };
+    var nv = sp.nv || (sp.cells && sp.cells.length) || 0;
+    if (target < 0 || target >= nv) return { ci: [], complete: false, why: 'out' };
+    var start = P.pos();
+    if (target === start) return { ci: [], complete: true };
+    /* ============================================================
+     * v152（老板：「球面是可活动区域，玩家在上边直接走动」「说好未探索区域
+     * 只要云雾缭绕微暗就行」）
+     * ------------------------------------------------------------
+     * 改前：雾里的格子**不许踩**，点远处会被"自动瞄到已探明边缘"截断 ——
+     * 于是玩家被一圈看不见的墙围住，点哪都说"没探明"。
+     * 改后：**雾不是墙，是看不清**。点哪走哪（全图可走），雾照常遮信息；
+     * 走到哪儿，哪儿就亮起来。「看不见」不再是「去不了」。
+     * ============================================================ */
+    var seen = function (ci) {
+      try { return !(GAME.fog && GAME.fog.get && GAME.fog.get(ci) === 0); } catch (e) { return true; }
+    };
+    var prev = new Int32Array(nv).fill(-1);
+    var q = [start], head = 0, found = false;
+    prev[start] = start;
+    while (head < q.length) {
+      var cur = q[head++];
+      if (cur === target) { found = true; break; }
+      var an = sp.adj[cur] || [];
+      for (var i = 0; i < an.length; i++) {
+        var nb2 = an[i];
+        if (prev[nb2] !== -1) continue;
+        prev[nb2] = cur;
+        q.push(nb2);
+      }
+    }
+    if (!found) return { ci: [], complete: false, why: 'unreach' };
+    var out = [];
+    for (var c2 = target; c2 !== start; c2 = prev[c2]) {
+      out.push(c2);
+      if (prev[c2] === c2 || out.length > nv) break;
+    }
+    out.reverse();
+    return { ci: out, complete: true };
+  };
+
+  /* 这一步要花多少精力（唯一口径，HUD 的"约耗 N"与真正走路同源） */
+  P.stepCost = function () { return D().stepEnergy || 1; };
+  /* 以当前精力还能走几步 */
+  P.moveBudget = function () {
+    var lord = P.lord();
+    if (!lord) return 0;
+    var en = GAME.energyNowOf ? GAME.energyNowOf(lord) : ((lord && lord.energy) || 0);
+    return Math.max(0, Math.floor(en / P.stepCost()));
+  };
+
+  /* 走一步。只有一件事需要判断：是不是相邻、精力够不够。 */
   P.moveTo = function (ci) {
     if (!P.on()) return { ok: false, msg: '已经立城了，这活儿得派队伍出去' };
-    var s = st0(), sp = SP();
+    var s = st0(), sp = SPc();
     if (!s) return { ok: false, msg: '没有对局' };
-    var pos = P.pos(), adj = sp.hopsWithin(pos, 1), ok = false;
+    var pos = P.pos(), adj = sp && sp.hopsWithin ? sp.hopsWithin(pos, 1) : [], ok = false;
     for (var i = 0; i < adj.length; i++) if (adj[i] === ci) ok = true;
     if (!ok) return { ok: false, msg: '只能走到相邻的格子' };
     var lord = P.lord();
     if (!lord) return { ok: false, msg: '没有君主' };
-    var cost = D().stepEnergy || 1;
+    var cost = P.stepCost();
     var en = (GAME.energyNowOf ? GAME.energyNowOf(lord) : 100);
     if (en < cost) return { ok: false, msg: '精力见底了 —— 明天再走' };
     if (GAME.setEnergyNow) GAME.setEnergyNow(lord, en - cost);
+    /* v153：记下上一格 —— map3d 的小人据此做"沿地表走过来"的插值（不瞬移） */
+    s.prologue._fromCi = pos;
     s.prologue.pos = ci;
     s.prologue.steps = (s.prologue.steps | 0) + 1;
-    /* 站到哪儿就看到哪儿周围一圈（比"探索"窄 —— 走一趟不等于勘察） */
+    /* 站到哪儿就看到哪儿周围一圈（比"探索"窄 —— 走一趟不等于勘察）。
+       v152：脚下这一格**必须**全明（人站在那儿，不可能"看不见自己脚下"）。 */
     try {
-      if (GAME.fog && GAME.fog.revealAround) GAME.fog.revealAround(ci, 2, GAME.fog.ALL);
+      if (GAME.fog && GAME.fog.revealAround) GAME.fog.revealAround(ci, 3, GAME.fog.ALL);
+      if (GAME.fog && GAME.fog.bump) GAME.fog.bump(ci, GAME.fog.ALL);
     } catch (e) { /* 迷雾失败不该挡住移动 */ }
     var cell = sp.cellOf(ci) || {};
     var tn = ((GAME.DATA || {}).TERRAIN || {})[cell.type] || {};
     return { ok: true, msg: '走到' + (tn.name || '荒野') + '了 —— 看看这地方能做什么', ci: ci };
+  };
+
+  /* 沿最短路径走到底（精力不足就停在中途）。
+     返回 { ok, ci, steps, spent, complete, why, arrived } ——
+     `arrived` = 最终是不是就站在目标格（决定地图点击后要不要就地弹动手面板）。 */
+  P.walkTo = function (target) {
+    if (!P.on()) return { ok: false, msg: '已经立城了，这活儿得派队伍出去' };
+    var s = st0();
+    if (!s) return { ok: false, msg: '没有对局' };
+    var pth = P.pathTo(target);
+    if (!pth.ci.length && !pth.complete) {
+      return { ok: false, why: pth.why || 'no', msg: '走不过去' };
+    }
+    var budget = P.moveBudget();
+    var path = pth.ci;
+    if (!path.length) {
+      return { ok: true, ci: P.pos(), steps: 0, spent: 0, complete: pth.complete, arrived: true };
+    }
+    var n = Math.min(budget, path.length);
+    var last = null;
+    for (var i = 0; i < n; i++) {
+      var r = P.moveTo(path[i]);
+      if (!r.ok) break;
+      last = r;
+    }
+    var spent = n * P.stepCost();
+    var arrived = n > 0 && path[n - 1] === target;
+    var cur = P.pos();
+    var cell = (SPc() && SPc().cellOf) ? SPc().cellOf(cur) : null;
+    var tn = ((GAME.DATA || {}).TERRAIN || {})[(cell || {}).type] || {};
+    var msg;
+    if (!n) msg = '精力见底了 —— 明天再走';
+    else if (arrived) msg = '走到' + (tn.name || '荒野') + '了（' + n + ' 步 · 精力 −' + spent + '）';
+    else msg = '走了 ' + n + ' 步，精力不够了 —— 停在' + (tn.name || '荒野') + '（还差 '
+      + (path.length - n) + ' 步）';
+    return { ok: n > 0, ci: cur, steps: n, spent: spent, complete: pth.complete,
+      arrived: arrived, msg: msg };
   };
 
   /* ============================================================
@@ -871,16 +905,27 @@
    * **给经验**。内核给的是辐能核心与装备，不给经验 —— 前传要的正是经验。
    * 经验走既有 `GAME.battle.gainExp`（含升级、音效、日志）。
    * ============================================================ */
-  P.act = function (ci, actId) {
+  /* 能不能在这一格做这件事（**不扣费、不落锁** —— 给"先问再走"的前置检查用） */
+  P.actCheck = function (ci, actId) {
     if (!P.on()) return { ok: false, msg: '已经立城了，这活儿得派队伍出去' };
     var lord = P.lord();
     if (!lord) return { ok: false, msg: '没有君主' };
-    if (!GAME.jianghuDo || !GAME.jianghuCheck || !GAME.jianghuRoll) {
-      return { ok: false, msg: '荒野行动内核缺失' };
-    }
+    if (!GAME.jianghuCheck) return { ok: false, msg: '荒野行动内核缺失' };
     /* 前传期**不锁日**：野外就在脚下，翻过一遍还能再翻。
        正式阶段的"此地今日已做过"是防止在城里刷行动，前传没有这个场景；
        真正的限制是精力与体力（有限资源才有取舍）。 */
+    var s0 = st0();
+    if (s0 && s0.jianghu) delete s0.jianghu['c' + ci + '|' + actId];
+    return GAME.jianghuCheck(ci, lord.id, actId);
+  };
+
+  /* 结算一次行动（扣费 + 掷结果 + 给经验）；`force` 由回合制打斗传进来，
+     直接改写 `jianghuRoll` 的胜负 —— 不另写第二套账（见 jianghuRoll 的 force 注释）。
+     `preChk` = 这笔费用**已经付过**（回合打斗在开打时扣），此时不再重复校验与扣费。 */
+  P.resolve = function (ci, actId, force, preChk) {
+    var lord = P.lord();
+    if (!lord) return { ok: false, msg: '没有君主' };
+    if (!GAME.jianghuCheck || !GAME.jianghuRoll) return { ok: false, msg: '荒野行动内核缺失' };
     var s0 = st0();
     if (s0 && s0.jianghu) delete s0.jianghu['c' + ci + '|' + actId];
     /* 走的是**同一套内核**（check → spend → roll），只是把 `jianghuDo` 的三合一
@@ -888,16 +933,9 @@
     /* 连战不耗精力（它是上一场"顺下来"的），普通行动才走 check/spend */
     var combo = P.comboOf();
     var isCombo = !!(combo && combo.ci === ci && combo.act === actId);
-    if (!isCombo) {
-      var chk = GAME.jianghuCheck(ci, lord.id, actId);
-      if (!chk.ok) return chk;
-      GAME.jianghuSpend(chk);
-    } else {
-      var chk2 = GAME.jianghuCheck(ci, lord.id, actId);
-      /* check 只是为了拿到 roll 需要的结构；连战不扣费，所以失败也能继续打 */
-      if (!chk2.ok) return chk2;
-      var chk = chk2;
-    }
+    var chk = preChk || GAME.jianghuCheck(ci, lord.id, actId);
+    if (!chk.ok) return chk;
+    if (!isCombo && !preChk && GAME.jianghuSpend) GAME.jianghuSpend(chk);
     var d = D();
     var tier = P.tier();
     var def = (GAME.DATA.LING_ACT || {})[actId];
@@ -905,7 +943,7 @@
     /* v132：**斗将赢了，这一格的头目服了** —— 之后 3 次战斗类动作难度 −40%。
        这是斗将真正的存在理由：经验远不如清剿（几百 vs 四千），
        但"打不过的时候先把头目挑下来"是一条真的出路。
-       用现成的 `def.power` 临时缩放（同一套倍率机制，P.act 本来就在用它）。
+       用现成的 `def.power` 临时缩放（同一套倍率机制，P.resolve 本来就在用它）。
        只对 fight / trial / scene 生效 —— 采集/静修没有对手，不该跟着变便宜。 */
     var _subdued = 0;
     try {
@@ -922,7 +960,9 @@
     }
     var r;
     try {
-      r = GAME.jianghuRoll(chk, { pow: d.powMul || 1 });
+      var mods = { pow: d.powMul || 1 };
+      if (force) mods.force = force;
+      r = GAME.jianghuRoll(chk, mods);
     } finally {
       if (def && bakPow) def.power = bakPow;   /* 一定要恢复：这张表是正式阶段的 */
       /* v132：吃掉了这次"头目服了"的优惠（3 次用完就没了） */
@@ -959,6 +999,108 @@
       ok: true, gain: gain, bad: !!r.bad,
       msg: (r.name || '') + '　' + (r.text || '') + (gain ? '　经验 +' + gain : '')
     };
+  };
+
+  /* 就地解决（一次性结算）。回合制打斗走 P.duelAct（见 §v151）。 */
+  P.act = function (ci, actId) { return P.resolve(ci, actId, null); };
+
+  /* ============================================================
+   * v151-b：**打斗给回合**（老板：「点那个敌人 → 打几个回合」）
+   * ------------------------------------------------------------
+   * 改前：点一下 = 掷一次骰 = 一行字。没有出手，没有读招。
+   * 改后：先扣费（jianghuSpend 与一次性结算同一本账），再开一场**斗将竞技场**：
+   *   复用 `GAME.duel.play`（血 = 体力上限、每合双方各出手一次、招式相克），
+   *   每合玩家选一招 → 打完把胜负**回灌** `jianghuRoll({force})` 落账。
+   * 于是"回合"长在前端，"账"仍在唯一出口 —— 不新写第二套判定。
+   * 谁会开回合：fight / trial / scene（有对手）；采集/静修/拜访仍是一次性。
+   * ============================================================ */
+  P.combatKind = function (actId) {
+    var def = (GAME.DATA.LING_ACT || {})[actId];
+    return !!(def && (def.kind === 'fight' || def.kind === 'trial'));
+  };
+
+  /* 开一场"做事"的回合：先付费 → 建 foe 快照 → 存 prologue.duel(mode:'act') */
+  P.duelAct = function (ci, actId) {
+    if (!P.on()) return { ok: false, msg: '已经立城了，这活儿得派队伍出去' };
+    var lord = P.lord();
+    if (!lord) return { ok: false, msg: '没有君主' };
+    if (!GAME.duel || !GAME.duel.play) return { ok: false, msg: '斗将竞技场缺失' };
+    var n = P.duelOf();
+    if (n && !n.done) return { ok: false, msg: '正打着呢' };
+    var chk = P.actCheck(ci, actId);
+    if (!chk.ok) return chk;
+    /* 血就是体力：气力不足不许动手（与叫阵同一条门槛） */
+    var gt = GAME.duel.gate(lord);
+    if (!gt.ok) return { ok: false, msg: gt.msg };
+    GAME.jianghuSpend(chk);                       /* 扣费与一次性结算同一本账 */
+    var foe = P.duelFoe(ci);
+    var s = st0();
+    s.prologue.duel = {
+      mode: 'act', ci: ci, act: actId,
+      seed: 20261024 + (s.prologue.acts | 0),
+      moves: [], rows: [], wa: 0, wb: 0, done: false, winner: null, res: null,
+      foe: { name: foe.name, level: foe.level | 0,
+        tong: foe.tong | 0, yw: foe.yw | 0, zm: foe.zm | 0, nz: foe.nz | 0,
+        icon: (foe.species && foe.species.icon) || '👤',
+        tag: (foe.species && foe.species.tag) || '',
+        desc: (foe.species && foe.species.desc) || '',
+        speciesId: (foe.species && foe.species.id) || '' },
+      foeFull: { id: foe.id, name: foe.name, level: foe.level | 0,
+        yw: foe.yw | 0, tong: foe.tong | 0, zm: foe.zm | 0, nz: foe.nz | 0,
+        species: (foe.species || null) },
+    };
+    return { ok: true, msg: foe.name + '（Lv' + (foe.level | 0) + '）挡住了去路 —— 出招吧' };
+  };
+
+  /* 出一招（mode:'act'）。打满不判负死的，按 duel 内核的"剩血比例"分胜负。 */
+  P.duelActStep = function (moveId) {
+    var s = st0(), lord = P.lord(), d = P.duelOf();
+    if (!s || !lord || !d || d.done || d.mode !== 'act') return { ok: false, msg: '现在没有在打的斗将' };
+    var MV = (GAME.DATA && GAME.DATA.DUEL && GAME.DATA.DUEL.moves) || {};
+    if (!MV[moveId]) return { ok: false, msg: '没有这一招' };
+    if (!GAME.duel || !GAME.duel.play) return { ok: false, msg: '斗将竞技场缺失' };
+    d.moves.push(moveId);
+    var foe = P.duelFoeFull(d);
+    var r = GAME.duel.play(lord, foe, d.moves, d.seed);
+    if (!r) return { ok: false, msg: '这一合没判出来' };
+    var row = r.rounds[r.rounds.length - 1] || null;
+    d.res = r; d.rows = r.rounds; d.wa = r.wa; d.wb = r.wb;
+    d.hpA = r.hpA; d.hpB = r.hpB;
+    var out = { ok: true, row: row, res: r, done: false, msg: '' };
+    if (!r.over) {
+      out.msg = '第 ' + d.moves.length + ' 合：' + row.aName + ' 对 ' + row.bName
+        + '　我掉 ' + row.dmgToA + ' · 他掉 ' + row.dmgToB;
+      return out;
+    }
+    /* 打完：把胜负回灌唯一账本（force）—— 经验/物资/负伤全在那一本账上。
+       `已付费`（preChk）：开打时扣过，这里只结算，不再校验体力/精力。 */
+    d.done = true;
+    d.winner = r.winner;
+    var force = (r.winner === 'atk') ? 'win' : (r.winner === 'def' ? 'lose'
+      : (r.winner === 'draw' ? 'draw' : 'win'));
+    var act = P.resolve(d.ci, d.act, force, {
+      ok: true, act: (GAME.DATA.LING_ACT || {})[d.act], gen: lord, ci: d.ci, actId: d.act,
+      day: Math.floor(((s.world && s.world.elapsed) || 0) / 86400),
+      lv: (GAME.map && GAME.map.wildLevelNow) ? GAME.map.wildLevelNow(d.ci) : 0
+    });
+    d.actRes = act || null;
+    d.txt = (act && act.msg) || '';
+    d.gain = (act && act.gain) | 0;
+    out.done = true; out.winner = r.winner; out.act = act;
+    out.msg = (r.winner === 'atk' ? '拿下' : r.winner === 'def' ? '不敌' : '相持')
+      + (d.txt ? ' —— ' + d.txt : '');
+    return out;
+  };
+
+  /* 打斗里"先撤"：账不结（已扣的费用不退，回合作废）——
+     退的是命，不是白打；给玩家一条"打不动就走"的路。 */
+  P.duelActFlee = function () {
+    var d = P.duelOf();
+    if (!d || d.mode !== 'act' || d.done) return { ok: false, msg: '现在没有在打的斗将' };
+    d.done = true; d.winner = 'flee';
+    d.txt = '你退开了 —— 这一趟白跑，精力和体力照扣';
+    d.gain = 0;
+    return { ok: true, msg: d.txt };
   };
 
   /* ============================================================
@@ -1138,6 +1280,7 @@
       : '';
     /* 进度：几场了 + 还差几次的感觉（不写"还差 N 次"，那是数学题，不是游戏） */
     var acts = (st0() && st0().prologue && (st0().prologue.acts | 0)) || 0;
+    var steps = (st0() && st0().prologue && (st0().prologue.steps | 0)) || 0;
 
     /* v131：`spotRows`（v128 的"附近可去"列表）退役 —— 现在走「脚下 + 四周」。 */
     /* 地形名：面板与营地视图都要用（删 spotRows 时被一起带走，这里补回）。 */
@@ -1146,54 +1289,90 @@
     };
 
     /* ============================================================
-     * v131（老板：「君主作为个人冒险者在大地图进行游玩」）
+     * v151（老板：「地图就是游戏本体」）
      * ------------------------------------------------------------
-     * 从"面板上挑一个地方跳过去"改成**人在地图上走**：
-     *   · 脚下 —— 我站的这一格能做什么（探索/采集/斗将，走同一个 jianghuActsAt）
-     *   · 四周 —— 六个邻格，点一下就走过去（`P.moveTo`，耗 1 精力）
-     * 这才有"地块探索"：走到哪、看到哪、能做什么，都由**站的位置**决定。
+     * 走路、动手、叫阵**全部在地图上用手势完成** —— HUD 不给任何操作按钮：
+     *   · 点地图上的格 → `P.walkTo` 沿最短路径走过去（精力够到哪走到哪）
+     *   · 点脚下有事的格 → 地图上就地弹出动手面板（`ui.openLandModalCi`）
+     *   · 破雾 → 雾里有动静的格子在地图上自己闪光
+     * HUD 只留：读数（天数/等级/精力）、脚下是什么（一行字，**不是按钮**）、
+     * 去哪儿（指路文案）、立城。
      * ============================================================ */
     var hereActs = (GAME.jianghuActsAt ? GAME.jianghuActsAt(P.pos()) : []) || [];
-    var hereBlock = '<div style="margin-top:8px;font-size:16px;color:#8a7a5c;">📍 你站在这里 · ' +
-      U.escape(terrainName((SP() && SP().cellOf && SP().cellOf(P.pos()) || {}).type)) + '）</div>'
+    var hereCell = (SPc() && SPc().cellOf) ? SPc().cellOf(P.pos()) : {};
+    var hereName = terrainName((hereCell || {}).type);
+    var budget = P.moveBudget();
+    var hereLine = '<div style="margin-top:8px;font-size:15px;color:#8a7a5c;">📍 你现在站在「<b style="color:#c9b06a;">'
+      + U.escape(hereName) + '</b>」　·　点地图上的格子就走过去（每步 ' + P.stepCost() + ' 精力，还能走 '
+      + budget + ' 步）</div>'
       + (hereActs.length
-        /* v140（老板：「目前前20级还是 PPT，这不是个正经游戏」）：
-           主按钮**走进场景**（`prologue-scene`）—— 进到那片废墟/林地/湖边，
-           自己走、走到东西旁边动手。真正的结算仍走 `P.act`（唯一出口）。
-           另留一个「就地解决」（`prologue-act`）给不想走的人：
-           不是所有人都想每次都进去走一趟，但默认是走进去。 */
-        ? '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;">' + hereActs.map(function (a, ai) {
-            var nm = (a.def && a.def.name) || a.name || a.id;
-            var kindTxt = (a.def && a.def.kind) === 'fight' ? '⚔' : (a.def && a.def.kind) === 'visit' ? '🏡' : '⛏';
-            return '<span data-action="prologue-scene" data-ci="' + P.pos() + '" data-act="' + U.escape(a.id) + '"'
-              + ' style="padding:5px 12px;border:1px solid #4a4436;border-radius:4px;background:#1c2027;'
-              + 'color:#e0d8c6;font-size:15px;cursor:pointer;" title="走进这个场景，自己过去动手">'
-              + kindTxt + ' ' + U.escape(nm) + '</span>';
-          }).join('') + '</div>'
-          + '<div style="margin-top:5px;font-size:15px;color:#6f6a60;">走进去，自己找地方动手　·　'
-          + '<span data-action="prologue-act" data-ci="' + P.pos() + '" data-act="' + U.escape(hereActs[0].id) + '"'
-          + ' style="text-decoration:underline;cursor:pointer;color:#8a7a5c;">就地解决</span></div>'
-        : '<div style="margin-top:3px;font-size:16px;color:#6f6a60;">这块地方没什么可做的 —— 往别处走走。</div>');
-    /* v132：这格有仗可打 → 给"点名斗将"的入口（否则斗将变成满地图刷经验的捷径） */
-    var duelBtn = (P.duelReady && P.duelReady())
-      ? '<div style="margin-top:7px;"><span data-action="prologue-duel"'
-        + ' style="display:inline-block;padding:5px 13px;border:1px solid #7a5a2a;border-radius:4px;'
-        + 'background:#241c10;color:#ffd9a0;font-size:16px;cursor:pointer;">⚔ 点名斗将</span>'
-        + '<span class="ui-sub" style="margin-left:7px;font-size:15px;">不耗兵，赢了他就服</span></div>'
+        ? '<div style="margin-top:3px;font-size:15px;color:#c9b06a;">这一格有动静 —— '
+          + hereActs.slice(0, 3).map(function (a) {
+              var nm = (a.def && a.def.name) || a.name || a.id;
+              var k = (a.def && a.def.kind) === 'fight' ? '⚔' : (a.def && a.def.kind) === 'visit' ? '🏡' : '⛏';
+              return k + ' ' + U.escape(nm);
+            }).join('　')
+          + '　·　<b style="color:#ffd9a0;">再点脚下这一格动手</b></div>'
+        : '<div style="margin-top:3px;font-size:15px;color:#6f6a60;">脚下是空地（能立城）—— '
+          + (function () {
+              /* v152c: if a neighbor has something to do, say so (the boss hated "nothing here"). */
+              var nb5 = P.neighbors(), best5 = null;
+              for (var i5 = 0; i5 < nb5.length && !best5; i5++) if ((nb5[i5].acts || []).length) best5 = nb5[i5];
+              return best5
+                ? ('<b style="color:#e0c98a;">' + U.escape(best5.dir) + '边上有动静</b> —— 点那一格走过去')
+                : '这一带很静 —— 点地图往远处走走';
+            })() + '</div>');
+    /* 指路：最近的平地（立城）+ 最近的"有动静"格子（破雾之后地图上也会闪光） */
+    var nearFlat = P.ready() ? P.nearestBuildable(40) : null;
+    var nearAct = null;
+    try {
+      var ring2 = (SPc() && SPc().hopsWithin) ? SPc().hopsWithin(P.pos(), D().reach || 6) : [];
+      for (var ri = 1; ri < ring2.length && !nearAct; ri++) {
+        var c3 = ring2[ri];
+        if (c3 === P.pos()) continue;
+        if ((GAME.jianghuActsAt(c3) || []).length) nearAct = c3;
+      }
+    } catch (e) { nearAct = null; }
+    /* ============================================================
+     * v152（实测「精力见底 → 点地图只弹一句'明天再走'，人就卡死了」）
+     * 精力耗尽必须给出**下一步**：歇到天亮（快进一游戏日）/ 用一个辐能核心提神。
+     * 两条都是"玩家做一次选择"，不是自动帮玩家跳过时间。
+     * ============================================================ */
+    var lowBlock = '';
+    if (budget <= 0) {
+      var cores = (GAME.items && GAME.items.count) ? GAME.items.count('lingsui') : 0;
+      lowBlock = '<div style="margin-top:7px;padding:7px 9px;border:1px solid #6a4b22;border-radius:5px;'
+        + 'background:#221a10;font-size:15px;color:#e8c88a;">精力见底 —— 走不动了。</div>'
+        + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:5px;">'
+        + '<span class="chip" data-action="prologue-rest" style="cursor:pointer;">🌙 歇到天亮（明天再走）</span>'
+        + '<span class="chip' + (cores > 0 ? '' : ' dim') + '" data-action="prologue-tonic"'
+        + (cores > 0 ? ' style="cursor:pointer;"' : ' data-why="背包里没有辐能核心（荒野行动 / 斗将会掉）"')
+        + '>💊 吃个辐能核心提神（+30 精力 · 现有 ' + cores + '）</span></div>';
+    }
+    /* v153: legend for the 3D figure */
+    var figLine = (GAME.map3d && GAME.map3d.enabled)
+      ? '<div style="margin-top:3px;font-size:13px;color:#6f6a60;">🟡 地图上那个小黄人就是你 —— 点旁边的格子，他会走过去</div>'
       : '';
-    var nbs = P.neighbors();
-    var walkBlock = '<div style="margin-top:9px;font-size:16px;color:#8a7a5c;">四周（点一格走过去 · 每步耗 1 精力）</div>'
-      + '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;">' + (nbs.length ? nbs.map(function (n) {
-          var nm = terrainName(n.type);
-          var has = (n.acts || []).length;
-          return '<span data-action="prologue-move" data-ci="' + n.ci + '"'
-            + ' style="padding:5px 11px;border:1px solid ' + (has ? '#5a4a26' : '#2a2e35') + ';border-radius:4px;'
-            + 'background:' + (has ? '#1e1a12' : '#12151a') + ';color:' + (has ? '#e0c98a' : '#9a9284') + ';'
-            + 'font-size:16px;cursor:pointer;" title="' + (has ? '那边有动静' : '看不出什么') + '">'
-            /* v131：方位在前、地形在后 —— 光给六个"湖泊"，玩家分不清往哪走 */
-            + (n.dir ? '<b style="opacity:.75;">' + U.escape(n.dir) + '</b> ' : '')
-            + U.escape(nm) + (has ? ' ·' : '') + '</span>';
-        }).join('') : '<span class="ui-sub">走不动了</span>') + '</div>';
+    var hintBlock = '';
+    if (P.ready()) {
+      var nsTag = nearFlat ? 'now' : 'far';
+      hintBlock = (nearFlat
+        ? '<div style="margin-top:5px;font-size:15px;color:#c9a86a;">最近的平地（能立城）：<b>'
+          + U.escape(nearFlat.dir) + ' ' + nearFlat.dist + ' 格</b> —— 点地图走过去</div>'
+        : '<div style="margin-top:5px;font-size:15px;color:#c9a86a;">这一带走很远都没有平地 —— 换个方向</div>');
+      /* +B（立城导航）：点地图上的框 = 直接走到那块平地；到了就地立城。
+         ⚠️ 这是 HUD 里唯一的"动作"，而且它也是地图坐标 —— 不是换一套操作，
+         只是把"哪块能立城"这件事从文字变成可以点的东西。 */
+      hintBlock += '<div style="margin-top:6px;display:flex;gap:8px;align-items:center;">'
+        + '<span class="chip" data-action="prologue-build-nav" data-ci="' + (nearFlat ? nearFlat.ci : '') + '" data-tag="' + nsTag + '"'
+        + ' style="cursor:pointer;">'
+        + (nearFlat ? ('🏯 走到平地立城（' + U.escape(nearFlat.dir) + ' ' + nearFlat.dist + ' 步）') : '🌀 换一块地方找平地')
+        + '</span>'
+        + '<span class="ui-sub" style="font-size:13px;">到了平地，这一格会亮起「立城」</span></div>';
+    } else if (nearAct != null) {
+      hintBlock = '<div style="margin-top:5px;font-size:15px;color:#8a7a5c;">最近的动静：<b>'
+        + U.escape(P.dirNameOf(nearAct)) + '</b>（雾里有东西在动，地图上会亮）</div>';
+    }
 
     return '<div style="pointer-events:auto;background:rgba(13,15,19,.93);border:1px solid #2c3037;'
       + 'border-radius:8px;padding:12px 16px;backdrop-filter:blur(3px);line-height:1.65;'
@@ -1206,7 +1385,8 @@
          直读 `lord.energy` 会把 231 这种超上限的原始值直接印在面板上。 */
       + '<span>精力 <b style="color:#e8e2d4;">' + Math.round(GAME.energyNowOf ? GAME.energyNowOf(lord) : ((lord && lord.energy) || 0))
       + '</b> / ' + Math.round(GAME.energyMaxOf ? GAME.energyMaxOf(lord) : 100) + '</span>'
-      + (acts ? '<span>已出去 ' + acts + ' 趟</span>' : '')
+      + (acts ? '<span>出去 ' + acts + ' 趟</span>' : '')
+      + (steps ? '<span>走了 ' + steps + ' 步</span>' : '')
       + '<span style="flex:1;"></span>'
       + '<span style="color:#6f6a60;">' + (day < 10 ? '天还没冷' : '天在变冷') + '</span>'
       + '</div>'
@@ -1215,10 +1395,11 @@
       + '<div style="margin-top:6px;height:5px;background:#23262b;border-radius:3px;">'
       + '<div style="height:5px;width:' + pct + '%;background:#c9b06a;border-radius:3px;"></div></div>'
       + tierLine + nextLine
-      + hereBlock + duelBtn + walkBlock
+      + hereLine + hintBlock + lowBlock + figLine
       /* v131：原来的「就近清剿 / 就近试炼 / 就近采集」三个按钮撤掉 ——
          它们和「脚下 + 四周」是同一件事的两种说法，而且找不到目标时会印
-         「附近没有」，读起来像功能坏了。现在"能做什么"由**站的位置**决定。 */
+         「附近没有」，读起来像功能坏了。现在"能做什么"由**站的位置**决定。
+         v151：v131 补上的「脚下 + 四周」按钮也撤掉 —— 走路与动手都已回到地图手势上。 */
       + comboLine
       + (last ? '<div style="margin-top:9px;font-size:16px;color:#7d766a;border-top:1px solid #23262b;padding-top:7px;">最近：'
         + U.escape(last) + '</div>' : '')
@@ -1298,13 +1479,13 @@
       var st = st0();
       if (st && st.prologue && !st.prologue._lit) {
         st.prologue._lit = 1;
-        /* ⛔ v131：改前这里用 `currentCity().ci`，而前传现在**没有城** →
-           取到 null → `fromCi = 0` → 点亮的是球面另一头的第 0 格。
-           实测截图：整颗球几乎全黑，玩家根本看不见自己站在哪。
-           视野要围着**君主所在格**开，不是围着城。 */
+        /* v152（老板：「说好未探索区域只要云雾缭绕微暗就行」）——
+           开局把脚下这一带**整片点亮**（半径 8 全明）。原来是半径 4 的"半明"
+           （只看见地形、不知道上面有什么）→ 周围六格全在雾里，点哪都是
+           "没探明"，人一睁眼就寸步难行。现在：脚下亮，远处才是雾。 */
         var fromCi = P.pos();
         if (GAME.fog && GAME.fog.revealAround) {
-          GAME.fog.revealAround(fromCi, 4, (GAME.fog.TERRAIN || 1));
+          GAME.fog.revealAround(fromCi, 3, GAME.fog.ALL);
         }
       }
     } catch (e) { /* 迷雾失败不该挡住界面 */ }
@@ -1319,20 +1500,119 @@
      * ============================================================ */
     try {
       var st2 = st0(), M3 = GAME.map3d;
+      /* v152c：**首帧之前**就把相机压到近地 —— 否则第一帧按默认 camO（总览）画出去，
+         之后再 focusOnCell 也只是重绘，玩家看到的还是"远处一颗球"。
+         放在"是否换格"的判断**外面**：每次进前传都确保贴着地。 */
+      if (st2 && st2.prologue && M3 && M3.focusOnCell && st2.prologue._camCi == null) {
+        st2.prologue._camCi = -1;   /* 强制下一段走一次 focus */
+      }
       if (st2 && st2.prologue && M3 && M3.centerOn) {
         var pos2 = P.pos();
         if (st2.prologue._camCi !== pos2) {
-          var cell2 = (SP() && SP().cellOf) ? SP().cellOf(pos2) : null;
-          if (cell2 && cell2.lon != null) {
-            var xy2 = SP().xyOfLonLat(cell2.lon, cell2.lat);
-            st2.prologue._camCi = pos2;
-            if (M3.setZoom) M3.setZoom(0.02);      /* 0 = 最近；留一点余量，别贴到穿模 */
-            M3.centerOn(xy2.x, xy2.y);
+          st2.prologue._camCi = pos2;
+          /* v152：贴地跟随 —— 相机对准**脚下这一格**并压到近地（focusOnCell）。
+             不再走 centerOn（那会把距离设成 R*1.9 的中景，一格只有几个像素）。 */
+          if (M3.focusOnCell) M3.focusOnCell(pos2);
+          else {
+            var cell2 = (SP() && SP().cellOf) ? SP().cellOf(pos2) : null;
+            if (cell2 && cell2.lon != null) {
+              var xy2 = SP().xyOfLonLat(cell2.lon, cell2.lat);
+              M3.centerOn(xy2.x, xy2.y);
+              if (M3.setZoom) M3.setZoom(0);
+            }
           }
         }
       }
     } catch (e) { /* 相机失败不该挡住界面 */ }
+    /* v151：地图就是本体 —— 视图切换由进游戏那条路（ui.js 开局 setView）负责，
+       这里**不再每次刷新都强制 setView**（那会让 smoke §340② 的 refreshAll 变慢一倍）。 */
     el.innerHTML = P.screenHTML();
+
+    /* ============================================================
+     * v151-a（老板：「点地图 = 走路」，靠键盘也能闭环）
+     * ------------------------------------------------------------
+     * 世界坐标里的"点哪走哪"要求玩家看得懂 3D/2D 投影 —— 屏读器、无鼠标、
+     * 以及 e2e（jsdom 没有 WebGL / 布局）拿不到这层手势。这里补一条**同构入口**：
+     *   方向键 / WASD → 走一格；E → 对脚下这一格动手；B → 立城。
+     * 它走的是**同一套** P.moveTo / ui.openPrologueLand / P.build ——
+     * 不是第二个玩法，只是同一手势的另一种输入。⚠️ 只在 document 上挂一次。
+     * ============================================================ */
+    if (!P._keyBound && document.addEventListener) {
+      P._keyBound = 1;
+      document.addEventListener('keydown', function (ev) {
+        try {
+          if (!P.on()) return;
+          var tag = (ev.target && ev.target.tagName) || '';
+          if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+          var k = String(ev.key || '').toLowerCase();
+          /* v92.247：方向键 = **绕星球南北极的方位**（上=北 下=南 左=西 右=东）。
+             旧写法按方位**名**匹配（"东北"同时含北与东 → 上/右抢同一格），
+             匹配不到还会回落 `nbs[0]`（排序后的第一个）—— 按左键却往北走，就是"乱走"。
+             现在按切平面方位角取最小夹角，极区也成立；真的没有邻格就不动。 */
+          var spK = SP();
+          var wantB = (spK && spK.KEY_BEARING) ? spK.KEY_BEARING[k] : undefined;
+          if (wantB != null) {
+            var nbs = P.neighbors();
+            var from = P.pos();
+            var best = null, bestDiff = 1e9;
+            nbs.forEach(function (n) {
+              var deg = (spK && spK.bearingOf) ? spK.bearingOf(from, n.ci) : null;
+              if (deg == null) return;
+              var diff = Math.abs(((deg - wantB + 540) % 360) - 180);
+              if (diff < bestDiff) { bestDiff = diff; best = n; }
+            });
+            if (best) {
+              var mr = P.moveTo(best.ci);
+              if (mr.msg && GAME.ui && GAME.ui.toast) GAME.ui.toast(mr.msg);
+              if (GAME.refreshAll) GAME.refreshAll();
+            } else if (GAME.ui && GAME.ui.toast) {
+              GAME.ui.toast('这边没有能落脚的地方');
+            }
+            ev.preventDefault();
+            return;
+          }
+          if (k === 'e' || k === 'enter') {
+            if (GAME.ui && GAME.ui.openPrologueLand) GAME.ui.openPrologueLand(P.pos());
+            ev.preventDefault();
+          } else if (k === 'b') {
+            if (P.canFound && P.canFound()) {
+              var rb = P.build();
+              if (rb && rb.msg && GAME.ui && GAME.ui.toast) GAME.ui.toast(rb.msg);
+              if (GAME.refreshAll) GAME.refreshAll();
+              ev.preventDefault();
+            }
+          }
+        } catch (e) { /* 键盘失败不该挡住界面 */ }
+      });
+    }
+  };
+
+  /* ============================================================
+   * v151：**地图上就地动手**（老板：「点那个敌人 → 打几个回合」）
+   * ------------------------------------------------------------
+   * 入口只有两个，都在地图手势上：
+   *   · 点**脚下**这一格（有动静）→ 就地弹动手面板（`ui.openLandModalCi`）
+   *   · 手动点「⚔ 斗将」/ 有回合的打斗走 `P.duelAct`（回合制）
+   * 一次性结算（采集/静修/拜访）仍走 `P.act` —— 与以前同一出口，只是入口换到地图。
+   * ============================================================ */
+  P.mapClick = function (ci) {
+    if (!P.on()) return { ok: false, msg: '' };
+    if (ci == null || ci < 0) return { ok: false, msg: '' };
+    var pos = P.pos();
+    /* 脚下这一格：直接开"动手"面板（面板里的按钮说的就是这一格能做什么） */
+    if (ci === pos) {
+      if (!(GAME.jianghuActsAt ? GAME.jianghuActsAt(ci) : []).length) return { ok: false, msg: '这儿没什么可做的 —— 往别处走走' };
+      if (GAME.ui && GAME.ui.openLandModalCi) { GAME.ui.openLandModalCi(ci); return { ok: true, here: true }; }
+      return { ok: false, msg: '动手面板没加载' };
+    }
+    var r = P.walkTo(ci);
+    if (!r.ok) return r;
+    if (GAME.refreshAll) GAME.refreshAll();
+    /* 走到了一个"有动静"的新格子：立刻把动手面板摆出来（少一次点击就是一次闭环） */
+    if (r.arrived && (GAME.jianghuActsAt ? GAME.jianghuActsAt(ci) : []).length && GAME.ui && GAME.ui.openLandModalCi) {
+      GAME.ui.openLandModalCi(ci);
+    }
+    return r;
   };
 
 /* ============================================================
@@ -1394,8 +1674,8 @@ if (GAME.reg) {
         + '君主升到 Lv' + need + ' 才能立城。</div>');
     },
     actions: {
-      /* v128：点"附近可去"的一行 → 打开那片野地（与地图点格同一条路），
-         玩家看到的是**世界**，不是三个写死的按钮。 */
+      /* v151：走到有动静的格子 → 直接开这一格的动手面板。
+         入口在地图手势上（点地图），面板只是"这一格能做什么"的唯一呈现。 */
       'prologue-spot': function (el, ctx) {
         var ci = Number(el.getAttribute('data-ci'));
         if (GAME.ui && GAME.ui.openLandModalCi && ci >= 0) GAME.ui.openLandModalCi(ci);
@@ -1411,14 +1691,37 @@ if (GAME.reg) {
         var ci = Number(el.getAttribute('data-ci'));
         var act = el.getAttribute('data-act');
         if (!GAME.scene3d || !GAME.scene3d.play) { ctx.toast('场景系统没加载'); return; }
-        var r = GAME.scene3d.play(act, ci);
-        if (!r || !r.ok) ctx.toast((r && r.msg) || '场景没打开');
+        var rr = GAME.scene3d.play(act, ci);
+        if (!rr || !rr.ok) ctx.toast((rr && rr.msg) || '场景没打开');
       },
       'prologue-act': function (el, ctx) {
         var ci = Number(el.getAttribute('data-ci'));
         var act = el.getAttribute('data-act');
         var r = P.act(ci, act);
         ctx.toast(r.msg);
+        if (GAME.refreshAll) GAME.refreshAll();
+      },
+      /* v151：打斗给回合 —— 先扣费、开竞技场，再由面板逐合出招（mode:'act'） */
+      'prologue-fight': function (el, ctx) {
+        var ci = Number(el.getAttribute('data-ci'));
+        var act = el.getAttribute('data-act');
+        var r = P.duelAct(ci, act);
+        ctx.toast(r.msg);
+        if (r.ok && GAME.ui && GAME.ui.openDuelPanel) GAME.ui.openDuelPanel();
+        else if (GAME.refreshAll) GAME.refreshAll();
+      },
+      'prologue-fight-hit': function (el, ctx) {
+        var mv = el.getAttribute('data-mv');
+        var r = P.duelActStep(mv);
+        if (r.msg) ctx.toast(r.msg);
+        if (GAME.ui && GAME.ui.openDuelPanel) GAME.ui.openDuelPanel();
+        else if (GAME.refreshAll) GAME.refreshAll();
+      },
+      'prologue-fight-flee': function (el, ctx) {
+        var r = P.duelActFlee();
+        if (r.msg) ctx.toast(r.msg);
+        if (GAME.ui && GAME.ui.closeModal) GAME.ui.closeModal();
+        if (GAME.ui && GAME.ui.openLandModalCi) GAME.ui.openLandModalCi(Number(el.getAttribute('data-ci')));
         if (GAME.refreshAll) GAME.refreshAll();
       },
       /* v132：点名斗将 */
@@ -1445,6 +1748,54 @@ if (GAME.reg) {
         var ci = Number(el.getAttribute('data-ci'));
         var r = P.moveTo(ci);
         ctx.toast(r.msg);
+        if (GAME.refreshAll) GAME.refreshAll();
+      },
+      /* v151：立城导航 —— 点 HUD 的"走到平地立城"= 走到那块平地；到了再点一次就立城。
+         `data-tag='far'` 表示这一带找不到平地 → 换个方向走两步再找。 */
+      'prologue-build-nav': function (el, ctx) {
+        var tag = el.getAttribute('data-tag');
+        var ci = Number(el.getAttribute('data-ci'));
+        if (tag === 'now' && ci >= 0) {
+          var r = P.mapClick(ci);
+          if (r && r.msg) ctx.toast(r.msg);
+          /* 到了平地且等级够 → 直接把"立城"摆到眼前（不多走一次菜单） */
+          if (P.canFound()) {
+            var rb = P.build();
+            ctx.toast(rb.msg || '立城了');
+          }
+        } else {
+          var nb = P.nearestBuildable ? P.nearestBuildable(60) : null;
+          if (nb) {
+            var rr = P.walkTo(nb.ci);
+            if (rr && rr.msg) ctx.toast(rr.msg);
+          } else {
+            var ring3 = (SPc() && SPc().hopsWithin) ? SPc().hopsWithin(P.pos(), 4) : [];
+            if (ring3.length > 1) P.moveTo(ring3[ring3.length - 1]);
+            ctx.toast('这一带没有平地 —— 往别处走几步再找');
+          }
+        }
+        if (GAME.refreshAll) GAME.refreshAll();
+      },
+      /* v152：精力见底的两个出口（HUD 上真正点得到的下一步） */
+      'prologue-rest': function (el, ctx) {
+        var s2 = st0();
+        if (!s2) return;
+        /* v152c: dayNow = elapsed / 86400 -> must advance by 86400 (not secPerYear/360). */
+        var perDay = 86400;
+        var day = dayNow();
+        s2.world = s2.world || {};
+        s2.world.elapsed = (day + 1) * perDay + 1;
+        if (P.tick) P.tick();
+        ctx.toast('睡了一夜 —— 精力与体力都回了一些');
+        if (GAME.refreshAll) GAME.refreshAll();
+      },
+      'prologue-tonic': function (el, ctx) {
+        var lord2 = P.lord();
+        if (!lord2 || !GAME.items) return;
+        if ((GAME.items.count('lingsui') | 0) <= 0) { ctx.toast('背包里没有辐能核心'); return; }
+        GAME.items.sub('lingsui', 1);
+        if (GAME.setEnergyNow) GAME.setEnergyNow(lord2, Math.min(GAME.energyMaxOf(lord2), GAME.energyNowOf(lord2) + 30));
+        ctx.toast('嚼碎一枚辐能核心 —— 精力 +30');
         if (GAME.refreshAll) GAME.refreshAll();
       },
       'prologue-build': function (el, ctx) {

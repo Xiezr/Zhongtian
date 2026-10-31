@@ -54,6 +54,9 @@ import './founding.js';  /* v103：开城 —— 棚户挤不下时，带他们�
 import './prologue.js';  /* v105：前传 —— 先没有城，打怪升到 20 级才立城 */
 import './market.js';    /* v117：集市与行情 —— 每月三次开市，寒潮月粮贵 */
 import './events.js';    /* v121：路上遇到的事 —— 每月一件，两三条路，代价全摊开 */
+import './placement.js'; /* v92.240k：地块放置物引擎（一格一件 · 程序化几何 · 组件接口预留） */
+import './belt.js';      /* v92.241：陨石带 / 轨道系（确定性生成 · 星际采矿的数据源） */
+import './planetgen.js'; /* v92.241：星球生成流水线（L0 骨架 → L8 轨道系，顺序即规范） */
 import './gltf.js';
 import './map3d.js';
 import './scene3d.js';   /* v140：2.5D 场景运行时（走进去、动手、结算） */
@@ -680,6 +683,41 @@ import './ui.js';
         break;
       }
       case 'wild-abandon-ask': ui.openAbandonWildAsk(Number(el.dataset.ci)); break;
+      /* v151（老板「地图上没法直接开工」）：**就地开工** —— 已占野地一个按钮开始采集。
+         · 有将驻军 → startGather（兵原地、收获回驻军）；
+         · 无将/无驻军 → 派本城空闲英雄 + 兵力过去驻守（march.dispatch 'station'），
+           抵达即驻军，再点一次「就地开工」即可。 */
+      case 'wild-boom': {
+        var _U = GAME.utils;
+        var _bci = Number(el.dataset.ci);
+        var _bw = GAME.map.wildAt(_bci);
+        if (!_bw) { ui.toast('这块地不是你的'); break; }
+        var _bg = GAME.wildGarrisonAt(_bci);
+        if (_bg && _bg.genId && GAME.wildGarrisonTotal(_bg) > 0) {
+          var _br = GAME.startGather(_bci, _U.deep(_bg.troops), {});
+          ui.toast(_br.msg);
+          if (_br.ok) { ui.closeModal(); GAME.refreshAll(); }
+          break;
+        }
+        var _bcity = GAME.currentCity();
+        if (!_bcity) { ui.toast('还没有城 —— 先立城'); break; }
+        var _idles = (GAME.state.generals || []).filter(function (g) {
+          return (!g.status || g.status === 'idle') && !(GAME.isLordGeneral && GAME.isLordGeneral(g));
+        });
+        var _bgen = _idles[0] || null;
+        if (!_bgen) { ui.toast('没有空闲英雄 —— 先在英雄界面歇一位下来'); break; }
+        var _bwant = (GAME.battle.marchCapOf ? GAME.battle.marchCapOf(_bcity) : 0) || 2000;
+        var _bpick = GAME.autoMarchPickArmy ? GAME.autoMarchPickArmy(_bcity, _bwant, null) : null;
+        if (!_bpick || !_bpick.total) { ui.toast('城里没有可派的兵 —— 先去练兵'); break; }
+        var _bmr = GAME.march.dispatch({ kind: 'wild', ci: _bci }, 'station', _bpick.army, _bgen.id, null,
+          { fromCityId: _bcity.id });
+        ui.toast(_bmr.ok
+          ? ('派 ' + _bgen.name + ' 率 ' + _U.fmt(_bpick.total) + ' 兵前往 —— 到了会就地驻下，再点一次「就地开工」')
+          : _bmr.msg);
+        if (_bmr.ok) { ui.closeModal(); GAME.refreshAll(); }
+        break;
+      }
+
       /* v89.156（老板 1）：「弹窗出来的放弃按钮点击直接执行即可，本身已经是 2 次确认了」——
          上膛式（连点两次）整条退役：操作列「🗑️ 放弃」→ 二次确认窗 → 窗内红键**一击执行**。
          `-arm` → `-do` 改名收敛回 §14.1 的「xxx-ask → xxx-do」两段式；
@@ -906,11 +944,11 @@ import './ui.js';
       /* v149（实机自检）：侧栏「新手一条」→ 去那一页（做完那一步提示自动消失） */
       case 'hint-go': {
         var _hv = el.dataset.view || 'map';
-        /* 有具体落点（'这一格' / '空地去建造'）→ 直接开面板，别只给个只读清单 */
-        if (el.dataset.cell || el.dataset.pick) {
-          ui.hintGoto({ cell: el.dataset.cell || null, pick: !!el.dataset.pick });
-          break;
-        }
+        /* v156.14：原来这里还有一条 `if (el.dataset.cell || el.dataset.pick)` 分支，
+           走 ui.hintGoto 直开那一格的面板。但全仓**没有任何地方发射** data-cell /
+           data-pick（`audit_v89179c_dataset_refs.js` 抓的「读而无发射」），这条分支永远
+           进不来；真正的「去那一格」走 main.js 上方的 nextHint 委托（直接传 _th 对象）。
+           死分支删掉 —— 判据（dataset 引用审计）要的是「读的键必须有人写」。 */
         if (el.dataset.list) { ui.openBuildingList(); break; }
         /* 有专门面板的入口（集市是弹窗，不是视图）→ 先关掉账本再开 */
         if (_hv === 'open-market') { ui.closeAllModals(); ui.openMarket(); break; }
@@ -1337,6 +1375,12 @@ import './ui.js';
         /* v29（需求 5）：设置里的时间倍率/税率也改用同一套点选控件 */
         else if (after === 'timescale') GAME.doSetTimeScale(Number(el.dataset.v));
         else if (after === 'tax') GAME.doSetTax(Number(el.dataset.v));
+        /* v151：战斗节奏（老板「战斗速度在设置里根本没有」）—— 观战开关与回合秒数。
+           ⚠️ 这是**唯一写点**；battle 面板每帧读 settings.battleSec，不缓存。 */
+        else if (after === 'battlewatch') GAME.doSetBattleWatch(el.dataset.v === '1');
+        else if (after === 'battlesec') GAME.doSetBattleSec(Number(el.dataset.v));
+        /* v151：出征面板「阵前斗将」—— 记在本场（不改设置） */
+        else if (after === 'expduel') { ui._expDuel = el.dataset.v === '1'; ui.updateExpMarch && ui.updateExpMarch(); }
         /* v39（需求 1）：界面主题 —— 立即改 html[data-theme]，全站 CSS 变量随之切换 */
         else if (after === 'theme') GAME.doSetTheme(el.dataset.v);
         /* v29（需求 5）：自动出征参数（字段名走 data-k） */
@@ -1375,7 +1419,9 @@ import './ui.js';
       case 'fold-toggle': {
         var _fk = el.dataset.fold;
         ui._foldOpen = ui._foldOpen || {};
-        ui._foldOpen[_fk] = !ui._foldOpen[_fk];
+        /* v151：账本「展开处理 →」= **强制展开**（不再取反）——
+           否则已经展开的节点一下反而收起，玩家会以为按钮坏了。 */
+        ui._foldOpen[_fk] = el.dataset.force ? true : !ui._foldOpen[_fk];
         var _snapFold = null;
         try { _snapFold = ui._liveSnap ? ui._liveSnap() : null; } catch (eF) {}
         if (ui._liveReopen && document.querySelector('.modal-mask')) {
@@ -1539,10 +1585,75 @@ import './ui.js';
         var r = GAME.setskill ? GAME.setskill.arm(el.getAttribute('data-sid')) : { msg: '未加载' };
         ui.toast(r.msg); ui.openWorldPanel();
       })(); break;
+      /* v92.240k：地块放置物 —— 物品栏 / 拿在手上 / 收工 / 旋转 / 拆除。
+         落位本身在 M.pickAt（map3d.js）：手上拿着东西时点格 = 放下。 */
+      case 'place-open': ui.openPlacePanel(); break;
+      case 'place-pick': {
+        var _pid2 = el.getAttribute('data-item');
+        if (!GAME.place || !GAME.place.item(_pid2)) { ui.toast('没有这种东西可放'); break; }
+        ui._placeItem = (ui._placeItem === _pid2) ? null : _pid2;    /* 再点一次同一件 = 放下 */
+        if (GAME.map3d && GAME.map3d.clearGhost) { GAME.map3d.clearGhost(); GAME.map3d._ghostCi = -1; }
+        var _nm2 = GAME.place.item(_pid2).name;
+        ui.toast(ui._placeItem ? ('🧱 手上拿着「' + _nm2 + '」—— 点地图上的格子放下') : '已放下手上的东西');
+        ui.closeModal();
+        if (ui.renderMapCanvas) ui.renderMapCanvas();
+        break;
+      }
+      case 'place-cancel': {
+        ui._placeItem = null;
+        if (GAME.map3d && GAME.map3d.clearGhost) { GAME.map3d.clearGhost(); GAME.map3d._ghostCi = -1; }
+        if (ui.renderMapCanvas) ui.renderMapCanvas();
+        break;
+      }
+      case 'place-rot': {
+        var _rotR = GAME.place.rotate(+el.getAttribute('data-ci'), 45);
+        ui.toast(_rotR.ok ? ('已转向 ' + _rotR.yaw + '°') : _rotR.msg);
+        if (ui.renderMapCanvas) ui.renderMapCanvas();
+        ui.openPlacePanel();
+        break;
+      }
+      case 'place-rm': {
+        var _rmR = GAME.place.remove(+el.getAttribute('data-ci'));
+        ui.toast(_rmR.ok ? '已拆除' : _rmR.msg);
+        if (ui.renderMapCanvas) ui.renderMapCanvas();
+        ui.openPlacePanel();
+        break;
+      }
       /* v92.14：派将挑衅一座城（赢了那城守军胆寒 24 小时） */
-      case 'provoke-city': ui._provoke = null; ui.openProvoke(); break;
-      case 'provoke-move': ui.openProvoke(el.getAttribute('data-mv')); break;
-      case 'provoke-again': ui._provoke = null; ui.openProvoke(); break;
+      /* v92.240f：多将领 3v3 —— 选将 / 出战 / 放绝活 */
+      case 'provoke-city': ui._provoke = null; ui._provokePick = []; ui._provokeStaOpen = null; ui._provokeNpc = ui._attackNpc; if (ui._provokeTimer) { clearTimeout(ui._provokeTimer); ui._provokeTimer = null; } ui.openProvoke(); break;
+      case 'provoke-select': {
+        var _gid = el.getAttribute('data-gid');
+        if (el.getAttribute('data-locked')) { ui.toast('该将体力不足，无法出战'); break; }
+        if (!ui._provokePick) ui._provokePick = [];
+        var _pi = ui._provokePick.indexOf(_gid);
+        if (_pi >= 0) ui._provokePick.splice(_pi, 1);
+        else { if (ui._provokePick.length >= 3) { ui.toast('最多出战 3 将'); break; } ui._provokePick.push(_gid); }
+        ui.openProvoke();
+        break;
+      }
+      case 'provoke-start': {
+        if (ui._provoke) break;
+        var _Dp = DATA.DUEL || {}, _sel = (GAME.state.generals || []).filter(function (g) { return ui._provokePick.indexOf(g.id) >= 0; });
+        if (!_sel.length) { ui.toast('请先选择出战英雄'); break; }
+        ui._provokeStaOpen = {};
+        _sel.forEach(function (g) { ui._provokeStaOpen[g.id] = GAME.staNow ? Math.max(0, GAME.staNow(g)) : (GAME.staMax ? GAME.staMax(g) : 100); });
+        var _npc = ui._provokeNpc || ui._attackNpc;
+        if (!_npc) { ui.toast('目标城已失效，请重新点城挑衅'); break; }
+        var _enemy = GAME.battle.provokeEnemyGens(_npc);
+        if (!_enemy.length) { ui.toast('该城并无守将，叫阵无人应'); break; }
+        ui._provoke = { cid: _npc.id, seed: String(Date.now()), round: 0,
+          me: GAME.battle.provokeLineup(_sel), him: GAME.battle.provokeLineup(_enemy),
+          mi: 0, hi: 0, pendingSkill: false, log: [], over: false, winner: null, out: null };
+        ui.openProvoke();
+        ui._provokeTimer = setTimeout(ui._provokeTick, (_Dp.provokeAutoSpeed || 1100));
+        break;
+      }
+      case 'provoke-skill': { if (ui._provoke && !ui._provoke.over) { ui._provoke.pendingSkill = true; ui.openProvoke(); } break; }
+      case 'provoke-again': {
+        if (ui._provokeStaOpen) (GAME.state.generals || []).forEach(function (g) { if (ui._provokeStaOpen[g.id] != null && GAME.setStaNow) GAME.setStaNow(g, ui._provokeStaOpen[g.id]); });
+        ui._provoke = null; ui.openProvoke(); break;
+      }
       /* v91.59（老板）：自动采购（逐商品补货到目标 · 每现实日上限内）。 */
       case 'toggle-auto-buy': GAME.doToggleAutoBuy(); break;
       case 'auto-buy-once': (function () { var r = GAME.autoBuyOnce(); ui.toast(r.msg); GAME.refreshView(); })(); break;
@@ -1562,6 +1673,30 @@ import './ui.js';
       case 'ix-planet': ui.ixPickPlanet(el.dataset.pid); break;
       case 'ix-go': ui.ixGo(); break;
       case 'ix-cancel': ui.ixCancel(el.dataset.id); break;
+      /* v151（老板「投送落地后就地操作」）：切到这颗星球并落到"能办事"的地方 ——
+         有城 → 进那座城；只有锚地 → 打开锚地地块面板（面板里有「🏯 建城」，就地立城转正）。 */
+      case 'ix-goto': {
+        var _gp = Number(el.dataset.pid);
+        var _go = function () {
+          var c = GAME.colony && GAME.colony.cityAt ? GAME.colony.cityAt(_gp) : null;
+          if (c) {
+            ui.closeAllModals();
+            try { ui.setCity(c.id); } catch (e0) {}
+            ui.setView('city'); GAME.refreshAll();
+            return;
+          }
+          var mo = GAME.colony && GAME.colony.mooringOf ? GAME.colony.mooringOf(_gp) : null;
+          if (!mo) { ui.toast('这颗星球还没有落脚点'); return; }
+          ui.closeAllModals();
+          if (ui.view !== 'map') ui.setView('map');
+          ui.openLandModalCi(mo.ci);
+        };
+        if (ui.switchPlanet && (GAME.planetsOf ? GAME.planetsOf() : []).length > 1) {
+          ui.switchPlanet(_gp, _go);   /* 走读条屏（与星球下拉同一个入口） */
+        } else _go();
+        break;
+      }
+
       case 'ix-exp': ui.closeAllModals(); ui.ixOpenExpedition(); break;
       /* 带人滑块：input 事件走动作表（与 zoom/train-count 同一分发），只记状态不重绘 */
       case 'ix-cols': ui._ixCols = Math.max(0, Number(el.value) || 0); break;
@@ -1640,6 +1775,38 @@ import './ui.js';
         break;
       }
       case 'exp-confirm': GAME.doExpConfirm(); break;
+      /* v151（老板「出征链 6~7 次点击 · 地图就是本体」）：**一键出征** ——
+         目标 = 地图/面板上刚点的那一格；编成与主将读「自动出征」配置；
+         没有配置就按驻军顺位取满、主将取本城空闲英雄。走同一条 march.dispatch。 */
+      case 'onekey-march': GAME.doOneKeyMarch(el.dataset.ci, el.dataset.kind || 'wild'); break;
+      /* ============================================================
+       * v156.15（老板：「点那个敌人 → 派兵打它」）：**地图手势条**的三个动作
+       * ------------------------------------------------------------
+       * 条（`ui.openMapBar`）在点地块时先出来，三个键都只调既有出口：
+       *   mapbar-march  → GAME.doMarchTarget（与一键出征同一条 march.dispatch）
+       *   mapbar-scout  → 组好 target 后开统一出征面板，方式默认 scout
+       *   mapbar-detail → 回到那一格**原来的面板**（ui.mapBarDetail）
+       * 条本身不扣资源、不改状态；target 是点图那一刻就确定好的（`ui._mapBar.target`）。
+       * ============================================================ */
+      case 'mapbar-march': {
+        var _mb1 = ui._mapBar;
+        if (!_mb1) { ui.toast('先在地图上点一块地'); break; }
+        GAME.doMarchTarget(_mb1.target);
+        break;
+      }
+      case 'mapbar-scout': {
+        var _mb2 = ui._mapBar;
+        if (!_mb2 || !_mb2.target) { ui.toast('先在地图上点一块地'); break; }
+        /* 侦查 = "先看清再决定"。把 target 摆到出征面板认的位置，方式预设 scout；
+           面板本身还是**唯一**的出征界面（不另开一份）。 */
+        ui._expTarget = _mb2.target;
+        ui._expMode = 'scout';
+        if (_mb2.target.kind === 'city' && _mb2.npc) ui._attackNpc = _mb2.npc;
+        ui.openExpModal(_mb2.target,
+          { hint: '侦查：先看清守军与地形，再决定打不打（不接战，不落账）' });
+        break;
+      }
+      case 'mapbar-detail': ui.mapBarDetail(); break;
       /* v89.210：战前推演（出征前预演一场 · 与实战同源引擎、不落账） */
       case 'exp-sim': ui.openExpSim(); break;
       /* ⛔ v89.198（老板「清除战法这个玩法」）：战法三选动作整条退役（连 ui.setExpOps 一起清除）。 */
@@ -1737,7 +1904,27 @@ import './ui.js';
       /* v89.89（D4）：战报筛选 / 收藏 */
       case 'rep-filter': ui.setRepFilter(el.dataset.v); break;
       case 'rep-fav': ui.toggleRepFav(Number(el.dataset.rid)); break;      /* v89.120：身份 rid */
-      case 'close-modal': ui.closeModal(); break;
+      case 'close-modal': if (ui._provokeTimer) { clearTimeout(ui._provokeTimer); ui._provokeTimer = null; } ui.closeModal(); break;
+      /* v92.244（老板）：「开局提示做连续弹窗」—— 逐级推进 / 跳过 / 直接去办 */
+      case 'tut-next': {
+        var _ts = ui.tutorialSteps ? ui.tutorialSteps() : [];
+        var _ti = ui._tutIdx || 0;
+        if (_ti >= _ts.length - 1) { ui.tutDone(); ui.closeModal(); }
+        else ui.openTutorial(_ti + 1);
+        break;
+      }
+      case 'tut-skip': ui.tutDone(); ui.closeModal(); break;
+      case 'tut-go': {
+        ui.tutDone();
+        var _tc = GAME.currentCity();
+        var _th = _tc && ui.nextHintOf ? ui.nextHintOf(_tc) : null;
+        ui.closeModal();
+        if (!_th) { if (ui.toast) ui.toast('先看看城里缺什么'); break; }
+        if (ui.setView) ui.setView(_th.view || 'city');
+        if (_th.cell || _th.pick || _th.list) { if (ui.hintGoto) ui.hintGoto(_th); }
+        else if (ui.toast) ui.toast(_th.text);
+        break;
+      }
       /* ⛔ v89.201（老板 1）：「直接一页显示，不用额外点一个分层」——
          侦查面板分页整体退役：分页 case（scout-page）、页签常量、页号状态、
          翻页锚点（scoutLast）四件一并清掉；面板改**单页四板块**
@@ -2790,6 +2977,20 @@ import './ui.js';
     ui.toast('时间倍率：' + v + '×');
     GAME.refreshAll();
   };
+  /* v151（老板「打得太慢，找不到开关」）：战斗节奏两枚设置 —— 唯一写点。
+     · 观战 false = 抵达后不进战场、一帧结算（适合只想看结果的人）；
+     · 回合秒数 = 战场每回合的真实等待（10 秒默认；30/60 给想看动画的人）。 */
+  GAME.doSetBattleWatch = function (on) {
+    GAME.state.settings.battleWatch = !!on;
+    ui.toast(on ? '战斗：抵达后进战场（可指挥 · 可点完成回合）' : '战斗：全自动结算，不打断你');
+    GAME.refreshAll();
+  };
+  GAME.doSetBattleSec = function (v) {
+    v = Math.max(4, Math.min(120, Number(v) || 10));
+    GAME.state.settings.battleSec = v;
+    ui.toast('战斗回合读秒：' + v + ' 秒');
+    GAME.refreshAll();
+  };
   /* 界面主题（v39 · 需求 1）：换肤是"一次性偏好"，写进存档、下次开局沿用 */
   GAME.doSetTheme = function (id) {
     var t = ui.themeDef(id);
@@ -2858,8 +3059,70 @@ import './ui.js';
   };
 
   /* 确认出征（读取当前方式与兵力） */
-  GAME.doExpConfirm = function () {
-    var target = ui._expTarget;
+  /* ============================================================
+   * v151（老板「出征链 6~7 次点击 · 地图就是本体」）：**一键出征**
+   * ------------------------------------------------------------
+   * 玩家的常见意图是"打这一格"。把这个意图压缩成**一次点击**：
+   *   · 目标 = 刚点的那一格（ci）；
+   *   · 编成 = 「自动出征」里玩家已经设定过的兵种数量（没设定 → 按驻军顺位取满）；
+   *   · 主将 = 「自动出征」里为该城指定的英雄（没指定 → 本城空闲英雄，排除君主）；
+   *   · 方式 = 出征（occupy）；阵前斗将 = 设置里的 duelAsk。
+   * 仍然走 `GAME.march.dispatch`（唯一出口），只是**替玩家省掉面板**。
+   * 返回清楚的一句话；任何一处不成立都说明原因，不静默失败。
+   * ============================================================ */
+  GAME.doOneKeyMarch = function (ci, kind) {
+    var s = GAME.state;
+    if (!s) return { ok: false, msg: '没有对局' };
+    ci = Number(ci);
+    if (!(ci >= 0)) return { ok: false, msg: '没有点到地块' };
+    return GAME.doMarchTarget({ kind: kind || 'wild', ci: ci });
+  };
+
+  /* ============================================================
+   * v156.15（地图手势条）：**按一个已经组好的 target 直接出兵**
+   * ------------------------------------------------------------
+   * 与一键出征共用下半段（编成 / 主将 / dispatch / 提示），区别只有一个：
+   * target 由调用方给（野地 {kind:'wild',ci} · 名城 {kind:'city',id,npc} ·
+   * 据点 {kind:'fort',x,y}），不再假设"目标就是某一格"。
+   * 仍然只有一条出兵出口：`GAME.march.dispatch`。
+   * ============================================================ */
+  GAME.doMarchTarget = function (target) {
+    var s = GAME.state;
+    if (!s) return { ok: false, msg: '没有对局' };
+    if (!target) return { ok: false, msg: '没有目标' };
+    var city = GAME.currentCity();
+    if (!city) return { ok: false, msg: '还没有城 —— 这一步要等立城之后' };
+    var cfg = GAME.autoMarchCfg ? GAME.autoMarchCfg() : null;
+    /* 编成：玩家在自动出征里填过 → 照填；否则按顺位取满（marchCapOf 不让上限爆） */
+    var want = (GAME.battle.marchCapOf ? GAME.battle.marchCapOf(city) : 0) || 2000;
+    var pick = GAME.autoMarchPickArmy
+      ? GAME.autoMarchPickArmy(city, want, cfg && cfg.army) : null;
+    var army = (pick && pick.total > 0) ? pick.army : null;
+    if (!army || !Object.keys(army).length) {
+      ui.toast('城里没有可出征的兵 —— 先去练兵');
+      return { ok: false, msg: '城里没有可出征的兵 —— 先去练兵' };
+    }
+    var gen = GAME.autoMarchPickGen ? GAME.autoMarchPickGen(cfg, city) : null;
+    if (!gen) {
+      var idles = (s.generals || []).filter(function (g) {
+        return (!g.status || g.status === 'idle') && !(GAME.isLordGeneral && GAME.isLordGeneral(g));
+      });
+      gen = idles.length ? idles[0] : null;
+    }
+    if (!gen) {
+      ui.toast('没有空闲主将 —— 先歇一个下来（或去「自动出征」指定）');
+      return { ok: false, msg: '没有空闲主将 —— 先歇一个下来（或去「自动出征」指定）' };
+    }
+    var r = GAME.march.dispatch(target, 'occupy', army, gen.id,
+      (cfg && cfg.scheme) || null,
+      { fromCityId: city.id, duel: (s.settings && s.settings.duelAsk) });
+    if (r && r.ok) ui.closeModal();
+    ui.toast((r && r.msg) || '出征失败');
+    if (r && r.ok) GAME.refreshAll();
+    return r;
+  };
+
+  GAME.doExpConfirm = function () {    var target = ui._expTarget;
     if (!target) { ui.toast('未选择目标'); return; }
     var mode = ui._expMode || 'occupy';
     var genSel = document.getElementById('exp-gen');
@@ -2962,7 +3225,7 @@ import './ui.js';
     var _objSend = (ui._expObj && (mode === 'scout' || mode === 'raid' || mode === 'occupy'))
       ? { kind: ui._expObj, rounds: 6 } : null;
     var r = GAME.march.dispatch(target, mode, atk, _genSend137, _schemeSend137,
-      { fromCityId: (ui._expFrom || null), obj: _objSend });   /* v91.21（老板 C1）：派出城 */
+      { fromCityId: (ui._expFrom || null), obj: _objSend, duel: ui._expDuel });   /* v91.21 派出城 · v151 阵前请战 */
     ui.toast(r.msg);
     if (r.ok) {
       ui._expScheme = null;      /* v86：计已随军出发，面板状态清空 */
@@ -3226,6 +3489,41 @@ import './ui.js';
   };
 
   /* --------- 地图点击 --------- */
+  /* ============================================================
+   * v156.15（老板：「点那个敌人 → 派兵打它」）：**2D 兜底路径的手势条**
+   * ------------------------------------------------------------
+   * 与 3D `map3d.pickAt` 同口径：能下手的地块先给短条，条开不出来才回旧面板。
+   * 只在**没有 WebGL / 未 build 球面**时才走到这里（e2e/jsdom 也走这条），
+   * 所以判据（smoke 龙门）依赖的 `ui.openLandModalCi(hit.ci)` 等调用**一个都没删**，
+   * 只是变成"条没接住时的兜底"。
+   * ============================================================ */
+  function mapBarTry2D(hit) {
+    if (!hit || !ui.openMapBar) return false;
+    if (hit.kind === 'npc') {
+      var npc = hit.city;
+      if (!npc) return false;
+      return !!ui.openMapBar({
+        ci: hit.ci, kind: 'npc', openAs: 'city', npc: npc,
+        target: { kind: 'city', id: npc.id, npc: npc }
+      });
+    }
+    if (hit.kind === 'fort') {
+      var f = hit.fort;
+      if (!f) return false;
+      return !!ui.openMapBar({
+        ci: hit.ci, kind: 'fort', openAs: 'fort', fort: f,
+        target: { kind: 'fort', x: f.x, y: f.y, fort: f }
+      });
+    }
+    if (hit.kind === 'wild' || hit.kind === 'land') {
+      if (!(hit.ci >= 0)) return false;
+      return !!ui.openMapBar({
+        ci: hit.ci, kind: hit.kind, openAs: 'land',
+        target: { kind: 'wild', ci: hit.ci }
+      });
+    }
+    return false;   /* 己方城/其它 → 交回原面板 */
+  }
   function handleCanvasClick(e) {
     var t = e.target;
     /* v91.30：星系视图 —— 点星球进入其管理界面。 */
@@ -3237,8 +3535,16 @@ import './ui.js';
       var G = GAME.map;
       var hit = G.pick(t, e.clientX, e.clientY);
       if (hit) {
+        /* v151（老板「地图就是游戏本体」）：前传的点击 = 走路 / 就地动手。
+           以前这里把 kind:'land' 送进「未占领野地面板」—— 点一块走不到的迷雾地，
+           弹出一个讲它有什么的面板。 */
+        if (GAME.prologue && GAME.prologue.on && GAME.prologue.on() && GAME.prologue.mapClick) {
+          var mr = GAME.prologue.mapClick(hit.ci);
+          if (mr && mr.msg && !mr.here && !mr.arrived && GAME.ui) GAME.ui.toast(mr.msg);
+          return;
+        }
         if (hit.kind === 'npc') {
-          ui.openAttackModal(hit.city);
+          if (!mapBarTry2D(hit)) ui.openAttackModal(hit.city);
         } else if (hit.kind === 'player') {
           /* v60（需求 4）：老板：「**不要一点击地图就直接进入城市**」。
              改前点自己的城会立刻 setView('city') + setCity（副作用：当前城被换掉、
@@ -3246,12 +3552,21 @@ import './ui.js';
              现在弹「城市面板」：先看摘要，再自己选 进入 / 运输 / 派遣 / 改名。 */
           ui.openCityPanel(hit.city);
         } else if (hit.kind === 'fort') {
-          ui.openFortModal(hit.fort);
+          if (!mapBarTry2D(hit)) ui.openFortModal(hit.fort);
         } else if (hit.kind === 'wild') {
-          /* v23（需求 1）：已占野地不再是"只弹一句提示"，直接进管理面板 */
-          ui.openLandModalCi(hit.ci);
+          /* v23（需求 1）：已占野地不再是"只弹一句提示"，直接进管理面板。
+             v156.15：先给手势条（⚔️出征/🔍侦查/📜详情）；条开不出来才回旧面板。 */
+          if (!mapBarTry2D(hit)) ui.openLandModalCi(hit.ci);
         } else {
-          ui.openLandModalCi(hit.ci);
+          /* v151（老板「地图就是本体」）：2D 兜底路径也要给未探明格一个手势 ——
+             与 3D 的 map3d.pickAt 同口径：点雾里 = 派队过去看看。 */
+          var _fh = GAME.fog && GAME.fog.get ? (GAME.fog.get(hit.ci) === 0) : false;
+          if (_fh && ui.openExpModal) {
+            ui.openExpModal({ kind: 'wild', ci: hit.ci },
+              { hint: '未探明 —— 派一队过去，抵达后周围就会显现' });
+          } else {
+            ui.openLandModalCi(hit.ci);
+          }
         }
       }
     }
@@ -3717,11 +4032,15 @@ import './ui.js';
       var _sc151 = (GAME.DATA && GAME.DATA.APP_SCALE) || { min: 0.6, max: 1.6 };
       k = Math.max(_sc151.min, Math.min(_sc151.max, k));
       el.style.setProperty('--app-k', String(Math.round(k * 10000) / 10000));
-      /* v149：窄屏（k 太小 = 字会缩到看不清）→ 给一条可关闭的提示 */
+      /* v152（老板：「为什么屏幕上还挂着那份告示牌」）——
+         这条"屏幕较窄建议横屏"的提示**只在真的窄到看不清时**才出现，
+         而且**12 秒后自己消失**（不再永久压在画面上）；点一下也关。
+         k≥0.66（多数桌面窗口）**永不出现**。 */
       try {
         var tip = document.getElementById('mobile-tip');
         if (tip) {
-          if (k < 0.66 && !GAME._mobileTipOff) {
+          if (k < 0.5 && !GAME._mobileTipOff && !tip._shownOnce) {
+            tip._shownOnce = 1;
             tip.style.display = 'block';
             if (!tip._bound) {
               tip._bound = 1;
@@ -3729,7 +4048,8 @@ import './ui.js';
                 GAME._mobileTipOff = true; tip.style.display = 'none';
               });
             }
-          } else tip.style.display = 'none';
+            setTimeout(function () { try { tip.style.display = 'none'; } catch (e3) {} }, 12000);
+          } else if (k >= 0.5 || GAME._mobileTipOff) tip.style.display = 'none';
         }
       } catch (e2) { /* 提示失败不影响缩放 */ }
     } catch (e) { /* 桩环境：保持 CSS 默认 */ }
@@ -3754,7 +4074,7 @@ import './ui.js';
      （这解释了"改了却说没生效"的观感）。老板若发现版本 ≠ 最新交付，按 Ctrl+F5
      强制刷新即获得新代码。⚠️ 发版须走 **bump_version.py --bump --version vX.Y**（它同步 index.html 的 ?v=/BUILD
      与这里的 GAME.VERSION 三处）—— 只手改 index.html 会让版本号冻住（v91.18 前的病灶）。 */
-  GAME.VERSION = 'v150.1';
+  GAME.VERSION = 'v156.0';
   function boot() {
     fitAppSize();
     try {

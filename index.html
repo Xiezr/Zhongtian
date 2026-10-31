@@ -4513,8 +4513,9 @@
         <!-- v91.31（老板）：星球 / 城市下拉移到「君主」按钮下方（脱离城市属性）；定宽对齐。 -->
         <div class="city-switch-host" id="city-switch-host"></div>
 
-        <!-- v149（实机自检）：**新手一条** —— 只一行，做完自动消失（见 ui.renderNextHint） -->
-        <div id="next-hint" style="padding:0 var(--sp-3) 6px;"></div>
+        <!-- v92.244（老板：「给开局提示做连续弹窗，不要在左侧统计栏显示」）：
+             原先这里有个 #next-hint 槽位（v149 的"新手一条"），已撤除 ——
+             引导改走 `ui.openTutorial()` 的连续弹窗（见 js/ui.js）。 -->
 
         <!-- ② 城市属性栏 -->
         <div class="side-block">
@@ -4583,15 +4584,15 @@
 </div><!-- /#app-scale -->
 </div><!-- /#app-fit -->
 
-<!-- BUILD 9389 -->
+<!-- BUILD 9424 -->
 <!-- v104：三包拆分（老板 2026-10-23「拆」）—— 单包曾到 4245KB / 上限 4301KB。
      · vendor/three.min.js 必须在前（gltf/map3d 用全局 THREE）；
      · 三包**顺序不能改**：core（引擎数据）→ war（战斗素材）→ ui（界面启动）。
        经典 script 保证顺序执行，window.GAME 全局共享，行为与单包完全一致。
      · 构建：python .workbuddy/tools/patch/build_bundle.py（改源码后须重建）。 -->
-<script src="vendor/three.min.js?v=9389"></script>
-<script src="js/bundle-core.js?v=9389"></script>
-<script src="js/bundle-war.js?v=9389"></script>
-<script src="js/bundle-ui.js?v=9389"></script>
+<script src="vendor/three.min.js?v=9424"></script>
+<script src="js/bundle-core.js?v=9424"></script>
+<script src="js/bundle-war.js?v=9424"></script>
+<script src="js/bundle-ui.js?v=9424"></script>
 </body>
 </html>

@@ -1075,6 +1075,8 @@ import './state.js';
     GAME.log('欢迎 ' + name + ' 踏上争霸之路！');
     GAME.saveGame();
     ui.enterGame();
+    /* v92.244：开局引导改成**连续弹窗**（不再占用左侧统计栏那一行）*/
+    ui.maybeTutorial();
     ui.toast('创建成功，开始争霸！');
   };
   ui.enterGame = function () {
@@ -1875,7 +1877,7 @@ import './state.js';
   };
 
   ui.btTopHTML = function (rec, snap) {
-    var sec = (GAME.state.settings && GAME.state.settings.battleSec) || 60;
+    var sec = (GAME.state.settings && GAME.state.settings.battleSec) || 10;
     var cnt = (rec.cnt == null) ? sec : rec.cnt;
     /* v89.120（老板「那三个雷霆大按钮，完成回合、自动战斗、撤回。缩小，
        放到战场上方读秒那行正中间」）：三键从弹窗底栏移到读秒行 ——
@@ -2370,7 +2372,7 @@ import './state.js';
   ui.battleListHTML = function () {
     var list = ui.battleListOf();
     var mList = ui.marchListOf();
-    var sec = ((GAME.state || {}).settings || {}).battleSec || 60;
+    var sec = ((GAME.state || {}).settings || {}).battleSec || 10;
     var h = '<div class="war-list">';
     h += '<div class="gold-heading">⚔ 战斗待指挥（' + list.length + '）</div>';
     if (list.length) {
@@ -3764,7 +3766,10 @@ import './state.js';
   ui.renderSide = function () {
     var s = GAME.state, c = GAME.currentCity();
     if (!s || !c) return;
-    ui.renderNextHint(c, s);
+    /* v92.244（老板：「开局提示做连续弹窗，不要在左侧统计栏显示」）：
+       这里原本先画一条 `renderNextHint`（侧栏"新手一条"）—— 已撤。
+       决策逻辑 `ui.nextHintOf()` 保留（它是"下一步该干什么"的唯一判断源），
+       只把**呈现方式**从侧栏一行改成连续弹窗（ui.openTutorial）。 */
     ui.renderCityAttrs(c, s);
     ui.renderResBar(c, s);
     ui.renderGarrison(c, s);
@@ -3861,18 +3866,88 @@ import './state.js';
     if (built < 4) return { id: 'build', text: '先把空地盖上 —— 城才有产出', act: 'hint-go', view: 'city', list: 1 };
     return { id: 'map', text: '该出门了 —— 地图上能看见的都能去', act: 'hint-go', view: 'map' };
   };
-  ui.renderNextHint = function (c) {
-    var box = $('#next-hint');
-    if (!box) return;
-    var h = ui.nextHintOf(c);
-    if (!h) { box.innerHTML = ''; return; }
-    box.innerHTML = '<div data-action="' + h.act + '"' + (h.list ? ' data-list="1"' : '') +
-      (h.cell ? ' data-cell="' + U.escape(h.cell) + '"' : '') +
-      (h.pick ? ' data-pick="1"' : '') +
-      ' data-view="' + h.view + '" title="点一下就去（做完这一步就不再提示）"' +
-      ' style="cursor:pointer;padding:6px 10px;border:1px solid var(--gold-dark);border-radius:var(--r-sm);' +
-      'background:rgba(var(--gold-rgb),.10);font-size:var(--fs-sub);color:var(--gold-light);">' +
-      '👉 ' + U.escape(h.text) + '</div>';
+  /* ============================================================
+   * v92.244（老板：「给开局提示做连续弹窗，不要在左侧统计栏显示」）
+   * ------------------------------------------------------------
+   * 改前：`renderNextHint` 把"下一步"塞进侧栏一行灰底条 —— 位置在**左侧统计栏**里，
+   *   玩家扫资源数字时容易直接漏过去；而且只有一句，没有前因后果（没有体系）。
+   * 现在：**连续弹窗**，一步一步推，最后一步直接给「去办 →」按钮。
+   *   · 只在新局第一次进游戏时弹（`state.tut` 落档，看完/跳过即记 1）；
+   *   · 「继续 →」逐级推进，随时可「跳过」；
+   *   · 最后一步的文案与去处仍由 `ui.nextHintOf()` 决定 —— **唯一决策源没变**，
+   *     只是把"呈现"从侧栏一行换成弹窗。
+   * ============================================================ */
+  ui._tutIdx = 0;
+  ui.tutorialSteps = function () {
+    var c = GAME.currentCity();
+    var pro = !!(GAME.prologue && GAME.prologue.on && GAME.prologue.on());
+    var steps = [
+      {
+        t: '这颗星球，归你了',
+        b: '你是这支势力的君主。<br><br>没有剧本，也没有必须走完的关卡 —— '
+          + '活下去、把城立起来、把手伸到别处去。',
+        n: '继续'
+      },
+      {
+        t: '地图怎么用',
+        b: '<b>左键拖动</b>　绕星球转，任意角度<br>'
+          + '<b>滚轮 / 底栏缩放条</b>　拉近到贴脸，最远 50 倍星球半径<br>'
+          + '<b>点地块</b>　走过去 / 打开它<br>'
+          + '<b>底栏</b>　城市 · 军务 · 英雄 · 宝物 · 公文档',
+        n: '继续'
+      }
+    ];
+    if (pro) {
+      steps.push({
+        t: '先活着',
+        b: '你现在<b>还没有城</b>，只有一队人。<br><br>'
+          + '在地图上走到附近的营地和遗迹，打几场、升到 <b>Lv20</b>，就能<b>立城</b>。',
+        n: '开始'
+      });
+    } else {
+      var h = c ? ui.nextHintOf(c) : null;
+      steps.push({
+        t: '接下来的第一步',
+        b: h ? ('👉 ' + U.escape(h.text) + '<br><br>点「去办 →」直接跳到那一步。')
+          : '先看看城里缺什么，照着提示一格一格补上。',
+        n: '开始', go: !!h
+      });
+    }
+    return steps;
+  };
+  ui.openTutorial = function (i) {
+    var steps = ui.tutorialSteps();
+    i = Math.max(0, Math.min(steps.length - 1, (i | 0) || 0));
+    ui._tutIdx = i;
+    var st = steps[i], last = (i === steps.length - 1);
+    var dots = steps.map(function (_, k) {
+      return '<span style="display:inline-block;width:7px;height:7px;border-radius:50%;margin:0 3px;'
+        + 'background:' + (k === i ? 'var(--gold-light)' : 'var(--slab-1)') + ';"></span>';
+    }).join('');
+    ui.openModal(
+      '<div class="gold-heading">🧭 ' + U.escape(st.t) + '</div>'
+      + '<div class="panel-body" style="line-height:1.9;">'
+      + '<div style="margin-bottom:12px;">' + st.b + '</div>'
+      + '<div style="text-align:center;">' + dots + '</div>'
+      + '</div>'
+      + '<div class="panel-foot">'
+      + '<button class="btn sm" data-action="tut-skip">跳过</button>'
+      + (last && st.go
+        ? '<button class="btn gold" data-action="tut-go">去办 →</button>'
+        : '<button class="btn gold" data-action="tut-next">' + U.escape(st.n || '继续') + ' →</button>')
+      + '</div>'
+    );
+  };
+  /* 记"已看过" —— 只落一次，之后不再弹 */
+  ui.tutDone = function () {
+    try { if (GAME.state) GAME.state.tut = 1; } catch (e) { }
+  };
+  /* 新局入口调它：已看过就什么都不做 */
+  ui.maybeTutorial = function () {
+    try { if (GAME.state && GAME.state.tut) return false; } catch (e) { return false; }
+    ui._tutIdx = 0;
+    ui.openTutorial(0);
+    return true;
   };
 
 
@@ -8396,15 +8471,15 @@ import './state.js';
          但每一条都要玩家自己去别的菜单里找得到地方处理"（截图确认：一屏 20 条，0 个可点去处）。
          入口按关键词落到既有页面，不新造功能。 */
       var gotoOf = function (t) {
+        /* v151（老板「账本说得出问题，但每一条都要自己去菜单里找地方处理」）：
+           **本节自己有处理按钮的，就不跳走** —— 直接"展开这一节"（见下面 gotoChip）。
+           真没有动作的，才路由到对应视图/弹窗（顺序：具体优先于大类）。 */
         var map = [
-          [/温度|辐射云|污染|领土|暴露/, 'map'],
-          [/竞争|势力|宣战|传闻|世界里/, 'admin'],
-          [/兵源|人从哪来|老兵|兵员/, 'marches'],
-          [/年景|历法/, 'admin'],
-          [/危险梯度/, 'map'],
           [/集市|交易/, 'open-market'],
-          [/奇观|废墟|残页|远行|地下/, 'map'],
-          [/作战目标|护送|斩首/, 'marches']
+          [/废墟|残页|地下|远行|奇观/, 'map'],
+          [/兵源|人从哪来|老兵|兵员|作战目标|护送|斩首|惰性|懒|怠/, 'marches'],
+          [/竞争|势力|宣战|传闻|世界里|年景|年成|历法/, 'admin'],
+          [/温度|辐射云|污染|领土|暴露|危险梯度/, 'map']
         ];
         for (var i = 0; i < map.length; i++) if (map[i][0].test(t || '')) return map[i][1];
         return null;
@@ -8430,9 +8505,17 @@ import './state.js';
         + (open ? '▾ ' : '▸ ') + title + '</span>'
         + (open ? '' : '<span style="font-size:var(--fs-cap);opacity:.72;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">'
             + U.escape(brief) + (brief.length >= 40 ? '…' : '') + '</span>')
-        + (goView ? '<span data-action="hint-go" data-view="' + goView + '" title="去处理这一条"'
+        /* v151：本节**自带处理按钮**的，就不把人支走 —— 点一下就地展开，按钮就在眼前。
+           只有本节真没有动作时，才给「去办 →」跳到对应视图。 */
+        + ((String(extra || '').indexOf('data-action=') >= 0)
+          ? '<span data-action="fold-toggle" data-fold="' + U.escape(fkey) + '" data-force="1"'
+            + ' title="就地展开这一节的处理按钮"'
+            + ' style="margin-left:auto;cursor:pointer;font-size:var(--fs-cap);color:var(--green-ok);'
+            + 'border:1px solid rgba(var(--green-ok-rgb),.4);border-radius:var(--r-sm);padding:0 6px;white-space:nowrap;">'
+            + (open ? '收起 ▴' : '展开处理 →') + '</span>'
+          : (goView ? '<span data-action="hint-go" data-view="' + goView + '" title="去处理这一条"'
             + ' style="margin-left:auto;cursor:pointer;font-size:var(--fs-cap);color:var(--gold-light);'
-            + 'border:1px solid rgba(var(--gold-rgb),.35);border-radius:var(--r-sm);padding:0 6px;white-space:nowrap;">去办 →</span>' : '')
+            + 'border:1px solid rgba(var(--gold-rgb),.35);border-radius:var(--r-sm);padding:0 6px;white-space:nowrap;">去办 →</span>' : ''))
         + '</div>'
         + (open ? '<div style="padding:0 0 8px;">'
             + '<div style="font-size:var(--fs-cap);line-height:1.75;">' + (line || '') + '</div>'
@@ -9292,6 +9375,9 @@ import './state.js';
     var P = GAME.prologue || {};
     var d = P.duelOf ? P.duelOf() : null;
     if (!d) { ui.toast('没有正在进行的斗将'); return; }
+    /* v151：两种模式共用同一张竞技场 —— `mode:'act'` 是"打这一格的事"（回合制），
+       胜负回灌 `P.resolve`；其余仍是"点名斗将"（P.duelStep）。 */
+    var isAct = d.mode === 'act';
     var DUA = (GAME.DATA && GAME.DATA.DUEL_ARENA) || {};
     var DU = (GAME.DATA && GAME.DATA.DUEL) || {};
     var MV = DU.moves || {}, ORDER = DU.moveOrder || Object.keys(MV);
@@ -9391,19 +9477,33 @@ import './state.js';
         + ORDER.map(function (id) {
             var m = MV[id] || {};
             var hot = bestK && m.beats === bestK ? ' outline:1px solid var(--gold-light);' : '';
-            return '<button class="btn gold" data-action="prologue-duel-hit" data-mv="' + id + '"'
+            return '<button class="btn gold" data-action="' + (isAct ? 'prologue-fight-hit' : 'prologue-duel-hit') + '" data-mv="' + id + '"'
               + ' style="min-width:96px;' + hot + '"'
               + ' title="' + U.escape(m.note || '') + '">' + U.escape(mvShow(id)) + '</button>';
           }).join('')
         + '</div>'
+        /* v151：打这一格的事可以"先撤"（账不结、费用不退）—— 打不动就走，不是死局 */
+        + (isAct ? '<div style="margin-top:8px;text-align:center;">'
+            + '<button class="btn" data-action="prologue-fight-flee" data-ci="' + (d.ci | 0) + '">先撤（这一趟白跑）</button></div>' : '')
         + '<div class="ui-sub" style="margin-top:7px;text-align:center;opacity:.7;font-size:var(--fs-cap);">'
         + '出手× / 挨打×　·　突刺克蓄力 · 格挡克突刺 · 佯攻克格挡 · 蓄力克佯攻</div>';
     } else {
       /* ---- 结算卡（老板：「最终胜利有一个弹窗显示，并提示经验和物资收获」） ---- */
-      var win = r.winner === 'atk', lose = r.winner === 'def';
-      var big = win ? '胜' : (lose ? '负' : '平');
+      /* ============================================================
+       * v152（实测踩到）：**大字与账本两套口径** ——
+       *   斗将 5 合是我输了（防御方先倒下），可账本按 force:'lose' 判成"这趟失败"，
+       *   面板却还按斗将的 winner 写大字「胜」。玩家看到"胜"，拿到的却是输的奖励。
+       * 口径：**大字只认账本**（`d.actRes.bad`）—— 回合只是过程，结果只有一份。
+       * ============================================================ */
+      var act0p = d.actRes || null;
+      var win = act0p ? !act0p.bad : (r.winner === 'atk');
+      var lose = act0p ? !!act0p.bad : (r.winner === 'def');
+      var big = win ? '胜' : (lose ? '负' : (d.winner === 'flee' ? '撤' : '平'));
       var bigCol = win ? '#ffd166' : (lose ? '#d9534f' : '#9a9284');
       var d0 = d || {};
+      /* v151：mode:'act' 的账是 `P.resolve` 结的（d.actRes / d.gain / d.txt） */
+      var act0 = d0.actRes || null;
+      var gain0 = (d0.gain != null) ? (d0.gain | 0) : (d0.gain | 0);
       var loot = (d0.loot || []).map(function (it) {
         return '<span style="display:inline-block;padding:2px 8px;border:1px solid var(--wood-light);'
           + 'border-radius:4px;margin:0 4px;">' + U.escape(it.name) + ' ×' + it.n + '</span>';
@@ -9413,23 +9513,25 @@ import './state.js';
         /* ⚠️ 结算大字不能写裸 px（smoke 的"零裸字号"会照出来）——走令牌 + transform 放大。 */
         + '<div style="font-size:var(--fs-h1);font-weight:800;color:' + bigCol
         + ';line-height:var(--lh-1);transform:scale(1.6);margin:4px 0 8px;">' + big + '</div>'
-        + '<div style="font-size:var(--fs-cap);margin-top:3px;">' + U.escape(d0.txt || '') + '</div>'
+        + '<div style="font-size:var(--fs-cap);margin-top:3px;">' + U.escape(d0.txt || (act0 && act0.msg) || '') + '</div>'
         + '<div class="ui-sub" style="margin-top:2px;">共 ' + r.rounds.length + ' 合 · 占先 '
         + (r.wa | 0) + ' : ' + (r.wb | 0) + '</div></div>'
         + '<div style="margin-top:9px;padding:9px 11px;border:1px solid var(--wood-light);'
         + 'border-radius:7px;background:rgba(var(--sh-rgb),.3);">'
         + '<div style="font-size:var(--fs-cap);">经验　<b style="color:var(--gold-light);">+'
-        + (d0.gain | 0) + '</b></div>'
+        + gain0 + '</b></div>'
         + (loot ? '<div style="font-size:var(--fs-cap);margin-top:4px;">物资　' + loot + '</div>'
           : (win ? '' : '<div class="ui-sub" style="margin-top:4px;">这一战没捞到东西</div>'))
         + '</div>'
         + (hist ? '<div style="margin-top:7px;border-top:1px solid var(--line);padding-top:5px;">' + hist + '</div>' : '')
         + '<div style="margin-top:11px;text-align:center;">'
-        + '<button class="btn" data-action="prologue-duel-close">收手</button></div>';
+        + '<button class="btn" data-action="prologue-duel-close">' + (isAct ? '收手 · 回地图' : '收手') + '</button></div>';
     }
 
+    var _titleWin = (d && d.actRes) ? !d.actRes.bad : (r.winner === 'atk');
+    var _titleLose = (d && d.actRes) ? !!d.actRes.bad : (r.winner === 'def');
     var title = r.over
-      ? '⚔ 斗将 · ' + (r.winner === 'atk' ? '拿下' : r.winner === 'def' ? '败退' : '平手')
+      ? '⚔ 斗将 · ' + (_titleWin ? '拿下' : _titleLose ? '败退' : '平手')
       : '⚔ 斗将 · ' + U.escape(f.name || '对手');
     ui.openModal('<div class="gold-heading">' + title + '</div>' + body, { size: 'auto' });
   };
@@ -11039,6 +11141,12 @@ import './state.js';
         sel('pg-ecoBsub', 'ecoCivSub', '　└ 具体', [['']].concat(ui.ECO_B_SUB.map(function(x) { return [x, x]; })), '') +
         sel('pg-ecoC', 'ecoMood', '氛围调性', ui.ECO_C.map(function(x) { return [x, x || '— 氛围 —']; }), '') +
       '</div>' +
+      '<div class="op-zone"><div class="op-zone-t">L5 轨道系 · 陨石带</div>' +
+        slider('pg-beltn', 'beltCount', '石块数量', 0, 800, 10, 240, '0=无带（星际采矿的矿源）') +
+        slider('pg-beltin', 'beltInner', '内缘半径', 1.20, 2.60, 0.05, 1.55, '×星球半径') +
+        slider('pg-beltw', 'beltWidth', '带宽', 0.15, 1.60, 0.05, 0.62, '×星球半径') +
+        slider('pg-beltinc', 'beltIncl', '轨道倾角', 0, 45, 1, 16, '度（越大越"斜"）') +
+      '</div>' +
       '<div class="op-zone"><div class="op-zone-t">L4 游戏性</div>' +
         '<div class="attr"><span class="k">种子</span><span class="v">' +
           '<input type="number" id="pg-seed" data-pf="seed" value="' + get('seed', (U.now() % 900000) || 1) + '" style="width:130px;padding:5px;background:var(--slab-1);border:1px solid var(--gold-dark);color:var(--text);border-radius:4px;text-align:center;">' +
@@ -11055,8 +11163,41 @@ import './state.js';
           '<span class="k"><b style="color:var(--gold-light);">' + c.n + ' · ' + c.c + ' · ' + c.m + '</b></span>' +
           '<span class="v ui-sub">' + U.escape(c.d) + '　<i>原型 ' + U.escape(c.p) + '</i></span></div>';
       }).join('') + '</div>';
+    /* v92.241（老板「把星球生成的流程规定下来」）：**流程页** —— 流水线的唯一可视出口。
+       逐级列出：层 / 名字 / 依赖 / 可调参数 / 产出 / 状态。玩家"细调"就看着这一页改。 */
+    var flowHTML = (function () {
+      var pg = GAME.planetgen;
+      if (!pg || !pg.report) return '<div class="op-zone"><div class="op-zone-t">生成流程</div><div class="ui-sub">流水线未装载。</div></div>';
+      var rp = pg.report(), au = pg.audit ? pg.audit() : { ok: true, errors: [] };
+      var stName = { done: '✅ 已完成', fail: '❌ 失败', skipped: '· 未跑', idle: '· 待运行' };
+      var rows = rp.rows.map(function (r) {
+        return '<div class="attr" style="align-items:flex-start;">'
+          + '<span class="k" style="min-width:150px;"><b style="color:var(--gold-light);">' + U.escape(r.layer) + '</b>'
+          + '<br><span class="ui-sub">' + U.escape(r.name) + '</span></span>'
+          + '<span class="v" style="text-align:left;">'
+          + '<span style="color:' + (r.state === 'done' ? 'var(--green-ok)' : r.state === 'fail' ? 'var(--red-light)' : 'var(--text-dim)') + ';">'
+          + (stName[r.state] || r.state) + (r.ms ? '（' + r.ms + 'ms）' : '') + '</span>'
+          + '　<span class="ui-sub">依赖 ' + U.escape(r.deps || '—') + '｜可调 ' + U.escape(r.params || '—') + '</span>'
+          + '<br><span class="ui-sub">产出：' + U.escape(r.out || '—') + '</span>'
+          + '<br><span class="mk-lbl">' + U.escape(r.desc || '') + '</span>'
+          + (r.note ? '<br><span style="color:var(--red-light);">' + U.escape(r.note) + '</span>' : '')
+          + '</span></div>';
+      }).join('');
+      var d = rp.derived || {};
+      return '<div class="op-zone"><div class="op-zone-t">生成流程（顺序即规范 · ' + rp.rows.length + ' 级）</div>'
+        + '<div class="ui-sub" style="margin-bottom:6px;">'
+        + '自检：' + (au.ok ? '<b style="color:var(--green-ok);">通过</b>' : '<b style="color:var(--red-light);">' + au.errors.length + ' 处问题</b>')
+        + '　｜　上次生成：' + (rp.at ? (new Date(rp.at).toLocaleTimeString()) : '—') + ' · 种子 ' + (rp.seed || '—')
+        + '</div>'
+        + (au.ok ? '' : '<div class="ui-sub" style="color:var(--red-light);">' + au.errors.map(function (e) { return U.escape(e); }).join('；') + '</div>')
+        + '<div class="ui-sub" style="margin:6px 0;">派生量（由星球特征算出）：大气高 <b>' + (d.atmH || '—') + '</b>'
+        + '　大气浓度 <b>' + (d.atmA != null ? d.atmA : '—') + '</b>'
+        + '　深海占比 <b>' + (d.deepFrac != null ? d.deepFrac : '—') + '</b></div>'
+        + rows + '</div>';
+    })();
     var body = tab === 'list' ? ('<div class="op-zone"><div class="op-zone-t">星球副本（单副本渲染 · 只载入当前球）</div>' + listRows + '</div>' + curHTML)
       : tab === 'classic' ? clHTML
+      : tab === 'flow' ? flowHTML
       : (curHTML + genHTML);
     var tabBtn = function(id, label, on) {
       return '<button class="btn' + (on ? ' gold' : ' sm') + '" data-action="planet-tab" data-ptab="' + id + '">' + label + '</button>';
@@ -11064,7 +11205,8 @@ import './state.js';
     ui.openModal(
       '<div class="gold-heading">🪐 星球菜单</div>' +
       '<div style="text-align:center;margin-bottom:8px;">' +
-        tabBtn('gen', '生成', tab === 'gen') + tabBtn('list', '副本', tab === 'list') + tabBtn('classic', '经典生态', tab === 'classic') +
+        tabBtn('gen', '生成', tab === 'gen') + tabBtn('list', '副本', tab === 'list')
+        + tabBtn('classic', '经典生态', tab === 'classic') + tabBtn('flow', '生成流程', tab === 'flow') +
         '<div style="color:var(--text-dim);font-size:var(--fs-sub);margin-top:6px;">各星球作循环**副本**（不同分类视图，杜绝同时跑多个球）· 间距约 <b>' + U.numText(GAME.STAR_DIST, 0) + '</b> 六边格</div>' +
       '</div>' + body +
       '<div class="modal-foot"><button class="btn" data-action="close-modal">关闭</button></div>',
@@ -11087,7 +11229,15 @@ import './state.js';
       radius: f.radius, spinSec: f.spinSec, tilt: f.tilt, atmo: f.atmo, starColor: Number(f.starColor), impact: f.impact,
       seaFrac: f.seaFrac, contCount: f.contCount | 0, ridge: f.ridge, mountain: f.mountain, oceanDepth: f.oceanDepth, detail: f.detail,
       temp: f.temp, tempBands: f.tempBands | 0, cloud: f.cloud,
-      ecoNature: f.ecoNatureSub || f.ecoNature || '', ecoCiv: f.ecoCivSub || f.ecoCiv || '', ecoMood: f.ecoMood || ''
+      ecoNature: f.ecoNatureSub || f.ecoNature || '', ecoCiv: f.ecoCivSub || f.ecoCiv || '', ecoMood: f.ecoMood || '',
+      /* v92.241：L5 轨道系（陨石带）—— 只传玩家**真的动过**的项，
+         没动就留空 → 由 GAME.belt.SPEC 默认值兜底（避免把 undefined 写进存档）。 */
+      belt: {
+        count: (f.beltCount != null ? f.beltCount | 0 : null),
+        innerMul: (f.beltInner != null ? Number(f.beltInner) : null),
+        widthMul: (f.beltWidth != null ? Number(f.beltWidth) : null),
+        inclDeg: (f.beltIncl != null ? Number(f.beltIncl) : null)
+      }
     };
   };
   ui._planetSeedFrom = function () {
@@ -13313,6 +13463,12 @@ import './state.js';
         '<span class="ui-sub" style="flex:1;">→ ' + U.escape(pl ? pl.name : ('星球 ' + m.pid)) +
           '　·　' + U.numText(m.colonists, 0) + ' 人 · ' + U.numText(CO.armyN(m.army), 0) + ' 兵　·　' + phTxt +
           '　<b style="color:var(--gold-light);">' + prog + '%</b></span>' +
+        /* v151（老板「投送落地后就地操作」）：**已经落地的**，给一个"去这颗星球办事"的入口 ——
+           以前只能等它勘测完自动返航，人到了却什么都干不了。 */
+        (ph !== 'out' && m._arrived
+          ? '<button class="btn sm gold" data-action="ix-goto" data-pid="' + m.pid +
+            '" title="切到这颗星球：锚地就地立城 / 有城就进城">去看看</button>'
+          : '') +
         (ph === 'out'
           ? '<button class="btn sm" data-action="ix-cancel" data-id="' + m.id + '" title="前段飞行期内中止（人/兵原路归城，燃料不退）">中止</button>'
           : '<span class="ui-sub">' + U.dur(left) + '</span>') +
@@ -13584,12 +13740,19 @@ import './state.js';
         (last ? '<div class="ui-sub" style="font-size:var(--fs-cap);padding:0 0 4px;">' + U.escape(last) + '</div>' : '');
     }).join('') || '<div class="ui-sub">还没有舰队。</div>';
 
-    var hist = FL.history().slice(0, 5).map(function (h) {
-      return '<div class="ui-sub" style="font-size:var(--fs-cap);padding:2px 0;">'
-        + (h.win ? '✅ 胜' : (h.timeout ? '⏳ 未破' : '❌ 败'))
+    var hist = FL.history().slice(0, 5).map(function (h, hi) {
+      /* v151：每场合战都带**逐回合**（之前只有"几回合/输赢"，等于黑箱） */
+      var rows = (h.rows || []).map(function (x) {
+        return '第' + x.r + '合　我打 ' + U.fmt(x.dmgToEnemy) + ' · 挨 ' + U.fmt(x.dmgToFleet)
+          + '　·　敌 ' + U.fmt(Math.max(0, x.enemyHp)) + ' / 我 ' + U.fmt(Math.max(0, x.fleetHp));
+      }).join('<br>');
+      return '<details style="padding:2px 0;">'
+        + '<summary style="cursor:pointer;">' + (h.win ? '✅ 胜' : (h.timeout ? '⏳ 未破' : '❌ 败'))
         + ' · ' + U.escape(h.targetName || h.target) + ' · ' + h.rounds + ' 回合'
         + (h.lost && h.lost.length ? (' · 折舰 ' + h.lost.join('、')) : '')
-        + '</div>';
+        + '　<span class="ui-sub">（点开看每合）</span></summary>'
+        + '<div class="ui-sub" style="font-size:var(--fs-cap);padding:4px 0 4px 12px;line-height:1.7;">'
+        + (rows || '（这一场没有逐合记录）') + '</div></details>';
     }).join('') || '<div class="ui-sub">（还没打过）</div>';
 
     var preview = sel.length && tid ? (function () {
@@ -13920,6 +14083,9 @@ import './state.js';
         _nav99('', 'map-mycity', '回本城', _onAct99, '本城不在当前地图星球上 —— 回本城需先切回本城所在星球') +
         '<button class="btn sm" data-action="galaxy-open" title="星系总览（太阳 + 各星球绕行 · 点星球进入）">🌌 星系</button>' +
         '<button class="btn sm" data-action="open-outposts">🚩 前哨</button>' +
+        /* v92.240k：地块放置物 —— 点开物品栏，选一件拿在手上，再点地图上的格子放下。 */
+        '<button class="btn sm" data-action="place-open" title="在地块上放置物体">🧱 建造</button>' +
+        (ui._placeItem ? '<button class="btn sm warn" data-action="place-cancel" title="放下手上的东西">✋ 收工</button>' : '') +
         _nav99('', 'map-capital', '灰烬城', _cap99, '灰烬城在母星 —— 当前地图非母星，不可定位') +
       '</div>');
     return '<div class="map-wrap">' +
@@ -14130,11 +14296,111 @@ import './state.js';
     el.style.transform = 'translate(-50%,-50%) rotate(' + (edge ? ang + 90 : 0) + 'deg) scale(2.4)';
     el.dataset.pid = pid;
   };
+  /* ============================================================
+   * v92.240k（老板：「在地图界面的地块上进行建造……标准化的物品放置和组件引擎」）
+   * ------------------------------------------------------------
+   * 交互只有三步：**选一件拿在手上 → 点地图上的格子放下 → 还能转/拆**。
+   * 这里只负责"物品栏"这张面板；真正的落位在 `M.pickAt`（map3d.js）里：
+   * 手上拿着东西时，点格走 `GAME.place.add`，不走地块原来的面板逻辑。
+   * ⚠️ 刻意不加 CSS：全用既有 `btn sm` / `mk-lbl` 类 + 内联布局，
+   *    免得再踩「零裸字号」那条门禁。
+   * ============================================================ */
+  ui.openPlacePanel = function () {
+    var PLc = GAME.place, SPn = GAME.sphere;
+    if (!PLc) { if (ui.toast) ui.toast('放置引擎还没起来'); return; }
+    var h = '<div class="gold-heading">🧱 建造 —— 在地块上放东西</div>';
+    h += '<div class="panel-body">';
+    h += '<div class="ui-sub">选一件拿在手上，然后<b>点地图上的格子</b>放下。已探明的格子才能放，一格一件。<br>'
+      + '建筑<b>要挑地形</b>：结构类只能建在平整的<b>平地/草原</b>（山地立不住），'
+      + '浮台/小舟要<b>下水</b>，栈桥要立在水陆交界。</div>';
+    var items = PLc.list();
+    var gName = PLc.GROUND_NAME || {};
+    for (var i = 0; i < items.length; i++) {
+      var it = items[i], on = (ui._placeItem === it.id);
+      var gTag = it.ground ? (gName[it.ground] || it.ground) : '陆地';
+      if (it.ground === 'flat' && it.slopeMax != null) gTag += '·平整 ' + it.slopeMax;
+      h += '<button class="btn sm' + (on ? ' gold' : '') + '" style="display:block;width:100%;text-align:left;margin:3px 0;"'
+        + ' data-action="place-pick" data-item="' + U.escape(it.id) + '">'
+        + (on ? '▶ ' : '') + U.escape(it.name)
+        + '　<span style="color:var(--gold-light);">[' + U.escape(gTag) + ']</span>'
+        + '　<span class="mk-lbl">' + U.escape(it.desc || '') + '</span>'
+        + '</button>';
+    }
+    /* 已放置清单：按放置时间倒序，只列最近 12 件（多了没意义，还拖慢面板） */
+    var all = PLc.all(), keys = [];
+    for (var k in all) if (all[k]) keys.push(k);
+    keys.sort(function (a, b) { return (all[b].t || 0) - (all[a].t || 0); });
+    h += '<div class="mk-sep"></div><div class="mk-lbl">已放置 ' + keys.length + ' 件'
+      + (keys.length > 12 ? '（只列最近 12 件）' : '') + '</div>';
+    if (!keys.length) h += '<div class="mk-lbl">这块地方还没放过东西。</div>';
+    for (var j = 0; j < Math.min(12, keys.length); j++) {
+      var ci = keys[j], rec = all[ci], it2 = PLc.item(rec.i);
+      var c = (SPn && SPn.cells) ? SPn.cells[+ci] : null;
+      var pos = c ? (Math.round(c.lon) + '°E ' + Math.round(c.lat) + '°N') : ('格 ' + ci);
+      h += '<div class="mk-lbl" style="margin:4px 0;"><b>' + U.escape(it2 ? it2.name : rec.i) + '</b>　' + U.escape(pos)
+        + '　<button class="btn sm" data-action="place-rot" data-ci="' + ci + '">转 45°</button>'
+        + '　<button class="btn sm warn" data-action="place-rm" data-ci="' + ci + '">拆除</button></div>';
+    }
+    h += '</div>';
+    h += '<div class="panel-foot"><button class="btn" data-action="close-modal">关闭</button></div>';
+    ui.openModal(h);
+  };
+
+  /* ============================================================
+   * v92.245（老板）：「星空中物体应有体积，并可点击」
+   * ------------------------------------------------------------
+   * 点中陨石带的一块石头 → 这张卡。数据全部来自 `GAME.belt`（确定性生成、不进存档）：
+   *   · 轨道：距球心 = a（同时给出"多少倍星球半径"，玩家好判断远近）
+   *   · 体量：半径 / 质量（size 已按 R/300 等比缩放）
+   *   · 矿藏：石料 / 铁 / 稀有金属 / 晶石 —— 内圈富金属、外圈富石料与晶石
+   * 星际采矿是 P2：这里先把"这块石头有多少东西"如实摆出来，不假装能挖。
+   * ============================================================ */
+  ui.openBeltRock = function (rock) {
+    if (!rock) return;
+    var BL = GAME.belt;
+    var R = (GAME.sphere && GAME.sphere.R) || 300;
+    var oreName = (BL && BL.ORE_NAME) || { stone: '石料', iron: '铁', rare: '稀有金属', crystal: '晶石' };
+    var keys = (BL && BL.ORE_KEYS) || ['stone', 'iron', 'rare', 'crystal'];
+    var idx = String(rock.id || '').split('_').pop();
+    var aMul = (rock.a / R);
+    var rows = keys.map(function (k) {
+      var v = (rock.ore && rock.ore[k]) || 0;
+      return '<div class="attr"><span class="k">' + U.escape(oreName[k] || k) + '</span>'
+        + '<span class="v"><b style="color:var(--gold-light);font-variant-numeric:tabular-nums;">'
+        + v + '</b> <span class="ui-sub">单位</span></span></div>';
+    }).join('');
+    var inner = rock.u < 0.34, outer = rock.u > 0.67;
+    var h = '<div class="gold-heading">🪨 陨石带 · 第 ' + U.escape(idx) + ' 块</div>'
+      + '<div class="panel-body">'
+      + '<div class="ui-sub" style="margin-bottom:8px;">'
+      + (inner ? '靠内缘的一块 —— 金属多，石料少。'
+        : outer ? '靠外缘的一块 —— 石料与晶石多，金属稀。'
+          : '带中段的一块 —— 各矿比较平均。') + '</div>'
+      + '<div class="attr"><span class="k">轨道半径</span><span class="v">'
+      + Math.round(rock.a) + '　<span class="ui-sub">= ' + aMul.toFixed(2) + ' 倍星球半径</span></span></div>'
+      + '<div class="attr"><span class="k">轨道倾角</span><span class="v">'
+      + Math.round(rock.inc * 180 / Math.PI) + '°</span></div>'
+      + '<div class="attr"><span class="k">尺寸</span><span class="v">'
+      + rock.size.toFixed(1) + '　<span class="ui-sub">半径（世界单位）</span></span></div>'
+      + '<div class="attr"><span class="k">质量</span><span class="v">'
+      + GAME.utils.numText(rock.mass, 0) + '</span></div>'
+      + '<div class="mk-sep"></div>'
+      + '<div class="mk-lbl">矿藏（可采量）</div>'
+      + rows
+      + '<div class="ui-sub" style="margin-top:8px;color:var(--text-dim);">'
+      + '⛏ 星际采矿尚未开放 —— 这些数字是它的数据源，不是现在能挖的量。</div>'
+      + '</div>'
+      + '<div class="panel-foot"><button class="btn" data-action="close-modal">关闭</button></div>';
+    ui.openModal(h, 'sm');
+  };
+
   ui.renderMapCanvas = function () {
     var canvas = $('#mapCanvas');
     if (!canvas) return;
     /* v44：点击地图 → 记下点选的地块，并把坐标刷到状态行。
-       canvas 每次 setView 都会重建，所以用元素上的标记保证只绑一次。 */
+       canvas 每次 setView 都会重建，所以用元素上的标记保证只绑一次。
+       v151（老板「地图就是游戏本体」）：前传期这个手势 = **走路 / 就地动手**，
+       不走 `ui.openLandModalCi` 那套"未占领野地面板"。 */
     if (!canvas._pickBound) {
       canvas._pickBound = true;
       canvas.addEventListener('click', function (e) {
@@ -14142,6 +14408,11 @@ import './state.js';
         if (!r) return;
         ui.mapPick = r;
         ui.syncMapInfo();
+        if (GAME.prologue && GAME.prologue.on && GAME.prologue.on() && GAME.prologue.mapClick) {
+          var mr = GAME.prologue.mapClick(r.ci);
+          if (mr && mr.msg && !mr.here && !mr.arrived) ui.toast(mr.msg);
+          return;
+        }
       });
     }
     var fr = ui.mapFrame;
@@ -14375,72 +14646,349 @@ import './state.js';
    * （守军 −12%，在 prepare 的 scArmy 上生效，与"妖言惑众"同层）。
    * ⚠️ 输了只掉 20 体力：不做重伤，避免"点一次输一次"的挫败感。
    * ============================================================ */
-  ui.openProvoke = function (moveId) {
-    var npc = ui._attackNpc;
+    ui.openProvoke = function () {
+    /* v92.240g：目标城以**开面板时的快照**为准 —— ui.closeModal() 会把 ui._attackNpc
+       置 null（ui.js 顶层关闭分支），挑衅过程中若它被清掉，出战会在读 npc.id 处抛
+       TypeError，表现为"选完将点出战没反应"。 */
+    var npc = ui._provokeNpc || ui._attackNpc;
     if (!npc) return;
-    var nci = GAME.npcCityInfo(npc);
-    var guard = nci && nci.guard;
-    if (!guard) { ui.toast('这座城没有守将，叫阵无人应'); return; }
-    var gen = (GAME.state.generals || [])[0];
-    if (!gen) { ui.toast('没有可派的英雄'); return; }
-    var D = DATA.DUEL || {}, MV = D.moves || {}, order = D.moveOrder || [];
-    var need = D.playRounds || 5;
+    var D = DATA.DUEL || {};
+    var MV = Object.assign({}, D.moves || {}, D.skills || {});
+    var order = D.moveOrder || [];
+    var st = GAME.state;
+    var myGens = (st.generals || []).filter(function (g) { return !g.dead; });
+    if (!myGens.length) { ui.toast('没有可派的英雄'); return; }
+    var enemyGens = GAME.battle.provokeEnemyGens(npc);
+    /* v92.240h：空城叫阵无人应 —— 不做选将也不进战斗（否则 him 为空 → 秒胜白送胆寒） */
+    if (!enemyGens.length) {
+      ui.openModal('<div class="gold-heading">⚔ 派将挑衅</div>'
+        + '<div class="panel-body"><div class="ui-sub">该城并无守将，叫阵无人应。</div></div>');
+      return;
+    }
+    if (!ui._provokePick) ui._provokePick = [];
     var S = ui._provoke;
-    if (!S || S.cid !== npc.id) {
-      S = ui._provoke = { cid: npc.id, moves: [], seed: String(U.now()), res: null, out: null };
-    }
-    if (moveId && !S.out && S.moves.length < need) {
-      S.moves.push(moveId);
-      if (S.moves.length >= need) {
-        S.out = GAME.battle.provoke(npc, gen, S.moves, S.seed);
-        S.res = S.out && S.out.res;
-      }
-    }
-    var h = '<div class="gold-heading">⚔ 派将挑衅 · ' + U.escape(GAME.cityFullName(npc)) + '</div>';
-    h += '<div class="panel-body">';
-    h += '<div class="exp-info exp-info-l" style="color:var(--text-dim);">'
-      + '我方：<b>' + U.escape(gen.name) + '</b>　·　守将：<b>' + U.escape(guard.name) + '</b>'
-      + '（武 ' + (guard.yw || 0) + ' · 谋 ' + (guard.zm || 0) + ' · 统 ' + (guard.tong || 0) + '）'
-      + '　— 他的招式看不到，但属性高的招他更爱出。</div>';
-    h += '<div style="display:flex;gap:6px;margin:10px 0;flex-wrap:wrap;">';
-    for (var i = 0; i < need; i++) {
-      var got = S.moves[i];
-      h += '<span style="padding:3px 9px;border:1px solid var(--wood-light);border-radius:3px;font-size:var(--fs-cap);'
-        + (got ? 'color:var(--gold-light);' : 'color:var(--text-dim);') + '">'
-        + (got ? U.escape((MV[got] || {}).name || got) : ('第 ' + (i + 1) + ' 合')) + '</span>';
-    }
-    h += '</div>';
-    if (!S.out) {
-      h += '<div style="display:flex;gap:8px;flex-wrap:wrap;">';
-      order.forEach(function (mk) {
-        var m = MV[mk] || {};
-        h += '<button class="btn" data-action="provoke-move" data-mv="' + mk + '" title="' + U.escape(m.note || '') + '">'
-          + U.escape(m.name || mk) + '</button>';
+
+    /* ================= 选将阶段 ================= */
+    if (!S) {
+      var gatePct = D.provokeStaGatePct || 0;
+      var h = '<div class="gold-heading">⚔ 派将挑衅 · ' + U.escape(GAME.cityFullName ? GAME.cityFullName(npc) : (npc.name || '该城')) + '</div>';
+      h += '<style>'
+        + '.pv-pick-h{font-weight:600;margin:10px 0 6px;color:var(--gold-light);font-size:var(--fs-sub);}'
+        + '.pv-pick-row{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;}'
+        + '.pv-pick-card{width:150px;padding:8px;border-radius:10px;background:rgba(255,255,255,.04);border:1px solid var(--wood-light);text-align:center;cursor:pointer;transition:.15s;}'
+        + '.pv-pick-card.me:hover{border-color:var(--gold-light);}'
+        + '.pv-pick-card.pv-pick-on{border-color:var(--gold-light);box-shadow:0 0 14px 2px rgba(230,164,0,.5);background:rgba(230,164,0,.1);}'
+        + '.pv-pick-card.pv-pick-lock{opacity:.45;cursor:not-allowed;filter:grayscale(.5);}'
+        + '.pv-pick-card .pv-portrait{display:inline-block;filter:drop-shadow(0 6px 8px rgba(0,0,0,.5));}'
+        + '.pv-pick-card.him{border-color:rgba(200,60,60,.5);cursor:default;}'
+        + '.pv-locktip{font-size:var(--fs-cap);color:var(--red-light);margin-top:3px;}'
+        + '.pv-sel-n{color:var(--gold-light);}'
+        + '</style>';
+      h += '<div class="panel-body">';
+      h += '<div class="pv-pick-h">守军出战（名城固定 3 将）</div>';
+      h += '<div class="pv-pick-row">';
+      enemyGens.forEach(function (g) {
+        var p = GAME.battle.duelProfile(g);
+        h += '<div class="pv-pick-card him">'
+          + '<div class="pv-portrait">' + ui.faceOf(g, 64) + '</div>'
+          + '<div class="pv-name" style="color:var(--red-light);">' + U.escape(g.name) + '</div>'
+          + '<div class="pv-title">Lv' + (g.level || 1) + ' · ' + (g.title || '守军') + '</div>'
+          + '<div class="pv-stats"><span>攻 <b>' + p.atk + '</b></span><span>防 <b>' + p.def + '</b></span><span>体 <b>' + p.max + '</b></span></div>'
+          + '</div>';
       });
       h += '</div>';
-      h += '<div style="font-size:var(--fs-cap);color:var(--text-dim);margin-top:8px;">'
-        + '突刺克蓄力 · 格挡克突刺 · 佯攻克格挡 · 蓄力克佯攻（同招相持）。出满 ' + need + ' 合即结算。</div>';
-    } else {
-      if (S.res) {
-        h += '<table class="tbl"><thead><tr><th>合</th><th>你</th><th>他</th><th>结果</th></tr></thead><tbody>';
-        S.res.rows.forEach(function (r) {
-          h += '<tr><td class="num">' + r.r + '</td><td>' + U.escape(r.aName) + '</td><td>' + U.escape(r.bName) + '</td>'
-            + '<td style="color:' + (r.res === 'a' ? 'var(--gold-light)' : r.res === 'b' ? 'var(--red-light)' : 'var(--text-dim)') + ';">'
-            + (r.res === 'a' ? '占先' : r.res === 'b' ? '被压' : '相持') + '</td></tr>';
-        });
-        h += '</tbody></table>';
-      }
-      h += '<div class="exp-info exp-info-l" style="margin-top:8px;color:'
-        + (S.out.ok ? 'var(--gold-light)' : 'var(--red-light)') + ';">' + U.escape(S.out.msg) + '</div>';
-      h += '<div style="margin-top:8px;"><button class="btn" data-action="provoke-again">再来一次</button>'
-        + '　<button class="btn" data-action="close-modal">关闭</button></div>';
+      h += '<div class="pv-pick-h">我方出战（勾选 1~3 将，左 3 对右 3）　·　已选 <b class="pv-sel-n">' + ui._provokePick.length + '</b>/3</div>';
+      h += '<div class="pv-pick-row">';
+      myGens.forEach(function (g) {
+        var p = GAME.battle.duelProfile(g);
+        var staMax = GAME.staMax ? GAME.staMax(g) : 100;
+        var staNow = GAME.staNow ? Math.max(0, GAME.staNow(g)) : staMax;
+        var locked = gatePct > 0 && (staNow < staMax * gatePct);
+        var sel = ui._provokePick.indexOf(g.id) >= 0;
+        var dis = locked && !sel;
+        h += '<div class="pv-pick-card me' + (sel ? ' pv-pick-on' : '') + (dis ? ' pv-pick-lock' : '') + '" '
+          + 'data-action="provoke-select" data-gid="' + g.id + '"' + (dis ? ' data-locked="1"' : '') + '>'
+          + '<div class="pv-portrait">' + ui.faceOf(g, 64) + '</div>'
+          + '<div class="pv-name" style="color:var(--gold-light);">' + U.escape(g.name) + (sel ? ' ✓' : '') + '</div>'
+          + '<div class="pv-title">Lv' + (g.level || 1) + ' · ' + (g.title || '我方') + '</div>'
+          + '<div class="pv-stats"><span>攻 <b>' + p.atk + '</b></span><span>防 <b>' + p.def + '</b></span></div>'
+          + '<div class="pv-stats"><span>体力 <b>' + staNow + '/' + staMax + '</b></span></div>'
+          + (locked ? '<div class="pv-locktip">体力不足</div>' : '')
+          + '</div>';
+      });
+      h += '</div>';
+      var canStart = ui._provokePick.length >= 1 && ui._provokePick.length <= 3;
+      h += '<div class="panel-foot"><button class="btn gold" data-action="provoke-start"' + (canStart ? '' : ' disabled') + '>出战（' + ui._provokePick.length + ' 将）</button>'
+        + '　<button class="btn" data-action="close-modal">关闭</button>'
+        + (ui._provokePick.length > 3 ? ' <span style="color:var(--red-light)">最多 3 将</span>' : '') + '</div>';
+      h += '</div>';
+      ui.openModal(h);
+      return;
     }
-    if (!S.out) h += '<div class="panel-foot"><button class="btn" data-action="close-modal">关闭</button></div>';
+
+    /* ================= 对战 / 结算阶段 ================= */
+    var last = S.log[S.log.length - 1];
+    function _actCls(isMe) {
+      if (!last || S.over) return '';
+      if (last.res === 'a') return isMe ? ('pv-act-' + (last.am || 'stab')) : 'pv-hurt';
+      if (last.res === 'b') return isMe ? 'pv-hurt' : ('pv-act-' + (last.bm || 'stab'));
+      return 'pv-shake';
+    }
+    function _fxCls(isMe) {
+      if (!last || S.over) return '';
+      var wm = last.res === 'a' ? last.am : last.res === 'b' ? last.bm : null;
+      var sk = wm && MV[wm] && MV[wm].skill;
+      if (last.res === 'a') return isMe ? (sk ? 'pv-fx-skill' : ('pv-fx-' + (last.am || 'stab'))) : 'pv-fx-hit';
+      if (last.res === 'b') return isMe ? 'pv-fx-hit' : (sk ? 'pv-fx-skill' : ('pv-fx-' + (last.bm || 'stab')));
+      return '';
+    }
+    function _koCls(idx, isMe) {
+      var prof = isMe ? S.me[idx] : S.him[idx];
+      if (prof && !prof.alive) return 'pv-ko';
+      if (S.over) {
+        if (S.winner === 'atk') return isMe ? 'pv-win' : 'pv-ko';
+        if (S.winner === 'def') return isMe ? 'pv-ko' : 'pv-win';
+      }
+      return '';
+    }
+    function _activeIdx(isMe) {
+      if (!last) { var a = isMe ? S.me : S.him; for (var i = 0; i < a.length; i++) if (a[i].alive) return i; return 0; }
+      return isMe ? last.mi : last.hi;
+    }
+    function _fig(g, isMe, idx) {
+      var prof = isMe ? S.me[idx] : S.him[idx];
+      var col = isMe ? 'var(--gold-light)' : 'var(--red-light)';
+      var bg = isMe ? 'linear-gradient(90deg,#e6a400,#b9790a)' : 'linear-gradient(90deg,#c83c3c,#7a1f1f)';
+      var hp = prof.hp, mx = prof.max;
+      var pct = Math.max(0, Math.min(100, hp / mx * 100));
+      var act = (_activeIdx(isMe) === idx) ? ' pv-active' : '';
+      var ko = _koCls(idx, isMe);
+      var glow = (S.over && ((S.winner === 'atk' && isMe) || (S.winner === 'def' && !isMe))) ? ' pv-win-glow' : '';
+      var ac = (!S.over && _activeIdx(isMe) === idx) ? _actCls(isMe) : '';
+      var flip = isMe ? '' : ' pv-flip';
+      var fx = (!S.over && _activeIdx(isMe) === idx) ? _fxCls(isMe) : '';
+      return '<div class="pv-fig' + (isMe ? ' pv-me' : ' pv-him') + act + glow + '" data-pi="' + idx + '">'
+        + '<div class="pv-portrait pv-idle"><div class="pv-img' + flip + '"><div class="pv-body ' + ko + ' ' + ac + '">' + ui.faceOf(g, 118) + '</div>'
+        + (fx ? '<div class="pv-fx ' + fx + '"></div>' : '')
+        + '</div></div>'
+        + '<div class="pv-name" style="color:' + col + ';">' + U.escape(g.name) + (prof.alive ? '' : '（倒）') + '</div>'
+        + '<div class="pv-title">' + U.escape(g.title || (isMe ? '我方' : '守军')) + ' · Lv' + (g.level || 1) + '</div>'
+        + '<div class="pv-hpwrap"><div class="pv-hplbl"><span>体力</span><span>' + hp + ' / ' + mx + '</span></div>'
+        + '<div class="pv-hpbar"><span class="pv-fill" style="width:' + pct + '%;background:' + bg + ';"></span></div></div>'
+        + '<div class="pv-stats"><span>攻 <b>' + prof.atk + '</b></span><span>防 <b>' + prof.def + '</b></span></div>'
+        + '</div>';
+    }
+    var h = '<div class="gold-heading">⚔ 派将挑衅 · ' + U.escape(GAME.cityFullName ? GAME.cityFullName(npc) : (npc.name || '该城')) + '</div>';
+    h += '<style>'
+      + '.pv-stage{position:relative;padding:8px 4px 0;margin-bottom:8px;border-radius:10px;overflow:hidden;'
+      + 'background:radial-gradient(120% 70% at 50% 0%,rgba(230,164,0,.12),transparent 55%),'
+      + 'linear-gradient(180deg,rgba(22,17,10,.55),rgba(8,6,4,.92));border:1px solid var(--wood-light);}'
+      + '.pv-arena{display:flex;align-items:flex-end;justify-content:space-between;gap:6px;position:relative;min-height:240px;padding:0 4px;}'
+      + '.pv-side{display:flex;flex-direction:column;gap:6px;justify-content:flex-end;flex:1;}'
+      + '.pv-side.him{align-items:flex-end;}'
+      + '.pv-center{display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:64px;flex:0 0 auto;}'
+      + '.pv-floor{position:absolute;left:0;right:0;bottom:0;height:44px;background:linear-gradient(180deg,rgba(0,0,0,.55),rgba(70,45,22,.12));border-top:1px solid rgba(230,164,0,.22);}'
+      + '.pv-fig{position:relative;width:150px;text-align:center;z-index:2;opacity:.42;transition:opacity .2s;}'
+      + '.pv-fig.pv-active{opacity:1;}'
+      + '.pv-fig.pv-win-glow{filter:drop-shadow(0 0 12px rgba(230,164,0,.7));}'
+      + '.pv-portrait{display:inline-block;filter:drop-shadow(0 10px 12px rgba(0,0,0,.65));}'
+      + '.pv-portrait.pv-idle{animation:pv-idle 2.6s ease-in-out infinite;}'
+      + '@keyframes pv-idle{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}'
+      + '.pv-img{display:inline-block;}'
+      + '.pv-img.pv-flip{transform:scaleX(-1);}'
+      + '.pv-body{display:inline-block;transform-origin:50% 100%;will-change:transform;}'
+      + '.pv-body img{display:block;}'
+      + '.pv-name{font-weight:600;margin-top:2px;position:relative;z-index:3;}'
+      + '.pv-title{font-size:var(--fs-cap);color:var(--text-dim);}'
+      + '.pv-hpwrap{margin-top:5px;position:relative;z-index:3;}'
+      + '.pv-hplbl{display:flex;justify-content:space-between;font-size:var(--fs-cap);color:var(--text-dim);}'
+      + '.pv-hpbar{height:13px;background:rgba(0,0,0,.5);border-radius:7px;overflow:hidden;margin-top:2px;border:1px solid rgba(255,255,255,.12);}'
+      + '.pv-fill{height:100%;transition:width .45s ease;}'
+      + '.pv-stats{display:flex;gap:8px;justify-content:center;font-size:var(--fs-cap);color:var(--text-dim);margin-top:4px;}'
+      + '.pv-stats b{color:var(--text);}'
+      + '.pv-dmg{position:absolute;left:50%;top:6px;font-weight:800;font-size:var(--fs-h1);color:var(--red-light);z-index:6;pointer-events:none;animation:pv-pop .8s ease forwards;}'
+      + '@keyframes pv-pop{0%{opacity:0;transform:translate(-50%,12px) scale(.6)}30%{opacity:1;transform:translate(-50%,-12px) scale(1.2)}100%{opacity:0;transform:translate(-50%,-36px) scale(1)}}'
+      + '.pv-act-stab{animation:pv-stab .55s cubic-bezier(.3,1.5,.5,1) forwards;}'
+      + '@keyframes pv-stab{0%{transform:translateX(0) rotate(0)}30%{transform:translateX(28px) rotate(-7deg)}60%{transform:translateX(28px) rotate(-7deg)}100%{transform:translateX(0) rotate(0)}}'
+      + '.pv-act-guard{animation:pv-guard .6s ease forwards;}'
+      + '@keyframes pv-guard{0%{transform:scale(1)}25%{transform:scale(1.12) translateY(-7px)}100%{transform:scale(1) translateY(0)}}'
+      + '.pv-act-feint{animation:pv-feint .5s ease forwards;}'
+      + '@keyframes pv-feint{0%{transform:translateX(0)}20%{transform:translateX(22px)}45%{transform:translateX(-10px)}70%{transform:translateX(12px)}100%{transform:translateX(0)}}'
+      + '.pv-act-charge{animation:pv-charge .7s ease forwards;}'
+      + '@keyframes pv-charge{0%{transform:scaleY(1)}40%{transform:scaleY(.8) translateY(9px)}100%{transform:scaleY(1) translateY(0)}}'
+      + '.pv-hurt{animation:pv-hurt .5s ease forwards;}'
+      + '@keyframes pv-hurt{0%{transform:translateX(0)}20%{transform:translateX(-22px) rotate(-9deg);filter:brightness(2.2) sepia(1) hue-rotate(-35deg) saturate(5)}45%{transform:translateX(7px)}70%{transform:translateX(-5px)}100%{transform:translateX(0);filter:none}}'
+      + '.pv-shake{animation:pv-shake .4s ease;}'
+      + '@keyframes pv-shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-5px)}50%{transform:translateX(5px)}75%{transform:translateX(-4px)}}'
+      + '.pv-fx{position:absolute;left:50%;top:42%;pointer-events:none;z-index:7;}'
+      + '.pv-fx-stab{width:84px;height:4px;margin-left:-12px;background:linear-gradient(90deg,transparent,#fff,transparent);border-radius:4px;animation:pv-fx-stab .4s ease forwards;}'
+      + '@keyframes pv-fx-stab{0%{transform:scaleX(0);opacity:0}45%{transform:scaleX(1);opacity:1}100%{transform:scaleX(1.25);opacity:0}}'
+      + '.pv-fx-guard{width:64px;height:64px;margin:-32px 0 0 -32px;border:3px solid var(--gold-light);border-radius:50%;animation:pv-fx-guard .6s ease forwards;}'
+      + '@keyframes pv-fx-guard{0%{transform:scale(.4);opacity:.9}100%{transform:scale(1.5);opacity:0}}'
+      + '.pv-fx-charge{width:54px;height:54px;margin:-64px 0 0 -27px;border-radius:50%;background:radial-gradient(circle,rgba(255,180,60,.85),transparent 70%);animation:pv-fx-charge .7s ease forwards;}'
+      + '@keyframes pv-fx-charge{0%{transform:translateY(22px) scale(.5);opacity:0}40%{opacity:1}100%{transform:translateY(-32px) scale(1.35);opacity:0}}'
+      + '.pv-fx-feint{width:54px;height:54px;margin:-27px 0 0 -27px;border-radius:50%;background:radial-gradient(circle,rgba(170,215,255,.7),transparent 70%);animation:pv-fx-feint .5s ease forwards;}'
+      + '@keyframes pv-fx-feint{0%{transform:scale(.6);opacity:0}40%{opacity:.8}100%{transform:scale(1.5);opacity:0}}'
+      + '.pv-fx-hit{width:30px;height:30px;margin:-15px 0 0 -15px;border-radius:50%;background:radial-gradient(circle,#fff,rgba(255,80,40,.65),transparent 70%);animation:pv-fx-hit .5s ease forwards;}'
+      + '@keyframes pv-fx-hit{0%{transform:scale(.3);opacity:1}100%{transform:scale(2.2);opacity:0}}'
+      + '.pv-ko{animation:pv-ko 1s ease forwards;}'
+      + '@keyframes pv-ko{0%{transform:rotate(0) translateY(0);filter:none}100%{transform:rotate(82deg) translateY(34px);filter:grayscale(1) brightness(.5);opacity:.55}}'
+      + '.pv-win{animation:pv-win .85s ease forwards;}'
+      + '@keyframes pv-win{0%{transform:translateY(0)}28%{transform:translateY(-24px) scale(1.09)}60%{transform:translateY(0)}100%{transform:translateY(0)}}'
+      + '.pv-dmg-crit{font-size:calc(var(--fs-h1) * 1.5);color:#ffd24a;text-shadow:0 0 12px rgba(255,180,40,.95);}'
+      + '.pv-act-skill{animation:pv-skill .6s cubic-bezier(.3,1.4,.5,1) forwards;}'
+      + '@keyframes pv-skill{0%{transform:translateX(0) rotate(0) scale(1)}22%{transform:translateX(46px) rotate(-14deg) scale(1.14)}55%{transform:translateX(46px) rotate(-14deg) scale(1.14)}100%{transform:translateX(0) rotate(0) scale(1)}}'
+      + '.pv-shake-big{animation:pv-shake-big .45s ease;}'
+      + '@keyframes pv-shake-big{0%,100%{transform:translate(0,0)}15%{transform:translate(-10px,4px)}30%{transform:translate(9px,-3px)}45%{transform:translate(-8px,2px)}60%{transform:translate(7px,-2px)}75%{transform:translate(-5px,1px)}}'
+      + '.pv-fx-skill{width:130px;height:130px;margin:-65px 0 0 -65px;border-radius:50%;background:radial-gradient(circle,rgba(255,210,90,.95),rgba(255,120,40,.5) 45%,transparent 70%);box-shadow:0 0 34px 10px rgba(255,180,60,.85);animation:pv-fx-skill .6s ease forwards;}'
+      + '@keyframes pv-fx-skill{0%{transform:scale(.3);opacity:0}40%{opacity:1}100%{transform:scale(1.7);opacity:0}}'
+      + '.pv-hitflash{position:absolute;inset:0;background:radial-gradient(circle at 50% 55%,rgba(210,50,35,.4),transparent 62%);opacity:0;pointer-events:none;z-index:5;}'
+      + '.pv-hitflash-on{animation:pv-hitflash .35s ease;}'
+      + '@keyframes pv-hitflash{0%{opacity:0}30%{opacity:1}100%{opacity:0}}'
+      + '.pv-vs-emblem{font-size:calc(var(--fs-h1) * 2);font-weight:900;color:rgba(255,210,90,.9);text-shadow:0 0 18px rgba(255,180,40,.8);z-index:4;pointer-events:none;}'
+      + '.pv-vs-on{animation:pv-vs-flash .7s ease;}'
+      + '@keyframes pv-vs-flash{0%{opacity:0;transform:scale(.5)}40%{opacity:1;transform:scale(1.25)}100%{opacity:0;transform:scale(1.6)}}'
+      + '.pv-round{font-size:var(--fs-cap);color:var(--text-dim);margin-top:4px;}'
+      + '.pv-skill-btn{background:linear-gradient(180deg,#3a2a08,#1c1405);border:1px solid var(--gold-light);color:var(--gold-light);font-weight:700;}'
+      + '.pv-skill-btn.pv-skill-cd{opacity:.45;filter:grayscale(.4);cursor:not-allowed;}'
+      + '.pv-ctrls{display:flex;gap:10px;align-items:center;justify-content:center;margin:6px 0;}'
+      + '.pv-auto{font-size:var(--fs-cap);color:var(--text-dim);}'
+      + '.pv-log{margin:8px 0;display:flex;flex-direction:column;gap:4px;max-height:150px;overflow:auto;}'
+      + '.pv-row{display:flex;align-items:center;gap:8px;font-size:var(--fs-cap);padding:3px 8px;border-radius:4px;background:rgba(255,255,255,.04);}'
+      + '.pv-row.me{border-left:3px solid var(--gold-light);} .pv-row.him{border-left:3px solid var(--red-light);}'
+      + '.pv-row .pv-r{color:var(--text-dim);width:36px;} .pv-row .pv-vs{color:var(--text-dim);} .pv-row .pv-d{font-weight:700;margin-left:auto;}'
+      + '.pv-result{text-align:center;font-weight:700;font-size:var(--fs-sub);padding:8px;border-radius:6px;margin:6px 0;}'
+      + '.pv-result.ok{background:rgba(230,164,0,.14);color:var(--gold-light);border:1px solid var(--gold-light);}'
+      + '.pv-result.bad{background:rgba(200,60,60,.14);color:var(--red-light);border:1px solid var(--red-light);}'
+      + '.pv-result.draw{background:rgba(255,255,255,.08);color:var(--text-dim);border:1px solid var(--wood-light);}'
+      + '</style>';
+    h += '<div class="panel-body">';
+    h += '<div class="pv-stage"><div class="pv-hitflash"></div><div class="pv-arena">';
+    h += '<div class="pv-side me">';
+    S.me.forEach(function (x, i) { h += _fig(x.g, true, i); });
     h += '</div>';
+    h += '<div class="pv-center"><div class="pv-vs-emblem' + (S.over ? '' : ' pv-vs-on') + '">⚔</div>'
+      + '<div class="pv-round">第 ' + S.round + ' 合</div></div>';
+    h += '<div class="pv-side him">';
+    S.him.forEach(function (x, i) { h += _fig(x.g, false, i); });
+    h += '</div>';
+    h += '</div><div class="pv-floor"></div></div>';
+
+    if (!S.over) {
+      var aMe = S.me[S.mi];
+      var pSkillId = aMe ? (aMe.g.skill || D.defaultSkill) : null;
+      var pSkill = pSkillId && MV[pSkillId] && MV[pSkillId].skill ? MV[pSkillId] : null;
+      var cd = aMe ? aMe.skillCd : 0;
+      h += '<div class="pv-ctrls">';
+      if (pSkill) {
+        var disS = cd > 0 || S.pendingSkill;
+        h += '<button class="btn pv-skill-btn' + (disS ? ' pv-skill-cd' : '') + '" data-action="provoke-skill"' + (disS ? ' disabled' : '') + ' title="' + U.escape(pSkill.note || '') + '">'
+          + (pSkill.icon ? pSkill.icon + ' ' : '★') + U.escape(pSkill.name)
+          + (cd > 0 ? '（冷却 ' + cd + '）' : (S.pendingSkill ? '（待发）' : ' ★')) + '</button>';
+      }
+      h += '<span class="pv-auto">自动战斗中…（无需操作，可随时放绝活）</span>';
+      h += '</div>';
+    } else {
+      h += '<div class="pv-log">';
+      S.log.slice(-12).forEach(function (e) {
+        var an = (MV[e.am] || {}).name || e.am, bn = (MV[e.bm] || {}).name || e.bm;
+        var ai = (MV[e.am] || {}).icon || '⚔', bi = (MV[e.bm] || {}).icon || '🛡';
+        var resTxt = e.res === 'a' ? '<span style="color:var(--gold-light);">我占先</span>' : e.res === 'b' ? '<span style="color:var(--red-light);">我受压</span>' : '<span style="color:var(--text-dim);">相持</span>';
+        var dmgTxt = e.res === 'a' ? '<span class="pv-d" style="color:var(--red-light);">敌 -' + e.dmgB + '</span>'
+          : e.res === 'b' ? '<span class="pv-d" style="color:var(--gold-light);">我 -' + e.dmgA + '</span>'
+          : '<span class="pv-d" style="color:var(--text-dim);">互 -' + e.dmgA + '/' + e.dmgB + '</span>';
+        h += '<div class="pv-row ' + (e.res === 'a' ? 'me' : e.res === 'b' ? 'him' : '') + '">'
+          + '<span class="pv-r">第' + e.r + '合</span>'
+          + '<span>' + ai + ' ' + U.escape(an) + '</span>'
+          + '<span class="pv-vs">⚔</span>'
+          + '<span>' + bi + ' ' + U.escape(bn) + '</span>'
+          + resTxt + dmgTxt + '</div>';
+      });
+      h += '</div>';
+      var ok = S.out && S.out.ok;
+      h += '<div class="pv-result ' + (ok ? 'ok' : S.winner === 'draw' ? 'draw' : 'bad') + '">'
+        + (ok ? '⚑ 挑衅得手' : S.winner === 'draw' ? '⚖ 两败俱伤' : '✖ 挑衅失手') + '</div>';
+      h += '<div class="exp-info" style="margin-top:4px;color:' + (ok ? 'var(--gold-light)' : 'var(--red-light)') + ';">' + U.escape(S.out ? S.out.msg : '') + '</div>';
+    }
+    if (S.over) {
+      h += '<div class="panel-foot"><button class="btn" data-action="provoke-again">再来一次</button>'
+        + '　<button class="btn" data-action="close-modal">关闭</button></div>';
+    } else {
+      h += '<div class="panel-foot"><button class="btn" data-action="close-modal">撤退</button></div>';
+    }
+    h += '</div>';
+
+    function _pvPlay() {
+      try {
+        var stage = document.querySelector('.pv-stage');
+        if (!stage) return;
+        var me = stage.querySelector('.pv-side.me .pv-active .pv-body');
+        var him = stage.querySelector('.pv-side.him .pv-active .pv-body');
+        if (!me && !him) return;
+        var hf = stage.querySelector('.pv-hitflash');
+        function _dmg(fig, val, crit) {
+          if (!fig || !val || val <= 0) return;
+          var d = document.createElement('div');
+          d.className = 'pv-dmg' + (crit ? ' pv-dmg-crit' : '');
+          d.textContent = (crit ? '暴击! -' : '-') + val;
+          fig.parentNode.appendChild(d);
+          setTimeout(function () { if (d.parentNode) d.parentNode.removeChild(d); }, 900);
+        }
+        function _shake(big) {
+          stage.classList.remove('pv-shake', 'pv-shake-big');
+          void stage.offsetWidth;
+          stage.classList.add(big ? 'pv-shake-big' : 'pv-shake');
+        }
+        var r = last ? last.res : null;
+        if (r === 'a') {
+          var _aA = (MV[last.am] && MV[last.am].skill) ? 'pv-act-skill' : ('pv-act-' + (last.am || 'stab'));
+          if (me) setTimeout(function () { me.classList.add(_aA); }, 60);
+          if (him) setTimeout(function () {
+            him.classList.add('pv-hurt'); _shake(false);
+            if (hf) { hf.classList.remove('pv-hitflash-on'); void hf.offsetWidth; hf.classList.add('pv-hitflash-on'); }
+            _dmg(him, last.dmgB, false);
+          }, 320);
+        } else if (r === 'b') {
+          var _aB = (MV[last.bm] && MV[last.bm].skill) ? 'pv-act-skill' : ('pv-act-' + (last.bm || 'stab'));
+          if (him) setTimeout(function () { him.classList.add(_aB); }, 60);
+          if (me) setTimeout(function () {
+            me.classList.add('pv-hurt'); _shake(false);
+            if (hf) { hf.classList.remove('pv-hitflash-on'); void hf.offsetWidth; hf.classList.add('pv-hitflash-on'); }
+            _dmg(me, last.dmgA, false);
+          }, 320);
+        } else if (r === 'tie') {
+          if (me) setTimeout(function () { me.classList.add('pv-act-stab'); }, 60);
+          if (him) setTimeout(function () { him.classList.add('pv-act-stab'); }, 60);
+          setTimeout(function () {
+            if (me) me.classList.add('pv-hurt');
+            if (him) him.classList.add('pv-hurt');
+            _shake(true);
+            if (hf) { hf.classList.remove('pv-hitflash-on'); void hf.offsetWidth; hf.classList.add('pv-hitflash-on'); }
+            if (me) _dmg(me, last.dmgA, false);
+            if (him) _dmg(him, last.dmgB, false);
+          }, 320);
+        }
+      } catch (e) { /* 无布局/探针环境兜底：动画失败不影响战斗逻辑 */ }
+    }
     ui.openModal(h);
+    if (!S.over) _pvPlay();
   };
 
-  ui.openDuel = function (fid, moveId) {
+  ui._provokeTick = function () {
+    var S = ui._provoke;
+    if (!S || S.over) return;
+    var D = DATA.DUEL || {}, MV = Object.assign({}, D.moves || {}, D.skills || {});
+    GAME.battle.provokeStep(S, MV, D);
+    if (S.over) {
+      var _fn = ui._provokeNpc || ui._attackNpc;
+      S.out = _fn ? GAME.battle.provokeFinalize(_fn, S) : { ok: false, msg: '目标城已失效，本次挑衅无收益' };
+    }
+    ui.openProvoke();
+    if (!S.over) ui._provokeTimer = setTimeout(ui._provokeTick, (D.provokeAutoSpeed || 1100));
+    else ui._provokeTimer = null;
+  };
+
+ui.openDuel = function (fid, moveId) {
     var st = GAME.state;
     if (!st || !GAME.faction) return;
     var D = DATA.DUEL || {}, MV = D.moves || {}, order = D.moveOrder || [];
@@ -15050,10 +15598,82 @@ import './state.js';
       '<div class="m-foot"><button class="btn" data-action="close-modal">关闭</button></div>');
   };
 
+  /* ============================================================
+   * v151（老板：「地图就是游戏本体」）：**前传里点脚下这一格 = 就地动手**
+   * ------------------------------------------------------------
+   * 改前：点地图（含脚下）→ 弹出一整套"未占领野地面板"（守军/派驻/掠夺/占领），
+   * 而前传没有兵、没有城，那些按钮一个都用不了 —— "点了一块迷雾地，
+   * 弹出一个讲它有什么的面板"。
+   * 改后：前传在脚下一格只给两件事：这格能做什么（⚔ 打 / ⛏ 采）、
+   * 以及"走进去"（2.5D 场景）。正式阶段的门票是兵，前传的门票是体力 ——
+   * 同一格在两种阶段给两种面板，各自只说自己用得上的一句话。
+   * ⚠️ 单独成函数（不塞进 openLandModalCi 体内）：那份 14k 字的地块界面
+   * 由 smoke §v89.136 按源码窗口切片断言，往里插分支会把它挤出窗口。
+   * ============================================================ */
+  ui.openPrologueLand = function (ci) {
+    var Pg = GAME.prologue;
+    if (!Pg || !Pg.pos || ci !== Pg.pos()) {
+      ui.toast('先点地图走过去 —— 站在那一格上才能动手');
+      return;
+    }
+    var tile = (GAME.sphere && GAME.sphere.cells) ? GAME.sphere.cells[ci] : null;
+    var pacts = (GAME.jianghuActsAt ? GAME.jianghuActsAt(ci) : []) || [];
+    var lordP = Pg.lord ? Pg.lord() : null;
+    var hereT = (DATA.TERRAIN || {})[(tile || {}).type] || { name: (tile || {}).type || '荒野' };
+    var actRows = pacts.length ? pacts.map(function (a) {
+      var d = a.def || a;
+      var nm = d.name || a.name || a.id;
+      var kind = d.kind || '';
+      var ktxt = kind === 'fight' ? '⚔' : kind === 'trial' ? '🗿' : kind === 'gather' ? '⛏'
+        : kind === 'cultivate' ? '🧘' : kind === 'visit' ? '🏡' : '·';
+      /* 打斗（fight/trial）→ 回合制：先把这一格的对手摆出来，再逐合出招 */
+      if (Pg.combatKind && Pg.combatKind(a.id)) {
+        var foe = Pg.duelFoe ? Pg.duelFoe(ci) : null;
+        return '<div style="display:flex;align-items:center;gap:10px;margin-top:7px;">'
+          + '<button class="btn gold" data-action="prologue-fight" data-ci="' + ci + '" data-act="' + U.escape(a.id) + '">'
+          + ktxt + ' ' + U.escape(nm) + ' · 跟他打</button>'
+          + '<span class="ui-sub">' + U.escape(foe ? (foe.name + ' Lv' + (foe.level | 0)) : '') +
+          '　·　精力 −' + (d.energy | 0) + ' 体力 −' + (d.stam | 0) + '</span></div>';
+      }
+      return '<div style="display:flex;align-items:center;gap:10px;margin-top:7px;">'
+        + '<button class="btn" data-action="prologue-act" data-ci="' + ci + '" data-act="' + U.escape(a.id) + '">'
+        + ktxt + ' ' + U.escape(nm) + '</button>'
+        + '<span class="ui-sub">精力 −' + (d.energy | 0) + ' 体力 −' + (d.stam | 0) + '</span></div>';
+    }).join('') : '<div class="q-empty" style="margin-top:6px;">这儿没什么可做的 —— 往别处走走。</div>';
+    var walkBtn = pacts.length
+      ? '<div style="margin-top:9px;"><button class="btn" data-action="prologue-scene" data-ci="' + ci
+        + '" data-act="' + U.escape(pacts[0].id) + '">🚶 走进去（自己找地方动手）</button></div>'
+      : '';
+    var duelBtn = (Pg.duelReady && Pg.duelReady(ci))
+      ? '<div style="margin-top:9px;"><button class="btn" data-action="prologue-duel">⚔ 点名斗将</button>'
+        + '<span class="ui-sub" style="margin-left:8px;">不耗兵；赢了他服 3 次（难度 −40%）</span></div>'
+      : '';
+    ui.openModal(
+      '<div class="gold-heading">📍 ' + U.escape(hereT.name || '荒野') + ' · 就在脚下</div>'
+      + '<div class="ui-sub" style="margin-top:3px;">精力 ' + Math.round(GAME.energyNowOf ? GAME.energyNowOf(lordP) : 0)
+      + ' / ' + Math.round(GAME.energyMaxOf ? GAME.energyMaxOf(lordP) : 100)
+      + '　体力 ' + Math.round(GAME.staNow ? GAME.staNow(lordP) : 0) + ' / '
+      + Math.round(GAME.staMax ? GAME.staMax(lordP) : 0) + '</div>'
+      + actRows + walkBtn + duelBtn
+      + '<div class="modal-foot"><button class="btn" data-action="close-modal">再看看</button></div>'
+    );
+  };
+
   ui.openLandModalCi = function (ci) {
     var RES_NAME = ui.RES_NAME;
     var tile = (GAME.sphere && GAME.sphere.cells) ? GAME.sphere.cells[ci] : null;
     if (!tile) return;
+    /* ============================================================
+     * v151（老板：「地图就是游戏本体」）：**前传里点脚下这一格 = 就地动手**。
+     * ------------------------------------------------------------
+     * 改前：点地图（含脚下）→ 弹出一整套"未占领野地面板"（守军/派驻/掠夺/占领），
+     * 而前传没有兵、没有城，那些按钮一个都用不了 —— "点了一块迷雾地，
+     * 弹出一个讲它有什么的面板"。
+     * 改后：前传在脚下一格只给两件事：这格能做什么（⚔ 打 / ⛏ 采）、
+     * 以及"走进去"（2.5D 场景）。正式阶段的门票是兵，前传的门票是体力 ——
+     * 同一格在两种阶段给两种面板，各自只说自己用得上的一句话。
+     * ============================================================ */
+    if (GAME.prologue && GAME.prologue.on && GAME.prologue.on()) { ui.openPrologueLand(ci); return; }
     /* ============================================================
      * v89.193（老板 2）：**我方前哨格专属面板** ——
      * 前哨格（占据后 terrain='city'、map.pick 落 kind='land'）此前掉进下方
@@ -15212,6 +15832,24 @@ import './state.js';
             (gar ? '　<span class="ui-sub">来自 ' + U.escape((GAME.cityById(gar.cityId) || {}).name || '本城') + '</span>' : '') +
           '</span></div>'
         : '<div class="q-empty">暂无驻军 —— 点下方「派驻」派兵并选英雄入驻（守地减半衰减）</div>') +
+      /* v151（老板「采集要选将选兵、等现实时间，地图上没法直接开工」）：
+         **就地开工** —— 有将驻军：一键开始采集（兵留在原地）；
+         无将/无驻军：一键派就近空闲英雄 + 城里兵入驻并立刻开工（一次点击，不需要走三层面板）。
+         两个入口都走既有出口（startGather / march.dispatch('station')），不另开账。 */
+      /* v152（老板：「参考星露谷在地图上种树也行」）：**主按钮跟地形走** ——
+         能采的地方一个键开工（有将驻军直接采 / 没驻军就派一队过去）；
+         不能采的地方不摆一个永远灰着的键，而是直接说明这里能干什么。 */
+      (gatherRes
+        ? '<div class="op-row" style="margin-top:6px;">'
+          + (garN && gar && gar.genId
+            ? '<button class="btn gold" data-action="wild-boom" data-ci="' + ci + '">⚡ 就地开工（采集）</button>'
+            : '<button class="btn gold" data-action="wild-boom" data-ci="' + ci + '"'
+              + ' title="派本城空闲英雄与驻军去这块地，到了立刻开采">⚡ 派队开工（采集）</button>')
+          + '<span class="op-hint">'
+          + (garN && gar && gar.genId ? '兵留在原地，收获回驻军' : '自动选一位空闲英雄 + 本城兵力过去')
+          + '</span></div>'
+        : '<div class="q-empty" style="margin-top:6px;">这块地采不了（'
+          + U.escape(ter.name || '此地') + '没有可采之物）—— 往有树/有矿/有水的地块走</div>') +
       '</div>';
 
     /* v89.83（老板「已占领的野地，其入口操作应只保留派驻」）—— 已占野地是「我的地盘」。
@@ -15269,6 +15907,11 @@ import './state.js';
     }
 
     var ops = '<div class="op-zone op-zone-eq"><div class="op-zone-t">地块操作</div><div class="op-row">' +
+      /* v151（老板「出征链要 6~7 次点击」）：**一键出征** —— 不在场时最常用的一条路。
+         目标就是这一格，编成/主将从「自动出征」配置里取（玩家早就设定过）；没配置就
+         按驻军顺位取满，主将取本城空闲英雄。走同一条 march.dispatch，不另开账。 */
+      '<button class="btn gold" data-action="onekey-march" data-ci="' + ci + '" data-kind="wild"' +
+        ' title="按自动出征的编成与主将，直接对这块地下令（不用再选出征面板）">⚡ 一键出征</button>' +
       (garN
         ? '<button class="btn" data-action="wild-garrison-open" data-ci="' + ci + '">🛡️ 增派驻军</button>' +
           /* v89.155（老板 2）：与附属野地同一条出口（第一次黄 / 第二次执行 / 2 秒回落）；不再有任何说明文字 */
@@ -16844,6 +17487,14 @@ import './state.js';
       '<select id="exp-tactic"' + (_combat76 ? '' : ' disabled') + '>' + ui.expTacticOptionsHTML() + '</select>' +
       '<span class="exp-tac-link" data-action="open-tactic-set">设置</span>',
       null);
+    /* v151（老板「阵前斗将是 50% 概率自动跑，玩家零输入」）：**请战 / 不叫阵** 逐场可选。
+       记在 ui._expDuel（undefined = 沿用设置），随军写入 march.duel，抵达时才判。 */
+    if (ui._expDuel === undefined) ui._expDuel = true;
+    html += ui.expRowHTML('阵前斗将',
+      ui.chips({ cls: 'chips-xs', after: 'expduel',
+        opts: [{ v: '1', on: ui._expDuel !== false, label: '⚔ 请战' },
+               { v: '0', on: ui._expDuel === false, label: '— 不叫阵' }] }),
+      '请战：主将先与守将单挑，赢家全军 +10%（打不过就折气势）');
     html += '</div>';
     /* v89.212（老板 2）：计略块（原在「出征方式」之前）按老板令**移至「出征战术」之后** ——
        行序：目标 → 主将 → 出征方式 → 方案 → 战术 → 计略 → 可用道具。
@@ -19432,6 +20083,27 @@ import './state.js';
           })
         }) + '</div>' +
       '</div>' +
+      /* v151（老板：「打一场仗要盯 3~5 分钟，设置里还找不到开关」）：
+         战斗节奏 = 两枚就地点选（观战 / 每回合读秒）。默认 10 秒。 */
+      '<div class="set-card">' +
+        '<div class="res-line"><span class="lbl">⚔️ 战斗</span><span class="val">' +
+          (s.settings.battleWatch === false ? '不进战场 · 自动结算' : '进战场 · 你说了算') + '</span></div>' +
+        '<div class="auto-line">' + ui.chips({
+          cls: 'chips-xs', after: 'battlewatch',
+          opts: [{ v: '1', on: s.settings.battleWatch !== false, label: '进战场观战' },
+                 { v: '0', on: s.settings.battleWatch === false, label: '全自动结算' }]
+        }) + '</div>' +
+        '<div class="res-line" style="margin-top:6px;"><span class="lbl">⏱️ 每回合读秒</span><span class="val">' +
+          ((s.settings.battleSec | 0) || 10) + ' 秒</span></div>' +
+        '<div class="auto-line">' + ui.chips({
+          cls: 'chips-xs', after: 'battlesec',
+          opts: [6, 10, 20, 30, 60].map(function (v) {
+            return { v: v, on: ((s.settings.battleSec | 0) || 10) === v, label: v + 's' };
+          })
+        }) + '</div>' +
+        '<div class="ui-sub" style="margin-top:6px;">战场里每回合都能三选一（突击 / 稳住 / 撤退）；' +
+          '不想等就点「完成回合」。' + ui.help('读秒只控制"这回合什么时候结算"，不锁你的操作 —— 点完成回合立即进下一合。') + '</div>' +
+      '</div>' +
       /* 存档管理：**唯一入口**（原先页首与页尾各一张卡，现在合并成一张）
          v89.199：margin-bottom:0 让给其后的「运行版本」卡（末卡收底）。 */
       '<div class="set-card">' +
@@ -20563,6 +21235,58 @@ import './state.js';
       rows +
       '<div class="modal-foot"><button class="btn" data-action="close-modal">关闭</button></div>',
       { size: 'xl' });
+  };
+  /* ============================================================
+   * v156.15（老板：「地图就是游戏本体 —— 点那个敌人 → 派兵打它」）
+   * 地图手势条 `ui.openMapBar`
+   * ------------------------------------------------------------
+   * 改前：立城之后点地图 = 弹一张**十几年攒下来的账本式长面板**，
+   *   玩家第一反应的手势（想打它）要先滚到"地块操作"那一行才找得到按钮。
+   * 改后：点到"能下手"的地块，先给一条**短条** —— 一句话 + 三个动作：
+   *   ⚔️ 出征（一键，走 `GAME.doMarchTarget` → `march.dispatch` 唯一出口）
+   *   🔍 侦查（组好 target 直接开统一出征面板，默认方式=scout）
+   *   📜 详情（**回到原来的面板**，能力一个不少）
+   * 三条边界（写死在这里，别再扩张）：
+   *   ① **不替代**旧面板 —— 详情一键可达；旧入口一个都没删（判据依赖它们）。
+   *   ② 只接手"能下手"的地块：野地 / 名城 / 据点。己方城、已发现营地、村社、
+   *      已探明遗迹、奇观、陨石带、迷雾 —— 一律交回原分派（它们本来就是就地动手）。
+   *   ③ 不写新账本：出征/侦查都调既有出口，条本身不扣资源、不改状态。
+   * ============================================================ */
+  ui.openMapBar = function (h) {
+    if (!h || !(h.ci >= 0) || !h.target) return false;
+    var t = h.target;
+    ui._mapBar = { ci: h.ci, kind: h.kind, target: t, openAs: h.openAs || 'land',
+      npc: h.npc || null, fort: h.fort || null };
+    var ttl = t.kind === 'city'
+      ? ('🏙 ' + ((h.npc && h.npc.name) || '名城'))
+      : t.kind === 'fort' ? '🏯 据点' : '🏕️ 野地';
+    var sub = t.kind === 'city'
+      ? '点「出征」＝按你的自动出征配置直接下令；看不清兵力就先「侦查」。'
+      : t.kind === 'fort'
+        ? '点「出征」＝按自动出征配置直接打这个据点；先「侦查」可看守军。'
+        : '点「出征」＝按自动出征配置直接出兵；先「侦查」再决定也行。';
+    ui.openModal(
+      '<div class="gold-heading">' + ttl + '</div>' +
+      '<div class="ui-sub" style="text-align:center;line-height:1.75;">' + sub + '</div>' +
+      '<div class="op-row" style="justify-content:center;margin-top:10px;">' +
+        '<button class="btn gold" data-action="mapbar-march" data-ci="' + h.ci + '">⚔️ 出征</button>' +
+        '<button class="btn gold" data-action="mapbar-scout">🔍 侦查</button>' +
+        '<button class="btn" data-action="mapbar-detail">📜 详情</button>' +
+      '</div>'
+    );
+    return true;
+  };
+  /* 详情：回到"那一格原来的面板"。3D 可用时优先走 map3d 的统一分派（保营地/村社/
+     遗迹的优先级链）；2D 兜底或没 build 球面时按 openAs 直接开。 */
+  ui.mapBarDetail = function () {
+    var b = ui._mapBar;
+    if (!b) return false;
+    ui.closeAllModals();
+    if (b.openAs === 'city' && b.npc && ui.openAttackModal) { ui.openAttackModal(b.npc); return true; }
+    if (b.openAs === 'fort' && b.fort && ui.openFortModal) { ui.openFortModal(b.fort); return true; }
+    if (GAME.map3d && GAME.map3d.openCellPanel) { GAME.map3d.openCellPanel(b.ci); return true; }
+    if (ui.openLandModalCi) { ui.openLandModalCi(b.ci); return true; }
+    return false;
   };
   /* ⛔ v89.218（老板）：「故事全部去除」——
      文字游戏阅读器（#story-fx / SG_KIND / SG_MURAL / openStory / sgDefer /

@@ -370,14 +370,50 @@ function printArt() {
 }
 
 if (require.main === module) {
-  try { eval(fs.readFileSync(path.join(ROOT, '.workbuddy', 'tmp', 'smoke_env_head.js'), 'utf8')); } catch (e) { /* 无引导头也能跑 */ }
-  /* v90.87（复核修复）：加载清单与 index.html 同源 —— v90.69 起 map.js 地形/据点判据
-       唯一出口是球面内核 GAME.sphere，漏它则本工具跑在降级环境（口径不一致）。
-       map3d.js 需 three.js/WebGL（渲染层·逻辑不依赖）→ 维持不加载。 */
-  ['data', 'state', 'systems', 'domain', 'map', 'sphere', 'battle', 'tactic', 'icons', 'gicons',
-    'bitmaps', 'portraits', 'story', 'ui', 'main'].forEach(function (f) {
-    try { require(path.join(ROOT, 'js', f + '.js')); } catch (e) { /* 逐文件容错 */ }
-  });
+  /* v144（判据 B 修复）：起环境改成**仓库既有姿势** —— 构建三包按 core → war → ui 顺序
+     require（AGENTS.md「tools/ 里的脚本一律按 core → war → ui 顺序 require 三包」）。
+     原先 eval 的 .workbuddy/tmp/smoke_env_head.js **仓库里没有任何脚本生成它**，
+     tmp 一被清就 exit 2（拿不到 GAME.DATA.TROOPS）—— 这条门禁件等于必红。
+     window/document 桩照抄 chain-audit.js:13-43（三包在 node 下求值时 ui.js 需要 DOM），
+     **不另发明第二套**。 */
+  global.window = global;
+  global.localStorage = { _d: {}, getItem: function (k) { return this._d[k] || null; }, setItem: function (k, v) { this._d[k] = String(v); }, removeItem: function (k) { delete this._d[k]; } };
+  var _elCache = {};
+  function makeEl(tag) {
+    return {
+      tagName: tag || 'DIV', textContent: '', innerHTML: '', value: '', checked: false,
+      dataset: {}, style: {}, _attrs: {},
+      classList: { add: function () {}, remove: function () {}, toggle: function () {}, contains: function () { return false; } },
+      addEventListener: function () {}, appendChild: function () {}, setAttribute: function (k, v) { this._attrs[k] = v; },
+      getAttribute: function (k) { return this._attrs[k] || null; },
+      querySelector: function (sel) { this._q = this._q || {}; if (!this._q[sel]) this._q[sel] = makeEl('DIV'); return this._q[sel]; },
+      querySelectorAll: function () { return []; },
+      getContext: function () {
+        return { createImageData: function (w, h) { return { data: new Uint8ClampedArray(w * h * 4) }; }, putImageData: function () {}, drawImage: function () {}, clearRect: function () {}, fillRect: function () {}, strokeRect: function () {}, beginPath: function () {}, arc: function () {}, ellipse: function () {}, save: function () {}, restore: function () {}, clip: function () {}, rect: function () {}, translate: function () {}, scale: function () {}, rotate: function () {}, fill: function () {}, stroke: function () {}, moveTo: function () {}, lineTo: function () {}, closePath: function () {}, quadraticCurveTo: function () {}, bezierCurveTo: function () {}, fillText: function () {}, strokeText: function () {}, setLineDash: function () {}, measureText: function () { return { width: 10 }; }, createLinearGradient: function () { return { addColorStop: function () {} }; }, createRadialGradient: function () { return { addColorStop: function () {} }; }, createPattern: function () { return null; }, roundRect: function () {} };
+      },
+      getBoundingClientRect: function () { return { left: 0, top: 0, width: this.width || 760, height: this.height || 540 }; },
+    };
+  }
+  global.document = {
+    createElement: function (tag) { return makeEl(tag); },
+    querySelector: function (sel) { if (!_elCache[sel]) _elCache[sel] = makeEl(); return _elCache[sel]; },
+    querySelectorAll: function () { return []; },
+    getElementById: function (id) { var k = '#' + id; if (!_elCache[k]) _elCache[k] = makeEl(); return _elCache[k]; },
+    addEventListener: function () {}, readyState: 'complete', _cache: _elCache,
+  };
+  global.requestAnimationFrame = function (f) { return f && f(); };
+  global.location = { search: '', href: 'file:///index.html' };
+  global.addEventListener = function () {};
+  global.removeEventListener = function () {};
+  global.getComputedStyle = function () { return { getPropertyValue: function () { return ''; } }; };
+  global.innerWidth = 1440; global.innerHeight = 900;
+  require(path.join(ROOT, 'js', 'bundle-core.js'));
+  require(path.join(ROOT, 'js', 'bundle-war.js'));
+  require(path.join(ROOT, 'js', 'bundle-ui.js'));
+  if (!global.window.GAME || !global.window.GAME.DATA) {
+    console.error('✗ bundle 求值异常：GAME.DATA 缺失');
+    process.exit(2);
+  }
   var G = global.GAME, DATA = G && G.DATA;
   var args = process.argv.slice(2);
   if (args[0] === '--refs' && args[1]) { printRefs(args[1]); process.exit(0); }
