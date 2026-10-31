@@ -127,6 +127,13 @@ def _dump_fail(script, out, err):
         pass
 
 
+def _gate_timeout():
+    try:
+        return int(os.environ.get('GATE_TIMEOUT', '1800'))
+    except Exception:
+        return 1800
+
+
 def run_one(node, node_path, script, label):
     """跑一个测试，返回 (ok, 摘要行, 详情)。必须连「是否中断」一起看 —— 项目铁律。
 
@@ -148,6 +155,69 @@ def run_one(node, node_path, script, label):
     except subprocess.TimeoutExpired:
         return False, f'{script} 超时 {_to} 秒（GATE_TIMEOUT 可调）', ''
 
+def run_one(node, node_path, script, label):
+    """跑一个测试，返回 (ok, 摘要行, 详情)。必须连「是否中断」一起看 —— 项目铁律。
+
+    v156.15：超时从写死 600s 改成**可配**（`GATE_TIMEOUT` 环境变量，默认 1800s）。
+    v156.19：判定抽成 `judge()`，本函数只负责"起进程 + 收结果" —— 这样才能并发跑。
+    """
+    env = dict(os.environ)
+    if node_path:
+        env['NODE_PATH'] = node_path
+    _to = _gate_timeout()
+    try:
+        r = subprocess.run([node, script], cwd=ROOT, capture_output=True, env=env, timeout=_to)
+    except subprocess.TimeoutExpired:
+        return False, f'{script} 超时 {_to} 秒（GATE_TIMEOUT 可调）', ''
+    return judge(r, script, label)
+
+
+def run_many(node, node_path, plan):
+    """v156.19：**把 8 个互相独立的脚本并发跑**。
+
+    来历（2026-10-31 实测）：门禁里 8 个脚本是排队跑的，一次提交 33~40 分钟；
+    而机器 16 核，跑 smoke 时只有 1 核在转 —— 排队纯属浪费。
+    并发后墙钟 ≈ 最慢那一个（smoke），而不是它们之和。
+    判定逻辑一个字没改（都用 `judge()`），失败照样红。
+    """
+    env = dict(os.environ)
+    if node_path:
+        env['NODE_PATH'] = node_path
+    _to = _gate_timeout()
+    procs = []
+    for script, label, _opt in plan:
+        try:
+            p = subprocess.Popen([node, script], cwd=ROOT,
+                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+            procs.append((p, script, label))
+        except Exception as e:      # 起不来也要报，不能静默少跑一个
+            procs.append((None, script, label, str(e)))
+    results = []
+    for item in procs:
+        if len(item) == 4:
+            results.append((False, f'{item[1]} 启动失败：{item[3]}', ''))
+            continue
+        p, script, label = item
+        try:
+            out, err = p.communicate(timeout=_to)
+        except subprocess.TimeoutExpired:
+            p.kill()
+            out, err = p.communicate()
+            results.append((False, f'{script} 超时 {_to} 秒（GATE_TIMEOUT 可调）', ''))
+            continue
+
+        class _R(object):
+            pass
+        r = _R()
+        r.returncode = p.returncode
+        r.stdout = out
+        r.stderr = err
+        results.append(judge(r, script, label))
+    return results
+
+
+def judge(r, script, label):
+    """判定一个测试脚本的结果（从 run_one 里抽出来 —— 并发跑时要分别判定）。"""
     out = r.stdout.decode('utf-8', 'replace')
     err = r.stderr.decode('utf-8', 'replace')
     tail = (out[-400:] + err[-200:]).strip()
@@ -201,7 +271,6 @@ def run_one(node, node_path, script, label):
         return False, f'{script} 输出含「失败」但无标准汇总行', tail
     return False, f'{script} 输出无标准汇总行（判据失效，按不通处理）', tail
 
-
 def main():
     args = sys.argv[1:]
     full = '--full' in args
@@ -235,12 +304,16 @@ def main():
         print(f'   改动 {len(files)} 个文件')
     print()
 
+    import time as _time
+    _t0 = _time.time()
     failed = []
-    for script, label, _ in plan:
-        ok, summary, detail = run_one(node, node_path, script, label)
+    results = run_many(node, node_path, plan)     # v156.19：并发跑（墙钟 ≈ 最慢那个）
+    for (ok, summary, detail) in results:
         print(('  ✅ ' if ok else '  ❌ ') + summary)
         if not ok:
-            failed.append((script, summary, detail))
+            # script 从 summary 里取不回来，这里用 summary 定位就够（打印尾部用）
+            failed.append((summary.split(' ')[0], summary, detail))
+    print(f'   （并发 {len(plan)} 个脚本，墙钟 {_time.time() - _t0:.1f} 秒）')
 
     print()
     if failed:
