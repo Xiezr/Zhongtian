@@ -15,7 +15,7 @@
  *   · skip → 「没测到」冒充「通过」            → Q1 假绿
  *   · 体系本身 → 能不能被一脚踢开？            → Q5 可推翻
  *
- * 五问全过 = 体系能自我否定；任一不过 = 体系在骗人，先修体系。
+ * 六问全过 = 体系能自我否定；任一不过 = 体系在骗人，先修体系。
  *
  * 用法：
  *   node .workbuddy/tools/prof/tier_audit.js          # 自审，有问题退出码 1
@@ -112,6 +112,35 @@ function q1_falseGreen() {
   } else {
     add('Q1', 'ok', `无恒真断言（扫了 ${scanned} 条 check）`);
   }
+
+  /* ============================================================
+   * Q1²（v156.40）：**变异测试** —— 形式对了，判据真的有效吗？
+   * ------------------------------------------------------------
+   * 上面扫的是「条件写成字面量」这种形式假绿。但还有一类查不出：
+   * 断言写得很像样，判据其实永远为真（比如比较了两个恒等的东西）。
+   * 唯一证明方式是把功能改坏看它红不红（mutation_probe.js）。
+   * 这里只读结果，不跑（跑一次 3.5 分钟，不属于每轮门禁）。
+   * ============================================================ */
+  const mut = readJson('.workbuddy/mutation-log.json');
+  if (!mut || !Object.keys(mut).length) {
+    add('Q1', 'warn', '没有变异测试记录 —— 断言"能不能抓 bug"未被验证过',
+      'node .workbuddy/tools/prof/mutation_probe.js --all（慢，可分批跑）');
+  } else {
+    const names = Object.keys(mut);
+    const survived = names.filter((k) => mut[k].verdict === 'survived');
+    const killed = names.filter((k) => mut[k].verdict === 'killed');
+    const oldest = Math.min.apply(null, names.map((k) => {
+      const d = daysSince((mut[k].at || '').slice(0, 10));
+      return d == null ? 9999 : d;
+    }));
+    add('Q1', survived.length ? 'red' : 'ok',
+      `变异测试：${killed.length} 个被断言杀死 / ${survived.length} 个存活（${names.length} 个变异，最近 ${oldest} 天前）`,
+      survived.length ? '存活的变异 = 功能改坏了都没人发现：' + survived.slice(0, 4).join(', ')
+        : null);
+    if (oldest > LIMIT.graceDays) {
+      add('Q1', 'warn', `变异测试已 ${oldest} 天没跑 —— 断言强度结论过期`, '重跑 mutation_probe.js');
+    }
+  }
   return { scanned, liars: liars.length };
 }
 
@@ -194,7 +223,28 @@ function q3_coverage() {
       `分片比串行多 ${((ratio - 1) * 100).toFixed(1)}% —— 各份自带世界导致分支不同`,
       '分片只能当加速冒烟，不能当回归裁判；结论以串行全量为准');
   }
-  return { ratio };
+
+  /* ============================================================
+   * v156.40：**标题集合比对** —— 条数对了，标题未必对。
+   * ------------------------------------------------------------
+   * 条数比能发现"少了一批"，发现不了"少的那条恰好是关键"，
+   * 更发现不了"条数一样但换了两条"（换掉的那两条可能是唯一守住某功能的）。
+   * 这里比的是断言**标题集合**，缺几条就报几条，并带出标题原文。
+   * ============================================================ */
+  const ti = census.titles;
+  if (!ti) {
+    add('Q3', 'warn', '没有标题集合比对结果 —— 只能靠条数（弱判据）',
+      '跑一次 smoke_fast（它会读取 smoke-titles-full.json 做集合比对）');
+  } else if (ti.missing > 0) {
+    add('Q3', 'red',
+      `分片漏跑 ${ti.missing} 条断言（集合比对：全量 ${ti.full} / 分片 ${ti.split}）`,
+      '这几条在分片模式下从未执行 —— 列出标题见 smoke_fast 的输出');
+    (ti.missingTitles || []).slice(0, 6).forEach((t) => add('Q3', 'info', '  · ' + t));
+  } else {
+    add('Q3', 'ok',
+      `标题集合：全量 ${ti.full} / 分片 ${ti.split}，缺 0 条（多 ${ti.extra} 条属各份世界差异）`);
+  }
+  return { ratio, titles: ti || null };
 }
 
 /* ============================================================
@@ -232,7 +282,63 @@ function q4_inflation() {
   } else {
     add('Q4', 'info', '没有最近一次 smoke 日志，跳过/待修计数未审');
   }
-  return { ratio, last };
+
+  /* ============================================================
+   * Q4²（v156.40）：**阈值不该是拍的** —— 用历史趋势校验它
+   * ------------------------------------------------------------
+   * 上一轮我承认过：35% / 12 / 20 全是拍脑袋。拍出来的阈值有两层骗人：
+   *   ① 看起来精确（"25.1% < 35%"），其实那个 35 没有依据；
+   *   ② 不会自己变 —— 项目规模变了，阈值还在原地。
+   * 这里做两件事，成本都很低：
+   *   · 每轮把指标追加到 tier-history.jsonl（**历史是阈值的唯一依据**）；
+   *   · 有 ≥8 条历史时，用 p95 与拍的阈值比较，取更严的那个，并说明改了没有。
+   * ============================================================ */
+  const trend = recordAndTrend({ implRatio: +ratio.toFixed(4), impl, all,
+    skip: last ? last.skip : null, warn: last ? last.warn : null });
+  if (trend.note) add('Q4', trend.level || 'info', trend.note, trend.fix);
+  return { ratio, last, trend };
+}
+
+/* 历史化：追加 + 算趋势。写坏了不能影响主流程（这里全部 try 包住）。 */
+function recordAndTrend(cur) {
+  const F = '.workbuddy/tier-history.jsonl';
+  const out = { n: 0, note: null, level: 'info', fix: null };
+  try {
+    let rows = [];
+    try {
+      rows = (readIf(F) || '').split('\n').filter(Boolean).map((l) => {
+        try { return JSON.parse(l); } catch (e) { return null; }
+      }).filter(Boolean);
+    } catch (e) { rows = []; }
+
+    const lastRow = rows[rows.length - 1];
+    /* 同一天同一组数字不重复写（否则刷一次跑一次，历史全是噪声） */
+    const same = lastRow && lastRow.implRatio === cur.implRatio
+      && lastRow.skip === cur.skip && lastRow.warn === cur.warn;
+    if (!same) {
+      rows.push(Object.assign({ at: new Date().toISOString().slice(0, 19) }, cur));
+      if (rows.length > 500) rows = rows.slice(-500);
+      fs.writeFileSync(R(F), rows.map((r) => JSON.stringify(r)).join('\n') + '\n');
+    }
+    out.n = rows.length;
+
+    if (rows.length >= 8) {
+      const vals = rows.map((r) => r.implRatio).filter((v) => typeof v === 'number').sort((a, b) => a - b);
+      const p95 = vals[Math.min(vals.length - 1, Math.floor(vals.length * 0.95))];
+      if (cur.implRatio > p95 && cur.implRatio > LIMIT.implRatio * 0.9) {
+        out.level = 'warn';
+        out.note = `实现类占比 ${(cur.implRatio * 100).toFixed(1)}% 超过历史 p95（${(p95 * 100).toFixed(1)}%，${vals.length} 次记录）`;
+        out.fix = '这是「相对自己变差」的信号 —— 比那个拍出来的 35% 更可信';
+      } else {
+        out.note = `历史 ${rows.length} 次记录，实现类 p95 = ${(p95 * 100).toFixed(1)}%（当前 ${(cur.implRatio * 100).toFixed(1)}%）`;
+      }
+    } else {
+      out.note = `阈值仍是拍的（历史只 ${rows.length} 条，≥8 条后才用 p95 校验）`;
+    }
+  } catch (e) {
+    out.note = '历史记录失败：' + e.message;
+  }
+  return out;
 }
 
 /* ============================================================
@@ -255,6 +361,34 @@ function q5_overridable() {
   }
 }
 
+/* ============================================================
+ * Q6 视觉：断言守不住"看起来坏了"
+ * ------------------------------------------------------------
+ * 「海波太规整」「星球半径闪烁」这两次，4425 条断言全绿，
+ * 是老板肉眼看出来的 —— 断言查"元素在不在、文案对不对"，
+ * 查不出"这团雾在抖"。
+ *
+ * 这里只读结果（visual-last.json），不跑浏览器（跑一次 2 分钟，不属每轮门禁）。
+ * ============================================================ */
+function q6_visual() {
+  const v = readJson('.workbuddy/visual-last.json');
+  if (!v || !v.results || !v.results.length) {
+    add('Q6', 'warn', '没有视觉基线记录 —— UI 长什么样没人守着',
+      'node .workbuddy/tools/prof/visual_baseline.js --update（先建基线）');
+    return {};
+  }
+  const age = daysSince((v.at || '').slice(0, 10));
+  const same = v.results.filter((r) => r.verdict === 'same' || r.verdict === 'created' || r.verdict === 'updated').length;
+  add('Q6', v.red ? 'red' : 'ok',
+    `视觉基线 ${v.results.length} 个场景（${same} 一致 / ${v.red} 不符 / ${v.warn} 微差），${age == null ? '?' : age} 天前`,
+    v.red ? '界面真的变了 —— 看 .workbuddy/shots/visual/ 下的新截图，确认是有意的就 --update' : null);
+  if (age != null && age > LIMIT.graceDays) {
+    add('Q6', 'warn', `视觉基线已 ${age} 天没跑`, '重跑 visual_baseline.js');
+  }
+  add('Q6', 'info', '范围：仅 UI 静态场景；3D（星球/海面/城池模型）无时间冻结入口，仍未覆盖');
+  return v;
+}
+
 /* ============================================================ */
 function main() {
   q1_falseGreen();
@@ -262,6 +396,7 @@ function main() {
   q3_coverage();
   q4_inflation();
   q5_overridable();
+  q6_visual();
 
   if (JSON_OUT) {
     console.log(JSON.stringify({ limit: LIMIT, findings }, null, 1));
@@ -269,7 +404,7 @@ function main() {
   }
 
   const icon = { red: '❌', warn: '⚠️ ', ok: '✅', info: '   ' };
-  console.log('\n═══ 验证体系自审（五问）═══\n');
+  console.log('\n═══ 验证体系自审（六问）═══\n');
   let cur = null;
   findings.forEach((f) => {
     if (f.q !== cur) {
@@ -280,6 +415,7 @@ function main() {
         Q3: 'Q3 覆盖：分片有没有静默漏段',
         Q4: 'Q4 膨胀：有没有靠降级/跳过来逃避',
         Q5: 'Q5 可推翻：体系能不能被一脚踢开',
+        Q6: 'Q6 视觉：看得见的部分有没有人守着',
       }[f.q];
       console.log('\n' + name);
     }

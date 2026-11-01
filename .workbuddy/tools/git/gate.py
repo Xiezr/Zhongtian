@@ -90,6 +90,16 @@ NODE_PATH_CANDIDATES = [
 
 # 改了这些才值得跑 smoke / e2e（它们测的是游戏本身）
 CODE_PATHS = ('index.html', 'js/')
+# ============================================================
+# v156.40：**改了测试本体，凭什么不跑测试？**
+# ------------------------------------------------------------
+# 原来只有 index.html / js/** 变动才算"改代码"，于是改 smoke-test.js
+# （加 skip 语义、改判据、动分档逻辑）会走"未触及代码 → 只跑 audit"分支 ——
+# 测试改了却不跑测试，这是 gate 自己的盲区。
+# 这几个文件一律触发全量：测试本体 + 它们依赖的门禁/工具。
+# ============================================================
+TEST_PATHS = ('smoke-test.js', 'e2e-test.js', 'audit.js',
+              'chain-audit.js', 'invariants-test.js', '.workbuddy/tools/git/gate.py')
 
 TESTS = [
     ('audit.js',       '结构审计', True),
@@ -160,6 +170,9 @@ def changed_files(staged_only=False):
 def needs_full(files):
     for f in files:
         n = f.replace('\\', '/')
+        # v156.40：测试本体 / 门禁脚本变动 = 必须全量（改了测试却不跑测试是盲区）
+        if n in TEST_PATHS:
+            return True
         for pre in CODE_PATHS:
             if n == pre or n.startswith(pre):
                 return True
@@ -194,6 +207,10 @@ def run_one(node, node_path, script, label):
     if node_path:
         env['NODE_PATH'] = node_path
     _to = _gate_timeout()
+    # v156.40：复跑 smoke 也落标题清单（复跑是"同一份代码再跑一次"，
+    # 清单一般与首跑一致；不一致本身就说明测试不稳定，值得被记录下来）
+    if os.path.basename(script) == 'smoke-test.js':
+        env['SMOKE_TITLES'] = os.path.join(ROOT, '.workbuddy', 'smoke-titles-full.json')
     try:
         r = subprocess.run([node, script], cwd=ROOT, capture_output=True, env=env, timeout=_to)
     except subprocess.TimeoutExpired:
@@ -216,8 +233,13 @@ def run_many(node, node_path, plan):
     procs = []
     for script, label, _opt in plan:
         try:
+            # v156.40：串行跑 smoke 时**落一份断言标题清单**（Q3 的分母）。
+            # 光有条数发现不了「条数一样但换了两条」—— 而换掉的可能正是关键的。
+            _e = dict(env)
+            if os.path.basename(script) == 'smoke-test.js':
+                _e['SMOKE_TITLES'] = os.path.join(ROOT, '.workbuddy', 'smoke-titles-full.json')
             p = subprocess.Popen([node, script], cwd=ROOT,
-                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=_e)
             procs.append((p, script, label))
         except Exception as e:      # 起不来也要报，不能静默少跑一个
             procs.append((None, script, label, str(e)))

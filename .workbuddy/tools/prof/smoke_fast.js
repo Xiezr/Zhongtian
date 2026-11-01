@@ -24,6 +24,10 @@ var ROOT = path.join(__dirname, '..', '..', '..');
 var PARTS = 4;
 var args = process.argv.slice(2);
 for (var i = 0; i < args.length; i++) if (args[i] === '--parts') PARTS = Math.max(2, parseInt(args[i + 1], 10) || 4);
+/* v156.40：变异测试透传（`--mutate <name>` → 各分片 `--mutate=<name>`） */
+var MUTATE = null;
+var _mi = args.indexOf('--mutate');
+if (_mi >= 0 && args[_mi + 1]) MUTATE = args[_mi + 1];
 
 function run(cmd, argv, opts) {
   return cp.spawnSync(cmd, argv, Object.assign({ cwd: ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }, opts || {}));
@@ -47,10 +51,18 @@ if (files.length < 2) {
 }
 console.log('分片生成完成（' + files.length + ' 份，' + ((Date.now() - t0) / 1000).toFixed(1) + ' 秒），开始并行…');
 
-/* ② 并行跑 */
+/* ② 并行跑
+   v156.40：每份用 SMOKE_TITLES 落一份断言标题清单，跑完与串行全量的清单比对 ——
+   「条数一样但换了两条」只有比集合才看得出来（Q3 从比条数升级为比标题）。 */
 var t1 = Date.now();
-var procs = files.map(function (f) {
-  return cp.spawn(process.execPath, [f], { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'] });
+var titleFiles = files.map(function (f, i) {
+  return path.join(ROOT, '.tmp_titles_' + (i + 1) + '.json');
+});
+var procs = files.map(function (f, i) {
+  var env = Object.assign({}, process.env);
+  env.SMOKE_TITLES = titleFiles[i];
+  var argv2 = MUTATE ? [f, '--mutate=' + MUTATE] : [f];
+  return cp.spawn(process.execPath, argv2, { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'], env: env });
 });
 var bufs = files.map(function () { return ''; });
 var dones = 0;
@@ -123,6 +135,62 @@ function finish() {
     fs.writeFileSync(path.join(ROOT, '.workbuddy', 'smoke-last-fast.log'),
       bufs.map(function (b, i) { return '===== 分片 ' + (i + 1) + ' =====\n' + b; }).join('\n'));
   } catch (e) { }
-  /* 分片里公共头的 check 不重复计数，比串行少 ~116 条属正常 */
+
+  /* ============================================================
+   * v156.40：**标题集合比对**（Q3 从「比条数」升级为「比标题」）。
+   * ------------------------------------------------------------
+   * 条数相等但换了两条断言，条数比看不出来 —— 而换掉的那两条可能正是关键的。
+   * 这里把各分片的标题清单合并，与串行全量的清单逐条比：
+   *   · 缺了哪几条 → 直接列出**标题原文**（hash 不可读，所以清单存了 [hash, 标题]）；
+   *   · 多了哪几条 → 说明分片走到了串行走不到的分支（各份自带世界的副作用）。
+   * 结果写进 census，Q3 读它决定红不红。
+   * ============================================================ */
+  var titleCmp = null;
+  try {
+    var fullT = null;
+    try {
+      fullT = JSON.parse(fs.readFileSync(path.join(ROOT, '.workbuddy', 'smoke-titles-full.json'), 'utf8'));
+    } catch (e3) { fullT = null; }
+    var splitMap = {};
+    titleFiles.forEach(function (tf) {
+      try {
+        JSON.parse(fs.readFileSync(tf, 'utf8')).forEach(function (x) {
+          if (x && x.h != null) splitMap[x.h] = x.t;
+        });
+      } catch (e4) { }
+    });
+    if (fullT && fullT.length) {
+      var fullMap = {};
+      fullT.forEach(function (x) { if (x && x.h != null) fullMap[x.h] = x.t; });
+      var missing = [], extra = [];
+      Object.keys(fullMap).forEach(function (h) { if (splitMap[h] === undefined) missing.push(fullMap[h]); });
+      Object.keys(splitMap).forEach(function (h) { if (fullMap[h] === undefined) extra.push(splitMap[h]); });
+      titleCmp = { full: Object.keys(fullMap).length, split: Object.keys(splitMap).length,
+        missing: missing.length, missingTitles: missing.slice(0, 12), extra: extra.length };
+      console.log('\n标题集合：全量 ' + titleCmp.full + ' / 分片 ' + titleCmp.split
+        + '　缺 ' + missing.length + '　多 ' + extra.length);
+      if (missing.length) {
+        console.log('  ⚠️ 分片漏跑的断言：');
+        missing.slice(0, 12).forEach(function (t) { console.log('     · ' + t); });
+        if (missing.length > 12) console.log('     … 另有 ' + (missing.length - 12) + ' 条');
+      }
+    } else {
+      console.log('\n标题集合：没有串行基线（.workbuddy/smoke-titles-full.json），跳过比对');
+    }
+  } catch (e) { console.log('⚠️ 标题比对比对失败：' + e.message); }
+
+  /* 把标题比对结果并进 census（Q3 读它；单独写一次，避免打乱上面那段） */
+  if (titleCmp) {
+    try {
+      var _cf2 = path.join(ROOT, '.workbuddy', 'smoke-census.json');
+      var _c2 = JSON.parse(fs.readFileSync(_cf2, 'utf8'));
+      _c2.titles = titleCmp;
+      fs.writeFileSync(_cf2, JSON.stringify(_c2, null, 1));
+    } catch (e5) { }
+  }
+
+  /* v156.40：这行原来的注释是「比串行少 ~116 条属正常」——**那句话是假绿的许可证**。
+     真正的因果已查明并修掉（公共头的断言被换成空壳，没有任何一份真的跑）。
+     现在条数与标题集合都对得上，才敢说"正常"；少一条就要说清是哪一条。 */
   process.exit(fail ? 1 : 0);
 }

@@ -6,15 +6,22 @@
   "warn": 5,
   "skip": 1
  },
- "fullAt": "2026-11-02T06:54:55",
+ "fullAt": "2026-11-02T07:41:33",
  "lastSplit": {
   "total": 4427,
-  "pass": 4418,
-  "fail": 4,
+  "pass": 4409,
+  "fail": 13,
   "warn": 5,
   "skip": 0,
   "parts": 4,
-  "wallSec": 207,
-  "at": "2026-11-01T22:37:41"
+  "wallSec": 220,
+  "at": "2026-11-01T23:31:17"
+ },
+ "titles": {
+  "full": 4420,
+  "split": 4420,
+  "missing": 0,
+  "missingTitles": [],
+  "extra": 0
  }
 }

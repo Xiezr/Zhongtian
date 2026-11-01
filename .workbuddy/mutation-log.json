@@ -1,0 +1,16 @@
+{
+ "hpMult:no-bonus": {
+  "verdict": "killed",
+  "fails": 4,
+  "secs": 260,
+  "at": "2026-11-01T23:27:35",
+  "desc": "hpMult 恒返回 1（无视体力加成）"
+ },
+ "adminCisOf:empty": {
+  "verdict": "killed",
+  "fails": 9,
+  "secs": 223,
+  "at": "2026-11-01T23:31:17",
+  "desc": "adminCisOf 恒返回空表（无下辖地）"
+ }
+}

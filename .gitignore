@@ -88,3 +88,6 @@ _*.txt
 .workbuddy/head_index.html
 .workbuddy/inspect_glb.js
 .workbuddy/test_actor_loader.js
+# v156.40：分片标题清单（各分片中间态）与全量标题清单（414KB 生成物，随代码变）
+.tmp_titles_*.json
+.workbuddy/smoke-titles-full.json

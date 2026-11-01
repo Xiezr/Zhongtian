@@ -69,6 +69,7 @@ function segEnd(k) { return (k + 1 < segs.length) ? segs[k + 1].line : lines.len
 
 var TAIL = [
   "  console.log('结果（分片）：' + PASS + ' 通过 / ' + FAIL + ' 失败');",
+  "  _emitTitles();",
   '  process.exit(FAIL ? 1 : 0);',
   '})();'
 ];

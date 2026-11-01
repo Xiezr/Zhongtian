@@ -1,0 +1,25 @@
+{
+ "at": "2026-11-01T23:26:29",
+ "results": [
+  {
+   "name": "topnav",
+   "desc": "顶栏（页签 / 图例 / 天时）",
+   "verdict": "same",
+   "ratio": 0
+  },
+  {
+   "name": "mapdock",
+   "desc": "地图页底栏（导航按钮）",
+   "verdict": "same",
+   "ratio": 0
+  },
+  {
+   "name": "city",
+   "desc": "城池页全景",
+   "verdict": "same",
+   "ratio": 0
+  }
+ ],
+ "red": 0,
+ "warn": 0
+}

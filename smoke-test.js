@@ -117,11 +117,30 @@
    * 现在单独计数：总结行显示 `N 跳过`，门禁另有一条判据盯「跳过数涨没涨」。
    * skip 的语义 = **判据真的没执行**，不是「判据为真」。
    * ============================================================ */
+  /* ============================================================
+   * v156.40：**断言标题清单**（Q3 用它精确比对「分片漏了哪几条」）。
+   * ------------------------------------------------------------
+   * 条数比只能发现「少了一批」，发现不了「少的那条恰好是关键」。
+   * 这里记下每条被**触达**的断言标题签名（check 与 skip 都记 ——
+   * skip 表示判据没跑，但这条断言确实被执行到了，不算漏跑）。
+   * 只在 SMOKE_TITLES 环境变量有值时落盘，否则零开销。
+   * ============================================================ */
+  var _titles = [];
+  function _emitTitles() {
+    try {
+      var _p = process.env.SMOKE_TITLES;
+      if (!_p) return;
+      /* 直接输出数组（不带外壳）：消费方读的就是清单本身，少一层 {n,t} 少一类解析错。 */
+      fsMod.writeFileSync(_p, JSON.stringify(_titles));
+    } catch (e) { }
+  }
   function skip(name, why) {
+    _titles.push({ h: _djb2(name), t: name });
     SKIP++;
     console.log('  ⊘ ' + name + '   [' + (why || '本轮未触发') + ']');
   }
   function check(name, cond, extra) {
+    _titles.push({ h: _djb2(name), t: name });
     if (cond) { PASS++; console.log('  ✅ ' + name + (extra ? '  [' + extra + ']' : '')); return; }
     var tier = tierOfTitle(name);
     if (tier === 'impl') {
@@ -147,6 +166,32 @@
   /* 求值顺序不变量（防"import 图退化成乱序"）：data/state 必须已挂上。 */
   if (!window.GAME || !window.GAME.DATA || !window.GAME.utils) {
     throw new Error('bundle 求值顺序异常：GAME.DATA / GAME.utils 缺失（检查 js/main.js 的 import 顺序）');
+  }
+
+  /* ============================================================
+   * v156.40（老板「改至完善」）：**变异测试入口**
+   * ------------------------------------------------------------
+   * Q1 只能查"条件写成字面量"这种**形式上**的假绿，查不出
+   * "断言写得很像样、其实测不到东西"——那种照样永远绿。
+   * 唯一证明方式：**把功能改坏，看它会不会红**。
+   *
+   * 用法：`--mutate=hpMult:no-bonus`（变异表见 mutation_probe.js）
+   * 这里只做**运行时替换**，一个字节的源码都不改 → 零恢复风险。
+   * 代价：只能变异挂在 GAME.* 出口上的函数 —— 那也正好是 UI 实际调用的那批。
+   * ============================================================ */
+  var MUTATE = (function () {
+    var a = process.argv.filter(function (x) { return x.indexOf('--mutate=') === 0; })[0];
+    return a ? a.slice('--mutate='.length) : null;
+  })();
+  if (MUTATE) {
+    try {
+      var _mp = require('./.workbuddy/tools/prof/mutation_probe.js');
+      var _okInj = _mp.inject(window.GAME, MUTATE);
+      console.log('\n  🧪 变异已注入：' + MUTATE + (_okInj ? '' : '  ⚠️（注入失败：变异名不存在？）')
+        + '  —— 本轮若全绿，说明**没有任何断言守住它**\n');
+    } catch (e) {
+      console.log('\n  ⚠️ 变异注入异常：' + e.message + '\n');
+    }
   }
   /* ⛔ v156.36 试过又撤掉：这里曾设 `GAME.__testSeed = 20260926`，想让 235 次
      "没传 mapSeed 的 newGame"复用同一颗星球（同 seed 16ms vs 换 seed 1471ms）。
@@ -47313,5 +47358,6 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
 console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败'
   + (WARN ? (' / ' + WARN + ' 待修（实现类·不阻断）') : '')
   + (SKIP ? (' / ' + SKIP + ' 跳过（未执行判据）') : ''));
+  _emitTitles();
   process.exit(FAIL ? 1 : 0);
 })();
