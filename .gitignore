@@ -82,3 +82,9 @@ _*.txt
 .tmp_par*.js
 .tmp_touching.js
 *.out
+# v156.39：根目录的一次性探针（前几轮的临时脚本，不属于仓库）
+.workbuddy/tmp_*
+.workbuddy/debug_box.js
+.workbuddy/head_index.html
+.workbuddy/inspect_glb.js
+.workbuddy/test_actor_loader.js
