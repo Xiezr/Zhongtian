@@ -7,19 +7,445 @@
 
 | 目录 | 个数 | 干什么 |
 |---|---|---|
-| `asset/` | 115 | 抠底必须连通域洪水填充（BFS）；**绝不用 CSS 滤镜染色**，一律像素级 HSL 重映射写进 PNG。 |
-| `audit/` | 38 | 结构 / 颜色 / 落盘 / 引用 / 删除 的核对工具。`verify_v66_edits.py` = **落盘核验**模板；`audit_refs.py` = 搬迁前查引用点；`read_recycle.py` = 解析回收站 `$I` 元数据核实删了什么；`trash_paths.py` = 逐项+回查的删除模板。 |
+| `asset/` | 116 | 抠底必须连通域洪水填充（BFS）；**绝不用 CSS 滤镜染色**，一律像素级 HSL 重映射写进 PNG。 |
+| `audit/` | 40 | 结构 / 颜色 / 落盘 / 引用 / 删除 的核对工具。`verify_v66_edits.py` = **落盘核验**模板；`audit_refs.py` = 搬迁前查引用点；`read_recycle.py` = 解析回收站 `$I` 元数据核实删了什么；`trash_paths.py` = 逐项+回查的删除模板。 |
 | `break/` | 22 | 逐类注入故障，确认断言**真的会红**（红不了的就是装饰）。铁律：先校验断言在文件里、注入后连"是否中断"一起看、收尾 md5 比对还原。 |
 | `gen/` | 10 | 素材/索引的**唯一来源**。`gen_bitmaps.js` 扫描 `assets/icons/ui/` 生成 `js/bitmaps.js`（勿手改产物）；`gen_tools_index.py` 生成本索引。 |
-| `git/` | 3 | **收尾同步的唯一入口**。`sync.py` 默认干跑、`--apply` 才落盘（干跑先行是本项目铁律）；`gate.py` 是三件套门禁的**唯一出口**（pre-commit 钩子与 sync 都调它）；`install_hooks.py` 把 `hooks/` 里的钩子装进 `.git/hooks/`。 |
+| `git/` | 4 | **收尾同步的唯一入口**。`sync.py` 默认干跑、`--apply` 才落盘（干跑先行是本项目铁律）；`gate.py` 是三件套门禁的**唯一出口**（pre-commit 钩子与 sync 都调它）；`install_hooks.py` 把 `hooks/` 里的钩子装进 `.git/hooks/`。 |
 | `git/hooks/` | 2 | 存这里是为了**进版本库** —— `.git/hooks/` 不被 git 跟踪，换台机器克隆后必须跑 `install_hooks.py` 重装。⚠️ **行尾必须 LF**，CRLF 会让 `#!/bin/sh` 失效。 |
+| `gltf/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/.bin/` | 12 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@colors/colors/` | 6 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@colors/colors/examples/` | 2 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@colors/colors/lib/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@colors/colors/lib/custom/` | 2 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@colors/colors/lib/maps/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@colors/colors/lib/system/` | 2 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@colors/colors/themes/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@dabh/diagnostics/` | 6 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@dabh/diagnostics/.github/workflows/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@dabh/diagnostics/adapters/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@dabh/diagnostics/browser/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@dabh/diagnostics/logger/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@dabh/diagnostics/modifiers/` | 2 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@dabh/diagnostics/node/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@donmccurdy/caporal/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@donmccurdy/caporal/dist/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@donmccurdy/caporal/dist/__tests__/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@donmccurdy/caporal/dist/argument/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@donmccurdy/caporal/dist/argument/__tests__/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@donmccurdy/caporal/dist/command/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@donmccurdy/caporal/dist/command/__fixtures__/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@donmccurdy/caporal/dist/command/__tests__/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@donmccurdy/caporal/dist/config/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@donmccurdy/caporal/dist/error/` | 14 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@donmccurdy/caporal/dist/error/__tests__/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@donmccurdy/caporal/dist/help/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@donmccurdy/caporal/dist/help/__tests__/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@donmccurdy/caporal/dist/help/templates/` | 6 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@donmccurdy/caporal/dist/logger/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@donmccurdy/caporal/dist/logger/__tests__/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@donmccurdy/caporal/dist/option/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@donmccurdy/caporal/dist/option/__tests__/` | 2 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@donmccurdy/caporal/dist/parser/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@donmccurdy/caporal/dist/parser/__tests__/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@donmccurdy/caporal/dist/program/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@donmccurdy/caporal/dist/program/__tests__/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@donmccurdy/caporal/dist/utils/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@donmccurdy/caporal/dist/utils/__tests__/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@donmccurdy/caporal/dist/utils/web/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@donmccurdy/caporal/dist/validator/` | 6 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@donmccurdy/caporal/dist/validator/__tests__/` | 6 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@emnapi/runtime/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@emnapi/runtime/dist/` | 13 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@gltf-transform/cli/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@gltf-transform/cli/bin/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@gltf-transform/cli/dist/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@gltf-transform/cli/src/` | 7 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@gltf-transform/cli/src/transforms/` | 6 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@gltf-transform/cli/src/types/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@gltf-transform/cli/src/utils/` | 6 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@gltf-transform/core/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@gltf-transform/core/dist/` | 6 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@gltf-transform/core/src/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@gltf-transform/core/src/io/` | 9 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@gltf-transform/core/src/properties/` | 20 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@gltf-transform/core/src/types/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@gltf-transform/core/src/utils/` | 12 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@gltf-transform/extensions/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@gltf-transform/extensions/dist/` | 6 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@gltf-transform/extensions/src/` | 2 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@gltf-transform/extensions/src/ext-mesh-features/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@gltf-transform/extensions/src/ext-mesh-gpu-instancing/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@gltf-transform/extensions/src/ext-meshopt-compression/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@gltf-transform/extensions/src/ext-structural-metadata/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@gltf-transform/extensions/src/ext-texture-avif/` | 2 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@gltf-transform/extensions/src/ext-texture-webp/` | 2 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@gltf-transform/extensions/src/khr-accessor-float16/` | 2 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@gltf-transform/extensions/src/khr-accessor-float64/` | 2 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@gltf-transform/extensions/src/khr-draco-mesh-compression/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@gltf-transform/extensions/src/khr-lights-punctual/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@gltf-transform/extensions/src/khr-materials-anisotropy/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@gltf-transform/extensions/src/khr-materials-clearcoat/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@gltf-transform/extensions/src/khr-materials-diffuse-transmission/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@gltf-transform/extensions/src/khr-materials-dispersion/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@gltf-transform/extensions/src/khr-materials-emissive-strength/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@gltf-transform/extensions/src/khr-materials-ior/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@gltf-transform/extensions/src/khr-materials-iridescence/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@gltf-transform/extensions/src/khr-materials-pbr-specular-glossiness/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@gltf-transform/extensions/src/khr-materials-sheen/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@gltf-transform/extensions/src/khr-materials-specular/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@gltf-transform/extensions/src/khr-materials-transmission/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@gltf-transform/extensions/src/khr-materials-unlit/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@gltf-transform/extensions/src/khr-materials-variants/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@gltf-transform/extensions/src/khr-materials-volume/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@gltf-transform/extensions/src/khr-mesh-primitive-restart/` | 2 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@gltf-transform/extensions/src/khr-mesh-quantization/` | 2 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@gltf-transform/extensions/src/khr-node-visibility/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@gltf-transform/extensions/src/khr-texture-basisu/` | 2 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@gltf-transform/extensions/src/khr-texture-transform/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@gltf-transform/extensions/src/khr-xmp-json-ld/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@gltf-transform/functions/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@gltf-transform/functions/dist/` | 6 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@gltf-transform/functions/src/` | 49 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@gltf-transform/functions/src/types/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@img/colour/` | 6 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@img/sharp-wasm32/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@img/sharp-wasm32/lib/` | 2 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@img/sharp-win32-x64/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@img/sharp-win32-x64/lib/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@isaacs/cliui/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@isaacs/cliui/build/` | 2 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@isaacs/cliui/build/lib/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@isaacs/cliui/node_modules/emoji-regex/` | 9 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@isaacs/cliui/node_modules/emoji-regex/es2015/` | 6 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@isaacs/cliui/node_modules/string-width/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@pkgjs/parseargs/` | 7 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@pkgjs/parseargs/examples/` | 6 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@pkgjs/parseargs/internal/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@so-ric/colorspace/` | 6 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@so-ric/colorspace/dist/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@types/braces/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@types/glob/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@types/lodash/` | 310 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@types/lodash/common/` | 12 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@types/lodash/fp/` | 386 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@types/micromatch/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@types/minimatch/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@types/ndarray/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@types/node/` | 49 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@types/node/assert/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@types/node/dns/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@types/node/fs/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@types/node/readline/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@types/node/stream/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@types/node/timers/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@types/node/ts4.8/` | 46 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@types/node/ts4.8/assert/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@types/node/ts4.8/dns/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@types/node/ts4.8/fs/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@types/node/ts4.8/readline/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@types/node/ts4.8/stream/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@types/node/ts4.8/timers/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@types/prompts/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@types/table/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@types/tmp/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@types/triple-beam/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/@types/wrap-ansi/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/ajv/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/ajv/dist/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/ajv/lib/` | 6 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/ajv/lib/compile/` | 10 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/ajv/lib/dot/` | 30 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/ajv/lib/dotjs/` | 27 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/ajv/lib/refs/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/ajv/scripts/` | 7 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/ansi-escapes/` | 7 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/ansi-regex/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/ansi-styles/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/astral-regex/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/async/` | 109 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/async/dist/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/async/internal/` | 25 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/balanced-match/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/balanced-match/.github/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/brace-expansion/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/brace-expansion/.github/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/braces/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/braces/lib/` | 6 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/chalk/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/chalk/source/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/cli-cursor/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/cli-table3/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/cli-table3/src/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/cli-truncate/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/cli-truncate/node_modules/emoji-regex/` | 6 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/cli-truncate/node_modules/string-width/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/color/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/color-convert/` | 7 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/color-name/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/color-string/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/color-string/node_modules/color-name/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/color/node_modules/color-convert/` | 7 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/color/node_modules/color-name/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/colorette/` | 6 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/cross-spawn/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/cross-spawn/lib/` | 2 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/cross-spawn/lib/util/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/csv-stringify/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/csv-stringify/dist/cjs/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/csv-stringify/dist/esm/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/csv-stringify/dist/iife/` | 2 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/csv-stringify/dist/umd/` | 2 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/csv-stringify/lib/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/csv-stringify/lib/api/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/csv-stringify/lib/utils/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/cwise-compiler/` | 6 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/cwise-compiler/lib/` | 2 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/detect-libc/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/detect-libc/lib/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/draco3dgltf/` | 9 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/eastasianwidth/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/emoji-regex/` | 6 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/emoji-regex/es2015/` | 2 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/enabled/` | 6 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/environment/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/eventemitter3/` | 6 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/eventemitter3/dist/` | 6 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/fast-deep-equal/` | 7 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/fast-deep-equal/es6/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/fast-json-stable-stringify/` | 7 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/fast-json-stable-stringify/.github/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/fast-json-stable-stringify/benchmark/` | 2 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/fast-json-stable-stringify/example/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/fast-json-stable-stringify/test/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/fecha/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/fecha/dist/` | 2 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/fecha/lib/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/fecha/src/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/fill-range/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/fn.name/` | 7 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/foreground-child/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/foreground-child/dist/commonjs/` | 17 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/foreground-child/dist/esm/` | 17 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/get-east-asian-width/` | 8 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/glob/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/glob/dist/commonjs/` | 29 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/glob/dist/esm/` | 33 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/gltf-validator/` | 9 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/has-flag/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/inherits/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/iota-array/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/is-buffer/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/is-buffer/test/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/is-fullwidth-code-point/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/is-number/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/is-stream/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/isexe/` | 7 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/isexe/test/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/jackspeak/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/jackspeak/dist/commonjs/` | 9 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/jackspeak/dist/esm/` | 9 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/json-schema-traverse/` | 6 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/json-schema-traverse/spec/` | 2 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/json-schema-traverse/spec/fixtures/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/keyframe-resample/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/keyframe-resample/assembly/` | 2 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/keyframe-resample/dist/` | 17 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/keyframe-resample/src/` | 9 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/kleur/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/ktx-parse/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/ktx-parse/dist/` | 15 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/ktx-parse/src/` | 9 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/kuler/` | 6 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/listr2/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/listr2/dist/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/listr2/node_modules/ansi-styles/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/listr2/node_modules/emoji-regex/` | 6 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/listr2/node_modules/string-width/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/listr2/node_modules/wrap-ansi/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/lodash/` | 636 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/lodash/fp/` | 415 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/log-update/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/log-update/node_modules/ansi-styles/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/log-update/node_modules/emoji-regex/` | 6 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/log-update/node_modules/is-fullwidth-code-point/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/log-update/node_modules/slice-ansi/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/log-update/node_modules/string-width/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/log-update/node_modules/wrap-ansi/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/logform/` | 30 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/logform/dist/` | 21 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/logform/node_modules/@colors/colors/` | 6 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/logform/node_modules/@colors/colors/examples/` | 2 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/logform/node_modules/@colors/colors/lib/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/logform/node_modules/@colors/colors/lib/custom/` | 2 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/logform/node_modules/@colors/colors/lib/maps/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/logform/node_modules/@colors/colors/lib/system/` | 2 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/logform/node_modules/@colors/colors/themes/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/lru-cache/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/lru-cache/dist/commonjs/` | 7 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/lru-cache/dist/esm/` | 7 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/meshoptimizer/` | 24 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/micromatch/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/mikktspace/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/mikktspace/dist/main/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/mikktspace/dist/module/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/mimic-function/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/minimatch/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/minimatch/dist/commonjs/` | 25 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/minimatch/dist/esm/` | 25 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/minipass/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/minipass/dist/commonjs/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/minipass/dist/esm/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/ms/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/ndarray/` | 6 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/ndarray-lanczos/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/ndarray-lanczos/dist/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/ndarray-lanczos/dist/src/` | 2 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/ndarray-lanczos/dist/vendor/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/ndarray-lanczos/src/` | 2 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/ndarray-lanczos/vendor/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/ndarray-ops/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/ndarray-pixels/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/ndarray-pixels/dist/` | 8 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/ndarray-pixels/src/` | 7 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/one-time/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/onetime/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/package-json-from-dist/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/package-json-from-dist/dist/commonjs/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/package-json-from-dist/dist/esm/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/path-key/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/path-scurry/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/path-scurry/dist/commonjs/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/path-scurry/dist/esm/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/picomatch/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/picomatch/lib/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/prompts/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/prompts/dist/` | 2 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/prompts/dist/dateparts/` | 10 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/prompts/dist/elements/` | 11 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/prompts/dist/util/` | 9 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/prompts/lib/` | 2 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/prompts/lib/dateparts/` | 10 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/prompts/lib/elements/` | 11 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/prompts/lib/util/` | 9 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/property-graph/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/property-graph/dist/` | 2 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/property-graph/src/` | 7 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/punycode/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/readable-stream/` | 10 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/readable-stream/lib/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/readable-stream/lib/internal/streams/` | 10 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/restore-cursor/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/rfdc/` | 7 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/rfdc/.github/workflows/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/rfdc/test/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/safe-buffer/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/safe-stable-stringify/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/safe-stable-stringify/esm/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/semver/` | 6 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/semver/bin/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/semver/classes/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/semver/functions/` | 25 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/semver/internal/` | 6 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/semver/ranges/` | 11 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/sharp/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/sharp/dist/` | 28 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/sharp/install/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/sharp/lib/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/sharp/src/` | 14 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/shebang-command/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/shebang-regex/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/signal-exit/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/signal-exit/dist/cjs/` | 13 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/signal-exit/dist/mjs/` | 13 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/sisteransi/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/sisteransi/src/` | 2 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/slice-ansi/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/slice-ansi/node_modules/ansi-styles/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/stack-trace/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/stack-trace/lib/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/string-width/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/string-width-cjs/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/string-width-cjs/node_modules/ansi-regex/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/string-width-cjs/node_modules/is-fullwidth-code-point/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/string-width-cjs/node_modules/strip-ansi/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/string-width/node_modules/ansi-regex/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/string-width/node_modules/is-fullwidth-code-point/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/string-width/node_modules/strip-ansi/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/string_decoder/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/string_decoder/lib/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/strip-ansi/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/strip-ansi-cjs/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/strip-ansi-cjs/node_modules/ansi-regex/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/supports-color/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/table/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/table/dist/` | 73 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/table/dist/schemas/` | 2 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/table/node_modules/ansi-regex/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/table/node_modules/ansi-styles/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/table/node_modules/color-convert/` | 7 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/table/node_modules/color-name/` | 7 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/table/node_modules/emoji-regex/` | 6 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/table/node_modules/emoji-regex/es2015/` | 2 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/table/node_modules/is-fullwidth-code-point/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/table/node_modules/slice-ansi/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/table/node_modules/string-width/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/table/node_modules/strip-ansi/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/text-hex/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/tmp/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/tmp/lib/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/to-regex-range/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/triple-beam/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/triple-beam/.nyc_output/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/triple-beam/.nyc_output/processinfo/` | 2 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/triple-beam/config/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/tslib/` | 11 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/tslib/modules/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/uniq/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/uniq/test/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/uri-js/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/uri-js/dist/es5/` | 6 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/uri-js/dist/esnext/` | 15 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/uri-js/dist/esnext/schemes/` | 21 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/util-deprecate/` | 6 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/watlas/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/watlas/dist/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/which/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/which/bin/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/winston/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/winston-transport/` | 11 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/winston-transport/.nyc_output/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/winston-transport/.nyc_output/processinfo/` | 2 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/winston-transport/dist/` | 3 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/winston/dist/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/winston/dist/winston/` | 9 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/winston/dist/winston/config/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/winston/dist/winston/transports/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/winston/lib/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/winston/lib/winston/` | 9 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/winston/lib/winston/config/` | 2 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/winston/lib/winston/transports/` | 6 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/wrap-ansi/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/wrap-ansi-cjs/` | 4 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/wrap-ansi-cjs/node_modules/ansi-regex/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/wrap-ansi-cjs/node_modules/strip-ansi/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/wrap-ansi/node_modules/ansi-styles/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/wrap-ansi/node_modules/emoji-regex/` | 9 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/wrap-ansi/node_modules/emoji-regex/es2015/` | 6 | **待归类**：确认用途后放进上面的某个目录。 |
+| `gltf/node_modules/wrap-ansi/node_modules/string-width/` | 5 | **待归类**：确认用途后放进上面的某个目录。 |
+| `map/` | 2 | **动手前的第一站**：`gen_index.js` 扫源码生成 `js/modules.json`（唯一权威模块清单）与 `.workbuddy/index/project-index.json`（符号/断言/资产/标定表）；`who.js <关键词>` 反查"改哪里、波及什么、跑哪条验证"。铁律：索引必须被构建与审计消费，过期由 smoke §591 报红。 |
 | `mem/` | 10 | MEMORY.md 必须 < 9600 字符（超出会被会话注入截断，尾部规则等于不存在）。`slim_memory_template.py` = 把超限整段 cut 到 `docs/` 的模板。 |
-| `patch/` | 1220 | **事实上的变更日志**：按断言名 `grep -rl "<断言名>" tools/patch/` 就能找到当初是哪次改的。"同一条消息里对同一文件的多次 Edit 会互相覆盖"，所以补丁一律脚本化并留档。 |
+| `patch/` | 1258 | **事实上的变更日志**：按断言名 `grep -rl "<断言名>" tools/patch/` 就能找到当初是哪次改的。"同一条消息里对同一文件的多次 Edit 会互相覆盖"，所以补丁一律脚本化并留档。 |
 | `play/` | 1 | **不在 gate 三件套内，按需手动跑**。`lifecycle_v89121.js` = 全玩法链路体检（渠道 / 锻造 / 宝物等分组核验，交付文档的复现命令指向它 → **视同在岗**）；`repro_v89174*` = 三条一次性复现。 |
 | `playtest/` | 1 | v89.x 时代的 600×/1× 长时压测与收益分析（`play_600x.js` 等，单次几分钟到几十分钟）。结论已沉淀进交付文档；**不复用为口径**，新压测请基于 `probe/` 的在岗模板重写。 |
 | `probe/` | 16 | jsdom 没有布局引擎 → 尺寸/重叠/溢出/折行只能在**真浏览器**量。`probe60_geom.js` 是可复用模板，`probe66_ui.js` 有"逐行折行"量法，`probe67_save3.js` 量存档体积与配额。**其余带版本号的（`probe_v89101_explore.js` 等）= 一次性探针**，判据见 `is_one_off()`：名字里带版本号就是"一轮用完即退役"。 |
-| `show/` | 175 | 给老板看的对照图 / 曲线校准 / 素材巡视。 |
-| **合计** | **1613** | |
+| `prof/` | 7 | **待归类**：确认用途后放进上面的某个目录。 |
+| `show/` | 239 | 给老板看的对照图 / 曲线校准 / 素材巡视。 |
+| `show/reports/` | 2 | **待归类**：确认用途后放进上面的某个目录。 |
+| `sim/` | 1 | **待归类**：确认用途后放进上面的某个目录。 |
+| **合计** | **5928** | |
 
 ## asset/（素材处理）
 
@@ -134,6 +560,7 @@
 - `redesign_themes_v9019.py`（4KB）　— v90.19：四主题重设计 —— 保留令牌角色，只换色值（每主题一套完整调色板）。
 - `redesign_themes_v9021.py`（4KB）　— v90.21：四主题改用**公认配色**（非自创）——只换色值，保留令牌角色。
 - `rename_matte.js`（3KB）　— v35-c：AI 原图 → 按 id 重命名 → 抠底 → 输出 ui/；并做风格一致性复检
+- `scan_asset_vs_source.py`（11KB）
 - `split_atlas.py`（6KB）　— v89.107 建筑图标重绘 · 第二步：图集 → 体检 → 切分 → 抠底 → 统一裁切 → 出对照图。
 - `verify_v89102_troop_icons.js`（4KB）
 - `verify_v89106_screen.js`（11KB）
@@ -146,12 +573,10 @@
 结构 / 颜色 / 落盘 / 引用 / 删除 的核对工具。`verify_v66_edits.py` = **落盘核验**模板；`audit_refs.py` = 搬迁前查引用点；`read_recycle.py` = 解析回收站 `$I` 元数据核实删了什么；`trash_paths.py` = 逐项+回查的删除模板。
 
 - `_v89179c_dataset.txt`（5KB）
-- `audit_v125b_perf_ui.js`（6KB）　— **实机 UI 性能门禁**（v125b）：正式局 `setView` ×5 < 100ms / 前传 `refreshAll` < 400ms / `prologue.spots` 精确距离 ≤ 20 次，全带下限防平凡解。
-  为什么单独做一个：smoke 的性能护栏只量 `tickOnce`（逻辑层），**覆盖不到渲染路径**——P0-1「前传每次操作卡 7.2 秒」就是这么漏掉的（3712 次全图 BFS）。动了界面/渲染就跑它。
-- `audit_v125b_playtest_dist.js`（7KB）　— **玩法分布检验**（v125b）：沿用 `tools/fun-audit.js` 的 harness（满将 + 半科技 + `withBoost`），随机抽 200 个局面，报「动作 / 选靶」跨度的中位·p75·p90·最大值。
-  为什么需要它：单点样本会把"条件结论"当普遍结论——`fun-audit` 的 Lv12 苦战样本得出选靶跨度 26 点（真，但只占 7% 局面），我的 Lv8 碾压样本得出 0 点（也真，占 93%）。**只有分布能同时容纳两者。**
 - `audit_colors.js`（5KB）　— 配色审计：把 index.html 里 4 套主题的关键变量解析出来，
 - `audit_refs.py`（3KB）　— 搬迁前普查：谁引用了 DESIGN.md / docs 里的文件 / tools 里的脚本。
+- `audit_v125b_perf_ui.js`（15KB）　— v131：`distOf` 上界从 20 放到 40 —— 它现在是 **O(视野环内格数)**，
+- `audit_v125b_playtest_dist.js`（8KB）　— 分布检验 v2 —— **沿用 fun-audit 的 harness**（补满将领 + withBoost 半科技 + 同一守军坐标），
 - `audit_v89105_chains.js`（25KB）
 - `audit_v89105_css_tokens.js`（10KB）　— 取 <style> 段（含多条 style）
 - `audit_v89105_modals.js`（15KB）
@@ -159,7 +584,7 @@
 - `audit_v89116_refs.js`（4KB）　— 白名单：动态挂载 / 测试或工具注入 / 平台/浏览器提供 / 本项目约定的外部注入点
 - `audit_v89117_fonts.js`（7KB）　— 剥注释：说明文字里提到 font-size 不算数（本项目踩过多次）
 - `audit_v89121_inventory.js`（7KB）
-- `audit_v89134_tables.js`（13KB）　— 白名单（每条必须有理由） ----------
+- `audit_v89134_tables.js`（14KB）　— 白名单（每条必须有理由） ----------
 - `audit_v89159_review.py`（6KB）　— v89.159 复核取证器（只读）：把「未完成 / 从未实现」清单逐条在代码里核一遍。
 - `audit_v89165_live.js`（5KB）　— v89.165 清点器（递归版）：**实时读秒类弹窗** —— 含硬时序特征（进度条/读秒/attr）
 - `audit_v89179c_dataset_refs.js`（6KB）
@@ -173,7 +598,7 @@
 - `audit_v89208_systemmatrix.js`（12KB）　— v89.208 玩法功能梳理 · 四链核对 + 入口面/关停清单（systemmatrix）
 - `audit_v89208_ux.js`（9KB）　— v89.208 体验梳理 · 交互面盘点（ux）
 - `audit_v89214_namescan.py`（3KB）　— v89.214：换皮前的影响面扫描 —— 统计"中文名词"在 产品代码/测试 里的出现（剥注释后）
-- `audit_v89229b_troopchain.js`（19KB）
+- `audit_v89229b_troopchain.js`（22KB）
 - `check_v89214_risk.py`（1KB）　— 换皮前置安全检查：把高风险词的**全部出现上下文**打印出来（人眼过一遍误伤）
 - `consolidate_docs.py`（9KB）　— 集中存放 · 第一步：docs 分档 + 拆 DESIGN.md + 引用转接。
 - `consolidate_docs2.py`（5KB）　— 集中存放 · 第二步：引用转接 + 终检（docs 分档与 DESIGN 拆分已在第一步完成）。
@@ -223,7 +648,7 @@
 - `gen_bitmaps.js`（3KB）　— v35-g：扫描 assets/icons/ui/ 生成 js/bitmaps.js（位图素材登记表）
 - `gen_gicons.js`（14KB）　— 从 @iconify-json/game-icons 提取项目所需的 81 个图标，生成 js/gicons.js
 - `gen_tables_index.js`（6KB）　— ① 拿盘点结果（require 共享模块 —— 沙箱下 spawn 子进程会 EBUSY） ----------
-- `gen_tools_index.py`（10KB）　— 生成 `.workbuddy/tools/README_INDEX.md` —— 按**目录**分组（v67 起目录就是分组）。
+- `gen_tools_index.py`（11KB）　— 生成 `.workbuddy/tools/README_INDEX.md` —— 按**目录**分组（v67 起目录就是分组）。
 - `gen_v89125_build_times.js`（9KB）　— v89.125：生成 docs/v89125-建筑建造时间表.md
 - `gen_v89194_price_table.js`（3KB）　— v89.194 生成器：道具价格表（docs/v89194-道具价格表.md）
 - `gen_v8950_content.js`（20KB）
@@ -234,9 +659,10 @@
 
 **收尾同步的唯一入口**。`sync.py` 默认干跑、`--apply` 才落盘（干跑先行是本项目铁律）；`gate.py` 是三件套门禁的**唯一出口**（pre-commit 钩子与 sync 都调它）；`install_hooks.py` 把 `hooks/` 里的钩子装进 `.git/hooks/`。
 
-- `gate.py`（9KB）　— 三件套门禁 —— 提交前跑 audit / smoke / e2e，红了就不许提交。
+- `gate.py`（21KB）　— 三件套门禁 —— 提交前跑 audit / smoke / e2e，红了就不许提交。
 - `install_hooks.py`（4KB）　— 安装 / 卸载 / 检查本仓的两个 git 钩子。
 - `sync.py`（12KB）　— 收尾一键同步 —— 汇总改动 → 过门禁 → 提交 → 推送到 GitHub。
+- `test_gate_baseline.py`（4KB）　— 门禁基线判定的单元测试（判据自己也要能测）。
 
 ## git/hooks/（Git 钩子本体）
 
@@ -244,6 +670,6320 @@
 
 - `post-commit`（2KB）　— Deepseekdb-managed-hook v1 —— 提交后自动推送到 GitHub
 - `pre-commit`（1KB）　— Deepseekdb-managed-hook v1 —— 提交前跑三件套门禁
+
+## gltf/（未归类）
+
+待归类：请确认用途后归档。
+
+- `optimize_wonders.sh`（1KB）　— 奇观 glb 优化（832MB 原始 → 20MB 运行版）+ base64 模块生成。
+- `package-lock.json`（87KB）
+- `package.json`（0KB）
+
+## gltf/node_modules/（未归类）
+
+待归类：请确认用途后归档。
+
+- `.package-lock.json`（72KB）
+
+## gltf/node_modules/.bin/（未归类）
+
+待归类：请确认用途后归档。
+
+- `glob`（0KB）
+- `glob.cmd`（0KB）
+- `glob.ps1`（1KB）
+- `gltf-transform`（0KB）
+- `gltf-transform.cmd`（0KB）
+- `gltf-transform.ps1`（1KB）
+- `node-which`（0KB）
+- `node-which.cmd`（0KB）
+- `node-which.ps1`（1KB）
+- `semver`（0KB）
+- `semver.cmd`（0KB）
+- `semver.ps1`（1KB）
+
+## gltf/node_modules/@colors/colors/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（1KB）
+- `README.md`（4KB）　— @colors/colors ("colors.js")
+- `index.d.ts`（3KB）　— Type definitions for @colors/colors 1.4+
+- `package.json`（1KB）
+- `safe.d.ts`（2KB）　— Type definitions for Colors.js 1.2
+- `safe.js`（0KB）　— Remark: Requiring this file will use the "safe" colors API,
+
+## gltf/node_modules/@colors/colors/examples/（未归类）
+
+待归类：请确认用途后归档。
+
+- `normal-usage.js`（2KB）
+- `safe-string.js`（2KB）
+
+## gltf/node_modules/@colors/colors/lib/（未归类）
+
+待归类：请确认用途后归档。
+
+- `colors.js`（6KB）
+- `extendStringPrototype.js`（3KB）
+- `index.js`（0KB）
+- `styles.js`（2KB）
+
+## gltf/node_modules/@colors/colors/lib/custom/（未归类）
+
+待归类：请确认用途后归档。
+
+- `trap.js`（2KB）
+- `zalgo.js`（3KB）　— please no
+
+## gltf/node_modules/@colors/colors/lib/maps/（未归类）
+
+待归类：请确认用途后归档。
+
+- `america.js`（0KB）
+- `rainbow.js`（0KB）
+- `random.js`（0KB）
+- `zebra.js`（0KB）
+
+## gltf/node_modules/@colors/colors/lib/system/（未归类）
+
+待归类：请确认用途后归档。
+
+- `has-flag.js`（1KB）
+- `supports-colors.js`（4KB）
+
+## gltf/node_modules/@colors/colors/themes/（未归类）
+
+待归类：请确认用途后归档。
+
+- `generic-logging.js`（0KB）
+
+## gltf/node_modules/@dabh/diagnostics/（未归类）
+
+待归类：请确认用途后归档。
+
+- `CHANGELOG.md`（1KB）　— CHANGELOG
+- `DISTRIBUTION.md`（0KB）　— DABH distribution
+- `LICENSE`（1KB）
+- `README.md`（14KB）　— `diagnostics`
+- `diagnostics.js`（4KB）
+- `package.json`（2KB）
+
+## gltf/node_modules/@dabh/diagnostics/.github/workflows/（未归类）
+
+待归类：请确认用途后归档。
+
+- `ci.yml`（0KB）
+
+## gltf/node_modules/@dabh/diagnostics/adapters/（未归类）
+
+待归类：请确认用途后归档。
+
+- `hash.js`（0KB）
+- `index.js`（0KB）
+- `localstorage.js`（0KB）
+- `process.env.js`（0KB）
+
+## gltf/node_modules/@dabh/diagnostics/browser/（未归类）
+
+待归类：请确认用途后归档。
+
+- `development.js`（1KB）
+- `index.js`（0KB）　— Select the correct build version depending on the environment.
+- `override.js`（0KB）　— No way to override `debug` with `diagnostics` in the browser.
+- `production.js`（1KB）
+
+## gltf/node_modules/@dabh/diagnostics/logger/（未归类）
+
+待归类：请确认用途后归档。
+
+- `console.js`（1KB）
+
+## gltf/node_modules/@dabh/diagnostics/modifiers/（未归类）
+
+待归类：请确认用途后归档。
+
+- `namespace-ansi.js`（1KB）
+- `namespace.js`（1KB）
+
+## gltf/node_modules/@dabh/diagnostics/node/（未归类）
+
+待归类：请确认用途后归档。
+
+- `development.js`（1KB）
+- `index.js`（0KB）　— Select the correct build version depending on the environment.
+- `override.js`（0KB）　— Override the existing `debug` call so it will use `diagnostics` instead
+- `production.js`（1KB）
+
+## gltf/node_modules/@donmccurdy/caporal/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（1KB）
+- `README.md`（0KB）
+- `package.json`（3KB）
+
+## gltf/node_modules/@donmccurdy/caporal/dist/（未归类）
+
+待归类：请确认用途后归档。
+
+- `caporal.modern.js`（76KB）
+- `index.d.ts`（2KB）
+- `types.d.ts`（10KB）
+- `web.d.ts`（0KB）　— <amd-module name="@caporal/core" />
+
+## gltf/node_modules/@donmccurdy/caporal/dist/__tests__/（未归类）
+
+待归类：请确认用途后归档。
+
+- `issue-163.spec.d.ts`（0KB）
+
+## gltf/node_modules/@donmccurdy/caporal/dist/argument/（未归类）
+
+待归类：请确认用途后归档。
+
+- `find.d.ts`（0KB）
+- `index.d.ts`（0KB）
+- `synopsis.d.ts`（0KB）
+- `validate.d.ts`（1KB）
+
+## gltf/node_modules/@donmccurdy/caporal/dist/argument/__tests__/（未归类）
+
+待归类：请确认用途后归档。
+
+- `argument.spec.d.ts`（0KB）
+
+## gltf/node_modules/@donmccurdy/caporal/dist/command/（未归类）
+
+待归类：请确认用途后归档。
+
+- `find.d.ts`（0KB）
+- `import.d.ts`（0KB）
+- `index.d.ts`（6KB）
+- `scan.d.ts`（0KB）
+- `validate-call.d.ts`（0KB）
+
+## gltf/node_modules/@donmccurdy/caporal/dist/command/__fixtures__/（未归类）
+
+待归类：请确认用途后归档。
+
+- `example-cmd.d.ts`（0KB）
+
+## gltf/node_modules/@donmccurdy/caporal/dist/command/__tests__/（未归类）
+
+待归类：请确认用途后归档。
+
+- `command.spec.d.ts`（0KB）
+- `find.test.d.ts`（0KB）
+- `import.test.d.ts`（0KB）
+- `scan.test.d.ts`（0KB）
+
+## gltf/node_modules/@donmccurdy/caporal/dist/config/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（0KB）
+
+## gltf/node_modules/@donmccurdy/caporal/dist/error/（未归类）
+
+待归类：请确认用途后归档。
+
+- `action.d.ts`（0KB）
+- `base.d.ts`（0KB）
+- `fatal.d.ts`（0KB）
+- `index.d.ts`（0KB）
+- `invalid-validator.d.ts`（0KB）
+- `missing-argument.d.ts`（0KB）
+- `missing-flag.d.ts`（0KB）
+- `multi-validation.d.ts`（0KB）
+- `no-action.d.ts`（0KB）
+- `option-synopsis-syntax.d.ts`（0KB）
+- `too-many-arguments.d.ts`（0KB）
+- `unknown-command.d.ts`（0KB）
+- `unknown-option.d.ts`（0KB）
+- `validation.d.ts`（0KB）
+
+## gltf/node_modules/@donmccurdy/caporal/dist/error/__tests__/（未归类）
+
+待归类：请确认用途后归档。
+
+- `fatal.spec.d.ts`（0KB）
+
+## gltf/node_modules/@donmccurdy/caporal/dist/help/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（1KB）
+- `types.d.ts`（1KB）
+- `utils.d.ts`（1KB）
+
+## gltf/node_modules/@donmccurdy/caporal/dist/help/__tests__/（未归类）
+
+待归类：请确认用途后归档。
+
+- `help.spec.d.ts`（0KB）
+- `help.test.d.ts`（0KB）
+- `utils.test.d.ts`（0KB）
+
+## gltf/node_modules/@donmccurdy/caporal/dist/help/templates/（未归类）
+
+待归类：请确认用途后归档。
+
+- `command.d.ts`（0KB）
+- `custom.d.ts`（0KB）
+- `header.d.ts`（0KB）
+- `index.d.ts`（0KB）
+- `program.d.ts`（0KB）
+- `usage.d.ts`（0KB）
+
+## gltf/node_modules/@donmccurdy/caporal/dist/logger/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（0KB）
+
+## gltf/node_modules/@donmccurdy/caporal/dist/logger/__tests__/（未归类）
+
+待归类：请确认用途后归档。
+
+- `logger.spec.d.ts`（0KB）
+
+## gltf/node_modules/@donmccurdy/caporal/dist/option/（未归类）
+
+待归类：请确认用途后归档。
+
+- `find.d.ts`（0KB）
+- `index.d.ts`（2KB）
+- `mapping.d.ts`（0KB）
+- `utils.d.ts`（1KB）
+- `validate.d.ts`（0KB）
+
+## gltf/node_modules/@donmccurdy/caporal/dist/option/__tests__/（未归类）
+
+待归类：请确认用途后归档。
+
+- `global.test.d.ts`（0KB）
+- `option.test.d.ts`（0KB）
+
+## gltf/node_modules/@donmccurdy/caporal/dist/parser/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（0KB）
+
+## gltf/node_modules/@donmccurdy/caporal/dist/parser/__tests__/（未归类）
+
+待归类：请确认用途后归档。
+
+- `parser.spec.d.ts`（0KB）
+
+## gltf/node_modules/@donmccurdy/caporal/dist/program/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（11KB）　— <reference types="node" />
+
+## gltf/node_modules/@donmccurdy/caporal/dist/program/__tests__/（未归类）
+
+待归类：请确认用途后归档。
+
+- `program.test.d.ts`（0KB）
+
+## gltf/node_modules/@donmccurdy/caporal/dist/utils/（未归类）
+
+待归类：请确认用途后归档。
+
+- `colorize.d.ts`（0KB）
+- `fs.d.ts`（0KB）
+- `levenshtein.d.ts`（0KB）
+- `suggest.d.ts`（0KB）
+- `version.d.ts`（0KB）
+
+## gltf/node_modules/@donmccurdy/caporal/dist/utils/__tests__/（未归类）
+
+待归类：请确认用途后归档。
+
+- `fs.test.d.ts`（0KB）
+- `levenshtein.test.d.ts`（0KB）
+- `suggest.test.d.ts`（0KB）
+
+## gltf/node_modules/@donmccurdy/caporal/dist/utils/web/（未归类）
+
+待归类：请确认用途后归档。
+
+- `process.d.ts`（0KB）
+
+## gltf/node_modules/@donmccurdy/caporal/dist/validator/（未归类）
+
+待归类：请确认用途后归档。
+
+- `array.d.ts`（0KB）
+- `caporal.d.ts`（1KB）
+- `function.d.ts`（0KB）
+- `regexp.d.ts`（0KB）
+- `utils.d.ts`（1KB）
+- `validate.d.ts`（0KB）
+
+## gltf/node_modules/@donmccurdy/caporal/dist/validator/__tests__/（未归类）
+
+待归类：请确认用途后归档。
+
+- `array.test.d.ts`（0KB）
+- `caporal.spec.d.ts`（0KB）
+- `function.spec.d.ts`（0KB）
+- `regexp.test.d.ts`（0KB）
+- `utils.spec.d.ts`（0KB）
+- `validate.spec.d.ts`（0KB）
+
+## gltf/node_modules/@emnapi/runtime/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（1KB）
+- `README.md`（0KB）
+- `index.js`（0KB）
+- `package.json`（1KB）
+
+## gltf/node_modules/@emnapi/runtime/dist/（未归类）
+
+待归类：请确认用途后归档。
+
+- `emnapi.cjs.js`（43KB）
+- `emnapi.cjs.min.d.ts`（21KB）
+- `emnapi.cjs.min.js`（21KB）
+- `emnapi.d.mts`（21KB）
+- `emnapi.d.ts`（21KB）
+- `emnapi.esm-bundler.js`（52KB）　— @public
+- `emnapi.iife.d.ts`（14KB）
+- `emnapi.iife.js`（60KB）
+- `emnapi.js`（61KB）
+- `emnapi.min.d.mts`（21KB）
+- `emnapi.min.js`（26KB）
+- `emnapi.min.mjs`（21KB）
+- `emnapi.mjs`（42KB）
+
+## gltf/node_modules/@gltf-transform/cli/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE.md`（1KB）
+- `README.md`（2KB）　— @gltf-transform/cli
+- `package.json`（2KB）
+
+## gltf/node_modules/@gltf-transform/cli/bin/（未归类）
+
+待归类：请确认用途后归档。
+
+- `cli.js`（0KB）
+
+## gltf/node_modules/@gltf-transform/cli/dist/（未归类）
+
+待归类：请确认用途后归档。
+
+- `cli.d.mts`（9KB）　— #region src/program.d.ts
+- `cli.mjs`（103KB）
+- `cli.mjs.map`（187KB）
+
+## gltf/node_modules/@gltf-transform/cli/src/（未归类）
+
+待归类：请确认用途后归档。
+
+- `cli.ts`（66KB）
+- `config.ts`（2KB）
+- `constants.ts`（0KB）　— Constants.
+- `inspect.ts`（5KB）
+- `program.ts`（5KB）
+- `session.ts`（4KB）　— Helper class for managing a CLI command session.
+- `validate.ts`（2KB）
+
+## gltf/node_modules/@gltf-transform/cli/src/transforms/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.ts`（0KB）
+- `ktxdecompress.ts`（4KB）
+- `ktxfix.ts`（1KB）
+- `merge.ts`（3KB）
+- `toktx.ts`（15KB）
+- `xmp.ts`（11KB）
+
+## gltf/node_modules/@gltf-transform/cli/src/types/（未归类）
+
+待归类：请确认用途后归档。
+
+- `global.d.ts`（0KB）　— See: https://github.com/KhronosGroup/glTF-Validator/issues/114
+
+## gltf/node_modules/@gltf-transform/cli/src/utils/（未归类）
+
+待归类：请确认用途后归档。
+
+- `format.ts`（3KB）
+- `gzip.ts`（0KB）
+- `log.ts`（0KB）
+- `match.ts`（0KB）　— Using 'micromatch' because 'contains: true' did not work as expected with
+- `p-limit.ts`（1KB）
+- `process.ts`（2KB）　— Mocks for tests.
+
+## gltf/node_modules/@gltf-transform/core/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE.md`（1KB）
+- `README.md`（1KB）　— @gltf-transform/core
+- `package.json`（1KB）
+
+## gltf/node_modules/@gltf-transform/core/dist/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.cjs`（207KB）
+- `index.cjs.map`（424KB）
+- `index.d.cts`（135KB）　— #region src/constants.d.ts
+- `index.d.ts`（135KB）　— #region src/constants.d.ts
+- `index.js`（205KB）　— #region src/constants.ts
+- `index.js.map`（424KB）
+
+## gltf/node_modules/@gltf-transform/core/src/（未归类）
+
+待归类：请确认用途后归档。
+
+- `constants.ts`（4KB）
+- `document.ts`（9KB）
+- `extension.ts`（7KB）
+- `index.ts`（1KB）
+- `json-document.ts`（1KB）
+
+## gltf/node_modules/@gltf-transform/core/src/io/（未归类）
+
+待归类：请确认用途后归档。
+
+- `deno-io.ts`（1KB）
+- `index.ts`（0KB）
+- `node-io.ts`（6KB）
+- `platform-io.ts`（12KB）
+- `reader-context.ts`（2KB）
+- `reader.ts`（23KB）
+- `web-io.ts`（2KB）
+- `writer-context.ts`（10KB）
+- `writer.ts`（30KB）
+
+## gltf/node_modules/@gltf-transform/core/src/properties/（未归类）
+
+待归类：请确认用途后归档。
+
+- `accessor.ts`（19KB）
+- `animation-channel.ts`（4KB）
+- `animation-sampler.ts`（4KB）
+- `animation.ts`（3KB）
+- `buffer.ts`（4KB）
+- `camera.ts`（5KB）
+- `extensible-property.ts`（2KB）
+- `extension-property.ts`（1KB）
+- `index.ts`（1KB）
+- `material.ts`（16KB）
+- `mesh.ts`（3KB）
+- `node.ts`（9KB）
+- `primitive-target.ts`（2KB）
+- `primitive.ts`（8KB）
+- `property.ts`（10KB）
+- `root.ts`（8KB）
+- `scene.ts`（3KB）
+- `skin.ts`（3KB）
+- `texture-info.ts`（5KB）
+- `texture.ts`（3KB）
+
+## gltf/node_modules/@gltf-transform/core/src/types/（未归类）
+
+待归类：请确认用途后归档。
+
+- `gltf.ts`（18KB）
+
+## gltf/node_modules/@gltf-transform/core/src/utils/（未归类）
+
+待归类：请确认用途后归档。
+
+- `buffer-utils.ts`（3KB）
+- `color-utils.ts`（2KB）
+- `file-utils.ts`（1KB）
+- `get-bounds.ts`（2KB）　— @hidden Implemented in /core for use by /extensions, publicly exported from /functions.
+- `http-utils.ts`（2KB）　— Need a placeholder domain to construct a URL from a relative path. We only
+- `image-utils.ts`（5KB）　— Implements support for an image format in the {@link ImageUtils} class.
+- `index.ts`（0KB）
+- `is-plain-object.ts`（1KB）　— Reference: https://github.com/jonschlinkert/is-plain-object
+- `logger.ts`（2KB）　— Logger verbosity thresholds.
+- `math-utils.ts`（5KB）　— @hidden
+- `property-utils.ts`（3KB）
+- `uuid.ts`（1KB）
+
+## gltf/node_modules/@gltf-transform/extensions/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE.md`（1KB）
+- `README.md`（1KB）　— @gltf-transform/extensions
+- `package.json`（1KB）
+
+## gltf/node_modules/@gltf-transform/extensions/dist/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.cjs`（259KB）
+- `index.cjs.map`（453KB）
+- `index.d.cts`（137KB）　— #region src/constants.d.ts
+- `index.d.ts`（137KB）　— #region src/constants.d.ts
+- `index.js`（252KB）　— #region src/constants.ts
+- `index.js.map`（448KB）
+
+## gltf/node_modules/@gltf-transform/extensions/src/（未归类）
+
+待归类：请确认用途后归档。
+
+- `constants.ts`（2KB）
+- `index.ts`（5KB）
+
+## gltf/node_modules/@gltf-transform/extensions/src/ext-mesh-features/（未归类）
+
+待归类：请确认用途后归档。
+
+- `feature-id-texture.ts`（2KB）
+- `feature-id.ts`（2KB）
+- `features.ts`（1KB）
+- `index.ts`（0KB）
+- `mesh-features.ts`（8KB）
+
+## gltf/node_modules/@gltf-transform/extensions/src/ext-mesh-gpu-instancing/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.ts`（0KB）
+- `instanced-mesh.ts`（2KB）
+- `mesh-gpu-instancing.ts`（5KB）
+
+## gltf/node_modules/@gltf-transform/extensions/src/ext-meshopt-compression/（未归类）
+
+待归类：请确认用途后归档。
+
+- `constants.ts`（1KB）
+- `decoder.ts`（1KB）
+- `encoder.ts`（8KB）
+- `index.ts`（0KB）
+- `meshopt-compression.ts`（18KB）
+
+## gltf/node_modules/@gltf-transform/extensions/src/ext-structural-metadata/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.ts`（0KB）
+- `metadata.ts`（26KB）
+- `structural-metadata.ts`（37KB）
+- `types.ts`（0KB）
+
+## gltf/node_modules/@gltf-transform/extensions/src/ext-texture-avif/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.ts`（0KB）
+- `texture-avif.ts`（5KB）
+
+## gltf/node_modules/@gltf-transform/extensions/src/ext-texture-webp/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.ts`（0KB）
+- `texture-webp.ts`（5KB）
+
+## gltf/node_modules/@gltf-transform/extensions/src/khr-accessor-float16/（未归类）
+
+待归类：请确认用途后归档。
+
+- `accessor-float16.ts`（2KB）
+- `index.ts`（0KB）
+
+## gltf/node_modules/@gltf-transform/extensions/src/khr-accessor-float64/（未归类）
+
+待归类：请确认用途后归档。
+
+- `accessor-float64.ts`（2KB）
+- `index.ts`（0KB）
+
+## gltf/node_modules/@gltf-transform/extensions/src/khr-draco-mesh-compression/（未归类）
+
+待归类：请确认用途后归档。
+
+- `decoder.ts`（4KB）
+- `draco-mesh-compression.ts`（19KB）
+- `encoder.ts`（6KB）
+- `index.ts`（0KB）
+
+## gltf/node_modules/@gltf-transform/extensions/src/khr-lights-punctual/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.ts`（0KB）
+- `light.ts`（4KB）
+- `lights-punctual.ts`（5KB）
+
+## gltf/node_modules/@gltf-transform/extensions/src/khr-materials-anisotropy/（未归类）
+
+待归类：请确认用途后归档。
+
+- `anisotropy.ts`（3KB）
+- `index.ts`（0KB）
+- `materials-anisotropy.ts`（6KB）
+
+## gltf/node_modules/@gltf-transform/extensions/src/khr-materials-clearcoat/（未归类）
+
+待归类：请确认用途后归档。
+
+- `clearcoat.ts`（6KB）
+- `index.ts`（0KB）
+- `materials-clearcoat.ts`（6KB）
+
+## gltf/node_modules/@gltf-transform/extensions/src/khr-materials-diffuse-transmission/（未归类）
+
+待归类：请确认用途后归档。
+
+- `diffuse-transmission.ts`（5KB）
+- `index.ts`（0KB）
+- `materials-diffuse-transmission.ts`（6KB）
+
+## gltf/node_modules/@gltf-transform/extensions/src/khr-materials-dispersion/（未归类）
+
+待归类：请确认用途后归档。
+
+- `dispersion.ts`（1KB）
+- `index.ts`（0KB）
+- `materials-dispersion.ts`（4KB）
+
+## gltf/node_modules/@gltf-transform/extensions/src/khr-materials-emissive-strength/（未归类）
+
+待归类：请确认用途后归档。
+
+- `emissive-strength.ts`（1KB）
+- `index.ts`（0KB）
+- `materials-emissive-strength.ts`（5KB）
+
+## gltf/node_modules/@gltf-transform/extensions/src/khr-materials-ior/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.ts`（0KB）
+- `ior.ts`（1KB）
+- `materials-ior.ts`（3KB）
+
+## gltf/node_modules/@gltf-transform/extensions/src/khr-materials-iridescence/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.ts`（0KB）
+- `iridescence.ts`（5KB）
+- `materials-iridescence.ts`（7KB）
+
+## gltf/node_modules/@gltf-transform/extensions/src/khr-materials-pbr-specular-glossiness/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.ts`（0KB）
+- `materials-pbr-specular-glossiness.ts`（6KB）
+- `pbr-specular-glossiness.ts`（4KB）
+
+## gltf/node_modules/@gltf-transform/extensions/src/khr-materials-sheen/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.ts`（0KB）
+- `materials-sheen.ts`（5KB）
+- `sheen.ts`（4KB）
+
+## gltf/node_modules/@gltf-transform/extensions/src/khr-materials-specular/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.ts`（0KB）
+- `materials-specular.ts`（5KB）
+- `specular.ts`（4KB）
+
+## gltf/node_modules/@gltf-transform/extensions/src/khr-materials-transmission/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.ts`（0KB）
+- `materials-transmission.ts`（5KB）
+- `transmission.ts`（3KB）
+
+## gltf/node_modules/@gltf-transform/extensions/src/khr-materials-unlit/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.ts`（0KB）
+- `materials-unlit.ts`（3KB）
+- `unlit.ts`（1KB）
+
+## gltf/node_modules/@gltf-transform/extensions/src/khr-materials-variants/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.ts`（0KB）
+- `mapping-list.ts`（1KB）
+- `mapping.ts`（2KB）
+- `materials-variants.ts`（7KB）
+- `variant.ts`（1KB）
+
+## gltf/node_modules/@gltf-transform/extensions/src/khr-materials-volume/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.ts`（0KB）
+- `materials-volume.ts`（6KB）
+- `volume.ts`（4KB）
+
+## gltf/node_modules/@gltf-transform/extensions/src/khr-mesh-primitive-restart/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.ts`（0KB）
+- `mesh-primitive-restart.ts`（3KB）
+
+## gltf/node_modules/@gltf-transform/extensions/src/khr-mesh-quantization/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.ts`（0KB）
+- `mesh-quantization.ts`（2KB）
+
+## gltf/node_modules/@gltf-transform/extensions/src/khr-node-visibility/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.ts`（0KB）
+- `node-visibility.ts`（2KB）
+- `visibility.ts`（1KB）
+
+## gltf/node_modules/@gltf-transform/extensions/src/khr-texture-basisu/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.ts`（0KB）
+- `texture-basisu.ts`（8KB）
+
+## gltf/node_modules/@gltf-transform/extensions/src/khr-texture-transform/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.ts`（0KB）
+- `texture-transform.ts`（4KB）
+- `transform.ts`（2KB）
+
+## gltf/node_modules/@gltf-transform/extensions/src/khr-xmp-json-ld/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.ts`（0KB）
+- `packet.ts`（5KB）
+- `xmp.ts`（7KB）
+
+## gltf/node_modules/@gltf-transform/functions/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE.md`（1KB）
+- `README.md`（1KB）　— @gltf-transform/functions
+- `package.json`（1KB）
+
+## gltf/node_modules/@gltf-transform/functions/dist/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.cjs`（233KB）
+- `index.cjs.map`（532KB）
+- `index.d.cts`（71KB）　— #region src/center.d.ts
+- `index.d.ts`（71KB）　— #region src/center.d.ts
+- `index.js`（226KB）　— #region src/utils.ts
+- `index.js.map`（528KB）
+
+## gltf/node_modules/@gltf-transform/functions/src/（未归类）
+
+待归类：请确认用途后归档。
+
+- `center.ts`（2KB）　— Options for the {@link center} function.
+- `clean-primitive.ts`（1KB）
+- `clear-node-parent.ts`（1KB）
+- `clear-node-transform.ts`（1KB）　— biome-ignore format: Readability.
+- `compact-primitive.ts`（6KB）
+- `convert-primitive-mode.ts`（5KB）
+- `dedup.ts`（13KB）
+- `dequantize.ts`（3KB）
+- `document-utils.ts`（12KB）
+- `draco.ts`（3KB）
+- `flatten.ts`（3KB）　— Options for the {@link flatten} function.
+- `get-bounds.ts`（0KB）
+- `get-texture-color-space.ts`（1KB）
+- `get-vertex-count.ts`（9KB）
+- `hash-table.ts`（3KB）　— Flags 'empty' values in a Uint32Array index.
+- `index.ts`（2KB）
+- `inspect.ts`（9KB）
+- `instance.ts`（6KB）
+- `join-primitives.ts`（6KB）
+- `join.ts`（9KB）
+- `list-node-scenes.ts`（1KB）
+- `list-texture-channels.ts`（2KB）
+- `list-texture-info.ts`（2KB）
+- `list-texture-slots.ts`（1KB）
+- `meshopt.ts`（3KB）
+- `metal-rough.ts`（5KB）
+- `normals.ts`（3KB）　— Options for the {@link normals} function.
+- `palette.ts`（12KB）
+- `partition.ts`（4KB）
+- `prune.ts`（17KB）
+- `quantize.ts`（22KB）
+- `reorder.ts`（5KB）　— Options for the {@link reorder} function.
+- `resample.ts`（7KB）
+- `sequence.ts`（3KB）
+- `simplify.ts`（8KB）
+- `sort-primitive-weights.ts`（7KB）
+- `sparse.ts`（2KB）　— Options for the {@link sparse} function.
+- `tangents.ts`（6KB）
+- `texture-compress.ts`（14KB）
+- `transform-mesh.ts`（2KB）
+- `transform-primitive.ts`（6KB）
+- `uninstance.ts`（5KB）
+- `unlit.ts`（0KB）
+- `unpartition.ts`（1KB）
+- `unweld.ts`（3KB）
+- `unwrap.ts`（12KB）
+- `utils.ts`（12KB）
+- `vertex-color-space.ts`（2KB）　— Options for the {@link vertexColorSpace} function.
+- `weld.ts`（6KB）
+
+## gltf/node_modules/@gltf-transform/functions/src/types/（未归类）
+
+待归类：请确认用途后归档。
+
+- `.gitkeep`（0KB）
+
+## gltf/node_modules/@img/colour/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE.md`（4KB）　— Licensing
+- `README.md`（1KB）　— `@img/colour`
+- `color.cjs`（44KB）
+- `index.cjs`（0KB）
+- `index.d.ts`（21KB）　— Generated by dts-bundle-generator v9.5.1
+- `package.json`（1KB）
+
+## gltf/node_modules/@img/sharp-wasm32/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（10KB）
+- `README.md`（4KB）　— `@img/sharp-wasm32`
+- `index.cjs`（0KB）
+- `package.json`（1KB）
+- `versions.json`（0KB）
+
+## gltf/node_modules/@img/sharp-wasm32/lib/（未归类）
+
+待归类：请确认用途后归档。
+
+- `sharp-wasm32-0.35.5.node.js`（156KB）
+- `sharp-wasm32-0.35.5.node.wasm`（8936KB）
+
+## gltf/node_modules/@img/sharp-win32-x64/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（10KB）
+- `README.md`（5KB）　— `@img/sharp-win32-x64`
+- `index.cjs`（0KB）
+- `package.json`（1KB）
+- `versions.json`（1KB）
+
+## gltf/node_modules/@img/sharp-win32-x64/lib/（未归类）
+
+待归类：请确认用途后归档。
+
+- `libvips-42.dll`（18572KB）
+- `libvips-cpp-8.18.7.dll`（326KB）
+- `sharp-win32-x64-0.35.5.node`（434KB）
+
+## gltf/node_modules/@isaacs/cliui/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE.txt`（1KB）
+- `README.md`（3KB）　— @isaacs/cliui
+- `index.mjs`（0KB）　— Bootstrap cliui with ESM dependencies:
+- `package.json`（2KB）
+
+## gltf/node_modules/@isaacs/cliui/build/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.cjs`（10KB）
+- `index.d.cts`（1KB）
+
+## gltf/node_modules/@isaacs/cliui/build/lib/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.js`（10KB）
+
+## gltf/node_modules/@isaacs/cliui/node_modules/emoji-regex/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE-MIT.txt`（1KB）
+- `README.md`（4KB）　— emoji-regex [![Build status](https://travis-ci.org/mathiasbynens/emoji-regex.svg?branch=…
+- `RGI_Emoji.d.ts`（0KB）
+- `RGI_Emoji.js`（13KB）
+- `index.d.ts`（0KB）
+- `index.js`（15KB）
+- `package.json`（1KB）
+- `text.d.ts`（0KB）
+- `text.js`（14KB）
+
+## gltf/node_modules/@isaacs/cliui/node_modules/emoji-regex/es2015/（未归类）
+
+待归类：请确认用途后归档。
+
+- `RGI_Emoji.d.ts`（0KB）
+- `RGI_Emoji.js`（14KB）
+- `index.d.ts`（0KB）
+- `index.js`（17KB）
+- `text.d.ts`（0KB）
+- `text.js`（15KB）
+
+## gltf/node_modules/@isaacs/cliui/node_modules/string-width/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（1KB）
+- `index.js`（1KB）
+- `license`（1KB）
+- `package.json`（1KB）
+- `readme.md`（2KB）　— string-width
+
+## gltf/node_modules/@pkgjs/parseargs/（未归类）
+
+待归类：请确认用途后归档。
+
+- `.editorconfig`（0KB）　— EditorConfig is awesome: http://EditorConfig.org
+- `CHANGELOG.md`（7KB）　— Changelog
+- `LICENSE`（11KB）
+- `README.md`（13KB）
+- `index.js`（13KB）
+- `package.json`（1KB）
+- `utils.js`（6KB）
+
+## gltf/node_modules/@pkgjs/parseargs/examples/（未归类）
+
+待归类：请确认用途后归档。
+
+- `is-default-value.js`（1KB）　— This example shows how to understand if a default value is used or not.
+- `limit-long-syntax.js`（1KB）　— This is an example of using tokens to add a custom behaviour.
+- `negate.js`（1KB）　— This example is used in the documentation.
+- `no-repeated-options.js`（1KB）　— This is an example of using tokens to add a custom behaviour.
+- `ordered-options.mjs`（1KB）　— This is an example of using tokens to add a custom behaviour.
+- `simple-hard-coded.js`（1KB）　— This example is used in the documentation.
+
+## gltf/node_modules/@pkgjs/parseargs/internal/（未归类）
+
+待归类：请确认用途后归档。
+
+- `errors.js`（1KB）
+- `primordials.js`（12KB）
+- `util.js`（0KB）　— This is a placeholder for util.js in node.js land.
+- `validators.js`（2KB）　— This file is a proxy of the original file located at:
+
+## gltf/node_modules/@so-ric/colorspace/（未归类）
+
+待归类：请确认用途后归档。
+
+- `CHANGELOG.md`（0KB）　— CHANGELOG
+- `LICENSE.md`（1KB）
+- `README.md`（1KB）
+- `index.js`（1KB）
+- `package.json`（1KB）
+- `rollup.config.js`（1KB）
+
+## gltf/node_modules/@so-ric/colorspace/dist/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.cjs.js`（46KB）
+
+## gltf/node_modules/@types/braces/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（1KB）
+- `README.md`（1KB）　— Installation
+- `index.d.ts`（4KB）
+- `package.json`（1KB）
+
+## gltf/node_modules/@types/glob/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（1KB）
+- `README.md`（1KB）　— Installation
+- `index.d.ts`（3KB）　— Type definitions for glob 8.1
+- `package.json`（1KB）
+
+## gltf/node_modules/@types/lodash/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（1KB）
+- `README.md`（1KB）　— Installation
+- `add.d.ts`（0KB）
+- `after.d.ts`（0KB）
+- `ary.d.ts`（0KB）
+- `assign.d.ts`（0KB）
+- `assignIn.d.ts`（0KB）
+- `assignInWith.d.ts`（0KB）
+- `assignWith.d.ts`（0KB）
+- `at.d.ts`（0KB）
+- `attempt.d.ts`（0KB）
+- `before.d.ts`（0KB）
+- `bind.d.ts`（0KB）
+- `bindAll.d.ts`（0KB）
+- `bindKey.d.ts`（0KB）
+- `camelCase.d.ts`（0KB）
+- `capitalize.d.ts`（0KB）
+- `castArray.d.ts`（0KB）
+- `ceil.d.ts`（0KB）
+- `chain.d.ts`（0KB）
+- `chunk.d.ts`（0KB）
+- `clamp.d.ts`（0KB）
+- `clone.d.ts`（0KB）
+- `cloneDeep.d.ts`（0KB）
+- `cloneDeepWith.d.ts`（0KB）
+- `cloneWith.d.ts`（0KB）
+- `compact.d.ts`（0KB）
+- `concat.d.ts`（0KB）
+- `cond.d.ts`（0KB）
+- `conforms.d.ts`（0KB）
+- `conformsTo.d.ts`（0KB）
+- `constant.d.ts`（0KB）
+- `countBy.d.ts`（0KB）
+- `create.d.ts`（0KB）
+- `curry.d.ts`（0KB）
+- `curryRight.d.ts`（0KB）
+- `debounce.d.ts`（0KB）
+- `deburr.d.ts`（0KB）
+- `defaultTo.d.ts`（0KB）
+- `defaults.d.ts`（0KB）
+- `defaultsDeep.d.ts`（0KB）
+- `defer.d.ts`（0KB）
+- `delay.d.ts`（0KB）
+- `difference.d.ts`（0KB）
+- `differenceBy.d.ts`（0KB）
+- `differenceWith.d.ts`（0KB）
+- `divide.d.ts`（0KB）
+- `drop.d.ts`（0KB）
+- `dropRight.d.ts`（0KB）
+- `dropRightWhile.d.ts`（0KB）
+- `dropWhile.d.ts`（0KB）
+- `each.d.ts`（0KB）
+- `eachRight.d.ts`（0KB）
+- `endsWith.d.ts`（0KB）
+- `entries.d.ts`（0KB）
+- `entriesIn.d.ts`（0KB）
+- `eq.d.ts`（0KB）
+- `escape.d.ts`（0KB）
+- `escapeRegExp.d.ts`（0KB）
+- `every.d.ts`（0KB）
+- `extend.d.ts`（0KB）
+- `extendWith.d.ts`（0KB）
+- `fill.d.ts`（0KB）
+- `filter.d.ts`（0KB）
+- `find.d.ts`（0KB）
+- `findIndex.d.ts`（0KB）
+- `findKey.d.ts`（0KB）
+- `findLast.d.ts`（0KB）
+- `findLastIndex.d.ts`（0KB）
+- `findLastKey.d.ts`（0KB）
+- `first.d.ts`（0KB）
+- `flatMap.d.ts`（0KB）
+- `flatMapDeep.d.ts`（0KB）
+- `flatMapDepth.d.ts`（0KB）
+- `flatten.d.ts`（0KB）
+- `flattenDeep.d.ts`（0KB）
+- `flattenDepth.d.ts`（0KB）
+- `flip.d.ts`（0KB）
+- `floor.d.ts`（0KB）
+- `flow.d.ts`（0KB）
+- `flowRight.d.ts`（0KB）
+- `forEach.d.ts`（0KB）
+- `forEachRight.d.ts`（0KB）
+- `forIn.d.ts`（0KB）
+- `forInRight.d.ts`（0KB）
+- `forOwn.d.ts`（0KB）
+- `forOwnRight.d.ts`（0KB）
+- `fp.d.ts`（357KB）　— AUTO-GENERATED: do not modify this file directly.
+- `fromPairs.d.ts`（0KB）
+- `functions.d.ts`（0KB）
+- `functionsIn.d.ts`（0KB）
+- `get.d.ts`（0KB）
+- `groupBy.d.ts`（0KB）
+- `gt.d.ts`（0KB）
+- `gte.d.ts`（0KB）
+- `has.d.ts`（0KB）
+- `hasIn.d.ts`（0KB）
+- `head.d.ts`（0KB）
+- `identity.d.ts`（0KB）
+- `inRange.d.ts`（0KB）
+- `includes.d.ts`（0KB）
+- `index.d.ts`（1KB）　— <reference path="./common/common.d.ts" />
+- `indexOf.d.ts`（0KB）
+- `initial.d.ts`（0KB）
+- `intersection.d.ts`（0KB）
+- `intersectionBy.d.ts`（0KB）
+- `intersectionWith.d.ts`（0KB）
+- `invert.d.ts`（0KB）
+- `invertBy.d.ts`（0KB）
+- `invoke.d.ts`（0KB）
+- `invokeMap.d.ts`（0KB）
+- `isArguments.d.ts`（0KB）
+- `isArray.d.ts`（0KB）
+- `isArrayBuffer.d.ts`（0KB）
+- `isArrayLike.d.ts`（0KB）
+- `isArrayLikeObject.d.ts`（0KB）
+- `isBoolean.d.ts`（0KB）
+- `isBuffer.d.ts`（0KB）
+- `isDate.d.ts`（0KB）
+- `isElement.d.ts`（0KB）
+- `isEmpty.d.ts`（0KB）
+- `isEqual.d.ts`（0KB）
+- `isEqualWith.d.ts`（0KB）
+- `isError.d.ts`（0KB）
+- `isFinite.d.ts`（0KB）
+- `isFunction.d.ts`（0KB）
+- `isInteger.d.ts`（0KB）
+- `isLength.d.ts`（0KB）
+- `isMap.d.ts`（0KB）
+- `isMatch.d.ts`（0KB）
+- `isMatchWith.d.ts`（0KB）
+- `isNaN.d.ts`（0KB）
+- `isNative.d.ts`（0KB）
+- `isNil.d.ts`（0KB）
+- `isNull.d.ts`（0KB）
+- `isNumber.d.ts`（0KB）
+- `isObject.d.ts`（0KB）
+- `isObjectLike.d.ts`（0KB）
+- `isPlainObject.d.ts`（0KB）
+- `isRegExp.d.ts`（0KB）
+- `isSafeInteger.d.ts`（0KB）
+- `isSet.d.ts`（0KB）
+- `isString.d.ts`（0KB）
+- `isSymbol.d.ts`（0KB）
+- `isTypedArray.d.ts`（0KB）
+- `isUndefined.d.ts`（0KB）
+- `isWeakMap.d.ts`（0KB）
+- `isWeakSet.d.ts`（0KB）
+- `iteratee.d.ts`（0KB）
+- `join.d.ts`（0KB）
+- `kebabCase.d.ts`（0KB）
+- `keyBy.d.ts`（0KB）
+- `keys.d.ts`（0KB）
+- `keysIn.d.ts`（0KB）
+- `last.d.ts`（0KB）
+- `lastIndexOf.d.ts`（0KB）
+- `lowerCase.d.ts`（0KB）
+- `lowerFirst.d.ts`（0KB）
+- `lt.d.ts`（0KB）
+- `lte.d.ts`（0KB）
+- `map.d.ts`（0KB）
+- `mapKeys.d.ts`（0KB）
+- `mapValues.d.ts`（0KB）
+- `matches.d.ts`（0KB）
+- `matchesProperty.d.ts`（0KB）
+- `max.d.ts`（0KB）
+- `maxBy.d.ts`（0KB）
+- `mean.d.ts`（0KB）
+- `meanBy.d.ts`（0KB）
+- `memoize.d.ts`（0KB）
+- `merge.d.ts`（0KB）
+- `mergeWith.d.ts`（0KB）
+- `method.d.ts`（0KB）
+- `methodOf.d.ts`（0KB）
+- `min.d.ts`（0KB）
+- `minBy.d.ts`（0KB）
+- `mixin.d.ts`（0KB）
+- `multiply.d.ts`（0KB）
+- `negate.d.ts`（0KB）
+- `noConflict.d.ts`（0KB）
+- `noop.d.ts`（0KB）
+- `now.d.ts`（0KB）
+- `nth.d.ts`（0KB）
+- `nthArg.d.ts`（0KB）
+- `omit.d.ts`（0KB）
+- `omitBy.d.ts`（0KB）
+- `once.d.ts`（0KB）
+- `orderBy.d.ts`（0KB）
+- `over.d.ts`（0KB）
+- `overArgs.d.ts`（0KB）
+- `overEvery.d.ts`（0KB）
+- `overSome.d.ts`（0KB）
+- `package.json`（2KB）
+- `pad.d.ts`（0KB）
+- `padEnd.d.ts`（0KB）
+- `padStart.d.ts`（0KB）
+- `parseInt.d.ts`（0KB）
+- `partial.d.ts`（0KB）
+- `partialRight.d.ts`（0KB）
+- `partition.d.ts`（0KB）
+- `pick.d.ts`（0KB）
+- `pickBy.d.ts`（0KB）
+- `property.d.ts`（0KB）
+- `propertyOf.d.ts`（0KB）
+- `pull.d.ts`（0KB）
+- `pullAll.d.ts`（0KB）
+- `pullAllBy.d.ts`（0KB）
+- `pullAllWith.d.ts`（0KB）
+- `pullAt.d.ts`（0KB）
+- `random.d.ts`（0KB）
+- `range.d.ts`（0KB）
+- `rangeRight.d.ts`（0KB）
+- `rearg.d.ts`（0KB）
+- `reduce.d.ts`（0KB）
+- `reduceRight.d.ts`（0KB）
+- `reject.d.ts`（0KB）
+- `remove.d.ts`（0KB）
+- `repeat.d.ts`（0KB）
+- `replace.d.ts`（0KB）
+- `rest.d.ts`（0KB）
+- `result.d.ts`（0KB）
+- `reverse.d.ts`（0KB）
+- `round.d.ts`（0KB）
+- `runInContext.d.ts`（0KB）
+- `sample.d.ts`（0KB）
+- `sampleSize.d.ts`（0KB）
+- `set.d.ts`（0KB）
+- `setWith.d.ts`（0KB）
+- `shuffle.d.ts`（0KB）
+- `size.d.ts`（0KB）
+- `slice.d.ts`（0KB）
+- `snakeCase.d.ts`（0KB）
+- `some.d.ts`（0KB）
+- `sortBy.d.ts`（0KB）
+- `sortedIndex.d.ts`（0KB）
+- `sortedIndexBy.d.ts`（0KB）
+- `sortedIndexOf.d.ts`（0KB）
+- `sortedLastIndex.d.ts`（0KB）
+- `sortedLastIndexBy.d.ts`（0KB）
+- `sortedLastIndexOf.d.ts`（0KB）
+- `sortedUniq.d.ts`（0KB）
+- `sortedUniqBy.d.ts`（0KB）
+- `split.d.ts`（0KB）
+- `spread.d.ts`（0KB）
+- `startCase.d.ts`（0KB）
+- `startsWith.d.ts`（0KB）
+- `stubArray.d.ts`（0KB）
+- `stubFalse.d.ts`（0KB）
+- `stubObject.d.ts`（0KB）
+- `stubString.d.ts`（0KB）
+- `stubTrue.d.ts`（0KB）
+- `subtract.d.ts`（0KB）
+- `sum.d.ts`（0KB）
+- `sumBy.d.ts`（0KB）
+- `tail.d.ts`（0KB）
+- `take.d.ts`（0KB）
+- `takeRight.d.ts`（0KB）
+- `takeRightWhile.d.ts`（0KB）
+- `takeWhile.d.ts`（0KB）
+- `tap.d.ts`（0KB）
+- `template.d.ts`（0KB）
+- `throttle.d.ts`（0KB）
+- `thru.d.ts`（0KB）
+- `times.d.ts`（0KB）
+- `toArray.d.ts`（0KB）
+- `toFinite.d.ts`（0KB）
+- `toInteger.d.ts`（0KB）
+- `toLength.d.ts`（0KB）
+- `toLower.d.ts`（0KB）
+- `toNumber.d.ts`（0KB）
+- `toPairs.d.ts`（0KB）
+- `toPairsIn.d.ts`（0KB）
+- `toPath.d.ts`（0KB）
+- `toPlainObject.d.ts`（0KB）
+- `toSafeInteger.d.ts`（0KB）
+- `toString.d.ts`（0KB）
+- `toUpper.d.ts`（0KB）
+- `transform.d.ts`（0KB）
+- `trim.d.ts`（0KB）
+- `trimEnd.d.ts`（0KB）
+- `trimStart.d.ts`（0KB）
+- `truncate.d.ts`（0KB）
+- `unary.d.ts`（0KB）
+- `unescape.d.ts`（0KB）
+- `union.d.ts`（0KB）
+- `unionBy.d.ts`（0KB）
+- `unionWith.d.ts`（0KB）
+- `uniq.d.ts`（0KB）
+- `uniqBy.d.ts`（0KB）
+- `uniqWith.d.ts`（0KB）
+- `uniqueId.d.ts`（0KB）
+- `unset.d.ts`（0KB）
+- `unzip.d.ts`（0KB）
+- `unzipWith.d.ts`（0KB）
+- `update.d.ts`（0KB）
+- `updateWith.d.ts`（0KB）
+- `upperCase.d.ts`（0KB）
+- `upperFirst.d.ts`（0KB）
+- `values.d.ts`（0KB）
+- `valuesIn.d.ts`（0KB）
+- `without.d.ts`（0KB）
+- `words.d.ts`（0KB）
+- `wrap.d.ts`（0KB）
+- `xor.d.ts`（0KB）
+- `xorBy.d.ts`（0KB）
+- `xorWith.d.ts`（0KB）
+- `zip.d.ts`（0KB）
+- `zipObject.d.ts`（0KB）
+- `zipObjectDeep.d.ts`（0KB）
+- `zipWith.d.ts`（0KB）
+
+## gltf/node_modules/@types/lodash/common/（未归类）
+
+待归类：请确认用途后归档。
+
+- `array.d.ts`（74KB）　— Helper types to reject readonly arrays
+- `collection.d.ts`（66KB）
+- `common.d.ts`（16KB）　— eslint-disable-next-line @definitelytyped/strict-export-declare-modifiers
+- `date.d.ts`（1KB）
+- `function.d.ts`（63KB）
+- `lang.d.ts`（48KB）　— eslint-disable-next-line @definitelytyped/strict-export-declare-modifiers, @typescript-e…
+- `math.d.ts`（11KB）
+- `number.d.ts`（4KB）
+- `object.d.ts`（100KB）
+- `seq.d.ts`（5KB）
+- `string.d.ts`（24KB）
+- `util.d.ts`（41KB）
+
+## gltf/node_modules/@types/lodash/fp/（未归类）
+
+待归类：请确认用途后归档。
+
+- `F.d.ts`（0KB）
+- `T.d.ts`（0KB）
+- `__.d.ts`（0KB）
+- `add.d.ts`（0KB）
+- `after.d.ts`（0KB）
+- `all.d.ts`（0KB）
+- `allPass.d.ts`（0KB）
+- `always.d.ts`（0KB）
+- `any.d.ts`（0KB）
+- `anyPass.d.ts`（0KB）
+- `apply.d.ts`（0KB）
+- `ary.d.ts`（0KB）
+- `assign.d.ts`（0KB）
+- `assignAll.d.ts`（0KB）
+- `assignAllWith.d.ts`（0KB）
+- `assignIn.d.ts`（0KB）
+- `assignInAll.d.ts`（0KB）
+- `assignInAllWith.d.ts`（0KB）
+- `assignInWith.d.ts`（0KB）
+- `assignWith.d.ts`（0KB）
+- `assoc.d.ts`（0KB）
+- `assocPath.d.ts`（0KB）
+- `at.d.ts`（0KB）
+- `attempt.d.ts`（0KB）
+- `before.d.ts`（0KB）
+- `bind.d.ts`（0KB）
+- `bindAll.d.ts`（0KB）
+- `bindKey.d.ts`（0KB）
+- `camelCase.d.ts`（0KB）
+- `capitalize.d.ts`（0KB）
+- `castArray.d.ts`（0KB）
+- `ceil.d.ts`（0KB）
+- `chunk.d.ts`（0KB）
+- `clamp.d.ts`（0KB）
+- `clone.d.ts`（0KB）
+- `cloneDeep.d.ts`（0KB）
+- `cloneDeepWith.d.ts`（0KB）
+- `cloneWith.d.ts`（0KB）
+- `compact.d.ts`（0KB）
+- `complement.d.ts`（0KB）
+- `compose.d.ts`（0KB）
+- `concat.d.ts`（0KB）
+- `cond.d.ts`（0KB）
+- `conforms.d.ts`（0KB）
+- `conformsTo.d.ts`（0KB）
+- `constant.d.ts`（0KB）
+- `contains.d.ts`（0KB）
+- `convert.d.ts`（0KB）
+- `countBy.d.ts`（0KB）
+- `create.d.ts`（0KB）
+- `curry.d.ts`（0KB）
+- `curryN.d.ts`（0KB）
+- `curryRight.d.ts`（0KB）
+- `curryRightN.d.ts`（0KB）
+- `debounce.d.ts`（0KB）
+- `deburr.d.ts`（0KB）
+- `defaultTo.d.ts`（0KB）
+- `defaults.d.ts`（0KB）
+- `defaultsAll.d.ts`（0KB）
+- `defaultsDeep.d.ts`（0KB）
+- `defaultsDeepAll.d.ts`（0KB）
+- `defer.d.ts`（0KB）
+- `delay.d.ts`（0KB）
+- `difference.d.ts`（0KB）
+- `differenceBy.d.ts`（0KB）
+- `differenceWith.d.ts`（0KB）
+- `dissoc.d.ts`（0KB）
+- `dissocPath.d.ts`（0KB）
+- `divide.d.ts`（0KB）
+- `drop.d.ts`（0KB）
+- `dropLast.d.ts`（0KB）
+- `dropLastWhile.d.ts`（0KB）
+- `dropRight.d.ts`（0KB）
+- `dropRightWhile.d.ts`（0KB）
+- `dropWhile.d.ts`（0KB）
+- `each.d.ts`（0KB）
+- `eachRight.d.ts`（0KB）
+- `endsWith.d.ts`（0KB）
+- `entries.d.ts`（0KB）
+- `entriesIn.d.ts`（0KB）
+- `eq.d.ts`（0KB）
+- `equals.d.ts`（0KB）
+- `escape.d.ts`（0KB）
+- `escapeRegExp.d.ts`（0KB）
+- `every.d.ts`（0KB）
+- `extend.d.ts`（0KB）
+- `extendAll.d.ts`（0KB）
+- `extendAllWith.d.ts`（0KB）
+- `extendWith.d.ts`（0KB）
+- `fill.d.ts`（0KB）
+- `filter.d.ts`（0KB）
+- `find.d.ts`（0KB）
+- `findFrom.d.ts`（0KB）
+- `findIndex.d.ts`（0KB）
+- `findIndexFrom.d.ts`（0KB）
+- `findKey.d.ts`（0KB）
+- `findLast.d.ts`（0KB）
+- `findLastFrom.d.ts`（0KB）
+- `findLastIndex.d.ts`（0KB）
+- `findLastIndexFrom.d.ts`（0KB）
+- `findLastKey.d.ts`（0KB）
+- `first.d.ts`（0KB）
+- `flatMap.d.ts`（0KB）
+- `flatMapDeep.d.ts`（0KB）
+- `flatMapDepth.d.ts`（0KB）
+- `flatten.d.ts`（0KB）
+- `flattenDeep.d.ts`（0KB）
+- `flattenDepth.d.ts`（0KB）
+- `flip.d.ts`（0KB）
+- `floor.d.ts`（0KB）
+- `flow.d.ts`（0KB）
+- `flowRight.d.ts`（0KB）
+- `forEach.d.ts`（0KB）
+- `forEachRight.d.ts`（0KB）
+- `forIn.d.ts`（0KB）
+- `forInRight.d.ts`（0KB）
+- `forOwn.d.ts`（0KB）
+- `forOwnRight.d.ts`（0KB）
+- `fromPairs.d.ts`（0KB）
+- `functions.d.ts`（0KB）
+- `functionsIn.d.ts`（0KB）
+- `get.d.ts`（0KB）
+- `getOr.d.ts`（0KB）
+- `groupBy.d.ts`（0KB）
+- `gt.d.ts`（0KB）
+- `gte.d.ts`（0KB）
+- `has.d.ts`（0KB）
+- `hasIn.d.ts`（0KB）
+- `head.d.ts`（0KB）
+- `identical.d.ts`（0KB）
+- `identity.d.ts`（0KB）
+- `inRange.d.ts`（0KB）
+- `includes.d.ts`（0KB）
+- `includesFrom.d.ts`（0KB）
+- `indexBy.d.ts`（0KB）
+- `indexOf.d.ts`（0KB）
+- `indexOfFrom.d.ts`（0KB）
+- `init.d.ts`（0KB）
+- `initial.d.ts`（0KB）
+- `intersection.d.ts`（0KB）
+- `intersectionBy.d.ts`（0KB）
+- `intersectionWith.d.ts`（0KB）
+- `invert.d.ts`（0KB）
+- `invertBy.d.ts`（0KB）
+- `invertObj.d.ts`（0KB）
+- `invoke.d.ts`（0KB）
+- `invokeArgs.d.ts`（0KB）
+- `invokeArgsMap.d.ts`（0KB）
+- `invokeMap.d.ts`（0KB）
+- `isArguments.d.ts`（0KB）
+- `isArray.d.ts`（0KB）
+- `isArrayBuffer.d.ts`（0KB）
+- `isArrayLike.d.ts`（0KB）
+- `isArrayLikeObject.d.ts`（0KB）
+- `isBoolean.d.ts`（0KB）
+- `isBuffer.d.ts`（0KB）
+- `isDate.d.ts`（0KB）
+- `isElement.d.ts`（0KB）
+- `isEmpty.d.ts`（0KB）
+- `isEqual.d.ts`（0KB）
+- `isEqualWith.d.ts`（0KB）
+- `isError.d.ts`（0KB）
+- `isFinite.d.ts`（0KB）
+- `isFunction.d.ts`（0KB）
+- `isInteger.d.ts`（0KB）
+- `isLength.d.ts`（0KB）
+- `isMap.d.ts`（0KB）
+- `isMatch.d.ts`（0KB）
+- `isMatchWith.d.ts`（0KB）
+- `isNaN.d.ts`（0KB）
+- `isNative.d.ts`（0KB）
+- `isNil.d.ts`（0KB）
+- `isNull.d.ts`（0KB）
+- `isNumber.d.ts`（0KB）
+- `isObject.d.ts`（0KB）
+- `isObjectLike.d.ts`（0KB）
+- `isPlainObject.d.ts`（0KB）
+- `isRegExp.d.ts`（0KB）
+- `isSafeInteger.d.ts`（0KB）
+- `isSet.d.ts`（0KB）
+- `isString.d.ts`（0KB）
+- `isSymbol.d.ts`（0KB）
+- `isTypedArray.d.ts`（0KB）
+- `isUndefined.d.ts`（0KB）
+- `isWeakMap.d.ts`（0KB）
+- `isWeakSet.d.ts`（0KB）
+- `iteratee.d.ts`（0KB）
+- `join.d.ts`（0KB）
+- `juxt.d.ts`（0KB）
+- `kebabCase.d.ts`（0KB）
+- `keyBy.d.ts`（0KB）
+- `keys.d.ts`（0KB）
+- `keysIn.d.ts`（0KB）
+- `last.d.ts`（0KB）
+- `lastIndexOf.d.ts`（0KB）
+- `lastIndexOfFrom.d.ts`（0KB）
+- `lowerCase.d.ts`（0KB）
+- `lowerFirst.d.ts`（0KB）
+- `lt.d.ts`（0KB）
+- `lte.d.ts`（0KB）
+- `map.d.ts`（0KB）
+- `mapKeys.d.ts`（0KB）
+- `mapValues.d.ts`（0KB）
+- `matches.d.ts`（0KB）
+- `matchesProperty.d.ts`（0KB）
+- `max.d.ts`（0KB）
+- `maxBy.d.ts`（0KB）
+- `mean.d.ts`（0KB）
+- `meanBy.d.ts`（0KB）
+- `memoize.d.ts`（0KB）
+- `merge.d.ts`（0KB）
+- `mergeAll.d.ts`（0KB）
+- `mergeAllWith.d.ts`（0KB）
+- `mergeWith.d.ts`（0KB）
+- `method.d.ts`（0KB）
+- `methodOf.d.ts`（0KB）
+- `min.d.ts`（0KB）
+- `minBy.d.ts`（0KB）
+- `multiply.d.ts`（0KB）
+- `nAry.d.ts`（0KB）
+- `negate.d.ts`（0KB）
+- `noConflict.d.ts`（0KB）
+- `noop.d.ts`（0KB）
+- `now.d.ts`（0KB）
+- `nth.d.ts`（0KB）
+- `nthArg.d.ts`（0KB）
+- `omit.d.ts`（0KB）
+- `omitAll.d.ts`（0KB）
+- `omitBy.d.ts`（0KB）
+- `once.d.ts`（0KB）
+- `orderBy.d.ts`（0KB）
+- `over.d.ts`（0KB）
+- `overArgs.d.ts`（0KB）
+- `overEvery.d.ts`（0KB）
+- `overSome.d.ts`（0KB）
+- `pad.d.ts`（0KB）
+- `padChars.d.ts`（0KB）
+- `padCharsEnd.d.ts`（0KB）
+- `padCharsStart.d.ts`（0KB）
+- `padEnd.d.ts`（0KB）
+- `padStart.d.ts`（0KB）
+- `parseInt.d.ts`（0KB）
+- `partial.d.ts`（0KB）
+- `partialRight.d.ts`（0KB）
+- `partition.d.ts`（0KB）
+- `path.d.ts`（0KB）
+- `pathEq.d.ts`（0KB）
+- `pathOr.d.ts`（0KB）
+- `paths.d.ts`（0KB）
+- `pick.d.ts`（0KB）
+- `pickAll.d.ts`（0KB）
+- `pickBy.d.ts`（0KB）
+- `pipe.d.ts`（0KB）
+- `placeholder.d.ts`（0KB）
+- `pluck.d.ts`（0KB）
+- `prop.d.ts`（0KB）
+- `propEq.d.ts`（0KB）
+- `propOr.d.ts`（0KB）
+- `property.d.ts`（0KB）
+- `propertyOf.d.ts`（0KB）
+- `props.d.ts`（0KB）
+- `pull.d.ts`（0KB）
+- `pullAll.d.ts`（0KB）
+- `pullAllBy.d.ts`（0KB）
+- `pullAllWith.d.ts`（0KB）
+- `pullAt.d.ts`（0KB）
+- `random.d.ts`（0KB）
+- `range.d.ts`（0KB）
+- `rangeRight.d.ts`（0KB）
+- `rangeStep.d.ts`（0KB）
+- `rangeStepRight.d.ts`（0KB）
+- `rearg.d.ts`（0KB）
+- `reduce.d.ts`（0KB）
+- `reduceRight.d.ts`（0KB）
+- `reject.d.ts`（0KB）
+- `remove.d.ts`（0KB）
+- `repeat.d.ts`（0KB）
+- `replace.d.ts`（0KB）
+- `rest.d.ts`（0KB）
+- `restFrom.d.ts`（0KB）
+- `result.d.ts`（0KB）
+- `reverse.d.ts`（0KB）
+- `round.d.ts`（0KB）
+- `runInContext.d.ts`（0KB）
+- `sample.d.ts`（0KB）
+- `sampleSize.d.ts`（0KB）
+- `set.d.ts`（0KB）
+- `setWith.d.ts`（0KB）
+- `shuffle.d.ts`（0KB）
+- `size.d.ts`（0KB）
+- `slice.d.ts`（0KB）
+- `snakeCase.d.ts`（0KB）
+- `some.d.ts`（0KB）
+- `sortBy.d.ts`（0KB）
+- `sortedIndex.d.ts`（0KB）
+- `sortedIndexBy.d.ts`（0KB）
+- `sortedIndexOf.d.ts`（0KB）
+- `sortedLastIndex.d.ts`（0KB）
+- `sortedLastIndexBy.d.ts`（0KB）
+- `sortedLastIndexOf.d.ts`（0KB）
+- `sortedUniq.d.ts`（0KB）
+- `sortedUniqBy.d.ts`（0KB）
+- `split.d.ts`（0KB）
+- `spread.d.ts`（0KB）
+- `spreadFrom.d.ts`（0KB）
+- `startCase.d.ts`（0KB）
+- `startsWith.d.ts`（0KB）
+- `stubArray.d.ts`（0KB）
+- `stubFalse.d.ts`（0KB）
+- `stubObject.d.ts`（0KB）
+- `stubString.d.ts`（0KB）
+- `stubTrue.d.ts`（0KB）
+- `subtract.d.ts`（0KB）
+- `sum.d.ts`（0KB）
+- `sumBy.d.ts`（0KB）
+- `symmetricDifference.d.ts`（0KB）
+- `symmetricDifferenceBy.d.ts`（0KB）
+- `symmetricDifferenceWith.d.ts`（0KB）
+- `tail.d.ts`（0KB）
+- `take.d.ts`（0KB）
+- `takeLast.d.ts`（0KB）
+- `takeLastWhile.d.ts`（0KB）
+- `takeRight.d.ts`（0KB）
+- `takeRightWhile.d.ts`（0KB）
+- `takeWhile.d.ts`（0KB）
+- `tap.d.ts`（0KB）
+- `template.d.ts`（0KB）
+- `throttle.d.ts`（0KB）
+- `thru.d.ts`（0KB）
+- `times.d.ts`（0KB）
+- `toArray.d.ts`（0KB）
+- `toFinite.d.ts`（0KB）
+- `toInteger.d.ts`（0KB）
+- `toLength.d.ts`（0KB）
+- `toLower.d.ts`（0KB）
+- `toNumber.d.ts`（0KB）
+- `toPairs.d.ts`（0KB）
+- `toPairsIn.d.ts`（0KB）
+- `toPath.d.ts`（0KB）
+- `toPlainObject.d.ts`（0KB）
+- `toSafeInteger.d.ts`（0KB）
+- `toString.d.ts`（0KB）
+- `toUpper.d.ts`（0KB）
+- `transform.d.ts`（0KB）
+- `trim.d.ts`（0KB）
+- `trimChars.d.ts`（0KB）
+- `trimCharsEnd.d.ts`（0KB）
+- `trimCharsStart.d.ts`（0KB）
+- `trimEnd.d.ts`（0KB）
+- `trimStart.d.ts`（0KB）
+- `truncate.d.ts`（0KB）
+- `unapply.d.ts`（0KB）
+- `unary.d.ts`（0KB）
+- `unescape.d.ts`（0KB）
+- `union.d.ts`（0KB）
+- `unionBy.d.ts`（0KB）
+- `unionWith.d.ts`（0KB）
+- `uniq.d.ts`（0KB）
+- `uniqBy.d.ts`（0KB）
+- `uniqWith.d.ts`（0KB）
+- `uniqueId.d.ts`（0KB）
+- `unnest.d.ts`（0KB）
+- `unset.d.ts`（0KB）
+- `unzip.d.ts`（0KB）
+- `unzipWith.d.ts`（0KB）
+- `update.d.ts`（0KB）
+- `updateWith.d.ts`（0KB）
+- `upperCase.d.ts`（0KB）
+- `upperFirst.d.ts`（0KB）
+- `useWith.d.ts`（0KB）
+- `values.d.ts`（0KB）
+- `valuesIn.d.ts`（0KB）
+- `where.d.ts`（0KB）
+- `whereEq.d.ts`（0KB）
+- `without.d.ts`（0KB）
+- `words.d.ts`（0KB）
+- `wrap.d.ts`（0KB）
+- `xor.d.ts`（0KB）
+- `xorBy.d.ts`（0KB）
+- `xorWith.d.ts`（0KB）
+- `zip.d.ts`（0KB）
+- `zipAll.d.ts`（0KB）
+- `zipObj.d.ts`（0KB）
+- `zipObject.d.ts`（0KB）
+- `zipObjectDeep.d.ts`（0KB）
+- `zipWith.d.ts`（0KB）
+
+## gltf/node_modules/@types/micromatch/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（1KB）
+- `README.md`（1KB）　— Installation
+- `index.d.ts`（22KB）　— TypeScript Version: 2.2
+- `package.json`（1KB）
+
+## gltf/node_modules/@types/minimatch/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（1KB）
+- `README.md`（1KB）　— Installation
+- `index.d.ts`（9KB）　— Type definitions for minimatch 5.1
+- `package.json`（1KB）
+
+## gltf/node_modules/@types/ndarray/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（1KB）
+- `README.md`（1KB）　— Installation
+- `index.d.ts`（2KB）
+- `package.json`（1KB）
+
+## gltf/node_modules/@types/node/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（1KB）
+- `README.md`（2KB）　— Installation
+- `assert.d.ts`（40KB）
+- `async_hooks.d.ts`（22KB）
+- `buffer.d.ts`（105KB）
+- `child_process.d.ts`（67KB）
+- `cluster.d.ts`（20KB）
+- `console.d.ts`（18KB）
+- `constants.d.ts`（1KB）　— @deprecated since v6.3.0 - use constants property exposed by the relevant module instead…
+- `crypto.d.ts`（180KB）
+- `dgram.d.ts`（26KB）
+- `diagnostics_channel.d.ts`（8KB）
+- `dns.d.ts`（29KB）
+- `dom-events.d.ts`（5KB）
+- `domain.d.ts`（8KB）
+- `events.d.ts`（36KB）
+- `fs.d.ts`（180KB）
+- `globals.d.ts`（10KB）　— Declare "static" methods in Error
+- `globals.global.d.ts`（0KB）
+- `http.d.ts`（77KB）
+- `http2.d.ts`（111KB）
+- `https.d.ts`（23KB）
+- `index.d.ts`（6KB）　— Type definitions for non-npm package Node.js 20.5
+- `inspector.d.ts`（122KB）　— eslint-disable-next-line @definitelytyped/dt-header
+- `module.d.ts`（10KB）
+- `net.d.ts`（40KB）
+- `os.d.ts`（18KB）
+- `package.json`（7KB）
+- `path.d.ts`（8KB）
+- `perf_hooks.d.ts`（24KB）
+- `process.d.ts`（72KB）
+- `punycode.d.ts`（5KB）
+- `querystring.d.ts`（6KB）
+- `readline.d.ts`（22KB）
+- `repl.d.ts`（19KB）
+- `stream.d.ts`（79KB）
+- `string_decoder.d.ts`（3KB）
+- `test.d.ts`（57KB）
+- `timers.d.ts`（12KB）
+- `tls.d.ts`（55KB）
+- `trace_events.d.ts`（8KB）
+- `tty.d.ts`（10KB）
+- `url.d.ts`（39KB）
+- `util.d.ts`（83KB）
+- `v8.d.ts`（26KB）
+- `vm.d.ts`（38KB）
+- `wasi.d.ts`（7KB）
+- `worker_threads.d.ts`（33KB）
+- `zlib.d.ts`（19KB）
+
+## gltf/node_modules/@types/node/assert/（未归类）
+
+待归类：请确认用途后归档。
+
+- `strict.d.ts`（0KB）
+
+## gltf/node_modules/@types/node/dns/（未归类）
+
+待归类：请确认用途后归档。
+
+- `promises.d.ts`（17KB）
+
+## gltf/node_modules/@types/node/fs/（未归类）
+
+待归类：请确认用途后归档。
+
+- `promises.d.ts`（53KB）
+
+## gltf/node_modules/@types/node/readline/（未归类）
+
+待归类：请确认用途后归档。
+
+- `promises.d.ts`（6KB）
+
+## gltf/node_modules/@types/node/stream/（未归类）
+
+待归类：请确认用途后归档。
+
+- `consumers.d.ts`（1KB）
+- `promises.d.ts`（2KB）
+- `web.d.ts`（13KB）
+
+## gltf/node_modules/@types/node/timers/（未归类）
+
+待归类：请确认用途后归档。
+
+- `promises.d.ts`（3KB）
+
+## gltf/node_modules/@types/node/ts4.8/（未归类）
+
+待归类：请确认用途后归档。
+
+- `assert.d.ts`（40KB）
+- `async_hooks.d.ts`（22KB）
+- `buffer.d.ts`（105KB）
+- `child_process.d.ts`（67KB）
+- `cluster.d.ts`（20KB）
+- `console.d.ts`（18KB）
+- `constants.d.ts`（1KB）　— @deprecated since v6.3.0 - use constants property exposed by the relevant module instead…
+- `crypto.d.ts`（180KB）
+- `dgram.d.ts`（26KB）
+- `diagnostics_channel.d.ts`（8KB）
+- `dns.d.ts`（29KB）
+- `dom-events.d.ts`（5KB）
+- `domain.d.ts`（8KB）
+- `events.d.ts`（36KB）
+- `fs.d.ts`（180KB）
+- `globals.d.ts`（10KB）　— Declare "static" methods in Error
+- `globals.global.d.ts`（0KB）
+- `http.d.ts`（77KB）
+- `http2.d.ts`（111KB）
+- `https.d.ts`（23KB）
+- `index.d.ts`（4KB）　— NOTE: These definitions support NodeJS and TypeScript 4.8 and earlier.
+- `inspector.d.ts`（122KB）　— eslint-disable-next-line @definitelytyped/dt-header
+- `module.d.ts`（10KB）
+- `net.d.ts`（40KB）
+- `os.d.ts`（18KB）
+- `path.d.ts`（8KB）
+- `perf_hooks.d.ts`（24KB）
+- `process.d.ts`（72KB）
+- `punycode.d.ts`（5KB）
+- `querystring.d.ts`（6KB）
+- `readline.d.ts`（22KB）
+- `repl.d.ts`（19KB）
+- `stream.d.ts`（70KB）
+- `string_decoder.d.ts`（3KB）
+- `test.d.ts`（57KB）
+- `timers.d.ts`（12KB）
+- `tls.d.ts`（55KB）
+- `trace_events.d.ts`（8KB）
+- `tty.d.ts`（10KB）
+- `url.d.ts`（39KB）
+- `util.d.ts`（83KB）
+- `v8.d.ts`（26KB）
+- `vm.d.ts`（38KB）
+- `wasi.d.ts`（7KB）
+- `worker_threads.d.ts`（33KB）
+- `zlib.d.ts`（19KB）
+
+## gltf/node_modules/@types/node/ts4.8/assert/（未归类）
+
+待归类：请确认用途后归档。
+
+- `strict.d.ts`（0KB）
+
+## gltf/node_modules/@types/node/ts4.8/dns/（未归类）
+
+待归类：请确认用途后归档。
+
+- `promises.d.ts`（17KB）
+
+## gltf/node_modules/@types/node/ts4.8/fs/（未归类）
+
+待归类：请确认用途后归档。
+
+- `promises.d.ts`（53KB）
+
+## gltf/node_modules/@types/node/ts4.8/readline/（未归类）
+
+待归类：请确认用途后归档。
+
+- `promises.d.ts`（6KB）
+
+## gltf/node_modules/@types/node/ts4.8/stream/（未归类）
+
+待归类：请确认用途后归档。
+
+- `consumers.d.ts`（1KB）
+- `promises.d.ts`（2KB）
+- `web.d.ts`（13KB）
+
+## gltf/node_modules/@types/node/ts4.8/timers/（未归类）
+
+待归类：请确认用途后归档。
+
+- `promises.d.ts`（3KB）
+
+## gltf/node_modules/@types/prompts/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（1KB）
+- `README.md`（1KB）　— Installation
+- `index.d.ts`（4KB）　— <reference types="node" />
+- `package.json`（2KB）
+
+## gltf/node_modules/@types/table/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（1KB）
+- `README.md`（1KB）　— Installation
+- `index.d.ts`（2KB）　— Type definitions for table 5.0
+- `package.json`（1KB）
+
+## gltf/node_modules/@types/tmp/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（1KB）
+- `README.md`（1KB）　— Installation
+- `index.d.ts`（7KB）
+- `package.json`（1KB）
+
+## gltf/node_modules/@types/triple-beam/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（1KB）
+- `README.md`（1KB）　— Installation
+- `index.d.ts`（0KB）
+- `package.json`（1KB）
+
+## gltf/node_modules/@types/wrap-ansi/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（1KB）
+- `README.md`（1KB）　— Installation
+- `index.d.ts`（1KB）
+- `package.json`（1KB）
+
+## gltf/node_modules/ajv/（未归类）
+
+待归类：请确认用途后归档。
+
+- `.tonic_example.js`（0KB）
+- `LICENSE`（1KB）
+- `README.md`（85KB）
+- `package.json`（3KB）
+
+## gltf/node_modules/ajv/dist/（未归类）
+
+待归类：请确认用途后归档。
+
+- `ajv.bundle.js`（267KB）
+- `ajv.min.js`（117KB）　— ajv 6.14.0: Another JSON Schema Validator
+- `ajv.min.js.map`（146KB）
+
+## gltf/node_modules/ajv/lib/（未归类）
+
+待归类：请确认用途后归档。
+
+- `ajv.d.ts`（13KB）
+- `ajv.js`（15KB）
+- `cache.js`（0KB）
+- `data.js`（1KB）
+- `definition_schema.js`（1KB）
+- `keyword.js`（4KB）
+
+## gltf/node_modules/ajv/lib/compile/（未归类）
+
+待归类：请确认用途后归档。
+
+- `async.js`（3KB）
+- `equal.js`（0KB）　— do NOT remove this file - it would break pre-compiled schemas
+- `error_classes.js`（1KB）
+- `formats.js`（12KB）
+- `index.js`（11KB）
+- `resolve.js`（8KB）
+- `rules.js`（2KB）
+- `schema_obj.js`（0KB）
+- `ucs2length.js`（1KB）　— https://mathiasbynens.be/notes/javascript-encoding
+- `util.js`（7KB）
+
+## gltf/node_modules/ajv/lib/dot/（未归类）
+
+待归类：请确认用途后归档。
+
+- `_limit.jst`（4KB）
+- `_limitItems.jst`（0KB）
+- `_limitLength.jst`（0KB）
+- `_limitProperties.jst`（0KB）
+- `allOf.jst`（1KB）
+- `anyOf.jst`（1KB）
+- `coerce.def`（2KB）
+- `comment.jst`（0KB）
+- `const.jst`（0KB）
+- `contains.jst`（1KB）
+- `custom.jst`（5KB）
+- `defaults.def`（1KB）
+- `definitions.def`（4KB）
+- `dependencies.jst`（2KB）
+- `enum.jst`（1KB）
+- `errors.def`（8KB）
+- `format.jst`（3KB）
+- `if.jst`（2KB）
+- `items.jst`（3KB）
+- `missing.def`（1KB）
+- `multipleOf.jst`（1KB）
+- `not.jst`（1KB）
+- `oneOf.jst`（1KB）
+- `pattern.jst`（1KB）
+- `properties.jst`（8KB）
+- `propertyNames.jst`（1KB）
+- `ref.jst`（2KB）
+- `required.jst`（3KB）
+- `uniqueItems.jst`（2KB）
+- `validate.jst`（8KB）
+
+## gltf/node_modules/ajv/lib/dotjs/（未归类）
+
+待归类：请确认用途后归档。
+
+- `README.md`（0KB）
+- `_limit.js`（7KB）
+- `_limitItems.js`（3KB）
+- `_limitLength.js`（3KB）
+- `_limitProperties.js`（3KB）
+- `allOf.js`（1KB）
+- `anyOf.js`（3KB）
+- `comment.js`（1KB）
+- `const.js`（2KB）
+- `contains.js`（3KB）
+- `custom.js`（10KB）
+- `dependencies.js`（8KB）
+- `enum.js`（3KB）
+- `format.js`（5KB）
+- `if.js`（4KB）
+- `index.js`（1KB）　— all requires must be explicit because browserify won't work with dynamic requires
+- `items.js`（6KB）
+- `multipleOf.js`（3KB）
+- `not.js`（3KB）
+- `oneOf.js`（3KB）
+- `pattern.js`（3KB）
+- `properties.js`（15KB）
+- `propertyNames.js`（4KB）
+- `ref.js`（5KB）
+- `required.js`（12KB）
+- `uniqueItems.js`（4KB）
+- `validate.js`（20KB）
+
+## gltf/node_modules/ajv/lib/refs/（未归类）
+
+待归类：请确认用途后归档。
+
+- `data.json`（1KB）
+- `json-schema-draft-04.json`（4KB）
+- `json-schema-draft-06.json`（4KB）
+- `json-schema-draft-07.json`（5KB）
+- `json-schema-secure.json`（3KB）
+
+## gltf/node_modules/ajv/scripts/（未归类）
+
+待归类：请确认用途后归档。
+
+- `.eslintrc.yml`（0KB）
+- `bundle.js`（2KB）
+- `compile-dots.js`（2KB）　— compile doT templates to js functions
+- `info`（0KB）
+- `prepare-tests`（0KB）
+- `publish-built-version`（1KB）
+- `travis-gh-pages`（1KB）
+
+## gltf/node_modules/ansi-escapes/（未归类）
+
+待归类：请确认用途后归档。
+
+- `base.d.ts`（7KB）　— From https://github.com/sindresorhus/type-fest
+- `base.js`（5KB）
+- `index.d.ts`（0KB）
+- `index.js`（0KB）
+- `license`（1KB）
+- `package.json`（1KB）
+- `readme.md`（6KB）　— ansi-escapes
+
+## gltf/node_modules/ansi-regex/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（1KB）
+- `index.js`（1KB）
+- `license`（1KB）
+- `package.json`（1KB）
+- `readme.md`（2KB）　— ansi-regex
+
+## gltf/node_modules/ansi-styles/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（6KB）
+- `index.js`（4KB）
+- `license`（1KB）
+- `package.json`（1KB）
+- `readme.md`（4KB）　— ansi-styles [![Build Status](https://travis-ci.org/chalk/ansi-styles.svg?branch=master)]…
+
+## gltf/node_modules/astral-regex/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.js`（0KB）
+- `license`（1KB）
+- `package.json`（1KB）
+- `readme.md`（1KB）　— astral-regex [![Build Status](https://travis-ci.org/kevva/astral-regex.svg?branch=master…
+
+## gltf/node_modules/async/（未归类）
+
+待归类：请确认用途后归档。
+
+- `CHANGELOG.md`（33KB）　— v3.2.5
+- `LICENSE`（1KB）
+- `README.md`（3KB）
+- `all.js`（3KB）
+- `allLimit.js`（2KB）
+- `allSeries.js`（2KB）
+- `any.js`（4KB）
+- `anyLimit.js`（2KB）
+- `anySeries.js`（2KB）
+- `apply.js`（0KB）
+- `applyEach.js`（2KB）
+- `applyEachSeries.js`（1KB）
+- `asyncify.js`（4KB）
+- `auto.js`（12KB）
+- `autoInject.js`（7KB）
+- `bower.json`（0KB）
+- `cargo.js`（3KB）
+- `cargoQueue.js`（3KB）
+- `compose.js`（2KB）
+- `concat.js`（4KB）
+- `concatLimit.js`（2KB）
+- `concatSeries.js`（1KB）
+- `constant.js`（0KB）
+- `detect.js`（3KB）
+- `detectLimit.js`（2KB）
+- `detectSeries.js`（2KB）
+- `dir.js`（1KB）
+- `doDuring.js`（2KB）
+- `doUntil.js`（2KB）
+- `doWhilst.js`（2KB）
+- `during.js`（2KB）
+- `each.js`（4KB）
+- `eachLimit.js`（2KB）
+- `eachOf.js`（6KB）
+- `eachOfLimit.js`（2KB）
+- `eachOfSeries.js`（1KB）
+- `eachSeries.js`（2KB）
+- `ensureAsync.js`（2KB）
+- `every.js`（3KB）
+- `everyLimit.js`（2KB）
+- `everySeries.js`（2KB）
+- `filter.js`（3KB）
+- `filterLimit.js`（2KB）
+- `filterSeries.js`（2KB）
+- `find.js`（3KB）
+- `findLimit.js`（2KB）
+- `findSeries.js`（2KB）
+- `flatMap.js`（4KB）
+- `flatMapLimit.js`（2KB）
+- `flatMapSeries.js`（1KB）
+- `foldl.js`（5KB）
+- `foldr.js`（1KB）
+- `forEach.js`（4KB）
+- `forEachLimit.js`（2KB）
+- `forEachOf.js`（6KB）
+- `forEachOfLimit.js`（2KB）
+- `forEachOfSeries.js`（1KB）
+- `forEachSeries.js`（2KB）
+- `forever.js`（2KB）
+- `groupBy.js`（4KB）
+- `groupByLimit.js`（2KB）
+- `groupBySeries.js`（1KB）
+- `index.js`（19KB）
+- `inject.js`（5KB）
+- `log.js`（1KB）
+- `map.js`（4KB）
+- `mapLimit.js`（2KB）
+- `mapSeries.js`（1KB）
+- `mapValues.js`（4KB）
+- `mapValuesLimit.js`（2KB）
+- `mapValuesSeries.js`（1KB）
+- `memoize.js`（3KB）
+- `nextTick.js`（1KB）
+- `package.json`（2KB）
+- `parallel.js`（5KB）
+- `parallelLimit.js`（1KB）
+- `priorityQueue.js`（1KB）
+- `queue.js`（1KB）
+- `race.js`（2KB）
+- `reduce.js`（5KB）
+- `reduceRight.js`（1KB）
+- `reflect.js`（2KB）
+- `reflectAll.js`（2KB）
+- `reject.js`（3KB）
+- `rejectLimit.js`（2KB）
+- `rejectSeries.js`（1KB）
+- `retry.js`（5KB）
+- `retryable.js`（2KB）
+- `select.js`（3KB）
+- `selectLimit.js`（2KB）
+- `selectSeries.js`（2KB）
+- `seq.js`（3KB）
+- `series.js`（6KB）
+- `setImmediate.js`（1KB）
+- `some.js`（4KB）
+- `someLimit.js`（2KB）
+- `someSeries.js`（2KB）
+- `sortBy.js`（6KB）
+- `timeout.js`（3KB）
+- `times.js`（1KB）
+- `timesLimit.js`（1KB）
+- `timesSeries.js`（1KB）
+- `transform.js`（5KB）
+- `tryEach.js`（2KB）
+- `unmemoize.js`（1KB）
+- `until.js`（2KB）
+- `waterfall.js`（3KB）
+- `whilst.js`（2KB）
+- `wrapSync.js`（4KB）
+
+## gltf/node_modules/async/dist/（未归类）
+
+待归类：请确认用途后归档。
+
+- `async.js`（220KB）
+- `async.min.js`（21KB）
+- `async.mjs`（196KB）
+
+## gltf/node_modules/async/internal/（未归类）
+
+待归类：请确认用途后归档。
+
+- `DoublyLinkedList.js`（2KB）
+- `Heap.js`（2KB）
+- `applyEach.js`（1KB）
+- `asyncEachOfLimit.js`（2KB）
+- `awaitify.js`（1KB）
+- `breakLoop.js`（0KB）
+- `consoleFunc.js`（1KB）
+- `createTester.js`（1KB）
+- `eachOfLimit.js`（3KB）
+- `filter.js`（2KB）
+- `getIterator.js`（0KB）
+- `initialParams.js`（0KB）
+- `isArrayLike.js`（0KB）
+- `iterator.js`（1KB）
+- `map.js`（1KB）
+- `once.js`（0KB）
+- `onlyOnce.js`（0KB）
+- `parallel.js`（1KB）
+- `promiseCallback.js`（1KB）
+- `queue.js`（8KB）
+- `range.js`（0KB）
+- `reject.js`（1KB）
+- `setImmediate.js`（1KB）
+- `withoutIndex.js`（0KB）
+- `wrapAsync.js`（1KB）
+
+## gltf/node_modules/balanced-match/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE.md`（1KB）
+- `README.md`（3KB）　— balanced-match
+- `index.js`（1KB）
+- `package.json`（1KB）
+
+## gltf/node_modules/balanced-match/.github/（未归类）
+
+待归类：请确认用途后归档。
+
+- `FUNDING.yml`（0KB）
+
+## gltf/node_modules/brace-expansion/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（1KB）
+- `README.md`（5KB）　— brace-expansion
+- `index.js`（12KB）
+- `package.json`（1KB）
+
+## gltf/node_modules/brace-expansion/.github/（未归类）
+
+待归类：请确认用途后归档。
+
+- `FUNDING.yml`（0KB）
+
+## gltf/node_modules/braces/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（1KB）
+- `README.md`（21KB）　— braces [![Donate](https://img.shields.io/badge/Donate-PayPal-green.svg)](https://www.pay…
+- `index.js`（4KB）
+- `package.json`（2KB）
+
+## gltf/node_modules/braces/lib/（未归类）
+
+待归类：请确认用途后归档。
+
+- `compile.js`（1KB）
+- `constants.js`（2KB）
+- `expand.js`（3KB）
+- `parse.js`（7KB）
+- `stringify.js`（1KB）
+- `utils.js`（2KB）
+
+## gltf/node_modules/chalk/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（8KB）
+- `license`（1KB）
+- `package.json`（1KB）
+- `readme.md`（12KB）
+
+## gltf/node_modules/chalk/source/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.js`（6KB）
+- `templates.js`（3KB）
+- `util.js`（1KB）
+
+## gltf/node_modules/cli-cursor/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（1KB）
+- `index.js`（1KB）
+- `license`（1KB）
+- `package.json`（1KB）
+- `readme.md`（1KB）　— cli-cursor
+
+## gltf/node_modules/cli-table3/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（1KB）
+- `README.md`（8KB）
+- `index.d.ts`（2KB）
+- `index.js`（0KB）
+- `package.json`（2KB）
+
+## gltf/node_modules/cli-table3/src/（未归类）
+
+待归类：请确认用途后归档。
+
+- `cell.js`（13KB）
+- `debug.js`（0KB）
+- `layout-manager.js`（7KB）
+- `table.js`（3KB）
+- `utils.js`（8KB）
+
+## gltf/node_modules/cli-truncate/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（3KB）
+- `index.js`（3KB）
+- `license`（1KB）
+- `package.json`（1KB）
+- `readme.md`（3KB）　— cli-truncate
+
+## gltf/node_modules/cli-truncate/node_modules/emoji-regex/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE-MIT.txt`（1KB）
+- `README.md`（4KB）　— emoji-regex [![Build status](https://github.com/mathiasbynens/emoji-regex/actions/workfl…
+- `index.d.ts`（0KB）
+- `index.js`（14KB）
+- `index.mjs`（14KB）
+- `package.json`（1KB）
+
+## gltf/node_modules/cli-truncate/node_modules/string-width/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（1KB）
+- `index.js`（2KB）
+- `license`（1KB）
+- `package.json`（1KB）
+- `readme.md`（2KB）　— string-width
+
+## gltf/node_modules/color/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（1KB）
+- `README.md`（8KB）　— color
+- `index.d.ts`（5KB）
+- `index.js`（11KB）　— To be honest, I don't really feel like keyword belongs in color convert, but eh.
+- `package.json`（1KB）
+
+## gltf/node_modules/color-convert/（未归类）
+
+待归类：请确认用途后归档。
+
+- `CHANGELOG.md`（1KB）　— 1.0.0 - 2016-01-07
+- `LICENSE`（1KB）
+- `README.md`（3KB）　— color-convert
+- `conversions.js`（17KB）　— MIT license
+- `index.js`（2KB）
+- `package.json`（1KB）
+- `route.js`（2KB）
+
+## gltf/node_modules/color-name/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（1KB）
+- `README.md`（0KB）
+- `index.js`（5KB）
+- `package.json`（1KB）
+
+## gltf/node_modules/color-string/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（1KB）
+- `README.md`（2KB）　— color-string
+- `index.d.ts`（1KB）
+- `index.js`（6KB）　— Create a list of reverse color names
+- `package.json`（1KB）
+
+## gltf/node_modules/color-string/node_modules/color-name/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（1KB）
+- `README.md`（0KB）　— color-name
+- `index.js`（4KB）
+- `package.json`（1KB）
+
+## gltf/node_modules/color/node_modules/color-convert/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（1KB）
+- `README.md`（4KB）　— color-convert
+- `conversions.js`（20KB）　— MIT license
+- `index.d.ts`（16KB）
+- `index.js`（2KB）
+- `package.json`（1KB）
+- `route.js`（2KB）
+
+## gltf/node_modules/color/node_modules/color-name/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（1KB）
+- `README.md`（0KB）　— color-name
+- `index.js`（4KB）
+- `package.json`（1KB）
+
+## gltf/node_modules/colorette/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE.md`（1KB）
+- `README.md`（4KB）　— 🌈Colorette
+- `index.cjs`（5KB）
+- `index.d.ts`（2KB）
+- `index.js`（3KB）
+- `package.json`（1KB）
+
+## gltf/node_modules/cross-spawn/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（1KB）
+- `README.md`（4KB）　— cross-spawn
+- `index.js`（1KB）
+- `package.json`（2KB）
+
+## gltf/node_modules/cross-spawn/lib/（未归类）
+
+待归类：请确认用途后归档。
+
+- `enoent.js`（1KB）
+- `parse.js`（3KB）
+
+## gltf/node_modules/cross-spawn/lib/util/（未归类）
+
+待归类：请确认用途后归档。
+
+- `escape.js`（1KB）　— See http://www.robvanderwoude.com/escapechars.php
+- `readShebang.js`（1KB）
+- `resolveCommand.js`（2KB）
+
+## gltf/node_modules/csv-stringify/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（1KB）
+- `README.md`（3KB）　— CSV stringifier for Node.js and the web
+- `package.json`（3KB）
+
+## gltf/node_modules/csv-stringify/dist/cjs/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.cjs`（27KB）
+- `index.d.cts`（7KB）　— <reference types="node" />
+- `sync.cjs`（25KB）　— Lodash implementation of `get`
+- `sync.d.cts`（0KB）
+
+## gltf/node_modules/csv-stringify/dist/esm/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（7KB）　— <reference types="node" />
+- `index.js`（168KB）　— This constructor is used to store event handlers. Instantiating this is
+- `sync.d.ts`（0KB）
+- `sync.js`（78KB）
+
+## gltf/node_modules/csv-stringify/dist/iife/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.js`（178KB）　— This constructor is used to store event handlers. Instantiating this is
+- `sync.js`（107KB）
+
+## gltf/node_modules/csv-stringify/dist/umd/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.js`（178KB）
+- `sync.js`（107KB）
+
+## gltf/node_modules/csv-stringify/lib/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（7KB）　— <reference types="node" />
+- `index.js`（3KB）
+- `sync.d.ts`（0KB）
+- `sync.js`（1KB）
+
+## gltf/node_modules/csv-stringify/lib/api/（未归类）
+
+待归类：请确认用途后归档。
+
+- `CsvError.js`（1KB）
+- `index.js`（12KB）　— True when appending `separator` after `value` would let `parse` find
+- `normalize_columns.js`（1KB）
+- `normalize_options.js`（9KB）　— Merge with user options
+
+## gltf/node_modules/csv-stringify/lib/utils/（未归类）
+
+待归类：请确认用途后归档。
+
+- `get.js`（2KB）　— Lodash implementation of `get`
+- `is_object.js`（0KB）
+- `underscore.js`（0KB）
+
+## gltf/node_modules/cwise-compiler/（未归类）
+
+待归类：请确认用途后归档。
+
+- `.npmignore`（0KB）
+- `.travis.yml`（0KB）
+- `LICENSE`（1KB）
+- `README.md`（1KB）
+- `compiler.js`（4KB）
+- `package.json`（1KB）
+
+## gltf/node_modules/cwise-compiler/lib/（未归类）
+
+待归类：请确认用途后归档。
+
+- `compile.js`（14KB）　— This function generates very simple loops analogous to how you typically traverse arrays…
+- `thunk.js`（4KB）　— The function below is called when constructing a cwise function object, and does the fol…
+
+## gltf/node_modules/detect-libc/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（11KB）
+- `README.md`（3KB）　— detect-libc
+- `index.d.ts`（0KB）　— Copyright 2017 Lovell Fuller and others.
+- `package.json`（1KB）
+
+## gltf/node_modules/detect-libc/lib/（未归类）
+
+待归类：请确认用途后归档。
+
+- `detect-libc.js`（7KB）　— Copyright 2017 Lovell Fuller and others.
+- `elf.js`（1KB）　— Copyright 2017 Lovell Fuller and others.
+- `filesystem.js`（1KB）　— Copyright 2017 Lovell Fuller and others.
+- `process.js`（1KB）　— Copyright 2017 Lovell Fuller and others.
+
+## gltf/node_modules/draco3dgltf/（未归类）
+
+待归类：请确认用途后归档。
+
+- `README.md`（2KB）
+- `bunny.drc`（118KB）
+- `draco3dgltf.js`（0KB）
+- `draco_decoder_gltf.wasm`（188KB）
+- `draco_decoder_gltf_nodejs.js`（57KB）
+- `draco_encoder.wasm`（362KB）
+- `draco_encoder_gltf_nodejs.js`（48KB）
+- `draco_nodejs_example.js`（6KB）　— Copyright 2017 The Draco Authors.
+- `package.json`（1KB）
+
+## gltf/node_modules/eastasianwidth/（未归类）
+
+待归类：请确认用途后归档。
+
+- `README.md`（1KB）　— East Asian Width
+- `eastasianwidth.js`（12KB）
+- `package.json`（0KB）
+
+## gltf/node_modules/emoji-regex/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE-MIT.txt`（1KB）
+- `README.md`（3KB）　— emoji-regex [![Build status](https://travis-ci.org/mathiasbynens/emoji-regex.svg?branch=…
+- `index.d.ts`（0KB）
+- `index.js`（10KB）
+- `package.json`（1KB）
+- `text.js`（10KB）
+
+## gltf/node_modules/emoji-regex/es2015/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.js`（11KB）
+- `text.js`（11KB）
+
+## gltf/node_modules/enabled/（未归类）
+
+待归类：请确认用途后归档。
+
+- `.travis.yml`（0KB）
+- `LICENSE`（1KB）
+- `README.md`（2KB）　— enabled
+- `index.js`（1KB）
+- `package.json`（1KB）
+- `test.js`（1KB）
+
+## gltf/node_modules/environment/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（2KB）
+- `index.js`（2KB）　— globals WorkerGlobalScope, DedicatedWorkerGlobalScope, SharedWorkerGlobalScope, ServiceW…
+- `license`（1KB）
+- `package.json`（1KB）
+- `readme.md`（2KB）　— environment
+
+## gltf/node_modules/eventemitter3/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（1KB）
+- `README.md`（3KB）　— EventEmitter3
+- `index.d.ts`（3KB）
+- `index.js`（9KB）
+- `index.mjs`（0KB）
+- `package.json`（1KB）
+
+## gltf/node_modules/eventemitter3/dist/（未归类）
+
+待归类：请确认用途后归档。
+
+- `eventemitter3.esm.js`（10KB）
+- `eventemitter3.esm.min.js`（3KB）
+- `eventemitter3.esm.min.js.map`（14KB）
+- `eventemitter3.umd.js`（11KB）
+- `eventemitter3.umd.min.js`（3KB）
+- `eventemitter3.umd.min.js.map`（14KB）
+
+## gltf/node_modules/fast-deep-equal/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（1KB）
+- `README.md`（3KB）　— fast-deep-equal
+- `index.d.ts`（0KB）
+- `index.js`（1KB）　— do not edit .js files directly - edit src/index.jst
+- `package.json`（1KB）
+- `react.d.ts`（0KB）
+- `react.js`（1KB）　— do not edit .js files directly - edit src/index.jst
+
+## gltf/node_modules/fast-deep-equal/es6/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（0KB）
+- `index.js`（2KB）　— do not edit .js files directly - edit src/index.jst
+- `react.d.ts`（0KB）
+- `react.js`（2KB）　— do not edit .js files directly - edit src/index.jst
+
+## gltf/node_modules/fast-json-stable-stringify/（未归类）
+
+待归类：请确认用途后归档。
+
+- `.eslintrc.yml`（1KB）
+- `.travis.yml`（0KB）
+- `LICENSE`（1KB）
+- `README.md`（3KB）　— fast-json-stable-stringify
+- `index.d.ts`（0KB）
+- `index.js`（2KB）
+- `package.json`（1KB）
+
+## gltf/node_modules/fast-json-stable-stringify/.github/（未归类）
+
+待归类：请确认用途后归档。
+
+- `FUNDING.yml`（0KB）
+
+## gltf/node_modules/fast-json-stable-stringify/benchmark/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.js`（1KB）　— 'JSON.stringify': JSON.stringify,
+- `test.json`（4KB）
+
+## gltf/node_modules/fast-json-stable-stringify/example/（未归类）
+
+待归类：请确认用途后归档。
+
+- `key_cmp.js`（0KB）
+- `nested.js`（0KB）
+- `str.js`（0KB）
+- `value_cmp.js`（0KB）
+
+## gltf/node_modules/fast-json-stable-stringify/test/（未归类）
+
+待归类：请确认用途后归档。
+
+- `cmp.js`（0KB）
+- `nested.js`（1KB）
+- `str.js`（1KB）
+- `to-json.js`（1KB）
+
+## gltf/node_modules/fecha/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（1KB）
+- `README.md`（7KB）　— fecha [![Build Status](https://travis-ci.org/taylorhakes/fecha.svg?branch=master)](https…
+- `package.json`（1KB）
+
+## gltf/node_modules/fecha/dist/（未归类）
+
+待归类：请确认用途后归档。
+
+- `fecha.min.js`（6KB）
+- `fecha.min.js.map`（23KB）
+
+## gltf/node_modules/fecha/lib/（未归类）
+
+待归类：请确认用途后归档。
+
+- `fecha.d.ts`（2KB）
+- `fecha.js`（14KB）
+- `fecha.js.map`（28KB）
+- `fecha.umd.js`（15KB）
+- `fecha.umd.js.map`（28KB）
+
+## gltf/node_modules/fecha/src/（未归类）
+
+待归类：请确认用途后归档。
+
+- `fecha.ts`（14KB）
+
+## gltf/node_modules/fill-range/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（1KB）
+- `README.md`（7KB）　— fill-range [![Donate](https://img.shields.io/badge/Donate-PayPal-green.svg)](https://www…
+- `index.js`（6KB）
+- `package.json`（2KB）
+
+## gltf/node_modules/fn.name/（未归类）
+
+待归类：请确认用途后归档。
+
+- `.gitattributes`（0KB）
+- `.travis.yml`（0KB）
+- `LICENSE`（1KB）
+- `README.md`（1KB）　— fn.name
+- `index.js`（1KB）
+- `package.json`（1KB）
+- `test.js`（2KB）
+
+## gltf/node_modules/foreground-child/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（1KB）
+- `README.md`（4KB）　— foreground-child
+- `package.json`（3KB）
+
+## gltf/node_modules/foreground-child/dist/commonjs/（未归类）
+
+待归类：请确认用途后归档。
+
+- `all-signals.d.ts`（0KB）
+- `all-signals.d.ts.map`（0KB）
+- `all-signals.js`（2KB）
+- `all-signals.js.map`（2KB）
+- `index.d.ts`（3KB）
+- `index.d.ts.map`（2KB）
+- `index.js`（4KB）
+- `index.js.map`（10KB）
+- `package.json`（0KB）
+- `proxy-signals.d.ts`（0KB）
+- `proxy-signals.d.ts.map`（0KB）
+- `proxy-signals.js`（1KB）
+- `proxy-signals.js.map`（2KB）
+- `watchdog.d.ts`（0KB）
+- `watchdog.d.ts.map`（0KB）
+- `watchdog.js`（2KB）　— this spawns a child process that listens for SIGHUP when the
+- `watchdog.js.map`（2KB）
+
+## gltf/node_modules/foreground-child/dist/esm/（未归类）
+
+待归类：请确认用途后归档。
+
+- `all-signals.d.ts`（0KB）
+- `all-signals.d.ts.map`（0KB）
+- `all-signals.js`（1KB）
+- `all-signals.js.map`（2KB）
+- `index.d.ts`（3KB）
+- `index.d.ts.map`（2KB）
+- `index.js`（4KB）　— c8 ignore start
+- `index.js.map`（10KB）
+- `package.json`（0KB）
+- `proxy-signals.d.ts`（0KB）
+- `proxy-signals.d.ts.map`（0KB）
+- `proxy-signals.js`（1KB）
+- `proxy-signals.js.map`（2KB）
+- `watchdog.d.ts`（0KB）
+- `watchdog.d.ts.map`（0KB）
+- `watchdog.js`（1KB）　— this spawns a child process that listens for SIGHUP when the
+- `watchdog.js.map`（2KB）
+
+## gltf/node_modules/get-east-asian-width/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（2KB）
+- `index.js`（1KB）
+- `license`（1KB）
+- `lookup-data.js`（5KB）　— Generated by scripts/build.js
+- `lookup.js`（3KB）
+- `package.json`（1KB）
+- `readme.md`（2KB）　— get-east-asian-width
+- `utilities.js`（1KB）
+
+## gltf/node_modules/glob/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（1KB）
+- `README.md`（47KB）　— Glob
+- `package.json`（3KB）
+
+## gltf/node_modules/glob/dist/commonjs/（未归类）
+
+待归类：请确认用途后归档。
+
+- `glob.d.ts`（14KB）
+- `glob.d.ts.map`（4KB）
+- `glob.js`（8KB）
+- `glob.js.map`（28KB）
+- `has-magic.d.ts`（1KB）
+- `has-magic.d.ts.map`（0KB）
+- `has-magic.js`（1KB）
+- `has-magic.js.map`（1KB）
+- `ignore.d.ts`（1KB）
+- `ignore.d.ts.map`（1KB）
+- `ignore.js`（4KB）　— give it a pattern, and it'll be able to tell you if
+- `ignore.js.map`（7KB）
+- `index.d.ts`（6KB）
+- `index.d.ts.map`（4KB）
+- `index.js`（3KB）
+- `index.js.map`（8KB）
+- `package.json`（0KB）
+- `pattern.d.ts`（2KB）
+- `pattern.d.ts.map`（1KB）
+- `pattern.js`（7KB）　— this is just a very light wrapper around 2 arrays with an offset index
+- `pattern.js.map`（13KB）
+- `processor.d.ts`（2KB）
+- `processor.d.ts.map`（2KB）
+- `processor.js`（11KB）　— synchronous utility for filtering entries and calculating subwalks
+- `processor.js.map`（19KB）
+- `walker.d.ts`（4KB）
+- `walker.d.ts.map`（4KB）
+- `walker.js`（13KB）
+- `walker.js.map`（27KB）
+
+## gltf/node_modules/glob/dist/esm/（未归类）
+
+待归类：请确认用途后归档。
+
+- `bin.d.mts`（0KB）
+- `bin.d.mts.map`（0KB）
+- `bin.mjs`（12KB）
+- `bin.mjs.map`（18KB）
+- `glob.d.ts`（14KB）
+- `glob.d.ts.map`（4KB）
+- `glob.js`（8KB）　— if no process global, just call it linux.
+- `glob.js.map`（28KB）
+- `has-magic.d.ts`（1KB）
+- `has-magic.d.ts.map`（0KB）
+- `has-magic.js`（1KB）
+- `has-magic.js.map`（1KB）
+- `ignore.d.ts`（1KB）
+- `ignore.d.ts.map`（1KB）
+- `ignore.js`（4KB）　— give it a pattern, and it'll be able to tell you if
+- `ignore.js.map`（7KB）
+- `index.d.ts`（6KB）
+- `index.d.ts.map`（4KB）
+- `index.js`（2KB）
+- `index.js.map`（8KB）
+- `package.json`（0KB）
+- `pattern.d.ts`（2KB）
+- `pattern.d.ts.map`（1KB）
+- `pattern.js`（7KB）　— this is just a very light wrapper around 2 arrays with an offset index
+- `pattern.js.map`（13KB）
+- `processor.d.ts`（2KB）
+- `processor.d.ts.map`（2KB）
+- `processor.js`（10KB）　— synchronous utility for filtering entries and calculating subwalks
+- `processor.js.map`（19KB）
+- `walker.d.ts`（4KB）
+- `walker.d.ts.map`（4KB）
+- `walker.js`（12KB）
+- `walker.js.map`（27KB）
+
+## gltf/node_modules/gltf-validator/（未归类）
+
+待归类：请确认用途后归档。
+
+- `ISSUES.md`（17KB）　— glTF 2.0 Validation Issues
+- `LICENSE`（11KB）
+- `NOTICES`（22KB）
+- `README.md`（7KB）　— gltf-validator
+- `gltf_validator.dart.js`（301KB）
+- `index.js`（3KB）
+- `module.mjs`（3KB）
+- `package.json`（1KB）
+- `validation.schema.json`（11KB）
+
+## gltf/node_modules/has-flag/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（1KB）
+- `index.js`（0KB）
+- `license`（1KB）
+- `package.json`（1KB）
+- `readme.md`（2KB）　— has-flag [![Build Status](https://travis-ci.org/sindresorhus/has-flag.svg?branch=master)…
+
+## gltf/node_modules/inherits/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（1KB）
+- `README.md`（2KB）
+- `inherits.js`（0KB）
+- `inherits_browser.js`（1KB）
+- `package.json`（1KB）
+
+## gltf/node_modules/iota-array/（未归类）
+
+待归类：请确认用途后归档。
+
+- `.npmignore`（0KB）
+- `LICENSE`（1KB）
+- `README.md`（1KB）　— iota-array
+- `iota.js`（0KB）
+- `package.json`（1KB）
+
+## gltf/node_modules/is-buffer/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（1KB）
+- `README.md`（2KB）　— is-buffer [![travis][travis-image]][travis-url] [![npm][npm-image]][npm-url] [![download…
+- `index.js`（1KB）　— The _isBuffer check is for Safari 5-7 support, because it's missing
+- `package.json`（1KB）
+
+## gltf/node_modules/is-buffer/test/（未归类）
+
+待归类：请确认用途后归档。
+
+- `basic.js`（1KB）
+
+## gltf/node_modules/is-fullwidth-code-point/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（1KB）
+- `index.js`（2KB）　— eslint-disable yoda
+- `license`（1KB）
+- `package.json`（1KB）
+- `readme.md`（1KB）　— is-fullwidth-code-point
+
+## gltf/node_modules/is-number/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（1KB）
+- `README.md`（6KB）　— is-number [![NPM version](https://img.shields.io/npm/v/is-number.svg?style=flat)](https:…
+- `index.js`（0KB）
+- `package.json`（2KB）
+
+## gltf/node_modules/is-stream/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（2KB）
+- `index.js`（1KB）
+- `license`（1KB）
+- `package.json`（1KB）
+- `readme.md`（2KB）　— is-stream
+
+## gltf/node_modules/isexe/（未归类）
+
+待归类：请确认用途后归档。
+
+- `.npmignore`（0KB）
+- `LICENSE`（1KB）
+- `README.md`（1KB）　— isexe
+- `index.js`（1KB）
+- `mode.js`（1KB）
+- `package.json`（1KB）
+- `windows.js`（1KB）
+
+## gltf/node_modules/isexe/test/（未归类）
+
+待归类：请确认用途后归档。
+
+- `basic.js`（5KB）
+
+## gltf/node_modules/jackspeak/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE.md`（2KB）　— Blue Oak Model License
+- `README.md`（11KB）　— jackspeak
+- `package.json`（2KB）
+
+## gltf/node_modules/jackspeak/dist/commonjs/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（12KB）　— <reference types="node" />
+- `index.d.ts.map`（8KB）
+- `index.js`（36KB）
+- `index.js.map`（79KB）
+- `package.json`（0KB）
+- `parse-args-cjs.cjs.map`（2KB）
+- `parse-args-cjs.d.cts.map`（0KB）
+- `parse-args.d.ts`（0KB）　— <reference types="node" />
+- `parse-args.js`（2KB）
+
+## gltf/node_modules/jackspeak/dist/esm/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（12KB）　— <reference types="node" resolution-mode="require"/>
+- `index.d.ts.map`（8KB）
+- `index.js`（35KB）　— it's a tiny API, just cast it inline, it's fine
+- `index.js.map`（79KB）
+- `package.json`（0KB）
+- `parse-args.d.ts`（0KB）　— <reference types="node" resolution-mode="require"/>
+- `parse-args.d.ts.map`（0KB）
+- `parse-args.js`（1KB）
+- `parse-args.js.map`（2KB）
+
+## gltf/node_modules/json-schema-traverse/（未归类）
+
+待归类：请确认用途后归档。
+
+- `.eslintrc.yml`（1KB）
+- `.travis.yml`（0KB）
+- `LICENSE`（1KB）
+- `README.md`（3KB）　— json-schema-traverse
+- `index.js`（2KB）　— Legacy support for v0.3.1 and earlier.
+- `package.json`（1KB）
+
+## gltf/node_modules/json-schema-traverse/spec/（未归类）
+
+待归类：请确认用途后归档。
+
+- `.eslintrc.yml`（0KB）
+- `index.spec.js`（6KB）
+
+## gltf/node_modules/json-schema-traverse/spec/fixtures/（未归类）
+
+待归类：请确认用途后归档。
+
+- `schema.js`（5KB）
+
+## gltf/node_modules/keyframe-resample/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE.md`（2KB）　— Blue Oak Model License
+- `README.md`（5KB）　— keyframe-resample-wasm
+- `package.json`（3KB）
+
+## gltf/node_modules/keyframe-resample/assembly/（未归类）
+
+待归类：请确认用途后归档。
+
+- `resample.ts`（5KB）　— Types and constants
+- `tsconfig.json`（0KB）
+
+## gltf/node_modules/keyframe-resample/dist/（未归类）
+
+待归类：请确认用途后归档。
+
+- `bindings.d.ts`（0KB）
+- `constants.d.ts`（0KB）
+- `index.d.ts`（0KB）
+- `keyframe-resample-browser.cjs`（11KB）
+- `keyframe-resample-browser.modern.js`（10KB）
+- `keyframe-resample-compat.cjs`（19KB）
+- `keyframe-resample-compat.modern.js`（18KB）
+- `keyframe-resample-node.cjs`（10KB）
+- `keyframe-resample-node.modern.js`（10KB）
+- `release.d.ts`（1KB）
+- `release.js`（4KB）
+- `release.wasm`（6KB）
+- `release.wat`（53KB）
+- `resampleDebug.d.ts`（0KB）
+- `wasm.browser.d.ts`（0KB）　— WASM loader for Web environments.
+- `wasm.compat.d.ts`（0KB）
+- `wasm.node.d.ts`（0KB）
+
+## gltf/node_modules/keyframe-resample/src/（未归类）
+
+待归类：请确认用途后归档。
+
+- `bindings.ts`（6KB）　— WASM API
+- `constants.ts`（0KB）
+- `global.d.ts`（0KB）　— placeholder
+- `index.ts`（0KB）
+- `resampleDebug.ts`（4KB）
+- `wasm.browser.ts`（0KB）　— WASM loader for Web environments.
+- `wasm.compat.ts`（0KB）　— WASM loader using an inline Data URI.
+- `wasm.env.ts`（0KB）
+- `wasm.node.ts`（0KB）　— WASM loader for Node.js environments.
+
+## gltf/node_modules/kleur/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.js`（2KB）
+- `kleur.d.ts`（1KB）　— Originally by: Rogier Schouten <https://github.com/rogierschouten>
+- `license`（1KB）
+- `package.json`（1KB）
+- `readme.md`（5KB）
+
+## gltf/node_modules/ktx-parse/（未归类）
+
+待归类：请确认用途后归档。
+
+- `CHANGELOG.md`（0KB）　— Changelog
+- `LICENSE`（1KB）
+- `README.md`（4KB）　— ktx-parse
+- `package.json`（2KB）
+
+## gltf/node_modules/ktx-parse/dist/（未归类）
+
+待归类：请确认用途后归档。
+
+- `buffer-reader.d.ts`（0KB）
+- `constants-internal.d.ts`（0KB）
+- `constants.d.ts`（22KB）
+- `container.d.ts`（4KB）
+- `create-default-container.d.ts`（0KB）
+- `index.d.ts`（0KB）
+- `ktx-parse.cjs`（48KB）　— KTX2 Header.
+- `ktx-parse.cjs.map`（93KB）
+- `ktx-parse.esm.js`（39KB）　— KTX2 Header.
+- `ktx-parse.esm.js.map`（92KB）
+- `ktx-parse.modern.js`（40KB）　— KTX2 Header.
+- `ktx-parse.modern.js.map`（92KB）
+- `read.d.ts`（0KB）
+- `util.d.ts`（2KB）　— Encodes text to an ArrayBuffer.
+- `write.d.ts`（1KB）
+
+## gltf/node_modules/ktx-parse/src/（未归类）
+
+待归类：请确认用途后归档。
+
+- `buffer-reader.ts`（2KB）
+- `constants-internal.ts`（1KB）　— Common.
+- `constants.ts`（21KB）　— KTX2 Header.
+- `container.ts`（4KB）
+- `create-default-container.ts`（1KB）
+- `index.ts`（0KB）
+- `read.ts`（8KB）
+- `util.ts`（7KB）
+- `write.ts`（9KB）
+
+## gltf/node_modules/kuler/（未归类）
+
+待归类：请确认用途后归档。
+
+- `.travis.yml`（0KB）
+- `LICENSE`（1KB）
+- `README.md`（1KB）　— kuler
+- `index.js`（2KB）
+- `package.json`（1KB）
+- `test.js`（1KB）
+
+## gltf/node_modules/listr2/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（1KB）
+- `README.md`（1KB）　— listr2
+- `package.json`（2KB）
+
+## gltf/node_modules/listr2/dist/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.cjs`（77KB）
+- `index.d.cts`（57KB）
+- `index.d.ts`（57KB）
+- `index.js`（73KB）　— src/constants/ansi-escape-codes.constants.ts
+
+## gltf/node_modules/listr2/node_modules/ansi-styles/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（5KB）
+- `index.js`（5KB）
+- `license`（1KB）
+- `package.json`（1KB）
+- `readme.md`（5KB）　— ansi-styles
+
+## gltf/node_modules/listr2/node_modules/emoji-regex/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE-MIT.txt`（1KB）
+- `README.md`（4KB）　— emoji-regex [![Build status](https://github.com/mathiasbynens/emoji-regex/actions/workfl…
+- `index.d.ts`（0KB）
+- `index.js`（14KB）
+- `index.mjs`（14KB）
+- `package.json`（1KB）
+
+## gltf/node_modules/listr2/node_modules/string-width/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（1KB）
+- `index.js`（2KB）
+- `license`（1KB）
+- `package.json`（1KB）
+- `readme.md`（2KB）　— string-width
+
+## gltf/node_modules/listr2/node_modules/wrap-ansi/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（1KB）
+- `index.js`（6KB）
+- `license`（1KB）
+- `package.json`（1KB）
+- `readme.md`（2KB）　— wrap-ansi
+
+## gltf/node_modules/lodash/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（2KB）
+- `README.md`（1KB）　— lodash v4.18.1
+- `_DataView.js`（0KB）
+- `_Hash.js`（1KB）
+- `_LazyWrapper.js`（1KB）
+- `_ListCache.js`（1KB）
+- `_LodashWrapper.js`（1KB）
+- `_Map.js`（0KB）
+- `_MapCache.js`（1KB）
+- `_Promise.js`（0KB）
+- `_Set.js`（0KB）
+- `_SetCache.js`（1KB）
+- `_Stack.js`（1KB）
+- `_Symbol.js`（0KB）　— Built-in value references.
+- `_Uint8Array.js`（0KB）　— Built-in value references.
+- `_WeakMap.js`（0KB）
+- `_apply.js`（1KB）
+- `_arrayAggregator.js`（1KB）
+- `_arrayEach.js`（1KB）
+- `_arrayEachRight.js`（1KB）
+- `_arrayEvery.js`（1KB）
+- `_arrayFilter.js`（1KB）
+- `_arrayIncludes.js`（1KB）
+- `_arrayIncludesWith.js`（1KB）
+- `_arrayLikeKeys.js`（2KB）
+- `_arrayMap.js`（1KB）
+- `_arrayPush.js`（0KB）
+- `_arrayReduce.js`（1KB）
+- `_arrayReduceRight.js`（1KB）
+- `_arraySample.js`（0KB）
+- `_arraySampleSize.js`（0KB）
+- `_arrayShuffle.js`（0KB）
+- `_arraySome.js`（1KB）
+- `_asciiSize.js`（0KB）
+- `_asciiToArray.js`（0KB）
+- `_asciiWords.js`（0KB）　— Used to match words composed of alphanumeric characters.
+- `_assignMergeValue.js`（1KB）
+- `_assignValue.js`（1KB）
+- `_assocIndexOf.js`（0KB）
+- `_baseAggregator.js`（1KB）
+- `_baseAssign.js`（0KB）
+- `_baseAssignIn.js`（0KB）
+- `_baseAssignValue.js`（1KB）
+- `_baseAt.js`（1KB）
+- `_baseClamp.js`（1KB）
+- `_baseClone.js`（5KB）
+- `_baseConforms.js`（0KB）
+- `_baseConformsTo.js`（1KB）
+- `_baseCreate.js`（1KB）　— Built-in value references.
+- `_baseDelay.js`（1KB）　— Error message constants.
+- `_baseDifference.js`（2KB）
+- `_baseEach.js`（0KB）
+- `_baseEachRight.js`（0KB）
+- `_baseEvery.js`（1KB）
+- `_baseExtremum.js`（1KB）
+- `_baseFill.js`（1KB）
+- `_baseFilter.js`（1KB）
+- `_baseFindIndex.js`（1KB）
+- `_baseFindKey.js`（1KB）
+- `_baseFlatten.js`（1KB）
+- `_baseFor.js`（1KB）
+- `_baseForOwn.js`（0KB）
+- `_baseForOwnRight.js`（0KB）
+- `_baseForRight.js`（0KB）
+- `_baseFunctions.js`（1KB）
+- `_baseGet.js`（1KB）
+- `_baseGetAllKeys.js`（1KB）
+- `_baseGetTag.js`（1KB）
+- `_baseGt.js`（0KB）
+- `_baseHas.js`（1KB）　— Used for built-in method references.
+- `_baseHasIn.js`（0KB）
+- `_baseInRange.js`（1KB）　— Built-in method references for those with the same name as other `lodash` methods.
+- `_baseIndexOf.js`（1KB）
+- `_baseIndexOfWith.js`（1KB）
+- `_baseIntersection.js`（2KB）
+- `_baseInverter.js`（1KB）
+- `_baseInvoke.js`（1KB）
+- `_baseIsArguments.js`（0KB）
+- `_baseIsArrayBuffer.js`（0KB）
+- `_baseIsDate.js`（0KB）
+- `_baseIsEqual.js`（1KB）
+- `_baseIsEqualDeep.js`（3KB）
+- `_baseIsMap.js`（0KB）
+- `_baseIsMatch.js`（2KB）
+- `_baseIsNaN.js`（0KB）
+- `_baseIsNative.js`（1KB）
+- `_baseIsRegExp.js`（0KB）
+- `_baseIsSet.js`（0KB）
+- `_baseIsTypedArray.js`（2KB）
+- `_baseIteratee.js`（1KB）
+- `_baseKeys.js`（1KB）
+- `_baseKeysIn.js`（1KB）
+- `_baseLodash.js`（0KB）
+- `_baseLt.js`（0KB）
+- `_baseMap.js`（1KB）
+- `_baseMatches.js`（1KB）
+- `_baseMatchesProperty.js`（1KB）
+- `_baseMean.js`（1KB）　— Used as references for various `Number` constants.
+- `_baseMerge.js`（1KB）
+- `_baseMergeDeep.js`（3KB）
+- `_baseNth.js`（0KB）
+- `_baseOrderBy.js`（2KB）
+- `_basePick.js`（0KB）
+- `_basePickBy.js`（1KB）
+- `_baseProperty.js`（0KB）
+- `_basePropertyDeep.js`（0KB）
+- `_basePropertyOf.js`（0KB）
+- `_basePullAll.js`（1KB）
+- `_basePullAt.js`（1KB）
+- `_baseRandom.js`（1KB）　— Built-in method references for those with the same name as other `lodash` methods.
+- `_baseRange.js`（1KB）　— Built-in method references for those with the same name as other `lodash` methods.
+- `_baseReduce.js`（1KB）
+- `_baseRepeat.js`（1KB）　— Used as references for various `Number` constants.
+- `_baseRest.js`（1KB）
+- `_baseSample.js`（0KB）
+- `_baseSampleSize.js`（1KB）
+- `_baseSet.js`（1KB）
+- `_baseSetData.js`（0KB）
+- `_baseSetToString.js`（1KB）
+- `_baseShuffle.js`（0KB）
+- `_baseSlice.js`（1KB）
+- `_baseSome.js`（1KB）
+- `_baseSortBy.js`（1KB）
+- `_baseSortedIndex.js`（1KB）
+- `_baseSortedIndexBy.js`（2KB）　— Used as references for the maximum length and index of an array.
+- `_baseSortedUniq.js`（1KB）
+- `_baseSum.js`（1KB）
+- `_baseTimes.js`（0KB）
+- `_baseToNumber.js`（1KB）　— Used as references for various `Number` constants.
+- `_baseToPairs.js`（1KB）
+- `_baseToString.js`（1KB）
+- `_baseTrim.js`（0KB）　— Used to match leading whitespace.
+- `_baseUnary.js`（0KB）
+- `_baseUniq.js`（2KB）
+- `_baseUnset.js`（2KB）
+- `_baseUpdate.js`（1KB）
+- `_baseValues.js`（1KB）
+- `_baseWhile.js`（1KB）
+- `_baseWrapperValue.js`（1KB）
+- `_baseXor.js`（1KB）
+- `_baseZipObject.js`（1KB）
+- `_cacheHas.js`（0KB）
+- `_castArrayLikeObject.js`（0KB）
+- `_castFunction.js`（0KB）
+- `_castPath.js`（1KB）
+- `_castRest.js`（0KB）
+- `_castSlice.js`（1KB）
+- `_charsEndIndex.js`（1KB）
+- `_charsStartIndex.js`（1KB）
+- `_cloneArrayBuffer.js`（0KB）
+- `_cloneBuffer.js`（1KB）　— Detect free variable `exports`.
+- `_cloneDataView.js`（0KB）
+- `_cloneRegExp.js`（0KB）　— Used to match `RegExp` flags from their coerced string values.
+- `_cloneSymbol.js`（1KB）　— Used to convert symbols to primitives and strings.
+- `_cloneTypedArray.js`（1KB）
+- `_compareAscending.js`（1KB）
+- `_compareMultiple.js`（2KB）
+- `_composeArgs.js`（1KB）　— Built-in method references for those with the same name as other `lodash` methods.
+- `_composeArgsRight.js`（1KB）　— Built-in method references for those with the same name as other `lodash` methods.
+- `_copyArray.js`（0KB）
+- `_copyObject.js`（1KB）
+- `_copySymbols.js`（0KB）
+- `_copySymbolsIn.js`（0KB）
+- `_coreJsData.js`（0KB）　— Used to detect overreaching core-js shims.
+- `_countHolders.js`（0KB）
+- `_createAggregator.js`（1KB）
+- `_createAssigner.js`（1KB）
+- `_createBaseEach.js`（1KB）
+- `_createBaseFor.js`（1KB）
+- `_createBind.js`（1KB）
+- `_createCaseFirst.js`（1KB）
+- `_createCompounder.js`（1KB）
+- `_createCtor.js`（1KB）
+- `_createCurry.js`（1KB）
+- `_createFind.js`（1KB）
+- `_createFlow.js`（2KB）
+- `_createHybrid.js`（3KB）
+- `_createInverter.js`（0KB）
+- `_createMathOperation.js`（1KB）
+- `_createOver.js`（1KB）
+- `_createPadding.js`（1KB）
+- `_createPartial.js`（1KB）
+- `_createRange.js`（1KB）
+- `_createRecurry.js`（2KB）
+- `_createRelationalOperation.js`（1KB）
+- `_createRound.js`（1KB）
+- `_createSet.js`（0KB）
+- `_createToPairs.js`（1KB）
+- `_createWrap.js`（4KB）
+- `_customDefaultsAssignIn.js`（1KB）　— Used for built-in method references.
+- `_customDefaultsMerge.js`（1KB）
+- `_customOmitClone.js`（0KB）
+- `_deburrLetter.js`（3KB）　— Used to map Latin Unicode letters to basic Latin letters.
+- `_defineProperty.js`（0KB）
+- `_equalArrays.js`（3KB）
+- `_equalByTag.js`（4KB）
+- `_equalObjects.js`（3KB）　— Used to compose bitmasks for value comparisons.
+- `_escapeHtmlChar.js`（0KB）　— Used to map characters to HTML entities.
+- `_escapeStringChar.js`（1KB）　— Used to escape characters for inclusion in compiled string literals.
+- `_flatRest.js`（0KB）
+- `_freeGlobal.js`（0KB）　— Detect free variable `global` from Node.js.
+- `_getAllKeys.js`（0KB）
+- `_getAllKeysIn.js`（0KB）
+- `_getData.js`（0KB）
+- `_getFuncName.js`（1KB）　— Used for built-in method references.
+- `_getHolder.js`（0KB）
+- `_getMapData.js`（0KB）
+- `_getMatchData.js`（1KB）
+- `_getNative.js`（0KB）
+- `_getPrototype.js`（0KB）　— Built-in value references.
+- `_getRawTag.js`（1KB）　— Used for built-in method references.
+- `_getSymbols.js`（1KB）
+- `_getSymbolsIn.js`（1KB）
+- `_getTag.js`（2KB）
+- `_getValue.js`（0KB）
+- `_getView.js`（1KB）　— Built-in method references for those with the same name as other `lodash` methods.
+- `_getWrapDetails.js`（0KB）　— Used to match wrap detail comments.
+- `_hasPath.js`（1KB）
+- `_hasUnicode.js`（1KB）　— Used to compose unicode character classes.
+- `_hasUnicodeWord.js`（0KB）　— Used to detect strings that need a more robust regexp to match words.
+- `_hashClear.js`（0KB）
+- `_hashDelete.js`（0KB）
+- `_hashGet.js`（1KB）　— Used to stand-in for `undefined` hash values.
+- `_hashHas.js`（1KB）　— Used for built-in method references.
+- `_hashSet.js`（1KB）　— Used to stand-in for `undefined` hash values.
+- `_initCloneArray.js`（1KB）　— Used for built-in method references.
+- `_initCloneByTag.js`（2KB）
+- `_initCloneObject.js`（0KB）
+- `_insertWrapDetails.js`（1KB）　— Used to match wrap detail comments.
+- `_isFlattenable.js`（1KB）
+- `_isIndex.js`（1KB）　— Used as references for various `Number` constants.
+- `_isIterateeCall.js`（1KB）
+- `_isKey.js`（1KB）
+- `_isKeyable.js`（0KB）
+- `_isLaziable.js`（1KB）
+- `_isMaskable.js`（0KB）
+- `_isMasked.js`（1KB）　— Used to detect methods masquerading as native.
+- `_isPrototype.js`（0KB）　— Used for built-in method references.
+- `_isStrictComparable.js`（0KB）
+- `_iteratorToArray.js`（0KB）
+- `_lazyClone.js`（1KB）
+- `_lazyReverse.js`（0KB）
+- `_lazyValue.js`（2KB）
+- `_listCacheClear.js`（0KB）
+- `_listCacheDelete.js`（1KB）　— Used for built-in method references.
+- `_listCacheGet.js`（0KB）
+- `_listCacheHas.js`（0KB）
+- `_listCacheSet.js`（1KB）
+- `_mapCacheClear.js`（0KB）
+- `_mapCacheDelete.js`（0KB）
+- `_mapCacheGet.js`（0KB）
+- `_mapCacheHas.js`（0KB）
+- `_mapCacheSet.js`（0KB）
+- `_mapToArray.js`（0KB）
+- `_matchesStrictComparable.js`（1KB）
+- `_memoizeCapped.js`（1KB）　— Used as the maximum memoize cache size.
+- `_mergeData.js`（3KB）
+- `_metaMap.js`（0KB）　— Used to store function metadata.
+- `_nativeCreate.js`（0KB）　— Built-in method references that are verified to be native.
+- `_nativeKeys.js`（0KB）　— Built-in method references for those with the same name as other `lodash` methods.
+- `_nativeKeysIn.js`（0KB）
+- `_nodeUtil.js`（1KB）　— Detect free variable `exports`.
+- `_objectToString.js`（1KB）　— Used for built-in method references.
+- `_overArg.js`（0KB）
+- `_overRest.js`（1KB）　— Built-in method references for those with the same name as other `lodash` methods.
+- `_parent.js`（0KB）
+- `_reEscape.js`（0KB）　— Used to match template delimiters.
+- `_reEvaluate.js`（0KB）　— Used to match template delimiters.
+- `_reInterpolate.js`（0KB）　— Used to match template delimiters.
+- `_realNames.js`（0KB）　— Used to lookup unminified function names.
+- `_reorder.js`（1KB）
+- `_replaceHolders.js`（1KB）　— Used as the internal argument placeholder.
+- `_root.js`（0KB）　— Detect free variable `self`.
+- `_safeGet.js`（0KB）
+- `_setCacheAdd.js`（0KB）　— Used to stand-in for `undefined` hash values.
+- `_setCacheHas.js`（0KB）
+- `_setData.js`（1KB）
+- `_setToArray.js`（0KB）
+- `_setToPairs.js`（0KB）
+- `_setToString.js`（0KB）
+- `_setWrapToString.js`（1KB）
+- `_shortOut.js`（1KB）　— Used to detect hot functions by number of calls within a span of milliseconds.
+- `_shuffleSelf.js`（1KB）
+- `_stackClear.js`（0KB）
+- `_stackDelete.js`（0KB）
+- `_stackGet.js`（0KB）
+- `_stackHas.js`（0KB）
+- `_stackSet.js`（1KB）
+- `_strictIndexOf.js`（1KB）
+- `_strictLastIndexOf.js`（1KB）
+- `_stringSize.js`（0KB）
+- `_stringToArray.js`（0KB）
+- `_stringToPath.js`（1KB）　— Used to match property names within property paths.
+- `_toKey.js`（1KB）　— Used as references for various `Number` constants.
+- `_toSource.js`（1KB）　— Used for built-in method references.
+- `_trimmedEndIndex.js`（1KB）　— Used to match a single whitespace character.
+- `_unescapeHtmlChar.js`（0KB）　— Used to map HTML entities to characters.
+- `_unicodeSize.js`（2KB）　— Used to compose unicode character classes.
+- `_unicodeToArray.js`（2KB）　— Used to compose unicode character classes.
+- `_unicodeWords.js`（3KB）　— Used to compose unicode character classes.
+- `_updateWrapDetails.js`（1KB）
+- `_wrapperClone.js`（1KB）
+- `add.js`（0KB）
+- `after.js`（1KB）　— Error message constants.
+- `array.js`（2KB）
+- `ary.js`（1KB）　— Used to compose bitmasks for function metadata.
+- `assign.js`（2KB）
+- `assignIn.js`（1KB）
+- `assignInWith.js`（1KB）
+- `assignWith.js`（1KB）
+- `at.js`（1KB）
+- `attempt.js`（1KB）
+- `before.js`（1KB）　— Error message constants.
+- `bind.js`（2KB）
+- `bindAll.js`（1KB）
+- `bindKey.js`（2KB）
+- `camelCase.js`（1KB）
+- `capitalize.js`（1KB）
+- `castArray.js`（1KB）
+- `ceil.js`（0KB）
+- `chain.js`（1KB）
+- `chunk.js`（1KB）
+- `clamp.js`（1KB）
+- `clone.js`（1KB）　— Used to compose bitmasks for cloning.
+- `cloneDeep.js`（1KB）　— Used to compose bitmasks for cloning.
+- `cloneDeepWith.js`（1KB）　— Used to compose bitmasks for cloning.
+- `cloneWith.js`（1KB）　— Used to compose bitmasks for cloning.
+- `collection.js`（1KB）
+- `commit.js`（1KB）
+- `compact.js`（1KB）
+- `concat.js`（1KB）
+- `cond.js`（2KB）
+- `conforms.js`（1KB）
+- `conformsTo.js`（1KB）
+- `constant.js`（1KB）
+- `core.js`（113KB）
+- `core.min.js`（13KB）
+- `countBy.js`（1KB）
+- `create.js`（1KB）
+- `curry.js`（2KB）　— Used to compose bitmasks for function metadata.
+- `curryRight.js`（1KB）　— Used to compose bitmasks for function metadata.
+- `date.js`（0KB）
+- `debounce.js`（6KB）
+- `deburr.js`（2KB）
+- `defaultTo.js`（1KB）
+- `defaults.js`（2KB）
+- `defaultsDeep.js`（1KB）
+- `defer.js`（1KB）
+- `delay.js`（1KB）
+- `difference.js`（1KB）
+- `differenceBy.js`（1KB）
+- `differenceWith.js`（1KB）
+- `divide.js`（0KB）
+- `drop.js`（1KB）
+- `dropRight.js`（1KB）
+- `dropRightWhile.js`（1KB）
+- `dropWhile.js`（1KB）
+- `each.js`（0KB）
+- `eachRight.js`（0KB）
+- `endsWith.js`（1KB）
+- `entries.js`（0KB）
+- `entriesIn.js`（0KB）
+- `eq.js`（1KB）
+- `escape.js`（1KB）
+- `escapeRegExp.js`（1KB）
+- `every.js`（2KB）
+- `extend.js`（0KB）
+- `extendWith.js`（0KB）
+- `fill.js`（1KB）
+- `filter.js`（2KB）
+- `find.js`（1KB）
+- `findIndex.js`（2KB）
+- `findKey.js`（1KB）
+- `findLast.js`（1KB）
+- `findLastIndex.js`（2KB）
+- `findLastKey.js`（1KB）
+- `first.js`（0KB）
+- `flatMap.js`（1KB）
+- `flatMapDeep.js`（1KB）
+- `flatMapDepth.js`（1KB）
+- `flatten.js`（0KB）
+- `flattenDeep.js`（1KB）　— Used as references for various `Number` constants.
+- `flattenDepth.js`（1KB）
+- `flip.js`（1KB）　— Used to compose bitmasks for function metadata.
+- `floor.js`（1KB）
+- `flow.js`（1KB）
+- `flowRight.js`（1KB）
+- `forEach.js`（1KB）
+- `forEachRight.js`（1KB）
+- `forIn.js`（1KB）
+- `forInRight.js`（1KB）
+- `forOwn.js`（1KB）
+- `forOwnRight.js`（1KB）
+- `fp.js`（0KB）
+- `fromPairs.js`（1KB）
+- `function.js`（1KB）
+- `functions.js`（1KB）
+- `functionsIn.js`（1KB）
+- `get.js`（1KB）
+- `groupBy.js`（1KB）
+- `gt.js`（1KB）
+- `gte.js`（1KB）
+- `has.js`（1KB）
+- `hasIn.js`（1KB）
+- `head.js`（0KB）
+- `identity.js`（0KB）
+- `inRange.js`（1KB）
+- `includes.js`（2KB）
+- `index.js`（0KB）
+- `indexOf.js`（1KB）
+- `initial.js`（0KB）
+- `intersection.js`（1KB）
+- `intersectionBy.js`（1KB）
+- `intersectionWith.js`（1KB）
+- `invert.js`（1KB）
+- `invertBy.js`（2KB）
+- `invoke.js`（1KB）
+- `invokeMap.js`（1KB）
+- `isArguments.js`（1KB）
+- `isArray.js`（0KB）
+- `isArrayBuffer.js`（1KB）
+- `isArrayLike.js`（1KB）
+- `isArrayLikeObject.js`（1KB）
+- `isBoolean.js`（1KB）
+- `isBuffer.js`（1KB）
+- `isDate.js`（1KB）
+- `isElement.js`（1KB）
+- `isEmpty.js`（2KB）
+- `isEqual.js`（1KB）
+- `isEqualWith.js`（1KB）
+- `isError.js`（1KB）
+- `isFinite.js`（1KB）　— Built-in method references for those with the same name as other `lodash` methods.
+- `isFunction.js`（1KB）
+- `isInteger.js`（1KB）
+- `isLength.js`（1KB）　— Used as references for various `Number` constants.
+- `isMap.js`（1KB）
+- `isMatch.js`（1KB）
+- `isMatchWith.js`（1KB）
+- `isNaN.js`（1KB）
+- `isNative.js`（1KB）
+- `isNil.js`（0KB）
+- `isNull.js`（0KB）
+- `isNumber.js`（1KB）
+- `isObject.js`（1KB）
+- `isObjectLike.js`（1KB）
+- `isPlainObject.js`（2KB）
+- `isRegExp.js`（1KB）
+- `isSafeInteger.js`（1KB）　— Used as references for various `Number` constants.
+- `isSet.js`（1KB）
+- `isString.js`（1KB）
+- `isSymbol.js`（1KB）
+- `isTypedArray.js`（1KB）
+- `isUndefined.js`（0KB）
+- `isWeakMap.js`（1KB）
+- `isWeakSet.js`（1KB）
+- `iteratee.js`（2KB）
+- `join.js`（1KB）　— Used for built-in method references.
+- `kebabCase.js`（1KB）
+- `keyBy.js`（1KB）
+- `keys.js`（1KB）
+- `keysIn.js`（1KB）
+- `lang.js`（2KB）
+- `last.js`（0KB）
+- `lastIndexOf.js`（1KB）
+- `lodash.js`（533KB）
+- `lodash.min.js`（72KB）
+- `lowerCase.js`（1KB）
+- `lowerFirst.js`（0KB）
+- `lt.js`（1KB）
+- `lte.js`（1KB）
+- `map.js`（2KB）
+- `mapKeys.js`（1KB）
+- `mapValues.js`（1KB）
+- `matches.js`（1KB）
+- `matchesProperty.js`（1KB）
+- `math.js`（0KB）
+- `max.js`（1KB）
+- `maxBy.js`（1KB）
+- `mean.js`（0KB）
+- `meanBy.js`（1KB）
+- `memoize.js`（2KB）　— Error message constants.
+- `merge.js`（1KB）
+- `mergeWith.js`（1KB）
+- `method.js`（1KB）
+- `methodOf.js`（1KB）
+- `min.js`（1KB）
+- `minBy.js`（1KB）
+- `mixin.js`（2KB）
+- `multiply.js`（1KB）
+- `negate.js`（1KB）　— Error message constants.
+- `next.js`（1KB）
+- `noop.js`（0KB）
+- `now.js`（1KB）
+- `nth.js`（1KB）
+- `nthArg.js`（1KB）
+- `number.js`（0KB）
+- `object.js`（2KB）
+- `omit.js`（2KB）
+- `omitBy.js`（1KB）
+- `once.js`（1KB）
+- `orderBy.js`（2KB）
+- `over.js`（1KB）
+- `overArgs.js`（2KB）
+- `overEvery.js`（1KB）
+- `overSome.js`（1KB）
+- `package.json`（1KB）
+- `pad.js`（1KB）
+- `padEnd.js`（1KB）
+- `padStart.js`（1KB）
+- `parseInt.js`（1KB）
+- `partial.js`（2KB）
+- `partialRight.js`（2KB）
+- `partition.js`（1KB）
+- `pick.js`（1KB）
+- `pickBy.js`（1KB）
+- `plant.js`（1KB）
+- `property.js`（1KB）
+- `propertyOf.js`（1KB）
+- `pull.js`（1KB）
+- `pullAll.js`（1KB）
+- `pullAllBy.js`（1KB）
+- `pullAllWith.js`（1KB）
+- `pullAt.js`（1KB）
+- `random.js`（3KB）
+- `range.js`（1KB）
+- `rangeRight.js`（1KB）
+- `rearg.js`（1KB）
+- `reduce.js`（2KB）
+- `reduceRight.js`（1KB）
+- `reject.js`（1KB）
+- `remove.js`（1KB）
+- `repeat.js`（1KB）
+- `replace.js`（1KB）
+- `rest.js`（1KB）
+- `result.js`（1KB）
+- `reverse.js`（1KB）　— Used for built-in method references.
+- `round.js`（0KB）
+- `sample.js`（1KB）
+- `sampleSize.js`（1KB）
+- `seq.js`（0KB）
+- `set.js`（1KB）
+- `setWith.js`（1KB）
+- `shuffle.js`（1KB）
+- `size.js`（1KB）
+- `slice.js`（1KB）
+- `snakeCase.js`（1KB）
+- `some.js`（2KB）
+- `sortBy.js`（2KB）
+- `sortedIndex.js`（1KB）
+- `sortedIndexBy.js`（1KB）
+- `sortedIndexOf.js`（1KB）
+- `sortedLastIndex.js`（1KB）
+- `sortedLastIndexBy.js`（1KB）
+- `sortedLastIndexOf.js`（1KB）
+- `sortedUniq.js`（1KB）
+- `sortedUniqBy.js`（1KB）
+- `split.js`（2KB）
+- `spread.js`（2KB）
+- `startCase.js`（1KB）
+- `startsWith.js`（1KB）
+- `string.js`（1KB）
+- `stubArray.js`（0KB）
+- `stubFalse.js`（0KB）
+- `stubObject.js`（0KB）
+- `stubString.js`（0KB）
+- `stubTrue.js`（0KB）
+- `subtract.js`（0KB）
+- `sum.js`（0KB）
+- `sumBy.js`（1KB）
+- `tail.js`（0KB）
+- `take.js`（1KB）
+- `takeRight.js`（1KB）
+- `takeRightWhile.js`（1KB）
+- `takeWhile.js`（1KB）
+- `tap.js`（1KB）
+- `template.js`（11KB）
+- `templateSettings.js`（2KB）
+- `throttle.js`（3KB）
+- `thru.js`（1KB）
+- `times.js`（1KB）
+- `toArray.js`（1KB）
+- `toFinite.js`（1KB）　— Used as references for various `Number` constants.
+- `toInteger.js`（1KB）
+- `toIterator.js`（0KB）
+- `toJSON.js`（0KB）
+- `toLength.js`（1KB）
+- `toLower.js`（1KB）
+- `toNumber.js`（1KB）
+- `toPairs.js`（1KB）
+- `toPairsIn.js`（1KB）
+- `toPath.js`（1KB）
+- `toPlainObject.js`（1KB）
+- `toSafeInteger.js`（1KB）
+- `toString.js`（1KB）
+- `toUpper.js`（1KB）
+- `transform.js`（2KB）
+- `trim.js`（1KB）
+- `trimEnd.js`（1KB）
+- `trimStart.js`（1KB）
+- `truncate.js`（3KB）
+- `unary.js`（0KB）
+- `unescape.js`（1KB）
+- `union.js`（1KB）
+- `unionBy.js`（1KB）
+- `unionWith.js`（1KB）
+- `uniq.js`（1KB）
+- `uniqBy.js`（1KB）
+- `uniqWith.js`（1KB）
+- `uniqueId.js`（1KB）　— Used to generate unique IDs.
+- `unset.js`（1KB）
+- `unzip.js`（1KB）
+- `unzipWith.js`（1KB）
+- `update.js`（1KB）
+- `updateWith.js`（1KB）
+- `upperCase.js`（1KB）
+- `upperFirst.js`（0KB）
+- `util.js`（1KB）
+- `value.js`（0KB）
+- `valueOf.js`（0KB）
+- `values.js`（1KB）
+- `valuesIn.js`（1KB）
+- `without.js`（1KB）
+- `words.js`（1KB）
+- `wrap.js`（1KB）
+- `wrapperAt.js`（1KB）
+- `wrapperChain.js`（1KB）
+- `wrapperLodash.js`（7KB）
+- `wrapperReverse.js`（1KB）
+- `wrapperValue.js`（0KB）
+- `xor.js`（1KB）
+- `xorBy.js`（1KB）
+- `xorWith.js`（1KB）
+- `zip.js`（1KB）
+- `zipObject.js`（1KB）
+- `zipObjectDeep.js`（1KB）
+- `zipWith.js`（1KB）
+
+## gltf/node_modules/lodash/fp/（未归类）
+
+待归类：请确认用途后归档。
+
+- `F.js`（0KB）
+- `T.js`（0KB）
+- `__.js`（0KB）
+- `_baseConvert.js`（16KB）
+- `_convertBrowser.js`（1KB）
+- `_falseOptions.js`（0KB）
+- `_mapping.js`（10KB）　— Used to map aliases to their real names.
+- `_util.js`（1KB）
+- `add.js`（0KB）
+- `after.js`（0KB）
+- `all.js`（0KB）
+- `allPass.js`（0KB）
+- `always.js`（0KB）
+- `any.js`（0KB）
+- `anyPass.js`（0KB）
+- `apply.js`（0KB）
+- `array.js`（0KB）
+- `ary.js`（0KB）
+- `assign.js`（0KB）
+- `assignAll.js`（0KB）
+- `assignAllWith.js`（0KB）
+- `assignIn.js`（0KB）
+- `assignInAll.js`（0KB）
+- `assignInAllWith.js`（0KB）
+- `assignInWith.js`（0KB）
+- `assignWith.js`（0KB）
+- `assoc.js`（0KB）
+- `assocPath.js`（0KB）
+- `at.js`（0KB）
+- `attempt.js`（0KB）
+- `before.js`（0KB）
+- `bind.js`（0KB）
+- `bindAll.js`（0KB）
+- `bindKey.js`（0KB）
+- `camelCase.js`（0KB）
+- `capitalize.js`（0KB）
+- `castArray.js`（0KB）
+- `ceil.js`（0KB）
+- `chain.js`（0KB）
+- `chunk.js`（0KB）
+- `clamp.js`（0KB）
+- `clone.js`（0KB）
+- `cloneDeep.js`（0KB）
+- `cloneDeepWith.js`（0KB）
+- `cloneWith.js`（0KB）
+- `collection.js`（0KB）
+- `commit.js`（0KB）
+- `compact.js`（0KB）
+- `complement.js`（0KB）
+- `compose.js`（0KB）
+- `concat.js`（0KB）
+- `cond.js`（0KB）
+- `conforms.js`（0KB）
+- `conformsTo.js`（0KB）
+- `constant.js`（0KB）
+- `contains.js`（0KB）
+- `convert.js`（1KB）
+- `countBy.js`（0KB）
+- `create.js`（0KB）
+- `curry.js`（0KB）
+- `curryN.js`（0KB）
+- `curryRight.js`（0KB）
+- `curryRightN.js`（0KB）
+- `date.js`（0KB）
+- `debounce.js`（0KB）
+- `deburr.js`（0KB）
+- `defaultTo.js`（0KB）
+- `defaults.js`（0KB）
+- `defaultsAll.js`（0KB）
+- `defaultsDeep.js`（0KB）
+- `defaultsDeepAll.js`（0KB）
+- `defer.js`（0KB）
+- `delay.js`（0KB）
+- `difference.js`（0KB）
+- `differenceBy.js`（0KB）
+- `differenceWith.js`（0KB）
+- `dissoc.js`（0KB）
+- `dissocPath.js`（0KB）
+- `divide.js`（0KB）
+- `drop.js`（0KB）
+- `dropLast.js`（0KB）
+- `dropLastWhile.js`（0KB）
+- `dropRight.js`（0KB）
+- `dropRightWhile.js`（0KB）
+- `dropWhile.js`（0KB）
+- `each.js`（0KB）
+- `eachRight.js`（0KB）
+- `endsWith.js`（0KB）
+- `entries.js`（0KB）
+- `entriesIn.js`（0KB）
+- `eq.js`（0KB）
+- `equals.js`（0KB）
+- `escape.js`（0KB）
+- `escapeRegExp.js`（0KB）
+- `every.js`（0KB）
+- `extend.js`（0KB）
+- `extendAll.js`（0KB）
+- `extendAllWith.js`（0KB）
+- `extendWith.js`（0KB）
+- `fill.js`（0KB）
+- `filter.js`（0KB）
+- `find.js`（0KB）
+- `findFrom.js`（0KB）
+- `findIndex.js`（0KB）
+- `findIndexFrom.js`（0KB）
+- `findKey.js`（0KB）
+- `findLast.js`（0KB）
+- `findLastFrom.js`（0KB）
+- `findLastIndex.js`（0KB）
+- `findLastIndexFrom.js`（0KB）
+- `findLastKey.js`（0KB）
+- `first.js`（0KB）
+- `flatMap.js`（0KB）
+- `flatMapDeep.js`（0KB）
+- `flatMapDepth.js`（0KB）
+- `flatten.js`（0KB）
+- `flattenDeep.js`（0KB）
+- `flattenDepth.js`（0KB）
+- `flip.js`（0KB）
+- `floor.js`（0KB）
+- `flow.js`（0KB）
+- `flowRight.js`（0KB）
+- `forEach.js`（0KB）
+- `forEachRight.js`（0KB）
+- `forIn.js`（0KB）
+- `forInRight.js`（0KB）
+- `forOwn.js`（0KB）
+- `forOwnRight.js`（0KB）
+- `fromPairs.js`（0KB）
+- `function.js`（0KB）
+- `functions.js`（0KB）
+- `functionsIn.js`（0KB）
+- `get.js`（0KB）
+- `getOr.js`（0KB）
+- `groupBy.js`（0KB）
+- `gt.js`（0KB）
+- `gte.js`（0KB）
+- `has.js`（0KB）
+- `hasIn.js`（0KB）
+- `head.js`（0KB）
+- `identical.js`（0KB）
+- `identity.js`（0KB）
+- `inRange.js`（0KB）
+- `includes.js`（0KB）
+- `includesFrom.js`（0KB）
+- `indexBy.js`（0KB）
+- `indexOf.js`（0KB）
+- `indexOfFrom.js`（0KB）
+- `init.js`（0KB）
+- `initial.js`（0KB）
+- `intersection.js`（0KB）
+- `intersectionBy.js`（0KB）
+- `intersectionWith.js`（0KB）
+- `invert.js`（0KB）
+- `invertBy.js`（0KB）
+- `invertObj.js`（0KB）
+- `invoke.js`（0KB）
+- `invokeArgs.js`（0KB）
+- `invokeArgsMap.js`（0KB）
+- `invokeMap.js`（0KB）
+- `isArguments.js`（0KB）
+- `isArray.js`（0KB）
+- `isArrayBuffer.js`（0KB）
+- `isArrayLike.js`（0KB）
+- `isArrayLikeObject.js`（0KB）
+- `isBoolean.js`（0KB）
+- `isBuffer.js`（0KB）
+- `isDate.js`（0KB）
+- `isElement.js`（0KB）
+- `isEmpty.js`（0KB）
+- `isEqual.js`（0KB）
+- `isEqualWith.js`（0KB）
+- `isError.js`（0KB）
+- `isFinite.js`（0KB）
+- `isFunction.js`（0KB）
+- `isInteger.js`（0KB）
+- `isLength.js`（0KB）
+- `isMap.js`（0KB）
+- `isMatch.js`（0KB）
+- `isMatchWith.js`（0KB）
+- `isNaN.js`（0KB）
+- `isNative.js`（0KB）
+- `isNil.js`（0KB）
+- `isNull.js`（0KB）
+- `isNumber.js`（0KB）
+- `isObject.js`（0KB）
+- `isObjectLike.js`（0KB）
+- `isPlainObject.js`（0KB）
+- `isRegExp.js`（0KB）
+- `isSafeInteger.js`（0KB）
+- `isSet.js`（0KB）
+- `isString.js`（0KB）
+- `isSymbol.js`（0KB）
+- `isTypedArray.js`（0KB）
+- `isUndefined.js`（0KB）
+- `isWeakMap.js`（0KB）
+- `isWeakSet.js`（0KB）
+- `iteratee.js`（0KB）
+- `join.js`（0KB）
+- `juxt.js`（0KB）
+- `kebabCase.js`（0KB）
+- `keyBy.js`（0KB）
+- `keys.js`（0KB）
+- `keysIn.js`（0KB）
+- `lang.js`（0KB）
+- `last.js`（0KB）
+- `lastIndexOf.js`（0KB）
+- `lastIndexOfFrom.js`（0KB）
+- `lowerCase.js`（0KB）
+- `lowerFirst.js`（0KB）
+- `lt.js`（0KB）
+- `lte.js`（0KB）
+- `map.js`（0KB）
+- `mapKeys.js`（0KB）
+- `mapValues.js`（0KB）
+- `matches.js`（0KB）
+- `matchesProperty.js`（0KB）
+- `math.js`（0KB）
+- `max.js`（0KB）
+- `maxBy.js`（0KB）
+- `mean.js`（0KB）
+- `meanBy.js`（0KB）
+- `memoize.js`（0KB）
+- `merge.js`（0KB）
+- `mergeAll.js`（0KB）
+- `mergeAllWith.js`（0KB）
+- `mergeWith.js`（0KB）
+- `method.js`（0KB）
+- `methodOf.js`（0KB）
+- `min.js`（0KB）
+- `minBy.js`（0KB）
+- `mixin.js`（0KB）
+- `multiply.js`（0KB）
+- `nAry.js`（0KB）
+- `negate.js`（0KB）
+- `next.js`（0KB）
+- `noop.js`（0KB）
+- `now.js`（0KB）
+- `nth.js`（0KB）
+- `nthArg.js`（0KB）
+- `number.js`（0KB）
+- `object.js`（0KB）
+- `omit.js`（0KB）
+- `omitAll.js`（0KB）
+- `omitBy.js`（0KB）
+- `once.js`（0KB）
+- `orderBy.js`（0KB）
+- `over.js`（0KB）
+- `overArgs.js`（0KB）
+- `overEvery.js`（0KB）
+- `overSome.js`（0KB）
+- `pad.js`（0KB）
+- `padChars.js`（0KB）
+- `padCharsEnd.js`（0KB）
+- `padCharsStart.js`（0KB）
+- `padEnd.js`（0KB）
+- `padStart.js`（0KB）
+- `parseInt.js`（0KB）
+- `partial.js`（0KB）
+- `partialRight.js`（0KB）
+- `partition.js`（0KB）
+- `path.js`（0KB）
+- `pathEq.js`（0KB）
+- `pathOr.js`（0KB）
+- `paths.js`（0KB）
+- `pick.js`（0KB）
+- `pickAll.js`（0KB）
+- `pickBy.js`（0KB）
+- `pipe.js`（0KB）
+- `placeholder.js`（0KB）
+- `plant.js`（0KB）
+- `pluck.js`（0KB）
+- `prop.js`（0KB）
+- `propEq.js`（0KB）
+- `propOr.js`（0KB）
+- `property.js`（0KB）
+- `propertyOf.js`（0KB）
+- `props.js`（0KB）
+- `pull.js`（0KB）
+- `pullAll.js`（0KB）
+- `pullAllBy.js`（0KB）
+- `pullAllWith.js`（0KB）
+- `pullAt.js`（0KB）
+- `random.js`（0KB）
+- `range.js`（0KB）
+- `rangeRight.js`（0KB）
+- `rangeStep.js`（0KB）
+- `rangeStepRight.js`（0KB）
+- `rearg.js`（0KB）
+- `reduce.js`（0KB）
+- `reduceRight.js`（0KB）
+- `reject.js`（0KB）
+- `remove.js`（0KB）
+- `repeat.js`（0KB）
+- `replace.js`（0KB）
+- `rest.js`（0KB）
+- `restFrom.js`（0KB）
+- `result.js`（0KB）
+- `reverse.js`（0KB）
+- `round.js`（0KB）
+- `sample.js`（0KB）
+- `sampleSize.js`（0KB）
+- `seq.js`（0KB）
+- `set.js`（0KB）
+- `setWith.js`（0KB）
+- `shuffle.js`（0KB）
+- `size.js`（0KB）
+- `slice.js`（0KB）
+- `snakeCase.js`（0KB）
+- `some.js`（0KB）
+- `sortBy.js`（0KB）
+- `sortedIndex.js`（0KB）
+- `sortedIndexBy.js`（0KB）
+- `sortedIndexOf.js`（0KB）
+- `sortedLastIndex.js`（0KB）
+- `sortedLastIndexBy.js`（0KB）
+- `sortedLastIndexOf.js`（0KB）
+- `sortedUniq.js`（0KB）
+- `sortedUniqBy.js`（0KB）
+- `split.js`（0KB）
+- `spread.js`（0KB）
+- `spreadFrom.js`（0KB）
+- `startCase.js`（0KB）
+- `startsWith.js`（0KB）
+- `string.js`（0KB）
+- `stubArray.js`（0KB）
+- `stubFalse.js`（0KB）
+- `stubObject.js`（0KB）
+- `stubString.js`（0KB）
+- `stubTrue.js`（0KB）
+- `subtract.js`（0KB）
+- `sum.js`（0KB）
+- `sumBy.js`（0KB）
+- `symmetricDifference.js`（0KB）
+- `symmetricDifferenceBy.js`（0KB）
+- `symmetricDifferenceWith.js`（0KB）
+- `tail.js`（0KB）
+- `take.js`（0KB）
+- `takeLast.js`（0KB）
+- `takeLastWhile.js`（0KB）
+- `takeRight.js`（0KB）
+- `takeRightWhile.js`（0KB）
+- `takeWhile.js`（0KB）
+- `tap.js`（0KB）
+- `template.js`（0KB）
+- `templateSettings.js`（0KB）
+- `throttle.js`（0KB）
+- `thru.js`（0KB）
+- `times.js`（0KB）
+- `toArray.js`（0KB）
+- `toFinite.js`（0KB）
+- `toInteger.js`（0KB）
+- `toIterator.js`（0KB）
+- `toJSON.js`（0KB）
+- `toLength.js`（0KB）
+- `toLower.js`（0KB）
+- `toNumber.js`（0KB）
+- `toPairs.js`（0KB）
+- `toPairsIn.js`（0KB）
+- `toPath.js`（0KB）
+- `toPlainObject.js`（0KB）
+- `toSafeInteger.js`（0KB）
+- `toString.js`（0KB）
+- `toUpper.js`（0KB）
+- `transform.js`（0KB）
+- `trim.js`（0KB）
+- `trimChars.js`（0KB）
+- `trimCharsEnd.js`（0KB）
+- `trimCharsStart.js`（0KB）
+- `trimEnd.js`（0KB）
+- `trimStart.js`（0KB）
+- `truncate.js`（0KB）
+- `unapply.js`（0KB）
+- `unary.js`（0KB）
+- `unescape.js`（0KB）
+- `union.js`（0KB）
+- `unionBy.js`（0KB）
+- `unionWith.js`（0KB）
+- `uniq.js`（0KB）
+- `uniqBy.js`（0KB）
+- `uniqWith.js`（0KB）
+- `uniqueId.js`（0KB）
+- `unnest.js`（0KB）
+- `unset.js`（0KB）
+- `unzip.js`（0KB）
+- `unzipWith.js`（0KB）
+- `update.js`（0KB）
+- `updateWith.js`（0KB）
+- `upperCase.js`（0KB）
+- `upperFirst.js`（0KB）
+- `useWith.js`（0KB）
+- `util.js`（0KB）
+- `value.js`（0KB）
+- `valueOf.js`（0KB）
+- `values.js`（0KB）
+- `valuesIn.js`（0KB）
+- `where.js`（0KB）
+- `whereEq.js`（0KB）
+- `without.js`（0KB）
+- `words.js`（0KB）
+- `wrap.js`（0KB）
+- `wrapperAt.js`（0KB）
+- `wrapperChain.js`（0KB）
+- `wrapperLodash.js`（0KB）
+- `wrapperReverse.js`（0KB）
+- `wrapperValue.js`（0KB）
+- `xor.js`（0KB）
+- `xorBy.js`（0KB）
+- `xorWith.js`（0KB）
+- `zip.js`（0KB）
+- `zipAll.js`（0KB）
+- `zipObj.js`（0KB）
+- `zipObject.js`（0KB）
+- `zipObjectDeep.js`（0KB）
+- `zipWith.js`（0KB）
+
+## gltf/node_modules/log-update/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（2KB）
+- `index.js`（2KB）
+- `license`（1KB）
+- `package.json`（1KB）
+- `readme.md`（2KB）　— log-update
+
+## gltf/node_modules/log-update/node_modules/ansi-styles/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（5KB）
+- `index.js`（5KB）
+- `license`（1KB）
+- `package.json`（1KB）
+- `readme.md`（5KB）　— ansi-styles
+
+## gltf/node_modules/log-update/node_modules/emoji-regex/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE-MIT.txt`（1KB）
+- `README.md`（4KB）　— emoji-regex [![Build status](https://github.com/mathiasbynens/emoji-regex/actions/workfl…
+- `index.d.ts`（0KB）
+- `index.js`（14KB）
+- `index.mjs`（14KB）
+- `package.json`（1KB）
+
+## gltf/node_modules/log-update/node_modules/is-fullwidth-code-point/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（1KB）
+- `index.js`（0KB）
+- `license`（1KB）
+- `package.json`（1KB）
+- `readme.md`（1KB）　— is-fullwidth-code-point
+
+## gltf/node_modules/log-update/node_modules/slice-ansi/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（1KB）
+- `index.js`（4KB）　— \x1b and \x9b
+- `license`（1KB）
+- `package.json`（1KB）
+- `readme.md`（1KB）　— slice-ansi [![XO: Linted](https://img.shields.io/badge/xo-linted-blue.svg)](https://gith…
+
+## gltf/node_modules/log-update/node_modules/string-width/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（1KB）
+- `index.js`（2KB）
+- `license`（1KB）
+- `package.json`（1KB）
+- `readme.md`（2KB）　— string-width
+
+## gltf/node_modules/log-update/node_modules/wrap-ansi/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（1KB）
+- `index.js`（6KB）
+- `license`（1KB）
+- `package.json`（1KB）
+- `readme.md`（2KB）　— wrap-ansi
+
+## gltf/node_modules/logform/（未归类）
+
+待归类：请确认用途后归档。
+
+- `.babelrc`（0KB）
+- `.eslintrc`（0KB）
+- `.gitattributes`（0KB）
+- `CHANGELOG.md`（10KB）　— CHANGELOG
+- `LICENSE`（1KB）
+- `README.md`（18KB）　— logform
+- `align.js`（0KB）
+- `browser.js`（2KB）
+- `cli.js`（1KB）
+- `colorize.js`（3KB）　— Fix colors not appearing in non-tty environments
+- `combine.js`（2KB）
+- `errors.js`（1KB）　— eslint no-undefined: 0
+- `format.js`（1KB）
+- `index.d.ts`（6KB）　— Type definitions for logform 2.x
+- `index.js`（2KB）
+- `json.js`（1KB）
+- `label.js`（0KB）
+- `levels.js`（0KB）
+- `logstash.js`（1KB）
+- `metadata.js`（1KB）
+- `ms.js`（0KB）
+- `package.json`（1KB）
+- `pad-levels.js`（3KB）　— eslint no-unused-vars: 0
+- `pretty-print.js`（1KB）
+- `printf.js`（1KB）
+- `simple.js`（1KB）　— eslint no-undefined: 0
+- `splat.js`（4KB）
+- `timestamp.js`（1KB）
+- `tsconfig.json`（0KB）
+- `uncolorize.js`（1KB）
+
+## gltf/node_modules/logform/dist/（未归类）
+
+待归类：请确认用途后归档。
+
+- `align.js`（0KB）
+- `browser.js`（2KB）
+- `cli.js`（3KB）
+- `colorize.js`（5KB）
+- `combine.js`（2KB）
+- `errors.js`（2KB）　— eslint no-undefined: 0
+- `format.js`（5KB）
+- `index.js`（2KB）
+- `json.js`（1KB）
+- `label.js`（0KB）
+- `levels.js`（0KB）
+- `logstash.js`（1KB）
+- `metadata.js`（2KB）
+- `ms.js`（0KB）
+- `pad-levels.js`（6KB）　— eslint no-unused-vars: 0
+- `pretty-print.js`（1KB）
+- `printf.js`（2KB）
+- `simple.js`（1KB）　— eslint no-undefined: 0
+- `splat.js`（7KB）
+- `timestamp.js`（1KB）
+- `uncolorize.js`（1KB）
+
+## gltf/node_modules/logform/node_modules/@colors/colors/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（1KB）
+- `README.md`（4KB）　— @colors/colors ("colors.js")
+- `index.d.ts`（4KB）　— Type definitions for @colors/colors 1.4+
+- `package.json`（1KB）
+- `safe.d.ts`（3KB）　— Type definitions for Colors.js 1.2
+- `safe.js`（0KB）　— Remark: Requiring this file will use the "safe" colors API,
+
+## gltf/node_modules/logform/node_modules/@colors/colors/examples/（未归类）
+
+待归类：请确认用途后归档。
+
+- `normal-usage.js`（2KB）
+- `safe-string.js`（2KB）
+
+## gltf/node_modules/logform/node_modules/@colors/colors/lib/（未归类）
+
+待归类：请确认用途后归档。
+
+- `colors.js`（6KB）
+- `extendStringPrototype.js`（3KB）
+- `index.js`（0KB）
+- `styles.js`（2KB）
+
+## gltf/node_modules/logform/node_modules/@colors/colors/lib/custom/（未归类）
+
+待归类：请确认用途后归档。
+
+- `trap.js`（2KB）
+- `zalgo.js`（3KB）　— please no
+
+## gltf/node_modules/logform/node_modules/@colors/colors/lib/maps/（未归类）
+
+待归类：请确认用途后归档。
+
+- `america.js`（0KB）
+- `rainbow.js`（0KB）
+- `random.js`（0KB）
+- `zebra.js`（0KB）
+
+## gltf/node_modules/logform/node_modules/@colors/colors/lib/system/（未归类）
+
+待归类：请确认用途后归档。
+
+- `has-flag.js`（1KB）
+- `supports-colors.js`（4KB）
+
+## gltf/node_modules/logform/node_modules/@colors/colors/themes/（未归类）
+
+待归类：请确认用途后归档。
+
+- `generic-logging.js`（0KB）
+
+## gltf/node_modules/lru-cache/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（1KB）
+- `README.md`（11KB）　— lru-cache
+- `package.json`（3KB）
+
+## gltf/node_modules/lru-cache/dist/commonjs/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（53KB）
+- `index.d.ts.map`（14KB）
+- `index.js`（54KB）
+- `index.js.map`（133KB）
+- `index.min.js`（17KB）
+- `index.min.js.map`（116KB）
+- `package.json`（0KB）
+
+## gltf/node_modules/lru-cache/dist/esm/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（53KB）
+- `index.d.ts.map`（14KB）
+- `index.js`（54KB）
+- `index.js.map`（133KB）
+- `index.min.js`（17KB）
+- `index.min.js.map`（116KB）
+- `package.json`（0KB）
+
+## gltf/node_modules/meshoptimizer/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE.md`（1KB）
+- `README.md`（32KB）　— meshoptimizer.js
+- `benchmark.js`（4KB）
+- `index.d.ts`（0KB）
+- `index.js`（0KB）
+- `meshopt_clusterizer.d.ts`（2KB）　— This file is part of meshoptimizer library and is distributed under the terms of MIT Lic…
+- `meshopt_clusterizer.js`（31KB）　— This file is part of meshoptimizer library and is distributed under the terms of MIT Lic…
+- `meshopt_clusterizer.test.js`（4KB）
+- `meshopt_decoder.cjs`（29KB）　— This file is part of meshoptimizer library and is distributed under the terms of MIT Lic…
+- `meshopt_decoder.d.ts`（1KB）　— This file is part of meshoptimizer library and is distributed under the terms of MIT Lic…
+- `meshopt_decoder.mjs`（28KB）　— This file is part of meshoptimizer library and is distributed under the terms of MIT Lic…
+- `meshopt_decoder.test.js`（16KB）
+- `meshopt_decoder_reference.js`（15KB）　— This file is part of meshoptimizer library and is distributed under the terms of MIT Lic…
+- `meshopt_encoder.d.ts`（1KB）　— This file is part of meshoptimizer library and is distributed under the terms of MIT Lic…
+- `meshopt_encoder.js`（24KB）　— This file is part of meshoptimizer library and is distributed under the terms of MIT Lic…
+- `meshopt_encoder.test.js`（8KB）
+- `meshopt_simplifier.d.ts`（2KB）　— This file is part of meshoptimizer library and is distributed under the terms of MIT Lic…
+- `meshopt_simplifier.js`（54KB）　— This file is part of meshoptimizer library and is distributed under the terms of MIT Lic…
+- `meshopt_simplifier.test.js`（6KB）
+- `meshopt_tangents.d.ts`（1KB）　— This file is part of meshoptimizer library and is distributed under the terms of MIT Lic…
+- `meshopt_tangents.js`（10KB）　— This file is part of meshoptimizer library and is distributed under the terms of MIT Lic…
+- `meshopt_tangents.test.js`（2KB）
+- `package.json`（1KB）
+- `wasi_trace.js`（1KB）　— Usage:
+
+## gltf/node_modules/micromatch/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（1KB）
+- `README.md`（38KB）　— micromatch [![NPM version](https://img.shields.io/npm/v/micromatch.svg?style=flat)](http…
+- `index.js`（14KB）
+- `package.json`（3KB）
+
+## gltf/node_modules/mikktspace/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（1KB）
+- `README.md`（5KB）　— mikktspace-wasm
+- `package.json`（1KB）
+
+## gltf/node_modules/mikktspace/dist/main/（未归类）
+
+待归类：请确认用途后归档。
+
+- `mikktspace_main.d.ts`（0KB）　— tslint:disable
+- `mikktspace_main.js`（4KB）
+- `mikktspace_main_bg.wasm`（41KB）
+- `mikktspace_main_bg.wasm.d.ts`（0KB）　— tslint:disable
+
+## gltf/node_modules/mikktspace/dist/module/（未归类）
+
+待归类：请确认用途后归档。
+
+- `mikktspace_module.d.ts`（0KB）　— tslint:disable
+- `mikktspace_module.js`（0KB）
+- `mikktspace_module_bg.js`（3KB）
+- `mikktspace_module_bg.wasm`（41KB）
+- `mikktspace_module_bg.wasm.d.ts`（0KB）　— tslint:disable
+
+## gltf/node_modules/mimic-function/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（1KB）
+- `index.js`（3KB）　— `Function#length` should reflect the parameters of `to` not `from` since we keep its bod…
+- `license`（1KB）
+- `package.json`（1KB）
+- `readme.md`（2KB）
+
+## gltf/node_modules/minimatch/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（1KB）
+- `README.md`（18KB）　— minimatch
+- `package.json`（2KB）
+
+## gltf/node_modules/minimatch/dist/commonjs/（未归类）
+
+待归类：请确认用途后归档。
+
+- `assert-valid-pattern.d.ts`（0KB）
+- `assert-valid-pattern.d.ts.map`（0KB）
+- `assert-valid-pattern.js`（0KB）
+- `assert-valid-pattern.js.map`（1KB）
+- `ast.d.ts`（1KB）
+- `ast.d.ts.map`（1KB）
+- `ast.js`（27KB）　— parse a single path portion
+- `ast.js.map`（51KB）
+- `brace-expressions.d.ts`（0KB）
+- `brace-expressions.d.ts.map`（0KB）
+- `brace-expressions.js`（6KB）　— translate the various posix character classes into unicode properties
+- `brace-expressions.js.map`（10KB）
+- `escape.d.ts`（1KB）
+- `escape.d.ts.map`（0KB）
+- `escape.js`（1KB）
+- `escape.js.map`（1KB）
+- `index.d.ts`（4KB）
+- `index.d.ts.map`（3KB）
+- `index.js`（39KB）
+- `index.js.map`（73KB）
+- `package.json`（0KB）
+- `unescape.d.ts`（1KB）
+- `unescape.d.ts.map`（0KB）
+- `unescape.js`（1KB）
+- `unescape.js.map`（1KB）
+
+## gltf/node_modules/minimatch/dist/esm/（未归类）
+
+待归类：请确认用途后归档。
+
+- `assert-valid-pattern.d.ts`（0KB）
+- `assert-valid-pattern.d.ts.map`（0KB）
+- `assert-valid-pattern.js`（0KB）
+- `assert-valid-pattern.js.map`（1KB）
+- `ast.d.ts`（1KB）
+- `ast.d.ts.map`（1KB）
+- `ast.js`（27KB）　— parse a single path portion
+- `ast.js.map`（51KB）
+- `brace-expressions.d.ts`（0KB）
+- `brace-expressions.d.ts.map`（0KB）
+- `brace-expressions.js`（5KB）　— translate the various posix character classes into unicode properties
+- `brace-expressions.js.map`（10KB）
+- `escape.d.ts`（1KB）
+- `escape.d.ts.map`（0KB）
+- `escape.js`（1KB）
+- `escape.js.map`（1KB）
+- `index.d.ts`（4KB）
+- `index.d.ts.map`（3KB）
+- `index.js`（37KB）
+- `index.js.map`（73KB）
+- `package.json`（0KB）
+- `unescape.d.ts`（1KB）
+- `unescape.d.ts.map`（0KB）
+- `unescape.js`（1KB）
+- `unescape.js.map`（1KB）
+
+## gltf/node_modules/minipass/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE.md`（2KB）　— Blue Oak Model License
+- `README.md`（27KB）　— minipass
+- `package.json`（2KB）
+
+## gltf/node_modules/minipass/dist/commonjs/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（19KB）
+- `index.d.ts.map`（47KB）
+- `index.js`（33KB）
+- `index.js.map`（65KB）
+- `package.json`（0KB）
+
+## gltf/node_modules/minipass/dist/esm/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（19KB）
+- `index.d.ts.map`（47KB）
+- `index.js`（33KB）
+- `index.js.map`（65KB）
+- `package.json`（0KB）
+
+## gltf/node_modules/ms/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.js`（3KB）
+- `license.md`（1KB）
+- `package.json`（1KB）
+- `readme.md`（2KB）
+
+## gltf/node_modules/ndarray/（未归类）
+
+待归类：请确认用途后归档。
+
+- `.travis.yml`（0KB）
+- `CHANGELOG.md`（0KB）　— Changelog
+- `LICENSE`（1KB）
+- `README.md`（9KB）
+- `ndarray.js`（10KB）
+- `package.json`（1KB）
+
+## gltf/node_modules/ndarray-lanczos/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（1KB）
+- `README.md`（2KB）　— ndarray-lanczos
+- `package.json`（2KB）
+
+## gltf/node_modules/ndarray-lanczos/dist/（未归类）
+
+待归类：请确认用途后归档。
+
+- `ndarray-lanczos.cjs`（2KB）
+- `ndarray-lanczos.cjs.map`（12KB）
+- `ndarray-lanczos.modern.js`（2KB）
+- `ndarray-lanczos.modern.js.map`（12KB）
+
+## gltf/node_modules/ndarray-lanczos/dist/src/（未归类）
+
+待归类：请确认用途后归档。
+
+- `convolve.d.ts`（0KB）
+- `index.d.ts`（0KB）
+
+## gltf/node_modules/ndarray-lanczos/dist/vendor/（未归类）
+
+待归类：请确认用途后归档。
+
+- `filters.d.ts`（1KB）
+
+## gltf/node_modules/ndarray-lanczos/src/（未归类）
+
+待归类：请确认用途后归档。
+
+- `convolve.ts`（2KB）
+- `index.ts`（2KB）
+
+## gltf/node_modules/ndarray-lanczos/vendor/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（1KB）
+- `README.md`（0KB）　— Lanczos TypeScript Implementation
+- `filters.ts`（3KB）
+
+## gltf/node_modules/ndarray-ops/（未归类）
+
+待归类：请确认用途后归档。
+
+- `.npmignore`（0KB）
+- `LICENSE`（1KB）
+- `README.md`（6KB）
+- `ndarray-ops.js`（13KB）
+- `package.json`（1KB）
+
+## gltf/node_modules/ndarray-pixels/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（1KB）
+- `README.md`（4KB）　— ndarray-pixels
+- `package.json`（2KB）
+
+## gltf/node_modules/ndarray-pixels/dist/（未归类）
+
+待归类：请确认用途后归档。
+
+- `ndarray-pixels-browser.cjs`（6KB）
+- `ndarray-pixels-browser.d.cts`（1KB）　— #region src/index.browser.d.ts
+- `ndarray-pixels-browser.d.ts`（1KB）　— #region src/index.browser.d.ts
+- `ndarray-pixels-browser.js`（4KB）　— #region src/get-pixels.browser.ts
+- `ndarray-pixels-node.cjs`（5KB）
+- `ndarray-pixels-node.d.cts`（1KB）　— #region src/index.node.d.ts
+- `ndarray-pixels-node.d.mts`（1KB）　— #region src/index.node.d.ts
+- `ndarray-pixels-node.mjs`（4KB）　— #region src/get-pixels.node.ts
+
+## gltf/node_modules/ndarray-pixels/src/（未归类）
+
+待归类：请确认用途后归档。
+
+- `common.ts`（2KB）
+- `get-pixels.browser.ts`（1KB）
+- `get-pixels.node.ts`（1KB）
+- `index.browser.ts`（2KB）
+- `index.node.ts`（2KB）
+- `save-pixels.browser.ts`（1KB）
+- `save-pixels.node.ts`（1KB）
+
+## gltf/node_modules/one-time/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（1KB）
+- `README.md`（2KB）　— one-time
+- `async.js`（1KB）
+- `index.js`（1KB）
+- `package.json`（1KB）
+
+## gltf/node_modules/onetime/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（1KB）
+- `index.js`（1KB）
+- `license`（1KB）
+- `package.json`（1KB）
+- `readme.md`（1KB）　— onetime
+
+## gltf/node_modules/package-json-from-dist/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE.md`（2KB）
+- `README.md`（3KB）　— package-json-from-dist
+- `package.json`（2KB）
+
+## gltf/node_modules/package-json-from-dist/dist/commonjs/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（3KB）
+- `index.d.ts.map`（0KB）
+- `index.js`（5KB）
+- `index.js.map`（7KB）
+- `package.json`（0KB）
+
+## gltf/node_modules/package-json-from-dist/dist/esm/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（3KB）
+- `index.d.ts.map`（0KB）
+- `index.js`（4KB）
+- `index.js.map`（7KB）
+- `package.json`（0KB）
+
+## gltf/node_modules/path-key/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（1KB）　— <reference types="node" />
+- `index.js`（0KB）
+- `license`（1KB）
+- `package.json`（1KB）
+- `readme.md`（1KB）　— path-key [![Build Status](https://travis-ci.org/sindresorhus/path-key.svg?branch=master)…
+
+## gltf/node_modules/path-scurry/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE.md`（2KB）　— Blue Oak Model License
+- `README.md`（22KB）　— path-scurry
+- `package.json`（2KB）
+
+## gltf/node_modules/path-scurry/dist/commonjs/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（39KB）　— <reference types="node" />
+- `index.d.ts.map`（18KB）
+- `index.js`（65KB）
+- `index.js.map`（128KB）
+- `package.json`（0KB）
+
+## gltf/node_modules/path-scurry/dist/esm/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（39KB）　— <reference types="node" resolution-mode="require"/>
+- `index.d.ts.map`（18KB）
+- `index.js`（63KB）　— TODO: test perf of fs/promises realpath vs realpathCB,
+- `index.js.map`（129KB）
+- `package.json`（0KB）
+
+## gltf/node_modules/picomatch/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（1KB）
+- `README.md`（27KB）
+- `index.js`（0KB）
+- `package.json`（2KB）
+
+## gltf/node_modules/picomatch/lib/（未归类）
+
+待归类：请确认用途后归档。
+
+- `constants.js`（4KB）
+- `parse.js`（33KB）
+- `picomatch.js`（10KB）
+- `scan.js`（9KB）
+- `utils.js`（2KB）
+
+## gltf/node_modules/prompts/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.js`（0KB）
+- `license`（1KB）
+- `package.json`（1KB）
+- `readme.md`（28KB）
+
+## gltf/node_modules/prompts/dist/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.js`（7KB）
+- `prompts.js`（9KB）
+
+## gltf/node_modules/prompts/dist/dateparts/（未归类）
+
+待归类：请确认用途后归档。
+
+- `datepart.js`（1KB）
+- `day.js`（1KB）
+- `hours.js`（1KB）
+- `index.js`（0KB）
+- `meridiem.js`（0KB）
+- `milliseconds.js`（1KB）
+- `minutes.js`（0KB）
+- `month.js`（1KB）
+- `seconds.js`（0KB）
+- `year.js`（0KB）
+
+## gltf/node_modules/prompts/dist/elements/（未归类）
+
+待归类：请确认用途后归档。
+
+- `autocomplete.js`（9KB）
+- `autocompleteMultiselect.js`（5KB）
+- `confirm.js`（2KB）
+- `date.js`（7KB）
+- `index.js`（0KB）
+- `multiselect.js`（7KB）
+- `number.js`（7KB）
+- `prompt.js`（2KB）
+- `select.js`（5KB）
+- `text.js`（6KB）
+- `toggle.js`（3KB）
+
+## gltf/node_modules/prompts/dist/util/（未归类）
+
+待归类：请确认用途后归档。
+
+- `action.js`（1KB）
+- `clear.js`（2KB）
+- `entriesToDisplay.js`（1KB）
+- `figures.js`（1KB）
+- `index.js`（0KB）
+- `lines.js`（0KB）
+- `strip.js`（0KB）
+- `style.js`（1KB）
+- `wrap.js`（1KB）
+
+## gltf/node_modules/prompts/lib/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.js`（3KB）
+- `prompts.js`（9KB）
+
+## gltf/node_modules/prompts/lib/dateparts/（未归类）
+
+待归类：请确认用途后归档。
+
+- `datepart.js`（1KB）
+- `day.js`（1KB）
+- `hours.js`（1KB）
+- `index.js`（0KB）
+- `meridiem.js`（0KB）
+- `milliseconds.js`（1KB）
+- `minutes.js`（0KB）
+- `month.js`（1KB）
+- `seconds.js`（0KB）
+- `year.js`（0KB）
+
+## gltf/node_modules/prompts/lib/elements/（未归类）
+
+待归类：请确认用途后归档。
+
+- `autocomplete.js`（8KB）
+- `autocompleteMultiselect.js`（5KB）
+- `confirm.js`（2KB）
+- `date.js`（6KB）
+- `index.js`（0KB）
+- `multiselect.js`（7KB）
+- `number.js`（6KB）
+- `prompt.js`（2KB）
+- `select.js`（5KB）
+- `text.js`（5KB）
+- `toggle.js`（3KB）
+
+## gltf/node_modules/prompts/lib/util/（未归类）
+
+待归类：请确认用途后归档。
+
+- `action.js`（1KB）
+- `clear.js`（0KB）
+- `entriesToDisplay.js`（1KB）
+- `figures.js`（1KB）
+- `index.js`（0KB）
+- `lines.js`（0KB）
+- `strip.js`（0KB）
+- `style.js`（1KB）　— rendering user input.
+- `wrap.js`（1KB）
+
+## gltf/node_modules/property-graph/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（1KB）
+- `README.md`（5KB）　— property-graph
+- `package.json`（2KB）
+
+## gltf/node_modules/property-graph/dist/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.mts`（13KB）　— #region src/graph-edge.d.ts
+- `index.mjs`（16KB）　— #region src/event-dispatcher.ts
+
+## gltf/node_modules/property-graph/src/（未归类）
+
+待归类：请确认用途后归档。
+
+- `constants.ts`（1KB）　— TypeScript utility for nullable types.
+- `event-dispatcher.ts`（2KB）
+- `graph-edge.ts`（2KB）
+- `graph-node.ts`（13KB）　— eslint-disable @typescript-eslint/no-explicit-any
+- `graph.ts`（3KB）
+- `index.ts`（0KB）
+- `refs.ts`（3KB）
+
+## gltf/node_modules/punycode/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE-MIT.txt`（1KB）
+- `README.md`（6KB）　— Punycode.js [![punycode on npm](https://img.shields.io/npm/v/punycode)](https://www.npmj…
+- `package.json`（1KB）
+- `punycode.es6.js`（12KB）　— Highest positive signed 32-bit float value
+- `punycode.js`（12KB）　— Highest positive signed 32-bit float value
+
+## gltf/node_modules/readable-stream/（未归类）
+
+待归类：请确认用途后归档。
+
+- `CONTRIBUTING.md`（1KB）　— Developer's Certificate of Origin 1.1
+- `GOVERNANCE.md`（5KB）　— ## Streams Working Group
+- `LICENSE`（2KB）
+- `README.md`（5KB）　— readable-stream
+- `errors-browser.js`（4KB）
+- `errors.js`（4KB）
+- `experimentalWarning.js`（0KB）
+- `package.json`（2KB）
+- `readable-browser.js`（0KB）
+- `readable.js`（1KB）
+
+## gltf/node_modules/readable-stream/lib/（未归类）
+
+待归类：请确认用途后归档。
+
+- `_stream_duplex.js`（4KB）　— Copyright Joyent, Inc. and other Node contributors.
+- `_stream_passthrough.js`（2KB）　— Copyright Joyent, Inc. and other Node contributors.
+- `_stream_readable.js`（35KB）　— Copyright Joyent, Inc. and other Node contributors.
+- `_stream_transform.js`（8KB）　— Copyright Joyent, Inc. and other Node contributors.
+- `_stream_writable.js`（21KB）　— Copyright Joyent, Inc. and other Node contributors.
+
+## gltf/node_modules/readable-stream/lib/internal/streams/（未归类）
+
+待归类：请确认用途后归档。
+
+- `async_iterator.js`（6KB）
+- `buffer_list.js`（7KB）
+- `destroy.js`（3KB）　— undocumented cb() API, needed for core, not for public API
+- `end-of-stream.js`（3KB）　— Ported from https://github.com/mafintosh/end-of-stream with
+- `from-browser.js`（0KB）
+- `from.js`（4KB）
+- `pipeline.js`（2KB）　— Ported from https://github.com/mafintosh/pump with
+- `state.js`（1KB）
+- `stream-browser.js`（0KB）
+- `stream.js`（0KB）
+
+## gltf/node_modules/restore-cursor/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（0KB）
+- `index.js`（0KB）
+- `license`（1KB）
+- `package.json`（1KB）
+- `readme.md`（0KB）　— restore-cursor
+
+## gltf/node_modules/rfdc/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（1KB）
+- `default.js`（0KB）
+- `index.d.ts`（0KB）
+- `index.js`（6KB）
+- `index.test-d.ts`（0KB）
+- `package.json`（2KB）
+- `readme.md`（5KB）　— rfdc
+
+## gltf/node_modules/rfdc/.github/workflows/（未归类）
+
+待归类：请确认用途后归档。
+
+- `ci.yml`（0KB）
+
+## gltf/node_modules/rfdc/test/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.js`（12KB）
+
+## gltf/node_modules/safe-buffer/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（1KB）
+- `README.md`（19KB）　— safe-buffer [![travis][travis-image]][travis-url] [![npm][npm-image]][npm-url] [![downlo…
+- `index.d.ts`（9KB）
+- `index.js`（2KB）　— ! safe-buffer. MIT License. Feross Aboukhadijeh <https://feross.org/opensource>
+- `package.json`（1KB）
+
+## gltf/node_modules/safe-stable-stringify/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（1KB）
+- `index.d.ts`（1KB）
+- `index.js`（19KB）　— @ts-expect-error
+- `package.json`（2KB）
+- `readme.md`（6KB）　— safe-stable-stringify
+
+## gltf/node_modules/safe-stable-stringify/esm/（未归类）
+
+待归类：请确认用途后归档。
+
+- `package.json`（0KB）
+- `wrapper.d.ts`（0KB）
+- `wrapper.js`（0KB）
+
+## gltf/node_modules/semver/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（1KB）
+- `README.md`（25KB）
+- `index.js`（3KB）　— just pre-load all the stuff that index.js lazily exports
+- `package.json`（2KB）
+- `preload.js`（0KB）　— XXX remove in v8 or beyond
+- `range.bnf`（1KB）
+
+## gltf/node_modules/semver/bin/（未归类）
+
+待归类：请确认用途后归档。
+
+- `semver.js`（5KB）　— Standalone semver comparison program.
+
+## gltf/node_modules/semver/classes/（未归类）
+
+待归类：请确认用途后归档。
+
+- `comparator.js`（4KB）　— hoisted class for cyclic dependency
+- `index.js`（0KB）
+- `range.js`（15KB）　— hoisted class for cyclic dependency
+- `semver.js`（10KB）
+
+## gltf/node_modules/semver/functions/（未归类）
+
+待归类：请确认用途后归档。
+
+- `clean.js`（0KB）
+- `cmp.js`（1KB）
+- `coerce.js`（2KB）
+- `compare-build.js`（0KB）
+- `compare-loose.js`（0KB）
+- `compare.js`（0KB）
+- `diff.js`（1KB）
+- `eq.js`（0KB）
+- `gt.js`（0KB）
+- `gte.js`（0KB）
+- `inc.js`（0KB）
+- `lt.js`（0KB）
+- `lte.js`（0KB）
+- `major.js`（0KB）
+- `minor.js`（0KB）
+- `neq.js`（0KB）
+- `parse.js`（0KB）
+- `patch.js`（0KB）
+- `prerelease.js`（0KB）
+- `rcompare.js`（0KB）
+- `rsort.js`（0KB）
+- `satisfies.js`（0KB）
+- `sort.js`（0KB）
+- `truncate.js`（1KB）
+- `valid.js`（0KB）
+
+## gltf/node_modules/semver/internal/（未归类）
+
+待归类：请确认用途后归档。
+
+- `constants.js`（1KB）　— Note: this is the semver.org version of the spec that it implements
+- `debug.js`（0KB）
+- `identifiers.js`（1KB）
+- `lrucache.js`（1KB）
+- `parse-options.js`（0KB）　— parse out just the options we care about
+- `re.js`（8KB）
+
+## gltf/node_modules/semver/ranges/（未归类）
+
+待归类：请确认用途后归档。
+
+- `gtr.js`（0KB）　— Determine if version is greater than all the versions possible in the range.
+- `intersects.js`（0KB）
+- `ltr.js`（0KB）　— Determine if version is less than all the versions possible in the range
+- `max-satisfying.js`（1KB）
+- `min-satisfying.js`（1KB）
+- `min-version.js`（1KB）
+- `outside.js`（2KB）
+- `simplify.js`（1KB）　— given a set of versions and a range, create a "simplified" range
+- `subset.js`（7KB）　— Complex range `r1 || r2 || ...` is a subset of `R1 || R2 || ...` iff:
+- `to-comparators.js`（0KB）　— Mostly just for testing and legacy API reasons
+- `valid.js`（0KB）
+
+## gltf/node_modules/sharp/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（10KB）
+- `README.md`（3KB）　— sharp
+- `package.json`（8KB）
+
+## gltf/node_modules/sharp/dist/（未归类）
+
+待归类：请确认用途后归档。
+
+- `channel.cjs`（5KB）
+- `channel.mjs`（5KB）
+- `colour.cjs`（5KB）
+- `colour.mjs`（5KB）
+- `composite.cjs`（9KB）
+- `composite.mjs`（9KB）
+- `constructor.cjs`（20KB）
+- `constructor.mjs`（20KB）
+- `index.cjs`（1KB）
+- `index.d.cts`（91KB）　— SPDX-License-Identifier: MIT
+- `index.d.mts`（86KB）　— SPDX-License-Identifier: MIT
+- `index.mjs`（1KB）
+- `input.cjs`（33KB）
+- `input.mjs`（33KB）
+- `is.cjs`（3KB）
+- `is.mjs`（3KB）
+- `libvips.cjs`（6KB）
+- `libvips.mjs`（6KB）
+- `operation.cjs`（32KB）
+- `operation.mjs`（32KB）
+- `output.cjs`（64KB）
+- `output.mjs`（64KB）
+- `resize.cjs`（22KB）
+- `resize.mjs`（22KB）
+- `sharp.cjs`（6KB）
+- `sharp.mjs`（6KB）
+- `utility.cjs`（10KB）
+- `utility.mjs`（10KB）
+
+## gltf/node_modules/sharp/install/（未归类）
+
+待归类：请确认用途后归档。
+
+- `build.js`（1KB）
+
+## gltf/node_modules/sharp/lib/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（91KB）　— SPDX-License-Identifier: MIT
+
+## gltf/node_modules/sharp/src/（未归类）
+
+待归类：请确认用途后归档。
+
+- `binding.gyp`（11KB）　— Copyright 2013 Lovell Fuller and others.
+- `common.cc`（41KB）
+- `common.h`（11KB）
+- `metadata.cc`（15KB）
+- `metadata.h`（2KB）
+- `operations.cc`（17KB）
+- `operations.h`（4KB）
+- `pipeline.cc`（90KB）
+- `pipeline.h`（10KB）
+- `sharp.cc`（1KB）
+- `stats.cc`（7KB）
+- `stats.h`（1KB）
+- `utilities.cc`（9KB）
+- `utilities.h`（1KB）
+
+## gltf/node_modules/shebang-command/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.js`（0KB）
+- `license`（1KB）
+- `package.json`（1KB）
+- `readme.md`（0KB）　— shebang-command [![Build Status](https://travis-ci.org/kevva/shebang-command.svg?branch=…
+
+## gltf/node_modules/shebang-regex/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（0KB）
+- `index.js`（0KB）
+- `license`（1KB）
+- `package.json`（1KB）
+- `readme.md`（1KB）　— shebang-regex [![Build Status](https://travis-ci.org/sindresorhus/shebang-regex.svg?bran…
+
+## gltf/node_modules/signal-exit/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE.txt`（1KB）
+- `README.md`（2KB）　— signal-exit
+- `package.json`（3KB）
+
+## gltf/node_modules/signal-exit/dist/cjs/（未归类）
+
+待归类：请确认用途后归档。
+
+- `browser.d.ts`（0KB）
+- `browser.d.ts.map`（0KB）
+- `browser.js`（0KB）
+- `browser.js.map`（1KB）
+- `index.d.ts`（2KB）　— <reference types="node" />
+- `index.d.ts.map`（0KB）
+- `index.js`（9KB）
+- `index.js.map`（17KB）
+- `package.json`（0KB）
+- `signals.d.ts`（1KB）　— <reference types="node" />
+- `signals.d.ts.map`（0KB）
+- `signals.js`（2KB）
+- `signals.js.map`（2KB）
+
+## gltf/node_modules/signal-exit/dist/mjs/（未归类）
+
+待归类：请确认用途后归档。
+
+- `browser.d.ts`（0KB）
+- `browser.d.ts.map`（0KB）
+- `browser.js`（0KB）
+- `browser.js.map`（1KB）
+- `index.d.ts`（2KB）　— <reference types="node" />
+- `index.d.ts.map`（0KB）
+- `index.js`（9KB）　— Note: since nyc uses this module to output coverage, any lines
+- `index.js.map`（17KB）
+- `package.json`（0KB）
+- `signals.d.ts`（1KB）　— <reference types="node" />
+- `signals.d.ts.map`（0KB）
+- `signals.js`（1KB）
+- `signals.js.map`（2KB）
+
+## gltf/node_modules/sisteransi/（未归类）
+
+待归类：请确认用途后归档。
+
+- `license`（1KB）
+- `package.json`（1KB）
+- `readme.md`（3KB）　— sister ANSI [![Version](https://img.shields.io/npm/v/sisteransi.svg)](https://www.npmjs.…
+
+## gltf/node_modules/sisteransi/src/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.js`（1KB）
+- `sisteransi.d.ts`（1KB）
+
+## gltf/node_modules/slice-ansi/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.js`（3KB）
+- `license`（1KB）
+- `package.json`（1KB）
+- `readme.md`（2KB）　— slice-ansi [![XO: Linted](https://img.shields.io/badge/xo-linted-blue.svg)](https://gith…
+
+## gltf/node_modules/slice-ansi/node_modules/ansi-styles/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（5KB）
+- `index.js`（5KB）
+- `license`（1KB）
+- `package.json`（1KB）
+- `readme.md`（5KB）　— ansi-styles
+
+## gltf/node_modules/stack-trace/（未归类）
+
+待归类：请确认用途后归档。
+
+- `.npmignore`（0KB）
+- `License`（1KB）
+- `Makefile`（0KB）
+- `Readme.md`（4KB）　— stack-trace
+- `package.json`（1KB）
+
+## gltf/node_modules/stack-trace/lib/（未归类）
+
+待归类：请确认用途后归档。
+
+- `stack-trace.js`（3KB）
+
+## gltf/node_modules/string-width/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（1KB）
+- `index.js`（1KB）
+- `license`（1KB）
+- `package.json`（1KB）
+- `readme.md`（1KB）　— string-width
+
+## gltf/node_modules/string-width-cjs/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（1KB）
+- `index.js`（1KB）
+- `license`（1KB）
+- `package.json`（1KB）
+- `readme.md`（1KB）　— string-width
+
+## gltf/node_modules/string-width-cjs/node_modules/ansi-regex/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（1KB）
+- `index.js`（0KB）
+- `license`（1KB）
+- `package.json`（1KB）
+- `readme.md`（3KB）　— ansi-regex
+
+## gltf/node_modules/string-width-cjs/node_modules/is-fullwidth-code-point/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（1KB）
+- `index.js`（2KB）　— eslint-disable yoda
+- `license`（1KB）
+- `package.json`（1KB）
+- `readme.md`（1KB）　— is-fullwidth-code-point [![Build Status](https://travis-ci.org/sindresorhus/is-fullwidth…
+
+## gltf/node_modules/string-width-cjs/node_modules/strip-ansi/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（0KB）
+- `index.js`（0KB）
+- `license`（1KB）
+- `package.json`（1KB）
+- `readme.md`（2KB）　— strip-ansi [![Build Status](https://travis-ci.org/chalk/strip-ansi.svg?branch=master)](h…
+
+## gltf/node_modules/string-width/node_modules/ansi-regex/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（1KB）
+- `index.js`（0KB）
+- `license`（1KB）
+- `package.json`（1KB）
+- `readme.md`（3KB）　— ansi-regex
+
+## gltf/node_modules/string-width/node_modules/is-fullwidth-code-point/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（1KB）
+- `index.js`（2KB）　— eslint-disable yoda
+- `license`（1KB）
+- `package.json`（1KB）
+- `readme.md`（1KB）　— is-fullwidth-code-point [![Build Status](https://travis-ci.org/sindresorhus/is-fullwidth…
+
+## gltf/node_modules/string-width/node_modules/strip-ansi/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（0KB）
+- `index.js`（0KB）
+- `license`（1KB）
+- `package.json`（1KB）
+- `readme.md`（2KB）　— strip-ansi [![Build Status](https://travis-ci.org/chalk/strip-ansi.svg?branch=master)](h…
+
+## gltf/node_modules/string_decoder/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（2KB）
+- `README.md`（2KB）　— string_decoder
+- `package.json`（1KB）
+
+## gltf/node_modules/string_decoder/lib/（未归类）
+
+待归类：请确认用途后归档。
+
+- `string_decoder.js`（9KB）　— Copyright Joyent, Inc. and other Node contributors.
+
+## gltf/node_modules/strip-ansi/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（0KB）
+- `index.js`（1KB）
+- `license`（1KB）
+- `package.json`（1KB）
+- `readme.md`（1KB）　— strip-ansi
+
+## gltf/node_modules/strip-ansi-cjs/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（0KB）
+- `index.js`（0KB）
+- `license`（1KB）
+- `package.json`（1KB）
+- `readme.md`（2KB）　— strip-ansi [![Build Status](https://travis-ci.org/chalk/strip-ansi.svg?branch=master)](h…
+
+## gltf/node_modules/strip-ansi-cjs/node_modules/ansi-regex/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（1KB）
+- `index.js`（0KB）
+- `license`（1KB）
+- `package.json`（1KB）
+- `readme.md`（3KB）　— ansi-regex
+
+## gltf/node_modules/supports-color/（未归类）
+
+待归类：请确认用途后归档。
+
+- `browser.js`（0KB）
+- `index.js`（3KB）
+- `license`（1KB）
+- `package.json`（1KB）
+- `readme.md`（2KB）　— supports-color [![Build Status](https://travis-ci.org/chalk/supports-color.svg?branch=ma…
+
+## gltf/node_modules/table/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（1KB）
+- `README.md`（18KB）
+- `package.json`（2KB）
+
+## gltf/node_modules/table/dist/（未归类）
+
+待归类：请确认用途后归档。
+
+- `alignString.js`（3KB）
+- `alignString.js.flow`（2KB）
+- `alignString.js.map`（4KB）
+- `alignTableData.js`（1KB）
+- `alignTableData.js.flow`（0KB）
+- `alignTableData.js.map`（1KB）
+- `calculateCellHeight.js`（1KB）
+- `calculateCellHeight.js.flow`（1KB）
+- `calculateCellHeight.js.map`（1KB）
+- `calculateCellWidthIndex.js`（1KB）
+- `calculateCellWidthIndex.js.flow`（0KB）
+- `calculateCellWidthIndex.js.map`（1KB）
+- `calculateMaximumColumnWidthIndex.js`（1KB）
+- `calculateMaximumColumnWidthIndex.js.flow`（1KB）
+- `calculateMaximumColumnWidthIndex.js.map`（1KB）
+- `calculateRowHeightIndex.js`（1KB）
+- `calculateRowHeightIndex.js.flow`（1KB）
+- `calculateRowHeightIndex.js.map`（2KB）
+- `createStream.js`（4KB）
+- `createStream.js.flow`（3KB）
+- `createStream.js.map`（6KB）
+- `drawBorder.js`（2KB）
+- `drawBorder.js.flow`（2KB）
+- `drawBorder.js.map`（4KB）
+- `drawRow.js`（1KB）
+- `drawRow.js.flow`（0KB）
+- `drawRow.js.map`（1KB）
+- `drawTable.js`（1KB）
+- `drawTable.js.flow`（1KB）
+- `drawTable.js.map`（2KB）
+- `getBorderCharacters.js`（2KB）
+- `getBorderCharacters.js.flow`（2KB）　— eslint-disable sort-keys
+- `getBorderCharacters.js.map`（5KB）
+- `index.js`（1KB）
+- `index.js.flow`（0KB）
+- `index.js.map`（0KB）
+- `makeConfig.js`（3KB）
+- `makeConfig.js.flow`（2KB）
+- `makeConfig.js.map`（4KB）
+- `makeStreamConfig.js`（3KB）
+- `makeStreamConfig.js.flow`（2KB）
+- `makeStreamConfig.js.map`（4KB）
+- `mapDataUsingRowHeightIndex.js`（1KB）
+- `mapDataUsingRowHeightIndex.js.flow`（1KB）
+- `mapDataUsingRowHeightIndex.js.map`（2KB）
+- `padTableData.js`（1KB）
+- `padTableData.js.flow`（0KB）
+- `padTableData.js.map`（1KB）
+- `stringifyTableData.js`（0KB）
+- `stringifyTableData.js.flow`（0KB）
+- `stringifyTableData.js.map`（1KB）
+- `table.js`（4KB）
+- `table.js.flow`（3KB）
+- `table.js.map`（4KB）
+- `truncateTableData.js`（1KB）
+- `truncateTableData.js.flow`（0KB）
+- `truncateTableData.js.map`（1KB）
+- `validateConfig.js`（24KB）
+- `validateConfig.js.flow`（1KB）　— eslint-disable-next-line import/default
+- `validateConfig.js.map`（2KB）
+- `validateStreamConfig.js`（23KB）
+- `validateTableData.js`（2KB）
+- `validateTableData.js.flow`（1KB）
+- `validateTableData.js.map`（2KB）
+- `wrapCell.js`（1KB）
+- `wrapCell.js.flow`（1KB）
+- `wrapCell.js.map`（2KB）
+- `wrapString.js`（1KB）
+- `wrapString.js.flow`（1KB）
+- `wrapString.js.map`（1KB）
+- `wrapWord.js`（1KB）
+- `wrapWord.js.flow`（1KB）
+- `wrapWord.js.map`（2KB）
+
+## gltf/node_modules/table/dist/schemas/（未归类）
+
+待归类：请确认用途后归档。
+
+- `config.json`（3KB）
+- `streamConfig.json`（3KB）
+
+## gltf/node_modules/table/node_modules/ansi-regex/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.js`（0KB）
+- `license`（1KB）
+- `package.json`（1KB）
+- `readme.md`（3KB）　— ansi-regex [![Build Status](https://travis-ci.org/chalk/ansi-regex.svg?branch=master)](h…
+
+## gltf/node_modules/table/node_modules/ansi-styles/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.js`（3KB）
+- `license`（1KB）
+- `package.json`（1KB）
+- `readme.md`（4KB）　— ansi-styles [![Build Status](https://travis-ci.org/chalk/ansi-styles.svg?branch=master)]…
+
+## gltf/node_modules/table/node_modules/color-convert/（未归类）
+
+待归类：请确认用途后归档。
+
+- `CHANGELOG.md`（1KB）　— 1.0.0 - 2016-01-07
+- `LICENSE`（1KB）
+- `README.md`（3KB）　— color-convert
+- `conversions.js`（16KB）　— MIT license
+- `index.js`（2KB）
+- `package.json`（1KB）
+- `route.js`（2KB）
+
+## gltf/node_modules/table/node_modules/color-name/（未归类）
+
+待归类：请确认用途后归档。
+
+- `.eslintrc.json`（1KB）
+- `.npmignore`（1KB）　— this will affect all the git repos
+- `LICENSE`（1KB）
+- `README.md`（0KB）
+- `index.js`（5KB）
+- `package.json`（1KB）
+- `test.js`（0KB）
+
+## gltf/node_modules/table/node_modules/emoji-regex/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE-MIT.txt`（1KB）
+- `README.md`（3KB）　— emoji-regex [![Build status](https://travis-ci.org/mathiasbynens/emoji-regex.svg?branch=…
+- `index.d.ts`（0KB）
+- `index.js`（7KB）
+- `package.json`（1KB）
+- `text.js`（7KB）
+
+## gltf/node_modules/table/node_modules/emoji-regex/es2015/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.js`（8KB）
+- `text.js`（8KB）
+
+## gltf/node_modules/table/node_modules/is-fullwidth-code-point/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.js`（1KB）　— eslint-disable yoda
+- `license`（1KB）
+- `package.json`（1KB）
+- `readme.md`（1KB）　— is-fullwidth-code-point [![Build Status](https://travis-ci.org/sindresorhus/is-fullwidth…
+
+## gltf/node_modules/table/node_modules/slice-ansi/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.js`（1KB）
+- `license`（1KB）
+- `package.json`（1KB）
+- `readme.md`（1KB）　— slice-ansi [![Build Status](https://travis-ci.org/chalk/slice-ansi.svg?branch=master)](h…
+
+## gltf/node_modules/table/node_modules/string-width/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.js`（1KB）
+- `license`（1KB）
+- `package.json`（1KB）
+- `readme.md`（1KB）　— string-width [![Build Status](https://travis-ci.org/sindresorhus/string-width.svg?branch…
+
+## gltf/node_modules/table/node_modules/strip-ansi/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（0KB）
+- `index.js`（0KB）
+- `license`（1KB）
+- `package.json`（1KB）
+- `readme.md`（2KB）　— strip-ansi [![Build Status](https://travis-ci.org/chalk/strip-ansi.svg?branch=master)](h…
+
+## gltf/node_modules/text-hex/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（1KB）
+- `README.md`（0KB）　— text-hex
+- `index.js`（0KB）
+- `package.json`（1KB）
+- `test.js`（0KB）
+
+## gltf/node_modules/tmp/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（1KB）
+- `README.md`（12KB）
+- `package.json`（1KB）
+
+## gltf/node_modules/tmp/lib/（未归类）
+
+待归类：请确认用途后归档。
+
+- `tmp.js`（25KB）
+
+## gltf/node_modules/to-regex-range/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（1KB）
+- `README.md`（13KB）　— to-regex-range [![Donate](https://img.shields.io/badge/Donate-PayPal-green.svg)](https:/…
+- `index.js`（6KB）
+- `package.json`（2KB）
+
+## gltf/node_modules/triple-beam/（未归类）
+
+待归类：请确认用途后归档。
+
+- `CHANGELOG.md`（0KB）　— CHANGELOG
+- `LICENSE`（1KB）
+- `README.md`（1KB）　— triple-beam
+- `index.js`（1KB）
+- `package.json`（1KB）
+
+## gltf/node_modules/triple-beam/.nyc_output/（未归类）
+
+待归类：请确认用途后归档。
+
+- `c579bf8f-6820-47a5-b2da-a11267eb8435.json`（3KB）
+
+## gltf/node_modules/triple-beam/.nyc_output/processinfo/（未归类）
+
+待归类：请确认用途后归档。
+
+- `c579bf8f-6820-47a5-b2da-a11267eb8435.json`（1KB）
+- `index.json`（1KB）
+
+## gltf/node_modules/triple-beam/config/（未归类）
+
+待归类：请确认用途后归档。
+
+- `cli.js`（1KB）
+- `index.js`（1KB）
+- `npm.js`（1KB）
+- `syslog.js`（1KB）
+
+## gltf/node_modules/tslib/（未归类）
+
+待归类：请确认用途后归档。
+
+- `CopyrightNotice.txt`（1KB）
+- `LICENSE.txt`（1KB）
+- `README.md`（4KB）　— tslib
+- `SECURITY.md`（3KB）
+- `package.json`（1KB）
+- `tslib.d.ts`（18KB）
+- `tslib.es6.html`（0KB）
+- `tslib.es6.js`（19KB）
+- `tslib.es6.mjs`（17KB）
+- `tslib.html`（0KB）
+- `tslib.js`（23KB）
+
+## gltf/node_modules/tslib/modules/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（1KB）　— Note: named reexports are used instead of `export *` because
+- `index.js`（1KB）
+- `package.json`（0KB）
+
+## gltf/node_modules/uniq/（未归类）
+
+待归类：请确认用途后归档。
+
+- `.npmignore`（0KB）
+- `LICENSE`（1KB）
+- `README.md`（1KB）
+- `package.json`（1KB）
+- `uniq.js`（1KB）
+
+## gltf/node_modules/uniq/test/（未归类）
+
+待归类：请确认用途后归档。
+
+- `test.js`（0KB）
+
+## gltf/node_modules/uri-js/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（1KB）
+- `README.md`（6KB）　— URI.js
+- `package.json`（2KB）
+- `yarn.lock`（102KB）　— THIS IS AN AUTOGENERATED FILE. DO NOT EDIT THIS FILE DIRECTLY.
+
+## gltf/node_modules/uri-js/dist/es5/（未归类）
+
+待归类：请确认用途后归档。
+
+- `uri.all.d.ts`（2KB）
+- `uri.all.js`（56KB）　— @license URI.js v4.4.1 (c) 2011 Gary Court. License: http://github.com/garycourt/uri-js
+- `uri.all.js.map`（100KB）
+- `uri.all.min.d.ts`（2KB）
+- `uri.all.min.js`（17KB）　— @license URI.js v4.4.1 (c) 2011 Gary Court. License: http://github.com/garycourt/uri-js
+- `uri.all.min.js.map`（81KB）
+
+## gltf/node_modules/uri-js/dist/esnext/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（0KB）
+- `index.js`（1KB）
+- `index.js.map`（1KB）
+- `regexps-iri.d.ts`（0KB）
+- `regexps-iri.js`（0KB）
+- `regexps-iri.js.map`（0KB）
+- `regexps-uri.d.ts`（0KB）
+- `regexps-uri.js`（8KB）
+- `regexps-uri.js.map`（8KB）
+- `uri.d.ts`（2KB）
+- `uri.js`（20KB）
+- `uri.js.map`（19KB）
+- `util.d.ts`（0KB）
+- `util.js`（1KB）
+- `util.js.map`（2KB）
+
+## gltf/node_modules/uri-js/dist/esnext/schemes/（未归类）
+
+待归类：请确认用途后归档。
+
+- `http.d.ts`（0KB）
+- `http.js`（1KB）
+- `http.js.map`（1KB）
+- `https.d.ts`（0KB）
+- `https.js`（0KB）
+- `https.js.map`（0KB）
+- `mailto.d.ts`（0KB）
+- `mailto.js`（8KB）　— RFC 3986
+- `mailto.js.map`（7KB）
+- `urn-uuid.d.ts`（0KB）
+- `urn-uuid.js`（1KB）　— RFC 4122
+- `urn-uuid.js.map`（1KB）
+- `urn.d.ts`（0KB）
+- `urn.js`（2KB）　— RFC 2141
+- `urn.js.map`（2KB）
+- `ws.d.ts`（0KB）
+- `ws.js`（2KB）
+- `ws.js.map`（2KB）
+- `wss.d.ts`（0KB）
+- `wss.js`（0KB）
+- `wss.js.map`（0KB）
+
+## gltf/node_modules/util-deprecate/（未归类）
+
+待归类：请确认用途后归档。
+
+- `History.md`（0KB）
+- `LICENSE`（1KB）
+- `README.md`（2KB）
+- `browser.js`（2KB）
+- `node.js`（0KB）
+- `package.json`（1KB）
+
+## gltf/node_modules/watlas/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（1KB）
+- `README.md`（5KB）　— # watlas
+- `package.json`（0KB）
+
+## gltf/node_modules/watlas/dist/（未归类）
+
+待归类：请确认用途后归档。
+
+- `watlas.d.ts`（4KB）　— Copyright (c) 2025 Brandon Jones
+- `watlas.js`（88KB）
+- `watlas.wasm`（220KB）
+
+## gltf/node_modules/which/（未归类）
+
+待归类：请确认用途后归档。
+
+- `CHANGELOG.md`（3KB）　— Changes
+- `LICENSE`（1KB）
+- `README.md`（1KB）　— which
+- `package.json`（1KB）
+- `which.js`（3KB）
+
+## gltf/node_modules/which/bin/（未归类）
+
+待归类：请确认用途后归档。
+
+- `node-which`（1KB）
+
+## gltf/node_modules/winston/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE`（1KB）
+- `README.md`（34KB）　— winston
+- `index.d.ts`（6KB）　— Type definitions for winston 3.0
+- `package.json`（2KB）
+
+## gltf/node_modules/winston-transport/（未归类）
+
+待归类：请确认用途后归档。
+
+- `.babelrc`（0KB）
+- `.eslintrc`（0KB）
+- `.gitattributes`（0KB）
+- `CHANGELOG.md`（4KB）　— CHANGELOG
+- `LICENSE`（1KB）
+- `README.md`（1KB）　— winston-transport
+- `index.d.ts`（1KB）　— Type definitions for winston-transport 3.0
+- `index.js`（0KB）　— Expose modern transport directly as the export
+- `legacy.js`（4KB）
+- `modern.js`（7KB）
+- `package.json`（1KB）
+
+## gltf/node_modules/winston-transport/.nyc_output/（未归类）
+
+待归类：请确认用途后归档。
+
+- `68e78020-c804-4f37-a68a-a967c6380da9.json`（22KB）
+
+## gltf/node_modules/winston-transport/.nyc_output/processinfo/（未归类）
+
+待归类：请确认用途后归档。
+
+- `68e78020-c804-4f37-a68a-a967c6380da9.json`（1KB）
+- `index.json`（0KB）
+
+## gltf/node_modules/winston-transport/dist/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.js`（0KB）　— Expose modern transport directly as the export
+- `legacy.js`（4KB）
+- `modern.js`（7KB）
+
+## gltf/node_modules/winston/dist/（未归类）
+
+待归类：请确认用途后归档。
+
+- `winston.js`（4KB）
+
+## gltf/node_modules/winston/dist/winston/（未归类）
+
+待归类：请确认用途后归档。
+
+- `common.js`（1KB）
+- `container.js`（6KB）
+- `create-logger.js`（7KB）
+- `exception-handler.js`（9KB）
+- `exception-stream.js`（5KB）
+- `logger.js`（26KB）
+- `profiler.js`（3KB）
+- `rejection-handler.js`（9KB）
+- `tail-file.js`（3KB）
+
+## gltf/node_modules/winston/dist/winston/config/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.js`（1KB）
+
+## gltf/node_modules/winston/dist/winston/transports/（未归类）
+
+待归类：请确认用途后归档。
+
+- `console.js`（8KB）　— eslint-disable no-console
+- `file.js`（27KB）　— eslint-disable complexity,max-statements
+- `http.js`（13KB）
+- `index.js`（1KB）
+- `stream.js`（6KB）
+
+## gltf/node_modules/winston/lib/（未归类）
+
+待归类：请确认用途后归档。
+
+- `winston.js`（4KB）
+
+## gltf/node_modules/winston/lib/winston/（未归类）
+
+待归类：请确认用途后归档。
+
+- `common.js`（1KB）
+- `container.js`（3KB）
+- `create-logger.js`（3KB）
+- `exception-handler.js`（7KB）
+- `exception-stream.js`（1KB）
+- `logger.js`（19KB）
+- `profiler.js`（1KB）
+- `rejection-handler.js`（7KB）
+- `tail-file.js`（3KB）
+
+## gltf/node_modules/winston/lib/winston/config/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（2KB）　— Type definitions for winston 3.0
+- `index.js`（1KB）
+
+## gltf/node_modules/winston/lib/winston/transports/（未归类）
+
+待归类：请确认用途后归档。
+
+- `console.js`（3KB）　— eslint-disable no-console
+- `file.js`（20KB）　— eslint-disable complexity,max-statements
+- `http.js`（7KB）
+- `index.d.ts`（3KB）　— Type definitions for winston 3.0
+- `index.js`（1KB）
+- `stream.js`（2KB）
+
+## gltf/node_modules/wrap-ansi/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（1KB）
+- `index.js`（6KB）
+- `license`（1KB）
+- `package.json`（1KB）
+- `readme.md`（2KB）　— wrap-ansi
+
+## gltf/node_modules/wrap-ansi-cjs/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.js`（6KB）
+- `license`（1KB）
+- `package.json`（1KB）
+- `readme.md`（3KB）　— wrap-ansi [![Build Status](https://travis-ci.com/chalk/wrap-ansi.svg?branch=master)](htt…
+
+## gltf/node_modules/wrap-ansi-cjs/node_modules/ansi-regex/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（1KB）
+- `index.js`（0KB）
+- `license`（1KB）
+- `package.json`（1KB）
+- `readme.md`（3KB）　— ansi-regex
+
+## gltf/node_modules/wrap-ansi-cjs/node_modules/strip-ansi/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（0KB）
+- `index.js`（0KB）
+- `license`（1KB）
+- `package.json`（1KB）
+- `readme.md`（2KB）　— strip-ansi [![Build Status](https://travis-ci.org/chalk/strip-ansi.svg?branch=master)](h…
+
+## gltf/node_modules/wrap-ansi/node_modules/ansi-styles/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（5KB）
+- `index.js`（5KB）
+- `license`（1KB）
+- `package.json`（1KB）
+- `readme.md`（5KB）　— ansi-styles
+
+## gltf/node_modules/wrap-ansi/node_modules/emoji-regex/（未归类）
+
+待归类：请确认用途后归档。
+
+- `LICENSE-MIT.txt`（1KB）
+- `README.md`（4KB）　— emoji-regex [![Build status](https://travis-ci.org/mathiasbynens/emoji-regex.svg?branch=…
+- `RGI_Emoji.d.ts`（0KB）
+- `RGI_Emoji.js`（13KB）
+- `index.d.ts`（0KB）
+- `index.js`（15KB）
+- `package.json`（1KB）
+- `text.d.ts`（0KB）
+- `text.js`（14KB）
+
+## gltf/node_modules/wrap-ansi/node_modules/emoji-regex/es2015/（未归类）
+
+待归类：请确认用途后归档。
+
+- `RGI_Emoji.d.ts`（0KB）
+- `RGI_Emoji.js`（14KB）
+- `index.d.ts`（0KB）
+- `index.js`（17KB）
+- `text.d.ts`（0KB）
+- `text.js`（15KB）
+
+## gltf/node_modules/wrap-ansi/node_modules/string-width/（未归类）
+
+待归类：请确认用途后归档。
+
+- `index.d.ts`（1KB）
+- `index.js`（1KB）
+- `license`（1KB）
+- `package.json`（1KB）
+- `readme.md`（2KB）　— string-width
+
+## map/（项目索引（指哪打哪））
+
+**动手前的第一站**：`gen_index.js` 扫源码生成 `js/modules.json`（唯一权威模块清单）与 `.workbuddy/index/project-index.json`（符号/断言/资产/标定表）；`who.js <关键词>` 反查"改哪里、波及什么、跑哪条验证"。铁律：索引必须被构建与审计消费，过期由 smoke §591 报红。
+
+- `gen_index.js`（26KB）　— 小工具 ----------------
+- `who.js`（15KB）
 
 ## mem/（记忆维护）
 
@@ -264,12 +7004,19 @@ MEMORY.md 必须 < 9600 字符（超出会被会话注入截断，尾部规则�
 
 **事实上的变更日志**：按断言名 `grep -rl "<断言名>" tools/patch/` 就能找到当初是哪次改的。"同一条消息里对同一文件的多次 Edit 会互相覆盖"，所以补丁一律脚本化并留档。
 
+- `add_smoke_589.js`（3KB）　— 一次性补丁：在 §588 之后插入 §589（海面波形"必须非周期"的源码级守卫）。
+- `add_smoke_590.js`（6KB）　— v156.23：新增门禁 §590「占领首府 → 该州辖地全境在望」
+- `add_smoke_590b.js`（4KB）　— v156.23：§590 追加两条 —— ⑥真实占领链路 ⑦挂钩在册（源码级）
+- `add_smoke_590c.js`（1KB）　— v156.24c：§590 追加一条 —— 已占行政城不再画成紫色敌方城（源码级防回归）
+- `add_smoke_591.py`（6KB）　— 在 smoke 里插入 §591：项目索引（单一清单）的 5 条断言。
 - `apply_abandon.py`（14KB）　— v67 补丁 B：放弃城池（唯一入口 + 城池关联数据登记表 + 界面入口）。
 - `apply_cols.py`（6KB）　— v67 补丁 A：侧栏「资源 / 驻军」两列数字各自成列、拉开间距。
+- `build_bundle.py`（10KB）　— v91.61 地基第 1 期 —— bundle 构建器（确定性 · 离线可用 · 不依赖 esbuild）。
 - `bump_version.py`（6KB）　— 发版脚本（v90.94 治理版）：一次同步三处版本标识里的「代码侧两处」。
 - `check_v89226_confirm.py`（2KB）　— v89.226 复核：素材层三证复跑（apply 完整性 + 切分确定性）。
 - `check_v89226_themes.py`（4KB）　— v89.226 复核：地块染色 4 主题 × 8 族 全量逐字节复验。
 - `check_v9094_cachebust_compare.py`（1KB）　— 对照实验：证明旧 cachebust.js 的正则前缀约束 (js|story)/ 会漏掉 vendor/three.min.js。
+- `clean_gate_dupes.py`（3KB）　— 清理 gate.py 的叠加式腐化：`_gate_timeout` 与 `run_one` 各被定义两次。
 - `clean_v9095_oneoff.py`（3KB）
 - `design_v89225_plot.py`（6KB）　— v89.225 地块色设计 · ΔE00 矩阵实测（**v1 草稿** —— 保留作迭代起点）
 - `design_v89227_plot.py`（5KB）　— v89.227 城内地块族色 v2 设计：8 族 → 4 族 + 整体降饱和（老板：「族有点多了」「太显眼，视觉负担大」）。
@@ -294,21 +7041,35 @@ MEMORY.md 必须 < 9600 字符（超出会被会话注入截断，尾部规则�
 - `fix214_archive_scope.py`（3KB）　— v89.214 收口 2：把"误还原"的产品断言回改成新名。
 - `fix216_archive_revert.py`（3KB）　— v89.216：把**读档案的断言**里被换皮词表改过的串，还原成老板原文（档案不参与换皮）。
 - `fix8940_smoke_lord.py`（3KB）　— 修正 smoke 的君主运行时断言：现场补临时君主/对照将（打完移除），保证不放空。
+- `fix_probe_cam.js`（5KB）　— ① 机位：用省府城所在格定向（省府必在陆地），而不是辖地陆地质心（该省半数是海）
+- `fix_smoke_591_fresh.py`（2KB）　— 修 §591④：把"索引新鲜度"从"跟 bundle.hash 比"改成"跟**当前源码**重算比"。
 - `fixnum_v89228.py`（1KB）　— v89.228 口径修正：docs 同步量 1260 → 1380 处（实测 711+270+83+141+23+19+17+7+18+2+9+0=1300 + C2 77 =…
 - `patchC2_core.py`（14KB）　— v90.93 批次C2：全屏剧本（荒野场景流程）整条退役。
 - `patchC2_deadcfg.py`（8KB）　— v90.93 批次C1/C2 遗留清理：
 - `patchC2_e2e.py`（10KB）　— v90.93 批次C2：e2e 剧本用例段 → 一次性结算 + 退役守卫
 - `patchC2_smokefix.py`（6KB）　— v90.93 批次C2：修 smoke 两条越界守卫
 - `patchC2_tests.py`（11KB）　— v90.93 批次C2 配套：smoke 口径同步（全屏剧本退役）。
+- `patch_adm_marker_own.js`（2KB）　— v156.24c：已被我方占据的行政中心城，不再画成紫色敌方城。
+- `patch_admin_pure.js`（3KB）　— v156.24b：把 adminCiList 的过滤逻辑抽成**纯函数** `adminCisOf(fields, level, index)`，
+- `patch_admin_reveal.js`（12KB）　— v156.24：把「首府视野」从「13 州(NPC_CITIES.state)」换到**地图真正的省/市/区
+- `patch_audit_modules.py`（2KB）　— audit.js 的两份模块清单改从 js/modules.json 读（单一来源）。
+- `patch_axis_note.js`（3KB）　— v156.25：把「转身轴」的判据写进 seatProp 与 surfaceQuad 两处，防止未来各改一半导致分叉。
 - `patch_build_gate.py`（11KB）　— v68 · 逐步探索：建造前置规则（老板 2026-09-14 需求）
 - `patch_build_gate_fix.py`（8KB）　— v68 修正：buildPrereqOf 支持"新建语义"，并适配受影响的既有测试。
 - `patch_build_gate_fix2.py`（3KB）　— v68 修正 2：govMax 作用域提升。
 - `patch_build_gate_fix3.py`（2KB）　— v68 修正 3：第 54 节测试自身的 bug —— free54 需能"避开已在用的格"。
 - `patch_build_gate_test.py`（10KB）　— v68 · 建造前置：e2e 适配 + smoke 第 54 节断言。
+- `patch_build_layout.py`（3KB）　— 让 build_bundle.py 从 js/modules.json 的 layout 读顺序与分包。
 - `patch_city_attr_slim.py`（13KB）　— v71 · 城池属性只显示城池命名（侧栏短名 + 下拉框带坐标；配套 patch_city_attr_slim2.py）
 - `patch_city_attr_slim2.py`（11KB）　— v71 续 · 城池下拉框单城也保留 + 选项显示州郡县坐标（配套 patch_city_attr_slim.py）
+- `patch_conquer_state.js`（2KB）　— v156.23：占领首府 → 该州辖地全境在望（挂到 GAME.onConquer，唯一占领出口）
 - `patch_dialog_doc.py`（7KB）　— v68 · 弹窗统一：smoke 第 56 节守卫 + docs/设计规范.md §11。
 - `patch_dialog_unify.py`（23KB）　— v68 · 弹窗统一（老板 2026-09-14：「点击建筑出来的弹窗……尽量统一」）
+- `patch_fog_state.js`（3KB）　— v156.23：在 fog.js 加 `revealState`，并让「已占首府」在 revealOwned 里幂等重刷。
+- `patch_gate_baseline.py`（7KB）　— v156.26 · 门禁「已知失败基线」——把 9 条历史红从"每次人工判断"变成"机器判断"。
+- `patch_gate_baseline_cli.py`（4KB）　— v156.26b：给 gate.py 接上 `--update-baseline`（人工显式更新基线）。
+- `patch_gate_judge_order.py`（2KB）　— v156.26d · 修 judge() 的判据顺序 bug —— 基线之所以没生效，就卡在这里。
+- `patch_gate_retry.py`（5KB）　— v156.26e · 门禁「失败复跑」——把"并发抖动"和"真回归"分开。
 - `patch_git_docs.py`（7KB）　— 补丁：把「版本库 + 自动同步」写进 docs/项目地图.md，并订正被我改旧的数字。
 - `patch_gold_v2.py`（4KB）　— v89.91 patch v2：修黄金脑「购书过度购买」bug + 补日志。
 - `patch_gov_center.py`（16KB）　— v68 · 官府居中（老板 2026-09-14）：
@@ -340,6 +7101,14 @@ MEMORY.md 必须 < 9600 字符（超出会被会话注入截断，尾部规则�
 - `patch_quest_ready_e2efix.py`（4KB）　— v69 修正（e2e）：领取按钮按 **rq57 自己的 id** 取，不取"第一个"。
 - `patch_quest_ready_fix.py`（3KB）　— v69 修正：① 第 57 节 withState 跨节不可见 → 用本地 helper
 - `patch_quest_ready_live.py`（6KB）　— v69 补缺：让「达标即置顶」是**真·自动**。
+- `patch_slice_first.js`（1KB）
+- `patch_slice_greedy.js`（3KB）　— v156.26：给 smoke_slice.js 的非连续拼装加「逐段试编」——保证生成的切片一定能跑。
+- `patch_slice_run.js`（4KB）　— v156.26c：给 smoke_slice 加两件事，让它"崩了也说清楚崩在哪"：
+- `patch_slice_tail.js`（4KB）　— v156.26b：修 smoke_slice 的收尾判定 ——
+- `patch_smoke_uiall.js`（4KB）　— v156.27c：给 smoke 一个统一入口 `__uiAll()`，把所有「读 js/ui.js 源码」收口。
+- `patch_split_hoist.js`（6KB）　— v156.27b：让 split_ui.js 自动处理「跨功能的顶层局部变量」。
+- `patch_split_safe.js`（3KB）　— 修 split_ui.js 的切点判定：**用试编译证明切点在顶层**，不再靠缩进猜。
+- `patch_state_field.js`（4KB）　— v156.23（老板「占领省市区首府，可以看到该省市区下辖地的视野」）
 - `patch_story_engine.py`（6KB）　— patch_story_engine.py —— 把「文字游戏 · 故事库引擎」挂进 js/state.js
 - `patch_story_final.py`（5KB）　— patch_story_final.py -- (a) wild entry for UNOWNED tiles, (b) e2e section 81
 - `patch_story_smoke.py`（5KB）　— patch_story_smoke.py -- add smoke section 81 (text game / story library)
@@ -347,6 +7116,8 @@ MEMORY.md 必须 < 9600 字符（超出会被会话注入截断，尾部规则�
 - `patch_story_ui.py`（9KB）　— patch_story_ui.py -- wire the text-game reader into js/ui.js
 - `patch_story_vol01.py`（2KB）　— patch_story_vol01.py —— 补足 vol-01 三处幕文字数（每幕 >= 250 判据）
 - `patch_story_wire.py`（5KB）　— patch_story_wire.py -- wire the text game into main.js / index.html / smoke-test.js
+- `patch_test_rc.py`（1KB）
+- `patch_ui_order.js`（3KB）　— v156.27：把 ui.js 拆出的 18 个文件接进**所有模块清单**。
 - `patch_v67_save.py`（23KB）　— v67 · 补一套存档系统（老板：「补一个存档，看什么存档设计合适」）。
 - `patch_v67_save2.py`（9KB）　— v67 · 存档系统 补丁 2/2：对话框 · 导出导入 · 首页入口 · 样式。
 - `patch_v67_save3.py`（19KB）　— v67 · 存档系统 补丁 3/3：修 audit 死函数 · 更新受影响的断言 · 补新护栏。
@@ -1281,6 +8052,11 @@ MEMORY.md 必须 < 9600 字符（超出会被会话注入截断，尾部规则�
 - `patch_v9094_verreg.py`（1KB）　— v90.94：把「版本与档案在册」一组守卫里的版本正则由 v89\\.\\d+ 放宽为 v\\d+\\.\\d+。
 - `patch_v9094_wuguan.py`（2KB）
 - `patch_v9095_prestige_rename.py`（7KB）
+- `patch_v9096_sphere_factory.py`（2KB）　— v90.96：把 sphere.js 从**单例**改成**可多实例工厂 makeSphere()**。
+- `patch_v9126_rename.py`（1KB）　— v91.26 旧词改名（A+B 组）：城池→城市 等。产品代码 + 测试同映射同改（不碰 docs/需求档案）。保 LF。
+- `patch_v9129_bldg_rename.py`（1KB）　— v91.29 建筑改名（显示名）：补给站→传送站 · 车库→载具研究所 · 货仓→战储仓 ·
+- `patch_water_fs.js`（5KB）　— 海面第二刀：细浪从"顶点位移"改到"像素级法线扰动"。
+- `patch_water_vs.js`（4KB）　— 一次性补丁：把海面顶点着色器的"5 条正弦"换成"值噪声 fbm + 噪声域扭曲"。
 - `precheck_v89223.py`（6KB）　— v89.223 锚点预检：所有补丁锚点逐条计数 + repr（逐字节）。
 - `probe_v89223a_ab.py`（6KB）　— v89.223 探针 A：兵牌简称（ab）现状 + 产品侧旧词粗扫 + 工具目录计数。
 - `probe_v89223b_ctx.py`（5KB）　— v89.223 探针 B：上下文取证 + 产品广扫 + 工具目录分类 + 版本线索。
@@ -1330,6 +8106,7 @@ MEMORY.md 必须 < 9600 字符（超出会被会话注入截断，尾部规则�
 - `probe_v89229d_refs.py`（1KB）　— v89.229 探针 D：18 兵种 id 的引用面（迁移风险评估）
 - `probe_v89229e_ui.py`（2KB）　— v89.229 探针 E：募兵 UI + 兵种标记消费面 + 资源/建筑
 - `probe_v89229f_trainfilter.py`（3KB）　— v89.229 探针 F：_trainFilter/_trainTab 消费面 + canTrain/解锁链 + newGame 初始兵
+- `rewrite_smoke_590.js`（7KB）　— v156.24：重写 §590 —— 口径从「13 州(state)」换成「地图省/市/区(_settle)」
 - `samples_v89223.py`（3KB）　— v89.223 改前/改后对照样本 v2（换位链与守卫段引用已校正）。
 - `scan_v89222_full.py`（2KB）　— v89.222 · 细扫：全量命中行原文 + 概念词/单字弓的现行口径
 - `scan_v89222_sweep.py`（3KB）　— v89.222 · 全面反扫 v2：只做文本解析（不 import 补丁脚本！）
@@ -1338,6 +8115,7 @@ MEMORY.md 必须 < 9600 字符（超出会被会话注入截断，尾部规则�
 - `scan_v89223_e2.py`（1KB）　— v89.223 E2 预扫：playtest 目录旧词明细（为显示词同步定范围）。
 - `scan_v89223_verify.py`（3KB）　— v89.223 终态残留验证：产品侧（js/+index.html）旧词分布 = 预期保留面？
 - `scan_v89228_docs.py`（4KB）　— v89.228 批次三：docs 全量映射命中扫描（只读，不改任何文件）。
+- `split_ui.js`（10KB）　— ui.js 拆分 —— **纯搬运**：所有 `ui.xxx` 定义及其先后顺序一字不改，只是换文件。
 - `tune_v89227_plot.py`（4KB）　— v89.227 色值调优：多候选批量评估。
 - `v26-j.py`（14KB）　— v26 批九：smoke 第 39 节 —— v26 五项需求的防回退断言
 - `v89116_sec96.js`（21KB）
@@ -1520,16 +8298,34 @@ jsdom 没有布局引擎 → 尺寸/重叠/溢出/折行只能在**真浏览器*
 - `probe67_save_ui.js`（3KB）
 - `probe67_tbl.js`（3KB）
 
+## prof/（未归类）
+
+待归类：请确认用途后归档。
+
+- `analyze_ui.js`（5KB）　— ui.js 结构分析：为拆分定边界（只读，不改文件）
+- `audit_arch.js`（5KB）　— 架构体检：一次性量化「清爽度」的五个维度，输出可核对的数据。
+- `find_shared_vars.js`（3KB）　— 找出「跨功能的顶层局部变量」—— 拆分后它们会变成未定义。
+- `gen_head_prof.js`（3KB）　— 性能探针：把 smoke-test.js 截成"前 N 段"并在 newGame/ensure 上装计时钩子，
+- `smoke_slice.js`（14KB）　— smoke 快切片 —— 支持两种用法：
+- `snapshot_ui_fns.js`（5KB）　— ui 函数快照：把 js/ui*.js 里每个 `ui.xxx = …` 定义的源码切片并哈希，
+- `top_cpu.js`（2KB）　— 读 .cpuprofile，按"自身耗时(self time)"排出前 N 个函数。
+
 ## show/（展示与校准）
 
 给老板看的对照图 / 曲线校准 / 素材巡视。
 
+- `audit_v149_player.js`（5KB）　— v149 玩家视角视觉巡检：从"第一次打开"走到"打完一场远征"，逐屏截图
 - `bake_bigmap.js`（4KB）　— 大地图烘焙 + 改前基线实机图
 - `bigmap_rollback.py`（3KB）　— 大地图 LOD 改动一键回滚（干跑先行 · 本项目铁律）。
+- `calib_actor_fit.js`（4KB）　— 资产尺寸标定：渲染 → 读像素 → 反推"模型在世界里有多高" → 给出"缩到 1 单位"的系数
 - `compare34.js`（9KB）　— v34 风格对比：同一批元素，四种画风 —— 现状(西方奇幻金属) / 中国色木刻 / MingCute / IconPark
 - `dbg_v89191_autotrain.js`（5KB）　— v89.191 实机取证（真浏览器 · 真点真填）：
+- `deep_soak_v9137.js`（12KB）
 - `diag_height.js`（3KB）
 - `diag_tex.js`（2KB）
+- `diag_v15616_lastobj.js`（3KB）　— v156.16 诊断③：**抓"最后一个开始渲染的对象"** —— 报错就是它（或紧跟它的那个）
+- `diag_v15616_rendererr.js`（5KB）　— v156.16 诊断：地图 3D 每帧抛 "Cannot read properties of undefined (reading 'x')"
+- `diag_v15616_scan.js`（3KB）　— v156.16 诊断②：把 scene 里**所有** material.uniforms 扫一遍，找出 value 为 null/undefined 的项
 - `diag_v89132_grid.js`（2KB）　— 诊断：军务处两营 grid 列宽为何不等（1098 vs 272）
 - `diag_v89132_reddot.js`（3KB）　— 诊断：满界面缩略图上我城红点为什么读不到（v89132）
 - `diag_v89133_probe.js`（4KB）　— v89.133 取证：将领面板行（老板点名三处）+ 军务页现状
@@ -1545,6 +8341,37 @@ jsdom 没有布局引擎 → 尺寸/重叠/溢出/折行只能在**真浏览器*
 - `measure_v89190_btns.js`（6KB）　— v89.190 实机量测（真浏览器 · 只读量测，不改产品）：
 - `measure_v89191_btns.js`（3KB）　— v89.191 实机量测（真浏览器）：解雇/晋升 两按钮的几何 —— 老板「稍微错开，上下不重叠，等下点错了」
 - `measure_v89192_panes.js`（6KB）　— v89.192 量测：沙盘弹窗 vs 战场界面（铺满参考）· 含极端载荷（8 兵种）
+- `probe_actor_look.js`（4KB）　— 单角色渲染体检：把 Soldier / RobotExpressive 各自单独摆到原点，
+- `probe_adm_marker.js`（3KB）　— 占领省府后，地图上那一格"长什么样"：等真实渲染循环重建标记后再读，
+- `probe_admin_reveal.js`（7KB）　— 省/市/区首府 → 下辖地视野：完整验收 + 同机位前后对照图
+- `probe_anim_scale.js`（3KB）
+- `probe_axis_equiv.js`（5KB）　— 验证：seatProp 的「setFromUnitVectors + rotateY」与 surfaceQuad 是否数学等价。
+- `probe_bind_order.js`（2KB）　— 绑定顺序实验：normalize:false 载入后，手动给根节点做旋转/缩放（**不重绑**），
+- `probe_bone_move.js`（2KB）
+- `probe_bonenames.js`（1KB）
+- `probe_box_cmp.js`（2KB）
+- `probe_castle_ci.js`（3KB）　— 决定性探针：拿 ci → 现算 dir/pos/quat，与实例矩阵里的值逐一比对
+- `probe_castle_quat.js`（3KB）　— 数值探针：逐实例打印 局部+Y vs 径向 的点积、以及原始矩阵元素
+- `probe_castle_side.js`（5KB）　— 城堡朝向「侧视图」诊断：把实例的几何+矩阵搬到独立场景，
+- `probe_compose.js`（2KB）　— 在页面里原样复现那 5 行摆放代码，看是哪一步把朝向算歪
+- `probe_conquer_state.js`（3KB）　— 真实占领链路：直接调 GAME.onConquer 占领某州首府，检查
+- `probe_duel3d.js`（3KB）　— 3D 斗将舞台独立验证：建一个 520×268 的容器直接 mount，等角色加载后连拍三帧
+- `probe_duel3d2.js`（3KB）　— 3D 斗将舞台独立验证 v2：清场后单独拍舞台 + 打印角色包围盒（判断比例/朝向/贴地）
+- `probe_galaxy.js`（1KB）
+- `probe_load.js`（1KB）
+- `probe_matrix_writers.js`（2KB）　— 抓现行：给 InstancedMesh.setMatrixAt 装钩子，记录所有写入者的调用栈
+- `probe_meta.js`（1KB）
+- `probe_scale_tracks.js`（1KB）
+- `probe_soldier_rot.js`（3KB）　— 定点实验：把 Soldier 用 4 个固定根旋转各渲染一张，肉眼判定"哪个朝向是站着的"。
+- `probe_stand_candidates.js`（3KB）　— 立姿候选体检：不归一化加载，逐候选根旋转报告「骨骼 Y 跨度 / Box3 Y 跨度 / 骨骼数」，
+- `probe_state_reveal.js`（5KB）　— 州辖地视野：同机位「点亮前 / 点亮后」对照出图 + 数值验收
+- `probe_v9124_build.js`（3KB）　— v91.24 探针2：端到端筑城坐标链（不在原格 & 球面/平面往返一致性）
+- `probe_v9124_coord.js`（3KB）　— v91.24 探针：球面 cell 的 (x,y) ↔ ci 往返稳定性（筑城坐标飞走根因）
+- `probe_v9124_fix.js`（2KB）　— v91.24 探针3：验证修法方向 —— 拾取 x,y 换成「北在上」后地形是否对上
+- `probe_water2.js`（2KB）
+- `probe_water_ab.js`（3KB）　— 水面 A/B：同一机位，uAmp=3.2（现状）与 uAmp=0（关浪）各拍一张，
+- `probe_water_fps.js`（3KB）　— 水面着色器性能：在"看得见海"的视角下统计 90 帧的平均帧时间
+- `probe_water_state.js`（2KB）
 - `render3d.js`（8KB）　— 真·3D 地形渲染（用游戏地图的真实地形数据）
 - `render3d_full.js`（9KB）　— 全量 500×500 真·3D 地形渲染（每格细分 2×2 = 1000×1000 面片）
 - `review_guide.py`（4KB）　— v89.42 定稿验收图：改前/改后 + 2x 放大 + 7 块贴图 + 中文说明，合成单图。
@@ -1553,9 +8380,19 @@ jsdom 没有布局引擎 → 尺寸/重叠/溢出/折行只能在**真浏览器*
 - `scan6.js`（4KB）
 - `shot_ab.js`（2KB）
 - `shot_bigmap_lod.js`（3KB）　— 大地图 LOD 远景层 —— 实机对照（默认关 / 开启）
+- `shot_castle_look.js`（3KB）　— 城堡朝向实拍：对准一座己方城，围绕它转三个角度拍特写（修复前后对比用）
+- `shot_castle_look2.js`（3KB）　— 城堡朝向实拍 v2：从"实际渲染出来的实例"里挑一座（必然不过雾），
+- `shot_castle_orient.js`（4KB）　— 城堡朝向诊断：把镜头怼到一座城上拍特写 + 数值核对"基座是否 ⟂ 半径"
 - `shot_compare.py`（7KB）　— v89.42 前后对比：逐格"两翼"采样（避开等级角标/名称条）→ 报告 + 拼图。
 - `shot_height.js`（2KB）　— 主地图 · 高度模式实机截图
+- `shot_lord_globe.js`（2KB）　— 前传：君主站在球面的姿态核对（applyQuad 重构后）
 - `shot_map3d.js`（2KB）
+- `shot_ocean.js`（3KB）　— 海面观感探针 v2：对准大片水域，按 3 档距离（轨道 / 中景 / 近景）各拍一张，
+- `shot_scene3d_player.js`（2KB）　— 采集场景玩家（Soldier）外观核对：进入 scene3d 的野外场景，截一张
+- `shot_v145_colony.js`（4KB）　— v145 实机：空间站 + 星际投送面板（选母舰 / 选星球 / 带人带兵 / 启航）
+- `shot_v146_fleet.js`（4KB）　— v146 实机：空间站「深空远征」面板（选舰 / 选目标 / 编成 / 出港 / 战报）
+- `shot_v147_preview.js`（2KB）　— v147 实机：建造预览（D 期）—— 候选卡片「先看看」→ 3D 单栋预览
+- `shot_v15615_mapbar.js`（8KB）　— v156.15 实机：地图手势条（⚔️出征 / 🔍侦查 / 📜详情）
 - `shot_v89102_sandbox.js`（7KB）
 - `shot_v89102b_rankcap.js`（4KB）
 - `shot_v89103.js`（9KB）
@@ -1698,7 +8535,37 @@ jsdom 没有布局引擎 → 尺寸/重叠/溢出/折行只能在**真浏览器*
 - `sweep_v89240_bright.js`（4KB）　— v89.240 三档调亮扫描：当前 .80+b1.15（live）之上再探 6 档
 - `three3d.js`（8KB）　— Three.js 真 3D 地形原型（用游戏真实地形数据）
 - `tile_show.js`（3KB）　— v35-f：批量拼图（可复用）—— 传 id:中文列表，输出总览图
+- `tune_actor_fit.js`（3KB）　— 端到端标定：直接调 GAME.gltf.FIT[asset].scale 的候选值，
 - `verify_v9069_buildcity.js`（4KB）　— v90.69 实机验收：3D 星球主地图 + 附属平地「建城」按钮（需求 1/2）+ 球面地形口径。
+- `verify_v9097.js`（7KB）　— v90.97 实机验收：行政菜单 + 君主收窄 + 英雄仅本城 + 双球面切图（读真文件 · 无注入）
+- `verify_v9098_zoom.js`（4KB）　— v90.98 实机验收：地图视野缩放条（底栏右侧 · 仅地图视图）
+- `verify_v9099.js`（5KB）　— v90.99 实机验收：① 别星地图 回主城/回本城/灰烬城 断开  ② 每颗星球独立的省市区
+- `verify_v9100_modal.js`（4KB）　— v91.00 实机验收：① 否决性弹窗变小（xs）② 点弹窗外关闭 ③ noClose 窗不关
+- `verify_v9100_sphereci.js`（2KB）　— v90.100 球系化 实机验收：地图/城池面板无运行时错误 + 球系往返自洽
+- `verify_v9101_feel.js`（3KB）　— v91.01 实机验收：按压反馈统一（:active 下压/轻缩）—— 匹配风格 · 改善交互
+- `verify_v9102_hero.js`（4KB）　— v91.02 实机验收：① 英雄页仅本城 ② grantBeauty 归属城修复 ③ 政务厅含本城英雄列表
+- `verify_v9104_admcat.js`（3KB）　— v91.04 实机验收：行政右栏改「分类清单 + 选中列表」（参考募兵界面）
+- `verify_v9105_flags.js`（2KB）　— v91.05 实机验收：地图上为己方据点/野地插小旗
+- `verify_v9124_repro.js`（4KB）　— v91.24 复现：行政菜单 + 英雄派遣（城池面板→派遣→出征界面）崩溃
+- `verify_v9130_body.js`（2KB）
+- `verify_v9130_wonder.js`（2KB）
+- `verify_v9134.js`（5KB）　— v91.34 验收：侧栏（城名行按钮/驻军缩写+渐变条）+ 奇观倒计时 + 奇观贴地
+- `verify_v9135.js`（4KB）　— v91.35 验收：分帧预建（遮罩 + 各步耗时）+ 平原建城修复
+- `verify_v9172.js`（11KB）　— v91.72 实机验收：B 期蓝图 + 本批 UI/系统改动
+- `verify_v9174_globalworld.js`（4KB）　— v91.74 实机验证：世界数据归一 —— 切星球后背景星球的队列/产出是否继续推进
+
+## show/reports/（未归类）
+
+待归类：请确认用途后归档。
+
+- `deep_soak.json`（6KB）
+- `全面评测-20261016.md`（5KB）　— 全面评测报告 · 《我在废土有座城》v91.37（2026-10-16）
+
+## sim/（未归类）
+
+待归类：请确认用途后归档。
+
+- `sim-run.js`（8KB）　— 长跑探针：跑 N 个游戏月，看这个废土是不是"活"的。
 
 ---
 

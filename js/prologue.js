@@ -512,7 +512,17 @@
     } catch (e) { /* 迷雾失败不该挡住移动 */ }
     var cell = sp.cellOf(ci) || {};
     var tn = ((GAME.DATA || {}).TERRAIN || {})[cell.type] || {};
+    /* v2026-11-01（老板）：移动时一条"沿途"感官字幕（第二人称、不教条）—— 让格子移动变成"走过"而非瞬移。
+       文案池与地形名拼成一句话，常量进 DATA.SCENE.crossLines（不写死）。 */
+    try { if (GAME.ui && GAME.ui.sceneCaption) GAME.ui.sceneCaption(P.crossLine(ci, tn)); } catch (e) {}
     return { ok: true, msg: '走到' + (tn.name || '荒野') + '了 —— 看看这地方能做什么', ci: ci };
+  };
+  /* 移动"沿途"一句话：地形名 + 感官后缀（按格号取，确定且不乱跳）。 */
+  P.crossLine = function (ci, tn) {
+    var name = (tn && tn.name) || '荒野';
+    var pool = (GAME.DATA && GAME.DATA.SCENE && GAME.DATA.SCENE.crossLines) || ['风里有铁锈味。'];
+    var suf = pool[(((ci | 0) % pool.length) + pool.length) % pool.length];
+    return '你踏入' + name + '，' + suf;
   };
 
   /* 沿最短路径走到底（精力不足就停在中途）。

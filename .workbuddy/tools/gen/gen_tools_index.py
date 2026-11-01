@@ -17,6 +17,11 @@ T = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))   # .workbuddy/t
 OUT = os.path.join(T, 'README_INDEX.md')
 
 DESC = {
+    'map': ('项目索引（指哪打哪）',
+            '**动手前的第一站**：`gen_index.js` 扫源码生成 `js/modules.json`（唯一权威模块清单）'
+            '与 `.workbuddy/index/project-index.json`（符号/断言/资产/标定表）；'
+            '`who.js <关键词>` 反查"改哪里、波及什么、跑哪条验证"。'
+            '铁律：索引必须被构建与审计消费，过期由 smoke §591 报红。'),
     'patch': ('变更日志（补丁脚本）',
               '**事实上的变更日志**：按断言名 `grep -rl "<断言名>" tools/patch/` 就能找到当初是哪次改的。'
               '"同一条消息里对同一文件的多次 Edit 会互相覆盖"，所以补丁一律脚本化并留档。'),

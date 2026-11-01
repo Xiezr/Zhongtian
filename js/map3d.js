@@ -138,17 +138,82 @@ import './gltf.js';
       ui.openLandModalCi(ci);
     }
   }
+  /* ---- 纯数学实现（**不依赖 THREE**）----
+     为什么不用 THREE.Vector3/Quaternion：map3d 在没有 three 的环境（node 门禁、
+     首屏未加载）会走"enabled:false · why:no-three"降级分支，**根本注册不到出口**，
+     于是这条坐标系不变量在门禁里永远测不到。改成纯数组运算后，
+     数学本身可以在 node 里直接验，浏览器端再包成 THREE 四元数用。 */
+  function _hyp(a, b, c) { return Math.sqrt(a * a + b * b + c * c); }
+  function _cross(a, b) {
+    return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  }
+  function _qmul(a, b) {                     /* 四元数 x,y,z,w 相乘（a 先不作用，b 先作用） */
+    return [
+      a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1],
+      a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0],
+      a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3],
+      a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2]
+    ];
+  }
+  /* 把 +Y 对到 dir（基座 ⟂ 半径），再绕**自身竖轴**转 yawDeg 度。返回 [x,y,z,w]。
+     v156.25：`seatProp()` 是同一件事的另一种写法（setFromUnitVectors + rotateY），
+       两者实测完全等价 —— 改这里时请一并看那处的注释（判据：转身只绕局部轴）。 */
+  function surfaceQuad(dir, yawDeg) {
+    var x = dir[0], y = dir[1], z = dir[2];
+    var L = _hyp(x, y, z) || 1; x /= L; y /= L; z /= L;
+    var d = y;                                /* dot((0,1,0), n) */
+    var q;
+    if (d > -0.999999) {
+      /* axis = cross((0,1,0), n) = (z, 0, -x)；w = 1 + dot */
+      q = [z, 0, -x, 1 + d];
+    } else {
+      q = [1, 0, 0, 0];                       /* n ≈ −Y：绕 X 转 180° */
+    }
+    var ql = _hyp(q[0], q[1], q[2]) || Math.abs(q[3]) || 1;
+    var qn = Math.sqrt(q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]) || 1;
+    q = [q[0] / qn, q[1] / qn, q[2] / qn, q[3] / qn];
+    if (yawDeg) {
+      var a = yawDeg * Math.PI / 360;         /* 半角 */
+      /* 右乘绕**局部** Y —— 与"先自转再对齐"同序；
+         若改成绕世界法线右乘，就是把上轴先掰歪再拉平（v156.19 城堡歪掉的根因） */
+      q = _qmul(q, [0, Math.sin(a), 0, Math.cos(a)]);
+    }
+    return q;
+  }
+  /* 球面正交基（右手）：up = 半径，east = 东（世界口径 = −Z），south = 南。返回数组。 */
+  function surfaceFrame(dir) {
+    var L = _hyp(dir[0], dir[1], dir[2]) || 1;
+    var n = [dir[0] / L, dir[1] / L, dir[2] / L];
+    var dN = n[1];
+    var north = [-n[0] * dN, 1 - n[1] * dN, -n[2] * dN];
+    var nl = _hyp(north[0], north[1], north[2]);
+    if (nl < 1e-8) { north = [1 - n[0] * n[0], -n[0] * n[1], -n[0] * n[2]]; nl = _hyp(north[0], north[1], north[2]) || 1; }
+    north = [north[0] / nl, north[1] / nl, north[2] / nl];
+    var east = _cross(north, n);
+    var south = _cross(east, n);
+    return { up: n, east: east, south: south };
+  }
+
+  /* 把纯数组四元数灌进一个 THREE.Quaternion（浏览器路径专用；函数体里才碰 THREE） */
+  function applyQuad(qt, dir, yawDeg) {
+    var q = surfaceQuad(dir, yawDeg);
+    qt.set(q[0], q[1], q[2], q[3]);
+    return qt;
+  }
   if (typeof THREE === 'undefined') {
     /* 无 THREE（jsdom）：只留这几个纯数据出口 —— smoke 靠它们验"这一格是什么" */
     GAME.map3d = { enabled: false, why: 'no-three',
       openCellPanel: _openCellPanel, cellBrief: _cellBrief,
-      townScaleOf: _townScaleOf };
+      townScaleOf: _townScaleOf,
+      /* v156.19：球面坐标系的纯数学出口（无 three 也要能验） */
+      surfaceQuad: surfaceQuad, surfaceFrame: surfaceFrame };
     return;
   }
   var SP = GAME.mapSphere;                         /* v90.97（双球面）：地图渲染走**地图球面**（与逻辑球面 GAME.sphere 解耦）*/
   var M = GAME.map3d = { enabled: true,
     openCellPanel: _openCellPanel, cellBrief: _cellBrief,
-    townScaleOf: _townScaleOf };
+    townScaleOf: _townScaleOf,
+    surfaceQuad: surfaceQuad, surfaceFrame: surfaceFrame };
 
   var R = (SP && SP.R) || 300;                    /* 星球海平面半径 */
   var HSC = (SP && SP.HSC) || 26;                 /* 高度 → 世界单位（山≈40 · 陆地≈5）*/
@@ -215,11 +280,19 @@ import './gltf.js';
       uniforms: { uTime: { value: 0 }, uFade: { value: 1 } },
       vertexShader: [
         'varying vec3 vP;',
-        'void main(){ vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }'
+        'varying vec3 vN;',
+        'varying vec3 vW;',
+        'void main(){',
+        '  vP = position;',
+        '  vN = normalize(mat3(modelMatrix) * normal);',
+        '  vec4 wp = modelMatrix * vec4(position,1.0);',
+        '  vW = wp.xyz;',
+        '  gl_Position = projectionMatrix * viewMatrix * wp;',
+        '}'
       ].join('\n'),
       fragmentShader: [
         'uniform float uTime; uniform float uFade;',
-        'varying vec3 vP;',
+        'varying vec3 vP; varying vec3 vN; varying vec3 vW;',
         'float h31(vec3 p){ return fract(sin(dot(p, vec3(127.1,311.7,74.7))) * 43758.5453); }',
         'float n31(vec3 p){ vec3 i=floor(p), f=fract(p); f=f*f*(3.0-2.0*f);',
         '  return mix(mix(mix(h31(i),h31(i+vec3(1,0,0)),f.x),mix(h31(i+vec3(0,1,0)),h31(i+vec3(1,1,0)),f.x),f.y),',
@@ -236,6 +309,28 @@ import './gltf.js';
            探明度**不再**参与这一层（不切割），只影响地表加亮（见 buildFog）。 */
         /* v92.241：浓度由星球参数派生（SP.ATM_A）—— 大气密度/云量大的星球更浓。 */
         '  float a = dens * ' + atmA().toFixed(3) + ' * uFade;',
+        /* ============================================================
+         * v156.34（老板 2026-11-02「星球自转过程中半径闪烁」）
+         * ------------------------------------------------------------
+         * 现象：球体外那圈大气雾的**外边界**在自转时忽薄忽厚地跳
+         * （实测同一方向的最外亮像素半径 std 高达 31px，均值 377 → 428）。
+         *
+         * 病根不在"噪声随时间漂移"（uTime 每秒只走 0.008，八帧内几乎不动），
+         * 而在**图案与边界的耦合**：这层壳的 alpha 完全由 fbm(d) 决定，
+         * 而 d 固定在星球上 —— 自转时噪声图案从轮廓线上扫进扫出，
+         * 于是"哪一像素还算大气"这件事每一帧都换答案。
+         *
+         * 修法分两层（缺一不可）：
+         *   ① `edge`  —— **确定性**的边缘淡出（只跟视线夹角有关，不碰噪声）。
+         *      轮廓处恒为 0，所以边界位置固定 → 自转不再改变外轮廓。
+         *   ② `cloudMask` —— 把噪声**赶出边缘区**：rim < 0.30 时云图案不参与，
+         *      只留 0.08 的均匀底雾。噪声再扫，也扫不到决定边界的那一段。
+         * 观感上是"大气在正面厚、越往边越薄"，本来也是这么回事。
+         * ============================================================ */
+        '  float rim = clamp(dot(normalize(vN), normalize(cameraPosition - vW)), 0.0, 1.0);',
+        '  float edge = smoothstep(0.0, 0.45, rim);',
+        '  float cloudMask = smoothstep(0.30, 0.85, rim);',
+        '  float a = (dens * cloudMask * 0.92 + 0.08) * edge * ' + atmA().toFixed(3) + ' * uFade;',
         '  vec3 col = mix(vec3(0.76, 0.80, 0.87), vec3(0.98, 0.99, 1.0), dens);',
         '  gl_FragColor = vec4(col, a);',
         '}'
@@ -769,7 +864,7 @@ import './gltf.js';
     try {
       /* ---- 顶点：沿法线位移（3 层 fbm，替身用 3 组不同频率/速度的正弦堆叠；零贴图） ---- */
       var marineVS = [
-        'uniform float uTime, uAmp, uR;',
+        'uniform float uTime, uAmp, uR, uFar;',
         /* ============================================================
          * v156.15（实机探针抓到的**真 bug**）：这里原来少了这两行声明 ——
          *   `attribute float uCoast;`（几何按顶点写离岸距离，见 wg.setAttribute('uCoast')）
@@ -782,7 +877,7 @@ import './gltf.js';
          * ============================================================ */
         'attribute float uCoast;',
         'varying float vCoast;',
-        'varying vec3 vN; varying vec3 vView;',
+        'varying vec3 vN; varying vec3 vView; varying vec3 vW; varying float vFar;',
         /* ============================================================
          * v155d（老板：「海面目前毫无波澜，起伏没有体现出来」）
          * ------------------------------------------------------------
@@ -793,46 +888,57 @@ import './gltf.js';
          * 波数取 0.21~1.9 时波长 = 2π/k ≈ 3.3~30 世界单位（一格 ≈ 5 单位）——真正的浪。
          * ============================================================ */
         /* ============================================================
-         * v155g（老板：「波浪现在是规律性的」）
+         * v156.22（老板：「海波还是有点太规整太明显了」）
          * ------------------------------------------------------------
-         * 五条正弦叠加必然出现**平行条纹**（相位是线性的，等相位线就是直线）。
-         * 最简洁的两招破掉规律性（不引入贴图、不加噪声纹理）：
-         *   ① **域扭曲**：采样点先被三个慢变的 sin 推开（波长是主浪的 10 倍以上），
-         *      等相位线被拉弯 → 波峰不再是笔直的平行带；
-         *   ② **慢变包络**：整片海域的浪高缓慢起伏（有的地方浪大、有的地方近乎平静）。
-         * 再加一条"相位抖动"正弦，让 5 条波在局部互相错开，破掉晶格感。
+         * 实测 A/B（同机位、只把 uAmp 从 3.2 改 0）：关浪是一片干净深蓝；开浪则整片
+         * 海面浮着一层**规则的大斑块**。根因不是振幅，是**形状**：
+         *   · 5 条固定方向的正弦叠加 → 相位线性 → 等相位线是**平行直线**；
+         *   · 域扭曲用的也是 3 条慢正弦（周期 300+ 单位）→ 扭曲本身同样规则，
+         *     只是把"直条纹"弯成"弯条纹"，规律感一点没少。
+         * 正解：换**值噪声 fbm**（哈希噪声，天生非周期），并让噪声自己扭曲自己。
+         *   GLSL 里哈希噪声比三角函数还便宜（只有乘加、没有 sin），13 万顶点撑得住。
+         * 分层：base(涌浪 ~12 单位) + mid(~5) + chop(~2.2)，权重递减；
+         *   振幅再乘 uFar（按镜头距离轻微衰减）—— 远景本就不该看得见小浪。
          * ============================================================ */
-        /* v155j（性能）：**位移用全波，求法线用快波**。
-           原来每个顶点要跑 3 次 5 条波（有限差分求法线）= 3× 的波形开销。
-           法线只需要"大致坡度"，用前两条波 + 域扭曲即可，视觉无差别。 */
-        'vec3 warp(vec3 P, float t){',
-        '  return P + vec3(',
-        '      sin(P.y * 0.019 + t * 0.11),',
-        '      sin(P.z * 0.016 - t * 0.09),',
-        '      sin(P.x * 0.021 + t * 0.13)) * 11.0;',
+        'float hash13(vec3 p){',
+        '  p = fract(p * 0.1031);',
+        '  p += dot(p, p.yzx + 33.33);',
+        '  return fract((p.x + p.y) * p.z);',
+        '}',
+        'float vn(vec3 x){',
+        '  vec3 i = floor(x), f = fract(x);',
+        '  f = f * f * (3.0 - 2.0 * f);',
+        '  float n000 = hash13(i),                     n100 = hash13(i + vec3(1.0, 0.0, 0.0));',
+        '  float n010 = hash13(i + vec3(0.0, 1.0, 0.0)), n110 = hash13(i + vec3(1.0, 1.0, 0.0));',
+        '  float n001 = hash13(i + vec3(0.0, 0.0, 1.0)), n101 = hash13(i + vec3(1.0, 0.0, 1.0));',
+        '  float n011 = hash13(i + vec3(0.0, 1.0, 1.0)), n111 = hash13(i + vec3(1.0, 1.0, 1.0));',
+        '  return mix(mix(mix(n000, n100, f.x), mix(n010, n110, f.x), f.y),',
+        '             mix(mix(n001, n101, f.x), mix(n011, n111, f.x), f.y), f.z);',
+        '}',
+        'float fbm2(vec3 p){ return 0.62 * vn(p) + 0.38 * vn(p * 2.13 + 7.3); }',
+        /* 域扭曲：用噪声推噪声（不是用正弦推正弦）—— "不规整"的关键就是这一步 */
+        'vec3 warp(vec3 q, float t){',
+        '  return q + (vec3(',
+        '    vn(q * 0.55 + vec3(0.0, 0.0, t * 0.050)),',
+        '    vn(q * 0.55 + vec3(5.2, 1.3, -t * 0.045)),',
+        '    vn(q * 0.55 + vec3(11.7, 9.1, t * 0.038))) - 0.5) * 1.35;',
         '}',
         'float h(vec3 P, float t){',
-        '  float env = 0.68 + 0.32 * sin(P.x * 0.0085 + t * 0.05) * sin(P.z * 0.0072 - t * 0.041);',
-        '  vec3 W = warp(P, t);',
-        '  float v = 0.0;',
-        '  v += 0.90 * sin(dot(W, normalize(vec3( 0.62, 0.41, 0.67))) * 0.21 + t * 0.42);',
-        '  v += 0.55 * sin(dot(W, normalize(vec3(-0.51, 0.73,-0.45))) * 0.37 + t * 0.61);',
-        '  v += 0.32 * sin(dot(W, normalize(vec3( 0.13,-0.61, 0.78))) * 0.66 + t * 0.83);',
-        '  v += 0.18 * sin(dot(W, normalize(vec3(-0.84, 0.22, 0.49))) * 1.13 - t * 1.05);',
-        '  v += 0.14 * sin(dot(W, normalize(vec3( 0.35, 0.88,-0.31))) * 0.52',
-        '                   + sin(dot(W, vec3(0.010, 0.013, 0.009))) * 3.4 + t * 0.73);',
-        '  return v * 0.33 * env;',
+        '  vec3 Q = warp(P * 0.085, t);',
+        '  float base = fbm2(Q) - 0.5;',
+        '  float mid  = vn(Q * 2.40 + vec3(0.0, 0.0, t * 0.120)) - 0.5;',
+        '  float chop = vn(Q * 6.10 - vec3(0.0, 0.0, t * 0.210)) - 0.5;',
+        '  return (base + mid * 0.45 + chop * 0.18) * 2.0;',
         '}',
-        /* 快波：只前两条（求法线用） */
+        /* 快波：求法线用（少一层 chop，视觉无差别） */
         'float hf(vec3 P, float t){',
-        '  vec3 W = warp(P, t);',
-        '  float v = 0.90 * sin(dot(W, normalize(vec3( 0.62, 0.41, 0.67))) * 0.21 + t * 0.42)',
-        '          + 0.55 * sin(dot(W, normalize(vec3(-0.51, 0.73,-0.45))) * 0.37 + t * 0.61)',
-        '          + 0.32 * sin(dot(W, normalize(vec3( 0.13,-0.61, 0.78))) * 0.66 + t * 0.83);',
-        '  return v * 0.33;',
+        '  vec3 Q = warp(P * 0.085, t);',
+        '  float base = fbm2(Q) - 0.5;',
+        '  float mid  = vn(Q * 2.40 + vec3(0.0, 0.0, t * 0.120)) - 0.5;',
+        '  return (base + mid * 0.45) * 2.0;',
         '}',
-        'vec3 surfF(vec3 d, float c, float t){ vec3 P = d * uR; float k = smoothstep(0.0, 0.55, c); return d * (uR + hf(P, t) * uAmp * k); }',
-        'vec3 surf(vec3 d, float c){ vec3 P = d * uR; float k = smoothstep(0.0, 0.55, c); return d * (uR + h(P, uTime) * uAmp * k); }',
+        'vec3 surfF(vec3 d, float c, float t){ vec3 P = d * uR; float k = smoothstep(0.0, 0.55, c); return d * (uR + hf(P, t) * uAmp * k * uFar); }',
+        'vec3 surf(vec3 d, float c){ vec3 P = d * uR; float k = smoothstep(0.0, 0.55, c); return d * (uR + h(P, uTime) * uAmp * k * uFar); }',
 
         'void main(){',
         '  vec3 d = normalize(position);',
@@ -840,7 +946,9 @@ import './gltf.js';
         '  vec3 B = normalize(cross(d, T));',
         '  float e = 0.020;',
         '  vCoast = uCoast;',
+        '  vFar = uFar;',
         '  vec3 P  = surf(d, uCoast);',
+        '  vW = P;',
         '  vec3 PT = surfF(normalize(d + T * e), uCoast, uTime);',
         '  vec3 PB = surfF(normalize(d + B * e), uCoast, uTime);',
         '  vec3 n  = normalize(cross(PT - P, PB - P));',
@@ -853,32 +961,74 @@ import './gltf.js';
       ].join('\n');
       var marineFS = [
         'uniform vec3 uColor;',
-        'varying vec3 vN; varying vec3 vView;',
+        'uniform float uTime;',
+        'varying vec3 vN; varying vec3 vView; varying vec3 vW; varying float vFar;',
+        '',
+        '/* 与顶点着色器同一套哈希噪声（GLSL 不能 include，只能各写一份） */',
+        'float hash13(vec3 p){',
+        '  p = fract(p * 0.1031);',
+        '  p += dot(p, p.yzx + 33.33);',
+        '  return fract((p.x + p.y) * p.z);',
+        '}',
+        'float vn(vec3 x){',
+        '  vec3 i = floor(x), f = fract(x);',
+        '  f = f * f * (3.0 - 2.0 * f);',
+        '  float n000 = hash13(i),                      n100 = hash13(i + vec3(1.0, 0.0, 0.0));',
+        '  float n010 = hash13(i + vec3(0.0, 1.0, 0.0)),  n110 = hash13(i + vec3(1.0, 1.0, 0.0));',
+        '  float n001 = hash13(i + vec3(0.0, 0.0, 1.0)),  n101 = hash13(i + vec3(1.0, 0.0, 1.0));',
+        '  float n011 = hash13(i + vec3(0.0, 1.0, 1.0)),  n111 = hash13(i + vec3(1.0, 1.0, 1.0));',
+        '  return mix(mix(mix(n000, n100, f.x), mix(n010, n110, f.x), f.y),',
+        '             mix(mix(n001, n101, f.x), mix(n011, n111, f.x), f.y), f.z);',
+        '}',
+        '/* 细浪高度场：两层不同尺度、不同流速 —— 非周期，不会出现"斑点阵列" */',
+        'float rip(vec3 p){',
+        '  float a = vn(p * 0.62 + vec3(0.0, 0.0, uTime * 0.55));',
+        '  float b = vn(p * 1.55 - vec3(0.0, 0.0, uTime * 0.83) + 13.7);',
+        '  return a * 0.65 + b * 0.35;',
+        '}',
+        '',
         'void main(){',
         '  vec3 N = normalize(vN);',
         '  vec3 V = normalize(-vView);',
-        /* 主光：画面左上方（与场景太阳一致的方向感） */
-        '  vec3 L = normalize(vec3(0.45, 0.80, 0.40));',
-        '  float diff = max(dot(N, L), 0.0);',
-        /* v155f：**高光** —— 浪脊上的镜面反光才是"水"的读法（只有 diffuse 会像一块布） */
-        '  vec3 H = normalize(L + V);',
-        '  float spec = pow(max(dot(N, H), 0.0), 48.0);',
+        '  /* 切平面基：在球面上 perturN 必须沿切向做，否则会被当成"法线歪了" */',
+        '  vec3 upv = abs(N.y) > 0.95 ? vec3(1.0, 0.0, 0.0) : vec3(0.0, 1.0, 0.0);',
+        '  vec3 T = normalize(cross(upv, N));',
+        '  vec3 B = cross(N, T);',
+        '  /* 像素级细浪：三采样求梯度（正中央 + 沿 T/B 各一步） */',
+        '  float e = 0.55;',
+        '  float h0 = rip(vW);',
+        '  float hT = rip(vW + T * e);',
+        '  float hB = rip(vW + B * e);',
+        '  /* vFar：远景把细浪淡掉（否则整片海在闪 = 又变成"规整的噪点"） */',
+        '  /* 逐像素距离衰减：越远的像素细浪越淡（不做这个，镜头一动就是一片摩尔纹闪烁） */',
+        '  float camD = length(vView);',
+        '  float dFade = 1.0 - smoothstep(140.0, 430.0, camD);',
+        '  float amp = 0.42 * clamp(vFar, 0.0, 1.0) * (0.32 + 0.68 * dFade);',
+        '  N = normalize(N - (hT - h0) / e * T * amp - (hB - h0) / e * B * amp);',
+        '  /* 主光：画面左上方（与场景太阳一致的方向感） */',
+        '  vec3 Ld = normalize(vec3(0.45, 0.80, 0.40));',
+        '  float diff = max(dot(N, Ld), 0.0);',
+        '  /* 镜面：浪脊上的反光才是"水"的读法（只有 diffuse 会像一块布） */',
+        '  vec3 H = normalize(Ld + V);',
+        '  float spec = pow(max(dot(N, H), 0.0), 42.0);',
         '  float fres = pow(1.0 - max(dot(N, V), 0.0), 4.0);',
         '  vec3 col = uColor * (0.55 + 0.55 * diff);',
-        '  col += vec3(0.95, 0.97, 1.00) * spec * 0.42;',
+        '  col += vec3(0.95, 0.97, 1.00) * spec * 0.34;',
         '  col += vec3(0.12, 0.20, 0.28) * fres;',
         '  gl_FragColor = vec4(col, 1.0);',
-        '}'
+        '}',
       ].join('\n');
       var wmat = new THREE.ShaderMaterial({
         uniforms: {
           uTime: { value: 0 },
-          uAmp: { value: 3.2 },                     /* 世界单位：约 0.44 格宽（浪高看得出来，又不穿地块） */
+          uAmp: { value: 1.5 },                     /* 世界单位：约 0.44 格宽（浪高看得出来，又不穿地块） */
           /* v155j（修正 v155i 的符号错误）：湖底地形面在 R+0.6（PLATEAU），
              水面必须**略高于它**（+0.62）才看得见；之前的 R-0.8 直接把水压到海底下面，
              于是海洋显示成深蓝的"湖底色"（就是那半边发黑）。 */
           uR: { value: R + 1.0 },
-          uColor: { value: new THREE.Color(0x4a7fa0) }   /* 旧方案的颜色，不改 */
+          uColor: { value: new THREE.Color(0x4a7fa0) },  /* 旧方案的颜色，不改 */
+          /* v156.22：远景衰减系数（1 = 满浪 · 0 = 平）。由 render 按 camO.dist 更新 */
+          uFar: { value: 1 }
         },
         vertexShader: marineVS, fragmentShader: marineFS,
         side: THREE.FrontSide,
@@ -1532,21 +1682,32 @@ import './gltf.js';
     var _npcList = (((GAME.state || {}).map || {}).cities) || [];
     if (!_npcList.length) _npcList = (GAME.DATA.NPC_CITIES || []);
     _npcList.forEach(function (c) {
-      if (c.lon == null || c.lat == null) { var d = dirOfCell(c.x, c.y); c.lon = (Math.atan2(d[2], d[0]) * 180 / Math.PI + 360) % 360; c.lat = Math.asin(Math.max(-1, Math.min(1, d[1]))) * 180 / Math.PI; }
+      if (c.lon == null || c.lat == null) { var d = dirOfCell(c.x, c.y); c.lon = (-Math.atan2(d[2], d[0]) * 180 / Math.PI + 360) % 360; c.lat = Math.asin(Math.max(-1, Math.min(1, d[1]))) * 180 / Math.PI; }
       if (!c.garrison && GAME.genGarrison) { c.garrison = GAME.genGarrison(c); c.maxArmy = c.garrison; }
       var ci = ciOfRef(c); if (ci >= 0) { mark[ci] = [220, 70, 60]; cellKind[ci] = 'npc'; cellRef[ci] = c;
         settles.npc.push({ ci: ci, lv: c.lv || c.level || 3 }); }
     });
-    /* 行政中心城 = 紫色（按球面质心方向取格）*/
-    (M.admCities || []).forEach(function (c) { var ci = (c.ci != null && c.ci >= 0) ? c.ci : nearestCell(c._cent); if (ci >= 0) { mark[ci] = [180, 120, 210]; cellKind[ci] = 'adm'; cellRef[ci] = c;
-      settles.adm.push({ ci: ci, lv: c.lv || 4 }); } });
+    /* 行政中心城 = 紫色（按球面质心方向取格）
+       ═══ v156.24（老板「占领省市区首府」）═══
+       已被我方占据的行政中心**不再画成紫色**：
+       否则同一格会同时出现"己方城的蓝标记"和"行政城的紫模型"（两座模型叠在一起），
+       玩家看到的是"我打下了省府，可地图上它还是敌方的样子"。
+       判据与下面的 own 分支同源（都读 mapSliceOf().cities），不另立一套。 */
+    var _ownAdmKey = {};
+    ((GAME.mapSliceOf() || {}).cities || []).forEach(function (c) {
+      if (c && c.admLevel && c.admIndex != null) _ownAdmKey[c.admLevel + '|' + c.admIndex] = 1;
+    });
+    (M.admCities || []).forEach(function (c) {
+      if (_ownAdmKey[c.admLevel + '|' + c.admIndex]) return;    /* 已占 → 交给 own 分支画 */
+      var ci = (c.ci != null && c.ci >= 0) ? c.ci : nearestCell(c._cent); if (ci >= 0) { mark[ci] = [180, 120, 210]; cellKind[ci] = 'adm'; cellRef[ci] = c;
+        settles.adm.push({ ci: ci, lv: c.lv || 4 }); } });
     /* 己方城 = 蓝：落在其**球面六边格索引 ci**（球系唯一身份，免 (x,y) 往返）
        v90.97（双球面）：读**地图星球分片**的城（未必 = 当前城所在星球）。 */
     M._ownCells = {};
     ((GAME.mapSliceOf() || {}).cities || []).forEach(function (c) {
       var ci = ciOfRef(c);
       var dir = (ci >= 0 && SP.cells[ci]) ? SP.cells[ci].dir : dirOfCell(c.x, c.y);
-      c.lon = (Math.atan2(dir[2], dir[0]) * 180 / Math.PI + 360) % 360;
+      c.lon = (-Math.atan2(dir[2], dir[0]) * 180 / Math.PI + 360) % 360;
       c.lat = Math.asin(Math.max(-1, Math.min(1, dir[1]))) * 180 / Math.PI;
       if (ci < 0) return;
       mark[ci] = [80, 150, 230]; cellKind[ci] = 'own'; cellRef[ci] = c; M._ownCells[ci] = c;
@@ -1874,6 +2035,27 @@ import './gltf.js';
     P.push({ geo: new THREE.CylinderGeometry(0.16, 0.16, 0.34, 6), m: _townM(-0.78, 0.30, -0.34), c: _TOWN_C.steel });
     return _townMerge(P);
   }
+  /* ============================================================
+   * 球面坐标系 —— **唯一口径**（v2026-11-01 老板：「地图上城堡方向错乱，
+   *   确定一下坐标体系，底部垂直于与球心的连线」）
+   * ------------------------------------------------------------
+   * 【世界系】原点 = 球心；+Y = 北极；经度 0° = +X；**东 = −Z**
+   *   （icoSpheres 末尾翻 z 做经度镜像的结果，见 sphere.js:418 —— 镜像后
+   *    「北极朝上」视角下东才落在屏幕右侧。）
+   *
+   * 【格局部系（右手）】+X = 东、+Y = 径向（朝天）、+Z = 南。
+   *   → 推论：**3D 资产必须按「基座在 y=0、正面朝 +Z（南）」建模**，
+   *     摆上去后基座平面自动 ⟂ 半径，脚/底座正好踩在地表。
+   *
+   * 【两个踩过的坑，写死在这里当规矩】
+   *   ① 对齐法线后若要"绕自身竖轴转身"，轴必须是**局部 (0,1,0)**：
+   *      正确 = q_align × R((0,1,0), θ)（右乘，先自转再对齐）；
+   *      错误 = q_align × R(**n**, θ)（绕世界法线右乘）——
+   *      这会把物体自己的上轴先转离法线，再被 q_align 拉平 → 随 θ 歪 0~90°。
+   *      **v156.19 的"城堡方向错乱"就是这个错**：实测两座城偏离径向 18.6° / 142°。
+   *   ② 平移与旋转必须**同源**：都用同一个 dir，否则位置在 A 格、姿态按 B 格。
+   * ============================================================ */
+
   function buildTowns() {
     /* 重建：只摘掉实例化网格并释放**材质**；几何是 `_townGeoCache` 里共享的，
        在这里 dispose 会让下次重建拿到空几何（一次就白屏）。 */
@@ -1896,8 +2078,7 @@ import './gltf.js';
       { key: 'adm', kind: 'city', tint: [1.06, 0.94, 1.14] },   /* 行政：淡紫 */
       { key: 'fort', kind: 'fort', tint: [1.14, 1.06, 0.88] }    /* 据点：淡土黄 */
     ];
-    var up = new THREE.Vector3(0, 1, 0);
-    var nn = new THREE.Vector3(), q = new THREE.Quaternion(), qr = new THREE.Quaternion();
+    var nn = new THREE.Vector3(), q = new THREE.Quaternion();
     var m4 = new THREE.Matrix4(), pp = new THREE.Vector3(), ss = new THREE.Vector3();
     var col = new THREE.Color();
     GROUPS.forEach(function (G) {
@@ -1914,9 +2095,11 @@ import './gltf.js';
         var d = _tileCells[e.ci].dir;
         var rr = R + Math.max(0, sphElev(d)) * HSC + 0.30;
         nn.set(d[0], d[1], d[2]).normalize();
-        q.setFromUnitVectors(up, nn);
-        qr.setFromAxisAngle(nn, _townRnd(e.ci) * Math.PI * 2);
-        q.multiply(qr);
+        /* v156.19 修：**姿态走 surfaceQuat 唯一出口**（基座 ⟂ 半径）。
+           转身角绕**局部竖轴** ±30°（确定性微扰，避免一排城像复制粘贴），
+           不再是原来那条 `qr.setFromAxisAngle(nn, θ)` —— 它右乘绕世界法线，
+           等于先把上轴掰歪再拉平，每座城随机歪 0~90°（本次"方向错乱"根因）。 */
+        applyQuad(q, [nn.x, nn.y, nn.z], (_townRnd(e.ci) - 0.5) * 60);
         var lv = Math.max(1, Math.min(12, (e.lv | 0) || 1));
         var sc = _townScaleOf(G.kind, lv, cellW);
         pp.set(d[0] * rr, d[1] * rr, d[2] * rr);
@@ -2534,6 +2717,14 @@ import './gltf.js';
     /* v153：海面波浪时间推进（与云共用同一种每帧时钟） */
     if (M._waterMat && M._waterMat.uniforms && M._waterMat.uniforms.uTime) {
       M._waterMat.uniforms.uTime.value = (Date.now() % 3600000) / 1000;
+      /* v156.22（老板：「海波太规整太明显」）：**振幅随镜头距离衰减**。
+         物理上本来就该这样：离得越远，小浪在屏幕上的投影越小，看不清；
+         观感上也能避免"从轨道看整片海都在抽动"的假。
+         0.45 的下限保留一点起伏，不至于回到"海面毫无波澜"（v155d 的老问题）。 */
+      if (M._waterMat.uniforms.uFar) {
+        var _wf = Math.max(0, Math.min(1, (camO.dist - R * 1.0) / (R * 2.2)));
+        M._waterMat.uniforms.uFar.value = 1.0 - 0.55 * _wf;   /* 1.0（贴近）→ 0.45（轨道） */
+      }
       /* v155g（性能）：水面只在"看得到海"的距离上渲染。贴地 1 格时它全在视野外，
          仍会被光栅化 + 跑重着色器（实测每帧多 ~150ms）。 */
       if (water) {
@@ -2903,8 +3094,9 @@ import './gltf.js';
    * 换格时**只移动**，不重建（重建会闪）；改格数/换星球才 disposal 重建。
    * ============================================================ */
   var figRoot = null, figCache = {};
+  var figLastT = (typeof Date.now !== 'undefined') ? Date.now() : 0;   /* 骨骼角色每帧 mixer 推进用 dt 时钟 */
   M._standVer = '';
-  function makeFigure(color, scale) {
+  function makeFigure(color, scale, actorName) {
     var g = new THREE.Group();
     var mat = new THREE.MeshBasicMaterial({ color: color });
     var dark = new THREE.MeshBasicMaterial({ color: 0x2a2f38 });
@@ -2922,6 +3114,19 @@ import './gltf.js';
     var armR = armL.clone(); armR.position.x = 0.27;
     g.add(body, head, legL, legR, armL, armR);
     g.userData.legs = [legL, legR];
+    g.userData.baseScale = scale || 1;
+    /* v2026xxxx：骨骼角色替身（序章君主用 RobotExpressive 作示范）。
+       加载成功后挂到 g 上、缩放对齐方块人高度、隐藏方块人；失败则留方块人兜底。 */
+    if (actorName && GAME.gltf && GAME.gltf.Actor) {
+      var pa = new GAME.gltf.Actor({ name: actorName });
+      pa.load(function (a) {
+        if (!a || !a.root) return;
+        a.root.scale.setScalar(1.2);        /* 归一化身高 1.0 → 对齐方块人 ~1.2 */
+        g.add(a.root);
+        g.userData.actor = a;
+        g.children.forEach(function (c) { if (c !== a.root) c.visible = false; });
+      });
+    }
     g.scale.setScalar(scale || 1);
     return g;
   }
@@ -2932,12 +3137,10 @@ import './gltf.js';
     var d = c.dir;
     var rr = R + Math.max(0, sphElev(d)) * HSC + 0.55;
     g.position.set(d[0] * rr, d[1] * rr, d[2] * rr);
-    /* 让模型的 +Y 指向该格法线 */
-    var up = new THREE.Vector3(0, 1, 0);
-    var n = new THREE.Vector3(d[0], d[1], d[2]).normalize();
-    g.quaternion.setFromUnitVectors(up, n);
-    /* 再绕自身竖轴随机一转，避免每个人都朝同一个方向；记下基准朝向供行走插值 */
-    g.rotateY((ci % 360) * Math.PI / 180);
+    /* v156.19：姿态统一走 surfaceQuat（+Y→径向，转身绕**局部**竖轴）。
+       原来这里用 g.rotateY() 其实是对的（局部轴），但两处写法不一容易再踩坑，
+       收敛成一个出口：给了 yaw 就自转，没有就正面朝南（+Z）。 */
+    applyQuad(g.quaternion, d, ci % 360);
     g.userData.baseQ = g.quaternion.clone();
     return true;
   }
@@ -2952,7 +3155,7 @@ import './gltf.js';
     var sc = Math.max(0.8, Math.min(5.0, cellW * 0.45 / 1.2));
     var who = [];
     if (GAME.prologue && GAME.prologue.on && GAME.prologue.on() && GAME.prologue.pos) {
-      who.push({ ci: GAME.prologue.pos(), color: 0xffd166, scale: sc * 1.15, key: 'lord' });
+      who.push({ ci: GAME.prologue.pos(), color: 0xffd166, scale: sc * 1.15, key: 'lord', actor: 'RobotExpressive' });
     } else {
       var pc = GAME.currentCity && GAME.currentCity();
       if (pc && pc.ci != null) who.push({ ci: pc.ci, color: 0x8fd4ff, scale: sc, key: 'city' });
@@ -2960,7 +3163,7 @@ import './gltf.js';
     var stc = (GAME.state && GAME.state._standCi);
     if (stc != null && stc >= 0) who.push({ ci: stc, color: 0xcfd6df, scale: sc * 0.95, key: 'stand' });
     who.forEach(function (w) {
-      var g = makeFigure(w.color, w.scale);
+      var g = makeFigure(w.color, w.scale, w.actor);
       if (!placeFigure(g, w.ci)) return;
       figCache[w.key] = { g: g, ci: w.ci };
       figRoot.add(g);
@@ -2987,9 +3190,7 @@ import './gltf.js';
     /* 终点姿态：按终点格重算一次（照 placeFigure 的算法），只取姿态不落位 */
     var d = c.dir;
     var n = new THREE.Vector3(d[0], d[1], d[2]).normalize();
-    var qTo = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), n);
-    var spin = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), ((ci % 360) * Math.PI / 180));
-    qTo.multiply(spin);
+    var qTo = applyQuad(new THREE.Quaternion(), d, ci % 360);
     walkAnim = {
       key: key, g: g, to: ci, t0: Date.now(), dur: (M.walkDur || 220),
       fromPos: g.position.clone(),
@@ -3048,7 +3249,20 @@ import './gltf.js';
     }
     return grp;
   }
-  /* 把一件物品坐到某格上：+Y 对法线、贴地表、再绕竖轴转 yaw（度）。 */
+  /* 把一件物品坐到某格上：+Y 对法线、贴地表、再绕竖轴转 yaw（度）。
+     ============================================================
+     v156.25：这里与 `surfaceQuad(ci, yaw)` **数学等价**（实测 |dot|=1.000000000000，
+       上轴偏差 5e-16 = 浮点噪声；见 .workbuddy/tools/show/probe_axis_equiv.js）：
+         setFromUnitVectors(up, n)  → 「对齐」四元数
+         rotateY(θ)                 → **局部轴**右乘（three 的实现就是 q × qY）
+       和 surfaceQuad 里 `q × qY(局部)` 是同一个式子，只是写法不同。
+     ⛔ 唯一要守的判据：**转身永远绕局部轴**。
+       反例（v156.19 城堡朝向错乱的真因）：`q.multiply(绕世界法线`n`的四元数)`。
+       四元数右乘是"先转右边、再转左边" —— 拿世界轴当右边，等于先把物体上轴
+       从法线上掰开、再用 q 拉回来，于是每座城随机歪 0~90°（实测 18.6° / 142°）。
+     以后若要合并这两处：**整段替换 + 跑探针复验**，不要"顺手"把 rotateY
+       换成绕世界轴的写法 —— 那种改动看起来更"对称"，但它就是上面那个 bug。
+     ============================================================ */
   function seatProp(g, ci, yawDeg) {
     var c = _tileCells && _tileCells[ci];
     if (!c || !c.dir) return false;
@@ -3209,6 +3423,9 @@ import './gltf.js';
 
   /* 每帧：只把变了的人挪一下（不重建） */
   function syncFigures() {
+    /* 骨骼角色每帧推进需要 dt（秒） */
+    var _now = Date.now();
+    var fdt = Math.min(0.05, (_now - figLastT) / 1000) || 0.016; figLastT = _now;
     /* 第一次调用时 figRoot 还不存在 —— 先建出来 */
     if (!figRoot) {
       if (GAME.prologue && GAME.prologue.on && GAME.prologue.on()) {
@@ -3232,13 +3449,19 @@ import './gltf.js';
         var dir3 = slerpVec([curDir.x, curDir.y, curDir.z], w.toDir, ew);
         w.g.position.set(dir3[0] * rr2, dir3[1] * rr2, dir3[2] * rr2);
         if (w.fromQ && w.toQ) w.g.quaternion.copy(w.fromQ).slerp(w.toQ, ew);
-        if (w.g.userData && w.g.userData.legs) {
+        if (w.g.userData && w.g.userData.actor && w.g.userData.actor.root) {
+          w.g.userData.actor.skill('walk');
+          w.g.userData.actor.update(fdt);
+        } else if (w.g.userData && w.g.userData.legs) {
           var sw2 = Math.sin(Date.now() / 70) * 0.5;
           w.g.userData.legs[0].rotation.x = sw2;
           w.g.userData.legs[1].rotation.x = -sw2;
         }
         if (kw >= 1) {
-          if (w.g.userData && w.g.userData.legs) {
+          if (w.g.userData && w.g.userData.actor && w.g.userData.actor.root) {
+            w.g.userData.actor.skill('idle');
+            w.g.userData.actor.update(fdt);
+          } else if (w.g.userData && w.g.userData.legs) {
             w.g.userData.legs[0].rotation.x = 0;
             w.g.userData.legs[1].rotation.x = 0;
           }
@@ -3269,7 +3492,13 @@ import './gltf.js';
     var t = (Date.now() % 2000) / 2000;
     Object.keys(figCache).forEach(function (k) {
       var f = figCache[k], g = f.g;
-      if (!g || !g.userData || !g.userData.legs) return;
+      if (!g || !g.userData) return;
+      if (g.userData.actor && g.userData.actor.root) {
+        g.userData.actor.skill('idle');
+        g.userData.actor.update(fdt);
+        return;                              /* 骨骼角色自带动画，不做方块人呼吸缩放 */
+      }
+      if (!g.userData.legs) return;
       var br = Math.sin(t * Math.PI * 2) * 0.05;
       g.scale.y = (g.userData.baseScale || g.scale.y) * (1 + br * 0.1);
     });
@@ -3283,7 +3512,7 @@ import './gltf.js';
     scene.add(figRoot);
     var cellW = Math.sqrt((4 * Math.PI * R * R / Math.max(1, (_tileCells || []).length)) || 1);
     var sc = Math.max(0.8, Math.min(5.0, cellW * 0.45 / 1.2));
-    var g = makeFigure(0xffd166, sc * 1.15);
+    var g = makeFigure(0xffd166, sc * 1.15, 'RobotExpressive');
     if (!placeFigure(g, fromCi)) return false;
     figCache.lord = { g: g, ci: toCi };
     figRoot.add(g);
@@ -3535,7 +3764,9 @@ import './gltf.js';
         var S = (_cellW * 3.2 / _maxDim) * (2 / 3) * (wd.scaleMul || 1);
         mesh.scale.setScalar(S);
         var tg = new THREE.Group(); tg.add(mesh);
-        tg.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(d[0], d[1], d[2]).normalize());
+        /* v156.19：奇观同样走 surfaceQuat（基座平面 ⟂ 指向圆心的半径）。
+           正面（模型 +Z）默认朝南；奇观不额外自转，保持"四方端正"。 */
+        applyQuad(tg.quaternion, d, 0);
         body.add(tg);
         /* 落点：按包围盒 8 角沿法线的最小投影 `low`（< 0 = 有部分在原点之下）反推 ——
            rr = surfR − low + margin → **最低点坐在地表上**。海面给负 margin（半潜入水）。 */

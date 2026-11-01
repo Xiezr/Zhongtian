@@ -14,7 +14,7 @@
 var fs = require('fs');
 var R = 'E:/Deepseekdb/';
 function read(p) { try { return fs.readFileSync(R + p, 'utf8'); } catch (e) { return ''; } }
-var MAIN = read('js/main.js'), UI = read('js/ui.js'), HTML = read('index.html');
+var MAIN = read('js/main.js'), UI = read('js/ui-all.js'), HTML = read('index.html');
 var MOD = ['data', 'state', 'domain', 'systems', 'tactic', 'battle', 'map', 'ui', 'main', 'icons', 'story'];
 var ALLJS = MOD.map(function (f) { return read('js/' + f + '.js'); }).join('\n');
 function cnt(re, s) { return (String(s).match(re) || []).length; }

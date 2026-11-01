@@ -219,7 +219,7 @@ function auditTroopChain(G, DATA, opt) {
 
   /* ⑥ 反向：退役 id 的**产品侧可执行形态零残留**（剥注释；state.js 迁移表是唯一合法去处） */
   var REV_FILES = ['js/data.js', 'js/domain.js', 'js/map.js', 'js/battle.js', 'js/tactic.js', 'js/systems.js',
-    'js/ui.js', 'js/icons.js', 'js/gicons.js', 'js/main.js', 'index.html'];
+    'js/ui-all.js', 'js/icons.js', 'js/gicons.js', 'js/main.js', 'index.html'];
   REV_FILES.forEach(function (rel) {
     var src = strip(read(rel));
     RETIRED.forEach(function (rid) {
@@ -273,7 +273,7 @@ function printReport(rep) {
 function printRefs(id) {
   var read = makeReader(ROOT);
   var files = ['js/data.js', 'js/state.js', 'js/domain.js', 'js/map.js', 'js/battle.js', 'js/tactic.js',
-    'js/systems.js', 'js/ui.js', 'js/icons.js', 'js/gicons.js', 'js/bitmaps.js',
+    'js/systems.js', 'js/ui-all.js', 'js/icons.js', 'js/gicons.js', 'js/bitmaps.js',
     'js/main.js', 'index.html', 'smoke-test.js', 'e2e-test.js'];
   var re = new RegExp('\\b' + id + '\\b');
   var n = 0;

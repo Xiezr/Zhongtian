@@ -72,3 +72,13 @@ node_modules/
 .claude/
 _*.txt
 
+
+# v156.28：项目索引的**查询库**是生成物（250KB，带时间戳，每次生成都变），不进仓库。
+# 权威清单 js/modules.json 必须进仓库 —— 构建脚本从它读 ORDER，缺了就没法构建。
+# 重建：node .workbuddy/tools/map/gen_index.js
+.workbuddy/index/
+
+# v156.39：分片与探针的**中间产物**（工具每次跑都重生成的，不进历史）
+.tmp_par*.js
+.tmp_touching.js
+*.out

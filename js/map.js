@@ -652,6 +652,64 @@ import './state.js';
     var f = GAME.map._countyField(); if (!f) return -1;
     return (ci >= 0 && ci < f.length) ? f[ci] : -1;
   };
+  /* ============================================================
+   * v156.24（老板「占领省市区首府，可以看到该省市区下辖地的视野」）
+   * ------------------------------------------------------------
+   * **行政区 → 格清单** 的唯一出口。数据源是地图真正的省/市/区：
+   *   `GAME.map3d._settle`（`genSettlements()` 生成，UI 检索栏那三个下拉就是它）：
+   *     provOf / marketOf / districtOf  = 每个格属于哪个省 / 市 / 区（-1 = 不属）
+   *   · prov 覆盖**全球（陆+海）**；market/district 只划在陆地 —— 见 genSettlements 注释。
+   * 为什么要一个"出口"而不是各处直接读 `_settle`：
+   *   ① 没有 three 的环境（node 门禁）里 `_settle` 为 null，这里统一返回 null，
+   *      调用方不必到处 try/catch；
+   *   ② 索引口径只有一处（下面是**顶点/格索引**，与 sphere.cells、fog 的 ci 同一套编号）。
+   * ============================================================ */
+  GAME.map.adminFields = function () {
+    var S = GAME.map3d && GAME.map3d._settle;
+    if (!S || !S.provOf) return null;
+    return { prov: S.provOf, market: S.marketOf, district: S.districtOf, table: S.table };
+  };
+
+  /* ============================================================
+   * **过滤逻辑本体（纯函数，无副作用、不碰 three）**
+   * ------------------------------------------------------------
+   * 为什么单独拆出来：行政区数据（provOf/marketOf/districtOf）只在浏览器里
+   *   由 `genSettlements()` 生成；而"按 level+index 取格清单"这一步是纯数组操作。
+   *   拆开后，node 门禁可以喂构造数组验证**过滤是否正确**（含越界/串级/乱 level），
+   *   不必等浏览器——这是这个功能唯一能在 CI 里守住的部分。
+   * fields: {prov, market, district} 三个 Int16Array/数组（-1 = 无归属）
+   * level : 'prov' | 'market' | 'district'
+   * index : 该级序号（>= 0）
+   * 返回：格索引数组；fields/level/index 非法 → null（**区分"没有这种级别"与"这一格都没有"**）
+   * ============================================================ */
+  GAME.map.adminCisOf = function (fields, level, index) {
+    if (!fields || index == null || index < 0) return null;
+    var arr = level === 'prov' ? fields.prov
+      : level === 'market' ? fields.market
+        : level === 'district' ? fields.district : null;
+    if (!arr || !arr.length) return null;
+    var out = [];
+    for (var i = 0; i < arr.length; i++) if (arr[i] === index) out.push(i);
+    return out;
+  };
+
+  /* level: 'prov' | 'market' | 'district'；index: 该级序号。返回格索引数组（可能为空数组）。 */
+  GAME.map.adminCiList = function (level, index) {
+    return GAME.map.adminCisOf(GAME.map.adminFields(), level, index);
+  };
+
+  /* 格 → 所属行政区（{level,index,name,prov,market,district}；无归属 → null）。 */
+  GAME.map.adminOf = function (ci) {
+    var f = GAME.map.adminFields();
+    if (!f || ci == null || ci < 0 || ci >= f.prov.length) return null;
+    var T = f.table || {}, pi = f.prov[ci], mi = f.market[ci], di = f.district[ci];
+    if (pi < 0) return null;
+    var pn = (T.prov && T.prov[pi]) ? T.prov[pi].name : '';
+    var mn2 = (mi >= 0 && T.market && T.market[mi]) ? T.market[mi].name : '';
+    var dn = (di >= 0 && T.district && T.district[di]) ? T.district[di].name : '';
+    return { provIndex: pi, marketIndex: mi, districtIndex: di, prov: pn, market: mn2, district: dn };
+  };
+
   /* 聚落 ci → 该聚落城的**近邻重镇**（同州最近 jun，按聚落缓存）。O(1) 摊还。 */
   GAME.map._junOfCounty = function (countyCity) {
     var cache = GAME.map._cntyF && GAME.map._cntyF.junOf;
@@ -1104,7 +1162,9 @@ import './state.js';
   /* 经纬 → 单位球方向（3D 放置用） */
   GAME.map.dirOf = function (lon, lat) {
     var a = lat * Math.PI / 180, b = lon * Math.PI / 180, cl = Math.cos(a);
-    return [cl * Math.cos(b), Math.sin(a), cl * Math.sin(b)];
+    /* v2026-11-01（老板）：经度方向镜像，与 sphere.js 的 icoSpheres/dirOfLonLat 同源。
+       务必与 SP.dirOfLonLat 保持一致（两处公式都要翻 z）。 */
+    return [cl * Math.cos(b), Math.sin(a), -cl * Math.sin(b)];
   };
   /* 球系坐标显示文本（界面统一口径） */
   GAME.map.coordText = function (x, y) {

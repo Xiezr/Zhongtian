@@ -750,6 +750,13 @@
   var SPEED = 6.2;              /* 单位/秒，走起来不飘 */
   var BOUND = 13;               /* 场景活动半径 */
 
+  /* v2026xxxx：骨骼角色（Soldier）替身 —— 程序化方块人的升级版。
+     load 成功后挂到 player 组上；加载前/失败则用方块人兜底（场景不空白）。 */
+  var playerActor = null, playerActing = false;
+  /* 斗将：遭遇节点旁生成敌方 Soldier（duel.js 本身无 3D 渲染，这里是它的宿主视觉）。
+     duelActive 期间玩家播 attack、敌人播 guard；玩家走动/S.close 时清场。 */
+  var duelFoeActor = null, duelFoeGroup = null, duelActive = false;
+
   function ensure() {
     if (R3) return;
     layer = document.createElement('div');
@@ -1029,33 +1036,40 @@
 
   function buildPlayer() {
     var g = new THREE.Group();
-    var body = mesh(new THREE.CylinderGeometry(0.26, 0.32, 0.95, 8), lam(0x8ea6b8), 0, 0.5, 0);
-    body.name = 'body';
-    g.add(body);
-    g.add(mesh(new THREE.SphereGeometry(0.2, 10, 8), lam(0xd9c7a8), 0, 1.14, 0));
-    /* 单肩背包 + 一盏胸前的辐光小灯：废土科技的唯一"人味" */
-    g.add(mesh(new THREE.BoxGeometry(0.34, 0.42, 0.2), lam(0x6b533a), 0, 0.62, -0.26));
-    g.add(mesh(new THREE.SphereGeometry(0.07, 8, 6), lam(C.glow, { emissive: C.glow, emissiveIntensity: 1.0 }), 0, 0.82, 0.24));
-    /* 脚下影子（一个压扁的暗圆）：没有阴影贴图时，它是"站在地上"的关键提示 */
+    /* 程序化方块人：兜底用，加载到骨骼角色后整体隐藏（仍在树上，行为/计数不破） */
+    var fig = new THREE.Group(); fig.name = 'fig';
+    fig.add(mesh(new THREE.CylinderGeometry(0.26, 0.32, 0.95, 8), lam(0x8ea6b8), 0, 0.5, 0));
+    fig.add(mesh(new THREE.SphereGeometry(0.2, 10, 8), lam(0xd9c7a8), 0, 1.14, 0));
+    fig.add(mesh(new THREE.BoxGeometry(0.34, 0.42, 0.2), lam(0x6b533a), 0, 0.62, -0.26));
+    fig.add(mesh(new THREE.SphereGeometry(0.07, 8, 6), lam(C.glow, { emissive: C.glow, emissiveIntensity: 1.0 }), 0, 0.82, 0.24));
+    g.add(fig);
+    /* 脚下影子（一个压扁的暗圆）：没有阴影贴图时，它仍是"站在地上"的关键提示 */
     var sh = mesh(new THREE.CircleGeometry(0.36, 16), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.28 }), 0, 0.015, 0);
-    sh.rotation.x = -Math.PI / 2;
-    sh.name = 'shadow';
-    g.add(sh);
-    /* 头顶的指示三角：小场景里人物只有几十像素，不加这个容易"找不到自己"
-       （俯视 60° 时人体被压扁，靠颜色分辨不够）。 */
+    sh.rotation.x = -Math.PI / 2; sh.name = 'shadow'; g.add(sh);
+    /* 头顶指示三角（穿透遮挡，永远可见） */
     var mk = mesh(new THREE.ConeGeometry(0.17, 0.30, 4), new THREE.MeshBasicMaterial({ color: C.glow }),
       0, 1.66, 0);
     mk.rotation.x = Math.PI;         /* 尖朝下 */
     mk.name = 'marker';
     g.add(mk);
-    /* 头顶标记**穿透遮挡**（只有它，不含身体）。
-       第一版把整个人设成 depthTest:false，结果是"人浮在屋顶上"——
-       因为玩家永远贴着南侧那栋房子，人就被画在那栋房的屋顶上（截图确认）。
-       正确的做法是：身体老实被遮（该被挡就挡），
-       但头顶那个三角永远可见 —— 玩家随时知道"我在哪"，画面也不假。 */
+    /* 头顶标记**穿透遮挡**（只有它，不含身体）。 */
     mk.material.depthTest = false;
     mk.material.depthWrite = false;
     mk.renderOrder = 999;
+    /* 骨骼角色（Soldier）：加载成功→挂上真模型、藏方块人、标记降到头顶；失败→留方块人 */
+    playerActor = null;
+    if (GAME.gltf && GAME.gltf.Actor) {
+      var pa = new GAME.gltf.Actor({ name: 'Soldier' });
+      pa.load(function (a) {
+        if (!a || !a.root) return;
+        a.root.scale.setScalar(1.0);
+        g.add(a.root);
+        g.userData.actor = a;
+        playerActor = a;
+        fig.visible = false;          /* 真模型接管，藏兜底方块人 */
+        mk.position.y = 1.35;         /* 头顶标记降到模型头顶 */
+      });
+    }
     return g;
   }
 
@@ -1067,6 +1081,7 @@
     if (k === 'e' || k === 'E' || k === 'Enter') { e.preventDefault(); e.stopPropagation(); S.interact(); return; }
     if (['w', 'a', 's', 'd', 'W', 'A', 'S', 'D', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].indexOf(k) >= 0) {
       keys[k] = true;
+      playerActing = false; clearDuelFoe();   /* 玩家一动，蹲下/斗将姿态即解除 */
       e.preventDefault(); e.stopPropagation();
     }
   }
@@ -1115,11 +1130,13 @@
       if (keys['s'] || keys['S'] || keys['ArrowDown']) vz += 1;
       if (keys['a'] || keys['A'] || keys['ArrowLeft']) vx -= 1;
       if (keys['d'] || keys['D'] || keys['ArrowRight']) vx += 1;
+      var moving = false;
       if (vx || vz) {
         targetPt = null;                     /* 手动走动会取消点击寻路 */
+        playerActing = false;                /* 走动即取消"蹲下采集" */
         var len = Math.sqrt(vx * vx + vz * vz);
         movePlayer(vx / len * SPEED * dt, vz / len * SPEED * dt);
-        bobWalk(now);
+        moving = true;
       } else if (targetPt) {
         var dx = targetPt.x - player.position.x, dz = targetPt.z - player.position.z;
         var d = Math.sqrt(dx * dx + dz * dz);
@@ -1129,13 +1146,25 @@
         } else {
           var stp = Math.min(d, SPEED * dt);
           movePlayer(dx / d * stp, dz / d * stp);
-          bobWalk(now);
+          moving = true;
         }
-      } else {
-        /* 站住：身体回正 */
+      } else if (!playerActor) {
+        /* 站住：身体回正（仅方块人兜底时需要；骨骼角色自有 idle 动画） */
         player.rotation.z *= 0.85;
         player.position.y += (0 - player.position.y) * 0.2;
       }
+      /* 骨骼角色：每帧推进 mixer + 按状态切动作（walk/idle/sit/attack） */
+      if (playerActor) {
+        if (moving) playerActor.skill('walk');
+        else if (duelActive && duelFoeActor) playerActor.skill('attack');
+        else if (playerActing) playerActor.skill('sit');
+        else playerActor.skill('idle');
+        playerActor.update(dt);
+      } else if (moving) {
+        bobWalk(now);                        /* 兜底方块人的走路晃动 */
+      }
+      /* 敌方斗将：同步推进它的动作 */
+      if (duelFoeActor) duelFoeActor.update(dt);
     }
 
     /* 走出城门 = 出城。
@@ -2391,6 +2420,31 @@
     return { ok: true, scene: sceneId, name: cfg.name };
   };
 
+  /* 斗将视觉宿主：在玩家身前生成敌方 Soldier，面朝玩家；玩家播 attack、敌人播 guard。
+     duel.js 本身只做战斗结算、无 3D 渲染，这里补上"看得见的两个人"。 */
+  function spawnDuelFoe(nd) {
+    if (!player || !propRoot || !(GAME.gltf && GAME.gltf.Actor)) return;
+    clearDuelFoe();
+    var a = new GAME.gltf.Actor({ name: 'Soldier' });
+    a.load(function (av) {
+      if (!av || !av.root) return;
+      var grp = new THREE.Group();
+      av.root.scale.setScalar(1.0);
+      grp.add(av.root);
+      /* 站在玩家身前 1.8 米、面朝玩家 */
+      var fa = player.rotation.y;
+      grp.position.set(player.position.x + Math.sin(fa) * 1.8, 0, player.position.z + Math.cos(fa) * 1.8);
+      grp.rotation.y = fa + Math.PI;
+      propRoot.add(grp);
+      duelFoeActor = av; duelFoeGroup = grp; duelActive = true;
+      av.skill('guard');
+    });
+  }
+  function clearDuelFoe() {
+    if (duelFoeGroup && propRoot) propRoot.remove(duelFoeGroup);
+    duelFoeGroup = null; duelFoeActor = null; duelActive = false;
+  }
+
   S.close = function () {
     if (!openId) return { ok: false };
     /* v143：结算过的正式局，退出落点是地块界面（玩家从那儿点按钮进来的）。
@@ -2404,6 +2458,7 @@
     if (layer && cvs && cvs.parentNode !== layer) layer.appendChild(cvs);
     if (propRoot) { scene.remove(propRoot); propRoot = null; }
     nodeList = []; nearNode = null; keys = {};
+    clearDuelFoe(); playerActor = null; playerActing = false;
     /* v143.2：行人随 propRoot 清（数组同步空，_cityNpcs() 归零） */
     cityNpcs = [];
     npcMatSkin = null; npcMatTint = null; npcMatPants = null;
@@ -2529,6 +2584,7 @@
       if (nd.ring) nd.ring.visible = false;
       dimProp(o);
       if (G.ui && G.ui.openDuelPanel) G.ui.openDuelPanel();
+      spawnDuelFoe(nd);                   /* 斗将视觉：玩家身前立一个敌人 */
       return _r2;
     }
     if (nd.done) return { ok: false, msg: '这里已经收拾过了' };
@@ -2559,6 +2615,7 @@
       } catch (e) { res = { ok: false, msg: '动手时出错了：' + (e.message || '') }; }
     }
     nd.done = true;
+    playerActing = true;                   /* 采集/垂钓：蹲下动作，走动即取消 */
     if (nd.ring) nd.ring.visible = false;
     dimProp(o);
     /* 记到 state.sceneDone（按天）：这一趟收拾过的，同一天再进来就是暗的 */

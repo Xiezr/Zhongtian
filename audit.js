@@ -27,7 +27,11 @@ const JSDIR = path.join(__dirname, 'js');
    否则结构审计对它是瞎的：fog / memorial / camp 未加入时，
    `GAME.camp` 在 state.js / ui.js 里的引用被报成"引用了不存在的成员"，
    而真正的成因是 audit 根本没读 camp.js。 */
-const MODULES = ['core', 'registry', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'colony', 'fleet', 'domain', 'map', 'sphere', 'risk', 'years', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'rival', 'land', 'taint', 'climate', 'surge', 'relic', 'goals', 'veteran', 'setskill', 'deck', 'bond', 'tower', 'wonderwar', 'delve', 'unrest', 'expose', 'trooplv', 'idle', 'ending', 'muster', 'founding', 'prologue', 'duel', 'market', 'events', 'battle', 'battlelog', 'strategy', 'icons', 'scene3d', 'placement', 'belt', 'planetgen', 'story', 'ui', 'map3d', 'main'];
+/* v156.28：**从 js/modules.json 读**（唯一权威清单）。
+   历史上这里是手抄的数组，结果漏了 gltf / bitmaps / gicons / portraits / tactic
+   —— 那 6 个模块的函数从来没进过死函数扫描（索引对账第一次跑就抓到了）。
+   现在清单只有一份，改模块只需要改 modules.json 的 layout.order。 */
+const MODULES = require('./js/modules.json').order;
 
 const src = {};
 MODULES.forEach(m => { src[m] = fs.readFileSync(path.join(JSDIR, m + '.js'), 'utf8'); });
@@ -70,15 +74,24 @@ MODULES.forEach(m => {
   while ((x = re.exec(src[m])) !== null) defs.push({ file: m, ns: x[1], name: x[2], full: x[1] + '.' + x[2] });
 });
 
-/* 重复定义 */
+/* 重复定义 —— **只对跨文件的全局命名空间判重**。
+   ⚠️ v156.28 修：原判据把文件内别名也算进来。各模块开头普遍写
+      `var S = GAME.state; var P = GAME.map; var M = GAME.map3d;`
+      于是 `S.foo` / `M.foo` 在不同文件里重名是**设计如此**（各自指向同一对象，
+      但每个文件各自定义自己的函数集）。真正会互相覆盖的只有全局挂载：
+      GAME / DATA / SP / ui / F / U。
+   触发这条修正的实测：`sc.onload`（gltf 与 map3d 各有 `document.createElement('script')`
+      得到的局部 `sc`）被报成"同名函数重复定义"，而 gltf.js 是**这一轮才被
+      MODULES 收进来的**（之前漏扫 6 个模块，所以从没撞见过）。 */
+const GLOBAL_NS = /^(GAME|DATA|SP|ui|F|U)(\.|$)/;
 const byFull = {};
 defs.forEach(d => { (byFull[d.full] = byFull[d.full] || []).push(d.file); });
-const dupDefs = Object.keys(byFull).filter(k => byFull[k].length > 1);
+const dupDefs = Object.keys(byFull).filter(k => byFull[k].length > 1 && GLOBAL_NS.test(k));
 if (dupDefs.length) {
   console.log('  ⚠ 同名函数被多次定义（后定义会覆盖前者）：');
   dupDefs.forEach(k => { console.log('     ' + k + '  ←  ' + byFull[k].join(', ')); problems++; });
 } else {
-  console.log('  ✅ 无重复定义（' + defs.length + ' 个函数名唯一）');
+  console.log('  ✅ 无重复定义（' + defs.length + ' 个函数名唯一 · 判据只看全局命名空间 GAME/DATA/SP/ui/F/U）');
 }
 
 /* 无引用 */
@@ -353,8 +366,9 @@ const REF_NS = ['GAME', 'DATA', 'U'];
    会直接报红（GAME.planetgen 假红就是"漏收"造成的：定义在 planetgen.js，audit 没读它）。
    v90.92：任务系统退役 —— 'questdata' 摘除（见①的 MODULES 说明）。
    v91.61：新增 'core'。判据A：新增 placement / belt / planetgen（顺序随 build_bundle.py ORDER）。 */
-const REF_MODULES = ['core', 'registry', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'colony', 'fleet', 'domain', 'map', 'sphere', 'risk', 'years', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'rival', 'land', 'taint', 'climate', 'surge', 'relic', 'goals', 'veteran', 'setskill', 'deck', 'bond', 'tower', 'wonderwar', 'delve', 'unrest', 'expose', 'trooplv', 'idle', 'ending', 'muster', 'founding', 'prologue', 'duel', 'market', 'events', 'battle', 'battlelog', 'strategy', 'tactic',
-  'icons', 'gicons', 'bitmaps', 'portraits', 'placement', 'belt', 'planetgen', 'scene3d', 'story', 'ui', 'map3d', 'main'];
+/* v156.28：同上，与 MODULES 共用唯一来源。原先这份漏 gltf / duel3d —— 于是
+   `GAME.gltf.xxx` 被报成"引用了不存在的成员"（判据A 的假红就是这类漏收造成的）。 */
+const REF_MODULES = MODULES;
 /* 剥注释（audit.js 里没有共用版；注释里提到旧名不应算引用 —— 本项目踩过多次） */
 const stripC = s => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '');
 const refSrc = {};

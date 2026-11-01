@@ -25,8 +25,14 @@ const MIME = {
 
 const ERRORS = [];
 const WARNINGS = [];
-let PASS = 0, FAIL = 0;
+let PASS = 0, FAIL = 0, SKIP = 0;
 let ASSERTING = false; // 只在断言阶段统计错误
+/* v156.39：**跳过 ≠ 通过**。原来「本次随机没走到这条路」写成 check(名, true)，
+   「没测到」被计进通过数且永远绿 —— 分档只看红，看不见它。skip 单独计数。 */
+function skip(name, why) {
+  SKIP++;
+  console.log('  ⊘ ' + name + '   [' + (why || '本轮未触发') + ']');
+}
 function check(name, cond, extra) {
   if (cond) { PASS++; console.log('  ✅ ' + name + (extra ? '  [' + extra + ']' : '')); }
   else { FAIL++; console.log('  ❌ ' + name + (extra ? '  [' + extra + ']' : '')); }
@@ -665,16 +671,56 @@ async function runTests(dom, URL) {
   check('天时排在「自动」「设置」之后的最右（v29：存档/新游戏已移出顶栏）', (function () {
     const nav = document.querySelector('#topnav');
     if (!skyEl) return false;
-    const kids = Array.prototype.slice.call(nav.children);
-    const iSky = kids.indexOf(skyEl);
-    const iSet = kids.findIndex((x) => x.dataset.view === 'settings');
-    const iAuto = kids.findIndex((x) => x.dataset.view === 'auto');
-    const hasSave = kids.some((x) => x.dataset.action === 'save' || x.dataset.action === 'new-game');
-    return iAuto >= 0 && iSet >= 0 && iAuto < iSet && iSet < iSky && !hasSave;
+    const setEl = nav.querySelector('[data-view="settings"]');
+    const autoEl = nav.querySelector('[data-view="auto"]');
+    if (!setEl || !autoEl) return false;
+    const hasSave = !!nav.querySelector('[data-action="save"],[data-action="new-game"]');
+    /* v156.32：天时已包进 `.nav-right` 工具区 → 不再是 #topnav 的直接子元素，
+       `kids.indexOf(skyEl)` 恒为 -1。判据改为**文档顺序**（compareDocumentPosition），
+       跨层级同样成立：自动 → 设置 → 天时，且顶栏没有存档/新游戏。 */
+    const FOLLOWING = 4;
+    return !!(autoEl.compareDocumentPosition(setEl) & FOLLOWING)
+      && !!(setEl.compareDocumentPosition(skyEl) & FOLLOWING) && !hasSave;
   })());
   check('顶栏「自动」菜单可进入（自动出征面板）', (function () {
     const t = document.querySelector('#topnav [data-view="auto"]');
     return !!t && !!t.querySelector('svg.nav-ico');
+  })());
+  /* v156.33（老板「顶上还是把游商啥的搞没了」）：阶段锁的页签从"藏起来"改成"灰显"。
+     验三件事：**看得见**（计算样式 display 不是 none）、**点不动**（给一句人话）、
+     **解锁后照常进**。锁/解锁状态在本判据里手动摆，不依赖当前阶段 —— 否则换个存档就假红。
+     ⚠️ e2e 跑在 jsdom 上：`getBoundingClientRect()` 恒返回全 0，判"可见"不能用宽高，
+        只能看计算样式；`getComputedStyle` 也必须走 `window.` 前缀（全局没有）。 */
+  check('v156.33：锁着的页签看得见 · 点不动（给提示） · 解锁后照常进', (function () {
+    const shop = document.querySelector('#topnav [data-view="shop"]');
+    if (!shop) return false;
+    /* 起点不能在游商页 —— 否则"解锁后进去了"恒真（判据自己把自己骗了）。 */
+    if (G.ui.view === 'shop') G.ui.setView('city');
+    const toastEl = document.getElementById('toast');
+    const v0 = G.ui.view;
+
+    shop.classList.add('tab-locked');
+    const cs = window.getComputedStyle(shop);
+    const visible = cs.display !== 'none' && cs.visibility !== 'hidden';
+
+    if (toastEl) toastEl.innerHTML = '';
+    if (G.ui._notes) G.ui._notes.length = 0;
+    shop.click();
+    const blocked = G.ui.view === v0;
+    const told = (toastEl.textContent || '').indexOf('暂时进不去') >= 0;
+
+    shop.classList.remove('tab-locked');
+    shop.click();
+    const opened = G.ui.view === 'shop';
+    if (v0 && v0 !== 'shop') G.ui.setView(v0);   /* 不给后面的用例留一个游商视图 */
+    return visible && blocked && told && opened;
+  })(), (function () {
+    const s = document.querySelector('#topnav [data-view="shop"]');
+    if (!s) return 'n/a';
+    const cs = window.getComputedStyle(s);
+    /* ⚠️ 这里已是"解锁后"的状态（判据末尾把类去掉了）：只报结构可见性，
+       不报 opacity —— 否则日志里一个 1 会让人以为灰显没生效。 */
+    return 'display=' + cs.display;
   })());
   check('羁绊不在界面暴露（v89.218：原查史册页 → 改查侧栏与顶栏）',
     attrHtml.indexOf('羁绊') < 0 && (!skyEl || skyEl.textContent.indexOf('羁绊') < 0));
@@ -867,7 +913,7 @@ async function runTests(dom, URL) {
       check('v89.40：君主档案不出忠诚行与赏赐',
         dhL40.length > 200 && dhL40.indexOf('>忠诚 <b') < 0 && dhL40.indexOf('gen-gift-pick') < 0);
     } else {
-      check('v89.40：君主档案不出忠诚行与赏赐（无君主，跳过）', true);
+      skip('v89.40：君主档案不出忠诚行与赏赐', '无君主');
     }
     G.ui._genSel = gid40;
     G.ui.setView('generals');
@@ -1176,8 +1222,14 @@ async function runTests(dom, URL) {
   /* v76（老板）：地图导航迁入底部固定导航条 —— 相关元素改从 #bottom-bar 取 */
   const bb19 = document.querySelector('#bottom-bar').innerHTML;
   check('地图导航在底部条（v90.88：去方向键）', bb19.indexOf('map-dock') >= 0 && bb19.indexOf('map-pad') < 0);
-  check('地图坐标输入改**球系**（经纬度）', !!document.querySelector('#map-lon') && !!document.querySelector('#map-lat') && !document.querySelector('#map-gx'));
-  check('含视野信息', !!document.querySelector('#map-info'), (document.querySelector('#map-info') || {}).textContent);
+  /* ⛔ v156.35（老板「这个已无用，删去：球系坐标 / 经度 / °E / 纬度 / °N / 前往」）：
+     判据从"输入框在册"翻转为"整组不在" —— 真 DOM 里三样都不该再出现。 */
+  check('v156.35：球系坐标输入组已退役（无经纬框 · 无前往按钮）',
+    !document.querySelector('#map-lon') && !document.querySelector('#map-lat')
+    && !document.querySelector('[data-action="map-goto"]'));
+  /* ⛔ v156.37（老板「去掉地图上这些无用：点选 — …」）：底栏信息区整块退役 → 判据翻转。 */
+  check('v156.37：底栏信息区已退役（无 #map-info · 无 #map-pick-info）',
+    !document.querySelector('#map-info') && !document.querySelector('#map-pick-info'));
   const cv19 = vc.querySelector('#mapCanvas');
   check('地图 canvas 存在', !!cv19);
   /* v26（需求 4）：观察框 12×8、格距 52 —— 判据取实际常量，不写死像素
@@ -1227,16 +1279,11 @@ async function runTests(dom, URL) {
     !/天下大势/.test(mapHtml) && !/观察框/.test(mapHtml) && !/名城（红=旧都/.test(mapHtml)
     && /adm-terrain/.test(mapHtml));
   check('地图导航在底部条内（v90.88：去方向键）', bb19.indexOf('map-dock') >= 0 && bb19.indexOf('map-pad') < 0);
-  check('视野信息同步刷新', (document.querySelector('#map-info') || {}).textContent === G.ui.mapInfoText(),
-    (document.querySelector('#map-info') || {}).textContent);
-  /* 球系坐标跳转（v90.88）：经度/纬度 → 世界格 → 视野中心 */
-  document.querySelector('#map-lon').value = '190';
-  document.querySelector('#map-lat').value = '20';
-  click(document.querySelector('[data-action="map-goto"]'));
-  await sleep(60);
-  check('球系坐标跳转生效（经纬 → 视野中心）',
-    G.ui.mapView.x === Math.round(190 / 360 * 500) && G.ui.mapView.y === Math.round((0.5 - 20 / 180) * 500),
-    '(' + G.ui.mapView.x + ',' + G.ui.mapView.y + ') 期望 (' + Math.round(190 / 360 * 500) + ',' + Math.round((0.5 - 20 / 180) * 500) + ')');
+  /* ⛔ v156.37：读数行已退役，本条删除（上面已断言两个节点都不存在）。 */
+  /* ⛔ v156.35：球系坐标跳转（v90.88 的经纬 → 世界格）整条退役 ——
+     老板已改用「点地图格 / 星系总览」导航。这里不再点它，改为确认出口真的没了。 */
+  check('v156.35：前往跳转已下线（按钮与处理函数都不在）',
+    !document.querySelector('[data-action="map-goto"]') && typeof G.ui.mapGoto === 'undefined');
   /* 回主城 */
   const pc19 = G.map.playerCity();
   click(document.querySelector('[data-action="map-center"]'));
@@ -1244,11 +1291,45 @@ async function runTests(dom, URL) {
   check('回主城后主城居中（v50：视野中心 = 主城格）', (function () {
     return G.ui.mapView.x === pc19.x && G.ui.mapView.y === pc19.y;
   })(), '(' + G.ui.mapView.x + ',' + G.ui.mapView.y + ') 主城 (' + pc19.x + ',' + pc19.y + ')');
-  /* 点击地图格子 */
-  const clickEv = new window.MouseEvent('click', { bubbles: true, cancelable: true, view: window, clientX: 30, clientY: 30 });
+  /* 点击地图格子
+     ------------------------------------------------------------
+     ⚠️ jsdom **没有布局**：`getBoundingClientRect()` 恒返回全 0，
+        于是 `GAME.map.pick()` 内部 `cw = clientWidth || rect.width/k` = 0
+        → 坐标算成 NaN → 格子索引 -1 → **恒返回 null**。
+     这就是这条断言从写下第一天起就写死 `true` 的真正原因：
+     不是没人想测，是在 jsdom 里**无法测**，于是被"跳过"了。
+     现在给画布一个 mock 布局（项目里已有先例，见上面 h1..h4 那段），
+     让命中测试走通，点画布中心 = 点主城所在格 → 必须开面板。 */
+  const _oldRect39 = cv19.getBoundingClientRect;
+  cv19.getBoundingClientRect = function () {
+    return { left: 0, top: 0, width: cv19.width, height: cv19.height };
+  };
+  const clickEv = new window.MouseEvent('click', {
+    bubbles: true, cancelable: true, view: window,
+    clientX: Math.round(cv19.width / 2), clientY: Math.round(cv19.height / 2),
+  });
   cv19.dispatchEvent(clickEv);
   await sleep(60);
-  check('点击地图格子有响应', true, document.querySelector('#modal-root').innerHTML.length > 0 ? '弹出面板' : '选中格子');
+  /* v156.39：原 cond 写死 true —— 「点地图会弹面板」从来没有真断言。
+     真判据：点完必须有**可观察响应**（弹出面板 / 视图切换 / 选中记录），
+     三者全无 = 点击没接线 = 红。 */
+  const _resp19 = (document.querySelector('#modal-root').innerHTML.length > 0)
+    || (G.ui.view !== 'map')
+    || !!G.ui._mapMark;
+  /* 诊断值必须在**复原 rect 之前**取 —— 否则 detail 显示 r=null，
+     看着像"没点中"，实际是取晚了（第一版就这么误导过我一次）。 */
+  const _pick39 = (function () {
+    try {
+      var _r = G.map.pick(cv19, cv19.width / 2, cv19.height / 2);
+      return _r ? ('ci' + _r.ci + '/' + _r.kind) : 'null';
+    } catch (e) { return 'err:' + e.message; }
+  })();
+  cv19.getBoundingClientRect = _oldRect39;      /* 复原：不给后面的用例留一个假布局 */
+  check('点击地图格子有响应', _resp19,
+    'modal=' + (document.querySelector('#modal-root').innerHTML.length > 0 ? 'Y' : 'N')
+    + ' view=' + G.ui.view + ' r=' + _pick39
+    + ' bound=' + (cv19._pickBound ? 'Y' : 'N')
+    + ' canvWH=' + cv19.width + 'x' + cv19.height);
   G.ui.closeAllModals();
 
   /* v89.5：灵机之地 —— 地图悬青旗（渲染接线 + 点选提示 + 真实点击） */
@@ -1309,31 +1390,11 @@ async function runTests(dom, URL) {
     return hit;
   })();
   check('主城周边 14 格内能找到灵机格', !!q19b, q19b ? '(' + q19b.x + ',' + q19b.y + ') 事×' + q19b.n : '未找到');
-  check('v89.5：点选灵机格 → 状态行「荒野事 ×n · 灵机」', (function () {
-    if (!q19b) return false;
-    const old = G.ui.mapPick;
-    G.ui.mapPick = { kind: 'wild', ci: q19b.ci };
-    G.ui.syncMapInfo();
-    const t = document.querySelector('#map-pick-info').textContent;
-    G.ui.mapPick = old;
-    G.ui.syncMapInfo();
-    return t.indexOf('荒野事 ×' + q19b.n) >= 0 && t.indexOf('灵机') >= 0;
-  })());
-  check('v89.5：真实点击灵机格（canvas 事件 → 点选行含灵机）', (function () {
-    if (!q19b) return false;
-    /* v89.138（老板 1）：视野从 17×14 收窄到 9×8 —— 先把视野中心移到灵机格，
-       否则"主城周边 5 格"的目标可能落在可视区外（老断言直接 return false）。 */
-    G.ui.mapView.x = q19b.x; G.ui.mapView.y = q19b.y;
-    G.ui.renderMapCanvas();
-    const v = G.map._view;
-    const sx = v.ox + q19b.x * v.cell, sy = v.oy + q19b.y * v.cell;
-    if (!(sx > 0 && sy > 0 && sx < cv19.width && sy < cv19.height)) return false;
-    const oldRect = cv19.getBoundingClientRect;
-    cv19.getBoundingClientRect = function () { return { left: 0, top: 0, width: cv19.width, height: cv19.height }; };
-    cv19.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true, view: window, clientX: sx, clientY: sy }));
-    cv19.getBoundingClientRect = oldRect;
-    return (document.querySelector('#map-pick-info') || {}).textContent.indexOf('灵机') >= 0;
-  })());
+  /* ⛔ v156.37（老板「去掉地图上这些无用：点选 — …」）：
+     本条原本验「真点一下灵机格 → 底栏点选行出现『荒野事 ×n · 灵机』」。
+     点选行（#map-pick-info）已随底栏信息区退役，被测行为不存在 → 整条删除。
+     ⚠️ 顺带发现：上面「点击地图格子有响应」那条的 cond 写死成 true（永远不会红），
+     所以"点地图会弹面板"这件事其实一直没有真断言 —— 已记在交付文档，不在本轮扩大范围。 */
 
   /* ⛔ v90.80（老板「去除奇遇系统」）：原 19c 段（v89.6 奇遇 · 见闻录 —— 底栏入口 / 点位 /
      现形 / 探奇 / 见闻录 共 14 条断言）整段退役，替换为 smoke §80 的零残留守卫。 */
@@ -3012,22 +3073,20 @@ async function runTests(dom, URL) {
     && m24.indexOf('天下大势') < 0
     && m24.indexOf('已占野地') < 0 && m24.indexOf('点击城市可出征') < 0
     && !!vc.querySelector('#adm-terrain'));
-  check('导航在底部条内（v90.88：无方向键 · 球系坐标输入）',
+  check('导航在底部条内（v90.88 无方向键 · v156.35 坐标输入已退役）',
     document.querySelectorAll('#bottom-bar .map-dock [data-action="map-pan"]').length === 0
-    && !!document.querySelector('#map-lon') && !!document.querySelector('#map-lat') && !document.querySelector('#map-gx'));
+    && !document.querySelector('#map-lon') && !document.querySelector('#map-lat'));
   check('地图版面里没有横占整行的控制条', !vc.querySelector('.map-bar') && !vc.querySelector('.map-head'));
-  /* v90.88：球系坐标跳转生效（经纬 → 视野中心）。 */
-  document.querySelector('#map-lon').value = '216';
-  document.querySelector('#map-lat').value = '36';
-  click(document.querySelector('[data-action="map-goto"]'));
-  await sleep(60);
-  check('底栏球系坐标跳转生效',
-    G.ui.mapView.x === Math.round(216 / 360 * 500) && G.ui.mapView.y === Math.round((0.5 - 36 / 180) * 500),
-    'x→' + G.ui.mapView.x + ' y→' + G.ui.mapView.y);
+  /* ⛔ v156.35：底栏的经纬度跳转随「前往」一起退役（判据翻转为"不在场"）。 */
+  check('v156.35：底栏不再有坐标输入/前往',
+    !document.querySelector('#bottom-bar [data-action="map-goto"]')
+    && typeof G.ui.mapGoto === 'undefined');
   (function () {
     const dock = document.querySelector('#bottom-bar .map-dock');
     if (!dock) { check('导航条挂在底部导航条内（v76）', false); return; }
-    check('导航条挂在底部导航条内（v76：原为地图页右下浮标）', true);
+    check('导航条挂在底部导航条内（v76：原为地图页右下浮标）',
+      dock.querySelectorAll('[data-action]').length >= 3,
+      'dock 内 ' + dock.querySelectorAll('[data-action]').length + ' 个动作按钮');
     /* 注意：jsdom **没有布局**，量高度恒为 0 —— 所以这里不测"是否单行/多高"，
        那两条放在真浏览器里测（.workbuddy/tmp/probe_map45.js 会打印
        "单行？是 ✅　高度 ≤48px：是 ✅"，实测 44px）。
@@ -3554,11 +3613,17 @@ async function runTests(dom, URL) {
   /* ③ 天时：顶栏位置与内容 */
   G.ui.setView('city');
   await sleep(90);
-  check('顶栏天时随主循环刷新出内容', (function () {
+  check('顶栏天时随主循环刷新出内容（年 / 季 / 天候 三段俱在）', (function () {
     G.ui.syncHeader();
     const el = document.querySelector('#nav-sky');
-    const want = G.story ? G.story.skyLine() : '';
-    return !!el && want.length > 0 && el.textContent.indexOf(want) >= 0;
+    if (!el) return false;
+    const t = el.textContent || '';
+    const se = G.story.currentSeason(), we = G.story.currentWeather();
+    const y = (G.state && G.state.world && G.state.world.year) || 0;
+    /* v156.32：顶栏改压缩句（`1年 春 ☀晴`），判据从"逐字等于 skyLine"
+       改为"三段数据各自出现"，排版再改也不会假红、少一段就会真红。 */
+    return y >= 1 && t.indexOf(y + '年') >= 0
+      && t.indexOf(String(se.name || '').charAt(0)) >= 0 && t.indexOf(we.name) >= 0;
   })());
   check('侧栏不再有天时', document.querySelector('#city-attrs').textContent.indexOf('天时') < 0);
 
@@ -3570,10 +3635,9 @@ async function runTests(dom, URL) {
     && cv26.width === G.map._view.spanX * G.map._view.cell
     && cv26.height === G.map._view.spanY * G.map._view.cell,
     cv26 ? cv26.width + '×' + cv26.height + ' cell=' + G.map._view.cell : 'n/a');
-  check('视野信息改报中心格（v50：菱形视野不是矩形）', (function () {
-    const v = G.map._view, txt = document.querySelector('#map-info').textContent;
-    return txt === '中心 ' + G.map.coordText(v.vx, v.vy);   /* v90.67：坐标改球系显示 */
-  })(), document.querySelector('#map-info').textContent);
+  /* ⛔ v156.37：（视野中心读数）随底栏信息区整块退役 —— 判据翻转为'节点不存在'。 */
+  check('v156.37：视野中心读数已退役（#map-info 不在 DOM 里）',
+    !document.querySelector('#map-info'));
   check('菱形视野四角可见格都可拾取、地图外为空', (function () {
     const v = G.map._view;
     const old = cv26.getBoundingClientRect;
@@ -6052,8 +6116,8 @@ if (svBtn) {
           !q86 || q86.elapsed >= q86.totalTime);
       }
     } else {
-      check('v89.86（P-07）：建筑施工面板含「⚡ 提速」按钮（无空格可测，跳过）', true);
-      check('v89.86（P-07）：提速后队列推到满进度（跳过）', true);
+      skip('v89.86（P-07）：建筑施工面板含「⚡ 提速」按钮', '无空格可测');
+      skip('v89.86（P-07）：提速后队列推到满进度', '前置跳过');
     }
     G.ui.closeAllModals();
     await sleep(40);
@@ -8721,7 +8785,7 @@ console.log('\n--- §180. 拆械与 live 滚动（v89.180） ---');
                 document.querySelectorAll('#modal-root [data-action="sd-sim"]').length >= 1);
             }
           } else {
-            check('§207⑩ 推演态（verify 未过 -> 仅结构断言）', true, 'verify=false 分支');
+            skip('§207⑩ 推演态（仅结构断言）', 'verify=false 分支');
           }
           G.ui.closeAllModals();
           await sleep(120);
@@ -9438,7 +9502,8 @@ function finish() {
 
 
   console.log('\n========================================');
-  console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败   （真实 DOM + HTTP 环境）');
+  console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败'
+    + (SKIP ? (' / ' + SKIP + ' 跳过（未执行判据）') : '') + '   （真实 DOM + HTTP 环境）');
   console.log('========================================');
   try { server.close(); } catch (e) { }
   process.exit(FAIL ? 1 : 0);

@@ -21,8 +21,12 @@
   BL.SPEC = {
     enabled: 1,        /* 0 = 不生成带；1 = 生成 */
     count: 240,        /* 石块数量 */
-    innerMul: 1.55,    /* 内缘半径 = 星球半径 × 此值（R=300 → 465）*/
-    widthMul: 0.62,    /* 带宽 = 星球半径 × 此值 */
+    /* v2026-10-31（老板）：星环放大 —— 直径 = 6 倍星球直径。真实值见 data.js 的 DATA.RING
+       （唯一常量来源）；此处只放兜底默认（innerMul=5.0 → 内缘 5R、widthMul=1.0 → 外缘 6R，
+       整体浮到 5~6R，不再贴地面）。DATA 在模块加载期未必就绪（浏览器/jsdom 全局），
+       故不在字面量里引用，改由 BL.specOf 在运行时解析覆盖，见下。 */
+    innerMul: 5.0,
+    widthMul: 1.0,
     inclDeg: 16,       /* 轨道倾角上限（度）*/
     thickMul: 0.05,    /* 带厚（法向散布）= 星球半径 × 此值 */
     /* v92.245（老板：「星空中物体应有体积」）：原来 0.5~3.4 世界单位，
@@ -54,6 +58,13 @@
     var s = {}, k;
     for (k in BL.SPEC_DEFAULT) s[k] = BL.SPEC_DEFAULT[k];
     if (raw) for (k in raw) if (raw[k] != null) s[k] = raw[k];
+    /* v2026-10-31（老板）：星环放大 —— 直径 = 6 倍星球直径。
+       真实尺寸常量在 data.js 的 DATA.RING（唯一来源），此处运行时解析覆盖默认。
+       DATA 是浏览器/jsdom 下的全局、模块加载期未必就绪，故用 typeof 守卫、不放 BL.SPEC 字面量。 */
+    if (typeof DATA !== 'undefined' && DATA.RING) {
+      if (DATA.RING.innerMul != null) s.innerMul = DATA.RING.innerMul;
+      if (DATA.RING.widthMul != null) s.widthMul = DATA.RING.widthMul;
+    }
     /* 星球特征 → 带的形态（"根据星球特征生成"）*/
     var P = (planet && planet.params) || {};
     var imp = Number(P.impact) || 0;                 /* 撞击史：撞得狠 → 碎屑多、更富矿 */

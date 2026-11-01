@@ -1285,6 +1285,11 @@ import './state.js';
     newCity.level = npcCity.level;
     newCity.state = npcCity.state;      // 所属区
     newCity.origId = npcCity.id;        // 原 NPC id
+    /* v156.24：**行政中心身份跟着城走** —— 读档/月回访时
+       `fog.revealOwned` 靠这两个字段把"该省/市/区下辖地"重新点亮。
+       丢了它 = 一出游戏再进来，视野就退回占领前（功能只在当次有效）。
+       普通名城（无 admLevel）不受影响，仍按 radiusOf 点亮。 */
+    if (npcCity.admLevel) { newCity.admLevel = npcCity.admLevel; newCity.admIndex = npcCity.admIndex; }
     /* ============================================================
      * v60（需求 6）：**建筑就地转正** —— 未占据城市的设定是"建筑默认全满、
      * 均 N 级"（见 GAME.npcCityShadow），所以攻占一座 9 级城，拿到的就是
@@ -1374,6 +1379,34 @@ import './state.js';
     if (npcCity.type !== 'capital' && Math.random() < 0.5) GAME.battle.grantBeauty(npcCity, fromCity);
     /* v90.92：任务系统退役 —— 原 advanceConquer（已占城计数）已删。 */
     GAME.log.war('占领新城市：' + npcCity.name + '！（威望 +' + repGain + '）');
+
+    /* ============================================================
+     * v156.24（老板「占领省市区首府，可以看到该省市区下辖地的视野」）
+     * ------------------------------------------------------------
+     * 打下一座**行政区中心城** → 该行政区下辖地全境在望。
+     *   · admLevel='prov'     省府 → 全省（连带下辖所有市/区）
+     *   · admLevel='market'   市府 → 全市
+     *   · admLevel='district' 区   → 本区
+     * 门槛就一条：`npcCity.admLevel` 存在（只有 genSettlements 产的行政城才有）。
+     *   ⚠️ 不按 `type` 判：type 是**档位**（zhou/jun/county，决定等级与岁贡），
+     *     而"这是哪一级行政中心"是 `admLevel` —— 两者同值但语义不同，
+     *     拿 type 判会在"打了座 zhou 档的名城"时误触发（它不是任何省的中心）。
+     * 点亮逻辑只有一处（GAME.fog.revealAdmin），这里只负责"什么时候点"和"怎么说"。
+     * ============================================================ */
+    if (GAME.fog && GAME.fog.revealAdmin && npcCity.admLevel && npcCity.admIndex != null) {
+      var _adLv = npcCity.admLevel;
+      var _adName = { prov: '省', market: '市', district: '区' }[_adLv] || '行政区';
+      var _adHit = 0;
+      try { _adHit = GAME.fog.revealAdmin(_adLv, npcCity.admIndex); } catch (eAd) { _adHit = 0; }
+      if (_adHit > 0) {
+        GAME.log.war('🏛 ' + npcCity.name + '既下 —— 该' + _adName + '下辖 ' + _adHit + ' 格视野尽开');
+        /* "看得见"本身就是主要收获，单独一条提示（别混进占领那行长文案） */
+        if (GAME.ui && GAME.ui.notify) {
+          GAME.ui.notify('success', npcCity.name + ' 既下：该' + _adName + '视野 +' + _adHit + ' 格');
+        }
+      }
+    }
+
     /* v89.93（整改 E5）：**占城演出** —— 核心目标达成，值一张卡（此前只有一行日志） */
     if (GAME.ui && GAME.ui.moment) {
       GAME.ui.moment({
@@ -3966,6 +3999,8 @@ import './state.js';
       GAME.log.sys('✨ ' + gen.name + ' 升级刷新：体力 ' + Math.round(GAME.staNow(gen)) + '/'
         + Math.round(GAME.staMax(gen)) + ' · 精力 ' + Math.round(GAME.energyNowOf(gen)) + '/'
         + Math.round(GAME.energyMaxOf(gen)) + '（已回满）');
+      /* v2026-11-01（老板）：升级不再是文字，是一张"瞬间卡"（场景层，独立于系统 toast）*/
+      if (GAME.ui && GAME.ui.levelUpScene) GAME.ui.levelUpScene(gen, from, gen.level, step);
     }
     var capped = gen.level >= capLv;
     if (capped && from < capLv) {

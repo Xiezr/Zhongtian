@@ -4,6 +4,25 @@
  * 覆盖：数据完整性 / 生产结算 / 建造 / 造兵 / 战斗 / 科技 / 威望 / 装备
  * ============================================================ */
 (function () {
+  /* ============================================================
+   * v156.27：`ui.js` 已拆成 19 个文件（见 docs/_史料/交付/v20261101i-ui拆分.md）。
+   *   **所有"读 ui.js 源码"的断言一律走这里** —— 它把 19 个文件按拆分前的顺序
+   *   拼成一份，内容与拆分前等价，所以 indexOf / 正则判断完全照旧。
+   * ⛔ 不要再写 fs.readFileSync(...'js','ui.js'...)：那样只会读到 30 行骨架。
+   * ============================================================ */
+  var __uiAllCache = null;
+  function __uiAll() {
+    if (__uiAllCache != null) return __uiAllCache;
+    var _f = require('fs'), _p = require('path');
+    var NAMES = ['ui', 'ui-fx', 'ui-core', 'ui-modal', 'ui-shell', 'ui-battle', 'ui-city',
+      'ui-army', 'ui-bag', 'ui-craft', 'ui-view', 'ui-build', 'ui-planet', 'ui-space',
+      'ui-delve', 'ui-mapui', 'ui-exped', 'ui-report', 'ui-config'];
+    __uiAllCache = NAMES.map(function (n) {
+      try { return _f.readFileSync(_p.join(__dirname, 'js', n + '.js'), 'utf8'); } catch (e) { return ''; }
+    }).join('\n');
+    return __uiAllCache;
+  }
+
   /* ---- 浏览器环境 stub（querySelector 按选择器缓存元素，便于断言渲染结果） ---- */
   global.window = global;
   global.localStorage = { _d: {}, getItem: function (k) { return this._d[k] || null; }, setItem: function (k, v) { this._d[k] = String(v); }, removeItem: function (k) { delete this._d[k]; } };
@@ -45,14 +64,77 @@
   global.getComputedStyle = function () { return { getPropertyValue: function () { return ''; } }; };
   global.innerWidth = 1440; global.innerHeight = 900;
 
-  var PASS = 0, FAIL = 0;
+  var PASS = 0, FAIL = 0, WARN = 0, SKIP = 0;
+  /* ============================================================
+   * v156.38（老板 2026-11-02「如果每一个相关关系都用断言锁住，这个项目岂不是一潭死水，动弹不得？这是行业最佳实践了吗」）
+   * ------------------------------------------------------------
+   * **断言分档**：行业惯例是 test behavior, not implementation ——
+   *   行为/契约断言红了 = 玩家真的坏了 → 必须拦；
+   *   实现断言（DOM 类名 / 源码正则 / CSS 选择器）红了 = 界面刚改过 →
+   *     只警告，不阻断。否则改一个 span 就要改 11 条断言、跑 10 分钟全门禁。
+   *
+   * 判定粒度用**段**（不是单条）：段的主题稳定（"UI 渲染 / 静态扫描 / 版面文案" vs
+   *   "生产结算 / 战斗 / 行军"），标题一变就是重构了段本身，本来就该人看一眼。
+   * 段表运行时从**自己这份文件**懒建（分片文件也自带段标记，所以自洽）。
+   * ============================================================ */
+  /* ============================================================
+   * 分档表（v156.38 第三版）：**按断言标题查表**，不按段、不按行号。
+   * ------------------------------------------------------------
+   * 走过两条弯路，记在这里免得再踩：
+   *   ① 按段标题关键词 → 漏判（CSS lint 落在「基调统一（令牌纪律）」段，一个词都不含）；
+   *   ② 按行号 → 行号随任何改动漂移，分片文件的行号更是全变，表必然过期。
+   * 现在：`.workbuddy/assert-tiers.json` 存 `djb2(标题) → 1`，标题是唯一稳定的键。
+   *   表由 `node .workbuddy/tools/prof/gen_tiers.js` 生成；查不到 = 行为类（保守，宁可多拦）。
+   * ============================================================ */
+  var _tierT = null;
+  function _djb2(str) {
+    var h = 5381;
+    for (var i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) >>> 0;
+    return h;
+  }
+  function _tierTable() {
+    if (_tierT) return _tierT;
+    _tierT = {};
+    try {
+      var j = JSON.parse(fsMod.readFileSync(pathMod.join(__dirname, '.workbuddy', 'assert-tiers.json'), 'utf8'));
+      _tierT = j.implTitles || {};
+    } catch (e) { /* 没表就全按行为类（严格） */ }
+    return _tierT;
+  }
+  /* v156.39（老板「可以否定自身」）：**`--strict` 一脚踢开分档表**。
+     体系必须能被推翻 —— 否则「实现类不阻断」就是它自己给自己发的免罪符。
+     strict 模式下所有人都是行为类，一条都不许免检。 */
+  var STRICT = process.argv.indexOf('--strict') >= 0;
+  function tierOfTitle(name) {
+    if (STRICT) return 'behavior';
+    return _tierTable()[_djb2(name)] === 1 ? 'impl' : 'behavior';
+  }
+  /* ============================================================
+   * v156.39（老板 2026-11-02「复核这套体系完备，是可以否定自身的完备」）
+   * ------------------------------------------------------------
+   * **跳过 ≠ 通过**。原先把「本次随机没走到这条路」写成 `check(名, true, '跳过')`，
+   * 「没测到」被计进通过数，而且永远绿 —— 分档机制只看红，根本看不见它。
+   * 现在单独计数：总结行显示 `N 跳过`，门禁另有一条判据盯「跳过数涨没涨」。
+   * skip 的语义 = **判据真的没执行**，不是「判据为真」。
+   * ============================================================ */
+  function skip(name, why) {
+    SKIP++;
+    console.log('  ⊘ ' + name + '   [' + (why || '本轮未触发') + ']');
+  }
   function check(name, cond, extra) {
-    if (cond) { PASS++; console.log('  ✅ ' + name + (extra ? '  [' + extra + ']' : '')); }
-    else { FAIL++; console.log('  ❌ ' + name + (extra ? '  [' + extra + ']' : '')); }
+    if (cond) { PASS++; console.log('  ✅ ' + name + (extra ? '  [' + extra + ']' : '')); return; }
+    var tier = tierOfTitle(name);
+    if (tier === 'impl') {
+      WARN++;
+      console.log('  ⚠️ ' + name + (extra ? '  [' + extra + ']' : '') + '   ← 实现类（界面结构已变，改断言即可，不阻断）');
+    } else {
+      FAIL++;
+      console.log('  ❌ ' + name + (extra ? '  [' + extra + ']' : ''));
+    }
   }
 
   /* ui.js 源码（供整页视图菜单图标这类结构断言直接读） */
-  var uiSrcProbe = require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8');
+  var uiSrcProbe = __uiAll();
 
   /* ---- 加载游戏模块（v91.61 地基第 1 期：走构建产物 js/bundle.js）----
      源码仍是 IIFE + import 依赖图（js/main.js 为入口）；bundle 由
@@ -66,6 +148,10 @@
   if (!window.GAME || !window.GAME.DATA || !window.GAME.utils) {
     throw new Error('bundle 求值顺序异常：GAME.DATA / GAME.utils 缺失（检查 js/main.js 的 import 顺序）');
   }
+  /* ⛔ v156.36 试过又撤掉：这里曾设 `GAME.__testSeed = 20260926`，想让 235 次
+     "没传 mapSeed 的 newGame"复用同一颗星球（同 seed 16ms vs 换 seed 1471ms）。
+     实测全量 466.8 → 469 秒，**零收益** —— 大头不是重建球面，而是与 seed 无关的
+     O(n²)（见 js/state.js 同处注释）。已回滚，不留"看起来有用"的开关。 */
   /* ⛔ v89.218：逸闻奇遇触发钩子随故事系统退役（不再需要测试期 rng 钉死）。 */
   /* v89.87（老板需求 4）：测试默认关闭战斗观战（战斗走即算/自动路径，
      保持既有用例语义）；观战挂起/重放路径由 §87 专项断言另测。 */
@@ -74,6 +160,49 @@
   }
 
   var G = global.GAME, DATA = G.DATA, U = G.utils;
+
+  /* ============================================================
+   * v156.38 · **跨段共享的测试工具，一律放这里（公共头）**
+   * ------------------------------------------------------------
+   * 老板 2026-11-02：「它们全在一个 47244 行的单一剧本，这个事情无法根本解决吗」
+   *
+   * 能解决，而且不需要改 4 万行：smoke 是"有状态剧本"，但每段开头本来就 newGame
+   * 重建世界，所以**段与段之间只共享下面这几个工具**。把它们放公共头之后，
+   * 段就能按区间切开、并行跑（实测 4 份 458 秒 → 205 秒）。
+   *
+   * ⛔ 规矩：**新写的辅助函数/常量，定义在这个块里**，不要散落进某个段 ——
+   *   散进去就等于把那一段钉成了"所有用它的段的前置"，分片必崩（实测崩在
+   *   `DC is not defined` / `withoutEncounter is not defined` 就是这个原因）。
+   * ============================================================ */
+  var fsMod = require('fs'), pathMod = require('path');
+  var DC = global.document._cache;
+  /* 换一个干净世界跑 fn(st)，跑完把原 state 放回（不动其他全局） */
+  function withFreshState(name, fn) {
+    var keep = G.state;
+    var st = G.newGame({ name: name });
+    if (!st.map.grid && G.map.generate) G.map.generate();
+    var r;
+    try { r = fn(st); } finally { G.state = keep; }
+    return r;
+  }
+  /* 注意：占领成功后还会走一次「奇遇」判定（可能额外发放资源），
+     与「占领不给资源」这条规则无关。断言必须屏蔽奇遇，否则约 5% 概率误报。 */
+  function withoutEncounter(fn) {
+    var keep = G.story.encounterRoll;
+    G.story.encounterRoll = function () { return null; };
+    try { return fn(); } finally { G.story.encounterRoll = keep; }
+  }
+  /* 换世界跑 fn(st)，但与 withFreshState 不同的是：**中途把 G.state 换成新世界**
+     （withFreshState 只在 fn 的入参里给 st，全局 G.state 仍是旧的） */
+  function withState(name, fn) {
+    var keep = G.state;
+    try {
+      var st = G.newGame({ name: name });
+      G.state = st;
+      if (G.map.generate) G.map.generate();
+      return fn(st);
+    } finally { G.state = keep; }
+  }
 
   /* v90.100（球系）：世界格 (x,y) → 格索引 ci（测试夹具）。 */
   function _ciOf(x, y) {
@@ -197,9 +326,11 @@
   }
 
   console.log('\n===== 0. 模块引用完整性（静态扫描）=====');
-  var fsMod = require('fs'), pathMod = require('path');
-  ['data', 'state', 'systems', 'domain', 'map', 'battle', 'tactic', 'icons', 'portraits', 'story', 'ui', 'main'].forEach(function (f) {
-    var src = fsMod.readFileSync(pathMod.join(__dirname, 'js', f + '.js'), 'utf8');
+  /* v156.38：fsMod / pathMod 已提到公共头（分片时每份都要有）。 */
+
+
+  ['data', 'state', 'systems', 'domain', 'map', 'battle', 'tactic', 'icons', 'portraits', 'story', 'ui', 'ui-fx', 'ui-core', 'ui-modal', 'ui-shell', 'ui-battle', 'ui-city', 'ui-army', 'ui-bag', 'ui-craft', 'ui-view', 'ui-build', 'ui-planet', 'ui-space', 'ui-delve', 'ui-mapui', 'ui-exped', 'ui-report', 'ui-config', 'main'].forEach(function (f) {
+    var src = ((f === 'ui') ? __uiAll() : fsMod.readFileSync(pathMod.join(__dirname, 'js', f + '.js'), 'utf8'));
     var usesDollar = /(^|[^.\w$])\$\(/.test(src);
     var definesDollar = /var\s+\$\s*=/.test(src) || /function\s+\$\(/.test(src);
     check('js/' + f + '.js 引用 $ 时已定义', !usesDollar || definesDollar || f === 'ui');
@@ -209,8 +340,8 @@
      「背包点击物品」等分支触发，测试若不走那条路径就发现不了。
      这里改为编译期扫描：凡出现 X. 用法，必须有 var X = 声明。 */
   ['U', 'DATA'].forEach(function (sym) {
-    ['data', 'state', 'systems', 'domain', 'map', 'battle', 'tactic', 'icons', 'portraits', 'story', 'ui', 'main'].forEach(function (f) {
-      var src = fsMod.readFileSync(pathMod.join(__dirname, 'js', f + '.js'), 'utf8');
+    ['data', 'state', 'systems', 'domain', 'map', 'battle', 'tactic', 'icons', 'portraits', 'story', 'ui', 'ui-fx', 'ui-core', 'ui-modal', 'ui-shell', 'ui-battle', 'ui-city', 'ui-army', 'ui-bag', 'ui-craft', 'ui-view', 'ui-build', 'ui-planet', 'ui-space', 'ui-delve', 'ui-mapui', 'ui-exped', 'ui-report', 'ui-config', 'main'].forEach(function (f) {
+      var src = ((f === 'ui') ? __uiAll() : fsMod.readFileSync(pathMod.join(__dirname, 'js', f + '.js'), 'utf8'));
       var re = new RegExp('(^|[^.\\w$])' + sym + '\\.');
       var uses = re.test(src);
       var declRe = new RegExp('(var\\s+|,\\s*)' + sym + '\\s*=');
@@ -515,7 +646,7 @@
     && typeof G.map.terrainAt === 'function' && (G.map.terrainAt(250, 250) != null));
 
   console.log('\n===== 15. UI 渲染（原版三段式 + 面板函数）=====');
-  var UI = G.ui, DC = global.document._cache;
+  var UI = G.ui;   /* v156.38：DC 已提到公共头 */
   UI.renderSide();
   check('城市属性栏渲染', (DC['#city-attrs'] && DC['#city-attrs'].innerHTML.indexOf('民心') >= 0), '含民心/民怨/税率');
   check('资源栏渲染带+快捷', (DC['#res-bar'] && DC['#res-bar'].innerHTML.indexOf('plus-btn') >= 0), '含+号快捷道具');
@@ -973,7 +1104,7 @@
       base19.def + ' → ' + G.genAttrs(gEq).def);
     delete gEq.equip.chest;
   } else {
-    check('护甲类装备存在', true, '数据中暂无 def 类装备，跳过');
+    skip('护甲类装备存在', '数据中暂无 def 类装备');
   }
 
   console.log('  --- 存档索引（首页秒读） ---');
@@ -1016,7 +1147,7 @@
   G.simulateBulk(7200);            // 聚合段：2 小时
   check('聚合补算推进历法', S19.world.elapsed > e19b,
     '+' + Math.round(S19.world.elapsed - e19b) + ' 游戏秒');
-  check('聚合补算不逐秒循环（性能安全）', true, 'bulk=' + 7200 + 's 一次算完');
+  skip('聚合补算不逐秒循环（性能安全）', '判据不可测：逐秒循环同样能推进到位，无法从结果区分');
   var q19 = S19.queues.build.length;
   S19.queues.build.push({ cityId: city19.id, extIdx: -1, buildId: 'farm', type: 'ext_build', elapsed: 0, totalTime: 10 });
   G.simulateBulk(100);
@@ -1252,7 +1383,7 @@
     return noStock && zero && lvNo === 0 && rate0 === 0.6 && noMkt.ok === true && lvBack > 0;
   })());
   check('v89.60：交易站为**单块**（一张表 · 每行买卖 · 共用数量框 · 三块旧结构退场）', (function () {
-    var uSrc = stripComment(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'ui.js'), 'utf8'));
+    var uSrc = stripComment(__uiAll());
     var mSrc = stripComment(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'main.js'), 'utf8'));
     var fn = codeOf(uSrc, 'ui.openMarket = function');
     return /class="ms-table"/.test(fn)
@@ -1284,7 +1415,7 @@
     return need > 0 && r.ok === true && got >= units && got <= units + 2;
   })());
   check('v89.62：交易站去「商队」（口径正名 marketLevel · 无门槛 · 界面不标商队 · 量级按钮）', (function () {
-    var rd = function (f) { return stripComment(require('fs').readFileSync(require('path').join(__dirname, 'js', f), 'utf8')); };
+    var rd = function (f) { return stripComment(((f === 'ui.js') ? __uiAll() : require('fs').readFileSync(require('path').join(__dirname, 'js', f), 'utf8'))); };
     var u = rd('ui.js'), d = rd('domain.js'), da = rd('data.js'), m = rd('main.js');
     return !/caravanCount/.test(d + u + m)                 /* "商队数"这个口径整体退场 */
       && /GAME\.marketLevel = function/.test(d)             /* 正名为交易站等级 */
@@ -1303,7 +1434,7 @@
   check('未建载具研究所时伏击车不可训练', chkM20.ok === false && /载具研究所/.test(chkM20.msg), chkM20.msg);
 
   console.log('  --- 功能归属与自动存档 ---');
-  var uiSrc20 = fs20.readFileSync(path20.join(__dirname, 'js', 'ui.js'), 'utf8');
+  var uiSrc20 = __uiAll();
   var mainSrc20 = fs20.readFileSync(path20.join(__dirname, 'js', 'main.js'), 'utf8');
   check('建筑功能入口表存在', /BLDG_FUNC/.test(uiSrc20));
   /* v89.80（老板）：「载具研究所去除"座驾装备"的建筑菜单及相应内容」——
@@ -1451,7 +1582,7 @@
   /* 与主循环联动 */
   var mainSrc21 = require('fs').readFileSync(require('path').join(__dirname, 'js', 'state.js'), 'utf8');
   check('已接入主循环 tickOnce', /if \(GAME\.autoUpgrade\) GAME\.autoUpgrade\(\)/.test(mainSrc21));
-  var uiSrc21 = require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8');
+  var uiSrc21 = __uiAll();
   check('设置面板有开关', /toggle-auto-upgrade/.test(uiSrc21));
   /* v24（需求 9）：底部队列条删除，队列状态（含自动升级）改在「公文」页呈现 */
   check('队列状态在公文呈现（底部队列条已删）',
@@ -1493,7 +1624,13 @@
   UI.mapCenterOn(265, 215);
   check('坐标跳转把目标设为视野中心', UI.mapView.x === 265 && UI.mapView.y === 215,
     '(' + UI.mapView.x + ',' + UI.mapView.y + ')');
-  check('视野信息文本改报中心格（v90.67 坐标改球系显示）', UI.mapInfoText().indexOf('中心 ') === 0, UI.mapInfoText());
+  /* ⛔ v156.37（老板「去掉地图上这些无用：点选 — / 球系坐标 / 经度 / °E / 纬度 / °N / 前往」）：
+     底栏信息区（中心坐标 + 点选坐标）整块退役 → 判据从"文本以中心开头"翻转成"三个出口都不在了"。
+     反平凡解：四个名字逐个查 —— 只删 DOM 不删函数，audit 会当成活代码留着。 */
+  check('v156.37：地图底栏信息区整块退役（mapInfoText / mapPickText / syncMapInfo / mapPick 四者全无）',
+    typeof UI.mapInfoText === 'undefined' && typeof UI.mapPickText === 'undefined'
+    && typeof UI.syncMapInfo === 'undefined' && typeof UI.mapPick === 'undefined',
+    '底栏只剩动作按钮，没有常驻读数');
 
   /* 点击换算：菱形反投影 */
   G.map.render(cv22, { vx: 100, vy: 200, span: 12, cell: 44 });
@@ -1810,10 +1947,32 @@
     && (mapSrc22.match(/function \(gx, gy, c, el\)/g) || []).length >= 3);
 
   /* 导航 UI */
-  var uiSrc22 = require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8');
-  /* v90.88（老板）：方向键 + 平面坐标输入退役 → 改**球系坐标**输入（map-lon/map-lat）。 */
+  var uiSrc22 = __uiAll();
+  /* v90.88（老板）：方向键 + 平面坐标输入退役 → 改**球系坐标**输入（map-lon/map-lat）。
+     ⛔ v156.35（老板「这个已无用，删去：球系坐标 / 经度 / °E / 纬度 / °N / 前往」）：
+     这套输入**整组退役** → 断言从"在册"翻转为"不在册 + 不留死代码"。
+     反平凡解：只删界面入口不够 —— `ui.mapGoto` / `case 'map-goto'` 必须一起走，
+     否则留着一段"永远点不到"的跳转逻辑，audit 也会把它当活代码。 */
   check('地图无方向键（map-pan 已退役）', !/data-action="map-pan"/.test(uiSrc22) && !/ui\.MAP_STEP_X\s*=/.test(uiSrc22));
-  check('地图坐标输入改**球系坐标**', /id="map-lon"/.test(uiSrc22) && /id="map-lat"/.test(uiSrc22) && !/map-gx/.test(uiSrc22));
+  check('v156.35：球系坐标输入组整组退役（标签/经纬框/°E/°N/前往 全不在）', (function () {
+    /* ⚠️ 判据要剥注释：这段沿革说明里本来就写着"球系坐标"几个字，
+       拿原始源码 indexOf 会命中自己的注释（假红）。判的是代码，不是注释。
+       ⚠️ 也**不能**查"源码里有没有'球系坐标'四个字" —— 野地面板 / 地块弹窗 /
+       城市面板三处的**坐标读数**（📍 球系坐标 12°E 34°N）是保留项，老板删的是"输入"。
+       所以只钉被删的那几件：两个 input 的 id/placeholder、dock 里那个 label、前往按钮。 */
+    var code = stripComment(uiSrc22);
+    return !/id="map-lon"/.test(code) && !/id="map-lat"/.test(code)
+      && !/data-action="map-goto"/.test(code)
+      && code.indexOf('placeholder="经度"') < 0
+      && code.indexOf('placeholder="纬度"') < 0
+      && !/mk-lbl">球系坐标</.test(code);          /* dock 里那个标签（读数不受影响） */
+  })(), '输入框 / 标签 / 按钮一次性清掉 · 坐标读数保留');
+  check('v156.35：连带清掉 mapGoto 出口（不留"点不到"的死逻辑）', (function () {
+    var mainSrc = require('fs').readFileSync(require('path').join(__dirname, 'js', 'main.js'), 'utf8');
+    /* main.js 里我写了带 `case 'map-goto'` 的沿革注释 —— 同样先剥注释再判。 */
+    return !/ui\.mapGoto\s*=\s*function/.test(uiSrc22)
+      && stripComment(mainSrc).indexOf("case 'map-goto'") < 0;
+  })(), 'ui.mapGoto + main.js case 一并删除');
   check('地图有回主城/旧都快捷', /map-center/.test(uiSrc22) && /map-capital/.test(uiSrc22));
 
   /* 地块渲染：建筑直接成画（v12 起不再用色块 + emoji） */
@@ -2026,12 +2185,15 @@
     var gHp = G.state.generals[0];
     gHp.equip = {};
     var staBase0 = G.staMax(gHp);
+    var hpM0 = G.battle.hpMult(gHp);
     gHp.equip = { head: 'prime_ti_head', chest: 'prime_ti_chest' };
     var staBase1 = G.staMax(gHp);
+    var hpM1 = G.battle.hpMult(gHp);
     var wantSta = (DATA.EQUIP.prime_ti_head.sta || 0) + (DATA.EQUIP.prime_ti_chest.sta || 0);
     check('装备体力进入 staMax（v66 唯一链）', wantSta > 0 && staBase1 - staBase0 === wantSta,
       staBase0 + ' → ' + staBase1 + '（装备 ' + wantSta + '）');
-    check('体力经 hpMultOf 放大全军生命（实测损兵减少已在上文断言）', true);
+    check('体力经 hpMultOf 放大全军生命（实测损兵减少已在上文断言）',
+      hpM1 > hpM0 && hpM1 > 1, 'hpMult ' + hpM0.toFixed(4) + ' → ' + hpM1.toFixed(4));
     gHp.equip = {};
 
     /* 3.2 幸存者上限（v74 · 老板需求 1：「取消英雄对幸存者上限的加成」）——
@@ -2215,7 +2377,7 @@
     check('位图层优先：建筑真的取到 AI 位图',
       ICO.layerOf('building', 'minfang') === 'bitmap' && ICO.forBuilding('minfang').indexOf('ico-img') > 0);
 
-    var uiSrc24 = require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8');
+    var uiSrc24 = __uiAll();
     var htmlSrc25 = require('fs').readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
     var mapSrc24 = require('fs').readFileSync(require('path').join(__dirname, 'js', 'map.js'), 'utf8');
     check('城内地块改用 SVG 图标', /GAME\.icons\.forBuilding\(cell\.build\.id\)/.test(uiSrc24));
@@ -2486,7 +2648,7 @@
 
   /* ---------- ② 背包：分类 / 排序 / 拆解 ---------- */
   console.log('  --- 背包 ---');
-  var uiS = require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8');
+  var uiS = __uiAll();
   check('背包两类页签（装备/宝物）', /BAG_TABS = \[\['equip', '装备'\], \['treasure', '宝物'\]\]/.test(uiS));
   check('装备/宝物各有排序项（宝物含 类型/系列/品阶/价值/数量）', /equip: \[\['q'/.test(uiS)
     && /treasure: \[\['type'/.test(uiS) && /series', '系列'/.test(uiS) && /tier', '品阶'/.test(uiS));
@@ -2897,9 +3059,9 @@
       return !st['f:' + fTarget.x + ',' + fTarget.y];
     })());
   } else {
-    check('攻取据点后声望增加', true, '本次未破城（随机）');
-    check('据点今日不再出现', true, '本次未破城（随机）');
-    check('下城即清围攻档（不留孤儿行）', true, '未破城');
+    skip('攻取据点后声望增加', '本次未破城（随机）');
+    skip('据点今日不再出现', '本次未破城（随机）');
+    skip('下城即清围攻档（不留孤儿行）', '未破城');
   }
   check('已攻取记录按「天」存储', (function () {
     var s2 = G.state, keys = Object.keys(s2.fortsRazed || {});
@@ -3067,7 +3229,7 @@
   /* 注：这一节测的是**城内/城外棋盘**（isoMetrics）—— 它仍是正方形网格。
      老板 v50 点名要改的是"地图"，别把棋盘的方格也一起斜过来。 */
   check('城内外棋盘仍为正方形网格（未被 v50 的菱形改动带偏）', (function () {
-    var uiS2 = require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8');
+    var uiS2 = __uiAll();
     return /ui\.isoMetrics = function/.test(uiS2) && /ui\.TILE_W = \d+;/.test(uiS2)
       && /ui\.TILE_H = \d+;/.test(uiS2);
   })());
@@ -3224,7 +3386,7 @@
    * ============================================================ */
   console.log('\n===== 26. 英雄 id / 募兵 / 弹窗规范 / 分页（v14.1）=====');
   var htmlSrc26 = fsMod.readFileSync(pathMod.join(__dirname, 'index.html'), 'utf8');
-  function readJs26(f) { return fsMod.readFileSync(pathMod.join(__dirname, 'js', f + '.js'), 'utf8'); }
+  function readJs26(f) { return ((f === 'ui') ? __uiAll() : fsMod.readFileSync(pathMod.join(__dirname, 'js', f + '.js'), 'utf8')); }
   var mainSrc26 = readJs26('main'), stateSrc26 = readJs26('state'), battleSrc26 = readJs26('battle');
   check('uiS 源码可用（静态断言前置）', typeof uiS === 'string' && uiS.length > 1000);
 
@@ -3961,21 +4123,7 @@
     DATA.EXPEDITION.cityInherit > 0 && DATA.EXPEDITION.cityInherit <= 1);
   check('配置：城市掠夺按库藏取走一半', DATA.EXPEDITION.cityResMul.raid === 0.5);
   /* 用一份全新 state 跑一段逻辑，跑完恢复原 state（避免污染后续断言） */
-  function withFreshState(name, fn) {
-    var keep = G.state;
-    var st = G.newGame({ name: name });
-    if (!st.map.grid && G.map.generate) G.map.generate();
-    var r;
-    try { r = fn(st); } finally { G.state = keep; }
-    return r;
-  }
-  /* 注意：占领成功后还会走一次「奇遇」判定（可能额外发放资源），
-     与「占领不给资源」这条规则无关。断言必须屏蔽奇遇，否则约 5% 概率误报。 */
-  function withoutEncounter(fn) {
-    var keep = G.story.encounterRoll;
-    G.story.encounterRoll = function () { return null; };
-    try { return fn(); } finally { G.story.encounterRoll = keep; }
-  }
+  /* v156.38：withFreshState / withoutEncounter 已提到公共头（分片时每份都要有）。 */
   check('占领野地：资源不增加，但得地盘', withoutEncounter(function () {
     return withFreshState('占领测试', function (st) {
       var w = findWildNear('lake', st.cities[0].x, st.cities[0].y, 40);
@@ -4124,7 +4272,7 @@
   console.log('\n===== 28. v16：体验修复 18 项 + P2 四项 =====');
   var F16 = G.newGame({ name: 'v16验收', cityName: '灰岗' });
   if (!F16.map.grid && G.map.generate) G.map.generate();
-  function rd16(f) { return fsMod.readFileSync(pathMod.join(__dirname, 'js', f + '.js'), 'utf8'); }
+  function rd16(f) { return ((f === 'ui') ? __uiAll() : fsMod.readFileSync(pathMod.join(__dirname, 'js', f + '.js'), 'utf8')); }
   var uS16 = rd16('ui'), hS16 = fsMod.readFileSync(pathMod.join(__dirname, 'index.html'), 'utf8');
   var dS16 = rd16('domain'), mS16 = rd16('main'), stS16 = rd16('state');
 
@@ -4431,7 +4579,7 @@
   console.log('\n===== 29. v17：P0 四项修复（科技接线 / 存档瘦身 / 断粮 / 攻城链）=====');
   var stS = G.newGame({ name: 'v17验收', cityName: '灰岗' });
   if (!stS.map.grid && G.map.generate) G.map.generate();
-  var uS29 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'ui.js'), 'utf8');
+  var uS29 = __uiAll();
   var bS29 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'battle.js'), 'utf8');
   var dS29 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'domain.js'), 'utf8');
   var sS29 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'state.js'), 'utf8');
@@ -4712,7 +4860,7 @@
   })());
   /* v89.107：瞭望塔闪烁 —— 挂点必须在 buildCellHTML，且类别来自唯一出口 */
   check('v89.107：有警报时瞭望塔格挂 .alarm（CSS 明暗呼吸）', (function () {
-    var uiS2 = require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8');
+    var uiS2 = __uiAll();
     var hS2 = require('fs').readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
     return /cell\.build\.id === 'fenghuotai' && GAME\.invasionAlertOf/.test(uiS2)
       && /\.iso-tile\.alarm \.tile-art img\.ico-img/.test(hS2)
@@ -4830,7 +4978,7 @@
    实测约 1/3 概率让「⑧c⑨ 行军即刻抵达须消耗道具」假红（真红/假红难分）。 */
   var st30 = G.newGame({ name: 'v18验收', cityName: '灰岗', mapSeed: 20261016 });
   if (!st30.map.grid) G.map.generate();
-  var uS30 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'ui.js'), 'utf8');
+  var uS30 = __uiAll();
   var bS30 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'battle.js'), 'utf8');
   var hS30 = fsMod.readFileSync(pathMod.join(__dirname, 'index.html'), 'utf8');
   var iS30 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'icons.js'), 'utf8');
@@ -5174,7 +5322,7 @@
   console.log('\\n===== 31. v19：十项体验修复 =====');
   var st31 = G.newGame({ name: 'v19验收', cityName: '灰岗' });
   if (!st31.map.grid && G.map.generate) G.map.generate();
-  function rd31(f) { return fsMod.readFileSync(pathMod.join(__dirname, 'js', f + '.js'), 'utf8'); }
+  function rd31(f) { return ((f === 'ui') ? __uiAll() : fsMod.readFileSync(pathMod.join(__dirname, 'js', f + '.js'), 'utf8')); }
   var uS31 = rd31('ui'), dS31 = rd31('domain'), hS31 = fsMod.readFileSync(pathMod.join(__dirname, 'index.html'), 'utf8');
   var mS31 = rd31('main'), bS31 = rd31('battle'), cS31 = rd31('state');
 
@@ -5559,7 +5707,7 @@
    * 32. v20：正方形网格 + 十三项体验修复
    * ============================================================ */
   console.log('\n===== 32. v20：正方形网格与体验修复 =====');
-  function rd32(f) { return fsMod.readFileSync(pathMod.join(__dirname, 'js', f + '.js'), 'utf8'); }
+  function rd32(f) { return ((f === 'ui') ? __uiAll() : fsMod.readFileSync(pathMod.join(__dirname, 'js', f + '.js'), 'utf8')); }
   var uS32 = rd32('ui'), hS32 = fsMod.readFileSync(pathMod.join(__dirname, 'index.html'), 'utf8');
   var mS32 = rd32('main'), bS32 = rd32('battle'), sS32 = rd32('state');
 
@@ -5756,7 +5904,7 @@
    * 33. v20：正方形网格 + 十三项体验修复
    * ============================================================ */
   console.log('\\n===== 33. v20：正方形网格与体验修复 =====');
-  function rd33(f) { return fsMod.readFileSync(pathMod.join(__dirname, 'js', f + '.js'), 'utf8'); }
+  function rd33(f) { return ((f === 'ui') ? __uiAll() : fsMod.readFileSync(pathMod.join(__dirname, 'js', f + '.js'), 'utf8')); }
   var uS33 = rd33('ui'), hS33 = fsMod.readFileSync(pathMod.join(__dirname, 'index.html'), 'utf8');
   var mS33 = rd33('main'), bS33 = rd33('battle'), sS33 = rd33('state'), mapS33 = rd33('map');
 
@@ -5933,7 +6081,10 @@
   check('打造面板按品质切页签（不再是弹窗内分页）',
     /ui\.setForgeQ = function/.test(uS33) && /data-action="forge-q"/.test(uS33)
     && !/ui\.modalPage\('forge' \+ q/.test(uS33));
-  check('建造选择列表分页（9/页）', /ui\.modalPage\('buildpick', all, 9/.test(uS33));
+  /* v2026-10-31（老板）：建造弹窗分两层（预留地块先给推荐、再「其他建筑」给全部），
+     候选数组名从 `all` 改为 `_show`（推荐层只装 fixedBid 一张、全量层装 all），
+     故断言不再钉死变量名，只验"buildpick 仍按 9/页 分页"这一意图。 */
+  check('建造选择列表分页（9/页）', /ui\.modalPage\('buildpick',\s*\w+,\s*9/.test(uS33));
   /* v29（需求 15）：英雄枢纽不再重复一份英雄名录（顶栏「英雄」菜单已有），
      只讲它自己负责的房间数与升级路径 */
   check('英雄枢纽不再有名录（不重复英雄菜单）', (function () {
@@ -6008,7 +6159,7 @@
    * 34. v21：界面统一（大界面 / 弹窗 / 地图）· 伤兵归属 · 备注清理
    * ============================================================ */
   console.log('--- 34. v21 界面统一与信息层级 ---');
-  var uS34 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'ui.js'), 'utf8');
+  var uS34 = __uiAll();
   var mS34 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'main.js'), 'utf8');
   var hS34 = fsMod.readFileSync(pathMod.join(__dirname, 'index.html'), 'utf8');
   var css34 = hS34.split('<style>')[1].split('</style>')[0];
@@ -6162,7 +6313,7 @@
    * 35. v22：点选控件（去下拉框）· 英雄肖像 · 城市视图纯粹
    * ============================================================ */
   console.log('--- 35. v22 点选控件 / 英雄肖像 / 城市视图 ---');
-  var uS35 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'ui.js'), 'utf8');
+  var uS35 = __uiAll();
   var mS35 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'main.js'), 'utf8');
   var sS35 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'state.js'), 'utf8');
   var pS35 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'portraits.js'), 'utf8');
@@ -6309,7 +6460,7 @@
    * 36. v23：地块管理 · 等级角标 · 政务厅宫殿 · 统计菜单
    * ============================================================ */
   console.log('--- 36. v23 地块管理与界面细化 ---');
-  var uS36 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'ui.js'), 'utf8');
+  var uS36 = __uiAll();
   var mS36 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'main.js'), 'utf8');
   var dS36 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'domain.js'), 'utf8');
   var mpS36 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'map.js'), 'utf8');
@@ -6337,7 +6488,7 @@
   check('点自己的城 → 弹城市面板（不再直接进城，v60 需求 4）',
     /hit\.kind === 'player'[\s\S]{0,240}ui\.openCityPanel\(hit\.city\)/.test(mS36));
   check('城市面板动作（v89.138 老板 2：进入/派遣/运输/节钺扩编，度支归集·英雄派遣·改名已删）', (function () {
-    var u = stripComment(require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8'));
+    var u = stripComment(__uiAll());
     var seg = codeOf(u, 'ui.openCityPanel = function');
     return /data-action="city-enter"/.test(seg) && /data-action="city-transport"/.test(seg)
       && /data-action="city-dispatch-exp"/.test(seg) && /data-action="jieyue-expand"/.test(seg)
@@ -6546,7 +6697,7 @@
    * ============================================================ */
   console.log('\n===== 37. v24 界面与队列 =====');
   var fs37 = require('fs'), path37 = require('path');
-  var rd37 = function (f) { return fs37.readFileSync(path37.join(__dirname, f), 'utf8'); };
+  var rd37 = function (f) { return ((f === 'js/ui.js') ? __uiAll() : fs37.readFileSync(path37.join(__dirname, f), 'utf8')); };
   var uS37 = rd37('js/ui.js'), hS37 = rd37('index.html'), dS37 = rd37('js/domain.js');
   var mS37 = rd37('js/main.js'), stS37 = rd37('js/state.js');
 
@@ -6862,7 +7013,7 @@
    * ============================================================ */
   console.log('\n===== 38. v25 界面重构 =====');
   var fs38 = require('fs'), path38 = require('path');
-  var rd38 = function (f) { return fs38.readFileSync(path38.join(__dirname, f), 'utf8'); };
+  var rd38 = function (f) { return ((f === 'js/ui.js') ? __uiAll() : fs38.readFileSync(path38.join(__dirname, f), 'utf8')); };
   var uS38 = rd38('js/ui.js'), hS38 = rd38('index.html'), dS38 = rd38('js/domain.js');
   /* v46 的断言紧随 v38 段之后，沿用同一份源码快照（同一段落里不必重读） */
   var hS46 = hS38, uS46 = uS38;
@@ -7313,7 +7464,7 @@
   /* v89.239（复核）：v90 换代把程序化立绘层（P.svg）整条退役。
      本断言双向守：① 源码（剥注释）不得再有 P.svg 调用；② 基因套池空实跑不炸、不铺底衬。 */
   check('v89.239：部件栏底衬兜底无死引用（池空不炸 · 不再调 P.svg）', (function () {
-    var uS239 = stripComment(fs38.readFileSync(path38.join(__dirname, 'js', 'ui.js'), 'utf8'));
+    var uS239 = stripComment(__uiAll());
     var P239 = G.portraits, bak239 = P239.POOL.m, r239 = 'THROW';
     try { P239.POOL.m = []; r239 = G.ui.dollPortrait({ id: 'zz', name: 'zz' }, true); }
     catch (e) { r239 = 'THROW:' + (e && e.message); }
@@ -7604,7 +7755,7 @@
    * ============================================================ */
   console.log('\n===== 39. v26 经验·五维·天时·观察框·城内外 =====');
   var fs39 = require('fs'), path39 = require('path');
-  var rd39 = function (f) { return fs39.readFileSync(path39.join(__dirname, f), 'utf8'); };
+  var rd39 = function (f) { return ((f === 'js/ui.js') ? __uiAll() : fs39.readFileSync(path39.join(__dirname, f), 'utf8')); };
   var uS39 = rd39('js/ui.js'), hS39 = rd39('index.html'), mS39 = rd39('js/main.js');
   var dS39 = rd39('js/domain.js'), bS39 = rd39('js/battle.js');
   var sS39 = rd39('js/state.js'), syS39 = rd39('js/systems.js');
@@ -7818,7 +7969,13 @@
   console.log('  --- ③ 天时入顶栏 ---');
   check('顶栏有天时元素（在「自动」「设置」之后，最右）', (function () {
     var i = hS39.indexOf('class="topnav"');
-    var nav = hS39.slice(i, i + 4000);
+    /* ⚠️ 原来是 `slice(i, i + 4000)` —— 一个魔法数字窗口。
+       v156.30 把图例移到右侧工具区（.nav-right 包住 图例/世界账本/天时）后，
+       nav-sky 距 topnav 起点变成 **4039** 字符，只超出 39 就误红了。
+       改成**按结构定位**：topnav 的兄弟 `<div class="main">` 就是它的终点边界，
+       以后再往顶栏加东西（注释、新工具）都不会再撞这个数。 */
+    var iMain = hS39.indexOf('<div class="main">', i);
+    var nav = hS39.slice(i, (iMain > i) ? iMain : i + 8000);
     var iSky = nav.indexOf('id="nav-sky"');
     var iSet = nav.indexOf('data-view="settings"');
     var iAuto = nav.indexOf('data-view="auto"');
@@ -7843,12 +8000,51 @@
   check('.sky-line 样式已随元素一起删除（不留死样式）', !/\.sky-line/.test(hS39));
   check('顶栏天时随 syncHeader 刷新', /var sky = \$\('#nav-sky'\)/.test(uS39)
     && /story\.skyLine/.test(uS39));
-  check('实测：syncHeader 真的把天时写进顶栏', (function () {
-    var el = DC['#nav-sky'];
+  check('实测：syncHeader 真的把天时写进顶栏（年 / 季 / 天候 三段俱在）', (function () {
+    /* ⚠️ smoke 的 DOM 是 stub（makeEl）：ui 写 innerHTML 不会同步 textContent，
+       所以这里必须读 **innerHTML 再剥标签**，读 textContent 恒为空 = 假红。
+       另外用当前文档里那个节点，不用 `$` 缓存表（enterGame 后可能已换节点）。 */
+    var el = (global.document.querySelector ? global.document.querySelector('#nav-sky') : null)
+      || DC['#nav-sky'];
     if (!el) return false;
     G.ui.syncHeader();
-    var want = G.story ? G.story.skyLine() : '';
-    return want && el.innerHTML.indexOf(want) > 0;
+    var t = String(el.innerHTML || '').replace(/<[^>]*>/g, '');
+    var se = G.story.currentSeason(), we = G.story.currentWeather();
+    var y = (G.state && G.state.world && G.state.world.year) || 0;
+    /* v156.32（老板「天时啥的也省约一点」）：顶栏显示换成压缩句 `1年 春 ☀晴`，
+       不再拿 skyLine 全量串逐字比对 —— 判据改成**三段数据各自出现**
+       （年号 ≥1 + 季节首字 + 天候名）。文案怎么排都判得住，缺哪段就红。 */
+    return y >= 1 && t.indexOf(y + '年') >= 0
+      && t.indexOf(String(se.name || '').charAt(0)) >= 0
+      && t.indexOf(we.name) >= 0;
+  })(), (function () {
+    var el = (global.document.querySelector ? global.document.querySelector('#nav-sky') : null)
+      || DC['#nav-sky'];
+    if (!el) return 'no-el';
+    var se = G.story.currentSeason(), we = G.story.currentWeather();
+    return 'html=[' + String(el.innerHTML || '').replace(/<[^>]*>/g, '') + '] y='
+      + ((G.state && G.state.world && G.state.world.year) || 0)
+      + ' se=' + se.name + ' we=' + we.name
+      + ' sameNode=' + (el === DC['#nav-sky'] ? 'Y' : 'N');
+  })());
+
+  check('顶栏天时是压缩句（省约口径：不含「第 N 年 季」全量句）', (function () {
+    var el = (global.document.querySelector ? global.document.querySelector('#nav-sky') : null)
+      || DC['#nav-sky'];
+    if (!el) return false;
+    G.ui.syncHeader();
+    /* 同上：stub 只更新 innerHTML，读它剥标签才是"玩家看到的那行字"。 */
+    var t = String(el.innerHTML || '').replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+    /* 正向下限：必须真有内容；反向：完整句那些虚字不许回来。
+       守的是"省约"这件事本身 —— 否则下次重构把长串加回来，没人会发现。
+       ⚠️ 不测总长度：右侧可能同时挂 1~3 枚状态 chip（来犯 / 民心低 / 逾溢），
+       长度会随局势变 —— 用长度做上限就是又给自己埋一条假红。 */
+    return t.length >= 4 && !/第\s*\d+\s*年/.test(t) && !/季/.test(t);
+  })(), (function () {
+    var el = (global.document.querySelector ? global.document.querySelector('#nav-sky') : null)
+      || DC['#nav-sky'];
+    return el ? ('html=[' + String(el.innerHTML || '').replace(/<[^>]*>/g, '') + ']')
+      : 'no-el';
   })());
 
   /* ---- 需求 4：地图观察框 12×8 ---- */
@@ -7939,7 +8135,7 @@
    * ============================================================ */
   console.log('\n===== 40. v27 布局·战场·守军 =====');
   var fs40 = require('fs'), path40 = require('path');
-  var rd40 = function (f) { return fs40.readFileSync(path40.join(__dirname, f), 'utf8'); };
+  var rd40 = function (f) { return ((f === 'js/ui.js') ? __uiAll() : fs40.readFileSync(path40.join(__dirname, f), 'utf8')); };
   var uS40 = rd40('js/ui.js'), hS40 = rd40('index.html'), mS40 = rd40('js/main.js');
   var bS40 = rd40('js/battle.js'), dS40 = rd40('js/domain.js'), tS40 = rd40('js/tactic.js');
   var dtS40 = rd40('js/data.js');
@@ -8035,10 +8231,10 @@
     && !/garrisonMul/.test(stripComment(require('fs').readFileSync(require('path').join(__dirname, 'js', 'battle.js'), 'utf8'))));
   check('旧的 wildGarrison 公式已删除（它算出来是真实值的 15 倍，面板曾被它骗）', (function () {
     return typeof G.battle.wildGarrison !== 'function'
-      && !/wildGarrison\(/.test(stripComment(require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8')));
+      && !/wildGarrison\(/.test(stripComment(__uiAll()));
   })());
   check('面板显示的守军数与战斗同源（都读 wildDefenseAt，不再两个出口）', (function () {
-    var u = stripComment(require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8'));
+    var u = stripComment(__uiAll());
     var i = u.indexOf('ui.openLandModalCi = function');
     var seg = u.slice(i, u.indexOf('\n  };', i));
     return seg.length > 500 && /GAME\.wildDefenseAt\(ci, lv\)\.total/.test(seg);
@@ -8718,7 +8914,7 @@ check('建筑专精三档：12/24/36 各记一档 · 第一档值保持原样 ·
 })());
 check('最高等级只有一个出口：buildCapOf 的调用点不许被"改回裸判断"', (function () {
   var d = stripComment(require('fs').readFileSync(require('path').join(__dirname, 'js', 'domain.js'), 'utf8'));
-  var u = stripComment(require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8'));
+  var u = stripComment(__uiAll());
   /* domain 5 处（围墙 / 城外升级 / 城内升级 / 自动建造城内 / 自动建造城外）
      ui 7 处（城内弹窗 / 城外弹窗 / 英雄枢纽 / 城内格角标 / 政务厅角标 / 围墙弹窗 ×2） */
   return (d.match(/GAME\.buildCapOf\(/g) || []).length >= 5
@@ -8822,12 +9018,12 @@ check('城市属性民心/民怨合并为一行', (function () {
 /* ---- 需求 4/5：军营队列 / 上限 ---- */
 console.log('  --- ④⑤ 军营队列与募兵上限 ---');
 check('军营建筑面板会列出本营队列（不再只有"可募兵种 N/18"）', (function () {
-  var u = require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8');
+  var u = __uiAll();
   return /var barQueue = '';/.test(u) && /barQueue = ui\.trainQueueBlock\(\{ idx: idx, lvl: bLv \}, c\)/.test(u)
     && /barQueue \+/.test(u);
 })());
 check('募兵面板有「上限」按钮', (function () {
-  var u = require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8');
+  var u = __uiAll();
   return /data-action="train-max"/.test(u);
 })());
 check('实测：maxTrainCount 口径与 train 的校验一致（不会"按了上限却说不足"）', (function () {
@@ -8896,7 +9092,7 @@ check('实测：加速只影响指定军营，另一营不受影响', (function 
 /* ---- v89.49（老板「募兵队列怎么不可加速了？」）：花金买时间 ---- */
 console.log('  --- ⑧b v89.49 花金提速（永远可用的那条路） ---');
 check('v89.49：病根不再存在 —— 队列表的「加速」按钮不再因缺宝物而 disabled', (function () {
-  var u = stripComment(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'ui.js'), 'utf8'));
+  var u = stripComment(__uiAll());
   var fn = codeOf(u, 'ui.trainQueueBlock = function');
   return /data-action="train-boost"/.test(fn)
     && !/hasBoost \? ' gold' : ' dim'/.test(fn)
@@ -8993,7 +9189,7 @@ check('实测：护栏（旧币不足 / 无队列 / 完工后再提速 全拒）
   return noQ && !poor.ok && poorMsg && done.ok === false;
 })());
 check('v89.49：接线（面板两段 · train-rush 分发 · doTrainRush 出口）', (function () {
-  var u = stripComment(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'ui.js'), 'utf8'));
+  var u = stripComment(__uiAll());
   var m = stripComment(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'main.js'), 'utf8'));
   var fn = codeOf(u, 'ui.openTrainBoost = function');
   return /train-rush/.test(fn) && /花旧币买时间/.test(fn) && /宝物加速/.test(fn)
@@ -9255,7 +9451,7 @@ console.log('  --- ⑥ 批次购买与使用 ---');
 /* v29（需求 14）：v28 的"点选 chip 数量条"被**数量输入框（带加减号）**取代 ——
    固定档位只能买 1/5/10/50 个，"想买 37 个"就只能买 50 个。 */
 check('数量改为输入框（带加减号），不靠下拉框（下拉框全在册 · 白名单判据）', (function () {
-  var u = stripComment(require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8'));
+  var u = stripComment(__uiAll());
   return /ui\.qtyInput = function/.test(u) && /ui\.qtyStep = function/.test(u)
     && /ui\.qtyMax = function/.test(u) && /ui\.qtyValueOf = function/.test(u)
     && /data-action="qty-step"/.test(u) && /data-action="qty-max"/.test(u)
@@ -9305,7 +9501,7 @@ check('实测：批量购买按旧币买得起几个就买几个', (function () 
 /* ---- 需求 7：拆毁 / 移动按钮 ---- */
 console.log('  --- ⑦ 拆毁与移动按钮 ---');
 check('v80：三键同排收进吸底操作区（.bldg-bottom），关闭在其下方', (function () {
-  var u = require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8');
+  var u = __uiAll();
   var h = require('fs').readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
   return /class="bldg-acts"/.test(u)
     && /data-action="confirm-upgrade"/.test(u)
@@ -9627,7 +9823,7 @@ check('城防是**独立火力源**：守军全近战时城头也开火（野地
   return '城防 300 → 火力值 ' + G.tactic.wallFirePower(300) + '，城头累计杀伤 ' + kill(city);
 })());
 check('守将效果并入六维（v74：进名称悬停；不再有独立分区、不再占作用列）', (function () {
-  var u = stripComment(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'ui.js'), 'utf8'));
+  var u = stripComment(__uiAll());
   if (/gp-sec">守将效果/.test(u)) return false;          /* 独立分区必须已删 */
   if (!/guardUse: function/.test(u)) return false;       /* 六维项要带 guardUse */
   /* 行为：把该将设为守将后，六维名称的悬停里必须出现"守将加成："那截实际加成 */
@@ -9864,7 +10060,7 @@ check('读档归一化：老档没 tactics 字段、非法兵种/非法动作一
     && /st\.tactics = tClean;/.test(b);
 })());
 check('练兵场有「出征战术」入口，且动作已接线（不是孤儿按钮）', (function () {
-  var u = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'ui.js'), 'utf8');
+  var u = __uiAll();
   var m = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'main.js'), 'utf8');
   return /data-action="open-tactic"/.test(u)
     && /ui\.openTacticModal = function/.test(u)
@@ -9873,7 +10069,7 @@ check('练兵场有「出征战术」入口，且动作已接线（不是孤儿�
     && /case 'tactic-set':/.test(m) && /case 'tactic-reset':/.test(m);
 })());
 check('战术弹窗：每兵种有动作 + 目标（含箭塔）· **分侧**（v89.109）', (function () {
-  var u = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'ui.js'), 'utf8');
+  var u = __uiAll();
   var seg = codeOf(u, 'ui.openTacticModal = function');
   var blk = codeOf(u, 'ui.tacticBlockOf = function');
   if (seg.length < 400 || blk.length < 400) return false;
@@ -9884,7 +10080,7 @@ check('战术弹窗：每兵种有动作 + 目标（含箭塔）· **分侧**（
     && /sortie/.test(blk);                                /* 防守侧的出城迎战开关 */
 })());
 check('出征弹窗含出征战术行（v89.198：阵位摘要/逐兵种链退役，「设置」链保留）', (function () {
-  var u = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'ui.js'), 'utf8');
+  var u = __uiAll();
   var seg = codeOf(u, 'ui.openExpModal = function');
   return seg.length > 500 && /id="exp-tactic"/.test(seg)
     && /data-action="open-tactic-set"/.test(seg)
@@ -10203,7 +10399,7 @@ check('v89.83：计略在**出发时**校验、失败不阻断（无人值守不
 })());
 check('v89.83：城内留守（keepHome）已退役 —— 数据 / 后端 / 界面三处都不得复活', (function () {
   var rd2 = function (f) {
-    return fsMod.readFileSync(pathMod.join(__dirname, 'js', f), 'utf8')
+    return ((f === 'ui.js') ? __uiAll() : fsMod.readFileSync(pathMod.join(__dirname, 'js', f), 'utf8'))
       .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
   };
   return !/keepOptions/.test(rd2('data.js')) && !/keepHome/.test(rd2('domain.js'))
@@ -10215,7 +10411,7 @@ check('v89.83→v89.137：派驻面板退役 · 派驻入口统一到出征界�
   /* 老板 7：「派驻弹出出征界面（即侦察/掠夺/占领界面）…所有军队操作均以出征界面进行」——
      旧派驻面板（表格 + 选将 + wg-* 助手）整条退役；新链路 = wild-garrison-open → openExpModal
      → 方式「驻守·增援」→ dispatch → prepare（上限预检 + 无将硬闸）→ 抵达 station 分支。 */
-  var u = stripComment(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'ui.js'), 'utf8'));
+  var u = stripComment(__uiAll());
   var m = stripComment(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'main.js'), 'utf8'));
   var d = stripComment(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'domain.js'), 'utf8'));
   var bt = stripComment(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'battle.js'), 'utf8'));
@@ -10234,7 +10430,7 @@ check('v89.83→v89.137：派驻面板退役 · 派驻入口统一到出征界�
    判据含**行为**：不过半不练、过了半练一次且按 trainSta 扣体力、30 秒内不重复。 */
 check('v91.57：君主修行/练功/自动练功 整条退役（无残留调用点）', (function () {
   var dm = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'domain.js'), 'utf8');
-  var u = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'ui.js'), 'utf8');
+  var u = __uiAll();
   var m = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'main.js'), 'utf8');
   var st = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'state.js'), 'utf8');
   var strip = function (x) { return x.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, ''); };
@@ -10266,7 +10462,7 @@ check('已拥有的城市一律可改名，原名另存 origName', (function () 
     && i1.origName === '旧炉' && i2.origName === '灰烬城' && i3.origName === '盐井';
 })());
 check('城市名走单一取值口（改名同步所有引用）', (function () {
-  var u = require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8');
+  var u = __uiAll();
   return /ui\.cityLabelHTML = function \(c, short\)/.test(u)
     && typeof G.cityFullName === 'function'
     /* v71：侧栏走短名；v91.25（老板）：侧栏身份行退役 → cityLabelHTML 生产侧不再调用
@@ -10276,24 +10472,24 @@ check('城市名走单一取值口（改名同步所有引用）', (function () 
 
 /* ---- 需求 1/3/4：底部固定导航条 / 地图满屏 / 背包分页 ---- */
 check('翻页条统一投到屏幕下方的固定条', (function () {
-  var u = require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8');
+  var u = __uiAll();
   var h = require('fs').readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
   return /ui\.paintBottom = function/.test(u) && /id="bottom-bar"/.test(h)
     && /\.bottombar \{[\s\S]{0,80}height: 46px/.test(h);
 })());
 check('内容区不再内嵌分页条（翻页不必滚到底）', (function () {
-  var u = require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8');
+  var u = __uiAll();
   var i = u.indexOf('ui.pagerHTML = function');
   return i > 0 && /ui\._bottom\.push/.test(u.slice(i, i + 220));
 })());
 check('地图观察框随窗口自适应（v50：目标格距按菱形放大到 1.41 倍）', (function () {
-  var u = require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8');
+  var u = __uiAll();
   return /ui\.MAP_TARGET_CELL_ISO = 124/.test(u)
     && /ui\.MAP_CELL_MAX = Math\.round\(44 \* ui\.MAP_ZOOM\)/.test(u)   /* v89.104：放大 20% */
     && /ui\.mapFrame = \{ spanX: cols/.test(u);
 })());
 check('背包装备/宝物各二级分类都分页（分页 key 随分类区分）', (function () {
-  var u = require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8');
+  var u = __uiAll();
   /* v89.115：宝物页顶层仍走 bag-item-<分类>（材料 bag-mat / 图纸 bag-bp 专属渲染） */
   return ['bag-equip', 'bag-mat', 'bag-bp', 'bag-item'].every(function (k) {
     return new RegExp("ui\\.page(?:Bag|Rows)\\('" + k).test(u);
@@ -10303,21 +10499,21 @@ check('背包装备/宝物各二级分类都分页（分页 key 随分类区分�
 
 /* ---- 需求 12/14：制造厂弹窗 / 物品行 ---- */
 check('制造厂为游商样弹窗（品质页签 + 物品行 + 固定尺寸）', (function () {
-  var u = require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8');
+  var u = __uiAll();
   /* v38 / v51：原来用固定字符窗口定位 openForge，注释一多就假红
      （1800 → 3200 → 4200 的加数历史）。改用按结构取函数体。 */
   return /ui\.setForgeQ = function/.test(u) && /ui\.forgeRow = function/.test(u)
     && /size: 'xl'/.test(fnBody(u, 'ui.openForge = function'));
 })());
 check('物品行为「左贴图 / 右介绍 / 下：数量输入框 + 操作」', (function () {
-  var u = require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8');
+  var u = __uiAll();
   var h = require('fs').readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
   return /ui\.itemRow = function/.test(u) && /class="ir-art"/.test(u)
     && /class="ir-info"/.test(u) && /class="ir-foot"/.test(u)
     && /grid-template-columns: 64px minmax\(0, 1fr\)/.test(h);
 })());
 check('数量输入框带加减号与「最多」，不走下拉框（下拉框全在册）', (function () {
-  var u = stripComment(require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8'));
+  var u = stripComment(__uiAll());
   return /ui\.qtyInput = function/.test(u) && /data-action="qty-step"/.test(u)
     && /data-action="qty-max"/.test(u)
     && selectsRegistered(u).bad.length === 0 && /class="city-select"/.test(u)
@@ -10326,7 +10522,7 @@ check('数量输入框带加减号与「最多」，不走下拉框（下拉框�
 
 /* ---- 需求 6/7/8/15/16 ---- */
 check('公文只留报告与消息（队列已迁出）· v89.107 起为五类页签', (function () {
-  var u = require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8');
+  var u = __uiAll();
   /* v43：切片边界改用**函数边界**，不再写死字符数。
      v89.107：本段起点挪到 `ui.DOC_PER`（页签三件套 docTabHTML/docBodyHTML/docPagerReg
      都定义在 reportsHTML **之前**，从 reportsHTML 起切会整段切掉）。 */
@@ -10343,18 +10539,18 @@ check('公文只留报告与消息（队列已迁出）· v89.107 起为五类�
    "一边长一边短"在结构上不可能出现（`.ledger` 自身才是那个两列网格，
    节标题横贯全宽），所以判据从"分了几栏"改成"**没有分栏容器**"。 */
 check('统计页（黄册）已整页退役 —— 视图函数与菜单条目都不在册', (function () {
-  var u = stripComment(require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8'));
+  var u = stripComment(__uiAll());
   var h = stripComment(require('fs').readFileSync(require('path').join(__dirname, 'index.html'), 'utf8'));
   return !/ui\.statsHTML = function/.test(u) && !/ui\.lgSec = function/.test(u)
     && !/data-view="stats"/.test(h);
 })());
 check('侧栏资源与驻军随所选城市变化', (function () {
-  var u = require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8');
+  var u = __uiAll();
   return /GAME\.cityProdPerSec\(c\)/.test(u) && /GAME\.cityFullName/.test(u)
     && typeof G.cityProdPerSec === 'function' && typeof G.prodBasePerHourOf === 'function';
 })());
 check('英雄枢纽不再重复英雄名录', (function () {
-  var u = require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8');
+  var u = __uiAll();
   var i = u.indexOf('ui.openHostel = function');
   var seg = u.slice(i, i + 2400);
   return i > 0 && seg.indexOf('inn-card') < 0 && /房间（本城英雄席位）/.test(seg);
@@ -10373,7 +10569,7 @@ check('英雄界面为 3×2 卡片墙 + 下方档案', (function () {
   console.log('\n===== 42. v39 主题·地块·分栏 =====');
   var fs = require('fs'), path = require('path');
   var H = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
-  var U = fs.readFileSync(path.join(__dirname, 'js', 'ui.js'), 'utf8');
+  var U = __uiAll();
   var M = fs.readFileSync(path.join(__dirname, 'js', 'main.js'), 'utf8');
   var D = fs.readFileSync(path.join(__dirname, 'js', 'data.js'), 'utf8');
   var css = H.match(/<style[^>]*>([\s\S]*?)<\/style>/)[1];
@@ -10551,7 +10747,7 @@ check('英雄界面为 3×2 卡片墙 + 下方档案', (function () {
   var fs = require('fs'), path = require('path');
   var MP = fs.readFileSync(path.join(__dirname, 'js', 'map.js'), 'utf8');
   var ST = fs.readFileSync(path.join(__dirname, 'js', 'state.js'), 'utf8');
-  var UI = fs.readFileSync(path.join(__dirname, 'js', 'ui.js'), 'utf8');
+  var UI = __uiAll();
   var H = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
   var css = H.match(/<style[^>]*>([\s\S]*?)<\/style>/)[1];
 
@@ -11148,7 +11344,7 @@ check('英雄界面为 3×2 卡片墙 + 下方档案', (function () {
 console.log('\n===== 45. v60 城市归属与名城专有 =====');
 (function () {
   var fs = require('fs'), path = require('path');
-  function rd(f) { return fs.readFileSync(path.join(__dirname, 'js', f + '.js'), 'utf8'); }
+  function rd(f) { return ((f === 'ui') ? __uiAll() : fs.readFileSync(path.join(__dirname, 'js', f + '.js'), 'utf8')); }
   var dS = rd('domain'), uS = rd('ui'), stS = rd('state'), bS = rd('battle'),
       mS = rd('main'), tS = rd('tactic');
   var hS = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
@@ -11614,7 +11810,7 @@ console.log('\n===== 45. v60 城市归属与名城专有 =====');
 console.log('\n===== 46. v61 满配城市城内布局 =====');
 (function () {
   var fs = require('fs'), path = require('path');
-  function rd(f) { return fs.readFileSync(path.join(__dirname, 'js', f + '.js'), 'utf8'); }
+  function rd(f) { return ((f === 'ui') ? __uiAll() : fs.readFileSync(path.join(__dirname, 'js', f + '.js'), 'utf8')); }
   var stS = rd('state'), uS = rd('ui'), bS = rd('battle'), dS = rd('data'), mS = rd('main');
   var PLACE = DATA.CITY_PLAN;
   function countOf(plan) {
@@ -11896,7 +12092,7 @@ console.log('\n===== 46. v61 满配城市城内布局 =====');
       && /showLabels: true/.test(uS);
   })());
   check('v90.88：名称开关 = **只对城内/城外建筑**（不再关联地图 canvas）', (function () {
-    var rd = function (f) { return stripComment(require('fs').readFileSync(require('path').join(__dirname, 'js', f), 'utf8')); };
+    var rd = function (f) { return stripComment(((f === 'ui.js') ? __uiAll() : require('fs').readFileSync(require('path').join(__dirname, 'js', f), 'utf8'))); };
     var u = rd('ui.js'), m = rd('main.js');
     var html = require('fs').readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
     var fn = codeOf(u, 'ui.applyLabelSwitch = function');
@@ -11912,7 +12108,7 @@ console.log('\n===== 46. v61 满配城市城内布局 =====');
       && /body\.labels-off \.tile-badge/.test(html);
   })());
   check('v89.57：出征面板多选项下拉框（目标/站位/计略）且全部接既有机制（非死数据）', (function () {
-    var u = stripComment(require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8'));
+    var u = stripComment(__uiAll());
     var exp = codeOf(u, 'ui.openExpModal = function');
     /* v91.75（老板「目标只列一个」）：出征面板不再摆目标候选下拉 —— 只显示本次目标。 */
     return !/id="exp-target"/.test(exp) && /id="exp-scheme-sel"/.test(exp)
@@ -11924,7 +12120,7 @@ console.log('\n===== 46. v61 满配城市城内布局 =====');
       && /id="exp-mode"/.test(exp) && !/em-cost/.test(exp);
   })());
   check('v89.59：出征面板新增 方案/出征战术 下拉框 + 军队派驻 + 金换物资（全接既有机制）', (function () {
-    var rd = function (f) { return stripComment(require('fs').readFileSync(require('path').join(__dirname, 'js', f), 'utf8')); };
+    var rd = function (f) { return stripComment(((f === 'ui.js') ? __uiAll() : require('fs').readFileSync(require('path').join(__dirname, 'js', f), 'utf8'))); };
     var u = rd('ui.js'), d = rd('domain.js'), da = rd('data.js');
     return /id="exp-plan"/.test(u) && /id="exp-tactic"/.test(u)
       && /ui\.expPlanOptionsHTML = function/.test(u) && /ui\.expTacticOptionsHTML = function/.test(u)
@@ -12036,7 +12232,7 @@ console.log('\n===== 46. v61 满配城市城内布局 =====');
 console.log('\n===== 47. v62 机工坊造箭塔 =====');
 (function () {
   var fs = require('fs'), path = require('path');
-  function rd(f) { return fs.readFileSync(path.join(__dirname, 'js', f + '.js'), 'utf8'); }
+  function rd(f) { return ((f === 'ui') ? __uiAll() : fs.readFileSync(path.join(__dirname, 'js', f + '.js'), 'utf8')); }
   var dS = rd('domain'), tS = rd('tactic'), bS = rd('battle'), uS = rd('ui'), mS = rd('main');
   var dataS = rd('data');
   var TW = DATA.WALL_TOWER;
@@ -12273,7 +12469,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
  * ============================================================ */
 (function () {
   var fs = require('fs'), path = require('path');
-  function rd(f) { return fs.readFileSync(path.join(__dirname, 'js', f + '.js'), 'utf8'); }
+  function rd(f) { return ((f === 'ui') ? __uiAll() : fs.readFileSync(path.join(__dirname, 'js', f + '.js'), 'utf8')); }
   var stS = rd('state'), uS = rd('ui'), bS = rd('battle'), dS = rd('data'), dmS = rd('domain'), syS = rd('systems');
   var hS = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
   function withCity(fn) {
@@ -12422,13 +12618,13 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
     /* ⚠️ 这份 ORDER 与 build_bundle.py 的 ORDER **必须逐条一致**（本文故意不复用脚本，
        就是为了"构建脚本自己算错时测试还能抓到"）。加了模块两边都要加 ——
        v92 加 fog / memorial 时这里漏改，导致 hash 对不上、守卫假红。 */
-    var ORDER = ['core', 'registry', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'colony', 'fleet', 'domain', 'map', 'sphere', 'risk', 'years', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'rival', 'land', 'taint', 'climate', 'surge', 'relic', 'goals', 'veteran', 'setskill', 'deck', 'bond', 'tower', 'wonderwar', 'delve', 'unrest', 'expose', 'trooplv', 'idle', 'ending', 'muster', 'founding', 'prologue', 'duel', 'market', 'events', 'gltf',
+    var ORDER = ['core', 'registry', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'colony', 'fleet', 'domain', 'map', 'sphere', 'risk', 'years', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'rival', 'land', 'taint', 'climate', 'surge', 'relic', 'goals', 'veteran', 'setskill', 'deck', 'bond', 'tower', 'wonderwar', 'delve', 'unrest', 'expose', 'trooplv', 'idle', 'ending', 'muster', 'founding', 'prologue', 'duel', 'duel3d', 'market', 'events', 'gltf',
       'map3d', 'scene3d', 'battle', 'battlelog', 'strategy', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits',
       /* v92.241：BELT（陨石带）/ PLANETGEN（星球生成流水线）/ PLACEMENT（地块放置）
          —— 与 build_bundle.py 的 ORDER 逐条一致（它的注释就是这么要求的，
          加了模块两边都要加，否则本守卫假红）。 */
       'placement', 'belt', 'planetgen',
-      'story', 'ui', 'main'];
+      'story', 'ui', 'ui-fx', 'ui-core', 'ui-modal', 'ui-shell', 'ui-battle', 'ui-city', 'ui-army', 'ui-bag', 'ui-craft', 'ui-view', 'ui-build', 'ui-planet', 'ui-space', 'ui-delve', 'ui-mapui', 'ui-exped', 'ui-report', 'ui-config', 'main'];
     var h = crypto.createHash('sha256');
     try {
       ORDER.forEach(function (m) {
@@ -12491,7 +12687,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
     var jsDir = path.join(__dirname, 'js');
     var MODS = ['data', 'state', 'systems', 'domain', 'map', 'sphere', 'fog', 'growth', 'climate', 'gltf',
       'map3d', 'scene3d', 'battle', 'battlelog', 'strategy', 'tactic', 'placement', 'belt', 'planetgen',
-      'story', 'ui', 'main'];
+      'story', 'ui', 'ui-fx', 'ui-core', 'ui-modal', 'ui-shell', 'ui-battle', 'ui-city', 'ui-army', 'ui-bag', 'ui-craft', 'ui-view', 'ui-build', 'ui-planet', 'ui-space', 'ui-delve', 'ui-mapui', 'ui-exped', 'ui-report', 'ui-config', 'main'];
     var bad = [];
     MODS.forEach(function (f) {
       var p = path.join(jsDir, f + '.js');
@@ -12818,7 +13014,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
   })());
   check('v89.81：BASE_STORE / TECH_MAX_LV 收成唯一出口（domain / systems 不再硬编码）', (function () {
     var rd2 = function (f) {
-      return require('fs').readFileSync(require('path').join(__dirname, 'js', f), 'utf8');
+      return ((f === 'ui.js') ? __uiAll() : require('fs').readFileSync(require('path').join(__dirname, 'js', f), 'utf8'));
     };
     var dom = rd2('domain.js'), sys = rd2('systems.js');
     return DATA.BASE_STORE === 2000000 && DATA.TECH_MAX_LV === 10
@@ -13225,17 +13421,9 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
  * ============================================================ */
 (function () {
   var fs = require('fs'), path = require('path');
-  function rd(f) { return fs.readFileSync(path.join(__dirname, 'js', f + '.js'), 'utf8'); }
+  function rd(f) { return ((f === 'ui') ? __uiAll() : fs.readFileSync(path.join(__dirname, 'js', f + '.js'), 'utf8')); }
   var stS = rd('state'), uS = rd('ui'), bS = rd('battle'), dS = rd('data'), dmS = rd('domain');
-  function withState(name, fn) {
-    var keep = G.state;
-    try {
-      var st = G.newGame({ name: name });
-      G.state = st;
-      if (G.map.generate) G.map.generate();
-      return fn(st);
-    } finally { G.state = keep; }
-  }
+  /* v156.38：withState 已提到公共头（分片时每份都要有）。 */
   /* 在空地上放一座建筑（造测试环境用；找不到空位返回 false） */
   function setBldg(city, bid, lv) {
     for (var i = 0; i < city.cells.length; i++) {
@@ -13553,7 +13741,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
   console.log('\n===== 49. v65 情报分层 / 属性整数 / 资源短写 / 驻军精简 / 名城满级 =====');
 
   /* 本段独立读源码（别处段落的 `rd` 是那段自己的局部函数，这里拿不到） */
-  var rd49 = function (f) { return fs.readFileSync(path.join(__dirname, 'js', f + '.js'), 'utf8'); };
+  var rd49 = function (f) { return ((f === 'ui') ? __uiAll() : fs.readFileSync(path.join(__dirname, 'js', f + '.js'), 'utf8')); };
   var stS49 = rd49('state'), uS49 = rd49('ui'), bS49 = rd49('battle'), dS49 = rd49('data');
   var mS49 = rd49('main'), hS49 = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
   var code49 = function (src, decl) { return codeOf(src, decl); };
@@ -13843,7 +14031,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
    * 50. v66：经验封顶 / 装备体力入上限 / 征召大厅高资质下调
    * ============================================================ */
   console.log('\n===== 50. v66：经验封顶 / 装备体力入上限 / 征召大厅降资质 =====');
-  function rd66(f) { return fsMod.readFileSync(pathMod.join(__dirname, 'js', f + '.js'), 'utf8'); }
+  function rd66(f) { return ((f === 'ui') ? __uiAll() : fsMod.readFileSync(pathMod.join(__dirname, 'js', f + '.js'), 'utf8')); }
   var dmS66 = rd66('domain'), syS66 = rd66('systems'), bS66 = rd66('battle'),
       uS66 = rd66('ui'), stS66 = rd66('state');
   /* ⚠️ `G.newGame()` 只返回 state，**不会**装进 GAME.state。
@@ -14090,7 +14278,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
    * 51. v67：放弃城市 / 城市关联数据登记表 / 侧栏分列
    * ============================================================ */
   console.log('\n===== 51. v67：放弃城市 + 关联数据清理 + 侧栏分列 =====');
-  function rd67(f) { return fsMod.readFileSync(pathMod.join(__dirname, 'js', f + '.js'), 'utf8'); }
+  function rd67(f) { return ((f === 'ui') ? __uiAll() : fsMod.readFileSync(pathMod.join(__dirname, 'js', f + '.js'), 'utf8')); }
   var dmS67 = rd67('domain'), uS67 = rd67('ui'), mS67 = rd67('main');
   var hS67 = fsMod.readFileSync(pathMod.join(__dirname, 'index.html'), 'utf8');
   var keep67 = G.state, REFS67 = '', MSG67B = '', LEFT67 = [];
@@ -14322,7 +14510,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
     var fsSv = require('fs'), pathSv = require('path');
     var stSrc = stripComment(fsSv.readFileSync(pathSv.join(__dirname, 'js', 'state.js'), 'utf8'));
     var mainSrc = stripComment(fsSv.readFileSync(pathSv.join(__dirname, 'js', 'main.js'), 'utf8'));
-    var uiSrc = stripComment(fsSv.readFileSync(pathSv.join(__dirname, 'js', 'ui.js'), 'utf8'));
+    var uiSrc = stripComment(__uiAll());
     var hSrc = fsSv.readFileSync(pathSv.join(__dirname, 'index.html'), 'utf8');
 
     check('槽位表：主档 + 3 手动 + 3 自动备份（共 7，键名规则唯一）', (function () {
@@ -14469,7 +14657,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
     var bak93 = G.state;
     try {
       var stS93 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'state.js'), 'utf8');
-      var us93 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'ui.js'), 'utf8');
+      var us93 = __uiAll();
 
       check('结构：守城兵损走 woundedRate 伤兵回收（不再是"直接扣兵"）', (function () {
         var i0 = stS93.indexOf('GAME.invasionResolve = function');
@@ -14777,7 +14965,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
          v91.61：排除构建产物 bundle.js（否则同一份定义被数两次）。 */
       var fs2 = require('fs'), px = require('path'), all = '';
       fs2.readdirSync(px.join(__dirname, 'js')).forEach(function (f) {
-        if (/\.js$/.test(f) && !/^bundle(-(core|war|ui))?\.js$/.test(f)) all += stripComment(fs2.readFileSync(px.join(__dirname, 'js', f), 'utf8'));
+        if (/\.js$/.test(f) && !/^bundle(-(core|war|ui))?\.js$/.test(f)) all += stripComment(((f === 'ui.js') ? __uiAll() : fs2.readFileSync(px.join(__dirname, 'js', f), 'utf8')));
       });
       return (all.match(/GAME\.resName\s*=\s*function/g) || []).length === 1;
     })());
@@ -14803,7 +14991,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
     var st54 = G.newGame({ name: 'gate54' });
     G.state = st54;
     if (G.map.generate) G.map.generate();
-    var rd54 = function (f) { return require('fs').readFileSync(require('path').join(__dirname, 'js', f + '.js'), 'utf8'); };
+    var rd54 = function (f) { return ((f === 'ui') ? __uiAll() : require('fs').readFileSync(require('path').join(__dirname, 'js', f + '.js'), 'utf8')); };
     var c54 = st54.cities[0];
     c54.cells.forEach(function (x) { if (x.build && x.build.id === 'minfang') x.build.lvl = 5; });   /* v89.224：新前置夹具（居所 Lv5） */
     st54.res.grain = 5e8; st54.res.wood = 5e8; st54.res.stone = 5e8; st54.res.iron = 5e8; st54.res.gold = 5e8;
@@ -14941,7 +15129,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
    * ============================================================ */
   console.log('\n--- 第 55 节：政务厅居中 + 旧档迁移 ---');
   (function () {
-    var fs55 = function (f) { return require('fs').readFileSync(require('path').join(__dirname, 'js', f + '.js'), 'utf8'); };
+    var fs55 = function (f) { return ((f === 'ui') ? __uiAll() : require('fs').readFileSync(require('path').join(__dirname, 'js', f + '.js'), 'utf8')); };
     var govIdxOf = function (c) {
       var g = []; c.cells.forEach(function (x, i) { if (x.official) g.push(i); });
       return g.join(',');
@@ -15021,7 +15209,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
    * ============================================================ */
   console.log('\n--- 第 56 节：弹窗统一规范 ---');
   (function () {
-    var fs56 = function (f) { return require('fs').readFileSync(require('path').join(__dirname, 'js', f + '.js'), 'utf8'); };
+    var fs56 = function (f) { return ((f === 'ui') ? __uiAll() : require('fs').readFileSync(require('path').join(__dirname, 'js', f + '.js'), 'utf8')); };
     var u56 = stripComment(fs56('ui'));
     var h56 = require('fs').readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
 
@@ -15072,7 +15260,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
 
   console.log('\n--- 第 57 节：可领取任务置顶 + 行内一键领取（v69） ---');
   (function () {
-    var fs57 = function (f) { return require('fs').readFileSync(require('path').join(__dirname, 'js', f + '.js'), 'utf8'); };
+    var fs57 = function (f) { return ((f === 'ui') ? __uiAll() : require('fs').readFileSync(require('path').join(__dirname, 'js', f + '.js'), 'utf8')); };
     var u57 = stripComment(fs57('ui'));
     var m57 = stripComment(fs57('main'));
     var h57 = require('fs').readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
@@ -15110,7 +15298,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
 
   console.log('\n--- 第 58 节：区镇落 · 满配数量表 · 坐标迁址 · 君主英雄 · 出生州（v70） ---');
   (function () {
-    var fs58 = function (f) { return require('fs').readFileSync(require('path').join(__dirname, 'js', f + '.js'), 'utf8'); };
+    var fs58 = function (f) { return ((f === 'ui') ? __uiAll() : require('fs').readFileSync(require('path').join(__dirname, 'js', f + '.js'), 'utf8')); };
     var u58 = stripComment(fs58('ui'));
     var d58 = stripComment(fs58('data'));
     var dm58 = stripComment(fs58('domain'));
@@ -15450,7 +15638,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
  * ============================================================ */
 console.log('\n===== 59. v73 五条（旧币 · 资质 · 遗迹 · 英雄头 · 建筑弹窗） =====');
 (function () {
-  var rd = function (f) { return fsMod.readFileSync(pathMod.join(__dirname, 'js', f + '.js'), 'utf8'); };
+  var rd = function (f) { return ((f === 'ui') ? __uiAll() : fsMod.readFileSync(pathMod.join(__dirname, 'js', f + '.js'), 'utf8')); };
   var uS73 = stripComment(rd('ui'));
   var stS73 = stripComment(rd('state'));
   var dS73 = stripComment(rd('domain'));
@@ -15617,7 +15805,7 @@ console.log('\n===== 59. v73 五条（旧币 · 资质 · 遗迹 · 英雄头 ·
  * ============================================================ */
 console.log('\n===== 60. v74 七条（幸存者 · 画布 · 简介 · 六维 · 加点 · 备注 · 出征） =====');
 (function () {
-  var rd = function (f) { return fsMod.readFileSync(pathMod.join(__dirname, 'js', f + '.js'), 'utf8'); };
+  var rd = function (f) { return ((f === 'ui') ? __uiAll() : fsMod.readFileSync(pathMod.join(__dirname, 'js', f + '.js'), 'utf8')); };
   var uS = stripComment(rd('ui'));
   var stS = stripComment(rd('state'));
   var dS = stripComment(rd('domain'));
@@ -15780,7 +15968,7 @@ console.log('\n===== 60. v74 七条（幸存者 · 画布 · 简介 · 六维 ·
  * ============================================================ */
 console.log('\n===== 61. v75 征召大厅招募（大界面 · 单行候选 · 资质悬停 · 无概率表） =====');
 (function () {
-  var rd = function (f) { return fsMod.readFileSync(pathMod.join(__dirname, 'js', f + '.js'), 'utf8'); };
+  var rd = function (f) { return ((f === 'ui') ? __uiAll() : fsMod.readFileSync(pathMod.join(__dirname, 'js', f + '.js'), 'utf8')); };
   var uS1 = stripComment(rd('ui'));
   var hS1 = fsMod.readFileSync(pathMod.join(__dirname, 'index.html'), 'utf8');
   var inn1 = codeOf(uS1, 'ui.openInn = function');
@@ -15832,7 +16020,7 @@ console.log('\n===== 61. v75 征召大厅招募（大界面 · 单行候选 · �
    * 62. v77：月俸体系 / 征召大厅表格 / 君主面板 / 野地下拉 / 新货 / 强化 / 战技
    * ============================================================ */
   console.log('\n===== 62. v77 老板八条（月俸/表格/君主/野地/新货/强化/战技） =====');
-  var uS77 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'ui.js'), 'utf8');
+  var uS77 = __uiAll();
   var mS77 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'main.js'), 'utf8');
   var dS77 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'domain.js'), 'utf8');
   var sS77 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'systems.js'), 'utf8');
@@ -16014,7 +16202,7 @@ console.log('\n===== 61. v75 征召大厅招募（大界面 · 单行候选 · �
    * ============================================================ */
   console.log('\n===== 63. v78 三条（时间递增 · 立项制 · 灵淬隐藏加成）· v89.224 重写 =====');
   (function () {
-    var rd = function (f) { return fsMod.readFileSync(pathMod.join(__dirname, 'js', f + '.js'), 'utf8'); };
+    var rd = function (f) { return ((f === 'ui') ? __uiAll() : fsMod.readFileSync(pathMod.join(__dirname, 'js', f + '.js'), 'utf8')); };
     var dS = stripComment(rd('data'));
     var stS = stripComment(rd('state'));
     var domS = stripComment(rd('domain'));
@@ -16155,7 +16343,7 @@ console.log('\n===== 61. v75 征召大厅招募（大界面 · 单行候选 · �
    * ============================================================ */
   console.log('\n===== 64. v79 四条（威望加成 · 主城 · 神器 · 装备单件化） =====');
   (function () {
-    var rd = function (f) { return fsMod.readFileSync(pathMod.join(__dirname, 'js', f + '.js'), 'utf8'); };
+    var rd = function (f) { return ((f === 'ui') ? __uiAll() : fsMod.readFileSync(pathMod.join(__dirname, 'js', f + '.js'), 'utf8')); };
     var dS = stripComment(rd('data'));
     var stS = stripComment(rd('state'));
     var domS = stripComment(rd('domain'));
@@ -16342,7 +16530,7 @@ console.log('\n===== 61. v75 征召大厅招募（大界面 · 单行候选 · �
  * ============================================================ */
 console.log('\n===== 65. v80 三条（征召大厅 · 建筑底栏 · 兵营） =====');
 (function () {
-  var rd = function (f) { return fsMod.readFileSync(pathMod.join(__dirname, 'js', f + '.js'), 'utf8'); };
+  var rd = function (f) { return ((f === 'ui') ? __uiAll() : fsMod.readFileSync(pathMod.join(__dirname, 'js', f + '.js'), 'utf8')); };
   var uRaw = rd('ui');
   var uS = stripComment(uRaw);
   var mS = stripComment(rd('main'));
@@ -16423,7 +16611,7 @@ console.log('\n===== 65. v80 三条（征召大厅 · 建筑底栏 · 兵营） 
  * ============================================================ */
 console.log('\n===== 66. v81 两条（君主卡 · 兵营三页） =====');
 (function () {
-  var rd = function (f) { return fsMod.readFileSync(pathMod.join(__dirname, 'js', f + '.js'), 'utf8'); };
+  var rd = function (f) { return ((f === 'ui') ? __uiAll() : fsMod.readFileSync(pathMod.join(__dirname, 'js', f + '.js'), 'utf8')); };
   var uRaw = rd('ui');
   var uS = stripComment(uRaw);
   var mS = stripComment(rd('main'));
@@ -16481,7 +16669,7 @@ console.log('\n===== 66. v81 两条（君主卡 · 兵营三页） =====');
    * ============================================================ */
   console.log('\n===== 67. v82 四条（君主资质 · 文案 · 征收 · 字体） =====');
   (function () {
-    var rd82 = function (f) { return fsMod.readFileSync(pathMod.join(__dirname, 'js', f + '.js'), 'utf8'); };
+    var rd82 = function (f) { return ((f === 'ui') ? __uiAll() : fsMod.readFileSync(pathMod.join(__dirname, 'js', f + '.js'), 'utf8')); };
     var u82 = stripComment(rd82('ui'));
     var d82 = stripComment(rd82('domain'));
     var m82 = stripComment(rd82('main'));
@@ -16640,7 +16828,7 @@ console.log('\n===== 66. v81 两条（君主卡 · 兵营三页） =====');
  * ============================================================ */
 console.log('\n===== 69. v84 卡面去拥有行 · 步兵/机车分类对调 =====');
 (function () {
-  var uS84v = stripComment(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'ui.js'), 'utf8'));
+  var uS84v = stripComment(__uiAll());
 
   console.log('  --- ① 兵种卡去「拥有」行 ---');
   check('v84：troopsHTML 源码不再输出「拥有：N」行（整行退役）', (function () {
@@ -16676,7 +16864,7 @@ console.log('\n===== 69. v84 卡面去拥有行 · 步兵/机车分类对调 ===
  * ============================================================ */
 console.log('\n===== 70. v85 地图自适应 · 缩略地图 =====');
 (function () {
-  var uS85 = stripComment(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'ui.js'), 'utf8'));
+  var uS85 = stripComment(__uiAll());
   var mS85 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'map.js'), 'utf8');
 
   console.log('  --- ① 居所去「幸存者统计」入口 ---');
@@ -16719,7 +16907,7 @@ console.log('\n===== 71. v86 计谋 / 封存匣 =====');
 (function () {
   /* 本节需要"有地形"的地图（前序测试不保证 grid 已生成；这里是最后一节，生成无副作用） */
   if (!(GAME.state.map && GAME.state.map.grid)) GAME.map.generate();
-  var uS86 = stripComment(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'ui.js'), 'utf8'));
+  var uS86 = stripComment(__uiAll());
   var bS86 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'battle.js'), 'utf8');
   var sS86 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'state.js'), 'utf8');
   var dmS86 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'domain.js'), 'utf8');   /* v89.135 */
@@ -16964,7 +17152,7 @@ console.log('\n===== 72. v88.1 场景整合（地形专属并入荒野行动） 
 (function () {
   /* 本节需要"有地形"的地图（前序不保证 grid 已生成） */
   if (!(GAME.state.map && GAME.state.map.grid)) GAME.map.generate();
-  var uS881 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'ui.js'), 'utf8');
+  var uS881 = __uiAll();
   var sS881 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'state.js'), 'utf8');
 
   console.log('  --- ① 整合结构 ---');
@@ -17037,7 +17225,7 @@ console.log('\n===== 73. v88 辐能双轨装备 + 荒野行动 =====');
 (function () {
   /* 本节需要"有地形"的地图（前序不保证 grid 已生成；最后一节，生成无副作用） */
   if (!(GAME.state.map && GAME.state.map.grid)) GAME.map.generate();
-  var uS88 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'ui.js'), 'utf8');
+  var uS88 = __uiAll();
   var mS88 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'main.js'), 'utf8');
   var syS88 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'systems.js'), 'utf8');
 
@@ -17173,7 +17361,7 @@ console.log('\n===== 73. v88 辐能双轨装备 + 荒野行动 =====');
 
 console.log('\n===== 74. v89 君主专属 + 全屏荒野剧本 =====');
 (function () {
-  var uS89 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'ui.js'), 'utf8');
+  var uS89 = __uiAll();
   var mS89 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'main.js'), 'utf8');
   var syS89 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'systems.js'), 'utf8');
 
@@ -17283,7 +17471,7 @@ console.log('\n===== 75. v89.1 剧本视觉化（v90.93 随全屏剧本退役）
 (function () {
   var hS1 = fsMod.readFileSync(pathMod.join(__dirname, 'index.html'), 'utf8');
   var css1 = stripComment(hS1.match(/<style[^>]*>([\s\S]*?)<\/style>/)[1]);
-  var uS1 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'ui.js'), 'utf8');
+  var uS1 = __uiAll();
 
   check('v90.93：剧本视觉化样式族整族移除（.sxf-* / #scene-fx / sxf 动画）', (function () {
     var fams = ['.sxf-wrap', '.sxf-hero', '.sxf-narr', '.sxf-opts', '.sxf-bdg',
@@ -17307,7 +17495,7 @@ console.log('\n===== 75. v89.1 剧本视觉化（v90.93 随全屏剧本退役）
 
 console.log('\n===== 76. v89.2 场景化（v90.93 随全屏剧本退役） =====');
 (function () {
-  var uS2 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'ui.js'), 'utf8');
+  var uS2 = __uiAll();
   var mS2 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'main.js'), 'utf8');
   var mpS2 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'map.js'), 'utf8');
 
@@ -17572,44 +17760,19 @@ console.log('\n===== 78. v89.4 野地生态（逐地分布 · 概率出现 · �
     return n1_5 >= 1 && n2_5 === 0;
   })());
 
-  check('v89.5：点选信息（灵机 → ×n·灵机 / 荒僻 → 荒僻 / 平地 → 无后缀）【挂载态】', (function () {
-    if (!q5 || !emp5 || !pl5) return false;
-    var wasM6 = GAME.jianghuWildMounted;
-    GAME.jianghuWildMounted = true;
-    var oldPick5 = GAME.ui.mapPick;
-    GAME.ui.mapPick = { kind: 'wild', ci: q5.ci };
-    var t1_5 = GAME.ui.mapPickText();
-    GAME.ui.mapPick = { kind: 'land', ci: emp5.ci };
-    var t2_5 = GAME.ui.mapPickText();
-    GAME.ui.mapPick = { kind: 'land', ci: pl5.ci };
-    var t3_5 = GAME.ui.mapPickText();
-    GAME.ui.mapPick = oldPick5;
-    GAME.jianghuWildMounted = wasM6;
-    return t1_5.indexOf('荒野事 ×' + GAME.jianghuSpotInfo(q5.ci).n) >= 0 && t1_5.indexOf('灵机') >= 0
-      && t2_5.indexOf('荒僻') >= 0 && t2_5.indexOf('荒野事') < 0
-      && t3_5.indexOf('荒僻') < 0 && t3_5.indexOf('荒野事') < 0;
-  })());
+  /* ⛔ v156.37：本条原本钉"点选行给荒野事后缀" —— 点选行本身已退役（老板要求删「点选 —」），
+     判据没有被测对象了，整条删除。荒野事的信息仍在**点开地块面板后**给出（uja）。 */
 
   /* --------- v89.45：野地荒野行动组件剥离（老板：「不体现在游戏中，但资产保留」） --------- */
-  check('v89.45：默认剥离（开关 false · 野地两面板 / 点选 / 地图旗 四处 guard 齐）', (function () {
-    var lm = String(GAME.ui.openLandModalCi), pt = String(GAME.ui.mapPickText), rn = String(GAME.map.render);
+  check('v89.45：默认剥离（开关 false · 野地面板 / 地图旗 两处 guard 齐）', (function () {
+    /* v156.37：原"四处 guard"里的**点选行**已随底栏信息区退役，剩两处。 */
+    var lm = String(GAME.ui.openLandModalCi), rn = String(GAME.map.render);
     return GAME.jianghuWildMounted === false
       && (lm.match(/GAME\.jianghuWildMounted \? ui\.jianghuHTML/g) || []).length === 2
-      && /GAME\.jianghuWildMounted/.test(pt)
       && /if \(GAME\.jianghuWildMounted\)[\s\S]{0,160}drawJhPennant/.test(rn);
   })());
 
-  check('v89.45：剥离态 —— 点选不再补荒野后缀（灵机 / 荒僻 皆无痕）', (function () {
-    if (!q5 || !emp5) return false;
-    var oldPick6 = GAME.ui.mapPick;
-    GAME.ui.mapPick = { kind: 'wild', ci: q5.ci };
-    var a6 = GAME.ui.mapPickText();
-    GAME.ui.mapPick = { kind: 'land', ci: emp5.ci };
-    var b6 = GAME.ui.mapPickText();
-    GAME.ui.mapPick = oldPick6;
-    return a6.indexOf('荒野事') < 0 && a6.indexOf('灵机') < 0 && a6.indexOf('荒僻') < 0
-      && b6.indexOf('荒僻') < 0;
-  })());
+  /* ⛔ v156.37：被测对象（点选行）已退役，本条删除；剥离态仍由上面那条"两处 guard"守着。 */
 
   check('v89.45：资产保留（判定三件套 / UI 区块 / 旗绘制 / 活动与灵机表 均未删）', (function () {
     if (!q5) return false;
@@ -17624,11 +17787,10 @@ console.log('\n===== 78. v89.4 野地生态（逐地分布 · 概率出现 · �
       && /drawJhPennant\(/.test(String(GAME.map.render));
   })());
 
-  check('v89.5：接线（render 调 drawJhPennant；地图与 UI 点选同走 jianghuSpotInfo）', (function () {
+  check('v89.5：接线（render 调 drawJhPennant + jianghuSpotInfo）', (function () {
+    /* v156.37：原第三条判据查 mapPickText 里也走 jianghuSpotInfo —— 该函数已退役。 */
     var mr5 = GAME.map.render.toString();
-    return /drawJhPennant\(/.test(mr5)
-      && /GAME\.jianghuSpotInfo\(/.test(mr5)
-      && /GAME\.jianghuSpotInfo\(/.test(GAME.ui.mapPickText.toString());
+    return /drawJhPennant\(/.test(mr5) && /GAME\.jianghuSpotInfo\(/.test(mr5);
   })());
 })();
 
@@ -17643,7 +17805,7 @@ console.log('\n===== 78. v89.4 野地生态（逐地分布 · 概率出现 · �
 (function () {
   console.log('\n===== 80. 奇遇 · 见闻录退役（v90.80 · 零残留守卫） =====');
   var fs80 = require('fs'), path80 = require('path');
-  var rd80 = function (f) { return fs80.readFileSync(path80.join(__dirname, f), 'utf8'); };
+  var rd80 = function (f) { return ((f === 'js/ui.js') ? __uiAll() : fs80.readFileSync(path80.join(__dirname, f), 'utf8')); };
   var sc80 = function (s2) {
     return String(s2).replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:\\])\/\/[^\n]*/g, '$1');
   };
@@ -17724,7 +17886,7 @@ console.log('\n===== 78. v89.4 野地生态（逐地分布 · 概率出现 · �
 (function () {
   console.log('\n===== 81. 故事库退役（v89.218 · 零残留守卫） =====');
   var fs81 = require('fs'), path81 = require('path');
-  var rd81 = function (f) { return fs81.readFileSync(path81.join(__dirname, f), 'utf8'); };
+  var rd81 = function (f) { return ((f === 'js/ui.js') ? __uiAll() : fs81.readFileSync(path81.join(__dirname, f), 'utf8')); };
   var sc81 = function (s2) { return String(s2).replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:\\])\/\/[^\n]*/g, '$1'); };
   var st81 = rd81('js/state.js'), u81 = rd81('js/ui.js'), m81 = rd81('js/main.js');
   var h81 = rd81('index.html'), stOry81 = rd81('js/story.js');
@@ -17789,7 +17951,7 @@ console.log('\n===== 78. v89.4 野地生态（逐地分布 · 概率出现 · �
   console.log('\n===== 82. 头像可更换 + 供奉公文静默（v89.7） =====');
 
   var fs82 = require('fs'), path82 = require('path');
-  function rd82(f) { return fs82.readFileSync(path82.join(__dirname, 'js', f + '.js'), 'utf8'); }
+  function rd82(f) { return ((f === 'ui') ? __uiAll() : fs82.readFileSync(path82.join(__dirname, 'js', f + '.js'), 'utf8')); }
   var uS82 = rd82('ui'), mS82 = rd82('main'), dmS82 = rd82('domain');
   var hS82 = fs82.readFileSync(path82.join(__dirname, 'index.html'), 'utf8');
 
@@ -18231,7 +18393,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     if (!st8.map.grid && G8.map.generate) G8.map.generate();
     G8.state = st8;
     var city8 = st8.cities[0];
-    var ui8 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var ui8 = __uiAll();
     var bt8 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'battle.js'), 'utf8');
     var dm8 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'domain.js'), 'utf8');
     var mn8 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'main.js'), 'utf8');
@@ -18475,7 +18637,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
        （项目既有惯例：需要确定战斗结果的用例都先置 clear —— 见 §⑤/§⑦ 各自写法。） */
     S87.world.weather = 'clear';
     var c87 = S87.cities[0];
-    var uS87 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var uS87 = __uiAll();
     var mS87 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'main.js'), 'utf8');
 
     /* ---- 需求 1：快购 ---- */
@@ -18639,7 +18801,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     if (!S88.map.grid) G.map.generate();
     G.state = S88;
     var mS88 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'main.js'), 'utf8');
-    var uS88 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var uS88 = __uiAll();
     var bS88 = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'battle.js'), 'utf8');
 
     /* ---- ① 等级分布（构造性配额） ---- */
@@ -18831,7 +18993,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   /* ================= v89.89（v6 期待清单：A2/A3/A4/B1/C3/C4/D4/E3） ================= */
   (function () {
     var fs89 = require('fs'), path89 = require('path');
-    var uS89 = fs89.readFileSync(path89.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var uS89 = __uiAll();
     var dS89 = fs89.readFileSync(path89.join(__dirname, 'js', 'domain.js'), 'utf8');
     var mS89 = fs89.readFileSync(path89.join(__dirname, 'js', 'main.js'), 'utf8');
     var stS89 = fs89.readFileSync(path89.join(__dirname, 'js', 'state.js'), 'utf8');
@@ -19038,7 +19200,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     check('E11：度支归集已退役（域函数 / 常量 / 动作 / 按钮四件套清零）', (function () {
       var _fs = require('fs'), _p = require('path');
       var d = stripComment(_fs.readFileSync(_p.join(__dirname, 'js/domain.js'), 'utf8'));
-      var u = stripComment(_fs.readFileSync(_p.join(__dirname, 'js/ui.js'), 'utf8'));
+      var u = stripComment(__uiAll());
       var m = stripComment(_fs.readFileSync(_p.join(__dirname, 'js/main.js'), 'utf8'));
       return !/GAME\.budgetGather = function/.test(d) && !/GAME\.budgetKeep = 50000/.test(d)
         && u.indexOf('budget-gather') < 0 && m.indexOf("case 'budget-gather'") < 0
@@ -19108,7 +19270,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     S94.rank = 21;
     var c94 = S94.cities[0];
     var mS94 = require('fs').readFileSync(require('path').join(__dirname, 'js', 'main.js'), 'utf8');
-    var uS94 = require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8');
+    var uS94 = __uiAll();
     var hS94 = require('fs').readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
     var f94 = null, g94 = null;
     /* 找一座低级据点当靶（近处优先，扫 121×121） */
@@ -19640,7 +19802,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         && /if \(R\.pop < maxPop\) R\.pop = Math\.min\(maxPop/.test(stSrc);
     })());
     check('A：界面接线（军队面板有解散按钮 + main 有分发）', (function () {
-      var uS = stripComment(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'ui.js'), 'utf8'));
+      var uS = stripComment(__uiAll());
       var mS = stripComment(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'main.js'), 'utf8'));
       /* v89.110：解散改两段式 —— 触发只到 ask，do 只存在于确认弹窗里（无一键直达） */
       return /data-action="troop-disband-ask"/.test(uS) && /case 'troop-disband-ask'/.test(mS)
@@ -19680,7 +19842,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         && u2.msg.indexOf('更强') < 0;
     })());
     check('B：增速来源分解走唯一出口（界面有消费点）', (function () {
-      var uS = stripComment(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'ui.js'), 'utf8'));
+      var uS = stripComment(__uiAll());
       return typeof G.popSourcesOf === 'function' && (G.popSourcesOf(c99) || []).length === 3
         && /popSourcesOf/.test(uS);
     })());
@@ -19866,7 +20028,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     check('D2 UI：交易站面板挂有寄售按钮且 main 有处理器（源码判据）', (function () {
       var _fs100 = require('fs');
       var _p100 = require('path');
-      var src = _fs100.readFileSync(_p100.join(__dirname, 'js/ui.js'), 'utf8');
+      var src = __uiAll();
       var srcM = _fs100.readFileSync(_p100.join(__dirname, 'js/main.js'), 'utf8');
       return src.indexOf('data-action="consign-all"') >= 0
         && src.indexOf('data-action="consign-sell"') >= 0
@@ -19932,7 +20094,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     /* v89.133：练兵场面板退役 —— 口径落点改「军务 · 出征」页（容量行 + 节钺扩编入口）。 */
     check('① 界面口径：出征页写「出征容量」且走唯一出口 marchCapOf', (function () {
       var _fs = require('fs'), _p = require('path');
-      var src = _fs.readFileSync(_p.join(__dirname, 'js/ui.js'), 'utf8');
+      var src = __uiAll();
       var key = '出征'
         + String.fromCharCode(0x5BB9) + String.fromCharCode(0x91CF);
       return src.indexOf(key) >= 0 && src.indexOf('marchCapOf') >= 0
@@ -20047,7 +20209,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })());
     check('② 结构：战报详情有沙盘入口 + 正文页入口（两页互跳）', (function () {
       var _fs = require('fs'), _p = require('path');
-      var u = _fs.readFileSync(_p.join(__dirname, 'js/ui.js'), 'utf8');
+      var u = __uiAll();
       var m = _fs.readFileSync(_p.join(__dirname, 'js/main.js'), 'utf8');
       return /ui\.openSandbox = function/.test(u) && /data-action="sd-text"/.test(u)
         && /data-action="open-sandbox"/.test(u) && /case 'sd-sim'/.test(m)
@@ -20055,7 +20217,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })());
     check('② 沙盘：只改值不重建 DOM（帧间位移走 CSS transition）', (function () {
       var _fs = require('fs'), _p = require('path');
-      var u = _fs.readFileSync(_p.join(__dirname, 'js/ui.js'), 'utf8');
+      var u = __uiAll();
       var paint = u.slice(u.indexOf('ui.sdPaint = function'), u.indexOf('ui.sdRebuildLog = function'));
       /* 要守的是"沙盘与令牌不重建"（重建就丢掉 left 过渡，帧间变成硬跳）——
          顶栏那个小计块用 innerHTML 无妨，故只禁 board/field 的重建。 */
@@ -20069,7 +20231,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     check('③ 退役：数据层三函数 + 面板函数 + 动作 case 全部清零（剥注释后查）', (function () {
       var _fs = require('fs'), _p = require('path');
       var d = stripComment(_fs.readFileSync(_p.join(__dirname, 'js/domain.js'), 'utf8'));
-      var u = stripComment(_fs.readFileSync(_p.join(__dirname, 'js/ui.js'), 'utf8'));
+      var u = stripComment(__uiAll());
       var m = stripComment(_fs.readFileSync(_p.join(__dirname, 'js/main.js'), 'utf8'));
       return !/GAME\.buildOverview = function/.test(d)
         && !/GAME\.rushAllBuilds = function/.test(d)
@@ -20191,13 +20353,13 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })());
     check('④ 界面：政务厅面板出「威望解锁」行（主城）/「建筑上限」行（非主城）', (function () {
       var _fs = require('fs'), _p = require('path');
-      var u = _fs.readFileSync(_p.join(__dirname, 'js/ui.js'), 'utf8');
+      var u = __uiAll();
       return /威望解锁/.test(u) && /liftLine/.test(u) && /rankBuildCapOf/.test(u)
         && /data-action="set-main-city"/.test(u);
     })());
     check('④ 界面：建造面板报「等级上限 LvN（档位 X + 威望解锁 N）」', (function () {
       var _fs = require('fs'), _p = require('path');
-      var u = _fs.readFileSync(_p.join(__dirname, 'js/ui.js'), 'utf8');
+      var u = __uiAll();
       var blk = u.slice(u.indexOf("if (b.id === 'majiu') extra"), u.indexOf('var mast = null;'));
       /* v89.220：上限读数传**本座**（科技闸存量宽限与升级口径同尺）—— 判据随形态更新 */
       return /等级上限/.test(blk) && /威望解锁/.test(blk) && /buildCapOf\(c, b\.id, cell\.build\)/.test(blk);
@@ -20217,7 +20379,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   (function () {
     console.log('\n===== v89.103：沙盘接触线 · 据点占据 · 本境调运 =====');
     var _f103 = require('fs'), _p103 = require('path');
-    function src103(f) { return _f103.readFileSync(_p103.join(__dirname, 'js', f), 'utf8'); }
+    function src103(f) { return ((f === 'ui.js') ? __uiAll() : _f103.readFileSync(_p103.join(__dirname, 'js', f), 'utf8')); }
     var bt103 = src103('battle.js'), ui103 = src103('ui.js'), do103 = src103('domain.js');
     var mp103 = src103('map.js'), st103 = src103('state.js'), ta103 = src103('tactic.js');
 
@@ -20425,7 +20587,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   (function () {
     console.log('\n===== v89.104：界面整备（16 条令）=====');
     var _fs = require('fs'), _p = require('path'), _zlib = require('zlib');
-    function srcF(f) { return _fs.readFileSync(_p.join(__dirname, 'js', f), 'utf8'); }
+    function srcF(f) { return ((f === 'ui.js') ? __uiAll() : _fs.readFileSync(_p.join(__dirname, 'js', f), 'utf8')); }
     var u4 = srcF('ui.js'), d4 = srcF('domain.js'), m4 = srcF('main.js'), da4 = srcF('data.js');
     var h4 = _fs.readFileSync(_p.join(__dirname, 'index.html'), 'utf8');
 
@@ -20655,8 +20817,8 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     check('⑨-2 发射点声明的类别都在表内（GAME.log.<kind>( 只许用已声明类别）', (function () {
       var fsx = require('fs'), px = require('path');
       var bad = [], n = 0;
-      ['state', 'domain', 'battle', 'systems', 'story', 'ui', 'main'].forEach(function (f) {
-        var src = fsx.readFileSync(px.join(__dirname, 'js', f + '.js'), 'utf8');
+      ['state', 'domain', 'battle', 'systems', 'story', 'ui', 'ui-fx', 'ui-core', 'ui-modal', 'ui-shell', 'ui-battle', 'ui-city', 'ui-army', 'ui-bag', 'ui-craft', 'ui-view', 'ui-build', 'ui-planet', 'ui-space', 'ui-delve', 'ui-mapui', 'ui-exped', 'ui-report', 'ui-config', 'main'].forEach(function (f) {
+        var src = ((f === 'ui') ? __uiAll() : fsx.readFileSync(px.join(__dirname, 'js', f + '.js'), 'utf8'));
         var re = /GAME\.log\.([a-z]+)\(/g, m;
         while ((m = re.exec(src))) {
           n++;
@@ -21083,7 +21245,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
 
       /* ---- ⑤ 两页改造（源码级：唯一渲染口 + 地址栏退役） ---- */
       check('v89.109：军务两页 = 战术设置（出征 atk / 防守 def · 唯一渲染口）', (function () {
-        var u = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'ui.js'), 'utf8');
+        var u = __uiAll();
         var segE = codeOf(u, 'ui.marchExpHTML = function');
         var segD = codeOf(u, 'ui.marchDefHTML = function');
         var blkD = codeOf(u, 'ui.tacticBlockOf = function');
@@ -21118,7 +21280,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
    * ============================================================ */
   console.log('\n===== 91. v89.110 危险动作（两段式 + 危险区） =====');
   (function () {
-    var uD = stripComment(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'ui.js'), 'utf8'));
+    var uD = stripComment(__uiAll());
     var mD = stripComment(fsMod.readFileSync(pathMod.join(__dirname, 'js', 'main.js'), 'utf8'));
     /* v89.138（老板 0）：gather-abandon 退役（召回统一走 wild-withdraw）。
        v90.92：任务系统退役 → reroll-rand-quest / reroll-all-rand 两个危险动作随任务页移除。
@@ -21366,7 +21528,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         var lockFree = G.ui.expModeLockOf('occupy');
         G.ui._expTarget = bakTg;
         st89.rank = 0;
-        var uSrc = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'ui.js'), 'utf8');
+        var uSrc = __uiAll();
         var bSrc = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'battle.js'), 'utf8');
         var dSrc = fsMod.readFileSync(pathMod.join(__dirname, 'js', 'domain.js'), 'utf8');
         return /领地上限/.test(lockAtCap || '') && lockFree === ''
@@ -21447,7 +21609,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     (css0.match(/var\(--[a-z][a-z0-9-]*/g) || []).forEach(function (u) { uses[u.slice(4)] = 1; });
     var jsInline = {};
     ['ui', 'main', 'battle', 'tactic', 'domain', 'map', 'icons', 'systems'].forEach(function (f) {
-      var js = fsMod.readFileSync(pathMod.join(__dirname, 'js', f + '.js'), 'utf8');
+      var js = ((f === 'ui') ? __uiAll() : fsMod.readFileSync(pathMod.join(__dirname, 'js', f + '.js'), 'utf8'));
       (js.match(/--[a-z][a-z0-9-]*\s*:/g) || []).forEach(function (d) { jsInline[d.replace(/\s*:$/, '')] = 1; });
     });
     var miss = Object.keys(uses).filter(function (k) { return !defs[k] && !jsInline[k]; });
@@ -21664,7 +21826,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         && /速度 /.test(dh) && /负重 /.test(dh) && /募兵消耗/.test(dh);
     })());
     check('② 源码：卡面不再拼属性行（.tstat 整段退役，不留死代码）', (function () {
-      var body = codeOf(fs94.readFileSync(path94.join(__dirname, 'js', 'ui.js'), 'utf8'),
+      var body = codeOf(__uiAll(),
         'ui.troopsHTML = function');
       return body.indexOf('class="tstat"') < 0 && /troop-detail-head/.test(body);
     })());
@@ -21689,7 +21851,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       return s.indexOf('panel-foot') < 0 && /取消与关闭是不同的词/.test(s);
     })());
     check('③ 搬运预估取 resolveTarget 解析后的目标（含 lv —— 防按 Lv1 低估库藏）', (function () {
-      var body = codeOf(fs94.readFileSync(path94.join(__dirname, 'js', 'ui.js'), 'utf8'),
+      var body = codeOf(__uiAll(),
         'ui.updateExpHaul = function');
       return /ui\._expRes \|\| ui\._expTarget/.test(body) && /lootEstOf/.test(body);
     })());
@@ -21791,7 +21953,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       return uDef.cover === 1 && uField.cover < 0.2 && uDef.atkPct === uField.atkPct;
     })());
     check('② 城市面板守将行显示"守城全军加成 攻 +X% 防 +Y%"（与实战同一原子）', (function () {
-      var src = fs95.readFileSync(path95.join(__dirname, 'js', 'ui.js'), 'utf8');
+      var src = __uiAll();
       return /守城全军加成：攻 \+/.test(src) && /ga\.atkPct/.test(src) && /ga\.defPct/.test(src);
     })());
 
@@ -21847,7 +22009,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
 
     console.log('  --- ④ 背包：装备 / 宝物两类 + 游商分类检索 ---');
     check('④ 两类页签（装备 / 宝物）+ 宝物二级分类条（只列有货的，含数量）', (function () {
-      var src = fs95.readFileSync(path95.join(__dirname, 'js', 'ui.js'), 'utf8');
+      var src = __uiAll();
       return /BAG_TABS = \[\['equip', '装备'\], \['treasure', '宝物'\]\]/.test(src)
         && /ui\.bagSubChipsHTML = function/.test(src)
         && /data-action="bag-sub"/.test(src) && /data-action="bag-sub"/.test(G.ui.bagSubChipsHTML());
@@ -21893,7 +22055,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
 
     console.log('  --- ⑤ 出征面板目标口径（实机抓出的空白 bug）---');
     check('⑤ 预估区一律读 resolveTarget 解析后的目标（含 x/y —— 防空面板）', (function () {
-      var src = fs95.readFileSync(path95.join(__dirname, 'js', 'ui.js'), 'utf8');
+      var src = __uiAll();
       var b = fs95.readFileSync(path95.join(__dirname, 'js', 'battle.js'), 'utf8');
       /* 实机诊断：按 id 传城市目标时，`ui._expTarget` 没有坐标 → 行军/军师/搬运三框全空。
          修法：面板读 `ui._expRes`（解析结果）+ resolveTarget 的城市分支补上 x/y。 */
@@ -21932,7 +22094,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   console.log('\n===== 96. v89.116 逸闻 · 快购 · 两营 · 守城沙盘 · 比例 · 公文 · 战场 · 数值 =====');
   (function () {
     var D96 = G.DATA, fs96 = require('fs'), path96 = require('path');
-    var u96 = fs96.readFileSync(path96.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var u96 = __uiAll();
     var h96 = fs96.readFileSync(path96.join(__dirname, 'index.html'), 'utf8');
     var m96 = fs96.readFileSync(path96.join(__dirname, 'js', 'main.js'), 'utf8');
 
@@ -22230,7 +22392,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         && lines.every(function (x) { return x.txt.indexOf('\n') < 0; });
       /* 落 DOM：虚线 + 回合头 + 逐兵种行（btRoundLine 兼容出口仍返回文本数组） */
       var ret = G.ui.btRoundLine(r, snap);
-      var src = fs96.readFileSync(path96.join(__dirname, 'js', 'ui.js'), 'utf8');
+      var src = __uiAll();
       var okLog = Array.isArray(ret) && ret.length === 2
         && /\.bt-ev\.sep \{ height: 0; border-top: 1px dashed/.test(h96)
         /* v89.120（老板「回合记录倒叙」）：回合块改**整块置顶** —— 唯一工厂 btLogItem、
@@ -22316,7 +22478,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     check('＋ 全仓不再有 `GAME.guardOf(`（真名 guardGeneralOf）', (function () {
       var bad = [];
       ['state', 'ui', 'domain', 'battle', 'main'].forEach(function (f) {
-        var src = stripComment(fs96.readFileSync(path96.join(__dirname, 'js', f + '.js'), 'utf8'));
+        var src = stripComment(((f === 'ui') ? __uiAll() : fs96.readFileSync(path96.join(__dirname, 'js', f + '.js'), 'utf8')));
         if (/GAME\.guardOf\s*\(/.test(src)) bad.push(f);
       });
       if (bad.length) console.log('      仍在使用：' + bad.join('、'));
@@ -22347,7 +22509,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   console.log('\n===== 97. v89.117 八条 =====');
   (function () {
     var fs97 = require('fs'), path97 = require('path');
-    var u97 = fs97.readFileSync(path97.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var u97 = __uiAll();
     var m97 = fs97.readFileSync(path97.join(__dirname, 'js', 'main.js'), 'utf8');
     var d97 = fs97.readFileSync(path97.join(__dirname, 'js', 'domain.js'), 'utf8');
     var b97 = fs97.readFileSync(path97.join(__dirname, 'js', 'battle.js'), 'utf8');
@@ -22473,7 +22635,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var raw = decl.filter(function (d) { return !/^font-size:\s*var\(--/.test(d.replace(/\s+/g, ' ')); });
       var jsRaw = 0;
       ['ui.js', 'main.js'].forEach(function (f) {
-        var s2 = fs97.readFileSync(path97.join(__dirname, 'js', f), 'utf8');
+        var s2 = ((f === 'ui.js') ? __uiAll() : fs97.readFileSync(path97.join(__dirname, 'js', f), 'utf8'));
         (s2.match(/font-size:[^;'"\\]*/g) || []).forEach(function (x) { if (/px/.test(x)) jsRaw++; });
       });
       return raw.length === 0 && jsRaw === 0;
@@ -22688,7 +22850,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     var G = GAME, D98 = G.DATA;
     var _fs98 = require('fs'), _p98 = require('path');
     var b98 = _fs98.readFileSync(_p98.join(__dirname, 'js/battle.js'), 'utf8');
-    var u98 = _fs98.readFileSync(_p98.join(__dirname, 'js/ui.js'), 'utf8');
+    var u98 = __uiAll();
     var s98 = _fs98.readFileSync(_p98.join(__dirname, 'js/state.js'), 'utf8');
     var m98 = _fs98.readFileSync(_p98.join(__dirname, 'js/main.js'), 'utf8');
     var bak98 = G.state;
@@ -22924,7 +23086,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   (function () {
     var G = GAME;
     var _fs99 = require('fs'), _p99 = require('path');
-    var u99 = _fs99.readFileSync(_p99.join(__dirname, 'js/ui.js'), 'utf8');
+    var u99 = __uiAll();
     var t99 = _fs99.readFileSync(_p99.join(__dirname, 'js/tactic.js'), 'utf8');
     var b99 = _fs99.readFileSync(_p99.join(__dirname, 'js/battle.js'), 'utf8');
 
@@ -23139,7 +23301,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   (function () {
     var G = GAME;
     var _fs101 = require('fs'), _p101 = require('path');
-    var u101 = _fs101.readFileSync(_p101.join(__dirname, 'js/ui.js'), 'utf8');
+    var u101 = __uiAll();
     var m101 = _fs101.readFileSync(_p101.join(__dirname, 'js/main.js'), 'utf8');
     var s101 = _fs101.readFileSync(_p101.join(__dirname, 'js/state.js'), 'utf8');
     var h101 = _fs101.readFileSync(_p101.join(__dirname, 'index.html'), 'utf8');
@@ -24291,7 +24453,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
    * ═══════════════════════════════════════════════════════════ */
   (function () {
     var fs113 = require('fs'), path113 = require('path');
-    var uS113 = fs113.readFileSync(path113.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var uS113 = __uiAll();
     var hS113 = fs113.readFileSync(path113.join(__dirname, 'index.html'), 'utf8');
     var mS113 = fs113.readFileSync(path113.join(__dirname, 'js', 'main.js'), 'utf8');
     var keep113 = G.state;
@@ -24430,7 +24592,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
    * ═══════════════════════════════════════════════════════════ */
   (function () {
     var fs114 = require('fs'), path114 = require('path');
-    var uS114 = fs114.readFileSync(path114.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var uS114 = __uiAll();
     var mS114 = fs114.readFileSync(path114.join(__dirname, 'js', 'main.js'), 'utf8');
     var keep114 = G.state;
 
@@ -24605,7 +24767,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     var dS115 = fs115.readFileSync(path115.join(__dirname, 'js', 'data.js'), 'utf8');
     /* v90.92：任务系统退役 —— js/questdata.js 已删，原 qS115 读取撤除。 */
     var sS115 = fs115.readFileSync(path115.join(__dirname, 'js', 'state.js'), 'utf8');
-    var uS115 = fs115.readFileSync(path115.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var uS115 = __uiAll();
     var bS115 = fs115.readFileSync(path115.join(__dirname, 'js', 'battle.js'), 'utf8');
     var gS115 = fs115.readFileSync(path115.join(__dirname, 'js', 'domain.js'), 'utf8');
 
@@ -24701,7 +24863,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   (function () {
     var G = GAME;
     var _fs116 = require('fs'), _p116 = require('path');
-    var u116 = _fs116.readFileSync(_p116.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var u116 = __uiAll();
     var b116 = _fs116.readFileSync(_p116.join(__dirname, 'js', 'battle.js'), 'utf8');
     var h116 = _fs116.readFileSync(_p116.join(__dirname, 'index.html'), 'utf8');
 
@@ -24750,7 +24912,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   console.log('\n===== 117. v89.136 收尾（live 续铺 / 英雄视图秒刷 / 盘点器进 gate） =====');
   (function () {
     var _fs117 = require('fs'), _p117 = require('path');
-    var u117 = _fs117.readFileSync(_p117.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var u117 = __uiAll();
     var m117 = _fs117.readFileSync(_p117.join(__dirname, 'js', 'main.js'), 'utf8');
     var g117 = _fs117.readFileSync(_p117.join(__dirname, '.workbuddy', 'tools', 'git', 'gate.py'), 'utf8');
     var t117 = _fs117.readFileSync(_p117.join(__dirname, '.workbuddy', 'tools', 'audit', 'audit_v89134_tables.js'), 'utf8');
@@ -24788,7 +24950,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   console.log('\n===== 118. v89.137（专精三档 · 政务厅 · 战场 · 附属野地 · 派驻统一） =====');
   (function () {
     var _fs118 = require('fs'), _p118 = require('path');
-    var u118 = _fs118.readFileSync(_p118.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var u118 = __uiAll();
     var m118 = _fs118.readFileSync(_p118.join(__dirname, 'js', 'main.js'), 'utf8');
     var d118 = _fs118.readFileSync(_p118.join(__dirname, 'js', 'domain.js'), 'utf8');
     var b118 = _fs118.readFileSync(_p118.join(__dirname, 'js', 'battle.js'), 'utf8');
@@ -24974,7 +25136,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   console.log('\n===== 119. v89.138（地图铺满放大 · 城市菜单 · 提速关窗 · 召回统一） =====');
   (function () {
     var _f = require('fs'), _p = require('path');
-    var u = _f.readFileSync(_p.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var u = __uiAll();
     var m = _f.readFileSync(_p.join(__dirname, 'js', 'main.js'), 'utf8');
     var d = _f.readFileSync(_p.join(__dirname, 'js', 'domain.js'), 'utf8');
     var b = _f.readFileSync(_p.join(__dirname, 'js', 'battle.js'), 'utf8');
@@ -25097,7 +25259,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   console.log('\n===== 120. v89.139（战场 2 列 · 距离速度项 · 珠宝入采集 · 我城档） =====');
   (function () {
     var _f = require('fs'), _p = require('path');
-    var u = _f.readFileSync(_p.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var u = __uiAll();
     var m = _f.readFileSync(_p.join(__dirname, 'js', 'main.js'), 'utf8');
     var d = _f.readFileSync(_p.join(__dirname, 'js', 'domain.js'), 'utf8');
     var t = _f.readFileSync(_p.join(__dirname, 'js', 'tactic.js'), 'utf8');
@@ -25340,7 +25502,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   console.log('\n===== 121. v89.140（战场两行制 · 珠宝全地形 · 游商/背包固定规格） =====');
   (function () {
     var _f = require('fs'), _p = require('path');
-    var u = _f.readFileSync(_p.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var u = __uiAll();
     var m = _f.readFileSync(_p.join(__dirname, 'js', 'main.js'), 'utf8');
     var d = _f.readFileSync(_p.join(__dirname, 'js', 'domain.js'), 'utf8');
     var t = _f.readFileSync(_p.join(__dirname, 'js', 'tactic.js'), 'utf8');
@@ -25543,7 +25705,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
    * ═══════════════════════════════════════════════════════════ */
   (function () {
     var fs122 = require('fs'), p122 = require('path');
-    var rd122 = function (f) { return fs122.readFileSync(p122.join(__dirname, 'js', f), 'utf8'); };
+    var rd122 = function (f) { return ((f === 'ui.js') ? __uiAll() : fs122.readFileSync(p122.join(__dirname, 'js', f), 'utf8')); };
     var strip122 = function (x) { return x.replace(/\/\*[\s\S]*?\*\//g, ''); };
     var d122 = strip122(rd122('data.js')), do122 = strip122(rd122('domain.js'));
     var u122 = strip122(rd122('ui.js')), m122 = strip122(rd122('main.js'));
@@ -25709,7 +25871,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
    * ═══════════════════════════════════════════════════════════ */
   (function () {
     var fs123 = require('fs'), p123 = require('path');
-    var rd123 = function (f) { return fs123.readFileSync(p123.join(__dirname, 'js', f), 'utf8'); };
+    var rd123 = function (f) { return ((f === 'ui.js') ? __uiAll() : fs123.readFileSync(p123.join(__dirname, 'js', f), 'utf8')); };
     var strip123 = function (x) { return x.replace(/\/\*[\s\S]*?\*\//g, ''); };
     var u123 = strip123(rd123('ui.js')), b123 = strip123(rd123('battle.js'));
     var m123 = strip123(rd123('main.js')), do123 = strip123(rd123('domain.js'));
@@ -25904,7 +26066,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
    * ═══════════════════════════════════════════════════════════ */
   (function () {
     var fs124 = require('fs'), p124 = require('path');
-    var rd124 = function (f) { return fs124.readFileSync(p124.join(__dirname, 'js', f), 'utf8'); };
+    var rd124 = function (f) { return ((f === 'ui.js') ? __uiAll() : fs124.readFileSync(p124.join(__dirname, 'js', f), 'utf8')); };
     var strip124 = function (x) { return x.replace(/\/\*[\s\S]*?\*\//g, ''); };
     var u124 = strip124(rd124('ui.js')), m124 = strip124(rd124('main.js'));
     var h124 = fs124.readFileSync(p124.join(__dirname, 'index.html'), 'utf8');
@@ -26045,7 +26207,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
    * ═══════════════════════════════════════════════════════════ */
   (function () {
     var fs125 = require('fs'), p125 = require('path');
-    var uS125 = fs125.readFileSync(p125.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var uS125 = __uiAll();
     var strip125 = function (x) { return x.replace(/\/\*[\s\S]*?\*\//g, ''); };
     var u125 = strip125(uS125);
     var h125 = fs125.readFileSync(p125.join(__dirname, 'index.html'), 'utf8');
@@ -26146,7 +26308,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
    * ═══════════════════════════════════════════════════════════ */
   (function () {
     var fs127 = require('fs'), p127 = require('path');
-    var uS127 = fs127.readFileSync(p127.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var uS127 = __uiAll();
     var strip127 = function (x) { return x.replace(/\/\*[\s\S]*?\*\//g, ''); };
     var u127 = strip127(uS127);
     var m127 = strip127(fs127.readFileSync(p127.join(__dirname, 'js', 'main.js'), 'utf8'));
@@ -26213,7 +26375,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
    * ═══════════════════════════════════════════════════════════ */
   (function () {
     var fs128 = require('fs'), p128 = require('path');
-    var uS128 = fs128.readFileSync(p128.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var uS128 = __uiAll();
     var strip128 = function (x) { return x.replace(/\/\*[\s\S]*?\*\//g, ''); };
     var u128 = strip128(uS128);
     var h128 = fs128.readFileSync(p128.join(__dirname, 'index.html'), 'utf8');
@@ -26294,7 +26456,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
    * ═══════════════════════════════════════════════════════════ */
   (function () {
     var fs129 = require('fs'), p129 = require('path');
-    var uS129 = fs129.readFileSync(p129.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var uS129 = __uiAll();
     var strip129 = function (x) { return x.replace(/\/\*[\s\S]*?\*\//g, ''); };
     var u129 = strip129(uS129);
     var bS129 = fs129.readFileSync(p129.join(__dirname, 'js', 'battle.js'), 'utf8');
@@ -26516,7 +26678,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
    * ═══════════════════════════════════════════════════════════ */
   (function () {
     var fs130 = require('fs'), p130 = require('path');
-    var u130 = fs130.readFileSync(p130.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var u130 = __uiAll();
     var u130c = stripComment(u130);
     var m130c = stripComment(fs130.readFileSync(p130.join(__dirname, 'js', 'main.js'), 'utf8'));
     var d130 = fs130.readFileSync(p130.join(__dirname, 'js', 'domain.js'), 'utf8');
@@ -26679,7 +26841,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     var fs131 = require('fs'), p131 = require('path');
     var m131 = fs131.readFileSync(p131.join(__dirname, 'js', 'main.js'), 'utf8');
     var t131 = fs131.readFileSync(p131.join(__dirname, 'js', 'tactic.js'), 'utf8');
-    var u131s = fs131.readFileSync(p131.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var u131s = __uiAll();
     var h131 = fs131.readFileSync(p131.join(__dirname, 'index.html'), 'utf8');
     var _r131a = '', _r131c = '', _r131f = '', _r131g = '';
 
@@ -26748,7 +26910,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })(), _r131f);
 
     check('§131⑤ 克制反查出口已随全撤退役（troopCounterOf 不存在 · 源码零残骸）', (function () {
-      var uc131 = stripComment(require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8'));
+      var uc131 = stripComment(__uiAll());
       _r131f = 'troopCounterOf=' + typeof G.ui.troopCounterOf;
       return G.ui.troopCounterOf === undefined
         && uc131.indexOf('troopCounterOf') < 0 && uc131.indexOf('cnt-good') < 0
@@ -26829,7 +26991,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   console.log('\n===== 152. v89.152（珠宝重设 · 产出行 · 老档换算） =====');
   (function () {
     var fs152 = require('fs'), p152 = require('path');
-    var u152 = fs152.readFileSync(p152.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var u152 = __uiAll();
     var d152 = fs152.readFileSync(p152.join(__dirname, 'js', 'domain.js'), 'utf8');
     var uc152 = stripComment(u152), dc152 = stripComment(d152);
 
@@ -26936,7 +27098,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   console.log('\n===== 153. v89.153（系统页 / 小标签 / 收获明细） =====');
   (function () {
     var fs153 = require('fs'), p153 = require('path');
-    var u153 = fs153.readFileSync(p153.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var u153 = __uiAll();
     var d153 = fs153.readFileSync(p153.join(__dirname, 'js', 'domain.js'), 'utf8');
 
     /* ---- ① 页签顺序（老板 1） ---- */
@@ -27031,7 +27193,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   console.log('\n===== 154. v89.154（附属野地：放弃按钮 / 排序 · 改建回大界面） =====');
   (function () {
     var fs154 = require('fs'), p154 = require('path');
-    var u154 = fs154.readFileSync(p154.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var u154 = __uiAll();
     var m154 = fs154.readFileSync(p154.join(__dirname, 'js', 'main.js'), 'utf8');
 
     /* ---- ① 排序出口（唯一 + 两处调用） ---- */
@@ -27155,7 +27317,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   console.log('\n===== 155. v89.155（公文铺满 / 召回三态 / 排序标号 / 容量显式） =====');
   (function () {
     var fs155 = require('fs'), p155 = require('path');
-    var u155 = fs155.readFileSync(p155.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var u155 = __uiAll();
     var m155 = fs155.readFileSync(p155.join(__dirname, 'js', 'main.js'), 'utf8');
     var d155 = fs155.readFileSync(p155.join(__dirname, 'js', 'domain.js'), 'utf8');
 
@@ -27291,7 +27453,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   console.log('\n===== 156. v89.156（层级栈修复 · 放弃直执行 · 出征界面 · 侦察失败）=====');
   (function () {
     var fs156 = require('fs'), p156 = require('path');
-    var u156 = fs156.readFileSync(p156.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var u156 = __uiAll();
     var b156 = fs156.readFileSync(p156.join(__dirname, 'js', 'battle.js'), 'utf8');
     var d156 = fs156.readFileSync(p156.join(__dirname, 'js', 'data.js'), 'utf8');
     var h156 = fs156.readFileSync(p156.join(__dirname, 'index.html'), 'utf8');
@@ -27439,7 +27601,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   console.log('\n===== 157. v89.157（公文分类/铺满 · 英雄条 · 围墙门槛 · 产量加法 · 逐回合文字） =====');
   (function () {
     var fs157 = require('fs'), p157 = require('path');
-    var u157 = fs157.readFileSync(p157.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var u157 = __uiAll();
     var do157 = fs157.readFileSync(p157.join(__dirname, 'js', 'domain.js'), 'utf8');
     var st157 = fs157.readFileSync(p157.join(__dirname, 'js', 'state.js'), 'utf8');
     var b157 = fs157.readFileSync(p157.join(__dirname, 'js', 'battle.js'), 'utf8');
@@ -27590,7 +27752,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   console.log('\n===== 158. v89.158（容量分账 · 悬停保护 · 不削存量） =====');
   (function () {
     var fs158 = require('fs'), p158 = require('path');
-    var uS158 = fs158.readFileSync(p158.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var uS158 = __uiAll();
 
     /* ---- ① 仓容分账（唯一出口 storePartsOf） ---- */
     check('§158① 仓容分账：base + ext = total，且 total === storeCapOf（真调）', (function () {
@@ -27692,7 +27854,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   console.log('\n===== 159. v89.159（升级回满 · 本座门槛 · 严格总闸） =====');
   (function () {
     var fs159 = require('fs'), p159 = require('path');
-    var uS159 = fs159.readFileSync(p159.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var uS159 = __uiAll();
     var dS159 = stripComment(fs159.readFileSync(p159.join(__dirname, 'js', 'domain.js'), 'utf8'));
     var bS159 = stripComment(fs159.readFileSync(p159.join(__dirname, 'js', 'battle.js'), 'utf8'));
 
@@ -27908,7 +28070,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     var fs160 = require('fs'), p160 = require('path');
     var dS160 = stripComment(fs160.readFileSync(p160.join(__dirname, 'js', 'domain.js'), 'utf8'));
     var sS160 = stripComment(fs160.readFileSync(p160.join(__dirname, 'js', 'state.js'), 'utf8'));
-    var uS160 = fs160.readFileSync(p160.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var uS160 = __uiAll();
     var mS160 = fs160.readFileSync(p160.join(__dirname, 'js', 'main.js'), 'utf8');
     /* 本节自带造局器（§126 的 withState 是本文件**另一段 IIFE 内的局部函数**，
        在文件末尾不可见 —— 这正是"同名变量别跨段用"的老坑） */
@@ -28057,7 +28219,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     var fs161 = require('fs'), p161 = require('path');
     var sS161 = stripComment(fs161.readFileSync(p161.join(__dirname, 'js', 'state.js'), 'utf8'));
     var dS161 = stripComment(fs161.readFileSync(p161.join(__dirname, 'js', 'domain.js'), 'utf8'));
-    var uS161 = fs161.readFileSync(p161.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var uS161 = __uiAll();
 
     check('§161 唯一出口群：goldOf / goldAdd / goldBind / attachGold / migrateGoldPool / registerCity', (function () {
       return ['goldOf', 'goldAdd', 'goldBind', 'attachGold', 'migrateGoldPool', 'registerCity']
@@ -28179,7 +28341,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     var fs162 = require('fs'), p162 = require('path');
     var sS162 = stripComment(fs162.readFileSync(p162.join(__dirname, 'js', 'state.js'), 'utf8'));
     var dS162 = stripComment(fs162.readFileSync(p162.join(__dirname, 'js', 'domain.js'), 'utf8'));
-    var uS162 = fs162.readFileSync(p162.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var uS162 = __uiAll();
 
     check('§162 城主税加成出口：mayorBonus.tax 存在（v89.188：独立率 + 封顶 200%）', (function () {
       /* v89.188 规则变更所致：税收通道从"与产量同率同曲线"改为**独立率**（taxRate）
@@ -28287,7 +28449,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   console.log('\n===== 163. v89.163（指挥战斗含行军 · 征兵时长压缩） =====');
   (function () {
     var fs163 = require('fs'), p163 = require('path');
-    var uS163 = fs163.readFileSync(p163.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var uS163 = __uiAll();
     var mS163 = fs163.readFileSync(p163.join(__dirname, 'js', 'main.js'), 'utf8');
     var dS163 = fs163.readFileSync(p163.join(__dirname, 'js', 'data.js'), 'utf8');
 
@@ -28570,7 +28732,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       return on <= off + 1.0 && worst <= 8;
     })(), _r164sim);
     check('§164③ 界面：战术下拉含「⚡ 智能战斗」· 战场指示（v89.198：阵位摘要行退役）', (function () {
-      var uS = fs164.readFileSync(p164.join(__dirname, 'js', 'ui.js'), 'utf8');
+      var uS = __uiAll();
       return /⚡ 智能战斗（通用方案）/.test(uS) && /value="smart"/.test(uS)
         && /接敌自动转防御/.test(uS) && /bt-smart/.test(uS);
     })());
@@ -28591,7 +28753,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
    * ============================================================ */
   (function () {
     var fs165 = require('fs'), p165 = require('path');   /* §165 段自带 require（同 §164 的 fs164/fs-path 形态） */
-    var ujs165 = fs165.readFileSync(p165.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var ujs165 = __uiAll();
     var mjs165 = fs165.readFileSync(p165.join(__dirname, 'js', 'main.js'), 'utf8');
 
     console.log('\n===== §165 实时读秒（五处 live 接入 + 真调） =====');
@@ -28842,7 +29004,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       check('§169⑤ 掉回 0（build=null）→ 虚影回归（与未修建同态）',
         GAME.ui.cityHTML().indexOf('iso-wall-ghost') >= 0);
 
-      var ui169 = fs169.readFileSync(p169.join(__dirname, 'js', 'ui.js'), 'utf8');
+      var ui169 = __uiAll();
       check('§169⑥ 源码：几何唯一出口 + 两处 SVG 同读 + isoBoard 三态', (function () {
         return /ui\.wallRingGeom = function/.test(ui169)
           && /ui\.isoWallGhostSVG = function/.test(ui169)
@@ -29077,7 +29239,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var dS = fs173.readFileSync(p173.join(__dirname, 'js', 'data.js'), 'utf8');
       var dmS = fs173.readFileSync(p173.join(__dirname, 'js', 'domain.js'), 'utf8');
       var syS = fs173.readFileSync(p173.join(__dirname, 'js', 'systems.js'), 'utf8');
-      var uS = fs173.readFileSync(p173.join(__dirname, 'js', 'ui.js'), 'utf8');
+      var uS = __uiAll();
       check('§173⑤ 唯一出口：单用/批量/界面三处仍问 expItemGrantOf',
         /expItemGrantOf/.test(codeOf(syS, 'S.useItem = function'))
         && /expItemGrantOf/.test(codeOf(syS, 'S.gainExpByItem = function'))
@@ -29132,7 +29294,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     /* ③ 弹窗 live：城内两处 + 城外两处（完成瞬间换形态） */
     console.log('  --- ③ 弹窗 live（完成即换态） ---');
     (function () {
-      var uS = fs174.readFileSync(p174.join(__dirname, 'js', 'ui.js'), 'utf8');
+      var uS = __uiAll();
       var ob = codeOf(uS, 'ui.openBuildModal = function');
       var ox = codeOf(uS, 'ui.openExtModal = function');
       check('§174③ ★ 城内：锁城签名 + 两处 live（施工中 / 正常态）',
@@ -29152,7 +29314,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     /* ④ 政务厅格「在建队列」段 */
     console.log('  --- ④ 政务厅「在建队列」（政务厅要务下方） ---');
     (function () {
-      var uS = fs174.readFileSync(p174.join(__dirname, 'js', 'ui.js'), 'utf8');
+      var uS = __uiAll();
       check('§174④ ★ 在建队列段在册（政务厅要务下方 · 行内挂进度 attr · 城内/城外两态）',
         /* v91.72：多条目折叠 —— 标题行带 fold-toggle，汇总仍含「在建队列（N）」 */
         /queueBox174 = '<div class="op-zone"><div class="op-zone-t" data-action="fold-toggle"/.test(uS)
@@ -29266,7 +29428,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     console.log('  --- ⑤ 源码（接入与可见） ---');
     (function () {
       var bS = fs175.readFileSync(p175.join(__dirname, 'js', 'battle.js'), 'utf8');
-      var uS = fs175.readFileSync(p175.join(__dirname, 'js', 'ui.js'), 'utf8');
+      var uS = __uiAll();
       var hS = fs175.readFileSync(p175.join(__dirname, 'index.html'), 'utf8');
       var step = codeOf(bS, 'GAME.battle.stepBattle = function');
       check('§175⑤ stepBattle：赛马在 smartApply 之前 · smartNote/smartLog 写入',
@@ -29385,7 +29547,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     /* ⑤ 界面：统一化 + 损失 + 角标（真调输出） */
     console.log('  --- ⑤ 界面（共享出口与读数） ---');
     (function () {
-      var uS = fs176.readFileSync(p176.join(__dirname, 'js', 'ui.js'), 'utf8');
+      var uS = __uiAll();
       check('§176⑤ 三线/标尺共享出口：fieldLinesHTML 在册 + sd 转发 + bt 调用（id 前缀分家）',
         uS.indexOf('ui.fieldLinesHTML = function') >= 0
         && uS.indexOf('return ui.fieldLinesHTML(function (sd2)') >= 0
@@ -29547,7 +29709,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     /* ⑥ 界面与接入（源码级） */
     console.log('  --- ⑥ 界面与接入（源码级） ---');
     (function () {
-      var uS = fs177.readFileSync(p177.join(__dirname, 'js', 'ui.js'), 'utf8');
+      var uS = __uiAll();
       var mS = fs177.readFileSync(p177.join(__dirname, 'js', 'main.js'), 'utf8');
       check('§177⑥ 政务厅段在册：heartsBox177 + 「民心 / 民怨」标题 + 两处拼接（施工/正常互斥）',
         uS.indexOf('heartsBox177') >= 0 && /民心 \/ 民怨/.test(uS)
@@ -29577,7 +29739,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   (function () {
     console.log('  --- §178 克制降档与出征文案 ---');
     var fs178 = require('fs'), p178 = require('path');
-    var uS178 = fs178.readFileSync(p178.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var uS178 = __uiAll();
     var _r178b = '';
 
     check('§178①（v89.179 升级）克制表已整体退役 —— 历史锚：v89.178 曾降档至枪 2.5 / 拒马 3', (function () {
@@ -29766,14 +29928,14 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
 
     /* ⑤ 界面可见（源码级：悬停两处 + desc） */
     check('§180⑤ 界面可见：战场悬停与募兵卡各含「拆械」行 · desc 更新', (function () {
-      var uS = stripComment(fs180.readFileSync(p180.join(__dirname, 'js', 'ui.js'), 'utf8'));
+      var uS = stripComment(__uiAll());
       var dS = fs180.readFileSync(p180.join(__dirname, 'js', 'data.js'), 'utf8');
       return (uS.match(/拆械/g) || []).length >= 2 && dS.indexOf('拆械破车') >= 0;
     })());
 
     /* ⑥ live 快照选择器含 panel-body（本轮修的 flaky 根因 · 结构性守卫） */
     check('§180⑥ live 快照/回填含滚动容器清单（两处同改；v89.201 补 .m-body —— 真滚动容器）', (function () {
-      var uS180 = fs180.readFileSync(p180.join(__dirname, 'js', 'ui.js'), 'utf8');
+      var uS180 = __uiAll();
       return (uS180.match(/querySelectorAll\('\.inner-panel, \.m-body, \.panel-body, \.modal-scroll'\)/g) || []).length === 2;
     })());
 
@@ -30024,7 +30186,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     var bSrc186 = fs186.readFileSync(p186.join(__dirname, 'js', 'battle.js'), 'utf8');
     var dSrc186 = fs186.readFileSync(p186.join(__dirname, 'js', 'data.js'), 'utf8');
     var sSrc186 = fs186.readFileSync(p186.join(__dirname, 'js', 'state.js'), 'utf8');
-    var uSrc186 = fs186.readFileSync(p186.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var uSrc186 = __uiAll();
 
     /* ① 唯一出口（结构 + 行为） */
     check('§186① 伤兵回收率唯一出口：定义 1 处 · 三消费点（applyWounded/returnArmy/守城）全点名', (function () {
@@ -30372,7 +30534,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   (function () {
     var fs187 = require('fs'), p187 = require('path');
     var dSrc187 = fs187.readFileSync(p187.join(__dirname, 'js', 'data.js'), 'utf8');
-    var uSrc187 = fs187.readFileSync(p187.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var uSrc187 = __uiAll();
 
     /* ① 品质映射（真调 · 8 件 → 低4/中2/高2） */
     check('§187① 遗物品质映射：低=tier1-2（4件）· 中=tier3（2件）· 高=tier4（2件）', (function () {
@@ -30489,7 +30651,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   (function () {
     var fs188 = require('fs'), p188 = require('path');
     var dS188 = stripComment(fs188.readFileSync(p188.join(__dirname, 'js', 'domain.js'), 'utf8'));
-    var uR188 = fs188.readFileSync(p188.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var uR188 = __uiAll();
     var uS188 = stripComment(uR188);
     var bS188 = stripComment(fs188.readFileSync(p188.join(__dirname, 'js', 'battle.js'), 'utf8'));
     var hS188 = fs188.readFileSync(p188.join(__dirname, 'index.html'), 'utf8');
@@ -30588,7 +30750,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   console.log('\n===== 189. v89.189（受阻弹窗 · 掠夺旧币 · 幸存者占用）=====');
   (function () {
     var fs189 = require('fs'), p189 = require('path');
-    var uS189 = fs189.readFileSync(p189.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var uS189 = __uiAll();
     var mS189 = fs189.readFileSync(p189.join(__dirname, 'js', 'main.js'), 'utf8');
     var bS189 = fs189.readFileSync(p189.join(__dirname, 'js', 'battle.js'), 'utf8');
 
@@ -30654,7 +30816,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   console.log('\n===== 190. v89.190（按钮瘦身 · 自动征兵 · 遗留清账）=====');
   (function () {
     var fs190 = require('fs'), p190 = require('path');
-    var uS190 = fs190.readFileSync(p190.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var uS190 = __uiAll();
     var mS190 = fs190.readFileSync(p190.join(__dirname, 'js', 'main.js'), 'utf8');
     var dS190 = fs190.readFileSync(p190.join(__dirname, 'js', 'domain.js'), 'utf8');
     var stS190 = fs190.readFileSync(p190.join(__dirname, 'js', 'state.js'), 'utf8');
@@ -30846,7 +31008,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
    * ═══════════════════════════════════════════════════════════ */
   (function () {
     var fs191 = require('fs'), path191 = require('path');
-    var uS191 = fs191.readFileSync(path191.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var uS191 = __uiAll();
     var mS191 = fs191.readFileSync(path191.join(__dirname, 'js', 'main.js'), 'utf8');
     var hS191 = fs191.readFileSync(path191.join(__dirname, 'index.html'), 'utf8');
 
@@ -31134,7 +31296,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
    * ============================================================ */
   (function () {
     var fs192 = require('fs'), path192 = require('path');
-    var uS192 = fs192.readFileSync(path192.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var uS192 = __uiAll();
     var mS192 = fs192.readFileSync(path192.join(__dirname, 'js', 'main.js'), 'utf8');
     var tS192 = fs192.readFileSync(path192.join(__dirname, 'js', 'tactic.js'), 'utf8');
     var bS192 = fs192.readFileSync(path192.join(__dirname, 'js', 'battle.js'), 'utf8');
@@ -31238,7 +31400,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
    * ═══════════════════════════════════════════════════════════ */
   (function () {
     var fs193 = require('fs'), p193 = require('path');
-    var uS193 = fs193.readFileSync(p193.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var uS193 = __uiAll();
     var mS193 = fs193.readFileSync(p193.join(__dirname, 'js', 'main.js'), 'utf8');
     var sS193 = fs193.readFileSync(p193.join(__dirname, 'js', 'state.js'), 'utf8');
     var dS193 = fs193.readFileSync(p193.join(__dirname, 'js', 'data.js'), 'utf8');
@@ -31432,7 +31594,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   console.log('\n===== 194. v89.194（营造金 · 陈列馆 · 欠俸忠诚 · 雷达圈） =====');
   (function () {
     var fs194 = require('fs'), p194 = require('path');
-    var raw194 = function (f) { return fs194.readFileSync(p194.join(__dirname, 'js', f), 'utf8'); };
+    var raw194 = function (f) { return ((f === 'ui.js') ? __uiAll() : fs194.readFileSync(p194.join(__dirname, 'js', f), 'utf8')); };
     var rd194 = function (f) { return stripComment(raw194(f)); };
     var dS194 = rd194('domain.js'), uS194 = rd194('ui.js'), mS194 = rd194('main.js');
     var hS194 = fs194.readFileSync(p194.join(__dirname, 'index.html'), 'utf8');
@@ -31725,7 +31887,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   console.log('\n===== 195. v89.195（前哨放手 · 档位一览 · 资质补全属性） =====');
   (function () {
     var fs195 = require('fs'), p195 = require('path');
-    var raw195 = function (f) { return fs195.readFileSync(p195.join(__dirname, 'js', f), 'utf8'); };
+    var raw195 = function (f) { return ((f === 'ui.js') ? __uiAll() : fs195.readFileSync(p195.join(__dirname, 'js', f), 'utf8')); };
     var rd195 = function (f) { return stripComment(raw195(f)); };
     var dS195 = rd195('domain.js'), uS195 = rd195('ui.js'), mS195 = rd195('main.js'),
         sS195 = rd195('state.js'), bS195 = rd195('battle.js');
@@ -31895,7 +32057,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   console.log('\n===== 196. v89.196（资质v2 · 重占 · 回看 · 折线 · 成就收藏） =====');
   (function () {
     var fs196 = require('fs'), p196 = require('path');
-    var raw196 = function (f) { return fs196.readFileSync(p196.join(__dirname, 'js', f), 'utf8'); };
+    var raw196 = function (f) { return ((f === 'ui.js') ? __uiAll() : fs196.readFileSync(p196.join(__dirname, 'js', f), 'utf8')); };
     var rd196 = function (f) { return stripComment(raw196(f)); };
     var dS196 = rd196('domain.js'), uS196 = rd196('ui.js'), mS196 = rd196('main.js'),
         sS196 = rd196('state.js'), bS196 = rd196('battle.js'), tS196 = rd196('data.js');
@@ -32085,7 +32247,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   (function () {
     console.log('  --- §197 S2 两档制 · 战法可见性 · 出征统一行 · 悬停规范 ---');
     var fs197 = require('fs'), p197 = require('path');
-    var u197 = fs197.readFileSync(p197.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var u197 = __uiAll();
     var b197 = fs197.readFileSync(p197.join(__dirname, 'js', 'battle.js'), 'utf8');
     var m197 = fs197.readFileSync(p197.join(__dirname, 'js', 'main.js'), 'utf8');
     var h197 = fs197.readFileSync(p197.join(__dirname, 'index.html'), 'utf8');
@@ -32238,7 +32400,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   (function () {
     console.log('  --- §198 战法全撤 · 管理弹窗统一行 · 出征备注四项 ---');
     var fs198 = require('fs'), p198 = require('path');
-    var u198 = fs198.readFileSync(p198.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var u198 = __uiAll();
     var d198 = fs198.readFileSync(p198.join(__dirname, 'js', 'data.js'), 'utf8');
     var g198 = fs198.readFileSync(p198.join(__dirname, 'js', 'domain.js'), 'utf8');
     var b198 = fs198.readFileSync(p198.join(__dirname, 'js', 'battle.js'), 'utf8');
@@ -32343,7 +32505,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     var fs199 = require('fs'), p199 = require('path');
     var mS199 = fs199.readFileSync(p199.join(__dirname, 'js', 'main.js'), 'utf8');
     var sS199 = fs199.readFileSync(p199.join(__dirname, 'js', 'state.js'), 'utf8');
-    var uS199 = fs199.readFileSync(p199.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var uS199 = __uiAll();
 
     console.log('  --- §199 时间跳变加固（老板：息屏过夜 → 醒来立即补算）---');
     check('§199① 唯一出口 loopPulse + 双通道（setInterval 主循环 + visibilitychange/focus 唤醒）', (function () {
@@ -32452,7 +32614,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
    * ============================================================ */
   (function () {
     var fs200 = require('fs'), p200 = require('path');
-    var uS200 = fs200.readFileSync(p200.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var uS200 = __uiAll();
     var hS200 = fs200.readFileSync(p200.join(__dirname, 'index.html'), 'utf8');
     var bS200 = fs200.readFileSync(p200.join(__dirname, 'js', 'battle.js'), 'utf8');
     var sS200 = fs200.readFileSync(p200.join(__dirname, 'js', 'state.js'), 'utf8');
@@ -32551,7 +32713,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   (function () {
     console.log('  --- §201 侦查单页 / 多选打造 / 熔铸专属界面 ---');
     var fs201 = require('fs'), path201 = require('path');
-    var uS201 = fs201.readFileSync(path201.join(__dirname, 'js/ui.js'), 'utf8');
+    var uS201 = __uiAll();
     var mS201 = fs201.readFileSync(path201.join(__dirname, 'js/main.js'), 'utf8');
     var hS201 = fs201.readFileSync(path201.join(__dirname, 'index.html'), 'utf8');
 
@@ -32640,7 +32802,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   (function () {
     console.log('  --- §202 调校同款 / 侦查可下拉 / 收藏峰值 ---');
     var fs202 = require('fs'), path202 = require('path');
-    var uS202 = fs202.readFileSync(path202.join(__dirname, 'js/ui.js'), 'utf8');
+    var uS202 = __uiAll();
     var mS202 = fs202.readFileSync(path202.join(__dirname, 'js/main.js'), 'utf8');
     var dS202 = fs202.readFileSync(path202.join(__dirname, 'js/domain.js'), 'utf8');
     var stS202 = fs202.readFileSync(path202.join(__dirname, 'js/state.js'), 'utf8');
@@ -32748,7 +32910,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     var fs203 = require('fs'), path203 = require('path');
     var dS203 = fs203.readFileSync(path203.join(__dirname, 'js/data.js'), 'utf8');
     var doS203 = fs203.readFileSync(path203.join(__dirname, 'js/domain.js'), 'utf8');
-    var uS203 = fs203.readFileSync(path203.join(__dirname, 'js/ui.js'), 'utf8');
+    var uS203 = __uiAll();
     var bS203 = fs203.readFileSync(path203.join(__dirname, 'js/battle.js'), 'utf8');
     var hS203 = fs203.readFileSync(path203.join(__dirname, 'index.html'), 'utf8');
 
@@ -32879,7 +33041,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   console.log('\n===== §204 民心占领机制 + 弹窗版面 =====');
   (function () {
     var fs204 = require('fs'), path204 = require('path');
-    var uS204 = fs204.readFileSync(path204.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var uS204 = __uiAll();
     var hS204 = fs204.readFileSync(path204.join(__dirname, 'index.html'), 'utf8');
     var uStrip204 = uS204.replace(/\/\*[\s\S]*?\*\//g, '');
     var hStrip204 = hS204.replace(/\/\*[\s\S]*?\*\//g, '');
@@ -33047,7 +33209,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
    * ============================================================ */
   (function () {
     var fs205 = require('fs'), p205 = require('path');
-    var uSrc205 = fs205.readFileSync(p205.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var uSrc205 = __uiAll();
     var mSrc205 = fs205.readFileSync(p205.join(__dirname, 'js', 'main.js'), 'utf8');
     var uStrip205 = stripComment(uSrc205);
 
@@ -33122,7 +33284,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
    * ============================================================ */
   (function () {
     var fs207 = require('fs'), p207 = require('path');
-    var uS207 = fs207.readFileSync(p207.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var uS207 = __uiAll();
     var mS207 = fs207.readFileSync(p207.join(__dirname, 'js', 'main.js'), 'utf8');
     var sS207 = fs207.readFileSync(p207.join(__dirname, 'js', 'state.js'), 'utf8');
     var dS207 = fs207.readFileSync(p207.join(__dirname, 'js', 'data.js'), 'utf8');
@@ -33349,7 +33511,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   (function () {
     var fs210 = require('fs'), p210 = require('path');
     var mS210 = fs210.readFileSync(p210.join(__dirname, 'js', 'main.js'), 'utf8');
-    var uS210 = fs210.readFileSync(p210.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var uS210 = __uiAll();
     var bS210 = fs210.readFileSync(p210.join(__dirname, 'js', 'battle.js'), 'utf8');
     var hS210 = fs210.readFileSync(p210.join(__dirname, 'index.html'), 'utf8');
 
@@ -33574,7 +33736,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     check('§211⑥ 源码链：open-siege 用本作坊 idx · openTroops 归一 · doTrain 读解析工位', (function () {
       var fs211 = require('fs'), p211 = require('path');
       var mS211 = fs211.readFileSync(p211.join(__dirname, 'js', 'main.js'), 'utf8');
-      var uS211 = fs211.readFileSync(p211.join(__dirname, 'js', 'ui.js'), 'utf8');
+      var uS211 = __uiAll();
       return /case 'open-siege': ui\.openTroops\(el\.dataset\.idx\)/.test(mS211)
         && /_b211 \? _b211\.idx : null/.test(uS211)
         && /_bar211 \? _bar211\.idx : null/.test(mS211);
@@ -33595,7 +33757,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     var fs212 = require('fs'), p212 = require('path');
     var dS212 = fs212.readFileSync(p212.join(__dirname, 'js/domain.js'), 'utf8');
     var sS212 = fs212.readFileSync(p212.join(__dirname, 'js/state.js'), 'utf8');
-    var uS212 = fs212.readFileSync(p212.join(__dirname, 'js/ui.js'), 'utf8');
+    var uS212 = __uiAll();
 
     /* ① 出口组（源码级） */
     check('§212① 出口组：extStoreCapByResOf（底账）+ extStoreCapOf(city,key) + storeCapOf 带 key + 分账字段', (function () {
@@ -33751,7 +33913,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   console.log('\n===== §214 装备悬停分行与去序号 =====');
   (function () {
     var fs214 = require('fs'), path214 = require('path');
-    var uRaw214 = fs214.readFileSync(path214.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var uRaw214 = __uiAll();
     var dRaw214 = fs214.readFileSync(path214.join(__dirname, 'js', 'domain.js'), 'utf8');
     var hRaw214 = fs214.readFileSync(path214.join(__dirname, 'index.html'), 'utf8');
     var uS214 = stripComment(uRaw214), dS214 = stripComment(dRaw214);
@@ -33852,7 +34014,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   console.log('\n===== §215 侧栏驻军栏（全兵种固定序）=====');
   (function () {
     var fs215 = require('fs'), path215 = require('path');
-    var uS215 = stripComment(fs215.readFileSync(path215.join(__dirname, 'js', 'ui.js'), 'utf8'));
+    var uS215 = stripComment(__uiAll());
     var mS215 = stripComment(fs215.readFileSync(path215.join(__dirname, 'js', 'main.js'), 'utf8'));
     var hS215 = fs215.readFileSync(path215.join(__dirname, 'index.html'), 'utf8');
 
@@ -33952,7 +34114,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   console.log('\n===== §219 机构词 · 悬停白值=原始值 · 长按/整套强化 =====');
   (function () {
     var fs219 = require('fs'), path219 = require('path');
-    var uRaw219 = fs219.readFileSync(path219.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var uRaw219 = __uiAll();
     var dRaw219 = fs219.readFileSync(path219.join(__dirname, 'js', 'domain.js'), 'utf8');
     var mRaw219 = fs219.readFileSync(path219.join(__dirname, 'js', 'main.js'), 'utf8');
     var dtRaw219 = fs219.readFileSync(path219.join(__dirname, 'js', 'data.js'), 'utf8');
@@ -34088,7 +34250,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     var fs220 = require('fs'), path220 = require('path');
     var RAW220 = {};
     ['data', 'domain', 'battle', 'state', 'ui', 'systems', 'main'].forEach(function (f) {
-      RAW220[f] = fs220.readFileSync(path220.join(__dirname, 'js', f + '.js'), 'utf8');
+      RAW220[f] = ((f === 'ui') ? __uiAll() : fs220.readFileSync(path220.join(__dirname, 'js', f + '.js'), 'utf8'));
     });
     var CLEAN220 = {};
     Object.keys(RAW220).forEach(function (f) { CLEAN220[f] = stripComment(RAW220[f]); });
@@ -34279,7 +34441,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
    * ============================================================ */
   (function () {
     var fs221 = require('fs'), path221 = require('path');
-    var rd221 = function (rel) { return fs221.readFileSync(path221.join(__dirname, rel), 'utf8'); };
+    var rd221 = function (rel) { return ((rel === 'js/ui.js') ? __uiAll() : fs221.readFileSync(path221.join(__dirname, rel), 'utf8')); };
     var js221 = ['data', 'state', 'domain', 'battle', 'ui', 'main', 'map', 'tactic', 'icons', 'systems', 'story']
       .map(function (f) { return rd221('js/' + f + '.js'); }).join('\n');
     var html221 = rd221('index.html');
@@ -34359,7 +34521,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
    * ============================================================ */
   (function () {
     var fs222 = require('fs'), path222 = require('path');
-    var rd222 = function (rel) { return fs222.readFileSync(path222.join(__dirname, rel), 'utf8'); };
+    var rd222 = function (rel) { return ((rel === 'js/ui.js') ? __uiAll() : fs222.readFileSync(path222.join(__dirname, rel), 'utf8')); };
 
     /* 旧词全集（保留面：7 条读档案校验 / 旧词守卫清单 / §219 沿革映射） */
     var OLD222 = ['长枪', '轻骑', '铁骑', '虎豹', '突骑', '西凉', '象兵', '青州', '刀盾', '藤甲', '投石',
@@ -34434,7 +34596,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
    * ============================================================ */
   (function () {
     var fs223 = require('fs'), path223 = require('path');
-    var rd223 = function (rel) { return fs223.readFileSync(path223.join(__dirname, rel), 'utf8'); };
+    var rd223 = function (rel) { return ((rel === 'js/ui.js') ? __uiAll() : fs223.readFileSync(path223.join(__dirname, rel), 'utf8')); };
     /* v89.229（兵种重构）：18 兵种 → 14 兵种，一字简称逐项换代
        （板伏侦运步盾弹直主狂磁炮轰泰 —— 两两唯一）。 */
     var MAP223 = { banche: '板', fujiche: '伏', zhencha: '侦', yunshu: '运',
@@ -34512,7 +34674,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     var fs224 = require('fs'), path224 = require('path');
     var RAW224 = {};
     ['data', 'domain', 'battle', 'state', 'ui', 'systems', 'main'].forEach(function (f) {
-      RAW224[f] = fs224.readFileSync(path224.join(__dirname, 'js', f + '.js'), 'utf8');
+      RAW224[f] = ((f === 'ui') ? __uiAll() : fs224.readFileSync(path224.join(__dirname, 'js', f + '.js'), 'utf8'));
     });
     RAW224.html = fs224.readFileSync(path224.join(__dirname, 'index.html'), 'utf8');
     var CLEAN224 = {};
@@ -34786,7 +34948,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
      *   不好区分」。
      * ============================================================ */
     console.log('\n===== §229a 城视图：统一底 + 名称/等级顶部色块 =====');
-    var u225 = fs225.readFileSync(path225.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var u225 = __uiAll();
 
     /* ⑧ v90.8 新布局：label 铺满格（inset:0）· 名称落底部 · 等级右上角 · 字号 --fs-sub */
     var ok8 = [], miss8 = [];
@@ -34839,7 +35001,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   (function () {
     var fs229b = require('fs'), path229b = require('path');
     var d9 = fs229b.readFileSync(path229b.join(__dirname, 'js', 'data.js'), 'utf8');
-    var u9 = fs229b.readFileSync(path229b.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var u9 = __uiAll();
     /* v90.92：任务系统退役 —— js/questdata.js 已删，原 q9 读取撤除。 */
     var m9 = fs229b.readFileSync(path229b.join(__dirname, 'js', 'main.js'), 'utf8');
     var st9 = fs229b.readFileSync(path229b.join(__dirname, 'js', 'state.js'), 'utf8');
@@ -34890,7 +35052,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   (function () {
     var fs228 = require('fs'), path228 = require('path');
     var d228 = fs228.readFileSync(path228.join(__dirname, 'js', 'data.js'), 'utf8');
-    var u228 = fs228.readFileSync(path228.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var u228 = __uiAll();
     /* v90.92：任务系统退役 —— js/questdata.js 已删，原 q228 读取撤除。 */
     var m228 = fs228.readFileSync(path228.join(__dirname, 'js', 'main.js'), 'utf8');
     var self228 = fs228.readFileSync(path228.join(__dirname, 'smoke-test.js'), 'utf8');
@@ -34987,7 +35149,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   (function () {
     var fs229 = require('fs'), path229 = require('path');
     var m229 = fs229.readFileSync(path229.join(__dirname, 'js', 'main.js'), 'utf8');
-    var u229 = fs229.readFileSync(path229.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var u229 = __uiAll();
     var g229 = fs229.readFileSync(path229.join(__dirname, 'js', 'gicons.js'), 'utf8');
     var self229 = fs229.readFileSync(path229.join(__dirname, 'smoke-test.js'), 'utf8');
     var a229 = fs229.readFileSync(path229.join(__dirname, '需求档案.md'), 'utf8');
@@ -35020,7 +35182,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var files = ['data', 'domain', 'map', 'battle', 'tactic', 'systems', 'ui', 'icons', 'main'];
       var bad = [], base = 0;
       files.forEach(function (f) {
-        var src = strip229(fs229.readFileSync(path229.join(__dirname, 'js', f + '.js'), 'utf8'));
+        var src = strip229(((f === 'ui') ? __uiAll() : fs229.readFileSync(path229.join(__dirname, 'js', f + '.js'), 'utf8')));
         RETIRED.forEach(function (id) {
           var reKey = new RegExp('[\\{\\s,][' + Q229 + ']?' + id + '[' + Q229 + ']?\\s*:');
           var reStr = new RegExp('[' + Q229 + ']' + id + '[' + Q229 + ']');
@@ -35251,7 +35413,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         if (!t || t.name !== keep[id]) bad.push(id + ':' + (t ? t.name : 'MISS'));
       });
       var live = ['ui', 'battle', 'domain', 'systems', 'tactic', 'main', 'data'].map(function (f) {
-        return strip231(fs231.readFileSync(path231.join(__dirname, 'js', f + '.js'), 'utf8'));
+        return strip231(((f === 'ui') ? __uiAll() : fs231.readFileSync(path231.join(__dirname, 'js', f + '.js'), 'utf8')));
       }).join('\n');
       var left = MAP231.map(function (mm) { return OLD231[mm[0]]; })
         .filter(function (o) { return live.indexOf(o) >= 0; });
@@ -35365,7 +35527,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     var FILES = ['data.js', 'ui.js', 'main.js', 'systems.js', 'domain.js', 'state.js',
       'battle.js', 'story.js', 'map.js', 'tactic.js', 'icons.js'];
     var raw = {};
-    FILES.forEach(function (f) { raw[f] = fs233.readFileSync(path233.join(__dirname, 'js', f), 'utf8'); });
+    FILES.forEach(function (f) { raw[f] = ((f === 'ui.js') ? __uiAll() : fs233.readFileSync(path233.join(__dirname, 'js', f), 'utf8')); });
     /* v90.92：任务系统退役 —— js/questdata.js 已删，原 q233 读取撤除。 */
     var d233 = raw['data.js'];
 
@@ -35526,7 +35688,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   console.log('\n===== §235 政务厅角标 · 城外政务厅闸 · 素材清理 =====');
   (function () {
     var fs235 = require('fs'), path235 = require('path');
-    var u235 = fs235.readFileSync(path235.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var u235 = __uiAll();
     var m235 = fs235.readFileSync(path235.join(__dirname, 'js', 'main.js'), 'utf8');
     var d235 = fs235.readFileSync(path235.join(__dirname, 'js', 'domain.js'), 'utf8');
 
@@ -35819,7 +35981,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     var fs3d = require('fs');
     var path3d = require('path');
     var map3dSrc = fs3d.readFileSync(path3d.join(__dirname, 'js', 'map3d.js'), 'utf8');
-    var uiSrc = fs3d.readFileSync(path3d.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var uiSrc = __uiAll();
 
     check('§map3d① 无 THREE 时自降级（enabled:false · why:no-three —— 环境无 three 不崩）',
       GAME.map3d && GAME.map3d.enabled === false && GAME.map3d.why === 'no-three',
@@ -36032,7 +36194,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
    * ============================================================ */
   (function () {
     var fs243 = require('fs'), p243 = require('path');
-    var u243 = fs243.readFileSync(p243.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var u243 = __uiAll();
     var m243 = fs243.readFileSync(p243.join(__dirname, 'js', 'map3d.js'), 'utf8');
     var bad243 = [], n243 = 0;
     function c243(name, ok, extra) { n243++; if (!ok) bad243.push(name); check(name, !!ok, extra); }
@@ -36117,7 +36279,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
    * ============================================================ */
   (function () {
     var fs244 = require('fs'), p244 = require('path');
-    var u244 = fs244.readFileSync(p244.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var u244 = __uiAll();
     var m244 = fs244.readFileSync(p244.join(__dirname, 'js', 'main.js'), 'utf8');
     var mp244 = fs244.readFileSync(p244.join(__dirname, 'js', 'map3d.js'), 'utf8');
     var bad244 = [], n244 = 0;
@@ -36156,7 +36318,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
    * ============================================================ */
   (function () {
     var fs245 = require('fs'), p245 = require('path');
-    var u245 = fs245.readFileSync(p245.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var u245 = __uiAll();
     var m245 = fs245.readFileSync(p245.join(__dirname, 'js', 'main.js'), 'utf8');
     var h245 = fs245.readFileSync(p245.join(__dirname, 'index.html'), 'utf8');
     var bad245 = [], n245 = 0;
@@ -36242,7 +36404,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       c247('§247③ 无"无归属之将"（读档 normalizeGenCities 兜底）',
         ghosts247.length === 0, 'ghosts=' + ghosts247.length);
       /* ④ 政务厅面板含「本城英雄」列表 */
-      var u247 = require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8');
+      var u247 = __uiAll();
       c247('§247④ 政务厅面板含「本城英雄」列表（走 generalsIn，与英雄页同源）',
         /本城英雄（/.test(u247) && /GAME\.generalsIn \? GAME\.generalsIn\(c\)/.test(u247));
       /* ⑤ 结构：grantBeauty 带 fromCity 形参 + 归出发城 */
@@ -36314,7 +36476,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
    * ============================================================ */
   (function () {
     var fs249 = require('fs'), p249 = require('path');
-    var u249 = fs249.readFileSync(p249.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var u249 = __uiAll();
     var m249 = fs249.readFileSync(p249.join(__dirname, 'js', 'main.js'), 'utf8');
     var h249 = fs249.readFileSync(p249.join(__dirname, 'index.html'), 'utf8');
     var bad249 = [], n249 = 0;
@@ -36464,7 +36626,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
   (function () {
     var bad=[],n=0; function c(name,ok,ex){n++;if(!ok)bad.push(name);check(name,!!ok,ex);}
     try {
-      var u=require('fs').readFileSync(require('path').join(__dirname,'js','ui.js'),'utf8');
+      var u=__uiAll();
       var m=require('fs').readFileSync(require('path').join(__dirname,'js','main.js'),'utf8');
       c('§254① 「用到升级」走独立动作 gen-exp-till（不再与「用1个」共用）',
         /data-action="gen-exp-till"/.test(u) && /case 'gen-exp-till'/.test(m));
@@ -36568,7 +36730,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
    * §259 v91.14（老板）：建筑备注改悬停建筑名 + 星球可命名
    * ============================================================ */
   (function () {
-    var u=require('fs').readFileSync(require('path').join(__dirname,'js','ui.js'),'utf8');
+    var u=__uiAll();
     var st=require('fs').readFileSync(require('path').join(__dirname,'js','state.js'),'utf8');
     var m=require('fs').readFileSync(require('path').join(__dirname,'js','main.js'),'utf8');
     var bad=[],n=0; function c(name,ok,ex){n++;if(!ok)bad.push(name);check(name,!!ok,ex);}
@@ -36866,7 +37028,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var _fs = require('fs'), _pa = require('path');
       var dc2 = _fs.readFileSync(_pa.join(__dirname, 'js', 'domain.js'), 'utf8');
       var mc2 = _fs.readFileSync(_pa.join(__dirname, 'js', 'main.js'), 'utf8');
-      var uc2 = _fs.readFileSync(_pa.join(__dirname, 'js', 'ui.js'), 'utf8');
+      var uc2 = __uiAll();
       return /GAME\.autoExploreInScope = function/.test(dc2)
         && /GAME\.autoExploreScopeCount = function/.test(dc2)
         && /if \(!GAME\.autoExploreInScope\(cfg, pid\)\) return;/.test(dc2)          /* 星球级接线 */
@@ -36922,7 +37084,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var _fs = require('fs'), _pa = require('path');
       var dc3 = _fs.readFileSync(_pa.join(__dirname, 'js', 'domain.js'), 'utf8');
       var mc3 = _fs.readFileSync(_pa.join(__dirname, 'js', 'main.js'), 'utf8');
-      var uc3 = _fs.readFileSync(_pa.join(__dirname, 'js', 'ui.js'), 'utf8');
+      var uc3 = __uiAll();
       return /GAME\.pickAutoGen = function/.test(dc3)                        /* 共用唯一出口 */
         && /GAME\.autoExplorePickGen = function/.test(dc3)
         && /GAME\.autoMarchPickGen = function/.test(dc3)
@@ -37133,7 +37295,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var fs = require('fs'), path = require('path');
       var jsDir = path.join(__dirname, 'js'), bad = [];
       var files = ['data', 'state', 'systems', 'domain', 'map', 'sphere', 'gltf', 'map3d',
-        'battle', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits', 'story', 'ui', 'main'];
+        'battle', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits', 'story', 'ui', 'ui-fx', 'ui-core', 'ui-modal', 'ui-shell', 'ui-battle', 'ui-city', 'ui-army', 'ui-bag', 'ui-craft', 'ui-view', 'ui-build', 'ui-planet', 'ui-space', 'ui-delve', 'ui-mapui', 'ui-exped', 'ui-report', 'ui-config', 'main'];
       var writeRe = new RegExp([
         '\\bs\\.items\\.[A-Za-z_$]+\\s*(?:=|\\+=|-=)',
         '\\bs\\.items\\[[^\\]]+\\]\\s*(?:=|\\+=|-=)',
@@ -37219,7 +37381,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var fs = require('fs'), path = require('path');
       var jsDir = path.join(__dirname, 'js'), bad = [];
       ['data', 'state', 'systems', 'domain', 'map', 'sphere', 'gltf', 'map3d',
-        'battle', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits', 'story', 'ui', 'main'].forEach(function (f) {
+        'battle', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits', 'story', 'ui', 'ui-fx', 'ui-core', 'ui-modal', 'ui-shell', 'ui-battle', 'ui-city', 'ui-army', 'ui-bag', 'ui-craft', 'ui-view', 'ui-build', 'ui-planet', 'ui-space', 'ui-delve', 'ui-mapui', 'ui-exped', 'ui-report', 'ui-config', 'main'].forEach(function (f) {
         var src = fs.readFileSync(path.join(jsDir, f + '.js'), 'utf8')
           .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/[^\n]*/gm, '');
         /* domain.js 的 addEquip/removeEquip 本体是合法写入者：把这两个函数体切掉再扫 */
@@ -37291,7 +37453,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var fs = require('fs'), path = require('path');
       var jsDir = path.join(__dirname, 'js'), bad = [];
       ['data', 'state', 'systems', 'domain', 'map', 'sphere', 'gltf', 'map3d',
-        'battle', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits', 'story', 'ui', 'main'].forEach(function (f) {
+        'battle', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits', 'story', 'ui', 'ui-fx', 'ui-core', 'ui-modal', 'ui-shell', 'ui-battle', 'ui-city', 'ui-army', 'ui-bag', 'ui-craft', 'ui-view', 'ui-build', 'ui-planet', 'ui-space', 'ui-delve', 'ui-mapui', 'ui-exped', 'ui-report', 'ui-config', 'main'].forEach(function (f) {
         var src = fs.readFileSync(path.join(jsDir, f + '.js'), 'utf8')
           .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/[^\n]*/gm, '');
         /* 允许：GAME.gen.set/release 内部（在 generals.js，不在本清单）、
@@ -37413,7 +37575,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var fs = require('fs'), path = require('path');
       var jsDir = path.join(__dirname, 'js'), bad = [];
       ['data', 'state', 'systems', 'domain', 'map', 'sphere', 'gltf', 'map3d',
-        'battle', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits', 'story', 'ui', 'main'].forEach(function (f) {
+        'battle', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits', 'story', 'ui', 'ui-fx', 'ui-core', 'ui-modal', 'ui-shell', 'ui-battle', 'ui-city', 'ui-army', 'ui-bag', 'ui-craft', 'ui-view', 'ui-build', 'ui-planet', 'ui-space', 'ui-delve', 'ui-mapui', 'ui-exped', 'ui-report', 'ui-config', 'main'].forEach(function (f) {
         var src = fs.readFileSync(path.join(jsDir, f + '.js'), 'utf8')
           .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/[^\n]*/gm, '');
         /* 允许：addResCapped 本体（domain.js）—— 它是封顶入账的唯一实现 */
@@ -37469,7 +37631,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var fs = require('fs'), path = require('path');
       var jsDir = path.join(__dirname, 'js'), bad = [];
       ['data', 'state', 'systems', 'domain', 'map', 'sphere', 'gltf', 'map3d',
-        'battle', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits', 'story', 'ui', 'main'].forEach(function (f) {
+        'battle', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits', 'story', 'ui', 'ui-fx', 'ui-core', 'ui-modal', 'ui-shell', 'ui-battle', 'ui-city', 'ui-army', 'ui-bag', 'ui-craft', 'ui-view', 'ui-build', 'ui-planet', 'ui-space', 'ui-delve', 'ui-mapui', 'ui-exped', 'ui-report', 'ui-config', 'main'].forEach(function (f) {
         var src = fs.readFileSync(path.join(jsDir, f + '.js'), 'utf8')
           .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/[^\n]*/gm, '');
         if (/\.queues\.(build|train|tech)\s*\.\s*(push|splice)\s*\(/.test(src)
@@ -37512,7 +37674,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var fs = require('fs'), path = require('path');
       var jsDir = path.join(__dirname, 'js'), bad = [];
       ['data', 'state', 'systems', 'domain', 'map', 'sphere', 'gltf', 'map3d',
-        'battle', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits', 'story', 'ui', 'main'].forEach(function (f) {
+        'battle', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits', 'story', 'ui', 'ui-fx', 'ui-core', 'ui-modal', 'ui-shell', 'ui-battle', 'ui-city', 'ui-army', 'ui-bag', 'ui-craft', 'ui-view', 'ui-build', 'ui-planet', 'ui-space', 'ui-delve', 'ui-mapui', 'ui-exped', 'ui-report', 'ui-config', 'main'].forEach(function (f) {
         var src = fs.readFileSync(path.join(jsDir, f + '.js'), 'utf8')
           .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/[^\n]*/gm, '');
         var ASG = '(?:=(?!=)|\\+=|-=)';
@@ -37830,7 +37992,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       } finally { G.state = bk; }
     })());
     check('§276⑤ 自动基因研究在册（自动页 + 主循环调用）', (function () {
-      var u = require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8');
+      var u = __uiAll();
       var st = require('fs').readFileSync(require('path').join(__dirname, 'js', 'state.js'), 'utf8');
       return u.indexOf('自动基因研究') >= 0 && u.indexOf('autofarm-crop') >= 0
         && /GAME\.autoFarm\(\)/.test(st) && typeof GAME.autoFarm === 'function';
@@ -37903,7 +38065,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })());
     check('§278② 机工坊显示名改「精密制造厂」（数据 + 面板文案）', (function () {
       var b = DATA.BUILDINGS.gongjiangzuofang;
-      var u = require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8')
+      var u = __uiAll()
         + require('fs').readFileSync(require('path').join(__dirname, 'js', 'domain.js'), 'utf8');
       return b.name === '精密制造厂' && /精密制造厂/.test(u)
         && /'本城尚无精密制造厂，无法制造器械/.test(u);
@@ -41132,7 +41294,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })(), (function () { return '5 个 case 已迁走 · 4 个动作可分发'; })());
 
     check('§322④ ui.js 里不再有第二份（迁走就必须删干净，否则就是两份逻辑）', (function () {
-      var u = require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8');
+      var u = __uiAll();
       /* ⚠️ 不能只查标题字符串：城面板里也有「🧠 惰性」这个属性名。
          要查的是**玩法台那一段的写法**（`h += sec('<标题>'`）—— 它只该出现在模块里。 */
       return u.indexOf("h += sec('🚶 人从哪来'") < 0
@@ -41327,7 +41489,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var files = ['camp', 'convoy', 'expose', 'faction', 'land', 'relic', 'rival', 'ruin', 'village'];
       var bad = [];
       files.forEach(function (f) {
-        var src = fs.readFileSync(path.join(__dirname, 'js', f + '.js'), 'utf8');
+        var src = ((f === 'ui') ? __uiAll() : fs.readFileSync(path.join(__dirname, 'js', f + '.js'), 'utf8'));
         /* ⚠️ 不能查 `GAME.mapSphere || GAME.sphere` 这个字符串本身 ——
            修好之后的兜底分支里仍然有它（`sphereOf ? ... : (mapSphere || sphere)`）。
            要查的是"**是不是先走 sphereOf**"。 */
@@ -43732,30 +43894,34 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
 
 
   /* ============================================================
-   * §335 · v118：顶栏 12 个页签 → 6 个常驻 + 「更多」
+   * §335 · v2026-10-31（老板）：上边菜单**不收缩** + 世界账本常驻顶栏
    * ------------------------------------------------------------
-   * 老板 2026-10-23：「如此专业的问题应该你来确定」——
-   * 这件事我自己拍板了，但拍板要有守卫，所以这里钉四条。
+   * 原 v118 规则（6 常驻 + 「更多」折叠）被老板推翻：「上边菜单不要收缩，
+   * 把那个世界账本找个合适地方」。新规则：
+   *   ① 折叠组页签（图例/背包/公文/自动/设置 等）**常显**，不再 display:none；
+   *   ② 「更多 ▾」按钮与 .nav-open 展开逻辑**整条退役**（无死动作/死样式）；
+   *   ③ 世界账本入口**常驻顶栏**右侧（#nav-ev）—— 【v156.31 已推翻，见下】
    *
-   * 关键判断：**折叠不删节点**。四百多条断言靠
-   * `querySelector('[data-view=shop]')` 找页签，删了就是一次性废掉一批守卫。
-   * 所以改的是 CSS 的可见性，不是 DOM 的存在性。
+   * v156.31（老板 2026-11-02「把世界账本去掉，放行政里边就行，我看到已经有了，
+   *   那就里边图标闪烁」）：
+   *   顶栏 #nav-ev **整条退役**；入口只留「行政」页那一个按钮（js/ui-view.js 的 _admDetailHTML），
+   *   有事件时它自己 `.btn.ev-on` 呼吸 + 文案换成「⚡ 事件名」。
+   *   所以 ③ 的实际口径变成：**顶栏不许有，行政页必须有，有事件必须闪**。
+   * 守卫据此**重写**（翻红不删不宽）：旧钉"折叠存在"，现钉"折叠不存在 + 账本常驻"。
    * ============================================================ */
-  console.log('\n===== 335. v118 顶栏分级：12 个页签 → 6 + 更多 =====');
+  console.log('\n===== 335. 顶栏不收缩 + 世界账本入口（v156.31 归「行政」） =====');
   (function () {
     var fs = require('fs'), path = require('path');
     var html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+    var js = fs.readFileSync(path.join(__dirname, 'js', 'main.js'), 'utf8');
 
     var STAY = ['city', 'ext', 'map', 'generals', 'marches', 'admin'];
     var MORE = ['station', 'shop', 'bag', 'collection', 'reports', 'auto', 'settings'];
 
-    /* ⚠️ 不能用 `<div class="tab" data-view="` 去数：城市页签带 `active`、
-       自动化页签还带别的类 —— 正则一严就数成 -2（第一次跑就是这样红）。 */
     function uniqViews() {
       var m = html.match(/\sdata-view="([a-z]+)"/g) || [];
       var out = [];
       m.forEach(function (s) {
-        /* s 形如 `data-view="city"` —— 取两个引号之间 */
         var a = s.indexOf('"'), b = s.lastIndexOf('"');
         var v = s.slice(a + 1, b);
         if (v && out.indexOf(v) < 0) out.push(v);
@@ -43771,39 +43937,37 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       });
     })(), (function () { return STAY.join(' / '); })());
 
-    check('§335② 七个别用页签折进「更多」——但**节点仍在**（不删）', (function () {
-      /* v150（P0-1）：三个页签多了 `tab-locked`（阶段未到不显示）——
-         这里放宽为"class 里含 tab-more、且 data-view 对得上"，口径仍是
-         「节点在 DOM、仍属折叠组」，**不**放宽到"只要出现 data-view 就算"。 */
-      return MORE.every(function (v) {
-                var re = new RegExp('class="[^"]*tab-more[^"]*" data-view="' + v + '"');
-        return re.test(html);
-      });
+    check('§335② 折叠组页签都在 DOM 里（节点不删，与旧规则一致）', (function () {
+      return MORE.every(function (v) { return uniqViews().indexOf(v) >= 0; });
     })(), (function () { return MORE.join(' / '); })());
 
-    check('§335③ 折叠靠 CSS（display:none），不是从 DOM 里删掉', (function () {
-      return html.indexOf('.topnav .tab-more { display: none; }') >= 0
-        && html.indexOf('.topnav.nav-open .tab-more { display: inline-block; }') >= 0;
-    })(), (function () { return 'CSS 规则在'; })());
+    check('§335③ 顶栏**不再折叠**：CSS 已无 `.tab-more{display:none}` 与 .nav-open 展开规则', (function () {
+      /* 翻红：旧断言钉"有这条隐藏规则"，现钉"没有这条规则" —— 折叠已退役 */
+      return html.indexOf('.topnav .tab-more { display: none; }') < 0
+        && html.indexOf('.topnav.nav-open .tab-more { display: inline-block; }') < 0
+        && html.indexOf('.topnav.nav-open .nav-more-btn') < 0;
+    })(), (function () { return '折叠 CSS 已移除'; })());
 
-    check('§335④「更多」按钮有动作、切到折叠页签时会自动展开', (function () {
-      var js = fs.readFileSync(path.join(__dirname, 'js', 'main.js'), 'utf8');
-      var ui = fs.readFileSync(path.join(__dirname, 'js', 'ui.js'), 'utf8');
-      return html.indexOf('data-action="nav-more"') >= 0
-        && js.indexOf("case 'nav-more'") >= 0
-        && ui.indexOf("tn.classList.toggle('nav-open', inMore);") >= 0;
-    })(), (function () { return '按钮 + 动作 + 自动展开'; })());
+    check('§335④ 「更多」按钮与 nav-more 动作**整条退役**（无死入口）', (function () {
+      return html.indexOf('data-action="nav-more"') < 0
+        && html.indexOf('id="nav-more-btn"') < 0
+        && js.indexOf("case 'nav-more'") < 0;
+    })(), (function () { return '按钮 + 动作 已删除'; })());
 
-    check('§335⑤ 顶栏可见页签数 = 6 + 1（「更多」本身）', (function () {
-      var all = uniqViews();
-      var more = all.filter(function (v) { return MORE.indexOf(v) >= 0; });
-      var stay = all.filter(function (v) { return MORE.indexOf(v) < 0; });
-      return stay.length === 6 && more.length === 7;
+    check('§335⑤ 世界账本入口在「行政」页（顶栏 #nav-ev 已退役；有事件时按钮呼吸）', (function () {
+      /* v156.31 新口径，三条一起验：
+         ① 顶栏**不再有** #nav-ev（老板要求去掉，留着就是没改）；
+         ② 行政页入口**在**（js/ui-view.js 里的 data-action="open-world" 按钮）；
+         ③ 有事件时**会闪**（渲染时按 evLive 给 .btn.ev-on，且样式表里有这条动画）。
+         ⚠️ ③ 是反平凡解：只删不加的人会过①②，但会让"有事件看得见"这个能力静默消失。 */
+      var uv = fs.readFileSync(path.join(__dirname, 'js', 'ui-view.js'), 'utf8');
+      return html.indexOf('id="nav-ev"') < 0
+        && uv.indexOf('data-action="open-world"') >= 0
+        && /\.btn\.ev-on\s*\{/.test(html)
+        && uv.indexOf('evLive') >= 0
+        && uv.indexOf("' ev-on'") >= 0;
     })(), (function () {
-      var all = uniqViews();
-      var more = all.filter(function (v) { return MORE.indexOf(v) >= 0; });
-      var stay = all.filter(function (v) { return MORE.indexOf(v) < 0; });
-      return '常驻 ' + stay.length + ' · 折叠 ' + more.length;
+      return '顶栏已移除 · 入口在行政页 · 有事件 .btn.ev-on 呼吸';
     })());
   })();
 
@@ -44003,44 +44167,99 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
 
 
   /* ============================================================
-   * §338 · v122：待办提醒位 —— 事件不能再藏在二级弹窗里
+   * §338 · 世界账本入口（v2026-10-31 顶栏 → **v156.31 已推翻，改到行政页**）
    * ------------------------------------------------------------
-   * 事件（每月一件、要你处理）原来只挂在「行政 → 世界的账本」这个
-   * 二级弹窗里。玩家不点进去就永远不知道这个月出了事 ——
-   * 等于做了十个玩法，一个都没被看见。
-   *
-   * 修的是一条**可达性**：顶栏加一个会闪的入口位，
-   * 有事件才显示，点一下直接开账本。不加页签（v118 刚把 12 个收成 6 个）。
+   * 沿革（三次变动，都留着，别再绕回去）：
+   *   v122        ：事件挂在「行政 → 世界的账本」二级弹窗 —— 玩家看不见。
+   *   v2026-10-31 ：老板「把那个世界账本找个合适地方」→ 顶栏加常驻位 #nav-ev。
+   *   v156.31     ：老板「把世界账本去掉，放行政里边就行，我看到已经有了，
+   *                  那就里边图标闪烁」→ **顶栏 #nav-ev 整条退役**，
+   *                  入口回到行政页那个按钮，有事件时它自己 .btn.ev-on 呼吸。
+   * 守卫据此改成新口径（不删）：入口在行政页 / 一点即开 / 有事件必须闪。
    * ============================================================ */
-  console.log('\n===== 338. v122 待办提醒位：有事件就该看得见 =====');
+  console.log('\n===== 338. 世界账本入口（v2026-10-31 顶栏 → v156.31 行政页） =====');
   (function () {
     var fs = require('fs'), path = require('path');
     var html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
-    var ui = fs.readFileSync(path.join(__dirname, 'js', 'ui.js'), 'utf8');
+    var ui = __uiAll();
 
-    check('§338① 顶栏有待办位，且默认不占位（没事件时 display:none）', (function () {
-      return html.indexOf('id="nav-ev"') >= 0
-        && /id="nav-ev"[^>]*style="display:none/.test(html);
-    })(), (function () { return 'nav-ev 在，默认隐藏'; })());
+    check('§338① 世界账本入口在「行政」页（顶栏 #nav-ev 已退役），默认文案「🌍 世界的账本」', (function () {
+      var uv = fs.readFileSync(path.join(__dirname, 'js', 'ui-view.js'), 'utf8');
+      return html.indexOf('id="nav-ev"') < 0                 /* 顶栏真的删了 */
+        && uv.indexOf('data-action="open-world"') >= 0        /* 入口还在 */
+        && uv.indexOf('🌍 世界的账本') >= 0;                  /* 默认文案 */
+    })(), (function () { return '行政页入口 · 默认「🌍 世界的账本」'; })());
 
-    check('§338② 它点一下就是「开账本」（不是又一个要点两次的入口）', (function () {
-      var i = html.indexOf('id="nav-ev"');
-      /* ⚠️ 窗口要给够：这块 <div> 是跨行的（data-action 在第二行），
-         取 +60 会截在属性中间 —— 第一版就是这么假红的。 */
-      var seg = html.slice(Math.max(0, i - 260), i + 240);
-      return seg.indexOf('data-action="open-world"') >= 0;
-    })(), (function () { return 'data-action="open-world"'; })());
+    check('§338② 它点一下就是「开账本」（按钮自带 data-action，且有接收它的 case）', (function () {
+      var uv = fs.readFileSync(path.join(__dirname, 'js', 'ui-view.js'), 'utf8');
+      var mj = fs.readFileSync(path.join(__dirname, 'js', 'main.js'), 'utf8');
+      /* 按钮上挂 data-action，action 表里有 case —— 两样都在才算"点得动"。
+         只查按钮不查 case 的话，按钮点下去会静默无反应（本项目踩过这类"死按钮"）。 */
+      return uv.indexOf('data-action="open-world"') >= 0
+        && mj.indexOf("case 'open-world'") >= 0;
+    })(), (function () { return 'data-action + main.js case 都在'; })());
 
-    check('§338③ 有事件才显示、写明事件名（不是一句"有更新"）', (function () {
-      return ui.indexOf("getElementById('nav-ev')") >= 0
-        && ui.indexOf("'⚡ ' + (evCur.def.name") >= 0
-        && ui.indexOf("evEl.style.display = 'none'") >= 0;
-    })(), (function () { return '⚡ + 事件名；没有就藏'; })());
+    check('§338③ 有事件时按钮 .ev-on 呼吸 + 写明事件名；无事件回默认文案（两处同步）', (function () {
+      /* 两处都要有，缺一处就有一半场景失效：
+         · ui-view.js 渲染时算（切进去就亮，不会先灭后亮）；
+         · ui-modal.js 的 syncBadges 补（行政页不随 tick 重绘，停留时来事件也亮）。 */
+      var uv = fs.readFileSync(path.join(__dirname, 'js', 'ui-view.js'), 'utf8');
+      return ui.indexOf("getElementById('nav-ev')") < 0                 /* 旧实现清干净（注释里提历史不算） */
+        && uv.indexOf('evLive') >= 0
+        && uv.indexOf("' ev-on'") >= 0
+        && ui.indexOf("'#view-container [data-action=\"open-world\"]'") >= 0
+        && ui.indexOf("evEl.classList.add('ev-on')") >= 0
+        && ui.indexOf("'⚡ '") >= 0
+        && /\.btn\.ev-on\s*\{/.test(html);
+    })(), (function () { return '渲染时 + syncBadges 双路；.btn.ev-on 呼吸'; })());
 
-    check('§338④ 提醒位不是新页签（顶栏仍是 6 个 + 更多）', (function () {
+    check('§338④ 账本位不是新页签（顶栏上边菜单不收缩、不新增 tab）', (function () {
       return html.indexOf('class="tab nav-ev"') < 0
         && html.indexOf('data-view="events"') < 0;
-    })(), (function () { return '是提醒位，不是 tab'; })());
+    })(), (function () { return '是独立入口，不是 tab'; })());
+  })();
+
+
+  /* ============================================================
+   * §340 · v2026-11-01（老板）：前传场景层 —— 升级/移动从"文字"变"在场"
+   * ------------------------------------------------------------
+   * 老板原话：「进入一个具体的场景，而不是玩文字游戏」。
+   * 旧反馈只有两样：一行 ✨ 日志、一句"走到 X 了"的 toast。
+   * 现在加一层**独立于系统 toast 的场景层**：
+   *   · 升级 → ui.levelUpScene 一张"瞬间卡"（贴 checkLevelUp 唯一出口）；
+   *   · 移动 → ui.sceneCaption 一条"沿途"感官字幕（贴 P.moveTo 唯一出口）。
+   * 常量进 DATA.SCENE（不写死）。无滚动条、不阻塞、自动消散。
+   * ============================================================ */
+  console.log('\n===== 340. v2026-11-01 前传场景层：升级/移动从文字变在场 =====');
+  (function () {
+    var fs = require('fs'), path = require('path');
+    var html = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+    var ui = __uiAll();
+    var battle = fs.readFileSync(path.join(__dirname, 'js', 'battle.js'), 'utf8');
+    var prologue = fs.readFileSync(path.join(__dirname, 'js', 'prologue.js'), 'utf8');
+    var data = fs.readFileSync(path.join(__dirname, 'js', 'data.js'), 'utf8');
+
+    check('§340① 场景层函数已定义（levelUpScene / sceneCaption）', (function () {
+      return /ui\.levelUpScene\s*=\s*function/.test(ui) && /ui\.sceneCaption\s*=\s*function/.test(ui);
+    })(), (function () { return 'ui.levelUpScene + ui.sceneCaption'; })());
+
+    check('§340② 升级唯一出口 checkLevelUp 挂了场景卡', (function () {
+      return /GAME\.ui && GAME\.ui\.levelUpScene/.test(battle);
+    })(), (function () { return 'battle.js checkLevelUp → levelUpScene'; })());
+
+    check('§340③ 移动唯一出口 P.moveTo 挂了沿途字幕 + crossLine 文案池已抽成函数', (function () {
+      return /GAME\.ui && GAME\.ui\.sceneCaption/.test(prologue) && /P\.crossLine\s*=\s*function/.test(prologue);
+    })(), (function () { return 'prologue.js P.moveTo → sceneCaption + P.crossLine'; })());
+
+    check('§340④ 常量进 DATA.SCENE（captionMs/levelUpMs/crossLines/levelLine 齐）', (function () {
+      return data.indexOf('DATA.SCENE = {') >= 0
+        && data.indexOf('captionMs') >= 0 && data.indexOf('levelUpMs') >= 0
+        && data.indexOf('crossLines') >= 0 && data.indexOf('levelLine') >= 0;
+    })(), (function () { return 'DATA.SCENE 四字段'; })());
+
+    check('§340⑤ 场景层 CSS 在 index.html（.scene-caption / .levelup-card）', (function () {
+      return html.indexOf('.scene-caption') >= 0 && html.indexOf('.levelup-card') >= 0;
+    })(), (function () { return '场景层样式已挂载'; })());
   })();
 
 
@@ -44222,7 +44441,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     })());
 
     check('§341⑤ 界面不再写死阈值（必须读 DATA.EXP_EST）', (function () {
-      var s = require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8');
+      var s = __uiAll();
       return s.indexOf('bandOfRatio') >= 0
         && s.indexOf('expLossEstOf') >= 0
         && s.indexOf("rLo >= 1.6") < 0;          /* 旧的写死判据必须消失 */
@@ -44400,18 +44619,19 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       } catch (e) { return '?'; } finally { G.state = bk; }
     })());
 
-    check('§355⑨ 界面：双方画像 + 每合**双方都飞**（旧"谁占先谁飞"样式已退役）', (function () {
+    check('§355⑨ 界面：3D 舞台 + 双方 HUD + 每合双方都出手（旧"画像飞"整族已退役）', (function () {
       var fs = require('fs'), p = require('path');
-      var s = fs.readFileSync(p.join(__dirname, 'js', 'ui.js'), 'utf8');
+      var s = __uiAll();
       var h = fs.readFileSync(p.join(__dirname, 'index.html'), 'utf8');
-      return s.indexOf('duel-por') >= 0                   /* 画像容器 */
-        && s.indexOf('portraits.html') >= 0               /* 真头像出口（不是 emoji 占位） */
-        && s.indexOf("'duel-fly-r'") >= 0                 /* 我飞向他 */
-        && s.indexOf("'duel-fly-l'") >= 0                 /* 他飞向我 */
-        && s.indexOf('prologue-duel-hit') >= 0            /* 出手按钮仍在册 */
-        && h.indexOf('.duel-fly-r') >= 0 && h.indexOf('.duel-fly-l') >= 0
-        && h.indexOf('duel-lunge') < 0;                   /* 旧动画整族退役 */
-    })(), 'ui.js / index.html 源码在册');
+      var d3 = fs.readFileSync(p.join(__dirname, 'js', 'duel3d.js'), 'utf8');
+      return s.indexOf('duel-stage3d') >= 0                    /* 3D 舞台容器 */
+        && s.indexOf('GAME.duel3d') >= 0                       /* 舞台驱动入口在册 */
+        && s.indexOf("hud('me'") >= 0 && s.indexOf("hud('foe'") >= 0   /* 两边都有血条 HUD */
+        && s.indexOf('prologue-duel-hit') >= 0                 /* 出手按钮仍在册 */
+        && h.indexOf('.duel-stage') >= 0 && h.indexOf('.duel-hud') >= 0
+        && s.indexOf('duel-fly') < 0 && h.indexOf('duel-fly') < 0      /* 旧动画整族退役 */
+        && d3.indexOf("skill('attack')") >= 0;                  /* 双方都出招 = 本作"每合双方各出手一次" */
+    })(), 'ui.js / index.html / duel3d.js 源码在册');
 
     check('§355⑩ 真链路：叫阵 → 逐合出招 → 结算（经验 / 战利品 / 叫过阵的格子都入账）', (function () {
       if (!DU) return false;
@@ -44628,7 +44848,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
 
     check('§356⑦ 界面看得见：加成走 SH.bonusListOf 摊在空间站面板（不是玄学数字）', (function () {
       var fs = require('fs'), p = require('path');
-      var s = fs.readFileSync(p.join(__dirname, 'js', 'ui.js'), 'utf8');
+      var s = __uiAll();
       return typeof SH.bonusListOf === 'function'
         && typeof SH.bonusLabel === 'function'
         && s.indexOf('SH.bonusListOf') >= 0
@@ -45238,7 +45458,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     var bk = G.state, bkCity = G.ui._cityId;
     try {
       var fs5 = require('fs'), pth5 = require('path');
-      var u5 = fs5.readFileSync(pth5.join(__dirname, 'js', 'ui.js'), 'utf8');
+      var u5 = __uiAll();
       var m5 = fs5.readFileSync(pth5.join(__dirname, 'js', 'main.js'), 'utf8');
       var s5 = fs5.readFileSync(pth5.join(__dirname, 'js', 'scene3d.js'), 'utf8');
 
@@ -45413,7 +45633,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     var bk = G.state;
     try {
       var fs7 = require('fs'), pth7 = require('path');
-      var u7 = fs7.readFileSync(pth7.join(__dirname, 'js', 'ui.js'), 'utf8');
+      var u7 = __uiAll();
       var h7 = fs7.readFileSync(pth7.join(__dirname, 'index.html'), 'utf8');
       var m7 = fs7.readFileSync(pth7.join(__dirname, 'js', 'main.js'), 'utf8');
 
@@ -45461,7 +45681,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         /* 老板：「给开局提示做连续弹窗，不要在左侧统计栏显示」。
            判据：① 三步以上；② 弹窗带"第几步"圆点；③ 三个动作都有处理器；
                 ④ 看完/跳过落档（state.tut），不会每局重复弹。 */
-        var u4b = fs7.readFileSync(pth7.join(__dirname, 'js', 'ui.js'), 'utf8');
+        var u4b = __uiAll();
         var m4b = fs7.readFileSync(pth7.join(__dirname, 'js', 'main.js'), 'utf8');
         var hasSteps = /ui\.tutorialSteps = function/.test(u4b);
         var dots = /_tutIdx/.test(u4b) && /border-radius:50%/.test(u4b);
@@ -45632,7 +45852,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
    * 账本一屏 12+ 节。行业参照是前 30 分钟 ≤3 个可见目标。
    * 钉五件事：
    *   ① 阶段派生正确（prologue / early / mid / late），不读存档新字段
-   *   ② early 期顶栏三个页签带 tab-locked（节点仍在 DOM）
+   *   ② early 期顶栏三个页签带 tab-locked（节点仍在 DOM 且**灰显可见**，v156.33 起不再 display:none）
    *   ③ early 期账本：放行 5 节 · 其余折成灰行（不消失）
    *   ④ 阶段推进后自动解锁（3 胜 → mid；5 城 → late）
    *   ⑤ 只收界面：setView 不拦，老档/脚本照常可用
@@ -45644,7 +45864,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     try {
       var fs9 = require('fs'), pth9 = require('path');
       var h9 = fs9.readFileSync(pth9.join(__dirname, 'index.html'), 'utf8');
-      var u9 = fs9.readFileSync(pth9.join(__dirname, 'js', 'ui.js'), 'utf8');
+      var u9 = __uiAll();
 
       G.newGame({ name: 'phase573', cityName: '灰岗', mapSeed: 573001 });
       var st = GAME.state;
@@ -45667,12 +45887,20 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         return p0 === 'early' && p1 === 'mid' && p2 === 'late';
       })(), 'early → mid → late');
 
-      check('§573② early 顶栏：station/shop/collection 标 tab-locked，节点仍在 DOM', (function () {
+      check('§573② early 顶栏：station/shop/collection 标 tab-locked · 节点在 DOM 且**看得见**', (function () {
         /* ① 静态：三个页签在 index.html 里带 tab-locked 初始类（首帧不闪） */
         var staticOk = /class="tab tab-more tab-locked" data-view="station"/.test(h9)
           && /class="tab tab-more tab-locked" data-view="shop"/.test(h9)
-          && /class="tab tab-more tab-locked" data-view="collection"/.test(h9)
-          && /\.topnav \.tab-locked \{ display: none; \}/.test(h9);
+          && /class="tab tab-more tab-locked" data-view="collection"/.test(h9);
+        /* v156.33（老板「顶上还是把游商啥的搞没了」）：锁定态从"藏"改成"灰显"。
+           判据正反两问：① 真的做了灰显（opacity + grayscale）；
+                        ② 不许再用 display:none 把自己藏掉（回退即红）。 */
+        var m9 = /\.topnav \.tab-locked \{([\s\S]*?)\}/.exec(h9);
+        var css9 = m9 ? m9[1] : '';
+        staticOk = staticOk
+          && /opacity\s*:\s*\.?\d/.test(css9)
+          && /grayscale\s*\(/.test(css9)
+          && !/display\s*:\s*none/.test(css9);
         /* ② 动态：syncPhase 对 early 期的三个页签加类、对其它页签不加 */
         G.ui._phaseShown = null;
         /* ⚠️ classList 的方法必须闭包住自己的状态：`toggle` 被拆开调用时
@@ -46234,7 +46462,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
 
     check('§578⑥ 胜负只有一份：结算大字取账本（actRes）', (function () {
       var fs5 = require('fs'), pth5 = require('path');
-      var src = fs5.readFileSync(pth5.join(__dirname, 'js', 'ui.js'), 'utf8');
+      var src = __uiAll();
       return /var win = act0p \? !act0p\.bad/.test(src) && /var act0p = d\.actRes/.test(src);
     })());
 
@@ -46288,7 +46516,8 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
     var key = ['派将挑衅', '陨石带', '南北极', '连续弹窗', '无支点', '流水线', '放置'];
     check('§579② 档案含本轮关键词', key.every(function (k) { return arc.indexOf(k) >= 0; }));
     var mods = (fs9.readdirSync(p9.join(__dirname, 'js')) || []).filter(function (f) {
-      return /\.js$/.test(f) && !/^bundle-/.test(f);
+      /* v156.27：ui-all.js 是构建产物（19 个 ui 文件的审计镜像），不是模块，不计入 */
+      return /\.js$/.test(f) && !/^bundle-/.test(f) && f !== 'ui-all.js';
     }).length;
     check('§579③ 项目地图模块数与磁盘一致（' + mods + '）',
       map.indexOf('js ' + mods + ' 模块') >= 0 && map.indexOf('（' + mods + ' 模块）') >= 0,
@@ -46307,7 +46536,7 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
    * ============================================================ */
   (function () {
     var fs580 = require('fs'), p580 = require('path');
-    var rd = function (f) { return fs580.readFileSync(p580.join(__dirname, 'js', f), 'utf8'); };
+    var rd = function (f) { return ((f === 'ui.js') ? __uiAll() : fs580.readFileSync(p580.join(__dirname, 'js', f), 'utf8')); };
     var md = rd('map3d.js'), mj = rd('main.js'), uj = rd('ui.js');
 
     check('§580① 地图点击不再有中间层（pickAt 不调 openMapBar / 无 barTargetOf）',
@@ -46491,13 +46720,13 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       U.colorCssOf(null) === 'var(--slab-1)' && U.colorCssOf([1]) === 'var(--slab-1)');
     /* 按钮与动作：图例入口必须真的有 case（否则点了没反应） */
     var mj583 = require('fs').readFileSync(require('path').join(__dirname, 'js', 'main.js'), 'utf8');
-    /* 入口在**顶栏「更多」菜单**，不在地图上 —— 老板 v37 定过「地图不再输出标题/图例/提示」，
+    /* 入口在**顶栏**（折叠退役后常显，原在「更多」菜单），不在地图上 —— 老板 v37 定过「地图不再输出标题/图例/提示」，
        smoke 那条 `!/map-legend/.test(ui.js)` 钉的就是这个，不许把图例又贴回地图（v156.17 第一版就撞上了）。 */
     var hj583 = require('fs').readFileSync(require('path').join(__dirname, 'index.html'), 'utf8');
-    check('§583⑤ 「🗺 图例」入口在「更多」菜单里 + main.js 有 case（且不在地图上）',
+    check('§583⑤ 「🗺 图例」入口在顶栏（不再折叠进「更多」）+ main.js 有 case（且不在地图上）',
       /data-action="terr-legend"/.test(hj583)
       && /case 'terr-legend':/.test(mj583)
-      && !/map-legend/.test(require('fs').readFileSync(require('path').join(__dirname, 'js', 'ui.js'), 'utf8')));
+      && !/map-legend/.test(__uiAll()));
   })();
 
   /* ============================================================
@@ -46542,6 +46771,547 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       /buildMarkers\(\); buildTowns\(\);/.test(md));
   })();
 
-console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败');
+  /* ============================================================
+   * §585 v2026-11-01（老板）：球面 3D 沙盘「东在右、北在上」
+   * ------------------------------------------------------------
+   * 老板原话：「人物走动的上下方向正确，左右反了」。
+   * 根因：轨道相机看球心、北极朝上时，东（经度+）必然投影到屏幕左侧
+   *       —— 这是球面 3D 渲染的固有投影，不是某个坐标写反。
+   * 修复：经度方向做一次镜像（只翻 z，北不翻）。翻后东落到 -Z，
+   *       在「北极朝上」相机下投影到屏幕右，且北仍严格朝上。
+   * 三处同源：icoSpheres 顶点最源头翻 z（派生全链路）/
+   *          SP.dirOfLonLat、GAME.map.dirOf 两公式同步翻 z。
+   * 断言：① 顶点镜像在位（icoSpheres 末尾翻 z）；
+   *       ② 两公式都翻 z；
+   *       ③ 运行期 dirOf(90,0)→z<0（东→-Z）、dirOf(0,90)→y>0（北仍朝上）；
+   *       ④ 端到端：真实 cell 几何与镜像自洽（东格 z<0、西格 z>0、北极 y>0）。
+   * ============================================================ */
+  console.log('\n===== 585. v2026-11-01 球面经度镜像：东在右、北在上 =====');
+  (function () {
+    var fs585 = require('fs'), p585 = require('path');
+    var sphere = fs585.readFileSync(p585.join(__dirname, 'js', 'sphere.js'), 'utf8');
+    var map = fs585.readFileSync(p585.join(__dirname, 'js', 'map.js'), 'utf8');
+
+    /* ① icoSpheres 末尾：return { V: V, F: F } 之前有顶点 z 镜像（派生全链路自洽） */
+    check('§585① 经度镜像之根：icoSpheres 顶点在 return 前翻 z',
+      /for \(var _vi[\s\S]{0,120}?V\[_vi\] = \[V\[_vi\]\[0\], V\[_vi\]\[1\], -V\[_vi\]\[2\]\]/.test(sphere)
+      && /return \{ V: V, F: F \};/.test(sphere),
+      'icoSpheres 顶点 z 镜像');
+
+    /* ② 两公式都翻 z（dirOfLonLat / GAME.map.dirOf 同源一致） */
+    check('§585② 方向公式同步翻 z（SP.dirOfLonLat 与 GAME.map.dirOf 都返回 -cl*sin(b)）',
+      /SP\.dirOfLonLat = function \(lon, lat\) \{[\s\S]{0,1500}?return \[cl \* Math\.cos\(b\), Math\.sin\(a\), -cl \* Math\.sin\(b\)\];/.test(sphere)
+      && /GAME\.map\.dirOf = function \(lon, lat\) \{[\s\S]{0,1500}?return \[cl \* Math\.cos\(b\), Math\.sin\(a\), -cl \* Math\.sin\(b\)\];/.test(map),
+      'dirOfLonLat + dirOf 两处公式');
+
+    /* ③ 运行期行为：东（经度+）落到 -Z（东在右），北（纬度+）仍 +Y（北在上） */
+    var dE = GAME.map.dirOf(90, 0);   /* 赤道东经 90° */
+    var dN = GAME.map.dirOf(0, 90);   /* 北极 */
+    var d0 = GAME.map.dirOf(0, 0);    /* 本初子午线赤道 */
+    check('§585③ 运行期：东经→-Z（东在右）、北→+Y（北在上）、本初子午线→+X',
+      dE[2] < 0 && dN[1] > 0 && Math.abs(d0[2]) < 1e-9 && d0[0] > 0,
+      'dirOf(90,0)=[' + dE[0].toFixed(3) + ',' + dE[1].toFixed(3) + ',' + dE[2].toFixed(3)
+      + '] dirOf(0,90)=[' + dN[0].toFixed(3) + ',' + dN[1].toFixed(3) + ',' + dN[2].toFixed(3) + ']');
+
+    /* ④ 端到端：真实 cell 几何与镜像自洽（newGame 后 G.sphere.cells 已建） */
+    var cells = (G.sphere && G.sphere.cells) ? G.sphere.cells : null;
+    check('§585④ 端到端：东格 z<0 / 西格 z>0 / 北极 y>0（顶点派生全链路自洽）', (function () {
+      if (!cells || !cells.length) return false;
+      function nearest(lonT, latT) {
+        var best = -1, bd = 1e9;
+        for (var k = 0; k < cells.length; k++) {
+          var c = cells[k]; if (!c || !c.dir || c.lon == null) continue;
+          var dl = Math.abs(((c.lon - lonT + 540) % 360) - 180);
+          var d = dl * dl + (c.lat - latT) * (c.lat - latT);
+          if (d < bd) { bd = d; best = k; }
+        }
+        return best;
+      }
+      var e = cells[nearest(90, 0)], w = cells[nearest(270, 0)], n = cells[nearest(0, 90)];
+      return !!e && !!w && !!n && e.dir[2] < 0 && w.dir[2] > 0 && n.dir[1] > 0;
+    })(), 'cells=' + (cells ? cells.length : 'null'));
+  })();
+
+  /* ===================== §586 动手场景 3D 骨骼资产加载器 ===================== */
+  (function () {
+    check('§586 三包含骨骼加载器 GAME.gltf.parseAnimated / Actor',
+      typeof G.gltf.parseAnimated === 'function' && typeof G.gltf.Actor === 'function');
+    var THREE = global.THREE || (function () { try { return require('./vendor/three.min.js'); } catch (e) { return null; } })();
+    if (!THREE) { check('§586 THREE 可用（细节断言跳过）', false, 'three 未加载'); return; }
+    var fs = require('fs'), path = require('path');
+    function loadActor(file, opts) {
+      var buf = fs.readFileSync(path.join(__dirname, file));
+      var ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+      return G.gltf.parseAnimated(ab, THREE, opts || {});
+    }
+    function boneDeltas(root, mixer, t) {
+      mixer.update(t); root.updateMatrixWorld(true);
+      var arr = [], wp = new THREE.Vector3();
+      root.traverse(function (o) { if (o.isBone) { o.getWorldPosition(wp); arr.push(wp.clone()); } });
+      return arr;
+    }
+    var r = loadActor('assets/actors/RobotExpressive.glb', { normalize: false });
+    var bones = 0; r.root.traverse(function (o) { if (o.isBone) bones++; });
+    check('§586 RobotExpressive 解析出骨骼(>0)', bones > 0, 'bones=' + bones);
+    check('§586 RobotExpressive 含 14 段动画', r.clips.length === 14, 'clips=' + r.clips.length);
+    check('§586 RobotExpressive 含 Walking/Punch 片段', !!r.byName['Walking'] && !!r.byName['Punch']);
+    var rm = new THREE.AnimationMixer(r.root); rm.clipAction(r.byName['Walking']).play();
+    var ra0 = boneDeltas(r.root, rm, 0), ra1 = boneDeltas(r.root, rm, 0.4), rd = 0;
+    for (var bi = 0; bi < ra0.length; bi++) { var dA = ra0[bi].distanceTo(ra1[bi]); if (dA > rd) rd = dA; }
+    check('§586 Robot Walking 驱动骨骼位移(>1e-3·非平凡)', rd > 1e-3, 'maxDelta=' + rd.toFixed(4));
+
+    var s = loadActor('assets/actors/Soldier.glb', { normalize: false });
+    var sb = 0; s.root.traverse(function (o) { if (o.isBone) sb++; });
+    check('§586 Soldier 解析出骨骼(>0)', sb > 0, 'bones=' + sb);
+    check('§586 Soldier 含 4 段动画(Idle/Run/Walk/TPose)',
+      s.clips.length === 4 && !!s.byName['Idle'] && !!s.byName['Walk'] && !!s.byName['Run'] && !!s.byName['TPose']);
+    var sm = new THREE.AnimationMixer(s.root); sm.clipAction(s.byName['Walk']).play();
+    var sa0 = boneDeltas(s.root, sm, 0), sa1 = boneDeltas(s.root, sm, 0.4), sd = 0;
+    for (var bj = 0; bj < sa0.length; bj++) { var dB = sa0[bj].distanceTo(sa1[bj]); if (dB > sd) sd = dB; }
+    check('§586 Soldier Walk 驱动骨骼位移(>1e-3·非平凡)', sd > 1e-3, 'maxDelta=' + sd.toFixed(4));
+
+    /* 角色控制器 + 技能→动作映射（集中管理便于调参） */
+    check('§586 CLIP_MAPS 含两角色映射', !!(G.gltf.CLIP_MAPS && G.gltf.CLIP_MAPS.RobotExpressive && G.gltf.CLIP_MAPS.Soldier));
+    function mkActor(name, res) {
+      var a = new G.gltf.Actor({ name: name });
+      a.root = res.root; a.clips = res.clips; a.byName = res.byName; a.skeletons = res.skeletons;
+      a._THREE = THREE; a.mixer = new THREE.AnimationMixer(res.root); return a;
+    }
+    var rc = mkActor('RobotExpressive', r);
+    check('§586 Actor.play(Idle) 且当前=Idle', rc.play('Idle') && rc.currentName === 'Idle');
+    rc.skill('attack');
+    check('§586 Actor.skill(attack)→Punch 并播放', rc.currentName === 'Punch');
+    rc.skill('walk');
+    check('§586 Actor.skill(walk)→Walking 并播放', rc.currentName === 'Walking');
+    check('§586 Actor.skill(不存在) 返回 false', rc.skill('nope') === false);
+  })();
+
+  /* ===================== §587 球面坐标系（摆位不变量） =====================
+   * 背景：v156.19 老板「地图上城堡方向错乱，底部垂直于与球心的连线」。
+   *   根因 = 对齐法线之后又用 `q × R(**n**, θ)` 绕**世界法线**右乘转身 →
+   *   先把物体上轴掰离法线再拉平，每座城随机歪 0~90°（实测 18.6° / 142°）。
+   * 这一节直接验**纯数学出口**（`GAME.map3d.surfaceQuad/surfaceFrame`）——
+   *   它们不依赖 THREE，所以在没有 three 的门禁环境里也真跑得起来。
+   * ===================================================================== */
+  (function () {
+    var M = G.map3d;
+    check('§587 球面姿态唯一出口 surfaceQuad/surfaceFrame 存在（无 three 也要有）',
+      !!(M && typeof M.surfaceQuad === 'function' && typeof M.surfaceFrame === 'function'),
+      M ? ('enabled=' + M.enabled + ' why=' + M.why) : 'no map3d');
+    if (!M || typeof M.surfaceQuad !== 'function') return;
+
+    /* 用四元数把 (0,1,0) 转出去：v' = v + w·t + u×t, t = 2·(u×v) */
+    function rotUp(q) {
+      var x = q[0], y = q[1], z = q[2], w = q[3];
+      return [-2 * w * z + 2 * x * y, 1 - 2 * x * x - 2 * z * z, 2 * w * x + 2 * y * z];
+    }
+    function dot(a, b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
+    function norm(a) { var L = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0] / L, a[1] / L, a[2] / L]; }
+    function qmul(a, b) {
+      return [
+        a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1],
+        a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0],
+        a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3],
+        a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2]
+      ];
+    }
+    function axisAngle(ax, ang) {
+      var h = ang / 2, s = Math.sin(h), n = norm(ax);
+      return [n[0] * s, n[1] * s, n[2] * s, Math.cos(h)];
+    }
+
+    var dirs = [
+      [0, 1, 0],        /* 北极：退化位 */
+      [1, 0, 0],        /* 赤道 0° 经线 */
+      [0, 0, -1],       /* 东（镜像后落 −Z） */
+      [-0.415, 0.291, 0.862],
+      [-0.964, 0.198, 0.175]
+    ];
+    var worst = 1, worstYaw = 1;
+    dirs.forEach(function (d) {
+      var n = norm(d);
+      var q0 = M.surfaceQuad(d, 0);
+      var dd = dot(rotUp(q0), n);
+      if (dd < worst) worst = dd;
+      [45, 137, 288, -60].forEach(function (yaw) {
+        var v = dot(rotUp(M.surfaceQuad(d, yaw)), n);
+        if (v < worstYaw) worstYaw = v;
+      });
+    });
+    check('§587 各方向 +Y 严格对齐径向（基座 ⟂ 半径）', worst > 1 - 1e-9, 'minDot=' + worst.toFixed(9));
+    check('§587 绕自身竖轴转身 −60°~288° 不破坏立姿（本次回归点）', worstYaw > 1 - 1e-9, 'minDot=' + worstYaw.toFixed(9));
+
+    /* 反例守卫：旧写法（绕世界法线右乘）必须被判死 —— 否则这条断言只是装饰 */
+    var d0 = [-0.415, 0.291, 0.862], n0 = norm(d0);
+    var qBad = qmul(M.surfaceQuad(d0, 0), axisAngle(n0, 0.8));
+    var badDot = dot(rotUp(qBad), n0);
+    check('§587 反例守卫：旧写法(绕世界法线转身)确实歪掉，会被上面断言抓住',
+      badDot < 0.99, '旧写法 dot=' + badDot.toFixed(4));
+
+    /* 切平面正交基：归一 / 正交 / 右手 / "东 = −Z" 的世界口径 */
+    var fr = M.surfaceFrame([1, 0, 0]);              /* 赤道 0° 经线：up=+X → 东应为 −Z、南应为 −Y */
+    function len(a) { return Math.hypot(a[0], a[1], a[2]); }
+    function cross(a, b) { return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]; }
+    function near(a, b) { return Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]) < 1e-9; }
+    var unit = Math.abs(len(fr.up) - 1) < 1e-9 && Math.abs(len(fr.east) - 1) < 1e-9 && Math.abs(len(fr.south) - 1) < 1e-9;
+    var orth = Math.abs(dot(fr.up, fr.east)) < 1e-9 && Math.abs(dot(fr.up, fr.south)) < 1e-9 && Math.abs(dot(fr.east, fr.south)) < 1e-9;
+    check('§587 切平面基 归一/正交/右手',
+      unit && orth && near(cross(fr.east, fr.up), fr.south),
+      'unit=' + unit + ' orth=' + orth);
+    check('§587 世界口径「东 = −Z」成立', near(fr.east, [0, 0, -1]),
+      'east=' + fr.east.map(function (v) { return v.toFixed(3); }).join(','));
+
+    /* 极点不退化：确实有物体会摆在极点附近时不能算出 NaN */
+    var fp = M.surfaceFrame([0, 1, 0]);
+    var poleOk = isFinite(fp.east[0]) && isFinite(fp.south[2]) && Math.abs(dot(fp.up, fp.east)) < 1e-9
+      && near(cross(fp.east, fp.up), fp.south);
+    check('§587 极点切平面不退化（无 NaN）', poleOk,
+      'east=' + fp.east.map(function (v) { return v.toFixed(3); }).join(','));
+  })();
+
+  /* ===================== §588 斗将 3D 舞台（文字场景化） =====================
+   * 老板「目前还是偏文字游戏了，把文字场景化，3D 对战」。
+   * Node 里没有 WebGL，所以这里只锁**结构与降级**：
+   *   模块在、坐标口径在、没有容器时不炸（返回 false 让面板照旧可用）。
+   * 真正的画面核对走浏览器探针：
+   *   node .workbuddy/tools/show/probe_duel3d2.js duel3d
+   * ===================================================================== */
+  (function () {
+    var D3 = G.duel3d;
+    check('§588 3D 斗将舞台模块已加载（GAME.duel3d.mount/state/close）',
+      !!(D3 && typeof D3.mount === 'function' && typeof D3.state === 'function' && typeof D3.close === 'function'));
+    if (!D3) return;
+    /* 没有容器 → 必须安静返回 false（弹窗没开、被裁、WebGL 不可用都不能炸面板） */
+    var r1 = null;
+    try { r1 = D3.mount({ holderId: '不存在的容器' }); } catch (e) { r1 = 'throw:' + e.message; }
+    check('§588 找不到容器时 mount 返回 false（不抛异常）', r1 === false, 'got=' + r1);
+    var st = null;
+    try { st = D3.state(); } catch (e) { st = 'throw'; }
+    check('§588 未初始化时 state() 安全（null 或对象，不抛）', st === null || (st && typeof st === 'object'));
+    /* 角色标定表：两个资产都必须有"缩到 1 单位"的系数，否则场景里会出现 4 米巨人 */
+    var FIT = G.gltf && G.gltf.FIT;
+    check('§588 角色尺寸标定表 FIT 覆盖 Soldier / RobotExpressive',
+      !!(FIT && FIT.Soldier && FIT.Soldier.scale > 0 && FIT.RobotExpressive && FIT.RobotExpressive.scale > 0),
+      FIT ? JSON.stringify(Object.keys(FIT)) : 'null');
+  })();
+
+  /* ===================== §589 海面波形必须「非周期」 =====================
+   * 老板：「海波还是有点太规整太明显了」（v156.22）。
+   * 病根：5 条固定方向的正弦叠加 —— 相位线性 → 等相位线是平行直线，
+   *   怎么加域扭曲都只是把直条纹弯成弯条纹（扭曲本身也是正弦）。
+   * 改法：值噪声 fbm + 噪声域扭曲；细浪从顶点位移搬到**像素级法线扰动**
+   *   （水面网格每格只有 7 个顶点，比一格细的浪在几何上根本表达不出来）。
+   * 这条守卫盯的就是「别退回去」：波形里不许再出现固定方向的 sin(dot(…))。
+   * ===================================================================== */
+  (function () {
+    var fs589 = require('fs'), p589 = require('path');
+    var md = fs589.readFileSync(p589.join(__dirname, 'js', 'map3d.js'), 'utf8');
+    check('§589① 海面波形用哈希噪声（hash13 / vn / fbm2 都在）',
+      md.indexOf('float hash13(vec3 p)') >= 0 && md.indexOf('float vn(vec3 x)') >= 0
+      && md.indexOf('float fbm2(vec3 p)') >= 0);
+    check('§589② 波形里不再有「固定方向正弦叠加」（sin(dot(W,…)) 已退役）',
+      md.indexOf('sin(dot(W') < 0,
+      '发现 sin(dot(W…) —— 那是平行条纹的老写法');
+    check('§589③ 细浪在片元级（rip + 法线扰动），不是只靠顶点位移',
+      /float rip\(vec3 p\)/.test(md) && /N = normalize\(N - \(hT - h0\)/.test(md));
+    check('§589④ 振幅随距离衰减（uFar 有 uniform 且由 render 每帧写）',
+      /uFar: \{ value: 1 \}/.test(md) && /uniforms\.uFar\.value\s*=/.test(md));
+  })();
+
+  /* ===================== §590 省/市/区首府 → 下辖地视野 =====================
+   * 老板：「占领省市区首府，可以看到该省市区下辖地的视野」（v156.24）。
+   * 口径：地图上真正的**省/市/区**（`map3d._settle` 的 provOf/marketOf/districtOf，
+   *   UI 检索栏那三个下拉就是它），不是 DATA.NPC_CITIES 的 13 州出生区。
+   *   行政中心城 `M.admCities` 带 admLevel，且 map3d 本来就允许出征它
+   *   （`kind==='adm' → ui.openAttackModal`）。
+   *
+   * ⚠️ 这一节在 node 里只能验到**逻辑层**：`_settle` 要 three + genSettlements 才有，
+   *   门禁环境没有。所以：
+   *     ① 出口在册；② `adminCisOf` 纯函数过滤正确（构造假场验，含越界/串级/反平凡解）；
+   *     ③ 无数据时 `revealAdmin` 安全返回 0；④ 挂钩与存档字段在册（源码级）。
+   *   真实数据端到端（占省府 → 4478 格全明、邻省 0）由浏览器探针
+   *   `.workbuddy/tools/show/probe_admin_reveal.js` 覆盖，结论记在交付文档里。
+   * ===================================================================== */
+  (function () {
+    var G2 = GAME;
+    check('§590① 出口在册（adminFields / adminCisOf / adminCiList / adminOf / fog.revealAdmin）',
+      !!(G2.map && typeof G2.map.adminFields === 'function'
+        && typeof G2.map.adminCisOf === 'function'
+        && typeof G2.map.adminCiList === 'function'
+        && typeof G2.map.adminOf === 'function')
+      && !!(G2.fog && typeof G2.fog.revealAdmin === 'function'));
+
+    if (!G2.map || typeof G2.map.adminCisOf !== 'function') return;
+
+    /* ---- ② 纯函数过滤：构一份 12 格的假行政场 ----
+       prov:    [0,0,0,0, 1,1,1,1, -1,-1,-1,-1]
+       market:  [0,0,1,1, 2,2,2,3, -1,-1,-1,-1]
+       district:[0,1,2,3, 4,5,6,7, -1,-1,-1,-1]
+       —— 特意让"两省恰好各有 4 格、市场跨省错开"，这样串级/串省都会被抓到。 */
+    var fk = {
+      prov: [0, 0, 0, 0, 1, 1, 1, 1, -1, -1, -1, -1],
+      market: [0, 0, 1, 1, 2, 2, 2, 3, -1, -1, -1, -1],
+      district: [0, 1, 2, 3, 4, 5, 6, 7, -1, -1, -1, -1]
+    };
+    var eq = function (a, b) { return a && b && a.length === b.length && a.every(function (v, i) { return v === b[i]; }); };
+
+    var p0 = G2.map.adminCisOf(fk, 'prov', 0);
+    var p1 = G2.map.adminCisOf(fk, 'prov', 1);
+    check('§590② 省级过滤正确（各自 4 格、互不串省）',
+      eq(p0, [0, 1, 2, 3]) && eq(p1, [4, 5, 6, 7]),
+      'prov0=' + JSON.stringify(p0) + ' prov1=' + JSON.stringify(p1));
+
+    var m2 = G2.map.adminCisOf(fk, 'market', 2);
+    check('§590② 市级过滤正确（market=2 → 4,5,6，与省界无关但格位精确）',
+      eq(m2, [4, 5, 6]), 'market2=' + JSON.stringify(m2));
+
+    var d3 = G2.map.adminCisOf(fk, 'district', 3);
+    check('§590② 区级过滤正确（district=3 → 只有 3）',
+      eq(d3, [3]), 'district3=' + JSON.stringify(d3));
+
+    /* 反平凡解：不同 index 必须给出不同答案（"永远返回全表"会被这条抓住） */
+    var distinct = !eq(G2.map.adminCisOf(fk, 'prov', 0), G2.map.adminCisOf(fk, 'prov', 1))
+      && (G2.map.adminCisOf(fk, 'prov', 0) || []).length < 12;
+    check('§590② 反平凡解：不同 index 结果不同，且都短于全表', distinct);
+
+    /* 无归属格（-1）不得出现在任何清单里 */
+    var anyNeg = false;
+    ['prov', 'market', 'district'].forEach(function (lv) {
+      for (var ix = 0; ix < 4; ix++) {
+        (G2.map.adminCisOf(fk, lv, ix) || []).forEach(function (ci) { if (ci >= 8) anyNeg = true; });
+      }
+    });
+    check('§590② 无归属格(-1)不进任何清单（不会被当成 index=-1 的行政区）', !anyNeg);
+
+    /* 边界：越界 index → 空数组（"这一级存在、只是没有格"）；乱 level / 负 index / 空 fields → null */
+    var oob = G2.map.adminCisOf(fk, 'prov', 99);
+    check('§590② 越界 index 返回**空数组**（区别于 null：级别合法但没有格）',
+      Array.isArray(oob) && oob.length === 0, 'got=' + JSON.stringify(oob));
+    check('§590② 乱 level → null（不会把省当成市返回）',
+      G2.map.adminCisOf(fk, 'city', 0) === null);
+    check('§590② 负 index → null', G2.map.adminCisOf(fk, 'prov', -1) === null);
+    check('§590② 空 fields → null（无 three 环境的正常降级）',
+      G2.map.adminCisOf(null, 'prov', 0) === null);
+
+    /* ---- ③ 无行政数据时：revealAdmin 安全返回 0，不抛、不点亮全图 ---- */
+    var seen0 = G2.fog.stats().seen;
+    var r0 = -999;
+    try { r0 = G2.fog.revealAdmin('prov', 0); } catch (e0) { r0 = 'throw'; }
+    var noData = (G2.map.adminFields() === null);
+    check('§590③ 无行政数据（node 环境）时安全返回 0，不抛异常',
+      r0 === 0 || (!noData && typeof r0 === 'number'),
+      'got=' + r0 + ' noData=' + noData);
+    check('§590③ 更关键：**没有把整张图点亮**（防"降级就全亮"）',
+      G2.fog.stats().seen - seen0 < 200,
+      'Δseen=' + (G2.fog.stats().seen - seen0));
+
+    /* ---- ④ 挂钩与存档字段在册（源码级） ---- */
+    try {
+      var fs9 = require('fs'), p9 = require('path');
+      var bt = fs9.readFileSync(p9.join(__dirname, 'js', 'battle.js'), 'utf8');
+      var fg = fs9.readFileSync(p9.join(__dirname, 'js', 'fog.js'), 'utf8');
+      var iOn = bt.indexOf('GAME.onConquer = function');
+      var seg = iOn >= 0 ? bt.slice(iOn, iOn + 12000) : '';
+      check('§590④ 占领挂钩在册：onConquer 调 revealAdmin，且门槛是 admLevel（不是 type）',
+        seg.indexOf('revealAdmin') >= 0
+          && /npcCity\.admLevel/.test(seg)
+          && seg.indexOf("npcCity.type === 'zhou'") < 0,
+        seg ? '已检查 onConquer 段' : '找不到 GAME.onConquer');
+      check('§590④ 新城保留 admLevel/admIndex（否则读档后视野退回占领前）',
+        /newCity\.admLevel\s*=\s*npcCity\.admLevel/.test(seg),
+        seg ? '已检查' : '');
+      check('§590④ revealOwned 里有 admLevel 补点亮（decay/读档后能回来）',
+        /F\.revealOwned = function[\s\S]{0,2600}revealAdmin/.test(fg));
+      /* ⑤ 视觉归属：打下来的行政中心不能还画成紫色敌方城（同一格会叠两座模型）。
+         实测（probe_adm_marker.js）：修之前 `_settles.adm` 仍留着它、
+         修之后 admInSettles 1→0 / ownInSettles 0→1。 */
+      var md = fs9.readFileSync(p9.join(__dirname, 'js', 'map3d.js'), 'utf8');
+      check('§590⑤ 已占的行政中心不再进紫色敌方城（避免与己方城叠两座模型）',
+        /_ownAdmKey/.test(md)
+          && /if \(_ownAdmKey\[c\.admLevel \+ '\|' \+ c\.admIndex\]\) return;/.test(md),
+        'map3d.js 已检查（_ownAdmKey 守卫在册）');
+    } catch (e9) {
+      check('§590④ 挂钩在册', false, String(e9 && (e9.message || e9)));
+    }
+  })();
+
+  /* ===================== §591 项目索引（唯一清单） =====================
+   * 老板 2026-11-01：「是否可以建立一个资产链，或者逻辑对应表，或者项目树，
+   *   或者其他还有助于指哪打哪的方式」
+   * ---------------------------------------------------------------------
+   * 索引（js/modules.json + .workbuddy/index/project-index.json）由
+   *   node .workbuddy/tools/map/gen_index.js 生成，who.js 消费。
+   * 这里守两件事：
+   *   ① **不过期**：索引的源码指纹必须与当前构建一致，否则 who.js 在骗人；
+   *   ② **不被抄回去**：构建/审计脚本必须从它读，不能再自带一份清单 ——
+   *      历史上同一个清单有 8 份副本，加一个模块改 8 处，漏一处就假红/假绿。
+   * ===================================================================== */
+  (function () {
+    var fsx = require('fs'), pth = require('path');
+    var MF = pth.join(__dirname, 'js', 'modules.json');
+    var okExist = fsx.existsSync(MF);
+    var MD = okExist ? JSON.parse(fsx.readFileSync(MF, 'utf8')) : null;
+
+    check('§591① 权威清单 js/modules.json 存在且带 layout', !!(
+      MD && MD.layout && MD.layout.order && MD.layout.order.length
+    ), okExist ? ('模块 ' + (MD.modules || []).length) : '文件不存在，跑 node .workbuddy/tools/map/gen_index.js');
+    if (!MD || !MD.layout || !MD.layout.order) return;
+
+    /* 磁盘上的真实模块（排除构建产物 bundle-* 与审计镜像 ui-all.js） */
+    var disk = fsx.readdirSync(pth.join(__dirname, 'js')).filter(function (f) {
+      return /\.js$/.test(f) && !/^bundle-/.test(f) && f !== 'ui-all.js';
+    }).map(function (f) { return f.replace(/\.js$/, ''); });
+
+    /* ② 双向相等：漏一个 → 不进 bundle（假绿）；多一个 → 构建就炸（假红）。
+       同时用"下限"防平凡解：模块数不可能少于 50（当前 86），
+       否则一个空清单 + 空磁盘也能"完美相等"。 */
+    var missing = disk.filter(function (n) { return MD.layout.order.indexOf(n) < 0; });
+    var extra = MD.layout.order.filter(function (n) { return disk.indexOf(n) < 0; });
+    check('§591② layout.order 与磁盘双向相等（且非平凡：≥50 模块）',
+      missing.length === 0 && extra.length === 0 && MD.layout.order.length >= 50,
+      'order=' + MD.layout.order.length + ' disk=' + disk.length
+      + (missing.length ? ' 漏=' + missing.join(',') : '')
+      + (extra.length ? ' 多=' + extra.join(',') : ''));
+
+    /* ③ 三个分包不重不漏：和必须等于总模块数（漏一个 → 它在任何包里都不出现；
+          重一个 → 同一模块被打进两个包，运行时后加载的会覆盖前者） */
+    var bags = MD.bundles || {};
+    var union = (bags.core || []).concat(bags.war || [], bags.ui || []);
+    var dup = union.filter(function (v, i, a) { return a.indexOf(v) !== i; });
+    check('§591③ 分包不重不漏（core+war+ui = 全部模块）',
+      union.length === MD.layout.order.length && dup.length === 0,
+      'sum=' + union.length + ' / ' + MD.layout.order.length
+      + (dup.length ? ' 重复=' + dup.join(',') : ''));
+
+    /* ④ 不过期 —— 判据必须是"和**当前源码**比"，不是"和 bundle.hash 比"。
+         踩过的坑：第一版写 `MD.sourceHash === bundle.hash`，两个都是上一次的快照，
+         改了源码却既不重跑索引也不重新构建时，它们**依然相等**，断言照样绿。
+         比较两个陈旧值只能证明"它们一样旧" —— 平凡解。
+         现在现场把 86 个文件重算一遍（约 100ms），与索引里记的指纹对。 */
+    var crypto = require('crypto');
+    var hh = crypto.createHash('sha256');
+    MD.layout.order.forEach(function (n) {
+      var fp = pth.join(__dirname, 'js', n + '.js');
+      if (!fsx.existsSync(fp)) return;
+      hh.update(n, 'utf8');
+      hh.update('\0');
+      hh.update(fsx.readFileSync(fp).toString('utf8').replace(/\r\n/g, '\n'), 'utf8');
+    });
+    var nowHash = hh.digest('hex').slice(0, 16);
+    check('§591④ 索引未过期（sourceHash == 当前源码重算值）',
+      nowHash === MD.sourceHash,
+      'index=' + MD.sourceHash + ' now=' + nowHash
+      + (nowHash === MD.sourceHash ? '' : '　← 源码改过，跑 node .workbuddy/tools/map/gen_index.js'));
+
+    /* ⑤ 防止"清单再被抄回去"：构建脚本必须从 modules.json 读，不能再写死 ORDER；
+          audit 的模块列表同理。这条是"单一来源"真正落地的判据 ——
+          没有它，下次有人图省事复制一份数组，索引就退化成第 9 份清单。 */
+    var bb = '', au = '';
+    try { bb = fsx.readFileSync(pth.join(__dirname, '.workbuddy', 'tools', 'patch', 'build_bundle.py'), 'utf8'); } catch (e) { }
+    try { au = fsx.readFileSync(pth.join(__dirname, 'audit.js'), 'utf8'); } catch (e) { }
+    var bbReadsJson = bb.indexOf('_load_layout') >= 0 && bb.indexOf("'modules.json'") >= 0;
+    var bbNoHard = !/^ORDER = \[/m.test(bb);
+    var auReadsJson = au.indexOf("require('./js/modules.json')") >= 0;
+    check('§591⑤ 构建与审计都从 modules.json 读（不再自带清单）',
+      bbReadsJson && bbNoHard && auReadsJson,
+      'build读=' + bbReadsJson + ' build无硬编码=' + bbNoHard + ' audit读=' + auReadsJson);
+  })();
+
+  /* ===================== §592 城市/城外/建筑地块：文字不可选 =====================
+   * 老板 2026-11-02：「城市和城外统计，建筑界面的地块，文字应为不可选，
+   *   就是不能左键长按拖动然后会选中文字或组件」
+   * ---------------------------------------------------------------------
+   * 这几块整块都是"点了就是操作"的棋盘与读数区，浏览器默认会在按下拖动时
+   * 顺手选字，松手留一片蓝底高亮，下一次点击还要先清选区（表现为"点一下没反应"）。
+   *
+   * ⚠️ 但**不能全局关**：日志 / 战报 / 编号 / 坐标是要能选中复制的。
+   * 所以这里既验"该关的关了"，也验"不该关的没关"（反平凡解）。
+   * ===================================================================== */
+  (function () {
+    var fsx = require('fs'), pth = require('path');
+    var html = '';
+    try { html = fsx.readFileSync(pth.join(__dirname, 'index.html'), 'utf8'); } catch (e) { }
+    if (!html) { check('§592 读到 index.html', false, '读不到样式表'); return; }
+
+    /* 把 CSS 拆成 {选择器, 声明体} 规则块，再判"某选择器所在的块里有没有 user-select:none"。
+       直接对整篇做正则会被"规则 A 的选择器 + 规则 B 的声明"错配（跨块匹配）。 */
+    /* 先剥注释再切规则：本项目的 CSS 注释很长且带代码片段（含 {}），
+       直接按 {} 切会把"注释尾巴 + 下一条规则"拼成一个假选择器 —— §592⑤ 第一版就因此假红。 */
+    var css = html.replace(/\/\*[\s\S]*?\*\//g, '');
+    var rules = [];
+    var re = /([^{}]+)\{([^{}]*)\}/g, m;
+    while ((m = re.exec(css)) !== null) {
+      rules.push({ sel: m[1], body: m[2] });
+    }
+    function noSelect(sel) {
+      for (var i = 0; i < rules.length; i++) {
+        if (!/user-select\s*:\s*none/.test(rules[i].body)) continue;
+        if (rules[i].sel.indexOf(sel) >= 0) return true;
+      }
+      return false;
+    }
+
+    check('§592① 城内 + 城外棋盘（.city-pure）禁止选字', noSelect('.city-pure'),
+      '城内/城外共用同一容器，一条规则覆盖两块');
+    check('§592② 地块本体（.iso-tile）禁止选字', noSelect('.iso-tile'),
+      '格子里的文字/图标由 isoCell 生成');
+    check('§592③ 建筑面板操作区（.bldg-bottom / .bldg-foot / .bldg-acts）禁止选字',
+      noSelect('.bldg-bottom') || noSelect('.bldg-foot') || noSelect('.bldg-acts'),
+      '这三个类同属建筑弹窗，任一条覆盖即可');
+    check('§592④ 左侧三块统计（#city-attrs / #res-bar / #garrison-bar）禁止选字',
+      noSelect('#city-attrs') && noSelect('#res-bar') && noSelect('#garrison-bar'),
+      '这三块由 ui.renderSide 每秒重绘，选区还会跟着重绘闪一下');
+
+    /* 反平凡解：**不许**出现全局禁止选字（`*` 或 html/body 上的 user-select:none）。
+       一旦有人这么写，①②③④ 会全绿，但日志/战报/编号就再也复制不了了 ——
+       那才是真正的破坏，而且没人会立刻发现。 */
+    var globalBan = false, who = '';
+    for (var k = 0; k < rules.length; k++) {
+      if (!/user-select\s*:\s*none/.test(rules[k].body)) continue;
+      /* 选择器列表逐个**精确比对**（不用 contains）：`*` 这种字符
+         在 `.foo-*` 之类的选择器里也会出现，contains 会误判。 */
+      var list = rules[k].sel.split(',').map(function (x) { return x.trim(); });
+      for (var q = 0; q < list.length; q++) {
+        var one = list[q];
+        if (one === '*' || one === 'html' || one === 'body' || one === ':root') {
+          globalBan = true; who = one;
+        }
+      }
+    }
+    check('§592⑤ 反平凡解：没有全局禁选（日志/战报/编号必须仍能复制）', !globalBan,
+      globalBan ? ('发现全局规则：' + who) : '日志/战报/坐标仍可选中复制');
+  })();
+
+  /* ============================================================
+   * §593. v156.34 大气壳边缘：**确定性**淡出（老板「星球自转过程中半径闪烁」）
+   * ------------------------------------------------------------
+   * 病根：那层球壳的 alpha 完全由球面 fbm 决定 → 自转时噪声图案从轮廓线上
+   * 扫进扫出 → "哪一像素还算大气"每帧换答案 → 外圈可见半径逐帧跳
+   * （实测同一方向 std 31px；修后平均 10.9 → 3.1px，水平直径跳动 12px → 1px）。
+   *
+   * 钉三件事，缺一条就等于把病灶放回去：
+   *   ① 有**只跟视线夹角有关**的确定性边缘项（edge）—— 边界位置不随自转变
+   *   ② 噪声被赶出边缘区（cloudMask）—— 边缘那一段不参与噪声
+   *   ③ 反退化：旧的 `a *= smoothstep(...)` 直乘写法不许回来
+   * ============================================================ */
+  (function () {
+    var fsM = require('fs'), pM = require('path');
+    var src = fsM.readFileSync(pM.join(__dirname, 'js', 'map3d.js'), 'utf8');
+    var i0 = src.indexOf('function buildSkyClouds');
+    var seg = i0 < 0 ? '' : src.slice(i0, i0 + 4600);
+    check('§593① 大气壳边缘走确定性淡出（edge = smoothstep(视线夹角)）',
+      /float rim = clamp\(dot\(normalize\(vN\), normalize\(cameraPosition - vW\)\)/.test(seg)
+      && /float edge = smoothstep\(/.test(seg), 'fragment 里有 rim + edge');
+    check('§593② 噪声被赶出边缘区（cloudMask 只在中正面生效）',
+      /float cloudMask = smoothstep\(/.test(seg)
+      && /dens \* cloudMask/.test(seg), 'dens 与 cloudMask 相乘');
+    check('§593③ 反退化：不再把 smoothstep 直接乘在 fbm 的 alpha 上',
+      seg.length > 0 && !/a \*= smoothstep\(/.test(seg),
+      '旧写法 `a *= smoothstep(...)` 已不存在');
+  })();
+
+console.log('结果：' + PASS + ' 通过 / ' + FAIL + ' 失败'
+  + (WARN ? (' / ' + WARN + ' 待修（实现类·不阻断）') : '')
+  + (SKIP ? (' / ' + SKIP + ' 跳过（未执行判据）') : ''));
   process.exit(FAIL ? 1 : 0);
 })();

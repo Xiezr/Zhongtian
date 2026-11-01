@@ -16,7 +16,7 @@
 退出码：0 通过 / 1 门禁不通 / 2 环境错误
 """
 import io
-import os, re, subprocess, sys
+import json, os, re, subprocess, sys
 
 # v91.36：Windows 控制台默认 GBK，print 里的 ✅/✗ 等字符会 UnicodeEncodeError 让钩子**崩在最后一步**
 # （提交其实已落库，但退出码非 0 + 报错刷屏，看着像失败）。统一把 stdout/stderr 拉成 UTF-8。
@@ -28,6 +28,58 @@ except Exception:
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 # gate.py 在 .workbuddy/tools/git/ → 上溯 4 层得 E:\Deepseekdb
+
+# ============================================================
+# v156.26 · 已知失败基线（老板：「9 条历史红让门禁永远是红的」）
+# ------------------------------------------------------------
+# 判据从"全绿"改成"相对基线"：只拦**新增**失败，已知失败降级为 ⚠️ 提示。
+# 基线必须**由人显式更新**（--update-baseline），且按标题+次数精确比对 ——
+# 绝不让它变成"把新 bug 也塞进去"的屏蔽器。
+# ============================================================
+BASELINE = os.path.join(ROOT, '.workbuddy', 'gate-baseline.json')
+# v156.39：--strict 时置 True —— 忽略基线、忽略抖动放行（见 main()）
+STRICT = False
+
+
+def _script_key(script):
+    return os.path.basename(script)
+
+
+def load_baseline():
+    try:
+        with io.open(BASELINE, encoding='utf-8') as f:
+            return json.load(f)
+    except Exception:
+        return {'note': '已知失败基线', 'entries': {}}
+
+
+def save_baseline(obj):
+    obj['generated'] = __import__('time').strftime('%Y-%m-%dT%H:%M:%S%z')
+    os.makedirs(os.path.dirname(BASELINE), exist_ok=True)
+    with io.open(BASELINE, 'w', encoding='utf-8', newline='\n') as f:
+        json.dump(obj, f, ensure_ascii=False, indent=2)
+
+
+def parse_fail_titles(out):
+    """从测试输出里抽 ❌ 的标题（去掉行尾 `  [详情]` 与首尾空白）。
+
+    smoke 的失败行形如：
+        ❌ §590② 反平凡解：不同 index 结果不同，且都短于全表  [distinct=false]
+        ❌ ★ 出生州：十三区逐个验证「落点归属 == 所选区」
+    """
+    res = []
+    for line in out.split('\n'):
+        s = line.strip()
+        if not s.startswith('❌'):
+            continue
+        t = s[1:].strip()
+        m = re.search(r'\s{2,}\[', t)
+        if m:
+            t = t[:m.start()].rstrip()
+        if t:
+            res.append(t)
+    return res
+
 
 NODE_CANDIDATES = [
     r'C:\Users\18811\.workbuddy\binaries\node\versions\22.22.2-3\node.exe',
@@ -132,29 +184,6 @@ def _gate_timeout():
         return int(os.environ.get('GATE_TIMEOUT', '1800'))
     except Exception:
         return 1800
-
-
-def run_one(node, node_path, script, label):
-    """跑一个测试，返回 (ok, 摘要行, 详情)。必须连「是否中断」一起看 —— 项目铁律。
-
-    v156.15：超时从写死 600s 改成**可配**（`GATE_TIMEOUT` 环境变量，默认 1800s）。
-    来历：2026-10-31 在本机提交 v151–v156.15 那一批时，smoke 在门禁里被 600s 掐掉
-    （``smoke-test.js 超时 600 秒``），而同一份代码在门禁外手跑是 4282/0 全绿 ——
-    门禁的常数比机器慢，就会把"绿"报成"红"，这和判据写错一样危险。
-    1800s 仍然是个上界（真卡死还是要拦），但不再误杀慢机器上的全量 smoke。
-    ``GATE_TIMEOUT=600`` 可在快机器上恢复旧行为。"""
-    try:
-        _to = int(os.environ.get('GATE_TIMEOUT', '1800'))
-    except Exception:
-        _to = 1800
-    env = dict(os.environ)
-    if node_path:
-        env['NODE_PATH'] = node_path
-    try:
-        r = subprocess.run([node, script], cwd=ROOT, capture_output=True, env=env, timeout=_to)
-    except subprocess.TimeoutExpired:
-        return False, f'{script} 超时 {_to} 秒（GATE_TIMEOUT 可调）', ''
-
 def run_one(node, node_path, script, label):
     """跑一个测试，返回 (ok, 摘要行, 详情)。必须连「是否中断」一起看 —— 项目铁律。
 
@@ -216,11 +245,58 @@ def run_many(node, node_path, plan):
     return results
 
 
+
+
+def update_baseline_from(out, script):
+    """把某脚本本次的 ❌ 标题写进基线（同标题保留较大计数）。"""
+    b = load_baseline()
+    ent = b.setdefault('entries', {}).setdefault(_script_key(script), {})
+    for t in parse_fail_titles(out):
+        ent[t] = ent.get(t, 0) + 1
+    save_baseline(b)
+    return len(ent)
+
 def judge(r, script, label):
     """判定一个测试脚本的结果（从 run_one 里抽出来 —— 并发跑时要分别判定）。"""
     out = r.stdout.decode('utf-8', 'replace')
     err = r.stderr.decode('utf-8', 'replace')
     tail = (out[-400:] + err[-200:]).strip()
+
+    # ============================================================
+    # v156.39：**把串行全量的真实条数记进 census**（tier_audit Q3 的依据）
+    # ------------------------------------------------------------
+    # Q3 要回答「分片有没有静默漏段」，而分母只能由串行跑出来。
+    # 顺带存一份完整日志：Q4 要读「跳过 / 待修」的计数，也从这里取。
+    # 只对 smoke-test.js 做（e2e 不参与分片）。
+    # ============================================================
+    if os.path.basename(script) == 'smoke-test.js':
+        try:
+            _m0 = re.search(r'结果：\s*(\d+)\s*通过\s*/\s*(\d+)\s*失败'
+                            r'(?:\s*/\s*(\d+)\s*待修[^/]*)?(?:\s*/\s*(\d+)\s*跳过[^)]*)?', out)
+            if _m0:
+                _pass, _fail = int(_m0.group(1)), int(_m0.group(2))
+                _warn = int(_m0.group(3) or 0)
+                _skip = int(_m0.group(4) or 0)
+                _cf = os.path.join(ROOT, '.workbuddy', 'smoke-census.json')
+                _cen = {}
+                try:
+                    with io.open(_cf, encoding='utf-8') as _f:
+                        _cen = json.load(_f)
+                except Exception:
+                    _cen = {}
+                _cen['full'] = _pass + _fail + _warn + _skip
+                _cen['fullDetail'] = {'pass': _pass, 'fail': _fail, 'warn': _warn, 'skip': _skip}
+                _cen['fullAt'] = __import__('time').strftime('%Y-%m-%dT%H:%M:%S')
+                try:
+                    with io.open(_cf, 'w', encoding='utf-8', newline='\n') as _f:
+                        json.dump(_cen, _f, ensure_ascii=False, indent=1)
+                    with io.open(os.path.join(ROOT, '.workbuddy', 'smoke-last.log'),
+                                 'w', encoding='utf-8', newline='\n') as _f:
+                        _f.write(out)
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
     # 兵种链体检（v89.230 进 gate）：先于通用退出码判 —— 它的红是"体检项不达标"，
     # 不是异常中断（通用分支会把退出码 1 误报成"异常中断"）。
@@ -233,18 +309,45 @@ def judge(r, script, label):
         _dump_fail(script, out, err)
         return False, f'{script} 兵种链有错误（退出码 {r.returncode}，详见输出尾部）', tail
 
-    if r.returncode != 0:
+    # v156.26d：**先看有没有标准汇总行**。
+    # smoke / e2e 的设计是 process.exit(有失败 ? 1 : 0) —— "有失败"和"异常中断"
+    # 在退出码上同形，只看退出码会把"9 条已知失败"误报成"崩溃"，基线也就永远走不到。
+    # 汇总行比退出码信息量大得多，有它就按它判。
+    m = re.search(r'结果：\s*(\d+)\s*通过\s*/\s*(\d+)\s*失败', out)
+    if not m and r.returncode != 0:
         _dump_fail(script, out, err)
-        return False, f'{script} 退出码 {r.returncode}（异常中断）', tail
+        return False, f'{script} 退出码 {r.returncode}（异常中断/无汇总行）', tail
 
     # ① 显式失败数
-    m = re.search(r'结果：\s*(\d+)\s*通过\s*/\s*(\d+)\s*失败', out)
     if m:
         ok_n, fail_n = int(m.group(1)), int(m.group(2))
         if fail_n > 0:
-            _dump_fail(script, out, err)
-            return False, f'{script} {ok_n} 通过 / {fail_n} 失败', tail
-        # ② 分母为 0 的绿 = 什么都没测
+            # v156.26：先与基线比对 —— 只有**新增**失败才算红
+            key = _script_key(script)
+            base = load_baseline().get('entries', {}).get(key, {})
+            titles = parse_fail_titles(out)
+            seen = {}
+            for t in titles:
+                seen[t] = seen.get(t, 0) + 1
+            fresh = []
+            for t, c in seen.items():
+                allowed = base.get(t, 0)
+                if c > allowed:
+                    fresh.extend([t] * (c - allowed))
+            gone = [t for t in base if t not in seen]
+            if not titles:
+                # 拿不到标题就无法比对基线 —— 宁可按红处理，绝不静默放行
+                _dump_fail(script, out, err)
+                return False, f'{script} {ok_n} 通过 / {fail_n} 失败（无法解析失败标题，按红处理）', tail
+            if fresh:
+                _dump_fail(script, out, err)
+                head = fresh[0][:60]
+                more = ('' if len(fresh) == 1 else f' 等 {len(fresh)} 条')
+                return False, f'{script} {ok_n} 通过 / {fail_n} 失败（🆕 新增失败：{head}{more}）', tail
+            note = f'（{fail_n} 失败全部已知）'
+            if gone:
+                note += f' · {len(gone)} 条基线可收缩'
+            return True, f'⚠️ {script} {ok_n} 通过 / {fail_n} 失败{note}', tail
         if ok_n == 0:
             return False, f'{script} 0 通过 —— 什么都没测，不算绿', tail
         return True, f'{script} {ok_n} 通过 / 0 失败', tail
@@ -271,11 +374,91 @@ def judge(r, script, label):
         return False, f'{script} 输出含「失败」但无标准汇总行', tail
     return False, f'{script} 输出无标准汇总行（判据失效，按不通处理）', tail
 
+def do_update_baseline(node, node_path, from_out, script_name):
+    """把某脚本的当前失败写进基线（人工显式调用）。"""
+    out = None
+    if from_out:
+        with io.open(from_out, encoding='utf-8', errors='replace') as f:
+            out = f.read()
+        print(f'   读数来源：{from_out}（未重跑）')
+    else:
+        env = dict(os.environ)
+        if node_path:
+            env['NODE_PATH'] = node_path
+        print(f'   正在跑 {script_name} …（约 8 分钟）')
+        r = subprocess.run([node, script_name], cwd=ROOT, capture_output=True,
+                           env=env, timeout=_gate_timeout())
+        out = r.stdout.decode('utf-8', 'replace') + r.stderr.decode('utf-8', 'replace')
+
+    m = re.search(r'结果：\s*(\d+)\s*通过\s*/\s*(\d+)\s*失败', out)
+    if not m:
+        print('✗ 输出里没有「结果：N 通过 / M 失败」，无法建基线')
+        return 2
+    ok_n, fail_n = int(m.group(1)), int(m.group(2))
+    titles = parse_fail_titles(out)
+
+    b = load_baseline()
+    ent = {}
+    for t in titles:
+        ent[t] = ent.get(t, 0) + 1
+    key = _script_key(script_name)
+    if ent:
+        b.setdefault('entries', {})[key] = ent
+    else:
+        b.setdefault('entries', {}).pop(key, None)
+    b['note'] = ('已知失败基线 —— 门禁只报「不在此表」的新增失败。'
+                 '更新方式：gate.py --update-baseline（请逐条确认与本次改动无关）')
+    save_baseline(b)
+
+    print(f'\n   {script_name}: {ok_n} 通过 / {fail_n} 失败')
+    if ent:
+        print(f'   入基线 {len(ent)} 条：')
+        for t, c in sorted(ent.items()):
+            print(f'     · {t}' + ('' if c == 1 else f'  ×{c}'))
+    else:
+        print('   本次无失败 —— 该脚本的基线已清空')
+    print(f'\n   已写入 {BASELINE}')
+    return 0
+
+
 def main():
     args = sys.argv[1:]
     full = '--full' in args
     staged = '--staged' in args
     quiet = '--quiet' in args
+    # ============================================================
+    # v156.39（老板「可以否定自身」）：--strict = **一脚踢开整个豁免体系**
+    # ------------------------------------------------------------
+    # 把 BASELINE 指到一个不存在的路径 → load_baseline() 返回空表 →
+    # **所有失败都算新增**，9 条历史红、5 条实现类待修一律要修。
+    # 这不是装饰：体系如果不能被"要求全绿"推翻，它自己就是牢笼。
+    # 顺带关掉"并发抖动放行"—— strict 下复跑绿也算失败，因为首跑就该稳定。
+    # ============================================================
+    global BASELINE, STRICT
+    if '--strict' in args:
+        STRICT = True
+        BASELINE = os.path.join(ROOT, '.workbuddy', '__no_baseline_in_strict__.json')
+
+    # v156.26b：基线更新是**独立路径**，不进常规门禁流程
+    if '--update-baseline' in args:
+        from_out = None
+        if '--from-out' in args:
+            _i = args.index('--from-out')
+            if _i + 1 < len(args):
+                from_out = args[_i + 1]
+        _sn = 'smoke-test.js'
+        if '--script' in args:
+            _j = args.index('--script')
+            if _j + 1 < len(args):
+                _sn = args[_j + 1]
+        if '--files' in args:          # 避免 --files 把 --from-out 的值当文件名
+            pass
+        _node = _find_node()
+        if not _node:
+            print('✗ 找不到 node', file=sys.stderr)
+            return 2
+        print('━━ 更新已知失败基线 ━━')
+        return do_update_baseline(_node, _find_node_path(), from_out, _sn)
 
     if '--files' in args:
         i = args.index('--files')
@@ -302,26 +485,102 @@ def main():
     print(f'━━ 三件套门禁 ━━ {why}')
     if files:
         print(f'   改动 {len(files)} 个文件')
+
+    # ============================================================
+    # v156.39 · **影响面提示**：改这个文件，牵动哪几段断言
+    # ------------------------------------------------------------
+    # 老板「怎么解决牵动谁？」—— 答案不是"让测试能跳段"（切片必崩），
+    # 而是改之前就知道责任田在哪。漏改 `#map-info` 白跑 10 分钟那次，缺的就是这一步。
+    # 只提示不阻断（它是导航，不是判据），且最多列 3 个文件避免刷屏。
+    # ============================================================
+    _js = [f for f in files if f.startswith('js/') and f.endswith('.js')][:3]
+    if _js and not quiet:
+        _imp = os.path.join(ROOT, '.workbuddy', 'tools', 'prof', 'impact_of.js')
+        if os.path.exists(_imp):
+            try:
+                _ri = subprocess.run([node, _imp] + _js, cwd=ROOT, capture_output=True, timeout=60)
+                _ti = (_ri.stdout or b'').decode('utf-8', 'replace')
+                # 只留「══ 文件 → N 段 / M 条」那几行，明细留给需要时自己查
+                for _line in _ti.split('\n'):
+                    if _line.startswith('══'):
+                        print('   ' + _line.strip())
+            except Exception:
+                pass
+    if STRICT:
+        print('   ⚠️ --strict：忽略基线、忽略抖动放行 —— 要求全绿')
     print()
+
+    # ============================================================
+    # v156.39 · **元判据**：先审验证体系自己，再审代码
+    # ------------------------------------------------------------
+    # 老板「复核这套体系完备，是可以否定自身的完备…而不是另一个牢笼」。
+    # 顺序很关键：体系有问题时，它给出的"绿"本来就不可信。
+    # tier_audit 五问（假绿 / 到期 / 覆盖 / 膨胀 / 可推翻）任一不过 → 直接拦。
+    # 耗时 ~0.4 秒，放最前面几乎无成本。
+    # ============================================================
+    _ta = os.path.join(ROOT, '.workbuddy', 'tools', 'prof', 'tier_audit.js')
+    if os.path.exists(_ta):
+        _r = subprocess.run([node, _ta], cwd=ROOT, capture_output=True, timeout=120)
+        _out = (_r.stdout or b'').decode('utf-8', 'replace')
+        _err = (_r.stderr or b'').decode('utf-8', 'replace')
+        if _r.returncode != 0:
+            print('❌ 元判据：验证体系自身不自洽 —— 先修体系，别信它的结论')
+            print(_out or _err)
+            print('   （可单独跑：node .workbuddy/tools/prof/tier_audit.js）')
+            return 1
+        # 通过时只打一行摘要，不刷屏
+        _m = re.search(r'(✅ 体系自洽[^\n]*)', _out)
+        print('  ✅ 元判据：' + (_m.group(1) if _m else '体系自洽'))
+        print()
 
     import time as _time
     _t0 = _time.time()
     failed = []
     results = run_many(node, node_path, plan)     # v156.19：并发跑（墙钟 ≈ 最慢那个）
-    for (ok, summary, detail) in results:
-        print(('  ✅ ' if ok else '  ❌ ') + summary)
+    for ((script, label, _opt), (ok, summary, detail)) in zip(plan, results):
+        # v156.26e：summary 可能自带 ⚠️（基线判定的"仅已知失败"），先剥掉再统一加图标
+        plain = re.sub(r'^⚠️\s*', '', summary)
+        icon = '✅' if (ok and not summary.startswith('⚠️')) else ('⚠️' if ok else '❌')
+        print(('  ' + icon + ' ') + plain)
         if not ok:
-            # script 从 summary 里取不回来，这里用 summary 定位就够（打印尾部用）
-            failed.append((summary.split(' ')[0], summary, detail))
+            failed.append((script, summary, detail))
     print(f'   （并发 {len(plan)} 个脚本，墙钟 {_time.time() - _t0:.1f} 秒）')
 
     print()
+
+    # v156.26e：**失败复跑** —— 把"并发抖动"和"真回归"分开。
+    # 由来（2026-11-01 实测）：门禁并发跑 8 个脚本时 e2e 报 1 条红，
+    #   同一份代码单独复跑 e2e 是 1106/0 —— jsdom 的定时器在抢 CPU 时会延迟。
+    # 原则：复跑绿 → ⚠️ 明确标"不稳定"（**放行但可见**，绝不静默当绿）；
+    #       复跑红 → ❌ 真失败，用复跑的输出诊断。
     if failed:
-        print('✗ 门禁不通 —— 提交已被拦下。')
+        flaky, real = [], []
         for script, summary, detail in failed:
-            print(f'\n--- {script} 尾部输出 ---\n{detail}')
-        print('\n确需跳过（不推荐）：SKIP_GATE=1 git commit ...')
-        return 1
+            print(f'   ↻ 复跑确认：{os.path.basename(script)} …')
+            ok2, sum2, det2 = run_one(node, node_path, script, '')
+            if ok2:
+                flaky.append((script, summary, sum2))
+            else:
+                real.append((script, summary, det2 or detail))
+        for script, old_summary, new_summary in flaky:
+            print('  ⚠️ ' + re.sub(r'^⚠️\s*', '', new_summary)
+                  + f'   ← 首跑失败、复跑通过＝**不稳定**（并发抖动，非代码回归）')
+        if flaky and STRICT:
+            print()
+            print('✗ --strict：不接受"首跑红、复跑绿"—— 不稳定本身就是缺陷，提交被拦下。')
+            return 1
+        if flaky:
+            print(f'   （{len(flaky)} 个脚本首跑抖动；相关断言依赖固定等待，属已知的并发代价）')
+        if real:
+            print()
+            print('✗ 门禁不通 —— 提交已被拦下。')
+            for script, summary, detail in real:
+                print(f'\n--- {script} 尾部输出 ---\n{detail}')
+            print('\n确需跳过（不推荐）：SKIP_GATE=1 git commit ...')
+            return 1
+        print()
+        print('✓ 门禁通过（含 ' + str(len(flaky)) + ' 个抖动脚本，已在上面标出）。')
+        return 0
 
     print('✓ 门禁通过。')
     return 0

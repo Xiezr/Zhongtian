@@ -2,7 +2,7 @@
    纯图标（≤4 可见字符、无汉字、无 ASCII 字母数字）且无 title → 报缺。 */
 var fs = require('fs');
 var R = 'E:/Deepseekdb/';
-var FILES = ['index.html', 'js/ui.js', 'js/main.js', 'js/map.js', 'js/battle.js', 'js/state.js'];
+var FILES = ['index.html', 'js/ui-all.js', 'js/main.js', 'js/map.js', 'js/battle.js', 'js/state.js'];
 var miss = [], total = 0, iconN = 0;
 FILES.forEach(function (f) {
   var src;

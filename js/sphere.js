@@ -415,6 +415,13 @@ import './core.js';
       }
       F = NF;
     }
+    /* v2026-11-01（老板：「人物走动的上下对、左右反了」）：
+       球面 3D 渲染里，轨道相机看球心、北极朝上时，**东（经度+）必然投影到屏幕左侧**
+       （真地球仪的固有现象）。老板要的是平面地图直觉：东在右、北在上。
+       修复：**经度方向做一次镜像（只翻 z，北不翻）** —— 翻后东落在 -Z，在「北极朝上」视角下
+       投影到屏幕右，且北仍严格朝上（y 分量不动）。
+       这是 icosphere 顶点的最源头，cell.dir/pos/rim/邻接/nearestCell 全派生自此，一处翻即全链路自洽。 */
+    for (var _vi = 0; _vi < V.length; _vi++) V[_vi] = [V[_vi][0], V[_vi][1], -V[_vi][2]];
     return { V: V, F: F };
   }
   SP.icoSpheres = icoSpheres;
@@ -559,8 +566,11 @@ import './core.js';
         var s1 = RIM[t2], s2 = RIM[(t2 + 1) % mm];
         fpos.push(P[0], P[1], P[2], s1[0], s1[1], s1[2], s2[0], s2[1], s2[2]);
       }
-      /* 球系坐标（经纬度）。⚠️ 平面格坐标 x/y 为过渡遗留。*/
-      var lonDeg = (Math.atan2(n[2], n[0]) * 180 / Math.PI + 360) % 360;
+      /* 球系坐标（经纬度）。⚠️ 平面格坐标 x/y 为过渡遗留。
+         v2026-11-01：球面顶点已在 icoSpheres 末尾做经度镜像（翻 z，东落 -Z → 屏幕右），
+         故此处经度读数必须同步取负，使「lon=90 = 东 = 屏幕右」与 SP.dirOfLonLat 同源自洽
+         （否则 cell.lon 与 dirOfLonLat 相差 180°，ciOfXY/xyOfLonLat 往返错位）。 */
+      var lonDeg = (-Math.atan2(n[2], n[0]) * 180 / Math.PI + 360) % 360;
       var latDeg = Math.asin(Math.max(-1, Math.min(1, n[1]))) * 180 / Math.PI;
       /* 平面格坐标 x/y：**仅供旧口径过渡**（拾取/行政城/前哨落位经它反查 ci）。
          ⚠️ 必须与 SP.lonLatOfXY 严格互逆 —— 北在 y 小（0.5 - lat/180）。
@@ -581,6 +591,7 @@ import './core.js';
     SP.sub = sub;
     _grid = null;                                    /* 空间哈希随之失效（V 已换）*/
     _xyCi = null;                                    /* (x,y)→ci 记忆随之失效（地形已换）*/
+    _dMemoClear();                                   /* v156.21：距离缓存也必须清 —— 否则旧星球的环数套到新地形上 */
     return SP;
   }
   SP.build = build;
@@ -638,7 +649,9 @@ import './core.js';
   /* 经纬 → 单位球方向（与 map3d 一致） */
   SP.dirOfLonLat = function (lon, lat) {
     var a = lat * Math.PI / 180, b = lon * Math.PI / 180, cl = Math.cos(a);
-    return [cl * Math.cos(b), Math.sin(a), cl * Math.sin(b)];
+    /* v2026-11-01（老板）：经度方向镜像，与 icosphere 顶点翻 z 同源（见 icoSpheres）。
+       东（lon+）落到 -Z，配合「北极朝上」相机 → 屏幕上东在右、北在上。 */
+    return [cl * Math.cos(b), Math.sin(a), -cl * Math.sin(b)];
   };
   /* ============================================================
    * v92.247（老板）：「给星球定一个南北极，适配上下左右按键。现在是乱走的」
@@ -742,23 +755,48 @@ import './core.js';
    * 复用距离/戳数组，按调用自增戳 → 免清空（O(访问) 而非 O(nv)）。
    * ============================================================ */
   var _dArr = null, _dStamp = null, _dVer = 0;
+  /* ============================================================
+   * v156.21（老板「工作速度太慢，迭代很艰难」· CPU profile 实测）
+   * ------------------------------------------------------------
+   * `hexDist` 原来是**每次调用跑一遍 BFS**，没有任何缓存。
+   * 而玩法里有大量"城 × 城 / 城 × 村社"的双重循环（NPC 城 410 座、
+   * 每局开图要跑几十万次），实测 smoke 全程 **258 秒（70%）** 耗在
+   * `cityDist/hexDist` 上 —— 同一颗星球被反复问同样的问题。
+   *
+   * 现在加一张**有上限的对距离缓存**（无向 → 用 min/max 归一化键）：
+   *   · 命中即 O(1)，语义与原来逐位相同（同一个 BFS 结果）；
+   *   · 超过 `CAP` 就整表清空（不引入 LRU 复杂度，峰值内存可控）；
+   *   · 球面重建（换种子/换细分）时由 build() 清空 —— 否则会把旧地形
+   *     的距离套到新星球上（那是"画面与数值对不上"级别的脏 bug）。
+   * ============================================================ */
+  var _dMemo = null, _dMemoCap = 600000;
+  function _dMemoClear() { _dMemo = null; }
   function hexDist(a, b) {
     if (a === b) return 0;
     var adj = SP.adj, nv = SP.nv;
     if (!adj || a < 0 || b < 0 || a >= nv || b >= nv) return 0;
+    var key = a < b ? (a * nv + b) : (b * nv + a);
+    if (_dMemo) {
+      var hit = _dMemo.get(key);
+      if (hit !== undefined) return hit;
+    }
     if (!_dArr) { _dArr = new Int32Array(nv); _dStamp = new Int32Array(nv); }
     var stamp = ++_dVer;
     var q = [a], head = 0; _dArr[a] = 0; _dStamp[a] = stamp;
+    var res = -1;
     while (head < q.length) {
       var cur = q[head++];
-      if (cur === b) return _dArr[cur];
+      if (cur === b) { res = _dArr[cur]; break; }
       var an = adj[cur], d = _dArr[cur] + 1;
       for (var i = 0; i < an.length; i++) {
         var nb = an[i];
         if (_dStamp[nb] !== stamp) { _dStamp[nb] = stamp; _dArr[nb] = d; q.push(nb); }
       }
     }
-    return -1;
+    if (!_dMemo) _dMemo = new Map();
+    else if (_dMemo.size >= _dMemoCap) _dMemo.clear();
+    _dMemo.set(key, res);
+    return res;
   }
   SP.hexDist = hexDist;
   /* ============================================================

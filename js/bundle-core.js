@@ -907,6 +907,41 @@ window.GAME = window.GAME || {};
     ],
   };
 
+  /* v2026-11-01（老板）：前传（Lv1-20）场景层常量。
+     来源：旧反馈只有 ✨ 日志 + "走到 X 了" 的 toast；老板要"进入具体场景而非文字游戏"。
+     captionMs / levelUpMs = 场景层自动消散时长（毫秒，留足读完不拖沓）；
+     crossLines = 移动"沿途"感官后缀池（第二人称、不教条）；
+     levelLine = 升级"瞬间"一句话（按资质分，_ 兜底），不堆字数（老板：不要墙一样的文字）。 */
+  DATA.SCENE = {
+    captionMs: 2600,
+    levelUpMs: 2600,
+    crossLines: [
+      '风里有铁锈味。',
+      '脚下的碎玻璃咔咔作响。',
+      '远处有兽在叫，听不出远近。',
+      '空气又干又涩，像含了把灰。',
+      '残破的混凝土墙挡着半边天。',
+      '脚下突然一软，是埋进土里的什么东西。',
+      '阳光斜斜打在锈红的地面上。',
+      '一只鸟都没有，安静得发慌。'
+    ],
+    levelLine: {
+      '凡人': '你比昨天多扛住了一寸。',
+      '突变体': '骨血里有什么被重新拧过了。',
+      '进化体': '你能听见更远处的动静了。',
+      '觉醒体': '废土在你眼里慢了半拍。',
+      '天启体': '这一刻，连风都为你让路。',
+      '_': '这一刻，废土记得你的名字。'
+    }
+  };
+
+  /* v2026-10-31（老板）：星环放大 —— 直径 = 6 倍星球直径。
+     星球直径 = 2R，6 倍 = 12R 外径 → 外缘半径 rOut = 6R。
+     内缘 innerMul = 5.0（内缘半径 5R）、带宽 widthMul = 1.0（外缘 6R），
+     整体浮到 5~6R，不再贴地面（原值 innerMul=1.55 / widthMul=0.62 → rIn=1.55R=465@R=300）。
+     常量在此一处定义，belt.js 的 BL.SPEC 只引用、不写死，便于统一调参。 */
+  DATA.RING = { innerMul: 5.0, widthMul: 1.0 };
+
   /* ============================================================
    * 侦查情报分层（v65 · 老板）
    * ------------------------------------------------------------
@@ -7970,9 +8005,21 @@ window.GAME = window.GAME || {};
        未注入时仍走时间戳随机（正常游戏每局不同图，行为零变化）。
        背景：`U.now() % 100000` 是毫秒时间戳，测试每次 run 的地图布局/出生点都不同，
        "在地图上找格子"类断言随布局偶发假红（实测 v89.87 采集断言 ~1/3 复现率）。 */
+    /* v89.89：`mapSeed` 可注入（与 `portraitSeed` 同一先例：供测试注入确定值）——
+       未注入时仍走时间戳随机（正常游戏每局不同图，行为零变化）。
+       背景：`U.now() % 100000` 是毫秒时间戳，测试每次 run 的地图布局/出生点都不同，
+       "在地图上找格子"类断言随布局偶发假红（实测 v89.87 采集断言 ~1/3 复现率）。 */
     var mapSeed = (rulerOpts && rulerOpts.mapSeed != null)
       ? ((Math.round(Number(rulerOpts.mapSeed)) % 100000) || 1)
       : (U.now() % 100000);
+    /* ⛔ v156.36 试过又撤掉：加一个 `GAME.__testSeed` 默认种子，想让 235 次
+       "没传 mapSeed 的 newGame"复用同一颗星球（同 seed 实测 16ms vs 换 seed 1471ms）。
+       实测**全量耗时 466.8 → 469 秒，零收益** —— 说明这 8 分钟的大头不是"重建球面"，
+       而是 newGame/map.generate 里那几段**与 seed 无关**的 O(n²) 计算
+       （cpuprofile：cityDist 23.4% 几乎全部来自 pickStartPos→stateOfCity 的双层遍历；
+        _nearestLandCi 12.1% 来自 _relocateNpcSites 逐城找最近陆地）。
+       结论：改 seed 是错的方向，已回滚。真要提速只能动那两个算法，见
+       docs/_史料/交付/v20261102k-验证提速的二轮实测.md */
     /* v90.70：先建球面内核（随 seed）—— 城/名城的球面六边格索引（ci）与地形判据都要它。
        幂等（同 seed 不重算）。
        ============================================================
@@ -26793,6 +26840,64 @@ window.GAME = window.GAME || {};
     var f = GAME.map._countyField(); if (!f) return -1;
     return (ci >= 0 && ci < f.length) ? f[ci] : -1;
   };
+  /* ============================================================
+   * v156.24（老板「占领省市区首府，可以看到该省市区下辖地的视野」）
+   * ------------------------------------------------------------
+   * **行政区 → 格清单** 的唯一出口。数据源是地图真正的省/市/区：
+   *   `GAME.map3d._settle`（`genSettlements()` 生成，UI 检索栏那三个下拉就是它）：
+   *     provOf / marketOf / districtOf  = 每个格属于哪个省 / 市 / 区（-1 = 不属）
+   *   · prov 覆盖**全球（陆+海）**；market/district 只划在陆地 —— 见 genSettlements 注释。
+   * 为什么要一个"出口"而不是各处直接读 `_settle`：
+   *   ① 没有 three 的环境（node 门禁）里 `_settle` 为 null，这里统一返回 null，
+   *      调用方不必到处 try/catch；
+   *   ② 索引口径只有一处（下面是**顶点/格索引**，与 sphere.cells、fog 的 ci 同一套编号）。
+   * ============================================================ */
+  GAME.map.adminFields = function () {
+    var S = GAME.map3d && GAME.map3d._settle;
+    if (!S || !S.provOf) return null;
+    return { prov: S.provOf, market: S.marketOf, district: S.districtOf, table: S.table };
+  };
+
+  /* ============================================================
+   * **过滤逻辑本体（纯函数，无副作用、不碰 three）**
+   * ------------------------------------------------------------
+   * 为什么单独拆出来：行政区数据（provOf/marketOf/districtOf）只在浏览器里
+   *   由 `genSettlements()` 生成；而"按 level+index 取格清单"这一步是纯数组操作。
+   *   拆开后，node 门禁可以喂构造数组验证**过滤是否正确**（含越界/串级/乱 level），
+   *   不必等浏览器——这是这个功能唯一能在 CI 里守住的部分。
+   * fields: {prov, market, district} 三个 Int16Array/数组（-1 = 无归属）
+   * level : 'prov' | 'market' | 'district'
+   * index : 该级序号（>= 0）
+   * 返回：格索引数组；fields/level/index 非法 → null（**区分"没有这种级别"与"这一格都没有"**）
+   * ============================================================ */
+  GAME.map.adminCisOf = function (fields, level, index) {
+    if (!fields || index == null || index < 0) return null;
+    var arr = level === 'prov' ? fields.prov
+      : level === 'market' ? fields.market
+        : level === 'district' ? fields.district : null;
+    if (!arr || !arr.length) return null;
+    var out = [];
+    for (var i = 0; i < arr.length; i++) if (arr[i] === index) out.push(i);
+    return out;
+  };
+
+  /* level: 'prov' | 'market' | 'district'；index: 该级序号。返回格索引数组（可能为空数组）。 */
+  GAME.map.adminCiList = function (level, index) {
+    return GAME.map.adminCisOf(GAME.map.adminFields(), level, index);
+  };
+
+  /* 格 → 所属行政区（{level,index,name,prov,market,district}；无归属 → null）。 */
+  GAME.map.adminOf = function (ci) {
+    var f = GAME.map.adminFields();
+    if (!f || ci == null || ci < 0 || ci >= f.prov.length) return null;
+    var T = f.table || {}, pi = f.prov[ci], mi = f.market[ci], di = f.district[ci];
+    if (pi < 0) return null;
+    var pn = (T.prov && T.prov[pi]) ? T.prov[pi].name : '';
+    var mn2 = (mi >= 0 && T.market && T.market[mi]) ? T.market[mi].name : '';
+    var dn = (di >= 0 && T.district && T.district[di]) ? T.district[di].name : '';
+    return { provIndex: pi, marketIndex: mi, districtIndex: di, prov: pn, market: mn2, district: dn };
+  };
+
   /* 聚落 ci → 该聚落城的**近邻重镇**（同州最近 jun，按聚落缓存）。O(1) 摊还。 */
   GAME.map._junOfCounty = function (countyCity) {
     var cache = GAME.map._cntyF && GAME.map._cntyF.junOf;
@@ -27245,7 +27350,9 @@ window.GAME = window.GAME || {};
   /* 经纬 → 单位球方向（3D 放置用） */
   GAME.map.dirOf = function (lon, lat) {
     var a = lat * Math.PI / 180, b = lon * Math.PI / 180, cl = Math.cos(a);
-    return [cl * Math.cos(b), Math.sin(a), cl * Math.sin(b)];
+    /* v2026-11-01（老板）：经度方向镜像，与 sphere.js 的 icoSpheres/dirOfLonLat 同源。
+       务必与 SP.dirOfLonLat 保持一致（两处公式都要翻 z）。 */
+    return [cl * Math.cos(b), Math.sin(a), -cl * Math.sin(b)];
   };
   /* 球系坐标显示文本（界面统一口径） */
   GAME.map.coordText = function (x, y) {
@@ -28768,6 +28875,13 @@ window.GAME = window.GAME || {};
       }
       F = NF;
     }
+    /* v2026-11-01（老板：「人物走动的上下对、左右反了」）：
+       球面 3D 渲染里，轨道相机看球心、北极朝上时，**东（经度+）必然投影到屏幕左侧**
+       （真地球仪的固有现象）。老板要的是平面地图直觉：东在右、北在上。
+       修复：**经度方向做一次镜像（只翻 z，北不翻）** —— 翻后东落在 -Z，在「北极朝上」视角下
+       投影到屏幕右，且北仍严格朝上（y 分量不动）。
+       这是 icosphere 顶点的最源头，cell.dir/pos/rim/邻接/nearestCell 全派生自此，一处翻即全链路自洽。 */
+    for (var _vi = 0; _vi < V.length; _vi++) V[_vi] = [V[_vi][0], V[_vi][1], -V[_vi][2]];
     return { V: V, F: F };
   }
   SP.icoSpheres = icoSpheres;
@@ -28912,8 +29026,11 @@ window.GAME = window.GAME || {};
         var s1 = RIM[t2], s2 = RIM[(t2 + 1) % mm];
         fpos.push(P[0], P[1], P[2], s1[0], s1[1], s1[2], s2[0], s2[1], s2[2]);
       }
-      /* 球系坐标（经纬度）。⚠️ 平面格坐标 x/y 为过渡遗留。*/
-      var lonDeg = (Math.atan2(n[2], n[0]) * 180 / Math.PI + 360) % 360;
+      /* 球系坐标（经纬度）。⚠️ 平面格坐标 x/y 为过渡遗留。
+         v2026-11-01：球面顶点已在 icoSpheres 末尾做经度镜像（翻 z，东落 -Z → 屏幕右），
+         故此处经度读数必须同步取负，使「lon=90 = 东 = 屏幕右」与 SP.dirOfLonLat 同源自洽
+         （否则 cell.lon 与 dirOfLonLat 相差 180°，ciOfXY/xyOfLonLat 往返错位）。 */
+      var lonDeg = (-Math.atan2(n[2], n[0]) * 180 / Math.PI + 360) % 360;
       var latDeg = Math.asin(Math.max(-1, Math.min(1, n[1]))) * 180 / Math.PI;
       /* 平面格坐标 x/y：**仅供旧口径过渡**（拾取/行政城/前哨落位经它反查 ci）。
          ⚠️ 必须与 SP.lonLatOfXY 严格互逆 —— 北在 y 小（0.5 - lat/180）。
@@ -28934,6 +29051,7 @@ window.GAME = window.GAME || {};
     SP.sub = sub;
     _grid = null;                                    /* 空间哈希随之失效（V 已换）*/
     _xyCi = null;                                    /* (x,y)→ci 记忆随之失效（地形已换）*/
+    _dMemoClear();                                   /* v156.21：距离缓存也必须清 —— 否则旧星球的环数套到新地形上 */
     return SP;
   }
   SP.build = build;
@@ -28991,7 +29109,9 @@ window.GAME = window.GAME || {};
   /* 经纬 → 单位球方向（与 map3d 一致） */
   SP.dirOfLonLat = function (lon, lat) {
     var a = lat * Math.PI / 180, b = lon * Math.PI / 180, cl = Math.cos(a);
-    return [cl * Math.cos(b), Math.sin(a), cl * Math.sin(b)];
+    /* v2026-11-01（老板）：经度方向镜像，与 icosphere 顶点翻 z 同源（见 icoSpheres）。
+       东（lon+）落到 -Z，配合「北极朝上」相机 → 屏幕上东在右、北在上。 */
+    return [cl * Math.cos(b), Math.sin(a), -cl * Math.sin(b)];
   };
   /* ============================================================
    * v92.247（老板）：「给星球定一个南北极，适配上下左右按键。现在是乱走的」
@@ -29095,23 +29215,48 @@ window.GAME = window.GAME || {};
    * 复用距离/戳数组，按调用自增戳 → 免清空（O(访问) 而非 O(nv)）。
    * ============================================================ */
   var _dArr = null, _dStamp = null, _dVer = 0;
+  /* ============================================================
+   * v156.21（老板「工作速度太慢，迭代很艰难」· CPU profile 实测）
+   * ------------------------------------------------------------
+   * `hexDist` 原来是**每次调用跑一遍 BFS**，没有任何缓存。
+   * 而玩法里有大量"城 × 城 / 城 × 村社"的双重循环（NPC 城 410 座、
+   * 每局开图要跑几十万次），实测 smoke 全程 **258 秒（70%）** 耗在
+   * `cityDist/hexDist` 上 —— 同一颗星球被反复问同样的问题。
+   *
+   * 现在加一张**有上限的对距离缓存**（无向 → 用 min/max 归一化键）：
+   *   · 命中即 O(1)，语义与原来逐位相同（同一个 BFS 结果）；
+   *   · 超过 `CAP` 就整表清空（不引入 LRU 复杂度，峰值内存可控）；
+   *   · 球面重建（换种子/换细分）时由 build() 清空 —— 否则会把旧地形
+   *     的距离套到新星球上（那是"画面与数值对不上"级别的脏 bug）。
+   * ============================================================ */
+  var _dMemo = null, _dMemoCap = 600000;
+  function _dMemoClear() { _dMemo = null; }
   function hexDist(a, b) {
     if (a === b) return 0;
     var adj = SP.adj, nv = SP.nv;
     if (!adj || a < 0 || b < 0 || a >= nv || b >= nv) return 0;
+    var key = a < b ? (a * nv + b) : (b * nv + a);
+    if (_dMemo) {
+      var hit = _dMemo.get(key);
+      if (hit !== undefined) return hit;
+    }
     if (!_dArr) { _dArr = new Int32Array(nv); _dStamp = new Int32Array(nv); }
     var stamp = ++_dVer;
     var q = [a], head = 0; _dArr[a] = 0; _dStamp[a] = stamp;
+    var res = -1;
     while (head < q.length) {
       var cur = q[head++];
-      if (cur === b) return _dArr[cur];
+      if (cur === b) { res = _dArr[cur]; break; }
       var an = adj[cur], d = _dArr[cur] + 1;
       for (var i = 0; i < an.length; i++) {
         var nb = an[i];
         if (_dStamp[nb] !== stamp) { _dStamp[nb] = stamp; _dArr[nb] = d; q.push(nb); }
       }
     }
-    return -1;
+    if (!_dMemo) _dMemo = new Map();
+    else if (_dMemo.size >= _dMemoCap) _dMemo.clear();
+    _dMemo.set(key, res);
+    return res;
   }
   SP.hexDist = hexDist;
   /* ============================================================
@@ -29840,6 +29985,35 @@ if (GAME.reg) {
     return n;
   };
 
+  /* ============================================================
+   * v156.24（老板「占领省市区首府，可以看到该省市区下辖地的视野」）
+   * ------------------------------------------------------------
+   * 占据一个**行政区首府** → 该行政区下辖的每一格全明。
+   *   · 省府（prov）  → 全省（含下辖的所有市/区）
+   *   · 市府（market）→ 全市（含下辖的所有区）
+   *   · 区（district）→ 本区
+   *
+   * 为什么"首府 = 下辖地视野"讲得通：首府是建制的神经中枢 —— 驿传、户籍、
+   *   田册、山川图志都在那儿。打下它，你接手的不只是城墙，还有**它管辖的那片地**。
+   * 与既有规则的分工：
+   *   · 普通城仍只按 `radiusOf()` 点亮身边几格（探索度换视野）；
+   *   · 首府给的是**辖地**，不随探索度缩放 —— 它不是"探得更远"，是"接手了一张图"。
+   * 数据来源唯一：`GAME.map.adminCiList`（provOf/marketOf/districtOf）。
+   * 幂等：只升不降（重复调用返回 0）；level 写错 / index 越界 → 返回 0，
+   *   绝不静默点亮半张图。
+   * ============================================================ */
+  F.revealAdmin = function (level, index) {
+    F.ensure();
+    if (!_n) return 0;
+    var M = GAME.map;
+    if (!M || !M.adminCiList) return 0;
+    var list = M.adminCiList(level, index);
+    if (!list || !list.length) return 0;
+    var hit = 0;
+    for (var i = 0; i < list.length; i++) if (F.bump(list[i], ALL)) hit++;
+    return hit;
+  };
+
   F.revealCity = function (city, r) {
     if (!city) return 0;
     var ci = _ciOf(city);
@@ -29857,6 +30031,16 @@ if (GAME.reg) {
     (st.cities || []).forEach(function (c) {
       if (!c || c.npc) return;
       hit += F.revealCity(c, cr);
+    });
+    /* v156.24：**已占的省府/市府/区 → 其下辖地全明**
+       ⚠️ 必须放在 revealOwned 里（而不是只在占领那一下点一次）：
+         ① 读档后 fog 包是重建的，只在占领时点亮 = 一出游戏就丢；
+         ② `decay()` 会把全明褪成半明，然后调 revealOwned "把家门口点回来" ——
+            首府带来的辖地视野属于"建制内"，理应和城周围一样不被淡忘。
+       幂等：已全明的格 `bump` 直接返回 false，不产生写入。 */
+    (st.cities || []).forEach(function (c) {
+      if (!c || c.npc || !c.admLevel || c.admIndex == null) return;
+      hit += F.revealAdmin(c.admLevel, c.admIndex);
     });
     /* 我方前哨（据点被拔除后占据） */
     var ft = st.forts || {};
@@ -37413,7 +37597,17 @@ if (GAME.reg) {
     } catch (e) { /* 迷雾失败不该挡住移动 */ }
     var cell = sp.cellOf(ci) || {};
     var tn = ((GAME.DATA || {}).TERRAIN || {})[cell.type] || {};
+    /* v2026-11-01（老板）：移动时一条"沿途"感官字幕（第二人称、不教条）—— 让格子移动变成"走过"而非瞬移。
+       文案池与地形名拼成一句话，常量进 DATA.SCENE.crossLines（不写死）。 */
+    try { if (GAME.ui && GAME.ui.sceneCaption) GAME.ui.sceneCaption(P.crossLine(ci, tn)); } catch (e) {}
     return { ok: true, msg: '走到' + (tn.name || '荒野') + '了 —— 看看这地方能做什么', ci: ci };
+  };
+  /* 移动"沿途"一句话：地形名 + 感官后缀（按格号取，确定且不乱跳）。 */
+  P.crossLine = function (ci, tn) {
+    var name = (tn && tn.name) || '荒野';
+    var pool = (GAME.DATA && GAME.DATA.SCENE && GAME.DATA.SCENE.crossLines) || ['风里有铁锈味。'];
+    var suf = pool[(((ci | 0) % pool.length) + pool.length) % pool.length];
+    return '你踏入' + name + '，' + suf;
   };
 
   /* 沿最短路径走到底（精力不足就停在中途）。
@@ -40275,8 +40469,12 @@ if (GAME.reg) {
   BL.SPEC = {
     enabled: 1,        /* 0 = 不生成带；1 = 生成 */
     count: 240,        /* 石块数量 */
-    innerMul: 1.55,    /* 内缘半径 = 星球半径 × 此值（R=300 → 465）*/
-    widthMul: 0.62,    /* 带宽 = 星球半径 × 此值 */
+    /* v2026-10-31（老板）：星环放大 —— 直径 = 6 倍星球直径。真实值见 data.js 的 DATA.RING
+       （唯一常量来源）；此处只放兜底默认（innerMul=5.0 → 内缘 5R、widthMul=1.0 → 外缘 6R，
+       整体浮到 5~6R，不再贴地面）。DATA 在模块加载期未必就绪（浏览器/jsdom 全局），
+       故不在字面量里引用，改由 BL.specOf 在运行时解析覆盖，见下。 */
+    innerMul: 5.0,
+    widthMul: 1.0,
     inclDeg: 16,       /* 轨道倾角上限（度）*/
     thickMul: 0.05,    /* 带厚（法向散布）= 星球半径 × 此值 */
     /* v92.245（老板：「星空中物体应有体积」）：原来 0.5~3.4 世界单位，
@@ -40308,6 +40506,13 @@ if (GAME.reg) {
     var s = {}, k;
     for (k in BL.SPEC_DEFAULT) s[k] = BL.SPEC_DEFAULT[k];
     if (raw) for (k in raw) if (raw[k] != null) s[k] = raw[k];
+    /* v2026-10-31（老板）：星环放大 —— 直径 = 6 倍星球直径。
+       真实尺寸常量在 data.js 的 DATA.RING（唯一来源），此处运行时解析覆盖默认。
+       DATA 是浏览器/jsdom 下的全局、模块加载期未必就绪，故用 typeof 守卫、不放 BL.SPEC 字面量。 */
+    if (typeof DATA !== 'undefined' && DATA.RING) {
+      if (DATA.RING.innerMul != null) s.innerMul = DATA.RING.innerMul;
+      if (DATA.RING.widthMul != null) s.widthMul = DATA.RING.widthMul;
+    }
     /* 星球特征 → 带的形态（"根据星球特征生成"）*/
     var P = (planet && planet.params) || {};
     var imp = Number(P.impact) || 0;                 /* 撞击史：撞得狠 → 碎屑多、更富矿 */

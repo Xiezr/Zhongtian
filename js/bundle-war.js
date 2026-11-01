@@ -265,8 +265,429 @@
     return mat;
   };
 
+  /* ============================================================
+   * v92.00 骨骼动画扩展 —— parseAnimated / loadAnimated
+   * ------------------------------------------------------------
+   * 在「极简静态解析器」之上新增**骨骼 + 蒙皮 + 动画**能力，不引入 GLTFLoader（维持零外链 UMD）。
+   * 适用形态（已用 RobotExpressive / Soldier 验证）：
+   *   - 任意节点层级（TRS / matrix）构建为 THREE.Bone（在 skin.joints 中）或 Group（其余）。
+   *   - skin：inverseBindMatrices → THREE.Skeleton；含 JOINTS_0/WEIGHTS_0 的 primitive → SkinnedMesh。
+   *   - 刚体部件 mesh 直接挂到对应 bone 节点下（动画驱动父骨骼 → 子 mesh 跟随）。
+   *   - mesh.targets（POSITION 增量）→ morphAttributes（morphTargetsRelative=true）；动画 `weights` 通道驱动 .morphTargetInfluences。
+   *   - 动画 T/R/S/weights 通道 → THREE.AnimationClip[]（轨道名 = 节点/网格对象名，供 AnimationMixer 解析）。
+   * 返回 { root, clips, byName, skeletons }；root 默认归一化到 target 高（默认 1）且脚底贴 y=0，方便直接放进场景。
+   * ============================================================ */
+  var _ACTOR_GLB = {};   /* 镜像 wonders 的 base64 注入：window.__ACTOR_GLB[name] = <base64> */
+
+  function _actorB64Buf(b64) {
+    /* base64（可带 data: 前缀）→ ArrayBuffer */
+    try {
+      var s = String(b64 || '');
+      var c = s.indexOf(','); if (c >= 0 && s.slice(0, c).indexOf('base64') >= 0) s = s.slice(c + 1);
+      var bin = (typeof atob === 'function') ? atob(s) : Buffer.from(s, 'base64').toString('binary');
+      var len = bin.length, ab = new ArrayBuffer(len), u8 = new Uint8Array(ab);
+      for (var i = 0; i < len; i++) u8[i] = bin.charCodeAt(i);
+      return ab;
+    } catch (e) { return null; }
+  }
+
+  GTF.parseAnimated = function (ab, THREE, opts) {
+    opts = opts || {};
+    THREE = THREE || (typeof window !== 'undefined' && window.THREE) || (typeof global !== 'undefined' && global.THREE);
+    if (!THREE) throw new Error('parseAnimated 需要 THREE');
+    var dv = new DataView(ab);
+    if (dv.getUint32(0, true) !== 0x46546C67) throw new Error('非法 GLB（magic）');
+    var total = dv.getUint32(8, true), off = 12, json = null, bin = null;
+    while (off < total) {
+      var clen = dv.getUint32(off, true), ctype = dv.getUint32(off + 4, true), dOff = off + 8;
+      if (ctype === 0x4E4F534A) json = ab.slice(dOff, dOff + clen);
+      else if (ctype === 0x004E4942) bin = ab.slice(dOff, dOff + clen);
+      off = dOff + clen;
+    }
+    if (!json) throw new Error('GLB 缺 JSON chunk');
+    var gltf = JSON.parse(new TextDecoder('utf-8').decode(json));
+    if (!bin) bin = new ArrayBuffer(0);
+
+    /* 访问器（复用 parse 的语义：处理交错 stride） */
+    function accArray(ai) {
+      var a = gltf.accessors && gltf.accessors[ai];
+      if (!a || a.bufferView == null) return null;
+      var bv = gltf.bufferViews && gltf.bufferViews[a.bufferView];
+      if (!bv) return null;
+      var TA = CITEM[a.componentType]; if (!TA) return null;
+      var cn = CNUM[a.type]; if (!cn) return null;
+      var n = a.count, base = (bv.byteOffset || 0) + (a.byteOffset || 0);
+      var es = TA.BYTES_PER_ELEMENT, stride = bv.byteStride || 0;
+      if (stride && stride !== cn * es) {
+        var dvv = new DataView(bin), get = CGET[a.componentType], out = new TA(n * cn);
+        for (var i = 0; i < n; i++) for (var c = 0; c < cn; c++) out[i * cn + c] = dvv[get](base + i * stride + c * es, true);
+        return out;
+      }
+      return new TA(bin, base, n * cn);
+    }
+    /* 贴图 blob（解析失败静默返回 null，Node 环境无 URL.createObjectURL 即走此路） */
+    function texUrl(ti) {
+      if (ti == null) return null;
+      var tex = gltf.textures && gltf.textures[ti]; if (!tex) return null;
+      var src = (tex.source != null) ? tex.source
+        : (tex.extensions && tex.extensions.EXT_texture_webp ? tex.extensions.EXT_texture_webp.source : null);
+      var img = gltf.images && gltf.images[src]; if (!img || img.bufferView == null) return null;
+      var bv = gltf.bufferViews[img.bufferView]; if (!bv) return null;
+      var bytes = new Uint8Array(bin, bv.byteOffset || 0, bv.byteLength);
+      try { return URL.createObjectURL(new Blob([bytes], { type: img.mimeType || 'image/png' })); }
+      catch (e) { return null; }
+    }
+
+    /* ---- 节点对象（joints → Bone；其余 → Group）----
+       v156.20：名字**优先用 glTF 里的节点名**（mixamorigHips / Head / Spine…）。
+       原来一律叫 `node_N`，于是"按语义找骨骼"（髋在哪、头在哪）根本无从下手 ——
+       立姿判定只能靠"哪边跨度最大"这种瞎猜，T 姿模型当场被放平。
+       动画轨道用的是同一批对象的 name，所以改名不会断 bind；
+       重名则加 `_2/_3` 后缀（three 的 PropertyBinding 按名字找对象，重名会串味）。 */
+    var nodes = gltf.nodes || [], nodeObjs = [], jointSet = {}, usedName = {};
+    (gltf.skins || []).forEach(function (s) { (s.joints || []).forEach(function (j) { jointSet[j] = true; }); });
+    for (var i = 0; i < nodes.length; i++) {
+      var o = jointSet[i] ? new THREE.Bone() : new THREE.Group();
+      /* ⚠️ 名字必须按 three 的规矩清洗：PropertyBinding 解析轨道名时会**剔除
+         `[ ] . : /` 并把空白换成下划线**（sanitizeNodeName）。直接留 `mixamorig:Hips`
+         这种名字，轨道就绑不上 → 骨骼动画静默失效（实测：Soldier 的 Walk 驱动位移 = 0，
+         §586 当场红）。清洗后 `mixamorig:Hips` → `mixamorigHips`，语义仍在。 */
+      var _raw = (nodes[i] && nodes[i].name) ? String(nodes[i].name) : ('node_' + i);
+      var _bn = _raw.replace(/\s/g, '_').replace(/[\[\]\.:\/]/g, '') || ('node_' + i);
+      var _uniq = _bn, _k = 1;
+      while (usedName[_uniq]) { _uniq = _bn + '_' + (_k++); }
+      usedName[_uniq] = 1;
+      o.name = _uniq;
+      nodeObjs.push(o);
+    }
+    /* TRS / matrix → 局部变换 */
+    for (i = 0; i < nodes.length; i++) {
+      var n = nodes[i], o = nodeObjs[i];
+      if (n.matrix) { o.matrix.fromArray(n.matrix); o.matrix.decompose(o.position, o.quaternion, o.scale); o.matrixAutoUpdate = false; }
+      else {
+        if (n.translation) o.position.fromArray(n.translation);
+        if (n.rotation) o.quaternion.fromArray(n.rotation);
+        if (n.scale) o.scale.fromArray(n.scale);
+      }
+    }
+    for (i = 0; i < nodes.length; i++) { var nd = nodes[i]; (nd.children || []).forEach(function (ci) { if (nodeObjs[ci]) nodeObjs[i].add(nodeObjs[ci]); }); }
+    var root = new THREE.Group(); root.name = 'actor_root';
+    var scene = (gltf.scenes && gltf.scenes[gltf.scene == null ? 0 : gltf.scene]) || { nodes: [] };
+    var roots = (scene && scene.nodes) || nodes.map(function (_, k) { return k; });
+    roots.forEach(function (ri) { if (nodeObjs[ri]) root.add(nodeObjs[ri]); });
+
+    /* ---- 几何体（含蒙皮 / 形态目标）---- */
+    function buildGeo(prim, isSkin) {
+      var at = prim.attributes || {};
+      if (at.POSITION == null) return null;
+      var pos = accArray(at.POSITION); if (!pos) return null;
+      var nor = (at.NORMAL != null) ? accArray(at.NORMAL) : null;
+      var uv = (at.TEXCOORD_0 != null) ? accArray(at.TEXCOORD_0) : null;
+      var idx = (prim.indices != null) ? accArray(prim.indices) : null;
+      var geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      if (nor) geo.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+      if (uv) geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+      if (idx) geo.setIndex(new THREE.BufferAttribute(idx, 1));
+      if (!nor) geo.computeVertexNormals();
+      if (isSkin) {
+        var ji = accArray(at.JOINTS_0), wi = accArray(at.WEIGHTS_0);
+        if (ji && wi) {
+          var JA = (ji instanceof Uint8Array) ? THREE.Uint8BufferAttribute : THREE.Uint16BufferAttribute;
+          geo.setAttribute('skinIndex', new JA(ji, 4));
+          geo.setAttribute('skinWeight', new THREE.Float32BufferAttribute(wi, 4));
+        }
+      }
+      if (prim.targets && prim.targets.length) {
+        var marr = [];
+        for (var t = 0; t < prim.targets.length; t++) {
+          var tp = prim.targets[t];
+          if (tp.POSITION != null) { var td = accArray(tp.POSITION); if (td) marr.push(new THREE.Float32BufferAttribute(td, 3)); }
+        }
+        if (marr.length) { geo.morphAttributes = geo.morphAttributes || {}; geo.morphAttributes.position = marr; geo.morphTargetsRelative = true; }
+      }
+      return geo;
+    }
+    /* ---- 材质（复用既有 buildMaterial，baseColorFactor 追补）---- */
+    function buildMat(mi) {
+      var m = (gltf.materials && gltf.materials[mi]) || {};
+      var pbr = m.pbrMetallicRoughness || {};
+      var part = {
+        map: texUrl(pbr.baseColorTexture && pbr.baseColorTexture.index),
+        normalMap: texUrl(m.normalTexture && m.normalTexture.index),
+        metalness: (pbr.metallicFactor != null ? pbr.metallicFactor : 0),
+        roughness: (pbr.roughnessFactor != null ? pbr.roughnessFactor : 0.7),
+        doubleSided: !!m.doubleSided,
+      };
+      var mat = GTF.buildMaterial(THREE, part, null);
+      if (pbr.baseColorFactor) mat.color.setRGB(pbr.baseColorFactor[0], pbr.baseColorFactor[1], pbr.baseColorFactor[2]);
+      return mat;
+    }
+
+    var nodeMeshes = {};   /* nodeIndex → [meshObj,...]（供 weights 轨道定向） */
+    /* ---- 骨架 ---- */
+    var skeletons = {};
+    (gltf.skins || []).forEach(function (skin, si) {
+      var joints = skin.joints || [];
+      var ibm = accArray(skin.inverseBindMatrices); if (!ibm) return;
+      var bones = joints.map(function (j) { return nodeObjs[j]; });
+      var inv = [];
+      for (var k = 0; k < bones.length; k++) inv.push(new THREE.Matrix4().fromArray(ibm, k * 16));
+      skeletons[si] = new THREE.Skeleton(bones, inv);
+    });
+    /* ---- 网格（蒙皮 / 刚体 / 形态目标）---- */
+    for (i = 0; i < nodes.length; i++) {
+      var nn = nodes[i]; if (nn.mesh == null) continue;
+      var mm = gltf.meshes[nn.mesh]; if (!mm) continue;
+      var isSkin = nn.skin != null, sk = isSkin ? skeletons[nn.skin] : null, objs = [];
+      (mm.primitives || []).forEach(function (prim, pi) {
+        if (prim.mode != null && prim.mode !== 4) return;
+        var geo = buildGeo(prim, isSkin); if (!geo) return;
+        var mat = buildMat(prim.material != null ? prim.material : 0);
+        var mesh = isSkin ? new THREE.SkinnedMesh(geo, mat) : new THREE.Mesh(geo, mat);
+        mesh.name = 'mesh_' + nn.mesh + '_' + pi;
+        if (geo.morphAttributes && geo.morphAttributes.position)
+          mesh.morphTargetInfluences = new Array(geo.morphAttributes.position.length).fill(0);
+        mesh._sk = (isSkin && sk) ? sk : null;
+        nodeObjs[i].add(mesh); objs.push(mesh);
+      });
+      if (objs.length) nodeMeshes[i] = objs;
+    }
+    /* ---- 绑定蒙皮（需先更新世界矩阵，取 mesh.matrixWorld 为 bindMatrix）----
+       ⚠️ **全流程只绑这一次**。之后任何"改根节点变换"的动作都会让 bindMatrix 过期；
+       实测教训（v156.20）：归一化后再 `bind()` + `skeleton.calculateInverses()`
+       看似"修正"，实际把静止姿态弄成非恒等 → 模型直接摊成一团。
+       正解不是重绑，而是**别动根节点**：立姿/缩放/贴地全部施加在**外层容器**上
+       （见下面 normalize 段），根节点保持载入时的原样，绑定永远有效。 */
+    root.updateMatrixWorld(true);
+    for (i = 0; i < nodes.length; i++) {
+      var nm = nodes[i]; if (nm.mesh == null || nm.skin == null) continue;
+      var sk2 = skeletons[nm.skin]; if (!sk2) continue;
+      nodeObjs[i].children.forEach(function (ch) { if (ch.isSkinnedMesh) ch.bind(sk2, ch.matrixWorld); });
+    }
+    /* ---- 动画 ---- */
+    var clips = [], byName = {};
+    (gltf.animations || []).forEach(function (anim) {
+      var tracks = [];
+      (anim.channels || []).forEach(function (ch) {
+        var s = anim.samplers[ch.sampler]; if (!s) return;
+        var input = accArray(s.input), output = accArray(s.output);
+        if (!input || !output) return;
+        var times = new Float32Array(input), tnode = ch.target.node, path = ch.target.path;
+        var nodeObj = nodeObjs[tnode]; if (!nodeObj) return;
+        if (path === 'translation') tracks.push(new THREE.VectorKeyframeTrack(nodeObj.name + '.position', times, output));
+        else if (path === 'rotation') tracks.push(new THREE.QuaternionKeyframeTrack(nodeObj.name + '.quaternion', times, output));
+        else if (path === 'scale') tracks.push(new THREE.VectorKeyframeTrack(nodeObj.name + '.scale', times, output));
+        else if (path === 'weights') {
+          var meshes = nodeMeshes[tnode] || [];
+          meshes.forEach(function (mesh) { tracks.push(new THREE.NumberKeyframeTrack(mesh.name + '.morphTargetInfluences', times, output)); });
+        }
+      });
+      if (tracks.length) { var clip = new THREE.AnimationClip(anim.name, undefined, tracks); clips.push(clip); byName[anim.name] = clip; }
+    });
+    /* ============================================================
+     * 朝向校正 + 归一化（默认开）—— **全部施加在外层容器 wrap 上**
+     * ------------------------------------------------------------
+     * 为什么是 wrap 而不是 root：蒙皮的 `bindMatrix` 是"绑定时"的根世界矩阵快照，
+     *   一旦改根节点（哪怕只是加个 scale），蒙皮就按过期矩阵去算 —— 人当场摊成一团。
+     *   （v156.20 实测：先试"重绑 + calculateInverses"，反而把静止姿态弄成非恒等，
+     *     模型被放大到只剩一条手臂占屏；而外层容器缩放是干净有效的。）
+     * 所以：root 保持载入原样（绑定永远有效），姿态/尺度/贴地记在 wrap 上，
+     *   对外统一以 wrap 作为"模型根"返回。
+     * 立姿判定见下：看"髋 → 头"是否朝上（T 姿的臂展比身高长，按跨度选会把人放平）。
+     * ============================================================ */
+    var out = root, meta = null;
+    if (opts.normalize !== false) {
+      try {
+        var THREE2 = THREE;
+        var target = opts.target || 1;
+        var cands = [[0, 0, 0], [-Math.PI / 2, 0, 0], [Math.PI / 2, 0, 0], [0, 0, -Math.PI / 2], [0, 0, Math.PI / 2]];
+        var wrap = new THREE2.Group();
+        wrap.add(root);
+        wrap.updateMatrixWorld(true);
+        var bonesAll = [];
+        root.traverse(function (o) { if (o.isBone) bonesAll.push(o); });
+        var wp = new THREE2.Vector3();
+        var hipsB = null, headB = null;
+        for (var bk = 0; bk < bonesAll.length; bk++) {
+          var nmk = (bonesAll[bk].name || '').toLowerCase();
+          if (!hipsB && /(hips|pelvis)/.test(nmk)) hipsB = bonesAll[bk];
+          if (!headB && /head/.test(nmk)) headB = bonesAll[bk];
+        }
+        function upScore() {                       /* 脊椎方向与 +Y 的余弦（1=正立，-1=倒立） */
+          if (!hipsB || !headB) return null;
+          var a1 = new THREE2.Vector3(), a2 = new THREE2.Vector3();
+          hipsB.getWorldPosition(a1); headB.getWorldPosition(a2);
+          var d0 = a2.sub(a1);
+          if (d0.lengthSq() < 1e-12) return null;
+          return d0.normalize().y;
+        }
+        function spanY() {
+          if (!bonesAll.length) return 0;
+          var lo = Infinity, hi = -Infinity;
+          for (var k = 0; k < bonesAll.length; k++) {
+            bonesAll[k].getWorldPosition(wp);
+            if (wp.y < lo) lo = wp.y;
+            if (wp.y > hi) hi = wp.y;
+          }
+          return hi - lo;
+        }
+        var fit0 = (GTF.FIT && GTF.FIT[opts.name]) || null;
+        var bestE = null, bestScore = -Infinity;
+        if (fit0 && fit0.stand) {              /* 标定表给了立姿就直用（资产内部坐标系不一致时只能实测） */
+          bestE = [fit0.stand[0] * Math.PI / 180, fit0.stand[1] * Math.PI / 180, fit0.stand[2] * Math.PI / 180];
+          wrap.rotation.set(bestE[0], bestE[1], bestE[2]); wrap.updateMatrixWorld(true);
+          bestScore = upScore() || 0;
+        }
+        for (var ci = 0; ci < cands.length && !(fit0 && fit0.stand); ci++) {
+          wrap.rotation.set(cands[ci][0], cands[ci][1], cands[ci][2]);
+          wrap.updateMatrixWorld(true);
+          var us = upScore();
+          var score = (us != null) ? us : (spanY() / 1000);   /* 无脊椎信息 → 退回跨度 */
+          if (score > bestScore) { bestScore = score; bestE = cands[ci]; }
+        }
+        if (!bestE) bestE = cands[0];
+        wrap.rotation.set(bestE[0], bestE[1], bestE[2]);
+        wrap.updateMatrixWorld(true);
+        /* ---- 尺度与贴地：**按标定表**（这两个资产的原生尺寸差 5 个数量级）----
+           实测（.workbuddy/tools/show/calib_actor_fit.js，像素法）：
+             Soldier          原生高 0.0033 → 缩到 1 需 ×307.4
+             RobotExpressive  原生高 178    → 缩到 1 需 ×0.005617
+           为什么不用包围盒/骨骼量：这两个模型的"绑定姿态"与"蒙皮结果"不在同一空间
+           （骨骼世界跨度 1.55，而蒙皮出来的身体只有 0.0033），任何 CPU 侧包围盒
+           （含 SkinnedMesh.computeBoundingBox）量出来都对不上屏幕，试过三种口径全错。
+           标定值来自真实渲染的像素占比，误差 <3%。未知资产退回"骨骼跨度"，并留 meta 告警。 */
+        var fit = (GTF.FIT && GTF.FIT[opts.name]) || null;
+        var sc = 1;
+        if (fit && fit.scale) sc = fit.scale;
+        else {
+          var bmin = Infinity, bmax = -Infinity;
+          for (var q = 0; q < bonesAll.length; q++) {
+            bonesAll[q].getWorldPosition(wp);
+            if (wp.y < bmin) bmin = wp.y;
+            if (wp.y > bmax) bmax = wp.y;
+          }
+          var hs = bmax - bmin;
+          sc = (isFinite(hs) && hs > 1e-9) ? (target / hs) : 1;
+        }
+        wrap.scale.multiplyScalar(sc);
+        if (fit && fit.footY) wrap.position.y += fit.footY;
+        var h = sc;
+        wrap.updateMatrixWorld(true);
+        out = wrap;
+        meta = { name: opts.name || null, fitted: !!fit, standRot: bestE.slice(), scale: +wrap.scale.x.toFixed(6),
+          groundY: +wrap.position.y.toFixed(4), upScore: +bestScore.toFixed(4),
+          hips: hipsB ? hipsB.name : null, head: headB ? headB.name : null };
+      } catch (e) { out = root; meta = { err: String(e && e.message || e) }; }
+    }
+    return { root: out, clips: clips, byName: byName, skeletons: skeletons, meta: meta };
+  };
+
+  /* 浏览器入口：按 name（如 'Soldier' / 'RobotExpressive'）加载 assets/actors/<name>.glb。
+     优先 base64 注入（file:// 无 CORS），否则注入 <script> 取 window.__ACTOR_GLB[name]，再 fallback fetch。 */
+  GTF.loadAnimated = function (name, cb, opts) {
+    opts = opts || {};
+    var THREE = globalThis.THREE || (typeof window !== 'undefined' && window.THREE);
+    var o2 = {}; for (var kk in opts) o2[kk] = opts[kk]; o2.name = o2.name || name;   /* v156.20：带名字进去查 FIT */
+    function done(ab) { try { var res = GTF.parseAnimated(ab, THREE, o2); cb && cb(res); } catch (e) { cb && cb(null, e); } }
+    var gb = (typeof window !== 'undefined' && window.__ACTOR_GLB && window.__ACTOR_GLB[name]);
+    if (gb) { var buf = _actorB64Buf(gb); if (buf) return done(buf); }
+    if (!document || !document.createElement) { cb && cb(null, new Error('loadAnimated 需要浏览器环境或直传 arrayBuffer')); return; }
+    var sc = document.createElement('script');
+    var _bv = 0;
+    try { var _any = document.querySelector('script[src*="?v="]'); if (_any) { var _m = /[?&]v=(\d+)/.exec(_any.getAttribute('src') || ''); if (_m) _bv = _m[1]; } } catch (e) { }
+    sc.src = 'assets/actors/' + name + '.glb.js' + (_bv ? ('?v=' + _bv) : '');
+    sc.onload = function () { var b = window.__ACTOR_GLB && window.__ACTOR_GLB[name]; if (b) done(_actorB64Buf(b)); else cb && cb(null, new Error('actor base64 缺失：' + name)); };
+    sc.onerror = function () { cb && cb(null, new Error('actor 脚本加载失败：' + name)); };
+    (document.head || document.body || document.documentElement).appendChild(sc);
+  };
+
+  /* ============================================================
+   * v92.00 角色控制器 + 技能→动作映射（"技能设定"锚点）
+   * ------------------------------------------------------------
+   * GAME.gltf.Actor：封装「加载 → mixer → 按技能名播放对应 clip → 每帧 update」。
+   * 场景只需：var a=new GAME.gltf.Actor({name:'Soldier'}); a.load(cb); 渲染循环里 a.update(dt);
+   *           状态变化时 a.skill('attack') / a.play('Walk')。
+   * CLIP_MAPS：每个角色一套「技能键 → {clip, loop}」，集中管理便于调参（不散落各场景）。
+   * ============================================================ */
+  /* ============================================================
+   * GTF.FIT —— 角色资产的**尺寸标定表**（把原生尺寸缩到"世界高 1 单位"）
+   * ------------------------------------------------------------
+   * 为什么必须手工标定：这两个资产的原生尺寸差 5 个数量级，而且
+   *   "绑定姿态空间"与"蒙皮结果空间"不一致（骨骼世界跨度 1.55，
+   *   蒙皮出来的身体只有 0.0033），CPU 侧任何包围盒都量不准屏幕上的大小。
+   * 数值来自 .workbuddy/tools/show/calib_actor_fit.js 的真实渲染像素法（误差 <3%）：
+   *   node .workbuddy/tools/show/calib_actor_fit.js
+   * 新增资产：跑一次标定脚本，把 unitScale 抄进来即可（不标定就退回骨骼跨度，会偏）。
+   * footY：贴地微调（脚底比原点低/高多少，标定渲染时量）。
+   * ============================================================ */
+  GTF.FIT = {
+    Soldier: { scale: 69.0, footY: 0, stand: [90, 0, 0] },
+    RobotExpressive: { scale: 0.2201, footY: 0, stand: [0, 0, 0] },
+  };
+  GTF.CLIP_MAPS = {
+    RobotExpressive: {
+      idle: { clip: 'Idle', loop: true }, walk: { clip: 'Walking', loop: true }, run: { clip: 'Running', loop: true },
+      attack: { clip: 'Punch', loop: false }, jump: { clip: 'Jump', loop: false }, guard: { clip: 'Standing', loop: true },
+      victory: { clip: 'Wave', loop: false }, defeat: { clip: 'Death', loop: false }, dance: { clip: 'Dance', loop: true },
+      yes: { clip: 'Yes', loop: false }, no: { clip: 'No', loop: false }, sit: { clip: 'Sitting', loop: true },
+      /* v156.20：斗将 3D 舞台要"受击"这个语义动作。Robot 的 No 是摇头/缩身，做挨打反应正合适 */
+      hurt: { clip: 'No', loop: false },
+    },
+    Soldier: {
+      idle: { clip: 'Idle', loop: true }, walk: { clip: 'Walk', loop: true }, run: { clip: 'Run', loop: true },
+      attack: { clip: 'Run', loop: false }, jump: { clip: 'Idle', loop: false }, guard: { clip: 'Idle', loop: true },
+      victory: { clip: 'Idle', loop: false }, defeat: { clip: 'Idle', loop: false }, dance: { clip: 'Idle', loop: true },
+      yes: { clip: 'Idle', loop: false }, no: { clip: 'Idle', loop: false }, sit: { clip: 'TPose', loop: true },
+      /* Soldier 只有 4 段（Idle/Run/Walk/TPose）：受击没有专用动作，回 Idle 靠位移补 */
+      hurt: { clip: 'Idle', loop: false },
+    },
+  };
+  GTF.Actor = function (opts) {
+    opts = opts || {};
+    this.name = opts.name;
+    this.root = null; this.clips = []; this.byName = {}; this.skeletons = null;
+    this.mixer = null; this.current = null; this.currentName = null;
+    this.clipMap = opts.clipMap || GTF.CLIP_MAPS[this.name] || {};
+    this._THREE = (typeof globalThis !== 'undefined' && globalThis.THREE) || (typeof window !== 'undefined' && window.THREE) || null;
+    this.fade = opts.fade != null ? opts.fade : 0.25;
+  };
+  GTF.Actor.prototype.load = function (cb, opts) {
+    var self = this;
+    GTF.loadAnimated(this.name, function (res, err) {
+      if (err || !res) { cb && cb(null, err); return; }
+      self.root = res.root; self.clips = res.clips; self.byName = res.byName; self.skeletons = res.skeletons;
+      var THREE = (typeof globalThis !== 'undefined' && globalThis.THREE) || (typeof window !== 'undefined' && window.THREE);
+      self._THREE = THREE;
+      self.mixer = new THREE.AnimationMixer(res.root);
+      cb && cb(self);
+    }, opts);
+  };
+  /* 播放某 clip（带淡入淡出切换）；已在该 clip 且仍运行则跳过。返回是否成功。 */
+  GTF.Actor.prototype.play = function (clipName, o) {
+    o = o || {};
+    var clip = this.byName[clipName]; if (!clip || !this.mixer) return false;
+    if (this.currentName === clipName && this.current && this.current.isRunning()) return true;
+    var THREE = this._THREE; if (!THREE) return false;
+    var action = this.mixer.clipAction(clip);
+    action.reset();
+    if (o.loop === false) { action.setLoop(THREE.LoopOnce, 1); action.clampWhenFinished = true; }
+    else { action.setLoop(THREE.LoopRepeat, Infinity); }
+    action.enabled = true; action.setEffectiveWeight(1); action.play();
+    if (this.current && this.current !== action) this.current.fadeOut(this.fade);
+    action.fadeIn(this.fade);
+    this.current = action; this.currentName = clipName;
+    return true;
+  };
+  /* 技能键 → 对应 clip（CLIP_MAPS）。找不到映射或映射的 clip 不存在则返回 false。 */
+  GTF.Actor.prototype.skill = function (key) {
+    var e = this.clipMap[key]; if (!e) return false;
+    return this.play(e.clip, { loop: e.loop });
+  };
+  GTF.Actor.prototype.update = function (dt) { if (this.mixer) this.mixer.update(dt); };
+
   GAME.gltf = GTF;
-  GAME.gltfVersion = 'v91.30';   /* 成员定义锚（供 audit ⑥ 识别 · 见 audit.js 白名单） */
+  GAME.gltfVersion = 'v92.00';   /* 成员定义锚（供 audit ⑥ 识别 · 见 audit.js 白名单） */
 })();
 
 /* ---- battle.js ---- */
@@ -1557,6 +1978,11 @@
     newCity.level = npcCity.level;
     newCity.state = npcCity.state;      // 所属区
     newCity.origId = npcCity.id;        // 原 NPC id
+    /* v156.24：**行政中心身份跟着城走** —— 读档/月回访时
+       `fog.revealOwned` 靠这两个字段把"该省/市/区下辖地"重新点亮。
+       丢了它 = 一出游戏再进来，视野就退回占领前（功能只在当次有效）。
+       普通名城（无 admLevel）不受影响，仍按 radiusOf 点亮。 */
+    if (npcCity.admLevel) { newCity.admLevel = npcCity.admLevel; newCity.admIndex = npcCity.admIndex; }
     /* ============================================================
      * v60（需求 6）：**建筑就地转正** —— 未占据城市的设定是"建筑默认全满、
      * 均 N 级"（见 GAME.npcCityShadow），所以攻占一座 9 级城，拿到的就是
@@ -1646,6 +2072,34 @@
     if (npcCity.type !== 'capital' && Math.random() < 0.5) GAME.battle.grantBeauty(npcCity, fromCity);
     /* v90.92：任务系统退役 —— 原 advanceConquer（已占城计数）已删。 */
     GAME.log.war('占领新城市：' + npcCity.name + '！（威望 +' + repGain + '）');
+
+    /* ============================================================
+     * v156.24（老板「占领省市区首府，可以看到该省市区下辖地的视野」）
+     * ------------------------------------------------------------
+     * 打下一座**行政区中心城** → 该行政区下辖地全境在望。
+     *   · admLevel='prov'     省府 → 全省（连带下辖所有市/区）
+     *   · admLevel='market'   市府 → 全市
+     *   · admLevel='district' 区   → 本区
+     * 门槛就一条：`npcCity.admLevel` 存在（只有 genSettlements 产的行政城才有）。
+     *   ⚠️ 不按 `type` 判：type 是**档位**（zhou/jun/county，决定等级与岁贡），
+     *     而"这是哪一级行政中心"是 `admLevel` —— 两者同值但语义不同，
+     *     拿 type 判会在"打了座 zhou 档的名城"时误触发（它不是任何省的中心）。
+     * 点亮逻辑只有一处（GAME.fog.revealAdmin），这里只负责"什么时候点"和"怎么说"。
+     * ============================================================ */
+    if (GAME.fog && GAME.fog.revealAdmin && npcCity.admLevel && npcCity.admIndex != null) {
+      var _adLv = npcCity.admLevel;
+      var _adName = { prov: '省', market: '市', district: '区' }[_adLv] || '行政区';
+      var _adHit = 0;
+      try { _adHit = GAME.fog.revealAdmin(_adLv, npcCity.admIndex); } catch (eAd) { _adHit = 0; }
+      if (_adHit > 0) {
+        GAME.log.war('🏛 ' + npcCity.name + '既下 —— 该' + _adName + '下辖 ' + _adHit + ' 格视野尽开');
+        /* "看得见"本身就是主要收获，单独一条提示（别混进占领那行长文案） */
+        if (GAME.ui && GAME.ui.notify) {
+          GAME.ui.notify('success', npcCity.name + ' 既下：该' + _adName + '视野 +' + _adHit + ' 格');
+        }
+      }
+    }
+
     /* v89.93（整改 E5）：**占城演出** —— 核心目标达成，值一张卡（此前只有一行日志） */
     if (GAME.ui && GAME.ui.moment) {
       GAME.ui.moment({
@@ -4238,6 +4692,8 @@
       GAME.log.sys('✨ ' + gen.name + ' 升级刷新：体力 ' + Math.round(GAME.staNow(gen)) + '/'
         + Math.round(GAME.staMax(gen)) + ' · 精力 ' + Math.round(GAME.energyNowOf(gen)) + '/'
         + Math.round(GAME.energyMaxOf(gen)) + '（已回满）');
+      /* v2026-11-01（老板）：升级不再是文字，是一张"瞬间卡"（场景层，独立于系统 toast）*/
+      if (GAME.ui && GAME.ui.levelUpScene) GAME.ui.levelUpScene(gen, from, gen.level, step);
     }
     var capped = gen.level >= capLv;
     if (capped && from < capLv) {

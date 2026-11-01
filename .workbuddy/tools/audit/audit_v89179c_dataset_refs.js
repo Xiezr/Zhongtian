@@ -25,8 +25,8 @@ function stripComment(src) {
     .replace(/(^|[^:\\])\/\/[^\n]*/g, '$1');
 }
 
-var READERS = ['js/main.js', 'js/ui.js'];
-var EMITTERS = ['js/ui.js', 'js/main.js', 'index.html'];
+var READERS = ['js/main.js', 'js/ui-all.js'];
+var EMITTERS = ['js/ui-all.js', 'js/main.js', 'index.html'];
 
 function toKebab(k) { return k.replace(/[A-Z]/g, function (c) { return '-' + c.toLowerCase(); }); }
 

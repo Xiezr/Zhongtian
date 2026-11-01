@@ -1,6 +1,296 @@
-/*! Deepseekdb bundle-ui — 第 3/3 包（5 个模块）
+/*! Deepseekdb bundle-ui — 第 3/3 包（24 个模块）
  *  由 .workbuddy/tools/patch/build_bundle.py 生成，请勿手改。
  *  ⚠️ 三包必须按 core → war → ui 顺序加载（window.GAME 全局共享）。 */
+/* ---- duel3d.js ---- */
+/* ============================================================
+ * js/duel3d.js — **斗将 3D 舞台**（v156.20 · 老板「目前还是偏文字游戏了，
+ *   把文字场景化，3D 对战」）
+ * ------------------------------------------------------------
+ * 定位：把原来"两张画像 + 伤害数字"的斗将面板，换成**看得见两个人真打**的 3D 舞台。
+ *
+ * 三条边界（不越界）：
+ *   ① **判定仍然只有一份**：胜负/伤害全走 `GAME.duel.play()`（纯函数，见 duel.js）。
+ *      本模块**只读结果**，不掷骰、不改血 —— 于是"画面演的"与"账上算的"永远同一场。
+ *   ② **只做表现**：舞台负责 站位/出招/受击/胜负姿态；名字、血条、招式键仍是 DOM
+ *      （3D 里画血条在低分辨率下必糊，且读不出数值）。
+ *   ③ **单例 + 可重入**：面板每走一合都会整块重绘，`mount()` 被反复调用；
+ *      场景/加载好的角色**只建一次**，画布元素在 DOM 里被搬来搬去（保 context 不丢）。
+ *
+ * 角色与动作（资产见 assets/actors，动作映射见 gltf.js 的 CLIP_MAPS）：
+ *   我方 = Soldier（人形，4 段动作）；对手 = RobotExpressive（机械，14 段动作）。
+ *   ⚠️ 诚实缺口：Soldier 只有 Idle/Run/Walk/TPose —— 它的 "出招" 是 Run、"受击" 是 Idle，
+ *      靠位移补戏；想更好看就把 ME_MODEL 换成 RobotExpressive（一行）。
+ * ============================================================ */
+
+
+(function () {
+  var GAME = window.GAME = window.GAME || {};
+  var D3 = GAME.duel3d = {};
+
+  D3.enabled = true;                 /* 测试/降级开关：关掉就退回纯 DOM 面板 */
+  /* ============================================================
+   * CLIP_ON —— 是否播放骨骼动作（**默认关**，原因写在下面）
+   * ------------------------------------------------------------
+   * Soldier 这个资产的"绑定姿态空间"（网格 0.003 单位）与"骨骼空间"（1.5 单位）
+   * 差三个数量级，动作里又带根位移：一旦播 clip，模型会被推到画面外（实测
+   * pxAfter=0，人直接消失）。Robot 没有这个问题，但两个角色一个动一个不动更怪。
+   * 所以 v1 只做**站桩对打**：前冲 + 前倾 + 受击退 + 伤害数字（尺寸全程稳定）。
+   * 要开动作，先修 gltf 的蒙皮空间（或换一个 binding 规整的角色资产）。
+   * ============================================================ */
+  var CLIP_ON = false;
+  var ME_MODEL = 'Soldier';
+  var FOE_MODEL = 'RobotExpressive';
+
+  /* 站位（世界单位）：两人分列 ±X，面对面 */
+  var ME_X = -0.62, FOE_X = 0.62;
+  /* 实测默认朝向（.workbuddy/shots/stand_idle.png）：士兵背面朝 +Z（正面 −Z）、机器人正面 +Z。
+     两人都绕 −90° 才能面对面（士兵→+X，机器人→−X）。 */
+  var ME_YAW = -Math.PI * 0.5;
+  var FOE_YAW = Math.PI * 0.5;
+
+  var S = null;                      /* 单例场景 */
+  var _idleFrames = 0;               /* 画布不在页面上连续多少帧（用于自动停 RAF） */
+
+  function nowMs() { return (window.performance && performance.now) ? performance.now() : Date.now(); }
+  function THREE_OK() { return !!(window.THREE && GAME.gltf && GAME.gltf.Actor); }
+
+  /* ---------------- 场景构建（只做一次） ---------------- */
+  function build() {
+    if (S) return S;
+    if (!THREE_OK()) return null;
+    var THREE = window.THREE;
+    var canvas = document.createElement('canvas');
+    canvas.className = 'duel-canvas';
+    var renderer = null;
+    try {
+      renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, alpha: true });
+    } catch (e) { return null; }
+    renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+    renderer.setClearColor(0x000000, 0);
+
+    var scene = new THREE.Scene();
+    scene.fog = new THREE.Fog(0x140f0b, 3.6, 7.5);
+
+    var cam = new THREE.PerspectiveCamera(40, 1.6, 0.05, 60);
+    cam.position.set(0, 1.18, 2.60);
+    cam.lookAt(0, 0.55, 0);
+
+    /* 光：暖主光 + 冷补光 + 半球环境（废土黄昏的基调，不抢人物剪影） */
+    scene.add(new THREE.HemisphereLight(0xcfd8e6, 0x241a12, 1.05));
+    var key = new THREE.DirectionalLight(0xffe6bf, 1.75); key.position.set(3.2, 5.4, 3.4); scene.add(key);
+    var rim = new THREE.DirectionalLight(0x7f9dd6, 0.85); rim.position.set(-3.6, 2.4, -3.2); scene.add(rim);
+
+    /* 地台：一块圆形沙地 + 一圈暗红边沿（"竞技场"的最小视觉锚） */
+    var ground = new THREE.Mesh(
+      new THREE.CircleGeometry(2.15, 56),
+      new THREE.MeshStandardMaterial({ color: 0x4a3a28, roughness: 0.98, metalness: 0.04 })
+    );
+    ground.rotation.x = -Math.PI / 2;
+    scene.add(ground);
+    var ring = new THREE.Mesh(
+      new THREE.RingGeometry(1.62, 1.74, 64),
+      new THREE.MeshBasicMaterial({ color: 0x9a6a3a, transparent: true, opacity: 0.55, side: THREE.DoubleSide })
+    );
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = 0.012;
+    scene.add(ring);
+
+    S = {
+      canvas: canvas, renderer: renderer, scene: scene, cam: cam,
+      me: null, foe: null, meReady: false, foeReady: false,
+      round: 0, over: false, winner: null,
+      anim: null,                 /* 当前这一合的表演时间线 */
+      t0: nowMs(), last: nowMs(),
+      raf: 0, dead: false
+    };
+    loadActors(S);
+    S.raf = requestAnimationFrame(tick);
+    return S;
+  }
+
+  /* ⚠️ 两个坑一起规避：
+     ① `parseAnimated` 把"立姿"旋转写在 `actor.root.rotation.z`（或 .x）上 ——
+        这里**绝不能**直接改 `root.rotation.y`：Euler 三个分量是复合的，
+        在 z=90° 的基础上再写 y=180° 会把站姿拧成**躺姿**（实测就是这么躺的）。
+        正确做法：套一层 Group，转身加在外层，根节点原样不动。
+     ② 归一化的"脚底贴地"补偿记在 `root.position.y`，外层不能再写 0（会埋进地里）。 */
+  function prepRoot(actor, x, yaw) {
+    var THREE = window.THREE;
+    var wrap = new THREE.Group();
+    wrap.add(actor.root);
+    wrap.position.set(x, 0, 0);
+    wrap.rotation.y = yaw;
+    actor._wrap = wrap;
+    actor._groundY = actor.root.position.y || 0;
+    actor.root.traverse(function (o) { if (o.isMesh || o.isSkinnedMesh) { o.frustumCulled = false; } });
+    return wrap;
+  }
+
+  function loadActors(st) {
+    var me = new GAME.gltf.Actor({ name: ME_MODEL });
+    me.load(function (a) {
+      if (!a || st.dead) return;
+      st.scene.add(prepRoot(a, ME_X, ME_YAW));
+      st.me = a; st.meReady = true;
+      if (CLIP_ON) a.skill(st.over ? (st.winner === 'atk' ? 'victory' : 'defeat') : 'idle');
+    });
+    var foe = new GAME.gltf.Actor({ name: FOE_MODEL });
+    foe.load(function (a) {
+      if (!a || st.dead) return;
+      st.scene.add(prepRoot(a, FOE_X, FOE_YAW));
+      st.foe = a; st.foeReady = true;
+      if (CLIP_ON) a.skill(st.over ? (st.winner === 'def' ? 'victory' : 'defeat') : 'idle');
+    });
+  }
+
+  /* ---------------- 每帧 ---------------- */
+  function ease(t) { return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t; }
+
+  function tick() {
+    if (!S || S.dead) return;
+    S.raf = requestAnimationFrame(tick);
+    var t = nowMs(), dt = Math.min(0.05, (t - S.last) / 1000);
+    S.last = t;
+
+    if (S.canvas.isConnected === false) {
+      /* 画布被面板重绘摘下来了：先空转，连续 240 帧（≈4s）还不在就停下来省电 */
+      if (++_idleFrames > 240) { S.dead = true; return; }
+    } else { _idleFrames = 0; }
+
+    if (S.me) S.me.update(dt);
+    if (S.foe) S.foe.update(dt);
+    if (S.anim) stepAnim(S.anim, t);
+
+    if (S.canvas.width > 0 && S.canvas.height > 0) S.renderer.render(S.scene, S.cam);
+  }
+
+  /* ---------------- 一合的表演时间线 ----------------
+   * 0.00~0.34 进攻方前冲（左右各出手一次 → 两边都冲）
+   * 0.34~0.52 命中：受击方位移一下 + 后仰
+   * 0.52~0.95 回到站位
+   * 任何时刻被新的 react() 打断都重新计时（连点招式不会卡在"冲到一半"）
+   */
+  var LUNGE = 0.62, RECOIL = 0.24;
+  function stepAnim(an, t) {
+    var p = (t - an.t0) / 1000;
+    var st = S;
+    function put(actor, baseX, sign, off) {
+      if (!actor || !actor._wrap) return;
+      actor._wrap.position.x = baseX + off * sign;
+    }
+    if (an.over) {                       /* 结算：归位 + 只播姿态（别停在"冲出去一半"的位置） */
+      if (st.me && st.me._wrap) { st.me._wrap.position.x = ME_X; st.me._wrap.rotation.x = 0; }
+      if (st.foe && st.foe._wrap) { st.foe._wrap.position.x = FOE_X; st.foe._wrap.rotation.x = 0; }
+      if (p > 0.25) { st.anim = null; }
+      return;
+    }
+    if (p >= 1.0) { st.anim = null; return; }
+    /* 前半：双方同时前冲（每合双方各出手一次，这是本作的规矩） */
+    var punch = p < 0.5 ? ease(Math.min(1, p / 0.34)) * (p < 0.34 ? 1 : 1) : 0;
+    if (p >= 0.5) punch = Math.max(0, 1 - ease(Math.min(1, (p - 0.5) / 0.35)));
+    if (p >= 0.34 && p < 0.5) punch = 1;
+    var meOff = LUNGE * punch, foeOff = LUNGE * punch;
+    /* 受击：谁挨得多谁多退半步 */
+    var rec = 0;
+    if (p > 0.34) rec = RECOIL * Math.max(0, 1 - Math.min(1, (p - 0.34) / 0.34));
+    put(st.me, ME_X, +1, meOff - (an.dmgToA > an.dmgToB ? rec : 0));
+    put(st.foe, FOE_X, -1, foeOff - (an.dmgToB > an.dmgToA ? rec : 0));
+    /* 身体微俯：出招时前倾一点，站着时不僵 */
+    var lean = 0.10 * punch;
+    if (st.me && st.me._wrap) st.me._wrap.rotation.x = lean;
+    if (st.foe && st.foe._wrap) st.foe._wrap.rotation.x = lean;
+  }
+
+  /* ---------------- 对外：挂到面板上 ----------------
+   * opts = {
+   *   holderId, roundNo, over, winner, dmgToA, dmgToB,
+   *   meName, foeName, meHp, meMax, foeHp, foeMax, faceMe, faceFoe
+   * }
+   */
+  D3.mount = function (opts) {
+    opts = opts || {};
+    if (!D3.enabled) return false;
+    var st = build();
+    if (!st) return false;
+    var holder = document.getElementById(opts.holderId || 'duel-stage3d');
+    if (!holder) return false;
+
+    if (st.canvas.parentNode !== holder) {
+      holder.appendChild(st.canvas);
+      _idleFrames = 0;
+      /* 曾因长时间离屏停过 RAF → 重新挂上来时把循环拉起来（否则画面定住） */
+      if (st.dead) { st.dead = false; st.last = nowMs(); st.raf = requestAnimationFrame(tick); }
+      /* 画布被 DOM 搬过一次后 context 仍有效，但视口要按新容器重量 */
+      var w = Math.max(1, holder.clientWidth || 520);
+      var h = Math.max(1, holder.clientHeight || 240);
+      st.renderer.setSize(w, h, false);
+      st.cam.aspect = w / h;
+      st.cam.updateProjectionMatrix();
+    }
+
+    /* 新的一合 → 重播表演；同一合重复挂载（比如重绘）不重播 */
+    var rn = opts.roundNo | 0;
+    if (rn !== st.round) {
+      st.round = rn;
+      st.over = !!opts.over;
+      st.winner = opts.winner || null;
+      if (st.over) {
+        st.anim = { t0: nowMs(), over: true, dmgToA: 0, dmgToB: 0 };
+        var w = st.winner;
+        if (CLIP_ON) {
+          if (st.me) st.me.skill(w === 'atk' ? 'victory' : (w === 'def' ? 'defeat' : 'idle'));
+          if (st.foe) st.foe.skill(w === 'def' ? 'victory' : (w === 'atk' ? 'defeat' : 'idle'));
+        }
+      } else if (rn > 0) {
+        st.anim = { t0: nowMs(), over: false, dmgToA: opts.dmgToA | 0, dmgToB: opts.dmgToB | 0 };
+        if (CLIP_ON) {
+          if (st.me) st.me.skill('attack');
+          if (st.foe) st.foe.skill('attack');
+        }
+      }
+    }
+    return true;
+  };
+
+  /* 供外部/测试读状态（不算公开 API，但比"翻内部变量"稳）。
+     bbox 一并给出：立姿/贴地/比例这三件事全靠它说话，比"看着像"可靠。 */
+  D3.state = function () {
+    if (!S) return null;
+    var THREE = window.THREE;
+    function bbox(a) {
+      if (!a || !a.root) return null;
+      try {
+        var b = new THREE.Box3().setFromObject(a.root);
+        return {
+          min: [+b.min.x.toFixed(3), +b.min.y.toFixed(3), +b.min.z.toFixed(3)],
+          max: [+b.max.x.toFixed(3), +b.max.y.toFixed(3), +b.max.z.toFixed(3)],
+          h: +(b.max.y - b.min.y).toFixed(3)
+        };
+      } catch (e) { return null; }
+    }
+    return {
+      ready: !!(S.meReady && S.foeReady), me: S.meReady, foe: S.foeReady,
+      round: S.round, over: S.over, winner: S.winner,
+      meClip: S.me && S.me.currentName, foeClip: S.foe && S.foe.currentName,
+      canvasInDom: !!(S.canvas && S.canvas.isConnected),
+      size: S.canvas ? [S.canvas.width, S.canvas.height] : null,
+      meBox: bbox(S.me), foeBox: bbox(S.foe),
+      mePos: S.me ? S.me.root.position.toArray().map(function (v) { return +v.toFixed(3); }) : null,
+      foePos: S.foe ? S.foe.root.position.toArray().map(function (v) { return +v.toFixed(3); }) : null,
+      cam: S.cam.position.toArray().map(function (v) { return +v.toFixed(2); })
+    };
+  };
+
+  D3.close = function () {
+    if (!S) return;
+    S.dead = true;
+    try { cancelAnimationFrame(S.raf); } catch (e) { }
+    try { if (S.canvas.parentNode) S.canvas.parentNode.removeChild(S.canvas); } catch (e) { }
+    try { S.renderer.dispose(); } catch (e) { }
+    S = null;
+  };
+})();
+
 /* ---- map3d.js ---- */
 /* ============================================================
  * map3d.js — Three.js **星球 3D 地图**（cube-sphere 地形 + 等面积地块）
@@ -142,17 +432,82 @@
       ui.openLandModalCi(ci);
     }
   }
+  /* ---- 纯数学实现（**不依赖 THREE**）----
+     为什么不用 THREE.Vector3/Quaternion：map3d 在没有 three 的环境（node 门禁、
+     首屏未加载）会走"enabled:false · why:no-three"降级分支，**根本注册不到出口**，
+     于是这条坐标系不变量在门禁里永远测不到。改成纯数组运算后，
+     数学本身可以在 node 里直接验，浏览器端再包成 THREE 四元数用。 */
+  function _hyp(a, b, c) { return Math.sqrt(a * a + b * b + c * c); }
+  function _cross(a, b) {
+    return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  }
+  function _qmul(a, b) {                     /* 四元数 x,y,z,w 相乘（a 先不作用，b 先作用） */
+    return [
+      a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1],
+      a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0],
+      a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3],
+      a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2]
+    ];
+  }
+  /* 把 +Y 对到 dir（基座 ⟂ 半径），再绕**自身竖轴**转 yawDeg 度。返回 [x,y,z,w]。
+     v156.25：`seatProp()` 是同一件事的另一种写法（setFromUnitVectors + rotateY），
+       两者实测完全等价 —— 改这里时请一并看那处的注释（判据：转身只绕局部轴）。 */
+  function surfaceQuad(dir, yawDeg) {
+    var x = dir[0], y = dir[1], z = dir[2];
+    var L = _hyp(x, y, z) || 1; x /= L; y /= L; z /= L;
+    var d = y;                                /* dot((0,1,0), n) */
+    var q;
+    if (d > -0.999999) {
+      /* axis = cross((0,1,0), n) = (z, 0, -x)；w = 1 + dot */
+      q = [z, 0, -x, 1 + d];
+    } else {
+      q = [1, 0, 0, 0];                       /* n ≈ −Y：绕 X 转 180° */
+    }
+    var ql = _hyp(q[0], q[1], q[2]) || Math.abs(q[3]) || 1;
+    var qn = Math.sqrt(q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]) || 1;
+    q = [q[0] / qn, q[1] / qn, q[2] / qn, q[3] / qn];
+    if (yawDeg) {
+      var a = yawDeg * Math.PI / 360;         /* 半角 */
+      /* 右乘绕**局部** Y —— 与"先自转再对齐"同序；
+         若改成绕世界法线右乘，就是把上轴先掰歪再拉平（v156.19 城堡歪掉的根因） */
+      q = _qmul(q, [0, Math.sin(a), 0, Math.cos(a)]);
+    }
+    return q;
+  }
+  /* 球面正交基（右手）：up = 半径，east = 东（世界口径 = −Z），south = 南。返回数组。 */
+  function surfaceFrame(dir) {
+    var L = _hyp(dir[0], dir[1], dir[2]) || 1;
+    var n = [dir[0] / L, dir[1] / L, dir[2] / L];
+    var dN = n[1];
+    var north = [-n[0] * dN, 1 - n[1] * dN, -n[2] * dN];
+    var nl = _hyp(north[0], north[1], north[2]);
+    if (nl < 1e-8) { north = [1 - n[0] * n[0], -n[0] * n[1], -n[0] * n[2]]; nl = _hyp(north[0], north[1], north[2]) || 1; }
+    north = [north[0] / nl, north[1] / nl, north[2] / nl];
+    var east = _cross(north, n);
+    var south = _cross(east, n);
+    return { up: n, east: east, south: south };
+  }
+
+  /* 把纯数组四元数灌进一个 THREE.Quaternion（浏览器路径专用；函数体里才碰 THREE） */
+  function applyQuad(qt, dir, yawDeg) {
+    var q = surfaceQuad(dir, yawDeg);
+    qt.set(q[0], q[1], q[2], q[3]);
+    return qt;
+  }
   if (typeof THREE === 'undefined') {
     /* 无 THREE（jsdom）：只留这几个纯数据出口 —— smoke 靠它们验"这一格是什么" */
     GAME.map3d = { enabled: false, why: 'no-three',
       openCellPanel: _openCellPanel, cellBrief: _cellBrief,
-      townScaleOf: _townScaleOf };
+      townScaleOf: _townScaleOf,
+      /* v156.19：球面坐标系的纯数学出口（无 three 也要能验） */
+      surfaceQuad: surfaceQuad, surfaceFrame: surfaceFrame };
     return;
   }
   var SP = GAME.mapSphere;                         /* v90.97（双球面）：地图渲染走**地图球面**（与逻辑球面 GAME.sphere 解耦）*/
   var M = GAME.map3d = { enabled: true,
     openCellPanel: _openCellPanel, cellBrief: _cellBrief,
-    townScaleOf: _townScaleOf };
+    townScaleOf: _townScaleOf,
+    surfaceQuad: surfaceQuad, surfaceFrame: surfaceFrame };
 
   var R = (SP && SP.R) || 300;                    /* 星球海平面半径 */
   var HSC = (SP && SP.HSC) || 26;                 /* 高度 → 世界单位（山≈40 · 陆地≈5）*/
@@ -219,11 +574,19 @@
       uniforms: { uTime: { value: 0 }, uFade: { value: 1 } },
       vertexShader: [
         'varying vec3 vP;',
-        'void main(){ vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }'
+        'varying vec3 vN;',
+        'varying vec3 vW;',
+        'void main(){',
+        '  vP = position;',
+        '  vN = normalize(mat3(modelMatrix) * normal);',
+        '  vec4 wp = modelMatrix * vec4(position,1.0);',
+        '  vW = wp.xyz;',
+        '  gl_Position = projectionMatrix * viewMatrix * wp;',
+        '}'
       ].join('\n'),
       fragmentShader: [
         'uniform float uTime; uniform float uFade;',
-        'varying vec3 vP;',
+        'varying vec3 vP; varying vec3 vN; varying vec3 vW;',
         'float h31(vec3 p){ return fract(sin(dot(p, vec3(127.1,311.7,74.7))) * 43758.5453); }',
         'float n31(vec3 p){ vec3 i=floor(p), f=fract(p); f=f*f*(3.0-2.0*f);',
         '  return mix(mix(mix(h31(i),h31(i+vec3(1,0,0)),f.x),mix(h31(i+vec3(0,1,0)),h31(i+vec3(1,1,0)),f.x),f.y),',
@@ -240,6 +603,28 @@
            探明度**不再**参与这一层（不切割），只影响地表加亮（见 buildFog）。 */
         /* v92.241：浓度由星球参数派生（SP.ATM_A）—— 大气密度/云量大的星球更浓。 */
         '  float a = dens * ' + atmA().toFixed(3) + ' * uFade;',
+        /* ============================================================
+         * v156.34（老板 2026-11-02「星球自转过程中半径闪烁」）
+         * ------------------------------------------------------------
+         * 现象：球体外那圈大气雾的**外边界**在自转时忽薄忽厚地跳
+         * （实测同一方向的最外亮像素半径 std 高达 31px，均值 377 → 428）。
+         *
+         * 病根不在"噪声随时间漂移"（uTime 每秒只走 0.008，八帧内几乎不动），
+         * 而在**图案与边界的耦合**：这层壳的 alpha 完全由 fbm(d) 决定，
+         * 而 d 固定在星球上 —— 自转时噪声图案从轮廓线上扫进扫出，
+         * 于是"哪一像素还算大气"这件事每一帧都换答案。
+         *
+         * 修法分两层（缺一不可）：
+         *   ① `edge`  —— **确定性**的边缘淡出（只跟视线夹角有关，不碰噪声）。
+         *      轮廓处恒为 0，所以边界位置固定 → 自转不再改变外轮廓。
+         *   ② `cloudMask` —— 把噪声**赶出边缘区**：rim < 0.30 时云图案不参与，
+         *      只留 0.08 的均匀底雾。噪声再扫，也扫不到决定边界的那一段。
+         * 观感上是"大气在正面厚、越往边越薄"，本来也是这么回事。
+         * ============================================================ */
+        '  float rim = clamp(dot(normalize(vN), normalize(cameraPosition - vW)), 0.0, 1.0);',
+        '  float edge = smoothstep(0.0, 0.45, rim);',
+        '  float cloudMask = smoothstep(0.30, 0.85, rim);',
+        '  float a = (dens * cloudMask * 0.92 + 0.08) * edge * ' + atmA().toFixed(3) + ' * uFade;',
         '  vec3 col = mix(vec3(0.76, 0.80, 0.87), vec3(0.98, 0.99, 1.0), dens);',
         '  gl_FragColor = vec4(col, a);',
         '}'
@@ -773,7 +1158,7 @@
     try {
       /* ---- 顶点：沿法线位移（3 层 fbm，替身用 3 组不同频率/速度的正弦堆叠；零贴图） ---- */
       var marineVS = [
-        'uniform float uTime, uAmp, uR;',
+        'uniform float uTime, uAmp, uR, uFar;',
         /* ============================================================
          * v156.15（实机探针抓到的**真 bug**）：这里原来少了这两行声明 ——
          *   `attribute float uCoast;`（几何按顶点写离岸距离，见 wg.setAttribute('uCoast')）
@@ -786,7 +1171,7 @@
          * ============================================================ */
         'attribute float uCoast;',
         'varying float vCoast;',
-        'varying vec3 vN; varying vec3 vView;',
+        'varying vec3 vN; varying vec3 vView; varying vec3 vW; varying float vFar;',
         /* ============================================================
          * v155d（老板：「海面目前毫无波澜，起伏没有体现出来」）
          * ------------------------------------------------------------
@@ -797,46 +1182,57 @@
          * 波数取 0.21~1.9 时波长 = 2π/k ≈ 3.3~30 世界单位（一格 ≈ 5 单位）——真正的浪。
          * ============================================================ */
         /* ============================================================
-         * v155g（老板：「波浪现在是规律性的」）
+         * v156.22（老板：「海波还是有点太规整太明显了」）
          * ------------------------------------------------------------
-         * 五条正弦叠加必然出现**平行条纹**（相位是线性的，等相位线就是直线）。
-         * 最简洁的两招破掉规律性（不引入贴图、不加噪声纹理）：
-         *   ① **域扭曲**：采样点先被三个慢变的 sin 推开（波长是主浪的 10 倍以上），
-         *      等相位线被拉弯 → 波峰不再是笔直的平行带；
-         *   ② **慢变包络**：整片海域的浪高缓慢起伏（有的地方浪大、有的地方近乎平静）。
-         * 再加一条"相位抖动"正弦，让 5 条波在局部互相错开，破掉晶格感。
+         * 实测 A/B（同机位、只把 uAmp 从 3.2 改 0）：关浪是一片干净深蓝；开浪则整片
+         * 海面浮着一层**规则的大斑块**。根因不是振幅，是**形状**：
+         *   · 5 条固定方向的正弦叠加 → 相位线性 → 等相位线是**平行直线**；
+         *   · 域扭曲用的也是 3 条慢正弦（周期 300+ 单位）→ 扭曲本身同样规则，
+         *     只是把"直条纹"弯成"弯条纹"，规律感一点没少。
+         * 正解：换**值噪声 fbm**（哈希噪声，天生非周期），并让噪声自己扭曲自己。
+         *   GLSL 里哈希噪声比三角函数还便宜（只有乘加、没有 sin），13 万顶点撑得住。
+         * 分层：base(涌浪 ~12 单位) + mid(~5) + chop(~2.2)，权重递减；
+         *   振幅再乘 uFar（按镜头距离轻微衰减）—— 远景本就不该看得见小浪。
          * ============================================================ */
-        /* v155j（性能）：**位移用全波，求法线用快波**。
-           原来每个顶点要跑 3 次 5 条波（有限差分求法线）= 3× 的波形开销。
-           法线只需要"大致坡度"，用前两条波 + 域扭曲即可，视觉无差别。 */
-        'vec3 warp(vec3 P, float t){',
-        '  return P + vec3(',
-        '      sin(P.y * 0.019 + t * 0.11),',
-        '      sin(P.z * 0.016 - t * 0.09),',
-        '      sin(P.x * 0.021 + t * 0.13)) * 11.0;',
+        'float hash13(vec3 p){',
+        '  p = fract(p * 0.1031);',
+        '  p += dot(p, p.yzx + 33.33);',
+        '  return fract((p.x + p.y) * p.z);',
+        '}',
+        'float vn(vec3 x){',
+        '  vec3 i = floor(x), f = fract(x);',
+        '  f = f * f * (3.0 - 2.0 * f);',
+        '  float n000 = hash13(i),                     n100 = hash13(i + vec3(1.0, 0.0, 0.0));',
+        '  float n010 = hash13(i + vec3(0.0, 1.0, 0.0)), n110 = hash13(i + vec3(1.0, 1.0, 0.0));',
+        '  float n001 = hash13(i + vec3(0.0, 0.0, 1.0)), n101 = hash13(i + vec3(1.0, 0.0, 1.0));',
+        '  float n011 = hash13(i + vec3(0.0, 1.0, 1.0)), n111 = hash13(i + vec3(1.0, 1.0, 1.0));',
+        '  return mix(mix(mix(n000, n100, f.x), mix(n010, n110, f.x), f.y),',
+        '             mix(mix(n001, n101, f.x), mix(n011, n111, f.x), f.y), f.z);',
+        '}',
+        'float fbm2(vec3 p){ return 0.62 * vn(p) + 0.38 * vn(p * 2.13 + 7.3); }',
+        /* 域扭曲：用噪声推噪声（不是用正弦推正弦）—— "不规整"的关键就是这一步 */
+        'vec3 warp(vec3 q, float t){',
+        '  return q + (vec3(',
+        '    vn(q * 0.55 + vec3(0.0, 0.0, t * 0.050)),',
+        '    vn(q * 0.55 + vec3(5.2, 1.3, -t * 0.045)),',
+        '    vn(q * 0.55 + vec3(11.7, 9.1, t * 0.038))) - 0.5) * 1.35;',
         '}',
         'float h(vec3 P, float t){',
-        '  float env = 0.68 + 0.32 * sin(P.x * 0.0085 + t * 0.05) * sin(P.z * 0.0072 - t * 0.041);',
-        '  vec3 W = warp(P, t);',
-        '  float v = 0.0;',
-        '  v += 0.90 * sin(dot(W, normalize(vec3( 0.62, 0.41, 0.67))) * 0.21 + t * 0.42);',
-        '  v += 0.55 * sin(dot(W, normalize(vec3(-0.51, 0.73,-0.45))) * 0.37 + t * 0.61);',
-        '  v += 0.32 * sin(dot(W, normalize(vec3( 0.13,-0.61, 0.78))) * 0.66 + t * 0.83);',
-        '  v += 0.18 * sin(dot(W, normalize(vec3(-0.84, 0.22, 0.49))) * 1.13 - t * 1.05);',
-        '  v += 0.14 * sin(dot(W, normalize(vec3( 0.35, 0.88,-0.31))) * 0.52',
-        '                   + sin(dot(W, vec3(0.010, 0.013, 0.009))) * 3.4 + t * 0.73);',
-        '  return v * 0.33 * env;',
+        '  vec3 Q = warp(P * 0.085, t);',
+        '  float base = fbm2(Q) - 0.5;',
+        '  float mid  = vn(Q * 2.40 + vec3(0.0, 0.0, t * 0.120)) - 0.5;',
+        '  float chop = vn(Q * 6.10 - vec3(0.0, 0.0, t * 0.210)) - 0.5;',
+        '  return (base + mid * 0.45 + chop * 0.18) * 2.0;',
         '}',
-        /* 快波：只前两条（求法线用） */
+        /* 快波：求法线用（少一层 chop，视觉无差别） */
         'float hf(vec3 P, float t){',
-        '  vec3 W = warp(P, t);',
-        '  float v = 0.90 * sin(dot(W, normalize(vec3( 0.62, 0.41, 0.67))) * 0.21 + t * 0.42)',
-        '          + 0.55 * sin(dot(W, normalize(vec3(-0.51, 0.73,-0.45))) * 0.37 + t * 0.61)',
-        '          + 0.32 * sin(dot(W, normalize(vec3( 0.13,-0.61, 0.78))) * 0.66 + t * 0.83);',
-        '  return v * 0.33;',
+        '  vec3 Q = warp(P * 0.085, t);',
+        '  float base = fbm2(Q) - 0.5;',
+        '  float mid  = vn(Q * 2.40 + vec3(0.0, 0.0, t * 0.120)) - 0.5;',
+        '  return (base + mid * 0.45) * 2.0;',
         '}',
-        'vec3 surfF(vec3 d, float c, float t){ vec3 P = d * uR; float k = smoothstep(0.0, 0.55, c); return d * (uR + hf(P, t) * uAmp * k); }',
-        'vec3 surf(vec3 d, float c){ vec3 P = d * uR; float k = smoothstep(0.0, 0.55, c); return d * (uR + h(P, uTime) * uAmp * k); }',
+        'vec3 surfF(vec3 d, float c, float t){ vec3 P = d * uR; float k = smoothstep(0.0, 0.55, c); return d * (uR + hf(P, t) * uAmp * k * uFar); }',
+        'vec3 surf(vec3 d, float c){ vec3 P = d * uR; float k = smoothstep(0.0, 0.55, c); return d * (uR + h(P, uTime) * uAmp * k * uFar); }',
 
         'void main(){',
         '  vec3 d = normalize(position);',
@@ -844,7 +1240,9 @@
         '  vec3 B = normalize(cross(d, T));',
         '  float e = 0.020;',
         '  vCoast = uCoast;',
+        '  vFar = uFar;',
         '  vec3 P  = surf(d, uCoast);',
+        '  vW = P;',
         '  vec3 PT = surfF(normalize(d + T * e), uCoast, uTime);',
         '  vec3 PB = surfF(normalize(d + B * e), uCoast, uTime);',
         '  vec3 n  = normalize(cross(PT - P, PB - P));',
@@ -857,32 +1255,74 @@
       ].join('\n');
       var marineFS = [
         'uniform vec3 uColor;',
-        'varying vec3 vN; varying vec3 vView;',
+        'uniform float uTime;',
+        'varying vec3 vN; varying vec3 vView; varying vec3 vW; varying float vFar;',
+        '',
+        '/* 与顶点着色器同一套哈希噪声（GLSL 不能 include，只能各写一份） */',
+        'float hash13(vec3 p){',
+        '  p = fract(p * 0.1031);',
+        '  p += dot(p, p.yzx + 33.33);',
+        '  return fract((p.x + p.y) * p.z);',
+        '}',
+        'float vn(vec3 x){',
+        '  vec3 i = floor(x), f = fract(x);',
+        '  f = f * f * (3.0 - 2.0 * f);',
+        '  float n000 = hash13(i),                      n100 = hash13(i + vec3(1.0, 0.0, 0.0));',
+        '  float n010 = hash13(i + vec3(0.0, 1.0, 0.0)),  n110 = hash13(i + vec3(1.0, 1.0, 0.0));',
+        '  float n001 = hash13(i + vec3(0.0, 0.0, 1.0)),  n101 = hash13(i + vec3(1.0, 0.0, 1.0));',
+        '  float n011 = hash13(i + vec3(0.0, 1.0, 1.0)),  n111 = hash13(i + vec3(1.0, 1.0, 1.0));',
+        '  return mix(mix(mix(n000, n100, f.x), mix(n010, n110, f.x), f.y),',
+        '             mix(mix(n001, n101, f.x), mix(n011, n111, f.x), f.y), f.z);',
+        '}',
+        '/* 细浪高度场：两层不同尺度、不同流速 —— 非周期，不会出现"斑点阵列" */',
+        'float rip(vec3 p){',
+        '  float a = vn(p * 0.62 + vec3(0.0, 0.0, uTime * 0.55));',
+        '  float b = vn(p * 1.55 - vec3(0.0, 0.0, uTime * 0.83) + 13.7);',
+        '  return a * 0.65 + b * 0.35;',
+        '}',
+        '',
         'void main(){',
         '  vec3 N = normalize(vN);',
         '  vec3 V = normalize(-vView);',
-        /* 主光：画面左上方（与场景太阳一致的方向感） */
-        '  vec3 L = normalize(vec3(0.45, 0.80, 0.40));',
-        '  float diff = max(dot(N, L), 0.0);',
-        /* v155f：**高光** —— 浪脊上的镜面反光才是"水"的读法（只有 diffuse 会像一块布） */
-        '  vec3 H = normalize(L + V);',
-        '  float spec = pow(max(dot(N, H), 0.0), 48.0);',
+        '  /* 切平面基：在球面上 perturN 必须沿切向做，否则会被当成"法线歪了" */',
+        '  vec3 upv = abs(N.y) > 0.95 ? vec3(1.0, 0.0, 0.0) : vec3(0.0, 1.0, 0.0);',
+        '  vec3 T = normalize(cross(upv, N));',
+        '  vec3 B = cross(N, T);',
+        '  /* 像素级细浪：三采样求梯度（正中央 + 沿 T/B 各一步） */',
+        '  float e = 0.55;',
+        '  float h0 = rip(vW);',
+        '  float hT = rip(vW + T * e);',
+        '  float hB = rip(vW + B * e);',
+        '  /* vFar：远景把细浪淡掉（否则整片海在闪 = 又变成"规整的噪点"） */',
+        '  /* 逐像素距离衰减：越远的像素细浪越淡（不做这个，镜头一动就是一片摩尔纹闪烁） */',
+        '  float camD = length(vView);',
+        '  float dFade = 1.0 - smoothstep(140.0, 430.0, camD);',
+        '  float amp = 0.42 * clamp(vFar, 0.0, 1.0) * (0.32 + 0.68 * dFade);',
+        '  N = normalize(N - (hT - h0) / e * T * amp - (hB - h0) / e * B * amp);',
+        '  /* 主光：画面左上方（与场景太阳一致的方向感） */',
+        '  vec3 Ld = normalize(vec3(0.45, 0.80, 0.40));',
+        '  float diff = max(dot(N, Ld), 0.0);',
+        '  /* 镜面：浪脊上的反光才是"水"的读法（只有 diffuse 会像一块布） */',
+        '  vec3 H = normalize(Ld + V);',
+        '  float spec = pow(max(dot(N, H), 0.0), 42.0);',
         '  float fres = pow(1.0 - max(dot(N, V), 0.0), 4.0);',
         '  vec3 col = uColor * (0.55 + 0.55 * diff);',
-        '  col += vec3(0.95, 0.97, 1.00) * spec * 0.42;',
+        '  col += vec3(0.95, 0.97, 1.00) * spec * 0.34;',
         '  col += vec3(0.12, 0.20, 0.28) * fres;',
         '  gl_FragColor = vec4(col, 1.0);',
-        '}'
+        '}',
       ].join('\n');
       var wmat = new THREE.ShaderMaterial({
         uniforms: {
           uTime: { value: 0 },
-          uAmp: { value: 3.2 },                     /* 世界单位：约 0.44 格宽（浪高看得出来，又不穿地块） */
+          uAmp: { value: 1.5 },                     /* 世界单位：约 0.44 格宽（浪高看得出来，又不穿地块） */
           /* v155j（修正 v155i 的符号错误）：湖底地形面在 R+0.6（PLATEAU），
              水面必须**略高于它**（+0.62）才看得见；之前的 R-0.8 直接把水压到海底下面，
              于是海洋显示成深蓝的"湖底色"（就是那半边发黑）。 */
           uR: { value: R + 1.0 },
-          uColor: { value: new THREE.Color(0x4a7fa0) }   /* 旧方案的颜色，不改 */
+          uColor: { value: new THREE.Color(0x4a7fa0) },  /* 旧方案的颜色，不改 */
+          /* v156.22：远景衰减系数（1 = 满浪 · 0 = 平）。由 render 按 camO.dist 更新 */
+          uFar: { value: 1 }
         },
         vertexShader: marineVS, fragmentShader: marineFS,
         side: THREE.FrontSide,
@@ -1536,21 +1976,32 @@
     var _npcList = (((GAME.state || {}).map || {}).cities) || [];
     if (!_npcList.length) _npcList = (GAME.DATA.NPC_CITIES || []);
     _npcList.forEach(function (c) {
-      if (c.lon == null || c.lat == null) { var d = dirOfCell(c.x, c.y); c.lon = (Math.atan2(d[2], d[0]) * 180 / Math.PI + 360) % 360; c.lat = Math.asin(Math.max(-1, Math.min(1, d[1]))) * 180 / Math.PI; }
+      if (c.lon == null || c.lat == null) { var d = dirOfCell(c.x, c.y); c.lon = (-Math.atan2(d[2], d[0]) * 180 / Math.PI + 360) % 360; c.lat = Math.asin(Math.max(-1, Math.min(1, d[1]))) * 180 / Math.PI; }
       if (!c.garrison && GAME.genGarrison) { c.garrison = GAME.genGarrison(c); c.maxArmy = c.garrison; }
       var ci = ciOfRef(c); if (ci >= 0) { mark[ci] = [220, 70, 60]; cellKind[ci] = 'npc'; cellRef[ci] = c;
         settles.npc.push({ ci: ci, lv: c.lv || c.level || 3 }); }
     });
-    /* 行政中心城 = 紫色（按球面质心方向取格）*/
-    (M.admCities || []).forEach(function (c) { var ci = (c.ci != null && c.ci >= 0) ? c.ci : nearestCell(c._cent); if (ci >= 0) { mark[ci] = [180, 120, 210]; cellKind[ci] = 'adm'; cellRef[ci] = c;
-      settles.adm.push({ ci: ci, lv: c.lv || 4 }); } });
+    /* 行政中心城 = 紫色（按球面质心方向取格）
+       ═══ v156.24（老板「占领省市区首府」）═══
+       已被我方占据的行政中心**不再画成紫色**：
+       否则同一格会同时出现"己方城的蓝标记"和"行政城的紫模型"（两座模型叠在一起），
+       玩家看到的是"我打下了省府，可地图上它还是敌方的样子"。
+       判据与下面的 own 分支同源（都读 mapSliceOf().cities），不另立一套。 */
+    var _ownAdmKey = {};
+    ((GAME.mapSliceOf() || {}).cities || []).forEach(function (c) {
+      if (c && c.admLevel && c.admIndex != null) _ownAdmKey[c.admLevel + '|' + c.admIndex] = 1;
+    });
+    (M.admCities || []).forEach(function (c) {
+      if (_ownAdmKey[c.admLevel + '|' + c.admIndex]) return;    /* 已占 → 交给 own 分支画 */
+      var ci = (c.ci != null && c.ci >= 0) ? c.ci : nearestCell(c._cent); if (ci >= 0) { mark[ci] = [180, 120, 210]; cellKind[ci] = 'adm'; cellRef[ci] = c;
+        settles.adm.push({ ci: ci, lv: c.lv || 4 }); } });
     /* 己方城 = 蓝：落在其**球面六边格索引 ci**（球系唯一身份，免 (x,y) 往返）
        v90.97（双球面）：读**地图星球分片**的城（未必 = 当前城所在星球）。 */
     M._ownCells = {};
     ((GAME.mapSliceOf() || {}).cities || []).forEach(function (c) {
       var ci = ciOfRef(c);
       var dir = (ci >= 0 && SP.cells[ci]) ? SP.cells[ci].dir : dirOfCell(c.x, c.y);
-      c.lon = (Math.atan2(dir[2], dir[0]) * 180 / Math.PI + 360) % 360;
+      c.lon = (-Math.atan2(dir[2], dir[0]) * 180 / Math.PI + 360) % 360;
       c.lat = Math.asin(Math.max(-1, Math.min(1, dir[1]))) * 180 / Math.PI;
       if (ci < 0) return;
       mark[ci] = [80, 150, 230]; cellKind[ci] = 'own'; cellRef[ci] = c; M._ownCells[ci] = c;
@@ -1878,6 +2329,27 @@
     P.push({ geo: new THREE.CylinderGeometry(0.16, 0.16, 0.34, 6), m: _townM(-0.78, 0.30, -0.34), c: _TOWN_C.steel });
     return _townMerge(P);
   }
+  /* ============================================================
+   * 球面坐标系 —— **唯一口径**（v2026-11-01 老板：「地图上城堡方向错乱，
+   *   确定一下坐标体系，底部垂直于与球心的连线」）
+   * ------------------------------------------------------------
+   * 【世界系】原点 = 球心；+Y = 北极；经度 0° = +X；**东 = −Z**
+   *   （icoSpheres 末尾翻 z 做经度镜像的结果，见 sphere.js:418 —— 镜像后
+   *    「北极朝上」视角下东才落在屏幕右侧。）
+   *
+   * 【格局部系（右手）】+X = 东、+Y = 径向（朝天）、+Z = 南。
+   *   → 推论：**3D 资产必须按「基座在 y=0、正面朝 +Z（南）」建模**，
+   *     摆上去后基座平面自动 ⟂ 半径，脚/底座正好踩在地表。
+   *
+   * 【两个踩过的坑，写死在这里当规矩】
+   *   ① 对齐法线后若要"绕自身竖轴转身"，轴必须是**局部 (0,1,0)**：
+   *      正确 = q_align × R((0,1,0), θ)（右乘，先自转再对齐）；
+   *      错误 = q_align × R(**n**, θ)（绕世界法线右乘）——
+   *      这会把物体自己的上轴先转离法线，再被 q_align 拉平 → 随 θ 歪 0~90°。
+   *      **v156.19 的"城堡方向错乱"就是这个错**：实测两座城偏离径向 18.6° / 142°。
+   *   ② 平移与旋转必须**同源**：都用同一个 dir，否则位置在 A 格、姿态按 B 格。
+   * ============================================================ */
+
   function buildTowns() {
     /* 重建：只摘掉实例化网格并释放**材质**；几何是 `_townGeoCache` 里共享的，
        在这里 dispose 会让下次重建拿到空几何（一次就白屏）。 */
@@ -1900,8 +2372,7 @@
       { key: 'adm', kind: 'city', tint: [1.06, 0.94, 1.14] },   /* 行政：淡紫 */
       { key: 'fort', kind: 'fort', tint: [1.14, 1.06, 0.88] }    /* 据点：淡土黄 */
     ];
-    var up = new THREE.Vector3(0, 1, 0);
-    var nn = new THREE.Vector3(), q = new THREE.Quaternion(), qr = new THREE.Quaternion();
+    var nn = new THREE.Vector3(), q = new THREE.Quaternion();
     var m4 = new THREE.Matrix4(), pp = new THREE.Vector3(), ss = new THREE.Vector3();
     var col = new THREE.Color();
     GROUPS.forEach(function (G) {
@@ -1918,9 +2389,11 @@
         var d = _tileCells[e.ci].dir;
         var rr = R + Math.max(0, sphElev(d)) * HSC + 0.30;
         nn.set(d[0], d[1], d[2]).normalize();
-        q.setFromUnitVectors(up, nn);
-        qr.setFromAxisAngle(nn, _townRnd(e.ci) * Math.PI * 2);
-        q.multiply(qr);
+        /* v156.19 修：**姿态走 surfaceQuat 唯一出口**（基座 ⟂ 半径）。
+           转身角绕**局部竖轴** ±30°（确定性微扰，避免一排城像复制粘贴），
+           不再是原来那条 `qr.setFromAxisAngle(nn, θ)` —— 它右乘绕世界法线，
+           等于先把上轴掰歪再拉平，每座城随机歪 0~90°（本次"方向错乱"根因）。 */
+        applyQuad(q, [nn.x, nn.y, nn.z], (_townRnd(e.ci) - 0.5) * 60);
         var lv = Math.max(1, Math.min(12, (e.lv | 0) || 1));
         var sc = _townScaleOf(G.kind, lv, cellW);
         pp.set(d[0] * rr, d[1] * rr, d[2] * rr);
@@ -2538,6 +3011,14 @@
     /* v153：海面波浪时间推进（与云共用同一种每帧时钟） */
     if (M._waterMat && M._waterMat.uniforms && M._waterMat.uniforms.uTime) {
       M._waterMat.uniforms.uTime.value = (Date.now() % 3600000) / 1000;
+      /* v156.22（老板：「海波太规整太明显」）：**振幅随镜头距离衰减**。
+         物理上本来就该这样：离得越远，小浪在屏幕上的投影越小，看不清；
+         观感上也能避免"从轨道看整片海都在抽动"的假。
+         0.45 的下限保留一点起伏，不至于回到"海面毫无波澜"（v155d 的老问题）。 */
+      if (M._waterMat.uniforms.uFar) {
+        var _wf = Math.max(0, Math.min(1, (camO.dist - R * 1.0) / (R * 2.2)));
+        M._waterMat.uniforms.uFar.value = 1.0 - 0.55 * _wf;   /* 1.0（贴近）→ 0.45（轨道） */
+      }
       /* v155g（性能）：水面只在"看得到海"的距离上渲染。贴地 1 格时它全在视野外，
          仍会被光栅化 + 跑重着色器（实测每帧多 ~150ms）。 */
       if (water) {
@@ -2907,8 +3388,9 @@
    * 换格时**只移动**，不重建（重建会闪）；改格数/换星球才 disposal 重建。
    * ============================================================ */
   var figRoot = null, figCache = {};
+  var figLastT = (typeof Date.now !== 'undefined') ? Date.now() : 0;   /* 骨骼角色每帧 mixer 推进用 dt 时钟 */
   M._standVer = '';
-  function makeFigure(color, scale) {
+  function makeFigure(color, scale, actorName) {
     var g = new THREE.Group();
     var mat = new THREE.MeshBasicMaterial({ color: color });
     var dark = new THREE.MeshBasicMaterial({ color: 0x2a2f38 });
@@ -2926,6 +3408,19 @@
     var armR = armL.clone(); armR.position.x = 0.27;
     g.add(body, head, legL, legR, armL, armR);
     g.userData.legs = [legL, legR];
+    g.userData.baseScale = scale || 1;
+    /* v2026xxxx：骨骼角色替身（序章君主用 RobotExpressive 作示范）。
+       加载成功后挂到 g 上、缩放对齐方块人高度、隐藏方块人；失败则留方块人兜底。 */
+    if (actorName && GAME.gltf && GAME.gltf.Actor) {
+      var pa = new GAME.gltf.Actor({ name: actorName });
+      pa.load(function (a) {
+        if (!a || !a.root) return;
+        a.root.scale.setScalar(1.2);        /* 归一化身高 1.0 → 对齐方块人 ~1.2 */
+        g.add(a.root);
+        g.userData.actor = a;
+        g.children.forEach(function (c) { if (c !== a.root) c.visible = false; });
+      });
+    }
     g.scale.setScalar(scale || 1);
     return g;
   }
@@ -2936,12 +3431,10 @@
     var d = c.dir;
     var rr = R + Math.max(0, sphElev(d)) * HSC + 0.55;
     g.position.set(d[0] * rr, d[1] * rr, d[2] * rr);
-    /* 让模型的 +Y 指向该格法线 */
-    var up = new THREE.Vector3(0, 1, 0);
-    var n = new THREE.Vector3(d[0], d[1], d[2]).normalize();
-    g.quaternion.setFromUnitVectors(up, n);
-    /* 再绕自身竖轴随机一转，避免每个人都朝同一个方向；记下基准朝向供行走插值 */
-    g.rotateY((ci % 360) * Math.PI / 180);
+    /* v156.19：姿态统一走 surfaceQuat（+Y→径向，转身绕**局部**竖轴）。
+       原来这里用 g.rotateY() 其实是对的（局部轴），但两处写法不一容易再踩坑，
+       收敛成一个出口：给了 yaw 就自转，没有就正面朝南（+Z）。 */
+    applyQuad(g.quaternion, d, ci % 360);
     g.userData.baseQ = g.quaternion.clone();
     return true;
   }
@@ -2956,7 +3449,7 @@
     var sc = Math.max(0.8, Math.min(5.0, cellW * 0.45 / 1.2));
     var who = [];
     if (GAME.prologue && GAME.prologue.on && GAME.prologue.on() && GAME.prologue.pos) {
-      who.push({ ci: GAME.prologue.pos(), color: 0xffd166, scale: sc * 1.15, key: 'lord' });
+      who.push({ ci: GAME.prologue.pos(), color: 0xffd166, scale: sc * 1.15, key: 'lord', actor: 'RobotExpressive' });
     } else {
       var pc = GAME.currentCity && GAME.currentCity();
       if (pc && pc.ci != null) who.push({ ci: pc.ci, color: 0x8fd4ff, scale: sc, key: 'city' });
@@ -2964,7 +3457,7 @@
     var stc = (GAME.state && GAME.state._standCi);
     if (stc != null && stc >= 0) who.push({ ci: stc, color: 0xcfd6df, scale: sc * 0.95, key: 'stand' });
     who.forEach(function (w) {
-      var g = makeFigure(w.color, w.scale);
+      var g = makeFigure(w.color, w.scale, w.actor);
       if (!placeFigure(g, w.ci)) return;
       figCache[w.key] = { g: g, ci: w.ci };
       figRoot.add(g);
@@ -2991,9 +3484,7 @@
     /* 终点姿态：按终点格重算一次（照 placeFigure 的算法），只取姿态不落位 */
     var d = c.dir;
     var n = new THREE.Vector3(d[0], d[1], d[2]).normalize();
-    var qTo = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), n);
-    var spin = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), ((ci % 360) * Math.PI / 180));
-    qTo.multiply(spin);
+    var qTo = applyQuad(new THREE.Quaternion(), d, ci % 360);
     walkAnim = {
       key: key, g: g, to: ci, t0: Date.now(), dur: (M.walkDur || 220),
       fromPos: g.position.clone(),
@@ -3052,7 +3543,20 @@
     }
     return grp;
   }
-  /* 把一件物品坐到某格上：+Y 对法线、贴地表、再绕竖轴转 yaw（度）。 */
+  /* 把一件物品坐到某格上：+Y 对法线、贴地表、再绕竖轴转 yaw（度）。
+     ============================================================
+     v156.25：这里与 `surfaceQuad(ci, yaw)` **数学等价**（实测 |dot|=1.000000000000，
+       上轴偏差 5e-16 = 浮点噪声；见 .workbuddy/tools/show/probe_axis_equiv.js）：
+         setFromUnitVectors(up, n)  → 「对齐」四元数
+         rotateY(θ)                 → **局部轴**右乘（three 的实现就是 q × qY）
+       和 surfaceQuad 里 `q × qY(局部)` 是同一个式子，只是写法不同。
+     ⛔ 唯一要守的判据：**转身永远绕局部轴**。
+       反例（v156.19 城堡朝向错乱的真因）：`q.multiply(绕世界法线`n`的四元数)`。
+       四元数右乘是"先转右边、再转左边" —— 拿世界轴当右边，等于先把物体上轴
+       从法线上掰开、再用 q 拉回来，于是每座城随机歪 0~90°（实测 18.6° / 142°）。
+     以后若要合并这两处：**整段替换 + 跑探针复验**，不要"顺手"把 rotateY
+       换成绕世界轴的写法 —— 那种改动看起来更"对称"，但它就是上面那个 bug。
+     ============================================================ */
   function seatProp(g, ci, yawDeg) {
     var c = _tileCells && _tileCells[ci];
     if (!c || !c.dir) return false;
@@ -3213,6 +3717,9 @@
 
   /* 每帧：只把变了的人挪一下（不重建） */
   function syncFigures() {
+    /* 骨骼角色每帧推进需要 dt（秒） */
+    var _now = Date.now();
+    var fdt = Math.min(0.05, (_now - figLastT) / 1000) || 0.016; figLastT = _now;
     /* 第一次调用时 figRoot 还不存在 —— 先建出来 */
     if (!figRoot) {
       if (GAME.prologue && GAME.prologue.on && GAME.prologue.on()) {
@@ -3236,13 +3743,19 @@
         var dir3 = slerpVec([curDir.x, curDir.y, curDir.z], w.toDir, ew);
         w.g.position.set(dir3[0] * rr2, dir3[1] * rr2, dir3[2] * rr2);
         if (w.fromQ && w.toQ) w.g.quaternion.copy(w.fromQ).slerp(w.toQ, ew);
-        if (w.g.userData && w.g.userData.legs) {
+        if (w.g.userData && w.g.userData.actor && w.g.userData.actor.root) {
+          w.g.userData.actor.skill('walk');
+          w.g.userData.actor.update(fdt);
+        } else if (w.g.userData && w.g.userData.legs) {
           var sw2 = Math.sin(Date.now() / 70) * 0.5;
           w.g.userData.legs[0].rotation.x = sw2;
           w.g.userData.legs[1].rotation.x = -sw2;
         }
         if (kw >= 1) {
-          if (w.g.userData && w.g.userData.legs) {
+          if (w.g.userData && w.g.userData.actor && w.g.userData.actor.root) {
+            w.g.userData.actor.skill('idle');
+            w.g.userData.actor.update(fdt);
+          } else if (w.g.userData && w.g.userData.legs) {
             w.g.userData.legs[0].rotation.x = 0;
             w.g.userData.legs[1].rotation.x = 0;
           }
@@ -3273,7 +3786,13 @@
     var t = (Date.now() % 2000) / 2000;
     Object.keys(figCache).forEach(function (k) {
       var f = figCache[k], g = f.g;
-      if (!g || !g.userData || !g.userData.legs) return;
+      if (!g || !g.userData) return;
+      if (g.userData.actor && g.userData.actor.root) {
+        g.userData.actor.skill('idle');
+        g.userData.actor.update(fdt);
+        return;                              /* 骨骼角色自带动画，不做方块人呼吸缩放 */
+      }
+      if (!g.userData.legs) return;
       var br = Math.sin(t * Math.PI * 2) * 0.05;
       g.scale.y = (g.userData.baseScale || g.scale.y) * (1 + br * 0.1);
     });
@@ -3287,7 +3806,7 @@
     scene.add(figRoot);
     var cellW = Math.sqrt((4 * Math.PI * R * R / Math.max(1, (_tileCells || []).length)) || 1);
     var sc = Math.max(0.8, Math.min(5.0, cellW * 0.45 / 1.2));
-    var g = makeFigure(0xffd166, sc * 1.15);
+    var g = makeFigure(0xffd166, sc * 1.15, 'RobotExpressive');
     if (!placeFigure(g, fromCi)) return false;
     figCache.lord = { g: g, ci: toCi };
     figRoot.add(g);
@@ -3539,7 +4058,9 @@
         var S = (_cellW * 3.2 / _maxDim) * (2 / 3) * (wd.scaleMul || 1);
         mesh.scale.setScalar(S);
         var tg = new THREE.Group(); tg.add(mesh);
-        tg.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(d[0], d[1], d[2]).normalize());
+        /* v156.19：奇观同样走 surfaceQuat（基座平面 ⟂ 指向圆心的半径）。
+           正面（模型 +Z）默认朝南；奇观不额外自转，保持"四方端正"。 */
+        applyQuad(tg.quaternion, d, 0);
         body.add(tg);
         /* 落点：按包围盒 8 角沿法线的最小投影 `low`（< 0 = 有部分在原点之下）反推 ——
            rr = surfR − low + margin → **最低点坐在地表上**。海面给负 margin（半潜入水）。 */
@@ -4450,6 +4971,13 @@
   var SPEED = 6.2;              /* 单位/秒，走起来不飘 */
   var BOUND = 13;               /* 场景活动半径 */
 
+  /* v2026xxxx：骨骼角色（Soldier）替身 —— 程序化方块人的升级版。
+     load 成功后挂到 player 组上；加载前/失败则用方块人兜底（场景不空白）。 */
+  var playerActor = null, playerActing = false;
+  /* 斗将：遭遇节点旁生成敌方 Soldier（duel.js 本身无 3D 渲染，这里是它的宿主视觉）。
+     duelActive 期间玩家播 attack、敌人播 guard；玩家走动/S.close 时清场。 */
+  var duelFoeActor = null, duelFoeGroup = null, duelActive = false;
+
   function ensure() {
     if (R3) return;
     layer = document.createElement('div');
@@ -4729,33 +5257,40 @@
 
   function buildPlayer() {
     var g = new THREE.Group();
-    var body = mesh(new THREE.CylinderGeometry(0.26, 0.32, 0.95, 8), lam(0x8ea6b8), 0, 0.5, 0);
-    body.name = 'body';
-    g.add(body);
-    g.add(mesh(new THREE.SphereGeometry(0.2, 10, 8), lam(0xd9c7a8), 0, 1.14, 0));
-    /* 单肩背包 + 一盏胸前的辐光小灯：废土科技的唯一"人味" */
-    g.add(mesh(new THREE.BoxGeometry(0.34, 0.42, 0.2), lam(0x6b533a), 0, 0.62, -0.26));
-    g.add(mesh(new THREE.SphereGeometry(0.07, 8, 6), lam(C.glow, { emissive: C.glow, emissiveIntensity: 1.0 }), 0, 0.82, 0.24));
-    /* 脚下影子（一个压扁的暗圆）：没有阴影贴图时，它是"站在地上"的关键提示 */
+    /* 程序化方块人：兜底用，加载到骨骼角色后整体隐藏（仍在树上，行为/计数不破） */
+    var fig = new THREE.Group(); fig.name = 'fig';
+    fig.add(mesh(new THREE.CylinderGeometry(0.26, 0.32, 0.95, 8), lam(0x8ea6b8), 0, 0.5, 0));
+    fig.add(mesh(new THREE.SphereGeometry(0.2, 10, 8), lam(0xd9c7a8), 0, 1.14, 0));
+    fig.add(mesh(new THREE.BoxGeometry(0.34, 0.42, 0.2), lam(0x6b533a), 0, 0.62, -0.26));
+    fig.add(mesh(new THREE.SphereGeometry(0.07, 8, 6), lam(C.glow, { emissive: C.glow, emissiveIntensity: 1.0 }), 0, 0.82, 0.24));
+    g.add(fig);
+    /* 脚下影子（一个压扁的暗圆）：没有阴影贴图时，它仍是"站在地上"的关键提示 */
     var sh = mesh(new THREE.CircleGeometry(0.36, 16), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.28 }), 0, 0.015, 0);
-    sh.rotation.x = -Math.PI / 2;
-    sh.name = 'shadow';
-    g.add(sh);
-    /* 头顶的指示三角：小场景里人物只有几十像素，不加这个容易"找不到自己"
-       （俯视 60° 时人体被压扁，靠颜色分辨不够）。 */
+    sh.rotation.x = -Math.PI / 2; sh.name = 'shadow'; g.add(sh);
+    /* 头顶指示三角（穿透遮挡，永远可见） */
     var mk = mesh(new THREE.ConeGeometry(0.17, 0.30, 4), new THREE.MeshBasicMaterial({ color: C.glow }),
       0, 1.66, 0);
     mk.rotation.x = Math.PI;         /* 尖朝下 */
     mk.name = 'marker';
     g.add(mk);
-    /* 头顶标记**穿透遮挡**（只有它，不含身体）。
-       第一版把整个人设成 depthTest:false，结果是"人浮在屋顶上"——
-       因为玩家永远贴着南侧那栋房子，人就被画在那栋房的屋顶上（截图确认）。
-       正确的做法是：身体老实被遮（该被挡就挡），
-       但头顶那个三角永远可见 —— 玩家随时知道"我在哪"，画面也不假。 */
+    /* 头顶标记**穿透遮挡**（只有它，不含身体）。 */
     mk.material.depthTest = false;
     mk.material.depthWrite = false;
     mk.renderOrder = 999;
+    /* 骨骼角色（Soldier）：加载成功→挂上真模型、藏方块人、标记降到头顶；失败→留方块人 */
+    playerActor = null;
+    if (GAME.gltf && GAME.gltf.Actor) {
+      var pa = new GAME.gltf.Actor({ name: 'Soldier' });
+      pa.load(function (a) {
+        if (!a || !a.root) return;
+        a.root.scale.setScalar(1.0);
+        g.add(a.root);
+        g.userData.actor = a;
+        playerActor = a;
+        fig.visible = false;          /* 真模型接管，藏兜底方块人 */
+        mk.position.y = 1.35;         /* 头顶标记降到模型头顶 */
+      });
+    }
     return g;
   }
 
@@ -4767,6 +5302,7 @@
     if (k === 'e' || k === 'E' || k === 'Enter') { e.preventDefault(); e.stopPropagation(); S.interact(); return; }
     if (['w', 'a', 's', 'd', 'W', 'A', 'S', 'D', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].indexOf(k) >= 0) {
       keys[k] = true;
+      playerActing = false; clearDuelFoe();   /* 玩家一动，蹲下/斗将姿态即解除 */
       e.preventDefault(); e.stopPropagation();
     }
   }
@@ -4815,11 +5351,13 @@
       if (keys['s'] || keys['S'] || keys['ArrowDown']) vz += 1;
       if (keys['a'] || keys['A'] || keys['ArrowLeft']) vx -= 1;
       if (keys['d'] || keys['D'] || keys['ArrowRight']) vx += 1;
+      var moving = false;
       if (vx || vz) {
         targetPt = null;                     /* 手动走动会取消点击寻路 */
+        playerActing = false;                /* 走动即取消"蹲下采集" */
         var len = Math.sqrt(vx * vx + vz * vz);
         movePlayer(vx / len * SPEED * dt, vz / len * SPEED * dt);
-        bobWalk(now);
+        moving = true;
       } else if (targetPt) {
         var dx = targetPt.x - player.position.x, dz = targetPt.z - player.position.z;
         var d = Math.sqrt(dx * dx + dz * dz);
@@ -4829,13 +5367,25 @@
         } else {
           var stp = Math.min(d, SPEED * dt);
           movePlayer(dx / d * stp, dz / d * stp);
-          bobWalk(now);
+          moving = true;
         }
-      } else {
-        /* 站住：身体回正 */
+      } else if (!playerActor) {
+        /* 站住：身体回正（仅方块人兜底时需要；骨骼角色自有 idle 动画） */
         player.rotation.z *= 0.85;
         player.position.y += (0 - player.position.y) * 0.2;
       }
+      /* 骨骼角色：每帧推进 mixer + 按状态切动作（walk/idle/sit/attack） */
+      if (playerActor) {
+        if (moving) playerActor.skill('walk');
+        else if (duelActive && duelFoeActor) playerActor.skill('attack');
+        else if (playerActing) playerActor.skill('sit');
+        else playerActor.skill('idle');
+        playerActor.update(dt);
+      } else if (moving) {
+        bobWalk(now);                        /* 兜底方块人的走路晃动 */
+      }
+      /* 敌方斗将：同步推进它的动作 */
+      if (duelFoeActor) duelFoeActor.update(dt);
     }
 
     /* 走出城门 = 出城。
@@ -6091,6 +6641,31 @@
     return { ok: true, scene: sceneId, name: cfg.name };
   };
 
+  /* 斗将视觉宿主：在玩家身前生成敌方 Soldier，面朝玩家；玩家播 attack、敌人播 guard。
+     duel.js 本身只做战斗结算、无 3D 渲染，这里补上"看得见的两个人"。 */
+  function spawnDuelFoe(nd) {
+    if (!player || !propRoot || !(GAME.gltf && GAME.gltf.Actor)) return;
+    clearDuelFoe();
+    var a = new GAME.gltf.Actor({ name: 'Soldier' });
+    a.load(function (av) {
+      if (!av || !av.root) return;
+      var grp = new THREE.Group();
+      av.root.scale.setScalar(1.0);
+      grp.add(av.root);
+      /* 站在玩家身前 1.8 米、面朝玩家 */
+      var fa = player.rotation.y;
+      grp.position.set(player.position.x + Math.sin(fa) * 1.8, 0, player.position.z + Math.cos(fa) * 1.8);
+      grp.rotation.y = fa + Math.PI;
+      propRoot.add(grp);
+      duelFoeActor = av; duelFoeGroup = grp; duelActive = true;
+      av.skill('guard');
+    });
+  }
+  function clearDuelFoe() {
+    if (duelFoeGroup && propRoot) propRoot.remove(duelFoeGroup);
+    duelFoeGroup = null; duelFoeActor = null; duelActive = false;
+  }
+
   S.close = function () {
     if (!openId) return { ok: false };
     /* v143：结算过的正式局，退出落点是地块界面（玩家从那儿点按钮进来的）。
@@ -6104,6 +6679,7 @@
     if (layer && cvs && cvs.parentNode !== layer) layer.appendChild(cvs);
     if (propRoot) { scene.remove(propRoot); propRoot = null; }
     nodeList = []; nearNode = null; keys = {};
+    clearDuelFoe(); playerActor = null; playerActing = false;
     /* v143.2：行人随 propRoot 清（数组同步空，_cityNpcs() 归零） */
     cityNpcs = [];
     npcMatSkin = null; npcMatTint = null; npcMatPants = null;
@@ -6229,6 +6805,7 @@
       if (nd.ring) nd.ring.visible = false;
       dimProp(o);
       if (G.ui && G.ui.openDuelPanel) G.ui.openDuelPanel();
+      spawnDuelFoe(nd);                   /* 斗将视觉：玩家身前立一个敌人 */
       return _r2;
     }
     if (nd.done) return { ok: false, msg: '这里已经收拾过了' };
@@ -6259,6 +6836,7 @@
       } catch (e) { res = { ok: false, msg: '动手时出错了：' + (e.message || '') }; }
     }
     nd.done = true;
+    playerActing = true;                   /* 采集/垂钓：蹲下动作，走动即取消 */
     if (nd.ring) nd.ring.visible = false;
     dimProp(o);
     /* 记到 state.sceneDone（按天）：这一趟收拾过的，同一天再进来就是暗的 */
@@ -6597,6 +7175,20 @@
     return '第 ' + (s.world.year || 1) + ' 年 ' + se.name + ' ' + we.icon + we.name;
   };
 
+  /* v156.32（老板 2026-11-02「天时啥的也省约一点」）
+   * ------------------------------------------------------------------
+   * 顶栏的**压缩版**天时：`1年 春 ☀晴天`（三段，去掉「第 / 季 / ·」这些虚字）。
+   * 为什么单开一个出口而不是改 skyLine：skyLine 是**公文 / 城市页 / 播报**用的
+   * 完整句（"第 1 年 春季 ☀晴天"），那边需要读得顺；顶栏只有 ~90px 的横条，
+   * 要的是"一眼扫到变了没有"。同源同数据，只是排版不同 → 两个出口，一份口径。
+   * 视觉重量一并降压（金色招牌 → 与「图例」同款暗胶囊），见 index.html `.nav-sky`。 */
+  STORY.skyBrief = function () {
+    var s = GAME.state;
+    if (!s || !s.world) return '';
+    var se = STORY.currentSeason(), we = STORY.currentWeather();
+    return (s.world.year || 1) + '年 ' + String(se.name || '').charAt(0) + ' ' + we.icon + we.name;
+  };
+
   /* 每秒推进 */
   STORY.tick = function (ts) {
     var s = GAME.state;
@@ -6791,8 +7383,13 @@
 
 /* ---- ui.js ---- */
 /* ============================================================
- * ui.js  界面渲染与模态框（真实数值版）
- * 面板：城内/城外/军队/英雄/装备/科技/宝物/威望/地图/任务/统计/公文/设置
+ * ui.js　界面层入口 · ui 命名空间初始化（拆分后只剩骨架）
+ * ------------------------------------------------------------
+ * v156.27：21,456 行的 ui.js 按功能域拆成 19 个文件（本文件 + 18 个 ui-*.js）。
+ *   **纯搬运**：所有 ui.xxx 定义及其先后顺序一字未改。
+ *   等价性证明：node .workbuddy/tools/prof/snapshot_ui_fns.js --diff before after
+ * ⛔ 这个文件只放"全站唯一的东西"：命名空间、$ / $$、跨域共享常量。
+ *    具体面板请去对应的 ui-<域>.js，不要往这里加。
  * ============================================================ */
 
 
@@ -6801,13 +7398,82 @@
   var GAME = window.GAME = window.GAME || {};
   var DATA = GAME.DATA, U = GAME.utils;
 
+  /* 全站唯一的 ui 命名空间。**只在这里初始化一次**；其余 ui-*.js 取引用。 */
   var ui = GAME.ui = {
     view: 'city', side: 'res',
     _curGrid: null, _attackNpc: null, _attackWild: null, _cityId: null,
   };
 
+  /* 两个取元素的小工具：全站唯一实现，挂到 ui._dom 供其余 ui-*.js 取别名。
+     ⛔ 不要在各文件里再写一份 —— 那样 18 份实现迟早不一致。 */
   var $ = function (sel, root) { return (root || document).querySelector(sel); };
   var $$ = function (sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); };
+  ui._dom = { $: $, $$: $$ };
+
+  /* ============================================================
+   * 跨功能域共享的常量表（拆分时前移到这里）
+   * ------------------------------------------------------------
+   * 它们原来散在 ui.js 各处、被多个功能域引用；拆成独立文件后各自
+   * IIFE 互相看不见，所以统一放在**最先执行**的这里。
+   * 其余文件用 ui._C 取**同一个对象**（不是副本）。
+   * ⛔ 不要在 ui-*.js 里再写一份：多个副本会"改一个不生效"。
+   * ============================================================ */
+  ui._C = {};
+  var EQUIP_SLOT_ORDER = ['weapon', 'head', 'chest', 'waist',
+    'arm_up_l', 'arm_up_r', 'arm_low_l', 'arm_low_r',
+    'thigh_l', 'thigh_r', 'shin_l', 'shin_r', 'foot_l', 'foot_r',
+    'back', 'neck', 'ring', 'pendant', 'mount'];
+  ui._C.EQUIP_SLOT_ORDER = EQUIP_SLOT_ORDER;
+
+  var BAG_LEGACY_TAB = { mat: ['treasure', 'material'], item: ['treasure', null], bp: ['treasure', 'blueprint'] };
+  ui._C.BAG_LEGACY_TAB = BAG_LEGACY_TAB;
+
+  var BLDG_FUNC = {
+    /* ⛔ v89.135 移除：guanfu 条目（"政务厅事务"按钮）—— 老板 10：「不再设置多一个
+       '政务厅事务'按钮」：改名 / 主城 / 基因实验室**直接显示**在政务厅格的建筑面板（见政务厅要务段）。 */
+    junying: { label: "⚔️ 募兵 · 兵种", act: "open-troops", withIdx: true },
+    xiaochang: { label: "🏹 进入军务（出征 · 伤兵）", act: "open-xiaochang" },
+    shuyuan: { label: "📜 科技 · 研究", act: "open-panel", view: "tech" },
+    kezhan: { label: "🍶 招募英雄", act: "open-inn" },
+    zhaoxianguan: { label: "🎎 英雄名录", act: "open-hostel" },
+    shichang: { label: "🏪 交易", act: "open-market" },
+    cangku: { label: "🏚️ 仓储", act: "open-store" },
+    /* v89.80（老板）：「马概（厩）去除"座驾装备"的建筑菜单及相应内容」——
+       原菜单项点开的是「装备」总页（view: equip），与英雄档案里的部件栏重复，
+       且"座驾"只是装备的一个部位，不值得在建筑里单开一个入口。
+       撤掉后点载具研究所格只显示**属性行**（机车解锁 / 建筑专精），不再有功能按钮。
+       装备与座驾仍走两条既有的路：英雄档案点部位换装、背包「装备」页选将穿戴。 */
+    /* v89.140（老板 4）：「制造厂建筑菜单界面，**新增一行增加一个百炼强化按钮**，
+       与打造菜单格式相同。将打造界面里的百炼强化按钮删去」——
+       制造厂格上直接出现两颗功能键（打造 / 熔铸强化），打造面板底部不再挂它。 */
+    tiejiangpu: [{ label: "⚒️ 打造", act: "open-forge" },
+      { label: "⚒️ 熔铸强化", act: "open-enhance" }],
+    gongjiangzuofang: { label: "🛠️ 器械 · 箭塔", act: "open-workshop", withIdx: true },
+    /* v89.224（老板 1）：本格为**基因实验室的建筑载体**（原在政务厅要务段，已撤）。
+       v90.92：原「⚔️ 派系」入口随门派系统整条退役而移除。 */
+    honglusi: { label: "🧬 基因实验室", act: "open-lab" },
+    /* v85（老板）：「居所不需要幸存者统计功能」—— 居所入口退役；
+       「幸存者统计」面板本身保留（城防统计仍由此进入）。 */
+    chengqiang: { label: "🧱 城防统计", act: "open-panel", view: "stats" }
+  };
+  ui._C.BLDG_FUNC = BLDG_FUNC;
+
+})();
+
+/* ---- ui-fx.js ---- */
+/* ============================================================
+ * ui-fx.js　反馈层 · 里程碑演出 / 通知 / 浮字 / 音效 / 场景层
+ * ------------------------------------------------------------
+ * 拆分自 ui.js（v156.27）。**纯搬运** —— 所有 ui.xxx 定义及其先后顺序
+ *   一字未改，只是换了文件。等价性由逐条 sha1 比对证明。
+ * ⚠️ 这个文件的职责就是「一个功能域的全部面板实现」，不要在这里改引擎逻辑。
+ * ============================================================ */
+
+(function () {
+  var GAME = window.GAME;
+  var DATA = GAME.DATA, U = GAME.utils;
+  var ui = GAME.ui;
+  var $ = ui._dom.$, $$ = ui._dom.$$;
 
   /* ============================================================
    * v89.93（整改 E5）：**里程碑演出层** —— ui.moment(spec)
@@ -6893,6 +7559,72 @@
   };
   /* 兼容别名：旧调用点（200+）一律走 info 型 */
   ui.toast = function (msg) { ui.notify('info', msg); };
+
+  /* ============================================================
+   * v2026-11-01（老板）：**场景层** —— 前传（Lv1-20）的"在场感"
+   * ------------------------------------------------------------
+   * 旧的升级/移动反馈只有两样：一行 ✨ 日志、一句"走到 X 了"的 toast。
+   * 老板原话：「进入一个具体的场景，而不是玩文字游戏」。
+   * 所以加一层**独立于系统 toast 的场景层**（不阻塞玩法、自动消散、无滚动条）：
+   *   · ui.sceneCaption(text)        —— 移动时一条感官化的"沿途"字幕；
+   *   · ui.levelUpScene(gen,f,to,s) —— 升级不再是文字，是一张会亮一下的"瞬间卡"。
+   * 常量全部进 DATA.SCENE（见 data.js），此处只引用不写死。
+   * ============================================================ */
+  (function () {
+    var U = GAME.utils;
+    ui._sceneHost = function () {
+      var h = document.getElementById('scene-layer');
+      if (!h) {
+        h = document.createElement('div');
+        h.id = 'scene-layer';
+        h.className = 'scene-layer';
+        (document.body || document.documentElement).appendChild(h);
+      }
+      return h;
+    };
+    ui.sceneCaption = function (text, opt) {
+      if (!text) return;
+      var host = ui._sceneHost();
+      var d = document.createElement('div');
+      d.className = 'scene-caption';
+      d.textContent = text;
+      host.appendChild(d);
+      /* 双 rAF 确保过渡触发（首帧先有起始态）*/
+      requestAnimationFrame(function () { requestAnimationFrame(function () { d.classList.add('show'); }); });
+      var ms = ((GAME.DATA && GAME.DATA.SCENE && GAME.DATA.SCENE.captionMs) || 2600);
+      setTimeout(function () {
+        d.classList.remove('show');
+        setTimeout(function () { if (d.parentNode) d.parentNode.removeChild(d); }, 600);
+      }, ms);
+    };
+    ui._luTimer = null;
+    ui.levelUpScene = function (gen, from, to, step) {
+      if (!gen) return;
+      var stage = document.getElementById('levelup-stage');
+      if (!stage) {
+        stage = document.createElement('div');
+        stage.id = 'levelup-stage';
+        stage.className = 'levelup-stage';
+        (document.body || document.documentElement).appendChild(stage);
+      }
+      var name = gen.name || '无名';
+      var rank = (GAME.rankOf ? (GAME.rankOf(gen) || {}).name : '') || '';
+      var lines = ((GAME.DATA && GAME.DATA.SCENE && GAME.DATA.SCENE.levelLine) || { _: '这一刻，废土记得你的名字。' });
+      var lv = (lines[rank] || lines._ || '这一刻，废土记得你的名字。');
+      stage.innerHTML =
+        '<div class="levelup-card">' +
+          '<div class="lu-name">' + U.escape(name) + '</div>' +
+          '<div class="lu-lv">Lv <b>' + from + '</b> → <b>' + to + '</b>' + (rank ? '　·　' + U.escape(rank) : '') + '</div>' +
+          '<div class="lu-delta">实力 +' + (step || 0) + '（自动加点）</div>' +
+          '<div class="lu-line">' + U.escape(lv) + '</div>' +
+        '</div>';
+      stage.classList.add('show');
+      if (ui._luTimer) clearTimeout(ui._luTimer);
+      var ms = ((GAME.DATA && GAME.DATA.SCENE && GAME.DATA.SCENE.levelUpMs) || 2600);
+      ui._luTimer = setTimeout(function () { stage.classList.remove('show'); }, ms);
+      if (GAME.sfx) GAME.sfx('levelup');
+    };
+  })();
 
   /* v89.93（E4）：数值浮字 —— el 可为元素或选择器；delta 正绿负红 */
   ui.floatGain = function (el, delta, opt) {
@@ -6980,6 +7712,23 @@
   /* 便捷播放入口（调用点一律走它，缺失时静默） */
   ui.sfx = function (key) { try { if (GAME.audio) GAME.audio.play(key); } catch (e) {} };
   GAME.sfx = ui.sfx;   /* 域层（state/battle/systems）调用入口 —— 音频永不阻塞玩法 */
+
+})();
+
+/* ---- ui-core.js ---- */
+/* ============================================================
+ * ui-core.js　基础件 · 点选控件 / 主题 / 闪烁 / 无法操作提示
+ * ------------------------------------------------------------
+ * 拆分自 ui.js（v156.27）。**纯搬运** —— 所有 ui.xxx 定义及其先后顺序
+ *   一字未改，只是换了文件。等价性由逐条 sha1 比对证明。
+ * ⚠️ 这个文件的职责就是「一个功能域的全部面板实现」，不要在这里改引擎逻辑。
+ * ============================================================ */
+
+(function () {
+  var GAME = window.GAME;
+  var DATA = GAME.DATA, U = GAME.utils;
+  var ui = GAME.ui;
+  var $ = ui._dom.$, $$ = ui._dom.$$;
 
   /* ============================================================
    * 点选控件（v22 · 需求 1：全站不用下拉框）
@@ -7175,6 +7924,23 @@
     x.setAttribute('title', top ? ('返回《' + (top.title || '上一级') + '》') : '关闭');
     if (x.classList && x.classList.toggle) x.classList.toggle('has-up', !!top);
   };
+
+})();
+
+/* ---- ui-modal.js ---- */
+/* ============================================================
+ * ui-modal.js　弹窗框架 · 格局 / 键盘流 / 实时刷新 / 悬停保护 / 整体缩放
+ * ------------------------------------------------------------
+ * 拆分自 ui.js（v156.27）。**纯搬运** —— 所有 ui.xxx 定义及其先后顺序
+ *   一字未改，只是换了文件。等价性由逐条 sha1 比对证明。
+ * ⚠️ 这个文件的职责就是「一个功能域的全部面板实现」，不要在这里改引擎逻辑。
+ * ============================================================ */
+
+(function () {
+  var GAME = window.GAME;
+  var DATA = GAME.DATA, U = GAME.utils;
+  var ui = GAME.ui;
+  var $ = ui._dom.$, $$ = ui._dom.$$;
 
   /* ============================================================
    * v89.189（老板 1）：「无法采取的操作，弹窗提示原因，比如无法改建，资源不足等等」
@@ -7936,19 +8702,19 @@
        v41（需求 4）：公文改用**图标闪黄**（有新战报时），见下。 */
     var docTab = document.querySelector('#topnav .tab[data-view="reports"]');
     if (docTab) docTab.classList.toggle('fresh', (GAME.state.repUnread || 0) > 0);
-    /* v122：**待办提醒位** —— 事件挂在「行政 → 世界的账本」二级弹窗里，
-       玩家不点进去永远不知道这个月出了事。这一条把它顶到顶栏：
-       有事件就显示「⚡ 掷骰子」，点一下直接开账本。
-       没有就不占位（display:none）—— v118 刚把 12 个 tab 收成 6 个，不能再长回去。 */
-    var evEl = document.getElementById('nav-ev');
+    /* v156.31（老板 2026-11-02「把世界账本去掉，放行政里边就行，那就里边图标闪烁」）：
+       顶栏的 #nav-ev 已整条退役，入口只剩「行政」页那一个按钮。
+       行政页**不随 tick 重绘**，所以玩家停在那儿时来了新事件，需要这里补一刀 class；
+       平时它由 ui-view.js 渲染时自己带上（两处都写是为了"切进去"和"停在上面"都对）。 */
+    var evEl = document.querySelector('#view-container [data-action="open-world"]');
     if (evEl) {
       var evCur = (GAME.events && GAME.events.current) ? GAME.events.current() : null;
       if (evCur && evCur.def) {
-        evEl.style.display = '';
-        evEl.innerHTML = '⚡ ' + (evCur.def.name || '有件事');
+        evEl.classList.add('ev-on');
+        evEl.innerHTML = '⚡ ' + U.escape(evCur.def.name || '有件事');
       } else {
-        evEl.style.display = 'none';
-        evEl.innerHTML = '';
+        evEl.classList.remove('ev-on');
+        evEl.innerHTML = '🌍 世界的账本';
       }
     }
     /* ⛔ v89.218：待阅逸闻徽标（tab-badge-story）随故事系统退役。 */
@@ -7982,6 +8748,23 @@
    * 显示层固定是 body 上的 #tip-layer（position:fixed、z-index 9000）。
    * 位置由 ui.tipPos 算：默认贴下方 → 下方不够翻上方 → 四面夹进视口。
    * ============================================================ */
+})();
+
+/* ---- ui-shell.js ---- */
+/* ============================================================
+ * ui-shell.js　外框 · 图例 / 坐标浮层 / 环境状态条 / 队列总览
+ * ------------------------------------------------------------
+ * 拆分自 ui.js（v156.27）。**纯搬运** —— 所有 ui.xxx 定义及其先后顺序
+ *   一字未改，只是换了文件。等价性由逐条 sha1 比对证明。
+ * ⚠️ 这个文件的职责就是「一个功能域的全部面板实现」，不要在这里改引擎逻辑。
+ * ============================================================ */
+
+(function () {
+  var GAME = window.GAME;
+  var DATA = GAME.DATA, U = GAME.utils;
+  var ui = GAME.ui;
+  var $ = ui._dom.$, $$ = ui._dom.$$;
+
   /* ============================================================
    * v89.150（老板 2）：「让玩家面对的游戏画面如同图片一样整体缩放」——
    *   下面三个出口是**画布坐标系**的公共设施（浮层挂载 / 坐标换算 / 画布尺寸），
@@ -8439,17 +9222,26 @@
        主循环每秒都会调 syncHeader，年序/季节/天候一切换这里就跟着变。 */
     var sky = $('#nav-sky');
     if (sky) {
+      /* v156.32（老板「天时啥的也省约一点」）：顶栏只排版**压缩句**（`1年 春 ☀晴`），
+         完整句（`第 N 年 季 天候`）走 tooltip —— 同一份数据两个排版，
+         出处仍是 story.skyLine / story.skyBrief 两个出口，界面不再自己拼串。 */
       var line = GAME.story ? GAME.story.skyLine() : '';
+      var brief = (GAME.story && GAME.story.skyBrief) ? GAME.story.skyBrief() : line;
       /* v89.210（规划三）：环境状态条 —— 天时块右侧追加至多 3 枚「非默认态」chips
          （数据走唯一出口 ui.skyBadgesOf；默认态为零枚 = 无消息即正常）。 */
       var _bg210 = ui.skyBadgesOf ? ui.skyBadgesOf() : [];
-      var _bgSig = (line || '') + '|' + _bg210.map(function (b) { return b.txt; }).join('|');
+      var _bgSig = (brief || '') + '|' + _bg210.map(function (b) { return b.txt; }).join('|');
       /* v89.158：内容不变不重建（同头像 —— 内容变（换季/换天候/状态变）才重画） */
       if (sky._sig !== _bgSig) {
         sky._sig = _bgSig;
-        sky.innerHTML = '<span class="ns-k">天时</span>' + U.escape(line || '—')
+        /* 值也包一层 span：`.nav-sky` 的 flex `gap` 只作用于**元素**，
+           裸文本节点不是 flex item —— 上一版就是"天时"和"1年"粘在一起。 */
+        sky.innerHTML = '<span class="ns-k">天时</span>'
+          + '<span class="ns-v">' + U.escape(brief || '—') + '</span>'
           + _bg210.map(function (b) { return ui.skyBadgeHTML(b); }).join('');
       }
+      var _tip = '天时：' + (line || '—') + '（季节 / 天候影响全图产出与战斗）';
+      if (sky.title !== _tip) sky.title = _tip;
     }
     /* v81（老板）：「官职这行放玩家名称」—— 官职行退役（游戏里没有官职体系），
        君主名落在信息表首行；#lord-office 不再存在、也不再写。 */
@@ -8470,6 +9262,26 @@
      它原本只是个"仅当 #doc-queues 存在时才刷新"的挂钩，
      而 #doc-queues 已经不存在了，留着就是一段永不生效的死代码。
      队列现在按归口分散展示：政务厅（建造/募兵）、行军菜单、自动菜单。 */
+
+})();
+
+/* ---- ui-battle.js ---- */
+/* ============================================================
+ * ui-battle.js　战斗 · 观战 / 沙盘 / 战略战术 / 俘虏 / 警报 / 阵亡名录
+ * ------------------------------------------------------------
+ * 拆分自 ui.js（v156.27）。**纯搬运** —— 所有 ui.xxx 定义及其先后顺序
+ *   一字未改，只是换了文件。等价性由逐条 sha1 比对证明。
+ * ⚠️ 这个文件的职责就是「一个功能域的全部面板实现」，不要在这里改引擎逻辑。
+ * ============================================================ */
+
+(function () {
+  var GAME = window.GAME;
+  var DATA = GAME.DATA, U = GAME.utils;
+  var ui = GAME.ui;
+  var $ = ui._dom.$, $$ = ui._dom.$$;
+
+  /* 共享常量：定义在 ui.js 的 ui._C（全站唯一一份，取的是同一个对象） */
+  var BLDG_FUNC = ui._C.BLDG_FUNC;
 
   /* ============================================================
    * 在办事项（v29 · 需求 6）：建造 / 募兵 / 自动升级 / 行军 一览
@@ -10667,6 +11479,23 @@
     el.innerHTML = ui.docBodyHTML(ui._docTab || 'war');
   };
 
+})();
+
+/* ---- ui-city.js ---- */
+/* ============================================================
+ * ui-city.js　城市 · 新手引导 / 城市操作栏 / 侧栏驻军与资源
+ * ------------------------------------------------------------
+ * 拆分自 ui.js（v156.27）。**纯搬运** —— 所有 ui.xxx 定义及其先后顺序
+ *   一字未改，只是换了文件。等价性由逐条 sha1 比对证明。
+ * ⚠️ 这个文件的职责就是「一个功能域的全部面板实现」，不要在这里改引擎逻辑。
+ * ============================================================ */
+
+(function () {
+  var GAME = window.GAME;
+  var DATA = GAME.DATA, U = GAME.utils;
+  var ui = GAME.ui;
+  var $ = ui._dom.$, $$ = ui._dom.$$;
+
   /* ================= 侧栏 ================= */
   ui.setCity = function (id) {
     if (GAME.cityById(id)) { ui._cityId = id; ui.renderView('city'); ui.renderSide(); }
@@ -11133,6 +11962,23 @@
     box.innerHTML = html;
   };
 
+})();
+
+/* ---- ui-army.js ---- */
+/* ============================================================
+ * ui-army.js　军务 · 出征战术 / 阵位指令 / 募兵
+ * ------------------------------------------------------------
+ * 拆分自 ui.js（v156.27）。**纯搬运** —— 所有 ui.xxx 定义及其先后顺序
+ *   一字未改，只是换了文件。等价性由逐条 sha1 比对证明。
+ * ⚠️ 这个文件的职责就是「一个功能域的全部面板实现」，不要在这里改引擎逻辑。
+ * ============================================================ */
+
+(function () {
+  var GAME = window.GAME;
+  var DATA = GAME.DATA, U = GAME.utils;
+  var ui = GAME.ui;
+  var $ = ui._dom.$, $$ = ui._dom.$$;
+
   /* ============================================================
    * 出征战术（v59 · 阵位与指挥指令的设置界面）
    * ------------------------------------------------------------
@@ -11500,6 +12346,27 @@
    * ============================================================ */
   ui._foldOpen = {};
 
+})();
+
+/* ---- ui-bag.js ---- */
+/* ============================================================
+ * ui-bag.js　行囊 · 背包 / 装备 / 分页排序
+ * ------------------------------------------------------------
+ * 拆分自 ui.js（v156.27）。**纯搬运** —— 所有 ui.xxx 定义及其先后顺序
+ *   一字未改，只是换了文件。等价性由逐条 sha1 比对证明。
+ * ⚠️ 这个文件的职责就是「一个功能域的全部面板实现」，不要在这里改引擎逻辑。
+ * ============================================================ */
+
+(function () {
+  var GAME = window.GAME;
+  var DATA = GAME.DATA, U = GAME.utils;
+  var ui = GAME.ui;
+  var $ = ui._dom.$, $$ = ui._dom.$$;
+
+  /* 共享常量：定义在 ui.js 的 ui._C（全站唯一一份，取的是同一个对象） */
+  var EQUIP_SLOT_ORDER = ui._C.EQUIP_SLOT_ORDER;
+  var BAG_LEGACY_TAB = ui._C.BAG_LEGACY_TAB;
+
   /* ============================================================
    * v150（P0-1）· **阶段**：让第一小时只露出"这一小时该做的事"
    * ------------------------------------------------------------
@@ -11510,7 +12377,8 @@
    *   ① **不新增存档字段** —— phase 完全派生（城数 / 胜场 / 是否立城），
    *      读档、重开、老档都自动正确，零迁移；
    *   ② **不删 DOM** —— 上百条断言用 `[data-view=…]` 查顶栏；这里只加 class，
-   *      由 CSS `.topnav .tab-locked{display:none}` 藏（与既有 `.tab-more` 同一手法）；
+   *      由 CSS `.topnav .tab-locked{opacity:.38;filter:grayscale(1)}` 灰显
+   *      （v156.33 老板「顶上还是把游商啥的搞没了」：从 `display:none` 改成"在场但锁着"）；
    *   ③ **不拦 setView** —— 老档/脚本/测试直接 `setView('station')` 照常可用；
    *      收的只是"界面上看不看得见、点不点得到"。
    * ============================================================ */
@@ -11549,8 +12417,10 @@
     return '';
   };
 
-  /* 顶栏软隐藏（幂等）：把 station / shop / collection 标成 locked。
-     只加 class，不动 DOM —— 见上面第 ② 条。 */
+  /* 顶栏阶段锁（幂等）：把 station / shop / collection 标成 locked —— **看得见、进不去**。
+     只加 class，不动 DOM —— 见上面第 ② 条。
+     v156.33：锁定态从"藏起来"改成"灰显"（CSS 见 index.html `.tab-locked`），
+     所以那句 title 现在真的能被悬停看到；点击拦截在 js/main.js 的 topnav 监听里。 */
   ui.syncPhase = function () {
     try {
       var ph = ui.phaseOf();
@@ -11562,9 +12432,14 @@
         var v = tabs[i].getAttribute('data-view');
         var locked = hide.indexOf(v) >= 0;
         tabs[i].classList.toggle('tab-locked', locked);
-        /* 锁着的时候给一句为什么（悬停）：不解释的隐藏＝玩家以为坏了 */
-        if (locked) tabs[i].setAttribute('title', '站稳脚跟后解锁：' + ui.gateWhyText());
-        else tabs[i].removeAttribute('title');
+        /* 锁着的时候给一句为什么（悬停）：不解释的灰＝玩家以为坏了 */
+        if (locked) {
+          tabs[i].setAttribute('title', '站稳脚跟后解锁：' + ui.gateWhyText());
+          tabs[i].setAttribute('aria-disabled', 'true');
+        } else {
+          tabs[i].removeAttribute('title');
+          tabs[i].removeAttribute('aria-disabled');
+        }
       }
     } catch (e) { /* 桩环境（无 classList/元素）：静默跳过，不影响测试口径 */ }
   };
@@ -11699,10 +12574,6 @@
   /* 二级分类的默认值：全部（= 材料 + 宝物 + 图纸，分三段） */
   ui._bagSub = ui._bagSub || 'all';
   /* v90.11：机甲 19 槽（身体 13 + 外挂 6）—— 顺序即部件栏/背包的分组序 */
-  var EQUIP_SLOT_ORDER = ['weapon', 'head', 'chest', 'waist',
-    'arm_up_l', 'arm_up_r', 'arm_low_l', 'arm_low_r',
-    'thigh_l', 'thigh_r', 'shin_l', 'shin_r', 'foot_l', 'foot_r',
-    'back', 'neck', 'ring', 'pendant', 'mount'];
   var BAG_SORT_OPTS = {
     equip: [['q', '品质'], ['val', '价值'], ['set', '套件'], ['slot', '部位']],
     /* 宝物页四类排序：材料看系列/品阶，宝物看类型/价值，通用"数量"两端都能用 */
@@ -11711,7 +12582,6 @@
   ui._bagSort = ui._bagSort || { equip: 'q', treasure: 'type' };
   /* 旧顶层页签值 → 新的「类 + 二级分类」映射（老深链/老测试不炸；见 setBagTab） */
   /* v89.143（老板 1）：'item'（老深链）不再落到「全部」—— 落**第一个有货分类**（null = 归一） */
-  var BAG_LEGACY_TAB = { mat: ['treasure', 'material'], item: ['treasure', null], bp: ['treasure', 'blueprint'] };
 
   /* 背包（v25 · 需求 2）：与游商一起由弹窗改为**整页视图** */
   ui.bagHTML = function () {
@@ -12229,6 +13099,26 @@
      改前缺 chest / neigong / corvee / talis / build_cost 五类：宝箱、残卷、政令、
      封存匣、营造物**买得到、看得见单价，却在背包里根本不显示** ——
      老板点的「买了用不了」正是这里。 */
+})();
+
+/* ---- ui-craft.js ---- */
+/* ============================================================
+ * ui-craft.js　器物 · 宝物 / 神器 / 荒野行动 / 游商 / 制造 / 熔铸 / 抽卡
+ * ------------------------------------------------------------
+ * 拆分自 ui.js（v156.27）。**纯搬运** —— 所有 ui.xxx 定义及其先后顺序
+ *   一字未改，只是换了文件。等价性由逐条 sha1 比对证明。
+ * ⚠️ 这个文件的职责就是「一个功能域的全部面板实现」，不要在这里改引擎逻辑。
+ * ============================================================ */
+
+(function () {
+  var GAME = window.GAME;
+  var DATA = GAME.DATA, U = GAME.utils;
+  var ui = GAME.ui;
+  var $ = ui._dom.$, $$ = ui._dom.$$;
+
+  /* 共享常量：定义在 ui.js 的 ui._C（全站唯一一份，取的是同一个对象） */
+  var EQUIP_SLOT_ORDER = ui._C.EQUIP_SLOT_ORDER;
+
   /* ============================================================
    * v89.104（老板）：「背包里的宝物界面不要设置英雄清单，点击使用的时候，
    * 如果是直接消耗的无对象物品，直接使用并生效即可；有使用对象的物品，做好提示，
@@ -14629,6 +15519,27 @@
   /* 底部信息流频道切换（实现见 renderLog 处） */
 
 
+})();
+
+/* ---- ui-view.js ---- */
+/* ============================================================
+ * ui-view.js　视图与枢纽 · setView / 交易站 / 英雄枢纽 / 节钺 / 行政 / 世界账本
+ * ------------------------------------------------------------
+ * 拆分自 ui.js（v156.27）。**纯搬运** —— 所有 ui.xxx 定义及其先后顺序
+ *   一字未改，只是换了文件。等价性由逐条 sha1 比对证明。
+ * ⚠️ 这个文件的职责就是「一个功能域的全部面板实现」，不要在这里改引擎逻辑。
+ * ============================================================ */
+
+(function () {
+  var GAME = window.GAME;
+  var DATA = GAME.DATA, U = GAME.utils;
+  var ui = GAME.ui;
+  var $ = ui._dom.$, $$ = ui._dom.$$;
+
+  /* 共享常量：定义在 ui.js 的 ui._C（全站唯一一份，取的是同一个对象） */
+  var BAG_LEGACY_TAB = ui._C.BAG_LEGACY_TAB;
+  var BLDG_FUNC = ui._C.BLDG_FUNC;
+
   /* ================= 中央视图 ================= */
   ui.setView = function (v) {
     ui.view = v;
@@ -14649,16 +15560,6 @@
     $$('#topnav .tab[data-view]').forEach(function (el) {
       el.classList.toggle('active', el.dataset.view === v);
     });
-    /* v118：切到"折叠组"里的页签时，把「更多」自动展开 ——
-       否则玩家点了游商 / 背包，高亮那个页签自己藏起来了，
-       屏幕上没有任何东西告诉他在哪儿。 */
-    (function () {
-      var tn = document.getElementById('topnav');
-      if (!tn) return;
-      var cur = document.querySelector('#topnav .tab[data-view="' + v + '"]');
-      var inMore = !!(cur && cur.classList.contains('tab-more'));
-      tn.classList.toggle('nav-open', inMore);
-    })();
     ui.renderView(v);
   };
 
@@ -15879,11 +16780,25 @@
       if (GAME.relic) parts.push(GAME.relic.lineOf());
       parts = parts.filter(function (x) { return !!x; });
       if (!parts.length) return;
+      /* ============================================================
+       * v156.31（老板 2026-11-02「把世界账本去掉，放行政里边就行，
+       *   我看到已经有了，那就里边图标闪烁」）
+       * ------------------------------------------------------------
+       * 顶栏的 #nav-ev 整条退役，入口只留这一处。
+       * 有事件时按钮**自己闪**（.ev-on → ev-breathe），文案换成「⚡ 事件名」，
+       * 与顶栏那版同一个视觉语言；平时就是「🌍 世界的账本」。
+       * ⚠️ 行政页**不随 tick 重绘**（main.js 只对 city/ext/map/generals/marches 重绘），
+       *   所以这里给它初值；玩家停在行政页时来了事件，由 ui.syncBadges 补那一刀。
+       * ============================================================ */
+      var evNow = (GAME.events && GAME.events.current) ? GAME.events.current() : null;
+      var evLive = !!(evNow && evNow.def);
+      var evLabel = evLive ? ('⚡ ' + U.escape(evNow.def.name || '有件事')) : '🌍 世界的账本';
       h += '<div style="margin-top:8px;padding-top:8px;border-top:1px dashed var(--wood-light);'
         + 'font-size:var(--fs-cap);line-height:1.85;">'
         + parts.map(function (x) { return '<div>' + x + '</div>'; }).join('')
-        + '<button class="btn" style="font-size:var(--fs-cap);padding:1px 8px;margin-top:5px;"'
-        + ' data-action="open-world">🌍 世界的账本</button></div>';
+        + '<button class="btn' + (evLive ? ' ev-on' : '') + '"'
+        + ' style="font-size:var(--fs-cap);padding:1px 8px;margin-top:5px;"'
+        + ' data-action="open-world">' + evLabel + '</button></div>';
     })();
     h += '</div>';
     return h;
@@ -16141,6 +17056,26 @@
       '" step="1" value="' + cur + '">';
   };
   ui.zoomStyle = function () { return 'zoom:' + (ui.zoom() / 100) + ';'; };
+})();
+
+/* ---- ui-build.js ---- */
+/* ============================================================
+ * ui-build.js　建造 · 前传君主 / 等距渲染 / 围墙 / 格内建筑 / 政务厅
+ * ------------------------------------------------------------
+ * 拆分自 ui.js（v156.27）。**纯搬运** —— 所有 ui.xxx 定义及其先后顺序
+ *   一字未改，只是换了文件。等价性由逐条 sha1 比对证明。
+ * ⚠️ 这个文件的职责就是「一个功能域的全部面板实现」，不要在这里改引擎逻辑。
+ * ============================================================ */
+
+(function () {
+  var GAME = window.GAME;
+  var DATA = GAME.DATA, U = GAME.utils;
+  var ui = GAME.ui;
+  var $ = ui._dom.$, $$ = ui._dom.$$;
+
+  /* 共享常量：定义在 ui.js 的 ui._C（全站唯一一份，取的是同一个对象） */
+  var BLDG_FUNC = ui._C.BLDG_FUNC;
+
   /* ============================================================
    * v89.116（老板「设置里的显示比例实质改不了比例」）—— **病根**：
    *   `ui.zoomBarHTML` 画出了 `#zoom-range` 滑块，但**全仓没有任何 input/change 监听**
@@ -16307,37 +17242,37 @@
       return (x.name || m) + ' ×' + mu.toFixed(2) + '/×' + tk.toFixed(2);
     };
 
-    /* ---- 一张卡：画像 + 名字 + 攻防 + 血条（血 = 体力） ---- */
-    var card = function (side, g, icon, name, lv, tag, hp, max, atk, def, cls, dmg, crit) {
+    /* ============================================================
+     * v156.20（老板「目前还是偏文字游戏了，把文字场景化，3D 对战」）
+     * ------------------------------------------------------------
+     * 原来这一块是「两张画像 + 中间 VS」——本质还是一张文字卡。
+     * 现在：**3D 舞台占主体**（两个角色真的站上去打），
+     *   名字/血条/攻防压成半透明的 HUD 贴在舞台两侧上方 ——
+     *   画在 3D 里必糊，且读数读不出来，所以数值仍走 DOM。
+     * 舞台本体由 `GAME.duel3d`（js/duel3d.js）驱动；它**只读**本函数算出的结果，
+     * 不另算一份胜负（判定唯一出口仍是 GAME.duel.play）。
+     * ============================================================ */
+    var hud = function (side, g, icon, name, lv, tag, hp, max, atk, def, dmg, crit) {
       var pct = Math.max(0, Math.min(100, Math.round(hp / Math.max(1, max) * 100)));
-      var col = pct > 60 ? '#6fbf73' : (pct > 30 ? '#d9a441' : '#d9534f');
-      var ava;
-      if (icon) ava = '<div class="duel-ava">' + icon + '</div>';
-      else if (GAME.portraits && GAME.portraits.html) ava = '<div class="duel-por">' + GAME.portraits.html(g, 72) + '</div>';
-      else ava = '<div class="duel-ava">🧍</div>';
-      return '<div class="duel-card ' + side + (cls ? ' ' + cls : '') + '">'
+      var col = pct > 60 ? 'var(--green-ok)' : (pct > 30 ? 'var(--gold-light)' : 'var(--red-light)');
+      return '<div class="duel-hud ' + side + '">'
         + (dmg ? '<div class="duel-dmg' + (crit ? ' crit' : '') + '">-' + dmg + (crit ? ' 暴击' : '') + '</div>' : '')
-        + ava
-        + '<div style="font-size:var(--fs-cap);font-weight:700;margin-top:2px;'
-        + 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + U.escape(name) + '</div>'
-        + '<div class="ui-sub" style="font-size:var(--fs-cap);">Lv' + lv
-        + (tag ? ' · ' + U.escape(tag) : '') + '</div>'
-        + '<div class="ui-sub" style="font-size:var(--fs-cap);">攻 ' + atk + ' · 防 ' + def + '</div>'
+        + '<div class="duel-hud-name">' + U.escape(name)
+        + '<span class="duel-hud-sub">Lv' + lv + (tag ? ' · ' + U.escape(tag) : '') + '</span></div>'
         + '<div class="duel-hp"><i style="width:' + pct + '%;background:' + col + ';"></i></div>'
-        + '<div class="ui-sub" style="font-size:var(--fs-cap);margin-top:1px;">' + hp + ' / ' + max + '</div>'
+        + '<div class="duel-hud-num">' + hp + ' / ' + max
+        + '　<span class="duel-hud-sub">攻 ' + atk + ' 防 ' + def + '</span></div>'
         + '</div>';
     };
-    /* 每合双方都出手 → 两张画像同时飞向对方（结算态不飞，免得"负"字旁边乱动） */
     var fly = !!last && !r.over;
-    var arena = '<div style="display:flex;align-items:flex-start;gap:10px;margin-top:8px;">'
-      + card('me', lord, '', (lord && lord.name) || '君主', (lord && lord.level) | 0, '我',
-        r.hpA, r.maxA, r.atkA, r.defA, fly ? 'duel-fly-r' : '',
-        fly ? last.dmgToA : 0, !!(last && last.res === 'b'))
-      + '<div class="duel-vs">VS</div>'
-      + card('foe', foe, (f.icon || (foe && foe.species && foe.species.icon) || '👤'),
+    var arena = '<div class="duel-stage">'
+      + '<div class="duel-stage3d" id="duel-stage3d"></div>'
+      + hud('me', lord, '', (lord && lord.name) || '君主', (lord && lord.level) | 0, '我',
+        r.hpA, r.maxA, r.atkA, r.defA, fly ? last.dmgToA : 0, !!(last && last.res === 'b'))
+      + hud('foe', foe, (f.icon || (foe && foe.species && foe.species.icon) || '👤'),
         f.name || '对手', f.level | 0, f.tag || '',
-        r.hpB, r.maxB, r.atkB, r.defB, fly ? 'duel-fly-l' : '',
-        fly ? last.dmgToB : 0, !!(last && last.res === 'a'))
+        r.hpB, r.maxB, r.atkB, r.defB, fly ? last.dmgToB : 0, !!(last && last.res === 'a'))
+      + '<div class="duel-stage-vs">VS</div>'
       + '</div>';
 
     /* ---- 对手路数读不读得出来（心理战那一半仍保留） ---- */
@@ -16445,6 +17380,20 @@
       ? '⚔ 斗将 · ' + (_titleWin ? '拿下' : _titleLose ? '败退' : '平手')
       : '⚔ 斗将 · ' + U.escape(f.name || '对手');
     ui.openModal('<div class="gold-heading">' + title + '</div>' + body, { size: 'auto' });
+    /* v156.20：3D 舞台挂载（幂等 —— 每合重绘都会再进来一次，场景只建一次）。
+       `mount` 只做表现，不参与判定；WebGL 不可用时它返回 false，面板照旧能用。 */
+    try {
+      if (GAME.duel3d && GAME.duel3d.mount) {
+        GAME.duel3d.mount({
+          holderId: 'duel-stage3d',
+          roundNo: r.rounds.length,
+          over: r.over,
+          winner: r.winner,
+          dmgToA: last ? last.dmgToA : 0,
+          dmgToB: last ? last.dmgToB : 0
+        });
+      }
+    } catch (e) { }
   };
 
 
@@ -16710,10 +17659,6 @@
         (o.name ? '<span class="tile-label"><span class="nm">' + o.name + '</span></span>' : '');
     } else if (o.addHint) {
       inner = '<span class="iso-add">＋</span>';
-    } else if (o.reserve) {
-      /* v91.19（老板 1）：预留位内容 —— 预定建筑名（暗字，居中偏上）+ ＋。 */
-      inner = '<span class="iso-add' + (o.ready ? ' ready' : '') + '">＋</span>' +
-        '<span class="iso-reserve">' + U.escape(o.reserve) + '</span>';
     } else {
       /* v89.229（老板「建筑名称和等级都放顶部，建筑名称的文字色块行高调高」）：
          名称行移到**格顶**、族色编码由名称文字色块承载；等级角标并入名称行右端
@@ -16751,9 +17696,11 @@
          满足前置（`buildPrereqOf`）时地块边缘**渐变闪烁**，提示"此处现在可建"。居所槽仍为普通空位。 */
       var fixedBid = GAME.fixedBidAt ? GAME.fixedBidAt(idx) : 'minfang';
       if (fixedBid && fixedBid !== 'minfang' && DATA.BUILDINGS[fixedBid]) {
+        /* v2026-10-31（老板）：预留位**不再框选 / 不显示建筑名** —— 仍预留（位置不变），
+           满足建造条件时保留边缘闪烁（cls 带 ready）。推荐建筑在弹窗第一层给出。 */
         var rOk = GAME.buildPrereqOf ? GAME.buildPrereqOf(city, fixedBid, 1).ok : false;
         return ui.isoCell({ M: M, col: col, row: row, cls: 'empty reserve' + (rOk ? ' ready' : ''),
-          idx: idx, act: 'build-cell', reserve: DATA.BUILDINGS[fixedBid].name, ready: rOk });
+          idx: idx, act: 'build-cell', addHint: true });
       }
       return ui.isoCell({ M: M, col: col, row: row, cls: 'empty', idx: idx, act: 'build-cell', addHint: true });
     }
@@ -16903,34 +17850,6 @@
        · **名字要覆盖面板的全部内容**（点了名不副实就是误导）——
          例：政务厅入口原叫「征收」，面板里却有征调民力 / 本城特产 / 岁贡 / 改名，
          已改「政务厅事务」；练兵场/军营/作坊去掉与建筑名重复的抬头词。 */
-  var BLDG_FUNC = {
-    /* ⛔ v89.135 移除：guanfu 条目（"政务厅事务"按钮）—— 老板 10：「不再设置多一个
-       '政务厅事务'按钮」：改名 / 主城 / 基因实验室**直接显示**在政务厅格的建筑面板（见政务厅要务段）。 */
-    junying: { label: "⚔️ 募兵 · 兵种", act: "open-troops", withIdx: true },
-    xiaochang: { label: "🏹 进入军务（出征 · 伤兵）", act: "open-xiaochang" },
-    shuyuan: { label: "📜 科技 · 研究", act: "open-panel", view: "tech" },
-    kezhan: { label: "🍶 招募英雄", act: "open-inn" },
-    zhaoxianguan: { label: "🎎 英雄名录", act: "open-hostel" },
-    shichang: { label: "🏪 交易", act: "open-market" },
-    cangku: { label: "🏚️ 仓储", act: "open-store" },
-    /* v89.80（老板）：「马概（厩）去除"座驾装备"的建筑菜单及相应内容」——
-       原菜单项点开的是「装备」总页（view: equip），与英雄档案里的部件栏重复，
-       且"座驾"只是装备的一个部位，不值得在建筑里单开一个入口。
-       撤掉后点载具研究所格只显示**属性行**（机车解锁 / 建筑专精），不再有功能按钮。
-       装备与座驾仍走两条既有的路：英雄档案点部位换装、背包「装备」页选将穿戴。 */
-    /* v89.140（老板 4）：「制造厂建筑菜单界面，**新增一行增加一个百炼强化按钮**，
-       与打造菜单格式相同。将打造界面里的百炼强化按钮删去」——
-       制造厂格上直接出现两颗功能键（打造 / 熔铸强化），打造面板底部不再挂它。 */
-    tiejiangpu: [{ label: "⚒️ 打造", act: "open-forge" },
-      { label: "⚒️ 熔铸强化", act: "open-enhance" }],
-    gongjiangzuofang: { label: "🛠️ 器械 · 箭塔", act: "open-workshop", withIdx: true },
-    /* v89.224（老板 1）：本格为**基因实验室的建筑载体**（原在政务厅要务段，已撤）。
-       v90.92：原「⚔️ 派系」入口随门派系统整条退役而移除。 */
-    honglusi: { label: "🧬 基因实验室", act: "open-lab" },
-    /* v85（老板）：「居所不需要幸存者统计功能」—— 居所入口退役；
-       「幸存者统计」面板本身保留（城防统计仍由此进入）。 */
-    chengqiang: { label: "🧱 城防统计", act: "open-panel", view: "stats" }
-  };
 
   /* ============================================================
    * 机工坊 · 器械与工事（v62 · 老板）
@@ -17068,7 +17987,7 @@
     return lines.join('\n') || '—';
   };
 
-  ui.openBuildModal = function (idx, cityId) {
+  ui.openBuildModal = function (idx, cityId, mode) {
     /* v89.174：cityId 可选 —— 弹窗 **live 每秒重开**时必须**锁定"打开弹窗的那座城"**
        （否则玩家切城后，重开会把同号格子开到另一座城上）。 */
     var s = GAME.state, c = cityId ? GAME.cityById(cityId) : GAME.currentCity();
@@ -17544,16 +18463,39 @@
             '" title="进 3D 看一眼它建成后的样子（不占格、不扣费）">👁</span>' +
           '</div>';
       });
-      var pgB = ui.modalPage('buildpick', all, 9, function () { ui.openBuildModal(idx); });
+      /* v2026-10-31（老板）：预留地块点开分两层 ——
+         第一层只显示「推荐建造」的建筑（= 本槽固定规划建筑 fixedBid）；
+         给一个「其他建筑」按钮，点后切到全部建筑（与原来一致）。
+         普通空位（非预留）直接给全部建筑。 */
+      var _fixedBid = GAME.fixedBidAt ? GAME.fixedBidAt(idx) : 'minfang';
+      var _isReserve = !!(cell.build || cell.pending) ? false
+        : !!(_fixedBid && _fixedBid !== 'minfang' && DATA.BUILDINGS[_fixedBid]);
+      var _reco = _isReserve && mode !== 'all';
+      var _show = all;
+      if (_reco) {
+        var _r = all.filter(function (h) { return h.indexOf('data-build="' + _fixedBid + '"') >= 0; });
+        if (_r.length) _show = _r; else _reco = false;   /* 兜底：找不到推荐卡就退回全部 */
+      }
+      var pgB = ui.modalPage('buildpick', _show, 9, function () { ui.openBuildModal(idx, null, _reco ? 'reco' : 'all'); });
+      var _title, _sub, _footExtra = '';
+      if (_reco) {
+        _title = '🏗️ 本格推荐建造：' + (DATA.BUILDINGS[_fixedBid] ? DATA.BUILDINGS[_fixedBid].name : _fixedBid);
+        _sub = '规划给本格的建筑　·　第 ' + pgB.page + '/' + pgB.maxPage + ' 页';
+        _footExtra = '<button class="btn" data-action="build-other" data-idx="' + idx + '">其他建筑 ▾</button>';
+      } else {
+        _title = '🏗️ 选择要建造的建筑';
+        _sub = '城战技能建筑 · 共 ' + all.length + ' 种　·　第 ' + pgB.page + '/' + pgB.maxPage + ' 页';
+        if (_isReserve) _footExtra = '<button class="btn" data-action="build-reco" data-idx="' + idx + '">← 推荐建造</button>';
+      }
       ui.openShell({
-        title: '🏗️ 选择要建造的建筑',
-        sub: '城战技能建筑 · 共 ' + all.length + ' 种　·　第 ' + pgB.page + '/' + pgB.maxPage + ' 页',
+        title: _title,
+        sub: _sub,
         /* v63：图标从 emoji 换成与棋盘同一套（84px），卡片比原来高 ——
            实测 lg（860×600）正文超出 18px 会**出现弹窗内滚动条**（老板明令禁止），
            所以提到 xl（960×min(700,88vh)）：三列各宽 ~300px，卡片照样一目了然。 */
         size: 'xl',
         body: '<div class="troop-grid" style="grid-template-columns:repeat(3,1fr);">' + pgB.slice.join('') + '</div>' + pgB.pager,
-        foot: '<div class="m-foot"><button class="btn" data-action="close-modal">关闭</button></div>'
+        foot: '<div class="m-foot">' + _footExtra + '<button class="btn" data-action="close-modal">关闭</button></div>'
       });
     }
   };
@@ -17935,6 +18877,23 @@
     return '<div class="ui-page troops-page"><div class="troop-split">' + listHTML +
       '<div class="troop-detail">' + detailHead + '</div></div>' + opsHTML + '</div>';
   };
+
+})();
+
+/* ---- ui-planet.js ---- */
+/* ============================================================
+ * ui-planet.js　星球与英雄 · 星球生成切换 / 英雄界面 / 属性 / 部件栏
+ * ------------------------------------------------------------
+ * 拆分自 ui.js（v156.27）。**纯搬运** —— 所有 ui.xxx 定义及其先后顺序
+ *   一字未改，只是换了文件。等价性由逐条 sha1 比对证明。
+ * ⚠️ 这个文件的职责就是「一个功能域的全部面板实现」，不要在这里改引擎逻辑。
+ * ============================================================ */
+
+(function () {
+  var GAME = window.GAME;
+  var DATA = GAME.DATA, U = GAME.utils;
+  var ui = GAME.ui;
+  var $ = ui._dom.$, $$ = ui._dom.$$;
 
   /* ============================================================
    * v90.81（老板 4）：**星球生成器 · 要素设计器**
@@ -20255,6 +21214,23 @@
     if (btn) btn.classList.toggle('on', on);
   };
 
+})();
+
+/* ---- ui-space.js ---- */
+/* ============================================================
+ * ui-space.js　星空 · 星系 / 空间站 / 殖民 / 深空远征 / 3D 预览
+ * ------------------------------------------------------------
+ * 拆分自 ui.js（v156.27）。**纯搬运** —— 所有 ui.xxx 定义及其先后顺序
+ *   一字未改，只是换了文件。等价性由逐条 sha1 比对证明。
+ * ⚠️ 这个文件的职责就是「一个功能域的全部面板实现」，不要在这里改引擎逻辑。
+ * ============================================================ */
+
+(function () {
+  var GAME = window.GAME;
+  var DATA = GAME.DATA, U = GAME.utils;
+  var ui = GAME.ui;
+  var $ = ui._dom.$, $$ = ui._dom.$$;
+
   /* ============================================================
    * v91.30 星系界面（一级视图 · 纯 canvas 径向渐变画球）
    * ------------------------------------------------------------
@@ -20970,8 +21946,9 @@
     /* v76（老板）：「底下有一个导航栏，可以考虑把地图的导航栏（上下左右，坐标之类）
        放到这个导航范围内」—— 导航不再挂地图页浮标，改登记到本帧的**底部固定导航条**
        （ui._bottom → paintBottom）；地图页本身只剩棋盘。 */
-    /* v90.88（老板）：**去掉上下左右**方向键 + 平面 (x,y) 双输入框；
-       改为**球系坐标**（经度/纬度）单一输入 + 前往。其余导航键（回主城/回本城/前哨/灰烬城）保留。 */
+    /* v90.88（老板）：**去掉上下左右**方向键 + 平面 (x,y) 双输入框，改为经纬度输入 + 前往。
+       ⛔ v156.35：那套经纬度输入也退役了（见下方 dock 里的长注释）——
+       底栏现在只剩"回主城 / 回本城 / 星系 / 前哨 / 建造 / 灰烬城"。 */
     /* v90.99（老板）：地图在看别颗星球时，基于「当前城」的导航（回主城/回本城）与母星专属的
        「灰烬城」**断开** —— 挂 .dim + data-why（点击弹原因，走全局受阻机制），比"点了没反应"直观。 */
     var _onAct99 = ui.mapOnActivePlanet();
@@ -20981,15 +21958,21 @@
         + (on ? '' : ' data-why="' + why + '"') + '>' + label + '</button>';
     }
     ui._bottom.push('<div class="map-dock">' +
-        '<span class="map-info" id="map-info">' + ui.mapInfoText() + '</span>' +
-        '<span class="map-info mk-pick" id="map-pick-info">' + ui.mapPickText() + '</span>' +
+        /* ⛔ v156.37（老板 2026-11-02「去掉地图上这些无用：点选 — / 球系坐标 / 经度 / °E / 纬度 / °N / 前往」）
+           底栏的**信息区整块**退役：`中心 244°E 17°N`（视野中心坐标）+ `点选 —`（点选格坐标）。
+           加上上一轮已删的坐标输入组，底栏现在只剩**动作**，没有一个字是"读数"。
+           为什么读数也该走：地图是 3D 球，玩家看的是地形和城，不是经纬；
+           真要坐标，点开地块面板里有（`📍 球系坐标`，那是"点了才有"，不是常驻）。
+           连带退役：ui.mapInfoText / ui.mapPickText / ui.syncMapInfo / ui.mapPick（唯一读者是它俩）。 */
         '<span class="mk-sep"></span>' +
-        '<span class="mk-lbl">球系坐标</span>' +
-        '<input id="map-lon" type="number" min="0" max="360" step="1" placeholder="经度">' +
-        '<span class="mk-lbl">°E</span>' +
-        '<input id="map-lat" type="number" min="-90" max="90" step="1" placeholder="纬度">' +
-        '<span class="mk-lbl">°N</span>' +
-        '<button class="btn sm gold" data-action="map-goto">前往</button>' +
+        /* ⛔ v156.35（老板 2026-11-02「这个已无用，删去：球系坐标 / 经度 / °E / 纬度 / °N / 前往」）
+           球系坐标输入组整条退役 —— 「球系坐标」标签 + 经度框 + °E + 纬度框 + °N + 前往按钮。
+           老板的导航方式已经是"点地图格 / 星系总览"，手输经纬度这一路没人用，
+           却常驻占掉底栏近 300px，把「回主城 / 回本城 / 星系 / 前哨 / 建造」挤到右边。
+           连带退役：ui.mapGoto（唯一读者是「前往」按钮）、main.js 的 case 'map-goto'。
+           ⚠️ 只删界面入口，**不删能力**：GAME.sphere.xyOfLonLat / lonLatOfXY 仍在
+              （prologue / state / surge 还在用），地图左上角那条「球系坐标 12°E 34°N」
+              也不动 —— 那是坐标的"读数"，删的是"输入"。 */
         _nav99('', 'map-center', '回主城', _onAct99, '地图在看别颗星球 —— 回主城需先切回本城所在星球') +
         _nav99('', 'map-mycity', '回本城', _onAct99, '本城不在当前地图星球上 —— 回本城需先切回本城所在星球') +
         '<button class="btn sm" data-action="galaxy-open" title="星系总览（太阳 + 各星球绕行 · 点星球进入）">🌌 星系</button>' +
@@ -21155,33 +22138,13 @@
      与「天下大势」面板（openMinimap / 满界面下钻 / 点选跳转 / 波纹层 / 大图 LOD）整簇退役。
      地图检索（省/市/区 + 己方城/野地光束定位）与 3D 自由缩放已覆盖该能力。 */
 
-  /* 鼠标点选的地块（v44）：存 pick() 的结果，供状态行显示 */
-  ui.mapPick = null;
-  ui.mapPickText = function () {
-    var p = ui.mapPick;
-    if (!p) return '点选 —';
-    var tag = ({ player: '我城', npc: '名城', wild: '野地', fort: '据点', land: '空地' })[p.kind] || '';
-    /* v90.100（球系）：点选对象带 ci → 走球系坐标 + 球面格；旧式 (x,y) 兜底。 */
-    var _pci = (p.ci != null) ? p.ci : ((GAME.sphere && GAME.sphere.ciOfXY) ? GAME.sphere.ciOfXY(p.x, p.y) : -1);
-    var out = '点选 ' + tag + ' ' + (GAME.map.coordTextCi ? GAME.map.coordTextCi(_pci) : GAME.map.coordText(p.x, p.y));
-    /* v89.5：野地补一句荒野事 —— 有事报数（灵机者加标），无事报荒僻；
-       非野地地形（平原 / 城）没有荒野活动之说，不补后缀。 */
-    /* v89.45：野地荒野行动呈现层受 GAME.jianghuWildMounted 控制（false=剥离） */
-    var tl = (GAME.sphere && GAME.sphere.cells) ? GAME.sphere.cells[_pci] : null;
-    if (GAME.jianghuWildMounted && tl && GAME.jianghuCands(tl.type).length > 0) {
-      var jm = GAME.jianghuSpotInfo(_pci);
-      out += jm ? (' · 荒野事 ×' + jm.n + (jm.mark ? ' · 灵机' : '')) : ' · 荒僻';
-    }
-    return out;
-  };
-  /* 刷新状态行（视野区间 + 点选坐标）—— 平移 / 跳转 / 点击后都走这里。
-     注意用 `$`（= querySelector）而不是 getElementById：
-     smoke 的 DOM stub 只实现了 querySelector。 */
-  ui.syncMapInfo = function () {
-    var a = $('#map-info'), b = $('#map-pick-info');
-    if (a) a.textContent = ui.mapInfoText();
-    if (b) b.textContent = ui.mapPickText();
-  };
+  /* ⛔ v156.37（老板「去掉地图上这些无用：点选 — …」）：
+     `ui.mapPick` / `ui.mapPickText` 整条退役 —— 它们是底栏那句「点选 —」的唯一来源。
+     点选仍然有效（点格子会弹地块面板），只是不再在底栏常驻一行字。
+     沿革：v44 用它做"点到了什么"的即时反馈；v90.100 改成球系坐标显示；
+     v89.5 还给它加了"荒野事 ×N"后缀 —— 那份信息现在只在**点开面板后**给。 */
+  /* ⛔ v156.37：`ui.syncMapInfo`（刷新底栏那两行读数）随信息区一起退役。
+     它原先在平移 / 跳转 / 点选后各调一次，现在底栏没有可刷的读数了。 */
 
   /* 雷霆箭头：把今日奇观的球面位置投影到屏幕 → 定位大片箭头（外向/边缘夹取）。 */
   ui.syncWonderArrow = function (canvas) {
@@ -21317,13 +22280,28 @@
       canvas.addEventListener('click', function (e) {
         var r = GAME.map.pick(canvas, e.clientX, e.clientY);
         if (!r) return;
-        ui.mapPick = r;
-        ui.syncMapInfo();
         if (GAME.prologue && GAME.prologue.on && GAME.prologue.on() && GAME.prologue.mapClick) {
           var mr = GAME.prologue.mapClick(r.ci);
           if (mr && mr.msg && !mr.here && !mr.arrived) ui.toast(mr.msg);
           return;
         }
+        /* ============================================================
+         * v156.39：**2D 兜底路径的点击要开面板**。
+         * ------------------------------------------------------------
+         * 由来：v156.37 删底栏读数时，把这里唯一的两行
+         *   `ui.mapPick = r; ui.syncMapInfo();`
+         * 一起删了（它们只服务已退役的「点选 —」行）。删得对，但**没补替身**，
+         * 于是非前传期点地图 = 函数体空了 = 什么都没发生。
+         *
+         * 而这个洞此前被一条恒真断言盖着：
+         *   check('点击地图格子有响应', true, …)
+         * —— 它从写下的第一天起就是真的，所以没人发现。
+         *
+         * 3D 路径（map3d.pickAt → _openCellPanel）本来就开面板；
+         * 2D 兜底没有，属**两条路径行为不一致**。这里补上既有入口
+         * （openLandModalCi 是 2D 时代就有的野地面板，不是新功能）。
+         * ============================================================ */
+        if (ui.openLandModalCi) ui.openLandModalCi(r.ci);
       });
     }
     var fr = ui.mapFrame;
@@ -21343,7 +22321,6 @@
       ui.syncWonderArrow(canvas);   /* v91.30：雷霆箭头指向今日奇观 */
       var _pe = document.getElementById && document.getElementById('adm-prov');
       if (_pe && !_pe.options.length) ui.fillAdmSearch();   /* 首次填充分级检索（不每帧重建）*/
-      ui.syncMapInfo();
       return;
     }
     /* v90.97（双球面）：2D 兜底渲染读的是 GAME.map（**当前星球**平面投影）—— 不支持地图看别星，
@@ -21382,13 +22359,6 @@
         ui._mapMark = null;        /* 过期自灭 */
       }
     }
-    ui.syncMapInfo();
-  };
-
-  ui.mapInfoText = function () {
-    /* v50：视野不再是矩形，"左上—右下"那对坐标已无意义，改报**中心格**。 */
-    var v = ui.mapView;
-    return '中心 ' + (GAME.map.coordText ? GAME.map.coordText(v.x, v.y) : ('(' + v.x + ',' + v.y + ')'));
   };
 
   /* v90.88：ui.mapPan（方向键平移）随方向键退役。 */
@@ -21434,21 +22404,11 @@
     ui.toast('已定位至旧都灰烬城 (265,215)');
   };
 
-  ui.mapGoto = function () {
-    /* v90.88（老板）：输入改**球系坐标**（经纬度）→ 反解为世界格 (x,y) → 定位。 */
-    var lon = Number(($('#map-lon') || {}).value);
-    var lat = Number(($('#map-lat') || {}).value);
-    if (isNaN(lon) || isNaN(lat) || ($('#map-lon') || {}).value === '' || ($('#map-lat') || {}).value === '' ||
-      lon < 0 || lon > 360 || lat < -90 || lat > 90) {
-      ui.toast('请输入球系坐标：经度 0~360°E · 纬度 -90~90°N');
-      return;
-    }
-    var xy = GAME.sphere.xyOfLonLat(lon, lat);   /* 球系映射 SSOT（见 sphere.js） */
-    var x = U.clamp(xy.x, 0, DATA.MAP_W - 1), y = U.clamp(xy.y, 0, DATA.MAP_H - 1);
-    ui.mapCenterOn(x, y);
-    ui.toast('已定位至 ' + GAME.map.coordText(x, y));
-  };
-
+  /* ⛔ v156.35（老板 2026-11-02「这个已无用，删去：球系坐标 / 经度 / °E / 纬度 / °N / 前往」）
+     `ui.mapGoto` 整条退役 —— 它唯一的读者就是被删掉的「前往」按钮。
+     球系映射能力本身**没删**：`GAME.sphere.xyOfLonLat / lonLatOfXY` 仍在
+     （prologue / state / surge 三处都在用），这里下去的只是"手输经纬度跳转"这个入口。
+     导航仍有三条路，都在底栏：回主城 / 回本城 / 灰烬城，外加地图上直接点格子。 */
 
 
   /* --------- 野地/出征 modal --------- */
@@ -21490,6 +22450,23 @@
         '<button class="btn" data-action="close-modal">' + (movable ? '取消' : '关闭') + '</button></div>'
     );
   };
+
+})();
+
+/* ---- ui-delve.js ---- */
+/* ============================================================
+ * ui-delve.js　废土 · 营地 / 遗迹 / 斗将 / 村社 / 拓荒队 / 三条线
+ * ------------------------------------------------------------
+ * 拆分自 ui.js（v156.27）。**纯搬运** —— 所有 ui.xxx 定义及其先后顺序
+ *   一字未改，只是换了文件。等价性由逐条 sha1 比对证明。
+ * ⚠️ 这个文件的职责就是「一个功能域的全部面板实现」，不要在这里改引擎逻辑。
+ * ============================================================ */
+
+(function () {
+  var GAME = window.GAME;
+  var DATA = GAME.DATA, U = GAME.utils;
+  var ui = GAME.ui;
+  var $ = ui._dom.$, $$ = ui._dom.$$;
 
   /* ============================================================
    * v92.4：幸存者营地 —— 招人 还是 抢物资
@@ -22078,6 +23055,23 @@ ui.openDuel = function (fid, moveId) {
     h += '</div><div class="panel-foot"><button class="btn" data-action="close-modal">关闭</button></div>';
     ui.openModal(h);
   };
+
+})();
+
+/* ---- ui-mapui.js ---- */
+/* ============================================================
+ * ui-mapui.js　地图界面 · 调兵运输 / 据点情报 / 地图本体 / 前哨格
+ * ------------------------------------------------------------
+ * 拆分自 ui.js（v156.27）。**纯搬运** —— 所有 ui.xxx 定义及其先后顺序
+ *   一字未改，只是换了文件。等价性由逐条 sha1 比对证明。
+ * ⚠️ 这个文件的职责就是「一个功能域的全部面板实现」，不要在这里改引擎逻辑。
+ * ============================================================ */
+
+(function () {
+  var GAME = window.GAME;
+  var DATA = GAME.DATA, U = GAME.utils;
+  var ui = GAME.ui;
+  var $ = ui._dom.$, $$ = ui._dom.$$;
 
   /* ============================================================
    * v93.3：拓荒队面板 —— 用这一代人，换下一代人能活
@@ -22958,6 +23952,23 @@ ui.openDuel = function (fid, moveId) {
      · 派军采集（英雄带队）并入「带将驻军原地开工」（GAME.startGather 唯一形态）；
      · 采集队总览的"定位"能力：地块界面即野地本体（无需定位跳转）。 */
   /* 野外城市弹窗 */
+})();
+
+/* ---- ui-exped.js ---- */
+/* ============================================================
+ * ui-exped.js　出征 · 城内布局 / 统一出征面板 / 计略 / 方案 / 辎重 / 战前推演
+ * ------------------------------------------------------------
+ * 拆分自 ui.js（v156.27）。**纯搬运** —— 所有 ui.xxx 定义及其先后顺序
+ *   一字未改，只是换了文件。等价性由逐条 sha1 比对证明。
+ * ⚠️ 这个文件的职责就是「一个功能域的全部面板实现」，不要在这里改引擎逻辑。
+ * ============================================================ */
+
+(function () {
+  var GAME = window.GAME;
+  var DATA = GAME.DATA, U = GAME.utils;
+  var ui = GAME.ui;
+  var $ = ui._dom.$, $$ = ui._dom.$$;
+
   /* ============================================================
    * 满配城的城内布局（v61 · 老板）
    * ------------------------------------------------------------
@@ -25063,6 +26074,23 @@ ui.openDuel = function (fid, moveId) {
 
 
   /* --------- 任务 --------- */
+})();
+
+/* ---- ui-report.js ---- */
+/* ============================================================
+ * ui-report.js　文书 · 通用分页 / 统计 / 公文 / 战报沙盘
+ * ------------------------------------------------------------
+ * 拆分自 ui.js（v156.27）。**纯搬运** —— 所有 ui.xxx 定义及其先后顺序
+ *   一字未改，只是换了文件。等价性由逐条 sha1 比对证明。
+ * ⚠️ 这个文件的职责就是「一个功能域的全部面板实现」，不要在这里改引擎逻辑。
+ * ============================================================ */
+
+(function () {
+  var GAME = window.GAME;
+  var DATA = GAME.DATA, U = GAME.utils;
+  var ui = GAME.ui;
+  var $ = ui._dom.$, $$ = ui._dom.$$;
+
   /* ================= 任务（随机任务 + 成长任务 + 已完成） ================= */
 
   /* v25（需求 11）：旧的卡片墙渲染器已删除 —— 任务列表只给一行名称，
@@ -26584,6 +27612,23 @@ ui.openDuel = function (fid, moveId) {
     if (!list.length) return null;
     return { ids: list, as: L.atkStart || {}, al: L.atkLoss || {}, ds: L.defStart || {}, dl: L.defLoss || {} };
   };
+
+})();
+
+/* ---- ui-config.js ---- */
+/* ============================================================
+ * ui-config.js　设置与自动化 · 存档 / 自动出征 / 自动采购 / 奇观 / 战力评估
+ * ------------------------------------------------------------
+ * 拆分自 ui.js（v156.27）。**纯搬运** —— 所有 ui.xxx 定义及其先后顺序
+ *   一字未改，只是换了文件。等价性由逐条 sha1 比对证明。
+ * ⚠️ 这个文件的职责就是「一个功能域的全部面板实现」，不要在这里改引擎逻辑。
+ * ============================================================ */
+
+(function () {
+  var GAME = window.GAME;
+  var DATA = GAME.DATA, U = GAME.utils;
+  var ui = GAME.ui;
+  var $ = ui._dom.$, $$ = ui._dom.$$;
 
   /* ============================================================
    * 设置（v29 · 需求 5）
@@ -28941,7 +29986,7 @@ ui.openDuel = function (fid, moveId) {
         ui.renderMapCanvas();
         break;
       }
-      case 'map-goto': ui.mapGoto(); break;
+      /* ⛔ v156.35：`case 'map-goto'` 随「前往」按钮一起退役（老板：球系坐标输入组已无用）。 */
       case 'map-center': ui.mapCenter(); break;
       case 'map-mycity': ui.mapMyCity(); break;             /* v89.192（老板 1）：回本城 */
       case 'map-capital': ui.mapCapitalCity(); break;   /* v90.99：母星专属，别星地图断开 */
@@ -29098,6 +30143,9 @@ ui.openDuel = function (fid, moveId) {
         GAME.refreshAll();
         break;
       }
+      /* v2026-10-31（老板）：预留地块弹窗的「其他建筑」/「← 推荐建造」切换 —— 仅翻层，不改任何状态 */
+      case 'build-other': ui.openBuildModal(Number(el.dataset.idx), null, 'all'); break;
+      case 'build-reco': ui.openBuildModal(Number(el.dataset.idx), null, 'reco'); break;
       case 'confirm-build': GAME.doBuild(GAME.slotKey(el.dataset.idx), el.dataset.build); break;
       /* v147（D 期）：建造前的 3D 预览（不占格、不扣费）。
          点击委托取的是**最近的 data-action**（内层按钮），所以不会误触卡片的 confirm-build。 */
@@ -29721,11 +30769,7 @@ ui.openDuel = function (fid, moveId) {
         var r = GAME.delve ? GAME.delve.retreat() : { msg: '未加载' };
         ui.toast(r.msg); ui.openWorldPanel(); GAME.refreshView();
       })(); break;
-      /* v118：顶栏「更多」展开 / 收起（纯界面，不改任何状态） */
-      case 'nav-more': (function () {
-        var tn = document.getElementById('topnav');
-        if (tn) tn.classList.toggle('nav-open');
-      })(); break;
+      /* ⛔ v2026-10-31（老板）：顶栏不再折叠 —— 「更多」展开/收起入口整条退役（按钮/CSS/main.js 此 case 一并删除，不残留死动作）。 */
       case 'deck-toggle': (function () {
         var r = GAME.deck ? GAME.deck.toggle(el.getAttribute('data-card')) : { msg: '未加载' };
         ui.toast(r.msg); ui.openWorldPanel();
@@ -31908,7 +32952,14 @@ ui.openDuel = function (fid, moveId) {
     });
     document.addEventListener('click', function (e) {
       var tab = e.target.closest('.topnav .tab[data-view]');
-      if (tab) { ui.setView(tab.dataset.view); }
+      if (!tab) return;
+      /* v156.33（老板「顶上还是把游商啥的搞没了」）：锁着的页签**看得见但进不去**。
+         点它给一句人话（还差什么），而不是静默无视 —— 灰着点了没反应同样让人以为坏了。 */
+      if (tab.classList.contains('tab-locked')) {
+        ui.toast('暂时进不去：' + (ui.gateWhyText ? ui.gateWhyText() : '先站稳脚跟'));
+        return;
+      }
+      ui.setView(tab.dataset.view);
     });
     /* 出征弹窗内的兵力输入 → 实时更新行军预估（速度由最慢兵种决定，填兵后才准） */
     document.addEventListener('input', function (e) {

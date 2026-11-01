@@ -3,7 +3,7 @@
    用法：node .workbuddy/tools/audit/audit_v89207_icontitle.js */
 var fs = require('fs');
 var R = 'E:/Deepseekdb/';
-var FILES = ['index.html', 'js/ui.js', 'js/main.js', 'js/map.js', 'js/battle.js', 'js/state.js', 'js/domain.js', 'js/systems.js'];
+var FILES = ['index.html', 'js/ui-all.js', 'js/main.js', 'js/map.js', 'js/battle.js', 'js/state.js', 'js/domain.js', 'js/systems.js'];
 var miss = [], total = 0, withTitle = 0, textBtn = 0;
 
 FILES.forEach(function (f) {

@@ -410,6 +410,35 @@
     return n;
   };
 
+  /* ============================================================
+   * v156.24（老板「占领省市区首府，可以看到该省市区下辖地的视野」）
+   * ------------------------------------------------------------
+   * 占据一个**行政区首府** → 该行政区下辖的每一格全明。
+   *   · 省府（prov）  → 全省（含下辖的所有市/区）
+   *   · 市府（market）→ 全市（含下辖的所有区）
+   *   · 区（district）→ 本区
+   *
+   * 为什么"首府 = 下辖地视野"讲得通：首府是建制的神经中枢 —— 驿传、户籍、
+   *   田册、山川图志都在那儿。打下它，你接手的不只是城墙，还有**它管辖的那片地**。
+   * 与既有规则的分工：
+   *   · 普通城仍只按 `radiusOf()` 点亮身边几格（探索度换视野）；
+   *   · 首府给的是**辖地**，不随探索度缩放 —— 它不是"探得更远"，是"接手了一张图"。
+   * 数据来源唯一：`GAME.map.adminCiList`（provOf/marketOf/districtOf）。
+   * 幂等：只升不降（重复调用返回 0）；level 写错 / index 越界 → 返回 0，
+   *   绝不静默点亮半张图。
+   * ============================================================ */
+  F.revealAdmin = function (level, index) {
+    F.ensure();
+    if (!_n) return 0;
+    var M = GAME.map;
+    if (!M || !M.adminCiList) return 0;
+    var list = M.adminCiList(level, index);
+    if (!list || !list.length) return 0;
+    var hit = 0;
+    for (var i = 0; i < list.length; i++) if (F.bump(list[i], ALL)) hit++;
+    return hit;
+  };
+
   F.revealCity = function (city, r) {
     if (!city) return 0;
     var ci = _ciOf(city);
@@ -427,6 +456,16 @@
     (st.cities || []).forEach(function (c) {
       if (!c || c.npc) return;
       hit += F.revealCity(c, cr);
+    });
+    /* v156.24：**已占的省府/市府/区 → 其下辖地全明**
+       ⚠️ 必须放在 revealOwned 里（而不是只在占领那一下点一次）：
+         ① 读档后 fog 包是重建的，只在占领时点亮 = 一出游戏就丢；
+         ② `decay()` 会把全明褪成半明，然后调 revealOwned "把家门口点回来" ——
+            首府带来的辖地视野属于"建制内"，理应和城周围一样不被淡忘。
+       幂等：已全明的格 `bump` 直接返回 false，不产生写入。 */
+    (st.cities || []).forEach(function (c) {
+      if (!c || c.npc || !c.admLevel || c.admIndex == null) return;
+      hit += F.revealAdmin(c.admLevel, c.admIndex);
     });
     /* 我方前哨（据点被拔除后占据） */
     var ft = st.forts || {};

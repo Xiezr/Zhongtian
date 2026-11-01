@@ -129,6 +129,20 @@ import './state.js';
     return '第 ' + (s.world.year || 1) + ' 年 ' + se.name + ' ' + we.icon + we.name;
   };
 
+  /* v156.32（老板 2026-11-02「天时啥的也省约一点」）
+   * ------------------------------------------------------------------
+   * 顶栏的**压缩版**天时：`1年 春 ☀晴天`（三段，去掉「第 / 季 / ·」这些虚字）。
+   * 为什么单开一个出口而不是改 skyLine：skyLine 是**公文 / 城市页 / 播报**用的
+   * 完整句（"第 1 年 春季 ☀晴天"），那边需要读得顺；顶栏只有 ~90px 的横条，
+   * 要的是"一眼扫到变了没有"。同源同数据，只是排版不同 → 两个出口，一份口径。
+   * 视觉重量一并降压（金色招牌 → 与「图例」同款暗胶囊），见 index.html `.nav-sky`。 */
+  STORY.skyBrief = function () {
+    var s = GAME.state;
+    if (!s || !s.world) return '';
+    var se = STORY.currentSeason(), we = STORY.currentWeather();
+    return (s.world.year || 1) + '年 ' + String(se.name || '').charAt(0) + ' ' + we.icon + we.name;
+  };
+
   /* 每秒推进 */
   STORY.tick = function (ts) {
     var s = GAME.state;

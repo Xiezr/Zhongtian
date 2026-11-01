@@ -18,12 +18,39 @@ JS = os.path.join(ROOT, 'js')
 BUNDLE = os.path.join(JS, 'bundle.js')       # v104：旧单包（构建时会删掉）
 HASHF = os.path.join(JS, 'bundle.hash')
 
-# 与 js/main.js 的 import 列表逐条一致（= 旧 index.html 的 <script> 顺序）。
-ORDER = ['core', 'registry', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'colony', 'fleet', 'domain', 'map', 'sphere', 'risk', 'years', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'rival', 'land', 'taint', 'climate', 'surge', 'relic', 'goals', 'veteran', 'setskill', 'deck', 'bond', 'tower', 'wonderwar', 'delve', 'unrest', 'expose', 'trooplv', 'idle', 'ending', 'muster', 'founding', 'prologue', 'duel', 'market', 'events', 'gltf',
-         'map3d', 'scene3d', 'battle', 'battlelog', 'strategy', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits',
-         'placement',
-         'belt', 'planetgen',
-         'story', 'ui', 'main']
+# ============================================================
+# v156.28：模块顺序 / 分包**不再写在这个脚本里** —— 从 js/modules.json 的 layout 读。
+# ------------------------------------------------------------
+# 以前"这个项目有哪些模块"在仓库里有 8 份副本（构建 / audit / smoke ×2 /
+#   审计子脚本 ×6），加一个模块要改 8 处，漏一处就假红或假绿
+#   （ui.js 拆分那次，smoke 一度掉到 3754 通过 / 658 失败）。
+# 现在：**layout 是唯一手改处**，改 js/modules.json 的 layout.order 即可，
+#   索引生成器与构建器共用同一份，不会再各自漂移。
+# 加模块 = 新建 js/x.js + 在 layout.order 里插一行（其余自动跟上）。
+# ============================================================
+LAYOUTF = os.path.join(JS, 'modules.json')
+# ui 分包的"两端固定成员"：story/ui 是 UI 层开头，duel3d..main 是结尾（main 是入口，必须最后）
+_UI_EDGE = ('story', 'ui', 'duel3d', 'map3d', 'scene3d', 'main')
+
+
+def _load_layout():
+    import json
+    if not os.path.exists(LAYOUTF):
+        sys.exit('\u2717 js/modules.json \u4e0d\u5b58\u5728\u3002\u5148\u8dd1\uff1a'
+                 'node .workbuddy/tools/map/gen_index.js')
+    with open(LAYOUTF, encoding='utf-8') as f:
+        d = json.load(f)
+    lay = d.get('layout') or {}
+    order = lay.get('order') or d.get('order') or []
+    war = lay.get('war') or []
+    ui_split = lay.get('uiSplit') or []
+    if not order:
+        sys.exit('\u2717 js/modules.json \u91cc\u6ca1\u6709 layout.order')
+    ui = [n for n in order if n in _UI_EDGE or n in ui_split]
+    return order, war, ui_split, ui
+
+
+ORDER, WAR, UI_SPLIT, UI = _load_layout()
 
 # ============================================================
 # v104 · 分包（老板 2026-10-23：「拆」）
@@ -39,8 +66,6 @@ ORDER = ['core', 'registry', 'data', 'state', 'systems', 'items', 'generals', 'c
 # 为什么不懒加载：全项目 200+ 探针按"顺序拼接"求值，动态 import 会改掉求值时机。
 # 分包只解决"单文件撞线"，不解决"总量"——总量是另一件事，别混为一谈。
 # ============================================================
-WAR = ['gltf', 'battle', 'battlelog', 'strategy', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits']
-UI = ['story', 'ui', 'map3d', 'scene3d', 'main']
 
 
 def groups():
@@ -146,6 +171,29 @@ if __name__ == '__main__':
         print(('✅ ' if ok else '❌ ') + msg)
         raise SystemExit(0 if ok else 1)
     h, outs = build()
+
+    # ============================================================
+    # v156.27：额外产出 \`js/ui-all.js\` —— **只给审计/测试读的"全量视图"**
+    # ------------------------------------------------------------
+    # ui.js 已按功能域拆成 19 个文件。审计脚本与大量断言原来的做法是
+    #   "读 js/ui.js 找特征串"，拆分后只会读到 30 行骨架。
+    # 这里把 19 个文件按拆分前顺序拼成一份，供它们读 —— 内容与拆分前等价。
+    # ⛔ 它**不进任何 bundle**（ORDER 里没有它），只是给静态分析用的镜像。
+    # ============================================================
+    _ui_names = ['ui'] + UI_SPLIT
+    _parts = []
+    for _n in _ui_names:
+        _p = os.path.join(JS, _n + '.js')
+        if os.path.exists(_p):
+            _parts.append(open(_p, encoding='utf-8').read())
+    _mirror = os.path.join(JS, 'ui-all.js')
+    with open(_mirror, 'w', encoding='utf-8', newline='\n') as _f:
+        _f.write('/* 构建产物（build_bundle.py 生成）：19 个 ui-*.js 的拼接镜像，'
+                 '仅供审计/测试读源码使用。不要手改，也不要 require 它。 */\n')
+        _f.write('\n'.join(_parts))
+
     for name, n, k in outs:
         print('  · js/%s.js  %8d 字节  %2d 模块' % (name, n, k))
+    print('  · js/ui-all.js  %8d 字节  %2d 个 ui 文件（审计镜像，不进 bundle）'
+          % (os.path.getsize(_mirror), len(_parts)))
     print('✅ 构建完成：三包合计 %d 字节 · hash %s' % (sum(o[1] for o in outs), h))

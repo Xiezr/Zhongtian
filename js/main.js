@@ -780,7 +780,7 @@ import './ui.js';
         ui.renderMapCanvas();
         break;
       }
-      case 'map-goto': ui.mapGoto(); break;
+      /* ⛔ v156.35：`case 'map-goto'` 随「前往」按钮一起退役（老板：球系坐标输入组已无用）。 */
       case 'map-center': ui.mapCenter(); break;
       case 'map-mycity': ui.mapMyCity(); break;             /* v89.192（老板 1）：回本城 */
       case 'map-capital': ui.mapCapitalCity(); break;   /* v90.99：母星专属，别星地图断开 */
@@ -937,6 +937,9 @@ import './ui.js';
         GAME.refreshAll();
         break;
       }
+      /* v2026-10-31（老板）：预留地块弹窗的「其他建筑」/「← 推荐建造」切换 —— 仅翻层，不改任何状态 */
+      case 'build-other': ui.openBuildModal(Number(el.dataset.idx), null, 'all'); break;
+      case 'build-reco': ui.openBuildModal(Number(el.dataset.idx), null, 'reco'); break;
       case 'confirm-build': GAME.doBuild(GAME.slotKey(el.dataset.idx), el.dataset.build); break;
       /* v147（D 期）：建造前的 3D 预览（不占格、不扣费）。
          点击委托取的是**最近的 data-action**（内层按钮），所以不会误触卡片的 confirm-build。 */
@@ -1560,11 +1563,7 @@ import './ui.js';
         var r = GAME.delve ? GAME.delve.retreat() : { msg: '未加载' };
         ui.toast(r.msg); ui.openWorldPanel(); GAME.refreshView();
       })(); break;
-      /* v118：顶栏「更多」展开 / 收起（纯界面，不改任何状态） */
-      case 'nav-more': (function () {
-        var tn = document.getElementById('topnav');
-        if (tn) tn.classList.toggle('nav-open');
-      })(); break;
+      /* ⛔ v2026-10-31（老板）：顶栏不再折叠 —— 「更多」展开/收起入口整条退役（按钮/CSS/main.js 此 case 一并删除，不残留死动作）。 */
       case 'deck-toggle': (function () {
         var r = GAME.deck ? GAME.deck.toggle(el.getAttribute('data-card')) : { msg: '未加载' };
         ui.toast(r.msg); ui.openWorldPanel();
@@ -3747,7 +3746,14 @@ import './ui.js';
     });
     document.addEventListener('click', function (e) {
       var tab = e.target.closest('.topnav .tab[data-view]');
-      if (tab) { ui.setView(tab.dataset.view); }
+      if (!tab) return;
+      /* v156.33（老板「顶上还是把游商啥的搞没了」）：锁着的页签**看得见但进不去**。
+         点它给一句人话（还差什么），而不是静默无视 —— 灰着点了没反应同样让人以为坏了。 */
+      if (tab.classList.contains('tab-locked')) {
+        ui.toast('暂时进不去：' + (ui.gateWhyText ? ui.gateWhyText() : '先站稳脚跟'));
+        return;
+      }
+      ui.setView(tab.dataset.view);
     });
     /* 出征弹窗内的兵力输入 → 实时更新行军预估（速度由最慢兵种决定，填兵后才准） */
     document.addEventListener('input', function (e) {
