@@ -2685,9 +2685,13 @@ import './gltf.js';
     /* v156.55：回到**欧拉角 + 固定 up**（无 roll）。
        用 rotation.set 而不是 lookAt —— up∥视线时 lookAt 会退化抖动，
        直接设角度没有这个问题。lookYaw/lookPitch 仍作为叠加偏移保留（中键转头用）。 */
+    /* v156.56：**yaw 少了 180°** —— 之前写成 atan2(-dx, -dz)，视线正好背对球心，
+       于是拖动时相机在转、画面里却只有太空（球整个跑到背后）。
+       推导：相机默认看 (0,0,-1)，绕 Y 转 yaw 后看 (-sin, 0, -cos)；
+       要看向 v = -dir，即 sin(yaw)=dir[0]、cos(yaw)=dir[2] → yaw = atan2(dir[0], dir[2])。 */
     cam.rotation.set(
       Math.max(-1.55, Math.min(1.55, -_pitchC + camO.lookPitch)),
-      Math.atan2(-_dir0[0], -_dir0[2]) + camO.lookYaw,
+      Math.atan2(_dir0[0], _dir0[2]) + camO.lookYaw,
       0, 'YXZ'
     );
     cam.updateMatrixWorld();
