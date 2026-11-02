@@ -459,7 +459,8 @@ import './gltf.js';
      lookYaw / lookPitch 是**朝向相对球心的偏移**，默认 0 = 仍看球心。
      位置依旧受球壳约束（不钻地），自由的是**视线**：右键拖拽把视线偏出去，
      于是贴地时能看地平线、能抬头看天 —— 这是轨道相机做不到的。 */
-  var camO = { yaw: 0.8, pitch: 0.42, dist: R * 2.9, lookYaw: 0, lookPitch: 0 };
+  var camO = { yaw: 0.8, pitch: 0.42, dist: R * 2.9, lookYaw: 0, lookPitch: 0,
+    quat: null, dir: null, _euler: null };   /* v156.54：quat = 相机朝向**唯一真相**（含 roll）；yaw/pitch/dir 都是派生值 */
   M.camO = camO;                                          /* 暴露以便脚本/调试设视角 */
   /* v90.98（老板）：**地图视野缩放**区间（与滚轮/缩放条同源）。
      dist = 相机到球心距离：越小越近 = 视野越小；越大越远 = 视野越大。 */
@@ -493,6 +494,7 @@ import './gltf.js';
    * ============================================================ */
   M.resetView = function () {
     camO.yaw = 0.8; camO.pitch = 0.42; camO.dist = R * 2.9;
+    camO.quat = null; camO.dir = null; camO._euler = null;   /* 强制 placeCamera 用欧拉角重建 q（丢弃 roll） */
     camO.lookYaw = 0; camO.lookPitch = 0;
     try { touch(); redraw(); } catch (e) { }
   };
@@ -2628,8 +2630,35 @@ import './gltf.js';
    * 看向球心 —— 所以"贴地看某一格"= 把 yaw/pitch 指向那一格 + 距离收到 R+1.5×HSC。
    * ============================================================ */
   function placeCamera() {
-    /* v156.52：夹到 ±(90°-1.15°) —— 不再像旧版那样在 89° 硬切；极点由拖拽处的翻转逻辑处理 */
-    var pitch = Math.max(-1.5508, Math.min(1.5508, camO.pitch));
+    /* ============================================================
+     * v156.54（老板「试图翻过南北极时，过不去，画面震颤」）第二版
+     * ------------------------------------------------------------
+     * 上一版把 dir 当真相，还是在极点抖 —— 因为它仍然没有 **roll** 自由度。
+     * 数学事实：只用「指向球心的方向 + 固定 up」表示相机，正对极点时
+     *   "屏幕右/上"无定义（up ∥ 视线），任何叉积都会退化 → 必抖、必过不去。
+     *
+     * 唯一正解：**累积四元数 camO.quat**（含 roll）。
+     *   · q 把 +Z 转到 dir（= 相机位置方向），于是 -Z 自然看向球心；
+     *   · 拖拽在 q 上左乘/右乘增量，永远良定义；
+     *   · 翻过极点后 q 自带 180° roll → 画面倒过来继续走，这才叫"翻过去"。
+     * yaw/pitch 降级为派生值（外部读得一致），外部写它们时用脏检测重建 q。
+     * ============================================================ */
+    var _yaw = camO.yaw, _pitch = camO.pitch;
+    var _dirty = (!camO.quat || !camO._euler ||
+      Math.abs(_yaw - camO._euler[0]) > 1e-9 || Math.abs(_pitch - camO._euler[1]) > 1e-9);
+    if (_dirty) {
+      /* 外部改了欧拉角（跳城市 / 正位 / 首次）→ 用最小旋转重建 q（此路径无 roll） */
+      var _cy = Math.cos(_pitch), _sy = Math.sin(_pitch);
+      var _dv = new THREE.Vector3(_cy * Math.sin(_yaw), _sy, _cy * Math.cos(_yaw)).normalize();
+      camO.quat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), _dv);
+    }
+    var _dirV = new THREE.Vector3(0, 0, 1).applyQuaternion(camO.quat).normalize();
+    var _dir0 = [_dirV.x, _dirV.y, _dirV.z];
+    camO.dir = _dir0;
+    /* 反算欧拉角（供外部读）；极点附近 yaw 不稳，但只用于显示，不再参与任何计算 */
+    camO.yaw = Math.atan2(_dirV.x, _dirV.z);
+    camO.pitch = Math.asin(Math.max(-1, Math.min(1, _dirV.y)));
+    camO._euler = [camO.yaw, camO.pitch];
     var d = Math.max(M.ZOOM_MIN, Math.min(M.ZOOM_MAX, camO.dist));
     /* ============================================================
      * v156.50（老板「相机规定距离地面最低 X 米就好了吧」）——
@@ -2643,15 +2672,13 @@ import './gltf.js';
      *   · 山上：自动抬高（370），不再穿模。
      * 两条下限取较大者，ZOOM_MIN 仍作为绝对兜底（防止地形数据缺失时失控）。
      * ============================================================ */
-    var _cp0 = Math.cos(pitch), _sp0 = Math.sin(pitch);
-    var _dir0 = [_cp0 * Math.sin(camO.yaw), _sp0, _cp0 * Math.cos(camO.yaw)];
+    var _dir0 = camO.dir;
     var _elev0 = 0;
     try { _elev0 = Math.max(0, sphElev(_dir0)) * HSC; } catch (e0) { }
     var _minD = R + _elev0 + (M.CAM_MIN_AGL || 30);
     if (d < _minD) d = _minD;
     camO.dist = d;
-    var cp = Math.cos(pitch), sp = Math.sin(pitch);
-    cam.position.set(d * cp * Math.sin(camO.yaw), d * sp, d * cp * Math.cos(camO.yaw));
+    cam.position.set(d * _dir0[0], d * _dir0[1], d * _dir0[2]);
     /* ============================================================
      * v156.47 自由相机：朝向与位置**解耦**
      * ------------------------------------------------------------
@@ -2663,10 +2690,13 @@ import './gltf.js';
      *         pitch = asin(dy)（pitch>0 为抬头）。
      * ============================================================ */
     var _L = Math.hypot(cam.position.x, cam.position.y, cam.position.z) || 1;
-    var _yaw0 = Math.atan2(cam.position.x, cam.position.z);
-    var _pitch0 = Math.asin(Math.max(-1, Math.min(1, -cam.position.y / _L)));
-    var _py = Math.max(-1.55, Math.min(1.55, _pitch0 + camO.lookPitch));
-    cam.rotation.set(_py, _yaw0 + camO.lookYaw, 0, 'YXZ');
+    /* v156.54：直接吃四元数（含 roll）——不用欧拉分解，极点也不会翻车。
+       自由视线偏移（lookYaw/lookPitch）作为**局部**增量左乘在相机自身朝向上。 */
+    cam.quaternion.copy(camO.quat);
+    if (camO.lookYaw || camO.lookPitch) {
+      cam.quaternion.multiply(new THREE.Quaternion().setFromEuler(
+        new THREE.Euler(Math.max(-1.55, Math.min(1.55, camO.lookPitch)), camO.lookYaw, 0, 'YXZ')));
+    }
     cam.updateMatrixWorld();
     /* 远到 50R（=15000）时，旧的 far=6000 会把星球整个裁掉 —— 按距离动态给足余量；
        near 同步抬高，否则 near=1 / far=33000 的深度精度会把球面打成 z-fighting。 */
@@ -3066,19 +3096,23 @@ import './gltf.js';
       if (!drag) return;
       var dx = e.clientX - lx, dy = e.clientY - ly; lx = e.clientX; ly = e.clientY;
       if (Math.abs(dx) + Math.abs(dy) > 3) moved = true;
-      camO.yaw -= dx * 0.006;
       /* ============================================================
-       * v156.52（老板「球体还是有个南北轴，要求 360 自由无死角」）——
-       * 旧版把 pitch 夹在 ±1.4（80°），拖到南北极附近就**卡住**，
-       * 像有一条轴挡着。这里改成**越过极点翻转**（orbit 标准做法）：
-       *   pitch 超过 +90° → 反射成 180-pitch，同时 yaw +180°，
-       *   于是能连续绕到球的另一面，没有任何死角。
-       * 翻转瞬间画面会上下倒过来（这是绕极点的必然），但不会卡。
+       * v156.54（老板「试图翻过南北极时，过不去，画面震颤」）第三版
+       * ------------------------------------------------------------
+       * 在**四元数**上累积旋转，这是唯一能真正翻过极点的做法：
+       *   · 水平拖：绕**相机自身的 up**（= 保持地平线水平的那个轴）；
+       *   · 垂直拖：绕**相机自身的 right**。
+       * 两个轴都从 q 现取，永远良定义 —— 不存在"叉积退化"。
+       * 翻过极点后 q 自带 180° roll，画面倒过来继续走，于是"一直拖就一直翻"。
        * ============================================================ */
-      camO.pitch += dy * 0.006;
-      var _HALF = Math.PI / 2 - 0.02;
-      if (camO.pitch > _HALF) { camO.pitch = Math.PI - camO.pitch; camO.yaw += Math.PI; }
-      else if (camO.pitch < -_HALF) { camO.pitch = -Math.PI - camO.pitch; camO.yaw += Math.PI; }
+      var _q = camO.quat || new THREE.Quaternion();
+      var _axUp = new THREE.Vector3(0, 1, 0).applyQuaternion(_q);
+      var _axRt = new THREE.Vector3(1, 0, 0).applyQuaternion(_q);
+      var _qy = new THREE.Quaternion().setFromAxisAngle(_axUp, -dx * 0.006);
+      /* 符号：**上拖 = 相机往北走**（看到北极），与地图类应用的手感一致。
+         实测第一版写反了：上拖会跑到南极。 */
+      var _qx = new THREE.Quaternion().setFromAxisAngle(_axRt, dy * 0.006);
+      camO.quat = _q.premultiply(_qx).premultiply(_qy).normalize();
       touch(); redraw();
     });
     window.addEventListener('mouseup', function (e) {
