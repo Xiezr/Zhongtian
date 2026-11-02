@@ -748,7 +748,11 @@
   }
 
   var R3, scene, cam, globe, water, tiles, wcv, built = false, _tileSub = 0;
-  var camO = { yaw: 0.8, pitch: 0.42, dist: R * 2.9 };
+  /* v156.47（老板「目前相机固定对准星球球心，要求自由相机」）——
+     lookYaw / lookPitch 是**朝向相对球心的偏移**，默认 0 = 仍看球心。
+     位置依旧受球壳约束（不钻地），自由的是**视线**：右键拖拽把视线偏出去，
+     于是贴地时能看地平线、能抬头看天 —— 这是轨道相机做不到的。 */
+  var camO = { yaw: 0.8, pitch: 0.42, dist: R * 2.9, lookYaw: 0, lookPitch: 0 };
   M.camO = camO;                                          /* 暴露以便脚本/调试设视角 */
   /* v90.98（老板）：**地图视野缩放**区间（与滚轮/缩放条同源）。
      dist = 相机到球心距离：越小越近 = 视野越小；越大越远 = 视野越大。 */
@@ -761,7 +765,17 @@
    *   外界 50R（老板指定的最大空间）。
    * 距离从此**一律以球心为基准**（旧代码里总览按球心、贴地按格子，两套口径混用）。
    * ============================================================ */
-  M.ZOOM_MIN = R * 1.02;                                  /* 内界：贴着地表 */
+  /* ============================================================
+   * v156.47：内界从 R*1.02 抬到 R*1.15 —— **1.02 是钻进地形里**。
+   * ------------------------------------------------------------
+   * 原注释写「内界：贴着地表」，但地形本身有高度（起伏几十单位），
+   * 相机在 R*1.02（离球心只多 6 单位）时已经在地壳内部：背面剔除后，
+   * 屏幕上只剩省界细线和一片暗色 —— 实测截图确认（见 probe_freecam）。
+   * 实测对照：1.05 = 全暗（在内部）/ 1.15 = 地表清晰、地平线可见 / 1.6 = 最佳低空视角。
+   * 这个 bug 一直存在，但**只有在自由相机下才看得见**（轨道相机永远俯视，
+   * 拉到最近也是从上方看，不会贴到地面）。
+   * ============================================================ */
+  M.ZOOM_MIN = R * 1.15;                                  /* 内界：地表之上（含地形高度余量） */
   M.ZOOM_MAX = R * 50;                                    /* 外界：老板指定的最大空间 */
 
   /* v91.33（性能）：版本戳（把 M.render 里的内联拼串抽出，预建时可预盖）。 */
@@ -2809,6 +2823,8 @@
         camO.yaw = Math.atan2(c[0], c[2]);                 /* 水平角 → 首府朝向相机 */
         camO.pitch = Math.max(-1.35, Math.min(1.35, latA));/* 俯角 = 首府纬度 → 首府居中 */
         camO.dist = sel.level === 'district' ? R * 1.8 : sel.level === 'market' ? R * 2.03 : R * 2.3;
+        /* v156.47：自动转视角 = 重新对准球心，视线偏移清零 */
+        camO.lookYaw = 0; camO.lookPitch = 0;
       }
     }
     if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
@@ -2877,9 +2893,37 @@
     camO.dist = d;
     var cp = Math.cos(pitch), sp = Math.sin(pitch);
     cam.position.set(d * cp * Math.sin(camO.yaw), d * sp, d * cp * Math.cos(camO.yaw));
-    cam.lookAt(0, 0, 0);
+    /* ============================================================
+     * v156.47 自由相机：朝向与位置**解耦**
+     * ------------------------------------------------------------
+     * 原来是 cam.lookAt(0,0,0) —— 视线永远钉在球心，贴地只能俯视。
+     * 现在用等价的欧拉角（YXZ）表达「看球心」，再叠加 lookYaw/lookPitch 偏移：
+     *   · 偏移为 0 时与 lookAt(0,0,0) **逐位等价**（推导见下，已截图对拍）；
+     *   · 偏移非 0 时视线脱离球心，能看地平线/天空。
+     * 等价性：视向 d = -position/|position|；yaw = atan2(dx, dz)（相机看 -Z），
+     *         pitch = asin(dy)（pitch>0 为抬头）。
+     * ============================================================ */
+    var _L = Math.hypot(cam.position.x, cam.position.y, cam.position.z) || 1;
+    var _yaw0 = Math.atan2(cam.position.x, cam.position.z);
+    var _pitch0 = Math.asin(Math.max(-1, Math.min(1, -cam.position.y / _L)));
+    var _py = Math.max(-1.55, Math.min(1.55, _pitch0 + camO.lookPitch));
+    cam.rotation.set(_py, _yaw0 + camO.lookYaw, 0, 'YXZ');
+    cam.updateMatrixWorld();
     /* 远到 50R（=15000）时，旧的 far=6000 会把星球整个裁掉 —— 按距离动态给足余量；
        near 同步抬高，否则 near=1 / far=33000 的深度精度会把球面打成 z-fighting。 */
+    /* ============================================================
+     * v156.47 近景补光（自由相机的必要配套）
+     * ------------------------------------------------------------
+     * 这个场景的光照是按「从外面看整个星球」调的：主光是方向光（3.2），
+     * 环境光只有 0.34。远景时看到的是球的一大片（总有受光面），所以亮；
+     * **贴地时只看得到一小块，一旦背对太阳就只剩 0.34 环境光 —— 实测几乎全黑**，
+     * 只有省界细线还看得见。
+     * 这里按距离线性补环境光/半球光（贴地最亮），模拟近地表的大气散射。
+     * 远处回到原值，远景观感一字不动。
+     * ============================================================ */
+    var _nearK = Math.max(0, Math.min(1, 1 - (d - M.ZOOM_MIN) / (R * 1.15)));
+    if (M._amb) M._amb.intensity = 0.34 + 0.62 * _nearK;
+    if (M._hemi) M._hemi.intensity = 0.28 + 0.46 * _nearK;
     var far = Math.max(6000, d * 2.4), near = Math.max(1, d * 0.002);
     if (Math.abs(cam.far - far) > 1 || Math.abs(cam.near - near) > 0.01) {
       cam.far = far; cam.near = near; cam.updateProjectionMatrix();
@@ -3148,14 +3192,28 @@
   M.bindControls = function (canvas) {
     if (!canvas || canvas._m3dBound) return;
     canvas._m3dBound = true;
-    var drag = 0, lx = 0, ly = 0, moved = false;
+    var drag = 0, lookDrag = 0, lx = 0, ly = 0, moved = false;
     function redraw() { if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas(); }
     function touch() { M._lastAct = Date.now(); }            /* v90.81：无操作计时（自转）*/
+    canvas.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+    /* v156.47：右键现在有用了（转头）—— 必须吃掉浏览器右键菜单，否则一拖就弹。 */
     canvas.addEventListener('contextmenu', function (e) { e.preventDefault(); });
     canvas.addEventListener('mousedown', function (e) {
       /* v153f：只有**左键**才算"开始拖动/点击" —— 之前右键/中键也 drag=1，
          于是左键点一下（press）→ 右键点一下（release）会配成"没拖动 = 点击"，
          把前半段左键的坐标当成点击位置（实测点右上角却走了南西）。 */
+      /* v156.47 自由相机：**右键拖拽 = 转头**（位置不动，只把视线从球心偏出去）。
+         左键仍是「绕球心转 + 点选地块」，两套互不干扰。
+         双击右键 = 视线回正（重新对准球心）—— 偏出去之后得能一键找回北。 */
+      if (e.button === 2) {
+        var _now = Date.now();
+        if (_now - (M._lastRmb || 0) < 320) {
+          M._lastRmb = 0; camO.lookYaw = 0; camO.lookPitch = 0; touch(); redraw();
+          e.preventDefault(); return;
+        }
+        M._lastRmb = _now;
+        lookDrag = 1; lx = e.clientX; ly = e.clientY; touch(); e.preventDefault(); return;
+      }
       if (e.button !== 0) return;
       drag = 1; moved = false; lx = e.clientX; ly = e.clientY; touch(); e.preventDefault();
     });
@@ -3217,6 +3275,17 @@
       if (GAME.ui && GAME.ui.tipHide) GAME.ui.tipHide();
     });
     window.addEventListener('mousemove', function (e) {
+      if (lookDrag) {
+        var _dx = e.clientX - lx, _dy = e.clientY - ly; lx = e.clientX; ly = e.clientY;
+        /* 与左键同向：右拖 = 视角右转（yaw 减），上拖 = 抬头（pitch 加） */
+        camO.lookYaw -= _dx * 0.005;
+        /* v156.47：偏移限幅 **±0.75 弧度（43°）**。
+           再大就把星球整个推出画面 —— 而这个场景**没有星空背景**（抬头是一片纯黑），
+           能看到什么都没有不是自由，是坏掉。0.75 时星球仍占小半屏，
+           贴地看地平线的需求也够用。 */
+        camO.lookPitch = Math.max(-0.75, Math.min(0.75, camO.lookPitch - _dy * 0.005));
+        touch(); redraw(); return;
+      }
       if (!drag) return;
       var dx = e.clientX - lx, dy = e.clientY - ly; lx = e.clientX; ly = e.clientY;
       if (Math.abs(dx) + Math.abs(dy) > 3) moved = true;
@@ -3225,6 +3294,7 @@
       touch(); redraw();
     });
     window.addEventListener('mouseup', function (e) {
+      if (lookDrag) { lookDrag = 0; return; }
       var wasDrag = drag; drag = 0;
       M._lastClickDebug = { wasDrag: wasDrag, moved: moved, x: e.clientX, y: e.clientY };
       if (!wasDrag || moved) return;

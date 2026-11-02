@@ -1,12 +1,12 @@
 {
  "full": 4425,
  "fullDetail": {
-  "pass": 4419,
-  "fail": 0,
-  "warn": 5,
+  "pass": 4417,
+  "fail": 1,
+  "warn": 6,
   "skip": 1
  },
- "fullAt": "2026-11-02T10:53:18",
+ "fullAt": "2026-11-02T12:17:39",
  "lastSplit": {
   "total": 4427,
   "pass": 4409,
