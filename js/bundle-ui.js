@@ -5052,6 +5052,171 @@
    *   act     默认动作（与 DATA.LING_ACT 的 id 对齐）
    * 交互点必须有 `act`，否则它只是布景 —— 布景和交互在数据上就分开。
    * ============================================================ */
+  /* ============================================================
+   * v156.65 探索场景布局生成器（老板「类似探索性游戏的曲折场景，
+   *   你可以从基础框架搭起，以便继续完善」）
+   * ------------------------------------------------------------
+   * 与 cityPlan 同一个范式：**几何只算一次**（纯数据，不碰 THREE / DOM），
+   *   渲染照着画、碰撞照着用 —— 所以"这条路其实走不通"能在 node 里测出来。
+   *
+   * 为什么用"拓扑模板"而不是纯程序化（BSP / 迷宫）：
+   *   纯程序化保证连通，但产出的曲折经常不好玩（长直走廊、死路过多）。
+   *   手写模板 → 复杂度可控、可调；加新拓扑只需往 TOPO 里再加一条。
+   *
+   * 坐标：地面 40×40，可走范围 ±18。墙**只用轴对齐**（rot=0），
+   *   这样碰撞盒是精确 AABB —— 旋转墙只做装饰、不进 solids。
+   * ============================================================ */
+  function scenePlan(cfg) {
+    var seed = (cfg.seed || 7) | 0;
+    var R = rng(seed + 4407);
+    var HALF = 18;
+    var props = [], nodes = [], solids = [], patrol = [];
+
+    /* 一段轴对齐墙：同时产出渲染数据和碰撞盒（一个来源，不会两本账）。
+       ⚠️ 关键：makeProp 的 wall 只认 `w`（沿 X 的长度），**不认厚度**。
+       所以竖墙（d > w）必须把长边塞进 w，并用 rot 转 90° ——
+       否则会被画成"0.7 米宽的柱子"（第一版就是这个样子，截图确认）。
+       碰撞盒仍用**轴对齐**的原始 w/d，与渲染朝向无关。 */
+    function wall(cx, cz, w, d, h) {
+      var vertical = d > w;
+      var len = vertical ? d : w;
+      props.push({ t: 'wall', x: cx, z: cz, w: len, h: h || 2.6, rot: vertical ? Math.PI / 2 : 0, d: Math.min(w, d) });
+      solids.push({ x0: cx - w / 2, x1: cx + w / 2, z0: cz - d / 2, z1: cz + d / 2 });
+    }
+    function rubble(x, z, n, sd) { props.push({ t: 'rubble', x: x, z: z, n: n || 6, seed: sd || (seed + x * 7 + z * 13) | 0 }); }
+    function rebar(x, z, n, sd) { props.push({ t: 'rebar', x: x, z: z, n: n || 4, seed: sd || (seed + x * 11 + z * 5) | 0 }); }
+
+    /* ---------------- 三种拓扑 ---------------- */
+    var topo = ['L', 'ring', 'plaza'][Math.abs(seed) % 3];
+    var spawn = { x: -11, z: -13 };
+    var target = { x: 11, z: 11 };
+
+    if (topo === 'L') {
+      /* L 形长廊（v156.65b 收窄）：竖廊宽 4.5、横廊宽 4.5 ——
+         11 米宽不叫走廊，叫空地，看着不像"曲折"。 */
+      /* ⚠️ 坐标系：+z 是画面下方（玩家背后），-z 是前方。
+         布局**必须以原点为中心** —— 第一版整体偏到左上角（x=-8.5, z=±8），
+         而相机按"出生点 +10/-7"取景，结果只拍到地面边缘（截图确认）。 */
+      wall(-2.6, -2, 0.7, 20, 2.6);            /* 竖廊左墙 */
+      wall(2.6, -2, 0.7, 20, 2.6);             /* 竖廊右墙 → 宽 4.5 米通道 */
+      wall(-5, -12.4, 15, 0.7, 2.6);           /* 横廊上沿（尽头） */
+      wall(-5, -7.6, 8, 0.7, 2.6);             /* 横廊下沿（左侧留口 = 拐弯处） */
+      wall(-11.5, -10, 0.7, 6, 2.6);           /* 目标区侧墙 */
+      rubble(0, 2, 8); rebar(1.4, -3, 5); rubble(-1.2, -5, 6);
+      rubble(-5, -10, 7); rebar(-9, -10, 4);
+      nodes.push({ t: 'rubble', x: 0, z: 2, act: 'cai', label: '翻找碎石堆', hint: '药草、矿料、偶尔一个辐能核心' });
+      nodes.push({ t: 'crate', x: -10, z: -10, act: 'cai', label: '撬开货箱', hint: '旧世留下的存货' });
+      spawn = { x: 0, z: 6 };
+      target = { x: -10, z: -10 };
+    } else if (topo === 'ring') {
+      /* 回字形：中间一整块建筑体，玩家必须绕行；
+         西侧留缺口（入口），东北角是目标 —— 走一圈才到 */
+      wall(0, -6, 18, 0.6, 2.4);               /* 中块南墙 */
+      wall(0, 6, 18, 0.6, 2.4);                /* 中块北墙 */
+      wall(-9, 0, 0.6, 12, 2.4);               /* 中块西墙（有缺口 → 拆成两段） */
+      solids.pop(); props.pop();               /* 撤销上面那段，改两段留门 */
+      wall(-9, -4.2, 0.6, 3.6, 2.4);
+      wall(-9, 4.2, 0.6, 3.6, 2.4);
+      wall(9, 0, 0.6, 12, 2.4);                /* 中块东墙（全封 → 只能从西绕） */
+      wall(-15, 0, 0.6, 26);                   /* 外圈西墙 */
+      wall(15, 0, 0.6, 26);                    /* 外圈东墙 */
+      wall(0, 15, 26, 0.6);                    /* 外圈北墙 */
+      wall(0, -14, 26, 0.6);                   /* 外圈南墙（留门 → 两段） */
+      solids.pop(); props.pop(); solids.pop(); props.pop();
+      wall(-9, -14, 12, 0.6); wall(9, -14, 12, 0.6);
+      rubble(-12, -8, 7); rebar(-12, 6, 4); rubble(12, -6, 6);
+      rubble(0, 10, 5);
+      nodes.push({ t: 'rubble', x: -12, z: -8, act: 'cai', label: '翻找碎石堆', hint: '沿外围一路搜' });
+      nodes.push({ t: 'rebar', x: 12, z: 9, act: 'tao', label: '清剿这一带的掠夺者', hint: '动手，胜则物资丰厚' });
+      target = { x: 12, z: 9 };
+    } else {
+      /* 双广场 + 窄巷：左开阔（资源多）→ 挤过 3 米窄巷 → 右广场（目标） */
+      /* 双广场 + 2.5 米窄巷，**整体围绕原点**（视口高 17.5，布局半径 ≤ 9）。
+         v156.66：第一版铺到 x=-12 / z=±10，出生点 (-12,-10) 离原点太远，
+         相机追过去只剩角落 —— 生成式布局必须以 (0,0) 为心，不能往外铺。
+         玩家 (-2.5, 4) 站在左广场南口：直走是窄巷，挤过去才到右广场。 */
+      wall(-4.5, -8, 9, 0.7); wall(-4.5, 5.5, 9, 0.7);   /* 左广场南北围挡 */
+      wall(-9, -1.25, 0.7, 14.2);                        /* 左广场西墙（封闭） */
+      wall(-4.5, -2, 0.7, 11);                           /* 左广场东墙（留巷口） */
+      wall(4.5, -8, 9, 0.7); wall(4.5, 5.5, 9, 0.7);     /* 右广场南北围挡 */
+      wall(9, -1.25, 0.7, 14.2);                         /* 右广场东墙（封闭） */
+      wall(4.5, -2, 0.7, 11);                            /* 右广场西墙（留巷口） */
+      wall(0, -2, 4, 0.7); wall(0, 1.5, 4, 0.7);         /* 窄巷上下沿 → 2.5 米宽 */
+      rubble(-2.5, 1, 7); rebar(-3.5, -5, 4);
+      rubble(0.5, -1, 4);                                /* 巷道碎石（挤过去要绕） */
+      rubble(2.5, -5, 6); rebar(3, 1, 4);
+      nodes.push({ t: 'rubble', x: -2.5, z: 1, act: 'cai', label: '翻找碎石堆', hint: '左广场物资密集' });
+      nodes.push({ t: 'crate', x: 2.5, z: -5, act: 'cai', label: '撬开货箱', hint: '旧世留下的存货' });
+      target = { x: 2.5, z: -5 };
+      spawn = { x: -2.5, z: 4 };
+    }
+
+    /* ---------------- 通用点缀：碎石 / 枯树 / 太阳能板 ---------------- */
+    for (var i = 0; i < 5; i++) {
+      var ax = (R() - 0.5) * 32, az = (R() - 0.5) * 32;
+      if (Math.abs(ax) > HALF - 1 || Math.abs(az) > HALF - 1) continue;
+      props.push({ t: R() > 0.55 ? 'deadTree' : 'rock', x: ax, z: az, s: 0.8 + R() * 0.6, seed: (seed + i * 31) | 0 });
+    }
+    props.push({ t: 'solar', x: 14, z: -12, rot: -0.3 });
+    props.push({ t: 'pipe', x: -15, z: 12, len: 2.8, rot: 0.7 });
+
+    var bounds = { x0: -HALF + 1, x1: HALF - 1, z0: -HALF + 1, z1: HALF - 1 };
+
+    /* ---------------- 连通性验证（BFS，0.5 米格） ----------------
+       这是"框架"的价值：布局好不好在不进 WebGL 的情况下就能判定。 */
+    var GRID = 0.5, NX = Math.ceil((HALF * 2) / GRID);
+    function blocked(x, z, r) {
+      if (x < bounds.x0 + r || x > bounds.x1 - r || z < bounds.z0 + r || z > bounds.z1 - r) return true;
+      for (var k = 0; k < solids.length; k++) {
+        var sl = solids[k];
+        var cx = x < sl.x0 ? sl.x0 : (x > sl.x1 ? sl.x1 : x);
+        var cz = z < sl.z0 ? sl.z0 : (z > sl.z1 ? sl.z1 : z);
+        var dx = x - cx, dz2 = z - cz;
+        if (dx * dx + dz2 * dz2 < r * r) return true;
+      }
+      return false;
+    }
+    function reachable(from, to) {
+      var r = 0.35;
+      var sx = Math.round((from.x + HALF) / GRID), sz = Math.round((from.z + HALF) / GRID);
+      var tx = Math.round((to.x + HALF) / GRID), tz = Math.round((to.z + HALF) / GRID);
+      var seen = {}, q = [[sx, sz]], head = 0;
+      seen[sx + ',' + sz] = 1;
+      while (head < q.length) {
+        var cur = q[head++];
+        if (cur[0] === tx && cur[1] === tz) return true;
+        var dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+        for (var d2 = 0; d2 < 4; d2++) {
+          var nx2 = cur[0] + dirs[d2][0], nz2 = cur[1] + dirs[d2][1];
+          if (nx2 < 0 || nz2 < 0 || nx2 >= NX || nz2 >= NX) continue;
+          var key = nx2 + ',' + nz2;
+          if (seen[key]) continue;
+          var wx = nx2 * GRID - HALF, wz = nz2 * GRID - HALF;
+          if (blocked(wx, wz, r)) continue;
+          seen[key] = 1; q.push([nx2, nz2]);
+        }
+      }
+      return false;
+    }
+    var reach = { ok: true, bad: [] };
+    for (var n2 = 0; n2 < nodes.length; n2++) {
+      if (!reachable(spawn, nodes[n2])) { reach.ok = false; reach.bad.push(n2); }
+    }
+    if (!reachable(spawn, target)) { reach.ok = false; reach.bad.push('target'); }
+
+    /* 巡逻点：沿可走格随机取若干（行人用；当前 gather 场景不用，留接口） */
+    for (var p2 = 0; p2 < 6; p2++) {
+      var px = (R() - 0.5) * 30, pz = (R() - 0.5) * 30;
+      if (!blocked(px, pz, 0.6)) patrol.push({ x: px, z: pz });
+    }
+
+    return {
+      topo: topo, seed: seed, props: props, nodes: nodes, solids: solids,
+      bounds: bounds, spawn: spawn, target: target, patrol: patrol, reach: reach,
+    };
+  }
+  S._scenePlan = scenePlan;   /* 暴露给 node 测试（smoke 里能验连通性） */
+
   var SCENES = [
     {
       id: 'ruin', name: '废墟发掘', sub: '断墙与钢筋下面，旧世的东西还没烂透',
@@ -5372,6 +5537,22 @@
     cityView = false; frustumH = FRUSTUM_H;
     if (propRoot) { scene.remove(propRoot); propRoot = null; }
     nodeList = []; nearNode = null; waterMesh = null;
+
+    /* ============================================================
+     * v156.65（老板「类似探索性游戏的曲折场景，从基础框架搭起」）
+     * ------------------------------------------------------------
+     * `ruin` 场景改为**生成式布局**：scenePlan 出一份纯数据（墙/道具/交互点/连通性），
+     * 渲染照着画，碰撞照用同一份 solids。
+     * ⚠️ 关键 bug 一并修掉：旧版 buildScene **从不清空 citySolids** ——
+     *   从城市场景切到采集场景时，上一次城里的碰撞盒还留着，
+     *   玩家会在"空气墙"里被挡住（或反过来穿过真墙）。
+     * 其余 9 个场景暂时仍走手写 props（渐进迁移，不一次全改）。
+     * ============================================================ */
+    var plan = (cfg.id === 'ruin') ? scenePlan(cfg) : null;
+    citySolids = plan ? plan.solids : [];
+    cityBounds = plan ? plan.bounds : null;
+    var useProps = plan ? plan.props : (cfg.props || []);
+    var useNodes = plan ? plan.nodes : (cfg.nodes || []);
     propRoot = new THREE.Group();
     scene.add(propRoot);
 
@@ -5459,7 +5640,7 @@
     })();
 
     /* 装饰 */
-    (cfg.props || []).forEach(function (p) {
+    useProps.forEach(function (p) {
       var o = makeProp(p);
       if (!o) return;
       o.position.set(p.x || 0, 0, p.z || 0);
@@ -5483,7 +5664,7 @@
     var _entryAct = (ctx && ctx.actId) || cfg.act;
     var _fallback = (_avail.indexOf(_entryAct) >= 0) ? _entryAct : (_avail[0] || null);
 
-    (cfg.nodes || []).forEach(function (nd, i) {
+    useNodes.forEach(function (nd, i) {
       var _use = null;
       if (_avail.indexOf(nd.act) >= 0) _use = nd.act;
       else if (_fallback) _use = _fallback;
@@ -5492,7 +5673,7 @@
       /* 动作被改写时，标签必须跟着改 ——
          实测：节点写「翻找碎石堆」，代理成 `bai` 之后结果卡是「拜访 · 行商的水囊」，
          两句话对不上，玩家只会觉得系统乱了。宁可让标签朴素一点，也不能说一套做一套。 */
-      if (nd.act !== (cfg.nodes[i] || {}).act) {
+      if (nd.act !== (useNodes[i] || {}).act) {
         var _ad = (D && D.LING_ACT) ? D.LING_ACT[nd.act] : null;
         if (_ad) { nd.label = _ad.name; nd.hint = _ad.desc || nd.hint; }
       }
@@ -5537,12 +5718,23 @@
 
     /* 玩家 */
     player = buildPlayer();
-    player.position.set(0, 0, 4.5);
+    if (plan && plan.spawn) player.position.set(plan.spawn.x, 0, plan.spawn.z);
+    else player.position.set(0, 0, 4.5);
     propRoot.add(player);
 
     targetPt = null;
-    cam.position.set(0, 18, 18);
-    cam.lookAt(0, 0.6, 0);
+    /* v156.65b：相机初始位置要**对齐出生点**。
+       旧版硬编码 (0,18,18) 看向原点 —— 生成式布局的出生点可能在侧面/角落，
+       开场就会看到"地面一角 + 大片天空"（截图确认）。
+       这里按跟随逻辑同一口径（后方 +10、看向前方 -7）直接就位，之后交给 updateCamera 接管。
+
+       ⚠️ v156.66：上面这段注释一度和代码不一致（注释说要对齐，代码写死 (0,18,18)），
+       因为中途"恢复原取景"只改了代码没改注释。实测 player(-12,-10) + cam(0,18,18)
+       → 相机在 20 米外看原点，画面只剩地面边缘。现在代码与注释一致。 */
+    var _sx = (plan && plan.spawn) ? plan.spawn.x : 0;
+    var _sz = (plan && plan.spawn) ? plan.spawn.z : 4.5;
+    cam.position.set(_sx, 18, _sz + 10);
+    cam.lookAt(_sx, 0.6, _sz - 7);
     resize();
   }
 
@@ -5708,19 +5900,31 @@
 
   function movePlayer(dx, dz) {
     var nx = player.position.x + dx, nz = player.position.z + dz;
-    if (cityView && cityBounds) {
-      /* 城内：先夹到城的活动范围，再**分轴**推进。
-         分轴（先 x 后 z）的意义：正面撞墙时，另一个方向仍然能走 ——
-         玩家沿着墙根侧滑过去，而不是"贴住就不动了"。整体回退做不到这一点。 */
-      nx = Math.max(cityBounds.x0, Math.min(cityBounds.x1, nx));
-      nz = Math.max(cityBounds.z0, Math.min(cityBounds.z1, nz));
-      if (!hitsSolid(nx, player.position.z, CITY_R)) player.position.x = nx;
-      if (!hitsSolid(player.position.x, nz, CITY_R)) player.position.z = nz;
+    /* ============================================================
+     * v156.66（老板「做吧，做到你认为在你的范围内改无可改」）
+     * ------------------------------------------------------------
+     * ⛔ 旧版把碰撞整个包在 `if (cityView && cityBounds)` 里面 ——
+     *   也就是说**只有城市场景才做碰撞**，采集/废墟场景 cityView=false，
+     *   走的是下面的 else 分支：只夹边界，不查 solids。
+     *   实测：废墟场景里朝墙走 2 秒，玩家从 x=-2.5 穿到 -7.37（墙在 -4.5）。
+     *   于是"曲折布局"只是贴图，玩家可以直线穿过去 —— 等于没做。
+     *
+     * 现在：边界与碰撞**分开**。
+     *   · 边界：城用 cityBounds、野外用 ±BOUND；
+     *   · 碰撞：只要 solids 非空就查（hitsSolid 在空数组上返回 false，
+     *     所以森林/田野这些没有墙的场景行为不变）。
+     * 仍然**分轴**推进：正面撞墙时另一轴还能走 → 贴着墙根侧滑，不是原地卡死。
+     * ============================================================ */
+    var bd = cityView ? cityBounds : null;
+    if (bd) {
+      nx = Math.max(bd.x0, Math.min(bd.x1, nx));
+      nz = Math.max(bd.z0, Math.min(bd.z1, nz));
     } else {
       nx = Math.max(-BOUND, Math.min(BOUND, nx));
       nz = Math.max(-BOUND, Math.min(BOUND, nz));
-      player.position.x = nx; player.position.z = nz;
     }
+    if (!hitsSolid(nx, player.position.z, CITY_R)) player.position.x = nx;
+    if (!hitsSolid(player.position.x, nz, CITY_R)) player.position.z = nz;
     /* 朝向：把身体绕 Y 转到移动方向（影子不动） */
     var ang = Math.atan2(dx, dz);
     player.rotation.y += (ang - player.rotation.y) * 0.25;
@@ -6985,6 +7189,15 @@
   };
 
   /* 场景入口（由 UI 调）：按动作 + 地形选场景 */
+  S._dbg = function () {
+    return {
+      frustumH: frustumH, cityView: !!cityView,
+      cam: cam ? cam.position.toArray().map(function (v) { return +v.toFixed(2); }) : null,
+      player: player ? [+player.position.x.toFixed(2), +player.position.z.toFixed(2)] : null,
+      solids: (citySolids || []).length, bounds: cityBounds,
+    };
+  };
+
   S.play = function (actId, ci, opts) {
     opts = opts || {};
     /* v143（正式阶段也走场景）：宿主分序章/正式两路。
