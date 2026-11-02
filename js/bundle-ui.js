@@ -2938,8 +2938,9 @@
      *   反射后 pitch < π/2，不会每帧反复触发（v156.52 的 bug 是阈值取成 π/2-0.02）。
      *   → 相机始终在球外绕行、up 恒定竖直，翻越极点时经度自动 +180。
      * ============================================================ */
-    var _pitchC = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, camO.pitch));
-    var _cp0 = Math.cos(_pitchC), _sp0 = Math.sin(_pitchC);
+    /* v156.58：**pitch 无界**（不 clamp）—— cos/sin 对任意角度连续，
+       这正是沿经线滚一整圈的数学基础；折回 ±90° 由下面的 asin(dir.y) 自动完成。 */
+    var _cp0 = Math.cos(camO.pitch), _sp0 = Math.sin(camO.pitch);
     var _dir0 = [_cp0 * Math.sin(camO.yaw), _sp0, _cp0 * Math.cos(camO.yaw)];
     camO.dir = _dir0;
     camO.quat = null;                                   /* 本版不用四元数（避免 roll） */
@@ -2976,6 +2977,9 @@
     var _L = Math.hypot(cam.position.x, cam.position.y, cam.position.z) || 1;
     /* v156.54：直接吃四元数（含 roll）——不用欧拉分解，极点也不会翻车。
        自由视线偏移（lookYaw/lookPitch）作为**局部**增量左乘在相机自身朝向上。 */
+    /* v156.58：x 用 -asin(dir.y) 现算 —— 它对任意 pitch 都自动折回 [-90°,90°]，
+       和 dir 永远一致，不会出现角度超界导致画面翻转。 */
+    var _pFromDir = -Math.asin(Math.max(-1, Math.min(1, _dir0[1])));
     /* v156.55：回到**欧拉角 + 固定 up**（无 roll）。
        用 rotation.set 而不是 lookAt —— up∥视线时 lookAt 会退化抖动，
        直接设角度没有这个问题。lookYaw/lookPitch 仍作为叠加偏移保留（中键转头用）。 */
@@ -2984,7 +2988,7 @@
        推导：相机默认看 (0,0,-1)，绕 Y 转 yaw 后看 (-sin, 0, -cos)；
        要看向 v = -dir，即 sin(yaw)=dir[0]、cos(yaw)=dir[2] → yaw = atan2(dir[0], dir[2])。 */
     cam.rotation.set(
-      Math.max(-1.55, Math.min(1.55, -_pitchC + camO.lookPitch)),
+      Math.max(-1.55, Math.min(1.55, _pFromDir + camO.lookPitch)),
       Math.atan2(_dir0[0], _dir0[2]) + camO.lookYaw,
       0, 'YXZ'
     );
@@ -3414,15 +3418,24 @@
        *   每穿一次 yaw += 180° —— 实测 yaw 冲到 98（每帧转 180°），就是老板看到的震颤。
        * 所以：**纬度 clamp，经度自由**。想翻过去就转经度（水平拖），不受限。
        * ============================================================ */
-      camO.yaw -= dx * 0.006;                           /* 经度：360° 自由，不设限 */
-      /* v156.57（老板「上下相反，左右相同，按左右的方式调整一下」）——
-         左右已经是对的：拖右 → 球面内容跟着手往右走。
-         上下要同构：拖上（dy<0）→ 球面内容往上走 → 相机往南 → pitch **减小**。
-         原来写成 `-= dy`（拖上 pitch 增大、相机往北），所以上下是反的。 */
-      camO.pitch += dy * 0.006;
-      var _LAT_MAX = Math.PI / 2 - 0.017;               /* 约 89°，到极点停住（不翻越、不抖） */
-      if (camO.pitch > _LAT_MAX) camO.pitch = _LAT_MAX;
-      else if (camO.pitch < -_LAT_MAX) camO.pitch = -_LAT_MAX;
+      /* ============================================================
+       * v156.58（老板「跨不过中轴线，无法接着滚动南极到北极形成一个圆」）
+       * ------------------------------------------------------------
+       * **纬度不设上限**。之前的 clamp（±89°）和反射折叠都会"停在极点"，
+       * 而老板要的是**沿经线无限滚动**：北极 → 南极 → 再回北极，一个完整的圆。
+       *
+       * 数学上这是天然成立的：位置方向 = (cos p·sin y, sin p, cos p·cos y)，
+       * sin/cos 对任意实数 p 都有定义且连续 ——
+       *   p=90°  → 北极 (0,1,0)
+       *   p=180° → 对面赤道 (-sin y, 0, -cos y)
+       *   p=270° → 南极 (0,-1,0)
+       *   p=360° → 回到出发点
+       * 所以只要**不 clamp**，拖拽就是连续的圆周运动，不会有边界、不会震颤。
+       * 渲染时用 asin(dir.y) 把角度折回 ±90°（自动、无跳变），
+       * 经度由 atan2(dir.x, dir.z) 现算 —— 两者都从 dir 派生，永远一致。
+       * ============================================================ */
+      camO.yaw -= dx * 0.006;                           /* 经度：360° 自由 */
+      camO.pitch += dy * 0.006;                         /* 纬度：无界，靠 sin/cos 循环 */
       camO.quat = null;
       touch(); redraw();
     });
