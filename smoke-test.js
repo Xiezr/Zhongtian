@@ -12663,7 +12663,7 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
     /* ⚠️ 这份 ORDER 与 build_bundle.py 的 ORDER **必须逐条一致**（本文故意不复用脚本，
        就是为了"构建脚本自己算错时测试还能抓到"）。加了模块两边都要加 ——
        v92 加 fog / memorial 时这里漏改，导致 hash 对不上、守卫假红。 */
-    var ORDER = ['core', 'registry', 'data', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'colony', 'fleet', 'domain', 'map', 'sphere', 'risk', 'years', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'rival', 'land', 'taint', 'climate', 'surge', 'relic', 'goals', 'veteran', 'setskill', 'deck', 'bond', 'tower', 'wonderwar', 'delve', 'unrest', 'expose', 'trooplv', 'idle', 'ending', 'muster', 'founding', 'prologue', 'duel', 'duel3d', 'market', 'events', 'gltf',
+    var ORDER = ['core', 'registry', 'data', 'rules', 'state', 'systems', 'items', 'generals', 'cities', 'ship', 'colony', 'fleet', 'domain', 'map', 'sphere', 'risk', 'years', 'fog', 'memorial', 'renown', 'village', 'convoy', 'growth', 'camp', 'ruin', 'faction', 'rival', 'land', 'taint', 'climate', 'surge', 'relic', 'goals', 'veteran', 'setskill', 'deck', 'bond', 'tower', 'wonderwar', 'delve', 'unrest', 'expose', 'trooplv', 'idle', 'ending', 'muster', 'founding', 'prologue', 'duel', 'duel3d', 'market', 'events', 'gltf',
       'map3d', 'scene3d', 'battle', 'battlelog', 'strategy', 'tactic', 'icons', 'gicons', 'bitmaps', 'portraits',
       /* v92.241：BELT（陨石带）/ PLANETGEN（星球生成流水线）/ PLACEMENT（地块放置）
          —— 与 build_bundle.py 的 ORDER 逐条一致（它的注释就是这么要求的，
@@ -15992,7 +15992,9 @@ console.log('\n===== 60. v74 七条（幸存者 · 画布 · 简介 · 六维 ·
       && /ui\._expRes = t/.test(uS);
   })());
   check('⑦ 战力口径复用 troopPower + defDivisor（不另造第二个出口）',
-    /GAME\.story && GAME\.story\.troopPower/.test(uS) && /DATA\.INVASION && DATA\.INVASION\.defDivisor/.test(uS));
+    /* v156.43：战力口径从 story 下沉到 rules（core）—— 判据跟着换入口，
+       但**语义没变**：仍然是"唯一出口、不另造第二个"。 */
+    /GAME\.rules\.troopPower/.test(uS) && /DATA\.INVASION && DATA\.INVASION\.defDivisor/.test(uS));
 
   /* ---------- 加点弹窗结构 ---------- */
   check('④⑤ 加点弹窗：自由点 + 道具双入口、检查上限与库存', (function () {

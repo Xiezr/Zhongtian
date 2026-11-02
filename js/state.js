@@ -4317,7 +4317,7 @@ import './data.js';
     if (_rankSal) {
       var _sgm = 1, _sItem = GAME.prodBuffMult();
       if (_sItem.gold) _sgm = 1 + _sItem.gold;
-      if (GAME.story) _sgm *= GAME.story.prodMult('gold');
+      if (GAME.story) _sgm *= GAME.rules.prodMult('gold');
       s.gold += _rankSal * _sgm / 3600 * GAME.timeScale() * (DATA.GOLD_GATE.salary || 1);
     }
 
@@ -4573,7 +4573,7 @@ import './data.js';
     /* v89.104（老板）：资源产出处的"附属野地"改成"野地"（省位置） */
     if (wildMult[r]) list.push({ name: '野地', d: wildMult[r] });
     if (GAME.story) {
-      var sm = GAME.story.prodMult(r);
+      var sm = GAME.rules.prodMult(r);
       if (sm && Math.abs(sm - 1) > 1e-9) list.push({ name: '天时（季/天候）', d: sm - 1 });
     }
     /* v101（B5）：**年景** —— 原来只影响新系统，主界面感觉不到"今年是什么年"。
@@ -4652,7 +4652,7 @@ import './data.js';
       * (DATA.GOLD_GATE.tax || 1);
     /* v89.157：旧币同口径（加法叠加）—— 宝物 / 天时各自作用于基础税收后相加 */
     var gm = 1 + (GAME.prodBuffMult().gold || 0);
-    if (GAME.story) gm += (GAME.story.prodMult('gold') - 1);
+    if (GAME.story) gm += (GAME.rules.prodMult('gold') - 1);
     out.gold += taxGold * Math.max(0, gm) / 3600 * ts;
     return out;
   };
@@ -4675,7 +4675,7 @@ import './data.js';
     if (salary) {
       var gm = 1, itemM2 = GAME.prodBuffMult();
       if (itemM2.gold) gm = 1 + itemM2.gold;
-      if (GAME.story) gm *= GAME.story.prodMult('gold');
+      if (GAME.story) gm *= GAME.rules.prodMult('gold');
       /* v73（老板「限制旧币的获取」）：俸禄同口径收紧（DATA.GOLD_GATE.salary） */
       out.gold += salary * gm / 3600 * GAME.timeScale() * (DATA.GOLD_GATE.salary || 1);
     }
@@ -4715,7 +4715,7 @@ import './data.js';
       var itemM = GAME.prodBuffMult();
       if (itemM.gold) gmS162 *= (1 + itemM.gold);
       var smg = 1;
-      if (GAME.story) { smg = GAME.story.prodMult('gold'); gmS162 *= smg; }
+      if (GAME.story) { smg = GAME.rules.prodMult('gold'); gmS162 *= smg; }
       /* v89.179b·P1-5：俸禄是府库层面收入（productionPerSec 注释明言"俸禄只加到首城"），
          本城视图不应列出、更不应计入本城合计（否则每座城都显示同一笔全额俸禄，差 500 倍）。
          仅全境视图（!city）列出；本城视图留白即正确。 */
@@ -4826,7 +4826,7 @@ import './data.js';
 
   /* 本城兵力战力 —— 单兵战力复用 story.troopPower（**不另造第二个出口**） */
   GAME.armyPowerOf = function (city) {
-    var tp = (GAME.story && GAME.story.troopPower) ? GAME.story.troopPower : null;
+    var tp = (GAME.story && GAME.rules.troopPower) ? GAME.rules.troopPower : null;
     var total = 0;
     var army = (city && city.army) || {};
     for (var k in army) total += (tp ? tp(k) : 1) * (army[k] || 0);
@@ -4876,7 +4876,7 @@ import './data.js';
     var I = DATA.INVASION || {};
     var power = GAME.invasionPowerOf(city, cycle);
     var mix = I.mix || { buxingji: 0.52, dunwei: 0.18, daodanche: 0.18, fujiche: 0.12 };   /* v89.229：18→14 映射（步行机 0.30+步行机 0.22 → 步行机 0.52） */
-    var tp = (GAME.story && GAME.story.troopPower) ? GAME.story.troopPower : null;
+    var tp = (GAME.story && GAME.rules.troopPower) ? GAME.rules.troopPower : null;
     var wsum = 0, perMan = 0;
     for (var k in mix) {
       wsum += mix[k] || 0;

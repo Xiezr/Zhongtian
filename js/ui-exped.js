@@ -1614,7 +1614,7 @@ import './ui.js';
      · 围攻目标（据点/城市）：守军与城防按**当前民心**折算（与战斗入参同一出口 · v89.204 口径）；
      · 误差 ±err 由侦察网络等级决定 —— 情报越细，区间越窄，"判断"才有价值。 */
   ui.expPowerOf = function () {
-    var tp = (GAME.story && GAME.story.troopPower) ? GAME.story.troopPower : null;
+    var tp = (GAME.story && GAME.rules.troopPower) ? GAME.rules.troopPower : null;
     var city = ui.expFromCity();   /* v91.76：按派出城读出征兵力 */
     if (!tp || !city) return null;
     var mine = 0, n = 0;
@@ -1764,7 +1764,7 @@ import './ui.js';
     /* v89.178（老板：「👥 共派遣 N 兵，这不明摆着吗」）——「共派遣」整行退役（#exp-sum 元素同删）；兵力在各兵种输入框上本就可数。 */
     var pow73 = $('#exp-power');
     if (pow73) {
-      var tp74 = (GAME.story && GAME.story.troopPower) ? GAME.story.troopPower : null;
+      var tp74 = (GAME.story && GAME.rules.troopPower) ? GAME.rules.troopPower : null;
       var mine74 = 0;
       Object.keys(city.army || {}).forEach(function (id) {
         var inp74 = document.getElementById('exp-' + id);

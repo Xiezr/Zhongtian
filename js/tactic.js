@@ -124,7 +124,7 @@ import './state.js';
      守城时远程/器械在城头，射程并入城头火力圈（与 actSide 的 onWall 同一口径）。 */
   function fieldRangeOf(t, side, wallR) {
     var r = (t.range || 0) * (1 + TB('range'));
-    if (GAME.story && GAME.story.combatMod) r *= (GAME.story.combatMod().archerRange || 1);
+    if (GAME.story && GAME.rules.combatMod) r *= (GAME.rules.combatMod().archerRange || 1);
     if (side === 'def' && wallR > 0 && (t.range || 0) >= 500) r = Math.max(r, wallR);
     return r;
   }
@@ -1138,7 +1138,7 @@ import './state.js';
        提成函数是为了让"主动开火"与"反击"用同一套口径。 */
     function effRangeFor(unit) {
       var r = unit.range * (1 + TB('range'));
-      if (GAME.story && GAME.story.combatMod) r *= (GAME.story.combatMod().archerRange || 1);
+      if (GAME.story && GAME.rules.combatMod) r *= (GAME.rules.combatMod().archerRange || 1);
       /* v89.109：出城迎战的部队在**城外**，不再吃城头火力圈（出城 = 放弃围墙护佑） */
       if (unit.side === 'def' && !unit.sortie && wallRange > 0 && unit.range >= 500) r = Math.max(r, wallRange);
       return r;

@@ -1,5 +1,5 @@
 {
- "at": "2026-11-02T01:26:36",
+ "at": "2026-11-02T02:32:13",
  "note": "分层欠条。**三层是打包分组，不是依赖约束**（build_bundle 只按 order 拼接）。这里记的是\"实际存在的反向调用\"，不是\"违规\"。新增一条要在这里可见，还清一条也要划掉。",
  "rule": {
   "core": [
@@ -13,11 +13,11 @@
  },
  "totals": {
   "edges": 65,
-  "sites": 177,
+  "sites": 147,
   "byKind": {
    "open-ui": 22,
    "notify": 18,
-   "compute": 122,
+   "compute": 92,
    "refresh": 15
   }
  },
@@ -61,50 +61,6 @@
     },
     {
      "fn": "_cityId",
-     "n": 1,
-     "kind": "compute"
-    }
-   ]
-  },
-  {
-   "from": "battle",
-   "fromLayer": "war",
-   "to": "story",
-   "toLayer": "ui",
-   "sites": 24,
-   "calls": [
-    {
-     "fn": "combatMod",
-     "n": 9,
-     "kind": "compute"
-    },
-    {
-     "fn": "troopPower",
-     "n": 8,
-     "kind": "compute"
-    },
-    {
-     "fn": "defMult",
-     "n": 2,
-     "kind": "compute"
-    },
-    {
-     "fn": "siegeMult",
-     "n": 2,
-     "kind": "compute"
-    },
-    {
-     "fn": "atkMult",
-     "n": 1,
-     "kind": "compute"
-    },
-    {
-     "fn": "leadMult",
-     "n": 1,
-     "kind": "compute"
-    },
-    {
-     "fn": "encounterRoll",
      "n": 1,
      "kind": "compute"
     }
@@ -164,40 +120,6 @@
     },
     {
      "fn": "replayFramesOf",
-     "n": 1,
-     "kind": "compute"
-    }
-   ]
-  },
-  {
-   "from": "state",
-   "fromLayer": "core",
-   "to": "story",
-   "toLayer": "ui",
-   "sites": 15,
-   "calls": [
-    {
-     "fn": "prodMult",
-     "n": 5,
-     "kind": "compute"
-    },
-    {
-     "fn": "troopPower",
-     "n": 4,
-     "kind": "compute"
-    },
-    {
-     "fn": "init",
-     "n": 3,
-     "kind": "compute"
-    },
-    {
-     "fn": "tick",
-     "n": 2,
-     "kind": "compute"
-    },
-    {
-     "fn": "heartsPerHour",
      "n": 1,
      "kind": "compute"
     }
@@ -306,25 +228,35 @@
    ]
   },
   {
-   "from": "tactic",
+   "from": "battle",
    "fromLayer": "war",
    "to": "story",
    "toLayer": "ui",
-   "sites": 8,
+   "sites": 7,
    "calls": [
     {
-     "fn": "combatMod",
-     "n": 4,
-     "kind": "compute"
-    },
-    {
-     "fn": "atkMult",
+     "fn": "defMult",
      "n": 2,
      "kind": "compute"
     },
     {
      "fn": "siegeMult",
      "n": 2,
+     "kind": "compute"
+    },
+    {
+     "fn": "atkMult",
+     "n": 1,
+     "kind": "compute"
+    },
+    {
+     "fn": "leadMult",
+     "n": 1,
+     "kind": "compute"
+    },
+    {
+     "fn": "encounterRoll",
+     "n": 1,
      "kind": "compute"
     }
    ]
@@ -343,6 +275,30 @@
     },
     {
      "fn": "duelPlay",
+     "n": 1,
+     "kind": "compute"
+    }
+   ]
+  },
+  {
+   "from": "state",
+   "fromLayer": "core",
+   "to": "story",
+   "toLayer": "ui",
+   "sites": 6,
+   "calls": [
+    {
+     "fn": "init",
+     "n": 3,
+     "kind": "compute"
+    },
+    {
+     "fn": "tick",
+     "n": 2,
+     "kind": "compute"
+    },
+    {
+     "fn": "heartsPerHour",
      "n": 1,
      "kind": "compute"
     }
@@ -401,6 +357,25 @@
     {
      "fn": "ensure",
      "n": 1,
+     "kind": "compute"
+    }
+   ]
+  },
+  {
+   "from": "tactic",
+   "fromLayer": "war",
+   "to": "story",
+   "toLayer": "ui",
+   "sites": 4,
+   "calls": [
+    {
+     "fn": "atkMult",
+     "n": 2,
+     "kind": "compute"
+    },
+    {
+     "fn": "siegeMult",
+     "n": 2,
      "kind": "compute"
     }
    ]

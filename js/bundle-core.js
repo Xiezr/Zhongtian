@@ -1,4 +1,4 @@
-/*! Deepseekdb bundle-core — 第 1/3 包（53 个模块）
+/*! Deepseekdb bundle-core — 第 1/3 包（54 个模块）
  *  由 .workbuddy/tools/patch/build_bundle.py 生成，请勿手改。
  *  ⚠️ 三包必须按 core → war → ui 顺序加载（window.GAME 全局共享）。 */
 /* ---- core.js ---- */
@@ -7468,6 +7468,81 @@ window.GAME = window.GAME || {};
   window.GAME.DATA = DATA;
 })();
 
+/* ---- rules.js ---- */
+/* ============================================================
+ * js/rules.js —— **数值规则层**（core）
+ * ------------------------------------------------------------
+ * v156.43（老板 2026-11-02「应该做到什么程度，你把握」）
+ *
+ * 为什么有这个文件：
+ *   体检发现 `js/story.js` 在 **ui 包**里，却提供 `prodMult` / `combatMod` /
+ *   `troopPower` 这些**决定全局数值**的函数。结果是：
+ *     · `battle` 调它 17 处、`state` 调它 9 处、`tactic` 调它 4 处 —— 全是反向依赖；
+ *     · 改一个天气数值系数，在依赖图上等于"改了 UI"。
+ *   全仓 177 个跨层调用点里，**122 个是 compute**（计算函数被放在上层），
+ *   这是最大的一块。
+ *
+ * 边界（刻意只搬这些）：
+ *   ✅ 只依赖 `DATA` 与 `GAME.state.world` 的**纯计算** → 搬进来
+ *   ❌ 依赖 `STORY.activeBonds()` 的（`bondBonus` / `cityDefMult`）→ 留在 story
+ *   ❌ 事件/播报/界面（`init` / `skyLine` / `openXxx`）→ 留在 story
+ *
+ * 零行为风险的做法：
+ *   `story.js` 里同名函数**保留并转发**到本文件。所以 34 处调用点里
+ *   没改的那些照样工作，行为逐字节不变；改的那些只是换了个入口。
+ * ============================================================ */
+(function (global) {
+  'use strict';
+  var GAME = global.GAME || (global.GAME = {});
+  var DATA = GAME.DATA;
+  var R = GAME.rules = GAME.rules || {};
+
+  /* ---- 当前季节 / 天气：只读 state.world 与 DATA ---- */
+  R.currentSeason = function () {
+    var s = GAME.state;
+    if (!s || !s.world) return DATA.SEASONS[0];
+    return DATA.SEASONS[s.world.season % 4];
+  };
+
+  R.currentWeather = function () {
+    var s = GAME.state;
+    if (!s || !s.world) return DATA.WEATHERS.clear;
+    return DATA.WEATHERS[s.world.weather] || DATA.WEATHERS.clear;
+  };
+
+  /* ---- 产出倍率：季节 × 天气（v90.93 起只有这两项） ---- */
+  R.prodMult = function (res) {
+    var se = R.currentSeason(), we = R.currentWeather();
+    var m = 1;
+    if (res === 'grain') {
+      m *= (1 + (se.grain || 0));
+      m *= (1 + (we.grain || 0));
+    }
+    return m;
+  };
+
+  /* ---- 兵种战力：纯查表 ---- */
+  R.troopPower = function (troopId) {
+    var t = DATA.TROOPS[troopId];
+    if (!t) return 0;
+    var W = DATA.POWER.troopWeight;
+    return (t.hp * W.hp + t.atk * W.atk + t.def * W.def + t.spd * W.spd) || 1;
+  };
+
+  /* ---- 战斗修正：天气对射程/火攻/伏击/侦察/移动 ---- */
+  R.combatMod = function () {
+    var we = R.currentWeather();
+    return {
+      weather: we,
+      archerRange: 1 + (we.archerRange || 0),
+      fire: we.fire == null ? 1 : we.fire,
+      ambush: we.ambush || 1,
+      scout: we.scout !== false,
+      move: we.move || 1,
+    };
+  };
+})(typeof window !== 'undefined' ? window : globalThis);
+
 /* ---- state.js ---- */
 /* ============================================================
  * state.js  运行时状态 / 存档 / 工具函数 / 时间轮（真实数值版 v3）
@@ -11788,7 +11863,7 @@ window.GAME = window.GAME || {};
     if (_rankSal) {
       var _sgm = 1, _sItem = GAME.prodBuffMult();
       if (_sItem.gold) _sgm = 1 + _sItem.gold;
-      if (GAME.story) _sgm *= GAME.story.prodMult('gold');
+      if (GAME.story) _sgm *= GAME.rules.prodMult('gold');
       s.gold += _rankSal * _sgm / 3600 * GAME.timeScale() * (DATA.GOLD_GATE.salary || 1);
     }
 
@@ -12044,7 +12119,7 @@ window.GAME = window.GAME || {};
     /* v89.104（老板）：资源产出处的"附属野地"改成"野地"（省位置） */
     if (wildMult[r]) list.push({ name: '野地', d: wildMult[r] });
     if (GAME.story) {
-      var sm = GAME.story.prodMult(r);
+      var sm = GAME.rules.prodMult(r);
       if (sm && Math.abs(sm - 1) > 1e-9) list.push({ name: '天时（季/天候）', d: sm - 1 });
     }
     /* v101（B5）：**年景** —— 原来只影响新系统，主界面感觉不到"今年是什么年"。
@@ -12123,7 +12198,7 @@ window.GAME = window.GAME || {};
       * (DATA.GOLD_GATE.tax || 1);
     /* v89.157：旧币同口径（加法叠加）—— 宝物 / 天时各自作用于基础税收后相加 */
     var gm = 1 + (GAME.prodBuffMult().gold || 0);
-    if (GAME.story) gm += (GAME.story.prodMult('gold') - 1);
+    if (GAME.story) gm += (GAME.rules.prodMult('gold') - 1);
     out.gold += taxGold * Math.max(0, gm) / 3600 * ts;
     return out;
   };
@@ -12146,7 +12221,7 @@ window.GAME = window.GAME || {};
     if (salary) {
       var gm = 1, itemM2 = GAME.prodBuffMult();
       if (itemM2.gold) gm = 1 + itemM2.gold;
-      if (GAME.story) gm *= GAME.story.prodMult('gold');
+      if (GAME.story) gm *= GAME.rules.prodMult('gold');
       /* v73（老板「限制旧币的获取」）：俸禄同口径收紧（DATA.GOLD_GATE.salary） */
       out.gold += salary * gm / 3600 * GAME.timeScale() * (DATA.GOLD_GATE.salary || 1);
     }
@@ -12186,7 +12261,7 @@ window.GAME = window.GAME || {};
       var itemM = GAME.prodBuffMult();
       if (itemM.gold) gmS162 *= (1 + itemM.gold);
       var smg = 1;
-      if (GAME.story) { smg = GAME.story.prodMult('gold'); gmS162 *= smg; }
+      if (GAME.story) { smg = GAME.rules.prodMult('gold'); gmS162 *= smg; }
       /* v89.179b·P1-5：俸禄是府库层面收入（productionPerSec 注释明言"俸禄只加到首城"），
          本城视图不应列出、更不应计入本城合计（否则每座城都显示同一笔全额俸禄，差 500 倍）。
          仅全境视图（!city）列出；本城视图留白即正确。 */
@@ -12297,7 +12372,7 @@ window.GAME = window.GAME || {};
 
   /* 本城兵力战力 —— 单兵战力复用 story.troopPower（**不另造第二个出口**） */
   GAME.armyPowerOf = function (city) {
-    var tp = (GAME.story && GAME.story.troopPower) ? GAME.story.troopPower : null;
+    var tp = (GAME.story && GAME.rules.troopPower) ? GAME.rules.troopPower : null;
     var total = 0;
     var army = (city && city.army) || {};
     for (var k in army) total += (tp ? tp(k) : 1) * (army[k] || 0);
@@ -12347,7 +12422,7 @@ window.GAME = window.GAME || {};
     var I = DATA.INVASION || {};
     var power = GAME.invasionPowerOf(city, cycle);
     var mix = I.mix || { buxingji: 0.52, dunwei: 0.18, daodanche: 0.18, fujiche: 0.12 };   /* v89.229：18→14 映射（步行机 0.30+步行机 0.22 → 步行机 0.52） */
-    var tp = (GAME.story && GAME.story.troopPower) ? GAME.story.troopPower : null;
+    var tp = (GAME.story && GAME.rules.troopPower) ? GAME.rules.troopPower : null;
     var wsum = 0, perMan = 0;
     for (var k in mix) {
       wsum += mix[k] || 0;

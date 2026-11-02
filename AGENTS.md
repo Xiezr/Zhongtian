@@ -496,3 +496,27 @@ node .workbuddy/tools/prof/layer_debt.js --update # 改了代码后重写
 
 根因：84% 的断言不断言具体文件，只断言"跑一遍之后的状态"。
 **所以别估，改完跑 `smoke_fast`（222 秒）看哪里红。** 这也是"按需跳段"失败的真正原因。
+
+## 十五、规则层在 core，界面在 ui（v156.43 起的一条真边界）
+
+`js/rules.js`（core）放**只依赖 `DATA` 与 `state.world` 的纯计算**：
+`currentSeason` / `currentWeather` / `prodMult` / `troopPower` / `combatMod`。
+
+来历：这些原本住在 `js/story.js`（**ui 包**），被 battle 调 17 处、state 调 9 处、tactic 调 4 处
+—— 改一个天气系数，在依赖图上等于"改了 UI"。
+30 处调用点已改为直接走 `GAME.rules.*`；`story.js` 保留同名**转发**（未改的调用点照样工作）。
+
+### 搬进 rules 的判据（只有一条）
+
+> **只依赖 `DATA` 与 `state.world` 的纯计算。**
+
+反例 —— 这些**不该**搬：
+- `cityDefMult` / `bondBonus`：依赖 `STORY.activeBonds()`（另一个业务系统）→ 留在 story
+- `init` / `skyLine` / 播报：事件与界面 → 留在 story
+- `map3d.rebuild` 这类：依赖 THREE/WebGL → **永远不进 core**，否则渲染塞进数据中心
+
+### 还剩多少
+
+`layer_debt --diff` 看现状：**147 处 / 65 条边**（原 177）。剩下的按性质：
+compute 92 / open-ui 22 / notify 18 / refresh 15。
+**这些是欠条，不是待办** —— 什么时候改到那儿，什么时候还。**不立规则**（立了就要还完，否则门禁永远红）。

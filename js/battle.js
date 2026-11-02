@@ -77,7 +77,7 @@ import './state.js';
   function armySpeed(army) {
     /* 天气：行军速度（雨天 −20% / 雪 −50% / 雾 −30% / 大风 +10%） */
     var wMove = 1;
-    if (GAME.story && GAME.story.combatMod) wMove = GAME.story.combatMod().move || 1;
+    if (GAME.story && GAME.rules.combatMod) wMove = GAME.rules.combatMod().move || 1;
     var spd = 0, n = 0;
     for (var id in army) {
       var t = DATA.TROOPS[id];
@@ -132,7 +132,7 @@ import './state.js';
       var dmg = cnt * t.atk * atkMult;
       /* 弹道校正：远程射程 +4%/级 */
       var effRange = t.range * (1 + TB('range'));
-      if (GAME.story) effRange *= GAME.story.combatMod().archerRange; // 雨天远程射程 −20%
+      if (GAME.story) effRange *= GAME.rules.combatMod().archerRange; // 雨天远程射程 −20%
       if (isFirst && effRange >= 1200 && rangeRatio(defenderArmy) < 0.3) dmg *= 1.3; // 远程先手优势
       sum += dmg;
     }
@@ -286,8 +286,8 @@ import './state.js';
       var ft = DATA.TROOPS[fu];
       if (ft && atkArmy[fu] > 0 && (ft.craft || ft.range >= 1000)) { hasFireUnit = true; break; }
     }
-    if (aFirst && GAME.story && GAME.story.combatMod) {
-      var cmW = GAME.story.combatMod();
+    if (aFirst && GAME.story && GAME.rules.combatMod) {
+      var cmW = GAME.rules.combatMod();
       if (cmW.ambush > 1) firstMul *= cmW.ambush;
       if (cmW.fire > 1 && hasFireUnit) firstMul *= cmW.fire;
     }
@@ -2159,7 +2159,7 @@ import './state.js';
   /* v91.89：守军**战力**合计（与军师估算/来袭强度/家底同一把尺）。
      只用于经验结算（mode='power'），不改任何战斗数学。 */
   GAME.battle.armyPowerTotal = function (army) {
-    var tp = (GAME.story && GAME.story.troopPower) ? GAME.story.troopPower : null;
+    var tp = (GAME.story && GAME.rules.troopPower) ? GAME.rules.troopPower : null;
     var n = 0;
     for (var id in (army || {})) {
       var c = army[id] || 0;
@@ -2199,7 +2199,7 @@ import './state.js';
    * ============================================================ */
   GAME.battle.repGainOf = function (view) {
     var R = DATA.REP_RULE || {};
-    var tp = (GAME.story && GAME.story.troopPower) ? GAME.story.troopPower : null;
+    var tp = (GAME.story && GAME.rules.troopPower) ? GAME.rules.troopPower : null;
     function sum(m) {
       var t = 0;
       for (var k in (m || {})) t += (tp ? tp(k) : 1) * (m[k] || 0);
@@ -2506,7 +2506,7 @@ import './state.js';
     }
     /* 天气：大雾侦察单元难察 —— 情报整体降级（已解锁的也看不准），且不拾获 */
     var cmW = null;
-    if (GAME.story && GAME.story.combatMod) cmW = GAME.story.combatMod();
+    if (GAME.story && GAME.rules.combatMod) cmW = GAME.rules.combatMod();
     var blinded = !!(cmW && cmW.scout === false);
     out.detail.blinded = blinded;
     var g = t.garrison || {};
@@ -4057,7 +4057,7 @@ import './state.js';
    *   验收线：战报增量 < 2KB/场（probe 实测钉住）。
    * ============================================================ */
   GAME.battle.armyPowerOf = function (by) {
-    var tp = (GAME.story && GAME.story.troopPower) ? GAME.story.troopPower : null;
+    var tp = (GAME.story && GAME.rules.troopPower) ? GAME.rules.troopPower : null;
     var n = 0;
     for (var k in (by || {})) {
       n += (by[k] || 0) * (tp ? tp(k) : ((DATA.TROOPS[k] || {}).power || 1));
@@ -4514,7 +4514,7 @@ import './state.js';
     if (gspd > 0) m *= (1 + gspd / base);
 
     /* ③ 天气：雨 −20% / 雪 −50% / 雾 −30% / 大风 +10% */
-    if (GAME.story && GAME.story.combatMod) m *= (GAME.story.combatMod().move || 1);
+    if (GAME.story && GAME.rules.combatMod) m *= (GAME.rules.combatMod().move || 1);
     /* ③′ v91.56（老板）：聚变燃料 —— 全军行军提速（dur 小时 · 唯一出口 s.buffs.marchBoost）。 */
     if (GAME.state && GAME.state.buffs && GAME.state.buffs.marchBoost
       && GAME.state.buffs.marchBoost.until > U.now()) m *= (1 + (GAME.state.buffs.marchBoost.mult || 0));
@@ -4933,7 +4933,7 @@ import './state.js';
 
   /* ① 单兵战力（唯一出口） */
   GAME.power.troopOf = function (id) {
-    var tp = (GAME.story && GAME.story.troopPower) ? GAME.story.troopPower : null;
+    var tp = (GAME.story && GAME.rules.troopPower) ? GAME.rules.troopPower : null;
     return tp ? tp(id) : (((DATA.TROOPS[id] || {}).power) || 0);
   };
   /* 兵种评估行：纸面分项 + 派生指标（人口效率 / 性价比 / 定位）。 */

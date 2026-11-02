@@ -7106,15 +7106,15 @@
   };
 
   STORY.currentSeason = function () {
-    var s = GAME.state;
-    if (!s || !s.world) return DATA.SEASONS[0];
-    return DATA.SEASONS[s.world.season % 4];
+    /* v156.43：**实现搬到 js/rules.js（core）** —— 数值规则不该住在 ui 包。
+       这里保留同名转发：没改的调用点照样工作，行为逐字节不变。 */
+    return GAME.rules.currentSeason();
   };
 
   STORY.currentWeather = function () {
-    var s = GAME.state;
-    if (!s || !s.world) return DATA.WEATHERS.clear;
-    return DATA.WEATHERS[s.world.weather] || DATA.WEATHERS.clear;
+    /* v156.43：**实现搬到 js/rules.js（core）** —— 数值规则不该住在 ui 包。
+       这里保留同名转发：没改的调用点照样工作，行为逐字节不变。 */
+    return GAME.rules.currentWeather();
   };
 
   /* 按权重随机一种天气 */
@@ -7138,14 +7138,9 @@
 
   /* 天时对资源的乘数 */
   STORY.prodMult = function (res) {
-    /* v90.93：年号纪元退役 —— 只剩季节与天气两项（原「年号增益」的全资源产量 / 旧币收入两项已移除）。 */
-    var se = STORY.currentSeason(), we = STORY.currentWeather();
-    var m = 1;
-    if (res === 'grain') {
-      m *= (1 + (se.grain || 0));
-      m *= (1 + (we.grain || 0));
-    }
-    return m;
+    /* v156.43：**实现搬到 js/rules.js（core）** —— 数值规则不该住在 ui 包。
+       这里保留同名转发：没改的调用点照样工作，行为逐字节不变。 */
+    return GAME.rules.prodMult(res);
   };
 
   /* v89.36（老板「维持军队无需耗净水」）：军粮维持耗粮退役 ——
@@ -7153,17 +7148,9 @@
 
   /* 天时对战斗的修正（供 battle.js 调用） */
   STORY.combatMod = function () {
-    /* v90.93：年号纪元退役 —— 当初再拼入的三个“年号倍率键”（全军攻击 / 攻城 / 研究）
-       一并移除 —— 它们原先只在 atkMult / siegeMult 内被读过。 */
-    var we = STORY.currentWeather();
-    return {
-      weather: we,
-      archerRange: 1 + (we.archerRange || 0),
-      fire: we.fire == null ? 1 : we.fire,
-      ambush: we.ambush || 1,
-      scout: we.scout !== false,
-      move: we.move || 1,
-    };
+    /* v156.43：**实现搬到 js/rules.js（core）** —— 数值规则不该住在 ui 包。
+       这里保留同名转发：没改的调用点照样工作，行为逐字节不变。 */
+    return GAME.rules.combatMod();
   };
 
   /* 天时描述行（用于界面显示） */
@@ -7352,10 +7339,9 @@
 
   /* 单兵战力：按兵种属性加权 */
   STORY.troopPower = function (troopId) {
-    var t = DATA.TROOPS[troopId];
-    if (!t) return 0;
-    var W = DATA.POWER.troopWeight;
-    return (t.hp * W.hp + t.atk * W.atk + t.def * W.def + t.spd * W.spd) || 1;
+    /* v156.43：**实现搬到 js/rules.js（core）** —— 数值规则不该住在 ui 包。
+       这里保留同名转发：没改的调用点照样工作，行为逐字节不变。 */
+    return GAME.rules.troopPower(troopId);
   };
 
   /* ---- 招募一名尚未拥有的英雄（奇遇奖励用） ---- */
@@ -25571,7 +25557,7 @@ ui.openDuel = function (fid, moveId) {
      · 围攻目标（据点/城市）：守军与城防按**当前民心**折算（与战斗入参同一出口 · v89.204 口径）；
      · 误差 ±err 由侦察网络等级决定 —— 情报越细，区间越窄，"判断"才有价值。 */
   ui.expPowerOf = function () {
-    var tp = (GAME.story && GAME.story.troopPower) ? GAME.story.troopPower : null;
+    var tp = (GAME.story && GAME.rules.troopPower) ? GAME.rules.troopPower : null;
     var city = ui.expFromCity();   /* v91.76：按派出城读出征兵力 */
     if (!tp || !city) return null;
     var mine = 0, n = 0;
@@ -25721,7 +25707,7 @@ ui.openDuel = function (fid, moveId) {
     /* v89.178（老板：「👥 共派遣 N 兵，这不明摆着吗」）——「共派遣」整行退役（#exp-sum 元素同删）；兵力在各兵种输入框上本就可数。 */
     var pow73 = $('#exp-power');
     if (pow73) {
-      var tp74 = (GAME.story && GAME.story.troopPower) ? GAME.story.troopPower : null;
+      var tp74 = (GAME.story && GAME.rules.troopPower) ? GAME.rules.troopPower : null;
       var mine74 = 0;
       Object.keys(city.army || {}).forEach(function (id) {
         var inp74 = document.getElementById('exp-' + id);
