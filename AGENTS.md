@@ -455,3 +455,44 @@ node .workbuddy/tools/prof/visual_baseline.js            # 比对（差异 >0.5%
 
 **当前状态：基线为空**（2026-11-02，smoke 4418 通过 / 0 失败）。
 这是本项目的正常态：**门禁要求全绿**，不再有"合法的红"。
+
+## 十四、层次与依赖：三层是**打包分组**，不是分层约束（2026-11-02 体检）
+
+`js/modules.json` 的 `bundles`（core 53 / war 9 / ui 24）只决定**文件拼进哪个包**，
+`build_bundle.py` 从不校验依赖方向。实测：**65 条反向调用边 / 177 个调用点**，
+其中 **69% 是 compute** —— 计算函数被放在了上层。
+
+```
+prologue [core] → ui      31 处
+battle   [war]  → story   24 处（全 compute）
+state    [core] → battle  17 处
+state    [core] → story   15 处（全 compute）
+```
+
+**最典型**：`js/story.js` 在 ui 包里，却提供 `prodMult` / `cityDefMult` / `troopPower` / `combatMod`
+—— 决定全局数值的规则住在 UI 包。改一个天气系数，在依赖图上等于"改了 UI"。
+
+### 台账（不是违规清单，是"从未立规"的证据）
+
+```bash
+node .workbuddy/tools/prof/layer_debt.js          # 现状
+node .workbuddy/tools/prof/layer_debt.js --diff   # 新增/还清（有新增退出码 1）
+node .workbuddy/tools/prof/layer_debt.js --update # 改了代码后重写
+```
+**重构前后各跑一次 `--diff`**：还清几条、新增几条，一眼看到。
+
+### 测试的观察面错位（比依赖方向更严重）
+
+4250 条 check 里：直接引用 **ui** 模块 **806** 条 / 直接引用 **core** **2** 条 /
+不绑定任何文件 **3587** 条。**core 几乎没有被直接测过**，只被间接执行。
+所以 core 算错了，现象出在 UI 上，定位链被拉长。
+
+### ⛔ 「改这个文件要跑多少条」**无法事前估算**
+
+| 口径 | ui-city | 问题 |
+|---|---|---|
+| 段级（`impact_of`） | 1694 | 271 条的段里 3 条碰到就全算给它，**虚高 19 倍** |
+| 断言级（`assert_owner`） | 87 | 只覆盖 19% 的断言，**覆盖不足** |
+
+根因：84% 的断言不断言具体文件，只断言"跑一遍之后的状态"。
+**所以别估，改完跑 `smoke_fast`（222 秒）看哪里红。** 这也是"按需跳段"失败的真正原因。

@@ -1,8 +1,9 @@
 {
  "_note": "本文件由 .workbuddy/tools/map/gen_index.js 生成。**layout 是唯一手改处**（加模块只改这里），其余字段每次重跑自动刷新。",
  "_why": "唯一权威清单。以前\"模块清单\"在仓库里有 8 份，加一个模块要改 8 处，漏一处就假红/假绿。",
+ "_bundlesAre": "packaging-only（只决定文件拼进哪个包，不约束谁可以调谁）",
  "_layoutFrom": "js/modules.json",
- "sourceHash": "44f85d9e3e555e3b",
+ "sourceHash": "7279a9441054c7d3",
  "layout": {
   "order": [
    "core",
@@ -1136,7 +1137,7 @@
   {
    "name": "state",
    "file": "js/state.js",
-   "lines": 6206,
+   "lines": 6225,
    "bundle": "core",
    "duty": "state.js  运行时状态 / 存档 / 工具函数 / 时间轮（真实数值版 v3）",
    "deps": [

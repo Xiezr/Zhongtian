@@ -525,6 +525,16 @@ function build() {
   var modulesJson = {
     _note: '本文件由 .workbuddy/tools/map/gen_index.js 生成。**layout 是唯一手改处**（加模块只改这里），其余字段每次重跑自动刷新。',
     _why: '唯一权威清单。以前"模块清单"在仓库里有 8 份，加一个模块要改 8 处，漏一处就假红/假绿。',
+    /* ============================================================
+     * ⛔ v156.42：**bundles 是打包分组，不是依赖分层**。
+     * ------------------------------------------------------------
+     * 2026-11-02 查清：build_bundle.py 只按 order 拼接三个包，
+     * **从不校验依赖方向**。所以 core→ui / war→ui 的调用不是"违规"，
+     * 是从来没有这条规则（实测 65 条边 / 177 个调用点，其中 69% 是 compute）。
+     * 台账：.workbuddy/layer-debt.json（node .workbuddy/tools/prof/layer_debt.js）
+     * 别看到 core/war/ui 三个词就以为有分层约束 —— 它只决定"哪个文件拼进哪个包"。
+     * ============================================================ */
+    _bundlesAre: 'packaging-only（只决定文件拼进哪个包，不约束谁可以调谁）',
     _layoutFrom: loaded.from,
     sourceHash: sourceHash,
     /* layout：人工可编辑（加载顺序 / 分包归属）；构建脚本与索引都读它 */

@@ -1,0 +1,944 @@
+{
+ "at": "2026-11-02T01:26:36",
+ "note": "分层欠条。**三层是打包分组，不是依赖约束**（build_bundle 只按 order 拼接）。这里记的是\"实际存在的反向调用\"，不是\"违规\"。新增一条要在这里可见，还清一条也要划掉。",
+ "rule": {
+  "core": [
+   "war",
+   "ui"
+  ],
+  "war": [
+   "ui"
+  ],
+  "ui": []
+ },
+ "totals": {
+  "edges": 65,
+  "sites": 177,
+  "byKind": {
+   "open-ui": 22,
+   "notify": 18,
+   "compute": 122,
+   "refresh": 15
+  }
+ },
+ "edges": [
+  {
+   "from": "prologue",
+   "fromLayer": "core",
+   "to": "ui",
+   "toLayer": "ui",
+   "sites": 31,
+   "calls": [
+    {
+     "fn": "openLandModalCi",
+     "n": 8,
+     "kind": "open-ui"
+    },
+    {
+     "fn": "openDuelPanel",
+     "n": 8,
+     "kind": "open-ui"
+    },
+    {
+     "fn": "toast",
+     "n": 6,
+     "kind": "notify"
+    },
+    {
+     "fn": "closeModal",
+     "n": 4,
+     "kind": "open-ui"
+    },
+    {
+     "fn": "sceneCaption",
+     "n": 2,
+     "kind": "notify"
+    },
+    {
+     "fn": "openPrologueLand",
+     "n": 2,
+     "kind": "open-ui"
+    },
+    {
+     "fn": "_cityId",
+     "n": 1,
+     "kind": "compute"
+    }
+   ]
+  },
+  {
+   "from": "battle",
+   "fromLayer": "war",
+   "to": "story",
+   "toLayer": "ui",
+   "sites": 24,
+   "calls": [
+    {
+     "fn": "combatMod",
+     "n": 9,
+     "kind": "compute"
+    },
+    {
+     "fn": "troopPower",
+     "n": 8,
+     "kind": "compute"
+    },
+    {
+     "fn": "defMult",
+     "n": 2,
+     "kind": "compute"
+    },
+    {
+     "fn": "siegeMult",
+     "n": 2,
+     "kind": "compute"
+    },
+    {
+     "fn": "atkMult",
+     "n": 1,
+     "kind": "compute"
+    },
+    {
+     "fn": "leadMult",
+     "n": 1,
+     "kind": "compute"
+    },
+    {
+     "fn": "encounterRoll",
+     "n": 1,
+     "kind": "compute"
+    }
+   ]
+  },
+  {
+   "from": "state",
+   "fromLayer": "core",
+   "to": "battle",
+   "toLayer": "war",
+   "sites": 17,
+   "calls": [
+    {
+     "fn": "grantBattleRep",
+     "n": 3,
+     "kind": "compute"
+    },
+    {
+     "fn": "autoFinishBattles",
+     "n": 2,
+     "kind": "compute"
+    },
+    {
+     "fn": "boostSnapshot",
+     "n": 2,
+     "kind": "compute"
+    },
+    {
+     "fn": "withBoost",
+     "n": 2,
+     "kind": "compute"
+    },
+    {
+     "fn": "captiveGain",
+     "n": 2,
+     "kind": "compute"
+    },
+    {
+     "fn": "underdogOf",
+     "n": 2,
+     "kind": "compute"
+    },
+    {
+     "fn": "lootGateOf",
+     "n": 1,
+     "kind": "compute"
+    },
+    {
+     "fn": "sandboxRecipeOf",
+     "n": 1,
+     "kind": "compute"
+    },
+    {
+     "fn": "compactScene",
+     "n": 1,
+     "kind": "compute"
+    },
+    {
+     "fn": "replayFramesOf",
+     "n": 1,
+     "kind": "compute"
+    }
+   ]
+  },
+  {
+   "from": "state",
+   "fromLayer": "core",
+   "to": "story",
+   "toLayer": "ui",
+   "sites": 15,
+   "calls": [
+    {
+     "fn": "prodMult",
+     "n": 5,
+     "kind": "compute"
+    },
+    {
+     "fn": "troopPower",
+     "n": 4,
+     "kind": "compute"
+    },
+    {
+     "fn": "init",
+     "n": 3,
+     "kind": "compute"
+    },
+    {
+     "fn": "tick",
+     "n": 2,
+     "kind": "compute"
+    },
+    {
+     "fn": "heartsPerHour",
+     "n": 1,
+     "kind": "compute"
+    }
+   ]
+  },
+  {
+   "from": "battle",
+   "fromLayer": "war",
+   "to": "ui",
+   "toLayer": "ui",
+   "sites": 11,
+   "calls": [
+    {
+     "fn": "notify",
+     "n": 4,
+     "kind": "notify"
+    },
+    {
+     "fn": "onBattleDone",
+     "n": 2,
+     "kind": "compute"
+    },
+    {
+     "fn": "moment",
+     "n": 2,
+     "kind": "notify"
+    },
+    {
+     "fn": "levelUpScene",
+     "n": 2,
+     "kind": "compute"
+    },
+    {
+     "fn": "sfx",
+     "n": 1,
+     "kind": "compute"
+    }
+   ]
+  },
+  {
+   "from": "domain",
+   "fromLayer": "core",
+   "to": "ui",
+   "toLayer": "ui",
+   "sites": 11,
+   "calls": [
+    {
+     "fn": "_cityId",
+     "n": 5,
+     "kind": "compute"
+    },
+    {
+     "fn": "notify",
+     "n": 2,
+     "kind": "notify"
+    },
+    {
+     "fn": "moment",
+     "n": 2,
+     "kind": "notify"
+    },
+    {
+     "fn": "SHOP_CATS",
+     "n": 2,
+     "kind": "compute"
+    }
+   ]
+  },
+  {
+   "from": "domain",
+   "fromLayer": "core",
+   "to": "battle",
+   "toLayer": "war",
+   "sites": 10,
+   "calls": [
+    {
+     "fn": "marchCapOf",
+     "n": 3,
+     "kind": "compute"
+    },
+    {
+     "fn": "modeOf",
+     "n": 2,
+     "kind": "compute"
+    },
+    {
+     "fn": "resolveTarget",
+     "n": 2,
+     "kind": "compute"
+    },
+    {
+     "fn": "gainExp",
+     "n": 1,
+     "kind": "compute"
+    },
+    {
+     "fn": "heal",
+     "n": 1,
+     "kind": "compute"
+    },
+    {
+     "fn": "simulate",
+     "n": 1,
+     "kind": "compute"
+    }
+   ]
+  },
+  {
+   "from": "tactic",
+   "fromLayer": "war",
+   "to": "story",
+   "toLayer": "ui",
+   "sites": 8,
+   "calls": [
+    {
+     "fn": "combatMod",
+     "n": 4,
+     "kind": "compute"
+    },
+    {
+     "fn": "atkMult",
+     "n": 2,
+     "kind": "compute"
+    },
+    {
+     "fn": "siegeMult",
+     "n": 2,
+     "kind": "compute"
+    }
+   ]
+  },
+  {
+   "from": "prologue",
+   "fromLayer": "core",
+   "to": "battle",
+   "toLayer": "war",
+   "sites": 6,
+   "calls": [
+    {
+     "fn": "gainExp",
+     "n": 5,
+     "kind": "compute"
+    },
+    {
+     "fn": "duelPlay",
+     "n": 1,
+     "kind": "compute"
+    }
+   ]
+  },
+  {
+   "from": "state",
+   "fromLayer": "core",
+   "to": "map3d",
+   "toLayer": "ui",
+   "sites": 6,
+   "calls": [
+    {
+     "fn": "rebuild",
+     "n": 6,
+     "kind": "refresh"
+    }
+   ]
+  },
+  {
+   "from": "domain",
+   "fromLayer": "core",
+   "to": "story",
+   "toLayer": "ui",
+   "sites": 5,
+   "calls": [
+    {
+     "fn": "cityDefMult",
+     "n": 4,
+     "kind": "compute"
+    },
+    {
+     "fn": "trainMult",
+     "n": 1,
+     "kind": "compute"
+    }
+   ]
+  },
+  {
+   "from": "state",
+   "fromLayer": "core",
+   "to": "portraits",
+   "toLayer": "war",
+   "sites": 4,
+   "calls": [
+    {
+     "fn": "assign",
+     "n": 2,
+     "kind": "compute"
+    },
+    {
+     "fn": "seedOf",
+     "n": 1,
+     "kind": "compute"
+    },
+    {
+     "fn": "ensure",
+     "n": 1,
+     "kind": "compute"
+    }
+   ]
+  },
+  {
+   "from": "data",
+   "fromLayer": "core",
+   "to": "battle",
+   "toLayer": "war",
+   "sites": 3,
+   "calls": [
+    {
+     "fn": "intelTiersOf",
+     "n": 1,
+     "kind": "compute"
+    },
+    {
+     "fn": "prepare",
+     "n": 1,
+     "kind": "compute"
+    },
+    {
+     "fn": "repGainOf",
+     "n": 1,
+     "kind": "compute"
+    }
+   ]
+  },
+  {
+   "from": "map",
+   "fromLayer": "core",
+   "to": "ui",
+   "toLayer": "ui",
+   "sites": 3,
+   "calls": [
+    {
+     "fn": "renderMapCanvas",
+     "n": 2,
+     "kind": "refresh"
+    },
+    {
+     "fn": "view",
+     "n": 1,
+     "kind": "compute"
+    }
+   ]
+  },
+  {
+   "from": "veteran",
+   "fromLayer": "core",
+   "to": "battle",
+   "toLayer": "war",
+   "sites": 3,
+   "calls": [
+    {
+     "fn": "heal",
+     "n": 3,
+     "kind": "compute"
+    }
+   ]
+  },
+  {
+   "from": "camp",
+   "fromLayer": "core",
+   "to": "ui",
+   "toLayer": "ui",
+   "sites": 2,
+   "calls": [
+    {
+     "fn": "renderMapCanvas",
+     "n": 2,
+     "kind": "refresh"
+    }
+   ]
+  },
+  {
+   "from": "domain",
+   "fromLayer": "core",
+   "to": "portraits",
+   "toLayer": "war",
+   "sites": 2,
+   "calls": [
+    {
+     "fn": "POOL",
+     "n": 2,
+     "kind": "compute"
+    }
+   ]
+  },
+  {
+   "from": "duel",
+   "fromLayer": "core",
+   "to": "battle",
+   "toLayer": "war",
+   "sites": 2,
+   "calls": [
+    {
+     "fn": "duelEnemyMove",
+     "n": 2,
+     "kind": "compute"
+    }
+   ]
+  },
+  {
+   "from": "map",
+   "fromLayer": "core",
+   "to": "map3d",
+   "toLayer": "ui",
+   "sites": 2,
+   "calls": [
+    {
+     "fn": "_settle",
+     "n": 2,
+     "kind": "compute"
+    }
+   ]
+  },
+  {
+   "from": "planetgen",
+   "fromLayer": "core",
+   "to": "map3d",
+   "toLayer": "ui",
+   "sites": 2,
+   "calls": [
+    {
+     "fn": "invalidateAtmo",
+     "n": 2,
+     "kind": "refresh"
+    }
+   ]
+  },
+  {
+   "from": "ruin",
+   "fromLayer": "core",
+   "to": "ui",
+   "toLayer": "ui",
+   "sites": 2,
+   "calls": [
+    {
+     "fn": "renderMapCanvas",
+     "n": 2,
+     "kind": "refresh"
+    }
+   ]
+  },
+  {
+   "from": "state",
+   "fromLayer": "core",
+   "to": "ui",
+   "toLayer": "ui",
+   "sites": 2,
+   "calls": [
+    {
+     "fn": "_cityId",
+     "n": 2,
+     "kind": "compute"
+    }
+   ]
+  },
+  {
+   "from": "camp",
+   "fromLayer": "core",
+   "to": "map3d",
+   "toLayer": "ui",
+   "sites": 1,
+   "calls": [
+    {
+     "fn": "rebuild",
+     "n": 1,
+     "kind": "refresh"
+    }
+   ]
+  },
+  {
+   "from": "camp",
+   "fromLayer": "core",
+   "to": "battle",
+   "toLayer": "war",
+   "sites": 1,
+   "calls": [
+    {
+     "fn": "resolveTarget",
+     "n": 1,
+     "kind": "compute"
+    }
+   ]
+  },
+  {
+   "from": "prologue",
+   "fromLayer": "core",
+   "to": "map3d",
+   "toLayer": "ui",
+   "sites": 1,
+   "calls": [
+    {
+     "fn": "enabled",
+     "n": 1,
+     "kind": "compute"
+    }
+   ]
+  },
+  {
+   "from": "state",
+   "fromLayer": "core",
+   "to": "tactic",
+   "toLayer": "war",
+   "sites": 1,
+   "calls": [
+    {
+     "fn": "simulate",
+     "n": 1,
+     "kind": "compute"
+    }
+   ]
+  },
+  {
+   "from": "systems",
+   "fromLayer": "core",
+   "to": "battle",
+   "toLayer": "war",
+   "sites": 1,
+   "calls": [
+    {
+     "fn": "gainExp",
+     "n": 1,
+     "kind": "compute"
+    }
+   ]
+  },
+  {
+   "from": "systems",
+   "fromLayer": "core",
+   "to": "story",
+   "toLayer": "ui",
+   "sites": 1,
+   "calls": [
+    {
+     "fn": "researchMult",
+     "n": 1,
+     "kind": "compute"
+    }
+   ]
+  },
+  {
+   "from": "battle",
+   "fromLayer": "war",
+   "to": "ui-battle",
+   "toLayer": "ui",
+   "sites": 0,
+   "calls": []
+  },
+  {
+   "from": "battle",
+   "fromLayer": "war",
+   "to": "ui-fx",
+   "toLayer": "ui",
+   "sites": 0,
+   "calls": []
+  },
+  {
+   "from": "battle",
+   "fromLayer": "war",
+   "to": "ui-exped",
+   "toLayer": "ui",
+   "sites": 0,
+   "calls": []
+  },
+  {
+   "from": "camp",
+   "fromLayer": "core",
+   "to": "ui-space",
+   "toLayer": "ui",
+   "sites": 0,
+   "calls": []
+  },
+  {
+   "from": "data",
+   "fromLayer": "core",
+   "to": "ui-view",
+   "toLayer": "ui",
+   "sites": 0,
+   "calls": []
+  },
+  {
+   "from": "data",
+   "fromLayer": "core",
+   "to": "ui-build",
+   "toLayer": "ui",
+   "sites": 0,
+   "calls": []
+  },
+  {
+   "from": "data",
+   "fromLayer": "core",
+   "to": "ui-craft",
+   "toLayer": "ui",
+   "sites": 0,
+   "calls": []
+  },
+  {
+   "from": "data",
+   "fromLayer": "core",
+   "to": "ui-battle",
+   "toLayer": "ui",
+   "sites": 0,
+   "calls": []
+  },
+  {
+   "from": "data",
+   "fromLayer": "core",
+   "to": "ui-city",
+   "toLayer": "ui",
+   "sites": 0,
+   "calls": []
+  },
+  {
+   "from": "data",
+   "fromLayer": "core",
+   "to": "ui-report",
+   "toLayer": "ui",
+   "sites": 0,
+   "calls": []
+  },
+  {
+   "from": "data",
+   "fromLayer": "core",
+   "to": "ui-modal",
+   "toLayer": "ui",
+   "sites": 0,
+   "calls": []
+  },
+  {
+   "from": "domain",
+   "fromLayer": "core",
+   "to": "tactic",
+   "toLayer": "war",
+   "sites": 0,
+   "calls": []
+  },
+  {
+   "from": "domain",
+   "fromLayer": "core",
+   "to": "ui-city",
+   "toLayer": "ui",
+   "sites": 0,
+   "calls": []
+  },
+  {
+   "from": "domain",
+   "fromLayer": "core",
+   "to": "ui-fx",
+   "toLayer": "ui",
+   "sites": 0,
+   "calls": []
+  },
+  {
+   "from": "domain",
+   "fromLayer": "core",
+   "to": "ui-craft",
+   "toLayer": "ui",
+   "sites": 0,
+   "calls": []
+  },
+  {
+   "from": "domain",
+   "fromLayer": "core",
+   "to": "ui-army",
+   "toLayer": "ui",
+   "sites": 0,
+   "calls": []
+  },
+  {
+   "from": "domain",
+   "fromLayer": "core",
+   "to": "ui-planet",
+   "toLayer": "ui",
+   "sites": 0,
+   "calls": []
+  },
+  {
+   "from": "map",
+   "fromLayer": "core",
+   "to": "ui-space",
+   "toLayer": "ui",
+   "sites": 0,
+   "calls": []
+  },
+  {
+   "from": "map",
+   "fromLayer": "core",
+   "to": "ui-view",
+   "toLayer": "ui",
+   "sites": 0,
+   "calls": []
+  },
+  {
+   "from": "planetgen",
+   "fromLayer": "core",
+   "to": "ui-planet",
+   "toLayer": "ui",
+   "sites": 0,
+   "calls": []
+  },
+  {
+   "from": "prologue",
+   "fromLayer": "core",
+   "to": "ui-mapui",
+   "toLayer": "ui",
+   "sites": 0,
+   "calls": []
+  },
+  {
+   "from": "prologue",
+   "fromLayer": "core",
+   "to": "ui-build",
+   "toLayer": "ui",
+   "sites": 0,
+   "calls": []
+  },
+  {
+   "from": "prologue",
+   "fromLayer": "core",
+   "to": "ui-fx",
+   "toLayer": "ui",
+   "sites": 0,
+   "calls": []
+  },
+  {
+   "from": "prologue",
+   "fromLayer": "core",
+   "to": "ui-modal",
+   "toLayer": "ui",
+   "sites": 0,
+   "calls": []
+  },
+  {
+   "from": "prologue",
+   "fromLayer": "core",
+   "to": "ui-view",
+   "toLayer": "ui",
+   "sites": 0,
+   "calls": []
+  },
+  {
+   "from": "prologue",
+   "fromLayer": "core",
+   "to": "ui-city",
+   "toLayer": "ui",
+   "sites": 0,
+   "calls": []
+  },
+  {
+   "from": "ruin",
+   "fromLayer": "core",
+   "to": "ui-space",
+   "toLayer": "ui",
+   "sites": 0,
+   "calls": []
+  },
+  {
+   "from": "state",
+   "fromLayer": "core",
+   "to": "ui-planet",
+   "toLayer": "ui",
+   "sites": 0,
+   "calls": []
+  },
+  {
+   "from": "state",
+   "fromLayer": "core",
+   "to": "ui-fx",
+   "toLayer": "ui",
+   "sites": 0,
+   "calls": []
+  },
+  {
+   "from": "state",
+   "fromLayer": "core",
+   "to": "ui-modal",
+   "toLayer": "ui",
+   "sites": 0,
+   "calls": []
+  },
+  {
+   "from": "state",
+   "fromLayer": "core",
+   "to": "ui-view",
+   "toLayer": "ui",
+   "sites": 0,
+   "calls": []
+  },
+  {
+   "from": "state",
+   "fromLayer": "core",
+   "to": "ui-city",
+   "toLayer": "ui",
+   "sites": 0,
+   "calls": []
+  },
+  {
+   "from": "state",
+   "fromLayer": "core",
+   "to": "ui-craft",
+   "toLayer": "ui",
+   "sites": 0,
+   "calls": []
+  },
+  {
+   "from": "state",
+   "fromLayer": "core",
+   "to": "ui-space",
+   "toLayer": "ui",
+   "sites": 0,
+   "calls": []
+  },
+  {
+   "from": "state",
+   "fromLayer": "core",
+   "to": "ui-exped",
+   "toLayer": "ui",
+   "sites": 0,
+   "calls": []
+  },
+  {
+   "from": "state",
+   "fromLayer": "core",
+   "to": "ui-build",
+   "toLayer": "ui",
+   "sites": 0,
+   "calls": []
+  },
+  {
+   "from": "systems",
+   "fromLayer": "core",
+   "to": "ui-planet",
+   "toLayer": "ui",
+   "sites": 0,
+   "calls": []
+  }
+ ]
+}
