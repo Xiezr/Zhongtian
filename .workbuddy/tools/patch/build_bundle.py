@@ -197,3 +197,30 @@ if __name__ == '__main__':
     print('  · js/ui-all.js  %8d 字节  %2d 个 ui 文件（审计镜像，不进 bundle）'
           % (os.path.getsize(_mirror), len(_parts)))
     print('✅ 构建完成：三包合计 %d 字节 · hash %s' % (sum(o[1] for o in outs), h))
+
+    # ============================================================
+    # v156.61（老板「还是错的，真的令人遗憾」——**其实是缓存**）
+    # ------------------------------------------------------------
+    # index.html 里写的是 `<script src="js/bundle-core.js?v=9424">`，
+    # 那个 9424 是某次手写的 BUILD 号，**从来没有任何工具更新过它**。
+    # 于是：每次构建产出新 bundle，但 URL 一直没变 → 浏览器永远用缓存的旧文件
+    # → **用户看到的永远是第一次加载的版本**，改多少次都"没用"。
+    #
+    # 修法：构建完成后把 index.html 里所有 `?v=` 换成**内容 hash**（前 8 位）。
+    # 内容变 → URL 变 → 缓存自动失效；内容没变则 URL 不变（不白刷缓存）。
+    # 这样以后不用再教老板 Ctrl+F5。
+    # ============================================================
+    try:
+        import re as _re
+        _idx = os.path.join(ROOT, 'index.html')
+        if os.path.exists(_idx):
+            _s = open(_idx, encoding='utf-8').read()
+            _s2 = _re.sub(r'\?v=[0-9A-Za-z_.-]+', '?v=' + h[:8], _s)
+            if _s2 != _s:
+                with open(_idx, 'w', encoding='utf-8', newline='\n') as _f:
+                    _f.write(_s2)
+                print('  · index.html 的 ?v= 已同步为 %s（缓存自动失效）' % h[:8])
+            else:
+                print('  · index.html 的 ?v= 已是 %s' % h[:8])
+    except Exception as _e:
+        print('  ⚠ index.html 版本号同步失败：%s' % _e)
