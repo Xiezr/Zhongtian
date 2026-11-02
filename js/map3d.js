@@ -3831,7 +3831,13 @@ import './gltf.js';
         try { geo.computeBoundingBox(); _bb0 = geo.boundingBox; } catch (e0) { }
         var _maxDim = 1;
         if (_bb0) _maxDim = Math.max(_bb0.max.x - _bb0.min.x, _bb0.max.y - _bb0.min.y, _bb0.max.z - _bb0.min.z) || 1;
-        var S = (_cellW * 3.2 / _maxDim) * (2 / 3) * (wd.scaleMul || 1);
+        /* v156.48（老板「奇观太小了，适当增大，长度大概 3 个地块是合适的」）——
+         * 尺寸口径改成**直接按地块数**：最大边 = 格宽 × 3。
+         * 旧值是 3.2 × 2/3 = 2.13 格宽（v154 那次「缩小为原 2/3」留下的），
+         * 沿革：R*0.30（按半径，尺寸失控）→ v154 按包围盒 → 2.13 格宽 → 现在 3.0 格宽。
+         * 用包围盒最长边对齐格宽，所以「长度 3 个地块」对高瘦/矮胖模型都成立。
+         * 每个奇观自己的 scaleMul 仍乘在最后，保留个体差异。 */
+        var S = (_cellW * 3.0 / _maxDim) * (wd.scaleMul || 1);
         mesh.scale.setScalar(S);
         var tg = new THREE.Group(); tg.add(mesh);
         /* v156.19：奇观同样走 surfaceQuat（基座平面 ⟂ 指向圆心的半径）。
