@@ -8949,19 +8949,38 @@ window.GAME = window.GAME || {};
         }
       }
     } catch (ePS3) { }
-    /* 第四轮（兜底）：**全星球**找离锚点最近的平原（同一颗球上一定有平原） */
+    /* ============================================================
+     * 第四轮（兜底）—— v156.41 修：**归属优先于地形**
+     * ------------------------------------------------------------
+     * 旧版这里只验「是不是平原」，**不验归属**，却仍然 `return { state: name }`。
+     * 实测：「烬环」「霜脊」两州的首府周围找不到本州平原，于是掉进这一轮，
+     *   取了灰野境内的平原，却标成烬环/霜脊 ——
+     *   **函数返回的州与该落点的实际归属不符，函数在撒谎**。
+     *
+     * 老板 v70 的原话是「城市归属应归属到首府所辖范围内」：
+     *   归属是**硬要求**，地形（平原）是**偏好**。旧版把两者的优先级搞反了。
+     * 现在的顺序：本州平原 → 本州任意地形（仍非城）→ 才落到 START_POS。
+     * ============================================================ */
     try {
       var SP2 = GAME.sphere, ancCi = (SP2 && SP2.ciOfXY) ? SP2.ciOfXY(anchor.x, anchor.y) : -1;
       if (ancCi >= 0 && SP2.hopsWithin) {
-        for (var rr = 1; rr <= 200; rr++) {
+        var _tried = 0, _other = null, _stop = false;
+        for (var rr = 1; rr <= 200 && !_stop; rr++) {
           var ring = SP2.hopsWithin(ancCi, rr) || [];
           for (var k2 = 0; k2 < ring.length; k2++) {
             var c2 = SP2.cells[ring[k2]];
-            if (!c2 || c2.type !== 'plain') continue;
+            if (!c2 || c2.type === 'city') continue;
             if (_nearCity(c2.x, c2.y)) continue;
-            return { x: c2.x, y: c2.y, state: name };
+            /* stateOfCity 每次都要跑一遍全图行政区（贵）——
+               限次，避免最坏情况下把开局拖到几十秒 */
+            if (_tried >= 400) { _stop = true; break; }
+            _tried++;
+            if (GAME.stateOfCity({ x: c2.x, y: c2.y, ci: ring[k2] }) !== name) continue;
+            if (c2.type === 'plain') return { x: c2.x, y: c2.y, state: name };
+            if (!_other) _other = { x: c2.x, y: c2.y };   /* 本州但非平原：备胎 */
           }
         }
+        if (_other) return { x: _other.x, y: _other.y, state: name };
       }
     } catch (ePS) { }
     return { x: DATA.START_POS.x, y: DATA.START_POS.y, state: name };

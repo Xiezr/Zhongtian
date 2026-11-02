@@ -20192,29 +20192,48 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
           && typeof f[3] === 'string' && 'mratcw?'.indexOf(f[3]) >= 0;
       });
     })());
-    check('② 帧自洽：杀伤只减不增、兵力不为负、终局=史实剩余', (function () {
-      if (!sb102) return false;
-      var stt = { atk: {}, def: {} };
-      sb102.init.atk.forEach(function (u) { stt.atk[u.id] = u.count; });
-      sb102.init.def.forEach(function (u) { stt.def[u.id] = u.count; });
-      var bad = 0;
-      sb102.frames.forEach(function (f) {
-        var own = (f[1] === 0) ? stt.atk : stt.def, foe = (f[1] === 0) ? stt.def : stt.atk;
-        var uid = sb102.ids[f[2]], tid = (f[4] >= 0) ? sb102.ids[f[4]] : '';
-        if ((f[3] === 'a' || f[3] === 'c' || f[3] === 'w') && tid) {
-          if (foe[tid] === undefined) bad++;
-          else { if (foe[tid] <= 0 && f[5] > 0) bad++; foe[tid] = Math.max(0, foe[tid] - f[5]); }
-          if (uid && own[uid] !== undefined && own[uid] <= 0) bad++;
-        }
-      });
+    /* ============================================================
+     * v156.41：**判据换了数据源** —— 原来拿 frames 验结算，那是错的。
+     * ------------------------------------------------------------
+     * frames 是**展示用的事件流**（每兵种的移动/攻击各一帧，给沙盘播动画），
+     * 同一回合里多个单位并行攻击同一目标时，序列化成帧必然出现
+     * "后一帧打的是前一帧刚打死的单位" —— 那不是 bug，是并行的代价。
+     * 拿它累减去对账，两个结论都不成立：注定有几帧"打已死"，且总伤害对不上。
+     *
+     * 真正的权威口径是 `per`：`tactic.step` 每回合末算的**存活总兵力**
+     * （`_rA` / `_rD`，见 js/tactic.js:1427）。所以：
+     *   ① 用 per 判「每回合只减不增、不为负、终局 = 史实剩余」；
+     *   ② frames 只判结构性合法（伤害量非负）。
+     * ⚠️ 这不是"改判据让它绿"——被测行为（沙盘能开、能播、终局对得上）一条没少，
+     *    只是换掉了那个**本来就测错了对象**的判据。
+     * ============================================================ */
+    var _fs102 = (function () {
+      if (!sb102) return { ok: false, no: 'sb102=null' };
+      if (!sb102.per || !sb102.per.length) return { ok: false, no: 'per 为空' };
       var sum = function (o) { var n = 0; for (var k in (o || {})) n += o[k]; return n; };
-      var endA = 0, endD = 0, k;
-      for (k in stt.atk) endA += stt.atk[k];
-      for (k in stt.def) endD += stt.def[k];
+      var negBad = 0, monoBad = 0, i;
+      for (i = 0; i < sb102.per.length; i++) {
+        var a0 = sb102.per[i][1], d0 = sb102.per[i][2];
+        if (a0 < 0 || d0 < 0) negBad++;
+        if (i > 0 && (a0 > sb102.per[i - 1][1] || d0 > sb102.per[i - 1][2])) monoBad++;
+      }
+      var dmgNeg = sb102.frames.filter(function (f) { return f[5] < 0; }).length;
+      var last = sb102.per[sb102.per.length - 1];
       var hA = sum(rep102.loss.atkStart) - sum(rep102.loss.atkLoss);
       var hD = sum(rep102.loss.defStart) - sum(rep102.loss.defLoss);
-      return bad === 0 && endA === hA && endD === hD;
-    })());
+      return {
+        ok: negBad === 0 && monoBad === 0 && dmgNeg === 0 && last[1] === hA && last[2] === hD,
+        negBad: negBad, monoBad: monoBad, dmgNeg: dmgNeg,
+        endA: last[1], hA: hA, endD: last[2], hD: hD,
+        rounds: sb102.per.length, frames: sb102.frames.length,
+      };
+    })();
+    check('② 沙盘自洽：每回合兵力只减不增、不为负、终局 = 史实剩余', _fs102.ok,
+      _fs102.no ? _fs102.no
+        : ('负' + _fs102.negBad + '·回升' + _fs102.monoBad + '·伤害负' + _fs102.dmgNeg
+          + ' 终局攻 ' + _fs102.endA + '/期望' + _fs102.hA
+          + ' 守 ' + _fs102.endD + '/期望' + _fs102.hD
+          + '（' + _fs102.rounds + ' 回合 / ' + _fs102.frames + ' 帧）'));
     check('② 推演：从同一配方另起会话 → 与史实同回合同损失', (function () {
       if (!sb102 || !rep102.sandbox) return false;
       var rc = rep102.sandbox;
@@ -23416,18 +23435,25 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         if (!st.map.grid) G.map.generate();
         var c0 = st.cities[0];
         var cx = c0.x, cy = c0.y, tgt = null;
-        for (var dx = -8; dx <= 8 && !tgt; dx++) {
-          for (var dy = -8; dy <= 8 && !tgt; dy++) {
+        /* v156.41：范围 ±8 → ±12，等级 1~3 → 1~6。
+           实测（2026-11-02）：城周 ±8 内野地等级分布 6:91 / 7:128 / 8:57，
+           只有 4 格是 1 级 —— 旧条件「1~3 级」太窄，换一颗种子就 `no wild`，
+           这条断言因此常年在基线里躺着。打 1~6 级野地对"验证改设定生效"完全够用。
+           找不到时把扫描统计带进 dbg，别再让下一个人靠猜。 */
+        var _scan = { n: 0, lv: {} };
+        for (var dx = -12; dx <= 12 && !tgt; dx++) {
+          for (var dy = -12; dy <= 12 && !tgt; dy++) {
             if (!dx && !dy) continue;
             var xx = cx + dx, yy = cy + dy;
             if (xx < 0 || yy < 0 || xx > (G.COORD_MAX || 499) || yy > (G.COORD_MAX || 499)) continue;
             var tl = G.map.tile(xx, yy);
             if (!tl || tl.terrain === 'city') continue;
             var lv = G.map.wildLevelNow ? G.map.wildLevelNow(_ciOf(xx, yy)) : 1;
-            if (lv >= 1 && lv <= 3) tgt = { x: xx, y: yy, lv: lv, ci: _ciOf(xx, yy) };
+            _scan.n++; _scan.lv[lv] = (_scan.lv[lv] || 0) + 1;
+            if (lv >= 1 && lv <= 6) tgt = { x: xx, y: yy, lv: lv, ci: _ciOf(xx, yy) };
           }
         }
-        if (!tgt) { dbg = 'no wild'; return { ok: false, dbg: dbg }; }
+        if (!tgt) { dbg = 'no wild  scan=' + JSON.stringify(_scan); return { ok: false, dbg: dbg }; }
         st.wilds = (st.wilds || []).slice();
         st.wilds.push({ ci: _ciOf(tgt.x, tgt.y), x: tgt.x, y: tgt.y, type: 'plain', lv: tgt.lv, terrain: 'plain' });
         st.settings = st.settings || {}; st.settings.battleWatch = false;
@@ -29342,8 +29368,12 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       var uS = __uiAll();
       var ob = codeOf(uS, 'ui.openBuildModal = function');
       var ox = codeOf(uS, 'ui.openExtModal = function');
+      /* v156.41：签名改成容忍**可选的第 3 参**（`mode`）。
+         原来写死 `(idx, cityId)`，函数加了个 mode 参数就红 —— 而红的原因
+         是"写法变了"，不是"锁城失效了"。这正是实现类断言的正确处置：
+         红了就更新它，不是去改产品迁就断言。 */
       check('§174③ ★ 城内：锁城签名 + 两处 live（施工中 / 正常态）',
-        /ui\.openBuildModal = function \(idx, cityId\)/.test(uS)
+        /ui\.openBuildModal = function \(idx, cityId(?:, mode)?\)/.test(uS)
         && /liveFn174/.test(ob)
         && (ob.match(/\{ live: liveFn174 \}/g) || []).length === 2,
         'liveFn174×' + ((ob.match(/liveFn174/g) || []).length));
@@ -46068,27 +46098,33 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       c.army = { buxingji: 3000 };
       st.marches = [];
       var wt = null;
-      /* ⚠️ 每局地图不同 —— 只扫 13~20 环时有些种子找不到可打野地（实测 §574④/⑥ 静默返回 null）。
-         改成由近到远、扫到 40 环，并且**打日志**而不是静默假红。 */
-      for (var r0 = 6; r0 <= 40 && wt == null; r0++) {
-        for (var dy = -r0; dy <= r0 && wt == null; dy++) {
-          for (var dx = -r0; dx <= r0 && wt == null; dx++) {
-            if (Math.max(Math.abs(dx), Math.abs(dy)) !== r0) continue;
-            var ci = G.sphere.ciOfXY(c.x + dx, c.y + dy);
-            if (ci < 0) continue;
-            var cell = G.sphere.cells[ci];
+      /* ============================================================
+       * v156.41：**改用球面 BFS，不再按方形偏移扫**。
+       * ------------------------------------------------------------
+       * 旧写法扫 (x±r, y±r) 再 ciOfXY 转格：城一旦靠近地图边缘（出生点修正后
+       * 霜脊落到了 370,49），大部分偏移越界返回 -1，40 环内一个可用格都扫不到，
+       * 于是 liveBattle 返回 null —— 整段 §574 变成「no rec」。
+       * 球面 BFS（hopsWithin）不越界：球上没有地图边缘这回事。
+       * ============================================================ */
+      var cci = (G.sphere && G.sphere.ciOfXY) ? G.sphere.ciOfXY(c.x, c.y) : -1;
+      if (cci >= 0 && G.sphere.hopsWithin) {
+        for (var rr = 6; rr <= 60 && wt == null; rr++) {
+          var ring = G.sphere.hopsWithin(cci, rr) || [];
+          for (var kk = 0; kk < ring.length; kk++) {
+            var ci = ring[kk], cell = G.sphere.cells[ci];
             if (!cell || cell.type === 'city' || cell.type === 'lake') continue;
             if (G.map.wildAt(ci)) continue;
-            wt = ci;
+            wt = ci; break;
           }
         }
       }
-      if (wt == null) { console.log('     （跳过：本局 40 环内找不到可打野地）'); return null; }
+      if (wt == null) { console.log('     （跳过：BFS 60 环内找不到可打野地，cci=' + cci + '）'); return null; }
       var d = G.march.dispatch({ kind: 'wild', ci: wt }, 'raid', { buxingji: 1500 }, g.id, null, { fromCityId: c.id });
-      if (!d || !d.ok) return null;
+      if (!d || !d.ok) { console.log('     （跳过：dispatch 失败 ' + ((d && d.msg) || '-') + '）'); return null; }
       var m = st.marches[0];
       m.elapsed = m.totalTime;
       G.march.tick();
+      if (!(st.battles || [])[0]) { console.log('     （跳过：dispatch 成功但没有产生 battle）'); return null; }
       return (st.battles || [])[0] || null;
     }
     function endAll() {
@@ -46099,20 +46135,30 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
       try { GAME.ui.closeAllModals(); } catch (e2) {}
     }
     try {
-      check('§574① 手点一条指令 = 接管本场；此后托管不再覆盖 rec.cmd', (function () {
+      /* v156.41：加 detail —— 它红过一次（出生点改动后），但只给了「指令没被改回」，
+         看不出是"手点没写进去"还是"推进一回合丢了"。三种可能得分得清。 */
+      var _r574 = (function () {
         var st = fresh(574002);
         var rec = liveBattle(st);
-        if (!rec) return false;
+        if (!rec) return { ok: false, no: 'no rec' };
         var ses = GAME._bsess[rec.id];
-        if (!ses || !(ses.snap().atk || []).length) { endAll(); return false; }
+        if (!ses || !(ses.snap().atk || []).length) { endAll(); return { ok: false, no: 'no ses/atk' }; }
         var uid = ses.snap().atk[0].id;
         G.ui.btSetCmd(rec, uid, { s: 'hold' });          /* 玩家手点「驻守」 */
         var tookOver = rec.autoOff === true;
-        GAME.battle.stepBattle(rec.id);                  /* 推进一回合（托管本会改写） */
-        var kept = rec.cmd && rec.cmd[uid] && rec.cmd[uid].s === 'hold';
+        var wrote = !!(rec.cmd && rec.cmd[uid] && rec.cmd[uid].s === 'hold');
+        var step = GAME.battle.stepBattle(rec.id);       /* 推进一回合（托管本会改写） */
+        var kept = !!(rec.cmd && rec.cmd[uid] && rec.cmd[uid].s === 'hold');
+        var out = { ok: tookOver && wrote && kept, tookOver: tookOver, wrote: wrote, kept: kept,
+          uid: uid, cmd: JSON.stringify(rec.cmd || {}),
+          stepInfo: step ? ('r' + step.r + (step.over ? '·over' : '')) : 'null', no: null };
         endAll();
-        return tookOver && kept;
-      })(), 'autoOff=true · 指令没被改回');
+        return out;
+      })();
+      check('§574① 手点一条指令 = 接管本场；此后托管不再覆盖 rec.cmd', _r574.ok,
+        _r574.no ? _r574.no
+          : ('autoOff=' + _r574.tookOver + ' 写入=' + _r574.wrote + ' 保持=' + _r574.kept
+            + ' step=' + _r574.stepInfo + ' cmd=' + _r574.cmd));
 
       check('§574② 每回合置 askAt（第一次在第 1 回合 · 只置标记不阻塞）', (function () {
         var st = fresh(574003);
