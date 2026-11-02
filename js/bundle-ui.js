@@ -3304,12 +3304,24 @@
       if (lookDrag) {
         var _dx = e.clientX - lx, _dy = e.clientY - ly; lx = e.clientX; ly = e.clientY;
         /* 与左键同向：右拖 = 视角右转（yaw 减），上拖 = 抬头（pitch 加） */
-        camO.lookYaw -= _dx * 0.005;
+        /* ============================================================
+         * v156.51（老板「目前相机还是始终对着球心」）——
+         * 旧限幅是固定 ±0.75 弧度（43°），**远景下这个值太大**：
+         *   相机在 R*2.9 时，球在视野里的张角只有 asin(R/d) ≈ 20°，
+         *   偏移 43° 直接把整颗星球推出画面 → 拖完是纯黑，看着像没反应/坏了。
+         * 改成**随距离自适应**：限幅 = 球半径张角 × 0.9。
+         *   远景 R*2.9 → 约 18°（球一直留在画面里，拖拽有反馈）
+         *   贴地 R*1.1 → 约 59°（能贴地看地平线）
+         * 这样自由和不丢参照同时成立。
+         * ============================================================ */
+        var _dNow = Math.max(M.ZOOM_MIN, Math.min(M.ZOOM_MAX, camO.dist));
+        var _lim = Math.max(0.12, Math.asin(Math.min(1, R / _dNow)) * 0.9);
+        camO.lookYaw = Math.max(-_lim, Math.min(_lim, camO.lookYaw - _dx * 0.005));
         /* v156.47：偏移限幅 **±0.75 弧度（43°）**。
            再大就把星球整个推出画面 —— 而这个场景**没有星空背景**（抬头是一片纯黑），
            能看到什么都没有不是自由，是坏掉。0.75 时星球仍占小半屏，
            贴地看地平线的需求也够用。 */
-        camO.lookPitch = Math.max(-0.75, Math.min(0.75, camO.lookPitch - _dy * 0.005));
+        camO.lookPitch = Math.max(-_lim, Math.min(_lim, camO.lookPitch - _dy * 0.005));
         touch(); redraw(); return;
       }
       if (!drag) return;
