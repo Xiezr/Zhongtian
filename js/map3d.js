@@ -2902,6 +2902,8 @@ import './gltf.js';
     function redraw() { if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas(); }
     function touch() { M._lastAct = Date.now(); }            /* v90.81：无操作计时（自转）*/
     canvas.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+    /* 中键按下的默认行为是『自动滚动』，会吃掉拖拽 —— 一并挡掉 */
+    canvas.addEventListener('auxclick', function (e) { if (e.button === 1) e.preventDefault(); });
     /* v156.47：右键现在有用了（转头）—— 必须吃掉浏览器右键菜单，否则一拖就弹。 */
     canvas.addEventListener('contextmenu', function (e) { e.preventDefault(); });
     canvas.addEventListener('mousedown', function (e) {
@@ -2911,7 +2913,11 @@ import './gltf.js';
       /* v156.47 自由相机：**右键拖拽 = 转头**（位置不动，只把视线从球心偏出去）。
          左键仍是「绕球心转 + 点选地块」，两套互不干扰。
          双击右键 = 视线回正（重新对准球心）—— 偏出去之后得能一键找回北。 */
-      if (e.button === 2) {
+      /* v156.49（老板「浏览器现有右键拖动手势，如何禁用」）——
+         右键被浏览器/扩展的『右键手势』（右拖=前进、左拖=返回）抢了，
+         而**网页拦不住浏览器级手势**（只能拦 contextmenu）。
+         所以转头**同时支持中键**：中键没有手势冲突，任何浏览器都能用。 */
+      if (e.button === 2 || e.button === 1) {
         var _now = Date.now();
         if (_now - (M._lastRmb || 0) < 320) {
           M._lastRmb = 0; camO.lookYaw = 0; camO.lookPitch = 0; touch(); redraw();
