@@ -296,6 +296,42 @@ function q4_inflation() {
   const trend = recordAndTrend({ implRatio: +ratio.toFixed(4), impl, all,
     skip: last ? last.skip : null, warn: last ? last.warn : null });
   if (trend.note) add('Q4', trend.level || 'info', trend.note, trend.fix);
+
+  /* ============================================================
+   * Q4³（v156.44）：**规范自己守不守自己的规矩**
+   * ------------------------------------------------------------
+   * 老板 2026-11-02「那你有信心说目前的规范是比较好的了吗」——
+   * 查下来最刺眼的不是规范写得对不对，是 **AGENTS §7 那张阈值表自己就是废纸**：
+   *   单文件 5000 行 / 实际 smoke-test.js 47411 行（表里自己点名"反面教材"）
+   *   门禁 3 分钟 / 实际 691 秒
+   *   一次性脚本 20 个 / 实际 268 个
+   * 6 条阈值 3 条严重超标，**没有任何机制在看它们**。
+   *
+   * 所以这里不新增条款（§12 冻结了），只是**让已有的那张表变成每轮可见的数字**。
+   * 刻意用 info 不判红：一旦判红就得立刻拆 47411 行，那是项目级工程，
+   * 硬判红只会把它变成"合法的红"——正是上一轮清掉的东西。
+   * ============================================================ */
+  try {
+    const NORM = [
+      { k: '单文件行数', limit: 5000, now: fs.readFileSync(R('smoke-test.js'), 'utf8').split('\n').length, unit: '行', who: 'smoke-test.js' },
+      { k: '一次性脚本', limit: 20, now: (function () {
+        let n = 0;
+        ['.workbuddy/tools/show', '.workbuddy/tools/probe'].forEach((d) => {
+          try { n += fs.readdirSync(R(d)).filter((f) => f.endsWith('.js')).length; } catch (e) { }
+        });
+        try { n += fs.readdirSync(R('tools')).filter((f) => /^_/.test(f) && f.endsWith('.js')).length; } catch (e) { }
+        return n;
+      })(), unit: '个', who: 'show+probe+tools/_*' },
+    ];
+    const over = NORM.filter((x) => x.now > x.limit);
+    add('Q4', 'info', '规范自守（AGENTS §7 阈值表）：'
+      + NORM.map((x) => `${x.k} ${x.now}${x.unit}/限${x.limit}`).join(' · ')
+      + (over.length ? `　⚠️ ${over.length} 条超标` : '　✅ 全在阈值内'));
+    if (over.length) {
+      add('Q4', 'info', '　超标的：' + over.map((x) => `${x.k}（${x.who}，超 ${(x.now / x.limit).toFixed(1)} 倍）`).join('、'));
+    }
+  } catch (e) { add('Q4', 'info', '规范自守检查失败：' + e.message); }
+
   return { ratio, last, trend };
 }
 
