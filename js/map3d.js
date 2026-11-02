@@ -2631,34 +2631,24 @@ import './gltf.js';
    * ============================================================ */
   function placeCamera() {
     /* ============================================================
-     * v156.54（老板「试图翻过南北极时，过不去，画面震颤」）第二版
+     * v156.55（老板「右键的相机，我希望是相机绕球心运动，
+     *          而不是在视野内摆弄球体」）—— **回到轨道相机**。
      * ------------------------------------------------------------
-     * 上一版把 dir 当真相，还是在极点抖 —— 因为它仍然没有 **roll** 自由度。
-     * 数学事实：只用「指向球心的方向 + 固定 up」表示相机，正对极点时
-     *   "屏幕右/上"无定义（up ∥ 视线），任何叉积都会退化 → 必抖、必过不去。
+     * v156.54 用累积四元数解决了"翻过极点"，但代价是**引入了 roll**：
+     *   球会在视野里倾倒、画面会倒过来 —— 那正是老板说的"摆弄球体"。
+     * 他要的是轨道相机：**相机绕着球心走，地平线永远水平**。
      *
-     * 唯一正解：**累积四元数 camO.quat**（含 roll）。
-     *   · q 把 +Z 转到 dir（= 相机位置方向），于是 -Z 自然看向球心；
-     *   · 拖拽在 q 上左乘/右乘增量，永远良定义；
-     *   · 翻过极点后 q 自带 180° roll → 画面倒过来继续走，这才叫"翻过去"。
-     * yaw/pitch 降级为派生值（外部读得一致），外部写它们时用脏检测重建 q。
+     * 做法：状态回到 yaw/pitch（欧拉角），朝向用 `rotation.set(pitch, yaw, 0, 'YXZ')`
+     *   表达 —— 不走 lookAt，所以 up∥视线时也不会退化抖动。
+     *   极点靠**纬度反射**处理（阈值严格取 π/2，见拖动处），
+     *   反射后 pitch < π/2，不会每帧反复触发（v156.52 的 bug 是阈值取成 π/2-0.02）。
+     *   → 相机始终在球外绕行、up 恒定竖直，翻越极点时经度自动 +180。
      * ============================================================ */
-    var _yaw = camO.yaw, _pitch = camO.pitch;
-    var _dirty = (!camO.quat || !camO._euler ||
-      Math.abs(_yaw - camO._euler[0]) > 1e-9 || Math.abs(_pitch - camO._euler[1]) > 1e-9);
-    if (_dirty) {
-      /* 外部改了欧拉角（跳城市 / 正位 / 首次）→ 用最小旋转重建 q（此路径无 roll） */
-      var _cy = Math.cos(_pitch), _sy = Math.sin(_pitch);
-      var _dv = new THREE.Vector3(_cy * Math.sin(_yaw), _sy, _cy * Math.cos(_yaw)).normalize();
-      camO.quat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), _dv);
-    }
-    var _dirV = new THREE.Vector3(0, 0, 1).applyQuaternion(camO.quat).normalize();
-    var _dir0 = [_dirV.x, _dirV.y, _dirV.z];
+    var _pitchC = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, camO.pitch));
+    var _cp0 = Math.cos(_pitchC), _sp0 = Math.sin(_pitchC);
+    var _dir0 = [_cp0 * Math.sin(camO.yaw), _sp0, _cp0 * Math.cos(camO.yaw)];
     camO.dir = _dir0;
-    /* 反算欧拉角（供外部读）；极点附近 yaw 不稳，但只用于显示，不再参与任何计算 */
-    camO.yaw = Math.atan2(_dirV.x, _dirV.z);
-    camO.pitch = Math.asin(Math.max(-1, Math.min(1, _dirV.y)));
-    camO._euler = [camO.yaw, camO.pitch];
+    camO.quat = null;                                   /* 本版不用四元数（避免 roll） */
     var d = Math.max(M.ZOOM_MIN, Math.min(M.ZOOM_MAX, camO.dist));
     /* ============================================================
      * v156.50（老板「相机规定距离地面最低 X 米就好了吧」）——
@@ -2692,11 +2682,14 @@ import './gltf.js';
     var _L = Math.hypot(cam.position.x, cam.position.y, cam.position.z) || 1;
     /* v156.54：直接吃四元数（含 roll）——不用欧拉分解，极点也不会翻车。
        自由视线偏移（lookYaw/lookPitch）作为**局部**增量左乘在相机自身朝向上。 */
-    cam.quaternion.copy(camO.quat);
-    if (camO.lookYaw || camO.lookPitch) {
-      cam.quaternion.multiply(new THREE.Quaternion().setFromEuler(
-        new THREE.Euler(Math.max(-1.55, Math.min(1.55, camO.lookPitch)), camO.lookYaw, 0, 'YXZ')));
-    }
+    /* v156.55：回到**欧拉角 + 固定 up**（无 roll）。
+       用 rotation.set 而不是 lookAt —— up∥视线时 lookAt 会退化抖动，
+       直接设角度没有这个问题。lookYaw/lookPitch 仍作为叠加偏移保留（中键转头用）。 */
+    cam.rotation.set(
+      Math.max(-1.55, Math.min(1.55, -_pitchC + camO.lookPitch)),
+      Math.atan2(-_dir0[0], -_dir0[2]) + camO.lookYaw,
+      0, 'YXZ'
+    );
     cam.updateMatrixWorld();
     /* 远到 50R（=15000）时，旧的 far=6000 会把星球整个裁掉 —— 按距离动态给足余量；
        near 同步抬高，否则 near=1 / far=33000 的深度精度会把球面打成 z-fighting。 */
@@ -3000,13 +2993,27 @@ import './gltf.js';
          右键被浏览器/扩展的『右键手势』（右拖=前进、左拖=返回）抢了，
          而**网页拦不住浏览器级手势**（只能拦 contextmenu）。
          所以转头**同时支持中键**：中键没有手势冲突，任何浏览器都能用。 */
-      if (e.button === 2 || e.button === 1) {
+      /* ============================================================
+       * v156.55（老板「右键的相机，我希望是相机绕球心运动，
+       *          而不是在视野内摆弄球体」）
+       * ------------------------------------------------------------
+       * **右键 = 轨道相机**：和左键同一套（位置绕球心、up 竖直、无 roll）。
+       * 之前右键是"视野内转头"，球会在画面里滑来滑去 —— 那就是"摆弄球体"。
+       * 转头能力没丢：**中键**仍然转头（位置不动、只偏视线），
+       * 且中键没有浏览器手势冲突。
+       * 双击右键 = 视角正位。
+       * ============================================================ */
+      if (e.button === 2) {
         var _now = Date.now();
         if (_now - (M._lastRmb || 0) < 320) {
-          M._lastRmb = 0; camO.lookYaw = 0; camO.lookPitch = 0; touch(); redraw();
+          M._lastRmb = 0;
+          if (M.resetView) M.resetView(); else { camO.lookYaw = 0; camO.lookPitch = 0; touch(); redraw(); }
           e.preventDefault(); return;
         }
         M._lastRmb = _now;
+        drag = 1; moved = false; lx = e.clientX; ly = e.clientY; touch(); e.preventDefault(); return;
+      }
+      if (e.button === 1) {                                    /* 中键 = 自由转头 */
         lookDrag = 1; lx = e.clientX; ly = e.clientY; touch(); e.preventDefault(); return;
       }
       if (e.button !== 0) return;
@@ -3097,22 +3104,24 @@ import './gltf.js';
       var dx = e.clientX - lx, dy = e.clientY - ly; lx = e.clientX; ly = e.clientY;
       if (Math.abs(dx) + Math.abs(dy) > 3) moved = true;
       /* ============================================================
-       * v156.54（老板「试图翻过南北极时，过不去，画面震颤」）第三版
+       * v156.55（老板「右键的相机，我希望是相机绕球心运动，
+       *          而不是在视野内摆弄球体」）—— **轨道相机：无 roll、无翻越**
        * ------------------------------------------------------------
-       * 在**四元数**上累积旋转，这是唯一能真正翻过极点的做法：
-       *   · 水平拖：绕**相机自身的 up**（= 保持地平线水平的那个轴）；
-       *   · 垂直拖：绕**相机自身的 right**。
-       * 两个轴都从 q 现取，永远良定义 —— 不存在"叉积退化"。
-       * 翻过极点后 q 自带 180° roll，画面倒过来继续走，于是"一直拖就一直翻"。
+       * 前两版都在试图"翻过极点"，但**轨道相机的语义就是绕球心**：
+       *   相机在球面外侧走，up 恒定竖直 → 地平线永远水平、球不倾倒。
+       *   到极点自然停住（这不是"轴限制"，是绕行的边界），要看另一面就转经度。
+       *
+       * 而"翻越"用反射实现必然在折点附近抖：
+       *   反射是折叠映射，π/2 是它的不动点；拖拽步长一小，就会反复穿越阈值，
+       *   每穿一次 yaw += 180° —— 实测 yaw 冲到 98（每帧转 180°），就是老板看到的震颤。
+       * 所以：**纬度 clamp，经度自由**。想翻过去就转经度（水平拖），不受限。
        * ============================================================ */
-      var _q = camO.quat || new THREE.Quaternion();
-      var _axUp = new THREE.Vector3(0, 1, 0).applyQuaternion(_q);
-      var _axRt = new THREE.Vector3(1, 0, 0).applyQuaternion(_q);
-      var _qy = new THREE.Quaternion().setFromAxisAngle(_axUp, -dx * 0.006);
-      /* 符号：**上拖 = 相机往北走**（看到北极），与地图类应用的手感一致。
-         实测第一版写反了：上拖会跑到南极。 */
-      var _qx = new THREE.Quaternion().setFromAxisAngle(_axRt, dy * 0.006);
-      camO.quat = _q.premultiply(_qx).premultiply(_qy).normalize();
+      camO.yaw -= dx * 0.006;                           /* 经度：360° 自由，不设限 */
+      camO.pitch -= dy * 0.006;                         /* 纬度：上拖往北 */
+      var _LAT_MAX = Math.PI / 2 - 0.017;               /* 约 89°，到极点停住（不翻越、不抖） */
+      if (camO.pitch > _LAT_MAX) camO.pitch = _LAT_MAX;
+      else if (camO.pitch < -_LAT_MAX) camO.pitch = -_LAT_MAX;
+      camO.quat = null;
       touch(); redraw();
     });
     window.addEventListener('mouseup', function (e) {
