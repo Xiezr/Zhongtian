@@ -3188,7 +3188,12 @@ import './gltf.js';
       var _ax = new THREE.Vector3().crossVectors(_v0, _v1);
       var _ang = Math.acos(Math.max(-1, Math.min(1, _v0.dot(_v1))));
       if (_ax.lengthSq() > 1e-10 && _ang > 1e-7) {
-        var _q = new THREE.Quaternion().setFromAxisAngle(_ax.normalize(), _ang);
+        /* v156.60（老板「上下左右全都相反」）——
+           arcball 算的是"从 v0 转到 v1"的旋转，作用在**相机位置**上；
+           相机往右转 = 球面内容往左走 = 和手相反。
+           所以要取**反向旋转**（-angle），内容才会跟着手走。
+           一个负号同时修正上下左右（旋转整体反向）。 */
+        var _q = new THREE.Quaternion().setFromAxisAngle(_ax.normalize(), -_ang);
         camO.quat = (camO.quat || new THREE.Quaternion()).premultiply(_q).normalize();
         /* 关键：把 _euler 同步成**当前 yaw/pitch**（不是 null）。
            脏检测靠「yaw/pitch 有没有被外部改动」决定要不要重建 quat；
