@@ -3,7 +3,7 @@
  "_why": "唯一权威清单。以前\"模块清单\"在仓库里有 8 份，加一个模块要改 8 处，漏一处就假红/假绿。",
  "_bundlesAre": "packaging-only（只决定文件拼进哪个包，不约束谁可以调谁）",
  "_layoutFrom": "js/modules.json",
- "sourceHash": "09eb5793ce7e8398",
+ "sourceHash": "3626854cc5694ef4",
  "layout": {
   "order": [
    "core",
@@ -796,7 +796,7 @@
   {
    "name": "main",
    "file": "js/main.js",
-   "lines": 4070,
+   "lines": 4073,
    "bundle": "ui",
    "duty": "main.js  启动入口、事件委托、动作分发、游戏主循环（真实数值版）",
    "deps": [
@@ -824,8 +824,8 @@
     "cities",
     "ui-build",
     "ui-army",
-    "ui-bag",
     "map3d",
+    "ui-bag",
     "placement",
     "faction",
     "colony",
@@ -872,7 +872,7 @@
   {
    "name": "map3d",
    "file": "js/map3d.js",
-   "lines": 4040,
+   "lines": 4084,
    "bundle": "ui",
    "duty": "map3d.js — Three.js **星球 3D 地图**（cube-sphere 地形 + 等面积地块）",
    "deps": [
@@ -1714,7 +1714,7 @@
   {
    "name": "ui-space",
    "file": "js/ui-space.js",
-   "lines": 1236,
+   "lines": 1239,
    "bundle": "ui",
    "duty": "ui-space.js　星空 · 星系 / 空间站 / 殖民 / 深空远征 / 3D 预览",
    "deps": [

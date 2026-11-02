@@ -760,6 +760,9 @@ import './ui.js';
         '<button class="btn sm" data-action="open-outposts">🚩 前哨</button>' +
         /* v92.240k：地块放置物 —— 点开物品栏，选一件拿在手上，再点地图上的格子放下。 */
         '<button class="btn sm" data-action="place-open" title="在地块上放置物体">🧱 建造</button>' +
+        /* v156.52（老板「提供一个正位按钮（把球体摆正）」）——放在动作区，和回主城/星系同排。
+           摆正 = 南北轴竖直 + 视角回初始方位 + 清掉自由视线偏移。 */
+        '<button class="btn sm" data-action="map-reset" title="把球体摆正：南北轴竖直、视角复位">◎ 正位</button>' +
         (ui._placeItem ? '<button class="btn sm warn" data-action="place-cancel" title="放下手上的东西">✋ 收工</button>' : '') +
         _nav99('', 'map-capital', '灰烬城', _cap99, '灰烬城在母星 —— 当前地图非母星，不可定位') +
       '</div>');

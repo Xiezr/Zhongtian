@@ -1732,6 +1732,9 @@ import './ui.js';
       case 'fort-goto': ui.mapCenterOn(Number(el.dataset.x), Number(el.dataset.y)); ui.toast('已定位 ' + GAME.map.coordText(+el.dataset.x, +el.dataset.y)); break;
       /* v89.193（老板 2）：前哨总览（入口：地图导航栏「🚩 前哨」/ 前哨面板） */
       case 'open-outposts': ui.openOutposts(); break;
+      /* v156.52（老板「提供一个正位按钮（把球体摆正）」）：视角复位 = 南北轴竖直、
+         北极在上、东南俯视，并清掉自由相机的视线偏移（否则球正了视线还歪着）。 */
+      case 'map-reset': if (GAME.map3d && GAME.map3d.resetView) { GAME.map3d.resetView(); ui.toast('◎ 视角已摆正'); } break;
       /* v89.195（老板 1）：前哨放手 —— 确认窗 → 红键一击执行（v89.156 口径：
          "弹窗出来的放弃按钮点击直接执行即可，本身已经是 2 次确认了"）。 */
       case 'fort-abandon-ask': ui.openFortAbandonAsk(Number(el.dataset.ci)); break;

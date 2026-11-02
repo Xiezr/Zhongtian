@@ -748,6 +748,7 @@
   }
 
   var R3, scene, cam, globe, water, tiles, wcv, built = false, _tileSub = 0;
+  var axisRoot = null;                                  /* v156.52：穿过球心的南北虚拟轴 */
   /* v156.47（老板「目前相机固定对准星球球心，要求自由相机」）——
      lookYaw / lookPitch 是**朝向相对球心的偏移**，默认 0 = 仍看球心。
      位置依旧受球壳约束（不钻地），自由的是**视线**：右键拖拽把视线偏出去，
@@ -778,6 +779,17 @@
   M.ZOOM_MIN = R * 1.02;                                  /* **绝对兜底**：只在 sphElev 取不到地形高度时起作用；实际贴地下限 = CAM_MIN_AGL（按方向离地） */
   /* v156.50：**离地最低高度**（世界单位）。山高≈40，取 30 时平原离地 30、山上自动抬到 30+，不穿模。 */
   M.CAM_MIN_AGL = 30;
+  /* ============================================================
+   * v156.52（老板「提供一个正位按钮（把球体摆正）」）——
+   * 把视角恢复到初始方位（= 轴线竖直、北极在上、视角在东南方向俯视）。
+   * 注意：清的不只是 yaw/pitch/dist，**还必须清 lookYaw/lookPitch**（自由视线偏移），
+   * 否则按了「正位」球是正了、视线还歪着，等于没复位。
+   * ============================================================ */
+  M.resetView = function () {
+    camO.yaw = 0.8; camO.pitch = 0.42; camO.dist = R * 2.9;
+    camO.lookYaw = 0; camO.lookPitch = 0;
+    try { touch(); redraw(); } catch (e) { }
+  };
   M.ZOOM_MAX = R * 50;                                    /* 外界：老板指定的最大空间 */
 
   /* v91.33（性能）：版本戳（把 M.render 里的内联拼串抽出，预建时可预盖）。 */
@@ -950,6 +962,26 @@
     R3.toneMapping = THREE.NoToneMapping;
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0x0a1020);
+    /* ============================================================
+     * v156.52（老板「提供一条虚拟线（穿过球心）」）——
+     * 一条**南北极轴**，贯穿球心、两端各伸出 1.3R。
+     * 用处：旋转时有个固定参照，一眼看出「球摆没摆正」；
+     * 加上「正位」按钮，摆正 = 轴线竖直 + 视角回到初始方位。
+     * 半透明青色，不抢地形配色；frustumCulled=false 防止极端角度被裁掉。
+     * ============================================================ */
+    (function buildAxis() {
+      if (axisRoot) { scene.remove(axisRoot); disposeTree(axisRoot); axisRoot = null; }
+      /* 用**细圆柱**而不是 Line：linewidth 在多数 WebGL 实现里恒为 1px，
+         1280 宽的画面里根本看不见（第一版就这么失败了）。圆柱有真实宽度，一定可见。 */
+      var g = new THREE.CylinderGeometry(1.15, 1.15, R * 2.6, 10, 1, true);
+      axisRoot = new THREE.Mesh(g, new THREE.MeshBasicMaterial({
+        color: 0x5fd0ff, transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false
+      }));
+      axisRoot.frustumCulled = false;
+      axisRoot.renderOrder = 2;
+      M._axisRoot = axisRoot;
+      scene.add(axisRoot);
+    })();
     cam = new THREE.PerspectiveCamera(42, 1, 1, 6000);
     /* ============================================================
      * v92.243（老板：「提供适当的背景光亮度，可为全空间或单向光（模拟太阳）」）
@@ -2890,7 +2922,8 @@
    * 看向球心 —— 所以"贴地看某一格"= 把 yaw/pitch 指向那一格 + 距离收到 R+1.5×HSC。
    * ============================================================ */
   function placeCamera() {
-    var pitch = Math.max(-1.55, Math.min(1.55, camO.pitch));
+    /* v156.52：夹到 ±(90°-1.15°) —— 不再像旧版那样在 89° 硬切；极点由拖拽处的翻转逻辑处理 */
+    var pitch = Math.max(-1.5508, Math.min(1.5508, camO.pitch));
     var d = Math.max(M.ZOOM_MIN, Math.min(M.ZOOM_MAX, camO.dist));
     /* ============================================================
      * v156.50（老板「相机规定距离地面最低 X 米就好了吧」）——
@@ -3328,7 +3361,18 @@
       var dx = e.clientX - lx, dy = e.clientY - ly; lx = e.clientX; ly = e.clientY;
       if (Math.abs(dx) + Math.abs(dy) > 3) moved = true;
       camO.yaw -= dx * 0.006;
-      camO.pitch = Math.max(-1.4, Math.min(1.4, camO.pitch + dy * 0.006));
+      /* ============================================================
+       * v156.52（老板「球体还是有个南北轴，要求 360 自由无死角」）——
+       * 旧版把 pitch 夹在 ±1.4（80°），拖到南北极附近就**卡住**，
+       * 像有一条轴挡着。这里改成**越过极点翻转**（orbit 标准做法）：
+       *   pitch 超过 +90° → 反射成 180-pitch，同时 yaw +180°，
+       *   于是能连续绕到球的另一面，没有任何死角。
+       * 翻转瞬间画面会上下倒过来（这是绕极点的必然），但不会卡。
+       * ============================================================ */
+      camO.pitch += dy * 0.006;
+      var _HALF = Math.PI / 2 - 0.02;
+      if (camO.pitch > _HALF) { camO.pitch = Math.PI - camO.pitch; camO.yaw += Math.PI; }
+      else if (camO.pitch < -_HALF) { camO.pitch = -Math.PI - camO.pitch; camO.yaw += Math.PI; }
       touch(); redraw();
     });
     window.addEventListener('mouseup', function (e) {
@@ -22079,6 +22123,9 @@
         '<button class="btn sm" data-action="open-outposts">🚩 前哨</button>' +
         /* v92.240k：地块放置物 —— 点开物品栏，选一件拿在手上，再点地图上的格子放下。 */
         '<button class="btn sm" data-action="place-open" title="在地块上放置物体">🧱 建造</button>' +
+        /* v156.52（老板「提供一个正位按钮（把球体摆正）」）——放在动作区，和回主城/星系同排。
+           摆正 = 南北轴竖直 + 视角回初始方位 + 清掉自由视线偏移。 */
+        '<button class="btn sm" data-action="map-reset" title="把球体摆正：南北轴竖直、视角复位">◎ 正位</button>' +
         (ui._placeItem ? '<button class="btn sm warn" data-action="place-cancel" title="放下手上的东西">✋ 收工</button>' : '') +
         _nav99('', 'map-capital', '灰烬城', _cap99, '灰烬城在母星 —— 当前地图非母星，不可定位') +
       '</div>');
@@ -31038,6 +31085,9 @@ ui.openDuel = function (fid, moveId) {
       case 'fort-goto': ui.mapCenterOn(Number(el.dataset.x), Number(el.dataset.y)); ui.toast('已定位 ' + GAME.map.coordText(+el.dataset.x, +el.dataset.y)); break;
       /* v89.193（老板 2）：前哨总览（入口：地图导航栏「🚩 前哨」/ 前哨面板） */
       case 'open-outposts': ui.openOutposts(); break;
+      /* v156.52（老板「提供一个正位按钮（把球体摆正）」）：视角复位 = 南北轴竖直、
+         北极在上、东南俯视，并清掉自由相机的视线偏移（否则球正了视线还歪着）。 */
+      case 'map-reset': if (GAME.map3d && GAME.map3d.resetView) { GAME.map3d.resetView(); ui.toast('◎ 视角已摆正'); } break;
       /* v89.195（老板 1）：前哨放手 —— 确认窗 → 红键一击执行（v89.156 口径：
          "弹窗出来的放弃按钮点击直接执行即可，本身已经是 2 次确认了"）。 */
       case 'fort-abandon-ask': ui.openFortAbandonAsk(Number(el.dataset.ci)); break;
