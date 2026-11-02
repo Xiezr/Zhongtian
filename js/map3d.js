@@ -481,7 +481,9 @@ import './gltf.js';
    * 这个 bug 一直存在，但**只有在自由相机下才看得见**（轨道相机永远俯视，
    * 拉到最近也是从上方看，不会贴到地面）。
    * ============================================================ */
-  M.ZOOM_MIN = R * 1.15;                                  /* 内界：地表之上（含地形高度余量） */
+  M.ZOOM_MIN = R * 1.02;                                  /* **绝对兜底**：只在 sphElev 取不到地形高度时起作用；实际贴地下限 = CAM_MIN_AGL（按方向离地） */
+  /* v156.50：**离地最低高度**（世界单位）。山高≈40，取 30 时平原离地 30、山上自动抬到 30+，不穿模。 */
+  M.CAM_MIN_AGL = 30;
   M.ZOOM_MAX = R * 50;                                    /* 外界：老板指定的最大空间 */
 
   /* v91.33（性能）：版本戳（把 M.render 里的内联拼串抽出，预建时可预盖）。 */
@@ -2596,6 +2598,24 @@ import './gltf.js';
   function placeCamera() {
     var pitch = Math.max(-1.55, Math.min(1.55, camO.pitch));
     var d = Math.max(M.ZOOM_MIN, Math.min(M.ZOOM_MAX, camO.dist));
+    /* ============================================================
+     * v156.50（老板「相机规定距离地面最低 X 米就好了吧」）——
+     * 约束口径从**离球心**改成**离地**。
+     * ------------------------------------------------------------
+     * 旧版 ZOOM_MIN = R*1.15 是拍出来的一个固定球心距离：
+     * 平原上离地约 45、够用；但地形最高约 40 单位（HSC 注释：山≈40），
+     * 相机转到山上时离地只剩几个单位 —— 仍会贴地/钻模，只是不如 1.02R 那么明显。
+     * 改成按方向取地形高度，强制「离地 ≥ CAM_MIN_AGL」，于是：
+     *   · 平原：可以贴得更近（335 vs 345），细节更多；
+     *   · 山上：自动抬高（370），不再穿模。
+     * 两条下限取较大者，ZOOM_MIN 仍作为绝对兜底（防止地形数据缺失时失控）。
+     * ============================================================ */
+    var _cp0 = Math.cos(pitch), _sp0 = Math.sin(pitch);
+    var _dir0 = [_cp0 * Math.sin(camO.yaw), _sp0, _cp0 * Math.cos(camO.yaw)];
+    var _elev0 = 0;
+    try { _elev0 = Math.max(0, sphElev(_dir0)) * HSC; } catch (e0) { }
+    var _minD = R + _elev0 + (M.CAM_MIN_AGL || 30);
+    if (d < _minD) d = _minD;
     camO.dist = d;
     var cp = Math.cos(pitch), sp = Math.sin(pitch);
     cam.position.set(d * cp * Math.sin(camO.yaw), d * sp, d * cp * Math.cos(camO.yaw));

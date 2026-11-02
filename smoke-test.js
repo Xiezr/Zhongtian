@@ -36282,8 +36282,10 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
          相机在 1.02R 时已经在地壳内部，屏幕上只剩省界细线（实测截图确认）。
          轨道相机永远俯视，所以这个洞一直没被看见；自由相机贴地才暴露。
          断言跟着改值，语义不变（仍是「缩放出口唯一、可查」）。 */
-      c243('§243① map3d 缩放出口在册（ZOOM_MIN=1.15R / MAX=50R + zoomFrac/setZoom 唯一换算）',
-        /M\.ZOOM_MIN = R \* 1\.15/.test(m243) && /M\.ZOOM_MAX = R \* 50/.test(m243)
+      /* v156.50：贴地下限改由**离地高度**决定（CAM_MIN_AGL），ZOOM_MIN 退回纯兜底 1.02R。
+         语义变了：它不再是「实际能贴多近」，而是「地形数据取不到时的保险」。 */
+      c243('§243① map3d 缩放出口在册（ZOOM_MIN=1.02R 兜底 / CAM_MIN_AGL 离地下限 / MAX=50R + zoomFrac/setZoom 唯一换算）',
+        /M\.ZOOM_MIN = R \* 1\.02/.test(m243) && /M\.CAM_MIN_AGL = 30/.test(m243) && /M\.ZOOM_MAX = R \* 50/.test(m243)
         && /M\.zoomFrac = function/.test(m243) && /M\.setZoom = function/.test(m243));
       /* v92.242：相机**不得再有任何贴地支点** —— 支点会黏在前传人物那一格上，
          前传结束后也不撒手（老板看到的就是"支点变成开局那个人物"）。 */
