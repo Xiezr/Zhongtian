@@ -3470,32 +3470,25 @@
        *     所以怎么甩都不会卡住。
        * 效果就是用手指拨一个实体球：正着转、斜着转、倒着转都行。
        * ============================================================ */
-      function _abv(px, py) {
-        var w = canvas.clientWidth || 1, h = canvas.clientHeight || 1;
-        var nx = (px / w) * 2 - 1, ny = -((py / h) * 2 - 1);
-        var d2 = nx * nx + ny * ny;
-        if (d2 <= 1) return new THREE.Vector3(nx, ny, Math.sqrt(1 - d2));
-        var n = Math.sqrt(d2);
-        return new THREE.Vector3(nx / n, ny / n, 0);
-      }
-      var _v0 = _abv(lx0, ly0), _v1 = _abv(_cxp, _cyp);
-      var _ax = new THREE.Vector3().crossVectors(_v0, _v1);
-      var _ang = Math.acos(Math.max(-1, Math.min(1, _v0.dot(_v1))));
-      if (_ax.lengthSq() > 1e-10 && _ang > 1e-7) {
-        /* v156.60（老板「上下左右全都相反」）——
-           arcball 算的是"从 v0 转到 v1"的旋转，作用在**相机位置**上；
-           相机往右转 = 球面内容往左走 = 和手相反。
-           所以要取**反向旋转**（-angle），内容才会跟着手走。
-           一个负号同时修正上下左右（旋转整体反向）。 */
-        var _q = new THREE.Quaternion().setFromAxisAngle(_ax.normalize(), -_ang);
-        camO.quat = (camO.quat || new THREE.Quaternion()).premultiply(_q).normalize();
-        /* 关键：把 _euler 同步成**当前 yaw/pitch**（不是 null）。
-           脏检测靠「yaw/pitch 有没有被外部改动」决定要不要重建 quat；
-           写 null 等于每帧都判成外部改过 → 立刻用旧欧拉角覆盖掉 arcball 的结果。
-           第一版就踩了这个坑：dir 从头到尾纹丝不动。 */
-        camO._euler = [camO.yaw, camO.pitch];
-      }
-      lx0 = _cxp; ly0 = _cyp;
+      /* ============================================================
+       * v156.62（老板「我要的是任意点位地形跟着鼠标走，而不是换了南北就有变化」）
+       * ------------------------------------------------------------
+       * 上一版用 arcball：旋转轴 = 屏幕两点叉积，**映射到世界空间**。
+       * 于是球一旦转到"倒过来"的姿态，屏幕的上下和世界的上下不再一致，
+       * 同一个拖动方向的效果就反了 —— 这正是"换了南北就有变化"。
+       *
+       * 要让**任意姿态都跟手**，旋转必须施加在**相机自身坐标系**里：
+       *   拖右 → 绕相机局部 Y 轴转；拖上 → 绕相机局部 X 轴转；
+       *   用 `quat.multiply(q)`（右乘 = 局部空间）而不是 premultiply（世界空间）。
+       * 局部轴永远与屏幕对齐，所以不管球转到哪个姿态，"拖哪边内容就往哪边走"。
+       * 代价：球会倾倒（up 跟着转）—— 这是自由球的必然，按「正位」可回正。
+       * ============================================================ */
+      var _KK = 0.0055;
+      var _qy = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -dx * _KK);
+      var _qx = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -dy * _KK);
+      camO.quat = (camO.quat || new THREE.Quaternion()).multiply(_qy).multiply(_qx).normalize();
+      /* 同步 _euler，避免脏检测把这次拖拽误判成"外部改过欧拉角"而重建 quat */
+      camO._euler = [camO.yaw, camO.pitch];
       touch(); redraw();
     });
     window.addEventListener('mouseup', function (e) {
