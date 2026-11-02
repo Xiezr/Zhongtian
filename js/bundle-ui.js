@@ -2938,12 +2938,31 @@
      *   反射后 pitch < π/2，不会每帧反复触发（v156.52 的 bug 是阈值取成 π/2-0.02）。
      *   → 相机始终在球外绕行、up 恒定竖直，翻越极点时经度自动 +180。
      * ============================================================ */
-    /* v156.58：**pitch 无界**（不 clamp）—— cos/sin 对任意角度连续，
-       这正是沿经线滚一整圈的数学基础；折回 ±90° 由下面的 asin(dir.y) 自动完成。 */
-    var _cp0 = Math.cos(camO.pitch), _sp0 = Math.sin(camO.pitch);
-    var _dir0 = [_cp0 * Math.sin(camO.yaw), _sp0, _cp0 * Math.cos(camO.yaw)];
+    /* ============================================================
+     * v156.59（老板「过了南北轴线就跳转到对面半球…做一个空间中的自由球有这么难吗」）
+     * ------------------------------------------------------------
+     * 根因：`dir = (cos p·sin y, sin p, cos p·cos y)` 在极点附近 **cos p 变号**
+     *   → 水平分量整体反号 → 位置瞬间跳到经度 y+180（画面仿佛闪到对面半球）。
+     *   这是球坐标的固有奇点，**再怎么调 p 都消不掉**。
+     *
+     * 正解：**camO.quat 累积旋转**（真正的空间自由球）。
+     *   相机位置方向完全由四元数给出，没有极角/方位角参与，
+     *   所以任意方向连续、无奇点。up 跟着转（球会"倾倒"）——
+     *   这正是"拿手指拨一个实体球"的手感。没有地平线锁定的概念。
+     *   yaw/pitch 只在外部写入时（跳城市 / 正位）用来重建 quat。
+     * ============================================================ */
+    var _yaw = camO.yaw, _pitch = camO.pitch;
+    var _dirty = (!camO.quat || !camO._euler ||
+      Math.abs(_yaw - camO._euler[0]) > 1e-9 || Math.abs(_pitch - camO._euler[1]) > 1e-9);
+    if (_dirty) {
+      var _cy = Math.cos(_pitch), _sy = Math.sin(_pitch);
+      var _dv = new THREE.Vector3(_cy * Math.sin(_yaw), _sy, _cy * Math.cos(_yaw)).normalize();
+      camO.quat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), _dv);
+      camO._euler = [_yaw, _pitch];
+    }
+    var _dirV = new THREE.Vector3(0, 0, 1).applyQuaternion(camO.quat).normalize();
+    var _dir0 = [_dirV.x, _dirV.y, _dirV.z];
     camO.dir = _dir0;
-    camO.quat = null;                                   /* 本版不用四元数（避免 roll） */
     var d = Math.max(M.ZOOM_MIN, Math.min(M.ZOOM_MAX, camO.dist));
     /* ============================================================
      * v156.50（老板「相机规定距离地面最低 X 米就好了吧」）——
@@ -2987,11 +3006,13 @@
        于是拖动时相机在转、画面里却只有太空（球整个跑到背后）。
        推导：相机默认看 (0,0,-1)，绕 Y 转 yaw 后看 (-sin, 0, -cos)；
        要看向 v = -dir，即 sin(yaw)=dir[0]、cos(yaw)=dir[2] → yaw = atan2(dir[0], dir[2])。 */
-    cam.rotation.set(
-      Math.max(-1.55, Math.min(1.55, _pFromDir + camO.lookPitch)),
-      Math.atan2(_dir0[0], _dir0[2]) + camO.lookYaw,
-      0, 'YXZ'
-    );
+    /* v156.59：直接用四元数（含 roll）——球可以自由倾倒，这才是"空间中的自由球"。
+       lookYaw/lookPitch 作为**局部**偏移左乘（中键转头用）。 */
+    cam.quaternion.copy(camO.quat);
+    if (camO.lookYaw || camO.lookPitch) {
+      cam.quaternion.multiply(new THREE.Quaternion().setFromEuler(
+        new THREE.Euler(Math.max(-1.55, Math.min(1.55, camO.lookPitch)), camO.lookYaw, 0, 'YXZ')));
+    }
     cam.updateMatrixWorld();
     /* 远到 50R（=15000）时，旧的 far=6000 会把星球整个裁掉 —— 按距离动态给足余量；
        near 同步抬高，否则 near=1 / far=33000 的深度精度会把球面打成 z-fighting。 */
@@ -3277,6 +3298,7 @@
     if (!canvas || canvas._m3dBound) return;
     canvas._m3dBound = true;
     var drag = 0, lookDrag = 0, lx = 0, ly = 0, moved = false;
+    var lx0 = 0, ly0 = 0;        /* v156.59 arcball：上一帧的**画布内**坐标 */
     function redraw() { if (GAME.ui && GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas(); }
     function touch() { M._lastAct = Date.now(); }            /* v90.81：无操作计时（自转）*/
     canvas.addEventListener('contextmenu', function (e) { e.preventDefault(); });
@@ -3313,13 +3335,15 @@
           e.preventDefault(); return;
         }
         M._lastRmb = _now;
-        drag = 1; moved = false; lx = e.clientX; ly = e.clientY; touch(); e.preventDefault(); return;
+        drag = 1; moved = false; lx = e.clientX; ly = e.clientY;
+        var _rd = canvas.getBoundingClientRect(); lx0 = e.clientX - _rd.left; ly0 = e.clientY - _rd.top; touch(); e.preventDefault(); return;
       }
       if (e.button === 1) {                                    /* 中键 = 自由转头 */
         lookDrag = 1; lx = e.clientX; ly = e.clientY; touch(); e.preventDefault(); return;
       }
       if (e.button !== 0) return;
-      drag = 1; moved = false; lx = e.clientX; ly = e.clientY; touch(); e.preventDefault();
+      drag = 1; moved = false; lx = e.clientX; ly = e.clientY;
+        var _rd = canvas.getBoundingClientRect(); lx0 = e.clientX - _rd.left; ly0 = e.clientY - _rd.top; touch(); e.preventDefault();
     });
     /* v92.240k：放置模式的幽灵预览 —— 鼠标在地图上移动，幽灵跟到那一格。
        只在**手持物品时**才发射线（否则白白每帧 raycast）；同一格不重复重建。 */
@@ -3404,6 +3428,8 @@
       }
       if (!drag) return;
       var dx = e.clientX - lx, dy = e.clientY - ly; lx = e.clientX; ly = e.clientY;
+      var _rc = canvas.getBoundingClientRect();
+      var _cxp = e.clientX - _rc.left, _cyp = e.clientY - _rc.top;
       if (Math.abs(dx) + Math.abs(dy) > 3) moved = true;
       /* ============================================================
        * v156.55（老板「右键的相机，我希望是相机绕球心运动，
@@ -3434,9 +3460,37 @@
        * 渲染时用 asin(dir.y) 把角度折回 ±90°（自动、无跳变），
        * 经度由 atan2(dir.x, dir.z) 现算 —— 两者都从 dir 派生，永远一致。
        * ============================================================ */
-      camO.yaw -= dx * 0.006;                           /* 经度：360° 自由 */
-      camO.pitch += dy * 0.006;                         /* 纬度：无界，靠 sin/cos 循环 */
-      camO.quat = null;
+      /* ============================================================
+       * v156.59：**arcball**（真正的空间自由球）
+       * ------------------------------------------------------------
+       * 不再改 yaw/pitch —— 那是球坐标，过极点必跳。
+       * 把两次鼠标位置映射到单位球面两点 v0→v1，绕 (v0×v1) 转 acos(v0·v1)：
+       *   · 轴和角都从两点现算，任意方向连续，没有任何极点；
+       *   · 屏幕边缘拖拽时降级到双曲覆盖（点投影到球外 → 用圆盘边缘），
+       *     所以怎么甩都不会卡住。
+       * 效果就是用手指拨一个实体球：正着转、斜着转、倒着转都行。
+       * ============================================================ */
+      function _abv(px, py) {
+        var w = canvas.clientWidth || 1, h = canvas.clientHeight || 1;
+        var nx = (px / w) * 2 - 1, ny = -((py / h) * 2 - 1);
+        var d2 = nx * nx + ny * ny;
+        if (d2 <= 1) return new THREE.Vector3(nx, ny, Math.sqrt(1 - d2));
+        var n = Math.sqrt(d2);
+        return new THREE.Vector3(nx / n, ny / n, 0);
+      }
+      var _v0 = _abv(lx0, ly0), _v1 = _abv(_cxp, _cyp);
+      var _ax = new THREE.Vector3().crossVectors(_v0, _v1);
+      var _ang = Math.acos(Math.max(-1, Math.min(1, _v0.dot(_v1))));
+      if (_ax.lengthSq() > 1e-10 && _ang > 1e-7) {
+        var _q = new THREE.Quaternion().setFromAxisAngle(_ax.normalize(), _ang);
+        camO.quat = (camO.quat || new THREE.Quaternion()).premultiply(_q).normalize();
+        /* 关键：把 _euler 同步成**当前 yaw/pitch**（不是 null）。
+           脏检测靠「yaw/pitch 有没有被外部改动」决定要不要重建 quat；
+           写 null 等于每帧都判成外部改过 → 立刻用旧欧拉角覆盖掉 arcball 的结果。
+           第一版就踩了这个坑：dir 从头到尾纹丝不动。 */
+        camO._euler = [camO.yaw, camO.pitch];
+      }
+      lx0 = _cxp; ly0 = _cyp;
       touch(); redraw();
     });
     window.addEventListener('mouseup', function (e) {
