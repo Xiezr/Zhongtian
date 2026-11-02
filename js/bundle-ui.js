@@ -3286,7 +3286,22 @@
       var _dt = M._spinLast ? (_now - M._spinLast) : 33;
       M._spinLast = _now;
       if (!(_dt > 0) || _dt > 200) _dt = 33;                 /* NaN/负数/超长 → 退回标称步长 */
-      camO.yaw += (2 * Math.PI / _spin) * (_dt / 1000);      /* spinSec 秒一圈，与帧率无关 */
+      /* ============================================================
+       * v156.63（老板「统一旋转绕地心线，达成地心线不动，球体环绕地心线」）
+       * ------------------------------------------------------------
+       * ⛔ 旧写法 `camO.yaw += ...` 在 arcball 版本下是错的：
+       *   yaw 一变就触发 placeCamera 的脏检测 → 用 setFromUnitVectors 重建 quat，
+       *   而"最小旋转"会**丢掉用户转出来的 roll** → 自转一启动，倾斜的球就突然回正。
+       *
+       * 正解：**直接绕世界 Y 轴（地心线）旋转 quat**：
+       *   · 世界 Y = 地心线 → 轴线在世界里不动（屏幕上也不动）；
+       *   · quat.premultiply 是公转，roll 保持不变，球保持用户摆出的姿态；
+       *   · 视觉上就是"球体环绕地心线自转"，与"相机公转"完全等价，且不动任何世界坐标。
+       * ============================================================ */
+      var _spinAng = (2 * Math.PI / _spin) * (_dt / 1000);
+      var _qs = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), _spinAng);
+      camO.quat = (camO.quat || new THREE.Quaternion()).premultiply(_qs).normalize();
+      camO._euler = [camO.yaw, camO.pitch];   /* 同步，防止脏检测把它判成"外部改了欧拉角" */
       wonderStep();                                          /* v91.30：奇观轨行 + 出场/离场动画 */
       if (GAME.ui.renderMapCanvas) GAME.ui.renderMapCanvas();
     }
@@ -4456,8 +4471,10 @@
       var d = M._wonderUp || [0, 1, 0];
       var r = M._wonderR || (R + 2);
       M._wonderBody.position.set(d[0] * r, d[1] * r, d[2] * r);
-      var mesh = M._wonderSpin;
-      if (mesh) mesh.rotation.y += 0.003;
+      /* v156.63（老板「有点不太符合逻辑，建议统一旋转绕地心线」）——
+         ⛔ 取消奇观自身自转：它是绕所在处的**法线**转的（赤道附近法线接近水平，
+         看起来像"风车横着转"）。现在改为**整球绕地心线自转**（见 _spinTick），
+         奇观作为球面上的物体会跟着一起转，逻辑统一：地心线不动，球环环绕它。 */
     }
     /* 出场：0.6s 内 scale 0→1（ease-out）。 */
     var t = (Date.now() - (M._wonderT0 || 0)) / 600; if (t > 1) t = 1;
