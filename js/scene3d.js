@@ -508,7 +508,10 @@
      这是廉价但效果最大的一步。 */
   var _shadowMat = null;
   function contactShadow(r) {
-    if (!_shadowMat) _shadowMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.26 });
+    /* v156.67：0.26 的纯黑圆片在浅色地上像"洞口"，而且它是**圆**，
+       和墙上/碎石那种方形轮廓对不上 —— 这是"简陋感"的第二大来源。
+       降到 0.15 只留"物体压着地"的暗示，不做形状承诺。 */
+    if (!_shadowMat) _shadowMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.15 });
     var m = new THREE.Mesh(new THREE.CircleGeometry(r || 0.5, 14), _shadowMat);
     m.rotation.x = -Math.PI / 2;
     m.position.y = 0.012;
@@ -959,6 +962,13 @@
     var rim = new THREE.DirectionalLight(0x9fc4d8, 0.55);
     rim.position.set(-8, 6, -9);
     scene.add(rim);
+    /* v156.67：野外场景把主光压低（16 → 9），让地面起伏真的产生明暗。
+       原来是 (9,16,7) 近乎顶光 → 法线朝上的平面全是一个亮度，加了起伏也白加。
+       城市场景 (cityView) 的取景是"俯瞰街道"，顶光更清楚，所以只在野外改。 */
+    if (!cityView) {
+      sun.position.set(12, 9, 9);
+      rim.position.set(-9, 5, -11);
+    }
     LGT = { sun: sun, amb: amb, rim: rim };   /* v143：时段光照要能改这三盏 */
 
     /* 键鼠 */
@@ -1047,13 +1057,41 @@
     /* 天光与雾：改 scene.background / fog 比换材质便宜，一眼就换风格 */
     _skyBase = cfg.sky || 0x8e97a4; _fogBase = cfg.fog || cfg.sky || 0x8e97a4;
     scene.background = new THREE.Color(_skyBase);
-    scene.fog = new THREE.FogExp2(_fogBase, 0.020);
+    /* v156.67（老板「能做的必须做到底」）：雾从 0.020 加到 0.030 ——
+       0.020 时远处几乎不衰减，画面像"贴纸"；0.030 才有纵深，墙根发灰。 */
+    scene.fog = new THREE.FogExp2(_fogBase, 0.030);
 
     /* 地面 */
     var kind = (cfg.id === 'forest' || cfg.id === 'field') ? 'grass' : 'ash';
     var gtex = groundTexture(cfg.ground, cfg.seed || 7, kind);
+    /* v156.67：纹理必须 repeat —— 256² 拉满 40×40 会糊成一块颜色，
+       没有"地面"的尺度感。5×5 让噪点/裂缝回到可读的大小。 */
+    gtex.wrapS = gtex.wrapT = THREE.RepeatWrapping;
+    gtex.repeat.set(5, 5);
     var gm = new THREE.MeshLambertMaterial({ map: gtex, color: 0xffffff });
-    var ground = new THREE.Mesh(new THREE.PlaneGeometry(40, 40, 1, 1), gm);
+    /* v156.67：**地面要有起伏**。
+       旧版是 PlaneGeometry(40,40,1,1) —— 一张绝对平的板，法线全朝上，
+       在平行光下就是均匀一片色（这就是"简陋"最大的来源：占 80% 画面的东西没有明暗）。
+       现在细分到 48×48 并加 ±0.08 米的低频起伏：
+         · 幅度远小于玩家身高（1.8）和墙厚，**不影响行走与碰撞**（碰撞盒是 2D 的）；
+         · computeVertexNormals 后，坡面会接光/背光 → 立刻有"地"的质感。
+       ⚠️ PlaneGeometry 在 XY 平面，`rotation.x = -PI/2` 之后：
+          局部 Z（法线方向）→ 世界 Y（高度），所以位移写在 setZ。 */
+    var gGeo = new THREE.PlaneGeometry(40, 40, 48, 48);
+    (function () {
+      var _pa = gGeo.attributes.position, _Rg = rng((cfg.seed || 7) + 3311);
+      for (var i = 0; i < _pa.count; i++) {
+        var _x = _pa.getX(i), _y = _pa.getY(i);
+        /* ±0.07 在正交俯视下几乎看不出（截图确认）；加到 ±0.19 ——
+           仍远低于玩家身高 1.8 与墙高 2.6，不影响行走/碰撞。 */
+        var _h = Math.sin(_x * 0.33 + 1.7) * 0.170
+               + Math.cos(_y * 0.41 - 0.9) * 0.140
+               + (_Rg() - 0.5) * 0.060;
+        _pa.setZ(i, _h);
+      }
+      gGeo.computeVertexNormals();
+    })();
+    var ground = new THREE.Mesh(gGeo, gm);
     ground.rotation.x = -Math.PI / 2;
     propRoot.add(ground);
 
@@ -1125,6 +1163,32 @@
           propRoot.add(pb);
         }
       }
+    })();
+
+    /* ============================================================
+     * v156.67 浮尘（空气里的颗粒）
+     * ------------------------------------------------------------
+     * 废土场景缺"空气"就会像沙盘：干净、静止、没有纵深。
+     * 240 个半透明小点，确定性散布在场景上空 0.3~3.5 米，
+     * 靠 animWorld 里整体缓慢平移 + 上下浮动来"飘"（不逐点动画，省 CPU）。
+     * depthWrite:false —— 粒子之间不互相遮挡，避免边缘发黑。
+     * ============================================================ */
+    (function () {
+      var N = 240, pos = new Float32Array(N * 3), Rr = rng((cfg.seed || 7) + 771);
+      for (var i = 0; i < N; i++) {
+        pos[i * 3] = (Rr() - 0.5) * 28;
+        pos[i * 3 + 1] = 0.3 + Rr() * 3.2;
+        pos[i * 3 + 2] = (Rr() - 0.5) * 28;
+      }
+      var dg = new THREE.BufferGeometry();
+      dg.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      var dm = new THREE.PointsMaterial({
+        color: 0xd8cdb4, size: 0.06, transparent: true, opacity: 0.45,
+        sizeAttenuation: true, depthWrite: false, fog: true,
+      });
+      var du = new THREE.Points(dg, dm);
+      du.name = 'dust';
+      propRoot.add(du);
     })();
 
     /* 装饰 */
@@ -1470,6 +1534,11 @@
         var k2 = 1 + Math.sin(now * 0.004) * 0.06;
         o.scale.set(k2, k2, k2);
         o.rotation.y += 0.004;
+      } else if (o.name === 'dust') {
+        /* v156.67：浮尘整体飘 —— 不逐点算（240 点每帧算太贵），
+           让整团缓慢升降 + 极慢自转，靠视差就有"空气在动"的错觉。 */
+        o.position.y = Math.sin(now * 0.00035) * 0.18;
+        o.rotation.y = now * 0.000018;
       }
     });
   }
