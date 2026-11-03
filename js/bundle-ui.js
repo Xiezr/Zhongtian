@@ -4598,7 +4598,11 @@
     rust: 0xb4622f, rustDark: 0x7a3f1e,
     iron: 0x3a4048, steel: 0x6b7684, steelLight: 0x9aa6b4,
     moss: 0x5a6b4a, mossDark: 0x36432c,
-    sand: 0x8a7a52, ash: 0x6a6258,
+    /* v156.68c：ash 从 0x6a6258（灰褐）改为 0x585d61（冷灰）。
+       原因：墙用 ash，而碎垣地面是 0x7d6f5c —— 两者色相几乎一样（都是灰褐），
+       墙体直接融进地面，怎么调光都出不来层次。
+       改成冷灰后，暖地面 / 冷墙体形成冷暖对比，墙的轮廓自己就立起来了。 */
+    sand: 0x8a7a52, ash: 0x585d61,
     bone: 0xa89b84, wood: 0x6b533a, woodDark: 0x483824,
     glow: 0x4fd1c5, neon: 0xffb347, blood: 0xa8332a,
     water: 0x2b4d5a, wheat: 0xc9a64a,
@@ -4608,16 +4612,252 @@
     /* 同色同参数复用材质：60 个 Mesh 能压到 ~15 个材质，draw 状态切换少一半 */
     var k = c + '|' + (extra ? JSON.stringify(extra) : '');
     if (_matCache[k]) return _matCache[k];
-    var o = { color: c };
+    /* v156.68：Lambert → MeshStandard（PBR）。
+       Lambert 只有漫反射、没有高光、不吃环境贴图 —— 金属、石头、布、木头
+       全都是「同一块塑料」的质感，这就是画面幼稚的主因。
+       Standard 有 roughness / metalness 两轴：
+         · 默认 roughness .92 / metalness .02 → 石头、土墙、木头（粗糙、无反射）
+         · 金属件在调用处传 metalness .7~.9 / roughness .25~.4（见 PROP）
+       同色同参数仍复用缓存，draw call 不增加。 */
+    var o = { color: c, roughness: 0.92, metalness: 0.02 };
     if (extra) for (var q in extra) o[q] = extra[q];
-    var m = new THREE.MeshLambertMaterial(o);
+    /* v156.68：默认挂通用表面贴图（灰阶，与 color 相乘）。
+       一张贴图服务所有颜色 → 内存一份、draw call 不增。
+       发光件/水面/UI 薄片传 { noMap: true } 关掉。 */
+    var _noMap = o.noMap; delete o.noMap;
+    var _mapKind = o.mapKind; delete o.mapKind;
+    if (!_noMap) o.map = surfaceTex(_mapKind || 'prop', 7);
+    /* v156.68c：**金属件自动给金属参数**。
+       调色板里 iron / steel / steelLight 就是废铁、钢、亮钢。
+       Lambert 时代所有材质长一样；PBR 下金属必须有 metalness + 低 roughness，
+       否则它只是「灰色塑料」—— 这是「发挥 three.js 能力」最直接的一处。
+       显式传了 extra 的（锈迹、发光件）不覆盖，保留调用处的意图。 */
+    if (extra === undefined && (c === C.iron || c === C.steel || c === C.steelLight)) {
+      o.metalness = 0.74; o.roughness = 0.36;
+      o.envMapIntensity = 1.35;      /* 金属靠环境贴图出反射，强度给足 */
+    }
+    /* 顶点色 = 几何烘焙的 AO（见 bakeAO）。所有走 mesh() 的几何体都会带 color，
+       所以这里统一开是安全的。 */
+    if (o.vertexColors === undefined) o.vertexColors = true;
+    var m = new THREE.MeshStandardMaterial(o);
     _matCache[k] = m;
     return m;
   }
+  /* ============================================================
+   * v156.68 通用表面纹理（把「纯色块」变成「有材质的面」）
+   * ------------------------------------------------------------
+   * 之前每个物体都是 lam(纯色) —— 一个颜色刷满整面墙。
+   * 这就是「低模积木」的观感来源：**没有纹理就没有尺度**，
+   * PBR / 阴影再准，纯色面看上去依然是贴纸。
+   *
+   * 做一张**灰阶**表面图（白底 + 明暗扰动，均值≈0.88），
+   * 用 MeshStandardMaterial 的 map 与 color **相乘**：
+   *   同一张贴图服务所有颜色 → 内存只有一份，draw call 一个不增。
+   *
+   * 五层叠加，每层解决一个具体的「假」：
+   *   ① 低频大斑 —— 大尺度脏污/褪色（纯高频噪点没有尺度感，像电视雪花）
+   *   ② 高频颗粒 —— 微观粗糙（贴图拉远时的塑料感来源）
+   *   ③ 裂缝折线 —— 混凝土的破损线索，让「废墟」由纹理本身承担
+   *   ④ 底部暗带 —— **廉价 AO**：盒子每面 UV 都是 0..1，
+   *                 底边压暗 = 物体与地面的接触暗部（「浮在板上」的解药）
+   *   ⑤ 顶部微亮 —— 受天光的顶面更亮，强化体积
+   * ============================================================ */
+  var _surfCache = {};
+  function surfaceTex(kind, seed) {
+    var key = kind + '|' + (seed || 0);
+    if (_surfCache[key]) return _surfCache[key];
+    var N = 256;
+    var cv = document.createElement('canvas');
+    cv.width = cv.height = N;
+    var g = cv.getContext('2d');
+    var R = rng((seed || 7) * 977 + (kind === 'ground' ? 5381 : 2141));
+
+    /* ① 底：略低于纯白，这样相乘后整体轻微压暗（更像旧物） */
+    g.fillStyle = '#e2e2e2';
+    g.fillRect(0, 0, N, N);
+
+    /* ② 低频大斑：大尺度脏污。半径 20~85px，明暗 ±，边缘用径向渐变化开 */
+    var i, x, y, rr, v, rg;
+    for (i = 0; i < 30; i++) {
+      x = R() * N; y = R() * N; rr = 34 + R() * 104;   /* 放大：一张纹理覆盖 ~3.8 米，斑块要有 0.5~2 米 */
+      v = Math.round(132 + R() * 112);   /* 明暗跨度拉大：斑驳要看得出来 */
+      rg = g.createRadialGradient(x, y, 0, x, y, rr);
+      rg.addColorStop(0, 'rgba(' + v + ',' + v + ',' + v + ',0.66)');
+      rg.addColorStop(1, 'rgba(' + v + ',' + v + ',' + v + ',0)');
+      g.fillStyle = rg; g.fillRect(x - rr, y - rr, rr * 2, rr * 2);
+    }
+
+    /* ③ 高频颗粒：逐像素微扰。图像数据直接算，比画几万个点快 */
+    var img = g.getImageData(0, 0, N, N), d = img.data;
+    for (i = 0; i < d.length; i += 4) {
+      var n = (R() - 0.5) * 24;          /* ±12 灰阶（放太大会变雪花） */
+      d[i] += n; d[i + 1] += n; d[i + 2] += n;
+    }
+    g.putImageData(img, 0, 0);
+
+    /* ④ 裂缝：随机折线，深灰 + 细。接地/风化最容易在裂缝处显脏 */
+    g.lineCap = 'round';
+    for (i = 0; i < 5; i++) {
+      g.beginPath();
+      var cx = R() * N, cy = R() * N;
+      g.moveTo(cx, cy);
+      var segs = 3 + Math.floor(R() * 4);
+      for (var k2 = 0; k2 < segs; k2++) {
+        cx += (R() - 0.5) * 92; cy += (R() - 0.5) * 92;   /* 裂缝要跨 1~2 米才看得出是裂缝 */
+        g.lineTo(cx, cy);
+      }
+      g.strokeStyle = 'rgba(70,66,60,' + (0.16 + R() * 0.22).toFixed(2) + ')';
+      g.lineWidth = 0.7 + R() * 1.3;
+      g.stroke();
+    }
+
+    /* ⑤ ⛔ 这里原本还有「底部暗带 + 顶部微亮」当作廉价 AO —— **撤掉了**。
+       它依赖「盒体每面 UV 都是 0..1」这个前提，而为了让纹理密度一致，
+       uvBox() 已经把 UV 改成世界坐标 + RepeatWrapping：
+       暗带于是按 1.6 米周期在墙面上**重复出现**，成了横向灰条纹（截图确认）。
+       AO 改由 bakeAO() 用**顶点色**实现 —— 与 UV 完全解耦。 */
+
+    /* ⑥ kind==='wall' 专用：**预制板接缝 + 渗水痕**
+       这是让「一面墙」像建筑而不是像色块的关键层。
+       没有结构线，再好的斑驳也只是「脏的平面」；
+       有了接缝，人眼会自动读出「这是拼装的墙体」，尺度感随之成立。 */
+    if (kind === 'wall') {
+      g.strokeStyle = 'rgba(46,44,42,0.5)';
+      g.lineWidth = 2.6;
+      for (var wy = 1; wy <= 1; wy++) {
+        g.beginPath(); g.moveTo(0, N * 0.5); g.lineTo(N, N * 0.5); g.stroke();
+      }
+      g.beginPath(); g.moveTo(N * 0.5, 0); g.lineTo(N * 0.5, N); g.stroke();
+      /* 接缝旁的凿痕高光：只画一侧，光才「有方向」 */
+      g.strokeStyle = 'rgba(210,206,198,0.18)';
+      g.lineWidth = 1.2;
+      g.beginPath(); g.moveTo(0, N * 0.5 + 2.2); g.lineTo(N, N * 0.5 + 2.2); g.stroke();
+
+      /* 渗水痕：从上方往下流的暗条，宽窄不一。废墟墙最典型的「时间痕迹」 */
+      /* ⚠️ 第一版画了 16 条，而这张贴图在 20 米长墙上要重复 6 次 → 96 条竖线，
+         成了「竖条纹壁纸」（截图确认）。渗水痕本来就是**偶发**的：
+         降到 4 条、透明度减半，才像「有几处漏过水」而不是「刷了条纹漆」。 */
+      for (var wi = 0; wi < 4; wi++) {
+        var wx2 = R() * N, wy2 = R() * N * 0.45;
+        var wl = 70 + R() * 190;
+        var lgw = g.createLinearGradient(wx2, wy2, wx2, wy2 + wl);
+        lgw.addColorStop(0, 'rgba(38,34,30,' + (0.10 + R() * 0.12).toFixed(2) + ')');
+        lgw.addColorStop(1, 'rgba(38,34,30,0)');
+        g.fillStyle = lgw;
+        g.fillRect(wx2 - 1 - R() * 4, wy2, 3 + R() * 9, wl);
+      }
+    }
+
+    var tex = new THREE.CanvasTexture(cv);
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    try { tex.colorSpace = THREE.SRGBColorSpace; } catch (e) { }
+    tex.anisotropy = 4;
+    _surfCache[key] = tex;
+    return tex;
+  }
+
+  /* 按世界尺寸重算盒体 UV。
+     ⚠️ BoxGeometry 的默认 UV 是「每面 0..1」—— 一面 20 米长的墙和一面 0.3 米的箱子
+     贴同一张纹理，前者会被拉成糊成一片的花。命中率最高的一步就是这里：
+     按顶点在面内的真实坐标 × 密度，让纹理密度在所有尺寸上都一致。 */
+  /* 回转体（圆柱/圆锥/球）的 UV 缩放。
+     这几类的默认 UV 也是 0..1：2.2 米高的树干和 0.4 米的桩子贴同一张纹理，
+     密度差 5 倍 —— 树干上的斑驳会被拉成竖条。按周长/高度折算平铺次数。 */
+  function uvTurned(geo, perUnit) {
+    if (geo.userData._uvT) return;
+    geo.userData._uvT = 1;
+    var pos = geo.attributes && geo.attributes.position, uv = geo.attributes && geo.attributes.uv;
+    if (!pos || !uv) return;
+    geo.computeBoundingBox();
+    var bb = geo.boundingBox;
+    var h = Math.max(0.05, bb.max.y - bb.min.y);
+    var r = Math.max(0.05, Math.max(bb.max.x - bb.min.x, bb.max.z - bb.min.z) / 2);
+    var repU = Math.max(1, Math.round(2 * Math.PI * r * perUnit));
+    var repV = Math.max(1, Math.round(h * perUnit));
+    for (var i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * repU, uv.getY(i) * repV);
+    uv.needsUpdate = true;
+  }
+
+  function uvBox(geo, perUnit) {
+    if (geo.userData._uv === perUnit) return;
+    geo.userData._uv = perUnit;
+    var pos = geo.attributes.position, nor = geo.attributes.normal, uv = geo.attributes.uv;
+    if (!pos || !nor || !uv) return;
+    for (var i = 0; i < pos.count; i++) {
+      var ax = Math.abs(nor.getX(i)), ay = Math.abs(nor.getY(i)), az = Math.abs(nor.getZ(i));
+      var u, v;
+      if (ax >= ay && ax >= az) { u = pos.getZ(i); v = pos.getY(i); }        /* 法线朝 X → 用 Z/Y */
+      else if (ay >= ax && ay >= az) { u = pos.getX(i); v = pos.getZ(i); }   /* 法线朝 Y → 用 X/Z */
+      else { u = pos.getX(i); v = pos.getY(i); }                             /* 法线朝 Z → 用 X/Y */
+      uv.setXY(i, u * perUnit, v * perUnit);
+    }
+    uv.needsUpdate = true;
+  }
+
+  /* 顶点色 AO：按**局部 Y** 把物体底部压暗。
+     为什么不用贴图：贴图的 UV 要按世界尺寸缩放（否则长墙被拉花），
+     任何「按 UV 画暗带」的做法都会在重复周期里反复出现。
+     顶点色与 UV 完全无关，且对所有几何体类型都成立（盒/柱/锥/球都行）。
+     曲线：底部 42% 内 0.58 → 1.0 快速抬升，顶部 15% 再轻微提亮（天光）。 */
+  function bakeAO(geo) {
+    if (geo.userData._ao) return;
+    geo.userData._ao = 1;
+    var pos = geo.attributes && geo.attributes.position;
+    if (!pos) return;
+    geo.computeBoundingBox();
+    var bb = geo.boundingBox;
+    var y0 = bb.min.y, h = Math.max(1e-4, bb.max.y - bb.min.y);
+    var col = new Float32Array(pos.count * 3);
+    for (var i = 0; i < pos.count; i++) {
+      var t = (pos.getY(i) - y0) / h;                 /* 0 = 底，1 = 顶 */
+      var k;
+      if (t < 0.42) k = 0.58 + 0.42 * (t / 0.42);     /* 接触暗部 */
+      else if (t > 0.86) k = 1.0 + 0.05 * ((t - 0.86) / 0.14);
+      else k = 1.0;
+      col[i * 3] = k; col[i * 3 + 1] = k; col[i * 3 + 2] = k;
+    }
+    geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  }
+
+  /* 辉光贴图（径向渐变）：给交互点做「这里有东西」的视觉焦点。
+     additive 混合 + depthWrite:false —— 叠在场景上像光晕，不会把背后压黑。 */
+  var _glowTex = null;
+  function glowSprite(colHex, size, op) {
+    if (!_glowTex) {
+      var cvG = document.createElement('canvas');
+      cvG.width = cvG.height = 128;
+      var gG = cvG.getContext('2d');
+      var rgG = gG.createRadialGradient(64, 64, 0, 64, 64, 64);
+      rgG.addColorStop(0.00, 'rgba(255,255,255,1)');
+      rgG.addColorStop(0.22, 'rgba(255,255,255,0.62)');
+      rgG.addColorStop(0.52, 'rgba(255,255,255,0.18)');
+      rgG.addColorStop(1.00, 'rgba(255,255,255,0)');
+      gG.fillStyle = rgG; gG.fillRect(0, 0, 128, 128);
+      _glowTex = new THREE.CanvasTexture(cvG);
+    }
+    var sp = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: _glowTex, color: colHex, transparent: true, opacity: op == null ? 0.62 : op,
+      blending: THREE.AdditiveBlending, depthWrite: false, fog: false,
+    }));
+    sp.scale.set(size, size, 1);
+    sp.name = 'glow';
+    return sp;
+  }
+
   function mesh(geo, mat, x, y, z) {
+    if (geo) {
+      /* 0.30/米：一张图覆盖 3.3 米。墙高 3.6 → 1.1 个周期（接缝可见、不糊）；
+         0.17 时墙只覆盖 0.6 个周期，纹理被放大 1.6 倍，细节全糊掉。 */
+      if (geo.type === 'BoxGeometry') uvBox(geo, 0.30);
+      else if (geo.type === 'CylinderGeometry' || geo.type === 'ConeGeometry'
+        || geo.type === 'SphereGeometry' || geo.type === 'IcosahedronGeometry') uvTurned(geo, 0.30);
+      bakeAO(geo);
+    }
     var m = new THREE.Mesh(geo, mat);
     if (x != null) m.position.set(x, y || 0, z || 0);
-    m.castShadow = false; m.receiveShadow = false;
+    /* v156.68：全局开投影。之前写死 false —— 所有物体都不会落影，
+       只能靠一个黑色圆片假装接地，一眼假。 */
+    m.castShadow = true; m.receiveShadow = true;
     return m;
   }
   /* 确定性随机：同一场景每次进来长得一样（否则"记住路"这件事不成立） */
@@ -4666,15 +4906,27 @@
   function gWall(w, hgt, seed) {
     var g = new THREE.Group(), R = rng(seed || 7);
     var thick = 0.34;
-    g.add(mesh(new THREE.BoxGeometry(w, hgt, thick), lam(C.ash), 0, hgt / 2, 0));
+    /* v156.68c：墙体用 wall 专版贴图（带预制板接缝 + 渗水痕）。
+       普通 prop 贴图是「均匀的脏」，只有接缝才能读出「建筑」。 */
+    g.add(mesh(new THREE.BoxGeometry(w, hgt, thick), lam(C.ash, { mapKind: 'wall' }), 0, hgt / 2, 0));
     var teeth = Math.max(2, Math.round(w / 0.7));
     for (var i = 0; i < teeth; i++) {
       if (R() > 0.55) continue;
       var bw = w / teeth * (0.5 + R() * 0.5), bh = 0.25 + R() * 0.65;
       g.add(mesh(new THREE.BoxGeometry(bw, bh, thick * 0.96), lam(C.ash), -w / 2 + (i + 0.5) * (w / teeth), hgt + bh / 2 - 0.06, 0));
     }
-    /* 墙面上的锈痕：一块薄板贴在正面 */
-    if (R() > 0.4) g.add(mesh(new THREE.BoxGeometry(w * 0.42, hgt * 0.5, 0.02), lam(C.rustDark), (R() - 0.5) * w * 0.4, hgt * 0.45, thick / 2 + 0.012));
+    /* 墙面上的锈迹（v156.68 改）：
+       旧版是**一整块 w*0.42 × hgt*0.5 的亮橙薄板**贴在墙正中 —— 规整、饱和、像便利贴，
+       是画面里最扎眼的元素（截图确认）。
+       改成 2~4 块**小块、低饱和、偏暗**的锈斑，分散贴在墙面上部：
+       锈是「渗出来的脏」，不是「刷上去的漆」。 */
+    var nr = 1 + Math.floor(R() * 3);
+    for (var q2 = 0; q2 < nr; q2++) {
+      var rw = w * (0.10 + R() * 0.17), rh = hgt * (0.14 + R() * 0.26);
+      var rustMat = lam(C.rustDark, { roughness: 0.98, metalness: 0.08, color: 0x6b4632 });
+      g.add(mesh(new THREE.BoxGeometry(rw, rh, 0.016), rustMat,
+        (R() - 0.5) * (w - rw) * 0.86, hgt * (0.42 + R() * 0.42), thick / 2 + 0.010));
+    }
     return g;
   }
 
@@ -5023,7 +5275,11 @@
     /* v156.67：0.26 的纯黑圆片在浅色地上像"洞口"，而且它是**圆**，
        和墙上/碎石那种方形轮廓对不上 —— 这是"简陋感"的第二大来源。
        降到 0.15 只留"物体压着地"的暗示，不做形状承诺。 */
-    if (!_shadowMat) _shadowMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.15 });
+    /* v156.68：开真阴影后，这个假圆片必须退到「几乎看不见」。
+       它原本是 0.26 的纯黑圆（像地上的洞），上一版降到 0.15；
+       现在有 shadowMap 的真实投影，留 0.06 只补「物体与地面的接触暗部」
+       （AO 的作用），多一分就会和真阴影叠成双重影。 */
+    if (!_shadowMat) _shadowMat = new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.06, depthWrite: false });
     var m = new THREE.Mesh(new THREE.CircleGeometry(r || 0.5, 14), _shadowMat);
     m.rotation.x = -Math.PI / 2;
     m.position.y = 0.012;
@@ -5083,7 +5339,7 @@
     function wall(cx, cz, w, d, h) {
       var vertical = d > w;
       var len = vertical ? d : w;
-      props.push({ t: 'wall', x: cx, z: cz, w: len, h: h || 2.6, rot: vertical ? Math.PI / 2 : 0, d: Math.min(w, d) });
+      props.push({ t: 'wall', x: cx, z: cz, w: len, h: h || 3.6, rot: vertical ? Math.PI / 2 : 0, d: Math.min(w, d) });
       solids.push({ x0: cx - w / 2, x1: cx + w / 2, z0: cz - d / 2, z1: cz + d / 2 });
     }
     function rubble(x, z, n, sd) { props.push({ t: 'rubble', x: x, z: z, n: n || 6, seed: sd || (seed + x * 7 + z * 13) | 0 }); }
@@ -5100,11 +5356,11 @@
       /* ⚠️ 坐标系：+z 是画面下方（玩家背后），-z 是前方。
          布局**必须以原点为中心** —— 第一版整体偏到左上角（x=-8.5, z=±8），
          而相机按"出生点 +10/-7"取景，结果只拍到地面边缘（截图确认）。 */
-      wall(-2.6, -2, 0.7, 20, 2.6);            /* 竖廊左墙 */
-      wall(2.6, -2, 0.7, 20, 2.6);             /* 竖廊右墙 → 宽 4.5 米通道 */
-      wall(-5, -12.4, 15, 0.7, 2.6);           /* 横廊上沿（尽头） */
-      wall(-5, -7.6, 8, 0.7, 2.6);             /* 横廊下沿（左侧留口 = 拐弯处） */
-      wall(-11.5, -10, 0.7, 6, 2.6);           /* 目标区侧墙 */
+      wall(-2.6, -2, 0.7, 20, 3.6);            /* 竖廊左墙 */
+      wall(2.6, -2, 0.7, 20, 3.6);             /* 竖廊右墙 → 宽 4.5 米通道 */
+      wall(-5, -12.4, 15, 0.7, 3.6);           /* 横廊上沿（尽头） */
+      wall(-5, -7.6, 8, 0.7, 3.6);             /* 横廊下沿（左侧留口 = 拐弯处） */
+      wall(-11.5, -10, 0.7, 6, 3.6);           /* 目标区侧墙 */
       rubble(0, 2, 8); rebar(1.4, -3, 5); rubble(-1.2, -5, 6);
       rubble(-5, -10, 7); rebar(-9, -10, 4);
       nodes.push({ t: 'rubble', x: 0, z: 2, act: 'cai', label: '翻找碎石堆', hint: '药草、矿料、偶尔一个辐能核心' });
@@ -5451,12 +5707,83 @@
     var host = document.getElementById('app-scale') || document.body;
     host.appendChild(layer);
     layer.style.display = 'none';
+    /* v156.68c：**暗角（vignette）**。
+       正交场景的问题之一是「画面一直铺到边缘、没有呼吸」，
+       观众会觉得像在看俯视示意图而不是一个场景。
+       用 CSS 在 canvas 上叠一层径向渐变：中心透明、四周压暗 ——
+       零 GPU 成本（不经过 WebGL），但立刻把注意力收到中心。
+       pointer-events:none 保证不挡点击。 */
+    (function addVignette() {
+      var v = document.createElement('div');
+      v.style.cssText = 'position:absolute;inset:0;pointer-events:none;z-index:3;' +
+        'background:radial-gradient(ellipse 68% 62% at 50% 48%, rgba(0,0,0,0) 42%, rgba(0,0,0,0.16) 68%, rgba(0,0,0,0.42) 100%);';
+      layer.appendChild(v);
+    })();
 
     R3 = new THREE.WebGLRenderer({ canvas: cvs, antialias: true });
     R3.setClearColor(0x0b0d10, 1);
     try { R3.outputColorSpace = THREE.SRGBColorSpace; } catch (e) { /* r150 以下没有 */ }
+    /* ============================================================
+     * v156.68（老板「渲染太幼稚了，没有发挥 three.js 的能力」）
+     * ------------------------------------------------------------
+     * 之前只用了 three 的「最低配置」：Lambert 材质 + 无阴影 + 无色调映射 +
+     * 无环境贴图。这四样都不开，画面必然是「纯色积木贴在板上」——
+     * 跟 three 能做什么没关系，是根本没用。
+     *
+     * 这一版把核心能力全开（都不需要 addon，项目只有 three.min.js）：
+     *   ① ACESFilmic 色调映射 —— 亮部不过曝、暗部有层次，是「电影感」的来源
+     *   ② shadowMap（PCFSoft）—— 物体终于有真实投影，而不是地上一个黑圆片
+     *   ③ scene.environment（程序化 PMREM）—— 金属才有反射、粗糙面才有环境色
+     *   ④ 材质 Lambert → MeshStandard（PBR）—— 见 lam()
+     * ============================================================ */
+    try {
+      R3.toneMapping = THREE.ACESFilmicToneMapping;
+      R3.toneMappingExposure = 1.32;      /* PBR + ACES 下画面整体偏暗，补偿到 1.32 */
+    } catch (e0) { }
+    try {
+      R3.shadowMap.enabled = true;
+      R3.shadowMap.type = THREE.PCFSoftShadowMap;   /* 硬边阴影会显「低模」，软边才融得进画面 */
+    } catch (e1) { }
 
     scene = new THREE.Scene();
+    /* ------------------------------------------------------------
+     * v156.68 程序化环境贴图（PBR 的灵魂）
+     * ------------------------------------------------------------
+     * MeshStandardMaterial 没有 environment 就等于塑料：metalness 再高也不反光。
+     * 项目只有 three.min.js（没有 RoomEnvironment / RGBELoader 这些 addon），
+     * 所以用 Canvas 现画一张 equirect 全景：
+     *   天顶暗 → 高空灰蓝 → 地平线暖沙 → 地面暗褐，
+     *   再在地平线上方点一个暖色太阳斑。
+     * 过 PMREMGenerator 转成预滤波环境贴图 —— 金属件会反射出这个太阳，
+     * 画面立刻有「光源真的在场景里」的感觉。
+     * ------------------------------------------------------------ */
+    (function buildEnv() {
+      try {
+        var cv2 = document.createElement('canvas');
+        cv2.width = 512; cv2.height = 256;
+        var g2 = cv2.getContext('2d');
+        var sky = g2.createLinearGradient(0, 0, 0, 256);
+        sky.addColorStop(0.00, '#0e151d');   /* 天顶：最深 */
+        sky.addColorStop(0.34, '#38434f');
+        sky.addColorStop(0.50, '#9c8f78');   /* 地平线：暖沙色 */
+        sky.addColorStop(0.62, '#5b5142');
+        sky.addColorStop(1.00, '#241f19');   /* 地面：暗褐（给物体底部环境反光） */
+        g2.fillStyle = sky; g2.fillRect(0, 0, 512, 256);
+        /* 太阳斑：偏高、偏一侧。PBR 高光会在这里「点亮」，金属才有金属样 */
+        var sg = g2.createRadialGradient(392, 96, 3, 392, 96, 104);
+        sg.addColorStop(0.00, 'rgba(255,242,214,1)');
+        sg.addColorStop(0.22, 'rgba(255,208,142,0.62)');
+        sg.addColorStop(0.55, 'rgba(240,178,110,0.16)');
+        sg.addColorStop(1.00, 'rgba(230,170,100,0)');
+        g2.fillStyle = sg; g2.fillRect(286, 0, 212, 200);
+        var eq = new THREE.CanvasTexture(cv2);
+        eq.mapping = THREE.EquirectangularReflectionMapping;
+        var pm = new THREE.PMREMGenerator(R3);
+        pm.compileEquirectangularShader();
+        scene.environment = pm.fromEquirectangular(eq).texture;
+        eq.dispose(); pm.dispose();
+      } catch (e) { /* 老版本没有 PMREM → 退回纯直射光，不影响可用性 */ }
+    })();
     cam = new THREE.OrthographicCamera(-10, 10, 10, -10, 0.1, 300);
     /* 光：半球光给环境色，方向光给"太阳"和影子方向感。
        不启用 shadowMap —— 正交场景里靠颜色和轮廓已经够，阴影贴图在移动端太贵。 */
@@ -5465,13 +5792,38 @@
          sun   主光（暖） → 给"太阳在哪"和明暗面
          rim   背光（冷） → 把暗面从背景里剥出来（没有它，灰墙压在灰地上就是一片糊）
        再加一盏很弱的环境光把最暗处抬起来 —— 低于这个亮度，暗部细节全丢。 */
-    scene.add(new THREE.HemisphereLight(0xe4eef5, 0x4a4638, 1.0));
-    var amb = new THREE.AmbientLight(0xffffff, 0.22);
+    /* v156.68b：**拉开明暗对比**。
+       旧参数是「环境光 1.0 + 环境 0.22 + 主光 1.15」—— 环境光几乎和主光一样强，
+       于是所有面亮度接近，阴影（如果有）也压不下去，画面就成了「一层灰雾」。
+       PBR 下方向光要给得更足、环境光要收得更紧：
+         hemi 1.0 → 0.42（只负责天光/地面反光的色相）
+         amb  0.22 → 0.08（只把纯黑抬起来一点）
+         sun  1.15 → 2.25（主光主导，明暗面才分得开）
+         rim  0.55 → 0.85（背光把暗面从背景里剥出来） */
+    scene.add(new THREE.HemisphereLight(0xe4eef5, 0x4a4638, 0.30));
+    var amb = new THREE.AmbientLight(0xffffff, 0.08);
     scene.add(amb);
-    var sun = new THREE.DirectionalLight(0xfff1d8, 1.15);
+    var sun = new THREE.DirectionalLight(0xfff1d8, 2.60);
     sun.position.set(9, 16, 7);
+    /* v156.68：主光投影。正交光源的 shadow camera 要手动覆盖整个场景（40×40），
+       否则边缘物体没有阴影。1024² + PCFSoft 在这个体量（几十个 mesh）下开销很小，
+       换来的是「物体真的站在地上」—— 这是廉价假圆片永远做不到的。 */
+    try {
+      sun.castShadow = true;
+      sun.shadow.mapSize.set(1024, 1024);
+      sun.shadow.camera.left = -24; sun.shadow.camera.right = 24;
+      sun.shadow.camera.top = 24; sun.shadow.camera.bottom = -24;
+      sun.shadow.camera.near = 1; sun.shadow.camera.far = 90;
+      /* ⚠️ 关键：改了正交 shadow camera 的边界**必须** updateProjectionMatrix()。
+         不调它，投影矩阵还是默认的 -5..5（10×10 米），
+         而墙在 ±12 米外 —— 影子全被裁掉，等于没开阴影。
+         第一版就是这么「开了但看不见」的。 */
+      sun.shadow.camera.updateProjectionMatrix();
+      sun.shadow.bias = -0.0009;        /* 防止自阴影「痤疮」 */
+      sun.shadow.normalBias = 0.022;
+    } catch (e2) { }
     scene.add(sun);
-    var rim = new THREE.DirectionalLight(0x9fc4d8, 0.55);
+    var rim = new THREE.DirectionalLight(0x9fc4d8, 0.85);
     rim.position.set(-8, 6, -9);
     scene.add(rim);
     /* v156.67：野外场景把主光压低（16 → 9），让地面起伏真的产生明暗。
@@ -5504,35 +5856,75 @@
 
   /* ---------- 地面贴图（程序生成，1 张 256² 噪声图） ---------- */
   function groundTexture(baseCol, seed, kind) {
+    /* v156.68b：512² + repeat(5,5) 时，同一张图的暗斑在画面上重复 25 次，
+       肉眼立刻能看出「阵列」。改 512² + repeat(3,3)：
+       重复次数降到 9，且单格覆盖 13.3 米，斑块不再有周期感。 */
     var cv = document.createElement('canvas');
-    cv.width = cv.height = 256;
+    cv.width = cv.height = 512;
     var g = cv.getContext('2d');
     var base = new THREE.Color(baseCol);
     g.fillStyle = '#' + base.getHexString();
-    g.fillRect(0, 0, 256, 256);
+    g.fillRect(0, 0, 512, 512);
     var R = rng(seed || 5);
+
+    /* ============================================================
+     * v156.68b（老板「渲染太幼稚」）—— 地面加**大尺度层次**
+     * ------------------------------------------------------------
+     * 旧版只有 2600 个 1~3px 的点 + 26 条细线 —— 全是**高频**。
+     * 高频没有尺度参照，看起来就是「砂纸 / 电视雪花」，
+     * 而地面占画面 80%，于是整幅画面显得廉价。
+     *
+     * 真实地表的层次是「大块脏 + 局部斑 + 细颗粒」三层叠加：
+     *   ① 大色斑（半径 40~110px ≈ 1.2~3.4 米）：湿/干、踩实/松土
+     *   ② 污渍团（多个圆叠成不规则形）：油渍、积水痕、焦痕
+     *   ③ 干裂网：缝隙交错，是「久无人烟」最直接的信号
+     * 三层之后才叠原来的颗粒 —— 顺序不能反，细颗粒必须压在最上面。
+     * ============================================================ */
+    var _i, _x, _y, _r, _v, _rg;
+    /* ⛔ 原来的「① 大色斑 / ② 污渍团」两层**已删除**。
+       它们画的是几十米级的尺度，而贴图要 repeat —— 必然出现形状重复的「云影」。
+       大尺度改由地面几何体的**顶点色**承担（见 buildScene 里 _cols）。
+       留在这里的只有小尺度：颗粒、干裂、草叶 —— 这些重复了也看不出来。 */
+
+    /* ③ 干裂网：主裂缝粗、支缝细，交错才有「旱地」感 */
+    g.lineCap = 'round';
+    for (_i = 0; _i < 9; _i++) {
+      var _cx2 = R() * 512, _cy2 = R() * 512;
+      g.beginPath(); g.moveTo(_cx2, _cy2);
+      for (var _j = 0; _j < 5; _j++) {
+        _cx2 += (R() - 0.5) * 92; _cy2 += (R() - 0.5) * 92;
+        g.lineTo(_cx2, _cy2);
+      }
+      g.strokeStyle = 'rgba(28,24,18,' + (0.20 + R() * 0.22).toFixed(2) + ')';
+      g.lineWidth = 2.4 + R() * 4.0;
+      g.stroke();
+    }
+
     /* 噪点：三档明暗，做成"被踩过的地" */
-    for (var i = 0; i < 2600; i++) {
-      var v = (R() - 0.5) * 0.24;
+    /* v156.68b：原 7000 个 2~8px 的点，像素放大后成了「一地白盐」——
+       颗粒层的作用是**打破纯色**，不是"撒石子"。数量降到 2800、尺寸 1~3px、
+       亮度扰动收窄到 ±0.09，让它退成底噪。 */
+    for (var i = 0; i < 2800; i++) {
+      var v = (R() - 0.5) * 0.18;
       var c = base.clone().offsetHSL(0, 0, v);
       g.fillStyle = '#' + c.getHexString();
-      var s = 1 + R() * 3;
-      g.fillRect(R() * 256, R() * 256, s, s);
+      var s = 1 + R() * 2.4;
+      g.fillRect(R() * 512, R() * 512, s, s);
     }
     /* 裂缝 / 草丛：按场景类型给不同笔触 */
     g.strokeStyle = 'rgba(0,0,0,0.18)';
-    g.lineWidth = 1;
+    g.lineWidth = 2;
     for (var k = 0; k < 26; k++) {
       g.beginPath();
-      var x = R() * 256, y = R() * 256;
+      var x = R() * 512, y = R() * 512;
       g.moveTo(x, y);
-      for (var j = 0; j < 3; j++) { x += (R() - 0.5) * 30; y += (R() - 0.5) * 30; g.lineTo(x, y); }
+      for (var j = 0; j < 3; j++) { x += (R() - 0.5) * 60; y += (R() - 0.5) * 60; g.lineTo(x, y); }
       g.stroke();
     }
     if (kind === 'grass') {
       g.strokeStyle = 'rgba(150,180,120,0.28)';
       for (var m = 0; m < 220; m++) {
-        var gx = R() * 256, gy = R() * 256;
+        var gx = R() * 512, gy = R() * 512;
         g.beginPath(); g.moveTo(gx, gy); g.lineTo(gx + (R() - 0.5) * 4, gy - 3 - R() * 4); g.stroke();
       }
     }
@@ -5571,7 +5963,11 @@
     scene.background = new THREE.Color(_skyBase);
     /* v156.67（老板「能做的必须做到底」）：雾从 0.020 加到 0.030 ——
        0.020 时远处几乎不衰减，画面像"贴纸"；0.030 才有纵深，墙根发灰。 */
-    scene.fog = new THREE.FogExp2(_fogBase, 0.030);
+    /* v156.68c：雾 0.030 → 0.022。
+       0.030 在 20 米处透射率只有 ~70%，把刚加进去的纹理和明暗全冲淡了 ——
+       画面"雾蒙蒙"不是因为材质不够，是因为雾盖住了。
+       0.022 保留纵深（远处墙根发灰），但不吃掉细节。 */
+    scene.fog = new THREE.FogExp2(_fogBase, 0.022);
 
     /* 地面 */
     var kind = (cfg.id === 'forest' || cfg.id === 'field') ? 'grass' : 'ash';
@@ -5579,8 +5975,14 @@
     /* v156.67：纹理必须 repeat —— 256² 拉满 40×40 会糊成一块颜色，
        没有"地面"的尺度感。5×5 让噪点/裂缝回到可读的大小。 */
     gtex.wrapS = gtex.wrapT = THREE.RepeatWrapping;
-    gtex.repeat.set(5, 5);
-    var gm = new THREE.MeshLambertMaterial({ map: gtex, color: 0xffffff });
+    gtex.repeat.set(3, 3);
+    /* v156.68：地面也换 PBR —— 它是画面占比最大的面，Lambert 的纯漫反射
+       在有真阴影之后会显得「影子浮在色块上」。roughness 拉满 1.0（土/尘土无镜面），
+       metalness 0（不反光），envMapIntensity 压低到 .35（只吃一点环境色，不自发光）。 */
+    var gm = new THREE.MeshStandardMaterial({
+      map: gtex, color: 0xffffff, roughness: 1.0, metalness: 0.0, envMapIntensity: 0.35,
+      vertexColors: true,   /* v156.68d：大尺度明暗由顶点色给（贴图会重复，顶点色不会） */
+    });
     /* v156.67：**地面要有起伏**。
        旧版是 PlaneGeometry(40,40,1,1) —— 一张绝对平的板，法线全朝上，
        在平行光下就是均匀一片色（这就是"简陋"最大的来源：占 80% 画面的东西没有明暗）。
@@ -5592,19 +5994,42 @@
     var gGeo = new THREE.PlaneGeometry(40, 40, 48, 48);
     (function () {
       var _pa = gGeo.attributes.position, _Rg = rng((cfg.seed || 7) + 3311);
+      /* ============================================================
+       * v156.68d：**地面的大尺度变化改由顶点色承担**。
+       * ------------------------------------------------------------
+       * 之前把「大色斑 / 污渍团」画进贴图，而贴图要 repeat(3,3) ——
+       * 于是同一个形状在地面上重复 9 次，森林/湖畔那种浅色地上
+       * 看起来像一片「形状相同的云影」，规律性一眼可见（截图确认）。
+       *
+       * 贴图**必然**重复，这消不掉。正确分工是：
+       *   大尺度（几十米级的明暗起伏）→ **顶点色**，逐顶点算，天然不重复
+       *   小尺度（颗粒、裂缝、板缝）    → 贴图 repeat
+       * 三层正弦 + 一层随机，得到 0.74~1.06 的亮度乘子 ——
+       * 足够看出「这片湿、那片干」，但不会像贴了一张斑马图。
+       * ============================================================ */
+      var _cols = new Float32Array(_pa.count * 3);
       for (var i = 0; i < _pa.count; i++) {
         var _x = _pa.getX(i), _y = _pa.getY(i);
-        /* ±0.07 在正交俯视下几乎看不出（截图确认）；加到 ±0.19 ——
-           仍远低于玩家身高 1.8 与墙高 2.6，不影响行走/碰撞。 */
         var _h = Math.sin(_x * 0.33 + 1.7) * 0.170
                + Math.cos(_y * 0.41 - 0.9) * 0.140
                + (_Rg() - 0.5) * 0.060;
         _pa.setZ(i, _h);
+        var _n1 = Math.sin(_x * 0.19 + 1.3) * Math.cos(_y * 0.15 - 0.7);
+        var _n2 = Math.sin(_x * 0.44 - 2.1) * Math.cos(_y * 0.37 + 1.1);
+        var _n3 = Math.sin((_x + _y) * 0.09 + 0.5);
+        /* 幅度 0.86 ± 0.23：贴图的大色斑删掉之后，0.90±0.17 显得太空，
+           加大到能看出「这块偏湿、那块偏干」，同时仍远小于物体自身的明暗。 */
+        var _k = 0.86 + _n1 * 0.105 + _n2 * 0.055 + _n3 * 0.075;
+        if (_k < 0.66) _k = 0.66; if (_k > 1.10) _k = 1.10;
+        _cols[i * 3] = _k; _cols[i * 3 + 1] = _k; _cols[i * 3 + 2] = _k;
       }
+      gGeo.setAttribute('color', new THREE.BufferAttribute(_cols, 3));
       gGeo.computeVertexNormals();
     })();
     var ground = new THREE.Mesh(gGeo, gm);
     ground.rotation.x = -Math.PI / 2;
+    ground.receiveShadow = true;      /* v156.68：地面是唯一接影的面，必须开 */
+    ground.castShadow = false;        /* 自己不投影（否则起伏会自影成脏斑） */
     propRoot.add(ground);
 
     /* 水（只有 lake 有）：单独一块半透明面 + 每帧顶点波动 */
@@ -5623,7 +6048,13 @@
          查了半天才定位到是透明排序，而不是几何错误。
          湖面是**实地**，直接给不透明材质 —— 既没有穿插，也没有排序问题，
          观感上还更"水"（浅色底透出来的那种发灰不像水）。 */
-      var wm = new THREE.MeshLambertMaterial({ color: C.water });
+      /* v156.68c：水面从 Lambert 换 Standard —— 水是「最低粗糙度 + 吃环境反射」的典型，
+         用纯漫反射材质画水，永远是"一块深蓝色的板"。
+         roughness 0.08 近乎镜面，envMapIntensity 1.6 让它映出天空与太阳斑。 */
+      var wm = new THREE.MeshStandardMaterial({
+        color: C.water, roughness: 0.08, metalness: 0.12, envMapIntensity: 1.6,
+        transparent: true, opacity: 0.92, vertexColors: false,
+      });
       waterMesh = new THREE.Mesh(wg, wm);
       waterMesh.rotation.x = -Math.PI / 2;
       /* 水面基准高度 **0.12**，不是 0.03 ——
@@ -5748,6 +6179,11 @@
       var ring = gNodeRing(C.glow);
       ring.position.set(0, 0, 0);
       o.add(ring);
+      /* v156.68c：交互点加辉光 —— 正交俯视下，一块发光的地面标记不够"亮"，
+         加一层 additive 光晕才有「这里能动手」的视觉焦点。 */
+      var _gs = glowSprite(C.glow, 2.2, 0.55);
+      _gs.position.set(0, 0.55, 0);
+      o.add(_gs);
       /* 今天这一处是不是已经收拾过（进出场景、读档都记得） */
       var _wasDone = S.isDone(cfg.id, i);
       o.userData.node = { idx: i, act: nd.act, label: nd.label, hint: nd.hint, done: _wasDone, ring: ring };
@@ -6042,6 +6478,8 @@
       } else if (o.name === 'flame') {
         var k = 0.9 + Math.sin(now * 0.012 + o.id) * 0.12;
         o.scale.set(k, 1.05 + Math.sin(now * 0.017 + o.id) * 0.1, k);
+      } else if (o.name === 'glow') {
+        o.material.opacity = 0.44 + Math.sin(now * 0.0024 + o.id) * 0.17;
       } else if (o.name === 'core') {
         var k2 = 1 + Math.sin(now * 0.004) * 0.06;
         o.scale.set(k2, k2, k2);
@@ -6086,11 +6524,27 @@
    *   天光与雾乘一个 tint（本色 × 系数）。数据归数据，呈现归呈现。
    * 性能：phaseOf 是纯算术，每帧判"变没变"近零成本；只有跨时段才 apply。
    * ============================================================ */
+  /* v156.68b：**四组光参按 PBR 重新标定**。
+     ------------------------------------------------------------
+     起因：老板说「渲染太幼稚」。我先查了实际数值 ——
+     sun.intensity 实测 **0.16**（我设的是 2.25），因为 applyPhase() 会覆盖它。
+     而 0.16 是「夜」档的旧值，同时 ambI 给到 0.30 —— **主光比环境光还弱**。
+     环境光主导 = 所有面一样亮 = 没有明暗 = 没有体积 = 一片灰。
+     这不是"参数没调好"，是**旧参数是为 Lambert 标的**：
+     Lambert 只有漫反射，光强 1.15 已经很亮；PBR 要按同样的照度给到 2.5+。
+
+     新的配比原则：**主光主导，环境只补色**。
+       day   sun 2.60 / amb 0.08  → 强侧光，明暗面清晰，阴影实
+       dawn  sun 1.70 / amb 0.10  → 低角度暖光，长影
+       dusk  sun 1.55 / amb 0.10  → 更红更低
+       night sun 0.55 / amb 0.10  → 月光（冷），仍能看出轮廓与投影
+     夜晚旧值 sunI 0.16 太暗、ambI 0.30 太亮，等于"没有光源的灰色世界"。
+     ============================================================ */
   var PHASES = {
-    night: { sun: 0x2a3550, sunI: 0.16, ambI: 0.30, rim: 0x35507a, rimI: 0.32, tint: 0.55 },
-    dawn:  { sun: 0xffb37a, sunI: 0.72, ambI: 0.26, rim: 0x8fa8c8, rimI: 0.42, tint: 0.86 },
-    day:   { sun: 0xfff1d8, sunI: 1.15, ambI: 0.22, rim: 0x9fc4d8, rimI: 0.55, tint: 1.0 },
-    dusk:  { sun: 0xff8a4a, sunI: 0.68, ambI: 0.26, rim: 0x7a6a9a, rimI: 0.42, tint: 0.82 }
+    night: { sun: 0x93a9d6, sunI: 0.55, ambI: 0.10, rim: 0x4a6a9a, rimI: 0.30, tint: 0.52 },
+    dawn:  { sun: 0xffb37a, sunI: 1.70, ambI: 0.10, rim: 0x8fa8c8, rimI: 0.42, tint: 0.88 },
+    day:   { sun: 0xfff1d8, sunI: 2.60, ambI: 0.08, rim: 0x9fc4d8, rimI: 0.62, tint: 1.0 },
+    dusk:  { sun: 0xff8a4a, sunI: 1.55, ambI: 0.10, rim: 0x7a6a9a, rimI: 0.45, tint: 0.84 }
   };
   /* 时段划分（游戏内小时）：0~5 夜 · 6~10 晨 · 11~16 昼 · 17~19 昏 · 20~23 夜 */
   function phaseOf(hour) {
@@ -7265,6 +7719,35 @@
       player: player ? [+player.position.x.toFixed(2), +player.position.z.toFixed(2)] : null,
       solids: (citySolids || []).length, bounds: cityBounds,
     };
+  };
+
+  /* v156.68 渲染诊断：阴影/色调映射/环境的真实状态。
+     「开了但看不见」这类问题只能读数，不能靠截图猜。 */
+  S._gfx = function () {
+    var o = { ok: false };
+    try {
+      o.shadowMapEnabled = !!(R3 && R3.shadowMap && R3.shadowMap.enabled);
+      o.shadowMapType = R3 ? R3.shadowMap.type : null;
+      o.toneMapping = R3 ? R3.toneMapping : null;
+      o.exposure = R3 ? R3.toneMappingExposure : null;
+      o.physicallyCorrect = R3 ? (R3.useLegacyLights === undefined ? 'n/a' : R3.useLegacyLights) : null;
+      o.env = !!(scene && scene.environment);
+      o.fog = scene && scene.fog ? scene.fog.density : null;
+      var L = LGT || {};
+      o.sunCast = L.sun ? L.sun.castShadow : null;
+      o.sunIntensity = L.sun ? L.sun.intensity : null;
+      o.sunPos = L.sun ? L.sun.position.toArray().map(function (v) { return +v.toFixed(1); }) : null;
+      o.shadowCam = L.sun && L.sun.shadow ? {
+        l: L.sun.shadow.camera.left, r: L.sun.shadow.camera.right,
+        t: L.sun.shadow.camera.top, b: L.sun.shadow.camera.bottom,
+        n: L.sun.shadow.camera.near, f: L.sun.shadow.camera.far,
+      } : null;
+      o.shadowMapObj = L.sun && L.sun.shadow ? !!L.sun.shadow.map : null;
+      o.renderCalls = R3 && R3.info ? R3.info.render.calls : null;
+      o.triangles = R3 && R3.info ? R3.info.render.triangles : null;
+      o.ok = true;
+    } catch (e) { o.err = e.message; }
+    return o;
   };
 
   S.play = function (actId, ci, opts) {
