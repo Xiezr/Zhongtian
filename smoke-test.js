@@ -14558,11 +14558,15 @@ console.log('\n===== 47. v62 机工坊造箭塔 =====');
     var uiSrc = stripComment(__uiAll());
     var hSrc = fsSv.readFileSync(pathSv.join(__dirname, 'index.html'), 'utf8');
 
-    check('槽位表：主档 + 3 手动 + 3 自动备份（共 7，键名规则唯一）', (function () {
+    /* v156.69：自动备份 3 份 → 1 份（每份是全量存档，后期 ~1.1MB；
+       3 份备份 + 主档 + 3 手动槽 = 7 份 × 1.1MB = 7.7MB，直接撑爆 5MB 配额，
+       玩家报的「setItem ... exceeded the quota」就是这条）。
+       断言随之改成 5 个槽。 */
+    check('槽位表：主档 + 3 手动 + 1 自动备份（共 5，键名规则唯一）', (function () {
       var ids = G.SLOTS.map(function (x) { return x.id; });
-      return G.SLOTS.length === 7 && ids.join(',') === 'main,s1,s2,s3,a1,a2,a3'
+      return G.SLOTS.length === 5 && ids.join(',') === 'main,s1,s2,s3,a1'
         && G.SLOTS[0].key === 'sanguo_save_v3'
-        && G.SLOTS.filter(function (x) { return x.kind === 'auto'; }).length === 3
+        && G.SLOTS.filter(function (x) { return x.kind === 'auto'; }).length === 1
         && G.SLOTS.every(function (x) { return /^sanguo_save_v3/.test(x.key); });
     })(), G.SLOTS.map(function (x) { return x.id; }).join(','));
 

@@ -436,6 +436,10 @@ import './core.js';
     /* v91.30h（性能）：**同种子兄弟球复用**（mapSphere 与逻辑球面同星球时，地形/几何完全一致）——
        直接共享对方已建的只读大数组（cells/V/F/cent/adj/upos/fpos/faceCell…），
        免掉第二遍 40962 格噪声（~500ms）。内容同种子确定 → 无副作用。 */
+    /* v156.70：重建前把线框高度表作废。下面还会按 sd 校验一次，
+       两道都留着 —— 这里的意义是"重建 = 所有按旧地图算出的派生值一律作废"，
+       而不是指望每个缓存各自记得校验 seed。 */
+    SP._rimHMap = null; SP._rimSeed = null;
     var _twin = (GAME.sphere && GAME.sphere !== SP && GAME.sphere.cells && GAME.sphere._bSub === sub
       && GAME.sphere._bSeed === sd && GAME.sphere._bPver === pver) ? GAME.sphere
       : ((GAME.mapSphere && GAME.mapSphere !== SP && GAME.mapSphere.cells && GAME.mapSphere._bSub === sub
@@ -445,6 +449,12 @@ import './core.js';
       SP.upos = _twin.upos; SP.fpos = _twin.fpos; SP.faceCell = _twin.faceCell; SP.nv = _twin.nv;
       SP.vf = _twin.vf; SP.meanLand = _twin.meanLand; SP.shellH = _twin.shellH; SP.shellR = _twin.shellR;
       _builtSub = sub; _builtSeed = sd; _builtPver = pver; SP._bSub = sub; SP._bSeed = sd; SP._bPver = pver;
+      /* v156.71：世界版本号 —— 每次"数据层重建"都 +1。
+         渲染层（map3d）靠它握手判断自己的网格是否已经过期。
+         起因：setPlanet() 有 8 个调用点，全靠调用方**记得**再 rebuild 一次；
+         漏一个就是"数据换了星、画面还是上一颗"（分层自检实测：线框偏差 11~25 单位）。
+         有版本号之后，判断权在消费方，不再依赖调用方自觉。 */
+      SP.worldVer = (SP.worldVer || 0) + 1;
       /* ⛔ v139：复用兄弟球的数组时**也必须清坐标缓存** ——
          `_xyCi` 是每个球面自己的记忆，里面可能存着"这台球还没建好时算出的 -1"。
          实测：newGame 里 mapSphere 走了复用分支、缓存没清，
@@ -543,7 +553,25 @@ import './core.js';
       var _lift = 0.05;
       for (var i3 = 0; i3 < mm; i3++) { var cc3 = cent[fs[i3]], rr3 = terrainR(cc3); RIM.push([cc3[0] * rr3, cc3[1] * rr3, cc3[2] * rr3]); }
       /* 用「顶点位置(取整) → 高度」的全局表求平均：同一条边两侧共享同一批采样点 */
-      if (!SP._rimHMap) SP._rimHMap = {};
+      /* ============================================================
+       * v156.70（老板「省市区边界虚线飘出地面，不是依据地形和区域划分严格生成的」）
+       * ------------------------------------------------------------
+       * 根因（审出来的，不是猜）：
+       *   `_rimHMap` =「顶点方向 → 地形高度」的全局表。
+       *   键是 **ico 球细分后的格心方向**（`Math.round(c*1000)`），
+       *   而 icoSpheres(sub) 的顶点**只跟 sub 有关、与 seed 无关** ——
+       *   换存档后格心方向一模一样，键 100% 命中。
+       *   于是线框抬升用的是**上一张地图**的地形高度：
+       *     · 新地图这里比旧地图低 → 线比地面高 → **飘出地面**
+       *     · 新地图这里比旧地图高 → 线埋进地里
+       *   而 sphElev() 依赖 seed3()（= GAME.state.map.seed），两张地图的地表完全不同。
+       *   这也精确解释了老板说的「**换存档后**才出现」。
+       *
+       * 修法：表跟着 seed 走。seed 一变就重建（不只是首次建）。
+       * ⚠️ 任何「键与 seed 无关、值却依赖 seed」的缓存都有这个问题 —— 
+       *   本文件内同类缓存一并按此口径审过（见 _xyCi 的注释）。
+       * ============================================================ */
+      if (!SP._rimHMap || SP._rimSeed !== sd) { SP._rimHMap = {}; SP._rimSeed = sd; }
       for (var e2 = 0; e2 < mm; e2++) {
         var s1c = cent[fs[e2]], s2c = cent[fs[(e2 + 1) % mm]];
         var k1 = [Math.round(s1c[0] * 1000), Math.round(s1c[1] * 1000), Math.round(s1c[2] * 1000)].join(',');
@@ -587,6 +615,8 @@ import './core.js';
 
     SP.V = V; SP.F = F; SP.cent = cent; SP.adj = adj; SP.cells = cells;
     SP.upos = upos; SP.uposCell = uposCell; SP.fpos = fpos; SP.faceCell = faceCell; SP.nv = nv;
+    /* v156.71：主路径重建完成 —— 世界版本号 +1（见上面 _twin 分支同名注释） */
+    SP.worldVer = (SP.worldVer || 0) + 1;
     _builtSub = sub; _builtSeed = sd; _builtPver = pver; SP._bSub = sub; SP._bSeed = sd; SP._bPver = pver;
     SP.sub = sub;
     _grid = null;                                    /* 空间哈希随之失效（V 已换）*/

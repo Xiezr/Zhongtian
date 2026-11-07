@@ -10965,7 +10965,12 @@ window.GAME = window.GAME || {};
          state.cities（已占城市，含 origId）/ state.wilds / state.fortsRazed。 */
       /* v67：序列化走唯一出口 `savePayload`（导出/存槽位也用它，不许各写一份） */
       var json = GAME.savePayload();
-      localStorage.setItem(SAVE_KEY, json);
+      /* v156.69：走兜底写入（配额不足时先清理可再生的备份再重试） */
+      var _w = GAME._setItemSafe(SAVE_KEY, json);
+      if (!_w.ok) {
+        if (window.console && window.console.warn) window.console.warn('存档失败（空间不足）：' + _w.msg);
+        return false;
+      }
       GAME.saveMeta(GAME.metaOf(GAME.state));   // 同步维护轻量索引
       GAME._setSlotIndex('main', GAME.state, json.length);
       return true;
@@ -11005,7 +11010,12 @@ window.GAME = window.GAME || {};
     var sp0 = GAME.sphere;
     var cur = (sp0 && sp0.cells) ? sp0.cells.length : 0;
     if (!cur) return 0;
-    if (st._sub153 === cur) return 0;
+    if (st._sub153 === cur) {
+      /* 已经迁移过：顺带清掉可能残留的查找表（老存档读进来时还在内存里，
+         虽然已不参与任何计算，但 1.5MB 白占着，且不该被状态快照带出去）。 */
+      if (st._sub153LL) { try { delete st._sub153LL; } catch (eL0) { st._sub153LL = null; } }
+      return 0;
+    }
     var FROM_SUB = 6;                       /* 缺省：老档按 40962 解释 */
     if (st._sub152 === 10242) FROM_SUB = 5; /* v152 期间存下的档是 10242 */
     var oldLL = st._sub153LL || null;
@@ -11017,7 +11027,12 @@ window.GAME = window.GAME || {};
       oldLL = tmp.cells.map(function (c) { return c ? [c.lon, c.lat] : null; });
       st._sub153LL = oldLL;
     }
-    if (oldLL.length === cur) { st._sub153 = cur; return 0; }
+    if (oldLL.length === cur) {
+      /* 格数一致 → 不需要任何映射，标记完成并把查找表丢掉 */
+      st._sub153 = cur;
+      try { delete st._sub153LL; } catch (eL2) { st._sub153LL = null; }
+      return 0;
+    }
     var nc = sp0.cells, map1 = function (ci) {
       if (ci == null || ci < 0 || ci >= oldLL.length || !oldLL[ci]) return ci;
       var ll = oldLL[ci], best = 0, bd = 1e18;
@@ -11047,6 +11062,10 @@ window.GAME = window.GAME || {};
       }
     });
     st._sub153 = cur;
+    /* v156.69：迁移已完成 → 临时查找表立刻丢掉。
+       它只服务于这一次「老 ci → 经纬 → 新 ci」的映射，之后永远不会再被读。
+       不删就是一个 1.5MB 的常驻垃圾（而且还会被序列化进每一份存档）。 */
+    try { delete st._sub153LL; } catch (eL) { st._sub153LL = null; }
     try { if (GAME.fog && GAME.fog.reset) GAME.fog.reset(); } catch (eF) {}
     try { if (GAME.map3d && GAME.map3d.rebuild) GAME.map3d.rebuild(); } catch (eM) {}
     return n;
@@ -11478,21 +11497,107 @@ window.GAME = window.GAME || {};
    * ============================================================ */
   var SLOT_INDEX_KEY = 'sanguo_slots_v3';
   GAME.SAVE_FMT = 'sanguo-save';
+  /* v156.69：自动备份 **3 份 → 1 份**。
+     每份都是全量存档（后期 ~1.1MB），3 份备份 = 3.3MB，
+     再加主档与 3 个手动槽，7 份直接把 5MB 配额吃穿。
+     1 份备份已经能挡住「误覆盖/坏档」，2、3 份的边际价值远小于它的体积成本。 */
   GAME.SLOTS = [
     { id: 'main', name: '主档', kind: 'main', key: SAVE_KEY },
     { id: 's1', name: '存档 1', kind: 'manual', key: SAVE_KEY + '_s1' },
     { id: 's2', name: '存档 2', kind: 'manual', key: SAVE_KEY + '_s2' },
     { id: 's3', name: '存档 3', kind: 'manual', key: SAVE_KEY + '_s3' },
-    { id: 'a1', name: '自动备份 1', kind: 'auto', key: SAVE_KEY + '_a1' },
-    { id: 'a2', name: '自动备份 2', kind: 'auto', key: SAVE_KEY + '_a2' },
-    { id: 'a3', name: '自动备份 3', kind: 'auto', key: SAVE_KEY + '_a3' }
+    { id: 'a1', name: '自动备份', kind: 'auto', key: SAVE_KEY + '_a1' }
   ];
   GAME.slotOf = function (id) {
     for (var i = 0; i < GAME.SLOTS.length; i++) if (GAME.SLOTS[i].id === id) return GAME.SLOTS[i];
     return null;
   };
+
+  /* ============================================================
+   * v156.69 写入兜底：配额不足时**先腾空间再重试**
+   * ------------------------------------------------------------
+   * 光靠"减小存档"不够 —— 玩家浏览器里可能已经有别的东西占着，
+   * 或者临时多写一份就满了。写入失败时按「可再生 → 不可再生」的顺序清：
+   *   1. 自动备份 a1（下次自动存档会重建）
+   *   2. 手动存档 s3 → s2（玩家数据，只在万不得已时动，并且**告诉玩家删了哪个**）
+   * 绝不删 main 与当前正在写的那个槽。
+   * 返回 { ok, freed[] }，调用方据此提示。
+   * ============================================================ */
+  GAME._setItemSafe = function (key, val) {
+    try { localStorage.setItem(key, val); return { ok: true, freed: [] }; }
+    catch (e0) {
+      var freed = [];
+      var order = ['a1', 's3', 's2'];
+      for (var i = 0; i < order.length; i++) {
+        var sl = GAME.slotOf(order[i]);
+        if (!sl || sl.key === key) continue;
+        var has = null;
+        try { has = localStorage.getItem(sl.key); } catch (e1) { }
+        if (!has) continue;
+        try { localStorage.removeItem(sl.key); } catch (e2) { }
+        freed.push(sl.name);
+        try { localStorage.setItem(key, val); return { ok: true, freed: freed }; }
+        catch (e3) { /* 还满，继续腾 */ }
+      }
+      return { ok: false, msg: (e0 && e0.message) || '配额不足', freed: freed };
+    }
+  };
+  /* 提示文案：腾过空间就明说删了什么，别让玩家以为存档凭空消失 */
+  GAME._quotaMsg = function (res, base) {
+    if (res && res.ok && res.freed && res.freed.length) {
+      return (base || '已保存') + '（空间不足，已清理 ' + res.freed.join('、') + '）';
+    }
+    return base;
+  };
+
+  /* v156.69：回收旧版遗留的 a2/a3。
+     新版只保留 1 份自动备份，不再写这两个 key —— 留着就是**死数据**
+     （永远停在旧时间点，永远不会被更新），而每份可达 1MB，
+     正是把 5MB 配额吃穿的主因之一。删之前只在控制台留一行记录。 */
+  (function purgeLegacyAuto() {
+    try {
+      var gone = [];
+      ['_a2', '_a3'].forEach(function (suf) {
+        var k = SAVE_KEY + suf;
+        if (localStorage.getItem(k)) { localStorage.removeItem(k); gone.push(k); }
+      });
+      var rawIdx = localStorage.getItem(SLOT_INDEX_KEY);
+      if (rawIdx) {
+        var ix = JSON.parse(rawIdx) || {};
+        var ch = false;
+        if (ix.a2) { delete ix.a2; ch = true; }
+        if (ix.a3) { delete ix.a3; ch = true; }
+        if (ch) localStorage.setItem(SLOT_INDEX_KEY, JSON.stringify(ix));
+      }
+      if (gone.length && window.console && console.info) {
+        console.info('[存档] 已回收旧版自动备份：' + gone.join(', ') + '（新版只保留 1 份）');
+      }
+    } catch (e) { }
+  })();
   /* 存档序列化的**唯一出口**。原先只在 saveGame 里内联一份；
      导出/存槽位若各写一份，就会出现"改了瘦身规则、只改到一处"的老毛病。 */
+  /* ============================================================
+   * v156.69（玩家报「存档失败：Failed to execute 'setItem' on 'Storage' ...
+   *        Setting the value of 'sanguo_save_v3_s1' exceeded the quota」）
+   * ------------------------------------------------------------
+   * 实测根因（不是猜，是量出来的）：
+   *   单份存档在后期 ≈ **1.1MB**，其中
+   *     · msgLog 8000 条 = 677KB   ← 只进不出，随天数线性涨
+   *     · log    3000 条 = 179KB   ← 同上
+   *     · reports 500 条 =  27KB
+   *   而 localStorage 里要放 main + s1~s3 + a1~a3 = **7 份全量** → 7.7MB，
+   *   localStorage 配额通常 5MB，必然爆。
+   *
+   * 关键判断：这几个数组是**回看用的展示数据，不是玩法状态** ——
+   *   裁掉旧条目不影响任何规则判定、不影响数值、不影响读档。
+   *   所以在这里（序列化的唯一出口）截断，比去改十几个 push 点更可靠：
+   *   ⚠️ 历史教训是"改了瘦身规则只改到一处"（grid 那次），所以规则必须放在
+   *      唯一出口，导出/存槽/自动存档全部自动继承。
+   * ============================================================ */
+  var LOG_KEEP = {
+    msgLog: 300, log: 200, reports: 60, memorial: 120,
+    gathers: 120, battles: 60, marches: 60,
+  };
   GAME.savePayload = function () {
     if (!GAME.state) return null;
     var keepCities = GAME.state.map.cities;
@@ -11500,6 +11605,16 @@ window.GAME = window.GAME || {};
     try {
       return JSON.stringify(GAME.state, function (k, v) {
         if (k === 'grid' && Array.isArray(v) && v.length > 100) return undefined;
+        /* v156.69：**格网迁移缓存不入档** —— 这是本轮的真正元凶。
+           migrateSphereSub() 为了把老 ci 按经纬重落，会把老格网**全部 40962 格**
+           的 [lon,lat] 存进 st._sub153LL（实测 **1557KB**，比所有日志加起来大 4 倍）。
+           而迁移一完成 _sub153 就被标记，这个数组**再也不被读、也从不删除** ——
+           等于每份存档永久多背 1.5MB。7 份存档 → 10MB+，5MB 配额必然爆。
+           它是纯派生缓存（下次迁移可重建），一律不入档。 */
+        if (k === '_sub153LL') return undefined;
+        /* 日志类：只留最近 N 条（v156.69 配额） */
+        var cap = LOG_KEEP[k];
+        if (cap && Array.isArray(v) && v.length > cap) return v.slice(-cap);
         return v;
       });
     } finally {
@@ -11569,35 +11684,46 @@ window.GAME = window.GAME || {};
     GAME.state.savedAt = U.now();
     try {
       var json = GAME.savePayload();
-      localStorage.setItem(slot.key, json);
+      var _w = GAME._setItemSafe(slot.key, json);
+      if (!_w.ok) {
+        if (window.console && window.console.warn) window.console.warn('存档失败：' + _w.msg);
+        return { ok: false, msg: '存档失败：存储空间不足（' + Math.round(json.length / 1024) + 'KB 写不下），请清空一个不需要的存档位' };
+      }
       GAME._setSlotIndex(slot.id, GAME.state, json.length);
       if (slot.id === 'main') GAME.saveMeta(GAME.metaOf(GAME.state));
-      return { ok: true, msg: '已存入「' + slot.name + '」', size: json.length };
+      return { ok: true, msg: GAME._quotaMsg(_w, '已存入「' + slot.name + '」'), size: json.length };
     } catch (e) {
       if (window.console && window.console.warn) window.console.warn('存档失败：' + (e && e.message));
       return { ok: false, msg: '存档失败：' + ((e && e.message) || '未知原因') };
     }
   };
   /* 自动备份轮换：a3 ← a2 ← a1 ← main（整体后移一位） */
+  /* v156.69：轮换简化为「主档 → 备份」一份。
+     原来是 a3←a2←a1←main 的三级轮换，每级都拷一份**全量**存档，
+     等于用 3 倍空间换"能回退 3 次"。在 5MB 配额里这笔账算不过来：
+     一份 1.1MB × 3 就是 3.3MB，直接导致手动存档写不进去（玩家报的错）。
+     现在只留最近一份，够挡住"误覆盖/坏档"这两类真实事故。 */
   GAME.rotateAuto = function () {
     try {
-      var idx = GAME.slotIndex();
-      var raw = localStorage.getItem(GAME.slotOf('main').key);
+      var raw = null;
+      try { raw = localStorage.getItem(GAME.slotOf('main').key); } catch (e0) { }
       if (!raw) return false;
-      /* 从最旧的一端开始搬，避免覆盖 */
-      for (var i = 3; i >= 1; i--) {
-        var from = GAME.slotOf(i === 1 ? 'main' : ('a' + (i - 1)));
-        var to = GAME.slotOf('a' + i);
-        var src = (i === 1) ? raw : localStorage.getItem(from.key);
-        if (src) {
-          localStorage.setItem(to.key, src);
-          if (idx[from.id]) { idx[to.id] = idx[from.id]; idx[to.id].id = to.id; idx[to.id].slot = to.name; }
-          else if (i === 1 && idx.main) { idx[to.id] = idx.main; idx[to.id].id = to.id; idx[to.id].slot = to.name; }
-        } else {
-          delete idx[to.id];
-        }
+      var to = GAME.slotOf('a1');
+      if (!to) return false;
+      var w = GAME._setItemSafe(to.key, raw);
+      if (!w.ok) return false;
+      var idx = GAME.slotIndex();
+      if (idx.main) {
+        idx.a1 = {
+          id: 'a1', slot: to.name, kind: 'auto',
+          name: idx.main.name, cities: idx.main.cities, army: idx.main.army,
+          gens: idx.main.gens, year: idx.main.year,
+          size: raw.length, savedAt: idx.main.savedAt, version: idx.main.version,
+        };
+      } else {
+        delete idx.a1;
       }
-      localStorage.setItem(SLOT_INDEX_KEY, JSON.stringify(idx));
+      try { localStorage.setItem(SLOT_INDEX_KEY, JSON.stringify(idx)); } catch (e1) { }
       return true;
     } catch (e) { return false; }
   };
@@ -11722,8 +11848,8 @@ window.GAME = window.GAME || {};
     var slot = GAME.slotOf(id);
     if (!slot) return { ok: false, msg: '槽位不存在' };
     var raw = JSON.stringify(pack.state);
-    try { localStorage.setItem(slot.key, raw); }
-    catch (e) { return { ok: false, msg: '写入失败（存储空间不足？）：' + ((e && e.message) || '') }; }
+    var _w = GAME._setItemSafe(slot.key, raw);
+    if (!_w.ok) return { ok: false, msg: '写入失败：存储空间不足（' + Math.round(raw.length / 1024) + 'KB）。请先清空一个存档位再导入' };
     GAME._setSlotIndex(slot.id, pack.state, raw.length);
     return { ok: true, msg: '已导入到「' + slot.name + '」（' +
       ((pack.state.cities || []).length) + ' 城 · ' + ((pack.state.generals || []).length) + ' 将）', slot: slot.id };
@@ -28990,6 +29116,10 @@ window.GAME = window.GAME || {};
     /* v91.30h（性能）：**同种子兄弟球复用**（mapSphere 与逻辑球面同星球时，地形/几何完全一致）——
        直接共享对方已建的只读大数组（cells/V/F/cent/adj/upos/fpos/faceCell…），
        免掉第二遍 40962 格噪声（~500ms）。内容同种子确定 → 无副作用。 */
+    /* v156.70：重建前把线框高度表作废。下面还会按 sd 校验一次，
+       两道都留着 —— 这里的意义是"重建 = 所有按旧地图算出的派生值一律作废"，
+       而不是指望每个缓存各自记得校验 seed。 */
+    SP._rimHMap = null; SP._rimSeed = null;
     var _twin = (GAME.sphere && GAME.sphere !== SP && GAME.sphere.cells && GAME.sphere._bSub === sub
       && GAME.sphere._bSeed === sd && GAME.sphere._bPver === pver) ? GAME.sphere
       : ((GAME.mapSphere && GAME.mapSphere !== SP && GAME.mapSphere.cells && GAME.mapSphere._bSub === sub
@@ -28999,6 +29129,12 @@ window.GAME = window.GAME || {};
       SP.upos = _twin.upos; SP.fpos = _twin.fpos; SP.faceCell = _twin.faceCell; SP.nv = _twin.nv;
       SP.vf = _twin.vf; SP.meanLand = _twin.meanLand; SP.shellH = _twin.shellH; SP.shellR = _twin.shellR;
       _builtSub = sub; _builtSeed = sd; _builtPver = pver; SP._bSub = sub; SP._bSeed = sd; SP._bPver = pver;
+      /* v156.71：世界版本号 —— 每次"数据层重建"都 +1。
+         渲染层（map3d）靠它握手判断自己的网格是否已经过期。
+         起因：setPlanet() 有 8 个调用点，全靠调用方**记得**再 rebuild 一次；
+         漏一个就是"数据换了星、画面还是上一颗"（分层自检实测：线框偏差 11~25 单位）。
+         有版本号之后，判断权在消费方，不再依赖调用方自觉。 */
+      SP.worldVer = (SP.worldVer || 0) + 1;
       /* ⛔ v139：复用兄弟球的数组时**也必须清坐标缓存** ——
          `_xyCi` 是每个球面自己的记忆，里面可能存着"这台球还没建好时算出的 -1"。
          实测：newGame 里 mapSphere 走了复用分支、缓存没清，
@@ -29097,7 +29233,25 @@ window.GAME = window.GAME || {};
       var _lift = 0.05;
       for (var i3 = 0; i3 < mm; i3++) { var cc3 = cent[fs[i3]], rr3 = terrainR(cc3); RIM.push([cc3[0] * rr3, cc3[1] * rr3, cc3[2] * rr3]); }
       /* 用「顶点位置(取整) → 高度」的全局表求平均：同一条边两侧共享同一批采样点 */
-      if (!SP._rimHMap) SP._rimHMap = {};
+      /* ============================================================
+       * v156.70（老板「省市区边界虚线飘出地面，不是依据地形和区域划分严格生成的」）
+       * ------------------------------------------------------------
+       * 根因（审出来的，不是猜）：
+       *   `_rimHMap` =「顶点方向 → 地形高度」的全局表。
+       *   键是 **ico 球细分后的格心方向**（`Math.round(c*1000)`），
+       *   而 icoSpheres(sub) 的顶点**只跟 sub 有关、与 seed 无关** ——
+       *   换存档后格心方向一模一样，键 100% 命中。
+       *   于是线框抬升用的是**上一张地图**的地形高度：
+       *     · 新地图这里比旧地图低 → 线比地面高 → **飘出地面**
+       *     · 新地图这里比旧地图高 → 线埋进地里
+       *   而 sphElev() 依赖 seed3()（= GAME.state.map.seed），两张地图的地表完全不同。
+       *   这也精确解释了老板说的「**换存档后**才出现」。
+       *
+       * 修法：表跟着 seed 走。seed 一变就重建（不只是首次建）。
+       * ⚠️ 任何「键与 seed 无关、值却依赖 seed」的缓存都有这个问题 —— 
+       *   本文件内同类缓存一并按此口径审过（见 _xyCi 的注释）。
+       * ============================================================ */
+      if (!SP._rimHMap || SP._rimSeed !== sd) { SP._rimHMap = {}; SP._rimSeed = sd; }
       for (var e2 = 0; e2 < mm; e2++) {
         var s1c = cent[fs[e2]], s2c = cent[fs[(e2 + 1) % mm]];
         var k1 = [Math.round(s1c[0] * 1000), Math.round(s1c[1] * 1000), Math.round(s1c[2] * 1000)].join(',');
@@ -29141,6 +29295,8 @@ window.GAME = window.GAME || {};
 
     SP.V = V; SP.F = F; SP.cent = cent; SP.adj = adj; SP.cells = cells;
     SP.upos = upos; SP.uposCell = uposCell; SP.fpos = fpos; SP.faceCell = faceCell; SP.nv = nv;
+    /* v156.71：主路径重建完成 —— 世界版本号 +1（见上面 _twin 分支同名注释） */
+    SP.worldVer = (SP.worldVer || 0) + 1;
     _builtSub = sub; _builtSeed = sd; _builtPver = pver; SP._bSub = sub; SP._bSeed = sd; SP._bPver = pver;
     SP.sub = sub;
     _grid = null;                                    /* 空间哈希随之失效（V 已换）*/

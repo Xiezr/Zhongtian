@@ -1093,6 +1093,17 @@
     var _gmat243 = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.FrontSide });
     applyTerminator(_gmat243);          /* v92.243：太阳方向明暗（昼夜线）*/
     globe = new THREE.Mesh(geo, _gmat243);
+    /* v156.70：暴露地形网格，供几何自检（射线量"线框是否贴地"）。
+       之前没有这个出口，只能用 _collider（半径 R+0.6 的光滑球）当基准，
+       量出来的偏差全是假的 —— 差点据此误判。 */
+    M._globe = globe;
+    /* v156.71：记录"这块网格是按哪颗星球建的" —— 分层自检据此判断
+       数据层与渲染层是否同源。不做这个记录时，脱节在画面上只表现为
+       "边界线飘着""地形对不上"，没有数字可查。 */
+    try {
+      M._worldSeed = (SP.seed3 ? SP.seed3() : null);
+      M._worldVer = SP.worldVer || 0;
+    } catch (eWV) { }
     /* v90.67（方案B）：细节纹理**乘**到顶点色上（MeshBasicMaterial: color×vertexColor×map）——近看有颗粒。 */
     try {
       var dtex = makeDetailTex(); dtex.repeat.set(7, 7);
@@ -1692,6 +1703,153 @@
     paintLineFog();
   }
   M.paintRegionEdges = paintRegionEdges;
+  /* ============================================================
+   * v156.71 世界生成 · 分层自检（老板「步骤性建立世界生成顺序…自检这个过程」）
+   * ------------------------------------------------------------
+   * 为什么放在这里、而不是外部工具里：
+   *   地形/地块/省市区大量状态是**闭包私有**（genSettlements、globe、_vdirs）。
+   *   外部探针只能隔着一层猜，实测就出现过"数据都对、返回值却拿不到"的情况。
+   *   自检与生成同源，才能读到真实产物 —— 这是分层自检能成立的前提。
+   *
+   * 分层与不变量（每层都必须**有下限**，禁止 0===0 式通过）：
+   *   L1 星球   seed 确定性、不同 seed 可区分
+   *   L2 地形   格数、陆地占比 5~92%、高度有起伏、无 NaN
+   *   L3 地块   每格有 type、邻接对称
+   *   L4 渲染   网格与数据同源（_worldSeed == seed3）
+   *   L5 几何   线框贴地（边中点相对真实地形 p90 ≤ 1.5 单位）
+   *   L6 行政   省/市/区数量、陆地 100% 有归属、区不跨市、市不跨省
+   *
+   * 返回 { seed, ok, fails[], metrics{} }；调用方（工具/快测）只负责收集。
+   * ============================================================ */
+  M.selfCheck = function (seedIn) {
+    var out = { seed: seedIn, fails: [], metrics: {} };
+    var fail = function (k, msg) { out.fails.push(k + ': ' + msg); };
+    var SP = GAME.sphere;
+    if (!SP) { fail('L0/入口', '没有 GAME.sphere'); out.ok = false; return out; }
+
+    /* ---- L2 地形 ---- */
+    var cells = SP.cells || [];
+    out.metrics.cells = cells.length;
+    if (!(cells.length >= 10000)) fail('L2地形/格数', '只有 ' + cells.length + ' 格（下限 10000）');
+
+    var step = Math.max(1, Math.floor(cells.length / 2500));
+    var land = 0, sampled = 0, eMin = 1e9, eMax = -1e9, nan = 0;
+    for (var i = 0; i < cells.length; i += step) {
+      var c = cells[i]; if (!c) continue;
+      var e = SP.sphElev(SP.V[i]);
+      if (!isFinite(e)) { nan++; continue; }
+      if (e < eMin) eMin = e;
+      if (e > eMax) eMax = e;
+      if (e >= 0) land++;
+      sampled++;
+    }
+    if (sampled < 200) fail('L2地形/采样', '有效采样只有 ' + sampled + '（下限 200）');
+    var landPct = sampled ? land / sampled * 100 : 0;
+    out.metrics.landPct = +landPct.toFixed(1);
+    out.metrics.elev = [+eMin.toFixed(2), +eMax.toFixed(2)];
+    if (nan) fail('L2地形/NaN', nan + ' 个点高度非有限');
+    if (sampled >= 200 && (landPct < 5 || landPct > 92)) fail('L2地形/海陆比', landPct.toFixed(1) + '%');
+    if (eMax - eMin < 0.05) fail('L2地形/起伏', '高差仅 ' + (eMax - eMin).toFixed(3));
+
+    /* ---- L3 地块 ---- */
+    var noType = 0;
+    for (var t = 0; t < cells.length; t += step * 3) { if (!cells[t] || !cells[t].type) noType++; }
+    if (noType) fail('L3地块/类型', noType + ' 个格没有 type');
+    var adj = SP.adj || [], asym = 0, chk = 0;
+    for (var a = 0; a < adj.length && chk < 300; a += Math.max(1, Math.floor(adj.length / 300))) {
+      var nb = adj[a] || []; if (!nb.length) continue;
+      for (var q = 0; q < nb.length; q++) {
+        var back = adj[nb[q]] || [];
+        if (back.indexOf(a) < 0) asym++;
+      }
+      chk++;
+    }
+    if (asym) fail('L3地块/邻接', asym + ' 条单向邻接');
+
+    /* ---- L4 渲染同源 ---- */
+    var sameSrc = (M._worldSeed === (SP.seed3 ? SP.seed3() : null));
+    out.metrics.sameSrc = sameSrc;
+    if (!sameSrc) fail('L4渲染/不同源', '网格 seed=' + M._worldSeed + '，数据 seed=' + (SP.seed3 ? SP.seed3() : '?'));
+
+    /* ---- L5 几何贴地 ---- */
+    var gl = M._globe, THREE = window.THREE;
+    if (sameSrc && gl && SP.upos && THREE) {
+      try {
+        gl.updateMatrixWorld(true);
+        var oldSide = gl.material.side;
+        gl.material.side = THREE.DoubleSide; gl.material.needsUpdate = true;
+        var rc = new THREE.Raycaster(), O = new THREE.Vector3(0, 0, 0);
+        var up = SP.upos, segN = up.length / 6, devs = [];
+        var st2 = Math.max(1, Math.floor(segN / 120));
+        for (var s2 = 0; s2 < segN; s2 += st2) {
+          var o2 = s2 * 6;
+          var A = new THREE.Vector3(up[o2], up[o2 + 1], up[o2 + 2]);
+          var B = new THREE.Vector3(up[o2 + 3], up[o2 + 4], up[o2 + 5]);
+          var mid = new THREE.Vector3().addVectors(A, B).multiplyScalar(0.5);
+          rc.set(O, mid.clone().normalize()); rc.far = 2000;
+          var hit = rc.intersectObject(gl, false);
+          if (hit.length) devs.push(mid.length() - hit[0].distance);
+        }
+        gl.material.side = oldSide; gl.material.needsUpdate = true;
+        devs.sort(function (x, y) { return x - y; });
+        if (devs.length < 20) fail('L5几何/采样', '只拿到 ' + devs.length + ' 个交点（下限 20）');
+        else {
+          var p90 = devs[Math.floor(devs.length * 0.9)];
+          out.metrics.lineP90 = +p90.toFixed(3);
+          if (p90 > 1.5) fail('L5几何/线框悬空', 'p90 ' + p90.toFixed(2) + ' 单位');
+        }
+      } catch (eG) { fail('L5几何/异常', eG.message); }
+    } else if (sameSrc) {
+      fail('L5几何/入口', '缺 _globe 或 upos');
+    }
+
+    /* ---- L6 省市区 ---- */
+    var S = null;
+    try { S = genSettlements(); } catch (eS) { fail('L6行政/异常', eS.message); }
+    if (S) {
+      var uniq = function (arr) {
+        if (!arr) return -1;
+        var seen = {}, n = 0;
+        for (var k = 0; k < arr.length; k++) { var v = arr[k]; if (v < 0) continue; if (!seen[v]) { seen[v] = 1; n++; } }
+        return n;
+      };
+      var pN = uniq(S.provOf), mN = uniq(S.marketOf), dN = uniq(S.districtOf);
+      out.metrics.prov = pN; out.metrics.market = mN; out.metrics.district = dN;
+      if (out.metrics.cells !== (S.provOf ? S.provOf.length : -1))
+        fail('L6行政/尺寸', 'provOf 长度 ' + (S.provOf ? S.provOf.length : '-') + ' ≠ 格数 ' + out.metrics.cells);
+      if (!(pN >= 1)) fail('L6行政/省数', pN + ' 个省（下限 1）');
+      if (!(mN >= 1)) fail('L6行政/市数', mN + ' 个市（下限 1）');
+      if (!(dN >= 1)) fail('L6行政/区数', dN + ' 个区（下限 1）');
+
+      /* 陆地必须 100% 有省归属（海面按最近省心并入，属设计） */
+      var miss = 0, landN = 0;
+      for (var z = 0; z < cells.length; z += step) {
+        var cc = cells[z]; if (!cc) continue;
+        if (cc.type === 'lake') continue;
+        if (SP.sphElev(SP.V[z]) < 0) continue;
+        landN++;
+        if (S.provOf[z] < 0) miss++;
+      }
+      out.metrics.landCells = landN;
+      out.metrics.unassigned = miss;
+      if (landN >= 100 && miss > 0) fail('L6行政/未分配', miss + '/' + landN + ' 个陆地格无省');
+
+      /* 嵌套：区不跨市、市不跨省 */
+      var d2m = {}, m2p = {}, viol = 0;
+      for (var y = 0; y < S.districtOf.length; y++) {
+        var dI = S.districtOf[y]; if (dI < 0) continue;
+        var mI = S.marketOf[y], pI = S.provOf[y];
+        if (d2m[dI] == null) d2m[dI] = mI; else if (d2m[dI] !== mI) viol++;
+        if (m2p[mI] == null) m2p[mI] = pI; else if (m2p[mI] !== pI) viol++;
+      }
+      if (viol) fail('L6行政/层级交叉', viol + ' 处');
+    } else {
+      fail('L6行政/入口', 'genSettlements 无返回');
+    }
+
+    out.ok = out.fails.length === 0;
+    return out;
+  };
 
   /* 该格是否被迷雾遮住（未探明）。标记/标签/点击都用这一把尺子。 */
   function fogHides(ci) {

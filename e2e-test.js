@@ -4855,7 +4855,9 @@ if (svBtn) {
   await sleep(140);
   const rootHtml = document.querySelector('#modal-root').innerHTML;
   const rows = (rootHtml.match(/class="sv-row"/g) || []).length;
-  check('存档面板：7 个槽位一屏放完', rows === 7, '实测 ' + rows + ' 行');
+  /* v156.69：自动备份 3 → 1（7 份全量存档撑爆 5MB 配额），槽位总数 7 → 5。
+     断言随产品变更同步 —— 不是放宽标准，是条目本身少了两条。 */
+  check('存档面板：5 个槽位一屏放完', rows === 5, '实测 ' + rows + ' 行');
   check('面板结构齐全（列表 + 导入区，无下拉条容器）',
     rootHtml.indexOf('sv-list') >= 0 && rootHtml.indexOf('sv-imp') >= 0);
 
