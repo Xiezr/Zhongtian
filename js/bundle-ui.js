@@ -781,6 +781,40 @@
   /* v156.50：**离地最低高度**（世界单位）。山高≈40，取 30 时平原离地 30、山上自动抬到 30+，不穿模。 */
   M.CAM_MIN_AGL = 30;
   /* ============================================================
+   * v156.72 地表模式（老板「拉进放大地面后进入地面场景」）
+   * ------------------------------------------------------------
+   * 关键发现：cam 本来就是 **PerspectiveCamera(42)** —— 不是正交。
+   * 所以"拉近就是放大后的地图"不是投影的问题，而是两条约束卡着：
+   *   ① CAM_MIN_AGL=30 强制离地 30，永远俯视；
+   *   ② 视线被钉在**球心方向**，贴地时就是垂直往下看。
+   * 把这两条在地表模式下解开，球面曲率会自然给出地平线 —— 这就是
+   * 无人深空/戴森球那种"站在星球上"的观感来源，不需要切换场景。
+   * ============================================================ */
+  M._surf = false;
+  M.SURF_EYE = 1.8;        /* 人眼高（世界单位 ≈ 米） */
+  M.SURF_PITCH = 0.10;     /* 轻微下俯，避免直视天空 */
+  M.surfaceMode = function (on) {
+    M._surf = !!on;
+    /* 贴地时两件必须跟着变，否则一眼还是"地图"：
+       ① 背景：深空色 → 天空色（透视贴地时天空要占画面上三分之一）；
+       ② 网格线：0.6 不透明 → 0.12。六边形是"地图的语言"，
+          站到地面上还满屏描边，永远像在看棋盘。
+       这两条不做，LOD 做得再好也出不来"实地感"。 */
+    try {
+      if (scene) {
+        if (!M._skyKeep) M._skyKeep = scene.background ? scene.background.getHex() : 0x0a1020;
+        /* ⚠️ 这里不能用 _skyBase —— 它是 scene3d 的私有变量，map3d 里没有声明。
+           读取未声明标识符会抛 ReferenceError（无论是否严格模式），被外层
+           try/catch 吞掉后 **整块设置都不执行**，天空一直是深空色。
+           实测像素 RGB=[1,1,4]（深空），就是这条造成的。 */
+        scene.background = new THREE.Color(M._surf ? 0x8e97a4 : M._skyKeep);
+      }
+      if (M._shellMat) M._shellMat.opacity = M._surf ? 0.12 : 0.6;
+    } catch (e) { }
+    try { touch(); redraw(); } catch (e) { }
+    return M._surf;
+  };
+  /* ============================================================
    * v156.52（老板「提供一个正位按钮（把球体摆正）」）——
    * 把视角恢复到初始方位（= 轴线竖直、北极在上、视角在东南方向俯视）。
    * 注意：清的不只是 yaw/pitch/dist，**还必须清 lookYaw/lookPitch**（自由视线偏移），
@@ -3137,6 +3171,35 @@
     var _dir0 = camO.dir;
     var _elev0 = 0;
     try { _elev0 = Math.max(0, sphElev(_dir0)) * HSC; } catch (e0) { }
+    /* v156.72：地表模式下离地 = 人眼高，不再受 CAM_MIN_AGL 约束 */
+    if (M._surf) {
+      var _eyeR = R + _elev0 + (M.SURF_EYE || 1.8);
+      cam.position.set(_dir0[0] * _eyeR, _dir0[1] * _eyeR, _dir0[2] * _eyeR);
+      /* 视线 = 球面**切向**（沿当前 yaw）+ 轻微下俯。
+         切向视线让球面曲率自己形成地平线 —— 这是"站在星球上"的关键，
+         不是把相机抬高再看球心（那样永远俯视）。 */
+      var _upV = new THREE.Vector3(_dir0[0], _dir0[1], _dir0[2]);
+      var _hV = new THREE.Vector3(Math.sin(camO.yaw), 0, Math.cos(camO.yaw));
+      var _tanV = _hV.clone().sub(_upV.clone().multiplyScalar(_hV.dot(_upV)));
+      if (_tanV.lengthSq() < 1e-8) _tanV.set(1, 0, 0);
+      _tanV.normalize();
+      var _pitS = (M.SURF_PITCH || 0.1) + (camO.lookPitch || 0);
+      var _lookV = _tanV.clone().multiplyScalar(Math.cos(_pitS))
+        .add(_upV.clone().multiplyScalar(-Math.sin(_pitS))).normalize();
+      /* 横向转头：把 lookYaw 作用在切平面内 */
+      if (camO.lookYaw) {
+        var _sideV = new THREE.Vector3().crossVectors(_upV, _tanV).normalize();
+        _lookV.applyAxisAngle(_upV, camO.lookYaw).normalize();
+      }
+      cam.up.copy(_upV);
+      cam.lookAt(
+        cam.position.x + _lookV.x,
+        cam.position.y + _lookV.y,
+        cam.position.z + _lookV.z
+      );
+      cam.updateMatrixWorld();
+      return;
+    }
     var _minD = R + _elev0 + (M.CAM_MIN_AGL || 30);
     if (d < _minD) d = _minD;
     camO.dist = d;
