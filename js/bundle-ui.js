@@ -3727,7 +3727,11 @@
          所以 uBase 降到 0.34，并把 smoothstep 区间收窄（0.42~0.72）——
          同样一张噪声图，明暗对比拉开，才有"云团 + 云隙"的层次。 */
       '  float f = fbm(q1) * 0.68 + fbm(q2) * 0.32;',
-      '  float a = uAlpha * (uBase + (1.0 - uBase) * smoothstep(0.42, 0.72, f));',
+      /* ⛔ v157.44（老板：「加大云量」）：覆盖阈值下移 0.42→0.30、上沿 0.72→0.68。
+         只动 smoothstep 的**下沿**就能改"云占多大面积"（f 超过下沿就算云），
+         不动 uBase 的天花板 —— 避免重演 v92.240i 那个"磨砂玻璃球"（uBase 0.72 + 宽区间）。
+         实测对照见 docs/_史料/交付/v15744-云量对比-{前,后}.png。 */
+      '  float a = uAlpha * (uBase + (1.0 - uBase) * smoothstep(0.30, 0.68, f));',
       /* v154d: 未探明是"微暗"不是"雪白" —— 云色压到深蓝灰，厚度只影响深浅 */
       '  vec3 col = mix(vec3(0.05,0.07,0.10), vec3(0.34,0.38,0.45), smoothstep(0.35, 0.75, f));',
       '  gl_FragColor = vec4(col, a);',
@@ -3777,7 +3781,7 @@
       var g = new THREE.BufferGeometry();
       g.setAttribute('position', new THREE.Float32BufferAttribute(position, 3));
       if (index.length) g.setIndex(index);
-      var m = new THREE.Mesh(g, useCloud ? cloudMat(opacity, cloudBase == null ? 0.34 : cloudBase)
+      var m = new THREE.Mesh(g, useCloud ? cloudMat(opacity, cloudBase == null ? 0.40 : cloudBase)
         : new THREE.MeshBasicMaterial({
             color: color, transparent: true, opacity: opacity,
             side: THREE.DoubleSide, depthWrite: false,
