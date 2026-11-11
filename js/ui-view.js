@@ -774,13 +774,13 @@ import './ui.js';
       };
       var fkey = 'world|' + title;
       /* 阶段门控：需要更高阶段而当前不够 → 灰行（可点，点了只说还差什么） */
-      if (need && ui.gatedOut(need)) {
+      if (need && ui.gatedOut(need, title)) {
         return '<div style="border-bottom:1px dashed var(--wood-light);">'
           + '<div style="padding:4px 0;display:flex;align-items:baseline;gap:7px;opacity:.55;">'
           + '<span style="font-size:var(--fs-cap);color:var(--text-dim);font-weight:700;white-space:nowrap;">'
           + '🔒 ' + title + '</span>'
           + '<span style="font-size:var(--fs-cap);opacity:.8;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">'
-          + U.escape(ui.gateWhyText()) + '</span>'
+          + U.escape(ui.gateWhyText(title)) + '</span>'
           + '</div></div>';
       }
       var open = !!ui._foldOpen[fkey];
@@ -839,8 +839,8 @@ import './ui.js';
         : '';
       h += sec('☁ 辐射云', GAME.surge.lineOf(),
         _cloudAct
-        + '<div class="ui-sub" style="margin-top:3px;">圈心在你所有城的重心，半径按月往回收、每收 12 个月停 3 个月。'
-        + '云里的城不会立刻崩，只是人会一点一点往圈里搬 —— 要不要把家搬进来，是你的决定。</div>', 'mid');
+        + '<div class="ui-sub" style="margin-top:3px;">圈心在你**开局时**那片地的重心，立城之后就不再移动（v157.41 修：原来每帧按城的重心算，永远追不上你）。半径按月往回收、每收 12 个月停 3 个月。'
+        + '云里的城不会立刻崩，只是人会一点一点往圈里搬 —— 要不要把家搬进来，是你的决定。</div>');
     }
 
     /* ---------- 污染 ---------- */

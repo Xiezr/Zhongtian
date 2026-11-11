@@ -46211,11 +46211,14 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         return p0 === 'early' && p1 === 'mid' && p2 === 'late';
       })(), 'early → mid → late');
 
-      check('§573② early 顶栏：station/shop/collection 标 tab-locked · 节点在 DOM 且**看得见**', (function () {
+      check('§573② early 顶栏：shop/collection 标 tab-locked（station 已解锁 v157.45）· 节点在 DOM 且**看得见**', (function () {
         /* ① 静态：三个页签在 index.html 里带 tab-locked 初始类（首帧不闪） */
-        var staticOk = /class="tab tab-more tab-locked" data-view="station"/.test(h9)
-          && /class="tab tab-more tab-locked" data-view="shop"/.test(h9)
-          && /class="tab tab-more tab-locked" data-view="collection"/.test(h9);
+        /* v157.45：**station 已从 early 解锁**（老板「把锁着的东西放到玩家面前」），
+           所以首帧静态类只剩 shop / collection 两个。
+           判据同时反向要求：station 不许再带 tab-locked（防回潮）。 */
+        var staticOk = /class="tab tab-more tab-locked" data-view="shop"/.test(h9)
+          && /class="tab tab-more tab-locked" data-view="collection"/.test(h9)
+          && !/class="tab tab-more tab-locked" data-view="station"/.test(h9);
         /* v156.33（老板「顶上还是把游商啥的搞没了」）：锁定态从"藏"改成"灰显"。
            判据正反两问：① 真的做了灰显（opacity + grayscale）；
                         ② 不许再用 display:none 把自己藏掉（回退即红）。 */
@@ -46225,7 +46228,8 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
           && /opacity\s*:\s*\.?\d/.test(css9)
           && /grayscale\s*\(/.test(css9)
           && !/display\s*:\s*none/.test(css9);
-        /* ② 动态：syncPhase 对 early 期的三个页签加类、对其它页签不加 */
+        /* ② 动态：syncPhase 对 early 期的 shop / collection 加类（station 自 v157.45 解锁），
+           对 city / map 不加 —— 判据正反两问：该锁的锁上、该开的不许锁。 */
         G.ui._phaseShown = null;
         /* ⚠️ classList 的方法必须闭包住自己的状态：`toggle` 被拆开调用时
            `this` 不再是元素（实测踩到：`reading 'tab-locked' of undefined`）。 */
@@ -46248,35 +46252,98 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         G.ui.syncPhase();
         document.querySelectorAll = bkQ;
         return staticOk
-          && tabs[0].classList.contains('tab-locked')
+          && !tabs[0].classList.contains('tab-locked')   /* v157.45：station 已解锁 */
           && tabs[1].classList.contains('tab-locked')
           && tabs[2].classList.contains('tab-locked')
           && !tabs[3].classList.contains('tab-locked')
           && !tabs[4].classList.contains('tab-locked');
       })(), '静态类 + 动态 syncPhase 都是"只加类、不删节点"');
 
-      check('§573③ early 账本：放行 5 节 · 其余灰行不消失（标题全部仍在）', (function () {
+      /* v157.46（软摩擦解锁）：这一条必须先**构造一个「什么都没发生」的基线**再判灰。
+         否则前面的用例造出来的脏数据（taint / unrest / 高税率）会让污染、民怨提前解锁，
+         判据就变成随缘 —— 测试通过与否取决于用例执行顺序，这是最坏的一种绿。 */
+      check('§573③ early 账本（干净基线）：5 条软触发都没触发时仍全灰 · 灰行不消失', (function () {
+        var s = GAME.state;
+        var cs = (GAME.city && GAME.city.all) ? GAME.city.all() : (s.cities || []);
+        var bk = { tax: s.tax, taint: [], unrest: [], gates: s.gates };
+        for (var i = 0; i < cs.length; i++) {
+          bk.taint.push(cs[i].taint); bk.unrest.push(cs[i].unrest);
+          cs[i].taint = 0; cs[i].unrest = 0;
+        }
+        s.tax = 0.5;              /* < 0.55，民怨不触发 */
+        s.gates = {};             /* 作废已落账的软解锁 */
         var html = '';
         var bkOpen = G.ui.openModal;
-        G.ui.openModal = function (h) { html = h; };
-        try { G.ui.openWorldPanel(); } finally { G.ui.openModal = bkOpen; }
+        try {
+          G.ui.openModal = function (h) { html = h; };
+          G.ui.openWorldPanel();
+        } finally {
+          G.ui.openModal = bkOpen;
+          for (var j = 0; j < cs.length; j++) { cs[j].taint = bk.taint[j]; cs[j].unrest = bk.unrest[j]; }
+          s.tax = bk.tax; s.gates = bk.gates || {};
+        }
         var locked = (html.match(/🔒 [^<]+/g) || []).length;
         var heads = (html.match(/[▸▾] [^<]+/g) || []).length;
-        /* 五个放行的节都在（标题字面量保留 —— 源码断言也靠它） */
         var kept = ['🌡 温度', '🚶 人从哪来', '⚠ 危险梯度', '📅 今年', '🏪 集市'].every(function (t) {
           return html.indexOf(t) >= 0;
         });
-        /* 后解锁的节以灰行出现（不是删除） */
-        /* v150：必须**以灰行形式**出现（`🔒 标题`）—— 弱化成"标题出现过"就等于
-           放弃了"不消失"这一整条判据（第一次写成 `||` 当场被抓）。 */
-        /* ⚠️ 只断言"这个状态下**本来就存在**的节"—— `☄ 奇观`/`🧩 套装指令`/`👁 谁看见了你`
-           在还没占下奇观时**本来就不渲染**（既有条件），拿它们当判据会假红。 */
-        var greyed = ['☁ 辐射云', '☢ 污染', '🏴 竞争者', '🛣 领土连通',
+        /* v150：后解锁的节必须**以灰行形式**出现（`🔒 标题`）—— 弱化成"标题出现过"
+           就等于放弃了"不消失"这一整条判据。
+           v157.46：`☢ 污染` / `🔥 民怨` / `🛣 领土连通` 现在是**软触发**，
+           在干净的 early 基线下必须仍然灰（触发条件上面已经清零）；
+           `☁ 辐射云` 反过来被**拿出门**（它是时钟，永远有话说）——
+           所以这里必须**看不到** `🔒 ☁ 辐射云`，后面单独一条反向钉住。 */
+        var greyed = ['☢ 污染', '🏴 竞争者', '🛣 领土连通', '🔥 民怨',
           '🕳 地下远征', '🪖 兵员等级'].every(function (t) {
           return html.indexOf('🔒 ' + t) >= 0;
         });
         return kept && greyed && locked >= 10 && heads >= 4 && (heads + locked) >= 15;
       })(), '放行 5 · 灰行 ≥10 · 总数 ≥15');
+
+      /* v157.46：软摩擦解锁的**行为**判据（不是源码正则）——
+         造出触发条件 → 那一行放出来；撤掉条件 → 仍然可读（单调）；
+         late 不受影响。三条缺一条都不算数。 */
+      check('§573⑥ 软触发：撞到才开 · 撤掉后不回退 · late 不受影响（v157.46）', (function () {
+        var s = GAME.state;
+        var cs = (GAME.city && GAME.city.all) ? GAME.city.all() : (s.cities || []);
+        if (!cs.length) return false;
+        var c0 = cs[0];
+        var bk = { taint: c0.taint, unrest: c0.unrest, tax: s.tax, gates: s.gates };
+        var render = function () {
+          var html = '', b = G.ui.openModal;
+          try { G.ui.openModal = function (h) { html = h; }; G.ui.openWorldPanel(); }
+          finally { G.ui.openModal = b; }
+          return html;
+        };
+        try {
+          s.gates = {}; c0.taint = 0; c0.unrest = 0; s.tax = 0.5;
+          var base = render();
+          var greyTaint = base.indexOf('🔒 ☢ 污染') >= 0;
+          c0.taint = 200;                     /* 越过变质线 bad(120)：这一行才真的有话说 */
+          var openedTaint = render().indexOf('🔒 ☢ 污染') < 0;
+          c0.taint = 0;                       /* 拆掉 —— 已经见过，不许再变灰 */
+          var staysOpen = render().indexOf('🔒 ☢ 污染') < 0;
+          c0.unrest = 50;                     /* 民怨 ≥40：摘要里会出现「N 城不满」 */
+          var afterTax = render();
+          var openedUnrest = afterTax.indexOf('🔒 🔥 民怨') < 0;
+          /* late 仍按里程碑：early 下奇观要么没渲染、要么是灰行 */
+          var lateStill = (afterTax.indexOf('🔒 ☄ 奇观') >= 0) || (afterTax.indexOf('☄ 奇观') < 0);
+          return greyTaint && openedTaint && staysOpen && openedUnrest && lateStill;
+        } finally {
+          c0.taint = bk.taint; c0.unrest = bk.unrest; s.tax = bk.tax;
+          s.gates = bk.gates || {};
+        }
+      })(), '污染/民怨 触发前后 · 单调不回退 · late 不动');
+
+      check('§573⑦ 辐射云不再上锁（v157.46 · 它是时钟，藏它等于藏时间压力）', (function () {
+        var s = GAME.state, cs = (GAME.city && GAME.city.all) ? GAME.city.all() : (s.cities || []);
+        var bk = s.gates; s.gates = {};
+        var html = '', b = G.ui.openModal;
+        try { G.ui.openModal = function (h) { html = h; }; G.ui.openWorldPanel(); }
+        finally { G.ui.openModal = b; s.gates = bk || {}; }
+        /* 正：标题在（放行行） 反：不许是以 🔒 开头 */
+        return html.indexOf('☁ 辐射云') >= 0 && html.indexOf('🔒 ☁ 辐射云') < 0;
+      })(), '标题在 · 且不带锁');
 
       check('§573④ 阶段推进后自动解锁（mid 放行 mid 节、late 才放奇观）', (function () {
         var st2 = GAME.state;

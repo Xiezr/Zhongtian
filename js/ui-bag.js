@@ -46,24 +46,119 @@ import './ui.js';
 
   /* 晚解锁的账本小节（按标题关键词）：early 一律折成一条灰行，点了告诉你还差什么。 */
   ui.GATE_SEC = [
-    ['☁ 辐射云', 'mid'], ['☢ 污染', 'mid'], ['🏴 竞争者', 'mid'],
+    /* ⛔ v157.46：`☁ 辐射云` 已从门里拿出去 —— 它永远有话说
+       （圈几格 / 还会收几个月 / 几座城在云里），而且是这个游戏唯一的时间压力。
+       藏它等于藏时钟。放在下面的「免检」组，和 温度 / 今年 同级。 */
+    ['☢ 污染', 'mid'], ['🏴 竞争者', 'mid'],
     ['🛣 领土连通', 'mid'], ['📜 废墟科技', 'mid'], ['🎯 作战目标', 'mid'],
     ['🩹 伤兵与老兵', 'mid'], ['🔥 民怨', 'mid'], ['🏯 守城工事', 'mid'],
     ['🕳 地下远征', 'mid'], ['🃏 指令牌', 'mid'], ['🧩 套装指令', 'mid'],
     ['☄ 奇观', 'late'], ['👁 谁看见了你', 'late']
   ];
   ui.gateRankOf = function (ph) { return ph === 'early' ? 0 : (ph === 'mid' ? 1 : 2); };
-  ui.gatedOut = function (need) {
+
+  /* ============================================================
+   * v157.46 软摩擦解锁
+   * ------------------------------------------------------------
+   * 病灶：early 的判据是「城≤1 且 胜场<3」，而这道门后面关了 14 个账本小节。
+   * 其中 **12 个从第 1 个月就在 tick**（v157.40 的 25 年快进实测）——
+   * 这道门不是在藏功能，是在藏「已经在跑的系统」的数值：
+   * 玩家在吃污染 / 民怨 / 距离衰减的亏，却看不到那一行，只会觉得产量莫名其妙变少。
+   *
+   * 改法：early 阶段逐条看**软触发** —— 这个系统对你有数字了，就显示；
+   * 没有数字仍然是灰行（保留 v150 防信息过载的本意）。
+   *
+   * 纪律：
+   *   ① 谓词**只读 state / city 字段**，不调各模块的私有 API（模块改名不波及）；
+   *   ② 谓词抛异常 → 一律当「没开」，绝不炸掉整个账本渲染；
+   *   ③ 触发过就写 `state.gates[id]=1`，之后**单调**解锁（拆了作坊也不会再变灰）；
+   *   ④ late（奇观 / 谁看见了你）**不走软触发** —— 那是真后期内容，提前露出来是剧透。
+   *
+   * 只做 5 条：其余 6 条（废墟科技 / 伤兵老兵 / 守城工事 / 地下远征 / 指令牌 / 套装指令）
+   * 没有可靠字段能判定「玩家撞到了它」，按 §十三 G1/G2 不过就不动，留在里程碑。
+   * ============================================================ */
+  ui.SOFT = [
+    { k: '🎯 作战目标', id: 'goals',
+      why: '募到兵就解锁（出征前要能看见四档战场修正）',
+      test: function (s, cs) {
+        for (var i = 0; i < cs.length; i++) {
+          var a = cs[i] && cs[i].army;
+          if (a && typeof a === 'object') { for (var t in a) { if ((a[t] | 0) > 0) return true; } }
+        }
+        return false;
+      } },
+    { k: '🛣 领土连通', id: 'land',
+      why: '开出第二座城就解锁（距离衰减从那一刻开始生效）',
+      test: function (s, cs) { return cs.length >= 2; } },
+    { k: '☢ 污染', id: 'taint',
+      why: '有城警戒了才解锁（污染越过警戒线、开始拖产出）',
+      /* 为什么不用 `taint > 0`：查过惩罚口径 —— `TN.mutMulOf` 只在
+         `t >= bad(120)` 时才扣产出，`t < warn(60)` 纯属账面数字。
+         而且这一行的摘要**开头就是**「N 城变质 · M 城警戒」，
+         用 `t > 0` 当判据会让行出现了却显示「0 城变质 · 0 城警戒」——
+         那正是本轮要消灭的那种「说了等于没说」。
+         所以直接用 `TN.stats()`（与摘要同一个函数）：有城越过 warn/bad 才开。 */
+      test: function (s, cs) {
+        try {
+          var a = GAME.taint.stats();
+          return (a.warn + a.bad) > 0;
+        } catch (e) { return false; }
+      } },
+    { k: '🔥 民怨', id: 'unrest',
+      why: '有城真的不满了才解锁（民怨 ≥40 才会出现在摘要里）',
+      /* `UN.lineOf()` 在「没有城 ≥40」时返回空串 —— 用它当判据，
+         等于「这一行有话说才显示」，与渲染同源，不会出现空壳行。 */
+      test: function (s, cs) {
+        try { return String(GAME.unrest.lineOf() || '') !== ''; } catch (e) { return false; }
+      } },
+  ];
+
+  ui.softOf = function (title) {
+    if (!title) return null;
+    var L = ui.SOFT || [];
+    var t = String(title);
+    for (var i = 0; i < L.length; i++) { if (t.indexOf(L[i].k) >= 0) return L[i]; }
+    return null;
+  };
+
+  /* 软触发是否已开：先查账本，再现场算一次（算到就落账，永不回退） */
+  ui.softOpen = function (title) {
+    var r = ui.softOf(title);
+    if (!r) return false;
+    var s = GAME.state;
+    if (!s) return false;
+    var bank = s.gates || (s.gates = {});
+    if (bank[r.id]) return true;
+    var cs = [];
+    try { cs = (GAME.city && GAME.city.all) ? GAME.city.all() : (s.cities || []); } catch (e) { cs = []; }
+    var hit = false;
+    try { hit = !!r.test(s, cs || []); } catch (e2) { hit = false; }   /* 谓词坏了 = 当没开 */
+    if (hit) bank[r.id] = 1;
+    return hit;
+  };
+
+  ui.softWhy = function (title) {
+    var r = ui.softOf(title);
+    return r ? r.why : '';
+  };
+
+  ui.gatedOut = function (need, title) {
     var rank = ui.gateRankOf(ui.phaseOf());
     var needRank = need === 'late' ? 2 : (need === 'mid' ? 1 : 0);
-    return needRank > rank;
+    if (needRank <= rank) return false;        /* 阶段到了：全开 */
+    if (needRank === 2) return true;           /* late 仍按里程碑（真后期内容） */
+    return !ui.softOpen(title);                /* early：撞到才开 */
   };
   /* 还差什么才解锁（给灰行用一句人话） */
-  ui.gateWhyText = function () {
+  ui.gateWhyText = function (title) {
     var ph = ui.phaseOf();
-    if (ph === 'early') return '再打几场、或再开一座城就解锁';
     if (ph === 'mid') return '开满 5 座城（或打下更远的地方）后解锁';
-    return '';
+    if (ph !== 'early') return '';
+    /* v157.46：能说清「这一条缺什么」就说清 —— 笼统一句「再打几场」
+       会让玩家以为所有灰行都是同一个原因。 */
+    var w = title ? ui.softWhy(title) : '';
+    if (w) return w;
+    return '再打几场、或再开一座城就解锁';
   };
 
   /* 顶栏阶段锁（幂等）：把 station / shop / collection 标成 locked —— **看得见、进不去**。
@@ -75,7 +170,13 @@ import './ui.js';
       var ph = ui.phaseOf();
       if (ui._phaseShown === ph) return;
       ui._phaseShown = ph;
-      var hide = (ph === 'early') ? ['station', 'shop', 'collection'] : [];
+      /* v157.45（老板：「把锁着的东西放到玩家面前」）：
+         **空间站从 early 解锁** —— 它是最独特的资产（8000 行：舰船/舰队/殖民/陨石带），
+         却被和「污染/民怨」一起塞在 mid 那 12 个系统的后面。
+         行业口径（Time-to-Fun）：第一个能改变体验的东西要在前 10~20 分钟出现，
+         而 Steam 的退款窗口只有 2 小时 —— mid 之前玩家一行太空都看不到。
+         shop / collection 仍留在 mid（它们是周边系统，不构成"这游戏还有个宇宙"的认知）。 */
+      var hide = (ph === 'early') ? ['shop', 'collection'] : [];
       var tabs = document.querySelectorAll('#topnav .tab[data-view]');
       for (var i = 0; i < tabs.length; i++) {
         var v = tabs[i].getAttribute('data-view');
