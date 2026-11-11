@@ -723,6 +723,14 @@ import './gltf.js';
       t = 1 - Math.min(1, Math.max(0, (agl - f0) / (f1 - f0)));
       t = t * t * (3 - 2 * t);                    /* smoothstep：两头缓、中间快 */
     }
+    /* v157.47（P1 探索实体化）：地标（遗迹/村社/营地）每 500ms 对一次"数量签名"，
+       变了才重建 —— 发现一处遗迹时**不用等下一次平移**就能立起来。
+       不每帧重建：那等于每帧 new 一批 mesh 再 dispose，GPU 会被抖死。
+       也不只在 rebuildSurf 里做：sweep 发现遗迹时玩家可能站着不动。 */
+    if (Date.now() - _lmAt > 500) {
+      _lmAt = Date.now();
+      try { buildLandmarks(false); } catch (eLM) { }
+    }
     var k = M.SURF_FADE_K;
     /* ============================================================
      * v157.18（老板「高空到地面还有一个跳变，画面抖一下，会有地面景象突然出现」）
@@ -940,6 +948,12 @@ import './gltf.js';
       });
     } catch (e) { }
     SR = null;
+    /* v157.47：地标必须跟地表层同生共死 —— 只靠 500ms 的定时检查会漏：
+       弹窗打开时渲染循环可能被暂停，切走之后那批 mesh 就留在场景里了（实测 n=1）。 */
+    try {
+      if (lmRoot) { scene.remove(lmRoot); disposeTree(lmRoot); lmRoot = null; }
+      _lmSig = '';
+    } catch (eL) { }
     M._sr = null;          /* ⚠️ 对外暴露的那份引用也要清 —— 只清闭包里的 SR，
                               外部读 M._sr 仍是旧对象（实测"已升空但 hasSR 还是 true"）*/
   }
@@ -1929,6 +1943,8 @@ import './gltf.js';
            timing: { terr: +(_tt1 - _tt0).toFixed(1), plate: +(_tt2 - _tt1).toFixed(1),
                      scatter: +(_tt3 - _tt2).toFixed(1), gridAndAdd: +(t1ms - _tt3).toFixed(1) } };
     M._sr = SR;
+    /* v157.47：格锚随相机中心格变 → 地标的 (i,j) 全部作废，必须强制重算。 */
+    try { buildLandmarks(true); } catch (eL0) { }
     return true;
   }
   /* ============================================================
@@ -6842,6 +6858,113 @@ import './gltf.js';
   }
   M.buildPlacements = buildPlacements;
 
+  /* ============================================================
+   * v157.47（P1 · 探索实体化）：遗迹 / 村社 / 营地 在地表上是**实物**
+   * ------------------------------------------------------------
+   * 病灶：三者在战略视图里是整格涂色 + 点开面板；**贴地时什么都看不见** ——
+   * "探索"永远发生在面板列表里，玩家没有"走过去看看"这个动作。
+   *
+   * 现在：站在地表时，相机附近（SURF_GRID_RANGE 格内）的那几处会立成实物：
+   *   遗迹 = 断柱 · 村社 = 草屋 · 营地 = 帐篷。
+   * 点它 → 走 `_openCellPanel(ci)`，与战略视图点同一格**同一个出口** ——
+   * 不新增面板、不新增存档字段，只补"看得见、点得到"。
+   *
+   * 为什么不做"走过去自动触发"：这个游戏没有玩家化身，"走"= 左键平移相机，
+   * 自动触发会让"平移看地形"变成"一路踩雷"。所以是**看得见 + 点得到**。
+   * ============================================================ */
+  var lmRoot = null, _lmSig = '', _lmAt = 0;
+  var LM_MAX = 24;                    /* 同屏最多 24 个 —— 地表只有 ±44 米，再多也没地方站 */
+  function lmSig() {
+    var n1 = 0, n2 = 0, n3 = 0;
+    try { n1 = Object.keys((GAME.ruin && GAME.ruin.found) ? GAME.ruin.found() : {}).length; } catch (e1) { }
+    try { n2 = Object.keys((GAME.state && GAME.state.villages) || {}).length; } catch (e2) { }
+    try { n3 = Object.keys((GAME.camp && GAME.camp.found) ? GAME.camp.found() : {}).length; } catch (e3) { }
+    return (M._surf ? 's' : 'o') + n1 + '/' + n2 + '/' + n3;
+  }
+  function lmMesh(kind) {
+    var g = new THREE.Group();
+    var mk = function (geo, col, x, y, z) {
+      var m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color: col }));
+      m.position.set(x || 0, y || 0, z || 0);
+      g.add(m);
+      return m;
+    };
+    if (kind === 'ruin') {
+      /* 断柱 + 斜梁：一眼看出"这是旧世界留下的"，不是玩家放的 */
+      mk(new THREE.CylinderGeometry(0.26, 0.34, 2.6, 7), 0x9aa0a6, -0.55, 1.3, 0);
+      mk(new THREE.CylinderGeometry(0.24, 0.30, 1.4, 7), 0x8b9198, 0.52, 0.70, 0.18);
+      mk(new THREE.BoxGeometry(1.9, 0.22, 1.1), 0x6f767c, 0, 0.11, 0.55);
+    } else if (kind === 'village') {
+      /* 草屋：圆墙 + 锥顶，和玩家的"木屋"区分开（那道是方屋） */
+      mk(new THREE.CylinderGeometry(0.86, 0.96, 0.86, 8), 0x8d6e4b, 0, 0.43, 0);
+      mk(new THREE.ConeGeometry(1.12, 0.95, 8), 0xa8845c, 0, 1.13, 0);
+    } else {
+      /* 营地：帐篷 */
+      mk(new THREE.ConeGeometry(0.92, 1.5, 5), 0x7a6a55, 0, 0.75, 0);
+    }
+    return g;
+  }
+  function buildLandmarks(force) {
+    var sig = lmSig();
+    if (!force && sig === _lmSig) return 0;
+    _lmSig = sig;
+    if (lmRoot) { if (scene) scene.remove(lmRoot); disposeTree(lmRoot); lmRoot = null; }
+    if (!scene || !M._surf || !SP || !SP.cells) return 0;
+    var cand = [];
+    var push = function (ci, kind) {
+      ci = +ci;
+      if (!(ci >= 0) || !SP.cells[ci]) return;
+      cand.push({ ci: ci, kind: kind });
+    };
+    try { var rf = (GAME.ruin && GAME.ruin.found) ? GAME.ruin.found() : {}; for (var k1 in rf) push(k1, 'ruin'); } catch (e1) { }
+    try { var vs = (GAME.state && GAME.state.villages) || {}; for (var k2 in vs) push(k2, 'village'); } catch (e2) { }
+    try { var cf = (GAME.camp && GAME.camp.found) ? GAME.camp.found() : {}; for (var k3 in cf) push(k3, 'camp'); } catch (e3) { }
+    if (!cand.length) return 0;
+    /* 先按"离相机中心多远"排一遍：地表只有 ±44 米，远处那些算了也放不下 */
+    var cdir = camO.dir || [0, 1, 0];
+    for (var q = 0; q < cand.length; q++) {
+      var cd = SP.cells[cand[q].ci].dir || [0, 1, 0];
+      cand[q].dot = cd[0] * cdir[0] + cd[1] * cdir[1] + cd[2] * cdir[2];
+    }
+    cand.sort(function (a, b) { return b.dot - a.dot; });
+    var range = (M.SURF_GRID_RANGE == null ? 22 : M.SURF_GRID_RANGE);
+    var sc = propScale();
+    var grp = new THREE.Group();
+    grp.name = 'surfLandmarks';
+    var made = 0;
+    for (var i = 0; i < cand.length && made < LM_MAX; i++) {
+      var c = cand[i], cell = SP.cells[c.ci];
+      /* 已经按 dot 降序 → 一旦掉出"脚下这一片"就直接停，不再对后面几百处算投影。
+         0.985 ≈ 10° ≈ 52 米（R=300），刚好盖住 ±44 米的地表 patch。
+         这条早退是平移时重建的成本闸：没有它，每次跨格都要对全部遗迹/村社算一遍。 */
+      if (c.dot < 0.985) break;
+      var dd = cell && cell.dir;
+      if (!dd) continue;
+      var gpos = null;
+      try { gpos = M.gridAt([dd[0] * R, dd[1] * R, dd[2] * R]); } catch (e4) { gpos = null; }
+      if (!gpos) continue;
+      /* gridAt 会给一个格子号，但"在不在这一片地表里"要自己判 —— 不然会把
+         地球背面的地标也摆到脚下（v157.26 踩过一次同类：漏减格锚偏移）。 */
+      if (Math.abs(gpos.i) > range || Math.abs(gpos.j) > range) continue;
+      var mesh = lmMesh(c.kind);
+      if (!seatProp(mesh, gpos.i, gpos.j, 0)) { disposeTree(mesh); continue; }
+      mesh.scale.setScalar(sc);
+      mesh.userData.ci = c.ci;
+      mesh.userData.kind = c.kind;
+      grp.add(mesh);
+      made++;
+    }
+    lmRoot = grp;
+    scene.add(lmRoot);
+    return made;
+  }
+  M.buildLandmarks = function (force) { return buildLandmarks(force !== false); };
+  M.landmarkStats = function () {
+    return { n: lmRoot ? lmRoot.children.length : 0, sig: _lmSig };
+  };
+  /* 探针出口（与 `_camObj` 同规格）：给实机自检取地标的世界坐标投影，不参与逻辑。 */
+  M._lmObj = function () { return lmRoot; };
+
   /* 幽灵预览：手上拿着东西时跟着格子走。itemId 为空或 ci<0 → 清掉。
      合法=原色半透明；非法（未探明 / 已占用）= 整件染红，玩家一眼看出放不下。 */
   M.PLACE_YAW = 0;                     /* 手上那件的朝向（度），R 键 / 工具条按钮改 */
@@ -7110,6 +7233,23 @@ import './gltf.js';
         var _bidx = bh[0].instanceId;
         var _brock = (_bidx != null && _beltRocks[_bidx]) ? _beltRocks[_bidx] : null;
         if (_brock && GAME.ui && GAME.ui.openBeltRock) { GAME.ui.openBeltRock(_brock); return; }
+      }
+    }
+    /* v157.47（P1）：地表地标是**实物** —— 先判它。
+       命中就开"那一格"的原面板（与战略视图点同一格是同一个出口），然后 return，
+       免得继续落到地块分支把它当成"点了块野地"。 */
+    if (lmRoot && lmRoot.children.length) {
+      var _lh = rc.intersectObject(lmRoot, true);
+      if (_lh && _lh.length) {
+        var _lo = _lh[0].object;
+        var _lci = null;
+        if (_lo && _lo.userData && _lo.userData.ci != null) _lci = _lo.userData.ci;
+        else if (_lo && _lo.parent && _lo.parent.userData && _lo.parent.userData.ci != null) _lci = _lo.parent.userData.ci;
+        if (_lci != null) {
+          M._cell = _lci;
+          try { _openCellPanel(_lci); } catch (eL1) { }
+          return;
+        }
       }
     }
     var hit = rc.intersectObject(M._collider, false);

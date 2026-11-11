@@ -36404,6 +36404,33 @@ console.log('\n===== 83. v89.50 新套装 · 新物品 =====');
         c243('§243①k 收缩圈圈心固定（v157.41）：必须记住 surgeCenter，不得每次返回城的质心',
           !!_sg && /st\.surgeCenter = \{ x: got\.x/.test(_sg)
           && /if \(st && st\.surgeCenter && st\.surgeCenter\.n\) return st\.surgeCenter;/.test(_sg));
+
+      /* ============================================================
+       * v157.47（P1 · 探索实体化）：遗迹/村社/营地 在地表上是**实物**
+       * ------------------------------------------------------------
+       * 锁三件事：
+       *   ① 地标层存在（buildLandmarks + lmRoot），且只在 `M._surf` 时建；
+       *   ② 点击**先判地标**（在 intersectObject(M._collider) 之前）——
+       *      否则点遗迹会落到"点了块野地"；
+       *   ③ 与地表层**同生共死**：destroySurf 里必须清 lmRoot
+       *      （反向证据：不许只建不清 —— 实测漏过一处，弹窗开着切走就留在场景里）。
+       * ============================================================ */
+      c243('§243①l 地表地标层在册（v157.47）：buildLandmarks + lmRoot + 仅地表构建', (function () {
+        return /function buildLandmarks\(force\)/.test(m243)
+          && /if \(!scene \|\| !M\._surf \|\| !SP \|\| !SP\.cells\) return 0;/.test(m243)
+          && /grp\.name = 'surfLandmarks'/.test(m243)
+          && /M\.landmarkStats = function/.test(m243);
+      })());
+      c243('§243①m 点地标优先于点地块 + 与地表层同生共死（v157.47 · 反向证据：不许只建不清）', (function () {
+        var pk = m243.indexOf('M.pickAt = function');
+        var seg = (pk >= 0) ? m243.slice(pk, pk + 6000) : '';
+        var iLm = seg.indexOf('if (lmRoot && lmRoot.children.length)');
+        var iCol = seg.indexOf('intersectObject(M._collider');
+        var ds = m243.indexOf('function destroySurf');
+        var segD = (ds >= 0) ? m243.slice(ds, ds + 1400) : '';
+        return iLm > 0 && iCol > 0 && iLm < iCol
+          && /if \(lmRoot\) \{ scene\.remove\(lmRoot\); disposeTree\(lmRoot\); lmRoot = null; \}/.test(segD);
+      })());
       })();
       /* ============================================================
        * §243②（2026-11-08 老板：「统一所有转向效果」「联动要区分不同场景」）
